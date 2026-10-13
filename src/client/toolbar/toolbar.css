@@ -1,0 +1,332 @@
+/* Persistent Top DOM Toolbar (#d2-toolbar) — Diablo II v1.13c Web Port */
+
+#d2-toolbar,
+.d2-toolbar {
+  position: relative;
+  z-index: 1000;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #211b14 0%, #120f0a 55%, #0a0806 100%);
+  border-bottom: 1px solid #634e2b;
+  box-shadow: inset 0 1px 0 rgba(255, 226, 158, 0.14), 0 2px 8px rgba(0, 0, 0, 0.85);
+  color: #e2cfa0;
+  font-family: var(--font-body, "D2Formal436", "Noto Serif SC", "Songti SC", "PingFang SC", Georgia, serif);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  user-select: none;
+}
+
+.d2-toolbar__group {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.d2-toolbar > .d2-toolbar__group + .d2-toolbar__group {
+  padding-left: 10px;
+  border-left: 1px solid rgba(199, 179, 119, 0.2);
+}
+
+.d2-toolbar__group--segmented {
+  gap: 0;
+}
+
+.d2-toolbar__group--segmented .d2-toolbar__btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  padding: 0 8px;
+}
+
+.d2-toolbar__group--segmented .d2-toolbar__btn:last-child {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -1px;
+  padding: 0 8px;
+  font-family: "JetBrains Mono", "Consolas", var(--font-body, serif);
+  font-size: 11px;
+}
+
+.d2-toolbar__group--segmented .d2-toolbar__btn--active {
+  position: relative;
+  z-index: 1;
+}
+
+.d2-toolbar__divider {
+  width: 1px;
+  height: 18px;
+  background: linear-gradient(180deg, rgba(199, 179, 119, 0.08) 0%, rgba(199, 179, 119, 0.48) 50%, rgba(199, 179, 119, 0.08) 100%);
+  flex-shrink: 0;
+}
+
+/* 1. Connection Status & RTT */
+.d2-toolbar__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  padding: 0 9px;
+  box-sizing: border-box;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #0e0b08 0%, #17130d 100%);
+  border: 1px solid #463720;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 226, 158, 0.06);
+  color: #e4d4a8;
+  font-size: 11.5px;
+}
+
+.d2-toolbar__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  background: #6b6b6b;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+}
+
+.d2-toolbar__status-dot--disconnected {
+  background: #767676;
+}
+
+.d2-toolbar__status-dot--connecting {
+  background: #e6a822;
+  box-shadow: 0 0 6px #e6a822;
+}
+
+.d2-toolbar__status-dot--bncs {
+  background: #4495e8;
+  box-shadow: 0 0 6px #4495e8;
+}
+
+.d2-toolbar__status-dot--mcp {
+  background: #36c5d6;
+  box-shadow: 0 0 6px #36c5d6;
+}
+
+.d2-toolbar__status-dot--d2gs {
+  background: #2ecc71;
+  box-shadow: 0 0 6px #2ecc71;
+}
+
+.d2-toolbar__status-dot--error {
+  background: #e74c3c;
+  box-shadow: 0 0 6px #e74c3c;
+}
+
+.d2-toolbar__rtt {
+  padding-left: 6px;
+  border-left: 1px solid #352a19;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #a89974;
+}
+
+/* Labels, Inputs, Selects, Buttons */
+.d2-toolbar__label {
+  color: #b89f65;
+  font-family: var(--font-body, "D2Formal436", "Noto Serif SC", "Songti SC", Georgia, serif);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+}
+
+.d2-toolbar__input {
+  width: 136px;
+  height: 22px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  background: #090806;
+  border: 1px solid #4a3c24;
+  border-radius: 3px;
+  color: #efe1b6;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 11px;
+  outline: none;
+}
+
+.d2-toolbar__input:focus {
+  border-color: #c7b377;
+}
+
+.d2-toolbar__input--invalid {
+  border-color: #e74c3c;
+  color: #ffb8b0;
+}
+
+.d2-toolbar__select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 22px;
+  padding: 0 22px 0 8px;
+  box-sizing: border-box;
+  background-color: #14100b;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23c7b377' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, #261f14 0%, #130f0a 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: right 6px center, 0 0;
+  border: 1px solid #5a482a;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 230, 165, 0.1), 0 1px 2px rgba(0, 0, 0, 0.55);
+  color: #ebd9a8;
+  font-family: "JetBrains Mono", "Consolas", var(--font-body, serif);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.d2-toolbar__select option {
+  background: #14100b;
+  color: #ebd9a8;
+}
+
+.d2-toolbar__select:hover,
+.d2-toolbar__btn:hover:not(:disabled) {
+  border-color: #d4bc7c;
+  color: #fff4ce;
+  box-shadow: inset 0 1px 0 rgba(255, 240, 190, 0.22), 0 0 6px rgba(212, 180, 106, 0.2);
+}
+
+.d2-toolbar__btn,
+a.d2-toolbar__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #2e2518 0%, #17120b 100%);
+  border: 1px solid #5e4b2b;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 230, 165, 0.14), 0 1px 2px rgba(0, 0, 0, 0.55);
+  color: #e6d29e;
+  font-family: var(--font-body, "D2Formal436", "Noto Serif SC", "Songti SC", "PingFang SC", Georgia, serif);
+  font-size: 11.5px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.d2-toolbar__btn:active:not(:disabled),
+a.d2-toolbar__btn:active {
+  transform: translateY(1px);
+}
+
+.d2-toolbar__btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  line-height: 0;
+  color: #d4b872;
+}
+
+.d2-toolbar__btn-icon svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.d2-toolbar__btn-label {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.d2-toolbar__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.d2-toolbar__btn--active {
+  background: linear-gradient(180deg, #5e4923 0%, #332711 100%);
+  border-color: #dfbe73;
+  box-shadow: inset 0 1px 0 rgba(255, 244, 204, 0.32), 0 0 6px rgba(212, 180, 106, 0.25);
+  color: #fff6db;
+}
+
+.d2-toolbar__btn--warn {
+  border-color: #d4882a;
+  color: #ffb84d;
+}
+
+/* Diablo II 1.13c Item Quality Badge Colors in Toolbar */
+.d2-toolbar__drop-prefix {
+  margin-right: 4px;
+}
+
+.d2-toolbar__drop-set {
+  color: #3ad649;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.d2-toolbar__drop-unique {
+  color: #e2be68;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.d2-toolbar__drop-rune {
+  color: #ff9c38;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.d2-toolbar__drop-sep {
+  color: #7d6d4c;
+  margin: 0 2px;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 10px;
+}
+
+/* Diagnostic / Validation Banner */
+.d2-toolbar__diag {
+  position: absolute;
+  top: 32px;
+  left: 12px;
+  right: 12px;
+  z-index: 1001;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(38, 12, 10, 0.96);
+  border: 1px solid #a93226;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  color: #ffd6d1;
+  font-size: 12px;
+}
+
+.d2-toolbar__diag--visible {
+  display: flex;
+}

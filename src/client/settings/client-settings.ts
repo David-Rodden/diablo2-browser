@@ -1,0 +1,542 @@
+import { detectInitialLang, type GameLang } from '../i18n/lang.ts'
+
+export const SETTINGS_STORAGE_KEY = 'd2web.settings.v1'
+export const DEFAULT_SERVER_HOST = 'www.laiseek.xyz'
+
+export type ClientLightingPreset =
+  | 'auto'
+  | 'noon'
+  | 'dusk'
+  | 'night'
+  | 'torch'
+  | 'cold'
+  | 'fullbright'
+
+export type AutomapRevealMode = 'off' | 'level' | 'act'
+export type ViewportResolution = '640x480' | '800x600' | '1024x768' | '1068x600' | '1280x720'
+/**
+ * NOT 1.13c: forced precipitation set by the `weather-override` plugin. `'off'` is the vanilla
+ * 1.13c weather; the host reverts to it when no plugin claims the setting.
+ */
+export type WeatherOverrideSetting = 'off' | 'rain' | 'snow'
+/**
+ * The 1.13c "Light Quality" video option (D2Client registry value at 0x6fb851f8): 0 low, 1 medium, 2 high. It caps
+ * the light grid mode (0x6fb58800) and gates missile lights (0x6fb63647). Issue #830; default high (SPEC §11 Q7).
+ */
+export type LightQualitySetting = 0 | 1 | 2
+
+export interface HudEnhancementsConfig {
+  readonly showBasePlusBonusStats: boolean
+  readonly showBasePlusBonusSkills: boolean
+  readonly alwaysShowGlobeValues: boolean
+  readonly showStatGainTooltips: boolean
+  readonly showWeaponDamageFormula: boolean
+}
+
+export interface AutomapRadarConfig {
+  readonly automapShowMonsters: boolean
+  readonly automapShowShrines: boolean
+}
+
+export interface GroundItemEnhancementsConfig {
+  readonly showUniqueSetBeams: boolean
+  readonly alwaysShowUniqueSetLabels: boolean
+}
+
+export interface ClientSettings
+  extends HudEnhancementsConfig,
+    AutomapRadarConfig,
+    GroundItemEnhancementsConfig {
+  readonly version: 1
+  readonly serverHost: string // default: 'www.laiseek.xyz'
+  readonly lang: 'zh' | 'en' // default: detected from URL/browser or 'zh'
+  readonly lightingPreset: ClientLightingPreset
+  readonly lightQuality: LightQualitySetting // default: 2
+  readonly automapReveal: AutomapRevealMode
+  readonly viewport: ViewportResolution
+  /** In-game world render-rate cap: 60 (uncapped, follows display refresh) or 30 (≈half the GPU raster, slightly steppier scrolling). */
+  readonly worldRenderFps: 30 | 60
+  readonly weatherOverride: WeatherOverrideSetting // default: 'off'
+  readonly audioMuted: boolean // default: false
+  readonly masterVolume: number // default: 0.8 (0..1)
+}
+
+export const VALID_LIGHTING_PRESETS: readonly ClientLightingPreset[] = [
+  'auto',
+  'noon',
+  'dusk',
+  'night',
+  'torch',
+  'cold',
+  'fullbright',
+] as const
+
+export const VALID_AUTOMAP_REVEAL_MODES: readonly AutomapRevealMode[] = [
+  'off',
+  'level',
+  'act',
+] as const
+
+export const VALID_VIEWPORT_RESOLUTIONS: readonly ViewportResolution[] = [
+  '640x480',
+  '800x600',
+  '1024x768',
+  '1068x600',
+  '1280x720',
+] as const
+
+export const VALID_WEATHER_OVERRIDES: readonly WeatherOverrideSetting[] = ['off', 'rain', 'snow'] as const
+
+export const DEFAULT_LIGHT_QUALITY: LightQualitySetting = 2
+export const DEFAULT_AUDIO_MUTED = false
+export const DEFAULT_MASTER_VOLUME = 0.8
+
+export function createDefaultClientSettings(defaultLang?: GameLang): ClientSettings {
+  return {
+    version: 1,
+    serverHost: DEFAULT_SERVER_HOST,
+    lang: defaultLang ?? detectInitialLang(),
+    lightingPreset: 'auto',
+    lightQuality: DEFAULT_LIGHT_QUALITY,
+    automapReveal: 'off',
+    automapShowMonsters: false,
+    automapShowShrines: false,
+    viewport: '800x600',
+    worldRenderFps: 60,
+    showBasePlusBonusStats: false,
+    showBasePlusBonusSkills: false,
+    alwaysShowGlobeValues: false,
+    showStatGainTooltips: false,
+    showWeaponDamageFormula: false,
+    showUniqueSetBeams: false,
+    alwaysShowUniqueSetLabels: false,
+    weatherOverride: 'off',
+    audioMuted: DEFAULT_AUDIO_MUTED,
+    masterVolume: DEFAULT_MASTER_VOLUME,
+  }
+}
+
+export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
+  version: 1,
+  serverHost: DEFAULT_SERVER_HOST,
+  lang: 'zh',
+  lightingPreset: 'auto',
+  lightQuality: DEFAULT_LIGHT_QUALITY,
+  automapReveal: 'off',
+  automapShowMonsters: false,
+  automapShowShrines: false,
+  viewport: '800x600',
+  worldRenderFps: 60,
+  showBasePlusBonusStats: false,
+  showBasePlusBonusSkills: false,
+  alwaysShowGlobeValues: false,
+  showStatGainTooltips: false,
+  showWeaponDamageFormula: false,
+  showUniqueSetBeams: false,
+  alwaysShowUniqueSetLabels: false,
+  weatherOverride: 'off',
+  audioMuted: DEFAULT_AUDIO_MUTED,
+  masterVolume: DEFAULT_MASTER_VOLUME,
+}
+
+export type ServerHostValidationErrorReason =
+  | 'empty'
+  | 'bare_ip_on_https'
+  | 'invalid_format'
+  | 'invalid_port'
+
+export interface ServerHostValidationResult {
+  readonly valid: boolean
+  readonly normalizedHost: string
+  readonly reason?: ServerHostValidationErrorReason | undefined
+  readonly errorMessage?: string | undefined
+  readonly errorMessageZh?: string | undefined
+}
+
+const IPV4_REGEX = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+const HOSTNAME_LABEL_REGEX = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/
+
+export function isBareIpv4(hostWithoutPort: string): boolean {
+  const m = IPV4_REGEX.exec(hostWithoutPort)
+  if (!m) return false
+  for (let i = 1; i <= 4; i++) {
+    const octet = Number(m[i])
+    if (!Number.isInteger(octet) || octet < 0 || octet > 255) {
+      return false
+    }
+  }
+  return true
+}
+
+export function isBareIpv6(hostWithoutPort: string): boolean {
+  const unwrapped =
+    hostWithoutPort.startsWith('[') && hostWithoutPort.endsWith(']')
+      ? hostWithoutPort.slice(1, -1)
+      : hostWithoutPort
+  if (!unwrapped.includes(':')) return false
+  return /^[0-9a-fA-F:]+$/.test(unwrapped)
+}
+
+export function isBareIpAddress(hostWithoutPort: string): boolean {
+  return isBareIpv4(hostWithoutPort) || isBareIpv6(hostWithoutPort)
+}
+
+/**
+ * Validate and normalize a user-supplied `serverHost` value.
+ * Rejects bare IPv4/IPv6 addresses when the page is served over `https:` because
+ * `wss://<ip>/ws/*` fails browser TLS certificate SAN verification.
+ */
+export function validateServerHost(
+  rawHost: string,
+  pageProtocol: string = typeof window !== 'undefined' && window.location
+    ? window.location.protocol
+    : 'https:',
+): ServerHostValidationResult {
+  if (typeof rawHost !== 'string') {
+    return {
+      valid: false,
+      normalizedHost: '',
+      reason: 'empty',
+      errorMessage: 'Server host must not be empty.',
+      errorMessageZh: '服务器地址不能为空。',
+    }
+  }
+
+  let cleaned = rawHost.trim()
+  if (cleaned === '') {
+    return {
+      valid: false,
+      normalizedHost: '',
+      reason: 'empty',
+      errorMessage: 'Server host must not be empty.',
+      errorMessageZh: '服务器地址不能为空。',
+    }
+  }
+
+  // Strip optional scheme prefix if user pasted full URL
+  cleaned = cleaned.replace(/^(?:wss?|https?):\/\//i, '')
+  // Strip any path/query/hash suffix
+  const slashIdx = cleaned.search(/[/?#]/)
+  if (slashIdx >= 0) {
+    cleaned = cleaned.slice(0, slashIdx)
+  }
+  cleaned = cleaned.trim()
+
+  if (cleaned === '' || /\s/.test(cleaned)) {
+    return {
+      valid: false,
+      normalizedHost: '',
+      reason: 'invalid_format',
+      errorMessage: 'Invalid server hostname format.',
+      errorMessageZh: '服务器域名格式无效。',
+    }
+  }
+
+  let hostPart = cleaned
+  let portPart: string | undefined
+
+  if (cleaned.startsWith('[')) {
+    const closeBracket = cleaned.indexOf(']')
+    if (closeBracket < 0) {
+      return {
+        valid: false,
+        normalizedHost: '',
+        reason: 'invalid_format',
+        errorMessage: 'Invalid IPv6 bracket syntax.',
+        errorMessageZh: 'IPv6 地址括号格式无效。',
+      }
+    }
+    hostPart = cleaned.slice(0, closeBracket + 1)
+    const rest = cleaned.slice(closeBracket + 1)
+    if (rest.startsWith(':')) {
+      portPart = rest.slice(1)
+    } else if (rest !== '') {
+      return {
+        valid: false,
+        normalizedHost: '',
+        reason: 'invalid_format',
+        errorMessage: 'Unexpected characters after IPv6 address.',
+        errorMessageZh: 'IPv6 地址后包含无效字符。',
+      }
+    }
+  } else {
+    const firstColon = cleaned.indexOf(':')
+    const lastColon = cleaned.lastIndexOf(':')
+    if (firstColon !== -1 && firstColon === lastColon) {
+      hostPart = cleaned.slice(0, firstColon)
+      portPart = cleaned.slice(firstColon + 1)
+    } else if (firstColon !== lastColon) {
+      // Unbracketed IPv6 literal
+      hostPart = cleaned
+    }
+  }
+
+  if (portPart !== undefined) {
+    if (!/^\d+$/.test(portPart)) {
+      return {
+        valid: false,
+        normalizedHost: '',
+        reason: 'invalid_port',
+        errorMessage: `Invalid port "${portPart}": must be an integer between 1 and 65535.`,
+        errorMessageZh: `端口 "${portPart}" 无效：必须为 1 到 65535 之间的整数。`,
+      }
+    }
+    const portNum = Number(portPart)
+    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+      return {
+        valid: false,
+        normalizedHost: '',
+        reason: 'invalid_port',
+        errorMessage: `Port ${portPart} is out of range (1..65535).`,
+        errorMessageZh: `端口 ${portPart} 超出有效范围 (1..65535)。`,
+      }
+    }
+  }
+
+  const isIp = isBareIpAddress(hostPart)
+  const normProto = (pageProtocol || 'https:').trim().toLowerCase()
+  const isHttps = normProto === 'https:' || normProto === 'https' || normProto === 'wss:' || normProto === 'wss'
+
+  if (isIp && isHttps) {
+    return {
+      valid: false,
+      normalizedHost: '',
+      reason: 'bare_ip_on_https',
+      errorMessage:
+        `Cannot connect to bare IP "${hostPart}" from an HTTPS page: WSS TLS requires a domain name with a valid certificate (use "${DEFAULT_SERVER_HOST}").`,
+      errorMessageZh:
+        `HTTPS 页面下无法对裸 IP "${hostPart}" 发起安全 WSS 连接：TLS 证书校验要求使用有效域名（请使用 "${DEFAULT_SERVER_HOST}"）。`,
+    }
+  }
+
+  if (!isIp) {
+    const labels = hostPart.split('.')
+    if (labels.some((label) => label.length === 0 || !HOSTNAME_LABEL_REGEX.test(label))) {
+      return {
+        valid: false,
+        normalizedHost: '',
+        reason: 'invalid_format',
+        errorMessage: `Invalid hostname "${hostPart}". Expected a valid domain such as ${DEFAULT_SERVER_HOST}.`,
+        errorMessageZh: `域名 "${hostPart}" 格式无效，请输入有效域名（如 ${DEFAULT_SERVER_HOST}）。`,
+      }
+    }
+  }
+
+  const normalizedHostPart = hostPart.toLowerCase()
+  const normalizedHost =
+    portPart !== undefined ? `${normalizedHostPart}:${portPart}` : normalizedHostPart
+
+  return {
+    valid: true,
+    normalizedHost,
+  }
+}
+
+export function normalizeClientLightingPreset(value: unknown): ClientLightingPreset {
+  if (typeof value !== 'string') return 'auto'
+  const clean = value.trim().toLowerCase()
+  if ((VALID_LIGHTING_PRESETS as readonly string[]).includes(clean)) {
+    return clean as ClientLightingPreset
+  }
+  if (clean === 'sunset' || clean === 'morning') return 'dusk'
+  if (clean === 'cave' || clean === 'hell') return 'torch'
+  if (clean === 'eclipse') return 'cold'
+  if (clean === 'off' || clean === 'none' || clean === 'false' || clean === '0') return 'fullbright'
+  return 'auto'
+}
+
+export function normalizeAutomapReveal(value: unknown): AutomapRevealMode {
+  if (typeof value !== 'string') return 'off'
+  const clean = value.trim().toLowerCase()
+  if ((VALID_AUTOMAP_REVEAL_MODES as readonly string[]).includes(clean)) {
+    return clean as AutomapRevealMode
+  }
+  return 'off'
+}
+
+export function normalizeViewportResolution(value: unknown): ViewportResolution {
+  if (typeof value !== 'string') return '800x600'
+  const clean = value.trim().toLowerCase()
+  for (const id of VALID_VIEWPORT_RESOLUTIONS) {
+    // Canonical `WxH` id, or the bare width shorthand (`'1280'`): registered widths are unique.
+    if (clean === id || clean === id.slice(0, id.indexOf('x'))) return id
+  }
+  return '800x600'
+}
+
+/** Anything but a known override id is the vanilla 1.13c weather (`'off'`). */
+export function normalizeWeatherOverride(value: unknown): WeatherOverrideSetting {
+  if (typeof value !== 'string') return 'off'
+  const clean = value.trim().toLowerCase()
+  if ((VALID_WEATHER_OVERRIDES as readonly string[]).includes(clean)) {
+    return clean as WeatherOverrideSetting
+  }
+  return 'off'
+}
+
+/** The stored Light Quality: 0, 1 or 2 (numbers or their decimal strings); anything else is the default. */
+export function normalizeLightQuality(value: unknown, fallback: LightQualitySetting = DEFAULT_LIGHT_QUALITY): LightQualitySetting {
+  const n = typeof value === 'string' && /^\s*[012]\s*$/.test(value) ? Number(value) : value
+  return n === 0 || n === 1 || n === 2 ? n : fallback
+}
+
+/**
+ * Sanitize an arbitrary input value into a strictly valid `ClientSettings` object.
+ * Never throws; strips unknown fields and replaces corrupt fields with defaults.
+ */
+export function sanitizeClientSettings(
+  raw: unknown,
+  options?: {
+    readonly defaultLang?: GameLang | undefined
+    readonly pageProtocol?: string | undefined
+  },
+): ClientSettings {
+  const defaults = createDefaultClientSettings(options?.defaultLang)
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return defaults
+  }
+
+  const rec = raw as Record<string, unknown>
+
+  let serverHost = defaults.serverHost
+  if (typeof rec.serverHost === 'string') {
+    const check = validateServerHost(rec.serverHost, options?.pageProtocol ?? 'https:')
+    if (check.valid) {
+      serverHost = check.normalizedHost
+    }
+  }
+
+  let lang: GameLang = defaults.lang
+  if (rec.lang === 'en' || rec.lang === 'zh') {
+    lang = rec.lang
+  } else if (typeof rec.lang === 'string') {
+    const norm = rec.lang.trim().toLowerCase()
+    if (norm === 'eng' || norm === 'english') lang = 'en'
+    else if (norm === 'chi' || norm === 'zh-cn' || norm === 'cn') lang = 'zh'
+  }
+
+  const lightingPreset =
+    rec.lightingPreset !== undefined
+      ? normalizeClientLightingPreset(rec.lightingPreset)
+      : defaults.lightingPreset
+
+  const lightQuality = normalizeLightQuality(rec.lightQuality, defaults.lightQuality)
+
+  const automapReveal =
+    rec.automapReveal !== undefined
+      ? normalizeAutomapReveal(rec.automapReveal)
+      : defaults.automapReveal
+
+  const automapShowMonsters =
+    typeof rec.automapShowMonsters === 'boolean'
+      ? rec.automapShowMonsters
+      : defaults.automapShowMonsters
+
+  const automapShowShrines =
+    typeof rec.automapShowShrines === 'boolean'
+      ? rec.automapShowShrines
+      : defaults.automapShowShrines
+
+  const viewport =
+    rec.viewport !== undefined
+      ? normalizeViewportResolution(rec.viewport)
+      : defaults.viewport
+
+  const worldRenderFps: 30 | 60 =
+    rec.worldRenderFps === 30 ? 30 : rec.worldRenderFps === 60 ? 60 : defaults.worldRenderFps
+
+  const showBasePlusBonusStats =
+    typeof rec.showBasePlusBonusStats === 'boolean'
+      ? rec.showBasePlusBonusStats
+      : defaults.showBasePlusBonusStats
+
+  const showBasePlusBonusSkills =
+    typeof rec.showBasePlusBonusSkills === 'boolean'
+      ? rec.showBasePlusBonusSkills
+      : defaults.showBasePlusBonusSkills
+
+  const alwaysShowGlobeValues =
+    typeof rec.alwaysShowGlobeValues === 'boolean'
+      ? rec.alwaysShowGlobeValues
+      : defaults.alwaysShowGlobeValues
+
+  const showStatGainTooltips =
+    typeof rec.showStatGainTooltips === 'boolean'
+      ? rec.showStatGainTooltips
+      : defaults.showStatGainTooltips
+
+  const showWeaponDamageFormula =
+    typeof rec.showWeaponDamageFormula === 'boolean'
+      ? rec.showWeaponDamageFormula
+      : defaults.showWeaponDamageFormula
+
+  const showUniqueSetBeams =
+    typeof rec.showUniqueSetBeams === 'boolean'
+      ? rec.showUniqueSetBeams
+      : defaults.showUniqueSetBeams
+
+  const alwaysShowUniqueSetLabels =
+    typeof rec.alwaysShowUniqueSetLabels === 'boolean'
+      ? rec.alwaysShowUniqueSetLabels
+      : defaults.alwaysShowUniqueSetLabels
+
+  const weatherOverride =
+    rec.weatherOverride !== undefined
+      ? normalizeWeatherOverride(rec.weatherOverride)
+      : defaults.weatherOverride
+
+  const audioMuted =
+    typeof rec.audioMuted === 'boolean' ? rec.audioMuted : defaults.audioMuted
+
+  const masterVolume =
+    typeof rec.masterVolume === 'number' && Number.isFinite(rec.masterVolume)
+      ? Math.max(0, Math.min(1, rec.masterVolume))
+      : defaults.masterVolume
+
+  return {
+    version: 1,
+    serverHost,
+    lang,
+    lightingPreset,
+    lightQuality,
+    automapReveal,
+    automapShowMonsters,
+    automapShowShrines,
+    viewport,
+    worldRenderFps,
+    showBasePlusBonusStats,
+    showBasePlusBonusSkills,
+    alwaysShowGlobeValues,
+    showStatGainTooltips,
+    showWeaponDamageFormula,
+    showUniqueSetBeams,
+    alwaysShowUniqueSetLabels,
+    weatherOverride,
+    audioMuted,
+    masterVolume,
+  }
+}
+
+export function parseClientSettingsJson(
+  jsonStr: string | null | undefined,
+  options?: {
+    readonly defaultLang?: GameLang | undefined
+    readonly pageProtocol?: string | undefined
+  },
+): ClientSettings {
+  if (typeof jsonStr !== 'string' || jsonStr.trim() === '') {
+    return createDefaultClientSettings(options?.defaultLang)
+  }
+  try {
+    const parsed: unknown = JSON.parse(jsonStr)
+    return sanitizeClientSettings(parsed, options)
+  } catch {
+    return createDefaultClientSettings(options?.defaultLang)
+  }
+}
+
+export interface RealmWsEndpoints {
+  readonly bncsUrl: string
+  readonly mcpUrl: string
+  readonly d2gsUrl: string
+}
