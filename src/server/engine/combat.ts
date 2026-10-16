@@ -58,6 +58,12 @@ import {
   calculateCriticalStrikeStats,
   calculatePenetrateStats,
 } from '../../common/skills/amazon-passive.ts'
+import {
+  OVERLAY_INDEX_FROZEN_ARMOR_HIT,
+  OVERLAY_INDEX_SHIVER_ARMOR_HIT,
+  computeEnergyShieldHitOverlay113c,
+} from '../../common/path/direction.ts'
+import { encode0x11UnitOverlay } from '../../netproto/index.ts'
 
 export {
   allocatePacksToRooms,
@@ -390,6 +396,7 @@ export interface CombatEvent {
     | 'missileHit'
     | 'missileExplode'
     | 'unitSkillEvent'
+    | 'unitOverlay'
   /** World x the event happened at. */
   readonly x: number
   /** World y the event happened at. */
@@ -426,6 +433,23 @@ export interface CombatEvent {
     readonly target: { readonly rawUnitType: number; readonly id: number }
     readonly x: number
     readonly y: number
+  } | undefined
+  /** Overlay.txt token name when kind === 'unitOverlay' (e.g. 'frozenarmor_hit', 'shiverarmor_hit', 'energyshieldhit3'). */
+  readonly overlayToken?: string | undefined
+  /** Overlay.txt row index when kind === 'unitOverlay' (e.g. 42, 43, 87..94). */
+  readonly overlayIndex?: number | undefined
+  /** Target raw unit type for S2C 0x11 UnitOverlay (0=player, 1=monster). */
+  readonly targetUnitType?: number | undefined
+  /** Target unit GUID for S2C 0x11 UnitOverlay. */
+  readonly targetUnitId?: number | undefined
+  /** S2C 0x11 8-byte packet emitted for unitOverlay (D2Game STAT_UNIT_DOOVERLAY). */
+  readonly packet0x11?: Uint8Array | undefined
+  /** Decoded UnitOverlay payload for S2C 0x11. */
+  readonly unitOverlay?: {
+    readonly type: 'UnitOverlay'
+    readonly rawUnitType: number
+    readonly id: number
+    readonly overlayIndex: number
   } | undefined
 }
 
@@ -1164,6 +1188,9 @@ function tickPlayer(
   }
 
   // Movement first, so an attack this tick happens from where the player ended up.
+  if (player.stamina !== undefined && player.maxStamina !== undefined && player.stamina <= 0) {
+    player.isRunning = false
+  }
   const frwMultiplier = player.blazeTicks && player.blazeTicks > 0 ? 1.3 : 1.0
   const speed = (options.playerSpeed / 25) * frwMultiplier
   const mx = Number.isFinite(input.movement.x) ? input.movement.x : 0
@@ -1487,7 +1514,7 @@ export function tickMonsters(world: CombatWorld, options: CombatOptions, terrain
           }
         }
 
-        // Cold Armor: Shiver Armor (Skill 50) proactive melee defense
+        // Cold Armor: Shiver Armor (Skill 50) proactive melee defense (SKILLS_EventFunc03_ShiverArmor @ 0x6FD18200)
         if (!isRanged && player.coldArmorType === 'shiverarmor') {
           const slvl = player.coldArmorSlvl ?? 1
           const dmgRange = calculateShiverArmorDamage(slvl)
@@ -1495,6 +1522,25 @@ export function tickMonsters(world: CombatWorld, options: CombatOptions, terrain
           damageMonster(world, monster.index, coldDmg, player)
           const chillFrames = calculateShiverArmorChillLength(slvl)
           monster.chillTicks = Math.max(monster.chillTicks ?? 0, chillFrames)
+          const unitOverlayPayload = {
+            type: 'UnitOverlay' as const,
+            rawUnitType: 1,
+            id: monster.index >>> 0,
+            overlayIndex: OVERLAY_INDEX_SHIVER_ARMOR_HIT,
+          }
+          world.events.push({
+            kind: 'unitOverlay',
+            x: monster.x,
+            y: monster.y,
+            skillId: '50',
+            monsterIndex: monster.index,
+            overlayToken: 'shiverarmor_hit',
+            overlayIndex: OVERLAY_INDEX_SHIVER_ARMOR_HIT,
+            targetUnitType: 1,
+            targetUnitId: monster.index >>> 0,
+            packet0x11: encode0x11UnitOverlay(unitOverlayPayload),
+            unitOverlay: unitOverlayPayload,
+          })
         }
 
         // Cold Armor: Chilling Armor (Skill 60) ranged retaliatory reflection
@@ -1509,6 +1555,7 @@ export function tickMonsters(world: CombatWorld, options: CombatOptions, terrain
             missileType: 'chillingarmorbolt',
             skillId: '60',
             amount: boltDmg,
+            monsterIndex: monster.index,
           })
           damageMonster(world, monster.index, boltDmg, player)
           const chillFrames = calculateChillingArmorChillLength(slvl)
@@ -1524,24 +1571,68 @@ export function tickMonsters(world: CombatWorld, options: CombatOptions, terrain
           const absorbed = Math.floor((dmg * absorbPct) / 100)
           const ratio = 2.0
           const manaNeeded = Math.ceil(absorbed * ratio)
+          let actualAbsorbed = 0
           if (player.mana >= manaNeeded) {
             player.mana -= manaNeeded
             dmg -= absorbed
+            actualAbsorbed = absorbed
           } else {
-            const actualAbsorbed = Math.floor(player.mana / ratio)
+            actualAbsorbed = Math.floor(player.mana / ratio)
             player.mana = 0
             dmg -= actualAbsorbed
             player.energyshieldTicks = 0
+          }
+          if (actualAbsorbed > 0) {
+            const esHit = computeEnergyShieldHitOverlay113c(player.x, player.y, monster.x, monster.y)
+            const playerId = Number((player as unknown as { id?: number }).id ?? 1) >>> 0
+            const unitOverlayPayload = {
+              type: 'UnitOverlay' as const,
+              rawUnitType: 0,
+              id: playerId,
+              overlayIndex: esHit.overlayIndex,
+            }
+            world.events.push({
+              kind: 'unitOverlay',
+              x: player.x,
+              y: player.y,
+              skillId: '58',
+              monsterIndex: monster.index,
+              overlayToken: esHit.overlayToken,
+              overlayIndex: esHit.overlayIndex,
+              targetUnitType: 0,
+              targetUnitId: playerId,
+              packet0x11: encode0x11UnitOverlay(unitOverlayPayload),
+              unitOverlay: unitOverlayPayload,
+            })
           }
         }
         player.hp -= dmg
         world.events.push({ kind: 'playerHit', x: player.x, y: player.y, amount: dmg })
 
-        // Cold Armor: Frozen Armor (Skill 40) reactive melee freeze on physical damage
+        // Cold Armor: Frozen Armor (Skill 40) reactive melee freeze on physical damage (SKILLS_EventFunc02_FrozenArmor @ 0x6FD180E0)
         if (!isRanged && player.coldArmorType === 'frozenarmor' && dmg > 0) {
           const slvl = player.coldArmorSlvl ?? 1
           const freezeFrames = calculateFrozenArmorFreezeLength(slvl)
           monster.frozenTicks = Math.max(monster.frozenTicks ?? 0, freezeFrames)
+          const unitOverlayPayload = {
+            type: 'UnitOverlay' as const,
+            rawUnitType: 1,
+            id: monster.index >>> 0,
+            overlayIndex: OVERLAY_INDEX_FROZEN_ARMOR_HIT,
+          }
+          world.events.push({
+            kind: 'unitOverlay',
+            x: monster.x,
+            y: monster.y,
+            skillId: '40',
+            monsterIndex: monster.index,
+            overlayToken: 'frozenarmor_hit',
+            overlayIndex: OVERLAY_INDEX_FROZEN_ARMOR_HIT,
+            targetUnitType: 1,
+            targetUnitId: monster.index >>> 0,
+            packet0x11: encode0x11UnitOverlay(unitOverlayPayload),
+            unitOverlay: unitOverlayPayload,
+          })
         }
 
         if (player.hp <= 0) {

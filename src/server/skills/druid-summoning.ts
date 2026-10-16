@@ -128,7 +128,9 @@ export interface PoisonCreeperStats {
   readonly petType: 'vine'
   readonly petGroup: 2
   readonly monId: 'plaguepoppy'
-  readonly classId: 422
+  readonly classId: 425
+  readonly stateId: 150
+  readonly stateName: 'vine_beast'
   readonly subSkillIds: readonly [294]
 }
 
@@ -169,7 +171,7 @@ export interface OakSageStats extends DruidTotemResistances {
   readonly petType: 'totem'
   readonly petGroup: 1
   readonly monId: 'oaksage'
-  readonly classId: 425
+  readonly classId: 424
   readonly subSkillIds: readonly [298]
   readonly resistances: DruidTotemResistances
 }
@@ -203,7 +205,7 @@ export interface HeartOfWolverineStats extends DruidTotemResistances {
   readonly petType: 'totem'
   readonly petGroup: 1
   readonly monId: 'heartofwolverine'
-  readonly classId: 426
+  readonly classId: 423
   readonly subSkillIds: readonly [297]
   readonly resistances: DruidTotemResistances
 }
@@ -236,7 +238,7 @@ export interface SpiritOfBarbsStats extends DruidTotemResistances {
   readonly petType: 'totem'
   readonly petGroup: 1
   readonly monId: 'spiritofbarbs'
-  readonly classId: 427
+  readonly classId: 422
   readonly subSkillIds: readonly [296]
   readonly resistances: DruidTotemResistances
 }
@@ -261,7 +263,9 @@ export interface CarrionVineStats {
   readonly petType: 'vine'
   readonly petGroup: 2
   readonly monId: 'cycleoflife'
-  readonly classId: 423
+  readonly classId: 426
+  readonly stateId: 150
+  readonly stateName: 'vine_beast'
   readonly subSkillIds: readonly [307, 294]
 }
 
@@ -284,8 +288,10 @@ export interface SolarCreeperStats {
   readonly manaCost256: 3584
   readonly petType: 'vine'
   readonly petGroup: 2
-  readonly monId: 'vinemoon'
-  readonly classId: 424
+  readonly monId: 'vinecreature'
+  readonly classId: 427
+  readonly stateId: 150
+  readonly stateName: 'vine_beast'
   readonly subSkillIds: readonly [325, 294]
 }
 
@@ -613,7 +619,9 @@ export function calculatePoisonCreeperStats(
     petType: 'vine',
     petGroup: 2,
     monId: 'plaguepoppy',
-    classId: 422,
+    classId: 425,
+    stateId: 150,
+    stateName: 'vine_beast',
     subSkillIds: [294],
   }
 }
@@ -670,7 +678,7 @@ export function calculateOakSageStats(
     petType: 'totem',
     petGroup: 1,
     monId: 'oaksage',
-    classId: 425,
+    classId: 424,
     subSkillIds: [298],
     resistances: resists,
     ...resists,
@@ -732,7 +740,7 @@ export function calculateHeartOfWolverineStats(
     petType: 'totem',
     petGroup: 1,
     monId: 'heartofwolverine',
-    classId: 426,
+    classId: 423,
     subSkillIds: [297],
     resistances: resists,
     ...resists,
@@ -793,7 +801,7 @@ export function calculateSpiritOfBarbsStats(
     petType: 'totem',
     petGroup: 1,
     monId: 'spiritofbarbs',
-    classId: 427,
+    classId: 422,
     subSkillIds: [296],
     resistances: resists,
     ...resists,
@@ -840,13 +848,15 @@ export function calculateCarrionVineStats(
     petType: 'vine',
     petGroup: 2,
     monId: 'cycleoflife',
-    classId: 423,
+    classId: 426,
+    stateId: 150,
+    stateName: 'vine_beast',
     subSkillIds: [307, 294],
   }
 }
 
 /**
- * #241 Solar Creeper & #325 VineCycler (1.13c `Skills.txt` rows 241, 325 + `MonStats.txt` `vinemoon`).
+ * #241 Solar Creeper & #325 VineCycler (1.13c `Skills.txt` rows 241, 325 + `MonStats.txt` `vinecreature`).
  */
 export function calculateSolarCreeperStats(
   slvl: number,
@@ -884,8 +894,10 @@ export function calculateSolarCreeperStats(
     manaCost256: 3584,
     petType: 'vine',
     petGroup: 2,
-    monId: 'vinemoon',
-    classId: 424,
+    monId: 'vinecreature',
+    classId: 427,
+    stateId: 150,
+    stateName: 'vine_beast',
     subSkillIds: [325, 294],
   }
 }

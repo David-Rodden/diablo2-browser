@@ -637,7 +637,7 @@ function collectCountedSetItems(
   activeEquipped: readonly ItemData[],
   allowFallbackResolve = true,
 ): {
-  readonly tables: LoadedTables
+  readonly tables: SetBonusTables
   readonly counted: { item: ItemData; info: SetItemInfo }[]
   readonly maskBySet: Map<string, number>
 } {

@@ -36,6 +36,8 @@ export interface SelfPlayerState {
   maxLife: number
   mana: number
   maxMana: number
+  /** True once mana or maxMana has been explicitly set or synced from server packets (`0x18`/`0x95`/`StatSet`). */
+  readonly hasManaState?: boolean | undefined
   stamina: number
   maxStamina: number
   gold: number
@@ -56,6 +58,15 @@ export interface SelfPlayerState {
   isDead: boolean
   castState?: UnitCastState | undefined
   applyStat(stat: number, value: number, param?: number): void
+  applyLifeMana?(
+    life: number,
+    mana: number,
+    stamina: number,
+    x: number,
+    y: number,
+    lifeRegen?: number,
+    manaRegen?: number,
+  ): void
 }
 
 export class MutableSelfPlayerState implements SelfPlayerState {
@@ -69,10 +80,33 @@ export class MutableSelfPlayerState implements SelfPlayerState {
   targetY = 0
   life = 0
   maxLife = 0
-  mana = 0
-  maxMana = 0
+  private _mana = 0
+  private _maxMana = 0
+  private _hasManaState = false
   stamina = 0
   maxStamina = 0
+
+  get mana(): number {
+    return this._mana
+  }
+
+  set mana(val: number) {
+    this._mana = val
+    this._hasManaState = true
+  }
+
+  get maxMana(): number {
+    return this._maxMana
+  }
+
+  set maxMana(val: number) {
+    this._maxMana = val
+    this._hasManaState = true
+  }
+
+  get hasManaState(): boolean {
+    return this._hasManaState
+  }
   gold = 0
   stashGold = 0
   experience = 0
@@ -217,8 +251,9 @@ export class MutableSelfPlayerState implements SelfPlayerState {
     this.targetY = 0
     this.life = 0
     this.maxLife = 0
-    this.mana = 0
-    this.maxMana = 0
+    this._mana = 0
+    this._maxMana = 0
+    this._hasManaState = false
     this.stamina = 0
     this.maxStamina = 0
     this.gold = 0

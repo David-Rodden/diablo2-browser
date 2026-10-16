@@ -28,6 +28,7 @@ import { pathToFileURL } from 'node:url'
 const ROOT_DIR = process.cwd()
 const PACK_ROOT = join(ROOT_DIR, 'public', 'packs')
 
+import { D2_DRAW_MODE_BLENDS } from '../../common/gfx/draw-mode.ts'
 import type {
   BakedUiManifest,
   ClipMeta,
@@ -219,7 +220,7 @@ function verifyCharacterMeta(meta: EntityMeta, label: string, checkSorceressEven
   }
 }
 
-function verifyMonsterMeta(meta: EntityMeta, label: string): void {
+export function verifyMonsterMeta(meta: EntityMeta, label: string): void {
   if (meta.schema !== 2) {
     throw new Error(`${label}: expected schema === 2, got ${meta.schema}`)
   }
@@ -256,7 +257,7 @@ function verifyMonsterMeta(meta: EntityMeta, label: string): void {
     throw new Error(`${label}: standOffset mismatch: ${meta.standOffset} vs ${meta.clips.nu.group}`)
   }
 
-  if (meta.blendMode && !['normal', 'additive'].includes(meta.blendMode)) {
+  if (meta.blendMode && !(D2_DRAW_MODE_BLENDS as readonly string[]).includes(meta.blendMode)) {
     throw new Error(`${label}: invalid blendMode: ${meta.blendMode}`)
   }
   if (meta.glowGroups) {
@@ -269,7 +270,7 @@ function verifyMonsterMeta(meta: EntityMeta, label: string): void {
   }
 }
 
-function verifyObjectMeta(meta: EntityMeta, label: string): void {
+export function verifyObjectMeta(meta: EntityMeta, label: string): void {
   if (meta.schema !== 2) {
     throw new Error(`${label}: expected schema === 2, got ${meta.schema}`)
   }
@@ -292,6 +293,9 @@ function verifyObjectMeta(meta: EntityMeta, label: string): void {
     if (clip.frames < 1) {
       throw new Error(`${label}: mode ${mode} has invalid frame count: ${clip.frames}`)
     }
+  }
+  if (meta.blendMode && !(D2_DRAW_MODE_BLENDS as readonly string[]).includes(meta.blendMode)) {
+    throw new Error(`${label}: invalid blendMode: ${meta.blendMode}`)
   }
   if (meta.glowGroups) {
     if (meta.glowGroups.length !== meta.groups.length) {

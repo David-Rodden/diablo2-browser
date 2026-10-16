@@ -2,10 +2,17 @@ import type { WorldPanelsHud } from '../world-panels.ts'
 import { D2FontRenderer } from '../font.ts'
 import { lookupTbl, requireTbl, type TblLang } from '../../i18n/lang.ts'
 import { type TownNpcServiceDescriptor, getTownNpcDescriptorByName, getLocalizedNpcName, getLocalizedNpcGreetings, getLocalizedNpcGossip, resolveNpcDialogueTblText } from '../../../common/units/npc-table.ts'
-import { isNpcIntroMessageId, resolveQuestTitleKeyForMsgId } from '../../../common/data/canonical-npc-dialog-table.ts'
+import { CANONICAL_NPC_MSG_ID_TO_TBL_KEY, isNpcIntroMessageId, resolveQuestTitleKeyForMsgId } from '../../../common/data/canonical-npc-dialog-table.ts'
 import { CANONICAL_QUEST_TBL_STRINGS, CANONICAL_QUESTS_BY_ACT } from '../../../common/data/canonical-quest-data.ts'
 import { NPC_MENU_HEADER_STEP_Y, NPC_MENU_OPTION_STEP_Y, NPC_MENU_PAD_W, NPC_MENU_PAD_H, NPC_MENU_VIEWPORT_MIN_X, NPC_MENU_VIEWPORT_MIN_Y, NPC_MENU_VIEWPORT_BOTTOM_BAR_H, NPC_MENU_HIT_PAD_X, NPC_MENU_HIT_TOP_OFFSET, NPC_MENU_HIT_BOTTOM_OFFSET, STONE_BOX_BG_FILL, NPC_SPEECH_BOX_W, NPC_SPEECH_BOX_H, NPC_SPEECH_MIN_X, NPC_SPEECH_MIN_Y, NPC_SPEECH_BOTTOM_PAD_Y, NPC_SPEECH_LEADING_BLANK_LINES, withNpcSpeechLeadLines, computeNpcMenuAnchor } from './panel-layout-constants.ts'
-import { resolveNpcGreetingSoundId113c, resolveNpcSpeechSoundId113c } from '../../../common/audio/npc-speech-113c.ts'
+import {
+  resolveNpcGossipStringId113c,
+  resolveNpcGossipTblKey113c,
+  resolveNpcGreetingSoundId113c,
+  resolveNpcIntroStringId113c,
+  resolveNpcIntroTblKey113c,
+  resolveNpcSpeechSoundId113c,
+} from '../../../common/audio/npc-speech-113c.ts'
 
 export type NpcMenuActionId =
   | 'talk'
@@ -787,6 +794,10 @@ export function setLanguageImpl(this: WorldPanelsHud, lang: 'en' | 'zh' | 'ENG' 
   }
   if (this._npcSpeech && this._npcSpeech.descriptor) {
     const desc = this._npcSpeech.descriptor
+    const msgIdTblKey =
+      this._npcSpeech.stringId !== undefined && this._npcSpeech.stringId > 0
+        ? CANONICAL_NPC_MSG_ID_TO_TBL_KEY[this._npcSpeech.stringId]
+        : undefined
     const questText =
       this._npcSpeech.topic === 'quest' && this._npcSpeech.stringId && this._npcSpeech.stringId > 0
         ? resolveNpcDialogueTblText(desc, {
@@ -794,7 +805,9 @@ export function setLanguageImpl(this: WorldPanelsHud, lang: 'en' | 'zh' | 'ENG' 
             questStringId: this._npcSpeech.stringId,
             lang: this.lang,
           })
-        : undefined
+        : msgIdTblKey
+          ? resolveNpcDialogueTblText(msgIdTblKey, { lang: this.lang })
+          : undefined
     const lines = questText
       ? questText.split('\n')
       : this._npcSpeech.topic === 'gossip'
@@ -822,12 +835,51 @@ export function openNpcSpeechImpl(
   onClose?: () => void,
 ): void {
   this._speechOpenedDuringAction = true
+  const effectiveAct = this._npcMenu?.context?.act ?? descriptor.actIndex
+  const effectivePlayerClass = this._npcMenu?.context?.playerClass
   const gossipIndex = topic === 'gossip' ? (this._npcGossipCursor.get(descriptor.hcIdx) ?? 0) : undefined
+  const effectiveStringId =
+    stringId ??
+    (topic === 'intro'
+      ? resolveNpcIntroStringId113c(descriptor.hcIdx, effectiveAct, effectivePlayerClass)
+      : topic === 'gossip'
+        ? resolveNpcGossipStringId113c(descriptor.hcIdx, {
+            act: effectiveAct,
+            playerClass: effectivePlayerClass,
+            gossipIndex,
+          })
+        : undefined)
+  const introTblKey =
+    topic === 'intro'
+      ? stringId !== undefined &&
+        stringId > 0 &&
+        !(stringId === 1 && descriptor.hcIdx === 155 && effectivePlayerClass !== 3)
+        ? CANONICAL_NPC_MSG_ID_TO_TBL_KEY[stringId]
+        : resolveNpcIntroTblKey113c(
+            descriptor.hcIdx,
+            effectiveAct,
+            effectivePlayerClass,
+            descriptor.npcTxtKey,
+          )
+      : undefined
+  const gossipTblKey =
+    topic === 'gossip'
+      ? resolveNpcGossipTblKey113c(descriptor.hcIdx, {
+          act: effectiveAct,
+          playerClass: effectivePlayerClass,
+          gossipIndex,
+          fallbackNpcTxtKey: descriptor.npcTxtKey,
+        })
+      : undefined
   const resolvedOverride =
     textOverride ??
     (topic === 'quest' && stringId !== undefined && stringId > 0
       ? resolveNpcDialogueTblText(descriptor, { topic: 'quest', questStringId: stringId, lang: this.lang })
-      : undefined)
+      : topic === 'intro' && introTblKey
+        ? resolveNpcDialogueTblText(introTblKey, { lang: this.lang })
+        : topic === 'gossip' && gossipTblKey
+          ? resolveNpcDialogueTblText(gossipTblKey, { lang: this.lang })
+          : undefined)
   const bodyLines = resolvedOverride
     ? resolvedOverride.split('\n')
     : topic === 'gossip'
@@ -852,7 +904,7 @@ export function openNpcSpeechImpl(
     text,
     lines,
     topic,
-    stringId,
+    stringId: effectiveStringId,
     gossipIndex,
     scrollY: 0,
     maxScrollY,
@@ -864,12 +916,12 @@ export function openNpcSpeechImpl(
     this._npcMenu.talking = true
   }
   const speechSoundId = resolveNpcSpeechSoundId113c({
-    stringId,
+    stringId: effectiveStringId,
     hcIdx: descriptor.hcIdx,
     npcTxtKey: descriptor.npcTxtKey,
     topic,
-    act: this._npcMenu?.context?.act ?? descriptor.actIndex,
-    playerClass: this._npcMenu?.context?.playerClass,
+    act: effectiveAct,
+    playerClass: effectivePlayerClass,
     gossipIndex,
   })
   if (speechSoundId > 0) {
@@ -1148,10 +1200,7 @@ export function clickNpcMenuOptionImpl(this: WorldPanelsHud, optionId: string, c
       ? Number.parseInt(optionId.slice('talk_quest:'.length), 10) || 0
       : 2
     let overrideText: string | undefined
-    if (isGossip) {
-      const gossipIdx = this._npcGossipCursor.get(desc.hcIdx) ?? 0
-      overrideText = getLocalizedNpcGossip(desc, this.lang, gossipIdx).join('\n')
-    } else if (topic === 'quest') {
+    if (topic === 'quest') {
       const qMsg = (context?.questMessages ?? menu.questMessages)?.find((m) => m.stringId === questStringId)
       if (qMsg) {
         overrideText = this.lang === 'ENG' ? (qMsg.textEn ?? qMsg.text) : (qMsg.textZh ?? qMsg.text)

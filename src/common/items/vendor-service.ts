@@ -8,6 +8,7 @@ import {
   type PlacedItem,
   type Item,
 } from './items.ts'
+import { getInventoryGoldLimit, getStashGoldLimit } from './inventory-model.ts'
 import {
   TransactionType,
   calculateGambleCost,
@@ -58,17 +59,19 @@ export function deductGoldFromPurse(purse: GoldPurseState, amount: number): bool
 }
 
 /**
- * Adds `amount` of gold to `inventoryGold` up to `10000 * cLvl`, overflowing any excess into `stashGold`.
+ * Adds `amount` of gold to `inventoryGold` up to `10000 * cLvl`, overflowing any excess into `stashGold`
+ * capped at `getStashGoldLimit(cLvl)` (`D2Common.dll #10439`).
  */
 export function addGoldToPurse(purse: GoldPurseState, amount: number): void {
   if (amount <= 0) return
-  const maxInvGold = Math.max(10000, Math.trunc(purse.cLvl) * 10000)
+  const maxInvGold = getInventoryGoldLimit(purse.cLvl)
   const roomInInv = Math.max(0, maxInvGold - purse.inventoryGold)
   const toInv = Math.min(amount, roomInInv)
   purse.inventoryGold += toInv
   const overflow = amount - toInv
   if (overflow > 0) {
-    purse.stashGold += overflow
+    const maxStashGold = getStashGoldLimit(purse.cLvl)
+    purse.stashGold = Math.min(maxStashGold, purse.stashGold + overflow)
   }
 }
 

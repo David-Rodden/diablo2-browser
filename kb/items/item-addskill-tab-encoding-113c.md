@@ -18,8 +18,7 @@ Binaries: `samples/d2/D2Common.dll`, `D2Client.dll` (1.13c), read with `objdump 
 ```
 So the stat list (`.d2s`, D2GS `0x9C/0x9D` item stat list) carries `tab + 8 * class`, low 3 bits = tab, upper bits =
 class. Sorceress Fire = 8, Lightning = 9, Cold = 10; Necromancer = 16..18; Paladin = 24..26 ...
-(D2MOO `ITEMMODS_PropertyFunc10` writes `nLayer % 3 + 8 * nLayer / 3`, a transcription that drops the parentheses; the
-1.13c binary divides first.)
+(The 1.13c binary explicitly computes `(nLayer % 3) + 8 * (nLayer / 3)` via `idiv 3` followed by `lea eax, [edx+eax*8]`.)
 
 ## Decoding
 - `D2Client.dll` descfunc 14 @ `0x6fb052e2`: `class = param >> 3` (`sar eax,3`), `tab = param & 7` (`and ebp,7`),

@@ -1926,6 +1926,34 @@ export function resolveNpcIntroStringId113c(
 }
 
 /**
+ * Resolves the canonical `.tbl` key (`AkaraIntroSorGossip1`, `AkaraIntroGossip1`,
+ * `WarrivAct1IntroGossip1`, etc.) for an NPC's `Introduction` speech according to
+ * `D2Client.dll 0x6faf9130 -> 0x6fba37a8`, matching the exact voice selected by
+ * `resolveNpcIntroStringId113c`.
+ */
+export function resolveNpcIntroTblKey113c(
+  hcIdx: number,
+  act?: number,
+  playerClass?: number,
+  fallbackNpcTxtKey?: string,
+): string | undefined {
+  const introStrId = resolveNpcIntroStringId113c(hcIdx, act, playerClass)
+  if (introStrId === 0) {
+    return 'WarrivAct1IntroGossip1'
+  }
+  if (introStrId !== undefined && introStrId > 0) {
+    const byId = CANONICAL_NPC_MSG_ID_TO_TBL_KEY[introStrId]
+    if (byId) return byId
+  }
+  const desc = getTownNpcDescriptorByHcIdx(hcIdx)
+  const lookupKey = (fallbackNpcTxtKey ?? desc?.npcTxtKey ?? '').toLowerCase()
+  return (
+    (desc?.greetingKey && desc.greetingKey !== desc.npcTxtKey ? desc.greetingKey : undefined) ??
+    NPC_CANONICAL_INTRO_KEYS[lookupKey]
+  )
+}
+
+/**
  * D2Client.dll `0x6faf91e0` -> `0x6faf8590` / `0x6faf6910`:
  * Resolves a 16-bit `.tbl` `wStringId` for `Talk -> Gossip` from `0x6fba37a8`.
  */
@@ -1943,6 +1971,7 @@ export function resolveNpcGossipStringId113c(
       : undefined) ?? NPC_TALK_TABLE_113C.find((r) => r.hcIdx === hcIdx)
   if (!row || row.entries.length <= 2) return undefined
   const candidates = row.entries.slice(2).filter((e, idx, arr) => {
+    if (e.stringId === row.entries[0]?.stringId) return false
     // Exclude trailing second class-intro entries for Malah (j=15), Nihlathak (j=11), Qual-Kehk (j=10)
     if ((hcIdx === 513 || hcIdx === 514 || hcIdx === 515) && idx === arr.length - 1) {
       const key = CANONICAL_NPC_MSG_ID_TO_TBL_KEY[e.stringId]
@@ -1956,6 +1985,39 @@ export function resolveNpcGossipStringId113c(
   const pool = candidates.length > 0 ? candidates : row.entries.slice(2)
   const idx = Math.max(0, options?.gossipIndex ?? 0) % pool.length
   return pool[idx]?.stringId
+}
+
+/**
+ * Resolves the canonical `.tbl` key (`AkaraGossip1`, `AkaraGossip2`, etc.) for an NPC's
+ * `Talk -> Gossip` speech according to `D2Client.dll 0x6faf91e0 -> 0x6faf6910`, matching
+ * the exact class/act-filtered voice selected by `resolveNpcGossipStringId113c`.
+ */
+export function resolveNpcGossipTblKey113c(
+  hcIdx: number,
+  options?: {
+    readonly act?: number | undefined
+    readonly playerClass?: number | undefined
+    readonly gossipIndex?: number | undefined
+    readonly fallbackNpcTxtKey?: string | undefined
+  },
+): string | undefined {
+  const gossipStrId = resolveNpcGossipStringId113c(hcIdx, {
+    act: options?.act,
+    playerClass: options?.playerClass,
+    gossipIndex: options?.gossipIndex,
+  })
+  if (gossipStrId !== undefined && gossipStrId > 0) {
+    const byId = CANONICAL_NPC_MSG_ID_TO_TBL_KEY[gossipStrId]
+    if (byId) return byId
+  }
+  const desc = getTownNpcDescriptorByHcIdx(hcIdx)
+  const lookupKey = (options?.fallbackNpcTxtKey ?? desc?.npcTxtKey ?? '').toLowerCase()
+  const list = NPC_CANONICAL_GOSSIP_KEYS[lookupKey]
+  if (list && list.length > 0) {
+    const idx = Math.max(0, options?.gossipIndex ?? 0) % list.length
+    return list[idx]
+  }
+  return undefined
 }
 
 /**
@@ -2029,17 +2091,6 @@ export function resolveNpcSpeechSoundId113c(options: {
   }
 
   if (topic === 'gossip') {
-    const gossipList = NPC_CANONICAL_GOSSIP_KEYS[lookupKey]
-    if (
-      gossipList &&
-      gossipList.length > 0 &&
-      (options.playerClass === undefined || options.gossipIndex !== undefined)
-    ) {
-      const idx = Math.max(0, options.gossipIndex ?? 0) % gossipList.length
-      const gKey = gossipList[idx]!
-      const sId = NPC_SCROLL_SPEECH_SOUND_BY_TBL_KEY_113C[gKey]
-      if (sId !== undefined && sId > 0) return sId
-    }
     if (hcIdx !== undefined) {
       const gossipStrId = resolveNpcGossipStringId113c(hcIdx, {
         act: options.act,
@@ -2050,6 +2101,13 @@ export function resolveNpcSpeechSoundId113c(options: {
         const sId = NPC_SCROLL_SPEECH_SOUND_BY_STRING_ID_113C[gossipStrId]
         if (sId !== undefined && sId > 0) return sId
       }
+    }
+    const gossipList = NPC_CANONICAL_GOSSIP_KEYS[lookupKey]
+    if (gossipList && gossipList.length > 0) {
+      const idx = Math.max(0, options.gossipIndex ?? 0) % gossipList.length
+      const gKey = gossipList[idx]!
+      const sId = NPC_SCROLL_SPEECH_SOUND_BY_TBL_KEY_113C[gKey]
+      if (sId !== undefined && sId > 0) return sId
     }
   }
 

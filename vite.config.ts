@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { refreshAssetManifestPublicSubdirs } from './src/baker/io/asset-manifest.ts'
+import { createBugReportHttpMiddleware } from './src/baker/io/bug-report-store.ts'
 import type { AssetManifest } from './src/common/pack-contract/index.ts'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
@@ -27,6 +28,19 @@ function discoverPluginHtmlEntries(rootDir: string): Record<string, string> {
  */
 export default defineConfig({
   plugins: [
+    {
+      name: 'd2-bug-report-api',
+      configureServer(server) {
+        server.middlewares.use(
+          createBugReportHttpMiddleware({ bugsDir: resolve(__dirname, 'bugs') }),
+        )
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(
+          createBugReportHttpMiddleware({ bugsDir: resolve(__dirname, 'bugs') }),
+        )
+      },
+    },
     {
       name: 'd2web-sw-dev-alias',
       configureServer(server) {
@@ -110,6 +124,7 @@ export default defineConfig({
         '**/node_modules/**',
         '**/samples/**',
         '**/public/**',
+        '**/bugs/**',
         '**/.worktrees/**',
         '**/dist/**',
         '**/.git/**',

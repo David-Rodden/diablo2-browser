@@ -290,6 +290,8 @@ describe('[Skill #051] Fire Wall (SOR) — 1.13c Parity (Issue #205)', () => {
     // Canonical missiles
     expect(CANONICAL_113C_MISSILES.firewallmaker).toBeDefined()
     expect(CANONICAL_113C_MISSILES.firewall).toBeDefined()
-    expect(CANONICAL_113C_MISSILES.groundfirebig).toBeDefined()
+    expect(CANONICAL_113C_MISSILES.firewall!.celFile).toBe('groundFireBig')
+    // 'groundfirebig' is a CelFile, not a Missiles.txt row (Issue #1089).
+    expect(CANONICAL_113C_MISSILES['groundfirebig']).toBeUndefined()
   })
 })

@@ -72,6 +72,13 @@ export function getLocalizedDifficulty(
  */
 export const TOWN_LEVEL_IDS: ReadonlySet<number> = new Set([1, 40, 75, 103, 109])
 
+/**
+ * Canonical Objects.txt waypoint class IDs across Acts 1-5 (`kb/ui/d2client-automap-waypoint-parity.md`).
+ */
+export const WAYPOINT_OBJECT_CLASS_IDS: ReadonlySet<number> = new Set([
+  119, 145, 156, 157, 237, 238, 288, 323, 324, 398, 402, 429, 494, 496, 511, 539,
+])
+
 export function isTownLevel(levelId: number): boolean {
   return TOWN_LEVEL_IDS.has(levelId)
 }
@@ -142,6 +149,7 @@ export class AutomapView {
   private readonly actRevealLevelIds: Readonly<Record<ActId, readonly number[]>>
   private mode: AutomapRevealMode
   private radarConfig: AutomapRadarConfig
+  private showWaypoints = false
   private mapSeed = 0
   private difficulty: DifficultyId = 0
   private currentAreaId = 1
@@ -198,6 +206,7 @@ export class AutomapView {
       automapShowMonsters: options?.initialRadar?.automapShowMonsters === true,
       automapShowShrines: options?.initialRadar?.automapShowShrines === true,
     }
+    this.showWaypoints = options?.initialRadar?.automapShowWaypoints === true
     this.actRevealLevelIds = options?.actRevealLevelIds ?? ACT_PRIMARY_LEVEL_IDS
   }
 
@@ -220,6 +229,10 @@ export class AutomapView {
     return this.radarConfig
   }
 
+  getShowWaypoints(): boolean {
+    return this.showWaypoints
+  }
+
   setRadarConfig(patch: Partial<AutomapRadarConfig>): void {
     const nextMonsters =
       typeof patch.automapShowMonsters === 'boolean'
@@ -229,14 +242,20 @@ export class AutomapView {
       typeof patch.automapShowShrines === 'boolean'
         ? patch.automapShowShrines
         : this.radarConfig.automapShowShrines
+    const nextWaypoints =
+      typeof patch.automapShowWaypoints === 'boolean'
+        ? patch.automapShowWaypoints
+        : this.showWaypoints
     if (
       nextMonsters !== this.radarConfig.automapShowMonsters ||
-      nextShrines !== this.radarConfig.automapShowShrines
+      nextShrines !== this.radarConfig.automapShowShrines ||
+      nextWaypoints !== this.showWaypoints
     ) {
       this.radarConfig = {
         automapShowMonsters: nextMonsters,
         automapShowShrines: nextShrines,
       }
+      this.showWaypoints = nextWaypoints
       this.dirtyVersion += 1
     }
   }
@@ -794,39 +813,54 @@ export class AutomapView {
         continue
       }
       if (u.kind === 'player') {
+        const isDeadPlayer =
+          Boolean(u.isCorpse) ||
+          u.mode === 17 ||
+          u.mode === 0 ||
+          (u.lifePct !== undefined && u.lifePct <= 0)
         entityDots.push({
           worldX,
           worldY,
-          kind: 'ally',
+          kind: isDeadPlayer ? 'corpse' : 'ally',
           name: u.name,
         })
       } else if (u.kind === 'monster') {
-        // Diablo II v1.13c Parity: NEVER draw hostile monsters or bosses on the automap!
-        // Only player corpses and friendly interactable NPCs (interact=1, excluding ancient statues 537..539) are drawn.
-        const isDead = Boolean(u.isCorpse) || (u.lifePct !== undefined && u.lifePct <= 0)
+        // Diablo II v1.13c Parity (0x6FB12430 AUTOMAP_DrawUnits):
+        // 1. NEVER draw hostile monsters or monster corpses on the automap!
+        // 2. Live player mercenaries / summons (ownerType === 'player' / 0 or isPartyMember) are drawn as 'ally'.
+        // 3. Live interactable NPCs (interact=1, excluding ancient statues 537..539) are drawn as 'npc'.
+        const isDead =
+          Boolean(u.isCorpse) ||
+          u.mode === 12 ||
+          u.mode === 0 ||
+          (u.lifePct !== undefined && u.lifePct <= 0)
         if (isDead) {
-          if (u.isCorpse) {
-            entityDots.push({
-              worldX,
-              worldY,
-              kind: 'corpse',
-              name: u.name,
-            })
-          }
-        } else {
-          const cid = u.classId ?? 0
-          const isAncientStatue = cid >= 537 && cid <= 539
-          const mk = typeof u.classId === 'number' ? getMonsterKindByClassId(u.classId) : undefined
-          const isTownNpc = Boolean(NPC_HCIDX_TO_DESCRIPTOR_ID.has(cid) || NPC_HCIDX_TO_DESCRIPTOR_ID[cid])
-          const isInteract = Boolean(mk?.interact || (u as { isNpc?: boolean }).isNpc || isTownNpc)
-          if (isInteract && !isAncientStatue) {
-            entityDots.push({
-              worldX,
-              worldY,
-              kind: 'npc',
-              name: u.name,
-            })
-          }
+          continue
+        }
+        const cid = u.classId ?? 0
+        const isAncientStatue = cid >= 537 && cid <= 539
+        const mk = typeof u.classId === 'number' ? getMonsterKindByClassId(u.classId) : undefined
+        const isTownNpc = Boolean(NPC_HCIDX_TO_DESCRIPTOR_ID.has(cid) || NPC_HCIDX_TO_DESCRIPTOR_ID[cid])
+        const isInteract = Boolean(mk?.interact || (u as { isNpc?: boolean }).isNpc || isTownNpc)
+        const ownerTypeRaw = (u as { ownerType?: string | number }).ownerType
+        const isFriendlySummonOrMerc =
+          ownerTypeRaw === 'player' ||
+          ownerTypeRaw === 0 ||
+          Boolean(u.isPartyMember)
+        if (isFriendlySummonOrMerc) {
+          entityDots.push({
+            worldX,
+            worldY,
+            kind: 'ally',
+            name: u.name,
+          })
+        } else if (isInteract && !isAncientStatue) {
+          entityDots.push({
+            worldX,
+            worldY,
+            kind: 'npc',
+            name: u.name,
+          })
         }
       }
     }
@@ -925,6 +959,26 @@ export class AutomapView {
       }
     }
 
+    const primaryHasWaypointCell =
+      view.automap.floors.some((c) => c.cellNo === 307 || c.cellNo === 618) ||
+      view.automap.objects.some((c) => c.cellNo === 307)
+    if (!primaryHasWaypointCell && Array.isArray(view.presetUnits)) {
+      for (const u of view.presetUnits) {
+        if (u.type === 2 && WAYPOINT_OBJECT_CLASS_IDS.has(u.index)) {
+          const wpCellX = Math.trunc(u.subX / 5)
+          const wpCellY = Math.trunc(u.subY / 5)
+          const wpPreRevealed =
+            isPrimaryCellRevealed !== null && isPrimaryCellRevealed(wpCellX, wpCellY)
+          markers.push({
+            cellX: wpCellX,
+            cellY: wpCellY,
+            kind: 'waypoint',
+            ...(wpPreRevealed ? { preRevealed: true } : {}),
+          })
+        }
+      }
+    }
+
     const preRevealTown =
       isTownLevel(this.currentAreaId) || this.mode === 'level' || this.mode === 'act'
 
@@ -1016,6 +1070,29 @@ export class AutomapView {
                 toLevelId: ent.toLevelId,
                 targetName: levelDisplayName(ent.toLevelId, lang),
                 preRevealed: entPreRevealed,
+              })
+            }
+          }
+        }
+
+        const otherHasWaypointCell =
+          otherView.automap.floors.some((c) => c.cellNo === 307 || c.cellNo === 618) ||
+          otherView.automap.objects.some((c) => c.cellNo === 307)
+        if (!otherHasWaypointCell && Array.isArray(otherView.presetUnits)) {
+          for (const u of otherView.presetUnits) {
+            if (u.type === 2 && WAYPOINT_OBJECT_CLASS_IDS.has(u.index)) {
+              const wpCellX = Math.trunc(u.subX / 5)
+              const wpCellY = Math.trunc(u.subY / 5)
+              const wpPreRevealed = otherAlwaysPreRevealed
+                ? true
+                : isOtherCellRevealed !== null && isOtherCellRevealed(wpCellX, wpCellY)
+                  ? true
+                  : false
+              markers.push({
+                cellX: wpCellX + dCellX,
+                cellY: wpCellY + dCellY,
+                kind: 'waypoint',
+                preRevealed: wpPreRevealed,
               })
             }
           }

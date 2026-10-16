@@ -42,7 +42,11 @@ import {
   METEORFIRE_META,
   MISSILE_METAS,
 } from '../../../src/client/render/missiles-meta.ts'
-import { drawMissileProjectile, type LoadedMissileArt } from '../../../src/client/scene/missile-overlay-renderer.ts'
+import type { LoadedMissileArt } from '../../../src/client/scene/missile-overlay-renderer.ts'
+import { renderSceneSourceFrame } from '../../../src/client/scene/world-renderer.ts'
+import { celFileArtKey } from '../../../src/client/render/cel-file-key.ts'
+import { buildSceneDrawables } from '../../../src/client/view/unit-drawables.ts'
+import { ClientWorld } from '../../../src/client/world/client-world.ts'
 import type { SpriteRenderer, AtlasHandle } from '../../../src/client/render/renderer.ts'
 
 describe('[Skill #056] Meteor (SOR) — 1.13c Parity (Issue #210 & #401)', () => {
@@ -475,16 +479,20 @@ describe('[Skill #056] Meteor (SOR) — 1.13c Parity (Issue #210 & #401)', () =>
     expect(flame.ttl).toBe(20) // remains alive, doesn't vanish on hit
   })
 
-  it('Dimension 8: Dual Sprite Falling Trajectory & Trans: 1 Additive Blending in drawMissileProjectile', () => {
+  it('Dimension 8: Dual Sprite Falling Trajectory & Trans Blending in renderSceneSourceFrame', () => {
     const drawCalls: { frame: any; x: number; y: number; options?: any }[] = []
     const mockRenderer = {
+      begin: () => {},
+      flush: () => {},
+      setLighting: () => {},
+      setUnitLight: () => {},
       draw(frame: any, x: number, y: number, options?: any) {
         drawCalls.push({ frame, x, y, options })
       },
       drawSolid: vi.fn(),
     } as unknown as SpriteRenderer
 
-    // Build mock art map for meteor, meteortail, meteorcenter
+    // Build mock art map for meteor, meteortail, meteorcenter keyed by normalised CelFile
     const makeMockArt = (meta: any): LoadedMissileArt => ({
       meta,
       handle: 1 as unknown as AtlasHandle,
@@ -501,26 +509,94 @@ describe('[Skill #056] Meteor (SOR) — 1.13c Parity (Issue #210 & #401)', () =>
     })
 
     const artMap = new Map<string, LoadedMissileArt>([
-      ['meteor', makeMockArt(METEOR_META)],
-      ['meteortail', makeMockArt(METEORTAIL_META)],
-      ['meteorcenter', makeMockArt(METEORCENTER_META)],
+      [celFileArtKey('Meteor'), makeMockArt(METEOR_META)],
+      [celFileArtKey('MeteorTail'), makeMockArt(METEORTAIL_META)],
+      [celFileArtKey('MeteorTargetIndicator'), makeMockArt(METEORCENTER_META)],
     ])
 
-    const centerShot: Projectile = {
-      skillId: '56',
-      missileType: 'meteorcenter',
-      x: 400,
-      y: 300,
-      vx: 0,
-      vy: 0,
-      damage: 500,
-      ttl: 60, // At initial cast (60 remaining ticks)
-      fromPlayer: true,
-      slvl: 1,
+    const sceneAtRemainingTicks = (remainingTicks: number) => {
+      const missileDrawables: any[] = [
+        {
+          drawableKind: 'missile',
+          unitId: 1,
+          missileClassId: 101,
+          missileKey: 'meteorcenter',
+          celFile: 'MeteorTargetIndicator',
+          direction: 0,
+          frame: 0,
+          totalFrames: 17,
+          loopAnim: true,
+          subX: 0,
+          subY: 0,
+          worldX: 400,
+          worldY: 300,
+          sortY: 300,
+          blendMode: 'additive',
+          trans: 1,
+          lightRadius: 0,
+          lightColor: [0, 0, 0],
+        },
+      ]
+      if (remainingTicks > 0) {
+        const fallAltitude = remainingTicks * 25
+        const meteorX = 400 - remainingTicks * 15
+        missileDrawables.push(
+          {
+            drawableKind: 'missile',
+            unitId: 2,
+            missileClassId: 103,
+            missileKey: 'meteortail',
+            celFile: 'MeteorTail',
+            direction: 0,
+            frame: 0,
+            totalFrames: 12,
+            loopAnim: true,
+            altitude: fallAltitude,
+            subX: 0,
+            subY: 0,
+            worldX: meteorX,
+            worldY: 300,
+            sortY: 300 + fallAltitude - 0.5,
+            blendMode: 'additive',
+            trans: 1,
+            lightRadius: 0,
+            lightColor: [0, 0, 0],
+          },
+          {
+            drawableKind: 'missile',
+            unitId: 3,
+            missileClassId: 100,
+            missileKey: 'meteor',
+            celFile: 'Meteor',
+            direction: 0,
+            frame: 0,
+            totalFrames: 10,
+            loopAnim: true,
+            altitude: fallAltitude,
+            subX: 0,
+            subY: 0,
+            worldX: meteorX,
+            worldY: 300,
+            sortY: 300 + fallAltitude,
+            blendMode: 'normal',
+            trans: 0,
+            lightRadius: 0,
+            lightColor: [0, 0, 0],
+          },
+        )
+      }
+      renderSceneSourceFrame({
+        renderer: mockRenderer,
+        cameraX: 400,
+        cameraY: 300,
+        viewportProfile: { width: 4000, height: 4000 },
+        missileDrawables,
+        missileArtMap: artMap,
+      } as any)
     }
 
     // Tick 0 (ttl = 60): Ground indicator + falling tail + fireball core at altitude 1500px, slideX -900px
-    drawMissileProjectile(mockRenderer, centerShot, artMap.get('meteorcenter'), artMap)
+    sceneAtRemainingTicks(60)
     expect(drawCalls.length).toBe(3) // 1 ground indicator, 1 flame tail, 1 meteor core
 
     // 1. Ground target indicator (MeteorTargetIndicator)
@@ -535,15 +611,14 @@ describe('[Skill #056] Meteor (SOR) — 1.13c Parity (Issue #210 & #401)', () =>
     // altitude = 60 * 25 = 1500 -> meteorY = 300 - 143 - 1500 = -1343
     expect(drawCalls[1]!.y).toBe(300 - 143 - 60 * 25)
 
-    // 3. Falling meteor fireball core (Meteor)
-    expect(drawCalls[2]!.options?.blendMode).toBe('additive')
+    // 3. Falling meteor rock (Meteor): Missiles.txt #100 Trans empty -> eDrawMode 5 NORMAL (D2Client 0x6FB1CF3B)
+    expect(drawCalls[2]!.options?.blendMode).toBe('normal')
     expect(drawCalls[2]!.x).toBe(400 - 60 * 15 - 7) // anchorX = -7
     expect(drawCalls[2]!.y).toBe(300 - 55 - 60 * 25) // anchorY = -55
 
     // Tick 30 (ttl = 30): Mid-flight descent (altitude = 750px, slideX = -450px)
     drawCalls.length = 0
-    const midShot: Projectile = { ...centerShot, ttl: 30 }
-    drawMissileProjectile(mockRenderer, midShot, artMap.get('meteorcenter'), artMap)
+    sceneAtRemainingTicks(30)
     expect(drawCalls.length).toBe(3)
     expect(drawCalls[1]!.x).toBe(400 - 30 * 15 - 49)
     expect(drawCalls[1]!.y).toBe(300 - 143 - 30 * 25)
@@ -552,101 +627,40 @@ describe('[Skill #056] Meteor (SOR) — 1.13c Parity (Issue #210 & #401)', () =>
 
     // Tick 60 (ttl = 0 / impact): Falling fireball hits ground, only ground indicator rendered
     drawCalls.length = 0
-    const impactShot: Projectile = { ...centerShot, ttl: 0 }
-    drawMissileProjectile(mockRenderer, impactShot, artMap.get('meteorcenter'), artMap)
+    sceneAtRemainingTicks(0)
     expect(drawCalls.length).toBe(1) // Only ground indicator, zero sky fireball
   })
 
   it('Dimension 9: Animation frame indexing progression for meteorcenter and meteorfire sublooping', () => {
-    const drawnFrames: number[] = []
-    const mockRenderer = {
-      draw(frame: any) {
-        drawnFrames.push(frame.frameIdx)
-      },
-      drawSolid: vi.fn(),
-    } as unknown as SpriteRenderer
+    const world = new ClientWorld()
 
-    // Build art with tracked frameIdx
-    const makeIndexedArt = (meta: any): LoadedMissileArt => ({
-      meta,
-      handle: 1 as unknown as AtlasHandle,
-      frames: [
-        meta.groups[0].map(([x, y, w, h, ax, ay]: number[], idx: number) => ({
-          x,
-          y,
-          width: w,
-          height: h,
-          anchorX: ax,
-          anchorY: ay,
-          frameIdx: idx,
-        })),
-      ],
+    // 1. meteorcenter starts at frame 0 and advances forward at AnimSpeed=16 (1 frame/tick, 17 frames)
+    const centerUnit = (world as any).spawnMissileByKey('meteorcenter', 100, 100, 100, 100, {
+      sourceSkillId: 56,
+      skillLevel: 1,
     })
-
-    const centerArt = makeIndexedArt(METEORCENTER_META)
-    const fireArt = makeIndexedArt(METEORFIRE_META)
-
-    // 1. meteorcenter starts at frame 0 and advances forward
     for (let elapsed = 0; elapsed < 17; elapsed++) {
-      drawnFrames.length = 0
-      const shot: Projectile = {
-        skillId: '56',
-        missileType: 'meteorcenter',
-        x: 0,
-        y: 0,
-        vx: 0,
-        vy: 0,
-        damage: 0,
-        ttl: 60 - elapsed,
-        ageTicks: elapsed,
-        fromPlayer: true,
-      }
-      drawMissileProjectile(mockRenderer, shot, centerArt)
-      expect(drawnFrames[0]).toBe(elapsed)
+      expect(centerUnit.frame).toBe(elapsed)
+      ;(world as any).stepMissileUnit(centerUnit)
     }
 
-    // 2. meteorfire plays emergence once (frames 0..11) then loops 12..36 indefinitely
-    // Emergence phase
+    // 2. meteorfire plays emergence once (frames 0..11) then subloops 12..36 (Missiles.txt SubLoop=1, SubStart=12, SubStop=36)
+    const fireUnit = (world as any).spawnMissileByKey('meteorfire', 100, 100, 100, 100, {
+      sourceSkillId: 56,
+      skillLevel: 20,
+      maxTicks: 315,
+    })
     for (let elapsed = 0; elapsed < 12; elapsed++) {
-      drawnFrames.length = 0
-      const shot: Projectile = {
-        skillId: '56',
-        missileType: 'meteorfire',
-        x: 0,
-        y: 0,
-        vx: 0,
-        vy: 0,
-        damage: 10,
-        ttl: 315 - elapsed,
-        ageTicks: elapsed,
-        fromPlayer: true,
-        fireDuration: 315,
-      }
-      drawMissileProjectile(mockRenderer, shot, fireArt)
-      expect(drawnFrames[0]).toBe(elapsed)
+      expect(fireUnit.frame).toBe(elapsed)
+      ;(world as any).stepMissileUnit(fireUnit)
     }
-
-    // Looping phase (frames 12..36, 25-frame cycle)
+    const phaseOffset = (fireUnit.id * 7) % 24
     for (let elapsed = 12; elapsed <= 70; elapsed++) {
-      drawnFrames.length = 0
-      const shot: Projectile = {
-        skillId: '56',
-        missileType: 'meteorfire',
-        x: 0,
-        y: 0,
-        vx: 0,
-        vy: 0,
-        damage: 10,
-        ttl: 315 - elapsed,
-        ageTicks: elapsed,
-        fromPlayer: true,
-        fireDuration: 315,
-      }
-      drawMissileProjectile(mockRenderer, shot, fireArt)
-      const expectedFrame = 12 + ((elapsed - 12) % 25)
-      expect(drawnFrames[0]).toBe(expectedFrame)
-      expect(drawnFrames[0]!).toBeGreaterThanOrEqual(12)
-      expect(drawnFrames[0]!).toBeLessThanOrEqual(36)
+      const expectedFrame = 12 + ((elapsed - 12 + phaseOffset) % 25)
+      expect(fireUnit.frame).toBe(expectedFrame)
+      expect(fireUnit.frame).toBeGreaterThanOrEqual(12)
+      expect(fireUnit.frame).toBeLessThanOrEqual(36)
+      ;(world as any).stepMissileUnit(fireUnit)
     }
   })
 })

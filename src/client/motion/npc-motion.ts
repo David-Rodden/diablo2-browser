@@ -1753,7 +1753,7 @@ export class NpcMotion {
   private advanceAnim0x6FAFEE40(
     unit: NpcMotionUnit,
     entry: NpcModeStepEntry,
-    _pathContinued: boolean,
+    pathContinued: boolean,
   ): boolean {
     if (
       unit.dwAnimMode === MONMODE_DEATH &&
@@ -1770,8 +1770,17 @@ export class NpcMotion {
         unit.wActionFrame = 0
         if (unit.wFrameCount > 0) {
           unit.wFrame += unit.wAnimSpeed
+          let wrapped = false
           while (unit.wFrame >= unit.wFrameCount) {
             unit.wFrame -= unit.wFrameCount
+            wrapped = true
+          }
+          if (
+            wrapped &&
+            (unit.dwAnimMode === MONMODE_NEUTRAL ||
+              (pathContinued && (unit.dwAnimMode === MONMODE_WALK || unit.dwAnimMode === MONMODE_RUN)))
+          ) {
+            unit.dwFlags = u32(unit.dwFlags | UNITFLAG_DOUPDATE)
           }
         }
         return false

@@ -19,12 +19,103 @@ import { PanelCloseButton } from './close-button.ts'
 import { getTblLang, requireTbl, type TblLang } from '../i18n/lang.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
 import type { BaseStatKey, CharacterAttributes } from '../../common/units/unit-types.ts'
-import { getSkillName } from '../../common/skills/skills-meta.ts'
+import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
+import { getSkillName, getSkillTableMeta } from '../../common/skills/skills-meta.ts'
 import type { CombatDamageFormulaBreakdown } from '../ui-model/combat-stats.ts'
 import { reportMissingArt } from '../scene/world-renderer.ts'
 
 export type { BaseStatKey, CharacterAttributes }
 export type DamageHandKey = 'left' | 'right'
+export type CharSheetHoveredElement = 'leftAr' | 'rightAr' | 'defense' | 'close'
+
+/**
+ * Skills that always hit or bypass Attack Rating in Diablo II v1.13c (`D2Client.dll 0x6FADE350` & `Skills.txt`):
+ * - `#22` Guided Arrow, `#25` Lightning Bolt, `#35` Lightning Fury, `#97` Smite, `#154` War Cry.
+ */
+const AUTO_HIT_NO_AR_SKILL_IDS = new Set<number>([22, 25, 35, 97, 154])
+
+/**
+ * Physical / weapon / kick skills that roll Attack Rating (`ToHit`) in 1.13c `D2Client.dll 0x6FADE350`.
+ */
+const EXPLICIT_AR_ATTACK_SKILL_IDS = new Set<number>([
+  0, 1, 2, 4, 5,
+  6, 7, 9, 10, 11, 12, 14, 15, 16, 19, 20, 21, 24, 26, 27, 30, 31, 34,
+  73,
+  96, 106, 107, 111, 116,
+  126, 133, 139, 140, 143, 144, 147, 151, 152,
+  232, 233, 238, 239, 242, 248,
+  254, 255, 257, 259, 260, 265, 266, 269, 270, 274, 275, 277, 280,
+])
+
+/**
+ * Ground Truth (`D2Client.dll 0x6FADE350` & `0x6FB6D3C1..0x6FB6D3DF`):
+ * Returns `true` only when `skillId` performs an Attack Rating (`ToHit`) check.
+ * Pure spells (Teleport, Fire Ball, Blizzard, Nova, Hammers, Traps, Curses, Warcries, Summons)
+ * and auto-hit attacks (Smite `#97`, Guided Arrow `#22`, Lightning Fury `#35`) return `false`.
+ */
+export function doesSkillUseAttackRating(skillId: number | null | undefined): boolean {
+  const id = skillId ?? 0
+  if (id < 0) return false
+  if (AUTO_HIT_NO_AR_SKILL_IDS.has(id)) return false
+  if (EXPLICIT_AR_ATTACK_SKILL_IDS.has(id)) return true
+  const meta = getSkillTableMeta(id)
+  if (meta && (meta.passive === 1 || meta.aura === 1)) return false
+  const def = SKILLS_BY_ID[id] as any
+  if (!def) return false
+  if (
+    (typeof def.toHit === 'number' && def.toHit > 0) ||
+    (typeof def.toHitLev === 'number' && def.toHitLev > 0) ||
+    Boolean(def.toHitCalc)
+  ) {
+    return true
+  }
+  if (typeof def.srcDamage === 'number' && def.srcDamage > 0 && Boolean(meta?.itypea1)) return true
+  return false
+}
+
+/**
+ * Ground Truth (`D2Common.dll #10428` / `D2Client.dll 0x6FB6C760` & `0x6FB6C8F0`):
+ * Computes hit chance percentage clamped to `[5, 95]`:
+ * `clamp(5, 95, floor(200 * ar * alvl / ((ar + def) * (alvl + dlvl))))`.
+ */
+export function computeCharSheetHitChancePct(
+  attackerAr: number,
+  defenderDef: number,
+  attackerLvl: number,
+  defenderLvl: number,
+): number {
+  const alvl = Math.max(1, Math.trunc(attackerLvl || 1))
+  const dlvl = Math.max(1, Math.trunc(defenderLvl || alvl))
+  const ar = Math.max(0, Math.trunc(attackerAr || 0))
+  const def = Math.max(0, Math.trunc(defenderDef || 0))
+  const denom = ar + def
+  const raw =
+    denom <= 0
+      ? Math.floor((200 * alvl) / (alvl + dlvl))
+      : Math.floor((200 * ar * alvl) / (denom * (alvl + dlvl)))
+  return Math.max(5, Math.min(95, raw))
+}
+
+/**
+ * Ground Truth (`D2Common.dll #10918` `UNITS_GetBlockRate` @ `0x6FD87BE0` & `D2Client.dll 0x6FB6C430` `#263` Weapon Block):
+ * Computes total character block percentage clamped to `[0, 75]`.
+ */
+export function computeCharacterBlockChancePct(attrs: CharacterSheetAttributes): number {
+  if (typeof attrs.blockChance === 'number' && Number.isFinite(attrs.blockChance)) {
+    return Math.max(0, Math.min(75, Math.trunc(attrs.blockChance)))
+  }
+  if (typeof attrs.shieldBaseBlock === 'number' && attrs.shieldBaseBlock > 0) {
+    const clvl = Math.max(1, Math.trunc(attrs.level || 1))
+    const dex = Math.max(0, Math.trunc(attrs.dex || 0))
+    const extra = Math.trunc(attrs.extraBlockPct || 0)
+    const scaled = Math.floor((attrs.shieldBaseBlock * Math.max(0, dex - 15)) / (clvl * 2)) + extra
+    return Math.max(0, Math.min(75, scaled))
+  }
+  if (typeof attrs.weaponBlockChance === 'number' && attrs.weaponBlockChance > 0) {
+    return Math.max(0, Math.min(75, Math.trunc(attrs.weaponBlockChance)))
+  }
+  return 0
+}
 
 export interface CharacterSheetAttributes extends CharacterAttributes {
   baseStr?: number | undefined
@@ -34,8 +125,19 @@ export interface CharacterSheetAttributes extends CharacterAttributes {
   baseDefense?: number | undefined
   defenseColor?: D2ColorCode | undefined
   baseAttackRating?: number | undefined
+  leftAttackRating?: number | undefined
   rightAttackRating?: number | undefined
   baseRightAttackRating?: number | undefined
+  leftSkillId?: number | undefined
+  rightSkillId?: number | undefined
+  blockChance?: number | undefined
+  shieldBaseBlock?: number | undefined
+  extraBlockPct?: number | undefined
+  weaponBlockChance?: number | undefined
+  lastMonsterName?: string | undefined
+  lastMonsterLevel?: number | undefined
+  lastMonsterAttackRating?: number | undefined
+  lastMonsterDefense?: number | undefined
   leftAR?: number | undefined
   leftARColor?: D2ColorCode | undefined
   rightAR?: number | undefined
@@ -559,6 +661,19 @@ export function formatCharacterDamageTooltipLines(
     })
   }
 
+  const skillElemMin = formula.skillElemMin ?? 0
+  const skillElemMax = formula.skillElemMax ?? 0
+  if (skillElemMax > 0) {
+    lines.push({
+      text: isEn
+        ? `Skill Elemental: +${skillElemMin}-${skillElemMax}`
+        : `技能元素附加: +${skillElemMin}-${skillElemMax}`,
+      color: 'blue',
+      font: 'font8',
+      align: 'center',
+    })
+  }
+
   const baseTerm = hasFlat
     ? `(${formula.weaponMin}~${formula.weaponMax} + ${formula.offWeaponFlatMin}~${formula.offWeaponFlatMax})`
     : `${formula.weaponMin}~${formula.weaponMax}`
@@ -593,6 +708,9 @@ export function formatCharacterDamageTooltipLines(
     (formula.magicConversionPct > 0 ? 0 : formula.magicMax)
   if (extraElemMax > 0) {
     expr = `${expr} + (${extraElemMin}~${extraElemMax})`
+  }
+  if (skillElemMax > 0) {
+    expr = `${expr} + (${skillElemMin}-${skillElemMax})`
   }
 
   lines.push({
@@ -682,6 +800,7 @@ export class CharacterSheetPanel {
   showDamageFormulaTooltips = false
   hoveredStat: BaseStatKey | null = null
   hoveredDamageHand: DamageHandKey | null = null
+  hoveredElement: CharSheetHoveredElement | null = null
   /**
    * Close `X` with 1.13c button semantics: mouse-down latches the depressed
    * `buysellbtn.dc6` cell 11, the sheet closes on mouse-up landing back on the button.
@@ -713,8 +832,43 @@ export class CharacterSheetPanel {
     if (!this.visible) {
       this.hoveredStat = null
       this.hoveredDamageHand = null
+      this.hoveredElement = null
       return
     }
+    const ox = CHAR_PANEL_ORIGIN.x
+    const oy = CHAR_PANEL_ORIGIN.y
+    if (
+      localX >= CHAR_CLOSE_BTN_BOUNDS.x &&
+      localX <= CHAR_CLOSE_BTN_BOUNDS.x + CHAR_CLOSE_BTN_BOUNDS.w &&
+      localY >= CHAR_CLOSE_BTN_BOUNDS.y &&
+      localY <= CHAR_CLOSE_BTN_BOUNDS.y + CHAR_CLOSE_BTN_BOUNDS.h
+    ) {
+      this.hoveredElement = 'close'
+    } else if (
+      localX >= ox + 162 &&
+      localX <= ox + 320 &&
+      localY >= oy + 138 &&
+      localY <= oy + 165
+    ) {
+      this.hoveredElement = doesSkillUseAttackRating(this.attrs.leftSkillId ?? 0) ? 'leftAr' : null
+    } else if (
+      localX >= ox + 162 &&
+      localX <= ox + 320 &&
+      localY >= oy + 166 &&
+      localY <= oy + 191
+    ) {
+      this.hoveredElement = doesSkillUseAttackRating(this.attrs.rightSkillId ?? 0) ? 'rightAr' : null
+    } else if (
+      localX >= ox + 166 &&
+      localX <= ox + 311 &&
+      localY >= oy + 192 &&
+      localY <= oy + 215
+    ) {
+      this.hoveredElement = 'defense'
+    } else {
+      this.hoveredElement = null
+    }
+
     if (this.showStatGainTooltips) {
       let foundStat: BaseStatKey | null = null
       for (const [key, b] of Object.entries(STAT_ROW_BOUNDS) as [
@@ -1095,19 +1249,26 @@ export class CharacterSheetPanel {
       font: isEn ? 'font6' : 'font8',
       color: 'tan',
     })
-    // Box 1: Left-hand Attack Rating (y=138..159, baseline oy + 153)
-    font.drawText(ctx, String(this.attrs.attackRating), ox + 290, oy + 153, {
-      font: 'font8',
-      color: this.attrs.leftARColor || 'white',
-      align: 'center',
-    })
-    // Box 2: Right-hand Attack Rating (y=164..185, baseline oy + 178)
-    const rightAr = this.attrs.rightAttackRating ?? this.attrs.attackRating
-    font.drawText(ctx, String(rightAr), ox + 290, oy + 178, {
-      font: 'font8',
-      color: this.attrs.rightARColor || 'white',
-      align: 'center',
-    })
+    // Box 1: Left-hand Attack Rating (y=138..159, baseline oy + 153) — gated by doesSkillUseAttackRating (0x6FADE350)
+    const leftSkillUsesAr = doesSkillUseAttackRating(this.attrs.leftSkillId ?? 0)
+    if (leftSkillUsesAr) {
+      const leftAr = this.attrs.leftAttackRating ?? this.attrs.leftAR ?? this.attrs.attackRating
+      font.drawText(ctx, String(leftAr), ox + 290, oy + 153, {
+        font: 'font8',
+        color: this.attrs.leftARColor || 'white',
+        align: 'center',
+      })
+    }
+    // Box 2: Right-hand Attack Rating (y=164..185, baseline oy + 178) — gated by doesSkillUseAttackRating (0x6FADE350)
+    const rightSkillUsesAr = doesSkillUseAttackRating(this.attrs.rightSkillId ?? 0)
+    if (rightSkillUsesAr) {
+      const rightAr = this.attrs.rightAttackRating ?? this.attrs.rightAR ?? this.attrs.attackRating
+      font.drawText(ctx, String(rightAr), ox + 290, oy + 178, {
+        font: 'font8',
+        color: this.attrs.rightARColor || 'white',
+        align: 'center',
+      })
+    }
     // Box 3: Defense (y=192..213, baseline oy + 204)
     font.drawText(ctx, requireTbl('strchrdef', this.lang), ox + 166, oy + 204, {
       font: 'font8',
@@ -1229,12 +1390,107 @@ export class CharacterSheetPanel {
       )
     }
 
-    // 9. Hover Tooltips for Primary Attribute 1-Point Gain and Damage Formula Breakdown
+    // 9. Canonical 1.13c Hover Tooltips (`0x6FB6C760` Defense/Block, `0x6FB6C8F0` Attack Rating, `0x6FB6CFD4` Close)
+    if (this.hoveredElement !== null) {
+      this.drawVanillaHoverTooltip(ctx, font, ox, oy)
+    }
+
+    // 10. Hover Tooltips for Primary Attribute 1-Point Gain and Damage Formula Breakdown
     if (this.showStatGainTooltips && this.hoveredStat && !skipTooltip) {
       this.drawStatTooltip(ctx, font)
     }
     if (this.showDamageFormulaTooltips && this.hoveredDamageHand && !skipTooltip) {
       this.drawDamageTooltip(ctx, font)
+    }
+  }
+
+  formatVanillaHoverTooltipLines(): string[] {
+    if (!this.hoveredElement) return []
+    const clvl = Math.max(1, Math.trunc(this.attrs.level || 1))
+    const monLvl = Math.max(1, Math.trunc(this.attrs.lastMonsterLevel || clvl))
+    const monName =
+      this.attrs.lastMonsterName && this.attrs.lastMonsterName.trim().length > 0
+        ? this.attrs.lastMonsterName.trim()
+        : this.lang === 'ENG'
+          ? `level ${monLvl} monster`
+          : `等級 ${monLvl} 怪物`
+
+    if (this.hoveredElement === 'close') {
+      return [requireTbl('strClose', this.lang)]
+    }
+    if (this.hoveredElement === 'defense') {
+      const monAr = this.attrs.lastMonsterAttackRating ?? monLvl * 15
+      const monHitPct = computeCharSheetHitChancePct(monAr, this.attrs.defense, monLvl, clvl)
+      const blockPct = computeCharacterBlockChancePct(this.attrs)
+      if (blockPct > 0) {
+        const raw = requireTbl('patchstring#105', this.lang)
+          .replace('%d', String(blockPct))
+          .replace('%s', monName)
+          .replace('%d', String(monHitPct))
+        return raw.split(/\r?\n/).filter(Boolean)
+      }
+      const raw = requireTbl('patchstring#104', this.lang)
+        .replace('%s', monName)
+        .replace('%d', String(monHitPct))
+      return raw.split(/\r?\n/).filter(Boolean)
+    }
+    if (this.hoveredElement === 'leftAr' || this.hoveredElement === 'rightAr') {
+      const skillId =
+        this.hoveredElement === 'leftAr'
+          ? (this.attrs.leftSkillId ?? 0)
+          : (this.attrs.rightSkillId ?? 0)
+      if (!doesSkillUseAttackRating(skillId)) return []
+      const ar =
+        this.hoveredElement === 'leftAr'
+          ? (this.attrs.leftAttackRating ?? this.attrs.leftAR ?? this.attrs.attackRating)
+          : (this.attrs.rightAttackRating ?? this.attrs.rightAR ?? this.attrs.attackRating)
+      const monDef = this.attrs.lastMonsterDefense ?? monLvl * 10
+      const hitPct = computeCharSheetHitChancePct(ar, monDef, clvl, monLvl)
+      const header = requireTbl('StrChr20', this.lang)
+      const detail = requireTbl('patchstring#103', this.lang)
+        .replace('%s', monName)
+        .replace('%d', String(hitPct))
+      return [header, detail]
+    }
+    return []
+  }
+
+  private drawVanillaHoverTooltip(
+    ctx: CanvasRenderingContext2D,
+    font: D2FontRenderer,
+    ox: number,
+    oy: number,
+  ): void {
+    const lines = this.formatVanillaHoverTooltipLines()
+    if (lines.length === 0) return
+    const maxW = lines.reduce((acc, line) => Math.max(acc, font.measureText(line, 'font16')), 0)
+    const boxW = Math.max(44, maxW + 16)
+    const lineH = 16
+    const boxH = lines.length * lineH + 8
+    const centerX =
+      this.hoveredElement === 'close'
+        ? ox + 143
+        : this.hoveredElement === 'defense'
+          ? ox + 239
+          : ox + 241
+    const anchorY =
+      this.hoveredElement === 'close'
+        ? oy + 385
+        : this.hoveredElement === 'defense'
+          ? oy + 190
+          : this.hoveredElement === 'rightAr'
+            ? oy + 164
+            : oy + 138
+    const boxX = Math.max(ox + 4, Math.min(ox + 316 - boxW, Math.round(centerX - boxW / 2)))
+    const boxY = anchorY - boxH
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'
+    ctx.fillRect(boxX, boxY, boxW, boxH)
+    for (let i = 0; i < lines.length; i++) {
+      font.drawText(ctx, lines[i]!, boxX + Math.round(boxW / 2), boxY + 15 + i * lineH, {
+        font: 'font16',
+        color: 'white',
+        align: 'center',
+      })
     }
   }
 }

@@ -591,7 +591,7 @@ describe('Assassin Martial Arts (#254-#280) — 1.13c 4-Layer Parity (Issue #100
       }
 
       const env = makeCasterEnv()
-      // 1. Dual-claw #269 Claws of Thunder adds 2 charges in one cast and spawns Lightup2 overlay
+      // 1. Dual-claw #269 Claws of Thunder adds 2 charges in one cast and spawns progressive_lightning_2 overlay
       expect(
         castSkill(269, 120, 120, {
           engine: env.engine,
@@ -600,9 +600,9 @@ describe('Assassin Martial Arts (#254-#280) — 1.13c 4-Layer Parity (Issue #100
         } as any),
       ).toBe(true)
       expect(env.player.martialCharges[269].count).toBe(2)
-      expect(env.overlays.some((o) => o.type === 'Lightup2')).toBe(true)
+      expect(env.overlays.some((o) => o.type === 'progressive_lightning_2')).toBe(true)
 
-      // 2. Second cast caps #269 at 3 charges (Lightup3)
+      // 2. Second cast caps #269 at 3 charges (progressive_lightning_3)
       env.player.cooldown = 0
       expect(
         castSkill(269, 120, 120, {
@@ -612,17 +612,17 @@ describe('Assassin Martial Arts (#254-#280) — 1.13c 4-Layer Parity (Issue #100
         } as any),
       ).toBe(true)
       expect(env.player.martialCharges[269].count).toBe(3)
-      expect(env.overlays.some((o) => o.type === 'Lightup3')).toBe(true)
+      expect(env.overlays.some((o) => o.type === 'progressive_lightning_3')).toBe(true)
 
-      // 3. #280 Phoenix Strike (SrvDo034) adds 1 charge per cast -> Royalup1, then Royalup2
+      // 3. #280 Phoenix Strike (SrvDo034) adds 1 charge per cast -> progressive_other_1, then progressive_other_2
       env.player.cooldown = 0
       castSkill(280, 120, 120, { engine: env.engine, hudManager: env.hudManager, status: env.status } as any)
       expect(env.player.martialCharges[280].count).toBe(1)
-      expect(env.overlays.some((o) => o.type === 'Royalup1')).toBe(true)
+      expect(env.overlays.some((o) => o.type === 'progressive_other_1')).toBe(true)
       env.player.cooldown = 0
       castSkill(280, 120, 120, { engine: env.engine, hudManager: env.hudManager, status: env.status } as any)
       expect(env.player.martialCharges[280].count).toBe(2)
-      expect(env.overlays.some((o) => o.type === 'Royalup2')).toBe(true)
+      expect(env.overlays.some((o) => o.type === 'progressive_other_2')).toBe(true)
 
       // 4. Finisher #255 Dragon Talon (slvl 12 -> 3 kicks) discharges CoT C3 (nova + 16 bolts) and PS C2 (7 chain lightnings)
       env.player.cooldown = 0
@@ -663,32 +663,32 @@ describe('Assassin Martial Arts (#254-#280) — 1.13c 4-Layer Parity (Issue #100
       selfUnit.x = 50
       selfUnit.y = 50
 
-      // Charge #254 Tiger Strike -> chargeup1
+      // Charge #254 Tiger Strike -> progressive_damage_1
       ;(cw as any).applySkillCastToUnit(selfUnit, 254, 52, 52, 1)
-      expect(selfUnit.overlays.some((o: any) => o.token === 'chargeup1')).toBe(true)
+      expect(selfUnit.overlays.some((o: any) => o.token === 'progressive_damage_1')).toBe(true)
 
-      // Charge #265 Cobra Strike -> stealup1 (from canonical 'Stealup1')
+      // Charge #265 Cobra Strike -> progressive_steal_1
       ;(cw as any).applySkillCastToUnit(selfUnit, 265, 52, 52, 1)
-      expect(selfUnit.overlays.some((o: any) => o.token === 'stealup1')).toBe(true)
+      expect(selfUnit.overlays.some((o: any) => o.token === 'progressive_steal_1')).toBe(true)
 
-      // Charge #259 Fists of Fire -> fireup1 (from canonical 'Fireup1')
+      // Charge #259 Fists of Fire -> progressive_fire_1
       ;(cw as any).applySkillCastToUnit(selfUnit, 259, 52, 52, 1)
-      expect(selfUnit.overlays.some((o: any) => o.token === 'fireup1')).toBe(true)
+      expect(selfUnit.overlays.some((o: any) => o.token === 'progressive_fire_1')).toBe(true)
 
-      // Charge #274 Blades of Ice -> coldup1 (from canonical 'Coldup1')
+      // Charge #274 Blades of Ice -> progressive_cold_1
       ;(cw as any).applySkillCastToUnit(selfUnit, 274, 52, 52, 1)
-      expect(selfUnit.overlays.some((o: any) => o.token === 'coldup1')).toBe(true)
+      expect(selfUnit.overlays.some((o: any) => o.token === 'progressive_cold_1')).toBe(true)
 
-      // Charge #269 Claws of Thunder 3 times -> lightup3 (from canonical 'Lightup3')
+      // Charge #269 Claws of Thunder 3 times -> progressive_lightning_3
       ;(cw as any).applySkillCastToUnit(selfUnit, 269, 52, 52, 1)
       ;(cw as any).applySkillCastToUnit(selfUnit, 269, 52, 52, 1)
       ;(cw as any).applySkillCastToUnit(selfUnit, 269, 52, 52, 1)
-      expect(selfUnit.overlays.some((o: any) => o.token === 'lightup3')).toBe(true)
+      expect(selfUnit.overlays.some((o: any) => o.token === 'progressive_lightning_3')).toBe(true)
 
-      // Charge #280 Phoenix Strike 2 times -> royalup2 (from canonical 'Royalup2')
+      // Charge #280 Phoenix Strike 2 times -> progressive_other_2
       ;(cw as any).applySkillCastToUnit(selfUnit, 280, 52, 52, 1)
       ;(cw as any).applySkillCastToUnit(selfUnit, 280, 52, 52, 1)
-      expect(selfUnit.overlays.some((o: any) => o.token === 'royalup2')).toBe(true)
+      expect(selfUnit.overlays.some((o: any) => o.token === 'progressive_other_2')).toBe(true)
 
       // Release with Normal Attack (skillId === 0): must act as Finisher, spawning 16 clawsofthunderbolt + 7 royalstrikechainlightning and clearing overlays!
       const spawnedKeys: string[] = []
@@ -703,7 +703,9 @@ describe('Assassin Martial Arts (#254-#280) — 1.13c 4-Layer Parity (Issue #100
       expect(spawnedKeys.filter((k) => k === 'royalstrikechainlightning')).toHaveLength(7)
       expect((selfUnit as any).chargeCounts.size).toBe(0)
       expect(
-        selfUnit.overlays.some((o: any) => o.token === 'lightup3' || o.token === 'royalup2'),
+        selfUnit.overlays.some(
+          (o: any) => o.token === 'progressive_lightning_3' || o.token === 'progressive_other_2',
+        ),
       ).toBe(false)
     })
   })

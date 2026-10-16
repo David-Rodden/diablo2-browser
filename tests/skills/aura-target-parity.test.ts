@@ -91,35 +91,35 @@ describe('Issue #397 — Diablo II v1.13c Aura Target & Visual Parity', () => {
       expect(overlay!.length).toBeGreaterThan(0)
     }
 
-    // Verify canonical names
-    expect(getAuraOverlayName(98)).toBe('might')
-    expect(getAuraOverlayName(99)).toBe('prayer')
-    expect(getAuraOverlayName(100)).toBe('resist_fire')
-    expect(getAuraOverlayName(102)).toBe('holy_fire')
-    expect(getAuraOverlayName(103)).toBe('thorns')
-    expect(getAuraOverlayName(104)).toBe('defiance')
-    expect(getAuraOverlayName(105)).toBe('resist_cold')
-    expect(getAuraOverlayName(108)).toBe('blessed_aim')
-    expect(getAuraOverlayName(109)).toBe('cleansing')
-    expect(getAuraOverlayName(110)).toBe('resist_lightning')
-    expect(getAuraOverlayName(113)).toBe('concentration')
-    expect(getAuraOverlayName(114)).toBe('holy_freeze')
-    expect(getAuraOverlayName(115)).toBe('vigor')
-    expect(getAuraOverlayName(118)).toBe('holy_shock')
-    expect(getAuraOverlayName(119)).toBe('sanctuary')
-    expect(getAuraOverlayName(120)).toBe('meditation')
-    expect(getAuraOverlayName(122)).toBe('fanaticism')
-    expect(getAuraOverlayName(123)).toBe('conviction')
-    expect(getAuraOverlayName(124)).toBe('redemption')
-    expect(getAuraOverlayName(125)).toBe('salvation')
+    // Verify canonical names (Skills.txt aurastate -> States.txt overlay1 -> Overlay.txt row; Issue #1069)
+    expect(getAuraOverlayName(98)).toBe('aura_might_front')
+    expect(getAuraOverlayName(99)).toBe('aura_prayer_front')
+    expect(getAuraOverlayName(100)).toBe('aura_resistfire')
+    expect(getAuraOverlayName(102)).toBe('aura_holyfire_front')
+    expect(getAuraOverlayName(103)).toBe('aura_thorns_front')
+    expect(getAuraOverlayName(104)).toBe('aura_defiance_front')
+    expect(getAuraOverlayName(105)).toBe('aura_resistcold')
+    expect(getAuraOverlayName(108)).toBe('blessedaimfront')
+    expect(getAuraOverlayName(109)).toBe('cleansingfront')
+    expect(getAuraOverlayName(110)).toBe('aura_resistlight')
+    expect(getAuraOverlayName(113)).toBe('concentrationfront')
+    expect(getAuraOverlayName(114)).toBe('holyfreeze')
+    expect(getAuraOverlayName(115)).toBe('staminafront')
+    expect(getAuraOverlayName(118)).toBe('holyshockfront')
+    expect(getAuraOverlayName(119)).toBe('sanctuaryfront')
+    expect(getAuraOverlayName(120)).toBe('meditationfront')
+    expect(getAuraOverlayName(122)).toBe('fanaticismfront')
+    expect(getAuraOverlayName(123)).toBe('convictionback')
+    expect(getAuraOverlayName(124)).toBe('redemptionback')
+    expect(getAuraOverlayName(125)).toBe('aura_resistall_front')
 
     // Verify 13 two-part auras have [front, back] parts
     const twoPartAuraIds = [98, 99, 102, 103, 104, 108, 109, 113, 115, 118, 119, 122, 125]
     for (const id of twoPartAuraIds) {
       const parts = getAuraOverlayNames(id)
       expect(parts.length).toBe(2)
-      expect(parts[0]).toMatch(/_front$/)
-      expect(parts[1]).toMatch(/_back$/)
+      expect(parts[0]).toMatch(/front$/)
+      expect(parts[1]).toMatch(/back$/)
     }
 
     // Verify 7 full-ring auras have exactly 1 part
@@ -356,8 +356,8 @@ describe('Issue #397 — Diablo II v1.13c Aura Target & Visual Parity', () => {
     // Activate Defiance aura (#104) -> authentic 1.13c spawns BOTH front and back overlays
     engine.updateActiveAura(104, 20)
     expect(engine.overlays.length).toBe(2)
-    const frontOv = engine.overlays.find(o => o.overlayName === 'defiance_front')!
-    const backOv = engine.overlays.find(o => o.overlayName === 'defiance_back')!
+    const frontOv = engine.overlays.find(o => o.overlayName === 'aura_defiance_front')!
+    const backOv = engine.overlays.find(o => o.overlayName === 'aura_defiance_back')!
     expect(frontOv).toBeDefined()
     expect(backOv).toBeDefined()
     expect(frontOv.preDraw).toBe(false)
@@ -405,7 +405,7 @@ describe('Issue #397 — Diablo II v1.13c Aura Target & Visual Parity', () => {
     expect(backOv.expired).toBe(true)
     expect(engine.activeAuraSkillId).toBe(122)
     expect(engine.activeAuraOverlays.length).toBe(2)
-    expect(engine.activeAuraOverlays.map(o => o.overlayName).sort()).toEqual(['fanaticism_back', 'fanaticism_front'])
+    expect(engine.activeAuraOverlays.map(o => o.overlayName).sort()).toEqual(['fanaticismback', 'fanaticismfront'])
 
     // Deactivating aura completely clears the aura overlays
     engine.updateActiveAura(null)
@@ -520,8 +520,8 @@ describe('Issue #397 — Diablo II v1.13c Aura Target & Visual Parity', () => {
     // Test a two-part aura: Holy Fire (102)
     engine.updateActiveAura(102, 20)
     expect(engine.overlays.length).toBe(2)
-    const holyFireFront = engine.overlays.find(o => o.overlayName === 'holy_fire_front')!
-    const holyFireBack = engine.overlays.find(o => o.overlayName === 'holy_fire_back')!
+    const holyFireFront = engine.overlays.find(o => o.overlayName === 'aura_holyfire_front')!
+    const holyFireBack = engine.overlays.find(o => o.overlayName === 'aura_holyfire_back')!
     expect(holyFireFront).toBeDefined()
     expect(holyFireBack).toBeDefined()
     expect(holyFireFront.preDraw).toBe(false)
@@ -537,8 +537,8 @@ describe('Issue #397 — Diablo II v1.13c Aura Target & Visual Parity', () => {
     // Test another two-part aura: Might (98)
     engine.updateActiveAura(98, 20)
     expect(engine.overlays.length).toBe(2)
-    const mightFront = engine.overlays.find(o => o.overlayName === 'might_front')!
-    const mightBack = engine.overlays.find(o => o.overlayName === 'might_back')!
+    const mightFront = engine.overlays.find(o => o.overlayName === 'aura_might_front')!
+    const mightBack = engine.overlays.find(o => o.overlayName === 'aura_might_back')!
     expect(mightFront.preDraw).toBe(false)
     expect(mightBack.preDraw).toBe(true)
   })

@@ -182,6 +182,19 @@ export function resolveAutomapShrineBadge(shrineCode: number): AutomapShrineBadg
   return AUTOMAP_SHRINE_BADGES[shrineCode] ?? AUTOMAP_SHRINE_BADGES[0]!
 }
 
+/**
+ * Scale factor (`2x`) applied to the native waypoint sprite (`MaxiMap` / `MaxiMapS` frame `307`)
+ * when the `automap-reveal` waypoint highlight enhancement (`showWaypoints`) is active.
+ */
+export const AUTOMAP_WAYPOINT_HIGHLIGHT_SCALE = 2
+
+/**
+ * Bright cyan-blue HDR tint (`[1.8, 2.5, 3.2, 1.0]`) applied to the top-layer `2x` waypoint sprite
+ * when `showWaypoints` is active, boosting the dark cyan border pixels of frame `307` (`#0084d8`)
+ * to vivid luminous cyan-white while preserving the black outline.
+ */
+export const AUTOMAP_WAYPOINT_HIGHLIGHT_TINT = [1.8, 2.5, 3.2, 1.0] as const
+
 /** Full-scale (`bMinimap = false`) and half-scale (`bMinimap = true`) sheet names per slot `0..3`. */
 export const AUTOMAP_SHEET_NAMES: Readonly<
   Record<AutomapAtlasSlot, { readonly full: AutomapSpriteKey; readonly half: AutomapSpriteKey }>
@@ -540,6 +553,8 @@ export interface MinimapDrawOptions {
   readonly stashes?: readonly AutomapStashDescriptor[]
   /** Dynamic shrine entities with type icons/badges (when shrine radar is enabled). */
   readonly shrines?: readonly AutomapShrineDescriptor[]
+  /** Whether to draw an enlarged (2x), bright-tinted top-layer waypoint sprite (`MaxiMap` / `MaxiMapS` `307`). */
+  readonly highlightWaypoints?: boolean
   /** Override level ID (`1..136`). */
   readonly levelId?: number
   /** Override level display name for top-right `Font16` HUD readout. */
@@ -580,6 +595,7 @@ export interface AutomapRenderTelemetry {
     extras: number
     portals: number
     shrines: number
+    waypoints: number
     total: number
   }
   crosshairsDrawn: {
@@ -692,11 +708,13 @@ export class Minimap {
     width: number
     height: number
     tint: readonly [number, number, number, number]
+    blendMode: 'normal' | 'additive'
   } = {
     atlas: null as unknown as AtlasHandle,
     width: 0,
     height: 0,
     tint: AUTOMAP_FADE_TINTS[0]!,
+    blendMode: 'normal',
   }
 
   /** Last drawn level/layer key so manual pan resets when switching automap layers (#549). */
@@ -714,7 +732,7 @@ export class Minimap {
     panY: 0,
     viewport: computeAutomapViewport(800, 600, true),
     cellCounts: { floors: 0, walls: 0, objects: 0, extras: 0, total: 0 },
-    spritesDrawn: { floors: 0, walls: 0, objects: 0, extras: 0, portals: 0, shrines: 0, total: 0 },
+    spritesDrawn: { floors: 0, walls: 0, objects: 0, extras: 0, portals: 0, shrines: 0, waypoints: 0, total: 0 },
     crosshairsDrawn: { player: 0, party: 0, npcs: 0, mercenaries: 0, bosses: 0, monsters: 0, total: 0 },
     revealedRooms: 0,
     warpLabels: [],
@@ -1301,6 +1319,7 @@ export class Minimap {
     this.lastRenderStats.spritesDrawn.extras = 0
     this.lastRenderStats.spritesDrawn.portals = 0
     this.lastRenderStats.spritesDrawn.shrines = 0
+    this.lastRenderStats.spritesDrawn.waypoints = 0
     this.lastRenderStats.spritesDrawn.total = 0
     this.lastRenderStats.crosshairsDrawn.player = 0
     this.lastRenderStats.crosshairsDrawn.party = 0
@@ -1573,6 +1592,80 @@ export class Minimap {
       }
     }
 
+    // 5a. Top-layer enlarged (2x) & highlighted Waypoint icon (`MaxiMap` / `MaxiMapS` frame 307)
+    if (options?.highlightWaypoints && maxiMeta && maxiAtlas) {
+      const wpFrame = maxiMeta.frames[307]
+      if (wpFrame && wpFrame.width > 0 && wpFrame.height > 0) {
+        const scaledW = wpFrame.width * AUTOMAP_WAYPOINT_HIGHLIGHT_SCALE
+        const scaledH = wpFrame.height * AUTOMAP_WAYPOINT_HIGHLIGHT_SCALE
+        const shiftLeft = wpFrame.width * (AUTOMAP_WAYPOINT_HIGHLIGHT_SCALE - 1) * 0.5
+        const shiftTop = wpFrame.height * (AUTOMAP_WAYPOINT_HIGHLIGHT_SCALE - 1) * 0.75
+
+        const drawHighlightedWaypointAt = (xPixel: number, yPixel: number): void => {
+          const screenX = Math.trunc((xPixel * 10) / divisor) - offsetX
+          const screenY = Math.trunc((yPixel * 10) / divisor) - offsetY
+          const drawLeft = screenX + wpFrame.offsetX - halfAnchorX
+          const drawTop = screenY - wpFrame.height + wpFrame.offsetY
+          const scaledLeft = drawLeft - shiftLeft
+          const scaledTop = drawTop - shiftTop
+          if (
+            scaledLeft + scaledW < vp.vpX ||
+            scaledLeft > vpRight ||
+            scaledTop + scaledH < vp.vpY ||
+            scaledTop > vpBottom
+          ) {
+            return
+          }
+          const alpha = isDistanceFade
+            ? this.getCellFadeAlpha(screenX, screenY, vp.centerX, vp.centerY, this.bMinimap)
+            : uniformTint[3]
+          drawOptions.atlas = maxiAtlas
+          drawOptions.width = scaledW * invZoom
+          drawOptions.height = scaledH * invZoom
+          drawOptions.tint = [
+            AUTOMAP_WAYPOINT_HIGHLIGHT_TINT[0],
+            AUTOMAP_WAYPOINT_HIGHLIGHT_TINT[1],
+            AUTOMAP_WAYPOINT_HIGHLIGHT_TINT[2],
+            alpha,
+          ]
+          renderer.draw(
+            wpFrame,
+            toWorldX(scaledLeft),
+            toWorldY(scaledTop),
+            drawOptions,
+          )
+          this.lastRenderStats.spritesDrawn.waypoints += 1
+          this.lastRenderStats.spritesDrawn.total += 1
+        }
+
+        for (const cell of automapLayer.floors) {
+          if ((cell.fSaved ?? 0) !== 0) continue
+          if (cell.cellNo !== 307 && cell.cellNo !== 618) continue
+          if (!this.isAutomapCellRevealed(level, seen, cell)) continue
+          drawHighlightedWaypointAt(cell.xPixel, cell.yPixel)
+        }
+        for (const cell of automapLayer.objects) {
+          if ((cell.fSaved ?? 0) !== 0) continue
+          if (cell.cellNo !== 307) continue
+          if (!this.isAutomapCellRevealed(level, seen, cell)) continue
+          drawHighlightedWaypointAt(cell.xPixel, cell.yPixel)
+        }
+        for (const marker of level.markers) {
+          if (marker.kind !== 'waypoint') continue
+          const isRevealed =
+            marker.preRevealed === true ||
+            (marker.preRevealed === undefined && level.preRevealTown === true) ||
+            this.isCellExplored(level, marker.cellX, marker.cellY)
+          if (!isRevealed) continue
+          const coords = computeAutomapObjectPixelCoords(
+            marker.cellX * 5 + 2,
+            marker.cellY * 5 + 2,
+          )
+          drawHighlightedWaypointAt(coords.xPixel, coords.yPixel)
+        }
+      }
+    }
+
     // 5b. Dynamic Shrine Radar Icons & Badges (Issue #881)
     if (options?.shrines) {
       for (const shrine of options.shrines) {
@@ -1619,12 +1712,14 @@ export class Minimap {
           drawOptions.width = iconW * invZoom
           drawOptions.height = iconH * invZoom
           drawOptions.tint = [1.0, 1.0, 1.0, alpha]
+          drawOptions.blendMode = 'additive'
           renderer.draw(
             shrine.overlayFrame,
             toWorldX(iconLeft),
             toWorldY(iconTop),
             drawOptions,
           )
+          drawOptions.blendMode = 'normal'
         }
         this.lastRenderStats.spritesDrawn.shrines += 1
         this.lastRenderStats.spritesDrawn.total += 1

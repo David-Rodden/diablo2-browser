@@ -1,8 +1,7 @@
 # Diablo II v1.13c Assassin Traps Skill Tree (`Skills.txt` #251, #256, #257, #261, #262, #266, #271, #272, #276, #277) — Server & Client Reverse-Engineering Reference
 
 > **Binary Target**: `D2Game.dll` (`ImageBase = 0x6FC20000`) & `D2Client.dll` (`ImageBase = 0x6FAB0000`), Diablo II: Lord of Destruction v1.13c  
-> **Source Cross-Reference**: `D2MOO/source/D2Game/src/SKILLS/SkillAss.cpp`, `SkillSor.cpp`, `SkillNec.cpp`, `SkillMonst.cpp`, `Skills.cpp`, `Missiles/MissMode.cpp`, `PLAYER/PlayerPets.cpp`, `AI/AiThink.cpp`  
-> **Data Tables**: `data/Skills.txt`, `data/Missiles.txt`, `data/MonStats.txt`, `data/States.txt`, `data/PetType.txt`
+> **Data Tables**: `data/Skills.txt`, `data/Missiles.txt`, `data/MonStats.txt`, `data/States.txt`, `data/PetType.txt` (from 1.13c MPQs in `samples/d2/`)
 
 ---
 

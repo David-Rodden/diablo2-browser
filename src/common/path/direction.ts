@@ -146,3 +146,88 @@ export function PATH_ComputeDirection(nX1: number, nY1: number, nX2: number, nY2
 export function subtileCenter(n: number): number {
   return ((n << 16) + 0x8000) >>> 0
 }
+
+/**
+ * 1.13c `byte_6FDE4F68` 64-entry LUT used by `D2Common_11053` (`0x6FDA5600`, D2MOO `Monsters.cpp:693`)
+ * to map a 64-direction index (`0..63`) to an 8-direction index (`0..7`).
+ */
+export const DIR64_TO_DIR8_11053: readonly number[] = Object.freeze([
+  0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4,
+  4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 0, 0, 0, 0,
+])
+
+/**
+ * `D2Common_11053` (1.13c `0x6FDA5600`, D2MOO `Monsters.cpp:693`):
+ * Converts a 64-direction index (`0..63`) to an 8-direction index (`0..7`).
+ * Returns `0` when `nDirection >= 64` or `< 0`, matching `cmp eax, 0x40; jge`.
+ */
+export function D2Common_11053(nDirection: number): number {
+  const idx = nDirection | 0
+  if (idx < 0 || idx >= 64) {
+    return 0
+  }
+  return DIR64_TO_DIR8_11053[idx] ?? 0
+}
+
+/**
+ * `UNITS_GetDirectionToCoords` (D2MOO `Units.cpp:259`):
+ * Computes the 64-direction index (`0..63`) from unit coordinates `(fromX, fromY)` toward `(toX, toY)`
+ * via `PATH_ComputeDirection`.
+ */
+export function UNITS_GetDirectionToCoords(
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): number {
+  if (
+    (fromX | 0) === (toX | 0) &&
+    (fromY | 0) === (toY | 0) &&
+    (fromX !== toX || fromY !== toY)
+  ) {
+    return PATH_ComputeDirectionFromPreciseCoords_6FDAC760(
+      Math.round(fromX * 65536),
+      Math.round(fromY * 65536),
+      Math.round(toX * 65536),
+      Math.round(toY * 65536),
+    )
+  }
+  return PATH_ComputeDirection(fromX, fromY, toX, toY)
+}
+
+/** 1.13c `Overlay.txt` row indices for Sorceress reactive hit overlays (`Skills.txt` `cltoverlaya` / `prgoverlay`). */
+export const OVERLAY_INDEX_FROZEN_ARMOR_HIT = 42
+export const OVERLAY_INDEX_SHIVER_ARMOR_HIT = 43
+export const OVERLAY_INDEX_CHILL_ARMOR_HIT = 44
+export const OVERLAY_INDEX_ENERGY_SHIELD_HIT_BASE = 87
+
+/**
+ * 1.13c `SKILLS_EventFunc24_EnergyShield` (`0x6FD17820`, D2MOO `SkillSor.cpp:1067`):
+ * `nOverlay = D2Common_11053(UNITS_GetDirectionToCoords(pAttacker, CLIENTS_GetUnitX(pUnit), CLIENTS_GetUnitY(pUnit))) + pSkillsTxtRecord->wPrgOverlay`
+ * where `pAttacker` is the defending Sorceress (`defenderX, defenderY`) and `pUnit` is the damage source (`attackerX, attackerY`).
+ */
+export function computeEnergyShieldHitOverlay113c(
+  defenderX: number,
+  defenderY: number,
+  attackerX: number,
+  attackerY: number,
+  prgOverlayBaseIndex = OVERLAY_INDEX_ENERGY_SHIELD_HIT_BASE,
+): {
+  readonly dir64: number
+  readonly dir8: number
+  readonly overlayIndex: number
+  readonly overlayToken: string
+} {
+  const dir64 = UNITS_GetDirectionToCoords(defenderX, defenderY, attackerX, attackerY)
+  const dir8 = D2Common_11053(dir64)
+  const overlayIndex = prgOverlayBaseIndex + dir8
+  const overlayToken = `energyshieldhit${String(dir8)}`
+  return {
+    dir64,
+    dir8,
+    overlayIndex,
+    overlayToken,
+  }
+}
+
+

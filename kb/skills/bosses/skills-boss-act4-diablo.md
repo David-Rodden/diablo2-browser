@@ -327,7 +327,7 @@ Both Act 4 `diablo` (#243) and World Event `diabloclone` (#333) execute `AITHINK
      - `+2` = `undeadmissile3` (#325, Fire)
      - `+3` = `undeadmissile4` (#326, Lightning)
 4. **1.13c Binary Ground-Truth — `SKILLS_SrvDo112_MonCurseCast` (`0x6FCD5950`) Iron Maiden Removal**:
-   - In 1.10/D2MOO (`SkillMonst.cpp:L1419`), `SKILLS_SrvDo112_MonCurseCast` rolled `0..99` against a 6-entry cumulative probability table that included `SKILL_IRONMAIDEN` (#76).
+   - In pre-1.13 patches (1.10–1.12), `SKILLS_SrvDo112_MonCurseCast` rolled `0..99` against a 6-entry cumulative probability table that included `SKILL_IRONMAIDEN` (#76).
    - **Disassembly of 1.13c `D2Game.dll` (`0x6FCD5950..0x6FCD5BA9`) proves patch 1.13c replaced this with a uniform 5-way modulo roll**:
      ```asm
      6fcd595f: mov ecx, 0x6ac690c5

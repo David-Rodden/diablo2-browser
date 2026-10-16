@@ -203,9 +203,19 @@ export {
   type CanonicalSkillMeta,
 }
 
-function formatPerLevelVal(rawEighths: number): string {
-  const perLvl = rawEighths / 8
-  return Number.isInteger(perLvl) ? `${perLvl}` : perLvl.toFixed(1).replace(/\.0$/, '')
+/**
+ * Ground Truth (`D2Client.dll` `0x6FB046E0` + `0x6FB04E10` `descFunc` 6..10 & `ItemStatCost.txt` `op` 2..5):
+ * Per-level properties (`op` 2..5, `op param = 3`) compute `(clvl * rawEighths) >> 3` as an integer
+ * for the current character level (`clvl >= 1`). Stats 216 (`hp/lvl`) and 217 (`mana/lvl`) have
+ * `ValShift = 8` on the wire (`<< 8`), which is normalized before shifting by `op param = 3`.
+ */
+function formatPerLevelVal(rawEighths: number, charLevel = 1, isValShift8 = false): string {
+  const eighths =
+    isValShift8 && Math.abs(rawEighths) >= 256 && (rawEighths & 0xff) === 0
+      ? rawEighths >> 8
+      : rawEighths
+  const clvl = charLevel > 0 && Number.isFinite(charLevel) ? Math.max(1, Math.trunc(charLevel)) : 1
+  return `${Math.floor((eighths * clvl) / 8)}`
 }
 
 export function formatPropertyCode(
@@ -215,12 +225,21 @@ export function formatPropertyCode(
   maxOrPar?: number | string,
   maybePar?: string | number,
   locale?: TooltipLocale,
+  charLevel = 1,
 ): string {
   if (locale && locale !== 'en') {
-    const i18nOut = formatPropertyCodeI18n(code, valueOrMin, minOrMax, maxOrPar, maybePar, locale)
+    const i18nOut = formatPropertyCodeI18n(code, valueOrMin, minOrMax, maxOrPar, maybePar, locale, charLevel)
     const normCode = (code || '').trim().toLowerCase().replace(/^\*/, '')
     if (i18nOut.startsWith(`${code}: `) && CANONICAL_ISC_DESC_TABLE[normCode]?.descStrPos) {
-      return formatStatByIscDescFunc(normCode, valueOrMin, minOrMax ?? valueOrMin, typeof maxOrPar === 'number' ? maxOrPar : valueOrMin, maybePar, locale)
+      return formatStatByIscDescFunc(
+        normCode,
+        valueOrMin,
+        minOrMax ?? valueOrMin,
+        typeof maxOrPar === 'number' ? maxOrPar : valueOrMin,
+        maybePar,
+        locale,
+        charLevel,
+      )
     }
     return i18nOut
   }
@@ -386,69 +405,79 @@ export function formatPropertyCode(
 
     // --- Per-Level Scaling Properties (func=17, descFunc 6..9) ---
     case 'hp/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Life (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel, true)} to Life (Based on Character Level)`
     case 'mana/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Mana (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel, true)} to Mana (Based on Character Level)`
     case 'stam/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} Maximum Stamina (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} Maximum Stamina (Based on Character Level)`
     case 'regen-stam/lvl':
-      return `Heal Stamina Plus +${formatPerLevelVal(effectiveVal)}% (Based on Character Level)`
+      return `Heal Stamina Plus +${formatPerLevelVal(effectiveVal, charLevel)}% (Based on Character Level)`
     case 'str/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Strength (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Strength (Based on Character Level)`
     case 'dex/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Dexterity (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Dexterity (Based on Character Level)`
     case 'vit/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Vitality (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Vitality (Based on Character Level)`
     case 'enr/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Energy (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Energy (Based on Character Level)`
     case 'ac/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} Defense (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} Defense (Based on Character Level)`
     case 'ac%/lvl':
-      return `+${formatPerLevelVal(effectiveVal)}% Enhanced Defense (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)}% Enhanced Defense (Based on Character Level)`
     case 'dmg/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Maximum Damage (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Maximum Damage (Based on Character Level)`
     case 'dmg%/lvl':
-      return `+${formatPerLevelVal(effectiveVal)}% Enhanced Maximum Damage (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)}% Enhanced Maximum Damage (Based on Character Level)`
     case 'att/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Attack Rating (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Attack Rating (Based on Character Level)`
     case 'att%/lvl':
-      return `${formatPerLevelVal(effectiveVal)}% Bonus to Attack Rating (Based on Character Level)`
+      return `${formatPerLevelVal(effectiveVal, charLevel)}% Bonus to Attack Rating (Based on Character Level)`
+    case 'dmg-cold/lvl':
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Maximum Cold Damage (Based on Character Level)`
+    case 'dmg-fire/lvl':
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Maximum Fire Damage (Based on Character Level)`
+    case 'dmg-ltng/lvl':
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Maximum Lightning Damage (Based on Character Level)`
+    case 'dmg-pois/lvl':
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Maximum Poison Damage (Based on Character Level)`
     case 'dmg-dem/lvl':
-      return `+${formatPerLevelVal(effectiveVal)}% Damage to Demons (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)}% Damage to Demons (Based on Character Level)`
     case 'dmg-und/lvl':
-      return `+${formatPerLevelVal(effectiveVal)}% Damage to Undead (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)}% Damage to Undead (Based on Character Level)`
     case 'att-dem/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Attack Rating against Demons (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Attack Rating against Demons (Based on Character Level)`
     case 'att-und/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} to Attack Rating against Undead (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Attack Rating against Undead (Based on Character Level)`
     case 'deadly/lvl':
-      return `${formatPerLevelVal(effectiveVal)}% Deadly Strike (Based on Character Level)`
+      return `${formatPerLevelVal(effectiveVal, charLevel)}% Deadly Strike (Based on Character Level)`
     case 'crush/lvl':
-      return `${formatPerLevelVal(effectiveVal)}% Chance of Crushing Blow (Based on Character Level)`
+      return `${formatPerLevelVal(effectiveVal, charLevel)}% Chance of Crushing Blow (Based on Character Level)`
     case 'wounds/lvl':
-      return `${formatPerLevelVal(effectiveVal)}% Chance of Open Wounds (Based on Character Level)`
+      return `${formatPerLevelVal(effectiveVal, charLevel)}% Chance of Open Wounds (Based on Character Level)`
     case 'kick/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} Kick Damage (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} Kick Damage (Based on Character Level)`
     case 'thorns/lvl':
-      return `Attacker Takes Damage of ${formatPerLevelVal(effectiveVal)} (Based on Character Level)`
+      return `Attacker Takes Damage of ${formatPerLevelVal(effectiveVal, charLevel)} (Based on Character Level)`
     case 'mag%/lvl':
-      return `${formatPerLevelVal(effectiveVal)}% Better Chance of Getting Magic Items (Based on Character Level)`
+      return `${formatPerLevelVal(effectiveVal, charLevel)}% Better Chance of Getting Magic Items (Based on Character Level)`
     case 'gold%/lvl':
-      return `${formatPerLevelVal(effectiveVal)}% Extra Gold from Monsters (Based on Character Level)`
+      return `${formatPerLevelVal(effectiveVal, charLevel)}% Extra Gold from Monsters (Based on Character Level)`
     case 'res-cold/lvl':
-      return `Cold Resist +${formatPerLevelVal(effectiveVal)}% (Based on Character Level)`
+      return `Cold Resist +${formatPerLevelVal(effectiveVal, charLevel)}% (Based on Character Level)`
     case 'res-fire/lvl':
-      return `Fire Resist +${formatPerLevelVal(effectiveVal)}% (Based on Character Level)`
+      return `Fire Resist +${formatPerLevelVal(effectiveVal, charLevel)}% (Based on Character Level)`
     case 'res-ltng/lvl':
-      return `Lightning Resist +${formatPerLevelVal(effectiveVal)}% (Based on Character Level)`
+      return `Lightning Resist +${formatPerLevelVal(effectiveVal, charLevel)}% (Based on Character Level)`
     case 'res-pois/lvl':
-      return `Poison Resist +${formatPerLevelVal(effectiveVal)}% (Based on Character Level)`
+      return `Poison Resist +${formatPerLevelVal(effectiveVal, charLevel)}% (Based on Character Level)`
     case 'abs-cold/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} Absorbs Cold Damage (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} Absorbs Cold Damage (Based on Character Level)`
     case 'abs-fire/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} Absorbs Fire Damage (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} Absorbs Fire Damage (Based on Character Level)`
     case 'abs-ltng/lvl':
-      return `+${formatPerLevelVal(effectiveVal)} Absorbs Lightning Damage (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} Absorbs Lightning Damage (Based on Character Level)`
+    case 'abs-pois/lvl':
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} Absorbs Poison Damage (Based on Character Level)`
     case 'ac/time':
       return `${plusVal} Defense (Increases During Nighttime)`
 
@@ -736,7 +765,7 @@ export function formatPropertyCode(
       const normCode = code.trim().toLowerCase().replace(/^\*/, '')
       const iscEntry = CANONICAL_ISC_DESC_TABLE[normCode]
       if (iscEntry && iscEntry.descStrPos && iscEntry.descFunc >= 1 && iscEntry.descFunc <= 21 && iscEntry.descFunc !== 11) {
-        return formatStatByIscDescFunc(normCode, effectiveVal, min, max, par, 'en')
+        return formatStatByIscDescFunc(normCode, effectiveVal, min, max, par, 'en', charLevel)
       }
       return `${code}: ${plusVal}${par ? ` (${par})` : ''}`
     }
@@ -1371,6 +1400,7 @@ export function formatStatByIscDescFunc(
   max: number = value,
   param?: string | number,
   locale: TooltipLocale = getTooltipLocale(),
+  charLevel = 1,
 ): string {
   const norm = (statOrCode || '').trim().toLowerCase().replace(/^\*/, '')
   const dict = locale === 'en' ? CANONICAL_ENG_TBL_DICT : CANONICAL_CHI_TBL_DICT
@@ -1394,7 +1424,7 @@ export function formatStatByIscDescFunc(
   }
 
   if (!entry) {
-    return formatPropertyCode(statOrCode, value, min, max, param, locale)
+    return formatPropertyCode(statOrCode, value, min, max, param, locale, charLevel)
   }
 
   const useDgrp = isDgrp1 || isDgrp2
@@ -1423,8 +1453,10 @@ export function formatStatByIscDescFunc(
     return result.replace(/\s+/g, ' ').trim()
   }
 
+  const isValShift8 = entry.id === 216 || entry.id === 217
+  const perLvlStr = formatPerLevelVal(value, charLevel, isValShift8)
   const signedInt = value >= 0 ? `+${value}` : `${value}`
-  const signedPerLvl = value >= 0 ? `+${formatPerLevelVal(value)}` : `${formatPerLevelVal(value)}`
+  const signedPerLvl = value >= 0 ? `+${perLvlStr}` : `${perLvlStr}`
 
   switch (descFunc) {
     case 1:
@@ -1440,20 +1472,20 @@ export function formatStatByIscDescFunc(
     case 6:
       return composeWithVal(signedPerLvl, str1, str2)
     case 7:
-      return composeWithVal(`${formatPerLevelVal(value)}%`, str1, str2)
+      return composeWithVal(`${perLvlStr}%`, str1, str2)
     case 8:
       return composeWithVal(`${signedPerLvl}%`, str1, str2)
     case 9:
-      return composeWithVal(formatPerLevelVal(value), str1, str2)
+      return composeWithVal(perLvlStr, str1, str2)
     case 10:
-      return composeWithVal(`${Math.floor((value * 100) / 128)}%`, str1, str2)
+      return composeWithVal(`${Math.floor((Number(perLvlStr) * 100) / 128)}%`, str1, str2)
     case 11: {
       const rate = Number(param) || value || 1
       const seconds = Math.max(1, Math.floor(100 / rate))
       if (str1.includes('%d')) {
         return str1.replace('%d', String(seconds))
       }
-      return formatPropertyCode(statOrCode, value, min, max, param, locale)
+      return formatPropertyCode(statOrCode, value, min, max, param, locale, charLevel)
     }
     case 12:
       return composeWithVal(value > 1 ? `+${value}` : '', str1)
@@ -1470,7 +1502,7 @@ export function formatStatByIscDescFunc(
     case 21:
       return composeWithVal(`-${Math.abs(value)}`, str1)
     default:
-      return formatPropertyCode(statOrCode, value, min, max, param, locale)
+      return formatPropertyCode(statOrCode, value, min, max, param, locale, charLevel)
   }
 }
 
@@ -2129,17 +2161,15 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
     qualityColor = quality === 'craft' ? '#ff8c00' : '#ffff60'
     const rareDef = item.rolledRareAffixes as GeneratedRareAffixes | undefined
     const rawRareName = rareDef?.name || item.name
-    const enName = resolveRareNameEn(
-      rawRareName,
-      (rareDef as any)?.rarePrefix?.name ?? (rareDef as any)?.prefix1?.name,
-      (rareDef as any)?.rareSuffix?.name ?? (rareDef as any)?.suffix1?.name,
-    )
+    const rarePreKey = (rareDef as any)?.rarePrefix?.name ?? (rareDef as any)?.prefix1?.name
+    const rareSufKey = (rareDef as any)?.rareSuffix?.name ?? (rareDef as any)?.suffix1?.name
+    const enName = resolveRareNameEn(rawRareName, rarePreKey, rareSufKey)
     if (locale === 'zh') {
-      title = translateRareName(rawRareName)
-      subTitle = translateItemName(baseNameEn)
+      title = translateRareName(rawRareName, rarePreKey, rareSufKey)
+      subTitle = translateItemName(baseNameEn, baseCode)
     } else if (locale === 'bilingual') {
-      const rZh = translateRareName(rawRareName)
-      const bZh = translateItemName(baseNameEn)
+      const rZh = translateRareName(rawRareName, rarePreKey, rareSufKey)
+      const bZh = translateItemName(baseNameEn, baseCode)
       title = `${enName} (${rZh})`
       subTitle = `${baseNameEn} (${bZh})`
     } else {
@@ -2187,19 +2217,21 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
     qualityColor = '#4880ff'
     const magicDef = item.rolledMagicAffixes as GeneratedAffixes | undefined
     const rawMagicName = magicDef?.name || item.name
+    const magicPreKey = magicDef?.prefix?.name ?? item.prefix?.name
+    const magicSufKey = magicDef?.suffix?.name ?? item.suffix?.name
     const enName = resolveMagicNameEn(
       rawMagicName,
       base.name,
-      magicDef?.prefix?.name ?? item.prefix?.name,
-      magicDef?.suffix?.name ?? item.suffix?.name,
+      magicPreKey,
+      magicSufKey,
       baseCode,
     )
     if (locale === 'zh') {
-      title = translateMagicName(rawMagicName, base.name)
-      subTitle = translateItemName(baseNameEn)
+      title = translateMagicName(rawMagicName, base.name, magicPreKey, magicSufKey, baseCode)
+      subTitle = translateItemName(baseNameEn, baseCode)
     } else if (locale === 'bilingual') {
-      const mZh = translateMagicName(rawMagicName, base.name)
-      const bZh = translateItemName(baseNameEn)
+      const mZh = translateMagicName(rawMagicName, base.name, magicPreKey, magicSufKey, baseCode)
+      const bZh = translateItemName(baseNameEn, baseCode)
       title = `${enName} (${mZh})`
       subTitle = `${baseNameEn} (${bZh})`
     } else {
@@ -2546,13 +2578,20 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
     }
   }
 
+  const charLevel = Math.max(
+    0,
+    Math.trunc(Number((item as any).charLevel ?? (item as any).playerLevel ?? 0) || 0),
+  )
+  const propCharLevel = charLevel > 0 ? charLevel : 1
+  const rawPlayerClass = String((item as any).charClass ?? (item as any).playerClass ?? '').trim().toLowerCase()
+
   // Merge and sort properties per Issue #125 (min/max damage pairs, dgrp resists/attributes, descpriority)
   const mergedProps = aggregateAndSortProperties(
     rawProps.filter(p => (p.code || '').trim().toLowerCase() !== 'levelreq'),
   )
   for (const prop of mergedProps) {
     lines.push({
-      text: formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale),
+      text: formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale, propCharLevel),
       color: 'blue',
       isMagic: true,
     })
@@ -2695,7 +2734,7 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
             }),
           )
           for (const prop of mergedItemGreen) {
-            const text = formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale)
+            const text = formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale, propCharLevel)
             if (text) {
               activeBonusLines.push({ text, color: 'green' })
             }
@@ -2738,7 +2777,7 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
               }),
             )
             for (const prop of mergedGold) {
-              const text = formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale)
+              const text = formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale, propCharLevel)
               if (text) {
                 activeBonusLines.push({ text, color: 'gold' })
               }
@@ -2765,12 +2804,6 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
   let durPct = 0
   let rolledSockets = 0
   let levelReqBonus = 0
-
-  const charLevel = Math.max(
-    0,
-    Math.trunc(Number((item as any).charLevel ?? (item as any).playerLevel ?? 0) || 0),
-  )
-  const rawPlayerClass = String((item as any).charClass ?? (item as any).playerClass ?? '').trim().toLowerCase()
 
   // Ground Truth (D2Common.dll ITEMS_GetRequiredLevel 0x6FD9A3F0 / Items.cpp:1401-1434):
   // - STAT_ITEM_SINGLESKILL (statId 107, code 'skill' / 'skill-rand'): max(nRequiredLevel, pSkillsTxtRecord->wReqLevel)
@@ -2812,14 +2845,14 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
       totalEdPct += p.value
     } else if (c === 'dmg%/lvl' || c === 'item_maxdamage_percent_perlevel') {
       const rate = p.value !== 0 ? p.value : Number(p.param) || 0
-      if (charLevel > 0) extraMaxEdPct += Math.floor((rate * charLevel) / 8)
+      extraMaxEdPct += Math.floor((rate * propCharLevel) / 8)
     } else if (c === 'dmg-min' || c === 'mindamage' || c === 'secondary_mindamage' || c === 'item_throw_mindamage') {
       flatMinDmg += p.value
     } else if (c === 'dmg-max' || c === 'maxdamage' || c === 'secondary_maxdamage' || c === 'item_throw_maxdamage') {
       flatMaxDmg += p.value
     } else if (c === 'dmg/lvl' || c === 'item_maxdamage_perlevel') {
       const rate = p.value !== 0 ? p.value : Number(p.param) || 0
-      if (charLevel > 0) flatMaxDmg += Math.floor((rate * charLevel) / 8)
+      flatMaxDmg += Math.floor((rate * propCharLevel) / 8)
     } else if (c === 'dmg-norm') {
       flatMinDmg += p.min > 0 ? p.min : p.value
       flatMaxDmg += p.max > 0 ? p.max : p.value
@@ -2830,12 +2863,12 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
       totalAcPct += p.value
     } else if (c === 'ac' || c === 'armorclass') {
       flatAc += p.value
-    } else if ((c === 'ac/lvl' || c === 'item_armor_perlevel') && charLevel > 0) {
+    } else if (c === 'ac/lvl' || c === 'item_armor_perlevel') {
       const rate = p.value !== 0 ? p.value : Number(p.param) || 0
-      flatAc += Math.floor((rate * charLevel) / 8)
-    } else if ((c === 'ac%/lvl' || c === 'item_armorpercent_perlevel') && charLevel > 0) {
+      flatAc += Math.floor((rate * propCharLevel) / 8)
+    } else if (c === 'ac%/lvl' || c === 'item_armorpercent_perlevel') {
       const rate = p.value !== 0 ? p.value : Number(p.param) || 0
-      totalAcPct += Math.floor((rate * charLevel) / 8)
+      totalAcPct += Math.floor((rate * propCharLevel) / 8)
     } else if (c === 'ease') totalEase += p.value
     else if (c === 'dur') durBonus += p.value
     else if (c === 'dur%') durPct += p.value

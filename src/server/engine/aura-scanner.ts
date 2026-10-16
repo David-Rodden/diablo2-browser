@@ -35,6 +35,12 @@ export interface AuraPulseOutcome {
   readonly corpsesRedeemed: number
   readonly healthRestored?: number
   readonly manaRestored?: number
+  readonly unitOverlays?: ReadonlyArray<{
+    readonly unitType: 0 | 1
+    readonly unitId: number
+    readonly overlayId: number
+    readonly overlayToken: string
+  }>
 }
 
 export interface CorpseContext {
@@ -171,6 +177,12 @@ export class AuraScanner {
     let corpsesRedeemed = 0
     let healthRestored = 0
     let manaRestored = 0
+    const unitOverlays: Array<{
+      readonly unitType: 0 | 1
+      readonly unitId: number
+      readonly overlayId: number
+      readonly overlayToken: string
+    }> = []
 
     const radiusSubtiles =
       skill.id === 277
@@ -439,6 +451,13 @@ export class AuraScanner {
               slvl,
               durationFrames: 10,
             })
+            // 1.13c Skills.txt #119 Sanctuary tgtoverlay='cast_undead' (Overlay.txt row 79, Issue #1277)
+            unitOverlays.push({
+              unitType: enemy.unitType === 'monster' ? 1 : 0,
+              unitId: Number(String(enemy.id).replace(/\D+/g, '') || 1) >>> 0,
+              overlayId: 79,
+              overlayToken: 'cast_undead',
+            })
           }
 
           const out = executeSUnitDmg(sourceUnit, enemy, {
@@ -525,6 +544,7 @@ export class AuraScanner {
       corpsesRedeemed,
       healthRestored,
       manaRestored,
+      ...(unitOverlays.length > 0 ? { unitOverlays } : {}),
     }
   }
 

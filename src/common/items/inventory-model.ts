@@ -22,12 +22,25 @@ export const INV_ROWS = 4
 export const STASH_GOLD_CAP = 2_500_000
 
 /**
- * Authentic Diablo II 1.13c Inventory Gold Limit (`D2Common/src/Units/Units.cpp:3103`).
+ * Authentic Diablo II 1.13c Inventory Gold Limit (`D2Common/src/Units/Units.cpp:3103`, ordinal #10459).
  * Character inventory gold is strictly capped at `10,000 * player.level`.
  */
 export function getInventoryGoldLimit(level: number): number {
   const safeLevel = Math.max(1, Math.min(99, Math.floor(level || 1)))
   return safeLevel * 10_000
+}
+
+/**
+ * Authentic Diablo II 1.13c Stash Gold Limit (`D2Common.dll` ordinal #10439 `UNITS_GetStashGoldLimit`).
+ * - `clvl < 30`: `(floor(clvl / 10) + 1) * 50,000` (50k at 1..9, 100k at 10..19, 150k at 20..29)
+ * - `clvl >= 30`: `min(2,500,000, (floor(clvl / 2) + 1) * 50,000)` (800k at 30..31 up to 2,500,000)
+ */
+export function getStashGoldLimit(level: number): number {
+  const clvl = Math.max(1, Math.min(99, Math.floor(Number.isFinite(level) ? level : 1)))
+  if (clvl < 30) {
+    return (Math.floor(clvl / 10) + 1) * 50_000
+  }
+  return Math.min(STASH_GOLD_CAP, (Math.floor(clvl / 2) + 1) * 50_000)
 }
 
 export type EquipSlotId =

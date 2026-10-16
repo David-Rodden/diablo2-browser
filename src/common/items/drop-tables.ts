@@ -877,7 +877,11 @@ export function createDroppedItem(
       options.rareAffixes.rarePrefix?.name,
       options.rareAffixes.rareSuffix?.name,
     )
-    nameZh = translateRareName(options.rareAffixes.name)
+    nameZh = translateRareName(
+      options.rareAffixes.name,
+      options.rareAffixes.rarePrefix?.name,
+      options.rareAffixes.rareSuffix?.name,
+    )
   } else if (qualityTier === 'magic' && options.magicAffixes) {
     name = resolveMagicNameEn(
       options.magicAffixes.name,
@@ -886,17 +890,23 @@ export function createDroppedItem(
       options.magicAffixes.suffix?.name,
       baseCode,
     )
-    nameZh = translateMagicName(options.magicAffixes.name, base.name)
+    nameZh = translateMagicName(
+      options.magicAffixes.name,
+      base.name,
+      options.magicAffixes.prefix?.name,
+      options.magicAffixes.suffix?.name,
+      baseCode,
+    )
   } else if (qualityTier === 'superior') {
     name = `Superior ${resolvedBaseEn}`
-    nameZh = translateItemName(name)
+    nameZh = translateItemName(name, baseCode)
   } else if (qualityTier === 'low') {
     const lowPrefix = LOW_QUALITY_PREFIXES[qualitySubtype ?? 0] ?? 'Cracked'
     name = `${lowPrefix} ${resolvedBaseEn}`
-    nameZh = translateItemName(name)
+    nameZh = translateItemName(name, baseCode)
   } else {
     name = resolvedBaseEn
-    nameZh = translateItemName(name)
+    nameZh = translateItemName(name, baseCode)
   }
 
   return {

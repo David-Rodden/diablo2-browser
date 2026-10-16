@@ -48,6 +48,7 @@ import { SUB_TILES_PER_TILE } from '../../common/world/map.ts'
 import { loadObjectsTable, resolveDs1Object, MONSTER_ROOT, OBJECT_MODE_TOKENS, ADDITIVE_OBJECT_TOKENS, objectCofMember } from '../../common/units/objects.ts'
 import { isWaypointObjectsTxtId, WAYPOINT_TOKENS } from '../../common/units/object-lookup.ts'
 import { decodeCof } from '../../common/formats/cof.ts'
+import { resolveCofLayerDrawMode } from '../../common/units/monster-art.ts'
 import { decodeDcc } from '../../common/formats/dcc.ts'
 import { decodeDc6 } from '../../common/formats/dc6.ts'
 import type { SpriteFrame } from '../../common/formats/sprite.ts'
@@ -1165,7 +1166,7 @@ async function isObjectCofAdditive(token: string, modeIndex: number, baseIsMonst
     const mounted = await ensureArchives()
     const bytes = await mounted.read(member)
     const cof = decodeCof(bytes)
-    const additive = cof.layers.some(l => l.drawEffect === 3 || l.transparent)
+    const additive = cof.layers.some(l => resolveCofLayerDrawMode(l) === 'additive')
     cofAdditiveCache.set(member, additive)
     return additive
   } catch {

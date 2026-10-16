@@ -170,11 +170,21 @@ export function preaggregateEquipmentSkillBonuses(
     }
   }
 
+  let hasSlot4Or5 = false
+  let hasSlot11Or12 = false
+  for (const item of containers.equipment.values()) {
+    if (item.identified === false || item.broken === true) continue
+    const bodyLoc = item.bodyLoc || item.equippedSlot || 0
+    if (bodyLoc === 4 || bodyLoc === 5) hasSlot4Or5 = true
+    else if (bodyLoc === 11 || bodyLoc === 12) hasSlot11Or12 = true
+  }
+  const useSwapSlots = activeWeaponSet === 1 && !hasSlot4Or5 && hasSlot11Or12
+
   const activeEquipped: ItemData[] = []
   for (const item of containers.equipment.values()) {
     if (item.identified === false || item.broken === true) continue
     const bodyLoc = item.bodyLoc || item.equippedSlot || 0
-    if (activeWeaponSet === 0) {
+    if (!useSwapSlots) {
       if (bodyLoc === 11 || bodyLoc === 12) continue
     } else {
       if (bodyLoc === 4 || bodyLoc === 5) continue

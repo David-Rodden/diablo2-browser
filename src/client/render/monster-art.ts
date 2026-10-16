@@ -6,8 +6,11 @@ import type { SpriteGroup, SpriteSheet } from '../../common/formats/sprite.ts'
 import {
   ADDITIVE_MONSTER_TOKENS,
   MONSTER_COMPONENTS,
+  cofLayerDrawModeAlphaByte,
   compositeMonsterAnimation as compositeCommonMonsterAnimation,
   findMonsterLayerSprite,
+  resolveCofLayerDrawMode,
+  type CofLayerDrawBlendMode,
   type MonsterAnimationSheet,
   type MonsterLayerFailure,
 } from '../../common/units/monster-art.ts'
@@ -19,7 +22,10 @@ import type { AnimClipMeta } from '../../common/units/unit-types.ts'
 export {
   ADDITIVE_MONSTER_TOKENS,
   MONSTER_COMPONENTS,
+  cofLayerDrawModeAlphaByte,
   findMonsterLayerSprite,
+  resolveCofLayerDrawMode,
+  type CofLayerDrawBlendMode,
   type MonsterAnimationSheet,
   type MonsterLayerFailure,
 }
@@ -44,7 +50,7 @@ export interface LoadedMonsterArt {
   readonly handle: AtlasHandle
   readonly groups: readonly (readonly AtlasFrame[])[]
   readonly glowGroups?: readonly (readonly AtlasFrame[])[]
-  readonly blendMode?: 'normal' | 'additive'
+  readonly blendMode?: CofLayerDrawBlendMode
   readonly directions: number
   readonly walkOffset: number
   readonly standOffset: number
@@ -75,10 +81,10 @@ export async function loadMonsterAtlas(
   const baseGroups = [...walk.sheet.groups, ...stand.sheet.groups]
   const baseCount = baseGroups.length
 
-  const blendMode: 'normal' | 'additive' =
-    walk.blendMode === 'additive' || stand.blendMode === 'additive'
-      ? 'additive'
-      : 'normal'
+  const blendMode: CofLayerDrawBlendMode =
+    walk.blendMode && walk.blendMode !== 'normal'
+      ? walk.blendMode
+      : stand.blendMode ?? 'normal'
 
   let combined: SpriteSheet
   if (hasGlow) {

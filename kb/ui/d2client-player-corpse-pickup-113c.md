@@ -4,7 +4,7 @@
 > body. The port routed a click on a player unit to `Interact` only when the left skill was Attack (0); any other
 > left skill fell through to a ground walk.
 
-## 1. Server: the body is a new player unit (D2MOO `PlrModes.cpp`, 1.13c D2Game)
+## 1. Server: the body is a new player unit (1.13c `D2Game.dll`)
 
 - `PLRMODE_StartXY_Dead` → `D2GAME_CORPSE_Handler_6FC7FBD0`: `SUNIT_AllocUnitData(UNIT_PLAYER, owner class, x, y,
   …, PLRMODE_DEAD)` — a **new GUID**; owner name copied; `STATE_PLAYERBODY` on; `UNITFLAG_TARGETABLE` set,

@@ -13,7 +13,7 @@
  * - Skill 118: Holy Shock (ReqLevel 24) — `aurastate = holyshock` (#46)
  * - Skill 119: Sanctuary (ReqLevel 24) — `aurastate = sanctuary` (#47)
  * - Skill 122: Fanaticism (ReqLevel 30) — `aurastate = fanaticism` (#49)
- * - Skill 123: Conviction (ReqLevel 30) — `aurastate = conviction` (#50), `auratargetstate = conviction` (#28)
+ * - Skill 123: Conviction (ReqLevel 30) — `aurastate = conviction` (#28), `auratargetstate = conviction` (#28)
  *
  * Defensive Auras (10 skills):
  * - Skill 099: Prayer (ReqLevel 1) — `aurastate = prayer` (#34)
@@ -24,7 +24,7 @@
  * - Skill 110: Resist Lightning (ReqLevel 12) — `aurastate = resistlight` (#5), `passivestate = 183` (+floor(blvl/2)% max light res when off)
  * - Skill 115: Vigor (ReqLevel 18) — `aurastate = stamina` (#41)
  * - Skill 120: Meditation (ReqLevel 24) — `aurastate = meditation` (#48)
- * - Skill 124: Redemption (ReqLevel 30) — `aurastate = redemption` (#51), corpse `STATE_REDEEMED` (#99)
+ * - Skill 124: Redemption (ReqLevel 30) — `aurastate = redemption` (#50), corpse `STATE_REDEEMED` (#99)
  * - Skill 125: Salvation (ReqLevel 30) — `aurastate = resistall` (#8)
  */
 
@@ -48,7 +48,8 @@ export const PALADIN_AURA_SKILL_IDS = [
 ] as const
 
 /**
- * Exact 1.13c `Skills.txt` `aurastate` -> `States.txt` state ID for each Paladin Aura skill.
+ * Exact 1.13c `Skills.txt` `aurastate` -> `States.txt` row id for each Paladin Aura skill
+ * (States.txt: 28 conviction, 29 convicted, 50 redemption, 51 battlecommand — Issue #1046).
  */
 export const PALADIN_AURA_STATE_BY_SKILL_ID: Readonly<Record<number, number>> = {
   98: 33,  // Might -> might (#33)
@@ -68,8 +69,8 @@ export const PALADIN_AURA_STATE_BY_SKILL_ID: Readonly<Record<number, number>> = 
   119: 47, // Sanctuary -> sanctuary (#47)
   120: 48, // Meditation -> meditation (#48)
   122: 49, // Fanaticism -> fanaticism (#49)
-  123: 50, // Conviction -> conviction (#50)
-  124: 51, // Redemption -> redemption (#51)
+  123: 28, // Conviction -> conviction (#28)
+  124: 50, // Redemption -> redemption (#50)
   125: 8,  // Salvation -> resistall (#8)
 }
 

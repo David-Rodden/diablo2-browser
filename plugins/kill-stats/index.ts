@@ -158,6 +158,7 @@ export function createKillStatsPlugin(
             removeToolbarLink()
             removeToolbarLink = null
           }
+          tracker.stopListening()
           await tracker.flushNow()
           tracker.destroy()
         },

@@ -8,6 +8,7 @@ import { UnitStatList } from '../../../src/server/engine/stat-list.ts'
 import { WorldArena } from '../../../src/server/engine/world-arena.ts'
 import { skillModule } from '../../../src/server/skills/impl/ama/skill-027-immolation-arrow.ts'
 import { calculateImmolationArrowStats } from '../../../src/common/skills/amazon-bow.ts'
+import { ClientWorld } from '../../../src/client/world/client-world.ts'
 
 describe('[Skill #027] Immolation Arrow (AMA) — 1.13c Parity (Issue #181)', () => {
   it('evaluates exact 1.13c Skills.txt / Missiles.txt formulas at slvl 1, 10, and 20', async () => {
@@ -168,5 +169,95 @@ describe('[Skill #027] Immolation Arrow (AMA) — 1.13c Parity (Issue #181)', ()
 
     const sFrac = calculateImmolationArrowStats(11.3)
     expect(sFrac.minExplosionDamage).toBe(calculateImmolationArrowStats(11).minExplosionDamage)
+  })
+
+  it('#1293: spawns cltmissileb=explodingarrowexp center explosion + radius-3 fire patch on immolationarrow impact, and collides with recently-killed monsters (<= 600ms) for all elemental/magic arrows (#6/#7/#11/#16/#21/#27/#31)', () => {
+    const arrowCases: Array<{
+      skillId: number
+      missileKey: string
+      expectedExplosionMissile?: string
+      expectedFirePatch?: boolean
+    }> = [
+      { skillId: 6, missileKey: 'magicarrow', expectedExplosionMissile: 'teethexplode' },
+      { skillId: 7, missileKey: 'firearrow', expectedExplosionMissile: 'fireexplode' },
+      { skillId: 11, missileKey: 'coldarrow', expectedExplosionMissile: 'iceexplode' },
+      { skillId: 16, missileKey: 'explodingarrow', expectedExplosionMissile: 'explodingarrowexp' },
+      { skillId: 21, missileKey: 'icearrow', expectedExplosionMissile: 'iceexplode' },
+      { skillId: 27, missileKey: 'immolationarrow', expectedExplosionMissile: 'explodingarrowexp', expectedFirePatch: true },
+      { skillId: 31, missileKey: 'freezingarrow', expectedExplosionMissile: 'freezingarrowexp1' },
+    ]
+
+    for (const tc of arrowCases) {
+      const world = new ClientWorld()
+      ;(world as any)._timeMs = 1000
+      ;(world as any)._monsters.set(700, {
+        id: 700,
+        unitType: 'monster',
+        classId: 1,
+        x: 102,
+        y: 100,
+        dead: true,
+        diedAtMs: 800, // died 200ms ago (<= 600ms window)
+        states: new Set<number>(),
+      })
+
+      const arrow = (world as any).spawnMissileByKey(tc.missileKey, 100, 100, 110, 100, {
+        ownerType: 'player',
+        ownerId: 1,
+        sourceSkillId: tc.skillId,
+        skillLevel: 5,
+      })
+
+      for (let i = 0; i < 6; i++) {
+        if (!(world as any)._units.has(arrow.key)) break
+        ;(world as any).stepMissileUnit(arrow)
+      }
+
+      // Must have collided with the recently-killed monster at x=102 instead of flying all the way to x=110
+      expect((world as any)._units.has(arrow.key), `${tc.missileKey} consumed on impact`).toBe(false)
+      expect(arrow.piercedTargets?.has(700), `${tc.missileKey} records pierced target 700`).toBe(true)
+
+      const spawns = Array.from((world as any)._units.values()).filter(
+        (u: any) => u.unitType === 'missile' && u.key !== arrow.key,
+      )
+      if (tc.expectedExplosionMissile) {
+        expect(
+          spawns.some((u: any) => u.missileKey === tc.expectedExplosionMissile && Math.abs(u.x - 102) < 2),
+          `${tc.missileKey} spawns ${tc.expectedExplosionMissile} at monster x=102`,
+        ).toBe(true)
+      }
+      if (tc.expectedFirePatch) {
+        const firePatches = spawns.filter((u: any) =>
+          ['firewall', 'firesmall', 'firemedium'].includes(u.missileKey),
+        )
+        expect(firePatches.length).toBeGreaterThanOrEqual(20)
+      }
+    }
+
+    // Verify old corpses (diedAtMs > 600ms ago) are ignored so arrows fly past them
+    const worldOldCorpse = new ClientWorld()
+    ;(worldOldCorpse as any)._timeMs = 2000
+    ;(worldOldCorpse as any)._monsters.set(701, {
+      id: 701,
+      unitType: 'monster',
+      classId: 1,
+      x: 102,
+      y: 100,
+      dead: true,
+      diedAtMs: 1000, // died 1000ms ago (> 600ms window)
+      states: new Set<number>(),
+    })
+    const arrowOverCorpse = (worldOldCorpse as any).spawnMissileByKey('immolationarrow', 100, 100, 120, 100, {
+      ownerType: 'player',
+      ownerId: 1,
+      sourceSkillId: 27,
+      skillLevel: 5,
+    })
+    for (let i = 0; i < 6; i++) {
+      if (!(worldOldCorpse as any)._units.has(arrowOverCorpse.key)) break
+      ;(worldOldCorpse as any).stepMissileUnit(arrowOverCorpse)
+    }
+    expect(arrowOverCorpse.piercedTargets?.has(701)).toBe(false)
+    expect((worldOldCorpse as any)._units.has(arrowOverCorpse.key)).toBe(true)
   })
 })

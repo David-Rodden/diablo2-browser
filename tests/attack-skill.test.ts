@@ -462,7 +462,7 @@ describe('Issue #151: Normal Attack Icon Completion & Dual Slot Binding', () => 
       expect(engine.projectiles).toHaveLength(6)
       expect(engine.projectiles[0]!.nextDelay).toBe(4)
 
-      // #22 Guided Arrow => homing = true, pierce = false, range = 3072 (ttl = 128)
+      // #22 Guided Arrow => homing = true, pierce capability per #1306, range = 3072 (ttl = 128)
       engine.projectiles.length = 0
       engine.world.player.cooldown = 0
       ;(engine.world.player as any).pierce = true
@@ -476,7 +476,7 @@ describe('Issue #151: Normal Attack Icon Completion & Dual Slot Binding', () => 
       ).toBe(true)
       expect(engine.projectiles).toHaveLength(1)
       expect(engine.projectiles[0]!.homing).toBe(true)
-      expect(engine.projectiles[0]!.pierce).toBe(false)
+      expect(engine.projectiles[0]!.pierce).toBe(true)
       expect(engine.projectiles[0]!.ttl).toBe(128)
       ;(engine.world.player as any).pierce = false
 

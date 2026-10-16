@@ -86,6 +86,8 @@ export interface WorldSoundRequest113c {
   readonly local?: boolean | undefined
   readonly isLocalPlayer?: boolean | undefined
   readonly unit?: SoundUnitRef113c | null | undefined
+  readonly unitId?: number | undefined
+  readonly unitType?: SoundUnitRef113c['unitType'] | string | undefined
   readonly x?: number | undefined
   readonly y?: number | undefined
   readonly volume?: number | undefined
@@ -726,6 +728,15 @@ export class AudioRuntime113c {
     return this.records.stopUnitLoopSounds(unit)
   }
 
+  /**
+   * 0x6fad25d0 + StopSound 0x6fb38bf0 (used by SKILLS_CltDo45_Whirlwind 0x6fb76472 / 0x6fb7655d for
+   * barbarian_whirlwind 2531): detaches `unit` from active records in `soundId`'s variant group and
+   * fades/stops any record left without attached units.
+   */
+  stopUnitSound(unit: SoundUnitRef113c, soundId: number): number {
+    return this.records.stopUnitSound(unit, soundId)
+  }
+
   drainWorldRequests(requests: readonly WorldSoundRequest113c[]): number[] {
     const handles: number[] = []
     for (const req of requests) {
@@ -737,6 +748,27 @@ export class AudioRuntime113c {
         if (req.unit) {
           this.stopUnitLoopSound(req.unit)
         }
+        continue
+      }
+      if (req.kind === 'unit-sound-stop' || req.kind === 'skill-cast-stop') {
+        const resolvedUnit: SoundUnitRef113c | undefined =
+          req.unit ??
+          (req.unitId !== undefined
+            ? {
+                unitType: (req.unitType as SoundUnitRef113c['unitType']) ?? 'player',
+                id: req.unitId,
+              }
+            : undefined)
+        const stopSid =
+          req.soundId !== undefined && req.soundId > 0
+            ? req.soundId
+            : req.skillId === 151
+              ? 2531
+              : 0
+        if (resolvedUnit && stopSid > 0) {
+          this.stopUnitSound(resolvedUnit, stopSid)
+        }
+        this.skillSounds.onSkillCastStop(req)
         continue
       }
       if (req.kind === 'unit-loop-start') {
@@ -801,8 +833,29 @@ export class AudioRuntime113c {
         continue
       }
       if (req.soundId === undefined || req.soundId <= 0) continue
+      const resolvedPlayUnit: SoundUnitRef113c | undefined =
+        req.unit ??
+        (req.unitId !== undefined
+          ? {
+              unitType: (req.unitType as SoundUnitRef113c['unitType']) ?? 'player',
+              id: req.unitId,
+              ...(req.x !== undefined ? { x: Math.round(req.x) } : {}),
+              ...(req.y !== undefined ? { y: Math.round(req.y) } : {}),
+              ...(req.local !== undefined
+                ? { isLocalPlayer: req.local }
+                : req.isLocalPlayer !== undefined
+                  ? { isLocalPlayer: req.isLocalPlayer }
+                  : {}),
+            }
+          : undefined)
+      if (
+        resolvedPlayUnit &&
+        (req.skillId === 151 || (req.soundId >= 2531 && req.soundId <= 2534))
+      ) {
+        this.stopUnitSound(resolvedPlayUnit, 2531)
+      }
       const h = this.playSound(req.soundId, {
-        ...(req.unit !== undefined ? { unit: req.unit } : {}),
+        ...(resolvedPlayUnit !== undefined ? { unit: resolvedPlayUnit } : {}),
         x: req.x,
         y: req.y,
         ...(req.local !== undefined

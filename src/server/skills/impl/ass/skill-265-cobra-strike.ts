@@ -36,7 +36,7 @@ export const skillModule: SkillModule = {
     const outcome = executeSkillCore113c(ctx)
     const stealState = ctx.caster.stateBus.getState('progressive_steal') ?? ctx.caster.stateBus.getState('cobrastrike')
     const chargeCount = stealState ? (stealState.stats?.charge ?? stealState.stats?.progressive_charges ?? 1) : 0
-    const slvl = ctx.evalResult?.slvl ?? Math.max(1, ctx.caster.statList.getSkillLevel(265, 'ass'))
+    const slvl = ctx.evalResult?.slvl ?? Math.max(1, ctx.caster.statList.getEffectiveSkillLevel(265))
     const leechBonus = getCobraStrikeLeechBonus(chargeCount, slvl)
     return {
       ...outcome,

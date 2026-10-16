@@ -108,7 +108,7 @@ describe('[Skill #033] Pierce (AMA) — 1.13c Parity (Issue #187)', () => {
     expect(outcome?.executed).toBe(true)
   })
 
-  it('validates 1.13c calculatePierceStats pure calculations, caps, and Guided Arrow 0% invariant', () => {
+  it('validates 1.13c calculatePierceStats pure calculations, caps, and Guided Arrow (#1306) pierce scaling', () => {
     // slvl 1: dm(10, 100, 1) = floor(110*1*90 / (100*7)) + 10 = floor(9900/700) + 10 = 14 + 10 = 24%
     const stats1 = calculatePierceStats(1)
     expect(stats1.chancePct).toBe(24)
@@ -126,14 +126,14 @@ describe('[Skill #033] Pierce (AMA) — 1.13c Parity (Issue #187)', () => {
     const stats20 = calculatePierceStats(20)
     expect(stats20.chancePct).toBe(86)
 
-    // Guided Arrow (skillId === 22) strict zero-pierce invariant: chance MUST be 0% regardless of slvl!
+    // Guided Arrow (skillId === 22) calculates pierce chance using the same dm(10, 100, slvl) curve (#1306):
     const gaPierceLvl1 = calculatePierceStats(1, 22)
     expect(gaPierceLvl1.isGuidedArrow).toBe(true)
-    expect(gaPierceLvl1.chancePct).toBe(0)
+    expect(gaPierceLvl1.chancePct).toBe(24)
 
     const gaPierceLvl20 = calculatePierceStats(20, 22)
     expect(gaPierceLvl20.isGuidedArrow).toBe(true)
-    expect(gaPierceLvl20.chancePct).toBe(0)
+    expect(gaPierceLvl20.chancePct).toBe(86)
   })
 
   it('uses 1.13c dm(10, 100, slvl) + item_pierce in registry and respects pierceChancePct and 4-pierce cap in MissileEngine', async () => {

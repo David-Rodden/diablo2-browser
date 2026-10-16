@@ -6,13 +6,12 @@
  *   on the Character Sheet as `base+bonus` (`x+y`).
  * - `showBasePlusBonusSkills`: displays learned skill levels in Skill Tree sockets and skill
  *   hover tooltips as `hardPoints+bonusLevels` (`x+y`).
- * - `alwaysShowGlobeValues`: permanently displays `current / max` Life and Mana on the red and
- *   blue globes without requiring mouse hover.
  * - `showStatGainTooltips`: displays a floating tooltip with 1-point attribute gains (e.g.
  *   `+x Life`, `+y Melee Damage`) when hovering over primary attributes on the Character Sheet.
+ * - `showWeaponDamageFormula`: displays weapon attack and spell calculation breakdown tooltips.
  *
  * When disabled in the Plugin Menu, `PluginHost` automatically releases the capability claim
- * and reverts all four settings to 100% authentic Diablo II v1.13c vanilla display (`false`).
+ * and reverts all settings to 100% authentic Diablo II v1.13c vanilla display (`false`).
  */
 
 import {
@@ -36,8 +35,8 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
       en: 'HUD Display Enhancements',
     },
     description: {
-      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示，并在生命/法力球上常驻显示当前/最大数值。关闭插件后严格恢复 1.13c 原版显示。',
-      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, and permanently shows current/max Life & Mana on the globes. Reverts to 1.13c vanilla display when disabled.',
+      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示、悬停伤害时显示计算公式。关闭插件后严格恢复 1.13c 原版显示。',
+      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, and shows damage calculation formulas. Reverts to 1.13c vanilla display when disabled.',
     },
     defaultEnabled: true,
     settings: [
@@ -70,15 +69,6 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
       },
       {
         kind: 'boolean',
-        key: 'alwaysShowGlobeValues',
-        label: {
-          zh: '红蓝球常驻显示当前/最大生命与法力',
-          en: 'Always Show Life & Mana on Globes',
-        },
-        default: true,
-      },
-      {
-        kind: 'boolean',
         key: 'showWeaponDamageFormula',
         label: {
           zh: '武器与人物面板伤害悬停显示计算公式',
@@ -91,7 +81,6 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
       const readSettingsConfig = (): HudEnhancementsConfig => ({
         showBasePlusBonusStats: ctx.settings.get('showBasePlusBonusStats') === true,
         showBasePlusBonusSkills: ctx.settings.get('showBasePlusBonusSkills') === true,
-        alwaysShowGlobeValues: ctx.settings.get('alwaysShowGlobeValues') === true,
         showStatGainTooltips: ctx.settings.get('showStatGainTooltips') === true,
         showWeaponDamageFormula: ctx.settings.get('showWeaponDamageFormula') === true,
       })
@@ -104,9 +93,6 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         }
         if (ctx.settings.get('showBasePlusBonusSkills') !== clientCfg.showBasePlusBonusSkills) {
           ctx.settings.set('showBasePlusBonusSkills', clientCfg.showBasePlusBonusSkills)
-        }
-        if (ctx.settings.get('alwaysShowGlobeValues') !== clientCfg.alwaysShowGlobeValues) {
-          ctx.settings.set('alwaysShowGlobeValues', clientCfg.alwaysShowGlobeValues)
         }
         if (ctx.settings.get('showStatGainTooltips') !== clientCfg.showStatGainTooltips) {
           ctx.settings.set('showStatGainTooltips', clientCfg.showStatGainTooltips)
@@ -121,7 +107,6 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         if (
           key === 'showBasePlusBonusStats' ||
           key === 'showBasePlusBonusSkills' ||
-          key === 'alwaysShowGlobeValues' ||
           key === 'showStatGainTooltips' ||
           key === 'showWeaponDamageFormula'
         ) {
@@ -145,10 +130,6 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         if (cfg.showBasePlusBonusSkills) {
           activeZh.push('技能x+y')
           activeEn.push('Skills x+y')
-        }
-        if (cfg.alwaysShowGlobeValues) {
-          activeZh.push('红蓝球数值')
-          activeEn.push('Globe HP/MP')
         }
         if (cfg.showWeaponDamageFormula) {
           activeZh.push('武器伤害公式')
@@ -180,9 +161,6 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
           }
           if (typeof patch.showBasePlusBonusSkills === 'boolean') {
             ctx.settings.set('showBasePlusBonusSkills', patch.showBasePlusBonusSkills)
-          }
-          if (typeof patch.alwaysShowGlobeValues === 'boolean') {
-            ctx.settings.set('alwaysShowGlobeValues', patch.alwaysShowGlobeValues)
           }
           if (typeof patch.showStatGainTooltips === 'boolean') {
             ctx.settings.set('showStatGainTooltips', patch.showStatGainTooltips)

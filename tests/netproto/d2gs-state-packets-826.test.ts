@@ -145,13 +145,12 @@ describe('S2C 0xA8 SetState (D2Client 0x6fb5dd70)', () => {
   })
 })
 
-describe('S2C 0xA5 / 0xA7 (no stat list)', () => {
-  it('tag their origin', () => {
+describe('S2C 0xA5 StateSkillEffect & 0xA7 StateSet (no stat list)', () => {
+  it('decodes 0xA5 as StateSkillEffect (skillId) and 0xA7 as StateSet (origin 0xA7)', () => {
     expect(decode(packet0xA5(1, 7, CLOAK_OF_SHADOWS))).toEqual({
-      type: 'StateSet',
+      type: 'StateSkillEffect',
       unit: { unitType: 1, id: 7 },
-      state: CLOAK_OF_SHADOWS,
-      origin: 0xa5,
+      skillId: CLOAK_OF_SHADOWS,
     })
     expect(decode(packet0xA7(1, 7, CLOAK_OF_SHADOWS))).toEqual({
       type: 'StateSet',

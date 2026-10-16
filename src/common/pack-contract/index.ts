@@ -5,6 +5,7 @@
  */
 
 import type { AutomapLayerData } from '../formats/automap-table.ts'
+import type { D2DrawModeBlend } from '../gfx/draw-mode.ts'
 import type { ActLayout } from '../world/act-variants.ts'
 import type { SceneEntrance, SceneWarp, SceneWaypoint } from '../world/level-links.ts'
 import type { MonsterStats } from '../units/unit-types.ts'
@@ -160,7 +161,7 @@ export interface EntityMeta {
   readonly weaponClass?: string
   readonly file: string
   readonly format?: string
-  readonly blendMode?: 'normal' | 'additive'
+  readonly blendMode?: D2DrawModeBlend
   readonly width: number
   readonly height: number
   readonly directions: number
@@ -221,7 +222,7 @@ export interface PackedEntityIndexEntry {
   readonly weapon: string
   readonly file: string
   readonly format?: string | undefined
-  readonly blendMode?: 'normal' | 'additive' | undefined
+  readonly blendMode?: D2DrawModeBlend | undefined
   readonly width: number
   readonly height: number
   readonly directions: number
@@ -285,7 +286,7 @@ export interface ObjectIndexEntry {
   readonly directions: number
   readonly dirCount: number
   readonly modes: readonly string[]
-  readonly blendMode?: 'normal' | 'additive' | undefined
+  readonly blendMode?: D2DrawModeBlend | undefined
   readonly trans?: number | undefined
 }
 

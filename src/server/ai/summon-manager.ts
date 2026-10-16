@@ -865,6 +865,15 @@ export class SummonManager {
       })
     }
 
+    // 1.13c SKILLS_SrvDo115_Vines (0x6FC66720): apply Skills.txt aurastate = 'vine_beast' (States.txt row #150)
+    if (params.skillId === 222 || params.skillId === 231 || params.skillId === 241) {
+      petStateBus.applyState({
+        stateNameOrId: 'vine_beast',
+        slvl: params.slvl,
+        durationFrames: 999999,
+      })
+    }
+
     // 1.13c Shadow Warrior (268) & Shadow Master (279) skill inheritance
     // (D2Game AiThink.cpp:14004-14020 & 14258-14272: max(1, floor(shadowSlvl / 3) + floor(ownerSkillLvl / 2)))
     if (params.skillId === 268) {
@@ -897,14 +906,14 @@ export class SummonManager {
     if (params.skillId === 236) subSkillIds.push(297) // Wolverine Aura (#297)
     if (params.skillId === 246) subSkillIds.push(296) // Barbs Aura (#296)
     if (params.skillId === 261) subSkillIds.push(306) // BoltSentry
-    if (params.skillId === 231) subSkillIds.push(307) // CorpseCycler
+    if (params.skillId === 231) subSkillIds.push(307, 294) // CorpseCycler + Vine Attack
     if (params.skillId === 272) subSkillIds.push(311) // mon inferno sentry
     if (params.skillId === 276) subSkillIds.push(312, 324) // mon death sentry + death sentry ltng
     if (params.skillId === 271) subSkillIds.push(313) // sentry lightning
     if (params.skillId === 237) subSkillIds.push(314, 292) // fenris rage + Spirit Wolf Teleport
     if (params.skillId === 227) subSkillIds.push(292) // Spirit Wolf Teleport
     if (params.skillId === 268 || params.skillId === 279) subSkillIds.push(292) // Teleport 2
-    if (params.skillId === 241) subSkillIds.push(325) // VineCycler
+    if (params.skillId === 241) subSkillIds.push(325, 294) // VineCycler + Vine Attack
     if (params.skillId === 247) subSkillIds.push(326) // BearSmite
     if (params.skillId === 62) subSkillIds.push(337)  // HydraMissile
     if (params.skillId === 80) subSkillIds.push(338)  // NecromageMissile
@@ -1329,7 +1338,7 @@ export class SummonManager {
               pet.petType === 'assassintrap'
                 ? {
                     id: pet.uid,
-                    name: pet.kind,
+                    name: pet.kind ?? 'sentry',
                     unitType: 'monster',
                     statList: pet.statList,
                     stateBus: pet.stateBus,
@@ -1425,7 +1434,7 @@ export class SummonManager {
             pet.petType === 'assassintrap'
               ? {
                   id: pet.uid,
-                  name: pet.kind,
+                  name: pet.kind ?? 'sentry',
                   unitType: 'monster',
                   statList: pet.statList,
                   stateBus: pet.stateBus,

@@ -17,7 +17,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseMissilesTxt } from '../src/server/skills/skills.ts'
 import {
-  THROW_MISSILE_BY_WEAPON_TYPE,
   resolveThrowMissileForItemCode,
 } from '../src/common/skills/weapon-combat-meta.ts'
 import { LINEAR_SKILL_MISSILES, ClientWorld } from '../src/client/world/client-world.ts'
@@ -44,46 +43,48 @@ describe('[Issue #905] Throw weapon missile & TH animation parity', () => {
     expect(axe!.trans).toBe(0)
   })
 
-  it('2. No nonexistent missile names: every THROW_MISSILE_BY_WEAPON_TYPE value resolves in 1.13c Missiles.txt', () => {
+  it('2. No nonexistent missile names: every resolved throw missile value exists in 1.13c Missiles.txt', () => {
     const map = parseMissilesTxt(missilesTxtContent)
-    for (const missileName of Object.values(THROW_MISSILE_BY_WEAPON_TYPE)) {
-      expect(map.get(missileName), `missile "${missileName}" must exist in Missiles.txt`).toBeDefined()
+    for (const code of ['tkf', 'tax', 'jav', 'pil', 'glv', 'ops', 'opm', 'opl', 'gps', 'gpm', 'gpl']) {
+      const missileName = resolveThrowMissileForItemCode(code)
+      expect(missileName).not.toBeNull()
+      expect(map.get(missileName!), `missile "${missileName}" must exist in Missiles.txt`).toBeDefined()
     }
     // The pre-fix names were typos that silently fell back to a synthetic record.
     expect(map.has('throwingknife')).toBe(false)
     expect(map.has('throwingaxe')).toBe(false)
   })
 
-  it('3. resolveThrowMissileForItemCode maps every 1.13c throwing weapon code by Weapons.txt type', () => {
-    const knives = ['tkf', 'bkf', '7tk', '7bk']
-    const axes = ['tax', 'bal', '7ta', '7b8']
-    const javelins = [
-      'jav', 'pil', 'ssp', 'glv', 'tsp',
-      '9ja', '9pi', '9s9', '9gl', '9ts',
-      '7ja', '7pi', '7s7', '7gl', '7ts',
-      'am5', 'ama', 'amf',
-    ]
+  it('3. resolveThrowMissileForItemCode maps every 1.13c throwing weapon code by Weapons.txt missiletype', () => {
+    const knives = ['tkf', 'bkf', '9tk', '9bk', '7tk', '7bk']
+    const axes = ['tax', 'bal', '9ta', '9b8', '7ta', '7b8']
+    const javelins = ['jav', 'ssp', '9ja', '7ja']
+    const pilums = ['pil', 'tsp', 'am5', 'ama', 'amf']
+    const glaives = ['glv', '9pi', '9s9', '9gl', '9ts', '7pi', '7s7', '7gl', '7ts']
     for (const code of knives) expect(resolveThrowMissileForItemCode(code), code).toBe('throwknife')
     for (const code of axes) expect(resolveThrowMissileForItemCode(code), code).toBe('throwaxe')
     for (const code of javelins) expect(resolveThrowMissileForItemCode(code), code).toBe('javelin')
-    // Throwing potions (Weapons.txt tpot): missile differs per item code, not per type.
-    expect(resolveThrowMissileForItemCode('ops'), 'ops').toBe('oilpotion')
+    for (const code of pilums) expect(resolveThrowMissileForItemCode(code), code).toBe('pilum')
+    for (const code of glaives) expect(resolveThrowMissileForItemCode(code), code).toBe('glaive')
+    // Throwing potions (Weapons.txt tpot): missiletype column (44..49).
+    expect(resolveThrowMissileForItemCode('ops'), 'ops').toBe('fulminatingpotion')
     expect(resolveThrowMissileForItemCode('opm'), 'opm').toBe('explosivepotion')
-    expect(resolveThrowMissileForItemCode('opl'), 'opl').toBe('fulminatingpotion')
-    expect(resolveThrowMissileForItemCode('gps'), 'gps').toBe('rancidgasepotion')
+    expect(resolveThrowMissileForItemCode('opl'), 'opl').toBe('oilpotion')
+    expect(resolveThrowMissileForItemCode('gps'), 'gps').toBe('stranglinggaspotion')
     expect(resolveThrowMissileForItemCode('gpm'), 'gpm').toBe('chokinggaspoition')
-    expect(resolveThrowMissileForItemCode('gpl'), 'gpl').toBe('stranglinggaspotion')
-    // Non-throwing weapons and junk codes must yield null (no guessing).
-    for (const code of ['dgr', 'ax1', 'gis', 'hth', '', undefined]) {
+    expect(resolveThrowMissileForItemCode('gpl'), 'gpl').toBe('rancidgasepotion')
+    // Non-throwing weapons (even hax/whm which have monster missiletype in Weapons.txt) and junk codes must yield null.
+    for (const code of ['dgr', 'ax1', 'hax', 'whm', 'gis', 'hth', '', undefined]) {
       expect(resolveThrowMissileForItemCode(code), String(code)).toBeNull()
     }
   })
 
-  it('4. Server registry mapping: tkni→throwknife, taxe→throwaxe, jave/ajav→javelin', () => {
-    expect(THROW_MISSILE_BY_WEAPON_TYPE.tkni).toBe('throwknife')
-    expect(THROW_MISSILE_BY_WEAPON_TYPE.taxe).toBe('throwaxe')
-    expect(THROW_MISSILE_BY_WEAPON_TYPE.jave).toBe('javelin')
-    expect(THROW_MISSILE_BY_WEAPON_TYPE.ajav).toBe('javelin')
+  it('4. Weapons.txt missiletype mapping: tkf→throwknife, tax→throwaxe, jav→javelin, pil→pilum, glv→glaive', () => {
+    expect(resolveThrowMissileForItemCode('tkf')).toBe('throwknife')
+    expect(resolveThrowMissileForItemCode('tax')).toBe('throwaxe')
+    expect(resolveThrowMissileForItemCode('jav')).toBe('javelin')
+    expect(resolveThrowMissileForItemCode('pil')).toBe('pilum')
+    expect(resolveThrowMissileForItemCode('glv')).toBe('glaive')
   })
 
   it('5. Client: skills 2/4/140 are not hardcoded into LINEAR_SKILL_MISSILES (missile is weapon-dependent)', () => {

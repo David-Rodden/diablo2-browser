@@ -11,9 +11,24 @@ import {
   type UnitTypeName,
 } from '../../netproto/index.ts'
 import { PALADIN_AURA_STATE_BY_SKILL_ID } from '../../common/skills/paladin-auras.ts'
+import {
+  MONSTER_MODE_MISSILES_113C,
+  MONSTER_MODE_MISSILES_BY_ID_113C,
+  getMonsterModeMissile113c,
+  getMonsterModeMissileById113c,
+  type MonsterModeMissiles113c,
+} from '../../common/units/monster-mode-missiles-113c.ts'
 import type { D2Seed } from '../../common/drlg/light-grid.ts'
-import type { ClientUnit } from './client-unit.ts'
+import type { ClientUnit, ClientUnitOverlay } from './client-unit.ts'
 import type { ClientInventoryManager } from './inventory.ts'
+
+export {
+  MONSTER_MODE_MISSILES_113C,
+  MONSTER_MODE_MISSILES_BY_ID_113C,
+  getMonsterModeMissile113c,
+  getMonsterModeMissileById113c,
+  type MonsterModeMissiles113c,
+}
 
 export interface PartyMemberState {
   readonly unitId: number
@@ -195,7 +210,9 @@ export const CROSSBOW_ITEM_CODES = new Set([
 ])
 
 /**
- * Single-bolt linear projectile skills (1.13c Skills.txt srvmissile / cltmissilea).
+ * Single-bolt linear projectile skills (1.13c Skills.txt cltmissile / cltmissilea).
+ * Includes all Skills.txt rows with `cltdofunc === 0` and non-empty `cltmissile` (player and monster skills, Issue #1163),
+ * plus single-bolt `cltmissilea` projectile skills.
  * Skills 2/4 (Throw / Left Hand Throw) are intentionally absent: their Skills.txt
  * missile columns are empty (srvdofunc 3/5) and the missile is picked from the
  * equipped throwing weapon — see `resolveThrowMissileKeyForCaster`.
@@ -205,32 +222,123 @@ export const LINEAR_SKILL_MISSILES: Readonly<Record<number, { key: string; pierc
     6: { key: 'magicarrow' },
     7: { key: 'firearrow' },
     11: { key: 'coldarrow' },
-    15: { key: 'poisonjav', pierce: true },
+    15: { key: 'poisonjav' },
     16: { key: 'explodingarrow' },
-    20: { key: 'lightningjavelin', pierce: true },
+    20: { key: 'lightningjavelin' },
     21: { key: 'icearrow' },
     22: { key: 'guidedarrow' },
     25: { key: 'plaguejavelin' },
     27: { key: 'immolationarrow' },
     31: { key: 'freezingarrow' },
-    35: { key: 'lightningfury', pierce: true },
+    35: { key: 'lightningfury' },
     36: { key: 'firebolt' },
     39: { key: 'icebolt' },
     45: { key: 'iceblast' },
     47: { key: 'fireball' },
-    49: { key: 'lightning', pierce: true },
+    49: { key: 'lightningbolt', pierce: true },
     53: { key: 'chainlightning', pierce: true },
     55: { key: 'glacialspike' },
     84: { key: 'bonespear', pierce: true },
     93: { key: 'bonespirit' },
     101: { key: 'holybolt' },
+    // 1.13c Skills.txt monster default client missile rows (cltdofunc=0, non-empty cltmissile, Issue #1163):
+    157: { key: 'unholybolt1' }, // UnHolyBolt
+    160: { key: 'shafire1' }, // ShamanFire
+    169: { key: 'vampirefireball' }, // VampireFireball
+    185: { key: 'monsterlight' }, // PrimeLightning
+    187: { key: 'blaze' }, // PrimeBlaze
+    189: { key: 'monglacialspike' }, // PrimeSpike
+    200: { key: 'trap poison ball left' }, // PoisonBallTrap
+    201: { key: 'andypoisonbolt' }, // AndyPoisonBolt
+    207: { key: 'trap cursed skull right' }, // CursedBallTrapRight
+    208: { key: 'trap cursed skull left' }, // CursedBallTrapLeft
+    211: { key: 'monbonespirit' }, // MonBoneSpirit (CltDoFunc 18, Missiles.txt #329, Issue #1192)
+    286: { key: 'baal spawn monsters' }, // Baal Monster Spawn
+    291: { key: 'healing vortex' }, // Healing Vortex
+    299: { key: 'impmiss21' }, // Imp Fire Missile
+    313: { key: 'sentrylightningbolt', pierce: true }, // sentry lightning
+    324: { key: 'sentrylightningbolt2', pierce: true }, // death sentry ltng
+    332: { key: 'monsterlight' }, // ZakarumLightning
+    333: { key: 'firehead' }, // VampireMissile
+    334: { key: 'mephisto' }, // MephistoMissile
+    337: { key: 'hydra' }, // HydraMissile
+    339: { key: 'cr_arrow6' }, // MonBow
+    340: { key: 'firearrow' }, // MonFireArrow
+    341: { key: 'coldarrow' }, // MonColdArrow
+    342: { key: 'explodingarrow' }, // MonExplodingArrow
+    343: { key: 'freezingarrow' }, // MonFreezingArrow
+    345: { key: 'succubusmiss' }, // SuccubusBolt
+    348: { key: 'glacialspike' }, // ShamanIce
+    354: { key: 'unholybolt1' }, // UnHolyBoltEx
+    355: { key: 'shafire1' }, // ShamanFireEx
+    356: { key: 'impmiss21' }, // Imp Fire Missile Ex
   })
 
-/** Radial ring skills (32 bolts in 360 degrees around caster). */
-export const RADIAL_RING_SKILLS: Readonly<Record<number, string>> = Object.freeze({
-  44: 'frostnova',
-  48: 'nova',
-  92: 'poisonnova',
+/**
+ * 1.13c Skills.txt weapon-dependent client missiles (`cltmissilea` bow / `cltmissileb` crossbow, Issue #1120).
+ */
+export const SKILL_CLT_MISSILE_AB_113C: Readonly<
+  Record<number, { readonly cltMissileA: string; readonly cltMissileB: string }>
+> = Object.freeze({
+  12: { cltMissileA: 'multipleshotarrow', cltMissileB: 'multipleshotbolt' }, // Multiple Shot
+  26: { cltMissileA: 'multipleshotarrow', cltMissileB: 'multipleshotbolt' }, // Strafe
+})
+
+/**
+ * 1.13c Skills.txt rows with `cltdofunc === 0` and non-empty `cltmissile` (compiled offset `+0xE8`).
+ */
+export const SKILL_DEFAULT_CLT_MISSILE_113C: Readonly<Record<number, string>> = Object.freeze({
+  6: 'magicarrow',
+  7: 'firearrow',
+  11: 'coldarrow',
+  15: 'poisonjav',
+  16: 'explodingarrow',
+  20: 'lightningjavelin',
+  21: 'icearrow',
+  25: 'plaguejavelin',
+  27: 'immolationarrow',
+  31: 'freezingarrow',
+  35: 'lightningfury',
+  36: 'firebolt',
+  39: 'icebolt',
+  45: 'iceblast',
+  46: 'blaze',
+  47: 'fireball',
+  49: 'lightningbolt',
+  55: 'glacialspike',
+  84: 'bonespear',
+  101: 'holybolt',
+  157: 'unholybolt1',
+  160: 'shafire1',
+  169: 'vampirefireball',
+  185: 'monsterlight',
+  187: 'blaze',
+  189: 'monglacialspike',
+  200: 'trap poison ball left',
+  201: 'andypoisonbolt',
+  207: 'trap cursed skull right',
+  208: 'trap cursed skull left',
+  229: 'moltenboulderemerge',
+  251: 'bomb in air',
+  286: 'baal spawn monsters',
+  291: 'healing vortex',
+  299: 'impmiss21',
+  313: 'sentrylightningbolt',
+  324: 'sentrylightningbolt2',
+  332: 'monsterlight',
+  333: 'firehead',
+  334: 'mephisto',
+  337: 'hydra',
+  339: 'cr_arrow6',
+  340: 'firearrow',
+  341: 'coldarrow',
+  342: 'explodingarrow',
+  343: 'freezingarrow',
+  345: 'succubusmiss',
+  348: 'glacialspike',
+  354: 'unholybolt1',
+  355: 'shafire1',
+  356: 'impmiss21',
 })
 
 /** Necromancer curse target overlays (1.13c Skills.txt / Overlay.txt). */
@@ -252,7 +360,11 @@ export const ALL_CURSE_TARGET_OVERLAY_SET: ReadonlySet<string> = new Set(
   Object.values(CURSE_TARGET_OVERLAYS),
 )
 
-/** Necromancer curse client missiles (1.13c Skills.txt cltmissilea #181..#190). */
+/**
+ * 1.13c `Skills.txt` `CltDo30` / `CltSt18` curse client missiles (`cltmissilea`, Issue #1166):
+ * - Necromancer curses (#66..#91): #181..#190 (`curseamplifydamage`..`curselowerresist`)
+ * - Monster curses (#212 MonCurseCast, #309 Defense Curse, #310 Blood Mana): #142 `curseeffectred`
+ */
 export const CURSE_CLT_MISSILE_A: Readonly<Record<number, string>> = Object.freeze({
   66: 'curseamplifydamage',
   71: 'cursedimvision',
@@ -264,15 +376,21 @@ export const CURSE_CLT_MISSILE_A: Readonly<Record<number, string>> = Object.free
   86: 'curseattract',
   87: 'cursedecrepify',
   91: 'curselowerresist',
+  212: 'curseeffectred',
+  309: 'curseeffectred',
+  310: 'curseeffectred',
 })
 
 /**
- * Computes the authentic 1.13c Skills.txt aurarangecalc in subtiles for all 10 Necromancer curses.
+ * Computes the authentic 1.13c Skills.txt aurarangecalc in subtiles for all CltDo30 curses (#66..#91, #212, #309, #310).
  */
 export function getCurseRadiusSubtiles113c(skillId: number, slvl: number): number {
   const lvl = Math.max(1, slvl)
   switch (skillId) {
     case 66: // Amplify Damage: ln12 (par1=3, par2=1)
+    case 212: // MonCurseCast: ln12 (par1=3, par2=1)
+    case 309: // Defense Curse: ln12 (par1=3, par2=1)
+    case 310: // Blood Mana: ln12 (par1=3, par2=1)
       return 3 + (lvl - 1)
     case 71: // Dim Vision: ln12 (par1=4, par2=1)
     case 82: // Life Tap: ln12 (par1=4, par2=1)
@@ -326,20 +444,19 @@ export const ALL_PALADIN_AURA_STATES: readonly number[] = Object.freeze(
 /** Canonical 1.13c self-buff skills that set an active state ID on the caster (States.txt). */
 export const SELF_BUFF_SKILL_STATES: Readonly<Record<number, number>> = Object.freeze({
   40: 10, // Frozen Armor -> state 10 (FrozenArmor)
-  46: 12, // Blaze -> state 12 (Blaze)
+  46: 13, // Blaze -> Skills.txt aurastate=blaze -> state 13 (12 is inferno)
   50: 88, // Shiver Armor -> state 88 (ShiverArmor)
-  52: 16, // Enchant -> state 16 (Enchant)
   57: 38, // Thunder Storm -> state 38 (Thunderstorm)
   58: 30, // Energy Shield -> state 30 (EnergyShield)
   60: 20, // Chilling Armor -> state 20 (ChillingArmor)
   68: 14, // Bone Armor -> state 14 (BoneArmor)
   ...PALADIN_AURA_STATE_BY_SKILL_ID,
-  117: 101, // Holy Shield -> state 101 (HolyShield)
+  117: 101, // Holy Shield -> state 101 (holyshield, StateSetFunc[11] sh='bsh', Issue #1278)
   138: 26, // Shout -> state 26
   144: 15, // Concentrate -> state 15
   147: 94, // Frenzy -> state 94
   149: 32, // Battle Orders -> state 32
-  151: 174, // Whirlwind -> state 174
+  // Note: #151 Whirlwind state 174 is active ONLY while Whirlwind castState is active (Issue #1272).
   152: 95, // Berserk -> state 95
   155: 51, // Battle Command -> state 51
   223: 139, // Werewolf -> state 139
@@ -353,6 +470,8 @@ export const SELF_BUFF_SKILL_STATES: Readonly<Record<number, number>> = Object.f
   267: 159, // Fade -> state 159
   277: 158, // Blade Shield -> state 158
   278: 31, // Venom -> state 31 (venomclaws)
+  314: 138, // fenris rage -> state 138 (fenris_rage -> direwolfcharged, Issue #1198)
+  349: 145, // Diablogeddon -> state 145 (Issue #1197)
 })
 
 export interface SpawnMissileOptions {
@@ -363,6 +482,7 @@ export interface SpawnMissileOptions {
   readonly sourceSkillId?: number | undefined
   readonly skillLevel?: number | undefined
   readonly pierce?: boolean | undefined
+  readonly pierceRemaining?: number | undefined
   readonly loopAnim?: boolean | undefined
   readonly maxTicks?: number | undefined
   readonly altitude?: number | undefined
@@ -377,6 +497,13 @@ export interface SpawnMissileOptions {
   readonly spiralAngle?: number | undefined
   readonly spiralRadius?: number | undefined
   readonly expandSubMissiles?: boolean | undefined
+  /**
+   * Explicit Missiles.txt-unit velocity (missile param flag 4, e.g. CltDoFunc 25 `Vel + VelLev*lvl/8 + cltcalc1`).
+   * Replaces `Vel + VelLev*lvl/8` and is not clamped by MaxVel (D2Common 0x6FDCC4C2 has no clamp).
+   */
+  readonly velocity?: number | undefined
+  /** Missile param flag 0x4000: no CreateLight for this missile (0x6FB6365B). */
+  readonly noLight?: boolean | undefined
 }
 
 export class UnitMap extends Map<string, ClientUnit> {
@@ -440,6 +567,25 @@ export function getMonsterOneShotDefaultFrames(mode: number): number {
 export const OVERLAY_INDICES_NOT_REPLACED = new Set<number>([0x8c, 0x8d, 0x8e, 0x9e])
 
 /**
+ * 1.13c `Skills.txt` `tgtoverlay` column (`D2SkillsTxt +0x10A`, Issue #1181):
+ * Overlay token attached to the skill's target unit.
+ */
+export const SKILL_TGT_OVERLAYS_113C: Readonly<Record<number, string>> = Object.freeze({
+  14: 'lightning', // Power Strike
+  24: 'lightning', // Charged Strike
+  34: 'lightning', // Lightning Strike
+  179: 'receiving', // ZakarumHeal
+  253: 'psychic_hammer_hit', // Psychic Hammer
+  254: 'assassinfootimpact', // Tiger Strike
+  273: 'fist_will_cast', // Mind Blast
+  275: 'dragonflight', // Dragon Flight
+})
+
+export function getSkillTgtOverlay113c(skillId: number): string | undefined {
+  return SKILL_TGT_OVERLAYS_113C[skillId]
+}
+
+/**
  * 1.13c `Missiles.txt` moving missiles with `CollideType === 0` (`D2Client.dll` `0x6FB81340` /
  * `D2Game.dll` `0x6FD2A5B0`): ignore terrain/walls completely (`mask = 0x0000`).
  */
@@ -458,6 +604,8 @@ export const MISSILE_COLLIDE_TYPE_0_KEYS_113C = new Set<string>([
   'cairnstonesground',
   'towermist',
   'towermisttrail',
+  'towermistfade',
+  'towerchestspawner',
   'mephistofirewallmaker',
   'mephistoflyingrocksbig',
   'mephistoflyingrockssmall',
@@ -489,10 +637,12 @@ export const MISSILE_COLLIDE_TYPE_0_KEYS_113C = new Set<string>([
   'hurricanesack',
   'hurricanetree',
   'hurricanevase',
-  'eruptioncenter',
-  'volcanobase',
+  'erruption center',
+  'volcano',
   'armageddonrock',
   'armageddontail',
+  'diablogeddonrock',
+  'diablogeddontail',
   'nehlithakswoosh',
   'nehlithakdebris1',
   'nehlithakdebris2',
@@ -519,7 +669,6 @@ export const MISSILE_COLLIDE_TYPE_8_KEYS_113C = new Set<string>([
   'moltenboulderemerge',
   'moltenboulderfirepath',
   'moltenboulder-flyingrocks',
-  'moltenboulderflyingrocks',
   'firestormmaker',
   'firestorm',
   'wake of destruction maker',
@@ -545,6 +694,13 @@ export type ClientWorldInternal = Record<string, any> & {
   ensureUnit(unitType: UnitType, id: number): ClientUnit
   ensureWorldOrGroundUnit(unitType: UnitType, id: number): ClientUnit | undefined
   getUnit(unitType: UnitType, id: number): ClientUnit | undefined
+  attachUnitOverlay(unit: ClientUnit, overlayToken: string, loop?: boolean): ClientUnitOverlay
+  spawnMonsterModeMissile(
+    unit: ClientUnit,
+    mode?: number,
+    targetX?: number,
+    targetY?: number,
+  ): ClientUnit | undefined
   resolveEventNowMs(nowMs?: number): number
   resolvePlayerActiveEquipment(unitId: number, isSelf: boolean): Iterable<ItemData> | undefined
 }

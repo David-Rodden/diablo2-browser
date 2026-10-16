@@ -87,7 +87,7 @@ describe('Issue #917: Compelling Orb smash (1.13c)', () => {
   })
 
   it('bakes the trail art (mist_Fade_Orb_Loop); orbmist itself has CelFile null (light only)', () => {
-    expect(MISSILE_METAS['mist_Fade_Orb_Loop']?.celFile).toBe('mist_Fade_Orb_Loop')
+    expect(MISSILE_METAS['orbmisttrail']?.celFile).toBe('mist_Fade_Orb_Loop')
     expect(MISSILE_METAS['orbmistfade']?.celFile).toBe('mist_Fade_Orb')
   })
 

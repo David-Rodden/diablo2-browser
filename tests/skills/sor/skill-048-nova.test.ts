@@ -4,7 +4,7 @@
  *
  * 7-Dimensional Verification Coverage:
  * D1: 1.13c Data Table Parsing & Canonical Missile Definition (Skills.txt row 48, Missiles.txt 'nova')
- * D2: Visual Assets & Metadata Integrity (electricnova.png/json, light_cast_1.png/json, Additive Blending)
+ * D2: Visual Assets & Metadata Integrity (nova.png/json, light_cast_1.png/json, Additive Blending)
  * D3: Kinematics & 64-Bolt Circular Ring Dispersion (24 vel, 13 range, 2:1 isometric ground foreshortening)
  * D4: NextDelay = 4 Single-Hit Lockout Protection (Prevents point-blank 64x multi-hit stack)
  * D5: Obstacle & Terrain Collision Clipping (Wall collisions expire missiles, open space continues)
@@ -36,7 +36,7 @@ import {
   spawnNovaRing,
 } from '../../../src/server/engine/missile-engine.ts'
 import {
-  ELECTRICNOVA_META,
+  NOVA_META,
   MISSILE_METAS,
 } from '../../../src/client/render/missiles-meta.ts'
 import {
@@ -93,7 +93,7 @@ describe('[Skill #048] Nova (SOR) — 1.13c 7-Dimensional Verification Suite (Is
       expect(nova!.trans).toBe(1)
     })
 
-    it('CANONICAL_113C_MISSILES contains exact nova and electricnova definitions', () => {
+    it('CANONICAL_113C_MISSILES contains exact nova definition and no electricnova alias row', () => {
       const nova = getMissileTxtData('nova')
       expect(nova.id).toBe(90)
       expect(nova.vel).toBe(24)
@@ -103,11 +103,7 @@ describe('[Skill #048] Nova (SOR) — 1.13c 7-Dimensional Verification Suite (Is
       expect(nova.nextDelay).toBe(4)
       expect(nova.celFile.toLowerCase()).toBe('electricnova')
 
-      const electricnova = getMissileTxtData('electricnova')
-      expect(electricnova.id).toBe(90)
-      expect(electricnova.vel).toBe(24)
-      expect(electricnova.range).toBe(13)
-      expect(electricnova.nextDelay).toBe(4)
+      expect(Object.prototype.hasOwnProperty.call(CANONICAL_113C_MISSILES, 'electricnova')).toBe(false)
     })
   })
 
@@ -116,8 +112,8 @@ describe('[Skill #048] Nova (SOR) — 1.13c 7-Dimensional Verification Suite (Is
   // =========================================================================
   describe('Dimension 2: Visual Assets & Metadata Integrity', () => {
     it('verifies baked DCC atlas sprite sheet files exist with non-zero size', () => {
-      const missilePng = path.resolve(__dirname, '../../../public/missiles/electricnova.png')
-      const missileJson = path.resolve(__dirname, '../../../public/missiles/electricnova.json')
+      const missilePng = path.resolve(__dirname, '../../../public/missiles/nova.png')
+      const missileJson = path.resolve(__dirname, '../../../public/missiles/nova.json')
       const overlayPng = path.resolve(__dirname, '../../../public/overlays/light_cast_1.png')
       const overlayJson = path.resolve(__dirname, '../../../public/overlays/light_cast_1.json')
 
@@ -129,13 +125,13 @@ describe('[Skill #048] Nova (SOR) — 1.13c 7-Dimensional Verification Suite (Is
       expect(fs.existsSync(overlayJson)).toBe(true)
     })
 
-    it('verifies ELECTRICNOVA_META metadata and registry registration', () => {
-      expect(ELECTRICNOVA_META.name).toBe('electricnova')
-      expect(ELECTRICNOVA_META.celFile).toBe('ElectricNova')
-      expect(ELECTRICNOVA_META.directions).toBe(16)
-      expect(ELECTRICNOVA_META.framesPerDirection).toBe(13)
-      expect(MISSILE_METAS['electricnova']).toBe(ELECTRICNOVA_META)
-      expect(MISSILE_METAS['ElectricNova']).toBe(ELECTRICNOVA_META)
+    it('verifies NOVA_META metadata and registry registration', () => {
+      expect(NOVA_META.name).toBe('nova')
+      expect(NOVA_META.celFile).toBe('ElectricNova')
+      expect(NOVA_META.directions).toBe(16)
+      expect(NOVA_META.framesPerDirection).toBe(13)
+      expect(MISSILE_METAS['electricnova']).toBeUndefined()
+      expect(MISSILE_METAS['nova']).toBe(NOVA_META)
     })
 
     it('verifies cast overlay mapping and metadata', () => {
@@ -160,7 +156,7 @@ describe('[Skill #048] Nova (SOR) — 1.13c 7-Dimensional Verification Suite (Is
         expect(b.y).toBe(300)
         expect(b.damage).toBe(45)
         expect(b.ttl).toBe(13)
-        expect(b.missileType).toBe('electricnova')
+        expect(b.missileType).toBe('nova')
         expect(b.fromPlayer).toBe(true)
         expect(b.nextDelay).toBe(4)
 
@@ -283,7 +279,7 @@ describe('[Skill #048] Nova (SOR) — 1.13c 7-Dimensional Verification Suite (Is
         statList: new UnitStatList(),
       } as any
       engine.spawnMissile({
-        missileNameOrId: 'electricnova',
+        missileNameOrId: 'nova',
         sourceSkillId: 48,
         slvl: 1,
         owner: dummyOwner,

@@ -52,9 +52,10 @@ const CAIRN_STONES_NAME = 'cairnstones'
  * Quest FX client missiles (Issue #873: 287 denofevillight, 288 cairnstones, 290 cairnstonesground, 99 lightninghit,
  * 372 diablo appears, 384 cairn stones bolt; Issue #915, special quest event 3 0x6fb03450 / CltDoFunc 31 0x6fb64b80:
  * 338 horadricstaff, 339 horadriclightning, 340 horadriclight, 150 dust; Issue #917, compelling orb death 0x6fb030d0 /
- * CltDoFunc 25 0x6fb683d0: 368 orbmist, 369 orbmisttrail, 370 orbmistfade).
+ * CltDoFunc 25 0x6fb683d0: 368 orbmist, 369 orbmisttrail, 370 orbmistfade; Issue #1215, Countess death 0x6fb02860 /
+ * CltDoFunc 25 + CltDoFunc 30 0x6fb679f0: 291 towermist, 292 towermisttrail, 330 towermistfade, 332 towerchestspawner).
  */
-const QUEST_FX_MISSILE_IDS = [99, 150, 287, 288, 290, 338, 339, 340, 368, 369, 370, 372, 384] as const
+const QUEST_FX_MISSILE_IDS = [99, 150, 287, 288, 290, 291, 292, 330, 332, 338, 339, 340, 368, 369, 370, 372, 384] as const
 const PARAM_COLUMNS = ['Param1', 'Param2', 'Param3', 'Param4', 'Param5', 'Param6', 'Param7', 'Param8'] as const
 
 type Params8 = readonly [number, number, number, number, number, number, number, number]
@@ -411,7 +412,7 @@ export function renderQuestFxData(data: QuestFxData): string {
     '',
     '/**',
     ' * Quest FX client missiles (Missiles.txt / missiles.bin rows 99, 287, 288, 290, 372, 384, Issue #873;',
-    ' * 150, 338, 339, 340, Issue #915).',
+    ' * 150, 338, 339, 340, Issue #915; 368, 369, 370, Issue #917; 291, 292, 330, 332, Issue #1215).',
     ' */',
     'export const QUEST_FX_MISSILES_113C: Readonly<Record<number, QuestFxMissileRow113c>> = Object.freeze({',
   )

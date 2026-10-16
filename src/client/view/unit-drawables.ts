@@ -8,7 +8,13 @@ import {
 } from '../../common/skills/missiles-data.ts'
 import { BAKED_UI_MANIFEST } from '../../common/items/baked-ui-meta.ts'
 import { d2Rand, LIGHT_SEED_HI, lightPos8, PLAYER_LIGHT_RADIUS } from '../../common/drlg/light-grid.ts'
-import { appearanceKey, type SorceressAppearanceSpec } from '../../common/units/char-appearance.ts'
+import {
+  DEFAULT_AMAZON_APPEARANCE,
+  VALKYRIE_113C_APPEARANCE,
+  appearanceKey,
+  applyStateItemTransToAppearance,
+  type SorceressAppearanceSpec,
+} from '../../common/units/char-appearance.ts'
 import {
   MISSILE_LIGHT_113C,
   missileLight113c,
@@ -27,7 +33,8 @@ import type { UnitKind, UnitSnapshot } from '../../netproto/index.ts'
 import type { LightEmitterInput, PointLightInput } from '../scene/lighting-presets.ts'
 export type { LightEmitterInput, PointLightInput }
 import type { StatListReaderLike } from '../../common/units/char-anim-speed.ts'
-import type { UnitCastState } from '../world/client-unit.ts'
+import type { ClientUnitOverlay, UnitCastState } from '../world/client-unit.ts'
+import { isStateCastOverlayPlaying113c } from '../world/state-cast-overlay-113c.ts'
 import {
   OBJECT_LIGHT_INTENSITY,
   OBJECT_LIGHT_MAX_RADIUS,
@@ -37,9 +44,11 @@ import {
   AUTHENTIC_113C_OVERLAYS,
   OVERLAY_METAS,
   STATE_OVERLAYS,
+  STATE_PGSV_OVERLAYS,
 } from '../render/overlays-meta.ts'
 import { OVERLAY_TXT_ROWS } from '../render/overlay-txt-rows.ts'
 import { subTileToWorldOrtho } from './viewport-profile.ts'
+import { missileTransToDrawBlend, overlayTransToDrawBlend } from '../../common/gfx/draw-mode.ts'
 
 export { getBossPaletteRow, getMonsterPaletteRow, resolveMonsterPaletteRow }
 
@@ -57,76 +66,25 @@ export type DrawableBlendMode =
   | 'highlight'
 
 /**
- * Map MPQ `trans` values to {@link DrawableBlendMode} — Missiles.txt side.
+ * Missiles.txt `Trans` -> {@link DrawableBlendMode}.
  *
- * Project law (AGENTS.md §4.4, user-validated in Issues #385/#905): every spell
- * missile/explosion (Missiles.txt `Trans: 1`, except physical arrows `Trans: 0`)
- * renders with additive blending against zero-black-edge RGBA atlases, hence
- * 1 -> 'highlight'. Kept as-is deliberately; Overlay.txt rows must use
- * {@link overlayTransToBlendMode} instead.
+ * D2Client 0x6FB1CF32-0x6FB1CF4C remaps the column to a D2gfx eDrawMode (0/empty -> 5 NORMAL, 1 -> 3 additive
+ * ONE/ONE, 2 -> 4 multiply ZERO/SRC_COLOR, D2MOO name BURN) before D2gfx #10041; see
+ * {@link missileTransToDrawMode} and kb/render/d2gfx-draw-mode-113c.md.
  */
 export function transToBlendMode(trans: number | undefined): DrawableBlendMode {
-  switch (trans) {
-    case 0:
-      return 'trans25'
-    case 1:
-      return 'highlight'
-    case 2:
-      return 'trans75'
-    case 3:
-      return 'trans50'
-    case 4:
-      return 'burn'
-    case 5:
-      return 'normal'
-    case 6:
-      return 'modulate'
-    case 7:
-      return 'transhighlight'
-    default:
-      return 'normal'
-  }
+  return missileTransToDrawBlend(trans ?? 0)
 }
 
 /**
- * Map Overlay.txt `Trans` draw levels to {@link DrawableBlendMode}.
+ * Overlay.txt `Trans` -> {@link DrawableBlendMode}.
  *
- * Ground truth — the `Trans` column of Overlay.txt/Missiles.txt is a D2Gfx.dll
- * transparency LEVEL (Nefarius D2Gfx documentation; D2MOO
- * D2Gfx/include/DrawMode.h enumerates the destination modes, not this column):
- * - 0 -> 'normal'         (DT_NONE, opaque)
- * - 1 -> 'trans50'        (DT 50% alpha)
- * - 2 -> 'trans25'        (DT 25% alpha)
- * - 3 -> 'highlight'      (DT screen/additive S + D — glowing FX)
- * - 4 -> 'trans75'        (DT 75% alpha)
- * - 5 -> 'modulate'       (DT multiplicative S x D)
- * - 6 -> 'burn'           (DT color burn)
- *
- * 284 of 293 compiled 1.13c overlay.bin rows are Trans 3 (e.g. `fire_cast_2`,
- * the sorceress cast fire) — additive, NOT 50% alpha. The previous
- * D2MOO-DrawMode-index mapping rendered them all at 50% opacity, washing out
- * every skill-cast/shrine overlay (user-reported vs vanilla).
+ * The column IS the D2gfx eDrawMode: D2Client 0x6FB1B11D `movzx ecx, byte [ebx+0x7C]` -> 0x6FB1B12E `push ecx` ->
+ * D2gfx #10041 (same at 0x6FB1B2B2/0x6FB1B2D0). 0 trans25, 1 trans50, 2 trans75, 3 additive, 4 multiply ('burn'),
+ * 5 normal (energyshield, fetishdeath1, durieldead_*), 6/7/>=8 normal (tentacleheadbloodripple = 8).
  */
-export function overlayTransToBlendMode(trans: number | undefined): DrawableBlendMode {
-  switch (trans) {
-    case 1:
-      return 'trans50'
-    case 2:
-      return 'trans25'
-    case 3:
-      return 'highlight'
-    case 4:
-      return 'trans75'
-    case 5:
-      return 'modulate'
-    case 6:
-      return 'burn'
-    case 7:
-      return 'transhighlight'
-    case 0:
-    default:
-      return 'normal'
-  }
+export function overlayTransToBlendMode(trans: number): DrawableBlendMode {
+  return overlayTransToDrawBlend(trans)
 }
 
 export type SceneUnitKind = UnitKind | 'warp'
@@ -245,6 +203,8 @@ export interface RenderableUnitInput {
    * spawns its light missile and calls SetRadius(12), 0x6fb66702). Absent → Missiles.txt `Light`.
    */
   readonly missileLightRadius?: number | undefined
+  /** Missiles: created with param flag 0x4000, so 0x6FB630F0 made no light for it (0x6FB6365B `test ah,0x40`). */
+  readonly missileNoLight?: boolean | undefined
   readonly portalOwnerName?: string | undefined
   readonly portalAreaId?: number | undefined
   readonly isPartyMember?: boolean | undefined
@@ -276,6 +236,9 @@ export interface RenderableUnitInput {
   readonly overheadText?: string | undefined
   readonly overheadColor?: number | undefined
   readonly isFaded?: boolean | undefined
+  readonly chargeCounts?: ReadonlyMap<number, number> | Record<number, number> | undefined
+  readonly maulCharges?: number | undefined
+  readonly feralRageCharges?: number | undefined
 }
 
 export type RenderableUnit = RenderableUnitInput
@@ -300,6 +263,7 @@ export interface SceneUnitDrawable {
   readonly worldX: number
   readonly worldY: number
   readonly sortY: number
+  readonly altitude?: number | undefined
   readonly blendMode: DrawableBlendMode
   readonly lifePct: number
   readonly name: string | undefined
@@ -351,6 +315,9 @@ export interface SceneUnitDrawable {
   readonly overheadText?: string | undefined
   readonly overheadColor?: number | undefined
   readonly isFaded?: boolean | undefined
+  readonly chargeCounts?: ReadonlyMap<number, number> | Record<number, number> | undefined
+  readonly maulCharges?: number | undefined
+  readonly feralRageCharges?: number | undefined
 }
 
 export interface SceneMissileDrawable {
@@ -402,14 +369,12 @@ export type SceneEntityDrawable =
 
 /**
  * 1.13c `Missiles.txt` row id (D2GS missile unit classId) -> missile key, derived from
- * `CANONICAL_113C_MISSILES` (Missiles.txt rows only; client visual aliases excluded).
+ * `CANONICAL_113C_MISSILES` (exactly the Missiles.txt rows).
  * Ids without art data are absent: callers must treat them as unknown, never substitute another missile.
  */
 export const MISSILE_ID_TO_KEY: Readonly<Record<number, string>> = Object.freeze(
   Object.fromEntries(
-    Object.entries(CANONICAL_113C_MISSILES)
-      .filter(([, m]) => m.clientAlias !== true)
-      .map(([key, m]) => [m.id, key] as const),
+    Object.entries(CANONICAL_113C_MISSILES).map(([key, m]) => [m.id, key] as const),
   ),
 )
 
@@ -417,7 +382,6 @@ export interface OverlayMeta {
   readonly overlayId: number
   readonly token: string
   readonly totalFrames: number
-  readonly blendMode: DrawableBlendMode
   readonly yOffset: number
 }
 
@@ -427,30 +391,30 @@ export interface OverlayMeta {
  * Overlay lights are not here: they are the overlay.bin row of the token (`overlayLightRow`).
  */
 export const OVERLAY_METADATA: Readonly<Record<number, OverlayMeta>> = {
-  3: { overlayId: 3, token: 'aura_resistfire', totalFrames: 20, blendMode: 'trans50', yOffset: 0 },
-  4: { overlayId: 4, token: 'aura_resistcold', totalFrames: 20, blendMode: 'trans50', yOffset: 0 },
-  5: { overlayId: 5, token: 'aura_resistlight', totalFrames: 20, blendMode: 'trans50', yOffset: 0 },
-  8: { overlayId: 8, token: 'aura_resistall_front', totalFrames: 20, blendMode: 'trans50', yOffset: 0 },
-  9: { overlayId: 9, token: 'curseamplifydamage', totalFrames: 24, blendMode: 'trans50', yOffset: -60 },
-  10: { overlayId: 10, token: 'frozenarmor', totalFrames: 24, blendMode: 'trans50', yOffset: 0 },
-  19: { overlayId: 19, token: 'curseweaken', totalFrames: 24, blendMode: 'trans50', yOffset: -60 },
-  20: { overlayId: 20, token: 'chillarmor', totalFrames: 24, blendMode: 'trans50', yOffset: 0 },
-  23: { overlayId: 23, token: 'cursedimvision', totalFrames: 24, blendMode: 'trans50', yOffset: -60 },
-  28: { overlayId: 28, token: 'convictionback', totalFrames: 21, blendMode: 'trans50', yOffset: 0 },
-  30: { overlayId: 30, token: 'energyshield', totalFrames: 8, blendMode: 'normal', yOffset: 0 },
-  32: { overlayId: 32, token: 'battleorders', totalFrames: 20, blendMode: 'trans50', yOffset: 0 },
-  33: { overlayId: 33, token: 'aura_might_front', totalFrames: 15, blendMode: 'trans50', yOffset: 0 },
-  49: { overlayId: 49, token: 'fanaticismfront', totalFrames: 30, blendMode: 'trans50', yOffset: -1 },
-  51: { overlayId: 51, token: 'battlecommand', totalFrames: 20, blendMode: 'trans50', yOffset: 0 },
-  55: { overlayId: 55, token: 'curseironmaiden', totalFrames: 29, blendMode: 'trans50', yOffset: -60 },
-  56: { overlayId: 56, token: 'curseterror', totalFrames: 20, blendMode: 'trans50', yOffset: -60 },
-  57: { overlayId: 57, token: 'curseattract', totalFrames: 24, blendMode: 'trans50', yOffset: -60 },
-  58: { overlayId: 58, token: 'cursereversevampire', totalFrames: 24, blendMode: 'trans50', yOffset: -60 },
-  59: { overlayId: 59, token: 'curseconfuse', totalFrames: 24, blendMode: 'trans50', yOffset: -60 },
-  60: { overlayId: 60, token: 'cursedecrepify', totalFrames: 24, blendMode: 'trans50', yOffset: -60 },
-  61: { overlayId: 61, token: 'curselowerresist', totalFrames: 29, blendMode: 'trans50', yOffset: -60 },
-  88: { overlayId: 88, token: 'shiverarmor', totalFrames: 24, blendMode: 'trans50', yOffset: 0 },
-  134: { overlayId: 134, token: 'energyshield', totalFrames: 8, blendMode: 'normal', yOffset: 0 },
+  3: { overlayId: 3, token: 'aura_resistfire', totalFrames: 20, yOffset: 0 },
+  4: { overlayId: 4, token: 'aura_resistcold', totalFrames: 20, yOffset: 0 },
+  5: { overlayId: 5, token: 'aura_resistlight', totalFrames: 20, yOffset: 0 },
+  8: { overlayId: 8, token: 'aura_resistall_front', totalFrames: 20, yOffset: 0 },
+  9: { overlayId: 9, token: 'curseamplifydamage', totalFrames: 24, yOffset: -60 },
+  10: { overlayId: 10, token: 'frozenarmor', totalFrames: 24, yOffset: 0 },
+  19: { overlayId: 19, token: 'curseweaken', totalFrames: 24, yOffset: -60 },
+  20: { overlayId: 20, token: 'chillarmor', totalFrames: 24, yOffset: 0 },
+  23: { overlayId: 23, token: 'cursedimvision', totalFrames: 24, yOffset: -60 },
+  28: { overlayId: 28, token: 'convictionback', totalFrames: 21, yOffset: 0 },
+  30: { overlayId: 30, token: 'energyshield', totalFrames: 8, yOffset: 0 },
+  32: { overlayId: 32, token: 'battleorders', totalFrames: 20, yOffset: 0 },
+  33: { overlayId: 33, token: 'aura_might_front', totalFrames: 15, yOffset: 0 },
+  49: { overlayId: 49, token: 'fanaticismfront', totalFrames: 30, yOffset: -1 },
+  51: { overlayId: 51, token: 'battlecommand', totalFrames: 20, yOffset: 0 },
+  55: { overlayId: 55, token: 'curseironmaiden', totalFrames: 29, yOffset: -60 },
+  56: { overlayId: 56, token: 'curseterror', totalFrames: 20, yOffset: -60 },
+  57: { overlayId: 57, token: 'curseattract', totalFrames: 24, yOffset: -60 },
+  58: { overlayId: 58, token: 'cursereversevampire', totalFrames: 24, yOffset: -60 },
+  59: { overlayId: 59, token: 'curseconfuse', totalFrames: 24, yOffset: -60 },
+  60: { overlayId: 60, token: 'cursedecrepify', totalFrames: 24, yOffset: -60 },
+  61: { overlayId: 61, token: 'curselowerresist', totalFrames: 29, yOffset: -60 },
+  88: { overlayId: 88, token: 'shiverarmor', totalFrames: 24, yOffset: 0 },
+  134: { overlayId: 134, token: 'energyshield', totalFrames: 8, yOffset: 0 },
 }
 
 export interface StateColorShift {
@@ -465,30 +429,34 @@ export interface StateColorShift {
  * Freeze (state 1, priority 100, shift 108): Ice blue tint [150, 215, 255], paletteRow: 1
  * Cold (state 11, priority 100, shift 108): Chilled blue tint [150, 215, 255], paletteRow: 1
  * Poison (state 2, priority 95, shift 104): Poison green tint [128, 255, 128], paletteRow: 2
- * HolyFreezeCold (state 44 holywindcold, priority 59, shift 108): Holy Freeze chill blue tint [150, 215, 255], paletteRow: 1
- * Revive (state 96, priority 50, shift 73): Undead grey/shadow tint [112, 112, 112], paletteRow: 0
+ * HolyFreezeCold (state 44 holywindcold, priority 100, shift 108): Holy Freeze chill blue tint [150, 215, 255], paletteRow: 1
+ * Blue (state 90 blue, priority 100, shift 108): Blue tint [150, 215, 255], paletteRow: 1
+ * Red (state 91 red, priority 70, shift 100): Red tint [255, 110, 110], paletteRow: 4
+ * Revive (state 96, priority 85, shift 73): Undead grey/shadow tint [112, 112, 112], paletteRow: 0
  */
 export const STATE_COLOR_SHIFTS: Readonly<Record<number, StateColorShift>> = {
   1: { stateId: 1, priority: 100, tintColor: [150, 215, 255], paletteRow: 1 },
   11: { stateId: 11, priority: 100, tintColor: [150, 215, 255], paletteRow: 1 },
   2: { stateId: 2, priority: 95, tintColor: [128, 255, 128], paletteRow: 2 },
-  44: { stateId: 44, priority: 59, tintColor: [150, 215, 255], paletteRow: 1 },
-  96: { stateId: 96, priority: 50, tintColor: [112, 112, 112], paletteRow: 0 },
+  44: { stateId: 44, priority: 100, tintColor: [150, 215, 255], paletteRow: 1 },
+  90: { stateId: 90, priority: 100, tintColor: [150, 215, 255], paletteRow: 1 },
+  91: { stateId: 91, priority: 70, tintColor: [255, 110, 110], paletteRow: 4 },
+  96: { stateId: 96, priority: 85, tintColor: [112, 112, 112], paletteRow: 0 },
 }
 
 const PLAYER_CLASS_TOKENS: readonly string[] = ['AM', 'SO', 'NE', 'PA', 'BA', 'DZ', 'AI']
 
-/** States.txt `corpse_nodraw` (104): `hide=1`. */
-const STATE_CORPSE_NODRAW = 104
+/** States.txt `hide=1` states that suppress corpse rendering (`#1 freeze, #99 redeemed, #104 corpse_nodraw, #107 shatter, #154 recycled, #173 corpseexp, #184 uberminion`). */
+export const CORPSE_HIDE_STATES_113C: ReadonlySet<number> = new Set([1, 99, 104, 107, 154, 173, 184])
+/** States.txt `nooverlays=1` states (`#14 bonearmor, #117 maul, #120 feralrage, #151 cyclonearmor`). */
+export const STATE_NOOVERLAYS_113C: ReadonlySet<number> = new Set([14, 117, 120, 151])
 /** States.txt `bonearmor` (14): `nooverlays=1` (overlays owned by StateSetFunc[6] 0x6FB23230). */
 const STATE_BONEARMOR_NOOVERLAYS = 14
 
-function statesIterHas(states: Iterable<number> | undefined, stateId: number): boolean {
+function statesIterHasAny(states: Iterable<number> | undefined, stateSet: ReadonlySet<number>): boolean {
   if (states === undefined) return false
-  if (states instanceof Set) return states.has(stateId)
-  if (Array.isArray(states)) return states.includes(stateId)
   for (const s of states) {
-    if (s === stateId) return true
+    if (stateSet.has(s)) return true
   }
   return false
 }
@@ -516,8 +484,11 @@ export function resolveUnitToken(unit: RenderableUnitInput): string {
       if (hasState(140)) {
         return 'TG'
       }
-      if (hasState(176) || hasState(65)) {
+      if (hasState(176)) {
         return 'VA'
+      }
+      if (hasState(177)) {
+        return 'FK'
       }
     }
     const token = PLAYER_CLASS_TOKENS[unit.classId]
@@ -671,6 +642,213 @@ export const OVERLAY_ROW_BY_NAME: ReadonlyMap<string, OverlayTxtRow> = new Map(
   OVERLAY_TXT_ROWS.map((row) => [row.name.trim().toLowerCase(), row] as const),
 )
 
+/** Overlay.txt row index (0-based) by lowercase Overlay.txt name. */
+const OVERLAY_INDEX_BY_NAME: ReadonlyMap<string, number> = new Map(
+  OVERLAY_TXT_ROWS.map((row, idx) => [row.name.trim().toLowerCase(), idx] as const),
+)
+
+const PROGRESSIVE_STATE_SKILL_IDS: Readonly<Record<number, number>> = {
+  122: 254,
+  123: 265,
+  124: 280,
+  125: 259,
+  126: 274,
+  127: 269,
+}
+
+function readKeyedNumber(bag: unknown, key: number | string): number | undefined {
+  if (!bag || typeof bag !== 'object') return undefined
+  if (bag instanceof Map) {
+    const val = bag.get(key) ?? (typeof key === 'number' ? bag.get(String(key)) : undefined)
+    return typeof val === 'number' && Number.isFinite(val) ? val : undefined
+  }
+  if ('get' in bag && typeof (bag as { get: (k: unknown) => unknown }).get === 'function') {
+    const val = (bag as { get: (k: unknown) => unknown }).get(key)
+    if (typeof val === 'number' && Number.isFinite(val)) return val
+  }
+  const rec = bag as Record<string, unknown>
+  const direct = rec[String(key)]
+  return typeof direct === 'number' && Number.isFinite(direct) ? direct : undefined
+}
+
+function readStateStatListValue(unit: RenderableUnitInput, stateId: number, statId?: number): number | undefined {
+  const raw = unit as unknown as Record<string, unknown>
+  const stateStatsSources = [
+    (unit.states as { getStateStats?: (id: number) => unknown } | undefined)?.getStateStats?.(stateId),
+    (unit.stats as { getStateStats?: (id: number) => unknown } | undefined)?.getStateStats?.(stateId),
+    readKeyedNumber(raw.stateStats, stateId),
+  ]
+  for (const src of stateStatsSources) {
+    if (typeof src === 'number' && Number.isFinite(src)) return src
+    if (Array.isArray(src)) {
+      for (const entry of src) {
+        if (!entry || typeof entry !== 'object') continue
+        const e = entry as { id?: number; statId?: number; stat?: number; param?: number; value?: number }
+        const id = e.id ?? e.statId ?? e.stat
+        if (statId !== undefined && id !== undefined && id !== statId) continue
+        if (typeof e.param === 'number' && e.param > 0 && statId === undefined) {
+          return e.param & 0x3f
+        }
+        if (typeof e.value === 'number' && Number.isFinite(e.value)) {
+          return e.value
+        }
+      }
+    } else if (src && typeof src === 'object') {
+      if (statId !== undefined) {
+        const v = readKeyedNumber(src, statId)
+        if (v !== undefined) return v
+      }
+      const c = readKeyedNumber(src, 'charge') ?? readKeyedNumber(src, 'charges') ?? readKeyedNumber(src, 'progressive_charges')
+      if (c !== undefined) return c
+    }
+  }
+  return undefined
+}
+
+/**
+ * Resolves the active overlay token(s) for `stateId` on `unit` per 1.13c `D2Client.dll` state setfuncs:
+ * - `setfunc = 16` (`0x6FB22670`, states `117` `maul` / `120` `feralrage`): picks 1 front (`wOverlay[0] + stage - 1`)
+ *   and 1 back (`wOverlay[2] + stage - 1`) in `1..5` instead of all 4 `overlay1..4` endpoints simultaneously (#1071, #1072).
+ * - `setfunc = 8` (`0x6FB23090`, state `151` `cyclonearmor`): picks 1 of `cyclonearmor1front..3front` by remaining
+ *   absorb thirds (`STAT_BONEARMOR` 132 vs `STAT_BONEARMORMAX` 133) instead of all 3 layers (#1071).
+ * - `setfunc = 1` (`0x6FB22DD0`, states `122..127` `progressive_*`): picks `pgsvoverlay + charges - 1` (`1..3`) (#1071).
+ */
+export function resolveStateOverlayTokens113c(
+  unit: RenderableUnitInput,
+  stateId: number,
+): readonly string[] {
+  const raw = unit as unknown as Record<string, unknown>
+
+  // States 117 (maul) & 120 (feralrage): StateSetFunc[16] 0x6FB22670 (stage 1..5 front + back)
+  if (stateId === 117 || stateId === 120) {
+    const skillId = stateId === 117 ? 233 : 232
+    const specificStage =
+      stateId === 117
+        ? (typeof raw.maulStage === 'number' ? raw.maulStage : undefined)
+        : (typeof raw.feralRageStage === 'number' ? raw.feralRageStage : undefined)
+    const specificCharges =
+      stateId === 117
+        ? (typeof raw.maulCharges === 'number' ? raw.maulCharges : undefined)
+        : (typeof raw.feralRageCharges === 'number' ? raw.feralRageCharges : undefined)
+    const genericCharges =
+      typeof raw.charges === 'number'
+        ? raw.charges
+        : typeof raw.charge === 'number'
+          ? raw.charge
+          : (readKeyedNumber(raw.charges, stateId) ??
+            readKeyedNumber(raw.charges, skillId) ??
+            readKeyedNumber(raw.chargeCounts, stateId) ??
+            readKeyedNumber(raw.chargeCounts, skillId) ??
+            readKeyedNumber(raw.stateCharges, stateId) ??
+            readStateStatListValue(unit, stateId) ??
+            resolveUnitStat(unit.stats, stateId))
+    const rawCount = specificStage ?? specificCharges ?? genericCharges ?? 1
+    const maxCharges =
+      stateId === 117
+        ? (typeof raw.maulMaxCharges === 'number' ? raw.maulMaxCharges : undefined)
+        : (typeof raw.feralRageMaxCharges === 'number' ? raw.feralRageMaxCharges : undefined)
+    let stage: number
+    if (specificStage !== undefined) {
+      stage = Math.min(5, Math.max(1, Math.floor(specificStage)))
+    } else if (rawCount <= 0) {
+      stage = 1
+    } else if (maxCharges !== undefined && maxCharges > 5 && rawCount > 5) {
+      stage = Math.min(5, Math.max(1, Math.trunc(((rawCount - 1) * 5) / maxCharges) + 1))
+    } else {
+      stage = Math.min(5, Math.max(1, Math.floor(rawCount)))
+    }
+    const baseTokens = STATE_OVERLAYS[stateId]
+    if (!baseTokens || baseTokens.length < 3) return baseTokens ?? []
+    const frontBaseIdx = OVERLAY_INDEX_BY_NAME.get(baseTokens[0]!.toLowerCase())
+    const backBaseIdx = OVERLAY_INDEX_BY_NAME.get(baseTokens[2]!.toLowerCase())
+    const frontName =
+      frontBaseIdx !== undefined
+        ? OVERLAY_TXT_ROWS[frontBaseIdx + stage - 1]?.name.toLowerCase()
+        : undefined
+    const backName =
+      backBaseIdx !== undefined
+        ? OVERLAY_TXT_ROWS[backBaseIdx + stage - 1]?.name.toLowerCase()
+        : undefined
+    return [frontName ?? baseTokens[0]!, backName ?? baseTokens[2]!]
+  }
+
+  // State 151 (cyclonearmor): StateSetFunc[8] 0x6FB23090 (cumulative back+front layers by remaining absorb thirds)
+  if (stateId === 151) {
+    const stagePairs: ReadonlyArray<readonly [string, string]> = [
+      ['cyclonearmor1back', 'cyclonearmor1front'],
+      ['cyclonearmor2back', 'cyclonearmor2front'],
+      ['cyclonearmor3back', 'cyclonearmor3front'],
+    ]
+    let idx = 2
+    if (typeof raw.cycloneArmorStage === 'number' && Number.isFinite(raw.cycloneArmorStage)) {
+      idx = Math.min(2, Math.max(0, Math.floor(raw.cycloneArmorStage) - 1))
+    } else {
+      const curAbsorb =
+        (typeof raw.cycloneArmorAbsorb === 'number' ? raw.cycloneArmorAbsorb : undefined) ??
+        (typeof raw.absorb === 'number' ? raw.absorb : undefined) ??
+        readStateStatListValue(unit, 151, 132) ??
+        resolveUnitStat(unit.stats, 132)
+      const maxAbsorb =
+        (typeof raw.cycloneArmorMaxAbsorb === 'number' ? raw.cycloneArmorMaxAbsorb : undefined) ??
+        (typeof raw.maxAbsorb === 'number' ? raw.maxAbsorb : undefined) ??
+        readStateStatListValue(unit, 151, 133) ??
+        resolveUnitStat(unit.stats, 133)
+      if (curAbsorb !== undefined && maxAbsorb !== undefined && maxAbsorb > 0) {
+        const third = Math.trunc(maxAbsorb / 3)
+        idx = curAbsorb < third ? 0 : curAbsorb < third * 2 ? 1 : 2
+      }
+    }
+    const out: string[] = []
+    for (let s = 0; s <= idx; s++) {
+      const pair = stagePairs[s]!
+      out.push(pair[0], pair[1])
+    }
+    return out
+  }
+
+  // States 122..127 (progressive_*): StateSetFunc[1] 0x6FB22DD0 (pgsvoverlay + charges - 1)
+  const pgsvBase = STATE_PGSV_OVERLAYS[stateId]
+  if (pgsvBase !== undefined) {
+    const skillId = PROGRESSIVE_STATE_SKILL_IDS[stateId]
+    const statId = stateId + 204 // 326..331
+    let chargeCount =
+      typeof raw.charges === 'number'
+        ? raw.charges
+        : typeof raw.charge === 'number'
+          ? raw.charge
+          : (readKeyedNumber(raw.charges, stateId) ??
+            (skillId !== undefined ? readKeyedNumber(raw.charges, skillId) : undefined) ??
+            readKeyedNumber(raw.chargeCounts, stateId) ??
+            (skillId !== undefined ? readKeyedNumber(raw.chargeCounts, skillId) : undefined) ??
+            readKeyedNumber(raw.stateCharges, stateId) ??
+            readStateStatListValue(unit, stateId, statId) ??
+            readStateStatListValue(unit, stateId) ??
+            resolveUnitStat(unit.stats, statId) ??
+            resolveUnitStat(unit.stats, stateId))
+    if (chargeCount === undefined && unit.overlays) {
+      const prefix = pgsvBase.slice(0, -1).toLowerCase()
+      for (const ov of unit.overlays) {
+        const tok = ov.token?.toLowerCase() ?? ''
+        if (tok.startsWith(prefix)) {
+          const suffix = Number(tok.slice(prefix.length))
+          if (suffix >= 1 && suffix <= 3) {
+            chargeCount = suffix
+          }
+        }
+      }
+    }
+    const stage = Math.min(3, Math.max(1, Math.floor(chargeCount ?? 1)))
+    const baseIdx = OVERLAY_INDEX_BY_NAME.get(pgsvBase.toLowerCase())
+    if (baseIdx !== undefined) {
+      const targetRow = OVERLAY_TXT_ROWS[baseIdx + stage - 1]
+      if (targetRow) return [targetRow.name.toLowerCase()]
+    }
+    return [pgsvBase]
+  }
+
+  return STATE_OVERLAYS[stateId] ?? []
+}
+
 /**
  * The light of an overlay (0x6fb1b49f–0x6fb1b4e0): only when the overlay.bin `Radius` (+0x74) is non-zero,
  * CreateLight type 1 with `InitRadius` (+0x70), intensity 255 and Red/Green/Blue (+0x7d..+0x7f), then
@@ -805,7 +983,7 @@ function missileLightEmitter(
 ): { readonly emitter: LightEmitterInput | null; readonly radius: number; readonly color: readonly [number, number, number] } {
   const [light, flicker, red, green, blue] = missileLight113c(missileId)
   const color = [red, green, blue] as const
-  if (light <= 0) return { emitter: null, radius: 0, color }
+  if (light <= 0 || unit.missileNoLight === true) return { emitter: null, radius: 0, color }
   const override = unit.missileLightRadius
   if (override !== undefined && (!Number.isInteger(override) || override <= 0)) {
     throw new RangeError(`missile ${String(unit.id)} light radius override ${String(override)} is not a positive integer`)
@@ -914,7 +1092,31 @@ export function buildSceneDrawables(
   const pointLights: PointLightInput[] = []
   const lightEmitters: LightEmitterInput[] = []
 
-  for (const rawUnit of units) {
+  const rawUnitsList = Array.from(units)
+  const playerAppearancesById = new Map<number, SorceressAppearanceSpec>()
+  let fallbackAmazonAppearance: SorceressAppearanceSpec | undefined
+  for (const rawU of rawUnitsList) {
+    const rAny = rawU as Record<string, any>
+    const isPlr =
+      (rawU as RenderableUnitInput).kind === 'player' ||
+      rAny.unitType === 0 ||
+      rAny.unitType === 'player'
+    if (isPlr && rAny.equipmentAppearance) {
+      const uid = Number(rAny.id ?? rAny.unitId ?? 0)
+      const spec: SorceressAppearanceSpec =
+        rAny.equipmentAppearance.classToken === 'am'
+          ? rAny.equipmentAppearance
+          : { ...rAny.equipmentAppearance, classToken: 'am', classId: 0 }
+      if (uid > 0) {
+        playerAppearancesById.set(uid, spec)
+      }
+      if (rAny.isLocalPlayer === true || rAny.classId === 0 || fallbackAmazonAppearance === undefined) {
+        fallbackAmazonAppearance = spec
+      }
+    }
+  }
+
+  for (const rawUnit of rawUnitsList) {
     const rawAny = rawUnit as Record<string, any>
     const resolvedKind: SceneUnitKind =
       (rawUnit as RenderableUnitInput).kind ??
@@ -970,8 +1172,7 @@ export function buildSceneDrawables(
       const { key, entry } = resolved
       // No sprite (celFile 'null', e.g. whitelightmissile 154): nothing to draw, the light above still exists.
       if (!entry.celFile || entry.celFile.trim() === '' || entry.celFile.toLowerCase() === 'null') continue
-      const blendMode: DrawableBlendMode =
-        (entry.trans === 0 || entry.trans === undefined) ? 'normal' : transToBlendMode(entry.trans)
+      const blendMode: DrawableBlendMode = transToBlendMode(entry.trans)
       const dir = computeMissileClipDirection(unit, entry.numDirections || 16)
       const totalFrames = Math.max(1, unit.totalFrames ?? entry.animLen ?? 8)
       const loopAnim = unit.loopAnim !== undefined ? unit.loopAnim : entry.loopAnim !== 0
@@ -1104,7 +1305,7 @@ export function buildSceneDrawables(
         worldX: worldX - 5,
         worldY,
         sortY: worldY,
-        blendMode: 'trans50',
+        blendMode: overlayTransToBlendMode(3),
       }
       unitOverlays.push(questAlertOverlay)
       overlayDrawables.push(questAlertOverlay)
@@ -1162,16 +1363,17 @@ export function buildSceneDrawables(
         const preDraw = Boolean(
           ov.preDraw ?? (ovRow !== undefined ? ovRow.preDraw !== 0 : undefined) ?? ovTxt?.preDraw ?? authOv?.preDraw ?? false,
         )
+        // Overlay.txt Trans is the D2gfx eDrawMode (0x6FB1B11D); with no Overlay.txt row there is no draw mode, so
+        // the overlay is reported and skipped instead of guessing one (Issue #955: never throw per frame).
+        const metaRow = meta !== undefined ? OVERLAY_ROW_BY_NAME.get(meta.token.toLowerCase()) : undefined
+        const rowTrans =
+          typeof ov.blendMode === 'number' ? ov.blendMode : (ovRow?.trans ?? ovTxt?.trans ?? metaRow?.trans)
+        if (typeof ov.blendMode !== 'string' && rowTrans === undefined) {
+          reportMissingArt('overlay', ov.token ?? `OVL_${String(ov.overlayId)}`, 'no Overlay.txt row: unknown Trans/eDrawMode')
+          continue
+        }
         const blendMode: DrawableBlendMode =
-          typeof ov.blendMode === 'string'
-            ? ov.blendMode
-            : typeof ov.blendMode === 'number'
-              ? overlayTransToBlendMode(ov.blendMode)
-              : ovRow
-                ? overlayTransToBlendMode(ovRow.trans)
-                : ovTxt
-                  ? overlayTransToBlendMode(ovTxt.trans)
-                  : (meta?.blendMode ?? 'normal')
+          typeof ov.blendMode === 'string' ? ov.blendMode : overlayTransToBlendMode(rowTrans!)
         const ovDrawable: SceneOverlayDrawable = {
           drawableKind: 'overlay',
           ownerUnitId: unit.id,
@@ -1183,7 +1385,7 @@ export function buildSceneDrawables(
           ...(preDraw ? { preDraw: true } : {}),
           ...(xOffset !== 0 ? { xOffset } : {}),
           worldX: worldX + xOffset,
-          worldY: worldY + yOffset,
+          worldY: worldY + yOffset - (unit.altitude ?? 0),
           sortY: worldY,
           blendMode,
         }
@@ -1226,8 +1428,13 @@ export function buildSceneDrawables(
         if (stateId === STATE_BONEARMOR_NOOVERLAYS) {
           continue
         }
-        const stateTokens = STATE_OVERLAYS[stateId]
-        if (stateTokens) {
+        // D2Client 0x6FB22C80 (LOOPEX=4 / AURAEX=9): while a state's one-shot castoverlay is playing,
+        // hold back its persistent overlay1..4 loop (Issue #1063).
+        if (isStateCastOverlayPlaying113c(unit.overlays as readonly ClientUnitOverlay[] | undefined, stateId)) {
+          continue
+        }
+        const stateTokens = resolveStateOverlayTokens113c(unit, stateId)
+        if (stateTokens.length > 0) {
           for (const token of stateTokens) {
             const normToken = token.toLowerCase()
             const isDuplicate = unitOverlays.some((o) => {
@@ -1279,7 +1486,7 @@ export function buildSceneDrawables(
               ...(preDraw ? { preDraw: true } : {}),
               ...(xOffset !== 0 ? { xOffset } : {}),
               worldX: worldX + xOffset,
-              worldY: worldY + yOffset,
+              worldY: worldY + yOffset - (unit.altitude ?? 0),
               sortY: worldY,
               blendMode,
             }
@@ -1386,7 +1593,7 @@ export function buildSceneDrawables(
             loop: false,
             ...(preDraw ? { preDraw: true } : {}),
             worldX: worldX + xOffset,
-            worldY: worldY + yOffset,
+            worldY: worldY + yOffset - (unit.altitude ?? 0),
             sortY: worldY,
             blendMode: overlayTransToBlendMode(rawTrans),
           }
@@ -1435,6 +1642,7 @@ export function buildSceneDrawables(
       worldX,
       worldY,
       sortY: worldY,
+      ...(unit.altitude !== undefined && unit.altitude !== 0 ? { altitude: unit.altitude } : {}),
       blendMode: isFaded ? 'trans50' : 'normal',
       lifePct:
         unit.lifePct ?? (unit.hpRatio !== undefined ? Math.round(unit.hpRatio * 128) : 100),
@@ -1443,15 +1651,44 @@ export function buildSceneDrawables(
       ...(unit.itemColor !== undefined ? { itemColor: unit.itemColor } : {}),
       isHovered: Boolean(unit.isHovered),
       isCorpse,
-      tintColor,
-      ...(unit.equipmentAppearance !== undefined
-        ? {
-            equipmentAppearance: unit.equipmentAppearance,
-            appearanceKey: unit.appearanceKey ?? appearanceKey(unit.equipmentAppearance),
+      tintColor:
+        tintColor ??
+        (!isCorpse && unit.kind === 'monster'
+          ? unit.classId === 357
+            ? ([255, 230, 128] as const)
+            : unit.classId === 356
+              ? ([191, 217, 255] as const)
+              : null
+          : null),
+      ...(() => {
+        const baseAppearance: SorceressAppearanceSpec | undefined =
+          unit.equipmentAppearance ??
+          (unit.kind === 'monster' && !isCorpse
+            ? unit.classId === 356
+              ? ((unit.ownerId !== undefined
+                  ? playerAppearancesById.get(unit.ownerId)
+                  : undefined) ??
+                fallbackAmazonAppearance ??
+                DEFAULT_AMAZON_APPEARANCE)
+              : unit.classId === 357
+                ? VALKYRIE_113C_APPEARANCE
+                : undefined
+            : undefined)
+        if (baseAppearance !== undefined) {
+          const effAppearance = applyStateItemTransToAppearance(
+            baseAppearance,
+            statesIter,
+          )
+          return {
+            equipmentAppearance: effAppearance,
+            appearanceKey:
+              effAppearance !== unit.equipmentAppearance
+                ? appearanceKey(effAppearance)
+                : (unit.appearanceKey ?? appearanceKey(effAppearance)),
           }
-        : unit.appearanceKey !== undefined
-          ? { appearanceKey: unit.appearanceKey }
-          : {}),
+        }
+        return unit.appearanceKey !== undefined ? { appearanceKey: unit.appearanceKey } : {}
+      })(),
       overlays: unitOverlays,
       ...(warpId !== undefined ? { warpId } : {}),
       ...(unit.toLevelId !== undefined ? { toLevelId: unit.toLevelId } : {}),
@@ -1502,9 +1739,9 @@ export function buildSceneDrawables(
     if (isCorpse && Boolean(unit.corpseSuppressed ?? rawAny.corpseSuppressed)) {
       continue
     }
-    // 1.13c States.txt corpse_nodraw (104): hide=1 — Corpse Explosion (D2Game 0x6FC6F4D0
-    // STATES_ToggleState(corpse, 104, 1)) consumes the corpse, which is no longer drawn.
-    if (isCorpse && statesIterHas(statesIter, STATE_CORPSE_NODRAW)) {
+    // 1.13c States.txt hide=1 corpse states (#1 freeze, #99 redeemed, #104 corpse_nodraw,
+    // #107 shatter, #154 recycled, #173 corpseexp, #184 uberminion): consumed/shattered corpses are not drawn.
+    if (isCorpse && statesIterHasAny(statesIter, CORPSE_HIDE_STATES_113C)) {
       continue
     }
     unitDrawables.push(unitDrawable)

@@ -253,6 +253,7 @@ export interface SkillRecord {
   readonly castOverlay: string
   readonly cltOverlayA: string
   readonly cltOverlayB: string
+  readonly prgOverlay: string
   readonly raw: Readonly<Record<string, string>>
 }
 
@@ -899,6 +900,7 @@ export class D2DataRegistry {
         castOverlay: textCell(row, 'castoverlay'),
         cltOverlayA: textCell(row, 'cltoverlaya'),
         cltOverlayB: textCell(row, 'cltoverlayb'),
+        prgOverlay: textCell(row, 'prgoverlay'),
         raw: row,
       }
 

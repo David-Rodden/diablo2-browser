@@ -9,6 +9,7 @@ import { extendedViewportsPlugin } from './extended-viewports/index.ts'
 import { groundItemBeamPlugin } from './ground-item-beam/index.ts'
 import { hudEnhancementsPlugin } from './hud-enhancements/index.ts'
 import { killStatsPlugin } from './kill-stats/index.ts'
+import { nextGamePlugin } from './next-game/index.ts'
 import { quickCastPlugin } from './quick-cast/index.ts'
 
 export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
@@ -19,4 +20,5 @@ export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
   hudEnhancementsPlugin,
   groundItemBeamPlugin,
   quickCastPlugin,
+  nextGamePlugin,
 ]

@@ -32,7 +32,12 @@ import type { VendorPriceContext, VendorPriceFn, VendorRepairAllFn } from './ven
 
 export type { HudCommandSink }
 
-/** D2Client store click throttle: one buy / sell / repair request per action every 2000 ms. */
+/**
+ * D2Client `0x6faf6f5c..0x6faf6fa5` Repair All button throttle (`0x7d0` = 2000 ms on `[0x6fbd3484]`).
+ * Guarded by `mov eax, ds:0x6fbcbc90; test eax, eax; je 0x6faf6fac` (`g_bIsRepairAll`, set to 1
+ * only at `0x6fb475c8..0x6fb475d9` for button `0x12`); buy (`0x32`), sell (`0x33`), and single-item
+ * repair (`0x35` with `0x6fbcbc90 == 0`) jump to `0x6faf6fac` and bypass this cooldown (#1304).
+ */
 export const NPC_TRADE_THROTTLE_MS = 2000
 
 /**
@@ -189,6 +194,96 @@ export function selectSkillImpl(model: any, hand: Hand, skillId: number, itemId 
   model.emitCommand({ type: 'SelectSkill', hand, skill: skillId, itemId })
 }
 
+export function assignSkillHotkeyImpl(
+  model: any,
+  slot: number,
+  hand: Hand,
+  skillId: number,
+  itemId = 0xffffffff,
+): void {
+  if (!Number.isInteger(slot) || slot < 0 || slot > 15) return
+  model.hadWorldSkillHotkeys = true
+  model.world.assignSkillHotkey(slot, hand, skillId, itemId)
+  if (model.hudManager?.hotkeys) {
+    const key = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
+    if (skillId === 0xffff || skillId === 0x7fff || skillId < 0) {
+      model.hudManager.hotkeys.bindings.delete(key)
+    } else {
+      model.hudManager.hotkeys.bindHotkey(key, hand, skillId)
+    }
+  }
+  model.emitCommand({ type: 'AssignSkillHotkey', slot, hand, skill: skillId, itemId })
+}
+
+export function activateSkillHotkeyImpl(model: any, slot: number): boolean {
+  if (!Number.isInteger(slot) || slot < 0 || slot > 15) return false
+  const worldBinding = model.world.skillHotkeys.get(slot)
+  if (worldBinding && worldBinding.skill >= 0 && worldBinding.skill !== 0xffff) {
+    model.selectSkill(worldBinding.hand, worldBinding.skill, worldBinding.itemId ?? 0xffffffff)
+    return true
+  }
+  const key = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
+  const hudBinding = model.hudManager?.hotkeys.bindings.get(key)
+  if (hudBinding && hudBinding.skillId >= 0 && hudBinding.skillId !== 0xffff) {
+    model.selectSkill(hudBinding.side, hudBinding.skillId, 0xffffffff)
+    return true
+  }
+  return false
+}
+
+export function cycleBoundSkillsImpl(model: any, step: -1 | 1): boolean {
+  const rightEntries: { slot: number; hand: Hand; skillId: number; itemId?: number }[] = []
+  const allEntries: { slot: number; hand: Hand; skillId: number; itemId?: number }[] = []
+  for (let slot = 0; slot < 16; slot++) {
+    const wb = model.world.skillHotkeys.get(slot)
+    const key = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
+    const hb = model.hudManager?.hotkeys.bindings.get(key)
+    const hand: Hand | undefined = wb?.hand ?? hb?.side
+    const skillId = wb?.skill ?? hb?.skillId
+    if (!hand || skillId === undefined || skillId < 0 || skillId === 0xffff || skillId === 0x7fff) {
+      continue
+    }
+    const entry = {
+      slot,
+      hand,
+      skillId,
+      ...(wb?.itemId !== undefined ? { itemId: wb.itemId } : {}),
+    }
+    allEntries.push(entry)
+    if (hand === 'right') {
+      rightEntries.push(entry)
+    }
+  }
+  const pool = rightEntries.length > 0 ? rightEntries : allEntries
+  if (pool.length === 0) return false
+
+  const activeHand: Hand = rightEntries.length > 0 ? 'right' : pool[0]!.hand
+  const currentSkillId =
+    activeHand === 'right'
+      ? (model.world.self.rightSkill || model.hudManager?.hotkeys.rightSkillId || 0)
+      : (model.world.self.leftSkill || model.hudManager?.hotkeys.leftSkillId || 0)
+  const currentIdx = pool.findIndex(e => e.hand === activeHand && e.skillId === currentSkillId)
+  const nextIdx =
+    currentIdx < 0
+      ? step > 0
+        ? 0
+        : pool.length - 1
+      : (currentIdx + step + pool.length) % pool.length
+  const chosen = pool[nextIdx]!
+  model.selectSkill(chosen.hand, chosen.skillId, chosen.itemId ?? 0xffffffff)
+  return true
+}
+
+export function autoBeltItemImpl(model: any, itemId: number): boolean {
+  if (!Number.isFinite(itemId) || itemId <= 0) return false
+  // 1.13c D2Client.dll 0x6fb46ff8 / 0x6fb47000: play item_pickup (235) and emit C2S 0x63 ItemToBelt.
+  model.uiSound?.(235)
+  model.hudManager?.onPlayUiSound?.(235)
+  model.world.pushSoundRequest?.({ soundId: 235 })
+  model.emitCommand({ type: 'ItemToBelt', itemId: itemId >>> 0 })
+  return true
+}
+
 export function useBeltSlotImpl(model: any, slotIndex: number, shift = false): boolean {
   if (!Number.isFinite(slotIndex) || slotIndex < 0 || slotIndex >= 16) return false
   const bySlot = model.world.containers.beltBySlot?.get(slotIndex)
@@ -204,6 +299,28 @@ export function useBeltSlotImpl(model: any, slotIndex: number, shift = false): b
       : undefined)
   if (!beltItem) return false
   if (shift) {
+    // 1.13c D2Client.dll 0x6fad9a56..0x6fad9b0b:
+    // Requires a living mercenary (`0x6fad9a6a`); mercenaries only accept healing ('healpotion')
+    // and rejuvenation ('rejuvpotion') potions. Mana, Stamina, Antidote, and Thawing potions are
+    // rejected with speech 0x55 ("I can't use that").
+    const merc = model.world.merc ?? model.hudManager?.merc
+    if (!merc || merc.isDead) {
+      return false
+    }
+    const code = (beltItem.code ?? '').trim().toLowerCase()
+    const isMercConsumable = /^(hp[1-5]|hpo|hpf|rvs|rvl)$/.test(code)
+    const mercClassId = merc.classId ?? merc.hcIdx ?? 0
+    if (!isMercConsumable) {
+      const cantUseSoundId = mercClassId === 271 ? 4612 : 4616
+      if (model.uiSound) model.uiSound(cantUseSoundId)
+      else model.hudManager?.onPlayUiSound?.(cantUseSoundId)
+      model.world.pushSoundRequest?.({ soundId: cantUseSoundId })
+      return false
+    }
+    const thanksSoundId = mercClassId === 271 ? 4615 : 4625
+    if (model.uiSound) model.uiSound(thanksSoundId)
+    else model.hudManager?.onPlayUiSound?.(thanksSoundId)
+    model.world.pushSoundRequest?.({ soundId: thanksSoundId })
     model.emitCommand({
       type: 'BeltUse',
       itemId: beltItem.id >>> 0,
@@ -1169,7 +1286,8 @@ export function vendorBuyImpl(model: any, itemId: number, shiftFill: boolean): b
   const item = model.world.containers.shop.get(itemId)
   if (!item) throw new Error(`HudModel.vendorBuy: shop item #${itemId} not in the store`)
   const cost = model.requireVendorPrice()(item, store.gamble ? 2 : 0, store.ctx)
-  if (model.isThrottled('buy')) return false
+  // D2Client.dll 0x6faf6f5c..0x6faf6f6f: `g_bIsRepairAll` (`[0x6fbcbc90]`) is 0 for buy (`0x32`),
+  // so `je 0x6faf6fac` bypasses the 2000 ms `[0x6fbd3484]` Repair-All throttle (#1304).
   // D2Client.dll 0x6faf709c..0x6faf70a1: the 0x32 buy request stores the store item's dropsound (0x6fb31e40)
   // in [0x6fbc9753]; the S2C 0x2A result-0 reply plays it and clears it (0x6fafb694..0x6fafb6ae) (#991).
   model.pendingVendorBuySoundId = resolveItemDropSoundId113c(item)
@@ -1191,7 +1309,8 @@ export function vendorSellImpl(model: any, itemId: number): boolean {
   if (item.isEar || QUEST_ITEM_CODES.has(code)) return false
   const cost = model.requireVendorPrice()(item, 1, store.ctx)
   if (cost <= 0) return false
-  if (model.isThrottled('sell')) return false
+  // D2Client.dll 0x6faf6f5c..0x6faf6f6f (`[0x6fbcbc90] == 0` -> `je 0x6faf6fac`) and 0x6fb46d5f
+  // (cursor sell -> `0x33` directly): sell (`0x33`) bypasses the 2000 ms Repair-All throttle (#1304).
   const itemMode = model.playerItemMode(item)
   model.sellToNpc({ npcId: store.npcId, itemId, itemMode, cost })
   return true
@@ -1212,10 +1331,10 @@ export function vendorRepairItemImpl(model: any, itemId: number): boolean {
   const curDur = item.curDurability ?? item.durability ?? 0
   const maxDur = item.maxDurability ?? 0
   if (maxDur <= 0 || curDur >= maxDur) return false
-  // D2Client.dll 0x6faf6f36..0x6faf6f48: trade mode 3 (repair) plays cursor_repair_item before the
-  // 2000 ms request throttle (0x6faf6f71) and the 0x35 request (#991).
+  // D2Client.dll 0x6faf6f36..0x6faf6f48: trade mode 3 (repair) plays cursor_repair_item (#991),
+  // and at 0x6faf6f5c..0x6faf6f6f `g_bIsRepairAll` (`[0x6fbcbc90]`) is 0 for single-item repair,
+  // so `je 0x6faf6fac` bypasses the 2000 ms Repair-All throttle (#1304).
   model.uiSound?.(NPC_REPAIR_SOUND_ID)
-  if (model.isThrottled('repair')) return false
   const isCursor = model.world.containers.cursor?.id === itemId
   const itemMode = isCursor ? 4 : 0
   model.repairItemAtNpc({ npcId: store.npcId, itemId, itemMode, durability: curDur })
@@ -1224,7 +1343,8 @@ export function vendorRepairItemImpl(model: any, itemId: number): boolean {
 
 export function vendorRepairAllImpl(model: any): boolean {
   const store = model.requireOpenStore('vendorRepairAll')
-  // D2Client.dll 0x6faf6f36..0x6faf6f48: same repair branch (0x35 with the 0x80000000 repair-all flag).
+  // D2Client.dll 0x6faf6f36..0x6faf6f48: trade mode 3 plays cursor_repair_item before the
+  // 2000 ms Repair-All throttle (`0x6fbcbc90 != 0` -> `0x6faf6f71..0x6faf6fa5`, `0x7d0` ms on `[0x6fbd3484]`).
   model.uiSound?.(NPC_REPAIR_SOUND_ID)
   if (model.isThrottled('repair')) return false
   model.repairAllAtNpc(store.npcId)

@@ -617,3 +617,33 @@ export const OBJECT_SOUNDS_113C: readonly (ObjectSoundDescriptor113c | null)[] =
 /** Class 61 (cairn stones): mode-bound sound comes from D2Client.dll 0x6fba5998[mode] (0x6fad250c). */
 export const CAIRN_STONE_CLASS_ID_113C = 61
 export const CAIRN_STONE_MODE_SOUNDS_113C: readonly number[] = Object.freeze([0, 413, 414, 415, 416, 417, 0, 0])
+
+/**
+ * D2Client.dll 0x6fb82f60 (23-entry shrine client table, 0x14 bytes/entry, +0x10 soundId; read by 0x6fad4a70):
+ * Indexed by Shrines.txt Code (0..22).
+ */
+export const SHRINE_SOUNDS_113C: readonly number[] = Object.freeze([
+  0, // 0: None
+  2673, // 1: Refill (shrine_refill)
+  2673, // 2: Health Boost (shrine_refill)
+  2672, // 3: Mana Boost (shrine_recharge)
+  2666, // 4: Health Exchange (shrine_exchange)
+  2666, // 5: Mana Exchange (shrine_exchange)
+  2664, // 6: Armor Boost (shrine_armorboost)
+  2665, // 7: Combat Boost (shrine_combatboost)
+  2675, // 8: Resist Fire Boost (shrine_resistfire)
+  2674, // 9: Resist Cold Boost (shrine_resistcold)
+  2676, // 10: Resist Lightning Boost (shrine_resistlightning)
+  2677, // 11: Resist Poison Boost (shrine_resistpoison)
+  2679, // 12: Skill Boost (shrine_skill)
+  2672, // 13: Recharge Boost (shrine_recharge)
+  2672, // 14: Stamina Boost (shrine_recharge)
+  2667, // 15: Experience Boost (shrine_experience)
+  2678, // 16: Shrine of Enirhs (shrine_ofenirhs)
+  2671, // 17: Portal Shrine (shrine_portal)
+  2669, // 18: Gem Shrine (shrine_gemupgrade)
+  2680, // 19: Storm Shrine (shrine_storm)
+  2671, // 20: Monster Shrine (shrine_portal)
+  2668, // 21: Exploding Shrine (shrine_exploding)
+  2670, // 22: Poison Shrine (shrine_poison)
+])

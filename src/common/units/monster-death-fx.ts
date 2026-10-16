@@ -4,6 +4,7 @@
  * (`D2Game.dll` `MonsterUnique.cpp` / `QuestsFX.cpp` & `D2Client.dll` `Missiles.txt` `pCltDoFunc`).
  */
 
+import { CLTDO25_RING_X_113C, CLTDO25_RING_Y_113C } from '../skills/cltdo25-ring-113c.ts'
 import { MONSTATS2_FLAGINDEX, hasMonStats2Flag } from './monstats2-flags.ts'
 
 /**
@@ -38,7 +39,6 @@ export const MON_UMOD_ID = Object.freeze({
   COLD: 18,
   HIRESPCL: 19,
   SCARAB: 20,
-  KILLSELF: 21,
   QUESTCOMPLETE: 22,
   POISONHIT: 23,
   THIEF: 24,
@@ -59,14 +59,21 @@ export const MON_UMOD_ID = Object.freeze({
   BERSERK: 39,
   WORMS_ON_DEATH: 40,
   ALWAYS_RUN_AI: 41,
-  LIGHTNINGDEATH: 42,
   POISON: 10,
-  KILL_MINIONS: 21,
-  KILL_SELF: 21,
+  /** MonUMod 15 `partydead` / `killminionsdeath` (`D2Game.dll`). */
+  KILL_MINIONS: 15,
+  KILLMINIONSDEATH: 15,
+  /** MonUMod 21 `tempsummon`: set on timed summons (`D2Game.dll`). */
+  TEMPSUMMON: 21,
   BONEFETISH: 31,
+  /** MonUMod 31 `goboom` (`corpseboom`): `D2Client.dll` event-2 handler 0x6fad0e60. */
+  CORPSEBOOMDEATH: 31,
   SUICIDEMINION: 33,
   SUICIDE: 33,
-  CHARGED_BOLTS: 42,
+  /** MonUMod 40 `worms_on_death`: `D2Client.dll` handler 0x6fad0fa0 -> 0x6fad0a60. */
+  PAINWORMDEATH: 40,
+  /** MonUMod 42 `novadeath`: `D2Client.dll` 0x6fad0c40 `edi == 0x2a` branch. */
+  NOVADEATH: 42,
   FIRE_ENCHANTED: 9,
   LIGHTNING_ENCHANTED: 17,
   COLD_ENCHANTED: 18,
@@ -115,8 +122,9 @@ export const MON_UMOD_NAME_TO_ID: Readonly<Record<string, number>> = Object.free
   'cold enchanted': 18,
   hirespcl: 19,
   scarab: 20,
-  killself: 21,
-  kill_minions: 21,
+  tempsummon: 21,
+  killminionsdeath: 15,
+  kill_minions: 15,
   questcomplete: 22,
   poisonhit: 23,
   thief: 24,
@@ -145,9 +153,11 @@ export const MON_UMOD_NAME_TO_ID: Readonly<Record<string, number>> = Object.free
   possessed: 38,
   berserk: 39,
   worms_on_death: 40,
+  painwormdeath: 40,
   always_run_ai: 41,
-  lightningdeath: 42,
-  charged_bolts: 42,
+  novadeath: 42,
+  chargedbolts: 20,
+  charged_bolts: 20,
 })
 
 export type MonsterUModSource =
@@ -353,21 +363,25 @@ export function calcBoneFetishDeathDamage(
 }
 
 /**
- * Computes 1.13c Cold Enchanted (`MonUMod` #18 `cold`) Frost Nova (`Skills.txt` #44) parameters on death.
- * Skill level = `max(1, floor(mlvl / 2))` (or `1` if `mlvl` is omitted).
+ * Computes 1.13c Cold Enchanted (`MonUMod` #18 `cold`) death nova parameters.
+ *
+ * D2Client 0x6fad0c40 (`edi == 0x12`, mode 0, event param 4): velocity = `Vel` of missile 0x77
+ * (`frostnova`, via 0x6fabcb5c), then 0x6fb51020(missile 0xc2 = 194 `coldunique`, -1, level = stat 12)
+ * spawns one missile per entry of the 64-entry ring table (`D2CLIENT_NOVA_RING_X/Y`).
+ * Server (`D2Game.dll` `0x6fd14170`): casts `coldunique` (#194) with `frostnova` (#119) velocity.
  * Chill length (`ELen`) = `(8 + sLvl) * 25` frames (`40ms` per frame).
  */
 export interface ColdEnchantedNovaSpec {
   readonly triggered: boolean
-  readonly skillId: 44
+  /** Missile level passed to 0x6fb51020 = monster `STAT_LEVEL` (12). */
   readonly skillLevel: number
   readonly sLvl: number
-  readonly missileKey: 'frostnova'
-  readonly uniqueMissileKey: 'coldunique'
-  readonly boltCount: 32
-  readonly directions: 32
+  readonly missileKey: 'coldunique'
+  /** Missiles.txt row whose `Vel` overrides the ring velocity (0x6fabcb5c(0x77)). */
+  readonly velocityMissileKey: 'frostnova'
+  readonly boltCount: 64
+  readonly directions: 64
   readonly rangeTicks: 14
-  readonly radiusSubTiles: number
   readonly coldMinDmg: number
   readonly coldMaxDmg: number
   readonly chillFrames: number
@@ -388,21 +402,40 @@ export function calcColdEnchantedDeathNova(
   const chillFrames = isMinion ? 0 : Math.max(25, Math.floor(baseChillFrames * diffPenalty))
   return {
     triggered: !isMinion,
-    skillId: 44,
-    skillLevel: sLvl,
+    skillLevel: Math.max(1, mlvl),
     sLvl,
-    missileKey: 'frostnova',
-    uniqueMissileKey: 'coldunique',
-    boltCount: 32,
-    directions: 32,
+    missileKey: 'coldunique',
+    velocityMissileKey: 'frostnova',
+    boltCount: 64,
+    directions: 64,
     rangeTicks: 14,
-    radiusSubTiles: 7.875,
     coldMinDmg,
     coldMaxDmg,
     chillFrames,
     chillDurationMs: chillFrames * 40,
   }
 }
+
+/**
+ * D2Client 1.13c 64-entry nova ring offset tables used by 0x6fb51020 -> 0x6fb50db0
+ * (`for i in 0..63: params.targetX(+0x1c) = X[i]; params.targetY(+0x20) = Y[i]; 0x6fb630f0(params)`).
+ * X @ .rdata 0x6fb84390, Y @ .rdata 0x6fb84290 (radius 30 sub-tiles, relative to the caster).
+ */
+export const D2CLIENT_NOVA_RING_X: readonly number[] = CLTDO25_RING_X_113C
+export const D2CLIENT_NOVA_RING_Y: readonly number[] = CLTDO25_RING_Y_113C
+
+/**
+ * The five sub-tile points used by the D2Client corpse-boom style death handlers
+ * (fire enchanted 0x6fad0d20, corpseboom 0x6fad0e60): `(x, y)` plus the four diagonal neighbours.
+ */
+export const D2CLIENT_DEATH_BOOM_POINTS: readonly { readonly dx: number; readonly dy: number }[] =
+  Object.freeze([
+    { dx: 0, dy: 0 },
+    { dx: 1, dy: 1 },
+    { dx: 1, dy: -1 },
+    { dx: -1, dy: 1 },
+    { dx: -1, dy: -1 },
+  ])
 
 export interface IsoRadialVector {
   readonly index: number
@@ -530,9 +563,99 @@ export function isSuicideMinionMonster(classId: number, monType?: string): boole
   return false
 }
 
+/**
+ * 1.13c `MonStats.txt` `aip1`, `aip1(N)`, `aip1(H)` flat lookup (`hcIdx * 3 + diffIdx`, `hcIdx` `0..733`).
+ * Read by `D2Client.dll` `0x6facffc0` (`MonUMod` #33 `suicideminion` event-2 handler, `movsx edi, WORD PTR [eax + edx*2 + 0x56]`).
+ */
+const MONSTATS_AIP1_FLAT_113C: readonly number[] = Object.freeze([
+  60,65,70,70,75,80,80,85,90,90,95,95,99,99,99,30,40,50,40,50,60,50,60,70,100,100,100,60,70,80,88,75,75,86,100,100,80,50,50,83,0,0,90,33,33,30,45,65,
+  30,50,65,30,55,65,30,60,65,30,40,50,45,50,55,55,60,60,65,70,70,75,80,80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,40,40,40,45,40,40,50,40,35,
+  55,40,35,60,40,35,0,0,0,0,0,0,0,0,0,0,0,0,50,60,60,60,70,70,70,80,80,80,90,90,90,100,100,60,70,80,70,80,90,80,85,90,90,95,95,99,99,99,
+  33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,75,75,80,75,75,80,75,80,85,75,80,85,75,85,90,45,50,55,55,60,65,65,70,75,70,80,85,75,85,90,10,15,20,
+  15,17,20,20,20,22,23,23,23,25,25,27,35,35,35,40,40,40,45,45,45,50,50,50,55,55,55,40,45,45,45,50,50,50,55,55,55,60,60,60,65,65,20,21,23,20,21,23,
+  20,21,24,20,22,24,20,22,25,70,70,70,80,80,80,90,90,90,90,90,90,60,60,60,60,60,60,60,60,60,60,60,60,75,80,84,80,85,88,85,88,92,88,91,94,90,94,96,
+  5,9,15,10,12,18,15,16,21,20,22,23,25,25,25,70,70,70,75,75,75,80,80,80,85,85,85,85,85,85,0,0,0,0,0,0,0,0,0,0,0,0,70,75,80,80,80,85,
+  85,85,90,90,90,95,0,0,0,0,0,0,0,0,0,0,0,0,40,50,60,50,60,65,60,70,70,70,70,75,45,55,60,55,65,70,65,75,75,75,75,75,75,75,75,80,80,80,
+  85,85,85,90,90,90,100,100,100,55,55,55,65,65,65,76,76,76,85,85,85,85,85,85,33,33,33,33,33,33,33,33,33,33,33,33,33,33,33,100,100,100,100,100,100,100,100,100,
+  100,100,100,100,100,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,60,70,0,0,0,0,0,0,30,35,35,0,0,0,0,0,0,0,0,0,
+  60,65,70,70,75,80,80,85,90,90,90,95,99,99,99,60,60,60,70,70,70,80,80,80,90,90,90,99,99,99,75,80,85,75,80,85,80,85,90,80,85,90,90,90,95,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,75,78,80,80,83,85,85,88,90,88,91,93,90,93,95,0,0,0,75,80,85,80,85,90,85,90,95,90,95,97,250,200,200,240,200,200,
+  210,200,200,180,200,200,150,200,200,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,80,70,100,80,70,
+  100,80,70,100,80,70,0,0,0,5,5,6,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,125,110,90,85,85,85,20,20,20,20,20,20,20,20,20,20,20,20,90,90,90,65,75,85,76,85,90,85,90,95,25,25,25,30,30,30,
+  35,35,35,40,40,40,15,20,25,0,0,0,0,0,0,0,0,0,0,0,0,65,70,85,70,75,90,75,80,95,85,93,98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  45,50,50,0,0,0,70,75,80,80,85,90,90,95,95,70,75,80,80,85,90,90,90,95,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  0,0,0,24,26,28,35,65,85,35,65,85,35,65,85,35,65,85,40,45,45,40,45,45,40,45,45,40,45,45,40,45,45,0,0,0,7,8,9,8,9,10,9,10,11,10,11,12,
+  11,12,13,85,85,85,90,90,90,90,90,90,90,90,90,90,90,90,0,0,0,33,33,33,0,0,0,0,0,0,16,17,20,16,18,21,16,19,22,80,85,90,80,85,90,80,85,90,
+  40,40,40,60,60,60,80,60,60,70,75,75,80,80,80,90,90,90,90,95,100,40,75,100,6,7,8,60,70,80,70,75,85,80,80,90,90,90,95,95,95,95,0,0,0,0,0,0,
+  0,0,0,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,25,30,32,5,5,5,5,5,5,20,20,20,25,30,32,0,0,0,4,4,4,0,0,0,16,17,21,16,18,22,
+  16,19,23,16,20,24,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,75,75,75,60,60,60,65,65,65,10,7,3,10,7,3,10,7,3,0,0,0,
+  0,0,0,0,0,0,70,70,70,0,0,0,0,0,0,85,85,85,0,0,0,0,0,0,50,65,80,55,70,85,60,75,90,60,60,60,80,80,80,0,0,0,0,0,0,0,0,0,
+  0,0,0,20,20,20,0,0,0,1,1,1,10,7,3,70,70,70,70,70,70,70,70,70,70,70,70,0,0,0,0,0,0,35,65,85,35,65,85,35,65,85,35,65,85,35,65,85,
+  35,65,85,35,65,85,35,65,85,35,65,85,35,65,85,35,65,85,35,65,85,99,99,99,0,0,0,0,0,0,70,70,70,70,70,70,20,20,20,20,20,20,20,20,20,20,20,20,
+  20,20,20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,100,100,100,100,100,100,100,100,0,0,0,16,16,16,100,100,100,
+  30,30,30,40,40,40,20,10,10,10,10,10,22,22,22,22,22,22,20,20,20,20,20,20,20,20,20,100,100,100,50,50,50,50,50,50,15,15,15,0,0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,40,40,40,30,45,55,40,55,65,50,65,70,60,70,80,70,80,85,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,70,75,80,70,75,80,70,75,80,70,75,80,70,75,80,70,75,80,70,75,80,70,75,80,15,15,15,15,15,15,15,15,15,
+  15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,90,91,93,90,91,94,90,92,94,90,92,95,90,93,95,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,250,250,250,
+  250,250,250,250,250,250,250,250,250,250,250,250,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,25,25,25,5,5,5,10,10,10,0,0,0,
+  0,0,0,20,22,25,20,22,25,20,22,25,20,22,25,60,65,70,60,70,75,60,75,80,60,80,85,60,85,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,0,0,0,
+  0,0,0,0,0,0,0,0,0,0,0,0,8,12,16,8,12,16,8,12,16,8,12,16,0,0,0,0,0,0,15,15,15,15,15,15,0,0,0,0,0,0,30,30,30,0,0,0,
+  80,80,80,75,75,75,75,75,75,75,75,75,75,75,75,75,75,75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,15,15,15,15,15,15,15,15,25,25,25,
+  0,0,0,3,3,3,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,80,85,90,80,85,90,80,85,90,80,85,90,80,85,90,0,0,0,65,65,65,60,75,90,4,4,4,
+  1,1,1,1,1,1,70,70,70,80,80,80,90,90,90,90,90,90,90,90,90,0,0,0,0,0,0,0,0,0,0,0,0,90,90,90,90,90,90,90,90,90,0,0,0,80,90,95,
+  80,92,96,85,94,97,85,95,98,90,95,99,88,75,75,86,100,100,80,50,50,83,0,0,90,33,33,75,85,90,75,85,90,80,90,95,80,90,95,80,90,95,65,65,65,65,65,65,
+  65,65,65,65,65,65,60,65,65,60,65,65,60,65,65,60,65,65,60,65,65,40,40,40,45,40,40,50,40,35,55,40,35,60,40,35,75,75,75,15,20,26,15,20,26,15,20,26,
+  90,90,95,100,100,100,90,90,90,90,90,90,90,90,90,70,75,80,70,75,80,70,70,70,70,70,70,70,70,70,90,95,97,90,95,97,35,65,85,35,65,85,35,65,85,35,65,85,
+  35,65,85,35,65,85,35,65,85,90,90,90,90,90,90,20,22,25,20,22,25,90,100,100,90,100,100,90,100,100,90,93,95,90,93,95,90,90,90,90,90,90,90,90,90,70,70,75,
+  70,70,75,70,70,75,75,80,80,75,80,80,75,80,80,75,85,90,75,85,90,75,85,90,99,99,99,99,99,99,33,33,33,33,33,33,90,90,90,90,90,90,90,94,96,90,94,96,
+  100,100,100,100,100,100,100,100,100,20,20,20,20,20,20,20,20,20,40,45,45,40,45,45,40,45,45,33,33,33,33,33,33,85,85,85,85,85,85,85,85,85,85,85,85,85,90,95,
+  85,90,95,40,40,40,40,40,40,16,19,22,16,19,22,80,85,90,80,85,90,55,55,55,90,93,95,150,200,200,70,75,80,70,75,80,70,75,80,75,85,90,60,75,90,60,75,90,
+  0,0,0,0,0,0,100,100,100,100,100,100,80,60,60,80,60,60,90,90,90,85,85,85,85,85,85,85,85,85,70,80,85,90,95,100,90,95,100,6,7,8,6,7,8,25,25,25,
+  15,20,25,0,0,0,45,50,50,30,35,35,5,5,6,0,0,0,100,100,100,3,3,3,60,75,90,6,7,8,0,0,0,60,60,60,55,55,55,75,85,90,90,94,96,90,93,95,
+  90,90,90,99,99,99,70,75,80,70,70,70,250,250,250,99,99,99,90,95,99,35,65,85,35,65,85,35,65,85,35,65,85,85,85,85,90,100,100,70,70,75,
+])
+
+/**
+ * Returns 1.13c `MonStats.txt` `aip1` (`0`), `aip1(N)` (`1`), or `aip1(H)` (`2`) for `classId`.
+ */
+export function getMonStatsAip1_113c(
+  classId: number,
+  difficulty: number | 'normal' | 'nightmare' | 'hell' = 0,
+): number {
+  const hcIdx = Math.trunc(classId)
+  if (hcIdx < 0 || hcIdx * 3 >= MONSTATS_AIP1_FLAT_113C.length) return 0
+  const diffIdx = normalizeDifficultyIndex(difficulty)
+  return MONSTATS_AIP1_FLAT_113C[hcIdx * 3 + diffIdx] ?? 0
+}
+
+/**
+ * 1.13c `D2Client.dll` `0x6facffc0` (`MonUMod` #33 `suicideminion` event-2 handler, Issue #1218):
+ * Reads `edi = MonStats.bin[classId].wAiParam[0][difficulty]` (`aip1`, `aip1(N)`, `aip1(H)`):
+ * - `edi === 1` -> `0x1ab` (`427` `'suicidefireexplode'`, `Range = 13`)
+ * - `edi >= 2`  -> `0x1ac` (`428` `'suicideiceexplode'`, `Range = 13`)
+ * - otherwise   -> `0x1aa` (`426` `'suicidecorpseexplode'`, `Range = 13`)
+ */
+export function resolveSuicideExplodeMissileKey(
+  classId: number,
+  difficulty: number | 'normal' | 'nightmare' | 'hell' = 0,
+  aip1Override?: number,
+): 'suicidecorpseexplode' | 'suicidefireexplode' | 'suicideiceexplode' {
+  const aip1 =
+    aip1Override !== undefined
+      ? Math.trunc(aip1Override)
+      : getMonStatsAip1_113c(classId, difficulty)
+  if (aip1 === 1) return 'suicidefireexplode'
+  if (aip1 >= 2) return 'suicideiceexplode'
+  return 'suicidecorpseexplode'
+}
+
 export function isFireTowerMonster(classId: number, monType?: string): boolean {
-  if (classId === 372) return true
-  if (monType && monType.trim().toLowerCase() === 'firetower') return true
+  if (classId === 372 || classId === 435) return true
+  if (monType) {
+    const clean = monType.trim().toLowerCase()
+    if (clean === 'firetower' || clean === 'barricadetower') return true
+  }
   return false
 }
 
@@ -656,15 +779,27 @@ export function getFreezeShatterMissiles(
 
 /**
  * Boss Death Sequence & Minion Purge specification (`QuestsFX.cpp` & `Missiles.txt`).
+ *
+ * The client show is the D2Client MonUMod 22 `questcomplete` event-1 handler 0x6fad0fb0, a class switch (byte table
+ * 0x6fad1140 + jump table 0x6fad1124, mode 0 unless noted) that only knows: 45 -> 0x6fb02860, 156 Andariel ->
+ * 0x6fb02230, 211 Duriel -> 0x6fb02620, 229 Radament -> 0x6fb027a0, 242 Mephisto -> 0x6fb02270, 243 Diablo ->
+ * 0x6fb02600, 256 Izual -> 0x6fb03070, 267 Blood Raven -> 0x6fb02320, 284 (mode 14) -> 0x6fb026e0, 366 compelling
+ * orb -> 0x6fb030d0, 479 overseer1 -> 0x6fb02bd0, 540..542 -> 0x6fb029f0, 544 -> 0x6fb02570. The Uber bosses
+ * (704..709), the Diablo clone (333) and the Summoner (250) are not in it and have no client death show (#1204,
+ * #1206). Nihlathak's `nehlithakcontrol` is created by 0x6fb02af0, not by this switch.
+ *
+ * The controller's lifetime is its Missiles.txt `Range` (+ LevRange): the handlers pass a zeroed 0x5c-byte create
+ * record to 0x6fb630f0 with only flags / owner / source / missile / level, and #10637 / #10019 write the missile's
+ * TargetX / TargetY, not its range (#1207).
  */
 export interface BossDeathFxSpec {
   readonly bossKey:
+    | 'countess'
     | 'andariel'
     | 'duriel'
     | 'bloodraven'
     | 'radament'
     | 'coldworm'
-    | 'summoner'
     | 'mephisto'
     | 'izual'
     | 'diablo'
@@ -672,11 +807,19 @@ export interface BossDeathFxSpec {
     | 'nihlathak'
     | 'ancient'
     | 'baal'
-  readonly controllerMissileKey: string
-  readonly controllerMissile: string
-  readonly controllerClassId: number
-  readonly rangeTicks: number
-  readonly controllerRange: number
+  /**
+   * The Missiles.txt row the death handler creates, or `null` when the handler creates no missile (Diablo's
+   * 0x6fb02600 only stores the unit id in 0x6fba2134 for the UI text timer read at 0x6fb02db4, #1205).
+   */
+  readonly controllerMissileKey: string | null
+  readonly controllerMissile: string | null
+  /** Missiles.txt `Id` of `controllerMissileKey` (`null` with it). */
+  readonly controllerClassId: number | null
+  /**
+   * The show is the D2Client MonUMod 22 `questcomplete` event-1 handler 0x6fad0fb0 (class switch, mode 0 only): it
+   * only runs for a monster carrying umod 22 (the SuperUnique spawner 0x6fc451f0 / 0x6fc45730 appends it).
+   */
+  readonly requiresQuestCompleteUMod?: boolean | undefined
   readonly shakeAmplitude: number
   readonly shakeDurationMs: number
   readonly purgeSurroundingMonstersRadius: number
@@ -698,17 +841,12 @@ export interface BossDeathFxSpec {
 function buildBossDeathSpec(
   base: Omit<
     BossDeathFxSpec,
-    | 'controllerMissile'
-    | 'controllerRange'
-    | 'shakeAmplitude'
-    | 'shakeDurationMs'
-    | 'purgeSurroundingMonstersRadius'
+    'controllerMissile' | 'shakeAmplitude' | 'shakeDurationMs' | 'purgeSurroundingMonstersRadius'
   >,
 ): BossDeathFxSpec {
   return {
     ...base,
     controllerMissile: base.controllerMissileKey,
-    controllerRange: base.rangeTicks,
     shakeAmplitude: base.screenShake?.amplitude ?? 0,
     shakeDurationMs: base.screenShake?.sustainMs ?? 0,
     purgeSurroundingMonstersRadius: base.minionPurge?.radiusSubTiles ?? 0,
@@ -720,12 +858,21 @@ export function getBossDeathFxSpec(
   monType?: string,
 ): BossDeathFxSpec | null {
   const clean = monType?.trim().toLowerCase() ?? ''
-  if (classId === 156 || classId === 707 || clean === 'andariel' || clean === 'uberandariel') {
+  if (classId === 45 || clean === 'corruptrogue3' || clean === 'countess') {
+    // 0x6fad0fb0 (umod 22, mode 0) -> 0x6fb02860: towermist (#291, Range 400) + towerchestspawner (#332, Range 400).
+    return buildBossDeathSpec({
+      bossKey: 'countess',
+      controllerMissileKey: 'towermist',
+      controllerClassId: 291,
+      requiresQuestCompleteUMod: true,
+    })
+  }
+  if (classId === 156 || clean === 'andariel') {
+    // 0x6fad0fb0 -> 0x6fb02230: andycontrol0 (#307, Range 350).
     return buildBossDeathSpec({
       bossKey: 'andariel',
       controllerMissileKey: 'andycontrol0',
       controllerClassId: 307,
-      rangeTicks: 350,
       screenShake: {
         sustainMs: 350 * 40,
         amplitude: 8,
@@ -739,12 +886,12 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (classId === 211 || classId === 708 || clean === 'duriel' || clean === 'uberduriel') {
+  if (classId === 211 || clean === 'duriel') {
+    // 0x6fad0fb0 -> 0x6fb02620: durieldeathcontrol (#363, Range 400).
     return buildBossDeathSpec({
       bossKey: 'duriel',
       controllerMissileKey: 'durieldeathcontrol',
       controllerClassId: 363,
-      rangeTicks: 400,
       screenShake: {
         sustainMs: 160 * 40,
         amplitude: 6,
@@ -754,11 +901,12 @@ export function getBossDeathFxSpec(
     })
   }
   if (classId === 267 || clean === 'bloodraven') {
+    // 0x6fad0fb0 (umod 22, mode 0) -> 0x6fb02320; Missiles.txt brdeathcontrol (#284) Range = 375.
     return buildBossDeathSpec({
       bossKey: 'bloodraven',
       controllerMissileKey: 'brdeathcontrol',
       controllerClassId: 284,
-      rangeTicks: 100,
+      requiresQuestCompleteUMod: true,
       minionPurge: {
         radiusSubTiles: 35,
         minDelayFrames: 25,
@@ -767,11 +915,11 @@ export function getBossDeathFxSpec(
     })
   }
   if (classId === 229 || clean === 'radament') {
+    // 0x6fad0fb0 -> 0x6fb027a0: radamentdeath (#347, Range 400).
     return buildBossDeathSpec({
       bossKey: 'radament',
       controllerMissileKey: 'radamentdeath',
       controllerClassId: 347,
-      rangeTicks: 40,
       minionPurge: {
         radiusSubTiles: 35,
         minDelayFrames: 1,
@@ -780,27 +928,20 @@ export function getBossDeathFxSpec(
     })
   }
   if (classId === 284 || clean === 'maggotqueen1' || clean === 'coldworm') {
+    // 0x6fad0fb0 (mode 14) -> 0x6fb026e0: queendeathcenter (#353, Range 100).
     return buildBossDeathSpec({
       bossKey: 'coldworm',
       controllerMissileKey: 'queendeathcenter',
       controllerClassId: 353,
-      rangeTicks: 65,
     })
   }
-  if (classId === 250 || clean === 'summoner') {
-    return buildBossDeathSpec({
-      bossKey: 'summoner',
-      controllerMissileKey: 'orbmist',
-      controllerClassId: 368,
-      rangeTicks: 20,
-    })
-  }
-  if (classId === 242 || classId === 704 || clean === 'mephisto' || clean === 'ubermephisto') {
+  if (classId === 242 || clean === 'mephisto') {
+    // 0x6fad0fb0 -> 0x6fb02270: mephistodeathcontrol (#299, Range 275) + TargetX/Y 75, mephistoholedelay (#358),
+    // mephistodonotdraw (#306); see boss-death-cltdo-113c.ts (#1208).
     return buildBossDeathSpec({
       bossKey: 'mephisto',
       controllerMissileKey: 'mephistodeathcontrol',
       controllerClassId: 299,
-      rangeTicks: 140,
       screenShake: {
         sustainMs: 100 * 40,
         amplitude: 5,
@@ -809,12 +950,12 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (classId === 256 || classId === 706 || clean === 'izual' || clean === 'uberizual') {
+  if (classId === 256 || clean === 'izual') {
+    // 0x6fad0fb0 -> 0x6fb03070: izual control (#379, Range 200).
     return buildBossDeathSpec({
       bossKey: 'izual',
       controllerMissileKey: 'izual control',
       controllerClassId: 379,
-      rangeTicks: 100,
       minionPurge: {
         radiusSubTiles: 105,
         minDelayFrames: 1,
@@ -822,19 +963,12 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (
-    classId === 243 ||
-    classId === 333 ||
-    classId === 705 ||
-    clean === 'diablo' ||
-    clean === 'diabloclone' ||
-    clean === 'uberdiablo'
-  ) {
+  if (classId === 243 || clean === 'diablo') {
+    // 0x6fad0fb0 -> 0x6fb02600 creates no missile (#1205): no diabwallmaker ring, no controller.
     return buildBossDeathSpec({
       bossKey: 'diablo',
-      controllerMissileKey: 'diablo appears',
-      controllerClassId: 372,
-      rangeTicks: 160,
+      controllerMissileKey: null,
+      controllerClassId: null,
       screenShake: {
         sustainMs: 120 * 40,
         amplitude: 8,
@@ -849,11 +983,13 @@ export function getBossDeathFxSpec(
     })
   }
   if (classId === 479 || clean === 'overseer1' || clean === 'shenk') {
+    // 0x6fad0fb0 (umod 22, mode 0) -> 0x6fb02bd0; Missiles.txt overseercontrol (#602) Range = 500. Only Shenk (a
+    // SuperUnique, so umod 22) has the show; a plain overseer1 dies without it (Issue #1042).
     return buildBossDeathSpec({
       bossKey: 'shenk',
       controllerMissileKey: 'overseercontrol',
       controllerClassId: 602,
-      rangeTicks: 650,
+      requiresQuestCompleteUMod: true,
       screenShake: {
         sustainMs: 240 * 40,
         amplitude: 5,
@@ -868,11 +1004,11 @@ export function getBossDeathFxSpec(
     })
   }
   if (classId === 526 || clean === 'nihlathakboss' || clean === 'nihlathak') {
+    // nehlithakcontrol (#606, Range 224).
     return buildBossDeathSpec({
       bossKey: 'nihlathak',
       controllerMissileKey: 'nehlithakcontrol',
       controllerClassId: 606,
-      rangeTicks: 148,
       screenShake: {
         sustainMs: 120 * 40,
         amplitude: 6,
@@ -882,19 +1018,19 @@ export function getBossDeathFxSpec(
     })
   }
   if ((classId >= 540 && classId <= 542) || clean.startsWith('ancientbarb')) {
+    // 0x6fad0fb0 -> 0x6fb029f0: ancient death center (#541, Range 400).
     return buildBossDeathSpec({
       bossKey: 'ancient',
       controllerMissileKey: 'ancient death center',
       controllerClassId: 541,
-      rangeTicks: 40,
     })
   }
-  if (classId === 544 || classId === 709 || clean === 'baalcrab' || clean === 'uberbaal') {
+  if (classId === 544 || clean === 'baalcrab') {
+    // 0x6fad0fb0 -> 0x6fb02570: baalfx control (#625, Range 650).
     return buildBossDeathSpec({
       bossKey: 'baal',
       controllerMissileKey: 'baalfx control',
       controllerClassId: 625,
-      rangeTicks: 139,
       screenShake: {
         sustainMs: 139 * 40,
         amplitude: 7,

@@ -18,6 +18,14 @@ import {
   calculateShiverArmorDamage,
   calculateShiverArmorChillLength,
 } from './missile-engine.ts'
+import {
+  OVERLAY_INDEX_CHILL_ARMOR_HIT,
+  OVERLAY_INDEX_ENERGY_SHIELD_HIT_BASE,
+  OVERLAY_INDEX_FROZEN_ARMOR_HIT,
+  OVERLAY_INDEX_SHIVER_ARMOR_HIT,
+  computeEnergyShieldHitOverlay113c,
+} from '../../common/path/direction.ts'
+import { encode0x11UnitOverlay } from '../../netproto/index.ts'
 
 export interface ActiveStateEntry {
   readonly stateId: number
@@ -49,6 +57,19 @@ export interface ApplyStateResult {
   readonly activeSlvl: number
 }
 
+export interface ReactiveUnitOverlayEvent {
+  readonly target: 'attacker' | 'defender'
+  readonly overlayToken: string
+  readonly overlayIndex: number
+  readonly packet0x11: Uint8Array
+  readonly unitOverlay: {
+    readonly type: 'UnitOverlay'
+    readonly rawUnitType: number
+    readonly id: number
+    readonly overlayIndex: number
+  }
+}
+
 export interface ReactiveEventOutcome {
   readonly absorbedPhys256: number
   readonly absorbedElem256: number
@@ -59,6 +80,9 @@ export interface ReactiveEventOutcome {
   readonly spawnedMissiles: string[]
   readonly attackerStatesApplied: string[]
   readonly attackerColdDamage256: number
+  readonly attackerOverlaysApplied?: string[]
+  readonly defenderOverlaysApplied?: string[]
+  readonly unitOverlays?: ReactiveUnitOverlayEvent[]
 }
 
 export class StateBus {
@@ -266,10 +290,10 @@ export class StateBus {
       }
     }
 
-    // Collect overlays from States.txt
+    // Collect overlays from States.txt (persistent overlay1..4 only; castoverlay is one-shot on inactive->active transition)
     const overlays: string[] = []
     if (stateRec) {
-      for (const ov of [stateRec.overlay1, stateRec.overlay2, stateRec.overlay3, stateRec.overlay4, stateRec.castoverlay]) {
+      for (const ov of [stateRec.overlay1, stateRec.overlay2, stateRec.overlay3, stateRec.overlay4]) {
         if (ov) overlays.push(ov)
       }
     }
@@ -557,6 +581,14 @@ export class StateBus {
     isPoison?: boolean
     isOpenWounds?: boolean
     returnFire?: boolean | number
+    defenderX?: number
+    defenderY?: number
+    attackerX?: number
+    attackerY?: number
+    defenderRawUnitType?: number
+    defenderUnitId?: number
+    attackerRawUnitType?: number
+    attackerUnitId?: number
   }): ReactiveEventOutcome {
     let remPhys256 = params.incomingPhys256 ?? 0
     let remElem256 = params.incomingElem256 ?? 0
@@ -569,6 +601,13 @@ export class StateBus {
     const spawnedMissiles: string[] = []
     const attackerStatesApplied: string[] = []
     let attackerColdDamage256 = 0
+    const attackerOverlaysApplied: string[] = []
+    const defenderOverlaysApplied: string[] = []
+    const unitOverlays: ReactiveUnitOverlayEvent[] = []
+    const defRawType = params.defenderRawUnitType ?? 0
+    const defUnitId = (params.defenderUnitId ?? 1) >>> 0
+    const atkRawType = params.attackerRawUnitType ?? 1
+    const atkUnitId = (params.attackerUnitId ?? 1) >>> 0
 
     for (const entry of [...this.entries]) {
       const stateName = entry.stateName
@@ -592,6 +631,7 @@ export class StateBus {
             const requiredMana256 = Math.trunc((desiredRedirect256 * manaRatio16) / 16)
             const currentMana256 = this.statList.getMana256()
 
+            let esAbsorbed256 = 0
             if (currentMana256 >= requiredMana256) {
               this.statList.setMana256(currentMana256 - requiredMana256)
               manaDrained256 += requiredMana256
@@ -601,6 +641,7 @@ export class StateBus {
               absorbedElem256 += elemPart
               remPhys256 -= physPart
               remElem256 -= elemPart
+              esAbsorbed256 = physPart + elemPart
             } else {
               // Partial absorb and Energy Shield collapses
               const actualRedirect256 = Math.trunc((currentMana256 * 16) / manaRatio16)
@@ -612,8 +653,34 @@ export class StateBus {
               absorbedElem256 += elemPart
               remPhys256 -= physPart
               remElem256 -= elemPart
+              esAbsorbed256 = physPart + elemPart
               this.removeState('energyshield')
               this.removeState(60)
+            }
+            // 1.13c SKILLS_EventFunc24_EnergyShield (0x6FD17820, SkillSor.cpp:1065-1069):
+            // when nAbsorbedDamage > 0, sets prgoverlay + D2Common_11053(UNITS_GetDirectionToCoords(defender, attackerX, attackerY)) on defender
+            if (esAbsorbed256 > 0) {
+              const esHit = computeEnergyShieldHitOverlay113c(
+                params.defenderX ?? 0,
+                params.defenderY ?? 0,
+                params.attackerX ?? 0,
+                params.attackerY ?? 0,
+                OVERLAY_INDEX_ENERGY_SHIELD_HIT_BASE,
+              )
+              defenderOverlaysApplied.push(esHit.overlayToken)
+              const unitOverlay = {
+                type: 'UnitOverlay' as const,
+                rawUnitType: defRawType,
+                id: defUnitId,
+                overlayIndex: esHit.overlayIndex,
+              }
+              unitOverlays.push({
+                target: 'defender',
+                overlayToken: esHit.overlayToken,
+                overlayIndex: esHit.overlayIndex,
+                packet0x11: encode0x11UnitOverlay(unitOverlay),
+                unitOverlay,
+              })
             }
           }
         }
@@ -688,6 +755,22 @@ export class StateBus {
         const returnFire = params.returnFire !== undefined ? Boolean(params.returnFire) : true
         if (returnFire) {
           spawnedMissiles.push('chillingarmorbolt')
+          const overlayToken =
+            this.registry?.getSkillById(60)?.cltOverlayA.trim().toLowerCase() || 'chillarmor_hit'
+          defenderOverlaysApplied.push(overlayToken)
+          const unitOverlay = {
+            type: 'UnitOverlay' as const,
+            rawUnitType: defRawType,
+            id: defUnitId,
+            overlayIndex: OVERLAY_INDEX_CHILL_ARMOR_HIT,
+          }
+          unitOverlays.push({
+            target: 'defender',
+            overlayToken,
+            overlayIndex: OVERLAY_INDEX_CHILL_ARMOR_HIT,
+            packet0x11: encode0x11UnitOverlay(unitOverlay),
+            unitOverlay,
+          })
         }
       }
 
@@ -703,6 +786,22 @@ export class StateBus {
             : (params.incomingPhys256 === undefined || params.incomingPhys256 > 0)
         if (hasPhysDamage) {
           attackerStatesApplied.push('freeze')
+          const overlayToken =
+            this.registry?.getSkillById(40)?.cltOverlayA.trim().toLowerCase() || 'frozenarmor_hit'
+          attackerOverlaysApplied.push(overlayToken)
+          const unitOverlay = {
+            type: 'UnitOverlay' as const,
+            rawUnitType: atkRawType,
+            id: atkUnitId,
+            overlayIndex: OVERLAY_INDEX_FROZEN_ARMOR_HIT,
+          }
+          unitOverlays.push({
+            target: 'attacker',
+            overlayToken,
+            overlayIndex: OVERLAY_INDEX_FROZEN_ARMOR_HIT,
+            packet0x11: encode0x11UnitOverlay(unitOverlay),
+            unitOverlay,
+          })
           const shiverBlvl = this.statList.getBaseSkillLevel(50)
           const chillingBlvl = this.statList.getBaseSkillLevel(60)
           const synPoints = shiverBlvl + chillingBlvl
@@ -718,6 +817,22 @@ export class StateBus {
       // 6. Shiver Armor (`state = shiverarmor`, `auraeventfunc = 3`) on `attackedinmelee`
       if (params.event === 'attackedinmelee' && stateName === 'shiverarmor') {
         attackerStatesApplied.push('cold')
+        const overlayToken =
+          this.registry?.getSkillById(50)?.cltOverlayA.trim().toLowerCase() || 'shiverarmor_hit'
+        attackerOverlaysApplied.push(overlayToken)
+        const unitOverlay = {
+          type: 'UnitOverlay' as const,
+          rawUnitType: atkRawType,
+          id: atkUnitId,
+          overlayIndex: OVERLAY_INDEX_SHIVER_ARMOR_HIT,
+        }
+        unitOverlays.push({
+          target: 'attacker',
+          overlayToken,
+          overlayIndex: OVERLAY_INDEX_SHIVER_ARMOR_HIT,
+          packet0x11: encode0x11UnitOverlay(unitOverlay),
+          unitOverlay,
+        })
         const frozenBlvl = this.statList.getBaseSkillLevel(40)
         const chillingBlvl = this.statList.getBaseSkillLevel(60)
         const synPoints = frozenBlvl + chillingBlvl
@@ -808,6 +923,9 @@ export class StateBus {
       spawnedMissiles,
       attackerStatesApplied,
       attackerColdDamage256,
+      ...(attackerOverlaysApplied.length > 0 ? { attackerOverlaysApplied } : {}),
+      ...(defenderOverlaysApplied.length > 0 ? { defenderOverlaysApplied } : {}),
+      ...(unitOverlays.length > 0 ? { unitOverlays } : {}),
     }
   }
 }

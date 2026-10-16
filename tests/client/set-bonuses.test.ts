@@ -796,7 +796,7 @@ describe('Issue #938: 7 class-specific full-set visual effects (1.13c parity)', 
       const auraOv = scene.overlayDrawables.find((o) => o.token.toLowerCase() === 'aura_fanatic')
       expect(auraOv, `${setName} emits aura_fanatic overlay`).toBeDefined()
       expect(auraOv?.preDraw).toBe(true)
-      expect(auraOv?.blendMode).toBe('highlight')
+      expect(auraOv?.blendMode).toBe('additive')
       expect(auraOv?.totalFrames).toBe(20)
       expect(CANONICAL_113C_OVERLAYS.aura_fanatic.filename).toBe('AuraFanatic')
       expect(CANONICAL_113C_OVERLAYS.aura_fanatic.frames).toBe(20)

@@ -134,7 +134,7 @@ export { BNCS_KEEPALIVE_INTERVAL_MS } from './bncs/session.ts'
 export { McpFramer } from './mcp/framing.ts'
 export { decodeMcpS2cPacket } from './mcp/packets.ts'
 export { resolveC2sPacketSize, validateC2sPacket } from './d2gs/framing-c2s.ts'
-export { encodeC2sChat, encodeC2sOverheadChat } from './d2gs/c2s/chat.ts'
+export { encodeC2sChat, encodeC2sOverheadChat, encodeC2sSay } from './d2gs/c2s/chat.ts'
 export {
   ClickButtonId,
   encodeC2sCancelController,
@@ -157,6 +157,7 @@ export {
   encodeC2sItemPickup,
   encodeC2sItemPlace,
   encodeC2sItemSwap,
+  encodeC2sItemToBelt,
   encodeC2sItemToCube,
   encodeC2sItemToCursor,
   encodeC2sItemUnequip,
@@ -176,6 +177,7 @@ export {
   encode0x59MakeEntityMove,
   encodeC2sMove,
   encodeC2sMoveToUnit,
+  encodeC2sRunToggle,
   encodeC2sWarpTo,
 } from './d2gs/c2s/movement.ts'
 
@@ -226,6 +228,7 @@ export {
 export {
   encodeC2sAddSkillPoint,
   encodeC2sAddStatPoint,
+  encodeC2sAssignSkillHotkey,
   encodeC2sSelectSkill,
   encodeC2sSkillAt,
   encodeC2sSkillOnUnit,
@@ -234,9 +237,16 @@ export { encodeC2sTrade } from './d2gs/c2s/trade.ts'
 export {
   decode0x58OpenUi,
   decode0x61CanGoToAct,
+  decode0x73CreateMissile,
   decode0xA3AuraSkill,
+  decode0xA4MonsterSpecial,
+  decodeRare113cS2cPacket,
   encode0xA3AuraSkill,
 } from './d2gs/s2c/misc.ts'
+export {
+  decode0x11UnitOverlay,
+  encode0x11UnitOverlay,
+} from './d2gs/s2c/units.ts'
 export { C2S_PACKET_SIZES, S2C_PACKET_SIZES } from './d2gs/tables/s2c-sizes.ts'
 export {
   D2GS_S2C_REGISTRY,
@@ -271,6 +281,7 @@ import {
   encodeD2gsClientCommand,
 } from './d2gs/registry.ts'
 import { encode0xA3AuraSkill } from './d2gs/s2c/misc.ts'
+import { encode0x11UnitOverlay } from './d2gs/s2c/units.ts'
 import type { ClientCommand } from './domain/client-command.ts'
 import { unitTypeToId, type ItemDataTables, type UnitType } from './domain/ids.ts'
 import type { ServerEvent } from './domain/server-event.ts'
@@ -407,6 +418,22 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
       w.u32LE(uId)
       w.u16LE(sound)
       return [w.toUint8Array()]
+    }
+
+    case 'UnitOverlay': {
+      const rawUnitType =
+        typeof e.rawUnitType === 'number'
+          ? e.rawUnitType
+          : typeof e.unitType === 'string'
+            ? unitTypeToId(e.unitType as UnitType)
+            : Number(e.unitType ?? 0)
+      return [
+        encode0x11UnitOverlay({
+          rawUnitType,
+          id: Number(e.id ?? e.unitId ?? 1) >>> 0,
+          overlayIndex: Number(e.overlayIndex ?? 0) & 0xffff,
+        }),
+      ]
     }
 
     case 'UnitSkillEvent': {

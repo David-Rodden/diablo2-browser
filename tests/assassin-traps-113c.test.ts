@@ -205,13 +205,14 @@ describe('Assassin Traps (#251-#277) — 1.13c 4-Layer Parity (Issue #1005)', ()
     it('configures missiles-data.ts for sentrychargedbolt (#495), sentrylightningbolt (#526), mana costs, and cooldowns', () => {
       const scb = getMissileTxtData('sentrychargedbolt')
       expect(scb.id).toBe(495)
-      expect(scb.vel).toBe(10)
-      expect(scb.range).toBe(80)
+      expect(scb.vel).toBe(12)
+      expect(scb.maxVel).toBe(12)
+      expect(scb.range).toBe(98)
 
       const slb = getMissileTxtData('sentrylightningbolt')
       expect(slb.id).toBe(526)
-      expect(slb.pierce).toBe(true)
-      expect(CANONICAL_113C_MISSILES['sentrylightningbolt']?.pierce).toBe(true)
+      expect(slb.pierce).toBeUndefined()
+      expect(CANONICAL_113C_MISSILES['sentrylightningbolt']?.pierce).toBeUndefined()
 
       // 1.13c mana costs
       expect(getSkillManaCost(251, 1)).toBe(3)
@@ -619,7 +620,7 @@ describe('Assassin Traps (#251-#277) — 1.13c 4-Layer Parity (Issue #1005)', ()
       engine.projectiles.length = 0
       expect(castSkill(251, 240, 200, { engine, runtime, hudManager: null, status })).toBe(true)
       expect(engine.world.player.cooldown).toBe(0)
-      expect(engine.projectiles[0]?.missileType).toBe('firetrauma')
+      expect(engine.projectiles[0]?.missileType).toBe('bomb in air')
       expect(engine.projectiles[0]?.aoeRadius).toBe(60)
 
       // 3. #256 Shock Web: 15-frame cooldown, multi-spike scatter (6 + floor(6/4) + floor(6/3) = 9 spikes)
@@ -640,13 +641,13 @@ describe('Assassin Traps (#251-#277) — 1.13c 4-Layer Parity (Issue #1005)', ()
       expect(engine.projectiles[0]?.nextDelay).toBe(25)
       expect(engine.projectiles[0]?.isPatrol).toBe(true)
 
-      // 5. #266 Blade Fury: single stream shuriken ('bladefury1'), no cooldown (0)
+      // 5. #266 Blade Fury: single stream shuriken ('bladefragment1' per srvmissilea), no cooldown (0)
       engine.world.player.cooldown = 0
       engine.projectiles.length = 0
       expect(castSkill(266, 240, 200, { engine, runtime, hudManager: null, status })).toBe(true)
       expect(engine.world.player.cooldown).toBe(0)
       expect(engine.projectiles).toHaveLength(1)
-      expect(engine.projectiles[0]?.missileType).toBe('bladefury1')
+      expect(engine.projectiles[0]?.missileType).toBe('bladefragment1')
 
       // 6. #277 Blade Shield: buff state + 25-frame periodic pulse, no fake 'blade_shield_cast' missile
       engine.world.player.cooldown = 0
@@ -659,59 +660,75 @@ describe('Assassin Traps (#251-#277) — 1.13c 4-Layer Parity (Issue #1005)', ()
   })
 
   describe('Layer 4: Client World Missiles (world-skill-missiles.ts)', () => {
-    it('assigns trapClassId=414 for #262 Wake of Fire and aligns client sentry & Blade Trap missiles', () => {
+    it('assigns 1.13c MonStats hcIdx for trap sentries (#261=411, #262=410, #271=412, #272=415, #276=416) with 0 cast-time missiles and fires via sub-skills', () => {
       const world = new ClientWorld()
       world.apply({ type: 'PlayerAssign', unitId: 1, charClass: 6, name: 'Ass', x: 100, y: 100 })
       const caster = world.getUnit('player', 1)!
       caster.stats.set(256, 6) // Shock Web blvl 6 -> 5 + 2 = 7 sentrychargedbolt bolts
 
-      // #261 Charged Bolt Sentry -> trapClassId 412, 7 'sentrychargedbolt' bolts
+      // #261..#276 trap placement spawns ONLY the sentry monster with 1.13c MonStats.txt hcIdx and 0 missiles on cast frame
       ;(world as any).spawnMissilesForSkill(caster, 261, 110, 100, 5)
-      const trap261 = Array.from(world.monsters.values()).find((m) => m.classId === 412)
+      ;(world as any).spawnMissilesForSkill(caster, 262, 112, 100, 5)
+      ;(world as any).spawnMissilesForSkill(caster, 271, 114, 100, 5)
+      ;(world as any).spawnMissilesForSkill(caster, 272, 118, 100, 5)
+      ;(world as any).spawnMissilesForSkill(caster, 276, 116, 100, 5)
+
+      const trap261 = Array.from(world.monsters.values()).find((m) => m.classId === 411)
+      const trap262 = Array.from(world.monsters.values()).find((m) => m.classId === 410)
+      const trap271 = Array.from(world.monsters.values()).find((m) => m.classId === 412)
+      const trap272 = Array.from(world.monsters.values()).find((m) => m.classId === 415)
+      const trap276 = Array.from(world.monsters.values()).find((m) => m.classId === 416)
       expect(trap261).toBeDefined()
+      expect(trap262).toBeDefined()
+      expect(trap271).toBeDefined()
+      expect(trap272).toBeDefined()
+      expect(trap276).toBeDefined()
+      expect(Array.from(world.units.values()).filter((u) => u.unitType === 'missile')).toHaveLength(0)
+
+      // Sub-skill #306 BoltSentry -> 7 'sentrychargedbolt' bolts
+      ;(world as any).spawnMissilesForSkill(trap261!, 306, 120, 100, 5)
       const bolts261 = Array.from(world.units.values()).filter(
         (u) => u.unitType === 'missile' && u.missileKey === 'sentrychargedbolt',
       )
       expect(bolts261).toHaveLength(7)
 
-      // #262 Wake of Fire -> trapClassId 414 (wakeofdestruction, NOT 411 bladecreeper)
-      ;(world as any).spawnMissilesForSkill(caster, 262, 112, 100, 5)
-      const trap262 = Array.from(world.monsters.values()).find((m) => m.classId === 414)
-      expect(trap262).toBeDefined()
-
-      // #271 Lightning Sentry & #276 Death Sentry -> piercing 'sentrylightningbolt'
-      ;(world as any).spawnMissilesForSkill(caster, 271, 114, 100, 5)
-      ;(world as any).spawnMissilesForSkill(caster, 276, 116, 100, 5)
+      // Sub-skill #313 sentry lightning & #324 death sentry ltng -> piercing 'sentrylightningbolt' / 'sentrylightningbolt2'
+      ;(world as any).spawnMissilesForSkill(trap271!, 313, 124, 100, 5)
+      ;(world as any).spawnMissilesForSkill(trap276!, 324, 126, 100, 5)
       const slbMissiles = Array.from(world.units.values()).filter(
-        (u) => u.unitType === 'missile' && u.missileKey === 'sentrylightningbolt',
+        (u) =>
+          u.unitType === 'missile' &&
+          (u.missileKey === 'sentrylightningbolt' || u.missileKey === 'sentrylightningbolt2'),
       )
       expect(slbMissiles).toHaveLength(2)
       expect(slbMissiles.every((m) => m.pierce === true)).toBe(true)
 
-      // #272 Wake of Inferno -> trapClassId 415, 'inferno sentry 1'
-      ;(world as any).spawnMissilesForSkill(caster, 272, 118, 100, 5)
+      // Sub-skill #311 mon inferno sentry -> 'inferno sentry 1' + 'inferno sentry 2'
+      ;(world as any).spawnMissilesForSkill(trap272!, 311, 128, 100, 5)
       const infMissiles = Array.from(world.units.values()).filter(
         (u) => u.unitType === 'missile' && u.missileKey === 'inferno sentry 1',
       )
       expect(infMissiles).toHaveLength(1)
 
-      // #266 Blade Fury -> single stream 'bladefury1' (not 3-way fan)
+      // #266 Blade Fury -> single stream 'bladefragment2' (cltmissilea per CltDo6, not bladefury1 or 3-way fan)
       ;(world as any).spawnMissilesForSkill(caster, 266, 120, 100, 5)
       const bfMissiles = Array.from(world.units.values()).filter(
-        (u) => u.unitType === 'missile' && u.missileKey === 'bladefury1',
+        (u) => u.unitType === 'missile' && u.missileKey === 'bladefragment2',
       )
       expect(bfMissiles).toHaveLength(1)
+      expect(
+        Array.from(world.units.values()).filter(
+          (u) => u.unitType === 'missile' && u.missileKey === 'bladefury1',
+        ),
+      ).toHaveLength(0)
 
-      // #277 Blade Shield -> state 158 on caster, no fake missile
-      const missileCountBefore277 = Array.from(world.units.values()).filter(
-        (u) => u.unitType === 'missile',
-      ).length
+      // #277 Blade Shield -> state 158 + 'blade shield attachment' (#553) on caster
       ;(world as any).spawnMissilesForSkill(caster, 277, 100, 100, 5)
-      const missileCountAfter277 = Array.from(world.units.values()).filter(
-        (u) => u.unitType === 'missile',
-      ).length
+      const bsAttachments = Array.from(world.units.values()).filter(
+        (u) => u.unitType === 'missile' && u.missileKey === 'blade shield attachment',
+      )
       expect(caster.states.has(158)).toBe(true)
-      expect(missileCountAfter277).toBe(missileCountBefore277)
+      expect(bsAttachments).toHaveLength(1)
     })
   })
 })

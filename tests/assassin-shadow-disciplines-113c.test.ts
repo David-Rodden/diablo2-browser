@@ -828,11 +828,10 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(quickOverlay).toBeDefined()
       expect(quickOverlay!.loop).toBe(false)
 
-      // 2. #267 Fade: removes State 157, adds State 159, attaches 'ethereal' cast overlay (not nonexistent 'fade')
+      // 2. #267 Fade: removes State 157, adds State 159 (State 159 draws 'fade' via STATE_OVERLAYS[159])
       ;(world as any).applySkillCastToUnit(selfUnit, 267, 100, 100, 5)
       expect(selfUnit.states.has(157)).toBe(false)
       expect(selfUnit.states.has(159)).toBe(true)
-      expect(selfUnit.overlays.some(o => o.token === 'ethereal' && o.loop === false)).toBe(true)
       expect(selfUnit.overlays.some(o => o.token === 'fade')).toBe(false)
 
       // 3. #278 Venom: adds State 31 ('venomclaws') only, never adds bogus State 178 ('antidote')
@@ -840,20 +839,23 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(selfUnit.states.has(31)).toBe(true)
       expect(selfUnit.states.has(178)).toBe(false)
 
-      // 4. #264 Cloak of Shadows: caster gets State 153 ('cloaked'), monsters in 30 sub-tiles get State 156 + 'blindaura'
+      // 4. #264 Cloak of Shadows: caster gets State 153 ('cloak_of_shadows', no 'cloaked' overlay), monsters in 30 sub-tiles get State 156 ('cloaked', no 'blindaura')
       ;(world as any).applySkillCastToUnit(selfUnit, 264, 100, 100, 5)
       expect(selfUnit.states.has(153)).toBe(true)
+      expect(selfUnit.overlays.some(o => o.token === 'cloaked')).toBe(false)
       expect(closeMob.states.has(156)).toBe(true)
       expect(midMob.states.has(156)).toBe(true)
-      expect(midMob.overlays.some(o => o.token === 'blindaura' && o.loop === true)).toBe(true)
+      expect(midMob.overlays.some(o => o.token === 'blindaura')).toBe(false)
 
-      // 5. #273 Mind Blast: radius = 4 sub-tiles, attaches 'mindblast_hit' + 'stun' + State 21 ('conversion'), no 'fist_will_cast'
+      // 5. #273 Mind Blast: radius = 4 sub-tiles, attaches tgtoverlay 'fist_will_cast' + 'stun' + State 21 ('stunned'), no bogus 'mindblast_hit'
       ;(world as any).spawnMissilesForSkill(selfUnit, 273, 100, 100, 5)
       expect(selfUnit.overlays.some(o => o.token === 'fist_will_cast')).toBe(false)
-      expect(closeMob.overlays.some(o => o.token === 'mindblast_hit')).toBe(true)
+      expect(closeMob.overlays.some(o => o.token === 'fist_will_cast')).toBe(true)
+      expect(closeMob.overlays.some(o => o.token === 'mindblast_hit')).toBe(false)
       expect(closeMob.overlays.some(o => o.token === 'stun')).toBe(true)
       expect(closeMob.states.has(21)).toBe(true)
       // midMob at dist 25 (> 4 sub-tiles) is not hit by Mind Blast
+      expect(midMob.overlays.some(o => o.token === 'fist_will_cast')).toBe(false)
       expect(midMob.overlays.some(o => o.token === 'mindblast_hit')).toBe(false)
       expect(midMob.states.has(21)).toBe(false)
     })

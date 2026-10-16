@@ -462,12 +462,19 @@ describe('MusicStreamer unit behavior', () => {
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4673)
 
     // 1. Walk from Rogue Encampment (1) -> Blood Moor (2 -> song 4679) and back (2 -> 1 -> song 4673)
+    // Walking moves the player: syncActiveAreaFromPlayerPosition caches the collision LevelView per player
+    // sub-tile (#1033), so each walk step must advance the player's position for the new area to be resolved.
+    const walkTo = (x: number, y: number): void => {
+      session.handleServerEvent({ type: "UnitReassign", unitType: "player", id: 1, at: { x, y }, snap: false } as never)
+    }
     activeMockAreaId = 2
+    walkTo(5011, 5011)
     session.tick(40, 1000)
     expect(session.world.areaId).toBe(2)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4679)
 
     activeMockAreaId = 1
+    walkTo(5010, 5010)
     session.tick(40, 1040)
     expect(session.world.areaId).toBe(1)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4673)

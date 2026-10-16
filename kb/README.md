@@ -1,6 +1,6 @@
 # Diablo II v1.13c Reverse-Engineering Knowledge Base (`kb/`)
 
-> **Ground Truth Invariant**: All documents in this knowledge base are reverse-engineered directly from Diablo II: Lord of Destruction v1.13c binary assembly (`D2Client.dll`, `D2Game.dll`, `D2Common.dll`, `D2Multi.dll`, `D2MCPClient.dll`, `D2Gfx.dll`, `D2Win.dll`, `D2Lang.dll`) and official Blizzard MPQ data tables (`Skills.txt`, `Missiles.txt`, `MonStats.txt`, `SuperUniques.txt`, `Objects.txt`, `Inventory.txt`, `States.txt`, `PetType.txt`, etc.).
+> **Ground Truth Invariant**: All documents in this knowledge base are reverse-engineered strictly and exclusively from the original Diablo II: Lord of Destruction v1.13c binary assembly (`D2Client.dll`, `D2Game.dll`, `D2Common.dll`, `D2CMP.dll`, `D2Multi.dll`, `D2MCPClient.dll`, `D2Gfx.dll`, `D2Win.dll`, `D2Lang.dll`, `Storm.dll`, `Fog.dll`, etc.) and official Blizzard 1.13c MPQ data tables (`Skills.txt`, `Missiles.txt`, `MonStats.txt`, `SuperUniques.txt`, `Objects.txt`, `Inventory.txt`, `States.txt`, `PetType.txt`, etc.) in `/usr/local/google/home/taodao/d2-data/` (`samples/d2/`) as the sole ground truth.
 
 ---
 
@@ -23,6 +23,7 @@ kb/
 │   ├── d2-npc-placeholder-objects-113c.md     # 城镇 NPC 静态占位 Object (InitFn 18/19) 与动态实体互斥隐藏
 │   └── d2client-object-interact-hittest-113c.md # 物件交互距离计算(#10594)与屏幕点击命中判定
 ├── render/                                    # 渲染与光照
+│   ├── d2client-drawmode-113c.md              # 绘制模式汇总、客户端 missile 动画速率 (AnimSpeed<<4)、CltDoFunc 25 64 环、States castoverlay
 │   └── d2client-unit-light-records-113c.md    # 单位光源记录 (玩家/怪物/弹道/叠加层) 与 stat 89/90 回调
 ├── ui/                                        # 用户界面、HUD 与大厅协议
 │   ├── d2client-automap-waypoint-parity.md    # 小地图 39 个小站图元 (307 / 617..619) 地板层与对象层对齐规范
@@ -35,6 +36,7 @@ kb/
 │   └── d2multi-join-game-panel-113c.md        # 多人大厅加入游戏面板控件表与 MCP 0x06 协议
 └── skills/                                    # 技能与弹道逆向工程参考
     ├── d2-skills-missiles-dispatch-tables.md  # 全技能与弹道分发函数总表与通用动作 (Dispatch Tables)
+    ├── client-state-ids-113c.md               # 客户端技能预测使用的真实 States.txt 行号 (blaze 13 / conviction 28 / stunned 21 / cold 11 等) 与持续帧
     ├── bosses/                                # Boss 与超级暗金怪技能
     │   ├── skills-boss-act1-act2-act3.md      # Act 1-3 Boss 技能 (安达利尔、督瑞尔、墨菲斯托等)
     │   ├── skills-boss-act4-diablo.md         # Act 4 Boss 技能 (暗黑破坏神、混沌避难所封印怪等)
@@ -159,6 +161,8 @@ kb/
 | 文档 | 核心逆向地址 / 模块 | 关键机制与规范 |
 |---|---|---|
 | [`render/d2client-unit-light-records-113c.md`](./render/d2client-unit-light-records-113c.md) | `D2Client.dll` `0x6fac92f5`, `0x6fac8bc0`, `0x6fac89a0`, `0x6fad0510`, `0x6fb63647`, `0x6fb1b360`, `0x6fb1b49f`, `0x6fb23410` | 单位光源记录与状态叠加层：玩家半径 13 + stat 89 (≤0 不变)、stat 90 颜色；怪物 MonStats2 光源与 MonUMod 3 (半径 7，Champion 随机 B/G/R)；弹道光仅在 Light Quality 高时创建、Flicker 与结束淡出；叠加层 `States.txt`/`states.bin` (`wOverlay[0..3]` + `pgsvoverlay` 3 行展开) 映射至 `overlay.bin` 绘制参数与 `InitRadius → Radius` 光源 (Issue #830, #878)。光照网格管线见 [`docs/lighting_grid_113c.md`](../docs/lighting_grid_113c.md) |
+| [`render/d2gfx-draw-mode-113c.md`](./render/d2gfx-draw-mode-113c.md) | `D2Client.dll` `0x6FB1B11D`, `0x6FB1B2B2`, `0x6FB1CF32`; `D2gfx.dll` `#10041` (`0x6FA8B080`); `D2Direct3D.dll` `0x6F886B90` | Overlay.txt `Trans` 原值即 eDrawMode (恒等)，Missiles.txt `Trans` 0/1/2 → 5/3/4；各 eDrawMode 的 D3D 混合状态 (0-2 α25/50/75、3 加法 ONE/ONE、4 乘法 ZERO/SRCCOLOR、5/6/7/≥8 不透明)；烘焙不做黑色抠像 (Issue #1050-#1055) |
+| [`render/d2client-drawmode-113c.md`](./render/d2client-drawmode-113c.md) | `D2Client.dll` `0x6FB633F7`, `0x6FB23CB0`, `0x6FB50DB0`, `0x6FB22C80`, `0x6FB23760`; `D2Direct3D.dll` `0x6F886CF4`; `D2Gdi.dll` `0x6F87633C` | eDrawMode 汇总 (Overlay Trans 恒等、Missile Trans 0/1/2→5/3/4、3=加法 ONE/ONE、4=乘法 ZERO/SRCCOLOR)；客户端 missile 视觉帧速 = `AnimSpeed<<4` 覆盖 (`animrate` 仅服务端)；CltDoFunc 25 客户端自生成 64 发半径 30 的环 (Range+LevRange*lvl)；States.txt castoverlay 在 state 设置时以 LOOPEX(4)/AURAEX(9) 播放后交接 overlay1/2 (Issue #1057) |
 | [`render/dt1-material-flags-animated-113c.md`](./render/dt1-material-flags-animated-113c.md) | `D2Common.dll` `0x6fd62f20`, `0x6fd62ff0`; `D2CMP.dll` `#10051` (`0x6fe25300`) | DT1 `+0x06` 为 u16 材质标志 (byte +7 是其高字节，非独立 animated 字节)；仅 `TILE_FLAGS_LAVA` (`0x100`) 动画，Act 5 雪地 `0x400` 为普通随机变体地块 (Issue #923) |
 
 ---

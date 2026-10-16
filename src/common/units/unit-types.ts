@@ -310,6 +310,7 @@ export interface CombatEvent {
     | 'missileHit'
     | 'missileExplode'
     | 'unitSkillEvent'
+    | 'unitOverlay'
   /** World x the event happened at. */
   readonly x: number
   /** World y the event happened at. */
@@ -346,6 +347,23 @@ export interface CombatEvent {
     readonly target: { readonly rawUnitType: number; readonly id: number }
     readonly x: number
     readonly y: number
+  } | undefined
+  /** Overlay.txt token name when kind === 'unitOverlay' (e.g. 'frozenarmor_hit', 'shiverarmor_hit', 'energyshieldhit3'). */
+  readonly overlayToken?: string | undefined
+  /** Overlay.txt row index when kind === 'unitOverlay' (e.g. 42, 43, 87..94). */
+  readonly overlayIndex?: number | undefined
+  /** Target raw unit type for S2C 0x11 UnitOverlay (0=player, 1=monster). */
+  readonly targetUnitType?: number | undefined
+  /** Target unit GUID for S2C 0x11 UnitOverlay. */
+  readonly targetUnitId?: number | undefined
+  /** S2C 0x11 8-byte packet emitted for unitOverlay (D2Game STAT_UNIT_DOOVERLAY). */
+  readonly packet0x11?: Uint8Array | undefined
+  /** Decoded UnitOverlay payload for S2C 0x11. */
+  readonly unitOverlay?: {
+    readonly type: 'UnitOverlay'
+    readonly rawUnitType: number
+    readonly id: number
+    readonly overlayIndex: number
   } | undefined
 }
 

@@ -314,10 +314,30 @@ const VAMPIRE_MORPH_CLIPS_113C: Readonly<Partial<Record<CharAnimClipKey, CharAni
   tw: makeClip113c(8, 176, true, []),
 }
 
+const BONEFETISH_MORPH_CLIPS_113C: Readonly<Partial<Record<CharAnimClipKey, CharAnimClip113c>>> = {
+  wl: makeClip113c(6, 256, true, []),
+  nu: makeClip113c(12, 256, true, []),
+  rn: makeClip113c(6, 256, true, []),
+  a1: makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
+  a2: makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
+  bl: makeClip113c(10, 256, false, []),
+  sc: makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
+  s1: makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
+  s2: makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
+  s3: makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
+  s4: makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
+  gh: makeClip113c(10, 256, false, []),
+  dt: makeClip113c(15, 256, false, []),
+  dd: makeClip113c(1, 256, false, []),
+  tn: makeClip113c(12, 256, true, []),
+  tw: makeClip113c(6, 256, true, []),
+}
+
 /**
  * Canonical 1.13c `AnimData.d2` clip metadata for player shapeshift morphs
  * (`D2COMMON_11013_ConvertMode`: Werewolf state 139 -> 430 `40`, Werebear state 140 -> 431 `TG`,
- * Vampire state 176 `monsterset` -> `MonStats.txt` 135 `vampire5` token `VA`, or legacy 200 alias).
+ * Vampire state 176 `monsterset` -> `MonStats.txt` 135 `vampire5` token `VA`,
+ * Delirium state 177 `delerium` -> `MonStats.txt` 212 `bonefetish1` token `FK`).
  */
 export const MORPH_ANIM_CLIPS_113C: Readonly<
   Record<number, Readonly<Partial<Record<CharAnimClipKey, CharAnimClip113c>>>>
@@ -329,6 +349,7 @@ export const MORPH_ANIM_CLIPS_113C: Readonly<
     rn: makeClip113c(8, 240, true, []),
     a1: makeClip113c(13, 192, false, [{ f: 7, c: 1 }]),
     a2: makeClip113c(13, 216, false, [{ f: 9, c: 1 }]),
+    bl: makeClip113c(7, 296, false, []),
     sc: makeClip113c(11, 168, false, [{ f: 5, c: 1 }]),
     s1: makeClip113c(12, 232, false, [{ f: 7, c: 1 }]),
     s2: makeClip113c(12, 232, false, [{ f: 7, c: 1 }]),
@@ -347,12 +368,13 @@ export const MORPH_ANIM_CLIPS_113C: Readonly<
     rn: makeClip113c(8, 200, true, []),
     a1: makeClip113c(12, 160, false, [{ f: 7, c: 1 }]),
     a2: makeClip113c(12, 176, false, [{ f: 7, c: 1 }]),
+    bl: makeClip113c(5, 200, false, []),
     sc: makeClip113c(10, 152, false, [{ f: 5, c: 1 }]),
     s1: makeClip113c(10, 152, false, [{ f: 5, c: 1 }]),
     s2: makeClip113c(10, 152, false, [{ f: 5, c: 1 }]),
-    s3: makeClip113c(10, 152, false, [{ f: 5, c: 1 }]),
-    s4: makeClip113c(16, 256, false, []),
-    gh: makeClip113c(8, 152, false, []),
+    s3: makeClip113c(10, 208, false, [{ f: 6, c: 1 }]),
+    s4: makeClip113c(7, 152, false, [{ f: 4, c: 1 }]),
+    gh: makeClip113c(5, 184, false, []),
     dt: makeClip113c(13, 256, false, []),
     dd: makeClip113c(1, 256, false, []),
     tn: makeClip113c(8, 96, true, []),
@@ -362,13 +384,268 @@ export const MORPH_ANIM_CLIPS_113C: Readonly<
   135: VAMPIRE_MORPH_CLIPS_113C,
   // 200: Legacy Vampire morph alias
   200: VAMPIRE_MORPH_CLIPS_113C,
+  // 212: Bone Fetish (`bonefetish1` in MonStats.txt, States.txt row 177 `delerium` gfxclass=212, token FK)
+  212: BONEFETISH_MORPH_CLIPS_113C,
+}
+
+/**
+ * Per-weapon-class (`wclass`) 1.13c `AnimData.d2` overrides by player class (`0..6`) and mode.
+ * Ground truth extracted directly from `data/global/AnimData.d2` (`public/anim/animdata.json`).
+ */
+export const CHAR_WCLASS_ANIM_CLIPS_113C: Readonly<
+  Record<
+    number,
+    Readonly<Partial<Record<CharAnimClipKey, Readonly<Record<string, CharAnimClip113c>>>>>
+  >
+> = {
+  // 0: Amazon (AM)
+  0: {
+    a1: {
+      hth: makeClip113c(13, 256, false, [{ f: 8, c: 1 }]),
+      bow: makeClip113c(14, 256, false, [{ f: 6, c: 2 }]),
+      '1ht': makeClip113c(15, 256, false, [{ f: 9, c: 1 }]),
+      '1hs': makeClip113c(16, 256, false, [{ f: 10, c: 1 }]),
+      '2ht': makeClip113c(18, 256, false, [{ f: 11, c: 1 }]),
+      '2hs': makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
+      stf: makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 9, c: 2 }]),
+    },
+    a2: {
+      hth: makeClip113c(13, 256, false, [{ f: 8, c: 1 }]),
+      bow: makeClip113c(14, 256, false, [{ f: 6, c: 2 }]),
+      '1ht': makeClip113c(15, 256, false, [{ f: 9, c: 1 }]),
+      '1hs': makeClip113c(16, 256, false, [{ f: 10, c: 1 }]),
+      '2ht': makeClip113c(18, 256, false, [{ f: 11, c: 1 }]),
+      '2hs': makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
+      stf: makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 9, c: 2 }]),
+    },
+    bl: {
+      '1hs': makeClip113c(3, 88, false, []),
+    },
+    sc: {
+      '2hs': makeClip113c(20, 256, false, [{ f: 10, c: 1 }]),
+      '2ht': makeClip113c(20, 256, false, [{ f: 10, c: 1 }]),
+      stf: makeClip113c(20, 256, false, [{ f: 11, c: 1 }]),
+      bow: makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
+    },
+  },
+  // 1: Sorceress (SO)
+  1: {
+    a1: {
+      hth: makeClip113c(16, 256, false, [{ f: 9, c: 1 }]),
+      bow: makeClip113c(17, 256, false, [{ f: 9, c: 2 }]),
+      stf: makeClip113c(18, 256, false, [{ f: 11, c: 1 }]),
+      '1ht': makeClip113c(19, 256, false, [{ f: 11, c: 1 }]),
+      '1hs': makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 11, c: 2 }]),
+      '2ht': makeClip113c(23, 256, false, [{ f: 13, c: 1 }]),
+      '2hs': makeClip113c(24, 256, false, [{ f: 14, c: 1 }]),
+    },
+    a2: {
+      hth: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
+      bow: makeClip113c(17, 256, false, [{ f: 9, c: 2 }]),
+      stf: makeClip113c(18, 256, false, [{ f: 11, c: 1 }]),
+      '1ht': makeClip113c(19, 256, false, [{ f: 11, c: 1 }]),
+      '1hs': makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 11, c: 2 }]),
+      '2ht': makeClip113c(23, 256, false, [{ f: 13, c: 1 }]),
+      '2hs': makeClip113c(24, 256, false, [{ f: 14, c: 1 }]),
+    },
+  },
+  // 2: Necromancer (NE)
+  2: {
+    a1: {
+      hth: makeClip113c(15, 256, false, [{ f: 8, c: 1 }]),
+      bow: makeClip113c(18, 256, false, [{ f: 9, c: 2 }]),
+      '1hs': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      '1ht': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      stf: makeClip113c(20, 256, false, [{ f: 11, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 11, c: 2 }]),
+      '2hs': makeClip113c(23, 256, false, [{ f: 11, c: 1 }]),
+      '2ht': makeClip113c(24, 256, false, [{ f: 10, c: 1 }]),
+    },
+    a2: {
+      hth: makeClip113c(15, 256, false, [{ f: 8, c: 1 }]),
+      bow: makeClip113c(18, 256, false, [{ f: 9, c: 2 }]),
+      '1hs': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      '1ht': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      stf: makeClip113c(20, 256, false, [{ f: 11, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 11, c: 2 }]),
+      '2hs': makeClip113c(23, 256, false, [{ f: 11, c: 1 }]),
+      '2ht': makeClip113c(24, 256, false, [{ f: 10, c: 1 }]),
+    },
+  },
+  // 3: Paladin (PA)
+  3: {
+    a1: {
+      hth: makeClip113c(14, 256, false, [{ f: 7, c: 1 }]),
+      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      bow: makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
+      '1ht': makeClip113c(17, 256, false, [{ f: 8, c: 1 }]),
+      '2hs': makeClip113c(18, 256, false, [{ f: 8, c: 1 }]),
+      stf: makeClip113c(18, 256, false, [{ f: 9, c: 1 }]),
+      '2ht': makeClip113c(20, 256, false, [{ f: 8, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
+    },
+    a2: {
+      hth: makeClip113c(14, 256, false, [{ f: 8, c: 1 }]),
+      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      bow: makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
+      '1ht': makeClip113c(17, 256, false, [{ f: 8, c: 1 }]),
+      stf: makeClip113c(18, 256, false, [{ f: 9, c: 1 }]),
+      '2hs': makeClip113c(19, 256, false, [{ f: 8, c: 1 }]),
+      '2ht': makeClip113c(20, 256, false, [{ f: 9, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
+    },
+    th: {
+      hth: makeClip113c(12, 256, false, [{ f: 6, c: 2 }]),
+      '1hs': makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
+      '1ht': makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
+    },
+    bl: {
+      '2hs': makeClip113c(3, 168, false, []),
+    },
+    gh: {
+      '2ht': makeClip113c(5, 192, false, []),
+      stf: makeClip113c(5, 192, false, []),
+    },
+  },
+  // 4: Barbarian (BA)
+  4: {
+    a1: {
+      hth: makeClip113c(12, 256, false, [{ f: 6, c: 1 }]),
+      bow: makeClip113c(15, 256, false, [{ f: 7, c: 2 }]),
+      '1hs': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '1ht': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '1ss': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '1st': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '1js': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '1jt': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '2hs': makeClip113c(18, 256, false, [{ f: 8, c: 1 }]),
+      '2ht': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      stf: makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
+    },
+    a2: {
+      hth: makeClip113c(12, 256, false, [{ f: 6, c: 1 }]),
+      bow: makeClip113c(15, 256, false, [{ f: 7, c: 2 }]),
+      '1hs': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '1ht': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '1ss': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '1st': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '1js': makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
+      '1jt': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
+      '2hs': makeClip113c(18, 256, false, [{ f: 8, c: 1 }]),
+      '2ht': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      stf: makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
+    },
+    s3: {
+      '1ss': makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
+      '1st': makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
+      '1js': makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
+      '1jt': makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
+    },
+    s4: {
+      '1ss': makeClip113c(16, 256, false, [{ f: 9, c: 2 }]),
+      '1st': makeClip113c(16, 256, false, [{ f: 9, c: 2 }]),
+      '1js': makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
+      '1jt': makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
+    },
+  },
+  // 5: Druid (DZ)
+  5: {
+    a1: {
+      hth: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
+      bow: makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
+      stf: makeClip113c(17, 256, false, [{ f: 9, c: 1 }]),
+      '1hs': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      '1ht': makeClip113c(19, 256, false, [{ f: 8, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
+      '2hs': makeClip113c(21, 256, false, [{ f: 10, c: 1 }]),
+      '2ht': makeClip113c(23, 256, false, [{ f: 9, c: 1 }]),
+    },
+    a2: {
+      hth: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
+      bow: makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
+      stf: makeClip113c(17, 256, false, [{ f: 9, c: 1 }]),
+      '1hs': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      '1ht': makeClip113c(19, 256, false, [{ f: 8, c: 1 }]),
+      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
+      '2hs': makeClip113c(21, 256, false, [{ f: 10, c: 1 }]),
+      '2ht': makeClip113c(23, 256, false, [{ f: 9, c: 1 }]),
+    },
+    th: {
+      hth: makeClip113c(18, 256, false, [{ f: 9, c: 2 }]),
+      '1hs': makeClip113c(18, 256, false, [{ f: 8, c: 2 }]),
+      '1ht': makeClip113c(18, 256, false, [{ f: 8, c: 2 }]),
+    },
+    kk: {
+      '1hs': makeClip113c(12, 224, false, [{ f: 5, c: 1 }]),
+      '2hs': makeClip113c(12, 224, false, [{ f: 5, c: 1 }]),
+    },
+    s1: {
+      '2hs': makeClip113c(15, 208, false, [{ f: 8, c: 1 }]),
+      '2ht': makeClip113c(15, 208, false, [{ f: 8, c: 1 }]),
+      bow: makeClip113c(15, 208, false, [{ f: 8, c: 1 }]),
+      stf: makeClip113c(15, 208, false, [{ f: 8, c: 1 }]),
+      '1hs': makeClip113c(15, 256, false, [{ f: 9, c: 1 }]),
+    },
+    gh: {
+      '1hs': makeClip113c(7, 248, false, []),
+    },
+  },
+  // 6: Assassin (AI)
+  6: {
+    a1: {
+      hth: makeClip113c(11, 256, false, [{ f: 6, c: 1 }]),
+      ht1: makeClip113c(11, 208, false, [{ f: 6, c: 1 }]),
+      ht2: makeClip113c(11, 208, false, [{ f: 6, c: 1 }]),
+      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      '1ht': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      bow: makeClip113c(16, 256, false, [{ f: 7, c: 2 }]),
+      stf: makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      xbw: makeClip113c(21, 256, false, [{ f: 10, c: 2 }]),
+      '2hs': makeClip113c(23, 256, false, [{ f: 11, c: 1 }]),
+      '2ht': makeClip113c(23, 256, false, [{ f: 10, c: 1 }]),
+    },
+    a2: {
+      hth: makeClip113c(12, 256, false, [{ f: 6, c: 1 }]),
+      ht1: makeClip113c(12, 208, false, [{ f: 6, c: 1 }]),
+      ht2: makeClip113c(12, 208, false, [{ f: 6, c: 1 }]),
+      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      '1ht': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      bow: makeClip113c(16, 256, false, [{ f: 7, c: 2 }]),
+      stf: makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
+      xbw: makeClip113c(21, 256, false, [{ f: 10, c: 2 }]),
+      '2hs': makeClip113c(23, 256, false, [{ f: 11, c: 1 }]),
+      '2ht': makeClip113c(23, 256, false, [{ f: 10, c: 1 }]),
+    },
+    s1: {
+      hth: makeClip113c(17, 256, false, [{ f: 10, c: 1 }]),
+      ht1: makeClip113c(17, 256, false, [{ f: 10, c: 1 }]),
+      ht2: makeClip113c(15, 256, false, [{ f: 10, c: 1 }]),
+      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      '1ht': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      '2hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      '2ht': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      bow: makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      stf: makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+      xbw: makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
+    },
+    s4: {
+      ht1: makeClip113c(12, 208, false, [{ f: 6, c: 1 }]),
+      ht2: makeClip113c(12, 208, false, [{ f: 6, c: 1 }]),
+    },
+  },
 }
 
 /**
  * Resolves the canonical 1.13c `AnimData.d2` clip metadata for a given character class
  * (`0..6` or token `'am'|'so'|'ne'|'pa'|'ba'|'dz'|'ai'`) and mode (`0..18` or clip key),
- * honoring shapeshift morph records (`430` Werewolf, `431` Werebear, `200` Vampire) and
- * weapon-class (`wclass`) variations in `AnimData.d2`.
+ * honoring shapeshift morph records (`430` Werewolf, `431` Werebear, `135`/`200` Vampire,
+ * `212` Bone Fetish) and weapon-class (`wclass`) variations in `AnimData.d2`.
  */
 export function getCharAnimClip113c(
   classIdOrToken: number | string,
@@ -403,37 +680,16 @@ export function getCharAnimClip113c(
   const baseClip = classClips[clipKey] ?? classClips.nu
   const wclass = options?.weaponClass ? options.weaponClass.trim().toLowerCase() : ''
   if (wclass) {
-    // Amazon SC actionFrame varies by wclass in 1.13c AnimData.d2:
-    // 2hs/2ht -> 10, stf -> 11, bow -> 12, hth/1hs/1ht/xbw -> 13
-    if (classId === 0 && clipKey === 'sc') {
-      if (wclass === '2hs' || wclass === '2ht') {
-        return makeClip113c(20, 256, false, [{ f: 10, c: 1 }])
+    const modeWcMap = CHAR_WCLASS_ANIM_CLIPS_113C[classId]?.[clipKey]
+    if (modeWcMap) {
+      if (modeWcMap[wclass]) {
+        return modeWcMap[wclass]!
       }
-      if (wclass === 'stf') {
-        return makeClip113c(20, 256, false, [{ f: 11, c: 1 }])
+      if ((wclass === '1ss' || wclass === '1js') && modeWcMap['1hs']) {
+        return modeWcMap['1hs']!
       }
-      if (wclass === 'bow') {
-        return makeClip113c(20, 256, false, [{ f: 12, c: 1 }])
-      }
-    }
-    // Druid S1 speed is 208 for 2hs/2ht/bow/stf in 1.13c AnimData.d2 (DZS12HS/2HT/BOW/STF)
-    if (classId === 5 && clipKey === 's1') {
-      if (wclass === '2hs' || wclass === '2ht' || wclass === 'bow' || wclass === 'stf') {
-        return makeClip113c(15, 208, false, [{ f: 8, c: 1 }])
-      }
-    }
-    // Assassin S1 has 15 frames (actionFrame 7) for non-hth/ht1/ht2 weapons in 1.13c AnimData.d2
-    if (classId === 6 && clipKey === 's1') {
-      if (
-        wclass === '1hs' ||
-        wclass === '1ht' ||
-        wclass === '2hs' ||
-        wclass === '2ht' ||
-        wclass === 'bow' ||
-        wclass === 'stf' ||
-        wclass === 'xbw'
-      ) {
-        return makeClip113c(15, 256, false, [{ f: 7, c: 1 }])
+      if ((wclass === '1st' || wclass === '1jt') && modeWcMap['1ht']) {
+        return modeWcMap['1ht']!
       }
     }
   }
@@ -895,6 +1151,247 @@ export function resolveCharacterStatTotal(
   return baseStatVal + equipTotal
 }
 
+export interface RollbackSkillTiming113c {
+  readonly skillId: number
+  readonly rollbackPct: number
+  readonly strikes: number
+  readonly frames: number
+  readonly actionFrame: number
+  readonly rollbackFrame: number
+  readonly stepSpeed256: number
+  readonly firstHitTicks: number
+  readonly intervalTicks: number
+  readonly finalCycleTicks: number
+  readonly totalTicks: number
+  readonly durationMs: number
+}
+
+/**
+ * Canonical 1.13c rollback multi-strike skill table (`Skills.txt` + `D2Game.dll` `0x6FC82F10`):
+ * - `#26 Strafe`: `Param3 = 50` (50% rollback), `min(10, 3 + slvl)` strikes
+ * - `#30 Fend`: `Param1 = 60` (60% rollback), 2+ strikes
+ * - `#106 Zeal`: 100% rollback (`rollbackFrame = 0`), `min(5, 1 + slvl)` strikes
+ * - `#248 Fury`: `Param1 = 70` (70% rollback), `min(5, 1 + slvl)` strikes
+ * - `#255 Dragon Talon`: 100% rollback (`rollbackFrame = 0`), `1 + floor(slvl / 6)` strikes
+ */
+export const ROLLBACK_SKILLS_113C: Readonly<
+  Record<
+    number,
+    {
+      readonly rollbackPct: number
+      readonly computeStrikes: (skillLevel: number) => number
+    }
+  >
+> = {
+  26: {
+    rollbackPct: 50,
+    computeStrikes: (slvl: number) => Math.min(10, 3 + Math.max(1, Math.trunc(slvl || 1))),
+  },
+  30: {
+    rollbackPct: 60,
+    computeStrikes: (_slvl: number) => 2,
+  },
+  106: {
+    rollbackPct: 100,
+    computeStrikes: (slvl: number) => Math.min(5, 1 + Math.max(1, Math.trunc(slvl || 1))),
+  },
+  248: {
+    rollbackPct: 70,
+    computeStrikes: (slvl: number) => Math.min(5, 1 + Math.max(1, Math.trunc(slvl || 1))),
+  },
+  255: {
+    rollbackPct: 100,
+    computeStrikes: (slvl: number) => 1 + Math.floor(Math.max(1, Math.trunc(slvl || 1)) / 6),
+  },
+}
+
+/**
+ * Computes 1.13c rollback multi-strike timing (`D2Game.dll` `0x6FC82F10`):
+ * - `rollbackFrame = floor(actionFrame * (100 - rollbackPct) / 100)`
+ * - First strike hits at `actionFrame` (`firstHitTicks = ceil(actionFrame * 256 / stepSpeed256)`).
+ * - Each subsequent strike winds back to `rollbackFrame` and advances to `actionFrame`
+ *   (`intervalFrames = max(1, actionFrame - rollbackFrame)`, `intervalTicks = ceil(intervalFrames * 256 / stepSpeed256)`).
+ * - After the final strike triggers at `actionFrame`, the animation completes from `rollbackFrame`
+ *   through `frames - 1` (`finalCycleTicks = computeOneShotTicks(frames - rollbackFrame, stepSpeed256)`).
+ */
+export function computeRollbackSkillTiming113c(params: {
+  readonly skillId: number
+  readonly frames: number
+  readonly actionFrame: number
+  readonly stepSpeed256: number
+  readonly skillLevel?: number | undefined
+  readonly strikes?: number | undefined
+  readonly rollbackPctOverride?: number | undefined
+}): RollbackSkillTiming113c | null {
+  const spec = ROLLBACK_SKILLS_113C[params.skillId]
+  if (!spec && params.rollbackPctOverride === undefined) return null
+  const rollbackPct = Math.max(
+    0,
+    Math.min(100, Math.trunc(params.rollbackPctOverride ?? spec?.rollbackPct ?? 100)),
+  )
+  const slvl = Math.max(1, Math.trunc(params.skillLevel ?? 1))
+  const strikes = Math.max(
+    1,
+    Math.trunc(params.strikes ?? (spec ? spec.computeStrikes(slvl) : 2)),
+  )
+  const frames = Math.max(1, Math.trunc(params.frames))
+  const actionFrame = Math.max(
+    1,
+    Math.min(frames - 1, Math.trunc(params.actionFrame || Math.floor(frames / 2))),
+  )
+  const stepSpeed256 = Math.max(32, Math.trunc(params.stepSpeed256 || 256))
+  const rollbackFrame = Math.max(
+    0,
+    Math.min(actionFrame - 1, Math.floor((actionFrame * (100 - rollbackPct)) / 100)),
+  )
+  const firstHitTicks = computeActionFrameTicks(actionFrame, stepSpeed256)
+  const intervalFrames = Math.max(1, actionFrame - rollbackFrame)
+  const intervalTicks = computeActionFrameTicks(intervalFrames, stepSpeed256)
+  const finalCycleFrames = Math.max(1, frames - rollbackFrame)
+  const finalCycleTicks = computeOneShotTicks(finalCycleFrames, stepSpeed256)
+  const totalTicks =
+    strikes <= 1
+      ? computeOneShotTicks(frames, stepSpeed256)
+      : (strikes - 1) * intervalTicks + finalCycleTicks
+  return {
+    skillId: params.skillId,
+    rollbackPct,
+    strikes,
+    frames,
+    actionFrame,
+    rollbackFrame,
+    stepSpeed256,
+    firstHitTicks,
+    intervalTicks,
+    finalCycleTicks,
+    totalTicks,
+    durationMs: totalTicks * D2_TICK_MS,
+  }
+}
+
+/**
+ * 1.13c Barbarian `#151 Whirlwind` hit cadence in ticks (`D2Game.dll` `SKILLS_GetWhirlwindFrame` @ `0x6FC48A20`):
+ * driven strictly by on-weapon `(weaponIas - weaponWsm)`, ignoring off-weapon IAS and Fanaticism/Burst of Speed.
+ */
+export function computeWhirlwindCadenceTicks113c(
+  weaponWsm: number,
+  weaponIas: number,
+  isTwoHandedNonSword = false,
+): number {
+  const speed = Math.trunc(weaponIas || 0) - Math.trunc(weaponWsm || 0)
+  if (isTwoHandedNonSword) {
+    if (speed <= -30) return 14
+    if (speed <= -15) return 12
+    if (speed <= -1) return 10
+    if (speed <= 14) return 8
+    if (speed <= 29) return 6
+    return 4
+  }
+  if (speed <= -45) return 16
+  if (speed <= -26) return 14
+  if (speed <= -15) return 12
+  if (speed <= -10) return 10
+  if (speed <= 10) return 8
+  if (speed <= 33) return 6
+  return 4
+}
+
+/**
+ * Resolves the primary weapon's `Weapons.txt` `speed` (`WSM`) from equipped items or weapon code
+ * (preferring slot 4, then slot 5, then fallback weapon without dual-wield averaging).
+ */
+export function resolvePrimaryWeaponWsm113c(
+  equipment?: Iterable<EquippedItemLike> | null,
+  weaponCode?: string | null,
+): number {
+  if (weaponCode) {
+    return resolveWeaponWsm(weaponCode)
+  }
+  if (!equipment) return 0
+  let slot4Wsm: number | undefined
+  let slot5Wsm: number | undefined
+  let fallbackWsm: number | undefined
+  for (const item of equipment) {
+    if (!item || item.broken || item.inSocket) continue
+    const weapon = resolveWeaponBase113c(item.code)
+    if (!weapon) continue
+    const slot = item.equippedSlot ?? item.equipSlot ?? item.bodyLoc ?? 0
+    if (slot === 4 && slot4Wsm === undefined) slot4Wsm = weapon.speed
+    else if (slot === 5 && slot5Wsm === undefined) slot5Wsm = weapon.speed
+    else if (fallbackWsm === undefined) fallbackWsm = weapon.speed
+  }
+  return slot4Wsm ?? slot5Wsm ?? fallbackWsm ?? 0
+}
+
+/**
+ * Resolves `STAT_FASTERATTACKRATE` (`93`, on-weapon IAS) strictly from the active primary weapon
+ * item + its socketed children + its `runewordStats`, excluding off-weapon armor/gloves/amulet/set IAS
+ * (`D2Common.dll` `0x6FDA0CE0`: `STATLIST_GetUnitStatBonus(pWeapon, STAT_ITEM_FASTERATTACKRATE, 0)`).
+ */
+export function resolvePrimaryWeaponIas113c(sources: {
+  readonly equipment?: Iterable<EquippedItemLike> | null | undefined
+  readonly sockets?: ReadonlyMap<number, readonly EquippedItemLike[]> | null | undefined
+  readonly weaponIasOverride?: number | null | undefined
+}): number {
+  if (sources.weaponIasOverride !== undefined && sources.weaponIasOverride !== null) {
+    return Math.trunc(sources.weaponIasOverride)
+  }
+  if (!sources.equipment) return 0
+  let slot4Item: EquippedItemLike | undefined
+  let slot5Item: EquippedItemLike | undefined
+  let fallbackItem: EquippedItemLike | undefined
+  for (const item of sources.equipment) {
+    if (!item || item.broken || item.inSocket) continue
+    const weapon = resolveWeaponBase113c(item.code)
+    if (!weapon) continue
+    const slot = item.equippedSlot ?? item.equipSlot ?? item.bodyLoc ?? 0
+    if (slot === 4 && !slot4Item) slot4Item = item
+    else if (slot === 5 && !slot5Item) slot5Item = item
+    else if (!fallbackItem) fallbackItem = item
+  }
+  const primary = slot4Item ?? slot5Item ?? fallbackItem
+  if (!primary) return 0
+  let total =
+    sumItemStatList(primary.stats, STAT_FASTERATTACKRATE) +
+    sumItemStatList(primary.runewordStats, STAT_FASTERATTACKRATE)
+  if (primary.id !== undefined && sources.sockets) {
+    const children = sources.sockets.get(primary.id)
+    if (children) {
+      for (const child of children) {
+        if (!child || child.broken) continue
+        total += sumItemStatList(child.stats, STAT_FASTERATTACKRATE)
+      }
+    }
+  }
+  return total
+}
+
+/**
+ * Computes the 1.13c shapeshift (`430` Werewolf / `431` Werebear) weapon delay factor
+ * (`D2Common.dll` `0x6FDA0CE0` `ShapeshiftWeaponDelay` + `0x6FD767F0` `ITEMS_GetWeaponDelay`):
+ * - Unarmed (`!hasWeapon || weaponClass === 'hth'`): `19` (`0x13`).
+ * - Armed: looks up the human character's `A1` clip for `(classId, weaponClass)`, scales its
+ *   `AnimData.d2` speed by `(100 + weaponIas - weaponWsm) / 100`, and returns
+ *   `max(1, floor(humanA1Frames * 256 / humanStep))`.
+ */
+export function computeShapeshiftWeaponDelay113c(
+  classIdOrToken: number | string,
+  weaponClass: string,
+  weaponWsm: number,
+  weaponIas: number,
+  hasWeapon = weaponClass.trim().toLowerCase() !== 'hth',
+): number {
+  const wc = weaponClass.trim().toLowerCase()
+  if (!hasWeapon || !wc || wc === 'hth') {
+    return 19
+  }
+  const humanA1 = getCharAnimClip113c(classIdOrToken, 'a1', { weaponClass: wc })
+  const humanStep = Math.floor(
+    (humanA1.speed * (100 + Math.trunc(weaponIas || 0) - Math.trunc(weaponWsm || 0))) / 100,
+  )
+  return Math.max(1, Math.floor((humanA1.frames * 256) / Math.max(1, humanStep)))
+}
+
 export interface CharacterAnimSpeedParams {
   readonly clipKey: CharAnimClipKey
   readonly frames: number
@@ -905,6 +1402,8 @@ export interface CharacterAnimSpeedParams {
   readonly durationMs: number
   /** Locomotion clips only (`wl`/`tw`/`rn`): the move velocity percent driving `stepSpeed256`. */
   readonly velocityPercent?: number | undefined
+  /** Rollback multi-strike timing metadata when `skillId` is a rollback skill (`26, 30, 106, 248, 255`). */
+  readonly rollbackTiming?: RollbackSkillTiming113c | undefined
   readonly fcr: number
   readonly itemIas: number
   readonly skillIas: number
@@ -919,7 +1418,8 @@ export interface CharacterAnimSpeedParams {
  *   `UNITS_UpdateAnimRateAndVelocity` (`0x6FD834CD`), if the skill's `seqTrans` is `'SC'` or `'SQ'`
  *   (`#41 Inferno`, `#49 Lightning`, `#53 Chain Lightning`, `#229 Molten Boulder`,
  *   `#230 Arctic Blast`, `#234 Fissure`, `#244 Volcano`), it uses `EFCR`; otherwise (`seqTrans === 'A1'`),
- *   it uses `EIAS` with the `-30` sequence penalty (`0x6FD834CD: sub esi, 0x1E`).
+ *   it uses `EIAS` with the `-30` sequence penalty (`0x6FD834CD: sub esi, 0x1E`), plus `#133 Double Swing`'s
+ *   intrinsic `+50%` skill EIAS (`D2Client.dll` `0x6FB76290` `SKILLS_CltSt27_DoubleSwing`).
  * - `a1`, `a2`, `th`, `kk`, `s1`, `s2` (Assassin trap-laying `#261, #262, #271, #272, #276`),
  *   `s3`, `s4` use `EIAS` (`itemIas + skillIas - weaponWsm`).
  * - `gh` (mode 4) and `bl` (mode 9) use `EFHR` / `EFBR` (`fhr` / `fbr`).
@@ -952,9 +1452,10 @@ export function computeEffectiveAnimRate113c(
     if (seqTrans === 'SC' || seqTrans === 'SQ') {
       return computeEffectiveFcr(stats.fcr ?? 0)
     }
+    const doubleSwingBonus = stats.skillId === 133 ? 50 : 0
     return computeEffectiveIas({
       itemIas: stats.itemIas ?? stats.ias ?? 0,
-      skillIas: (stats.skillIas ?? 0) - 30,
+      skillIas: (stats.skillIas ?? 0) + doubleSwingBonus - 30,
       weaponWsm: stats.weaponWsm ?? stats.wsm ?? 0,
     })
   }
@@ -992,7 +1493,8 @@ export function computeEffectiveAnimRate113c(
 
 /**
  * Resolves the effective weapon animation class (`wclass`, e.g. `'hth'`, `'1hs'`, `'1ht'`, `'2hs'`,
- * `'2ht'`, `'bow'`, `'xbw'`, `'stf'`, `'ht1'`, `'ht2'`) from equipped items or weapon code.
+ * `'2ht'`, `'bow'`, `'xbw'`, `'stf'`, `'ht1'`, `'ht2'`, `'1ss'`, `'1st'`, `'1js'`, `'1jt'`)
+ * from equipped items or weapon code (`D2Common.dll` `0x6FD849B0` `ITEMS_GetWeaponClassCode`).
  */
 export function resolveEquippedWeaponClass(
   equipment?: Iterable<EquippedItemLike> | null,
@@ -1000,27 +1502,49 @@ export function resolveEquippedWeaponClass(
 ): string {
   if (weaponCode) {
     const base = resolveWeaponBase113c(weaponCode)
-    if (base?.wclass) return base.wclass.toLowerCase()
+    if (base) {
+      const wc = base.twoHanded ? (base.twoHandedWClass || base.wclass) : base.wclass
+      if (wc) return wc.toLowerCase()
+    }
   }
   if (equipment) {
     let slot4Weapon: WeaponBase | undefined
     let slot5Weapon: WeaponBase | undefined
     let fallbackWeapon: WeaponBase | undefined
+    let hasNonWeaponHandItem = false
     for (const item of equipment) {
       if (!item || item.broken || item.inSocket) continue
-      const w = resolveWeaponBase113c(item.code)
-      if (!w) continue
       const slot = item.equippedSlot ?? item.equipSlot ?? item.bodyLoc ?? 0
+      const w = resolveWeaponBase113c(item.code)
+      if (!w) {
+        if (slot === 4 || slot === 5) {
+          hasNonWeaponHandItem = true
+        }
+        continue
+      }
       if (slot === 4 && !slot4Weapon) slot4Weapon = w
       else if (slot === 5 && !slot5Weapon) slot5Weapon = w
       else if (!fallbackWeapon) fallbackWeapon = w
     }
     if (slot4Weapon && slot5Weapon) {
-      if (slot4Weapon.wclass === 'ht1' && slot5Weapon.wclass === 'ht1') return 'ht2'
-      return '1hs'
+      const wc1 = (slot4Weapon.wclass || '1hs').toLowerCase()
+      const wc2 = (slot5Weapon.wclass || '1hs').toLowerCase()
+      if (wc1 === 'ht1' && wc2 === 'ht1') return 'ht2'
+      if (wc1 === '1hs' && wc2 === '1hs') return '1ss'
+      if (wc1 === '1ht' && wc2 === '1ht') return '1st'
+      if (wc1 === '1hs' && wc2 === '1ht') return '1js'
+      if (wc1 === '1ht' && wc2 === '1hs') return '1jt'
+      return wc1
     }
     const primary = slot4Weapon ?? slot5Weapon ?? fallbackWeapon
-    if (primary?.wclass) return primary.wclass.toLowerCase()
+    if (primary) {
+      const useOneHandedStance = Boolean(primary.oneOrTwoHanded && hasNonWeaponHandItem)
+      const activeWc =
+        primary.twoHanded && !useOneHandedStance
+          ? (primary.twoHandedWClass || primary.wclass)
+          : primary.wclass
+      if (activeWc) return activeWc.toLowerCase()
+    }
   }
   return 'hth'
 }
@@ -1041,7 +1565,10 @@ export function resolveCharacterAnimSpeedParams(
     readonly weaponCode?: string | null | undefined
     readonly weaponClass?: string | null | undefined
     readonly weaponWsmOverride?: number | null | undefined
+    readonly weaponIasOverride?: number | null | undefined
     readonly skillId?: number | null | undefined
+    readonly skillLevel?: number | null | undefined
+    readonly strikes?: number | null | undefined
     /**
      * Complete `STAT_VELOCITYPERCENT` (67) total as tracked for the unit by the caller
      * (e.g. the server-reported move velocity percent). Overrides the stat-list lookup for
@@ -1055,11 +1582,7 @@ export function resolveCharacterAnimSpeedParams(
     readonly skillVelocityPercent?: number | null | undefined
     /**
      * Shapeshift monster class id (`D2COMMON_11013_ConvertMode`: Werewolf state 139 → 430,
-     * Werebear state 140 → 431, Vampire state 65 → 200). For locomotion clips (`wl`/`tw`/`rn`),
-     * `UNITS_GetBaseAnimSpeed` takes the monster's `MonStats` `WalkAnimSpeed` / `RunAnimSpeed`
-     * instead of the human player's hardcoded `213` / `101`, while for non-locomotion modes
-     * (`sc`, `a1`, `a2`, `s1`..`s4`, `gh`) `AnimData.d2` supplies the morph token's (`40`/`TG`/`VA`)
-     * frame count, base speed, and action frame.
+     * Werebear state 140 → 431, Vampire state 176 → 135, Bone Fetish state 177 → 212).
      */
     readonly morphMonsterClassId?: number | null | undefined
   } = {},
@@ -1148,7 +1671,7 @@ export function resolveCharacterAnimSpeedParams(
       ? (PLAYER_MODE_NUM_TO_CLIP[Math.trunc(modeOrClipKey)] ?? 'nu')
       : ((modeOrClipKey.trim().toLowerCase() as CharAnimClipKey) || 'nu')
 
-  const effRate = computeEffectiveAnimRate113c(clipKey, {
+  let effRate = computeEffectiveAnimRate113c(clipKey, {
     fcr,
     itemIas,
     skillIas,
@@ -1159,7 +1682,47 @@ export function resolveCharacterAnimSpeedParams(
 
   // Engine hardcode (D2Common UNITS_GetBaseAnimSpeed) replaces AnimData speeds
   // for player locomotion — see resolvePlayerLocomotionBaseSpeed256 (issue #852).
-  const baseSpeed = resolvePlayerLocomotionBaseSpeed256(clipKey, clip.speed)
+  let baseSpeed = resolvePlayerLocomotionBaseSpeed256(clipKey, clip.speed)
+
+  // Shapeshift (`430` Werewolf / `431` Werebear) compound weapon-delay formula
+  // (`D2Common.dll` `0x6FDA0CE0` `ShapeshiftWeaponDelay` + `0x6FD767F0` `ITEMS_GetWeaponDelay`):
+  // For morph attack modes (`a1`, `a2`, `s3`, `s4`), `baseSpeed` is replaced by
+  // `floor(morphFrames * 256 / weaponDelay)` and scaled by `EIAS(itemIas, skillIas, primaryWeaponWsm)`.
+  if (
+    (sources.morphMonsterClassId === 430 || sources.morphMonsterClassId === 431) &&
+    (clipKey === 'a1' || clipKey === 'a2' || clipKey === 's3' || clipKey === 's4')
+  ) {
+    const primaryWsm =
+      sources.weaponWsmOverride !== undefined && sources.weaponWsmOverride !== null
+        ? sources.weaponWsmOverride
+        : resolvePrimaryWeaponWsm113c(equipmentList, sources.weaponCode)
+    const weaponIas = resolvePrimaryWeaponIas113c({
+      equipment: equipmentList,
+      sockets: sources.sockets,
+      weaponIasOverride: sources.weaponIasOverride,
+    })
+    const hasEquippedWeapon =
+      resolvedWClass !== 'hth' ||
+      Boolean(sources.weaponCode) ||
+      Boolean(
+        equipmentList?.some(
+          (it) => it && !it.broken && !it.inSocket && Boolean(resolveWeaponBase113c(it.code)),
+        ),
+      )
+    const weaponDelay = computeShapeshiftWeaponDelay113c(
+      classIdOrToken,
+      resolvedWClass,
+      primaryWsm,
+      weaponIas,
+      hasEquippedWeapon,
+    )
+    baseSpeed = Math.max(1, Math.floor((clip.frames * 256) / weaponDelay))
+    effRate = computeEffectiveIas({
+      itemIas,
+      skillIas,
+      weaponWsm: primaryWsm,
+    })
+  }
 
   // Locomotion clips (wl/tw/rn) scale by the move velocity percent, not by the one-shot
   // effRate formulas: stepSpeed = trunc(base × max(25, EFRW + stat67) / 100) (issue #869).
@@ -1174,10 +1737,6 @@ export function resolveCharacterAnimSpeedParams(
         : morphRec.walkAnimSpeed
       : baseSpeed
     const itemFrw = resolveCharacterStatTotal(STAT_FASTERMOVEVELOCITY, normalizedSources)
-    // Armor speed penalty: implicit item stat STAT_VELOCITYPERCENT = -Armor.txt speed for
-    // every equipped armor item (D2MOO Items.cpp:5365); only the torso rows are nonzero in
-    // vanilla data, but the engine applies the stat for ITEMTYPE_ANY_ARMOR, so sum over all
-    // equipped armor bases.
     let armorSpeedPenalty = 0
     if (equipmentList) {
       for (const item of equipmentList) {
@@ -1220,7 +1779,22 @@ export function resolveCharacterAnimSpeedParams(
   }
 
   const stepSpeed256 = computeStepSpeed256(baseSpeed, effRate)
-  const durationMs = computeOneShotDurationMs(clip.frames, stepSpeed256)
+  const rollbackTiming =
+    sources.skillId !== undefined &&
+    sources.skillId !== null &&
+    sources.skillId in ROLLBACK_SKILLS_113C
+      ? computeRollbackSkillTiming113c({
+          skillId: sources.skillId,
+          frames: clip.frames,
+          actionFrame: clip.actionFrame || Math.max(1, Math.floor(clip.frames / 2)),
+          stepSpeed256,
+          skillLevel: sources.skillLevel ?? undefined,
+          strikes: sources.strikes ?? undefined,
+        })
+      : null
+  const durationMs = rollbackTiming
+    ? rollbackTiming.durationMs
+    : computeOneShotDurationMs(clip.frames, stepSpeed256)
 
   return {
     clipKey,
@@ -1230,6 +1804,7 @@ export function resolveCharacterAnimSpeedParams(
     effRate,
     stepSpeed256,
     durationMs,
+    ...(rollbackTiming ? { rollbackTiming } : {}),
     fcr,
     itemIas,
     skillIas,
@@ -1243,6 +1818,9 @@ export function resolveCharacterAnimSpeedParams(
  * progression (`stepSpeed256` where `256` = 1 frame per 40ms tick):
  * - For non-looping clips (`loop === false`, e.g. `sc`, `a1`, `a2`, `gh`, `dt`, `dd`), starts at
  *   frame `0` at `startedAtMs` and clamps at `frameCount - 1` (never wraps via `% frameCount`).
+ * - When `skillId` is a rollback multi-strike skill (`#26 Strafe`, `#30 Fend`, `#106 Zeal`,
+ *   `#248 Fury`, `#255 Dragon Talon`), cycles `rollbackFrame .. actionFrame` for each strike
+ *   before completing `actionFrame .. frameCount - 1`.
  * - For looping clips (`loop === true`, e.g. `nu`, `wl`, `rn`, `tn`, `tw`), wraps cleanly via `% frameCount`.
  */
 export function computeAnimFrameIndex(params: {
@@ -1253,6 +1831,10 @@ export function computeAnimFrameIndex(params: {
   readonly startedAtMs?: number | undefined
   /** Floor applied to `stepSpeed256` (default 32). Locomotion clips pass 0: their floor is the velocity-percent 25 (`trunc(101×25/100)=25`), not 32. */
   readonly minStepSpeed256?: number | undefined
+  readonly skillId?: number | undefined
+  readonly skillLevel?: number | undefined
+  readonly strikes?: number | undefined
+  readonly actionFrame?: number | undefined
 }): number {
   const frameCount = Math.max(1, Math.trunc(params.frameCount || 1))
   if (frameCount <= 1) return 0
@@ -1262,6 +1844,38 @@ export function computeAnimFrameIndex(params: {
     params.startedAtMs !== undefined && Number.isFinite(params.startedAtMs)
       ? Math.max(0, params.nowMs - params.startedAtMs)
       : Math.max(0, params.nowMs)
+  if (
+    !params.loop &&
+    params.skillId !== undefined &&
+    params.skillId in ROLLBACK_SKILLS_113C
+  ) {
+    const rb = computeRollbackSkillTiming113c({
+      skillId: params.skillId,
+      frames: frameCount,
+      actionFrame: params.actionFrame ?? Math.max(1, Math.floor(frameCount / 2)),
+      stepSpeed256,
+      skillLevel: params.skillLevel,
+      strikes: params.strikes,
+    })
+    if (rb && rb.strikes > 1) {
+      const elapsedTicks = Math.floor(elapsedMs / D2_TICK_MS)
+      if (elapsedTicks < rb.firstHitTicks) {
+        const f = Math.floor((elapsedTicks * stepSpeed256) / 256)
+        return Math.max(0, Math.min(rb.actionFrame, f))
+      }
+      const afterFirstTicks = elapsedTicks - rb.firstHitTicks
+      const middleCycles = rb.strikes - 2
+      const middleTotalTicks = middleCycles * rb.intervalTicks
+      if (middleCycles > 0 && afterFirstTicks < middleTotalTicks) {
+        const tickInCycle = afterFirstTicks % rb.intervalTicks
+        const f = rb.rollbackFrame + Math.floor((tickInCycle * stepSpeed256) / 256)
+        return Math.max(rb.rollbackFrame, Math.min(rb.actionFrame, f))
+      }
+      const finalTicks = afterFirstTicks - middleTotalTicks
+      const f = rb.rollbackFrame + Math.floor((finalTicks * stepSpeed256) / 256)
+      return Math.max(rb.rollbackFrame, Math.min(frameCount - 1, f))
+    }
+  }
   const rawFrame = Math.floor(((elapsedMs / D2_TICK_MS) * stepSpeed256) / 256)
   if (!params.loop) {
     return Math.max(0, Math.min(frameCount - 1, rawFrame))

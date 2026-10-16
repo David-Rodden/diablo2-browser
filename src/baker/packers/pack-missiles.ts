@@ -26,6 +26,8 @@ import { decodeDcc } from '../../common/formats/dcc.ts'
 import { decodePl2 } from '../../common/formats/pl2.ts'
 import { encodeRgbaPng } from '../io/png.ts'
 import type { SpriteFrame, SpriteSheet } from '../../common/formats/sprite.ts'
+import { missileTransToDrawBlend } from '../../common/gfx/draw-mode.ts'
+import { CANONICAL_113C_MISSILES } from '../../common/skills/missiles-data.ts'
 
 export interface MissileFrameMeta {
   readonly x: number
@@ -69,7 +71,7 @@ const MISSILE_TARGETS = [
   { name: 'iceblast', celFile: 'IceBlast', animSpeed: 16, trans: 1 },
   { name: 'glacialspike', celFile: 'GlacialSpike', animSpeed: 16, trans: 1 },
   { name: 'iceexplode', celFile: 'IceArrowExplode', animSpeed: 16, trans: 1 },
-  { name: 'freezeexplode', celFile: 'FreezeExplodeCenter', animSpeed: 16, trans: 1 },
+  { name: 'freezingarrowexp1', celFile: 'FreezeExplodeCenter', animSpeed: 16, trans: 1 },
   { name: 'frozenorb', celFile: 'IceOrb', animSpeed: 16, trans: 1 },
   { name: 'frozenorbexplode', celFile: 'IceOrbExplode', animSpeed: 16, trans: 1 },
   { name: 'blizzard1', celFile: 'icestormfallvar01', animSpeed: 16, trans: 1 },
@@ -77,8 +79,8 @@ const MISSILE_TARGETS = [
   { name: 'blizzard3', celFile: 'Blizzard', animSpeed: 16, trans: 1 },
   { name: 'blizzardexplode1', celFile: 'icestormimpactvar01', animSpeed: 16, trans: 1 },
   { name: 'blizzardexplode2', celFile: 'icestormimpactvar02', animSpeed: 16, trans: 1 },
-  { name: 'icebreaksmall', celFile: 'IceBreakSmall', animSpeed: 16, trans: 0 },
-  { name: 'icebreaksmallmelt', celFile: 'IceBreakSmallMelt', animSpeed: 16, trans: 0 },
+  { name: 'icebreaksmall', celFile: 'IceBreakSmall', animSpeed: 16, trans: 1 },
+  { name: 'icebreaksmallmelt', celFile: 'IceBreakSmallMelt', animSpeed: 16, trans: 1 },
 
   // Lightning
   { name: 'chargedbolt', celFile: 'ChargedBolt', animSpeed: 16, trans: 1 },
@@ -90,8 +92,8 @@ const MISSILE_TARGETS = [
   { name: 'bonespirit', celFile: 'BoneSpirit', animSpeed: 16, trans: 1 },
   { name: 'bonespiritexplode', celFile: 'BoneSpiritExplode', animSpeed: 16, trans: 1 },
   { name: 'poisonnova', celFile: 'poisonNova', animSpeed: 16, trans: 1 },
-  { name: 'corpseexplosion', celFile: 'CorpseExplodeGuts', animSpeed: 16, trans: 1 },
-  { name: 'poisoncorpseexplosion', celFile: 'CorpseExplodeGutsPoison', animSpeed: 16, trans: 1 },
+  { name: 'corpseexplosion', celFile: 'CorpseExplodeGuts', animSpeed: 16, trans: 0 },
+  { name: 'poisoncorpseexplosion', celFile: 'CorpseExplodeGutsPoison', animSpeed: 16, trans: 0 },
   { name: 'poisonexplosioncloud', celFile: 'PoisonSparks', animSpeed: 16, trans: 1 },
   { name: 'poisonpuff', celFile: 'PoisonSmokePuff', animSpeed: 16, trans: 1 },
   { name: 'cursecast', celFile: 'CurseCast', animSpeed: 16, trans: 1 },
@@ -111,11 +113,12 @@ const MISSILE_TARGETS = [
   { name: 'holybolt', celFile: 'HolyBoltMissile', animSpeed: 16, trans: 1 },
   { name: 'blessedhammer', celFile: 'blessedhammer', animSpeed: 16, trans: 1 },
   { name: 'fistoftheheavensbolt', celFile: 'HolyBoltMissile', animSpeed: 16, trans: 1 },
-  { name: 'foa', celFile: 'FOAorbiter', animSpeed: 16, trans: 1 },
+  { name: 'fistofares', celFile: 'FOAorbiter', animSpeed: 16, trans: 1 },
   { name: 'blessedhammerex', celFile: 'blessedhammer', animSpeed: 16, trans: 1 },
-  { name: 'blood1', celFile: 'BloodSmall01', animSpeed: 16, trans: 1 },
-  { name: 'blood2', celFile: 'BloodSmall01', animSpeed: 16, trans: 1 },
-  { name: 'redeem', celFile: 'RedemptionGhost', animSpeed: 16, trans: 1 },
+  { name: 'blood1', celFile: 'BloodSmall01', animSpeed: 16, trans: 0 },
+  { name: 'blood2', celFile: 'BloodSmall02', animSpeed: 16, trans: 0 },
+  { name: 'redemption', celFile: 'RedemptionGhost', animSpeed: 16, trans: 1 },
+  { name: 'handofgod', celFile: 'LightningBolt', animSpeed: 16, trans: 1 },
 
   // Amazon
   { name: 'magicarrow', celFile: 'SafeArrow', animSpeed: 16, trans: 1 },
@@ -148,7 +151,6 @@ const MISSILE_TARGETS = [
   { name: 'strafearrow', celFile: 'Arrow', animSpeed: 16, trans: 0 },
   { name: 'strafebolt', celFile: 'XBowBolt', animSpeed: 16, trans: 0 },
   { name: 'immolationarrow', celFile: 'FireArrow', animSpeed: 16, trans: 1 },
-  { name: 'immolationarrowexp', celFile: 'ExpArrowExplode', animSpeed: 16, trans: 1 },
   { name: 'immolationfire', celFile: 'groundFireBig', animSpeed: 16, trans: 1 },
   { name: 'poisonjav', celFile: 'Javelin', animSpeed: 16, trans: 0 },
   { name: 'poisonjavcloud', celFile: 'PoisonSparks', animSpeed: 16, trans: 1 },
@@ -159,7 +161,7 @@ const MISSILE_TARGETS = [
   { name: 'furylightning', celFile: 'LightningStrike', animSpeed: 16, trans: 1 },
 
   // Meteor (Skill 56)
-  { name: 'meteor', celFile: 'Meteor', animSpeed: 16, trans: 1 },
+  { name: 'meteor', celFile: 'Meteor', animSpeed: 16, trans: 0 },
   { name: 'meteortail', celFile: 'MeteorTail', animSpeed: 16, trans: 1 },
   { name: 'meteorcenter', celFile: 'MeteorTargetIndicator', animSpeed: 16, trans: 1 },
   { name: 'meteorexplode', celFile: 'ExpArrowExplode', animSpeed: 16, trans: 1 },
@@ -197,41 +199,43 @@ const MISSILE_TARGETS = [
   // Druid
   { name: 'moltenboulder', celFile: 'expansion/MoltenBoulderRoll', animSpeed: 16, trans: 0 },
   { name: 'moltenboulderemerge', celFile: 'expansion/MoltenBoulderEmerge', animSpeed: 16, trans: 0 },
+  { name: 'moltenboulder-flyingrocks', celFile: 'expansion/MoltenFragmentD', animSpeed: 16, trans: 0 },
   { name: 'firestormmaker', celFile: 'expansion/FirestormEmitter', animSpeed: 16, trans: 1 },
-  { name: 'firestorm', celFile: 'expansion/FireSpikes', animSpeed: 16, trans: 1 },
+  { name: 'firestorm', celFile: 'groundFireSmall', animSpeed: 16, trans: 1 },
+  { name: 'firespikes', celFile: 'expansion/FireSpikes', animSpeed: 16, trans: 1 },
   { name: 'firespikesground', celFile: 'expansion/FireSpikesGround', animSpeed: 16, trans: 1 },
   { name: 'arcticblast1', celFile: 'expansion/ArcticBlastIce', animSpeed: 16, trans: 1 },
   { name: 'arcticblast2', celFile: 'expansion/ArcticBlastIce_2', animSpeed: 16, trans: 1 },
-  { name: 'twister', celFile: 'expansion/twister', animSpeed: 16, trans: 0 },
-  { name: 'tornado', celFile: 'expansion/tornado', animSpeed: 16, trans: 0 },
-  { name: 'volcanobase', celFile: 'Expansion/volcano_base', animSpeed: 16, trans: 0 },
-  { name: 'volcanofire', celFile: 'Expansion/volcano_Fire', animSpeed: 16, trans: 1 },
-  { name: 'volcanorock', celFile: 'expansion/volcano_rock', animSpeed: 16, trans: 0 },
+  { name: 'twister', celFile: 'expansion/twister', animSpeed: 16, trans: 1 },
+  { name: 'tornado', celFile: 'expansion/tornado', animSpeed: 16, trans: 1 },
+  { name: 'volcano', celFile: 'Expansion/volcano_base', animSpeed: 16, trans: 0 },
+  { name: 'volcano overlay fire', celFile: 'Expansion/volcano_Fire', animSpeed: 16, trans: 1 },
+  { name: 'volcano debris 2', celFile: 'expansion/volcano_rock', animSpeed: 16, trans: 1 },
   { name: 'shockwave', celFile: 'expansion/shockwave', animSpeed: 8, trans: 1 },
   { name: 'armageddonrock', celFile: 'expansion/armageddon_rock', animSpeed: 16, trans: 0 },
   { name: 'armageddontail', celFile: 'expansion/armageddon_fire', animSpeed: 16, trans: 1 },
   { name: 'hurricaneswoosh', celFile: 'expansion/hurricane_swoosh', animSpeed: 8, trans: 1 },
   { name: 'hurricanerock', celFile: 'expansion/hurricane_rocks', animSpeed: 16, trans: 0 },
   { name: 'hurricanetree', celFile: 'expansion/hurricane_tree', animSpeed: 16, trans: 0 },
-  { name: 'vines', celFile: 'Expansion/vines', animSpeed: 16, trans: 0 },
-  { name: 'vinesdeath', celFile: 'Expansion/Vines_Death', animSpeed: 16, trans: 0 },
-  { name: 'eruptioncrack', celFile: 'expansion/EruptionCrack', animSpeed: 16, trans: 0 },
-  { name: 'eruptionsmoke', celFile: 'expansion/EruptionSmoke', animSpeed: 16, trans: 1 },
-  { name: 'rocklavaexplosion', celFile: 'Expansion/rock_lava_explosion', animSpeed: 16, trans: 1 },
-  { name: 'rocklavapool', celFile: 'Expansion/rock_lava_pool', animSpeed: 16, trans: 1 },
+  { name: 'vines trail', celFile: 'Expansion/vines', animSpeed: 16, trans: 0 },
+  { name: 'vines wither', celFile: 'Expansion/Vines_Death', animSpeed: 16, trans: 0 },
+  { name: 'erruption crack 1', celFile: 'expansion/EruptionCrack', animSpeed: 16, trans: 0 },
+  { name: 'erruption smoke 1', celFile: 'expansion/EruptionSmoke', animSpeed: 16, trans: 1 },
+  { name: 'volcano explosion', celFile: 'Expansion/rock_lava_explosion', animSpeed: 16, trans: 1 },
+  { name: 'volcano small fire', celFile: 'Expansion/rock_lava_pool', animSpeed: 16, trans: 0 },
 
   // Assassin Traps & Martial Arts
-  { name: 'firetrauma', celFile: 'expansion/FireTraumaMissile', animSpeed: 16, trans: 1 },
-  { name: 'firetraumaground', celFile: 'expansion/FireTraumaGround', animSpeed: 16, trans: 1 },
-  { name: 'firetraumaexplode', celFile: 'expansion/FireTraumaXplosion', animSpeed: 16, trans: 1 },
-  { name: 'shockfieldair', celFile: 'expansion/caltrops', animSpeed: 16, trans: 0 },
-  { name: 'shockfieldground', celFile: 'Expansion/ShockField', animSpeed: 16, trans: 1 },
-  { name: 'bladefury', celFile: 'Expansion/bladefury', animSpeed: 16, trans: 0 },
-  { name: 'bladefuryb', celFile: 'Expansion/bladefury_B', animSpeed: 16, trans: 0 },
-  { name: 'bladefuryc', celFile: 'Expansion/bladefury_C', animSpeed: 16, trans: 0 },
-  { name: 'deathsentryexplode', celFile: 'Expansion/dethsentry02', animSpeed: 16, trans: 1 },
-  { name: 'bladeshieldmissile', celFile: 'Expansion/blade_shield_missile', animSpeed: 16, trans: 1 },
-  { name: 'throwingstar', celFile: 'expansion/ThrowingStarMissile', animSpeed: 16, trans: 0 },
+  { name: 'bomb in air', celFile: 'expansion/FireTraumaMissile', animSpeed: 16, trans: 0 },
+  { name: 'bomb on ground', celFile: 'expansion/FireTraumaGround', animSpeed: 16, trans: 0 },
+  { name: 'bomb explosion', celFile: 'expansion/FireTraumaXplosion', animSpeed: 16, trans: 1 },
+  { name: 'shock field in air', celFile: 'expansion/caltrops', animSpeed: 16, trans: 0 },
+  { name: 'shock field on ground', celFile: 'Expansion/ShockField', animSpeed: 16, trans: 1 },
+  { name: 'bladefragment1', celFile: 'Expansion/bladefury', animSpeed: 16, trans: 0 },
+  { name: 'bladefragment2', celFile: 'Expansion/bladefury_B', animSpeed: 32, trans: 0 },
+  { name: 'bladefragment3', celFile: 'Expansion/bladefury_C', animSpeed: 32, trans: 0 },
+  { name: 'deathsentryexplode', celFile: 'Expansion/dethsentry02', animSpeed: 16, trans: 0 },
+  { name: 'blade shield missile', celFile: 'Expansion/blade_shield_missile', animSpeed: 16, trans: 1 },
+  { name: 'throwingstar', celFile: 'expansion/ThrowingStarMissile', animSpeed: 16, trans: 1 },
   { name: 'mindblast', celFile: 'Expansion/Mindblast', animSpeed: 16, trans: 1 },
 
   // Quest FX Client Missiles (Issue #873)
@@ -242,16 +246,18 @@ const MISSILE_TARGETS = [
   { name: 'horadriclight', celFile: 'HoradricLightBeamstreaks', animSpeed: 16, trans: 1 },
 
   // Monster & Boss Death FX Missiles (Issue #872 - 1.13c Ground Truth)
-  { name: 'fireexplosion', celFile: 'Fsexplode', animSpeed: 16, trans: 1 },
-  { name: 'icebreaklarge', celFile: 'IceBreakLarge', animSpeed: 16, trans: 0 },
-  { name: 'icebreaklargemelt', celFile: 'IceBreakLargeMelt', animSpeed: 16, trans: 0 },
+  { name: 'suicidefireexplode', celFile: 'Fsexplode', animSpeed: 16, trans: 1 },
+  { name: 'icebreaklarge', celFile: 'IceBreakLarge', animSpeed: 16, trans: 1 },
+  { name: 'icebreaklargemelt', celFile: 'IceBreakLargeMelt', animSpeed: 16, trans: 1 },
   { name: 'icebreaksmoke', celFile: 'IceBreakSmoke', animSpeed: 16, trans: 1 },
-  { name: 'brdeathspirits', celFile: 'BRSpiritS1', animSpeed: 16, trans: 1 },
+  { name: 'brdeathspirits1', celFile: 'BRSpiritS1', animSpeed: 16, trans: 1 },
   { name: 'brspiritnu', celFile: 'BRSpiritNU', animSpeed: 16, trans: 1 },
   { name: 'brspiritdt', celFile: 'BRSpiritDT', animSpeed: 16, trans: 1 },
   { name: 'brsmokes1', celFile: 'BRSmokeS1', animSpeed: 16, trans: 1 },
   { name: 'brsmokenu', celFile: 'BRSmokeNU', animSpeed: 16, trans: 1 },
   { name: 'brsmokedt', celFile: 'BRSmokeDT', animSpeed: 16, trans: 1 },
+  { name: 'towermisttrail', celFile: 'mist', animSpeed: 16, trans: 1 },
+  { name: 'towermistfade', celFile: 'Mist_fade', animSpeed: 16, trans: 1 },
   { name: 'andycolumnfire', celFile: 'AndarielFlameDeath', animSpeed: 16, trans: 1 },
   { name: 'andyfallingdebris1', celFile: 'CeilingChunkFall01', animSpeed: 16, trans: 0 },
   { name: 'andyfallingdebris2', celFile: 'CeilingChunkFall02', animSpeed: 16, trans: 0 },
@@ -262,10 +268,14 @@ const MISSILE_TARGETS = [
   { name: 'andydebrisexplosion4', celFile: 'CeilingChunkRemain02', animSpeed: 16, trans: 0 },
   { name: 'andydebrisexplosion5', celFile: 'CeilingChunkRemain03', animSpeed: 16, trans: 0 },
   { name: 'radamenthandofgod', celFile: 'HandOfGod', animSpeed: 24, trans: 1 },
+  { name: 'taintedsunflash', celFile: 'yellowBallGlowIntro', animSpeed: 16, trans: 1 },
+  { name: 'taintedsunball', celFile: 'yellowBallGlow2', animSpeed: 16, trans: 1 },
   { name: 'queendeathglob', celFile: 'QueenDeathGuts', animSpeed: 12, trans: 0 },
   { name: 'queendeathsplat1', celFile: 'QueenDeathPuddle', animSpeed: 16, trans: 0 },
   { name: 'queendeathsplat2', celFile: 'QueenDeathPuddle2', animSpeed: 16, trans: 0 },
-  { name: 'healingvortex', celFile: 'ExplosionSparkSmall', animSpeed: 16, trans: 1 },
+  { name: 'mephistoflyingrockssmall', celFile: 'ExplosionSparkSmall', animSpeed: 16, trans: 0 },
+  // Missiles.txt #302 mephistoflyingrocksbig: CelFile ExplosionSpark, AnimSpeed 16, Trans 0 (Issue #1208).
+  { name: 'mephistoflyingrocksbig', celFile: 'ExplosionSpark', animSpeed: 16, trans: 0 },
   { name: 'mephistoholebirth', celFile: 'smithholebirth', animSpeed: 16, trans: 0 },
   { name: 'mephistoholeneutral', celFile: 'smithholeneutral', animSpeed: 16, trans: 0 },
   { name: 'mephistoholedeath', celFile: 'smithholedeath', animSpeed: 16, trans: 0 },
@@ -273,15 +283,15 @@ const MISSILE_TARGETS = [
   { name: 'durieldeathrock', celFile: 'Rock_large', animSpeed: 16, trans: 0 },
   { name: 'durieldeathdebris', celFile: 'Rock_small', animSpeed: 16, trans: 0 },
   { name: 'durieldeathsmoke', celFile: 'FireSmoke', animSpeed: 16, trans: 1 },
-  { name: 'orbmist', celFile: 'mist_Fade_Orb_Loop', animSpeed: 16, trans: 1 },
+  { name: 'orbmisttrail', celFile: 'mist_Fade_Orb_Loop', animSpeed: 16, trans: 1 },
   { name: 'orbmistfade', celFile: 'mist_Fade_Orb', animSpeed: 16, trans: 1 },
-  { name: 'izualmistloop', celFile: 'IzualDeathClouds', animSpeed: 8, trans: 1 },
-  { name: 'izuallightning', celFile: 'IzualDeathParticles', animSpeed: 16, trans: 1 },
+  { name: 'izual mist loop', celFile: 'IzualDeathClouds', animSpeed: 16, trans: 1 },
+  { name: 'izual lightning', celFile: 'IzualDeathParticles', animSpeed: 16, trans: 1 },
   { name: 'dopplezonexplode', celFile: 'DopplezonExplode', animSpeed: 16, trans: 1 },
-  { name: 'catapultspikeexplosion', celFile: 'expansion/FireSpikeExplode', animSpeed: 16, trans: 0 },
-  { name: 'towerdeath', celFile: 'expansion/TowerDebris', animSpeed: 16, trans: 0 },
-  { name: 'ancientdeathcloud', celFile: 'expansion/AncientDeathMissile', animSpeed: 8, trans: 1 },
-  { name: 'overseermissile', celFile: 'expansion/overseer_missile', animSpeed: 16, trans: 1 },
+  { name: 'catapult spike explosion', celFile: 'expansion/FireSpikeExplode', animSpeed: 16, trans: 1 },
+  { name: 'tower death', celFile: 'expansion/TowerDebris', animSpeed: 16, trans: 0 },
+  { name: 'ancient death cloud', celFile: 'expansion/AncientDeathMissile', animSpeed: 16, trans: 1 },
+  { name: 'healing vortex', celFile: 'expansion/overseer_missile', animSpeed: 16, trans: 1 },
   { name: 'nihlithak1', celFile: 'expansion/Nihlathak A', animSpeed: 8, trans: 0 },
   { name: 'nihlithak2', celFile: 'expansion/Nihlathak B', animSpeed: 8, trans: 0 },
   { name: 'nihlithak3', celFile: 'expansion/Nihlathak C', animSpeed: 8, trans: 0 },
@@ -292,35 +302,156 @@ const MISSILE_TARGETS = [
   { name: 'nehlithakdebris4', celFile: 'expansion/Skeleton_pieces_D', animSpeed: 16, trans: 0 },
   { name: 'baalteleport', celFile: 'Expansion/Baalsummonoverlay', animSpeed: 24, trans: 1 },
   { name: 'baalclonedeath', celFile: 'Expansion/Baalteleport', animSpeed: 24, trans: 1 },
+  // Missiles.txt #555 'baal nova' (Baal Nova #316 CltDoFunc 25 ring): CelFile Expansion\baalsummonmissile, AnimSpeed 12.
+  { name: 'baal nova', celFile: 'Expansion/baalsummonmissile', animSpeed: 12, trans: 1 },
   { name: 'nehlithakhole', celFile: 'expansion/nehlthak_Hole', animSpeed: 16, trans: 0 },
   { name: 'nehlithakholelight', celFile: 'expansion/nehlthak_Hole_light', animSpeed: 16, trans: 1 },
   { name: 'nehlithakglow2', celFile: 'expansion/NehlithakGlow', animSpeed: 16, trans: 1 },
   { name: 'nehlithakbonechips', celFile: 'expansion/BonePieces', animSpeed: 16, trans: 0 },
-  { name: 'baalfxspirit1', celFile: 'expansion/baaldeathghostie02', animSpeed: 6, trans: 1 },
-  { name: 'baalfxspirit2', celFile: 'expansion/baaldeathghostie01', animSpeed: 6, trans: 1 },
-  { name: 'baalfxbaalheadappear', celFile: 'expansion/baaldeathswirl', animSpeed: 16, trans: 1 },
-  { name: 'baalfxbaalhead1', celFile: 'expansion/baaldeathhead01', animSpeed: 12, trans: 1 },
-  { name: 'baalfxbaalhead2', celFile: 'expansion/baaldeathhead02', animSpeed: 12, trans: 1 },
-  { name: 'baalfxbaalhead3', celFile: 'expansion/baaldeathhead03', animSpeed: 12, trans: 1 },
-  { name: 'baalfxtyrealdebris1', celFile: 'expansion/BCeilingChunkFall1', animSpeed: 16, trans: 0 },
-  { name: 'baalfxtyrealdebris2', celFile: 'expansion/BCeilingChunkFall2', animSpeed: 16, trans: 0 },
-  { name: 'baalfxtyrealdebris3', celFile: 'expansion/BCeilingChunkFall3', animSpeed: 16, trans: 0 },
-  { name: 'baalfxtyrealdebrisbreak', celFile: 'expansion/BCeilingChunkBreak', animSpeed: 12, trans: 0 },
+  { name: 'baalfx spirit 1', celFile: 'expansion/baaldeathghostie02', animSpeed: 6, trans: 1 },
+  { name: 'baalfx spirit 2', celFile: 'expansion/baaldeathghostie01', animSpeed: 6, trans: 1 },
+  { name: 'baalfx baal head appear', celFile: 'expansion/baaldeathswirl', animSpeed: 16, trans: 1 },
+  { name: 'baalfx baal head 1', celFile: 'expansion/baaldeathhead01', animSpeed: 12, trans: 1 },
+  { name: 'baalfx baal head 2', celFile: 'expansion/baaldeathhead02', animSpeed: 12, trans: 1 },
+  { name: 'baalfx baal head 3', celFile: 'expansion/baaldeathhead03', animSpeed: 12, trans: 1 },
+  { name: 'baalfx tyreal debris 1', celFile: 'expansion/BCeilingChunkFall1', animSpeed: 16, trans: 0 },
+  { name: 'baalfx tyreal debris 2', celFile: 'expansion/BCeilingChunkFall2', animSpeed: 16, trans: 0 },
+  { name: 'baalfx tyreal debris 3', celFile: 'expansion/BCeilingChunkFall3', animSpeed: 16, trans: 0 },
+  { name: 'baalfx tyreal debris break', celFile: 'expansion/BCeilingChunkBreak', animSpeed: 12, trans: 0 },
+
+  // 1.13c Missiles.txt remaining distinct CelFiles (Issues #1100, #1101, #1102, #1103)
+  { name: 'bighead1', celFile: 'BigheadLightningMissile', animSpeed: 16, trans: 1 },
+  { name: 'spike1', celFile: 'SpikeFiendMissle', animSpeed: 16, trans: 0 },
+  { name: 'shafire1', celFile: 'ShamanFireball', animSpeed: 16, trans: 1 },
+  { name: 'andarielspray', celFile: 'AndarielSpell', animSpeed: 16, trans: 1 },
+  { name: 'bigheadexp', celFile: 'BigheadLightningExplosion', animSpeed: 16, trans: 1 },
+  { name: 'shamanexp', celFile: 'ShamanFireballExplodeFinal', animSpeed: 16, trans: 1 },
+  { name: 'glaive', celFile: 'Glaive', animSpeed: 16, trans: 0 },
+  { name: 'explosivepotionexp', celFile: 'PotionExplode', animSpeed: 16, trans: 1 },
+  { name: 'explosivepotiondebris1', celFile: 'PotionExplodeDebris01', animSpeed: 16, trans: 0 },
+  { name: 'explosivepotiondebris2', celFile: 'PotionExplodeDebris02', animSpeed: 16, trans: 0 },
+  { name: 'explosivepotiondebris3', celFile: 'PotionExplodeDebris03', animSpeed: 16, trans: 0 },
+  { name: 'mummy1', celFile: 'GreaterMummyBreath', animSpeed: 16, trans: 1 },
+  { name: 'goospit1', celFile: 'SandMaggotGooSpit', animSpeed: 16, trans: 0 },
+  { name: 'goosplat', celFile: 'GooHit', animSpeed: 16, trans: 0 },
+  { name: 'sand pile', celFile: 'SandMaggotSandPile', animSpeed: 16, trans: 0 },
+  { name: 'unholybolt1', celFile: 'UnholyBolt', animSpeed: 16, trans: 2 },
+  { name: 'sanctuarycenter', celFile: 'sanctuary', animSpeed: 16, trans: 0 },
+  { name: 'stuckarrow', celFile: 'ArrowInGround', animSpeed: 16, trans: 0 },
+  { name: 'footprint', celFile: 'Footsteps01', animSpeed: 16, trans: 0 },
+  { name: 'chillblood', celFile: 'ChillBlood', animSpeed: 16, trans: 1 },
+  { name: 'teleport', celFile: 'Teleport', animSpeed: 16, trans: 1 },
+  { name: 'monbliz3', celFile: 'icestormfallvar03', animSpeed: 16, trans: 1 },
+  { name: 'monbliz4', celFile: 'icestormfallvar04', animSpeed: 16, trans: 1 },
+  { name: 'amphibiangoo1', celFile: 'FrogPoisonMissile', animSpeed: 16, trans: 1 },
+  { name: 'spidergoolay', celFile: 'Spider_Goo_Missile', animSpeed: 16, trans: 1 },
+  { name: 'spidergoo', celFile: 'Spider_Goo_Disappear', animSpeed: 16, trans: 1 },
+  { name: 'chillbloodpuff', celFile: 'ChillBloodPuff', animSpeed: 16, trans: 1 },
+  { name: 'diablight', celFile: 'DiabloLightning', animSpeed: 16, trans: 1 },
+  { name: 'fingermagespider', celFile: 'FingerMageSpider', animSpeed: 16, trans: 1 },
+  { name: 'trap spike right', celFile: 'SpikeRight', animSpeed: 16, trans: 0 },
+  { name: 'trap spike left', celFile: 'SpikeLeft', animSpeed: 16, trans: 0 },
+  { name: 'trap cursed skull right', celFile: 'SkullRight', animSpeed: 16, trans: 0 },
+  { name: 'trap cursed skull left', celFile: 'SkullLeft', animSpeed: 16, trans: 0 },
+  { name: 'trap poison ball right', celFile: 'PoisonRight', animSpeed: 16, trans: 0 },
+  { name: 'trap poison ball left', celFile: 'PoisonLeft', animSpeed: 16, trans: 0 },
+  { name: 'blowgun', celFile: 'Blowdart', animSpeed: 16, trans: 0 },
+  { name: 'mephisto', celFile: 'MephistoMissile', animSpeed: 16, trans: 1 },
+  { name: 'firehead', celFile: 'VampireMissile', animSpeed: 16, trans: 1 },
+  { name: 'dirt pile', celFile: 'SandMaggotDirtPile', animSpeed: 16, trans: 0 },
+  { name: 'undeadmissile1', celFile: 'SkullPoison', animSpeed: 16, trans: 1 },
+  { name: 'undeadmissile2', celFile: 'SkullFire', animSpeed: 16, trans: 1 },
+  { name: 'undeadmissile3', celFile: 'SkullIce', animSpeed: 16, trans: 1 },
+  { name: 'undeadmissile4', celFile: 'SkullUnholy', animSpeed: 16, trans: 1 },
+  { name: 'hellmeteorlaunch1', celFile: 'meteorlavaburst', animSpeed: 16, trans: 0 },
+  { name: 'hellmeteorlaunch2', celFile: 'meteorlavaburst2', animSpeed: 16, trans: 1 },
+  { name: 'hellmeteorup', celFile: 'meteorlavaup', animSpeed: 16, trans: 1 },
+  { name: 'hellmeteordown', celFile: 'meteorlavadown', animSpeed: 16, trans: 1 },
+  { name: 'hellmeteorball', celFile: 'meteorlavarock', animSpeed: 16, trans: 0 },
+  { name: 'regurgitatorcorpse', celFile: 'SlugMissile', animSpeed: 16, trans: 1 },
+  { name: 'regurgitatorcorpseexpl', celFile: 'Slug Missile Explode', animSpeed: 16, trans: 1 },
+  { name: 'highpriestlightning', celFile: 'HighPriestLightning', animSpeed: 16, trans: 1 },
+  { name: 'mephistoexplosion', celFile: 'MephistoMissileExplosion', animSpeed: 16, trans: 1 },
+  { name: 'pilum', celFile: 'Pilum', animSpeed: 16, trans: 0 },
+  { name: 'hffragment1', celFile: 'SoulForgeShard', animSpeed: 16, trans: 1 },
+  { name: 'hfspirit1', celFile: 'SoulForgeRisingSoul', animSpeed: 16, trans: 1 },
+  { name: 'baallightningtrail', celFile: 'expansion/lightningpiece', animSpeed: 16, trans: 1 },
+  { name: 'impfireball', celFile: 'expansion/ImpFireball', animSpeed: 16, trans: 1 },
+  { name: 'catapult plague ball on', celFile: 'expansion/catapultpoisonbomb', animSpeed: 16, trans: 1 },
+  { name: 'imp teleport', celFile: 'expansion/impteleport', animSpeed: 16, trans: 1 },
+  { name: 'vine beast walk 1', celFile: 'expansion/Pod_walk_1', animSpeed: 16, trans: 0 },
+  { name: 'vine beast walk 2', celFile: 'expansion/Pod_walk_2', animSpeed: 16, trans: 0 },
+  { name: 'vine beast neutral', celFile: 'expansion/Pod_neutral_1', animSpeed: 16, trans: 0 },
+  { name: 'vine beast attack', celFile: 'expansion/Pod_attack_1', animSpeed: 16, trans: 0 },
+  { name: 'vine beast death', celFile: 'expansion/Pod_death_1', animSpeed: 16, trans: 0 },
+  { name: 'dragonbreath missile', celFile: 'Expansion/firenova', animSpeed: 16, trans: 1 },
+  { name: 'lurecenter', celFile: 'Expansion/LureCloud', animSpeed: 16, trans: 1 },
+  { name: 'impmiss1', celFile: 'Expansion/impmissile01', animSpeed: 16, trans: 1 },
+  { name: 'death mauler', celFile: 'expansion/deathmaulerfingers', animSpeed: 16, trans: 0 },
+  { name: 'death mauler trail', celFile: 'expansion/deathmaulermissile', animSpeed: 16, trans: 0 },
+  { name: 'death mauler trail fade', celFile: 'expansion/deathmaulerfadeout', animSpeed: 16, trans: 0 },
+  { name: 'anya icicle', celFile: 'expansion/icicle', animSpeed: 16, trans: 1 },
+  { name: 'anya iceimpact', celFile: 'expansion/iceimpact', animSpeed: 16, trans: 1 },
+  { name: 'anya icesteam', celFile: 'expansion/icecavequest_steam', animSpeed: 16, trans: 1 },
+  { name: 'anya icemagic', celFile: 'expansion/icecavequest_magic', animSpeed: 16, trans: 1 },
+  { name: 'vine beast walk 1 fade', celFile: 'expansion/Pod_Jump_FadeOut', animSpeed: 16, trans: 0 },
+  { name: 'vine beast neutral fade', celFile: 'expansion/Pod_Neutral_FadeOut', animSpeed: 16, trans: 0 },
+  { name: 'baal spawn monsters', celFile: 'Expansion/baalsummonmissile2', animSpeed: 8, trans: 1 },
+  { name: 'baal inferno', celFile: 'Expansion/baalmissile', animSpeed: 12, trans: 1 },
+  { name: 'world stone chip 1', celFile: 'expansion/wstonechips1', animSpeed: 12, trans: 0 },
+  { name: 'world stone chip 2', celFile: 'expansion/wstonechips2', animSpeed: 12, trans: 0 },
+  { name: 'world stone chip 3', celFile: 'expansion/wstonechips3', animSpeed: 12, trans: 0 },
+  { name: 'world stone chip 4', celFile: 'expansion/wstonechips4', animSpeed: 12, trans: 0 },
+  { name: 'hurricanecart', celFile: 'expansion/hurricane_cart', animSpeed: 16, trans: 0 },
+  { name: 'hurricanesack', celFile: 'expansion/hurricane_sack', animSpeed: 16, trans: 0 },
+  { name: 'hurricanevase', celFile: 'expansion/hurricane_vase', animSpeed: 16, trans: 0 },
+  { name: 'baalcorpseexplodeexpl', celFile: 'expansion/CEBaal', animSpeed: 16, trans: 0 },
+  { name: 'baal cold maker', celFile: 'BlueNovaB', animSpeed: 8, trans: 1 },
+  { name: 'baal spawn monsters exp', celFile: 'Expansion/baalsummonsmall', animSpeed: 15, trans: 1 },
+  { name: 'impmiss21', celFile: 'Expansion/impmissile2', animSpeed: 16, trans: 1 },
+  { name: 'anyasteamvent', celFile: 'expansion/IceCaveEruption', animSpeed: 8, trans: 1 },
+  { name: 'anyasteam', celFile: 'expansion/Ice_Smoke', animSpeed: 8, trans: 1 },
+  { name: 'volcanofiretrail', celFile: 'expansion/wallfire_low_Tiny', animSpeed: 16, trans: 1 },
+  { name: 'baalcorpseexplodefade', celFile: 'expansion/CEBaalFade', animSpeed: 4, trans: 0 },
+  { name: 'icesparkle', celFile: 'expansion/iceglint', animSpeed: 12, trans: 1 },
 ] as const
 
 const PAGE_SIZE = 4096
 
 /**
- * Shelf-pack all frames of a missile SpriteSheet into a 32-bit RGBA PNG buffer.
- * Enforces Diablo II 1.13c Trans=1 transparency:
- * - Pure black / background antialiasing fringe pixels (max(r,g,b) <= 4 or idx 172) are strictly transparent (alpha=0).
- * - Semi-dark edge pixels ramp smoothly so no black borders or dark smudge boxes appear over the ground.
- * - Core pixels remain solid (alpha=255) for vibrant spell rendering.
+ * The Missiles.txt Trans of a bake target. A target named after a real (non-alias) Missiles.txt row must carry that
+ * row's Trans (fail fast on drift); other targets keep their declared value.
+ */
+export function missileTargetTrans(target: { readonly name: string; readonly trans: number }): number {
+  const row = CANONICAL_113C_MISSILES[target.name.toLowerCase()]
+  if (row !== undefined && row.name.toLowerCase() === target.name.toLowerCase()) {
+    const rowTrans = row.trans ?? 0
+    if (rowTrans !== target.trans) {
+      throw new Error(`pack-missiles target '${target.name}' trans ${String(target.trans)} != Missiles.txt Trans ${String(rowTrans)}`)
+    }
+    return rowTrans
+  }
+  return target.trans
+}
+
+/** Meta blend label (canvas composite name) of a Missiles.txt Trans: eDrawMode 5 opaque / 3 lighter / 4 multiply. */
+export function missileMetaBlendMode(trans: number): 'opaque' | 'lighter' | 'multiply' {
+  const mode = missileTransToDrawBlend(trans)
+  return mode === 'additive' ? 'lighter' : mode === 'burn' ? 'multiply' : 'opaque'
+}
+
+/**
+ * Shelf-pack all frames of a missile / overlay SpriteSheet into a 32-bit RGBA PNG buffer.
+ *
+ * 1.13c draws every cel with palette index 0 as the only transparent texel, whatever the eDrawMode
+ * (D2Direct3D 0x6F886B90; kb/render/d2gfx-draw-mode-113c.md). Black is never colour-keyed: under the additive
+ * mode (Missiles Trans 1 / Overlay Trans 3) a black texel adds nothing, while under NORMAL (Missiles Trans 0,
+ * Overlay Trans 5/8) and multiply (Missiles Trans 2) it is drawn. The atlas is therefore independent of Trans and
+ * the draw mode is applied only by the runtime blend.
  */
 export function packMissileSheetToRgbaPng(
   sheet: SpriteSheet,
   palette: Uint8Array,
-  trans: number = 1,
 ): {
   png: Uint8Array
   width: number
@@ -383,25 +514,10 @@ export function packMissileSheetToRgbaPng(
             const r = palette[val * 3]!
             const g = palette[val * 3 + 1]!
             const b = palette[val * 3 + 2]!
-            if (trans === 1 || trans === 3) {
-              const m = Math.max(r, g, b)
-              if (m === 0 || val === 172) {
-                rgba[dst] = 0
-                rgba[dst + 1] = 0
-                rgba[dst + 2] = 0
-                rgba[dst + 3] = 0
-              } else {
-                rgba[dst] = r
-                rgba[dst + 1] = g
-                rgba[dst + 2] = b
-                rgba[dst + 3] = 255
-              }
-            } else {
-              rgba[dst] = r
-              rgba[dst + 1] = g
-              rgba[dst + 2] = b
-              rgba[dst + 3] = 255
-            }
+            rgba[dst] = r
+            rgba[dst + 1] = g
+            rgba[dst + 2] = b
+            rgba[dst + 3] = 255
           }
         }
       }
@@ -425,12 +541,17 @@ export function packMissileSheetToRgbaPng(
   return { png, width: pageWidth, height: pageHeight, groups }
 }
 
+/** TS const name of a target's meta; Missiles.txt row names may contain spaces ('baal nova' -> BAAL_NOVA_META). */
+function metaConstName(name: string): string {
+  return `${name.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}_META`
+}
+
 function formatMetaTs(meta: MissileMeta): string {
   const groupsStr = meta.groups
     .map(group => `    [${group.map(f => `[${f.join(', ')}]`).join(', ')}]`)
     .join(',\n')
   const trans = meta.trans ?? 1
-  const blendMode = meta.blendMode ?? (trans === 0 ? 'opaque' : 'lighter')
+  const blendMode = meta.blendMode ?? missileMetaBlendMode(trans)
   return `{\n  name: ${JSON.stringify(meta.name)}, celFile: ${JSON.stringify(meta.celFile)}, width: ${meta.width}, height: ${meta.height}, directions: ${meta.directions}, framesPerDirection: ${meta.framesPerDirection}, animSpeed: ${meta.animSpeed}, trans: ${trans}, blendMode: ${JSON.stringify(blendMode)},\n  groups: [\n${groupsStr}\n  ],\n}`
 }
 
@@ -509,9 +630,9 @@ export async function bakeMissiles(projectRoot: string = process.cwd()): Promise
     }))
 
     const sheet: SpriteSheet = { groups, width: null }
-    const trans: number = 'trans' in target ? (target as { trans: number }).trans : 1
-    const blendMode = trans === 0 ? 'opaque' : 'lighter'
-    const packed = packMissileSheetToRgbaPng(sheet, pl2.rgb, trans)
+    const trans = missileTargetTrans(target)
+    const blendMode = missileMetaBlendMode(trans)
+    const packed = packMissileSheetToRgbaPng(sheet, pl2.rgb)
 
     const meta: MissileMeta = {
       name: target.name,
@@ -527,24 +648,34 @@ export async function bakeMissiles(projectRoot: string = process.cwd()): Promise
     }
 
     const primaryName = target.name.toLowerCase()
-    metaRecord[target.name] = meta
-    metaRecord[primaryName] = meta
-    pngByName.set(target.name, packed.png)
-    pngByName.set(primaryName, packed.png)
-
-    // Write PNG and JSON to public/missiles/ (strictly lowercase)
     const jsonStr = JSON.stringify(meta, null, 2)
     const primaryPngPath = join(publicOutDir, `${primaryName}.png`)
-    rmSync(primaryPngPath, { force: true })
-    writeFileSync(primaryPngPath, packed.png)
-    writeFileSync(join(publicOutDir, `${primaryName}.json`), jsonStr, 'utf-8')
+    if (primaryName !== 'curseall') {
+      metaRecord[target.name] = meta
+      metaRecord[primaryName] = meta
+      pngByName.set(target.name, packed.png)
+      pngByName.set(primaryName, packed.png)
+
+      // Write PNG and JSON to public/missiles/ (strictly lowercase)
+      rmSync(primaryPngPath, { force: true })
+      writeFileSync(primaryPngPath, packed.png)
+      writeFileSync(join(publicOutDir, `${primaryName}.json`), jsonStr, 'utf-8')
+    } else {
+      metaRecord[target.name] = meta
+      pngByName.set(target.name, packed.png)
+    }
 
     const baseCel = target.celFile.split(/[/\\]/).pop()!.toLowerCase()
-    if (!metaRecord[baseCel]) {
+    const STEM_COLLISIONS = new Set(['baalteleport', 'handofgod', 'lightningbolt', 'nehlithakglow', 'vines'])
+    if (!metaRecord[baseCel] && !STEM_COLLISIONS.has(baseCel)) {
       metaRecord[baseCel] = meta
       if (baseCel !== primaryName) {
         pngByName.set(baseCel, packed.png)
-        linkOrWritePng(primaryPngPath, join(publicOutDir, `${baseCel}.png`), packed.png)
+        if (primaryName === 'curseall') {
+          writeFileSync(join(publicOutDir, `${baseCel}.png`), packed.png)
+        } else {
+          linkOrWritePng(primaryPngPath, join(publicOutDir, `${baseCel}.png`), packed.png)
+        }
         writeFileSync(join(publicOutDir, `${baseCel}.json`), jsonStr, 'utf-8')
       }
     }
@@ -576,257 +707,71 @@ export async function bakeMissiles(projectRoot: string = process.cwd()): Promise
   }
   copyAlias('blizzard4', 'blizzard3')
   copyAlias('blizzardexplode3', 'blizzardexplode2')
-  copyAlias('blizzardcenter', 'blizzard1')
-  copyAlias('meteortargetindicator', 'meteorcenter')
   copyAlias('firemedium', 'meteorfire')
   copyAlias('hydra', 'firebolt')
-  copyAlias('hydrafire', 'firebolt')
-  copyAlias('hydracenter', 'firebolt')
 
   // 18 Sorceress Skills Missiles aliases
-  copyAlias('electricnova', 'nova')
   copyAlias('chainlightning', 'lightningstrike')
   copyAlias('lightninghit', 'lightningstrike')
-  copyAlias('lightning', 'lightningstrike')
-  copyAlias('lightningbolt', 'lightningstrike')
-  copyAlias('thunderstorm', 'thunderstorm1')
-  copyAlias('lightningboltbig', 'thunderstorm1')
   copyAlias('cairn stones bolt', 'thunderstorm1')
-  copyAlias('gleam', 'sparkle')
-  copyAlias('freezeexplodeejecta', 'freezingarrowexp2')
-  copyAlias('glacialspikeejecta', 'freezingarrowexp2')
-  copyAlias('freezingarrowexp3', 'freezingarrowexp2')
-  copyAlias('iceexplode1', 'iceexplode')
-  copyAlias('iceexplode2', 'iceexplode')
   copyAlias('blaze', 'firewall')
-  copyAlias('firewallmaker', 'firewall')
-  copyAlias('firewall1', 'firewall')
-  copyAlias('firewall2', 'firewall')
-  copyAlias('firewall3', 'firewall')
-  copyAlias('firewall4', 'firewall')
-  copyAlias('firewall5', 'firewall')
-  copyAlias('groundfirebig', 'firewall')
-  copyAlias('flamethrower', 'infernoflame1')
-  copyAlias('flamethrower2', 'infernoflame2')
-  copyAlias('inferno', 'infernoflame1')
   copyAlias('coldunique', 'frostnova')
   copyAlias('mephfrostnova', 'frostnova')
   copyAlias('chillingarmorbolt', 'icebolt')
-  copyAlias('freezingarrowexp1', 'freezeexplode')
-  copyAlias('FreezingArrowExp1', 'freezeexplode')
-  copyAlias('StaticField', 'lightningstrike')
-  copyAlias('staticfield', 'lightningstrike')
-
-  // Amazon aliases
-  copyAlias('multishotarrow', 'arrow')
-  copyAlias('multishotbolt', 'bolt')
-  copyAlias('criticalarrow', 'arrow')
-  copyAlias('dodge', 'arrow')
-  copyAlias('avoid', 'arrow')
-  copyAlias('evade', 'arrow')
-  copyAlias('penetrate', 'arrow')
-  copyAlias('decoy', 'magicarrow')
-  copyAlias('valkyrie', 'magicarrow')
-  copyAlias('PowerStrike', 'chargedstrikebolt')
-  copyAlias('powerstrike', 'chargedstrikebolt')
-  copyAlias('Impale', 'arrow')
-  copyAlias('impale', 'arrow')
-  copyAlias('Fend', 'arrow')
-  copyAlias('fend', 'arrow')
-  copyAlias('ChargedStrike', 'chargedstrikebolt')
-  copyAlias('chargedstrike', 'chargedstrikebolt')
 
   // Necromancer aliases
   copyAlias('revivesmall', 'revive')
   copyAlias('revivemedium', 'revive')
   copyAlias('revivelarge', 'revive')
   copyAlias('bonespearexplode', 'teethexplode')
-  copyAlias('curseamplifydamage', 'curseall')
-  copyAlias('cursedimvision', 'curseall')
-  copyAlias('curseweaken', 'curseall')
-  copyAlias('curseironmaiden', 'curseall')
-  copyAlias('curseterror', 'curseall')
-  copyAlias('curseconfuse', 'curseall')
-  copyAlias('cursereversevampire', 'curseall')
-  copyAlias('curseattract', 'curseall')
-  copyAlias('cursedecrepify', 'curseall')
-  copyAlias('curselowerresist', 'curseall')
-  copyAlias('amplifydamage', 'cursecast')
-  copyAlias('dimvision', 'cursecast')
-  copyAlias('weaken', 'cursecast')
-  copyAlias('ironmaiden', 'cursecast')
-  copyAlias('terror', 'cursecast')
-  copyAlias('confuse', 'cursecast')
-  copyAlias('lifetap', 'cursecast')
-  copyAlias('attract', 'cursecast')
-  copyAlias('decrepify', 'cursecast')
-  copyAlias('lowerresist', 'cursecast')
-  copyAlias('poisonexplosion', 'poisonexplosioncloud')
-  copyAlias('bonewall', 'bonecast')
-  copyAlias('bonewallmaker', 'bonecast')
-  copyAlias('boneprison', 'bonecast')
-  copyAlias('skeleton', 'revive')
-  copyAlias('skeletonmage', 'revive')
-  copyAlias('claygolem', 'revive')
-  copyAlias('bloodgolem', 'revive')
-  copyAlias('irongolem', 'revive')
-  copyAlias('firegolem', 'revive')
-
-  // Paladin aliases
-  copyAlias('smite', 'holybolt')
-  copyAlias('zeal', 'holybolt')
-  copyAlias('vengeance', 'holybolt')
-  copyAlias('charge', 'holybolt')
-  copyAlias('conversion', 'holybolt')
-  copyAlias('sacrifice', 'holybolt')
-  copyAlias('holyshield', 'holybolt')
-  copyAlias('fist_of_the_heavens', 'foa')
-  copyAlias('fistoftheheavens', 'foa')
-  copyAlias('fistoftheheavensdelay', 'foa')
-
-  // Barbarian aliases
-  copyAlias('findpotion', 'grimwardsmall')
-  copyAlias('finditem', 'grimwardsmall')
-  copyAlias('grimward', 'grimwardsmall')
-  copyAlias('grimwardscare', 'grimwardsmall')
-  copyAlias('taunt', 'howl')
-  copyAlias('bash', 'arrow')
-  copyAlias('leap', 'arrow')
-  copyAlias('doublethrow', 'arrow')
-  copyAlias('doubleswing', 'arrow')
-  copyAlias('leapattack', 'arrow')
-  copyAlias('stun', 'arrow')
-  copyAlias('concentrate', 'arrow')
-  copyAlias('frenzy', 'arrow')
-  copyAlias('whirlwind', 'arrow')
-  copyAlias('berserk', 'arrow')
+  copyAlias('curseamplifydamage', 'cursearea')
+  copyAlias('cursedimvision', 'cursearea')
+  copyAlias('curseweaken', 'cursearea')
+  copyAlias('curseironmaiden', 'cursearea')
+  copyAlias('curseterror', 'cursearea')
+  copyAlias('curseconfuse', 'cursearea')
+  copyAlias('cursereversevampire', 'cursearea')
+  copyAlias('curseattract', 'cursearea')
+  copyAlias('cursedecrepify', 'cursearea')
+  copyAlias('curselowerresist', 'cursearea')
 
   // Druid aliases
-  copyAlias('moltenboulderroll', 'moltenboulder')
-  copyAlias('moltenboulderemergerock', 'rocklavaexplosion')
-  copyAlias('moltenboulderexplode', 'rocklavaexplosion')
-  copyAlias('moltenboulderfirepath', 'rocklavapool')
-  copyAlias('moltenboulderflyingrocks', 'volcanorock')
-  copyAlias('arcticblast', 'arcticblast1')
-  copyAlias('fissure', 'eruptioncrack')
-  copyAlias('eruptioncenter', 'eruptioncrack')
-  copyAlias('eruption crack 1', 'eruptioncrack')
-  copyAlias('eruption crack 2', 'eruptioncrack')
-  copyAlias('eruption smoke 1', 'eruptionsmoke')
-  copyAlias('eruption smoke 2', 'eruptionsmoke')
-  copyAlias('volcano', 'volcanobase')
-  copyAlias('volcano_fire', 'volcanofire')
-  copyAlias('volcano_rock', 'volcanorock')
-  copyAlias('volcanodebris2', 'volcanofire')
-  copyAlias('volcanosmallfire', 'volcanofire')
-  copyAlias('armageddon', 'armageddonrock')
-  copyAlias('armageddonrocks', 'armageddonrock')
-  copyAlias('armageddonexplode', 'volcanofire')
-  copyAlias('armageddonfire', 'volcanofire')
-  copyAlias('hurricane', 'hurricaneswoosh')
-  copyAlias('hurricanemaker', 'hurricaneswoosh')
-  copyAlias('plaguevines', 'vines')
-  copyAlias('plaguevinemaker', 'vines')
-  copyAlias('carrionvine', 'vines')
-  copyAlias('carrionvinemaker', 'vines')
-  copyAlias('solarscreecher', 'vines')
-  copyAlias('solarscreechermaker', 'vines')
+  copyAlias('moltenboulderfirepath', 'firesmall')
+  copyAlias('armageddonfire', 'firesmall')
 
   // Assassin aliases
-  copyAlias('tigerstrike', 'fireexplode')
-  copyAlias('dragonclaw', 'fireexplode')
-  copyAlias('ClawsOfThunderBolt', 'chargedstrikebolt')
   copyAlias('clawsofthunderbolt', 'chargedstrikebolt')
-  copyAlias('ClawsOfThunderNova', 'nova')
   copyAlias('clawsofthundernova', 'nova')
-  copyAlias('BladesOfIceExplode', 'iceexplode')
   copyAlias('bladesoficeexplode', 'iceexplode')
-  copyAlias('BladesOfIceCubes', 'icebreaksmall')
   copyAlias('bladesoficecubes', 'icebreaksmall')
-  copyAlias('BladesOfIceCubesMelt', 'icebreaksmallmelt')
   copyAlias('bladesoficecubesmelt', 'icebreaksmallmelt')
-  copyAlias('RoyalStrikeMeteor', 'meteor')
   copyAlias('royalstrikemeteor', 'meteor')
-  copyAlias('RoyalStrikeMeteorCenter', 'meteorcenter')
   copyAlias('royalstrikemeteorcenter', 'meteorcenter')
-  copyAlias('RoyalStrikeMeteorTail', 'meteortail')
   copyAlias('royalstrikemeteortail', 'meteortail')
-  copyAlias('RoyalStrikeMeteorExplode', 'meteorexplode')
   copyAlias('royalstrikemeteorexplode', 'meteorexplode')
-  copyAlias('RoyalStrikeMeteorFire', 'meteorfire')
-  copyAlias('royalstrikemeteorfire', 'meteorfire')
-  copyAlias('RoyalStrikeChainLightning', 'lightningstrike')
+  copyAlias('royalstrikemeteorfire', 'firesmall')
   copyAlias('royalstrikechainlightning', 'lightningstrike')
-  copyAlias('RoyalStrikeChaosIce', 'icebolt')
   copyAlias('royalstrikechaosice', 'icebolt')
-  copyAlias('fistsoffire', 'fireexplode')
-  copyAlias('FistsOfFireExplode', 'fireexplode')
-  copyAlias('fistsoffireexplode', 'fireexplode')
-  copyAlias('FistsOfFireFirewall', 'firewall')
-  copyAlias('fistsoffirefirewall', 'firewall')
-  copyAlias('clawsofthunder', 'chargedstrikebolt')
-  copyAlias('bladesofice', 'iceexplode')
-  copyAlias('phoenixstrike', 'meteor')
-  copyAlias('cobrastrike', 'poisonpuff')
-  copyAlias('dragontail', 'fireexplode')
-  copyAlias('DragonTailMissile', 'fireexplode')
-  copyAlias('dragontailmissile', 'fireexplode')
-  copyAlias('dragonflight', 'fireexplode')
-  copyAlias('psychichammer', 'mindblast')
-  copyAlias('lightningsentry', 'lightningstrike')
-  copyAlias('chargedboltsentry', 'chargedbolt')
-  copyAlias('chargeboltsentry', 'chargedbolt')
-  copyAlias('sentrylightning', 'lightningstrike')
+  copyAlias('fistsoffireexplode', 'meteorexplode')
+  copyAlias('fistsoffirefirewall', 'firesmall')
   copyAlias('sentrychargedbolt', 'chargedbolt')
-  copyAlias('wakeoffire', 'firesmall')
-  copyAlias('wakeofdestructionmaker', 'firesmall')
-  copyAlias('wakeofinferno', 'infernoflame1')
-  copyAlias('infernosentry1', 'infernoflame1')
-  copyAlias('infernosentry2', 'infernoflame2')
-  copyAlias('deathsentry', 'deathsentryexplode')
-  copyAlias('corpseexplosion_ds', 'corpseexplosion')
-  copyAlias('lightning_ds', 'lightningstrike')
-  copyAlias('bladesentinel', 'bladefury')
-  copyAlias('shockweb', 'shockfieldground')
-  copyAlias('blade_shield_attachment', 'bladeshieldmissile')
 
   // Monster & Boss Death FX aliases (Issue #872)
   copyAlias('monstercorpseexplode', 'corpseexplosion')
   copyAlias('suicidecorpseexplode', 'corpseexplosion')
-  copyAlias('suicidefireexplode', 'fireexplosion')
-  copyAlias('suicideiceexplode', 'freezeexplode')
+  copyAlias('suicideiceexplode', 'freezingarrowexp1')
+  copyAlias('fireexplosion', 'fireexplode')
   copyAlias('lightunique', 'chargedbolt')
   copyAlias('buglightning', 'chargedbolt')
-  copyAlias('corpsepoisoncloud', 'poisonpuff')
-  copyAlias('queenpoisoncloud', 'poisonpuff')
-  copyAlias('brdeathlightningbolt', 'lightningstrike')
+  copyAlias('corpsepoisoncloud', 'poisonexplosioncloud')
+  copyAlias('queenpoisoncloud', 'poisonnova')
   copyAlias('brdeathlightninghit', 'lightningstrike')
-  copyAlias('mephistofirewallmaker', 'firewall')
-  copyAlias('mephistofirewall', 'firewall')
-  copyAlias('mephistoexplosionbig', 'meteorexplode')
+  copyAlias('mephistofirewall', 'firesmall')
+  copyAlias('mephistoexplosionbig', 'fireexplode')
   copyAlias('mephistoexplosionsmall', 'fireexplode')
-  copyAlias('andyfirewallmaker', 'firewall')
-  copyAlias('andyfirewall', 'firewall')
+  copyAlias('andyfirewall', 'firesmall')
   copyAlias('andycolumnfirebase', 'meteorfire')
   copyAlias('radamentholybolt', 'holybolt')
-  copyAlias('orbfire', 'meteorfire')
-  copyAlias('izual mist loop', 'izualmistloop')
-  copyAlias('izual mist fade', 'orbmistfade')
-  copyAlias('izual lightning', 'izuallightning')
-  copyAlias('izual lightning trail', 'lightningstrike')
-  copyAlias('catapult spike explosion', 'catapultspikeexplosion')
-  copyAlias('tower death', 'towerdeath')
-  copyAlias('ancient death cloud', 'ancientdeathcloud')
-  copyAlias('baalfx spirit 1', 'baalfxspirit1')
-  copyAlias('baalfx spirit 2', 'baalfxspirit2')
-  copyAlias('baalfx baal head appear', 'baalfxbaalheadappear')
-  copyAlias('baalfx baal head 1', 'baalfxbaalhead1')
-  copyAlias('baalfx baal head 2', 'baalfxbaalhead2')
-  copyAlias('baalfx baal head 3', 'baalfxbaalhead3')
-  copyAlias('baalfx tyreal debris 1', 'baalfxtyrealdebris1')
-  copyAlias('baalfx tyreal debris 2', 'baalfxtyrealdebris2')
-  copyAlias('baalfx tyreal debris 3', 'baalfxtyrealdebris3')
-  copyAlias('baalfx tyreal debris break', 'baalfxtyrealdebrisbreak')
 
   // Generate src/render/missiles-meta.ts
   const EXPORTED_MISSILE_META_CONSTS = new Set<string>([
@@ -834,6 +779,7 @@ export async function bakeMissiles(projectRoot: string = process.cwd()): Promise
     'ICEBOLT_META',
     'ICEBLAST_META',
     'GLACIALSPIKE_META',
+    'FREEZINGARROWEXP1_META',
     'FREEZEEXPLODE_META',
     'BLIZZARD1_META',
     'BLIZZARD2_META',
@@ -854,26 +800,41 @@ export async function bakeMissiles(projectRoot: string = process.cwd()): Promise
     'INFERNOFLAME1_META',
     'INFERNOFLAME2_META',
     'FROSTNOVA_META',
+    'NOVA_META',
     'BLIZZARD4_META',
     'BLIZZARDEXPLODE3_META',
     'HYDRA_META',
     'HYDRAFIRE_META',
-    'ELECTRICNOVA_META',
     'CHAINLIGHTNING_META',
-    'GLACIALSPIKEEJECTA_META',
+    'FREEZINGARROWEXP2_META',
     'BLAZE_META',
     'GROUNDFIREBIG_META',
   ])
 
   const metaExports = MISSILE_TARGETS.map(t => {
-    const constName = `${t.name.toUpperCase()}_META`
+    const constName = metaConstName(t.name)
     const prefix = EXPORTED_MISSILE_META_CONSTS.has(constName) ? 'export const' : 'const'
     return `${prefix} ${constName}: MissileMeta = ${formatMetaTs(metaRecord[t.name]!)}`
   }).join('\n')
 
-  const mapEntries = MISSILE_TARGETS.map(t => {
-    return `  '${t.name}': ${t.name.toUpperCase()}_META,`
-  }).join('\n')
+  const NON_ROW_TARGET_NAMES = new Set<string>([
+    'curseall',
+    'revive',
+    'icearrowexplode',
+    'firespikes',
+    'firespikesground',
+    'mindblast',
+    'brspiritnu',
+    'brspiritdt',
+    'brsmokes1',
+    'brsmokenu',
+    'brsmokedt',
+  ])
+
+  const mapEntries = MISSILE_TARGETS
+    .filter(t => !NON_ROW_TARGET_NAMES.has(t.name))
+    .map(t => `  '${t.name}': ${metaConstName(t.name)},`)
+    .join('\n')
 
   const metaTsContent = `/**
  * Authentic Diablo II v1.13c Missile Atlas Metadata.
@@ -953,27 +914,16 @@ export function pointsToDccDirection(
 
 ${metaExports}
 
+export const FREEZEEXPLODE_META: MissileMeta = FREEZINGARROWEXP1_META
 export const BLIZZARD4_META: MissileMeta = { ...BLIZZARD3_META, name: 'blizzard4' }
 export const BLIZZARDEXPLODE3_META: MissileMeta = { ...BLIZZARDEXPLODE2_META, name: 'blizzardexplode3' }
 export const HYDRA_META: MissileMeta = { ...FIREBOLT_META, name: 'hydra' }
-export const HYDRAFIRE_META: MissileMeta = { ...FIREBOLT_META, name: 'hydrafire' }
-const METEORTARGETINDICATOR_META: MissileMeta = { ...METEORCENTER_META, name: 'meteortargetindicator' }
+export const HYDRAFIRE_META: MissileMeta = HYDRA_META
 const FIREMEDIUM_META: MissileMeta = { ...METEORFIRE_META, name: 'firemedium' }
-export const ELECTRICNOVA_META: MissileMeta = { ...NOVA_META, name: 'electricnova' }
 export const CHAINLIGHTNING_META: MissileMeta = { ...LIGHTNINGSTRIKE_META, name: 'chainlightning' }
 const LIGHTNINGHIT_META: MissileMeta = { ...LIGHTNINGSTRIKE_META, name: 'lightninghit' }
-const LIGHTNING_META: MissileMeta = { ...LIGHTNINGSTRIKE_META, name: 'lightning' }
-const LIGHTNINGBOLT_META: MissileMeta = { ...LIGHTNINGSTRIKE_META, name: 'lightningbolt' }
-const THUNDERSTORM_META: MissileMeta = { ...THUNDERSTORM1_META, name: 'thunderstorm' }
-const LIGHTNINGBOLTBIG_META: MissileMeta = { ...THUNDERSTORM1_META, name: 'lightningboltbig' }
-const GLEAM_META: MissileMeta = { ...SPARKLE_META, name: 'gleam' }
-const FREEZEEXPLODEEJECTA_META: MissileMeta = { ...FREEZINGARROWEXP2_META, name: 'freezeexplodeejecta' }
-export const GLACIALSPIKEEJECTA_META: MissileMeta = { ...FREEZINGARROWEXP2_META, name: 'glacialspikeejecta' }
 export const BLAZE_META: MissileMeta = { ...FIREWALL_META, name: 'blaze' }
-const FIREWALLMAKER_META: MissileMeta = { ...FIREWALL_META, name: 'firewallmaker' }
 export const GROUNDFIREBIG_META: MissileMeta = { ...FIREWALL_META, name: 'groundfirebig' }
-const FLAMETHROWER_META: MissileMeta = { ...INFERNOFLAME1_META, name: 'flamethrower' }
-const FLAMETHROWER2_META: MissileMeta = { ...INFERNOFLAME2_META, name: 'flamethrower2' }
 const COLDUNIQUE_META: MissileMeta = { ...FROSTNOVA_META, name: 'coldunique' }
 const MEPHFROSTNOVA_META: MissileMeta = { ...FROSTNOVA_META, name: 'mephfrostnova' }
 const REVIVESMALL_META: MissileMeta = { ...REVIVE_META, name: 'revivesmall' }
@@ -988,65 +938,17 @@ ${mapEntries}
   'revivelarge': REVIVELARGE_META,
   'bonespearexplode': BONESPEAREXPLODE_META,
   'chillingarmorbolt': ICEBOLT_META,
-  'freezingarrowexp1': FREEZEEXPLODE_META,
-  'FreezingArrowExp1': FREEZEEXPLODE_META,
-  'freezingarrowexp3': FREEZINGARROWEXP2_META,
-  'iceexplode1': ICEEXPLODE_META,
-  'iceexplode2': ICEEXPLODE_META,
   'blizzard4': BLIZZARD4_META,
   'blizzardexplode3': BLIZZARDEXPLODE3_META,
-  'blizzardcenter': BLIZZARD1_META,
   'hydra': HYDRA_META,
-  'hydrafire': HYDRAFIRE_META,
-  'hydracenter': HYDRA_META,
-  'meteortargetindicator': METEORTARGETINDICATOR_META,
   'firemedium': FIREMEDIUM_META,
-  'electricnova': ELECTRICNOVA_META,
   'chainlightning': CHAINLIGHTNING_META,
-  'lightning': LIGHTNING_META,
-  'lightningbolt': LIGHTNINGBOLT_META,
   'lightninghit': LIGHTNINGHIT_META,
-  'thunderstorm': THUNDERSTORM_META,
-  'lightningboltbig': LIGHTNINGBOLTBIG_META,
-  'gleam': GLEAM_META,
-  'freezeexplodeejecta': FREEZEEXPLODEEJECTA_META,
-  'glacialspikeejecta': GLACIALSPIKEEJECTA_META,
   'blaze': BLAZE_META,
-  'firewallmaker': FIREWALLMAKER_META,
-  'firewall1': FIREWALL_META,
-  'firewall2': FIREWALL_META,
-  'firewall3': FIREWALL_META,
-  'firewall4': FIREWALL_META,
-  'firewall5': FIREWALL_META,
-  'groundfirebig': GROUNDFIREBIG_META,
-  'flamethrower': FLAMETHROWER_META,
-  'flamethrower2': FLAMETHROWER2_META,
-  'inferno': INFERNOFLAME1_META,
   'coldunique': COLDUNIQUE_META,
   'mephfrostnova': MEPHFROSTNOVA_META,
-  'StaticField': LIGHTNINGSTRIKE_META,
-  'staticfield': LIGHTNINGSTRIKE_META,
 
-  // Amazon skill & missile aliases
-  'multishotarrow': ARROW_META,
-  'multishotbolt': BOLT_META,
-  'criticalarrow': ARROW_META,
-  'dodge': ARROW_META,
-  'avoid': ARROW_META,
-  'evade': ARROW_META,
-  'penetrate': ARROW_META,
-  'decoy': MAGICARROW_META,
-  'valkyrie': MAGICARROW_META,
-  'PowerStrike': CHARGEDSTRIKEBOLT_META,
-  'powerstrike': CHARGEDSTRIKEBOLT_META,
-  'Impale': ARROW_META,
-  'impale': ARROW_META,
-  'Fend': ARROW_META,
-  'fend': ARROW_META,
-  'ChargedStrike': CHARGEDSTRIKEBOLT_META,
-  'chargedstrike': CHARGEDSTRIKEBOLT_META,
-
-  // Necromancer skill & missile aliases
+  // Necromancer skill & missile rows
   'curseamplifydamage': CURSEALL_META,
   'cursedimvision': CURSEALL_META,
   'curseweaken': CURSEALL_META,
@@ -1057,562 +959,63 @@ ${mapEntries}
   'curseattract': CURSEALL_META,
   'cursedecrepify': CURSEALL_META,
   'curselowerresist': CURSEALL_META,
-  'amplifydamage': CURSECAST_META,
-  'dimvision': CURSECAST_META,
-  'weaken': CURSECAST_META,
-  'ironmaiden': CURSECAST_META,
-  'terror': CURSECAST_META,
-  'confuse': CURSECAST_META,
-  'lifetap': CURSECAST_META,
-  'attract': CURSECAST_META,
-  'decrepify': CURSECAST_META,
-  'lowerresist': CURSECAST_META,
-  'poisonexplosion': POISONEXPLOSIONCLOUD_META,
-  'bonewall': BONECAST_META,
-  'bonewallmaker': BONECAST_META,
-  'boneprison': BONECAST_META,
-  'skeleton': REVIVE_META,
-  'skeletonmage': REVIVE_META,
-  'claygolem': REVIVE_META,
-  'bloodgolem': REVIVE_META,
-  'irongolem': REVIVE_META,
-  'firegolem': REVIVE_META,
 
-  // Paladin skill & missile aliases
-  'smite': HOLYBOLT_META,
-  'zeal': HOLYBOLT_META,
-  'vengeance': HOLYBOLT_META,
-  'charge': HOLYBOLT_META,
-  'conversion': HOLYBOLT_META,
-  'sacrifice': HOLYBOLT_META,
-  'holyshield': HOLYBOLT_META,
-  'fist_of_the_heavens': FOA_META,
-  'fistoftheheavens': FOA_META,
-  'fistoftheheavensdelay': FOA_META,
-
-  // Barbarian skill & missile aliases
-  'findpotion': GRIMWARDSMALL_META,
-  'finditem': GRIMWARDSMALL_META,
-  'grimward': GRIMWARDSMALL_META,
-  'grimwardscare': GRIMWARDSMALL_META,
-  'taunt': HOWL_META,
-  'bash': ARROW_META,
-  'leap': ARROW_META,
-  'doublethrow': ARROW_META,
-  'doubleswing': ARROW_META,
-  'leapattack': ARROW_META,
-  'stun': ARROW_META,
-  'concentrate': ARROW_META,
-  'frenzy': ARROW_META,
-  'whirlwind': ARROW_META,
-  'berserk': ARROW_META,
-
-  // Druid skill & missile aliases
-  'moltenboulderemergerock': ROCKLAVAEXPLOSION_META,
-  'moltenboulderexplode': ROCKLAVAEXPLOSION_META,
-  'moltenboulderfirepath': ROCKLAVAPOOL_META,
-  'moltenboulderflyingrocks': VOLCANOROCK_META,
-  'arcticblast': ARCTICBLAST1_META,
-  'fissure': ERUPTIONCRACK_META,
-  'eruptioncenter': ERUPTIONCRACK_META,
-  'eruption crack 1': ERUPTIONCRACK_META,
-  'eruption crack 2': ERUPTIONCRACK_META,
-  'eruption smoke 1': ERUPTIONSMOKE_META,
-  'eruption smoke 2': ERUPTIONSMOKE_META,
-  'volcano': VOLCANOBASE_META,
-  'volcanodebris2': VOLCANOFIRE_META,
-  'volcanosmallfire': VOLCANOFIRE_META,
-  'armageddon': ARMAGEDDONROCK_META,
-  'armageddonrocks': ARMAGEDDONROCK_META,
-  'armageddonexplode': VOLCANOFIRE_META,
-  'armageddonfire': VOLCANOFIRE_META,
-  'hurricane': HURRICANESWOOSH_META,
-  'hurricanemaker': HURRICANESWOOSH_META,
-  'plaguevines': VINES_META,
-  'plaguevinemaker': VINES_META,
-  'carrionvine': VINES_META,
-  'carrionvinemaker': VINES_META,
-  'solarscreecher': VINES_META,
-  'solarscreechermaker': VINES_META,
-
-  // Assassin skill & missile aliases
-  'tigerstrike': FIREEXPLODE_META,
-  'dragonclaw': FIREEXPLODE_META,
-  'ClawsOfThunderBolt': CHARGEDSTRIKEBOLT_META,
-  'clawsofthunderbolt': CHARGEDSTRIKEBOLT_META,
-  'ClawsOfThunderNova': NOVA_META,
-  'clawsofthundernova': NOVA_META,
-  'BladesOfIceExplode': ICEEXPLODE_META,
-  'bladesoficeexplode': ICEEXPLODE_META,
-  'BladesOfIceCubes': ICEBREAKSMALL_META,
-  'bladesoficecubes': ICEBREAKSMALL_META,
-  'BladesOfIceCubesMelt': ICEBREAKSMALLMELT_META,
-  'bladesoficecubesmelt': ICEBREAKSMALLMELT_META,
-  'RoyalStrikeMeteor': METEOR_META,
-  'royalstrikemeteor': METEOR_META,
-  'RoyalStrikeMeteorCenter': METEORCENTER_META,
-  'royalstrikemeteorcenter': METEORCENTER_META,
-  'RoyalStrikeMeteorTail': METEORTAIL_META,
-  'royalstrikemeteortail': METEORTAIL_META,
-  'RoyalStrikeMeteorExplode': METEOREXPLODE_META,
-  'royalstrikemeteorexplode': METEOREXPLODE_META,
-  'RoyalStrikeMeteorFire': METEORFIRE_META,
-  'royalstrikemeteorfire': METEORFIRE_META,
-  'RoyalStrikeChainLightning': LIGHTNINGSTRIKE_META,
-  'royalstrikechainlightning': LIGHTNINGSTRIKE_META,
-  'RoyalStrikeChaosIce': ICEBOLT_META,
-  'royalstrikechaosice': ICEBOLT_META,
-  'fistsoffire': FIREEXPLODE_META,
-  'FistsOfFireExplode': FIREEXPLODE_META,
-  'fistsoffireexplode': FIREEXPLODE_META,
-  'FistsOfFireFirewall': FIREWALL_META,
-  'fistsoffirefirewall': FIREWALL_META,
-  'clawsofthunder': CHARGEDSTRIKEBOLT_META,
-  'bladesofice': ICEEXPLODE_META,
-  'phoenixstrike': METEOR_META,
-  'cobrastrike': POISONPUFF_META,
-  'dragontail': FIREEXPLODE_META,
-  'DragonTailMissile': FIREEXPLODE_META,
-  'dragontailmissile': FIREEXPLODE_META,
-  'dragonflight': FIREEXPLODE_META,
-  'psychichammer': MINDBLAST_META,
-  'lightningsentry': LIGHTNINGSTRIKE_META,
-  'chargedboltsentry': CHARGEDBOLT_META,
-  'chargeboltsentry': CHARGEDBOLT_META,
-  'sentrylightning': LIGHTNINGSTRIKE_META,
-  'sentrychargedbolt': CHARGEDBOLT_META,
-  'wakeoffire': FIRESMALL_META,
-  'wakeofdestructionmaker': FIRESMALL_META,
-  'wakeofinferno': INFERNOFLAME1_META,
-  'infernosentry1': INFERNOFLAME1_META,
-  'infernosentry2': INFERNOFLAME2_META,
-  'deathsentry': DEATHSENTRYEXPLODE_META,
-  'corpseexplosion_ds': CORPSEEXPLOSION_META,
-  'lightning_ds': LIGHTNINGSTRIKE_META,
-  'bladesentinel': BLADEFURY_META,
-  'shockweb': SHOCKFIELDGROUND_META,
-  'blade_shield_attachment': BLADESHIELDMISSILE_META,
-
-  // Exact CelFile aliases for 18 Sorceress Skills Missiles & Ground Truth CelFiles
-  'ElectricNova': ELECTRICNOVA_META,
-  'LightningStrike': LIGHTNINGSTRIKE_META,
-  'ChainLightning': CHAINLIGHTNING_META,
-  'LightningHit': LIGHTNINGHIT_META,
-  'Thunderstorm': THUNDERSTORM_META,
-  'LightningboltBig': LIGHTNINGBOLTBIG_META,
-  'Gleam': GLEAM_META,
-  'FreezeExplodeEjecta': FREEZEEXPLODEEJECTA_META,
-  'GlacialSpikeEjecta': GLACIALSPIKEEJECTA_META,
-  'Blaze': BLAZE_META,
-  'FirewallMaker': FIREWALLMAKER_META,
-  'groundFireBig': GROUNDFIREBIG_META,
-  'Flamethrower': FLAMETHROWER_META,
-  'Flamethrower2': FLAMETHROWER2_META,
-  'ColdUnique': COLDUNIQUE_META,
-  'MephFrostNova': MEPHFROSTNOVA_META,
-  'FrostNova': FROSTNOVA_META,
-  'IceBreakSmall': ICEBREAKSMALL_META,
-  'IceBreakSmallMelt': ICEBREAKSMALLMELT_META,
-
-  // Base missiles CelFiles
-  'Firebolt': FIREBOLT_META,
-  'Fireball': FIREBALL_META,
-  'FireArrowExplode2': FIREEXPLODE_META,
-  'firearrowexplode2': FIREEXPLODE_META,
-  'Icebolt': ICEBOLT_META,
-  'IceBlast': ICEBLAST_META,
-  'GlacialSpike': GLACIALSPIKE_META,
-  'IceArrowExplode': ICEEXPLODE_META,
-  'FreezeExplodeCenter': FREEZEEXPLODE_META,
-  'freezeexplodecenter': FREEZEEXPLODE_META,
-  'IceOrb': FROZENORB_META,
-  'iceorb': FROZENORB_META,
-  'IceOrbExplode': FROZENORBEXPLODE_META,
-  'iceorbexplode': FROZENORBEXPLODE_META,
-  'Blizzard': BLIZZARD3_META,
-  'blizzard': BLIZZARD3_META,
-  'ChargedBolt': CHARGEDBOLT_META,
-  'teethMissile': TEETH_META,
-  'teethmissile': TEETH_META,
-  'BoneSpear': BONESPEAR_META,
-  'BoneSpirit': BONESPIRIT_META,
-  'BoneSpiritExplode': BONESPIRITEXPLODE_META,
-  'poisonNova': POISONNOVA_META,
-  'HolyBoltMissile': HOLYBOLT_META,
-  'holyboltmissile': HOLYBOLT_META,
-  'SafeArrow': MAGICARROW_META,
-  'safearrow': MAGICARROW_META,
-  'FireArrow': FIREARROW_META,
-  'IceArrow': ICEARROW_META,
-  'Arrow': ARROW_META,
-  'LightningJavelin': LIGHTNINGJAVELIN_META,
-  'Meteor': METEOR_META,
-  'MeteorTail': METEORTAIL_META,
-  'MeteorTargetIndicator': METEORTARGETINDICATOR_META,
-  'ExpArrowExplode': METEOREXPLODE_META,
-  'exparrowexplode': METEOREXPLODE_META,
-  'groundFireMedium': FIREMEDIUM_META,
-  'groundfiremedium': FIREMEDIUM_META,
-  'groundFireSmall': FIRESMALL_META,
-  'groundfiresmall': FIRESMALL_META,
-
-  // Necromancer CelFiles
-  'CorpseExplodeGuts': CORPSEEXPLOSION_META,
-  'corpseexplodeguts': CORPSEEXPLOSION_META,
-  'CorpseExplodeGutsPoison': POISONCORPSEEXPLOSION_META,
-  'corpseexplodegutspoison': POISONCORPSEEXPLOSION_META,
-  'PoisonSparks': POISONEXPLOSIONCLOUD_META,
-  'poisonsparks': POISONEXPLOSIONCLOUD_META,
-  'PoisonSmokePuff': POISONPUFF_META,
-  'poisonsmokepuff': POISONPUFF_META,
-  'CurseCast': CURSECAST_META,
-  'CurseArea': CURSEALL_META,
-  'cursearea': CURSEALL_META,
-  'BoneCast': BONECAST_META,
-  'BoneSpearTrail': BONESPEARTRAIL_META,
-  'Revive': REVIVE_META,
-  'BloodLarge01': BIGBLOOD1_META,
-  'bloodlarge01': BIGBLOOD1_META,
-  'BloodLarge02': BIGBLOOD2_META,
-  'bloodlarge02': BIGBLOOD2_META,
-
-  // Paladin CelFiles
-  'FOAorbiter': FOA_META,
-  'foaorbiter': FOA_META,
-  'BloodSmall01': BLOOD1_META,
-  'bloodsmall01': BLOOD1_META,
-  'RedemptionGhost': REDEEM_META,
-  'redemptionghost': REDEEM_META,
-
-  // Amazon CelFiles
-  'XBowBolt': BOLT_META,
-  'xbowbolt': BOLT_META,
-  'Javelin': POISONJAV_META,
-  'javelin': POISONJAV_META,
-
-  // Barbarian CelFiles
-  'BAYellShockWave01': HOWL_META,
-  'bayellshockwave01': HOWL_META,
-  'WarcryShockwave': WARCRY_META,
-  'warcryshockwave': WARCRY_META,
-  'GrimWardSmallStart': GRIMWARDSMALLSTART_META,
-  'GrimWardSmall': GRIMWARDSMALL_META,
-  'GrimWardSmallStop': GRIMWARDSMALLSTOP_META,
-  'GrimWardMediumStart': GRIMWARDMEDIUMSTART_META,
-  'GrimWardMedium': GRIMWARDMEDIUM_META,
-  'GrimWardMediumStop': GRIMWARDMEDIUMSTOP_META,
-  'GrimWardLargeStart': GRIMWARDLARGESTART_META,
-  'GrimWardLarge': GRIMWARDLARGE_META,
-  'GrimWardLargeStop': GRIMWARDLARGESTOP_META,
-
-  // Druid CelFiles
-  'expansion/MoltenBoulderRoll': MOLTENBOULDER_META,
-  'MoltenBoulderRoll': MOLTENBOULDER_META,
-  'moltenboulderroll': MOLTENBOULDER_META,
-  'expansion/MoltenBoulderEmerge': MOLTENBOULDEREMERGE_META,
-  'MoltenBoulderEmerge': MOLTENBOULDEREMERGE_META,
-  'expansion/FirestormEmitter': FIRESTORMMAKER_META,
-  'FirestormEmitter': FIRESTORMMAKER_META,
-  'firestormemitter': FIRESTORMMAKER_META,
-  'expansion/FireSpikes': FIRESTORM_META,
-  'FireSpikes': FIRESTORM_META,
-  'firespikes': FIRESTORM_META,
-  'expansion/FireSpikesGround': FIRESPIKESGROUND_META,
-  'FireSpikesGround': FIRESPIKESGROUND_META,
-  'expansion/ArcticBlastIce': ARCTICBLAST1_META,
-  'ArcticBlastIce': ARCTICBLAST1_META,
-  'arcticblastice': ARCTICBLAST1_META,
-  'expansion/ArcticBlastIce_2': ARCTICBLAST2_META,
-  'ArcticBlastIce_2': ARCTICBLAST2_META,
-  'arcticblastice_2': ARCTICBLAST2_META,
-  'expansion/twister': TWISTER_META,
-  'expansion/tornado': TORNADO_META,
-  'Expansion/volcano_base': VOLCANOBASE_META,
-  'volcano_base': VOLCANOBASE_META,
-  'Expansion/volcano_Fire': VOLCANOFIRE_META,
-  'volcano_Fire': VOLCANOFIRE_META,
-  'volcano_fire': VOLCANOFIRE_META,
-  'expansion/volcano_rock': VOLCANOROCK_META,
-  'volcano_rock': VOLCANOROCK_META,
-  'expansion/shockwave': SHOCKWAVE_META,
-  'expansion/armageddon_rock': ARMAGEDDONROCK_META,
-  'armageddon_rock': ARMAGEDDONROCK_META,
-  'expansion/armageddon_fire': ARMAGEDDONTAIL_META,
-  'armageddon_fire': ARMAGEDDONTAIL_META,
-  'expansion/hurricane_swoosh': HURRICANESWOOSH_META,
-  'hurricane_swoosh': HURRICANESWOOSH_META,
-  'expansion/hurricane_rocks': HURRICANEROCK_META,
-  'hurricane_rocks': HURRICANEROCK_META,
-  'expansion/hurricane_tree': HURRICANETREE_META,
-  'hurricane_tree': HURRICANETREE_META,
-  'Expansion/vines': VINES_META,
-  'Expansion/Vines_Death': VINESDEATH_META,
-  'Vines_Death': VINESDEATH_META,
-  'vines_death': VINESDEATH_META,
-  'expansion/EruptionCrack': ERUPTIONCRACK_META,
-  'EruptionCrack': ERUPTIONCRACK_META,
-  'expansion/EruptionSmoke': ERUPTIONSMOKE_META,
-  'EruptionSmoke': ERUPTIONSMOKE_META,
-  'Expansion/rock_lava_explosion': ROCKLAVAEXPLOSION_META,
-  'rock_lava_explosion': ROCKLAVAEXPLOSION_META,
-  'Expansion/rock_lava_pool': ROCKLAVAPOOL_META,
-  'rock_lava_pool': ROCKLAVAPOOL_META,
+  // Druid skill & missile rows
+  'moltenboulderfirepath': FIRESMALL_META,
+  'armageddonfire': FIRESMALL_META,
+  'catapult spike in air': FIRESPIKES_META,
+  'catapult spike on ground': FIRESPIKESGROUND_META,
+  'lureprojectile': FIRESPIKES_META,
+  'sentryspikeinair': FIRESPIKES_META,
+  'sentryspikeonground': FIRESPIKESGROUND_META,
   'frozenorbbolt': ICEBOLT_META,
   'frozenorbnova': ICEBOLT_META,
-  'icestormimpactvar02': BLIZZARDEXPLODE3_META,
-  'hydra_turret': HYDRA_META,
 
-  // Assassin CelFiles
-  'expansion/FireTraumaMissile': FIRETRAUMA_META,
-  'FireTraumaMissile': FIRETRAUMA_META,
-  'expansion/FireTraumaGround': FIRETRAUMAGROUND_META,
-  'FireTraumaGround': FIRETRAUMAGROUND_META,
-  'expansion/FireTraumaXplosion': FIRETRAUMAEXPLODE_META,
-  'FireTraumaXplosion': FIRETRAUMAEXPLODE_META,
-  'expansion/caltrops': SHOCKFIELDAIR_META,
-  'caltrops': SHOCKFIELDAIR_META,
-  'Expansion/ShockField': SHOCKFIELDGROUND_META,
-  'ShockField': SHOCKFIELDGROUND_META,
-  'shockfield': SHOCKFIELDGROUND_META,
-  'Expansion/bladefury': BLADEFURY_META,
-  'Expansion/bladefury_B': BLADEFURYB_META,
-  'bladefury_B': BLADEFURYB_META,
-  'Expansion/bladefury_C': BLADEFURYC_META,
-  'bladefury_C': BLADEFURYC_META,
-  'Expansion/dethsentry02': DEATHSENTRYEXPLODE_META,
-  'dethsentry02': DEATHSENTRYEXPLODE_META,
-  'Expansion/blade_shield_missile': BLADESHIELDMISSILE_META,
-  'blade_shield_missile': BLADESHIELDMISSILE_META,
-  'expansion/ThrowingStarMissile': THROWINGSTAR_META,
-  'ThrowingStarMissile': THROWINGSTAR_META,
-  'throwingstarmissile': THROWINGSTAR_META,
-  'Expansion/Mindblast': MINDBLAST_META,
-  'Mindblast': MINDBLAST_META,
+  // Assassin skill & missile rows
+  'clawsofthunderbolt': CHARGEDSTRIKEBOLT_META,
+  'clawsofthundernova': NOVA_META,
+  'bladesoficeexplode': ICEEXPLODE_META,
+  'bladesoficecubes': ICEBREAKSMALL_META,
+  'bladesoficecubesmelt': ICEBREAKSMALLMELT_META,
+  'royalstrikemeteor': METEOR_META,
+  'royalstrikemeteorcenter': METEORCENTER_META,
+  'royalstrikemeteortail': METEORTAIL_META,
+  'royalstrikemeteorexplode': METEOREXPLODE_META,
+  'royalstrikemeteorfire': FIRESMALL_META,
+  'royalstrikechainlightning': LIGHTNINGSTRIKE_META,
+  'royalstrikechaosice': ICEBOLT_META,
+  'fistsoffireexplode': METEOREXPLODE_META,
+  'fistsoffirefirewall': FIRESMALL_META,
+  'sentrychargedbolt': CHARGEDBOLT_META,
+  'mindblast hit': MINDBLAST_META,
+  'mindblast center': MINDBLAST_META,
 
-  // Quest FX Client Missiles (Issue #873)
-  'LightBeams': DENOFEVILLIGHT_META,
-  'lightbeams': DENOFEVILLIGHT_META,
-  'cairn stones bolt': LIGHTNINGBOLTBIG_META,
+  // Amazon & Quest FX missile rows
+  'javelin': POISONJAV_META,
+  'cairn stones bolt': THUNDERSTORM1_META,
 
-  // Monster & Boss Death FX Missiles & CelFiles (Issue #872)
+  // Monster & Boss Death FX missile rows (Issue #872)
   'monstercorpseexplode': CORPSEEXPLOSION_META,
   'suicidecorpseexplode': CORPSEEXPLOSION_META,
-  'suicidefireexplode': FIREEXPLOSION_META,
-  'suicideiceexplode': FREEZEEXPLODE_META,
-  'Fsexplode': FIREEXPLOSION_META,
-  'fsexplode': FIREEXPLOSION_META,
-  'IceBreakLarge': ICEBREAKLARGE_META,
-  'IceBreakLargeMelt': ICEBREAKLARGEMELT_META,
-  'IceBreakSmoke': ICEBREAKSMOKE_META,
+  'suicideiceexplode': FREEZINGARROWEXP1_META,
+  'fireexplosion': FIREEXPLODE_META,
+  'fireexplosion2': FIREEXPLODE_META,
   'lightunique': CHARGEDBOLT_META,
   'buglightning': CHARGEDBOLT_META,
-  'corpsepoisoncloud': POISONPUFF_META,
-  'queenpoisoncloud': POISONPUFF_META,
-  'brdeathlightningbolt': LIGHTNINGSTRIKE_META,
+  'corpsepoisoncloud': POISONEXPLOSIONCLOUD_META,
+  'queenpoisoncloud': POISONNOVA_META,
   'brdeathlightninghit': LIGHTNINGSTRIKE_META,
-  'BRSpiritS1': BRDEATHSPIRITS_META,
-  'BRSpiritNU': BRSPIRITNU_META,
-  'BRSpiritDT': BRSPIRITDT_META,
-  'BRSmokeS1': BRSMOKES1_META,
-  'BRSmokeNU': BRSMOKENU_META,
-  'BRSmokeDT': BRSMOKEDT_META,
-  'mephistofirewallmaker': FIREWALL_META,
-  'mephistofirewall': FIREWALL_META,
-  'mephistoexplosionbig': METEOREXPLODE_META,
+  'brdeathspiritnu': BRSPIRITNU_META,
+  'brdeathspiritdt': BRSPIRITDT_META,
+  'brdeathsmokes1': BRSMOKES1_META,
+  'brdeathsmokenu': BRSMOKENU_META,
+  'brdeathsmokedt': BRSMOKEDT_META,
+  'mephistofirewall': FIRESMALL_META,
+  'mephistoexplosionbig': FIREEXPLODE_META,
   'mephistoexplosionsmall': FIREEXPLODE_META,
-  'andyfirewallmaker': FIREWALL_META,
-  'andyfirewall': FIREWALL_META,
+  'andyfirewall': FIRESMALL_META,
   'andycolumnfirebase': METEORFIRE_META,
-  'AndarielFlameDeath': ANDYCOLUMNFIRE_META,
-  'andarielflamedeath': ANDYCOLUMNFIRE_META,
-  'CeilingChunkFall01': ANDYFALLINGDEBRIS1_META,
-  'CeilingChunkFall02': ANDYFALLINGDEBRIS2_META,
-  'CeilingChunkFall03': ANDYFALLINGDEBRIS3_META,
-  'CeilingChunkVanish01': ANDYDEBRISEXPLOSION1_META,
-  'CeilingChunkVanish02': ANDYDEBRISEXPLOSION2_META,
-  'CeilingChunkRemain01': ANDYDEBRISEXPLOSION3_META,
-  'CeilingChunkRemain02': ANDYDEBRISEXPLOSION4_META,
-  'CeilingChunkRemain03': ANDYDEBRISEXPLOSION5_META,
   'radamentholybolt': HOLYBOLT_META,
-  'HandOfGod': RADAMENTHANDOFGOD_META,
-  'handofgod': RADAMENTHANDOFGOD_META,
-  'QueenDeathGuts': QUEENDEATHGLOB_META,
-  'queendeathguts': QUEENDEATHGLOB_META,
-  'QueenDeathPuddle': QUEENDEATHSPLAT1_META,
-  'queendeathpuddle': QUEENDEATHSPLAT1_META,
-  'QueenDeathPuddle2': QUEENDEATHSPLAT2_META,
-  'queendeathpuddle2': QUEENDEATHSPLAT2_META,
-  'healing vortex': HEALINGVORTEX_META,
-  'ExplosionSparkSmall': HEALINGVORTEX_META,
-  'explosionsparksmall': HEALINGVORTEX_META,
-  'smithholebirth': MEPHISTOHOLEBIRTH_META,
-  'smithholeneutral': MEPHISTOHOLENEUTRAL_META,
-  'smithholedeath': MEPHISTOHOLEDEATH_META,
-  'smithholedead': MEPHISTOHOLEDEAD_META,
-  'Rock_large': DURIELDEATHROCK_META,
-  'rock_large': DURIELDEATHROCK_META,
-  'Rock_small': DURIELDEATHDEBRIS_META,
-  'rock_small': DURIELDEATHDEBRIS_META,
-  'FireSmoke': DURIELDEATHSMOKE_META,
-  'firesmoke': DURIELDEATHSMOKE_META,
-  'orbfire': METEORFIRE_META,
-  'mist_Fade_Orb_Loop': ORBMIST_META,
-  'mist_fade_orb_loop': ORBMIST_META,
-  'mist_Fade_Orb': ORBMISTFADE_META,
-  'mist_fade_orb': ORBMISTFADE_META,
-  'izual mist loop': IZUALMISTLOOP_META,
-  'IzualDeathClouds': IZUALMISTLOOP_META,
-  'izualdeathclouds': IZUALMISTLOOP_META,
-  'izual mist fade': ORBMISTFADE_META,
-  'izual lightning': IZUALLIGHTNING_META,
-  'IzualDeathParticles': IZUALLIGHTNING_META,
-  'izualdeathparticles': IZUALLIGHTNING_META,
-  'izual lightning trail': LIGHTNINGSTRIKE_META,
-  'DopplezonExplode': DOPPLEZONEXPLODE_META,
-  'catapult spike explosion': CATAPULTSPIKEEXPLOSION_META,
-  'expansion/FireSpikeExplode': CATAPULTSPIKEEXPLOSION_META,
-  'FireSpikeExplode': CATAPULTSPIKEEXPLOSION_META,
-  'firespikeexplode': CATAPULTSPIKEEXPLOSION_META,
-  'tower death': TOWERDEATH_META,
-  'expansion/TowerDebris': TOWERDEATH_META,
-  'TowerDebris': TOWERDEATH_META,
-  'towerdebris': TOWERDEATH_META,
-  'ancient death cloud': ANCIENTDEATHCLOUD_META,
-  'expansion/AncientDeathMissile': ANCIENTDEATHCLOUD_META,
-  'AncientDeathMissile': ANCIENTDEATHCLOUD_META,
-  'ancientdeathmissile': ANCIENTDEATHCLOUD_META,
-  'expansion/overseer_missile': OVERSEERMISSILE_META,
-  'overseer_missile': OVERSEERMISSILE_META,
-  'expansion/Nihlathak A': NIHLITHAK1_META,
-  'Nihlathak A': NIHLITHAK1_META,
-  'nihlathak a': NIHLITHAK1_META,
-  'expansion/Nihlathak B': NIHLITHAK2_META,
-  'Nihlathak B': NIHLITHAK2_META,
-  'nihlathak b': NIHLITHAK2_META,
-  'expansion/Nihlathak C': NIHLITHAK3_META,
-  'Nihlathak C': NIHLITHAK3_META,
-  'nihlathak c': NIHLITHAK3_META,
-  'expansion/nehlthak_Swoosh': NEHLITHAKSWOOSH_META,
-  'nehlthak_Swoosh': NEHLITHAKSWOOSH_META,
-  'nehlthak_swoosh': NEHLITHAKSWOOSH_META,
-  'expansion/Skeleton_pieces_A': NEHLITHAKDEBRIS1_META,
-  'Skeleton_pieces_A': NEHLITHAKDEBRIS1_META,
-  'skeleton_pieces_a': NEHLITHAKDEBRIS1_META,
-  'expansion/Skeleton_pieces_B': NEHLITHAKDEBRIS2_META,
-  'Skeleton_pieces_B': NEHLITHAKDEBRIS2_META,
-  'skeleton_pieces_b': NEHLITHAKDEBRIS2_META,
-  'expansion/Skeleton_pieces_C': NEHLITHAKDEBRIS3_META,
-  'Skeleton_pieces_C': NEHLITHAKDEBRIS3_META,
-  'skeleton_pieces_c': NEHLITHAKDEBRIS3_META,
-  'expansion/Skeleton_pieces_D': NEHLITHAKDEBRIS4_META,
-  'Skeleton_pieces_D': NEHLITHAKDEBRIS4_META,
-  'skeleton_pieces_d': NEHLITHAKDEBRIS4_META,
-  'Expansion/Baalsummonoverlay': BAALTELEPORT_META,
-  'Baalsummonoverlay': BAALTELEPORT_META,
-  'baalsummonoverlay': BAALTELEPORT_META,
-  'Expansion/Baalteleport': BAALCLONEDEATH_META,
-  'Baalteleport': BAALCLONEDEATH_META,
-  'expansion/nehlthak_Hole': NEHLITHAKHOLE_META,
-  'nehlthak_Hole': NEHLITHAKHOLE_META,
-  'nehlthak_hole': NEHLITHAKHOLE_META,
-  'expansion/nehlthak_Hole_light': NEHLITHAKHOLELIGHT_META,
-  'nehlthak_Hole_light': NEHLITHAKHOLELIGHT_META,
-  'nehlthak_hole_light': NEHLITHAKHOLELIGHT_META,
-  'expansion/NehlithakGlow': NEHLITHAKGLOW2_META,
-  'NehlithakGlow': NEHLITHAKGLOW2_META,
-  'nehlithakglow': NEHLITHAKGLOW2_META,
-  'expansion/BonePieces': NEHLITHAKBONECHIPS_META,
-  'BonePieces': NEHLITHAKBONECHIPS_META,
-  'bonepieces': NEHLITHAKBONECHIPS_META,
-  'baalfx spirit 1': BAALFXSPIRIT1_META,
-  'expansion/baaldeathghostie02': BAALFXSPIRIT1_META,
-  'baaldeathghostie02': BAALFXSPIRIT1_META,
-  'baalfx spirit 2': BAALFXSPIRIT2_META,
-  'expansion/baaldeathghostie01': BAALFXSPIRIT2_META,
-  'baaldeathghostie01': BAALFXSPIRIT2_META,
-  'baalfx baal head appear': BAALFXBAALHEADAPPEAR_META,
-  'expansion/baaldeathswirl': BAALFXBAALHEADAPPEAR_META,
-  'baaldeathswirl': BAALFXBAALHEADAPPEAR_META,
-  'baalfx baal head 1': BAALFXBAALHEAD1_META,
-  'expansion/baaldeathhead01': BAALFXBAALHEAD1_META,
-  'baaldeathhead01': BAALFXBAALHEAD1_META,
-  'baalfx baal head 2': BAALFXBAALHEAD2_META,
-  'expansion/baaldeathhead02': BAALFXBAALHEAD2_META,
-  'baaldeathhead02': BAALFXBAALHEAD2_META,
-  'baalfx baal head 3': BAALFXBAALHEAD3_META,
-  'expansion/baaldeathhead03': BAALFXBAALHEAD3_META,
-  'baaldeathhead03': BAALFXBAALHEAD3_META,
-  'baalfx tyreal debris 1': BAALFXTYREALDEBRIS1_META,
-  'expansion/BCeilingChunkFall1': BAALFXTYREALDEBRIS1_META,
-  'BCeilingChunkFall1': BAALFXTYREALDEBRIS1_META,
-  'bceilingchunkfall1': BAALFXTYREALDEBRIS1_META,
-  'baalfx tyreal debris 2': BAALFXTYREALDEBRIS2_META,
-  'expansion/BCeilingChunkFall2': BAALFXTYREALDEBRIS2_META,
-  'BCeilingChunkFall2': BAALFXTYREALDEBRIS2_META,
-  'bceilingchunkfall2': BAALFXTYREALDEBRIS2_META,
-  'baalfx tyreal debris 3': BAALFXTYREALDEBRIS3_META,
-  'expansion/BCeilingChunkFall3': BAALFXTYREALDEBRIS3_META,
-  'BCeilingChunkFall3': BAALFXTYREALDEBRIS3_META,
-  'bceilingchunkfall3': BAALFXTYREALDEBRIS3_META,
-  'baalfx tyreal debris break': BAALFXTYREALDEBRISBREAK_META,
-  'expansion/BCeilingChunkBreak': BAALFXTYREALDEBRISBREAK_META,
-  'BCeilingChunkBreak': BAALFXTYREALDEBRISBREAK_META,
-  'bceilingchunkbreak': BAALFXTYREALDEBRISBREAK_META,
-  'monsterpoisoncloud': POISONPUFF_META,
-  'universalpoisoncloud': POISONPUFF_META,
-  'andycontrol0': ANDYCOLUMNFIRE_META,
-  'andyspurt': ANDYCOLUMNFIRE_META,
-  'andyfallingdebris': ANDYFALLINGDEBRIS1_META,
-  'durieldeathcontrol': DURIELDEATHROCK_META,
-  'radamentdeath': RADAMENTHANDOFGOD_META,
-  'taintedsunflash': HEALINGVORTEX_META,
-  'taintedsunball': HEALINGVORTEX_META,
-  'mephistodeathcontrol': MEPHISTOHOLEBIRTH_META,
-  'mephistoflyingrocksbig': METEOREXPLODE_META,
-  'mephistoflyingrockssmall': HEALINGVORTEX_META,
-  'mephistosmoke': DURIELDEATHSMOKE_META,
-  'izualcontrol': IZUALMISTLOOP_META,
-  'izual control': IZUALMISTLOOP_META,
-  'izualice': IZUALLIGHTNING_META,
-  'izualmist': IZUALMISTLOOP_META,
-  'izualsparks': IZUALLIGHTNING_META,
-  'diablolight': FIREWALL_META,
-  'towermist': ORBMIST_META,
-  'TowerMistTrail': ORBMIST_META,
-  'towermisttrail': ORBMIST_META,
-  'TowerMistFade': ORBMISTFADE_META,
-  'towermistfade': ORBMISTFADE_META,
-  'shenkcontrol': OVERSEERMISSILE_META,
-  'overseercontrol': OVERSEERMISSILE_META,
-  'shenkdeath1': OVERSEERMISSILE_META,
-  'ancientdeathcontrol': ANCIENTDEATHCLOUD_META,
-  'ancient death center': ANCIENTDEATHCLOUD_META,
-  'nihlathakcontrol': NEHLITHAKDEBRIS1_META,
-  'nehlithakcontrol': NEHLITHAKDEBRIS1_META,
-  'nihlathak1': NIHLITHAK1_META,
-  'nihlathak2': NIHLITHAK2_META,
-  'nihlathak3': NIHLITHAK3_META,
-  'nihlathak4': NEHLITHAKDEBRIS1_META,
-  'nihlathak5': NEHLITHAKDEBRIS2_META,
-  'nihlathak6': NEHLITHAKDEBRIS3_META,
-  'nihlathakswoosh': NEHLITHAKSWOOSH_META,
-  'nihlathakdebris1': NEHLITHAKDEBRIS1_META,
-  'nihlathakdebris2': NEHLITHAKDEBRIS2_META,
-  'nihlathakdebris3': NEHLITHAKDEBRIS3_META,
-  'nihlathakdebris4': NEHLITHAKDEBRIS4_META,
-  'nihlathakglow': NEHLITHAKGLOW2_META,
-  'baalcontrol': BAALTELEPORT_META,
-  'baalspawn': BAALTELEPORT_META,
-  'baalfxcontrol': BAALFXSPIRIT1_META,
-  'baalfx control': BAALFXSPIRIT1_META,
-  'baalfxspirit3': BAALFXSPIRIT1_META,
-  'baalfx spirit 3': BAALFXSPIRIT1_META,
-  'baalfxspirit4': BAALFXSPIRIT2_META,
-  'baalfx spirit 4': BAALFXSPIRIT2_META,
-  'baalfxspirit5': BAALFXSPIRIT1_META,
-  'baalfx spirit 5': BAALFXSPIRIT1_META,
-  'firetower death': TOWERDEATH_META,
-  'baal clone death': BAALCLONEDEATH_META,
 })
 `
 

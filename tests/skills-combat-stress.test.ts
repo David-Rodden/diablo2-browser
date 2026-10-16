@@ -809,7 +809,8 @@ describe('M3 Adversarial Stress Testing: Combat Engine & Damage Mathematics', ()
           expect(res.kind).toBe('buff')
           if (res.kind === 'buff') {
             expect(res.buffEffect.defensePct).toBe(100 + 10 * (lvl - 1))
-            expect(res.durationSeconds).toBe(16 + 4 * (lvl - 1))
+            // 1.13c Skills.txt Shout auralencalc ln34 = Param3 (500) + Param4 (250) * (lvl - 1) frames @ 25 fps
+            expect(res.durationSeconds).toBe(20 + 10 * (lvl - 1))
           }
         }
       })

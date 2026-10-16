@@ -68,6 +68,10 @@ import {
 import { isModalDomOverlayOpen } from './ui/dom-overlay.ts'
 import { HudManager } from './ui/hud-manager.ts'
 import { Minimap } from './ui/minimap.ts'
+import {
+  installBrowserGestureGuard,
+  type BrowserGestureGuardHandle,
+} from './input/browser-gesture-guard.ts'
 import { CommandMapper } from './input/command-mapper.ts'
 import { D2_LOGIC_TICK_MS, runOwedTicks } from './loop/logic-clock.ts'
 import { MapService } from './map/map-service.ts'
@@ -141,6 +145,7 @@ export interface PlayAppController {
   readonly hudManager: HudManager
   readonly hudModel: HudModel
   readonly commandMapper: CommandMapper
+  readonly gestureGuard: BrowserGestureGuardHandle
   readonly flowState: BnetFlowState
   readonly frontendRenderer: FrontendRenderer
   readonly renderer: SpriteRenderer
@@ -210,6 +215,7 @@ export async function startPlayApp(options?: {
   window.__d2SkipAutoBoot = true
 
   const toolbarContainer = document.querySelector<HTMLElement>('#d2-toolbar-container')
+  const workspaceEl = document.querySelector<HTMLElement>('#play-workspace')
   const stageWrapperEl = document.querySelector<HTMLElement>('#play-stage-wrapper')
   const stageEl = document.querySelector<HTMLElement>('#play-stage')
   const bnetShell = document.querySelector<HTMLElement>('#bnet-shell')
@@ -311,6 +317,18 @@ export async function startPlayApp(options?: {
       onPluginsToggle: () => {
         pluginMenuRef?.toggle()
       },
+      onModalOpen: () => {
+        pluginMenuRef?.close()
+      },
+      getBugReportContext: () => ({
+        inGameView,
+        flowStage: flowState.stage,
+        sessionPhase: sessionRef?.phase ?? 'disconnected',
+        accountName: flowState.accountName || '',
+        selectedChar: sessionRef?.selectedChar ?? null,
+        areaId: sessionRef?.world.areaId ?? 0,
+        pingMs: sessionRef?.pingMs ?? null,
+      }),
     },
   })
 
@@ -1301,8 +1319,19 @@ export async function startPlayApp(options?: {
     frontendRenderer.render(performance.now())
   })
 
+  // Issue #1310: Layered browser gesture, side-button (X1/X2), context-menu, wheel zoom,
+  // history back-stack sentinel, and active-session beforeunload protection.
+  const gestureGuard = installBrowserGestureGuard({
+    stageEl,
+    stageWrapperEl,
+    workspaceEl,
+    isSessionActive: () =>
+      inGameView || (session.phase !== 'disconnected' && session.phase !== 'error'),
+  })
+  bootDisposers.push(() => gestureGuard.dispose())
+
   // Bind mouse & keyboard input
-  const toStageCoords = (e: MouseEvent): { readonly x: number; readonly y: number } => {
+  const rawToStageCoords = (e: MouseEvent): { readonly x: number; readonly y: number } => {
     const rect = viewCanvas.getBoundingClientRect()
     const profile = getViewportProfile(settingsStore.get().viewport)
     const scaleX = rect.width > 0 ? profile.width / rect.width : 1
@@ -1313,14 +1342,46 @@ export async function startPlayApp(options?: {
     }
   }
 
+  const toStageCoords = (e: MouseEvent): { readonly x: number; readonly y: number } => {
+    const profile = getViewportProfile(settingsStore.get().viewport)
+    return gestureGuard.resolveStageCoords(e, rawToStageCoords, profile.width, profile.height)
+  }
+
+  const toFrontendCoords = (e: MouseEvent): { readonly x: number; readonly y: number } => {
+    return gestureGuard.resolveStageCoords(
+      e,
+      (ev) => frontendRenderer.eventToCanvasCoords(ev),
+      800,
+      600,
+    )
+  }
+
   trackListener(stageEl, 'mousemove', (e: MouseEvent) => {
     if (!inGameView) {
-      const pt = frontendRenderer.eventToCanvasCoords(e)
+      const pt = toFrontendCoords(e)
       frontendRenderer.handleMouseMove(pt.x, pt.y, performance.now())
       return
     }
     const pt = toStageCoords(e)
     session.commandMapper.handlePointerMove(pt.x, pt.y, performance.now())
+  })
+
+  // Issue #1310: When holding LMB/RMB in-game and the cursor slips into the 4:3 pillarbox
+  // black bars (`#play-stage-wrapper`) or outside `#play-stage`, keep updating the clamped
+  // stage pointer coordinates and ensure releasing the button outside `#play-stage` cleanly
+  // ends the hold state.
+  trackListener(window, 'mousemove', (e: MouseEvent) => {
+    if (!inGameView) return
+    if (!session.commandMapper.isPointerDown()) return
+    const targetNode = e.target as Node | null
+    if (targetNode && typeof stageEl.contains === 'function' && stageEl.contains(targetNode)) {
+      return
+    }
+    const profile = getViewportProfile(settingsStore.get().viewport)
+    const raw = rawToStageCoords(e)
+    const clampedX = Math.max(0, Math.min(profile.width, raw.x))
+    const clampedY = Math.max(0, Math.min(profile.height, raw.y))
+    session.commandMapper.handlePointerMove(clampedX, clampedY, performance.now())
   })
 
   // The victory screen's handler table (D2Client 0x6fba4828) maps WM_RBUTTONDOWN/UP like the left button.
@@ -1332,7 +1393,7 @@ export async function startPlayApp(options?: {
     if (!inGameView) {
       ;(e as { _d2HandledByCommandMapper?: boolean })._d2HandledByCommandMapper = true
       if (isFrontendClickButton(e.button)) {
-        const pt = frontendRenderer.eventToCanvasCoords(e)
+        const pt = toFrontendCoords(e)
         frontendRenderer.handleMouseDown(pt.x, pt.y, performance.now())
       }
       return
@@ -1349,9 +1410,19 @@ export async function startPlayApp(options?: {
   trackListener(stageEl, 'mouseup', (e: MouseEvent) => {
     if (!inGameView) {
       if (isFrontendClickButton(e.button)) {
-        const pt = frontendRenderer.eventToCanvasCoords(e)
+        const pt = toFrontendCoords(e)
         frontendRenderer.handleMouseUp(pt.x, pt.y, performance.now())
       }
+      return
+    }
+    session.commandMapper.handlePointerUp(e.button)
+  })
+
+  trackListener(window, 'mouseup', (e: MouseEvent) => {
+    if (!inGameView) return
+    if (!session.commandMapper.isPointerDown()) return
+    const targetNode = e.target as Node | null
+    if (targetNode && typeof stageEl.contains === 'function' && stageEl.contains(targetNode)) {
       return
     }
     session.commandMapper.handlePointerUp(e.button)
@@ -1375,7 +1446,11 @@ export async function startPlayApp(options?: {
         frontendRenderer.handleWheel(e.deltaY, pt.x, pt.y)
         frontendRenderer.render(performance.now())
       } else if (inGameView && session?.hudManager) {
+        if ((e as { _d2WheelHandled?: boolean })._d2WheelHandled) {
+          return
+        }
         if (session.hudManager.handleWheel(e.deltaY)) {
+          ;(e as { _d2WheelHandled?: boolean })._d2WheelHandled = true
           e.preventDefault()
         }
       }
@@ -1432,6 +1507,8 @@ export async function startPlayApp(options?: {
   trackListener(window, 'blur', () => {
     if (inGameView) {
       session.commandMapper.resetModifiers()
+      session.commandMapper.handlePointerUp(0)
+      session.commandMapper.handlePointerUp(2)
     }
   })
 
@@ -1619,6 +1696,7 @@ export async function startPlayApp(options?: {
     hudManager: session.hudManager,
     hudModel: session.hudModel,
     commandMapper: session.commandMapper,
+    gestureGuard,
     flowState,
     frontendRenderer,
     renderer,

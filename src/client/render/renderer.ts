@@ -135,18 +135,15 @@ export interface DrawOptions {
 }
 
 /**
- * Authentic D2Gfx 8 blending modes plus legacy 'additive' alias.
- *
- * Ground truth (D2MOO D2Gfx/include/DrawMode.h:3-12):
- * - normal: Standard alpha composite
- * - additive: Full additive blend (S + D), alias for highlight
- * - trans25: 25% opacity (0.25*S + 0.75*D)
- * - trans50: 50% opacity (0.50*S + 0.50*D)
- * - trans75: 75% opacity (0.75*S + 0.25*D)
- * - modulate: Multiplicative color blend ((S * D) / 255)
- * - burn: Subtractive darkening / color burn (max(0, D + S - 255))
- * - transhighlight: Translucent additive highlight (D + 0.5*S)
- * - highlight: Full additive highlight (min(255, S + D))
+ * Port blend modes. The D2gfx eDrawMode -> mode table lives in `src/common/gfx/draw-mode.ts`
+ * (D2Direct3D 0x6F886B90, kb/render/d2gfx-draw-mode-113c.md):
+ * - normal: eDrawMode 5/6/7/>=8, opaque (palette index 0 / alpha 0 transparent)
+ * - additive: eDrawMode 3, ONE/ONE (S + D)
+ * - trans25 / trans50 / trans75: eDrawMode 0 / 1 / 2, SRCALPHA/INVSRCALPHA with alpha 0x40 / 0x80 / 0xC0
+ * - burn: eDrawMode 4 (D2MOO DRAWMODE_BURN), D3D ZERO/SRCCOLOR = multiply (S * D); transparent texels are neutral
+ * - modulate: multiply via DST_COLOR/ZERO (same result as burn)
+ * - highlight: port-only additive alias (S + D)
+ * - transhighlight: port-only half-strength additive (D + 0.5*S)
  */
 export type DrawBlendMode =
   | 'normal'
@@ -337,6 +334,10 @@ ${paletteLookup}${discardAlpha}
     // 1.13c grid light T[I][C]/255 (room ambient included): texel x vertex colour, like D3D MODULATE / Glide.
     vec4 lightSample = texture(u_lightmap, v_lightUv);
     outColor = vec4(texel.rgb * lightSample.rgb * v_tint.rgb, texel.a * v_tint.a);
+  } else if (u_blendMode == 2) {
+    // eDrawMode 4 multiply (D2Direct3D 0x6F886C41 ZERO/SRCCOLOR): dst *= src. Transparent / partially transparent
+    // texels resolve towards white so they leave the destination unchanged instead of multiplying it to black.
+    outColor = vec4(mix(vec3(1.0), texel.rgb * v_tint.rgb, texel.a * v_tint.a), 1.0);
   } else if (u_blendMode == 1 || v_additive == 1) {
     outColor = vec4(texel.rgb * v_tint.rgb, (texel.a > 0.0 ? 1.0 : 0.0) * v_tint.a);
   } else {
@@ -355,6 +356,24 @@ function initTextureParams(gl: WebGL2RenderingContext, texture: WebGLTexture): v
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+}
+
+/**
+ * Configure WebGL blend factors while preserving an opaque destination alpha channel (`dst.a = 1.0`)
+ * when `blendFuncSeparate` is available on the context. Calls `gl.blendFunc(srcRgb, dstRgb)` first
+ * so lightweight test stubs that only implement `blendFunc` still observe the RGB blend transition.
+ */
+function applyGlBlendFunc(
+  gl: WebGL2RenderingContext,
+  srcRgb: number,
+  dstRgb: number,
+  srcAlpha: number,
+  dstAlpha: number,
+): void {
+  gl.blendFunc(srcRgb, dstRgb)
+  if (typeof gl.blendFuncSeparate === 'function') {
+    gl.blendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha)
+  }
 }
 
 /** Raised when the context or program cannot be created. */
@@ -577,7 +596,7 @@ export class SpriteRenderer {
     }
     this.uploadPaletteInternal(defaultPal, undefined, INITIAL_PALETTE_ROWS)
     gl.enable(gl.BLEND)
-    gl.blendFunc(gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA)
+    applyGlBlendFunc(gl, gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA, gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA)
     if (typeof gl.disable === 'function') {
       gl.disable(gl.DEPTH_TEST)
     }
@@ -661,19 +680,21 @@ export class SpriteRenderer {
     this.flush()
     this.currentBlendMode = mode
     const gl = this.gl
+    const one = gl.ONE ?? 1
+    const zero = gl.ZERO ?? 0
     switch (nextGroup) {
       case 1:
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE ?? 1)
+        applyGlBlendFunc(gl, gl.SRC_ALPHA, one, zero, one)
         break
       case 2:
-        gl.blendFunc(gl.DST_COLOR, gl.ZERO)
+        applyGlBlendFunc(gl, gl.DST_COLOR, zero, zero, one)
         break
       case 3:
-        gl.blendFunc(gl.ZERO, gl.SRC_COLOR)
+        applyGlBlendFunc(gl, zero, gl.SRC_COLOR, zero, one)
         break
       case 0:
       default:
-        gl.blendFunc(gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA)
+        applyGlBlendFunc(gl, one, gl.ONE_MINUS_SRC_ALPHA, one, gl.ONE_MINUS_SRC_ALPHA)
         break
     }
   }
@@ -1301,7 +1322,7 @@ export class SpriteRenderer {
     this.unitLightActive = false
     if (this.currentBlendMode !== 'normal') {
       this.currentBlendMode = 'normal'
-      gl.blendFunc(gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA)
+      applyGlBlendFunc(gl, gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA, gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA)
     }
     const vpWidth = gl.drawingBufferWidth ?? this.canvas.width ?? 800
     const vpHeight = gl.drawingBufferHeight ?? this.canvas.height ?? 600
@@ -1683,7 +1704,8 @@ export class SpriteRenderer {
       this.cachedLightMode = lightMode
     }
 
-    const blendMode = getGpuBlendGroup(this.currentBlendMode) === 1 ? 1 : 0
+    const group = getGpuBlendGroup(this.currentBlendMode)
+    const blendMode = group === 1 ? 1 : group === 2 || group === 3 ? 2 : 0
     if (blendMode !== this.cachedBlendMode && this.uniformBlendMode !== null) {
       gl.uniform1i(this.uniformBlendMode, blendMode)
       this.cachedBlendMode = blendMode

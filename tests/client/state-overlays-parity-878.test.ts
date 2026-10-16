@@ -19,6 +19,7 @@ import {
   AUTHENTIC_113C_OVERLAYS,
   OVERLAY_METAS,
   STATE_OVERLAYS,
+  STATE_PGSV_OVERLAYS,
 } from '../../src/client/render/overlays-meta.ts'
 import type { AtlasHandle, SpriteRenderer } from '../../src/client/render/renderer.ts'
 import type { LoadedOverlayArt } from '../../src/client/scene/missile-overlay-renderer.ts'
@@ -90,12 +91,12 @@ describe('Issue #878: STATE_OVERLAYS States.txt / states.bin Parity & overlay.bi
         }
       }
       const pgsvOvIdx = view.getUint16(recOff + 14, true)
-      if (binTokens.length === 0 && pgsvOvIdx !== 0xffff) {
-        for (let offset = 0; offset < 3; offset++) {
-          const row = OVERLAY_TXT_ROWS[pgsvOvIdx + offset]
-          expect(row, `state ${stateId} wPgsvOverlay+${offset}=${pgsvOvIdx + offset}`).toBeDefined()
-          binTokens.push(row!.name.toLowerCase())
-        }
+      if (pgsvOvIdx !== 0xffff) {
+        const row = OVERLAY_TXT_ROWS[pgsvOvIdx]
+        expect(row, `state ${stateId} wPgsvOverlay=${pgsvOvIdx}`).toBeDefined()
+        expect(STATE_PGSV_OVERLAYS[stateId], `stateId=${stateId} pgsv`).toBe(row!.name.toLowerCase())
+      } else {
+        expect(STATE_PGSV_OVERLAYS[stateId], `stateId=${stateId} pgsv`).toBeUndefined()
       }
 
       if (binTokens.length > 0) {
@@ -176,8 +177,8 @@ describe('Issue #878: STATE_OVERLAYS States.txt / states.bin Parity & overlay.bi
       expect(OVERLAY_ROW_BY_NAME.get(exp.name)).toBe(row)
     }
 
-    // Build scene drawables for a player with states 41, 117, 120 at tick = 6 (so animRate=8 -> frame 3, animRate=16 -> frame 6)
-    const scene = buildSceneDrawables(
+    // Build scene drawables for a player with states 41, 117, 120 at stage 1 (charges=1) and stage 5 (charges=5)
+    const sceneStage1 = buildSceneDrawables(
       [
         {
           kind: 'player',
@@ -186,28 +187,45 @@ describe('Issue #878: STATE_OVERLAYS States.txt / states.bin Parity & overlay.bi
           x: 100,
           y: 100,
           states: [41, 117, 120],
-        },
+          charges: 1,
+        } as any,
+      ],
+      { tick: 6 },
+    )
+    const sceneStage5 = buildSceneDrawables(
+      [
+        {
+          kind: 'player',
+          id: 2,
+          classId: 5, // Druid
+          x: 100,
+          y: 100,
+          states: [117, 120],
+          charges: 5,
+        } as any,
       ],
       { tick: 6 },
     )
 
     // None of the 10 overlays have Radius > 0 -> only the player's base light is emitted
-    const overlayLights = scene.lightEmitters.filter((e) => e.slot.startsWith('state:'))
+    const overlayLights = sceneStage1.lightEmitters.filter((e) => e.slot.startsWith('state:'))
     expect(overlayLights).toEqual([])
 
-    // Verify all 10 overlay drawables have parameters sourced from overlay.bin
-    expect(scene.overlayDrawables).toHaveLength(10)
+    // Stage 1 draws staminafront/staminaback + maul1/maul1back + feralrage1/feralrage1back (6 drawables)
+    // Stage 5 draws maul5/maul5back + feralrage5/feralrage5back (4 drawables)
+    expect(sceneStage1.overlayDrawables).toHaveLength(6)
+    expect(sceneStage5.overlayDrawables).toHaveLength(4)
+    const combinedDrawables = [...sceneStage1.overlayDrawables, ...sceneStage5.overlayDrawables]
     for (const exp of expectedRows) {
-      const drawable = scene.overlayDrawables.find((d) => d.token === exp.name)
+      const drawable = combinedDrawables.find((d) => d.token === exp.name)
       expect(drawable, `drawable for ${exp.name}`).toBeDefined()
       expect(drawable?.totalFrames).toBe(exp.frames)
       const expectedFrame = Math.floor((6 * exp.animRate) / 16) % exp.frames
       expect(drawable?.frame).toBe(expectedFrame)
       expect(drawable?.preDraw ?? false).toBe(exp.preDraw !== 0)
-      // Overlay.txt Trans 3 = D2Gfx screen/additive level (see overlayTransToBlendMode),
-      // not the D2MOO DrawMode enum — these rows render as additive highlights.
+      // Overlay.txt Trans is the D2gfx eDrawMode (0x6FB1B11D); 3 = D2Direct3D ONE/ONE additive.
       expect(drawable?.blendMode).toBe(overlayTransToBlendMode(exp.trans))
-      expect(drawable?.blendMode).toBe('highlight')
+      expect(drawable?.blendMode).toBe('additive')
     }
   })
 
@@ -230,7 +248,7 @@ describe('Issue #878: STATE_OVERLAYS States.txt / states.bin Parity & overlay.bi
       expect(auth?.radius).toBe(row.radius)
     }
 
-    // Verify world-renderer draws all 10 overlays for states 41, 117, 120 using their .dcc sprite atlases
+    // Verify world-renderer draws all 10 overlays across stage 1 and stage 5 for states 41, 117, 120 using their .dcc sprite atlases
     const tokens = [
       'staminafront',
       'staminaback',
@@ -258,7 +276,17 @@ describe('Issue #878: STATE_OVERLAYS States.txt / states.bin Parity & overlay.bi
           x: 50,
           y: 50,
           states: [41, 117, 120],
-        },
+          charges: 1,
+        } as any,
+        {
+          kind: 'player',
+          id: 8,
+          classId: 5,
+          x: 52,
+          y: 50,
+          states: [117, 120],
+          charges: 5,
+        } as any,
       ],
       { tick: 4 },
     )

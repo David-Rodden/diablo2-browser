@@ -7,6 +7,7 @@
 
 import { BitReader } from '../../core/bit-reader.ts'
 import { ByteReader } from '../../core/byte-reader.ts'
+import { ByteWriter } from '../../core/byte-writer.ts'
 import { unitTypeToId } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
 import { getMonsterAnimCompBitWidths } from './monstats2-comp-bits.ts'
@@ -118,6 +119,27 @@ export function decode0x11UnitOverlay(pkt: Uint8Array): ServerEvent {
     id,
     overlayIndex,
   }
+}
+
+/**
+ * Encode S2C 0x11 UnitOverlay (8B, D2Game `STAT_UNIT_DOOVERLAY` / `D2GAME_STATES_SendEventS2C_6FC91B20`).
+ * Layout:
+ * - [0] u8 = 0x11
+ * - [1] u8 = rawUnitType (0=player, 1=monster, etc.)
+ * - [2..5] u32LE = unit GUID (`id`)
+ * - [6..7] u16LE = `Overlay.txt` row index (`overlayIndex`)
+ */
+export function encode0x11UnitOverlay(params: {
+  readonly rawUnitType: number
+  readonly id: number
+  readonly overlayIndex: number
+}): Uint8Array {
+  const w = new ByteWriter(8)
+  w.u8(0x11)
+  w.u8(params.rawUnitType & 0xff)
+  w.u32LE(params.id >>> 0)
+  w.u16LE(params.overlayIndex & 0xffff)
+  return w.toUint8Array()
 }
 
 /** 0x51 AssignObject (14B, D2Client.dll 0x6fb5df40) */

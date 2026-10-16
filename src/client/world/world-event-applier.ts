@@ -64,8 +64,11 @@ import { isTownNpcHcIdx } from '../../common/units/npc-table.ts'
 import { CANONICAL_113C_OBJECTS, getNpcPlaceholderHcIdx } from '../../common/world/objects-meta.ts'
 import { getObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
 import { isTownLevel } from '../../common/world/scene-population.ts'
-import { resolve0x2CPlaySound113c } from '../audio/d2gs-play-sound-113c.ts'
-import { STATE_OVERLAYS } from '../render/overlays-meta.ts'
+import {
+  PLAYER_SOUND_TABLE_0x6FBA7694,
+  resolve0x2CPlaySound113c,
+} from '../audio/d2gs-play-sound-113c.ts'
+import { STATE_OVERLAYS, STATE_PGSV_OVERLAYS } from '../render/overlays-meta.ts'
 import { resolveGroundItemFlippyKey } from '../ui/inventory.ts'
 import { unitSkillEventForcesLightning113c } from '../weather/weather-controller.ts'
 import {
@@ -75,8 +78,17 @@ import {
 } from './bone-armor-overlays-113c.ts'
 import { ClientUnit, makeUnitKey } from './client-unit.ts'
 import { objectLitForMode, resetObjectAnim, setObjectLight } from './object-light.ts'
+import { updateObjectModeSound113c } from './object-sound-113c.ts'
 import { HORADRIC_ORIFICE_OBJECT_CLASS } from './quest-fx-horadric-113c.ts'
-import { stateOnSoundRequest113c } from './state-on-sound-113c.ts'
+import {
+  playStateCastOverlay113c,
+  playStateRemOverlay113c,
+  removeStateCastOverlay113c,
+} from './state-cast-overlay-113c.ts'
+import { releasePredictedState113c } from './state-ids-113c.ts'
+import { stateOffSoundRequest113c, stateOnSoundRequest113c } from './state-on-sound-113c.ts'
+import { isMonsterUndead113c, SANCTUARY_AURA_113C } from './world-missile-stepper.ts'
+import { ensureBladeShieldAttachment113c } from './world-skill-missiles.ts'
 import {
   ALL_PALADIN_AURA_STATES,
   BUTTON_ACTION_CLOSE_STASH,
@@ -94,6 +106,48 @@ import {
 const ITEM_FLAG_BROKEN = 0x00000100
 /** D2Common `IFLAG_REPAIRED` (D2Items.h); S2C 0x7D with this flag clears IFLAG_BROKEN. */
 const ITEM_FLAG_REPAIRED = 0x00000200
+
+/**
+ * 1.13c `D2Client.dll` (`0x6facbfd5..0x6facbfee`, `0x6fac9d80`) & `D2Game.dll` (`0x6fc9865e..0x6fc98684`):
+ * Returns `true` when the local player's stamina stat has been initialized and `stamina <= 0`.
+ */
+function isSelfStaminaExhausted(world: ClientWorldInternal): boolean {
+  const self = world._self
+  const hasStaminaInitialized =
+    self.maxStamina > 0 || self.stats.has(10) || self.stats.has(11)
+  return hasStaminaInitialized && self.stamina <= 0
+}
+
+/**
+ * 1.13c `D2Client.dll` `0x6facc50c -> 0x6fac9d80` (`Player_CheckRunStaminaExhausted`):
+ * When the local player is in `PLRMODE_RUN (3)` and `STAT_STAMINA (10) == 0`, immediately
+ * transitions the local player into walk mode (`PLRMODE_WALK = 2` or `PLRMODE_TWALK = 6` in town).
+ */
+function downgradeSelfRunOnStaminaExhausted(world: ClientWorldInternal): void {
+  if (!isSelfStaminaExhausted(world)) return
+  const walkMode = isTownLevel(world.areaId) ? 6 : 2
+  const resolvedSelfId = world.selfId || (world.getUnit('player', 1) ? 1 : 0)
+  if (resolvedSelfId !== 0) {
+    const selfUnit = world.getUnit('player', resolvedSelfId)
+    if (selfUnit && !selfUnit.dead) {
+      if (selfUnit.moveMode === 'run') {
+        selfUnit.moveMode = 'walk'
+      }
+      if (selfUnit.mode === 3) {
+        selfUnit.mode = walkMode
+        const speedInfo = world.resolvePlayerAnimSpeed(walkMode, selfUnit.id)
+        selfUnit.modeDurationMs = undefined
+        selfUnit.modeUntilMs = undefined
+        selfUnit.animStepSpeed256 = speedInfo.stepSpeed256
+        selfUnit.animEffRate = speedInfo.effRate
+        world._selfLocomotionAnimSpeed256 = speedInfo.stepSpeed256
+      }
+    }
+  }
+  if (!world._self.isDead && world._self.mode === 3) {
+    world._self.mode = walkMode
+  }
+}
 
 export function noteOutgoingCommandImpl(
   this: ClientWorldInternal,
@@ -330,6 +384,14 @@ export function noteOutgoingCommandImpl(
       }
       break
     }
+    case 'AssignSkillHotkey': {
+      this.assignSkillHotkey(cmd.slot, cmd.hand, cmd.skill, cmd.itemId)
+      break
+    }
+    case 'RunToggle': {
+      this._self.runMode = cmd.run
+      break
+    }
     case 'Move':
     case 'WalkToLocation':
     case 'RunToLocation':
@@ -338,6 +400,7 @@ export function noteOutgoingCommandImpl(
     case 'RunToTarget': {
       this._pendingMeleeAttack = null
       const isWalk =
+        isSelfStaminaExhausted(this) ||
         cmd.type === 'WalkToLocation' ||
         cmd.type === 'WalkToTarget' ||
         (cmd.type === 'Move' && cmd.run === false) ||
@@ -443,11 +506,20 @@ export function noteOutgoingCommandImpl(
         this.isSelfMeleeSkill(skillId) &&
         !this.isTargetInSelfMeleeRange(targetUnit, selfXOverride, selfYOverride)
       ) {
-        this._pendingMeleeAttack = {
-          skillId,
-          hand,
-          target: targetRef,
-          startedAtMs: now,
+        const existingPending = this._pendingMeleeAttack
+        if (
+          !existingPending ||
+          existingPending.skillId !== skillId ||
+          existingPending.hand !== hand ||
+          existingPending.target.unitType !== targetRef.unitType ||
+          existingPending.target.id !== targetRef.id
+        ) {
+          this._pendingMeleeAttack = {
+            skillId,
+            hand,
+            target: targetRef,
+            startedAtMs: now,
+          }
         }
         if (this.selfId !== 0) {
           const selfUnit = this.ensureUnit('player', this.selfId)
@@ -457,6 +529,8 @@ export function noteOutgoingCommandImpl(
           if (selfXOverride !== undefined && selfYOverride !== undefined) {
             selfUnit.x = selfXOverride
             selfUnit.y = selfYOverride
+            this._self.x = selfXOverride
+            this._self.y = selfYOverride
           }
           if (!this.skipSelfTurnStep) {
             selfUnit.targetX = targetUnit.x
@@ -464,7 +538,7 @@ export function noteOutgoingCommandImpl(
           }
           selfUnit.faceToward(targetUnit.x, targetUnit.y, false)
           const inTown = isTownLevel(this.areaId)
-          const isWalk = inTown || selfUnit.moveMode === 'walk'
+          const isWalk = inTown || isSelfStaminaExhausted(this) || selfUnit.moveMode === 'walk'
           selfUnit.moveMode = isWalk ? 'walk' : 'run'
           if (!selfUnit.dead) {
             selfUnit.mode = isWalk ? (inTown ? 6 : 2) : 3
@@ -557,6 +631,11 @@ export function noteOutgoingCommandImpl(
 
 export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEvent | Record<string, any>, nowMs?: number): void {
   if (!rawEv || typeof rawEv !== 'object') return
+  if (nowMs !== undefined && Number.isFinite(nowMs)) {
+    this._clockMs = nowMs
+    this._clockExplicit = true
+    this._timeMs = nowMs
+  }
   let ev: any = rawEv
   if (ev.type === 'ActDataLoaded') {
     const area = ev.townAreaId ?? ev.areaId
@@ -642,8 +721,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     }
   } else if (ev.type === 'UnitMove') {
     const evAny = ev as any
-    const uType = typeof evAny.unitType === 'number' ? unitTypeFromId(evAny.unitType) : (evAny.unitType ?? 'player')
-    const uId = Number(evAny.id ?? evAny.unitId ?? 0)
+    const rawUnitType = evAny.unitType ?? evAny.unit?.unitType
+    const uType = typeof rawUnitType === 'number' ? unitTypeFromId(rawUnitType) : (rawUnitType ?? 'player')
+    const uId = Number(evAny.id ?? evAny.unitId ?? evAny.unit?.id ?? 0)
     const hasFrom = evAny.from !== undefined || evAny.currentX !== undefined
     const from = hasFrom
       ? {
@@ -657,7 +737,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       type: 'UnitMove',
       unitType: uType,
       id: uId,
-      mode: evAny.mode ?? 'walk',
+      mode: evAny.mode ?? evAny.moveMode ?? 'walk',
       ...(from ? { from } : {}),
       to: {
         x: toX,
@@ -781,11 +861,15 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       })
     }
     if (existing) {
+      const wasDead = existing.dead
       existing.mode = state === 0x08 || state === 0x09 ? 12 : state
       if (ev.x !== undefined) existing.x = Number(ev.x)
       if (ev.y !== undefined) existing.y = Number(ev.y)
       if (state === 0x08 || state === 0x09 || (ev.life !== undefined && Number(ev.life) <= 0)) {
         existing.lifePct = 0
+      }
+      if (!wasDead && existing.dead) {
+        existing.diedAtMs = this._timeMs
       }
     }
     return
@@ -1033,6 +1117,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       const key = makeUnitKey(unitPayload.unitType, unitPayload.id)
       let unit = this._units.get(key)
       const existed = unit !== undefined
+      const wasDeadBeforeAssign = unit?.dead ?? false
       const prevMode = unit?.mode
       if (!unit) {
         unit = new ClientUnit(unitPayload)
@@ -1101,8 +1186,11 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       unit.moveMode = 'stop'
       if (unit.unitType === 'monster') {
         this._monsters.set(unit.id, unit)
-        if (!existed && (unit.dead || unit.mode === 0 || unit.mode === 12 || unit.lifePct <= 0)) {
+        if (unit.dead || unit.mode === 0 || unit.mode === 12 || unit.lifePct <= 0) {
           unit.deathFxTriggered = true
+          if (unit.id > 0) {
+            this._deadSoundUnitIds.add(unit.id)
+          }
         } else if (!existed && !unit.dead && unit.mode !== 0 && unit.mode !== 12 && unit.lifePct > 0) {
           this._deadSoundUnitIds.delete(unit.id)
           if (!isTownNpcHcIdx(unit.classId)) {
@@ -1120,7 +1208,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         if (
           !unit.dead &&
           unit.tempSummonExpireTick === undefined &&
-          hasMonsterUMod(unit, MON_UMOD.KILLSELF)
+          hasMonsterUMod(unit, MON_UMOD.TEMPSUMMON)
         ) {
           unit.tempSummonExpireTick = this.frameCount + 500
         }
@@ -1140,12 +1228,48 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             }
           }
         }
+        if (unit.id < 900000 && (unit.classId === 356 || unit.classId === 357)) {
+          for (const m of Array.from(this._monsters.values())) {
+            if (m.id !== unit.id && m.classId === unit.classId && m.id >= 900000) {
+              this._units.delete(m.key)
+              this._monsters.delete(m.id)
+              this._pets.delete(m.id)
+              this.npcMotion.removeMonster(m.id)
+            }
+          }
+          if (!unit.ownerType) unit.ownerType = 'player'
+          if (!unit.ownerId) unit.ownerId = this.selfId || 1
+          if (!unit.dead) {
+            if (unit.classId === 356) {
+              if (!unit.name) unit.name = 'Decoy'
+              if (!unit.nameZh) unit.nameZh = '诱饵'
+              if (!existed && !unit.overlays.some((o) => o.token === 'dopllezon_appear')) {
+                this.attachUnitOverlay(unit, 'dopllezon_appear', false)
+              }
+            } else if (unit.classId === 357) {
+              if (!unit.name) unit.name = 'Valkyrie'
+              if (!unit.nameZh) unit.nameZh = '女武神'
+              unit.states.add(93)
+              if (!existed) {
+                playStateCastOverlay113c(this, unit, 93)
+              }
+              if (!unit.overlays.some((o) => o.token === 'valkyrie')) {
+                this.attachUnitOverlay(unit, 'valkyrie', true)
+              }
+            }
+          }
+        }
         if (unit.dead) {
+          if (existed && !wasDeadBeforeAssign) {
+            unit.diedAtMs = this._timeMs
+          }
           unit.lifePct = 0
           unit.moveMode = 'stop'
           unit.targetX = unit.x
           unit.targetY = unit.y
           unit.setDirection(unit.direction)
+        } else {
+          unit.diedAtMs = undefined
         }
         if (unit.classId === 0) {
           const knownClassId = this.resolveKnownMonsterClassId(unit.id)
@@ -1347,17 +1471,22 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
 
     case 'UnitMove': {
       const evAny = ev as any
-      const uId = Number(ev.id ?? evAny.unitId ?? 0)
-      const unit = this.ensureWorldOrGroundUnit(ev.unitType, uId)
+      const uId = Number(ev.id ?? evAny.unitId ?? evAny.unit?.id ?? 0)
+      const uType = ev.unitType ?? evAny.unit?.unitType
+      const unit = this.ensureWorldOrGroundUnit(uType, uId)
       if (!unit) break
       if (unit.unitType === 'monster') {
         this._monsters.set(unit.id, unit)
       }
-      if (unit.dead) {
+      if (unit.dead && unit.unitType !== 'monster') {
         break
       }
+      const wasDead = unit.dead
+      if (typeof evAny.lifePct === 'number' && evAny.lifePct > 0) {
+        unit.lifePct = evAny.lifePct
+      }
       const now = this.resolveEventNowMs(nowMs)
-      const moveMode = ev.mode ?? 'walk'
+      const moveMode = ev.mode ?? evAny.moveMode ?? 'walk'
       const preserveActiveCast =
         moveMode === 'stop' &&
         unit.castState !== undefined &&
@@ -1475,8 +1604,72 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                 : null,
           }
         }
+        // #119 Sanctuary (Issue #1277): when an undead monster is knocked back (cmd === 0x14 or moveMode === 'knockback')
+        // while Sanctuary (state 47/100) is active on the monster or a nearby player, ensure tgtoverlay='cast_undead' (#79)
+        // and cltmissilea='sanctuarybolt' are attached on the pulse frame.
+        if ((moveMode === 'knockback' || npcPayload.cmd === 0x14) && isMonsterUndead113c(unit)) {
+          let sanctuaryOwnerId: number | undefined
+          if (unit.states.has(47) || unit.states.has(100) || this._self.states.has(47)) {
+            sanctuaryOwnerId = this.selfId || 1
+          } else {
+            for (const u of this._units.values()) {
+              if (u.unitType === 'player' && (u.states.has(47) || u.states.has(100))) {
+                sanctuaryOwnerId = u.id
+                break
+              }
+            }
+          }
+          if (sanctuaryOwnerId !== undefined) {
+            if (!unit.overlays.some((o) => o.token === SANCTUARY_AURA_113C.tgtOverlay)) {
+              this.attachUnitOverlay(unit, SANCTUARY_AURA_113C.tgtOverlay, false)
+            }
+            const hasBolt = Array.from(this._units.values()).some(
+              (u) =>
+                u.unitType === 'missile' &&
+                u.missileKey === SANCTUARY_AURA_113C.cltMissileA &&
+                Math.hypot(u.x - unit.x, u.y - unit.y) <= 2,
+            )
+            if (!hasBolt) {
+              const bolt = this.spawnMissileByKey(
+                SANCTUARY_AURA_113C.cltMissileA,
+                unit.x,
+                unit.y,
+                unit.x,
+                unit.y,
+                {
+                  ownerType: 'player',
+                  ownerId: sanctuaryOwnerId,
+                  sourceSkillId: SANCTUARY_AURA_113C.skillId,
+                  skillLevel: 1,
+                },
+              )
+              bolt.vx = 0
+              bolt.vy = 0
+            }
+          }
+        }
         const prevMode = unit.mode
         this.npcMotion.applyCommandForUnit(uId, npcPayload)
+        if (wasDead && !unit.dead) {
+          unit.deathFxTriggered = false
+          this._deadSoundUnitIds.delete(unit.id)
+          clearRevivedCorpseMarks113c(unit)
+          if (unit.lifePct <= 0) {
+            unit.lifePct =
+              typeof evAny.lifePct === 'number' && evAny.lifePct > 0
+                ? evAny.lifePct
+                : npcPayload.opcode === 0x6d && npcPayload.s[2] && npcPayload.s[2] > 0
+                  ? npcPayload.s[2]
+                  : 128
+          }
+          const existingPet = this._pets.get(unit.id)
+          if (existingPet) {
+            existingPet.isDead = false
+            if (existingPet.lifePct <= 0) {
+              existingPet.lifePct = unit.lifePct
+            }
+          }
+        }
         if (preserveActiveCast) {
           unit.mode = prevMode
           const npcUnit = this.npcMotion.getUnit(uId)
@@ -1487,12 +1680,28 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         break
       }
 
+      const isSelfPlayer =
+        unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)
+      if (
+        isSelfPlayer &&
+        unit.x === 0 &&
+        unit.y === 0 &&
+        (this._self.x !== 0 || this._self.y !== 0)
+      ) {
+        unit.x = this._self.x
+        unit.y = this._self.y
+      }
+      const isSelfActiveTargetChase =
+        isSelfPlayer &&
+        moveMode !== 'stop' &&
+        (this._pendingMeleeAttack !== null || ev.target !== undefined)
+      const snapLimit = moveMode === 'run' ? 7 : moveMode === 'knockback' ? 10 : 5
+
       if (ev.from && (ev.from.x !== 0 || ev.from.y !== 0)) {
         if (unit.x === 0 && unit.y === 0) {
           unit.x = ev.from.x
           unit.y = ev.from.y
         } else {
-          const snapLimit = moveMode === 'run' ? 7 : moveMode === 'knockback' ? 10 : 5
           const maxDelta = Math.max(Math.abs(ev.from.x - unit.x), Math.abs(ev.from.y - unit.y))
           if (maxDelta > snapLimit) {
             unit.x = ev.from.x
@@ -1525,12 +1734,14 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           targetY = this._self.y
         }
       }
+      const effectiveMoveMode =
+        isSelfPlayer && moveMode === 'run' && isSelfStaminaExhausted(this) ? 'walk' : moveMode
       unit.targetX = targetX
       unit.targetY = targetY
-      unit.targetUnit = moveMode === 'stop' ? undefined : ev.target
-      unit.moveMode = moveMode
+      unit.targetUnit = effectiveMoveMode === 'stop' ? undefined : ev.target
+      unit.moveMode = effectiveMoveMode
       unit.moving =
-        moveMode !== 'stop' &&
+        effectiveMoveMode !== 'stop' &&
         (Math.hypot(targetX - unit.x, targetY - unit.y) > 1e-4 || ev.target !== undefined)
       if (ev.velocityPercent !== undefined) {
         unit.velocityPercent = ev.velocityPercent
@@ -1545,18 +1756,18 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       }
       if (unit.unitType === 'player' && unit.mode !== 0 && unit.mode !== 17) {
         const inTown = isTownLevel(this.areaId)
-        if (moveMode === 'stop') {
+        if (effectiveMoveMode === 'stop') {
           if (!preserveActiveCast) {
             unit.mode = inTown ? 5 : 1
           }
-        } else if (moveMode === 'run') {
+        } else if (effectiveMoveMode === 'run') {
           unit.mode = 3
-        } else if (moveMode === 'knockback') {
+        } else if (effectiveMoveMode === 'knockback') {
           unit.mode = 19
         } else {
           unit.mode = inTown ? 6 : 2
         }
-        if (moveMode !== 'stop') {
+        if (effectiveMoveMode !== 'stop') {
           unit.castState = undefined
         }
         if (unit.mode === 2 || unit.mode === 3 || unit.mode === 6) {
@@ -1570,8 +1781,11 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           }
         }
       }
-      if (unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)) {
-        if (ev.from && (ev.from.x !== 0 || ev.from.y !== 0)) {
+      if (isSelfPlayer) {
+        if (isSelfActiveTargetChase && (unit.x !== 0 || unit.y !== 0)) {
+          this._self.x = unit.x
+          this._self.y = unit.y
+        } else if (ev.from && (ev.from.x !== 0 || ev.from.y !== 0)) {
           this._self.x = ev.from.x
           this._self.y = ev.from.y
         } else if (ev.to.x !== 0 || ev.to.y !== 0) {
@@ -1731,19 +1945,28 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     }
 
     case 'UnitMode': {
-      const uId = Number(ev.id ?? ev.unitId ?? 0)
+      const uId = Number(ev.id ?? ev.unitId ?? (ev as any).unit?.id ?? 0)
+      const uType: UnitType = ev.unitType ?? (ev as any).unit?.unitType ?? 1
       if (ev.eventCode !== undefined) {
         // S2C 0x0E (D2Client 0x6fb5bc60 -> 0x6fb5c630): look up the existing unit via
         // D2Client_FindUnit (0x6fb59600); if not found, drop the packet. Otherwise append
         // to the per-unit FIFO packet queue (unit+0xd8) to be drained at the end of the
         // unit's 25 Hz tick (0x6fadb1e0 -> 0x6fb5bc20).
-        const unit = this.getUnit(ev.unitType, uId)
+        const unit = this.getUnit(uType, uId)
         if (!unit) break
         unit.queuedPackets.push(ev)
         break
       }
-      const unit = this.ensureWorldOrGroundUnit(ev.unitType, uId)
+      const existedBefore = this.getUnit(uType, uId) !== undefined
+      const unit = this.ensureWorldOrGroundUnit(uType, uId)
       if (!unit) break
+      if (!existedBefore && unit.unitType === 'monster' && ev.mode === 12) {
+        unit.dead = true
+        unit.deathFxTriggered = true
+        if (unit.id > 0) {
+          this._deadSoundUnitIds.add(unit.id)
+        }
+      }
       this.applyUnitModeImmediate(unit, ev, nowMs)
       break
     }
@@ -1815,6 +2038,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           ownerType,
           ownerId,
           skillLevel: level,
+          ...(typeof (ev as { pierce?: unknown }).pierce === 'number'
+            ? { pierceRemaining: Number((ev as { pierce?: number }).pierce) }
+            : {}),
         })
         break
       }
@@ -1825,12 +2051,30 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       }
       if (!unit || unit.dead) break
 
+      const now = this.resolveEventNowMs(nowMs)
+      if (unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)) {
+        this._pendingMeleeAttack = null
+      }
+      const timeSinceLocalCast = now - this._lastLocalCastAtMs
+      const isSelfEcho =
+        unit.unitType === 'player' &&
+        (unit.id === this.selfId || this.selfId === 0) &&
+        skillId === this._lastLocalCastSkillId &&
+        timeSinceLocalCast >= 0 &&
+        timeSinceLocalCast <= 1000
+
       let targetX = unit.x
       let targetY = unit.y
       if (ev.target && typeof ev.target === 'object' && 'x' in ev.target) {
+        if (!isSelfEcho) {
+          unit.targetUnit = undefined
+        }
         targetX = Number(ev.target.x ?? unit.x)
         targetY = Number(ev.target.y ?? unit.y)
       } else if (ev.targetX !== undefined && ev.targetY !== undefined) {
+        if (!isSelfEcho) {
+          unit.targetUnit = undefined
+        }
         targetX = Number(ev.targetX)
         targetY = Number(ev.targetY)
       } else {
@@ -1852,18 +2096,6 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           }
         }
       }
-
-      const now = this.resolveEventNowMs(nowMs)
-      if (unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)) {
-        this._pendingMeleeAttack = null
-      }
-      const timeSinceLocalCast = now - this._lastLocalCastAtMs
-      const isSelfEcho =
-        unit.unitType === 'player' &&
-        (unit.id === this.selfId || this.selfId === 0) &&
-        skillId === this._lastLocalCastSkillId &&
-        timeSinceLocalCast >= 0 &&
-        timeSinceLocalCast <= 1000
       if (
         (skillId === 41 || skillId === 230) &&
         unit.castState &&
@@ -1894,6 +2126,42 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       } else {
         this.applySkillCastToUnit(unit, skillId, targetX, targetY, level, true, nowMs)
       }
+      break
+    }
+
+    case 'UnloadAct':
+    case 'ProtocolSync':
+    case 'MonsterSpecial':
+      break
+
+    case 'CreateMissile': {
+      const missileClassId = Number(ev.missileClassId ?? 0)
+      const missileKey = MISSILE_CLASS_ID_TO_KEY[missileClassId] ?? `missile_${missileClassId}`
+      const ownerRef = ev.owner
+      const ownerType: UnitType =
+        ev.ownerType !== undefined
+          ? unitTypeFromId(ev.ownerType)
+          : ownerRef
+            ? unitTypeFromId(ownerRef.unitType)
+            : 'player'
+      const ownerId =
+        ev.ownerId !== undefined
+          ? Number(ev.ownerId)
+          : ownerRef
+            ? Number(ownerRef.id)
+            : this.selfId
+      const ownerUnit = this.getUnit(ownerType, ownerId)
+      const startX = ev.at ? Number(ev.at.x) : (ownerUnit?.x ?? this._self.x)
+      const startY = ev.at ? Number(ev.at.y) : (ownerUnit?.y ?? this._self.y)
+      const targetX = ev.target ? Number(ev.target.x ?? startX) : startX
+      const targetY = ev.target ? Number(ev.target.y ?? startY) : startY
+      const level = Math.max(1, Number(ev.level ?? 1))
+      this.spawnMissileByKey(missileKey, startX, startY, targetX, targetY, {
+        classId: missileClassId,
+        ownerType,
+        ownerId,
+        skillLevel: level,
+      })
       break
     }
 
@@ -1963,6 +2231,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                 : 128
           }
         }
+        if (ev.stat === 10 || ev.stat === 11) {
+          downgradeSelfRunOnStaminaExhausted(this)
+        }
       } else if (ev.unit && (ev.unit.unitType === 4 || unitTypeFromId(ev.unit.unitType) === 'item')) {
         const itemId = ev.unit.id
         const item =
@@ -2011,12 +2282,24 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     case 'LifeMana': {
       const atX = ev.at?.x ?? 0
       const atY = ev.at?.y ?? 0
+      const selfUnit = this.selfId !== 0 ? this._units.get(makeUnitKey('player', this.selfId)) : undefined
+      const isMovementSkillActive =
+        Boolean(
+          selfUnit?.castState &&
+            (selfUnit.castState.skillId === 107 ||
+              selfUnit.castState.skillId === 132 ||
+              selfUnit.castState.skillId === 143 ||
+              selfUnit.castState.skillId === 151),
+        ) ||
+        selfUnit?.states.has(18) === true ||
+        this._self.states.has(18)
+
       this._self.applyLifeMana(
         ev.life,
         ev.mana,
         ev.stamina,
-        atX,
-        atY,
+        isMovementSkillActive ? 0 : atX,
+        isMovementSkillActive ? 0 : atY,
         ev.lifeRegen,
         ev.manaRegen,
       )
@@ -2024,33 +2307,53 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         this._isSelfDead = false
         this._self.isDead = false
       }
-      if (this.selfId !== 0) {
-        const selfUnit = this._units.get(makeUnitKey('player', this.selfId))
-        if (selfUnit) {
-          if (ev.life > 0 && selfUnit.lifePct <= 0) {
-            selfUnit.lifePct =
-              this._self.maxLife > 0
-                ? Math.max(1, Math.round((this._self.life / this._self.maxLife) * 128))
-                : 128
-          }
-          if (typeof ev.lifeRegen === 'number') {
-            selfUnit.stats.set(74 /* STAT_HPREGEN */, ev.lifeRegen)
-          }
-          if (typeof ev.manaRegen === 'number') {
-            selfUnit.stats.set(26 /* STAT_MANARECOVERY */, ev.manaRegen)
-          }
-          if (atX !== 0 || atY !== 0) {
-            selfUnit.x = atX
-            selfUnit.y = atY
-          }
+      if (selfUnit) {
+        if (ev.life > 0 && selfUnit.lifePct <= 0) {
+          selfUnit.lifePct =
+            this._self.maxLife > 0
+              ? Math.max(1, Math.round((this._self.life / this._self.maxLife) * 128))
+              : 128
+        }
+        if (ev.stamina >= 0) {
+          selfUnit.stats.set(10 /* STAT_STAMINA */, this._self.stats.get(10))
+        }
+        if (typeof ev.lifeRegen === 'number') {
+          selfUnit.stats.set(74 /* STAT_HPREGEN */, ev.lifeRegen)
+        }
+        if (typeof ev.manaRegen === 'number') {
+          selfUnit.stats.set(26 /* STAT_MANARECOVERY */, ev.manaRegen)
+        }
+        if (!isMovementSkillActive && (atX !== 0 || atY !== 0)) {
+          selfUnit.x = atX
+          selfUnit.y = atY
         }
       }
+      downgradeSelfRunOnStaminaExhausted(this)
       break
     }
 
     case 'Experience':
       this._self.applyExperience(ev.value, ev.isDelta ?? false)
       break
+
+    case 'StateSkillEffect': {
+      const unitRef = ev.unit ?? (ev as any).target
+      if (!unitRef) break
+      const unit = this.ensureWorldOrGroundUnit(unitRef.unitType, unitRef.id)
+      if (!unit) break
+      const isSelf = unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)
+      this.clearUnitCastState(unit)
+      unit.states.remove(18)
+      unit.states.remove(174)
+      if (isSelf) {
+        this._self.states.delete(18)
+        this._self.states.delete(174)
+      }
+      if (ev.skillId === 132 || ev.skillId === 143) {
+        this.attachUnitOverlay(unit, 'dust', false)
+      }
+      break
+    }
 
     case 'StateSet': {
       const unitRef = ev.unit ?? (ev as any).target
@@ -2062,10 +2365,14 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       const entries = ev.states ?? [{ state: ev.state, stats: ev.stats }]
       const isSelf = unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)
       for (const entry of entries) {
+        const wasAlreadySet = unit.states.has(entry.state)
         // D2Client 0x6fb23760: States.txt onsound plays only when the state was not already set.
-        const stateOnSound = stateOnSoundRequest113c(unit, entry.state, unit.states.has(entry.state))
+        const stateOnSound = stateOnSoundRequest113c(unit, entry.state, wasAlreadySet)
         if (stateOnSound) this.pushSoundRequest(stateOnSound)
         unit.states.add(entry.state, entry.stats)
+        // 0x6fb2382d -> 0x6FB22C80: States.txt castoverlay on the inactive -> active transition (Issue #1063).
+        if (!wasAlreadySet) playStateCastOverlay113c(this, unit, entry.state)
+        releasePredictedState113c(unit, entry.state)
         if (isSelf) {
           this._self.states.add(entry.state)
         }
@@ -2075,17 +2382,50 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             this._self.stats.setStateStats(entry.state, entry.stats)
           }
         }
-        // #124 Redemption corpse state handler (STATE_REDEEMED #99, StateSetFunc[10] 0x6FB5CE00):
-        // hides the redeemed corpse and plays the one-shot 'redemption' overlay (#173)
+        // #124 Redemption corpse state handler (STATE_REDEEMED #99, StateSetFunc[10] 0x6FB239C0):
+        // States.txt row 99 redeemed: setfunc=10, skill=redemption (#124), hide=1.
+        // Reads Skills.txt #124 cltmissilea='redemption' (#173, CelFile RedemptionGhost, AnimLen 16, Range 18, Trans 1, Light 6),
+        // spawns missile #173 at the corpse via 0x6FB630F0, and hides the corpse (attaches no overlay).
         if (entry.state === 99 && unit.unitType === 'monster') {
           ;(unit as any).hidden = true
           ;(unit as any).redeemed = true
-          this.attachUnitOverlay(unit, 'redemption', false)
+          this.spawnMissileByKey('redemption', unit.x, unit.y, unit.x, unit.y, {
+            ownerType: unit.unitType,
+            ownerId: unit.id,
+            sourceSkillId: 124,
+            skillLevel: 1,
+          })
         }
         // STATE_REVIVE (96): SKILLS_SrvDo058_Revive (D2Game 0x6FC71340) resurrects the SAME unitId in place,
         // so any corpse-consumption marks left on it must not keep the living unit hidden.
         if (entry.state === 96 && unit.unitType === 'monster') {
           clearRevivedCorpseMarks113c(unit)
+          unit.dead = false
+          if (unit.mode === 0 || unit.mode === 12) {
+            unit.mode = 1
+          }
+          if (unit.lifePct <= 0) {
+            unit.lifePct = 128
+          }
+          unit.deathFxTriggered = false
+          this._deadSoundUnitIds.delete(unit.id)
+          const npcUnit = this.npcMotion.getUnit(unit.id)
+          if (npcUnit) {
+            npcUnit.dwFlags = (npcUnit.dwFlags & ~0x10000) >>> 0
+            if (npcUnit.dwAnimMode === 0 || npcUnit.dwAnimMode === 12) {
+              npcUnit.dwAnimMode = 1
+            }
+            if (npcUnit.lifeByte <= 0) {
+              npcUnit.lifeByte = 128
+            }
+          }
+          const existingPet = this._pets.get(unit.id)
+          if (existingPet) {
+            existingPet.isDead = false
+            if (existingPet.lifePct <= 0) {
+              existingPet.lifePct = unit.lifePct
+            }
+          }
         }
         // #68 Bone Armor: StateSetFunc[6] 0x6FB23230 (1..3 orbiting bone pairs from stats 132/133). The
         // set-function dispatch 0x6fb22530 only runs for a complete 0xA8 / 0xAA stat list (not 0xA5/0xA7).
@@ -2097,6 +2437,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           if (runsSetFunc) {
             syncBoneArmorOverlays113c(unit, () => this._nextOverlayId++)
           }
+        }
+        if (entry.state === 158) {
+          ensureBladeShieldAttachment113c(this, unit)
         }
       }
       if (unit.unitType === 'player' && (unit.mode === 2 || unit.mode === 3 || unit.mode === 6)) {
@@ -2116,22 +2459,65 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       const unit = this.ensureWorldOrGroundUnit(unitRef.unitType, unitRef.id)
       if (!unit) break
       const isSelf = unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)
+      const wasActive = unit.states.has(ev.state)
+      const offSnd = stateOffSoundRequest113c(unit, ev.state, wasActive)
+      if (offSnd) {
+        this.pushSoundRequest(offSnd)
+      }
       unit.states.remove(ev.state)
+      releasePredictedState113c(unit, ev.state)
       unit.stats.removeStateStats(ev.state)
+      // remfunc 0x6FB22A50 drops the state's castoverlay with overlay1..4 (Issue #1063) and triggers removerlay (#1242).
+      removeStateCastOverlay113c(unit, ev.state)
+      if (wasActive) {
+        playStateRemOverlay113c(this, unit, ev.state)
+      }
       if (ev.state === STATE_BONEARMOR) {
         // remfunc[3] 0x6FB22A50: drops bonearmor_cast/front/back/null overlays.
         clearBoneArmorOverlays113c(unit)
       }
+      if (ev.state === 158) {
+        for (const u of Array.from(this._units.values())) {
+          if (
+            u.unitType === 'missile' &&
+            u.missileKey === 'blade shield attachment' &&
+            u.ownerType === unit.unitType &&
+            u.ownerId === unit.id
+          ) {
+            this._units.delete(u.key)
+          }
+        }
+      }
       const stateOverlayTokens = STATE_OVERLAYS[ev.state]
-      if (stateOverlayTokens) {
+      const pgsvToken = STATE_PGSV_OVERLAYS[ev.state]
+      if (stateOverlayTokens || pgsvToken) {
         const tokensToRemove = new Set<string>(
-          (Array.isArray(stateOverlayTokens) ? stateOverlayTokens : [stateOverlayTokens]).map(
-            (t) => String(t).toLowerCase(),
-          ),
+          stateOverlayTokens
+            ? (Array.isArray(stateOverlayTokens) ? stateOverlayTokens : [stateOverlayTokens]).map(
+                (t) => String(t).toLowerCase(),
+              )
+            : [],
         )
         if (ev.state === 20) {
           tokensToRemove.add('chillarmor')
           tokensToRemove.add('chillingarmor')
+        } else if (ev.state === 117) {
+          ;(unit as any).maulCharges = 0
+          for (let i = 1; i <= 5; i++) {
+            tokensToRemove.add(`maul${i}`)
+            tokensToRemove.add(`maul${i}back`)
+          }
+        } else if (ev.state === 120) {
+          ;(unit as any).feralRageCharges = 0
+          for (let i = 1; i <= 5; i++) {
+            tokensToRemove.add(`feralrage${i}`)
+            tokensToRemove.add(`feralrage${i}back`)
+          }
+        } else if (pgsvToken) {
+          const prefix = pgsvToken.slice(0, -1).toLowerCase()
+          for (let i = 1; i <= 3; i++) {
+            tokensToRemove.add(`${prefix}${i}`)
+          }
         }
         unit.overlays = unit.overlays.filter(
           (o) => !tokensToRemove.has(o.token.toLowerCase()),
@@ -3260,6 +3646,11 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           ...(modSkillId > 0 ? { modifierListSkillId: modSkillId } : {}),
           hasSkill: (skillId: number) =>
             isSelfPlayer ? (this._self.skills.get(skillId) ?? 0) > 0 : true,
+          ...(unit?.isUnique !== undefined ? { isUnique: unit.isUnique } : {}),
+          ...(unit?.isChampion !== undefined ? { isChampion: unit.isChampion } : {}),
+          ...(unit?.isSuperUnique !== undefined ? { isSuperUnique: unit.isSuperUnique } : {}),
+          ...(unit?.superUniqueId !== undefined ? { superUniqueId: unit.superUniqueId } : {}),
+          ...(unit?.name !== undefined ? { name: unit.name } : {}),
         },
         {
           localPlayerId: this.selfId,
@@ -3296,12 +3687,23 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               petUnit.ownerType = 'player'
               petUnit.ownerId = petOwnerId
             }
+            const resolvedPetClassId = ev.classId ?? petUnit?.classId ?? 0
+            if (ev.mercId < 900000 && (resolvedPetClassId === 356 || resolvedPetClassId === 357)) {
+              for (const m of Array.from(this._monsters.values())) {
+                if (m.id >= 900000 && m.classId === resolvedPetClassId) {
+                  this._units.delete(m.key)
+                  this._monsters.delete(m.id)
+                  this._pets.delete(m.id)
+                  this.npcMotion.removeMonster(m.id)
+                }
+              }
+            }
             this._pets.set(ev.mercId, {
               unitId: ev.mercId,
               ownerId: petOwnerId,
               petType,
-              classId: ev.classId ?? petUnit?.classId ?? 0,
-              lifePct: petUnit?.lifePct ?? 128,
+              classId: resolvedPetClassId,
+              lifePct: petUnit?.lifePct && petUnit.lifePct > 0 ? petUnit.lifePct : 128,
               isDead: false,
             })
           }
@@ -3398,7 +3800,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                       ...(resolvedName !== undefined ? { name: resolvedName } : {}),
                       ...(resolvedNameZh !== undefined ? { nameZh: resolvedNameZh } : {}),
                       exp: isReplacingMerc ? undefined : prevMerc?.exp,
-                      lifePct: mercUnit?.lifePct ?? 128,
+                      lifePct: mercUnit?.lifePct && mercUnit.lifePct > 0 ? mercUnit.lifePct : 128,
                       isDead: false,
                       reviveCost: 0,
                       stats: isReplacingMerc
@@ -3421,7 +3823,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                   ownerId: ev.ownerId ?? this.selfId,
                   petType: 7,
                   classId: resolvedClassId,
-                  lifePct: mercUnit?.lifePct ?? 128,
+                  lifePct: mercUnit?.lifePct && mercUnit.lifePct > 0 ? mercUnit.lifePct : 128,
                   isDead: false,
                 })
               } else {
@@ -3712,10 +4114,72 @@ export function applyUnitModeImmediateImpl(
       this.npcMotion.changeAnimMode0x6FADA6C0(npcUnit, ev.mode)
       this.syncClientUnitFromNpcMotion(npcUnit)
     }
+    if (!preserveActiveCast && !unit.dead && !unit.castState) {
+      const mMode = unit.mode
+      if (
+        mMode === 4 ||
+        mMode === 5 ||
+        mMode === 7 ||
+        mMode === 8 ||
+        mMode === 9 ||
+        mMode === 10 ||
+        mMode === 11 ||
+        mMode === 14
+      ) {
+        let tx: number | undefined
+        let ty: number | undefined
+        const evAny = ev as Record<string, any>
+        const rawTargetRef =
+          evAny.target ??
+          evAny.targetUnit ??
+          (ev.npc as any)?.targetUnit ??
+          (ev.npc?.opcode === 0x6c &&
+          Array.isArray(ev.npc.s) &&
+          typeof ev.npc.s[1] === 'number' &&
+          ev.npc.s[1] > 0
+            ? { unitType: ev.npc.s[0] ?? 1, id: ev.npc.s[1] }
+            : undefined)
+        if (rawTargetRef && typeof rawTargetRef === 'object' && rawTargetRef.id !== undefined) {
+          const tType = rawTargetRef.unitType ?? 0
+          unit.targetUnit = { unitType: unitTypeFromId(tType), id: Number(rawTargetRef.id) }
+          const tUnit = this.getUnit(tType, rawTargetRef.id)
+          if (tUnit && (tUnit.x !== 0 || tUnit.y !== 0)) {
+            tx = tUnit.x
+            ty = tUnit.y
+          } else if (
+            (tType === 0 || tType === 'player') &&
+            (rawTargetRef.id === this.selfId || this.selfId === 0) &&
+            (this._self.x !== 0 || this._self.y !== 0)
+          ) {
+            tx = this._self.x
+            ty = this._self.y
+          }
+        }
+        if (tx === undefined || ty === undefined) {
+          if (typeof evAny.targetX === 'number' && typeof evAny.targetY === 'number') {
+            tx = evAny.targetX
+            ty = evAny.targetY
+          } else if (
+            typeof (ev.npc as any)?.targetX === 'number' &&
+            typeof (ev.npc as any)?.targetY === 'number'
+          ) {
+            tx = (ev.npc as any).targetX
+            ty = (ev.npc as any).targetY
+          }
+        }
+        this.spawnMonsterModeMissile(unit, mMode, tx, ty)
+      } else if ((unit as any)._lastModeMissileMode !== undefined) {
+        ;(unit as any)._lastModeMissileMode = undefined
+      }
+    }
     if (wasDead && !unit.dead) {
+      unit.diedAtMs = undefined
       clearRevivedCorpseMarks113c(unit)
     }
     if (unit.dead) {
+      if (!wasDead) {
+        unit.diedAtMs = this._timeMs
+      }
       unit.lifePct = 0
       unit.moveMode = 'stop'
       unit.targetX = unit.x
@@ -3777,6 +4241,9 @@ export function applyUnitModeImmediateImpl(
       now < unit.castState.untilMs &&
       now - unit.castState.startedAtMs <= 150
     if (!preserveActiveCast) {
+      if (unit.unitType === 'object' && unit.objectSoundMode === undefined) {
+        unit.objectSoundMode = prevObjectMode
+      }
       this.clearUnitCastState(unit)
       unit.mode = resolvedMode
     }
@@ -3905,6 +4372,60 @@ export function applyUnitModeImmediateImpl(
   }
   if (unit.unitType === 'object') {
     this.updateObjectCollisionFootprint(unit)
+    if (ev.mode !== undefined && unit.mode !== undefined) {
+      const objectRecord = getObjectsTxtRecord113c(unit.classId)
+      for (const snd of updateObjectModeSound113c(unit, objectRecord)) {
+        this.pushSoundRequest({
+          ...(snd.kind !== undefined ? { kind: snd.kind } : {}),
+          ...(snd.soundId > 0 ? { soundId: snd.soundId } : {}),
+          unit: { unitType: 'object', id: unit.id, x: unit.x, y: unit.y },
+          x: unit.x,
+          y: unit.y,
+          ...(snd.delayTicks !== undefined ? { delayTicks: snd.delayTicks } : {}),
+        })
+      }
+    }
+  }
+  if (unit.unitType === 'player' && ev.mode !== undefined) {
+    const clsIdx =
+      unit.classId >= 0 && unit.classId <= 6 ? unit.classId : (this._self.charClass ?? 0)
+    const playerSounds = PLAYER_SOUND_TABLE_0x6FBA7694[clsIdx] ?? PLAYER_SOUND_TABLE_0x6FBA7694[0]!
+    if (!wasDead && (unit.mode === 0 || unit.mode === 17)) {
+      this.emitUnitDeathSound({
+        unitType: 'player',
+        unitId: unit.id,
+        classId: clsIdx,
+        x: unit.x,
+        y: unit.y,
+      })
+    } else if (!unit.dead && unit.mode === 4) {
+      this.pushSoundRequest({
+        soundId: playerSounds.getHit1,
+        unit: { unitType: 'player', id: unit.id, x: unit.x, y: unit.y },
+        x: unit.x,
+        y: unit.y,
+      })
+    } else if (!unit.dead && (unit.mode === 2 || unit.mode === 3 || unit.mode === 6)) {
+      this.pushSoundRequest({
+        soundId: playerSounds.taunt1,
+        unit: { unitType: 'player', id: unit.id, x: unit.x, y: unit.y },
+        x: unit.x,
+        y: unit.y,
+      })
+    } else if (
+      !unit.dead &&
+      !unit.castState &&
+      (unit.mode === 7 || unit.mode === 8 || unit.mode === 11 || unit.mode === 12)
+    ) {
+      this.emitSkillKeyframeSound({
+        skillId: unit.mode === 12 ? 1 : unit.mode === 11 ? 2 : 0,
+        flag: 1,
+        unitId: unit.id,
+        x: unit.x,
+        y: unit.y,
+        local: unit.id === this.selfId || this.selfId === 0,
+      })
+    }
   }
   if (unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)) {
     if (ev.mode === 0 || ev.mode === 17) {

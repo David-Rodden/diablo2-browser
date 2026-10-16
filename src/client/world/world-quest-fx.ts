@@ -2,15 +2,17 @@
  * 1.13c Monster Hit/Death FX, Screen Shake, and Quest Visual Controllers (`src/client/world/world-quest-fx.ts`).
  */
 
-import { ISO_GROUND_ASPECT_RATIO } from '../../common/data/blizzard-table.js'
 import { d2Rand, LIGHT_SEED_HI, type D2Seed } from '../../common/drlg/light-grid.ts'
+import { getMissileTxtData } from '../../common/skills/missiles-data.ts'
 import {
+  D2CLIENT_DEATH_BOOM_POINTS,
+  D2CLIENT_NOVA_RING_X,
+  D2CLIENT_NOVA_RING_Y,
   DURIEL_MAGGOT_HCIDX,
   DURIEL_MAGGOT_OFFSETS,
   MON_UMOD,
   calcColdEnchantedDeathNova,
   computeChargedBolt8WayVectors,
-  computeIsoRadialRingVectors,
   getBossDeathFxSpec,
   getFreezeShatterMissiles,
   getInnateMonsterDeathOverlays,
@@ -23,13 +25,23 @@ import {
   isPoisonDeadMonster,
   isScarabMonster,
   isSuicideMinionMonster,
+  resolveSuicideExplodeMissileKey,
 } from '../../common/units/monster-death-fx.ts'
 import { ClientUnit } from './client-unit.ts'
+import {
+  BR_DEATH_CONTROL_INITIAL_COUNTDOWN,
+  BR_DEATH_MISSILES_113C,
+  MEPHISTO_DEATH_CONTROL_INITIAL_COUNTDOWN,
+  MEPHISTO_DEATH_MISSILES_113C,
+  OVERSEER_CONTROL_INITIAL_COUNTDOWN,
+} from './boss-death-cltdo-113c.ts'
 import {
   COMPELLING_ORB_MONSTER_CLASS,
   DURANCE_STAIRS_OBJECT_CLASS,
   MONUMOD_QUESTCOMPLETE,
   ORB_MIST_MISSILE_ROWS,
+  TOWER_CHEST_OBJECT_CLASS,
+  TOWER_MIST_MISSILE_ROWS,
   orbMistTarget,
 } from './quest-fx-compelling-orb-113c.ts'
 import { QUEST_FX_MISSILES_113C } from './quest-fx-data-113c.ts'
@@ -94,9 +106,98 @@ export function triggerMonsterGetHitFxImpl(this: ClientWorldInternal, unit: Clie
   }
 }
 
+/** D2Client death handlers 0x6fad0a60 / 0x6fad0d20 / 0x6fad0e60 play sound 0x99a (necromancer_corpseexp_1). */
+const CORPSE_EXPLODE_SOUND_113C = 0x99a
+
+function pushCorpseExplodeSound(this: ClientWorldInternal, unit: ClientUnit): void {
+  this.pushSoundRequest({
+    soundId: CORPSE_EXPLODE_SOUND_113C,
+    unit: { unitType: 'monster', id: unit.id, x: unit.x, y: unit.y },
+    x: unit.x,
+    y: unit.y,
+  })
+}
+
+/** Stationary death missile at (x, y); lifetime = Missiles.txt `Range` of the real row. */
+function spawnStaticDeathMissile(
+  this: ClientWorldInternal,
+  unit: ClientUnit,
+  missileKey: string,
+  x: number,
+  y: number,
+): ClientUnit {
+  const row = getMissileTxtData(missileKey)
+  const m = this.spawnMissileByKey(missileKey, x, y, x, y, {
+    ownerType: 'monster',
+    ownerId: unit.id,
+    loopAnim: false,
+    maxTicks: Math.max(1, row.range),
+  })
+  m.vx = 0
+  m.vy = 0
+  return m
+}
+
+/** `missileKey` at the five D2Client death-boom points (`D2CLIENT_DEATH_BOOM_POINTS`). */
+function spawnDeathBoomPoints(this: ClientWorldInternal, unit: ClientUnit, missileKey: string): void {
+  for (const p of D2CLIENT_DEATH_BOOM_POINTS) {
+    spawnStaticDeathMissile.call(this, unit, missileKey, unit.x + p.dx, unit.y + p.dy)
+  }
+}
+
+/**
+ * D2Client 0x6fb51020(missile, -1, …) -> 0x6fb50db0(0): one `missileKey` per entry of the 64-entry ring
+ * table, aimed at `(x + X[i], y + Y[i])`. The velocity override passed in ebx is `Vel` of
+ * `velocityMissileKey` (0x6fabcb5c).
+ */
+function spawnD2ClientNovaRing(
+  this: ClientWorldInternal,
+  unit: ClientUnit,
+  missileKey: string,
+  velocityMissileKey: string,
+  level: number,
+): void {
+  const ownVel = getMissileTxtData(missileKey).vel
+  const overrideVel = getMissileTxtData(velocityMissileKey).vel
+  if (!(ownVel > 0) || !(overrideVel > 0)) {
+    throw new Error(
+      `nova ring ${missileKey}: Missiles.txt Vel must be > 0 (own ${ownVel}, ${velocityMissileKey} ${overrideVel})`,
+    )
+  }
+  const velScale = overrideVel / ownVel
+  for (let i = 0; i < D2CLIENT_NOVA_RING_X.length; i++) {
+    const m = this.spawnMissileByKey(
+      missileKey,
+      unit.x,
+      unit.y,
+      unit.x + D2CLIENT_NOVA_RING_X[i]!,
+      unit.y + D2CLIENT_NOVA_RING_Y[i]!,
+      { ownerType: 'monster', ownerId: unit.id, skillLevel: Math.max(1, level) },
+    )
+    m.vx *= velScale
+    m.vy *= velScale
+  }
+}
+
+/**
+ * Bone Fetish death (MonStats deathDmg, nBaseId bonefetish1, D2Game.dll 0x6fc65320): creates
+ * exactly one MISSILE_MONSTERCORPSEEXPLODE (#117) at the unit (#1210). No undeadmissile skulls.
+ */
+function applyBoneFetishDeath(this: ClientWorldInternal, unit: ClientUnit): void {
+  unit.corpseSuppressed = true
+  this.attachUnitOverlay(unit, 'fetishdeath1', false)
+  this.attachUnitOverlay(unit, 'fetishdeath2', false)
+  spawnStaticDeathMissile.call(this, unit, 'monstercorpseexplode', unit.x, unit.y)
+}
+
 export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: ClientUnit): void {
   if (unit.unitType !== 'monster' || unit.deathFxTriggered) return
-  this.emitMonsterModeSound(unit, 0)
+  if (unit.mode !== 12) {
+    this.emitMonsterModeSound(unit, 0)
+  } else if (unit.id > 0) {
+    this._deadSoundUnitIds.add(unit.id)
+  }
+  unit.deathFxTriggered = true
   if (
     unit.isNpc ||
     unit.ownerType === 'player' ||
@@ -105,7 +206,6 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
   ) {
     return
   }
-  unit.deathFxTriggered = true
   const mlvl = Math.max(1, unit.stats.get(12) || 1)
 
   // 1. Freeze / Shatter on Death (STATE_FREEZE = 1 or MonUMod #35 shatter_on_death)
@@ -126,49 +226,56 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
   // 2. MonUMod Death Effects (minions excluded per MonUMod.txt exclude=1)
   if (!unit.isMinion) {
     if (hasMonsterUMod(unit, MON_UMOD.FIRE)) {
-      this.attachUnitOverlay(unit, 'fire_explode', false)
-      const exp1 = this.spawnMissileByKey('fireexplode', unit.x, unit.y, unit.x, unit.y, {
-        ownerType: 'monster',
-        ownerId: unit.id,
-        loopAnim: false,
-      })
-      exp1.vx = 0
-      exp1.vy = 0
-      const exp2 = this.spawnMissileByKey('explosion', unit.x, unit.y, unit.x, unit.y, {
-        ownerType: 'monster',
-        ownerId: unit.id,
-        loopAnim: false,
-      })
-      exp2.vx = 0
-      exp2.vy = 0
+      // D2Client 0x6fad0d20 (umod 9, mode 0, event param 4): 5x 0x75 monstercorpseexplode then
+      // 5x 0x52 fireexplosion at (x,y) and the four diagonal neighbours, then sound 0x99a.
+      // No overlay is attached (#1209).
+      spawnDeathBoomPoints.call(this, unit, 'monstercorpseexplode')
+      spawnDeathBoomPoints.call(this, unit, 'fireexplosion')
+      pushCorpseExplodeSound.call(this, unit)
     }
 
     if (hasMonsterUMod(unit, MON_UMOD.COLD)) {
+      // D2Client 0x6fad0c40 edi==0x12: coldunique (#194) ring with frostnova (#119) Vel (#1211).
       const novaSpec = calcColdEnchantedDeathNova(mlvl)
-      const ringVectors = computeIsoRadialRingVectors(novaSpec.boltCount, 16)
-      for (const vec of ringVectors) {
-        this.spawnMissileByKey(
-          novaSpec.missileKey,
-          unit.x,
-          unit.y,
-          unit.x + vec.dx,
-          unit.y + vec.dy,
-          {
-            ownerType: 'monster',
-            ownerId: unit.id,
-            sourceSkillId: novaSpec.skillId,
-            skillLevel: novaSpec.skillLevel,
-          },
-        )
+      spawnD2ClientNovaRing.call(
+        this,
+        unit,
+        novaSpec.missileKey,
+        novaSpec.velocityMissileKey,
+        novaSpec.skillLevel,
+      )
+    }
+
+    if (hasMonsterUMod(unit, MON_UMOD.NOVADEATH)) {
+      // D2Client 0x6fad0c40 edi==0x2a (umod 42 novadeath, mode 0): 0x5a nova (#90) ring,
+      // velocity from 0x6fabcb5c(0x5a) (#1212).
+      spawnD2ClientNovaRing.call(this, unit, 'nova', 'nova', mlvl)
+    }
+
+    if (hasMonsterUMod(unit, MON_UMOD.CORPSEBOOMDEATH)) {
+      // D2Client 0x6fad0e60 (umod 31 corpseboom, mode 0, event param 4): 5x 0x52 fireexplosion
+      // at (x,y) and the four diagonal neighbours, then sound 0x99a.
+      spawnDeathBoomPoints.call(this, unit, 'fireexplosion')
+      pushCorpseExplodeSound.call(this, unit)
+    }
+
+    if (hasMonsterUMod(unit, MON_UMOD.PAINWORMDEATH)) {
+      // D2Client 0x6fad0fa0 -> 0x6fad0a60 (umod 40): 0x75 monstercorpseexplode + 0x221
+      // 'pain worm appear' (#545) at the unit, then sound 0x99a (#1214).
+      for (const key of ['monstercorpseexplode', 'pain worm appear'] as const) {
+        spawnStaticDeathMissile.call(this, unit, key, unit.x, unit.y)
       }
+      pushCorpseExplodeSound.call(this, unit)
     }
 
     if (
-      hasMonsterUMod(unit, MON_UMOD.POISON) ||
-      isPoisonDeadMonster(unit.classId, unit.name)
+      unit.mode === 0 &&
+      (hasMonsterUMod(unit, MON_UMOD.POISON) || isPoisonDeadMonster(unit.classId, unit.name))
     ) {
+      // D2Client 0x6fad0c40 (edi == 0xa, MonUMod 10 poisondead, mode 0): 1x 0x9b corpsepoisoncloud (#155)
+      // at the unit (#1219).
       const centerCloud = this.spawnMissileByKey(
-        'universalpoisoncloud',
+        'corpsepoisoncloud',
         unit.x,
         unit.y,
         unit.x,
@@ -177,44 +284,19 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
           ownerType: 'monster',
           ownerId: unit.id,
           skillLevel: mlvl,
+          maxTicks: getMissileTxtData('corpsepoisoncloud').range,
         },
       )
       centerCloud.vx = 0
       centerCloud.vy = 0
-      for (let i = 0; i < 4; i++) {
-        const angle = (i * Math.PI) / 2
-        const px = unit.x + Math.cos(angle) * 1.5
-        const py = unit.y + Math.sin(angle) * 1.5 * ISO_GROUND_ASPECT_RATIO
-        const cloud = this.spawnMissileByKey('monsterpoisoncloud', px, py, px, py, {
-          ownerType: 'monster',
-          ownerId: unit.id,
-          skillLevel: mlvl,
-        })
-        cloud.vx = 0
-        cloud.vy = 0
-      }
     }
 
-    if (
-      hasMonsterUMod(unit, MON_UMOD.BONEFETISH) ||
-      isBoneFetishMonster(unit.classId, unit.name)
-    ) {
-      unit.corpseSuppressed = true
-      this.attachUnitOverlay(unit, 'fetishdeath1', false)
-      this.attachUnitOverlay(unit, 'fetishdeath2', false)
-      for (let i = 1; i <= 4; i++) {
-        const angle = ((i - 1) * Math.PI) / 2 + Math.PI / 4
-        const sx = unit.x + Math.cos(angle) * 4
-        const sy = unit.y + Math.sin(angle) * 4 * ISO_GROUND_ASPECT_RATIO
-        this.spawnMissileByKey(`undeadmissile${i}`, unit.x, unit.y, sx, sy, {
-          ownerType: 'monster',
-          ownerId: unit.id,
-          loopAnim: false,
-        })
-      }
+    if (isBoneFetishMonster(unit.classId, unit.name)) {
+      applyBoneFetishDeath.call(this, unit)
     }
 
     if (hasMonsterUMod(unit, MON_UMOD.KILL_MINIONS)) {
+      // MonUMod 15 killminionsdeath (D2Game.dll 0x6fc6fd10) (#1213).
       for (const m of this._monsters.values()) {
         if (m.id === unit.id || m.dead) continue
         if (
@@ -227,14 +309,10 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
     }
 
     if (
-      hasMonsterUMod(unit, MON_UMOD.CHARGED_BOLTS) ||
       hasMonsterUMod(unit, MON_UMOD.SCARAB) ||
       isScarabMonster(unit.classId, unit.name)
     ) {
-      const boltKey =
-        hasMonsterUMod(unit, MON_UMOD.SCARAB) || isScarabMonster(unit.classId, unit.name)
-          ? 'buglightning'
-          : 'lightunique'
+      const boltKey = 'buglightning'
       const vectors = computeChargedBolt8WayVectors(16)
       for (const vec of vectors) {
         this.spawnMissileByKey(boltKey, unit.x, unit.y, unit.x + vec.dx, unit.y + vec.dy, {
@@ -248,22 +326,10 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
     }
   } else if (isBoneFetishMonster(unit.classId, unit.name)) {
     // Innate Bone Fetish death explosion applies even to minion Bone Fetishes
-    unit.corpseSuppressed = true
-    this.attachUnitOverlay(unit, 'fetishdeath1', false)
-    this.attachUnitOverlay(unit, 'fetishdeath2', false)
-    for (let i = 1; i <= 4; i++) {
-      const angle = ((i - 1) * Math.PI) / 2 + Math.PI / 4
-      const sx = unit.x + Math.cos(angle) * 4
-      const sy = unit.y + Math.sin(angle) * 4 * ISO_GROUND_ASPECT_RATIO
-      this.spawnMissileByKey(`undeadmissile${i}`, unit.x, unit.y, sx, sy, {
-        ownerType: 'monster',
-        ownerId: unit.id,
-        loopAnim: false,
-      })
-    }
-  } else if (isPoisonDeadMonster(unit.classId, unit.name)) {
+    applyBoneFetishDeath.call(this, unit)
+  } else if (unit.mode === 0 && isPoisonDeadMonster(unit.classId, unit.name)) {
     const centerCloud = this.spawnMissileByKey(
-      'universalpoisoncloud',
+      'corpsepoisoncloud',
       unit.x,
       unit.y,
       unit.x,
@@ -272,6 +338,7 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
         ownerType: 'monster',
         ownerId: unit.id,
         skillLevel: mlvl,
+        maxTicks: getMissileTxtData('corpsepoisoncloud').range,
       },
     )
     centerCloud.vx = 0
@@ -283,34 +350,32 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
   for (const ovToken of innateOverlays) {
     this.attachUnitOverlay(unit, ovToken, false)
   }
-  if (isSuicideMinionMonster(unit.classId, unit.name)) {
+  if (
+    unit.mode === 0 &&
+    ((!unit.isMinion && hasMonsterUMod(unit, MON_UMOD.SUICIDEMINION_EXPLODE)) ||
+      isSuicideMinionMonster(unit.classId, unit.name))
+  ) {
+    // D2Client 0x6facffc0 (MonUMod 33 event 2, mode 0): selects suicidefireexplode (#427, aip1==1),
+    // suicideiceexplode (#428, aip1>=2), or suicidecorpseexplode (#426, default) + sound 0x99a (#1218).
     unit.corpseSuppressed = true
-    const suiExp = this.spawnMissileByKey('explosion', unit.x, unit.y, unit.x, unit.y, {
-      ownerType: 'monster',
-      ownerId: unit.id,
-      loopAnim: false,
-    })
-    suiExp.vx = 0
-    suiExp.vy = 0
+    const suiKey = resolveSuicideExplodeMissileKey(
+      unit.classId,
+      this.difficulty ?? 0,
+      unit.aip1,
+    )
+    spawnStaticDeathMissile.call(this, unit, suiKey, unit.x, unit.y)
+    pushCorpseExplodeSound.call(this, unit)
   }
   if (isFireTowerMonster(unit.classId, unit.name)) {
-    const ftExp = this.spawnMissileByKey('firetower death', unit.x, unit.y, unit.x, unit.y, {
-      ownerType: 'monster',
-      ownerId: unit.id,
-      loopAnim: false,
-    })
-    ftExp.vx = 0
-    ftExp.vy = 0
+    // D2Client 0x6fafe850 (classId 0x1b3 = 435 barricadetower): spawns 0x1a8 'tower death' (#424, Range=1) (#1220).
+    spawnStaticDeathMissile.call(this, unit, 'tower death', unit.x, unit.y)
   }
   if (isBaalCloneMonster(unit.classId, unit.name)) {
+    // D2Client 0x6fafe588 -> 0x6fafe717 (classId 0x23a = 570 baalclone): spawns 0x266 'baalclonedeath' (#614, Range=20,
+    // AnimLen=20, CelFile=Expansion\Baalteleport) and sets mode 0xc (MONMODE_DEAD, corpseSuppressed) (#1216, #1221).
     unit.corpseSuppressed = true
-    const bcExp = this.spawnMissileByKey('baal clone death', unit.x, unit.y, unit.x, unit.y, {
-      ownerType: 'monster',
-      ownerId: unit.id,
-      loopAnim: false,
-    })
-    bcExp.vx = 0
-    bcExp.vy = 0
+    unit.mode = 12
+    spawnStaticDeathMissile.call(this, unit, 'baalclonedeath', unit.x, unit.y)
   }
 
   // 4. Duriel (hcIdx=211) Death: 5x Small Maggots (hcIdx=227) + durieldead_fwd / durieldead_rear
@@ -354,45 +419,124 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
   }
 
   // 5. Act Boss & Quest Boss Death FX Controller + Screen Shake + Minion Purge
-  const bossSpec = getBossDeathFxSpec(unit.classId, unit.name)
+  const rawBossSpec = getBossDeathFxSpec(unit.classId, unit.name)
+  // 1.13c Blood Raven (267) / Shenk (overseer1 479) death shows are the MonUMod 22 `questcomplete` event-1 handler
+  // 0x6fad0fb0 (mode 0 only): a plain overseer1 without umod 22 has no show and purges nothing (Issue #1042).
+  const bossSpec =
+    rawBossSpec !== null &&
+    rawBossSpec.requiresQuestCompleteUMod === true &&
+    !(unit.mode === 0 && hasMonsterUMod(unit, MONUMOD_QUESTCOMPLETE))
+      ? null
+      : rawBossSpec
   if (bossSpec) {
     const ctrlSeed: D2Seed = {
       lo: ((unit.id ^ 0x6ac690c5) + Math.floor(unit.x) * 31 + Math.floor(unit.y)) >>> 0,
       hi: LIGHT_SEED_HI,
     }
-    if (bossSpec.bossKey === 'diablo') {
-      const ringVectors = computeIsoRadialRingVectors(16, 16)
-      for (const vec of ringVectors) {
-        this.spawnMissileByKey(
-          'diabwallmaker',
-          unit.x,
-          unit.y,
-          unit.x + vec.dx,
-          unit.y + vec.dy,
-          {
-            ownerType: 'monster',
-            ownerId: unit.id,
-            maxTicks: bossSpec.controllerRange,
-          },
-        )
+    if (bossSpec.bossKey === 'countess') {
+      // 1.13c D2Client 0x6fad0fb0 (MonUMod 22 event 1, mode 0) -> 0x6fb02860 (The Countess, MonStats 45 corruptrogue3):
+      // Finds objects.txt 0x173 (371, Tower Tome / quest chest) in room or near rooms (fallback (x-15, y-15)),
+      // spawns moving towermist (#291, Vel=2, Range=400, pCltDoFunc=25) from (x,y) toward (target.x, target.y),
+      // and spawns stationary towerchestspawner (#332, Vel=0, Range=400, pCltDoFunc=30) at (target.x, target.y)
+      // with SetTargetY(0) (#1215).
+      const x = Math.floor(unit.x)
+      const y = Math.floor(unit.y)
+      let chest: { x: number; y: number } | null =
+        this._nearRoomObjectFinder !== null
+          ? this._nearRoomObjectFinder(x, y, TOWER_CHEST_OBJECT_CLASS)
+          : null
+      if (chest === null) {
+        for (const obj of this._units.values()) {
+          if (obj.unitType === 'object' && obj.classId === TOWER_CHEST_OBJECT_CLASS) {
+            chest = { x: Math.floor(obj.x), y: Math.floor(obj.y) }
+            break
+          }
+        }
       }
-    } else {
-      const ctrl = this.spawnMissileByKey(
-        bossSpec.controllerMissile,
-        unit.x,
-        unit.y,
-        unit.x,
-        unit.y,
+      const target = orbMistTarget(
+        { x, y },
+        chest === null ? null : { x: Math.floor(chest.x), y: Math.floor(chest.y) },
+      )
+      const mistRow = TOWER_MIST_MISSILE_ROWS.mist
+      this.spawnMissileByKey(mistRow.name, x, y, target.x, target.y, {
+        classId: mistRow.id,
+        ownerType: 'monster',
+        ownerId: unit.id,
+        maxTicks: mistRow.range,
+        loopAnim: true,
+        missileSeed: ctrlSeed,
+      })
+      const spawnerRow = TOWER_MIST_MISSILE_ROWS.chestSpawner
+      const spawnerSeed: D2Seed = {
+        lo: ((unit.id ^ 0x5bd1e995) + target.x * 31 + target.y) >>> 0,
+        hi: LIGHT_SEED_HI,
+      }
+      const spawner = this.spawnMissileByKey(
+        spawnerRow.name,
+        target.x,
+        target.y,
+        target.x,
+        target.y,
         {
+          classId: spawnerRow.id,
           ownerType: 'monster',
           ownerId: unit.id,
-          maxTicks: bossSpec.controllerRange,
+          maxTicks: spawnerRow.range,
           loopAnim: true,
-          missileSeed: ctrlSeed,
+          missileSeed: spawnerSeed,
         },
       )
-      ctrl.vx = 0
-      ctrl.vy = 0
+      spawner.vx = 0
+      spawner.vy = 0
+      spawner.cltCountdownY = 0
+    } else {
+      // The controller lives for its Missiles.txt Range (no maxTicks override, #1207); Diablo's 0x6fb02600 creates no
+      // missile at all (#1205).
+      const ctrl =
+        bossSpec.controllerMissile === null
+          ? null
+          : this.spawnMissileByKey(bossSpec.controllerMissile, unit.x, unit.y, unit.x, unit.y, {
+              ownerType: 'monster',
+              ownerId: unit.id,
+              loopAnim: true,
+              missileSeed: ctrlSeed,
+            })
+      if (ctrl) {
+        ctrl.vx = 0
+        ctrl.vy = 0
+        if (bossSpec.bossKey === 'bloodraven') {
+          // 0x6fb02320: brdeathcontrol + SetTargetX(50), then brdeathspirits1 and brdeathsmokes1, once each, on Blood
+          // Raven; their S1 -> NU -> DT chains are the rows' ExplosionMissile + AlwaysExplode (Issue #1041).
+          ctrl.cltCountdown = BR_DEATH_CONTROL_INITIAL_COUNTDOWN
+          for (const key of BR_DEATH_MISSILES_113C.slice(1)) {
+            const m = this.spawnMissileByKey(key, unit.x, unit.y, unit.x, unit.y, {
+              ownerType: 'monster',
+              ownerId: unit.id,
+            })
+            m.vx = 0
+            m.vy = 0
+          }
+        } else if (bossSpec.bossKey === 'shenk') {
+          // 0x6fb02bd0: overseercontrol + SetTargetX(25) (Issue #1040).
+          ctrl.cltCountdown = OVERSEER_CONTROL_INITIAL_COUNTDOWN
+        } else if (bossSpec.bossKey === 'mephisto') {
+          // 0x6fb02270: mephistodeathcontrol + SetTargetX(75) / SetTargetY(75), then mephistoholedelay and
+          // mephistodonotdraw, once each, on Mephisto (Issue #1208).
+          ctrl.cltCountdown = MEPHISTO_DEATH_CONTROL_INITIAL_COUNTDOWN
+          ctrl.cltCountdownY = MEPHISTO_DEATH_CONTROL_INITIAL_COUNTDOWN
+          // Both are static (Vel 0, AnimLen 2) helpers that live for their Missiles.txt Range (50 / 70): holedelay
+          // then explodes into mephistoholebirth, donotdraw fires its corpseexplosions at elapsed CltParam1.
+          for (const key of MEPHISTO_DEATH_MISSILES_113C.slice(1)) {
+            const m = this.spawnMissileByKey(key, unit.x, unit.y, unit.x, unit.y, {
+              ownerType: 'monster',
+              ownerId: unit.id,
+              maxTicks: getMissileTxtData(key).range,
+            })
+            m.vx = 0
+            m.vy = 0
+          }
+        }
+      }
     }
 
     if (bossSpec.shakeAmplitude > 0 && bossSpec.shakeDurationMs > 0) {

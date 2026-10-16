@@ -7,6 +7,8 @@ import { requireTbl } from '../../i18n/lang.ts'
 import { CANONICAL_CHI_TBL_DICT, CANONICAL_ENG_TBL_DICT } from '../../../common/data/canonical-tbl-strings.ts'
 import { CANONICAL_ELITE_MODIFIERS, FIXED_UNIQUE_BOSS_HCIDX_SET, monsterDisplayName, rollUniqueMonsterNameKeys } from '../../../common/units/monsters-data.ts'
 import { getSocketableInfo, isJewelCode } from '../../../common/items/gems-data.ts'
+import { formatItemTooltip } from '../../../common/items/item-tooltip.ts'
+import type { Item } from '../../../common/items/items.ts'
 import { STONE_BOX_BG_FILL } from './panel-layout-constants.ts'
 
 export type EscapeMenuRowIndex = 0 | 1 | 2
@@ -1202,10 +1204,47 @@ export function drawItemTooltipImpl(
     }
   }
 
+  const playerCtx = this.getEffectivePlayerContext()
+  const rawItemForLive = item.rawItem as
+    | (Item & { charLevel?: number; playerLevel?: number })
+    | undefined
+  const hasPerLevelProps =
+    !unid &&
+    Boolean(
+      rawItemForLive &&
+        ((Array.isArray(rawItemForLive.rolledProps) &&
+          rawItemForLive.rolledProps.some(p => {
+            const c = (p?.code ?? '').trim().toLowerCase()
+            return c.endsWith('/lvl') || c.endsWith('_perlevel')
+          })) ||
+          (Array.isArray((rawItemForLive as any).activeItemSetProps) &&
+            (rawItemForLive as any).activeItemSetProps.some((p: any) => {
+              const c = String(p?.code ?? '').trim().toLowerCase()
+              return c.endsWith('/lvl') || c.endsWith('_perlevel')
+            })) ||
+          (rawItemForLive.setItemDef &&
+            Array.isArray(rawItemForLive.setItemDef.aprops) &&
+            rawItemForLive.setItemDef.aprops.some((p: { code?: string } | undefined) => {
+              const c = (p?.code ?? '').trim().toLowerCase()
+              return c.endsWith('/lvl') || c.endsWith('_perlevel')
+            }))),
+    )
+  const itemCharLevel = rawItemForLive
+    ? Math.max(1, Math.trunc(Number(rawItemForLive.charLevel ?? rawItemForLive.playerLevel ?? 1) || 1))
+    : 1
+  const livePerLevelTooltip =
+    hasPerLevelProps && rawItemForLive && playerCtx.level > 0 && itemCharLevel !== playerCtx.level
+      ? formatItemTooltip(
+          { ...rawItemForLive, charLevel: playerCtx.level } as Item,
+          isEn ? 'en' : 'zh',
+        )
+      : undefined
+
   // Base Stats Block
-  if (item.defense !== undefined) {
+  const effectiveDefense = livePerLevelTooltip?.defense ?? item.defense
+  if (effectiveDefense !== undefined) {
     lines.push({
-      text: (isEn ? 'Defense: ' : '防御: ') + item.defense,
+      text: (isEn ? 'Defense: ' : '防御: ') + effectiveDefense,
       color: 'white',
       font: 'font16',
     })
@@ -1236,7 +1275,6 @@ export function drawItemTooltipImpl(
       font: 'font16',
     })
   }
-  const playerCtx = this.getEffectivePlayerContext()
   const effectiveReqClass = getEffectiveItemReqClass(item)
   if (!unid && effectiveReqClass !== undefined) {
     const classLabelMapZh: Record<CharacterClassCode, string> = {
@@ -1319,7 +1357,14 @@ export function drawItemTooltipImpl(
     }
   } else {
     // Magic Affixes & Socketable Instructions
-    const activeStats = isEn ? (item.statsEn ?? item.stats) : item.stats
+    const activeStats = livePerLevelTooltip
+      ? livePerLevelTooltip.lines.map(l => ({
+          text: l.text,
+          color: (l.color === 'instruction' ? 'white' : l.color) as D2ColorCode,
+        }))
+      : isEn
+        ? (item.statsEn ?? item.stats)
+        : item.stats
     const hasSocketableSlotLines = activeStats.some(
       s => s.text.startsWith('Weapons:') || s.text.startsWith('武器:'),
     )
@@ -1414,7 +1459,15 @@ export function drawItemTooltipImpl(
     // 1. Unlocked item-specific green bonuses + unlocked partial/full gold set bonuses
     // 2. Set Name header in gold
     // 3. All set pieces in green (equipped) or red (unequipped))
-    const activeSetBonuses = isEn ? (item.setBonusesEn ?? item.setBonuses) : item.setBonuses
+    const activeSetBonuses =
+      livePerLevelTooltip?.setBonuses
+        ? livePerLevelTooltip.setBonuses.map(b => ({
+            text: b.text,
+            color: (b.color ?? 'green') as D2ColorCode,
+          }))
+        : isEn
+          ? (item.setBonusesEn ?? item.setBonuses)
+          : item.setBonuses
     if (activeSetBonuses) {
       for (const bonus of activeSetBonuses) {
         lines.push({

@@ -1,7 +1,7 @@
 # Diablo II 1.13c NPC Interaction Range & Open-Dialog Guard (`D2Client.dll`, `D2Common.dll`)
 
 > Issue #890: an NPC dialog sometimes closed one 25 Hz frame after it opened. The port re-checked the
-> player–NPC distance every frame with the D2MOO melee table plus a "target is moving" bonus. 1.13c never
+> player–NPC distance every frame with a legacy 1.10 melee table plus a "target is moving" bonus. 1.13c never
 > re-checks the distance once the NPC menu is open.
 
 ## 1. Overview
@@ -12,7 +12,7 @@
 | Pending interaction after the walk | `0x6fac9ef0` | `#10407(target, player) <= 2` **and** `#10324(target, player, 0x804) == 0`, else walk again |
 | Every frame while `UI_NPCMENU` is open | `0x6faf83b0` (called from `0x6fb73d71`) | Player and NPC alive / present only. **No distance check.** |
 
-`#10407` is `D2Common.dll` `0x6FDCFCD0` (D2MOO name `D2Common_10399`), the unit-size-adjusted table distance.
+`#10407` is `D2Common.dll` `0x6FDCFCD0` (`UNITS_GetDistanceToOtherUnit`), the unit-size-adjusted table distance.
 
 ---
 
@@ -46,7 +46,7 @@ Table `0x6FDDABC0` (`int32[64]`, row = `dy`, column = `dx`):
 For the player (size 2) and a size-2 NPC, `#10407 <= 2` holds for `dy = 0, 1: dx <= 4`, `dy = 2, 3: dx <= 3`,
 `dy = 4: dx <= 1` (and the symmetric offsets).
 
-> The D2MOO-derived `DIST_TABLE_6FDD3200` in `src/common/skills/weapon-combat-meta.ts` is **not** this table
+> The legacy 1.10-derived `DIST_TABLE_6FDD3200` in `src/common/skills/weapon-combat-meta.ts` is **not** this table
 > (e.g. `(4, 0)` is `2` in both, but `(3, 0)` is `1` there and `0` here; `(5, 0)` is `3` there and `4` here).
 
 ---
@@ -110,5 +110,5 @@ The 1.13c melee check uses the same `#10407` (`0x6FDCFCD0`):
   `0x6fd814a0(attacker, target, 0x804)` returns `0`.
 - Monster targets whose `0x6fd51860` index is `0x102` or `0x105` are also in range when `dist < 0x6fd825c0(attacker) + 8`.
 
-The port's `isInMeleeRange113c` (`src/common/skills/weapon-combat-meta.ts`) still uses the D2MOO table and an
+The port's `isInMeleeRange113c` (`src/common/skills/weapon-combat-meta.ts`) still uses `DIST_TABLE_6FDD3200` and an
 `isTargetMoving ? 1 : 0` bonus instead (follow-up).

@@ -763,6 +763,57 @@ export class GameEngine {
 
     const combatOptions = { ...this.opts.combatOptions, preserveEvents: true }
     tickCombat(this.world, { movement, attack: castHappened ? false : input.attacking }, combatOptions, this.terrain, this.opts.xpTable ?? [])
+
+    for (const ev of this.world.events) {
+      if (
+        ev.kind === 'unitOverlay' &&
+        ev.overlayToken &&
+        !(ev as any)._overlaySpawned
+      ) {
+        ;(ev as any)._overlaySpawned = true
+        const targetId =
+          ev.targetUnitType === 1 && ev.monsterIndex !== undefined
+            ? `monster-${ev.monsterIndex}`
+            : 'player'
+        this.spawnOverlay(ev.overlayToken, { x: ev.x, y: ev.y }, targetId, {
+          loop: false,
+          isCastOverlay: false,
+          ...(ev.targetUnitType === 1 && ev.monsterIndex !== undefined
+            ? { targetMonsterIndex: ev.monsterIndex }
+            : {}),
+        })
+      }
+      if (
+        ev.kind === 'missileHit' &&
+        ev.missileType === 'chillingarmorbolt' &&
+        !(ev as any)._boltSpawned
+      ) {
+        ;(ev as any)._boltSpawned = true
+        const attacker =
+          ev.monsterIndex !== undefined
+            ? this.world.monsters.find(m => m.index === ev.monsterIndex)
+            : undefined
+        const tx = attacker?.x ?? player.x + 18
+        const ty = attacker?.y ?? player.y
+        const dx = tx - player.x
+        const dy = ty - player.y
+        const dist = Math.hypot(dx, dy) || 1
+        const speed = 18 // 1.13c Missiles.txt chillingarmorbolt Vel=18, Range=25
+        this.spawnOverlay('chillarmor_hit', { x: player.x, y: player.y }, 'player', { loop: false })
+        this.projectiles.push({
+          skillId: '60',
+          x: player.x,
+          y: player.y,
+          vx: (dx / dist) * speed,
+          vy: (dy / dist) * speed,
+          damage: 0,
+          ttl: 25,
+          fromPlayer: true,
+          missileType: 'chillingarmorbolt',
+          pierce: false,
+        })
+      }
+    }
     
     if (this.world.events.some(event => event.kind === 'monsterHit')) this.metrics.playerHits += 1
 
@@ -847,9 +898,32 @@ export class GameEngine {
           }
         }
 
-        const missileType = hit.missileType ?? (hit.skillId === '36' || hit.skillId === 'firebolt' ? 'firebolt' : hit.skillId === '47' || hit.skillId === 'fireball' ? 'fireball' : undefined)
+        const missileType =
+          hit.missileType ??
+          (hit.skillId === '36' || hit.skillId === 'firebolt'
+            ? 'firebolt'
+            : hit.skillId === '47' || hit.skillId === 'fireball'
+              ? 'fireball'
+              : hit.skillId === '27' || hit.skillId === 'immolationarrow'
+                ? 'immolationarrow'
+                : hit.skillId === '31' || hit.skillId === 'freezingarrow'
+                  ? 'freezingarrow'
+                  : undefined)
         const mslData = missileType ? CANONICAL_113C_MISSILES[missileType] : undefined
-        const explType = mslData?.explosionMissile || (missileType === 'firebolt' ? 'fireexplode' : missileType === 'fireball' ? 'explodingarrowexp' : '')
+        const explType =
+          mslData?.explosionMissile ||
+          (missileType === 'firebolt'
+            ? 'fireexplode'
+            : missileType === 'fireball' ||
+                missileType === 'immolationarrow' ||
+                hit.skillId === '27'
+              ? 'explodingarrowexp'
+              : missileType === 'freezingarrow' ||
+                  hit.skillId === '31' ||
+                  missileType === 'glacialspike' ||
+                  hit.skillId === '55'
+                ? 'freezingarrowexp1'
+                : '')
         if (explType) {
           const explData = CANONICAL_113C_MISSILES[explType]
           const maxFrames = explData?.animLen || 16
@@ -862,9 +936,9 @@ export class GameEngine {
             radius: hit.aoeRadius ?? 24,
           })
           if (missileType === 'glacialspike' || hit.skillId === '55' || hit.skillId === 'glacialspike') {
-            const ejectaData = CANONICAL_113C_MISSILES['glacialspikeejecta']
+            const ejectaData = CANONICAL_113C_MISSILES['freezingarrowexp2']
             this.explosions.push({
-              missileType: 'glacialspikeejecta',
+              missileType: 'freezingarrowexp2',
               x: hit.x,
               y: hit.y,
               frame: 0,
@@ -913,9 +987,32 @@ export class GameEngine {
               }
             }
           }
-          const missileType = wallHit.missileType ?? (wallHit.skillId === '36' || wallHit.skillId === 'firebolt' ? 'firebolt' : wallHit.skillId === '47' || wallHit.skillId === 'fireball' ? 'fireball' : undefined)
+          const missileType =
+            wallHit.missileType ??
+            (wallHit.skillId === '36' || wallHit.skillId === 'firebolt'
+              ? 'firebolt'
+              : wallHit.skillId === '47' || wallHit.skillId === 'fireball'
+                ? 'fireball'
+                : wallHit.skillId === '27' || wallHit.skillId === 'immolationarrow'
+                  ? 'immolationarrow'
+                  : wallHit.skillId === '31' || wallHit.skillId === 'freezingarrow'
+                    ? 'freezingarrow'
+                    : undefined)
           const mslData = missileType ? CANONICAL_113C_MISSILES[missileType] : undefined
-          const explType = mslData?.explosionMissile || (missileType === 'firebolt' ? 'fireexplode' : missileType === 'fireball' ? 'explodingarrowexp' : '')
+          const explType =
+            mslData?.explosionMissile ||
+            (missileType === 'firebolt'
+              ? 'fireexplode'
+              : missileType === 'fireball' ||
+                  missileType === 'immolationarrow' ||
+                  wallHit.skillId === '27'
+                ? 'explodingarrowexp'
+                : missileType === 'freezingarrow' ||
+                    wallHit.skillId === '31' ||
+                    missileType === 'glacialspike' ||
+                    wallHit.skillId === '55'
+                  ? 'freezingarrowexp1'
+                  : '')
           if (explType) {
             const explData = CANONICAL_113C_MISSILES[explType]
             const maxFrames = explData?.animLen || 16
@@ -928,9 +1025,9 @@ export class GameEngine {
               radius: wallHit.aoeRadius ?? 24,
             })
             if (missileType === 'glacialspike' || wallHit.skillId === '55' || wallHit.skillId === 'glacialspike') {
-              const ejectaData = CANONICAL_113C_MISSILES['glacialspikeejecta']
+              const ejectaData = CANONICAL_113C_MISSILES['freezingarrowexp2']
               this.explosions.push({
-                missileType: 'glacialspikeejecta',
+                missileType: 'freezingarrowexp2',
                 x: wallHit.x,
                 y: wallHit.y,
                 frame: 0,
@@ -973,7 +1070,9 @@ export class GameEngine {
           overlay.x = player.x
           overlay.y = player.y
         } else if (overlay.targetMonsterIndex !== undefined) {
-          const mon = this.world.monsters[overlay.targetMonsterIndex]
+          const mon =
+            this.world.monsters.find(m => m.index === overlay.targetMonsterIndex) ??
+            this.world.monsters[overlay.targetMonsterIndex]
           if (!mon || mon.state === 'dead' || mon.hp <= 0) {
             overlay.expired = true
             continue
@@ -1171,11 +1270,17 @@ export class GameEngine {
       }
     }
 
-    // Druid Cyclone Armor (#235) overlay cleanup when shield HP is depleted
+    // Druid Cyclone Armor (#235) state 151 cleanup when shield HP is depleted (#1081, #1285)
     if ((player.cycloneArmorHp ?? 0) <= 0) {
+      ;(player as any).states?.delete?.(151)
       for (const ov of this.overlays) {
         if (
-          (ov.overlayName === 'cyclonearmor1front' || ov.overlayName === 'cyclonearmor1back') &&
+          (ov.overlayName === 'cyclonearmor1front' ||
+            ov.overlayName === 'cyclonearmor1back' ||
+            ov.overlayName === 'cyclonearmor2front' ||
+            ov.overlayName === 'cyclonearmor2back' ||
+            ov.overlayName === 'cyclonearmor3front' ||
+            ov.overlayName === 'cyclonearmor3back') &&
           ov.casterId === 'player'
         ) {
           ov.expired = true
@@ -1188,10 +1293,10 @@ export class GameEngine {
       player.armageddonTicks -= 1
       if (player.armageddonTicks % 8 === 0) {
         const step = Math.floor(player.armageddonTicks / 8)
-        const angle = step * 2.39996
-        const dist = ((step * 23) % 100) + 16
-        const dropX = player.x + Math.cos(angle) * dist
-        const dropY = player.y + Math.sin(angle) * dist * ISO_GROUND_ASPECT_RATIO
+        const offX = ((step * 97) % 321) - 160
+        const offY = ((step * 61) % 321) - 160
+        const dropX = player.x + offX
+        const dropY = player.y + offY
         this.projectiles.push({
           skillId: '249',
           x: dropX,
@@ -1219,13 +1324,13 @@ export class GameEngine {
       }
     }
 
-    // Druid Hurricane (#250) duration tick & periodic cold vortex pulse (every 20 frames, radius 6 subtiles = 120px)
+    // Druid Hurricane (#250) duration tick & periodic cold vortex pulse (every 20 frames, radius 9 subtiles = 180px)
     if (player.hurricaneTicks && player.hurricaneTicks > 0) {
       player.hurricaneTicks -= 1
       const inTown = this.isTown || [1, 40, 75, 103, 109].includes(this.levelId)
       if (!inTown && player.hurricaneTicks % 20 === 0) {
         const coldDmg = player.hurricaneDamage ?? 15
-        const radiusPx = 120
+        const radiusPx = 180
         for (const monster of this.world.monsters) {
           if (monster.state === 'dead' || monster.hp <= 0) continue
           const dx = monster.x - player.x
@@ -1367,6 +1472,10 @@ export class GameEngine {
             const dist = Math.hypot(monster.x - player.x, monster.y - player.y)
             if (dist <= auraRadius) {
               damageMonster(this.world, monster.index, pulseDmg)
+              this.spawnOverlay('cast_undead', {
+                x: monster.x,
+                y: monster.y,
+              })
               if (!(monster as any).isBoss && monster.stats?.rank !== 'boss') {
                 const dx = monster.x - player.x
                 const dy = monster.y - player.y

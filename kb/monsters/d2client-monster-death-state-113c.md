@@ -2,7 +2,7 @@
 
 Findings from investigating issue #916 (Travincal monsters "standing after death and still left-click
 targetable"). All addresses are from the 1.13c `D2Client.dll` (base `0x6FAA0000`), `D2Common.dll` and
-`D2Game.dll` in `samples/d2`; server references are D2MOO (`~/tmp/D2MOO`, 1.10f addresses).
+`D2Game.dll` in `samples/d2`.
 
 ## 1. Server side: how a monster death is sent
 
@@ -24,7 +24,7 @@ targetable"). All addresses are from the 1.13c `D2Client.dll` (base `0x6FAA0000`
   `unit+0xA4` (hover message) is non-null, `D2Common #10422` (CHAT_FreeHoverMsg) frees it and `unit+0xA4 = 0`.
   No mode, HP or flag change.
 - `unit+0xA4` is written by the 0x26 overhead-chat path (`0x6FB2DEE7..0x6FB2DF23`).
-- Server: D2MOO `sub_6FCC5FA0` sends `0x76` when `UNITFLAG_HASTXTMSG` is set and `pHoverText == NULL`
+- Server: `D2Game.dll` sends `0x76` when `UNITFLAG_HASTXTMSG` is set and `pHoverText == NULL`
   (hover timed out: `MonsterMode.cpp` FREEHOVER event; or freed at death: `sub_6FC63E80`).
 - In 1.13c D2Game the only monster hover-text setter (AITACTICS_AddMessage-equivalent, `0x6FD118B0`) has no
   callers or references; unit+0xA4 is otherwise set for shrines (`0x6FC8DA00`) and player overhead chat

@@ -39,7 +39,11 @@ export function tickCurseCenter113c(
   unit: ClientUnit,
   elapsed: number,
 ): void {
-  if (!isCurseCenterWaveTick113c(elapsed)) return
+  const cltParam1 =
+    unit.missileKey === 'mindblast center'
+      ? MINDBLAST_CENTER_CLT_PARAM1_113C
+      : CURSECENTER_CLT_PARAM1_113C
+  if (!isCurseCenterWaveTick113c(elapsed, cltParam1)) return
   const subKey = unit.curseSubMissileKey
   const radius = unit.curseVisualRadius
   if (subKey === undefined || radius === undefined) {
@@ -66,6 +70,15 @@ export const CURSECENTER_CLT_PARAM1_113C = 7
 
 /** Missiles.txt `cursecenter` (#191) Range: lifetime in frames. */
 export const CURSECENTER_RANGE_113C = 20
+
+/** Missiles.txt `mindblast center` (#576) CltParam1: waves fire while `elapsed < 10` (0, 3, 6, 9). */
+export const MINDBLAST_CENTER_CLT_PARAM1_113C = 10
+
+/** Missiles.txt `mindblast center` (#576) Range: lifetime in frames. */
+export const MINDBLAST_CENTER_RANGE_113C = 10
+
+/** Skills.txt #273 Mind Blast aurarangecalc = par7 = 4 sub-tiles (SkillCltDoFunc[8] 0x6FAF1290). */
+export const MINDBLAST_VISUAL_RADIUS_113C = 4
 
 /** 0x6fb78bd4..0x6fb78bde: `max(nAuraRange - 3, 2)`. */
 export function curseVisualRadius113c(auraRangeSubtiles: number): number {

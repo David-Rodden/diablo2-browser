@@ -491,6 +491,10 @@ describe('WeatherScenePass lightning flash', () => {
     for (let tick = 3; tick <= 40; tick += 1) pass.beginFrame({ ...scene, tick: tick })
     const after = new SolidTarget()
     pass.drawLines(after)
-    expect(after.solids.every(([, , w, h]) => w === 1 && h === 1)).toBe(true)
+    // After the flash, DrawParticles resumes: the rain lines are rasterized as 1-pixel-wide coalesced spans
+    // (rasterizeWeatherLineSpans, #1028) — never the full-screen palette-255 flash rect again.
+    expect(after.solids.length).toBeGreaterThan(0)
+    expect(after.solids.every(([, , w, h]) => w === 1 || h === 1)).toBe(true)
+    expect(after.solids.some(([, , w, h]) => w === 400 && h === 553)).toBe(false)
   })
 })

@@ -36,3 +36,14 @@ export function encodeC2sOverheadChat(
   w.u8(0x00)
   return validateC2sPacket(w.toUint8Array())
 }
+
+/**
+ * 0x3F Say / Voice Emote (3B, D2Client.dll 0x6fae9c80..0x6fae9d60 -> 0x6fad9bf0):
+ * u8 0x3F | u16 phraseId (0x19..0x20 = 25..32 for Numpad 0..7).
+ */
+export function encodeC2sSay(phraseId: number): Uint8Array {
+  const w = new ByteWriter(3)
+  w.u8(0x3f)
+  w.u16LE(phraseId & 0xffff)
+  return validateC2sPacket(w.toUint8Array())
+}

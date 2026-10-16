@@ -39,8 +39,11 @@ import type {
 import type { ClientWorld, NpcInteractionState } from '../world/client-world.ts'
 import { D2StatId } from '../world/stat-list.ts'
 import {
+  activateSkillHotkeyImpl,
   allocateSkillImpl,
   allocateStatImpl,
+  assignSkillHotkeyImpl,
+  autoBeltItemImpl,
   buyFromNpcImpl,
   cancelNpcSessionImpl,
   castTownPortalImpl,
@@ -53,6 +56,7 @@ import {
   completeArtisanUiImpl,
   completeOrificeUiImpl,
   confirmQuestRewardImpl,
+  cycleBoundSkillsImpl,
   depositGoldImpl,
   dropGoldImpl,
   dropItemImpl,
@@ -448,6 +452,9 @@ export class HudModel implements HudCommandSink {
     }
     hud.hotkeys.onSelectSkill = (side, skillId) => {
       this.selectSkill(side, skillId)
+    }
+    hud.hotkeys.onAssignHotkey = (slot, side, skillId, itemId) => {
+      this.assignSkillHotkey(slot, side, skillId, itemId)
     }
     ;(hud as any).onWeaponSwitch = () => {
       this.swapWeapons()
@@ -992,6 +999,38 @@ export class HudModel implements HudCommandSink {
    */
   selectSkill(hand: Hand, skillId: number, itemId = 0xffffffff): void {
     selectSkillImpl(this, hand, skillId, itemId)
+  }
+
+  /**
+   * Bind or unbind (`skillId === 0xffff`) a skill hotkey slot `0..15` (`0x51 AssignSkillHotkey`).
+   */
+  assignSkillHotkey(slot: number, hand: Hand, skillId: number, itemId = 0xffffffff): void {
+    assignSkillHotkeyImpl(this, slot, hand, skillId, itemId)
+  }
+
+  /**
+   * Activate a bound skill hotkey slot `0..15` (`0x3C SelectSkill`).
+   */
+  activateSkillHotkey(slot: number): boolean {
+    return activateSkillHotkeyImpl(this, slot)
+  }
+
+  /**
+   * Cycle through bound skill hotkeys (`0x6faed6d0`, `step = -1 | 1`) and select the skill (`0x3C`).
+   */
+  cycleBoundSkills(step: -1 | 1): boolean {
+    return cycleBoundSkillsImpl(this, step)
+  }
+
+  /**
+   * Shift+Left-Click auto-place inventory item into belt (`0x63 ItemToBelt`, `0x6fb46ff8`).
+   */
+  autoBeltItem(itemId: number): boolean {
+    return autoBeltItemImpl(this, itemId)
+  }
+
+  onAutoBeltItem(itemId: number): boolean {
+    return this.autoBeltItem(itemId)
   }
 
   /**

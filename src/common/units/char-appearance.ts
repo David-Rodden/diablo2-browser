@@ -45,15 +45,20 @@ export const SORCERESS_COMPONENTS = [
 export type SorceressComponent = (typeof SORCERESS_COMPONENTS)[number]
 export type CharacterComponent = SorceressComponent
 
-/** Standard player animation modes in pack order (includes Sorceress S1 sequence clip and Throw TH). */
+/** Standard player animation modes in pack order (includes BL, KK, S1..S4 skill clips, and Throw TH). */
 export const SORCERESS_PLAYER_MODES = [
   'wl',
   'nu',
   'rn',
   'a1',
   'a2',
+  'bl',
   'sc',
   's1',
+  's2',
+  's3',
+  's4',
+  'kk',
   'gh',
   'dt',
   'dd',
@@ -162,7 +167,10 @@ export type EquippedAppearanceInput = Partial<
   readonly armorTint?: LayerTintSpec | string | null | undefined
   readonly shieldTint?: LayerTintSpec | string | null | undefined
   readonly weaponTint?: LayerTintSpec | string | null | undefined
+  readonly hasHolyShield?: boolean | undefined
 }
+
+export type EquipmentAppearanceInput = EquippedAppearanceInput
 
 /** Manifest structure for `samples/d2-packs/chars/so/manifest.json`. */
 export interface SorceressLayerPackManifest {
@@ -417,6 +425,58 @@ export function isDefaultUnarmedAppearance(spec: SorceressAppearanceSpec): boole
   return true
 }
 
+/**
+ * Baseline unarmed Amazon (`am`, `classId = 0`) paperdoll appearance (`States.txt` row 63 `dopplezon` fallback).
+ */
+export const DEFAULT_AMAZON_APPEARANCE: SorceressAppearanceSpec = Object.freeze({
+  classToken: 'am',
+  classId: 0,
+  wclass: 'hth',
+  layers: Object.freeze({
+    hd: Object.freeze({ variant: 'lit', transform: 0, color: null }),
+    tr: Object.freeze({ variant: 'lit', transform: 0, color: null }),
+    lg: Object.freeze({ variant: 'lit', transform: 0, color: null }),
+    ra: Object.freeze({ variant: 'lit', transform: 0, color: null }),
+    la: Object.freeze({ variant: 'lit', transform: 0, color: null }),
+    rh: Object.freeze({ variant: null, transform: 0, color: null }),
+    lh: Object.freeze({ variant: null, transform: 0, color: null }),
+    sh: Object.freeze({ variant: null, transform: 0, color: null }),
+    s1: Object.freeze({ variant: null, transform: 0, color: null }),
+    s2: Object.freeze({ variant: null, transform: 0, color: null }),
+  }),
+  helmTint: null,
+  armorTint: null,
+  shieldTint: null,
+  weaponTint: null,
+})
+
+/**
+ * Canonical 1.13c Valkyrie (`classId = 357`) paperdoll disguise appearance:
+ * Full Plate Mail (`hvy` across `tr/lg/ra/la/s1/s2`) + Pike (`rh = 'pik'`, `wclass = '2ht'`)
+ * with Light Gold (`'lgld'`) tint (`States.txt` row 93 `valkyrie`: `disguise=1, gfxtype=2, gfxclass=0`).
+ */
+export const VALKYRIE_113C_APPEARANCE: SorceressAppearanceSpec = Object.freeze({
+  classToken: 'am',
+  classId: 0,
+  wclass: '2ht',
+  layers: Object.freeze({
+    hd: Object.freeze({ variant: 'lit', transform: 0, color: null }),
+    tr: Object.freeze({ variant: 'hvy', transform: 7, color: 'lgld' }),
+    lg: Object.freeze({ variant: 'hvy', transform: 7, color: 'lgld' }),
+    ra: Object.freeze({ variant: 'hvy', transform: 7, color: 'lgld' }),
+    la: Object.freeze({ variant: 'hvy', transform: 7, color: 'lgld' }),
+    rh: Object.freeze({ variant: 'pik', transform: 1, color: 'lgld' }),
+    lh: Object.freeze({ variant: null, transform: 0, color: null }),
+    sh: Object.freeze({ variant: null, transform: 0, color: null }),
+    s1: Object.freeze({ variant: 'hvy', transform: 7, color: 'lgld' }),
+    s2: Object.freeze({ variant: 'hvy', transform: 7, color: 'lgld' }),
+  }),
+  helmTint: null,
+  armorTint: Object.freeze({ transform: 7, color: 'lgld' }),
+  shieldTint: null,
+  weaponTint: Object.freeze({ transform: 1, color: 'lgld' }),
+})
+
 export interface EquipmentSlotArrayEntry {
   readonly slot?: number | undefined
   readonly bodyLoc?: number | undefined
@@ -432,6 +492,13 @@ export interface EquipmentSlotArrayEntry {
   readonly identified?: boolean | undefined
 }
 
+export type EquipmentSlotInput = (
+  | ReadonlyMap<number, ItemData>
+  | readonly EquipmentSlotArrayEntry[]
+) & {
+  readonly hasHolyShield?: boolean | undefined
+}
+
 /**
  * Convert a player's `equipmentBySlot` map (indexed by D2GS `bodyLoc` 1..12) or array of slot entries
  * and active `weaponSet` (`0 | 1`) into the `Partial<Record<EquipSlotId, ResolvableEquippedItem>>`
@@ -441,12 +508,15 @@ export interface EquipmentSlotArrayEntry {
  * `component = 16` (`COMP_NONE` in 1.13c `Armor.txt` / `Misc.txt`) and do not affect paperdoll layers.
  */
 export function resolveEquipmentSlotsToAppearanceInput(
-  equipmentBySlot: ReadonlyMap<number, ItemData> | readonly EquipmentSlotArrayEntry[],
+  equipmentBySlot: EquipmentSlotInput,
   weaponSet: 0 | 1 = 0,
   sockets?: ReadonlyMap<number, readonly ItemData[]>,
   dropTables?: DropTables,
-): Partial<Record<EquipSlotId, ResolvableEquippedItem | null | undefined>> {
+  hasHolyShield?: boolean,
+): EquippedAppearanceInput {
   const tables = dropTables ?? getEmbeddedDropTables()
+  const effectiveHolyShield =
+    hasHolyShield ?? (equipmentBySlot as { readonly hasHolyShield?: boolean | undefined })?.hasHolyShield
   const toResolvable = (item: ItemData | EquipmentSlotArrayEntry | undefined): ResolvableEquippedItem | undefined => {
     if (!item) return undefined
     if ('container' in item && typeof item.id === 'number') {
@@ -466,9 +536,6 @@ export function resolveEquipmentSlotsToAppearanceInput(
     }
   }
 
-  const handSlot1 = weaponSet === 1 ? 11 : 4
-  const handSlot2 = weaponSet === 1 ? 12 : 5
-
   if (Array.isArray(equipmentBySlot)) {
     const bySlot = new Map<number, EquipmentSlotArrayEntry>()
     for (const entry of equipmentBySlot) {
@@ -477,20 +544,113 @@ export function resolveEquipmentSlotsToAppearanceInput(
         bySlot.set(s, entry)
       }
     }
+    const useSwapSlots =
+      weaponSet === 1 &&
+      bySlot.get(4) === undefined &&
+      bySlot.get(5) === undefined &&
+      (bySlot.get(11) !== undefined || bySlot.get(12) !== undefined)
+    const handSlot1 = useSwapSlots ? 11 : 4
+    const handSlot2 = useSwapSlots ? 12 : 5
     return {
       helm: toResolvable(bySlot.get(1)),
       armor: toResolvable(bySlot.get(3)),
       weapon1: toResolvable(bySlot.get(handSlot1)),
       weapon2: toResolvable(bySlot.get(handSlot2)),
+      ...(effectiveHolyShield !== undefined ? { hasHolyShield: effectiveHolyShield } : {}),
     }
   }
 
   const map = equipmentBySlot as ReadonlyMap<number, ItemData>
+  const useSwapSlots =
+    weaponSet === 1 &&
+    map.get(4) === undefined &&
+    map.get(5) === undefined &&
+    (map.get(11) !== undefined || map.get(12) !== undefined)
+  const handSlot1 = useSwapSlots ? 11 : 4
+  const handSlot2 = useSwapSlots ? 12 : 5
   return {
     helm: toResolvable(map.get(1)),
     armor: toResolvable(map.get(3)),
     weapon1: toResolvable(map.get(handSlot1)),
     weapon2: toResolvable(map.get(handSlot2)),
+    ...(effectiveHolyShield !== undefined ? { hasHolyShield: effectiveHolyShield } : {}),
+  }
+}
+
+/**
+ * Canonical 1.13c `States.txt` rows with non-empty `itemtype` + `itemtrans` columns:
+ * - State 16 (`enchant`): `itemtype = 'weap'`, `itemtrans = 'cred'` (Crystal Red)
+ * - State 31 (`venomclaws`): `itemtype = 'mele'`, `itemtrans = 'cgrn'` (Crystal Green)
+ */
+export const STATE_ITEM_TRANS_113C: Readonly<
+  Record<number, { readonly itemType: 'weap' | 'mele'; readonly itemTrans: string }>
+> = Object.freeze({
+  16: { itemType: 'weap', itemTrans: 'cred' },
+  31: { itemType: 'mele', itemTrans: 'cgrn' },
+})
+
+/**
+ * Apply 1.13c `States.txt` `itemtype` / `itemtrans` weapon palette overrides (e.g. State 16 `enchant` ->
+ * `itemtype=weap, itemtrans=cred`) to a resolved character paperdoll appearance.
+ */
+export function applyStateItemTransToAppearance(
+  spec: SorceressAppearanceSpec,
+  states: Iterable<number> | null | undefined,
+): SorceressAppearanceSpec {
+  if (!states) return spec
+  let hasEnchant = false
+  let hasVenom = false
+  let hasHolyShield = false
+  for (const s of states) {
+    if (s === 16) hasEnchant = true
+    else if (s === 31) hasVenom = true
+    else if (s === 101) hasHolyShield = true
+  }
+  let nextSpec = spec
+  const isTwoHandedWClass =
+    spec.wclass === 'bow' ||
+    spec.wclass === 'xbw' ||
+    spec.wclass === 'stf' ||
+    spec.wclass === '2hs' ||
+    spec.wclass === '2ht' ||
+    spec.wclass === '1ss' ||
+    spec.wclass === '1st' ||
+    spec.wclass === '1js' ||
+    spec.wclass === '1jt' ||
+    spec.wclass === 'ht2'
+  if (hasHolyShield && !isTwoHandedWClass && spec.layers.sh.variant !== 'hsh') {
+    nextSpec = {
+      ...nextSpec,
+      layers: {
+        ...nextSpec.layers,
+        sh: { variant: 'hsh', transform: 0, color: null },
+      },
+      shieldTint: null,
+    }
+  }
+  const isRangedWeaponClass = nextSpec.wclass === 'bow' || nextSpec.wclass === 'xbw'
+  const itemTrans = hasEnchant ? 'cred' : hasVenom && !isRangedWeaponClass ? 'cgrn' : null
+  if (!itemTrans) return nextSpec
+
+  const rh = nextSpec.layers.rh
+  const lh = nextSpec.layers.lh
+  if (!rh.variant && !lh.variant) return nextSpec
+
+  const nextRh: LayerAppearance = rh.variant
+    ? { variant: rh.variant, transform: rh.transform > 0 ? rh.transform : 1, color: itemTrans }
+    : rh
+  const nextLh: LayerAppearance = lh.variant
+    ? { variant: lh.variant, transform: lh.transform > 0 ? lh.transform : 1, color: itemTrans }
+    : lh
+  const effTransform = (nextRh.variant ? nextRh.transform : nextLh.transform) || 1
+  return {
+    ...nextSpec,
+    layers: {
+      ...nextSpec.layers,
+      rh: nextRh,
+      lh: nextLh,
+    },
+    weaponTint: { transform: effTransform, color: itemTrans },
   }
 }
 
@@ -502,6 +662,7 @@ export function resolveCharacterAppearance(
   classTokenOrId: string | number,
   equipped: EquippedAppearanceInput,
   dropTables: DropTables = getEmbeddedDropTables(),
+  states?: Iterable<number> | null | undefined,
 ): CharacterAppearanceSpec {
   const { classId, classToken } = normalizeCharacterClass(classTokenOrId)
   const layers: Record<SorceressComponent, LayerAppearance> = {
@@ -685,7 +846,12 @@ export function resolveCharacterAppearance(
   }
 
   // Check shield in either hand slot when not wielding a two-handed weapon
-  if (!hasTwoHandedWeapon && equippedShield) {
+  if (!hasTwoHandedWeapon && equipped.hasHolyShield) {
+    // 1.13c States.txt #101 (holyshield) setfunc=11 (StateSetFunc[11] at D2Client.dll 0x6FB1E289..0x6FB1E2AD):
+    // overrides the paperdoll shield component (COMP_SHIELD) to 0x00687368 ('hsh') with no dye shift.
+    layers.sh = { variant: 'hsh', transform: 0, color: null }
+    shieldTint = null
+  } else if (!hasTwoHandedWeapon && equippedShield) {
     const { item: handItem, code, base: shieldBase } = equippedShield
     const rawVar = (shieldBase.alternategfx || shieldBase.code).toLowerCase()
     const transform = shieldBase.transform ?? 0
@@ -696,7 +862,7 @@ export function resolveCharacterAppearance(
     }
   }
 
-  return {
+  const baseSpec: CharacterAppearanceSpec = {
     classToken,
     classId,
     wclass,
@@ -706,6 +872,7 @@ export function resolveCharacterAppearance(
     shieldTint,
     weaponTint,
   }
+  return states ? applyStateItemTransToAppearance(baseSpec, states) : baseSpec
 }
 
 /**
@@ -721,13 +888,17 @@ export function resolveSorceressAppearance(
 
 /**
  * Blit one DCC layer frame onto a destination canvas, optionally applying a 256-byte palette remap table.
+ * When `skipShadowIndex` is true (for COF layers with `transparent=true` and `drawEffect <= 3`),
+ * near-black/shadow index `172` (`0xAC`) and index `0` are skipped so additive/translucent COF layers
+ * do not bake black fringes into the flattened R8 paperdoll sheet.
  */
-function blitWithRemap(
+export function blitWithRemap(
   target: { indices: Uint8Array; mask: Uint8Array; width: number; height: number },
   source: SpriteFrame,
   atX: number,
   atY: number,
   remap: Uint8Array | null,
+  skipShadowIndex = false,
 ): void {
   for (let y = 0; y < source.height; y += 1) {
     const ty = atY + y
@@ -739,7 +910,10 @@ function blitWithRemap(
       if (tx < 0 || tx >= target.width) continue
       const to = ty * target.width + tx
       const rawIdx = source.indices[at]!
-      target.indices[to] = remap !== null ? (remap[rawIdx] ?? rawIdx) : rawIdx
+      if (skipShadowIndex && (rawIdx === 0 || rawIdx === 172)) continue
+      const mappedIdx = remap !== null ? (remap[rawIdx] ?? rawIdx) : rawIdx
+      if (skipShadowIndex && (mappedIdx === 0 || mappedIdx === 172)) continue
+      target.indices[to] = mappedIdx
       target.mask[to] = 1
     }
   }
@@ -1049,6 +1223,7 @@ export class SorceressLayerCompositor {
 
     const allGroups: { frames: SpriteFrame[] }[] = []
     const clips: Record<string, AnimClipMeta> = {}
+    const compositedClipByCofToken = new Map<string, AnimClipMeta>()
     let groupOffset = 0
     let totalMembers = 0
 
@@ -1063,6 +1238,12 @@ export class SorceressLayerCompositor {
         const candidates = [
           `${classPrefix}${modeUpper}${wcUpper}`,
           `${classPrefix}${modeUpper}HTH`,
+          `${classPrefix}${modeUpper}1HS`,
+          `${classPrefix}${modeUpper}1HT`,
+          `${classPrefix}${modeUpper}HT1`,
+          `${classPrefix}${modeUpper}1SS`,
+          `${classPrefix}S1${wcUpper}`,
+          `${classPrefix}S1HTH`,
           `${classPrefix}NU${wcUpper}`,
           `${classPrefix}NUHTH`,
         ]
@@ -1076,14 +1257,21 @@ export class SorceressLayerCompositor {
       if (mode === 'a2' && (activeWc === 'hth' || !this.getCof(`${classPrefix}A2${activeWc.toUpperCase()}`))) {
         effectiveMode = 'a1'
       }
-      if (!this.getCof(`${classPrefix}${effectiveMode.toUpperCase()}${activeWc.toUpperCase()}`) && activeWc !== 'hth') {
-        activeWc = 'hth'
-      }
       const resolvedCof = resolveCofByModeWc(effectiveMode, activeWc)
       if (!resolvedCof) {
         throw new Error(`Missing character COF descriptor for ${classPrefix}${effectiveMode.toUpperCase()}${activeWc.toUpperCase()}`)
       }
       const { token: cofToken, cof } = resolvedCof
+      effectiveMode = cofToken.slice(2, 4).toLowerCase()
+      activeWc = cofToken.slice(4).toLowerCase()
+      const existingClip = compositedClipByCofToken.get(cofToken)
+      if (existingClip) {
+        clips[mode] = {
+          ...existingClip,
+          loop: LOOPING_PLAYER_MODES.has(mode),
+        }
+        continue
+      }
 
       // Resolve DCC + per-layer palette remap for each layer in the COF
       const layerEntries = await Promise.all(
@@ -1109,6 +1297,9 @@ export class SorceressLayerCompositor {
           let dcc = await this.getDcc(compName, layerSpec.variant, effectiveMode, layerWc)
           if (!dcc && layerWc !== activeWc) {
             dcc = await this.getDcc(compName, layerSpec.variant, effectiveMode, activeWc)
+          }
+          if (!dcc && requestedWc !== activeWc && requestedWc !== layerWc) {
+            dcc = await this.getDcc(compName, layerSpec.variant, effectiveMode, requestedWc)
           }
           if (!dcc && activeWc !== 'hth') {
             dcc = await this.getDcc(compName, layerSpec.variant, effectiveMode, 'hth')
@@ -1180,6 +1371,8 @@ export class SorceressLayerCompositor {
           for (const layerIndex of order) {
             const entry = layerEntries[layerIndex]
             if (!entry || !entry.dcc) continue
+            const cofLayer = cof.layers[layerIndex]
+            const skipShadowIndex = Boolean(cofLayer?.transparent && cofLayer.drawEffect <= 3)
             const dccDir = dir64ToDcc(dir64, entry.dcc.directions.length)
             const layerDir = entry.dcc.directions[dccDir]
             const frame = layerDir?.frames[frameIdx]
@@ -1190,6 +1383,7 @@ export class SorceressLayerCompositor {
               Math.round(layerDir!.box.left) - boxLeft,
               Math.round(layerDir!.box.top) - boxTop,
               entry.remap,
+              skipShadowIndex,
             )
           }
           frames.push(composed)
@@ -1200,7 +1394,7 @@ export class SorceressLayerCompositor {
       const animRecord = manifest.animClips[cofToken]
       const speed = animRecord?.speed ?? 256
       const events = (animRecord?.events ?? []).map(([f, c]) => ({ f, c }))
-      clips[mode] = {
+      const clipMeta: AnimClipMeta = {
         group: groupOffset,
         directions: cof.numberOfDirections,
         frames: cof.framesPerDirection,
@@ -1208,6 +1402,8 @@ export class SorceressLayerCompositor {
         loop: LOOPING_PLAYER_MODES.has(mode),
         events,
       }
+      clips[mode] = clipMeta
+      compositedClipByCofToken.set(cofToken, clipMeta)
       groupOffset += cof.numberOfDirections
     }
 

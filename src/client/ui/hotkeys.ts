@@ -31,7 +31,9 @@ import {
   getGenericSkillLongDesc,
   getCanonicalSkillListRow,
   getCanonicalSkillIconCel,
+  canUseSkillInMorphState,
   canUseSkillWithWeapon,
+  RESTRICT_STATE_IDS_113C,
   type WeaponEquipCheckState,
   type HotkeySkillEntry,
 } from '../../common/skills/skills-meta.ts'
@@ -43,7 +45,9 @@ export {
   isLeftUsableSkill,
   PALADIN_AURA_SKILL_IDS,
   isAuraSkill,
+  canUseSkillInMorphState,
   canUseSkillWithWeapon,
+  RESTRICT_STATE_IDS_113C,
   type WeaponEquipCheckState,
   type HotkeySkillEntry,
 }
@@ -261,6 +265,10 @@ export class SkillHotkeysHud {
    * `SelectSkill (0x3C)`; the active slots change when the server answers with `0x23 AssignSkill`.
    */
   onSelectSkill?: ((side: 'left' | 'right', skillId: number) => void) | undefined
+  /**
+   * Callback invoked when a skill hotkey slot (0..15) is bound in the Speedbar popup (`0x51 AssignSkillHotkey`).
+   */
+  onAssignHotkey?: ((slot: number, side: 'left' | 'right', skillId: number, itemId?: number) => void) | undefined
   hasEquippedWeapon = true
   /** Optional current player mana for 1.13c insufficient-mana skill icon tinting (0x6fb565c0). */
   currentMana: number | null = null
@@ -273,11 +281,34 @@ export class SkillHotkeysHud {
 
   hasEnoughMana(skillId: number): boolean {
     if (this.currentMana === null) return true
+    if (skillId <= 0 || isPassiveSkill(skillId) || isAuraSkill(skillId)) return true
+    if (
+      skillId === 217 ||
+      skillId === 218 ||
+      skillId === 219 ||
+      skillId === 220 ||
+      this.getSkillCharges(skillId) !== undefined
+    ) {
+      return true
+    }
+    // 1.13c D2Common.#10787 -> 0x6fda0af0 (`nocostinstate = 1`): unshifting from Werewolf (#223 in state 139)
+    // or Werebear (#228 in state 140) costs 0 mana.
+    if (
+      (skillId === 223 && this.activeMorphStates.has(139)) ||
+      (skillId === 228 && this.activeMorphStates.has(140))
+    ) {
+      return true
+    }
     const entry = this.availableSkills.find(s => s.skillId === skillId)
+    if (entry?.isItemSkill || entry?.charges !== undefined) return true
     let manaCost: number = entry?.manaCost ?? 0
     if (entry === undefined) {
       const cat = SKILLS_BY_ID[skillId]
       manaCost = cat ? calculateManaCost(cat, 1) : 0
+    }
+    // 1.13c D2Common.#10787 -> 0x6fd9fdc0 (`wStartMana` in `Skills.txt`): Inferno (#41) requires startmana = 6.
+    if (skillId === 41) {
+      manaCost = Math.max(manaCost, 6)
     }
     if (manaCost <= 0) return true
     return this.currentMana >= manaCost
@@ -425,7 +456,16 @@ export class SkillHotkeysHud {
   }
 
   weaponEquipState?: WeaponEquipCheckState | undefined
+  activeMorphStates: Set<number> = new Set()
   private unusableWeaponSkills: Set<number> = new Set()
+
+  setActiveStates(states?: Iterable<number>): void {
+    this.activeMorphStates.clear()
+    if (!states) return
+    for (const st of states) {
+      this.activeMorphStates.add(st)
+    }
+  }
 
   setSkillWeaponUsable(skillId: number, usable: boolean): void {
     if (usable) {
@@ -440,8 +480,13 @@ export class SkillHotkeysHud {
   }
 
   isSkillWeaponUsable(skillId: number): boolean {
+    if (!canUseSkillInMorphState(skillId, this.activeMorphStates)) return false
     if (this.unusableWeaponSkills.has(skillId)) return false
-    return canUseSkillWithWeapon(skillId, this.weaponEquipState)
+    return canUseSkillWithWeapon(skillId, this.weaponEquipState, this.activeMorphStates)
+  }
+
+  isSkillUsableWithCurrentWeapon(skillId: number): boolean {
+    return this.isSkillWeaponUsable(skillId)
   }
 
   setAvailableSkills(
@@ -497,8 +542,32 @@ export class SkillHotkeysHud {
     return null
   }
 
+  static slotIndexFromKey(fKey: string): number | null {
+    const key = fKey.trim().toUpperCase()
+    if (/^F([1-8])$/.test(key)) {
+      return Number(key.slice(1)) - 1
+    }
+    const skillMatch = /^SKILL\s*(9|1[0-6])$/.exec(key) ?? /^F(9|1[0-6])$/.exec(key)
+    if (skillMatch) {
+      return Number(skillMatch[1]) - 1
+    }
+    return null
+  }
+
+  static keyFromSlotIndex(slot: number): string | null {
+    if (!Number.isInteger(slot) || slot < 0 || slot > 15) return null
+    return slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
+  }
+
   bindHotkey(fKey: string, side: 'left' | 'right', skillId: number): void {
-    this.bindings.set(fKey.toUpperCase(), { side, skillId })
+    const normKey = fKey.trim().toUpperCase()
+    // 1.13c D2Client.dll 0x6faed280..0x6faed2e5: deduplicate any other slot bound to the same (side, skillId).
+    for (const [existingKey, existing] of Array.from(this.bindings.entries())) {
+      if (existingKey !== normKey && existing.side === side && existing.skillId === skillId) {
+        this.bindings.delete(existingKey)
+      }
+    }
+    this.bindings.set(normKey, { side, skillId })
   }
 
   handleKeyDown(key: string): boolean {
@@ -533,15 +602,55 @@ export class SkillHotkeysHud {
   }
 
   triggerFunctionKey(fKey: string): { side: 'left' | 'right'; skillId: number } | null {
-    const key = fKey.toUpperCase()
+    const key = fKey.trim().toUpperCase()
     if (this.openPopup !== null && this.hoveredPopupSkill !== null) {
-      this.bindHotkey(key, this.hoveredPopupSkill.side, this.hoveredPopupSkill.skillId)
-      return this.hoveredPopupSkill
+      const hovered = this.hoveredPopupSkill
+      this.bindHotkey(key, hovered.side, hovered.skillId)
+      const slotIndex = SkillHotkeysHud.slotIndexFromKey(key)
+      if (slotIndex !== null) {
+        this.onAssignHotkey?.(slotIndex, hovered.side, hovered.skillId)
+      }
+      return hovered
     }
     const bound = this.bindings.get(key)
     if (!bound) return null
     this.requestSelect(bound.side, bound.skillId)
     return bound
+  }
+
+  /**
+   * 1.13c `SelectPreviousSkill` (`0x6faed740`, `step = -1`) / `SelectNextSkill` (`0x6faed750`, `step = 1`)
+   * -> `sub_6FAED6D0(step)` (`0x6faed6d0`):
+   * Cycles through bound skill hotkeys across slots `0..15` in slot order and selects the target skill.
+   */
+  cycleBoundSkills(step: -1 | 1): { side: 'left' | 'right'; skillId: number; slot: number } | null {
+    const rightEntries: { slot: number; side: 'left' | 'right'; skillId: number }[] = []
+    const allEntries: { slot: number; side: 'left' | 'right'; skillId: number }[] = []
+    for (let slot = 0; slot < 16; slot++) {
+      const key = SkillHotkeysHud.keyFromSlotIndex(slot)
+      const b = key ? this.bindings.get(key) : undefined
+      if (!b || b.skillId < 0 || b.skillId === 0xffff) continue
+      const entry = { slot, side: b.side, skillId: b.skillId }
+      allEntries.push(entry)
+      if (b.side === 'right') {
+        rightEntries.push(entry)
+      }
+    }
+    const pool = rightEntries.length > 0 ? rightEntries : allEntries
+    if (pool.length === 0) return null
+
+    const activeSide = rightEntries.length > 0 ? 'right' : pool[0]!.side
+    const currentSkillId = activeSide === 'right' ? this.rightSkillId : this.leftSkillId
+    const currentIdx = pool.findIndex(e => e.side === activeSide && e.skillId === currentSkillId)
+    let nextIdx: number
+    if (currentIdx < 0) {
+      nextIdx = step > 0 ? 0 : pool.length - 1
+    } else {
+      nextIdx = (currentIdx + step + pool.length) % pool.length
+    }
+    const chosen = pool[nextIdx]!
+    this.requestSelect(chosen.side, chosen.skillId)
+    return chosen
   }
 
   getPopupCells(side: 'left' | 'right'): {
@@ -801,13 +910,16 @@ export class SkillHotkeysHud {
       }
     }
 
-    // 1. 1.13c casting delay (state 121 skilldelay) / weapon mismatch red icon tint & insufficient-mana blue tint (D2Client.dll 0x6fb565c0 / 0x6fb56710)
-    if (this.isSkillOnCooldown(skillId, _nowMs) || !this.isSkillWeaponUsable(skillId)) {
+    // 1. 1.13c D2Client.dll 0x6fad8bc0 -> 0x6faeda60 (bottom bar) & 0x6faee7f0 (Speedbar popup):
+    // Calls D2Common.#10787(pPlayer, pSkill). Any non-zero status other than 6 (passive) — including
+    // 1 (insufficient mana), 2 (unusable weapon/state/town), 4 (0 charges), 8 (skilldelay cooldown) —
+    // sets nPalette = 1 (red icon tint).
+    if (
+      this.isSkillOnCooldown(skillId, _nowMs) ||
+      !this.isSkillWeaponUsable(skillId) ||
+      !this.hasEnoughMana(skillId)
+    ) {
       ctx.fillStyle = 'rgba(180, 20, 20, 0.55)'
-      ctx.fillRect(x + 1, y + 1, 46, 46)
-    }
-    if (!this.hasEnoughMana(skillId)) {
-      ctx.fillStyle = 'rgba(24, 60, 180, 0.42)'
       ctx.fillRect(x + 1, y + 1, 46, 46)
     }
 

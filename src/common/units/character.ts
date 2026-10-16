@@ -92,7 +92,13 @@ function findLayerSprite(
  * @param atX - destination x.
  * @param atY - destination y.
  */
-function blit(target: { indices: Uint8Array; mask: Uint8Array; width: number; height: number }, source: SpriteFrame, atX: number, atY: number): void {
+function blit(
+  target: { indices: Uint8Array; mask: Uint8Array; width: number; height: number },
+  source: SpriteFrame,
+  atX: number,
+  atY: number,
+  skipShadowIndex = false,
+): void {
   for (let y = 0; y < source.height; y += 1) {
     const ty = atY + y
     if (ty < 0 || ty >= target.height) continue
@@ -102,7 +108,9 @@ function blit(target: { indices: Uint8Array; mask: Uint8Array; width: number; he
       const tx = atX + x
       if (tx < 0 || tx >= target.width) continue
       const to = ty * target.width + tx
-      target.indices[to] = source.indices[at]!
+      const srcIdx = source.indices[at]!
+      if (skipShadowIndex && (srcIdx === 0 || srcIdx === 172)) continue
+      target.indices[to] = srcIdx
       target.mask[to] = 1
     }
   }
@@ -205,11 +213,19 @@ export async function loadCharacterSheet(
         })
       for (const entry of ordered) {
         const sprite = entry.sprite
+        const cofLayer = cof.layers[entry.layerIndex]
+        const skipShadowIndex = Boolean(cofLayer?.transparent && cofLayer.drawEffect <= 3)
         const dccDir = dir64ToDcc(dir64, sprite.directions.length)
         const layerDirection = sprite.directions[dccDir]
         const frame = layerDirection?.frames[index]
         if (frame === undefined) continue
-        blit(composed, frame.frame, Math.round(layerDirection!.box.left) - boxLeft, Math.round(layerDirection!.box.top) - boxTop)
+        blit(
+          composed,
+          frame.frame,
+          Math.round(layerDirection!.box.left) - boxLeft,
+          Math.round(layerDirection!.box.top) - boxTop,
+          skipShadowIndex,
+        )
       }
       frames.push(composed)
     }

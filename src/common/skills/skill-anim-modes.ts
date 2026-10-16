@@ -35,6 +35,7 @@ export interface ResolvedSkillSequenceFrame {
   readonly frameIndex: number
   readonly sequenceFrame: number
   readonly totalSequenceFrames: number
+  readonly dir?: number | undefined
   readonly event: number
   readonly done: boolean
 }
@@ -2252,9 +2253,9 @@ export const CANONICAL_SKILL_ANIM_MODES: Readonly<Record<number, SkillAnimModeEn
   },
   "243": {
     "playerMode": 10,
-    "monsterMode": 7,
+    "monsterMode": 10,
     "anim": "SC",
-    "monanim": "XX",
+    "monanim": "S3",
     "seqTrans": "SC",
     "seqNum": 0,
     "seqInput": 0
@@ -24489,7 +24490,14 @@ export function resolveSkillSequenceFrame(
   const isContinuousChannelSeq = entry.seqInput > 0 && (skillId === 41 || skillId === 230)
   let done = rawSeqFrame >= frames.length
   let sequenceFrame = Math.max(0, Math.min(frames.length - 1, rawSeqFrame))
-  if (isContinuousChannelSeq) {
+  if (skillId === 151 && frames.length > 3) {
+    // 1.13c D2Client.dll SKILLS_CltDo45_Whirlwind (0x6FB76583: D2Common_10356(pUnit, 3); dwFrameCount = 0x500):
+    // After the 3 startup frames (0..2), Whirlwind loops the 5 spinning sequence frames (3..7) continuously.
+    if (rawSeqFrame >= frames.length) {
+      sequenceFrame = 3 + ((rawSeqFrame - 3) % (frames.length - 3))
+      done = false
+    }
+  } else if (isContinuousChannelSeq) {
     let holdSeqIdx = -1
     for (let i = 0; i < frames.length; i++) {
       if (frames[i]!.event === 1) {
@@ -24513,6 +24521,7 @@ export function resolveSkillSequenceFrame(
     frameIndex: rec.frame,
     sequenceFrame,
     totalSequenceFrames: frames.length,
+    dir: rec.dir,
     event: rec.event,
     done,
   }

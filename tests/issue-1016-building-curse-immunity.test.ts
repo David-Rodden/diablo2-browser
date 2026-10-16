@@ -174,6 +174,7 @@ describe('Issue #1016: Buildings and structures are immune to Necromancer curses
         evalResult: evalRes,
         caster,
         targets: [bldgTower, evilHut, skeleton],
+        targetPositions: new Map(),
         corpses: [],
         missileEngine: {} as any,
         auraScanner: {} as any,

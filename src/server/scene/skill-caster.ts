@@ -112,7 +112,6 @@ import {
 } from '../skills/barbarian-combat.ts'
 import {
   resolveThrowMissileForItemCode,
-  THROW_MISSILE_BY_WEAPON_TYPE,
 } from '../../common/skills/weapon-combat-meta.ts'
 import {
   calculateHowlStats,
@@ -180,6 +179,16 @@ import {
   calcDeathSentry113c,
   calcBladeShield113c,
 } from '../skills/assassin-traps.ts'
+
+/**
+ * 1.13c Skills.txt `cltoverlaya` / `cltoverlayb` for the druid transforms (Overlay.txt rows,
+ * `expansion\druidmorph`): `into` plays when the form is entered, `undo` when it is left.
+ */
+export const DRUID_TRANSFORM_CLT_OVERLAYS_113C: Readonly<Record<223 | 228, { readonly into: string; readonly undo: string }>> =
+  Object.freeze({
+    223: Object.freeze({ into: 'wolf_into', undo: 'wolf_undo' }),
+    228: Object.freeze({ into: 'bear_into', undo: 'bear_undo' }),
+  })
 
 const JAVELIN_ITEM_CODES = new Set([
   'jav', 'pil', 'ssp', 'glv', 'tsp',
@@ -636,25 +645,30 @@ export function castSkill(
     (context.equippedWeapon !== undefined ||
       context.equippedAmmo !== undefined ||
       context.hasAmmo !== undefined ||
-      hudManager?.inventory?.equipped?.weapon1 !== undefined)
+      hudManager?.inventory?.equipped?.weapon1 !== undefined ||
+      hudManager?.inventory?.equipped?.weapon2 !== undefined)
   ) {
-    const bowWeapon =
-      context.equippedWeapon ??
+    const rawW1 =
       hudManager?.inventory?.equipped?.weapon1 ??
       globalBag.__d2webHudInstance?.inventory?.equipped?.weapon1 ??
       null
-    const bowWeaponInfo = getAttackWeaponInfo(bowWeapon)
+    const rawW2 =
+      hudManager?.inventory?.equipped?.weapon2 ??
+      globalBag.__d2webHudInstance?.inventory?.equipped?.weapon2 ??
+      null
+    const w1Info = getAttackWeaponInfo(rawW1)
+    const w2Info = getAttackWeaponInfo(rawW2)
+    const swappedRanged = context.equippedWeapon === undefined && !w1Info.isRanged && w2Info.isRanged
+    const bowWeapon = context.equippedWeapon ?? (swappedRanged ? rawW2 : rawW1)
+    const bowWeaponInfo =
+      context.equippedWeapon !== undefined ? getAttackWeaponInfo(bowWeapon) : swappedRanged ? w2Info : w1Info
     if (!bowWeaponInfo.isRanged) {
       status.textContent = isEn ? 'Requires a bow or crossbow!' : '需要装备弓或十字弓！'
       return false
     }
     // Skill #6 Magic Arrow (srvdofunc = 2) does NOT require or consume arrows/bolts in 1.13c
     if (skillId !== 6) {
-      const bowAmmo =
-        context.equippedAmmo ??
-        hudManager?.inventory?.equipped?.weapon2 ??
-        globalBag.__d2webHudInstance?.inventory?.equipped?.weapon2 ??
-        null
+      const bowAmmo = context.equippedAmmo ?? (swappedRanged ? rawW1 : rawW2)
       const hasBowAmmo =
         context.hasAmmo ??
         (bowAmmo && typeof bowAmmo.quantity === 'number' && bowAmmo.quantity <= 0
@@ -1069,6 +1083,8 @@ export function castSkill(
 
   if (skillId === 43) {
     // Telekinesis (Skill 43): 1.13c ground truth
+    // Skills.txt #43: castoverlay = light_cast_2 (spawned on the caster by step 5 above), tgtoverlay empty;
+    // SrvDo021_Telekinesis sets no overlay on the target -> no target-point / monster overlay here (#1230).
     const slvl = (hudManager as any)?.getSkillLevel?.(43) ?? 1
     const dist = Math.hypot(targetX - player.x, targetY - player.y)
     const maxRange = 600
@@ -1104,7 +1120,6 @@ export function castSkill(
     }
 
     if (targetMonster !== null) {
-      engine.spawnOverlay('light_cast_2', { x: targetX, y: targetY })
       const dmgRange = calculateTelekinesisDamage(slvl)
       const dmg = engine.castRng
         ? engine.castRng.randRange(dmgRange.min, dmgRange.max)
@@ -1123,7 +1138,6 @@ export function castSkill(
       // 35-frame stun
       ;(targetMonster as any).stunTicks = Math.max((targetMonster as any).stunTicks ?? 0, 35)
 
-      engine.spawnOverlay('light_cast_2', { x: targetMonster.x, y: targetMonster.y })
       player.cooldown = 0
       engine.metrics.casts += 1
       status.textContent = isEn
@@ -1137,7 +1151,6 @@ export function castSkill(
       engine.groundItems?.findAtPoint?.(targetX, targetY, 48) ??
       engine.groundItems?.all?.find(g => Math.hypot(g.x - targetX, g.y - targetY) <= 48)
     if (nearbyGroundItem) {
-      engine.spawnOverlay('light_cast_2', { x: targetX, y: targetY })
       if (isTelekinesisItemAllowed(nearbyGroundItem)) {
         const simTimeMs = (engine.world.tick ?? 0) * 40
         if (nearbyGroundItem.isGold) {
@@ -1215,7 +1228,6 @@ export function castSkill(
     if (runtime.waypoints) {
       const clickedWp = runtime.waypoints.find(wp => Math.hypot(wp.arriveX - targetX, wp.arriveY - targetY) <= 80)
       if (clickedWp) {
-        engine.spawnOverlay('light_cast_2', { x: targetX, y: targetY })
         if (context.waypointNetwork?.activate(clickedWp.waypointId)) {
           status.textContent = isEn ? `Waypoint activated: ${runtime.level}` : `传送点已激活：${runtime.level}`
         }
@@ -1235,7 +1247,6 @@ export function castSkill(
     if (runtime.stashes) {
       const clickedStash = runtime.stashes.find(s => Math.hypot(s.x - targetX, s.y - targetY) <= 64)
       if (clickedStash) {
-        engine.spawnOverlay('light_cast_2', { x: targetX, y: targetY })
         if (context.openStash) {
           context.openStash(clickedStash)
         } else if (hudManager && hudManager.leftPanel !== 'stash') {
@@ -1254,7 +1265,6 @@ export function castSkill(
         const portalPos = subTileToScene(mouth.x, mouth.y, runtime.grid)
         const clampedPortalY = Math.max(portalPos.y - 80, Math.min(portalPos.y, targetY))
         if (Math.hypot(portalPos.x - targetX, clampedPortalY - targetY) <= 64) {
-          engine.spawnOverlay('light_cast_2', { x: targetX, y: targetY })
           player.cooldown = 0
           engine.metrics.casts += 1
           status.textContent = isEn ? 'Telekinesis entered Town Portal' : '心灵传动进入传送门'
@@ -1278,7 +1288,6 @@ export function castSkill(
           Math.hypot(bestWarp.arrivePos.x - player.x, bestWarp.arrivePos.y - player.y),
         )
         if (warpPlayerDist <= TELEKINESIS_RANGE_PX) {
-          engine.spawnOverlay('light_cast_2', { x: targetX, y: targetY })
           player.cooldown = 0
           engine.metrics.casts += 1
           const destName = getLevelNames(bestWarp.warp.toLevelId).nameZh
@@ -1295,7 +1304,6 @@ export function castSkill(
     }
 
     // 4. Generic ground cast / feedback
-    engine.spawnOverlay('light_cast_2', { x: targetX, y: targetY })
     player.cooldown = 0
     engine.metrics.casts += 1
     status.textContent = isEn ? 'Cast Telekinesis' : '施展心灵传动'
@@ -1570,33 +1578,36 @@ export function castSkill(
   }
 
   if (skillId === 41) {
-    // Inferno (Skill 41)
+    // Inferno (Skill 41) — 1.13c SKILLS_DoInferno (D2MOO SkillSor.cpp:50-121):
+    // Initial frame only sets Param1=1 and spawns 0 missiles; subsequent channeled frames spawn 1
+    // infernoflame1/infernoflame2 with Range = calc1 (ln12/2 = trunc((20 + 3*(slvl-1)) / 2)).
     const slvl = Math.max(1, (hudManager as any)?.getSkillLevel?.(41) ?? 1)
     const dmgRange = calculateSkillDamage(41, slvl)
     const infernoDmg = Math.round((dmgRange.min + dmgRange.max) / 2)
-    const rangePx = calculateInfernoRangePx(slvl)
     const dx = targetX - player.x
     const dy = targetY - player.y
     const len = Math.hypot(dx, dy)
     const speed = 12
     const vx = len > 0 ? (dx / len) * speed : speed
     const vy = len > 0 ? (dy / len) * speed : 0
-    const ttl = Math.max(8, Math.min(60, Math.round(rangePx / speed)))
+    const ttl = Math.max(1, Math.trunc((20 + 3 * (slvl - 1)) / 2))
 
-    const flameVariant = (engine.metrics.casts % 2 === 0) ? 'infernoflame1' : 'infernoflame2'
-    engine.projectiles.push({
-      skillId: '41',
-      x: player.x,
-      y: player.y,
-      vx,
-      vy,
-      damage: infernoDmg,
-      ttl,
-      fromPlayer: true,
-      missileType: flameVariant,
-      pierce: true,
-      aoeRadius: 20,
-    })
+    if (!isFirstInfernoCast) {
+      const flameVariant = (engine.metrics.casts % 2 === 0) ? 'infernoflame1' : 'infernoflame2'
+      engine.projectiles.push({
+        skillId: '41',
+        x: player.x,
+        y: player.y,
+        vx,
+        vy,
+        damage: infernoDmg,
+        ttl,
+        fromPlayer: true,
+        missileType: flameVariant,
+        pierce: true,
+        aoeRadius: 20,
+      })
+    }
 
     player.cooldown = 0
     engine.metrics.casts += 1
@@ -1699,7 +1710,7 @@ export function castSkill(
   }
 
   if (skillId === 52) {
-    // Enchant (Skill 52)
+    // Enchant (Skill 52) — 1.13c Skills.txt: TargetAlly=1, TargetPet=1, InTown=1, srvdofunc=25
     const slvl = Math.max(1, (hudManager as any)?.getSkillLevel?.(52) ?? 1)
     const warmthLvl = (hudManager as any)?.getSkillLevel?.(37) ?? 0
     const fireMasterySlvl = (hudManager as any)?.getSkillLevel?.(61) ?? 0
@@ -1707,13 +1718,50 @@ export function castSkill(
     const arBonus = calculateEnchantAttackRating(slvl)
     const dmg = calculateEnchantDamage(slvl, { warmth: warmthLvl }, fireMasterySlvl)
 
-    player.enchantTicks = duration
-    player.enchantAttackRatingPercent = arBonus
-    player.enchantDamage = { min: dmg.min, max: dmg.max }
-    player.fireMasterySlvl = fireMasterySlvl
-    player.isSorceress = true
+    let enchantTarget: any = player
+    let bestDist = 80
+    const candidates: any[] = []
+    const summonsList: any[] = Array.isArray((player as any).summons)
+      ? (player as any).summons
+      : Array.isArray((engine.world as any).summons)
+        ? (engine.world as any).summons
+        : []
+    for (const s of summonsList) {
+      if (s && s.alive !== false && (s.hp === undefined || s.hp > 0)) candidates.push(s)
+    }
+    if ((engine as any).mercenary && (engine as any).mercenary.alive !== false) {
+      candidates.push((engine as any).mercenary)
+    }
+    if ((player as any).mercenary && (player as any).mercenary.alive !== false) {
+      candidates.push((player as any).mercenary)
+    }
+    if (Array.isArray((engine.world as any).players)) {
+      for (const p of (engine.world as any).players) {
+        if (p && p !== player && p.alive !== false) candidates.push(p)
+      }
+    }
+    const distToSelf = Math.hypot((player.x ?? targetX) - targetX, (player.y ?? targetY) - targetY)
+    for (const c of candidates) {
+      const d = Math.hypot((c.x ?? 0) - targetX, (c.y ?? 0) - targetY)
+      if (d <= bestDist && (d < distToSelf || distToSelf > 1e-3)) {
+        bestDist = d
+        enchantTarget = c
+      }
+    }
 
-    engine.spawnOverlay('enchant', { x: player.x, y: player.y }, 'player', { loop: false })
+    enchantTarget.enchantTicks = duration
+    enchantTarget.enchantAttackRatingPercent = arBonus
+    enchantTarget.enchantDamage = { min: dmg.min, max: dmg.max }
+    if (enchantTarget === player) {
+      player.fireMasterySlvl = fireMasterySlvl
+      player.isSorceress = true
+    }
+
+    const targetXPos = enchantTarget.x ?? player.x
+    const targetYPos = enchantTarget.y ?? player.y
+    const targetCasterId =
+      enchantTarget === player ? 'player' : String(enchantTarget.uid ?? enchantTarget.id ?? 'ally')
+    engine.spawnOverlay('enchant', { x: targetXPos, y: targetYPos }, targetCasterId, { loop: false })
 
     player.cooldown = 0
     engine.metrics.casts += 1
@@ -1816,9 +1864,7 @@ export function castSkill(
     ;(player as any).cycloneArmorHp = capacity
     ;(player as any).cycloneArmorMaxHp = capacity
     ;(player as any).cycloneArmorSlvl = slvl
-
-    engine.spawnOverlay('cyclonearmor1front', { x: player.x, y: player.y }, 'player', { loop: true, isStateOverlay: true })
-    engine.spawnOverlay('cyclonearmor1back', { x: player.x, y: player.y }, 'player', { loop: true, isStateOverlay: true })
+    ;(player as any).states?.add?.(151)
 
     player.cooldown = 0
     engine.metrics.casts += 1
@@ -1858,7 +1904,8 @@ export function castSkill(
       if (typeof player.maxHp === 'number' && player.maxHp > 0) {
         player.hp = Math.max(1, Math.min(player.hp, player.maxHp))
       }
-      engine.spawnOverlay('transform1', { x: player.x, y: player.y }, 'player')
+      // 1.13c Skills.txt cltoverlayb (wolf_undo / bear_undo) on leaving the form
+      engine.spawnOverlay(DRUID_TRANSFORM_CLT_OVERLAYS_113C[skillId].undo, { x: player.x, y: player.y }, 'player')
       player.cooldown = 0
       engine.metrics.casts += 1
       status.textContent = isEn ? 'Returned to Human form' : '解除变形，恢复人形'
@@ -1878,7 +1925,8 @@ export function castSkill(
       ;(player as any).werebearSlvl = slvl
       ;(player as any).werewolfSlvl = 0
     }
-    engine.spawnOverlay('transform1', { x: player.x, y: player.y }, 'player')
+    // 1.13c Skills.txt cltoverlaya (wolf_into / bear_into) on entering the form
+    engine.spawnOverlay(DRUID_TRANSFORM_CLT_OVERLAYS_113C[skillId].into, { x: player.x, y: player.y }, 'player')
     player.cooldown = 0
     engine.metrics.casts += 1
     status.textContent = isEn
@@ -2045,7 +2093,6 @@ export function castSkill(
       if (typeof player.maxMana === 'number') {
         player.mana = Math.min(player.maxMana, player.mana + leechMp)
       }
-      engine.spawnOverlay('stealskull', { x: player.x, y: player.y })
       player.cooldown = 7
       engine.metrics.casts += 1
       status.textContent = isEn
@@ -2169,27 +2216,32 @@ export function castSkill(
       }
       chargeCountsMap.set(skillId, nextCount)
 
-      const overlayPrefixBySkill: Record<number, { canonical: string; prog: string }> = {
-        254: { canonical: 'chargeup', prog: 'progressive_damage_' },
-        265: { canonical: 'Stealup', prog: 'progressive_steal_' },
-        280: { canonical: 'Royalup', prog: 'progressive_other_' },
-        259: { canonical: 'Fireup', prog: 'progressive_fire_' },
-        269: { canonical: 'Lightup', prog: 'progressive_lightning_' },
-        274: { canonical: 'Coldup', prog: 'progressive_cold_' },
+      const overlayPrefixBySkill: Record<number, { prog: string; prg?: string }> = {
+        254: { prog: 'progressive_damage_', prg: 'tigerstrike' },
+        265: { prog: 'progressive_steal_', prg: 'cobrastrike' },
+        280: { prog: 'progressive_other_' },
+        259: { prog: 'progressive_fire_' },
+        269: { prog: 'progressive_lightning_' },
+        274: { prog: 'progressive_cold_' },
       }
       const ovSpec = overlayPrefixBySkill[skillId]!
       if (Array.isArray(engine.overlays)) {
         engine.overlays = engine.overlays.filter(
           (ov: any) =>
-            !ov.type?.startsWith(ovSpec.canonical) &&
-            !ov.type?.startsWith(ovSpec.canonical.toLowerCase()) &&
-            !ov.type?.startsWith(ovSpec.prog),
+            !ov.type?.startsWith(ovSpec.prog) &&
+            !(ovSpec.prg && ov.type?.startsWith(ovSpec.prg)),
         )
       }
-      engine.spawnOverlay(`${ovSpec.canonical}${nextCount}`, { x: player.x, y: player.y }, 'player', {
+      engine.spawnOverlay(`${ovSpec.prog}${nextCount}`, { x: player.x, y: player.y }, 'player', {
         loop: true,
         isStateOverlay: true,
       })
+      if (ovSpec.prg) {
+        engine.spawnOverlay(`${ovSpec.prg}${nextCount}`, { x: player.x, y: player.y }, 'player', {
+          loop: true,
+          isStateOverlay: false,
+        })
+      }
 
       player.cooldown = 8
       engine.metrics.casts += 1
@@ -2549,18 +2601,9 @@ export function castSkill(
           if (Array.isArray(engine.overlays)) {
             engine.overlays = engine.overlays.filter(
               (ov: any) =>
-                !ov.type?.startsWith('chargeup') &&
-                !ov.type?.startsWith('Stealup') &&
-                !ov.type?.startsWith('stealup') &&
-                !ov.type?.startsWith('Royalup') &&
-                !ov.type?.startsWith('royalup') &&
-                !ov.type?.startsWith('Fireup') &&
-                !ov.type?.startsWith('fireup') &&
-                !ov.type?.startsWith('Lightup') &&
-                !ov.type?.startsWith('lightup') &&
-                !ov.type?.startsWith('Coldup') &&
-                !ov.type?.startsWith('coldup') &&
-                !ov.type?.startsWith('progressive_'),
+                !ov.type?.startsWith('progressive_') &&
+                !ov.type?.startsWith('tigerstrike') &&
+                !ov.type?.startsWith('cobrastrike'),
             )
           }
           discharged = true
@@ -2941,7 +2984,7 @@ export function castSkill(
         maxPets: 1,
         hp: stats.hp,
         kind: 'solar_creeper',
-        monId: 'vinemoon',
+        monId: 'vinecreature',
         extra: {
           manaRecoverMaxPct: stats.manaRecoverMaxPct,
           petLevel: stats.petLevel,
@@ -3179,7 +3222,6 @@ export function castSkill(
           },
         })
       }
-      engine.spawnOverlay('cloaked', { x: player.x, y: player.y }, 'player', { loop: false })
 
       let affectedCount = 0
       for (const m of engine.world.monsters) {
@@ -3203,13 +3245,12 @@ export function castSkill(
           ;(m as any).states?.add?.(156)
           if (!isBossOrUnique) {
             m.curse = {
-              name: 'cloak_of_shadows',
+              name: 'cloaked',
               slvl,
               curseType: 1,
               ticksRemaining: durationFrames,
-              overlayName: 'blindaura',
+              overlayName: 'cloaked',
             }
-            engine.spawnOverlay('blindaura', { x: m.x, y: m.y }, `monster-${m.index}`, { loop: true })
           }
           affectedCount += 1
         }
@@ -3260,7 +3301,7 @@ export function castSkill(
           },
         })
       }
-      engine.spawnOverlay('ethereal', { x: player.x, y: player.y }, 'player', { loop: false })
+      engine.spawnOverlay('fade', { x: player.x, y: player.y }, 'player', { loop: false })
       player.cooldown = 0
       engine.metrics.casts += 1
       status.textContent = isEn
@@ -3326,7 +3367,7 @@ export function castSkill(
         const dist = Math.hypot(m.x - targetX, (m.y - targetY) / ISO_GROUND_ASPECT_RATIO)
         if (dist <= radiusPx) {
           damageMonster(engine.world, m.index, physAvg)
-          engine.spawnOverlay('mindblast_hit', { x: m.x, y: m.y }, `monster-${m.index}`, { loop: false })
+          engine.spawnOverlay('fist_will_cast', { x: m.x, y: m.y }, `monster-${m.index}`, { loop: false })
           const kbAngle = Math.atan2(m.y - targetY, m.x - targetX)
           m.x += Math.cos(kbAngle) * 16
           m.y += Math.sin(kbAngle) * (16 * ISO_GROUND_ASPECT_RATIO)
@@ -3558,19 +3599,6 @@ export function castSkill(
       rawDiff,
     )
 
-    const dx = targetX - player.x
-    const dy = (targetY - player.y) / ISO_GROUND_ASPECT_RATIO
-    const len = Math.hypot(dx, dy) || 1
-    const perpX = -dy / len
-    const perpY = dx / len
-    const spacing = 24
-
-    for (let i = -2; i <= 2; i++) {
-      const segX = targetX + perpX * (i * spacing)
-      const segY = targetY + perpY * (i * spacing * ISO_GROUND_ASPECT_RATIO)
-      engine.spawnOverlay('bonecast', { x: segX, y: segY })
-    }
-
     player.cooldown = 0
     engine.metrics.casts += 1
     status.textContent = isEn
@@ -3658,14 +3686,6 @@ export function castSkill(
       { boneArmor: boneArmorBlvl, boneWall: boneWallBlvl },
       rawDiff,
     )
-
-    const ringRadius = 40
-    for (let i = 0; i < prisonStats.segmentCount; i++) {
-      const angle = (i / prisonStats.segmentCount) * 2 * Math.PI
-      const segX = targetX + Math.cos(angle) * ringRadius
-      const segY = targetY + Math.sin(angle) * (ringRadius * ISO_GROUND_ASPECT_RATIO)
-      engine.spawnOverlay('bonecast', { x: segX, y: segY })
-    }
 
     player.cooldown = 0
     engine.metrics.casts += 1
@@ -4273,13 +4293,11 @@ export function castSkill(
   const pierceSlvl = resolveLearnedEffectiveSkillLevel(33, player, hudManager, engine)
   const itemPiercePct = Number((player as any).itemPiercePct ?? 0)
   const amaPierceChancePct =
-    skillId === 22
-      ? 0
-      : pierceSlvl > 0
-        ? Math.min(100, calculatePierceStats(pierceSlvl, skillId).chancePct + itemPiercePct)
-        : (player as any).pierce === true
-          ? 100
-          : Math.min(100, Math.max(0, itemPiercePct))
+    pierceSlvl > 0
+      ? Math.min(100, calculatePierceStats(pierceSlvl, skillId).chancePct + itemPiercePct)
+      : (player as any).pierce === true
+        ? 100
+        : Math.min(100, Math.max(0, itemPiercePct))
   const hasAmaPierce = amaPierceChancePct > 0
   const csSlvl = resolveLearnedEffectiveSkillLevel(9, player, hudManager, engine)
   const csChancePct = csSlvl > 0 ? calculateCriticalStrikeStats(csSlvl).chancePct : 0
@@ -4446,7 +4464,6 @@ export function castSkill(
       ;(player as any).holyShieldBlockBonus = hsStats.blockChancePct
       ;(player as any).holyShieldSmiteDamageMin = hsStats.smiteMinFlat
       ;(player as any).holyShieldSmiteDamageMax = hsStats.smiteMaxFlat
-      engine.spawnOverlay('holyshield', { x: player.x, y: player.y }, 'player', { loop: true, isStateOverlay: true })
       player.cooldown = 0
       engine.metrics.casts += 1
       status.textContent = isEn
@@ -4495,11 +4512,9 @@ export function castSkill(
       const sacStats = calculateSacrificeStats(castSlvl, { redemption: redemptionBlvl, fanaticism: fanatBlvl })
       const sacDmg = Math.max(1, Math.floor((baseWepDmg * (100 + sacStats.damagePct)) / 100))
       const targetMonster = findBestTargetInReach()
-      engine.spawnOverlay('sacrifice_1', { x: player.x, y: player.y }, 'player')
       if (targetMonster !== null) {
         const hpBefore = targetMonster.hp
         damageMonster(engine.world, targetMonster.index, sacDmg)
-        engine.spawnOverlay('sacrifice_2', { x: targetMonster.x, y: targetMonster.y })
         engine.metrics.playerHits += 1
         const cappedBaseDmg = Math.min(sacDmg, Math.max(0, hpBefore))
         const rawSelfDmg = Math.floor((cappedBaseDmg * sacStats.selfDamagePct) / 100)
@@ -4538,7 +4553,6 @@ export function castSkill(
         const kAngle = Math.atan2(targetMonster.y - player.y, targetMonster.x - player.x)
         targetMonster.x += Math.cos(kAngle) * 16
         targetMonster.y += Math.sin(kAngle) * (16 * ISO_GROUND_ASPECT_RATIO)
-        engine.spawnOverlay('smite', { x: targetMonster.x, y: targetMonster.y })
         engine.spawnOverlay('stun', { x: targetMonster.x, y: targetMonster.y }, `monster-${targetMonster.index}`)
         engine.metrics.playerHits += 1
         status.textContent = isEn
@@ -4617,7 +4631,7 @@ export function castSkill(
     }
 
     if (skillId === 111) {
-      // #111 Vengeance (SKILLS_SrvDo071_Vengeance: base weapon physical + tri-elemental Fire/Cold/Lightning + chill + vengeance overlay)
+      // #111 Vengeance (SKILLS_SrvDo071_Vengeance: base weapon physical + tri-elemental Fire/Cold/Lightning + chill)
       const vngStats = calculateVengeanceStats(castSlvl, {
         resistFire: resolveBaseSkillLevel(100, player, hudManager, engine),
         resistCold: resolveBaseSkillLevel(105, player, hudManager, engine),
@@ -4632,7 +4646,6 @@ export function castSkill(
       if (targetMonster !== null) {
         damageMonster(engine.world, targetMonster.index, totalDmg)
         targetMonster.chillTicks = Math.max(targetMonster.chillTicks ?? 0, vngStats.chillDurationFrames)
-        engine.spawnOverlay('vengeance', { x: targetMonster.x, y: targetMonster.y })
         engine.metrics.playerHits += 1
         status.textContent = isEn
           ? `Vengeance (+${vngStats.firePct}% Fire / +${vngStats.coldPct}% Cold / +${vngStats.ltngPct}% Ltng) hit: ${monsterDisplayName(targetMonster.stats, 'ENG')}`
@@ -4671,7 +4684,7 @@ export function castSkill(
             ;(targetMonster as any).level = clvl
             targetMonster.hp = Math.max(1, Math.floor((targetMonster.hp * clvl) / mlvl))
           }
-          engine.spawnOverlay('conversion', { x: targetMonster.x, y: targetMonster.y }, `monster-${targetMonster.index}`, { loop: true, isStateOverlay: true })
+          engine.spawnOverlay('conversionaura', { x: targetMonster.x, y: targetMonster.y }, `monster-${targetMonster.index}`, { loop: true, isStateOverlay: true })
         }
       }
       status.textContent = isEn
@@ -4731,7 +4744,7 @@ export function castSkill(
     }
 
     if (skillId === 126) {
-      // #126 Bash: +50 + 5*(slvl-1) + 5*blvl(139)% ED, +slvl flat physical damage, +20 + 5*(slvl-1) + 5*blvl(144)% AR, 100% knockback, 'bash' overlay
+      // #126 Bash: +50 + 5*(slvl-1) + 5*blvl(139)% ED, +slvl flat physical damage, +20 + 5*(slvl-1) + 5*blvl(144)% AR, 100% knockback (no srvoverlay, #1079)
       const stunBlvl = resolveBaseSkillLevel(139, player, hudManager, engine)
       const concBlvl = resolveBaseSkillLevel(144, player, hudManager, engine)
       const bashStats = calculateBashStats(castSlvl, stunBlvl, concBlvl)
@@ -4746,7 +4759,6 @@ export function castSkill(
         targetMonster.x += Math.cos(kbAngle) * 16
         targetMonster.y += Math.sin(kbAngle) * (16 * ISO_GROUND_ASPECT_RATIO)
         ;(targetMonster as any).knockedBack = true
-        engine.spawnOverlay('bash', { x: targetMonster.x, y: targetMonster.y }, `monster-${targetMonster.index}`)
         engine.metrics.playerHits += 1
         status.textContent = isEn
           ? `Bash (+${bashStats.damageBonusPct}% ED, +${bashStats.flatPhysicalMin} Dmg) hit: ${monsterDisplayName(targetMonster.stats, 'ENG')}`
@@ -4917,6 +4929,7 @@ export function castSkill(
       if (targetMonster !== null) {
         damageMonster(engine.world, targetMonster.index, physDmg + magicDmg)
         ;(targetMonster as any).lastMagicDamageTaken = magicDmg
+        engine.spawnOverlay('doubledamage1', { x: targetMonster.x, y: targetMonster.y }, `monster-${targetMonster.index}`)
         engine.metrics.playerHits += 1
         status.textContent = isEn
           ? `Concentrate (+${concStats.damageBonusPct}% ED, +${concStats.defenseBonusPct}% Def) hit: ${monsterDisplayName(targetMonster.stats, 'ENG')}`
@@ -5204,7 +5217,7 @@ export function castSkill(
     const dmgRange = calculateSkillDamage(48, slvl)
     damage = Math.round((dmgRange.min + dmgRange.max) / 2)
     delay = 0
-    missileType = 'electricnova'
+    missileType = 'nova'
     isNova = true
     multiCount = 64
     skillName = '新星'
@@ -5405,7 +5418,7 @@ export function castSkill(
     missileType = 'poisonjav'
     skillName = '毒枪'
   } else if (skillId === 20) {
-    const missile = getMissileTxtData('lightningjavelin') ?? getMissileTxtData('lightningjav')
+    const missile = getMissileTxtData('lightningjavelin')
     speed = missile.speedPxPerSec || 750
     range = missile.distancePx || 750
     const lbStats = calculateLightningBoltStats(castSlvl, {
@@ -5436,8 +5449,11 @@ export function castSkill(
     damage = physDmg * amaCritMult
     delay = 0
     homing = true
-    pierce = false
-    pierceChancePct = 0
+    pierce = hasAmaPierce
+    if (hasAmaPierce) {
+      pierceChancePct = amaPierceChancePct
+      maxPierceCount = 4
+    }
     missileType = 'guidedarrow'
     skillName = '导引箭'
   } else if (skillId === 24) {
@@ -5659,7 +5675,7 @@ export function castSkill(
     missileType = 'frozenorb'
     skillName = '冰封球'
   } else if (skillId === 49) {
-    const missile = getMissileTxtData('lightning') ?? getMissileTxtData('lightningbolt')
+    const missile = getMissileTxtData('lightningbolt')
     speed = missile.speedPxPerSec || 750
     range = missile.distancePx || 750
     const slvl = (hudManager as any)?.getSkillLevel?.(49) ?? castSlvl
@@ -5667,7 +5683,7 @@ export function castSkill(
     damage = Math.round((dmgRange.min + dmgRange.max) / 2)
     delay = 0
     pierce = true
-    missileType = 'lightning'
+    missileType = 'lightningbolt'
     skillName = '闪电'
   } else if (skillId === 53) {
     const missile = getMissileTxtData('chainlightning')
@@ -5764,7 +5780,7 @@ export function castSkill(
     range = 40
     delay = 25
     skillName = '天堂之拳'
-    missileType = 'fistofares'
+    missileType = 'fistoftheheavensdelay'
     multiCount = 1
     isUndeadOnly = false
   } else if (skillId === 131 || skillId === 142 || skillId === 150) {
@@ -5888,7 +5904,8 @@ export function castSkill(
     delay = 0
     damage = 0
     isNova = true
-    multiCount = 32
+    // SrvDo068 / SrvDo022 -> sub_6FD14170 (D2Game 0x6FD14170): 64 missiles on the radius-30 table.
+    multiCount = 64
     if (skillId === 130) {
       const howlStats = calculateHowlStats(castSlvl, diff)
       speed = howlStats.missileVel * 25
@@ -5929,8 +5946,8 @@ export function castSkill(
       }
     } else if (skillId === 138) {
       const sStats = calculateShoutStats(castSlvl, boBlvl, bcBlvl)
-      speed = 16 * 25
-      range = 16 * 16
+      speed = getMissileTxtData('shout').speedPxPerSec
+      range = getMissileTxtData('shout').distancePx
       missileType = 'shout'
       skillName = '大吼'
       const curShoutSlvl = Number((player as any).shoutSlvl ?? 0)
@@ -5940,11 +5957,11 @@ export function castSkill(
         ;(player as any).shoutDefensePct = sStats.defenseBonusPct
         ;(player as any).shoutTicks = sStats.durationFrames
       }
-      engine.spawnOverlay('shout_cast', { x: player.x, y: player.y }, 'player', { isCastOverlay: true })
+      engine.spawnOverlay('shoutstart', { x: player.x, y: player.y }, 'player', { isCastOverlay: true })
     } else if (skillId === 146) {
       const bcStats = calculateBattleCryStats(castSlvl, diff)
-      speed = 16 * 25
-      range = 8 * 16
+      speed = getMissileTxtData('battlecry').speedPxPerSec
+      range = getMissileTxtData('battlecry').distancePx
       missileType = 'battlecry'
       skillName = '战嗥'
       const radiusPx = Math.max(160, bcStats.radiusSubtiles * (40 * (2 / 3)))
@@ -5967,8 +5984,8 @@ export function castSkill(
       }
     } else if (skillId === 149) {
       const boStats = calculateBattleOrdersStats(castSlvl, shoutBlvl, bcBlvl)
-      speed = 16 * 25
-      range = 16 * 16
+      speed = getMissileTxtData('battleorders').speedPxPerSec
+      range = getMissileTxtData('battleorders').distancePx
       missileType = 'battleorders'
       skillName = '战斗体制'
       const curBoSlvl = Number((player as any).battleOrdersSlvl ?? 0)
@@ -5978,11 +5995,11 @@ export function castSkill(
         ;(player as any).battleOrdersBonusPct = boStats.maxLifeBonusPct
         ;(player as any).battleOrdersTicks = boStats.durationFrames
       }
-      engine.spawnOverlay('battleorders_cast', { x: player.x, y: player.y }, 'player', { isCastOverlay: true })
+      engine.spawnOverlay('battleorderscast', { x: player.x, y: player.y }, 'player', { isCastOverlay: true })
     } else {
       const cmdStats = calculateBattleCommandStats(castSlvl, shoutBlvl, boBlvl)
-      speed = 16 * 25
-      range = 16 * 16
+      speed = getMissileTxtData('battlecommand').speedPxPerSec
+      range = getMissileTxtData('battlecommand').distancePx
       missileType = 'battlecommand'
       skillName = '战斗指挥'
       const curCmdSlvl = Number((player as any).battleCommandSlvl ?? 0)
@@ -5992,20 +6009,20 @@ export function castSkill(
         ;(player as any).battleCommandBonus = cmdStats.allSkillsBonus
         ;(player as any).battleCommandTicks = cmdStats.durationFrames
       }
-      engine.spawnOverlay('battlecommand_cast', { x: player.x, y: player.y }, 'player', { isCastOverlay: true })
+      engine.spawnOverlay('battlecommandcast', { x: player.x, y: player.y }, 'player', { isCastOverlay: true })
     }
   } else if (skillId === 154) {
     const howlBlvl = resolveBaseSkillLevel(130, player, hudManager, engine)
     const tauntBlvl = resolveBaseSkillLevel(137, player, hudManager, engine)
     const bcBlvl = resolveBaseSkillLevel(146, player, hudManager, engine)
     const wcStats = calculateWarCryStats(castSlvl, howlBlvl, tauntBlvl, bcBlvl)
-    speed = 16 * 25
-    range = 8 * 16
+    speed = getMissileTxtData('warcry').speedPxPerSec
+    range = getMissileTxtData('warcry').distancePx
     damage = Math.floor((wcStats.minPhysicalDamage + wcStats.maxPhysicalDamage) / 2)
     delay = 0
     missileType = 'warcry'
     isNova = true
-    multiCount = 32
+    multiCount = 64
     skillName = '战争狂嗥'
     const radiusPx = Math.max(160, wcStats.radiusSubtiles * (40 * (2 / 3)))
     for (const m of engine.world.monsters) {
@@ -6050,9 +6067,11 @@ export function castSkill(
     delay = 10
     const wCode = typeof (castWeapon as any)?.code === 'string' ? (castWeapon as any).code : undefined
     const wTypeKey = String((castWeapon as any)?.type ?? (castWeapon as any)?.itemType ?? '').toLowerCase()
+    const wTypeDefaultCode =
+      wTypeKey === 'tkni' ? 'tkf' : wTypeKey === 'taxe' ? 'tax' : wTypeKey === 'jave' || wTypeKey === 'ajav' ? 'jav' : undefined
     missileType =
       (wCode ? resolveThrowMissileForItemCode(wCode) : undefined) ??
-      THROW_MISSILE_BY_WEAPON_TYPE[wTypeKey] ??
+      (wTypeDefaultCode ? resolveThrowMissileForItemCode(wTypeDefaultCode) : undefined) ??
       (castWeaponInfo.subtype === 'axe'
         ? 'throwaxe'
         : castWeaponInfo.subtype === 'dagger'
@@ -6116,11 +6135,10 @@ export function castSkill(
     range = 80
     damage = Math.max(1, Math.round(computeCastSkillDamage(234, castSlvl, castWeaponInfo) * synMult))
     delay = 50
-    missileType = 'eruptioncenter'
+    missileType = 'erruption center'
     aoeRadius = 60
     nextHit = 1
     nextDelay = 5
-    engine.spawnOverlay('druid_fire_cast_2', { x: player.x, y: player.y })
     skillName = '火山爆'
   } else if (skillId === 240) {
     const torBlvl = resolveBaseSkillLevel(245, player, hudManager, engine)
@@ -6174,11 +6192,10 @@ export function castSkill(
     range = 150
     damage = Math.max(1, Math.round(computeCastSkillDamage(244, castSlvl, castWeaponInfo) * synMult))
     delay = 100
-    missileType = 'volcanobase'
+    missileType = 'volcano'
     aoeRadius = 24
     nextHit = 1
     nextDelay = 5
-    engine.spawnOverlay('druid_fire_cast_2', { x: player.x, y: player.y })
     skillName = '火山'
   } else if (skillId === 245) {
     const caBlvl = resolveBaseSkillLevel(235, player, hudManager, engine)
@@ -6207,13 +6224,17 @@ export function castSkill(
     damage = Math.max(1, Math.round(computeCastSkillDamage(249, castSlvl, castWeaponInfo) * synMult))
     delay = 150
     missileType = 'armageddonrock'
-    aoeRadius = 120
+    aoeRadius = 160
     ;(player as any).armageddonTicks = durationFrames
     ;(player as any).armageddonDamage = damage
     ;(player as any).armageddonResidualDamage = Math.max(1, Math.round(damage / 4))
     ;(player as any).armageddonSlvl = castSlvl
-    engine.spawnOverlay('druid_fire_cast_2', { x: player.x, y: player.y })
     skillName = '末日浩劫'
+    player.cooldown = 150
+    engine.metrics.casts += 1
+    const displaySkillName = isEn ? getSkillDisplayName(skillId, 'ENG') : skillName
+    status.textContent = isEn ? `Cast skill: ${displaySkillName}` : `施展技能：${skillName}`
+    return true
   } else if (skillId === 250) {
     const caBlvl = resolveBaseSkillLevel(235, player, hudManager, engine)
     const twBlvl = resolveBaseSkillLevel(240, player, hudManager, engine)
@@ -6226,14 +6247,19 @@ export function castSkill(
     delay = 150
     statusEffect = 'chill'
     statusDuration = 50
-    aoeRadius = 120
+    aoeRadius = 180
     missileType = 'hurricaneswoosh'
     ;(player as any).hurricaneTicks = durationFrames
     ;(player as any).hurricaneDamage = damage
     ;(player as any).hurricaneChillFrames = 50
-    ;(player as any).hurricaneRadiusPx = 120
+    ;(player as any).hurricaneRadiusPx = 180
     ;(player as any).hurricaneSlvl = castSlvl
     skillName = '暴风'
+    player.cooldown = 150
+    engine.metrics.casts += 1
+    const displaySkillName = isEn ? getSkillDisplayName(skillId, 'ENG') : skillName
+    status.textContent = isEn ? `Cast skill: ${displaySkillName}` : `施展技能：${skillName}`
+    return true
   } else if (
     skillId === 251 ||
     skillId === 256 ||
@@ -6403,7 +6429,7 @@ export function castSkill(
       range = 400
       damage = Math.max(1, Math.round((fb.minDmg + fb.maxDmg) / 2))
       delay = 0
-      missileType = 'firetrauma'
+      missileType = 'bomb in air'
       aoeRadius = fb.explosionRadiusSubtiles * 20 // 3 sub-tiles = 60px
       aoeDamage = damage
       skillName = '火焰爆震'
@@ -6413,7 +6439,7 @@ export function castSkill(
       range = 400
       damage = Math.max(1, Math.round((sw.minDmg + sw.maxDmg) / 2))
       delay = 15
-      missileType = 'shockfieldground'
+      missileType = 'shock field on ground'
       multiCount = sw.spikeCount
       spreadAngle = 0.6
       fireDuration = 90
@@ -6432,11 +6458,33 @@ export function castSkill(
       range = 250 * 4 // 100 frames
       damage = Math.max(1, Math.round((bs.totalMin + bs.totalMax) / 2))
       delay = 50
-      missileType = 'bladecreeper'
+      missileType = 'blade creeper'
       pierce = true
       nextHit = 1
       nextDelay = 25
       skillName = '刀刃守卫'
+      registerCastSummon({
+        engine,
+        player,
+        hudManager,
+        skillId: 257,
+        slvl: castSlvl,
+        x: targetX,
+        y: targetY,
+        petType: 'bladesentinel',
+        petGroup: 0,
+        maxPets: Number.POSITIVE_INFINITY,
+        hp: 100,
+        kind: 'blade_sentinel',
+        monId: 'bladecreeper',
+        lifespanTicks: 100,
+        extra: {
+          hcIdx: 413,
+          classId: 413,
+          missileName: 'blade creeper',
+          missileId: 392,
+        },
+      })
     } else if (skillId === 266) {
       const bf = calcBladeFury113c(
         castSlvl,
@@ -6444,11 +6492,11 @@ export function castSkill(
         castWeaponInfo.damageMax,
         is2HWeapon,
       )
-      speed = 450
-      range = 396 // 22 frames at Vel=18
+      speed = 550
+      range = 880 // 40 frames at Vel=22 (Missiles.txt #506 bladefragment1)
       damage = Math.max(1, Math.round((bf.totalMin + bf.totalMax) / 2))
       delay = 0
-      missileType = 'bladefury1'
+      missileType = 'bladefragment1'
       multiCount = 1
       skillName = '刀刃之怒'
     }

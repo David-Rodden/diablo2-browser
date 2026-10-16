@@ -353,7 +353,7 @@ export class KillTracker {
     }
   }
 
-  destroy(): void {
+  stopListening(): void {
     this.unsubServerEvent()
     this.unsubStateChange()
     this.windowLike?.document?.removeEventListener?.(
@@ -362,6 +362,10 @@ export class KillTracker {
     )
     this.windowLike?.removeEventListener?.('pagehide', this.onPageHideBound)
     this.clearFlushTimer()
+  }
+
+  destroy(): void {
+    this.stopListening()
     try {
       this.channel?.close()
     } catch {

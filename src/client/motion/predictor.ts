@@ -312,6 +312,10 @@ export class LocalMovementPredictor {
     this.waypointIndex = 0
   }
 
+  resetTo(x: number, y: number): void {
+    this.setPosition(x, y)
+  }
+
   /**
    * Instantaneously set both current `dir64` (`+0x64`) and `targetDir64` (`+0x65`) (`bInstant = 1`),
    * e.g. when the server assigns an explicit initial facing.
@@ -624,7 +628,7 @@ export class LocalMovementPredictor {
       x: this.logicalX,
       y: this.logicalY,
       moving: currentWaypoint !== null,
-      running: this.running,
+      running: this.running && !this.staminaExhausted,
       dir64: this.turnState.dir64,
       targetDir64: this.turnState.targetDir64,
       stepDir: this.turnState.stepDir,
@@ -669,7 +673,7 @@ export class LocalMovementPredictor {
     }
     const town = typeof modeOrInTown === 'boolean' ? modeOrInTown : inTown
     if (this.waypointIndex < this.waypoints.length) {
-      return this.running ? 7 : 5
+      return this.running && !this.staminaExhausted ? 7 : 5
     }
     return town ? 5 : 3
   }

@@ -1021,6 +1021,30 @@ export class SoundRecords113c {
     return detached
   }
 
+  /**
+   * 0x6fad25d0 + StopSound 0x6fb38bf0 (used by SKILLS_CltDo45_Whirlwind 0x6fb76472 / 0x6fb7655d for
+   * barbarian_whirlwind 2531): detaches `unit` from active records in `soundId`'s variant group
+   * (`[groupBase, groupBase + groupSize)`) and stops/fades each record left with no attached units.
+   */
+  stopUnitSound(unit: SoundUnitRef113c, soundId: number): number {
+    const targetRow = this.rows.get(soundId)
+    if (targetRow === undefined) return 0
+    const groupBase = targetRow.groupBase
+    const groupEnd = groupBase + Math.max(1, targetRow.groupSize)
+    let stopped = 0
+    for (const r of this.active) {
+      if (r.stop || r.state === 2) continue
+      if (r.id < groupBase || r.id >= groupEnd) continue
+      if (!r.units.some((u) => sameUnit(u, unit))) continue
+      r.units = r.units.filter((u) => !sameUnit(u, unit))
+      stopped += 1
+      if (r.units.length > 0) continue
+      const keepsPlaying = r.fading && r.ft === 0
+      if (!keepsPlaying) this.stopWithFade(r)
+    }
+    return stopped
+  }
+
   /** SoundUpdate 0x6fb38dd0 at the current clock. */
   update(): void {
     const now = this.clock

@@ -450,9 +450,9 @@ describe('Issue #859: Strict 1.13c Shrine Overhead Icons (SubClass=1) per Shrine
       expect(drawnCalls, `Booster Code=${code} should draw base + icon + shimmer`).toHaveLength(3)
       expect(drawnCalls[0]?.atlas).toBe(objArt.handle)
       expect(drawnCalls[1]?.atlas).toBe(handleByToken.get(expected.icon))
-      expect(drawnCalls[1]?.blendMode).toBe('trans50')
+      expect(drawnCalls[1]?.blendMode).toBe('additive')
       expect(drawnCalls[2]?.atlas).toBe(handleByToken.get(expected.shimmer))
-      expect(drawnCalls[2]?.blendMode).toBe('trans50')
+      expect(drawnCalls[2]?.blendMode).toBe('additive')
 
       // Verify Height4 = -60 yOffset positioning: worldY (300) + objYOffset (0) + yOffset (-60) + anchorY
       const iconArt = overlayArtMap.get(expected.icon)!

@@ -190,9 +190,14 @@ describe('#993 item 11: ClientWorld curse visual pipeline', () => {
     expect(center.curseSubMissileKey).toBe('curseweaken')
     expect(center.curseVisualRadius).toBe(6)
     expect(center.maxTicks).toBe(CURSECENTER_RANGE_113C)
-    // No static cltmissilea at the target and no Do-frame cursecast any more.
+    // No static cltmissilea at the target. Called directly (no SKILLS_CltSt18_Curse cast start), the CltDo30 path
+    // spawns the cltmissilec 'cursecast' exactly once at the caster as the cast-start fallback (Issues #1165/#1166),
+    // never at the curse target.
     expect(missiles(world).some((m) => m.missileKey === 'curseweaken')).toBe(false)
-    expect(missiles(world).some((m) => m.missileKey === 'cursecast')).toBe(false)
+    const casts = missiles(world).filter((m) => m.missileKey === 'cursecast')
+    expect(casts).toHaveLength(1)
+    expect(casts[0]!.x).toBe(caster.x)
+    expect(casts[0]!.y).toBe(caster.y)
 
     const countParticles = (): number => missiles(world).filter((m) => m.missileKey === 'curseweaken').length
     const perTick: number[] = []

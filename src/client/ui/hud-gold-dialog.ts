@@ -9,6 +9,7 @@
  */
 
 import { requireTbl } from '../i18n/lang.ts'
+import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
 import { drawStoneBoxFrame } from './world-panels.ts'
 import type { HudCommandSink, HudManager } from './hud-manager.ts'
 
@@ -42,12 +43,50 @@ function requireHudSink(hud: HudManager, action: string): HudCommandSink {
   return sink
 }
 
-/** Source balance the gold dialog clamps to: stash gold for withdraw, inventory gold otherwise. */
-export function goldDialogBalance(hud: HudManager, mode: GoldDialogMode): number {
-  return mode === 4 ? hud.worldPanels.stashGold : hud.inventory.gold
+export function resolveHudPlayerLevel(hud: HudManager): number {
+  const charLvl = Number(hud.charSheet?.attrs?.level ?? 0)
+  const invExplicit = Boolean(
+    (hud.inventory as { _playerLevelExplicitlySet?: boolean } | undefined)?._playerLevelExplicitlySet,
+  )
+  const invLvl = Number(hud.inventory?.playerLevel ?? 0)
+  const ctxLvl = Number(hud.inventory?.playerContext?.level ?? 0)
+  const wpLvl = Number(
+    (hud.worldPanels as { localPlayerLevel?: number } | undefined)?.localPlayerLevel ?? 0,
+  )
+  if (charLvl > 1) return charLvl
+  if (invExplicit && invLvl >= 1) return invLvl
+  if (ctxLvl > 1) return ctxLvl
+  if (wpLvl > 1) return wpLvl
+  return Math.max(1, charLvl || invLvl || ctxLvl || wpLvl || 1)
 }
 
-/** Open the gold dialog pre-filled with the whole source balance. */
+/**
+ * Maximum gold transferable in `mode` (`D2Client.dll` gold keypad dialog):
+ * - Deposit (`3`): `min(inventory.gold, max(0, getStashGoldLimit(clvl) - stashGold))`
+ * - Withdraw (`4`): `min(stashGold, max(0, getInventoryGoldLimit(clvl) - inventory.gold))`
+ * - Drop (`0`) / Trade (`2`): `inventory.gold`
+ */
+export function goldDialogBalance(
+  hud: HudManager,
+  mode: GoldDialogMode | 'Drop' | 'Trade' | 'Deposit' | 'Withdraw' | null,
+): number {
+  const clvl = resolveHudPlayerLevel(hud)
+  const invGold = Math.max(0, Math.floor(hud.inventory?.gold ?? 0))
+  const stashGold = Math.max(0, Math.floor(hud.worldPanels?.stashGold ?? 0))
+  if (mode === 3 || mode === 'Deposit') {
+    const stashCap = getStashGoldLimit(clvl)
+    const stashRoom = Math.max(0, stashCap - stashGold)
+    return Math.min(invGold, stashRoom)
+  }
+  if (mode === 4 || mode === 'Withdraw') {
+    const invCap = getInventoryGoldLimit(clvl)
+    const invRoom = Math.max(0, invCap - invGold)
+    return Math.min(stashGold, invRoom)
+  }
+  return invGold
+}
+
+/** Open the gold dialog pre-filled with the clamped transferable balance (`maxTransfer`). */
 export function openGoldDialog(hud: HudManager, mode: GoldDialogMode): void {
   if (mode === 2 && hud.leftPanel !== 'trade') {
     throw new Error('HudManager.openGoldDialog: trade gold needs the trade panel open')
@@ -58,7 +97,12 @@ export function openGoldDialog(hud: HudManager, mode: GoldDialogMode): void {
   if (mode === 4 && hud.leftPanel !== 'stash') {
     throw new Error('HudManager.openGoldDialog: withdraw needs the stash open')
   }
-  hud.goldDialog = { mode, amount: hud.goldDialogBalance(mode), fresh: true }
+  const maxTransfer =
+    typeof hud.goldDialogBalance === 'function' ? hud.goldDialogBalance(mode) : goldDialogBalance(hud, mode)
+  if ((mode === 0 || mode === 3 || mode === 4) && maxTransfer <= 0) {
+    return
+  }
+  hud.goldDialog = { mode, amount: maxTransfer, fresh: true }
   hud.syncPublishedState()
 }
 

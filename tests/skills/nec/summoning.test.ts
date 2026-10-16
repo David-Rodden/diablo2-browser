@@ -711,7 +711,7 @@ describe('Milestone M4: Necromancer Summoning Spells Tree (1.13c Ground Truth)',
       expect(pet.stateBus.hasState('revive')).toBe(true)
       expect(STATE_COLOR_SHIFTS[96]).toEqual({
         stateId: 96,
-        priority: 50,
+        priority: 85,
         tintColor: [112, 112, 112],
         paletteRow: 0,
       })

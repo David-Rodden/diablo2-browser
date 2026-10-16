@@ -951,9 +951,9 @@ export function tickProjectiles(
           }
         }
       } else if (projectile.missileType === 'plaguejavelin') {
-        // Authentic 1.13c AlwaysExplode = 1 for Plague Javelin (#25) -> MISSMODE_SrvHit08_PoisonCloud:
-        // Spawns radial expanding ring of plaguejavcloud missiles
-        const cloudTtl = Math.min(18, 12 + Math.floor(Math.max(1, projectile.slvl ?? 1) / 3))
+        // Authentic 1.13c AlwaysExplode = 1 for Plague Javelin (#25) -> MISSMODE_SrvHit02_PlagueJavelin:
+        // Spawns radial expanding ring of plaguejavcloud missiles (Missiles.txt #221 Range=60)
+        const cloudTtl = 60
         const cloudDmg = projectile.residualDamage ?? projectile.aoeDamage ?? Math.max(1, Math.floor(projectile.damage / 6))
         for (let i = 0; i < 64; i += 4) {
           const offX = FROZEN_ORB_X_POSITIONS[i]!
@@ -1091,7 +1091,7 @@ export function tickProjectiles(
             damage: 0,
             ttl: 15,
             fromPlayer: projectile.fromPlayer,
-            missileType: 'moltenboulderflyingrocks',
+            missileType: 'moltenboulder-flyingrocks',
             aoeRadius: 32,
             pierce: true,
           })
@@ -1140,7 +1140,7 @@ export function tickProjectiles(
           x: projectile.x,
           y: projectile.y,
           skillId: projectile.skillId,
-          missileType: 'armageddonground',
+          missileType: 'armageddonfire',
           aoeRadius: blastRadius,
         })
       }
@@ -1173,23 +1173,27 @@ export function tickProjectiles(
       // 1. Archimedean spiral trajectory (e.g. Blessed Hammer)
       // The hammer traces an Archimedean spiral on the map ground plane. In oblique/isometric
       // perspective (2:1 projection), a circular ground expansion projects to an ellipse with a 2:1 aspect ratio.
-      const nextAngle = spiral.angle + 0.22
-      const nextRadius = spiral.radius + 3.2
+      const nextAngle = spiral.angle + 0.12435
+      const nextRadius = spiral.radius + 1.855
       spiral = { ...spiral, angle: nextAngle, radius: nextRadius }
       x = spiral.originX + Math.cos(nextAngle) * nextRadius
       y = spiral.originY + Math.sin(nextAngle) * (nextRadius * ISO_GROUND_ASPECT_RATIO)
       vx = -Math.sin(nextAngle) * 18
       vy = Math.cos(nextAngle) * (18 * ISO_GROUND_ASPECT_RATIO)
     } else if (projectile.homing) {
-      // 2. Homing trajectory (e.g. Bone Spirit) - smoothly steer towards closest living enemy
+      // 2. Homing trajectory (1.13c MISSMODE_SrvDo07_GuidedArrow_BoneSpirit 0x6FC59DC0):
+      // Re-path directly toward nearest unhit living hostile target within 25 sub-tiles (500px).
       let nearestDist = Number.POSITIVE_INFINITY
       let targetX = 0
       let targetY = 0
       let foundTarget = false
+      const isBoneSpirit = projectile.missileType === 'bonespirit' || projectile.skillId === '93'
+      const maxSearchDistPx = isBoneSpirit ? 500 : Number.POSITIVE_INFINITY
       for (const t of targets) {
         if (!t.alive) continue
+        if (projectile.hitTargets?.has(t.index)) continue
         const d = Math.hypot(t.x - projectile.x, t.y - projectile.y)
-        if (d < nearestDist && d > 4) {
+        if (d <= maxSearchDistPx && d < nearestDist && d > 0) {
           nearestDist = d
           targetX = t.x
           targetY = t.y
@@ -1197,17 +1201,10 @@ export function tickProjectiles(
         }
       }
       if (foundTarget) {
-        const curAngle = Math.atan2(vy, vx)
         const targetAngle = Math.atan2(targetY - projectile.y, targetX - projectile.x)
-        let diff = targetAngle - curAngle
-        while (diff > Math.PI) diff -= 2 * Math.PI
-        while (diff < -Math.PI) diff += 2 * Math.PI
-        const maxTurn = 0.14
-        const turn = Math.max(-maxTurn, Math.min(maxTurn, diff))
-        const newAngle = curAngle + turn
         const speed = Math.hypot(vx, vy)
-        vx = Math.cos(newAngle) * speed
-        vy = Math.sin(newAngle) * speed
+        vx = Math.cos(targetAngle) * speed
+        vy = Math.sin(targetAngle) * speed
         x = projectile.x + vx
         y = projectile.y + vy
       }
@@ -1349,8 +1346,10 @@ export function tickProjectiles(
       }
     }
 
-    // 7. Poison Javelin (#15) & Plague Javelin (#25) trailing poison cloud (pSrvDoFunc = 6: MISSMODE_SrvDo06_Trail)
+    // 7. Poison Javelin (#15) & Plague Javelin (#25) trailing poison cloud (pSrvDoFunc = 2 / 3, Missiles.txt #39 / #221 Range = 60)
     if (projectile.missileType === 'poisonjav' || projectile.missileType === 'plaguejavelin') {
+      const trailCloudType =
+        projectile.missileType === 'plaguejavelin' ? 'plaguejavcloud' : 'poisonjavcloud'
       spawned.push({
         skillId: projectile.skillId,
         x: projectile.x,
@@ -1358,11 +1357,11 @@ export function tickProjectiles(
         vx: 0,
         vy: 0,
         damage: projectile.residualDamage ?? Math.max(1, Math.floor(projectile.damage / 6)),
-        ttl: 75,
+        ttl: 60,
         fromPlayer: projectile.fromPlayer,
-        missileType: 'poisonjavcloud',
+        missileType: trailCloudType,
         statusEffect: 'poison',
-        statusDuration: projectile.statusDuration ?? 200,
+        statusDuration: projectile.statusDuration ?? (projectile.missileType === 'plaguejavelin' ? 75 : 200),
         aoeRadius: 24,
         pierce: true,
       })
@@ -1411,7 +1410,7 @@ export function tickProjectiles(
         nextHit: 1,
         nextDelay: 4,
       })
-    } else if (projectile.missileType === 'eruptioncenter') {
+    } else if (projectile.missileType === 'erruption center') {
       x = projectile.x
       y = projectile.y
       vx = 0
@@ -1429,14 +1428,14 @@ export function tickProjectiles(
           damage: projectile.damage,
           ttl: 20,
           fromPlayer: projectile.fromPlayer,
-          missileType: 'eruption crack 1',
+          missileType: 'erruption crack 1',
           aoeRadius: 24,
           pierce: true,
           nextHit: 1,
           nextDelay: 5,
         })
       }
-    } else if (projectile.missileType === 'volcanobase') {
+    } else if (projectile.missileType === 'volcano') {
       x = projectile.x
       y = projectile.y
       vx = 0
@@ -1485,18 +1484,29 @@ export function tickProjectiles(
     const hitTargets = projectile.hitTargets ?? new Set<number>()
     const currentAge = (projectile.ageTicks ?? 0) + 1
     if (
+      (projectile.missileType === 'guidedarrow' || projectile.skillId === '22') &&
+      currentAge % 5 === 0 &&
+      hitTargets.size > 0
+    ) {
+      for (const hitIdx of Array.from(hitTargets)) {
+        const hitTarget = targets.find(t => t.index === hitIdx)
+        if (!hitTarget || Math.hypot(hitTarget.x - x, hitTarget.y - y) > hitTarget.radius + radius) {
+          hitTargets.delete(hitIdx)
+        }
+      }
+    }
+    if (
       (projectile.missileType === 'meteorfire' && currentAge % 5 === 0) ||
       (projectile.missileType === 'immolationfire' && currentAge % 5 === 0) ||
       (projectile.missileType === 'poisonjavcloud' && currentAge % 5 === 0) ||
       (projectile.missileType === 'plaguejavcloud' && currentAge % 5 === 0) ||
       (projectile.missileType === 'firestorm' && currentAge % 4 === 0) ||
       (projectile.missileType === 'moltenboulderfirepath' && currentAge % 4 === 0) ||
-      (projectile.missileType === 'eruption crack 1' && currentAge % 5 === 0) ||
+      (projectile.missileType === 'erruption crack 1' && currentAge % 5 === 0) ||
       (projectile.missileType === 'armageddonfire' && currentAge % 4 === 0) ||
       (projectile.missileType === 'tornado' && currentAge % 25 === 0) ||
       projectile.missileType === 'firewall' ||
       projectile.missileType === 'blaze' ||
-      projectile.missileType === 'groundfirebig' ||
       projectile.missileType === 'infernoflame1' ||
       projectile.missileType === 'infernoflame2'
     ) {
@@ -1595,7 +1605,7 @@ export function tickProjectiles(
           damage: 0,
           ttl: 15,
           fromPlayer: projectile.fromPlayer,
-          missileType: 'freezeexplode',
+          missileType: 'freezingarrowexp1',
           aoeRadius: projectile.aoeRadius ?? 64,
           pierce: true,
         })
@@ -1608,7 +1618,7 @@ export function tickProjectiles(
           damage: 0,
           ttl: 15,
           fromPlayer: projectile.fromPlayer,
-          missileType: 'glacialspikeejecta',
+          missileType: 'freezingarrowexp2',
           aoeRadius: projectile.aoeRadius ?? 64,
           pierce: true,
         })
@@ -1691,8 +1701,24 @@ export function tickProjectiles(
           aoeRadius: projectile.aoeRadius ?? 80,
           pierce: true,
         })
+      } else if (projectile.missileType === 'poisonjav') {
+        spawned.push({
+          skillId: projectile.skillId,
+          x,
+          y,
+          vx: 0,
+          vy: 0,
+          damage: projectile.residualDamage ?? Math.max(1, Math.floor(projectile.damage / 6)),
+          ttl: 60,
+          fromPlayer: projectile.fromPlayer,
+          missileType: 'poisonjavcloud',
+          statusEffect: 'poison',
+          statusDuration: projectile.statusDuration ?? 200,
+          aoeRadius: 24,
+          pierce: true,
+        })
       } else if (projectile.missileType === 'plaguejavelin') {
-        const cloudTtl = Math.min(18, 12 + Math.floor(Math.max(1, projectile.slvl ?? 1) / 3))
+        const cloudTtl = 60
         const cloudDmg = projectile.residualDamage ?? projectile.aoeDamage ?? Math.max(1, Math.floor(projectile.damage / 6))
         for (let i = 0; i < 64; i += 4) {
           const offX = FROZEN_ORB_X_POSITIONS[i]!
@@ -1764,7 +1790,7 @@ export function tickProjectiles(
             damage: 0,
             ttl: 15,
             fromPlayer: projectile.fromPlayer,
-            missileType: 'moltenboulderflyingrocks',
+            missileType: 'moltenboulder-flyingrocks',
             aoeRadius: 32,
             pierce: true,
           })
@@ -1782,13 +1808,11 @@ export function tickProjectiles(
       projectile.missileType === 'meteortail' ||
       projectile.missileType === 'firewallmaker' ||
       projectile.missileType === 'firestormmaker' ||
-      projectile.missileType === 'eruptioncenter' ||
-      projectile.missileType === 'volcanobase' ||
+      projectile.missileType === 'erruption center' ||
+      projectile.missileType === 'volcano' ||
       projectile.missileType === 'armageddonrock' ||
       projectile.missileType === 'moltenboulderemerge' ||
-      projectile.missileType === 'moltenboulderflyingrocks' ||
-      projectile.missileType === 'freezeexplode' ||
-      projectile.missileType === 'glacialspikeejecta' ||
+      projectile.missileType === 'moltenboulder-flyingrocks' ||
       projectile.missileType === 'explodingarrowexp' ||
       projectile.missileType === 'freezingarrowexp1' ||
       projectile.missileType === 'freezingarrowexp2' ||
@@ -1796,7 +1820,6 @@ export function tickProjectiles(
       projectile.missileType === 'iceexplode' ||
       projectile.missileType === 'fireexplode' ||
       projectile.missileType === 'thunderstorm1' ||
-      projectile.missileType === 'thunderstorm' ||
       projectile.missileType === 'lightninghit' ||
       isTurretEmitter
     if (!isHarmlessEmitter) {
@@ -1813,21 +1836,34 @@ export function tickProjectiles(
           projectile.missileType === 'plaguejavcloud' ||
           projectile.missileType === 'firestorm' ||
           projectile.missileType === 'moltenboulderfirepath' ||
-          projectile.missileType === 'eruption crack 1' ||
+          projectile.missileType === 'erruption crack 1' ||
           projectile.missileType === 'armageddonfire' ||
           projectile.missileType === 'firewall' ||
-          projectile.missileType === 'blaze' ||
-          projectile.missileType === 'groundfirebig'
+          projectile.missileType === 'blaze'
+        const isHomingProjectile =
+          Boolean(projectile.homing) ||
+          projectile.missileType === 'guidedarrow' ||
+          projectile.missileType === 'bonespirit'
+        const distToSeg = (tx: number, ty: number): number => {
+          const segDx = x - projectile.x
+          const segDy = y - projectile.y
+          const segLenSq = segDx * segDx + segDy * segDy
+          if (segLenSq <= 1e-6) return Math.hypot(tx - x, ty - y)
+          const t = Math.max(0, Math.min(1, ((tx - projectile.x) * segDx + (ty - projectile.y) * segDy) / segLenSq))
+          return Math.hypot(tx - (projectile.x + segDx * t), ty - (projectile.y + segDy * t))
+        }
         const dist = isGroundPatch
           ? Math.hypot(target.x - x, (target.y - y) / ISO_GROUND_ASPECT_RATIO)
-          : Math.hypot(target.x - x, target.y - y)
+          : isHomingProjectile
+            ? distToSeg(target.x, target.y)
+            : Math.hypot(target.x - x, target.y - y)
         const hitRadius =
           projectile.missileType === 'immolationfire' ||
           projectile.missileType === 'poisonjavcloud' ||
           projectile.missileType === 'plaguejavcloud' ||
           projectile.missileType === 'firestorm' ||
           projectile.missileType === 'moltenboulderfirepath' ||
-          projectile.missileType === 'eruption crack 1' ||
+          projectile.missileType === 'erruption crack 1' ||
           projectile.missileType === 'armageddonfire' ||
           projectile.missileType === 'tornado'
             ? Math.max(radius, projectile.aoeRadius ?? 24)
@@ -1836,8 +1872,7 @@ export function tickProjectiles(
 
         const hasNextDelay =
           (projectile.nextDelay !== undefined && projectile.nextDelay > 0) ||
-          projectile.missileType === 'nova' ||
-          projectile.missileType === 'electricnova'
+          projectile.missileType === 'nova'
         const nextDelayFrames = projectile.nextDelay ?? 4
 
         if (hasNextDelay) {
@@ -1872,7 +1907,7 @@ export function tickProjectiles(
             projectile.missileType === 'plaguejavcloud' ||
             projectile.missileType === 'firestorm' ||
             projectile.missileType === 'moltenboulderfirepath' ||
-            projectile.missileType === 'eruption crack 1' ||
+            projectile.missileType === 'erruption crack 1' ||
             projectile.missileType === 'armageddonfire' ||
             projectile.missileType === 'tornado'
               ? 0
@@ -2005,7 +2040,7 @@ export function tickProjectiles(
             pierce: true,
           })
         } else if (projectile.missileType === 'plaguejavelin') {
-          const cloudTtl = Math.min(18, 12 + Math.floor(Math.max(1, projectile.slvl ?? 1) / 3))
+          const cloudTtl = 60
           const cloudDmg = projectile.residualDamage ?? projectile.aoeDamage ?? Math.max(1, Math.floor(projectile.damage / 6))
           for (let i = 0; i < 64; i += 4) {
             const offX = FROZEN_ORB_X_POSITIONS[i]!
@@ -2087,7 +2122,7 @@ export function tickProjectiles(
               damage: 0,
               ttl: 15,
               fromPlayer: projectile.fromPlayer,
-              missileType: 'freezeexplode',
+              missileType: 'freezingarrowexp1',
               aoeRadius: projectile.aoeRadius ?? 64,
               pierce: true,
             })
@@ -2100,7 +2135,7 @@ export function tickProjectiles(
               damage: 0,
               ttl: 15,
               fromPlayer: projectile.fromPlayer,
-              missileType: 'glacialspikeejecta',
+              missileType: 'freezingarrowexp2',
               aoeRadius: projectile.aoeRadius ?? 64,
               pierce: true,
             })
@@ -2120,6 +2155,22 @@ export function tickProjectiles(
               statusDuration: 100,
               aoeRadius: 32,
               pierce: false,
+            })
+          } else if (projectile.missileType === 'poisonjav') {
+            spawned.push({
+              skillId: projectile.skillId,
+              x,
+              y,
+              vx: 0,
+              vy: 0,
+              damage: projectile.residualDamage ?? Math.max(1, Math.floor(projectile.damage / 6)),
+              ttl: 60,
+              fromPlayer: projectile.fromPlayer,
+              missileType: 'poisonjavcloud',
+              statusEffect: 'poison',
+              statusDuration: projectile.statusDuration ?? 200,
+              aoeRadius: 24,
+              pierce: true,
             })
           } else if (projectile.missileType === 'fireball') {
             spawned.push({

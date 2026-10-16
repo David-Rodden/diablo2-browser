@@ -455,7 +455,7 @@ export function calculateIceArrowStats(
  * Skill 022: Guided Arrow
  * Enhanced damage `+5%*(slvl-1)`,
  * auto-hit invariant (`alwaysHits = true`),
- * strict `canPierce = false` and `pierceChancePct = 0` (1.13c ground truth),
+ * pierce-capable (`canPierce = true`, actual pierce chance from Skill #33 Pierce + item_pierce),
  * mana `max(1.0, 8.0 - 0.25*(slvl-1))` (`minmana=1, mana=32, lvlmana=-1, manashift=6`).
  */
 export function calculateGuidedArrowStats(slvl: number): GuidedArrowStats {
@@ -468,7 +468,7 @@ export function calculateGuidedArrowStats(slvl: number): GuidedArrowStats {
     enhancedDamagePct,
     alwaysHits: true,
     autoHit: true,
-    canPierce: false,
+    canPierce: true,
     pierceChancePct: 0,
     toHitBonusPct: 0,
     manaCost,

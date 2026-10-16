@@ -12,6 +12,7 @@ import {
   getMissileTxtData,
   getOverlayTxtData,
   getSkillCastOverlay,
+  getSkillOverlayRow113c,
 } from '../src/common/skills/missiles-data.ts'
 import { getSkillRange } from '../src/common/skills/weapon-combat-meta.ts'
 import {
@@ -129,7 +130,8 @@ describe('Druid Elemental Skills (#225-#250) — 1.13c 4-Layer Parity (Issue #10
       expect(CANONICAL_113C_OVERLAYS['twisterfront']).toBeDefined()
       expect(CANONICAL_113C_OVERLAYS['twisterback']?.preDraw).toBe(true)
       expect(getOverlayTxtData('cyclonearmor1front').frames).toBe(11)
-      expect(getSkillCastOverlay(230)).toBe('arctic_blast_cast')
+      expect(getSkillCastOverlay(230)).toBeUndefined()
+      expect(getSkillOverlayRow113c(230)?.prgOverlay).toBe('arctic_blast_cast')
       expect(getSkillCastOverlay(234)).toBe('druid_fire_cast_2')
       expect(getSkillCastOverlay(244)).toBe('druid_fire_cast_2')
       expect(getSkillCastOverlay(249)).toBe('druid_fire_cast_2')
@@ -138,10 +140,10 @@ describe('Druid Elemental Skills (#225-#250) — 1.13c 4-Layer Parity (Issue #10
       expect(CANONICAL_113C_MISSILES['firestorm']?.range).toBe(15)
       expect(CANONICAL_113C_MISSILES['moltenboulder']?.alwaysExplode).toBe(true)
       expect(CANONICAL_113C_MISSILES['arcticblast1']?.range).toBe(30)
-      expect(CANONICAL_113C_MISSILES['eruptioncenter']?.range).toBe(80)
-      expect(CANONICAL_113C_MISSILES['volcanobase']?.range).toBe(150)
-      expect(CANONICAL_113C_MISSILES['moltenboulderflyingrocks']?.range).toBe(16)
-      expect(CANONICAL_113C_MISSILES['armageddonground']?.range).toBe(37)
+      expect(CANONICAL_113C_MISSILES['erruption center']?.range).toBe(80)
+      expect(CANONICAL_113C_MISSILES['volcano']?.range).toBe(150)
+      expect(CANONICAL_113C_MISSILES['moltenboulder-flyingrocks']?.range).toBe(16)
+      expect(CANONICAL_113C_MISSILES['armageddonfire']?.range).toBe(37)
       expect(getMissileTxtData('twister').range).toBe(50)
       expect(getMissileTxtData('tornado').range).toBe(75)
 
@@ -386,7 +388,7 @@ describe('Druid Elemental Skills (#225-#250) — 1.13c 4-Layer Parity (Issue #10
       })
       expect(ok234).toBe(true)
       expect(engine.world.player.cooldown).toBe(50)
-      const fissureProj = engine.projectiles.find((p: any) => p.missileType === 'eruptioncenter')
+      const fissureProj = engine.projectiles.find((p: any) => p.missileType === 'erruption center')
       expect(fissureProj).toBeDefined()
       expect(fissureProj.x).toBe(320)
       expect(fissureProj.y).toBe(280)
@@ -401,7 +403,7 @@ describe('Druid Elemental Skills (#225-#250) — 1.13c 4-Layer Parity (Issue #10
       })
       expect(ok244).toBe(true)
       expect(engine.world.player.cooldown).toBe(100)
-      const volcanoProj = engine.projectiles.find((p: any) => p.missileType === 'volcanobase')
+      const volcanoProj = engine.projectiles.find((p: any) => p.missileType === 'volcano')
       expect(volcanoProj).toBeDefined()
       expect(volcanoProj.x).toBe(340)
       expect(volcanoProj.y).toBe(300)
@@ -453,8 +455,8 @@ describe('Druid Elemental Skills (#225-#250) — 1.13c 4-Layer Parity (Issue #10
 
   describe('Layer 4: Client World Missiles & Stepper (world-skill-missiles.ts & world-missile-stepper.ts)', () => {
     it('classifies Druid Elemental missile CollideType 0 and CollideType 8 accurately', () => {
-      expect(getMissileCollideType113c('eruptioncenter')).toBe(0)
-      expect(getMissileCollideType113c('volcanobase')).toBe(0)
+      expect(getMissileCollideType113c('erruption center')).toBe(0)
+      expect(getMissileCollideType113c('volcano')).toBe(0)
       expect(getMissileCollideType113c('hurricaneswoosh')).toBe(0)
       expect(getMissileCollideType113c('armageddonrock')).toBe(0)
       expect(getMissileCollideType113c('firestormmaker')).toBe(8)
@@ -471,12 +473,11 @@ describe('Druid Elemental Skills (#225-#250) — 1.13c 4-Layer Parity (Issue #10
         ;(world as any).spawnMissilesForSkill(caster, skillId, 108, 104, 5)
       }
 
-      // Verify Cyclone Armor (151), Armageddon (145), and Hurricane (144) states and overlays on caster
+      // Verify Cyclone Armor (151), Armageddon (145), and Hurricane (144) states on caster (Cyclone Armor draws staged front overlay via state 151, no cyclonearmor1back)
       expect(caster.states.has(151)).toBe(true)
       expect(caster.states.has(145)).toBe(true)
       expect(caster.states.has(144)).toBe(true)
-      expect(caster.overlays.some((o) => o.token === 'cyclonearmor1front')).toBe(true)
-      expect(caster.overlays.some((o) => o.token === 'cyclonearmor1back')).toBe(true)
+      expect(caster.overlays.some((o) => o.token === 'cyclonearmor1back')).toBe(false)
 
       // Step 15 discrete simulation ticks and verify sub-missiles (firestorm, moltenboulderfirepath, eruptioncenter, volcanobase, tornado, hurricaneswoosh)
       for (let i = 0; i < 15; i++) {
@@ -487,9 +488,9 @@ describe('Druid Elemental Skills (#225-#250) — 1.13c 4-Layer Parity (Issue #10
         allUnits.filter((u) => u.unitType === 'missile').map((u) => u.missileKey),
       )
       expect(missileKeys.has('firestorm')).toBe(true)
-      expect(missileKeys.has('moltenboulderfirepath')).toBe(true)
-      expect(missileKeys.has('eruptioncenter')).toBe(true)
-      expect(missileKeys.has('volcanobase')).toBe(true)
+      expect(missileKeys.has('moltenboulder')).toBe(true)
+      expect(missileKeys.has('erruption center')).toBe(true)
+      expect(missileKeys.has('volcano')).toBe(true)
       expect(missileKeys.has('tornado')).toBe(true)
       expect(missileKeys.has('hurricaneswoosh')).toBe(true)
     })

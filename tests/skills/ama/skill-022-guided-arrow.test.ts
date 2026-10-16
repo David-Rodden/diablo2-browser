@@ -108,13 +108,13 @@ describe('[Skill #022] Guided Arrow (AMA) — 1.13c Parity (Issue #176)', () => 
     expect(outcome?.executed).toBe(true)
   })
 
-  it('validates 1.13c calculateGuidedArrowStats pure calculations and zero-pierce invariant', () => {
-    // Level 1: +0% ED, alwaysHits = true, canPierce = false, pierceChancePct = 0, 8.0 mana
+  it('validates 1.13c calculateGuidedArrowStats pure calculations and pierce capability', () => {
+    // Level 1: +0% ED, alwaysHits = true, canPierce = true, pierceChancePct = 0 (scales from Pierce #33 + item_pierce), 8.0 mana
     const s1 = calculateGuidedArrowStats(1)
     expect(s1.enhancedDamagePct).toBe(0)
     expect(s1.alwaysHits).toBe(true)
     expect(s1.autoHit).toBe(true)
-    expect(s1.canPierce).toBe(false)
+    expect(s1.canPierce).toBe(true)
     expect(s1.pierceChancePct).toBe(0)
     expect(s1.manaCost).toBe(8.0)
 
@@ -122,14 +122,14 @@ describe('[Skill #022] Guided Arrow (AMA) — 1.13c Parity (Issue #176)', () => 
     const s10 = calculateGuidedArrowStats(10)
     expect(s10.enhancedDamagePct).toBe(45)
     expect(s10.alwaysHits).toBe(true)
-    expect(s10.canPierce).toBe(false)
+    expect(s10.canPierce).toBe(true)
     expect(s10.manaCost).toBe(5.75)
 
     // Level 20: +95% ED, 3.25 mana
     const s20 = calculateGuidedArrowStats(20)
     expect(s20.enhancedDamagePct).toBe(95)
     expect(s20.alwaysHits).toBe(true)
-    expect(s20.canPierce).toBe(false)
+    expect(s20.canPierce).toBe(true)
     expect(s20.manaCost).toBe(3.25)
 
     // High level clamp: mana floor is 1.0 (minmana=1; slvl 29+ reaches 1.0)
@@ -138,10 +138,10 @@ describe('[Skill #022] Guided Arrow (AMA) — 1.13c Parity (Issue #176)', () => 
     const s50 = calculateGuidedArrowStats(50)
     expect(s50.manaCost).toBe(1.0)
 
-    // Strict zero-pierce invariant at all levels
+    // Pierce capability and auto-hit at all levels
     for (let lvl = 1; lvl <= 40; lvl++) {
       const s = calculateGuidedArrowStats(lvl)
-      expect(s.canPierce).toBe(false)
+      expect(s.canPierce).toBe(true)
       expect(s.pierceChancePct).toBe(0)
       expect(s.alwaysHits).toBe(true)
     }

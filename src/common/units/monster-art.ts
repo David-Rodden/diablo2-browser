@@ -124,6 +124,59 @@ export function findMonsterLayerSprite(
   return undefined
 }
 
+export type CofLayerDrawBlendMode =
+  | 'normal'
+  | 'trans25'
+  | 'trans50'
+  | 'trans75'
+  | 'additive'
+
+/**
+ * Resolve a COF layer's draw blend mode per 1.13c `D2Client.dll` `GetLayerDrawMode` (`0x6FB6CB70`)
+ * and `D2Gfx.dll` `eDrawMode` (`sub_6F61A100`):
+ * - COF byte `+0x03` (`layer.transparent` / `bTransOverride`) indicates whether byte `+0x04`
+ *   (`layer.drawEffect` / `nDrawEffect`) overrides the unit's default `Trans` draw mode.
+ * - When `layer.transparent` is true, `layer.drawEffect` maps as `eDrawMode`:
+ *   `0 -> 'trans25'`, `1 -> 'trans50'`, `2 -> 'trans75'`, `3 -> 'additive'`, `4 -> 'normal'` (multiply), `5 -> 'normal'`.
+ * - When `layer.transparent` is false, returns `unitDefaultDrawMode`.
+ */
+export function resolveCofLayerDrawMode(
+  layer: Pick<CofFile['layers'][number], 'transparent' | 'drawEffect'> | undefined,
+  unitDefaultDrawMode: CofLayerDrawBlendMode = 'normal',
+): CofLayerDrawBlendMode {
+  if (!layer || !layer.transparent) {
+    return unitDefaultDrawMode
+  }
+  switch (layer.drawEffect) {
+    case 0:
+      return 'trans25'
+    case 1:
+      return 'trans50'
+    case 2:
+      return 'trans75'
+    case 3:
+      return 'additive'
+    case 4:
+    case 5:
+      return 'normal'
+    default:
+      return unitDefaultDrawMode
+  }
+}
+
+export function cofLayerDrawModeAlphaByte(mode: CofLayerDrawBlendMode): number {
+  switch (mode) {
+    case 'trans25':
+      return 64
+    case 'trans50':
+      return 128
+    case 'trans75':
+      return 192
+    default:
+      return 255
+  }
+}
+
 /**
  * Masked blit of a layer frame onto a combined canvas frame.
  */
@@ -132,6 +185,8 @@ function blit(
   source: SpriteFrame,
   atX: number,
   atY: number,
+  alphaByte = 255,
+  occludeGlowTarget: { indices: Uint8Array; mask: Uint8Array } | null = null,
 ): void {
   for (let y = 0; y < source.height; y += 1) {
     const ty = atY + y
@@ -142,8 +197,16 @@ function blit(
       const tx = atX + x
       if (tx < 0 || tx >= target.width) continue
       const to = ty * target.width + tx
-      target.indices[to] = source.indices[at]!
-      target.mask[to] = 1
+      const srcIdx = source.indices[at]!
+      if (alphaByte < 255 && (srcIdx === 0 || srcIdx === 172)) {
+        continue
+      }
+      target.indices[to] = srcIdx
+      target.mask[to] = Math.max(target.mask[to]!, alphaByte)
+      if (alphaByte === 255 && occludeGlowTarget !== null) {
+        occludeGlowTarget.indices[to] = 0
+        occludeGlowTarget.mask[to] = 0
+      }
     }
   }
 }
@@ -267,7 +330,7 @@ export interface MonsterLayerFailure {
 export interface MonsterAnimationSheet {
   readonly sheet: SpriteSheet
   readonly glowSheet?: SpriteSheet | undefined
-  readonly blendMode: 'normal' | 'additive'
+  readonly blendMode: CofLayerDrawBlendMode
   readonly directions: number
   readonly framesPerDirection: number
   readonly layers: number
@@ -532,23 +595,30 @@ export async function compositeObjectAnimation(
   return compositeLoadedLayers(cof, sprites, decodedMembers, layerFailures, 0, 0)
 }
 
-function compositeLoadedLayers(
+export function compositeLoadedLayers(
   cof: CofFile,
   sprites: readonly (DccFile | null)[],
   decodedMembers: readonly string[],
   layerFailures: readonly MonsterLayerFailure[],
   anchorOffsetX: number,
   anchorOffsetY: number,
+  unitDefaultDrawMode: CofLayerDrawBlendMode = 'normal',
 ): MonsterAnimationSheet {
-  const isAdditiveLayer = (layerIdx: number): boolean => {
-    const layer = cof.layers[layerIdx]
-    return layer !== undefined && (layer.drawEffect === 3 || layer.transparent)
-  }
+  const layerDrawMode = (layerIdx: number): CofLayerDrawBlendMode =>
+    resolveCofLayerDrawMode(cof.layers[layerIdx], unitDefaultDrawMode)
+  const isAdditiveLayer = (layerIdx: number): boolean => layerDrawMode(layerIdx) === 'additive'
 
-  const hasAdditive = cof.layers.some(l => l.drawEffect === 3 || l.transparent)
-  const hasNormal = cof.layers.some(l => !(l.drawEffect === 3 || l.transparent))
+  const hasAdditive = cof.layers.some((_, idx) => isAdditiveLayer(idx))
+  const hasNormal = cof.layers.some((_, idx) => !isAdditiveLayer(idx))
   const isComposite = hasAdditive && hasNormal
   const isPureAdditive = hasAdditive && !hasNormal
+  const nonAdditiveModes = cof.layers
+    .map((_, idx) => layerDrawMode(idx))
+    .filter(m => m !== 'additive')
+  const uniformNonAdditiveMode: CofLayerDrawBlendMode =
+    nonAdditiveModes.length > 0 && nonAdditiveModes.every(m => m === nonAdditiveModes[0])
+      ? nonAdditiveModes[0]!
+      : unitDefaultDrawMode
 
   const groups: { frames: SpriteFrame[] }[] = []
   const glowGroups: { frames: SpriteFrame[] }[] = []
@@ -629,9 +699,11 @@ function compositeLoadedLayers(
         const atX = Math.round(dirData.box.left) - boxLeft
         const atY = Math.round(dirData.box.top) - boxTop
         if (glowTarget !== null && isAdditiveLayer(layerIdx)) {
-          blit(glowTarget, frameData.frame, atX, atY)
+          blit(glowTarget, frameData.frame, atX, atY, 255, null)
         } else {
-          blit(baseTarget, frameData.frame, atX, atY)
+          const mode = layerDrawMode(layerIdx)
+          const alphaByte = cofLayerDrawModeAlphaByte(mode)
+          blit(baseTarget, frameData.frame, atX, atY, alphaByte, glowTarget)
         }
       }
 
@@ -661,7 +733,7 @@ function compositeLoadedLayers(
   return {
     sheet: { groups, width: null },
     glowSheet: isComposite ? { groups: glowGroups, width: null } : undefined,
-    blendMode: isPureAdditive && anyPlaced ? 'additive' : 'normal',
+    blendMode: !anyPlaced ? 'normal' : isPureAdditive ? 'additive' : uniformNonAdditiveMode,
     directions: cof.numberOfDirections,
     framesPerDirection: cof.framesPerDirection,
     layers: cof.layers.length,

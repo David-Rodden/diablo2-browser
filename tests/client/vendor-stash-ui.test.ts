@@ -228,7 +228,7 @@ describe('NPC menu -> server store', () => {
 })
 
 describe('store actions are commands only', () => {
-  it('buy / shift-buy click the store grid -> 0x32 with itemMode 0 and the #10107 price, throttled to one per 2000 ms', () => {
+  it('buy / shift-buy click the store grid -> 0x32 with itemMode 0 and the #10107 price without 2000 ms throttle (1.13c 0x6faf6f6f, #1304)', () => {
     const s = openCharsiStore('05-d2gs-vendor-open.d2cap')
     const before = s.commands.length
     const pl = s.hud.worldPanels.getActiveVendorPlacements()[0]!
@@ -243,11 +243,10 @@ describe('store actions are commands only', () => {
     expect(s.commands.slice(before)).toEqual([
       { type: 'NpcBuy', npcId: CHARSI_ID, itemId, itemMode: 0, gamble: false, shiftFill: false, cost: stubPrice(raw, 0, { world: s.world, npcClass: 154 }) },
     ])
-    // Second click inside the throttle window is dropped.
+    // D2Client.dll 0x6faf6f5c..0x6faf6f6f: `g_bIsRepairAll` (`[0x6fbcbc90]`) is 0 for buy (`0x32`),
+    // so consecutive buys dispatch immediately without waiting 2000 ms (#1304).
     mouseDown(s.hud, x, y, { shiftKey: true })
-    expect(s.commands.length).toBe(before + 1)
-    s.clock.t += NPC_TRADE_THROTTLE_MS
-    mouseDown(s.hud, x, y, { shiftKey: true })
+    expect(s.commands.length).toBe(before + 2)
     expect(s.commands.at(-1)).toMatchObject({ type: 'NpcBuy', itemId, shiftFill: true, gamble: false })
 
     // Nothing changed locally: the server answers with 0x2A / 0x9C / stat 14.
@@ -256,25 +255,30 @@ describe('store actions are commands only', () => {
     expect(s.hud.inventory.cursorItem).toBeNull()
   })
 
-  it('sell / repair / repair-all send 0x33 / 0x35 with the current durability; repair and repair-all share one throttle', () => {
+  it('sell / repair / repair-all send 0x33 / 0x35 with the current durability; only repair-all (0x6fbcbc90 != 0) is throttled to 2000 ms (#1304)', () => {
     const s = openCharsiStore('05-d2gs-vendor-open.d2cap')
     const before = s.commands.length
     const scroll = [...s.world.containers.inventory.values()].find((i) => i.code === 'tsc')!
     const axe = [...s.world.containers.equipment.values()].find((i) => i.code === 'hax')!
 
     expect(s.model.vendorSell(scroll.id)).toBe(true)
-    expect(s.model.vendorSell(scroll.id)).toBe(false)
+    expect(s.model.vendorSell(scroll.id)).toBe(true)
     // 1.13c: items at max durability reject repair
     expect(s.model.vendorRepairItem(axe.id)).toBe(false)
     Object.assign(axe, { curDurability: 20 })
     expect(s.model.vendorRepairItem(axe.id)).toBe(true)
+    // Single-item repair (`[0x6fbcbc90] == 0`) does not arm the 2000 ms `[0x6fbd3484]` Repair-All cooldown;
+    // the first `vendorRepairAll` (`[0x6fbcbc90] == 1`) succeeds immediately, and a second one within 2000 ms is throttled.
+    expect(s.model.vendorRepairAll()).toBe(true)
     expect(s.model.vendorRepairAll()).toBe(false)
     s.clock.t += NPC_TRADE_THROTTLE_MS
     expect(s.model.vendorRepairAll()).toBe(true)
 
     expect(s.commands.slice(before)).toEqual([
       { type: 'NpcSell', npcId: CHARSI_ID, itemId: scroll.id, itemMode: 0, cost: stubPrice(scroll, 1, { world: s.world, npcClass: 154 }) },
+      { type: 'NpcSell', npcId: CHARSI_ID, itemId: scroll.id, itemMode: 0, cost: stubPrice(scroll, 1, { world: s.world, npcClass: 154 }) },
       { type: 'NpcRepairItem', npcId: CHARSI_ID, itemId: axe.id, itemMode: 0, durability: 20 },
+      { type: 'NpcRepairAll', npcId: CHARSI_ID },
       { type: 'NpcRepairAll', npcId: CHARSI_ID },
     ])
     expect(s.world.containers.inventory.has(scroll.id)).toBe(true)
@@ -1003,7 +1007,7 @@ describe('NPC quest chain & overhead npcalert indicator (1.13c parity)', () => {
     expect(alertOv?.token).toBe('npcalert')
     expect(alertOv?.totalFrames).toBe(16)
     expect(alertOv?.frame).toBe(5)
-    expect(alertOv?.blendMode).toBe('trans50')
+    expect(alertOv?.blendMode).toBe('additive')
 
     // Interacting with Akara clears wantsInteract, and periodic 0x8A while interacting is ignored (D2Client 0x6faf7970)
     s.world.noteOutgoingCommand({ type: 'NpcInit', target: { unitType: MONSTER, id: AKARA_ID } })

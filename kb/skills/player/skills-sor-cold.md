@@ -206,7 +206,7 @@ Blizzard (`delay = 45` frames = $1.8\text{s}$ casting delay) places an invisible
 #### Server Cast & Storm Controller (`SKILLS_SrvDo028 @ 0x6FC62D90`, `MISSMODE_SrvDo10_BlizzardCenter @ 0x6FC613D0`)
 1. **Cast (`SKILLS_SrvDo028 @ 0x6FC62D90`)**:
    - Validates line-of-sight (`LineOfSight = 4`) and open coordinates (`SearchOpenXY = 1`) via `sub_6FD15340`, then spawns `wSrvMissileA = "blizzardcenter"` (#158, `Range = 100` frames = $4.0\text{s}$, `CelFile = "null"`) at `(targetX, targetY)`.
-2. **Periodic Shard Spawn (`MISSMODE_SrvDo10_BlizzardCenter @ 0x6FC613D0`, D2MOO `0x6FC57A40`)**:
+2. **Periodic Shard Spawn (`MISSMODE_SrvDo10_BlizzardCenter @ 0x6FC613D0`)**:
    - Evaluates storm half-extent `nRange = calc1 = Param1 = 7` subtiles and shard period `nFrames = calc2 = Param3 = 4` frames.
    - Calls `MISSMODE_CreateMissileWithCollisionCheck(pGame, pMissile, 7, 4, wSubMissile[0] /* blizzard1 #159 */, 5)`:
      - Checks `MISSILE_GetRemainingFrames(pMissile) % 4 == 0` (**fires once every 4 frames = 25 shards over 100 frames**).
@@ -242,7 +242,7 @@ Frozen Orb (`delay = 25` frames = $1.0\text{s}$ casting delay) launches a pierci
 - **Client (`SkillCltDoFunc[29] @ 0x6FB23D70`)**: Sets unit flag `0x40` (`OR DWORD PTR [edi+0xc4], 0x40` @ `0x6FB23DBB`) and spawns client `frozenorb` (#260) via `0x6FB515C0`.
 
 #### 2. In-Flight Spiral Bolt Emission (`MISSMODE_SrvDo15_FrozenOrb @ 0x6FC60CA0` & `MissileCltDoFunc[19] @ 0x6FB68840`)
-Both server (`MISSMODE_SrvDo15_FrozenOrb`, D2MOO `0x6FC581F0`) and client (`MissileCltDoFunc[19] @ 0x6FB68840`) execute identical logic on every tick of `frozenorb` (#260):
+Both server (`MISSMODE_SrvDo15_FrozenOrb @ 0x6FC60CA0`) and client (`MissileCltDoFunc[19] @ 0x6FB68840`) execute identical logic on every tick of `frozenorb` (#260):
 1. Reads emission period `nFrames = max(Param1, 1)` (`Param1 = CltParam1 = 1` $\implies$ **fires 1 bolt every single frame**, i.e., **30 spiral bolts** over its 30-frame lifetime).
 2. Reads the orb's current 64-direction circle index from `MISSILE_GetTargetX(pMissile)`:
    $$\text{nIndex} = \left|\text{MISSILE\_GetTargetX}(pMissile)\right| \bmod 64$$
@@ -257,7 +257,7 @@ Both server (`MISSMODE_SrvDo15_FrozenOrb`, D2MOO `0x6FC581F0`) and client (`Miss
    - Because $\gcd(19, 64) = 1$, stepping by $19/64$ of a circle ($106.875^\circ$ per frame) visits all 64 directions without repeating until 64 bolts, producing Frozen Orb's dense, non-clumping spiral spray!
 
 #### 3. Final 16-Bolt Nova Burst (`MISSMODE_SrvHit29_FrozenOrb @ 0x6FC5C850` & `MissileCltHitFunc[30] @ 0x6FB66010`)
-- **Mid-Flight Unit Piercing vs Expiration (`MISSMODE_SrvHit29_FrozenOrb`, D2MOO `0x6FC5CE10`)**:
+- **Mid-Flight Unit Piercing vs Expiration (`MISSMODE_SrvHit29_FrozenOrb @ 0x6FC5C850`)**:
   - When `frozenorb` (#260) touches a monster/player mid-flight (`MISSILE_GetCurrentFrame(pMissile) != 0`), `MISSMODE_SrvHit29_FrozenOrb` immediately returns **`2`**! In `MISSMODE_SrvDmgHitHandler`, return code `2` deals collision damage to the unit without destroying the orb and **without** triggering the final nova burst.
   - When `frozenorb` (#260) reaches `Range == 0` (`MISSILE_GetCurrentFrame(pMissile) == 0`, triggered because `AlwaysExplode = 1`) or strikes a solid wall:
     1. Reads angular step `nParam = max(sHitPar1, 1)` (`sHitPar1 = cHitPar1 = 4`).
@@ -272,7 +272,7 @@ Both server (`MISSMODE_SrvDo15_FrozenOrb`, D2MOO `0x6FC581F0`) and client (`Miss
 
 #### 4. Pinwheel Curvature of Nova Bolts (`MISSMODE_SrvDo16_FrozenOrbNova @ 0x6FC60BD0` & `MissileCltDoFunc[20] @ 0x6FB629B0`)
 Each of the 16 final `frozenorbnova` (#262) bolts runs a path-curving `DoFunc` (`Param1 = CltParam1 = 6`, `Param2 = CltParam2 = 2`):
-- **Server (`MISSMODE_SrvDo16_FrozenOrbNova`, D2MOO `0x6FC58340`)**:
+- **Server (`MISSMODE_SrvDo16_FrozenOrbNova @ 0x6FC60BD0`)**:
   - When `nRemainingFrames < 6` and `nRemainingFrames % 2 == 0` (the final ticks of flight), reads `(TargetX, TargetY)` and applies a $45^\circ$ rotation + $\frac{1}{\sqrt{2}}$ scale step:
     $$\text{NewTargetX} = \left\lfloor\frac{\text{TargetX} - \text{TargetY}}{2}\right\rfloor, \qquad \text{NewTargetY} = \left\lfloor\frac{\text{TargetX} + \text{TargetY}}{2}\right\rfloor$$
   - Calls `D2COMMON_10170_PathSetTargetPos(pDynamicPath, UnitX + NewTargetX, UnitY + NewTargetY)` and `D2Common_10142` to bend the bolt's trajectory, then stores `(NewTargetX, NewTargetY)` back into `TargetX`/`TargetY`.

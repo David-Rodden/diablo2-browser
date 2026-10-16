@@ -13,7 +13,7 @@ import { D2FontRenderer, type D2ColorCode } from './font.ts'
 import { GRID_ITEM_BG_BLUE, GRID_ITEM_BG_GREEN, GRID_ITEM_BG_RED, canPlayerUseUiItem, drawImageWithEtherealAlpha, drawItemSocketOverlay, isUiItemEthereal, nextPlayerContextSeq, resolveGridItemBackgroundFill, resolveItemSpriteRect, type GridPlacement, type InventoryPanel, type PlayerItemRequirementContext, type UiInventoryItem } from './inventory.ts'
 import type { Item } from '../../common/items/items.ts'
 import { getTblLang, lookupTbl, type TblLang } from '../i18n/lang.ts'
-import { STASH_GOLD_CAP } from '../../common/items/inventory-model.ts'
+import { STASH_GOLD_CAP, getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
 import { BAKED_UI_MANIFEST } from '../../common/items/baked-ui-meta.ts'
 import { type TownNpcServiceDescriptor, getLocalizedNpcName } from '../../common/units/npc-table.ts'
 import type { VendorTabId } from '../../common/items/vendor-generator.ts'
@@ -29,6 +29,8 @@ import { type EscapeMenuRowIndex, type MonsterTargetHudInfo, drawMonsterTargetBa
 
 export {
   STASH_GOLD_CAP,
+  getInventoryGoldLimit,
+  getStashGoldLimit,
   GRID_ITEM_BG_BLUE,
   GRID_ITEM_BG_GREEN,
   GRID_ITEM_BG_RED,
@@ -312,6 +314,18 @@ export class WorldPanelsHud {
   }
   /** Server stat 15 (`goldbank`), written by `HudModel` only; 0 until received (absent stat = 0). */
   stashGold = 0
+  getStashMaxGold(level?: number): number {
+    const resolvedLevel =
+      level ??
+      (this.localPlayerLevel > 1
+        ? this.localPlayerLevel
+        : (this.activePlayerInventory?.playerLevel ??
+          this.activePlayerInventory?.playerContext?.level ??
+          this.vendorCharLevel ??
+          this.localPlayerLevel ??
+          1))
+    return getStashGoldLimit(resolvedLevel)
+  }
   cubeTransmuteCount = 0
   escapeMenuOpen = false
   escapeMenuSelectedIndex: EscapeMenuRowIndex = 2
@@ -1047,8 +1061,11 @@ export class WorldPanelsHud {
   hoveredCubeItem: { item: UiInventoryItem; x: number; y: number } | null = null
   hoveredMercItem: { item: UiInventoryItem; x: number; y: number } | null = null
   hoveredTradeItem: { item: UiInventoryItem; x: number; y: number } | null = null
-  hoveredTradeButton: 'partnerAccept' | 'selfAccept' | 'cancel' | null = null
+  hoveredTradeButton: 'partnerAccept' | 'selfAccept' | 'cancel' | 'gold' | null = null
   pressedTradeButton: 'selfAccept' | 'cancel' | 'gold' | null = null
+  hoveredStashButton: 'gold' | 'close' | null = null
+  hoveredWaypointClose = false
+  hoveredMercClose = false
   hoveredQuestRewardItem: { item: UiInventoryItem; x: number; y: number } | null = null
   hoveredWaypointIdx: number | null = null
   /**

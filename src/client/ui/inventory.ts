@@ -40,7 +40,9 @@ import { translateItemName } from '../../common/i18n/tooltip-i18n.ts'
 import {
   ASSASSIN_HAND_TO_HAND_CLAW_CODES,
   BARBARIAN_ONE_OR_TWO_HANDED_SWORD_CODES,
+  CANONICAL_BOW_WEAPON_CODES,
   CANONICAL_CLASS_SPECIFIC_ITEM_CODES,
+  CANONICAL_CROSSBOW_WEAPON_CODES,
   CANONICAL_ONE_HANDED_WEAPON_CODES,
   CANONICAL_SHIELD_AND_OFFHAND_CODES,
   CANONICAL_VAR_INV_GFX,
@@ -52,12 +54,15 @@ import {
 } from '../../common/items/item-bridge.ts'
 import { reportMissingArt } from '../scene/world-renderer.ts'
 import { PanelCloseButton } from './close-button.ts'
+import { getTblLang, requireTbl, type TblLang } from '../i18n/lang.ts'
 
 export type { SpriteRect, SocketTargetCategory }
 export {
   ASSASSIN_HAND_TO_HAND_CLAW_CODES,
   BARBARIAN_ONE_OR_TWO_HANDED_SWORD_CODES,
+  CANONICAL_BOW_WEAPON_CODES,
   CANONICAL_CLASS_SPECIFIC_ITEM_CODES,
+  CANONICAL_CROSSBOW_WEAPON_CODES,
   CANONICAL_ONE_HANDED_WEAPON_CODES,
   CANONICAL_SHIELD_AND_OFFHAND_CODES,
   CANONICAL_VAR_INV_GFX,
@@ -72,6 +77,7 @@ import {
   INV_ROWS,
   STASH_GOLD_CAP,
   getInventoryGoldLimit,
+  getStashGoldLimit,
   findFreeGridSlot,
   type EquipSlotId,
   type UiItemQuality,
@@ -84,6 +90,7 @@ export {
   INV_ROWS,
   STASH_GOLD_CAP,
   getInventoryGoldLimit,
+  getStashGoldLimit,
   findFreeGridSlot,
   type EquipSlotId,
   type UiItemQuality,
@@ -1111,6 +1118,120 @@ export function isTwoHandedForClass(item: UiInventoryItem, classCode?: Character
 }
 
 /**
+ * Ground Truth (`D2Common.dll` `0x6fd74eb0` `ITEMS_GetItemShoots`, `ItemTypes.txt` `Shoots` at `+0x0c`):
+ * Resolves the ammunition quiver type shot by `item`:
+ * - Bows & Amazon Bows (`bow`, `abow`, `CANONICAL_BOW_WEAPON_CODES`) -> `'bowq'`
+ * - Crossbows (`xbow`, `CANONICAL_CROSSBOW_WEAPON_CODES`) -> `'xboq'`
+ * - All other items -> `null`
+ */
+export function getItemShootsQuiverType(item: UiInventoryItem | null | undefined): 'bowq' | 'xboq' | null {
+  if (!item) return null
+  const code = (item.code ?? item.rawItem?.base?.id ?? (item as any).base?.id ?? '').trim().toLowerCase()
+  if (code.length > 0) {
+    if (CANONICAL_BOW_WEAPON_CODES.has(code)) return 'bowq'
+    if (CANONICAL_CROSSBOW_WEAPON_CODES.has(code)) return 'xboq'
+  }
+  const rawType = (
+    item.rawItem?.base?.type ??
+    (item as any).base?.type ??
+    (item as any).type ??
+    ''
+  ).trim().toLowerCase()
+  if (rawType === 'bow' || rawType === 'abow') return 'bowq'
+  if (rawType === 'xbow') return 'xboq'
+  return null
+}
+
+/**
+ * Ground Truth (`D2Common.dll` `0x6fd74e60` `ITEMS_GetItemQuiver`, `ItemTypes.txt` `Quiver` at `+0x0e`):
+ * Resolves the ammunition quiver type of `item` when `item` is a quiver:
+ * - Arrow Quivers (`aqv`, `bowq`, `mboq`) -> `'bowq'`
+ * - Bolt Quivers (`cqv`, `xboq`, `mxbq`) -> `'xboq'`
+ * - All non-quiver items -> `null`
+ */
+export function getItemQuiverType(item: UiInventoryItem | null | undefined): 'bowq' | 'xboq' | null {
+  if (!item) return null
+  const code = (item.code ?? item.rawItem?.base?.id ?? (item as any).base?.id ?? '').trim().toLowerCase()
+  if (code === 'aqv') return 'bowq'
+  if (code === 'cqv') return 'xboq'
+  const rawType = (
+    item.rawItem?.base?.type ??
+    (item as any).base?.type ??
+    (item as any).type ??
+    ''
+  ).trim().toLowerCase()
+  if (rawType === 'bowq' || rawType === 'mboq' || rawType === 'aqv') return 'bowq'
+  if (rawType === 'xboq' || rawType === 'mxbq' || rawType === 'cqv') return 'xboq'
+  return null
+}
+
+/**
+ * Ground Truth (`D2Common.dll` `0x6fd6f980` `INVENTORY_AreItemsCompatibleInHands(pUnit, item1, item2)`):
+ * Determines whether `item1` and `item2` can be equipped simultaneously in `weapon1` and `weapon2`:
+ * 1. (`0x6fd6f990..0x6fd6f9c8`): BEFORE checking `ITEMS_Is2Handed`, checks `ITEMS_GetItemShoots`:
+ *    if `item1` shoots `item2` (`bow`/`abow` + `bowq`/`aqv`, or `xbow` + `xboq`/`cqv`) or `item2` shoots `item1`,
+ *    returns `true`!
+ * 2. (`0x6fd6f9ce..0x6fd6f9e4`): Calls `ITEMS_GetItemQuiver`: if either `item1` or `item2` is a quiver (`bowq` / `xboq`)
+ *    and was not matched by its corresponding launcher above, returns `false` (quivers cannot pair with melee weapons,
+ *    shields, or mismatched bows/crossbows).
+ * 3. (`0x6fd6f9ea..0x6fd6fa1b`): Calls `ITEMS_Is2Handed` & `ITEMS_CanUnitUse2HandedAs1Handed`:
+ *    if either item requires 2 hands for `classCode`, returns `false`.
+ * 4. (`0x6fd6fa1c..0x6fd6fabd`): Checks 1H weapon + shield/shrunken-head (rejecting two off-hands) and
+ *    class dual-wielding (Barbarian `bar` any 1H/1or2H weapon, Assassin `ass` two `h2h`/`h2h2` claws).
+ */
+export function areHandSlotItemsCompatible(
+  item1: UiInventoryItem,
+  item2: UiInventoryItem,
+  classCode?: CharacterClassCode | null,
+): boolean {
+  // 1. Shoots + Quiver pair (`0x6fd6f990..0x6fd6f9c8`) — checked BEFORE 2H weapon restriction!
+  const shoots1 = getItemShootsQuiverType(item1)
+  const shoots2 = getItemShootsQuiverType(item2)
+  const quiver1 = getItemQuiverType(item1)
+  const quiver2 = getItemQuiverType(item2)
+  if ((shoots1 !== null && shoots1 === quiver2) || (shoots2 !== null && shoots2 === quiver1)) {
+    return true
+  }
+
+  // 2. Unmatched quiver (`0x6fd6f9ce..0x6fd6f9e4`) cannot pair with any other item
+  if (quiver1 !== null || quiver2 !== null) {
+    return false
+  }
+
+  const cat1 = classifyHandSlotItem(item1)
+  const cat2 = classifyHandSlotItem(item2)
+  if (cat1 === 'other' || cat2 === 'other') {
+    return false
+  }
+
+  // 3. 2H weapon check (`0x6fd6f9ea..0x6fd6fa1b`)
+  if (isTwoHandedForClass(item1, classCode) || isTwoHandedForClass(item2, classCode)) {
+    return false
+  }
+
+  // 4. Cannot equip two shields / off-hands simultaneously (`0x6fd6fa8a..0x6fd6faae`)
+  if (cat1 === 'offhand' && cat2 === 'offhand') {
+    return false
+  }
+
+  // 5. One 1H weapon + one shield/shrunken-head (`0x6fd6fa8a..0x6fd6fab8`)
+  if (cat1 === 'offhand' || cat2 === 'offhand') {
+    return true
+  }
+
+  // 6. Dual Wielding (`0x6fd6fa25..0x6fd6fa88`):
+  // - Barbarian (`bar`) can dual-wield any 1H or 1or2handed sword
+  // - Assassin (`ass`) can dual-wield two Hand-to-Hand (`h2h` / `h2h2`) claws
+  if (classCode === 'bar') {
+    return true
+  }
+  if (classCode === 'ass' && isAssassinClawItem(item1) && isAssassinClawItem(item2)) {
+    return true
+  }
+  return false
+}
+
+/**
  * 1.13c ground truth: checks if an item's allowedSlots includes slotId (with either-hand allowance for weapon1/weapon2).
  */
 export function isItemAllowedInSlot(item: UiInventoryItem, rawSlotId: EquipSlotId | string): boolean {
@@ -1217,7 +1338,7 @@ export function resolvePaperdollSlotBackgroundFill(
   return null
 }
 
-export function identifyUiItem(item: UiInventoryItem): UiInventoryItem {
+export function identifyUiItem(item: UiInventoryItem, playerLevel?: number): UiInventoryItem {
   ;(item as { identified?: boolean; isGambleMystery?: boolean }).identified = true
   ;(item as { identified?: boolean; isGambleMystery?: boolean }).isGambleMystery = false
 
@@ -1234,7 +1355,11 @@ export function identifyUiItem(item: UiInventoryItem): UiInventoryItem {
     if (typeof item.rawItem.rawFlags === 'number') {
       ;(item.rawItem as { rawFlags: number }).rawFlags = (item.rawItem.rawFlags | 1) & ~0x8000
     }
-    const rebuilt = itemToUiInventoryItem(item.rawItem)
+    const effectiveLevel =
+      playerLevel !== undefined && Number.isFinite(playerLevel) && playerLevel > 0
+        ? Math.max(1, Math.trunc(playerLevel))
+        : (item.rawItem as { charLevel?: number }).charLevel
+    const rebuilt = itemToUiInventoryItem(item.rawItem, undefined, effectiveLevel)
     Object.assign(item, {
       invFile: rebuilt.invFile,
       ...(rebuilt.baseInvFile !== undefined ? { baseInvFile: rebuilt.baseInvFile } : {}),
@@ -1794,6 +1919,18 @@ export function applySocketToUiItem(
     Boolean(socketable.baseNameZh?.includes('珠宝')) ||
     socketable.baseNameEn?.trim().toLowerCase() === 'jewel'
 
+  const hostCharLevel = Math.max(
+    1,
+    Math.trunc(
+      Number(
+        (target.rawItem as { charLevel?: number; playerLevel?: number } | undefined)?.charLevel ??
+          (target.rawItem as { charLevel?: number; playerLevel?: number } | undefined)?.playerLevel ??
+          (target as { charLevel?: number }).charLevel ??
+          1,
+      ) || 1,
+    ),
+  )
+
   if (isJewel) {
     // 1. Jewel: slot-independent modifiers across weapon, helm, armor, and shield
     addedZh = socketable.stats
@@ -1817,13 +1954,13 @@ export function applySocketToUiItem(
     const mods = getSocketedItemModifiersForHost(socketable.rawItem, category)
     addedZh = mods
       .map(m => ({
-        text: formatPropertyCode(m.code, m.value, m.min, m.max, m.param, 'zh'),
+        text: formatPropertyCode(m.code, m.value, m.min, m.max, m.param, 'zh', hostCharLevel),
         color: 'blue' as D2ColorCode,
       }))
       .filter(l => l.text.length > 0)
     addedEn = mods
       .map(m => ({
-        text: formatPropertyCode(m.code, m.value, m.min, m.max, m.param, 'en'),
+        text: formatPropertyCode(m.code, m.value, m.min, m.max, m.param, 'en', hostCharLevel),
         color: 'blue' as D2ColorCode,
       }))
       .filter(l => l.text.length > 0)
@@ -1904,8 +2041,8 @@ export function applySocketToUiItem(
 
       for (const prop of matchedRw.t1Codes) {
         const rolledVal = prop.min === prop.max ? prop.min : prop.max
-        const zhLine = formatPropertyCode(prop.code, rolledVal, prop.min, prop.max, prop.param, 'zh')
-        const enLine = formatPropertyCode(prop.code, rolledVal, prop.min, prop.max, prop.param, 'en')
+        const zhLine = formatPropertyCode(prop.code, rolledVal, prop.min, prop.max, prop.param, 'zh', hostCharLevel)
+        const enLine = formatPropertyCode(prop.code, rolledVal, prop.min, prop.max, prop.param, 'en', hostCharLevel)
         if (zhLine) addedZh.push({ text: zhLine, color: 'blue' })
         if (enLine) addedEn.push({ text: enLine, color: 'blue' })
       }
@@ -2327,6 +2464,11 @@ export class InventoryPanel {
   identifyCursorSource: IdentifyCursorSource | null = null
   /** Currently hovered item (either in a slot or in the 10x4 grid) for Tooltip rendering. */
   hoveredItem: { item: UiInventoryItem; x: number; y: number } | null = null
+  /** Currently hovered inventory button (`gold` or `close`) for 1.13c hover tooltip (`0x6FB48350`). */
+  hoveredButton: 'gold' | 'close' | null = null
+  /** Whether the Private Stash is currently open on the left dock (`strBankGoldDeposit` vs `strDropGoldHowMuch`). */
+  stashOpen = false
+  lang: TblLang = getTblLang()
   private _playerLevel = 1
   _playerLevelExplicitlySet = false
   /** Player character level for authentic inventory gold capacity calculation. */
@@ -2495,7 +2637,7 @@ export class InventoryPanel {
       }
     }
 
-    identifyUiItem(targetItem)
+    identifyUiItem(targetItem, Math.max(1, this.playerContext.level || this.playerLevel || 1))
     if (this.hoveredItem && String(this.hoveredItem.item.id) === String(targetItem.id)) {
       this.hoveredItem = { ...this.hoveredItem, item: { ...targetItem } }
     }
@@ -2690,41 +2832,7 @@ export class InventoryPanel {
       if (!otherItem) {
         return true
       }
-      const otherCat = classifyHandSlotItem(otherItem)
-
-      // Strict 2H weapons always require both hands for all classes (including Barbarian)
-      if (incomingCat === 'strict_two_handed_weapon' || otherCat === 'strict_two_handed_weapon') {
-        return false
-      }
-
-      // Cannot equip two shields / off-hands simultaneously
-      if (incomingCat === 'offhand' && otherCat === 'offhand') {
-        return false
-      }
-
-      const isBarbarian = this.playerContext.classCode === 'bar'
-      const isAssassin = this.playerContext.classCode === 'ass'
-
-      // Non-Barbarians treat 1or2handed two-handed swords as strict 2H weapons
-      if (!isBarbarian && (incomingCat === 'barbarian_1or2h_weapon' || otherCat === 'barbarian_1or2h_weapon')) {
-        return false
-      }
-
-      // One weapon + one off-hand shield/quiver/shrunken-head
-      if (incomingCat === 'offhand' || otherCat === 'offhand') {
-        return true
-      }
-
-      // Both slots are weapons (Dual Wielding):
-      // - Barbarian (`bar`) can dual-wield any 1H or 1or2handed sword
-      // - Assassin (`ass`) can dual-wield two Hand-to-Hand (`h2h` / `h2h2`) claws
-      if (isBarbarian) {
-        return true
-      }
-      if (isAssassin && isAssassinClawItem(item) && isAssassinClawItem(otherItem)) {
-        return true
-      }
-      return false
+      return areHandSlotItemsCompatible(item, otherItem, this.playerContext.classCode)
     }
 
     return true
@@ -2767,11 +2875,22 @@ export class InventoryPanel {
       return true
     }
 
-    // 1.13c Case 2: clicking hand slot when opposite hand has a 2H weapon swaps the 2H weapon to cursor
+    // 1.13c Case 2 (`D2Common.dll` `0x6fd70db0` & `0x6fd6f980` `INVENTORY_AreItemsCompatibleInHands`):
+    // Clicking an empty hand slot (`!existing`) when the opposite hand slot has an incompatible item
+    // (`!areHandSlotItemsCompatible`, e.g. 2H weapon + non-quiver, or Bow + Bolts) swaps the opposite hand's item to cursor.
+    // When compatible (e.g. Bow + Arrows `aqv` or Crossbow + Bolts `cqv`), equips into `slotId` without unequipping `otherSlotId`!
     if (slotId === 'weapon1' || slotId === 'weapon2') {
       const otherSlotId: EquipSlotId = slotId === 'weapon1' ? 'weapon2' : 'weapon1'
       const otherItem = this.equipped[otherSlotId] ?? null
-      if (otherItem && isTwoHandedForClass(otherItem, this.playerContext.classCode)) {
+      if (
+        !existing &&
+        otherItem &&
+        !areHandSlotItemsCompatible(this.cursorItem, otherItem, this.playerContext.classCode) &&
+        (isTwoHandedForClass(otherItem, this.playerContext.classCode) ||
+          isTwoHandedForClass(this.cursorItem, this.playerContext.classCode) ||
+          getItemQuiverType(otherItem) !== null ||
+          getItemQuiverType(this.cursorItem) !== null)
+      ) {
         if (isUiItemUnidentified(this.cursorItem) || !canPlayerUseUiItem(this.cursorItem, this.playerContext)) {
           return false
         }
@@ -2859,14 +2978,46 @@ export class InventoryPanel {
     return true
   }
 
+  getOppositeHandTwoHandedWeapon(slotId: EquipSlotId): UiInventoryItem | null {
+    if (slotId !== 'weapon1' && slotId !== 'weapon2') return null
+    if (this.equipped[slotId]) return null
+    const otherSlot: EquipSlotId = slotId === 'weapon1' ? 'weapon2' : 'weapon1'
+    const otherItem = this.equipped[otherSlot]
+    if (otherItem && isTwoHandedForClass(otherItem, this.playerContext.classCode)) {
+      return otherItem
+    }
+    return null
+  }
+
   handleMouseMove(logicalX: number, logicalY: number): void {
     this.hoveredItem = null
+    this.hoveredButton = null
     if (!this.visible) return
 
-    // Check equipment slots
+    // Check Gold Coin Button & Close Button (`D2Client.dll 0x6FB48350`)
+    if (
+      logicalX >= INV_PANEL_ORIGIN.x + INV_GOLD_BTN_HIT.relX0 &&
+      logicalX <= INV_PANEL_ORIGIN.x + INV_GOLD_BTN_HIT.relX1 &&
+      logicalY >= INV_PANEL_ORIGIN.y + INV_GOLD_BTN_HIT.relY0 &&
+      logicalY <= INV_PANEL_ORIGIN.y + INV_GOLD_BTN_HIT.relY1
+    ) {
+      this.hoveredButton = 'gold'
+      return
+    }
+    if (
+      logicalX >= INV_CLOSE_BTN_BOUNDS.x &&
+      logicalX <= INV_CLOSE_BTN_BOUNDS.x + INV_CLOSE_BTN_BOUNDS.w &&
+      logicalY >= INV_CLOSE_BTN_BOUNDS.y &&
+      logicalY <= INV_CLOSE_BTN_BOUNDS.y + INV_CLOSE_BTN_BOUNDS.h
+    ) {
+      this.hoveredButton = 'close'
+      return
+    }
+
+    // Check equipment slots (including 2H weapon in opposite hand slot per 0x6FB47BE0)
     for (const [slotId, rect] of Object.entries(EQUIP_SLOTS_LAYOUT) as [EquipSlotId, typeof EQUIP_SLOTS_LAYOUT[EquipSlotId]][]) {
       if (logicalX >= rect.x && logicalX <= rect.x + rect.w && logicalY >= rect.y && logicalY <= rect.y + rect.h) {
-        const eq = this.equipped[slotId]
+        const eq = this.equipped[slotId] ?? this.getOppositeHandTwoHandedWeapon(slotId)
         if (eq) {
           this.hoveredItem = { item: eq, x: rect.x + rect.w / 2, y: rect.y }
         }
@@ -3128,7 +3279,24 @@ export class InventoryPanel {
     // 4. Draw Equipped Items in Paperdoll Slots (no background fill for usable items; red only when unusable, green when hovered with cursor item)
     for (const [slotId, rect] of Object.entries(EQUIP_SLOTS_LAYOUT) as [EquipSlotId, typeof EQUIP_SLOTS_LAYOUT[EquipSlotId]][]) {
       const eq = this.equipped[slotId]
-      if (!eq) continue
+      if (!eq) {
+        const ghost2H = this.getOppositeHandTwoHandedWeapon(slotId)
+        if (ghost2H) {
+          // D2Client.dll 0x6FB3B2F0 / 0x6FB47BE0: hide empty weapon silhouette and draw 2H weapon in opposite hand with DRAWMODE_TRANS50 (0.38 alpha)
+          ctx.fillStyle = '#080808'
+          ctx.fillRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2)
+          const prevAlpha = typeof ctx.globalAlpha === 'number' ? ctx.globalAlpha : 1
+          ctx.save?.()
+          ctx.globalAlpha = 0.38
+          try {
+            this.drawItemSprite(ctx, ghost2H, rect.x, rect.y, rect.w, rect.h, assets, false)
+          } finally {
+            ctx.globalAlpha = prevAlpha
+            ctx.restore?.()
+          }
+        }
+        continue
+      }
       const isHovered = this.hoveredItem?.item === eq
       const slotFill = resolvePaperdollSlotBackgroundFill(eq, this.playerContext, {
         isHovered,
@@ -3190,6 +3358,30 @@ export class InventoryPanel {
         32,
         32,
       )
+    }
+
+    // 8. Button Hover Tooltips (`D2Client.dll 0x6FB48350`: Gold button `strDropGoldHowMuch` / `strBankGoldDeposit`, Close button `strClose`)
+    if (this.hoveredButton !== null) {
+      const isGold = this.hoveredButton === 'gold'
+      const hoverText = requireTbl(
+        isGold ? (this.stashOpen ? 'strBankGoldDeposit' : 'strDropGoldHowMuch') : 'strClose',
+        this.lang,
+      )
+      const boxW = Math.max(36, font.measureText(hoverText, 'font16') + 16)
+      const boxH = 22
+      const centerX = isGold
+        ? INV_GOLD_BTN_BOUNDS.x + Math.round(INV_GOLD_BTN_BOUNDS.w / 2)
+        : INV_CLOSE_BTN_BOUNDS.x + Math.round(INV_CLOSE_BTN_BOUNDS.w / 2)
+      const anchorY = isGold ? INV_GOLD_BTN_BOUNDS.y - 4 : INV_CLOSE_BTN_BOUNDS.y - 4
+      const boxX = Math.round(centerX - boxW / 2)
+      const boxY = anchorY - boxH
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'
+      ctx.fillRect(boxX, boxY, boxW, boxH)
+      font.drawText(ctx, hoverText, centerX, boxY + 16, {
+        font: 'font16',
+        color: 'white',
+        align: 'center',
+      })
     }
   }
 

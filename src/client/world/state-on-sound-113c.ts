@@ -7,7 +7,7 @@
  * client-side optimistic curse and the server's later StateSet for the same activation sound exactly once.
  */
 
-import { getStateOnSound113c } from '../../common/audio/state-sounds-113c.ts'
+import { getStateOffSound113c, getStateOnSound113c } from '../../common/audio/state-sounds-113c.ts'
 import type { WorldSoundRequest } from '../audio/d2gs-play-sound-113c.ts'
 import type { ClientUnit } from './client-unit.ts'
 
@@ -22,6 +22,23 @@ export function stateOnSoundRequest113c(
 ): WorldSoundRequest | null {
   if (wasActive) return null
   const soundId = getStateOnSound113c(stateId)
+  if (soundId <= 0) return null
+  return { soundId, unit: { unitType: unit.unitType, id: unit.id, x: unit.x, y: unit.y } }
+}
+
+/**
+ * D2Client.dll `0x6fb227a0` (client state clear, called by S2C 0xA9 EndState @ `0x6fb5d790`):
+ * When `stateId` was active (`wasActive === true`) and is cleared, reads `StatesTxt[nState].wOffSound` (`+0x28`)
+ * and plays it on `unit` (`PlaySound(wOffSound, pUnit, 0, 0, 0)`). Returns null when the state was not active
+ * or has no `offsound`.
+ */
+export function stateOffSoundRequest113c(
+  unit: Pick<ClientUnit, 'unitType' | 'id' | 'x' | 'y'>,
+  stateId: number,
+  wasActive: boolean,
+): WorldSoundRequest | null {
+  if (!wasActive) return null
+  const soundId = getStateOffSound113c(stateId)
   if (soundId <= 0) return null
   return { soundId, unit: { unitType: unit.unitType, id: unit.id, x: unit.x, y: unit.y } }
 }

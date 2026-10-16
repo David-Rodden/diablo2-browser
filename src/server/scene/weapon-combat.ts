@@ -212,19 +212,17 @@ export function executeNormalAttack(
   const isEn = (hudLike?.lang ?? getTblLang()) === 'ENG'
   const globalHud = (globalThis as Record<string, any>).__d2webHudInstance as HudCombatStateLike | null | undefined
 
-  const weapon =
-    context.equippedWeapon ??
-    hudLike?.inventory?.equipped?.weapon1 ??
-    globalHud?.inventory?.equipped?.weapon1 ??
-    null
-  const weaponInfo = getAttackWeaponInfo(weapon)
+  const rawW1 = hudLike?.inventory?.equipped?.weapon1 ?? globalHud?.inventory?.equipped?.weapon1 ?? null
+  const rawW2 = hudLike?.inventory?.equipped?.weapon2 ?? globalHud?.inventory?.equipped?.weapon2 ?? null
+  const w1Info = getAttackWeaponInfo(rawW1)
+  const w2Info = getAttackWeaponInfo(rawW2)
+  const swappedRanged = context.equippedWeapon === undefined && !w1Info.isRanged && w2Info.isRanged
+  const weapon = context.equippedWeapon ?? (swappedRanged ? rawW2 : rawW1)
+  const weaponInfo =
+    context.equippedWeapon !== undefined ? getAttackWeaponInfo(weapon) : swappedRanged ? w2Info : w1Info
 
   if (weaponInfo.isRanged) {
-    const ammo =
-      context.equippedAmmo ??
-      hudLike?.inventory?.equipped?.weapon2 ??
-      globalHud?.inventory?.equipped?.weapon2 ??
-      null
+    const ammo = context.equippedAmmo ?? (swappedRanged ? rawW1 : rawW2)
     const hasAmmo = context.hasAmmo ?? checkAmmunition(weaponInfo.ammoType!, ammo, hudLike?.inventory)
     if (!hasAmmo) {
       return {

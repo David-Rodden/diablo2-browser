@@ -3,10 +3,7 @@
 # independent implementations on generated fixtures.
 #
 #   dc6  vs dc6png (npm)                      -> PNG pixels compared
-#   dc6  vs OpenDiablo2/dc6 (Go)              -> full JSON compared
-#   ds1  vs OpenDiablo2/ds1 (Go)              -> full JSON compared
-#   pl2  vs OpenDiablo2/pl2 (Go)              -> base/text palettes + per-table digests
-#   dt1  vs OpenDiablo2/dt1 (Go)              -> metadata JSON compared
+#   dc6 / ds1 / pl2 / dt1 vs REFDUMP          -> full JSON / digest compared
 #   dt1  pixel placement                      -> compared against the encoded grid
 #
 # The Go oracle is optional: point REFDUMP at a built reference dumper, or let

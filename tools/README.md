@@ -8,7 +8,7 @@
 
 ## 简体中文
 
-`tools/` 目录收录了围绕 **Diablo II: Lord of Destruction (v1.13c) Web Port** 的命令行辅助工具、无头协议测试机器人、封包回放分析器、存档修改器、原生 C++ DRLG 差分基准（[`tools/d2moo-oracle`](./d2moo-oracle/README.md)）以及全谱系无头验证脚本。
+`tools/` 目录收录了围绕 **Diablo II: Lord of Destruction (v1.13c) Web Port** 的命令行辅助工具、无头协议测试机器人、封包回放分析器、存档修改器、1.13c DRLG 差分对比工具以及全谱系无头验证脚本。
 
 ---
 
@@ -22,7 +22,6 @@
 | [`drlg-diff.ts`](./drlg-diff.ts) | `npx tsx tools/drlg-diff.ts` | DRLG 确定性差分对比工具。给定相同的 `mapSeed` 与 `areaId`，对比本仓库 DRLG 输出与 `D2Common.dll` Ground Truth 房间拓扑、瓦片 Style/Sequence 及碰撞网格的一致性。 |
 | [`render-drlg-compare.ts`](./render-drlg-compare.ts) | `npx tsx tools/render-drlg-compare.ts` | 将 DRLG 生成的关卡碰撞网格、房间边界与瓦片图层渲染为可视化对比 PNG 图像，便于直观排查墙壁接缝与门洞连通性。 |
 | [`verify-play.ts`](./verify-play.ts) | `npx tsx tools/verify-play.ts` | 端到端 `play.html` 冒烟验证脚本：使用无头浏览器启动客户端，验证战网前端 UI 加载、WebGL2 上下文初始化、静态资产零 404 以及 HUD 交互响应。 |
-| [`d2moo-oracle/`](./d2moo-oracle) | `./tools/d2moo-oracle/build.sh` | 原生 32 位 C++ [D2MOO](https://github.com/ThePhrozenKeep/D2MOO) `D2Common` DRLG 生成器基准驱动，详见 [tools/d2moo-oracle/README.md](./d2moo-oracle/README.md)。 |
 
 ---
 
@@ -66,7 +65,7 @@ npx tsx tools/netproto-replay.ts ./captures/session-2026.d2cap
 
 ## English
 
-The `tools/` directory contains CLI utilities, a headless protocol test bot, a packet capture replayer, a `.d2s` save editor, the native C++ DRLG reference oracle ([`tools/d2moo-oracle`](./d2moo-oracle/README.md)), and automated verification scripts for the **Diablo II: Lord of Destruction (v1.13c) Web Port**.
+The `tools/` directory contains CLI utilities, a headless protocol test bot, a packet capture replayer, a `.d2s` save editor, 1.13c DRLG differential comparison tools, and automated verification scripts for the **Diablo II: Lord of Destruction (v1.13c) Web Port**.
 
 ---
 
@@ -80,7 +79,6 @@ The `tools/` directory contains CLI utilities, a headless protocol test bot, a p
 | [`drlg-diff.ts`](./drlg-diff.ts) | `npx tsx tools/drlg-diff.ts` | Deterministic DRLG differential comparison tool. Given a `mapSeed` and `areaId`, compares our TypeScript DRLG output against `D2Common.dll` ground truth across room topology, tile Style/Sequence, and collision grids. |
 | [`render-drlg-compare.ts`](./render-drlg-compare.ts) | `npx tsx tools/render-drlg-compare.ts` | Renders DRLG collision grids, room boundaries, and tile layers into side-by-side comparison PNGs to visually inspect wall seams and doorway connectivity. |
 | [`verify-play.ts`](./verify-play.ts) | `npx tsx tools/verify-play.ts` | End-to-end `play.html` smoke verifier: launches a headless browser to verify Battle.net frontend UI boot, WebGL2 context initialization, zero 404 static assets, and HUD responsiveness. |
-| [`d2moo-oracle/`](./d2moo-oracle) | `./tools/d2moo-oracle/build.sh` | Native 32-bit C++ [D2MOO](https://github.com/ThePhrozenKeep/D2MOO) `D2Common` DRLG reference oracle driver; see [tools/d2moo-oracle/README.md](./d2moo-oracle/README.md). |
 
 ---
 

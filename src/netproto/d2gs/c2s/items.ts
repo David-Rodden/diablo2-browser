@@ -219,4 +219,12 @@ export function encodeC2sSelectMainItem(itemId: number): Uint8Array {
   return validateC2sPacket(w.toUint8Array())
 }
 
+/** 0x63 ItemToBelt (5B, D2Client.dll 0x6fb46ff8 / D2Game.dll 0x6fc86530): u8 0x63 | u32 itemId */
+export function encodeC2sItemToBelt(itemId: number): Uint8Array {
+  const w = new ByteWriter(5)
+  w.u8(0x63)
+  w.u32LE(itemId >>> 0)
+  return validateC2sPacket(w.toUint8Array())
+}
+
 

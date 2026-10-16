@@ -8,7 +8,7 @@ import type { TextEncoding } from '../core/text-codec.ts'
 import type { ClientCommand } from '../domain/client-command.ts'
 import type { ItemDataTables } from '../domain/ids.ts'
 import type { ServerEvent } from '../domain/server-event.ts'
-import { encodeC2sChat, encodeC2sOverheadChat } from './c2s/chat.ts'
+import { encodeC2sChat, encodeC2sOverheadChat, encodeC2sSay } from './c2s/chat.ts'
 import {
   encodeC2sCancelController,
   encodeC2sClickButton,
@@ -31,6 +31,7 @@ import {
   encodeC2sItemPickup,
   encodeC2sItemPlace,
   encodeC2sItemSwap,
+  encodeC2sItemToBelt,
   encodeC2sItemToCube,
   encodeC2sItemToCursor,
   encodeC2sItemUnequip,
@@ -43,7 +44,13 @@ import {
   encodeC2sSwapTwo1HandedWithOne2HandedItem,
   encodeC2sSwapContainerItem,
 } from './c2s/items.ts'
-import { encode0x59MakeEntityMove, encodeC2sMove, encodeC2sMoveToUnit, encodeC2sWarpTo } from './c2s/movement.ts'
+import {
+  encode0x59MakeEntityMove,
+  encodeC2sMove,
+  encodeC2sMoveToUnit,
+  encodeC2sRunToggle,
+  encodeC2sWarpTo,
+} from './c2s/movement.ts'
 import {
   encodeC2sHireMerc,
   encodeC2sNpcBuy,
@@ -65,6 +72,7 @@ import { encodeC2sLeaveGame, encodeC2sPing } from './c2s/session.ts'
 import {
   encodeC2sAddSkillPoint,
   encodeC2sAddStatPoint,
+  encodeC2sAssignSkillHotkey,
   encodeC2sSelectSkill,
   encodeC2sSkillAt,
   encodeC2sSkillOnUnit,
@@ -473,6 +481,10 @@ export function encodeD2gsClientCommand(
       return [encodeC2sSkillOnUnit('right', { unitType: cmd.unitKind, id: cmd.unitId }, false, false)]
     case 'SelectSkill':
       return [encodeC2sSelectSkill(cmd.hand, cmd.skill, cmd.itemId)]
+    case 'AssignSkillHotkey':
+      return [encodeC2sAssignSkillHotkey(cmd.slot, cmd.hand, cmd.skill, cmd.itemId)]
+    case 'RunToggle':
+      return [encodeC2sRunToggle(cmd.run)]
     case 'Interact':
       return [encodeC2sInteract(cmd.target)]
     case 'OperateObject':
@@ -524,6 +536,8 @@ export function encodeD2gsClientCommand(
       return [encodeC2sScrollToBook(cmd.scrollId, cmd.bookId)]
     case 'ItemToCube':
       return [encodeC2sItemToCube(cmd.itemId, cmd.cubeId)]
+    case 'ItemToBelt':
+      return [encodeC2sItemToBelt(cmd.itemId)]
     case 'MercItem':
       return [encodeC2sMercItem(cmd.slot)]
     case 'NpcInit':
@@ -594,6 +608,8 @@ export function encodeD2gsClientCommand(
       return [encodeC2sChat(cmd.text, cmd.whisperTo, encoding)]
     case 'OverheadChat':
       return [encodeC2sOverheadChat(cmd.text, encoding)]
+    case 'Say':
+      return [encodeC2sSay(cmd.phraseId)]
     case 'RequestQuestData':
       return [encodeC2sRequestQuestData()]
     case 'StaffInOrifice':

@@ -10,6 +10,8 @@ import { unitTypeToId, type UnitType } from '../../netproto/index.ts'
 import { resolveGroundItemMetadata } from '../../common/items/ground-items.ts'
 import type { ItemData } from '../../common/items/item-bridge.ts'
 import {
+  DEFAULT_AMAZON_APPEARANCE,
+  VALKYRIE_113C_APPEARANCE,
   appearanceKey,
   resolveCharacterAppearance,
   resolveEquipmentSlotsToAppearanceInput,
@@ -48,6 +50,7 @@ export interface SelfAppearanceCacheEntry {
   armor: ItemData | undefined
   weapon1: ItemData | undefined
   weapon2: ItemData | undefined
+  hasHolyShield: boolean
   appearance: ReturnType<typeof resolveCharacterAppearance>
   key: string
 }
@@ -164,12 +167,31 @@ export function tickSessionFrame(
       (!curSnap.moving || selfUnit.castState) &&
       selfUnit.targetDirection !== curSnap.targetDir64
     ) {
-      host.predictor.setTargetDirection(selfUnit.targetDirection, false)
+      host.predictor.setTargetDirection(
+        selfUnit.targetDirection,
+        selfUnit.castState?.skillId === 151,
+      )
     }
   }
 
+  const activeCastSkillId = selfUnit?.castState?.skillId
+  const isMovementSkillCast =
+    (activeCastSkillId === 107 && !selfUnit?.castState?.chargeInPlaceAttack) ||
+    activeCastSkillId === 132 ||
+    activeCastSkillId === 143 ||
+    activeCastSkillId === 151
+
+  const selfState = host.world.self
+  if (
+    selfState.maxStamina > 0 ||
+    selfState.stats?.has(10) ||
+    selfState.stats?.has(11)
+  ) {
+    host.predictor.setStaminaExhausted(selfState.stamina <= 0)
+  }
+
   const predSnap = host.predictor.update(clampedDt)
-  if (predSnap.x !== 0 || predSnap.y !== 0) {
+  if (!isMovementSkillCast && (predSnap.x !== 0 || predSnap.y !== 0)) {
     host.camera.update(predSnap.x, predSnap.y)
     if (selfUnit) {
       selfUnit.x = predSnap.x
@@ -179,7 +201,9 @@ export function tickSessionFrame(
     host.world.self.y = predSnap.y
   }
   if (selfUnit) {
-    selfUnit.syncTurnState(predSnap.dir64, predSnap.targetDir64, predSnap.stepDir)
+    if (activeCastSkillId !== 151) {
+      selfUnit.syncTurnState(predSnap.dir64, predSnap.targetDir64, predSnap.stepDir)
+    }
     if (!selfUnit.dead && !selfUnit.castState && predSnap.moving) {
       const selfInTown = host.isSubTileInTown(predSnap.x, predSnap.y)
       selfUnit.moveMode = predSnap.running && !selfInTown ? 'run' : 'walk'
@@ -240,6 +264,15 @@ export function tickSessionFrame(
   }
 
   host.world.tick(clampedDt, nowMs)
+  if (isMovementSkillCast && selfUnit) {
+    if (typeof (host.predictor as { resetTo?: (x: number, y: number) => void }).resetTo === 'function') {
+      ;(host.predictor as { resetTo: (x: number, y: number) => void }).resetTo(selfUnit.x, selfUnit.y)
+    } else if (typeof host.predictor.setPosition === 'function') {
+      host.predictor.setPosition(selfUnit.x, selfUnit.y)
+    }
+    host.predictor.setTargetDirection(selfUnit.direction, true)
+    host.camera.update(selfUnit.x, selfUnit.y)
+  }
   host.drainWorldSoundRequests()
 
   const hasCollisionConstraint =
@@ -260,7 +293,9 @@ export function tickSessionFrame(
       unit.x = state.x
       unit.y = state.y
       unit.moving = state.moving
-      unit.syncTurnState(state.dir64, state.targetDir64, state.stepDir)
+      if (unit.castState?.skillId !== 151) {
+        unit.syncTurnState(state.dir64, state.targetDir64, state.stepDir)
+      }
       if (unit.unitType === 'player' && unit.id !== host.world.selfId) {
         const unitInTown = host.isSubTileInTown(state.x, state.y)
         if (state.moving && unit.moveMode !== 'stop') {
@@ -368,6 +403,7 @@ export function buildRenderableUnits(
 
   // Self is not renderable until the server has assigned both its unit id (0x59) and class.
   const selfClass = host.world.self.charClass
+  let selfEquipmentAppearance: ReturnType<typeof resolveCharacterAppearance> | undefined
   if (host.world.selfId !== 0 && selfClass !== null) {
     const selfUnit = host.world.getUnit('player', host.world.selfId)
     const isSelfDead = host.world.isSelfDead || host.world.isDead
@@ -407,8 +443,23 @@ export function buildRenderableUnits(
     const selfWeaponSet = host.world.self.weaponSet
     const selfHelm = host.world.containers.equipmentBySlot.get(1)
     const selfArmor = host.world.containers.equipmentBySlot.get(3)
-    const selfWeapon1 = host.world.containers.equipmentBySlot.get(selfWeaponSet === 1 ? 11 : 4)
-    const selfWeapon2 = host.world.containers.equipmentBySlot.get(selfWeaponSet === 1 ? 12 : 5)
+    const slot4 = host.world.containers.equipmentBySlot.get(4)
+    const slot5 = host.world.containers.equipmentBySlot.get(5)
+    const slot11 = host.world.containers.equipmentBySlot.get(11)
+    const slot12 = host.world.containers.equipmentBySlot.get(12)
+    const useSwapSlots =
+      selfWeaponSet === 1 &&
+      slot4 === undefined &&
+      slot5 === undefined &&
+      (slot11 !== undefined || slot12 !== undefined)
+    const selfWeapon1 = useSwapSlots ? slot11 : slot4
+    const selfWeapon2 = useSwapSlots ? slot12 : slot5
+    const selfStates = selfUnit
+      ? Array.from(new Set([...selfUnit.states.list(), ...host.world.self.states]))
+      : host.world.self.states.size > 0
+        ? Array.from(host.world.self.states)
+        : undefined
+    const hasHolyShield = Boolean(selfStates?.includes(101))
     const containersRevision = host.world.containers.revision ?? Number.NaN
     const cachedAppearance = host.selfAppearanceCache
     const appearanceCacheHit =
@@ -418,8 +469,9 @@ export function buildRenderableUnits(
       cachedAppearance.helm === selfHelm &&
       cachedAppearance.armor === selfArmor &&
       cachedAppearance.weapon1 === selfWeapon1 &&
-      cachedAppearance.weapon2 === selfWeapon2
-    let selfEquipmentAppearance = appearanceCacheHit ? cachedAppearance!.appearance : undefined
+      cachedAppearance.weapon2 === selfWeapon2 &&
+      cachedAppearance.hasHolyShield === hasHolyShield
+    selfEquipmentAppearance = appearanceCacheHit ? cachedAppearance!.appearance : undefined
     let selfAppearanceKey = appearanceCacheHit ? cachedAppearance!.key : undefined
     if (selfEquipmentAppearance === undefined || selfAppearanceKey === undefined) {
       selfEquipmentAppearance = resolveCharacterAppearance(
@@ -428,6 +480,8 @@ export function buildRenderableUnits(
           host.world.containers.equipmentBySlot,
           selfWeaponSet,
           host.world.containers.sockets,
+          undefined,
+          hasHolyShield,
         ),
       )
       selfAppearanceKey = appearanceKey(selfEquipmentAppearance)
@@ -438,6 +492,7 @@ export function buildRenderableUnits(
         armor: selfArmor,
         weapon1: selfWeapon1,
         weapon2: selfWeapon2,
+        hasHolyShield,
         appearance: selfEquipmentAppearance,
         key: selfAppearanceKey,
       }
@@ -453,6 +508,9 @@ export function buildRenderableUnits(
       ...(selfCastState?.targetY !== undefined ? { targetY: selfCastState.targetY } : {}),
       mode: selfMode,
       direction: selfDirection,
+      ...(selfUnit?.altitude !== undefined && selfUnit.altitude !== 0
+        ? { altitude: selfUnit.altitude }
+        : {}),
       hpRatio: (() => {
         const effMaxLife =
           host.hudManager.maxHp > 0 ? host.hudManager.maxHp : host.world.self.maxLife
@@ -462,11 +520,17 @@ export function buildRenderableUnits(
       isCorpse: isSelfDead,
       equipmentAppearance: selfEquipmentAppearance,
       appearanceKey: selfAppearanceKey,
-      states: selfUnit
-        ? Array.from(new Set([...selfUnit.states.list(), ...host.world.self.states]))
-        : host.world.self.states.size > 0
-          ? Array.from(host.world.self.states)
-          : undefined,
+      states: selfStates,
+      stats: selfUnit?.stats ?? host.world.self.stats,
+      ...((selfUnit as any)?.chargeCounts !== undefined
+        ? { chargeCounts: (selfUnit as any).chargeCounts }
+        : {}),
+      ...((selfUnit as any)?.maulCharges !== undefined
+        ? { maulCharges: (selfUnit as any).maulCharges }
+        : {}),
+      ...((selfUnit as any)?.feralRageCharges !== undefined
+        ? { feralRageCharges: (selfUnit as any).feralRageCharges }
+        : {}),
       ...(selfCastState !== undefined ? { castState: selfCastState } : {}),
       ...(selfUnit && selfUnit.overlays.length > 0 ? { overlays: selfUnit.overlays } : {}),
       ...(selfAnimStartedAtMs !== undefined ? { animStartedAtMs: selfAnimStartedAtMs } : {}),
@@ -557,6 +621,7 @@ export function buildRenderableUnits(
         ...(u.missileLightRadius !== undefined
           ? { missileLightRadius: u.missileLightRadius }
           : {}),
+        ...(u.missileNoLight === true ? { missileNoLight: true } : {}),
         mode: u.mode,
         direction: u.direction,
         hpRatio: 1,
@@ -795,6 +860,7 @@ export function buildRenderableUnits(
       u.unitType === 'player'
         ? host.world.containers.remoteEquipmentByPlayerId.get(u.id)
         : undefined
+    const remoteHasHolyShield = u.unitType === 'player' && u.states.has(101)
     const remoteEquipmentAppearance =
       u.unitType === 'player'
         ? resolveCharacterAppearance(
@@ -804,8 +870,10 @@ export function buildRenderableUnits(
                   remoteEquipSlots,
                   0,
                   host.world.containers.sockets,
+                  undefined,
+                  remoteHasHolyShield,
                 )
-              : {},
+              : { hasHolyShield: remoteHasHolyShield },
           )
         : undefined
     const remoteAppearanceKey =
@@ -859,7 +927,9 @@ export function buildRenderableUnits(
       ...(targetX !== undefined ? { targetX } : {}),
       ...(targetY !== undefined ? { targetY } : {}),
       mode,
-      direction: !isCorpse && interp ? interp.dir64 : u.direction,
+      direction:
+        !isCorpse && interp && castState?.skillId !== 151 ? interp.dir64 : u.direction,
+      ...(u.altitude !== undefined && u.altitude !== 0 ? { altitude: u.altitude } : {}),
       lifePct: u.lifePct,
       hpRatio: Math.max(0, Math.min(1, u.lifePct / 128)),
       isCorpse,
@@ -880,6 +950,12 @@ export function buildRenderableUnits(
       ...(resolvedOwnerType !== undefined ? { ownerType: resolvedOwnerType } : {}),
       ...(resolvedOwnerId !== undefined ? { ownerId: resolvedOwnerId } : {}),
       states: Array.from(u.states.list()),
+      stats: u.stats,
+      ...((u as any).chargeCounts !== undefined ? { chargeCounts: (u as any).chargeCounts } : {}),
+      ...((u as any).maulCharges !== undefined ? { maulCharges: (u as any).maulCharges } : {}),
+      ...((u as any).feralRageCharges !== undefined
+        ? { feralRageCharges: (u as any).feralRageCharges }
+        : {}),
       ...(castState !== undefined ? { castState } : {}),
       ...(u.overlays.length > 0 ? { overlays: u.overlays } : {}),
       ...(unitAnimStartedAtMs !== undefined ? { animStartedAtMs: unitAnimStartedAtMs } : {}),
@@ -908,7 +984,25 @@ export function buildRenderableUnits(
               : {}),
             ...(remoteAppearanceKey !== undefined ? { appearanceKey: remoteAppearanceKey } : {}),
           }
-        : {}),
+        : u.unitType === 'monster' && u.classId === 356
+          ? (() => {
+              const decoyAppearance =
+                selfEquipmentAppearance !== undefined
+                  ? selfEquipmentAppearance.classToken === 'am'
+                    ? selfEquipmentAppearance
+                    : { ...selfEquipmentAppearance, classToken: 'am' as const, classId: 0 }
+                  : DEFAULT_AMAZON_APPEARANCE
+              return {
+                equipmentAppearance: decoyAppearance,
+                appearanceKey: appearanceKey(decoyAppearance),
+              }
+            })()
+          : u.unitType === 'monster' && u.classId === 357
+            ? {
+                equipmentAppearance: VALKYRIE_113C_APPEARANCE,
+                appearanceKey: appearanceKey(VALKYRIE_113C_APPEARANCE),
+              }
+            : {}),
     })
   }
 

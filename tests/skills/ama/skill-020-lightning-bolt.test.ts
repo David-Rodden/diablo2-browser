@@ -137,18 +137,24 @@ describe('[Skill #020] Lightning Bolt (AMA) — 1.13c Parity (Issue #174 / #972)
       unit: { unitType: 1, id: 101, classId: 1, x: 105, y: 100, lifePct: 128, mode: 1 },
     })
     const caster = world.getUnit('player', 1)!
+    // Missiles.txt Pierce=1 only marks lightningjavelin pierce-capable; actual piercing needs owner
+    // STAT_SKILL_PIERCE (166) / STAT_ITEM_PIERCE (156) (D2Game 0x6FD11420, Issue #1117).
+    caster.stats.set(166, 100)
     ;(world as any).spawnMissilesForSkill(caster, 20, 115, 100, 10)
     const lj = Array.from(world.units.values()).find(
       (u) => u.unitType === 'missile' && u.missileKey === 'lightningjavelin',
     )!
     expect(lj).toBeDefined()
+    expect(lj.canPierce).toBe(true)
     expect(lj.pierce).toBe(true)
     ;(world as any).stepMissileUnit(lj)
+    // lightningjavelin has pCltDoFunc=1 and no CltSubMissile1 in 1.13c Missiles.txt: no in-flight
+    // lightninghit trail (that CltDoFunc=8 trail belongs to lightningbolt, Issue #1122).
     expect(
       Array.from(world.units.values()).some(
         (u) => u.unitType === 'missile' && u.missileKey === 'lightninghit',
       ),
-    ).toBe(true)
+    ).toBe(false)
     const hitMon = world.getUnit('monster', 101)!
     ;(world as any).triggerMissileImpact(lj, 105, 100, false, hitMon)
     expect(hitMon.overlays.some((o) => o.token === 'lightning')).toBe(true)

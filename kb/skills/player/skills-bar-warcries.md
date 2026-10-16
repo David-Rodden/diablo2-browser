@@ -104,14 +104,14 @@
      - Checks `STATLIST_GetSkillId(pStatList) == nSkillId && STATLIST_GetSkillLevel(pStatList) > nSkillLevel`.
      - **Anti-Downgrade Rule**: A lower-level Shout, Battle Orders, or Battle Command **cannot overwrite** an active higher-level buff of the same skill! An equal-or-higher `slvl` replaces the stats and refreshes the duration (`D2GAME_SetStatListExpireFrame`).
 3. **Exact Buff Formulas**:
-   - **Shout (Skill #138, `aurastate = shout` #26, `castoverlay = shout_cast` #39)**:
+   - **Shout (Skill #138, `aurastate = shout` #26, `States.txt castoverlay = shoutstart` #75)**:
      - **Defense Bonus (`aurastat1 = skill_armor_percent`)**: `ln12` = `100% + (slvl - 1)*10%` (`+100%` at slvl 1, `+290%` at slvl 20).
      - **Duration (`auralencalc`)**: `ln34 + (blvl(Battle Orders) + blvl(Battle Command))*par8` = `500 + (slvl - 1)*250 + (blvl(BO) + blvl(BC))*125` frames (`20s + 10s*(slvl - 1) + 5s*(blvl(BO) + blvl(BC))`).
-   - **Battle Orders (Skill #149, `aurastate = battleorders` #32, `castoverlay = battleorders_cast` #41)**:
+   - **Battle Orders (Skill #149, `aurastate = battleorders` #32, `States.txt castoverlay = battleorderscast` #154)**:
      - **Max Stamina / Max Life / Max Mana (`aurastat1 = item_maxstamina_percent`, `aurastat2 = item_maxhp_percent`, `aurastat3 = item_maxmana_percent`)**: `ln12` = `35% + (slvl - 1)*3%` (`+35%` at slvl 1, `+92%` at slvl 20).
      - **Current HP/Mana/Stamina Proportional Clamp (`SKILLS_UpdateUnitStatsFromWarcry` @ `SkillBar.cpp:1508`)**: Immediately scales current HP, Mana, and Stamina up proportionally with the new maximum (`CurrentHP += CurrentHP * pct / 100`, clamped to `MaxHP`).
      - **Duration (`auralencalc`)**: `ln34 + (blvl(Shout) + blvl(Battle Command))*par8` = `750 + (slvl - 1)*250 + (blvl(Shout) + blvl(BC))*125` frames (`30s + 10s*(slvl - 1) + 5s*(blvl(Shout) + blvl(BC))`).
-   - **Battle Command (Skill #155, `aurastate = battlecommand` #51, `castoverlay = battlecommand_cast` #40)**:
+   - **Battle Command (Skill #155, `aurastate = battlecommand` #51, `States.txt castoverlay = battlecommandcast` #159)**:
      - **All Skills (`aurastat1 = item_allskills`)**: `par1 = 1` (`+1` to All Skill Levels across all skill levels!).
      - Calls `SKILLS_RefreshPassiveSkills(pTarget)` immediately upon application (`SkillBar.cpp:1501`) so passive masteries and `Natural Resistance` recalculate with the `+1` skill bonus!
      - **Duration (`auralencalc`)**: `ln34 + (blvl(Shout) + blvl(Battle Orders))*par8` = `125 + (slvl - 1)*250 + (blvl(Shout) + blvl(BO))*125` frames (`5s + 10s*(slvl - 1) + 5s*(blvl(Shout) + blvl(BO))`).

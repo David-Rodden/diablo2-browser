@@ -180,7 +180,7 @@ describe('CommandMapper — quickCastSkillAtCursor (Issue #952)', () => {
 
     const handled = mapper.handleKeyDown({ key: 'F3', preventDefault() {} }, 2000)
     expect(handled).toBe(true)
-    expect(sentCommands).toHaveLength(0)
+    expect(sentCommands.filter((c) => c.type !== 'AssignSkillHotkey')).toHaveLength(0)
     expect(hudManager.hotkeys.bindings.get('F3')).toMatchObject({
       side: 'right',
       skillId: 64,
@@ -208,7 +208,7 @@ describe('CommandMapper — quickCastSkillAtCursor (Issue #952)', () => {
 
     // Without a binding the same key falls through to normal hotkeys (nothing cast).
     sentCommands.length = 0
-    expect(mapper.handleKeyDown({ key: 'h', preventDefault() {} }, 2000)).toBe(false)
+    expect(mapper.handleKeyDown({ key: 'j', preventDefault() {} }, 2000)).toBe(false)
     expect(sentCommands).toHaveLength(0)
   })
 })

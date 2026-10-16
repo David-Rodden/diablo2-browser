@@ -15,12 +15,17 @@ import {
   AUTOMAP_CROSSHAIR_COLORS,
   AUTOMAP_MONSTER_COLORS,
   AUTOMAP_SHRINE_BADGES,
+  AUTOMAP_WAYPOINT_HIGHLIGHT_SCALE,
+  AUTOMAP_WAYPOINT_HIGHLIGHT_TINT,
   Minimap,
   type MinimapLevel,
   resolveAutomapShrineBadge,
 } from '../src/client/ui/minimap.ts'
 import { Toolbar } from '../src/client/toolbar/toolbar.ts'
-import { computeAutomapTilePixelCoords } from '../src/common/formats/automap-table.ts'
+import {
+  computeAutomapObjectPixelCoords,
+  computeAutomapTilePixelCoords,
+} from '../src/common/formats/automap-table.ts'
 
 class MemoryStorage {
   private readonly map = new Map<string, string>()
@@ -162,6 +167,8 @@ describe('Automap Reveal Plugin — Monster & Shrine Radar (Issue #881)', () => 
     // Before plugin starts, native 1.13c defaults are false
     expect(settingsStore.get().automapShowMonsters).toBe(false)
     expect(settingsStore.get().automapShowShrines).toBe(false)
+    expect(settingsStore.get().automapShowWaypoints).toBe(false)
+    expect(session.automapView.getShowWaypoints()).toBe(false)
     expect(session.automapView.getRadarConfig()).toEqual({
       automapShowMonsters: false,
       automapShowShrines: false,
@@ -189,11 +196,14 @@ describe('Automap Reveal Plugin — Monster & Shrine Radar (Issue #881)', () => 
 
     await host.start()
 
-    // Plugin enabled by default -> showMonsters and showShrines default to true
+    // Plugin enabled by default -> showMonsters, showShrines, and showWaypoints default to true
     expect(host.getSetting('automap-reveal', 'showMonsters')).toBe(true)
     expect(host.getSetting('automap-reveal', 'showShrines')).toBe(true)
+    expect(host.getSetting('automap-reveal', 'showWaypoints')).toBe(true)
     expect(settingsStore.get().automapShowMonsters).toBe(true)
     expect(settingsStore.get().automapShowShrines).toBe(true)
+    expect(settingsStore.get().automapShowWaypoints).toBe(true)
+    expect(session.automapView.getShowWaypoints()).toBe(true)
     expect(session.automapView.getRadarConfig()).toEqual({
       automapShowMonsters: true,
       automapShowShrines: true,
@@ -203,6 +213,7 @@ describe('Automap Reveal Plugin — Monster & Shrine Radar (Issue #881)', () => 
     host.setSetting('automap-reveal', 'showMonsters', false)
     expect(settingsStore.get().automapShowMonsters).toBe(false)
     expect(settingsStore.get().automapShowShrines).toBe(true)
+    expect(settingsStore.get().automapShowWaypoints).toBe(true)
     expect(session.automapView.getRadarConfig()).toEqual({
       automapShowMonsters: false,
       automapShowShrines: true,
@@ -215,18 +226,26 @@ describe('Automap Reveal Plugin — Monster & Shrine Radar (Issue #881)', () => 
       automapShowShrines: false,
     })
 
+    host.setSetting('automap-reveal', 'showWaypoints', false)
+    expect(settingsStore.get().automapShowWaypoints).toBe(false)
+    expect(session.automapView.getShowWaypoints()).toBe(false)
+
     host.setSetting('automap-reveal', 'showMonsters', true)
     host.setSetting('automap-reveal', 'showShrines', true)
+    host.setSetting('automap-reveal', 'showWaypoints', true)
+    expect(session.automapView.getShowWaypoints()).toBe(true)
     expect(session.automapView.getRadarConfig()).toEqual({
       automapShowMonsters: true,
       automapShowShrines: true,
     })
 
-    // Disabling automap-reveal strictly reverts to 100% vanilla 1.13c (both false)
+    // Disabling automap-reveal strictly reverts to 100% vanilla 1.13c (all false)
     await host.setEnabled('automap-reveal', false)
     expect(settingsStore.get().automapReveal).toBe('off')
     expect(settingsStore.get().automapShowMonsters).toBe(false)
     expect(settingsStore.get().automapShowShrines).toBe(false)
+    expect(settingsStore.get().automapShowWaypoints).toBe(false)
+    expect(session.automapView.getShowWaypoints()).toBe(false)
     expect(session.automapView.getRadarConfig()).toEqual({
       automapShowMonsters: false,
       automapShowShrines: false,
@@ -236,6 +255,8 @@ describe('Automap Reveal Plugin — Monster & Shrine Radar (Issue #881)', () => 
     await host.setEnabled('automap-reveal', true)
     expect(settingsStore.get().automapShowMonsters).toBe(true)
     expect(settingsStore.get().automapShowShrines).toBe(true)
+    expect(settingsStore.get().automapShowWaypoints).toBe(true)
+    expect(session.automapView.getShowWaypoints()).toBe(true)
   })
 
   it('classifies Normal, Minion, Champion, Unique, and SuperUnique/Boss monsters and filters corpses, noMap, NPCs, pets, and statues', () => {
@@ -552,6 +573,115 @@ describe('Automap Reveal Plugin — Monster & Shrine Radar (Issue #881)', () => 
       expect(shrineLabels).toHaveLength(1)
       expect(shrineLabels[0]?.text).toBe('Exp')
       expect(shrineLabels[0]?.color).toBe('gold')
+    }
+  })
+
+  it('draws 2x scaled, bright-tinted top-layer waypoint icons in both Corner Minimap and Full Automap when highlightWaypoints is enabled', () => {
+    const cellsX = 24
+    const cellsY = 24
+    const gridWidth = cellsX * 5
+    const blocked = new Uint8Array(gridWidth * cellsY * 5)
+    const floorWpCoords = computeAutomapTilePixelCoords(4, 4, 0)
+    const objWpCoords = computeAutomapObjectPixelCoords(5 * 5 + 2, 4 * 5 + 2)
+    const level: MinimapLevel = {
+      key: 'waypoint-highlight-test',
+      cellsX,
+      cellsY,
+      blocked,
+      gridWidth,
+      markers: [
+        {
+          cellX: 6,
+          cellY: 4,
+          kind: 'waypoint',
+        },
+      ],
+      automap: {
+        layerId: 1,
+        levelTypeId: 1,
+        floors: [
+          {
+            cellNo: 307,
+            xPixel: floorWpCoords.xPixel,
+            yPixel: floorWpCoords.yPixel,
+            cellX: 4,
+            cellY: 4,
+            fSaved: 0,
+            weight: 0,
+          },
+        ],
+        walls: [],
+        objects: [
+          {
+            cellNo: 307,
+            xPixel: objWpCoords.xPixel,
+            yPixel: objWpCoords.yPixel,
+            cellX: 5,
+            cellY: 4,
+            fSaved: 0,
+            weight: 0,
+          },
+        ],
+        extras: [],
+      },
+      levelId: 2,
+    }
+
+    for (const bMinimap of [true, false]) {
+      const minimap = new Minimap()
+      minimap.bMinimap = bMinimap
+      const sheetName = bMinimap ? 'MaxiMapS' : 'MaxiMap'
+      const mockAtlasHandle = { id: `mock-${sheetName}` } as unknown as AtlasHandle
+      minimap.setAtlasHandle(sheetName, mockAtlasHandle)
+      minimap.reveal(level, 4, 4, 0, 320, true)
+
+      const wpFrame = minimap.getSheetMeta(sheetName).frames[307]!
+      expect(wpFrame.width).toBe(bMinimap ? 8 : 16)
+      expect(wpFrame.height).toBe(bMinimap ? 16 : 32)
+
+      // 1. Default 1.13c (highlightWaypoints = false): draws 1x floor + 1x object, 0 top-layer waypoints
+      const passDefault = createMockRenderer()
+      minimap.draw(
+        passDefault.renderer,
+        level,
+        4,
+        4,
+        { x: 0, y: 0, zoom: 1 },
+        { width: 800, height: 600 },
+        { playerWorldX: 0, playerWorldY: 320, highlightWaypoints: false },
+      )
+      expect(minimap.lastRenderStats.spritesDrawn.waypoints).toBe(0)
+      expect(minimap.lastRenderStats.warpLabels).toHaveLength(0)
+
+      // 2. Highlighted (highlightWaypoints = true): draws 3 top-layer 2x bright-tinted waypoint sprites (floor + object + marker)
+      const passHighlight = createMockRenderer()
+      minimap.draw(
+        passHighlight.renderer,
+        level,
+        4,
+        4,
+        { x: 0, y: 0, zoom: 1 },
+        { width: 800, height: 600 },
+        { playerWorldX: 0, playerWorldY: 320, highlightWaypoints: true },
+      )
+      expect(minimap.lastRenderStats.spritesDrawn.waypoints).toBe(3)
+      expect(minimap.lastRenderStats.warpLabels).toHaveLength(0)
+
+      const highlightedDraws = passHighlight.draws.filter(
+        (d): d is RecordedSpriteDraw =>
+          d.kind === 'sprite' &&
+          d.width === wpFrame.width * AUTOMAP_WAYPOINT_HIGHLIGHT_SCALE &&
+          d.height === wpFrame.height * AUTOMAP_WAYPOINT_HIGHLIGHT_SCALE,
+      )
+      expect(highlightedDraws).toHaveLength(3)
+      for (const d of highlightedDraws) {
+        expect(d.tint).toEqual([
+          AUTOMAP_WAYPOINT_HIGHLIGHT_TINT[0],
+          AUTOMAP_WAYPOINT_HIGHLIGHT_TINT[1],
+          AUTOMAP_WAYPOINT_HIGHLIGHT_TINT[2],
+          1.0,
+        ])
+      }
     }
   })
 })

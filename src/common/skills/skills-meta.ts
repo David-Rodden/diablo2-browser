@@ -67,6 +67,10 @@ export interface SkillTableMeta {
   readonly leftskill: 0 | 1
   readonly aura: 0 | 1
   readonly maxlvl: number
+  readonly restrict?: 0 | 1 | 2
+  readonly state1?: string
+  readonly state2?: string
+  readonly state3?: string
   readonly itypea1?: string
   readonly itypeb1?: string
   readonly etypea1?: string
@@ -337,6 +341,48 @@ const CANONICAL_CLASS_SKILL_WEAPON_META: Readonly<
   280: { itypea1: 'mele' },
 }
 
+const CANONICAL_SKILL_RESTRICT_META: Readonly<
+  Record<
+    number,
+    {
+      readonly restrict: 0 | 1 | 2
+      readonly state1?: string
+      readonly state2?: string
+      readonly state3?: string
+    }
+  >
+> = {
+  // Skills.txt restrict = 1 without State1..3 (usable in human and ANY shapeshift state including Delirium)
+  0: { restrict: 1 },
+  3: { restrict: 1 },
+  217: { restrict: 1 },
+  218: { restrict: 1 },
+  219: { restrict: 1 },
+  220: { restrict: 1 },
+  // Skills.txt restrict = 1 with State1..3 (usable in human AND listed shapeshift states, blocked in Delirium)
+  221: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  222: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  223: { restrict: 1, state1: 'wolf' }, // Werewolf (cast in human to shift, or in wolf to unshift)
+  226: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  227: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  228: { restrict: 1, state1: 'bear' }, // Werebear (cast in human to shift, or in bear to unshift)
+  231: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  236: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  237: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  241: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  246: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  247: { restrict: 1, state1: 'wolf', state2: 'bear' },
+  249: { restrict: 1, state1: 'wolf', state2: 'bear' }, // Armageddon
+  // Skills.txt restrict = 2 (usable ONLY when in one of state1..state3)
+  232: { restrict: 2, state1: 'wolf' }, // Feral Rage
+  233: { restrict: 2, state1: 'bear' }, // Maul
+  238: { restrict: 2, state1: 'wolf' }, // Rabies
+  239: { restrict: 2, state1: 'wolf', state2: 'bear' }, // Fire Claws
+  242: { restrict: 2, state1: 'wolf', state2: 'bear' }, // Hunger
+  243: { restrict: 2, state1: 'bear' }, // Shock Wave
+  248: { restrict: 2, state1: 'wolf' }, // Fury
+}
+
 function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
   const table: Record<number, SkillTableMeta> = {
     0: {
@@ -346,6 +392,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 1,
       aura: 0,
       maxlvl: 0,
+      restrict: 1,
       itypea1: 'weap',
       etypea1: 'tpot',
       checkfunc: 1,
@@ -365,6 +412,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 0,
       aura: 0,
       maxlvl: 0,
+      restrict: 0,
       weapsel: 4,
       skillPage: 0,
       listRow: -1,
@@ -382,6 +430,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 1,
       aura: 0,
       maxlvl: 0,
+      restrict: 0,
       itypea1: 'thro',
       skillPage: 0,
       listRow: 0,
@@ -399,6 +448,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 0,
       aura: 0,
       maxlvl: 0,
+      restrict: 1,
       skillPage: 0,
       listRow: 0,
       listPool: 0,
@@ -415,6 +465,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 1,
       aura: 0,
       maxlvl: 0,
+      restrict: 0,
       itypea1: 'thro',
       weapsel: 1,
       skillPage: 0,
@@ -433,6 +484,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 1,
       aura: 0,
       maxlvl: 0,
+      restrict: 0,
       itypea1: 'weap',
       etypea1: 'tpot',
       weapsel: 1,
@@ -452,6 +504,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 0,
       aura: 0,
       maxlvl: 0,
+      restrict: 1,
       skillPage: 0,
       listRow: 4,
       listPool: 1,
@@ -470,6 +523,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 0,
       aura: 0,
       maxlvl: 0,
+      restrict: 1,
       skillPage: 0,
       listRow: 4,
       listPool: 0,
@@ -488,6 +542,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 0,
       aura: 0,
       maxlvl: 0,
+      restrict: 1,
       skillPage: 0,
       listRow: 4,
       listPool: 2,
@@ -506,6 +561,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 0,
       aura: 0,
       maxlvl: 0,
+      restrict: 1,
       skillPage: 0,
       listRow: 4,
       listPool: 0,
@@ -524,6 +580,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: 0,
       aura: 0,
       maxlvl: 0,
+      restrict: 0,
       skillPage: 0,
       listRow: 0,
       listPool: 0,
@@ -539,6 +596,7 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
     const skillPage = s.tabIndex + 1
     const iconCel = CANONICAL_CLASS_SKILL_ICON_CEL[s.id] ?? 0
     const weaponMeta = CANONICAL_CLASS_SKILL_WEAPON_META[s.id]
+    const restrictMeta = CANONICAL_SKILL_RESTRICT_META[s.id]
     table[s.id] = {
       skillId: s.id,
       skilldesc: s.name.toLowerCase(),
@@ -546,6 +604,10 @@ function buildSkillsTableMeta(): Readonly<Record<number, SkillTableMeta>> {
       leftskill: CANONICAL_LEFTSKILL_COLUMN_ONE.has(s.id) ? 1 : 0,
       aura: CANONICAL_AURA_COLUMN_ONE.has(s.id) ? 1 : 0,
       maxlvl: 20,
+      restrict: restrictMeta?.restrict ?? 0,
+      ...(restrictMeta?.state1 ? { state1: restrictMeta.state1 } : {}),
+      ...(restrictMeta?.state2 ? { state2: restrictMeta.state2 } : {}),
+      ...(restrictMeta?.state3 ? { state3: restrictMeta.state3 } : {}),
       ...(weaponMeta ?? {}),
       skillPage,
       listRow: skillPage,
@@ -886,14 +948,91 @@ function handMatchesType(
 }
 
 /**
- * Evaluates Diablo II v1.13c `Skills.txt` weapon, shield, dual-wield, and ammunition quiver
- * requirements (`itypea1`, `itypeb1`, `etypea1`, `weapsel`, `checkfunc`).
- * When `weaponState` is undefined, returns true so callers without equipment state remain unaffected.
+ * Canonical 1.13c `States.txt` state IDs with `restrict = 1`:
+ * - `139`: `wolf` (Werewolf)
+ * - `140`: `bear` (Werebear)
+ * - `177`: `delerium` (Delirium / Morph fetish)
  */
-export function canUseSkillWithWeapon(skillId: number, weaponState?: WeaponEquipCheckState): boolean {
+export const RESTRICT_STATE_IDS_113C = [139, 140, 177] as const
+
+export const RESTRICT_STATE_NAME_TO_ID_113C: Readonly<Record<string, number>> = {
+  wolf: 139,
+  werewolf: 139,
+  bear: 140,
+  werebear: 140,
+  delerium: 177,
+  delirium: 177,
+}
+
+export const SKILLS_META = SKILLS_TABLE_META
+
+/**
+ * Evaluates Diablo II v1.13c `Skills.txt` shapeshift / morph state restriction
+ * (`restrict`, `state1..3` vs `States.txt` `restrict = 1` states `139`, `140`, `177`)
+ * per `D2Common.dll` (`0x6fd9f8c0` / `SKILLS_CheckSkillStateRestrict`) and `D2Client.dll` (`0x6faece30`).
+ *
+ * - `restrict === 2`: Usable ONLY while the unit has at least one of the skill's `state1..state3` active.
+ * - `restrict === 0` (or unset): Usable ONLY in human form (when NO `States.txt` `restrict = 1` state is active).
+ * - `restrict === 1`: Usable in both human form and shapeshifted states (unless `state1..state3` are specified,
+ *   in which case when shapeshifted at least one specified state must match).
+ */
+export function canUseSkillInMorphState(
+  skillId: number,
+  activeStates?: ReadonlySet<number> | Iterable<number>,
+): boolean {
   const meta = SKILLS_TABLE_META[skillId]
   if (!meta) return false
   if (meta.passive === 1 || meta.aura === 1) return true
+
+  const stateSet: ReadonlySet<number> =
+    activeStates instanceof Set
+      ? activeStates
+      : activeStates
+        ? new Set(activeStates)
+        : new Set<number>()
+
+  const restrict = meta.restrict ?? 0
+  const allowedStateIds: number[] = []
+  for (const name of [meta.state1, meta.state2, meta.state3]) {
+    if (!name) continue
+    const id = RESTRICT_STATE_NAME_TO_ID_113C[name.trim().toLowerCase()]
+    if (id !== undefined) allowedStateIds.push(id)
+  }
+
+  const isRestrictStateActive = RESTRICT_STATE_IDS_113C.some(id => stateSet.has(id))
+
+  if (restrict === 2) {
+    if (allowedStateIds.length === 0) return isRestrictStateActive
+    return allowedStateIds.some(id => stateSet.has(id))
+  }
+
+  if (restrict === 0) {
+    return !isRestrictStateActive
+  }
+
+  // restrict === 1
+  if (!isRestrictStateActive) return true
+  if (allowedStateIds.length === 0) return true
+  return allowedStateIds.some(id => stateSet.has(id))
+}
+
+/**
+ * Evaluates Diablo II v1.13c `Skills.txt` weapon, shield, dual-wield, ammunition quiver
+ * (`itypea1`, `itypeb1`, `etypea1`, `weapsel`, `checkfunc`), and optional shapeshift state
+ * (`restrict`, `state1..3`) requirements.
+ * When `weaponState` is undefined, weapon checks return true so callers without equipment state remain unaffected.
+ */
+export function canUseSkillWithWeapon(
+  skillId: number,
+  weaponState?: WeaponEquipCheckState,
+  activeStates?: ReadonlySet<number> | Iterable<number>,
+): boolean {
+  const meta = SKILLS_TABLE_META[skillId]
+  if (!meta) return false
+  if (meta.passive === 1 || meta.aura === 1) return true
+  if (activeStates !== undefined && !canUseSkillInMorphState(skillId, activeStates)) {
+    return false
+  }
   if (!meta.itypea1) return true
   if (!weaponState) return true
 

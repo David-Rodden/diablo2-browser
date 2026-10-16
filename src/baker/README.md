@@ -27,7 +27,7 @@ src/baker/
 ├── index.ts                # 模块导出入口
 ├── mpq-archive-source.ts   # 基于本地 MPQ 目录 (samples/d2/) 的多归档优先级读取源
 ├── packers/                # 核心美术与数据打包器 (瓦片、实体、角色纸娃娃、投射物、覆盖层、UI、前置界面、动画表、掉落/碰撞表等)
-├── extract/                # 1.13c 权威 TXT/BIN 数据表、技能树/词缀/宝石字典、TTF 字体与 D2Net/D2MOO 常量提取脚本
+├── extract/                # 1.13c 权威 TXT/BIN 数据表、技能树/词缀/宝石字典、TTF 字体与 D2Net/D2Common 常量提取脚本
 ├── io/                     # 32-bit RGBA PNG 编码、TBL 写入、SHA-256 资产清单生成 (asset-manifest.ts) 与发布辅助工具
 └── audit/                  # Fail-Fast 烘焙产物完整性校验器 (verify-packs, verify-tiles, verify-tile-alignment, verify-entity-packs, verify-audio-113c)
 ```
@@ -142,7 +142,7 @@ src/baker/
 ├── index.ts                # Module barrel export
 ├── mpq-archive-source.ts   # Multi-archive priority MPQ reader backed by local files in samples/d2/
 ├── packers/                # Asset & data packers (tiles, entities, character paperdoll layers, missiles, overlays, UI, frontend, animdata, drop/path tables)
-├── extract/                # 1.13c TXT/BIN table extractors, skill-tree/affix/gem dictionary generators, TTF font builder & D2Net/D2MOO table scripts
+├── extract/                # 1.13c TXT/BIN table extractors, skill-tree/affix/gem dictionary generators, TTF font builder & D2Net/D2Common table scripts
 ├── io/                     # 32-bit RGBA PNG encoder, TBL writer, SHA-256 asset-manifest.ts generator & pack publishing utilities
 └── audit/                  # Fail-fast bake integrity auditors (verify-packs, verify-tiles, verify-tile-alignment, verify-entity-packs, verify-audio-113c)
 ```

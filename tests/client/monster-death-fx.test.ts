@@ -39,72 +39,51 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
         'frostnova',
         'lightunique',
         'buglightning',
-        'monsterpoisoncloud',
+        'corpsepoisoncloud',
         'icebreaksmall',
         'icebreaklarge',
         'icebreaksmoke',
-        'andycontrol0',
         'andycolumnfirebase',
-        'andyfirewallmaker',
         'andyfirewall',
-        'andyspurt',
-        'andyfallingdebris',
-        'durieldeathcontrol',
+        'andycolumnfire',
+        'andyfallingdebris1',
         'durieldeathrock',
         'durieldeathdebris',
         'durieldeathsmoke',
-        'radamentdeath',
         'radamenthandofgod',
         'radamentholybolt',
         'horadriclight',
         'taintedsunflash',
         'taintedsunball',
         'queenpoisoncloud',
-        'mephistodeathcontrol',
-        'mephistofirewallmaker',
+        // mephistodeathcontrol (#299) has CelFile null: no art entry (Issue #1208 removed its alias).
         'mephistofirewall',
         'mephistoflyingrocksbig',
         'mephistoflyingrockssmall',
-        'mephistosmoke',
-        'izualcontrol',
-        'izualice',
-        'izualmist',
-        'izualmistloop',
-        'izualsparks',
-        'diablolight',
+        'izual mist loop',
+        'izual lightning',
         'firemedium',
-        'towermist',
-        'TowerMistTrail',
-        'TowerMistFade',
-        'shenkcontrol',
-        'shenkdeath1',
-        'ancientdeathcontrol',
-        'ancientdeathcloud',
-        'nihlathakcontrol',
-        'nihlathak1',
-        'nihlathak2',
-        'nihlathak3',
-        'nihlathak4',
-        'nihlathak5',
-        'nihlathak6',
-        'nihlathakswoosh',
-        'nihlathakdebris1',
-        'nihlathakdebris2',
-        'nihlathakdebris3',
-        'nihlathakdebris4',
-        'nihlathakglow',
-        'baalcontrol',
-        'baalspawn',
-        'baalfxcontrol',
-        'baalfxspirit1',
-        'baalfxspirit2',
-        'baalfxspirit3',
-        'baalfxspirit4',
-        'baalfxspirit5',
-        'baalfxbaalheadAppear',
-        'baalfxbaalhead1',
-        'baalfxbaalhead2',
-        'baalfxbaalhead3',
+        'towermisttrail',
+        'towermistfade',
+        'healing vortex',
+        'ancient death cloud',
+        'nihlithak1',
+        'nihlithak2',
+        'nihlithak3',
+        'nehlithakswoosh',
+        'nehlithakdebris1',
+        'nehlithakdebris2',
+        'nehlithakdebris3',
+        'nehlithakdebris4',
+        'nehlithakglow2',
+        'baalteleport',
+        'baalclonedeath',
+        'baalfx spirit 1',
+        'baalfx spirit 2',
+        'baalfx baal head appear',
+        'baalfx baal head 1',
+        'baalfx baal head 2',
+        'baalfx baal head 3',
       ]
       for (const token of requiredMissiles) {
         expect(
@@ -177,7 +156,7 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
       expect(minionDmg.maxFire).toBe(0)
     })
 
-    it('attaches fire_explode (#35) on Fire Enchanted boss death in ClientWorld and suppresses it on minions', () => {
+    it('spawns monstercorpseexplode + fireexplosion (no fire_explode overlay, D2Client 0x6fad0d20) on Fire Enchanted boss death and suppresses it on minions', () => {
       const world = new ClientWorld()
       world.applyEvent({
         type: 'UnitAssign',
@@ -201,9 +180,10 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
         lifePct: 0,
       })
       const bossUnit = world.getUnit('monster', 5001)!
-      expect(bossUnit.overlays.some(ov => ov.token === 'fire_explode')).toBe(true)
+      expect(bossUnit.overlays.some(ov => ov.token === 'fire_explode')).toBe(false)
+      expect(world.getUnitsByType('missile').filter(m => m.ownerId === 5001 && m.missileKey === 'fireexplosion').length).toBe(5)
 
-      // Minion with inherited Fire Enchanted must NOT trigger fire_explode
+      // Minion with inherited Fire Enchanted must NOT trigger the death explosion
       world.applyEvent({
         type: 'UnitAssign',
         unit: {
@@ -225,8 +205,7 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
         mode: 0,
         lifePct: 0,
       })
-      const minionUnit = world.getUnit('monster', 5002)!
-      expect(minionUnit.overlays.some(ov => ov.token === 'fire_explode')).toBe(false)
+      expect(world.getUnitsByType('missile').some(m => m.ownerId === 5002)).toBe(false)
     })
 
     it('calculates Bone Fetish (goboom #31) 100% physical splash damage and suppresses corpse + attaches fetishdeath1/2 overlays', () => {
@@ -268,13 +247,13 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
     })
   })
 
-  describe('3. Cold Enchanted (MonUMod #18) 32-Way Frost Nova & Isometric 2:1 Projection', () => {
-    it('computes Cold Enchanted Frost Nova level sLvl = max(1, floor(mlvl/2)) and 32 isometric radial vectors', () => {
+  describe('3. Cold Enchanted (MonUMod #18) coldunique 64-ring & Isometric 2:1 Projection', () => {
+    it('computes Cold Enchanted nova sLvl = max(1, floor(mlvl/2)) and isometric radial vectors', () => {
       expect(ISO_GROUND_ASPECT_RATIO).toBe(0.5)
       const nova = calcColdEnchantedDeathNova(24, 'nightmare', false)
       expect(nova.triggered).toBe(true)
       expect(nova.sLvl).toBe(12)
-      expect(nova.directions).toBe(32)
+      expect(nova.directions).toBe(64)
       expect(nova.chillFrames).toBeGreaterThan(0)
 
       const minionNova = calcColdEnchantedDeathNova(24, 'nightmare', true)
@@ -287,7 +266,7 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
       expect(zero.isoScreenDy / zero.isoScreenDx).toBeCloseTo(ISO_GROUND_ASPECT_RATIO, 4)
     })
 
-    it('spawns 32 frostnova missiles on Cold Enchanted boss death and 0 on minions', () => {
+    it('spawns 64 coldunique missiles on Cold Enchanted boss death and 0 on minions', () => {
       const world = new ClientWorld()
       world.applyEvent({
         type: 'UnitAssign',
@@ -310,8 +289,8 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
         mode: 0,
         lifePct: 0,
       })
-      const frostNovas = world.getUnitsByType('missile').filter(m => m.missileKey === 'frostnova')
-      expect(frostNovas.length).toBe(32)
+      const frostNovas = world.getUnitsByType('missile').filter(m => m.missileKey === 'coldunique')
+      expect(frostNovas.length).toBe(64)
 
       const worldMinion = new ClientWorld()
       worldMinion.applyEvent({
@@ -335,7 +314,7 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
         mode: 0,
         lifePct: 0,
       })
-      expect(worldMinion.getUnitsByType('missile').filter(m => m.missileKey === 'frostnova').length).toBe(0)
+      expect(worldMinion.getUnitsByType('missile').filter(m => m.missileKey === 'coldunique').length).toBe(0)
     })
   })
 
@@ -393,7 +372,7 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
       expect(scarabBolts.length).toBe(8)
     })
 
-    it('spawns monsterpoisoncloud on PoisonDead monster death (zombie5 / mummy / MonUMod #10)', () => {
+    it('spawns corpsepoisoncloud on PoisonDead monster death (zombie5 / mummy / MonUMod #10)', () => {
       expect(isPoisonDeadMonster(9, 'zombie5')).toBe(true)
       expect(isPoisonDeadMonster(96, 'mummy2')).toBe(true)
 
@@ -417,8 +396,8 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
         mode: 0,
         lifePct: 0,
       })
-      const clouds = world.getUnitsByType('missile').filter(m => m.missileKey === 'monsterpoisoncloud')
-      expect(clouds.length).toBeGreaterThan(0)
+      const clouds = world.getUnitsByType('missile').filter(m => m.missileKey === 'corpsepoisoncloud')
+      expect(clouds).toHaveLength(1)
     })
   })
 
@@ -646,24 +625,26 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
     })
   })
 
-  describe('8. Act/Quest Boss Death Specs & Temporary Summon killself (#21)', () => {
+  describe('8. Act/Quest Boss Death Specs & Temporary Summon tempsummon (#21)', () => {
     it('resolves all Act Boss and Quest Boss death FX specs per 1.13c D2Client/D2Game', () => {
       expect(getBossDeathFxSpec(156, 'andariel')?.controllerMissile).toBe('andycontrol0')
       expect(getBossDeathFxSpec(211, 'duriel')?.controllerMissile).toBe('durieldeathcontrol')
       expect(getBossDeathFxSpec(267, 'bloodraven')?.controllerMissile).toBe('brdeathcontrol')
       expect(getBossDeathFxSpec(229, 'radament')?.controllerMissile).toBe('radamentdeath')
       expect(getBossDeathFxSpec(284, 'coldworm')?.controllerMissile).toBe('queendeathcenter')
-      expect(getBossDeathFxSpec(250, 'summoner')?.controllerMissile).toBe('orbmist')
+      // 1.13c 0x6fad0fb0 has no Summoner (250) case (#1206).
+      expect(getBossDeathFxSpec(250, 'summoner')).toBeNull()
       expect(getBossDeathFxSpec(242, 'mephisto')?.controllerMissile).toBe('mephistodeathcontrol')
       expect(getBossDeathFxSpec(256, 'izual')?.controllerMissile).toBe('izual control')
-      expect(getBossDeathFxSpec(243, 'diablo')?.controllerMissile).toBe('diablo appears')
+      // 1.13c Diablo handler 0x6fb02600 creates no missile (#1205).
+      expect(getBossDeathFxSpec(243, 'diablo')?.controllerMissile).toBeNull()
       expect(getBossDeathFxSpec(479, 'shenk')?.controllerMissile).toBe('overseercontrol')
       expect(getBossDeathFxSpec(526, 'nihlathak')?.controllerMissile).toBe('nehlithakcontrol')
       expect(getBossDeathFxSpec(540, 'ancientbarb1')?.controllerMissile).toBe('ancient death center')
       expect(getBossDeathFxSpec(544, 'baalcrab')?.controllerMissile).toBe('baalfx control')
     })
 
-    it('expires temporary summons with killself (MonUMod #21) and attaches spawnedminion (#202) overlay', () => {
+    it('expires temporary summons with tempsummon (MonUMod #21) and attaches spawnedminion (#202) overlay', () => {
       const world = new ClientWorld()
       world.applyEvent({
         type: 'UnitAssign',
@@ -675,7 +656,7 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
           y: 120,
           mode: 1,
           lifePct: 100,
-          monUMods: [MON_UMOD.KILL_SELF],
+          monUMods: [MON_UMOD.TEMPSUMMON],
         },
       })
       const summon = world.getUnit('monster', 8001)!

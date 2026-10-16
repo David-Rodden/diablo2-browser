@@ -1,14 +1,24 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import {
+  listSavedBugReports,
+  persistBugReportToDisk,
+} from '../../src/baker/io/bug-report-store.ts'
 import { SettingsStore } from '../../src/client/settings/settings-store.ts'
 import {
+  TOOLBAR_BUG_ICON_SVG,
   TOOLBAR_CACHE_CLEAR_ICON_SVG,
+  TOOLBAR_CONFIG_ICON_SVG,
   TOOLBAR_DROP_TRACKER_ICON_SVG,
   TOOLBAR_FULLSCREEN_ENTER_ICON_SVG,
   TOOLBAR_FULLSCREEN_EXIT_ICON_SVG,
   TOOLBAR_KILL_STATS_ICON_SVG,
+  TOOLBAR_LANG_ICON_SVG,
   TOOLBAR_PLUGINS_ICON_SVG,
+  TOOLBAR_VOLUME_MUTE_ICON_SVG,
+  TOOLBAR_VOLUME_ON_ICON_SVG,
   Toolbar,
 } from '../../src/client/toolbar/toolbar.ts'
 
@@ -41,7 +51,7 @@ class FakeElement {
   rawHtml = ''
   private text = ''
   private readonly attrs = new Map<string, string>()
-  private readonly listeners = new Map<string, Array<(ev: { type: string }) => void>>()
+  private readonly listeners = new Map<string, Array<(ev: { type: string; target?: unknown }) => void>>()
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase()
@@ -122,20 +132,20 @@ class FakeElement {
     }
   }
 
-  addEventListener(type: string, cb: (ev: { type: string }) => void): void {
+  addEventListener(type: string, cb: (ev: { type: string; target?: unknown }) => void): void {
     const list = this.listeners.get(type) ?? []
     list.push(cb)
     this.listeners.set(type, list)
   }
 
-  dispatchEvent(ev: { type: string }): void {
+  dispatchEvent(ev: { type: string; target?: unknown }): void {
     for (const cb of [...(this.listeners.get(ev.type) ?? [])]) {
-      cb(ev)
+      cb({ ...ev, target: ev.target ?? this })
     }
   }
 
   click(): void {
-    this.dispatchEvent({ type: 'click' })
+    this.dispatchEvent({ type: 'click', target: this })
   }
 
   private matchesSelector(selector: string): boolean {
@@ -159,8 +169,8 @@ class FakeElement {
   }
 }
 
-describe('Top Toolbar Layout & Plugin Slot Architecture (#795)', () => {
-  it('renders left-to-right intrinsic groups followed by .d2-toolbar__divider, #d2-toolbar-plugins-btn, #d2-toolbar-plugin-slot, and #d2-toolbar-diag-banner', () => {
+describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Persistence', () => {
+  it('places #d2-toolbar-plugins-btn and #d2-toolbar-plugin-slot on the far left and status + 3 icon buttons (#d2-toolbar-lang-btn, #d2-toolbar-config-btn, #d2-toolbar-bug-btn) on the far right', () => {
     const prevDoc = (globalThis as { document?: unknown }).document
     const head = new FakeElement('head')
     const body = new FakeElement('body')
@@ -191,16 +201,52 @@ describe('Top Toolbar Layout & Plugin Slot Architecture (#795)', () => {
       expect(root).not.toBeNull()
 
       const children = Array.from(root.children)
-      const divider = root.querySelector('.d2-toolbar__divider')!
       const pluginsBtn = root.querySelector('#d2-toolbar-plugins-btn')!
       const pluginSlot = root.querySelector('#d2-toolbar-plugin-slot')!
+      const rightContainer = root.querySelector('#d2-toolbar-right')!
+      const configOverlay = root.querySelector('#d2-config-modal-overlay')!
+      const bugOverlay = root.querySelector('#d2-bug-modal-overlay')!
       const diagBanner = root.querySelector('#d2-toolbar-diag-banner')!
 
-      expect(divider).not.toBeNull()
       expect(pluginsBtn).not.toBeNull()
       expect(pluginSlot).not.toBeNull()
+      expect(rightContainer).not.toBeNull()
+      expect(configOverlay).not.toBeNull()
+      expect(bugOverlay).not.toBeNull()
       expect(diagBanner).not.toBeNull()
+      expect(configOverlay.hidden).toBe(true)
+      expect(bugOverlay.hidden).toBe(true)
       expect(diagBanner.hidden).toBe(true)
+
+      // Far-left order: pluginsBtn (0), pluginSlot (1), rightContainer (2), modals (3, 4), diagBanner (5)
+      expect(children.indexOf(pluginsBtn)).toBe(0)
+      expect(children.indexOf(pluginSlot)).toBe(1)
+      expect(children.indexOf(rightContainer)).toBe(2)
+      expect(children.indexOf(configOverlay)).toBe(3)
+      expect(children.indexOf(bugOverlay)).toBe(4)
+      expect(children.indexOf(diagBanner)).toBe(5)
+
+      // Right container has status badge, divider, and 3 icon buttons in order: lang, config, bug
+      const statusBadge = rightContainer.querySelector('#d2-toolbar-status')!
+      const divider = rightContainer.querySelector('.d2-toolbar__divider')!
+      const actionsGroup = rightContainer.querySelector('#d2-toolbar-actions')!
+      expect(statusBadge).not.toBeNull()
+      expect(divider).not.toBeNull()
+      expect(actionsGroup).not.toBeNull()
+
+      const langBtn = actionsGroup.querySelector('#d2-toolbar-lang-btn')!
+      const configBtn = actionsGroup.querySelector('#d2-toolbar-config-btn')!
+      const bugBtn = actionsGroup.querySelector('#d2-toolbar-bug-btn')!
+      expect(actionsGroup.children.indexOf(langBtn)).toBe(0)
+      expect(actionsGroup.children.indexOf(configBtn)).toBe(1)
+      expect(actionsGroup.children.indexOf(bugBtn)).toBe(2)
+
+      expect(langBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(TOOLBAR_LANG_ICON_SVG)
+      expect(langBtn.querySelector('#d2-toolbar-lang-badge')!.textContent).toBe('中')
+      expect(configBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(
+        TOOLBAR_CONFIG_ICON_SVG,
+      )
+      expect(bugBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(TOOLBAR_BUG_ICON_SVG)
 
       const pluginsIcon = pluginsBtn.querySelector('.d2-toolbar__btn-icon')!
       const pluginsLabel = pluginsBtn.querySelector('.d2-toolbar__btn-label')!
@@ -211,8 +257,10 @@ describe('Top Toolbar Layout & Plugin Slot Architecture (#795)', () => {
       expect(pluginsLabel.textContent).toBe('插件')
       expect(pluginsBtn.textContent).toBe('插件')
 
-      // Preserves icon across language toggle and warning indicator updates
-      toolbar.setLanguage('en')
+      // Clicking #d2-toolbar-lang-btn toggles zh <-> en and preserves icons
+      langBtn.click()
+      expect(store.get().lang).toBe('en')
+      expect(langBtn.querySelector('#d2-toolbar-lang-badge')!.textContent).toBe('EN')
       expect(pluginsBtn.querySelector('.d2-toolbar__btn-icon')).toBe(pluginsIcon)
       expect(pluginsIcon.innerHTML).toBe(TOOLBAR_PLUGINS_ICON_SVG)
       expect(pluginsBtn.textContent).toBe('Plugins')
@@ -221,19 +269,11 @@ describe('Top Toolbar Layout & Plugin Slot Architecture (#795)', () => {
       expect(pluginsBtn.querySelector('.d2-toolbar__btn-icon')).toBe(pluginsIcon)
       expect(pluginsBtn.textContent).toBe('Plugins ⚠')
 
-      toolbar.setLanguage('zh')
+      langBtn.click()
+      expect(store.get().lang).toBe('zh')
+      expect(langBtn.querySelector('#d2-toolbar-lang-badge')!.textContent).toBe('中')
       toolbar.setPluginsButtonState({ ready: true, hasWarning: false, open: false })
       expect(pluginsBtn.textContent).toBe('插件')
-
-      const dividerIdx = children.indexOf(divider)
-      const pluginsBtnIdx = children.indexOf(pluginsBtn)
-      const pluginSlotIdx = children.indexOf(pluginSlot)
-      const diagBannerIdx = children.indexOf(diagBanner)
-
-      expect(dividerIdx).toBe(3)
-      expect(pluginsBtnIdx).toBe(4)
-      expect(pluginSlotIdx).toBe(5)
-      expect(diagBannerIdx).toBe(6)
 
       toolbar.setDiagBanner('Lag: 42ms')
       expect(diagBanner.hidden).toBe(false)
@@ -247,7 +287,7 @@ describe('Top Toolbar Layout & Plugin Slot Architecture (#795)', () => {
     }
   })
 
-  it('aligns play.html static #d2-toolbar markup and toolbar.css flex-start layout with runtime Toolbar structure', () => {
+  it('aligns play.html static #d2-toolbar markup and toolbar.css layout with runtime Toolbar structure', () => {
     const playHtml = readFileSync(resolve(process.cwd(), 'play.html'), 'utf8')
     const toolbarCss = readFileSync(
       resolve(process.cwd(), 'src/client/toolbar/toolbar.css'),
@@ -255,28 +295,44 @@ describe('Top Toolbar Layout & Plugin Slot Architecture (#795)', () => {
     )
 
     expect(toolbarCss).toContain('justify-content: flex-start')
+    expect(toolbarCss).toContain('.d2-toolbar__right')
+    expect(toolbarCss).toContain('margin-left: auto')
     expect(toolbarCss).toContain('.d2-toolbar__divider')
     expect(toolbarCss).toContain('.d2-toolbar__btn-icon')
+    expect(toolbarCss).toContain('.d2-toolbar-modal-overlay')
 
-    const langPos = playHtml.indexOf('id="d2-toolbar-lang-en"')
-    const dividerPos = playHtml.indexOf('class="d2-toolbar__divider"')
     const pluginsBtnPos = playHtml.indexOf('id="d2-toolbar-plugins-btn"')
     const pluginSlotPos = playHtml.indexOf('id="d2-toolbar-plugin-slot"')
+    const rightPos = playHtml.indexOf('id="d2-toolbar-right"')
+    const statusPos = playHtml.indexOf('id="d2-toolbar-status"')
+    const dividerPos = playHtml.indexOf('class="d2-toolbar__divider"')
+    const langBtnPos = playHtml.indexOf('id="d2-toolbar-lang-btn"')
+    const configBtnPos = playHtml.indexOf('id="d2-toolbar-config-btn"')
+    const bugBtnPos = playHtml.indexOf('id="d2-toolbar-bug-btn"')
 
-    expect(langPos).toBeGreaterThan(0)
-    expect(dividerPos).toBeGreaterThan(langPos)
-    expect(pluginsBtnPos).toBeGreaterThan(dividerPos)
+    expect(pluginsBtnPos).toBeGreaterThan(0)
     expect(pluginSlotPos).toBeGreaterThan(pluginsBtnPos)
+    expect(rightPos).toBeGreaterThan(pluginSlotPos)
+    expect(statusPos).toBeGreaterThan(rightPos)
+    expect(dividerPos).toBeGreaterThan(statusPos)
+    expect(langBtnPos).toBeGreaterThan(dividerPos)
+    expect(configBtnPos).toBeGreaterThan(langBtnPos)
+    expect(bugBtnPos).toBeGreaterThan(configBtnPos)
+
     expect(playHtml).toContain(TOOLBAR_PLUGINS_ICON_SVG)
+    expect(playHtml).toContain(TOOLBAR_LANG_ICON_SVG)
+    expect(playHtml).toContain(TOOLBAR_CONFIG_ICON_SVG)
+    expect(playHtml).toContain(TOOLBAR_BUG_ICON_SVG)
     expect(playHtml).toContain(TOOLBAR_CACHE_CLEAR_ICON_SVG)
-    expect(playHtml).toContain('d2-toolbar__group--segmented')
-    expect(toolbarCss).toContain('.d2-toolbar__group--segmented')
+    expect(playHtml).toContain(TOOLBAR_VOLUME_ON_ICON_SVG)
+    expect(playHtml).toContain('data-d2-modal-overlay="config"')
+    expect(playHtml).toContain('data-d2-modal-overlay="bug-report"')
     expect(toolbarCss).toContain('.d2-toolbar__drop-set')
     expect(toolbarCss).toContain('.d2-toolbar__drop-unique')
     expect(toolbarCss).toContain('.d2-toolbar__drop-rune')
   })
 
-  it('renders cache clear icon, segmented language group, plugin contribution icons, and D2 drop quality spans (#1020)', () => {
+  it('opens config modal (#d2-config-modal-overlay) to configure fullscreen, resolution, FPS, master volume/mute, and cache clear, plus renders plugin contribution icons (#1020)', () => {
     const prevDoc = (globalThis as { document?: unknown }).document
     const head = new FakeElement('head')
     const body = new FakeElement('body')
@@ -304,14 +360,51 @@ describe('Top Toolbar Layout & Plugin Slot Architecture (#795)', () => {
         store,
       })
       const root = container.querySelector('#d2-toolbar')!
-      const cacheClearBtn = root.querySelector('#d2-toolbar-cache-clear-btn')!
+      const configBtn = root.querySelector('#d2-toolbar-config-btn')!
+      const configOverlay = root.querySelector('#d2-config-modal-overlay')!
+      expect(configOverlay.hidden).toBe(true)
+
+      configBtn.click()
+      expect(configOverlay.hidden).toBe(false)
+      expect(toolbar.isConfigModalOpen()).toBe(true)
+      expect(configBtn.getAttribute('aria-expanded')).toBe('true')
+
+      // Volume & Mute inside Config modal
+      const muteBtn = configOverlay.querySelector('#d2-toolbar-mute-btn')!
+      const volumeSlider = configOverlay.querySelector('#d2-toolbar-volume-slider')!
+      const volumeValue = configOverlay.querySelector('#d2-toolbar-volume-value')!
+      expect(volumeSlider.value).toBe('80')
+      expect(volumeValue.textContent).toBe('80%')
+      expect(muteBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(
+        TOOLBAR_VOLUME_ON_ICON_SVG,
+      )
+      expect(muteBtn.textContent).toBe('静音')
+
+      volumeSlider.value = '45'
+      volumeSlider.dispatchEvent({ type: 'input' })
+      expect(store.get().masterVolume).toBe(0.45)
+      expect(volumeValue.textContent).toBe('45%')
+
+      muteBtn.click()
+      expect(store.get().audioMuted).toBe(true)
+      expect(volumeValue.textContent).toBe('0%')
+      expect(muteBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(
+        TOOLBAR_VOLUME_MUTE_ICON_SVG,
+      )
+      expect(muteBtn.textContent).toBe('已静音')
+
+      // Dragging slider above 0 while muted automatically unmutes
+      volumeSlider.value = '65'
+      volumeSlider.dispatchEvent({ type: 'change' })
+      expect(store.get().masterVolume).toBe(0.65)
+      expect(store.get().audioMuted).toBe(false)
+      expect(volumeValue.textContent).toBe('65%')
+
+      const cacheClearBtn = configOverlay.querySelector('#d2-toolbar-cache-clear-btn')!
       expect(cacheClearBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(
         TOOLBAR_CACHE_CLEAR_ICON_SVG,
       )
       expect(cacheClearBtn.textContent).toBe('清除缓存')
-
-      const langGroup = root.children[2]!
-      expect(langGroup.className).toContain('d2-toolbar__group--segmented')
 
       toolbar.addContribution({
         domId: 'd2-toolbar-plugin-kill-stats-open',
@@ -361,9 +454,105 @@ describe('Top Toolbar Layout & Plugin Slot Architecture (#795)', () => {
       ;(globalThis as { document?: unknown }).document = prevDoc
     }
   })
+
+  it('opens bug report modal (#d2-bug-modal-overlay), validates required fields, and persists submitted bug reports to server files', async () => {
+    const prevDoc = (globalThis as { document?: unknown }).document
+    const head = new FakeElement('head')
+    const body = new FakeElement('body')
+    const container = new FakeElement('div')
+    body.appendChild(container)
+    ;(globalThis as { document?: unknown }).document = {
+      head,
+      body,
+      createElement(tag: string) {
+        return new FakeElement(tag)
+      },
+      getElementById(id: string) {
+        return body.querySelector(`#${id}`) ?? head.querySelector(`#${id}`)
+      },
+    }
+
+    const tmpBugsDir = mkdtempSync(join(tmpdir(), 'd2-bugs-test-'))
+    try {
+      const store = new SettingsStore({
+        storage: new MemoryStorage(),
+        defaultLang: 'zh',
+        syncGlobalLang: false,
+      })
+      const toolbar = new Toolbar({
+        container: container as unknown as HTMLElement,
+        store,
+        submitBugReportFn: async (submission) =>
+          persistBugReportToDisk(submission, { bugsDir: tmpBugsDir }),
+        callbacks: {
+          getBugReportContext: () => ({
+            inGameView: true,
+            areaId: 1,
+            selectedChar: 'TestSorc',
+          }),
+        },
+      })
+
+      const root = container.querySelector('#d2-toolbar')!
+      const configBtn = root.querySelector('#d2-toolbar-config-btn')!
+      const bugBtn = root.querySelector('#d2-toolbar-bug-btn')!
+      const configOverlay = root.querySelector('#d2-config-modal-overlay')!
+      const bugOverlay = root.querySelector('#d2-bug-modal-overlay')!
+
+      // Opening config then clicking bugBtn closes config modal and opens bug modal
+      configBtn.click()
+      expect(configOverlay.hidden).toBe(false)
+      bugBtn.click()
+      expect(configOverlay.hidden).toBe(true)
+      expect(bugOverlay.hidden).toBe(false)
+
+      const titleInput = bugOverlay.querySelector('#d2-bug-title-input')!
+      const categorySelect = bugOverlay.querySelector('#d2-bug-category-select')!
+      const descInput = bugOverlay.querySelector('#d2-bug-desc-input')!
+      const submitBtn = bugOverlay.querySelector('#d2-bug-submit-btn')!
+      const statusMsg = bugOverlay.querySelector('#d2-bug-status-msg')!
+
+      // Empty submit -> error notice
+      submitBtn.click()
+      await Promise.resolve()
+      expect(statusMsg.hidden).toBe(false)
+      expect(statusMsg.className).toContain('d2-toolbar-modal__status--error')
+      expect(statusMsg.textContent).toContain('请填写问题标题与详细描述')
+
+      // Valid submit -> saved to disk (bugs/bug-reports.jsonl and bugs/<id>.json)
+      titleInput.value = '冰封球在罗格营地边缘音效异常'
+      categorySelect.value = 'audio'
+      descInput.value = '1. 进入罗格营地\n2. 切换音量后释放技能\n3. 观察音效'
+      const res = await toolbar.submitBugReport()
+      expect(res.ok).toBe(true)
+      expect(res.id).toMatch(/^bug-\d{8}-\d{6}-[0-9a-f]{6}$/)
+      expect(titleInput.value).toBe('')
+      expect(descInput.value).toBe('')
+      expect(statusMsg.hidden).toBe(false)
+      expect(statusMsg.className).toContain('d2-toolbar-modal__status--ok')
+      expect(statusMsg.textContent).toContain(`#${res.id}`)
+
+      const savedList = listSavedBugReports({ bugsDir: tmpBugsDir })
+      expect(savedList).toHaveLength(1)
+      expect(savedList[0]!.id).toBe(res.id)
+      expect(savedList[0]!.title).toBe('冰封球在罗格营地边缘音效异常')
+      expect(savedList[0]!.category).toBe('audio')
+      expect(savedList[0]!.gameContext).toEqual({
+        inGameView: true,
+        areaId: 1,
+        selectedChar: 'TestSorc',
+      })
+      expect(existsSync(join(tmpBugsDir, `${res.id}.json`))).toBe(true)
+
+      toolbar.destroy()
+    } finally {
+      rmSync(tmpBugsDir, { recursive: true, force: true })
+      ;(globalThis as { document?: unknown }).document = prevDoc
+    }
+  })
 })
 
-// NOT 1.13c: toolbar fullscreen toggle (web-port affordance).
+// NOT 1.13c: toolbar fullscreen toggle (inside Config modal).
 describe('Toolbar fullscreen toggle button', () => {
   function mountWithDocument(docExtras: Record<string, unknown>): {
     toolbar: Toolbar
@@ -440,16 +629,13 @@ describe('Toolbar fullscreen toggle button', () => {
 
   const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
-  it('sits immediately after the FPS selector', () => {
+  it('sits inside the config modal display row', () => {
     const fs = makeFullscreenDoc()
     const { root, restore } = mountWithDocument(fs.extras)
     try {
-      const fpsSelect = root.querySelector('#d2-toolbar-worldfps-select')!
-      const btn = root.querySelector('#d2-toolbar-fullscreen-btn')!
+      const configModal = root.querySelector('#d2-config-modal')!
+      const btn = configModal.querySelector('#d2-toolbar-fullscreen-btn')!
       expect(btn).not.toBeNull()
-      const group = fpsSelect.parentNode!
-      expect(btn.parentNode).toBe(group)
-      expect(group.children.indexOf(btn)).toBe(group.children.indexOf(fpsSelect) + 1)
       expect(btn.className).toBe('d2-toolbar__btn')
       expect(btn.disabled).toBe(false)
       expect(btn.textContent).toBe('全屏')

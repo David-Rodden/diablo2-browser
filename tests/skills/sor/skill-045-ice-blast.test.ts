@@ -129,8 +129,8 @@ describe('[Skill #045] Ice Blast (SOR) — 1.13c 7-Dimensional Verification Suit
     it('verifies baked DCC atlas sprite sheet files exist with non-zero size', () => {
       const missilePng = path.resolve(__dirname, '../../../public/missiles/iceblast.png')
       const missileJson = path.resolve(__dirname, '../../../public/missiles/iceblast.json')
-      const explodePng = path.resolve(__dirname, '../../../public/missiles/freezeexplode.png')
-      const explodeJson = path.resolve(__dirname, '../../../public/missiles/freezeexplode.json')
+      const explodePng = path.resolve(__dirname, '../../../public/missiles/freezingarrowexp1.png')
+      const explodeJson = path.resolve(__dirname, '../../../public/missiles/freezingarrowexp1.json')
       const overlayPng = path.resolve(__dirname, '../../../public/overlays/ice_cast_1.png')
       const overlayJson = path.resolve(__dirname, '../../../public/overlays/ice_cast_1.json')
 
@@ -153,14 +153,11 @@ describe('[Skill #045] Ice Blast (SOR) — 1.13c 7-Dimensional Verification Suit
       expect(ICEBLAST_META.directions).toBe(16)
       expect(ICEBLAST_META.framesPerDirection).toBe(5)
       expect(MISSILE_METAS['iceblast']).toBe(ICEBLAST_META)
-      expect(MISSILE_METAS['IceBlast']).toBe(ICEBLAST_META)
 
-      expect(FREEZEEXPLODE_META.name).toBe('freezeexplode')
+      expect(FREEZEEXPLODE_META.name).toBe('freezingarrowexp1')
       expect(FREEZEEXPLODE_META.directions).toBe(1)
       expect(FREEZEEXPLODE_META.framesPerDirection).toBe(15)
-      expect(MISSILE_METAS['freezeexplode']).toBe(FREEZEEXPLODE_META)
       expect(MISSILE_METAS['freezingarrowexp1']).toBe(FREEZEEXPLODE_META)
-      expect(MISSILE_METAS['FreezingArrowExp1']).toBe(FREEZEEXPLODE_META)
     })
 
     it('verifies cast overlay mapping and metadata', () => {

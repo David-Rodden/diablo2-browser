@@ -14,6 +14,8 @@
 import type { UnitRef, UnitTypeName } from '../../netproto/index.ts'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { getSoundIdByName113c } from '../../common/audio/sounds-113c.ts'
+import { resolveNpcGreetingSoundId113c } from '../../common/audio/npc-speech-113c.ts'
+import { resolveUnitMonSoundRow113c } from '../../common/audio/mon-sounds-113c.ts'
 
 export interface WorldSoundUnitRef extends UnitRef {
   readonly x?: number | undefined
@@ -26,6 +28,7 @@ export interface WorldSoundRequest {
   readonly kind?:
     | 'sound'
     | 'skill-cast'
+    | 'skill-cast-stop'
     | 'skill-keyframe'
     | 'missile-spawn'
     | 'missile-tick'
@@ -34,6 +37,7 @@ export interface WorldSoundRequest {
     | 'unit-death'
     | 'unit-loop-start'
     | 'unit-loop-stop'
+    | 'unit-sound-stop'
     | string
     | undefined
   readonly soundId?: number | undefined
@@ -238,7 +242,7 @@ export const FALLEN_CLASS_IDS_113C: ReadonlySet<number> = new Set<number>([19, 2
 
 /**
  * Primary Town NPC greeting speech (`0x6fb4cce0` / `0x6fb4cad0` -> `0x6fb8f0dc..0x6fb8f37c`) by monster `classId`.
- * All 35 rows lie in `3480..4567` (`Stream = 1` NPC dialogue, #948).
+ * All 38 rows lie in `3480..4569` (`Stream = 1` NPC dialogue, #948 / #1234).
  */
 export const NPC_GREETING_BY_CLASS_ID_113C: Readonly<Record<number, number>> = {
   146: 3644, // deckardcain (Act 1) -> npc_cain_greeting_1
@@ -253,8 +257,8 @@ export const NPC_GREETING_BY_CLASS_ID_113C: Readonly<Record<number, number>> = {
   178: 3844, // fara -> npc_fara_greeting_1
   198: 3949, // greiz -> npc_greiz_greeting_1
   199: 3811, // elzix -> npc_elzix_greeting_1
-  200: 3877, // jerhyn -> npc_jerhyn_greeting_1
-  201: 4049, // geglash -> npc_geglash_greeting_1
+  200: 3877, // geglash -> npc_geglash_greeting_1
+  201: 4049, // jerhyn -> npc_jerhyn_greeting_1
   202: 4118, // lysander -> npc_lysander_greeting_1
   210: 4150, // meshif (Act 2) -> npc_meshif_greeting_1
   244: 3644, // cain (Act 2) -> npc_cain_greeting_1
@@ -266,8 +270,10 @@ export const NPC_GREETING_BY_CLASS_ID_113C: Readonly<Record<number, number>> = {
   254: 3523, // alkor -> npc_alkor_greeting_1
   255: 4248, // ormus -> npc_ormus_greeting_1
   257: 3989, // halbu -> npc_halbu_greeting_1
-  265: 3644, // cain (Act 3) -> npc_cain_greeting_1
+  264: 4150, // meshif2 (Act 3) -> npc_meshif_greeting_1
+  265: 3644, // cain (Act 1) -> npc_cain_greeting_1
   297: 4217, // natalya -> npc_natalya_greeting_1
+  367: 4303, // tyrael2 (Act 4) -> npc_tyrael_greeting_1
   405: 4043, // jamella -> npc_jamella_greeting_1
   511: 4449, // larzuk -> npc_larzuk_greeting_1
   512: 4382, // drehya (anya) -> npc_drehya_greeting_1
@@ -275,7 +281,8 @@ export const NPC_GREETING_BY_CLASS_ID_113C: Readonly<Record<number, number>> = {
   514: 4533, // nihlathak (town) -> npc_nihlathak_greeting_1
   515: 4563, // qual-kehk -> npc_qualkehk_greeting_1
   520: 3644, // cain (Act 5) -> npc_cain_greeting_1
-  521: 4303, // tyrael (Act 4) -> npc_tyrael_greeting_1
+  521: 4303, // tyrael3 (Act 5) -> npc_tyrael_greeting_1
+  527: 4382, // drehyaiced (Act 5) -> npc_drehya_greeting_1
 }
 
 export interface PlaySoundUnitContext113c {
@@ -288,6 +295,11 @@ export interface PlaySoundUnitContext113c {
   readonly isLocalPlayer?: boolean | undefined
   readonly modifierListSkillId?: number | undefined
   readonly hasSkill?: ((skillId: number) => boolean) | undefined
+  readonly isUnique?: boolean | undefined
+  readonly isChampion?: boolean | undefined
+  readonly isSuperUnique?: boolean | undefined
+  readonly superUniqueId?: number | undefined
+  readonly name?: string | undefined
 }
 
 export interface PlaySoundWorldContext113c {
@@ -295,6 +307,13 @@ export interface PlaySoundWorldContext113c {
   readonly localPlayerX: number
   readonly localPlayerY: number
   readonly fleeDelayTicks?: number | undefined
+  readonly greetingOptions?:
+    | {
+        readonly mode?: 0 | 1 | 2 | undefined
+        readonly timeOfDay?: 0 | 1 | 2 | undefined
+        readonly rng?: (() => number) | undefined
+      }
+    | undefined
 }
 
 /**
@@ -376,9 +395,12 @@ export function resolve0x2CPlaySound113c(
     }
 
     case 16: {
-      // 0x6fad411e: Monster Taunt (MonSounds.txt +0x74, Stream=1 boss speech)
+      // 0x6fad411e -> 0x6fad2a70: Monster Taunt (MonSounds.txt +0x74 via SuperUniques / UMonSound / MonSound, Stream=1 boss speech)
       if (unit.unitType !== 'monster') return null
-      const tauntId = MONSTER_TAUNT_BY_CLASS_ID_113C[unit.classId] ?? 0
+      const tauntId =
+        resolveUnitMonSoundRow113c(unit)?.taunt ||
+        MONSTER_TAUNT_BY_CLASS_ID_113C[unit.classId] ||
+        0
       if (tauntId <= 0) return null
       return {
         speechSoundId: tauntId,
@@ -390,11 +412,14 @@ export function resolve0x2CPlaySound113c(
     }
 
     case 17: {
-      // 0x6fad4163 -> 0x6fad2c10: Monster Flee (MonSounds.txt +0x78, row 917 fallen_flee_1, delay 6..8 ticks)
+      // 0x6fad4163 -> 0x6fad2c10 -> 0x6fad2a70: Monster Flee (MonSounds.txt +0x78, row 917 fallen_flee_1, delay 6..8 ticks)
       if (unit.unitType !== 'monster') return null
-      if (!FALLEN_CLASS_IDS_113C.has(unit.classId)) return null
+      const fleeId =
+        resolveUnitMonSoundRow113c(unit)?.flee ||
+        (FALLEN_CLASS_IDS_113C.has(unit.classId) ? 917 : 0)
+      if (fleeId <= 0) return null
       return {
-        soundId: 917,
+        soundId: fleeId,
         unit: unitRef,
         x: unit.x,
         y: unit.y,
@@ -404,7 +429,13 @@ export function resolve0x2CPlaySound113c(
 
     case 18: {
       // 0x6fad4171 -> 0x6fb4cce0: Town NPC Greeting (0x6fb8f0dc..0x6fb8f37c, Stream=1 NPC speech)
-      const greetingId = NPC_GREETING_BY_CLASS_ID_113C[unit.classId] ?? 0
+      const greetingId =
+        resolveNpcGreetingSoundId113c(
+          unit.classId,
+          worldCtx.greetingOptions ?? { mode: 0, rng: () => 0.9 },
+        ) ||
+        NPC_GREETING_BY_CLASS_ID_113C[unit.classId] ||
+        0
       if (greetingId <= 0) return null
       return {
         speechSoundId: greetingId,

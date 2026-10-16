@@ -520,7 +520,7 @@ export function calculateDetailedDamage(
     typeZh = typeNamesZh[skill.eType] || `${skill.eType} 伤害`
 
     if (skill.id === 234 && skill.eMin === 0 && skill.eMax === 0) {
-      // 1.13c Fissure (#234) sub-missile fallback: Missiles.txt 'eruption crack 1' (EMin=15, EMax=25, EMinLev=6,14,18,22,26)
+      // 1.13c Fissure (#234) sub-missile fallback: Missiles.txt 'erruption crack 1' (EMin=15, EMax=25, EMinLev=6,14,18,22,26)
       rawBaseMin = evaluateLevelBand(15, [6, 14, 18, 22, 26], lvl)
       rawBaseMax = evaluateLevelBand(25, [6, 14, 18, 22, 26], lvl)
     } else {

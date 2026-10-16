@@ -53,7 +53,16 @@ export const ORB_MIST_MISSILE = 0x170
 export const ORB_MIST_TRAIL_MISSILE = 0x171
 export const ORB_MIST_FADE_MISSILE = 0x172
 
-/** Missiles.txt rows of the show, checked once at import (fail fast on a regenerated table that lost a row). */
+/** MonStats.txt 45 `corruptrogue3` (The Countess, 0x6fad1003 -> 0x6fb02860, Issue #1215). */
+export const COUNTESS_MONSTER_CLASS = 0x2d
+/** objects.txt 371 (`0x173`, `push 0x173` at 0x6fb02883): the quest chest object 0x6fb02860 looks up. */
+export const TOWER_CHEST_OBJECT_CLASS = 0x173
+export const TOWER_MIST_MISSILE = 0x123
+export const TOWER_MIST_TRAIL_MISSILE = 0x124
+export const TOWER_MIST_FADE_MISSILE = 0x14a
+export const TOWER_CHEST_SPAWNER_MISSILE = 0x14c
+
+/** Missiles.txt rows of the Compelling Orb show, checked once at import. */
 export const ORB_MIST_MISSILE_ROWS = (() => {
   const row = (id: number, name: string): QuestFxMissileRow113c => {
     const r = QUEST_FX_MISSILES_113C[id]
@@ -70,6 +79,32 @@ export const ORB_MIST_MISSILE_ROWS = (() => {
     mist,
     trail: row(ORB_MIST_TRAIL_MISSILE, 'orbmisttrail'),
     fade: row(ORB_MIST_FADE_MISSILE, 'orbmistfade'),
+  })
+})()
+
+/** Missiles.txt rows of the Countess death show (0x6fb02860, Issue #1215). */
+export const TOWER_MIST_MISSILE_ROWS = (() => {
+  const row = (id: number, name: string): QuestFxMissileRow113c => {
+    const r = QUEST_FX_MISSILES_113C[id]
+    if (r === undefined || r.name !== name) {
+      throw new Error(`quest-fx-compelling-orb: Missiles.txt row ${String(id)} is not '${name}'`)
+    }
+    return r
+  }
+  const mist = row(TOWER_MIST_MISSILE, 'towermist')
+  if (mist.pCltDoFunc !== 25 || mist.cltSubMissile1 !== TOWER_MIST_TRAIL_MISSILE) {
+    throw new Error('quest-fx-compelling-orb: Missiles.txt 291 towermist is not CltDoFunc 25 with CltSubMissile1 292')
+  }
+  const spawner = row(TOWER_CHEST_SPAWNER_MISSILE, 'towerchestspawner')
+  if (spawner.pCltDoFunc !== 30 || spawner.cltSubMissile1 !== TOWER_MIST_TRAIL_MISSILE) {
+    throw new Error('quest-fx-compelling-orb: Missiles.txt 332 towerchestspawner is not CltDoFunc 30 with CltSubMissile1 292')
+  }
+  return Object.freeze({
+    mist,
+    trail: row(TOWER_MIST_TRAIL_MISSILE, 'towermisttrail'),
+    fade: row(TOWER_MIST_FADE_MISSILE, 'towermistfade'),
+    spawner,
+    chestSpawner: spawner,
   })
 })()
 
@@ -112,4 +147,41 @@ export function orbMistTick(
   const sx = d2Rand(seed, 2 * initRadius + 1) - initRadius + x // 0x6fb6848e..0x6fb684a2
   const sy = d2Rand(seed, 2 * initRadius + 1) - initRadius + y // 0x6fb684b2..0x6fb684c5
   return { missile: ORB_MIST_TRAIL_MISSILE, x: sx, y: sy, targetX: sx + dx, targetY: sy + dy }
+}
+
+/** One `towermisttrail` CltDoFunc 30 creates (flags 0x21: explicit position and target). */
+export interface TowerChestSpawnerTrailSpawn {
+  readonly missile: typeof TOWER_MIST_TRAIL_MISSILE
+  readonly x: number
+  readonly y: number
+  readonly targetX: number
+  readonly targetY: number
+}
+
+/**
+ * CltDoFunc 30 (0x6fb679f0, Missiles.txt 332 `towerchestspawner`) before its CltDoFunc 1 tail:
+ * - At `elapsed === row.cltParam1` (150), sets `TargetY = 1` (`D2Common #10019(ebx, 1)` at 0x6fb67a48).
+ * - While `TargetY !== 0` and `elapsed % max(1, row.cltParam2) === 0` (every 2 frames), rolls two RAND steps
+ *   `dx = d2Rand(seed, 2 * row.cltParam3 + 1) - row.cltParam3` and `dy = likewise` (`[-5, 5]`) and creates
+ *   `CltSubMissile1` (`292 towermisttrail`) from `(x, y)` toward `(x + dx, y + dy)`.
+ */
+export function towerChestSpawnerTick(
+  elapsed: number,
+  active: number | boolean,
+  x: number,
+  y: number,
+  seed: D2Seed,
+  row: Pick<QuestFxMissileRow113c, 'cltParam1' | 'cltParam2' | 'cltParam3'> = TOWER_MIST_MISSILE_ROWS.spawner,
+): { readonly active: number; readonly spawn: TowerChestSpawnerTrailSpawn | null } {
+  const nextActive = Boolean(active) || elapsed === row.cltParam1
+  if (!nextActive) return { active: 0, spawn: null }
+  const freq = row.cltParam2 < 1 ? 1 : row.cltParam2
+  if (elapsed % freq !== 0) return { active: 1, spawn: null }
+  const radius = row.cltParam3
+  const dx = d2Rand(seed, 2 * radius + 1) - radius
+  const dy = d2Rand(seed, 2 * radius + 1) - radius
+  return {
+    active: 1,
+    spawn: { missile: TOWER_MIST_TRAIL_MISSILE, x, y, targetX: x + dx, targetY: y + dy },
+  }
 }

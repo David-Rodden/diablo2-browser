@@ -1770,6 +1770,15 @@ export interface SkillSoundPlayOptions113c {
   readonly listenerX?: number | undefined
   readonly listenerY?: number | undefined
   readonly unitId?: number | undefined
+  readonly unit?:
+    | {
+        readonly unitType: 'player' | 'monster' | 'object' | 'missile' | 'item'
+        readonly id: number
+        readonly x?: number | undefined
+        readonly y?: number | undefined
+        readonly isLocalPlayer?: boolean | undefined
+      }
+    | undefined
 }
 
 export interface SkillSoundRuntimeLike113c {
@@ -1784,6 +1793,10 @@ export interface SkillSoundRecordsLike113c {
   allocate?(soundId: number, options?: SkillSoundPlayOptions113c): number | null
   stop(handle: number): void
   stopImmediate?(handle: number): void
+  stopUnitSound?(
+    unit: { readonly unitType: 'player' | 'monster' | 'object' | 'missile' | 'item'; readonly id: number },
+    soundId: number,
+  ): number
   setSoundPos?(handle: number, x: number, y: number, z?: number): boolean
   updatePosition?(handle: number, worldX: number, worldY: number, listenerX?: number, listenerY?: number): void
 }
@@ -1816,6 +1829,7 @@ export class SkillSoundController113c {
   private readonly stopHandleFn: ((handle: number) => void) | undefined
   private readonly updatePosFn: ((handle: number, x: number, y: number) => void) | undefined
   private readonly activeMissiles = new Map<number, ActiveMissileEmitterState113c>()
+  private readonly activeCastSounds = new Map<string, { readonly handle: number; readonly soundId: number; readonly unitId: number }>()
 
   constructor(arg?: SkillSoundControllerOptions113c | SkillSoundRuntimeLike113c) {
     if (arg && typeof arg === 'object' && ('runtime' in arg || 'records' in arg || ('playSoundById' in arg && !('getSoundRecords' in arg)))) {
@@ -1911,6 +1925,17 @@ export class SkillSoundController113c {
     const unitId = toFiniteNumber(rec.unitId ?? rec.casterId)
     const local = typeof rec.local === "boolean" ? rec.local : undefined
     const delayTicks = row.stsounddelay > 0 ? row.stsounddelay : undefined
+    const resolvedUnit =
+      (rec.unit as SkillSoundPlayOptions113c['unit']) ??
+      (unitId !== undefined
+        ? {
+            unitType: 'player' as const,
+            id: unitId,
+            ...(worldX !== undefined ? { x: Math.round(worldX) } : {}),
+            ...(worldY !== undefined ? { y: Math.round(worldY) } : {}),
+            ...(local !== undefined ? { isLocalPlayer: local } : {}),
+          }
+        : undefined)
     const playOpts: SkillSoundPlayOptions113c = {
       worldX,
       worldY,
@@ -1919,13 +1944,70 @@ export class SkillSoundController113c {
       listenerX,
       listenerY,
       unitId,
+      ...(resolvedUnit !== undefined ? { unit: resolvedUnit } : {}),
     }
     const rawClass = rec.charclass ?? rec.charClass ?? rec.classCode ?? rec.casterClass
     const normClass = rawClass !== undefined ? normalizePlayerClassCode113c(rawClass) : row.charclass
     const useClassSound = row.stsoundclass > 0 && (!row.charclass || !normClass || normClass === row.charclass)
     const soundId = useClassSound ? row.stsoundclass : row.stsound
     if (soundId <= 0) return 0
-    return this.emitSound(soundId, playOpts)
+    if (skillId === 151) {
+      this.stopSkillCastSound(unitId ?? 1, 151)
+    }
+    const handle = this.emitSound(soundId, playOpts)
+    if (handle > 0 && skillId === 151) {
+      const effUnitId = unitId ?? 1
+      this.activeCastSounds.set(`${effUnitId}:${skillId}`, {
+        handle,
+        soundId,
+        unitId: effUnitId,
+      })
+    }
+    return handle
+  }
+
+  /**
+   * 1.13c `SKILLS_CltDo45_Whirlwind` (`0x6FB76472` / `0x6FB7655D` -> `0x6FAD25D0(pUnit, 2531)` -> `StopSound` `0x6FB38BF0`):
+   * stops/fades the active tracked cast sound (`barbarian_whirlwind` `2531`, `FadeOut = 6`) for `unitId`
+   * when Whirlwind ends or is recast so multiple Whirlwind casts never stack or linger past cast end.
+   */
+  stopSkillCastSound(unitId = 1, skillId = 151): boolean {
+    const key = `${unitId}:${skillId}`
+    const prev = this.activeCastSounds.get(key)
+    this.activeCastSounds.delete(key)
+    const recs = this.records ?? this.runtime?.getSoundRecords?.()
+    let stopped = false
+    if (recs && typeof recs.stopUnitSound === 'function') {
+      const targetSid = prev?.soundId ?? (skillId === 151 ? 2531 : 0)
+      if (targetSid > 0 && recs.stopUnitSound({ unitType: 'player', id: unitId }, targetSid) > 0) {
+        stopped = true
+      }
+    }
+    if (prev && prev.handle > 0) {
+      if (recs) {
+        recs.stop(prev.handle)
+        stopped = true
+      } else if (this.stopHandleFn) {
+        this.stopHandleFn(prev.handle)
+        stopped = true
+      } else if (this.runtime?.stopSound) {
+        this.runtime.stopSound(prev.handle)
+        stopped = true
+      }
+    }
+    return stopped
+  }
+
+  onSkillCastStop(ev: unknown): boolean {
+    if (typeof ev === 'number') {
+      return this.stopSkillCastSound(ev, 151)
+    }
+    if (!ev || typeof ev !== 'object') return false
+    const rec = ev as Record<string, unknown>
+    const unitObj = rec.unit as { id?: unknown } | undefined
+    const unitId = toFiniteNumber(rec.unitId ?? rec.casterId ?? unitObj?.id) ?? 1
+    const skillId = toFiniteNumber(rec.skillId ?? rec.id) ?? 151
+    return this.stopSkillCastSound(unitId, skillId)
   }
 
   playSkillCastStart(ev: unknown): number {
@@ -1944,7 +2026,7 @@ export class SkillSoundController113c {
     if (!ev || typeof ev !== 'object') return 0
     const rec = ev as Record<string, unknown>
     const skillId = toFiniteNumber(rec.skillId ?? rec.id)
-    if (skillId === undefined || skillId <= 0 || skillId >= SKILL_SOUNDS_113C.length) {
+    if (skillId === undefined || skillId < 0 || skillId >= SKILL_SOUNDS_113C.length) {
       return 0
     }
     const rawFlag = rec.flag ?? rec.eventCode ?? rec.frameEvent ?? rec.event ?? rec.code
@@ -1995,7 +2077,11 @@ export class SkillSoundController113c {
       }
     }
     const weaponSoundId = toFiniteNumber(rec.weaponSoundId ?? rec.weaponSound)
-    if (row.weaponsnd > 0 && weaponSoundId !== undefined && weaponSoundId > 0) {
+    if (
+      (row.weaponsnd > 0 || skillId === 0 || skillId === 2 || skillId === 4 || skillId === 5 || skillId === 6 || skillId === 7 || skillId === 10 || skillId === 11 || skillId === 12 || skillId === 22) &&
+      weaponSoundId !== undefined &&
+      weaponSoundId > 0
+    ) {
       handle = this.emitSound(weaponSoundId, playOpts) || handle
     }
     if (rec.target === true && row.tgtsound > 0) {
@@ -2190,6 +2276,10 @@ export class SkillSoundController113c {
       this.stopHandleImmediate(state.handle)
     }
     this.activeMissiles.clear()
+    for (const cs of this.activeCastSounds.values()) {
+      this.stopHandleImmediate(cs.handle)
+    }
+    this.activeCastSounds.clear()
   }
 
   reset(): void {

@@ -78,14 +78,19 @@ export function decode0x73CreateMissile(pkt: Uint8Array): ServerEvent {
   const level = r.remaining >= 1 ? r.u8() : 1
   const ownerType = r.remaining >= 1 ? unitTypeToId(r.u8()) : 0
   const ownerId = r.remaining >= 4 ? r.u32LE() : 0
+  const velocity = r.remaining >= 2 ? r.u16LE() : undefined
+  const range = r.remaining >= 2 ? r.u16LE() : undefined
   return {
-    type: 'SkillCast',
-    caster: { unitType: 3, id: missileClassId },
-    skill: missileClassId,
-    level: level || 1,
+    type: 'CreateMissile',
+    missileClassId,
     at: { x, y },
     target: { x: targetX || x, y: targetY || y },
+    level: level || 1,
     owner: { unitType: ownerType, id: ownerId },
+    ownerType,
+    ownerId,
+    ...(velocity !== undefined ? { velocity } : {}),
+    ...(range !== undefined ? { range } : {}),
   }
 }
 
@@ -153,8 +158,8 @@ export function decode0xA4MonsterSpecial(pkt: Uint8Array): ServerEvent {
   r.u8() // 0xA4
   const classId = r.u16LE()
   return {
-    type: 'PlaySound',
-    sound: classId,
+    type: 'MonsterSpecial',
+    classId,
   }
 }
 
@@ -164,12 +169,11 @@ export function decode0xA5StateSkillEffect(pkt: Uint8Array): ServerEvent {
   r.u8() // 0xA5
   const unitType = unitTypeToId(r.u8())
   const id = r.u32LE()
-  const state = r.u16LE()
+  const skillId = r.u16LE()
   return {
-    type: 'StateSet',
+    type: 'StateSkillEffect',
     unit: { unitType, id },
-    state,
-    origin: 0xa5,
+    skillId,
   }
 }
 
@@ -177,11 +181,19 @@ export function decode0xA5StateSkillEffect(pkt: Uint8Array): ServerEvent {
  * Fallback decoder for remaining rare 1.13c S->C opcodes in D2Net.dll size table
  * (e.g. 0x12..0x14, 0x16, 0x17, 0x40, 0x45, 0x54, 0x57, 0x58, 0x5F, 0x61, 0x62,
  * 0x6E..0x72, 0x7E, 0x80, 0x8A, 0x93, 0x97, 0x98, 0xA6, 0xAF) so that every
- * valid 1.13c S->C packet produces a typed domain event (never Opaque).
+ * valid 1.13c S->C packet produces a typed domain event (never Opaque or phantom StatSet).
  */
 export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
   const op = pkt[0]!
   switch (op) {
+    case 0x12: // UnloadAct (1B, D2Client.dll 0x6fb5c370 / 0x6fb5d6a0)
+      return { type: 'UnloadAct' }
+    case 0x17: // RemoveUnit17 (6B, D2Client.dll 0x6fb5f240 / 0x6fb5db00)
+      return {
+        type: 'UnitRemove',
+        unitType: unitTypeToId(pkt[1] ?? 1),
+        id: pkt.byteLength >= 6 ? new ByteReader(pkt.subarray(2, 6)).u32LE() : 0,
+      }
     case 0x97:
       // WeaponSwitch (1B, D2Client.dll 0x6fb5bf50). Header only (D2MOO D2Game `SCmd.cpp:2361-2369`);
       // the server sends it right after toggling the client's switch flag (`ItemMode.cpp:3223-3224`).
@@ -193,11 +205,11 @@ export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
     case 0x58: // OpenUiBox (7B, D2Client.dll 0x6fb5f980)
       return decode0x58OpenUi(pkt)
     case 0x7e: // CMNCof (5B, D2Client.dll 0x6fb5d240)
-    case 0x80: // Noop4B
+    case 0x80: // Noop4B (4B, D2Client.dll 0x6fb5c520)
       return {
-        type: 'StatSet',
-        stat: 0x8000 | op,
-        value: pkt[1] ?? 0,
+        type: 'ProtocolSync',
+        opcode: op,
+        byteLength: pkt.byteLength,
       }
     case 0x61: // CanGoToAct (2B, D2Client.dll 0x6fb5f940)
       return decode0x61CanGoToAct(pkt)
@@ -220,9 +232,9 @@ export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
       }
     default:
       return {
-        type: 'StatSet',
-        stat: 0x9000 | op,
-        value: pkt.byteLength,
+        type: 'ProtocolSync',
+        opcode: op,
+        byteLength: pkt.byteLength,
       }
   }
 }

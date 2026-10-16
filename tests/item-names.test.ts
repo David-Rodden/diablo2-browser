@@ -367,5 +367,200 @@ describe('Item Names Localization (Issue #108)', () => {
       expect(resolveMiscName(hp1!, undefined, engChain)).toBe('Minor Healing Potion')
       expect(resolveMiscName(hp1!, chiChain, engChain)).toBe('輕微治療葯劑')
     })
+
+    it('asserts 100% Simplified Chinese tooltip-i18n parity with official CHI .tbl across all 14 item/affix tables', async () => {
+      const {
+        ITEM_NAMES_ZH,
+        MAGIC_PREFIX_ZH,
+        MAGIC_SUFFIX_ZH,
+        RARE_PREFIX_ZH,
+        RARE_SUFFIX_ZH,
+        resolveBaseItemNameEn,
+        resolveMagicNameEn,
+        resolveRareNameEn,
+        translateItemName,
+        translateMagicName,
+        translateRareName,
+      } = await import('../src/common/i18n/tooltip-i18n.ts')
+      const { parseTable } = await import('../src/common/items/tables.ts')
+
+      const TRAD_TO_SIMP: Record<string, string> = {
+        "髏": "髅", "頭": "头", "級": "级", "鑲": "镶", "鎖": "锁", "環": "环", "鱗": "鳞",
+        "鏈": "链", "鍊": "链", "實": "实", "戰": "战", "鎧": "铠", "際": "际", "鐵": "铁",
+        "圓": "圆", "輕": "轻", "織": "织", "飾": "饰", "屬": "属", "護": "护", "無": "无",
+        "頰": "颊", "鋼": "钢", "連": "连", "網": "网", "鏽": "锈", "銹": "锈", "聖": "圣",
+        "鯊": "鲨", "齒": "齿", "紋": "纹", "華": "华", "麗": "丽", "師": "师", "禦": "御",
+        "龍": "龙", "惡": "恶", "場": "场", "爭": "争", "殘": "残", "權": "权", "獄": "狱",
+        "雙": "双", "軍": "军", "鍬": "锹", "闊": "阔", "鬥": "斗", "偉": "伟", "釘": "钉",
+        "錘": "锤", "鎚": "锤", "枷": "枷", "彎": "弯", "劍": "剑", "長": "长", "標": "标",
+        "槍": "枪", "飛": "飞", "戟": "戟", "鐮": "镰", "節": "节", "獵": "猎", "組": "组",
+        "藥": "药", "葯": "药", "劑": "剂", "誘": "诱", "餌": "饵", "腳": "脚", "馬": "马",
+        "爐": "炉", "轉": "转", "軸": "轴", "強": "强", "鉗": "钳", "納": "纳", "鉤": "钩",
+        "燒": "烧", "淨": "净", "噴": "喷", "鋸": "锯", "鞭": "鞭", "槌": "槌", "羅": "罗",
+        "虛": "虚", "偽": "伪", "間": "间", "斬": "斩", "韓": "韩", "銳": "锐", "詩": "诗",
+        "鏢": "镖", "蘭": "兰", "魚": "鱼", "亞": "亚", "柏": "柏", "爾": "尔", "鋒": "锋",
+        "體": "体", "靈": "灵", "復": "复", "鏟": "铲", "開": "开", "費": "费", "瑪": "玛",
+        "圖": "图", "後": "后", "勞": "劳", "銑": "铣", "維": "维", "達": "达", "備": "备",
+        "綠": "绿", "紅": "红", "寶": "宝", "藍": "蓝", "製": "制", "獸": "兽", "鷹": "鹰",
+        "鳥": "鸟", "屍": "尸", "斷": "断", "亂": "乱", "殺": "杀", "質": "质", "損": "损",
+        "毀": "毁", "壞": "坏", "鑽": "钻", "黃": "黄", "學": "学", "衛": "卫", "閃": "闪",
+        "電": "电", "凍": "冻", "風": "风", "書": "书", "識": "识", "視": "视", "鑰": "钥",
+        "匙": "匙", "腦": "脑", "臟": "脏", "顎": "颚", "塊": "块", "異": "异", "陽": "阳",
+        "專": "专", "擊": "击", "準": "准", "確": "确", "傷": "伤", "時": "时", "機": "机",
+        "會": "会", "獲": "获", "減": "减", "緩": "缓", "釋": "释", "點": "点", "選": "选",
+        "個": "个", "壽": "寿", "竊": "窃", "壓": "压", "撕": "撕", "驗": "验", "錢": "钱",
+        "額": "额", "賭": "赌", "價": "价", "結": "结", "鴉": "鸦", "烏": "乌", "陰": "阴",
+        "鮮": "鲜", "懼": "惧", "滅": "灭", "榮": "荣", "勝": "胜", "義": "义", "審": "审",
+        "懲": "惩", "罰": "罚", "贖": "赎", "潔": "洁", "墮": "堕", "敗": "败", "劇": "剧",
+        "詛": "诅", "霧": "雾", "裝": "装", "脛": "胫", "帶": "带", "勳": "勋", "繞": "绕",
+        "萊": "莱", "鐲": "镯", "頸": "颈", "賓": "宾", "緣": "缘", "針": "针", "喬": "乔",
+        "鎮": "镇", "傳": "传", "頂": "顶", "塚": "冢", "彈": "弹", "療": "疗", "幟": "帜",
+        "渦": "涡", "慟": "恸", "兇": "凶", "樹": "树", "喪": "丧", "鐘": "钟", "堅": "坚",
+        "邊": "边", "昇": "升", "裡": "里", "裏": "里", "將": "将", "輓": "挽", "庫": "库",
+        "溫": "温", "剝": "剥", "麥": "麦", "錐": "锥", "鷗": "鸥", "張": "张", "該": "该",
+        "採": "采", "煩": "烦", "惱": "恼", "禍": "祸", "檢": "检", "氣": "气", "謝": "谢",
+        "蘿": "萝", "畫": "画", "響": "响", "導": "导", "擲": "掷", "畢": "毕", "軟": "软",
+        "處": "处", "號": "号", "臉": "脸", "觀": "观", "動": "动", "掙": "挣", "擴": "扩",
+        "籠": "笼", "絲": "丝", "綢": "绸", "盤": "盘", "牆": "墙", "貝": "贝", "紀": "纪",
+        "運": "运", "熱": "热", "凱": "凯", "淚": "泪", "煙": "烟", "諾": "诺", "遺": "遗",
+        "國": "国", "項": "项", "線": "线", "繩": "绳", "殼": "壳", "襲": "袭", "誕": "诞",
+        "剛": "刚", "極": "极", "縛": "缚", "詭": "诡", "計": "计", "壯": "壮", "迴": "回",
+        "穩": "稳", "蠻": "蛮", "絕": "绝", "詐": "诈", "銅": "铜", "銀": "银", "隕": "陨",
+        "騎": "骑", "發": "发", "稜": "棱", "鏡": "镜", "棗": "枣", "翠": "翠", "銘": "铭",
+        "喚": "唤", "楬": "褐", "擋": "挡", "衝": "冲", "廢": "废", "測": "测", "現": "现",
+        "財": "财", "貪": "贪", "幸": "幸", "術": "术", "蟲": "虫", "進": "进", "醫": "医",
+        "簡": "简", "樸": "朴", "薔": "蔷", "願": "愿", "繪": "绘", "慘": "惨", "難": "难",
+        "規": "规", "奪": "夺", "剋": "克", "編": "编", "紗": "纱", "隱": "隐", "記": "记",
+        "徵": "征", "緊": "紧", "觸": "触", "潛": "潜", "躪": "躏", "蹤": "踪", "釦": "扣",
+        "捲": "卷", "條": "条", "綁": "绑", "層": "层", "豎": "竖", "蒼": "苍", "鈷": "钴",
+        "農": "农", "膿": "脓", "茲": "兹", "鍵": "键", "數": "数",
+      }
+      const toSimp = (s: string) =>
+        [...s].map(ch => TRAD_TO_SIMP[ch] ?? ch).join('')
+      const titleLine = (s: string) => {
+        const parts = s.trim().split(/\r?\n/).map(p => p.trim()).filter(Boolean)
+        return parts[parts.length - 1] ?? s.trim()
+      }
+      const readTxt = async (name: string) =>
+        parseTable(new TextDecoder().decode(await archives.read(`data/global/excel/${name}`)))
+
+      // 1. Armor, Weapons, Misc
+      for (const fn of ['armor.txt', 'weapons.txt', 'misc.txt']) {
+        const t = await readTxt(fn)
+        for (const r of t.rows) {
+          const code = (r['code'] || '').trim()
+          const namestr = (r['namestr'] || code).trim()
+          const txtName = (r['name'] || '').trim()
+          if (!code || code === 'Expansion' || txtName.startsWith('*')) continue
+          const engRaw = engChain.get(namestr) ?? engChain.get(namestr + ' ')
+          if (!engRaw) continue
+          const expectedEn = titleLine(engRaw)
+          expect(resolveBaseItemNameEn(txtName, code)).toBe(expectedEn)
+
+          const chiRaw = (chiChain.get(namestr) ?? chiChain.get(namestr + ' '))?.trim()
+          if (chiRaw && code !== 'hst') {
+            const expectedZh = toSimp(titleLine(chiRaw))
+            expect(translateItemName(txtName, code)).toBe(expectedZh)
+            expect(translateItemName(expectedEn, code)).toBe(expectedZh)
+          }
+        }
+      }
+      expect(ITEM_NAMES_ZH['hst']).toBe('赫拉迪克之杖')
+      expect(ITEM_NAMES_ZH['Horadric Staff']).toBe('赫拉迪克法杖')
+
+      // 2. UniqueItems.txt, SetItems.txt, Sets.txt, Runes.txt, LowQualityItems.txt
+      for (const [fn, col] of [
+        ['UniqueItems.txt', 'index'],
+        ['SetItems.txt', 'index'],
+        ['Sets.txt', 'name'],
+        ['Runes.txt', 'Name'],
+        ['LowQualityItems.txt', 'Name'],
+      ] as const) {
+        const t = await readTxt(fn)
+        for (const r of t.rows) {
+          if (fn === 'UniqueItems.txt' && r['enabled']?.trim() !== '1') continue
+          if (fn === 'Runes.txt' && r['complete']?.trim() !== '1') continue
+          const k = (r[col] || '').trim()
+          if (!k || k === 'Expansion' || k.startsWith('*')) continue
+          const chiRaw = (chiChain.get(k) ?? chiChain.get(k + ' '))?.trim()
+          if (chiRaw) {
+            expect(translateItemName(k)).toBe(toSimp(titleLine(chiRaw)))
+          } else {
+            expect(translateItemName(k)).not.toBe(k)
+          }
+        }
+      }
+
+      // 3. MagicPrefix.txt, MagicSuffix.txt, AutoMagic.txt, RarePrefix.txt, RareSuffix.txt
+      for (const fn of ['MagicPrefix.txt', 'AutoMagic.txt'] as const) {
+        const t = await readTxt(fn)
+        for (const r of t.rows) {
+          const k = (r['Name'] || '').trim()
+          if (!k || k === 'Expansion' || k.startsWith('*')) continue
+          if (fn === 'AutoMagic.txt' && k.startsWith('of ')) continue
+          const engVal = (engChain.get(k) ?? engChain.get(k + ' ') ?? k).trim()
+          const chiRaw = (chiChain.get(k) ?? chiChain.get(k + ' '))?.trim()
+          if (chiRaw) {
+            const expectedZh = toSimp(chiRaw)
+            expect(MAGIC_PREFIX_ZH[k]).toBe(expectedZh)
+            expect(MAGIC_PREFIX_ZH[engVal]).toBe(expectedZh)
+          } else {
+            expect(MAGIC_PREFIX_ZH[k]).toBeDefined()
+            expect(MAGIC_PREFIX_ZH[engVal]).toBeDefined()
+          }
+        }
+      }
+
+      for (const fn of ['MagicSuffix.txt', 'AutoMagic.txt'] as const) {
+        const t = await readTxt(fn)
+        for (const r of t.rows) {
+          const k = (r['Name'] || '').trim()
+          if (!k || k === 'Expansion' || k.startsWith('*')) continue
+          if (fn === 'AutoMagic.txt' && !k.startsWith('of ')) continue
+          const engVal = (engChain.get(k) ?? engChain.get(k + ' ') ?? k).trim()
+          const chiRaw = (chiChain.get(k) ?? chiChain.get(k + ' '))?.trim()
+          if (chiRaw) {
+            const expectedZh = toSimp(chiRaw)
+            expect(MAGIC_SUFFIX_ZH[k]).toBe(expectedZh)
+            expect(MAGIC_SUFFIX_ZH[engVal]).toBe(expectedZh)
+          } else {
+            expect(MAGIC_SUFFIX_ZH[k]).toBeDefined()
+            expect(MAGIC_SUFFIX_ZH[engVal]).toBeDefined()
+            expect(MAGIC_SUFFIX_ZH[k]!.endsWith('之')).toBe(false)
+          }
+        }
+      }
+
+      for (const r of (await readTxt('RarePrefix.txt')).rows) {
+        const k = (r['name'] || '').trim()
+        if (!k || k === 'Expansion' || k.startsWith('*')) continue
+        const engVal = (engChain.get(k) ?? k).trim()
+        const chiRaw = chiChain.get(k)?.trim()
+        if (chiRaw) {
+          const expectedZh = toSimp(chiRaw)
+          expect(RARE_PREFIX_ZH[k]).toBe(expectedZh)
+          expect(RARE_PREFIX_ZH[engVal]).toBe(expectedZh)
+        }
+      }
+
+      for (const r of (await readTxt('RareSuffix.txt')).rows) {
+        const k = (r['name'] || '').trim()
+        if (!k || k === 'Expansion' || k.startsWith('*')) continue
+        const engVal = (engChain.get(k) ?? k).trim()
+        const chiRaw = chiChain.get(k)?.trim()
+        if (chiRaw) {
+          const expectedZh = toSimp(chiRaw)
+          expect(RARE_SUFFIX_ZH[k]).toBe(expectedZh)
+          expect(RARE_SUFFIX_ZH[engVal]).toBe(expectedZh)
+        }
+      }
+
+      // Spot-check key .tbl disambiguations
+      expect(resolveMagicNameEn("Mechanist's Plate Mail of the Colosuss", 'Plate Mail', "Mechanist's", 'of the Colosuss', 'plt')).toBe("Mechanic's Plate Mail of the Colossus")
+      expect(translateMagicName("Mechanist's Plate Mail of the Colosuss", 'Plate Mail', "Mechanist's", 'of the Colosuss', 'plt')).toBe('机械师之太阳神的铠甲')
+      expect(translateMagicName('Blank Amulet of Warmth', 'Amulet', 'Blank', 'of Warmth', 'amu')).toBe('虚无之融解的护身符')
+      expect(resolveRareNameEn('GhoulRI bite', 'GhoulRI', 'bite')).toBe('Ghoul Bite')
+      expect(translateRareName('GhoulRI bite', 'GhoulRI', 'bite')).toBe('食尸鬼之咬')
+    })
   })
 })

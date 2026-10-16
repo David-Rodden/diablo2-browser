@@ -23,6 +23,7 @@ import {
   compositeObjectAnimation,
   TARGET_MONSTER_MODES,
   TARGET_OBJECT_MODES,
+  type CofLayerDrawBlendMode,
   type MonsterAnimationSheet,
 } from '../../common/units/monster-art.ts'
 import { ACT_MONSTER_SPECS, MONSTER_ART_MAP, resolveMonsterArtSpec } from '../../common/units/monster-mapping.ts'
@@ -335,7 +336,7 @@ export interface MonsterResult {
   readonly walkOffset?: number
   readonly standFrames?: number
   readonly walkFrames?: number
-  readonly blendMode?: 'normal' | 'additive'
+  readonly blendMode?: CofLayerDrawBlendMode
   readonly modes?: readonly string[]
 }
 
@@ -353,7 +354,7 @@ export interface ObjectResult {
   readonly directions?: number
   readonly standOffset?: number
   readonly standFrames?: number
-  readonly blendMode?: 'normal' | 'additive'
+  readonly blendMode?: CofLayerDrawBlendMode
   readonly modes?: readonly string[]
 }
 
@@ -466,8 +467,9 @@ async function processMonsterJob(job: MonsterJob, ctx: EntityWorkerContext): Pro
   const hasGlow = monSheets.some(s => s.sheet.glowSheet !== undefined)
   const primarySheets = monSheets.filter(s => s.mode === 'nu' || s.mode === 'wl')
   const sheetsForBlend = primarySheets.length > 0 ? primarySheets : monSheets.slice(0, 1)
-  const isPureAdditive = !hasGlow && sheetsForBlend.some(s => s.sheet.blendMode === 'additive')
-  const monsterBlendMode: 'normal' | 'additive' = isPureAdditive ? 'additive' : 'normal'
+  const monsterBlendMode: CofLayerDrawBlendMode = !hasGlow
+    ? (sheetsForBlend.find(s => s.sheet.blendMode !== undefined && s.sheet.blendMode !== 'normal')?.sheet.blendMode ?? 'normal')
+    : 'normal'
 
   const glowClips: Record<string, ClipMeta> = {}
 
@@ -599,8 +601,9 @@ async function processObjectJob(job: ObjectJob, ctx: EntityWorkerContext): Promi
   }
 
   const hasGlow = objSheets.some(s => s.sheet.glowSheet !== undefined)
-  const isPureAdditive = !hasGlow && objSheets.some(s => s.sheet.blendMode === 'additive')
-  const objectBlendMode: 'normal' | 'additive' = isPureAdditive ? 'additive' : 'normal'
+  const objectBlendMode: CofLayerDrawBlendMode = !hasGlow
+    ? (objSheets.find(s => s.sheet.blendMode !== undefined && s.sheet.blendMode !== 'normal')?.sheet.blendMode ?? 'normal')
+    : 'normal'
 
   const glowClips: Record<string, ClipMeta> = {}
   if (hasGlow) {
@@ -975,7 +978,7 @@ export async function bakeEntities(archiveDir = 'samples/d2', outDir = 'public')
     const token = (mapped?.token || rawCode).trim().toUpperCase()
     const weapon = (mapped?.weapon || baseWById.get(monStatsEx) || baseWById.get(lowerId) || 'hth').trim().toLowerCase()
 
-    if (token && token !== 'XX') {
+    if (token) {
       const key = `${token.toLowerCase()}-${weapon.toLowerCase()}`
       if (!uniqueSpecs.has(key)) {
         uniqueSpecs.set(key, { token, weapon })
@@ -1003,7 +1006,7 @@ export async function bakeEntities(archiveDir = 'samples/d2', outDir = 'public')
   for (const spec of Object.values(MONSTER_ART_MAP)) {
     const tok = spec.token.trim().toUpperCase()
     const wep = spec.weapon.trim().toLowerCase() || 'hth'
-    if (!tok || tok === 'XX') continue
+    if (!tok) continue
     const key = `${tok.toLowerCase()}-${wep}`
     if (!uniqueSpecs.has(key)) {
       uniqueSpecs.set(key, { token: tok, weapon: wep })
@@ -1013,7 +1016,7 @@ export async function bakeEntities(archiveDir = 'samples/d2', outDir = 'public')
   for (let act = 1; act <= 5; act += 1) {
     const specs = ACT_MONSTER_SPECS[act] ?? []
     for (const spec of specs) {
-      if (!spec.token || spec.token.toUpperCase() === 'XX') continue
+      if (!spec.token) continue
       const key = `${spec.token.toLowerCase()}-${spec.weapon.toLowerCase()}`
       if (!uniqueSpecs.has(key)) {
         uniqueSpecs.set(key, { token: spec.token.toUpperCase(), weapon: spec.weapon.toLowerCase() })
@@ -1033,7 +1036,7 @@ export async function bakeEntities(archiveDir = 'samples/d2', outDir = 'public')
   }
   for (const monsterId of extraMonsterIds) {
     const spec = resolveMonsterArtSpec(monsterId)
-    if (spec && spec.token && spec.token.toUpperCase() !== 'XX') {
+    if (spec && spec.token) {
       const key = `${spec.token.toLowerCase()}-${spec.weapon.toLowerCase()}`
       if (!uniqueSpecs.has(key)) {
         uniqueSpecs.set(key, { token: spec.token.toUpperCase(), weapon: spec.weapon.toLowerCase() })
@@ -1243,7 +1246,7 @@ export async function bakeEntities(archiveDir = 'samples/d2', outDir = 'public')
 
   const monsterByClassId: Record<string, MonsterIndexEntry> = {}
   for (const row of rawMonsterCatalog) {
-    const candidateKey = row.token && row.token !== 'XX' ? `${row.token.toLowerCase()}-${row.weapon.toLowerCase()}` : null
+    const candidateKey = row.token ? `${row.token.toLowerCase()}-${row.weapon.toLowerCase()}` : null
     const baked = candidateKey ? validMonsterByKey.get(candidateKey) : undefined
     const validKey = baked ? baked.key : null
     const directions = baked?.directions ?? 8

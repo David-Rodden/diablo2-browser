@@ -1,16 +1,15 @@
 # Diablo II v1.13c A2Q6: staff in the Horadric orifice (special quest event 3)
 
 What the original game does after the Horadric Staff is placed in the orifice of the true Tal Rasha's Tomb.
-All addresses are 1.13c (`D2Game.dll`, `D2Client.dll`, `D2Common.dll` in `samples/d2`), read with `objdump`;
-D2MOO (1.10) names are given where the logic matches.
+All addresses are 1.13c (`D2Game.dll`, `D2Client.dll`, `D2Common.dll` in `samples/d2`), read with `objdump`.
 
 ## Server (D2Game)
 
-`0x6fce9d72..0x6fce9e12` (D2MOO `ACT2Q6_DeleteAllHoradricItemsAndOpenTomb` 0x6FCA60D0), reached from C2S 0x44
+`0x6fce9d72..0x6fce9e12` (`ACT2Q6_DeleteAllHoradricItemsAndOpenTomb`), reached from C2S 0x44
 StaffInOrifice after the useitem window (see `kb/ui/d2client-useitem-imbue-socket-orifice-113c.md`):
 
 1. Deletes `hst`/`vip`/`msf`, sets A2Q2 flags (also for party members in Act II).
-2. `pQuestControl+0x20 = 3` and `0x6fcffcc0` with callback `0x6fc559c0` (D2MOO `QUESTS_TriggerFX` /
+2. `pQuestControl+0x20 = 3` and `0x6fcffcc0` with callback `0x6fc559c0` (`QUESTS_TriggerFX` /
    `QUESTS_FXIterate`): **S2C 0x89 SpecialQuestEvent 3** to every player in the game.
 3. Quest timer `ACT2Q6_Timer_UpdateObjects` after `((Missiles[338].Range - 75) * 0x66666667 >> 32) >> 3`
    = `(440 - 75) / 20` = 18 units.

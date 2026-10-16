@@ -5,7 +5,7 @@ import { requireTbl } from '../../i18n/lang.ts'
 import { getTownNpcDescriptorByHcIdx } from '../../../common/units/npc-table.ts'
 import { HIRELING_RECORDS, formatHirelingCandidateLines, resolveHirelingName } from '../../../common/units/hireling-table.ts'
 import { reportMissingArt } from '../../scene/world-renderer.ts'
-import { HIRE_DIALOG_WIDTH, HIRE_DIALOG_HEIGHT, HIRE_LIST_Y_OFFSET, HIRE_VISIBLE_CANDIDATES, HIRE_ROW_HEIGHT, HIRE_SLIDER_X_OFFSET, HIRE_SLIDER_Y_OFFSET, HIRE_TRACK_SEGMENTS, HIRE_CONFIRM_WIDTH, HIRE_CONFIRM_HEIGHT, computeNpcMenuAnchor } from './panel-layout-constants.ts'
+import { HIRE_DIALOG_WIDTH, HIRE_DIALOG_HEIGHT, HIRE_LIST_Y_OFFSET, HIRE_VISIBLE_CANDIDATES, HIRE_ROW_HEIGHT, HIRE_SLIDER_X_OFFSET, HIRE_SLIDER_Y_OFFSET, HIRE_TRACK_SEGMENTS, HIRE_CONFIRM_WIDTH, HIRE_CONFIRM_HEIGHT, STONE_BOX_BG_FILL, BUTTON_HOVER_BOX_PAD_X, BUTTON_HOVER_BOX_MIN_W, BUTTON_HOVER_BOX_H, BUTTON_HOVER_TEXT_OFFSET_Y, computeNpcMenuAnchor } from './panel-layout-constants.ts'
 import { drawStoneBoxFrame } from './npc-dialog-menu.ts'
 
 /**
@@ -775,7 +775,29 @@ export function drawMercenaryPanelImpl(
   drawCenteredResLabel('strchrlit', 329)
   drawCenteredResLabel('strchrpos', 353)
 
-  if (!m) return
+  const drawCloseHoverTooltip = () => {
+    if (!this.hoveredMercClose) return
+    const hoverText = requireTbl('strClose', this.lang)
+    const padX = BUTTON_HOVER_BOX_PAD_X
+    const boxW = Math.max(BUTTON_HOVER_BOX_MIN_W, font.measureText(hoverText, 'font16') + padX * 2)
+    const boxH = BUTTON_HOVER_BOX_H
+    const centerX = ox + 288
+    const anchorY = oy + 384
+    const boxX = Math.round(centerX - boxW / 2)
+    const boxY = anchorY - boxH
+    ctx.fillStyle = STONE_BOX_BG_FILL
+    ctx.fillRect(boxX, boxY, boxW, boxH)
+    font.drawText(ctx, hoverText, centerX, boxY + BUTTON_HOVER_TEXT_OFFSET_Y, {
+      font: 'font16',
+      color: 'white',
+      align: 'center',
+    })
+  }
+
+  if (!m) {
+    drawCloseHoverTooltip()
+    return
+  }
 
   // 7. D2Client.dll `0x6fb40eb0`: Mercenary name in `font6` white at `(ox + 15, oy + 214)`, truncated to <= 160 px
   const rawMercClassId = Number(m.classId ?? m.hcIdx ?? 0)
@@ -882,4 +904,5 @@ export function drawMercenaryPanelImpl(
   drawMercStatVal(String(cr), 309, 306, 'right', 48, crColor)
   drawMercStatVal(String(lr), 309, 330, 'right', 48, lrColor)
   drawMercStatVal(String(pr), 309, 354, 'right', 48, prColor)
+  drawCloseHoverTooltip()
 }

@@ -288,6 +288,9 @@ export type ToolbarI18nKey =
   | 'toolbar.server.apply'
   | 'toolbar.server.confirmReconnect'
   | 'toolbar.lang.label'
+  | 'toolbar.lang.toggle'
+  | 'toolbar.lang.zh'
+  | 'toolbar.lang.en'
   | 'toolbar.lighting.label'
   | 'toolbar.automap.label'
   | 'toolbar.automap.off'
@@ -295,6 +298,37 @@ export type ToolbarI18nKey =
   | 'toolbar.automap.act'
   | 'toolbar.viewport.label'
   | 'toolbar.plugins.open'
+  | 'toolbar.config.open'
+  | 'toolbar.config.title'
+  | 'toolbar.config.subtitle'
+  | 'toolbar.config.close'
+  | 'toolbar.config.displayMode'
+  | 'toolbar.config.fps'
+  | 'toolbar.config.volume'
+  | 'toolbar.config.mute'
+  | 'toolbar.config.muted'
+  | 'toolbar.config.cache'
+  | 'toolbar.bug.open'
+  | 'toolbar.bug.title'
+  | 'toolbar.bug.subtitle'
+  | 'toolbar.bug.close'
+  | 'toolbar.bug.titleLabel'
+  | 'toolbar.bug.titlePlaceholder'
+  | 'toolbar.bug.categoryLabel'
+  | 'toolbar.bug.category.gameplay'
+  | 'toolbar.bug.category.render'
+  | 'toolbar.bug.category.ui'
+  | 'toolbar.bug.category.audio'
+  | 'toolbar.bug.category.network'
+  | 'toolbar.bug.category.other'
+  | 'toolbar.bug.descLabel'
+  | 'toolbar.bug.descPlaceholder'
+  | 'toolbar.bug.cancel'
+  | 'toolbar.bug.submit'
+  | 'toolbar.bug.submitting'
+  | 'toolbar.bug.errorEmpty'
+  | 'toolbar.bug.saved'
+  | 'toolbar.bug.errorFailed'
   | 'toolbar.cache.clear'
   | 'toolbar.fullscreen.enter'
   | 'toolbar.fullscreen.exit'
@@ -319,13 +353,68 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
     en: 'Changing server host while connected will disconnect the current session and reconnect. Continue?',
   },
   'toolbar.lang.label': { zh: '语言', en: 'Lang' },
+  'toolbar.lang.toggle': { zh: '切换语言 (中 / EN)', en: 'Switch Language (ZH / EN)' },
+  'toolbar.lang.zh': { zh: '中', en: '中' },
+  'toolbar.lang.en': { zh: 'EN', en: 'EN' },
   'toolbar.lighting.label': { zh: '光照', en: 'Light' },
   'toolbar.automap.label': { zh: '全图', en: 'Map' },
   'toolbar.automap.off': { zh: '关闭', en: 'Off' },
   'toolbar.automap.level': { zh: '本层', en: 'Level' },
   'toolbar.automap.act': { zh: '全幕', en: 'Act' },
-  'toolbar.viewport.label': { zh: '分辨率', en: 'Viewport' },
+  'toolbar.viewport.label': { zh: '分辨率', en: 'Resolution' },
   'toolbar.plugins.open': { zh: '插件', en: 'Plugins' },
+  'toolbar.config.open': { zh: '配置', en: 'Settings' },
+  'toolbar.config.title': { zh: '游戏配置', en: 'Game Settings' },
+  'toolbar.config.subtitle': {
+    zh: '调整全屏/窗口显示、分辨率、帧率、音量及资源缓存。',
+    en: 'Configure display mode, resolution, frame rate, volume, and asset cache.',
+  },
+  'toolbar.config.close': { zh: '关闭 (ESC)', en: 'Close (ESC)' },
+  'toolbar.config.displayMode': { zh: '全屏 / 窗口', en: 'Display Mode' },
+  'toolbar.config.fps': { zh: '渲染帧率 (FPS)', en: 'Frame Rate (FPS)' },
+  'toolbar.config.volume': { zh: '音量', en: 'Volume' },
+  'toolbar.config.mute': { zh: '静音', en: 'Mute' },
+  'toolbar.config.muted': { zh: '已静音', en: 'Muted' },
+  'toolbar.config.cache': { zh: '资源缓存', en: 'Asset Cache' },
+  'toolbar.bug.open': { zh: '汇报 Bug', en: 'Report Bug' },
+  'toolbar.bug.title': { zh: '汇报 Bug', en: 'Report a Bug' },
+  'toolbar.bug.subtitle': {
+    zh: '提交游戏中遇到的问题与复现步骤，报告将保存到服务器。',
+    en: 'Submit an issue encountered in-game. Reports are saved to the server.',
+  },
+  'toolbar.bug.close': { zh: '关闭 (ESC)', en: 'Close (ESC)' },
+  'toolbar.bug.titleLabel': { zh: '问题简述', en: 'Summary' },
+  'toolbar.bug.titlePlaceholder': {
+    zh: '简要描述问题（例如：某技能释放异常、卡地形等）',
+    en: 'Brief summary of the issue...',
+  },
+  'toolbar.bug.categoryLabel': { zh: '问题分类', en: 'Category' },
+  'toolbar.bug.category.gameplay': { zh: '游戏逻辑 / 技能 / 战斗', en: 'Gameplay / Skills / Combat' },
+  'toolbar.bug.category.render': { zh: '画面 / 贴图 / 动画渲染', en: 'Graphics / Rendering' },
+  'toolbar.bug.category.ui': { zh: '界面 / 面板 / 交互', en: 'UI / Panels / Input' },
+  'toolbar.bug.category.audio': { zh: '音效 / 音乐 / 语音', en: 'Audio / Music / Speech' },
+  'toolbar.bug.category.network': { zh: '联机 / 掉线 / 延迟', en: 'Network / Multiplayer' },
+  'toolbar.bug.category.other': { zh: '其他问题', en: 'Other' },
+  'toolbar.bug.descLabel': { zh: '详细描述与复现步骤', en: 'Description & Steps to Reproduce' },
+  'toolbar.bug.descPlaceholder': {
+    zh: '请填写复现步骤、角色职业、所在场景/关卡等详细信息...',
+    en: 'Steps to reproduce, character class, act/level, etc...',
+  },
+  'toolbar.bug.cancel': { zh: '取消', en: 'Cancel' },
+  'toolbar.bug.submit': { zh: '提交 Bug', en: 'Submit Bug' },
+  'toolbar.bug.submitting': { zh: '正在保存...', en: 'Saving...' },
+  'toolbar.bug.errorEmpty': {
+    zh: '请填写问题标题与详细描述后再提交。',
+    en: 'Please fill in both summary and description before submitting.',
+  },
+  'toolbar.bug.saved': {
+    zh: 'Bug 报告已保存到服务器！',
+    en: 'Bug report saved to server!',
+  },
+  'toolbar.bug.errorFailed': {
+    zh: '保存失败',
+    en: 'Failed to save bug report',
+  },
   'toolbar.cache.clear': { zh: '清除缓存', en: 'Clear Cache' },
   'toolbar.fullscreen.enter': { zh: '全屏', en: 'Fullscreen' },
   'toolbar.fullscreen.exit': { zh: '退出全屏', en: 'Exit Fullscreen' },

@@ -179,7 +179,7 @@ export function resolveItemName(
   }
 
   const chiVal = extractChainLookup(chi, key)
-  if (chiVal !== undefined) return chiVal
+  if (chiVal !== undefined && (key === 'space' || chiVal.trim().length > 0)) return chiVal
 
   const engVal = extractChainLookup(eng, key)
   if (engVal !== undefined) return engVal

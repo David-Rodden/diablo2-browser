@@ -128,13 +128,16 @@ import {
   emitSkillCastSoundImpl,
   emitSkillKeyframeSoundImpl,
   emitUnitDeathSoundImpl,
+  findHostileMeleeTargetMonster113c,
   isCrossbowEquippedImpl,
   pushSoundRequestImpl,
   removePaladinAuraStatesAndOverlaysImpl,
   resolveCastActionFrameDelayMsImpl,
+  resolveRangedAttackMissileKey113c,
   resolveThrowMissileKeyForCasterImpl,
   spawnMissileByKeyImpl,
   spawnMissilesForSkillImpl,
+  spawnMonsterModeMissileImpl,
   syncSelfRightHandAuraStateImpl,
 } from './world-skill-missiles.ts'
 import {
@@ -162,6 +165,7 @@ import {
 } from './world-event-applier.ts'
 
 export * from './world-skill-state-tables.ts'
+export { findHostileMeleeTargetMonster113c, resolveRangedAttackMissileKey113c }
 export type { WorldSoundRequest }
 
 export {
@@ -479,6 +483,7 @@ export class ClientWorld {
   private _lastLocalCastSkillId = -1
   private _lastLocalCastAtMs = -1000
   private _simTimeMs = 0
+  private _timeMs = 0
   private _tickAccumulatorMs = 0
   private _skillDelayUntilMs = 0
   private _skillDelayDurationMs = 0
@@ -619,6 +624,7 @@ export class ClientWorld {
   private syncClientUnitFromNpcMotion(npcUnit: NpcMotionUnit): void {
     const unit = this.getUnit('monster', npcUnit.dwUnitId)
     if (!unit) return
+    const wasDead = unit.dead
     unit.x = npcUnit.preciseX
     unit.y = npcUnit.preciseY
     unit.mode = npcUnit.dwAnimMode
@@ -626,6 +632,12 @@ export class ClientWorld {
       (npcUnit.dwFlags & 0x10000) !== 0 ||
       npcUnit.dwAnimMode === MONMODE_DEATH ||
       npcUnit.dwAnimMode === MONMODE_DEAD
+    if (!wasDead && unit.dead) {
+      unit.diedAtMs = this._timeMs
+    }
+    if (!unit.dead && unit.lifePct <= 0 && npcUnit.lifeByte > 0) {
+      unit.lifePct = npcUnit.lifeByte
+    }
     unit.moving = npcUnit.moving
     unit.moveMode =
       npcUnit.dwAnimMode === MONMODE_RUN
@@ -693,11 +705,24 @@ export class ClientWorld {
     return this._pendingMeleeAttack
   }
 
+  hasPendingMeleeAttack(): boolean {
+    return this._pendingMeleeAttack !== null
+  }
+
   cancelPendingMeleeAttack(): void {
     this._pendingMeleeAttack = null
   }
 
   isSelfMeleeSkill(skillId: number): boolean {
+    if (
+      skillId === 107 ||
+      skillId === 132 ||
+      skillId === 143 ||
+      skillId === 151 ||
+      skillId === 275
+    ) {
+      return false
+    }
     return isMeleeSkill113c(skillId, this._containers.equipmentBySlot)
   }
 
@@ -718,8 +743,12 @@ export class ClientWorld {
     selfYOverride?: number,
   ): boolean {
     const selfUnit = this.selfId !== 0 ? this.getUnit('player', this.selfId) : undefined
-    const sx = selfXOverride ?? selfUnit?.x ?? this._self.x
-    const sy = selfYOverride ?? selfUnit?.y ?? this._self.y
+    const sx =
+      selfXOverride ??
+      (selfUnit && (selfUnit.x !== 0 || selfUnit.y !== 0) ? selfUnit.x : this._self.x)
+    const sy =
+      selfYOverride ??
+      (selfUnit && (selfUnit.x !== 0 || selfUnit.y !== 0) ? selfUnit.y : this._self.y)
     const rangeAdder = this.getSelfWeaponRangeAdder()
     const targetSizeX = this.getUnitSizeX(targetUnit)
     const isTargetMoving =
@@ -880,6 +909,7 @@ export class ClientWorld {
     if (nowMs !== undefined && Number.isFinite(nowMs)) {
       this._clockMs = nowMs
       this._clockExplicit = true
+      this._timeMs = nowMs
       return nowMs
     }
     if (this._clockExplicit && this._clockMs !== null) {
@@ -1006,10 +1036,21 @@ export class ClientWorld {
     const hasVamp =
       !hasWolf &&
       !hasBear &&
-      (Boolean(unit?.states.has(176)) ||
-        Boolean(unit?.states.has(65)) ||
-        (isSelf && (this._self.states.has(176) || this._self.states.has(65))))
-    const morphMonsterClassId = hasWolf ? 430 : hasBear ? 431 : hasVamp ? 135 : undefined
+      (Boolean(unit?.states.has(176)) || (isSelf && this._self.states.has(176)))
+    const hasDelirium =
+      !hasWolf &&
+      !hasBear &&
+      !hasVamp &&
+      (Boolean(unit?.states.has(177)) || (isSelf && this._self.states.has(177)))
+    const morphMonsterClassId = hasWolf
+      ? 430
+      : hasBear
+        ? 431
+        : hasVamp
+          ? 135
+          : hasDelirium
+            ? 212
+            : undefined
     let skillVelocityPercent = 0
     if (isSelf) {
       const entry148 = this._self.skillEntries.get(148)
@@ -1172,12 +1213,48 @@ export class ClientWorld {
 
   clearUnitCastState(unit: ClientUnit): void {
     const prevCastMode = unit.castState?.mode
+    const prevCastSkillId = unit.castState?.skillId
     unit.castState = undefined
+    unit.altitude = 0
     unit.modeUntilMs = undefined
     unit.modeDurationMs = undefined
     unit.modeElapsedMs = undefined
     unit.animStepSpeed256 = undefined
     unit.animEffRate = undefined
+    if (
+      prevCastSkillId === 107 ||
+      prevCastSkillId === 132 ||
+      prevCastSkillId === 143 ||
+      prevCastSkillId === 151
+    ) {
+      unit.states.remove(18)
+      if (prevCastSkillId === 151) {
+        unit.states.remove(174)
+        const isSelfUnit = unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)
+        this.pushSoundRequest({
+          kind: 'unit-sound-stop',
+          soundId: 2531,
+          skillId: 151,
+          unitId: unit.id,
+          unit: {
+            unitType: unit.unitType,
+            id: unit.id,
+            x: unit.x,
+            y: unit.y,
+            ...(isSelfUnit ? { isLocalPlayer: true } : {}),
+          },
+          x: unit.x,
+          y: unit.y,
+          local: isSelfUnit,
+        })
+      }
+      if (unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)) {
+        this._self.states.delete(18)
+        if (prevCastSkillId === 151) {
+          this._self.states.delete(174)
+        }
+      }
+    }
     if (
       !unit.dead &&
       (unit.mode === prevCastMode ||
@@ -1522,12 +1599,28 @@ export class ClientWorld {
     )
   }
 
+  spawnMonsterModeMissile(
+    unit: ClientUnit,
+    mode?: number,
+    targetX?: number,
+    targetY?: number,
+  ): ClientUnit | undefined {
+    return spawnMonsterModeMissileImpl.call(
+      this as unknown as ClientWorldInternal,
+      unit,
+      mode,
+      targetX,
+      targetY,
+    )
+  }
+
   private spawnMissilesForSkill(
     caster: ClientUnit,
     skillId: number,
     targetX: number,
     targetY: number,
     skillLevel = 1,
+    isSecondHand = false,
   ): void {
     spawnMissilesForSkillImpl.call(
       this as unknown as ClientWorldInternal,
@@ -1536,6 +1629,7 @@ export class ClientWorld {
       targetX,
       targetY,
       skillLevel,
+      isSecondHand,
     )
   }
 
@@ -1597,6 +1691,20 @@ export class ClientWorld {
   readonly skillHotkeys = new Map<number, { hand: 'left' | 'right'; skill: number; itemId?: number }>()
 
   assignSkillHotkey(slot: number, hand: 'left' | 'right', skill: number, itemId?: number): void {
+    if (skill === 0xffff || skill === 0x7fff || skill < 0) {
+      this.skillHotkeys.delete(slot)
+      return
+    }
+    const normItemId = itemId ?? 0xffffffff
+    // 1.13c D2Client.dll 0x6faed280..0x6faed2e5: deduplicate any other slot (0..15)
+    // previously bound to the same (hand, skill, itemId) tuple.
+    for (const [existingSlot, existing] of Array.from(this.skillHotkeys.entries())) {
+      if (existingSlot === slot) continue
+      const existingItemId = existing.itemId ?? 0xffffffff
+      if (existing.hand === hand && existing.skill === skill && existingItemId === normItemId) {
+        this.skillHotkeys.delete(existingSlot)
+      }
+    }
     this.skillHotkeys.set(slot, itemId !== undefined ? { hand, skill, itemId } : { hand, skill })
   }
 
@@ -2171,8 +2279,8 @@ export class ClientWorld {
     )
   }
 
-  private isFriendlyOrNonHostileMonster(m: ClientUnit): boolean {
-    return isFriendlyOrNonHostileMonsterImpl.call(this as unknown as ClientWorldInternal, m)
+  private isFriendlyOrNonHostileMonster(m: ClientUnit, ignoreDead = false): boolean {
+    return isFriendlyOrNonHostileMonsterImpl.call(this as unknown as ClientWorldInternal, m, ignoreDead)
   }
 
   private syncPlayerTownModes(): void {
@@ -2188,6 +2296,10 @@ export class ClientWorld {
   }
 
   tick(dtMs = 40, nowMs?: number): void {
+    tickWorldImpl.call(this as unknown as ClientWorldInternal, dtMs, nowMs)
+  }
+
+  tickWorld(dtMs = 40, nowMs?: number): void {
     tickWorldImpl.call(this as unknown as ClientWorldInternal, dtMs, nowMs)
   }
 
@@ -2447,6 +2559,7 @@ export class ClientWorld {
     this._lastLocalCastSkillId = -1
     this._lastLocalCastAtMs = -1000
     this._simTimeMs = 0
+    this._timeMs = 0
     this._tickAccumulatorMs = 0
     this._notedCommands = new WeakSet<object>()
     this._blockedSubTiles.clear()

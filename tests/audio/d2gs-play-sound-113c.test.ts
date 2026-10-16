@@ -185,6 +185,23 @@ describe('D2GS 0x2C PlaySound 1.13c event code resolver (0x6fad3f20 / 0x6fad3200
         resolve0x2CPlaySound113c(16, { unitType: 'monster', id: 50, classId: nonTauntCid, x: 10, y: 20 }, worldCtx),
       ).toBeNull()
     }
+    // Issue #1235: SuperUniques.txt UMonSound override on Code 16 via 0x6fad2a70 (e.g. Hephasto superUniqueId=39 -> smithdemon taunt 4649)
+    expect(
+      resolve0x2CPlaySound113c(
+        16,
+        {
+          unitType: 'monster',
+          id: 50,
+          classId: 402,
+          x: 10,
+          y: 20,
+          isSuperUnique: true,
+          superUniqueId: 39,
+          name: 'Hephasto The Armorer',
+        },
+        worldCtx,
+      ),
+    ).toMatchObject({ speechSoundId: 4649 })
 
     // Fallen flee (17): only classIds {19..23, 642..644} resolve to 917; skeletons (0..4) and hephasto (409) return null
     expect([...FALLEN_CLASS_IDS_113C]).toEqual([19, 20, 21, 22, 23, 642, 643, 644])
@@ -199,16 +216,43 @@ describe('D2GS 0x2C PlaySound 1.13c event code resolver (0x6fad3f20 / 0x6fad3200
       ).toBeNull()
     }
 
-    // Town NPC greeting (18): all 35 D2Client.dll 0x6fb4cad0 entries resolve to Stream=1 NPC greetings
-    expect(Object.keys(NPC_GREETING_BY_CLASS_ID_113C)).toHaveLength(35)
+    // Town NPC greeting (18): all 38 D2Client.dll 0x6fb4cad0 entries resolve to Stream=1 NPC greetings (#1234)
+    expect(Object.keys(NPC_GREETING_BY_CLASS_ID_113C)).toHaveLength(38)
     expect(NPC_GREETING_BY_CLASS_ID_113C[148]).toBe(3480) // akara
     expect(NPC_GREETING_BY_CLASS_ID_113C[146]).toBe(3644) // cain
     expect(NPC_GREETING_BY_CLASS_ID_113C[147]).toBe(3910) // gheed
+    expect(NPC_GREETING_BY_CLASS_ID_113C[264]).toBe(4150) // meshif2 (Act 3)
+    expect(NPC_GREETING_BY_CLASS_ID_113C[367]).toBe(4303) // tyrael2 (Act 4)
     expect(NPC_GREETING_BY_CLASS_ID_113C[511]).toBe(4449) // larzuk
     expect(NPC_GREETING_BY_CLASS_ID_113C[512]).toBe(4382) // drehya
+    expect(NPC_GREETING_BY_CLASS_ID_113C[527]).toBe(4382) // drehyaiced (Act 5)
     expect(
       resolve0x2CPlaySound113c(18, { unitType: 'monster', id: 52, classId: 148, x: 10, y: 20 }, worldCtx),
     ).toMatchObject({ speechSoundId: 3480 })
+    expect(
+      resolve0x2CPlaySound113c(18, { unitType: 'monster', id: 52, classId: 264, x: 10, y: 20 }, worldCtx),
+    ).toMatchObject({ speechSoundId: 4150 })
+    expect(
+      resolve0x2CPlaySound113c(18, { unitType: 'monster', id: 52, classId: 367, x: 10, y: 20 }, worldCtx),
+    ).toMatchObject({ speechSoundId: 4303 })
+    expect(
+      resolve0x2CPlaySound113c(18, { unitType: 'monster', id: 52, classId: 527, x: 10, y: 20 }, worldCtx),
+    ).toMatchObject({ speechSoundId: 4382 })
+    // 4-column greeting selector via worldCtx.greetingOptions (0x6fb4cce0)
+    expect(
+      resolve0x2CPlaySound113c(
+        18,
+        { unitType: 'monster', id: 52, classId: 148, x: 10, y: 20 },
+        { ...worldCtx, greetingOptions: { mode: 2 } },
+      ),
+    ).toMatchObject({ speechSoundId: 3484 })
+    expect(
+      resolve0x2CPlaySound113c(
+        18,
+        { unitType: 'monster', id: 52, classId: 148, x: 10, y: 20 },
+        { ...worldCtx, greetingOptions: { mode: 0, timeOfDay: 1, rng: () => 0.1 } },
+      ),
+    ).toMatchObject({ speechSoundId: 3486 })
   })
 
   it('queues resolved 0x2C PlaySound requests on ClientWorld and guards 0xA4 MonsterSpecialSkill with no sound', () => {
@@ -249,11 +293,10 @@ describe('D2GS 0x2C PlaySound 1.13c event code resolver (0x6fad3f20 / 0x6fad3200
     })
     expect(JSON.parse(JSON.stringify(drained))).toEqual(drained)
 
-    // 0xA4 MonsterSpecialSkill: unit===undefined, must NOT queue any sound per 0x6fb5d760
+    // 0xA4 MonsterSpecialSkill: decodes to MonsterSpecial (never PlaySound), must NOT queue any sound per 0x6fb5d760
     const pktA4 = new Uint8Array([0xa4, 0x05, 0x00])
     const evA4 = decode0xA4MonsterSpecial(pktA4)
-    expect(evA4.type).toBe('PlaySound')
-    expect((evA4 as { unit?: unknown }).unit).toBeUndefined()
+    expect(evA4).toEqual({ type: 'MonsterSpecial', classId: 5 })
     world.apply(evA4)
     expect(world.drainWorldSoundRequests()).toHaveLength(0)
   })

@@ -48,7 +48,16 @@ import {
   isObjectInInteractRange113c,
   isObjectSelectableInMode,
 } from '../../common/world/objects-meta.ts'
-import { isSkillAllowedInTown } from '../../common/skills/skills-meta.ts'
+import {
+  canUseSkillInMorphState,
+  isAuraSkill,
+  isPassiveSkill,
+  isSkillAllowedInTown,
+} from '../../common/skills/skills-meta.ts'
+import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
+import { calculateManaCost } from '../../common/skills/skill-calc-engine.ts'
+import { PLAYER_SOUND_TABLE_0x6FBA7694 } from '../audio/d2gs-play-sound-113c.ts'
+import { SkillHotkeysHud } from '../ui/hotkeys.ts'
 import { isTownLevel } from '../../common/world/scene-population.ts'
 import {
   clickGate113c,
@@ -106,7 +115,7 @@ function canRightSkillTargetObjectOrItem(skillId: number): boolean {
  * - `351..353`: Hydra heads
  * - `356..357`: Decoy (Dopplezon), Valkyrie
  * - `363..364`: Necromancer Skeleton, Skeletal Mage
- * - `411..418`: Assassin Traps (`411..416`) & Shadow Warrior/Master (`417..418`)
+ * - `410..418`: Assassin Traps (`410..416`, including `wakeofdestruction` 410, `bladecreeper` 413) & Shadow Warrior/Master (`417..418`)
  * - `419..428`: Druid Raven, Spirit Wolf, Dire Wolf, Spirits, Vines, Grizzly
  */
 export function isPlayerSummonClassId(classId: number): boolean {
@@ -115,7 +124,7 @@ export function isPlayerSummonClassId(classId: number): boolean {
     (classId >= 351 && classId <= 353) ||
     (classId >= 356 && classId <= 357) ||
     (classId >= 363 && classId <= 364) ||
-    (classId >= 411 && classId <= 428)
+    (classId >= 410 && classId <= 428)
   )
 }
 
@@ -186,11 +195,11 @@ export interface SkillHotkeyBinding {
 
 /**
  * Single source of truth for skill-hotkey keys *bindable* from the skill popup
- * (vanilla 1.13c: F1..F8 only). Widen this regex (and only this regex) to support
- * more bindable keys — hotkey *execution* follows the binding maps, not this regex,
- * so already-bound keys keep working regardless of range changes.
+ * (vanilla 1.13c: F1..F8 / SKILL9..SKILL16 `0x6faed300`..`0x6faed6d0`). Widen this regex
+ * (and only this regex) to support more bindable keys — hotkey *execution* follows the
+ * binding maps, not this regex, so already-bound keys keep working regardless of range changes.
  */
-export const SKILL_HOTKEY_KEY_RE_113C = /^F[1-8]$/
+export const SKILL_HOTKEY_KEY_RE_113C = /^(?:F[1-8]|SKILL(?:9|1[0-6]))$/i
 
 export interface CommandMapperDeps {
   readonly world: ClientWorld
@@ -208,6 +217,16 @@ export interface CommandMapperDeps {
   readonly onToggleChatInput?: (() => void) | undefined
   /** Optional callback when Escape is pressed with no open HUD panels. */
   readonly onEscapeMenu?: (() => void) | undefined
+  /** Optional callback when V key toggles MiniMap / full Automap mode. */
+  readonly onToggleAutomapMode?: (() => void) | undefined
+  /** Optional callback when F9 cycles Automap fade mode. */
+  readonly onAutomapFade?: (() => void) | undefined
+  /** Optional callback when F11 toggles Automap party display. */
+  readonly onAutomapParty?: (() => void) | undefined
+  /** Optional callback when F10 / F12 toggles Automap party names display. */
+  readonly onAutomapNames?: (() => void) | undefined
+  /** Optional callback when Space / Home re-centers the Automap. */
+  readonly onAutomapCenter?: (() => void) | undefined
 }
 
 export interface PointerWorldTarget {
@@ -242,9 +261,18 @@ export class CommandMapper {
   private readonly isExternalUiIntercepted?: ((screenX: number, screenY: number) => boolean) | undefined
   private readonly onToggleChatInput?: (() => void) | undefined
   private readonly onEscapeMenu?: (() => void) | undefined
+  private readonly onToggleAutomapMode?: (() => void) | undefined
+  private readonly onAutomapFade?: (() => void) | undefined
+  private readonly onAutomapParty?: (() => void) | undefined
+  private readonly onAutomapNames?: (() => void) | undefined
+  private readonly onAutomapCenter?: (() => void) | undefined
 
   private shiftHeld = false
   private altHeld = false
+  private ctrlHeldForRun = false
+  private lastVoiceEmoteAtMs = -Infinity
+  /** 1.13c D2Client.dll 0x6fad34ba..0x6fad34f6 (`[0x6fbcc4cc]`): 75-tick (3000ms) duplicate error speech cooldown. */
+  private lastNeedManaSpeechAtMs = -Infinity
   private leftMouseDown = false
   private rightMouseDown = false
   private lastPointerX = 0
@@ -268,6 +296,7 @@ export class CommandMapper {
   private nextWarpClickAllowedMs = -Infinity
   private lastMeleeChaseTargetPos: { unitType: number | string; id: number; x: number; y: number } | null =
     null
+  private pendingQuickCastRestoreSkillId: number | null = null
   private lastPath: readonly SubTilePoint[] = []
   private lastHoldDispatchMs = 0
 
@@ -310,13 +339,21 @@ export class CommandMapper {
     this.isExternalUiIntercepted = deps?.isExternalUiIntercepted
     this.onToggleChatInput = deps?.onToggleChatInput
     this.onEscapeMenu = deps?.onEscapeMenu
+    this.onToggleAutomapMode = deps?.onToggleAutomapMode
+    this.onAutomapFade = deps?.onAutomapFade
+    this.onAutomapParty = deps?.onAutomapParty
+    this.onAutomapNames = deps?.onAutomapNames
+    this.onAutomapCenter = deps?.onAutomapCenter
   }
 
   private isTownArea(world: ClientWorld = this.world): boolean {
     return isTownLevel(world.areaId)
   }
 
-  private isSkillWeaponUsable(skillId: number): boolean {
+  private isSkillWeaponUsable(skillId: number, world: ClientWorld = this.world): boolean {
+    if (!canUseSkillInMorphState(skillId, world.self?.states)) {
+      return false
+    }
     const hotkeys = (this.hudModel?.hudManager?.hotkeys ?? this.hudManager?.hotkeys) as
       | { isSkillWeaponUsable?: (id: number) => boolean }
       | undefined
@@ -324,6 +361,160 @@ export class CommandMapper {
       return hotkeys.isSkillWeaponUsable(skillId)
     }
     return true
+  }
+
+  /**
+   * 1.13c `D2Common.#10787` (`0x6fda2340`, `SKILLS_CheckSkill`) -> `0x6fda0af0` (`SKILLS_CheckSkillMana`)
+   * & `0x6fd9fdc0` (`wStartMana` check):
+   * Returns `false` when the player's current mana is constrained and lower than `skillId`'s mana cost.
+   */
+  private hasEnoughManaForSkill(skillId: number, world: ClientWorld = this.world): boolean {
+    if (skillId <= 0 || isPassiveSkill(skillId) || isAuraSkill(skillId)) {
+      return true
+    }
+    if (skillId === 217 || skillId === 218 || skillId === 219 || skillId === 220) {
+      return true
+    }
+    const self = world?.self as
+      | {
+          readonly mana?: number
+          readonly maxMana?: number
+          readonly hasManaState?: boolean
+          readonly states?: ReadonlySet<number>
+          readonly skills?: ReadonlyMap<number, number>
+          readonly skillEntries?: ReadonlyMap<
+            number,
+            { readonly level?: number; readonly baseLevel?: number; readonly bonus?: number }
+          >
+          readonly skillCharges?: ReadonlyMap<number, number>
+          readonly castState?: { readonly skillId?: number } | undefined
+        }
+      | undefined
+    const hotkeys = (this.hudModel?.hudManager?.hotkeys ?? this.hudManager?.hotkeys) as
+      | {
+          readonly currentMana?: number | null
+          readonly availableSkills?: readonly {
+            readonly skillId: number
+            readonly manaCost?: number
+            readonly isItemSkill?: boolean
+            readonly charges?: number
+          }[]
+          readonly getSkillCharges?: (id: number) => number | undefined
+        }
+      | undefined
+    // 1.13c 0x6fda0b17: item-granted charged skills (`pSkill->dwItemId != -1`) bypass mana check.
+    if (self?.skillCharges?.has(skillId) || hotkeys?.getSkillCharges?.(skillId) !== undefined) {
+      return true
+    }
+    // 1.13c 0x6fda0beb (`nocostinstate = 1` in `Skills.txt`): unshifting from Werewolf (#223 in state 139)
+    // or Werebear (#228 in state 140) costs 0 mana.
+    if (
+      (skillId === 223 && self?.states?.has(139)) ||
+      (skillId === 228 && self?.states?.has(140))
+    ) {
+      return true
+    }
+    let currentMana: number | null = null
+    if (self && (self.hasManaState || (self.maxMana ?? 0) > 0 || (self.mana ?? 0) > 0)) {
+      currentMana = self.mana ?? 0
+    } else if (hotkeys && typeof hotkeys.currentMana === 'number') {
+      currentMana = hotkeys.currentMana
+    } else if (
+      this.hudManager &&
+      ((this.hudManager.maxMana ?? 0) > 0 || (this.hudManager.mana ?? 0) > 0)
+    ) {
+      currentMana = this.hudManager.mana ?? 0
+    }
+    if (currentMana === null) {
+      return true
+    }
+    const entry = hotkeys?.availableSkills?.find(s => s.skillId === skillId)
+    if (entry?.isItemSkill || entry?.charges !== undefined) {
+      return true
+    }
+    let manaCost: number
+    if (entry !== undefined && typeof entry.manaCost === 'number') {
+      manaCost = entry.manaCost
+    } else {
+      const sl = self?.skillEntries?.get(skillId)
+      const effectiveLevel =
+        sl !== undefined
+          ? (sl.baseLevel ?? sl.level ?? 0) + (sl.bonus ?? 0)
+          : (self?.skills?.get(skillId) ?? 1)
+      const cat = SKILLS_BY_ID[skillId]
+      manaCost = cat ? calculateManaCost(cat, Math.max(1, effectiveLevel)) : 0
+    }
+    // 1.13c 0x6fd9fdc0 (`wStartMana` in `Skills.txt`): initial Inferno (#41) cast requires startmana = 6.
+    if (skillId === 41 && self?.castState?.skillId !== 41) {
+      manaCost = Math.max(manaCost, 6)
+    }
+    if (manaCost <= 0) {
+      return true
+    }
+    return currentMana >= manaCost
+  }
+
+  /**
+   * 1.13c `D2Client.dll` `0x6fac8f90` -> `0x6fac8f40(1, pPlayer)` -> `0x6fad3200(pPlayer, 21)`:
+   * Plays the local player's class `<class>_needmana_1` speech (`eventCode = 21` / `0x15` in
+   * `PLAYER_SOUND_TABLE_0x6FBA7694`) with the 75-tick (`3000ms`) duplicate suppression cooldown
+   * (`0x6fad34ba..0x6fad34f6`).
+   */
+  private triggerNeedManaSpeech(
+    nowMs = performance.now(),
+    skillId = 0,
+    world: ClientWorld = this.world,
+  ): void {
+    const resolvedNow = Number.isFinite(nowMs) ? nowMs : 0
+    if (resolvedNow - this.lastNeedManaSpeechAtMs < 3000) {
+      return
+    }
+    this.lastNeedManaSpeechAtMs = resolvedNow
+    const codeToClassId: Readonly<Record<string, number>> = {
+      ama: 0,
+      amazon: 0,
+      sor: 1,
+      sorceress: 1,
+      nec: 2,
+      necromancer: 2,
+      pal: 3,
+      paladin: 3,
+      bar: 4,
+      barbarian: 4,
+      dru: 5,
+      druid: 5,
+      ass: 6,
+      assassin: 6,
+    }
+    let classId: number | null =
+      typeof world?.self?.charClass === 'number' &&
+      world.self.charClass >= 0 &&
+      world.self.charClass <= 6
+        ? world.self.charClass
+        : null
+    if (classId === null) {
+      const hudClass =
+        (this.hudManager as { currentClass?: string | null } | undefined)?.currentClass ??
+        this.hudManager?.inventory?.playerContext?.classCode ??
+        SKILLS_BY_ID[skillId]?.classCode
+      if (typeof hudClass === 'string') {
+        const mapped = codeToClassId[hudClass.trim().toLowerCase()]
+        if (mapped !== undefined) {
+          classId = mapped
+        }
+      }
+    }
+    const entry = PLAYER_SOUND_TABLE_0x6FBA7694[classId ?? 1] ?? PLAYER_SOUND_TABLE_0x6FBA7694[1]!
+    const soundId = entry.needMana1
+    world?.pushSoundRequest?.({
+      soundId,
+      speechSoundId: soundId,
+      eventCode: 21,
+      local: true,
+    })
+    if (!this.hudModel) {
+      this.hudManager?.onPlayUiSound?.(soundId)
+    }
   }
 
   isFriendlySummonOrPet(unit: ClientUnit, world: ClientWorld = this.world): boolean {
@@ -513,6 +704,69 @@ export class CommandMapper {
   }
 
   /**
+   * Find the nearest valid living monster target for a melee skill within `radiusSubtiles`
+   * of `(subtileX, subtileY)`.
+   * Allows right-click melee skills (without Shift) to acquire and chase a nearby monster
+   * when clicking slightly outside its bounding box (Issue #1298).
+   */
+  findNearestValidMeleeTarget(
+    subtileX: number,
+    subtileY: number,
+    skillId: number,
+    world: ClientWorld = this.world,
+    radiusSubtiles = 2.5,
+  ): ClientUnit | null {
+    if (typeof world.getUnitsByType !== 'function') return null
+    const maxDistSq = radiusSubtiles * radiusSubtiles
+    let bestTarget: ClientUnit | null = null
+    let bestDistSq = maxDistSq
+    for (const unit of world.getUnitsByType(1)) {
+      if (unit.hidden || unit.states?.has(0x8f)) continue
+      if (unit.x === 0 && unit.y === 0) continue
+      if (this.isMonsterCorpse(unit, world)) continue
+      if (!this.isValidSkillTargetUnit(unit, skillId, world)) continue
+      const dx = unit.x - subtileX
+      const dy = unit.y - subtileY
+      const dSq = dx * dx + dy * dy
+      if (dSq <= bestDistSq && (bestTarget === null || dSq < bestDistSq)) {
+        bestDistSq = dSq
+        bestTarget = unit
+      }
+    }
+    return bestTarget
+  }
+
+  /**
+   * Find the nearest valid living hostile monster for `TargetableOnly=1` monster-targeted skills
+   * (e.g. Fist of the Heavens #121, Issue #1281) within `radiusSubtiles` of `(subtileX, subtileY)`.
+   */
+  findNearestMonsterForTargetableOnlySkill(
+    subtileX: number,
+    subtileY: number,
+    skillId: number,
+    world: ClientWorld = this.world,
+    radiusSubtiles = 4,
+  ): ClientUnit | null {
+    if (skillId !== 121) return null
+    if (typeof world.getUnitsByType !== 'function') return null
+    const maxDistSq = radiusSubtiles * radiusSubtiles
+    let bestMon: ClientUnit | null = null
+    let bestDistSq = maxDistSq
+    for (const unit of world.getUnitsByType(1)) {
+      if (unit.hidden || unit.states?.has(0x8f)) continue
+      if (!this.isValidSkillTargetUnit(unit, skillId, world)) continue
+      const dx = unit.x - subtileX
+      const dy = unit.y - subtileY
+      const dSq = dx * dx + dy * dy
+      if (dSq <= bestDistSq && (bestMon === null || dSq < bestDistSq)) {
+        bestDistSq = dSq
+        bestMon = unit
+      }
+    }
+    return bestMon
+  }
+
+  /**
    * Direct world-coordinate mouse down translator (used by headless/unit tests and direct callers).
    * Respects 1.13c skill casting delay (`state 121` / `skilldelay`) and town skill restrictions (`InTown`).
    */
@@ -535,14 +789,35 @@ export class CommandMapper {
     const skillId = isRight
       ? (activeWorld.self?.rightSkill ?? this.hudModel?.rightSkillId ?? this.hudManager.hotkeys.rightSkillId)
       : (activeWorld.self?.leftSkill ?? this.hudModel?.leftSkillId ?? this.hudManager.hotkeys.leftSkillId)
-    const canCastSkillHere = !this.isTownArea(activeWorld) || isSkillAllowedInTown(skillId)
+    const morphAllowed = canUseSkillInMorphState(skillId, activeWorld.self?.states)
+    const canCastSkillHere =
+      (!this.isTownArea(activeWorld) || isSkillAllowedInTown(skillId)) && morphAllowed
+    if (
+      !isRight &&
+      !morphAllowed &&
+      (isShift ||
+        ((!this.isTownArea(activeWorld) || isSkillAllowedInTown(skillId)) &&
+          this.isValidSkillTargetUnit(ev.hoveredUnit, skillId, activeWorld)))
+    ) {
+      return null
+    }
     const hoveredUnit =
       canCastSkillHere &&
       TARGET_CORPSE_SKILL_IDS_113C.has(skillId) &&
       !(ev.hoveredUnit && this.isValidSkillTargetUnit(ev.hoveredUnit, skillId, activeWorld)) &&
       (isRight || isShift || !ev.hoveredUnit)
         ? this.findNearestValidCorpseForSkill(ev.worldX, ev.worldY, skillId, activeWorld)
-        : ev.hoveredUnit
+        : canCastSkillHere &&
+            skillId === 121 &&
+            !(ev.hoveredUnit && this.isValidSkillTargetUnit(ev.hoveredUnit, skillId, activeWorld)) &&
+            (isRight || isShift || !ev.hoveredUnit)
+          ? (this.findNearestMonsterForTargetableOnlySkill(
+              ev.worldX,
+              ev.worldY,
+              skillId,
+              activeWorld,
+            ) ?? ev.hoveredUnit)
+          : ev.hoveredUnit
     const validTarget = canCastSkillHere && this.isValidSkillTargetUnit(hoveredUnit, skillId, activeWorld)
 
     if (isRight) {
@@ -558,6 +833,10 @@ export class CommandMapper {
         return null
       }
       if (typeof activeWorld.isSkillOnCooldown === 'function' && activeWorld.isSkillOnCooldown(skillId, nowMs)) {
+        return null
+      }
+      if (!this.hasEnoughManaForSkill(skillId, activeWorld)) {
+        this.triggerNeedManaSpeech(nowMs, skillId, activeWorld)
         return null
       }
       const isRightItemOrObject =
@@ -590,6 +869,10 @@ export class CommandMapper {
 
     if (canCastSkillHere && (isShift || validTarget)) {
       if (typeof activeWorld.isSkillOnCooldown === 'function' && activeWorld.isSkillOnCooldown(skillId, nowMs)) {
+        return null
+      }
+      if (!this.hasEnoughManaForSkill(skillId, activeWorld)) {
+        this.triggerNeedManaSpeech(nowMs, skillId, activeWorld)
         return null
       }
     }
@@ -656,11 +939,33 @@ export class CommandMapper {
   }
 
   bindSkillHotkey(key: string, binding: SkillHotkeyBinding): void {
-    this.skillHotkeys.set(key.toUpperCase(), binding)
+    const normalized = key.toUpperCase()
+    const normItemId = binding.itemId ?? 0xffffffff
+    for (const [k, existing] of this.skillHotkeys.entries()) {
+      if (
+        k !== normalized &&
+        existing.hand === binding.hand &&
+        existing.skillId === binding.skillId &&
+        (existing.itemId ?? 0xffffffff) === normItemId
+      ) {
+        this.skillHotkeys.delete(k)
+      }
+    }
+    this.skillHotkeys.set(normalized, binding)
   }
 
   getSkillHotkey(key: string): SkillHotkeyBinding | undefined {
     return this.skillHotkeys.get(key.toUpperCase())
+  }
+
+  handleWheel(deltaY: number): boolean {
+    if (typeof (this.hudManager as any).handleWheel === 'function') {
+      return (this.hudManager as any).handleWheel(deltaY)
+    }
+    if (this.hudModel && deltaY !== 0) {
+      return this.hudModel.cycleBoundSkills(deltaY < 0 ? -1 : 1)
+    }
+    return false
   }
 
   // ─── Coordinate & Hit-Testing Helpers ────────────────────────
@@ -1358,7 +1663,11 @@ export class CommandMapper {
     )
     if (this.hudManager.isPointInterceptedByHud(screenX, resolvedY) || hasModalHudSpeechOrCursor) {
       if (resolvedButton === 0 || resolvedButton === 2) {
-        this.hudManager.handleClick(screenX, resolvedY, resolvedButton)
+        this.hudManager.handleClick(screenX, resolvedY, resolvedButton, {
+          shiftKey: this.shiftHeld,
+          ctrlKey: this.ctrlHeldForRun,
+          altKey: this.altHeld,
+        })
       }
       return null
     }
@@ -1414,7 +1723,19 @@ export class CommandMapper {
         TARGET_CORPSE_SKILL_IDS_113C.has(rightSkillId) &&
         !(target.hoveredUnit && this.isValidSkillTargetUnit(target.hoveredUnit, rightSkillId))
           ? this.findNearestValidCorpseForSkill(target.subtileX, target.subtileY, rightSkillId)
-          : target.hoveredUnit
+          : rightSkillId === 121 &&
+              !(target.hoveredUnit && this.isValidSkillTargetUnit(target.hoveredUnit, rightSkillId))
+            ? (this.findNearestMonsterForTargetableOnlySkill(
+                target.subtileX,
+                target.subtileY,
+                rightSkillId,
+              ) ?? target.hoveredUnit)
+            : !this.shiftHeld &&
+                typeof this.world.isSelfMeleeSkill === 'function' &&
+                this.world.isSelfMeleeSkill(rightSkillId) &&
+                !(target.hoveredUnit && this.isValidSkillTargetUnit(target.hoveredUnit, rightSkillId))
+              ? this.findNearestValidMeleeTarget(target.subtileX, target.subtileY, rightSkillId)
+            : target.hoveredUnit
       const isRightItemOrObject =
         resolvedRightUnit !== null &&
         (resolvedRightUnit.unitType === 'object' || resolvedRightUnit.unitType === 'item')
@@ -1455,6 +1776,13 @@ export class CommandMapper {
     nowMs = performance.now(),
   ): DispatchedCommandRecord | null {
     return this.handlePointerDown(screenXOrEvent, screenY, button, nowMs)
+  }
+
+  /**
+   * Whether the primary (left) or secondary (right) mouse button is currently held down.
+   */
+  isPointerDown(): boolean {
+    return this.leftMouseDown || this.rightMouseDown
   }
 
   /**
@@ -1623,7 +1951,7 @@ export class CommandMapper {
     nowMs = performance.now(),
     isHold = false,
   ): DispatchedCommandRecord | null {
-    const isRunning = this.hudModel ? this.hudModel.isRunMode : this.hudManager.isRunning
+    const isRunning = this.isCurrentlyRunning()
     const leftSkillId =
       this.world.self?.leftSkill || (this.hudModel ? this.hudModel.leftSkillId : this.hudManager.hotkeys.leftSkillId)
     const canCastLeftSkillHere = !this.isTownArea() || isSkillAllowedInTown(leftSkillId)
@@ -1633,6 +1961,16 @@ export class CommandMapper {
     const selfY =
       predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.y : this.world.self.y
 
+    if (
+      canCastLeftSkillHere &&
+      leftSkillId === 121 &&
+      !(hoveredUnit !== null && this.isValidSkillTargetUnit(hoveredUnit, leftSkillId, this.world))
+    ) {
+      hoveredUnit =
+        this.findNearestMonsterForTargetableOnlySkill(subtileX, subtileY, leftSkillId, this.world) ??
+        hoveredUnit
+    }
+
     // Stand-still modifier (Shift): cast left skill on location/target instead of moving (when skill is allowed in current area)
     if (this.shiftHeld && canCastLeftSkillHere) {
       if (
@@ -1640,6 +1978,10 @@ export class CommandMapper {
         this.isPlayerBusyCasting(nowMs, leftSkillId) ||
         this.world.isSkillOnCooldown?.(leftSkillId, nowMs)
       ) {
+        return null
+      }
+      if (!this.hasEnoughManaForSkill(leftSkillId, this.world)) {
+        this.triggerNeedManaSpeech(nowMs, leftSkillId, this.world)
         return null
       }
       this.cancelActiveNpcOrStashForWorldAction(hoveredUnit, selfX, selfY, nowMs)
@@ -1798,6 +2140,10 @@ export class CommandMapper {
           ) {
             return null
           }
+          if (!this.hasEnoughManaForSkill(leftSkillId, this.world)) {
+            this.triggerNeedManaSpeech(nowMs, leftSkillId, this.world)
+            return null
+          }
           this.cancelActiveNpcOrStashForWorldAction(hoveredUnit, selfX, selfY, nowMs)
           return this.dispatchRateLimited(
             {
@@ -1928,6 +2274,10 @@ export class CommandMapper {
           ) {
             return null
           }
+          if (!this.hasEnoughManaForSkill(leftSkillId, this.world)) {
+            this.triggerNeedManaSpeech(nowMs, leftSkillId, this.world)
+            return null
+          }
           this.cancelActiveNpcOrStashForWorldAction(hoveredUnit, selfX, selfY, nowMs)
           return this.dispatchRateLimited(
             {
@@ -1953,6 +2303,7 @@ export class CommandMapper {
     this.pendingObjectInteractId = null
     this.pendingWarpInteractId = null
     this.world.cancelPendingMeleeAttack()
+    this.flushPendingQuickCastRestore(nowMs)
     const path = this.startLocalPathPrediction(subtileX, subtileY, isRunning)
     return this.dispatchRateLimited(
       {
@@ -2001,6 +2352,14 @@ export class CommandMapper {
         return null
       }
     }
+    if (
+      rightSkillId === 121 &&
+      !(hoveredUnit !== null && this.isValidSkillTargetUnit(hoveredUnit, rightSkillId, this.world))
+    ) {
+      hoveredUnit =
+        this.findNearestMonsterForTargetableOnlySkill(subtileX, subtileY, rightSkillId, this.world) ??
+        hoveredUnit
+    }
     // 1.13c Iron Golem (#90, TargetItem=1, cltstfunc=19) requires a valid metallic ground item target.
     if (
       rightSkillId === 90 &&
@@ -2013,6 +2372,10 @@ export class CommandMapper {
       return null
     }
     if (this.isPlayerBusyCasting(nowMs, rightSkillId) || this.world.isSkillOnCooldown?.(rightSkillId, nowMs)) {
+      return null
+    }
+    if (!this.hasEnoughManaForSkill(rightSkillId, this.world)) {
+      this.triggerNeedManaSpeech(nowMs, rightSkillId, this.world)
       return null
     }
     const predSnap = this.predictor?.getSnapshot()
@@ -2028,6 +2391,42 @@ export class CommandMapper {
     const isRightItemOrObject =
       hoveredUnit !== null &&
       (hoveredUnit.unitType === 'object' || hoveredUnit.unitType === 'item')
+    // 1.13c D2Client right-click melee behavior (Issue #1298):
+    // Without Shift held, a right-hand melee skill (e.g. Power Strike #14, Jab #10, Zeal #106)
+    // does NOT swing in place on empty ground; it checks for a nearby valid monster within 2.5
+    // sub-tiles to lock/chase, or else walks/runs to the clicked ground location.
+    if (
+      !this.shiftHeld &&
+      typeof this.world.isSelfMeleeSkill === 'function' &&
+      this.world.isSelfMeleeSkill(rightSkillId) &&
+      !(
+        hoveredUnit !== null &&
+        (this.isValidSkillTargetUnit(hoveredUnit, rightSkillId, this.world) ||
+          (isRightItemOrObject && canRightSkillTargetObjectOrItem(rightSkillId)))
+      )
+    ) {
+      const nearbyTarget =
+        !isHold || !this.selectionLocked || this.pressKind !== 1
+          ? this.findNearestValidMeleeTarget(subtileX, subtileY, rightSkillId, this.world, 2.5)
+          : null
+      if (nearbyTarget) {
+        hoveredUnit = nearbyTarget
+      } else {
+        this.world.cancelPendingMeleeAttack()
+        this.flushPendingQuickCastRestore(nowMs)
+        const isRunning = this.isCurrentlyRunning()
+        const path = this.startLocalPathPrediction(subtileX, subtileY, isRunning)
+        return this.dispatchRateLimited(
+          {
+            type: 'Move',
+            run: isRunning,
+            to: { x: subtileX, y: subtileY },
+          },
+          nowMs,
+          path,
+        )
+      }
+    }
     if (
       hoveredUnit &&
       (this.isValidSkillTargetUnit(hoveredUnit, rightSkillId) ||
@@ -2050,6 +2449,7 @@ export class CommandMapper {
         ? { x: Math.round(hoveredUnit.x), y: Math.round(hoveredUnit.y) }
         : { x: subtileX, y: subtileY }
     this.world.cancelPendingMeleeAttack()
+    this.flushPendingQuickCastRestore(nowMs)
     return this.dispatchRateLimited(
       {
         type: 'SkillAt',
@@ -2090,20 +2490,27 @@ export class CommandMapper {
     if (this.isPlayerBusyCasting(nowMs, skillId) || this.world.isSkillOnCooldown?.(skillId, nowMs)) {
       return false
     }
+    if (itemId === 0xffffffff && !this.hasEnoughManaForSkill(skillId, this.world)) {
+      this.triggerNeedManaSpeech(nowMs, skillId, this.world)
+      return false
+    }
     const originalRaw =
-      this.world.self?.rightSkill ||
-      (this.hudModel ? this.hudModel.rightSkillId : this.hudManager.hotkeys.rightSkillId)
+      this.pendingQuickCastRestoreSkillId ??
+      (this.world.self?.rightSkill ||
+        (this.hudModel ? this.hudModel.rightSkillId : this.hudManager.hotkeys.rightSkillId))
     const originalSkillId = originalRaw > 0 ? originalRaw : null
     if (originalSkillId === skillId) {
       // Already selected: vanilla right-click path, no swap and no restore.
       const target = this.resolvePointerTarget(this.lastPointerX, this.lastPointerY)
-      return this.triggerSecondaryWorldAction(
-        target.subtileX,
-        target.subtileY,
-        target.hoveredUnit,
-        nowMs,
-        false,
-      ) !== null
+      return (
+        this.triggerSecondaryWorldAction(
+          target.subtileX,
+          target.subtileY,
+          target.hoveredUnit,
+          nowMs,
+          false,
+        ) !== null
+      )
     }
     this.dispatchSkillSelectForQuickCast('right', skillId, itemId, nowMs)
     const target = this.resolvePointerTarget(this.lastPointerX, this.lastPointerY)
@@ -2116,11 +2523,32 @@ export class CommandMapper {
       skillId,
     )
     if (originalSkillId !== null) {
-      // Item-granted originals (charged items) restore as class skills (0xffffffff); the 0x23
-      // ack re-asserts the authoritative assignment. v1 limitation.
-      this.dispatchSkillSelectForQuickCast('right', originalSkillId, 0xffffffff, nowMs)
+      const hasPendingMeleeChase =
+        dispatched?.command.type === 'SkillOn' &&
+        typeof this.world.isSelfMeleeSkill === 'function' &&
+        this.world.isSelfMeleeSkill(skillId) &&
+        Boolean(this.world.pendingMeleeAttack)
+      if (hasPendingMeleeChase) {
+        // Defer restoring the original right-hand skill until the pending melee chase
+        // arrives within melee range and executes the swing (or is cancelled) (Issue #1298).
+        this.pendingQuickCastRestoreSkillId = originalSkillId
+      } else {
+        this.pendingQuickCastRestoreSkillId = null
+        // Item-granted originals (charged items) restore as class skills (0xffffffff); the 0x23
+        // ack re-asserts the authoritative assignment. v1 limitation.
+        this.dispatchSkillSelectForQuickCast('right', originalSkillId, 0xffffffff, nowMs)
+      }
     }
     return dispatched !== null
+  }
+
+  private flushPendingQuickCastRestore(nowMs: number): void {
+    const restoreSkillId = this.pendingQuickCastRestoreSkillId
+    if (restoreSkillId === null) return
+    this.pendingQuickCastRestoreSkillId = null
+    if (restoreSkillId > 0 && this.world.self?.rightSkill !== restoreSkillId) {
+      this.dispatchSkillSelectForQuickCast('right', restoreSkillId, 0xffffffff, nowMs)
+    }
   }
 
   private dispatchSkillSelectForQuickCast(
@@ -2154,9 +2582,17 @@ export class CommandMapper {
     },
     nowMs = performance.now(),
   ): boolean {
+    if (event && typeof event === 'object') {
+      const ev = event as { _d2KeyHandled?: boolean; _d2HandledByCommandMapper?: boolean }
+      if (ev._d2KeyHandled || ev._d2HandledByCommandMapper) {
+        return false
+      }
+    }
     const handled = this.handleKeyDownInternal(event, nowMs)
     if (handled && event && typeof event === 'object') {
-      ;(event as { _d2HandledByCommandMapper?: boolean })._d2HandledByCommandMapper = true
+      const ev = event as { _d2KeyHandled?: boolean; _d2HandledByCommandMapper?: boolean }
+      ev._d2HandledByCommandMapper = true
+      ev._d2KeyHandled = true
     }
     return handled
   }
@@ -2184,6 +2620,21 @@ export class CommandMapper {
       if (event.key === 'Alt') return true
     }
 
+    // D2Client.dll 0x6faeae40 / 0x6faeadf0: Control key momentary Run hold -> C2S 0x53
+    if (
+      (event.key === 'Control' || event.code === 'ControlLeft' || event.code === 'ControlRight') &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      if (!this.ctrlHeldForRun) {
+        this.ctrlHeldForRun = true
+        const cmd: ClientCommand = { type: 'RunToggle', run: true }
+        this.world.noteOutgoingCommand?.(cmd, nowMs)
+        this.sendCommand(cmd, nowMs)
+      }
+      return true
+    }
+
     // Ignore hotkeys if modifier keys (Ctrl/Meta) are pressed
     if (event.ctrlKey || event.metaKey) {
       return false
@@ -2192,6 +2643,20 @@ export class CommandMapper {
     // Defer digit/Enter/Escape keys to HudManager when the gold drop/transfer dialog is open
     if (this.hudManager.goldDialog) {
       return false
+    }
+
+    // D2Client.dll 0x6fad76a0: Numpad 0..7 voice emotes -> C2S 0x3F Say (phraseId = 25 + digit, 1000ms debounce)
+    if (event.code && /^Numpad[0-7]$/.test(event.code)) {
+      const digit = Number(event.code.slice(6))
+      event.preventDefault?.()
+      if (nowMs - this.lastVoiceEmoteAtMs >= 1000) {
+        this.lastVoiceEmoteAtMs = nowMs
+        const phraseId = 25 + digit
+        const cmd: ClientCommand = { type: 'Say', phraseId }
+        this.world.noteOutgoingCommand?.(cmd, nowMs)
+        this.sendCommand(cmd, nowMs)
+      }
+      return true
     }
 
     const keyUpper = event.key.toUpperCase()
@@ -2281,14 +2746,39 @@ export class CommandMapper {
       return true
     }
 
-    // Enter: toggle chat input
+    // Enter: confirm active NPC menu/speech (`0x6faed300` action 0x4C) before toggling chat input
     if (event.key === 'Enter') {
+      if (
+        (this.hudManager.worldPanels?.npcMenu || this.hudManager.worldPanels?.npcSpeech) &&
+        typeof this.hudManager.worldPanels.handleNpcSpeechKeyDown === 'function' &&
+        this.hudManager.worldPanels.handleNpcSpeechKeyDown('Enter')
+      ) {
+        event.preventDefault?.()
+        this.hudManager.syncPublishedState()
+        return true
+      }
       if (this.onToggleChatInput) {
         this.onToggleChatInput()
         event.preventDefault?.()
         return true
       }
       return false
+    }
+
+    // Space: close open panels (`0x6faee250`) and re-center automap (`0x6faed260` action 0x3D)
+    if (event.key === ' ' || event.code === 'Space') {
+      event.preventDefault?.()
+      if (this.hudModel) {
+        this.hudModel.closeActiveNpcPanel()
+      } else {
+        this.hudManager.closeAllPanels?.()
+      }
+      if (this.onAutomapCenter) {
+        this.onAutomapCenter()
+      } else if (this.automapView && typeof (this.automapView as any).resetManualPan === 'function') {
+        ;(this.automapView as any).resetManualPan()
+      }
+      return true
     }
 
     // Tab: toggle automap overlay
@@ -2302,27 +2792,35 @@ export class CommandMapper {
       return true
     }
 
-    // Belt slots 1..4 -> BeltUse (0x26) (match both key '1'..'4' and code 'Digit1'..'Digit4' for Shift+1..4)
+    // Belt slots 1..4 -> BeltUse (0x26) (match key '1'..'4', '!'..'$', and code 'Digit1'..'Digit4' for Shift+1..4)
     if (
       event.key === '1' ||
       event.key === '2' ||
       event.key === '3' ||
       event.key === '4' ||
+      event.key === '!' ||
+      event.key === '@' ||
+      event.key === '#' ||
+      event.key === '$' ||
       event.code === 'Digit1' ||
       event.code === 'Digit2' ||
       event.code === 'Digit3' ||
       event.code === 'Digit4'
     ) {
       const slotIndex =
-        event.code === 'Digit1'
+        event.code === 'Digit1' || event.key === '1' || event.key === '!'
           ? 0
-          : event.code === 'Digit2'
+          : event.code === 'Digit2' || event.key === '2' || event.key === '@'
             ? 1
-            : event.code === 'Digit3'
+            : event.code === 'Digit3' || event.key === '3' || event.key === '#'
               ? 2
-              : event.code === 'Digit4'
-                ? 3
-                : Number(event.key) - 1
+              : 3
+      const shiftToMerc =
+        Boolean(event.shiftKey) ||
+        event.key === '!' ||
+        event.key === '@' ||
+        event.key === '#' ||
+        event.key === '$'
       event.preventDefault?.()
       // BeltUse needs the real server item id of the potion, which only HudModel (ClientWorld) knows.
       if (!this.hudModel) return false
@@ -2330,25 +2828,27 @@ export class CommandMapper {
       // same `0x26 BeltUse` via `commandSink.onUseBeltSlot` and also plays the potion's
       // Misc.txt `usesound` (D2Client.dll 0x6fb31d70), which a bare `useBeltSlot` skips.
       if (this.hudManager.commandSink === this.hudModel) {
-        this.hudManager.drinkBeltSlot(slotIndex, Boolean(event.shiftKey))
+        this.hudManager.drinkBeltSlot(slotIndex, shiftToMerc)
       } else {
-        this.hudModel.useBeltSlot(slotIndex, Boolean(event.shiftKey))
+        this.hudModel.useBeltSlot(slotIndex, shiftToMerc)
       }
       return true
     }
 
     // ─── Skill hotkeys ────────────────────────────────────────────────────────
     // `SKILL_HOTKEY_KEY_RE_113C` is the single source of truth for which keys may be
-    // *bound* from the skill popup (vanilla 1.13c = F1..F8) — widen it there (and only
-    // there) to support more bindable keys. Execution follows the binding maps instead
-    // of the regex, so any key that ever gets bound is executed — and Quick Cast
-    // (Issue #952) reinterprets it as cast-at-cursor — without touching this branch.
+    // *bound* from the skill popup (vanilla 1.13c = F1..F8 / SKILL9..SKILL16). Execution
+    // follows the binding maps instead of the regex, so any key that ever gets bound is
+    // executed — and Quick Cast (Issue #952) reinterprets it as cast-at-cursor.
+    const slotIdx = SkillHotkeysHud.slotIndexFromKey(keyUpper)
+    const worldSkillHotkeyBinding = slotIdx !== null ? this.world.skillHotkeys?.get(slotIdx) : undefined
     const skillHotkeyBinding = this.skillHotkeys.get(keyUpper)
     const hudSkillHotkeyBinding = this.hudManager.hotkeys.bindings.get(keyUpper)
     if (
       SKILL_HOTKEY_KEY_RE_113C.test(keyUpper) ||
       skillHotkeyBinding !== undefined ||
-      hudSkillHotkeyBinding !== undefined
+      hudSkillHotkeyBinding !== undefined ||
+      worldSkillHotkeyBinding !== undefined
     ) {
       event.preventDefault?.()
       // Native bind: skill popup open + hovered skill + bindable key (vanilla gate).
@@ -2357,31 +2857,58 @@ export class CommandMapper {
         this.hudManager.hotkeys.openPopup !== null &&
         this.hudManager.hotkeys.hoveredPopupSkill !== null
       ) {
-        this.hudManager.hotkeys.bindHotkey(keyUpper, this.hudManager.hotkeys.hoveredPopupSkill.side, this.hudManager.hotkeys.hoveredPopupSkill.skillId)
+        const hovered = this.hudManager.hotkeys.hoveredPopupSkill
+        this.hudManager.hotkeys.bindHotkey(keyUpper, hovered.side, hovered.skillId)
+        this.bindSkillHotkey(keyUpper, {
+          skillId: hovered.skillId,
+          hand: hovered.side,
+          itemId: 0xffffffff,
+        })
+        if (slotIdx !== null) {
+          if (this.hudManager.hotkeys.onAssignHotkey) {
+            this.hudManager.hotkeys.onAssignHotkey(slotIdx, hovered.side, hovered.skillId, 0xffffffff)
+          } else if (this.hudModel) {
+            this.hudModel.assignSkillHotkey(slotIdx, hovered.side, hovered.skillId, 0xffffffff)
+          }
+        }
         return true
       }
       const hand =
-        skillHotkeyBinding?.hand ?? hudSkillHotkeyBinding?.side ?? 'right'
-      const skillId = skillHotkeyBinding?.skillId ?? hudSkillHotkeyBinding?.skillId
-      const itemId = skillHotkeyBinding?.itemId ?? 0xffffffff
+        skillHotkeyBinding?.hand ??
+        hudSkillHotkeyBinding?.side ??
+        worldSkillHotkeyBinding?.hand ??
+        'right'
+      const skillId =
+        skillHotkeyBinding?.skillId ??
+        hudSkillHotkeyBinding?.skillId ??
+        worldSkillHotkeyBinding?.skill
+      const itemId =
+        skillHotkeyBinding?.itemId ??
+        worldSkillHotkeyBinding?.itemId ??
+        0xffffffff
       if (skillId !== undefined) {
         if (this.quickCastMode) {
           // The 1.13c cast packets carry no skill id, so the cast executes the PD2 sequence
           // SelectSkill -> SkillAt/SkillOn -> SelectSkill restore regardless of which hand
           // the binding was made on.
           this.quickCastSkillAtCursor(skillId, { itemId }, nowMs)
-        } else if (this.hudModel) {
-          this.hudModel.selectSkill(hand, skillId, itemId)
         } else {
-          this.dispatchRateLimited(
-            {
-              type: 'SelectSkill',
-              hand,
-              skill: skillId,
-              itemId,
-            },
-            nowMs,
-          )
+          if (hand === 'right') {
+            this.pendingQuickCastRestoreSkillId = null
+          }
+          if (this.hudModel) {
+            this.hudModel.selectSkill(hand, skillId, itemId)
+          } else {
+            this.dispatchRateLimited(
+              {
+                type: 'SelectSkill',
+                hand,
+                skill: skillId,
+                itemId,
+              },
+              nowMs,
+            )
+          }
         }
       }
       return true
@@ -2425,9 +2952,80 @@ export class CommandMapper {
         this.hudManager.toggleRightPanel('skill')
         return true
       }
+      case '`':
+      case '~': {
+        this.hudManager.belt?.togglePopup?.()
+        this.hudManager.syncPublishedState?.()
+        return true
+      }
       case 'V': {
-        this.hudManager.belt.togglePopup()
-        this.hudManager.syncPublishedState()
+        if (this.onToggleAutomapMode) {
+          this.onToggleAutomapMode()
+        } else if (this.automapView && typeof (this.automapView as any).toggleMiniMap === 'function') {
+          ;(this.automapView as any).toggleMiniMap()
+        }
+        this.hudManager.syncPublishedState?.()
+        return true
+      }
+      case 'Z': {
+        if (typeof (this.hudManager as any).togglePartyPortraits === 'function') {
+          ;(this.hudManager as any).togglePartyPortraits()
+        } else {
+          ;(this.hudManager as any).showPartyPortraits = !((this.hudManager as any).showPartyPortraits ?? true)
+          this.hudManager.syncPublishedState?.()
+        }
+        return true
+      }
+      case 'H': {
+        if (typeof (this.hudManager as any).toggleHelpOverlay === 'function') {
+          ;(this.hudManager as any).toggleHelpOverlay()
+        } else {
+          ;(this.hudManager as any).helpOverlayOpen = !Boolean((this.hudManager as any).helpOverlayOpen)
+          this.hudManager.syncPublishedState?.()
+        }
+        return true
+      }
+      case 'N': {
+        this.world.clearActiveChatOverlay?.()
+        ;(this.hudManager as any).chatOverlayMessages = []
+        this.hudManager.syncPublishedState?.()
+        return true
+      }
+      case 'F9': {
+        event.preventDefault?.()
+        if (this.onAutomapFade) {
+          this.onAutomapFade()
+        } else if (this.automapView && typeof (this.automapView as any).cycleFadeMode === 'function') {
+          ;(this.automapView as any).cycleFadeMode()
+        }
+        return true
+      }
+      case 'F10':
+      case 'F12': {
+        event.preventDefault?.()
+        if (this.onAutomapNames) {
+          this.onAutomapNames()
+        } else if (this.automapView && typeof (this.automapView as any).toggleShowPartyNames === 'function') {
+          ;(this.automapView as any).toggleShowPartyNames()
+        }
+        return true
+      }
+      case 'F11': {
+        event.preventDefault?.()
+        if (this.onAutomapParty) {
+          this.onAutomapParty()
+        } else if (this.automapView && typeof (this.automapView as any).toggleShowParty === 'function') {
+          ;(this.automapView as any).toggleShowParty()
+        }
+        return true
+      }
+      case 'HOME': {
+        event.preventDefault?.()
+        if (this.onAutomapCenter) {
+          this.onAutomapCenter()
+        } else if (this.automapView && typeof (this.automapView as any).resetManualPan === 'function') {
+          ;(this.automapView as any).resetManualPan()
+        }
         return true
       }
       case 'Q': {
@@ -2470,15 +3068,34 @@ export class CommandMapper {
   }
 
   /**
-   * Handle keyup events (releases Shift stand-still and Alt item-labels).
+   * Handle keyup events (releases Shift stand-still, Control momentary run, and Alt item-labels).
    */
-  handleKeyUp(event: {
-    key: string
-    shiftKey?: boolean | undefined
-    altKey?: boolean | undefined
-  }): void {
+  handleKeyUp(
+    event: {
+      key: string
+      code?: string | undefined
+      shiftKey?: boolean | undefined
+      altKey?: boolean | undefined
+      ctrlKey?: boolean | undefined
+    },
+    nowMs = performance.now(),
+  ): void {
     if (event.key === 'Shift' || event.shiftKey === false) {
       this.shiftHeld = false
+    }
+    if (
+      event.key === 'Control' ||
+      event.code === 'ControlLeft' ||
+      event.code === 'ControlRight' ||
+      event.ctrlKey === false
+    ) {
+      if (this.ctrlHeldForRun) {
+        this.ctrlHeldForRun = false
+        const runMode = this.hudModel ? this.hudModel.isRunMode : Boolean(this.hudManager.isRunning)
+        const cmd: ClientCommand = { type: 'RunToggle', run: runMode }
+        this.world.noteOutgoingCommand?.(cmd, nowMs)
+        this.sendCommand(cmd, nowMs)
+      }
     }
     if (event.key === 'Alt' || event.altKey === false) {
       this.altHeld = false
@@ -2493,6 +3110,7 @@ export class CommandMapper {
   resetModifiers(): void {
     this.shiftHeld = false
     this.altHeld = false
+    this.ctrlHeldForRun = false
     this.leftMouseDown = false
     this.rightMouseDown = false
     this.lockedPointerUnit = null
@@ -2757,15 +3375,18 @@ export class CommandMapper {
         if (selfUnit && this.predictor) {
           this.predictor.setTargetDirection(selfUnit.targetDirection, false)
         }
+        this.flushPendingQuickCastRestore(nowMs)
         return true
       }
       if (this.world.pendingMeleeAttack !== null) {
         this.syncPendingMeleeChasePath()
       } else {
         this.lastMeleeChaseTargetPos = null
+        this.flushPendingQuickCastRestore(nowMs)
       }
-    } else if (this.lastMeleeChaseTargetPos !== null) {
+    } else if (this.lastMeleeChaseTargetPos !== null || this.pendingQuickCastRestoreSkillId !== null) {
       this.lastMeleeChaseTargetPos = null
+      this.flushPendingQuickCastRestore(nowMs)
     }
     return false
   }
@@ -2788,14 +3409,15 @@ export class CommandMapper {
     const targetX = Math.round(targetUnit.x)
     const targetY = Math.round(targetUnit.y)
     const snap = this.predictor?.getSnapshot()
+    const isPredictorMoving = this.predictor ? Boolean(snap?.moving) : this.lastPath.length > 0
     const prev = this.lastMeleeChaseTargetPos
     if (
-      !snap?.moving ||
+      !isPredictorMoving ||
       !prev ||
       prev.unitType !== pending.target.unitType ||
       prev.id !== pending.target.id ||
-      prev.x !== targetX ||
-      prev.y !== targetY
+      Math.abs(targetX - prev.x) > 1 ||
+      Math.abs(targetY - prev.y) > 1
     ) {
       this.lastMeleeChaseTargetPos = {
         unitType: pending.target.unitType,
@@ -2808,8 +3430,35 @@ export class CommandMapper {
     return this.lastPath
   }
 
+  /**
+   * 1.13c `D2Client.dll` (`ProcessClick` `0x6facbfd5..0x6facbfee`, `0x6faeae73`):
+   * Checks `D2Common_GetUnitStat(pPlayer, STAT_STAMINA = 10, 0) == 0`.
+   * Returns `true` when the local player's stamina has been initialized/tracked and is `<= 0`.
+   */
+  isStaminaExhausted(): boolean {
+    const self = this.world.self
+    const hasSelfStamina =
+      self.maxStamina > 0 || self.stats?.has(10) || self.stats?.has(11)
+    if (hasSelfStamina) {
+      return self.stamina <= 0
+    }
+    if (this.hudManager.maxStamina > 0) {
+      return this.hudManager.stamina <= 0
+    }
+    if (this.predictor?.isStaminaExhausted()) {
+      return true
+    }
+    return false
+  }
+
   private isCurrentlyRunning(): boolean {
-    return this.hudModel ? this.hudModel.isRunMode : this.hudManager.isRunning
+    if (this.isStaminaExhausted()) {
+      return false
+    }
+    return (
+      (this.hudModel ? this.hudModel.isRunMode : this.hudManager.isRunning) ||
+      this.ctrlHeldForRun
+    )
   }
 
   // ─── Internal Helpers ────────────────────────────────────────
@@ -2951,6 +3600,15 @@ export class CommandMapper {
       return this.lastPath
     }
     this.lastPath = []
+    const self = this.world.self
+    const hasSelfStamina =
+      self.maxStamina > 0 || self.stats?.has(10) || self.stats?.has(11)
+    if (hasSelfStamina) {
+      this.predictor.setStaminaExhausted(self.stamina <= 0)
+    } else if (this.hudManager.maxStamina > 0) {
+      this.predictor.setStaminaExhausted(this.hudManager.stamina <= 0)
+    }
+    isRunning = isRunning && !this.isStaminaExhausted()
 
     const snap = this.predictor.getSnapshot()
     const sx = Math.round(snap.logicalX)

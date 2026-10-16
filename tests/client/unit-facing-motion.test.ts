@@ -77,13 +77,17 @@ function makeGrid(
  * The production input path: `CommandMapper` re-paths from the player's cell on every frame the
  * left button is held (`triggerPrimaryWorldAction` → `startLocalPathPrediction`).
  */
-function makeMapper(grid: SubTileWalkabilityGrid, predictor: LocalMovementPredictor): CommandMapper {
+function makeMapper(
+  grid: SubTileWalkabilityGrid,
+  predictor: LocalMovementPredictor,
+  world = new ClientWorld(),
+): CommandMapper {
   const hudManager = new HudManager()
   hudManager.resize(800, 600)
   const mapService = { getActiveLevelView: () => grid } as unknown as MapService
   const sent: ClientCommand[] = []
   return new CommandMapper({
-    world: new ClientWorld(),
+    world,
     hudManager,
     predictor,
     mapService,
@@ -545,7 +549,8 @@ describe('skill-cast & interaction 25Hz facing (ClientWorld & buildSceneDrawable
   it('halts movement and turns toward cast target when local player casts a skill while moving', () => {
     const grid = makeGrid(4900, 4900, 200)
     const predictor = new LocalMovementPredictor({ initialX: 5000, initialY: 5000, initialDir64: 0 })
-    const mapper = makeMapper(grid, predictor)
+    const world = new ClientWorld()
+    const mapper = makeMapper(grid, predictor, world)
 
     // Start moving south-east toward (5050, 5000) (targetDir64 = 56)
     mapper.triggerPrimaryWorldAction(5050, 5000, null, 0)
@@ -554,6 +559,8 @@ describe('skill-cast & interaction 25Hz facing (ClientWorld & buildSceneDrawable
     expect(movingSnap.targetDir64).toBe(56)
 
     // Mid-motion, player right-clicks secondary skill toward north (targetDir64 = 32)
+    // (Equip ranged spell Fire Bolt #36 so empty-ground right click casts in place per 1.13c)
+    world.self.rightSkill = 36
     const [nx, ny] = headingVector(8)
     const goalX = movingSnap.logicalX + 30 * nx
     const goalY = movingSnap.logicalY + 30 * ny

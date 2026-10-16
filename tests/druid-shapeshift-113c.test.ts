@@ -479,9 +479,9 @@ describe('Issue #1018: Druid Shape Shifting (#223-#248) 4-Layer 1.13c Fidelity',
   })
 
   describe('Layer 4: Client World Missiles & Visuals (world-skill-missiles.ts & missiles-data.ts)', () => {
-    it('configures shockwave pierce=true and rabiesplague alwaysExplode=true in missiles-data', () => {
-      expect(getMissileTxtData('shockwave')?.pierce).toBe(true)
-      expect(getMissileTxtData('rabiesplague')?.alwaysExplode).toBe(true)
+    it('configures shockwave and rabiesplague in missiles-data to match 1.13c Missiles.txt', () => {
+      expect(getMissileTxtData('shockwave')?.pierce).toBeUndefined()
+      expect(getMissileTxtData('rabiesplague')?.alwaysExplode).toBeUndefined()
     })
 
     it('manages Werewolf/Werebear morph states and clears Feral Rage / Maul charge orbs on form change', () => {
@@ -494,16 +494,16 @@ describe('Issue #1018: Druid Shape Shifting (#223-#248) 4-Layer 1.13c Fidelity',
       ;(world as any).applySkillCastToUnit(selfUnit, 223, 100, 100, 5)
       expect(selfUnit.states.has(139)).toBe(true)
 
-      // Cast Feral Rage (#232) -> adds state 120 and feralrage1front overlay
+      // Cast Feral Rage (#232) -> adds state 120 and increments feralRageCharges (drawn via state setfunc 16 as feralrage1/feralrage1back)
       ;(world as any).spawnMissilesForSkill(selfUnit, 232, selfUnit.x + 1, selfUnit.y, 5)
       expect(selfUnit.states.has(120)).toBe(true)
-      expect(selfUnit.overlays.some(o => o.token.startsWith('feralrage'))).toBe(true)
+      expect((selfUnit as any).feralRageCharges).toBe(1)
 
-      // Switch to Werebear (#228) -> removes state 139 and state 120 + feralrage overlay, adds state 140
+      // Switch to Werebear (#228) -> removes state 139 and state 120 + resets feralRageCharges, adds state 140
       ;(world as any).applySkillCastToUnit(selfUnit, 228, 100, 100, 5)
       expect(selfUnit.states.has(139)).toBe(false)
       expect(selfUnit.states.has(120)).toBe(false)
-      expect(selfUnit.overlays.some(o => o.token.startsWith('feralrage'))).toBe(false)
+      expect((selfUnit as any).feralRageCharges ?? 0).toBe(0)
       expect(selfUnit.states.has(140)).toBe(true)
     })
   })

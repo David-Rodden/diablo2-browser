@@ -441,14 +441,12 @@ export function calculateValkyrieStats(
  * Skill 033: Pierce
  * Chance %: `computeDiminishingReturns(10, 100, slvl)`
  * Max Pierce Count: 4 pierces (5 hits max)
- * Guided Arrow (`skillId === 22`) strict exception: 0% clamp
  * Mana: 0 (passive).
  */
 export function calculatePierceStats(slvl: number, skillId?: number): PierceStats {
   const lvl = Number.isFinite(slvl) ? Math.max(1, Math.floor(slvl)) : 1
   const isGuidedArrow = skillId === 22
-  const rawChance = computeDiminishingReturns(10, 100, lvl)
-  const chancePct = isGuidedArrow ? 0 : rawChance
+  const chancePct = computeDiminishingReturns(10, 100, lvl)
 
   return {
     chancePct,

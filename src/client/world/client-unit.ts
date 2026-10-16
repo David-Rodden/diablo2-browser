@@ -74,6 +74,11 @@ export interface ClientUnitOverlay {
    * "cast → follow-ups" and type 7 "delay → cast" overlays, e.g. Bone Armor `0x6FB23230`).
    */
   readonly onExpire?: readonly ClientUnitOverlayChainStep[] | undefined
+  /**
+   * Set on a States.txt `castoverlay` played by the state-on routine (D2Client `0x6FB22C80`): while it lives the
+   * state's overlay1/2 loop is held back (LOOPEX/AURAEX hand-over), and StateEnd removes it (Issue #1063).
+   */
+  readonly castForStateId?: number | undefined
 }
 
 /** One overlay created when a chained overlay completes (see {@link ClientUnitOverlay.onExpire}). */
@@ -106,6 +111,48 @@ export interface UnitCastState {
   missileFireDelayMs?: number | undefined
   missileSkillLevel?: number | undefined
   missileSpawned?: boolean | undefined
+  secondMissileFireDelayMs?: number | undefined
+  secondMissileSpawned?: boolean | undefined
+  /**
+   * 1.13c Strafe (#26, CltSt13 / CltDo20) sequence event-frame volley state:
+   * emits 1 arrow/bolt per event frame until `strafeShotsFired === strafeTotalShots`.
+   */
+  strafeTotalShots?: number | undefined
+  strafeShotsFired?: number | undefined
+  strafeIntervalTicks?: number | undefined
+  strafeNextShotTick?: number | undefined
+  strafeTargetX?: number | undefined
+  strafeTargetY?: number | undefined
+  strafeSkillLevel?: number | undefined
+  /**
+   * 1.13c Whirlwind (#151, CltDoFunc 45 `0x6FB764B0` / `PLR_SEQUENCE_TABLE_113C[10]` `0x6FDEBE20`):
+   * initial facing direction when Whirlwind starts (`whirlwindBaseDir64`), stepped at 25Hz across
+   * the spinning sequence frames `3..7`.
+   */
+  whirlwindBaseDir64?: number | undefined
+  /**
+   * 1.13c Leap (#132, CltDoFunc 46 `0x6FB765B0`) & Leap Attack (#143, CltDoFunc 47 `0x6FB76AA0`)
+   * 3D parabolic vertical trajectory state (`D2LeapSetupTableStrc` at `0x6FB85F54`,
+   * `UNIT_SetTrajectoryTargetZ` `0x6FB77C80`, `UNIT_Step3DTrajectory` `0x6FB77FB0`).
+   */
+  leapStartX?: number | undefined
+  leapStartY?: number | undefined
+  leapTotalDist?: number | undefined
+  leapSizeIdx?: number | undefined
+  leapVelMag?: number | undefined
+  leapPeakZ?: number | undefined
+  leapTotalTicks?: number | undefined
+  leapTick?: number | undefined
+  leapPosZ?: number | undefined
+  leapVelZ?: number | undefined
+  leapAccelZ?: number | undefined
+  /**
+   * 1.13c Paladin Charge (#107, CltSt25 `0x6FADBF40` / CltDo37 `0x6FADB6E0` & SrvSt31 `0x6FCB9620` / SrvDo67 `0x6FCB9D20`):
+   * dwVelocity / 4096 sub-tiles/tick step speed, or in-place melee attack flag when target is already within melee range.
+   */
+  chargeStepSpeed?: number | undefined
+  chargeVelocity?: number | undefined
+  chargeInPlaceAttack?: boolean | undefined
 }
 
 export function makeUnitKey(unitType: UnitType, id: number): string {
@@ -171,8 +218,10 @@ export class ClientUnit {
   superUniqueId?: number | undefined
   bossMods?: readonly number[] | undefined
   monUMods?: readonly (number | string)[] | undefined
+  aip1?: number | undefined
   corpseSuppressed?: boolean | undefined
   deathFxTriggered?: boolean | undefined
+  diedAtMs?: number | undefined
   tempSummonExpireTick?: number | undefined
   nameSeed?: number | undefined
   compVariants?: readonly number[] | undefined
@@ -203,11 +252,16 @@ export class ClientUnit {
   subLoop?: number | undefined
   subStart?: number | undefined
   subStop?: number | undefined
+  subLoops?: number | undefined
   numDirections?: number | undefined
   explosionMissile?: string | undefined
   alwaysExplode?: boolean | undefined
   pierce?: boolean | undefined
+  canPierce?: boolean | undefined
+  pierceRemaining?: number | undefined
+  pierceCount?: number | undefined
   hitUnitIds?: Set<number> | undefined
+  piercedTargets?: Set<number> | undefined
   altitude?: number | undefined
   verticalDescentPerTick?: number | undefined
   /**
@@ -215,6 +269,14 @@ export class ClientUnit {
    * `stepTraj3dZ` (0x6fb77fb0) and drawn as `altitude = z >> 11`. Generic altitude rules skip such missiles.
    */
   traj3d?: Traj3dZ | undefined
+  /**
+   * Missile data `+0x28` ("TargetX", D2Common #10637 set / #11018 get) when a CltDoFunc uses it as a frame
+   * countdown (MissCltDoFunc 21 `brdeathcontrol`, 26 `mephistodeathcontrol`, 61 `overseercontrol`), or as a count
+   * (MissCltHitFunc 33 `mephistoflyingrocksbig`: number of CltHitSubMissile1 bursts).
+   */
+  cltCountdown?: number | undefined
+  /** Missile data "TargetY" (#10019 set / 0x6fabc4ba get) used as MissCltDoFunc 26's second countdown. */
+  cltCountdownY?: number | undefined
   /**
    * The missile's path direction was pinned (PATH_SetDirection #10706 + #10520 rotate flag 0): render with
    * `direction` instead of the velocity / target heading.
@@ -230,6 +292,8 @@ export class ClientUnit {
    * sets 12 on its light missile, 0x6fb66702); absent → Missiles.txt `Light`.
    */
   missileLightRadius?: number | undefined
+  /** Missile created with param flag 0x4000: 0x6FB630F0 skips its CreateLight (0x6FB6365B). */
+  missileNoLight?: boolean | undefined
   originX?: number | undefined
   originY?: number | undefined
   spiralAngle?: number | undefined
@@ -256,6 +320,11 @@ export class ClientUnit {
   armageddonSkillLevel?: number | undefined
   hurricaneUntilTick?: number | undefined
   hurricaneSkillLevel?: number | undefined
+  /**
+   * Client-predicted timed states (stateId -> frameCount at which it ends). Only states the client set itself
+   * live here; a server 0xA8 / 0xA9 for the same state drops the entry (server owns the lifetime).
+   */
+  predictedStateUntilTick?: Map<number, number> | undefined
   modeStartedAtMs?: number | undefined
   animStartedAtMs?: number | undefined
   modeUntilMs?: number | undefined
@@ -342,6 +411,10 @@ export class ClientUnit {
       if (!this.bossMods) {
         this.bossMods = Array.from(resolveMonsterUModIds(snapshot.monUMods))
       }
+    }
+    const snapAip1 = (snapshot as { aip1?: unknown }).aip1
+    if (typeof snapAip1 === 'number') {
+      this.aip1 = snapAip1
     }
     this.tempSummonExpireTick = snapshot.tempSummonExpireTick
     this.nameSeed = snapshot.nameSeed
@@ -538,6 +611,10 @@ export class ClientUnit {
       if (snapshot.bossMods === undefined) {
         this.bossMods = Array.from(resolveMonsterUModIds(snapshot.monUMods))
       }
+    }
+    const snapAip1 = (snapshot as { aip1?: unknown }).aip1
+    if (typeof snapAip1 === 'number') {
+      this.aip1 = snapAip1
     }
     if (snapshot.tempSummonExpireTick !== undefined) {
       this.tempSummonExpireTick = snapshot.tempSummonExpireTick

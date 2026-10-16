@@ -1,6 +1,5 @@
 import {
   getMissileTxtData,
-  type Projectile,
 } from '../../common/skills/missiles-data.ts'
 import type { AtlasFrame } from '../render/atlas.ts'
 import {
@@ -18,6 +17,7 @@ import type {
   SpriteRenderer,
 } from '../render/renderer.ts'
 import { reportMissingArt } from './world-renderer.ts'
+import { celFileArtKey } from '../render/cel-file-key.ts'
 
 export {
   MISSILE_METAS,
@@ -127,11 +127,13 @@ async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
               const art: ArtEntry = { meta, handle, frames }
               map.set(name, art)
               map.set(name.toLowerCase(), art)
-              map.set(stem, art)
-              map.set(stem.toLowerCase(), art)
+              if (extra.includes(stem)) {
+                map.set(stem, art)
+                map.set(stem.toLowerCase(), art)
+              }
               if (meta.celFile) {
-                map.set(meta.celFile, art)
-                map.set(meta.celFile.toLowerCase(), art)
+                // Missiles.txt / Overlay.txt name the DCC with '\' (Issue #1043): one normalised key for both sides.
+                map.set(celFileArtKey(meta.celFile), art)
               }
               loaded = true
               break
@@ -157,13 +159,22 @@ async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
 
   for (const [alias, meta] of Object.entries(options.metas)) {
     const art =
+      (meta.celFile ? map.get(celFileArtKey(meta.celFile)) : undefined) ??
       map.get(meta.name) ??
       map.get(meta.name.toLowerCase()) ??
-      (meta.celFile ? (map.get(meta.celFile.toLowerCase()) ?? map.get(meta.celFile)) : undefined) ??
       options.fallbackAliasKey?.(meta, map)
     if (art) {
-      if (!map.has(alias)) map.set(alias, art)
-      if (!map.has(alias.toLowerCase())) map.set(alias.toLowerCase(), art)
+      map.set(alias, art)
+      map.set(alias.toLowerCase(), art)
+    }
+  }
+
+  for (const meta of Object.values(options.metas)) {
+    if (!meta.celFile) continue
+    const art = map.get(celFileArtKey(meta.celFile))
+    if (art) {
+      if (!map.has(meta.celFile)) map.set(meta.celFile, art)
+      if (!map.has(meta.celFile.toLowerCase())) map.set(meta.celFile.toLowerCase(), art)
     }
   }
 
@@ -200,152 +211,12 @@ export async function loadOverlayArtMap(
     metas: OVERLAY_METAS,
     renderer,
     packBase,
+    overrideNameOnStemMismatch: true,
     filterTarget: m => m.celFile?.toLowerCase() !== 'null',
     extraStems: name => (name.toLowerCase() === 'cursecast' ? ['curse_hit'] : []),
     fallbackAliasKey: (meta, map) =>
       meta.name.toLowerCase() === 'cursecast' ? map.get('curse_hit') : undefined,
   })
-}
-
-/**
- * Render a Diablo II 1.13c missile projectile using authentic baked DCC sprite atlas.
- */
-export function drawMissileProjectile(
-  renderer: SpriteRenderer,
-  shot: Projectile,
-  missileArt?: LoadedMissileArt | null,
-  missileArtMap?: Map<string, LoadedMissileArt> | null,
-): void {
-  if (shot.missileType === 'blizzardcenter') {
-    return // Invisible controller missile
-  }
-
-  const resolvedArt =
-    missileArt ??
-    (shot.isTurret || shot.missileType === 'hydra_turret'
-      ? (missileArtMap?.get(shot.missileType ?? 'hydra_turret') ?? missileArtMap?.get('hydra'))
-      : shot.missileType !== undefined
-        ? missileArtMap?.get(shot.missileType)
-        : undefined)
-
-  if (resolvedArt === undefined || resolvedArt === null) {
-    return
-  }
-
-  const altitude = shot.altitude ?? 0
-  const dccDir = velocityToDccDirection(shot.vx, shot.vy, resolvedArt.meta.directions)
-  const frameCount = Math.max(1, resolvedArt.meta.framesPerDirection)
-
-  let frameIndex: number
-  if (resolvedArt.meta.name === 'meteorcenter') {
-    const elapsed = shot.ageTicks ?? Math.max(0, 60 - shot.ttl)
-    frameIndex = Math.floor((elapsed * resolvedArt.meta.animSpeed) / 16) % frameCount
-  } else if (
-    (resolvedArt.meta.name === 'meteorfire' ||
-      resolvedArt.meta.name === 'firewall' ||
-      resolvedArt.meta.name === 'groundfirebig') &&
-    frameCount === 37
-  ) {
-    const defaultDuration =
-      resolvedArt.meta.name === 'meteorfire'
-        ? 90 + (Math.max(1, shot.slvl ?? 1) - 1) * 15
-        : shot.ttl > 0
-          ? (shot.ageTicks ?? 0) + shot.ttl
-          : 90
-    const duration = shot.fireDuration ?? defaultDuration
-    const elapsed = shot.ageTicks ?? Math.max(0, duration - shot.ttl)
-    const EXTINCTION_TICKS = 12
-    if (shot.ttl <= EXTINCTION_TICKS) {
-      frameIndex = Math.max(0, Math.min(11, shot.ttl - 1))
-    } else {
-      const animStep = Math.floor((elapsed * resolvedArt.meta.animSpeed) / 16)
-      frameIndex = animStep < 12 ? animStep : 12 + ((animStep - 12) % 25)
-    }
-  } else {
-    const elapsed = shot.ageTicks ?? Math.max(0, 100 - shot.ttl)
-    frameIndex = Math.floor((elapsed * resolvedArt.meta.animSpeed) / 16) % frameCount
-  }
-
-  const group = resolvedArt.frames[dccDir] ?? resolvedArt.frames[0]
-  const frame = group?.[frameIndex] ?? group?.[0]
-  if (frame === undefined) {
-    return
-  }
-
-  const isGroundFlame =
-    resolvedArt.meta.name === 'meteorfire' ||
-    resolvedArt.meta.name === 'firewall' ||
-    resolvedArt.meta.name === 'groundfirebig'
-  const isExtinguishing = isGroundFlame && shot.ttl <= 12
-  const decayRatio = isExtinguishing ? Math.max(0, Math.min(1, shot.ttl / 12)) : 1.0
-  const scale = isExtinguishing ? 0.2 + 0.8 * decayRatio : 1.0
-  const opacity = isExtinguishing ? decayRatio : 1.0
-
-  const drawW = frame.width * scale
-  const drawH = frame.height * scale
-  const baseAnchorX = frame.anchorX !== undefined ? frame.anchorX : -frame.width / 2
-  const baseAnchorY = frame.anchorY !== undefined ? frame.anchorY : -frame.height / 2
-  const drawX = shot.x + baseAnchorX * scale
-  const drawY = (shot.y + (baseAnchorY + frame.height) * scale - drawH) - altitude
-
-  let isAdditive = false
-  try {
-    isAdditive = getMissileTxtData(shot.missileType ?? resolvedArt.meta.name).trans === 1
-  } catch {
-    isAdditive = true
-  }
-  renderer.draw(frame, drawX, drawY, {
-    atlas: resolvedArt.handle,
-    ...(isAdditive ? { blendMode: 'additive' } : {}),
-    ...(isExtinguishing
-      ? {
-          width: drawW,
-          height: drawH,
-          tint: [1, 1, 1, opacity],
-        }
-      : {}),
-  })
-
-  if (shot.missileType === 'meteorcenter' && missileArtMap != null && shot.ttl > 0) {
-    const remainingTicks = shot.ttl
-    const fallAltitude = remainingTicks * 25
-    const slideX = -remainingTicks * 15
-    const meteorX = shot.x + slideX
-    const meteorY = shot.y
-    const elapsed = shot.ageTicks ?? Math.max(0, 60 - shot.ttl)
-
-    const tailArt = missileArtMap.get('meteortail')
-    if (tailArt !== undefined) {
-      const tailGroup = tailArt.frames[0]
-      const tailFrameCount = Math.max(1, tailArt.meta.framesPerDirection)
-      const tailFrameIndex = Math.floor((elapsed * tailArt.meta.animSpeed) / 16) % tailFrameCount
-      const tailFrame = tailGroup?.[tailFrameIndex] ?? tailGroup?.[0]
-      if (tailFrame !== undefined) {
-        const tailDrawX = tailFrame.anchorX !== undefined ? meteorX + tailFrame.anchorX : meteorX - tailFrame.width / 2
-        const tailDrawY = (tailFrame.anchorY !== undefined ? meteorY + tailFrame.anchorY : meteorY - tailFrame.height / 2) - fallAltitude
-        renderer.draw(tailFrame, tailDrawX, tailDrawY, {
-          atlas: tailArt.handle,
-          blendMode: 'additive',
-        })
-      }
-    }
-
-    const meteorArt = missileArtMap.get('meteor')
-    if (meteorArt !== undefined) {
-      const meteorGroup = meteorArt.frames[0]
-      const meteorFrameCount = Math.max(1, meteorArt.meta.framesPerDirection)
-      const meteorFrameIndex = Math.floor((elapsed * meteorArt.meta.animSpeed) / 16) % meteorFrameCount
-      const meteorFrame = meteorGroup?.[meteorFrameIndex] ?? meteorGroup?.[0]
-      if (meteorFrame !== undefined) {
-        const meteorDrawX = meteorFrame.anchorX !== undefined ? meteorX + meteorFrame.anchorX : meteorX - meteorFrame.width / 2
-        const meteorDrawY = (meteorFrame.anchorY !== undefined ? meteorY + meteorFrame.anchorY : meteorY - meteorFrame.height / 2) - fallAltitude
-        renderer.draw(meteorFrame, meteorDrawX, meteorDrawY, {
-          atlas: meteorArt.handle,
-          blendMode: 'additive',
-        })
-      }
-    }
-  }
 }
 
 /**
@@ -360,15 +231,17 @@ export function drawTownPortal(
   y: number,
   elapsedMs: number,
   overlayArtMap: ReadonlyMap<string, LoadedOverlayArt>,
+  mode = 1,
 ): void {
   const frameDurationMs = 51.2 // 1000 / (25 * 200 / 256)
   const openDurationMs = 15 * frameDurationMs // 768 ms
-  const isOpening = elapsedMs < openDurationMs
+  const isOpening = mode !== 2 && elapsedMs < openDurationMs
   const trArt = overlayArtMap.get(isOpening ? 'town_portal_op_tr' : 'town_portal_on_tr')
   const hdArt = overlayArtMap.get(isOpening ? 'town_portal_op_hd' : 'town_portal_on_hd')
+  const onElapsedMs = mode === 2 ? elapsedMs : elapsedMs - openDurationMs
   const rawFrameIdx = isOpening
     ? Math.min(14, Math.max(0, Math.floor(elapsedMs / frameDurationMs)))
-    : Math.max(0, Math.floor((elapsedMs - openDurationMs) / frameDurationMs)) % 15
+    : Math.max(0, Math.floor(onElapsedMs / frameDurationMs)) % 15
 
   let drewSprite = false
   if (trArt !== undefined) {
@@ -379,7 +252,7 @@ export function drawTownPortal(
       const drawY = frame.anchorY !== undefined ? y + frame.anchorY : y - frame.height / 2
       renderer.draw(frame, drawX, drawY, {
         atlas: trArt.handle,
-        blendMode: 'normal',
+        blendMode: 'trans25',
       })
       drewSprite = true
     }

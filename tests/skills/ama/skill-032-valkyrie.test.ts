@@ -8,6 +8,10 @@ import { UnitStatList } from '../../../src/server/engine/stat-list.ts'
 import { WorldArena } from '../../../src/server/engine/world-arena.ts'
 import { skillModule } from '../../../src/server/skills/impl/ama/skill-032-valkyrie.ts'
 import { calculateValkyrieStats } from '../../../src/common/skills/amazon-passive.ts'
+import { ClientWorld } from '../../../src/client/world/client-world.ts'
+import { buildSceneDrawables } from '../../../src/client/view/unit-drawables.ts'
+import { VALKYRIE_113C_APPEARANCE } from '../../../src/common/units/char-appearance.ts'
+import { drawSceneUnitDrawable } from '../../../src/client/scene/world-renderer.ts'
 
 describe('[Skill #032] Valkyrie (AMA) — 1.13c Parity (Issue #186)', () => {
   it('evaluates exact 1.13c Skills.txt / Missiles.txt formulas at slvl 1, 10, and 20', async () => {
@@ -178,5 +182,104 @@ describe('[Skill #032] Valkyrie (AMA) — 1.13c Parity (Issue #186)', () => {
     expect(stats20.baseHp).toBe(2112)
     expect(stats20.allResistancesPct).toBe(40)
     expect(stats20.manaCost).toBe(44)
+  })
+
+  it('#1294: eliminates duplicate local fake Valkyrie (910000+) on S2C 0xAC UnitAssign and renders Valkyrie (classId=357) with golden Full Plate + Pike (2ht) paperdoll disguise', () => {
+    // Case A: Local predictive cast first -> S2C 0xAC UnitAssign second
+    const worldA = new ClientWorld()
+    worldA.apply({ type: 'PlayerAssign', unitId: 1, charClass: 0, name: 'Ama', x: 100, y: 100 })
+    const casterA = worldA.getUnit('player', 1)!
+    ;(worldA as any).spawnMissilesForSkill(casterA, 32, 108, 104, 10)
+    expect(
+      Array.from(worldA.units.values()).filter((u) => u.unitType === 'monster' && u.classId === 357),
+    ).toHaveLength(1)
+
+    worldA.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 1, id: 60, classId: 357, x: 108, y: 104, lifePct: 128, mode: 1 },
+    })
+    const valksA = Array.from(worldA.units.values()).filter(
+      (u) => u.unitType === 'monster' && u.classId === 357,
+    )
+    expect(valksA).toHaveLength(1)
+    expect(valksA[0]!.id).toBe(60)
+    expect(valksA[0]!.states.has(93)).toBe(true)
+    expect(valksA[0]!.overlays.some((o) => o.token === 'valkyriestart')).toBe(true)
+    expect(valksA[0]!.overlays.some((o) => o.token === 'valkyrie')).toBe(true)
+
+    // Case B: S2C 0xAC UnitAssign first -> S2C SkillCast echo second
+    const worldB = new ClientWorld()
+    worldB.apply({ type: 'PlayerAssign', unitId: 1, charClass: 0, name: 'Ama', x: 100, y: 100 })
+    worldB.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 1, id: 61, classId: 357, x: 109, y: 105, lifePct: 128, mode: 1 },
+    })
+    const casterB = worldB.getUnit('player', 1)!
+    ;(worldB as any).spawnMissilesForSkill(casterB, 32, 109, 105, 10)
+    const valksB = Array.from(worldB.units.values()).filter(
+      (u) => u.unitType === 'monster' && u.classId === 357,
+    )
+    expect(valksB).toHaveLength(1)
+    expect(valksB[0]!.id).toBe(61)
+
+    // Verify Valkyrie drawable uses VALKYRIE_113C_APPEARANCE (hvy armor + pik 2ht spear + lgld tint)
+    const { unitDrawables } = buildSceneDrawables([
+      {
+        kind: 'monster',
+        id: 60,
+        classId: 357,
+        ownerType: 'player',
+        ownerId: 1,
+        x: 108,
+        y: 104,
+        mode: 1,
+        lifePct: 128,
+      },
+    ])
+    const valkDrawable = unitDrawables.find((d) => d.unitKind === 'monster' && d.classId === 357)!
+    expect(valkDrawable).toBeDefined()
+    expect(valkDrawable.token).toBe('AM')
+    expect(valkDrawable.equipmentAppearance).toEqual(VALKYRIE_113C_APPEARANCE)
+    expect(valkDrawable.equipmentAppearance?.wclass).toBe('2ht')
+    expect(valkDrawable.equipmentAppearance?.layers.rh.variant).toBe('pik')
+    expect(valkDrawable.equipmentAppearance?.layers.tr.variant).toBe('hvy')
+    expect(valkDrawable.equipmentAppearance?.armorTint?.color).toBe('lgld')
+    expect(valkDrawable.tintColor).toEqual([255, 230, 128])
+
+    let paperdollQueriedWithSpec: any = null
+    const mockPaperdollCache = {
+      getCharacterArt: (spec: any) => {
+        paperdollQueriedWithSpec = spec
+        return 'loading' as const
+      },
+    }
+    let monsterFallbackCalled = false
+    const mockEntityArtCache = {
+      getMonsterVariantArt: () => {
+        monsterFallbackCalled = true
+        return 'missing' as const
+      },
+    }
+    const mockRenderer = {
+      draw: () => {},
+      drawQuad: () => {},
+    } as any
+    drawSceneUnitDrawable(
+      mockRenderer,
+      valkDrawable,
+      {
+        source: {} as any,
+        lightingPreset: 'outdoor-day' as any,
+        paperdollGpuCache: mockPaperdollCache as any,
+        characterArtByToken: new Map(),
+        ensureCharacterArt: async () => {},
+        entityArtCache: mockEntityArtCache as any,
+      },
+      0,
+      1,
+    )
+    expect(paperdollQueriedWithSpec?.wclass).toBe('2ht')
+    expect(paperdollQueriedWithSpec?.layers.rh.variant).toBe('pik')
+    expect(monsterFallbackCalled).toBe(false)
   })
 })

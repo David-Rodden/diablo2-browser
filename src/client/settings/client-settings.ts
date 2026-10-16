@@ -28,7 +28,6 @@ export type LightQualitySetting = 0 | 1 | 2
 export interface HudEnhancementsConfig {
   readonly showBasePlusBonusStats: boolean
   readonly showBasePlusBonusSkills: boolean
-  readonly alwaysShowGlobeValues: boolean
   readonly showStatGainTooltips: boolean
   readonly showWeaponDamageFormula: boolean
 }
@@ -36,6 +35,7 @@ export interface HudEnhancementsConfig {
 export interface AutomapRadarConfig {
   readonly automapShowMonsters: boolean
   readonly automapShowShrines: boolean
+  readonly automapShowWaypoints?: boolean
 }
 
 export interface GroundItemEnhancementsConfig {
@@ -53,6 +53,7 @@ export interface ClientSettings
   readonly lightingPreset: ClientLightingPreset
   readonly lightQuality: LightQualitySetting // default: 2
   readonly automapReveal: AutomapRevealMode
+  readonly automapShowWaypoints: boolean
   readonly viewport: ViewportResolution
   /** In-game world render-rate cap: 60 (uncapped, follows display refresh) or 30 (≈half the GPU raster, slightly steppier scrolling). */
   readonly worldRenderFps: 30 | 60
@@ -101,11 +102,11 @@ export function createDefaultClientSettings(defaultLang?: GameLang): ClientSetti
     automapReveal: 'off',
     automapShowMonsters: false,
     automapShowShrines: false,
+    automapShowWaypoints: false,
     viewport: '800x600',
     worldRenderFps: 60,
     showBasePlusBonusStats: false,
     showBasePlusBonusSkills: false,
-    alwaysShowGlobeValues: false,
     showStatGainTooltips: false,
     showWeaponDamageFormula: false,
     showUniqueSetBeams: false,
@@ -125,11 +126,11 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
   automapReveal: 'off',
   automapShowMonsters: false,
   automapShowShrines: false,
+  automapShowWaypoints: false,
   viewport: '800x600',
   worldRenderFps: 60,
   showBasePlusBonusStats: false,
   showBasePlusBonusSkills: false,
-  alwaysShowGlobeValues: false,
   showStatGainTooltips: false,
   showWeaponDamageFormula: false,
   showUniqueSetBeams: false,
@@ -437,6 +438,11 @@ export function sanitizeClientSettings(
       ? rec.automapShowShrines
       : defaults.automapShowShrines
 
+  const automapShowWaypoints =
+    typeof rec.automapShowWaypoints === 'boolean'
+      ? rec.automapShowWaypoints
+      : defaults.automapShowWaypoints
+
   const viewport =
     rec.viewport !== undefined
       ? normalizeViewportResolution(rec.viewport)
@@ -454,11 +460,6 @@ export function sanitizeClientSettings(
     typeof rec.showBasePlusBonusSkills === 'boolean'
       ? rec.showBasePlusBonusSkills
       : defaults.showBasePlusBonusSkills
-
-  const alwaysShowGlobeValues =
-    typeof rec.alwaysShowGlobeValues === 'boolean'
-      ? rec.alwaysShowGlobeValues
-      : defaults.alwaysShowGlobeValues
 
   const showStatGainTooltips =
     typeof rec.showStatGainTooltips === 'boolean'
@@ -502,11 +503,11 @@ export function sanitizeClientSettings(
     automapReveal,
     automapShowMonsters,
     automapShowShrines,
+    automapShowWaypoints,
     viewport,
     worldRenderFps,
     showBasePlusBonusStats,
     showBasePlusBonusSkills,
-    alwaysShowGlobeValues,
     showStatGainTooltips,
     showWeaponDamageFormula,
     showUniqueSetBeams,

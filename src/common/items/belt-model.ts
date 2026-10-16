@@ -362,9 +362,9 @@ export class BeltModel {
   }
 
   /**
-   * Authentic Diablo II v1.13c two-pass belt auto-placement (`D2Game.dll` `D2GAME_PickupPotionItem` / `INVENTORY_AutoPlaceBelt`).
+   * Non-mutating query for the target belt slot of an auto-placed potion (`D2Common.dll` `INVENTORY_GetFreeBeltSlot`).
    */
-  autoPlacePotionSlot(potionOrItem: BeltPotion | unknown): { row: number; col: number; potion: BeltPotion } | null {
+  findAutoPlacePotionSlot(potionOrItem: BeltPotion | unknown): { row: number; col: number; potion: BeltPotion } | null {
     const potion = itemToBeltPotion(potionOrItem)
     if (!potion) return null
 
@@ -374,7 +374,6 @@ export class BeltModel {
       if (basePot !== null && areBeltPotionsCompatible(basePot, potion)) {
         for (let row = 1; row < this.maxRows; row++) {
           if (this.grid[row]![col] === null) {
-            this.grid[row]![col] = potion
             return { row, col, potion }
           }
         }
@@ -384,12 +383,25 @@ export class BeltModel {
     // Pass 2: Place into the first empty base column (row 0)
     for (let col = 0; col < BELT_COLS; col++) {
       if (this.grid[0]![col] === null) {
-        this.grid[0]![col] = potion
         return { row: 0, col, potion }
       }
     }
 
     return null
+  }
+
+  canAutoPlacePotion(potionOrItem: BeltPotion | unknown): boolean {
+    return this.findAutoPlacePotionSlot(potionOrItem) !== null
+  }
+
+  /**
+   * Authentic Diablo II v1.13c two-pass belt auto-placement (`D2Game.dll` `D2GAME_PickupPotionItem` / `INVENTORY_AutoPlaceBelt`).
+   */
+  autoPlacePotionSlot(potionOrItem: BeltPotion | unknown): { row: number; col: number; potion: BeltPotion } | null {
+    const found = this.findAutoPlacePotionSlot(potionOrItem)
+    if (!found) return null
+    this.grid[found.row]![found.col] = found.potion
+    return found
   }
 
   /**

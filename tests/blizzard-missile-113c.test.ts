@@ -137,24 +137,24 @@ describe('[Skill #059] Blizzard — 1.13c Missile Physics & Runtime Parity (Issu
     expect(b1.vel).toBe(0)
     expect(b1.range).toBe(9)
     expect(b1.animLen).toBe(6)
-    expect(b1.explosionMissile).toBe('blizzardexplode1')
+    expect(b1.explosionMissile).toBe('')
 
     const b2 = getMissileTxtData('blizzard2')
     expect(b2.id).toBe(160)
     expect(b2.range).toBe(9)
-    expect(b2.explosionMissile).toBe('blizzardexplode2')
+    expect(b2.explosionMissile).toBe('')
 
     const b3 = getMissileTxtData('blizzard3')
     expect(b3.id).toBe(161)
     expect(b3.range).toBe(9)
     expect(b3.animLen).toBe(8)
-    expect(b3.explosionMissile).toBe('blizzardexplode3')
+    expect(b3.explosionMissile).toBe('')
 
     const b4 = getMissileTxtData('blizzard4')
     expect(b4.id).toBe(162)
     expect(b4.range).toBe(9)
     expect(b4.animLen).toBe(8)
-    expect(b4.explosionMissile).toBe('blizzardexplode1')
+    expect(b4.explosionMissile).toBe('')
 
     const exp1 = getMissileTxtData('blizzardexplode1')
     expect(exp1.id).toBe(163)

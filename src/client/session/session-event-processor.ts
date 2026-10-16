@@ -865,8 +865,38 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       break
     }
 
+    case 'StatSet': {
+      if (
+        !ev.unit ||
+        (unitTypeToId(ev.unit.unitType) === 0 &&
+          (ev.unit.id === host.world.selfId || host.world.selfId === 0))
+      ) {
+        const self = host.world.self
+        if (
+          self.maxStamina > 0 ||
+          self.stats.has(10) ||
+          self.stats.has(11)
+        ) {
+          host.predictor.setStaminaExhausted(self.stamina <= 0)
+        }
+      }
+      break
+    }
+
     case 'LifeMana': {
-      if (ev.at && (ev.at.x !== 0 || ev.at.y !== 0)) {
+      const selfUnit = host.world.getUnit('player', host.world.selfId || 1)
+      const isMovementSkillActive =
+        Boolean(
+          selfUnit?.castState &&
+            (selfUnit.castState.skillId === 107 ||
+              selfUnit.castState.skillId === 132 ||
+              selfUnit.castState.skillId === 143 ||
+              selfUnit.castState.skillId === 151),
+        ) ||
+        selfUnit?.states.has(18) === true ||
+        host.world.self.states.has(18)
+
+      if (!isMovementSkillActive && ev.at && (ev.at.x !== 0 || ev.at.y !== 0)) {
         const prevSnap = host.predictor.getSnapshot()
         if (prevSnap.logicalX === 0 && prevSnap.logicalY === 0) {
           host.predictor.setPosition(ev.at.x, ev.at.y)
@@ -883,6 +913,14 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
             vy: ev.vy,
           })
         }
+      }
+      const self = host.world.self
+      if (
+        self.maxStamina > 0 ||
+        self.stats.has(10) ||
+        self.stats.has(11)
+      ) {
+        host.predictor.setStaminaExhausted(self.stamina <= 0)
       }
       break
     }
@@ -942,19 +980,29 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         }
       }
       const isLocalPlayer =
-        evTypeId === 0 && evUnitId === host.world.selfId && host.world.selfId !== 0
+        evTypeId === 0 && (evUnitId === host.world.selfId || host.world.selfId === 0)
       if (unit && unit.unitType === 'player') {
         const posForTownX = ev.mode === 'stop' ? toX : Number(fromX ?? unit.x ?? toX)
         const posForTownY = ev.mode === 'stop' ? toY : Number(fromY ?? unit.y ?? toY)
         const inTown = host.isSubTileInTown(posForTownX, posForTownY)
+        const isStaminaDepleted =
+          isLocalPlayer &&
+          (host.predictor.isStaminaExhausted() ||
+            ((host.world.self.maxStamina > 0 ||
+              host.world.self.stats.has(10) ||
+              host.world.self.stats.has(11)) &&
+              host.world.self.stamina <= 0))
         if (ev.mode === 'stop') {
           unit.mode = inTown ? 5 : 1
-        } else if (ev.mode === 'run') {
+        } else if (ev.mode === 'run' && !isStaminaDepleted) {
           unit.mode = 3
         } else if (ev.mode === 'knockback') {
           unit.mode = 19
         } else {
           unit.mode = inTown ? 6 : 2
+          if (isStaminaDepleted && unit.moveMode === 'run') {
+            unit.moveMode = 'walk'
+          }
         }
       }
       if (isLocalPlayer) {
@@ -1336,6 +1384,10 @@ export function drainWorldSoundRequests(
       runtime?.onSkillCastStart({
         skillId: req.skillId,
         ...(req.charclass !== undefined ? { charclass: req.charclass } : {}),
+        ...(req.unitId !== undefined ? { unitId: req.unitId } : {}),
+        ...(req.unit !== undefined ? { unit: req.unit } : {}),
+        ...(req.x !== undefined ? { worldX: req.x } : {}),
+        ...(req.y !== undefined ? { worldY: req.y } : {}),
         ...rel,
         ...(req.local !== undefined ? { local: req.local } : {}),
       })
@@ -1347,6 +1399,8 @@ export function drainWorldSoundRequests(
         skillId: req.skillId,
         flag: req.flag ?? 1,
         ...(req.weaponSoundId !== undefined ? { weaponSoundId: req.weaponSoundId } : {}),
+        ...(req.x !== undefined ? { worldX: req.x } : {}),
+        ...(req.y !== undefined ? { worldY: req.y } : {}),
         ...rel,
         ...(req.local !== undefined ? { local: req.local } : {}),
       })
@@ -1357,6 +1411,8 @@ export function drainWorldSoundRequests(
       runtime?.onMissileSpawn({
         missileId: req.missileId,
         ...(req.entityId !== undefined ? { entityId: req.entityId } : {}),
+        ...(req.x !== undefined ? { worldX: req.x } : {}),
+        ...(req.y !== undefined ? { worldY: req.y } : {}),
         ...rel,
       })
       continue
@@ -1365,6 +1421,8 @@ export function drainWorldSoundRequests(
       const rel = toRelPos(req.x ?? 0, req.y ?? 0)
       runtime?.onMissileTick({
         entityId: req.entityId,
+        ...(req.x !== undefined ? { worldX: req.x } : {}),
+        ...(req.y !== undefined ? { worldY: req.y } : {}),
         x: rel.x ?? 0,
         y: rel.y ?? 0,
       })
@@ -1379,6 +1437,8 @@ export function drainWorldSoundRequests(
       runtime?.onMissileImpact({
         missileId: req.missileId,
         ...(req.entityId !== undefined ? { entityId: req.entityId } : {}),
+        ...(req.x !== undefined ? { worldX: req.x } : {}),
+        ...(req.y !== undefined ? { worldY: req.y } : {}),
         ...rel,
         ...(req.prog !== undefined ? { prog: req.prog } : {}),
       })
@@ -1395,6 +1455,28 @@ export function drainWorldSoundRequests(
           id: req.unit.id,
         })
       }
+      continue
+    }
+    if (req.kind === 'unit-sound-stop' || req.kind === 'skill-cast-stop') {
+      const unitRef =
+        req.unit ??
+        (req.unitId !== undefined ? { unitType: 'player' as const, id: req.unitId } : undefined)
+      const stopSid =
+        req.soundId !== undefined && req.soundId > 0
+          ? req.soundId
+          : req.skillId === 151
+            ? 2531
+            : 0
+      if (unitRef !== undefined && stopSid > 0) {
+        runtime?.stopUnitSound(
+          {
+            unitType: unitRef.unitType,
+            id: unitRef.id,
+          },
+          stopSid,
+        )
+      }
+      runtime?.skillSounds.onSkillCastStop(req)
       continue
     }
     if (

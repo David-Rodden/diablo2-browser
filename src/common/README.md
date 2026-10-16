@@ -59,7 +59,7 @@ src/common/
 - **三种生成拓扑**：
   - `drlg-preset.ts`：固定预设关卡（如罗格营地、鲁·高因、崔斯特瑞姆、混沌避难所、憎恨的囚牢第 3 层等）。
   - `drlg-maze.ts`：地牢迷宫房间拼接算法（如墓穴、修道院地下城、塔拉夏古墓等）。
-  - `drlg-outdoors.ts` / `drlg-outwild.ts`：野外随机边界、道路、河流、预设营地塞入与主题墙壁围合（如鲜血荒地、冰冷之原、库拉斯特丛林等，与原生 C++ D2MOO 逐次 RNG 调用对齐）。
+  - `drlg-outdoors.ts` / `drlg-outwild.ts`：野外随机边界、道路、河流、预设营地塞入与主题墙壁围合（如鲜血荒地、冰冷之原、库拉斯特丛林等，与 1.13c `D2Common.dll` 逐次 RNG 调用对齐）。
 - **1.13c 动态路径与碰撞步进引擎 (`path/`)**：
   - 复刻 `D2Common` 动态路径计算（`path-compute.ts`）、步进位移（`step.ts`）与多尺寸单位碰撞足迹检测（`collision.ts`），精确对齐客户端与服务端单位移动轨迹。
 
@@ -137,7 +137,7 @@ Faithfully replicates `D2Common.dll`'s deterministic level generation and unit p
 - **Three Generation Topologies**:
   - `drlg-preset.ts`: Fixed preset levels (Rogue Encampment, Lut Gholein, Tristram, Chaos Sanctuary, Durance of Hate Level 3, etc.).
   - `drlg-maze.ts`: Dungeon maze room stitching (Catacombs, Maggot Lair, Tal Rasha's Tomb, etc.).
-  - `drlg-outdoors.ts` / `drlg-outwild.ts`: Outdoor borders, dirt roads, rivers, preset sub-maps, and themed wall enclosures (bit-exact against the native C++ D2MOO oracle).
+  - `drlg-outdoors.ts` / `drlg-outwild.ts`: Outdoor borders, dirt roads, rivers, preset sub-maps, and themed wall enclosures (bit-exact against 1.13c `D2Common.dll`).
 - **1.13c Dynamic Path & Collision Footprint Engine (`path/`)**:
   - Ports `D2Common` dynamic path computation (`path-compute.ts`), step kinematics (`step.ts`), and unit collision footprint checks (`collision.ts`).
 

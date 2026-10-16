@@ -1,6 +1,6 @@
 # Diablo II v1.13c Act 1, Act 2 & Act 3 Boss & SuperUnique Skills (`D2Game.dll` & `D2Client.dll`)
 
-Exhaustive reverse-engineering reference for all Act 1, Act 2, and Act 3 Act Bosses, Quest Mini-Bosses, and SuperUniques in Diablo II: Lord of Destruction v1.13c (`D2Game.dll` ImageBase `0x6FC20000`, `D2Client.dll` ImageBase `0x6FAB0000`), cross-verified against decompiled 1.13c assembly, D2MOO (`AiThink.cpp`, `SkillMonst.cpp`, `SkillSor.cpp`, `SkillPal.cpp`, `SkillAma.cpp`, `SkillNec.cpp`, `MissMode.cpp`, `MonsterUnique.cpp`, `MonsterSpawn.cpp`, `QuestsFX.cpp`), and official MPQ data tables (`MonStats.txt`, `SuperUniques.txt`, `MonProp.txt`, `MonSeq.txt`, `Skills.txt`, `Missiles.txt`).
+Exhaustive reverse-engineering reference for all Act 1, Act 2, and Act 3 Act Bosses, Quest Mini-Bosses, and SuperUniques in Diablo II: Lord of Destruction v1.13c (`D2Game.dll` ImageBase `0x6FC20000`, `D2Client.dll` ImageBase `0x6FAB0000`), verified directly against decompiled 1.13c binary assembly and official 1.13c MPQ data tables (`MonStats.txt`, `SuperUniques.txt`, `MonProp.txt`, `MonSeq.txt`, `Skills.txt`, `Missiles.txt`).
 
 ---
 

@@ -128,4 +128,35 @@ describe('AutomapView act-mode merge offsets (issue #845)', () => {
     expect(marker!.cellX).toBe(5 + 50)
     expect(marker!.cellY).toBe(5 + 30)
   })
+
+  it('classifies player corpses as corpse, excludes monster corpses, and draws live mercs/summons as ally (#1245)', () => {
+    const viewA = makeFakeView({
+      areaId: 1,
+      tileOriginX: 100,
+      tileOriginY: 90,
+      isoOriginX: 0,
+      isoOriginY: 0,
+      floors: [{ cellNo: 1, cellX: 3, cellY: 2, xPixel: (3 - 2) * 8, yPixel: (3 + 2) * 4 }],
+    })
+    const automap = new AutomapView({ initialMode: 'level' })
+    automap.setContext(0x113c, 0, 1, viewA)
+
+    const snap = automap.buildSnapshot([
+      { kind: 'player', id: 1, classId: 1, x: 10, y: 10, mode: 1, lifePct: 100, name: 'AllySorceress' },
+      { kind: 'player', id: 2, classId: 1, x: 12, y: 10, mode: 17, isCorpse: true, lifePct: 0, name: 'DeadPlayer' },
+      { kind: 'monster', id: 3, classId: 0, x: 14, y: 10, mode: 12, isCorpse: true, lifePct: 0, name: 'DeadSkeleton' },
+      { kind: 'monster', id: 4, classId: 0, x: 16, y: 10, mode: 1, lifePct: 100, name: 'HostileSkeleton' },
+      { kind: 'monster', id: 5, classId: 338, x: 18, y: 10, mode: 1, lifePct: 100, ownerType: 'player', name: 'Mercenary' },
+      { kind: 'monster', id: 6, classId: 357, x: 20, y: 10, mode: 1, lifePct: 100, ownerType: 'player', name: 'Valkyrie' },
+      { kind: 'monster', id: 7, classId: 148, x: 22, y: 10, mode: 1, lifePct: 100, isNpc: true, name: 'Akara' },
+    ])
+
+    expect(snap.entityDots).toEqual([
+      expect.objectContaining({ name: 'AllySorceress', kind: 'ally' }),
+      expect.objectContaining({ name: 'DeadPlayer', kind: 'corpse' }),
+      expect.objectContaining({ name: 'Mercenary', kind: 'ally' }),
+      expect.objectContaining({ name: 'Valkyrie', kind: 'ally' }),
+      expect.objectContaining({ name: 'Akara', kind: 'npc' }),
+    ])
+  })
 })

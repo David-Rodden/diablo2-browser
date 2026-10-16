@@ -113,6 +113,8 @@ export interface AutomapRevealPluginInstance extends PluginInstance {
   setShowMonsters(show: boolean): void
   getShowShrines(): boolean
   setShowShrines(show: boolean): void
+  getShowWaypoints(): boolean
+  setShowWaypoints(show: boolean): void
 }
 
 export function createAutomapRevealPlugin(): D2WebPlugin {
@@ -123,8 +125,8 @@ export function createAutomapRevealPlugin(): D2WebPlugin {
       en: 'Automap Reveal',
     },
     description: {
-      zh: '非 1.13c 增强：支持一键揭开本层或整幕全部小地图房间与传送点标记、显示附近怪物与神龛类型图标，并提供环境光照预设与天气效果覆盖。关闭插件后严格恢复 1.13c 原版战争迷雾、昼夜光照与关卡自然天气。',
-      en: 'Non-1.13c enhancement: reveals all rooms and warp markers for the current level or entire Act, shows MapHack-style nearby monster crosshairs and shrine type icons, and provides ambient lighting preset and weather overrides. When disabled, strictly enforces 1.13c vanilla defaults.',
+      zh: '非 1.13c 增强：支持一键揭开本层或整幕全部小地图房间与传送点标记、高亮放大显示小站图标、显示附近怪物与神龛类型图标，并提供环境光照预设与天气效果覆盖。关闭插件后严格恢复 1.13c 原版战争迷雾、昼夜光照与关卡自然天气。',
+      en: 'Non-1.13c enhancement: reveals all rooms and warp markers for the current level or entire Act, highlights and enlarges waypoint icons, shows MapHack-style nearby monster crosshairs and shrine type icons, and provides ambient lighting preset and weather overrides. When disabled, strictly enforces 1.13c vanilla defaults.',
     },
     defaultEnabled: true,
     settings: [
@@ -176,6 +178,15 @@ export function createAutomapRevealPlugin(): D2WebPlugin {
         },
         default: true,
       },
+      {
+        kind: 'boolean',
+        key: 'showWaypoints',
+        label: {
+          zh: '高亮放大显示小站图标',
+          en: 'Highlight & enlarge waypoint icons',
+        },
+        default: true,
+      },
     ],
     activate(ctx: PluginContext): AutomapRevealPluginInstance {
       const storedMode = ctx.settings.get('mode')
@@ -196,6 +207,7 @@ export function createAutomapRevealPlugin(): D2WebPlugin {
         : 'off'
       const initialShowMonsters = ctx.settings.get('showMonsters') === true
       const initialShowShrines = ctx.settings.get('showShrines') === true
+      const initialShowWaypoints = ctx.settings.get('showWaypoints') !== false
 
       ctx.client.setAutomapReveal(initialMode)
       ctx.client.setLightingPreset(initialLighting)
@@ -203,6 +215,7 @@ export function createAutomapRevealPlugin(): D2WebPlugin {
       ctx.client.setAutomapRadar({
         automapShowMonsters: initialShowMonsters,
         automapShowShrines: initialShowShrines,
+        automapShowWaypoints: initialShowWaypoints,
       })
 
       const unsubClient = ctx.client.subscribeAutomapReveal((clientMode) => {
@@ -235,6 +248,12 @@ export function createAutomapRevealPlugin(): D2WebPlugin {
         if (ctx.settings.get('showShrines') !== radar.automapShowShrines) {
           ctx.settings.set('showShrines', radar.automapShowShrines)
         }
+        if (
+          radar.automapShowWaypoints !== undefined &&
+          ctx.settings.get('showWaypoints') !== radar.automapShowWaypoints
+        ) {
+          ctx.settings.set('showWaypoints', radar.automapShowWaypoints)
+        }
         ctx.notifyStatusChanged()
       })
 
@@ -264,6 +283,10 @@ export function createAutomapRevealPlugin(): D2WebPlugin {
         } else if (key === 'showShrines') {
           const next = ctx.settings.get('showShrines') === true
           ctx.client.setAutomapRadar({ automapShowShrines: next })
+          ctx.notifyStatusChanged()
+        } else if (key === 'showWaypoints') {
+          const next = ctx.settings.get('showWaypoints') === true
+          ctx.client.setAutomapRadar({ automapShowWaypoints: next })
           ctx.notifyStatusChanged()
         }
       })
@@ -319,6 +342,14 @@ export function createAutomapRevealPlugin(): D2WebPlugin {
             throw new Error(`Invalid showShrines flag: ${String(show)}`)
           }
           ctx.settings.set('showShrines', show)
+        },
+        getShowWaypoints: () =>
+          Boolean(ctx.client.getAutomapRadar().automapShowWaypoints),
+        setShowWaypoints: (show: boolean) => {
+          if (typeof show !== 'boolean') {
+            throw new Error(`Invalid showWaypoints flag: ${String(show)}`)
+          }
+          ctx.settings.set('showWaypoints', show)
         },
         getStatus,
         deactivate(): void {

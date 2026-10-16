@@ -29,6 +29,7 @@ Diablo II*/
 .tmp/
 scratch/
 proof/
+bugs/
 __pycache__/
 .DS_Store
 .agents/

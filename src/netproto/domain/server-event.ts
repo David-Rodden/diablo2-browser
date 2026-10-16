@@ -42,6 +42,28 @@ export interface StateSetEntry {
 
 export type ServerEvent =
   | { readonly type: 'GameLoading' }
+  | { readonly type: 'UnloadAct' }
+  | {
+      readonly type: 'ProtocolSync'
+      readonly opcode: number
+      readonly byteLength: number
+    }
+  | {
+      readonly type: 'MonsterSpecial'
+      readonly classId: number
+    }
+  | {
+      readonly type: 'CreateMissile'
+      readonly missileClassId: number
+      readonly at: Pt
+      readonly target: Pt
+      readonly level: number
+      readonly owner?: UnitRef | undefined
+      readonly ownerType?: UnitType | undefined
+      readonly ownerId?: number | undefined
+      readonly velocity?: number | undefined
+      readonly range?: number | undefined
+    }
   | {
       readonly type: 'GameFlags'
       readonly difficulty: 0 | 1 | 2
@@ -253,6 +275,12 @@ export type ServerEvent =
       readonly type: 'StateEnd'
       readonly unit: UnitRef
       readonly state: number
+    }
+  | {
+      /** 0xA5 StateSkillEffect (8B, D2Client.dll 0x6fb5f7f0 -> 0x6fb227a0). */
+      readonly type: 'StateSkillEffect'
+      readonly unit: UnitRef
+      readonly skillId: number
     }
   | {
       readonly type: 'ItemEvent'

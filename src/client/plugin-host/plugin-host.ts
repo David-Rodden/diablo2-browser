@@ -673,6 +673,7 @@ export class PluginHost {
         return {
           automapShowMonsters: s.automapShowMonsters,
           automapShowShrines: s.automapShowShrines,
+          automapShowWaypoints: s.automapShowWaypoints,
         }
       },
       setAutomapRadar: (patch: Partial<AutomapRadarConfig>): void => {
@@ -685,7 +686,9 @@ export class PluginHost {
           (patch.automapShowMonsters !== undefined &&
             typeof patch.automapShowMonsters !== 'boolean') ||
           (patch.automapShowShrines !== undefined &&
-            typeof patch.automapShowShrines !== 'boolean')
+            typeof patch.automapShowShrines !== 'boolean') ||
+          (patch.automapShowWaypoints !== undefined &&
+            typeof patch.automapShowWaypoints !== 'boolean')
         ) {
           throw new Error(
             `[PluginHost] AutomapRadarConfig fields must be booleans on plugin "${pluginId}"`,
@@ -696,13 +699,16 @@ export class PluginHost {
         const curr = this.settingsStore.get()
         const nextMonsters = patch.automapShowMonsters ?? curr.automapShowMonsters
         const nextShrines = patch.automapShowShrines ?? curr.automapShowShrines
+        const nextWaypoints = patch.automapShowWaypoints ?? curr.automapShowWaypoints
         if (
           nextMonsters !== curr.automapShowMonsters ||
-          nextShrines !== curr.automapShowShrines
+          nextShrines !== curr.automapShowShrines ||
+          nextWaypoints !== curr.automapShowWaypoints
         ) {
           this.settingsStore.set({
             automapShowMonsters: nextMonsters,
             automapShowShrines: nextShrines,
+            automapShowWaypoints: nextWaypoints,
           })
         }
         this.syncToolbarState()
@@ -713,9 +719,11 @@ export class PluginHost {
         const unsub = this.settingsStore.subscribe((next, prev, changed) => {
           if (
             (!changed.includes('automapShowMonsters') &&
-              !changed.includes('automapShowShrines')) ||
+              !changed.includes('automapShowShrines') &&
+              !changed.includes('automapShowWaypoints')) ||
             (next.automapShowMonsters === prev.automapShowMonsters &&
-              next.automapShowShrines === prev.automapShowShrines)
+              next.automapShowShrines === prev.automapShowShrines &&
+              next.automapShowWaypoints === prev.automapShowWaypoints)
           ) {
             return
           }
@@ -723,6 +731,7 @@ export class PluginHost {
             fn({
               automapShowMonsters: next.automapShowMonsters,
               automapShowShrines: next.automapShowShrines,
+              automapShowWaypoints: next.automapShowWaypoints,
             })
           } catch (err) {
             this.recordPluginError(record, 'automapRadar subscriber', err)
@@ -871,7 +880,6 @@ export class PluginHost {
         return {
           showBasePlusBonusStats: s.showBasePlusBonusStats,
           showBasePlusBonusSkills: s.showBasePlusBonusSkills,
-          alwaysShowGlobeValues: s.alwaysShowGlobeValues,
           showStatGainTooltips: s.showStatGainTooltips,
           showWeaponDamageFormula: s.showWeaponDamageFormula,
         }
@@ -887,8 +895,6 @@ export class PluginHost {
             typeof patch.showBasePlusBonusStats !== 'boolean') ||
           (patch.showBasePlusBonusSkills !== undefined &&
             typeof patch.showBasePlusBonusSkills !== 'boolean') ||
-          (patch.alwaysShowGlobeValues !== undefined &&
-            typeof patch.alwaysShowGlobeValues !== 'boolean') ||
           (patch.showStatGainTooltips !== undefined &&
             typeof patch.showStatGainTooltips !== 'boolean') ||
           (patch.showWeaponDamageFormula !== undefined &&
@@ -903,20 +909,17 @@ export class PluginHost {
         const curr = this.settingsStore.get()
         const nextStats = patch.showBasePlusBonusStats ?? curr.showBasePlusBonusStats
         const nextSkills = patch.showBasePlusBonusSkills ?? curr.showBasePlusBonusSkills
-        const nextGlobes = patch.alwaysShowGlobeValues ?? curr.alwaysShowGlobeValues
         const nextStatTips = patch.showStatGainTooltips ?? curr.showStatGainTooltips
         const nextWeapDmgFormula = patch.showWeaponDamageFormula ?? curr.showWeaponDamageFormula
         if (
           nextStats !== curr.showBasePlusBonusStats ||
           nextSkills !== curr.showBasePlusBonusSkills ||
-          nextGlobes !== curr.alwaysShowGlobeValues ||
           nextStatTips !== curr.showStatGainTooltips ||
           nextWeapDmgFormula !== curr.showWeaponDamageFormula
         ) {
           this.settingsStore.set({
             showBasePlusBonusStats: nextStats,
             showBasePlusBonusSkills: nextSkills,
-            alwaysShowGlobeValues: nextGlobes,
             showStatGainTooltips: nextStatTips,
             showWeaponDamageFormula: nextWeapDmgFormula,
           })
@@ -930,12 +933,10 @@ export class PluginHost {
           if (
             (!changed.includes('showBasePlusBonusStats') &&
               !changed.includes('showBasePlusBonusSkills') &&
-              !changed.includes('alwaysShowGlobeValues') &&
               !changed.includes('showStatGainTooltips') &&
               !changed.includes('showWeaponDamageFormula')) ||
             (next.showBasePlusBonusStats === prev.showBasePlusBonusStats &&
               next.showBasePlusBonusSkills === prev.showBasePlusBonusSkills &&
-              next.alwaysShowGlobeValues === prev.alwaysShowGlobeValues &&
               next.showStatGainTooltips === prev.showStatGainTooltips &&
               next.showWeaponDamageFormula === prev.showWeaponDamageFormula)
           ) {
@@ -945,7 +946,6 @@ export class PluginHost {
             fn({
               showBasePlusBonusStats: next.showBasePlusBonusStats,
               showBasePlusBonusSkills: next.showBasePlusBonusSkills,
-              alwaysShowGlobeValues: next.alwaysShowGlobeValues,
               showStatGainTooltips: next.showStatGainTooltips,
               showWeaponDamageFormula: next.showWeaponDamageFormula,
             })
@@ -1112,10 +1112,11 @@ export class PluginHost {
 
   private revertAutomapRadarToNative(): void {
     const curr = this.settingsStore.get()
-    if (curr.automapShowMonsters || curr.automapShowShrines) {
+    if (curr.automapShowMonsters || curr.automapShowShrines || curr.automapShowWaypoints) {
       this.settingsStore.set({
         automapShowMonsters: false,
         automapShowShrines: false,
+        automapShowWaypoints: false,
       })
     }
   }
@@ -1125,14 +1126,12 @@ export class PluginHost {
     if (
       curr.showBasePlusBonusStats ||
       curr.showBasePlusBonusSkills ||
-      curr.alwaysShowGlobeValues ||
       curr.showStatGainTooltips ||
       curr.showWeaponDamageFormula
     ) {
       this.settingsStore.set({
         showBasePlusBonusStats: false,
         showBasePlusBonusSkills: false,
-        alwaysShowGlobeValues: false,
         showStatGainTooltips: false,
         showWeaponDamageFormula: false,
       })

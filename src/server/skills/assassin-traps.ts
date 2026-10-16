@@ -242,6 +242,9 @@ export function calcBladeSentinel113c(
     nextDelayFrames: 25,
     cooldownTicks: 50,
     manaCost: 7,
+    missileName: 'blade creeper' as const,
+    missileId: 392,
+    hcIdx: 413,
   };
 }
 
@@ -250,8 +253,8 @@ export function calcBladeSentinel113c(
  * - Bolts per shot: 5 + floor(ShockWeb.blvl / 3)
  * - Shots: 5 + floor(LightningSentry.blvl / 4)
  * - Damage: Lightning, +6% per blvl of #251, #271, #276
- * - Missile: 'sentrychargedbolt' (#495, Vel=10, Range=80)
- * - MonStats hcIdx = 412 ('chargedboltsentry'), Mana: 13
+ * - Missile: 'sentrychargedbolt' (#522, Vel=10, Range=80)
+ * - MonStats hcIdx = 411 ('chargeboltsentry'), Mana: 13
  */
 export function calcChargedBoltSentry113c(slvl: number, synergies: AssassinTrapSynergyBlvls = {}) {
   const c = ASSASSIN_TRAP_CURVES_113C[261];
@@ -273,7 +276,7 @@ export function calcChargedBoltSentry113c(slvl: number, synergies: AssassinTrapS
     boltsPerShot,
     totalShots,
     missileName: 'sentrychargedbolt' as const,
-    hcIdx: 412,
+    hcIdx: 411,
     manaCost: 13,
   };
 }
@@ -282,8 +285,8 @@ export function calcChargedBoltSentry113c(slvl: number, synergies: AssassinTrapS
  * #262 Wake of Fire (火焰复苏, sub-skill #281):
  * - Shots: 5 + floor(FireBlast.blvl / 3)
  * - Damage: Fire (HitShift=7), +8% per blvl of #251, #272
- * - Missiles: 'wake of destruction maker' (#500) -> 'wake of destruction' (#517/#518, NextDelay=4)
- * - MonStats hcIdx = 414 ('wakeofdestruction'), Mana: 13
+ * - Missiles: 'wake of destruction maker' (#517) -> 'wake of destruction' (#518, NextDelay=4)
+ * - MonStats hcIdx = 410 ('wakeofdestruction'), Mana: 13
  */
 export function calcWakeOfFire113c(slvl: number, synergies: AssassinTrapSynergyBlvls = {}) {
   const c = ASSASSIN_TRAP_CURVES_113C[262];
@@ -302,7 +305,7 @@ export function calcWakeOfFire113c(slvl: number, synergies: AssassinTrapSynergyB
     nextDelayFrames: 4,
     missileName: 'wake of destruction' as const,
     makerMissileName: 'wake of destruction maker' as const,
-    hcIdx: 414,
+    hcIdx: 410,
     manaCost: 13,
   };
 }
@@ -311,7 +314,7 @@ export function calcWakeOfFire113c(slvl: number, synergies: AssassinTrapSynergyB
  * #266 Blade Fury (刀刃之怒):
  * - Weapon fraction: SrcDam = 96 (3/4 1H), Half2HSrc = 1 -> SrcDam = 48 (3/8 2H)
  * - descdam = 24: weapon physical is scaled by effectiveSrcDam / 128, then flat skill physical is added at 100% (unscaled!)
- * - Missile: single stream 'bladefury1' (#494), fire rate every 6 frames
+ * - Missile: single stream srvmissilea='bladefragment1' (#506), cltmissilea='bladefragment2' (#508), fire rate every 6 frames
  * - Mana: 1 + 0.125 * (slvl - 1) per shuriken
  */
 export function calcBladeFury113c(
@@ -346,7 +349,7 @@ export function calcBladeFury113c(
  * - Shots: 10
  * - Damage: Lightning, +12% per blvl of #256, #261, #276
  * - Missile: 'sentrylightningbolt' (#526, Pierce = 1, NextDelay = 4)
- * - MonStats hcIdx = 413 ('lightningsentry'), Mana: 20
+ * - MonStats hcIdx = 412 ('lightningsentry'), Mana: 20
  */
 export function calcLightningSentry113c(slvl: number, synergies: AssassinTrapSynergyBlvls = {}) {
   const c = ASSASSIN_TRAP_CURVES_113C[271];
@@ -367,7 +370,7 @@ export function calcLightningSentry113c(slvl: number, synergies: AssassinTrapSyn
     pierce: true,
     nextDelayFrames: 4,
     missileName: 'sentrylightningbolt' as const,
-    hcIdx: 413,
+    hcIdx: 412,
     manaCost: 20,
   };
 }

@@ -183,12 +183,18 @@ describe('Issue #1015: Character Sheet damage and Attack Rating include skill, c
       flags: { identified: true } as any,
     } as any
 
-    for (const eq of [ikHelm, ikArmor, ikMaul, ikBelt, ikBoots, ikGloves]) {
-      world.containers.equipment.set(eq.id, eq)
-      world.containers.equipmentBySlot.set(eq.bodyLoc!, eq)
+    const rawContainers = world.containers as unknown as {
+      equipment: Map<number, any>
+      equipmentBySlot: Map<number, any>
+      sockets: Map<number, any[]>
+      inventory: Map<number, any>
     }
-    world.containers.sockets.set(ikMaul.id, [ohm1, ohm2])
-    world.containers.inventory.set(grandCharm.id, grandCharm)
+    for (const eq of [ikHelm, ikArmor, ikMaul, ikBelt, ikBoots, ikGloves]) {
+      rawContainers.equipment.set(eq.id, eq)
+      rawContainers.equipmentBySlot.set(eq.bodyLoc!, eq)
+    }
+    rawContainers.sockets.set(ikMaul.id, [ohm1, ohm2])
+    rawContainers.inventory.set(grandCharm.id, grandCharm)
 
     const hud = new HudManager()
     const hudModel = new HudModel({ world, hudManager: hud })
@@ -208,7 +214,7 @@ describe('Issue #1015: Character Sheet damage and Attack Rating include skill, c
     // Left skill (Berserk #152) and Right skill (Attack #0) must have distinct Attack Ratings:
     // Attack (#0) has Mace Mastery (+204% AR at lvl 23), while Berserk (#152) adds +175% AR at lvl 6 (+379% total AR)!
     expect(attrs.rightAttackRating).toBeGreaterThan(2000)
-    expect(attrs.attackRating).toBeGreaterThan(attrs.rightAttackRating)
+    expect(attrs.attackRating).toBeGreaterThan(attrs.rightAttackRating ?? 0)
 
     // Left skill damage (Berserk) and Right skill damage (Attack) must be way higher than raw weapon + elemental damage
     const parseDmgRange = (txt: string): [number, number] => {

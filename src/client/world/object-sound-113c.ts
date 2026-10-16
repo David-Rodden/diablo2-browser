@@ -21,8 +21,14 @@
  * new mode has no mode-bound sound or changes sound group; unit removal also stops via `0x6fad3120` / #998).
  */
 
-import { CAIRN_STONE_CLASS_ID_113C, CAIRN_STONE_MODE_SOUNDS_113C, OBJECT_SOUNDS_113C } from '../../common/audio/object-sounds-113c.ts'
+import {
+  CAIRN_STONE_CLASS_ID_113C,
+  CAIRN_STONE_MODE_SOUNDS_113C,
+  OBJECT_SOUNDS_113C,
+  SHRINE_SOUNDS_113C,
+} from '../../common/audio/object-sounds-113c.ts'
 import { SOUNDS_113C } from '../../common/audio/sounds-113c.ts'
+import { CANONICAL_113C_OBJECTS } from '../../common/world/objects-meta.ts'
 import type { ObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
 
 /** Class 59 (`Portal`, town portal): 0x6fad38af `cmp eax, 0x3b` plays the one-shot even on first sight. */
@@ -32,6 +38,9 @@ export const TOWN_PORTAL_CLASS_ID_113C = 59
 export interface ObjectSoundUnit113c {
   readonly classId: number
   readonly mode: number
+  readonly interactType?: number | undefined
+  readonly shrineType?: number | undefined
+  readonly flags?: number | undefined
   /** Port of unit `+0x70` / `+0x74`: last mode the sound handler saw (`undefined` = none yet). */
   objectSoundMode?: number | undefined
   /** Port of unit `+0x78` active looping sound group: current looping mode-bound sound ID (`0` / `undefined` = none). */
@@ -98,9 +107,52 @@ export function updateObjectModeSound113c(
   const prevMode = unit.objectSoundMode
   if (prevMode === mode) return []
   unit.objectSoundMode = mode
-  if (!OBJECT_SOUNDS_113C[unit.classId]) return []
 
   const out: ObjectSoundEmit113c[] = []
+
+  // D2Client.dll 0x6fad5d0d -> 0x6fad4b90 -> 0x6fad4a70 (OperateFn = 2 shrine client handler):
+  // When a shrine transitions from unactivated (mode 0) into operating/activated (mode 1 or 2),
+  // look up SHRINE_SOUNDS_113C[shrineCode] (0x6fb82f60 + shrineCode * 0x14 + 0x10).
+  if (prevMode === 0 && (mode === 1 || mode === 2)) {
+    const objMeta = CANONICAL_113C_OBJECTS[unit.classId]
+    const recAny = record as { readonly operateFn?: number; readonly isShrine?: boolean } | undefined
+    const isShrine =
+      objMeta?.isShrine === true ||
+      recAny?.isShrine === true ||
+      recAny?.operateFn === 2 ||
+      (unit.shrineType !== undefined && unit.shrineType > 0)
+    if (isShrine) {
+      const explicitCode =
+        unit.shrineType !== undefined && unit.shrineType > 0
+          ? unit.shrineType
+          : unit.interactType !== undefined && unit.interactType > 0
+            ? unit.interactType
+            : unit.flags !== undefined && unit.flags > 0
+              ? unit.flags
+              : 0
+      const shrineCode =
+        explicitCode > 0
+          ? explicitCode
+          : !OBJECT_SOUNDS_113C[unit.classId]
+            ? objMeta?.parm0 === 1
+              ? 2
+              : objMeta?.parm0 === 2
+                ? 3
+                : 0
+            : 0
+      if (shrineCode >= 1 && shrineCode < SHRINE_SOUNDS_113C.length) {
+        const shrineSoundId = SHRINE_SOUNDS_113C[shrineCode] ?? 0
+        if (shrineSoundId > 0) {
+          out.push({ soundId: shrineSoundId })
+          if (explicitCode > 0 || !OBJECT_SOUNDS_113C[unit.classId]) {
+            return out
+          }
+        }
+      }
+    }
+  }
+
+  if (!OBJECT_SOUNDS_113C[unit.classId]) return out
   const bound = objectModeBoundSound113c(unit.classId, mode)
   const prevLoop = unit.objectLoopSoundId ?? 0
   if (bound > 0) {

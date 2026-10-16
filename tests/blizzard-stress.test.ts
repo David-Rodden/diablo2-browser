@@ -31,7 +31,9 @@ import { getSharedDataRegistry } from '../src/baker/mpq-archive-source.ts'
 import { UnitStatList } from '../src/server/engine/stat-list.ts'
 import { StateBus } from '../src/server/engine/state-bus.ts'
 import type { CombatUnitContext } from '../src/server/engine/combat-pipeline.ts'
-import { drawMissileProjectile } from '../src/client/scene/missile-overlay-renderer.ts'
+import { renderSceneSourceFrame } from '../src/client/scene/world-renderer.ts'
+import { celFileArtKey } from '../src/client/render/cel-file-key.ts'
+import type { SceneMissileDrawable } from '../src/client/view/unit-drawables.ts'
 
 describe('[Skill #059] Blizzard — Empirical Stress & Physics Challenger Suite', () => {
   const openTerrain = { overlap: () => 0 }
@@ -106,6 +108,10 @@ describe('[Skill #059] Blizzard — Empirical Stress & Physics Challenger Suite'
     it('verifies visual screen projection offset: drawY = WorldY - altitude', () => {
       const drawnSprites: { x: number; y: number }[] = []
       const mockRenderer = {
+        begin: () => {},
+        flush: () => {},
+        setLighting: () => {},
+        setUnitLight: () => {},
         draw: (_frame: any, x: number, y: number) => {
           drawnSprites.push({ x, y })
         },
@@ -114,36 +120,53 @@ describe('[Skill #059] Blizzard — Empirical Stress & Physics Challenger Suite'
 
       const mockArt = {
         meta: { name: 'blizzard1', directions: 1, framesPerDirection: 6, animSpeed: 16 },
-        frames: { 0: [{ anchorX: 0, anchorY: 0, width: 32, height: 64 }] },
+        frames: [[{ x: 0, y: 0, anchorX: 0, anchorY: 0, width: 32, height: 64 }]],
         handle: 'atlas',
       } as any
+      const missileArtMap = new Map([[celFileArtKey('IceBolt'), mockArt]])
 
-      // Shard at World (200, 200), altitude 120 -> screen Y should be 200 - 120 = 80
-      const shardHigh: Projectile = {
-        skillId: '59',
-        x: 200,
-        y: 200,
-        vx: 0,
-        vy: 0,
+      const baseMissile: SceneMissileDrawable = {
+        drawableKind: 'missile',
+        unitId: 1,
+        missileClassId: 155,
+        missileKey: 'blizzard1',
+        celFile: 'IceBolt',
+        direction: 0,
+        frame: 0,
+        totalFrames: 6,
+        loopAnim: true,
         altitude: 120,
-        damage: 100,
-        ttl: 9,
-        fromPlayer: true,
-        missileType: 'blizzard1',
+        subX: 10,
+        subY: 10,
+        worldX: 200,
+        worldY: 200,
+        sortY: 320,
+        blendMode: 'additive',
+        trans: 1,
+        lightRadius: 0,
+        lightColor: [0, 0, 0],
       }
 
-      drawMissileProjectile(mockRenderer, shardHigh, mockArt)
+      // Shard at World (200, 200), altitude 120 -> screen Y should be 200 - 120 = 80
+      renderSceneSourceFrame({
+        renderer: mockRenderer,
+        cameraX: 200,
+        cameraY: 200,
+        missileDrawables: [baseMissile],
+        missileArtMap,
+      } as any)
       expect(drawnSprites.length).toBe(1)
       expect(drawnSprites[0]!.y).toBe(200 - 120) // 80 px
 
       // Shard at World (200, 200), altitude 0 (ground level) -> screen Y should be 200
       drawnSprites.length = 0
-      const shardGround: Projectile = {
-        ...shardHigh,
-        altitude: 0,
-        ttl: 0,
-      }
-      drawMissileProjectile(mockRenderer, shardGround, mockArt)
+      renderSceneSourceFrame({
+        renderer: mockRenderer,
+        cameraX: 200,
+        cameraY: 200,
+        missileDrawables: [{ ...baseMissile, altitude: 0, sortY: 200 }],
+        missileArtMap,
+      } as any)
       expect(drawnSprites.length).toBe(1)
       expect(drawnSprites[0]!.y).toBe(200) // 200 px
     })

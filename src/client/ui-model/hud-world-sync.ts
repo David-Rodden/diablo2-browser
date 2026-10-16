@@ -14,6 +14,10 @@ import {
   resolveNpcIntroMsgIdByTblKey,
   resolveQuestTitleKeyForMsgId,
 } from '../../common/data/canonical-npc-dialog-table.ts'
+import {
+  resolveNpcIntroStringId113c,
+  resolveNpcIntroTblKey113c,
+} from '../../common/audio/npc-speech-113c.ts'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import {
   calculateDetailedDamage,
@@ -418,6 +422,9 @@ export function syncVitalsFromWorldImpl(model: any): void {
   const maxStamina = hud.maxStamina > 0 ? hud.maxStamina : self.maxStamina
   hud.hp = Math.max(0, Math.min(maxHp, self.life))
   hud.mana = Math.max(0, Math.min(maxMana, self.mana))
+  if (hud.hotkeys && (self.hasManaState || maxMana > 0 || self.mana > 0)) {
+    hud.hotkeys.currentMana = hud.mana
+  }
   hud.stamina = Math.max(0, Math.min(maxStamina, self.stamina))
   hud.isStaminaBlue = Boolean(self.states.has(136) || self.states.has(180))
   hud.poisoned = self.states.has(2 /* STATE_POISON */)
@@ -486,6 +493,9 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   hud.hp = Math.max(0, Math.min(self.maxLife, self.life))
   hud.maxMana = self.maxMana
   hud.mana = Math.max(0, Math.min(self.maxMana, self.mana))
+  if (hud.hotkeys && (self.hasManaState || self.maxMana > 0 || self.mana > 0)) {
+    hud.hotkeys.currentMana = hud.mana
+  }
   hud.maxStamina = self.maxStamina
   hud.stamina = Math.max(0, Math.min(self.maxStamina, self.stamina))
   hud.isStaminaBlue = Boolean(self.states.has(136) || self.states.has(180))
@@ -627,9 +637,9 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
 
   if (!combatSkillsDirty) {
     if (self.charClass !== null) {
-      const hpBase = attrs.maxHp > 0 ? attrs.maxHp : self.maxLife
-      const manaBase = attrs.maxMana >= 0 ? attrs.maxMana : self.maxMana
-      const stamBase = attrs.maxStamina >= 0 ? attrs.maxStamina : self.maxStamina
+      const hpBase = (attrs.maxHp ?? 0) > 0 ? (attrs.maxHp ?? self.maxLife) : self.maxLife
+      const manaBase = (attrs.maxMana ?? -1) >= 0 ? (attrs.maxMana ?? self.maxMana) : self.maxMana
+      const stamBase = (attrs.maxStamina ?? -1) >= 0 ? (attrs.maxStamina ?? self.maxStamina) : self.maxStamina
       hud.maxHp = hpBase
       hud.hp = Math.max(0, Math.min(hpBase, self.life))
       hud.maxMana = manaBase
@@ -859,10 +869,72 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
           : 0
       let damagePercent = 0
       let skillPhysical256 = { min: 0, max: 0 }
+      let flatPhysMin = 0
+      let flatPhysMax = 0
+      let skillElemMin = 0
+      let skillElemMax = 0
+      let skillElemType: string | undefined = undefined
       let magicConversionPct = 0
 
       if (lvl > 0) {
-        if (skillId === 96) {
+        if (skillId === 6) {
+          // #6 Magic Arrow: +10 + 9*(lvl-1)% AR, +lvl flat physical damage
+          toHitPercent = 10 + 9 * (lvl - 1)
+          flatPhysMin = lvl
+          flatPhysMax = lvl
+          skillPhysical256 = { min: lvl << 8, max: lvl << 8 }
+        } else if (skillId === 7) {
+          // #7 Fire Arrow: +10 + 9*(lvl-1)% AR
+          toHitPercent = 10 + 9 * (lvl - 1)
+        } else if (skillId === 10) {
+          // #10 Jab: +10 + 9*(lvl-1)% AR, -15 + 3*(lvl-1)% ED
+          toHitPercent = 10 + 9 * (lvl - 1)
+          damagePercent = 3 * (lvl - 1) - 15
+        } else if (skillId === 11) {
+          // #11 Cold Arrow: +10 + 9*(lvl-1)% AR
+          toHitPercent = 10 + 9 * (lvl - 1)
+        } else if (skillId === 14) {
+          // #14 Power Strike: +20 + 18*(lvl-1)% AR
+          toHitPercent = 20 + 18 * (lvl - 1)
+        } else if (skillId === 16) {
+          // #16 Exploding Arrow: +20 + 9*(lvl-1)% AR
+          toHitPercent = 20 + 9 * (lvl - 1)
+        } else if (skillId === 19) {
+          // #19 Impale: +100 + 25*(lvl-1)% AR, +300 + 25*(lvl-1)% ED
+          toHitPercent = 100 + 25 * (lvl - 1)
+          damagePercent = 300 + 25 * (lvl - 1)
+        } else if (skillId === 21) {
+          // #21 Ice Arrow: +20 + 9*(lvl-1)% AR
+          toHitPercent = 20 + 9 * (lvl - 1)
+        } else if (skillId === 22) {
+          // #22 Guided Arrow: +5*(lvl-1)% ED
+          damagePercent = 5 * (lvl - 1)
+        } else if (skillId === 24) {
+          // #24 Charged Strike: weapon melee + charged bolts
+          toHitPercent = 0
+        } else if (skillId === 25) {
+          // #25 Plague Javelin: +30 + 9*(lvl-1)% AR
+          toHitPercent = 30 + 9 * (lvl - 1)
+        } else if (skillId === 26) {
+          // #26 Strafe: +5*lvl % ED (srcDam = 96)
+          damagePercent = 5 * lvl
+        } else if (skillId === 27) {
+          // #27 Immolation Arrow: +30 + 9*(lvl-1)% AR
+          toHitPercent = 30 + 9 * (lvl - 1)
+        } else if (skillId === 30) {
+          // #30 Fend: +40 + 10*(lvl-1)% AR, +70 + 10*(lvl-1)% ED
+          toHitPercent = 40 + 10 * (lvl - 1)
+          damagePercent = 70 + 10 * (lvl - 1)
+        } else if (skillId === 31) {
+          // #31 Freezing Arrow: +40 + 9*(lvl-1)% AR
+          toHitPercent = 40 + 9 * (lvl - 1)
+        } else if (skillId === 34 || skillId === 35) {
+          // #34 Lightning Strike / #35 Lightning Fury
+          toHitPercent = 0
+        } else if (skillId === 73) {
+          // #73 Poison Dagger: +30 + 20*(lvl-1)% AR
+          toHitPercent = 30 + 20 * (lvl - 1)
+        } else if (skillId === 96) {
           // #96 Sacrifice: +20 + 7*(lvl-1)% AR, +180 + 15*(lvl-1) + 15*Redemption + 5*Fanaticism % ED
           toHitPercent = 20 + 7 * (lvl - 1)
           damagePercent = 180 + 15 * (lvl - 1) + 15 * getHardLvl(124) + 5 * getHardLvl(122)
@@ -1021,10 +1093,19 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       }
 
       const isKick = skillId === 1 || skillId === 255 || skillId === 270 || skillId === 275
-      let srcDam = isGenericAttackSkill(skillId) || skillId === 97 ? 128 : def ? def.srcDamage || 0 : 0
+      let srcDam =
+        skillId === 12 || skillId === 15 || skillId === 20 || skillId === 26
+          ? 96
+          : isGenericAttackSkill(skillId) || skillId === 97
+            ? 128
+            : def
+              ? def.srcDamage || 0
+              : 0
       if (lvl > 0 && (skillId === 257 || skillId === 266 || skillId === 277) && def) {
         const flatMin = evaluateLevelBand(def.minDam || 0, def.minLevDam || [0, 0, 0, 0, 0], lvl)
         const flatMax = evaluateLevelBand(def.maxDam || 0, def.maxLevDam || [0, 0, 0, 0, 0], lvl)
+        flatPhysMin = flatMin
+        flatPhysMax = flatMax
         skillPhysical256 = { min: flatMin << 8, max: flatMax << 8 }
         if (skillId === 257 || skillId === 266) {
           const rArm = buildArm(4)
@@ -1037,6 +1118,54 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       }
       const itypeA1 = meta ? meta.itypea1 || '' : ''
       const isWeapon = isKick || srcDam > 0 || itypeA1 !== ''
+
+      if (isWeapon && lvl > 0 && def) {
+        const elemStatMap: Record<string, number> = {
+          fire: 329,
+          ltng: 330,
+          cold: 331,
+          pois: 332,
+          mag: 357,
+        }
+        if (skillId === 280) {
+          // #280 Phoenix Strike: Charge 1 meteor fire damage + Fists of Fire (#259) 10%/blvl synergy
+          const fofSyn = 10 * getHardLvl(259)
+          const rawMin = evaluateLevelBand(20, [10, 19, 29, 38, 46], lvl)
+          const rawMax = evaluateLevelBand(40, [10, 21, 33, 42, 50], lvl)
+          const equipFirePct = playerAgg.flatSum(329, 0, ['item', 'charm', 'state'])
+          skillElemMin = Math.floor(
+            (Math.floor((rawMin * (100 + fofSyn)) / 100) * (100 + equipFirePct)) / 100,
+          )
+          skillElemMax = Math.floor(
+            (Math.floor((rawMax * (100 + fofSyn)) / 100) * (100 + equipFirePct)) / 100,
+          )
+          skillElemType = 'fire'
+        } else if (def.eType && def.eType !== '') {
+          const calcState = createInitialState(
+            (resolveClassCode(self.charClass) ?? def.classCode ?? 'ama') as any,
+          )
+          for (const id of hardSkillLevels.keys()) {
+            const h = getHardLvl(id)
+            if (h > 0) calcState.hardPoints[id] = h
+          }
+          const dmg = calculateDetailedDamage(calcState, def, lvl)
+          if (dmg.hasDamage && dmg.finalMax > 0) {
+            const masteryBonusPct = dmg.masteryMultiplier > 1 ? dmg.masteryBonusPct : 0
+            const elemStatId = elemStatMap[def.eType]
+            const equipSpellDamagePct =
+              elemStatId !== undefined
+                ? playerAgg.flatSum(elemStatId, 0, ['item', 'charm', 'state'])
+                : 0
+            skillElemMin = Math.floor(
+              (dmg.withSynergyMin * (100 + masteryBonusPct + equipSpellDamagePct)) / 100,
+            )
+            skillElemMax = Math.floor(
+              (dmg.withSynergyMax * (100 + masteryBonusPct + equipSpellDamagePct)) / 100,
+            )
+            skillElemType = def.eType
+          }
+        }
+      }
 
       let spellDamage: { min: number; max: number } | null = null
       let spellBreakdown: CombatSpellDamageBreakdown | null = null
@@ -1153,6 +1282,11 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
         toHitPercent,
         damagePercent,
         skillPhysical256,
+        flatPhysMin,
+        flatPhysMax,
+        skillElemMin,
+        skillElemMax,
+        skillElemType,
         spellDamage,
         spellBreakdown,
         magicConversionPct,
@@ -1289,10 +1423,50 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     attrs.rightAR = cStats.right.attackRating
     attrs.rightARColor = cStats.right.attackRatingColor
 
+    attrs.leftSkillId = self.leftSkill
+    attrs.rightSkillId = self.rightSkill
     attrs.attackRating = cStats?.left?.attackRating ?? 0
+    attrs.leftAttackRating = cStats?.left?.attackRating ?? 0
     attrs.baseAttackRating = cStats?.left?.baseAttackRating ?? 0
     attrs.rightAttackRating = cStats?.right?.attackRating ?? 0
     attrs.baseRightAttackRating = cStats?.right?.baseAttackRating ?? 0
+
+    // 1.13c Block Chance (`D2Common.dll #10918` `UNITS_GetBlockRate` @ `0x6FD87BE0` & `0x6FB6C430` Weapon Block `#263`)
+    const shieldEq = playerAgg.equipment.find(
+      (x) => (x.bodyLoc === 4 || x.bodyLoc === 5) && x.baseTable === 'armor',
+    )
+    if (shieldEq) {
+      const classBlockFactor = CANONICAL_CHARSTATS[resolveClassCode(self.charClass)]?.blockFactor ?? 20
+      const armorBlock = Number(shieldEq.row.text('block')) || 0
+      let holyShieldBlock = 0
+      if (self.states.has(101)) {
+        const hsLvl = Math.max(1, resolveEffectiveSkillLvl(117) || 1)
+        holyShieldBlock = 10 + Math.trunc((30 * Math.trunc((110 * hsLvl) / (hsLvl + 6))) / 100)
+      }
+      const totalShieldBlock = Math.min(75, armorBlock + classBlockFactor) + tot(20) + holyShieldBlock
+      const clvl = Math.max(1, playerAgg.level || 1)
+      attrs.shieldBaseBlock = totalShieldBlock
+      attrs.blockChance = Math.min(
+        75,
+        Math.max(0, Math.floor((totalShieldBlock * Math.max(0, attrs.dex - 15)) / (clvl * 2))),
+      )
+    } else {
+      attrs.shieldBaseBlock = 0
+      const rWep = cInput.rightArm
+      const lWep = cInput.leftArm
+      const isDualClaw =
+        Boolean(rWep && (rWep.isType('h2h') || rWep.isType('h2h2'))) &&
+        Boolean(lWep && (lWep.isType('h2h') || lWep.isType('h2h2')))
+      const wbLvl = isDualClaw && (hardSkillLevels.get(263) ?? 0) > 0 ? resolveEffectiveSkillLvl(263) : 0
+      if (wbLvl > 0) {
+        const wbPct = Math.min(75, 20 + Math.trunc((45 * Math.trunc((110 * wbLvl) / (wbLvl + 6))) / 100))
+        attrs.weaponBlockChance = wbPct
+        attrs.blockChance = wbPct
+      } else {
+        attrs.weaponBlockChance = 0
+        attrs.blockChance = 0
+      }
+    }
   } else {
     attrs.weaponStrBonus = 100
     attrs.weaponDexBonus = 0
@@ -1354,6 +1528,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   hud.skillTree.bonusLevels.clear()
   hud.hotkeys.setAvailableSkills([])
   hud.hotkeys.weaponEquipState = weaponState
+  hud.hotkeys.setActiveStates?.(self.states)
   hud.hotkeys.clearWeaponUsability?.()
   const preaggSkillBonuses =
     classCode && self.skillEntries.size > 0
@@ -1379,9 +1554,10 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     if (hard > 0) hud.skillTree.hardPoints.set(skillId, hard)
     if (bonus > 0) hud.skillTree.bonusLevels.set(skillId, bonus)
     if (isPassiveSkill(skillId) || tableMeta.listRow < 0) continue
-    const weaponUsable = canUseSkillWithWeapon(skillId, weaponState)
+    const weaponOnlyUsable = canUseSkillWithWeapon(skillId, weaponState)
+    const weaponUsable = canUseSkillWithWeapon(skillId, weaponState, self.states)
     hud.hotkeys.setSkillWeaponUsable?.(skillId, weaponUsable)
-    if ((skillId === 2 || skillId === 4) && !weaponUsable) continue
+    if ((skillId === 2 || skillId === 4) && !weaponOnlyUsable) continue
     const effSkillLevel = hard + bonus
     const charges = self.skillCharges?.get(skillId) ?? scrollCounts.get(skillId)
     if (effSkillLevel <= 0 && charges === undefined) continue
@@ -1443,15 +1619,19 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     }
   }
 
-  for (const [slot, binding] of model.world.skillHotkeys.entries()) {
-    const fKey = `F${slot + 1}`
-    hud.hotkeys.bindHotkey(fKey, binding.hand, binding.skill)
+  if (model.world.skillHotkeys.size > 0 || model.hadWorldSkillHotkeys) {
+    model.hadWorldSkillHotkeys = true
+    hud.hotkeys.bindings.clear()
+    for (const [slot, binding] of model.world.skillHotkeys.entries()) {
+      const fKey = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
+      hud.hotkeys.bindHotkey(fKey, binding.hand, binding.skill)
+    }
   }
   hud.hotkeys.leftSkillId = self.leftSkill
   hud.hotkeys.rightSkillId = self.rightSkill
-  hud.hotkeys.setSkillWeaponUsable?.(0, canUseSkillWithWeapon(0, weaponState))
-  hud.hotkeys.setSkillWeaponUsable?.(self.leftSkill, canUseSkillWithWeapon(self.leftSkill, weaponState))
-  hud.hotkeys.setSkillWeaponUsable?.(self.rightSkill, canUseSkillWithWeapon(self.rightSkill, weaponState))
+  hud.hotkeys.setSkillWeaponUsable?.(0, canUseSkillWithWeapon(0, weaponState, self.states))
+  hud.hotkeys.setSkillWeaponUsable?.(self.leftSkill, canUseSkillWithWeapon(self.leftSkill, weaponState, self.states))
+  hud.hotkeys.setSkillWeaponUsable?.(self.rightSkill, canUseSkillWithWeapon(self.rightSkill, weaponState, self.states))
   if (self.states.has(121)) {
     const remMs = model.world.getSkillCooldownRemainingMs(self.rightSkill) || model.world.getSkillCooldownRemainingMs(self.leftSkill) || 1000
     hud.hotkeys.setGlobalSkillDelay(remMs)
@@ -2509,7 +2689,7 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
         deadMercenaryReviveCost,
         deadMercenaryName,
         playerLevel,
-        playerClass: model.world.self.classId ?? undefined,
+        playerClass: model.world.self.charClass ?? model.world.self.classId ?? undefined,
         act: model.world.act,
         suppressGreeting: willAutoPopSpeech,
         questFlags: model.world.quests,
@@ -2617,16 +2797,26 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
       !hasPendingAutoNpcMessage &&
       (model.world.consumeNpcInitWantsInteract() || !introPlayed)
     ) {
-      const introText = resolveNpcDialogueTblText(desc, { topic: 'intro', lang: wp.lang })
-      const introMsgId = resolveNpcIntroMsgIdByTblKey(
+      const playerClass = model.world.self.charClass ?? model.world.self.classId ?? undefined
+      const classIntroStrId = resolveNpcIntroStringId113c(desc.hcIdx, model.world.act, playerClass)
+      const introTblKey =
+        resolveNpcIntroTblKey113c(desc.hcIdx, model.world.act, playerClass, desc.npcTxtKey) ??
+        NPC_CANONICAL_INTRO_KEYS[desc.npcTxtKey] ??
+        desc.npcTxtKey
+      const introText =
+        resolveNpcDialogueTblText(introTblKey, { lang: wp.lang }) ??
+        resolveNpcDialogueTblText(desc, { topic: 'intro', lang: wp.lang })
+      const c2sIntroMsgId = resolveNpcIntroMsgIdByTblKey(
         NPC_CANONICAL_INTRO_KEYS[desc.npcTxtKey] ?? desc.npcTxtKey,
       )
+      const speechIntroMsgId =
+        classIntroStrId !== undefined && classIntroStrId > 0 ? classIntroStrId : c2sIntroMsgId
       model.world.markNpcIntroPlayed(model.world.act, desc.hcIdx)
-      if (introMsgId !== undefined) {
-        model.questMessage(npc.npcId, introMsgId)
+      if (c2sIntroMsgId !== undefined) {
+        model.questMessage(npc.npcId, c2sIntroMsgId)
       }
       ;(wp as any).activeNpcId = npc.npcId
-      wp.openNpcSpeech(desc, introText, 'intro', introMsgId, undefined)
+      wp.openNpcSpeech(desc, introText, 'intro', speechIntroMsgId, undefined)
     }
   }
 

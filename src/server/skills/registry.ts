@@ -64,7 +64,17 @@ import {
 } from './barbarian-warcries.ts'
 import { townLevelForAct } from '../../common/world/portal.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
-import { THROW_MISSILE_BY_WEAPON_TYPE } from '../../common/skills/weapon-combat-meta.ts'
+import { resolveThrowMissileForItemCode } from '../../common/skills/weapon-combat-meta.ts'
+
+function resolveThrowMissileForCasterWeapon(code?: string, itemType?: string): string | null {
+  if (code) {
+    const byCode = resolveThrowMissileForItemCode(code)
+    if (byCode) return byCode
+  }
+  const t = (itemType ?? '').toLowerCase()
+  const fallbackCode = t === 'tkni' ? 'tkf' : t === 'taxe' ? 'tax' : t === 'jave' || t === 'ajav' ? 'jav' : undefined
+  return fallbackCode ? resolveThrowMissileForItemCode(fallbackCode) : null
+}
 
 declare global {
   interface ImportMeta {
@@ -2402,11 +2412,11 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         caster.statList.setBaseStat('quantity', baseQty - 1)
       }
       const wType = (caster.weaponItemType ?? '').toLowerCase()
-      // 1.13c throw missiles (Missiles.txt): throwknife id 36 / throwaxe id 35;
-      // resolved from the equipped weapon's Weapons.txt type (tkni/taxe/jave/ajav).
+      const wCode = (caster as { weaponCode?: string }).weaponCode
+      // 1.13c throw missiles (Missiles.txt): resolved from the equipped weapon's Weapons.txt missiletype column.
       resolvedRangedMissile =
         caster.thrownMissile ||
-        THROW_MISSILE_BY_WEAPON_TYPE[wType] ||
+        resolveThrowMissileForCasterWeapon(wCode, wType) ||
         evalResult.missileA ||
         'javelin'
     } else if (skill.id === 4) {
@@ -2444,10 +2454,11 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         caster.statList.setBaseStat('quantity', baseQty - 1)
       }
       const offType = (caster.offHandWeaponItemType ?? caster.offHandWeaponType ?? caster.weaponItemType ?? '').toLowerCase()
+      const offCode = (caster as { offHandWeaponCode?: string; weaponCode?: string }).offHandWeaponCode ?? (caster as { weaponCode?: string }).weaponCode
       resolvedRangedMissile =
         caster.offHandThrownMissile ||
         caster.thrownMissile ||
-        THROW_MISSILE_BY_WEAPON_TYPE[offType] ||
+        resolveThrowMissileForCasterWeapon(offCode, offType) ||
         evalResult.missileA ||
         'javelin'
     } else if (skill.id === 140) {
@@ -2464,9 +2475,10 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         caster.statList.setBaseStat('quantity', Math.max(0, baseQty - 2))
       }
       const wType = (caster.weaponItemType ?? '').toLowerCase()
+      const wCode = (caster as { weaponCode?: string }).weaponCode
       resolvedRangedMissile =
         caster.thrownMissile ||
-        THROW_MISSILE_BY_WEAPON_TYPE[wType] ||
+        resolveThrowMissileForCasterWeapon(wCode, wType) ||
         evalResult.missileA ||
         'javelin'
     }
@@ -2592,11 +2604,9 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
     const piercePct =
       skill.id === 243
         ? 100
-        : skill.id === 22
-          ? 0
-          : pierceSlvl > 0
-            ? Math.min(100, computeDiminishingReturns(10, 100, pierceSlvl) + itemPiercePct)
-            : Math.min(100, itemPiercePct)
+        : pierceSlvl > 0
+          ? Math.min(100, computeDiminishingReturns(10, 100, pierceSlvl) + itemPiercePct)
+          : Math.min(100, itemPiercePct)
 
     if (skill.id === 12) {
       const vol = missileEngine.spawnMultipleShotVolley({
@@ -2639,9 +2649,10 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           ? (targetPositions?.get(primaryTargetForMsl.id) ?? { x: targetX || 0, y: targetY || 120 })
           : undefined
       const offThrowType = (caster.offHandWeaponItemType ?? caster.offHandWeaponType ?? '').toLowerCase()
+      const offThrowCode = (caster as { offHandWeaponCode?: string }).offHandWeaponCode
       const offHandMissileFor140 =
         caster.offHandThrownMissile ||
-        THROW_MISSILE_BY_WEAPON_TYPE[offThrowType] ||
+        resolveThrowMissileForCasterWeapon(offThrowCode, offThrowType) ||
         resolvedRangedMissile ||
         'javelin'
       for (let i = 0; i < projectileCount; i += 1) {
@@ -2680,9 +2691,22 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           ...(skill.id === 257 ? { nextDelayFrames: 25 } : {}),
         })
         if (m) missilesSpawned.push(m.name)
+        if (skill.id === 257) {
+          // 1.13c SrvDo044 (Blade Sentinel): spawns srvmissilea = 'blade creeper' (#392) AND summon = 'bladecreeper' (hcIdx = 413).
+          const petRes = summonManager.createPet({
+            owner: caster,
+            skillId: 257,
+            slvl: evalResult.slvl,
+            x: mTargetX,
+            y: mTargetY,
+          })
+          if (petRes.created && petRes.pet) {
+            petsSummoned.push(petRes.pet.monId)
+          }
+        }
         if (skill.id === 256) {
           const groundSpike = missileEngine.spawnMissile({
-            missileNameOrId: 'shockfieldground',
+            missileNameOrId: 'shock field on ground',
             sourceSkillId: 256,
             slvl: evalResult.slvl,
             owner: caster,

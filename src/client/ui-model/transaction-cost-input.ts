@@ -116,7 +116,14 @@ export function itemToTransactionCostInput(
   /** Pricing context for `npcClass` (MonStats hcIdx) from the server-mirrored world. */
   export function transactionCostContextFromWorld(world: ClientWorld, npcClass: number): TransactionCostContext {
     let reduced = world.self.stats.get(STAT_ITEM_REDUCEDPRICES)
-    const isSwap = world.self.weaponSet === 1
+    let hasSlot4Or5 = false
+    let hasSlot11Or12 = false
+    for (const it of world.containers.equipment.values()) {
+      const loc = it.bodyLoc || it.equippedSlot || 0
+      if (loc === 4 || loc === 5) hasSlot4Or5 = true
+      else if (loc === 11 || loc === 12) hasSlot11Or12 = true
+    }
+    const isSwap = world.self.weaponSet === 1 && !hasSlot4Or5 && hasSlot11Or12
     for (const it of world.containers.equipment.values()) {
       const loc = it.bodyLoc || it.equippedSlot || 0
       if (!isSwap && (loc === 11 || loc === 12)) continue

@@ -63,6 +63,8 @@ export interface WeaponBase extends ItemBase {
   readonly minMisDam?: number
   /** Maximum thrown / missile physical damage. */
   readonly maxMisDam?: number
+  /** Thrown projectile Missiles.txt Id from missiletype column (e.g. 1=javelin, 35=throwaxe, 36=throwknife, 37=glaive, 44..49=potions, 371=pilum). */
+  readonly missiletype?: number | undefined
   /** Base weapon attack speed modifier (lower/negative is faster). */
   readonly speed: number
   /** Strength required to equip. */
@@ -260,6 +262,8 @@ export function parseWeaponsTable(input: D2Table | Uint8Array | string): WeaponT
 
     const minMisDam = parseOptionalNumber(getCell(row, 'minmisdam'))
     const maxMisDam = parseOptionalNumber(getCell(row, 'maxmisdam'))
+    const rawMissileType = parseOptionalNumber(getCell(row, 'missiletype'))
+    const missiletype = rawMissileType !== undefined && rawMissileType > 0 ? rawMissileType : undefined
 
     const speed = parseNumber(getCell(row, 'speed'), 0)
     const reqstr = parseNumber(getCell(row, 'reqstr'), 0)
@@ -345,6 +349,7 @@ export function parseWeaponsTable(input: D2Table | Uint8Array | string): WeaponT
       oneOrTwoHanded,
       ...(minMisDam !== undefined ? { minMisDam } : {}),
       ...(maxMisDam !== undefined ? { maxMisDam } : {}),
+      ...(missiletype !== undefined ? { missiletype } : {}),
       speed,
       reqstr,
       reqdex,

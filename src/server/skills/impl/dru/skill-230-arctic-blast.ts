@@ -30,12 +30,15 @@ export const skillModule: SkillModule = {
   },
 
   executeDo(ctx: SkillExecContext): SkillExecOutcome {
+    const s = Math.max(1, Math.floor(ctx.evalResult.slvl))
+    const abRange = Math.max(1, Math.floor((35 + (s - 1) * 6) / 2))
     const outcome = executeSkillCore113c(ctx)
     return {
       ...outcome,
       notes: [
         ...outcome.notes,
         'skill_module:skill-230-arctic-blast',
+        `abRange:${abRange}`,
       ],
     }
   },

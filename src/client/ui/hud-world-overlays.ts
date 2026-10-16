@@ -301,7 +301,7 @@ export function renderHudFrame(
   ctx.scale(uiScale * dpr, uiScale * dpr)
 
   // 0b. Top-Left Mercenary Portrait & Life Bar (R3.3) + Summoned Minions + Party Mini-Portraits (R5.1)
-  if (hud.leftPanel === 'none') {
+  if (hud.leftPanel === 'none' && hud.showPartyPortraits !== false) {
     const atlasImg = internal.images.get('portraitsAtlas')
     let slotX = 16
 
@@ -655,6 +655,8 @@ export function renderHudFrame(
 
   // 2. Right-Half Dock Panel (`400+deltaRight..800+deltaRight, panelOffsetY..panelOffsetY+553`, or `320..640, 0..432` in 640x480)
   if (hud.rightPanel === 'inv') {
+    hud.inventory.stashOpen = hud.leftPanel === 'stash'
+    hud.inventory.lang = hud.lang
     ctx.save()
     ctx.translate(deltaRight, panelOffsetY)
     hud.inventory.draw(
@@ -755,6 +757,9 @@ export function renderHudFrame(
   )
 
   // 6. Left & Right Active Skill Slots & Speedbar Popup (`spellsel.cpp`) — drawn above belt so speedbar popup & tooltips are never occluded
+  if (hud.maxMana > 0 || hud.mana > 0) {
+    hud.hotkeys.currentMana = hud.mana
+  }
   hud.hotkeys.draw(
     ctx,
     internal.images.get('genericSkills') ?? null,
@@ -945,7 +950,7 @@ export function renderHudFrame(
  * Used by `MSG_DrawChatOverlay` (`0x6fb2b730`) to shift `startY` from `20` (`0x14`) to `95` (`0x5F`).
  */
 export function hasVisibleTopLeftPortraits(hud: HudManager): boolean {
-  if (hud.leftPanel !== 'none') return false
+  if (hud.leftPanel !== 'none' || hud.showPartyPortraits === false) return false
   if (hud.merc && !hud.merc.isDead) return true
   if (hud.summonPortraits && hud.summonPortraits.length > 0) return true
   for (const member of hud.partyMembers) {

@@ -177,12 +177,23 @@ export function formatBilingualGroundItemName(item: any, name: string, quality: 
   }
   if ((quality === 'rare' || quality === 'craft') && item?.rolledRareAffixes) {
     const rEn = item.rolledRareAffixes.name || name
-    const rZh = translateRareName(rEn)
+    const rZh = translateRareName(
+      rEn,
+      item.rolledRareAffixes.rarePrefix?.name ?? item.rolledRareAffixes.prefix1?.name,
+      item.rolledRareAffixes.rareSuffix?.name ?? item.rolledRareAffixes.suffix1?.name,
+    )
     return rZh && rZh !== rEn ? rZh : rEn
   }
   if (quality === 'magic' && item?.rolledMagicAffixes) {
     const mEn = item.rolledMagicAffixes.name || name
-    const mZh = translateMagicName(mEn, baseEn ?? name)
+    const rawCode = typeof item?.code === 'string' ? item.code.trim().toLowerCase() : typeof item?.base?.id === 'string' ? item.base.id.trim().toLowerCase() : undefined
+    const mZh = translateMagicName(
+      mEn,
+      baseEn ?? name,
+      item.rolledMagicAffixes.prefix?.name ?? item.prefix?.name,
+      item.rolledMagicAffixes.suffix?.name ?? item.suffix?.name,
+      rawCode,
+    )
     return mZh && mZh !== mEn ? mZh : mEn
   }
   const directZh = translateItemName(name)

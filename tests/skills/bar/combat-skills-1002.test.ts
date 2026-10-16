@@ -450,27 +450,31 @@ describe('Issue #1002: Barbarian Combat Skills (#126-#152) 4-Layer 1.13c Fidelit
           attachedOverlays.push({ target, key })
         },
         ensureUnit: () => ({ states: new Set<number>() }),
+        isFriendlyOrNonHostileMonster: (m: any) => m.unitType !== 'monster' || m.dead === true,
       }
 
-      // #126 Bash -> 'bash' overlay on target monster
+      // #126 Bash -> no target overlay ('bash' belongs to #143 Leap Attack srvoverlay)
       spawnMissilesForSkillImpl.call(mockClientWorld, casterUnit as any, 126, 102, 100, 1)
-      expect(attachedOverlays.some(o => o.target === monsterUnit && o.key === 'bash')).toBe(true)
+      expect(attachedOverlays.some(o => o.target === monsterUnit && o.key === 'bash')).toBe(false)
 
-      // #139 Stun -> state 21 + 'stun' overlay on target monster
+      // #139 Stun -> state 21 on target monster (STATE_OVERLAYS[21] renders 'stun', no duplicate attachUnitOverlay)
       spawnMissilesForSkillImpl.call(mockClientWorld, casterUnit as any, 139, 102, 100, 1)
       expect(monsterUnit.states.has(21)).toBe(true)
-      expect(attachedOverlays.some(o => o.target === monsterUnit && o.key === 'stun')).toBe(true)
+      expect(attachedOverlays.some(o => o.target === monsterUnit && o.key === 'stun')).toBe(false)
 
-      // #132 Leap -> moves caster, attaches 'dust', knocks back nearby monster
+      // #132 Leap -> attaches 'dust' on caster; displacement & knockback are server-authoritative (Issue #1167),
+      // so the client never teleports the caster or pushes nearby monsters.
+      const prevCasterX = casterUnit.x
       const prevMonX = monsterUnit.x
       spawnMissilesForSkillImpl.call(mockClientWorld, casterUnit as any, 132, 101, 100, 1)
-      expect(casterUnit.x).toBe(101)
+      expect(casterUnit.x).toBe(prevCasterX)
       expect(attachedOverlays.some(o => o.target === casterUnit && o.key === 'dust')).toBe(true)
-      expect(monsterUnit.x).toBeGreaterThan(prevMonX)
+      expect(monsterUnit.x).toBe(prevMonX)
 
-      // #144 Concentrate -> state 15
-      spawnMissilesForSkillImpl.call(mockClientWorld, casterUnit as any, 144, 102, 100, 1)
+      // #144 Concentrate -> state 15 on caster + srvoverlay 'doubledamage1' on target monster
+      spawnMissilesForSkillImpl.call(mockClientWorld, casterUnit as any, 144, monsterUnit.x, monsterUnit.y, 1)
       expect(casterUnit.states.has(15)).toBe(true)
+      expect(attachedOverlays.some(o => o.target === monsterUnit && o.key === 'doubledamage1')).toBe(true)
 
       // #147 Frenzy -> state 94 + 'frenzy' overlay
       spawnMissilesForSkillImpl.call(mockClientWorld, casterUnit as any, 147, 102, 100, 1)

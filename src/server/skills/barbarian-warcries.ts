@@ -146,7 +146,7 @@ export interface BattleCommandStats {
  * Skill 130: Howl
  * - Flee duration: ln56 = 75 + 25 * (slvl - 1) frames, divided by AICurse divisor (1 / 2 / 4)
  * - Flee range: ln34 = 24 + 5 * (slvl - 1) subtiles
- * - Missile (#148 howl): Range = 12 + (slvl - 1), Vel = min(24, 12 + 2 * (slvl - 1))
+ * - Missile (#148 howl): Range = 12 (LevRange empty), Vel = 12 + calc1 = 12 + 2 * (slvl - 1) (no MaxVel clamp)
  * - Mana: 4 (1024 in 24.8)
  */
 export function calculateHowlStats(slvl: number, difficulty: WarcryDifficulty = 0): HowlStats {
@@ -168,8 +168,10 @@ export function calculateHowlStats(slvl: number, difficulty: WarcryDifficulty = 
   const aiCurseDiv = resolveAiCurseDivisor(difficulty)
   const durationFrames = Math.floor((75 + 25 * (lvl - 1)) / aiCurseDiv)
   const fleeRangeSubtiles = 24 + 5 * (lvl - 1)
-  const missileRangeFrames = 12 + (lvl - 1)
-  const missileVel = Math.min(24, 12 + 2 * (lvl - 1))
+  // Missiles.txt howl: Range 12 (LevRange empty) -> lifetime does not grow; SrvDo022 / CltDo25 pass
+  // velocity = Vel 12 + calc1 'par1 * (lvl-1)' (Param1 = 2), with no MaxVel clamp (sub_6FD14170 flag 4).
+  const missileRangeFrames = 12
+  const missileVel = 12 + 2 * (lvl - 1)
   const radiusSubtiles = Math.round(((missileRangeFrames * missileVel) / 24) * 100) / 100
   return {
     fleeDurationFrames: durationFrames,

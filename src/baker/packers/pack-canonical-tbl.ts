@@ -33,8 +33,41 @@ import {
 import { CANONICAL_QUEST_TBL_STRINGS } from '../../common/data/canonical-quest-data.ts'
 import { EXPANSION_NPC_DIALOG_CHI } from './expansion-npc-dialog-chi.ts'
 
+/**
+ * Act 5 `Levels.txt` `LevelName` keys (levels 109..132) live in `expansionstring.tbl`, which the 1.13c MPQ set
+ * does not ship in CHI. Without these, `resolveTblKey(key, 'CHI')` falls back to the ENG text and every Act 5
+ * waypoint / area name renders in English under the Chinese locale. Traditional Chinese, matching the script of
+ * the MPQ CHI `string.tbl` level names (e.g. `Rogue Encampment` -> `蘿格營地`).
+ */
+const EXPANSION_LEVEL_NAME_CHI: Readonly<Record<string, string>> = {
+  Harrogath: '哈洛加斯', // 109
+  'Bloody Foothills': '血腥丘陵', // 110
+  'Rigid Highlands': '冰凍高地', // 111 Frigid Highlands
+  'Arreat Plateau': '亞瑞特高原', // 112
+  'Crystalized Cavern Level 1': '水晶通道', // 113 Crystalline Passage
+  'Cellar of Pity': '冰凍之河', // 114 Frozen River
+  'Crystalized Cavern Level 2': '冰河路徑', // 115 Glacial Trail
+  'Echo Chamber': '漂泊者洞穴', // 116 Drifter Cavern
+  'Tundra Wastelands': '冰凍苔原', // 117 Frozen Tundra
+  'Glacial Caves Level 1': '遠古之路', // 118 The Ancients' Way
+  'Glacial Caves Level 2': '冰窖', // 119 Icy Cellar
+  'Rocky Summit': '亞瑞特山頂', // 120 Arreat Summit
+  'Halls of Anguish': '苦痛之廳', // 122
+  "Halls of Death's Calling": '痛苦之廳', // 123 Halls of Pain
+  'Halls of Vaught': '沃特之廳', // 124
+  Hell1: '亞巴頓', // 125 Abaddon
+  Hell2: '冥河之坑', // 126 Pit of Acheron
+  Hell3: '煉獄之坑', // 127 Infernal Pit
+  'The Worldstone Keep Level 1': '世界之石要塞第一層', // 128
+  'The Worldstone Keep Level 2': '世界之石要塞第二層', // 129
+  'The Worldstone Keep Level 3': '世界之石要塞第三層', // 130
+  'Throne of Destruction': '毀滅王座', // 131
+  'The Worldstone Chamber': '世界之石大殿', // 132
+}
+
 const EXPANSION_CHI_FALLBACKS: Readonly<Record<string, string>> = {
   ...EXPANSION_NPC_DIALOG_CHI,
+  ...EXPANSION_LEVEL_NAME_CHI,
   strethereal: '无形的 (无法修复)',
   PalMercEXST3X: '進攻',
   ModStre9s: '无法破坏',
@@ -77,6 +110,52 @@ const EXPANSION_CHI_FALLBACKS: Readonly<Record<string, string>> = {
   GemXp3: '武器：',
   GemXp4: '护甲：',
   WeaponDescOrb: '法珠等级',
+  WeaponDescH2H: '爪等级',
+  BerserkSlayer: '狂暴杀手',
+  BloodBoss: '鲜血首领',
+  BloodBringer: '鲜血使者',
+  ConsumedFireBoar: '烈焰野猪',
+  ConsumedIceBoar: '寒冰野猪',
+  CrushBiest: '粉碎兽',
+  DeamonSteed: '恶魔战马',
+  DefiledWarrior: '亵渎战士',
+  Dominus: '女妖',
+  FanaticMinion: '狂热奴隶',
+  FireBoar: '火焰野猪',
+  FrenziedHellSpawn: '狂乱地狱魔怪',
+  FrenziedIceSpawn: '狂乱寒冰魔怪',
+  GoreBearer: '血肉背负者',
+  GreaterHellSpawn: '高阶地狱魔怪',
+  GreaterIceSpawn: '高阶寒冰魔怪',
+  HellSpawn: '地狱魔怪',
+  HellWhip: '地狱鞭笞者',
+  IceBoar: '寒冰野猪',
+  IceSpawn: '寒冰魔怪',
+  Imp1: '恶魔小鬼',
+  Imp2: '恶魔流氓',
+  Imp3: '恶魔捣蛋鬼',
+  Imp4: '恶魔欺诈者',
+  Imp5: '恶魔妖精',
+  InsaneHellSpawn: '疯狂地狱魔怪',
+  InsaneIceSpawn: '疯狂寒冰魔怪',
+  Lasher: '鞭笞者',
+  'MinionIce/fireBoarSpawner': '恶魔传送门',
+  MinionSlayerSpawner: '恶魔传送门',
+  MinionSpawner: '恶魔传送门',
+  Minionexp: '奴隶',
+  'Minionice/hellSpawnSpawner': '恶魔传送门',
+  OverLord: '霸主',
+  OverSeer: '督军',
+  ProwlingDead: '徘徊死尸',
+  ReanimatedHorde: '复苏死尸',
+  RotWalker: '腐烂行尸',
+  Slayerexp: '杀手',
+  StygianFury: '冥河怒妖',
+  StygianHarlot: '冥河妖妇',
+  Succubusexp: '魅魔',
+  UnholyCorpse: '邪恶死尸',
+  VileTemptress: '邪恶女妖',
+  VileWitch: '邪恶女巫',
   ModStre8a: ' 德鲁伊技能',
   ModStre8c: ' 凹槽',
   ModStre8d: ' 对恶魔的攻击准确率',
@@ -414,6 +493,11 @@ async function main() {
     'NPCMenuTrade',
     'gamble',
     'lowercasecancel',
+    'cancel',
+    'strTradeAccept',
+    'GoldMax',
+    'charavghit',
+    'charmonster',
     'WarrivMenu1b',
     'WarrivMenu1c',
     'MeshifMenuEast',
@@ -574,9 +658,12 @@ async function main() {
     }
     const evTrim = ev?.trim() ?? ''
     const questZh = CANONICAL_QUEST_TBL_STRINGS[k]?.zh
+    const rawChi = chi.get(k)
+    const validChi =
+      rawChi !== undefined && (rawChi.trim().length > 0 || evTrim.length === 0) ? rawChi : undefined
     const cv =
       EXPANSION_NPC_DIALOG_CHI[k] ??
-      chi.get(k) ??
+      validChi ??
       EXPANSION_CHI_FALLBACKS[k] ??
       (questZh && questZh.length > 0 ? questZh : undefined) ??
       ITEM_NAMES_ZH[ev ?? ''] ??
@@ -591,7 +678,8 @@ async function main() {
       CLASS_RESTRICTION_SUFFIX_ZH[ev ?? ''] ??
       CLASS_RESTRICTION_SUFFIX_ZH[evTrim] ??
       CLASS_RESTRICTION_SUFFIX_ZH[k] ??
-      RUNE_INFO_ZH[k]?.nameZh
+      RUNE_INFO_ZH[k]?.nameZh ??
+      ev
     if (cv !== undefined) {
       chiOut[k] = cv
     }
@@ -654,7 +742,7 @@ async function main() {
   //   - 1066: "Diablo II was unable to connect to the realm server. ..." (string index 11066)
   //   - 76: Charsi Imbue restriction line "No Magic, Socketed, Rare, Unique, or Set Items. No Jewelry."
   //         (key "upgraderestrictEx", D2Client useitem.cpp 0x6fb4f688 string index 0x275c = 10076)
-  for (const idx of [95, 1066, 76, 106, 107, 108, 109, 808, 1004, 1005]) {
+  for (const idx of [95, 1066, 76, 103, 104, 105, 106, 107, 108, 109, 808, 1004, 1005, 1018]) {
     const alias = `patchstring#${idx}`
     const ev = eng.tables[0]?.[idx]?.replace(/\u00c3\u00bfc/g, 'ÿc')
     const cv = chi.tables[0]?.[idx]
@@ -662,6 +750,17 @@ async function main() {
     engOut[alias] = ev
     chiOut[alias] = cv
   }
+  for (const idx of [103, 104, 105]) {
+    const globalKey = String(10000 + idx)
+    engOut[globalKey] = engOut[`patchstring#${idx}`]!
+    chiOut[globalKey] = chiOut[`patchstring#${idx}`]!
+  }
+  if (engOut['strTradeAccept'] !== undefined) engOut['strParty20'] = engOut['strTradeAccept']!
+  if (chiOut['strTradeAccept'] !== undefined) chiOut['strParty20'] = chiOut['strTradeAccept']!
+  if (engOut['GoldMax'] !== undefined) engOut['StrBnk2'] = engOut['GoldMax']!
+  if (chiOut['GoldMax'] !== undefined) chiOut['StrBnk2'] = chiOut['GoldMax']!
+  if (engOut['charavghit'] !== undefined) engOut['StrChr20'] = engOut['charavghit']!
+  if (chiOut['charavghit'] !== undefined) chiOut['StrChr20'] = chiOut['charavghit']!
 
   // Index-only string.tbl (d2data.mpq) Battle.net connection, chat/event (0x26/0x5A), party, and UI strings,
   // emitted under `string#<n>` (string.tbl index n = global tbl index n). Read straight from string.tbl so the
@@ -670,14 +769,14 @@ async function main() {
   const chiStringTbl = decodeTbl(await archives.read('data\\local\\lng\\chi\\string.tbl'), 'utf-8')
   const stringTblIndices = [
     3224,
-    3401,
+    3401, 3402,
     3639, 3640, 3641, 3642, 3643, 3644, 3645, 3646, 3647, 3648, 3649, 3651, 3652, 3653, 3654, 3655, 3658,
     3660, 3661, 3662, 3663, 3664, 3665, 3666, 3667, 3668, 3669, 3670, 3671, 3672, 3673, 3674, 3675, 3676, 3677, 3678, 3679, 3680, 3681, 3682,
     3683, 3684, 3685, 3686, 3687, 3688, 3689, 3690, 3691, 3692, 3693, 3694, 3695, 3696, 3697, 3698, 3699, 3700, 3701, 3702, 3703, 3704, 3705,
     3706, 3707, 3708, 3709, 3710,
     3792, 3970, 3981,
-    4017, 4024, 4025, 4026, 4027, 4028, 4029, 4030, 4031, 4032, 4035, 4044, 4047, 4048,
-    4114, 4115, 4116, 4117, 4118, 4119, 4134, 4135, 4143, 4144, 4174,
+    4017, 4024, 4025, 4026, 4027, 4028, 4029, 4030, 4031, 4032, 4035, 4041, 4044, 4047, 4048, 4051,
+    4114, 4115, 4116, 4117, 4118, 4119, 4131, 4132, 4134, 4135, 4143, 4144, 4159, 4160, 4174,
     5349, 5351, 5352, 5353, 5357,
   ]
   for (const idx of stringTblIndices) {
@@ -763,7 +862,15 @@ export const CANONICAL_ISC_DESC_TABLE: Readonly<Record<string, CanonicalIscDescE
 
 export function resolveTblKey(key: string, lang: 'CHI' | 'ENG' = 'CHI'): string | undefined {
   const dict = lang === 'ENG' ? CANONICAL_ENG_TBL_DICT : CANONICAL_CHI_TBL_DICT
-  return dict[key] ?? dict[key.trim()]
+  const trimmedKey = key.trim()
+  const val = dict[key] ?? dict[trimmedKey]
+  if (lang === 'CHI' && val !== undefined && val.trim().length === 0) {
+    const engVal = CANONICAL_ENG_TBL_DICT[key] ?? CANONICAL_ENG_TBL_DICT[trimmedKey]
+    if (engVal !== undefined && engVal.trim().length > 0) {
+      return engVal
+    }
+  }
+  return val
 }
 `
 

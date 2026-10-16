@@ -1,4 +1,5 @@
 import type { Palette } from '../../common/formats/pal.ts'
+import type { D2DrawModeBlend } from '../../common/gfx/draw-mode.ts'
 import type {
   EntityAtlasPage,
   MonsterIndexEntry,
@@ -6,7 +7,7 @@ import type {
   PackedEntityCatalogIndex,
 } from '../../common/pack-contract/index.ts'
 import type { AnimClipMeta } from '../../common/units/unit-types.ts'
-import { ADDITIVE_MONSTER_TOKENS, type LoadedMonsterArt } from '../render/monster-art.ts'
+import { ADDITIVE_MONSTER_TOKENS, type CofLayerDrawBlendMode, type LoadedMonsterArt } from '../render/monster-art.ts'
 import { resolveMonsterArtSpec } from '../../common/units/monster-mapping.ts'
 import { resolveMonsterComponentVariantKey113c } from '../../common/units/monster-component-variants-113c.ts'
 import type { AtlasFrame } from '../render/atlas.ts'
@@ -29,7 +30,7 @@ export interface LoadedObjectArt {
   readonly handle: AtlasHandle
   readonly groups: readonly (readonly AtlasFrame[])[]
   readonly glowGroups?: readonly (readonly AtlasFrame[])[]
-  readonly blendMode: 'normal' | 'additive'
+  readonly blendMode: CofLayerDrawBlendMode
   readonly directions: number
   readonly standOffset: number
   readonly standFrames: number
@@ -65,7 +66,7 @@ export interface PackedMonsterJson {
   readonly file: string
   readonly width: number
   readonly height: number
-  readonly blendMode?: 'normal' | 'additive' | undefined
+  readonly blendMode?: CofLayerDrawBlendMode | D2DrawModeBlend | undefined
   readonly directions: number
   readonly walkOffset?: number
   readonly standOffset: number
@@ -107,13 +108,21 @@ const OPAQUE_MONSTER_TOKENS: ReadonlySet<string> = new Set([
 
 export function normalizeMonsterBlendMode(
   token: string,
-  rawBlendMode: 'normal' | 'additive' | undefined,
-): 'normal' | 'additive' {
+  rawBlendMode: CofLayerDrawBlendMode | D2DrawModeBlend | undefined,
+): CofLayerDrawBlendMode {
   const upper = token.trim().toUpperCase()
   if (OPAQUE_MONSTER_TOKENS.has(upper)) {
     return 'normal'
   }
-  return rawBlendMode === 'additive' ? 'additive' : 'normal'
+  if (
+    rawBlendMode === 'additive' ||
+    rawBlendMode === 'trans25' ||
+    rawBlendMode === 'trans50' ||
+    rawBlendMode === 'trans75'
+  ) {
+    return rawBlendMode
+  }
+  return 'normal'
 }
 
 /**
@@ -526,7 +535,9 @@ function buildLoadedObjectArt(
       indexEntry?.trans === 1 ||
       indexEntry?.trans === 2
         ? 'additive'
-        : 'normal',
+        : meta.blendMode === 'trans25' || meta.blendMode === 'trans50' || meta.blendMode === 'trans75'
+          ? meta.blendMode
+          : 'normal',
     directions: Math.max(1, meta.directions || 1),
     standOffset: meta.standOffset ?? 0,
     standFrames: Math.max(1, meta.standFrames || 1),

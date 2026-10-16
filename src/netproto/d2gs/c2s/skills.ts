@@ -116,3 +116,28 @@ export function encodeC2sAddSkillPoint(skillId: number): Uint8Array {
   w.u16LE(skillId & 0xffff)
   return validateC2sPacket(w.toUint8Array())
 }
+
+/**
+ * 0x51 AssignSkillHotkey (9B, D2Client.dll 0x6faed2b6):
+ * u8 0x51 | u8 skillLo | u8 ((skillHi & 0x7f) | (hand === 'left' ? 0x80 : 0)) | u16 slot | u32 itemId
+ * When unbinding (`skillId === 0xffff`), bytes 1..2 are `0xff, 0xff` (`bLeft === 0`).
+ */
+export function encodeC2sAssignSkillHotkey(
+  slot: number,
+  hand: Hand,
+  skillId: number,
+  itemId = 0xffffffff,
+): Uint8Array {
+  const w = new ByteWriter(9)
+  w.u8(0x51)
+  const rawSkill = skillId & 0xffff
+  w.u8(rawSkill & 0xff)
+  const hi =
+    rawSkill === 0xffff
+      ? 0xff
+      : ((rawSkill >>> 8) & 0x7f) | (hand === 'left' ? 0x80 : 0x00)
+  w.u8(hi & 0xff)
+  w.u16LE(slot & 0xffff)
+  w.u32LE(itemId >>> 0)
+  return validateC2sPacket(w.toUint8Array())
+}

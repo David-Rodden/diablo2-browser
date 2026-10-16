@@ -36,6 +36,8 @@ import type { GroundItemBeamDescriptor, HudManager } from '../ui/hud-manager.ts'
 import { resolveOverheadBubbleText113c } from '../../common/chat/chat-113c.ts'
 import { getTblLang, lookupTbl } from '../i18n/lang.ts'
 import { AUTHENTIC_113C_OVERLAYS } from '../render/overlays-meta.ts'
+import { missileTransToDrawBlend, overlayTransToDrawBlend } from '../../common/gfx/draw-mode.ts'
+import { celFileArtKey, resolveArtByCelFile } from '../render/cel-file-key.ts'
 import {
   CANONICAL_113C_OBJECTS,
   isObjectSelectableInMode,
@@ -649,10 +651,10 @@ export function drawSceneUnitDrawable(
   if (unit.unitKind === 'player') {
     const tokenLower = unit.token.toLowerCase()
     const isTransformedMorph =
-      tokenLower === '40' || tokenLower === 'tg' || tokenLower === 'va'
+      tokenLower === '40' || tokenLower === 'tg' || tokenLower === 'va' || tokenLower === 'fk'
     if (isTransformedMorph) {
       const morphClassId =
-        tokenLower === '40' ? 430 : tokenLower === 'tg' ? 431 : 135
+        tokenLower === '40' ? 430 : tokenLower === 'tg' ? 431 : tokenLower === 'fk' ? 212 : 135
       let art: LoadedMonsterArt | undefined
       if (ctx.entityArtCache) {
         const cacheRes = ctx.entityArtCache.getMonsterArt(morphClassId, actId)
@@ -668,30 +670,38 @@ export function drawSceneUnitDrawable(
       }
       if (art !== undefined) {
         const isMoving = unit.mode === 2 || unit.mode === 3 || unit.mode === 6
+        // Per D2Common.dll #11013 PlayerToMonsterMode (0x6FD9F780, lookup table @ 0x6FDE3088):
+        // PLRMODE_CAST (10) -> MONMODE_CAST ('sc', fallback 's3'/'a1'),
+        // PLRMODE_BLOCK (9) -> MONMODE_BLOCK ('bl', fallback 'a1'),
+        // PLRMODE_KICK (12) -> MONMODE_SKILL4 ('s4', fallback 'a1'),
+        // PLRMODE_SEQUENCE (18) -> MONMODE_ATTACK1 ('a1'),
+        // PLRMODE_RUN (3) -> MONMODE_RUN ('rn', fallback 'wl').
         const morphClip =
-          unit.mode === 7
+          unit.mode === 7 || unit.mode === 18
             ? 'a1'
             : unit.mode === 8
               ? (art.clips?.a2 ? 'a2' : 'a1')
               : unit.mode === 10
-                ? (art.clips?.s3 ? 's3' : art.clips?.sc ? 'sc' : 'a1')
+                ? (art.clips?.sc ? 'sc' : art.clips?.s3 ? 's3' : 'a1')
                 : unit.mode === 13
                   ? (art.clips?.s1 ? 's1' : art.clips?.sc ? 'sc' : 'a1')
                   : unit.mode === 14
                     ? (art.clips?.s2 ? 's2' : art.clips?.s1 ? 's1' : 'a1')
                     : unit.mode === 15
                       ? (art.clips?.s3 ? 's3' : art.clips?.s1 ? 's1' : 'a1')
-                      : unit.mode === 16
+                      : unit.mode === 16 || unit.mode === 12
                         ? (art.clips?.s4 ? 's4' : art.clips?.s1 ? 's1' : 'a1')
                         : unit.mode === 9
-                          ? 'bl'
-                          : unit.mode === 4 || unit.mode === 12
+                          ? (art.clips?.bl ? 'bl' : 'a1')
+                          : unit.mode === 4 || unit.mode === 19
                             ? 'gh'
                             : unit.mode === 0 || unit.mode === 17
                               ? 'dt'
-                              : isMoving
-                                ? 'wl'
-                                : 'nu'
+                              : unit.mode === 3
+                                ? (art.clips?.rn ? 'rn' : 'wl')
+                                : isMoving
+                                  ? 'wl'
+                                  : 'nu'
         const requestedClipKey = unit.isCorpse
           ? (art.clips?.dt ? 'dt' : art.clips?.dd ? 'dd' : 'nu')
           : (art.clips?.[morphClip] ? morphClip : (isMoving ? 'wl' : 'nu'))
@@ -761,24 +771,31 @@ export function drawSceneUnitDrawable(
               unit.animStartedAtMs ?? unit.castState?.startedAtMs,
               nowMs,
             )
+            const morphCanonicalClip = getCharAnimClip113c(unit.classId, requestedClipKey, {
+              morphMonsterClassId: morphClassId,
+            })
             frameIndex = computeAnimFrameIndex({
               frameCount,
               stepSpeed256,
               loop: false,
               nowMs,
               startedAtMs,
+              skillId: unit.castState?.skillId,
+              actionFrame: morphCanonicalClip?.actionFrame,
             })
           }
           const frame = group?.[frameIndex] ?? group?.[0]
           if (frame !== undefined) {
+            const altitude = unit.altitude ?? 0
             const drawX =
               frame.anchorX !== undefined
                 ? unit.worldX + frame.anchorX
                 : unit.worldX - frame.width / 2
-            const drawY =
+            const groundDrawY =
               frame.anchorY !== undefined
                 ? unit.worldY + frame.anchorY
                 : unit.worldY - frame.height + FEET_HEIGHT / 2
+            const drawY = groundDrawY - altitude
             const isFaded =
               Boolean(unit.isFaded) ||
               unit.blendMode === 'trans50' ||
@@ -795,7 +812,7 @@ export function drawSceneUnitDrawable(
                 ? ([1.0, 1.0, 1.0, baseAlpha] as const)
                 : undefined
             if (!unit.isCorpse && !(unit as { dead?: boolean }).dead && unit.mode !== 0 && unit.mode !== 17) {
-              drawUnitPerspectiveShadow(renderer, frame, drawX, drawY, art.handle)
+              drawUnitPerspectiveShadow(renderer, frame, drawX, groundDrawY, art.handle)
             }
             renderer.draw(frame, drawX, drawY, {
               atlas: art.handle,
@@ -970,19 +987,23 @@ export function drawSceneUnitDrawable(
             loop: false,
             nowMs,
             startedAtMs,
+            skillId: unit.castState?.skillId,
+            actionFrame: canonicalClip?.actionFrame,
           })
         }
       }
       const frame = group?.[frameIndex] ?? group?.[0]
       if (frame !== undefined) {
+        const altitude = unit.altitude ?? 0
         const drawX =
           frame.anchorX !== undefined
             ? unit.worldX + frame.anchorX
             : unit.worldX - frame.width / 2
-        const drawY =
+        const groundDrawY =
           frame.anchorY !== undefined
             ? unit.worldY + frame.anchorY
             : unit.worldY - frame.height + FEET_HEIGHT / 2
+        const drawY = groundDrawY - altitude
         const isFaded =
           Boolean(unit.isFaded) ||
           unit.blendMode === 'trans50' ||
@@ -999,7 +1020,7 @@ export function drawSceneUnitDrawable(
             ? ([1.0, 1.0, 1.0, baseAlpha] as const)
             : undefined
         if (!unit.isCorpse && !(unit as { dead?: boolean }).dead && unit.mode !== 0 && unit.mode !== 17) {
-          drawUnitPerspectiveShadow(renderer, frame, drawX, drawY, charArt.handle)
+          drawUnitPerspectiveShadow(renderer, frame, drawX, groundDrawY, charArt.handle)
         }
         renderer.draw(frame, drawX, drawY, {
           atlas: charArt.handle,
@@ -1029,15 +1050,34 @@ export function drawSceneUnitDrawable(
     if ((isAmazonDisguiseSummon || isAssassinDisguiseSummon) && isSummonAlive) {
       const charToken = isAmazonDisguiseSummon ? 'am' : 'ai'
       const charClassId = isAmazonDisguiseSummon ? 0 : 6
-      const charArt =
-        ctx.characterArtByToken?.get(charToken) ??
-        ctx.characterArtByToken?.get(charToken.toUpperCase()) ??
-        null
-      if (charArt !== null && ctx.noteCharacterArtUse !== undefined) {
-        ctx.noteCharacterArtUse(charToken)
+      let charArt: LoadedCharacter | null = null
+      if (unit.equipmentAppearance !== undefined) {
+        const effectiveSpec: SorceressAppearanceSpec =
+          unit.equipmentAppearance.classToken !== undefined
+            ? unit.equipmentAppearance
+            : { ...unit.equipmentAppearance, classToken: charToken as PlayerClassToken }
+        const paperdollCache = ctx.paperdollGpuCache ?? getPlayerPaperdollGpuCache(renderer)
+        const dynamicArt = paperdollCache.getCharacterArt(
+          effectiveSpec,
+          unit.unitId,
+          unit.appearanceKey,
+        )
+        if (dynamicArt !== 'loading' && dynamicArt !== null) {
+          charArt = dynamicArt
+        }
       }
-      if (charArt === null && ctx.ensureCharacterArt !== undefined) {
-        void ctx.ensureCharacterArt(charToken)
+      if (charArt === null) {
+        charArt =
+          ctx.characterArtByToken?.get(charToken) ??
+          ctx.characterArtByToken?.get(charToken.toUpperCase()) ??
+          (ctx.characterArtByToken === undefined ? (ctx.characterArt ?? null) : null)
+        if (charArt !== null && ctx.noteCharacterArtUse !== undefined) {
+          ctx.noteCharacterArtUse(charToken)
+        }
+        if (charArt === null && ctx.ensureCharacterArt !== undefined) {
+          void ctx.ensureCharacterArt(charToken)
+          return
+        }
       }
       if (charArt !== null) {
         const modeClip = MONSTER_MODE_TO_CLIP[unit.mode] ?? 'nu'
@@ -1215,14 +1255,16 @@ export function drawSceneUnitDrawable(
       }
       const frame = group?.[frameIndex] ?? group?.[0]
       if (frame !== undefined) {
+        const altitude = unit.altitude ?? 0
         const drawX =
           frame.anchorX !== undefined
             ? unit.worldX + frame.anchorX
             : unit.worldX - frame.width / 2
-        const drawY =
+        const groundDrawY =
           frame.anchorY !== undefined
             ? unit.worldY + frame.anchorY
             : unit.worldY - frame.height + FEET_HEIGHT / 2
+        const drawY = groundDrawY - altitude
         const resolvedToken = (art.token || unit.token || '').trim().toUpperCase()
         const isOpaqueTownNpc =
           (unit.isNpc === true || isTownNpcHcIdx(unit.classId)) &&
@@ -1239,7 +1281,7 @@ export function drawSceneUnitDrawable(
             ] as const)
           : undefined
         if (!unit.isCorpse && !(unit as { dead?: boolean }).dead && unit.mode !== 0 && unit.mode !== 12 && baseBlendMode !== 'additive') {
-          drawUnitPerspectiveShadow(renderer, frame, drawX, drawY, art.handle)
+          drawUnitPerspectiveShadow(renderer, frame, drawX, groundDrawY, art.handle)
         }
         renderer.draw(frame, drawX, drawY, {
           atlas: art.handle,
@@ -1266,6 +1308,82 @@ export function drawSceneUnitDrawable(
         }
         return
       }
+    }
+    // 1.13c SkillCltDoFunc[89] / StateCltDoFunc[4] bridge (Issue #1288):
+    // Druid vine summons (plaguepoppy #425, cycleoflife #426, vinecreature #427, token 'k9') have no DCC files
+    // under data/global/monsters/k9/; their visuals reside in Missiles.txt ('vine beast walk 1' #466,
+    // 'vine beast neutral' #468, 'vine beast attack' #469, 'vine beast death' #470).
+    if (
+      unit.classId === 425 ||
+      unit.classId === 426 ||
+      unit.classId === 427 ||
+      unit.token.trim().toLowerCase() === 'k9'
+    ) {
+      const isDeadOrCorpse =
+        unit.isCorpse ||
+        Boolean((unit as { dead?: boolean }).dead) ||
+        unit.mode === 0 ||
+        unit.mode === 12
+      const isMoving = unit.mode === 2 || unit.mode === 15
+      const isAttacking =
+        unit.mode === 4 ||
+        unit.mode === 5 ||
+        unit.mode === 7 ||
+        unit.mode === 8 ||
+        unit.mode === 9 ||
+        unit.mode === 10 ||
+        unit.mode === 11
+      const vineMissileKey = isDeadOrCorpse
+        ? 'vine beast death'
+        : isMoving
+          ? 'vine beast walk 1'
+          : isAttacking
+            ? 'vine beast attack'
+            : 'vine beast neutral'
+      const vineCelFile = isDeadOrCorpse
+        ? 'expansion/Pod_death_1'
+        : isMoving
+          ? 'expansion/Pod_walk_1'
+          : isAttacking
+            ? 'expansion/Pod_attack_1'
+            : 'expansion/Pod_neutral_1'
+      const vineArt =
+        resolveArtByCelFile(ctx.missileArtMap, vineMissileKey, vineCelFile) ??
+        ctx.missileArtMap?.get(vineMissileKey)
+      if (vineArt !== undefined) {
+        const dirCount = Math.max(1, vineArt.meta.directions)
+        const direction = dir64ToClipDirection(unit.direction, dirCount)
+        const group = vineArt.frames[direction] ?? vineArt.frames[0]
+        const frameCount = Math.max(1, group?.length ?? 1)
+        const stepSpeed256 = Math.max(1, (vineArt.meta.animSpeed || 16) * 16)
+        const shouldLoop = !isDeadOrCorpse && !isAttacking
+        const frameIdx =
+          isDeadOrCorpse && unit.mode === 12
+            ? frameCount - 1
+            : computeAnimFrameIndex({
+                frameCount,
+                stepSpeed256,
+                loop: shouldLoop,
+                nowMs,
+              })
+        const frame = group?.[frameIdx] ?? group?.[0]
+        if (frame !== undefined) {
+          const drawX =
+            frame.anchorX !== undefined
+              ? unit.worldX + frame.anchorX
+              : unit.worldX - frame.width / 2
+          const drawY =
+            frame.anchorY !== undefined
+              ? unit.worldY + frame.anchorY
+              : unit.worldY - frame.height + FEET_HEIGHT / 2
+          renderer.draw(frame, drawX, drawY, {
+            atlas: vineArt.handle,
+            blendMode: 'normal',
+            elevationY: Math.max(0, frame.height - 16),
+          })
+        }
+      }
+      return
     }
     reportMissingArt(
       'monster',
@@ -1376,14 +1494,30 @@ export function drawSceneUnitDrawable(
             ctx.overlayArtMap.has('town_portal_op_hd')),
       )
       if (ctx.overlayArtMap && hasPortalOverlay) {
-        const portalStartMs = resolveOneShotStartMs(
-          `portal:${unit.unitId}`,
-          'portal',
-          unit.animStartedAtMs,
-          nowMs,
-        )
+        const portalKey = `portal:${unit.unitId}`
+        const prevPortal = oneShotStartMsByUnitKey.get(portalKey)
+        const keepOpTimeline =
+          unit.mode === 2 &&
+          prevPortal !== undefined &&
+          prevPortal.clipKey === 'portal-op' &&
+          nowMs >= prevPortal.effectiveStartMs
+        const portalStartMs = keepOpTimeline
+          ? prevPortal.effectiveStartMs
+          : resolveOneShotStartMs(
+              portalKey,
+              unit.mode === 2 ? 'portal-on' : 'portal-op',
+              unit.animStartedAtMs,
+              nowMs,
+            )
         const portalElapsedMs = Math.max(0, nowMs - portalStartMs)
-        drawTownPortal(renderer, unit.worldX, unit.worldY, portalElapsedMs, ctx.overlayArtMap)
+        drawTownPortal(
+          renderer,
+          unit.worldX,
+          unit.worldY,
+          portalElapsedMs,
+          ctx.overlayArtMap,
+          keepOpTimeline ? 1 : unit.mode,
+        )
         return
       }
     }
@@ -1611,12 +1745,11 @@ export function drawSceneUnitDrawable(
               const celFile =
                 AUTHENTIC_113C_OVERLAYS[lowerToken]?.filename ??
                 CANONICAL_113C_OVERLAYS[lowerToken]?.filename
-              const lowerCel = celFile?.toLowerCase()
+              const celKey = celFile ? celFileArtKey(celFile) : undefined
               const shrineOvArt =
+                (celKey ? ctx.overlayArtMap?.get(celKey) : undefined) ??
                 ctx.overlayArtMap?.get(shrineOverlayToken) ??
-                ctx.overlayArtMap?.get(lowerToken) ??
-                (celFile ? ctx.overlayArtMap?.get(celFile) : undefined) ??
-                (lowerCel ? ctx.overlayArtMap?.get(lowerCel) : undefined)
+                ctx.overlayArtMap?.get(lowerToken)
               const shrineOvGroup = shrineOvArt?.frames[0]
               if (shrineOvArt && shrineOvGroup && shrineOvGroup.length > 0) {
                 // 1.13c Overlay.txt rows 57..68 (shrine_shimmer00..shrine_experience):
@@ -1642,7 +1775,7 @@ export function drawSceneUnitDrawable(
                       : drawY - ovFrame.height - 8
                   renderer.draw(ovFrame, ovDrawX, ovDrawY, {
                     atlas: shrineOvArt.handle,
-                    blendMode: 'trans50',
+                    blendMode: overlayTransToDrawBlend(shrineOvArt.meta.trans),
                   })
                 }
               }
@@ -1661,7 +1794,7 @@ export function drawSceneUnitDrawable(
   }
 }
 
-function drawSceneMissileDrawable(
+export function drawSceneMissileDrawable(
   renderer: SpriteRenderer,
   missile: SceneMissileDrawable,
   ctx: SceneSourceRenderContext,
@@ -1675,10 +1808,8 @@ function drawSceneMissileDrawable(
   ) {
     return
   }
-  const art =
-    ctx.missileArtMap?.get(missile.missileKey) ??
-    ctx.missileArtMap?.get(missile.missileKey.toLowerCase()) ??
-    (missile.celFile ? ctx.missileArtMap?.get(missile.celFile.toLowerCase()) : undefined)
+  // 1.13c draws the DCC named by the row's CelFile; resolve strictly by the normalised CelFile key (Issue #1043).
+  const art = resolveArtByCelFile(ctx.missileArtMap, missile.missileKey, missile.celFile)
   if (art !== undefined) {
     const animSpeed = art.meta.animSpeed
     if (!(animSpeed > 0)) {
@@ -1693,10 +1824,12 @@ function drawSceneMissileDrawable(
     const dir = ((missile.direction % dirCount) + dirCount) % dirCount
     const group = art.frames[dir] ?? art.frames[0]
     const frameCount = Math.max(1, group?.length ?? 1)
+    const discreteFrame =
+      missile.missileKey === 'volcano' ? Math.round(missile.frame) : Math.floor(missile.frame)
     const frameIdx =
-      missile.loopAnim === false
-        ? Math.min(frameCount - 1, Math.max(0, Math.floor(missile.frame)))
-        : ((Math.floor(missile.frame) % frameCount) + frameCount) % frameCount
+      missile.loopAnim === false || missile.missileKey === 'volcano'
+        ? Math.min(frameCount - 1, Math.max(0, discreteFrame))
+        : ((discreteFrame % frameCount) + frameCount) % frameCount
     const frame = group?.[frameIdx] ?? group?.[0]
     if (frame !== undefined) {
       const altitude = missile.altitude ?? 0
@@ -1708,9 +1841,21 @@ function drawSceneMissileDrawable(
         (frame.anchorY !== undefined
           ? missile.worldY + frame.anchorY
           : missile.worldY - frame.height / 2) - altitude
+      const resolvedBlendMode =
+        missile.blendMode && missile.blendMode !== 'normal'
+          ? missile.blendMode
+          : missile.trans !== undefined && missile.trans !== 0
+            ? missileTransToDrawBlend(missile.trans)
+            : art.meta.trans !== undefined && art.meta.trans !== 0
+              ? missileTransToDrawBlend(art.meta.trans)
+              : art.meta.blendMode === 'lighter' || art.meta.blendMode === 'additive'
+                ? 'additive'
+                : art.meta.blendMode === 'burn' || art.meta.blendMode === 'multiply'
+                  ? 'burn'
+                  : (missile.blendMode ?? 'normal')
       renderer.draw(frame, drawX, drawY, {
         atlas: art.handle,
-        blendMode: missile.blendMode,
+        blendMode: resolvedBlendMode,
       })
       return
     }
@@ -1737,20 +1882,13 @@ export function drawSceneOverlayDrawable(
   if (celFile === '' || celFile === 'null') {
     return
   }
-  const lowerCel = celFile?.toLowerCase()
+  const celKey = celFile ? celFileArtKey(celFile) : undefined
   const art =
+    (celKey ? ctx.overlayArtMap?.get(celKey) : undefined) ??
     ctx.overlayArtMap?.get(overlay.token) ??
-    ctx.overlayArtMap?.get(lowerToken) ??
-    (celFile ? ctx.overlayArtMap?.get(celFile) : undefined) ??
-    (lowerCel ? ctx.overlayArtMap?.get(lowerCel) : undefined) ??
-    ctx.missileArtMap?.get(overlay.token) ??
-    ctx.missileArtMap?.get(lowerToken) ??
-    (celFile ? ctx.missileArtMap?.get(celFile) : undefined) ??
-    (lowerCel ? ctx.missileArtMap?.get(lowerCel) : undefined)
+    ctx.overlayArtMap?.get(lowerToken)
   if (art !== undefined) {
-    const animRate =
-      authEntry?.animRate ??
-      ('animRate' in art.meta ? art.meta.animRate : art.meta.animSpeed)
+    const animRate = authEntry?.animRate ?? art.meta.animRate
     if (!(animRate > 0)) {
       reportMissingArt(
         'overlay-speed',
@@ -1971,12 +2109,11 @@ export function buildAutomapShrineDescriptor(
     const celFile =
       AUTHENTIC_113C_OVERLAYS[lowerToken]?.filename ??
       CANONICAL_113C_OVERLAYS[lowerToken]?.filename
-    const lowerCel = celFile?.toLowerCase()
+    const celKey = celFile ? celFileArtKey(celFile) : undefined
     const shrineOvArt =
+      (celKey ? overlayArtMap.get(celKey) : undefined) ??
       overlayArtMap.get(badge.overlayToken) ??
-      overlayArtMap.get(lowerToken) ??
-      (celFile ? overlayArtMap.get(celFile) : undefined) ??
-      (lowerCel ? overlayArtMap.get(lowerCel) : undefined)
+      overlayArtMap.get(lowerToken)
     const shrineOvGroup = shrineOvArt?.frames[0]
     if (shrineOvArt && shrineOvGroup && shrineOvGroup.length > 0) {
       overlayAtlas = shrineOvArt.handle
@@ -2060,7 +2197,12 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
             unitDrawables: anyCtx.unitDrawables ?? [],
             missileDrawables: anyCtx.missileDrawables ?? [],
             overlayDrawables: anyCtx.overlayDrawables ?? [],
-            sortedDrawables: anyCtx.unitDrawables ?? [],
+            sortedDrawables:
+              anyCtx.sortedDrawables ?? [
+                ...(anyCtx.unitDrawables ?? []),
+                ...(anyCtx.missileDrawables ?? []),
+                ...(anyCtx.overlayDrawables ?? []),
+              ],
             pointLights: anyCtx.pointLights ?? [],
             lightEmitters: [],
           },
@@ -2285,7 +2427,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
       for (const entity of sortedEntities) {
         const isLocalPlayerUnit = entity.drawableKind === 'unit' && entity.isLocalPlayer === true
         const screenEntityY =
-          entity.drawableKind === 'missile'
+          entity.drawableKind === 'missile' || entity.drawableKind === 'unit'
             ? entity.worldY - (entity.altitude ?? 0)
             : entity.worldY
         if (
@@ -2419,6 +2561,10 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
             typeof ctx.automapView.getRadarConfig === 'function'
               ? ctx.automapView.getRadarConfig()
               : { automapShowMonsters: false, automapShowShrines: false }
+          const highlightWaypoints =
+            typeof ctx.automapView.getShowWaypoints === 'function'
+              ? ctx.automapView.getShowWaypoints()
+              : Boolean(radar.automapShowWaypoints)
           let localPlayerId: number | undefined
           for (const u of snapshot.entities.unitDrawables) {
             if (u.unitKind === 'player' && u.isLocalPlayer) {
@@ -2488,6 +2634,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
               entities: automapEntities,
               portals: automapPortals,
               ...(automapShrines.length > 0 ? { shrines: automapShrines } : {}),
+              ...(highlightWaypoints ? { highlightWaypoints: true } : {}),
               levelId: snapshot.levelId,
             },
           )

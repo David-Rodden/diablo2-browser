@@ -2,14 +2,14 @@
 
 ## Server: LastPortal operate (D2Game.dll `0x6fc7fd00`, Objects.txt OperateFn 72)
 
-D2MOO `OBJECTS_OperateFunction72_LastPortal` (1.10 `0x6FCB9290`) matches the 1.13c code:
+`OBJECTS_OperateFunction72_LastPortal` (`D2Game.dll` `0x6fc7fd00`):
 
 1. Quest 36 (A5Q6) data; return unless its `nLastPortalObjectMode == OBJMODE_OPENED (2)` (`0x6fc7fd34`).
 2. `QUESTRECORD_GetQuestState(playerQuests[difficulty], 40 /*A5Q6 record*/, 13)` (`0x6fc7fd5b`); if
    not set → `SUNIT_AttachSound(player, 19)` and stop (`0x6fc7fe15`).
 3. `LEVEL_WarpUnit(game, player, 109 /*Harrogath*/, 0)` (`0x6fc7fd76`) — the client receives the normal
    Harrogath load / assign packets first.
-4. Save all clients (`0x6fc4de30`, D2MOO `sub_6FC37B10` → `D2GAME_SAVE_WriteFile`).
+4. Save all clients (`0x6fc4de30` → `D2GAME_SAVE_WriteFile`).
 5. If the client exists and `PLAYER_IsBusy == 0`: reset interact info, `pPlayerData->bBusy = 1`, send
    **`61 07`** (`0x6fc7fde9`), then `QUESTRECORD_SetQuestState(..., filter, 10)`.
 

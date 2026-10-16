@@ -429,13 +429,22 @@ describe('Milestone M5 — HudModel, CommandMapper, and OnlineSession', () => {
       expect(flushed).not.toBeNull()
       expect(flushed?.type).toBe('Move')
 
-      // 4. Right-click in world space -> SkillAt (hand: 'right')
-      const rightRec = mapper.handlePointerDown(464, 268, 2, 3000)
+      // 4a. Right-click on empty ground with the default right-hand Attack (#0, a melee skill) and no Shift:
+      //     1.13c D2Client walks/runs to the clicked spot instead of swinging in place (Issue #1298).
+      const rightMeleeRec = mapper.handlePointerDown(464, 268, 2, 3000)
+      expect(rightMeleeRec?.command.type).toBe('Move')
+      mapper.handlePointerUp(2)
+
+      // 4b. With a ranged spell on the right hand (Fire Bolt #36, server-acked via 0x23), right-click in
+      //     world space -> SkillAt (hand: 'right')
+      world.apply({ type: 'ActiveSkill', unitId: 1, hand: 'right', skill: 36, itemId: 0xffffffff })
+      const rightRec = mapper.handlePointerDown(464, 268, 2, 3400)
       expect(rightRec?.command.type).toBe('SkillAt')
       if (rightRec?.command.type === 'SkillAt') {
         expect(rightRec.command.hand).toBe('right')
       }
       mapper.handlePointerUp(2)
+      world.apply({ type: 'ActiveSkill', unitId: 1, hand: 'right', skill: 0, itemId: 0xffffffff })
 
       // 5. Spawn ground item at subtile (104, 100) and click its screen projection
       world.apply({

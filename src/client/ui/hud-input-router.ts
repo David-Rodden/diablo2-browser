@@ -12,6 +12,8 @@
  */
 
 import { isPassiveSkill, isAuraSkill, isLeftUsableSkill } from './hotkeys.ts'
+import { isAutoBeltablePotion } from './belt.ts'
+import { STASH_GRID_ORIGIN, CUBE_GRID_ORIGIN } from './panels/panel-layout-constants.ts'
 import type { MiniPanelAction } from './control-bar.ts'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { calculateManaCost } from '../../common/skills/skill-calc-engine.ts'
@@ -31,6 +33,7 @@ import {
   isUiItemUnidentified,
   canPlayerUseUiItem,
   isTwoHandedForClass,
+  areHandSlotItemsCompatible,
   isItemAllowedInSlot,
 } from './inventory.ts'
 import type { BaseStatKey } from './character-sheet.ts'
@@ -368,8 +371,16 @@ export function drinkHudBeltSlot(hud: HudManager, col: number, shiftToMerc = fal
   for (let r = 1; !potion && col >= 0 && col < 4 && r < 4; r++) {
     potion = hud.belt.getSlot(slotCol, r)
   }
+  const code = (potion?.code ?? '').trim().toLowerCase()
+  const isMercConsumable = code.length > 0 && /^(hp[1-5]|hpo|hpf|rvs|rvl)$/.test(code)
+  const mercClassId = (hud.merc as any)?.classId ?? (hud.merc as any)?.hcIdx ?? 0
   // Server authority: request `0x26 BeltUse`; healing and belt contents come back from the server.
   if (hud.commandSink) {
+    if (shiftToMerc && potion && !isMercConsumable && (hud.commandSink as any).world === undefined) {
+      const cantUseSoundId = mercClassId === 271 ? 4612 : 4616
+      hud.onPlayUiSound?.(cantUseSoundId)
+      return false
+    }
     const ok = hud.commandSink.onUseBeltSlot
       ? hud.commandSink.onUseBeltSlot(col, shiftToMerc) !== false
       : hud.commandSink.useBeltSlot(col, shiftToMerc)
@@ -378,7 +389,27 @@ export function drinkHudBeltSlot(hud: HudManager, col: number, shiftToMerc = fal
     }
     return ok
   }
-  return false
+  if (!potion) return false
+  if (shiftToMerc) {
+    if (!isMercConsumable) {
+      const cantUseSoundId = mercClassId === 271 ? 4612 : 4616
+      hud.onPlayUiSound?.(cantUseSoundId)
+      return false
+    }
+    if (!hud.merc || hud.merc.isDead) {
+      return false
+    }
+    hud.belt.useSlot(slotCol, slotRow)
+    ;(hud as any).playItemUseUiSound(potion.code ?? 'hp1')
+    const thanksSoundId = mercClassId === 271 ? 4615 : 4625
+    hud.onPlayUiSound?.(thanksSoundId)
+    hud.syncPublishedState()
+    return true
+  }
+  hud.belt.useSlot(slotCol, slotRow)
+  ;(hud as any).playItemUseUiSound(potion.code ?? 'hp1')
+  hud.syncPublishedState()
+  return true
 }
 
 export function triggerHudResurrect(hud: HudManager): void {
@@ -400,7 +431,10 @@ export function handleHudKeyDown(
     typeof rawEvent === 'string'
       ? ({ key: rawEvent } as KeyboardEvent)
       : (rawEvent as KeyboardEvent)
-  if ((e as { _d2HandledByCommandMapper?: boolean })?._d2HandledByCommandMapper) {
+  if (
+    (e as { _d2HandledByCommandMapper?: boolean; _d2KeyHandled?: boolean })?._d2HandledByCommandMapper ||
+    (e as { _d2HandledByCommandMapper?: boolean; _d2KeyHandled?: boolean })?._d2KeyHandled
+  ) {
     return
   }
   if (isModalDomOverlayOpen()) {
@@ -414,11 +448,13 @@ export function handleHudKeyDown(
   }
   if ((hud.isDead || Boolean((hud.worldPanels as any).isDead)) && e.key === 'Escape') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     ;(hud as any).triggerResurrect()
     return
   }
   if (hud.goldDialog) {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     if (e.key === 'Enter') hud.confirmGoldDialog()
     else if (e.key === 'Escape') hud.cancelGoldDialog()
     else hud.typeGoldDialogKey(e.key)
@@ -440,12 +476,14 @@ export function handleHudKeyDown(
     ) {
       if (hud.worldPanels.handleNpcSpeechKeyDown(e.key)) {
         e.preventDefault?.()
+        ;(e as any)._d2KeyHandled = true
         hud.syncPublishedState()
         return
       }
     }
   }
   if (hud.worldPanels.escapeMenuOpen) {
+    ;(e as any)._d2KeyHandled = true
     if (e.key === 'Escape') {
       e.preventDefault?.()
       hud.toggleEscapeMenu()
@@ -466,43 +504,84 @@ export function handleHudKeyDown(
 
   if (key === 'I' || key === 'B') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.toggleRightPanel('inv')
   } else if (key === 'A' || key === 'C') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.toggleLeftPanel('char')
   } else if (key === 'O') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     if (hud.merc && !hud.merc.isDead) {
       hud.toggleLeftPanel('merc')
     }
   } else if (key === 'P') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.toggleLeftPanel('party')
   } else if (key === 'M') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.toggleLeftPanel('msg')
-  } else if (key === 'T' || key === 'S') {
+  } else if (key === 'T') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.toggleRightPanel('skill')
+  } else if (key === 'S') {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    hud.hotkeys.openPopup = hud.hotkeys.openPopup ? null : 'right'
+    hud.syncPublishedState()
   } else if (key === 'Q') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.toggleLeftPanel('quest')
+  } else if (key === 'Z') {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    hud.togglePartyPortraits()
+  } else if (key === 'H') {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    hud.toggleHelpOverlay()
+  } else if (key === 'N') {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    hud.chatOverlayMessages = []
+    hud.syncPublishedState()
   } else if (key === 'V') {
     e.preventDefault?.()
-    if (callbacks.onToggleAutomapMode) {
+    ;(e as any)._d2KeyHandled = true
+    if (typeof (hud as any).onToggleAutomapMode === 'function') {
+      ;(hud as any).onToggleAutomapMode()
+    } else if (callbacks.onToggleAutomapMode) {
       callbacks.onToggleAutomapMode()
     } else if (!hud.commandSink) {
       hud.toggleLeftPanel('waypoint')
     }
   } else if (key === 'F9') {
     e.preventDefault?.()
-    callbacks.onCycleAutomapFade?.()
+    ;(e as any)._d2KeyHandled = true
+    ;(hud as any).onCycleAutomapFade?.() ?? callbacks.onCycleAutomapFade?.()
   } else if (key === 'F10') {
     e.preventDefault?.()
-    callbacks.onToggleAutomapNames?.()
+    ;(e as any)._d2KeyHandled = true
+    ;(hud as any).onToggleAutomapNames?.() ?? callbacks.onToggleAutomapNames?.()
+  } else if (key === 'F11') {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    ;(hud as any).onToggleAutomapParty?.() ?? callbacks.onToggleAutomapParty?.()
+  } else if (key === 'F12') {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    ;(hud as any).onToggleAutomapNames?.() ?? callbacks.onToggleAutomapNames?.()
   } else if (e.key === 'Home') {
     e.preventDefault?.()
-    callbacks.onResetAutomapPan?.()
+    ;(e as any)._d2KeyHandled = true
+    ;(hud as any).onAutomapCenter?.() ??
+      (hud as any).onResetAutomapPan?.() ??
+      callbacks.onResetAutomapPan?.()
   } else if (
     e.key === 'ArrowUp' ||
     e.key === 'ArrowDown' ||
@@ -513,9 +592,11 @@ export function handleHudKeyDown(
     const dy = e.key === 'ArrowUp' ? -8 : e.key === 'ArrowDown' ? 8 : 0
     if (callbacks.onPanAutomap?.(dx, dy)) {
       e.preventDefault?.()
+      ;(e as any)._d2KeyHandled = true
     }
   } else if (key === 'W') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     if (hud.commandSink) {
       hud.commandSink.swapWeapons()
     } else if (hud.onWeaponSwitch) {
@@ -526,10 +607,12 @@ export function handleHudKeyDown(
     hud.syncPublishedState()
   } else if (key === 'R') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.isRunning = !hud.isRunning
     hud.syncPublishedState()
   } else if (e.key === '`' || e.key === '~') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.belt.togglePopup()
     hud.syncPublishedState()
   } else if (
@@ -537,34 +620,51 @@ export function handleHudKeyDown(
     key === '2' ||
     key === '3' ||
     key === '4' ||
+    e.key === '!' ||
+    e.key === '@' ||
+    e.key === '#' ||
+    e.key === '$' ||
     e.code === 'Digit1' ||
     e.code === 'Digit2' ||
     e.code === 'Digit3' ||
     e.code === 'Digit4'
   ) {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     const slotIndex =
-      e.code === 'Digit1'
+      e.code === 'Digit1' || e.key === '!'
         ? 0
-        : e.code === 'Digit2'
+        : e.code === 'Digit2' || e.key === '@'
           ? 1
-          : e.code === 'Digit3'
+          : e.code === 'Digit3' || e.key === '#'
             ? 2
-            : e.code === 'Digit4'
+            : e.code === 'Digit4' || e.key === '$'
               ? 3
               : Number(key) - 1
-    hud.drinkBeltSlot(slotIndex, Boolean(e.shiftKey))
-  } else if (/^F[1-8]$/.test(key)) {
+    const isShiftedKey =
+      Boolean(e.shiftKey) || e.key === '!' || e.key === '@' || e.key === '#' || e.key === '$'
+    hud.drinkBeltSlot(slotIndex, isShiftedKey)
+  } else if (/^(?:F[1-8]|SKILL(?:9|1[0-6]))$/.test(key)) {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.hotkeys.triggerFunctionKey(key)
     hud.syncPublishedState()
   } else if (e.key === 'Alt') {
     e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
     hud.showGroundLabels = true
     hud.syncPublishedState()
   } else if (e.key === 'Escape' || e.code === 'Space' || e.key === ' ') {
-    if (hud.closeAllPanels()) {
+    const isSpace = e.code === 'Space' || e.key === ' '
+    const closed = hud.closeAllPanels()
+    if (isSpace) {
+      ;(hud as any).onAutomapCenter?.() ??
+        (hud as any).onResetAutomapPan?.() ??
+        callbacks.onResetAutomapPan?.()
+    }
+    if (closed || isSpace) {
       e.preventDefault?.()
+      ;(e as any)._d2KeyHandled = true
     }
   }
 }
@@ -572,7 +672,12 @@ export function handleHudKeyDown(
 export function bindHudWindowEvents(hud: HudManager): void {
   const internal = hud as unknown as {
     eventsBound: boolean
-    boundWindowEvents: [Window | HTMLCanvasElement, string, EventListener][]
+    boundWindowEvents: [
+      Window | HTMLCanvasElement,
+      string,
+      EventListener,
+      (boolean | AddEventListenerOptions | undefined)?,
+    ][]
     hudCanvas: HTMLCanvasElement
     invalidateCanvasRectCache: () => void
   }
@@ -585,9 +690,10 @@ export function bindHudWindowEvents(hud: HudManager): void {
     target: Window | HTMLCanvasElement,
     type: string,
     fn: (e: Event) => void,
+    options?: boolean | AddEventListenerOptions,
   ): void => {
-    target.addEventListener(type, fn as EventListener)
-    internal.boundWindowEvents.push([target, type, fn as EventListener])
+    target.addEventListener(type, fn as EventListener, options)
+    internal.boundWindowEvents.push([target, type, fn as EventListener, options])
   }
 
   on(window, 'resize', () => internal.invalidateCanvasRectCache())
@@ -645,16 +751,30 @@ export function bindHudWindowEvents(hud: HudManager): void {
     hud.worldPanels.releaseMomentaryVendorButton()
   })
 
-  on(window, 'wheel', (e) => {
-    if (hud.leftPanel === 'msg') {
-      const pt = hud.clientToLogical((e as WheelEvent).clientX, (e as WheelEvent).clientY)
-      const docking = hud.getDockingLayout()
-      const leftPt = toLeftDockLocal(pt.x, pt.y, docking)
-      if (leftPt.x >= 0 && leftPt.x <= 400 && leftPt.y >= 0 && leftPt.y <= 553) {
-        hud.worldPanels.scrollMessageLog((e as WheelEvent).deltaY < 0 ? 2 : -2)
+  on(
+    window,
+    'wheel',
+    (e) => {
+      if ((e as { _d2WheelHandled?: boolean })._d2WheelHandled) return
+      const we = e as WheelEvent
+      if (hud.leftPanel === 'msg') {
+        const pt = hud.clientToLogical(we.clientX, we.clientY)
+        const docking = hud.getDockingLayout()
+        const leftPt = toLeftDockLocal(pt.x, pt.y, docking)
+        if (leftPt.x >= 0 && leftPt.x <= 400 && leftPt.y >= 0 && leftPt.y <= 553) {
+          hud.worldPanels.scrollMessageLog(we.deltaY < 0 ? 2 : -2)
+          ;(e as { _d2WheelHandled?: boolean })._d2WheelHandled = true
+          we.preventDefault()
+          return
+        }
       }
-    }
-  })
+      if (hud.handleWheel(we.deltaY)) {
+        ;(e as { _d2WheelHandled?: boolean })._d2WheelHandled = true
+        we.preventDefault()
+      }
+    },
+    { passive: false },
+  )
 
   on(internal.hudCanvas, 'contextmenu', (e) => {
     e.preventDefault()
@@ -666,10 +786,15 @@ export function bindHudWindowEvents(hud: HudManager): void {
 export function disposeHudWindowEvents(hud: HudManager): void {
   const internal = hud as unknown as {
     eventsBound: boolean
-    boundWindowEvents: [Window | HTMLCanvasElement, string, EventListener][]
+    boundWindowEvents: [
+      Window | HTMLCanvasElement,
+      string,
+      EventListener,
+      (boolean | AddEventListenerOptions | undefined)?,
+    ][]
   }
-  for (const [target, type, fn] of internal.boundWindowEvents) {
-    target.removeEventListener(type, fn)
+  for (const [target, type, fn, options] of internal.boundWindowEvents) {
+    target.removeEventListener(type, fn, options)
   }
   internal.boundWindowEvents.length = 0
   internal.eventsBound = false
@@ -933,22 +1058,79 @@ export function handleHudMouseDown(
     unspentSkillPoints: hud.skillTree.unspentSkillPoints,
   })
 
-  // Belt slot click: right-click drinks potion; left-click places/swaps/removes belt item in online mode
+  // Belt slot click: right-click drinks potion; Shift+Left-Click returns to inventory; left-click places/swaps/removes belt item
   const beltHit = hud.belt.slotAtPoint(barPt.x, barPt.y)
   if (beltHit) {
     if (e.button === 2) {
       hud.drinkBeltSlot(beltHit.row * 4 + beltHit.col, Boolean(e.shiftKey))
       return
     }
+    const beltPotion = hud.belt.getSlot(beltHit.col, beltHit.row)
+    const rawBeltId =
+      (beltPotion as { itemId?: number } | null)?.itemId ??
+      (beltPotion ? Number(beltPotion.id) : NaN)
+    const beltItemId = Number.isInteger(rawBeltId) && rawBeltId >= 0 ? beltItemIdFromRaw(rawBeltId) : undefined
+    function beltItemIdFromRaw(id: number): number {
+      return id
+    }
+    // D2Client.dll 0x6fb4b5f0: Shift + Left-Click on a belt slot moves the potion back into the inventory grid
+    if (e.shiftKey && !hud.inventory.cursorItem && beltPotion) {
+      if (hud.commandSink && beltItemId !== undefined) {
+        const sink = hud.commandSink
+        for (let irow = 0; irow < INV_GRID_ORIGIN.rows; irow++) {
+          for (let icol = 0; icol < INV_GRID_ORIGIN.cols; icol++) {
+            if (hud.inventory.getGridOverlaps(icol, irow, 1, 1).length === 0) {
+              if (sink.onRemoveBeltItem) sink.onRemoveBeltItem(beltItemId)
+              else sink.removeBeltItem?.(beltItemId)
+              sink.placeCursorItem(beltItemId, icol, irow, 0)
+              hud.syncPublishedState()
+              return
+            }
+          }
+        }
+        ;(hud as any).playCantCarrySound?.()
+        return
+      }
+      if (!hud.commandSink) {
+        for (let irow = 0; irow < INV_GRID_ORIGIN.rows; irow++) {
+          for (let icol = 0; icol < INV_GRID_ORIGIN.cols; icol++) {
+            if (hud.inventory.getGridOverlaps(icol, irow, 1, 1).length === 0) {
+              const removed = hud.belt.getSlot(beltHit.col, beltHit.row)
+              hud.belt.setSlot(beltHit.col, beltHit.row, null)
+              if (removed) {
+                hud.inventory.gridItems.push({
+                  item: {
+                    id: removed.id,
+                    code: removed.code ?? 'hp1',
+                    name: removed.name,
+                    nameZh: removed.nameZh,
+                    baseNameZh: removed.nameZh,
+                    invFile: removed.invFile,
+                    quality: 'normal',
+                    identified: true,
+                    invWidth: 1,
+                    invHeight: 1,
+                    allowedSlots: [],
+                    stats: [],
+                  },
+                  col: icol,
+                  row: irow,
+                })
+                hud.onPlayUiSound?.(235)
+                hud.syncPublishedState()
+              }
+              return
+            }
+          }
+        }
+        ;(hud as any).playCantCarrySound?.()
+        return
+      }
+    }
     if (hud.commandSink) {
       const sink = hud.commandSink
       const slotIndex = beltHit.row * 4 + beltHit.col
       const cursor = hud.inventory.cursorItem
-      const beltPotion = hud.belt.getSlot(beltHit.col, beltHit.row)
-      const rawBeltId =
-        (beltPotion as { itemId?: number } | null)?.itemId ??
-        (beltPotion ? Number(beltPotion.id) : NaN)
-      const beltItemId = Number.isInteger(rawBeltId) && rawBeltId >= 0 ? rawBeltId : undefined
       if (cursor) {
         const cursorId = serverItemIdOf(cursor)
         ;(hud as any).playItemDropUiSound(cursor)
@@ -974,7 +1156,7 @@ export function handleHudMouseDown(
     return
   }
 
-  if (hud.globes.handleClick(barPt.x, barPt.y)) {
+  if (e.button === 0 && !hud.inventory.cursorItem && hud.globes.handleClick(barPt.x, barPt.y)) {
     hud.syncPublishedState()
     return
   }
@@ -1259,7 +1441,24 @@ export function handleHudMouseDown(
                 row: number,
                 hitItem: UiInventoryItem | null,
                 isRightClick: boolean,
-              ) => (hud as any).forwardGridClick(container === 'stash' ? 4 : 3, col, row, hitItem, isRightClick),
+              ) =>
+                (hud as any).forwardGridClick(
+                  container === 'stash' ? 4 : 3,
+                  col,
+                  row,
+                  hitItem,
+                  isRightClick,
+                  Boolean(e.shiftKey),
+                ),
+              onQuickTransferToInventory: (
+                item: UiInventoryItem,
+                targetCol: number,
+                targetRow: number,
+              ) => {
+                const itemId = serverItemIdOf(item)
+                hud.commandSink?.pickupItemToCursor(itemId)
+                hud.commandSink?.placeCursorItem(itemId, targetCol, targetRow, 0)
+              },
             }
           : {}),
         onOpenCube: () => hud.toggleLeftPanel('cube'),
@@ -1277,47 +1476,91 @@ export function handleHudMouseDown(
   const rightPt = toRightDockLocal(pt.x, pt.y, docking)
   if (rightPt.x >= 400 && rightPt.x <= 800 && rightPt.y >= 0 && rightPt.y <= 553) {
     if (hud.rightPanel === 'inv') {
-      if (!hud.inventory.isIdentifyMode() && !hud.commandSink) {
-        // Stash quick transfer (Shift+Click, or Right-Click on non-usable items)
-        if (hud.leftPanel === 'stash' && (e.shiftKey || e.button === 2)) {
-          if (
-            rightPt.x >= INV_GRID_ORIGIN.x &&
-            rightPt.x < INV_GRID_ORIGIN.x + INV_GRID_ORIGIN.cols * INV_GRID_ORIGIN.cellPx &&
-            rightPt.y >= INV_GRID_ORIGIN.y &&
-            rightPt.y < INV_GRID_ORIGIN.y + INV_GRID_ORIGIN.rows * INV_GRID_ORIGIN.cellPx
-          ) {
-            const col = Math.floor((rightPt.x - INV_GRID_ORIGIN.x) / INV_GRID_ORIGIN.cellPx)
-            const row = Math.floor((rightPt.y - INV_GRID_ORIGIN.y) / INV_GRID_ORIGIN.cellPx)
-            const hit = hud.inventory.gridItems.find(
+      if (
+        !hud.inventory.isIdentifyMode() &&
+        hud.pendingIdentifyScrollId === null &&
+        !hud.inventory.cursorItem
+      ) {
+        const inInvGrid =
+          rightPt.x >= INV_GRID_ORIGIN.x &&
+          rightPt.x < INV_GRID_ORIGIN.x + INV_GRID_ORIGIN.cols * INV_GRID_ORIGIN.cellPx &&
+          rightPt.y >= INV_GRID_ORIGIN.y &&
+          rightPt.y < INV_GRID_ORIGIN.y + INV_GRID_ORIGIN.rows * INV_GRID_ORIGIN.cellPx
+        const col = inInvGrid ? Math.floor((rightPt.x - INV_GRID_ORIGIN.x) / INV_GRID_ORIGIN.cellPx) : -1
+        const row = inInvGrid ? Math.floor((rightPt.y - INV_GRID_ORIGIN.y) / INV_GRID_ORIGIN.cellPx) : -1
+        const hit = inInvGrid
+          ? hud.inventory.gridItems.find(
               (p) => col >= p.col && col < p.col + p.item.invWidth && row >= p.row && row < p.row + p.item.invHeight,
             )
-            if (hit && (e.shiftKey || !isUsableRightClickItem(hit.item.code))) {
-              hud.worldPanels.quickTransferToStash(hit.item, hud.inventory)
-              hud.syncPublishedState()
-              return
+          : undefined
+
+        // Stash quick transfer (Shift+Click in online/offline, or Right-Click on non-usable items offline)
+        if (hud.leftPanel === 'stash' && ((e.shiftKey && e.button === 0) || (e.button === 2 && !hud.commandSink))) {
+          if (inInvGrid && hit && (e.shiftKey || !isUsableRightClickItem(hit.item.code))) {
+            const transferred = hud.worldPanels.quickTransferToStash(hit.item, hud.inventory)
+            if (transferred && hud.commandSink && e.shiftKey && e.button === 0) {
+              const placed = hud.worldPanels.stashItems[hud.worldPanels.stashItems.length - 1]
+              const itemId = serverItemIdOf(hit.item)
+              hud.commandSink.pickupItemToCursor(itemId)
+              if (placed) {
+                hud.commandSink.placeCursorItem(itemId, placed.col, placed.row, 4)
+              }
             }
+            hud.syncPublishedState()
+            return
           }
         }
 
-        // Horadric Cube quick transfer (Shift+Click, or Right-Click on non-usable items)
-        if (hud.leftPanel === 'cube' && (e.shiftKey || e.button === 2)) {
-          if (
-            rightPt.x >= INV_GRID_ORIGIN.x &&
-            rightPt.x < INV_GRID_ORIGIN.x + INV_GRID_ORIGIN.cols * INV_GRID_ORIGIN.cellPx &&
-            rightPt.y >= INV_GRID_ORIGIN.y &&
-            rightPt.y < INV_GRID_ORIGIN.y + INV_GRID_ORIGIN.rows * INV_GRID_ORIGIN.cellPx
-          ) {
-            const col = Math.floor((rightPt.x - INV_GRID_ORIGIN.x) / INV_GRID_ORIGIN.cellPx)
-            const row = Math.floor((rightPt.y - INV_GRID_ORIGIN.y) / INV_GRID_ORIGIN.cellPx)
-            const hit = hud.inventory.gridItems.find(
-              (p) => col >= p.col && col < p.col + p.item.invWidth && row >= p.row && row < p.row + p.item.invHeight,
-            )
-            if (hit && (e.shiftKey || !isUsableRightClickItem(hit.item.code))) {
-              hud.worldPanels.quickTransferToCube(hit.item, hud.inventory)
-              hud.syncPublishedState()
-              return
+        // Horadric Cube quick transfer (Shift+Click in online/offline, or Right-Click on non-usable items offline)
+        if (hud.leftPanel === 'cube' && ((e.shiftKey && e.button === 0) || (e.button === 2 && !hud.commandSink))) {
+          if (inInvGrid && hit && (e.shiftKey || !isUsableRightClickItem(hit.item.code))) {
+            const transferred = hud.worldPanels.quickTransferToCube(hit.item, hud.inventory)
+            if (transferred && hud.commandSink && e.shiftKey && e.button === 0) {
+              const placed = hud.worldPanels.cubeItems[hud.worldPanels.cubeItems.length - 1]
+              const itemId = serverItemIdOf(hit.item)
+              hud.commandSink.pickupItemToCursor(itemId)
+              if (placed) {
+                hud.commandSink.placeCursorItem(itemId, placed.col, placed.row, 3)
+              }
             }
+            hud.syncPublishedState()
+            return
           }
+        }
+
+        // Belt quick transfer (`D2Client.dll 0x6FB47189` / `0x6fb49fb0`: Shift+Left-Click on beltable potion when Stash/Cube closed)
+        if (
+          e.shiftKey &&
+          e.button === 0 &&
+          hud.leftPanel !== 'stash' &&
+          hud.leftPanel !== 'cube' &&
+          inInvGrid &&
+          hit &&
+          isAutoBeltablePotion(hit.item)
+        ) {
+          const beltSlot = hud.belt.autoPlacePotionSlot(hit.item)
+          if (beltSlot) {
+            const hitIdx = hud.inventory.gridItems.indexOf(hit)
+            if (hitIdx !== -1) {
+              hud.inventory.gridItems.splice(hitIdx, 1)
+            }
+            hud.onPlayUiSound?.(235)
+            if (hud.commandSink) {
+              const itemId = serverItemIdOf(hit.item)
+              if (hud.commandSink.onAutoBeltItem) {
+                hud.commandSink.onAutoBeltItem(itemId)
+              } else if (hud.commandSink.autoBeltItem) {
+                hud.commandSink.autoBeltItem(itemId)
+              } else {
+                hud.commandSink.pickupItemToCursor(itemId)
+                hud.commandSink.putBeltItem?.(itemId, beltSlot.row * 4 + beltSlot.col)
+              }
+            }
+          } else {
+            ;(hud as any).playCantCarrySound?.()
+          }
+          hud.syncPublishedState()
+          return
         }
       }
 
@@ -1358,7 +1601,10 @@ export function handleHudMouseDown(
         }
       }
 
-      if (hud.commandSink && (hud as any).forwardInventoryPanelClick(rightPt.x, rightPt.y, e.button === 2)) {
+      if (
+        hud.commandSink &&
+        (hud as any).forwardInventoryPanelClick(rightPt.x, rightPt.y, e.button === 2, Boolean(e.shiftKey))
+      ) {
         hud.syncPublishedState()
         return
       }
@@ -1484,6 +1730,7 @@ export function forwardInventoryPanelClick(
   x: number,
   y: number,
   isRightClick: boolean,
+  isShiftClick = false,
 ): boolean {
   const sink = hud.commandSink
   if (!sink) return false
@@ -1559,7 +1806,7 @@ export function forwardInventoryPanelClick(
     const hit = hud.inventory.gridItems.find(
       (p) => col >= p.col && col < p.col + p.item.invWidth && row >= p.row && row < p.row + p.item.invHeight,
     )
-    ;(hud as any).forwardGridClick(0, col, row, hit?.item ?? null, isRightClick)
+    ;(hud as any).forwardGridClick(0, col, row, hit?.item ?? null, isRightClick, isShiftClick)
     return true
   }
   for (const slot of Object.keys(EQUIP_SLOTS_LAYOUT) as EquipSlotId[]) {
@@ -1597,7 +1844,7 @@ export function forwardInventoryPanelClick(
         const otherEquipped = hud.inventory.equipped[otherSlot]
 
         if (equipped) {
-          if (isTwoHandedForClass(cursor, classCode) && otherEquipped) {
+          if (otherEquipped && !areHandSlotItemsCompatible(cursor, otherEquipped, classCode)) {
             if (sink.onSwap2HandedDual) sink.onSwap2HandedDual(cursorId, slot)
             else if (sink.swap2HandedDual) sink.swap2HandedDual(cursorId, slot)
             else if (sink.onSwapEquipItem) sink.onSwapEquipItem(cursorId, slot)
@@ -1609,7 +1856,7 @@ export function forwardInventoryPanelClick(
             else sink.equipItem(cursorId, slot)
           }
         } else {
-          if (otherEquipped && (isTwoHandedForClass(otherEquipped, classCode) || isTwoHandedForClass(cursor, classCode))) {
+          if (otherEquipped && !areHandSlotItemsCompatible(cursor, otherEquipped, classCode)) {
             if (sink.onSwap2HandedItem) sink.onSwap2HandedItem(cursorId, slot)
             else if (sink.swap2HandedItem) sink.swap2HandedItem(cursorId, slot)
             else sink.equipItem(cursorId, slot)
@@ -1650,6 +1897,7 @@ export function forwardGridClick(
   row: number,
   hitItem: UiInventoryItem | null,
   isRightClick: boolean,
+  isShiftClick = false,
 ): void {
   const sink = hud.commandSink
   if (!sink) return
@@ -1709,6 +1957,74 @@ export function forwardGridClick(
     }
     ;(hud as any).playItemDropUiSound(cursor)
     sink.placeCursorItem(cursorId, col, row, buffer)
+  } else if (hitItem && isShiftClick && !isRightClick) {
+    const itemId = serverItemIdOf(hitItem)
+    const w = Math.max(1, hitItem.invWidth ?? 1)
+    const h = Math.max(1, hitItem.invHeight ?? 1)
+    if (buffer === 0) {
+      // Shift + Left-Click in inventory:
+      // 1) If Stash is open (`0x6fb49fb0`), quick-transfer to first available Stash slot (buffer 4).
+      if (hud.leftPanel === 'stash') {
+        for (let srow = 0; srow <= STASH_GRID_ORIGIN.rows - h; srow++) {
+          for (let scol = 0; scol <= STASH_GRID_ORIGIN.cols - w; scol++) {
+            if (hud.worldPanels.canPlaceInStash(scol, srow, w, h)) {
+              sink.pickupItemToCursor(itemId)
+              sink.placeCursorItem(itemId, scol, srow, 4)
+              return
+            }
+          }
+        }
+        ;(hud as any).playCantCarrySound?.()
+        return
+      }
+      // 2) If Horadric Cube is open, quick-transfer to first available Cube slot (buffer 3).
+      if (hud.leftPanel === 'cube') {
+        const hitCode = (hitItem.code ?? '').trim().toLowerCase()
+        if (hitCode === 'box' || hitCode === 'cube') {
+          ;(hud as any).playCantCarrySound?.()
+          return
+        }
+        for (let crow = 0; crow <= CUBE_GRID_ORIGIN.rows - h; crow++) {
+          for (let ccol = 0; ccol <= CUBE_GRID_ORIGIN.cols - w; ccol++) {
+            if (hud.worldPanels.canPlaceInCube(ccol, crow, w, h)) {
+              sink.pickupItemToCursor(itemId)
+              sink.placeCursorItem(itemId, ccol, crow, 3)
+              return
+            }
+          }
+        }
+        ;(hud as any).playCantCarrySound?.()
+        return
+      }
+      // 3) Otherwise, if item is a beltable potion, send C2S 0x63 ItemToBelt (`0x6fb49fb0` -> `0x6fb47240`).
+      if (isAutoBeltablePotion(hitItem)) {
+        if (hud.belt.canAutoPlacePotion(hitItem)) {
+          if (sink.onAutoBeltItem) sink.onAutoBeltItem(itemId)
+          else if (sink.autoBeltItem) sink.autoBeltItem(itemId)
+          else sink.pickupItemToCursor(itemId)
+        } else {
+          ;(hud as any).playCantCarrySound?.()
+        }
+        return
+      }
+      sink.pickupItemToCursor(itemId)
+      return
+    }
+    if (buffer === 4 || buffer === 3) {
+      // Shift + Left-Click in Stash (4) or Cube (3): quick-transfer to first available Inventory slot (buffer 0).
+      for (let irow = 0; irow <= INV_GRID_ORIGIN.rows - h; irow++) {
+        for (let icol = 0; icol <= INV_GRID_ORIGIN.cols - w; icol++) {
+          if (hud.inventory.getGridOverlaps(icol, irow, w, h).length === 0) {
+            sink.pickupItemToCursor(itemId)
+            sink.placeCursorItem(itemId, icol, irow, 0)
+            return
+          }
+        }
+      }
+      ;(hud as any).playCantCarrySound?.()
+      return
+    }
+    sink.pickupItemToCursor(itemId)
   } else if (hitItem && isRightClick) {
     const hitCode = (hitItem.code ?? '').trim().toLowerCase()
     if (buffer === 0 && (hitCode === 'isc' || hitCode === 'ibk')) {

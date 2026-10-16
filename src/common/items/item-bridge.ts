@@ -36,7 +36,7 @@ import {
   resolveSkillMeta,
 } from './item-tooltip.ts'
 import { decodeSkillTabParam, encodeSkillTabParam } from '../skills/skills-data.ts'
-import { translateItemName, translateRareName, translateMagicName } from '../i18n/tooltip-i18n.ts'
+import { translateItemName, translateRareName, translateMagicName, resolveMagicNameEn } from '../i18n/tooltip-i18n.ts'
 import { isRuneCode, getGemColorTransform, COLOR_CODES } from './gems-data.ts'
 import { CANONICAL_AUTOMAGIC_TABLE } from './automagic.ts'
 import type { D2ColorCode } from '../skills/skills-meta.ts'
@@ -99,6 +99,27 @@ export const STRICT_TWO_HANDED_WEAPON_CODES: ReadonlySet<string> = new Set([
   '7o7', '7vo', '7s8', '7pa', '7h7', '7wc', '6ss', '6ls', '6cs', '6bs', '6ws', '6sb',
   '6hb', '6lb', '6cb', '6s7', '6l7', '6sw', '6lw', '6lx', '6mx', '6hx', '6rx', 'am1',
   'am2', 'am3', 'am4', 'am6', 'am7', 'am8', 'am9', 'amb', 'amc', 'amd', 'ame',
+])
+
+/**
+ * Ground Truth (`Weapons.txt` `type = bow` / `abow`, `ItemTypes.txt` `Shoots = bowq` in Diablo II v1.13c):
+ * All 30 canonical Bow and Amazon Bow weapon codes (`sbw`..`6lw`, `am1`..`amc`) that shoot Arrow Quivers (`bowq` / `aqv`).
+ */
+export const CANONICAL_BOW_WEAPON_CODES: ReadonlySet<string> = new Set([
+  'sbw', 'hbw', 'lbw', 'cbw', 'sbb', 'lbb', 'swb', 'lwb',
+  '8sb', '8hb', '8lb', '8cb', '8s8', '8l8', '8sw', '8lw',
+  '6sb', '6hb', '6lb', '6cb', '6s7', '6l7', '6sw', '6lw',
+  'am1', 'am2', 'am6', 'am7', 'amb', 'amc',
+])
+
+/**
+ * Ground Truth (`Weapons.txt` `type = xbow`, `ItemTypes.txt` `Shoots = xboq` in Diablo II v1.13c):
+ * All 12 canonical Crossbow weapon codes (`lxb`..`6rx`) that shoot Bolt Quivers (`xboq` / `cqv`).
+ */
+export const CANONICAL_CROSSBOW_WEAPON_CODES: ReadonlySet<string> = new Set([
+  'lxb', 'mxb', 'hxb', 'rxb',
+  '8lx', '8mx', '8hx', '8rx',
+  '6lx', '6mx', '6hx', '6rx',
 ])
 
 /**
@@ -786,6 +807,7 @@ export function resolveItemInvFile(
 export function itemToUiInventoryItem(
   item: Item,
   dropTables?: DropTables,
+  playerLevel?: number,
 ): UiInventoryItem & { readonly variant?: number | undefined; readonly graphicIndex?: number | undefined } {
   // Defensive passthrough: already a complete UiInventoryItem
   if (
@@ -860,14 +882,22 @@ export function itemToUiInventoryItem(
     baseNameZh = formattedBaseZh
     baseNameEn = baseEn
   } else if (quality === 'rare' && rawItem.rolledRareAffixes) {
-    const rEn = rawItem.rolledRareAffixes.name || rawItem.name
-    const rZh = translateRareName(rEn)
+    const rRaw = rawItem.rolledRareAffixes.name || rawItem.name
+    const rPre = (rawItem.rolledRareAffixes as any).rarePrefix?.name ?? (rawItem.rolledRareAffixes as any).prefix1?.name
+    const rSuf = (rawItem.rolledRareAffixes as any).rareSuffix?.name ?? (rawItem.rolledRareAffixes as any).suffix1?.name
+    const rEn = resolveRareNameEn(rRaw, rPre, rSuf)
+    resolvedItemNameEn = rEn
+    const rZh = translateRareName(rRaw, rPre, rSuf)
     nameZh = rZh && rZh !== rEn ? rZh : rEn
     baseNameZh = formattedBaseZh
     baseNameEn = baseEn
   } else if (quality === 'magic' && rawItem.rolledMagicAffixes) {
-    const mEn = rawItem.rolledMagicAffixes.name || rawItem.name
-    const mZh = translateMagicName(mEn, baseEn)
+    const mRaw = rawItem.rolledMagicAffixes.name || rawItem.name
+    const mPre = (rawItem.rolledMagicAffixes as any).prefix?.name ?? (rawItem as any).prefix?.name
+    const mSuf = (rawItem.rolledMagicAffixes as any).suffix?.name ?? (rawItem as any).suffix?.name
+    const mEn = resolveMagicNameEn(mRaw, baseEn, mPre, mSuf, code)
+    resolvedItemNameEn = mEn
+    const mZh = translateMagicName(mRaw, baseEn, mPre, mSuf, code)
     nameZh = mZh && mZh !== mEn ? mZh : mEn
     baseNameZh = formattedBaseZh
     baseNameEn = baseEn
@@ -929,8 +959,17 @@ export function itemToUiInventoryItem(
 
   // 5. Tooltip & Formatted Stats (both CHI and ENG)
   const isGambleMystery = Boolean(rawItem.isGambleMystery || rawItem.flags?.gamble)
-  const tt = formatItemTooltip({ ...rawItem, base } as Item, 'zh')
-  const ttEn = formatItemTooltip({ ...rawItem, base } as Item, 'en')
+  const explicitCharLevel =
+    playerLevel !== undefined && Number.isFinite(playerLevel) && playerLevel > 0
+      ? Math.max(1, Math.trunc(playerLevel))
+      : undefined
+  const itemWithCharLevel = {
+    ...rawItem,
+    base,
+    ...(explicitCharLevel !== undefined ? { charLevel: explicitCharLevel } : {}),
+  } as Item
+  const tt = formatItemTooltip(itemWithCharLevel, 'zh')
+  const ttEn = formatItemTooltip(itemWithCharLevel, 'en')
   let stats: { text: string; color?: D2ColorCode }[] = isGambleMystery
     ? [{ text: '未辨识', color: 'red' }]
     : (tt.lines || []).map(l => ({
@@ -1224,7 +1263,7 @@ export function itemToUiInventoryItem(
     ...(typeof flippyFile === 'string' && flippyFile.length > 0 ? { flippyFile } : {}),
     ...(typeof dropSound === 'string' && dropSound.length > 0 ? { dropSound } : {}),
     ...(typeof dropSfxFrame === 'number' && Number.isFinite(dropSfxFrame) ? { dropSfxFrame } : {}),
-    rawItem: { ...rawItem, base } as Item,
+    rawItem: itemWithCharLevel,
     ...(permStore ? { permStore: true } : {}),
     ...(isGambleMystery ? { isGambleMystery: true } : {}),
     ...(isUnidentified ? { identified: false } : { identified: true }),
@@ -1427,7 +1466,7 @@ const ISC_STAT_NAME_BY_ID: ReadonlyMap<number, string> = (() => {
   return m
 })()
 
-function convertOnlineItemStatsToRolledProps(stats: readonly ItemStat[]): {
+export function convertOnlineItemStatsToRolledProps(stats: readonly ItemStat[]): {
   readonly props: RolledItemProp[]
   readonly reqLevelBonus: number
   readonly socketsStat: number
@@ -1519,6 +1558,13 @@ function convertOnlineItemStatsToRolledProps(stats: readonly ItemStat[]): {
       const poolCode = statId <= 7 ? 'hp' : statId <= 9 ? 'mana' : 'stam'
       const normVal = Math.abs(value) >= 256 && (value & 0xff) === 0 ? value >> 8 : value
       props.push({ code: poolCode, min: normVal, max: normVal, value: normVal })
+      continue
+    }
+
+    if (statId === 216 || statId === 217) {
+      const poolPerLvlCode = statId === 216 ? 'hp/lvl' : 'mana/lvl'
+      const normVal = Math.abs(value) >= 256 && (value & 0xff) === 0 ? value >> 8 : value
+      props.push({ code: poolPerLvlCode, min: normVal, max: normVal, value: normVal })
       continue
     }
 
@@ -1867,9 +1913,10 @@ export function onlineItemDataToUiInventoryItem(
       }
       const parts = [preEntry?.name, baseNameEn, sufEntry?.name].filter(Boolean)
       const magicName = parts.join(' ') || baseNameEn
-      itemDisplayNameEn = magicName
+      const resolvedMagicEn = resolveMagicNameEn(magicName, baseNameEn, preEntry?.name, sufEntry?.name, code)
+      itemDisplayNameEn = resolvedMagicEn
       rolledMagicAffixes = {
-        name: magicName,
+        name: resolvedMagicEn,
         prefix: preEntry ? { ...preEntry, affix: preEntry, mods: [] } : undefined,
         suffix: sufEntry ? { ...sufEntry, affix: sufEntry, mods: [] } : undefined,
         prefixes: preEntry ? [preEntry] : [],
@@ -2826,10 +2873,15 @@ export function rolledPropsToItemStats(props: readonly RolledItemProp[] | undefi
 
     const sid = PROP_CODE_TO_STAT_ID.get(code)
     if (sid !== undefined) {
+      const isPerLvlStat = sid >= 214 && sid <= 250
+      const effVal =
+        isPerLvlStat && val === 0 && rawParam !== undefined && Number.isFinite(rawParam)
+          ? rawParam
+          : val
       out.push({
         statId: sid,
-        ...(rawParam !== undefined && Number.isFinite(rawParam) ? { param: rawParam } : {}),
-        value: val,
+        ...(!isPerLvlStat && rawParam !== undefined && Number.isFinite(rawParam) ? { param: rawParam } : {}),
+        value: effVal,
       })
     }
   }

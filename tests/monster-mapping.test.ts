@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { resolveMonsterArtSpec, MONSTER_ART_MAP, ACT_MONSTER_SPECS } from '../src/common/units/monster-mapping.ts'
+import {
+  CANONICAL_CHI_TBL_DICT,
+  CANONICAL_ENG_TBL_DICT,
+  resolveTblKey,
+} from '../src/common/data/canonical-tbl-strings.ts'
 
 describe('monster-mapping', () => {
   it('resolves standard Act 1 monsters', () => {
@@ -47,6 +53,27 @@ describe('monster-mapping', () => {
 
   it('returns null for unknown monsters', () => {
     expect(resolveMonsterArtSpec('non_existent_monster_xyz')).toBeNull()
+  })
+
+  it('has zero whitespace-only CHI .tbl strings when ENG is non-blank and packs token XX for minion1..11 (#1246)', () => {
+    let blankChiCount = 0
+    for (const [k, cv] of Object.entries(CANONICAL_CHI_TBL_DICT)) {
+      const ev = CANONICAL_ENG_TBL_DICT[k] ?? ''
+      if (cv.trim() === '' && ev.trim() !== '') {
+        blankChiCount += 1
+      }
+    }
+    expect(blankChiCount).toBe(0)
+    expect(resolveTblKey('Dominus', 'CHI')).toBe('女妖')
+    expect(resolveTblKey('Imp1', 'CHI')).toBe('恶魔小鬼')
+    expect(resolveTblKey('Minionexp', 'CHI')).toBe('奴隶')
+    expect(resolveTblKey('Megaflow Rectifier', 'CHI')).toBe('矫正者怪异')
+    expect(resolveTblKey('dr1', 'CHI')).toBe('狼头')
+    expect(resolveTblKey('ob1', 'CHI')).toBe('鹰眼法珠')
+    expect(resolveTblKey('WeaponDescH2H', 'CHI')).toBe('爪等级')
+
+    const packEntityAssetsSrc = readFileSync('src/baker/packers/pack-entity-assets.ts', 'utf8')
+    expect(packEntityAssetsSrc).not.toContain("token !== 'XX'")
   })
 })
 

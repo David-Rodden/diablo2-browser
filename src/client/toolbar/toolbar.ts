@@ -58,6 +58,43 @@ export interface ToolbarConnectionState {
   readonly diagnosticMessage?: string | undefined
 }
 
+export type BugReportCategory =
+  | 'gameplay'
+  | 'render'
+  | 'network'
+  | 'audio'
+  | 'ui'
+  | 'other'
+
+export const BUG_REPORT_CATEGORIES: readonly BugReportCategory[] = [
+  'gameplay',
+  'render',
+  'network',
+  'audio',
+  'ui',
+  'other',
+] as const
+
+export interface BugReportSubmission {
+  readonly title: string
+  readonly category: BugReportCategory
+  readonly description: string
+  readonly clientTimestamp: string
+  readonly connection: ToolbarConnectionState
+  readonly settings: ClientSettings
+  readonly pageUrl?: string | undefined
+  readonly userAgent?: string | undefined
+  readonly gameContext?: Record<string, unknown> | undefined
+}
+
+export interface BugReportSaveResponse {
+  readonly ok: boolean
+  readonly id: string
+  readonly savedAt?: string | undefined
+  readonly file?: string | undefined
+  readonly error?: string | undefined
+}
+
 export interface ToolbarCallbacks {
   readonly onServerHostReconnect?: ((newHost: string, prevHost: string) => void) | undefined
   readonly onLangChange?: ((lang: GameLang) => void) | undefined
@@ -68,6 +105,15 @@ export interface ToolbarCallbacks {
   readonly onClearCache?: (() => void | Promise<void>) | undefined
   /** Fullscreen enter/exit failed (default: `console.error`). */
   readonly onFullscreenError?: ((message: string) => void) | undefined
+  /** Fired when a toolbar modal (`config` or `bug-report`) opens so other overlays can close. */
+  readonly onModalOpen?: ((modal: 'config' | 'bug-report') => void) | undefined
+  /** Optional runtime/session context attached to submitted bug reports. */
+  readonly getBugReportContext?: (() => Record<string, unknown>) | undefined
+  /** Fired after a bug report is successfully persisted to the server. */
+  readonly onBugReportSubmitted?: ((
+    res: BugReportSaveResponse,
+    submission: BugReportSubmission,
+  ) => void) | undefined
 }
 
 export interface ToolbarOptions {
@@ -76,6 +122,9 @@ export interface ToolbarOptions {
   readonly pageProtocol?: string | undefined
   readonly allowedViewports?: readonly ViewportResolution[] | undefined
   readonly confirmReconnect?: ((message: string) => boolean) | undefined
+  readonly submitBugReportFn?: ((
+    submission: BugReportSubmission,
+  ) => Promise<BugReportSaveResponse>) | undefined
   readonly callbacks?: ToolbarCallbacks | undefined
 }
 
@@ -89,6 +138,8 @@ export interface ToolbarSnapshot {
   readonly diagnosticBannerText: string | null
   readonly serverInputValue: string
   readonly serverInputValid: boolean
+  readonly configModalOpen: boolean
+  readonly bugModalOpen: boolean
 }
 
 interface ContributionEntry {
@@ -104,12 +155,23 @@ const DROP_BADGE_PATTERN =
 
 /**
  * Persistent 32px Top DOM Toolbar (`#d2-toolbar`) with primary controls:
- * 1. Connection Status + RTT (`ms`) + Diagnostics (5-per-IP quota / WSS TLS error) + Plugins modal button (`#d2-toolbar-plugins-btn`) + Dynamic Plugin Contribution Slot (`#d2-toolbar-plugin-slot`)
- * 2. Live Language Toggle (`中` / `EN`)
- * 3. Viewport Size Selector (`#d2-toolbar-viewport-select`, native 1.13c `640x480 | 800x600` by default, extensible via `extended-viewports` plugin) + Asset Cache Clear button
+ * - Far Left: Plugins modal button (`#d2-toolbar-plugins-btn`) + Dynamic Plugin Contribution Slot (`#d2-toolbar-plugin-slot`)
+ * - Far Right (`#d2-toolbar-right`): Connection Status + RTT (`ms`) | Language Switch Icon Button (`#d2-toolbar-lang-btn`) + Config Modal Icon Button (`#d2-toolbar-config-btn`) + Bug Report Icon Button (`#d2-toolbar-bug-btn`)
+ * - Modals:
+ *   - Config Modal (`#d2-config-modal-overlay`, `[data-d2-modal-overlay="config"]`): Fullscreen/Windowed, Resolution (`#d2-toolbar-viewport-select`), FPS (`#d2-toolbar-worldfps-select`), Master Volume (`#d2-toolbar-mute-btn` + `#d2-toolbar-volume-slider`), Clear Asset Cache (`#d2-toolbar-cache-clear-btn`)
+ *   - Bug Report Modal (`#d2-bug-modal-overlay`, `[data-d2-modal-overlay="bug-report"]`): Submits structured bug reports to `POST /api/bugs`
  */
 export const TOOLBAR_PLUGINS_ICON_SVG =
   '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" focusable="false" aria-hidden="true"><path d="M4 5h1.5v-.5a1.5 1.5 0 0 1 3 0V5H10a1 1 0 0 1 1 1v1.5h.5a1.5 1.5 0 0 1 0 3H11V12a1 1 0 0 1-1 1H8.5v-.4a1.5 1.5 0 0 0-3 0V13H4a1 1 0 0 1-1-1v-1.5h.4a1.5 1.5 0 0 0 0-3H3V6a1 1 0 0 1 1-1Z"/></svg>'
+
+export const TOOLBAR_LANG_ICON_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2a9.5 9.5 0 0 1 2.6 6A9.5 9.5 0 0 1 8 14a9.5 9.5 0 0 1-2.6-6A9.5 9.5 0 0 1 8 2Z"/></svg>'
+
+export const TOOLBAR_CONFIG_ICON_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg>'
+
+export const TOOLBAR_BUG_ICON_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><rect x="5" y="5" width="6" height="7.5" rx="3"/><path d="M6.2 5V3.8a1.8 1.8 0 0 1 3.6 0V5M2.5 6.5L5 7.2M13.5 6.5L11 7.2M2 9.2h3M11 9.2h3M2.5 12l2.5-.8M13.5 12L11 11.2"/></svg>'
 
 export const TOOLBAR_FULLSCREEN_ENTER_ICON_SVG =
   '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" focusable="false" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>'
@@ -118,12 +180,58 @@ export const TOOLBAR_FULLSCREEN_EXIT_ICON_SVG =
 export const TOOLBAR_CACHE_CLEAR_ICON_SVG =
   '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M3 4h10M6 4V2.5h4V4M4.5 4l.6 9.5h5.8L11.5 4"/></svg>'
 
+export const TOOLBAR_VOLUME_ON_ICON_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M2.5 6.2h2.6L8.5 3.5v9l-3.4-2.7H2.5v-3.6Z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></svg>'
+
+export const TOOLBAR_VOLUME_MUTE_ICON_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M2.5 6.2h2.6L8.5 3.5v9l-3.4-2.7H2.5v-3.6Z"/><path d="M11 6l3 4M14 6l-3 4"/></svg>'
+
 export { TOOLBAR_DROP_TRACKER_ICON_SVG, TOOLBAR_KILL_STATS_ICON_SVG }
+
+function resolveBugApiEndpoint(): string {
+  if (typeof window !== 'undefined' && window.location?.pathname) {
+    if (window.location.pathname.startsWith('/diablo2/')) {
+      return '/diablo2/api/bugs'
+    }
+  }
+  return '/api/bugs'
+}
+
+async function defaultSubmitBugReport(
+  submission: BugReportSubmission,
+): Promise<BugReportSaveResponse> {
+  if (typeof fetch !== 'function') {
+    throw new Error('fetch is not available in this environment')
+  }
+  const res = await fetch(resolveBugApiEndpoint(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(submission),
+  })
+  let payload: Partial<BugReportSaveResponse> | null = null
+  try {
+    payload = (await res.json()) as Partial<BugReportSaveResponse>
+  } catch {
+    payload = null
+  }
+  if (!res.ok || !payload?.ok || !payload.id) {
+    throw new Error(payload?.error || `HTTP ${res.status}`)
+  }
+  return {
+    ok: true,
+    id: payload.id,
+    savedAt: payload.savedAt,
+    file: payload.file,
+  }
+}
 
 export class Toolbar {
   private readonly store: SettingsStore
   private readonly pageProtocol: string
   private readonly confirmReconnectFn: (message: string) => boolean
+  private readonly submitBugReportFn: (
+    submission: BugReportSubmission,
+  ) => Promise<BugReportSaveResponse>
   private readonly callbacks: ToolbarCallbacks
   private connection: ToolbarConnectionState = {
     phase: 'disconnected',
@@ -138,6 +246,13 @@ export class Toolbar {
   private pluginsReady = false
   private pluginsHasWarning = false
   private pluginsMenuOpen = false
+  private configModalOpen = false
+  private bugModalOpen = false
+  private bugSubmitting = false
+  private bugStatusState: {
+    readonly kind: 'none' | 'ok' | 'error'
+    readonly message: string
+  } = { kind: 'none', message: '' }
   private readonly contributions = new Map<string, ContributionEntry>()
   private unsubscribeStore: (() => void) | null = null
   private unsubscribeLang: (() => void) | null = null
@@ -147,23 +262,73 @@ export class Toolbar {
   private statusDotEl: HTMLElement | null = null
   private statusTextEl: HTMLElement | null = null
   private rttTextEl: HTMLElement | null = null
-  private langBtnZhEl: HTMLButtonElement | null = null
-  private langBtnEnEl: HTMLButtonElement | null = null
+  private langBtnEl: HTMLButtonElement | null = null
+  private langBtnIconEl: HTMLElement | null = null
+  private langBtnBadgeEl: HTMLElement | null = null
+  private configBtnEl: HTMLButtonElement | null = null
+  private configBtnIconEl: HTMLElement | null = null
+  private bugBtnEl: HTMLButtonElement | null = null
+  private bugBtnIconEl: HTMLElement | null = null
+
+  // Config modal DOM elements
+  private configOverlayEl: HTMLElement | null = null
+  private configTitleEl: HTMLElement | null = null
+  private configSubtitleEl: HTMLElement | null = null
+  private configCloseBtnEl: HTMLButtonElement | null = null
+  private displayModeLabelEl: HTMLElement | null = null
   private viewportLabelEl: HTMLElement | null = null
   private viewportSelectEl: HTMLSelectElement | null = null
+  private fpsLabelEl: HTMLElement | null = null
   private worldFpsSelectEl: HTMLSelectElement | null = null
+  private volumeLabelEl: HTMLElement | null = null
+  private muteBtnEl: HTMLButtonElement | null = null
+  private muteBtnIconEl: HTMLElement | null = null
+  private muteBtnLabelEl: HTMLElement | null = null
+  private volumeSliderEl: HTMLInputElement | null = null
+  private volumeValueEl: HTMLElement | null = null
+  private cacheRowLabelEl: HTMLElement | null = null
   private fullscreenBtnEl: HTMLButtonElement | null = null
   private fullscreenBtnIconEl: HTMLElement | null = null
   private fullscreenBtnLabelEl: HTMLElement | null = null
   private fullscreen: FullscreenController | null = null
+  private cacheClearBtnEl: HTMLButtonElement | null = null
+  private cacheClearBtnIconEl: HTMLElement | null = null
+  private cacheClearBtnLabelEl: HTMLElement | null = null
+
+  // Bug report modal DOM elements
+  private bugOverlayEl: HTMLElement | null = null
+  private bugTitleEl: HTMLElement | null = null
+  private bugSubtitleEl: HTMLElement | null = null
+  private bugCloseBtnEl: HTMLButtonElement | null = null
+  private bugTitleLabelEl: HTMLElement | null = null
+  private bugTitleInputEl: HTMLInputElement | null = null
+  private bugCategoryLabelEl: HTMLElement | null = null
+  private bugCategorySelectEl: HTMLSelectElement | null = null
+  private bugDescLabelEl: HTMLElement | null = null
+  private bugDescInputEl: HTMLTextAreaElement | null = null
+  private bugStatusMsgEl: HTMLElement | null = null
+  private bugCancelBtnEl: HTMLButtonElement | null = null
+  private bugSubmitBtnEl: HTMLButtonElement | null = null
+
   private pluginsBtnEl: HTMLButtonElement | null = null
   private pluginsBtnIconEl: HTMLElement | null = null
   private pluginsBtnLabelEl: HTMLElement | null = null
   private pluginSlotEl: HTMLElement | null = null
-  private cacheClearBtnEl: HTMLButtonElement | null = null
-  private cacheClearBtnIconEl: HTMLElement | null = null
-  private cacheClearBtnLabelEl: HTMLElement | null = null
   private diagBannerEl: HTMLElement | null = null
+
+  private readonly handleWindowKeyDownCapture = (e: KeyboardEvent): void => {
+    if (!this.configModalOpen && !this.bugModalOpen) return
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      this.closeModals()
+    }
+  }
+
+  private readonly handleWindowKeyBubble = (e: KeyboardEvent): void => {
+    if (!this.configModalOpen && !this.bugModalOpen) return
+    e.stopImmediatePropagation()
+  }
 
   constructor(options?: ToolbarOptions) {
     this.store = options?.store ?? getGlobalSettingsStore()
@@ -180,11 +345,18 @@ export class Toolbar {
         typeof window !== 'undefined' && typeof window.confirm === 'function'
           ? window.confirm(msg)
           : true)
+    this.submitBugReportFn = options?.submitBugReportFn ?? defaultSubmitBugReport
     this.callbacks = options?.callbacks ?? {}
     this.serverInputValue = this.store.get().serverHost
 
     if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
       this.mountDom(options?.container ?? null)
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('keydown', this.handleWindowKeyDownCapture, true)
+      window.addEventListener('keydown', this.handleWindowKeyBubble, false)
+      window.addEventListener('keyup', this.handleWindowKeyBubble, false)
     }
 
     this.unsubscribeStore = this.store.subscribe((next, prev, changedKeys) => {
@@ -358,6 +530,181 @@ export class Toolbar {
     return next
   }
 
+  setMasterVolume(volume: number): number {
+    const clamped = Number.isFinite(volume)
+      ? Math.min(1, Math.max(0, Math.round(volume * 100) / 100))
+      : this.store.get().masterVolume
+    this.store.set({ masterVolume: clamped })
+    if (clamped > 0 && this.store.get().audioMuted) {
+      this.store.set({ audioMuted: false })
+    }
+    this.syncDom()
+    return clamped
+  }
+
+  setAudioMuted(muted: boolean): void {
+    this.store.set({ audioMuted: Boolean(muted) })
+    this.syncDom()
+  }
+
+  toggleAudioMuted(): boolean {
+    const next = !this.store.get().audioMuted
+    this.setAudioMuted(next)
+    return next
+  }
+
+  isConfigModalOpen(): boolean {
+    return this.configModalOpen
+  }
+
+  openConfigModal(): void {
+    if (this.configModalOpen) return
+    if (this.bugModalOpen) {
+      this.bugModalOpen = false
+    }
+    this.configModalOpen = true
+    this.callbacks.onModalOpen?.('config')
+    this.syncDom()
+    if (this.configCloseBtnEl && typeof this.configCloseBtnEl.focus === 'function') {
+      this.configCloseBtnEl.focus()
+    }
+  }
+
+  closeConfigModal(): void {
+    if (!this.configModalOpen) return
+    this.configModalOpen = false
+    this.syncDom()
+    if (this.configBtnEl && typeof this.configBtnEl.focus === 'function') {
+      this.configBtnEl.focus()
+    }
+  }
+
+  toggleConfigModal(): boolean {
+    if (this.configModalOpen) {
+      this.closeConfigModal()
+    } else {
+      this.openConfigModal()
+    }
+    return this.configModalOpen
+  }
+
+  isBugModalOpen(): boolean {
+    return this.bugModalOpen
+  }
+
+  openBugModal(): void {
+    if (this.bugModalOpen) return
+    if (this.configModalOpen) {
+      this.configModalOpen = false
+    }
+    this.bugModalOpen = true
+    this.bugStatusState = { kind: 'none', message: '' }
+    this.callbacks.onModalOpen?.('bug-report')
+    this.syncDom()
+    if (this.bugTitleInputEl && typeof this.bugTitleInputEl.focus === 'function') {
+      this.bugTitleInputEl.focus()
+    }
+  }
+
+  closeBugModal(): void {
+    if (!this.bugModalOpen) return
+    this.bugModalOpen = false
+    this.syncDom()
+    if (this.bugBtnEl && typeof this.bugBtnEl.focus === 'function') {
+      this.bugBtnEl.focus()
+    }
+  }
+
+  toggleBugModal(): boolean {
+    if (this.bugModalOpen) {
+      this.closeBugModal()
+    } else {
+      this.openBugModal()
+    }
+    return this.bugModalOpen
+  }
+
+  closeModals(): void {
+    if (this.configModalOpen) {
+      this.closeConfigModal()
+    }
+    if (this.bugModalOpen) {
+      this.closeBugModal()
+    }
+  }
+
+  async submitBugReport(input?: {
+    readonly title?: string | undefined
+    readonly category?: BugReportCategory | undefined
+    readonly description?: string | undefined
+  }): Promise<BugReportSaveResponse> {
+    const lang = this.store.get().lang || getGameLang()
+    const rawTitle = input?.title ?? this.bugTitleInputEl?.value ?? ''
+    const rawDesc = input?.description ?? this.bugDescInputEl?.value ?? ''
+    const rawCat = (input?.category ??
+      (this.bugCategorySelectEl?.value as BugReportCategory | undefined) ??
+      'gameplay') as BugReportCategory
+    const category: BugReportCategory = (
+      BUG_REPORT_CATEGORIES as readonly string[]
+    ).includes(rawCat)
+      ? rawCat
+      : 'gameplay'
+
+    const title = rawTitle.trim()
+    const description = rawDesc.trim()
+    if (!title || !description) {
+      const errMsg = tToolbar('toolbar.bug.errorEmpty', lang)
+      this.bugStatusState = { kind: 'error', message: errMsg }
+      this.syncDom()
+      return { ok: false, id: '', error: errMsg }
+    }
+
+    const submission: BugReportSubmission = {
+      title,
+      category,
+      description,
+      clientTimestamp: new Date().toISOString(),
+      connection: this.connection,
+      settings: this.store.get(),
+      pageUrl:
+        typeof window !== 'undefined' && window.location ? window.location.href : undefined,
+      userAgent:
+        typeof navigator !== 'undefined' && navigator.userAgent
+          ? navigator.userAgent
+          : undefined,
+      gameContext: this.callbacks.getBugReportContext?.(),
+    }
+
+    this.bugSubmitting = true
+    this.bugStatusState = { kind: 'none', message: '' }
+    this.syncDom()
+
+    try {
+      const res = await this.submitBugReportFn(submission)
+      this.bugSubmitting = false
+      if (!res.ok) {
+        const msg = `${tToolbar('toolbar.bug.errorFailed', lang)}: ${res.error ?? 'Unknown'}`
+        this.bugStatusState = { kind: 'error', message: msg }
+        this.syncDom()
+        return res
+      }
+      if (this.bugTitleInputEl) this.bugTitleInputEl.value = ''
+      if (this.bugDescInputEl) this.bugDescInputEl.value = ''
+      const savedText = `${tToolbar('toolbar.bug.saved', lang)} (#${res.id})`
+      this.bugStatusState = { kind: 'ok', message: savedText }
+      this.syncDom()
+      this.callbacks.onBugReportSubmitted?.(res, submission)
+      return res
+    } catch (err) {
+      this.bugSubmitting = false
+      const detail = err instanceof Error ? err.message : String(err)
+      const msg = `${tToolbar('toolbar.bug.errorFailed', lang)}: ${detail}`
+      this.bugStatusState = { kind: 'error', message: msg }
+      this.syncDom()
+      return { ok: false, id: '', error: detail }
+    }
+  }
+
   setLightingPreset(preset: ClientLightingPreset): void {
     this.store.set({ lightingPreset: preset })
     this.syncDom()
@@ -416,19 +763,21 @@ export class Toolbar {
     this.pluginsHasWarning = state.hasWarning
     if (state.open !== undefined) {
       this.pluginsMenuOpen = state.open
+      if (state.open) {
+        this.configModalOpen = false
+        this.bugModalOpen = false
+      }
     }
     this.syncDom()
   }
 
-  private resolveDefaultContributionIcon(domId: string, explicitIconSvg?: string): string | undefined {
+  private resolveDefaultContributionIcon(
+    _domId: string,
+    explicitIconSvg?: string,
+  ): string | undefined {
+    // Core stays plugin-agnostic (arch Rule 9): plugins supply their own `iconSvg`; no per-plugin-ID fallbacks here.
     if (explicitIconSvg && explicitIconSvg.trim().length > 0) {
       return explicitIconSvg
-    }
-    if (domId === 'd2-toolbar-plugin-kill-stats-open') {
-      return TOOLBAR_KILL_STATS_ICON_SVG
-    }
-    if (domId === 'd2-toolbar-plugin-drop-tracker-open') {
-      return TOOLBAR_DROP_TRACKER_ICON_SVG
     }
     return undefined
   }
@@ -638,6 +987,8 @@ export class Toolbar {
       diagnosticBannerText,
       serverInputValue: this.serverInputValue,
       serverInputValid: this.serverInputValid,
+      configModalOpen: this.configModalOpen,
+      bugModalOpen: this.bugModalOpen,
     }
   }
 
@@ -646,6 +997,11 @@ export class Toolbar {
     this.unsubscribeStore = null
     this.unsubscribeLang?.()
     this.unsubscribeLang = null
+    if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('keydown', this.handleWindowKeyDownCapture, true)
+      window.removeEventListener('keydown', this.handleWindowKeyBubble, false)
+      window.removeEventListener('keyup', this.handleWindowKeyBubble, false)
+    }
     this.contributions.clear()
     this.fullscreen?.dispose()
     this.fullscreen = null
@@ -688,6 +1044,7 @@ export class Toolbar {
   overflow-y: hidden;
   user-select: none;
 }
+.d2-toolbar__left,
 .d2-toolbar__group {
   display: inline-flex;
   flex-direction: row;
@@ -697,29 +1054,22 @@ export class Toolbar {
   gap: 6px;
   white-space: nowrap;
 }
+.d2-toolbar__right {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.d2-toolbar__actions {
+  gap: 5px;
+}
 .d2-toolbar > .d2-toolbar__group + .d2-toolbar__group {
   padding-left: 10px;
   border-left: 1px solid rgba(199, 179, 119, 0.2);
-}
-.d2-toolbar__group--segmented {
-  gap: 0;
-}
-.d2-toolbar__group--segmented .d2-toolbar__btn:first-child {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  padding: 0 8px;
-}
-.d2-toolbar__group--segmented .d2-toolbar__btn:last-child {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  margin-left: -1px;
-  padding: 0 8px;
-  font-family: "JetBrains Mono", "Consolas", var(--font-body, serif);
-  font-size: 11px;
-}
-.d2-toolbar__group--segmented .d2-toolbar__btn--active {
-  position: relative;
-  z-index: 1;
 }
 .d2-toolbar__divider {
   width: 1px;
@@ -821,6 +1171,15 @@ a.d2-toolbar__btn {
   text-decoration: none;
   cursor: pointer;
 }
+.d2-toolbar__btn--icon {
+  padding: 0 7px;
+  min-width: 26px;
+}
+.d2-toolbar__btn--primary {
+  background: linear-gradient(180deg, #5e4923 0%, #332711 100%);
+  border-color: #c7a456;
+  color: #fff5d6;
+}
 .d2-toolbar__btn:active:not(:disabled),
 a.d2-toolbar__btn:active {
   transform: translateY(1px);
@@ -844,6 +1203,15 @@ a.d2-toolbar__btn:active {
   display: inline-flex;
   align-items: center;
   line-height: 1;
+}
+.d2-toolbar__lang-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: "JetBrains Mono", "Consolas", var(--font-body, serif);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  color: #efe1b6;
 }
 .d2-toolbar__btn:disabled {
   opacity: 0.45;
@@ -909,6 +1277,184 @@ a.d2-toolbar__btn:active {
 .d2-toolbar__diag--visible {
   display: flex;
 }
+.d2-toolbar-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  background: rgba(4, 3, 2, 0.78);
+  font-family: var(--font-body, "D2Formal436", "Noto Serif SC", "PingFang SC", Georgia, serif);
+  color: #e6d6b0;
+  white-space: normal;
+  cursor: default;
+}
+.d2-toolbar-modal-overlay[hidden] {
+  display: none !important;
+}
+.d2-toolbar-modal {
+  width: 480px;
+  max-width: 94vw;
+  max-height: calc(100vh - 56px);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #17130d 0%, #0b0906 100%);
+  border: 1px solid #9c7c42;
+  border-radius: 4px;
+  box-shadow: 0 12px 42px rgba(0, 0, 0, 0.95), inset 0 0 18px rgba(156, 124, 66, 0.14);
+  overflow: hidden;
+}
+.d2-toolbar-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid #4a3c24;
+  background: rgba(27, 21, 14, 0.92);
+  flex: 0 0 auto;
+}
+.d2-toolbar-modal__title {
+  margin: 0;
+  font-family: var(--font-display, "D2Exocet", "Cinzel", Georgia, serif);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #dfc478;
+}
+.d2-toolbar-modal__close {
+  height: 24px;
+  padding: 0 10px;
+  background: linear-gradient(180deg, #2b2316 0%, #17120b 100%);
+  border: 1px solid #6b5632;
+  border-radius: 2px;
+  color: #dfc991;
+  font-family: var(--font-display, "D2Exocet", Georgia, serif);
+  font-size: 11px;
+  cursor: pointer;
+}
+.d2-toolbar-modal__close:hover {
+  border-color: #d4b46a;
+  color: #fff5d6;
+}
+.d2-toolbar-modal__subtitle {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #b5a178;
+  background: rgba(16, 13, 9, 0.9);
+  border-bottom: 1px solid #2e2517;
+  flex: 0 0 auto;
+}
+.d2-toolbar-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.d2-toolbar-modal__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: rgba(20, 16, 11, 0.72);
+  border: 1px solid #352a19;
+  border-radius: 3px;
+}
+.d2-toolbar-modal__row-label {
+  color: #d8c28c;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.d2-toolbar-modal__row-control,
+.d2-toolbar-modal__volume-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.d2-toolbar__slider {
+  width: 120px;
+  height: 6px;
+  accent-color: #c7a456;
+  cursor: pointer;
+}
+.d2-toolbar__volume-value {
+  min-width: 36px;
+  text-align: right;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #ebd9a8;
+}
+.d2-toolbar-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.d2-toolbar-modal__input,
+.d2-toolbar-modal__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  background: #0d0a07;
+  border: 1px solid #5a482a;
+  border-radius: 3px;
+  color: #efe1b6;
+  font-family: var(--font-body, "D2Formal436", "Noto Serif SC", Georgia, serif);
+  font-size: 12px;
+  line-height: 1.45;
+  outline: none;
+  user-select: text;
+}
+.d2-toolbar-modal__input:focus,
+.d2-toolbar-modal__textarea:focus {
+  border-color: #d4bc7c;
+  box-shadow: 0 0 6px rgba(212, 180, 106, 0.2);
+}
+.d2-toolbar-modal__textarea {
+  resize: vertical;
+  min-height: 84px;
+}
+.d2-toolbar-modal__select {
+  width: 100%;
+  height: 28px;
+  font-size: 12px;
+}
+.d2-toolbar-modal__status {
+  padding: 7px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.d2-toolbar-modal__status[hidden] {
+  display: none !important;
+}
+.d2-toolbar-modal__status--ok {
+  background: rgba(16, 48, 24, 0.9);
+  border: 1px solid #2ecc71;
+  color: #d4ffe4;
+}
+.d2-toolbar-modal__status--error {
+  background: rgba(58, 16, 14, 0.92);
+  border: 1px solid #e74c3c;
+  color: #ffd6d1;
+}
+.d2-toolbar-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid #352a19;
+  background: rgba(18, 14, 10, 0.95);
+}
 `
     doc.head.appendChild(styleEl)
   }
@@ -948,7 +1494,35 @@ a.d2-toolbar__btn:active {
     root.id = 'd2-toolbar'
     root.className = 'd2-toolbar'
 
-    // Group 1: Connection Status + RTT
+    // Far Left: Plugins management button ([🧩 插件]) + Plugin Contribution Slot
+    const pluginsBtn = doc.createElement('button')
+    pluginsBtn.type = 'button'
+    pluginsBtn.id = 'd2-toolbar-plugins-btn'
+    pluginsBtn.className = 'd2-toolbar__btn'
+    pluginsBtn.disabled = !this.pluginsReady
+    const pluginsBtnIcon = doc.createElement('span')
+    pluginsBtnIcon.className = 'd2-toolbar__btn-icon'
+    pluginsBtnIcon.setAttribute('aria-hidden', 'true')
+    pluginsBtnIcon.innerHTML = TOOLBAR_PLUGINS_ICON_SVG
+    const pluginsBtnLabel = doc.createElement('span')
+    pluginsBtnLabel.className = 'd2-toolbar__btn-label'
+    pluginsBtn.appendChild(pluginsBtnIcon)
+    pluginsBtn.appendChild(pluginsBtnLabel)
+    pluginsBtn.addEventListener('click', () => {
+      if (!this.pluginsReady) return
+      this.closeModals()
+      this.callbacks.onPluginsToggle?.()
+    })
+
+    const pluginSlot = doc.createElement('div')
+    pluginSlot.id = 'd2-toolbar-plugin-slot'
+    pluginSlot.className = 'd2-toolbar__group'
+
+    // Far Right: Connection Status + Divider + 3 Icon Buttons (Language, Config, Bug Report)
+    const rightContainer = doc.createElement('div')
+    rightContainer.id = 'd2-toolbar-right'
+    rightContainer.className = 'd2-toolbar__right'
+
     const statusGroup = doc.createElement('div')
     statusGroup.className = 'd2-toolbar__group'
 
@@ -968,36 +1542,120 @@ a.d2-toolbar__btn:active {
     statusBadge.appendChild(rttText)
     statusGroup.appendChild(statusBadge)
 
-    // Group 2: Viewport Size Selector + Asset Cache Clear button
-    const viewportGroup = doc.createElement('div')
-    viewportGroup.className = 'd2-toolbar__group'
-    const viewportLabel = doc.createElement('label')
-    viewportLabel.className = 'd2-toolbar__label'
-    viewportLabel.htmlFor = 'd2-toolbar-viewport-select'
-    const viewportSelect = doc.createElement('select')
-    viewportSelect.id = 'd2-toolbar-viewport-select'
-    viewportSelect.className = 'd2-toolbar__select'
-    viewportSelect.addEventListener('change', () => {
-      this.setViewport(viewportSelect.value as ViewportResolution)
+    const divider = doc.createElement('div')
+    divider.className = 'd2-toolbar__divider'
+    divider.setAttribute('role', 'separator')
+
+    const actionsGroup = doc.createElement('div')
+    actionsGroup.id = 'd2-toolbar-actions'
+    actionsGroup.className = 'd2-toolbar__group d2-toolbar__actions'
+
+    // Icon Button 1: Language Toggle (#d2-toolbar-lang-btn)
+    const langBtn = doc.createElement('button')
+    langBtn.type = 'button'
+    langBtn.id = 'd2-toolbar-lang-btn'
+    langBtn.className = 'd2-toolbar__btn d2-toolbar__btn--icon'
+    const langBtnIcon = doc.createElement('span')
+    langBtnIcon.className = 'd2-toolbar__btn-icon'
+    langBtnIcon.setAttribute('aria-hidden', 'true')
+    langBtnIcon.innerHTML = TOOLBAR_LANG_ICON_SVG
+    const langBtnBadge = doc.createElement('span')
+    langBtnBadge.id = 'd2-toolbar-lang-badge'
+    langBtnBadge.className = 'd2-toolbar__lang-badge'
+    langBtn.appendChild(langBtnIcon)
+    langBtn.appendChild(langBtnBadge)
+    langBtn.addEventListener('click', () => {
+      this.toggleLanguage()
     })
 
-    // World render-rate selector right after the viewport selector: 60 (default,
-    // uncapped) or 30 (≈half the GPU raster; 1.13c-native feel is stiffer still).
-    const fpsSelect = doc.createElement('select')
-    fpsSelect.id = 'd2-toolbar-worldfps-select'
-    fpsSelect.className = 'd2-toolbar__select'
-    for (const fps of [60, 30] as const) {
-      const opt = doc.createElement('option')
-      opt.value = String(fps)
-      opt.textContent = `${fps} FPS`
-      fpsSelect.appendChild(opt)
-    }
-    fpsSelect.addEventListener('change', () => {
-      this.store.set({ worldRenderFps: fpsSelect.value === '30' ? 30 : 60 })
+    // Icon Button 2: Config Modal Toggle (#d2-toolbar-config-btn)
+    const configBtn = doc.createElement('button')
+    configBtn.type = 'button'
+    configBtn.id = 'd2-toolbar-config-btn'
+    configBtn.className = 'd2-toolbar__btn d2-toolbar__btn--icon'
+    configBtn.setAttribute('aria-haspopup', 'dialog')
+    configBtn.setAttribute('aria-expanded', 'false')
+    const configBtnIcon = doc.createElement('span')
+    configBtnIcon.className = 'd2-toolbar__btn-icon'
+    configBtnIcon.setAttribute('aria-hidden', 'true')
+    configBtnIcon.innerHTML = TOOLBAR_CONFIG_ICON_SVG
+    configBtn.appendChild(configBtnIcon)
+    configBtn.addEventListener('click', () => {
+      this.toggleConfigModal()
     })
 
-    // NOT 1.13c: fullscreen toggle right after the FPS selector (whole document goes fullscreen,
-    // so this toolbar stays visible to restore; Esc / F11 restore via the browser default).
+    // Icon Button 3: Bug Report Modal Toggle (#d2-toolbar-bug-btn)
+    const bugBtn = doc.createElement('button')
+    bugBtn.type = 'button'
+    bugBtn.id = 'd2-toolbar-bug-btn'
+    bugBtn.className = 'd2-toolbar__btn d2-toolbar__btn--icon'
+    bugBtn.setAttribute('aria-haspopup', 'dialog')
+    bugBtn.setAttribute('aria-expanded', 'false')
+    const bugBtnIcon = doc.createElement('span')
+    bugBtnIcon.className = 'd2-toolbar__btn-icon'
+    bugBtnIcon.setAttribute('aria-hidden', 'true')
+    bugBtnIcon.innerHTML = TOOLBAR_BUG_ICON_SVG
+    bugBtn.appendChild(bugBtnIcon)
+    bugBtn.addEventListener('click', () => {
+      this.toggleBugModal()
+    })
+
+    actionsGroup.appendChild(langBtn)
+    actionsGroup.appendChild(configBtn)
+    actionsGroup.appendChild(bugBtn)
+
+    rightContainer.appendChild(statusGroup)
+    rightContainer.appendChild(divider)
+    rightContainer.appendChild(actionsGroup)
+
+    // Modal 1: Configuration Modal (#d2-config-modal-overlay)
+    const configOverlay = doc.createElement('div')
+    configOverlay.id = 'd2-config-modal-overlay'
+    configOverlay.className = 'd2-toolbar-modal-overlay'
+    configOverlay.setAttribute('data-d2-modal-overlay', 'config')
+    configOverlay.hidden = true
+    configOverlay.addEventListener('click', (ev) => {
+      const target = (ev as unknown as { target?: unknown }).target
+      if (target === configOverlay) {
+        this.closeConfigModal()
+      }
+    })
+
+    const configDialog = doc.createElement('div')
+    configDialog.id = 'd2-config-modal'
+    configDialog.className = 'd2-toolbar-modal'
+    configDialog.setAttribute('role', 'dialog')
+    configDialog.setAttribute('aria-modal', 'true')
+    configDialog.setAttribute('aria-labelledby', 'd2-config-modal-title')
+
+    const configHeader = doc.createElement('div')
+    configHeader.className = 'd2-toolbar-modal__header'
+    const configTitle = doc.createElement('h2')
+    configTitle.id = 'd2-config-modal-title'
+    configTitle.className = 'd2-toolbar-modal__title'
+    const configCloseBtn = doc.createElement('button')
+    configCloseBtn.type = 'button'
+    configCloseBtn.id = 'd2-config-modal-close'
+    configCloseBtn.className = 'd2-toolbar-modal__close'
+    configCloseBtn.addEventListener('click', () => {
+      this.closeConfigModal()
+    })
+    configHeader.appendChild(configTitle)
+    configHeader.appendChild(configCloseBtn)
+
+    const configSubtitle = doc.createElement('p')
+    configSubtitle.id = 'd2-config-modal-subtitle'
+    configSubtitle.className = 'd2-toolbar-modal__subtitle'
+
+    const configBody = doc.createElement('div')
+    configBody.className = 'd2-toolbar-modal__body'
+
+    // Config Row 1: Display Mode (Fullscreen / Windowed)
+    const displayRow = doc.createElement('div')
+    displayRow.className = 'd2-toolbar-modal__row'
+    const displayModeLabel = doc.createElement('span')
+    displayModeLabel.id = 'd2-config-fullscreen-label'
+    displayModeLabel.className = 'd2-toolbar-modal__row-label'
     const fullscreenBtn = doc.createElement('button')
     fullscreenBtn.type = 'button'
     fullscreenBtn.id = 'd2-toolbar-fullscreen-btn'
@@ -1013,7 +1671,104 @@ a.d2-toolbar__btn:active {
     fullscreenBtn.addEventListener('click', () => {
       this.fullscreen?.toggle()
     })
+    displayRow.appendChild(displayModeLabel)
+    displayRow.appendChild(fullscreenBtn)
 
+    // Config Row 2: Resolution (#d2-toolbar-viewport-select)
+    const viewportRow = doc.createElement('div')
+    viewportRow.className = 'd2-toolbar-modal__row'
+    const viewportLabel = doc.createElement('label')
+    viewportLabel.id = 'd2-config-viewport-label'
+    viewportLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    viewportLabel.htmlFor = 'd2-toolbar-viewport-select'
+    const viewportSelect = doc.createElement('select')
+    viewportSelect.id = 'd2-toolbar-viewport-select'
+    viewportSelect.className = 'd2-toolbar__select'
+    viewportSelect.addEventListener('change', () => {
+      this.setViewport(viewportSelect.value as ViewportResolution)
+    })
+    viewportRow.appendChild(viewportLabel)
+    viewportRow.appendChild(viewportSelect)
+
+    // Config Row 3: Frame Rate (#d2-toolbar-worldfps-select)
+    const fpsRow = doc.createElement('div')
+    fpsRow.className = 'd2-toolbar-modal__row'
+    const fpsLabel = doc.createElement('label')
+    fpsLabel.id = 'd2-config-fps-label'
+    fpsLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    fpsLabel.htmlFor = 'd2-toolbar-worldfps-select'
+    const fpsSelect = doc.createElement('select')
+    fpsSelect.id = 'd2-toolbar-worldfps-select'
+    fpsSelect.className = 'd2-toolbar__select'
+    for (const fps of [60, 30] as const) {
+      const opt = doc.createElement('option')
+      opt.value = String(fps)
+      opt.textContent = `${fps} FPS`
+      fpsSelect.appendChild(opt)
+    }
+    fpsSelect.addEventListener('change', () => {
+      this.store.set({ worldRenderFps: fpsSelect.value === '30' ? 30 : 60 })
+    })
+    fpsRow.appendChild(fpsLabel)
+    fpsRow.appendChild(fpsSelect)
+
+    // Config Row 4: Master Volume + Mute (#d2-toolbar-mute-btn, #d2-toolbar-volume-slider, #d2-toolbar-volume-value)
+    const volumeRow = doc.createElement('div')
+    volumeRow.className = 'd2-toolbar-modal__row'
+    const volumeLabel = doc.createElement('label')
+    volumeLabel.id = 'd2-config-volume-label'
+    volumeLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    volumeLabel.htmlFor = 'd2-toolbar-volume-slider'
+    const volumeControls = doc.createElement('div')
+    volumeControls.className = 'd2-toolbar-modal__volume-controls'
+
+    const muteBtn = doc.createElement('button')
+    muteBtn.type = 'button'
+    muteBtn.id = 'd2-toolbar-mute-btn'
+    muteBtn.className = 'd2-toolbar__btn'
+    const muteBtnIcon = doc.createElement('span')
+    muteBtnIcon.className = 'd2-toolbar__btn-icon'
+    muteBtnIcon.setAttribute('aria-hidden', 'true')
+    const muteBtnLabel = doc.createElement('span')
+    muteBtnLabel.className = 'd2-toolbar__btn-label'
+    muteBtn.appendChild(muteBtnIcon)
+    muteBtn.appendChild(muteBtnLabel)
+    muteBtn.addEventListener('click', () => {
+      this.toggleAudioMuted()
+    })
+
+    const volumeSlider = doc.createElement('input')
+    volumeSlider.type = 'range'
+    volumeSlider.id = 'd2-toolbar-volume-slider'
+    volumeSlider.className = 'd2-toolbar__slider'
+    volumeSlider.setAttribute('min', '0')
+    volumeSlider.setAttribute('max', '100')
+    volumeSlider.setAttribute('step', '1')
+    const onVolumeInput = (): void => {
+      const pct = Number(volumeSlider.value)
+      if (Number.isFinite(pct)) {
+        this.setMasterVolume(pct / 100)
+      }
+    }
+    volumeSlider.addEventListener('input', onVolumeInput)
+    volumeSlider.addEventListener('change', onVolumeInput)
+
+    const volumeValue = doc.createElement('span')
+    volumeValue.id = 'd2-toolbar-volume-value'
+    volumeValue.className = 'd2-toolbar__volume-value'
+
+    volumeControls.appendChild(muteBtn)
+    volumeControls.appendChild(volumeSlider)
+    volumeControls.appendChild(volumeValue)
+    volumeRow.appendChild(volumeLabel)
+    volumeRow.appendChild(volumeControls)
+
+    // Config Row 5: Asset Cache Clear (#d2-toolbar-cache-clear-btn)
+    const cacheRow = doc.createElement('div')
+    cacheRow.className = 'd2-toolbar-modal__row'
+    const cacheRowLabel = doc.createElement('span')
+    cacheRowLabel.id = 'd2-config-cache-label'
+    cacheRowLabel.className = 'd2-toolbar-modal__row-label'
     const cacheClearBtn = doc.createElement('button')
     cacheClearBtn.type = 'button'
     cacheClearBtn.id = 'd2-toolbar-cache-clear-btn'
@@ -1029,74 +1784,155 @@ a.d2-toolbar__btn:active {
     cacheClearBtn.addEventListener('click', () => {
       void this.clearAssetCache()
     })
+    cacheRow.appendChild(cacheRowLabel)
+    cacheRow.appendChild(cacheClearBtn)
 
-    viewportGroup.appendChild(viewportLabel)
-    viewportGroup.appendChild(viewportSelect)
-    viewportGroup.appendChild(fpsSelect)
-    viewportGroup.appendChild(fullscreenBtn)
-    viewportGroup.appendChild(cacheClearBtn)
+    configBody.appendChild(displayRow)
+    configBody.appendChild(viewportRow)
+    configBody.appendChild(fpsRow)
+    configBody.appendChild(volumeRow)
+    configBody.appendChild(cacheRow)
 
-    // Group 3: Language Toggle (中 / EN)
-    const langGroup = doc.createElement('div')
-    langGroup.className = 'd2-toolbar__group d2-toolbar__group--segmented'
-    const langBtnZh = doc.createElement('button')
-    langBtnZh.type = 'button'
-    langBtnZh.id = 'd2-toolbar-lang-zh'
-    langBtnZh.className = 'd2-toolbar__btn'
-    langBtnZh.textContent = '中'
-    langBtnZh.addEventListener('click', () => this.setLanguage('zh'))
+    configDialog.appendChild(configHeader)
+    configDialog.appendChild(configSubtitle)
+    configDialog.appendChild(configBody)
+    configOverlay.appendChild(configDialog)
 
-    const langBtnEn = doc.createElement('button')
-    langBtnEn.type = 'button'
-    langBtnEn.id = 'd2-toolbar-lang-en'
-    langBtnEn.className = 'd2-toolbar__btn'
-    langBtnEn.textContent = 'EN'
-    langBtnEn.addEventListener('click', () => this.setLanguage('en'))
-
-    langGroup.appendChild(langBtnZh)
-    langGroup.appendChild(langBtnEn)
-
-    // Group 4: Vertical Divider
-    const divider = doc.createElement('div')
-    divider.className = 'd2-toolbar__divider'
-    divider.setAttribute('role', 'separator')
-
-    // Group 5: Plugins management button ([🧩 插件])
-    const pluginsBtn = doc.createElement('button')
-    pluginsBtn.type = 'button'
-    pluginsBtn.id = 'd2-toolbar-plugins-btn'
-    pluginsBtn.className = 'd2-toolbar__btn'
-    pluginsBtn.disabled = !this.pluginsReady
-    const pluginsBtnIcon = doc.createElement('span')
-    pluginsBtnIcon.className = 'd2-toolbar__btn-icon'
-    pluginsBtnIcon.setAttribute('aria-hidden', 'true')
-    pluginsBtnIcon.innerHTML = TOOLBAR_PLUGINS_ICON_SVG
-    const pluginsBtnLabel = doc.createElement('span')
-    pluginsBtnLabel.className = 'd2-toolbar__btn-label'
-    pluginsBtn.appendChild(pluginsBtnIcon)
-    pluginsBtn.appendChild(pluginsBtnLabel)
-    pluginsBtn.addEventListener('click', () => {
-      if (!this.pluginsReady) return
-      this.callbacks.onPluginsToggle?.()
+    // Modal 2: Bug Report Modal (#d2-bug-modal-overlay)
+    const bugOverlay = doc.createElement('div')
+    bugOverlay.id = 'd2-bug-modal-overlay'
+    bugOverlay.className = 'd2-toolbar-modal-overlay'
+    bugOverlay.setAttribute('data-d2-modal-overlay', 'bug-report')
+    bugOverlay.hidden = true
+    bugOverlay.addEventListener('click', (ev) => {
+      const target = (ev as unknown as { target?: unknown }).target
+      if (target === bugOverlay) {
+        this.closeBugModal()
+      }
     })
 
-    // Group 6: Plugin Contribution Slot
-    const pluginSlot = doc.createElement('div')
-    pluginSlot.id = 'd2-toolbar-plugin-slot'
-    pluginSlot.className = 'd2-toolbar__group'
+    const bugDialog = doc.createElement('div')
+    bugDialog.id = 'd2-bug-modal'
+    bugDialog.className = 'd2-toolbar-modal'
+    bugDialog.setAttribute('role', 'dialog')
+    bugDialog.setAttribute('aria-modal', 'true')
+    bugDialog.setAttribute('aria-labelledby', 'd2-bug-modal-title')
 
-    // Group 7: Diagnostic Banner
+    const bugHeader = doc.createElement('div')
+    bugHeader.className = 'd2-toolbar-modal__header'
+    const bugTitle = doc.createElement('h2')
+    bugTitle.id = 'd2-bug-modal-title'
+    bugTitle.className = 'd2-toolbar-modal__title'
+    const bugCloseBtn = doc.createElement('button')
+    bugCloseBtn.type = 'button'
+    bugCloseBtn.id = 'd2-bug-modal-close'
+    bugCloseBtn.className = 'd2-toolbar-modal__close'
+    bugCloseBtn.addEventListener('click', () => {
+      this.closeBugModal()
+    })
+    bugHeader.appendChild(bugTitle)
+    bugHeader.appendChild(bugCloseBtn)
+
+    const bugSubtitle = doc.createElement('p')
+    bugSubtitle.id = 'd2-bug-modal-subtitle'
+    bugSubtitle.className = 'd2-toolbar-modal__subtitle'
+
+    const bugBody = doc.createElement('div')
+    bugBody.className = 'd2-toolbar-modal__body'
+
+    const titleField = doc.createElement('div')
+    titleField.className = 'd2-toolbar-modal__field'
+    const bugTitleLabel = doc.createElement('label')
+    bugTitleLabel.id = 'd2-bug-title-label'
+    bugTitleLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    bugTitleLabel.htmlFor = 'd2-bug-title-input'
+    const bugTitleInput = doc.createElement('input')
+    bugTitleInput.type = 'text'
+    bugTitleInput.id = 'd2-bug-title-input'
+    bugTitleInput.className = 'd2-toolbar-modal__input'
+    bugTitleInput.setAttribute('maxlength', '120')
+    titleField.appendChild(bugTitleLabel)
+    titleField.appendChild(bugTitleInput)
+
+    const categoryField = doc.createElement('div')
+    categoryField.className = 'd2-toolbar-modal__field'
+    const bugCategoryLabel = doc.createElement('label')
+    bugCategoryLabel.id = 'd2-bug-category-label'
+    bugCategoryLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    bugCategoryLabel.htmlFor = 'd2-bug-category-select'
+    const bugCategorySelect = doc.createElement('select')
+    bugCategorySelect.id = 'd2-bug-category-select'
+    bugCategorySelect.className = 'd2-toolbar__select d2-toolbar-modal__select'
+    for (const cat of BUG_REPORT_CATEGORIES) {
+      const opt = doc.createElement('option')
+      opt.value = cat
+      bugCategorySelect.appendChild(opt)
+    }
+    bugCategorySelect.value = 'gameplay'
+    categoryField.appendChild(bugCategoryLabel)
+    categoryField.appendChild(bugCategorySelect)
+
+    const descField = doc.createElement('div')
+    descField.className = 'd2-toolbar-modal__field'
+    const bugDescLabel = doc.createElement('label')
+    bugDescLabel.id = 'd2-bug-desc-label'
+    bugDescLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    bugDescLabel.htmlFor = 'd2-bug-desc-input'
+    const bugDescInput = doc.createElement('textarea')
+    bugDescInput.id = 'd2-bug-desc-input'
+    bugDescInput.className = 'd2-toolbar-modal__textarea'
+    bugDescInput.setAttribute('rows', '4')
+    bugDescInput.setAttribute('maxlength', '4000')
+    descField.appendChild(bugDescLabel)
+    descField.appendChild(bugDescInput)
+
+    const bugStatusMsg = doc.createElement('div')
+    bugStatusMsg.id = 'd2-bug-status-msg'
+    bugStatusMsg.className = 'd2-toolbar-modal__status'
+    bugStatusMsg.setAttribute('role', 'status')
+    bugStatusMsg.hidden = true
+
+    bugBody.appendChild(titleField)
+    bugBody.appendChild(categoryField)
+    bugBody.appendChild(descField)
+    bugBody.appendChild(bugStatusMsg)
+
+    const bugFooter = doc.createElement('div')
+    bugFooter.className = 'd2-toolbar-modal__footer'
+    const bugCancelBtn = doc.createElement('button')
+    bugCancelBtn.type = 'button'
+    bugCancelBtn.id = 'd2-bug-cancel-btn'
+    bugCancelBtn.className = 'd2-toolbar__btn'
+    bugCancelBtn.addEventListener('click', () => {
+      this.closeBugModal()
+    })
+    const bugSubmitBtn = doc.createElement('button')
+    bugSubmitBtn.type = 'button'
+    bugSubmitBtn.id = 'd2-bug-submit-btn'
+    bugSubmitBtn.className = 'd2-toolbar__btn d2-toolbar__btn--primary'
+    bugSubmitBtn.addEventListener('click', () => {
+      void this.submitBugReport()
+    })
+    bugFooter.appendChild(bugCancelBtn)
+    bugFooter.appendChild(bugSubmitBtn)
+
+    bugDialog.appendChild(bugHeader)
+    bugDialog.appendChild(bugSubtitle)
+    bugDialog.appendChild(bugBody)
+    bugDialog.appendChild(bugFooter)
+    bugOverlay.appendChild(bugDialog)
+
+    // Diagnostic Banner
     const diagBanner = doc.createElement('div')
     diagBanner.id = 'd2-toolbar-diag-banner'
     diagBanner.className = 'd2-toolbar__diag'
     diagBanner.hidden = true
 
-    root.appendChild(statusGroup)
-    root.appendChild(viewportGroup)
-    root.appendChild(langGroup)
-    root.appendChild(divider)
     root.appendChild(pluginsBtn)
     root.appendChild(pluginSlot)
+    root.appendChild(rightContainer)
+    root.appendChild(configOverlay)
+    root.appendChild(bugOverlay)
     root.appendChild(diagBanner)
 
     const g = globalThis as Record<string, unknown>
@@ -1169,21 +2005,55 @@ a.d2-toolbar__btn:active {
     this.statusDotEl = dot
     this.statusTextEl = statusText
     this.rttTextEl = rttText
-    this.langBtnZhEl = langBtnZh
-    this.langBtnEnEl = langBtnEn
+    this.langBtnEl = langBtn
+    this.langBtnIconEl = langBtnIcon
+    this.langBtnBadgeEl = langBtnBadge
+    this.configBtnEl = configBtn
+    this.configBtnIconEl = configBtnIcon
+    this.bugBtnEl = bugBtn
+    this.bugBtnIconEl = bugBtnIcon
+
+    this.configOverlayEl = configOverlay
+    this.configTitleEl = configTitle
+    this.configSubtitleEl = configSubtitle
+    this.configCloseBtnEl = configCloseBtn
+    this.displayModeLabelEl = displayModeLabel
     this.viewportLabelEl = viewportLabel
     this.viewportSelectEl = viewportSelect
+    this.fpsLabelEl = fpsLabel
     this.worldFpsSelectEl = fpsSelect
+    this.volumeLabelEl = volumeLabel
+    this.muteBtnEl = muteBtn
+    this.muteBtnIconEl = muteBtnIcon
+    this.muteBtnLabelEl = muteBtnLabel
+    this.volumeSliderEl = volumeSlider
+    this.volumeValueEl = volumeValue
+    this.cacheRowLabelEl = cacheRowLabel
     this.fullscreenBtnEl = fullscreenBtn
     this.fullscreenBtnIconEl = fullscreenBtnIcon
     this.fullscreenBtnLabelEl = fullscreenBtnLabel
+    this.cacheClearBtnEl = cacheClearBtn
+    this.cacheClearBtnIconEl = cacheClearBtnIcon
+    this.cacheClearBtnLabelEl = cacheClearBtnLabel
+
+    this.bugOverlayEl = bugOverlay
+    this.bugTitleEl = bugTitle
+    this.bugSubtitleEl = bugSubtitle
+    this.bugCloseBtnEl = bugCloseBtn
+    this.bugTitleLabelEl = bugTitleLabel
+    this.bugTitleInputEl = bugTitleInput
+    this.bugCategoryLabelEl = bugCategoryLabel
+    this.bugCategorySelectEl = bugCategorySelect
+    this.bugDescLabelEl = bugDescLabel
+    this.bugDescInputEl = bugDescInput
+    this.bugStatusMsgEl = bugStatusMsg
+    this.bugCancelBtnEl = bugCancelBtn
+    this.bugSubmitBtnEl = bugSubmitBtn
+
     this.pluginsBtnEl = pluginsBtn
     this.pluginsBtnIconEl = pluginsBtnIcon
     this.pluginsBtnLabelEl = pluginsBtnLabel
     this.pluginSlotEl = pluginSlot
-    this.cacheClearBtnEl = cacheClearBtn
-    this.cacheClearBtnIconEl = cacheClearBtnIcon
-    this.cacheClearBtnLabelEl = cacheClearBtnLabel
     this.diagBannerEl = diagBanner
 
     this.syncDom()
@@ -1273,18 +2143,73 @@ a.d2-toolbar__btn:active {
         entry.el.title = tooltip
       }
     }
-    if (this.langBtnZhEl) {
-      this.langBtnZhEl.className =
-        lang === 'zh' ? 'd2-toolbar__btn d2-toolbar__btn--active' : 'd2-toolbar__btn'
-      this.langBtnZhEl.setAttribute('aria-pressed', lang === 'zh' ? 'true' : 'false')
+
+    // Right Icon Buttons: Language, Config, Bug Report
+    if (this.langBtnEl) {
+      const langTitle = tToolbar('toolbar.lang.toggle', lang)
+      const badgeText = lang === 'en' ? tToolbar('toolbar.lang.en', lang) : tToolbar('toolbar.lang.zh', lang)
+      if (this.langBtnIconEl) {
+        this.langBtnIconEl.innerHTML = TOOLBAR_LANG_ICON_SVG
+      }
+      if (this.langBtnBadgeEl) {
+        this.langBtnBadgeEl.textContent = badgeText
+      }
+      this.langBtnEl.title = langTitle
+      this.langBtnEl.setAttribute('aria-label', langTitle)
+      this.langBtnEl.setAttribute('data-lang', lang)
     }
-    if (this.langBtnEnEl) {
-      this.langBtnEnEl.className =
-        lang === 'en' ? 'd2-toolbar__btn d2-toolbar__btn--active' : 'd2-toolbar__btn'
-      this.langBtnEnEl.setAttribute('aria-pressed', lang === 'en' ? 'true' : 'false')
+    if (this.configBtnEl) {
+      const cfgTitle = tToolbar('toolbar.config.open', lang)
+      if (this.configBtnIconEl) {
+        this.configBtnIconEl.innerHTML = TOOLBAR_CONFIG_ICON_SVG
+      }
+      this.configBtnEl.title = cfgTitle
+      this.configBtnEl.setAttribute('aria-label', cfgTitle)
+      this.configBtnEl.setAttribute('aria-expanded', this.configModalOpen ? 'true' : 'false')
+      this.configBtnEl.className = this.configModalOpen
+        ? 'd2-toolbar__btn d2-toolbar__btn--icon d2-toolbar__btn--active'
+        : 'd2-toolbar__btn d2-toolbar__btn--icon'
+    }
+    if (this.bugBtnEl) {
+      const bugTitle = tToolbar('toolbar.bug.open', lang)
+      if (this.bugBtnIconEl) {
+        this.bugBtnIconEl.innerHTML = TOOLBAR_BUG_ICON_SVG
+      }
+      this.bugBtnEl.title = bugTitle
+      this.bugBtnEl.setAttribute('aria-label', bugTitle)
+      this.bugBtnEl.setAttribute('aria-expanded', this.bugModalOpen ? 'true' : 'false')
+      this.bugBtnEl.className = this.bugModalOpen
+        ? 'd2-toolbar__btn d2-toolbar__btn--icon d2-toolbar__btn--active'
+        : 'd2-toolbar__btn d2-toolbar__btn--icon'
+    }
+
+    // Config Modal Sync
+    if (this.configOverlayEl) {
+      this.configOverlayEl.hidden = !this.configModalOpen
+    }
+    if (this.configTitleEl) {
+      this.configTitleEl.textContent = tToolbar('toolbar.config.title', lang)
+    }
+    if (this.configSubtitleEl) {
+      this.configSubtitleEl.textContent = tToolbar('toolbar.config.subtitle', lang)
+    }
+    if (this.configCloseBtnEl) {
+      this.configCloseBtnEl.textContent = tToolbar('toolbar.config.close', lang)
+    }
+    if (this.displayModeLabelEl) {
+      this.displayModeLabelEl.textContent = tToolbar('toolbar.config.displayMode', lang)
     }
     if (this.viewportLabelEl) {
       this.viewportLabelEl.textContent = tToolbar('toolbar.viewport.label', lang)
+    }
+    if (this.fpsLabelEl) {
+      this.fpsLabelEl.textContent = tToolbar('toolbar.config.fps', lang)
+    }
+    if (this.volumeLabelEl) {
+      this.volumeLabelEl.textContent = tToolbar('toolbar.config.volume', lang)
+    }
+    if (this.cacheRowLabelEl) {
+      this.cacheRowLabelEl.textContent = tToolbar('toolbar.config.cache', lang)
     }
     if (this.viewportSelectEl && typeof document !== 'undefined') {
       const existingValues = Array.from(this.viewportSelectEl.options).map((o) => o.value)
@@ -1304,6 +2229,36 @@ a.d2-toolbar__btn:active {
     }
     if (this.worldFpsSelectEl) {
       this.worldFpsSelectEl.value = String(snap.settings.worldRenderFps)
+    }
+    if (this.muteBtnEl) {
+      const muted = snap.settings.audioMuted
+      const muteLabel = tToolbar(
+        muted ? 'toolbar.config.muted' : 'toolbar.config.mute',
+        lang,
+      )
+      if (this.muteBtnIconEl) {
+        this.muteBtnIconEl.innerHTML =
+          muted || snap.settings.masterVolume <= 0
+            ? TOOLBAR_VOLUME_MUTE_ICON_SVG
+            : TOOLBAR_VOLUME_ON_ICON_SVG
+      }
+      if (this.muteBtnLabelEl) {
+        this.muteBtnLabelEl.textContent = muteLabel
+      } else {
+        this.muteBtnEl.textContent = muteLabel
+      }
+      this.muteBtnEl.title = muteLabel
+      this.muteBtnEl.setAttribute('aria-pressed', muted ? 'true' : 'false')
+      this.muteBtnEl.className = muted
+        ? 'd2-toolbar__btn d2-toolbar__btn--active'
+        : 'd2-toolbar__btn'
+    }
+    const volPct = Math.round(snap.settings.masterVolume * 100)
+    if (this.volumeSliderEl) {
+      this.volumeSliderEl.value = String(volPct)
+    }
+    if (this.volumeValueEl) {
+      this.volumeValueEl.textContent = snap.settings.audioMuted ? `0%` : `${volPct}%`
     }
     if (this.fullscreenBtnEl) {
       const active = this.fullscreen?.isActive() ?? false
@@ -1346,6 +2301,76 @@ a.d2-toolbar__btn:active {
       }
       this.cacheClearBtnEl.title = labelText
     }
+
+    // Bug Report Modal Sync
+    if (this.bugOverlayEl) {
+      this.bugOverlayEl.hidden = !this.bugModalOpen
+    }
+    if (this.bugTitleEl) {
+      this.bugTitleEl.textContent = tToolbar('toolbar.bug.title', lang)
+    }
+    if (this.bugSubtitleEl) {
+      this.bugSubtitleEl.textContent = tToolbar('toolbar.bug.subtitle', lang)
+    }
+    if (this.bugCloseBtnEl) {
+      this.bugCloseBtnEl.textContent = tToolbar('toolbar.bug.close', lang)
+    }
+    if (this.bugTitleLabelEl) {
+      this.bugTitleLabelEl.textContent = tToolbar('toolbar.bug.titleLabel', lang)
+    }
+    if (this.bugTitleInputEl) {
+      this.bugTitleInputEl.setAttribute(
+        'placeholder',
+        tToolbar('toolbar.bug.titlePlaceholder', lang),
+      )
+    }
+    if (this.bugCategoryLabelEl) {
+      this.bugCategoryLabelEl.textContent = tToolbar('toolbar.bug.categoryLabel', lang)
+    }
+    if (this.bugCategorySelectEl) {
+      const opts = Array.from(this.bugCategorySelectEl.options)
+      for (let i = 0; i < BUG_REPORT_CATEGORIES.length; i += 1) {
+        const cat = BUG_REPORT_CATEGORIES[i]!
+        const optEl = opts[i]
+        if (optEl) {
+          optEl.textContent = tToolbar(`toolbar.bug.category.${cat}` as const, lang)
+        }
+      }
+    }
+    if (this.bugDescLabelEl) {
+      this.bugDescLabelEl.textContent = tToolbar('toolbar.bug.descLabel', lang)
+    }
+    if (this.bugDescInputEl) {
+      this.bugDescInputEl.setAttribute(
+        'placeholder',
+        tToolbar('toolbar.bug.descPlaceholder', lang),
+      )
+    }
+    if (this.bugCancelBtnEl) {
+      this.bugCancelBtnEl.textContent = tToolbar('toolbar.bug.cancel', lang)
+    }
+    if (this.bugSubmitBtnEl) {
+      this.bugSubmitBtnEl.disabled = this.bugSubmitting
+      this.bugSubmitBtnEl.textContent = tToolbar(
+        this.bugSubmitting ? 'toolbar.bug.submitting' : 'toolbar.bug.submit',
+        lang,
+      )
+    }
+    if (this.bugStatusMsgEl) {
+      if (this.bugStatusState.kind === 'none' || !this.bugStatusState.message) {
+        this.bugStatusMsgEl.hidden = true
+        this.bugStatusMsgEl.textContent = ''
+        this.bugStatusMsgEl.className = 'd2-toolbar-modal__status'
+      } else {
+        this.bugStatusMsgEl.hidden = false
+        this.bugStatusMsgEl.textContent = this.bugStatusState.message
+        this.bugStatusMsgEl.className =
+          this.bugStatusState.kind === 'ok'
+            ? 'd2-toolbar-modal__status d2-toolbar-modal__status--ok'
+            : 'd2-toolbar-modal__status d2-toolbar-modal__status--error'
+      }
+    }
+
     if (this.diagBannerEl) {
       if (snap.diagnosticBannerText) {
         this.diagBannerEl.hidden = false

@@ -6,7 +6,7 @@ Audit: `tools/verify-floor-flicker-923.ts` (all 136 levels, 32 frames + 5 camera
 
 ## 1. Byte `+7` is not an "animated" byte
 
-The DT1 tile header word at `+0x06` is `D2TileLibraryEntryStrc::nFlags` (material flags, D2MOO `D2TileMaterialFlags`):
+The DT1 tile header word at `+0x06` is `D2TileLibraryEntryStrc::nFlags` (16-bit material flags):
 `0x1` other, `0x2` water, `0x4` wood object, `0x8` indoor stone, `0x10` outdoor stone, `0x20` dirt, `0x40` sand,
 `0x80` wood, `0x100` lava, `0x400` snow. The byte at `+7` (the port's `animated` field) is just its high byte.
 

@@ -47,4 +47,13 @@ export function encode0x59MakeEntityMove(target: UnitRef, to?: Pt): Uint8Array {
   return validateC2sPacket(w.toUint8Array())
 }
 
+/**
+ * 0x53 TurnOnRun (1B) / 0x54 TurnOffRun (1B), D2Client.dll 0x6faeae40 / 0x6faeadf0.
+ */
+export function encodeC2sRunToggle(run: boolean): Uint8Array {
+  const w = new ByteWriter(1)
+  w.u8(run ? 0x53 : 0x54)
+  return validateC2sPacket(w.toUint8Array())
+}
+
 

@@ -241,7 +241,12 @@ export interface HudCommandSink {
   allocateStat(key: BaseStatKey): boolean
   allocateSkill(skillId: number): boolean
   selectSkill(hand: 'left' | 'right', skillId: number): void
+  assignSkillHotkey?(slot: number, hand: 'left' | 'right', skillId: number, itemId?: number): void
+  activateSkillHotkey?(slot: number): boolean
+  cycleBoundSkills?(step: -1 | 1): boolean
   useBeltSlot(col: number, shiftToMerc?: boolean): boolean
+  autoBeltItem?(itemId: number): boolean | void
+  onAutoBeltItem?(itemId: number): boolean | void
   swapWeapons(): void
   pickupItemToCursor(itemId: number): void
   /** `buffer`: `0` = inventory, `3` = cube, `4` = stash. */
@@ -452,6 +457,8 @@ export class HudManager {
     readonly expireAtMs?: number | undefined
   }[] = []
   showFps = false
+  showPartyPortraits = true
+  helpOverlayOpen = false
   currentFps = 0
   pingMs = 0
   trade: any = null
@@ -486,8 +493,13 @@ export class HudManager {
   private decodedDc6Count = 415
   private dc6DecodeFailures = 0
   private eventsBound = false
-  /** #954: `[target, type, handler]` triples registered by `bindEvents` for `dispose()`. */
-  private readonly boundWindowEvents: [Window | HTMLCanvasElement, string, EventListener][] = []
+  /** #954: `[target, type, handler, options]` tuples registered by `bindEvents` for `dispose()`. */
+  private readonly boundWindowEvents: [
+    Window | HTMLCanvasElement,
+    string,
+    EventListener,
+    (boolean | AddEventListenerOptions | undefined)?,
+  ][] = []
   /** #940 R2: container revision mirrored by `HudModel.syncFromWorldImpl` (repaint skip-gate input). */
   hudRevision = -1
   /** #940 R2: last full 2D repaint timestamp (4Hz safety repaint anchor). */
@@ -919,9 +931,6 @@ export class HudManager {
       this.skillTree.showBasePlusBonusSkills = patch.showBasePlusBonusSkills
       this.hotkeys.showBasePlusBonusSkills = patch.showBasePlusBonusSkills
     }
-    if (typeof patch.alwaysShowGlobeValues === 'boolean') {
-      this.globes.alwaysShowValues = patch.alwaysShowGlobeValues
-    }
     if (typeof patch.showStatGainTooltips === 'boolean') {
       this.charSheet.showStatGainTooltips = patch.showStatGainTooltips
       if (!patch.showStatGainTooltips) {
@@ -941,7 +950,6 @@ export class HudManager {
     return {
       showBasePlusBonusStats: this.charSheet.showBasePlusBonusStats,
       showBasePlusBonusSkills: this.skillTree.showBasePlusBonusSkills,
-      alwaysShowGlobeValues: this.globes.alwaysShowValues,
       showStatGainTooltips: this.charSheet.showStatGainTooltips,
       showWeaponDamageFormula: this.worldPanels.showWeaponDamageFormula,
     }
@@ -985,11 +993,28 @@ export class HudManager {
     return is640
   }
 
+  togglePartyPortraits(): boolean {
+    this.showPartyPortraits = !this.showPartyPortraits
+    this.syncPublishedState()
+    return this.showPartyPortraits
+  }
+
+  toggleHelpOverlay(): boolean {
+    this.helpOverlayOpen = !this.helpOverlayOpen
+    this.syncPublishedState()
+    return this.helpOverlayOpen
+  }
+
   handleMouseMove(logicalX: number, logicalY: number): void {
     handleHudMouseMove(this, logicalX, logicalY)
   }
 
-  handleClick(logicalX: number, logicalY: number, button = 0): void {
+  handleClick(
+    logicalX: number,
+    logicalY: number,
+    button = 0,
+    modifiers?: { shiftKey?: boolean; ctrlKey?: boolean; altKey?: boolean },
+  ): void {
     const clientPt = this.logicalToClient(logicalX, logicalY)
     const fakeEvent = {
       button,
@@ -997,7 +1022,9 @@ export class HudManager {
       clientY: clientPt.y,
       _logicalX: logicalX,
       _logicalY: logicalY,
-      shiftKey: false,
+      shiftKey: Boolean(modifiers?.shiftKey),
+      ctrlKey: Boolean(modifiers?.ctrlKey),
+      altKey: Boolean(modifiers?.altKey),
       preventDefault: () => {},
       stopPropagation: () => {},
     } as unknown as MouseEvent
@@ -1481,6 +1508,28 @@ export class HudManager {
     if (this.leftPanel === 'hire' || (this.worldPanels as any).activePanel === 'hire') {
       return this.worldPanels.handleHireWheel(deltaY)
     }
+    if (
+      this.leftPanel === 'msg' &&
+      this.mouseX >= 0 &&
+      this.mouseX <= 400 &&
+      this.mouseY >= 0 &&
+      this.mouseY <= 553
+    ) {
+      if (deltaY !== 0) {
+        this.worldPanels.scrollMessageLog(deltaY < 0 ? 1 : -1)
+      }
+      return true
+    }
+    if (deltaY === 0) return false
+    const step: -1 | 1 = deltaY < 0 ? -1 : 1
+    if (this._commandSink?.cycleBoundSkills) {
+      return this._commandSink.cycleBoundSkills(step)
+    }
+    const cycled = this.hotkeys.cycleBoundSkills(step)
+    if (cycled) {
+      this.syncPublishedState()
+      return true
+    }
     return false
   }
 
@@ -1650,8 +1699,13 @@ export class HudManager {
     return handleVendorInventoryClick(this, x, y, isRightClick, isCtrlClick)
   }
 
-  private forwardInventoryPanelClick(x: number, y: number, isRightClick: boolean): boolean {
-    return forwardInventoryPanelClick(this, x, y, isRightClick)
+  private forwardInventoryPanelClick(
+    x: number,
+    y: number,
+    isRightClick: boolean,
+    isShiftClick = false,
+  ): boolean {
+    return forwardInventoryPanelClick(this, x, y, isRightClick, isShiftClick)
   }
 
   private forwardGridClick(
@@ -1660,8 +1714,9 @@ export class HudManager {
     row: number,
     hitItem: UiInventoryItem | null,
     isRightClick: boolean,
+    isShiftClick = false,
   ): void {
-    forwardGridClick(this, buffer, col, row, hitItem, isRightClick)
+    forwardGridClick(this, buffer, col, row, hitItem, isRightClick, isShiftClick)
   }
 
   private handleSkillAllocated(skillId: number): void {

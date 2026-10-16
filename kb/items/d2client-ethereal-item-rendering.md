@@ -60,16 +60,23 @@ All 2D UI item DC6 sprites (`data\global\items\inv*.dc6`) in Diablo II v1.13c ar
 6F886CE2: ; case 1 (falls into 0x80 via 0x6F886CEE)
 ```
 
-| `eDrawMode` | Symbolic Name | D3D Vertex Alpha (`0x00..0xFF`) | Normalized Opacity | GDI `pal.pl2` Table (`D2Gdi.dll` `0x6F8762E0`) |
-|---:|---|---:|---:|---|
-| `0` | `DRAWMODE_TRANS25` | `0x40` (`64`) | `0.25` (25%) | `[pPalTable + 0x00]` (`alphaBlend[0]`, 25%/75%) |
-| `1` | `DRAWMODE_TRANS50` | `0x80` (`128`) | `0.50` (**50%**) | `[pPalTable + 0x04]` (`alphaBlend[1]`, 50%/50%) |
-| `2` | `DRAWMODE_TRANS75` | `0xC0` (`192`) | `0.75` (75%) | `[pPalTable + 0x08]` (`alphaBlend[2]`, 75%/25%) |
-| `3` | `DRAWMODE_MODULATE` | `0xFF` (`255`) | Multiplicative shadow/tint | `[pPalTable + 0x0C]` (`multiplicative`) |
-| `4` | `DRAWMODE_BURN` | `0xFF` (`255`) | Additive / screen blend | `[pPalTable + 0x30C]` |
-| `5` | `DRAWMODE_NORMAL` | `0xFF` (`255`) | `1.00` (**100% opaque**) | Direct index copy (no blend table) |
-| `6` | `DRAWMODE_TRANSHIGHLIGHT` | `0xFF` (`255`) | Screen / highlight | `[pPalTable + 0x40C]` |
-| `7` | `DRAWMODE_HIGHLIGHT` | `0xFF` (`255`) | Bright highlight | `[pPalTable + 0x10C]` |
+The blend state of modes 3/4 comes from the D2Direct3D `0x6F886B90` jump table `0x6F886CF4` (indexed by mode − 3):
+mode 3 → `0x6F886BF4` sets SRCBLEND/DESTBLEND = **ONE/ONE (additive)**, mode 4 → `0x6F886C41` sets **ZERO/SRCCOLOR
+(multiply)**, modes 5/7 → `0x6F886BA7` blend off (opaque). The symbolic enum names `MODULATE` / `BURN` for 3 / 4 are
+misnomers. The GDI column is the `D2Gdi.dll` `0x6F8762E0` jump table `0x6F87633C` (`cmp eax,6 / ja` → no table for
+mode ≥ 7; blend-type array `0x6F87BB80` = {2,2,2,1,1,0,1,0}). Full details: [`render/d2gfx-draw-mode-113c.md`](../render/d2gfx-draw-mode-113c.md).
+
+| `eDrawMode` | Symbolic Name | D3D Blend State (`D2Direct3D.dll`) | Normalized Opacity / Effect | GDI Table (`[0x6F87C550]` + offset) |
+|---:|---|---|---|---|
+| `0` | `DRAWMODE_TRANS25` | SRCALPHA/INVSRCALPHA, vertex α `0x40` | `0.25` (25%) | `+0x08` (alpha table) |
+| `1` | `DRAWMODE_TRANS50` | SRCALPHA/INVSRCALPHA, vertex α `0x80` | `0.50` (**50%**) | `+0x04` (alpha table) |
+| `2` | `DRAWMODE_TRANS75` | SRCALPHA/INVSRCALPHA, vertex α `0xC0` | `0.75` (75%) | `+0x00` (alpha table) |
+| `3` | `DRAWMODE_MODULATE` (misnomer) | **ONE/ONE** (`0x6F886BF4`) | **Additive** (dst + src) | `+0x104` (PL2 additive lookup) |
+| `4` | `DRAWMODE_BURN` (misnomer) | **ZERO/SRCCOLOR** (`0x6F886C41`) | **Multiply** (dst × src) | `+0x108` (PL2 multiplicative lookup) |
+| `5` | `DRAWMODE_NORMAL` | blend off (`0x6F886BA7`) | `1.00` (**100% opaque**) | none (direct index copy) |
+| `6` | `DRAWMODE_TRANSHIGHLIGHT` | default branch: SRCALPHA/INVSRCALPHA, α `0xFF` | opaque | `+0x10C` |
+| `7` | `DRAWMODE_HIGHLIGHT` | blend off (`0x6F886BA7`), texture variant 2 (hover-brightened palette, `0x6F887DFB`) | opaque + brighten | none (direct copy) |
+| `≥8` | — | default branch, α `0xFF` | opaque (treat as 5) | none (`ja`) |
 
 Therefore, an Ethereal item (`IFLAG_ETHEREAL = 0x00400000`) always renders its UI sprite at **`DRAWMODE_TRANS50 = 1` (50% opacity, `globalAlpha = 0.5`)**.
 

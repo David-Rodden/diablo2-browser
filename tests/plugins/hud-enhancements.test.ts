@@ -19,13 +19,6 @@ import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import { HudModel } from '../../src/client/ui-model/hud-model.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
 import type { D2FontRenderer } from '../../src/client/ui/font.ts'
-import {
-  GlobesHud,
-  LIFE_GLOBE_BOUNDS,
-  LIFE_GLOBE_BOUNDS_640,
-  MANA_GLOBE_BOUNDS,
-  MANA_GLOBE_BOUNDS_640,
-} from '../../src/client/ui/globes.ts'
 import { SkillHotkeysHud } from '../../src/client/ui/hotkeys.ts'
 import {
   SKILL_PANEL_ORIGIN,
@@ -87,13 +80,11 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     // Vanilla baseline before plugin host starts
     expect(settingsStore.get().showBasePlusBonusStats).toBe(false)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(false)
-    expect(settingsStore.get().alwaysShowGlobeValues).toBe(false)
     expect(settingsStore.get().showStatGainTooltips).toBe(false)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(false)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: false,
       showBasePlusBonusSkills: false,
-      alwaysShowGlobeValues: false,
       showStatGainTooltips: false,
       showWeaponDamageFormula: false,
     })
@@ -107,16 +98,14 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     })
     await host.whenStarted()
 
-    // Plugin is defaultEnabled: true -> all 5 enhancements active
+    // Plugin is defaultEnabled: true -> all 4 enhancements active
     expect(settingsStore.get().showBasePlusBonusStats).toBe(true)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(true)
-    expect(settingsStore.get().alwaysShowGlobeValues).toBe(true)
     expect(settingsStore.get().showStatGainTooltips).toBe(true)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(true)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: true,
       showBasePlusBonusSkills: true,
-      alwaysShowGlobeValues: true,
       showStatGainTooltips: true,
       showWeaponDamageFormula: true,
     })
@@ -135,7 +124,6 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     host.setSetting('hud-enhancements', 'showBasePlusBonusSkills', false)
     expect(settingsStore.get().showBasePlusBonusStats).toBe(true)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(false)
-    expect(settingsStore.get().alwaysShowGlobeValues).toBe(true)
     expect(settingsStore.get().showStatGainTooltips).toBe(true)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(true)
     expect(session.hudManager.skillTree.showBasePlusBonusSkills).toBe(false)
@@ -161,17 +149,15 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showWeaponDamageFormula).toBe(true)
     expect(session.hudManager.worldPanels.showWeaponDamageFormula).toBe(true)
 
-    // Disable the entire plugin -> strictly reverts all 5 flags to 1.13c vanilla false
+    // Disable the entire plugin -> strictly reverts all 4 flags to 1.13c vanilla false
     await host.setEnabled('hud-enhancements', false)
     expect(settingsStore.get().showBasePlusBonusStats).toBe(false)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(false)
-    expect(settingsStore.get().alwaysShowGlobeValues).toBe(false)
     expect(settingsStore.get().showStatGainTooltips).toBe(false)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(false)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: false,
       showBasePlusBonusSkills: false,
-      alwaysShowGlobeValues: false,
       showStatGainTooltips: false,
       showWeaponDamageFormula: false,
     })
@@ -334,88 +320,6 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     const vanillaLines = panel.formatSkillTooltipLines(36)
     expect(vanillaLines.some((l) => l.text.includes('8 (5+3)'))).toBe(false)
     expect(vanillaLines.some((l) => l.text.endsWith('8'))).toBe(true)
-  })
-
-  it('permanently renders current / max Life and Mana on globes when alwaysShowValues is enabled', () => {
-    const globes = new GlobesHud()
-    const ctx = createMockCanvasCtx()
-    const font = createMockFont()
-    const assets = {
-      lifeImg: null,
-      manaImg: null,
-      poisonImg: null,
-      overlapLeftImg: null,
-      overlapRightImg: null,
-    }
-    const state = { hp: 412, maxHp: 550, mana: 180, maxMana: 240 }
-
-    // 1. Vanilla mode (alwaysShowValues = false, not hovered) -> no text drawn
-    globes.alwaysShowValues = false
-    globes.lifeHovered = false
-    globes.manaHovered = false
-    globes.draw(ctx, state, assets, font)
-    expect(font.drawText).not.toHaveBeenCalled()
-
-    // 2. Enhanced mode (alwaysShowValues = true, not hovered) -> permanent values drawn on both globes (800x600)
-    expect(LIFE_GLOBE_BOUNDS).toEqual({ x: 29, y: 507, width: 80, height: 80 })
-    expect(MANA_GLOBE_BOUNDS).toEqual({ x: 689, y: 507, width: 80, height: 80 })
-    vi.clearAllMocks()
-    globes.alwaysShowValues = true
-    globes.is640 = false
-    globes.draw(ctx, state, assets, font)
-    expect(font.drawText).toHaveBeenCalledWith(
-      ctx,
-      '412 / 550',
-      LIFE_GLOBE_BOUNDS.x + 40,
-      LIFE_GLOBE_BOUNDS.y + 44,
-      expect.objectContaining({ color: 'white', align: 'center', shadow: true }),
-    )
-    expect(font.drawText).toHaveBeenCalledWith(
-      ctx,
-      '180 / 240',
-      MANA_GLOBE_BOUNDS.x + 40,
-      MANA_GLOBE_BOUNDS.y + 44,
-      expect.objectContaining({ color: 'white', align: 'center', shadow: true }),
-    )
-
-    // 3. Enhanced mode in 640x480 viewport -> uses 640 globe coordinates
-    expect(LIFE_GLOBE_BOUNDS_640).toEqual({ x: 29, y: 387, width: 80, height: 80 })
-    expect(MANA_GLOBE_BOUNDS_640).toEqual({ x: 529, y: 387, width: 80, height: 80 })
-    vi.clearAllMocks()
-    globes.is640 = true
-    globes.draw(ctx, state, assets, font)
-    expect(font.drawText).toHaveBeenCalledWith(
-      ctx,
-      '412 / 550',
-      LIFE_GLOBE_BOUNDS_640.x + 40,
-      LIFE_GLOBE_BOUNDS_640.y + 44,
-      expect.objectContaining({ color: 'white', align: 'center', shadow: true }),
-    )
-    expect(font.drawText).toHaveBeenCalledWith(
-      ctx,
-      '180 / 240',
-      MANA_GLOBE_BOUNDS_640.x + 40,
-      MANA_GLOBE_BOUNDS_640.y + 44,
-      expect.objectContaining({ color: 'white', align: 'center', shadow: true }),
-    )
-
-    // 4. STATE_HEALTHPOT (100) 25%-alpha healing preview band renders beneath permanent numerical readout (#860)
-    vi.clearAllMocks()
-    globes.is640 = false
-    const lifeImg = { width: 80, height: 80 } as unknown as HTMLImageElement
-    const recordedAlphas: number[] = []
-    vi.mocked(ctx.drawImage).mockImplementation(() => {
-      recordedAlphas.push(ctx.globalAlpha)
-    })
-    globes.draw(
-      ctx,
-      { hp: 275, maxHp: 550, mana: 180, maxMana: 240, healthPotActive: true, potionLifePercent: 80 },
-      { ...assets, lifeImg },
-      font,
-    )
-    expect(recordedAlphas).toEqual([0.25, 1])
-    expect(ctx.drawImage).toHaveBeenNthCalledWith(1, lifeImg, 0, 16, 80, 24, 29, 523, 80, 24)
-    expect(ctx.drawImage).toHaveBeenNthCalledWith(2, lifeImg, 0, 40, 80, 40, 29, 547, 80, 40)
   })
 
   it('computes 1.13c per-point attribute gain tooltips and renders them on hover when showStatGainTooltips is enabled', () => {

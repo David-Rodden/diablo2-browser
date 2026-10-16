@@ -5,7 +5,7 @@
 Ground items cannot be picked up and shrines / chests cannot be operated, while walking still works.
 Picking an item up in the inventory (C2S `0x19`) and putting it down cures it.
 
-## Server gate (D2Game; D2MOO names/addresses are the 1.10 decompilation, same logic)
+## Server gate (1.13c `D2Game.dll`)
 
 - `PLAYER_IsBusy(player)` (`Player.cpp`) = `SUNIT_GetInteractInfo(player)` (interact info set)
   **or** `INVENTORY_GetCursorItem(player)` **or** `pPlayerData->bBusy`.

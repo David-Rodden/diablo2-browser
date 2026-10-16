@@ -95,7 +95,7 @@ describe('1.13c Quest FX Missiles (Issue #873)', () => {
       expect(MISSILE_METAS['denofevillight']).toBeDefined()
       expect(MISSILE_METAS['denofevillight']?.directions).toBe(4)
       expect(MISSILE_METAS['denofevillight']?.framesPerDirection).toBe(21)
-      expect(MISSILE_METAS['LightBeams']).toBeDefined()
+      expect(MISSILE_METAS['denofevillight']?.celFile).toBe('LightBeams')
       expect(MISSILE_METAS['cairn stones bolt']).toBeDefined()
 
       expect(existsSync('public/missiles/denofevillight.png')).toBe(true)
@@ -199,7 +199,7 @@ describe('1.13c Quest FX Missiles (Issue #873)', () => {
         missileClassId: 287,
         missileKey: 'denofevillight',
         celFile: 'LightBeams',
-        blendMode: 'highlight',
+        blendMode: 'additive',
         trans: 1,
         lightRadius: 10,
         lightColor: [255, 255, 255],

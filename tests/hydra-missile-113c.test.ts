@@ -76,7 +76,7 @@ describe('[Skill #062] Hydra — 7-Dimensional 1.13c Verification Suite (Issue #
       expect(hydra.distancePx).toBe(480)
       expect(hydra.explosionMissile).toBe('fireexplode')
 
-      const hydrafire = getMissileTxtData('hydrafire')
+      const hydrafire = getMissileTxtData('hydra')
       expect(hydrafire.id).toBe(247)
       expect(hydrafire.vel).toBe(16)
       expect(hydrafire.range).toBe(30)
@@ -105,11 +105,11 @@ describe('[Skill #062] Hydra — 7-Dimensional 1.13c Verification Suite (Issue #
       expect(HYDRA_META.framesPerDirection).toBe(5)
       expect(HYDRA_META.animSpeed).toBe(16)
 
-      expect(HYDRAFIRE_META.name).toBe('hydrafire')
+      expect(HYDRAFIRE_META.name).toBe('hydra')
       expect(HYDRAFIRE_META.celFile).toBe('Firebolt')
 
       expect(MISSILE_METAS['hydra']).toBe(HYDRA_META)
-      expect(MISSILE_METAS['hydrafire']).toBe(HYDRAFIRE_META)
+      expect(MISSILE_METAS['hydra']).toBe(HYDRAFIRE_META)
       expect(MISSILE_METAS['firebolt']).toBe(FIREBOLT_META)
     })
 

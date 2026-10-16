@@ -138,11 +138,15 @@ describe('[Skill #015] Poison Javelin (AMA) — 1.13c Parity (Issue #169 / #972)
     const world = new ClientWorld()
     world.apply({ type: 'PlayerAssign', unitId: 1, charClass: 0, name: 'Ama', x: 100, y: 100 })
     const caster = world.getUnit('player', 1)!
+    // Missiles.txt Pierce=1 only marks poisonjav pierce-capable; actual piercing needs owner
+    // STAT_SKILL_PIERCE (166) / STAT_ITEM_PIERCE (156) (D2Game 0x6FD11420, Issue #1117).
+    caster.stats.set(166, 100)
     ;(world as any).spawnMissilesForSkill(caster, 15, 115, 100, 10)
     const pjav = Array.from(world.units.values()).find(
       (u) => u.unitType === 'missile' && u.missileKey === 'poisonjav',
     )!
     expect(pjav).toBeDefined()
+    expect(pjav.canPierce).toBe(true)
     expect(pjav.pierce).toBe(true)
     ;(world as any).stepMissileUnit(pjav)
     expect(
@@ -150,6 +154,79 @@ describe('[Skill #015] Poison Javelin (AMA) — 1.13c Parity (Issue #169 / #972)
         (u) => u.unitType === 'missile' && u.missileKey === 'poisonjavcloud',
       ),
     ).toBe(true)
+  })
+
+  it('verifies Issue #1297: poisonjavcloud (#39) executes MissCltDoFunc[4] to emit poisonpuff (#141), trails to monster impact point, and uses 60-tick server TTL', async () => {
+    const { CANONICAL_113C_MISSILES } = await import('../../../src/common/skills/missiles-data.ts')
+    const { ClientWorld } = await import('../../../src/client/world/client-world.ts')
+    const { tickProjectiles } = await import('../../../src/server/skills/skills.ts')
+
+    const cloudRow = CANONICAL_113C_MISSILES.poisonjavcloud!
+    expect(cloudRow.pCltDoFunc).toBe(4)
+    expect(cloudRow.cltParam1).toBe(24)
+    expect(cloudRow.cltParam2).toBe(1)
+    expect(cloudRow.cltParam3).toBe(6)
+    expect(cloudRow.cltSubMissile1).toBe('poisonpuff')
+    expect(cloudRow.range).toBe(60)
+
+    const world = new ClientWorld()
+    world.apply({ type: 'PlayerAssign', unitId: 1, charClass: 0, name: 'Ama', x: 100, y: 100 })
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 1, id: 201, classId: 1, x: 101, y: 100, lifePct: 128, mode: 1 },
+    })
+    const caster = world.getUnit('player', 1)!
+    ;(world as any).spawnMissilesForSkill(caster, 15, 105, 100, 10)
+    const pjav = Array.from(world.units.values()).find(
+      (u) => u.unitType === 'missile' && u.missileKey === 'poisonjav',
+    )!
+    expect(pjav).toBeDefined()
+    ;(world as any).stepMissileUnit(pjav)
+
+    const clouds = Array.from(world.units.values()).filter(
+      (u) => u.unitType === 'missile' && u.missileKey === 'poisonjavcloud',
+    )
+    // One trail cloud at launch (100, 100) + one impact trail cloud at hit monster (101, 100)
+    expect(clouds.length).toBeGreaterThanOrEqual(2)
+    expect(clouds.some((c) => Math.abs(c.x - 101) < 1e-3 && Math.abs(c.y - 100) < 1e-3)).toBe(true)
+
+    // Step one poisonjavcloud through its 60-tick lifetime and verify poisonpuff (#141) is emitted
+    const testCloud = clouds[0]!
+    let sawPoisonPuff = false
+    for (let t = 0; t < 60; t++) {
+      ;(world as any).stepMissileUnit(testCloud)
+      if (
+        Array.from(world.units.values()).some(
+          (u) => u.unitType === 'missile' && u.missileKey === 'poisonpuff',
+        )
+      ) {
+        sawPoisonPuff = true
+      }
+    }
+    expect(sawPoisonPuff).toBe(true)
+
+    // Server tickProjectiles uses 60-tick TTL for poisonjavcloud
+    const srvOut = tickProjectiles(
+      [
+        {
+          skillId: '15',
+          x: 100,
+          y: 100,
+          vx: 12,
+          vy: 0,
+          damage: 30,
+          ttl: 25,
+          fromPlayer: true,
+          missileType: 'poisonjav',
+          pierce: false,
+        },
+      ],
+      [],
+      { overlap: () => 0 },
+    )
+    const srvCloud = srvOut.alive.find((p) => p.missileType === 'poisonjavcloud')!
+    expect(srvCloud).toBeDefined()
+    expect(srvCloud.ttl).toBe(60)
   })
 })
 

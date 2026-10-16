@@ -1,5 +1,5 @@
 /**
- * Offline packer: Diablo II 1.13c compiled `Overlay.txt` records → `src/client/render/overlay-txt-rows.ts`.
+ * Offline packer: Diablo II 1.13c compiled `Overlay.txt` records → `src/common/data/overlay-txt-rows.ts`.
  *
  * Ground truth is the compiled table `data\global\excel\overlay.bin` that D2Common loads through
  * `DATATBLS_CompileTxt(hArchive, "overlay", …)` (D2MOO `OverlayTbls.cpp:8-39`, record layout
@@ -131,7 +131,7 @@ export function renderOverlayRowsModule(rows: readonly OverlayTxtRow[]): string 
  * record) with their \`Overlay.txt\` names. Index = the overlay index sent by the server (S2C 0x11,
  * D2Client \`0x6FB5DAA0\`; bounds-checked against the record count at \`0x6fb5dad9\`).
  */
-import type { OverlayTxtRow } from '../../common/data/overlay-txt-row-type.ts'
+import type { OverlayTxtRow } from './overlay-txt-row-type.ts'
 
 export const OVERLAY_TXT_ROWS: readonly OverlayTxtRow[] = Object.freeze([
 ${body}
@@ -144,7 +144,7 @@ function main(): void {
   const src = new NodeMpqArchiveSource(mpqDir)
   const rows = extractOverlayRows(src)
   const here = dirname(fileURLToPath(import.meta.url))
-  const outPath = join(here, '..', '..', 'client', 'render', 'overlay-txt-rows.ts')
+  const outPath = join(here, '..', '..', 'common', 'data', 'overlay-txt-rows.ts')
   writeFileSync(outPath, renderOverlayRowsModule(rows))
   console.log(`wrote ${String(rows.length)} overlay records → ${outPath}`)
 }

@@ -137,7 +137,6 @@ describe('[Skill #044] Frost Nova (SOR) — 1.13c 7-Dimensional Verification Sui
       expect(FROSTNOVA_META.directions).toBe(16)
       expect(FROSTNOVA_META.framesPerDirection).toBe(14)
       expect(MISSILE_METAS['frostnova']).toBe(FROSTNOVA_META)
-      expect(MISSILE_METAS['FrostNova']).toBe(FROSTNOVA_META)
     })
 
     it('verifies cast overlay mapping and metadata', () => {

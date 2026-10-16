@@ -282,6 +282,166 @@ async function run(): Promise<void> {
     assert(playReady, 'play.html __d2PlayApp failed to reach ready=true')
     await playCdp.evaluate('window.__d2PlayApp.plugins.whenStarted()')
 
+    // 0. Verify refactored Toolbar layout (Plugins far-left, Status + 3 icon buttons far-right),
+    //    Config Modal (#d2-config-modal-overlay), and Bug Report Modal (#d2-bug-modal-overlay -> POST /api/bugs)
+    const toolbarLayoutAndModals = await playCdp.evaluate<{
+      directChildrenIds: string[]
+      rightChildrenIds: string[]
+      leftPluginsX: number
+      rightBoxX: number
+      configOpened: boolean
+      hasFullscreenBtn: boolean
+      hasViewportSelect: boolean
+      hasFpsSelect: boolean
+      hasMuteBtn: boolean
+      hasVolumeSlider: boolean
+      hasCacheClearBtn: boolean
+      fpsAfterChange: number
+      volAfterChange: number
+      bugOpened: boolean
+      configClosedOnBugOpen: boolean
+      bugSubmitResult: { ok: boolean; id: string; error?: string }
+      bugListMatch: boolean
+    }>(`(async () => {
+      const root = document.getElementById('d2-toolbar');
+      const right = document.getElementById('d2-toolbar-right');
+      const pluginsBtn = document.getElementById('d2-toolbar-plugins-btn');
+      const directChildrenIds = root
+        ? Array.from(root.children)
+            .filter((el) => !el.classList.contains('d2-toolbar-modal-overlay') && el.id !== 'd2-toolbar-diag-banner')
+            .map((el) => el.id)
+        : [];
+      const rightChildrenIds = right
+        ? Array.from(
+            right.querySelectorAll(
+              '#d2-toolbar-status, #d2-toolbar-lang-btn, #d2-toolbar-config-btn, #d2-toolbar-bug-btn',
+            ),
+          ).map((el) => el.id)
+        : [];
+      const leftPluginsX = pluginsBtn?.getBoundingClientRect().left ?? -1;
+      const rightBoxX = right?.getBoundingClientRect().left ?? -1;
+
+      // Open Config modal
+      const configBtn = document.getElementById('d2-toolbar-config-btn');
+      configBtn?.click();
+      const configOverlay = document.getElementById('d2-config-modal-overlay');
+      const configOpened = Boolean(configOverlay && !configOverlay.hidden);
+      const fullscreenBtn = document.getElementById('d2-toolbar-fullscreen-btn');
+      const viewportSelect = document.getElementById('d2-toolbar-viewport-select');
+      const fpsSelect = document.getElementById('d2-toolbar-worldfps-select');
+      const muteBtn = document.getElementById('d2-toolbar-mute-btn');
+      const volumeSlider = document.getElementById('d2-toolbar-volume-slider');
+      const cacheClearBtn = document.getElementById('d2-toolbar-cache-clear-btn');
+
+      if (fpsSelect) {
+        fpsSelect.value = '30';
+        fpsSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (volumeSlider) {
+        volumeSlider.value = '65';
+        volumeSlider.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      const fpsAfterChange = window.__d2PlayApp.settings.get().worldRenderFps;
+      const volAfterChange = Math.round(window.__d2PlayApp.settings.get().masterVolume * 100);
+      if (fpsSelect) {
+        fpsSelect.value = '60';
+        fpsSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (volumeSlider) {
+        volumeSlider.value = '100';
+        volumeSlider.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      // Open Bug Report modal (must auto-close Config modal)
+      const bugBtn = document.getElementById('d2-toolbar-bug-btn');
+      bugBtn?.click();
+      const bugOverlay = document.getElementById('d2-bug-modal-overlay');
+      const bugOpened = Boolean(bugOverlay && !bugOverlay.hidden);
+      const configClosedOnBugOpen = Boolean(configOverlay && configOverlay.hidden);
+
+      const titleInput = document.getElementById('d2-bug-title-input');
+      const catSelect = document.getElementById('d2-bug-category-select');
+      const descInput = document.getElementById('d2-bug-desc-input');
+      if (titleInput) titleInput.value = 'E2E Browser Bug Report Verification';
+      if (catSelect) catSelect.value = 'ui';
+      if (descInput) descInput.value = 'Automated headless Chrome check for toolbar bug reporting.';
+      const bugSubmitResult = await window.__d2PlayApp.toolbar.submitBugReport();
+
+      const listRes = await fetch('/api/bugs');
+      const listJson = await listRes.json();
+      const bugListMatch = Boolean(
+        listJson &&
+          listJson.ok &&
+          Array.isArray(listJson.reports) &&
+          listJson.reports.some((r) => r.id === bugSubmitResult.id),
+      );
+
+      document.getElementById('d2-bug-modal-close')?.click();
+
+      return {
+        directChildrenIds,
+        rightChildrenIds,
+        leftPluginsX,
+        rightBoxX,
+        configOpened,
+        hasFullscreenBtn: Boolean(fullscreenBtn),
+        hasViewportSelect: Boolean(viewportSelect),
+        hasFpsSelect: Boolean(fpsSelect),
+        hasMuteBtn: Boolean(muteBtn),
+        hasVolumeSlider: Boolean(volumeSlider),
+        hasCacheClearBtn: Boolean(cacheClearBtn),
+        fpsAfterChange,
+        volAfterChange,
+        bugOpened,
+        configClosedOnBugOpen,
+        bugSubmitResult,
+        bugListMatch,
+      };
+    })()`)
+
+    assert(
+      JSON.stringify(toolbarLayoutAndModals.directChildrenIds) ===
+        JSON.stringify(['d2-toolbar-plugins-btn', 'd2-toolbar-plugin-slot', 'd2-toolbar-right']),
+      `Expected toolbar top-level layout ['d2-toolbar-plugins-btn','d2-toolbar-plugin-slot','d2-toolbar-right'], got ${JSON.stringify(toolbarLayoutAndModals.directChildrenIds)}`,
+    )
+    assert(
+      JSON.stringify(toolbarLayoutAndModals.rightChildrenIds) ===
+        JSON.stringify([
+          'd2-toolbar-status',
+          'd2-toolbar-lang-btn',
+          'd2-toolbar-config-btn',
+          'd2-toolbar-bug-btn',
+        ]),
+      `Expected right toolbar items ['d2-toolbar-status','d2-toolbar-lang-btn','d2-toolbar-config-btn','d2-toolbar-bug-btn'], got ${JSON.stringify(toolbarLayoutAndModals.rightChildrenIds)}`,
+    )
+    assert(
+      toolbarLayoutAndModals.rightBoxX > toolbarLayoutAndModals.leftPluginsX,
+      `Expected #d2-toolbar-right (${toolbarLayoutAndModals.rightBoxX}px) to be positioned to the right of #d2-toolbar-plugins-btn (${toolbarLayoutAndModals.leftPluginsX}px)`,
+    )
+    assert(toolbarLayoutAndModals.configOpened, 'Expected #d2-config-modal-overlay to open when clicking #d2-toolbar-config-btn')
+    assert(
+      toolbarLayoutAndModals.hasFullscreenBtn &&
+        toolbarLayoutAndModals.hasViewportSelect &&
+        toolbarLayoutAndModals.hasFpsSelect &&
+        toolbarLayoutAndModals.hasMuteBtn &&
+        toolbarLayoutAndModals.hasVolumeSlider &&
+        toolbarLayoutAndModals.hasCacheClearBtn,
+      'Expected Config modal to contain fullscreen, viewport, FPS, mute, volume slider, and cache clear controls',
+    )
+    assert(toolbarLayoutAndModals.fpsAfterChange === 30, `Expected FPS setting change to 30, got ${toolbarLayoutAndModals.fpsAfterChange}`)
+    assert(toolbarLayoutAndModals.volAfterChange === 65, `Expected master volume change to 65%, got ${toolbarLayoutAndModals.volAfterChange}`)
+    assert(toolbarLayoutAndModals.bugOpened && toolbarLayoutAndModals.configClosedOnBugOpen, 'Expected Bug modal to open and auto-close Config modal')
+    assert(
+      toolbarLayoutAndModals.bugSubmitResult.ok && Boolean(toolbarLayoutAndModals.bugSubmitResult.id),
+      `Expected bug report submission to succeed, got ${JSON.stringify(toolbarLayoutAndModals.bugSubmitResult)}`,
+    )
+    assert(toolbarLayoutAndModals.bugListMatch, 'Expected submitted bug report to be persisted and returned by GET /api/bugs')
+    try {
+      rmSync(join(ROOT_DIR, 'bugs', `${toolbarLayoutAndModals.bugSubmitResult.id}.json`), { force: true })
+    } catch {
+      // ignore cleanup
+    }
+
     // 1. Open plugin modal menu via #d2-toolbar-plugins-btn & verify all 5 built-in plugins + PacketInspector removal
     const openStateZh = await playCdp.evaluate<{
       btnExists: boolean
@@ -361,6 +521,7 @@ async function run(): Promise<void> {
       'hud-enhancements',
       'ground-item-beam',
       'quick-cast',
+      'next-game',
     ]
     assert(
       JSON.stringify(openStateZh.navIds) === JSON.stringify(expectedCardIds),
@@ -488,9 +649,9 @@ async function run(): Promise<void> {
     const shot1Bytes = await playCdp.captureScreenshot(shot1)
     console.log(`[verify-plugin-menu] Captured ${shot1} (${shot1Bytes} bytes) — Plugin menu open (ZH)`)
 
-    // 2. Toggle language to English and verify English labels in plugin modal
+    // 2. Toggle language to English via #d2-toolbar-lang-btn and verify English labels in plugin modal
     await playCdp.evaluate(`(() => {
-      document.getElementById('d2-toolbar-lang-en')?.click();
+      document.getElementById('d2-toolbar-lang-btn')?.click();
     })()`)
     const openStateEn = await playCdp.evaluate<{
       titleText: string
@@ -512,9 +673,9 @@ async function run(): Promise<void> {
     const shot2Bytes = await playCdp.captureScreenshot(shot2)
     console.log(`[verify-plugin-menu] Captured ${shot2} (${shot2Bytes} bytes) — Plugin menu open (EN)`)
 
-    // Switch back to Chinese
+    // Switch back to Chinese via #d2-toolbar-lang-btn
     await playCdp.evaluate(`(() => {
-      document.getElementById('d2-toolbar-lang-zh')?.click();
+      document.getElementById('d2-toolbar-lang-btn')?.click();
     })()`)
 
     // 3. Toggle showToolbarShortcut off -> verify #d2-toolbar-plugin-kill-stats-open disappears, then toggle back on

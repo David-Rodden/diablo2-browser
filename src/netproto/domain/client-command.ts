@@ -53,6 +53,16 @@ export type ClientCommand =
       readonly skill: number
       readonly itemId?: number | undefined
     }
+  /** 0x51 AssignSkillHotkey (9B, D2Client.dll 0x6faed2b6): bind or unbind (skill=0xffff) a skill hotkey slot (0..15). */
+  | {
+      readonly type: 'AssignSkillHotkey'
+      readonly slot: number
+      readonly hand: Hand
+      readonly skill: number
+      readonly itemId?: number | undefined
+    }
+  /** 0x53 TurnOnRun / 0x54 TurnOffRun (1B, D2Client.dll 0x6faeae40 / 0x6faeadf0). */
+  | { readonly type: 'RunToggle'; readonly run: boolean }
   | { readonly type: 'Interact'; readonly target: UnitRef }
   | { readonly type: 'OperateObject'; readonly objectId: number }
   | { readonly type: 'TakeWarp'; readonly warpId: number; readonly at?: Pt | undefined }
@@ -100,6 +110,8 @@ export type ClientCommand =
   | { readonly type: 'ScrollToBook'; readonly scrollId: number; readonly bookId: number }
   /** 0x2A ItemToCubeIndirect (9B, D2Client.dll 0x6fb4712a / D2Game.dll 0x6fc866e0): place cursor item directly into Horadric Cube item icon. */
   | { readonly type: 'ItemToCube'; readonly itemId: number; readonly cubeId: number }
+  /** 0x63 ItemToBelt (5B, D2Client.dll 0x6fb46ff8 / D2Game.dll 0x6fc86530): Shift+Left-Click auto-place item from inventory into belt. */
+  | { readonly type: 'ItemToBelt'; readonly itemId: number }
   | { readonly type: 'MercItem'; readonly slot: number }
   | { readonly type: 'NpcInit'; readonly target: UnitRef }
   | {
@@ -196,6 +208,8 @@ export type ClientCommand =
   | { readonly type: 'Trade'; readonly action: number; readonly gold: number }
   | { readonly type: 'Chat'; readonly text: string; readonly whisperTo?: string | undefined }
   | { readonly type: 'OverheadChat'; readonly text: string }
+  /** 0x3F Say (3B, D2Client.dll 0x6fae9c80..0x6fae9d60 -> 0x6fad9bf0): Numpad 0..7 voice emote phrase (25..32). */
+  | { readonly type: 'Say'; readonly phraseId: number }
   | { readonly type: 'RequestQuestData' }
   | {
       /** 0x44 StaffInOrifice (17B, D2Client.dll 0x6fb4fd70): state 3 = confirm, state 2 = cancel. */

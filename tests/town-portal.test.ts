@@ -14,6 +14,16 @@ import {
 import { InventoryPanel, INV_GRID_ORIGIN, getTomeQuantity, withTomeQuantity } from '../src/client/ui/inventory.ts'
 import { createStarterBagForClass } from '../src/common/units/class-starter-profiles.ts'
 import { OVERLAY_METAS } from '../src/client/render/overlays-meta.ts'
+import type { AtlasFrame } from '../src/client/render/atlas.ts'
+import type { AtlasHandle, DrawOptions, SpriteRenderer } from '../src/client/render/renderer.ts'
+import type { LoadedOverlayArt } from '../src/client/scene/missile-overlay-renderer.ts'
+import {
+  clearMissingArtEntries,
+  drawSceneUnitDrawable,
+  type SceneSourceRenderContext,
+} from '../src/client/scene/world-renderer.ts'
+import type { SceneUnitDrawable } from '../src/client/view/unit-drawables.ts'
+import { ClientWorld } from '../src/client/world/client-world.ts'
 import { createDemoInventory } from './fixtures/hud-demo-state.ts'
 import { DEMO_BAG_ITEMS } from './fixtures/demo-profile-data.ts'
 
@@ -271,5 +281,128 @@ describe('Issue #394: Diablo II v1.13c Town Portal & Tome/Scroll of Town Portal'
     expect(OVERLAY_METAS.town_portal_op_hd!.trans).toBe(3)
     expect(OVERLAY_METAS.town_portal_on_tr!.trans).toBe(0)
     expect(OVERLAY_METAS.town_portal_on_hd!.trans).toBe(3)
+  })
+
+  it('plays the 15-frame Town Portal opening animation (OP) only once across the 1 -> 2 mode transition and loops ON immediately when spawned in mode 2', () => {
+    clearMissingArtEntries()
+    const opFrames = new Set<AtlasFrame>()
+    const onFrames = new Set<AtlasFrame>()
+    const makeOverlay = (key: string, yBase: number, bucket: Set<AtlasFrame>): LoadedOverlayArt => {
+      const frames: AtlasFrame[] = Array.from({ length: 15 }, (_, idx) => {
+        const f: AtlasFrame = {
+          x: idx * 100,
+          y: yBase,
+          width: 96,
+          height: 128,
+          anchorX: -48,
+          anchorY: -96,
+        }
+        bucket.add(f)
+        return f
+      })
+      return {
+        handle: { texture: { key }, width: 1500, height: 256 } as unknown as AtlasHandle,
+        frames: [frames],
+        meta: {
+          filename: key,
+          frames: 15,
+          animRate: 8,
+          trans: key.endsWith('_hd') ? 3 : 0,
+        } as any,
+      }
+    }
+    const overlayArtMap = new Map<string, LoadedOverlayArt>([
+      ['town_portal_op_tr', makeOverlay('town_portal_op_tr', 10000, opFrames)],
+      ['town_portal_op_hd', makeOverlay('town_portal_op_hd', 11000, opFrames)],
+      ['town_portal_on_tr', makeOverlay('town_portal_on_tr', 12000, onFrames)],
+      ['town_portal_on_hd', makeOverlay('town_portal_on_hd', 13000, onFrames)],
+    ])
+    const ctx: SceneSourceRenderContext = {
+      source: {} as any,
+      lightingPreset: 'auto',
+      overlayArtMap,
+    }
+    const makeDrawable = (unitId: number, mode: number, animStartedAtMs?: number): SceneUnitDrawable => ({
+      drawableKind: 'unit',
+      unitKind: 'object',
+      id: unitId,
+      unitId,
+      classId: 59,
+      token: 'TP',
+      mode,
+      direction: 0,
+      frame: 0,
+      subX: 150,
+      subY: 110,
+      worldX: 400,
+      worldY: 300,
+      sortY: 300,
+      blendMode: 'normal',
+      lifePct: 128,
+      name: 'Town Portal',
+      isHovered: false,
+      isCorpse: false,
+      tintColor: null,
+      overlays: [],
+      ...(animStartedAtMs !== undefined ? { animStartedAtMs } : {}),
+    })
+    const sampleDraws = (drawable: SceneUnitDrawable, nowMs: number) => {
+      const drawCalls: Array<{ frame: AtlasFrame; options: DrawOptions }> = []
+      const renderer = {
+        draw: vi.fn((frame: AtlasFrame, _x: number, _y: number, options: DrawOptions = {}) => {
+          drawCalls.push({ frame, options })
+        }),
+        setBlendMode: vi.fn(),
+      } as unknown as SpriteRenderer
+      drawSceneUnitDrawable(renderer, drawable, ctx, nowMs, 1)
+      return drawCalls
+    }
+
+    // 1. Wilderness portal spawned in mode = 1 (OP) and ticked through 25Hz ClientWorld simulation
+    const world = new ClientWorld()
+    world.apply({ type: 'LoadAct', act: 0, mapSeed: 0x1234, areaId: 2 })
+    world.apply(
+      {
+        type: 'UnitAssign',
+        unit: { unitType: 2, id: 590, classId: 59, name: 'Town Portal', x: 150, y: 110, mode: 1 },
+      },
+      1000,
+    )
+    const tp = world.getUnit('object', 590)!
+    expect(tp.mode).toBe(1)
+    expect(tp.animStartedAtMs).toBe(1000)
+
+    let transitionedToOn = false
+    let sawOnFrames = false
+    for (let step = 0; step <= 40; step++) {
+      const nowMs = 1000 + step * 40
+      if (step > 0) {
+        world.tick(40, nowMs)
+      }
+      if (tp.mode === 2) {
+        transitionedToOn = true
+      }
+      const calls = sampleDraws(makeDrawable(tp.id, tp.mode, tp.animStartedAtMs), nowMs)
+      expect(calls).toHaveLength(2)
+      const isOp = opFrames.has(calls[0]!.frame) && opFrames.has(calls[1]!.frame)
+      const isOn = onFrames.has(calls[0]!.frame) && onFrames.has(calls[1]!.frame)
+      expect(isOp || isOn).toBe(true)
+
+      if (nowMs - 1000 < 768) {
+        expect(isOp, `expected OP before 768ms at elapsed=${nowMs - 1000}ms (mode=${tp.mode})`).toBe(true)
+      } else {
+        // Once the 768ms OP sequence finishes, it must stay in ON and NEVER replay OP even after mode 1 -> 2 resets animStartedAtMs
+        expect(isOn, `expected ON at/after 768ms at elapsed=${nowMs - 1000}ms (mode=${tp.mode})`).toBe(true)
+        sawOnFrames = true
+      }
+    }
+    expect(transitionedToOn).toBe(true)
+    expect(sawOnFrames).toBe(true)
+
+    // 2. Town link portal spawned directly in mode = 2 (ON) immediately loops ON and never plays OP
+    const townCallsAtZero = sampleDraws(makeDrawable(591, 2, 2000), 2000)
+    expect(townCallsAtZero).toHaveLength(2)
+    expect(onFrames.has(townCallsAtZero[0]!.frame)).toBe(true)
+    expect(onFrames.has(townCallsAtZero[1]!.frame)).toBe(true)
   })
 })

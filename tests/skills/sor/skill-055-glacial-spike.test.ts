@@ -4,7 +4,7 @@
  *
  * 7-Dimensional Verification Coverage:
  * D1: 1.13c Data Table Parsing & Canonical Missile Definition (Skills.txt row 55, Missiles.txt 'glacialspike' & 'freezingarrowexp1')
- * D2: Visual Assets & Metadata Integrity (glacialspike.png/json, glacialspikeejecta.png/json, freezeexplode.png/json, ice_cast_2.png/json)
+ * D2: Visual Assets & Metadata Integrity (glacialspike.png/json, freezingarrowexp2.png/json, freezeexplode.png/json, ice_cast_2.png/json)
  * D3: Kinematics & Linear Trajectory (vel 16/24, range 40, distance 640/960 px, 2:1 isometric ground aspect ratio)
  * D4: 64px AoE Freeze Radius, Multi-Target Splash & Wall Detonation (AoE freeze to primary & splash targets, wall explosion)
  * D5: 1.13c 5-Band Damage Scaling & Synergy Verification (16-24 at lvl 1, 91-103.5 at lvl 10, 225-242.5 at lvl 20, 375-397.5 at lvl 30, +5%/syn, +3% Blizzard freeze)
@@ -40,7 +40,7 @@ import {
 } from '../../../src/server/engine/missile-engine.ts'
 import {
   GLACIALSPIKE_META,
-  GLACIALSPIKEEJECTA_META,
+  FREEZINGARROWEXP2_META,
   FREEZEEXPLODE_META,
   MISSILE_METAS,
 } from '../../../src/client/render/missiles-meta.ts'
@@ -134,10 +134,10 @@ describe('[Skill #055] Glacial Spike (SOR) — 1.13c 7-Dimensional Verification 
     it('verifies baked DCC atlas sprite sheet files exist with non-zero size', () => {
       const spikePng = path.resolve(__dirname, '../../../public/missiles/glacialspike.png')
       const spikeJson = path.resolve(__dirname, '../../../public/missiles/glacialspike.json')
-      const ejectaPng = path.resolve(__dirname, '../../../public/missiles/glacialspikeejecta.png')
-      const ejectaJson = path.resolve(__dirname, '../../../public/missiles/glacialspikeejecta.json')
-      const explodePng = path.resolve(__dirname, '../../../public/missiles/freezeexplode.png')
-      const explodeJson = path.resolve(__dirname, '../../../public/missiles/freezeexplode.json')
+      const ejectaPng = path.resolve(__dirname, '../../../public/missiles/freezingarrowexp2.png')
+      const ejectaJson = path.resolve(__dirname, '../../../public/missiles/freezingarrowexp2.json')
+      const explodePng = path.resolve(__dirname, '../../../public/missiles/freezingarrowexp1.png')
+      const explodeJson = path.resolve(__dirname, '../../../public/missiles/freezingarrowexp1.json')
       const overlayPng = path.resolve(__dirname, '../../../public/overlays/ice_cast_2.png')
       const overlayJson = path.resolve(__dirname, '../../../public/overlays/ice_cast_2.json')
 
@@ -158,17 +158,15 @@ describe('[Skill #055] Glacial Spike (SOR) — 1.13c 7-Dimensional Verification 
       expect(fs.existsSync(overlayJson)).toBe(true)
     })
 
-    it('verifies GLACIALSPIKE_META and GLACIALSPIKEEJECTA_META metadata and registry registration', () => {
+    it('verifies GLACIALSPIKE_META and FREEZINGARROWEXP2_META metadata and registry registration', () => {
       expect(GLACIALSPIKE_META.name).toBe('glacialspike')
       expect(GLACIALSPIKE_META.celFile).toBe('GlacialSpike')
       expect(GLACIALSPIKE_META.directions).toBe(16)
       expect(GLACIALSPIKE_META.framesPerDirection).toBe(6)
       expect(MISSILE_METAS['glacialspike']).toBe(GLACIALSPIKE_META)
-      expect(MISSILE_METAS['GlacialSpike']).toBe(GLACIALSPIKE_META)
 
-      expect(GLACIALSPIKEEJECTA_META.name).toBe('glacialspikeejecta')
-      expect(MISSILE_METAS['glacialspikeejecta']).toBe(GLACIALSPIKEEJECTA_META)
-      expect(MISSILE_METAS['GlacialSpikeEjecta']).toBe(GLACIALSPIKEEJECTA_META)
+      expect(FREEZINGARROWEXP2_META.name).toBe('freezingarrowexp2')
+      expect(MISSILE_METAS['freezingarrowexp2']).toBe(FREEZINGARROWEXP2_META)
     })
 
     it('verifies cast overlay mapping and metadata', () => {

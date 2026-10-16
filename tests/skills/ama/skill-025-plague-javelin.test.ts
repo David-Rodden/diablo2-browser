@@ -125,7 +125,7 @@ describe('[Skill #025] Plague Javelin (AMA) — 1.13c Parity (Issue #179 / #972)
     expect(dbg.missilesSpawned).toBeGreaterThanOrEqual(8)
   })
 
-  it('verifies ClientWorld Layer 4 (Issue #975): #25 Plague Javelin leaves poisonjavcloud trail and bursts 16 plaguejavcloud on impact', async () => {
+  it('verifies ClientWorld Layer 4 (Issue #975 / #1111): #25 Plague Javelin leaves plaguejavcloud trail and bursts 23 (8 slow + 15 fast) plaguejavcloud on impact', async () => {
     const { ClientWorld } = await import('../../../src/client/world/client-world.ts')
     const world = new ClientWorld()
     world.apply({ type: 'PlayerAssign', unitId: 1, charClass: 0, name: 'Ama', x: 100, y: 100 })
@@ -135,19 +135,100 @@ describe('[Skill #025] Plague Javelin (AMA) — 1.13c Parity (Issue #179 / #972)
       (u) => u.unitType === 'missile' && u.missileKey === 'plaguejavelin',
     )!
     expect(plg).toBeDefined()
-    expect(plg.explosionMissile).toBe('plaguejavcloud')
+    expect(plg.explosionMissile).toBe('')
+    const countClouds = (key: string): number =>
+      Array.from(world.units.values()).filter((u) => u.unitType === 'missile' && u.missileKey === key).length
     ;(world as any).stepMissileUnit(plg)
-    expect(
-      Array.from(world.units.values()).some(
-        (u) => u.unitType === 'missile' && u.missileKey === 'poisonjavcloud',
-      ),
-    ).toBe(true)
+    // 1.13c Missiles.txt plaguejavelin CltSubMissile1 = plaguejavcloud (CltDoFunc=3 trail, Issue #1121),
+    // never poisonjavcloud (that trail belongs to poisonjav).
+    expect(countClouds('poisonjavcloud')).toBe(0)
+    const trailClouds = countClouds('plaguejavcloud')
+    expect(trailClouds).toBeGreaterThan(0)
     ;(world as any).triggerMissileImpact(plg, plg.x, plg.y, false)
-    expect(
-      Array.from(world.units.values()).filter(
-        (u) => u.unitType === 'missile' && u.missileKey === 'plaguejavcloud',
-      ).length,
-    ).toBe(16)
+    expect(countClouds('plaguejavcloud') - trailClouds).toBe(23)
+  })
+
+  it('verifies Issue #1297: plaguejavcloud (#221) executes MissCltDoFunc[4] to emit poisonpuff (#141) and uses 60-tick server TTL', async () => {
+    const { CANONICAL_113C_MISSILES } = await import('../../../src/common/skills/missiles-data.ts')
+    const { ClientWorld } = await import('../../../src/client/world/client-world.ts')
+    const { tickProjectiles } = await import('../../../src/server/skills/skills.ts')
+
+    const cloudRow = CANONICAL_113C_MISSILES.plaguejavcloud!
+    expect(cloudRow.pCltDoFunc).toBe(4)
+    expect(cloudRow.param1).toBe(2)
+    expect(cloudRow.param2).toBe(4)
+    expect(cloudRow.cltParam1).toBe(24)
+    expect(cloudRow.cltParam2).toBe(1)
+    expect(cloudRow.cltParam3).toBe(6)
+    expect(cloudRow.cltSubMissile1).toBe('poisonpuff')
+    expect(cloudRow.range).toBe(60)
+
+    const world = new ClientWorld()
+    const cloud = (world as any).spawnMissileByKey('plaguejavcloud', 100, 100, 100, 100, {
+      ownerType: 'player',
+      ownerId: 1,
+      sourceSkillId: 25,
+      skillLevel: 10,
+    })
+    let sawPoisonPuff = false
+    for (let t = 0; t < 60; t++) {
+      ;(world as any).stepMissileUnit(cloud)
+      if (
+        Array.from(world.units.values()).some(
+          (u) => u.unitType === 'missile' && u.missileKey === 'poisonpuff',
+        )
+      ) {
+        sawPoisonPuff = true
+      }
+    }
+    expect(sawPoisonPuff).toBe(true)
+
+    // Server tickProjectiles uses 60-tick TTL for both trail and radial burst plaguejavcloud
+    const srvFlight = tickProjectiles(
+      [
+        {
+          skillId: '25',
+          x: 100,
+          y: 100,
+          vx: 12,
+          vy: 0,
+          damage: 60,
+          ttl: 15,
+          fromPlayer: true,
+          missileType: 'plaguejavelin',
+          pierce: false,
+        },
+      ],
+      [],
+      { overlap: () => 0 },
+    )
+    const srvTrailCloud = srvFlight.alive.find((p) => p.missileType === 'plaguejavcloud')!
+    expect(srvTrailCloud).toBeDefined()
+    expect(srvTrailCloud.ttl).toBe(60)
+
+    const srvExpire = tickProjectiles(
+      [
+        {
+          skillId: '25',
+          x: 100,
+          y: 100,
+          vx: 12,
+          vy: 0,
+          damage: 60,
+          ttl: 0,
+          fromPlayer: true,
+          missileType: 'plaguejavelin',
+          pierce: false,
+        },
+      ],
+      [],
+      { overlap: () => 0 },
+    )
+    const srvBurstClouds = srvExpire.alive.filter((p) => p.missileType === 'plaguejavcloud')
+    expect(srvBurstClouds.length).toBeGreaterThanOrEqual(8)
+    for (const bc of srvBurstClouds) {
+      expect(bc.ttl).toBe(60)
+    }
   })
 })
 

@@ -9,13 +9,19 @@ import {
   computeEffectiveIas,
   computeOneShotDurationMs,
   computeOneShotTicks,
+  computeRollbackSkillTiming113c,
   computeSequenceDurationMs,
   computeSequenceTicks,
+  computeShapeshiftWeaponDelay113c,
   computeStepSpeed256,
+  computeWhirlwindCadenceTicks113c,
   getCharAnimClip113c,
   resolveCharacterAnimSpeedParams,
+  resolveEquippedWeaponClass,
+  resolvePrimaryWeaponIas113c,
   resolveWeaponWsm,
 } from '../../src/common/units/char-anim-speed.ts'
+import { SORCERESS_PLAYER_MODES } from '../../src/common/units/char-appearance.ts'
 import {
   getSkillAnimModes,
   getSkillPlayerClipMode,
@@ -305,7 +311,8 @@ describe('1.13c character animation speed & one-shot lifecycle (#552, #936)', ()
     expect(unit.mode).toBe(7)
     expect(unit.castState!.effRate).toBe(-20)
     expect(unit.castState!.stepSpeed256).toBe(204)
-    expect(unit.castState!.durationMs).toBe(680)
+    // Great Maul ('gma') is 2hs -> Paladin PA A1 2HS has 18 frames in 1.13c AnimData.d2 -> ceil(18*256/204)-1 = 22 ticks (880ms)
+    expect(unit.castState!.durationMs).toBe(880)
 
     // 2) Replace with Phase Blade ('7cr', WSM = -30, +40% IAS) + 20% skill IAS (statId 68)
     world.apply({
@@ -336,8 +343,9 @@ describe('1.13c character animation speed & one-shot lifecycle (#552, #936)', ()
 
     expect(unit.castState!.effRate).toBe(75)
     expect(unit.castState!.stepSpeed256).toBe(448)
-    expect(unit.castState!.durationMs).toBe(280)
-    expect(unit.castState!.untilMs).toBe(2280)
+    // Phase Blade ('7cr') is 1hs -> Paladin PA A1 1HS has 15 frames in 1.13c AnimData.d2 -> ceil(15*256/448)-1 = 8 ticks (320ms)
+    expect(unit.castState!.durationMs).toBe(320)
+    expect(unit.castState!.untilMs).toBe(2320)
   })
 
   it('clamps non-looping one-shot clips at frameCount - 1 without modulo wrapping and wraps looping clips', () => {
@@ -1094,5 +1102,268 @@ describe('1.13c character animation speed & one-shot lifecycle (#552, #936)', ()
     expect(nextCast?.type).toBe('SkillAt')
 
     session.destroy()
+  })
+
+  it('resolves per-wclass AnimData.d2 clips and includes BL/KK/S2/S3/S4 in SORCERESS_PLAYER_MODES (#1259)', () => {
+    for (const mode of ['bl', 'kk', 's2', 's3', 's4'] as const) {
+      expect(SORCERESS_PLAYER_MODES).toContain(mode)
+    }
+
+    // Amazon (0) A1 varies by wclass: hth=13f, bow=14f, 1ht=15f, 1hs=16f, 2ht=18f, 2hs=20f, xbw=20f
+    expect(getCharAnimClip113c(0, 'a1', { weaponClass: 'hth' }).frames).toBe(13)
+    expect(getCharAnimClip113c(0, 'a1', { weaponClass: 'bow' }).frames).toBe(14)
+    expect(getCharAnimClip113c(0, 'a1', { weaponClass: '1ht' }).frames).toBe(15)
+    expect(getCharAnimClip113c(0, 'a1', { weaponClass: '1hs' }).frames).toBe(16)
+    expect(getCharAnimClip113c(0, 'a1', { weaponClass: '2ht' }).frames).toBe(18)
+    expect(getCharAnimClip113c(0, 'a1', { weaponClass: '2hs' }).frames).toBe(20)
+    expect(getCharAnimClip113c(0, 'a1', { weaponClass: 'xbw' }).frames).toBe(20)
+    expect(getCharAnimClip113c(0, 'bl', { weaponClass: '1hs' }).speed).toBe(88)
+
+    // Assassin (6) A1/A2 with claws (ht1/ht2) has speed 208 vs 256 for hth, and 15f for 1hs/1ht, 23f for 2hs/2ht
+    expect(getCharAnimClip113c(6, 'a1', { weaponClass: 'hth' })).toMatchObject({ frames: 11, speed: 256 })
+    expect(getCharAnimClip113c(6, 'a1', { weaponClass: 'ht1' })).toMatchObject({ frames: 11, speed: 208 })
+    expect(getCharAnimClip113c(6, 'a2', { weaponClass: 'ht2' })).toMatchObject({ frames: 12, speed: 208 })
+    expect(getCharAnimClip113c(6, 'a1', { weaponClass: '1hs' })).toMatchObject({ frames: 15, speed: 256 })
+    expect(getCharAnimClip113c(6, 'a1', { weaponClass: '2hs' })).toMatchObject({ frames: 23, speed: 256 })
+
+    // Paladin (3) BL with 2hs has speed 168; GH with 2ht/stf has speed 192
+    expect(getCharAnimClip113c(3, 'bl', { weaponClass: '2hs' }).speed).toBe(168)
+    expect(getCharAnimClip113c(3, 'gh', { weaponClass: 'stf' }).speed).toBe(192)
+  })
+
+  it('resolves dual-wield wclass (1ss/1st/1js/1jt/ht2), twoHandedWClass, and Double Swing +50% EIAS (#1260)', () => {
+    // 2H weapons use twoHandedWClass when wielded two-handed, or wclass (1hs) when wielded 1H with a shield
+    expect(resolveEquippedWeaponClass([{ code: '2hs', equippedSlot: 4 }])).toBe('2hs')
+    expect(
+      resolveEquippedWeaponClass([
+        { code: '2hs', equippedSlot: 4 },
+        { code: 'buc', equippedSlot: 5 },
+      ]),
+    ).toBe('1hs')
+    expect(resolveEquippedWeaponClass([{ code: 'gma', equippedSlot: 4 }])).toBe('stf')
+    expect(resolveEquippedWeaponClass([{ code: 'spr', equippedSlot: 4 }])).toBe('2ht')
+    expect(resolveEquippedWeaponClass([{ code: 'sbb', equippedSlot: 4 }])).toBe('bow')
+    expect(resolveEquippedWeaponClass([{ code: 'lxb', equippedSlot: 4 }])).toBe('xbw')
+    expect(resolveEquippedWeaponClass([{ code: 'sst', equippedSlot: 4 }])).toBe('stf')
+
+    // Dual-wielding combinations (slots 4 and 5)
+    expect(
+      resolveEquippedWeaponClass([
+        { code: '7cr', equippedSlot: 4 }, // 1hs
+        { code: '7cr', equippedSlot: 5 }, // 1hs
+      ]),
+    ).toBe('1ss')
+    expect(
+      resolveEquippedWeaponClass([
+        { code: 'dgr', equippedSlot: 4 }, // 1ht
+        { code: 'dgr', equippedSlot: 5 }, // 1ht
+      ]),
+    ).toBe('1st')
+    expect(
+      resolveEquippedWeaponClass([
+        { code: '7cr', equippedSlot: 4 }, // 1hs
+        { code: 'dgr', equippedSlot: 5 }, // 1ht
+      ]),
+    ).toBe('1js')
+    expect(
+      resolveEquippedWeaponClass([
+        { code: 'dgr', equippedSlot: 4 }, // 1ht
+        { code: '7cr', equippedSlot: 5 }, // 1hs
+      ]),
+    ).toBe('1jt')
+    expect(
+      resolveEquippedWeaponClass([
+        { code: 'ktr', equippedSlot: 4 }, // ht1
+        { code: 'ktr', equippedSlot: 5 }, // ht1
+      ]),
+    ).toBe('ht2')
+
+    // Barbarian (#133 Double Swing) gets +50% intrinsic skill EIAS - 30 sequence penalty = +20 net EIAS at 0 IAS / 0 WSM
+    const doubleSwing = resolveCharacterAnimSpeedParams(4, 18, {
+      skillId: 133,
+      equipment: [
+        { code: 'hax', equippedSlot: 4 }, // WSM 0, 1hs
+        { code: 'hax', equippedSlot: 5 }, // WSM 0, 1hs -> 1ss
+      ],
+    })
+    expect(doubleSwing.effRate).toBe(20)
+    expect(doubleSwing.frames).toBe(17) // seqNum 6 (BAS31SS + BAS41SS = 17 frames)
+
+    // Barbarian (#147 Frenzy) has no intrinsic +50% on cast start -> -30 sequence penalty at 0 IAS / 0 WSM
+    const frenzy = resolveCharacterAnimSpeedParams(4, 18, {
+      skillId: 147,
+      equipment: [
+        { code: 'hax', equippedSlot: 4 },
+        { code: 'hax', equippedSlot: 5 },
+      ],
+    })
+    expect(frenzy.effRate).toBe(-30)
+  })
+
+  it('computes 1.13c rollback multi-strike timing (Zeal/Fury/Strafe/Fend/Dragon Talon) and Whirlwind cadence (#1261)', () => {
+    // Paladin Zeal (#106, slvl 4 -> 5 strikes, 100% rollback -> rollbackFrame = 0)
+    // With Phase Blade (1hs: 15 frames, actionFrame 7) at +75 EIAS (stepSpeed256 = 448):
+    // intervalTicks = ceil(7*256/448) = 4 ticks per strike; finalCycleTicks = ceil(15*256/448)-1 = 8 ticks
+    // Total for 5 strikes = 4 * 4 + 8 = 24 ticks (960ms) — classic 4/4/4/4/8 Zeal!
+    const zeal = resolveCharacterAnimSpeedParams(3, 'a1', {
+      skillId: 106,
+      skillLevel: 4,
+      weaponCode: '7cr',
+      unitStats: { get: (id: number) => (id === 93 ? 40 : id === 68 ? 20 : 0) },
+    })
+    expect(zeal.rollbackTiming).toBeDefined()
+    expect(zeal.rollbackTiming!.strikes).toBe(5)
+    expect(zeal.rollbackTiming!.rollbackFrame).toBe(0)
+    expect(zeal.rollbackTiming!.intervalTicks).toBe(4)
+    expect(zeal.rollbackTiming!.finalCycleTicks).toBe(8)
+    expect(zeal.rollbackTiming!.totalTicks).toBe(24)
+    expect(zeal.durationMs).toBe(960)
+
+    // Verify computeAnimFrameIndex cycles through rollback frames during multi-strike Zeal
+    const fTick3 = computeAnimFrameIndex({
+      frameCount: 15,
+      stepSpeed256: 448,
+      loop: false,
+      nowMs: 1000 + 3 * 40,
+      startedAtMs: 1000,
+      skillId: 106,
+      skillLevel: 4,
+      actionFrame: 7,
+    })
+    const fTick4 = computeAnimFrameIndex({
+      frameCount: 15,
+      stepSpeed256: 448,
+      loop: false,
+      nowMs: 1000 + 4 * 40, // Second strike winds back to rollbackFrame = 0!
+      startedAtMs: 1000,
+      skillId: 106,
+      skillLevel: 4,
+      actionFrame: 7,
+    })
+    expect(fTick3).toBeGreaterThanOrEqual(5)
+    expect(fTick4).toBe(0)
+
+    // Werewolf Fury (#248, 70% rollback -> rollbackFrame = floor(7 * 0.3) = 2)
+    const furyRb = computeRollbackSkillTiming113c({
+      skillId: 248,
+      frames: 13,
+      actionFrame: 7,
+      stepSpeed256: 256,
+      skillLevel: 4,
+    })!
+    expect(furyRb.strikes).toBe(5)
+    expect(furyRb.rollbackFrame).toBe(2)
+    expect(furyRb.intervalTicks).toBe(5) // 7 - 2 = 5 frames at 256
+
+    // Whirlwind (#151) cadence breakpoints (SKILLS_GetWhirlwindFrame @ 0x6FC48A20)
+    expect(computeWhirlwindCadenceTicks113c(-30, 4, false)).toBe(4) // +34 >= 34 -> 4f WW
+    expect(computeWhirlwindCadenceTicks113c(20, 0, true)).toBe(12) // -20 on 2H maul -> 12f WW
+    expect(computeWhirlwindCadenceTicks113c(0, 60, true)).toBe(4) // +60 >= 30 on 2H -> 4f WW
+  })
+
+  it('computes 1.13c Werewolf (430) & Werebear (431) compound weapon-delay attack speed (0x6FDA0CE0) (#1262)', () => {
+    // Druid (5) in Werewolf (430) with Phase Blade ('7cr', 1hs, WSM = -30) and +90% on-weapon IAS (e.g. 6x Shael)
+    // vs +90% off-weapon IAS (gloves/armor/amulet):
+    // Human Druid A1 1hs = 19 frames, speed 256.
+    // 1) With +90% ON-WEAPON IAS:
+    //    weaponDelay = floor(19 * 256 / floor(256 * (100 + 90 - (-30)) / 100)) = floor(4864 / 563) = 8
+    //    morphBaseSpeed = floor(13 * 256 / 8) = 416
+    //    EIAS = min(75, floor(120*90/210) + 0 - (-30)) = 75
+    //    stepSpeed256 = floor(416 * 175 / 100) = 728 -> ceil(13*256/728) - 1 = 4 ticks (160ms)!
+    const wolfOnWeaponIas = resolveCharacterAnimSpeedParams(5, 'a1', {
+      morphMonsterClassId: 430,
+      equipment: [
+        {
+          id: 1,
+          code: '7cr',
+          equippedSlot: 4,
+          stats: [{ id: 93, value: 90 }],
+        },
+      ],
+    })
+    expect(
+      resolvePrimaryWeaponIas113c({
+        equipment: [{ id: 1, code: '7cr', equippedSlot: 4, stats: [{ id: 93, value: 90 }] }],
+      }),
+    ).toBe(90)
+    expect(computeShapeshiftWeaponDelay113c(5, '1hs', -30, 90, true)).toBe(8)
+    expect(wolfOnWeaponIas.baseSpeed).toBe(416)
+    expect(wolfOnWeaponIas.effRate).toBe(75)
+    expect(wolfOnWeaponIas.stepSpeed256).toBe(728)
+    expect(computeOneShotTicks(wolfOnWeaponIas.frames, wolfOnWeaponIas.stepSpeed256)).toBe(4)
+
+    // 2) With 0% on-weapon IAS and +90% OFF-WEAPON IAS (gloves/armor in slot 3):
+    //    weaponDelay only sees weaponIas = 0 -> floor(19 * 256 / floor(256 * 130 / 100)) = floor(4864 / 332) = 14
+    //    morphBaseSpeed = floor(13 * 256 / 14) = 237 (much slower than 416!)
+    const wolfOffWeaponIas = resolveCharacterAnimSpeedParams(5, 'a1', {
+      morphMonsterClassId: 430,
+      equipment: [
+        { id: 1, code: '7cr', equippedSlot: 4, stats: [] },
+        { id: 2, code: 'utg', equippedSlot: 10, stats: [{ id: 93, value: 90 }] },
+      ],
+    })
+    expect(computeShapeshiftWeaponDelay113c(5, '1hs', -30, 0, true)).toBe(14)
+    expect(wolfOffWeaponIas.baseSpeed).toBe(237)
+    expect(wolfOffWeaponIas.stepSpeed256).toBeLessThan(wolfOnWeaponIas.stepSpeed256)
+  })
+
+  it('separates Amazon Dodge state 65 from Vampire morph 176, supports Delirium Bone Fetish state 177 (FK/212), and maps morph modes per 0x6FD9F780 (#1263)', () => {
+    const world = new ClientWorld()
+    world.apply({
+      type: 'UnitAssign',
+      isSelf: true,
+      unit: {
+        unitType: 'player',
+        id: 1,
+        classId: 0, // Amazon
+        name: 'Ama',
+        x: 5000,
+        y: 5000,
+        mode: 1,
+        lifePct: 128,
+      },
+    })
+
+    // 1) State 65 (Amazon passive Dodge) MUST NOT morph the player into a Vampire ('VA')!
+    world.apply({ type: 'StateSet', unit: { unitType: 'player', id: 1 }, state: 65 })
+    const unit = world.getUnit('player', 1)!
+    const drawables65 = buildSceneDrawables([toRenderableUnit(unit)]).unitDrawables
+    expect(drawables65[0]!.token).toBe('AM')
+    expect(world.resolvePlayerAnimSpeed('sc', 1).frames).toBe(20) // Human Amazon SC (20f), NOT Vampire (15f)!
+
+    // 2) State 177 (Delirium) morphs the player into Bone Fetish ('FK', MonStats 212, 12f A1/SC @ 256)
+    world.apply({ type: 'StateSet', unit: { unitType: 'player', id: 1 }, state: 177 })
+    const drawables177 = buildSceneDrawables([toRenderableUnit(unit)]).unitDrawables
+    expect(drawables177[0]!.token).toBe('FK')
+    const fetishAttack = world.resolvePlayerAnimSpeed('a1', 1)
+    expect(fetishAttack.frames).toBe(12)
+    expect(fetishAttack.baseSpeed).toBe(256)
+
+    // 3) Werebear (431) S3 (Shock Wave) = 10f@208, S4 (Fire Claws/Hunger) = 7f@152, GH = 5f@184, BL = 5f@200
+    expect(getCharAnimClip113c(5, 's3', { morphMonsterClassId: 431 })).toMatchObject({
+      frames: 10,
+      speed: 208,
+      actionFrame: 6,
+    })
+    expect(getCharAnimClip113c(5, 's4', { morphMonsterClassId: 431 })).toMatchObject({
+      frames: 7,
+      speed: 152,
+      actionFrame: 4,
+    })
+    expect(getCharAnimClip113c(5, 'gh', { morphMonsterClassId: 431 })).toMatchObject({
+      frames: 5,
+      speed: 184,
+    })
+    expect(getCharAnimClip113c(5, 'bl', { morphMonsterClassId: 431 })).toMatchObject({
+      frames: 5,
+      speed: 200,
+    })
+    // Shock Wave (#243) uses monsterMode 10 / monanim S3
+    expect(getSkillAnimModes(243)).toMatchObject({
+      playerMode: 10,
+      monsterMode: 10,
+      anim: 'SC',
+      monanim: 'S3',
+    })
   })
 })

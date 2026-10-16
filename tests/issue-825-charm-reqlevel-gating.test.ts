@@ -73,12 +73,12 @@ function makeOcherSmallCharmOfFlame(overrides: Partial<ItemData> = {}): ItemData
 }
 
 describe('Issue #825: Inventory Charm Required Level & Identified Gating (D2Common.dll ITEMS_IsCharmUsable @ 0x6fd77090 / ITEMS_CheckRequirements @ 0x6fd76db0 / ITEMS_GetRequiredLevel @ 0x6fd76190)', () => {
-  it('1. Screenshot case ("赭黄之火焰之小护身符" / "Ocher Small Charm of Flame"): resolves reqLevel = 10 and blocks stats when character level < 10', () => {
+  it('1. Screenshot case ("赭黄之火焰的小护身符" / "Ocher Small Charm of Flame"): resolves reqLevel = 10 and blocks stats when character level < 10', () => {
     const charm = makeOcherSmallCharmOfFlame()
 
     expect(resolveOnlineItemReqLevel(charm)).toBe(10)
     const uiItem = onlineItemDataToUiInventoryItem(charm, undefined, undefined, 1)
-    expect(uiItem.nameZh).toBe('赭黄之火焰之小护身符')
+    expect(uiItem.nameZh).toBe('赭黄之火焰的小护身符')
     expect(uiItem.nameEn).toBe('Ocher Small Charm of Flame')
     expect(uiItem.baseNameEn).toBe('Small Charm')
     expect(uiItem.reqLevel).toBe(10)

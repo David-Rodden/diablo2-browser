@@ -65,9 +65,11 @@ plugins/
 ├── extended-viewports/        # 内置插件 4：扩展分辨率视口 (id: 'extended-viewports', Issue #716)
 │   └── index.ts               # 解锁 1024x768 / 1068x600 / 1280x720 扩展视口，禁用时仅开放 1.13c 原版 640x480 / 800x600 并自动收敛至 800x600
 ├── hud-enhancements/          # 内置插件 5：界面增强显示 (id: 'hud-enhancements')
-│   └── index.ts               # 管理属性/技能基础+加成(x+y)、属性悬停增益提示与红蓝球常驻数值，禁用时严格回退 1.13c 原版显示
-└── quick-cast/                # 内置插件 6：快捷施法（PD2/D2R 同款，Issue #952）
-    └── index.ts               # 纯开关插件：激活时认领 quickCast 能力（CommandMapper.quickCastMode = true），原版绑定方式（按 S 技能弹窗悬停 + 可绑定技能快捷键）完全不变，但按下已绑定的快捷键不再切换技能而是直接在鼠标光标处施放（SelectSkill → SkillAt/SkillOn → SelectSkill 还原）；执行跟随绑定表而非固定键位（键位范围由 SKILL_HOTKEY_KEY_RE_113C 单点定义），禁用时自动释放认领并恢复原版按键行为
+│   └── index.ts               # 管理属性/技能基础+加成(x+y)、属性悬停增益提示与伤害计算公式，禁用时严格回退 1.13c 原版显示
+├── quick-cast/                # 内置插件 6：快捷施法（PD2/D2R 同款，Issue #952）
+│   └── index.ts               # 纯开关插件：激活时认领 quickCast 能力（CommandMapper.quickCastMode = true），原版绑定方式（按 S 技能弹窗悬停 + 可绑定技能快捷键）完全不变，但按下已绑定的快捷键不再切换技能而是直接在鼠标光标处施放（SelectSkill → SkillAt/SkillOn → SelectSkill 还原）；执行跟随绑定表而非固定键位（键位范围由 SKILL_HOTKEY_KEY_RE_113C 单点定义），禁用时自动释放认领并恢复原版按键行为
+└── next-game/                 # 内置插件 7：快速下一房 (+1) (id: 'next-game')
+    └── index.ts               # 在顶部工具栏提供 "+1" 按钮：点击后底层退出当前 D2GS 房间、将房间号 +1 并创建/进入新房间，同时保持游戏视口不返回大厅、不播放开门动画，视觉上直接从当前场景瞬移回当前幕城镇出生点
 ```
 
 ---
@@ -269,8 +271,9 @@ export function bootPluginPage(plugin: D2WebPlugin): PluginPageContext
 | [`plugins/drop-tracker/`](./drop-tracker) | `drop-tracker` | 启用 | 装备与符文掉落统计插件与独立看板（`/plugins/drop-tracker/index.html`），实时追踪绿色套装（`quality=5`）、暗金传奇（`quality=7`）与符文（`r01`–`r33`）地面掉落并在顶部工具栏动态更新 `掉落 绿X · 金Y · 符Z` 徽标。 |
 | [`plugins/automap-reveal/`](./automap-reveal) | `automap-reveal` | 启用 | 小地图全图透视增强插件（`off / level / act`），揭示当前关卡或全幕所有非城镇瓦片与预设地标，支持显示附近怪物与神龛类型图标（Issue #881），并在插件管理弹窗内提供环境光照预设（`auto / noon / dusk / night / torch / cold / fullbright`）与天气模式（`off / rain / snow`）下拉框；禁用时强制恢复 1.13c 原版战争迷雾、昼夜光照与关卡自然天气。 |
 | [`plugins/extended-viewports/`](./extended-viewports) | `extended-viewports` | 启用 | 扩展分辨率视口插件，启用时在工具栏分辨率下拉框中解锁 `1024x768`、`1068x600`、`1280x720`；禁用时仅保留 1.13c 原版 `640x480` 与 `800x600` 并自动收敛回 `800x600`。 |
-| [`plugins/hud-enhancements/`](./hud-enhancements) | `hud-enhancements` | 启用 | 界面增强显示插件：支持角色属性与技能点 `基础+加成 (x+y)` 显示、人物属性面板悬停属性显示单点属性增益提示（`+x 生命`、`+y 近战伤害` 等），以及生命/法力球常驻显示当前/最大数值；禁用时严格回退 1.13c 原版显示。 |
+| [`plugins/hud-enhancements/`](./hud-enhancements) | `hud-enhancements` | 启用 | 界面增强显示插件：支持角色属性与技能点 `基础+加成 (x+y)` 显示、人物属性面板悬停属性显示单点属性增益提示（`+x 生命`、`+y 近战伤害` 等），以及武器与人物面板伤害悬停显示计算公式；禁用时严格回退 1.13c 原版显示。 |
 | [`plugins/quick-cast/`](./quick-cast) | `quick-cast` | 启用 | 快捷施法插件（Issue #952，PD2/D2R 同款）：纯开关、零配置。原版绑定方式（按 S 打开技能弹窗悬停技能 + 可绑定的技能快捷键，当前为原版 F1-F8）**完全不变**；插件开启后，按下已绑定的快捷键不再切换当前技能，而是立即在鼠标光标处施放该技能（内部按原版网络序列 `SelectSkill → 施法 → 还原` 执行），城镇禁技、施法锁定与冷却等原版门控全部保留。支持哪些按键由绑定流程决定（单点定义于 `SKILL_HOTKEY_KEY_RE_113C`），执行跟随绑定表，插件本身不限定键位。禁用插件即恢复原版切换技能行为。 |
+| [`plugins/next-game/`](./next-game) | `next-game` | 启用 | 快速下一房（`+1`）插件：在顶部工具栏提供 `+1` 按钮，点击后底层自动退出当前游戏、将房间名尾号 `+1`（保留前导零与 15 字符上限）并创建/进入新房间，同时保持游戏视口不返回大厅、不播放开门动画，视觉上直接从当前场景瞬移回当前幕的城镇出生点。 |
 
 ---
 ---
@@ -337,8 +340,10 @@ plugins/
 │   └── index.ts               # Unlocks 1024x768 / 1068x600 / 1280x720 viewports; restricts to native 1.13c 640x480 / 800x600 when disabled
 ├── hud-enhancements/          # Built-in Plugin 5: HUD Display Enhancements (id: 'hud-enhancements')
 │   └── index.ts               # Manages base+bonus (x+y) stats/skills, hover stat gain tooltips & permanent globe HP/MP values; reverts to 1.13c vanilla display when disabled
-└── quick-cast/                # Built-in Plugin 6: Quick Cast — cast bound skills directly on F1-F8 (PD2/D2R parity, Issue #952)
-    └── index.ts               # Toggle-only plugin: activation claims the quickCast capability (CommandMapper.quickCastMode = true); the native binding flow (S-popup hover + bindable skill hotkeys) is unchanged, but a bound hotkey press casts at the cursor (SelectSkill -> SkillAt/SkillOn -> SelectSkill restore) instead of switching skills; execution follows the binding maps rather than a fixed key range (bindable keys are defined once by SKILL_HOTKEY_KEY_RE_113C); disabling auto-releases the claim and restores vanilla key behavior
+├── quick-cast/                # Built-in Plugin 6: Quick Cast — cast bound skills directly on F1-F8 (PD2/D2R parity, Issue #952)
+│   └── index.ts               # Toggle-only plugin: activation claims the quickCast capability (CommandMapper.quickCastMode = true); the native binding flow (S-popup hover + bindable skill hotkeys) is unchanged, but a bound hotkey press casts at the cursor (SelectSkill -> SkillAt/SkillOn -> SelectSkill restore) instead of switching skills; execution follows the binding maps rather than a fixed key range (bindable keys are defined once by SKILL_HOTKEY_KEY_RE_113C); disabling auto-releases the claim and restores vanilla key behavior
+└── next-game/                 # Built-in Plugin 7: Quick Next Game (+1) (id: 'next-game')
+    └── index.ts               # Adds a "+1" button to the top toolbar that exits the current D2GS room, increments the room number by +1, and creates/joins the new room in the background while keeping the in-game viewport active — visually teleporting directly from the current scene back to the current Act town
 ```
 
 ---
@@ -388,5 +393,6 @@ plugins/
 | [`plugins/drop-tracker/`](./drop-tracker) | `drop-tracker` | Enabled | Item & Rune drop tracker and standalone dashboard (`/plugins/drop-tracker/index.html`), tracking ground drops of Set items (`quality=5`), Unique items (`quality=7`), and Runes (`r01`–`r33`) in real time with a live `Drops S:X · U:Y · R:Z` toolbar badge. |
 | [`plugins/automap-reveal/`](./automap-reveal) | `automap-reveal` | Enabled | Automap reveal enhancement (`off / level / act`), revealing all non-town tiles and preset landmarks for the current level or entire act, showing MapHack-style nearby monster crosshairs and shrine type icons (Issue #881), and providing environment lighting preset (`auto / noon / dusk / night / torch / cold / fullbright`) and weather mode (`off / rain / snow`) dropdowns inside the PluginMenu modal; reverts to 1.13c vanilla defaults when disabled. |
 | [`plugins/extended-viewports/`](./extended-viewports) | `extended-viewports` | Enabled | Extended viewport resolution plugin unlocking `1024x768`, `1068x600`, and `1280x720` in the toolbar resolution selector; restricts to native 1.13c `640x480` and `800x600` (clamping back to `800x600`) when disabled. |
-| [`plugins/hud-enhancements/`](./hud-enhancements) | `hud-enhancements` | Enabled | HUD display enhancements plugin: displays character attributes and skill points as `base+bonus (x+y)`, shows 1-point attribute gain tooltips (`+x Life`, `+y Melee Damage`, etc.) when hovering over attributes on the Character Sheet, and permanently shows `current / max` Life & Mana on the globes; reverts strictly to 1.13c vanilla display when disabled. |
+| [`plugins/hud-enhancements/`](./hud-enhancements) | `hud-enhancements` | Enabled | HUD display enhancements plugin: displays character attributes and skill points as `base+bonus (x+y)`, shows 1-point attribute gain tooltips (`+x Life`, `+y Melee Damage`, etc.) when hovering over attributes on the Character Sheet, and shows damage calculation formulas; reverts strictly to 1.13c vanilla display when disabled. |
 | [`plugins/quick-cast/`](./quick-cast) | `quick-cast` | Enabled | Quick Cast plugin (Issue #952, PD2/D2R parity): a single toggle with zero configuration. The native binding flow (open the skill popup with S, hover a skill, press a bindable skill hotkey — currently the vanilla F1-F8) is completely unchanged; while enabled, pressing a bound hotkey no longer switches the active skill — it casts that skill instantly at the mouse cursor via the vanilla wire sequence `SelectSkill -> cast -> restore`, with all vanilla gates (town restrictions, cast lock, cooldown) enforced. The supported key set follows the binding flow (defined once in `SKILL_HOTKEY_KEY_RE_113C`) and execution follows the binding maps; the plugin itself fixes no key range. Disabling restores vanilla select-on-press behavior. |
+| [`plugins/next-game/`](./next-game) | `next-game` | Enabled | Quick Next Game (`+1`) plugin: adds a `+1` button to the top toolbar that exits the current game, increments the room number by `+1` (preserving zero-padding and the 15-character limit), and creates/joins the new game in the background without entering the lobby or door loading screen — visually teleporting directly from the current scene back to the current Act town. |

@@ -30,9 +30,43 @@ export function handleMouseMoveImpl(this: WorldPanelsHud, logicalX: number, logi
     this.pressedCubeButton = null
   }
   this.hoveredWaypointIdx = null
+  this.hoveredStashButton = null
+  this.hoveredWaypointClose = false
+  this.hoveredMercClose = false
 
   const ox = 80
   const oy = 60
+  if (
+    logicalX >= ox + STASH_GOLD_BTN_HIT.relX0 &&
+    logicalX <= ox + STASH_GOLD_BTN_HIT.relX1 &&
+    logicalY >= oy + STASH_GOLD_BTN_HIT.relY0 &&
+    logicalY <= oy + STASH_GOLD_BTN_HIT.relY1
+  ) {
+    this.hoveredStashButton = 'gold'
+  } else if (
+    logicalX >= ox + 272 &&
+    logicalX <= ox + 304 &&
+    logicalY >= oy + 383 &&
+    logicalY <= oy + 418
+  ) {
+    this.hoveredStashButton = 'close'
+  }
+  if (
+    logicalX >= ox + 271 &&
+    logicalX <= ox + 304 &&
+    logicalY >= oy + 386 &&
+    logicalY <= oy + 418
+  ) {
+    this.hoveredWaypointClose = true
+  }
+  if (
+    logicalX >= ox + 272 &&
+    logicalX <= ox + 304 &&
+    logicalY >= oy + 384 &&
+    logicalY <= oy + 416
+  ) {
+    this.hoveredMercClose = true
+  }
   if (logicalX >= ox + 230 && logicalX <= ox + 259 && logicalY >= oy + 391 && logicalY <= oy + 423) {
     this.hoveredQuestButton = 'speech'
   } else if (logicalX >= ox + 278 && logicalX <= ox + 313 && logicalY >= oy + 392 && logicalY <= oy + 425) {
@@ -200,6 +234,13 @@ export function handleMouseMoveImpl(this: WorldPanelsHud, logicalX: number, logi
       logicalY <= oy + 417
     ) {
       this.hoveredTradeButton = 'cancel'
+    } else if (
+      logicalX >= ox + 35 &&
+      logicalX <= ox + 165 &&
+      logicalY >= oy + 221 &&
+      logicalY <= oy + 239
+    ) {
+      this.hoveredTradeButton = 'gold'
     }
 
     const checkTradeGrid = (gridX: number, gridY: number, items: readonly any[] | undefined) => {
@@ -298,6 +339,12 @@ export function handleLeftDockClickImpl(
           row: number,
           hitItem: UiInventoryItem | null,
           isRightClick: boolean,
+        ) => void
+        /** Server-authoritative quick-transfer from stash/cube to inventory (`C2S 0x19` + `0x18`). */
+        onQuickTransferToInventory?: (
+          item: UiInventoryItem,
+          targetCol: number,
+          targetRow: number,
         ) => void
         /** Stash gold coin button: open the withdraw gold dialog. */
         onStashGoldButton?: () => void
@@ -529,6 +576,16 @@ export function handleLeftDockClickImpl(
       const heldCursor = inv?.cursorItem ?? null
       const isIdentify = Boolean(inv?.isIdentifyMode())
 
+      if (callbacks.isShiftClick && !callbacks.isRightClick && !heldCursor && !isIdentify && inv) {
+        if (hit && this.quickTransferFromCube(hit.item, inv)) {
+          const placed = inv.gridItems[inv.gridItems.length - 1]
+          if (placed && callbacks.onQuickTransferToInventory) {
+            callbacks.onQuickTransferToInventory(hit.item, placed.col, placed.row)
+          }
+        }
+        return true
+      }
+
       if (callbacks.onContainerGridClick) {
         if (heldCursor && !callbacks.isRightClick && !isIdentify) {
           const cursorCode = (heldCursor.code ?? '').trim().toLowerCase()
@@ -669,6 +726,16 @@ export function handleLeftDockClickImpl(
       const inv = callbacks.inventory ?? this.activePlayerInventory ?? undefined
       const heldCursor = inv?.cursorItem ?? null
       const isIdentify = Boolean(inv?.isIdentifyMode())
+
+      if (callbacks.isShiftClick && !callbacks.isRightClick && !heldCursor && !isIdentify && inv) {
+        if (hit && this.quickTransferFromStash(hit.item, inv)) {
+          const placed = inv.gridItems[inv.gridItems.length - 1]
+          if (placed && callbacks.onQuickTransferToInventory) {
+            callbacks.onQuickTransferToInventory(hit.item, placed.col, placed.row)
+          }
+        }
+        return true
+      }
 
       if (callbacks.onContainerGridClick) {
         if (heldCursor && !callbacks.isRightClick && !isIdentify) {
@@ -1566,21 +1633,56 @@ export function drawLeftDockPanelImpl(
     })
   }
 
-  if (
-    kind !== 'vendor' &&
-    kind !== 'cube' &&
-    kind !== 'quest' &&
-    kind !== 'barkscroll' &&
-    kind !== 'recipescroll' &&
-    kind !== 'merc' &&
-    kind !== 'msg' &&
-    kind !== 'party' &&
-    assets.buySellBtnImg
-  ) {
-    // Generic close `X` (stash / waypoint): frame 11 depressed while held down.
-    const closeFrame = this.pressedCloseKind === kind ? 11 : 10
-    ctx.drawImage(assets.buySellBtnImg, closeFrame * 32, 0, 32, 32, ox + 272, oy + 388, 32, 32)
-  }
+    if (
+      kind !== 'vendor' &&
+      kind !== 'cube' &&
+      kind !== 'quest' &&
+      kind !== 'barkscroll' &&
+      kind !== 'recipescroll' &&
+      kind !== 'merc' &&
+      kind !== 'msg' &&
+      kind !== 'party' &&
+      assets.buySellBtnImg
+    ) {
+      // Generic close `X` (stash / waypoint): frame 11 depressed while held down.
+      const closeFrame = this.pressedCloseKind === kind ? 11 : 10
+      ctx.drawImage(assets.buySellBtnImg, closeFrame * 32, 0, 32, 32, ox + 272, oy + 388, 32, 32)
+    }
+
+    if (kind === 'stash' && this.hoveredStashButton !== null) {
+      const isGold = this.hoveredStashButton === 'gold'
+      const hoverText = requireTbl(isGold ? 'strBankGoldWithdraw' : 'strClose', this.lang)
+      const padX = BUTTON_HOVER_BOX_PAD_X
+      const boxW = Math.max(BUTTON_HOVER_BOX_MIN_W, font.measureText(hoverText, 'font16') + padX * 2)
+      const boxH = BUTTON_HOVER_BOX_H
+      const centerX = isGold ? ox + 111 : ox + 288
+      const anchorY = isGold ? oy + 22 : oy + 384
+      const boxX = Math.round(centerX - boxW / 2)
+      const boxY = anchorY - boxH
+      ctx.fillStyle = STONE_BOX_BG_FILL
+      ctx.fillRect(boxX, boxY, boxW, boxH)
+      font.drawText(ctx, hoverText, centerX, boxY + BUTTON_HOVER_TEXT_OFFSET_Y, {
+        font: 'font16',
+        color: 'white',
+        align: 'center',
+      })
+    } else if (kind === 'waypoint' && this.hoveredWaypointClose) {
+      const hoverText = requireTbl('strClose', this.lang)
+      const padX = BUTTON_HOVER_BOX_PAD_X
+      const boxW = Math.max(BUTTON_HOVER_BOX_MIN_W, font.measureText(hoverText, 'font16') + padX * 2)
+      const boxH = BUTTON_HOVER_BOX_H
+      const centerX = ox + 288
+      const anchorY = oy + 384
+      const boxX = Math.round(centerX - boxW / 2)
+      const boxY = anchorY - boxH
+      ctx.fillStyle = STONE_BOX_BG_FILL
+      ctx.fillRect(boxX, boxY, boxW, boxH)
+      font.drawText(ctx, hoverText, centerX, boxY + BUTTON_HOVER_TEXT_OFFSET_Y, {
+        font: 'font16',
+        color: 'white',
+        align: 'center',
+      })
+    }
 }
 export function drawActTabsImpl(
   this: WorldPanelsHud,

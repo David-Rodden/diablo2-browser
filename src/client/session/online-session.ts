@@ -359,7 +359,6 @@ export class OnlineSession {
     this.hudManager.setHudEnhancements({
       showBasePlusBonusStats: currentSettings.showBasePlusBonusStats,
       showBasePlusBonusSkills: currentSettings.showBasePlusBonusSkills,
-      alwaysShowGlobeValues: currentSettings.alwaysShowGlobeValues,
       showStatGainTooltips: currentSettings.showStatGainTooltips,
       showWeaponDamageFormula: currentSettings.showWeaponDamageFormula,
     })
@@ -377,11 +376,13 @@ export class OnlineSession {
         initialRadar: {
           automapShowMonsters: currentSettings.automapShowMonsters,
           automapShowShrines: currentSettings.automapShowShrines,
+          automapShowWaypoints: currentSettings.automapShowWaypoints,
         },
       })
     this.automapView.setRadarConfig({
       automapShowMonsters: currentSettings.automapShowMonsters,
       automapShowShrines: currentSettings.automapShowShrines,
+      automapShowWaypoints: currentSettings.automapShowWaypoints,
     })
 
     this.predictor = options.predictor ?? new LocalMovementPredictor()
@@ -514,24 +515,24 @@ export class OnlineSession {
       }
       if (
         next.automapShowMonsters !== prev.automapShowMonsters ||
-        next.automapShowShrines !== prev.automapShowShrines
+        next.automapShowShrines !== prev.automapShowShrines ||
+        next.automapShowWaypoints !== prev.automapShowWaypoints
       ) {
         this.automapView.setRadarConfig({
           automapShowMonsters: next.automapShowMonsters,
           automapShowShrines: next.automapShowShrines,
+          automapShowWaypoints: next.automapShowWaypoints,
         })
       }
       if (
         next.showBasePlusBonusStats !== prev.showBasePlusBonusStats ||
         next.showBasePlusBonusSkills !== prev.showBasePlusBonusSkills ||
-        next.alwaysShowGlobeValues !== prev.alwaysShowGlobeValues ||
         next.showStatGainTooltips !== prev.showStatGainTooltips ||
         next.showWeaponDamageFormula !== prev.showWeaponDamageFormula
       ) {
         this.hudManager.setHudEnhancements({
           showBasePlusBonusStats: next.showBasePlusBonusStats,
           showBasePlusBonusSkills: next.showBasePlusBonusSkills,
-          alwaysShowGlobeValues: next.alwaysShowGlobeValues,
           showStatGainTooltips: next.showStatGainTooltips,
           showWeaponDamageFormula: next.showWeaponDamageFormula,
         })

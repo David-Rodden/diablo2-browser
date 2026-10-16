@@ -5,6 +5,7 @@ import {
   resolveWeaponBase113c,
 } from '../units/char-anim-speed.ts'
 import {
+  CANONICAL_113C_MISSILES,
   getBatch1SkillDef,
   getMissileTxtData,
   getSkillManaCost,
@@ -99,6 +100,10 @@ export interface AttackWeaponInputItem {
   name?: string | undefined
   nameZh?: string | undefined
   damage?: string | undefined
+  slot?: number | undefined
+  bodyLoc?: number | undefined
+  equipSlot?: number | undefined
+  equippedSlot?: number | undefined
 }
 
 export function getAttackWeaponInfo(item?: AttackWeaponInputItem | null | undefined): AttackWeaponInfo {
@@ -561,6 +566,13 @@ export function getSkillRangeType113c(skillId: number): SkillRangeType113c {
 export type WeaponOrEquipmentInput =
   | AttackWeaponInputItem
   | ReadonlyMap<number, AttackWeaponInputItem>
+  | Iterable<AttackWeaponInputItem>
+  | readonly AttackWeaponInputItem[]
+  | {
+      readonly equipped?: Iterable<AttackWeaponInputItem> | null | undefined
+      readonly equipment?: Iterable<AttackWeaponInputItem> | null | undefined
+    }
+  | Readonly<Record<number, AttackWeaponInputItem | undefined>>
   | null
   | undefined
 
@@ -582,6 +594,8 @@ export type ThrowMissileKey =
   | 'throwknife'
   | 'throwaxe'
   | 'javelin'
+  | 'pilum'
+  | 'glaive'
   | 'oilpotion'
   | 'explosivepotion'
   | 'fulminatingpotion'
@@ -589,55 +603,138 @@ export type ThrowMissileKey =
   | 'chokinggaspoition'
   | 'stranglinggaspotion'
 
-export const THROW_MISSILE_BY_WEAPON_TYPE: Readonly<Record<string, ThrowMissileKey>> = Object.freeze({
-  tkni: 'throwknife',
-  taxe: 'throwaxe',
-  jave: 'javelin',
-  ajav: 'javelin',
-})
+const THROWABLE_ITEM_TYPES = new Set<string>(['tkni', 'taxe', 'jave', 'ajav', 'tpot'])
 
-/** Throwing potions share Weapons.txt type `tpot`; the missile differs per code (size + family). */
-export const THROW_MISSILE_BY_ITEM_CODE: Readonly<Record<string, ThrowMissileKey>> = Object.freeze({
-  ops: 'oilpotion',
-  opm: 'explosivepotion',
-  opl: 'fulminatingpotion',
-  gps: 'rancidgasepotion',
-  gpm: 'chokinggaspoition',
-  gpl: 'stranglinggaspotion',
-})
+let cachedMissileNameById: Map<number, string> | null = null
+
+function resolveMissileNameById113c(id: number): string | null {
+  if (!cachedMissileNameById) {
+    cachedMissileNameById = new Map<number, string>()
+    for (const row of Object.values(CANONICAL_113C_MISSILES)) {
+      if (row.id > 0 && !cachedMissileNameById.has(row.id)) {
+        cachedMissileNameById.set(row.id, row.name)
+      }
+    }
+  }
+  return cachedMissileNameById.get(id) ?? null
+}
 
 /**
  * Resolve the 1.13c throw missile for an item `code` via the canonical
- * `Weapons.txt` table. Returns `null` when the code is empty, unknown, or not
- * a throwing weapon — callers must then fall back to their documented default
- * instead of guessing.
+ * `Weapons.txt` / `Misc.txt` `missiletype` column (`Missiles.txt` Id).
+ * Returns `null` when the code is empty, unknown, or not a throwing weapon —
+ * callers must then fall back to their documented default instead of guessing.
  */
 export function resolveThrowMissileForItemCode(
   code: string | undefined | null,
 ): ThrowMissileKey | null {
   const normalized = (code ?? '').trim().toLowerCase()
   if (!normalized) return null
-  const byCode = THROW_MISSILE_BY_ITEM_CODE[normalized]
-  if (byCode) return byCode
-  const wb = getCanonicalWeaponsTable().get(normalized)
-  const type = (wb?.type ?? '').trim().toLowerCase()
-  return THROW_MISSILE_BY_WEAPON_TYPE[type] ?? null
+  const item =
+    getCanonicalWeaponsTable().get(normalized) ??
+    getCanonicalMiscTable().get(normalized)
+  if (!item || !item.stackable) return null
+  const type = (item.type ?? '').trim().toLowerCase()
+  if (!THROWABLE_ITEM_TYPES.has(type)) return null
+  const missileTypeId = item.missiletype ?? 0
+  if (!(missileTypeId > 0)) return null
+  const missileName = resolveMissileNameById113c(missileTypeId)
+  return (missileName as ThrowMissileKey | null) ?? null
+}
+
+function getWeaponItemSlot(item: AttackWeaponInputItem | undefined | null): number | undefined {
+  if (!item) return undefined
+  return item.bodyLoc ?? item.slot ?? item.equippedSlot ?? item.equipSlot
+}
+
+function isSwapWeaponSlot(slot: number | undefined): boolean {
+  return slot === 11 || slot === 12
+}
+
+function isSingleWeaponItemInput(val: unknown): val is AttackWeaponInputItem {
+  if (!val || typeof val !== 'object') return false
+  const rec = val as Record<string, unknown>
+  return (
+    typeof rec.code === 'string' ||
+    typeof rec.type === 'string' ||
+    typeof rec.wclass === 'string' ||
+    typeof rec.name === 'string' ||
+    typeof rec.nameZh === 'string' ||
+    typeof rec.damage === 'string'
+  )
 }
 
 function extractEquippedWeaponCandidates(
   weaponOrEquipment: WeaponOrEquipmentInput,
 ): AttackWeaponInputItem[] {
   if (!weaponOrEquipment) return []
-  if (weaponOrEquipment instanceof Map || typeof (weaponOrEquipment as ReadonlyMap<number, AttackWeaponInputItem>).get === 'function') {
+  if (
+    weaponOrEquipment instanceof Map ||
+    typeof (weaponOrEquipment as ReadonlyMap<number, AttackWeaponInputItem>).get === 'function'
+  ) {
     const map = weaponOrEquipment as ReadonlyMap<number, AttackWeaponInputItem>
     const out: AttackWeaponInputItem[] = []
     const rArm = map.get(4)
     const lArm = map.get(5)
-    if (rArm) out.push(rArm)
-    if (lArm) out.push(lArm)
+    if (rArm && !isSwapWeaponSlot(getWeaponItemSlot(rArm))) out.push(rArm)
+    if (lArm && !isSwapWeaponSlot(getWeaponItemSlot(lArm))) out.push(lArm)
+    if (out.length === 0 && typeof map.entries === 'function') {
+      const slot4Items: AttackWeaponInputItem[] = []
+      const slot5Items: AttackWeaponInputItem[] = []
+      for (const [key, item] of map.entries()) {
+        if (isSwapWeaponSlot(key)) continue
+        const itemSlot = getWeaponItemSlot(item)
+        if (isSwapWeaponSlot(itemSlot)) continue
+        if (itemSlot === 4) {
+          slot4Items.push(item)
+        } else if (itemSlot === 5) {
+          slot5Items.push(item)
+        }
+      }
+      out.push(...slot4Items, ...slot5Items)
+    }
     return out
   }
-  return [weaponOrEquipment as AttackWeaponInputItem]
+  if (
+    Array.isArray(weaponOrEquipment) ||
+    typeof (weaponOrEquipment as Iterable<AttackWeaponInputItem>)[Symbol.iterator] === 'function'
+  ) {
+    const slot4Items: AttackWeaponInputItem[] = []
+    const slot5Items: AttackWeaponInputItem[] = []
+    const unslottedItems: AttackWeaponInputItem[] = []
+    for (const item of weaponOrEquipment as Iterable<AttackWeaponInputItem>) {
+      if (!item) continue
+      const itemSlot = getWeaponItemSlot(item)
+      if (isSwapWeaponSlot(itemSlot)) continue
+      if (itemSlot === 4) {
+        slot4Items.push(item)
+      } else if (itemSlot === 5) {
+        slot5Items.push(item)
+      } else if (itemSlot === undefined || itemSlot === 0) {
+        unslottedItems.push(item)
+      }
+    }
+    return [...slot4Items, ...slot5Items, ...unslottedItems]
+  }
+  if (!isSingleWeaponItemInput(weaponOrEquipment)) {
+    const rec = weaponOrEquipment as {
+      readonly equipped?: Iterable<AttackWeaponInputItem> | null | undefined
+      readonly equipment?: Iterable<AttackWeaponInputItem> | null | undefined
+      readonly [slot: number]: AttackWeaponInputItem | undefined
+    }
+    if (rec.equipped) return extractEquippedWeaponCandidates(rec.equipped)
+    if (rec.equipment) return extractEquippedWeaponCandidates(rec.equipment)
+    const out: AttackWeaponInputItem[] = []
+    const rArm = rec[4]
+    const lArm = rec[5]
+    if (rArm && !isSwapWeaponSlot(getWeaponItemSlot(rArm))) out.push(rArm)
+    if (lArm && !isSwapWeaponSlot(getWeaponItemSlot(lArm))) out.push(lArm)
+    return out
+  }
+  const single = weaponOrEquipment as AttackWeaponInputItem
+  const singleSlot = getWeaponItemSlot(single)
+  if (isSwapWeaponSlot(singleSlot)) return []
+  return [single]
 }
 
 /**
@@ -711,11 +808,13 @@ export function resolveEquippedWeaponRangeAdder(
   const weaponsTable = getCanonicalWeaponsTable()
   if (
     weaponOrEquipment instanceof Map ||
-    typeof (weaponOrEquipment as ReadonlyMap<number, AttackWeaponInputItem>).get === 'function'
+    typeof (weaponOrEquipment as ReadonlyMap<number, AttackWeaponInputItem>).get === 'function' ||
+    Array.isArray(weaponOrEquipment) ||
+    typeof (weaponOrEquipment as Iterable<AttackWeaponInputItem>)[Symbol.iterator] === 'function' ||
+    !isSingleWeaponItemInput(weaponOrEquipment)
   ) {
-    const map = weaponOrEquipment as ReadonlyMap<number, AttackWeaponInputItem>
-    for (const slot of [4, 5]) {
-      const item = map.get(slot)
+    const candidates = extractEquippedWeaponCandidates(weaponOrEquipment)
+    for (const item of candidates) {
       const code = (item?.code ?? '').trim().toLowerCase()
       if (!code) continue
       const wb = weaponsTable.get(code)
@@ -726,6 +825,7 @@ export function resolveEquippedWeaponRangeAdder(
     return 0
   }
   const single = weaponOrEquipment as AttackWeaponInputItem
+  if (isSwapWeaponSlot(getWeaponItemSlot(single))) return 0
   const code = (single.code ?? '').trim().toLowerCase()
   if (!code) return 0
   const wb = resolveWeaponBase113c(code)

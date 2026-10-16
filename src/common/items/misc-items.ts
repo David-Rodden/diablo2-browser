@@ -67,6 +67,8 @@ export interface MiscBase extends ItemBase {
   readonly autobelt: boolean
   /** Hardcoded spell/effect index parameter if usable. */
   readonly pSpell?: number
+  /** Thrown projectile Missiles.txt Id from missiletype column, if > 0. */
+  readonly missiletype?: number | undefined
   /** Whether the item can be transmogrified in the Horadric Cube. */
   readonly transmogrify: boolean
   /** Item tags for affix matching ([type, type2]). */
@@ -263,6 +265,8 @@ export function parseMiscTable(input: D2Table | Uint8Array | string): MiscTable 
 
     const pSpellRaw = (cell(table, row, 'pSpell') || cell(table, row, 'pspell')).trim()
     const pSpell = pSpellRaw !== '' ? Number(pSpellRaw) : undefined
+    const missileTypeRaw = Number(cell(table, row, 'missiletype')) || 0
+    const missiletype = missileTypeRaw > 0 ? missileTypeRaw : undefined
 
     const transmogrify =
       cell(table, row, 'Transmogrify').trim() === '1' ||
@@ -358,6 +362,7 @@ export function parseMiscTable(input: D2Table | Uint8Array | string): MiscTable 
       ...(spawnstack !== undefined ? { spawnstack } : {}),
       autobelt,
       ...(pSpell !== undefined ? { pSpell } : {}),
+      ...(missiletype !== undefined ? { missiletype } : {}),
       transmogrify,
       tags,
       isGold,

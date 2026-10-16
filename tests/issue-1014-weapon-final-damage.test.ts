@@ -24,7 +24,7 @@ describe('Issue #1014: Weapon Final Damage Calculation (Affixes, Socketed Runes/
       action: 0x06,
       category: 5,
       code: '7m7',
-      location: 'equipment',
+      location: 1,
       bodyLoc: 4, // right arm
       gridX: 0,
       gridY: 0,
@@ -57,7 +57,7 @@ describe('Issue #1014: Weapon Final Damage Calculation (Affixes, Socketed Runes/
       curDurability: 60,
       maxDurability: 60,
       stats: [{ statId: 17, param: 0, value: 200 }], // +200% Enhanced Damage
-    }
+    } as unknown as ItemData
 
     inv.applyItemEvent(0x06, parentWeapon, 'equipment', 1)
 
@@ -87,7 +87,7 @@ describe('Issue #1014: Weapon Final Damage Calculation (Affixes, Socketed Runes/
       id: 5002,
       action: 0x0a, // PutInSocket
       code: 'r27',
-      location: 'socket',
+      location: 6,
       bodyLoc: 0,
       ownerType: 'item',
       ownerId: 5001,
@@ -99,7 +99,7 @@ describe('Issue #1014: Weapon Final Damage Calculation (Affixes, Socketed Runes/
       totalSockets: 0,
       usedSockets: 0,
       stats: [],
-    }
+    } as unknown as ItemData
     const ohm2: ItemData = {
       ...ohm1,
       id: 5003,

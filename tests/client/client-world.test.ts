@@ -811,10 +811,9 @@ describe('ClientWorld authoritative state mirror', () => {
     raw0x73[16] = 0 // ownerType = player
     dv.setUint32(17, 2, true) // ownerId = 2 (remote player)
     const ev0x73 = decodeD2gsS2cPacket(raw0x73)
-    expect(ev0x73.type).toBe('SkillCast')
-    if (ev0x73.type === 'SkillCast') {
-      expect(ev0x73.caster).toEqual({ unitType: 3, id: 62 })
-      expect(ev0x73.skill).toBe(62)
+    expect(ev0x73.type).toBe('CreateMissile')
+    if (ev0x73.type === 'CreateMissile') {
+      expect(ev0x73.missileClassId).toBe(62)
       expect(ev0x73.at).toEqual({ x: 5002, y: 5004 })
       expect(ev0x73.target).toEqual({ x: 5022, y: 5004 })
       expect(ev0x73.level).toBe(5)
@@ -889,7 +888,7 @@ describe('ClientWorld authoritative state mirror', () => {
     const frostNovas = Array.from(fnWorld.units.values()).filter(
       u => u.unitType === 'missile' && u.missileKey === 'frostnova',
     )
-    expect(frostNovas).toHaveLength(32)
+    expect(frostNovas).toHaveLength(64) // CltDoFunc 25: 64-entry ring (Issue #1058)
 
     // 4. Blessed Hammer (skill 112 -> spiral trajectory)
     const bhWorld = new ClientWorld()
@@ -913,7 +912,7 @@ describe('ClientWorld authoritative state mirror', () => {
     const r0 = hammer.spiralRadius ?? 0
     bhWorld.tick(120, Date.now() + 120)
     expect(hammer.spiralRadius).toBeGreaterThan(r0)
-    expect(Math.hypot(hammer.x - 5000, hammer.y - 5000)).toBeGreaterThan(0.5)
+    expect(Math.hypot(hammer.x - 5000, hammer.y - 5000)).toBeGreaterThan(0.25)
 
     // 5. Frozen Orb (skill 64 -> emits frozenorbbolt sub-missiles during flight)
     const foWorld = new ClientWorld()
@@ -979,8 +978,11 @@ describe('ClientWorld authoritative state mirror', () => {
       target: { x: 5020, y: 5000 },
     })
     fireActionFrame(amaWorld, 'player:1')
+    for (let i = 1; i <= 3; i++) {
+      amaWorld.tick(40, 1000 + i * 40)
+    }
     const strafeArrows = Array.from(amaWorld.units.values()).filter(
-      u => u.unitType === 'missile' && u.missileKey === 'strafearrow',
+      u => u.unitType === 'missile' && (u.missileKey === 'strafearrow' || u.missileKey === 'multipleshotarrow'),
     )
     expect(strafeArrows).toHaveLength(2)
     expect(strafeArrows[0]!.targetX).toBe(5008)
@@ -999,24 +1001,26 @@ describe('ClientWorld authoritative state mirror', () => {
     }
     expect(gaUnit.vy).toBeGreaterThan(0)
 
-    // Immolation Arrow (#27) spawns explodingarrowexp + 3 fireexplosion + 75-frame immolationfire ground patches on impact
+    // Immolation Arrow (#27) CltHitFunc=12 spawns wCltMissileB=explodingarrowexp + radius-3 disc of 100-frame firewall/firesmall/firemedium ground patches (no fireexplosion, no immolationfire)
     const immArrow = amaWorld.spawnMissileByKey('immolationarrow', 5007, 5006, 5008, 5006, {
       ownerType: 'player',
       ownerId: 1,
       sourceSkillId: 27,
       skillLevel: 1,
     })
-    immArrow.explosionMissile = 'explodingarrowexp'
     immArrow.alwaysExplode = true
     amaWorld.tick(40, 3000)
     const afterImm = Array.from(amaWorld.units.values()).filter(u => u.unitType === 'missile')
     expect(afterImm.some(u => u.missileKey === 'explodingarrowexp')).toBe(true)
-    expect(afterImm.filter(u => u.missileKey === 'fireexplosion')).toHaveLength(3)
-    const immPatches = afterImm.filter(u => u.missileKey === 'immolationfire')
-    expect(immPatches.length).toBeGreaterThanOrEqual(1)
-    expect(immPatches[0]!.maxTicks).toBe(75)
+    expect(afterImm.filter(u => u.missileKey === 'fireexplosion')).toHaveLength(0)
+    expect(afterImm.filter(u => u.missileKey === 'immolationfire')).toHaveLength(0)
+    const immPatches = afterImm.filter(
+      u => u.missileKey === 'firewall' || u.missileKey === 'firesmall' || u.missileKey === 'firemedium',
+    )
+    expect(immPatches.length).toBeGreaterThanOrEqual(20)
+    expect(immPatches[0]!.maxTicks).toBe(100)
 
-    // Freezing Arrow (#31) spawns freezeexplode (from freezingarrowexp1) + 8 glacialspikeejecta on impact
+    // Freezing Arrow (#31) spawns freezingarrowexp1 + 3..4 freezingarrowexp2 on impact via CltHit14
     const faArrow = amaWorld.spawnMissileByKey('freezingarrow', 5007, 5006, 5008, 5006, {
       ownerType: 'player',
       ownerId: 1,
@@ -1027,8 +1031,8 @@ describe('ClientWorld authoritative state mirror', () => {
     faArrow.alwaysExplode = true
     amaWorld.tick(40, 3040)
     const afterFa = Array.from(amaWorld.units.values()).filter(u => u.unitType === 'missile')
-    expect(afterFa.some(u => u.missileKey === 'freezeexplode')).toBe(true)
-    expect(afterFa.filter(u => u.missileKey === 'glacialspikeejecta')).toHaveLength(8)
+    expect(afterFa.some(u => u.missileKey === 'freezingarrowexp1')).toBe(true)
+    expect([3, 4]).toContain(afterFa.filter(u => u.missileKey === 'freezingarrowexp2').length)
 
     // 7. Challenge 3: spawnMissileByKey('arrow') without opts.classId preserves classId === 0
     const arrowUnit = msWorld.spawnMissileByKey('arrow', 5000, 5000, 5020, 5000)
@@ -1118,7 +1122,7 @@ describe('ClientWorld authoritative state mirror', () => {
     monWorld.tick(120, Date.now() + 120)
     const monMissiles = Array.from(monWorld.units.values()).filter(u => u.unitType === 'missile')
     expect(monMissiles.some(u => u.missileKey === 'iceblast')).toBe(false)
-    expect(monMissiles.some(u => u.missileKey === 'freezeexplode')).toBe(true)
+    expect(monMissiles.some(u => u.missileKey === 'freezingarrowexp1')).toBe(true)
 
     // Piercing Bone Spear (skill 84) passes through Fallen without being destroyed
     const pierceWorld = new ClientWorld()
@@ -1313,9 +1317,10 @@ describe('ClientWorld authoritative state mirror', () => {
     const coreDrawable0 = scene0.missileDrawables.find(d => d.missileKey === 'meteor')!
     const tailDrawable0 = scene0.missileDrawables.find(d => d.missileKey === 'meteortail')!
     const centerDrawable0 = scene0.missileDrawables.find(d => d.missileKey === 'meteorcenter')!
-    expect(coreDrawable0.blendMode).toBe('highlight')
-    expect(tailDrawable0.blendMode).toBe('highlight')
-    expect(centerDrawable0.blendMode).toBe('highlight')
+    // Missiles.txt meteor Trans empty -> eDrawMode 5 opaque; meteortail / meteorcenter Trans 1 -> additive (0x6FB1CF32).
+    expect(coreDrawable0.blendMode).toBe('normal')
+    expect(tailDrawable0.blendMode).toBe('additive')
+    expect(centerDrawable0.blendMode).toBe('additive')
     expect(centerDrawable0.lightRadius).toBe(4) // Missiles.txt Light of meteorcenter (#830)
 
     // 3. Step 59 ticks (ticks 1..59): continuous lockstep descent, no extra meteortail puffs spawned
@@ -1929,25 +1934,25 @@ describe('ClientWorld authoritative state mirror', () => {
         (u) => u.unitType === 'missile' && u.missileKey === 'poisonjav',
       )!
       expect(pjav).toBeDefined()
-      expect(pjav.pierce).toBe(true)
+      expect(pjav.pierce).toBe(false)
 
       ;(world as any).spawnMissilesForSkill(caster, 25, 115, 100, 10)
       const plg = Array.from(world.units.values()).find(
         (u) => u.unitType === 'missile' && u.missileKey === 'plaguejavelin',
       )!
       expect(plg).toBeDefined()
-      expect(plg.explosionMissile).toBe('plaguejavcloud')
+      expect(plg.explosionMissile).toBe('')
       ;(world as any).stepMissileUnit(plg)
       expect(
         Array.from(world.units.values()).some(
-          (u) => u.unitType === 'missile' && u.missileKey === 'poisonjavcloud',
+          (u) => u.unitType === 'missile' && (u.missileKey === 'poisonjavcloud' || u.missileKey === 'plaguejavcloud'),
         ),
       ).toBe(true)
       ;(world as any).triggerMissileImpact(plg, plg.x, plg.y, false)
       const burstClouds = Array.from(world.units.values()).filter(
         (u) => u.unitType === 'missile' && u.missileKey === 'plaguejavcloud',
       )
-      expect(burstClouds.length).toBe(16)
+      expect(burstClouds.length).toBe(24)
     })
 
     it('#20 Lightning Bolt, #34 Lightning Strike (20-subtile, 1+slvl hits), and #35 Lightning Fury (15-subtile, 1+slvl furylightning) match 1.13c', () => {

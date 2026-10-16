@@ -3,12 +3,15 @@ import {
   NPC_GREETING_ROWS_BY_HCIDX_113C,
   NPC_SCROLL_SPEECH_SOUND_BY_STRING_ID_113C,
   NPC_SCROLL_SPEECH_SOUND_BY_TBL_KEY_113C,
+  resolveNpcGossipStringId113c,
+  resolveNpcGossipTblKey113c,
   resolveNpcGreetingSoundId113c,
   resolveNpcIntroStringId113c,
+  resolveNpcIntroTblKey113c,
   resolveNpcSpeechSoundId113c,
 } from '../../src/common/audio/npc-speech-113c.ts'
 import { SOUNDS_113C } from '../../src/common/audio/sounds-113c.ts'
-import { TOWN_NPC_DESCRIPTORS, getTownNpcDescriptorByHcIdx } from '../../src/common/units/npc-table.ts'
+import { TOWN_NPC_DESCRIPTORS, getTownNpcDescriptorByHcIdx, resolveNpcDialogueTblText } from '../../src/common/units/npc-table.ts'
 import { WorldPanelsHud } from '../../src/client/ui/world-panels.ts'
 import { OnlineSession } from '../../src/client/session/online-session.ts'
 
@@ -258,5 +261,103 @@ describe('Issue #990 — 1.13c Town NPC Greeting & Scrolling Speech Audio Parity
     session.hudModel.syncFromWorld()
     expect(sessionSpeeches.length).toBe(1)
     expect([3480, 3482, 3484, 3485, 3486, 3487]).toContain(sessionSpeeches[0])
+  })
+
+  it('4. Issue #1232: synchronizes class-specific NPC Introduction voice and .tbl scroll text across Talk submenu and auto-pop fallback', () => {
+    expect(resolveNpcIntroTblKey113c(148, 0, 1)).toBe('AkaraIntroSorGossip1')
+    expect(resolveNpcIntroTblKey113c(148, 0, 0)).toBe('AkaraIntroGossip1')
+    expect(resolveNpcIntroTblKey113c(154, 0, 4)).toBe('CharsiIntroBarGossip1')
+    expect(resolveNpcIntroTblKey113c(155, 0, 0)).toBe('WarrivAct1IntroGossip1')
+    expect(resolveNpcIntroTblKey113c(155, 0, 3)).toBe('WarrivAct1IntroPalGossip1')
+    expect(resolveNpcIntroTblKey113c(511, 4, 0)).toBe('LarzukAct5IntroAmaGossip1')
+
+    const wp = new WorldPanelsHud()
+    wp.setLanguage('ENG')
+    const played: number[] = []
+    wp.onPlayNpcSpeech = (id) => played.push(id)
+
+    const akara = getTownNpcDescriptorByHcIdx(148)!
+    wp.openNpcMenu(akara, 400, 300, 5, { playerClass: 1, act: 0, suppressGreeting: true })
+    expect(wp.clickNpcMenuOption('talk_intro')).toBe(true)
+    expect(played).toEqual([3500]) // akara_act1_intro_sor
+    expect(wp.npcSpeech?.stringId).toBe(12)
+    expect(wp.npcSpeech?.text).toBe(resolveNpcDialogueTblText('AkaraIntroSorGossip1', { lang: 'ENG' }))
+    wp.closeNpcSpeech()
+
+    // Auto-pop fallback (without S2C 0x27 message slots) uses local player's charClass for both voice & text
+    const session = new OnlineSession()
+    const sessionSpeeches: number[] = []
+    session.audioRuntime.playSpeech = (soundId: number) => {
+      sessionSpeeches.push(soundId)
+      return true
+    }
+    session.handleServerEvent({ type: 'LoadAct', act: 0, mapSeed: 123, areaId: 1 })
+    session.handleServerEvent({
+      type: 'UnitAssign',
+      isSelf: true,
+      unit: { unitType: 0, id: 1, classId: 4, name: 'Barb', x: 5000, y: 5000 }, // Barbarian
+    })
+    session.handleServerEvent({
+      type: 'UnitAssign',
+      unit: { unitType: 1, id: 8, classId: 154, name: 'Charsi', x: 5002, y: 5000, lifePct: 128, mode: 1 },
+    })
+    session.handleServerEvent({
+      type: 'Npc',
+      kind: 'wantsInteract',
+      unitType: 1,
+      npcId: 8,
+      unitId: 8,
+    })
+    session.world.noteOutgoingCommand({ type: 'NpcInit', target: { unitType: 1, id: 8 } })
+    session.hudModel.syncFromWorld()
+    expect(sessionSpeeches).toEqual([3754]) // charsi_act1_intro_bar
+    expect(session.hudManager.worldPanels.npcSpeech?.stringId).toBe(37)
+    const charsiLang = session.hudManager.worldPanels.lang
+    expect(session.hudManager.worldPanels.npcSpeech?.text).toBe(
+      resolveNpcDialogueTblText('CharsiIntroBarGossip1', { lang: charsiLang }),
+    )
+  })
+
+  it('5. Issue #1233: filters NPC Gossip by playerClass and act (0x6faf91e0 -> 0x6faf6910) even when gossipIndex is provided', () => {
+    // Akara (hcIdx=148, act=0): stringId=13 (AkaraGossip1 -> 3498) has classMatch=1 (Sorceress only)
+    // Non-Sorceress (Amazon playerClass=0) at gossipIndex=0 must skip stringId=13 and pick stringId=14 (AkaraGossip2 -> 3488)
+    expect(resolveNpcGossipStringId113c(148, { act: 0, playerClass: 0, gossipIndex: 0 })).toBe(14)
+    expect(resolveNpcGossipTblKey113c(148, { act: 0, playerClass: 0, gossipIndex: 0 })).toBe('AkaraGossip2')
+    expect(
+      resolveNpcSpeechSoundId113c({
+        hcIdx: 148,
+        topic: 'gossip',
+        act: 0,
+        playerClass: 0,
+        gossipIndex: 0,
+      }),
+    ).toBe(3488)
+
+    // Sorceress (playerClass=1) at gossipIndex=0 picks stringId=13 (AkaraGossip1 -> 3498), then gossipIndex=1 picks 14 (3488)
+    expect(resolveNpcGossipStringId113c(148, { act: 0, playerClass: 1, gossipIndex: 0 })).toBe(13)
+    expect(resolveNpcGossipTblKey113c(148, { act: 0, playerClass: 1, gossipIndex: 0 })).toBe('AkaraGossip1')
+    expect(
+      resolveNpcSpeechSoundId113c({
+        hcIdx: 148,
+        topic: 'gossip',
+        act: 0,
+        playerClass: 1,
+        gossipIndex: 0,
+      }),
+    ).toBe(3498)
+
+    // WorldPanelsHud talk_gossip synchronizes both .tbl text and speech audio for non-Sorceress vs Sorceress
+    const wp = new WorldPanelsHud()
+    wp.setLanguage('ENG')
+    const played: number[] = []
+    wp.onPlayNpcSpeech = (id) => played.push(id)
+
+    const akara = getTownNpcDescriptorByHcIdx(148)!
+    wp.openNpcMenu(akara, 400, 300, 5, { playerClass: 0, act: 0, suppressGreeting: true })
+    expect(wp.clickNpcMenuOption('talk_gossip')).toBe(true)
+    expect(played).toEqual([3488]) // AkaraGossip2
+    expect(wp.npcSpeech?.stringId).toBe(14)
+    expect(wp.npcSpeech?.text).toBe(resolveNpcDialogueTblText('AkaraGossip2', { lang: 'ENG' }))
+    wp.closeNpcSpeech()
   })
 })

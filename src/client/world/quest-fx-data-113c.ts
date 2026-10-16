@@ -127,7 +127,7 @@ export const CAIRN_STONES_MISSILE = Object.freeze({
 
 /**
  * Quest FX client missiles (Missiles.txt / missiles.bin rows 99, 287, 288, 290, 372, 384, Issue #873;
- * 150, 338, 339, 340, Issue #915).
+ * 150, 338, 339, 340, Issue #915; 368, 369, 370, Issue #917; 291, 292, 330, 332, Issue #1215).
  */
 export const QUEST_FX_MISSILES_113C: Readonly<Record<number, QuestFxMissileRow113c>> = Object.freeze({
   99: { id: 99, name: 'lightninghit', pCltDoFunc: 1, range: 12, vel: 0, maxVel: 0, param1: 0, cltParam1: 0, cltParam2: 16, cltParam3: 0, cltSubMissile1: -1, cltSubMissile2: -1, travelSound: 0, light: 3, flicker: 4, red: 255, green: 255, blue: 255, animLen: 8 },
@@ -135,6 +135,10 @@ export const QUEST_FX_MISSILES_113C: Readonly<Record<number, QuestFxMissileRow11
   287: { id: 287, name: 'denofevillight', pCltDoFunc: 23, range: 300, vel: 0, maxVel: 0, param1: 0, cltParam1: 0, cltParam2: 0, cltParam3: 0, cltSubMissile1: -1, cltSubMissile2: -1, travelSound: 0, light: 10, flicker: 0, red: 255, green: 255, blue: 255, animLen: 21 },
   288: { id: 288, name: 'cairnstones', pCltDoFunc: 24, range: 300, vel: 0, maxVel: 0, param1: 40, cltParam1: 40, cltParam2: 2, cltParam3: 17, cltSubMissile1: 384, cltSubMissile2: 290, travelSound: 0, light: 0, flicker: 0, red: 255, green: 255, blue: 255, animLen: 2 },
   290: { id: 290, name: 'cairnstonesground', pCltDoFunc: 8, range: 30, vel: 20, maxVel: 20, param1: 0, cltParam1: 3, cltParam2: 0, cltParam3: 0, cltSubMissile1: 99, cltSubMissile2: -1, travelSound: 0, light: 0, flicker: 0, red: 255, green: 255, blue: 255, animLen: 2 },
+  291: { id: 291, name: 'towermist', pCltDoFunc: 25, range: 400, vel: 2, maxVel: 2, param1: 0, cltParam1: 10, cltParam2: 3, cltParam3: 1, cltSubMissile1: 292, cltSubMissile2: -1, travelSound: 704, light: 2, flicker: 0, red: 255, green: 255, blue: 255, animLen: 2 },
+  292: { id: 292, name: 'towermisttrail', pCltDoFunc: 1, range: 50, vel: 3, maxVel: 3, param1: 0, cltParam1: 0, cltParam2: 0, cltParam3: 0, cltSubMissile1: -1, cltSubMissile2: -1, travelSound: 704, light: 2, flicker: 0, red: 255, green: 255, blue: 255, animLen: 14 },
+  330: { id: 330, name: 'towermistfade', pCltDoFunc: 1, range: 128, vel: 0, maxVel: 0, param1: 0, cltParam1: 0, cltParam2: 0, cltParam3: 0, cltSubMissile1: -1, cltSubMissile2: -1, travelSound: 0, light: 0, flicker: 0, red: 255, green: 255, blue: 255, animLen: 14 },
+  332: { id: 332, name: 'towerchestspawner', pCltDoFunc: 30, range: 400, vel: 0, maxVel: 0, param1: 150, cltParam1: 150, cltParam2: 2, cltParam3: 5, cltSubMissile1: 292, cltSubMissile2: -1, travelSound: 0, light: 15, flicker: 0, red: 192, green: 192, blue: 255, animLen: 2 },
   338: { id: 338, name: 'horadricstaff', pCltDoFunc: 31, range: 440, vel: 0, maxVel: 0, param1: 0, cltParam1: 0, cltParam2: 0, cltParam3: 0, cltSubMissile1: -1, cltSubMissile2: -1, travelSound: 39, light: 0, flicker: 0, red: 255, green: 255, blue: 255, animLen: 8 },
   339: { id: 339, name: 'horadriclightning', pCltDoFunc: 1, range: 30, vel: 20, maxVel: 20, param1: 0, cltParam1: 0, cltParam2: 0, cltParam3: 0, cltSubMissile1: -1, cltSubMissile2: -1, travelSound: 433, light: 3, flicker: 0, red: 255, green: 255, blue: 255, animLen: 8 },
   340: { id: 340, name: 'horadriclight', pCltDoFunc: 1, range: 225, vel: 0, maxVel: 0, param1: 0, cltParam1: 0, cltParam2: 0, cltParam3: 0, cltSubMissile1: -1, cltSubMissile2: -1, travelSound: 40, light: 2, flicker: 0, red: 255, green: 255, blue: 255, animLen: 1 },

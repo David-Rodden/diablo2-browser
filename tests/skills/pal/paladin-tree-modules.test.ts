@@ -423,7 +423,7 @@ describe('Paladin Skill Tree Modules — 1.13c Parity & Interface Contracts', ()
     it('ClientWorld: SelectSkill right-hand aura sync, Sanctuary (#119) sanctuarybolt gleam, Redemption (#124) corpse state 99, and Holy Freeze state 44 color shift', () => {
       expect(STATE_COLOR_SHIFTS[44]).toEqual({
         stateId: 44,
-        priority: 59,
+        priority: 100,
         tintColor: [150, 215, 255],
         paletteRow: 1,
       })
@@ -440,7 +440,7 @@ describe('Paladin Skill Tree Modules — 1.13c Parity & Interface Contracts', ()
       expect(world.self.states.has(47)).toBe(true)
       expect(playerUnit.states.has(47)).toBe(true)
 
-      // Spawn an undead monster nearby and step 25 ticks -> spawns 'sanctuarybolt'
+      // Spawn an undead monster nearby and step to tick 50 -> spawns 'sanctuarybolt' (perdelay=50, Range=14)
       const zombie = (world as any).ensureUnit('monster', 501)
       zombie.classId = 1 // Zombie
       zombie.x = 104
@@ -448,19 +448,20 @@ describe('Paladin Skill Tree Modules — 1.13c Parity & Interface Contracts', ()
       zombie.mode = 1
       zombie.lifePct = 128
       ;(world as any)._monsters.set(501, zombie)
-      world.frameCount = 24
+      world.frameCount = 49
       ;(world as any).stepDiscreteSimulationTick(40, 1000)
       const sancBolt = Array.from(world.units.values()).find(
         u => u.unitType === 'missile' && u.missileKey === 'sanctuarybolt',
       )
       expect(sancBolt).toBeDefined()
+      expect(sancBolt?.maxTicks).toBe(14)
 
       // Switching right-hand skill to Blessed Hammer (#112) clears state 47
       world.noteOutgoingCommand({ type: 'SelectSkill', hand: 'right', skill: 112 } as any)
       expect(world.self.states.has(47)).toBe(false)
       expect(playerUnit.states.has(47)).toBe(false)
 
-      // StateSet with state 99 (STATE_REDEEMED) on monster hides corpse and attaches 'redemption' overlay
+      // StateSet with state 99 (STATE_REDEEMED) on monster hides corpse and spawns 'redemption' missile (#173 RedemptionGhost)
       world.applyEvent({
         type: 'StateSet',
         unit: { unitType: 'monster', id: 501 },
@@ -468,7 +469,12 @@ describe('Paladin Skill Tree Modules — 1.13c Parity & Interface Contracts', ()
       } as any)
       expect((zombie as any).hidden).toBe(true)
       expect((zombie as any).redeemed).toBe(true)
-      expect(zombie.overlays.some((o: any) => o.token === 'redemption')).toBe(true)
+      expect(zombie.overlays.some((o: any) => o.token === 'redemption')).toBe(false)
+      const redemptionMissile = Array.from(world.units.values()).find(
+        u => u.unitType === 'missile' && u.missileKey === 'redemption',
+      )
+      expect(redemptionMissile).toBeDefined()
+      expect(redemptionMissile?.maxTicks).toBe(18)
     })
 
     it('ClientWorld & HudModel: Paladin Combat Skills (#96-#121) Character Sheet AR/Damage and Client Overlays (#992)', () => {
@@ -518,24 +524,34 @@ describe('Paladin Skill Tree Modules — 1.13c Parity & Interface Contracts', ()
       ;(world as any).spawnMissilesForSkill(playerUnit, 116, 101, 100, 10)
       expect(monster.states.has(53)).toBe(false)
 
-      // When monster actually has state 53 (converted), conversion overlay is attached
+      // When monster has state 53 (converted), client cast of #116 adds no duplicate overlay (STATE_OVERLAYS[53] -> conversionaura)
       monster.states.add(53)
       ;(world as any).spawnMissilesForSkill(playerUnit, 116, 101, 100, 10)
-      expect(monster.overlays.some((o: any) => o.token === 'conversion')).toBe(true)
+      expect(monster.overlays).toHaveLength(0)
 
-      // Sacrifice (#96) attaches sacrifice_1 on caster and sacrifice_2 on target
+      // Sacrifice (#96) attaches no invented sacrifice_* overlays and spawns a blood missile (classId 18..20) at target
+      monster.states.clear()
       ;(world as any).spawnMissilesForSkill(playerUnit, 96, 101, 100, 10)
-      expect(playerUnit.overlays.some((o: any) => o.token === 'sacrifice_1')).toBe(true)
-      expect(monster.overlays.some((o: any) => o.token === 'sacrifice_2')).toBe(true)
+      expect(playerUnit.overlays).toHaveLength(0)
+      expect(monster.overlays).toHaveLength(0)
+      const bloodMissiles = Array.from(world.units.values()).filter((u) => u.unitType === 'missile')
+      expect(bloodMissiles).toHaveLength(1)
+      expect(bloodMissiles[0]!.classId).toBeGreaterThanOrEqual(18)
+      expect(bloodMissiles[0]!.classId).toBeLessThanOrEqual(20)
 
-      // Smite (#97) attaches smite and stun overlays on target
+      // Smite (#97) client cast attaches no overlays and adds no client stun state
+      monster.states.clear()
       ;(world as any).spawnMissilesForSkill(playerUnit, 97, 101, 100, 10)
-      expect(monster.overlays.some((o: any) => o.token === 'smite')).toBe(true)
-      expect(monster.overlays.some((o: any) => o.token === 'stun')).toBe(true)
+      expect(monster.states.has(21)).toBe(false)
+      expect(monster.overlays).toHaveLength(0)
 
-      // Vengeance (#111) attaches vengeance overlay on target
+      // Vengeance (#111) client cast attaches no overlays
       ;(world as any).spawnMissilesForSkill(playerUnit, 111, 101, 100, 10)
-      expect(monster.overlays.some((o: any) => o.token === 'vengeance')).toBe(true)
+      expect(monster.overlays).toHaveLength(0)
+
+      // Charge (#107) attaches no tgtoverlay/castoverlay/srvoverlay in 1.13c (Issue #1167)
+      ;(world as any).spawnMissilesForSkill(playerUnit, 107, 101, 100, 10)
+      expect(monster.overlays.some((o: any) => o.token === 'charge')).toBe(false)
     })
   })
 })

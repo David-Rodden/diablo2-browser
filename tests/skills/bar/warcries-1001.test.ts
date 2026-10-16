@@ -38,33 +38,23 @@ import { castSkill as castSceneSkill } from '../../../src/server/scene/skill-cas
 describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', () => {
   it('Layer 1: verifies Missiles.txt entries, Overlays.txt entries, mana costs, and zero casting delays', () => {
     // Missiles.txt #148 howl, #149 shout, #219 battlecry, #235 warcry, #236 battlecommand, #237 battleorders
-    expect(CANONICAL_113C_MISSILES.howl.vel).toBe(12)
-    expect(CANONICAL_113C_MISSILES.howl.maxVel).toBe(24)
-    expect(CANONICAL_113C_MISSILES.howl.accel).toBe(0)
-    expect(CANONICAL_113C_MISSILES.howl.range).toBe(12)
-    expect(CANONICAL_113C_MISSILES.howl.levRange).toBe(1)
-    expect(CANONICAL_113C_MISSILES.howl.nextDelay).toBe(4)
-
-    for (const key of ['shout', 'battlecommand', 'battleorders'] as const) {
-      expect(CANONICAL_113C_MISSILES[key].vel).toBe(16)
-      expect(CANONICAL_113C_MISSILES[key].maxVel).toBe(16)
-      expect(CANONICAL_113C_MISSILES[key].accel).toBe(0)
-      expect(CANONICAL_113C_MISSILES[key].range).toBe(16)
-      expect(CANONICAL_113C_MISSILES[key].levRange).toBe(0)
-      expect(CANONICAL_113C_MISSILES[key].nextDelay).toBe(4)
+    // (1.13c Missiles.txt columns, Issue #1060: [Vel, MaxVel, Accel, Range, LevRange])
+    const rows: Record<string, [number, number, number, number, number]> = {
+      howl: [12, 12, -1000, 12, 0],
+      shout: [30, 30, -500, 15, 0],
+      battlecommand: [30, 30, -500, 15, 0],
+      battleorders: [30, 30, -500, 15, 0],
+      battlecry: [12, 12, -1000, 12, 0],
+      warcry: [12, 12, -600, 16, 0],
+    }
+    for (const [key, [vel, maxVel, accel, range, levRange]] of Object.entries(rows)) {
+      const m = CANONICAL_113C_MISSILES[key]!
+      expect([m.vel, m.maxVel, m.accel, m.range, m.levRange], key).toEqual([vel, maxVel, accel, range, levRange])
+      expect(m.nextDelay).toBe(4)
     }
 
-    for (const key of ['battlecry', 'warcry'] as const) {
-      expect(CANONICAL_113C_MISSILES[key].vel).toBe(16)
-      expect(CANONICAL_113C_MISSILES[key].maxVel).toBe(16)
-      expect(CANONICAL_113C_MISSILES[key].accel).toBe(0)
-      expect(CANONICAL_113C_MISSILES[key].range).toBe(8)
-      expect(CANONICAL_113C_MISSILES[key].levRange).toBe(0)
-      expect(CANONICAL_113C_MISSILES[key].nextDelay).toBe(4)
-    }
-
-    // Overlays
-    for (const ov of ['shout_cast', 'battleorders_cast', 'battlecommand_cast', 'taunt', 'battlecry', 'warcry']) {
+    // Overlays (1.13c Overlay.txt & States.txt castoverlay: shoutstart, battleorderscast, battlecommandcast)
+    for (const ov of ['shoutstart', 'battleorderscast', 'battlecommandcast', 'taunt', 'battlecry', 'warcry']) {
       expect(CANONICAL_113C_OVERLAYS[ov]).toBeDefined()
     }
 
@@ -391,7 +381,7 @@ describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', ()
     expect(bossStats.getHp256()).toBeLessThan(1000 * FIXED_ONE)
   })
 
-  it('Layer 3 & Layer 4: skill-caster.ts and world-skill-missiles.ts spawn 32 radial warcry missiles, enforce corpse rules, and apply State #28 stun', () => {
+  it('Layer 3 & Layer 4: skill-caster.ts and world-skill-missiles.ts spawn 64 radial warcry missiles, enforce corpse rules, and apply State #21 stunned (#1047)', () => {
     const engine = new GameEngine(
       { widthPx: 2000, heightPx: 2000, overlap: () => 0 },
       {
@@ -441,15 +431,15 @@ describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', ()
       skillLevels: { 130: 10, 131: 10, 137: 10, 138: 10, 142: 10, 146: 10, 149: 10, 150: 10, 154: 10, 155: 10 },
     } as any
 
-    // 1. Shout (#138) spawns 32 'shout' projectiles and sets player.cooldown = 0
+    // 1. Shout (#138) spawns 64 'shout' projectiles (sub_6FD14170) and sets player.cooldown = 0
     expect(castSceneSkill(138, 520, 500, { engine, hudManager, status } as any)).toBe(true)
     expect(engine.world.player.cooldown).toBe(0)
-    expect(engine.projectiles.filter(p => p.missileType === 'shout')).toHaveLength(32)
+    expect(engine.projectiles.filter(p => p.missileType === 'shout')).toHaveLength(64)
 
-    // 2. War Cry (#154) spawns 32 'warcry' projectiles and stuns non-boss monsters
+    // 2. War Cry (#154) spawns 64 'warcry' projectiles (sub_6FD14170) and stuns non-boss monsters
     engine.projectiles.length = 0
     expect(castSceneSkill(154, 520, 500, { engine, hudManager, status } as any)).toBe(true)
-    expect(engine.projectiles.filter(p => p.missileType === 'warcry')).toHaveLength(32)
+    expect(engine.projectiles.filter(p => p.missileType === 'warcry')).toHaveLength(64)
     expect((engine.world.monsters[0] as any).stunTicks).toBe(70)
 
     // 3. Find Potion (#131) fails on skeleton corpse (isSoft = false) without spending mana, Find Item (#142) succeeds on skeleton corpse
@@ -464,7 +454,7 @@ describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', ()
     expect(castSceneSkill(142, corpseMon.x, corpseMon.y, { engine, hudManager, status } as any)).toBe(true)
     expect((corpseMon as any).corpseStateId).toBe(118)
 
-    // 4. Layer 4 ClientWorld spawnCastMissilesImpl: 32 radial rays for Shout/WarCry and State #28 stunned
+    // 4. Layer 4 ClientWorld spawnCastMissilesImpl: CltDoFunc 25 64-ray ring for Shout/WarCry and States.txt #21 stunned (28 is conviction, Issue #1047)
     const spawnedMissiles: Array<{ key: string; maxTicks?: number }> = []
     const attachedOverlays: Array<{ target: any; key: string }> = []
     const monsterUnit = {
@@ -484,6 +474,7 @@ describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', ()
       states: new Set<number>(),
     }
     const mockClientWorld: any = {
+      frameCount: 0,
       _units: new Map([[1, casterUnit], [201, monsterUnit]]),
       _monsters: new Map([[201, monsterUnit]]),
       getUnit: () => casterUnit,
@@ -498,8 +489,10 @@ describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', ()
     }
 
     spawnMissilesForSkillImpl.call(mockClientWorld, casterUnit as any, 154, 102, 100, 10)
-    expect(spawnedMissiles.filter(m => m.key === 'warcry')).toHaveLength(32)
+    expect(spawnedMissiles.filter(m => m.key === 'warcry')).toHaveLength(64)
     expect(spawnedMissiles.filter(m => m.key === 'warcryshockwave')).toHaveLength(0)
-    expect(monsterUnit.states.has(28)).toBe(true)
+    expect(monsterUnit.states.has(21)).toBe(true)
+    expect(monsterUnit.states.has(28)).toBe(false)
+    expect(attachedOverlays.some(o => o.target === monsterUnit && o.key === 'stun')).toBe(false)
   })
 })

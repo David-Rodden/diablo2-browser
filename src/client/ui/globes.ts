@@ -69,12 +69,20 @@ export const MANA_GLOBE_BOUNDS_640: GlobeBounds = {
 export class GlobesHud {
   lifeHovered = false
   manaHovered = false
-  alwaysShowValues = false
+  lifeTextPinned = false
+  manaTextPinned = false
   lang: TblLang = 'CHI'
   is640 = false
 
-  static formatGlobeCompactValue(current: number, max: number): string {
-    return `${Math.max(0, Math.round(current))} / ${Math.round(max)}`
+  get hoveredGlobe(): 'hp' | 'mana' | null {
+    if (this.lifeHovered) return 'hp'
+    if (this.manaHovered) return 'mana'
+    return null
+  }
+
+  set hoveredGlobe(val: 'hp' | 'mana' | null) {
+    this.lifeHovered = val === 'hp'
+    this.manaHovered = val === 'mana'
   }
 
   get lifeGlobeBounds(): GlobeBounds {
@@ -114,7 +122,24 @@ export class GlobesHud {
     this.manaHovered = this.hitGlobe(this.manaGlobeBounds, logicalX, logicalY)
   }
 
-  handleClick(_logicalX: number, _logicalY: number): boolean {
+  handleClick(logicalX: number, logicalY: number): boolean {
+    const screenW = this.is640 ? 640 : 800
+    const screenH = this.is640 ? 480 : 600
+    const inLifeBox =
+      logicalX >= 30 && logicalX <= 110 && logicalY >= screenH - 75 && logicalY <= screenH - 15
+    if (inLifeBox || this.hitGlobe(this.lifeGlobeBounds, logicalX, logicalY)) {
+      this.lifeTextPinned = !this.lifeTextPinned
+      return true
+    }
+    const inManaBox =
+      logicalX >= screenW - 111 &&
+      logicalX <= screenW - 31 &&
+      logicalY >= screenH - 75 &&
+      logicalY <= screenH - 15
+    if (inManaBox || this.hitGlobe(this.manaGlobeBounds, logicalX, logicalY)) {
+      this.manaTextPinned = !this.manaTextPinned
+      return true
+    }
     return false
   }
 
@@ -261,62 +286,22 @@ export class GlobesHud {
       reportMissingArt('ui-globe', 'overlap-right', 'Authentic overlap right asset missing on draw')
     }
 
-    // 4. Permanent centered numerical readouts on globes when enabled by HUD enhancements
-    if (this.alwaysShowValues) {
-      this.drawPermanentGlobeValue(
-        ctx,
-        font,
-        GlobesHud.formatGlobeCompactValue(state.hp, state.maxHp),
-        lifeBounds.x + Math.round(lifeBounds.width / 2),
-        lifeBounds.y + Math.round(lifeBounds.height / 2) + 4,
-      )
-      this.drawPermanentGlobeValue(
-        ctx,
-        font,
-        GlobesHud.formatGlobeCompactValue(state.mana, state.maxMana),
-        manaBounds.x + Math.round(manaBounds.width / 2),
-        manaBounds.y + Math.round(manaBounds.height / 2) + 4,
-      )
-    }
-
-    // 5. Full localized numerical readouts on mouse hover via tbl format strings (`panelhealth`, `panelmana`)
+    // 4. Full localized numerical readouts on mouse hover or pinned state via tbl format strings (`panelhealth`, `panelmana`, D2Client.dll 0x6FAD7590)
     const tipY = this.is640 ? 356 : 484
-    if (this.lifeHovered) {
+    if (this.lifeTextPinned || this.lifeHovered) {
       const tmpl = resolveTblKey('panelhealth', this.lang) ?? (this.lang === 'ENG' ? 'Life: %d / %d' : '生命： %d / %d')
       const text = tmpl
         .replace(/%[du]/, String(Math.max(0, Math.round(state.hp))))
         .replace(/%[du]/, String(Math.round(state.maxHp)))
       this.drawGlobeTooltip(ctx, font, text, lifeBounds.x + 40, tipY)
     }
-    if (this.manaHovered) {
+    if (this.manaTextPinned || this.manaHovered) {
       const tmpl = resolveTblKey('panelmana', this.lang) ?? (this.lang === 'ENG' ? 'Mana: %d / %d' : '法力： %d / %d')
       const text = tmpl
         .replace(/%[du]/, String(Math.max(0, Math.round(state.mana))))
         .replace(/%[du]/, String(Math.round(state.maxMana)))
       this.drawGlobeTooltip(ctx, font, text, manaBounds.x + 40, tipY)
     }
-  }
-
-  private drawPermanentGlobeValue(
-    ctx: CanvasRenderingContext2D,
-    font: D2FontRenderer,
-    text: string,
-    cx: number,
-    baselineY: number,
-  ): void {
-    const textW =
-      typeof font?.measureText === 'function' ? font.measureText(text, 'font8') : text.length * 6
-    const pillW = Math.min(76, Math.max(44, textW + 10))
-    const pillX = Math.round(cx - pillW / 2)
-    const pillY = baselineY - 12
-    ctx.fillStyle = 'rgba(6, 6, 6, 0.72)'
-    ctx.fillRect(pillX, pillY, pillW, 15)
-    font.drawText(ctx, text, cx, baselineY, {
-      font: textW > 66 ? 'font6' : 'font8',
-      color: 'white',
-      align: 'center',
-      shadow: true,
-    })
   }
 
   private drawGlobeTooltip(

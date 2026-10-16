@@ -1592,15 +1592,39 @@ export function drawTradePanelImpl(
     ctx.fillRect(ox + 223, oy + 384, 32, 32)
   }
 
-  // 8. Button hover tooltips (D2Client.dll 0x6fb49889 / 0x6fb49ca7: strParty19 #4124 & strParty20 #4125)
+  // 8. Button hover tooltips (D2Client.dll 0x6fb49889 / 0x6fb49ca7: cancel #4115, strTradeAccept/strParty20 #4125, strDropGoldHowMuch #3379)
   if (this.hoveredTradeButton === 'cancel') {
-    const tip = requireTbl('strParty19', this.lang)
+    const tip = requireTbl('cancel', this.lang)
     const w = font.measureText(tip, 'font16')
     const bx = ox + 291 - Math.trunc(w / 2) - 6
     const by = oy + 358
     ctx.fillStyle = 'rgba(0, 0, 0, 0.75)'
     ctx.fillRect(bx, by, w + 12, 22)
     font.drawText(ctx, tip, ox + 291, by + 16, {
+      font: 'font16',
+      color: 'white',
+      align: 'center',
+    })
+  } else if (this.hoveredTradeButton === 'selfAccept') {
+    const tip = requireTbl('strParty20', this.lang)
+    const w = font.measureText(tip, 'font16')
+    const bx = ox + 239 - Math.trunc(w / 2) - 6
+    const by = oy + 358
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)'
+    ctx.fillRect(bx, by, w + 12, 22)
+    font.drawText(ctx, tip, ox + 239, by + 16, {
+      font: 'font16',
+      color: 'white',
+      align: 'center',
+    })
+  } else if (this.hoveredTradeButton === 'gold') {
+    const tip = requireTbl('strDropGoldHowMuch', this.lang)
+    const w = font.measureText(tip, 'font16')
+    const bx = ox + 100 - Math.trunc(w / 2) - 6
+    const by = oy + 195
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)'
+    ctx.fillRect(bx, by, w + 12, 22)
+    font.drawText(ctx, tip, ox + 100, by + 16, {
       font: 'font16',
       color: 'white',
       align: 'center',

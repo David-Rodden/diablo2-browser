@@ -18,7 +18,7 @@
  *      while summing their per-frame poison bitrates (`<< 8`) with Venom's bitrate.
  */
 import { FIXED_ONE, UnitStatList } from './stat-list.ts'
-import { StateBus } from './state-bus.ts'
+import { StateBus, type ReactiveUnitOverlayEvent } from './state-bus.ts'
 import { calculateLowerResistReduction, calculateIronMaidenReturnPct } from './missile-engine.ts'
 import {
   calculateHolyFireStats,
@@ -469,6 +469,9 @@ export interface SUnitDmgOutcome {
   readonly selfDamageTaken256?: number
   readonly spawnedMissiles?: readonly string[]
   readonly procsSuppressed?: boolean
+  readonly attackerOverlaysApplied?: readonly string[]
+  readonly defenderOverlaysApplied?: readonly string[]
+  readonly unitOverlays?: readonly ReactiveUnitOverlayEvent[]
 }
 
 /**
@@ -535,6 +538,13 @@ export function executeSUnitDmg(
   let attackerColdDamage256 = 0
   let reflectedPhys256 = 0
   const spawnedMissiles: string[] = []
+  const attackerOverlaysApplied: string[] = []
+  const defenderOverlaysApplied: string[] = []
+  const unitOverlays: ReactiveUnitOverlayEvent[] = []
+  const defRawType = defender.unitType === 'monster' ? 1 : 0
+  const atkRawType = attacker.unitType === 'player' ? 0 : 1
+  const defNumericId = Number(String(defender.id).replace(/\D+/g, '') || 1) >>> 0
+  const atkNumericId = Number(String(attacker.id).replace(/\D+/g, '') || 1) >>> 0
 
   // If melee attack, trigger 'attackedinmelee' proactively on attack initiation
   if (attackKind === 'melee') {
@@ -543,9 +553,26 @@ export function executeSUnitDmg(
       event: 'attackedinmelee',
       incomingPhys256: initialPhys,
       attackerStateBus: attacker.stateBus,
+      ...(defender.x !== undefined ? { defenderX: defender.x } : {}),
+      ...(defender.y !== undefined ? { defenderY: defender.y } : {}),
+      ...(attacker.x !== undefined ? { attackerX: attacker.x } : {}),
+      ...(attacker.y !== undefined ? { attackerY: attacker.y } : {}),
+      defenderRawUnitType: defRawType,
+      defenderUnitId: defNumericId,
+      attackerRawUnitType: atkRawType,
+      attackerUnitId: atkNumericId,
     })
     if (reactiveAttack.attackerStatesApplied.length > 0) {
       attackerStatesApplied.push(...reactiveAttack.attackerStatesApplied)
+    }
+    if (reactiveAttack.attackerOverlaysApplied) {
+      attackerOverlaysApplied.push(...reactiveAttack.attackerOverlaysApplied)
+    }
+    if (reactiveAttack.defenderOverlaysApplied) {
+      defenderOverlaysApplied.push(...reactiveAttack.defenderOverlaysApplied)
+    }
+    if (reactiveAttack.unitOverlays) {
+      unitOverlays.push(...reactiveAttack.unitOverlays)
     }
     if (reactiveAttack.attackerColdDamage256 > 0) {
       attackerColdDamage256 += reactiveAttack.attackerColdDamage256
@@ -1133,7 +1160,24 @@ export function executeSUnitDmg(
     elemType,
     isPoison: elemType === 'pois' || Boolean(packet.isPoison),
     isOpenWounds: Boolean(packet.isOpenWounds),
+    ...(defender.x !== undefined ? { defenderX: defender.x } : {}),
+    ...(defender.y !== undefined ? { defenderY: defender.y } : {}),
+    ...(attacker.x !== undefined ? { attackerX: attacker.x } : {}),
+    ...(attacker.y !== undefined ? { attackerY: attacker.y } : {}),
+    defenderRawUnitType: defRawType,
+    defenderUnitId: defNumericId,
+    attackerRawUnitType: atkRawType,
+    attackerUnitId: atkNumericId,
   })
+  if (reactive.attackerOverlaysApplied) {
+    attackerOverlaysApplied.push(...reactive.attackerOverlaysApplied)
+  }
+  if (reactive.defenderOverlaysApplied) {
+    defenderOverlaysApplied.push(...reactive.defenderOverlaysApplied)
+  }
+  if (reactive.unitOverlays) {
+    unitOverlays.push(...reactive.unitOverlays)
+  }
   const remRawPhys256 = Math.max(0, rawPhys256 - reactive.absorbedPhys256)
   const remRawElem256 = Math.max(0, rawElem256 - reactive.absorbedElem256)
 
@@ -1389,9 +1433,26 @@ export function executeSUnitDmg(
       attackerStateBus: attacker.stateBus,
       attackerStatList: attacker.statList,
       isPvP,
+      ...(defender.x !== undefined ? { defenderX: defender.x } : {}),
+      ...(defender.y !== undefined ? { defenderY: defender.y } : {}),
+      ...(attacker.x !== undefined ? { attackerX: attacker.x } : {}),
+      ...(attacker.y !== undefined ? { attackerY: attacker.y } : {}),
+      defenderRawUnitType: defRawType,
+      defenderUnitId: defNumericId,
+      attackerRawUnitType: atkRawType,
+      attackerUnitId: atkNumericId,
     })
     if (reactiveDamage.attackerStatesApplied.length > 0) {
       attackerStatesApplied.push(...reactiveDamage.attackerStatesApplied)
+    }
+    if (reactiveDamage.attackerOverlaysApplied) {
+      attackerOverlaysApplied.push(...reactiveDamage.attackerOverlaysApplied)
+    }
+    if (reactiveDamage.defenderOverlaysApplied) {
+      defenderOverlaysApplied.push(...reactiveDamage.defenderOverlaysApplied)
+    }
+    if (reactiveDamage.unitOverlays) {
+      unitOverlays.push(...reactiveDamage.unitOverlays)
     }
     if (reactiveDamage.attackerColdDamage256 > 0) {
       attackerColdDamage256 += reactiveDamage.attackerColdDamage256
@@ -1439,12 +1500,29 @@ export function executeSUnitDmg(
       elemType,
       ...(packet.returnFire !== undefined ? { returnFire: packet.returnFire } : {}),
       attackerStateBus: attacker.stateBus,
+      ...(defender.x !== undefined ? { defenderX: defender.x } : {}),
+      ...(defender.y !== undefined ? { defenderY: defender.y } : {}),
+      ...(attacker.x !== undefined ? { attackerX: attacker.x } : {}),
+      ...(attacker.y !== undefined ? { attackerY: attacker.y } : {}),
+      defenderRawUnitType: defRawType,
+      defenderUnitId: defNumericId,
+      attackerRawUnitType: atkRawType,
+      attackerUnitId: atkNumericId,
     })
     if (reactiveMissile.spawnedMissiles.length > 0) {
       spawnedMissiles.push(...reactiveMissile.spawnedMissiles)
     }
     if (reactiveMissile.attackerStatesApplied.length > 0) {
       attackerStatesApplied.push(...reactiveMissile.attackerStatesApplied)
+    }
+    if (reactiveMissile.attackerOverlaysApplied) {
+      attackerOverlaysApplied.push(...reactiveMissile.attackerOverlaysApplied)
+    }
+    if (reactiveMissile.defenderOverlaysApplied) {
+      defenderOverlaysApplied.push(...reactiveMissile.defenderOverlaysApplied)
+    }
+    if (reactiveMissile.unitOverlays) {
+      unitOverlays.push(...reactiveMissile.unitOverlays)
     }
   }
 
@@ -1480,5 +1558,8 @@ export function executeSUnitDmg(
     ...(packet.canTriggerProcs === false ? { procsSuppressed: true } : {}),
     ...(selfDamageTaken256 > 0 ? { selfDamageTaken256 } : {}),
     ...(spawnedMissiles.length > 0 ? { spawnedMissiles } : {}),
+    ...(attackerOverlaysApplied.length > 0 ? { attackerOverlaysApplied } : {}),
+    ...(defenderOverlaysApplied.length > 0 ? { defenderOverlaysApplied } : {}),
+    ...(unitOverlays.length > 0 ? { unitOverlays } : {}),
   }
 }

@@ -107,7 +107,7 @@ describe('[Skill #049] Lightning (SOR) — 1.13c 7-Dimensional Verification Suit
       expect(bolt!.trans).toBe(1)
     })
 
-    it('CANONICAL_113C_MISSILES contains exact lightningbolt and lightning definitions', () => {
+    it('CANONICAL_113C_MISSILES contains the exact lightningbolt row and no invented lightning alias', () => {
       const bolt = getMissileTxtData('lightningbolt')
       expect(bolt.id).toBe(98)
       expect(bolt.vel).toBe(30)
@@ -116,11 +116,9 @@ describe('[Skill #049] Lightning (SOR) — 1.13c 7-Dimensional Verification Suit
       expect(bolt.distancePx).toBe(750)
       expect(bolt.trans).toBe(1)
 
-      const lt = getMissileTxtData('lightning')
-      expect(lt.id).toBe(98)
-      expect(lt.vel).toBe(30)
-      expect(lt.range).toBe(25)
-      expect(lt.speedPxPerSec).toBe(750)
+      // Missiles.txt lightningbolt (#98) CelFile = null: the bolt head is invisible (Issue #1091).
+      expect(bolt.celFile).toBe('null')
+      expect(() => getMissileTxtData('lightning')).toThrow()
     })
   })
 

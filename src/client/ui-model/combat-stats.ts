@@ -290,6 +290,19 @@ export interface CombatSkillInput {
    * (e.g. #152 Berserk = 100%, #144 Concentrate / #147 Frenzy = 1% per Berserk hard point).
    */
   readonly magicConversionPct?: number | undefined
+  /**
+   * Skill flat physical bonus damage in display units (e.g. #6 Magic Arrow +lvl);
+   * used when skillPhysical256 is 0.
+   */
+  readonly flatPhysMin?: number | undefined
+  readonly flatPhysMax?: number | undefined
+  /**
+   * Skill elemental/poison/magic bonus damage added to weapon attack
+   * (e.g. #14 Power Strike, #7 Fire Arrow, #11 Cold Arrow, #238 Rabies, #239 Fire Claws, #259..#280).
+   */
+  readonly skillElemMin?: number | undefined
+  readonly skillElemMax?: number | undefined
+  readonly skillElemType?: string | undefined
 }
 
 export interface CombatInput {
@@ -406,12 +419,18 @@ export interface CombatDamageFormulaBreakdown {
   readonly magicMax: number
   readonly poisonMin: number
   readonly poisonMax: number
+  /** Skill elemental/poison/magic bonus damage on weapon attacks (e.g. Power Strike #14). */
+  readonly skillElemMin?: number | undefined
+  readonly skillElemMax?: number | undefined
+  readonly skillElemType?: string | undefined
   /** Optional spell damage breakdown when kind === 'spell'. */
   readonly spellBreakdown?: CombatSpellDamageBreakdown | undefined
   /** Total displayed damage on character sheet. */
   readonly finalMin: number
   readonly finalMax: number
 }
+
+export type DamageFormulaBreakdown = CombatDamageFormulaBreakdown
 
 export interface CombatHandStats {
   readonly attackRating: number
@@ -865,12 +884,52 @@ function attackRatingFor(
 
 /** Weapon attack vs spell: Skills.txt `Kick`, `SrcDam` or `itypea1` set (damage goes through SUNITDMG). */
 function isWeaponSkill(skill: CombatSkillInput): boolean {
-  return skill.kick || skill.srcDam > 0 || skill.itypeA1 !== ''
+  return (
+    skill.kick ||
+    skill.srcDam > 0 ||
+    skill.itypeA1 !== '' ||
+    (skill.flatPhysMax ?? 0) > 0 ||
+    (skill.skillElemMax ?? 0) > 0
+  )
 }
 
 /** SUnitDmg.cpp:256-259. */
 function effectiveSrcDam(skill: CombatSkillInput): number {
   return skill.srcDam === 0 ? 128 : skill.srcDam
+}
+
+function effectiveSkillPhys256(skill: CombatSkillInput): { min: number; max: number } {
+  const min256 =
+    skill.skillPhysical256.min !== 0
+      ? skill.skillPhysical256.min
+      : Math.max(0, Math.trunc(skill.flatPhysMin ?? 0)) << 8
+  const max256 =
+    skill.skillPhysical256.max !== 0
+      ? skill.skillPhysical256.max
+      : Math.max(0, Math.trunc(skill.flatPhysMax ?? 0)) << 8
+  return { min: min256, max: max256 }
+}
+
+function resolveSkillElemChannel(
+  type: string | undefined,
+): 'fire' | 'cold' | 'light' | 'magic' | 'poison' {
+  switch ((type ?? '').toLowerCase()) {
+    case 'fire':
+      return 'fire'
+    case 'cold':
+      return 'cold'
+    case 'pois':
+    case 'poison':
+      return 'poison'
+    case 'mag':
+    case 'magic':
+      return 'magic'
+    case 'ltng':
+    case 'light':
+    case 'lightning':
+    default:
+      return 'light'
+  }
 }
 
 /** SUNITDMG_ApplyDamageBonuses (SUnitDmg.cpp:146-246) bounds, before srcdam; 1/256 units. */
@@ -1013,6 +1072,7 @@ function damageFor(input: CombatInput, skill: CombatSkillInput, selected: Side |
     if (skill.id === 266 && srcDam === 96) srcDam = 48
   }
   let phys: { min: number; max: number }
+  const skillPhys256 = effectiveSkillPhys256(skill)
   if (skill.kick) {
     // Kicks: the physical part is precomputed (SkillAss.cpp:1192-1240, srcdam 128).
     phys = kickRange256(input, skill, unit)
@@ -1025,14 +1085,14 @@ function damageFor(input: CombatInput, skill: CombatSkillInput, selected: Side |
       lo = calculatePercentage(lo, srcDam, 128)
       hi = calculatePercentage(hi, srcDam, 128)
     }
-    lo = Math.max(lo + skill.skillPhysical256.min, 0)
-    hi = Math.max(hi + skill.skillPhysical256.max, 0)
+    lo = Math.max(lo + skillPhys256.min, 0)
+    hi = Math.max(hi + skillPhys256.max, 0)
     phys = { min: lo, max: hi }
   } else {
     const range = physicalRange256(input, skill, selected, unit)
     // nDamage (the skill's own physical damage) is added to the roll, floored at 0, then srcdam.
-    let lo = Math.max(range.min + skill.skillPhysical256.min, 0)
-    let hi = Math.max(range.max + skill.skillPhysical256.max, 0)
+    let lo = Math.max(range.min + skillPhys256.min, 0)
+    let hi = Math.max(range.max + skillPhys256.max, 0)
     if (srcDam !== 128) {
       lo = calculatePercentage(lo, srcDam, 128)
       hi = calculatePercentage(hi, srcDam, 128)
@@ -1058,20 +1118,23 @@ function damageFor(input: CombatInput, skill: CombatSkillInput, selected: Side |
   const cold = elementRange(unit, S.COLDMINDAM, S.COLDMAXDAM, S.PASSIVE_COLD_MASTERY, elemSrcDam)
   const magic = elementRange(unit, S.MAGICMINDAM, S.MAGICMAXDAM, S.PASSIVE_MAG_MASTERY, elemSrcDam)
   const poison = poisonRange(unit, elemSrcDam)
+  const skillElemMin = Math.max(0, Math.trunc(skill.skillElemMin ?? 0))
+  const skillElemMax = Math.max(0, Math.trunc(skill.skillElemMax ?? 0))
+  const elemChannel = resolveSkillElemChannel(skill.skillElemType)
   return {
     kind: 'weapon',
     physMin: phys.min >> 8,
     physMax: phys.max >> 8,
-    fireMin: fire.min,
-    fireMax: fire.max,
-    coldMin: cold.min,
-    coldMax: cold.max,
-    lightMin: light.min,
-    lightMax: light.max,
-    magicMin: magic.min + convMagicMin,
-    magicMax: magic.max + convMagicMax,
-    poisonMin: poison.min,
-    poisonMax: poison.max,
+    fireMin: fire.min + (skillElemMax > 0 && elemChannel === 'fire' ? skillElemMin : 0),
+    fireMax: fire.max + (skillElemMax > 0 && elemChannel === 'fire' ? skillElemMax : 0),
+    coldMin: cold.min + (skillElemMax > 0 && elemChannel === 'cold' ? skillElemMin : 0),
+    coldMax: cold.max + (skillElemMax > 0 && elemChannel === 'cold' ? skillElemMax : 0),
+    lightMin: light.min + (skillElemMax > 0 && elemChannel === 'light' ? skillElemMin : 0),
+    lightMax: light.max + (skillElemMax > 0 && elemChannel === 'light' ? skillElemMax : 0),
+    magicMin: magic.min + convMagicMin + (skillElemMax > 0 && elemChannel === 'magic' ? skillElemMin : 0),
+    magicMax: magic.max + convMagicMax + (skillElemMax > 0 && elemChannel === 'magic' ? skillElemMax : 0),
+    poisonMin: poison.min + (skillElemMax > 0 && elemChannel === 'poison' ? skillElemMin : 0),
+    poisonMax: poison.max + (skillElemMax > 0 && elemChannel === 'poison' ? skillElemMax : 0),
   }
 }
 
@@ -1134,6 +1197,9 @@ function buildFormulaBreakdown(
       magicMax: 0,
       poisonMin: 0,
       poisonMax: 0,
+      skillElemMin: 0,
+      skillElemMax: 0,
+      skillElemType: undefined,
       finalMin: 0,
       finalMax: 0,
     }
@@ -1186,11 +1252,30 @@ function buildFormulaBreakdown(
       magicMax: 0,
       poisonMin: 0,
       poisonMax: 0,
+      skillElemMin: 0,
+      skillElemMax: 0,
+      skillElemType: undefined,
       spellBreakdown: sb,
       finalMin,
       finalMax,
     }
   }
+
+  const skillPhys256 = effectiveSkillPhys256(skill)
+  const skillElemMin = Math.max(0, Math.trunc(skill.skillElemMin ?? 0))
+  const skillElemMax = Math.max(0, Math.trunc(skill.skillElemMax ?? 0))
+  const skillElemType = skill.skillElemType
+  const elemChannel = resolveSkillElemChannel(skillElemType)
+  const eqFireMin = Math.max(0, damage.fireMin - (skillElemMax > 0 && elemChannel === 'fire' ? skillElemMin : 0))
+  const eqFireMax = Math.max(0, damage.fireMax - (skillElemMax > 0 && elemChannel === 'fire' ? skillElemMax : 0))
+  const eqColdMin = Math.max(0, damage.coldMin - (skillElemMax > 0 && elemChannel === 'cold' ? skillElemMin : 0))
+  const eqColdMax = Math.max(0, damage.coldMax - (skillElemMax > 0 && elemChannel === 'cold' ? skillElemMax : 0))
+  const eqLightMin = Math.max(0, damage.lightMin - (skillElemMax > 0 && elemChannel === 'light' ? skillElemMin : 0))
+  const eqLightMax = Math.max(0, damage.lightMax - (skillElemMax > 0 && elemChannel === 'light' ? skillElemMax : 0))
+  const eqMagicMin = Math.max(0, damage.magicMin - (skillElemMax > 0 && elemChannel === 'magic' ? skillElemMin : 0))
+  const eqMagicMax = Math.max(0, damage.magicMax - (skillElemMax > 0 && elemChannel === 'magic' ? skillElemMax : 0))
+  const eqPoisonMin = Math.max(0, damage.poisonMin - (skillElemMax > 0 && elemChannel === 'poison' ? skillElemMin : 0))
+  const eqPoisonMax = Math.max(0, damage.poisonMax - (skillElemMax > 0 && elemChannel === 'poison' ? skillElemMax : 0))
 
   const gearMaxEd = unitWithoutStates(S.DAMAGEPERCENT) + unitWithoutStates(S.ITEM_MAXDAMAGE_PERCENT)
   const auraMaxEd = unit(S.DAMAGEPERCENT) + unit(S.ITEM_MAXDAMAGE_PERCENT) - gearMaxEd
@@ -1228,16 +1313,19 @@ function buildFormulaBreakdown(
       magicConversionPct: Math.max(0, Math.min(100, skill.magicConversionPct ?? 0)),
       physMin: damage.physMin,
       physMax: damage.physMax,
-      fireMin: damage.fireMin,
-      fireMax: damage.fireMax,
-      coldMin: damage.coldMin,
-      coldMax: damage.coldMax,
-      lightMin: damage.lightMin,
-      lightMax: damage.lightMax,
-      magicMin: damage.magicMin,
-      magicMax: damage.magicMax,
-      poisonMin: damage.poisonMin,
-      poisonMax: damage.poisonMax,
+      fireMin: eqFireMin,
+      fireMax: eqFireMax,
+      coldMin: eqColdMin,
+      coldMax: eqColdMax,
+      lightMin: eqLightMin,
+      lightMax: eqLightMax,
+      magicMin: eqMagicMin,
+      magicMax: eqMagicMax,
+      poisonMin: eqPoisonMin,
+      poisonMax: eqPoisonMax,
+      skillElemMin,
+      skillElemMax,
+      skillElemType,
       finalMin,
       finalMax,
     }
@@ -1304,8 +1392,8 @@ function buildFormulaBreakdown(
     auraEdPct: auraMaxEd,
     totalMinEdPct: basePct + unitMinPct,
     totalMaxEdPct: basePct + unitMaxPct,
-    skillPhysMin: skill.skillPhysical256.min >> 8,
-    skillPhysMax: skill.skillPhysical256.max >> 8,
+    skillPhysMin: skillPhys256.min >> 8,
+    skillPhysMax: skillPhys256.max >> 8,
     srcDam:
       isWeaponItem(item) && item.weapon.twoHanded && wieldType(input) === 2
         ? skill.id === 257 && effectiveSrcDam(skill) === 48
@@ -1317,16 +1405,19 @@ function buildFormulaBreakdown(
     magicConversionPct: Math.max(0, Math.min(100, skill.magicConversionPct ?? 0)),
     physMin: damage.physMin,
     physMax: damage.physMax,
-    fireMin: damage.fireMin,
-    fireMax: damage.fireMax,
-    coldMin: damage.coldMin,
-    coldMax: damage.coldMax,
-    lightMin: damage.lightMin,
-    lightMax: damage.lightMax,
-    magicMin: damage.magicMin,
-    magicMax: damage.magicMax,
-    poisonMin: damage.poisonMin,
-    poisonMax: damage.poisonMax,
+    fireMin: eqFireMin,
+    fireMax: eqFireMax,
+    coldMin: eqColdMin,
+    coldMax: eqColdMax,
+    lightMin: eqLightMin,
+    lightMax: eqLightMax,
+    magicMin: eqMagicMin,
+    magicMax: eqMagicMax,
+    poisonMin: eqPoisonMin,
+    poisonMax: eqPoisonMax,
+    skillElemMin,
+    skillElemMax,
+    skillElemType,
     finalMin,
     finalMax,
   }
