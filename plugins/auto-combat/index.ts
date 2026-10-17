@@ -1,4 +1,4 @@
-import type { D2WebPlugin, PluginStatus } from '../../src/client/plugin-host/api.ts'
+import type { D2WebPlugin } from '../../src/client/plugin-host/api.ts'
 
 const KEYS = ['E', 'D', 'F', 'G', 'X', 'SPACE'] as const
 
@@ -20,18 +20,15 @@ export const autoCombatPlugin: D2WebPlugin = {
     },
   ],
   activate(ctx) {
-    const apply = (): void => ctx.autoCombat.setKey(String(ctx.settings.get('key') || 'E'))
+    const apply = () => ctx.autoCombat.setKey(String(ctx.settings.get('key') || 'E'))
     apply()
     const unsubscribe = ctx.settings.subscribe(apply)
     return {
-      getStatus: (): PluginStatus => {
+      getStatus: () => {
         const key = ctx.autoCombat.getKey()
         return key ? { level: 'ok', text: { zh: `按 ${key} 开关`, en: `Press ${key} to toggle` } } : { level: 'warn', text: { zh: '未开启', en: 'Inactive' } }
       },
-      deactivate: () => {
-        unsubscribe()
-        ctx.autoCombat.setKey(null)
-      },
+      deactivate: () => (unsubscribe(), ctx.autoCombat.setKey(null)),
     }
   },
 }

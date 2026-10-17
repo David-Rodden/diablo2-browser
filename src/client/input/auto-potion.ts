@@ -40,6 +40,7 @@ const MANA_POTION_PCT_BY_CLASS: readonly number[] = [150, 200, 200, 150, 100, 20
 const classFactor = (table: readonly number[], charClass: number | null | undefined) => (table[charClass ?? -1] ?? 100) / 100
 const percent = (value: number, max: number) => (max > 0 ? (value * 100) / max : 100)
 const normalizeCode = (code: string) => code.trim().toLowerCase()
+const hpAmount = (p: Potion) => spec(p.code)?.hpAmount ?? 0
 
 export const inventoryPotions = (items: Iterable<{ readonly id: number; readonly code: string }>): Potion[] =>
   [...items].map((item) => ({ itemId: item.id, code: normalizeCode(item.code) })).filter((p) => isHealing(p) || isMana(p) || isRejuv(p))
@@ -66,7 +67,7 @@ export class AutoPotionPlanner {
   private lastDrinkMs = Number.NEGATIVE_INFINITY
 
   plan(potions: readonly Potion[], vitals: PotionVitals, thresholds: AutoPotionThresholds, nowMs: number): PotionDrink | null {
-    const serverActive: Record<PotionKind, boolean> = { life: Boolean(vitals.healingActive), mana: Boolean(vitals.manaActive), merc: false }
+    const serverActive = { life: Boolean(vitals.healingActive), mana: Boolean(vitals.manaActive), merc: false }
     this.confirmed.life ||= serverActive.life
     this.confirmed.mana ||= serverActive.mana
     if (nowMs - this.lastDrinkMs < DRINK_GAP_MS || vitals.maxLife <= 0 || vitals.life <= 0) return null
@@ -78,8 +79,8 @@ export class AutoPotionPlanner {
       smallestCovering(stock.filter((p) => matches(p) && !inBelt(p)), amountOf, deficit) ?? smallestCovering(stock.filter((p) => matches(p) && inBelt(p)), amountOf, deficit)
     const healFactor = classFactor(HEALING_POTION_PCT_BY_CLASS, vitals.charClass)
     const manaFactor = classFactor(MANA_POTION_PCT_BY_CLASS, vitals.charClass)
-    const rejuvFor = (pct: number, stock = potions) => pick(stock, isRejuv, (p) => spec(p.code)?.hpAmount ?? 0, thresholds.life - pct)
-    const healing = (deficit: number, stock = potions) => pick(stock, isHealing, (p) => (spec(p.code)?.hpAmount ?? 0) * healFactor, deficit)
+    const rejuvFor = (pct: number, stock = potions) => pick(stock, isRejuv, hpAmount, thresholds.life - pct)
+    const healing = (deficit: number, stock = potions) => pick(stock, isHealing, (p) => hpAmount(p) * healFactor, deficit)
     const mana = (deficit: number) => pick(potions, isMana, (p) => (spec(p.code)?.manaAmount ?? 0) * manaFactor, deficit)
     const belt = potions.filter(inBelt)
     const critical = lifePct < thresholds.rejuv

@@ -8,21 +8,12 @@ const CROSS_COLOR = '#38d838'
 const CROSS_EDGE = 'rgba(0, 0, 0, 0.85)'
 
 const CROSS_COUNT: Record<UpgradeVerdict, number> = { 'much-better': 2, better: 1, unsure: 0 }
+const SUFFIX: Record<UpgradeVerdict, string> = { 'much-better': ' '.repeat(3), better: ' '.repeat(2), unsure: ' ÿc;?' }
 
-const crossCount = (verdict: UpgradeVerdict | null): number => (verdict ? CROSS_COUNT[verdict] : 0)
+export const upgradeSuffix = (verdict: UpgradeVerdict | null): string => (verdict ? SUFFIX[verdict] : '')
 
-export const upgradeSuffix = (verdict: UpgradeVerdict | null): string =>
-  verdict === 'unsure' ? ' ÿc;?' : ' '.repeat(crossCount(verdict) && crossCount(verdict) + 1)
-
-export function drawUpgradeCrosses(
-  ctx: CanvasRenderingContext2D,
-  font: D2FontRenderer,
-  text: string,
-  verdict: UpgradeVerdict | null,
-  centerX: number,
-  baselineY: number,
-): void {
-  const count = crossCount(verdict)
+export function drawUpgradeCrosses(ctx: CanvasRenderingContext2D, font: D2FontRenderer, text: string, verdict: UpgradeVerdict | null, centerX: number, baselineY: number): void {
+  const count = verdict ? CROSS_COUNT[verdict] : 0
   if (count === 0) return
   const right = centerX + font.measureText(text, 'font16') / 2
   const cy = baselineY - CROSS_LIFT

@@ -1,8 +1,7 @@
-import { drawFramedBadge } from './framed-badge.ts'
+import { BADGE_BASELINE_Y, drawFramedBadge } from './framed-badge.ts'
 import type { D2FontRenderer } from './font.ts'
 
 const CENTER_X = 735
-const BASELINE_Y = 500
 const WIDTH = 112
 
 export interface AutoCombatBadge {
@@ -16,4 +15,4 @@ export const autoCombatBadgeLabel = ({ on, key }: AutoCombatBadge, lang: 'ENG' |
 }
 
 export const drawAutoCombatBadge = (ctx: CanvasRenderingContext2D, font: D2FontRenderer, badge: AutoCombatBadge, offsetX: number, offsetY: number, lang: 'ENG' | 'CHI'): void =>
-  drawFramedBadge(ctx, font, autoCombatBadgeLabel(badge, lang), offsetX + CENTER_X, offsetY + BASELINE_Y, WIDTH, badge.on ? '#3c8c3c' : '#4a3e2c', badge.on ? 'green' : 'gray')
+  drawFramedBadge(ctx, font, autoCombatBadgeLabel(badge, lang), offsetX + CENTER_X, offsetY + BADGE_BASELINE_Y, badge.on ? '#3c8c3c' : '#4a3e2c', badge.on ? 'green' : 'gray', WIDTH)

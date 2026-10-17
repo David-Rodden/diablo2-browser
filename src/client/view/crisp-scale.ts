@@ -10,15 +10,9 @@ export const crispRenderDpr = (uiScale: number, dpr: number): number =>
 export const devicePixelRatioOrOne = (): number =>
   typeof window !== 'undefined' && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1
 
-export const crispCanvasScale = (canvas: HTMLCanvasElement, nativeWidth: number, nativeHeight: number): number =>
-  crispPixelScale(Math.max(canvas.clientWidth / nativeWidth, canvas.clientHeight / nativeHeight) * devicePixelRatioOrOne())
-
-const resizeBackingStore = (canvas: HTMLCanvasElement, width: number, height: number): void => {
-  if (canvas.width !== width || canvas.height !== height) Object.assign(canvas, { width, height })
-}
-
 export const syncCrispBackingStore = (canvas: HTMLCanvasElement, nativeWidth: number, nativeHeight: number): number => {
-  const scale = crispCanvasScale(canvas, nativeWidth, nativeHeight)
-  resizeBackingStore(canvas, nativeWidth * scale, nativeHeight * scale)
+  const scale = crispPixelScale(Math.max(canvas.clientWidth / nativeWidth, canvas.clientHeight / nativeHeight) * devicePixelRatioOrOne())
+  const [width, height] = [nativeWidth * scale, nativeHeight * scale]
+  if (canvas.width !== width || canvas.height !== height) Object.assign(canvas, { width, height })
   return scale
 }

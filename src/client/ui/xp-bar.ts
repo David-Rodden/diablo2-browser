@@ -33,8 +33,7 @@ export class XpRateTracker {
   }
 
   perHour(nowMs: number): number {
-    const first = this.samples[0]
-    const last = this.samples.at(-1)
+    const [first, last] = [this.samples[0], this.samples.at(-1)]
     if (!first || !last || nowMs - first.atMs < MIN_ELAPSED_MS) return 0
     return ((last.xp - first.xp) * MS_PER_HOUR) / (nowMs - first.atMs)
   }
@@ -58,7 +57,7 @@ export const formatTimeToLevel = (state: XpBarState, perHour: number, lang: 'ENG
   if (perHour <= 0) return lang === 'ENG' ? 'No experience gained yet' : '尚未获得经验'
   const seconds = Math.round((remaining / perHour) * 3600)
   const [h, m, s] = [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60]
-  const pad = (n: number): string => String(n).padStart(2, '0')
+  const pad = (n: number) => String(n).padStart(2, '0')
   const clock = `${h > 0 ? `${h}:${pad(m)}` : m}:${pad(s)}`
   return lang === 'ENG' ? `${clock} until next level` : `距下一级 ${clock}`
 }
@@ -85,8 +84,7 @@ export function drawXpBar(ctx: CanvasRenderingContext2D, font: D2FontRenderer, s
     const rateX = x + BAR_WIDTH + RATE_GAP
     const rateW = font.measureText(rateText, 'font8')
     font.drawText(ctx, rateText, rateX, baseline, { ...LABEL_STYLE, color: 'gold', align: 'left' })
-    const hovered = extras.mouseX >= x && extras.mouseX <= rateX + rateW && extras.mouseY >= BAR_TOP && extras.mouseY <= BAR_TOP + BAR_HEIGHT
-    if (hovered) drawTimeToLevelTooltip(ctx, font, formatTimeToLevel(state, extras.perHour, lang), rateX + rateW / 2, viewportWidth)
+    if (extras.mouseX >= x && extras.mouseX <= rateX + rateW && extras.mouseY >= BAR_TOP && extras.mouseY <= BAR_TOP + BAR_HEIGHT) drawTimeToLevelTooltip(ctx, font, formatTimeToLevel(state, extras.perHour, lang), rateX + rateW / 2, viewportWidth)
   }
   ctx.restore()
 }

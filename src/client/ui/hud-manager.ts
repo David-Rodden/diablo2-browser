@@ -1906,9 +1906,7 @@ export class HudManager {
   }
 
   private groundUiItem(data: ItemData): UiInventoryItem {
-    const item = this.groundUiItems.get(data) ?? onlineItemDataToUiInventoryItem(data)
-    this.groundUiItems.set(data, item)
-    return item
+    return this.groundUiItems.get(data) ?? this.groundUiItems.set(data, onlineItemDataToUiInventoryItem(data)).get(data)!
   }
 
   groundUpgradeVerdict(unitId: number): UpgradeVerdict | null {

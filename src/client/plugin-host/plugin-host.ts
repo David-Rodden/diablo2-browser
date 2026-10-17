@@ -44,9 +44,6 @@ import {
   type PluginInstance,
   type PluginLogger,
   type PluginQuickCastPort,
-  type PluginAutoCombatPort,
-  type PluginAutoPotionPort,
-  type PluginItemInfoPort,
   type PluginTogglePort,
   type PluginSessionView,
   type PluginStatus,
@@ -110,7 +107,12 @@ export interface PluginDescriptorSnapshot {
   readonly error: string | null
 }
 
-export interface PluginHostOptions {
+const TOGGLE_PORT_NAMES = ['quickCast', 'dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'upgradeHints', 'monsterResists'] as const
+type TogglePortName = (typeof TOGGLE_PORT_NAMES)[number]
+type SettingPortName = 'autoCombat' | 'autoPotion' | 'itemInfo'
+type WiredPortOptions = { readonly [K in Exclude<TogglePortName, 'quickCast'> | SettingPortName]?: PluginContext[K] | null | undefined }
+
+export interface PluginHostOptions extends WiredPortOptions {
   readonly plugins: readonly D2WebPlugin[]
   readonly session: PluginSessionView
   readonly toolbar?: PluginHostToolbarPort | null | undefined
@@ -125,21 +127,9 @@ export interface PluginHostOptions {
    * toggle).
    */
   readonly quickCast?: PluginQuickCastPort | null | undefined
-  readonly dragInteract?: PluginTogglePort | null | undefined
-  readonly stashDepositAll?: PluginTogglePort | null | undefined
-  readonly xpBar?: PluginTogglePort | null | undefined
-  readonly autoGoldPickup?: PluginTogglePort | null | undefined
-  readonly upgradeHints?: PluginTogglePort | null | undefined
-  readonly monsterResists?: PluginTogglePort | null | undefined
-  readonly autoCombat?: PluginAutoCombatPort | null | undefined
-  readonly autoPotion?: PluginAutoPotionPort | null | undefined
-  readonly itemInfo?: PluginItemInfoPort | null | undefined
 }
 
-const TOGGLE_PORT_NAMES = ['quickCast', 'dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'upgradeHints', 'monsterResists'] as const
-type TogglePortName = (typeof TOGGLE_PORT_NAMES)[number]
-
-const requireWiredPort = <T>(port: T | null, name: string, pluginId: string): T => {
+const requireWiredPort = <T>(port: T, name: string, pluginId: string): NonNullable<T> => {
   if (!port) throw new Error(`[plugin-host] ${name} port is not wired by the composition root (plugin "${pluginId}")`)
   return port
 }
@@ -175,9 +165,7 @@ export class PluginHost {
   private fallbackAllowedViewports: readonly ViewportResolution[] =
     DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS
   private readonly unsubConfig: () => void
-  private readonly autoCombatPort: PluginAutoCombatPort | null
-  private readonly autoPotionPort: PluginAutoPotionPort | null
-  private readonly itemInfoPort: PluginItemInfoPort | null
+  private readonly settingPorts: Pick<WiredPortOptions, SettingPortName>
   private readonly togglePorts: ReadonlyMap<TogglePortName, { readonly port: PluginTogglePort | null; readonly claims: Set<string> }>
   private ready = false
   private destroyed = false
@@ -187,9 +175,7 @@ export class PluginHost {
     validatePluginRegistry(options.plugins)
     this.session = options.session
     this.toolbar = options.toolbar ?? null
-    this.autoCombatPort = options.autoCombat ?? null
-    this.autoPotionPort = options.autoPotion ?? null
-    this.itemInfoPort = options.itemInfo ?? null
+    this.settingPorts = { autoCombat: options.autoCombat, autoPotion: options.autoPotion, itemInfo: options.itemInfo }
     this.togglePorts = new Map(TOGGLE_PORT_NAMES.map((name) => [name, { port: options[name] ?? null, claims: new Set<string>() }]))
     this.settingsStore = options.settingsStore ?? getGlobalSettingsStore()
     this.enforceClientDefaults = options.enforceClientDefaults ?? false
@@ -537,26 +523,16 @@ export class PluginHost {
     }
   }
 
-  private createAutoCombatPort(pluginId: string): PluginAutoCombatPort {
-    const port = this.autoCombatPort
-    return { getKey: () => port?.getKey() ?? null, setKey: (key) => requireWiredPort(port, 'autoCombat', pluginId).setKey(key) }
-  }
-
-  private createAutoPotionPort(pluginId: string): PluginAutoPotionPort {
-    const port = this.autoPotionPort
+  private createWiredPorts(record: InternalPluginRecord, isDisposed: () => boolean): Pick<PluginContext, TogglePortName | SettingPortName> {
+    const pluginId = record.plugin.id
+    const { autoCombat, autoPotion, itemInfo } = this.settingPorts
+    const wired = <K extends SettingPortName>(name: K) => requireWiredPort(this.settingPorts[name], name, pluginId)
     return {
-      getThresholds: () => port?.getThresholds() ?? null,
-      setThresholds: (thresholds) => requireWiredPort(port, 'autoPotion', pluginId).setThresholds(thresholds),
+      ...(Object.fromEntries(TOGGLE_PORT_NAMES.map((name) => [name, this.createClaimedTogglePort(record, isDisposed, name)])) as Record<TogglePortName, PluginTogglePort>),
+      autoCombat: { getKey: () => autoCombat?.getKey() ?? null, setKey: (key) => wired('autoCombat').setKey(key) },
+      autoPotion: { getThresholds: () => autoPotion?.getThresholds() ?? null, setThresholds: (thresholds) => wired('autoPotion').setThresholds(thresholds) },
+      itemInfo: { getConfig: () => itemInfo?.getConfig() ?? null, setConfig: (config) => wired('itemInfo').setConfig(config) },
     }
-  }
-
-  private createItemInfoPort(pluginId: string): PluginItemInfoPort {
-    const port = this.itemInfoPort
-    return { getConfig: () => port?.getConfig() ?? null, setConfig: (config) => requireWiredPort(port, 'itemInfo', pluginId).setConfig(config) }
-  }
-
-  private createTogglePorts(record: InternalPluginRecord, isDisposed: () => boolean): Record<TogglePortName, PluginTogglePort> {
-    return Object.fromEntries(TOGGLE_PORT_NAMES.map((name) => [name, this.createClaimedTogglePort(record, isDisposed, name)])) as Record<TogglePortName, PluginTogglePort>
   }
 
   private createClientCapabilities(
@@ -1459,10 +1435,7 @@ export class PluginHost {
         }
       })(),
       client: this.createClientCapabilities(record, () => contextDisposed),
-      ...this.createTogglePorts(record, () => contextDisposed),
-      autoCombat: this.createAutoCombatPort(record.plugin.id),
-      autoPotion: this.createAutoPotionPort(record.plugin.id),
-      itemInfo: this.createItemInfoPort(record.plugin.id),
+      ...this.createWiredPorts(record, () => contextDisposed),
       lang: (() => {
         const subscribe = (fn: (lang: GameLang) => void): (() => void) => {
           if (contextDisposed) {

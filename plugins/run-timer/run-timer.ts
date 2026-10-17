@@ -42,11 +42,12 @@ export class RunTimer {
   }
 }
 
-export const formatRunSummary = ({ currentMs, runs, averageMs, perHour }: RunSummary, lang: 'zh' | 'en'): string =>
-  [
-    currentMs !== null ? (lang === 'en' ? `Run ${runs + 1} ${formatDuration(currentMs)}` : `第${runs + 1}局 ${formatDuration(currentMs)}`) : null,
-    averageMs !== null ? (lang === 'en' ? `avg ${formatDuration(averageMs)}` : `平均 ${formatDuration(averageMs)}`) : null,
-    perHour !== null ? (lang === 'en' ? `${perHour.toFixed(1)}/hr` : `${perHour.toFixed(1)}局/小时`) : null,
+export const formatRunSummary = ({ currentMs, runs, averageMs, perHour }: RunSummary, lang: 'zh' | 'en'): string => {
+  const isEnglish = lang === 'en'
+  const parts = [
+    currentMs !== null && `${isEnglish ? `Run ${runs + 1}` : `第${runs + 1}局`} ${formatDuration(currentMs)}`,
+    averageMs !== null && `${isEnglish ? 'avg' : '平均'} ${formatDuration(averageMs)}`,
+    perHour !== null && `${perHour.toFixed(1)}${isEnglish ? '/hr' : '局/小时'}`,
   ]
-    .filter((part) => part !== null)
-    .join(' · ') || (lang === 'en' ? 'No runs yet' : '暂无记录')
+  return parts.filter(Boolean).join(' · ') || (isEnglish ? 'No runs yet' : '暂无记录')
+}

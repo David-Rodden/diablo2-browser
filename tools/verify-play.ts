@@ -147,7 +147,7 @@ const CAPTURE_FIXTURE_FILES = [
   '04-d2gs-idle-60s.d2cap',
 ] as const
 
-const matchesNativeAspect = (width: number, height: number, nativeWidth: number, nativeHeight: number): boolean =>
+const matchesNativeAspect = (width: number, height: number, nativeWidth: number, nativeHeight: number) =>
   width > 0 && height > 0 && Math.abs(width / height - nativeWidth / nativeHeight) < 0.01
 
 async function main(): Promise<void> {
@@ -208,6 +208,7 @@ async function main(): Promise<void> {
       chromeBin,
       [
         '--headless=new',
+        '--mute-audio',
         '--no-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu-sandbox',

@@ -1,4 +1,4 @@
-import type { AutoPotionThresholds, D2WebPlugin, LocalizedText, PluginStatus } from '../../src/client/plugin-host/api.ts'
+import type { AutoPotionThresholds, D2WebPlugin, LocalizedText } from '../../src/client/plugin-host/api.ts'
 
 const THRESHOLDS: readonly { readonly key: keyof AutoPotionThresholds; readonly label: LocalizedText; readonly options: readonly number[]; readonly default: number }[] = [
   { key: 'life', label: { zh: '生命低于时喝治疗药剂', en: 'Healing potion below life' }, options: [0, 30, 40, 50, 60, 70, 80], default: 50 },
@@ -29,20 +29,17 @@ export const autoPotionPlugin: D2WebPlugin = {
       const value = Number(ctx.settings.get(key))
       return Number.isFinite(value) && value >= 0 ? value : (THRESHOLDS.find((t) => t.key === key)?.default ?? 0)
     }
-    const apply = (): void => ctx.autoPotion.setThresholds({ life: read('life'), rejuv: read('rejuv'), mana: read('mana'), merc: read('merc') })
+    const apply = () => ctx.autoPotion.setThresholds({ life: read('life'), rejuv: read('rejuv'), mana: read('mana'), merc: read('merc') })
     apply()
     const unsubscribe = ctx.settings.subscribe(apply)
     return {
-      getStatus: (): PluginStatus => {
+      getStatus: () => {
         const thresholds = ctx.autoPotion.getThresholds()
         return thresholds
           ? { level: 'ok', text: { zh: `生命 ${thresholds.life}% / 法力 ${thresholds.mana}%`, en: `Life ${thresholds.life}% / mana ${thresholds.mana}%` } }
           : { level: 'warn', text: { zh: '未开启', en: 'Inactive' } }
       },
-      deactivate: () => {
-        unsubscribe()
-        ctx.autoPotion.setThresholds(null)
-      },
+      deactivate: () => (unsubscribe(), ctx.autoPotion.setThresholds(null)),
     }
   },
 }

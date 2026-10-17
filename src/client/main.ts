@@ -1742,9 +1742,7 @@ export async function startPlayApp(options?: {
       const frameMs = 1000 / worldRenderFpsCap
       if (nextWorldRenderMs !== null && nowMs < nextWorldRenderMs - 2) return
       nextWorldRenderMs = nextWorldRenderMs === null || nowMs - nextWorldRenderMs > frameMs ? nowMs + frameMs : nextWorldRenderMs + frameMs
-    } else {
-      nextWorldRenderMs = null
-    }
+    } else nextWorldRenderMs = null
     const currentSettings = settingsStore.get()
     const profile = getViewportProfile(currentSettings.viewport)
     renderer.setSceneViewportSize(profile.width, profile.height)

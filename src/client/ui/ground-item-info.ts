@@ -28,9 +28,9 @@ export const groundLabelDetails = (data: ItemData, isEn: boolean): string =>
   data.simple || data.ilvl === undefined
     ? ''
     : ` [${[
-        data.totalSockets > 0 ? (isEn ? `${data.totalSockets}os` : `${data.totalSockets}孔`) : null,
+        data.totalSockets > 0 ? `${data.totalSockets}${isEn ? 'os' : '孔'}` : null,
         data.ethereal ? (isEn ? 'eth' : '无形') : null,
-        isEn ? `ilvl ${data.ilvl}` : `等级 ${data.ilvl}`,
+        `${isEn ? 'ilvl' : '等级'} ${data.ilvl}`,
       ]
         .filter((part) => part !== null)
         .join(' · ')}]`

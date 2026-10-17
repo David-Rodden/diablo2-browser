@@ -1,8 +1,10 @@
 import type { D2ColorCode, D2FontRenderer } from './font.ts'
 
 const HEIGHT = 14
+const PADDING = 12
+export const BADGE_BASELINE_Y = 500
 
-export function drawFramedBadge(ctx: CanvasRenderingContext2D, font: D2FontRenderer, label: string, x: number, y: number, width: number, frame: string, color: D2ColorCode): void {
+export function drawFramedBadge(ctx: CanvasRenderingContext2D, font: D2FontRenderer, label: string, x: number, y: number, frame: string, color: D2ColorCode, width = font.measureText(label, 'font8') + PADDING): void {
   ctx.save()
   ctx.fillStyle = 'rgba(8, 6, 4, 0.72)'
   ctx.fillRect(x - width / 2, y - HEIGHT + 3, width, HEIGHT)

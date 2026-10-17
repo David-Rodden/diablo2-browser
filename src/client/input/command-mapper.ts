@@ -484,7 +484,7 @@ export class CommandMapper {
   }
 
   private mercLifePct(): number | null {
-    const merc = this.world.merc
+    const { merc } = this.world
     const unit = merc && !merc.isDead && merc.mercId > 0 ? this.world.getUnit('monster', merc.mercId) : undefined
     return unit === undefined ? null : (unit.lifePct * 100) / 128
   }
@@ -571,9 +571,7 @@ export class CommandMapper {
 
   private centerCameraOnSelf(): void {
     const isOpen = (panel: string | undefined) => panel !== undefined && panel !== 'none'
-    if ('panelShiftX' in this.camera) {
-      this.camera.panelShiftX = computePanelCameraShift(isOpen(this.hudManager.leftPanel), isOpen(this.hudManager.rightPanel), panelDockWidth(this.camera.viewportProfile))
-    }
+    if ('panelShiftX' in this.camera) this.camera.panelShiftX = computePanelCameraShift(isOpen(this.hudManager.leftPanel), isOpen(this.hudManager.rightPanel), panelDockWidth(this.camera.viewportProfile))
     const { x, y } = this.selfTickPosition()
     if (x !== 0 || y !== 0) this.camera.update(x, y)
   }

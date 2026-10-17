@@ -1,4 +1,4 @@
-import { type D2WebPlugin, type PluginContext, type PluginInstance } from '../../src/client/plugin-host/api.ts'
+import type { D2WebPlugin } from '../../src/client/plugin-host/api.ts'
 import { formatRunSummary, RunTimer } from './run-timer.ts'
 
 export const runTimerPlugin: D2WebPlugin = {
@@ -9,7 +9,7 @@ export const runTimerPlugin: D2WebPlugin = {
     en: 'Non-1.13c enhancement: shows how long the current game has run, your average run time and runs per hour in the top toolbar. Every new game counts as a run, including +1. Click it to reset.',
   },
   defaultEnabled: true,
-  activate(ctx: PluginContext): PluginInstance {
+  activate(ctx) {
     const timer = new RunTimer()
     const observe = () => timer.observe(ctx.session.phase === 'ingame' ? ctx.session.getSnapshot().activeGameName : null, Date.now())
     const label = () => {
@@ -28,11 +28,7 @@ export const runTimerPlugin: D2WebPlugin = {
     const interval = setInterval(refresh, 1000)
     return {
       getStatus: () => ({ level: 'ok', text: label() }),
-      deactivate: () => {
-        clearInterval(interval)
-        unsubscribe()
-        button.dispose()
-      },
+      deactivate: () => (clearInterval(interval), unsubscribe(), button.dispose()),
     }
   },
 }
