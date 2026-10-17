@@ -44,6 +44,10 @@ import {
   type PluginInstance,
   type PluginLogger,
   type PluginQuickCastPort,
+  type PluginAutoCombatPort,
+  type PluginAutoPotionPort,
+  type PluginItemInfoPort,
+  type PluginTogglePort,
   type PluginSessionView,
   type PluginStatus,
   type PluginToolbarContributionSpec,
@@ -121,6 +125,23 @@ export interface PluginHostOptions {
    * toggle).
    */
   readonly quickCast?: PluginQuickCastPort | null | undefined
+  readonly dragInteract?: PluginTogglePort | null | undefined
+  readonly stashDepositAll?: PluginTogglePort | null | undefined
+  readonly xpBar?: PluginTogglePort | null | undefined
+  readonly autoGoldPickup?: PluginTogglePort | null | undefined
+  readonly upgradeHints?: PluginTogglePort | null | undefined
+  readonly monsterResists?: PluginTogglePort | null | undefined
+  readonly autoCombat?: PluginAutoCombatPort | null | undefined
+  readonly autoPotion?: PluginAutoPotionPort | null | undefined
+  readonly itemInfo?: PluginItemInfoPort | null | undefined
+}
+
+const TOGGLE_PORT_NAMES = ['quickCast', 'dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'upgradeHints', 'monsterResists'] as const
+type TogglePortName = (typeof TOGGLE_PORT_NAMES)[number]
+
+const requireWiredPort = <T>(port: T | null, name: string, pluginId: string): T => {
+  if (!port) throw new Error(`[plugin-host] ${name} port is not wired by the composition root (plugin "${pluginId}")`)
+  return port
 }
 
 interface InternalPluginRecord {
@@ -154,9 +175,10 @@ export class PluginHost {
   private fallbackAllowedViewports: readonly ViewportResolution[] =
     DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS
   private readonly unsubConfig: () => void
-  private readonly quickCastPort: PluginQuickCastPort | null
-  /** Plugins currently claiming Quick Cast (Issue #952); empty set = vanilla behavior. */
-  private readonly quickCastClaims = new Set<string>()
+  private readonly autoCombatPort: PluginAutoCombatPort | null
+  private readonly autoPotionPort: PluginAutoPotionPort | null
+  private readonly itemInfoPort: PluginItemInfoPort | null
+  private readonly togglePorts: ReadonlyMap<TogglePortName, { readonly port: PluginTogglePort | null; readonly claims: Set<string> }>
   private ready = false
   private destroyed = false
   private startPromise: Promise<void> | null = null
@@ -165,7 +187,10 @@ export class PluginHost {
     validatePluginRegistry(options.plugins)
     this.session = options.session
     this.toolbar = options.toolbar ?? null
-    this.quickCastPort = options.quickCast ?? null
+    this.autoCombatPort = options.autoCombat ?? null
+    this.autoPotionPort = options.autoPotion ?? null
+    this.itemInfoPort = options.itemInfo ?? null
+    this.togglePorts = new Map(TOGGLE_PORT_NAMES.map((name) => [name, { port: options[name] ?? null, claims: new Set<string>() }]))
     this.settingsStore = options.settingsStore ?? getGlobalSettingsStore()
     this.enforceClientDefaults = options.enforceClientDefaults ?? false
     this.configStore =
@@ -486,45 +511,52 @@ export class PluginHost {
   }
 
   /**
-   * NOT 1.13c: Per-plugin Quick Cast toggle (Issue #952). Claims are host-tracked so the
+   * NOT 1.13c: Per-plugin toggle (Quick Cast, Issue #952). Claims are host-tracked so the
    * capability is released automatically on deactivate; the last release restores the
    * vanilla select-on-press behavior.
    */
-  private createQuickCastPort(
-    record: InternalPluginRecord,
-    isDisposed: () => boolean,
-  ): PluginQuickCastPort {
+  private createClaimedTogglePort(record: InternalPluginRecord, isDisposed: () => boolean, name: TogglePortName): PluginTogglePort {
     const pluginId = record.plugin.id
-    const requirePort = (): PluginQuickCastPort => {
-      if (!this.quickCastPort) {
-        throw new Error(
-          `[plugin-host] quickCast port is not wired by the composition root (plugin "${pluginId}")`,
-        )
-      }
-      return this.quickCastPort
-    }
+    const { port, claims } = this.togglePorts.get(name)!
     return {
-      isEnabled: (): boolean => this.quickCastClaims.size > 0,
-      setEnabled: (enabled: boolean): void => {
+      isEnabled: () => claims.size > 0,
+      setEnabled: (enabled) => {
         if (isDisposed()) return
-        requirePort()
+        const wiredPort = requireWiredPort(port, name, pluginId)
         const release = (): void => {
           record.disposers.delete(release)
-          this.quickCastClaims.delete(pluginId)
-          if (this.quickCastClaims.size === 0 && this.quickCastPort) {
-            this.quickCastPort.setEnabled(false)
-          }
+          claims.delete(pluginId)
+          if (claims.size === 0) wiredPort.setEnabled(false)
         }
-        if (enabled) {
-          if (this.quickCastClaims.has(pluginId)) return
-          this.quickCastClaims.add(pluginId)
-          record.disposers.add(release)
-          this.quickCastPort!.setEnabled(true)
-        } else {
-          release()
-        }
+        if (!enabled) return release()
+        if (claims.has(pluginId)) return
+        claims.add(pluginId)
+        record.disposers.add(release)
+        wiredPort.setEnabled(true)
       },
     }
+  }
+
+  private createAutoCombatPort(pluginId: string): PluginAutoCombatPort {
+    const port = this.autoCombatPort
+    return { getKey: () => port?.getKey() ?? null, setKey: (key) => requireWiredPort(port, 'autoCombat', pluginId).setKey(key) }
+  }
+
+  private createAutoPotionPort(pluginId: string): PluginAutoPotionPort {
+    const port = this.autoPotionPort
+    return {
+      getThresholds: () => port?.getThresholds() ?? null,
+      setThresholds: (thresholds) => requireWiredPort(port, 'autoPotion', pluginId).setThresholds(thresholds),
+    }
+  }
+
+  private createItemInfoPort(pluginId: string): PluginItemInfoPort {
+    const port = this.itemInfoPort
+    return { getConfig: () => port?.getConfig() ?? null, setConfig: (config) => requireWiredPort(port, 'itemInfo', pluginId).setConfig(config) }
+  }
+
+  private createTogglePorts(record: InternalPluginRecord, isDisposed: () => boolean): Record<TogglePortName, PluginTogglePort> {
+    return Object.fromEntries(TOGGLE_PORT_NAMES.map((name) => [name, this.createClaimedTogglePort(record, isDisposed, name)])) as Record<TogglePortName, PluginTogglePort>
   }
 
   private createClientCapabilities(
@@ -1427,7 +1459,10 @@ export class PluginHost {
         }
       })(),
       client: this.createClientCapabilities(record, () => contextDisposed),
-      quickCast: this.createQuickCastPort(record, () => contextDisposed),
+      ...this.createTogglePorts(record, () => contextDisposed),
+      autoCombat: this.createAutoCombatPort(record.plugin.id),
+      autoPotion: this.createAutoPotionPort(record.plugin.id),
+      itemInfo: this.createItemInfoPort(record.plugin.id),
       lang: (() => {
         const subscribe = (fn: (lang: GameLang) => void): (() => void) => {
           if (contextDisposed) {
