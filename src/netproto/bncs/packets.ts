@@ -5,7 +5,7 @@
 
 import { ByteReader } from '../core/byte-reader.ts'
 import { ByteWriter } from '../core/byte-writer.ts'
-import { defaultTextCodec, type TextCodec } from '../core/text-codec.ts'
+import { defaultTextCodec, resolveTextCodec, type TextCodec } from '../core/text-codec.ts'
 import type { HashedCdKeyBlock } from '../crypto/cdkey.ts'
 import type { ChatEvent, ChatEventKind, RealmInfo } from '../domain/lobby.ts'
 import { encodeBncsFrame, type BncsRawPacket } from './framing.ts'
@@ -252,11 +252,18 @@ export function encodeBncsJoinChannel(
   return encodeBncsFrame(BncsOpcode.SID_JOINCHANNEL, w.toUint8Array())
 }
 
+/**
+ * Encodes `SID_CHATCOMMAND (0x0E)`.
+ * Per `Bnclient.dll!SendChatCommand` (`0x6ff2c400` -> `Storm.dll!#902` `0x6fc257a0`) and
+ * `D2Client.dll` (`0x6fb1fe8c`) / `D2Multi.dll` (`0x6f9d9e03`) (`D2Lang!Unicode::utf8ToUnicode` `0x6fc08cd0`),
+ * Battle.net chat commands and `SID_CHATEVENT (0x0F)` payloads use UTF-8 on the wire (raw GBK bytes are
+ * rejected and truncated by `Unicode::utf8ToUnicode` `0x6fc08c40`).
+ */
 export function encodeBncsChatCommand(
   text: string,
-  codec: TextCodec = defaultTextCodec,
+  codec: TextCodec = resolveTextCodec('utf-8'),
 ): Uint8Array {
-  const w = new ByteWriter(text.length + 4)
+  const w = new ByteWriter(text.length * 3 + 4)
   w.cstring(text, codec)
   return encodeBncsFrame(BncsOpcode.SID_CHATCOMMAND, w.toUint8Array())
 }

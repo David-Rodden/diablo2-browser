@@ -11,6 +11,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
+  CACHEABLE_PREFIXES,
+  INTENTIONALLY_UNCACHED_PUBLIC_DIRS,
+  INTENTIONALLY_UNCACHED_PUBLIC_FILES,
   isCacheableAssetPath,
   validateAssetManifest,
   type AssetManifest,
@@ -24,6 +27,72 @@ export interface GenerateAssetManifestOptions {
   readonly includePacksDir?: boolean | undefined
   readonly outputFile?: string | null | undefined
   readonly generatedAt?: string | undefined
+  readonly skipRootAudit?: boolean | undefined
+}
+
+/**
+ * Fails fast if `public/` contains any top-level directory or file that is neither
+ * registered in {@link CACHEABLE_PREFIXES} nor explicitly listed in
+ * {@link INTENTIONALLY_UNCACHED_PUBLIC_DIRS} / {@link INTENTIONALLY_UNCACHED_PUBLIC_FILES} (#1314).
+ */
+export function validatePublicAssetRoots(
+  publicDir: string = resolve(process.cwd(), 'public'),
+): {
+  readonly cacheableDirs: readonly string[]
+  readonly uncachedDirs: readonly string[]
+  readonly uncachedFiles: readonly string[]
+} {
+  if (!existsSync(publicDir)) {
+    return { cacheableDirs: [], uncachedDirs: [], uncachedFiles: [] }
+  }
+  const cacheablePrefixSet = new Set<string>(CACHEABLE_PREFIXES.map((p) => p.toLowerCase()))
+  const uncachedDirSet = new Set<string>(
+    INTENTIONALLY_UNCACHED_PUBLIC_DIRS.map((d) =>
+      d.toLowerCase().endsWith('/') ? d.toLowerCase() : `${d.toLowerCase()}/`,
+    ),
+  )
+  const uncachedFileSet = new Set<string>(
+    INTENTIONALLY_UNCACHED_PUBLIC_FILES.map((f) => f.toLowerCase()),
+  )
+
+  const cacheableDirs: string[] = []
+  const uncachedDirs: string[] = []
+  const uncachedFiles: string[] = []
+
+  const entries = readdirSync(publicDir).sort()
+  for (const name of entries) {
+    if (name.startsWith('.') || name.endsWith('.br') || name.endsWith('.gz')) continue
+    const fullPath = join(publicDir, name)
+    let st
+    try {
+      st = statSync(fullPath)
+    } catch {
+      continue
+    }
+    const lower = name.toLowerCase()
+    if (st.isDirectory()) {
+      const dirKey = `${lower}/`
+      if (cacheablePrefixSet.has(dirKey)) {
+        cacheableDirs.push(`${name}/`)
+      } else if (uncachedDirSet.has(dirKey)) {
+        uncachedDirs.push(`${name}/`)
+      } else {
+        throw new Error(
+          `Unregistered public/ top-level directory "${name}/" in ${publicDir}: add "${dirKey}" to CACHEABLE_PREFIXES or INTENTIONALLY_UNCACHED_PUBLIC_DIRS in src/common/pack-contract/index.ts`,
+        )
+      }
+    } else if (st.isFile()) {
+      if (uncachedFileSet.has(lower) || lower.endsWith('.html') || lower.endsWith('.mpq')) {
+        uncachedFiles.push(name)
+      } else {
+        throw new Error(
+          `Unregistered public/ top-level file "${name}" in ${publicDir}: move under a CACHEABLE_PREFIXES directory or add "${lower}" to INTENTIONALLY_UNCACHED_PUBLIC_FILES in src/common/pack-contract/index.ts`,
+        )
+      }
+    }
+  }
+
+  return { cacheableDirs, uncachedDirs, uncachedFiles }
 }
 
 function walkDirectoryFiles(baseDir: string, currentDir: string = baseDir, out: string[] = []): string[] {
@@ -79,6 +148,9 @@ export function generateAssetManifest(options?: GenerateAssetManifestOptions): A
   let totalBytes = 0
 
   if (existsSync(publicDir)) {
+    if (!options?.skipRootAudit) {
+      validatePublicAssetRoots(publicDir)
+    }
     for (const fullPath of walkDirectoryFiles(publicDir)) {
       const rel = relative(publicDir, fullPath).replace(/\\/g, '/')
       if (!isCacheableAssetPath(rel)) continue

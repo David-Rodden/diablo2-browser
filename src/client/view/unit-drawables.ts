@@ -1536,6 +1536,7 @@ export function buildSceneDrawables(
         else if (effectiveMode === 9) derivedAnimMode = 'S2'
         else if (effectiveMode === 10) derivedAnimMode = 'S3'
         else if (effectiveMode === 11) derivedAnimMode = 'S4'
+        else if (effectiveMode === 14) derivedAnimMode = 'SQ'
       }
     }
     const animMode = unit.animMode ?? derivedAnimMode

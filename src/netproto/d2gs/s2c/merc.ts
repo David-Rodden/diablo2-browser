@@ -57,7 +57,17 @@ export function decode0x7ASummonAction(pkt: Uint8Array): ServerEvent {
   }
 }
 
-/** 0x81 AssignMerc (20B, D2Client.dll 0x6fb5eba0) */
+/**
+ * 0x81 AssignMerc (20B, D2Client.dll 0x6fb5eba0 -> 0x6fad1d60):
+ * - [0]      = 0x81
+ * - [1]      = u8 unk
+ * - [2..3]   = u16LE classId
+ * - [4..7]   = u32LE ownerId
+ * - [8..11]  = u32LE mercId
+ * - [12..15] = u32LE seed
+ * - [16..17] = u16LE nameId
+ * - [18..19] = u16LE pad
+ */
 export function decode0x81AssignMerc(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x81
@@ -65,9 +75,10 @@ export function decode0x81AssignMerc(pkt: Uint8Array): ServerEvent {
   const classId = r.u16LE()
   const ownerId = r.u32LE()
   const mercId = r.u32LE()
-  r.u32LE() // offset 12..15 (flags/unk)
+  const seed12 = r.u32LE() // offset 12..15 (canonical 1.13c u32 seed)
   const nameId = r.u16LE() // offset 16..17
-  const seed = r.remaining >= 4 ? r.u32LE() : r.u16LE() // offset 18+
+  const seed18 = r.remaining >= 4 ? r.u32LE() : r.remaining >= 2 ? r.u16LE() : 0 // offset 18+
+  const seed = seed12 !== 0 ? seed12 : seed18
   return {
     type: 'Merc',
     kind: 'assign',

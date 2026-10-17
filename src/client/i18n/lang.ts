@@ -345,7 +345,7 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
   'toolbar.status.mcp': { zh: '角色选择 (MCP)', en: 'Characters (MCP)' },
   'toolbar.status.d2gs': { zh: '游戏中 (D2GS)', en: 'In-Game (D2GS)' },
   'toolbar.status.error': { zh: '连接异常', en: 'Conn Error' },
-  'toolbar.server.label': { zh: '服务器', en: 'Server' },
+  'toolbar.server.label': { zh: '战网服务器', en: 'Battle.net Server' },
   'toolbar.server.placeholder': { zh: 'www.laiseek.xyz', en: 'www.laiseek.xyz' },
   'toolbar.server.apply': { zh: '连接', en: 'Apply' },
   'toolbar.server.confirmReconnect': {
@@ -366,8 +366,8 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
   'toolbar.config.open': { zh: '配置', en: 'Settings' },
   'toolbar.config.title': { zh: '游戏配置', en: 'Game Settings' },
   'toolbar.config.subtitle': {
-    zh: '调整全屏/窗口显示、分辨率、帧率、音量及资源缓存。',
-    en: 'Configure display mode, resolution, frame rate, volume, and asset cache.',
+    zh: '调整全屏/窗口显示、分辨率、帧率、战网服务器、音量及资源缓存。',
+    en: 'Configure display mode, resolution, frame rate, battle.net server, volume, and asset cache.',
   },
   'toolbar.config.close': { zh: '关闭 (ESC)', en: 'Close (ESC)' },
   'toolbar.config.displayMode': { zh: '全屏 / 窗口', en: 'Display Mode' },

@@ -154,8 +154,19 @@ export class ClientInventoryManager implements ClientItemContainers {
       return null
     }
     this.removeItemById(prev.id)
+    this.deleteSocketChildren(prev.id)
     this.cursor = null
     return prev
+  }
+
+  private deleteSocketChildren(parentId: number): void {
+    const socketChildren = this.sockets.get(parentId)
+    if (socketChildren) {
+      for (const child of socketChildren) {
+        this.allById.delete(child.id)
+      }
+      this.sockets.delete(parentId)
+    }
   }
 
   /**
@@ -323,6 +334,7 @@ export class ClientInventoryManager implements ClientItemContainers {
     // leaves the player's containers / cursor.
     if (action === 0x05 && (isDeleted || container !== 'cursor' || this.cursor?.id === item.id)) {
       this.removeItemById(item.id)
+      this.deleteSocketChildren(item.id)
       return
     }
     // 0x08 Unequip (D2Client.dll 0x6fb35ed0):
@@ -401,6 +413,7 @@ export class ClientInventoryManager implements ClientItemContainers {
         return
       }
       this.removeItemById(item.id)
+      this.deleteSocketChildren(item.id)
       return
     }
     // 0x0F RemoveFromBelt (D2Client.dll 0x6fb32c60):
@@ -410,6 +423,7 @@ export class ClientInventoryManager implements ClientItemContainers {
     // removes the item from the belt and deletes it without placing it on the cursor.
     if (action === 0x0f && (isDeleted || (container !== 'cursor' && item.location !== 4))) {
       this.removeItemById(item.id)
+      this.deleteSocketChildren(item.id)
       return
     }
     // Removal-to-cursor and login-cursor actions:
@@ -437,6 +451,7 @@ export class ClientInventoryManager implements ClientItemContainers {
     // 0x0C RemoveFromShop
     if (action === 0x0c) {
       this.removeItemById(item.id)
+      this.deleteSocketChildren(item.id)
       return
     }
 
@@ -746,11 +761,11 @@ export class ClientInventoryManager implements ClientItemContainers {
     this.revision++
     for (const id of this.tradeSelf.keys()) {
       this.allById.delete(id)
-      this.sockets.delete(id)
+      this.deleteSocketChildren(id)
     }
     for (const id of this.tradePartner.keys()) {
       this.allById.delete(id)
-      this.sockets.delete(id)
+      this.deleteSocketChildren(id)
     }
     this.tradeSelf.clear()
     this.tradePartner.clear()

@@ -10,6 +10,10 @@ import {
 } from '../../common/units/char-anim-speed.ts'
 import { getMonsterPathRecord } from '../../common/path/units.ts'
 import {
+  resolveMonsterSequenceFrame113c,
+  type ResolvedMonsterSequenceFrame113c,
+} from '../../common/path/monster-anim-metrics-113c.ts'
+import {
   appearanceKey,
   PLAYER_CLASS_TOKENS,
   SorceressLayerCompositor,
@@ -1081,7 +1085,11 @@ export function drawSceneUnitDrawable(
       }
       if (charArt !== null) {
         const modeClip = MONSTER_MODE_TO_CLIP[unit.mode] ?? 'nu'
-        const requestedClipKey = charArt.clips?.[modeClip] ? modeClip : (charArt.clips?.nu ? 'nu' : 'nu')
+        const requestedClipKey = charArt.clips?.[modeClip]
+          ? modeClip
+          : (modeClip === 'a2' || modeClip === 'sc' || modeClip === 'xx') && charArt.clips?.a1
+            ? 'a1'
+            : 'nu'
         const clip = charArt.clips?.[requestedClipKey]
         const canonicalClip = getCharAnimClip113c(charClassId, requestedClipKey)
         const baseSpeed =
@@ -1184,7 +1192,29 @@ export function drawSceneUnitDrawable(
       art = resolveOnlineMonsterArt(unit, ctx.monsterArtMap)
     }
     if (art !== undefined) {
+      const unitKey = `monster:${unit.unitId}`
       const isMoving = unit.mode === 2 || unit.mode === 15
+      let sequenceStep: ResolvedMonsterSequenceFrame113c | undefined
+      if (!unit.isCorpse && unit.mode === 14) {
+        const seqStartedAtMs = resolveOneShotStartMs(
+          unitKey,
+          'sq',
+          unit.animStartedAtMs ?? unit.castState?.startedAtMs,
+          nowMs,
+        )
+        const seqSpeed256 =
+          unit.animStepSpeed256 ??
+          unit.castState?.stepSpeed256 ??
+          art.clips?.a1?.speed ??
+          art.clips?.nu?.speed ??
+          256
+        sequenceStep = resolveMonsterSequenceFrame113c(
+          unit.classId,
+          Math.max(0, nowMs - seqStartedAtMs),
+          seqSpeed256,
+          unit.castState?.skillId,
+        )
+      }
       const requestedClipKey = unit.isCorpse
         ? unit.mode === 0 && art.clips?.dt
           ? 'dt'
@@ -1193,9 +1223,12 @@ export function drawSceneUnitDrawable(
             : art.clips?.dt
               ? 'dt'
               : 'nu'
-        : (MONSTER_MODE_TO_CLIP[unit.mode] ?? (isMoving ? 'wl' : 'nu'))
+        : (sequenceStep?.clipKey ?? MONSTER_MODE_TO_CLIP[unit.mode] ?? (isMoving ? 'wl' : 'nu'))
       const clip =
         art.clips?.[requestedClipKey] ??
+        (requestedClipKey === 'a2' || requestedClipKey === 'sc' || requestedClipKey === 'xx'
+          ? art.clips?.a1
+          : undefined) ??
         (isMoving ? art.clips?.wl : undefined) ??
         art.clips?.nu
       if (!clip || !(clip.speed > 0)) {
@@ -1212,11 +1245,12 @@ export function drawSceneUnitDrawable(
       const groupIndex = baseGroup + direction
       const group = art.groups[groupIndex] ?? art.groups[art.standOffset + direction] ?? art.groups[0]
       const frameCount = Math.max(1, group?.length ?? 1)
-      const unitKey = `monster:${unit.unitId}`
       let frameIndex = 0
       if ((unit.isCorpse && requestedClipKey !== 'dt') || requestedClipKey === 'dd') {
         oneShotStartMsByUnitKey.delete(unitKey)
         frameIndex = frameCount - 1
+      } else if (sequenceStep !== undefined) {
+        frameIndex = Math.max(0, Math.min(frameCount - 1, sequenceStep.frameIndex))
       } else {
         const shouldLoop =
           !unit.isCorpse &&
@@ -2216,6 +2250,9 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
         renderer.begin({ x: 0, y: 0, zoom: 1 }, [0, 0, 0])
         renderer.setLighting(null)
         renderer.flush()
+        if (typeof (renderer as { end?: () => void }).end === 'function') {
+          renderer.end()
+        }
       }
       if (hudManager) {
         hudManager.groundItemLabelBoxes = []
@@ -2650,6 +2687,9 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
       }
 
       renderer.flush()
+      if (typeof (renderer as { end?: () => void }).end === 'function') {
+        renderer.end()
+      }
     } else if (ctx.lightingTargets && ctx.source) {
       applyLightingInputs(ctx.source.buildLightingInputs(ctx.lightingPreset), ctx.lightingTargets)
     }

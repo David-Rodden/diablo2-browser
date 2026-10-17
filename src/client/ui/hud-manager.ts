@@ -39,9 +39,18 @@ import {
   ESCAPE_MENU_ACTIONS,
   WorldPanelsHud,
   computeEscapeMenuLayout,
+  enterEscapeMenuScreen,
+  handleEscapeSubmenuMouseDown,
+  handleEscapeSubmenuWheel,
   hitTestEscapeMenu,
+  moveEscapeSubmenuSelection,
+  navigateEscapeMenuBack,
+  resolveEscapeMenuSettings,
   type EscapeMenuAction,
   type EscapeMenuRowIndex,
+  type EscapeMenuScreen,
+  type EscapeMenuSettingsPatch,
+  type EscapeMenuSettingsSnapshot,
   type LeftDockPanelKind,
   type MonsterTargetHudInfo,
   type VendorTradeState,
@@ -126,6 +135,7 @@ import {
   ensureCanvas2DContext,
   hasVisibleTopLeftPortraits,
   hudRepaintUnchanged,
+  renderChatInputBox,
   renderChatOverlay,
   renderCursor,
   renderCursorLayer,
@@ -163,9 +173,14 @@ export {
   VENDOR_GRID_ORIGIN,
   ESCAPE_MENU_ACTIONS,
   computeEscapeMenuLayout,
+  computeOptionsSubmenuLayout,
+  computeControlsMenuLayout,
   hitTestEscapeMenu,
   type EscapeMenuAction,
   type EscapeMenuRowIndex,
+  type EscapeMenuScreen,
+  type EscapeMenuSettingsPatch,
+  type EscapeMenuSettingsSnapshot,
 } from './world-panels.ts'
 
 export type LeftPanelType =
@@ -231,6 +246,7 @@ export interface PublishedHudState {
   npcMenuOpen?: boolean
   escapeMenuOpen?: boolean
   escapeMenuSelectedIndex?: EscapeMenuRowIndex
+  escapeMenuScreen?: EscapeMenuScreen
 }
 
 /**
@@ -459,6 +475,10 @@ export class HudManager {
   showFps = false
   showPartyPortraits = true
   helpOverlayOpen = false
+  /** D2Client.dll `0x6fb20140` (`CHAT_DrawChatInputBox`): true while in-game chat input box is open. */
+  chatInputOpen = false
+  /** D2Client.dll `0x6fb8a468` (`g_wszChatInputBuffer`): active typed string in in-game chat input box. */
+  chatInputText = ''
   currentFps = 0
   pingMs = 0
   trade: any = null
@@ -1059,6 +1079,25 @@ export class HudManager {
       // Keep default manifest metadata
     }
 
+    try {
+      const feRes = await fetch(`${baseUrl}/frontend/manifest.json`)
+      if (feRes.ok) {
+        const feManifest = (await feRes.json()) as {
+          assets?: { mediumButtonBlank?: { width: number; height: number; frameCount: number } }
+        }
+        const mbb = feManifest?.assets?.mediumButtonBlank
+        if (mbb) {
+          this.worldPanels.mediumButtonBlankMeta = {
+            frameW: mbb.width,
+            frameH: mbb.height,
+            frames: mbb.frameCount,
+          }
+        }
+      }
+    } catch {
+      // Fallback to default 128x35 2-frame mediumbuttonblank dimensions
+    }
+
     const imageFiles: Record<string, string> = {
       ctrlPnl: `${baseUrl}/ctrlpnl-800.png`,
       ctrlPnl640: `${baseUrl}/ctrlpnl-640.png`,
@@ -1130,6 +1169,8 @@ export class HudManager {
       partyBoxes: `${baseUrl}/partyboxes.png`,
       partyBar: `${baseUrl}/partybar.png`,
       gemSocket: `${baseUrl}/gemsocket.png`,
+      btnMedium: `${baseUrl}/frontend/btn-medium.png`,
+      mediumButtonBlank: `${baseUrl}/frontend/btn-medium.png`,
       levelEntryTitles: `${baseUrl}/${LEVEL_ENTRY_TITLE_ATLAS.image}`,
     }
 
@@ -1370,6 +1411,11 @@ export class HudManager {
       ;(this.worldPanels as any).activePanel = kind === 'char' ? 'none' : kind
       if (prev !== 'none') this.leaveLeftPanel(prev)
       this.charSheet.visible = kind === 'char'
+      if (kind === 'msg' && this.rightPanel !== 'none') {
+        this.rightPanel = 'none'
+        this.inventory.visible = false
+        this.skillTree.visible = false
+      }
       if (
         (kind === 'stash' ||
           kind === 'cube' ||
@@ -1418,6 +1464,10 @@ export class HudManager {
       this.inventory.visible = false
       this.skillTree.visible = false
     } else {
+      if (this.leftPanel === 'msg') {
+        this.leftPanel = 'none'
+        ;(this.worldPanels as any).activePanel = 'none'
+      }
       this.rightPanel = kind
       this.inventory.visible = kind === 'inv'
       this.skillTree.visible = kind === 'skill'
@@ -1432,8 +1482,21 @@ export class HudManager {
   set escapeMenuOpen(val: boolean) {
     if (val && !this.worldPanels.escapeMenuOpen) {
       this.worldPanels.escapeMenuSelectedIndex = 2
+      enterEscapeMenuScreen(this.worldPanels, 'main', 0)
+    } else if (!val) {
+      enterEscapeMenuScreen(this.worldPanels, 'main', 0)
+      this.worldPanels.controlsDraftBindings = null
     }
     this.worldPanels.escapeMenuOpen = val
+    this.syncPublishedState()
+  }
+
+  get escapeMenuScreen(): EscapeMenuScreen {
+    return this.worldPanels.escapeMenuScreen
+  }
+
+  set escapeMenuScreen(screen: EscapeMenuScreen) {
+    enterEscapeMenuScreen(this.worldPanels, screen, 0)
     this.syncPublishedState()
   }
 
@@ -1447,18 +1510,48 @@ export class HudManager {
   }
 
   /**
+   * Bind external settings & fullscreen callbacks so the in-game Options menu
+   * (Sound, Video, Configure Controls) stays synchronized with `ClientSettings` and `Toolbar`.
+   */
+  configureEscapeMenuSettings(callbacks: {
+    getSettings?: () => Partial<EscapeMenuSettingsSnapshot>
+    onUpdateSettings?: (patch: EscapeMenuSettingsPatch) => void
+    onToggleFullscreen?: () => void
+  }): void {
+    this.worldPanels.getEscapeMenuSettings = callbacks.getSettings ?? null
+    this.worldPanels.onUpdateEscapeMenuSettings = (patch) => {
+      if (patch.viewport !== undefined) {
+        this.setViewportProfile(patch.viewport)
+      }
+      callbacks.onUpdateSettings?.(patch)
+      this.syncPublishedState()
+    }
+    this.worldPanels.onToggleEscapeMenuFullscreen = () => {
+      callbacks.onToggleFullscreen?.()
+      this.syncPublishedState()
+    }
+  }
+
+  getActiveKeyBindings() {
+    return resolveEscapeMenuSettings(this.worldPanels).keyBindings
+  }
+
+  /**
    * Toggle the authentic 1.13c In-Game Escape Menu (`D2Client.dll` `0x6fb15760` & `0x6fb15bc0`).
    * Opening the Escape menu closes any open panels and resets the default selection to row 2 (`Return to Game`).
+   * When inside an Options submenu (`'options' | 'sound' | 'video' | 'controls'`), steps back one menu level.
    */
   toggleEscapeMenu(): boolean {
     if (this.worldPanels.escapeMenuOpen) {
-      this.worldPanels.escapeMenuOpen = false
+      const stillOpen = navigateEscapeMenuBack(this.worldPanels)
+      this.onPlayUiSound?.(2)
       this.syncPublishedState()
-      return false
+      return stillOpen
     }
     this.closeAllPanels()
     this.worldPanels.escapeMenuOpen = true
     this.worldPanels.escapeMenuSelectedIndex = 2
+    enterEscapeMenuScreen(this.worldPanels, 'main', 0)
     this.syncPublishedState()
     return true
   }
@@ -1467,6 +1560,12 @@ export class HudManager {
    * Move Escape menu selection up (`delta = -1`) or down (`delta = 1`) with wrap-around (`0x6fb14ee0` / `0x6fb14f50`).
    */
   moveEscapeMenuSelection(delta: -1 | 1): EscapeMenuRowIndex {
+    if (this.worldPanels.escapeMenuScreen !== 'main') {
+      moveEscapeSubmenuSelection(this.worldPanels, delta)
+      this.onPlayUiSound?.(1)
+      this.syncPublishedState()
+      return this.worldPanels.escapeMenuSelectedIndex
+    }
     const next = ((this.worldPanels.escapeMenuSelectedIndex + delta + 3) % 3) as EscapeMenuRowIndex
     this.worldPanels.escapeMenuSelectedIndex = next
     this.onPlayUiSound?.(1)
@@ -1481,8 +1580,11 @@ export class HudManager {
     this.worldPanels.escapeMenuSelectedIndex = index
     this.onPlayUiSound?.(2)
     const action = ESCAPE_MENU_ACTIONS[index]
-    if (action === 'returnToGame' || action === 'saveAndExit') {
+    if (action === 'options') {
+      enterEscapeMenuScreen(this.worldPanels, 'options', 0)
+    } else if (action === 'returnToGame' || action === 'saveAndExit') {
       this.worldPanels.escapeMenuOpen = false
+      enterEscapeMenuScreen(this.worldPanels, 'main', 0)
     }
     this.syncPublishedState()
     this.onEscapeMenuAction?.(action)
@@ -1492,13 +1594,32 @@ export class HudManager {
   /**
    * Hit-test and activate an Escape menu item at logical coordinates `(logicalX, logicalY)`.
    */
-  handleEscapeMenuClick(logicalX: number, logicalY: number): EscapeMenuAction | null {
+  handleEscapeMenuClick(logicalX: number, logicalY: number): EscapeMenuAction | string | null {
+    if (this.worldPanels.escapeMenuScreen !== 'main') {
+      const subAction = handleEscapeSubmenuMouseDown(
+        this.worldPanels,
+        logicalX,
+        logicalY,
+        this.viewportProfile.width,
+        this.viewportProfile.height,
+      )
+      if (subAction !== null) {
+        this.onPlayUiSound?.(2)
+        this.syncPublishedState()
+      }
+      return subAction
+    }
     const hit = hitTestEscapeMenu(logicalX, logicalY, this.viewportProfile.width, this.viewportProfile.height)
     if (hit === null) return null
     return this.activateEscapeMenuIndex(hit)
   }
 
   handleWheel(deltaY: number): boolean {
+    if (this.worldPanels.escapeMenuOpen && this.worldPanels.escapeMenuScreen === 'controls') {
+      const handled = handleEscapeSubmenuWheel(this.worldPanels, deltaY)
+      if (handled) this.syncPublishedState()
+      return handled
+    }
     if (
       this.worldPanels.npcMenu?.talking ||
       this.worldPanels.npcSpeech !== null
@@ -1510,10 +1631,10 @@ export class HudManager {
     }
     if (
       this.leftPanel === 'msg' &&
-      this.mouseX >= 0 &&
-      this.mouseX <= 400 &&
-      this.mouseY >= 0 &&
-      this.mouseY <= 553
+      this.mouseX >= 5 &&
+      this.mouseX <= this.viewportProfile.width - 15 &&
+      this.mouseY >= 30 &&
+      this.mouseY <= this.viewportProfile.height - 100
     ) {
       if (deltaY !== 0) {
         this.worldPanels.scrollMessageLog(deltaY < 0 ? 1 : -1)
@@ -1572,6 +1693,8 @@ export class HudManager {
     }
     this.worldPanels.hoveredQuestRewardItem = null
     this.worldPanels.escapeMenuOpen = false
+    enterEscapeMenuScreen(this.worldPanels, 'main', 0)
+    this.worldPanels.controlsDraftBindings = null
     this.worldPanels.vendorTradeState = 'idle'
     this.worldPanels.releaseMomentaryVendorButton()
     this.syncPublishedState()
@@ -1816,6 +1939,20 @@ export class HudManager {
    */
   renderChatOverlay(ctx: CanvasRenderingContext2D, screenWidth: number, nowMs: number): void {
     renderChatOverlay(this, ctx, screenWidth, nowMs)
+  }
+
+  /**
+   * D2Client.dll `0x6fb20140` (`CHAT_DrawChatInputBox`) & `0x6fb1ef20` (`CHAT_DrawCursor`):
+   * Renders the bottom in-game chat input box (`127 .. screenWidth - 128`, `screenHeight - 103 .. screenHeight - 56`)
+   * with `font16` white word-wrapped text and blinking `_` cursor (`0x0D4C`).
+   */
+  renderChatInputBox(
+    ctx: CanvasRenderingContext2D,
+    screenWidth: number,
+    screenHeight: number,
+    nowMs: number,
+  ): void {
+    renderChatInputBox(this, ctx, screenWidth, screenHeight, nowMs)
   }
 
   private lastCursorLayerSignature: string | null = null

@@ -33,6 +33,8 @@ import {
 } from '../../common/items/item-bridge.ts'
 import {
   D2COMMON_10160_PathUpdateDirection,
+  D2COMMON_10212_PATH_SetMoveFlags,
+  D2Common_10153,
   MONMODE_DEAD,
   MONMODE_DEATH,
   MONMODE_GETHIT,
@@ -1674,7 +1676,18 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           unit.mode = prevMode
           const npcUnit = this.npcMotion.getUnit(uId)
           if (npcUnit) {
+            D2COMMON_10212_PATH_SetMoveFlags(npcUnit, 0)
+            if (npcUnit.pDynamicPath) {
+              D2Common_10153(npcUnit.pDynamicPath)
+            }
             this.npcMotion.changeAnimMode0x6FADA6C0(npcUnit, prevMode)
+            npcUnit.lastAnimRestarted = false
+            unit.moving = false
+            unit.moveMode = 'stop'
+          }
+          if (unit.castState) {
+            unit.animStartedAtMs = unit.castState.startedAtMs
+            unit.modeStartedAtMs = unit.castState.startedAtMs
           }
         }
         break
@@ -2251,10 +2264,17 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             const existingIdx = mutableStats.findIndex(
               (s) => s.statId === ev.stat && (ev.param === undefined || s.param === ev.param),
             )
+            // D2Client.dll 0x6fb35990 -> 0x6fb32210: for stat 204 (item_charged_skill), 0x3E sends
+            // only the updated 8-bit current charges in `ev.value` (while the item bitstream stores
+            // `(maxCharges << 8) | curCharges`). Preserve the existing high-byte `maxCharges`.
+            const nextValue =
+              ev.stat === 204 && existingIdx >= 0
+                ? ((mutableStats[existingIdx]!.value & 0xff00) | (ev.value & 0xff))
+                : ev.value
             if (existingIdx >= 0) {
-              mutableStats[existingIdx] = { statId: ev.stat, value: ev.value, param: ev.param ?? 0 }
+              mutableStats[existingIdx] = { statId: ev.stat, value: nextValue, param: ev.param ?? 0 }
             } else {
-              mutableStats.push({ statId: ev.stat, value: ev.value, param: ev.param ?? 0 })
+              mutableStats.push({ statId: ev.stat, value: nextValue, param: ev.param ?? 0 })
             }
             ;(item as any).stats = mutableStats
             if (ev.stat === 72) {
@@ -2264,6 +2284,14 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               ;(item as any).maxDurability = ev.value
             } else if (ev.stat === 70) {
               ;(item as any).quantity = ev.value
+              // D2Client.dll 0x6fb35990: replenished stackable quantity (> 0) clears IFLAG_BROKEN
+              if (ev.value > 0 && item.broken) {
+                ;(item as any).broken = false
+                ;(item as any).rawFlags = ((item.rawFlags ?? 0) & ~ITEM_FLAG_BROKEN) >>> 0
+                if (typeof item.flags === 'number') {
+                  ;(item as any).flags = (item.flags & ~ITEM_FLAG_BROKEN) >>> 0
+                }
+              }
             }
           }
           this._containers.revision++
@@ -3458,7 +3486,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               ? 'overhead'
               : (ev as any).chatType === 0x02 || (ev as any).chatType === 0x06
                 ? 'whisper'
-                : 'say'))
+                : (ev as any).chatType === 0x04
+                  ? 'system'
+                  : 'say'))
       const effectiveEventType = ev.eventType ?? (ev as any).chatType
 
       // 1.13c Party Squelch / Ignore filtering (D2Client.dll 0x6fb2dee0):
@@ -3573,6 +3603,13 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             { chatType: 0x01, color: ev.color ?? 0, senderName: sender, message: rawMsg },
             'CHI',
           ).text
+        }
+      } else if (effectiveKind === 'system') {
+        const rawMsg = ev.name2 ?? ev.text
+        formattedEn = rawMsg
+        formattedZh = rawMsg
+        if (ev.color === undefined && (ev as any).chatType === 0x04) {
+          effectiveColor = 4
         }
       }
 
@@ -4111,8 +4148,10 @@ export function applyUnitModeImmediateImpl(
       if (ev.at && (ev.at.x !== 0 || ev.at.y !== 0)) {
         this.npcMotion.runDriftCheck0x6FADA1B0(npcUnit, ev.at.x, ev.at.y)
       }
-      this.npcMotion.changeAnimMode0x6FADA6C0(npcUnit, ev.mode)
-      this.syncClientUnitFromNpcMotion(npcUnit)
+      const forceRestart = isMonsterOneShotMode(ev.mode) || ev.mode === 14
+      const restarted = this.npcMotion.changeAnimMode0x6FADA6C0(npcUnit, ev.mode, forceRestart)
+      npcUnit.lastAnimRestarted = false
+      this.syncClientUnitFromNpcMotion(npcUnit, undefined, restarted)
     }
     if (!preserveActiveCast && !unit.dead && !unit.castState) {
       const mMode = unit.mode

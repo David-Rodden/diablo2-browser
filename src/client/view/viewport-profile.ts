@@ -1,5 +1,5 @@
 import { ORTHO_SUB_TILE_HEIGHT, ORTHO_SUB_TILE_WIDTH } from '../../common/world/d2map.ts'
-import type { ViewportResolution } from '../settings/client-settings.ts'
+import { DEFAULT_VIEWPORT_RESOLUTION, type ViewportResolution } from '../settings/client-settings.ts'
 
 export type { ViewportResolution }
 
@@ -79,15 +79,24 @@ export const VIEWPORT_1068x600: ViewportProfile = createViewportProfile('1068x60
 /** 16:9 720p: bar at (240, 120), panels at y = 60. */
 export const VIEWPORT_1280x720: ViewportProfile = createViewportProfile('1280x720', 1280, 720)
 
+/** PD2 `SGD2FreeResolution.json` 4:3 960p: bar at (240, 360), panels at y = 180. */
+export const VIEWPORT_1280x960: ViewportProfile = createViewportProfile('1280x960', 1280, 960)
+/** PD2 `SGD2FreeResolution.json` 16:9 800p: bar at (312, 200), panels at y = 100. */
+export const VIEWPORT_1424x800: ViewportProfile = createViewportProfile('1424x800', 1424, 800)
+
+/** D2 1.13c's own resolutions; reachable only through an explicit `'113c'` (parity tooling and tests). */
 export const NATIVE_113C_VIEWPORT_RESOLUTIONS: readonly ViewportResolution[] = [
   '640x480',
   '800x600',
 ] as const
 
+/** Every registered resolution larger than 1.13c's 800x600 (PD2 SGD2FreeRes order). */
 export const EXTENDED_VIEWPORT_RESOLUTIONS: readonly ViewportResolution[] = [
   '1024x768',
   '1068x600',
   '1280x720',
+  '1280x960',
+  '1424x800',
 ] as const
 
 export const VIEWPORT_PROFILES: Readonly<Record<ViewportResolution, ViewportProfile>> = {
@@ -96,6 +105,42 @@ export const VIEWPORT_PROFILES: Readonly<Record<ViewportResolution, ViewportProf
   '1024x768': VIEWPORT_1024x768,
   '1068x600': VIEWPORT_1068x600,
   '1280x720': VIEWPORT_1280x720,
+  '1280x960': VIEWPORT_1280x960,
+  '1424x800': VIEWPORT_1424x800,
+}
+
+/**
+ * The in-game resolutions of PD2's `SGD2FreeResolution.json`, in file order (all registered above).
+ * The PD2 default (`Ingame Resolution Mode` 3) is `1068x600`; see `src/common/ui/pd2-sgd2freeres.ts`.
+ */
+export const PD2_SGD2FREERES_VIEWPORT_RESOLUTIONS: readonly ViewportResolution[] = [
+  '640x480',
+  '800x600',
+  '1024x768',
+  '1068x600',
+  '1280x720',
+  '1280x960',
+  '1424x800',
+] as const
+
+/**
+ * What the toolbar offers (and plugins revert to) by default: PD2's SGD2FreeRes list. There is no
+ * PD2/1.13c switch; a plugin may still narrow the list with `setAllowedViewports`.
+ */
+export const DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS: readonly ViewportResolution[] = PD2_SGD2FREERES_VIEWPORT_RESOLUTIONS
+
+/** The client's default viewport profile: SGD2FreeRes' PD2 default (`1068x600`). */
+export const DEFAULT_VIEWPORT_PROFILE: ViewportProfile = VIEWPORT_PROFILES[DEFAULT_VIEWPORT_RESOLUTION]
+
+/**
+ * The fallback when the current viewport is not in `allowed`: the PD2 default when allowed, else
+ * 1.13c's `800x600` when allowed, else the first allowed entry. Throws on an empty list.
+ */
+export function pickFallbackViewport(allowed: readonly ViewportResolution[]): ViewportResolution {
+  if (allowed.length === 0) throw new Error('pickFallbackViewport: no allowed viewport resolutions')
+  if (allowed.includes(DEFAULT_VIEWPORT_RESOLUTION)) return DEFAULT_VIEWPORT_RESOLUTION
+  if (allowed.includes('800x600')) return '800x600'
+  return allowed[0]!
 }
 
 /**
@@ -141,36 +186,44 @@ export function computePanelCameraShift(
 
 /**
  * Resolve a profile from a resolution id (case/whitespace-insensitive) or from a profile-like object
- * (matched by exact width × height). Anything unrecognized resolves to `VIEWPORT_800x600`; use
- * {@link getViewportProfileBySize} where an unknown size must fail instead.
+ * (matched by exact width × height). A missing id (or an unregistered size) resolves to the client
+ * default {@link DEFAULT_VIEWPORT_PROFILE} (PD2 SGD2FreeRes, `1068x600`); an unknown id string throws.
+ * Use {@link getViewportProfileBySize} where an unknown size must fail instead.
  */
 export function getViewportProfile(
   input: ViewportResolution | ViewportProfile | string | null | undefined,
 ): ViewportProfile {
   if (input === null || input === undefined) {
-    return VIEWPORT_800x600
+    return DEFAULT_VIEWPORT_PROFILE
   }
   if (typeof input === 'object' && 'width' in input && 'height' in input) {
-    return findViewportProfileBySize(input.width, input.height) ?? VIEWPORT_800x600
+    return findViewportProfileBySize(input.width, input.height) ?? DEFAULT_VIEWPORT_PROFILE
   }
   if (typeof input === 'string') {
     const clean = input.trim().toLowerCase()
     if (clean === '') {
-      return VIEWPORT_800x600
+      return DEFAULT_VIEWPORT_PROFILE
     }
     if (Object.hasOwn(VIEWPORT_PROFILES, clean)) {
       return VIEWPORT_PROFILES[clean as ViewportResolution]
     }
     throw new Error(`Unknown viewport profile "${input}"`)
   }
-  return VIEWPORT_800x600
+  return DEFAULT_VIEWPORT_PROFILE
 }
 
 /**
- * Strict numeric lookup of a registered profile by its logical size. `height` may be omitted because
- * registered widths are unique. Throws for any size that is not a registered profile.
+ * Strict numeric lookup of a registered profile by its logical size. `height` may be omitted only for a
+ * width registered once (`1280` is both `1280x720` and PD2's `1280x960`, so it needs a height).
+ * Throws for any size that is not a registered profile, or is ambiguous.
  */
 export function getViewportProfileBySize(width: number, height?: number): ViewportProfile {
+  if (height === undefined) {
+    const matches = Object.values(VIEWPORT_PROFILES).filter((p) => p.width === width)
+    if (matches.length > 1) {
+      throw new Error(`Viewport width ${width} is ambiguous (${matches.map((p) => p.id).join(', ')}); pass a height`)
+    }
+  }
   const profile = findViewportProfileBySize(width, height)
   if (!profile) {
     const known = Object.keys(VIEWPORT_PROFILES).join(', ')

@@ -328,8 +328,8 @@ describe('Diablo II v1.13c Dynamic Cursor System (Issue #148 & #491)', () => {
       expect(bounds).toEqual(info.bounds)
     })
 
-    it('renders hand cursor frames onto Canvas 2D context', () => {
-      const cursor = new CursorController(CURSOR_METADATA, 0)
+    it('renders 1.13c DC6 hand cursor frames onto Canvas 2D context (explicit 113c)', () => {
+      const cursor = new CursorController(CURSOR_METADATA, 0, '113c')
       cursor.handleMouseMove(100, 200, 0)
 
       const mockCtx = {

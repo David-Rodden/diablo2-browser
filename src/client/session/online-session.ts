@@ -17,12 +17,16 @@
 
 import {
   BncsCreateAccountError, D2gsS2cFramer, InMemoryPacketTap, createD2OnlineFlow, createWsBridgeResolver,
-  type CharCreateSpec, type CharSummary, type ClientCommand, type CloseReason, type D2CapRecord,
+  type CharCreateSpec, type CharSummary, type ChatEvent, type ClientCommand, type CloseReason, type D2CapRecord,
   type D2OnlineConfig, type D2OnlineFlow, type D2OnlineSessionKind, type D2OnlineSessionLost,
   type D2OnlineSessionLostCause, type D2OnlineState, type EndpointResolver, type GameCreateSpec,
   type GameInfoDetail, type GameListEntry, type GameServerAdapter, type ItemDataTables,
   type RealmSummary, type ServerEvent, type UnitType,
 } from '../../netproto/index.ts'
+import {
+  formatBncsChatEvent113c,
+  type BncsChatEventFormatInput,
+} from '../../common/chat/chat-113c.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
 import { Environment } from '../../common/world/environment.ts'
 import { requireTbl } from '../i18n/lang.ts'
@@ -294,6 +298,7 @@ export class OnlineSession {
   private unsubGameClose: (() => void) | null = null
   private unsubFlowState: (() => void) | null = null
   private unsubFlowLost: (() => void) | null = null
+  private unsubFlowChat: (() => void) | null = null
   private unsubSettings: (() => void) | null = null
   /** The loss that ended the current session lifecycle (reset by `login` / `attachGameServer`). */
   private sessionLostValue: SessionLostError | null = null
@@ -321,6 +326,7 @@ export class OnlineSession {
   private viewRetentionSignature: string | null = null
 
   private readonly outboundCommandsLog: ClientCommand[] = []
+  private readonly outboundBncsChatLog: string[] = []
   /** 1.13c D2Client 0x6fac43e0 SendPacket identical-packet dedupe (50/200 ms, one shared slot). */
   private readonly c2sDedupe = new C2sIdenticalPacketDedupe113c()
   private readonly stateListeners = new Set<(snapshot: OnlineSessionLobbySnapshot) => void>()
@@ -459,6 +465,24 @@ export class OnlineSession {
       }
     }
 
+    if (!this.hudManager.worldPanels.getEscapeMenuSettings) {
+      this.hudManager.configureEscapeMenuSettings({
+        getSettings: () => {
+          const s = this.settingsStore.get()
+          return {
+            masterVolume: s.masterVolume,
+            audioMuted: s.audioMuted,
+            viewport: s.viewport,
+            worldRenderFps: s.worldRenderFps,
+            keyBindings: s.keyBindings,
+          }
+        },
+        onUpdateSettings: (patch) => {
+          this.settingsStore.set(patch)
+        },
+      })
+    }
+
     this.commandMapper = new CommandMapper({
       world: this.world,
       camera: this.camera,
@@ -595,6 +619,10 @@ export class OnlineSession {
 
   getSentCommands(): readonly ClientCommand[] {
     return this.outboundCommandsLog
+  }
+
+  getSentBncsChatCommands(): readonly string[] {
+    return this.outboundBncsChatLog
   }
 
   getSnapshot(): OnlineSessionLobbySnapshot {
@@ -814,7 +842,16 @@ export class OnlineSession {
   async sendLobbyChat(text: string): Promise<void> {
     const trimmed = text.trim()
     if (!trimmed) return
+    if (trimmed.startsWith('/')) {
+      this.outboundBncsChatLog.push(trimmed)
+      if (this.outboundBncsChatLog.length > 512) {
+        this.outboundBncsChatLog.shift()
+      }
+    }
     await this.lobbyOp('sendLobbyChat', 'bncs', (flow) => flow.sendChat(trimmed))
+    // Slash commands (e.g. /ann, /w, /whoami, /friends) are BNCS server commands (`SID_CHATCOMMAND 0x0E`)
+    // whose responses arrive asynchronously via `SID_CHATEVENT (0x0F)`; do not echo them as local room speech.
+    if (trimmed.startsWith('/')) return
     const prevChatCount = this.world.chatLog.length
     this.world.apply({
       type: 'Chat',
@@ -830,6 +867,83 @@ export class OnlineSession {
         }
       }
     }
+  }
+
+  /**
+   * Send a Battle.net slash command (`SID_CHATCOMMAND 0x0E`, e.g. `/ann <msg>`, `/whoami`, `/f l`, `/time`)
+   * from in-game chat (`D2Client.dll` `0x6fb20c27` -> `D2Multi.dll` `0x6f9db090` -> `Bnclient.dll` `0x6ff2c400`).
+   */
+  sendBncsChatCommand(command: string): boolean {
+    const trimmed = command.trim()
+    if (!trimmed) return false
+    this.outboundBncsChatLog.push(trimmed)
+    if (this.outboundBncsChatLog.length > 512) {
+      this.outboundBncsChatLog.shift()
+    }
+    if (this.flow) {
+      void this.flow.sendChat(trimmed).catch(() => {
+        // Ignore transient BNCS send errors when in-game
+      })
+    }
+    return true
+  }
+
+  /**
+   * Ingest an incoming Battle.net `SID_CHATEVENT (0x0F)` packet (e.g. `EID_BROADCAST 0x06` from `/ann`,
+   * `EID_INFO 0x12`, `EID_ERROR 0x13`, `EID_WHISPER 0x04`, `EID_WHISPERSENT 0x0A`, `EID_TALK 0x05`)
+   * into `ClientWorld`, `HudModel`, and `onChatMessage` listeners (`D2Client.dll` `0x6fb1fce0`).
+   */
+  handleBncsChatEvent(ev: BncsChatEventFormatInput, nowMs = performance.now()): ChatLogEntry | null {
+    const formatted = formatBncsChatEvent113c(ev, this.world.lang)
+    if (!formatted) return null
+    const prevCount = this.world.chatLog.length
+    if (formatted.kind === 'whisper') {
+      this.world.apply(
+        {
+          type: 'Chat',
+          kind: 'whisper',
+          eventType: formatted.eventType,
+          from: formatted.sender,
+          text: formatted.rawMessage,
+          color: formatted.color,
+        },
+        nowMs,
+      )
+    } else if (formatted.kind === 'say') {
+      this.world.apply(
+        {
+          type: 'Chat',
+          kind: 'say',
+          from: formatted.sender,
+          text: formatted.rawMessage,
+          color: formatted.color,
+        },
+        nowMs,
+      )
+    } else {
+      this.world.apply(
+        {
+          type: 'Chat',
+          kind: 'system',
+          eventType: formatted.eventType,
+          ...(formatted.sender ? { from: formatted.sender } : {}),
+          text: formatted.text,
+          color: formatted.color,
+        },
+        nowMs,
+      )
+    }
+    this.hudModel.syncFromWorld()
+    if (this.world.chatLog.length > prevCount) {
+      const entry = this.world.chatLog[this.world.chatLog.length - 1]
+      if (entry) {
+        for (const listener of this.chatListeners) {
+          listener(entry)
+        }
+        return entry
+      }
+    }
+    return null
   }
 
   async listGames(
@@ -1368,6 +1482,7 @@ export class OnlineSession {
   private bindFlowListeners(flow: D2OnlineFlow): void {
     this.unsubFlowState?.()
     this.unsubFlowLost?.()
+    this.unsubFlowChat?.()
 
     this.unsubFlowState = flow.onState(() => {
       if (this.flow !== flow) return
@@ -1378,6 +1493,15 @@ export class OnlineSession {
       if (this.flow !== flow) return
       this.handleSessionLost({ session: ev.session, cause: ev.cause, technical: ev.message })
     })
+
+    if (typeof flow.onChatEvent === 'function') {
+      this.unsubFlowChat = flow.onChatEvent((ev: ChatEvent) => {
+        if (this.flow !== flow) return
+        this.handleBncsChatEvent(ev)
+      })
+    } else {
+      this.unsubFlowChat = null
+    }
   }
 
   /** The game ended for a client-side reason (bad server data, send failure, GameLogout). */
@@ -1407,6 +1531,8 @@ export class OnlineSession {
     this.unsubFlowState = null
     this.unsubFlowLost?.()
     this.unsubFlowLost = null
+    this.unsubFlowChat?.()
+    this.unsubFlowChat = null
     if (this.flow) {
       const current = this.flow
       this.flow = null

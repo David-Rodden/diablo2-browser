@@ -671,13 +671,17 @@ export const PRECACHE_URLS: readonly string[] = Object.freeze(['/sound/packs/sfx
 
 const HEX_HASH_RE = /^[0-9a-f]{16,64}$/i
 
-const CACHEABLE_PREFIXES = [
+export const CACHEABLE_PREFIXES = [
   'packs/',
   'act-packs/',
   'missiles/',
+  'missiles-pd2/',
   'overlays/',
+  'overlays-pd2/',
   'skills/',
   'ui/',
+  'ui-pd2/',
+  'items-pd2/',
   'assets/',
   'entities/',
   'characters/',
@@ -686,6 +690,26 @@ const CACHEABLE_PREFIXES = [
   'weather/',
   'tiles/',
   'sound/',
+  'cursor-pd2/',
+] as const
+
+/**
+ * Explicit allowlist for top-level `public/<dir>/` roots that are intentionally
+ * excluded from `asset-manifest.json` and Service Worker `cache-first` caching.
+ * Any new `public/<dir>/` directory must be added to either {@link CACHEABLE_PREFIXES}
+ * or {@link INTENTIONALLY_UNCACHED_PUBLIC_DIRS}; otherwise `validatePublicAssetRoots`
+ * fails fast so new asset roots can never be silently omitted (#1314).
+ */
+export const INTENTIONALLY_UNCACHED_PUBLIC_DIRS: readonly string[] = [] as const
+
+/**
+ * Explicit allowlist for top-level files directly under `public/` that are
+ * intentionally excluded from `asset-manifest.json` and Service Worker `cache-first`.
+ */
+export const INTENTIONALLY_UNCACHED_PUBLIC_FILES: readonly string[] = [
+  'asset-manifest.json',
+  'musicbox.html',
+  'sw.js',
 ] as const
 
 const CACHEABLE_EXT_RE =

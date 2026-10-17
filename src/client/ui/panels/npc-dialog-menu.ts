@@ -653,13 +653,16 @@ export function drawStoneBoxFrame(
   width: number,
   height: number,
   boxPiecesImg: HTMLImageElement | null | undefined,
+  fillBg = true,
 ): void {
   if (!boxPiecesImg) {
     throw new Error('Missing required baked UI asset boxpieces.png (DATA\\GLOBAL\\UI\\menu\\boxpieces.dc6)')
   }
 
-  ctx.fillStyle = STONE_BOX_BG_FILL
-  ctx.fillRect(left + 1, top, Math.max(0, width - 2), Math.max(0, height - 2))
+  if (fillBg) {
+    ctx.fillStyle = STONE_BOX_BG_FILL
+    ctx.fillRect(left + 1, top, Math.max(0, width - 2), Math.max(0, height - 2))
+  }
 
   const right = left + width
   const bottom = top + height

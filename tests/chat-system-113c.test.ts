@@ -11,6 +11,7 @@ import {
   OVERHEAD_BUBBLE_TTL_MS,
   computeChatOverlayLayout113c,
   computeOverheadBubbleLayout113c,
+  formatBncsChatEvent113c,
   formatChatPacket0x26,
   formatEventPacket0x5A,
   parseInGameChatInput,
@@ -23,8 +24,10 @@ import { setLang } from '../src/client/i18n/lang.ts'
 import { CommandMapper, ViewportCamera } from '../src/client/input/command-mapper.ts'
 import { OnlineSession } from '../src/client/session/online-session.ts'
 import { HudModel } from '../src/client/ui-model/hud-model.ts'
+import { parseColoredText } from '../src/client/ui/font.ts'
 import { HudManager } from '../src/client/ui/hud-manager.ts'
 import { ClientWorld } from '../src/client/world/client-world.ts'
+import { defaultTextCodec, resolveTextCodec } from '../src/netproto/core/text-codec.ts'
 
 function createMockCanvasContext() {
   const fillRectCalls: Array<{ x: number; y: number; w: number; h: number; fillStyle: string }> = []
@@ -461,6 +464,169 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       expect(session.navigateChatInputHistory('up')).toBe('/players 8')
       expect(session.navigateChatInputHistory('down')).toBe('/clear')
     })
+
+    it('routes /ann (/announce) and BNCS slash commands to BNCS SID_CHATCOMMAND (0x0E) without leaking to D2GS 0x15 (Issue #38)', () => {
+      // 1. parseInGameChatInput parses /ann <msg> and /announce <msg> as bncs_command
+      expect(parseInGameChatInput('/ann Server maintenance in 5m')).toEqual({
+        kind: 'bncs_command',
+        command: '/ann Server maintenance in 5m',
+        isAnnounce: true,
+      })
+      expect(parseInGameChatInput('/announce Season reset tonight')).toEqual({
+        kind: 'bncs_command',
+        command: '/announce Season reset tonight',
+        isAnnounce: true,
+      })
+      // Empty /ann or /announce returns local_error announceUsage
+      expect(parseInGameChatInput('/ann')).toEqual({
+        kind: 'local_error',
+        errorKey: 'announceUsage',
+      })
+      expect(parseInGameChatInput('/announce   ')).toEqual({
+        kind: 'local_error',
+        errorKey: 'announceUsage',
+      })
+      // Other Battle.net slash commands (/whoami, /f l, /time) also route to bncs_command
+      expect(parseInGameChatInput('/whoami')).toEqual({
+        kind: 'bncs_command',
+        command: '/whoami',
+      })
+
+      // 2. OnlineSession.submitChatInput sends /ann via BNCS (sendBncsChatCommand) and NEVER via D2GS 0x15
+      const { canvas } = createMockCanvas(800, 600)
+      const hudManager = new HudManager(canvas)
+      const session = new OnlineSession({ hudManager })
+
+      const d2gsBefore = session.getSentCommands().length
+      expect(session.submitChatInput('/ann Global boss event starting!', 1_000)).toBe(true)
+      expect(session.getSentCommands()).toHaveLength(d2gsBefore)
+      expect(session.getSentBncsChatCommands()).toEqual(['/ann Global boss event starting!'])
+
+      // Empty /ann prints red usage message locally without sending any packet
+      expect(session.submitChatInput('/ann', 2_000)).toBe(false)
+      expect(
+        session.world.activeChatOverlayEntries.some(
+          (e) => e.text === 'Usage: /ann <message>' && e.color === 1,
+        ),
+      ).toBe(true)
+    })
+
+    it('renders incoming BNCS SID_CHATEVENT (0x0F) broadcast/info/whisper and D2GS 0x26 chatType=0x04 system announcements in gold (Issue #38)', () => {
+      const { canvas } = createMockCanvas(800, 600)
+      const hudManager = new HudManager(canvas)
+      const session = new OnlineSession({ hudManager })
+      const receivedChatEntries: any[] = []
+      session.onChatMessage((entry) => receivedChatEntries.push(entry))
+
+      // 1. BNCS SID_CHATEVENT EID_BROADCAST (0x06) from /ann
+      const broadcastEntry = session.handleBncsChatEvent(
+        {
+          kind: 'broadcast',
+          eventId: 0x06,
+          username: 'Admin',
+          text: 'Announcement from Admin: Server restart in 10 minutes',
+        },
+        3_000,
+      )
+      expect(broadcastEntry).not.toBeNull()
+      expect(broadcastEntry?.kind).toBe('system')
+      expect(broadcastEntry?.color).toBe(4)
+      expect(broadcastEntry?.text).toBe('Announcement from Admin: Server restart in 10 minutes')
+      expect(session.world.activeChatOverlayEntries.at(-1)?.text).toBe(
+        'Announcement from Admin: Server restart in 10 minutes',
+      )
+      expect(session.world.activeChatOverlayEntries.at(-1)?.color).toBe(4)
+      expect(receivedChatEntries.at(-1)?.text).toBe(
+        'Announcement from Admin: Server restart in 10 minutes',
+      )
+
+      // 2. BNCS SID_CHATEVENT EID_BROADCAST (0x06) with raw text and sender username
+      const rawBroadcast = formatBncsChatEvent113c({
+        kind: 'broadcast',
+        eventId: 0x06,
+        username: 'Moderator',
+        text: 'Uber Diablo event active',
+      })
+      expect(rawBroadcast?.text).toBe('<Moderator> Uber Diablo event active')
+      expect(rawBroadcast?.color).toBe(4)
+
+      // 3. D2GS S2C 0x26 chatType=0x04 system message (0x6fb2f7ea)
+      const sys0x26 = formatChatPacket0x26(
+        { chatType: 0x04, senderName: 'Server', message: 'World Event Active' },
+        'ENG',
+      )
+      expect(sys0x26.kind).toBe('system')
+      expect(sys0x26.text).toBe('World Event Active')
+      expect(sys0x26.color).toBe(4)
+
+      // 4. BNCS SID_CHATEVENT /f m or /w with Storm.dll CP1252-widened GBK mojibake ("ÄãÊÇ£¿" -> "你是？")
+      const unmojibakeWhisper = formatBncsChatEvent113c(
+        {
+          kind: 'whisper',
+          eventId: 0x04,
+          username: 'Tenyi-Sctp*ace4499',
+          text: 'ÄãÊÇ£¿',
+        },
+        'CHI',
+      )
+      expect(unmojibakeWhisper?.rawMessage).toBe('你是？')
+      expect(unmojibakeWhisper?.text).toContain('Tenyi-Sctp*ace4499')
+      expect(unmojibakeWhisper?.text).toContain('你是？')
+    })
+
+    it('sets D2GS C2S 0x15/0x14 pkt[2] locale=0x09 (LNG_CHI) for Chinese GBK chat and encodes BNCS SID_CHATCOMMAND (0x0E) as UTF-8', async () => {
+      const {
+        encodeC2sChat,
+        encodeC2sOverheadChat,
+        D2GS_CHAT_LOCALE_CHI,
+        D2GS_CHAT_LOCALE_ENG,
+        encodeBncsChatCommand,
+        decodeBncsS2cPacket,
+        BncsOpcode,
+        BncsFramer,
+        encodeBncsFrame,
+        ByteWriter,
+      } = await import('../src/netproto/index.ts')
+
+      // Pure ASCII keeps pkt[2] = 0x00 (LNG_ENG)
+      const asciiSay = encodeC2sChat('hello world')
+      expect(asciiSay[2]).toBe(D2GS_CHAT_LOCALE_ENG)
+      const asciiOverhead = encodeC2sOverheadChat('hello')
+      expect(asciiOverhead[2]).toBe(D2GS_CHAT_LOCALE_ENG)
+
+      // Non-ASCII GBK sets pkt[2] = 0x09 (LNG_CHI, D2Client.dll 0x6fb20b34 -> 0x6fb2b4f0 MultiByteToWideChar)
+      const zhSay = encodeC2sChat('你是？')
+      expect(zhSay[2]).toBe(D2GS_CHAT_LOCALE_CHI)
+      expect( Array.from(zhSay.slice(3, 9)) ).toEqual([0xc4, 0xe3, 0xca, 0xc7, 0xa3, 0xbf])
+      const zhOverhead = encodeC2sOverheadChat('你是？')
+      expect(zhOverhead[2]).toBe(D2GS_CHAT_LOCALE_CHI)
+
+      // BNCS SID_CHATCOMMAND (0x0E) encodes Chinese text as UTF-8 for D2Lang!Unicode::utf8ToUnicode (0x6fc08cd0)
+      const bncsCmd = encodeBncsChatCommand('/f m 你是？')
+      // Header (4B) + "/f m " (5B) + "你是？" in UTF-8 (9B: E4 BD A0 E6 98 AF EF BC 9F) + NUL (1B) = 19B
+      expect(bncsCmd.byteLength).toBe(19)
+      expect(Array.from(bncsCmd.slice(9, 18))).toEqual([
+        0xe4, 0xbd, 0xa0, 0xe6, 0x98, 0xaf, 0xef, 0xbc, 0x9f,
+      ])
+
+      // Verify round-trip decoding of SID_CHATEVENT (0x0F) carrying Storm.dll double-encoded UTF-8 bytes
+      const w = new ByteWriter(64)
+      w.u32(0x05) // EID_TALK
+      w.u32(0)
+      w.u32(20)
+      w.u32(0)
+      w.u32(0)
+      w.u32(0)
+      w.cstring('Tenyi-Sctp*ace4499')
+      w.bytes(new Uint8Array([0xc3, 0x84, 0xc3, 0xa3, 0xc3, 0x8a, 0xc3, 0x87, 0xc2, 0xa3, 0xc2, 0xbf, 0x00]))
+      const rawPkt = new BncsFramer().push(encodeBncsFrame(BncsOpcode.SID_CHATEVENT, w.toUint8Array()))[0]!
+      const decoded = decodeBncsS2cPacket(rawPkt)
+      expect(decoded.type).toBe('SID_CHATEVENT')
+      if (decoded.type === 'SID_CHATEVENT') {
+        expect(decoded.event.username).toBe('Tenyi-Sctp*ace4499')
+        expect(decoded.event.text).toBe('你是？')
+      }
+    })
   })
 
   describe('R4. S2C 0x26 & S2C 0x5A Multilingual TBL Formatting & Squelch/Ignore Filtering', () => {
@@ -617,6 +783,105 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       hud.onClearMessages?.()
       expect(world.messageLogEntries).toHaveLength(0)
       expect(world.activeChatOverlayEntries).toHaveLength(0)
+    })
+
+    it('renders 0x6fb2c770 MSG_OpenMessageLog without duplicate fillText draws and closes on Close (0x1030) click', () => {
+      const { canvas, fillTextCalls, fillRectCalls } = createMockCanvas(800, 600)
+      const hud = new HudManager(canvas)
+      hud.setLang('ENG')
+      const world = new ClientWorld()
+      const hudModel = new HudModel({ world, hudManager: hud })
+
+      world.apply(
+        {
+          type: 'Chat',
+          kind: 'say',
+          from: 'Deckard',
+          text: 'ÿc4Stay awhile and listen',
+          color: 4,
+        },
+        1000,
+      )
+
+      hud.toggleLeftPanel('msg')
+      hudModel.syncFromWorld()
+      fillTextCalls.length = 0
+      fillRectCalls.length = 0
+      hud.render(1000)
+
+      // Outer stone box background fill at [5+1, 30, 800-20-2, 600-130-2]
+      expect(
+        fillRectCalls.some(
+          (r) => r.x === 6 && r.y === 30 && r.w === 778 && r.h === 468,
+        ),
+      ).toBe(true)
+
+      // Message text is drawn exactly ONCE (no duplicate fillTextSafe shadow) and strips ÿc4
+      const msgDraws = fillTextCalls.filter((c) => c.text.includes('Stay awhile and listen'))
+      expect(msgDraws).toHaveLength(1)
+      expect(msgDraws[0]!.text).not.toContain('ÿc')
+
+      // Clicking "Close" (0x1030) at (400, 600 - 114 = 486) closes the Message Log
+      hud.handleClick(395, 486, 0)
+      expect(hud.leftPanel).toBe('none')
+    })
+
+    it('renders 0x6fb20140 CHAT_DrawChatInputBox & 0x6fb1ef20 CHAT_DrawCursor with 500ms/100ms blinking _ cursor and no Say: prefix', () => {
+      const { canvas, fillTextCalls, fillRectCalls } = createMockCanvas(800, 600)
+      const hud = new HudManager(canvas)
+      hud.setLang('ENG')
+      hud.chatInputOpen = true
+      hud.chatInputText = 'Hello PD2'
+
+      fillTextCalls.length = 0
+      fillRectCalls.length = 0
+      // nowMs = 100 -> 100 % 600 < 500 -> '_' cursor visible
+      hud.render(100)
+
+      // 0x6fb2025b: D2GFX_DrawFilledRect(127, 600 - 103 = 497, 800 - 128 = 672, 600 - 56 = 544) -> w = 545, h = 47
+      expect(
+        fillRectCalls.some(
+          (r) => r.x === 127 && r.y === 497 && r.w === 545 && r.h === 47,
+        ),
+      ).toBe(true)
+
+      // Typed text drawn at (131, 600 - 88 = 512) without any "Say:" prefix
+      expect(fillTextCalls.some((c) => c.text === 'Hello PD2' && c.x === 131 && c.y === 512)).toBe(
+        true,
+      )
+      expect(fillTextCalls.some((c) => c.text.includes('Say:'))).toBe(false)
+      expect(fillTextCalls.some((c) => c.text === '_' && c.y === 512 && c.x > 131)).toBe(true)
+
+      // nowMs = 550 -> 550 % 600 >= 500 -> '_' cursor hidden during 100ms blink-off window
+      fillTextCalls.length = 0
+      hud.render(550)
+      expect(fillTextCalls.some((c) => c.text === '_')).toBe(false)
+    })
+
+    it('decodes raw 0xFF 0x63 (ÿcX) color escapes in D2GS/BNCS packets without U+FFFD replacement corruption', () => {
+      // Raw bytes for: ÿc8[D2GS] - No commercial purpose is allowed!ÿc4
+      const rawAsciiWithColor = new Uint8Array([
+        0xff, 0x63, 0x38,
+        ...new TextEncoder().encode('[D2GS] - No commercial purpose is allowed!'),
+        0xff, 0x63, 0x34,
+      ])
+      const decodedGbk = defaultTextCodec.decode(rawAsciiWithColor)
+      const decodedUtf8 = resolveTextCodec('utf-8').decode(rawAsciiWithColor)
+      expect(decodedGbk).toBe('\xffc8[D2GS] - No commercial purpose is allowed!\xffc4')
+      expect(decodedUtf8).toBe('\xffc8[D2GS] - No commercial purpose is allowed!\xffc4')
+      expect(decodedGbk).not.toContain('\ufffd')
+
+      const spans = parseColoredText(decodedGbk, 'red')
+      expect(spans).toEqual([
+        { text: '[D2GS] - No commercial purpose is allowed!', color: 'orange' },
+      ])
+
+      // Also verify Chinese GBK + raw 0xFF color codes round-trip cleanly
+      const gbkColored = defaultTextCodec.encode('\xffc9欢迎来到暗黑破坏神2\xffc1')
+      expect(gbkColored[0]).toBe(0xff)
+      expect(gbkColored[1]).toBe(0x63)
+      expect(gbkColored[2]).toBe(0x39)
+      expect(defaultTextCodec.decode(gbkColored)).toBe('\xffc9欢迎来到暗黑破坏神2\xffc1')
     })
   })
 })

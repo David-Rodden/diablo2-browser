@@ -17,8 +17,14 @@ import { ISO_GROUND_ASPECT_RATIO } from '../../common/data/blizzard-table.js'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import {
   D2COMMON_10160_PathUpdateDirection,
+  D2COMMON_10212_PATH_SetMoveFlags,
+  D2Common_10153,
   PATH_ComputePathChargedBolt_6FDB6AA0,
+   getMonsterModeBaseAnimSpeed256,
+  getMonsterModeBaseFrameCount113c,
+  resolveMonsterSkillAnimMode113c,
 } from '../../common/path/index.ts'
+import { doesNpcModeMove113c } from '../motion/npc-motion.ts'
 import {
   SEED_InitLowSeed,
   SEED_RollLimitedRandomNumber,
@@ -5199,13 +5205,26 @@ export function applySkillCastToUnitImpl(
     }
   }
   const animModes = getSkillAnimModes(skillId)
-  const mode = unit.unitType === 'monster' ? animModes.monsterMode : animModes.playerMode
+  let mode =
+    unit.unitType === 'monster'
+      ? resolveMonsterSkillAnimMode113c(unit.classId, skillId, animModes.monsterMode)
+      : animModes.playerMode
   unit.mode = mode
   if (unit.unitType === 'monster') {
+    unit.lastSkillId = skillId
     const npcUnit = this.npcMotion.getUnit(unit.id)
     if (npcUnit) {
-      this.npcMotion.changeAnimMode0x6FADA6C0(npcUnit, mode)
+      D2COMMON_10212_PATH_SetMoveFlags(npcUnit, 0)
+      if (!doesNpcModeMove113c(unit.classId, mode) && npcUnit.pDynamicPath) {
+        D2Common_10153(npcUnit.pDynamicPath)
+        unit.moving = false
+        unit.moveMode = 'stop'
+      }
+      this.npcMotion.changeAnimMode0x6FADA6C0(npcUnit, mode, true)
       npcUnit.dwFlags = (npcUnit.dwFlags & ~0x01) >>> 0
+      mode = npcUnit.dwAnimMode
+      unit.mode = mode
+      unit.animStepSpeed256 = npcUnit.wAnimSpeed
     }
     if (spawnVisuals) {
       this.emitMonsterModeSound(unit, mode, skillId)
@@ -5237,17 +5256,26 @@ export function applySkillCastToUnitImpl(
       }
     }
   } else if (unit.unitType === 'monster') {
-    if (unit.totalFrames && unit.totalFrames > 0) {
-      frames = unit.totalFrames
-    }
-    if (unit.animStepSpeed256 && unit.animStepSpeed256 > 0) {
+    frames =
+      unit.totalFrames && unit.totalFrames > 0
+        ? unit.totalFrames
+        : getMonsterModeBaseFrameCount113c(unit.classId, mode, skillId)
+    baseSpeed =
+      unit.animSpeed && unit.animSpeed > 0
+        ? Math.round((unit.animSpeed / 16) * 256)
+        : getMonsterModeBaseAnimSpeed256(unit.classId, mode)
+    const npcUnit = this.npcMotion.getUnit(unit.id)
+    if (npcUnit && npcUnit.wAnimSpeed > 0) {
+      stepSpeed256 = npcUnit.wAnimSpeed
+    } else if (unit.animStepSpeed256 && unit.animStepSpeed256 > 0) {
       stepSpeed256 = unit.animStepSpeed256
-      baseSpeed = stepSpeed256
-    } else if (unit.animSpeed && unit.animSpeed > 0) {
-      baseSpeed = Math.round((unit.animSpeed / 16) * 256)
+    } else {
       stepSpeed256 = baseSpeed
     }
-    durationMs = computeOneShotDurationMs(frames, stepSpeed256)
+    durationMs =
+      mode === 14
+        ? computeSequenceDurationMs(frames, stepSpeed256)
+        : computeOneShotDurationMs(frames, stepSpeed256)
   }
 
   if (skillId === 193) {
@@ -5387,6 +5415,7 @@ export function applySkillCastToUnitImpl(
     ;(castState as any).andarialSprayTargetY = targetY
   }
   unit.castState = castState
+  unit.animStartedAtMs = now
   unit.modeStartedAtMs = now
   unit.modeUntilMs = now + durationMs
   unit.modeDurationMs = durationMs

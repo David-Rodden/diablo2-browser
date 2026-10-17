@@ -100,16 +100,20 @@ export function encodeC2sSelectSkill(hand: Hand, skillId: number, itemId = 0xfff
   return validateC2sPacket(w.toUint8Array())
 }
 
-/** 0x3A AddStatPoint (3B): u8 0x3A | u8 statId | u8 countMinusOne */
+/**
+ * 0x3A AddStatPoint (3B, D2Game.dll 0x6fcec960):
+ * u8 0x3A | u8 statId (0..15) | u8 countMinusOne (0..99, i.e. 1..100 points)
+ */
 export function encodeC2sAddStatPoint(statId: number, count = 1): Uint8Array {
   const w = new ByteWriter(3)
   w.u8(0x3a)
-  w.u8(statId & 0xff)
-  w.u8(Math.max(0, count - 1) & 0xff)
+  w.u8(statId & 0x0f)
+  const clampedCountMinusOne = Math.min(99, Math.max(0, Math.trunc(count) - 1))
+  w.u8(clampedCountMinusOne & 0xff)
   return validateC2sPacket(w.toUint8Array())
 }
 
-/** 0x3B AddSkillPoint (3B): u8 0x3B | u16 skillId */
+/** 0x3B AddSkillPoint (3B, D2Game.dll 0x6fceca50): u8 0x3B | u16 skillId */
 export function encodeC2sAddSkillPoint(skillId: number): Uint8Array {
   const w = new ByteWriter(3)
   w.u8(0x3b)
@@ -118,9 +122,9 @@ export function encodeC2sAddSkillPoint(skillId: number): Uint8Array {
 }
 
 /**
- * 0x51 AssignSkillHotkey (9B, D2Client.dll 0x6faed2b6):
- * u8 0x51 | u8 skillLo | u8 ((skillHi & 0x7f) | (hand === 'left' ? 0x80 : 0)) | u16 slot | u32 itemId
- * When unbinding (`skillId === 0xffff`), bytes 1..2 are `0xff, 0xff` (`bLeft === 0`).
+ * 0x51 AssignSkillHotkey (9B, D2Client.dll 0x6faed260 / D2Game.dll 0x6fcebc70):
+ * u8 0x51 | u8 skillLo | u8 ((skillHi & 0x7f) | (hand === 'left' ? 0x80 : 0)) | u16 slot (0..15) | u32 itemId
+ * When unbinding (`skillId === 0xffff`, `0x7fff`, or `< 0`), bytes 1..2 are `0xff, 0xff` (`0x6faed276`).
  */
 export function encodeC2sAssignSkillHotkey(
   slot: number,
@@ -130,14 +134,14 @@ export function encodeC2sAssignSkillHotkey(
 ): Uint8Array {
   const w = new ByteWriter(9)
   w.u8(0x51)
-  const rawSkill = skillId & 0xffff
+  const isUnbind = skillId < 0 || (skillId & 0xffff) === 0xffff || (skillId & 0xffff) === 0x7fff
+  const rawSkill = isUnbind ? 0xffff : skillId & 0xffff
   w.u8(rawSkill & 0xff)
-  const hi =
-    rawSkill === 0xffff
-      ? 0xff
-      : ((rawSkill >>> 8) & 0x7f) | (hand === 'left' ? 0x80 : 0x00)
+  const hi = isUnbind
+    ? 0xff
+    : ((rawSkill >>> 8) & 0x7f) | (hand === 'left' ? 0x80 : 0x00)
   w.u8(hi & 0xff)
-  w.u16LE(slot & 0xffff)
+  w.u16LE(slot & 0x0f)
   w.u32LE(itemId >>> 0)
   return validateC2sPacket(w.toUint8Array())
 }

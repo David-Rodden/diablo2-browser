@@ -489,30 +489,62 @@ export function handleActiveLeftPanelClickImpl(
     }
   }
 
+  if (panel === 'msg') {
+    // D2Client.dll 0x6fb2c770 (`MSG_OpenMessageLog`) + 0x6fb53560 (`D2Dialog_OnLButtonDown`) + 0x6fb17c10 (`D2TextSlid_OnLButtonDown`):
+    // Full-viewport stone dialog at `[5, 30, viewportWidth - 20, viewportHeight - 130]`.
+    const frameX = 5
+    const frameY = 30
+    const frameW = Math.max(320, this.viewportWidth - 20)
+    const frameH = Math.max(240, this.viewportHeight - 130)
+    if (mx < frameX || mx > frameX + frameW || my < frameY || my > frameY + frameH) {
+      return false
+    }
+    const boxX = 5
+    const boxY = 65
+    const boxW = frameW
+    const boxH = Math.max(160, this.viewportHeight - 200)
+    const sliderX = boxX + boxW - 18
+    const sliderTopY = boxY + 3
+    const trackSegments = Math.max(1, Math.floor((boxH - 16) / 12) - 1)
+    const downArrowY = sliderTopY + 12 + trackSegments * 12
+
+    // Scrollbar Up / Down / Track click (`0x6fb17c10`)
+    if (mx >= sliderX - 6 && mx <= sliderX + 18 && my >= boxY && my <= boxY + boxH) {
+      if (my <= sliderTopY + 14) {
+        this.scrollMessageLog(1)
+      } else if (my >= downArrowY - 2) {
+        this.scrollMessageLog(-1)
+      } else if (my < boxY + boxH / 2) {
+        this.scrollMessageLog(5)
+      } else {
+        this.scrollMessageLog(-5)
+      }
+      return true
+    }
+
+    // Bottom selectable Line 1: "Close" (`0x1030`) at baseline `y = viewportHeight - 114` (`0x6fb2c801..0x6fb2c82c`)
+    const closeBaselineY = frameY + 21 + (this.viewportHeight - 165)
+    if (
+      mx >= frameX + 15 &&
+      mx <= frameX + frameW - 15 &&
+      my >= closeBaselineY - 18 &&
+      my <= frameY + frameH
+    ) {
+      this._activePanel = 'none'
+      this.messageLogCloseHovered = false
+      ;(callbacks?.onClose ?? this.onCloseActivePanel ?? this.onCloseNpcPanel)?.()
+      return true
+    }
+
+    return true
+  }
+
   const ox = this.viewportWidth <= 640 ? 0 : 80
   const oy = this.viewportWidth <= 640 ? 0 : 60
   const pw = 320
   const ph = 432
   if (mx < ox || mx > ox + pw || my < oy || my > oy + ph) {
     return false
-  }
-
-  // D2Client.dll 0x6fb2c770 (`MSG_OpenMessageLog`): Clear Messages (`0x0FC3`) button at bottom-left `[ox+24..ox+164, oy+380..oy+416]`
-  if (panel === 'msg') {
-    if (mx >= ox + 24 && mx <= ox + 164 && my >= oy + 380 && my <= oy + 416) {
-      this.messageLogEntries = []
-      this.messageLogScrollOffset = 0
-      ;(callbacks?.onClearMessages ?? this.onClearMessages)?.()
-      return true
-    }
-    if (mx >= ox + pw - 32 && mx <= ox + pw - 12 && my >= oy + 40 && my <= oy + 368) {
-      if (my < oy + 204) {
-        this.scrollMessageLog(3)
-      } else {
-        this.scrollMessageLog(-3)
-      }
-      return true
-    }
   }
 
   if (panel === 'party') {
@@ -525,7 +557,7 @@ export function handleActiveLeftPanelClickImpl(
     panel !== 'trade' &&
     my >= oy + 380 &&
     my <= oy + 422 &&
-    (mx >= ox + 260 || (panel !== 'msg' && mx <= ox + 58))
+    (mx >= ox + 260 || mx <= ox + 58)
   if (isTopRightX || isBottomX) {
     // 1.13c semantics: press latches the depressed cell, the close fires on mouse-up
     // landing back on the same top-right / bottom X region.
@@ -534,7 +566,7 @@ export function handleActiveLeftPanelClickImpl(
       'dock',
       (x, y) =>
         (x >= ox + pw - 28 && x <= ox + pw - 8 && y >= oy + 8 && y <= oy + 28) ||
-        (y >= oy + 380 && y <= oy + 422 && (x >= ox + 260 || (panel !== 'msg' && x <= ox + 58))),
+        (y >= oy + 380 && y <= oy + 422 && (x >= ox + 260 || x <= ox + 58)),
       () => {
         if (this.questRewardItem && callbacks?.inventory) {
           if (!callbacks.inventory.cursorItem) {
@@ -548,10 +580,6 @@ export function handleActiveLeftPanelClickImpl(
         ;(callbacks?.onClose ?? this.onCloseActivePanel ?? this.onCloseNpcPanel)?.()
       },
     )
-  }
-
-  if (panel === 'msg') {
-    return true
   }
   if (panel === 'trade') {
     const fireTradeBtn = callbacks?.onClickButton ?? this.onTradeButtonClick ?? this.onClickButton

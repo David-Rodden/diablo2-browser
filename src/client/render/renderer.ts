@@ -45,6 +45,9 @@ import {
   decodePl2,
   pl2ExpectedSize,
 } from '../../common/formats/pl2.ts'
+import { PD2_D2GL_CONFIG, type D2GlGraphicsConfig } from '../../common/ui/pd2-d2gl.ts'
+import type { UiDataMode } from '../../common/ui/pd2-sgd2freeres.ts'
+import { D2GlPostProcessPass, supportsWebGl2PostProcessFbo } from './d2gl-postfx.ts'
 
 /** Camera state for one frame. */
 export interface Camera {
@@ -198,6 +201,18 @@ export interface RendererOptions {
    * avoiding early-Z / tile-kill penalties on mobile GPUs.
    */
   readonly alphaDiscard?: boolean
+  /**
+   * Active data/presentation mode (`'pd2'` by default, `'113c'` for vanilla 1.13c presentation).
+   * In `'pd2'` mode, when WebGL2 framebuffer post-processing is supported (`createFramebuffer`),
+   * the scene renders to an offscreen FBO and resolves through the D2GL post-processing pipeline
+   * (`bicubic` / `catmull-rom` / `jinc2-sharper`, `LumaSharpen`, and 3D LUT).
+   */
+  readonly dataMode?: UiDataMode
+  /**
+   * Optional D2GL post-processing configuration override (`d2gl.json`), or `false` to disable.
+   * Defaults to `PD2_D2GL_CONFIG` in `'pd2'` mode and disabled in `'113c'` mode.
+   */
+  readonly postProcess?: Partial<D2GlGraphicsConfig> | boolean | null
 }
 
 /** Vertices per quad: the four corners, reused by the index buffer. */
@@ -461,6 +476,18 @@ export class SpriteRenderer {
   /** Current active blend mode. */
   private currentBlendMode: DrawBlendMode = 'normal'
 
+  /** Active data/presentation mode (`'pd2'` by default, `'113c'` for vanilla 1.13c). */
+  private dataMode: UiDataMode
+  /** Whether D2GL post-processing is enabled when `dataMode === 'pd2'`. */
+  private postProcessEnabled: boolean
+  /** Current D2GL post-processing parameters (`d2gl.json`). */
+  private postProcessConfig: D2GlGraphicsConfig
+  /** Lazily allocated D2GL WebGL2 post-processing pass. */
+  private postProcessPass: D2GlPostProcessPass | null = null
+  /** Optional logical scene viewport dimensions (e.g. `1068x600`) when output canvas is scaled to HiDPI/CSS size. */
+  private sceneViewportWidth = 0
+  private sceneViewportHeight = 0
+
   /** All textures allocated and managed by this renderer. */
   private readonly allocatedTextures = new Set<WebGLTexture>()
   /** Whether this renderer has been disposed. */
@@ -479,6 +506,17 @@ export class SpriteRenderer {
     if (gl === null) throw new RendererError('WebGL2 is not available in this browser')
     this.gl = gl
     this.alphaDiscard = options.alphaDiscard ?? true
+    this.dataMode = options.dataMode ?? 'pd2'
+    if (options.postProcess === false || options.postProcess === null) {
+      this.postProcessEnabled = false
+      this.postProcessConfig = { ...PD2_D2GL_CONFIG.graphics }
+    } else if (options.postProcess === true || options.postProcess === undefined) {
+      this.postProcessEnabled = this.dataMode === 'pd2'
+      this.postProcessConfig = { ...PD2_D2GL_CONFIG.graphics }
+    } else {
+      this.postProcessEnabled = true
+      this.postProcessConfig = { ...PD2_D2GL_CONFIG.graphics, ...options.postProcess }
+    }
 
     const reportedUnits = typeof gl.getParameter === 'function'
       ? (gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) as number | null)
@@ -615,6 +653,7 @@ export class SpriteRenderer {
       this.atlasStorageAllocated = false
       this.paletteStorageAllocated = false
       this.paletteRowsAllocated = 0
+      this.postProcessPass?.resetContextState()
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer)
       gl.bufferData(gl.ARRAY_BUFFER, this.vertices.byteLength, gl.DYNAMIC_DRAW)
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer)
@@ -624,6 +663,90 @@ export class SpriteRenderer {
     }
     canvas.addEventListener?.('webglcontextlost', this.handleContextLost)
     canvas.addEventListener?.('webglcontextrestored', this.handleContextRestored)
+  }
+
+  /** Active data/presentation mode (`'pd2'` by default, `'113c'` for vanilla 1.13c). */
+  getDataMode(): UiDataMode {
+    return this.dataMode
+  }
+
+  /** Switch data/presentation mode (`'pd2'` enables D2GL post-processing by default; `'113c'` disables it). */
+  setDataMode(mode: UiDataMode): void {
+    this.dataMode = mode
+  }
+
+  /** Whether D2GL post-processing is enabled when `dataMode === 'pd2'`. */
+  isPostProcessEnabled(): boolean {
+    return this.postProcessEnabled
+  }
+
+  /** Enable or disable the D2GL post-processing pass. */
+  setPostProcessEnabled(enabled: boolean): void {
+    this.postProcessEnabled = enabled
+  }
+
+  /** Current D2GL post-processing configuration (`d2gl.json`). */
+  getPostProcessConfig(): D2GlGraphicsConfig {
+    return this.postProcessPass ? this.postProcessPass.getConfig() : { ...this.postProcessConfig }
+  }
+
+  /** Update D2GL post-processing parameters (`shader_preset`, `sharpen`, `lut`, etc.). */
+  setPostProcessConfig(config: Partial<D2GlGraphicsConfig>): void {
+    this.postProcessConfig = { ...this.postProcessConfig, ...config }
+    this.postProcessPass?.setConfig(config)
+  }
+
+  /** Upload the `1024x448` `lut.png` texture for the D2GL 3D LUT pass (`lut = 1..14`). */
+  uploadLutTexture(
+    source:
+      | ImageBitmap
+      | HTMLImageElement
+      | HTMLCanvasElement
+      | { readonly width: number; readonly height: number; readonly pixels: Uint8Array | Uint8ClampedArray },
+  ): void {
+    if (this.disposed) throw new RendererError('SpriteRenderer has already been disposed')
+    this.ensurePostProcessPass().uploadLutTexture(source)
+  }
+
+  /** Number of D2GL post-processing fullscreen resolve passes executed so far. */
+  get postProcessPassCount(): number {
+    return this.postProcessPass?.passCount ?? 0
+  }
+
+  /**
+   * Configure the logical game viewport dimensions (e.g. `1068x600`) rendered into the offscreen scene FBO
+   * before `D2GlPostProcessPass` upscales to the physical output canvas (`gl.drawingBufferWidth x Height`).
+   * Pass `(0, 0)` to match the output canvas 1:1.
+   */
+  setSceneViewportSize(width: number, height: number): void {
+    this.sceneViewportWidth = width > 0 ? Math.round(width) : 0
+    this.sceneViewportHeight = height > 0 ? Math.round(height) : 0
+  }
+
+  /** Effective logical scene viewport dimensions (`u_viewport` and scene FBO size). */
+  getSceneViewportSize(): { readonly width: number; readonly height: number } {
+    const outW = this.gl.drawingBufferWidth ?? this.canvas.width ?? 800
+    const outH = this.gl.drawingBufferHeight ?? this.canvas.height ?? 600
+    if (this.sceneViewportWidth > 0 && this.sceneViewportHeight > 0 && this.isPostProcessActive()) {
+      return { width: this.sceneViewportWidth, height: this.sceneViewportHeight }
+    }
+    return { width: outW, height: outH }
+  }
+
+  private isPostProcessActive(): boolean {
+    return (
+      !this.disposed &&
+      this.dataMode === 'pd2' &&
+      this.postProcessEnabled &&
+      supportsWebGl2PostProcessFbo(this.gl)
+    )
+  }
+
+  private ensurePostProcessPass(): D2GlPostProcessPass {
+    if (this.postProcessPass === null) {
+      this.postProcessPass = new D2GlPostProcessPass(this.gl, this.postProcessConfig)
+    }
+    return this.postProcessPass
   }
 
   /** Whether this renderer and its GPU resources have been disposed. */
@@ -1313,7 +1436,7 @@ export class SpriteRenderer {
     } else {
       this.camera = camera
     }
-    const clear = Array.isArray(clearOrY) ? clearOrY : clearFallback
+    const clear: readonly [number, number, number] = typeof clearOrY === 'number' ? clearFallback : clearOrY
     this.quadCount = 0
     this.batchTextureCount = 0
     this.frameDrawCalls = 0
@@ -1324,16 +1447,49 @@ export class SpriteRenderer {
       this.currentBlendMode = 'normal'
       applyGlBlendFunc(gl, gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA, gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA)
     }
-    const vpWidth = gl.drawingBufferWidth ?? this.canvas.width ?? 800
-    const vpHeight = gl.drawingBufferHeight ?? this.canvas.height ?? 600
-    gl.viewport(0, 0, vpWidth, vpHeight)
-    gl.clearColor(clear[0], clear[1], clear[2], 1)
-    gl.clear(gl.COLOR_BUFFER_BIT)
+    const outWidth = gl.drawingBufferWidth ?? this.canvas.width ?? 800
+    const outHeight = gl.drawingBufferHeight ?? this.canvas.height ?? 600
+    if (this.isPostProcessActive()) {
+      const sceneVp = this.getSceneViewportSize()
+      this.ensurePostProcessPass().beginScenePass(sceneVp.width, sceneVp.height, clear)
+    } else {
+      if (this.postProcessPass !== null && this.postProcessPass.isSceneFboBound) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      }
+      gl.viewport(0, 0, outWidth, outHeight)
+      gl.clearColor(clear[0], clear[1], clear[2], 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+    }
   }
 
-  /** Finish a frame by flushing all pending quads. */
+  /** Finish a frame by flushing all pending quads and resolving any active D2GL post-processing pass. */
   end(): void {
     this.flush()
+    if (this.disposed) return
+    if (this.postProcessPass !== null && this.postProcessPass.isSceneFboBound) {
+      const gl = this.gl
+      const outWidth = gl.drawingBufferWidth ?? this.canvas.width ?? 800
+      const outHeight = gl.drawingBufferHeight ?? this.canvas.height ?? 600
+      this.postProcessPass.endScenePass(outWidth, outHeight)
+      const one = gl.ONE ?? 1
+      const zero = gl.ZERO ?? 0
+      const group = getGpuBlendGroup(this.currentBlendMode)
+      switch (group) {
+        case 1:
+          applyGlBlendFunc(gl, gl.SRC_ALPHA, one, zero, one)
+          break
+        case 2:
+          applyGlBlendFunc(gl, gl.DST_COLOR, zero, zero, one)
+          break
+        case 3:
+          applyGlBlendFunc(gl, zero, gl.SRC_COLOR, zero, one)
+          break
+        case 0:
+        default:
+          applyGlBlendFunc(gl, one, gl.ONE_MINUS_SRC_ALPHA, one, gl.ONE_MINUS_SRC_ALPHA)
+          break
+      }
+    }
   }
 
   /**
@@ -1682,8 +1838,9 @@ export class SpriteRenderer {
       this.cachedCameraY = camY
     }
 
-    const vpWidth = gl.drawingBufferWidth ?? this.canvas.width ?? 800
-    const vpHeight = gl.drawingBufferHeight ?? this.canvas.height ?? 600
+    const sceneVp = this.getSceneViewportSize()
+    const vpWidth = sceneVp.width
+    const vpHeight = sceneVp.height
     if (vpWidth !== this.cachedViewportWidth || vpHeight !== this.cachedViewportHeight) {
       gl.uniform2f(this.uniformViewport, vpWidth, vpHeight)
       this.cachedViewportWidth = vpWidth
@@ -1782,6 +1939,8 @@ export class SpriteRenderer {
     this.canvas.removeEventListener?.('webglcontextrestored', this.handleContextRestored)
 
     const gl = this.gl
+    this.postProcessPass?.dispose()
+    this.postProcessPass = null
     const contextLost = typeof gl.isContextLost === 'function' ? gl.isContextLost() : false
     if (!contextLost) {
       for (const texture of this.allocatedTextures) {

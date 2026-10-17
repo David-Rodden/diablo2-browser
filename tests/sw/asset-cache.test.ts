@@ -1,15 +1,22 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  CACHEABLE_PREFIXES,
+  INTENTIONALLY_UNCACHED_PUBLIC_DIRS,
+  INTENTIONALLY_UNCACHED_PUBLIC_FILES,
   diffAssetManifests,
   isCacheableAssetPath,
   normalizeAssetManifestPath,
   validateAssetManifest,
   type AssetManifest,
 } from '../../src/common/pack-contract/index.ts'
-import { generateAssetManifest } from '../../src/baker/io/asset-manifest.ts'
+import {
+  generateAssetManifest,
+  hashFileSha256Prefix,
+  validatePublicAssetRoots,
+} from '../../src/baker/io/asset-manifest.ts'
 import {
   ASSET_CACHE_NAME,
   type CacheLike,
@@ -65,8 +72,12 @@ class MockCache implements CacheLike {
 
 class MockCacheStorage implements CacheStorageLike {
   readonly buckets = new Map<string, MockCache>()
+  throwOnOpen = false
 
   async open(cacheName: string): Promise<MockCache> {
+    if (this.throwOnOpen) {
+      throw new Error('SecurityError: The operation is insecure.')
+    }
     let bucket = this.buckets.get(cacheName)
     if (!bucket) {
       bucket = new MockCache()
@@ -130,6 +141,10 @@ describe('Client Asset Cache & Per-File Hash Invalidation (Service Worker + Cach
     expect(isCacheableAssetPath('/skills/icon_36.png')).toBe(true)
     expect(isCacheableAssetPath('/ui/manifest.json')).toBe(true)
     expect(isCacheableAssetPath('/diablo2/assets/play-Zb_JWO5r.js')).toBe(true)
+    expect(isCacheableAssetPath('cursor-pd2/manifest.json')).toBe(true)
+    expect(isCacheableAssetPath('cursor-pd2/hand.png')).toBe(true)
+    expect(isCacheableAssetPath('cursor-pd2/other.png')).toBe(true)
+    expect(isCacheableAssetPath('/diablo2/cursor-pd2/hand.png')).toBe(true)
 
     // Excluded paths
     expect(isCacheableAssetPath('/diablo2/data/d2char.mpq')).toBe(false)
@@ -510,5 +525,97 @@ describe('Client Asset Cache & Per-File Hash Invalidation (Service Worker + Cach
     expect(stats.cacheMisses).toBe(1)
     expect(stats.cacheHits).toBe(1)
     expect(stats.cachedAssetCount).toBe(1)
+  })
+
+  it('falls through to network without throwing when CacheStorage encounters an internal error (#1312)', async () => {
+    const origin = 'https://d2.laiseek.xyz'
+    const caches = new MockCacheStorage()
+    caches.throwOnOpen = true
+    let networkCalled = false
+
+    const controller = new AssetCacheServiceWorkerController({
+      caches,
+      origin,
+      fetchFn: async (req) => {
+        networkCalled = true
+        return new Response(JSON.stringify({ ok: true, fallback: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      },
+    })
+
+    const res = await controller.handleFetch(new Request(`${origin}/weather/weather.json`))
+    expect(res.status).toBe(200)
+    expect(networkCalled).toBe(true)
+    const json = (await res.json()) as { ok: boolean; fallback: boolean }
+    expect(json).toEqual({ ok: true, fallback: true })
+    const stats = await controller.getStats().catch(() => null)
+    // Cache controller recorded network passthrough
+    expect(controller['networkPassThroughs']).toBe(1)
+  })
+
+  it('includes cursor-pd2/ assets in public/asset-manifest.json and enforces the public/ top-level root anti-leak gate (#1314)', async () => {
+    expect(CACHEABLE_PREFIXES).toContain('cursor-pd2/')
+    expect(INTENTIONALLY_UNCACHED_PUBLIC_DIRS).toEqual([])
+    expect(INTENTIONALLY_UNCACHED_PUBLIC_FILES).toContain('asset-manifest.json')
+    expect(INTENTIONALLY_UNCACHED_PUBLIC_FILES).toContain('musicbox.html')
+
+    const publicDir = join(process.cwd(), 'public')
+    const roots = validatePublicAssetRoots(publicDir)
+    expect(roots.cacheableDirs).toContain('cursor-pd2/')
+
+    const manifestPath = join(publicDir, 'asset-manifest.json')
+    expect(existsSync(manifestPath)).toBe(true)
+    const manifest = validateAssetManifest(JSON.parse(readFileSync(manifestPath, 'utf8')))
+
+    for (const rel of ['cursor-pd2/hand.png', 'cursor-pd2/manifest.json', 'cursor-pd2/other.png']) {
+      const abs = join(publicDir, rel)
+      expect(existsSync(abs)).toBe(true)
+      expect(isCacheableAssetPath(rel)).toBe(true)
+      expect(manifest.files[rel]).toBe(hashFileSha256Prefix(abs).hash)
+    }
+
+    // Verify SW caches cursor-pd2/ assets via cache-first after manifest sync
+    const origin = 'https://www.laiseek.xyz'
+    const caches = new MockCacheStorage()
+    let fetchCount = 0
+    const controller = new AssetCacheServiceWorkerController({
+      caches,
+      origin,
+      fetchFn: async () => {
+        fetchCount += 1
+        return new Response('{"schema":1}', { status: 200 })
+      },
+    })
+    await controller.syncManifest({
+      schema: 1,
+      version: manifest.version,
+      generatedAt: manifest.generatedAt,
+      totalFiles: 1,
+      totalBytes: 3614,
+      files: {
+        'cursor-pd2/manifest.json': manifest.files['cursor-pd2/manifest.json']!,
+      },
+    })
+    await controller.handleFetch(new Request(`${origin}/cursor-pd2/manifest.json`))
+    await controller.handleFetch(new Request(`${origin}/cursor-pd2/manifest.json`))
+    expect(fetchCount).toBe(1)
+
+    // Verify validatePublicAssetRoots fails fast when an unregistered top-level directory is added to public/
+    const tmpRoot = mkdtempSync(join(tmpdir(), 'd2web-root-gate-'))
+    try {
+      const tmpPub = join(tmpRoot, 'public')
+      mkdirSync(join(tmpPub, 'unlisted-new-root'), { recursive: true })
+      writeFileSync(join(tmpPub, 'unlisted-new-root', 'sprite.png'), new Uint8Array([1, 2, 3]))
+      expect(() => validatePublicAssetRoots(tmpPub)).toThrow(
+        /Unregistered public\/ top-level directory "unlisted-new-root\/"/,
+      )
+      expect(() => generateAssetManifest({ rootDir: tmpRoot, outputFile: null })).toThrow(
+        /Unregistered public\/ top-level directory "unlisted-new-root\/"/,
+      )
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true })
+    }
   })
 })

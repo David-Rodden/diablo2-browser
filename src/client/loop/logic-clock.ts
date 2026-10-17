@@ -118,7 +118,23 @@ export class LogicClock {
   getLastTickMs(): number {
     return this.lastTickMs
   }
+
+  /**
+   * Fraction of the current 40 ms tick that has elapsed at `nowMs`, in `[0, 1)`: the sub-tick
+   * interpolation factor PD2's `d2fps.dll` motion smoothing renders with. Call after `advance(nowMs)`.
+   * 1.13c itself never interpolates (see `motion-smoothing.ts`).
+   */
+  getTickAlpha(nowMs: number): number {
+    requireFiniteMs('nowMs', nowMs)
+    const elapsed = nowMs - this.lastTickMs
+    if (elapsed <= 0) return 0
+    if (elapsed >= D2_LOGIC_TICK_MS) return MAX_TICK_ALPHA
+    return elapsed / D2_LOGIC_TICK_MS
+  }
 }
+
+/** Largest alpha `getTickAlpha` returns (a tick that is due but not yet run still draws the old state). */
+export const MAX_TICK_ALPHA = (D2_LOGIC_TICK_MS - 1) / D2_LOGIC_TICK_MS
 
 /**
  * Run every tick owed at `nowMs`, each with the real `nowMs` (see the file comment).

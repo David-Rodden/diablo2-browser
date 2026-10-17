@@ -88,12 +88,29 @@ describe('netproto core primitives (ByteReader/ByteWriter, BitReader/BitWriter, 
     expect(() => br.readBit()).toThrow(ProtocolError)
   })
 
-  it('encodes and decodes UTF-8 and GBK strings cleanly', () => {
+  it('encodes and decodes UTF-8, raw GBK, and Storm.dll CP1252->UTF-8 double-encoded GBK strings cleanly', () => {
     const ascii = defaultTextCodec.encode('Act1Town', 'utf-8')
     expect(defaultTextCodec.decode(ascii, 'utf-8')).toBe('Act1Town')
     // GBK bytes for "暗黑" (0xB0 0xB5 0xBA 0xDA)
     const gbkBytes = new Uint8Array([0xb0, 0xb5, 0xba, 0xda])
     expect(defaultTextCodec.decode(gbkBytes, 'gbk')).toBe('暗黑')
+
+    // 1. Storm.dll!#912 (0x6fc25b50 CP1252 table 0x6fc356b0) + #902 (0x6fc257a0 UTF-8) double-encoded GBK:
+    // "你是？" -> GBK [0xC4, 0xE3, 0xCA, 0xC7, 0xA3, 0xBF] -> CP1252 "ÄãÊÇ£¿" -> UTF-8:
+    const stormDoubleEncoded = new Uint8Array([
+      0xc3, 0x84, 0xc3, 0xa3, 0xc3, 0x8a, 0xc3, 0x87, 0xc2, 0xa3, 0xc2, 0xbf,
+    ])
+    expect(defaultTextCodec.decode(stormDoubleEncoded, 'gbk')).toBe('你是？')
+
+    // 2. Even-length 3-byte UTF-8 Chinese ("你是" = 6 bytes E4 BD A0 E6 98 AF) must not misdecode as GBK "浣犲旾"
+    const evenUtf8Chinese = new Uint8Array([0xe4, 0xbd, 0xa0, 0xe6, 0x98, 0xaf])
+    expect(defaultTextCodec.decode(evenUtf8Chinese, 'gbk')).toBe('你是')
+
+    // 3. 2-byte raw GBK characters whose bytes [0xC2..0xDF, 0x80..0xBF] also form valid 2-byte UTF-8
+    for (const phrase of ['没', '么', '什么', '谢谢', '一', '小牛', '你是？']) {
+      const encodedGbk = defaultTextCodec.encode(phrase, 'gbk')
+      expect(defaultTextCodec.decode(encodedGbk, 'gbk')).toBe(phrase)
+    }
   })
 })
 

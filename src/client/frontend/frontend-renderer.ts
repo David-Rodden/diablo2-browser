@@ -1786,20 +1786,24 @@ export class FrontendRenderer {
   private sendChatMessage(): void {
     const trimmed = this.state.chatInput.trim()
     if (!trimmed) return
-    const selectedChar = this.state.roster[this.state.selectedSlotIndex]
-    const speaker = selectedChar?.name ?? this.state.accountName
-    const formatted = `<${speaker}> ${trimmed}`
-    this.state.chatMessages.push(formatted)
-    this.state.chatEntries.push({
-      text: formatted,
-      color: 0,
-      kind: 'chat',
-    })
-    if (this.state.chatMessages.length > 14) {
-      this.state.chatMessages.shift()
-    }
-    if (this.state.chatEntries.length > 14) {
-      this.state.chatEntries.shift()
+    // Battle.net slash commands (e.g. /ann, /w, /whoami) are sent as BNCS SID_CHATCOMMAND (0x0E)
+    // and their responses arrive via SID_CHATEVENT (0x0F); only non-slash messages echo locally.
+    if (!trimmed.startsWith('/')) {
+      const selectedChar = this.state.roster[this.state.selectedSlotIndex]
+      const speaker = selectedChar?.name ?? this.state.accountName
+      const formatted = `<${speaker}> ${trimmed}`
+      this.state.chatMessages.push(formatted)
+      this.state.chatEntries.push({
+        text: formatted,
+        color: 0,
+        kind: 'chat',
+      })
+      if (this.state.chatMessages.length > 14) {
+        this.state.chatMessages.shift()
+      }
+      if (this.state.chatEntries.length > 14) {
+        this.state.chatEntries.shift()
+      }
     }
     this.state.chatInput = ''
     if (this.asyncHandlers?.onSendChat) {
@@ -2390,7 +2394,13 @@ export class FrontendRenderer {
         4,
       )
       this.drawCheckbox(318, 540, this.state.isHardcore, s.hardcore, this.state.isHardcore ? 1 : 4)
-      this.drawCheckbox(318, 560, this.state.isLadder, s.ladderCharacter, 4)
+      this.drawCheckbox(
+        318,
+        560,
+        this.state.isLadder,
+        this.requireStr(10927, 'ladderCharacter'),
+        4,
+      )
     }
 
     if (this.state.charCreateError || this.state.lastError) {
@@ -2546,31 +2556,45 @@ export class FrontendRenderer {
       const avatarFrame = this.state.avatarAnims[char.heroToken]?.frameIndex ?? 0
       this.drawCharacterAvatar(char, avatarFrame, slotX + 36, slotY + 82)
 
-      // Right side metadata: Name (gold or red if Hardcore), localized Level & Class (#707), Expansion Character, dynamic Expiration (#698)
+      // Right side metadata per D2Launch.dll (0x6fa4b040..0x6fa4b302):
+      // Name (gold=4 or red=1 if Hardcore), localized Level & Class (#707),
+      // EXPANSION CHARACTER (#22731, green=2), LADDER CHARACTER (#10927, gold=4), dynamic Expiration (#698)
       const textX = slotX + 78
-      this.drawBitmapText(char.name, textX, slotY + 8, {
+      let lineY = slotY + 6
+      this.drawBitmapText(char.name, textX, lineY, {
         font: 'font16',
         color: char.isHardcore ? 1 : 4,
         align: 'left',
       })
+      lineY += 16
       const levelAndClassText = formatCharacterLevelAndClass(char.level, char.classId, sRecord)
-      this.drawBitmapText(levelAndClassText, textX, slotY + 26, {
+      this.drawBitmapText(levelAndClassText, textX, lineY, {
         font: 'font16',
         color: 0,
         align: 'left',
       })
+      lineY += 16
       if (char.isExpansion) {
-        this.drawBitmapText(this.requireStr(22731, 'expansionCharacter'), textX, slotY + 43, {
+        this.drawBitmapText(this.requireStr(22731, 'expansionCharacter'), textX, lineY, {
           font: 'font16',
-          color: 2, // Bright Green
+          color: 2, // Bright Green (0x6fa4b241: push 2)
           align: 'left',
         })
+        lineY += 16
+      }
+      if (char.isLadder) {
+        this.drawBitmapText(this.requireStr(10927, 'ladderCharacter'), textX, lineY, {
+          font: 'font16',
+          color: 4, // Gold (0x6fa4b269: push 4)
+          align: 'left',
+        })
+        lineY += 16
       }
 
       const expDays = char.expirationDays ?? computeCharacterExpirationDays(char.expiresAt)
       const expBanner = formatCharacterExpirationText(expDays, sRecord)
       if (expBanner !== null) {
-        this.drawBitmapText(expBanner.text, textX, slotY + 62, {
+        this.drawBitmapText(expBanner.text, textX, lineY, {
           font: 'fontformal10',
           color: expBanner.isUrgent ? 1 : 9,
           align: 'left',

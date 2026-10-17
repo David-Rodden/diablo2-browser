@@ -178,7 +178,7 @@ export function decode0x3EUpdateItemStats(pkt: Uint8Array, _tables?: unknown): S
     itemId = b.readBits(32)
   }
 
-  const _flag = b.readBit()
+  const flag = b.readBit()
   const stat = b.readBits(9)
 
   let value = 0
@@ -204,6 +204,7 @@ export function decode0x3EUpdateItemStats(pkt: Uint8Array, _tables?: unknown): S
     stat,
     value,
     param,
+    flag,
     unit: { unitType: 4, id: itemId },
   }
 }

@@ -58,6 +58,8 @@ import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { calculateManaCost } from '../../common/skills/skill-calc-engine.ts'
 import { PLAYER_SOUND_TABLE_0x6FBA7694 } from '../audio/d2gs-play-sound-113c.ts'
 import { SkillHotkeysHud } from '../ui/hotkeys.ts'
+import { handleEscapeSubmenuKeyDown } from '../ui/world-panels.ts'
+import { matchesKeyBinding } from '../settings/client-settings.ts'
 import { isTownLevel } from '../../common/world/scene-population.ts'
 import {
   clickGate113c,
@@ -2609,15 +2611,27 @@ export class CommandMapper {
     },
     nowMs = performance.now(),
   ): boolean {
-    if (event.key === 'Shift' || event.shiftKey) {
-      this.shiftHeld = true
+    if (this.hudManager.escapeMenuOpen && this.hudManager.escapeMenuScreen !== 'main') {
+      handleEscapeSubmenuKeyDown(this.hudManager.worldPanels, event)
+      this.hudManager.onPlayUiSound?.(2)
+      this.hudManager.syncPublishedState?.()
+      return true
     }
-    if (event.key === 'Alt' || event.altKey) {
+
+    const kb = this.hudManager.getActiveKeyBindings?.()
+    if (event.key === 'Shift' || event.shiftKey || matchesKeyBinding(kb, 'standStill', event)) {
+      this.shiftHeld = true
+      if (event.key === 'Shift' || matchesKeyBinding(kb, 'standStill', event)) {
+        if (event.key === 'Shift') return false
+        return true
+      }
+    }
+    if (event.key === 'Alt' || event.altKey || matchesKeyBinding(kb, 'showItems', event)) {
       this.altHeld = true
       this.hudManager.showGroundLabels = true
       this.hudManager.syncPublishedState()
       event.preventDefault?.()
-      if (event.key === 'Alt') return true
+      if (event.key === 'Alt' || matchesKeyBinding(kb, 'showItems', event)) return true
     }
 
     // D2Client.dll 0x6faeae40 / 0x6faeadf0: Control key momentary Run hold -> C2S 0x53
@@ -2747,7 +2761,7 @@ export class CommandMapper {
     }
 
     // Enter: confirm active NPC menu/speech (`0x6faed300` action 0x4C) before toggling chat input
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' || matchesKeyBinding(kb, 'say', event)) {
       if (
         (this.hudManager.worldPanels?.npcMenu || this.hudManager.worldPanels?.npcSpeech) &&
         typeof this.hudManager.worldPanels.handleNpcSpeechKeyDown === 'function' &&
@@ -2766,7 +2780,7 @@ export class CommandMapper {
     }
 
     // Space: close open panels (`0x6faee250`) and re-center automap (`0x6faed260` action 0x3D)
-    if (event.key === ' ' || event.code === 'Space') {
+    if (event.key === ' ' || event.code === 'Space' || matchesKeyBinding(kb, 'clearScreen', event)) {
       event.preventDefault?.()
       if (this.hudModel) {
         this.hudModel.closeActiveNpcPanel()
@@ -2782,7 +2796,7 @@ export class CommandMapper {
     }
 
     // Tab: toggle automap overlay
-    if (event.key === 'Tab') {
+    if (event.key === 'Tab' || matchesKeyBinding(kb, 'automap', event)) {
       event.preventDefault?.()
       if (this.hudModel) {
         this.hudModel.toggleAutomap()
@@ -2792,29 +2806,19 @@ export class CommandMapper {
       return true
     }
 
-    // Belt slots 1..4 -> BeltUse (0x26) (match key '1'..'4', '!'..'$', and code 'Digit1'..'Digit4' for Shift+1..4)
-    if (
-      event.key === '1' ||
-      event.key === '2' ||
-      event.key === '3' ||
-      event.key === '4' ||
-      event.key === '!' ||
-      event.key === '@' ||
-      event.key === '#' ||
-      event.key === '$' ||
-      event.code === 'Digit1' ||
-      event.code === 'Digit2' ||
-      event.code === 'Digit3' ||
-      event.code === 'Digit4'
-    ) {
-      const slotIndex =
-        event.code === 'Digit1' || event.key === '1' || event.key === '!'
-          ? 0
-          : event.code === 'Digit2' || event.key === '2' || event.key === '@'
-            ? 1
-            : event.code === 'Digit3' || event.key === '3' || event.key === '#'
-              ? 2
-              : 3
+    // Belt slots 1..4 -> BeltUse (0x26) (match key '1'..'4', '!'..'$', code 'Digit1'..'Digit4', and custom bindings)
+    const beltSlotMatch =
+      matchesKeyBinding(kb, 'useBeltSlot1', event) || event.key === '!'
+        ? 0
+        : matchesKeyBinding(kb, 'useBeltSlot2', event) || event.key === '@'
+          ? 1
+          : matchesKeyBinding(kb, 'useBeltSlot3', event) || event.key === '#'
+            ? 2
+            : matchesKeyBinding(kb, 'useBeltSlot4', event) || event.key === '$'
+              ? 3
+              : -1
+    if (beltSlotMatch >= 0) {
+      const slotIndex = beltSlotMatch
       const shiftToMerc =
         Boolean(event.shiftKey) ||
         event.key === '!' ||
@@ -2840,12 +2844,30 @@ export class CommandMapper {
     // *bound* from the skill popup (vanilla 1.13c = F1..F8 / SKILL9..SKILL16). Execution
     // follows the binding maps instead of the regex, so any key that ever gets bound is
     // executed — and Quick Cast (Issue #952) reinterprets it as cast-at-cursor.
-    const slotIdx = SkillHotkeysHud.slotIndexFromKey(keyUpper)
+    const customSkillKey = matchesKeyBinding(kb, 'selectSkill1', event)
+      ? 'F1'
+      : matchesKeyBinding(kb, 'selectSkill2', event)
+        ? 'F2'
+        : matchesKeyBinding(kb, 'selectSkill3', event)
+          ? 'F3'
+          : matchesKeyBinding(kb, 'selectSkill4', event)
+            ? 'F4'
+            : matchesKeyBinding(kb, 'selectSkill5', event)
+              ? 'F5'
+              : matchesKeyBinding(kb, 'selectSkill6', event)
+                ? 'F6'
+                : matchesKeyBinding(kb, 'selectSkill7', event)
+                  ? 'F7'
+                  : matchesKeyBinding(kb, 'selectSkill8', event)
+                    ? 'F8'
+                    : null
+    const effectiveSkillKey = customSkillKey ?? keyUpper
+    const slotIdx = SkillHotkeysHud.slotIndexFromKey(effectiveSkillKey)
     const worldSkillHotkeyBinding = slotIdx !== null ? this.world.skillHotkeys?.get(slotIdx) : undefined
-    const skillHotkeyBinding = this.skillHotkeys.get(keyUpper)
-    const hudSkillHotkeyBinding = this.hudManager.hotkeys.bindings.get(keyUpper)
+    const skillHotkeyBinding = this.skillHotkeys.get(effectiveSkillKey)
+    const hudSkillHotkeyBinding = this.hudManager.hotkeys.bindings.get(effectiveSkillKey)
     if (
-      SKILL_HOTKEY_KEY_RE_113C.test(keyUpper) ||
+      SKILL_HOTKEY_KEY_RE_113C.test(effectiveSkillKey) ||
       skillHotkeyBinding !== undefined ||
       hudSkillHotkeyBinding !== undefined ||
       worldSkillHotkeyBinding !== undefined
@@ -2853,13 +2875,13 @@ export class CommandMapper {
       event.preventDefault?.()
       // Native bind: skill popup open + hovered skill + bindable key (vanilla gate).
       if (
-        SKILL_HOTKEY_KEY_RE_113C.test(keyUpper) &&
+        SKILL_HOTKEY_KEY_RE_113C.test(effectiveSkillKey) &&
         this.hudManager.hotkeys.openPopup !== null &&
         this.hudManager.hotkeys.hoveredPopupSkill !== null
       ) {
         const hovered = this.hudManager.hotkeys.hoveredPopupSkill
-        this.hudManager.hotkeys.bindHotkey(keyUpper, hovered.side, hovered.skillId)
-        this.bindSkillHotkey(keyUpper, {
+        this.hudManager.hotkeys.bindHotkey(effectiveSkillKey, hovered.side, hovered.skillId)
+        this.bindSkillHotkey(effectiveSkillKey, {
           skillId: hovered.skillId,
           hand: hovered.side,
           itemId: 0xffffffff,
@@ -2911,6 +2933,99 @@ export class CommandMapper {
           }
         }
       }
+      return true
+    }
+
+    // Custom keybinding checks before default switch
+    if (matchesKeyBinding(kb, 'characterScreen', event)) {
+      this.hudManager.toggleLeftPanel('char')
+      return true
+    }
+    if (matchesKeyBinding(kb, 'inventoryScreen', event)) {
+      this.hudManager.toggleRightPanel('inv')
+      return true
+    }
+    if (matchesKeyBinding(kb, 'skillTree', event)) {
+      this.hudManager.toggleRightPanel('skill')
+      return true
+    }
+    if (matchesKeyBinding(kb, 'skillSpeedBar', event)) {
+      this.hudManager.hotkeys.openPopup = this.hudManager.hotkeys.openPopup ? null : 'right'
+      this.hudManager.syncPublishedState()
+      return true
+    }
+    if (matchesKeyBinding(kb, 'questLog', event)) {
+      this.hudManager.toggleLeftPanel('quest')
+      return true
+    }
+    if (matchesKeyBinding(kb, 'partyScreen', event)) {
+      if (this.hudModel) {
+        this.hudModel.togglePanel('party')
+      } else {
+        this.hudManager.toggleLeftPanel('party' as any)
+      }
+      return true
+    }
+    if (matchesKeyBinding(kb, 'messageLog', event)) {
+      if (this.hudModel) {
+        this.hudModel.togglePanel('msg')
+      } else {
+        this.hudManager.toggleLeftPanel('msg' as any)
+      }
+      return true
+    }
+    if (matchesKeyBinding(kb, 'hirelingScreen', event)) {
+      if (this.world.merc && !this.world.merc.isDead) {
+        if (this.hudModel) {
+          const prevLeft = this.hudManager.leftPanel as string
+          const res = this.hudModel.togglePanel('merc')
+          if (!res && prevLeft !== 'merc' && (this.hudManager.leftPanel as string) !== 'merc') {
+            this.hudManager.toggleLeftPanel('merc' as any)
+          }
+        } else {
+          this.hudManager.toggleLeftPanel('merc' as any)
+        }
+      }
+      return true
+    }
+    if (matchesKeyBinding(kb, 'helpScreen', event)) {
+      if (typeof (this.hudManager as any).toggleHelpOverlay === 'function') {
+        ;(this.hudManager as any).toggleHelpOverlay()
+      } else {
+        ;(this.hudManager as any).helpOverlayOpen = !Boolean((this.hudManager as any).helpOverlayOpen)
+        this.hudManager.syncPublishedState?.()
+      }
+      return true
+    }
+    if (matchesKeyBinding(kb, 'showBelt', event)) {
+      this.hudManager.belt?.togglePopup?.()
+      this.hudManager.syncPublishedState?.()
+      return true
+    }
+    if (matchesKeyBinding(kb, 'swapWeapons', event)) {
+      if (this.hudModel) {
+        this.hudModel.swapWeapons()
+      } else {
+        this.dispatchRateLimited({ type: 'SwapWeapons' }, nowMs)
+      }
+      return true
+    }
+    if (matchesKeyBinding(kb, 'toggleRunWalk', event)) {
+      if (this.hudModel) {
+        this.hudModel.toggleRunWalk()
+      } else {
+        this.hudManager.isRunning = !this.hudManager.isRunning
+        this.hudManager.syncPublishedState()
+      }
+      return true
+    }
+    if (matchesKeyBinding(kb, 'toggleMiniMap', event)) {
+      if (this.onToggleAutomapMode) {
+        this.onToggleAutomapMode()
+      } else if (this.automapView && typeof (this.automapView as any).toggleMiniMap === 'function') {
+        ;(this.automapView as any).toggleMiniMap()
+      }
+      this.hudManager.syncPublishedState?.()
       return true
     }
 
@@ -3080,7 +3195,8 @@ export class CommandMapper {
     },
     nowMs = performance.now(),
   ): void {
-    if (event.key === 'Shift' || event.shiftKey === false) {
+    const kb = this.hudManager.getActiveKeyBindings?.()
+    if (event.key === 'Shift' || event.shiftKey === false || matchesKeyBinding(kb, 'standStill', event)) {
       this.shiftHeld = false
     }
     if (
@@ -3097,7 +3213,7 @@ export class CommandMapper {
         this.sendCommand(cmd, nowMs)
       }
     }
-    if (event.key === 'Alt' || event.altKey === false) {
+    if (event.key === 'Alt' || event.altKey === false || matchesKeyBinding(kb, 'showItems', event)) {
       this.altHeld = false
       this.hudManager.showGroundLabels = false
       this.hudManager.syncPublishedState()

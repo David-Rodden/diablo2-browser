@@ -8,6 +8,8 @@
  * - Authentic D2 HUD Overlay (`HudManager` + `HudModel` + `CommandMapper` for every registered `ViewportProfile`)
  * - Hot-Swappable Plugin Host & Configuration Modal (`PluginHost` + `PluginMenu`)
  * - Graceful disconnect & error recovery banner (`#play-disconnect-banner`)
+ * - PD2 presentation runtime (the only default; no PD2/1.13c switch): SGD2FreeRes viewport (settings default
+ *   `1068x600`), `d2fps` motion smoothing (`SceneMotionSmoother`), D2GL HD cursor (`CursorController`)
  *
  * Strict import boundary: never imports `src/netproto/{bncs,mcp,d2gs,crypto}/**`.
  */
@@ -74,6 +76,8 @@ import {
 } from './input/browser-gesture-guard.ts'
 import { CommandMapper } from './input/command-mapper.ts'
 import { D2_LOGIC_TICK_MS, runOwedTicks } from './loop/logic-clock.ts'
+import { MotionSmoothing } from './loop/motion-smoothing.ts'
+import { SceneMotionSmoother } from './loop/scene-motion-smoothing.ts'
 import { MapService } from './map/map-service.ts'
 import type { D2WebPlugin, PluginQuickCastPort } from './plugin-host/api.ts'
 import { PluginHost } from './plugin-host/plugin-host.ts'
@@ -97,7 +101,7 @@ import {
   getViewportProfile,
   type ViewportProfile,
 } from './view/viewport-profile.ts'
-import { loadWeatherAssets } from './weather/weather-assets.ts'
+import { loadWeatherAssetsSafe } from './weather/weather-assets.ts'
 import {
   WeatherScenePass,
   weatherPanelFromSidePanels,
@@ -413,38 +417,50 @@ export async function startPlayApp(options?: {
     }
   }
 
-  // In-game chat input bar (toggled by Enter key in-game; 1.13c bottom-left Say: / 說： prompt)
+  // In-game chat input keyboard/IME sink (`D2Client.dll` `0x6fb20140` `CHAT_DrawChatInputBox` + `0x6fb1ef20` `CHAT_DrawCursor`
+  // renders the authentic translucent box, wrapped `font16` text, and blinking `_` cursor directly on `hudCanvas`).
   const chatInputEl = document.createElement('input')
   chatInputEl.id = 'd2-ingame-chat-input'
   chatInputEl.type = 'text'
   chatInputEl.maxLength = CHAT_INPUT_MAX_CHARS
-  chatInputEl.placeholder =
-    resolveChatTblIndex(0x0ff9, getTblLang()) || lookupTbl('strSay', getTblLang()) || 'Say:'
+  chatInputEl.placeholder = ''
+  chatInputEl.dataset.d2Synced = '1'
   chatInputEl.hidden = true
   chatInputEl.style.cssText =
-    'position:absolute;left:24px;bottom:64px;width:360px;max-width:calc(100% - 48px);box-sizing:border-box;z-index:25;background:rgba(10,8,6,0.92);border:1px solid #c8a858;color:#f2e6c8;padding:4px 8px;font:13px "D2Formal436",serif;outline:none;cursor:none;'
+    'position:absolute;left:127px;bottom:56px;width:1px;height:1px;opacity:0;pointer-events:none;border:none;padding:0;margin:0;outline:none;z-index:-1;'
   stageEl.appendChild(chatInputEl)
+
+  const syncChatInputToHud = (): void => {
+    hudManager.chatInputOpen = !chatInputEl.hidden
+    hudManager.chatInputText = chatInputEl.value
+    hudManager.syncPublishedState()
+  }
 
   const toggleInGameChatInput = (): void => {
     if (!chatInputEl.hidden) {
       const msg = chatInputEl.value
       chatInputEl.value = ''
       chatInputEl.hidden = true
+      syncChatInputToHud()
       chatInputEl.blur()
       if (msg.trim().length > 0 && sessionRef) {
         sessionRef.submitChatInput(msg)
       }
     } else {
-      chatInputEl.placeholder =
-        resolveChatTblIndex(0x0ff9, getTblLang()) || lookupTbl('strSay', getTblLang()) || 'Say:'
+      chatInputEl.placeholder = ''
       chatInputEl.hidden = false
       chatInputEl.value = ''
+      syncChatInputToHud()
       if (sessionRef) {
         sessionRef.chatInputHistoryIndex = sessionRef.chatInputHistory.length
       }
       chatInputEl.focus()
     }
   }
+
+  chatInputEl.addEventListener('input', () => {
+    syncChatInputToHud()
+  })
 
   chatInputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -456,18 +472,21 @@ export async function startPlayApp(options?: {
       e.stopPropagation()
       chatInputEl.value = ''
       chatInputEl.hidden = true
+      syncChatInputToHud()
       chatInputEl.blur()
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       e.stopPropagation()
       if (sessionRef) {
         chatInputEl.value = sessionRef.navigateChatInputHistory('up')
+        syncChatInputToHud()
       }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
       e.stopPropagation()
       if (sessionRef) {
         chatInputEl.value = sessionRef.navigateChatInputHistory('down')
+        syncChatInputToHud()
       }
     }
   })
@@ -523,6 +542,47 @@ export async function startPlayApp(options?: {
     },
   })
   sessionRef = session
+  hudManager.configureEscapeMenuSettings({
+    getSettings: () => {
+      const s = settingsStore.get()
+      return {
+        masterVolume: s.masterVolume,
+        audioMuted: s.audioMuted,
+        viewport: s.viewport,
+        worldRenderFps: s.worldRenderFps,
+        keyBindings: s.keyBindings,
+        fullscreenActive: toolbar.isFullscreenActive(),
+        fullscreenSupported: toolbar.isFullscreenSupported(),
+      }
+    },
+    onUpdateSettings: (patch) => {
+      if (patch.masterVolume !== undefined) {
+        toolbar.setMasterVolume(patch.masterVolume)
+      }
+      if (patch.audioMuted !== undefined) {
+        toolbar.setAudioMuted(patch.audioMuted)
+      }
+      if (patch.viewport !== undefined) {
+        toolbar.setViewport(patch.viewport)
+      }
+      if (patch.worldRenderFps !== undefined) {
+        toolbar.setWorldRenderFps(patch.worldRenderFps)
+      }
+      if (patch.keyBindings !== undefined) {
+        settingsStore.set({ keyBindings: patch.keyBindings })
+      }
+    },
+    onToggleFullscreen: () => {
+      toolbar.toggleFullscreen()
+    },
+  })
+  // PD2 d2fps.dll motion smoothing (default on): the scene draws units and the camera between their
+  // previous and current 25 Hz tick positions.
+  const motionSmoother = new SceneMotionSmoother(new MotionSmoothing(), session.logicClock)
+  session.sceneSource.setStateFilter((st) => motionSmoother.apply(st))
+  // PD2 D2GL HD cursor (default on): start loading /cursor-pd2/ now; a missing manifest is reported and
+  // both cursors fall back to the DC6 art.
+  void hudManager.cursor.loadHdCursor()
   session.audioRuntime.playTitleMusic()
   session.audioRuntime.loader.prefetch('sfx-core')
   if (
@@ -596,6 +656,7 @@ export async function startPlayApp(options?: {
     // Ignore localStorage access errors in restricted contexts
   }
   const frontendRenderer = new FrontendRenderer(bnetCanvas, flowState)
+  void frontendRenderer.cursor.loadHdCursor()
   frontendRenderer.onPlaySound = (soundId: number) => {
     unlockAndWarmUiAudio()
     session.audioRuntime.playUi(soundId)
@@ -1250,12 +1311,14 @@ export async function startPlayApp(options?: {
 
   inGameAssetsPromise = (async (): Promise<void> => {
     const [weatherAssets] = await Promise.all([
-      loadWeatherAssets(),
+      loadWeatherAssetsSafe(),
       mapService.ensureLoaded(),
       hudManager.load('/ui'),
       rawAssetsReadyPromise,
     ])
-    session.weather.setAssets(weatherAssets)
+    if (weatherAssets !== null) {
+      session.weather.setAssets(weatherAssets)
+    }
   })()
 
   void inGameAssetsPromise.then(async () => {
@@ -1267,6 +1330,14 @@ export async function startPlayApp(options?: {
   session.onStateChange(async (snap) => {
     if (snap.phase === 'ingame' || snap.phase === 'replay') {
       await inGameAssetsPromise
+      if (session.weather.assets === null) {
+        // Attempt background recovery once if initial boot fetch encountered a transient network glitch
+        void loadWeatherAssetsSafe().then((recovered) => {
+          if (recovered !== null && session.weather.assets === null) {
+            session.weather.setAssets(recovered)
+          }
+        })
+      }
       if (session.phase !== 'ingame' && session.phase !== 'replay') return
       session.audioRuntime.prefetchBackground()
       inGameView = true
@@ -1298,6 +1369,36 @@ export async function startPlayApp(options?: {
       })
     }
     syncVisibility()
+  })
+
+  session.onChatMessage((entry) => {
+    if (inGameView) return
+    const lobbyText =
+      entry.kind === 'say' && entry.from && !entry.text.startsWith('<')
+        ? `<${entry.from}> ${entry.rawText ?? entry.text}`
+        : entry.text
+    if (!lobbyText) return
+    if (flowState.chatMessages[flowState.chatMessages.length - 1] === lobbyText) {
+      return
+    }
+    flowState.chatMessages.push(lobbyText)
+    flowState.chatEntries.push({
+      text: lobbyText,
+      color: entry.color ?? 0,
+      kind:
+        entry.kind === 'whisper'
+          ? 'whisper'
+          : entry.kind === 'system'
+            ? 'system'
+            : 'chat',
+    })
+    if (flowState.chatMessages.length > 14) {
+      flowState.chatMessages.shift()
+    }
+    if (flowState.chatEntries.length > 14) {
+      flowState.chatEntries.shift()
+    }
+    frontendRenderer.render(performance.now())
   })
 
   session.onSessionLost((ev) => {
@@ -1611,6 +1712,7 @@ export async function startPlayApp(options?: {
     }
 
     runOwedLogicTicks(nowMs)
+    motionSmoother.beginFrame(nowMs)
     preloadActiveAreaAssets()
     sweepStaleCharacterArt(nowMs)
 
@@ -1631,10 +1733,25 @@ export async function startPlayApp(options?: {
 
     const currentSettings = settingsStore.get()
     const profile = getViewportProfile(currentSettings.viewport)
+    renderer.setSceneViewportSize(profile.width, profile.height)
 
-    if (viewCanvas.width !== profile.width || viewCanvas.height !== profile.height) {
-      viewCanvas.width = profile.width
-      viewCanvas.height = profile.height
+    const dpr =
+      typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0
+        ? Math.min(window.devicePixelRatio, 2)
+        : 1
+    const cssW = viewCanvas.clientWidth > 0 ? viewCanvas.clientWidth : profile.width
+    const cssH = viewCanvas.clientHeight > 0 ? viewCanvas.clientHeight : profile.height
+    const useUpscaledBackbuffer =
+      renderer.getDataMode() === 'pd2' &&
+      renderer.isPostProcessEnabled() &&
+      viewCanvas.clientWidth > 0 &&
+      viewCanvas.clientHeight > 0
+    const targetCanvasW = useUpscaledBackbuffer ? Math.max(profile.width, Math.round(cssW * dpr)) : profile.width
+    const targetCanvasH = useUpscaledBackbuffer ? Math.max(profile.height, Math.round(cssH * dpr)) : profile.height
+
+    if (viewCanvas.width !== targetCanvasW || viewCanvas.height !== targetCanvasH) {
+      viewCanvas.width = targetCanvasW
+      viewCanvas.height = targetCanvasH
     }
 
     lastRenderSnapshot = renderSceneSourceFrame({
@@ -1724,7 +1841,7 @@ export async function startPlayApp(options?: {
     isInGameView: () => inGameView,
     returnToLobby,
     sendChat: (message: string): void => {
-      session.dispatchCommand({ type: 'Chat', text: message })
+      session.submitChatInput(message)
     },
     replayD2Cap: (jsonlText: string): number => {
       inGameView = true

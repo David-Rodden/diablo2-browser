@@ -9,6 +9,27 @@
     </script>
     <style>
       @font-face {
+        font-family: "D2GlExocetBlizzard";
+        src: url("/ui/fonts/ExocetBlizzardMedium.otf") format("opentype");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "D2GlFormal436BT";
+        src: url("/ui/fonts/Formal436BT.ttf") format("truetype");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "D2GlChi";
+        src: url("/ui/fonts/Chi.ttf") format("truetype");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
         font-family: "D2Exocet";
         src: url("/ui/fonts/D2Exocet.ttf") format("truetype");
         font-weight: 100 900;
@@ -24,8 +45,8 @@
       }
       :root {
         color-scheme: dark;
-        --font-display: "D2Exocet", "Cinzel", "Times New Roman", "Liberation Serif", "Noto Serif", "Songti SC", "Noto Serif SC", serif;
-        --font-body: "D2Formal436", "Times New Roman", "Liberation Serif", "Noto Serif", "Songti SC", "Noto Serif SC", serif;
+        --font-display: "D2GlExocetBlizzard", "D2Exocet", "Cinzel", "Times New Roman", "Liberation Serif", "Noto Serif", "Songti SC", "Noto Serif SC", "D2GlChi", serif;
+        --font-body: "D2GlFormal436BT", "D2Formal436", "Times New Roman", "Liberation Serif", "Noto Serif", "Songti SC", "Noto Serif SC", "D2GlChi", serif;
       }
       * {
         box-sizing: border-box;
@@ -666,6 +687,14 @@
                   <option value="30">30 FPS</option>
                 </select>
               </div>
+              <div id="d2-config-server-row" class="d2-toolbar-modal__row">
+                <label id="d2-config-server-label" class="d2-toolbar__label d2-toolbar-modal__row-label" for="d2-toolbar-server-input">战网服务器</label>
+                <div class="d2-toolbar-modal__row-control">
+                  <input id="d2-toolbar-server-input" type="text" class="d2-toolbar-modal__input" style="width: 180px;" maxlength="120" spellcheck="false" autocomplete="off" placeholder="www.laiseek.xyz" value="www.laiseek.xyz" />
+                  <button id="d2-toolbar-server-apply-btn" type="button" class="d2-toolbar__btn">连接</button>
+                </div>
+              </div>
+              <div id="d2-toolbar-server-status" class="d2-toolbar-modal__status d2-toolbar-modal__status--error" role="alert" hidden></div>
               <div class="d2-toolbar-modal__row">
                 <label id="d2-config-volume-label" class="d2-toolbar__label d2-toolbar-modal__row-label" for="d2-toolbar-volume-slider">主音量</label>
                 <div class="d2-toolbar-modal__volume-controls">

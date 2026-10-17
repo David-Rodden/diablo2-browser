@@ -1,13 +1,14 @@
 /**
  * Extended Viewports Plugin (`plugins/extended-viewports/index.ts` — Issue #716).
  *
- * Isolates the non-1.13c extended resolutions (`1024x768`, `1068x600`, `1280x720`)
- * outside core `src/`. When enabled, unlocks all 5 resolutions in the toolbar viewport
- * selector; when disabled, `PluginHost` restricts allowed viewports to native 1.13c
- * `640x480` and `800x600` and clamps any extended resolution back to `800x600`.
+ * A plugin-config mirror of the viewport selector. PD2's SGD2FreeRes resolution list is the client
+ * default (the toolbar offers all of it, `1068x600` first-run default), so this plugin no longer gates
+ * anything: enabling or disabling it leaves the PD2 list available. It only keeps its `viewport`
+ * setting in sync with the client.
  */
 
 import {
+  DEFAULT_VIEWPORT_RESOLUTION,
   VALID_VIEWPORT_RESOLUTIONS,
   formatViewportLabel,
   type D2WebPlugin,
@@ -50,8 +51,8 @@ export function createExtendedViewportsPlugin(): D2WebPlugin {
       en: 'Extended Viewports',
     },
     description: {
-      zh: '非 1.13c 增强：解锁 1024×768、1068×600 (16:9) 与 1280×720 (HD) 扩展视口。关闭插件后仅开放 1.13c 原版 640×480 与 800×600 分辨率，并自动回退至 800×600。',
-      en: 'Non-1.13c enhancement: unlocks 1024×768, 1068×600 (16:9), and 1280×720 (HD) viewports. When disabled, restricts the client to native 1.13c 640×480 and 800×600 resolutions.',
+      zh: 'PD2 SGD2FreeRes 分辨率列表（默认 1068×600）的视口选择器，与工具栏同步。',
+      en: 'Viewport selector for the PD2 SGD2FreeRes resolution list (default 1068×600), kept in sync with the toolbar.',
     },
     defaultEnabled: true,
     settings: [
@@ -62,18 +63,18 @@ export function createExtendedViewportsPlugin(): D2WebPlugin {
           zh: '当前视口分辨率',
           en: 'Active Viewport',
         },
-        default: '800x600',
+        default: DEFAULT_VIEWPORT_RESOLUTION,
         options: VIEWPORT_SELECT_OPTIONS,
       },
     ],
     activate(ctx: PluginContext): ExtendedViewportsPluginInstance {
-      // Unlock all 5 viewport profiles (native 640x480, 800x600 + extended 1024x768, 1068x600, 1280x720)
+      // The whole PD2 SGD2FreeRes list (the same list the client allows without this plugin).
       ctx.client.setAllowedViewports(VALID_VIEWPORT_RESOLUTIONS)
 
       const storedSetting = ctx.settings.get('viewport')
       const initialViewport: ViewportResolution = isViewportResolution(storedSetting)
         ? storedSetting
-        : '800x600'
+        : DEFAULT_VIEWPORT_RESOLUTION
 
       ctx.client.setViewport(initialViewport)
 

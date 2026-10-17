@@ -32,7 +32,7 @@ import {
   getGlobalSettingsStore,
   type SettingsStore,
 } from '../settings/settings-store.ts'
-import { NATIVE_113C_VIEWPORT_RESOLUTIONS } from '../view/viewport-profile.ts'
+import { DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS, pickFallbackViewport } from '../view/viewport-profile.ts'
 import {
   isRelativePluginHref,
   isValidLocalizedText,
@@ -152,7 +152,7 @@ export class PluginHost {
   private readonly groundItemEnhancementsClaims = new Set<string>()
   private readonly weatherClaims = new Set<string>()
   private fallbackAllowedViewports: readonly ViewportResolution[] =
-    NATIVE_113C_VIEWPORT_RESOLUTIONS
+    DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS
   private readonly unsubConfig: () => void
   private readonly quickCastPort: PluginQuickCastPort | null
   /** Plugins currently claiming Quick Cast (Issue #952); empty set = vanilla behavior. */
@@ -868,10 +868,7 @@ export class PluginHost {
         if (this.toolbar?.setAllowedViewports) {
           this.toolbar.setAllowedViewports(unique)
         } else if (!unique.includes(this.settingsStore.get().viewport)) {
-          const fallbackVp: ViewportResolution = unique.includes('800x600')
-            ? '800x600'
-            : unique[0]!
-          this.settingsStore.set({ viewport: fallbackVp })
+          this.settingsStore.set({ viewport: pickFallbackViewport(unique) })
         }
       },
 
@@ -1148,16 +1145,13 @@ export class PluginHost {
     }
   }
 
+  /** Back to the default allowed list (PD2 SGD2FreeRes), once no plugin claims the viewport list. */
   private revertAllowedViewportsToNative(): void {
-    this.fallbackAllowedViewports = NATIVE_113C_VIEWPORT_RESOLUTIONS
+    this.fallbackAllowedViewports = DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS
     if (this.toolbar?.setAllowedViewports) {
-      this.toolbar.setAllowedViewports(NATIVE_113C_VIEWPORT_RESOLUTIONS)
-    } else if (
-      !(NATIVE_113C_VIEWPORT_RESOLUTIONS as readonly string[]).includes(
-        this.settingsStore.get().viewport,
-      )
-    ) {
-      this.settingsStore.set({ viewport: '800x600' })
+      this.toolbar.setAllowedViewports(DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS)
+    } else if (!DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS.includes(this.settingsStore.get().viewport)) {
+      this.settingsStore.set({ viewport: pickFallbackViewport(DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS) })
     }
   }
 

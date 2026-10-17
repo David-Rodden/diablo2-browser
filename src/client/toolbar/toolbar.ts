@@ -29,9 +29,10 @@ import {
   formatCacheBytesMb,
 } from '../sw/register.ts'
 import {
-  NATIVE_113C_VIEWPORT_RESOLUTIONS,
+  DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS,
   formatViewportLabel,
   getViewportProfile,
+  pickFallbackViewport,
   type ViewportProfile,
 } from '../view/viewport-profile.ts'
 
@@ -294,6 +295,11 @@ export class Toolbar {
   private cacheClearBtnEl: HTMLButtonElement | null = null
   private cacheClearBtnIconEl: HTMLElement | null = null
   private cacheClearBtnLabelEl: HTMLElement | null = null
+  private serverRowEl: HTMLElement | null = null
+  private serverLabelEl: HTMLElement | null = null
+  private serverInputEl: HTMLInputElement | null = null
+  private serverApplyBtnEl: HTMLButtonElement | null = null
+  private serverStatusEl: HTMLElement | null = null
 
   // Bug report modal DOM elements
   private bugOverlayEl: HTMLElement | null = null
@@ -338,7 +344,7 @@ export class Toolbar {
     this.allowedViewports =
       options?.allowedViewports && options.allowedViewports.length > 0
         ? [...options.allowedViewports]
-        : [...NATIVE_113C_VIEWPORT_RESOLUTIONS]
+        : [...DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS]
     this.confirmReconnectFn =
       options?.confirmReconnect ??
       ((msg: string) =>
@@ -563,6 +569,8 @@ export class Toolbar {
       this.bugModalOpen = false
     }
     this.configModalOpen = true
+    this.serverInputValue = this.store.get().serverHost
+    this.serverInputValid = true
     this.callbacks.onModalOpen?.('config')
     this.syncDom()
     if (this.configCloseBtnEl && typeof this.configCloseBtnEl.focus === 'function') {
@@ -573,6 +581,15 @@ export class Toolbar {
   closeConfigModal(): void {
     if (!this.configModalOpen) return
     this.configModalOpen = false
+    this.serverInputValue = this.store.get().serverHost
+    this.serverInputValid = true
+    if (this.serverStatusEl) {
+      this.serverStatusEl.hidden = true
+    }
+    if (this.serverInputEl) {
+      this.serverInputEl.style.borderColor = ''
+      this.serverInputEl.style.boxShadow = ''
+    }
     this.syncDom()
     if (this.configBtnEl && typeof this.configBtnEl.focus === 'function') {
       this.configBtnEl.focus()
@@ -724,13 +741,10 @@ export class Toolbar {
       (VALID_VIEWPORT_RESOLUTIONS as readonly string[]).includes(r),
     )
     this.allowedViewports =
-      valid.length > 0 ? valid : [...NATIVE_113C_VIEWPORT_RESOLUTIONS]
+      valid.length > 0 ? valid : [...DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS]
     const current = this.store.get().viewport
     if (!this.allowedViewports.includes(current)) {
-      const fallback: ViewportResolution = this.allowedViewports.includes('800x600')
-        ? '800x600'
-        : this.allowedViewports[0]!
-      this.store.set({ viewport: fallback })
+      this.store.set({ viewport: pickFallbackViewport(this.allowedViewports) })
     }
     this.syncDom()
   }
@@ -738,9 +752,7 @@ export class Toolbar {
   setViewport(viewport: ViewportResolution): ViewportProfile {
     const target: ViewportResolution = this.allowedViewports.includes(viewport)
       ? viewport
-      : this.allowedViewports.includes('800x600')
-        ? '800x600'
-        : this.allowedViewports[0]!
+      : pickFallbackViewport(this.allowedViewports)
     this.store.set({ viewport: target })
     this.syncDom()
     return getViewportProfile(target)
@@ -752,6 +764,27 @@ export class Toolbar {
     const currentIdx = order.indexOf(this.store.get().viewport)
     const next = order[(currentIdx + 1) % order.length]!
     return this.setViewport(next)
+  }
+
+  setWorldRenderFps(fps: 30 | 60): 30 | 60 {
+    const normalized: 30 | 60 = fps === 30 ? 30 : 60
+    this.store.set({ worldRenderFps: normalized })
+    this.syncDom()
+    return normalized
+  }
+
+  isFullscreenActive(): boolean {
+    return this.fullscreen ? this.fullscreen.isActive() : false
+  }
+
+  isFullscreenSupported(): boolean {
+    return this.fullscreen ? this.fullscreen.isSupported() : false
+  }
+
+  toggleFullscreen(): void {
+    if (this.fullscreen) {
+      void this.fullscreen.toggle()
+    }
   }
 
   setPluginsButtonState(state: {
@@ -1712,7 +1745,64 @@ a.d2-toolbar__btn:active {
     fpsRow.appendChild(fpsLabel)
     fpsRow.appendChild(fpsSelect)
 
-    // Config Row 4: Master Volume + Mute (#d2-toolbar-mute-btn, #d2-toolbar-volume-slider, #d2-toolbar-volume-value)
+    // Config Row 4: Battle.net Server (#d2-config-server-row, #d2-toolbar-server-input, #d2-toolbar-server-apply-btn)
+    const serverRow = doc.createElement('div')
+    serverRow.id = 'd2-config-server-row'
+    serverRow.className = 'd2-toolbar-modal__row'
+    const serverLabel = doc.createElement('label')
+    serverLabel.id = 'd2-config-server-label'
+    serverLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    serverLabel.htmlFor = 'd2-toolbar-server-input'
+
+    const serverControls = doc.createElement('div')
+    serverControls.className = 'd2-toolbar-modal__row-control'
+
+    const serverInput = doc.createElement('input')
+    serverInput.type = 'text'
+    serverInput.id = 'd2-toolbar-server-input'
+    serverInput.className = 'd2-toolbar-modal__input'
+    serverInput.style.width = '180px'
+    serverInput.setAttribute('maxlength', '120')
+    serverInput.setAttribute('spellcheck', 'false')
+    serverInput.setAttribute('autocomplete', 'off')
+    serverInput.value = this.serverInputValue || this.store.get().serverHost
+
+    const serverApplyBtn = doc.createElement('button')
+    serverApplyBtn.type = 'button'
+    serverApplyBtn.id = 'd2-toolbar-server-apply-btn'
+    serverApplyBtn.className = 'd2-toolbar__btn'
+
+    serverControls.appendChild(serverInput)
+    serverControls.appendChild(serverApplyBtn)
+    serverRow.appendChild(serverLabel)
+    serverRow.appendChild(serverControls)
+
+    const serverStatus = doc.createElement('div')
+    serverStatus.id = 'd2-toolbar-server-status'
+    serverStatus.className = 'd2-toolbar-modal__status d2-toolbar-modal__status--error'
+    serverStatus.setAttribute('role', 'alert')
+    serverStatus.hidden = true
+
+    serverApplyBtn.addEventListener('click', () => {
+      this.submitServerHost(serverInput.value)
+    })
+    serverInput.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault?.()
+        this.submitServerHost(serverInput.value)
+      }
+    })
+    serverInput.addEventListener('input', () => {
+      this.serverInputValue = serverInput.value
+      if (!this.serverInputValid) {
+        this.serverInputValid = true
+        serverStatus.hidden = true
+        serverInput.style.borderColor = ''
+        serverInput.style.boxShadow = ''
+      }
+    })
+
+    // Config Row 5: Master Volume + Mute (#d2-toolbar-mute-btn, #d2-toolbar-volume-slider, #d2-toolbar-volume-value)
     const volumeRow = doc.createElement('div')
     volumeRow.className = 'd2-toolbar-modal__row'
     const volumeLabel = doc.createElement('label')
@@ -1790,6 +1880,8 @@ a.d2-toolbar__btn:active {
     configBody.appendChild(displayRow)
     configBody.appendChild(viewportRow)
     configBody.appendChild(fpsRow)
+    configBody.appendChild(serverRow)
+    configBody.appendChild(serverStatus)
     configBody.appendChild(volumeRow)
     configBody.appendChild(cacheRow)
 
@@ -2035,6 +2127,11 @@ a.d2-toolbar__btn:active {
     this.cacheClearBtnEl = cacheClearBtn
     this.cacheClearBtnIconEl = cacheClearBtnIcon
     this.cacheClearBtnLabelEl = cacheClearBtnLabel
+    this.serverRowEl = serverRow
+    this.serverLabelEl = serverLabel
+    this.serverInputEl = serverInput
+    this.serverApplyBtnEl = serverApplyBtn
+    this.serverStatusEl = serverStatus
 
     this.bugOverlayEl = bugOverlay
     this.bugTitleEl = bugTitle
@@ -2204,6 +2301,38 @@ a.d2-toolbar__btn:active {
     }
     if (this.fpsLabelEl) {
       this.fpsLabelEl.textContent = tToolbar('toolbar.config.fps', lang)
+    }
+    if (this.serverLabelEl) {
+      this.serverLabelEl.textContent = tToolbar('toolbar.server.label', lang)
+    }
+    if (this.serverApplyBtnEl) {
+      this.serverApplyBtnEl.textContent = tToolbar('toolbar.server.apply', lang)
+    }
+    if (this.serverInputEl) {
+      if (typeof document !== 'undefined' && document.activeElement !== this.serverInputEl) {
+        this.serverInputEl.value = this.serverInputValue || snap.settings.serverHost
+      }
+      this.serverInputEl.setAttribute(
+        'placeholder',
+        tToolbar('toolbar.server.placeholder', lang),
+      )
+      this.serverInputEl.title = this.serverInputValue || snap.settings.serverHost
+      if (!this.serverInputValid) {
+        this.serverInputEl.style.borderColor = '#e74c3c'
+        this.serverInputEl.style.boxShadow = '0 0 6px rgba(231, 76, 60, 0.4)'
+      } else {
+        this.serverInputEl.style.borderColor = ''
+        this.serverInputEl.style.boxShadow = ''
+      }
+    }
+    if (this.serverStatusEl) {
+      if (!this.serverInputValid && this.connection.diagnosticMessage) {
+        this.serverStatusEl.textContent = this.connection.diagnosticMessage
+        this.serverStatusEl.hidden = false
+      } else {
+        this.serverStatusEl.textContent = ''
+        this.serverStatusEl.hidden = true
+      }
     }
     if (this.volumeLabelEl) {
       this.volumeLabelEl.textContent = tToolbar('toolbar.config.volume', lang)

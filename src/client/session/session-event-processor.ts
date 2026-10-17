@@ -87,6 +87,7 @@ export interface SessionEventProcessorHost {
   setPhase(next: OnlineSessionPhase): void
   dispatchCommand(cmd: ClientCommand | Record<string, any>, nowMs?: number): boolean
   sendCommand(cmd: ClientCommand | Record<string, any>, nowMs?: number): boolean
+  sendBncsChatCommand(command: string): boolean
   forwardCommandToAdapter(cmd: ClientCommand, nowMs?: number): void
   completeGame(): void
   handleUnexpectedDisconnect(
@@ -242,6 +243,8 @@ export function submitSessionChatInput(
         { type: 'Chat', text: parsed.text, whisperTo: parsed.target },
         nowMs,
       )
+    case 'bncs_command':
+      return host.sendBncsChatCommand(parsed.command)
     case 'local_clear':
       host.world.clearActiveScreenMessages()
       host.hudModel.syncFromWorld()
@@ -265,7 +268,9 @@ export function submitSessionChatInput(
       const errMsg =
         parsed.errorKey === 'noReplyTarget'
           ? (resolveChatTblIndex(0x0f8a, lang) || 'No one has whispered you yet.')
-          : (resolveChatTblIndex(0x0f89, lang) || 'Usage: /w <name> <message>')
+          : parsed.errorKey === 'announceUsage'
+            ? 'Usage: /ann <message>'
+            : (resolveChatTblIndex(0x0f89, lang) || 'Usage: /w <name> <message>')
       host.world.addSystemChatMessage(errMsg, 1, nowMs)
       host.hudModel.syncFromWorld()
       return false

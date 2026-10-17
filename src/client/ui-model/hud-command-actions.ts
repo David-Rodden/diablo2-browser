@@ -179,9 +179,13 @@ export function findWorldItemImpl(model: any, itemId: number): ItemData | undefi
   )
 }
 
-export function allocateStatImpl(model: any, key: BaseStatKey): boolean {
+export function allocateStatImpl(model: any, key: BaseStatKey, count?: number): boolean {
   const statId = STAT_KEY_TO_D2_STAT_ID[key]
-  model.emitCommand({ type: 'AddStatPoint', statId })
+  if (count !== undefined && count > 1) {
+    model.emitCommand({ type: 'AddStatPoint', statId, count })
+  } else {
+    model.emitCommand({ type: 'AddStatPoint', statId })
+  }
   return true
 }
 

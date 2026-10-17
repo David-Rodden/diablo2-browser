@@ -48,7 +48,13 @@ import {
   toRightDockLocal,
   fromRightDockLocal,
 } from './hud-viewport-layout.ts'
-import { hitTestEscapeMenu } from './world-panels.ts'
+import {
+  handleEscapeSubmenuKeyDown,
+  handleEscapeSubmenuMouseMove,
+  handleEscapeSubmenuMouseUp,
+  hitTestEscapeMenu,
+} from './world-panels.ts'
+import { matchesKeyBinding } from '../settings/client-settings.ts'
 import { serverItemIdOf, type HudCommandSink, type HudManager } from './hud-manager.ts'
 
 /** 1.13c class cantuseyet sound IDs (D2Client.dll 0x6fb46110 -> 0x6fad3200 code 20). */
@@ -121,6 +127,20 @@ export function handleHudMouseMove(hud: HudManager, logicalX: number, logicalY: 
   hud.mouseY = logicalY
   hud.cursor.handleMouseMove(logicalX, logicalY)
   if (hud.worldPanels.escapeMenuOpen) {
+    if (hud.worldPanels.escapeMenuScreen !== 'main') {
+      const prevSel = hud.worldPanels.optionsSubmenuSelectedIndex
+      const changed = handleEscapeSubmenuMouseMove(
+        hud.worldPanels,
+        logicalX,
+        logicalY,
+        hud.viewportProfile.width,
+        hud.viewportProfile.height,
+      )
+      if (changed || hud.worldPanels.optionsSubmenuSelectedIndex !== prevSel) {
+        hud.syncPublishedState()
+      }
+      return
+    }
     // 1.13c D2Client.dll gmenu.cpp 0x6fb1528a..0x6fb152d4 -> 0x6fb14080:
     // Moving the cursor over an Escape menu row updates g_nEscMenuSelectedRow (0x6fbcc058)
     // so the flanking spinning pentagrams (CURSOR\Pentspin.dc6) track the hovered row.
@@ -180,6 +200,8 @@ export function handleHudMouseMove(hud: HudManager, logicalX: number, logicalY: 
       hud.viewportProfile.width,
       hud.viewportProfile.height,
     )
+  } else if (hud.leftPanel === 'msg') {
+    hud.worldPanels.handleMouseMove(logicalX, logicalY)
   } else if (hud.leftPanel !== 'none' && hud.leftPanel !== 'char') {
     const leftPt = toLeftDockLocal(logicalX, logicalY, docking)
     hud.worldPanels.handleMouseMove(leftPt.x, leftPt.y)
@@ -283,6 +305,15 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     }
     if (hud.worldPanels.isPointInNpcMenu(logicalX, logicalY, hud.font, profile.width, profile.height)) return true
     if (hud.worldPanels.isPointInHireMercDialog(logicalX, logicalY, profile.width, profile.height)) return true
+    if (
+      hud.leftPanel === 'msg' &&
+      logicalX >= 5 &&
+      logicalX <= profile.width - 15 &&
+      logicalY >= 30 &&
+      logicalY <= profile.height - 100
+    ) {
+      return true
+    }
     if (hud.hitTestQuestAlert(logicalX, logicalY)) return true
     if (hud.isPointInMercPortrait(logicalX, logicalY)) return true
     const barX = logicalX - profile.barOffsetX
@@ -297,6 +328,7 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     if (
       hud.leftPanel !== 'none' &&
       hud.leftPanel !== 'hire' &&
+      hud.leftPanel !== 'msg' &&
       logicalX >= 0 &&
       logicalX <= 400 &&
       panelY >= 0 &&
@@ -315,6 +347,7 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     if (logicalX < 0 || logicalX > 640 || logicalY < 0 || logicalY > 480) return false
     if (hud.worldPanels.isPointInNpcMenu(logicalX, logicalY, hud.font, 640, 480)) return true
     if (hud.worldPanels.isPointInHireMercDialog(logicalX, logicalY, 640, 480)) return true
+    if (hud.leftPanel === 'msg' && logicalX >= 5 && logicalX <= 625 && logicalY >= 30 && logicalY <= 380) return true
     if (hud.hitTestQuestAlert(logicalX, logicalY)) return true
     if (hud.isPointInMercPortrait(logicalX, logicalY)) return true
     if (logicalY >= 432 && logicalY <= 480 && logicalX >= 0 && logicalX <= 640) return true
@@ -332,7 +365,16 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     }
     if (hud.belt.isExpanded && logicalX >= 340 && logicalX <= 470 && logicalY >= 340 && logicalY <= 480) return true
     if (hud.hotkeys.openPopup !== null) return true
-    if (hud.leftPanel !== 'none' && logicalX >= 0 && logicalX <= 320 && logicalY >= 0 && logicalY <= 432) return true
+    if (
+      hud.leftPanel !== 'none' &&
+      hud.leftPanel !== 'msg' &&
+      logicalX >= 0 &&
+      logicalX <= 320 &&
+      logicalY >= 0 &&
+      logicalY <= 432
+    ) {
+      return true
+    }
     if (hud.rightPanel !== 'none' && logicalX >= 320 && logicalX <= 640 && logicalY >= 0 && logicalY <= 432) return true
     return false
   }
@@ -340,6 +382,15 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
   if (logicalX < 0 || logicalX > 800 || logicalY < 0 || logicalY > 600) return false
   if (hud.worldPanels.isPointInNpcMenu(logicalX, logicalY, hud.font, profile.width, profile.height)) return true
   if (hud.worldPanels.isPointInHireMercDialog(logicalX, logicalY, profile.width, profile.height)) return true
+  if (
+    hud.leftPanel === 'msg' &&
+    logicalX >= 5 &&
+    logicalX <= profile.width - 15 &&
+    logicalY >= 30 &&
+    logicalY <= profile.height - 100
+  ) {
+    return true
+  }
   if (hud.hitTestQuestAlert(logicalX, logicalY)) return true
   if (hud.isPointInMercPortrait(logicalX, logicalY)) return true
   if (logicalY >= 540 && logicalX >= 0 && logicalX <= 800) return true
@@ -351,6 +402,7 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
   if (
     hud.leftPanel !== 'none' &&
     hud.leftPanel !== 'hire' &&
+    hud.leftPanel !== 'msg' &&
     logicalX >= 0 &&
     logicalX <= 400 &&
     logicalY >= 0 &&
@@ -484,6 +536,12 @@ export function handleHudKeyDown(
   }
   if (hud.worldPanels.escapeMenuOpen) {
     ;(e as any)._d2KeyHandled = true
+    if (hud.worldPanels.escapeMenuScreen !== 'main') {
+      handleEscapeSubmenuKeyDown(hud.worldPanels, e)
+      hud.onPlayUiSound?.(2)
+      hud.syncPublishedState()
+      return
+    }
     if (e.key === 'Escape') {
       e.preventDefault?.()
       hud.toggleEscapeMenu()
@@ -501,39 +559,40 @@ export function handleHudKeyDown(
   }
   const key = e.key.toUpperCase()
   const callbacks = (hud as any).callbacks
+  const kb = hud.getActiveKeyBindings()
 
-  if (key === 'I' || key === 'B') {
+  if (matchesKeyBinding(kb, 'inventoryScreen', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.toggleRightPanel('inv')
-  } else if (key === 'A' || key === 'C') {
+  } else if (matchesKeyBinding(kb, 'characterScreen', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.toggleLeftPanel('char')
-  } else if (key === 'O') {
+  } else if (matchesKeyBinding(kb, 'hirelingScreen', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     if (hud.merc && !hud.merc.isDead) {
       hud.toggleLeftPanel('merc')
     }
-  } else if (key === 'P') {
+  } else if (matchesKeyBinding(kb, 'partyScreen', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.toggleLeftPanel('party')
-  } else if (key === 'M') {
+  } else if (matchesKeyBinding(kb, 'messageLog', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.toggleLeftPanel('msg')
-  } else if (key === 'T') {
+  } else if (matchesKeyBinding(kb, 'skillTree', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.toggleRightPanel('skill')
-  } else if (key === 'S') {
+  } else if (matchesKeyBinding(kb, 'skillSpeedBar', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.hotkeys.openPopup = hud.hotkeys.openPopup ? null : 'right'
     hud.syncPublishedState()
-  } else if (key === 'Q') {
+  } else if (matchesKeyBinding(kb, 'questLog', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.toggleLeftPanel('quest')
@@ -541,7 +600,7 @@ export function handleHudKeyDown(
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.togglePartyPortraits()
-  } else if (key === 'H') {
+  } else if (matchesKeyBinding(kb, 'helpScreen', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.toggleHelpOverlay()
@@ -550,7 +609,7 @@ export function handleHudKeyDown(
     ;(e as any)._d2KeyHandled = true
     hud.chatOverlayMessages = []
     hud.syncPublishedState()
-  } else if (key === 'V') {
+  } else if (matchesKeyBinding(kb, 'toggleMiniMap', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     if (typeof (hud as any).onToggleAutomapMode === 'function') {
@@ -560,6 +619,24 @@ export function handleHudKeyDown(
     } else if (!hud.commandSink) {
       hud.toggleLeftPanel('waypoint')
     }
+  } else if (matchesKeyBinding(kb, 'centerAutomap', e)) {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    ;(hud as any).onAutomapCenter?.() ??
+      (hud as any).onResetAutomapPan?.() ??
+      callbacks.onResetAutomapPan?.()
+  } else if (matchesKeyBinding(kb, 'fadeAutomap', e)) {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    ;(hud as any).onCycleAutomapFade?.() ?? callbacks.onCycleAutomapFade?.()
+  } else if (matchesKeyBinding(kb, 'partyOnAutomap', e)) {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    ;(hud as any).onToggleAutomapParty?.() ?? callbacks.onToggleAutomapParty?.()
+  } else if (matchesKeyBinding(kb, 'namesOnAutomap', e)) {
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    ;(hud as any).onToggleAutomapNames?.() ?? callbacks.onToggleAutomapNames?.()
   } else if (key === 'F9') {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
@@ -594,7 +671,7 @@ export function handleHudKeyDown(
       e.preventDefault?.()
       ;(e as any)._d2KeyHandled = true
     }
-  } else if (key === 'W') {
+  } else if (matchesKeyBinding(kb, 'swapWeapons', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     if (hud.commandSink) {
@@ -605,57 +682,78 @@ export function handleHudKeyDown(
       hud.inventory.toggleWeaponSwap()
     }
     hud.syncPublishedState()
-  } else if (key === 'R') {
+  } else if (matchesKeyBinding(kb, 'toggleRunWalk', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.isRunning = !hud.isRunning
     hud.syncPublishedState()
-  } else if (e.key === '`' || e.key === '~') {
+  } else if (matchesKeyBinding(kb, 'showBelt', e) || e.key === '`' || e.key === '~') {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.belt.togglePopup()
     hud.syncPublishedState()
   } else if (
-    key === '1' ||
-    key === '2' ||
-    key === '3' ||
-    key === '4' ||
+    matchesKeyBinding(kb, 'useBeltSlot1', e) ||
+    matchesKeyBinding(kb, 'useBeltSlot2', e) ||
+    matchesKeyBinding(kb, 'useBeltSlot3', e) ||
+    matchesKeyBinding(kb, 'useBeltSlot4', e) ||
     e.key === '!' ||
     e.key === '@' ||
     e.key === '#' ||
-    e.key === '$' ||
-    e.code === 'Digit1' ||
-    e.code === 'Digit2' ||
-    e.code === 'Digit3' ||
-    e.code === 'Digit4'
+    e.key === '$'
   ) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     const slotIndex =
-      e.code === 'Digit1' || e.key === '!'
+      matchesKeyBinding(kb, 'useBeltSlot1', e) || e.key === '!'
         ? 0
-        : e.code === 'Digit2' || e.key === '@'
+        : matchesKeyBinding(kb, 'useBeltSlot2', e) || e.key === '@'
           ? 1
-          : e.code === 'Digit3' || e.key === '#'
+          : matchesKeyBinding(kb, 'useBeltSlot3', e) || e.key === '#'
             ? 2
-            : e.code === 'Digit4' || e.key === '$'
-              ? 3
-              : Number(key) - 1
+            : 3
     const isShiftedKey =
       Boolean(e.shiftKey) || e.key === '!' || e.key === '@' || e.key === '#' || e.key === '$'
     hud.drinkBeltSlot(slotIndex, isShiftedKey)
-  } else if (/^(?:F[1-8]|SKILL(?:9|1[0-6]))$/.test(key)) {
+  } else if (
+    matchesKeyBinding(kb, 'selectSkill1', e) ||
+    matchesKeyBinding(kb, 'selectSkill2', e) ||
+    matchesKeyBinding(kb, 'selectSkill3', e) ||
+    matchesKeyBinding(kb, 'selectSkill4', e) ||
+    matchesKeyBinding(kb, 'selectSkill5', e) ||
+    matchesKeyBinding(kb, 'selectSkill6', e) ||
+    matchesKeyBinding(kb, 'selectSkill7', e) ||
+    matchesKeyBinding(kb, 'selectSkill8', e) ||
+    /^(?:F[1-8]|SKILL(?:9|1[0-6]))$/.test(key)
+  ) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
-    hud.hotkeys.triggerFunctionKey(key)
+    const fnKey = matchesKeyBinding(kb, 'selectSkill1', e)
+      ? 'F1'
+      : matchesKeyBinding(kb, 'selectSkill2', e)
+        ? 'F2'
+        : matchesKeyBinding(kb, 'selectSkill3', e)
+          ? 'F3'
+          : matchesKeyBinding(kb, 'selectSkill4', e)
+            ? 'F4'
+            : matchesKeyBinding(kb, 'selectSkill5', e)
+              ? 'F5'
+              : matchesKeyBinding(kb, 'selectSkill6', e)
+                ? 'F6'
+                : matchesKeyBinding(kb, 'selectSkill7', e)
+                  ? 'F7'
+                  : matchesKeyBinding(kb, 'selectSkill8', e)
+                    ? 'F8'
+                    : key
+    hud.hotkeys.triggerFunctionKey(fnKey)
     hud.syncPublishedState()
-  } else if (e.key === 'Alt') {
+  } else if (matchesKeyBinding(kb, 'showItems', e) || e.key === 'Alt') {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.showGroundLabels = true
     hud.syncPublishedState()
-  } else if (e.key === 'Escape' || e.code === 'Space' || e.key === ' ') {
-    const isSpace = e.code === 'Space' || e.key === ' '
+  } else if (e.key === 'Escape' || matchesKeyBinding(kb, 'clearScreen', e) || e.code === 'Space' || e.key === ' ') {
+    const isSpace = matchesKeyBinding(kb, 'clearScreen', e) || e.code === 'Space' || e.key === ' '
     const closed = hud.closeAllPanels()
     if (isSpace) {
       ;(hud as any).onAutomapCenter?.() ??
@@ -702,7 +800,8 @@ export function bindHudWindowEvents(hud: HudManager): void {
 
   on(window, 'keyup', (e) => {
     if (isModalDomOverlayOpen()) return
-    if ((e as KeyboardEvent).key === 'Alt') {
+    const ke = e as KeyboardEvent
+    if (matchesKeyBinding(hud.getActiveKeyBindings(), 'showItems', ke) || ke.key === 'Alt') {
       e.preventDefault()
       hud.showGroundLabels = false
       hud.syncPublishedState()
@@ -759,9 +858,12 @@ export function bindHudWindowEvents(hud: HudManager): void {
       const we = e as WheelEvent
       if (hud.leftPanel === 'msg') {
         const pt = hud.clientToLogical(we.clientX, we.clientY)
-        const docking = hud.getDockingLayout()
-        const leftPt = toLeftDockLocal(pt.x, pt.y, docking)
-        if (leftPt.x >= 0 && leftPt.x <= 400 && leftPt.y >= 0 && leftPt.y <= 553) {
+        if (
+          pt.x >= 5 &&
+          pt.x <= hud.viewportProfile.width - 15 &&
+          pt.y >= 30 &&
+          pt.y <= hud.viewportProfile.height - 100
+        ) {
           hud.worldPanels.scrollMessageLog(we.deltaY < 0 ? 2 : -2)
           ;(e as { _d2WheelHandled?: boolean })._d2WheelHandled = true
           we.preventDefault()
@@ -809,6 +911,21 @@ export function handleHudMouseUp(hud: HudManager, logicalX: number, logicalY: nu
     }
   }
   if (button !== 0) return
+
+  if (hud.worldPanels.escapeMenuOpen && hud.worldPanels.escapeMenuScreen !== 'main') {
+    const subUp = handleEscapeSubmenuMouseUp(
+      hud.worldPanels,
+      logicalX,
+      logicalY,
+      hud.viewportProfile.width,
+      hud.viewportProfile.height,
+    )
+    if (subUp) {
+      hud.onPlayUiSound?.(4)
+      hud.syncPublishedState()
+      return
+    }
+  }
 
   // 1.13c bar buttons fire on mouse-up inside the pressed element; dragging off the
   // button and releasing cancels (ControlBarHud / CharacterSheetPanel latch on mousedown).
@@ -1239,10 +1356,11 @@ export function handleHudMouseDown(
     return
   }
 
-  // Left-Half Dock Click
+  // Left-Half Dock Click (or full-viewport `msg` / `hire` dialog)
   const leftPt = toLeftDockLocal(pt.x, pt.y, docking)
   if (
     hud.leftPanel === 'hire' ||
+    hud.leftPanel === 'msg' ||
     (leftPt.x >= 0 && leftPt.x <= 400 && leftPt.y >= 0 && leftPt.y <= 553)
   ) {
     if (hud.leftPanel === 'char') {
@@ -1252,8 +1370,8 @@ export function handleHudMouseDown(
       return
     } else if (hud.leftPanel !== 'none') {
       const dockKind = hud.leftPanel
-      const clickX = dockKind === 'hire' ? pt.x : leftPt.x
-      const clickY = dockKind === 'hire' ? pt.y : leftPt.y
+      const clickX = dockKind === 'hire' || dockKind === 'msg' ? pt.x : leftPt.x
+      const clickY = dockKind === 'hire' || dockKind === 'msg' ? pt.y : leftPt.y
       if (hud.partyMembers.length > 0 && hud.worldPanels.partyMembers.length === 0) {
         hud.worldPanels.partyMembers = hud.partyMembers
       }

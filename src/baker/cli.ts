@@ -18,9 +18,12 @@ import { pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import {
   UNIVERSAL_DT1_PATHS,
+  isCacheableAssetPath,
+  validateAssetManifest,
   validatePackManifest,
   validateUniversalDt1Libraries,
 } from '../common/pack-contract/index.ts'
+import { hashFileSha256Prefix, validatePublicAssetRoots } from './io/asset-manifest.ts'
 import { cell, loadActTables, resolveLevelLibraries } from '../common/world/acts.ts'
 import { formatAudioAuditReport, runAudioAudit } from './audit/verify-audio-113c.ts'
 import { DEFAULT_NODE_MPQ_DIR, mountNodeArchives } from './mpq-archive-source.ts'
@@ -44,6 +47,7 @@ const TARGET_SCRIPTS: Readonly<Record<string, string>> = {
   'char-so': 'src/baker/packers/pack-char-so-layers.ts',
   characters: 'src/baker/packers/pack-characters.ts',
   cursor: 'src/baker/packers/pack-cursor.ts',
+  'pd2-hd-cursor': 'src/baker/packers/pack-pd2-hd-cursor.ts',
   skills: 'src/baker/packers/pack-skill-assets.ts',
   'drop-data': 'src/baker/packers/pack-canonical-drop-data.ts',
   tbl: 'src/baker/packers/pack-canonical-tbl.ts',
@@ -101,6 +105,7 @@ export const ALL_BAKE_TARGETS: readonly string[] = [
 
 export interface BakerVerifySummary {
   readonly tileManifestVerified: boolean
+  readonly publicRootsVerified: boolean
   readonly levelsVerified: number
   readonly universalDt1Count: number
   readonly dropParityVerified: boolean
@@ -115,6 +120,33 @@ export interface BakerVerifySummary {
  */
 export async function runBakerVerify(rootDir: string = process.cwd()): Promise<BakerVerifySummary> {
   console.log('=== Diablo II v1.13c Baker Offline Contract & Pack Verification ===')
+
+  // 0. Validate public/ top-level asset roots against CACHEABLE_PREFIXES and verify cursor-pd2/ manifest coverage (#1314)
+  const publicDir = join(rootDir, 'public')
+  const publicRoots = validatePublicAssetRoots(publicDir)
+  const assetManifestPath = join(publicDir, 'asset-manifest.json')
+  if (existsSync(assetManifestPath)) {
+    const assetManifest = validateAssetManifest(
+      JSON.parse(readFileSync(assetManifestPath, 'utf-8')),
+    )
+    for (const rel of ['cursor-pd2/hand.png', 'cursor-pd2/manifest.json', 'cursor-pd2/other.png']) {
+      const abs = join(publicDir, rel)
+      if (!existsSync(abs)) continue
+      if (!isCacheableAssetPath(rel)) {
+        throw new Error(`Expected ${rel} to be cacheable via isCacheableAssetPath (#1314)`)
+      }
+      const expectedHash = hashFileSha256Prefix(abs).hash
+      const actualHash = assetManifest.files[rel]
+      if (actualHash !== expectedHash) {
+        throw new Error(
+          `Asset manifest mismatch for ${rel}: manifest=${String(actualHash)} !== disk=${expectedHash} (run "npm run pack:manifest")`,
+        )
+      }
+    }
+  }
+  console.log(
+    `✓ Public asset roots verified (${publicDir}): ${String(publicRoots.cacheableDirs.length)} cacheable dirs [${publicRoots.cacheableDirs.join(', ')}]`,
+  )
 
   // 1. Validate tile catalog manifest (`public/act-packs/tiles/index.json`)
   const tileIndexPath = join(rootDir, 'public', 'act-packs', 'tiles', 'index.json')
@@ -192,6 +224,7 @@ export async function runBakerVerify(rootDir: string = process.cwd()): Promise<B
   console.log('=== All Baker Offline Verifications Passed (0 errors) ===')
   return {
     tileManifestVerified: true,
+    publicRootsVerified: true,
     levelsVerified,
     universalDt1Count: UNIVERSAL_DT1_PATHS.length,
     dropParityVerified: true,

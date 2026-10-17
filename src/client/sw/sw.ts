@@ -273,61 +273,69 @@ export class AssetCacheServiceWorkerController {
       return await this.fetchFn(request)
     }
 
-    if (this.syncInFlight) {
-      try {
-        await this.syncInFlight
-      } catch {
-        // Sync failure handled below by manifestReady check
-      }
-    }
-
-    const immutableAsset = isImmutableHashedAsset(request.url)
-    const manifest = immutableAsset ? this.activeManifest : await this.loadStoredManifest()
-
-    // Anti-Silent-Failure: if no valid manifest has been synced and this is not a content-hashed bundle,
-    // do not serve or populate potentially stale pack assets.
-    if (!immutableAsset && manifest === null) {
-      this.networkPassThroughs += 1
-      return await this.fetchFn(request)
-    }
-
-    const assetCache = await this.caches.open(ASSET_CACHE_NAME)
-    const cached = await assetCache.match(request)
-    if (cached) {
-      this.cacheHits += 1
-      return cached.clone()
-    }
-
-    const existingInFlight = this.inFlightFetches.get(request.url)
-    if (existingInFlight) {
-      this.cacheHits += 1
-      const shared = await existingInFlight
-      return shared.clone()
-    }
-
-    this.cacheMisses += 1
-    const fetchAndCachePromise = (async (): Promise<Response> => {
-      const response = await this.fetchFn(request)
-      if (isCacheableResponse(response)) {
+    try {
+      if (this.syncInFlight) {
         try {
-          await assetCache.put(request, response.clone())
-        } catch (err) {
-          await assetCache.delete(request).catch(() => false)
-          this.quotaErrors += 1
-          this.onQuotaError?.(request.url, err)
+          await this.syncInFlight
+        } catch {
+          // Sync failure handled below by manifestReady check
         }
       }
-      return response
-    })()
 
-    this.inFlightFetches.set(request.url, fetchAndCachePromise)
-    try {
-      const response = await fetchAndCachePromise
-      return response.clone()
-    } finally {
-      if (this.inFlightFetches.get(request.url) === fetchAndCachePromise) {
-        this.inFlightFetches.delete(request.url)
+      const immutableAsset = isImmutableHashedAsset(request.url)
+      const manifest = immutableAsset ? this.activeManifest : await this.loadStoredManifest()
+
+      // Anti-Silent-Failure: if no valid manifest has been synced and this is not a content-hashed bundle,
+      // do not serve or populate potentially stale pack assets.
+      if (!immutableAsset && manifest === null) {
+        this.networkPassThroughs += 1
+        return await this.fetchFn(request)
       }
+
+      const assetCache = await this.caches.open(ASSET_CACHE_NAME)
+      const cached = await assetCache.match(request)
+      if (cached) {
+        this.cacheHits += 1
+        return cached.clone()
+      }
+
+      const existingInFlight = this.inFlightFetches.get(request.url)
+      if (existingInFlight) {
+        this.cacheHits += 1
+        const shared = await existingInFlight
+        return shared.clone()
+      }
+
+      this.cacheMisses += 1
+      const fetchAndCachePromise = (async (): Promise<Response> => {
+        const response = await this.fetchFn(request)
+        if (isCacheableResponse(response)) {
+          try {
+            await assetCache.put(request, response.clone())
+          } catch (err) {
+            await assetCache.delete(request).catch(() => false)
+            this.quotaErrors += 1
+            this.onQuotaError?.(request.url, err)
+          }
+        }
+        return response
+      })()
+
+      this.inFlightFetches.set(request.url, fetchAndCachePromise)
+      try {
+        const response = await fetchAndCachePromise
+        return response.clone()
+      } finally {
+        if (this.inFlightFetches.get(request.url) === fetchAndCachePromise) {
+          this.inFlightFetches.delete(request.url)
+        }
+      }
+    } catch (swErr) {
+      // SW cache resilience fallback: any internal CacheStorage/manifest/SW failure
+      // automatically falls through to direct network fetch instead of failing the request in the page.
+      console.warn(`[d2web-sw] Cache handling error for ${request.url}, falling through to network:`, swErr)
+      this.networkPassThroughs += 1
+      return await this.fetchFn(request)
     }
   }
 
@@ -445,7 +453,15 @@ function bindServiceWorkerGlobal(): void {
     if (shouldBypassCache(fetchEv.request, scope.location?.origin ?? '')) {
       return
     }
-    fetchEv.respondWith(controller.handleFetch(fetchEv.request))
+    fetchEv.respondWith(
+      controller.handleFetch(fetchEv.request).catch(async (err: unknown) => {
+        console.warn(
+          `[d2web-sw] Unhandled handleFetch error for ${fetchEv.request.url}, falling back to network fetch:`,
+          err,
+        )
+        return await fetch(fetchEv.request)
+      }),
+    )
   })
 
   scope.addEventListener!('message', (ev) => {

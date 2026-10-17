@@ -89,8 +89,8 @@ describe('D2GS S->C 1.13c packet decoders (M1)', () => {
       mercId: 99,
       classId: 271,
       nameId: 14,
-      seed: 0x5678,
-      value: 0x5678,
+      seed: 0xdeadbeef,
+      value: 0xdeadbeef,
     })
 
     const w9b = new ByteWriter(7)

@@ -455,6 +455,98 @@ describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Pers
     }
   })
 
+  it('displays and allows modifying battle.net server address in config modal (#d2-toolbar-server-input)', () => {
+    const prevDoc = (globalThis as { document?: unknown }).document
+    const head = new FakeElement('head')
+    const body = new FakeElement('body')
+    const container = new FakeElement('div')
+    body.appendChild(container)
+    ;(globalThis as { document?: unknown }).document = {
+      head,
+      body,
+      createElement(tag: string) {
+        return new FakeElement(tag)
+      },
+      getElementById(id: string) {
+        return body.querySelector(`#${id}`) ?? head.querySelector(`#${id}`)
+      },
+    }
+
+    try {
+      const store = new SettingsStore({
+        storage: new MemoryStorage(),
+        defaultLang: 'zh',
+        syncGlobalLang: false,
+      })
+      const reconnectedHosts: string[] = []
+      const toolbar = new Toolbar({
+        container: container as unknown as HTMLElement,
+        store,
+        callbacks: {
+          onServerHostReconnect: (newHost) => {
+            reconnectedHosts.push(newHost)
+          },
+        },
+      })
+
+      const root = container.querySelector('#d2-toolbar')!
+      const configBtn = root.querySelector('#d2-toolbar-config-btn')!
+      const configOverlay = root.querySelector('#d2-config-modal-overlay')!
+      configBtn.click()
+
+      const serverInput = configOverlay.querySelector('#d2-toolbar-server-input')!
+      const serverLabel = configOverlay.querySelector('#d2-config-server-label')!
+      const serverApplyBtn = configOverlay.querySelector('#d2-toolbar-server-apply-btn')!
+      const serverStatus = configOverlay.querySelector('#d2-toolbar-server-status')!
+
+      expect(serverInput).not.toBeNull()
+      expect(serverLabel).not.toBeNull()
+      expect(serverApplyBtn).not.toBeNull()
+      expect(serverStatus).not.toBeNull()
+      expect(serverInput.value).toBe('www.laiseek.xyz')
+      expect(serverLabel.textContent).toBe('战网服务器')
+      expect(serverApplyBtn.textContent).toBe('连接')
+      expect(serverStatus.hidden).toBe(true)
+
+      // Test validation: bare IP on https page is rejected
+      serverInput.value = '192.168.1.1'
+      serverApplyBtn.click()
+      expect(store.get().serverHost).toBe('www.laiseek.xyz')
+      expect(serverStatus.hidden).toBe(false)
+      expect(serverStatus.textContent).toContain('HTTPS')
+
+      // Typing in input clears error
+      serverInput.value = 'd2.laiseek.xyz'
+      serverInput.dispatchEvent({ type: 'input' })
+      expect(serverStatus.hidden).toBe(true)
+
+      // Submitting valid domain applies and reconnects
+      serverApplyBtn.click()
+      expect(store.get().serverHost).toBe('d2.laiseek.xyz')
+      expect(reconnectedHosts).toEqual(['d2.laiseek.xyz'])
+      expect(serverStatus.hidden).toBe(true)
+
+      // Pressing enter key in input submits
+      serverInput.value = 'laiseek.xyz'
+      serverInput.dispatchEvent({
+        type: 'keydown',
+        key: 'Enter',
+        preventDefault: () => {},
+      } as unknown as { type: string })
+      expect(store.get().serverHost).toBe('laiseek.xyz')
+      expect(reconnectedHosts).toEqual(['d2.laiseek.xyz', 'laiseek.xyz'])
+
+      // Switching language updates label
+      toolbar.setLanguage('en')
+      expect(serverLabel.textContent).toBe('Battle.net Server')
+      expect(serverApplyBtn.textContent).toBe('Apply')
+
+      toolbar.destroy()
+    } finally {
+      ;(globalThis as { document?: unknown }).document = prevDoc
+    }
+  })
+
   it('opens bug report modal (#d2-bug-modal-overlay), validates required fields, and persists submitted bug reports to server files', async () => {
     const prevDoc = (globalThis as { document?: unknown }).document
     const head = new FakeElement('head')

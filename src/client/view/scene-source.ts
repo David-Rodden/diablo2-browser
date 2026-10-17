@@ -30,7 +30,7 @@ import {
   getViewportProfile,
   screenToWorld,
   subTileToWorldOrtho,
-  VIEWPORT_800x600,
+  DEFAULT_VIEWPORT_PROFILE,
   type ViewportProfile,
   type ViewportResolution,
 } from './viewport-profile.ts'
@@ -554,6 +554,12 @@ function cullAndNormalizeUnitsToPaddedView(
 export class ClientWorldSceneSource implements SceneSource {
   private viewportProfile: ViewportProfile
   private stateProvider: () => ClientSceneWorldAdapter
+  /**
+   * Render-time transform of the provider's state (PD2 `d2fps` motion smoothing,
+   * `loop/scene-motion-smoothing.ts`). Applied on every provider read, so the world, camera, lighting
+   * and hit-testing all see the same smoothed positions.
+   */
+  private stateFilter: ((st: ClientSceneWorldAdapter) => ClientSceneWorldAdapter) | null = null
   private inFrame = false
   private activeFrameState: ClientSceneWorldAdapter | null = null
   private cachedSceneDrawables: readonly SceneUnitDrawable[] | null = null
@@ -605,7 +611,7 @@ export class ClientWorldSceneSource implements SceneSource {
 
   constructor(
     stateProvider: () => ClientSceneWorldAdapter,
-    initialViewport: ViewportProfile | ViewportResolution = VIEWPORT_800x600,
+    initialViewport: ViewportProfile | ViewportResolution = DEFAULT_VIEWPORT_PROFILE,
   ) {
     this.stateProvider = stateProvider
     this.viewportProfile = getViewportProfile(initialViewport)
@@ -621,14 +627,25 @@ export class ClientWorldSceneSource implements SceneSource {
     this.activeFrameState = null
   }
 
+  /** Install (or clear with `null`) the render-time state transform; see {@link stateFilter}. */
+  setStateFilter(filter: ((st: ClientSceneWorldAdapter) => ClientSceneWorldAdapter) | null): void {
+    this.stateFilter = filter
+    this.activeFrameState = null
+  }
+
+  private readState(): ClientSceneWorldAdapter {
+    const st = this.stateProvider()
+    return this.stateFilter ? this.stateFilter(st) : st
+  }
+
   private getState(): ClientSceneWorldAdapter {
     if (this.inFrame) {
       if (!this.activeFrameState) {
-        this.activeFrameState = this.stateProvider()
+        this.activeFrameState = this.readState()
       }
       return this.activeFrameState
     }
-    return this.stateProvider()
+    return this.readState()
   }
 
   private resolveActId(st: ClientSceneWorldAdapter): 1 | 2 | 3 | 4 | 5 {

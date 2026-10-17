@@ -116,6 +116,7 @@ export function decode0x75PlayerPartyInfo(pkt: Uint8Array): ServerEvent {
     partyId,
     charLevel,
     relation: (inParty << 16) | relation,
+    inParty: inParty !== 0,
   }
 }
 

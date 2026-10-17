@@ -20,3 +20,21 @@ export async function loadWeatherAssets(
     throw new Error(`weather assets ${url}: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
+
+/**
+ * Loads weather assets with graceful degradation:
+ * If the fetch fails for any reason (offline, failed to fetch, 404, corrupt JSON, etc.),
+ * logs a warning and returns `null` instead of throwing, allowing the game session to
+ * proceed without weather effects.
+ */
+export async function loadWeatherAssetsSafe(
+  url: string = WEATHER_ASSETS_URL,
+  fetchImpl: (url: string) => Promise<Response> = (u) => fetch(u),
+): Promise<WeatherManifestData | null> {
+  try {
+    return await loadWeatherAssets(url, fetchImpl)
+  } catch (err) {
+    console.warn(`[weather] Weather assets failed to load; local weather effects disabled:`, err)
+    return null
+  }
+}

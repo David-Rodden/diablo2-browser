@@ -3426,6 +3426,15 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
                 (isMonsterOneShotMode(unit.mode) || unit.mode === 14)))
         ) {
           unit.mode = unit.unitType === 'player' && isTownLevel(this.areaId) ? 5 : 1
+          unit.modeStartedAtMs = effNow ?? this._timeMs
+          unit.animStartedAtMs = undefined
+          if (unit.unitType === 'monster') {
+            const npcUnit = this.npcMotion.getUnit(unit.id)
+            if (npcUnit && npcUnit.dwAnimMode === castMode) {
+              this.npcMotion.changeAnimMode0x6FADA6C0(npcUnit, 1)
+              npcUnit.lastAnimRestarted = false
+            }
+          }
           if (!unit.moveMode || unit.moveMode === 'stop') {
             unit.targetX = undefined
             unit.targetY = undefined

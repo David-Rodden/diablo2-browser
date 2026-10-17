@@ -18,6 +18,110 @@
 
 import { resolveTblKey } from '../data/canonical-tbl-strings.ts'
 
+const STORM_WIN1252_CODEPOINT_TO_BYTE: ReadonlyMap<number, number> = new Map<number, number>([
+  [0x20ac, 0x80],
+  [0x0081, 0x81],
+  [0x201a, 0x82],
+  [0x0192, 0x83],
+  [0x201e, 0x84],
+  [0x2026, 0x85],
+  [0x2020, 0x86],
+  [0x2021, 0x87],
+  [0x02c6, 0x88],
+  [0x2030, 0x89],
+  [0x0160, 0x8a],
+  [0x2039, 0x8b],
+  [0x0152, 0x8c],
+  [0x008d, 0x8d],
+  [0x017d, 0x8e],
+  [0x008f, 0x8f],
+  [0x0090, 0x90],
+  [0x2018, 0x91],
+  [0x2019, 0x92],
+  [0x201c, 0x93],
+  [0x201d, 0x94],
+  [0x2022, 0x95],
+  [0x2013, 0x96],
+  [0x2014, 0x97],
+  [0x02dc, 0x98],
+  [0x2122, 0x99],
+  [0x0161, 0x9a],
+  [0x203a, 0x9b],
+  [0x0153, 0x9c],
+  [0x009d, 0x9d],
+  [0x017e, 0x9e],
+  [0x0178, 0x9f],
+])
+
+let cachedGbkFatalDecoder: TextDecoder | null | undefined
+
+function getGbkFatalDecoder(): TextDecoder | null {
+  if (cachedGbkFatalDecoder !== undefined) return cachedGbkFatalDecoder
+  try {
+    cachedGbkFatalDecoder = new TextDecoder('gbk', { fatal: true })
+  } catch {
+    cachedGbkFatalDecoder = null
+  }
+  return cachedGbkFatalDecoder
+}
+
+/**
+ * Unwraps a `Storm.dll!#912` (`0x6fc25b50`) Windows-1252-widened GBK string (such as `"ÄãÊÇ£¿"`)
+ * back into its decoded GBK text (`"你是？"`).
+ */
+export function unwrapStormWin1252GbkString(text: string): string {
+  if (!text) return text
+  const out = new Uint8Array(text.length)
+  let hasNonAscii = false
+  for (let i = 0; i < text.length; i++) {
+    const cp = text.charCodeAt(i)
+    if (cp < 0x80) {
+      out[i] = cp
+    } else if (cp >= 0xa0 && cp <= 0xff) {
+      out[i] = cp
+      hasNonAscii = true
+    } else {
+      const mapped = STORM_WIN1252_CODEPOINT_TO_BYTE.get(cp)
+      if (mapped === undefined) return text
+      out[i] = mapped
+      hasNonAscii = true
+    }
+  }
+  if (!hasNonAscii) return text
+  const decoder = getGbkFatalDecoder()
+  if (!decoder) return text
+  try {
+    const decoded = decoder.decode(out)
+    let gb2312 = 0
+    let otherNonAscii = 0
+    let i = 0
+    while (i < out.length) {
+      const b1 = out[i]!
+      if (b1 < 0x80) {
+        i++
+        continue
+      }
+      if (i + 1 >= out.length) {
+        otherNonAscii++
+        break
+      }
+      const b2 = out[i + 1]!
+      if (((b1 >= 0xa1 && b1 <= 0xa9) || (b1 >= 0xb0 && b1 <= 0xf7)) && b2 >= 0xa1 && b2 <= 0xfe) {
+        gb2312++
+      } else {
+        otherNonAscii++
+      }
+      i += 2
+    }
+    if (gb2312 > 0 && otherNonAscii === 0) {
+      return decoded
+    }
+  } catch {
+    // Not a valid GBK sequence
+  }
+  return text
+}
+
 // ─── 1.13c Binary Ground-Truth Constants (`D2Client.dll` `UI\Msg.cpp`) ───────
 
 /** `0x6fb2b7b1` (`CMP EDX, 0x2710`): Top-left chat stream line lifetime = 10,000 ms. */
@@ -148,8 +252,8 @@ export function resolveOverheadBubbleText113c(
   // 0x6fb2dc00: player voice-wheel / help emote ("ÿÿ<decimal>")
   if (
     trimmed.length > 2 &&
-    trimmed.charCodeAt(0) === 0xff &&
-    trimmed.charCodeAt(1) === 0xff
+    (trimmed.charCodeAt(0) === 0xff || trimmed.charCodeAt(0) === 0xfffd) &&
+    (trimmed.charCodeAt(1) === 0xff || trimmed.charCodeAt(1) === 0xfffd)
   ) {
     const idStr = trimmed.slice(2).trim()
     if (/^\d+$/.test(idStr)) {
@@ -225,7 +329,7 @@ export function formatChatPacket0x26(
   const color = input.color ?? 0
   const senderName = (input.senderName ?? input.charName ?? '').trim()
   const accountName = (input.accountName ?? '').trim()
-  const message = input.message ?? input.text ?? ''
+  const message = unwrapStormWin1252GbkString(input.message ?? input.text ?? '')
   switch (chatType) {
     case 0x01: {
       const colon = resolveChatTblIndex(0x0fd0, lang) || (lang === 'CHI' ? '：' : ': ')
@@ -270,7 +374,16 @@ export function formatChatPacket0x26(
         rawMessage: message,
       }
     }
-    case 0x04:
+    case 0x04: {
+      // 0x6fb2f7ea: S2C 0x26 chatType == 0x04 (System / global broadcast message)
+      return {
+        kind: 'system',
+        text: message,
+        color: input.color ?? 4,
+        sender: senderName,
+        rawMessage: message,
+      }
+    }
     default: {
       return {
         kind: 'system',
@@ -493,20 +606,37 @@ export type ParsedChatInput =
   | { readonly kind: 'say'; readonly text: string }
   | { readonly kind: 'overhead'; readonly text: string }
   | { readonly kind: 'whisper'; readonly target: string; readonly text: string }
+  | {
+      readonly kind: 'bncs_command'
+      readonly command: string
+      readonly isAnnounce?: boolean | undefined
+    }
   | { readonly kind: 'local_clear' }
   | { readonly kind: 'local_fps' }
-  | { readonly kind: 'local_players'; readonly count: number | null; readonly valid: boolean; readonly rawCount?: number }
-  | { readonly kind: 'local_error'; readonly errorKey: 'whisperUsage' | 'noReplyTarget' }
+  | {
+      readonly kind: 'local_players'
+      readonly count: number | null
+      readonly valid: boolean
+      readonly rawCount?: number
+    }
+  | {
+      readonly kind: 'local_error'
+      readonly errorKey: 'whisperUsage' | 'noReplyTarget' | 'announceUsage'
+    }
 
 /**
- * Parses raw text entered in the 1.13c in-game chat bar (`Enter` key):
+ * Parses raw text entered in the 1.13c in-game chat bar (`Enter` key) per
+ * `D2Client.dll` `0x6fb207f0` & `0x6fb1ec30` (`UI\chat.cpp`) and `D2Multi.dll` `0x6f9db090`:
  * - `!text` -> `{ kind: 'overhead', text }` (`C2S 0x14` OverheadChat; `!` alone clears overhead speech)
- * - `%<target> <msg>`, `/w <target> <msg>`, `/whisper <target> <msg>`, `/msg <target> <msg>`
+ * - `%<target> <msg>`, `/w <target> <msg>`, `/whisper <target> <msg>`, `/msg <target> <msg>`, `/m <target> <msg>`
  *   -> `{ kind: 'whisper', target, text }` (`C2S 0x15` type `0x02`)
  * - `/r <msg>`, `/reply <msg>` -> whispers `lastWhisperTarget`
  * - `/clear` -> `{ kind: 'local_clear' }`
- * - `/fps` -> `{ kind: 'local_fps' }`
+ * - `/fps`, `/framerate` -> `{ kind: 'local_fps' }`
  * - `/players [N]` or `players N` -> `{ kind: 'local_players', ... }`
+ * - `/ann <msg>`, `/announce <msg>`, and other `/` Battle.net slash commands (`0x6fb2084d` `w_flag = 3`
+ *   -> `0x6fb20c27` `pBnetCallbacks->vtable[+0x14]` -> `Bnclient.dll` `0x6ff2c400` `SID_CHATCOMMAND 0x0E`)
+ *   -> `{ kind: 'bncs_command', command }`
  * - Anything else -> `{ kind: 'say', text }` (`C2S 0x15` type `0x01`)
  */
 export function parseInGameChatInput(
@@ -539,15 +669,15 @@ export function parseInGameChatInput(
     return { kind: 'whisper', target, text: msg }
   }
 
-  // 3. Slash commands
+  // 3. Slash commands (`0x6fb2084d`: `w_flag = 3`)
   if (trimmed.startsWith('/')) {
     // /clear -> clear active top-left chat stream
     if (/^\/clear$/i.test(trimmed)) {
       return { kind: 'local_clear' }
     }
 
-    // /fps -> toggle FPS display
-    if (/^\/fps$/i.test(trimmed)) {
+    // /fps or /framerate (`0x6fb20b70`) -> toggle FPS display
+    if (/^\/(?:fps|framerate)$/i.test(trimmed)) {
       return { kind: 'local_fps' }
     }
 
@@ -577,8 +707,8 @@ export function parseInGameChatInput(
       return { kind: 'whisper', target: lastWhisperTarget, text: msg }
     }
 
-    // /w <target> <msg>, /whisper <target> <msg>, /msg <target> <msg>
-    const whisperCmdMatch = trimmed.match(/^\/(?:w|whisper|msg)(?:\s+(\S+)(?:\s+([\s\S]*))?)?$/i)
+    // /w <target> <msg>, /whisper <target> <msg>, /msg <target> <msg>, /m <target> <msg> (`0x6fb20500`)
+    const whisperCmdMatch = trimmed.match(/^\/(?:w|whisper|msg|m)(?:\s+(\S+)(?:\s+([\s\S]*))?)?$/i)
     if (whisperCmdMatch) {
       const target = (whisperCmdMatch[1] ?? '').trim()
       const msg = (whisperCmdMatch[2] ?? '').trim().slice(0, CHAT_INPUT_MAX_CHARS)
@@ -586,6 +716,27 @@ export function parseInGameChatInput(
         return { kind: 'local_error', errorKey: 'whisperUsage' }
       }
       return { kind: 'whisper', target, text: msg }
+    }
+
+    // /ann <msg> or /announce <msg> (BNCS / PvPGN server-wide global announcement via SID_CHATCOMMAND 0x0E)
+    const announceMatch = trimmed.match(/^\/(?:ann|announce)(?:\s+([\s\S]*))?$/i)
+    if (announceMatch) {
+      const msg = (announceMatch[1] ?? '').trim()
+      if (!msg) {
+        return { kind: 'local_error', errorKey: 'announceUsage' }
+      }
+      return {
+        kind: 'bncs_command',
+        command: trimmed.slice(0, CHAT_INPUT_MAX_CHARS),
+        isAnnounce: true,
+      }
+    }
+
+    // All other '/' commands (`0x6fb20c1f..0x6fb20c37`: /whoami, /whois, /whereis, /friends, /f, /time, /channel, etc.)
+    // are forwarded to BNCS via `pBnetCallbacks->vtable[+0x14]` -> `SID_CHATCOMMAND (0x0E)`.
+    return {
+      kind: 'bncs_command',
+      command: trimmed.slice(0, CHAT_INPUT_MAX_CHARS),
     }
   }
 
@@ -600,6 +751,184 @@ export function parseInGameChatInput(
   }
 
   return { kind: 'say', text: trimmed.slice(0, CHAT_INPUT_MAX_CHARS) }
+}
+
+// ─── BNCS `SID_CHATEVENT (0x0F)` Formatting (`D2Client.dll` `0x6fb1fce0` `UI\chat.cpp`) ───
+
+export interface BncsChatEventFormatInput {
+  readonly kind:
+    | 'showUser'
+    | 'user'
+    | 'join'
+    | 'leave'
+    | 'whisper'
+    | 'talk'
+    | 'broadcast'
+    | 'channel'
+    | 'userFlags'
+    | 'flags'
+    | 'whisperSent'
+    | 'channelFull'
+    | 'channelDoesNotExist'
+    | 'channelRestricted'
+    | 'info'
+    | 'error'
+    | 'emote'
+    | 'unknown'
+    | (string & {})
+  readonly eventId?: number | undefined
+  readonly username?: string | undefined
+  readonly text: string
+}
+
+export interface FormattedBncsChatEvent113c {
+  readonly kind: 'say' | 'whisper' | 'system'
+  readonly eventType?: number | undefined
+  readonly text: string
+  readonly lobbyText: string
+  readonly color: number
+  readonly sender: string
+  readonly rawMessage: string
+}
+
+/**
+ * Formats an incoming Battle.net `SID_CHATEVENT (0x0F)` packet for both the in-game chat overlay /
+ * Message Log (`D2Client.dll` `0x6fb1fce0` `CHAT_OnBncsChatEvent`) and the Battle.net Lobby chat box
+ * (`D2Multi.dll`).
+ *
+ * Returns `null` for non-message channel roster events (`user`, `join`, `leave`, `flags`).
+ */
+export function formatBncsChatEvent113c(
+  event: BncsChatEventFormatInput,
+  lang: 'ENG' | 'CHI' = 'CHI',
+): FormattedBncsChatEvent113c | null {
+  const rawText = unwrapStormWin1252GbkString((event.text ?? '').trim())
+  const user = (event.username ?? '').trim()
+
+  switch (event.kind) {
+    case 'broadcast': {
+      // EID_BROADCAST (0x06): Server-wide /ann (/announce) broadcast (`0x6fb1fef9`, color 4 Gold)
+      if (!rawText) return null
+      const lowerText = rawText.toLowerCase()
+      const lowerUser = user.toLowerCase()
+      const alreadyPrefixed =
+        !user ||
+        lowerUser === 'administrator' ||
+        lowerUser === 'battle.net' ||
+        lowerUser === 'battlenet' ||
+        rawText.startsWith('<') ||
+        rawText.startsWith('\xffc') ||
+        lowerText.startsWith('announcement') ||
+        lowerText.startsWith('broadcast') ||
+        rawText.startsWith(`${user}:`) ||
+        rawText.startsWith(`${user}：`)
+      const text = alreadyPrefixed ? rawText : `<${user}> ${rawText}`
+      return {
+        kind: 'system',
+        eventType: 0x04,
+        text,
+        lobbyText: text,
+        color: 4,
+        sender: user,
+        rawMessage: rawText,
+      }
+    }
+    case 'info': {
+      // EID_INFO (0x12): Server info / PvPGN /ann broadcast / /whoami / /time (`0x6fb1ffb4`)
+      if (!rawText) return null
+      return {
+        kind: 'system',
+        eventType: 0x04,
+        text: rawText,
+        lobbyText: rawText,
+        color: 4,
+        sender: user,
+        rawMessage: rawText,
+      }
+    }
+    case 'error':
+    case 'channelFull':
+    case 'channelDoesNotExist':
+    case 'channelRestricted': {
+      // EID_ERROR (0x13) & channel error events (`0x6fb1ff6e`, color 1 Red)
+      if (!rawText) return null
+      return {
+        kind: 'system',
+        eventType: 0x04,
+        text: rawText,
+        lobbyText: rawText,
+        color: 1,
+        sender: user,
+        rawMessage: rawText,
+      }
+    }
+    case 'whisper': {
+      // EID_WHISPER (0x04): Incoming Battle.net whisper (`0x6fb1fe89`, color 2 Green)
+      const fmt = formatChatPacket0x26(
+        { chatType: 0x02, color: 2, senderName: user, message: rawText },
+        lang,
+      )
+      return {
+        kind: 'whisper',
+        eventType: 0x02,
+        text: fmt.text,
+        lobbyText: fmt.text,
+        color: 2,
+        sender: user,
+        rawMessage: rawText,
+      }
+    }
+    case 'whisperSent': {
+      // EID_WHISPERSENT (0x0A): Outgoing Battle.net whisper echo (`0x6fb1fedc`, color 2 Green)
+      const fmt = formatChatPacket0x26(
+        { chatType: 0x06, color: 2, senderName: user, message: rawText },
+        lang,
+      )
+      return {
+        kind: 'whisper',
+        eventType: 0x06,
+        text: fmt.text,
+        lobbyText: fmt.text,
+        color: 2,
+        sender: user,
+        rawMessage: rawText,
+      }
+    }
+    case 'talk': {
+      // EID_TALK (0x05): Channel public speech
+      if (!rawText) return null
+      const fmt = formatChatPacket0x26(
+        { chatType: 0x01, color: 0, senderName: user, message: rawText },
+        lang,
+      )
+      const lobbyText = user ? `<${user}> ${rawText}` : rawText
+      return {
+        kind: 'say',
+        eventType: 0x01,
+        text: fmt.text,
+        lobbyText,
+        color: 0,
+        sender: user,
+        rawMessage: rawText,
+      }
+    }
+    case 'emote': {
+      // EID_EMOTE (0x17): Channel emote (`<user text>`, color 5 Gray)
+      if (!rawText) return null
+      const text = user ? `<${user} ${rawText}>` : rawText
+      return {
+        kind: 'system',
+        eventType: 0x04,
+        text,
+        lobbyText: text,
+        color: 5,
+        sender: user,
+        rawMessage: rawText,
+      }
+    }
+    default:
+      return null
+  }
 }
 
 // ─── 1.13c Word-Wrapping & Inline Color State (`0x6fb2d850` / `0x6fb2ca40`) ──
@@ -753,6 +1082,9 @@ export function wrapChatText113c(
   explicitMaxLines?: number,
 ): WrappedChatLine113c[] {
   if (!text) return []
+  const normalizedText = text.includes('\ufffdc')
+    ? text.replace(/\ufffdc([0-9a-zA-Z:;<>/.+-])/g, '\xffc$1')
+    : text
   const measureFn =
     typeof measureFnOrWidth === 'function'
       ? measureFnOrWidth
@@ -767,7 +1099,7 @@ export function wrapChatText113c(
       : CHAT_MESSAGE_MAX_WRAPPED_LINES)
 
   const effectiveMaxW = Math.max(40, maxWidthPx)
-  const paragraphs = text.split(/\r?\n/)
+  const paragraphs = normalizedText.split(/\r?\n/)
   const lines: string[] = []
   let carriedColor: string | null = null
 

@@ -9,7 +9,7 @@ import { systemClock, type Clock } from '../core/clock.ts'
 import { TypedEmitter } from '../core/emitter.ts'
 import { ProtocolError, TimeoutError } from '../core/errors.ts'
 import type { PacketTap } from '../core/packet-tap.ts'
-import { defaultTextCodec, type TextCodec } from '../core/text-codec.ts'
+import { defaultTextCodec, resolveTextCodec, type TextCodec } from '../core/text-codec.ts'
 import { doubleHash, hashBnetPassword, hashRealmPassword } from '../crypto/bnet-hash.ts'
 import {
   createSyntheticCdKeyPair,
@@ -349,7 +349,8 @@ export class BncsSession {
   }
 
   sendChat(text: string): void {
-    const pkt = encodeBncsChatCommand(text, this.codec)
+    const chatCodec = this.codec === defaultTextCodec ? resolveTextCodec('utf-8') : this.codec
+    const pkt = encodeBncsChatCommand(text, chatCodec)
     this.sendRaw(pkt, 0x0e, 'SID_CHATCOMMAND')
   }
 

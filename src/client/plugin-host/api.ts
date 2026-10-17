@@ -20,6 +20,7 @@ import {
 } from '../scene/lighting-presets.ts'
 import type { OnlineSession } from '../session/online-session.ts'
 import {
+  DEFAULT_VIEWPORT_RESOLUTION,
   VALID_AUTOMAP_REVEAL_MODES,
   VALID_LIGHTING_PRESETS,
   VALID_VIEWPORT_RESOLUTIONS,
@@ -34,6 +35,7 @@ import {
 } from '../settings/client-settings.ts'
 import { getGlobalSettingsStore } from '../settings/settings-store.ts'
 import {
+  DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS,
   EXTENDED_VIEWPORT_RESOLUTIONS,
   NATIVE_113C_VIEWPORT_RESOLUTIONS,
   VIEWPORT_PROFILES,
@@ -48,6 +50,8 @@ import {
 
 export {
   CLIENT_LIGHTING_PRESET_ORDER,
+  DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS,
+  DEFAULT_VIEWPORT_RESOLUTION,
   EXTENDED_VIEWPORT_RESOLUTIONS,
   LIGHTING_PRESETS,
   NATIVE_113C_VIEWPORT_RESOLUTIONS,

@@ -983,8 +983,8 @@ export class HudModel implements HudCommandSink {
   /**
    * Allocate a base attribute point (`str`, `dex`, `vit`, `ene`) and emit `AddStatPoint (0x3A)`.
    */
-  allocateStat(key: BaseStatKey): boolean {
-    return allocateStatImpl(this, key)
+  allocateStat(key: BaseStatKey, count?: number): boolean {
+    return allocateStatImpl(this, key, count)
   }
 
   /**

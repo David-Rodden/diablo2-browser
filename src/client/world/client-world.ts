@@ -63,6 +63,7 @@ import {
   PATH_UpdateClientCoords,
   UNIT_PLAYER,
   getMonsterModeBaseAnimSpeed256,
+  getMonsterModeBaseFrameCount113c,
   type PathUnit,
 } from '../../common/path/index.ts'
 import { NpcMotion, type NpcMotionUnit } from '../motion/npc-motion.ts'
@@ -538,17 +539,21 @@ export class ClientWorld {
         const frameCount =
           unit?.totalFrames && unit.totalFrames > 0
             ? unit.totalFrames
-            : getMonsterOneShotDefaultFrames(mode)
+            : getMonsterModeBaseFrameCount113c(
+                classId,
+                mode,
+                unit?.castState?.skillId ?? unit?.lastSkillId,
+              )
         // Engine base speed for this monster's CURRENT mode (pAnimData->dwAnimSpeed) —
-        // NOT a flat 256: NPC idle/attack clips commonly run at 96..128, so the old
-        // default doubled every NPC's animation pace (#852).
+        // NOT a flat 256 and NOT the previous mode's scaled `unit.animStepSpeed256` (#852).
         const animSpeed =
-          unit?.animStepSpeed256 && unit.animStepSpeed256 > 0
-            ? unit.animStepSpeed256
+          unit?.animSpeed && unit.animSpeed > 0
+            ? Math.round((unit.animSpeed / 16) * 256)
             : getMonsterModeBaseAnimSpeed256(classId, mode)
         return { frameCount, animSpeed }
       },
-      onUnitUpdated: (npcUnit) => this.syncClientUnitFromNpcMotion(npcUnit),
+      onUnitUpdated: (npcUnit, prevMode, animRestarted) =>
+        this.syncClientUnitFromNpcMotion(npcUnit, prevMode, animRestarted),
     })
   }
 
@@ -621,10 +626,15 @@ export class ClientWorld {
     return null
   }
 
-  private syncClientUnitFromNpcMotion(npcUnit: NpcMotionUnit): void {
+  private syncClientUnitFromNpcMotion(
+    npcUnit: NpcMotionUnit,
+    prevNpcMode?: number,
+    animRestarted?: boolean,
+  ): void {
     const unit = this.getUnit('monster', npcUnit.dwUnitId)
     if (!unit) return
     const wasDead = unit.dead
+    const prevClientMode = unit.mode
     unit.x = npcUnit.preciseX
     unit.y = npcUnit.preciseY
     unit.mode = npcUnit.dwAnimMode
@@ -649,6 +659,27 @@ export class ClientWorld {
             : 'stop'
     unit.syncTurnState(npcUnit.direction, npcUnit.targetDirection, npcUnit.turnStepDir)
     unit.animStepSpeed256 = npcUnit.wAnimSpeed
+    const modeChanged =
+      (prevNpcMode !== undefined && prevNpcMode !== npcUnit.dwAnimMode) ||
+      prevClientMode !== npcUnit.dwAnimMode
+    if (modeChanged || animRestarted) {
+      const now = this._clockMs !== null ? this._clockMs : this._timeMs
+      unit.modeStartedAtMs = now
+      if (isMonsterOneShotMode(npcUnit.dwAnimMode) || npcUnit.dwAnimMode === 14) {
+        unit.animStartedAtMs = now
+      } else {
+        unit.animStartedAtMs = undefined
+        if (
+          npcUnit.dwAnimMode === 0 ||
+          npcUnit.dwAnimMode === 2 ||
+          npcUnit.dwAnimMode === 12 ||
+          npcUnit.dwAnimMode === 15 ||
+          (npcUnit.dwAnimMode === 1 && modeChanged)
+        ) {
+          this.clearUnitCastState(unit)
+        }
+      }
+    }
     if (npcUnit.pDynamicPath && npcUnit.moving) {
       unit.targetX = npcUnit.pDynamicPath.tTargetCoord.X
       unit.targetY = npcUnit.pDynamicPath.tTargetCoord.Y

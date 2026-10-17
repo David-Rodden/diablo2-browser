@@ -120,13 +120,19 @@ export {
   hexToBytes,
   parseD2CapJsonl,
 } from './core/packet-tap.ts'
-export { createBrowserTextCodec, defaultTextCodec, resolveTextCodec } from './core/text-codec.ts'
+export {
+  createBrowserTextCodec,
+  defaultTextCodec,
+  resolveTextCodec,
+  unwrapStormWin1252GbkString,
+} from './core/text-codec.ts'
 export { defaultClock, systemClock } from './core/clock.ts'
-export { BncsFramer } from './bncs/framing.ts'
+export { BncsFramer, encodeBncsFrame } from './bncs/framing.ts'
 export {
   BncsCreateAccountStatus,
   BncsOpcode,
   decodeBncsS2cPacket,
+  encodeBncsChatCommand,
   encodeBncsCreateAccount2,
   encodeBncsNull,
 } from './bncs/packets.ts'
@@ -134,7 +140,14 @@ export { BNCS_KEEPALIVE_INTERVAL_MS } from './bncs/session.ts'
 export { McpFramer } from './mcp/framing.ts'
 export { decodeMcpS2cPacket } from './mcp/packets.ts'
 export { resolveC2sPacketSize, validateC2sPacket } from './d2gs/framing-c2s.ts'
-export { encodeC2sChat, encodeC2sOverheadChat, encodeC2sSay } from './d2gs/c2s/chat.ts'
+export {
+  D2GS_CHAT_LOCALE_CHI,
+  D2GS_CHAT_LOCALE_ENG,
+  encodeC2sChat,
+  encodeC2sOverheadChat,
+  encodeC2sSay,
+  resolveD2gsChatLocale,
+} from './d2gs/c2s/chat.ts'
 export {
   ClickButtonId,
   encodeC2sCancelController,
@@ -271,6 +284,15 @@ export {
   getMonsterAnimCompBitWidths,
 } from './d2gs/s2c/monstats2-comp-bits.ts'
 export { decode0x3EUpdateItemStats } from './d2gs/s2c/stats.ts'
+export {
+  decode0x21UpdateSkill,
+  decode0x22UpdateSkillStatus,
+  decode0x7BAssignSkillHotkey,
+} from './d2gs/s2c/skills.ts'
+export { decode0x28QuestInfo } from './d2gs/s2c/quest.ts'
+export { decode0x75PlayerPartyInfo } from './d2gs/s2c/party.ts'
+export { decode0x81AssignMerc } from './d2gs/s2c/merc.ts'
+export { encodeMcpGameList } from './mcp/packets.ts'
 export { decodeD2gsItemPacket, encodeD2gsItemPacket } from './d2gs/items/item-bitstream.ts'
 
 import { ByteWriter } from './core/byte-writer.ts'

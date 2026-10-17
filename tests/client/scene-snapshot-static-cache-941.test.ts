@@ -101,7 +101,7 @@ function makeSource(levelView: LevelView, playerSubX: number, playerSubY: number
     levelView,
     units: [],
   }
-  const source = new ClientWorldSceneSource(() => st)
+  const source = new ClientWorldSceneSource(() => st, '800x600')
   return source
 }
 
@@ -148,7 +148,7 @@ describe('#941 static-pass signature cache', () => {
     let playerSubX = SUB_X
     const levelView = makeLevelView(floors, [])
     let st = { tick, actId: 1 as const, levelId: 1, playerSubX, playerSubY: SUB_Y, ambient: null, levelView, units: [] }
-    const source = new ClientWorldSceneSource(() => st)
+    const source = new ClientWorldSceneSource(() => st, '800x600')
     const a = source.buildFrameSnapshot()
     st = { ...st, tick: tick + 100 }
     const b = source.buildFrameSnapshot()
@@ -160,7 +160,7 @@ describe('#941 static-pass signature cache', () => {
     const floors = [makeDraw({ x: -400, y: -350, cellX: 0, cellY: 0 })]
     const levelView = makeLevelView(floors, [])
     let st = { tick: 1, actId: 1 as const, levelId: 1, playerSubX: SUB_X, playerSubY: SUB_Y, ambient: null, levelView, units: [] }
-    const source = new ClientWorldSceneSource(() => st)
+    const source = new ClientWorldSceneSource(() => st, '800x600')
     const a = source.buildFrameSnapshot()
     // +1 sub-tile → +16px X / +8px Y: same buckets (-6, -5)
     st = { ...st, playerSubX: SUB_X + 1 }
@@ -179,7 +179,7 @@ describe('#941 static-pass signature cache', () => {
     }
     const levelView = makeLevelView(floors, [])
     let st = { tick: 1, actId: 1 as const, levelId: 1, playerSubX: SUB_X, playerSubY: SUB_Y, ambient: null, levelView, units: [] }
-    const source = new ClientWorldSceneSource(() => st)
+    const source = new ClientWorldSceneSource(() => st, '800x600')
     const near = source.buildFrameSnapshot()
     // Capture the near contents BEFORE the far rebuild: pooled arrays are refilled
     // in place, so reading `near.floorQuads` after the rebuild would alias `far`.
@@ -207,7 +207,7 @@ describe('#941 static-pass signature cache', () => {
     ]
     const levelView = makeLevelView(nearFloors, [wallDraw])
     let st = { tick: 1, actId: 1 as const, levelId: 1, playerSubX: SUB_X, playerSubY: SUB_Y, ambient: null, levelView, units: [] }
-    const source = new ClientWorldSceneSource(() => st)
+    const source = new ClientWorldSceneSource(() => st, '800x600')
     const a = source.buildFrameSnapshot()
     expect(a.upperWallQuads.length).toBe(1)
     expect(a.upperWallQuads[0]!.fadeBox).toEqual({ index: 2, x: 5, y: 5 })
@@ -237,7 +237,7 @@ describe('#941 static-pass signature cache', () => {
     const t2 = makeDraw({ x: 460, y: -260, cellX: 1, cellY: 0 })
     const levelView = makeLevelView([t1, t2], [])
     let st = { tick: 1, actId: 1 as const, levelId: 1, playerSubX: SUB_X, playerSubY: SUB_Y, ambient: null, levelView, units: [] }
-    const source = new ClientWorldSceneSource(() => st)
+    const source = new ClientWorldSceneSource(() => st, '800x600')
     const a = source.buildFrameSnapshot(0)
     expect(a.floorQuads.map(q => q.cellX)).toEqual([0])
     st = { ...st, playerSubX: SUB_X + 1 }

@@ -4,7 +4,8 @@ import { canSocketUiItem, classifyHandSlotItem, computeCursorItemGridPlacement, 
 import { lookupTbl, requireTbl } from '../../i18n/lang.ts'
 import { BAKED_UI_MANIFEST } from '../../../common/items/baked-ui-meta.ts'
 import { buildQuestLogPage, trueTombSymbolFrame113c, INVPS_FRAME_W, INVPS_FRAME_H, INVPS_DRAW_REL_X, INVPS_DRAW_REL_BOTTOM_Y } from '../../world/quest-log-state.ts'
-import { D2_COLOR_INDEX_TO_NAME, MSG_LOG_MAX_VISIBLE_LINES, wrapChatText113c, type WrappedChatLine113c } from '../../../common/chat/chat-113c.ts'
+import { D2_COLOR_INDEX_TO_NAME, MSG_LOG_MAX_VISIBLE_LINES, resolveChatTblIndex, wrapChatText113c, type WrappedChatLine113c } from '../../../common/chat/chat-113c.ts'
+import { drawStoneBoxFrame } from './npc-dialog-menu.ts'
 import { type LeftDockPanelKind, type WorldPanelType, BARKSCROLL_RUNE_POS, BARKSCROLL_GLOW_POS, BARKSCROLL_STEP_THRESHOLDS, STONE_BOX_BG_FILL, BUTTON_HOVER_BOX_PAD_X, BUTTON_HOVER_BOX_MIN_W, BUTTON_HOVER_BOX_H, BUTTON_HOVER_TEXT_OFFSET_Y, VENDOR_BUTTON_HOVER_ANCHOR_Y, VENDOR_STATUS_TEXT_POS, ACT_TAB_LAYOUT, QUEST_SOCKET_DC6_FRAME, questIconTopLeft113c, questSocketTopLeft113c, hitTestQuestSlot113c, STASH_GRID_ORIGIN, STASH_GOLD_BTN_HIT, CUBE_PANEL_ORIGIN, CUBE_GRID_ORIGIN, CUBE_TRANSMUTE_BTN_BOUNDS, CUBE_CLOSE_BTN_BOUNDS, VENDOR_GRID_ORIGIN, VENDOR_GOLD_BOX_RECESS, VENDOR_BUTTON_TABLE_X, VENDOR_BUTTON_DRAW_Y, VENDOR_BUTTON_HIT_Y_MIN, VENDOR_BUTTON_HIT_Y_MAX, VENDOR_BUTTON_HIT_W, VENDOR_BUTTON_SPECS, resolveVendorButtonLayout, VENDOR_TABS, type UseItemPanelKind, isUseItemPanel, USE_ITEM_LAYOUT, USE_ITEM_INSTRUCTION_TBL, USE_ITEM_BUTTON_TBL, hitTestUseItemButton, hitTestUseItemSlot, wrapUseItemText } from './panel-layout-constants.ts'
 import { questFlagWordIndex, getActQuests, resolveWaypointName, getActWaypoints, WAYPOINT_ROW_OFFSETS_Y, getWaypointRowOffsetY, getWaypointTextOffsetY } from './quest-waypoint-data.ts'
 
@@ -14,6 +15,15 @@ export const VENDOR_BUTTON_PRESS_SOUND_ID = 1
 export function handleMouseMoveImpl(this: WorldPanelsHud, logicalX: number, logicalY: number): void {
   if (this._activePanel === 'hire') {
     this.handleHireMercMove(logicalX, logicalY, this.viewportWidth, this.viewportHeight)
+    return
+  }
+  if (this._activePanel === 'msg') {
+    const closeBaselineY = this.viewportHeight - 114
+    this.messageLogCloseHovered =
+      logicalX >= 20 &&
+      logicalX <= this.viewportWidth - 35 &&
+      logicalY >= closeBaselineY - 16 &&
+      logicalY <= closeBaselineY + 8
     return
   }
   this.hoveredStashItem = null
@@ -1937,122 +1947,127 @@ export function renderActiveLeftPanelImpl(
   }
 
   if (panel === 'msg') {
-    const ox = screenWidth <= 640 ? 0 : 80
-    const oy = screenWidth <= 640 ? 0 : 60
-    const pw = 320
-    const ph = 432
+    // D2Client.dll 0x6fb2c770 (`MSG_OpenMessageLog`) + 0x6fb53840 (`D2Dialog_Draw`) + 0x6fb17fd0 (`D2TextSlid_Draw`):
+    // - Outer D2Dialog stone frame: `x = 5, y = 30, w = screenWidth - 20, h = screenHeight - 130`
+    // - Line 0 Title: `.tbl` `0x0FC3` ("Message Log" / "訊息紀錄") centered at `y = 30 + 21 = 51` in `font16` gold (`color = 4`)
+    // - Inner D2TextSlid box: `x = 5, y = 65, w = screenWidth - 20, h = screenHeight - 200`
+    //   - Text entries wrapped to `boxW - 50` in `font16`, drawn at `x = 5 + 32 = 37`, baseline `y = 65 + 25 + i * 16`
+    //   - Scrollbar (`textslid.dc6`): `sliderX = boxX + boxW - 18`, `sliderTopY = boxY + 3` (`68`)
+    // - Line 1 Close: `.tbl` `0x1030` ("Close" / "關閉") centered at `y = 51 + (screenHeight - 165) = screenHeight - 114`
+    //   in `font16`, `'blue'` (`3`) when hovered else `'white'` (`0`).
+    const frameX = 5
+    const frameY = 30
+    const frameW = Math.max(320, screenWidth - 20)
+    const frameH = Math.max(240, screenHeight - 130)
+    const boxX = 5
+    const boxY = 65
+    const boxW = frameW
+    const boxH = Math.max(160, screenHeight - 200)
     const isEn = this.lang === 'ENG' || this.language === 'en'
 
-    const fillTextSafe = (text: string, x: number, y: number, color = '#e8d090') => {
-      ctx.fillStyle = color
-      if (typeof ctx.fillText === 'function') {
+    const boxPiecesImg =
+      assets && assets.boxPiecesImg !== undefined ? assets.boxPiecesImg : this.getBoxPiecesImage()
+    const textSlidImg =
+      assets && assets.textSlidImg !== undefined ? assets.textSlidImg : this.getTextSlidImage()
+
+    if (boxPiecesImg) {
+      drawStoneBoxFrame(ctx, frameX, frameY, frameW, frameH, boxPiecesImg, true)
+      drawStoneBoxFrame(ctx, boxX, boxY, boxW, boxH, boxPiecesImg, false)
+    } else {
+      ctx.fillStyle = STONE_BOX_BG_FILL
+      ctx.fillRect(frameX + 1, frameY, frameW - 2, frameH - 2)
+      ctx.strokeStyle = '#6c5838'
+      ctx.strokeRect(frameX, frameY, frameW, frameH)
+      ctx.strokeRect(boxX, boxY, boxW, boxH)
+    }
+
+    const header =
+      resolveChatTblIndex(0x0fc3, this.lang) ||
+      lookupTbl('strpanel7', this.lang) ||
+      (isEn ? 'Message Log' : '訊息紀錄')
+    const closeLabel =
+      resolveChatTblIndex(0x1030, this.lang) ||
+      lookupTbl('strClose', this.lang) ||
+      (isEn ? 'Close' : '關閉')
+    const font = fontRenderer ?? this.font ?? this.defaultFont
+
+    const drawMsgText = (
+      text: string,
+      x: number,
+      y: number,
+      colorCode: D2ColorCode = 'gold',
+      align: 'left' | 'center' | 'right' = 'left',
+    ) => {
+      if (font && typeof font.drawText === 'function') {
+        font.drawText(ctx, text, x, y, {
+          font: 'font16',
+          color: colorCode,
+          align,
+          lang: isEn ? 'ENG' : 'CHI',
+        })
+      } else if (typeof ctx.fillText === 'function') {
         ctx.fillText(text, x, y)
       }
     }
 
-    ctx.fillStyle = 'rgba(12, 10, 8, 0.92)'
-    ctx.fillRect(ox, oy, pw, ph)
-    ctx.strokeStyle = '#6c5838'
-    ctx.strokeRect(ox, oy, pw, ph)
+    const centerX = frameX + Math.floor(frameW / 2)
+    drawMsgText(header, centerX, frameY + 21, 'gold', 'center')
 
-    // Close [X] button
-    ctx.fillStyle = 'rgba(42, 32, 22, 0.95)'
-    ctx.fillRect(ox + pw - 28, oy + 8, 20, 20)
-    ctx.strokeStyle = '#6c5838'
-    ctx.strokeRect(ox + pw - 28, oy + 8, 20, 20)
-    fillTextSafe('X', ox + pw - 22, oy + 22, '#e8c26b')
-
-    // D2Client.dll 0x6fb2c770 (`MSG_OpenMessageLog`):
-    // Title: 0x0F8D ("Message Log"), Clear Messages: 0x0FC3, Close: 0x1030
-    const header = lookupTbl('strpanel7', this.lang) ?? (isEn ? 'Message Log' : '訊息紀錄')
-    const clearLabel = lookupTbl('strClearMsg', this.lang) ?? (isEn ? 'Clear Messages' : '清除訊息')
-    const closeLabel = lookupTbl('strClose', this.lang) ?? (isEn ? 'Close' : '關閉')
-    const font = fontRenderer ?? this.font ?? this.defaultFont
-    const hasFont16 = Boolean(font && font.loaded)
-
-    const drawMsgText = (text: string, x: number, y: number, colorCode: D2ColorCode = 'gold', hex = '#e8c26b') => {
-      if (hasFont16 && font) {
-        font.drawText(ctx, text, x, y, { font: 'font16', color: colorCode })
-      }
-      fillTextSafe(text, x, y + 12, hex)
-    }
-
-    drawMsgText(header, ox + 116, oy + 12, 'gold', '#e8c26b')
-
-    // Inner message viewport box
-    ctx.fillStyle = 'rgba(18, 15, 12, 0.94)'
-    ctx.fillRect(ox + 16, oy + 40, pw - 32, 328)
-    ctx.strokeStyle = '#6c5838'
-    ctx.strokeRect(ox + 16, oy + 40, pw - 32, 328)
-
-    const measureFn = (s: string) => (hasFont16 && font ? font.measureText(s, 'font16') : s.length * 7)
+    const maxWrapW = Math.max(160, boxW - 50)
+    const measureFn = (s: string) =>
+      font && typeof font.measureText === 'function' ? font.measureText(s, 'font16') : s.length * 8
     const allLines: WrappedChatLine113c[] = []
     for (const entry of this.messageLogEntries) {
-      const wrapped = wrapChatText113c(entry.text, measureFn, 256, entry.color ?? 0)
+      const wrapped = wrapChatText113c(entry.text, measureFn, maxWrapW, entry.color ?? 0)
       for (const wLine of wrapped) {
         allLines.push(wLine)
       }
     }
 
-    const maxVisible = MSG_LOG_MAX_VISIBLE_LINES
+    // D2Client.dll 0x6fb17b4c (`D2TextSlid_RecalcThumb`): `visibleLines = (boxH - 32) / 16`
+    const maxVisible = Math.max(1, Math.floor((boxH - 32) / 16))
     const maxOffset = Math.max(0, allLines.length - maxVisible)
     const clampedOffset = Math.max(0, Math.min(maxOffset, this.messageLogScrollOffset))
     const startIdx = Math.max(0, allLines.length - maxVisible - clampedOffset)
     const visibleSlice = allLines.slice(startIdx, startIdx + maxVisible)
 
-    const colorHexMap: Record<string, string> = {
-      white: '#ffffff',
-      red: '#ff4d4d',
-      green: '#00ff00',
-      blue: '#6969ff',
-      gold: '#c7b377',
-      gray: '#696969',
-      black: '#000000',
-      tan: '#d0c27d',
-      orange: '#ffa800',
-      yellow: '#ffff64',
-      darkgreen: '#008000',
-      purple: '#ae00ff',
-    }
-
+    const textX = boxX + 32
+    const firstLineBaselineY = boxY + 25
     for (let i = 0; i < visibleSlice.length; i++) {
       const line = visibleSlice[i]!
       const colorName = (D2_COLOR_INDEX_TO_NAME[line.color] ?? 'white') as D2ColorCode
-      const hex = colorHexMap[colorName] ?? '#ffffff'
-      drawMsgText(line.text, ox + 22, oy + 46 + i * 16, colorName, hex)
+      drawMsgText(line.text, textX, firstLineBaselineY + i * 16, colorName, 'left')
     }
 
-    // Scrollbar track & thumb (`textslid.dc6` style)
-    const sbX = ox + pw - 28
-    const sbY = oy + 44
-    const sbH = 320
-    ctx.fillStyle = 'rgba(34, 28, 20, 0.95)'
-    ctx.fillRect(sbX, sbY, 10, sbH)
-    ctx.strokeStyle = '#6c5838'
-    ctx.strokeRect(sbX, sbY, 10, sbH)
-    const thumbH = Math.max(24, Math.round(sbH * Math.min(1, maxVisible / Math.max(1, allLines.length))))
-    const thumbRatio = maxOffset > 0 ? (maxOffset - clampedOffset) / maxOffset : 1
-    const thumbY = sbY + Math.round((sbH - thumbH) * thumbRatio)
-    ctx.fillStyle = '#c7b377'
-    ctx.fillRect(sbX + 1, thumbY, 8, thumbH)
-
-    // Bottom buttons: Clear Messages (`0x0FC3`) & Close (`0x1030`)
-    ctx.fillStyle = 'rgba(42, 34, 24, 0.95)'
-    ctx.fillRect(ox + 24, oy + 380, 140, 32)
-    ctx.strokeStyle = '#6c5838'
-    ctx.strokeRect(ox + 24, oy + 380, 140, 32)
-    drawMsgText(clearLabel, ox + 34, oy + 388, 'gold', '#e8c26b')
-
-    ctx.fillStyle = 'rgba(42, 34, 24, 0.95)'
-    ctx.fillRect(ox + 260, oy + 380, 44, 32)
-    ctx.strokeStyle = '#6c5838'
-    ctx.strokeRect(ox + 260, oy + 380, 44, 32)
-    if (assets?.buySellBtnImg) {
-      const closeFrame = this.pressedCloseKind === 'active' ? 11 : 10
-      ctx.drawImage(assets.buySellBtnImg, closeFrame * 32, 0, 32, 32, ox + 266, oy + 380, 32, 32)
-    } else {
-      drawMsgText(closeLabel, ox + 266, oy + 388, 'gold', '#e8c26b')
+    // D2Client.dll 0x6fb18012..0x6fb18181 (`D2TextSlid_Draw` scrollbar using `textslid.dc6`):
+    const sliderX = boxX + boxW - 18
+    const sliderTopY = boxY + 3
+    const trackSegments = Math.max(1, Math.floor((boxH - 16) / 12) - 1)
+    if (textSlidImg) {
+      const fw = 12
+      const fh = 13
+      const drawSliderFrame = (frameIdx: number, dx: number, dy: number) => {
+        ctx.drawImage(textSlidImg, frameIdx * fw, 0, fw, fh, dx, dy, fw, fh)
+      }
+      drawSliderFrame(9, sliderX, sliderTopY)
+      for (let i = 0; i < trackSegments; i++) {
+        drawSliderFrame(13, sliderX, sliderTopY + 12 + i * 12)
+      }
+      drawSliderFrame(8, sliderX, sliderTopY + 12 + trackSegments * 12)
+      if (allLines.length > maxVisible) {
+        const thumbMaxYOffset = Math.max(0, (trackSegments - 3) * 12)
+        const thumbRatio = maxOffset > 0 ? startIdx / maxOffset : 1
+        const thumbY = sliderTopY + 12 + Math.round(thumbRatio * thumbMaxYOffset)
+        drawSliderFrame(16, sliderX - 1, thumbY)
+        drawSliderFrame(14, sliderX - 1, thumbY + 12)
+        drawSliderFrame(15, sliderX - 1, thumbY + 24)
+      }
     }
+
+    // D2Client.dll 0x6fb2c801..0x6fb2c82c & 0x6fb2c8d8: Line 1 "Close" (`0x1030`) at `y = screenHeight - 114`
+    const closeY = frameY + 21 + (screenHeight - 165)
+    const closeColor: D2ColorCode = this.messageLogCloseHovered ? 'blue' : 'white'
+    drawMsgText(closeLabel, centerX, closeY, closeColor, 'center')
     return
   }
 

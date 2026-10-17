@@ -209,11 +209,13 @@ export function selectNpcModeStepEntry113c(classId: number, mode: number): NpcMo
 }
 
 /**
- * `0x6FAFBFA0`: returns true when `mode` has `move !== 0` in {@link selectNpcModeStepEntry113c}.
+ * `0x6FAFBFA0`: returns true when `selectNpcModeStepEntry113c(classId, mode).move === 1`
+ * (i.e. `WL(2)`, `RN(15)`, `KB(13)`, or a mode with `MonStats2.nModeEnabledWhenMovingFlags` `*mv` bit set).
+ * Modes with `move === 2` (`A1`, `A2`, `SQ` without `*mv`) turn in place and do NOT move along a path.
  */
 export function doesNpcModeMove113c(classId: number, mode: number): boolean {
   const entry = selectNpcModeStepEntry113c(classId, mode)
-  return entry !== null && entry.move !== 0
+  return entry !== null && entry.move === 1
 }
 
 /**
@@ -329,6 +331,8 @@ export class NpcMotionUnit implements PathUnit {
   wAnimSpeed = 256
   /** `unit+0x54`: action frame index. */
   wActionFrame = 0
+  /** True when `#10595` (`initAnimStartFrame10595`) restarted the animation at frame 0 since the last update. */
+  lastAnimRestarted = false
 
   /** `MonsterData+0x28`: bit 0 = local player is interacting with this town NPC (`0x6FACB0D6`). */
   npcInteractFlags = 0
@@ -441,7 +445,7 @@ export interface NpcMotionHostCallbacks {
     unitId?: number,
   ): { readonly frameCount: number; readonly animSpeed: number } | undefined
   /** Called whenever a monster's position, mode, direction, target, or life changes. */
-  onUnitUpdated?(unit: NpcMotionUnit, prevMode: number): void
+  onUnitUpdated?(unit: NpcMotionUnit, prevMode: number, animRestarted?: boolean): void
 }
 
 const SYNTH_ROOM_SIZE = 40
@@ -1025,6 +1029,7 @@ export class NpcMotion {
     hitClass?: number,
   ): void {
     const prevMode = unit.dwAnimMode
+    unit.lastAnimRestarted = false
     unit.lifeByte = lifePct & 0x7f
     if (hitClass !== undefined) {
       unit.hitClass = hitClass & 0xff
@@ -1041,9 +1046,11 @@ export class NpcMotion {
       if (unit.pDynamicPath) {
         PATH_RecacheRoomIfNeeded(unit.pDynamicPath)
       }
-      this.changeAnimMode0x6FADA6C0(unit, mode)
+      this.changeAnimMode0x6FADA6C0(unit, mode, true)
     }
-    this.callbacks.onUnitUpdated?.(unit, prevMode)
+    const restarted = unit.lastAnimRestarted
+    unit.lastAnimRestarted = false
+    this.callbacks.onUnitUpdated?.(unit, prevMode, restarted)
   }
 
   // -------------------------------------------------------------------------
@@ -1116,6 +1123,7 @@ export class NpcMotion {
 
   private applyNpcCommand(unit: NpcMotionUnit, npc: NpcCommandPayload113c): void {
     const prevMode = unit.dwAnimMode
+    unit.lastAnimRestarted = false
     this.roomStore.refreshSyntheticObstacles()
 
     if (npc.driftCheckAt !== null && npc.driftCheckAt !== undefined) {
@@ -1123,7 +1131,9 @@ export class NpcMotion {
     }
 
     this.executeCmd0x6FAFDC70(unit, npc.cmd, npc.s)
-    this.callbacks.onUnitUpdated?.(unit, prevMode)
+    const restarted = unit.lastAnimRestarted
+    unit.lastAnimRestarted = false
+    this.callbacks.onUnitUpdated?.(unit, prevMode, restarted)
   }
 
   /**
@@ -1285,7 +1295,7 @@ export class NpcMotion {
         unit.hitClass = s6 & 0xff
         D2COMMON_10212_PATH_SetMoveFlags(unit, 0)
         PATH_RecacheRoomIfNeeded(path)
-        this.changeAnimMode0x6FADA6C0(unit, MONMODE_GETHIT)
+        this.changeAnimMode0x6FADA6C0(unit, MONMODE_GETHIT, true)
         break
       }
 
@@ -1316,8 +1326,8 @@ export class NpcMotion {
             D2Common_10434_FaceSubtile(unit, tx, ty)
           }
         }
-        this.changeAnimMode0x6FADA6C0(unit, mappedMode)
-        if (doesNpcModeMove113c(unit.dwClassId, mappedMode)) {
+        this.changeAnimMode0x6FADA6C0(unit, mappedMode, true)
+        if (doesNpcModeMove113c(unit.dwClassId, unit.dwAnimMode)) {
           this.pathToTargetUnit0x6FADA070(unit, s0, s1 >>> 0)
         } else {
           D2Common_10153(path)
@@ -1341,8 +1351,8 @@ export class NpcMotion {
         ) {
           D2Common_10434_FaceSubtile(unit, s0, s1)
         }
-        this.changeAnimMode0x6FADA6C0(unit, mappedMode)
-        if (doesNpcModeMove113c(unit.dwClassId, mappedMode)) {
+        this.changeAnimMode0x6FADA6C0(unit, mappedMode, true)
+        if (doesNpcModeMove113c(unit.dwClassId, unit.dwAnimMode)) {
           this.pathToCoords0x6FADA040(unit, s0, s1)
         } else {
           D2Common_10153(path)
@@ -1356,7 +1366,7 @@ export class NpcMotion {
         unit.targetUnitType = s0
         unit.targetUnitId = s1 >>> 0
         D2Common_10153(path)
-        this.changeAnimMode0x6FADA6C0(unit, MONMODE_BLOCK)
+        this.changeAnimMode0x6FADA6C0(unit, MONMODE_BLOCK, true)
         break
       }
 
@@ -1381,15 +1391,18 @@ export class NpcMotion {
         D2COMMON_10190_PATH_SetDistance(path, s2)
         D2COMMON_10170_PathSetTargetPos(path, s0, s1)
         D2Common_10142(path, unit, 0)
-        this.changeAnimMode0x6FADA6C0(unit, MONMODE_KNOCKBACK)
+        this.changeAnimMode0x6FADA6C0(unit, MONMODE_KNOCKBACK, true)
         break
       }
 
-      // cmd 0x15 / 0x16 (SQ / sequence)
+      // cmd 0x15 / 0x16 (SQ / sequence) — 0x6FAFEA16 / 0x6FAFEA9F
       case 0x15:
       case 0x16: {
         D2COMMON_10212_PATH_SetMoveFlags(unit, 0)
-        this.changeAnimMode0x6FADA6C0(unit, MONMODE_SEQUENCE)
+        if (!doesNpcModeMove113c(unit.dwClassId, MONMODE_SEQUENCE)) {
+          D2Common_10153(path)
+        }
+        this.changeAnimMode0x6FADA6C0(unit, MONMODE_SEQUENCE, true)
         break
       }
 
@@ -1482,17 +1495,30 @@ export class NpcMotion {
    * - If `unit.dwAnimMode === newMode`, returns `false` without resetting the animation frame!
    * - Otherwise sets `dwAnimMode = newMode`, sets `UNITFLAG_DOUPDATE`, and calls `#10595` (`initAnimStartFrame10595`).
    */
-  changeAnimMode0x6FADA6C0(unit: NpcMotionUnit, newMode: number): boolean {
+  changeAnimMode0x6FADA6C0(unit: NpcMotionUnit, newMode: number, forceRestart = false): boolean {
     if (newMode < 0 || newMode >= 16) return false
+    let resolvedMode = newMode
+    if (
+      (resolvedMode === MONMODE_ATTACK2 || resolvedMode === MONMODE_CAST) &&
+      !monsterClassHasMode113c(unit.dwClassId, resolvedMode) &&
+      monsterClassHasMode113c(unit.dwClassId, MONMODE_ATTACK1)
+    ) {
+      resolvedMode = MONMODE_ATTACK1
+    }
     unit.dwFlags = u32(unit.dwFlags & ~0x40)
-    if (unit.dwAnimMode === newMode) {
-      if (newMode !== MONMODE_NEUTRAL) {
+    if (unit.dwAnimMode === resolvedMode) {
+      if (forceRestart) {
+        unit.dwFlags = u32(unit.dwFlags | UNITFLAG_DOUPDATE)
+        this.initAnimStartFrame10595(unit)
+        return true
+      }
+      if (resolvedMode !== MONMODE_NEUTRAL) {
         unit.dwFlags = u32(unit.dwFlags | UNITFLAG_DOUPDATE)
       }
       return false
     }
     unit.dwFlags = u32(unit.dwFlags | UNITFLAG_DOUPDATE)
-    unit.dwAnimMode = newMode
+    unit.dwAnimMode = resolvedMode
     this.initAnimStartFrame10595(unit)
     return true
   }
@@ -1503,6 +1529,7 @@ export class NpcMotion {
    * and runs `#10819` (`updateAnimRateAndVelocity10819`).
    */
   initAnimStartFrame10595(unit: NpcMotionUnit): void {
+    unit.lastAnimRestarted = true
     unit.wActionFrame = 0
     unit.wFrame = 0
     const metrics = this.callbacks.getAnimMetrics?.(unit.dwClassId, unit.dwAnimMode, unit.dwUnitId)
@@ -1624,6 +1651,7 @@ export class NpcMotion {
    */
   stepMonster0x6FAFF4A0(unit: NpcMotionUnit): void {
     const prevMode = unit.dwAnimMode
+    unit.lastAnimRestarted = false
     if (unit.dwAnimMode < 0 || unit.dwAnimMode >= 16) return
     if (unit.states.has(1)) return // STATE_FREEZE (1) skips step (0x6FAFF4B8)
 
@@ -1680,7 +1708,9 @@ export class NpcMotion {
       this.handleModeEnd0x6FAFDA60(unit)
     }
 
-    this.callbacks.onUnitUpdated?.(unit, prevMode)
+    const restarted = unit.lastAnimRestarted
+    unit.lastAnimRestarted = false
+    this.callbacks.onUnitUpdated?.(unit, prevMode, restarted)
   }
 
   /**

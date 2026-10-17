@@ -730,10 +730,13 @@ export function buildRenderableUnits(
       }
       u.mode = mode
     } else if (u.unitType === 'monster') {
+      const isActionMode = (u.mode >= 3 && u.mode <= 11) || u.mode === 14
       if (isCorpse) {
         mode = u.mode === 0 ? 0 : 12
       } else if (castState) {
         mode = castState.mode || u.mode || 1
+      } else if (isActionMode) {
+        mode = u.mode
       } else if (interp?.moving && u.moveMode !== 'stop') {
         mode = u.moveMode === 'knockback' ? 13 : interp.running ? 15 : 2
       } else {

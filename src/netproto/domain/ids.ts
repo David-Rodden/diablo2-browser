@@ -148,6 +148,7 @@ export interface ItemData {
   readonly broken: boolean
   readonly inSocket: boolean
   readonly equipped: boolean
+  readonly isGambleMystery?: boolean | undefined
   readonly socketedChildCount: number
   readonly usedSockets: number
   readonly totalSockets: number

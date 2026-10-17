@@ -7,6 +7,7 @@ import {
 } from '../../plugins/automap-reveal/index.ts'
 import { DROP_I18N, dropTrackerPlugin } from '../../plugins/drop-tracker/index.ts'
 import { extendedViewportsPlugin } from '../../plugins/extended-viewports/index.ts'
+import { PD2_SGD2FREERES_VIEWPORT_RESOLUTIONS } from '../../src/client/view/viewport-profile.ts'
 import { groundItemBeamPlugin } from '../../plugins/ground-item-beam/index.ts'
 import { hudEnhancementsPlugin } from '../../plugins/hud-enhancements/index.ts'
 import { BUILTIN_PLUGINS } from '../../plugins/index.ts'
@@ -267,7 +268,7 @@ describe('BUILTIN_PLUGINS Registry & Built-In Plugin Lifecycles', () => {
     await host.destroy()
   })
 
-  it('automap-reveal (#714, merged lightingPreset & weatherOverride) and extended-viewports (#716) synchronize with SettingsStore without adding toolbar selects and enforce 1.13c fallbacks when disabled', async () => {
+  it('automap-reveal (#714, merged lightingPreset & weatherOverride) and extended-viewports (#716) synchronize with SettingsStore without adding toolbar selects; disabling restores vanilla automap defaults and keeps the PD2 viewport list', async () => {
     const settingsStore = new SettingsStore({
       storage: new MemoryStorage(),
       defaultLang: 'en',
@@ -319,15 +320,10 @@ describe('BUILTIN_PLUGINS Registry & Built-In Plugin Lifecycles', () => {
 
     // 1. Both plugins start enabled by default:
     //    - NO toolbar <select> dropdowns are registered by automap-reveal (dropdowns live in PluginMenu modal only)
-    //    - extended-viewports unlocks all 5 viewport profiles (640x480..1280x720)
+    //    - the toolbar offers the PD2 SGD2FreeRes list (640x480..1424x800), starting at its 1068x600 default
     expect(registeredSelects.size).toBe(0)
-    expect(toolbar.getAllowedViewports()).toEqual([
-      '640x480',
-      '800x600',
-      '1024x768',
-      '1068x600',
-      '1280x720',
-    ])
+    expect(toolbar.getAllowedViewports()).toEqual(PD2_SGD2FREERES_VIEWPORT_RESOLUTIONS)
+    expect(settingsStore.get().viewport).toBe('1068x600')
 
     // 2. Automap Reveal (#714) manages mode, lightingPreset, weatherOverride, showMonsters, showShrines
     const inst = host.getInstance<AutomapRevealPluginInstance>('automap-reveal')
@@ -392,22 +388,18 @@ describe('BUILTIN_PLUGINS Registry & Built-In Plugin Lifecycles', () => {
     expect(settingsStore.get().automapShowMonsters).toBe(true)
     expect(settingsStore.get().automapShowShrines).toBe(true)
 
-    // 4. Extended Viewports (#716): select 1280x720 while enabled -> disable plugin -> clamps back to 800x600 & ['640x480', '800x600']
+    // 4. Extended Viewports (#716) no longer gates anything (PD2 is the only default, no 1.13c switch):
+    //    disabling it keeps the PD2 SGD2FreeRes list and the chosen resolution.
     toolbar.setViewport('1280x720')
     expect(settingsStore.get().viewport).toBe('1280x720')
 
     await host.setEnabled('extended-viewports', false)
-    expect(toolbar.getAllowedViewports()).toEqual(['640x480', '800x600'])
-    expect(settingsStore.get().viewport).toBe('800x600')
+    expect(toolbar.getAllowedViewports()).toEqual(PD2_SGD2FREERES_VIEWPORT_RESOLUTIONS)
+    expect(settingsStore.get().viewport).toBe('1280x720')
 
     await host.setEnabled('extended-viewports', true)
-    expect(toolbar.getAllowedViewports()).toEqual([
-      '640x480',
-      '800x600',
-      '1024x768',
-      '1068x600',
-      '1280x720',
-    ])
+    expect(toolbar.getAllowedViewports()).toEqual(PD2_SGD2FREERES_VIEWPORT_RESOLUTIONS)
+    expect(settingsStore.get().viewport).toBe('1280x720')
 
     await host.destroy()
     session.destroy()

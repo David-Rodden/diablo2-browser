@@ -1,12 +1,21 @@
 /**
- * Diablo II v1.13c Bitmap Font & Color Code Engine (`D2WinFont.cpp`).
+ * Diablo II v1.13c & Project Diablo 2 (D2GL) Font & Color Code Engine (`D2WinFont.cpp` + `glide3x.dll.d2gl`).
  *
  * Supports:
  * - Authentic `Woo!\x01` `.tbl` metric parsing (`data\local\font\latin\font*.tbl`)
  * - 12 canonical Diablo II color control sequences (`ÿc0`..`ÿc;` and `\xffc0`..`\xffc;`)
- * - Pixel-accurate glyph blitting from DC6 font atlases (`font6`, `font8`, `font16`, `font30`, `fontexocet10`, `fontformal12`)
+ * - PD2 D2GL HD Text (`hd_text = true`, `hd_text_scale = 1.0`) using vector fonts
+ *   (`ExocetBlizzardMedium.otf`, `Formal436BT.ttf`, `Chi.ttf`) and `Data/assets/atlases/{default,chi}.txt`
+ * - Pixel-accurate glyph blitting from DC6 font atlases (`font6`, `font8`, `font16`, `font30`, `fontexocet10`, `fontformal12`) in `'113c'` mode
  * - Seamless CJK (Chinese) fallback with 1px black drop-outline matching Exocet/Formal cap heights
  */
+
+import {
+  PD2_D2GL_INI_CONFIG,
+  resolveD2GlFontStyle,
+  type D2GlFontStyleResolved,
+} from '../../common/ui/pd2-d2gl.ts'
+import type { UiDataMode } from '../../common/ui/pd2-sgd2freeres.ts'
 
 export type D2FontName = 'font6' | 'font8' | 'font16' | 'font30' | 'fontexocet10' | 'fontformal12'
 
@@ -197,7 +206,7 @@ export function parseColoredText(input: string, defaultColor: D2ColorCode = 'whi
   if (!input || typeof input !== 'string') {
     return []
   }
-  if (!input.includes('ÿ') && !input.includes('\xff')) {
+  if (!input.includes('ÿ') && !input.includes('\xff') && !input.includes('\ufffdc')) {
     return [{ text: input, color: defaultColor }]
   }
   const spans: TextSpan[] = []
@@ -205,7 +214,7 @@ export function parseColoredText(input: string, defaultColor: D2ColorCode = 'whi
   let buf = ''
   for (let i = 0; i < input.length; i++) {
     const ch = input[i]!
-    if ((ch === 'ÿ' || ch === '\xff') && input[i + 1] === 'c' && i + 2 < input.length) {
+    if ((ch === 'ÿ' || ch === '\xff' || ch === '\ufffd') && input[i + 1] === 'c' && i + 2 < input.length) {
       const idx = input.charCodeAt(i + 2) - 48
       const nextColor = (idx >= 0 && idx < 13) ? D2_COLOR_INDEX_TO_NAME[idx]! : 'white'
       if (buf.length > 0) {
@@ -248,10 +257,10 @@ export const FONT_BASELINE_OFFSET: Record<D2FontName, number> = {
 }
 
 export const D2_EXOCET_FONT_STACK =
-  '"D2Exocet", "Cinzel", "Times New Roman", "Liberation Serif", "Noto Serif", "SimSun", "NSimSun", "Songti SC", "Noto Serif SC", serif'
+  '"D2GlExocetBlizzard", "D2Exocet", "Cinzel", "Times New Roman", "Liberation Serif", "Noto Serif", "SimSun", "NSimSun", "Songti SC", "Noto Serif SC", "D2GlChi", serif'
 
 export const D2_FORMAL_FONT_STACK =
-  '"D2Formal436", "Times New Roman", "Liberation Serif", "Noto Serif", "SimSun", "NSimSun", "Songti SC", "Noto Serif SC", serif'
+  '"D2GlFormal436BT", "D2Formal436", "Times New Roman", "Liberation Serif", "Noto Serif", "SimSun", "NSimSun", "Songti SC", "Noto Serif SC", "D2GlChi", serif'
 
 /**
  * Authentic Diablo II v1.13c Act 1 `pal.pl2` text shift colors for CJK fallback rendering,
@@ -672,13 +681,87 @@ const PL2_TEXT_SHIFTS: Record<D2ColorCode, Record<number, readonly [number, numb
 }
 
 /**
- * Runtime Diablo II Font Manager supporting both bitmap DC6 glyphs and CJK fallback.
+ * Runtime Diablo II Font Manager supporting PD2 D2GL HD Text (`hd_text = true`, `ExocetBlizzardMedium.otf` /
+ * `Formal436BT.ttf` / `Chi.ttf`), 1.13c bitmap DC6 glyphs, and CJK fallback.
  */
 export class D2FontRenderer {
   private metas: Record<string, FontAtlasMeta> = {}
   private images = new Map<string, HTMLImageElement | HTMLCanvasElement>()
   private tintedCache = new Map<string, HTMLCanvasElement>()
+  private dataMode: UiDataMode
+  private hdText: boolean
+  private hdTextScale: number
   loaded = false
+
+  constructor(
+    modeOrOptions?:
+      | UiDataMode
+      | {
+          readonly dataMode?: UiDataMode
+          readonly hdText?: boolean
+          readonly hdTextScale?: number
+        },
+  ) {
+    if (typeof modeOrOptions === 'string') {
+      this.dataMode = modeOrOptions
+      this.hdText = modeOrOptions === 'pd2' ? PD2_D2GL_INI_CONFIG.features.hdText : false
+      this.hdTextScale = PD2_D2GL_INI_CONFIG.features.hdTextScale
+    } else {
+      this.dataMode = modeOrOptions?.dataMode ?? 'pd2'
+      this.hdText =
+        modeOrOptions?.hdText ?? (this.dataMode === 'pd2' ? PD2_D2GL_INI_CONFIG.features.hdText : false)
+      this.hdTextScale = modeOrOptions?.hdTextScale ?? PD2_D2GL_INI_CONFIG.features.hdTextScale
+    }
+  }
+
+  /** Active data/presentation mode (`'pd2'` by default, `'113c'` for vanilla 1.13c). */
+  getDataMode(): UiDataMode {
+    return this.dataMode
+  }
+
+  /** Switch data/presentation mode (`'pd2'` enables D2GL HD Text by default; `'113c'` uses bitmap DC6 glyphs). */
+  setDataMode(mode: UiDataMode): void {
+    this.dataMode = mode
+    this.hdText = mode === 'pd2' ? PD2_D2GL_INI_CONFIG.features.hdText : false
+  }
+
+  /** Whether D2GL HD Text (`hd_text = true`) vector typography is active. */
+  isHdTextEnabled(): boolean {
+    return this.hdText
+  }
+
+  /** Enable or disable D2GL HD Text (`hd_text` in `d2gl.ini`). */
+  setHdText(enabled: boolean): void {
+    this.hdText = enabled
+  }
+
+  /** Current D2GL HD Text scale multiplier (`hd_text_scale` in `d2gl.ini`, default `1.0`). */
+  getHdTextScale(): number {
+    return this.hdTextScale
+  }
+
+  /** Update D2GL HD Text scale multiplier (`hd_text_scale` in `d2gl.ini`). */
+  setHdTextScale(scale: number): void {
+    if (!Number.isFinite(scale) || scale <= 0) {
+      throw new Error(`hdTextScale must be a positive finite number, got ${String(scale)}`)
+    }
+    this.hdTextScale = scale
+  }
+
+  /** Resolve the D2GL font style entry (`Data/assets/atlases/{default,chi}.txt`) for `font` and `lang`. */
+  getD2GlFontStyle(font: D2FontName = 'font16', lang: 'ENG' | 'CHI' = 'ENG'): D2GlFontStyleResolved {
+    return resolveD2GlFontStyle(font, lang, this.hdTextScale)
+  }
+
+  /** Whether font metrics or atlases are loaded. */
+  isLoaded(): boolean {
+    return this.loaded || Object.keys(this.metas).length > 0
+  }
+
+  /** Whether the given font metric definition is available. */
+  hasFont(font: D2FontName | string): boolean {
+    return font in FONT_PX_SIZE
+  }
 
   async load(baseUrl = '/ui/fonts'): Promise<void> {
     if (typeof window === 'undefined' && typeof location === 'undefined' && !baseUrl.includes('://')) {
@@ -840,6 +923,7 @@ export class D2FontRenderer {
   }
 
   private hasAnyBlitableGlyph(font: D2FontName, spans: readonly TextSpan[]): boolean {
+    if (this.hdText && font !== 'font6') return false
     if (!this.loaded || !this.images.has(font)) return false
     const meta = this.metas[font]
     if (!meta) return false
@@ -855,8 +939,9 @@ export class D2FontRenderer {
   }
 
   /**
-   * Draw text onto a CanvasRenderingContext2D using genuine DC6 glyphs for ASCII/Latin
-   * and sharp typography for CJK characters.
+   * Draw text onto a CanvasRenderingContext2D using D2GL HD Text vector typography
+   * (`ExocetBlizzardMedium.otf` / `Formal436BT.ttf` / `Chi.ttf`) in `'pd2'` mode (`hd_text = true`),
+   * or genuine 1.13c DC6 bitmap glyphs for ASCII/Latin in `'113c'` mode (`hd_text = false`).
    */
   drawText(
     ctx: CanvasRenderingContext2D,
@@ -880,7 +965,10 @@ export class D2FontRenderer {
     const baseY = Math.round(y)
 
     const spans = parseColoredText(text, defaultColor)
-    const pxSize = FONT_PX_SIZE[font]
+    const basePxSize = FONT_PX_SIZE[font]
+    const pxSize = this.hdText && this.hdTextScale !== 1
+      ? Math.max(1, Math.round(basePxSize * this.hdTextScale))
+      : basePxSize
 
     ctx.save()
     const isTitleFont = font === 'font16' || font === 'font30' || font === 'fontexocet10'
@@ -995,9 +1083,14 @@ export class D2FontRenderer {
       const anchorX = Math.round(x)
       if (shadow) {
         ctx.fillStyle = '#000000'
-        ctx.fillText(span.text, anchorX, baseY + 1)
+        ctx.fillText(span.text, anchorX + 1, baseY + 1)
         ctx.fillText(span.text, anchorX - 1, baseY + 1)
         ctx.fillText(span.text, anchorX + 1, baseY - 1)
+      } else if (span.color !== 'black') {
+        ctx.shadowColor = '#080604'
+        ctx.shadowOffsetX = 1
+        ctx.shadowOffsetY = 1
+        ctx.shadowBlur = 0
       }
       ctx.fillStyle = D2_COLOR_HEX[span.color]
       ctx.fillText(span.text, anchorX, baseY)
@@ -1019,8 +1112,16 @@ export class D2FontRenderer {
         ctx.fillText(span.text, curX - 1, baseY + 1)
         ctx.fillText(span.text, curX + 1, baseY - 1)
       }
+      ctx.save()
+      if (!shadow && span.color !== 'black') {
+        ctx.shadowColor = '#080604'
+        ctx.shadowOffsetX = 1
+        ctx.shadowOffsetY = 1
+        ctx.shadowBlur = 0
+      }
       ctx.fillStyle = D2_COLOR_HEX[span.color]
       ctx.fillText(span.text, curX, baseY)
+      ctx.restore()
       curX += ctx.measureText(span.text).width
     }
     ctx.restore()

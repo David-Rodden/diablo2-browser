@@ -10,6 +10,7 @@ import { getSocketableInfo, isJewelCode } from '../../../common/items/gems-data.
 import { formatItemTooltip } from '../../../common/items/item-tooltip.ts'
 import type { Item } from '../../../common/items/items.ts'
 import { STONE_BOX_BG_FILL } from './panel-layout-constants.ts'
+import { drawControlsMenu, drawOptionsSubmenu } from './escape-options-menu.ts'
 
 export type EscapeMenuRowIndex = 0 | 1 | 2
 export type EscapeMenuAction = 'options' | 'saveAndExit' | 'returnToGame'
@@ -1541,9 +1542,35 @@ export function drawEscapeMenuImpl(
     escExitImg: HTMLImageElement | null
     escReturnImg: HTMLImageElement | null
     pentSpinImg: HTMLImageElement | null
+    boxPiecesImg?: HTMLImageElement | null | undefined
+    textSlidImg?: HTMLImageElement | null | undefined
+    focus16Img?: HTMLImageElement | null | undefined
+    btnMediumImg?: HTMLImageElement | null | undefined
+    font?: D2FontRenderer | undefined
   },
 ): void {
   if (!this.escapeMenuOpen) return
+  if (
+    this.escapeMenuScreen === 'options' ||
+    this.escapeMenuScreen === 'sound' ||
+    this.escapeMenuScreen === 'video'
+  ) {
+    drawOptionsSubmenu(this, ctx, hudWidth, hudHeight, nowMs, {
+      pentSpinImg: assets.pentSpinImg,
+      font: assets.font ?? this.font ?? this.defaultFont,
+    })
+    return
+  }
+  if (this.escapeMenuScreen === 'controls') {
+    drawControlsMenu(this, ctx, hudWidth, hudHeight, nowMs, {
+      boxPiecesImg: assets.boxPiecesImg,
+      textSlidImg: assets.textSlidImg,
+      focus16Img: assets.focus16Img,
+      btnMediumImg: assets.btnMediumImg,
+      font: assets.font ?? this.font ?? this.defaultFont,
+    })
+    return
+  }
   const layout = computeEscapeMenuLayout(hudWidth, hudHeight, this.escapeMenuSelectedIndex, nowMs)
   const bannerImgs: readonly (HTMLImageElement | null)[] = [
     assets.escOptionsImg,

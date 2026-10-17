@@ -26,6 +26,20 @@ import { handleMouseMoveImpl, handleLeftDockClickImpl, drawLeftDockPanelImpl, dr
 import { isPointInHireMercDialogImpl, handleHireMercMoveImpl, handleHireWheelImpl, handleHireMercClickImpl, assertHireDialogFontImpl, drawHireMercDialogImpl, drawHireScrollbarImpl, drawHireConfirmDialogImpl, drawMercenaryPanelImpl } from './panels/hireling-panel.ts'
 import { type HoveredPartyControl, resolvePartyActionCode, getPendingTradeModalLayoutImpl, handlePendingTradeModalClickImpl, handleActiveLeftPanelClickImpl, isMemberInLocalPartyImpl, isMemberInAnyPartyImpl, isLocalPlayerInPartyImpl, getOrderedPartyRosterImpl, hitTestPartyControlImpl, resolvePartyHoverTooltipLinesImpl, handlePartyPanelClickImpl, drawPartyPanelImpl, drawPendingTradeModalImpl, drawTradePanelImpl } from './panels/party-trade-panel.ts'
 import { type EscapeMenuRowIndex, type MonsterTargetHudInfo, drawMonsterTargetBarImpl, drawItemTooltipImpl, drawEscapeMenuImpl } from './panels/escape-monster-tooltip.ts'
+import {
+  type ControlsButtonId,
+  type EscapeMenuScreen,
+  type EscapeMenuSettingsPatch,
+  type EscapeMenuSettingsSnapshot,
+} from './panels/escape-options-menu.ts'
+import {
+  createDefaultKeyBindings,
+  DEFAULT_AUDIO_MUTED,
+  DEFAULT_MASTER_VOLUME,
+  DEFAULT_VIEWPORT_RESOLUTION,
+  type KeyBindingsConfig,
+  type ViewportResolution,
+} from '../settings/client-settings.ts'
 
 export {
   STASH_GOLD_CAP,
@@ -48,6 +62,7 @@ export * from './panels/left-dock-renderer.ts'
 export * from './panels/hireling-panel.ts'
 export * from './panels/party-trade-panel.ts'
 export * from './panels/escape-monster-tooltip.ts'
+export * from './panels/escape-options-menu.ts'
 
 export class WorldPanelsHud {
   lang: TblLang = getTblLang()
@@ -84,6 +99,7 @@ export class WorldPanelsHud {
     readonly createdAtMs?: number | undefined
   }[] = []
   messageLogScrollOffset = 0
+  messageLogCloseHovered = false
   localPlayerId = 1
   localPlayerName = ''
   localPlayerClass: number | string = 1
@@ -329,6 +345,36 @@ export class WorldPanelsHud {
   cubeTransmuteCount = 0
   escapeMenuOpen = false
   escapeMenuSelectedIndex: EscapeMenuRowIndex = 2
+  escapeMenuScreen: EscapeMenuScreen = 'main'
+  optionsSubmenuSelectedIndex = 0
+  soundDraggingSlider = false
+  controlsScrollOffset = 0
+  controlsSelectedRow = 0
+  controlsSelectedCol: 'primary' | 'secondary' = 'primary'
+  controlsAwaitingBinding = false
+  controlsDraftBindings: KeyBindingsConfig | null = null
+  controlsPressedButtonId: ControlsButtonId | null = null
+  mediumButtonBlankMeta?: { frameW: number; frameH: number; frames: number } | undefined
+  escapeMenuFallbackSettings: {
+    masterVolume: number
+    audioMuted: boolean
+    viewport: ViewportResolution
+    worldRenderFps: 30 | 60
+    keyBindings: KeyBindingsConfig
+    fullscreenActive: boolean
+    fullscreenSupported: boolean
+  } = {
+    masterVolume: DEFAULT_MASTER_VOLUME,
+    audioMuted: DEFAULT_AUDIO_MUTED,
+    viewport: DEFAULT_VIEWPORT_RESOLUTION,
+    worldRenderFps: 60,
+    keyBindings: createDefaultKeyBindings(),
+    fullscreenActive: false,
+    fullscreenSupported: true,
+  }
+  getEscapeMenuSettings: (() => Partial<EscapeMenuSettingsSnapshot>) | null = null
+  onUpdateEscapeMenuSettings: ((patch: EscapeMenuSettingsPatch) => void) | null = null
+  onToggleEscapeMenuFullscreen: (() => void) | null = null
   lastTooltipRect: { bx: number; by: number; boxW: number; boxH: number } | null = null
 
   activeVendorDescriptor: TownNpcServiceDescriptor | null = null

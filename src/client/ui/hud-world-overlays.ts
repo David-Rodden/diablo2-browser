@@ -120,7 +120,7 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
   if (nowMs - internal.lastFullHudRepaintMs >= 250) return false
   if (hud.leftPanel !== 'none' || hud.rightPanel !== 'none') return false
   if (hud.worldPanels.escapeMenuOpen) return false
-  if (hud.chatOverlayMessages.length > 0 || hud.overheadSpeechBubbles.length > 0) return false
+  if (hud.chatInputOpen || hud.chatOverlayMessages.length > 0 || hud.overheadSpeechBubbles.length > 0) return false
   if (hud.showGroundLabels && hud.groundItemLabelBoxes.length > 0) return false
   // Level entry title (0x6fb6f0d0) is time-animated: repaint while it is up or the level has just changed.
   if (hud.levelEntryTitle.active) return false
@@ -521,7 +521,7 @@ export function renderHudFrame(
       hud.leftPanel === 'trade' &&
       !hud.trade?.active &&
       (hud.trade?.pendingModal === 'wait' || hud.trade?.pendingModal === 'request')
-    if (hud.leftPanel !== 'hire' && !isPendingTradeOnly) {
+    if (hud.leftPanel !== 'hire' && hud.leftPanel !== 'msg' && !isPendingTradeOnly) {
       ctx.translate(deltaLeft, panelOffsetY)
     }
     if (hud.partyMembers.length > 0 && hud.worldPanels.partyMembers.length === 0) {
@@ -791,6 +791,9 @@ export function renderHudFrame(
   }
   ctx.restore()
 
+  // 6c. In-Game Chat Input Box (`D2Client.dll` `0x6fb20140` `CHAT_DrawChatInputBox` + `0x6fb1ef20` `CHAT_DrawCursor`)
+  hud.renderChatInputBox(ctx, profile.width, profile.height, nowMs)
+
   // 7. Top-Center Monster Target Health Bar & Plaque (`D2Client.dll` `0x6FB70850`)
   hud.worldPanels.drawMonsterTargetBar(ctx, hud.targetMonster, hud.font, {
     leftPanelOpen: hud.leftPanel !== 'none',
@@ -869,6 +872,11 @@ export function renderHudFrame(
       escExitImg: internal.images.get('escExit') ?? null,
       escReturnImg: internal.images.get('escReturn') ?? null,
       pentSpinImg: internal.images.get('pentSpin') ?? null,
+      boxPiecesImg: internal.images.get('boxPieces') ?? null,
+      textSlidImg: internal.images.get('textSlid') ?? null,
+      focus16Img: internal.images.get('focus16') ?? null,
+      btnMediumImg: internal.images.get('btnMedium') ?? null,
+      font: hud.font,
     })
   }
 
@@ -1333,7 +1341,7 @@ export function renderChatOverlay(
   }
   if (!hud.chatOverlayMessages || hud.chatOverlayMessages.length === 0) return
   if (hud.worldPanels.escapeMenuOpen) return
-  if (hud.leftPanel !== 'none' && hud.rightPanel !== 'none') return
+  if (hud.leftPanel === 'msg' || (hud.leftPanel !== 'none' && hud.rightPanel !== 'none')) return
 
   const activeMsgs = hud.chatOverlayMessages.filter(
     (m) => m.text && (m.expireAtMs === undefined || m.expireAtMs > nowMs),
@@ -1378,6 +1386,105 @@ export function renderChatOverlay(
     hud.font.drawText(ctx, line.text, layout.startX, lineY, {
       font: 'font16',
       color: colorName,
+      align: 'left',
+      lang,
+    })
+  }
+  ctx.restore()
+}
+
+/**
+ * D2Client.dll `0x6fb20140` (`CHAT_DrawChatInputBox`) & `0x6fb1ef20` (`CHAT_DrawCursor`):
+ * - Box rect: `left = 127` (`0x7f`), `top = screenHeight - 103` (`-0x67`),
+ *   `right = screenWidth - 128` (`-0x80`, so `width = screenWidth - 255`),
+ *   `bottom = top + 47` (`screenHeight - 56`, so `height = 47`).
+ * - Drawn via `D2GFX_DrawFilledRect(127, screenHeight - 103, screenWidth - 128, screenHeight - 56, 0, 1)`
+ *   (translucent black fill, no border stroke, no "Say:" prefix).
+ * - Typed buffer word-wrapped in `font16` (`color = 'white'`) to `maxWrapW = screenWidth - 265` (`-0x109`)
+ *   across up to 3 lines (`lineIdx = 0..2`), drawn at `x = 131` (`0x83`), `y = screenHeight - 88 + lineIdx * 15`.
+ * - Blinking underscore cursor `0x0D4C` (`"_"`, `500ms` ON / `100ms` OFF) drawn at
+ *   `x = 131 + lastLineWidth`, `y = screenHeight - 88 + lastLineIdx * 15` in `font16` white.
+ */
+export function renderChatInputBox(
+  hud: HudManager,
+  ctx: CanvasRenderingContext2D,
+  screenWidth: number,
+  screenHeight: number,
+  nowMs: number,
+): void {
+  if (typeof document !== 'undefined') {
+    const domInput = document.getElementById('d2-ingame-chat-input') as HTMLInputElement | null
+    if (domInput && domInput.dataset.d2Synced === '1') {
+      hud.chatInputOpen = !domInput.hidden
+      hud.chatInputText = domInput.value
+    }
+  }
+  if (!hud.chatInputOpen || hud.worldPanels.escapeMenuOpen) return
+
+  const barOffsetX = screenWidth > 800 ? Math.floor((screenWidth - 800) / 2) : 0
+  const boxLeft = barOffsetX + 127
+  const boxTop = screenHeight - 103
+  const boxRight = screenWidth - barOffsetX - 128
+  const boxWidth = Math.max(120, boxRight - boxLeft)
+  const boxHeight = 47
+
+  ctx.save()
+  // 0x6fb2025b: D2GFX_DrawFilledRect(127, screenHeight - 103, screenWidth - 128, screenHeight - 56, 0, 1)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.72)'
+  ctx.fillRect(boxLeft, boxTop, boxWidth, boxHeight)
+
+  const maxWrapW = Math.max(100, boxWidth - 10)
+  const lang: TblLang = hud.lang === 'ENG' ? 'ENG' : 'CHI'
+  const measureFn = (s: string) => hud.font.measureText(s, 'font16')
+
+  const rawText = hud.chatInputText ?? ''
+  const lines: string[] = []
+  let rem = rawText
+  for (let lineIdx = 0; lineIdx < 3; lineIdx++) {
+    if (lineIdx === 2 || measureFn(rem) <= maxWrapW) {
+      lines.push(rem)
+      break
+    }
+    let fitLen = 1
+    while (fitLen < rem.length && measureFn(rem.slice(0, fitLen + 1)) <= maxWrapW) {
+      fitLen++
+    }
+    const lastSpaceIdx = rem.lastIndexOf(' ', fitLen)
+    if (lastSpaceIdx > 0) {
+      lines.push(rem.slice(0, lastSpaceIdx))
+      rem = rem.slice(lastSpaceIdx + 1)
+    } else {
+      lines.push(rem.slice(0, fitLen))
+      rem = rem.slice(fitLen)
+    }
+  }
+  if (lines.length === 0) {
+    lines.push('')
+  }
+
+  const textX = boxLeft + 4
+  const baseLine0Y = screenHeight - 88
+  for (let i = 0; i < lines.length; i++) {
+    const lineStr = lines[i]!
+    if (lineStr.length > 0) {
+      hud.font.drawText(ctx, lineStr, textX, baseLine0Y + i * 15, {
+        font: 'font16',
+        color: 'white',
+        align: 'left',
+        lang,
+      })
+    }
+  }
+
+  // 0x6fb1ef20 (`CHAT_DrawCursor`): 500ms ON (`0x1f4`) / 100ms OFF (`0x64`), `.tbl` `0x0D4C` ("_")
+  const lastLineIdx = lines.length - 1
+  const lastLineText = lines[lastLineIdx] ?? ''
+  const lastLineWidth = lastLineText.length > 0 ? measureFn(lastLineText) : 0
+  const cursorVisible = Math.floor(Math.max(0, nowMs)) % 600 < 500
+  if (cursorVisible) {
+    hud.font.drawText(ctx, '_', textX + lastLineWidth, baseLine0Y + lastLineIdx * 15, {
+      font: 'font16',
+      color: 'white',
       align: 'left',
       lang,
     })
@@ -1553,4 +1660,15 @@ export function syncHudPublishedState(hud: HudManager): void {
   hud.state.npcMenuOpen = hud.worldPanels.npcMenu !== null
   hud.state.escapeMenuOpen = hud.worldPanels.escapeMenuOpen
   hud.state.escapeMenuSelectedIndex = hud.worldPanels.escapeMenuSelectedIndex
+  hud.state.escapeMenuScreen = hud.worldPanels.escapeMenuScreen
+  internal.lastHudFrameTiming = null
+  if (internal.hudCanvas?.style) {
+    const intercept =
+      hud.isPointInterceptedByHud(hud.mouseX, hud.mouseY) ||
+      hud.inventory.cursorItem !== null ||
+      hud.worldPanels.vendorTradeState !== 'idle' ||
+      hud.inventory.isIdentifyMode() ||
+      hud.pendingIdentifyScrollId !== null
+    internal.hudCanvas.style.pointerEvents = intercept ? 'auto' : 'none'
+  }
 }

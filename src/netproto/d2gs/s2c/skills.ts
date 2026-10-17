@@ -27,15 +27,18 @@ import { resolveMonsterCmdMode } from './units.ts'
 export function decode0x21UpdateSkill(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x21
-  r.u8() // unitType
-  r.u8() // flag
+  const unitType = unitTypeToId(r.u8()) // unitType
+  const flag = r.u8() // flag
   const unitId = r.u32LE()
   const skill = r.u16LE()
   const baseLevel = r.u8()
-  r.u16LE() // bytes 10..11: uninitialized stack padding
+  const pad10 = r.u8()
+  const flag11 = r.u8()
   return {
     type: 'SkillList',
     unitId,
+    unitType,
+    flag: flag || flag11 || pad10,
     skills: [{ skillId: skill, level: baseLevel, baseLevel, bonus: 0 }],
   }
 }
@@ -44,14 +47,18 @@ export function decode0x21UpdateSkill(pkt: Uint8Array): ServerEvent {
 export function decode0x22UpdateSkillStatus(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x22
-  r.u16LE() // unk
+  const unitType = unitTypeToId(r.u8())
+  const flag2 = r.u8()
   const unitId = r.u32LE()
   const skill = r.u16LE()
   const quantity = r.u8()
-  r.u16LE()
+  const flag10 = r.u8()
+  r.u8()
   return {
     type: 'SkillList',
     unitId,
+    unitType,
+    flag: flag10 || flag2,
     skills: [{ skillId: skill, level: quantity, quantity } as any],
     quantity,
     isSkillStatus: true,

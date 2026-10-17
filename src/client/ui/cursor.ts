@@ -13,6 +13,9 @@
  *   - Hand cursor draws with index finger tip at (mouseX, mouseY).
  *   - Held items (this.inventory.cursorItem) are rendered centered at the cursor hotspot.
  * - Zero Runtime MPQ/DLL calls.
+ * - PD2 (the client default): D2GL's HD cursor (`common/ui/pd2-hd-cursor.ts`) drawn from the baked
+ *   `/cursor-pd2/manifest.json` sheets. Until they load, and if they are missing (reported through
+ *   `reportMissingArt`), the DC6 cursor above is drawn. An explicit `'113c'` always draws the DC6 cursor.
  */
 
 import {
@@ -22,6 +25,19 @@ import {
   type CursorAtlasMetadata,
   type CursorFrameMeta,
 } from '../../common/items/cursor-meta.ts'
+import {
+  HD_CURSOR_CELL,
+  HD_CURSOR_DRAW_SIZE,
+  HD_CURSOR_IDLE_STEP_MS,
+  HD_CURSOR_OFFSET,
+  HdCursorAnimator,
+  HdCursorMode,
+  HdCursorType,
+  PD2_HD_CURSOR_FILES,
+  PD2_HD_CURSOR_MANIFEST_URL,
+  type CursorFrameRect,
+} from '../../common/ui/pd2-hd-cursor.ts'
+import type { UiDataMode } from '../../common/ui/pd2-sgd2freeres.ts'
 import { reportMissingArt } from '../scene/world-renderer.ts'
 import { drawImageWithEtherealAlpha } from './inventory.ts'
 
@@ -57,6 +73,156 @@ export interface HeldItemRenderInfo {
   readonly ethereal?: boolean | undefined
 }
 
+export type HdCursorSheetKey = keyof typeof PD2_HD_CURSOR_FILES
+
+/** One sheet of `/cursor-pd2/manifest.json` (written by `pack-pd2-hd-cursor.ts`). */
+export interface HdCursorManifestSheet {
+  readonly image: string
+  readonly width: number
+  readonly height: number
+  readonly frames: readonly CursorFrameRect[]
+}
+
+/** `/cursor-pd2/manifest.json`, validated against `pd2-hd-cursor.ts`. */
+export interface HdCursorManifest {
+  readonly schema: 1
+  readonly mode: 'pd2'
+  readonly drawSize: number
+  readonly offset: { readonly x: number; readonly y: number }
+  readonly idleStepMs: number
+  readonly sheets: Readonly<Record<HdCursorSheetKey, HdCursorManifestSheet>>
+}
+
+export interface HdCursorSheets {
+  readonly manifest: HdCursorManifest
+  readonly images: Readonly<Record<HdCursorSheetKey, CanvasImageSource>>
+}
+
+/** How the HD cursor fetches its manifest and images (injectable for tests). */
+export interface HdCursorAssetLoader {
+  fetchJson(url: string): Promise<unknown>
+  loadImage(url: string): Promise<CanvasImageSource>
+}
+
+/**
+ * Check a parsed `/cursor-pd2/manifest.json` against the D2GL constants it was baked from. Any mismatch
+ * throws (a stale or foreign manifest must not be drawn with the wrong geometry).
+ */
+export function parseHdCursorManifest(raw: unknown): HdCursorManifest {
+  const fail = (msg: string): never => {
+    throw new Error(`${PD2_HD_CURSOR_MANIFEST_URL}: ${msg}`)
+  }
+  if (raw === null || typeof raw !== 'object') fail('not an object')
+  const m = raw as Record<string, unknown>
+  if (m.schema !== 1) fail(`schema ${String(m.schema)} (expected 1)`)
+  if (m.mode !== 'pd2') fail(`mode ${String(m.mode)} (expected pd2)`)
+  if (m.drawSize !== HD_CURSOR_DRAW_SIZE) fail(`drawSize ${String(m.drawSize)} (expected ${HD_CURSOR_DRAW_SIZE})`)
+  if (m.idleStepMs !== HD_CURSOR_IDLE_STEP_MS) fail(`idleStepMs ${String(m.idleStepMs)} (expected ${HD_CURSOR_IDLE_STEP_MS})`)
+  const offset = m.offset as { x?: unknown; y?: unknown } | null | undefined
+  if (!offset || offset.x !== HD_CURSOR_OFFSET.x || offset.y !== HD_CURSOR_OFFSET.y) {
+    fail(`offset ${JSON.stringify(offset)} (expected ${JSON.stringify(HD_CURSOR_OFFSET)})`)
+  }
+  const sheetsRaw = m.sheets as Record<string, unknown> | null | undefined
+  if (!sheetsRaw || typeof sheetsRaw !== 'object') fail('missing sheets')
+  const sheets = {} as Record<HdCursorSheetKey, HdCursorManifestSheet>
+  for (const key of Object.keys(PD2_HD_CURSOR_FILES) as HdCursorSheetKey[]) {
+    const spec = PD2_HD_CURSOR_FILES[key]
+    const s = sheetsRaw![key] as Partial<HdCursorManifestSheet> | undefined
+    if (!s || typeof s.image !== 'string' || s.image === '') fail(`sheet ${key} has no image`)
+    if (s!.width !== spec.width || s!.height !== spec.height) {
+      fail(`sheet ${key} is ${String(s!.width)}x${String(s!.height)} (expected ${spec.width}x${spec.height})`)
+    }
+    const frames = s!.frames
+    if (!Array.isArray(frames) || frames.length !== spec.frames) {
+      fail(`sheet ${key} has ${Array.isArray(frames) ? frames.length : 'no'} frames (expected ${spec.frames})`)
+    }
+    frames!.forEach((r, i) => {
+      if (r.x !== i * HD_CURSOR_CELL || r.y !== 0 || r.width !== HD_CURSOR_CELL || r.height !== HD_CURSOR_CELL) {
+        fail(`sheet ${key} frame ${i} is ${JSON.stringify(r)} (expected a ${HD_CURSOR_CELL}px cell at x=${i * HD_CURSOR_CELL})`)
+      }
+    })
+    sheets[key] = { image: s!.image!, width: spec.width, height: spec.height, frames: frames! }
+  }
+  return {
+    schema: 1,
+    mode: 'pd2',
+    drawSize: HD_CURSOR_DRAW_SIZE,
+    offset: { x: HD_CURSOR_OFFSET.x, y: HD_CURSOR_OFFSET.y },
+    idleStepMs: HD_CURSOR_IDLE_STEP_MS,
+    sheets,
+  }
+}
+
+/** Browser loader: `fetch` for the manifest, `Image` for the sheets. Throws where neither exists. */
+export const BROWSER_HD_CURSOR_LOADER: HdCursorAssetLoader = {
+  async fetchJson(url: string): Promise<unknown> {
+    if (typeof fetch !== 'function') throw new Error('fetch is not available')
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`)
+    return res.json() as Promise<unknown>
+  },
+  loadImage(url: string): Promise<CanvasImageSource> {
+    if (typeof Image === 'undefined') return Promise.reject(new Error('Image is not available'))
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error(`failed to load ${url}`))
+      img.src = url
+    })
+  },
+}
+
+/** Fetch and validate `/cursor-pd2/manifest.json`, then load both sheets it names. */
+export async function loadHdCursorSheets(loader: HdCursorAssetLoader = BROWSER_HD_CURSOR_LOADER): Promise<HdCursorSheets> {
+  const manifest = parseHdCursorManifest(await loader.fetchJson(PD2_HD_CURSOR_MANIFEST_URL))
+  const [hand, other] = await Promise.all([
+    loader.loadImage(manifest.sheets.hand.image),
+    loader.loadImage(manifest.sheets.other.image),
+  ])
+  return { manifest, images: { hand, other } }
+}
+
+/** The PD2 HD cursor sheets, shared by every `CursorController` (front-end and HUD) using the browser loader. */
+let sharedBrowserHdCursorSheets: Promise<HdCursorSheets> | null = null
+
+/**
+ * D2GL `CursorType` for the DC6 controller's current state. The trade cursors map 1:1
+ * (`buysell.dc6` identify/buy/sell/repair -> `other.png` cells 0..3); the hand maps by animation: a
+ * pressed button is `Press`, the pointing and closing hand (`protate`, reversed `ohand`) is `Hand`
+ * (whose frame walk closes the hand), and the opening / open idle hand (`ohand`, `orotate`) is `Idle`.
+ */
+export function hdCursorTypeFor(state: CursorState, tradeMode: BuySellCursorMode | null): HdCursorType {
+  switch (tradeMode) {
+    case 'identify':
+      return HdCursorType.Identify
+    case 'buy':
+      return HdCursorType.Buy
+    case 'sell':
+      return HdCursorType.Sell
+    case 'repair':
+      return HdCursorType.Repair
+    case null:
+      break
+    default:
+      throw new Error(`hdCursorTypeFor: unknown trade cursor mode ${String(tradeMode)}`)
+  }
+  switch (state) {
+    case 'CLICK_DOWN':
+      return HdCursorType.Press
+    case 'POINTING':
+    case 'RELEASE':
+    case 'TARGET_HOLD':
+      return HdCursorType.Hand
+    case 'OPENING':
+    case 'OPEN_IDLE':
+      return HdCursorType.Idle
+    default:
+      throw new Error(`hdCursorTypeFor: unknown cursor state ${String(state)}`)
+  }
+}
+
+export type HdCursorStatus = 'off' | 'idle' | 'loading' | 'ready' | 'missing'
+
 export class CursorController {
   readonly metadata: CursorAtlasMetadata
   mouseX: number = 0
@@ -89,10 +255,78 @@ export class CursorController {
   /** Frame playback duration for one-shot finger-to-palm opening transition (ohand). */
   openingFrameDurationMs: number = 125 // 8 frames * 125ms = 1000ms total opening time
 
-  constructor(metadata: CursorAtlasMetadata = CURSOR_METADATA, initialTimeMs: number = 0) {
+  /** PD2 D2GL HD cursor (the default); `'113c'` keeps the DC6 cursor. */
+  readonly hdCursor: HdCursorMode
+  private readonly hdAnimator = new HdCursorAnimator()
+  private hdSheets: HdCursorSheets | null = null
+  private hdStatus: Exclude<HdCursorStatus, 'off'> = 'idle'
+  private hdLoad: Promise<void> | null = null
+
+  constructor(
+    metadata: CursorAtlasMetadata = CURSOR_METADATA,
+    initialTimeMs: number = 0,
+    dataMode: UiDataMode = 'pd2',
+  ) {
     this.metadata = metadata
     this.lastActivityTime = initialTimeMs
     this.lastNowMs = initialTimeMs
+    this.hdCursor = new HdCursorMode(dataMode)
+  }
+
+  /** `'pd2'` (default) draws the HD cursor; `'113c'` the DC6 cursor. */
+  setDataMode(mode: UiDataMode): void {
+    this.hdCursor.setDataMode(mode)
+  }
+
+  getDataMode(): UiDataMode {
+    return this.hdCursor.getDataMode()
+  }
+
+  /** `'off'` in 1.13c mode; otherwise where the HD sheets are (`'missing'` means DC6 fallback, reported). */
+  getHdCursorStatus(): HdCursorStatus {
+    return this.hdCursor.isEnabled() ? this.hdStatus : 'off'
+  }
+
+  /**
+   * Load the HD cursor sheets (`render` starts this on its own in PD2 mode). A missing or invalid
+   * `/cursor-pd2/manifest.json` or sheet is reported through `reportMissingArt` and the DC6 cursor is
+   * drawn instead. Pass a `loader` to bypass the shared browser load (tests).
+   */
+  loadHdCursor(loader?: HdCursorAssetLoader): Promise<void> {
+    if (this.hdLoad) return this.hdLoad
+    this.hdStatus = 'loading'
+    let sheets: Promise<HdCursorSheets>
+    if (loader) {
+      sheets = loadHdCursorSheets(loader)
+    } else {
+      sharedBrowserHdCursorSheets ??= loadHdCursorSheets(BROWSER_HD_CURSOR_LOADER)
+      sheets = sharedBrowserHdCursorSheets
+    }
+    this.hdLoad = sheets.then(
+      (loaded) => {
+        this.hdSheets = loaded
+        this.hdStatus = 'ready'
+      },
+      (err: unknown) => {
+        this.hdStatus = 'missing'
+        reportMissingArt(
+          'ui-cursor',
+          PD2_HD_CURSOR_MANIFEST_URL,
+          `PD2 HD cursor unavailable, drawing the DC6 cursor: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      },
+    )
+    return this.hdLoad
+  }
+
+  /**
+   * D2GL HD cursor draw for this frame, or `null` when the HD cursor is off or not loaded (the DC6
+   * cursor is drawn then).
+   */
+  getHdCursorDraw(nowMs: number = performance.now()) {
+    if (!this.hdCursor.isEnabled() || this.hdStatus !== 'ready') return null
+    if (nowMs !== this.lastUpdateNowMs) this.update(nowMs)
+    return this.hdAnimator.draw(hdCursorTypeFor(this.state, this.tradeCursorMode), this.mouseX, this.mouseY, nowMs)
   }
 
   /**
@@ -327,6 +561,19 @@ export class CursorController {
         ctx.drawImage(heldItem.atlas, sr.x, sr.y, sr.w, sr.h, dx, dy, sr.w, sr.h)
       })
       return
+    }
+
+    // PD2 (default): D2GL's HD cursor. The DC6 cursor below covers loading and the reported missing case.
+    if (this.hdCursor.isEnabled()) {
+      if (this.hdStatus === 'idle') void this.loadHdCursor()
+      const sheets = this.hdSheets
+      const draw = this.getHdCursorDraw(nowMs)
+      if (draw && sheets) {
+        const cell = sheets.manifest.sheets[draw.sheet].frames[draw.cell]
+        if (!cell) throw new Error(`HD cursor sheet ${draw.sheet} has no cell ${draw.cell}`)
+        ctx.drawImage(sheets.images[draw.sheet], cell.x, cell.y, cell.width, cell.height, draw.x, draw.y, draw.size, draw.size)
+        return
+      }
     }
 
     // Otherwise, render the authentic animated hand cursor or buysell trade cursor

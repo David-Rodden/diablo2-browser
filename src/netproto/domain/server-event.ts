@@ -47,6 +47,30 @@ export type ServerEvent =
       readonly type: 'ProtocolSync'
       readonly opcode: number
       readonly byteLength: number
+      readonly entries?:
+        | readonly {
+            readonly unitType: UnitType
+            readonly id: number
+            readonly x: number
+            readonly y: number
+          }[]
+        | undefined
+      readonly monsterEnchant?:
+        | {
+            readonly monsterId: number
+            readonly enchantType: number
+            readonly textId: number
+            readonly prefix: number
+            readonly suffix: number
+            readonly field10: number
+          }
+        | undefined
+      readonly npcGossip?:
+        | {
+            readonly npcId: number
+            readonly flag: number
+          }
+        | undefined
     }
   | {
       readonly type: 'MonsterSpecial'
@@ -63,6 +87,9 @@ export type ServerEvent =
       readonly ownerId?: number | undefined
       readonly velocity?: number | undefined
       readonly range?: number | undefined
+      readonly unk?: number | undefined
+      readonly cltDoFuncArg?: number | undefined
+      readonly pierceIdx?: number | undefined
     }
   | {
       readonly type: 'GameFlags'
@@ -232,6 +259,7 @@ export type ServerEvent =
       readonly stat: number
       readonly value: number
       readonly param?: number | undefined
+      readonly flag?: number | undefined
       readonly unit?: UnitRef | undefined
     }
   | {
@@ -348,6 +376,8 @@ export type ServerEvent =
   | {
       readonly type: 'SkillList'
       readonly unitId: number
+      readonly unitType?: UnitType | undefined
+      readonly flag?: number | undefined
       readonly skills: readonly SkillLevel[]
     }
   | {
@@ -445,6 +475,7 @@ export type ServerEvent =
       readonly charClass?: number | undefined
       readonly charLevel?: number | undefined
       readonly isPlayer?: boolean | undefined
+      readonly inParty?: boolean | undefined
     }
   | {
       readonly type: 'Trade'
