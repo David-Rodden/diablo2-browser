@@ -1936,8 +1936,8 @@ export class Minimap {
     font: D2FontRenderer,
     logicalWidth = 800,
     logicalHeight = 600,
-  ): void {
-    if (!this.visible) return
+  ): number | null {
+    if (!this.visible) return null
 
     const vp = this.lastRenderStats.viewport
     const scaleX = vp.screenWidth > 0 && logicalWidth > 0 ? logicalWidth / vp.screenWidth : 1
@@ -1987,7 +1987,9 @@ export class Minimap {
           shadow: true,
         })
       }
+      return rightX - font.measureText(hudText.levelName, 'font16')
     }
+    return null
   }
 
   /**

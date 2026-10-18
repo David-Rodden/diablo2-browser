@@ -68,5 +68,15 @@ describe('experience bar', () => {
     expect(run(0)).toEqual(['Level 5: 50.0%', '12k xp/hr'])
     expect(run(560)[2]).toMatch(/until next level$/)
   })
+
+  it('moves the rate under the bar when the area title would overlap it', () => {
+    const drawn: { text: string; x: number; y: number }[] = []
+    const ctx = { save() {}, restore() {}, strokeRect() {}, fillRect() {} } as unknown as CanvasRenderingContext2D
+    const font = { drawText: (_: unknown, text: string, x: number, y: number) => void drawn.push({ text, x, y }), measureText: (t: string) => t.length * 6 } as unknown as D2FontRenderer
+    drawXpBar(ctx, font, at(5, 0.5), 800, 'ENG', { perHour: 12_400, mouseX: 400, mouseY: 25, rightLimit: 590 })
+    expect(drawn[1]).toEqual({ text: '12k xp/hr', x: 373, y: 28 })
+    expect(drawn[2]!.text).toMatch(/until next level$/)
+    expect(drawn[2]!.y).toBeGreaterThan(28)
+  })
 })
 

@@ -844,7 +844,7 @@ export class HudManager {
       font: D2FontRenderer,
       logicalWidth: number,
       logicalHeight: number,
-    ) => void
+    ) => number | null | void
     onCastTownPortal?: (source?: 'tbk' | 'tsc', item?: UiInventoryItem) => boolean | void
     onDropItemToGround?: (item: UiInventoryItem, mousePos?: { x: number; y: number }) => void
     onDropGoldToGround?: (amount: number, mousePos?: { x: number; y: number }) => void
@@ -866,7 +866,7 @@ export class HudManager {
         font: D2FontRenderer,
         logicalWidth: number,
         logicalHeight: number,
-      ) => void
+      ) => number | null | void
       onCastTownPortal?: (source?: 'tbk' | 'tsc', item?: UiInventoryItem) => boolean | void
       onDropItemToGround?: (item: UiInventoryItem, mousePos?: { x: number; y: number }) => void
       onDropGoldToGround?: (amount: number, mousePos?: { x: number; y: number }) => void

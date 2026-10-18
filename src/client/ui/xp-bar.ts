@@ -66,6 +66,7 @@ export interface XpBarExtras {
   readonly perHour: number
   readonly mouseX: number
   readonly mouseY: number
+  readonly rightLimit?: number
 }
 
 export function drawXpBar(ctx: CanvasRenderingContext2D, font: D2FontRenderer, state: XpBarState, viewportWidth: number, lang: 'ENG' | 'CHI', extras?: XpBarExtras): void {
@@ -81,18 +82,18 @@ export function drawXpBar(ctx: CanvasRenderingContext2D, font: D2FontRenderer, s
   font.drawText(ctx, xpBarLabel(state, lang), x + BAR_WIDTH / 2, baseline, { ...LABEL_STYLE, color: 'white' })
   if (extras) {
     const rateText = formatXpRate(extras.perHour)
-    const rateX = x + BAR_WIDTH + RATE_GAP
     const rateW = font.measureText(rateText, 'font8')
-    font.drawText(ctx, rateText, rateX, baseline, { ...LABEL_STYLE, color: 'gold', align: 'left' })
-    if (extras.mouseX >= x && extras.mouseX <= rateX + rateW && extras.mouseY >= BAR_TOP && extras.mouseY <= BAR_TOP + BAR_HEIGHT) drawTimeToLevelTooltip(ctx, font, formatTimeToLevel(state, extras.perHour, lang), rateX + rateW / 2, viewportWidth)
+    const fitsBeside = x + BAR_WIDTH + 2 * RATE_GAP + rateW <= (extras.rightLimit ?? viewportWidth)
+    const [rateX, rateBaseline] = fitsBeside ? [x + BAR_WIDTH + RATE_GAP, baseline] : [Math.round(x + (BAR_WIDTH - rateW) / 2), baseline + BAR_HEIGHT]
+    font.drawText(ctx, rateText, rateX, rateBaseline, { ...LABEL_STYLE, color: 'gold', align: 'left' })
+    if (extras.mouseX >= x && extras.mouseX <= Math.max(x + BAR_WIDTH, rateX + rateW) && extras.mouseY >= BAR_TOP && extras.mouseY <= rateBaseline + 2) drawTimeToLevelTooltip(ctx, font, formatTimeToLevel(state, extras.perHour, lang), rateX + rateW / 2, rateBaseline + 5, viewportWidth)
   }
   ctx.restore()
 }
 
-function drawTimeToLevelTooltip(ctx: CanvasRenderingContext2D, font: D2FontRenderer, text: string, anchorX: number, viewportWidth: number): void {
+function drawTimeToLevelTooltip(ctx: CanvasRenderingContext2D, font: D2FontRenderer, text: string, anchorX: number, top: number, viewportWidth: number): void {
   const width = font.measureText(text, 'font8') + 12
   const left = Math.max(4, Math.min(viewportWidth - width - 4, Math.round(anchorX - width / 2)))
-  const top = BAR_TOP + BAR_HEIGHT + 3
   ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'
   ctx.fillRect(left, top, width, 15)
   font.drawText(ctx, text, left + width / 2, top + 11, { ...LABEL_STYLE, color: 'white' })

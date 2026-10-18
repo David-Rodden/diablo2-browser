@@ -703,6 +703,7 @@ describe('R3 Authentic 1.13c Isometric Sprite Automap & Minimap UI', () => {
         align?: string
       }[] = []
       const mockFont = {
+        measureText: (text: string) => text.length * 10,
         drawText(
           _ctx: CanvasRenderingContext2D,
           text: string,

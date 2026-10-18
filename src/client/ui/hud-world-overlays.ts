@@ -68,7 +68,7 @@ interface HudRenderInternal {
       font: D2FontRenderer,
       logicalWidth: number,
       logicalHeight: number,
-    ) => void
+    ) => number | null | void
   }
   syncResolutionMode(): boolean
   resolveLocalizedMercLabel(merc: any, lang?: TblLang): string
@@ -301,7 +301,7 @@ export function renderHudFrame(
   // 0. Automap 2D Text Overlay (Warp/Stash Font6 labels, NPC names, Top-Right Gold Font16 Level Name + Difficulty)
   ctx.translate(Math.round(offsetX * dpr), Math.round(offsetY * dpr))
   ctx.scale(uiScale * dpr, uiScale * dpr)
-  internal.callbacks.onRenderAutomapOverlay?.(ctx, hud.font, profile.width, profile.height)
+  const areaTitleLeft = internal.callbacks.onRenderAutomapOverlay?.(ctx, hud.font, profile.width, profile.height) ?? profile.width
 
   // 0b. Top-Left Mercenary Portrait & Life Bar (R3.3) + Summoned Minions + Party Mini-Portraits (R5.1)
   if (hud.leftPanel === 'none' && hud.showPartyPortraits !== false) {
@@ -704,7 +704,7 @@ export function renderHudFrame(
   if (hud.showXpBar && hud.leftPanel === 'none' && hud.rightPanel === 'none' && !hud.worldPanels.escapeMenuOpen) {
     const xpState = internal.buildControlBarState()
     hud.xpRate.record(xpState.xp, nowMs)
-    drawXpBar(ctx, hud.font, xpState, profile.width, overlayLang, { perHour: hud.xpRate.perHour(nowMs), mouseX: hud.mouseX, mouseY: hud.mouseY })
+    drawXpBar(ctx, hud.font, xpState, profile.width, overlayLang, { perHour: hud.xpRate.perHour(nowMs), mouseX: hud.mouseX, mouseY: hud.mouseY, rightLimit: areaTitleLeft })
   }
 
   // 3..6. Bottom Control Panel, Globes, Belt, and Skill Hotkeys (translated by barOffsetX, barOffsetY)
