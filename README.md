@@ -36,4 +36,4 @@ All mods can be switched off from the Plugins button in the toolbar. See [MODS.m
 
 The port itself is [troytt](https://github.com/troytt)'s work. It builds on [D2MOO](https://github.com/ThePhrozenKeep/D2MOO) and [StormLib](https://github.com/ladislav-zezula/StormLib).
 
-Diablo II is a trademark of Blizzard Entertainment. This project is not affiliated with Blizzard.
+MIT licensed, the same as upstream (see [LICENSE](LICENSE)). Diablo II is a trademark of Blizzard Entertainment. This project is not affiliated with Blizzard.
