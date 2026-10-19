@@ -52,7 +52,7 @@ import {
   resolveAllowedSlots,
   resolveItemInvFile,
 } from '../../common/items/item-bridge.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import { PanelCloseButton } from './close-button.ts'
 import { getTblLang, requireTbl, type TblLang } from '../i18n/lang.ts'
 

@@ -10,7 +10,7 @@ import {
   imbueUiInventoryItem113c,
   onlineItemDataToUiInventoryItem,
 } from '../src/common/items/item-bridge.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 import { WorldPanelsHud, isEligibleArtisanItem } from '../src/client/ui/world-panels.ts'
 import { HudManager } from '../src/client/ui/hud-manager.ts'
 import { HudModel } from '../src/client/ui-model/hud-model.ts'

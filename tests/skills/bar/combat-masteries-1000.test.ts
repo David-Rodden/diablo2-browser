@@ -46,8 +46,8 @@ import {
   computeMoveVelocityPercent113c,
   resolveCharacterAnimSpeedParams,
 } from '../../../src/common/units/char-anim-speed.ts'
-import { executeNormalAttack } from '../../../src/server/scene/weapon-combat.ts'
-import { castSkill } from '../../../src/server/scene/skill-caster.ts'
+import { executeNormalAttack } from '../../../src/server/engine/combat-pipeline.ts'
+import { castSkill } from '../../../src/server/skills/skills.ts'
 
 function createUnit(overrides?: Partial<CombatUnitContext>): CombatUnitContext {
   const statList = new UnitStatList()

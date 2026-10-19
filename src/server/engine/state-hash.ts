@@ -28,7 +28,7 @@ import type {
 import { parseTable as parseActTable } from '../../common/world/acts.ts'
 import { findIsometricDropPosition, getPickupEdgeDistance } from '../items/ground-items.ts'
 import { QuestLog } from '../world/quests.ts'
-import { monsterStatsFromTable, tickCombatMulti } from './combat.ts'
+import { monsterStatsFromTable, tickCombatMulti } from '../ai/monster-ai.ts'
 
 /** One peer's input for one tick. */
 export interface InputFrame {
@@ -107,10 +107,14 @@ export class LockstepSession {
   private stallTicks = 0
   private desync: DesyncReport | null = null
 
-  constructor(options: LockstepOptions, simulation: LockstepSimulation) {
+  constructor(
+    options: LockstepOptions = { peers: 2, inputDelayTicks: 0 },
+    simulation: LockstepSimulation = { advance() {}, hash: () => 0 },
+  ) {
     this.options = options
     this.simulation = simulation
-    for (let peer = 0; peer < options.peers; peer += 1) {
+    const peerCount = Math.max(1, options.peers ?? 2)
+    for (let peer = 0; peer < peerCount; peer += 1) {
       this.inputs.set(peer, new Map())
       this.remoteHashHistory.set(peer, new Map())
     }
@@ -241,6 +245,48 @@ export class LockstepSession {
     return this.desync
   }
 
+  /**
+   * Record a locally computed frame hash directly into the session history.
+   */
+  recordFrame(tick: number, hash: number): void {
+    const normalizedHash = hash >>> 0
+    const historyWindow = this.options.historyTicks ?? DEFAULT_HISTORY
+    const existingIdx = this.hashes.findIndex((h) => h.tick === tick)
+    if (existingIdx >= 0) {
+      this.hashes[existingIdx] = { tick, hash: normalizedHash }
+    } else {
+      this.hashes.push({ tick, hash: normalizedHash })
+      if (this.hashes.length > historyWindow) this.hashes.shift()
+    }
+    if (tick >= this.currentTick) {
+      this.currentTick = tick + 1
+    }
+  }
+
+  /**
+   * Verify a peer's frame hash against the local history.
+   * Supports 2-arg `verifyPeerHash(tick, peerHash)` or 3-arg `verifyPeerHash(peerId, tick, peerHash)`.
+   */
+  verifyPeerHash(tickOrPeer: number, maybeTickOrHash: number, maybeHash?: number): boolean {
+    if (maybeHash !== undefined) {
+      const peer = tickOrPeer
+      const tick = maybeTickOrHash
+      const hash = maybeHash >>> 0
+      if (!this.remoteHashHistory.has(peer)) {
+        this.remoteHashHistory.set(peer, new Map())
+      }
+      this.remoteHashHistory.get(peer)!.set(tick, hash)
+      const report = this.compare({ tick, hash })
+      return report === null
+    }
+    const tick = tickOrPeer
+    const hash = maybeTickOrHash >>> 0
+    const local = this.hashes.find((entry) => entry.tick === tick)
+    if (local === undefined) return false
+    const report = this.compare({ tick, hash })
+    return report === null
+  }
+
   static digest(text: string): number {
     let hash = 2166136261
     for (let index = 0; index < text.length; index += 1) {
@@ -318,46 +364,311 @@ export interface HashableQuest {
   readonly kills: number
 }
 
-export function computeLockstepHash(
-  worldOrEngine:
-    | HashableWorld
-    | {
-        readonly world: HashableWorld
-        readonly bag?: HashableInventory | undefined
-        readonly ground?: readonly HashableGroundItem[] | undefined
-        readonly questLog?: { readonly all: readonly HashableQuest[] } | undefined
-      },
-  inventories?: readonly HashableInventory[],
-  ground?: readonly HashableGroundItem[],
-  quests?: readonly HashableQuest[],
-): number {
-  const isEngineWrapper =
+export interface HashableArenaLike {
+  readonly tickCount?: number | undefined
+  readonly tick?: number | undefined
+  readonly player?: {
+    readonly x?: number | undefined
+    readonly y?: number | undefined
+    readonly statList?: {
+      getHp(): number
+      getHp256(): number
+      getAccruedStat(stat: string): number
+    } | undefined
+  } | undefined
+  readonly targets?: readonly {
+    readonly id: string
+    readonly x?: number | undefined
+    readonly y?: number | undefined
+    readonly statList: {
+      getHp(): number
+      getHp256(): number
+    }
+    readonly stateBus: {
+      getActiveStateNames(): string[]
+    }
+  }[] | undefined
+  readonly targetPositions?: ReadonlyMap<string, { readonly x: number; readonly y: number }> | undefined
+  readonly rng?: { readonly lo?: number; readonly hi?: number; readonly state?: number } | undefined
+  readonly missiles?: readonly { readonly x: number; readonly y: number; readonly id?: string | number }[] | undefined
+}
+
+export type WorldArenaHashSource = HashableArenaLike
+
+export interface HashableGameInstanceLike {
+  readonly frame?: number | undefined
+  readonly tick?: number | undefined
+  readonly kills?: number | undefined
+  readonly players?: ReadonlyMap<number, any> | readonly any[] | undefined
+  readonly monsters?: ReadonlyMap<number, any> | readonly any[] | undefined
+  readonly missiles?: readonly any[] | undefined
+  readonly rng?: { readonly lo?: number; readonly hi?: number; readonly state?: number } | undefined
+  readonly inventories?: readonly HashableInventory[] | undefined
+  readonly ground?: readonly HashableGroundItem[] | undefined
+  readonly groundItems?: { getAllItems?(): readonly any[]; readonly all?: readonly any[] } | readonly any[] | undefined
+  readonly quests?: readonly HashableQuest[] | { readonly all: readonly HashableQuest[] } | undefined
+  readonly questLog?: { readonly all: readonly HashableQuest[] } | undefined
+  getLockstepWorld?(): HashableWorld
+}
+
+export type GameInstanceHashSource = HashableGameInstanceLike
+
+export type HashableStateSource =
+  | HashableWorld
+  | HashableArenaLike
+  | HashableGameInstanceLike
+  | {
+      readonly world: HashableWorld
+      readonly bag?: HashableInventory | undefined
+      readonly ground?: readonly HashableGroundItem[] | undefined
+      readonly questLog?: { readonly all: readonly HashableQuest[] } | undefined
+    }
+
+export function normalizeHashableWorld(
+  worldOrEngine: HashableStateSource,
+  overrideTick?: number,
+): {
+  readonly world: HashableWorld
+  readonly defaultInventories: readonly HashableInventory[]
+  readonly defaultGround: readonly HashableGroundItem[]
+  readonly defaultQuests: readonly HashableQuest[]
+  readonly extraScalars?: readonly number[] | undefined
+} {
+  if (
+    worldOrEngine !== null &&
+    typeof worldOrEngine === 'object' &&
+    'getLockstepWorld' in worldOrEngine &&
+    typeof (worldOrEngine as HashableGameInstanceLike).getLockstepWorld === 'function'
+  ) {
+    const w = (worldOrEngine as HashableGameInstanceLike).getLockstepWorld!()
+    return {
+      world: overrideTick !== undefined ? { ...w, tick: overrideTick } : w,
+      defaultInventories: [],
+      defaultGround: [],
+      defaultQuests: [],
+    }
+  }
+
+  if (
     worldOrEngine !== null &&
     typeof worldOrEngine === 'object' &&
     'world' in worldOrEngine &&
     worldOrEngine.world !== undefined &&
     typeof (worldOrEngine as { readonly world: HashableWorld }).world.tick === 'number'
+  ) {
+    const wrapper = worldOrEngine as {
+      readonly world: HashableWorld
+      readonly bag?: HashableInventory | undefined
+      readonly ground?: readonly HashableGroundItem[] | undefined
+      readonly questLog?: { readonly all: readonly HashableQuest[] } | undefined
+    }
+    return {
+      world: overrideTick !== undefined ? { ...wrapper.world, tick: overrideTick } : wrapper.world,
+      defaultInventories: wrapper.bag ? [wrapper.bag] : [],
+      defaultGround: wrapper.ground ?? [],
+      defaultQuests: wrapper.questLog?.all ?? [],
+    }
+  }
 
-  const world: HashableWorld = isEngineWrapper
-    ? (worldOrEngine as { readonly world: HashableWorld }).world
-    : (worldOrEngine as HashableWorld)
+  if (
+    worldOrEngine !== null &&
+    typeof worldOrEngine === 'object' &&
+    'targets' in worldOrEngine &&
+    Array.isArray((worldOrEngine as HashableArenaLike).targets) &&
+    'player' in worldOrEngine &&
+    (worldOrEngine as HashableArenaLike).player?.statList !== undefined
+  ) {
+    const arena = worldOrEngine as HashableArenaLike
+    const pStatList = arena.player!.statList!
+    const pHp = pStatList.getHp()
+    const pLvl = pStatList.getAccruedStat('level') || 1
+    const targets = arena.targets ?? []
+    const monsters: HashableMonster[] = targets.map(t => {
+      const pos = arena.targetPositions?.get(t.id) ?? { x: t.x ?? 0, y: t.y ?? 0 }
+      return {
+        x: pos.x,
+        y: pos.y,
+        hp: t.statList.getHp(),
+        state: t.stateBus.getActiveStateNames().join(','),
+      }
+    })
+    const kills = targets.filter(t => t.statList.getHp256() <= 0).length
+    const extraScalars: number[] = []
+    if (arena.rng) {
+      if (typeof arena.rng.lo === 'number') extraScalars.push(arena.rng.lo)
+      if (typeof arena.rng.hi === 'number') extraScalars.push(arena.rng.hi)
+      if (typeof arena.rng.state === 'number') extraScalars.push(arena.rng.state)
+    }
+    if (Array.isArray(arena.missiles)) {
+      for (const m of arena.missiles) {
+        extraScalars.push(Math.round((m.x ?? 0) * 1000), Math.round((m.y ?? 0) * 1000))
+      }
+    }
+    return {
+      world: {
+        tick: overrideTick ?? arena.tickCount ?? arena.tick ?? 0,
+        kills,
+        players: [
+          {
+            x: arena.player!.x ?? 0,
+            y: arena.player!.y ?? 0,
+            hp: pHp,
+            level: pLvl,
+            alive: pStatList.getHp256() > 0,
+          },
+        ],
+        monsters,
+      },
+      defaultInventories: [],
+      defaultGround: [],
+      defaultQuests: [],
+      ...(extraScalars.length > 0 ? { extraScalars } : {}),
+    }
+  }
 
-  const resolvedInventories: readonly HashableInventory[] =
-    inventories ??
-    (isEngineWrapper && (worldOrEngine as { readonly bag?: HashableInventory }).bag
-      ? [(worldOrEngine as { readonly bag: HashableInventory }).bag]
-      : [])
-  const resolvedGround: readonly HashableGroundItem[] =
-    ground ??
-    (isEngineWrapper && (worldOrEngine as { readonly ground?: readonly HashableGroundItem[] }).ground
-      ? (worldOrEngine as { readonly ground: readonly HashableGroundItem[] }).ground
-      : [])
-  const resolvedQuests: readonly HashableQuest[] =
-    quests ??
-    (isEngineWrapper &&
-    (worldOrEngine as { readonly questLog?: { readonly all: readonly HashableQuest[] } }).questLog
-      ? (worldOrEngine as { readonly questLog: { readonly all: readonly HashableQuest[] } }).questLog.all
-      : [])
+  if (
+    worldOrEngine !== null &&
+    typeof worldOrEngine === 'object' &&
+    (('frame' in worldOrEngine && typeof (worldOrEngine as HashableGameInstanceLike).frame === 'number') ||
+      (worldOrEngine as HashableGameInstanceLike).players instanceof Map ||
+      (worldOrEngine as HashableGameInstanceLike).monsters instanceof Map ||
+      !('kills' in worldOrEngine))
+  ) {
+    const compareUnitEntries = ([keyA, valA]: [unknown, any], [keyB, valB]: [unknown, any]): number => {
+      const idA = typeof valA?.id === 'number' ? valA.id : typeof keyA === 'number' ? keyA : Number(keyA)
+      const idB = typeof valB?.id === 'number' ? valB.id : typeof keyB === 'number' ? keyB : Number(keyB)
+      if (Number.isFinite(idA) && Number.isFinite(idB) && idA !== idB) {
+        return idA - idB
+      }
+      return String(keyA).localeCompare(String(keyB))
+    }
+    const inst = worldOrEngine as HashableGameInstanceLike
+    const rawPlayers =
+      inst.players instanceof Map
+        ? Array.from(inst.players.entries())
+            .sort(compareUnitEntries)
+            .map(([, v]) => v)
+        : Array.isArray(inst.players)
+          ? inst.players
+          : (inst as any).player
+            ? [(inst as any).player]
+            : []
+    const players: HashablePlayer[] = rawPlayers.map((p: any) => {
+      const hp = typeof p.hp === 'number' ? p.hp : (p.statList?.getHp?.() ?? 0)
+      return {
+        x: p.x ?? 0,
+        y: p.y ?? 0,
+        hp,
+        xp: p.xp ?? p.experience ?? p.statList?.getAccruedStat?.('experience') ?? 0,
+        level: p.level ?? p.statList?.getAccruedStat?.('level') ?? 1,
+        alive: p.alive ?? (!p.dead && hp > 0),
+      }
+    })
+    const rawMonsters =
+      inst.monsters instanceof Map
+        ? Array.from(inst.monsters.entries())
+            .sort(compareUnitEntries)
+            .map(([, v]) => v)
+        : Array.isArray(inst.monsters)
+          ? inst.monsters
+          : []
+    const monsters: HashableMonster[] = rawMonsters.map((m: any) => ({
+      x: m.x ?? 0,
+      y: m.y ?? 0,
+      hp: typeof m.hp === 'number' ? m.hp : (m.statList?.getHp?.() ?? 0),
+      state: m.state ?? (m.mode !== undefined ? String(m.mode) : ''),
+    }))
+    const defaultInventories: HashableInventory[] =
+      inst.inventories
+        ? [...inst.inventories]
+        : rawPlayers
+            .map((p: any) => p.inventory ?? p.bag)
+            .filter((inv: any): inv is HashableInventory => Boolean(inv && Array.isArray(inv.contents)))
+    const rawGround =
+      inst.ground ??
+      (inst.groundItems instanceof Map
+        ? Array.from((inst.groundItems as Map<unknown, any>).values())
+        : typeof (inst.groundItems as any)?.getAllItems === 'function'
+          ? (inst.groundItems as any).getAllItems()
+          : Array.isArray((inst.groundItems as any)?.all)
+            ? (inst.groundItems as any).all
+            : Array.isArray(inst.groundItems)
+              ? inst.groundItems
+              : [])
+    const defaultGround: HashableGroundItem[] = rawGround.map((g: any) => ({
+      x: g.x ?? g.worldX ?? 0,
+      y: g.y ?? g.worldY ?? 0,
+      item: g.item ?? {
+        name: g.name ?? g.code ?? '',
+        stack: g.amount ?? g.stack ?? 1,
+        value: g.value ?? 0,
+        quality: g.quality ?? 0,
+        uniqueId: g.id ?? g.unitId,
+      },
+    }))
+    const defaultQuests: readonly HashableQuest[] =
+      Array.isArray(inst.quests)
+        ? inst.quests
+        : (inst.quests as { readonly all?: readonly HashableQuest[] } | undefined)?.all ??
+          inst.questLog?.all ??
+          []
+    const extraScalars: number[] = []
+    if (inst.rng) {
+      if (typeof inst.rng.lo === 'number') extraScalars.push(inst.rng.lo)
+      if (typeof inst.rng.hi === 'number') extraScalars.push(inst.rng.hi)
+      if (typeof inst.rng.state === 'number') extraScalars.push(inst.rng.state)
+      if (typeof (inst.rng as any).seed === 'number') extraScalars.push((inst.rng as any).seed)
+      if (typeof (inst.rng as any).highSeed === 'number') extraScalars.push((inst.rng as any).highSeed)
+    }
+    const rawMissiles =
+      (inst as any).missiles instanceof Map
+        ? Array.from(((inst as any).missiles as Map<unknown, any>).values())
+        : Array.isArray(inst.missiles)
+          ? inst.missiles
+          : []
+    for (const m of rawMissiles) {
+      extraScalars.push(Math.round((m.x ?? 0) * 1000), Math.round((m.y ?? 0) * 1000))
+    }
+    return {
+      world: {
+        tick: overrideTick ?? inst.frame ?? inst.tick ?? 0,
+        kills: inst.kills ?? monsters.filter(m => m.hp <= 0 || m.state === 'dead').length,
+        players,
+        monsters,
+      },
+      defaultInventories,
+      defaultGround,
+      defaultQuests,
+      ...(extraScalars.length > 0 ? { extraScalars } : {}),
+    }
+  }
+
+  const baseWorld = worldOrEngine as HashableWorld
+  return {
+    world: overrideTick !== undefined ? { ...baseWorld, tick: overrideTick } : baseWorld,
+    defaultInventories: [],
+    defaultGround: [],
+    defaultQuests: [],
+  }
+}
+
+export const normalizeStateHashSource = normalizeHashableWorld
+export const hashWorldState = computeLockstepHash
+export const computeWorldStateHash = computeLockstepHash
+
+export function computeLockstepHash(
+  worldOrEngine: HashableStateSource,
+  inventoriesOrTick?: readonly HashableInventory[] | number,
+  ground?: readonly HashableGroundItem[],
+  quests?: readonly HashableQuest[],
+): number {
+  const overrideTick = typeof inventoriesOrTick === 'number' ? inventoriesOrTick : undefined
+  const inventories = Array.isArray(inventoriesOrTick) ? inventoriesOrTick : undefined
+  const normalized = normalizeHashableWorld(worldOrEngine, overrideTick)
+  const world = normalized.world
+  const resolvedInventories: readonly HashableInventory[] = inventories ?? normalized.defaultInventories
+  const resolvedGround: readonly HashableGroundItem[] = ground ?? normalized.defaultGround
+  const resolvedQuests: readonly HashableQuest[] = quests ?? normalized.defaultQuests
 
   let hash = 2166136261
 
@@ -483,6 +794,12 @@ export function computeLockstepHash(
       questsHash = (questsHash + qHash) >>> 0
     }
     mix(questsHash)
+  }
+
+  if (normalized.extraScalars) {
+    for (const s of normalized.extraScalars) {
+      mix(s)
+    }
   }
 
   return hash >>> 0

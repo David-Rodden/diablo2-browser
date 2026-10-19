@@ -1,25 +1,43 @@
 /**
  * Canonical Diablo II v1.13c Hireling data table & stat resolver.
- * 
+ *
  * Ground Truth References:
  * - `Hireling.txt` / `hireling.bin` (120 rows)
  * - D2Common.dll ordinal 10988 (0x6fd7c9e0) -> Act index resolution
  * - D2Common.dll ordinal 10458 (0x6fd7ccc0) -> 64-bit LCG candidate evaluation
  * - D2Common.dll ordinal 10091 (0x6fd7c9c0) -> Ability description string resolution
+ * - D2Common.dll ordinal 11156 (0x6fda32c0) -> Highest level <= mercLevel bracket selection
+ * - D2Game.dll 0x6fc68ba0 (D2GAME_MERCS_SetStats_6FC68BA0) -> Hireling level-up stat scaling
+ * - D2Game.dll 0x6fc3c4e0 (AIMERC_ChooseSkill_6FC3C4E0) -> Hireling skill chance & level scaling
  * - D2Client.dll 0x6faf9440 -> Candidate dialog line formatting
- * 
+ *
  * DO NOT EDIT MANUALLY.
  */
 
 import { lookupTbl } from '../formats/tbl.ts'
 
+export interface HirelingSkillEntry {
+  readonly slot: 1 | 2 | 3 | 4 | 5 | 6
+  readonly skillName: string
+  readonly skillId: number
+  readonly mode: number
+  readonly chance: number
+  readonly chancePerLvl: number
+  readonly level: number
+  readonly lvlPerLvl: number
+}
+
 export interface HirelingRecord {
+  readonly hireling: string
+  readonly subType: string
+  readonly id: number
   readonly version: number
   readonly subTypeId: number
   readonly classId: number
   readonly act: number
   readonly difficulty: number
   readonly seller: number
+  readonly gold: number
   readonly hireCost: number
   readonly level: number
   readonly expPerLvl: number
@@ -33,27 +51,36 @@ export interface HirelingRecord {
   readonly dexPerLvl: number
   readonly ar: number
   readonly arPerLvl: number
+  readonly share: number
   readonly dmgMin: number
   readonly dmgMax: number
   readonly dmgPerLvl: number
   readonly resist: number
   readonly resistPerLvl: number
+  readonly wType1: string
+  readonly wType2: string
   readonly hireDesc: number
+  readonly defaultChance: number
   readonly nameFirstKey: string
   readonly nameLastKey: string
   readonly wNameFirstId: number
   readonly wNameLastId: number
   readonly skills: readonly number[]
+  readonly skillEntries: readonly HirelingSkillEntry[]
 }
 
 export const HIRELING_RECORDS: readonly HirelingRecord[] = [
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Normal",
+    "id": 0,
     "version": 0,
     "subTypeId": 0,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 100,
     "hireCost": 100,
     "level": 3,
     "expPerLvl": 100,
@@ -67,12 +94,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 10,
     "arPerLvl": 10,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 3,
     "dmgPerLvl": 2,
     "resist": 0,
     "resistPerLvl": 8,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -80,15 +111,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 1,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 25,
+        "chancePerLvl": 8,
+        "level": 1,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Normal",
+    "id": 0,
     "version": 0,
     "subTypeId": 0,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 100,
     "hireCost": 100,
     "level": 25,
     "expPerLvl": 100,
@@ -102,12 +159,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 230,
     "arPerLvl": 20,
+    "share": 1,
     "dmgMin": 7,
     "dmgMax": 9,
     "dmgPerLvl": 4,
     "resist": 44,
     "resistPerLvl": 7,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -115,15 +176,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 8,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 8,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Normal",
+    "id": 0,
     "version": 0,
     "subTypeId": 0,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 100,
     "hireCost": 100,
     "level": 49,
     "expPerLvl": 100,
@@ -137,12 +224,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 710,
     "arPerLvl": 30,
+    "share": 2,
     "dmgMin": 19,
     "dmgMax": 21,
     "dmgPerLvl": 6,
     "resist": 86,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -150,15 +241,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Normal",
+    "id": 1,
     "version": 0,
     "subTypeId": 1,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 150,
     "hireCost": 150,
     "level": 3,
     "expPerLvl": 105,
@@ -172,12 +289,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 10,
     "arPerLvl": 10,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 3,
     "dmgPerLvl": 2,
     "resist": 0,
     "resistPerLvl": 8,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -185,15 +306,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 1,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 25,
+        "chancePerLvl": 2,
+        "level": 1,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Normal",
+    "id": 1,
     "version": 0,
     "subTypeId": 1,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 150,
     "hireCost": 150,
     "level": 25,
     "expPerLvl": 105,
@@ -207,12 +354,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 230,
     "arPerLvl": 20,
+    "share": 1,
     "dmgMin": 7,
     "dmgMax": 9,
     "dmgPerLvl": 4,
     "resist": 44,
     "resistPerLvl": 7,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -220,15 +371,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 8,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 36,
+        "chancePerLvl": 0,
+        "level": 8,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Normal",
+    "id": 1,
     "version": 0,
     "subTypeId": 1,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 150,
     "hireCost": 150,
     "level": 49,
     "expPerLvl": 105,
@@ -242,12 +419,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 710,
     "arPerLvl": 30,
+    "share": 2,
     "dmgMin": 19,
     "dmgMax": 21,
     "dmgPerLvl": 6,
     "resist": 86,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -255,15 +436,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 36,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Nightmare",
+    "id": 2,
     "version": 0,
     "subTypeId": 2,
     "classId": 271,
     "act": 1,
     "difficulty": 2,
     "seller": 150,
+    "gold": 6000,
     "hireCost": 6000,
     "level": 25,
     "expPerLvl": 110,
@@ -277,12 +484,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 207,
     "arPerLvl": 20,
+    "share": 1,
     "dmgMin": 6,
     "dmgMax": 8,
     "dmgPerLvl": 4,
     "resist": 41,
     "resistPerLvl": 7,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -290,15 +501,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Nightmare",
+    "id": 2,
     "version": 0,
     "subTypeId": 2,
     "classId": 271,
     "act": 1,
     "difficulty": 2,
     "seller": 150,
+    "gold": 6000,
     "hireCost": 6000,
     "level": 49,
     "expPerLvl": 110,
@@ -312,12 +549,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 687,
     "arPerLvl": 30,
+    "share": 2,
     "dmgMin": 18,
     "dmgMax": 20,
     "dmgPerLvl": 6,
     "resist": 83,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -325,15 +566,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Nightmare",
+    "id": 3,
     "version": 0,
     "subTypeId": 3,
     "classId": 271,
     "act": 1,
     "difficulty": 2,
     "seller": 150,
+    "gold": 7500,
     "hireCost": 7500,
     "level": 25,
     "expPerLvl": 115,
@@ -347,12 +614,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 207,
     "arPerLvl": 20,
+    "share": 1,
     "dmgMin": 6,
     "dmgMax": 8,
     "dmgPerLvl": 4,
     "resist": 41,
     "resistPerLvl": 7,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -360,15 +631,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Nightmare",
+    "id": 3,
     "version": 0,
     "subTypeId": 3,
     "classId": 271,
     "act": 1,
     "difficulty": 2,
     "seller": 150,
+    "gold": 7500,
     "hireCost": 7500,
     "level": 49,
     "expPerLvl": 115,
@@ -382,12 +679,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 687,
     "arPerLvl": 30,
+    "share": 2,
     "dmgMin": 18,
     "dmgMax": 20,
     "dmgPerLvl": 6,
     "resist": 83,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -395,15 +696,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Hell",
+    "id": 4,
     "version": 0,
     "subTypeId": 4,
     "classId": 271,
     "act": 1,
     "difficulty": 3,
     "seller": 150,
+    "gold": 12500,
     "hireCost": 12500,
     "level": 49,
     "expPerLvl": 120,
@@ -417,12 +744,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 618,
     "arPerLvl": 30,
+    "share": 2,
     "dmgMin": 17,
     "dmgMax": 19,
     "dmgPerLvl": 6,
     "resist": 80,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -430,15 +761,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Hell",
+    "id": 5,
     "version": 0,
     "subTypeId": 5,
     "classId": 271,
     "act": 1,
     "difficulty": 3,
     "seller": 150,
+    "gold": 14000,
     "hireCost": 14000,
     "level": 49,
     "expPerLvl": 125,
@@ -452,12 +809,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 618,
     "arPerLvl": 30,
+    "share": 2,
     "dmgMin": 17,
     "dmgMax": 19,
     "dmgPerLvl": 6,
     "resist": 80,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -465,15 +826,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Normal",
+    "id": 0,
     "version": 100,
     "subTypeId": 0,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 100,
     "hireCost": 100,
     "level": 3,
     "expPerLvl": 100,
@@ -487,12 +874,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 10,
     "arPerLvl": 12,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 3,
     "dmgPerLvl": 2,
     "resist": 0,
     "resistPerLvl": 8,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -500,15 +891,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 1,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 25,
+        "chancePerLvl": 5,
+        "level": 1,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Normal",
+    "id": 0,
     "version": 100,
     "subTypeId": 0,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 100,
     "hireCost": 100,
     "level": 36,
     "expPerLvl": 100,
@@ -522,12 +939,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 406,
     "arPerLvl": 24,
+    "share": 1,
     "dmgMin": 9,
     "dmgMax": 11,
     "dmgPerLvl": 4,
     "resist": 66,
     "resistPerLvl": 7,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -535,15 +956,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 12,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 67,
+        "chancePerLvl": 0,
+        "level": 12,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Normal",
+    "id": 0,
     "version": 100,
     "subTypeId": 0,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 100,
     "hireCost": 100,
     "level": 67,
     "expPerLvl": 100,
@@ -557,12 +1004,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 1150,
     "arPerLvl": 36,
+    "share": 2,
     "dmgMin": 25,
     "dmgMax": 27,
     "dmgPerLvl": 6,
     "resist": 121,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -570,15 +1021,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 22,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 67,
+        "chancePerLvl": 0,
+        "level": 22,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Normal",
+    "id": 1,
     "version": 100,
     "subTypeId": 1,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 150,
     "hireCost": 150,
     "level": 3,
     "expPerLvl": 105,
@@ -592,12 +1069,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 10,
     "arPerLvl": 12,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 3,
     "dmgPerLvl": 2,
     "resist": 0,
     "resistPerLvl": 8,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -605,15 +1086,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 1,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 25,
+        "chancePerLvl": 5,
+        "level": 1,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Normal",
+    "id": 1,
     "version": 100,
     "subTypeId": 1,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 150,
     "hireCost": 150,
     "level": 36,
     "expPerLvl": 105,
@@ -627,12 +1134,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 406,
     "arPerLvl": 24,
+    "share": 1,
     "dmgMin": 9,
     "dmgMax": 11,
     "dmgPerLvl": 4,
     "resist": 66,
     "resistPerLvl": 7,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -640,15 +1151,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 12,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 67,
+        "chancePerLvl": 0,
+        "level": 12,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Normal",
+    "id": 1,
     "version": 100,
     "subTypeId": 1,
     "classId": 271,
     "act": 1,
     "difficulty": 1,
     "seller": 150,
+    "gold": 150,
     "hireCost": 150,
     "level": 67,
     "expPerLvl": 105,
@@ -662,12 +1199,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 1150,
     "arPerLvl": 36,
+    "share": 2,
     "dmgMin": 25,
     "dmgMax": 27,
     "dmgPerLvl": 6,
     "resist": 121,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -675,15 +1216,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 22,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 67,
+        "chancePerLvl": 0,
+        "level": 22,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Nightmare",
+    "id": 2,
     "version": 100,
     "subTypeId": 2,
     "classId": 271,
     "act": 1,
     "difficulty": 2,
     "seller": 150,
+    "gold": 6000,
     "hireCost": 6000,
     "level": 36,
     "expPerLvl": 110,
@@ -697,12 +1264,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 365,
     "arPerLvl": 24,
+    "share": 1,
     "dmgMin": 8,
     "dmgMax": 10,
     "dmgPerLvl": 4,
     "resist": 63,
     "resistPerLvl": 7,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -710,15 +1281,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Nightmare",
+    "id": 2,
     "version": 100,
     "subTypeId": 2,
     "classId": 271,
     "act": 1,
     "difficulty": 2,
     "seller": 150,
+    "gold": 6000,
     "hireCost": 6000,
     "level": 67,
     "expPerLvl": 110,
@@ -732,12 +1329,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 1109,
     "arPerLvl": 36,
+    "share": 2,
     "dmgMin": 24,
     "dmgMax": 26,
     "dmgPerLvl": 6,
     "resist": 118,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -745,15 +1346,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 21,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 21,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Nightmare",
+    "id": 3,
     "version": 100,
     "subTypeId": 3,
     "classId": 271,
     "act": 1,
     "difficulty": 2,
     "seller": 150,
+    "gold": 7500,
     "hireCost": 7500,
     "level": 36,
     "expPerLvl": 115,
@@ -767,12 +1394,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 365,
     "arPerLvl": 24,
+    "share": 1,
     "dmgMin": 8,
     "dmgMax": 10,
     "dmgPerLvl": 4,
     "resist": 63,
     "resistPerLvl": 7,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -780,15 +1411,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Nightmare",
+    "id": 3,
     "version": 100,
     "subTypeId": 3,
     "classId": 271,
     "act": 1,
     "difficulty": 2,
     "seller": 150,
+    "gold": 7500,
     "hireCost": 7500,
     "level": 67,
     "expPerLvl": 115,
@@ -802,12 +1459,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 1109,
     "arPerLvl": 36,
+    "share": 2,
     "dmgMin": 24,
     "dmgMax": 26,
     "dmgPerLvl": 6,
     "resist": 118,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -815,15 +1476,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 21,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 21,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Fire - Hell",
+    "id": 4,
     "version": 100,
     "subTypeId": 4,
     "classId": 271,
     "act": 1,
     "difficulty": 3,
     "seller": 150,
+    "gold": 12500,
     "hireCost": 12500,
     "level": 67,
     "expPerLvl": 120,
@@ -837,12 +1524,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 998,
     "arPerLvl": 36,
+    "share": 2,
     "dmgMin": 23,
     "dmgMax": 25,
     "dmgPerLvl": 6,
     "resist": 115,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 1,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -850,15 +1541,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       7
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Arrow",
+        "skillId": 7,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Rogue Scout",
+    "subType": "Ice - Hell",
+    "id": 5,
     "version": 100,
     "subTypeId": 5,
     "classId": 271,
     "act": 1,
     "difficulty": 3,
     "seller": 150,
+    "gold": 14000,
     "hireCost": 14000,
     "level": 67,
     "expPerLvl": 125,
@@ -872,12 +1589,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 16,
     "ar": 998,
     "arPerLvl": 36,
+    "share": 2,
     "dmgMin": 23,
     "dmgMax": 25,
     "dmgPerLvl": 6,
     "resist": 115,
     "resistPerLvl": 5,
+    "wType1": "bow",
+    "wType2": "",
     "hireDesc": 2,
+    "defaultChance": 75,
     "nameFirstKey": "merc01",
     "nameLastKey": "merc41",
     "wNameFirstId": 3411,
@@ -885,15 +1606,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       8,
       11
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inner Sight",
+        "skillId": 8,
+        "mode": 4,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Cold Arrow",
+        "skillId": 11,
+        "mode": 4,
+        "chance": 69,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Normal",
+    "id": 6,
     "version": 0,
     "subTypeId": 6,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 9,
     "expPerLvl": 110,
@@ -907,12 +1654,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 20,
     "arPerLvl": 10,
+    "share": 1,
     "dmgMin": 7,
     "dmgMax": 14,
     "dmgPerLvl": 4,
     "resist": 18,
     "resistPerLvl": 8,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -920,15 +1671,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       99
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 70,
+        "chancePerLvl": 4,
+        "level": 3,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Prayer",
+        "skillId": 99,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Normal",
+    "id": 6,
     "version": 0,
     "subTypeId": 6,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 31,
     "expPerLvl": 110,
@@ -942,12 +1719,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 240,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 18,
     "dmgMax": 25,
     "dmgPerLvl": 6,
     "resist": 62,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -955,15 +1736,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       99
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 92,
+        "chancePerLvl": 4,
+        "level": 10,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Prayer",
+        "skillId": 99,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Normal",
+    "id": 6,
     "version": 0,
     "subTypeId": 6,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 55,
     "expPerLvl": 110,
@@ -977,12 +1784,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 720,
     "arPerLvl": 30,
+    "share": 4,
     "dmgMin": 36,
     "dmgMax": 43,
     "dmgPerLvl": 8,
     "resist": 104,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -990,15 +1801,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       99
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 116,
+        "chancePerLvl": 4,
+        "level": 18,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Prayer",
+        "skillId": 99,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Normal",
+    "id": 7,
     "version": 0,
     "subTypeId": 7,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 9,
     "expPerLvl": 110,
@@ -1012,12 +1849,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 20,
     "arPerLvl": 10,
+    "share": 1,
     "dmgMin": 7,
     "dmgMax": 14,
     "dmgPerLvl": 4,
     "resist": 18,
     "resistPerLvl": 8,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1025,15 +1866,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       104
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 70,
+        "chancePerLvl": 4,
+        "level": 3,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Defiance",
+        "skillId": 104,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Normal",
+    "id": 7,
     "version": 0,
     "subTypeId": 7,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 31,
     "expPerLvl": 110,
@@ -1047,12 +1914,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 240,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 18,
     "dmgMax": 25,
     "dmgPerLvl": 6,
     "resist": 62,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1060,15 +1931,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       104
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 92,
+        "chancePerLvl": 4,
+        "level": 10,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Defiance",
+        "skillId": 104,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Normal",
+    "id": 7,
     "version": 0,
     "subTypeId": 7,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 55,
     "expPerLvl": 110,
@@ -1082,12 +1979,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 720,
     "arPerLvl": 30,
+    "share": 4,
     "dmgMin": 36,
     "dmgMax": 43,
     "dmgPerLvl": 8,
     "resist": 104,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1095,15 +1996,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       104
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 116,
+        "chancePerLvl": 4,
+        "level": 18,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Defiance",
+        "skillId": 104,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Normal",
+    "id": 8,
     "version": 0,
     "subTypeId": 8,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 9,
     "expPerLvl": 110,
@@ -1117,12 +2044,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 20,
     "arPerLvl": 10,
+    "share": 1,
     "dmgMin": 7,
     "dmgMax": 14,
     "dmgPerLvl": 4,
     "resist": 18,
     "resistPerLvl": 8,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1130,15 +2061,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       108
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 70,
+        "chancePerLvl": 4,
+        "level": 3,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Blessed Aim",
+        "skillId": 108,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Normal",
+    "id": 8,
     "version": 0,
     "subTypeId": 8,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 31,
     "expPerLvl": 110,
@@ -1152,12 +2109,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 240,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 18,
     "dmgMax": 25,
     "dmgPerLvl": 6,
     "resist": 62,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1165,15 +2126,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       108
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 92,
+        "chancePerLvl": 4,
+        "level": 10,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Blessed Aim",
+        "skillId": 108,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Normal",
+    "id": 8,
     "version": 0,
     "subTypeId": 8,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 55,
     "expPerLvl": 110,
@@ -1187,12 +2174,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 720,
     "arPerLvl": 30,
+    "share": 4,
     "dmgMin": 36,
     "dmgMax": 43,
     "dmgPerLvl": 8,
     "resist": 104,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1200,15 +2191,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       108
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 116,
+        "chancePerLvl": 4,
+        "level": 18,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Blessed Aim",
+        "skillId": 108,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Nightmare",
+    "id": 9,
     "version": 0,
     "subTypeId": 9,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 31,
     "expPerLvl": 120,
@@ -1222,12 +2239,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 216,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 16,
     "dmgMax": 23,
     "dmgPerLvl": 6,
     "resist": 59,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1235,15 +2256,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       103
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 120,
+        "chancePerLvl": 4,
+        "level": 9,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Thorns",
+        "skillId": 103,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 5,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Nightmare",
+    "id": 9,
     "version": 0,
     "subTypeId": 9,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 55,
     "expPerLvl": 120,
@@ -1257,12 +2304,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 696,
     "arPerLvl": 30,
+    "share": 4,
     "dmgMin": 34,
     "dmgMax": 41,
     "dmgPerLvl": 8,
     "resist": 101,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1270,15 +2321,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       103
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 144,
+        "chancePerLvl": 4,
+        "level": 17,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Thorns",
+        "skillId": 103,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 13,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Nightmare",
+    "id": 10,
     "version": 0,
     "subTypeId": 10,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 31,
     "expPerLvl": 120,
@@ -1292,12 +2369,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 216,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 16,
     "dmgMax": 23,
     "dmgPerLvl": 6,
     "resist": 59,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1305,15 +2386,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       114
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 120,
+        "chancePerLvl": 4,
+        "level": 9,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Holy Freeze",
+        "skillId": 114,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 6,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Nightmare",
+    "id": 10,
     "version": 0,
     "subTypeId": 10,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 55,
     "expPerLvl": 120,
@@ -1327,12 +2434,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 696,
     "arPerLvl": 30,
+    "share": 4,
     "dmgMin": 34,
     "dmgMax": 41,
     "dmgPerLvl": 8,
     "resist": 101,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1340,15 +2451,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       114
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 144,
+        "chancePerLvl": 4,
+        "level": 17,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Holy Freeze",
+        "skillId": 114,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Nightmare",
+    "id": 11,
     "version": 0,
     "subTypeId": 11,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 31,
     "expPerLvl": 120,
@@ -1362,12 +2499,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 216,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 16,
     "dmgMax": 23,
     "dmgPerLvl": 6,
     "resist": 59,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1375,15 +2516,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       98
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 120,
+        "chancePerLvl": 4,
+        "level": 9,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Might",
+        "skillId": 98,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Nightmare",
+    "id": 11,
     "version": 0,
     "subTypeId": 11,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 55,
     "expPerLvl": 120,
@@ -1397,12 +2564,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 696,
     "arPerLvl": 30,
+    "share": 4,
     "dmgMin": 34,
     "dmgMax": 41,
     "dmgPerLvl": 8,
     "resist": 101,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1410,15 +2581,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       98
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 144,
+        "chancePerLvl": 4,
+        "level": 17,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Might",
+        "skillId": 98,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 13,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Hell",
+    "id": 12,
     "version": 0,
     "subTypeId": 12,
     "classId": 338,
     "act": 2,
     "difficulty": 3,
     "seller": 198,
+    "gold": 15000,
     "hireCost": 15000,
     "level": 55,
     "expPerLvl": 130,
@@ -1432,12 +2629,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 626,
     "arPerLvl": 30,
+    "share": 4,
     "dmgMin": 32,
     "dmgMax": 39,
     "dmgPerLvl": 8,
     "resist": 98,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1445,15 +2646,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       99
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 104,
+        "chancePerLvl": 4,
+        "level": 16,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Prayer",
+        "skillId": 99,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Hell",
+    "id": 13,
     "version": 0,
     "subTypeId": 13,
     "classId": 338,
     "act": 2,
     "difficulty": 3,
     "seller": 198,
+    "gold": 15000,
     "hireCost": 15000,
     "level": 55,
     "expPerLvl": 130,
@@ -1467,12 +2694,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 626,
     "arPerLvl": 30,
+    "share": 4,
     "dmgMin": 32,
     "dmgMax": 39,
     "dmgPerLvl": 8,
     "resist": 98,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1480,15 +2711,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       104
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 104,
+        "chancePerLvl": 4,
+        "level": 16,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Defiance",
+        "skillId": 104,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Hell",
+    "id": 14,
     "version": 0,
     "subTypeId": 14,
     "classId": 338,
     "act": 2,
     "difficulty": 3,
     "seller": 198,
+    "gold": 15000,
     "hireCost": 15000,
     "level": 55,
     "expPerLvl": 130,
@@ -1502,12 +2759,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 626,
     "arPerLvl": 30,
+    "share": 4,
     "dmgMin": 32,
     "dmgMax": 39,
     "dmgPerLvl": 8,
     "resist": 98,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1515,15 +2776,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       108
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 104,
+        "chancePerLvl": 4,
+        "level": 16,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Blessed Aim",
+        "skillId": 108,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Normal",
+    "id": 6,
     "version": 100,
     "subTypeId": 6,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 9,
     "expPerLvl": 110,
@@ -1537,12 +2824,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 20,
     "arPerLvl": 12,
+    "share": 1,
     "dmgMin": 7,
     "dmgMax": 14,
     "dmgPerLvl": 4,
     "resist": 18,
     "resistPerLvl": 8,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1550,15 +2841,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       99
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 70,
+        "chancePerLvl": 4,
+        "level": 3,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Prayer",
+        "skillId": 99,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 7
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Normal",
+    "id": 6,
     "version": 100,
     "subTypeId": 6,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 43,
     "expPerLvl": 110,
@@ -1572,12 +2889,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 428,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 24,
     "dmgMax": 31,
     "dmgPerLvl": 6,
     "resist": 86,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1585,15 +2906,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       99
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 104,
+        "chancePerLvl": 4,
+        "level": 14,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Prayer",
+        "skillId": 99,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 7
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Normal",
+    "id": 6,
     "version": 100,
     "subTypeId": 6,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 75,
     "expPerLvl": 110,
@@ -1607,12 +2954,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 1196,
     "arPerLvl": 36,
+    "share": 4,
     "dmgMin": 48,
     "dmgMax": 55,
     "dmgPerLvl": 8,
     "resist": 142,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1620,15 +2971,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       99
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 136,
+        "chancePerLvl": 4,
+        "level": 24,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Prayer",
+        "skillId": 99,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Normal",
+    "id": 7,
     "version": 100,
     "subTypeId": 7,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 9,
     "expPerLvl": 110,
@@ -1642,12 +3019,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 20,
     "arPerLvl": 12,
+    "share": 1,
     "dmgMin": 7,
     "dmgMax": 14,
     "dmgPerLvl": 4,
     "resist": 18,
     "resistPerLvl": 8,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1655,15 +3036,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       104
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 70,
+        "chancePerLvl": 4,
+        "level": 3,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Defiance",
+        "skillId": 104,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 7
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Normal",
+    "id": 7,
     "version": 100,
     "subTypeId": 7,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 43,
     "expPerLvl": 110,
@@ -1677,12 +3084,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 428,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 24,
     "dmgMax": 31,
     "dmgPerLvl": 6,
     "resist": 86,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1690,15 +3101,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       104
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 104,
+        "chancePerLvl": 4,
+        "level": 14,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Defiance",
+        "skillId": 104,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 7
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Normal",
+    "id": 7,
     "version": 100,
     "subTypeId": 7,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 75,
     "expPerLvl": 110,
@@ -1712,12 +3149,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 1196,
     "arPerLvl": 36,
+    "share": 4,
     "dmgMin": 48,
     "dmgMax": 55,
     "dmgPerLvl": 8,
     "resist": 142,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1725,15 +3166,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       104
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 136,
+        "chancePerLvl": 4,
+        "level": 24,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Defiance",
+        "skillId": 104,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Normal",
+    "id": 8,
     "version": 100,
     "subTypeId": 8,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 9,
     "expPerLvl": 110,
@@ -1747,12 +3214,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 20,
     "arPerLvl": 12,
+    "share": 1,
     "dmgMin": 7,
     "dmgMax": 14,
     "dmgPerLvl": 4,
     "resist": 18,
     "resistPerLvl": 8,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1760,15 +3231,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       108
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 70,
+        "chancePerLvl": 4,
+        "level": 3,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Blessed Aim",
+        "skillId": 108,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 7
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Normal",
+    "id": 8,
     "version": 100,
     "subTypeId": 8,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 43,
     "expPerLvl": 110,
@@ -1782,12 +3279,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 428,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 24,
     "dmgMax": 31,
     "dmgPerLvl": 6,
     "resist": 86,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1795,15 +3296,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       108
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 104,
+        "chancePerLvl": 4,
+        "level": 14,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Blessed Aim",
+        "skillId": 108,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 7
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Normal",
+    "id": 8,
     "version": 100,
     "subTypeId": 8,
     "classId": 338,
     "act": 2,
     "difficulty": 1,
     "seller": 198,
+    "gold": 350,
     "hireCost": 350,
     "level": 75,
     "expPerLvl": 110,
@@ -1817,12 +3344,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 1196,
     "arPerLvl": 36,
+    "share": 4,
     "dmgMin": 48,
     "dmgMax": 55,
     "dmgPerLvl": 8,
     "resist": 142,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1830,15 +3361,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       108
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 136,
+        "chancePerLvl": 4,
+        "level": 24,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Blessed Aim",
+        "skillId": 108,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Nightmare",
+    "id": 9,
     "version": 100,
     "subTypeId": 9,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 43,
     "expPerLvl": 120,
@@ -1852,12 +3409,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 385,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 22,
     "dmgMax": 29,
     "dmgPerLvl": 6,
     "resist": 83,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1865,15 +3426,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       103
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 120,
+        "chancePerLvl": 4,
+        "level": 13,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Thorns",
+        "skillId": 103,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 5,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Nightmare",
+    "id": 9,
     "version": 100,
     "subTypeId": 9,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 75,
     "expPerLvl": 120,
@@ -1887,12 +3474,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 1153,
     "arPerLvl": 36,
+    "share": 4,
     "dmgMin": 46,
     "dmgMax": 53,
     "dmgPerLvl": 8,
     "resist": 139,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1900,15 +3491,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       103
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 152,
+        "chancePerLvl": 4,
+        "level": 23,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Thorns",
+        "skillId": 103,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Nightmare",
+    "id": 10,
     "version": 100,
     "subTypeId": 10,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 43,
     "expPerLvl": 120,
@@ -1922,12 +3539,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 385,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 22,
     "dmgMax": 29,
     "dmgPerLvl": 6,
     "resist": 83,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1935,15 +3556,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       114
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 120,
+        "chancePerLvl": 4,
+        "level": 13,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Holy Freeze",
+        "skillId": 114,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 6,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Nightmare",
+    "id": 10,
     "version": 100,
     "subTypeId": 10,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 75,
     "expPerLvl": 120,
@@ -1957,12 +3604,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 1153,
     "arPerLvl": 36,
+    "share": 4,
     "dmgMin": 46,
     "dmgMax": 53,
     "dmgPerLvl": 8,
     "resist": 139,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -1970,15 +3621,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       114
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 152,
+        "chancePerLvl": 4,
+        "level": 23,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Holy Freeze",
+        "skillId": 114,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Nightmare",
+    "id": 11,
     "version": 100,
     "subTypeId": 11,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 43,
     "expPerLvl": 120,
@@ -1992,12 +3669,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 385,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 22,
     "dmgMax": 29,
     "dmgPerLvl": 6,
     "resist": 83,
     "resistPerLvl": 7,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -2005,15 +3686,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       98
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 120,
+        "chancePerLvl": 4,
+        "level": 13,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Might",
+        "skillId": 98,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Nightmare",
+    "id": 11,
     "version": 100,
     "subTypeId": 11,
     "classId": 338,
     "act": 2,
     "difficulty": 2,
     "seller": 198,
+    "gold": 7900,
     "hireCost": 7900,
     "level": 75,
     "expPerLvl": 120,
@@ -2027,12 +3734,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 1153,
     "arPerLvl": 36,
+    "share": 4,
     "dmgMin": 46,
     "dmgMax": 53,
     "dmgPerLvl": 8,
     "resist": 139,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -2040,15 +3751,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       98
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 152,
+        "chancePerLvl": 4,
+        "level": 23,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Might",
+        "skillId": 98,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Comb-Hell",
+    "id": 12,
     "version": 100,
     "subTypeId": 12,
     "classId": 338,
     "act": 2,
     "difficulty": 3,
     "seller": 198,
+    "gold": 15000,
     "hireCost": 15000,
     "level": 75,
     "expPerLvl": 130,
@@ -2062,12 +3799,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 1038,
     "arPerLvl": 36,
+    "share": 4,
     "dmgMin": 44,
     "dmgMax": 51,
     "dmgPerLvl": 8,
     "resist": 136,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 3,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -2075,15 +3816,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       99
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 104,
+        "chancePerLvl": 4,
+        "level": 22,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Prayer",
+        "skillId": 99,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Def-Hell",
+    "id": 13,
     "version": 100,
     "subTypeId": 13,
     "classId": 338,
     "act": 2,
     "difficulty": 3,
     "seller": 198,
+    "gold": 15000,
     "hireCost": 15000,
     "level": 75,
     "expPerLvl": 130,
@@ -2097,12 +3864,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 1038,
     "arPerLvl": 36,
+    "share": 4,
     "dmgMin": 44,
     "dmgMax": 51,
     "dmgPerLvl": 8,
     "resist": 136,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 4,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -2110,15 +3881,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       104
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 104,
+        "chancePerLvl": 4,
+        "level": 22,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Defiance",
+        "skillId": 104,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Desert Mercenary",
+    "subType": "Off-Hell",
+    "id": 14,
     "version": 100,
     "subTypeId": 14,
     "classId": 338,
     "act": 2,
     "difficulty": 3,
     "seller": 198,
+    "gold": 15000,
     "hireCost": 15000,
     "level": 75,
     "expPerLvl": 130,
@@ -2132,12 +3929,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 12,
     "ar": 1038,
     "arPerLvl": 36,
+    "share": 4,
     "dmgMin": 44,
     "dmgMax": 51,
     "dmgPerLvl": 8,
     "resist": 136,
     "resistPerLvl": 4,
+    "wType1": "pole",
+    "wType2": "spea",
     "hireDesc": 5,
+    "defaultChance": 30,
     "nameFirstKey": "merca201",
     "nameLastKey": "merca221",
     "wNameFirstId": 1019,
@@ -2145,15 +3946,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       10,
       108
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Jab",
+        "skillId": 10,
+        "mode": 14,
+        "chance": 104,
+        "chancePerLvl": 4,
+        "level": 22,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Blessed Aim",
+        "skillId": 108,
+        "mode": 1,
+        "chance": 10,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Normal",
+    "id": 15,
     "version": 0,
     "subTypeId": 15,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 15,
     "expPerLvl": 110,
@@ -2167,12 +3994,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 15,
     "arPerLvl": 10,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 7,
     "dmgPerLvl": 4,
     "resist": 25,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2180,15 +4011,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 6,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 4,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Normal",
+    "id": 15,
     "version": 0,
     "subTypeId": 15,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 37,
     "expPerLvl": 110,
@@ -2202,12 +4059,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 235,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 12,
     "dmgMax": 18,
     "dmgPerLvl": 4,
     "resist": 64,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2215,15 +4076,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 13,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Normal",
+    "id": 15,
     "version": 0,
     "subTypeId": 15,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 61,
     "expPerLvl": 110,
@@ -2237,12 +4124,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 715,
     "arPerLvl": 30,
+    "share": 5,
     "dmgMin": 24,
     "dmgMax": 30,
     "dmgPerLvl": 4,
     "resist": 106,
     "resistPerLvl": 6,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2250,15 +4141,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 21,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 19,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Normal",
+    "id": 16,
     "version": 0,
     "subTypeId": 16,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1500,
     "hireCost": 1500,
     "level": 15,
     "expPerLvl": 120,
@@ -2272,12 +4189,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 15,
     "arPerLvl": 10,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 7,
     "dmgPerLvl": 4,
     "resist": 25,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2286,15 +4207,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 1,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 2,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 6,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Normal",
+    "id": 16,
     "version": 0,
     "subTypeId": 16,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1500,
     "hireCost": 1500,
     "level": 37,
     "expPerLvl": 120,
@@ -2308,12 +4265,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 235,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 12,
     "dmgMax": 18,
     "dmgPerLvl": 4,
     "resist": 64,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2322,15 +4283,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 5,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 9,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 13,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Normal",
+    "id": 16,
     "version": 0,
     "subTypeId": 16,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1500,
     "hireCost": 1500,
     "level": 61,
     "expPerLvl": 120,
@@ -2344,12 +4341,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 715,
     "arPerLvl": 30,
+    "share": 5,
     "dmgMin": 24,
     "dmgMax": 30,
     "dmgPerLvl": 4,
     "resist": 106,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2358,15 +4359,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 9,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 17,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 21,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Normal",
+    "id": 17,
     "version": 0,
     "subTypeId": 17,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 15,
     "expPerLvl": 110,
@@ -2380,12 +4417,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 15,
     "arPerLvl": 10,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 7,
     "dmgPerLvl": 4,
     "resist": 25,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2393,15 +4434,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 4,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Normal",
+    "id": 17,
     "version": 0,
     "subTypeId": 17,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 37,
     "expPerLvl": 110,
@@ -2415,12 +4482,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 235,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 12,
     "dmgMax": 18,
     "dmgPerLvl": 4,
     "resist": 64,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2428,15 +4499,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 8,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Normal",
+    "id": 17,
     "version": 0,
     "subTypeId": 17,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 61,
     "expPerLvl": 110,
@@ -2450,12 +4547,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 715,
     "arPerLvl": 30,
+    "share": 5,
     "dmgMin": 24,
     "dmgMax": 30,
     "dmgPerLvl": 4,
     "resist": 106,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2463,15 +4564,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 12,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Nightmare",
+    "id": 18,
     "version": 0,
     "subTypeId": 18,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 9500,
     "hireCost": 9500,
     "level": 37,
     "expPerLvl": 120,
@@ -2485,12 +4612,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 212,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 10,
     "dmgMax": 16,
     "dmgPerLvl": 4,
     "resist": 61,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2498,15 +4629,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 12,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Nightmare",
+    "id": 18,
     "version": 0,
     "subTypeId": 18,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 9500,
     "hireCost": 9500,
     "level": 61,
     "expPerLvl": 120,
@@ -2520,12 +4677,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 692,
     "arPerLvl": 30,
+    "share": 5,
     "dmgMin": 22,
     "dmgMax": 28,
     "dmgPerLvl": 4,
     "resist": 103,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2533,15 +4694,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Nightmare",
+    "id": 19,
     "version": 0,
     "subTypeId": 19,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 12000,
     "hireCost": 12000,
     "level": 37,
     "expPerLvl": 130,
@@ -2555,12 +4742,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 212,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 10,
     "dmgMax": 16,
     "dmgPerLvl": 4,
     "resist": 61,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2569,15 +4760,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 4,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 8,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 12,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Nightmare",
+    "id": 19,
     "version": 0,
     "subTypeId": 19,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 12000,
     "hireCost": 12000,
     "level": 61,
     "expPerLvl": 130,
@@ -2591,12 +4818,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 692,
     "arPerLvl": 30,
+    "share": 5,
     "dmgMin": 22,
     "dmgMax": 28,
     "dmgPerLvl": 4,
     "resist": 103,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2605,15 +4836,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 8,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Nightmare",
+    "id": 20,
     "version": 0,
     "subTypeId": 20,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 10000,
     "hireCost": 10000,
     "level": 37,
     "expPerLvl": 120,
@@ -2627,12 +4894,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 212,
     "arPerLvl": 20,
+    "share": 3,
     "dmgMin": 10,
     "dmgMax": 16,
     "dmgPerLvl": 4,
     "resist": 61,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2640,15 +4911,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 9,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Nightmare",
+    "id": 20,
     "version": 0,
     "subTypeId": 20,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 10000,
     "hireCost": 10000,
     "level": 61,
     "expPerLvl": 120,
@@ -2662,12 +4959,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 692,
     "arPerLvl": 30,
+    "share": 5,
     "dmgMin": 22,
     "dmgMax": 28,
     "dmgPerLvl": 4,
     "resist": 103,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2675,15 +4976,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 17,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Hell",
+    "id": 21,
     "version": 0,
     "subTypeId": 21,
     "classId": 359,
     "act": 3,
     "difficulty": 3,
     "seller": 252,
+    "gold": 21000,
     "hireCost": 21000,
     "level": 61,
     "expPerLvl": 130,
@@ -2697,12 +5024,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 623,
     "arPerLvl": 30,
+    "share": 5,
     "dmgMin": 20,
     "dmgMax": 26,
     "dmgPerLvl": 4,
     "resist": 100,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2710,15 +5041,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 19,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 17,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Hell",
+    "id": 22,
     "version": 0,
     "subTypeId": 22,
     "classId": 359,
     "act": 3,
     "difficulty": 3,
     "seller": 252,
+    "gold": 27000,
     "hireCost": 27000,
     "level": 61,
     "expPerLvl": 140,
@@ -2732,12 +5089,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 623,
     "arPerLvl": 30,
+    "share": 5,
     "dmgMin": 20,
     "dmgMax": 26,
     "dmgPerLvl": 4,
     "resist": 100,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2746,15 +5107,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 19,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Hell",
+    "id": 23,
     "version": 0,
     "subTypeId": 23,
     "classId": 359,
     "act": 3,
     "difficulty": 3,
     "seller": 252,
+    "gold": 21000,
     "hireCost": 21000,
     "level": 61,
     "expPerLvl": 130,
@@ -2768,12 +5165,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 623,
     "arPerLvl": 30,
+    "share": 5,
     "dmgMin": 20,
     "dmgMax": 27,
     "dmgPerLvl": 4,
     "resist": 100,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2781,15 +5182,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Normal",
+    "id": 15,
     "version": 100,
     "subTypeId": 15,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 15,
     "expPerLvl": 110,
@@ -2803,12 +5230,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 15,
     "arPerLvl": 12,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 7,
     "dmgPerLvl": 4,
     "resist": 25,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2816,15 +5247,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 6,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 4,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Normal",
+    "id": 15,
     "version": 100,
     "subTypeId": 15,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 49,
     "expPerLvl": 110,
@@ -2838,12 +5295,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 423,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 18,
     "dmgMax": 24,
     "dmgPerLvl": 4,
     "resist": 85,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2851,15 +5312,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 17,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Normal",
+    "id": 15,
     "version": 100,
     "subTypeId": 15,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 79,
     "expPerLvl": 110,
@@ -2873,12 +5360,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 1143,
     "arPerLvl": 36,
+    "share": 5,
     "dmgMin": 33,
     "dmgMax": 39,
     "dmgPerLvl": 4,
     "resist": 138,
     "resistPerLvl": 6,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2886,15 +5377,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 27,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 25,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Normal",
+    "id": 16,
     "version": 100,
     "subTypeId": 16,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1500,
     "hireCost": 1500,
     "level": 15,
     "expPerLvl": 120,
@@ -2908,12 +5425,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 15,
     "arPerLvl": 12,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 7,
     "dmgPerLvl": 4,
     "resist": 25,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2922,15 +5443,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 1,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 2,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 6,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Normal",
+    "id": 16,
     "version": 100,
     "subTypeId": 16,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1500,
     "hireCost": 1500,
     "level": 49,
     "expPerLvl": 120,
@@ -2944,12 +5501,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 423,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 18,
     "dmgMax": 24,
     "dmgPerLvl": 4,
     "resist": 85,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2958,15 +5519,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 13,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 17,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Normal",
+    "id": 16,
     "version": 100,
     "subTypeId": 16,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1500,
     "hireCost": 1500,
     "level": 79,
     "expPerLvl": 120,
@@ -2980,12 +5577,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 1143,
     "arPerLvl": 36,
+    "share": 5,
     "dmgMin": 33,
     "dmgMax": 39,
     "dmgPerLvl": 4,
     "resist": 138,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -2994,15 +5595,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 12,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 23,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 27,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Normal",
+    "id": 17,
     "version": 100,
     "subTypeId": 17,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 15,
     "expPerLvl": 110,
@@ -3016,12 +5653,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 15,
     "arPerLvl": 12,
+    "share": 0,
     "dmgMin": 1,
     "dmgMax": 7,
     "dmgPerLvl": 4,
     "resist": 25,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3029,15 +5670,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 4,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Normal",
+    "id": 17,
     "version": 100,
     "subTypeId": 17,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 49,
     "expPerLvl": 110,
@@ -3051,12 +5718,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 423,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 18,
     "dmgMax": 24,
     "dmgPerLvl": 4,
     "resist": 85,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3064,15 +5735,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Normal",
+    "id": 17,
     "version": 100,
     "subTypeId": 17,
     "classId": 359,
     "act": 3,
     "difficulty": 1,
     "seller": 252,
+    "gold": 1000,
     "hireCost": 1000,
     "level": 79,
     "expPerLvl": 110,
@@ -3086,12 +5783,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 1143,
     "arPerLvl": 36,
+    "share": 5,
     "dmgMin": 33,
     "dmgMax": 39,
     "dmgPerLvl": 4,
     "resist": 138,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3099,15 +5800,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 24,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Nightmare",
+    "id": 18,
     "version": 100,
     "subTypeId": 18,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 9500,
     "hireCost": 9500,
     "level": 49,
     "expPerLvl": 120,
@@ -3121,12 +5848,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 381,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 16,
     "dmgMax": 22,
     "dmgPerLvl": 4,
     "resist": 82,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3134,15 +5865,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Nightmare",
+    "id": 18,
     "version": 100,
     "subTypeId": 18,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 9500,
     "hireCost": 9500,
     "level": 79,
     "expPerLvl": 120,
@@ -3156,12 +5913,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 1101,
     "arPerLvl": 36,
+    "share": 5,
     "dmgMin": 31,
     "dmgMax": 37,
     "dmgPerLvl": 4,
     "resist": 135,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3169,15 +5930,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 26,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 24,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Nightmare",
+    "id": 19,
     "version": 100,
     "subTypeId": 19,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 12000,
     "hireCost": 12000,
     "level": 49,
     "expPerLvl": 130,
@@ -3191,12 +5978,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 381,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 16,
     "dmgMax": 22,
     "dmgPerLvl": 4,
     "resist": 82,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3205,15 +5996,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 6,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 12,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Nightmare",
+    "id": 19,
     "version": 100,
     "subTypeId": 19,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 12000,
     "hireCost": 12000,
     "level": 79,
     "expPerLvl": 130,
@@ -3227,12 +6054,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 1101,
     "arPerLvl": 36,
+    "share": 5,
     "dmgMin": 31,
     "dmgMax": 37,
     "dmgPerLvl": 4,
     "resist": 135,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3241,15 +6072,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 22,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 26,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Nightmare",
+    "id": 20,
     "version": 100,
     "subTypeId": 20,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 10000,
     "hireCost": 10000,
     "level": 49,
     "expPerLvl": 120,
@@ -3263,12 +6130,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 381,
     "arPerLvl": 24,
+    "share": 3,
     "dmgMin": 16,
     "dmgMax": 22,
     "dmgPerLvl": 4,
     "resist": 82,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3276,15 +6147,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 9,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 13,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Nightmare",
+    "id": 20,
     "version": 100,
     "subTypeId": 20,
     "classId": 359,
     "act": 3,
     "difficulty": 2,
     "seller": 252,
+    "gold": 10000,
     "hireCost": 10000,
     "level": 79,
     "expPerLvl": 120,
@@ -3298,12 +6195,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 1101,
     "arPerLvl": 36,
+    "share": 5,
     "dmgMin": 31,
     "dmgMax": 37,
     "dmgPerLvl": 4,
     "resist": 135,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3311,15 +6212,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 23,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Fire-Hell",
+    "id": 21,
     "version": 100,
     "subTypeId": 21,
     "classId": 359,
     "act": 3,
     "difficulty": 3,
     "seller": 252,
+    "gold": 21000,
     "hireCost": 21000,
     "level": 79,
     "expPerLvl": 130,
@@ -3333,12 +6260,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 991,
     "arPerLvl": 36,
+    "share": 5,
     "dmgMin": 29,
     "dmgMax": 35,
     "dmgPerLvl": 4,
     "resist": 132,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 6,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3346,15 +6277,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       41,
       47
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Inferno",
+        "skillId": 41,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 25,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Fire Ball",
+        "skillId": 47,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 23,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Cold-Hell",
+    "id": 22,
     "version": 100,
     "subTypeId": 22,
     "classId": 359,
     "act": 3,
     "difficulty": 3,
     "seller": 252,
+    "gold": 27000,
     "hireCost": 27000,
     "level": 79,
     "expPerLvl": 140,
@@ -3368,12 +6325,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 991,
     "arPerLvl": 36,
+    "share": 5,
     "dmgMin": 29,
     "dmgMax": 35,
     "dmgPerLvl": 4,
     "resist": 132,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 7,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3382,15 +6343,51 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
       55,
       40,
       45
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Glacial Spike",
+        "skillId": 55,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Frozen Armor",
+        "skillId": 40,
+        "mode": 7,
+        "chance": 1000,
+        "chancePerLvl": 0,
+        "level": 21,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 3,
+        "skillName": "Ice Blast",
+        "skillId": 45,
+        "mode": 7,
+        "chance": 240,
+        "chancePerLvl": 0,
+        "level": 25,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Eastern Sorceror",
+    "subType": "Ltng-Hell",
+    "id": 23,
     "version": 100,
     "subTypeId": 23,
     "classId": 359,
     "act": 3,
     "difficulty": 3,
     "seller": 252,
+    "gold": 21000,
     "hireCost": 21000,
     "level": 79,
     "expPerLvl": 130,
@@ -3404,12 +6401,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 8,
     "ar": 991,
     "arPerLvl": 36,
+    "share": 5,
     "dmgMin": 29,
     "dmgMax": 36,
     "dmgPerLvl": 4,
     "resist": 132,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "shie",
     "hireDesc": 8,
+    "defaultChance": 10,
     "nameFirstKey": "merca222",
     "nameLastKey": "merca241",
     "wNameFirstId": 1040,
@@ -3417,15 +6418,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       38,
       49
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Charged Bolt",
+        "skillId": 38,
+        "mode": 7,
+        "chance": 60,
+        "chancePerLvl": 0,
+        "level": 13,
+        "lvlPerLvl": 5
+      },
+      {
+        "slot": 2,
+        "skillName": "Lightning",
+        "skillId": 49,
+        "mode": 7,
+        "chance": 30,
+        "chancePerLvl": 0,
+        "level": 22,
+        "lvlPerLvl": 10
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 24,
     "version": 0,
     "subTypeId": 24,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 28,
     "expPerLvl": 120,
@@ -3439,12 +6466,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 150,
     "arPerLvl": 17,
+    "share": 1,
     "dmgMin": 16,
     "dmgMax": 20,
     "dmgPerLvl": 6,
     "resist": 56,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3452,15 +6483,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 15,
+        "chancePerLvl": 0,
+        "level": 4,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 15,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 24,
     "version": 0,
     "subTypeId": 24,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 42,
     "expPerLvl": 120,
@@ -3474,12 +6531,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 388,
     "arPerLvl": 27,
+    "share": 1,
     "dmgMin": 27,
     "dmgMax": 31,
     "dmgPerLvl": 8,
     "resist": 81,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3487,15 +6548,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 9,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 24,
     "version": 0,
     "subTypeId": 24,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 75,
     "expPerLvl": 120,
@@ -3509,12 +6596,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1279,
     "arPerLvl": 37,
+    "share": 1,
     "dmgMin": 60,
     "dmgMax": 64,
     "dmgPerLvl": 8,
     "resist": 139,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3522,15 +6613,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 25,
     "version": 0,
     "subTypeId": 25,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 28,
     "expPerLvl": 120,
@@ -3544,12 +6661,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 150,
     "arPerLvl": 17,
+    "share": 1,
     "dmgMin": 16,
     "dmgMax": 20,
     "dmgPerLvl": 6,
     "resist": 56,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3557,15 +6678,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 15,
+        "chancePerLvl": 0,
+        "level": 4,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 15,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 25,
     "version": 0,
     "subTypeId": 25,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 42,
     "expPerLvl": 120,
@@ -3579,12 +6726,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 388,
     "arPerLvl": 27,
+    "share": 1,
     "dmgMin": 27,
     "dmgMax": 31,
     "dmgPerLvl": 8,
     "resist": 81,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3592,15 +6743,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 9,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 7,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 25,
     "version": 0,
     "subTypeId": 25,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 75,
     "expPerLvl": 120,
@@ -3614,12 +6791,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1279,
     "arPerLvl": 37,
+    "share": 1,
     "dmgMin": 60,
     "dmgMax": 64,
     "dmgPerLvl": 8,
     "resist": 139,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3627,15 +6808,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Nightmare",
+    "id": 26,
     "version": 0,
     "subTypeId": 26,
     "classId": 561,
     "act": 5,
     "difficulty": 2,
     "seller": 515,
+    "gold": 18000,
     "hireCost": 18000,
     "level": 42,
     "expPerLvl": 130,
@@ -3649,12 +6856,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 349,
     "arPerLvl": 27,
+    "share": 4,
     "dmgMin": 25,
     "dmgMax": 29,
     "dmgPerLvl": 8,
     "resist": 78,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3662,15 +6873,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 8,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 6,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Nightmare",
+    "id": 26,
     "version": 0,
     "subTypeId": 26,
     "classId": 561,
     "act": 5,
     "difficulty": 2,
     "seller": 515,
+    "gold": 18000,
     "hireCost": 18000,
     "level": 75,
     "expPerLvl": 130,
@@ -3684,12 +6921,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1240,
     "arPerLvl": 37,
+    "share": 4,
     "dmgMin": 58,
     "dmgMax": 62,
     "dmgPerLvl": 8,
     "resist": 136,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3697,15 +6938,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 19,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Nightmare",
+    "id": 27,
     "version": 0,
     "subTypeId": 27,
     "classId": 561,
     "act": 5,
     "difficulty": 2,
     "seller": 515,
+    "gold": 18000,
     "hireCost": 18000,
     "level": 42,
     "expPerLvl": 130,
@@ -3719,12 +6986,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 349,
     "arPerLvl": 27,
+    "share": 4,
     "dmgMin": 25,
     "dmgMax": 29,
     "dmgPerLvl": 8,
     "resist": 78,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3732,15 +7003,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 8,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 6,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Nightmare",
+    "id": 27,
     "version": 0,
     "subTypeId": 27,
     "classId": 561,
     "act": 5,
     "difficulty": 2,
     "seller": 515,
+    "gold": 18000,
     "hireCost": 18000,
     "level": 75,
     "expPerLvl": 130,
@@ -3754,12 +7051,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1240,
     "arPerLvl": 37,
+    "share": 4,
     "dmgMin": 58,
     "dmgMax": 62,
     "dmgPerLvl": 8,
     "resist": 136,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3767,15 +7068,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 19,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Hell",
+    "id": 28,
     "version": 0,
     "subTypeId": 28,
     "classId": 561,
     "act": 5,
     "difficulty": 3,
     "seller": 515,
+    "gold": 32000,
     "hireCost": 32000,
     "level": 75,
     "expPerLvl": 140,
@@ -3789,12 +7116,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1116,
     "arPerLvl": 37,
+    "share": 6,
     "dmgMin": 56,
     "dmgMax": 60,
     "dmgPerLvl": 8,
     "resist": 133,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3802,15 +7133,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 70,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 70,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Hell",
+    "id": 29,
     "version": 0,
     "subTypeId": 29,
     "classId": 561,
     "act": 5,
     "difficulty": 3,
     "seller": 515,
+    "gold": 32000,
     "hireCost": 32000,
     "level": 75,
     "expPerLvl": 140,
@@ -3824,12 +7181,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1116,
     "arPerLvl": 37,
+    "share": 6,
     "dmgMin": 56,
     "dmgMax": 60,
     "dmgPerLvl": 8,
     "resist": 133,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3837,15 +7198,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 70,
+        "chancePerLvl": 0,
+        "level": 18,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 70,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 24,
     "version": 100,
     "subTypeId": 24,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 28,
     "expPerLvl": 120,
@@ -3859,12 +7246,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 150,
     "arPerLvl": 20,
+    "share": 1,
     "dmgMin": 16,
     "dmgMax": 20,
     "dmgPerLvl": 6,
     "resist": 56,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3872,15 +7263,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 15,
+        "chancePerLvl": 0,
+        "level": 4,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 15,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 24,
     "version": 100,
     "subTypeId": 24,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 58,
     "expPerLvl": 120,
@@ -3894,12 +7311,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 750,
     "arPerLvl": 35,
+    "share": 1,
     "dmgMin": 39,
     "dmgMax": 43,
     "dmgPerLvl": 8,
     "resist": 109,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3907,15 +7328,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 24,
     "version": 100,
     "subTypeId": 24,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 80,
     "expPerLvl": 120,
@@ -3929,12 +7376,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1520,
     "arPerLvl": 45,
+    "share": 1,
     "dmgMin": 61,
     "dmgMax": 65,
     "dmgPerLvl": 8,
     "resist": 148,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3942,15 +7393,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 21,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 17,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 25,
     "version": 100,
     "subTypeId": 25,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 28,
     "expPerLvl": 120,
@@ -3964,12 +7441,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 150,
     "arPerLvl": 20,
+    "share": 1,
     "dmgMin": 16,
     "dmgMax": 20,
     "dmgPerLvl": 6,
     "resist": 56,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -3977,15 +7458,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 15,
+        "chancePerLvl": 0,
+        "level": 4,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 15,
+        "chancePerLvl": 0,
+        "level": 3,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 25,
     "version": 100,
     "subTypeId": 25,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 58,
     "expPerLvl": 120,
@@ -3999,12 +7506,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 750,
     "arPerLvl": 35,
+    "share": 1,
     "dmgMin": 39,
     "dmgMax": 43,
     "dmgPerLvl": 8,
     "resist": 109,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -4012,15 +7523,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 14,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 11,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Normal",
+    "id": 25,
     "version": 100,
     "subTypeId": 25,
     "classId": 561,
     "act": 5,
     "difficulty": 1,
     "seller": 515,
+    "gold": 9000,
     "hireCost": 9000,
     "level": 80,
     "expPerLvl": 120,
@@ -4034,12 +7571,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1520,
     "arPerLvl": 45,
+    "share": 1,
     "dmgMin": 61,
     "dmgMax": 65,
     "dmgPerLvl": 8,
     "resist": 148,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -4047,15 +7588,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 21,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 17,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Nightmare",
+    "id": 26,
     "version": 100,
     "subTypeId": 26,
     "classId": 561,
     "act": 5,
     "difficulty": 2,
     "seller": 515,
+    "gold": 18000,
     "hireCost": 18000,
     "level": 58,
     "expPerLvl": 130,
@@ -4069,12 +7636,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 675,
     "arPerLvl": 35,
+    "share": 4,
     "dmgMin": 37,
     "dmgMax": 41,
     "dmgPerLvl": 8,
     "resist": 106,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -4082,15 +7653,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 13,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Nightmare",
+    "id": 26,
     "version": 100,
     "subTypeId": 26,
     "classId": 561,
     "act": 5,
     "difficulty": 2,
     "seller": 515,
+    "gold": 18000,
     "hireCost": 18000,
     "level": 80,
     "expPerLvl": 130,
@@ -4104,12 +7701,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1445,
     "arPerLvl": 45,
+    "share": 4,
     "dmgMin": 59,
     "dmgMax": 63,
     "dmgPerLvl": 8,
     "resist": 145,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -4117,15 +7718,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Nightmare",
+    "id": 27,
     "version": 100,
     "subTypeId": 27,
     "classId": 561,
     "act": 5,
     "difficulty": 2,
     "seller": 515,
+    "gold": 18000,
     "hireCost": 18000,
     "level": 58,
     "expPerLvl": 130,
@@ -4139,12 +7766,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 675,
     "arPerLvl": 35,
+    "share": 4,
     "dmgMin": 37,
     "dmgMax": 41,
     "dmgPerLvl": 8,
     "resist": 106,
     "resistPerLvl": 7,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -4152,15 +7783,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 13,
+        "lvlPerLvl": 10
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 50,
+        "chancePerLvl": 0,
+        "level": 10,
+        "lvlPerLvl": 8
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Nightmare",
+    "id": 27,
     "version": 100,
     "subTypeId": 27,
     "classId": 561,
     "act": 5,
     "difficulty": 2,
     "seller": 515,
+    "gold": 18000,
     "hireCost": 18000,
     "level": 80,
     "expPerLvl": 130,
@@ -4174,12 +7831,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1445,
     "arPerLvl": 45,
+    "share": 4,
     "dmgMin": 59,
     "dmgMax": 63,
     "dmgPerLvl": 8,
     "resist": 145,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -4187,15 +7848,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 20,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 75,
+        "chancePerLvl": 0,
+        "level": 16,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Hell",
+    "id": 28,
     "version": 100,
     "subTypeId": 28,
     "classId": 561,
     "act": 5,
     "difficulty": 3,
     "seller": 515,
+    "gold": 32000,
     "hireCost": 32000,
     "level": 80,
     "expPerLvl": 140,
@@ -4209,12 +7896,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1301,
     "arPerLvl": 45,
+    "share": 6,
     "dmgMin": 57,
     "dmgMax": 61,
     "dmgPerLvl": 8,
     "resist": 142,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -4222,15 +7913,41 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 70,
+        "chancePerLvl": 0,
+        "level": 19,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 70,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 0
+      }
     ]
   },
   {
+    "hireling": "Barbarian",
+    "subType": "1hs-Hell",
+    "id": 29,
     "version": 100,
     "subTypeId": 29,
     "classId": 561,
     "act": 5,
     "difficulty": 3,
     "seller": 515,
+    "gold": 32000,
     "hireCost": 32000,
     "level": 80,
     "expPerLvl": 140,
@@ -4244,12 +7961,16 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "dexPerLvl": 10,
     "ar": 1301,
     "arPerLvl": 45,
+    "share": 6,
     "dmgMin": 57,
     "dmgMax": 61,
     "dmgPerLvl": 8,
     "resist": 142,
     "resistPerLvl": 4,
+    "wType1": "swor",
+    "wType2": "",
     "hireDesc": 0,
+    "defaultChance": 50,
     "nameFirstKey": "MercX101",
     "nameLastKey": "MercX167",
     "wNameFirstId": 10835,
@@ -4257,9 +7978,212 @@ export const HIRELING_RECORDS: readonly HirelingRecord[] = [
     "skills": [
       126,
       139
+    ],
+    "skillEntries": [
+      {
+        "slot": 1,
+        "skillName": "Bash",
+        "skillId": 126,
+        "mode": 5,
+        "chance": 70,
+        "chancePerLvl": 0,
+        "level": 19,
+        "lvlPerLvl": 0
+      },
+      {
+        "slot": 2,
+        "skillName": "Stun",
+        "skillId": 139,
+        "mode": 5,
+        "chance": 70,
+        "chancePerLvl": 0,
+        "level": 15,
+        "lvlPerLvl": 0
+      }
     ]
   }
 ]
+
+export interface ResolvedHirelingSkillAtLevel {
+  readonly skillId: number
+  readonly skillName: string
+  readonly mode: number
+  readonly chance: number
+  readonly effectiveLevel: number
+}
+
+export interface ResolvedHirelingStatsAtLevel {
+  readonly id: number
+  readonly subType: string
+  readonly classId: number
+  readonly act: number
+  readonly difficulty: number
+  readonly level: number
+  readonly baseRowLevel: number
+  readonly hp: number
+  readonly defense: number
+  readonly str: number
+  readonly dex: number
+  readonly ar: number
+  readonly minDmg: number
+  readonly maxDmg: number
+  readonly resist: number
+  readonly defaultChance: number
+  readonly skills: readonly ResolvedHirelingSkillAtLevel[]
+  readonly auraSkillId?: number
+  readonly auraSkillLevel?: number
+  readonly record: HirelingRecord
+}
+
+/**
+ * Returns all Hireling.txt rows matching a Hireling Id (and expansion/classic version).
+ */
+export function getHirelingRecordsById(id: number, expansion = true): readonly HirelingRecord[] {
+  const version = expansion ? 100 : 0
+  return HIRELING_RECORDS.filter((r) => r.version === version && (r.id === id || r.subTypeId === id))
+}
+
+/**
+ * Resolves a hireling's stats and skill levels at a target mercenary level
+ * per D2Common.dll #11156 (0x6fda32c0) bracket selection and
+ * D2Game.dll D2GAME_MERCS_SetStats_6FC68BA0 (0x6fc68ba0) + AIMERC_ChooseSkill_6FC3C4E0 (0x6fc3c4e0).
+ */
+export function resolveHirelingStatsAtLevel(
+  hirelingId: number,
+  targetLevel: number,
+  expansion?: boolean,
+): ResolvedHirelingStatsAtLevel | undefined
+export function resolveHirelingStatsAtLevel(
+  subTypeOrId: number | string,
+  act: number,
+  difficulty: number,
+  mercLevel: number,
+  expansion?: boolean,
+): ResolvedHirelingStatsAtLevel | undefined
+export function resolveHirelingStatsAtLevel(
+  subTypeOrId: number | string,
+  actOrTargetLevel: number,
+  difficultyOrExpansion?: number | boolean,
+  maybeMercLevel?: number,
+  maybeExpansion = true,
+): ResolvedHirelingStatsAtLevel | undefined {
+  let candidates: readonly HirelingRecord[]
+  let mercLevel: number
+
+  if (typeof difficultyOrExpansion === 'boolean' || difficultyOrExpansion === undefined) {
+    // 2/3-arg overload: (hirelingId, targetLevel, expansion?)
+    const expansion = difficultyOrExpansion ?? true
+    const version = expansion ? 100 : 0
+    mercLevel = actOrTargetLevel
+    candidates = HIRELING_RECORDS.filter(
+      (r) =>
+        r.version === version &&
+        (typeof subTypeOrId === 'number'
+          ? r.id === subTypeOrId || r.subTypeId === subTypeOrId
+          : r.subType.toLowerCase() === subTypeOrId.toLowerCase().trim() ||
+            r.hireling.toLowerCase() === subTypeOrId.toLowerCase().trim()),
+    )
+  } else {
+    // 4/5-arg overload: (subTypeOrId, act, difficulty, mercLevel, expansion?)
+    const act = actOrTargetLevel
+    const difficulty = difficultyOrExpansion
+    mercLevel = maybeMercLevel ?? 1
+    const version = maybeExpansion ? 100 : 0
+    const matchesSubType = (r: HirelingRecord): boolean => {
+      if (typeof subTypeOrId === 'number') {
+        return r.id === subTypeOrId || r.subTypeId === subTypeOrId
+      }
+      const q = subTypeOrId.toLowerCase().trim()
+      const sub = r.subType.toLowerCase()
+      const subPrefix = sub.split(/[\s-]+/)[0] ?? sub
+      return (
+        sub === q ||
+        sub.startsWith(q) ||
+        (subPrefix.length >= 3 && q.startsWith(subPrefix)) ||
+        r.hireling.toLowerCase() === q
+      )
+    }
+    candidates = HIRELING_RECORDS.filter(
+      (r) =>
+        r.version === version &&
+        r.act === act &&
+        r.difficulty === difficulty &&
+        matchesSubType(r),
+    )
+
+    if (candidates.length === 0) {
+      candidates = HIRELING_RECORDS.filter(
+        (r) => r.version === version && matchesSubType(r),
+      )
+    }
+  }
+
+  if (candidates.length === 0) return undefined
+
+  // Select the row with the highest base level <= mercLevel (or lowest row if mercLevel < all rows)
+  let selected = candidates[0]!
+  for (const row of candidates) {
+    if (row.level <= mercLevel && row.level >= selected.level) {
+      selected = row
+    }
+  }
+
+  const deltaLvl = Math.max(0, mercLevel - selected.level)
+
+  // D2Game.dll 0x6fc68ba0 fixed-point scaling
+  const hp = Math.max(40, selected.hp + deltaLvl * selected.hpPerLvl)
+  const defense = Math.max(0, selected.defense + deltaLvl * selected.defPerLvl)
+  const str = Math.max(10, selected.str + Math.trunc((deltaLvl * selected.strPerLvl) / 8))
+  const dex = Math.max(10, selected.dex + Math.trunc((deltaLvl * selected.dexPerLvl) / 8))
+  const ar = Math.max(0, selected.ar + deltaLvl * selected.arPerLvl)
+  const dmgBonus = Math.trunc((deltaLvl * selected.dmgPerLvl) / 8)
+  const minDmg = selected.dmgMin + dmgBonus
+  const maxDmg = selected.dmgMax + dmgBonus
+  const resist = Math.max(0, selected.resist + Math.trunc((deltaLvl * selected.resistPerLvl) / 4))
+
+  let auraSkillId: number | undefined
+  let auraSkillLevel: number | undefined
+
+  const skills: ResolvedHirelingSkillAtLevel[] = selected.skillEntries.map((sk) => {
+    const chance = Math.max(0, sk.chance + Math.trunc((deltaLvl * sk.chancePerLvl) / 4))
+    const rawLevel = sk.level + Math.trunc((deltaLvl * sk.lvlPerLvl) / 32)
+    const effectiveLevel = Math.min(32, Math.max(1, rawLevel))
+    if (sk.mode === 1) {
+      auraSkillId = sk.skillId
+      auraSkillLevel = effectiveLevel
+    }
+    return {
+      skillId: sk.skillId,
+      skillName: sk.skillName,
+      mode: sk.mode,
+      chance,
+      effectiveLevel,
+    }
+  })
+
+  return {
+    id: selected.id,
+    subType: selected.subType,
+    classId: selected.classId,
+    act: selected.act,
+    difficulty: selected.difficulty,
+    level: mercLevel,
+    baseRowLevel: selected.level,
+    hp,
+    defense,
+    str,
+    dex,
+    ar,
+    minDmg,
+    maxDmg,
+    resist,
+    defaultChance: selected.defaultChance,
+    skills,
+    ...(auraSkillId !== undefined ? { auraSkillId } : {}),
+    ...(auraSkillLevel !== undefined ? { auraSkillLevel } : {}),
+    record: selected,
+  }
+}
 
 export interface HirelingCandidateDesc {
   readonly mercId: number
@@ -4322,11 +8246,6 @@ export function resolveHirelingName(
     if (nameId >= 1000) {
       wMercName = nameId
     } else {
-      // Offset from act's wNameFirstId
-      // mercType 0 or 271 = Act 1 Rogue (3411)
-      // mercType 1 or 338 = Act 2 Desert Guard (1019)
-      // mercType 2 or 359 = Act 3 Iron Wolf (1040)
-      // mercType 3 or 4 or 561 = Act 5 Barbarian (10835)
       if (mercType === 0 || mercType === 271) {
         wMercName = 3411 + nameId
       } else if (mercType === 1 || mercType === 338) {
@@ -4426,10 +8345,7 @@ export function formatHirelingCandidateLines(
   const defLabel = lookupTbl('AC', lang) ?? (lang === 'ENG' ? 'Def' : '防禦')
   const costLabel = lookupTbl('Cost', lang) ?? (lang === 'ENG' ? 'Cost' : '花費')
 
-  // Line 1: <Name> - Lvl: <lvl>  Life: <hp>  Def: <def>  Cost: <cost>
   const line1 = `${name} - ${lvlLabel}: ${level}  ${lifeLabel}: ${hp}  ${defLabel}: ${defense}  ${costLabel}: ${cost}`
-
-  // Line 2: 2 leading spaces + HireDesc (or blank if no special ability)
   const line2 = hireDesc ? `  ${hireDesc}` : '  '
 
   return { line1, line2 }
@@ -4438,16 +8354,61 @@ export function formatHirelingCandidateLines(
 /**
  * Evaluates a candidate's authentic stats, level, and hire cost using Diablo II's 64-bit LCG
  * per D2Common.dll ordinal 10458 (0x6fd7ccc0).
+ * Also supports direct (act: 1|2|3|5, difficulty: 1|2|3, subTypeIndex: number, targetLevel: number, expansion?: boolean) lookup.
  */
 export function resolveHirelingCandidate(
   candidate: { readonly nameId: number; readonly seed: number },
   playerLevel: number,
   difficulty: number,
   actIndex: number,
+  expansion?: boolean,
+  lang?: 'ENG' | 'CHI',
+): HirelingCandidateDesc
+export function resolveHirelingCandidate(
+  act: 1 | 2 | 3 | 5,
+  difficulty: 1 | 2 | 3,
+  subTypeIndex: number,
+  targetLevel: number,
+  expansion?: boolean,
+): HirelingRecord | undefined
+export function resolveHirelingCandidate(
+  candidateOrAct: { readonly nameId: number; readonly seed: number } | (1 | 2 | 3 | 5),
+  playerLevelOrDifficulty: number,
+  difficultyOrSubTypeIndex: number,
+  actIndexOrTargetLevel: number,
   expansion = true,
   lang: 'ENG' | 'CHI' = 'CHI',
-): HirelingCandidateDesc {
+): HirelingCandidateDesc | HirelingRecord | undefined {
   const version = expansion ? 100 : 0
+
+  if (typeof candidateOrAct === 'number') {
+    const act = candidateOrAct
+    const difficulty = playerLevelOrDifficulty
+    const subTypeIndex = difficultyOrSubTypeIndex
+    const targetLevel = actIndexOrTargetLevel
+    const matching = HIRELING_RECORDS.filter(
+      (r) => r.version === version && r.act === act && r.difficulty === difficulty,
+    )
+    if (matching.length === 0) return undefined
+    const distinctIds: number[] = []
+    for (const r of matching) {
+      if (!distinctIds.includes(r.subTypeId)) distinctIds.push(r.subTypeId)
+    }
+    const targetSubTypeId = distinctIds[subTypeIndex % distinctIds.length]!
+    const subRows = matching.filter((r) => r.subTypeId === targetSubTypeId)
+    let selected = subRows[0]!
+    for (const r of subRows) {
+      if (r.level <= targetLevel && r.level >= selected.level) {
+        selected = r
+      }
+    }
+    return selected
+  }
+
+  const candidate = candidateOrAct
+  const playerLevel = playerLevelOrDifficulty
+  const difficulty = difficultyOrSubTypeIndex
+  const actIndex = actIndexOrTargetLevel
   const targetAct = actIndex + 1
   const targetDiff = difficulty + 1
 
@@ -4504,7 +8465,7 @@ export function resolveHirelingCandidate(
     pRow.hireCost,
     Math.trunc((pRow.hireCost * (100 + 15 * levelDelta)) / 100),
   )
-  const resist = Math.max(0, pRow.resist + ((levelDelta * pRow.resistPerLvl) >> 3))
+  const resist = Math.max(0, pRow.resist + Math.trunc((levelDelta * pRow.resistPerLvl) / 4))
 
   const name = resolveHirelingName(candidate.nameId, lang)
   const hireDesc = resolveHirelingDesc(pRow.hireDesc, lang)
@@ -4519,7 +8480,7 @@ export function resolveHirelingCandidate(
   )
 
   return {
-    mercId: candidate.nameId, // client uses wMercName as mercId for 0x36
+    mercId: candidate.nameId,
     nameId: candidate.nameId,
     seed: candidate.seed,
     actIndex,

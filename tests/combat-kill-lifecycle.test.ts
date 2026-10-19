@@ -4,9 +4,9 @@ import { MountedArchives } from '../src/common/mpq/mount.ts'
 import { MpqArchive } from '../src/common/mpq/archive.ts'
 import { fileSource } from '../src/baker/io/file-source.ts'
 import { loadDropTables, type DropTables } from '../src/common/items/drop-tables.ts'
-import { GameEngine, type GameEngineOptions, type WorldMapProvider } from '../src/server/engine/engine.ts'
+import { GameEngine, type GameEngineOptions, type WorldMapProvider } from '../src/server/engine/game-engine.ts'
 import type { SkillDef } from '../src/server/skills/skills.ts'
-import { damageMonster, type Monster } from '../src/server/engine/combat.ts'
+import { damageMonster, type Monster } from '../src/server/ai/monster-ai.ts'
 import { DEMO_EXPERIENCE, DEMO_NPCS, DEMO_QUESTS } from '../src/common/data/demo-data.ts'
 
 const hasD2 = fs.existsSync('samples/d2/d2data.mpq')

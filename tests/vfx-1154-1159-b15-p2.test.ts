@@ -7,7 +7,7 @@ import {
   MINDBLAST_VISUAL_RADIUS_113C,
 } from '../src/client/world/curse-center-113c.ts'
 import { computeSrvDo039ScatterPoints113c } from '../src/client/world/world-skill-missiles.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
 
 function createAssassinWorld() {
   const cw = new ClientWorld()

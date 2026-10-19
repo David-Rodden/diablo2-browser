@@ -41,6 +41,7 @@ export function decode0x60TownPortalState(pkt: Uint8Array): ServerEvent {
   const localId = r.u32LE()
   return {
     type: 'Portal',
+    portalId: localId,
     areaId,
     localId,
     flags,
@@ -57,6 +58,7 @@ export function decode0x82PortalOwnership(pkt: Uint8Array): ServerEvent {
   const remoteId = r.u32LE()
   return {
     type: 'Portal',
+    portalId: localId,
     ownerId,
     ownerName,
     areaId: 0,
@@ -64,3 +66,4 @@ export function decode0x82PortalOwnership(pkt: Uint8Array): ServerEvent {
     remoteId,
   }
 }
+

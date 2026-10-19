@@ -7,8 +7,8 @@ import {
   PACK_RADIUS_PX,
   type MapRoom,
 } from '../src/common/units/monster-rooms.ts'
-import { createWorld } from '../src/server/engine/combat.ts'
-import type { CombatTerrain, MonsterPack, MonsterStats } from '../src/server/engine/combat.ts'
+import { createWorld } from '../src/server/ai/monster-ai.ts'
+import type { CombatTerrain, MonsterPack, MonsterStats } from '../src/server/ai/monster-ai.ts'
 
 /** Flat open ground everywhere. */
 const OPEN: CombatTerrain = { overlap: () => 0 }

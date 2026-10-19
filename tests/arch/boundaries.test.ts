@@ -13,6 +13,13 @@ const TOOLS_DIR = resolve(ROOT_DIR, 'tools')
 
 const CANONICAL_MODULES = ['baker', 'client', 'common', 'netproto', 'server'] as const
 const LEGACY_HTML_FILES = ['index.html', 'acts.html', 'acts-zh.html', 'acts-en.html', 'bnet.html'] as const
+const RETIRED_SERVER_SUBPATHS = [
+  'engine/engine.ts',
+  'engine/combat.ts',
+  'scene/skill-caster.ts',
+  'scene/weapon-combat.ts',
+  'scene',
+] as const
 
 const ALLOWED_MODULE_TARGETS: Record<string, ReadonlySet<string>> = {
   common: new Set(['common']),
@@ -481,4 +488,14 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1â€“10 â
     expect(discoveredHtmlPages.length).toBeGreaterThan(0)
     expect(discoveredHtmlPages).toContain('kill-stats')
   })
+
+  it('Rule 11: legacy split-track prototype files (engine/engine.ts, engine/combat.ts, scene/skill-caster.ts, scene/weapon-combat.ts) and src/server/scene/ remain permanently deleted', () => {
+    for (const subpath of RETIRED_SERVER_SUBPATHS) {
+      const targetPath = resolve(SRC_DIR, 'server', subpath)
+      expect(existsSync(targetPath), `src/server/${subpath} must remain deleted`).toBe(false)
+      expect(existsSync(`${targetPath}.bak`)).toBe(false)
+      expect(existsSync(`${targetPath}.old`)).toBe(false)
+    }
+  })
 })
+

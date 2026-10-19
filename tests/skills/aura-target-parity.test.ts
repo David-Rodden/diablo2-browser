@@ -28,7 +28,7 @@ import { AuraScanner } from '../../src/server/engine/aura-scanner.ts'
 import { UnitStatList } from '../../src/server/engine/stat-list.ts'
 import { StateBus } from '../../src/server/engine/state-bus.ts'
 import type { CombatUnitContext } from '../../src/server/engine/combat-pipeline.ts'
-import { GameEngine } from '../../src/server/engine/engine.ts'
+import { GameEngine } from '../../src/server/engine/game-engine.ts'
 import { DEMO_EXPERIENCE, DEMO_SKILLS, DEMO_QUESTS } from '../../src/common/data/demo-data.ts'
 import {
   PALADIN_AURA_OVERLAYS,
@@ -38,8 +38,8 @@ import {
   getAuraOverlayName,
   getAuraOverlayNames,
 } from '../../src/server/skills/skills.ts'
-import { castSkill as castSceneSkill } from '../../src/server/scene/skill-caster.ts'
-import { executeNormalAttack } from '../../src/server/scene/weapon-combat.ts'
+import { castSkill as castSceneSkill } from '../../src/server/skills/skills.ts'
+import { executeNormalAttack } from '../../src/server/engine/combat-pipeline.ts'
 
 function createMockTerrain() {
   return {

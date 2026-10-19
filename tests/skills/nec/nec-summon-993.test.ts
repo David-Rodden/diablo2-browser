@@ -32,7 +32,7 @@ import {
 } from '../../../src/common/units/pet-type-table.ts'
 import { cell, parseTable } from '../../../src/common/world/acts.ts'
 import type { ClientCommand } from '../../../src/netproto/index.ts'
-import { unsummonOwnPetAt } from '../../../src/server/scene/skill-caster.ts'
+import { unsummonOwnPetAt } from '../../../src/server/ai/summon-manager.ts'
 
 const SELF_ID = 1
 

@@ -34,12 +34,14 @@ import {
   calculateCurseEffect,
 } from '../engine/missile-engine.ts'
 import {
+  DRUID_TRANSFORM_CLT_OVERLAYS_113C,
   canCastDruidSkill,
   calculateFeralRageStats,
   calculateMaulStats,
   calculateRabiesStats,
   advanceChargeOrb,
 } from './druid-shapeshift.ts'
+export { DRUID_TRANSFORM_CLT_OVERLAYS_113C }
 import {
   computeBurstOfSpeedFRW,
   computeBurstOfSpeedIAS,
@@ -157,6 +159,7 @@ export function discoverSkillModules(
 
 discoverSkillModules(STATIC_SKILL_MODULES, REGISTERED_SKILL_MODULES)
 
+export const SKILL_REGISTRY: ReadonlyMap<number, SkillModule> = REGISTERED_SKILL_MODULES
 
 export function registerSkillModule(mod: SkillModule): void {
   REGISTERED_SKILL_MODULES.set(mod.skillId, mod)
@@ -1291,7 +1294,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           Math.max(FIXED_ONE, Math.min(caster.statList.getHp256(), caster.statList.getMaxHp256())),
         )
       }
-      notes.push('state_toggled_off:wolf', 'druid_unshift_to_human')
+      notes.push('state_toggled_off:wolf', 'druid_unshift_to_human', `cltoverlay:${DRUID_TRANSFORM_CLT_OVERLAYS_113C[223].undo}`)
       return {
         skillId: skill.id,
         name: skill.name,
@@ -1322,7 +1325,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           Math.max(FIXED_ONE, Math.min(caster.statList.getHp256(), caster.statList.getMaxHp256())),
         )
       }
-      notes.push('state_toggled_off:bear', 'druid_unshift_to_human')
+      notes.push('state_toggled_off:bear', 'druid_unshift_to_human', `cltoverlay:${DRUID_TRANSFORM_CLT_OVERLAYS_113C[228].undo}`)
       return {
         skillId: skill.id,
         name: skill.name,
@@ -1354,6 +1357,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
       caster.stateBus.removeState('wolf')
       caster.stateBus.removeState('feralrage')
       caster.stateBus.removeState('maul')
+      notes.push(`cltoverlay:${DRUID_TRANSFORM_CLT_OVERLAYS_113C[228].into}`)
     } else if (skill.id === 223) {
       // 1.13c Werewolf (`223`): +25% HP (+Lycanthropy.ln34), +25% Stamina, dm(10,80,lvl) Attack Rate, +50%+(lvl-1)*15% ToHit
       const wwIas = computeDiminishingReturns(10, 80, evalResult.slvl)
@@ -1365,6 +1369,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
       caster.stateBus.removeState('bear')
       caster.stateBus.removeState('feralrage')
       caster.stateBus.removeState('maul')
+      notes.push(`cltoverlay:${DRUID_TRANSFORM_CLT_OVERLAYS_113C[223].into}`)
     } else if (skill.id === 350) {
       // Delerium Change (`350`): +33 velocitypercent, +33 attackrate, +33 other_animrate (Skills.txt aurastat1..3 = par1 = 33)
       stats['velocitypercent'] = 33

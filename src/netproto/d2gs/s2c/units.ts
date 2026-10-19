@@ -24,6 +24,7 @@ export function decode0x09AssignWarp(pkt: Uint8Array): ServerEvent {
   const y = r.u16LE()
   return {
     type: 'UnitAssign',
+    classId: warpId,
     unit: {
       unitType,
       id,
@@ -155,6 +156,7 @@ export function decode0x51AssignObject(pkt: Uint8Array): ServerEvent {
   const flags = r.u8()
   return {
     type: 'UnitAssign',
+    classId,
     unit: {
       unitType,
       id,
@@ -239,6 +241,7 @@ export function decode0x59AssignPlayer(pkt: Uint8Array): ServerEvent {
   const y = r.u16LE()
   return {
     type: 'UnitAssign',
+    classId,
     unit: {
       unitType: 0,
       id,
@@ -497,6 +500,7 @@ export function decode0xACAssignNpc(pkt: Uint8Array): ServerEvent {
 
   return {
     type: 'UnitAssign',
+    classId,
     unit: {
       unitType: 1,
       id,

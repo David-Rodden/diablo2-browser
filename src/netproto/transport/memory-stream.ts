@@ -41,6 +41,11 @@ export class MemoryStream implements ByteStream {
     }
   }
 
+  send(bytes: Uint8Array): void {
+    if (this.closed) return
+    this.write(bytes)
+  }
+
   receive(chunk: Uint8Array): void {
     if (this.closed) return
     if (this.dataEmitter.size === 0) {
@@ -50,15 +55,17 @@ export class MemoryStream implements ByteStream {
     this.dataEmitter.emit(chunk)
   }
 
-  close(codeOrReason?: number | CloseReason): void {
+  close(codeOrReason?: number | string | CloseReason): void {
     if (this.closed) return
     this.closed = true
     const isObj = typeof codeOrReason === 'object' && codeOrReason !== null
     const localReason: CloseReason = isObj
       ? codeOrReason
-      : codeOrReason !== undefined
+      : typeof codeOrReason === 'number'
         ? { kind: 'local', code: codeOrReason }
-        : { kind: 'local' }
+        : typeof codeOrReason === 'string'
+          ? { kind: 'local', reason: codeOrReason }
+          : { kind: 'local' }
     this.closeEmitter.emit(localReason)
     this.dataEmitter.clear()
     this.closeEmitter.clear()
@@ -69,10 +76,16 @@ export class MemoryStream implements ByteStream {
       const remoteReason: CloseReason = isObj
         ? codeOrReason.kind === 'error'
           ? codeOrReason
-          : { kind: 'local', ...(codeOrReason.code !== undefined ? { code: codeOrReason.code } : {}) }
-        : codeOrReason !== undefined
+          : {
+              kind: 'local',
+              ...(codeOrReason.code !== undefined ? { code: codeOrReason.code } : {}),
+              ...(codeOrReason.reason !== undefined ? { reason: codeOrReason.reason } : {}),
+            }
+        : typeof codeOrReason === 'number'
           ? { kind: 'local', code: codeOrReason }
-          : { kind: 'local' }
+          : typeof codeOrReason === 'string'
+            ? { kind: 'local', reason: codeOrReason }
+            : { kind: 'local' }
       peer.closeEmitter.emit(remoteReason)
       peer.dataEmitter.clear()
       peer.closeEmitter.clear()
@@ -92,6 +105,10 @@ export class MemoryStream implements ByteStream {
       }
     }
     return unsub
+  }
+
+  onMessage(cb: (chunk: Uint8Array) => void): () => void {
+    return this.onData(cb)
   }
 
   onClose(cb: (reason: CloseReason) => void): () => void {

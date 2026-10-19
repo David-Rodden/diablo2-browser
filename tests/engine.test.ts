@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { goldItem } from "../src/common/items/items"
-import { GameEngine } from '../src/server/engine/engine'
-import type { GameEngineOptions, WorldMapProvider } from '../src/server/engine/engine'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
+import type { GameEngineOptions, WorldMapProvider } from '../src/server/engine/game-engine.ts'
 
 describe('GameEngine', () => {
   const dummyTerrain: WorldMapProvider = {

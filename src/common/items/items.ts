@@ -411,6 +411,8 @@ export interface Item {
   readonly uniqueId?: number | undefined
   /** Item level (7 bits, 0..127). Mirrors `level`. */
   readonly ilvl?: number | undefined
+  /** Alias for `ilvl` / `level`. */
+  readonly itemLevel?: number | undefined
   /** Item quality tier (4 bits, 1..8). */
   readonly quality?: (ItemQuality | number) | undefined
   /** Rarity string for game/scene compatibility ('normal' | 'magic' | 'rare' | 'unique' | 'set' | 'crafted'). */

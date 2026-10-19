@@ -120,14 +120,96 @@ export interface ItemPacketHeaderMeta {
   readonly ownerId?: number
 }
 
+export interface ItemBitstreamEncodeOptions extends DecodeItemBitstreamOptions {
+  readonly includeJmHeader?: boolean | undefined
+  readonly tables?: ItemDataTables | undefined
+}
+
+export interface DecodedItemBitstreamResult {
+  readonly item: ItemData
+  readonly bitLength: number
+  readonly byteLength: number
+}
+
+const DEFAULT_SAVE_HEADER_META: ItemPacketHeaderMeta = {
+  opcode: 0x9c,
+  action: 0x04,
+  category: 0,
+  itemId: 1,
+}
+
+function isItemDataTablesArg(arg: unknown): arg is ItemDataTables {
+  return (
+    typeof arg === 'object' &&
+    arg !== null &&
+    ('armor' in arg || 'itemStatCost' in arg || 'getItemBaseMeta' in arg)
+  )
+}
+
 export function decodeItemBitstream(
   bitstream: Uint8Array,
+  headerOrTables: ItemPacketHeaderMeta | ItemDataTables,
+  tablesOrOffset?: ItemDataTables | number,
+  optionsOrVersion?: DecodeItemBitstreamOptions | number,
+): ItemData {
+  return decodeItemBitstreamWithLength(
+    bitstream,
+    headerOrTables as ItemPacketHeaderMeta,
+    tablesOrOffset as ItemDataTables,
+    optionsOrVersion as DecodeItemBitstreamOptions,
+  ).item
+}
+
+export function decodeItemBitstreamWithLength(
+  bitstream: Uint8Array,
+  headerOrTables: ItemPacketHeaderMeta | ItemDataTables,
+  tablesOrOffset?: ItemDataTables | number,
+  optionsOrVersion?: DecodeItemBitstreamOptions | number,
+): DecodedItemBitstreamResult {
+  let targetBuf = bitstream
+  let header: ItemPacketHeaderMeta
+  let tables: ItemDataTables
+  let options: DecodeItemBitstreamOptions | undefined
+
+  if (isItemDataTablesArg(headerOrTables)) {
+    tables = headerOrTables
+    const byteOffset = typeof tablesOrOffset === 'number' ? tablesOrOffset : 0
+    if (byteOffset > 0) {
+      targetBuf = bitstream.subarray(byteOffset)
+    }
+    const hasJm =
+      targetBuf.byteLength >= 2 && targetBuf[0] === 0x4a && targetBuf[1] === 0x4d
+    header = DEFAULT_SAVE_HEADER_META
+    options =
+      typeof optionsOrVersion === 'object' && optionsOrVersion !== null
+        ? optionsOrVersion
+        : {
+            saveFormat: hasJm || optionsOrVersion === 96,
+            expectJmHeader: hasJm,
+          }
+  } else {
+    header = headerOrTables
+    tables = tablesOrOffset as ItemDataTables
+    options = optionsOrVersion as DecodeItemBitstreamOptions | undefined
+  }
+
+  const reader = new BitReader(targetBuf)
+  const item = decodeItemFromReader(reader, header, tables, options)
+  const bitLength = reader.bitOffset
+  return {
+    item,
+    bitLength,
+    byteLength: (bitLength + 7) >>> 3,
+  }
+}
+
+function decodeItemFromReader(
+  reader: BitReader,
   header: ItemPacketHeaderMeta,
   tables: ItemDataTables,
   options?: DecodeItemBitstreamOptions,
 ): ItemData {
   const saveFormat = options?.saveFormat ?? false
-  const reader = new BitReader(bitstream)
 
   if (options?.expectJmHeader) {
     const jm = reader.readBits(16)
@@ -618,40 +700,118 @@ export function decodeItemBitstream(
   }
 }
 
+function normalizeNumericLocation(loc: unknown): number {
+  if (typeof loc === 'number') return loc
+  if (typeof loc === 'string') {
+    switch (loc.toLowerCase()) {
+      case 'inventory':
+      case 'stored':
+      case 'stash':
+      case 'cube':
+        return 0
+      case 'equipped':
+      case 'equipment':
+        return 1
+      case 'belt':
+        return 2
+      case 'ground':
+        return 3
+      case 'cursor':
+        return 4
+      case 'socket':
+      case 'socketed':
+        return 6
+    }
+  }
+  return 0
+}
+
 /**
- * Encodes an `ItemData` object back into a complete `0x9C` (8B header) or `0x9D` (13B header) packet
- * for deterministic round-trip unit testing.
+ * Encodes an `ItemData` object into a 1.13c item bitstream (`0x9C`/`0x9D` payload or `.d2s` `"JM"` entry).
  */
-export function encodeD2gsItemPacket(
+export function encodeItemBitstream(
   item: ItemData,
-  tables: ItemDataTables,
-  options?: DecodeItemBitstreamOptions,
+  tablesOrOptions: ItemDataTables | (ItemBitstreamEncodeOptions & { readonly tables: ItemDataTables }),
+  maybeOptions?: ItemBitstreamEncodeOptions,
 ): Uint8Array {
-  const saveFormat = options?.saveFormat ?? false
+  let tables: ItemDataTables
+  let options: ItemBitstreamEncodeOptions | undefined
+  let defaultSaveMode = false
+
+  if (isItemDataTablesArg(tablesOrOptions)) {
+    tables = tablesOrOptions
+    options = maybeOptions
+  } else {
+    tables = tablesOrOptions.tables
+    options = tablesOrOptions
+    defaultSaveMode = true
+  }
+
+  const saveFormat = options?.saveFormat ?? defaultSaveMode
+  const writeJm =
+    options?.expectJmHeader ?? options?.includeJmHeader ?? defaultSaveMode
   const bw = new BitWriter()
 
-  if (options?.expectJmHeader) {
+  if (writeJm) {
     bw.writeBits(0x4d4a, 16)
   }
 
-  bw.writeBits(item.rawFlags >>> 0, 32)
-  bw.writeBits(item.version & 0x3ff, 10)
-  bw.writeBits(item.location & 0x07, 3)
+  let rawFlags = (item.rawFlags ?? item.flags ?? 0) >>> 0
+  if (item.equipped) rawFlags |= ITEM_FLAG_EQUIPPED
+  if (item.inSocket) rawFlags |= ITEM_FLAG_INSOCKET
+  if (item.identified) rawFlags |= ITEM_FLAG_IDENTIFIED
+  if (item.broken) rawFlags |= ITEM_FLAG_BROKEN
+  if (item.socketed) rawFlags |= ITEM_FLAG_SOCKETED
+  if (item.newItem) rawFlags |= ITEM_FLAG_NEWITEM
+  if (item.isEar || (item as unknown as { readonly ear?: boolean }).ear) rawFlags |= ITEM_FLAG_ISEAR
+  if (item.starterItem) rawFlags |= ITEM_FLAG_STARTERITEM
+  if (item.compact || item.simple) rawFlags |= ITEM_FLAG_COMPACT
+  if (item.ethereal) rawFlags |= ITEM_FLAG_ETHEREAL
+  if (item.personalized) rawFlags |= ITEM_FLAG_PERSONALIZED
+  if (item.isGambleMystery) rawFlags |= ITEM_FLAG_SIMPLE_EXTENDED
+  if (item.runeword) rawFlags |= ITEM_FLAG_RUNEWORD
+  rawFlags >>>= 0
 
-  if (item.location === 3 || item.location === 5) {
-    bw.writeBits(item.worldX & 0xffff, 16)
-    bw.writeBits(item.worldY & 0xffff, 16)
+  const version = item.version ?? 100
+  const location = normalizeNumericLocation(item.location ?? item.container)
+  const isCompact = Boolean(item.compact || item.simple || (rawFlags & ITEM_FLAG_COMPACT) !== 0)
+  const isEar = Boolean(item.isEar || (rawFlags & ITEM_FLAG_ISEAR) !== 0)
+  const isIdentified = Boolean(item.identified || (rawFlags & ITEM_FLAG_IDENTIFIED) !== 0)
+  const isSocketed = Boolean(item.socketed || (rawFlags & ITEM_FLAG_SOCKETED) !== 0)
+  const isRuneword = Boolean(item.runeword || (rawFlags & ITEM_FLAG_RUNEWORD) !== 0)
+  const isPersonalized = Boolean(item.personalized || (rawFlags & ITEM_FLAG_PERSONALIZED) !== 0)
+
+  bw.writeBits(rawFlags, 32)
+  bw.writeBits(version & 0x3ff, 10)
+  bw.writeBits(location & 0x07, 3)
+
+  if (location === 3 || location === 5) {
+    bw.writeBits((item.worldX ?? item.x ?? 0) & 0xffff, 16)
+    bw.writeBits((item.worldY ?? item.y ?? 0) & 0xffff, 16)
   } else {
-    bw.writeBits(item.bodyLoc & 0x0f, 4)
-    bw.writeBits(item.gridX & 0x0f, 4)
-    bw.writeBits(item.gridY & 0x0f, 4)
-    bw.writeBits(item.storePage & 0x07, 3)
+    const storePage =
+      item.storePage ??
+      item.storagePage ??
+      (item.container === 'stash'
+        ? 5
+        : item.container === 'cube'
+          ? 4
+          : item.container === 'trade'
+            ? 2
+            : item.container === 'inventory'
+              ? 1
+              : 0)
+    bw.writeBits((item.bodyLoc ?? item.equippedSlot ?? 0) & 0x0f, 4)
+    bw.writeBits((item.gridX ?? item.x ?? 0) & 0x0f, 4)
+    bw.writeBits((item.gridY ?? item.y ?? 0) & 0x0f, 4)
+    bw.writeBits(storePage & 0x07, 3)
   }
 
-  const rawCode = item.rawCode.padEnd(4, ' ').slice(0, 4)
+  const rawCode = (item.rawCode || item.code || '    ').padEnd(4, ' ').slice(0, 4)
+  const code = (item.code || rawCode).trimEnd()
 
-  if (item.compact) {
-    if (item.isEar) {
+  if (isCompact) {
+    if (isEar) {
       bw.writeBits((item.earClass ?? 0) & 0x07, 3)
       bw.writeBits((item.earLevel ?? 1) & 0x7f, 7)
       write7BitString(bw, item.earName ?? '')
@@ -663,27 +823,29 @@ export function encodeD2gsItemPacket(
         bw.writeBit(isBig ? 1 : 0)
         bw.writeBits(amt >>> 0, isBig ? 32 : 12)
       }
-      if (item.version > 0x5c) {
-        const baseItem = lookupBaseItem(item.code, tables)
+      if (version > 0x5c) {
+        const baseItem = lookupBaseItem(code, tables)
         if (baseItem?.quest && baseItem?.questDiffCheck) {
           const stat356 = getStatField(tables, 356)
-          const st = item.stats.find((s) => s.statId === 356)
+          const st = (item.stats ?? []).find((s) => s.statId === 356)
           const rawVal = ((st?.value ?? 0) >> stat356.valShift) + stat356.saveAdd
           bw.writeBits(rawVal, stat356.saveBits)
         }
       }
-      if (saveFormat && item.version > 0x56) {
+      if (saveFormat && version > 0x56) {
         bw.writeBit(0)
       }
     }
   } else {
-    if (!item.isEar) {
+    if (!isEar) {
       write4CharCode(bw, rawCode)
     }
-    if ((item.rawFlags & ITEM_FLAG_SIMPLE_EXTENDED) === 0) {
-      bw.writeBits(item.socketedChildCount & 0x07, 3)
+    if ((rawFlags & ITEM_FLAG_SIMPLE_EXTENDED) === 0) {
+      const socketedChildCount =
+        item.socketedChildCount ?? item.usedSockets ?? item.socketedItems?.length ?? 0
+      bw.writeBits(socketedChildCount & 0x07, 3)
       if (saveFormat) {
-        bw.writeBits((item.guid ?? 0) >>> 0, 32)
+        bw.writeBits((item.guid ?? item.id ?? item.itemId ?? 0) >>> 0, 32)
       }
       bw.writeBits((item.ilvl ?? 1) & 0x7f, 7)
       const quality = item.quality ?? 2
@@ -703,15 +865,15 @@ export function encodeD2gsItemPacket(
         bw.writeBit(0)
       }
 
-      const baseEntry = lookupBaseItem(item.code, tables) ?? lookupBaseItem(rawCode, tables)
-      const hasIdData = saveFormat || item.identified
+      const baseEntry = lookupBaseItem(code, tables) ?? lookupBaseItem(rawCode, tables)
+      const hasIdData = saveFormat || isIdentified
       switch (quality) {
         case 1:
         case 3:
           bw.writeBits((item.qualitySubtype ?? 0) & 0x07, 3)
           break
         case 2:
-          if (item.code === 'cm1' || item.code === 'cm2' || item.code === 'cm3') {
+          if (code === 'cm1' || code === 'cm2' || code === 'cm3') {
             if (hasIdData) {
               if (item.magicPrefixId !== undefined) {
                 bw.writeBit(1)
@@ -722,10 +884,10 @@ export function encodeD2gsItemPacket(
               }
             }
           }
-          if (baseEntry?.isBodyPart || BODY_PART_CODES.has(item.code)) {
+          if (baseEntry?.isBodyPart || BODY_PART_CODES.has(code)) {
             bw.writeBits((item.bodyPartMonsterClass ?? 0) & 0x3ff, 10)
           }
-          if (item.code === 'tbk' || item.code === 'ibk' || item.code === 'tsc' || item.code === 'isc') {
+          if (code === 'tbk' || code === 'ibk' || code === 'tsc' || code === 'isc') {
             bw.writeBits((item.tomeData ?? 0) & 0x1f, 5)
           }
           break
@@ -772,24 +934,24 @@ export function encodeD2gsItemPacket(
           break
       }
 
-      if (item.runeword) {
+      if (isRuneword) {
         bw.writeBits((item.runewordData ?? 0) & 0xffff, 16)
       }
 
-      if (item.isEar) {
+      if (isEar) {
         bw.writeBits((item.earClass ?? 0) & 0x07, 3)
         bw.writeBits((item.earLevel ?? 1) & 0x7f, 7)
         write7BitString(bw, item.earName ?? '')
-      } else if (item.personalized) {
+      } else if (isPersonalized) {
         write7BitString(bw, item.personalizedName ?? '')
       }
 
-      if (saveFormat && item.version > 0x56) {
+      if (saveFormat && version > 0x56) {
         bw.writeBit(0)
       }
 
-      const isArmor = tables.armor.has(item.code) || tables.armor.has(rawCode)
-      const isWeapon = !isArmor && (tables.weapons.has(item.code) || tables.weapons.has(rawCode))
+      const isArmor = tables.armor.has(code) || tables.armor.has(rawCode)
+      const isWeapon = !isArmor && (tables.weapons.has(code) || tables.weapons.has(rawCode))
 
       if (isArmor) {
         const stat31 = getStatField(tables, 31)
@@ -800,8 +962,8 @@ export function encodeD2gsItemPacket(
         bw.writeBits(((maxDur >> stat73.valShift) + stat73.saveAdd) >>> 0, stat73.saveBits)
         if (maxDur > 0) {
           const stat72 = getStatField(tables, 72)
-          const durBits = item.version > 0x5f ? stat72.saveBits : 8
-          const curDur = item.curDurability ?? maxDur
+          const durBits = version > 0x5f ? stat72.saveBits : 8
+          const curDur = item.curDurability ?? item.durability ?? maxDur
           bw.writeBits(((curDur >> stat72.valShift) + stat72.saveAdd) >>> 0, durBits)
         }
       } else if (isWeapon) {
@@ -810,8 +972,8 @@ export function encodeD2gsItemPacket(
         bw.writeBits(((maxDur >> stat73.valShift) + stat73.saveAdd) >>> 0, stat73.saveBits)
         if (maxDur > 0) {
           const stat72 = getStatField(tables, 72)
-          const durBits = item.version > 0x5f ? stat72.saveBits : 8
-          const curDur = item.curDurability ?? maxDur
+          const durBits = version > 0x5f ? stat72.saveBits : 8
+          const curDur = item.curDurability ?? item.durability ?? maxDur
           bw.writeBits(((curDur >> stat72.valShift) + stat72.saveAdd) >>> 0, durBits)
         }
       } else if (rawCode === 'gld ') {
@@ -822,12 +984,17 @@ export function encodeD2gsItemPacket(
       }
 
       if (baseEntry?.stackable) {
-        bw.writeBits((item.quantity ?? 1) >>> 0, item.version > 0x50 ? 9 : 8)
+        bw.writeBits((item.quantity ?? 1) >>> 0, version > 0x50 ? 9 : 8)
       }
 
-      if (item.socketed) {
+      if (isSocketed) {
         const stat194 = getStatField(tables, 194)
-        bw.writeBits(((item.totalSockets >> stat194.valShift) + stat194.saveAdd) >>> 0, stat194.saveBits)
+        const totalSockets =
+          item.totalSockets ??
+          (item as unknown as { readonly socketCount?: number }).socketCount ??
+          item.socketedItems?.length ??
+          0
+        bw.writeBits((((totalSockets) >> stat194.valShift) + stat194.saveAdd) >>> 0, stat194.saveBits)
       }
 
       if (hasIdData) {
@@ -835,8 +1002,10 @@ export function encodeD2gsItemPacket(
         // item owns a statlist with state STATE_ITEMSET(i + 1) (flag `0x2040` or `0x40`, i.e. even
         // when it is disabled or empty); the lists are then written in ascending state order.
         const setLists =
-          item.version > 0x54 && quality === 5 ? orderSetBonusListsForEncode(item.setBonusStats, item.opcode) : []
-        if (item.version > 0x54 && quality === 5) {
+          version > 0x54 && quality === 5
+            ? orderSetBonusListsForEncode(item.setBonusStats ?? [], item.opcode ?? 0x9c)
+            : []
+        if (version > 0x54 && quality === 5) {
           let mask = 0
           for (const list of setLists) {
             mask |= 1 << list.index
@@ -844,30 +1013,43 @@ export function encodeD2gsItemPacket(
           bw.writeBits(mask, 5)
         }
 
-        writeStatList(bw, tables, item.stats)
+        writeStatList(bw, tables, item.stats ?? [])
 
         for (const list of setLists) {
           writeStatList(bw, tables, list.stats)
         }
 
-        if (item.runeword) {
-          writeStatList(bw, tables, item.runewordStats)
+        if (isRuneword) {
+          writeStatList(bw, tables, item.runewordStats ?? [])
         }
       }
     }
   }
 
-  const bitstreamBytes = bw.toUint8Array()
-  const headerLen = item.opcode === 0x9c ? 8 : 13
+  return bw.toUint8Array()
+}
+
+/**
+ * Encodes an `ItemData` object back into a complete `0x9C` (8B header) or `0x9D` (13B header) packet
+ * for deterministic round-trip unit testing.
+ */
+export function encodeD2gsItemPacket(
+  item: ItemData,
+  tables: ItemDataTables,
+  options?: ItemBitstreamEncodeOptions,
+): Uint8Array {
+  const bitstreamBytes = encodeItemBitstream(item, tables, options)
+  const opcode = item.opcode ?? 0x9c
+  const headerLen = opcode === 0x9c ? 8 : 13
   const totalLen = headerLen + bitstreamBytes.length
   const out = new Uint8Array(totalLen)
   const view = new DataView(out.buffer)
-  out[0] = item.opcode
-  out[1] = item.action & 0xff
+  out[0] = opcode
+  out[1] = (item.action ?? 0) & 0xff
   out[2] = totalLen & 0xff
-  out[3] = item.category & 0xff
-  view.setUint32(4, item.itemId >>> 0, true)
-  if (item.opcode === 0x9d) {
+  out[3] = (item.category ?? 0) & 0xff
+  view.setUint32(4, (item.itemId ?? item.id ?? 0) >>> 0, true)
+  if (opcode === 0x9d) {
     out[8] = (item.ownerType !== undefined ? unitTypeToId(item.ownerType) : 0) & 0xff
     view.setUint32(9, (item.ownerId ?? 0) >>> 0, true)
   }

@@ -32,7 +32,7 @@ import {
 } from '../src/common/world/d2map.ts'
 import { InventoryPanel, findFreeGridSlot, type UiInventoryItem, type GridPlacement } from '../src/client/ui/inventory.ts'
 import { HudManager } from '../src/client/ui/hud-manager.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 import { DEMO_EXPERIENCE, DEMO_SKILLS, DEMO_QUESTS } from '../src/common/data/demo-data.ts'
 
 describe('Issue #388 — Ground Item & Drop System Ground Truth', () => {

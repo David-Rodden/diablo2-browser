@@ -10,7 +10,7 @@
  */
 
 import type { D2FontRenderer } from './font.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 
 import {
   BELT_COLS,

@@ -1,5 +1,20 @@
-import { tickCombat, createWorld, spawnMonsters, spawnMonsterPacks, damageMonster, rebindPlayer, levelForXp } from './combat.ts'
-import type { CombatWorld, CombatOptions, MonsterPack, MonsterStats, SafeZone, CombatPlayer, Monster, CombatEvent } from './combat.ts'
+/**
+ * Canonical 25Hz Authoritative Simulation Engine & Barrel (`src/server/engine/game-engine.ts`).
+ * Hosts `GameEngine` and re-exports `GameInstance` / `GameModePolicy` (`game-instance.ts`) and all 1.13c engine subsystems.
+ */
+
+export * from './game-instance.ts'
+export * from './state-hash.ts'
+export * from './stat-list.ts'
+export * from './state-bus.ts'
+export * from './anim-dispatcher.ts'
+export * from './aura-scanner.ts'
+export * from './combat-pipeline.ts'
+export * from './missile-engine.ts'
+export * from './world-arena.ts'
+
+import { tickCombat, createWorld, spawnMonsters, spawnMonsterPacks, damageMonster, rebindPlayer, levelForXp } from '../ai/monster-ai.ts'
+import type { CombatWorld, CombatOptions, MonsterPack, MonsterStats, SafeZone, CombatPlayer, Monster, CombatEvent } from '../ai/monster-ai.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
 import { Inventory, goldItem, totalStat } from '../../common/items/items.ts'
 import type { Item, ItemBase, Affix, PlacedItem } from '../../common/items/items.ts'
@@ -39,7 +54,6 @@ import { ORTHO_CELL_WIDTH, ORTHO_CELL_HEIGHT } from '../../common/world/d2map.ts
 import { getInventoryGoldLimit } from '../../common/items/inventory-model.ts'
 import { BeltModel as BeltHud } from '../../common/items/belt-model.ts'
 import { computeLockstepHash } from './state-hash.ts'
-import { castSkill as castSceneSkillImpl } from '../scene/skill-caster.ts'
 import { encode0xA3AuraSkill } from '../../netproto/index.ts'
 export { computeLockstepHash }
 
@@ -2880,7 +2894,7 @@ export class GameEngine {
   }
 
   castSceneSkill(skillId: number, targetX: number, targetY: number, context: any): boolean {
-    return castSceneSkillImpl(skillId, targetX, targetY, context)
+    return castSkill(skillId, targetX, targetY, context)
   }
 
   /**

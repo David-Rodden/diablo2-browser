@@ -43,7 +43,7 @@ import {
   serverEventToS2cPackets,
 } from '../src/netproto/index.ts'
 import { executeSUnitDmg, type CombatUnitContext } from '../src/server/engine/combat-pipeline.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 import { FIXED_ONE, UnitStatList } from '../src/server/engine/stat-list.ts'
 import { StateBus } from '../src/server/engine/state-bus.ts'
 

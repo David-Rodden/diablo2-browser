@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { TOWN_LEVEL_IDS, isTownLevel, parseDensityMultiplier, parseEliteMultiplier, rebudgetMonsterPacks } from '../src/common/world/scene-population.ts'
-import type { CombatTerrain, CombatWorld, MonsterPack, MonsterStats } from '../src/server/engine/combat.ts'
+import type { CombatTerrain, CombatWorld, MonsterPack, MonsterStats } from '../src/server/ai/monster-ai.ts'
 import { MonsterStreamingManager } from '../src/common/units/monster-streaming.ts'
 
 function createSampleMonster(id: string, rank: 'normal' | 'champion' | 'unique' | 'minion' = 'normal', hp: number = 50): MonsterStats {

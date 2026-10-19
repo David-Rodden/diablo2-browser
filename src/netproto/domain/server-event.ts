@@ -44,6 +44,25 @@ export type ServerEvent =
   | { readonly type: 'GameLoading' }
   | { readonly type: 'UnloadAct' }
   | {
+      readonly type: 'GameLogonAck'
+      readonly playerUnitId: number
+      readonly mapSeed: number
+      readonly difficulty: 0 | 1 | 2
+      readonly act?: number | undefined
+      readonly areaId?: number | undefined
+    }
+  | {
+      readonly type: 'PlayerAssign'
+      readonly unitId: number
+      readonly classId?: number | undefined
+      readonly charClass?: number | undefined
+      readonly charName?: string | undefined
+      readonly name?: string | undefined
+      readonly x: number
+      readonly y: number
+      readonly areaId?: number | undefined
+    }
+  | {
       readonly type: 'ProtocolSync'
       readonly opcode: number
       readonly byteLength: number
@@ -78,9 +97,15 @@ export type ServerEvent =
     }
   | {
       readonly type: 'CreateMissile'
+      readonly missileId?: number | undefined
       readonly missileClassId: number
       readonly at: Pt
       readonly target: Pt
+      readonly x?: number | undefined
+      readonly y?: number | undefined
+      readonly targetX?: number | undefined
+      readonly targetY?: number | undefined
+      readonly skillId?: number | undefined
       readonly level: number
       readonly owner?: UnitRef | undefined
       readonly ownerType?: UnitType | undefined
@@ -90,6 +115,7 @@ export type ServerEvent =
       readonly unk?: number | undefined
       readonly cltDoFuncArg?: number | undefined
       readonly pierceIdx?: number | undefined
+      readonly areaId?: number | undefined
     }
   | {
       readonly type: 'GameFlags'
@@ -150,20 +176,38 @@ export type ServerEvent =
   | {
       readonly type: 'UnitAssign'
       readonly unit: UnitSnapshot
+      readonly unitType?: UnitType | undefined
+      readonly unitId?: number | undefined
+      readonly classId?: number | any
+      readonly x?: number | undefined
+      readonly y?: number | undefined
+      readonly areaId?: number | undefined
+      readonly name?: string | undefined
       readonly isSelf?: boolean | undefined
     }
   | {
       readonly type: 'UnitRemove'
       readonly unitType: UnitType
       readonly id: number
+      readonly unitId?: number | undefined
+      readonly areaId?: number | undefined
     }
   | {
       readonly type: 'UnitMove'
       readonly unitType: UnitType
       readonly id: number
+      readonly unitId?: number | undefined
       readonly mode: 'walk' | 'run' | 'knockback' | 'stop'
       readonly from?: Pt | undefined
       readonly to: Pt
+      readonly x?: number | undefined
+      readonly y?: number | undefined
+      readonly currentX?: number | undefined
+      readonly currentY?: number | undefined
+      readonly targetX?: number | undefined
+      readonly targetY?: number | undefined
+      readonly moveType?: number | undefined
+      readonly areaId?: number | undefined
       readonly target?: UnitRef | undefined
       readonly velocityPercent?: number | undefined
       readonly pathType?: number | undefined
@@ -174,8 +218,37 @@ export type ServerEvent =
       readonly type: 'UnitReassign'
       readonly unitType: UnitType
       readonly id: number
+      readonly unitId?: number | undefined
       readonly at: Pt
+      readonly x?: number | undefined
+      readonly y?: number | undefined
+      readonly areaId?: number | undefined
       readonly snap: boolean
+    }
+  | {
+      readonly type: 'UnitStatUpdate'
+      readonly unitType: UnitType
+      readonly unitId: number
+      readonly statId?: number | undefined
+      readonly value?: number | undefined
+      readonly stats?: Readonly<Record<string, number>> | undefined
+      readonly areaId?: number | undefined
+    }
+  | {
+      readonly type: 'UnitState'
+      readonly unitType: UnitType
+      readonly unitId: number
+      readonly state: number | string
+      readonly active: boolean
+      readonly mode?: number | undefined
+      readonly areaId?: number | undefined
+    }
+  | {
+      readonly type: 'SkillUpdate'
+      readonly unitId: number
+      readonly skillId: number
+      readonly level: number
+      readonly bonus?: number | undefined
     }
   | {
       readonly type: 'UnitMode'
@@ -312,9 +385,20 @@ export type ServerEvent =
     }
   | {
       readonly type: 'ItemEvent'
-      readonly action: number
-      readonly item: ItemData
+      readonly action: number | string
+      readonly item?: ItemData | any
+      readonly itemId?: number | any
+      readonly code?: string | undefined
+      readonly x?: number | undefined
+      readonly y?: number | undefined
       readonly container: ItemContainer
+      readonly quality?: number | undefined
+      readonly itemLevel?: number | undefined
+      readonly identified?: boolean | undefined
+      readonly rawBytes?: Uint8Array | undefined
+      readonly ownerId?: number | undefined
+      readonly bodyLoc?: number | undefined
+      readonly areaId?: number | undefined
       readonly at?: Pt | undefined
     }
   | {
@@ -462,6 +546,7 @@ export type ServerEvent =
   | {
       readonly type: 'Party'
       readonly kind: 'roster' | 'relation' | 'memberState' | 'memberPos'
+      readonly action?: 'join' | 'leave' | 'update' | undefined
       readonly source?: 0x5b | 0x5c | 0x65 | 0x66 | 0x75 | 0x7f | 0x8b | 0x8c | 0x8d | 0x90 | undefined
       readonly unitId?: number | undefined
       readonly playerId?: number | undefined
@@ -476,6 +561,16 @@ export type ServerEvent =
       readonly charLevel?: number | undefined
       readonly isPlayer?: boolean | undefined
       readonly inParty?: boolean | undefined
+      readonly members?:
+        | readonly {
+            readonly playerUnitId: number
+            readonly charName: string
+            readonly classId: number
+            readonly level: number
+            readonly areaId: number
+            readonly partyId: number
+          }[]
+        | undefined
     }
   | {
       readonly type: 'Trade'
@@ -488,6 +583,7 @@ export type ServerEvent =
       readonly type: 'Chat'
       readonly kind: 'say' | 'whisper' | 'overhead' | 'system' | 'event'
       readonly from?: string | undefined
+      readonly speaker?: string | undefined
       readonly unit?: UnitRef | undefined
       readonly text: string
       readonly color?: number | undefined
@@ -518,9 +614,13 @@ export type ServerEvent =
     }
   | {
       readonly type: 'Portal'
+      readonly portalId?: number | any
       readonly ownerName?: string | undefined
       readonly ownerId?: number | undefined
       readonly areaId: number
+      readonly destAreaId?: number | undefined
+      readonly x?: number | undefined
+      readonly y?: number | undefined
       readonly localId: number
       readonly remoteId?: number | undefined
       readonly flags?: number | undefined

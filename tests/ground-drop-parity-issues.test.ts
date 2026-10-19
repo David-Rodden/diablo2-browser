@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { GameEngine, type GameEngineOptions } from '../src/server/engine/engine.ts'
+import { GameEngine, type GameEngineOptions } from '../src/server/engine/game-engine.ts'
 import { getEmbeddedDropTables } from '../src/common/items/embedded-drop-tables.ts'
 import { createDroppedItem } from '../src/common/items/drop-tables.ts'
 import { D2Rng } from '../src/common/rng/d2-rng.ts'
@@ -14,7 +14,7 @@ import { DEMO_EXPERIENCE, DEMO_SKILLS } from '../src/common/data/demo-data.ts'
 import { itemToUiInventoryItem } from '../src/common/items/item-bridge.ts'
 import { resolveGroundItemSpriteRect } from '../src/client/ui/inventory.ts'
 import { ORTHO_SUB_TILE_WIDTH, ORTHO_SUB_TILE_HEIGHT, ORTHO_CELL_WIDTH } from '../src/common/world/d2map.ts'
-import type { Monster } from '../src/server/engine/combat.ts'
+import type { Monster } from '../src/server/ai/monster-ai.ts'
 
 describe('Issue #479 — Ground Item Drop Spacing, Metadata Parity & Anti-Stacking', () => {
   const dropTables = getEmbeddedDropTables()

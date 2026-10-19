@@ -36,7 +36,7 @@ import {
   getCobraStrikeLeechBonus as getCobraStrikeLeechBonusFromMod,
   skillModule as cobraStrikeModule,
 } from '../src/server/skills/impl/ass/skill-265-cobra-strike.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
 import { ClientWorld } from '../src/client/world/client-world.ts'
 import type { ItemData } from '../src/netproto/index.ts'
 

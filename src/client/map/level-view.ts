@@ -52,7 +52,7 @@ import { getCanonicalAutomapTable } from '../../common/formats/automap-canonical
 import type { Ds1Object } from '../../common/formats/ds1.ts'
 import { isAnimatedTile, type Dt1 } from '../../common/formats/dt1.ts'
 import type { SpriteFrame } from '../../common/formats/sprite.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import type { PackedTilePlacement, TileAtlas } from './tile-atlas.ts'
 
 export interface LevelDrawItem extends IsoDraw {

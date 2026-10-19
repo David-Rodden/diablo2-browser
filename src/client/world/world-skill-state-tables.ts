@@ -507,7 +507,14 @@ export interface SpawnMissileOptions {
 }
 
 export class UnitMap extends Map<string, ClientUnit> {
-  override get(key: string): ClientUnit | undefined {
+  override get(key: string | number): ClientUnit | undefined {
+    if (typeof key === 'number') {
+      for (const prefix of ['player', 'monster', 'object', 'missile', 'item', 'tile']) {
+        const found = super.get(`${prefix}:${key}`)
+        if (found !== undefined) return found
+      }
+      return undefined
+    }
     const direct = super.get(key)
     if (direct !== undefined) return direct
     const colonIdx = key.indexOf(':')
@@ -518,11 +525,25 @@ export class UnitMap extends Map<string, ClientUnit> {
       if (Number.isInteger(num) && num >= 0 && num <= 5) {
         return super.get(`${unitTypeFromId(num as UnitType)}:${rest}`)
       }
+    } else {
+      const num = Number(key)
+      if (Number.isInteger(num)) {
+        for (const prefix of ['player', 'monster', 'object', 'missile', 'item', 'tile']) {
+          const found = super.get(`${prefix}:${num}`)
+          if (found !== undefined) return found
+        }
+      }
     }
     return undefined
   }
 
-  override has(key: string): boolean {
+  override has(key: string | number): boolean {
+    if (typeof key === 'number') {
+      for (const prefix of ['player', 'monster', 'object', 'missile', 'item', 'tile']) {
+        if (super.has(`${prefix}:${key}`)) return true
+      }
+      return false
+    }
     if (super.has(key)) return true
     const colonIdx = key.indexOf(':')
     if (colonIdx > 0) {
@@ -531,6 +552,13 @@ export class UnitMap extends Map<string, ClientUnit> {
       const num = Number(prefix)
       if (Number.isInteger(num) && num >= 0 && num <= 5) {
         return super.has(`${unitTypeFromId(num as UnitType)}:${rest}`)
+      }
+    } else {
+      const num = Number(key)
+      if (Number.isInteger(num)) {
+        for (const prefix of ['player', 'monster', 'object', 'missile', 'item', 'tile']) {
+          if (super.has(`${prefix}:${num}`)) return true
+        }
       }
     }
     return false

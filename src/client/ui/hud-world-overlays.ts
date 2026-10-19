@@ -114,10 +114,6 @@ export function groundLabelHexToD2Color(hex: string | undefined): D2ColorCode {
  */
 export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
   const internal = hud as unknown as HudRenderInternal
-  // Safety net: force a full repaint whenever the last one is older than
-  // 250ms, so any signal the signature failed to enumerate still updates
-  // at 4Hz instead of freezing.
-  if (nowMs - internal.lastFullHudRepaintMs >= 250) return false
   if (hud.leftPanel !== 'none' || hud.rightPanel !== 'none') return false
   if (hud.worldPanels.escapeMenuOpen) return false
   if (hud.chatInputOpen || hud.chatOverlayMessages.length > 0 || hud.overheadSpeechBubbles.length > 0) return false
@@ -155,11 +151,13 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
     hud.showFps ? hud.currentFps : -1,
     hud.hudRevision,
   ].join('|')
-  if (signature !== internal.lastIdleRepaintSignature) {
-    internal.lastIdleRepaintSignature = signature
-    return false
-  }
-  return true
+  const prevSignature = internal.lastIdleRepaintSignature
+  internal.lastIdleRepaintSignature = signature
+  // Safety net: force a full repaint whenever the last one is older than
+  // 250ms, so any signal the signature failed to enumerate still updates
+  // at 4Hz instead of freezing.
+  if (nowMs - internal.lastFullHudRepaintMs >= 250) return false
+  return signature === prevSignature
 }
 
 export function ensureCanvas2DContext(rawCtx: CanvasRenderingContext2D): CanvasRenderingContext2D {
@@ -233,16 +231,6 @@ export function renderHudFrame(
   // Stamina is server state (stat 10 / 0x95); no client-side drain/regen simulation.
   void playerMoving
 
-  // #940 R2 conservative repaint skip: when nothing any drawer reads has
-  // changed since the last full paint (mouse, values, container revision,
-  // cursor animation cell) and no timed overlay is active, the canvas
-  // already shows exactly what a repaint would produce — skip the whole
-  // rasterization.
-  if (hud.enableIdleThrottle && internal.hudRepaintUnchanged(nowMs)) {
-    return
-  }
-  internal.lastFullHudRepaintMs = nowMs
-
   const is640 = internal.syncResolutionMode()
   const profile = hud.viewportProfile
   const hasWindow = typeof window !== 'undefined'
@@ -257,6 +245,16 @@ export function renderHudFrame(
     internal.hudCanvas.width = targetW
     internal.hudCanvas.height = targetH
   }
+
+  // #940 R2 conservative repaint skip: when nothing any drawer reads has
+  // changed since the last full paint (mouse, values, container revision,
+  // cursor animation cell) and no timed overlay is active, the canvas
+  // already shows exactly what a repaint would produce — skip the whole
+  // rasterization.
+  if (hud.enableIdleThrottle && internal.hudRepaintUnchanged(nowMs)) {
+    return
+  }
+  internal.lastFullHudRepaintMs = nowMs
 
   const docking = computeDockingLayout(cssW, cssH, dpr, profile)
   internal.activeRenderDockingLayout = docking
@@ -950,6 +948,7 @@ export function renderHudFrame(
 
   ctx.restore()
   hud.syncPublishedState()
+  internal.lastHudFrameTiming = { mouseX: hud.mouseX, mouseY: hud.mouseY, drawMs: nowMs }
   internal.activeRenderDockingLayout = null
 }
 

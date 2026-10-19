@@ -64,14 +64,74 @@ export interface CombatOptions {
   readonly preserveEvents?: boolean | undefined
 }
 
+export interface MonsterStats113cAttack {
+  readonly min: number
+  readonly max: number
+  readonly toHit: number
+  readonly minDamage?: number
+  readonly maxDamage?: number
+  readonly move?: number
+}
+
+export interface MonsterElementalAttack {
+  readonly slot?: 1 | 2 | 3
+  readonly mode: 'A1' | 'A2' | 'S1' | 'S2' | 'S3' | 'S4' | 'C' | string
+  readonly type: 'fire' | 'ltng' | 'cold' | 'pois' | 'mag' | 'stamina' | 'life' | 'mana' | 'burn' | 'frze' | string
+  readonly chancePct: number
+  readonly min: number
+  readonly max: number
+  readonly durationFrames: number
+  readonly pct?: number
+  readonly minDamage?: number
+  readonly maxDamage?: number
+  readonly duration?: number
+}
+
+export interface MonsterSkillEntry {
+  readonly slot?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+  readonly skill: string
+  readonly skillId?: number
+  readonly mode: 'A1' | 'A2' | 'S1' | 'S2' | 'S3' | 'S4' | 'C' | 'SC' | 'SQ' | string
+  readonly level: number
+}
+
+export interface MonsterModeMissiles {
+  readonly MissA1?: string
+  readonly MissA2?: string
+  readonly MissS1?: string
+  readonly MissS2?: string
+  readonly MissS3?: string
+  readonly MissS4?: string
+  readonly MissC?: string
+  readonly MissSQ?: string
+  readonly A1?: string
+  readonly A2?: string
+  readonly S1?: string
+  readonly S2?: string
+  readonly S3?: string
+  readonly S4?: string
+  readonly C?: string
+  readonly SQ?: string
+}
+
+export interface MonsterDifficultyStats<T = number> {
+  readonly normal: T
+  readonly nightmare: T
+  readonly hell: T
+}
+
 /** One monster's immutable numbers, read from a table row. */
 export interface MonsterStats {
   /** Identifier, as written in the table. */
   readonly id: string
+  /** Hardcoded 1.13c MonStats.txt row index (0..733). */
+  readonly hcIdx?: number | undefined
   /** Display name. */
   readonly name: string
   /** Maximum health. */
   readonly hp: number
+  /** Alias for maximum health (used by 1.13c data contract & M2/M3 callers). */
+  readonly maxHp?: number | undefined
   /** Damage per hit. */
   readonly damage: number
   /** Ticks between attacks. */
@@ -92,6 +152,12 @@ export interface MonsterStats {
   readonly superUniqueId?: string
   /** Monster level for drops and scaling. */
   readonly level?: number
+  /** Armor class / defense after MonLvl.txt scaling. */
+  readonly armor?: number | undefined
+  /** Alias for armor class / defense. */
+  readonly armour?: number | undefined
+  /** Primary attack rating (A1TH) after MonLvl.txt scaling. */
+  readonly toHit?: number | undefined
   /** Resistances per damage type (from MonStats.txt). */
   readonly resistances?: {
     readonly physical?: number
@@ -119,14 +185,72 @@ export interface MonsterStats {
   readonly descKey?: string | undefined
   /** True when `MonStats.txt` `lUndead` or `hUndead` is non-zero (`0x6FD62B50`). */
   readonly isUndead?: boolean | undefined
+  /** True when `MonStats.txt` `lUndead` is non-zero. */
+  readonly lUndead?: boolean | undefined
+  /** True when `MonStats.txt` `hUndead` is non-zero. */
+  readonly hUndead?: boolean | undefined
   /** True when `MonStats.txt` `demon` is non-zero (`0x6FD62BA0`). */
   readonly isDemon?: boolean | undefined
+  /** Alias for `isDemon`. */
+  readonly demon?: boolean | undefined
   /** True when `MonStats.txt` `boss` is non-zero. */
   readonly isBoss?: boolean | undefined
+  /** True when `MonStats.txt` `primeevil` is non-zero. */
+  readonly primeevil?: boolean | undefined
+  /** Alias for `primeevil`. */
+  readonly isPrimeEvil?: boolean | undefined
   /** True when `MonStats.txt` `killable` is non-zero. */
   readonly killable?: boolean | undefined
   /** True when `MonStats.txt` `inTown` is non-zero. */
   readonly inTown?: boolean | undefined
+  /** True when `MonStats.txt` `noRatio` is non-zero (bypasses MonLvl.txt L-* scaling). */
+  readonly noRatio?: boolean | undefined
+  /** True when `MonStats.txt` `rangedtype` is non-zero. */
+  readonly isRanged?: boolean | undefined
+  /** True when `MonStats.txt` `flying` is non-zero. */
+  readonly isFlying?: boolean | undefined
+  /** True when `MonStats.txt` `opendoors` is non-zero. */
+  readonly canOpenDoors?: boolean | undefined
+  /** True when `MonStats.txt` `neverCount` is non-zero. */
+  readonly neverCount?: boolean | undefined
+  /** True when `MonStats.txt` `petIgnore` is non-zero. */
+  readonly petIgnore?: boolean | undefined
+  /** True when `MonStats.txt` `deathDmg` is non-zero (e.g. Bone Fetish death explosion). */
+  readonly deathDmg?: boolean | undefined
+  /** AI behavior name from MonStats.txt `AI` column (`MonAi.txt`). */
+  readonly ai?: string | undefined
+  /** AI frame delay between decisions for active difficulty (`aidel`). */
+  readonly aiDelay?: number | undefined
+  /** AI leash/aggro distance in sub-tiles (`aidist`). */
+  readonly aiDistance?: number | undefined
+  /** AI parameters `aip1..aip8` for active difficulty. */
+  readonly aiParams?: readonly [number, number, number, number, number, number, number, number] | undefined
+  /** Attack 1 (`A1MinD`, `A1MaxD`, `A1TH`) scaled for active difficulty. */
+  readonly attack1?: MonsterStats113cAttack | undefined
+  /** Attack 2 (`A2MinD`, `A2MaxD`, `A2TH`) scaled for active difficulty. */
+  readonly attack2?: MonsterStats113cAttack | undefined
+  /** Special Attack 1 (`S1MinD`, `S1MaxD`, `S1TH`) scaled for active difficulty. */
+  readonly special1?: MonsterStats113cAttack | undefined
+  /** Elemental attacks `El1..El3` scaled for active difficulty. */
+  readonly elementalAttacks?: readonly MonsterElementalAttack[] | undefined
+  /** Monster skills `Skill1..Skill8` (`Sk1mode..Sk8mode`, `Sk1lvl..Sk8lvl`). */
+  readonly skills?: readonly MonsterSkillEntry[] | undefined
+  /** Mode-bound missiles (`MissA1`, `MissA2`, `MissS1..S4`, `MissC`, `MissSQ`). */
+  readonly modeMissiles?: MonsterModeMissiles | undefined
+  /** Life/mana steal drain effectiveness percentage (`Drain`). */
+  readonly drain?: number | undefined
+  /** Cold chill effectiveness percentage (`coldeffect`, typically negative). */
+  readonly coldEffect?: number | undefined
+  /** Health regeneration rate (`DamageRegen`). */
+  readonly damageRegen?: number | undefined
+  /** Block chance percentage (`ToBlock`). */
+  readonly toBlock?: number | undefined
+  /** Critical hit percentage (`Crit`). */
+  readonly crit?: number | undefined
+  /** Alignment (`0` = evil/hostile, `1` = aligned/friendly, `2` = neutral). */
+  readonly align?: 0 | 1 | 2 | undefined
+  /** Melee sub-tile range (`MeleeRng`). */
+  readonly meleeRng?: number | undefined
 }
 
 export interface MonsterCurseState {
@@ -191,6 +315,32 @@ export interface Monster {
   drawBounds?: { x: number; y: number; w: number; h: number } | undefined
   /** True when corpse is suppressed on death (freeze shatter, Bone Fetish explosion, Suicide Minion). */
   corpseSuppressed?: boolean | undefined
+  /** Active Inner Sight (#8) remaining ticks and flat defense reduction. */
+  innerSightTicks?: number | undefined
+  innerSightDefReduction?: number | undefined
+  /** Active Slow Missiles (#17) remaining ticks and projectile velocity multiplier (0.33). */
+  slowMissilesTicks?: number | undefined
+  slowMissilesMult?: number | undefined
+  /** Light radius bonus applied by Inner Sight (#8) or Slow Missiles (#17). */
+  lightRadiusBonus?: number | undefined
+  /** Optional monster defense value for hit-chance calculations. */
+  defense?: number | undefined
+  /** Ticks remaining in pack morale / terror retreat state (R2.2). */
+  fleeTicks?: number | undefined
+  /** Ticks remaining before special AI skill / resurrect / curse can fire again (R2.3-R2.7). */
+  aiCooldownTicks?: number | undefined
+  /** Ticks remaining in a boss or elite sub-phase (R2.7). */
+  aiPhaseTicks?: number | undefined
+  /** Current Frenzy stack count for Frenzy/MoonLord monsters (R2.1). */
+  frenzyStacks?: number | undefined
+  /** True when corpse has been consumed by resurrection, Corpse Explosion, or Vine (R2.3/R2.7). */
+  corpseConsumed?: boolean | undefined
+  /** True when monster shattered on death while frozen/chilled (R2.6). */
+  shattered?: boolean | undefined
+  /** Optional runtime alignment override (`0` = hostile, `1` = allied/revived, `2` = neutral). */
+  align?: 0 | 1 | 2 | undefined
+  /** Optional pack leader monster index for minion morale routing (R2.2). */
+  leaderId?: number | undefined
 }
 
 /** The player's combat-relevant state. */
@@ -282,6 +432,16 @@ export interface CombatPlayer {
   manaRegenRatePerTick?: number | undefined
   coldResistBonusTicks?: number | undefined
   poisonResistBonusTicks?: number | undefined
+  /** Amazon passive skill levels when active in CombatWorld. */
+  dodgeSlvl?: number | undefined
+  avoidSlvl?: number | undefined
+  evadeSlvl?: number | undefined
+  criticalStrikeSlvl?: number | undefined
+  penetrateSlvl?: number | undefined
+  /** Optional deterministic roll override (0-99) for avoidance/crit testing. */
+  passiveRollOverride?: number | undefined
+  /** Whether the player moved during the current tick (for Evade vs Dodge/Avoid selection). */
+  isMovingThisTick?: boolean | undefined
   /** Druid form ('human' | 'wolf' | 'bear') and Elemental active states (#235 Cyclone Armor, #249 Armageddon, #250 Hurricane). */
   druidForm?: 'human' | 'wolf' | 'bear' | undefined
   cycloneArmorHp?: number | undefined
@@ -294,6 +454,23 @@ export interface CombatPlayer {
   hurricaneTicks?: number | undefined
   hurricaneDamage?: number | undefined
   hurricaneSlvl?: number | undefined
+  /** Active curse applied to the player by Oblivion Knights, Succubi, or Cursed elites (R2.5/R2.6). */
+  curse?:
+    | {
+        id?: string | undefined
+        name?: string | undefined
+        slvl?: number | undefined
+        sourceId?: number | undefined
+        sourceUnitId?: number | undefined
+        expiresTick?: number | undefined
+        remainingTicks?: number | undefined
+        ticksRemaining?: number | undefined
+      }
+    | undefined
+  /** Active chill duration ticks on the player from Cold Enchanted / Frost Nova (R2.6). */
+  chillTicks?: number | undefined
+  /** Active freeze duration ticks on the player from Freeze UMod (#43) (R2.6). */
+  frozenTicks?: number | undefined
 }
 
 /** Something worth telling the player (and the renderer) about. */
@@ -536,4 +713,52 @@ export function syncEngineState(engine: any, state: EngineViewState): void {
   state.partyPlayers = engine.partyPlayers
 }
 
+export interface KillerDropContext {
+  readonly playerMf: number
+  readonly playerGf: number
+  readonly gamePlayers: number
+  readonly partyPlayers: number
+}
+
+export interface PendingMonsterDrop {
+  readonly monsterIndex: number
+  readonly subjectId: string
+  readonly superUniqueId?: string | undefined
+  readonly monsterLevel: number
+  readonly monsterRank: MonsterRank
+  readonly monsterType: number
+  readonly x: number
+  readonly y: number
+  readonly tcName: string
+  readonly isBoss: boolean
+  readonly isNoRatio: boolean
+  readonly seed: number
+  readonly killerContext: KillerDropContext
+  items?: readonly any[] | undefined
+}
+
+export interface ActiveHydra {
+  readonly id?: string | number | undefined
+  x: number
+  y: number
+  slvl: number
+  ticksRemaining: number
+  cooldownTicks?: number | undefined
+  fireMasterySlvl?: number | undefined
+  fireBoltBlvl?: number | undefined
+  fireBallBlvl?: number | undefined
+}
+
+export interface ActiveTrap {
+  readonly id?: string | number | undefined
+  skillId: number
+  x: number
+  y: number
+  slvl: number
+  shotsRemaining: number
+  ticksRemaining: number
+  cooldownTicks?: number | undefined
+}
+
 export type SceneEngineLike = any
+

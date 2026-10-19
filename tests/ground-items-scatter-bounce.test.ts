@@ -11,8 +11,8 @@ import type { GroundItemEntity } from '../src/common/items/ground-items.ts'
 import {
   GameEngine,
   worldToCell,
-} from '../src/server/engine/engine.ts'
-import type { GameEngineOptions, WorldMapProvider } from '../src/server/engine/engine.ts'
+} from '../src/server/engine/game-engine.ts'
+import type { GameEngineOptions, WorldMapProvider } from '../src/server/engine/game-engine.ts'
 import {
   COLLIDE_NONE,
   COLLIDE_WALL,

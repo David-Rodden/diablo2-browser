@@ -257,7 +257,10 @@ export class OnlineSession {
   readonly audioRuntime: AudioRuntime113c
   levelView?: LevelView | null | undefined
 
-  private readonly resolver: EndpointResolver
+  private resolver: EndpointResolver
+  private readonly hasCustomResolver: boolean
+  private readonly customWsBridgeBaseUrl: string | undefined
+  private resolverWsBase: string
   private readonly flowFactory: (config: D2OnlineConfig) => D2OnlineFlow
   private readonly itemTables: ItemDataTables
   private readonly defaultHost: string
@@ -507,7 +510,10 @@ export class OnlineSession {
 
     this.defaultHost = options.defaultHost ?? currentSettings.serverHost
     this.defaultBncsPort = options.defaultBncsPort ?? 6112
+    this.hasCustomResolver = options.resolver !== undefined
+    this.customWsBridgeBaseUrl = options.wsBridgeBaseUrl
     const wsBase = options.wsBridgeBaseUrl ?? this.resolveWsBridgeBaseUrl(currentSettings.serverHost)
+    this.resolverWsBase = wsBase
     this.resolver = options.resolver ?? createWsBridgeResolver(this.parseWsBridgeUrl(wsBase))
     this.flowFactory = options.flowFactory ?? createD2OnlineFlow
     this.leaseStorage =
@@ -739,9 +745,19 @@ export class OnlineSession {
     this.loginHostValue = (params.host ?? this.defaultHost).trim() || this.defaultHost
     this.setPhase('connecting')
 
-    const resolver = params.wsBridgeBaseUrl
-      ? createWsBridgeResolver(this.parseWsBridgeUrl(params.wsBridgeBaseUrl))
-      : this.resolver
+    let resolver: EndpointResolver
+    if (params.wsBridgeBaseUrl) {
+      resolver = createWsBridgeResolver(this.parseWsBridgeUrl(params.wsBridgeBaseUrl))
+    } else if (!this.hasCustomResolver && !this.customWsBridgeBaseUrl) {
+      const targetWsBase = this.resolveWsBridgeBaseUrl(this.loginHostValue)
+      if (targetWsBase !== this.resolverWsBase) {
+        this.resolverWsBase = targetWsBase
+        this.resolver = createWsBridgeResolver(this.parseWsBridgeUrl(targetWsBase))
+      }
+      resolver = this.resolver
+    } else {
+      resolver = this.resolver
+    }
 
     const flow = this.flowFactory({
       resolver,
@@ -1055,14 +1071,26 @@ export class OnlineSession {
    * Attach a live or mock `GameServerAdapter` directly to this session.
    */
   attachGameServer(adapter: GameServerAdapter): void {
+    const hadPreviousAdapter = this.gameAdapter !== null && this.gameAdapter !== adapter
     this.detachGameServerListeners()
     if (!this.flow) {
       // A standalone adapter (replay harness or tests) starts its own session lifecycle.
+      if (hadPreviousAdapter) {
+        const savedName = this.world.self.name
+        const savedClass = this.world.self.charClass
+        this.world.reset()
+        this.world.self.name = savedName
+        this.world.self.charClass = savedClass
+        this.predictor.setPosition(0, 0)
+        this.interpolator.clear()
+        this.knownAreaIds.clear()
+      }
       this.sessionLostValue = null
       this.lostFlow = null
       this.lastSyncedAreaId = 0
       this.audioRuntime.gameInit()
     }
+    this.rateLimiter.reset()
     this.gameAdapter = adapter
     this.disconnectReasonValue = null
     this.setPhase('ingame')
@@ -1162,6 +1190,16 @@ export class OnlineSession {
         }
       } catch {
         // Ignore close errors on leave
+      }
+      if (!flow) {
+        const savedName = this.world.self.name
+        const savedClass = this.world.self.charClass
+        this.world.reset()
+        this.world.self.name = savedName
+        this.world.self.charClass = savedClass
+        this.predictor.setPosition(0, 0)
+        this.interpolator.clear()
+        this.knownAreaIds.clear()
       }
     }
     this.gameAdapter = null
@@ -1441,17 +1479,31 @@ export class OnlineSession {
   // ─── Internal Error & Lifecycle Helpers ──────────────────────
 
   resolveWsBridgeBaseUrl(serverHost?: string): string {
-    const cleanHost = (serverHost || 'www.laiseek.xyz')
-      .trim()
+    const rawHost = (serverHost || 'www.laiseek.xyz').trim()
+    const explicitSchemeMatch = /^(wss?|https?):\/\//i.exec(rawHost)
+    const cleanHost = rawHost
       .replace(/^(wss?|https?):\/\//i, '')
       .replace(/\/.*$/, '')
-    const isLocalHost = cleanHost.startsWith('localhost') || cleanHost.startsWith('127.0.0.1')
-    const scheme =
-      !isLocalHost &&
-      (cleanHost === 'www.laiseek.xyz' ||
-        (typeof window !== 'undefined' && window.location?.protocol === 'https:'))
-        ? 'wss'
-        : 'ws'
+    const isLocalHost =
+      cleanHost === 'localhost' ||
+      cleanHost.startsWith('localhost:') ||
+      cleanHost === '127.0.0.1' ||
+      cleanHost.startsWith('127.0.0.1:') ||
+      cleanHost === '[::1]' ||
+      cleanHost.startsWith('[::1]:')
+    let scheme: 'wss' | 'ws'
+    if (explicitSchemeMatch) {
+      const proto = explicitSchemeMatch[1]!.toLowerCase()
+      scheme = proto === 'wss' || proto === 'https' ? 'wss' : 'ws'
+    } else {
+      // All remote servers (e.g. d2.laiseek.xyz, www.laiseek.xyz) use wss:// over TLS 443
+      // even when the web client itself is served from http://localhost:8080.
+      scheme =
+        !isLocalHost ||
+        (typeof window !== 'undefined' && window.location?.protocol === 'https:')
+          ? 'wss'
+          : 'ws'
+    }
     return `${scheme}://${cleanHost}/d2net`
   }
 

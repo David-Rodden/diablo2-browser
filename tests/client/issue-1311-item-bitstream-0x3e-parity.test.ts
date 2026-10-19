@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
 import { getCanonicalItemDataTables } from '../../src/client/world/item-tables-provider.ts'
+import {
+  onlineItemDataToUiInventoryItem,
+  resolveOnlineItemReqLevel,
+} from '../../src/common/items/item-bridge.ts'
 import { BitWriter } from '../../src/netproto/core/bit-writer.ts'
 import { decode0x3EUpdateItemStats } from '../../src/netproto/d2gs/s2c/stats.ts'
 import {
@@ -246,10 +250,22 @@ describe('Issue #1311: 1.13c item bitstream, poison compound stats, 0x3E UpdateI
     }
     const decodedTsc = decodeD2gsItemPacket(encodeD2gsItemPacket(compactTsc, tables), tables)
     expect(decodedTsc.magicSuffixId).toBe(0)
+    const uiTsc = onlineItemDataToUiInventoryItem(decodedTsc, undefined, undefined, 1)
+    expect(uiTsc.quality).toBe('normal')
+    expect(uiTsc.name).toBe('Scroll of Town Portal')
+    expect(uiTsc.nameZh).toBe('城镇传送卷轴')
+    expect(uiTsc.reqLevel).toBeUndefined()
+    expect(resolveOnlineItemReqLevel(decodedTsc)).toBe(0)
 
     const compactIsc: ItemData = { ...compactTsc, id: 502, itemId: 502, code: 'isc', rawCode: 'isc ' }
     const decodedIsc = decodeD2gsItemPacket(encodeD2gsItemPacket(compactIsc, tables), tables)
     expect(decodedIsc.magicSuffixId).toBe(1)
+    const uiIsc = onlineItemDataToUiInventoryItem(decodedIsc, undefined, undefined, 1)
+    expect(uiIsc.quality).toBe('normal')
+    expect(uiIsc.name).toBe('Scroll of Identify')
+    expect(uiIsc.nameZh).toBe('辨视卷轴')
+    expect(uiIsc.reqLevel).toBeUndefined()
+    expect(resolveOnlineItemReqLevel(decodedIsc)).toBe(0)
 
     const compactMss: ItemData = {
       ...compactTsc,

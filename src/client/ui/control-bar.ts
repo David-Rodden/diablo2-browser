@@ -22,7 +22,7 @@
 import type { D2FontRenderer } from './font.ts'
 import type { TblLang } from '../i18n/lang.ts'
 import { resolveTblKey } from '../../common/data/canonical-tbl-strings.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import { LevelPlusButton, LEVEL_BTN_CELL_SIZE } from './level-button.ts'
 
 export type MiniPanelAction =

@@ -716,6 +716,37 @@ export class D2DataRegistry {
     this.indexElemTypesAndEvents()
   }
 
+  get skills(): DataTable {
+    return this.skillsTable
+  }
+  get skillDesc(): DataTable {
+    return this.skillDescTable
+  }
+  get missiles(): DataTable {
+    return this.missilesTable
+  }
+  get states(): DataTable {
+    return this.statesTable
+  }
+  get itemStatCost(): DataTable {
+    return this.itemStatCostTable
+  }
+  get charStats(): DataTable {
+    return this.charStatsTable
+  }
+  get monStats(): DataTable {
+    return this.monStatsTable
+  }
+  get monStats2(): DataTable {
+    return this.monStats2Table
+  }
+  get overlay(): DataTable {
+    return this.overlayTable
+  }
+  get petType(): DataTable {
+    return this.petTypeTable
+  }
+
   private indexSkillDescs(): void {
     for (const row of this.skillDescTable.rows) {
       const key = textCell(row, 'skilldesc').toLowerCase()
