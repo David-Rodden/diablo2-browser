@@ -36,7 +36,8 @@ import {
   type UiInventoryItem,
 } from './inventory.ts'
 import { upgradeVerdict, type BuildProfile, type UpgradeVerdict } from '../../common/items/item-comparison.ts'
-import { XpRateTracker } from './xp-bar.ts'
+import { XpGainFeed, XpRateTracker } from './xp-bar.ts'
+import type { AutomapHudFootprint } from './minimap.ts'
 import { onlineItemDataToUiInventoryItem } from '../../common/items/item-bridge.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { groundLabelDetails, isLootHidden, type ItemInfoConfig } from './ground-item-info.ts'
@@ -498,6 +499,7 @@ export class HudManager {
   chatInputText = ''
   showXpBar = false
   readonly xpRate = new XpRateTracker()
+  readonly xpGains = new XpGainFeed()
   upgradeHints = false
   resolveGroundItem: ((unitId: number) => ItemData | undefined) | null = null
   resolveBuild: (() => BuildProfile) | null = null
@@ -844,7 +846,7 @@ export class HudManager {
       font: D2FontRenderer,
       logicalWidth: number,
       logicalHeight: number,
-    ) => number | null | void
+    ) => AutomapHudFootprint | null | void
     onCastTownPortal?: (source?: 'tbk' | 'tsc', item?: UiInventoryItem) => boolean | void
     onDropItemToGround?: (item: UiInventoryItem, mousePos?: { x: number; y: number }) => void
     onDropGoldToGround?: (amount: number, mousePos?: { x: number; y: number }) => void
@@ -866,7 +868,7 @@ export class HudManager {
         font: D2FontRenderer,
         logicalWidth: number,
         logicalHeight: number,
-      ) => number | null | void
+      ) => AutomapHudFootprint | null | void
       onCastTownPortal?: (source?: 'tbk' | 'tsc', item?: UiInventoryItem) => boolean | void
       onDropItemToGround?: (item: UiInventoryItem, mousePos?: { x: number; y: number }) => void
       onDropGoldToGround?: (amount: number, mousePos?: { x: number; y: number }) => void

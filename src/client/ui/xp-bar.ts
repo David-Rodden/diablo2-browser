@@ -9,6 +9,10 @@ const SAMPLE_EVERY_MS = 2_000
 const MIN_ELAPSED_MS = 5_000
 const MS_PER_HOUR = 3_600_000
 const LABEL_STYLE = { font: 'font8', align: 'center', shadow: true } as const
+const GAIN_LIFE_MS = 1800
+const GAIN_MERGE_MS = 250
+const GAIN_DRIFT = 40
+const GAIN_LINE = 16
 
 export interface XpBarState {
   readonly level: number
@@ -37,6 +41,48 @@ export class XpRateTracker {
     if (!first || !last || nowMs - first.atMs < MIN_ELAPSED_MS) return 0
     return ((last.xp - first.xp) * MS_PER_HOUR) / (nowMs - first.atMs)
   }
+}
+
+interface XpGain {
+  readonly amount: number
+  readonly atMs: number
+}
+
+export class XpGainFeed {
+  private lastXp: number | null = null
+  private gains: XpGain[] = []
+
+  record(xp: number, nowMs: number): void {
+    const gained = this.lastXp !== null && this.lastXp > 0 ? xp - this.lastXp : 0
+    this.lastXp = xp
+    const live = this.gains.filter((g) => nowMs - g.atMs < GAIN_LIFE_MS)
+    const last = live.at(-1)
+    this.gains = gained <= 0 ? live : last && nowMs - last.atMs < GAIN_MERGE_MS ? [...live.slice(0, -1), { ...last, amount: last.amount + gained }] : [...live, { amount: gained, atMs: nowMs }]
+  }
+
+  active(nowMs: number): readonly XpGain[] {
+    return this.gains.filter((g) => nowMs - g.atMs < GAIN_LIFE_MS)
+  }
+
+  isActive(nowMs: number): boolean {
+    return this.active(nowMs).length > 0
+  }
+}
+
+export const formatXpGain = (amount: number): string => `+${amount.toLocaleString('en-US')} xp`
+
+export function drawXpGains(ctx: CanvasRenderingContext2D, font: D2FontRenderer, feed: XpGainFeed, nowMs: number, rightX: number, topLimit: number): void {
+  const restY = topLimit + GAIN_LINE
+  const rows = [...feed.active(nowMs)].reverse().reduce<{ text: string; y: number; t: number }[]>((placed, g) => {
+    const t = (nowMs - g.atMs) / GAIN_LIFE_MS
+    return [...placed, { text: formatXpGain(g.amount), t, y: Math.min(restY + GAIN_DRIFT * (1 - t), (placed.at(-1)?.y ?? Infinity) - GAIN_LINE) }]
+  }, [])
+  ctx.save()
+  for (const { text, y, t } of rows.filter((r) => r.y >= restY)) {
+    ctx.globalAlpha = 1 - t * t
+    font.drawText(ctx, text, rightX, Math.round(y), { font: 'font16', color: 'white', align: 'right', shadow: true })
+  }
+  ctx.restore()
 }
 
 export const xpProgress = ({ xp, currentLevelXp, nextLevelXp }: XpBarState): number =>

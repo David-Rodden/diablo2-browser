@@ -24,7 +24,8 @@ import {
 } from './inventory.ts'
 import { requireTbl, type TblLang } from '../i18n/lang.ts'
 import { LineGlide } from './line-glide.ts'
-import { drawXpBar } from './xp-bar.ts'
+import { drawXpBar, drawXpGains } from './xp-bar.ts'
+import type { AutomapHudFootprint } from './minimap.ts'
 import { drawAutoCombatBadge } from './auto-combat-badge.ts'
 import { drawPotionShortageBadge } from './potion-shortage-badge.ts'
 import { drawUpgradeCrosses } from './upgrade-marker.ts'
@@ -68,7 +69,7 @@ interface HudRenderInternal {
       font: D2FontRenderer,
       logicalWidth: number,
       logicalHeight: number,
-    ) => number | null | void
+    ) => AutomapHudFootprint | null | void
   }
   syncResolutionMode(): boolean
   resolveLocalizedMercLabel(merc: any, lang?: TblLang): string
@@ -301,7 +302,7 @@ export function renderHudFrame(
   // 0. Automap 2D Text Overlay (Warp/Stash Font6 labels, NPC names, Top-Right Gold Font16 Level Name + Difficulty)
   ctx.translate(Math.round(offsetX * dpr), Math.round(offsetY * dpr))
   ctx.scale(uiScale * dpr, uiScale * dpr)
-  const areaTitleLeft = internal.callbacks.onRenderAutomapOverlay?.(ctx, hud.font, profile.width, profile.height) ?? profile.width
+  const automapFootprint = internal.callbacks.onRenderAutomapOverlay?.(ctx, hud.font, profile.width, profile.height) ?? null
 
   // 0b. Top-Left Mercenary Portrait & Life Bar (R3.3) + Summoned Minions + Party Mini-Portraits (R5.1)
   if (hud.leftPanel === 'none' && hud.showPartyPortraits !== false) {
@@ -701,10 +702,14 @@ export function renderHudFrame(
   const overlayLang = hud.lang === 'ENG' ? 'ENG' : 'CHI'
   if (hud.autoCombatBadge !== null) drawAutoCombatBadge(ctx, hud.font, hud.autoCombatBadge, barOffsetX, barOffsetY, overlayLang)
   if (hud.potionShortage !== null) drawPotionShortageBadge(ctx, hud.font, hud.potionShortage, barOffsetX, barOffsetY, overlayLang)
-  if (hud.showXpBar && hud.leftPanel === 'none' && hud.rightPanel === 'none' && !hud.worldPanels.escapeMenuOpen) {
+  if (hud.showXpBar) {
     const xpState = internal.buildControlBarState()
     hud.xpRate.record(xpState.xp, nowMs)
-    drawXpBar(ctx, hud.font, xpState, profile.width, overlayLang, { perHour: hud.xpRate.perHour(nowMs), mouseX: hud.mouseX, mouseY: hud.mouseY, rightLimit: areaTitleLeft })
+    hud.xpGains.record(xpState.xp, nowMs)
+    if (hud.leftPanel === 'none' && hud.rightPanel === 'none' && !hud.worldPanels.escapeMenuOpen) {
+      drawXpBar(ctx, hud.font, xpState, profile.width, overlayLang, { perHour: hud.xpRate.perHour(nowMs), mouseX: hud.mouseX, mouseY: hud.mouseY, rightLimit: automapFootprint?.titleLeft ?? profile.width })
+      drawXpGains(ctx, hud.font, hud.xpGains, nowMs, profile.width - 16, automapFootprint?.bottom ?? 0)
+    }
   }
 
   // 3..6. Bottom Control Panel, Globes, Belt, and Skill Hotkeys (translated by barOffsetX, barOffsetY)
@@ -1347,7 +1352,8 @@ const isSpeechAutoScrolling = (speech: HudManager['worldPanels']['npcSpeech']): 
 
 const isHudTextMoving = (hud: HudManager, nowMs: number): boolean =>
   isSpeechAutoScrolling(hud.worldPanels.npcSpeech) ||
-  chatOverlayGlides.get(hud)?.isMoving(nowMs) === true
+  chatOverlayGlides.get(hud)?.isMoving(nowMs) === true ||
+  hud.xpGains.isActive(nowMs)
 
 export function renderChatOverlay(
   hud: HudManager,

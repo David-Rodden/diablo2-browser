@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { D2_EXPERIENCE_TABLE_99 } from '../../src/common/skills/formulas.ts'
-import { XpRateTracker, drawXpBar, formatTimeToLevel, formatXpRate, xpBarLabel, xpProgress } from '../../src/client/ui/xp-bar.ts'
+import { XpGainFeed, XpRateTracker, drawXpBar, drawXpGains, formatTimeToLevel, formatXpRate, xpBarLabel, xpProgress } from '../../src/client/ui/xp-bar.ts'
 import type { D2FontRenderer } from '../../src/client/ui/font.ts'
 
 const at = (level: number, fraction: number) => {
@@ -78,5 +78,45 @@ describe('experience bar', () => {
     expect(drawn[2]!.text).toMatch(/until next level$/)
     expect(drawn[2]!.y).toBeGreaterThan(28)
   })
-})
 
+  it('floats each experience gain up from under the map and fades it out', () => {
+    const feed = new XpGainFeed()
+    feed.record(500, 0)
+    feed.record(500, 100)
+    expect(feed.isActive(100)).toBe(false)
+    feed.record(1_700, 200)
+    feed.record(1_800, 300)
+    expect(feed.active(300).map((g) => g.amount)).toEqual([1_300])
+    const draw = (nowMs: number) => {
+      const drawn: { text: string; y: number }[] = []
+      const ctx = { save() {}, restore() {}, globalAlpha: 1 } as unknown as CanvasRenderingContext2D
+      const font = { drawText: (_: unknown, text: string, _x: number, y: number) => void drawn.push({ text, y }) } as unknown as D2FontRenderer
+      drawXpGains(ctx, font, feed, nowMs, 784, 282)
+      return drawn
+    }
+    expect(draw(200)).toEqual([{ text: '+1,300 xp', y: 338 }])
+    expect(draw(1_100)[0]!.y).toBeLessThan(338)
+    expect(draw(1_100)[0]!.y).toBeGreaterThanOrEqual(298)
+    expect(feed.isActive(2_000)).toBe(false)
+  })
+
+  it('ignores the jump from an unloaded zero and experience losses', () => {
+    const feed = new XpGainFeed()
+    feed.record(0, 0)
+    feed.record(90_000, 100)
+    feed.record(80_000, 200)
+    expect(feed.isActive(200)).toBe(false)
+  })
+
+  it('keeps stacked gains below the map instead of pushing them onto it', () => {
+    const feed = new XpGainFeed()
+    feed.record(100, 0)
+    ;[300, 600, 900, 1_200].forEach((at, i) => feed.record(200 + i * 100, at))
+    const ys: number[] = []
+    const ctx = { save() {}, restore() {}, globalAlpha: 1 } as unknown as CanvasRenderingContext2D
+    const font = { drawText: (_: unknown, _t: string, _x: number, y: number) => void ys.push(y) } as unknown as D2FontRenderer
+    drawXpGains(ctx, font, feed, 1_200, 784, 282)
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(298)
+    expect(ys.every((y, i) => i === 0 || ys[i - 1]! - y >= 16)).toBe(true)
+  })
+})

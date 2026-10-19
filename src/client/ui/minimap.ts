@@ -254,6 +254,11 @@ export function computeAutomapRevealDistance(dx: number, dy: number): number {
   return Math.max(adx, ady) * 2 + Math.min(adx, ady)
 }
 
+export interface AutomapHudFootprint {
+  readonly titleLeft?: number
+  readonly bottom: number
+}
+
 export interface AutomapViewportMetrics {
   readonly bMinimap: boolean
   readonly divisor: 10 | 20
@@ -1936,7 +1941,7 @@ export class Minimap {
     font: D2FontRenderer,
     logicalWidth = 800,
     logicalHeight = 600,
-  ): number | null {
+  ): AutomapHudFootprint | null {
     if (!this.visible) return null
 
     const vp = this.lastRenderStats.viewport
@@ -1987,9 +1992,10 @@ export class Minimap {
           shadow: true,
         })
       }
-      return rightX - font.measureText(hudText.levelName, 'font16')
     }
-    return null
+    const titleBottom = hudText?.levelName ? (hudText.difficulty ? hudText.y2 : hudText.y1) + 4 : 0
+    const bottom = vp.bMinimap ? Math.round((vp.vpY + vp.vpH) * scaleY) : titleBottom
+    return hudText?.levelName ? { titleLeft: logicalWidth - 16 - font.measureText(hudText.levelName, 'font16'), bottom } : { bottom }
   }
 
   /**
