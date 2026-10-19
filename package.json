@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Web-native Diablo II engine: reads assets from a user-supplied classic MPQ. No game assets are bundled.",
   "scripts": {
+    "sync": "bash tools/sync-upstream.sh --merge",
     "bake": "tsx src/baker/cli.ts",
     "bake:verify": "tsx src/baker/cli.ts --verify",
     "verify:audio": "tsx tools/verify-audio.ts",
