@@ -8,14 +8,14 @@ import { join } from 'node:path'
 import { resolveSkillIcon, getAvailableSkillsForSide } from '../src/client/ui/hotkeys.ts'
 import { createDemoHotkeys } from './fixtures/hud-demo-state.ts'
 import { getAttackWeaponInfo, checkAmmunition, getSkillRange, type AttackWeaponInputItem } from '../src/common/skills/weapon-combat-meta.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
-import { GameEngine, type GameEngineOptions } from '../src/server/engine/engine.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
+import { GameEngine, type GameEngineOptions } from '../src/server/engine/game-engine.ts'
 import {
   computeEffectiveMonsterDefense,
   computeEffectiveMonsterMissileSpeed,
   tickMonsters,
   type Monster,
-} from '../src/server/engine/combat.ts'
+} from '../src/server/ai/monster-ai.ts'
 import { tickProjectiles } from '../src/server/skills/skills.ts'
 import { DEMO_SORCERESS_SKILLS } from './fixtures/demo-profile-data.ts'
 

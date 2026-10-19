@@ -38,7 +38,7 @@ import {
   type CursorFrameRect,
 } from '../../common/ui/pd2-hd-cursor.ts'
 import type { UiDataMode } from '../../common/ui/pd2-sgd2freeres.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import { drawImageWithEtherealAlpha } from './inventory.ts'
 
 export { BUYSELL_CURSOR_FRAMES, type BuySellCursorMode }

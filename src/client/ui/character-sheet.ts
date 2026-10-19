@@ -22,7 +22,7 @@ import type { BaseStatKey, CharacterAttributes } from '../../common/units/unit-t
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { getSkillName, getSkillTableMeta } from '../../common/skills/skills-meta.ts'
 import type { CombatDamageFormulaBreakdown } from '../ui-model/combat-stats.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 
 export type { BaseStatKey, CharacterAttributes }
 export type DamageHandKey = 'left' | 'right'

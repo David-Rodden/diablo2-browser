@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createWorld, damageMonster, tickCombat } from '../src/server/engine/combat.ts'
-import type { CombatOptions, CombatTerrain, MonsterPack, MonsterStats } from '../src/server/engine/combat.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
-import type { GameEngineOptions, WorldMapProvider } from '../src/server/engine/engine.ts'
+import { createWorld, damageMonster, tickCombat } from '../src/server/ai/monster-ai.ts'
+import type { CombatOptions, CombatTerrain, MonsterPack, MonsterStats } from '../src/server/ai/monster-ai.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
+import type { GameEngineOptions, WorldMapProvider } from '../src/server/engine/game-engine.ts'
 import { MonsterStreamingManager, distanceToRoom } from '../src/common/units/monster-streaming.ts'
 import type { StreamingRoomDef, StreamingRoomState } from '../src/common/units/monster-streaming.ts'
 

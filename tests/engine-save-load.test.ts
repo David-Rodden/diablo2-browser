@@ -14,8 +14,8 @@
  * makes them deterministic and instant.
  */
 import { describe, expect, it } from 'vitest'
-import { GameEngine } from '../src/server/engine/engine.ts'
-import type { EngineInput, GameEngineOptions, SnapshotStore, WorldMapProvider } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
+import type { EngineInput, GameEngineOptions, SnapshotStore, WorldMapProvider } from '../src/server/engine/game-engine.ts'
 
 /** Open ground. Collision has its own tests; this one is about persistence. */
 const openTerrain: WorldMapProvider = { widthPx: 2000, heightPx: 2000, overlap: () => 0 }

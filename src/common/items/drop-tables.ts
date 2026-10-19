@@ -305,11 +305,15 @@ export interface DropPipelineOptions {
   /** Top-level TreasureClass name (e.g. 'Act 1 H2H A', 'Act 1 Champ A'). */
   readonly tcName: string
   /** Monster level (or area level) used for group upgrade and ilvl. */
-  readonly nLevel: number
+  readonly nLevel?: number | undefined
+  /** Alias for `nLevel` used by 1-arg callers. */
+  readonly mlvl?: number | undefined
   /** Monster type: 1 = Normal, 2 = Champion, 3 = Unique, 4 = Boss / Quest. */
   readonly monsterType?: number | undefined
   /** Monster drop RNG instance or seed. */
   readonly monsterRng?: D2Rng | Rng | number | undefined
+  /** Alias for `monsterRng` used by 1-arg callers. */
+  readonly seed?: D2Rng | Rng | number | undefined
   /** Player Magic Find percentage (e.g. 50 = +50% MF). */
   readonly playerMf?: number | undefined
   /** Alias for playerMf used by parity test suites. */
@@ -332,8 +336,10 @@ export interface DropPipelineOptions {
   readonly isExpansion?: boolean | undefined
   /** Maximum items emitted per drop roll (default: MAX_DROPPED_ITEMS = 6). */
   readonly maxDrops?: number | undefined
-  /** Parsed drop tables. */
-  readonly dropTables: DropTables
+  /** Parsed drop tables (defaults to `getEmbeddedDropTables()` when omitted in 1-arg form). */
+  readonly dropTables?: DropTables | undefined
+  /** Alias for `dropTables` used by 1-arg callers. */
+  readonly registry?: DropTables | object | undefined
 }
 
 /**
@@ -915,6 +921,7 @@ export function createDroppedItem(
     suffix,
     level: options.ilvl,
     ilvl: options.ilvl,
+    itemLevel: options.ilvl,
     name,
     nameZh,
     stats,
@@ -953,17 +960,17 @@ export function createDroppedItem(
  */
 export function executeDropPipeline(
   tablesOrOptions: DropTables | DropPipelineOptions,
-  maybeOptions?: Omit<DropPipelineOptions, 'dropTables'>,
+  maybeOptions?: Omit<DropPipelineOptions, 'dropTables'> | D2Rng | Rng | number,
 ): Item[] {
   const options: DropPipelineOptions =
     'tcTable' in tablesOrOptions
-      ? { ...maybeOptions!, dropTables: tablesOrOptions }
-      : tablesOrOptions
+      ? { ...(maybeOptions as Omit<DropPipelineOptions, 'dropTables'>), dropTables: tablesOrOptions }
+      : maybeOptions instanceof D2Rng || maybeOptions instanceof Rng || typeof maybeOptions === 'number'
+        ? { ...tablesOrOptions, monsterRng: tablesOrOptions.monsterRng ?? tablesOrOptions.seed ?? maybeOptions }
+        : tablesOrOptions
   const {
     tcName,
-    nLevel,
     monsterType = 1,
-    dropTables,
     difficulty = 'normal',
     playerGf = 0,
     isBoss = false,
@@ -971,6 +978,14 @@ export function executeDropPipeline(
     partyPlayers = 1,
     isExpansion = true,
   } = options
+  const nLevel = options.nLevel ?? options.mlvl ?? 1
+  const rawDropTables =
+    options.dropTables ??
+    (options.registry && 'tcTable' in options.registry
+      ? (options.registry as unknown as DropTables)
+      : undefined)
+  const dropTables = rawDropTables ?? getEmbeddedDropTables()
+  const rawMonsterRng = options.monsterRng ?? options.seed
   const playerMf = options.playerMf ?? options.magicFind ?? 0
   const gamePlayers = options.gamePlayers ?? options.playerCount ?? 1
   const maxDrops = options.maxDrops ?? MAX_DROPPED_ITEMS
@@ -1015,10 +1030,10 @@ export function executeDropPipeline(
 
   // 2. Setup RNG
   let rng: D2Rng
-  if (options.monsterRng instanceof D2Rng) {
-    rng = options.monsterRng
-  } else if (typeof options.monsterRng === 'number') {
-    rng = new D2Rng(options.monsterRng >>> 0)
+  if (rawMonsterRng instanceof D2Rng) {
+    rng = rawMonsterRng
+  } else if (typeof rawMonsterRng === 'number') {
+    rng = new D2Rng(rawMonsterRng >>> 0)
   } else {
     rng = new D2Rng(0x13579bdf)
   }
@@ -1083,7 +1098,7 @@ export function executeDropPipeline(
         goldAmount = Math.max(1, Math.floor((goldAmount * (100 + playerGf)) / 100))
       }
 
-      drops.push(goldItem(goldAmount))
+      drops.push({ ...goldItem(goldAmount), ilvl: effectiveIlvl, itemLevel: effectiveIlvl })
       continue
     }
 

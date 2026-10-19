@@ -27,7 +27,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { GameEngine, type GameEngineOptions } from '../src/server/engine/engine.ts'
+import { GameEngine, type GameEngineOptions } from '../src/server/engine/game-engine.ts'
 import { getEmbeddedDropTables } from '../src/common/items/embedded-drop-tables.ts'
 import { DEMO_EXPERIENCE } from '../src/common/data/demo-data.ts'
 import { getMonsterTreasureClass } from '../src/common/units/monsters-data.ts'
@@ -41,7 +41,7 @@ import {
   type EquipSlotId,
 } from '../src/client/ui/inventory.ts'
 import { BAKED_UI_MANIFEST } from '../src/common/items/baked-ui-meta.ts'
-import type { Monster } from '../src/server/engine/combat.ts'
+import type { Monster } from '../src/server/ai/monster-ai.ts'
 import { createDemoInventory } from './fixtures/hud-demo-state.ts'
 
 describe('Milestone M11.5 (Issue #408) — Monster Drop End-to-End Integration Suite', () => {

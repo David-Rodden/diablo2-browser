@@ -105,6 +105,7 @@ export function decode0x0BGameHandshake(pkt: Uint8Array): ServerEvent {
   const id = r.u32LE()
   return {
     type: 'UnitAssign',
+    classId: -1,
     unit: {
       unitType,
       id,

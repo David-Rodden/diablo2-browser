@@ -15,7 +15,7 @@ import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { buildTooltipViewModel, calculateManaCost, createInitialState, type TooltipViewModel } from '../../common/skills/skill-calc-engine.ts'
 import { CLASS_SKILL_TREES, formatDamageTypeEn, type FormattedTooltipLine } from './skill-tree-panel.ts'
 import type { TblLang } from '../i18n/lang.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 
 import {
   PASSIVE_SKILL_IDS,

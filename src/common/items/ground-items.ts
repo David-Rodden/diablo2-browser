@@ -1719,3 +1719,72 @@ export function layoutGroundItemLabels(
   return placed
 }
 
+export interface WorldCellOriginProvider {
+  readonly originX?: number | undefined
+  readonly originY?: number | undefined
+  readonly grid?: {
+    readonly originX?: number | undefined
+    readonly originY?: number | undefined
+  } | undefined
+  readonly worldToGrid?: ((wx: number, wy: number) => { cellX: number; cellY: number }) | undefined
+}
+
+/**
+ * Project world pixel coordinates back to map cell coordinates.
+ *
+ * Inverts the 2:1 isometric diamond projection:
+ * px = worldX - originX, py = worldY - originY
+ * cellX = floor((px / 80 + py / 40) / 2)
+ * cellY = floor((py / 40 - px / 80) / 2)
+ */
+export function worldToCell(
+  terrain: WorldCellOriginProvider | Record<string, any> | null | undefined,
+  worldX: number,
+  worldY: number,
+): { cellX: number; cellY: number; cx: number; cy: number }
+export function worldToCell(
+  worldX: number,
+  worldY: number,
+): { cellX: number; cellY: number; cx: number; cy: number }
+export function worldToCell(
+  terrainOrWx: WorldCellOriginProvider | Record<string, any> | number | null | undefined,
+  worldX: number,
+  worldY?: number,
+): { cellX: number; cellY: number; cx: number; cy: number } {
+  if (typeof terrainOrWx === 'number') {
+    const wx = terrainOrWx
+    const wy = worldX
+    const cellX = Math.floor((wx / ORTHO_CELL_WIDTH + wy / ORTHO_CELL_HEIGHT) / 2)
+    const cellY = Math.floor((wy / ORTHO_CELL_HEIGHT - wx / ORTHO_CELL_WIDTH) / 2)
+    return {
+      cellX,
+      cellY,
+      cx: Math.floor(wx / ORTHO_CELL_WIDTH),
+      cy: Math.floor(wy / ORTHO_CELL_HEIGHT),
+    }
+  }
+  const wx = worldX
+  const wy = worldY ?? 0
+  if (terrainOrWx && typeof (terrainOrWx as any).worldToGrid === 'function') {
+    const res = (terrainOrWx as any).worldToGrid(wx, wy)
+    return {
+      cellX: res.cellX,
+      cellY: res.cellY,
+      cx: res.cellX,
+      cy: res.cellY,
+    }
+  }
+  const originX = (terrainOrWx as any)?.originX ?? (terrainOrWx as any)?.grid?.originX ?? 0
+  const originY = (terrainOrWx as any)?.originY ?? (terrainOrWx as any)?.grid?.originY ?? 0
+  const px = wx - originX
+  const py = wy - originY
+  const cellX = Math.floor((px / ORTHO_CELL_WIDTH + py / ORTHO_CELL_HEIGHT) / 2)
+  const cellY = Math.floor((py / ORTHO_CELL_HEIGHT - px / ORTHO_CELL_WIDTH) / 2)
+  return {
+    cellX,
+    cellY,
+    cx: Math.floor(px / ORTHO_CELL_WIDTH),
+    cy: Math.floor(py / ORTHO_CELL_HEIGHT),
+  }
+}
+

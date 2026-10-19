@@ -30,7 +30,7 @@ import {
 } from '../../src/client/render/overlays-meta.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
 import { buildSceneDrawables as buildUnitDrawables } from '../../src/client/view/unit-drawables.ts'
-import { createWorld, damageMonster } from '../../src/server/engine/combat.ts'
+import { createWorld, damageMonster } from '../../src/server/ai/monster-ai.ts'
 
 describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () => {
   describe('1. Asset Pipeline: Authentic MPQ Missiles, Overlays & Maggot (MA) Registration', () => {

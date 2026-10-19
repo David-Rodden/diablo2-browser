@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ClientWorld } from '../src/client/world/client-world.ts'
 import { getMissileTxtData } from '../src/common/skills/missiles-data.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
 
 describe('VFX-B15-p3 (#1160, #1161): Assassin Blade Fury (#266) & Blade Shield (#277) 1.13c parity', () => {
   describe('#1160 (B15-13): Blade Fury (#266) client bladefragment2 & server bladefragment1', () => {

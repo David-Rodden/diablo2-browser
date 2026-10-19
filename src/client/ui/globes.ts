@@ -8,7 +8,7 @@
 
 import type { D2FontRenderer } from './font.ts'
 import type { TblLang } from '../i18n/lang.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import { resolveTblKey } from '../../common/data/canonical-tbl-strings.ts'
 
 export interface GlobeState {

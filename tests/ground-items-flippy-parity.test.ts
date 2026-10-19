@@ -3,7 +3,7 @@ import { resolveGroundItemSpriteRect } from '../src/client/ui/inventory.ts'
 import { BAKED_UI_MANIFEST } from '../src/common/items/baked-ui-meta.ts'
 import type { GroundItemEntity } from '../src/common/items/ground-items.ts'
 import type { SpriteRenderer } from '../src/client/render/renderer.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 
 describe('Authentic Diablo II v1.13c Ground Items Flippy Parity', () => {
   describe('1. Flippy File Resolution Parity', () => {

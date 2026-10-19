@@ -21,7 +21,7 @@ import {
   allocatePoint,
   calculateSynergyMultiplier,
 } from '../src/common/skills/skill-tree.ts'
-import type { CombatPlayer } from '../src/server/engine/combat.ts'
+import type { CombatPlayer } from '../src/server/ai/monster-ai.ts'
 
 /**
  * Helper to construct a standard combat player for testing.

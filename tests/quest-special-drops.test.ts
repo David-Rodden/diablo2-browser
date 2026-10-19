@@ -25,7 +25,7 @@ import {
   rollTreasureClass,
 } from '../src/common/items/treasure-engine.ts'
 import { D2Rng } from '../src/common/rng/d2-rng.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 import { QuestLog } from '../src/common/world/quests.ts'
 import { resolveItemQualityString } from '../src/common/items/ground-items.ts'
 

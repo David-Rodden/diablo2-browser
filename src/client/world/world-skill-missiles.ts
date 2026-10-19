@@ -74,7 +74,7 @@ import {
 } from '../audio/d2gs-play-sound-113c.ts'
 import { OVERLAY_TXT_ROWS } from '../render/overlay-txt-rows.ts'
 import { STATE_OVERLAYS } from '../render/overlays-meta.ts'
-import { reportMissingArt } from '../scene/missing-art.ts'
+import { reportMissingArt } from '../../client/scene/missing-art.ts'
 import { syncBoneArmorOverlays113c } from './bone-armor-overlays-113c.ts'
 import { catapultBallTraj3d } from './boss-death-cltdo-113c.ts'
 import { ClientUnit, type ClientUnitOverlay, type UnitCastState } from './client-unit.ts'

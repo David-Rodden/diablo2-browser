@@ -10,6 +10,7 @@ import type { ByteStream, CloseReason } from '../transport/byte-stream.ts'
 import { encodeTsFrame, TsFramer } from './framing.ts'
 
 export class TsServerAdapter implements GameServerAdapter {
+  readonly kind = 'ts' as const
   private readonly stream: ByteStream
   private readonly framer = new TsFramer()
   private readonly eventEmitter = new Emitter<ServerEvent>()
@@ -50,6 +51,9 @@ export class TsServerAdapter implements GameServerAdapter {
   }
 
   send(cmd: ClientCommand): void {
+    if (this.stateValue === 'closed' || (this.stream as { readonly isClosed?: boolean }).isClosed) {
+      return
+    }
     const frame = encodeTsFrame(cmd)
     this.bytesOut += frame.byteLength
     this.packetsOut++
@@ -63,10 +67,16 @@ export class TsServerAdapter implements GameServerAdapter {
       bytesOut: this.bytesOut,
       packetsIn: this.packetsIn,
       packetsOut: this.packetsOut,
+      packetsReceived: this.packetsIn,
+      packetsSent: this.packetsOut,
       unknownPackets: 0,
       opaquePackets: 0,
       protocolErrors: 0,
     }
+  }
+
+  getStats(): GameServerStats {
+    return this.stats
   }
 
   leave(): void {
@@ -78,3 +88,6 @@ export class TsServerAdapter implements GameServerAdapter {
     this.leave()
   }
 }
+
+export { TsServerAdapter as TsClientAdapter }
+

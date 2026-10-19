@@ -349,52 +349,146 @@ export const MONSTER_MODE_MISSILES_BY_ID_113C: Readonly<Record<string, MonsterMo
  * - `11` (`MONMODE_SKILL4` / `S4`) -> `MissS4`
  * - `14` (`MONMODE_SEQUENCE` / `SQ`) -> `MissSQ`
  */
-export function getMonsterModeMissile113c(classId: number, mode: number): string | undefined {
-  const entry = MONSTER_MODE_MISSILES_113C[classId]
-  if (!entry) return undefined
-  switch (mode) {
-    case 4:
+function resolveModeMissileFromEntry(
+  entry: MonsterModeMissiles113c,
+  mode: number | string,
+): string | undefined {
+  if (typeof mode === 'number') {
+    switch (mode) {
+      case 4:
+        return entry.A1
+      case 5:
+        return entry.A2
+      case 7:
+        return entry.C
+      case 8:
+        return entry.S1
+      case 9:
+        return entry.S2
+      case 10:
+        return entry.S3
+      case 11:
+        return entry.S4
+      case 14:
+        return entry.SQ
+      default:
+        return undefined
+    }
+  }
+  const normalized = mode.trim().toUpperCase()
+  switch (normalized) {
+    case 'A1':
+    case 'MISSA1':
+    case '4':
       return entry.A1
-    case 5:
+    case 'A2':
+    case 'MISSA2':
+    case '5':
       return entry.A2
-    case 7:
+    case 'C':
+    case 'SC':
+    case 'MISSC':
+    case '7':
       return entry.C
-    case 8:
+    case 'S1':
+    case 'MISSS1':
+    case '8':
       return entry.S1
-    case 9:
+    case 'S2':
+    case 'MISSS2':
+    case '9':
       return entry.S2
-    case 10:
+    case 'S3':
+    case 'MISSS3':
+    case '10':
       return entry.S3
-    case 11:
+    case 'S4':
+    case 'MISSS4':
+    case '11':
       return entry.S4
-    case 14:
+    case 'SQ':
+    case 'MISSSQ':
+    case '14':
       return entry.SQ
     default:
       return undefined
   }
 }
 
-export function getMonsterModeMissileById113c(monId: string, mode: number): string | undefined {
-  const entry = MONSTER_MODE_MISSILES_BY_ID_113C[monId.trim().toLowerCase()]
-  if (!entry) return undefined
-  switch (mode) {
-    case 4:
-      return entry.A1
-    case 5:
-      return entry.A2
-    case 7:
-      return entry.C
-    case 8:
-      return entry.S1
-    case 9:
-      return entry.S2
-    case 10:
-      return entry.S3
-    case 11:
-      return entry.S4
-    case 14:
-      return entry.SQ
-    default:
-      return undefined
+const MONSTER_AI_MODE_MISSILE_FALLBACKS_113C: Readonly<Record<number, MonsterModeMissiles113c>> = Object.freeze({
+  63: Object.freeze({ A1: 'quill1', A2: 'spike1' }),
+  64: Object.freeze({ A1: 'quill1', A2: 'spike2' }),
+  65: Object.freeze({ A1: 'quill1', A2: 'spike3' }),
+  66: Object.freeze({ A1: 'quill1', A2: 'spike4' }),
+  67: Object.freeze({ A1: 'quill1', A2: 'spike5' }),
+  122: Object.freeze({ A1: 'javelin1', A2: 'javelin1' }),
+  123: Object.freeze({ A1: 'javelin1', A2: 'javelin1' }),
+  124: Object.freeze({ A1: 'javelin1', A2: 'javelin1' }),
+  125: Object.freeze({ A1: 'javelin1', A2: 'javelin1' }),
+})
+
+const MONSTER_AI_MODE_MISSILE_FALLBACKS_BY_ID_113C: Readonly<Record<string, MonsterModeMissiles113c>> = Object.freeze({
+  quillrat1: MONSTER_AI_MODE_MISSILE_FALLBACKS_113C[63]!,
+  quillrat2: MONSTER_AI_MODE_MISSILE_FALLBACKS_113C[64]!,
+  quillrat3: MONSTER_AI_MODE_MISSILE_FALLBACKS_113C[65]!,
+  quillrat4: MONSTER_AI_MODE_MISSILE_FALLBACKS_113C[66]!,
+  quillrat5: MONSTER_AI_MODE_MISSILE_FALLBACKS_113C[67]!,
+  slinger1: Object.freeze({ A1: 'pantherjav1', A2: 'javelin1' }),
+  slinger2: Object.freeze({ A1: 'pantherjav2', A2: 'javelin1' }),
+  slinger3: Object.freeze({ A1: 'pantherjav3', A2: 'javelin1' }),
+  slinger4: Object.freeze({ A1: 'pantherjav4', A2: 'javelin1' }),
+})
+
+export function getMonsterModeMissile113c(
+  classIdOrId: number | string | undefined | null,
+  mode: number | string | undefined | null,
+): string | undefined {
+  if (classIdOrId === undefined || classIdOrId === null || mode === undefined || mode === null) {
+    return undefined
   }
+  const isNum = typeof classIdOrId === 'number'
+  const normalizedId = isNum ? '' : String(classIdOrId).trim().toLowerCase()
+  const entry = isNum
+    ? MONSTER_MODE_MISSILES_113C[classIdOrId]
+    : MONSTER_MODE_MISSILES_BY_ID_113C[normalizedId]
+  const resolved = entry ? resolveModeMissileFromEntry(entry, mode) : undefined
+  if (resolved !== undefined) return resolved
+  if (typeof mode === 'string') {
+    const fallbackEntry = isNum
+      ? MONSTER_AI_MODE_MISSILE_FALLBACKS_113C[classIdOrId]
+      : MONSTER_AI_MODE_MISSILE_FALLBACKS_BY_ID_113C[normalizedId]
+    if (fallbackEntry) {
+      return resolveModeMissileFromEntry(fallbackEntry, mode)
+    }
+    if (entry) {
+      const upper = mode.trim().toUpperCase()
+      if ((upper === 'A1' || upper === 'MISSA1') && entry.A2 !== undefined) {
+        return entry.A2
+      }
+      if ((upper === 'A2' || upper === 'MISSA2') && entry.A1 !== undefined) {
+        return entry.A1
+      }
+    }
+  }
+  return undefined
+}
+
+export function getMonsterModeMissileById113c(
+  monId: string | undefined | null,
+  mode: number | string | undefined | null,
+): string | undefined {
+  if (monId === undefined || monId === null || mode === undefined || mode === null) {
+    return undefined
+  }
+  const normalizedId = String(monId).trim().toLowerCase()
+  const entry = MONSTER_MODE_MISSILES_BY_ID_113C[normalizedId]
+  const resolved = entry ? resolveModeMissileFromEntry(entry, mode) : undefined
+  if (resolved !== undefined) return resolved
+  if (typeof mode === 'string') {
+    const fallbackEntry = MONSTER_AI_MODE_MISSILE_FALLBACKS_BY_ID_113C[normalizedId]
+    if (fallbackEntry) {
+      return resolveModeMissileFromEntry(fallbackEntry, mode)
+    }
+  }
+  return undefined
 }

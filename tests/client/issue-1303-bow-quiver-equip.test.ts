@@ -14,8 +14,8 @@ import {
 } from '../../src/client/ui/inventory.ts'
 import { forwardInventoryPanelClick } from '../../src/client/ui/hud-input-router.ts'
 import { getEmbeddedDropTables } from '../../src/common/items/embedded-drop-tables.ts'
-import { executeNormalAttack } from '../../src/server/scene/weapon-combat.ts'
-import { GameEngine } from '../../src/server/engine/engine.ts'
+import { executeNormalAttack } from '../../src/server/engine/combat-pipeline.ts'
+import { GameEngine } from '../../src/server/engine/game-engine.ts'
 
 function makeUiItemFromCode(code: string, id = `item-${code}`): UiInventoryItem {
   const tables = getEmbeddedDropTables()

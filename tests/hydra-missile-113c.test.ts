@@ -38,8 +38,8 @@ import {
   MISSILE_METAS,
 } from '../src/client/render/missiles-meta.ts'
 import { getSkillRange, getSkillMana } from '../src/common/skills/weapon-combat-meta.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 
 describe('[Skill #062] Hydra — 7-Dimensional 1.13c Verification Suite (Issue #399)', () => {
   const missilesTxtPath = path.resolve(__dirname, '../samples/fixtures/data/global/excel/Missiles.txt')

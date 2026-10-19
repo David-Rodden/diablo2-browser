@@ -38,7 +38,7 @@ describe('monster-art', () => {
   })
 
   it('calculates 8-direction facing correctly from dx, dy in combat.ts', async () => {
-    const { facingOf } = await import('../src/server/engine/combat.ts')
+    const { facingOf } = await import('../src/server/ai/monster-ai.ts')
     // 0: South (dx=0, dy>0)
     expect(facingOf(0, 10)).toBe(0)
     // 1: South-West (dx<0, dy>0)

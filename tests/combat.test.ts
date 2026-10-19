@@ -15,8 +15,8 @@ import * as fs from 'fs'
 import {
   createWorld, experienceTable, monsterStatsFromRow, monsterStatsFromTable,
   spawnMonsters, tickCombat,
-} from '../src/server/engine/combat.ts'
-import type { CombatOptions, CombatWorld, MonsterStats } from '../src/server/engine/combat.ts'
+} from '../src/server/ai/monster-ai.ts'
+import type { CombatOptions, CombatWorld, MonsterStats } from '../src/server/ai/monster-ai.ts'
 import { parseTable, numberCell, findRow } from '../src/common/items/tables.ts'
 const isSkip = false && !fs.existsSync('samples/d2');
 const _results: any[] = [];

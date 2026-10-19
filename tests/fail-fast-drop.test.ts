@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { getEmbeddedDropTables } from '../src/common/items/embedded-drop-tables.ts'
 import * as dropPipeline from '../src/common/items/drop-tables.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 import type { MonsterKind } from '../src/common/units/monsters-data.ts'
 
 describe('Fail-Fast Drop Resolution & Elimination of Permissive Fallbacks (Issue #413)', () => {

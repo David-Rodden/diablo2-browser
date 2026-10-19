@@ -72,9 +72,63 @@
  */
 import type { D2Table } from '../world/acts.ts'
 import { cell, parseTable } from '../world/acts.ts'
-import type { MonsterPack, MonsterStats } from './unit-types.ts'
+import type {
+  MonsterDifficultyStats,
+  MonsterElementalAttack,
+  MonsterModeMissiles,
+  MonsterPack,
+  MonsterSkillEntry,
+  MonsterStats,
+} from './unit-types.ts'
 import { Rng } from '../rng/d2-rng.ts'
 import { getDefaultTblLang as getTblLang, lookupTbl, type TblLang } from '../formats/tbl.ts'
+import {
+  MONAI_113C_ROWS,
+  MONLVL_113C_ROWS,
+  MONSTATS_113C_ROWS,
+  MONUMOD_113C_CONSTANTS,
+  MONUMOD_113C_ROWS,
+  SUPERUNIQUES_113C_ROWS,
+  type MonAi113cRow,
+  type MonLvl113cRow,
+  type MonStats113cAttackRow,
+  type MonStats113cDifficultyVector,
+  type MonStats113cElementalAttackRow,
+  type MonStats113cRow,
+  type MonStats113cSkillRow,
+  type MonUMod113cConstants,
+  type MonUMod113cRow,
+  type SuperUnique113cRow,
+  type SuperUnique113cTc,
+} from './monstats-113c-data.ts'
+import {
+  MONSTER_MODE_MISSILES_113C,
+  getMonsterModeMissile113c,
+  type MonsterModeMissiles113c,
+} from './monster-mode-missiles-113c.ts'
+
+export {
+  MONAI_113C_ROWS,
+  MONLVL_113C_ROWS,
+  MONSTATS_113C_ROWS,
+  MONSTER_MODE_MISSILES_113C,
+  MONUMOD_113C_CONSTANTS,
+  MONUMOD_113C_ROWS,
+  SUPERUNIQUES_113C_ROWS,
+  getMonsterModeMissile113c,
+  type MonAi113cRow,
+  type MonLvl113cRow,
+  type MonStats113cAttackRow,
+  type MonStats113cDifficultyVector,
+  type MonStats113cElementalAttackRow,
+  type MonStats113cRow,
+  type MonStats113cSkillRow,
+  type MonUMod113cConstants,
+  type MonUMod113cRow,
+  type MonsterModeMissiles113c,
+  type SuperUnique113cRow,
+  type SuperUnique113cTc,
+}
 
 /** Which difficulty a number is being read for. */
 export type Difficulty = 'normal' | 'nightmare' | 'hell'
@@ -131,6 +185,14 @@ export interface MonsterAttack {
   readonly maxDamage: number
   /** `A1TH` — attack rating, used by M9's to-hit formula. */
   readonly toHit: number
+  /** Alias for `minDamage` in 1.13c data contract. */
+  readonly min?: number | undefined
+  /** Alias for `maxDamage` in 1.13c data contract. */
+  readonly max?: number | undefined
+  /** `A1Move` / `A2Move` / `S1Move`. */
+  readonly move?: number | undefined
+  /** Mode-bound missile (`MissA1` / `MissA2` / `MissS1`). */
+  readonly missile?: string | undefined
 }
 
 /** The six damage types a monster resists, as percentages. */
@@ -151,23 +213,19 @@ export interface MonsterResistances {
 }
 
 /**
- * One row of `MonStats.txt`, with the columns this project uses.
- *
- * Deliberately not all 255: the omitted ones are skills, sounds, overlays and
- * the client-side animation hints, which belong to later milestones. Adding a
- * field here is cheap; guessing what an unread column means is not.
+ * One row of `MonStats.txt` joined with `MonStats2.txt`.
  */
 export interface MonsterKind {
   /** `Id` — the key every other table refers to it by. */
   readonly id: string
+  /** `hcIdx` — 0-based `MonStats.txt` row index (`0..733`). */
+  readonly hcIdx?: number | undefined
   /** `BaseId` — the family head; `fallen2` and `fallen3` both base on `fallen1`. */
   readonly baseId: string
+  /** `NextInClass` — next monster ID in the same sub-family. */
+  readonly nextInClass?: string | undefined
   /**
    * `NameStr` — a **`string.tbl` key**, not display text.
-   *
-   * `fallen1` is `"Fallen"` and happens to read like a name, but `corruptrogue1`
-   * is `"DarkHunter"`, which is the key for 「黑暗猎手」. Resolving these is the
-   * localisation work tracked separately.
    */
   readonly nameKey: string
   /** `DescStr` — a `string.tbl` key for special monster ability subtext (e.g. `"raises Fallen"`), or `""`. */
@@ -176,8 +234,10 @@ export interface MonsterKind {
   readonly code: string
   /** `MonType` — family, for immunities and skill counters (`MonType.txt`). */
   readonly monType: string
-  /** `AI` — behaviour name (`MonAi.txt`). Not yet interpreted. */
+  /** `AI` — behaviour name (`MonAi.txt`). */
   readonly ai: string
+  /** `MonAi.txt` row index (`0..147`). */
+  readonly aiId?: number | undefined
   /** `enabled` — rows that are off are development leftovers. */
   readonly enabled: boolean
   /** `isSpawn` — whether the level populator may place it at all. */
@@ -191,6 +251,8 @@ export interface MonsterKind {
   readonly isMelee: boolean
   /** `rangedtype` — uses a missile attack. */
   readonly ranged: boolean
+  /** Alias for `ranged`. */
+  readonly isRanged?: boolean | undefined
   /** `npc` — a town character, never a wild spawn. */
   readonly npc: boolean
   /** `interact` — can be talked to. */
@@ -199,50 +261,118 @@ export interface MonsterKind {
   readonly inTown: boolean
   /** `lUndead` or `hUndead` — whether this monster is Undead (`0x6FD62B50`). */
   readonly isUndead?: boolean
+  /** `lUndead` — low undead (resurrectable). */
+  readonly lUndead?: boolean | undefined
+  readonly isLowUndead?: boolean | undefined
+  /** `hUndead` — high undead / caster undead. */
+  readonly hUndead?: boolean | undefined
+  readonly isHighUndead?: boolean | undefined
   /** `demon` — whether this monster is a Demon (`0x6FD62BA0`). */
   readonly isDemon?: boolean
+  /** Alias for `isDemon`. */
+  readonly demon?: boolean | undefined
   /** `boss` — a boss, excluded from ordinary population (`isBoss` alias included for parity). */
   readonly boss: boolean
   readonly isBoss?: boolean
+  /** `primeevil` — Act boss flag (+300% damage to Mercs/Pets). */
+  readonly primeevil?: boolean | undefined
+  /** Alias for `primeevil`. */
+  readonly isPrimeEvil?: boolean | undefined
   /** `noRatio` — summons/pets/traps, excluded from ratio scaling and TC upgrading. */
   readonly noRatio?: boolean
   /** `killable` — some scenery that merely looks alive. */
   readonly killable: boolean
+  /** Alias for `killable`. */
+  readonly isKillable?: boolean | undefined
+  /** `flying` — bypasses ground walkability obstacles. */
+  readonly isFlying?: boolean | undefined
+  readonly flying?: boolean | undefined
+  /** `opendoors` — whether AI can open closed doors. */
+  readonly canOpenDoors?: boolean | undefined
+  readonly opendoors?: boolean | undefined
+  /** `neverCount` — excluded from clear-area quest counters. */
+  readonly neverCount?: boolean | undefined
+  /** `petIgnore` — ignored by player pets/mercenaries unless directly targeted. */
+  readonly petIgnore?: boolean | undefined
+  /** `deathDmg` — triggers death explosion on `MONMODE_DEATH` (e.g. Bone Fetish). */
+  readonly deathDmg?: boolean | undefined
   /**
    * `Rarity` — relative weight when the level picks which types to use.
-   *
-   * Not a percentage: it is a weight within the level's own pool, so a `2`
-   * against a `1` is twice as likely to be chosen.
    */
   readonly rarity: number
   /** `MinGrp` — smallest pack this monster appears in. */
   readonly minGroup: number
+  readonly minGrp?: number | undefined
   /** `MaxGrp` — largest pack. */
   readonly maxGroup: number
+  readonly maxGrp?: number | undefined
+  /** `PartyMin` — minimum accompanying minion party count. */
+  readonly partyMin?: number | undefined
+  /** `PartyMax` — maximum accompanying minion party count. */
+  readonly partyMax?: number | undefined
   /** `Level`, `Level(N)`, `Level(H)` — its level per difficulty. */
   readonly level: readonly [number, number, number]
+  /** `Level`, `Level(N)`, `Level(H)` as `{ normal, nightmare, hell }`. */
+  readonly baseLevel?: MonsterDifficultyStats<number> | undefined
   /** `Velocity` — walking speed, in the table's own units. */
   readonly velocity: number
   /** `Run` — running speed, same units. */
   readonly runVelocity: number
   /** `threat` — AI aggression weight. Almost always 10; not a radius. */
   readonly threat: number
+  /** `aidel` — frame delay between AI decisions for active difficulty. */
+  readonly aiDelay?: number | undefined
   /** `aidist` — AI engagement distance, in sub-tiles. Frequently 0. */
   readonly aiDistance: number
+  /** Alias for `aiDistance` (`aidist` column). */
+  readonly aiDist?: number | undefined
+  /** Difficulty tier this `MonsterKind` was hydrated for (`normal`, `nightmare`, or `hell`). */
+  readonly difficulty?: Difficulty | undefined
+  /** `aip1..aip8` — AI parameters for active difficulty. */
+  readonly aiParams?: readonly [number, number, number, number, number, number, number, number] | undefined
   /** `minHP` — lower bound of the health roll. */
   readonly minHp: number
+  readonly minHpByDifficulty?: MonStats113cDifficultyVector | undefined
   /** `maxHP` — upper bound of the health roll. */
   readonly maxHp: number
+  readonly maxHpByDifficulty?: MonStats113cDifficultyVector | undefined
   /** `AC` — defence, for M9's to-hit formula. */
   readonly armour: number
+  readonly armor?: number | undefined
+  readonly armourByDifficulty?: MonStats113cDifficultyVector | undefined
   /** `Exp` — experience awarded. */
   readonly experience: number
+  readonly xp?: number | undefined
+  readonly experienceByDifficulty?: MonStats113cDifficultyVector | undefined
   /** `A1*` — the primary attack. */
   readonly attack1: MonsterAttack
   /** `A2*` — the secondary attack. */
   readonly attack2: MonsterAttack
+  /** `S1*` — the special attack (`S1MinD`, `S1MaxD`, `S1TH`). */
+  readonly special1?: MonsterAttack | undefined
+  readonly a1ByDifficulty?: MonStats113cAttackRow | undefined
+  readonly a2ByDifficulty?: MonStats113cAttackRow | undefined
+  readonly s1ByDifficulty?: MonStats113cAttackRow | undefined
+  /** `El1..El3` — elemental attacks attached to `A1`/`A2`/`S1..S4`/`C`. */
+  readonly elementalAttacks?: readonly MonsterElementalAttack[] | undefined
+  /** `Skill1..Skill8` — monster skills with animation mode and base slvl. */
+  readonly skills?: readonly MonsterSkillEntry[] | undefined
+  /** `MissA1`, `MissA2`, `MissS1..S4`, `MissC`, `MissSQ` — mode-bound missiles. */
+  readonly modeMissiles?: MonsterModeMissiles | undefined
   /** `ResDm`…`ResPo` for this difficulty. */
   readonly resistances: MonsterResistances
+  /** `Drain` — life/mana steal effectiveness percentage. */
+  readonly drain?: number | undefined
+  /** `coldeffect` — chill slow percentage (typically negative). */
+  readonly coldEffect?: number | undefined
+  /** `DamageRegen` — health regeneration rate per frame. */
+  readonly damageRegen?: number | undefined
+  /** `ToBlock` — block percentage (`0..100`). */
+  readonly toBlock?: number | undefined
+  /** `Crit` — critical strike percentage (`0..100`). */
+  readonly crit?: number | undefined
+  /** `Align` — `0` evil/hostile, `1` aligned/friendly, `2` neutral. */
+  readonly align?: 0 | 1 | 2 | undefined
   /** `TreasureClass1..4`, blanks dropped. Consumed by M10. */
   readonly treasureClasses: readonly string[]
   /**
@@ -253,8 +383,17 @@ export interface MonsterKind {
   readonly minions: readonly string[]
   /** `SetBoss` — the pack leader becomes a unique. */
   readonly setBoss: boolean
-  /** `MeleeRng` — melee reach in sub-tiles from `MonStats2.txt`. */
+  /** `MeleeRng` — melee reach in sub-tiles from `MonStats.txt` / `MonStats2.txt`. */
   readonly meleeRange?: number
+  readonly meleeRng?: number | undefined
+  /** `SizeX` / `SizeY` — collision sub-tile footprint from `MonStats2.txt`. */
+  readonly sizeX?: number | undefined
+  readonly sizeY?: number | undefined
+  readonly height?: number | undefined
+  readonly overlayHeight?: number | undefined
+  readonly pixHeight?: number | undefined
+  readonly baseW?: string | undefined
+  readonly hitClass?: number | undefined
 }
 
 /**
@@ -429,6 +568,13 @@ export function readMonsterKinds(table: D2Table, difficulty: Difficulty = 'norma
       writable: true,
     })
 
+    Object.defineProperty(kind, 'difficulty', {
+      value: difficulty,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    })
+
     kinds.set(id, kind)
   }
   return kinds
@@ -591,11 +737,12 @@ export const UNSCALED: MonsterScale = { armour: 100, toHit: 100, health: 100, da
  */
 export function monsterLevelFor(kind: MonsterKind, difficulty: Difficulty, areaLevel: number): number {
   const tier = difficulty === 'normal' ? 0 : difficulty === 'nightmare' ? 1 : 2
+  const maxCap = kind.level[tier] > 99 ? 110 : 99
   if (difficulty === 'normal' || kind.boss || kind.noRatio) {
-    return Math.min(99, Math.max(1, kind.level[tier]))
+    return Math.min(maxCap, Math.max(1, kind.level[tier]))
   }
   const baseLevel = areaLevel > 0 ? areaLevel : kind.level[tier]
-  return Math.min(99, Math.max(1, baseLevel))
+  return Math.min(maxCap, Math.max(1, baseLevel))
 }
 
 /**
@@ -765,25 +912,38 @@ export function readLevelMonsterPlan(
 export interface SuperUnique {
   /** `Superunique` — the key. */
   readonly id: string
+  /** 0-based `SuperUniques.txt` index (`0..65`). */
+  readonly index?: number | undefined
+  readonly hcIdx?: number | undefined
   /** `Name` — a `string.tbl` key, like {@link MonsterKind.nameKey}. */
   readonly nameKey: string
+  readonly name?: string | undefined
   /** `Class` — which `MonStats.txt` row it is built from. */
   readonly monsterId: string
+  readonly classId?: string | undefined
+  readonly monSound?: string | undefined
   /** `Mod1`…`Mod3` — `MonUMod.txt` ids, blanks and zeroes dropped. */
   readonly modifiers: readonly number[]
+  readonly mods?: readonly number[] | undefined
   /** `MinGrp`/`MaxGrp` — how many minions accompany it. */
   readonly minMinions: number
   readonly maxMinions: number
+  readonly minGrp?: number | undefined
+  readonly maxGrp?: number | undefined
   /** `EClass` — 0 normal, 1 champion-grade, 2 unique-grade. */
   readonly enhancementClass: number
+  readonly eClass?: number | undefined
   /** `AutoPos` — whether the generator may move it to a legal spot. */
   readonly autoPosition: boolean
+  readonly autoPos?: boolean | undefined
   /** `Stacks` — several may occupy the same spot. */
   readonly stacks: boolean
   /** `Replaceable` — another super unique may take its place. */
   readonly replaceable: boolean
+  readonly uTrans?: MonStats113cDifficultyVector | undefined
   /** `TC` for this difficulty. Consumed by M10. */
   readonly treasureClass: string
+  readonly tc?: SuperUnique113cTc | undefined
   /**
    * Difficulty-aware TreasureClass resolution for SuperUniques.
    */
@@ -903,7 +1063,7 @@ export function readMonUModConstants(table: D2Table): Map<string, number> {
   return constants
 }
 
-/** Canonical constants extracted from `MonUMod.txt`. */
+/** Canonical constants extracted from `MonUMod.txt` (rows 0..33 `[constants]`). */
 export const MONUMOD_CONSTANTS = {
   championChance: 20,
   minionHpPct: 100,
@@ -916,12 +1076,97 @@ export const MONUMOD_CONSTANTS = {
   uniqueHpPctNightmare: 200,
   uniqueHpPctHell: 100,
   championToHitPct: 75,
+  championToHitPctNormal: 120,
+  championToHitPctNightmare: 75,
+  championToHitPctHell: 50,
   championDmgPct: 100,
+  championDmgPctNightmare: 75,
+  championDmgPctHell: 33,
   minionToHitPct: 50,
   uniqueToHitPct: 100,
+  uniqueToHitPctNightmare: 75,
+  uniqueToHitPctHell: 50,
+  uniqueDmgPct: 100,
+  uniqueDmgPctNightmare: 75,
+  uniqueDmgPctHell: 33,
+  minionDmgPct: 100,
+  minionDmgPctNightmare: 75,
+  minionDmgPctHell: 33,
   minionDmgPctStrong: 75,
   uniqueDmgPctStrong: 150,
 } as const
+
+export const MINION_MODIFIER = {
+  rank: 'minion' as const,
+  levelBonus: 3,
+  hpBonusPct: { normal: 100, nightmare: 75, hell: 50 },
+  dmgBonusPct: { normal: 100, nightmare: 75, hell: 33 },
+  arBonusPct: { normal: 0, nightmare: 0, hell: 0 },
+  hpMultiplier: { normal: 2.0, nightmare: 1.75, hell: 1.5 },
+} as const
+
+export const CHAMPION_MODIFIER = {
+  rank: 'champion' as const,
+  levelBonus: 2,
+  hpBonusPct: { normal: 200, nightmare: 150, hell: 100 },
+  dmgBonusPct: { normal: 100, nightmare: 75, hell: 33 },
+  arBonusPct: { normal: 120, nightmare: 75, hell: 50 },
+  hpMultiplier: { normal: 3.0, nightmare: 2.5, hell: 2.0 },
+} as const
+
+export const UNIQUE_MODIFIER = {
+  rank: 'unique' as const,
+  levelBonus: 3,
+  hpBonusPct: { normal: 300, nightmare: 200, hell: 100 },
+  dmgBonusPct: { normal: 100, nightmare: 75, hell: 33 },
+  arBonusPct: { normal: 100, nightmare: 75, hell: 50 },
+  hpMultiplier: { normal: 4.0, nightmare: 3.0, hell: 2.0 },
+} as const
+
+export type ChampionSubtype = 'champion' | 'ghostly' | 'fanatic' | 'possessed' | 'berserk'
+
+export const MON_UMOD_TABLE: Readonly<Record<string, MonUMod113cRow>> = (() => {
+  const out: Record<string, MonUMod113cRow> = {}
+  for (const row of MONUMOD_113C_ROWS) {
+    out[row.id] = row
+    out[row.id.toLowerCase()] = row
+    out[String(row.umodId)] = row
+  }
+  // Canonical snake_case aliases for 13 major unique affixes
+  const aliases: Readonly<Record<string, number>> = {
+    extra_strong: 5,
+    extrastrong: 5,
+    extra_fast: 6,
+    extrafast: 6,
+    cursed: 7,
+    magic_resistant: 8,
+    magicresistant: 8,
+    fire_enchanted: 9,
+    fireenchant: 9,
+    fireenchanted: 9,
+    lightning_enchanted: 17,
+    lightenchant: 17,
+    lightningenchanted: 17,
+    cold_enchanted: 18,
+    coldenchant: 18,
+    coldenchanted: 18,
+    mana_burn: 25,
+    manaburn: 25,
+    teleportation: 26,
+    spectral_hit: 27,
+    stone_skin: 28,
+    multiple_shots: 29,
+    aura_enchanted: 30,
+    auraenchanted: 30,
+  }
+  for (const [alias, id] of Object.entries(aliases)) {
+    const row = MONUMOD_113C_ROWS[id]
+    if (row) {
+      out[alias] = row
+    }
+  }
+  return out
+})()
 
 /** What a monster is: ordinary, or promoted by the level generator. */
 export type MonsterRank = 'normal' | 'champion' | 'unique' | 'minion' | 'boss'
@@ -1115,55 +1360,223 @@ export function rollEliteModifiers(
 }
 
 /**
+ * Difficulty-dependent elite health multipliers from `MonUMod.txt` `[constants]` (rows 0..33):
+ * - Minion (`+100% / +75% / +50%`): `2.0x / 1.75x / 1.5x`
+ * - Champion (`+200% / +150% / +100%`): `3.0x / 2.5x / 2.0x`
+ * - Unique (`+300% / +200% / +100%`): `4.0x / 3.0x / 2.0x`
+ */
+export const ELITE_HEALTH_MULTIPLIER_BY_DIFFICULTY: Readonly<
+  Record<Difficulty, Readonly<Record<MonsterRank, number>>>
+> = {
+  normal: {
+    normal: 1,
+    minion: 2.0,
+    champion: 3.0,
+    unique: 4.0,
+    boss: 1,
+  },
+  nightmare: {
+    normal: 1,
+    minion: 1.75,
+    champion: 2.5,
+    unique: 3.0,
+    boss: 1,
+  },
+  hell: {
+    normal: 1,
+    minion: 1.5,
+    champion: 2.0,
+    unique: 2.0,
+    boss: 1,
+  },
+}
+
+export function getEliteHealthMultiplier113c(
+  rank: MonsterRank,
+  difficulty: Difficulty | number = 'normal',
+): number {
+  const diff: Difficulty =
+    typeof difficulty === 'number'
+      ? difficulty === 2
+        ? 'hell'
+        : difficulty === 1
+          ? 'nightmare'
+          : 'normal'
+      : difficulty
+  return ELITE_HEALTH_MULTIPLIER_BY_DIFFICULTY[diff][rank] ?? 1
+}
+
+/**
+ * Apply 1.13c Champion subtype stats (`16` Regular, `36` Ghostly, `37` Fanatic, `38` Possessed, `39` Berserk)
+ * per `D2Game.dll` `0x6fc43ae0` and `0x6fccfa30..0x6fcd0310`.
+ */
+export function applyChampionSubtypeStats(
+  base: MonsterStats,
+  subtype: ChampionSubtype | number,
+  difficulty: Difficulty | number = 'normal',
+): MonsterStats {
+  const diff: Difficulty =
+    typeof difficulty === 'number'
+      ? difficulty === 2
+        ? 'hell'
+        : difficulty === 1
+          ? 'nightmare'
+          : 'normal'
+      : difficulty
+  const diffIdx = diff === 'hell' ? 2 : diff === 'nightmare' ? 1 : 0
+  const champHpMult = getEliteHealthMultiplier113c('champion', diff)
+  const champDmgMult = 1 + (MONUMOD_113C_CONSTANTS.championDmgBonusPct[diffIdx] ?? 100) / 100
+  const baseMaxHp = base.maxHp ?? base.hp
+  const regularChampHp = Math.max(1, Math.round(baseMaxHp * champHpMult))
+  const regularChampDmg = Math.max(1, Math.round(base.damage * champDmgMult))
+  const level = Math.min(110, Math.max(1, (base.level ?? 1) + CHAMPION_MODIFIER.levelBonus))
+
+  const normalizedSubtype: ChampionSubtype =
+    subtype === 36 || subtype === 'ghostly'
+      ? 'ghostly'
+      : subtype === 37 || subtype === 'fanatic'
+        ? 'fanatic'
+        : subtype === 38 || subtype === 'possessed'
+          ? 'possessed'
+          : subtype === 39 || subtype === 'berserk'
+            ? 'berserk'
+            : 'champion'
+
+  let hp = regularChampHp
+  let damage = regularChampDmg
+  let speed = Math.round(base.speed * 1.2 * 100) / 100
+  let cooldownTicks = base.cooldownTicks
+  let physicalRes = base.resistances?.physical ?? 0
+
+  if (normalizedSubtype === 'ghostly') {
+    speed = Math.max(4, Math.round(base.speed * 0.5))
+    physicalRes = Math.max(80, physicalRes)
+  } else if (normalizedSubtype === 'fanatic') {
+    speed = Math.round(base.speed * 2.0)
+    cooldownTicks = Math.max(5, Math.round(base.cooldownTicks * 0.3))
+  } else if (normalizedSubtype === 'possessed') {
+    hp = regularChampHp * 3
+  } else if (normalizedSubtype === 'berserk') {
+    hp = Math.max(1, Math.round(baseMaxHp * 1.5))
+    damage = Math.max(base.damage * 3, regularChampDmg * 2)
+  }
+
+  const updatedResistances = {
+    physical: physicalRes,
+    magic: base.resistances?.magic ?? 0,
+    fire: base.resistances?.fire ?? 0,
+    lightning: base.lightningResist ?? base.resistances?.lightning ?? 0,
+    cold: base.resistances?.cold ?? 0,
+    poison: base.resistances?.poison ?? 0,
+  }
+
+  return {
+    ...base,
+    hp,
+    maxHp: hp,
+    damage,
+    speed,
+    cooldownTicks,
+    rank: 'champion',
+    level,
+    modifiers: [normalizedSubtype],
+    resistances: updatedResistances,
+    resists: updatedResistances,
+    lightningResist: updatedResistances.lightning,
+  }
+}
+
+/**
  * Apply elite/superunique stat modifiers to base rolled `MonsterStats`.
+ * Supports both `(base, rank, modifiers, superUniqueId)` and `(base, rank, difficulty, modifiers, superUniqueId)`.
  */
 export function applyEliteModifiers(
   base: MonsterStats,
   rank: MonsterRank,
-  modifiers: readonly string[] = [],
-  superUniqueId?: string,
+  modifiersOrDifficulty: readonly string[] | Difficulty = [],
+  superUniqueIdOrModifiers?: string | readonly string[],
+  maybeSuperUniqueId?: string,
 ): MonsterStats {
+  let modifiers: readonly string[]
+  let superUniqueId: string | undefined
+  let explicitDifficulty: Difficulty | undefined
+
+  if (typeof modifiersOrDifficulty === 'string') {
+    explicitDifficulty = modifiersOrDifficulty
+    if (Array.isArray(superUniqueIdOrModifiers)) {
+      modifiers = superUniqueIdOrModifiers
+      superUniqueId = maybeSuperUniqueId
+    } else {
+      modifiers = []
+      superUniqueId = superUniqueIdOrModifiers as string | undefined
+    }
+  } else {
+    modifiers = modifiersOrDifficulty
+    superUniqueId = typeof superUniqueIdOrModifiers === 'string' ? superUniqueIdOrModifiers : maybeSuperUniqueId
+  }
+
   let hp = base.hp
   let damage = base.damage
   let speed = base.speed
+  let cooldownTicks = base.cooldownTicks
   let level = base.level ?? 1
+  const maxLevel = explicitDifficulty !== undefined || level > 99 ? 110 : 99
   if (rank === 'champion') {
-    level += 2
+    level += CHAMPION_MODIFIER.levelBonus
   } else if (rank === 'unique' || rank === 'minion') {
-    level += 3
+    level += UNIQUE_MODIFIER.levelBonus
   }
-  level = Math.min(99, Math.max(1, level))
-  if (modifiers.includes('strong')) {
+  level = Math.min(maxLevel, Math.max(1, level))
+
+  if (explicitDifficulty !== undefined) {
+    const rankHpMult = getEliteHealthMultiplier113c(rank, explicitDifficulty)
+    hp = Math.max(1, Math.round(hp * rankHpMult))
+  }
+
+  const normMods = new Set(modifiers.map(m => m.trim().toLowerCase().replace(/[_\s-]+/g, '')))
+
+  if (normMods.has('strong') || normMods.has('extrastrong')) {
     damage = Math.max(1, Math.round(damage * (MONUMOD_CONSTANTS.uniqueDmgPctStrong / 100)))
   }
-  if (modifiers.includes('fast')) {
+  if (normMods.has('fast') || normMods.has('extrafast')) {
     speed = Math.round(speed * 1.4 * 100) / 100
   }
-  if (modifiers.includes('stoneskin')) {
+  if (normMods.has('fanatic') || normMods.has('fanatical')) {
+    speed = Math.round(speed * 2.0 * 100) / 100
+    cooldownTicks = Math.max(5, Math.round(cooldownTicks * 0.3))
+  }
+  if (normMods.has('possessed')) {
+    hp = Math.round(hp * 3)
+  }
+  if (normMods.has('berserk') || normMods.has('berserker')) {
+    hp = Math.max(1, Math.round(hp * 0.5))
+    damage = Math.max(1, Math.round(damage * 3))
+  }
+  if (normMods.has('stoneskin')) {
     hp = Math.round(hp * 2)
   }
-  if (modifiers.includes('cursed')) {
+  if (normMods.has('cursed')) {
     damage = Math.round(damage * 1.2)
   }
-  if (modifiers.includes('coldenchant')) {
+  if (normMods.has('coldenchant') || normMods.has('coldenchanted')) {
     damage = Math.round(damage * 1.2)
   }
-  if (modifiers.includes('fireenchant')) {
+  if (normMods.has('fireenchant') || normMods.has('fireenchanted')) {
     damage = Math.round(damage * 1.2)
   }
-  if (modifiers.includes('lightenchant')) {
+  if (normMods.has('lightenchant') || normMods.has('lightningenchanted')) {
     damage = Math.round(damage * 1.2)
   }
-  if (modifiers.includes('spectralhit')) {
+  if (normMods.has('spectralhit')) {
     damage = Math.round(damage * 1.2)
   }
-  if (modifiers.includes('teleport')) {
+  if (normMods.has('teleport') || normMods.has('teleportation')) {
     speed = Math.round(speed * 1.2 * 100) / 100
   }
-  if (modifiers.includes('magicresistant')) {
+  if (normMods.has('magicresistant') || normMods.has('magicresistance')) {
     hp = Math.round(hp * 1.2)
   }
-  if (modifiers.includes('aura')) {
+  if (normMods.has('aura') || normMods.has('auraenchanted')) {
     damage = Math.round(damage * 1.2)
     speed = Math.round(speed * 1.1 * 100) / 100
   }
@@ -1174,30 +1587,34 @@ export function applyEliteModifiers(
   let coldRes = base.resistances?.cold ?? 0
   let poisonRes = base.resistances?.poison ?? 0
 
-  if (modifiers.includes('stoneskin')) {
+  if (normMods.has('stoneskin')) {
     physicalRes += 50
   }
-  if (modifiers.includes('manahit')) {
+  if (normMods.has('ghostly')) {
+    physicalRes = Math.max(80, physicalRes)
+    speed = Math.max(4, Math.round(speed * 0.5 * 100) / 100)
+  }
+  if (normMods.has('manahit') || normMods.has('manaburn')) {
     magicRes += 20
   }
-  if (modifiers.includes('fireenchant')) {
+  if (normMods.has('fireenchant') || normMods.has('fireenchanted')) {
     fireRes += 75
   }
-  if (modifiers.includes('coldenchant')) {
+  if (normMods.has('coldenchant') || normMods.has('coldenchanted')) {
     coldRes += 75
   }
-  if (modifiers.includes('lightenchant')) {
+  if (normMods.has('lightenchant') || normMods.has('lightningenchanted')) {
     lightningRes += 75
   }
-  if (modifiers.includes('poisonenchant')) {
+  if (normMods.has('poisonenchant') || normMods.has('poisonenchanted')) {
     poisonRes += 75
   }
-  if (modifiers.includes('magicresistant')) {
+  if (normMods.has('magicresistant') || normMods.has('magicresistance')) {
     fireRes += 40
     coldRes += 40
     lightningRes += 20
   }
-  if (modifiers.includes('spectralhit')) {
+  if (normMods.has('spectralhit')) {
     fireRes += 20
     coldRes += 20
     lightningRes += 20
@@ -1234,8 +1651,10 @@ export function applyEliteModifiers(
   return {
     ...base,
     hp,
+    maxHp: hp,
     damage,
     speed,
+    cooldownTicks,
     rank,
     level,
     ...(modifiers.length > 0 ? { modifiers } : {}),
@@ -1493,15 +1912,228 @@ const PIXELS_PER_SUBTILE = 16
  * @param scale - the `MonLvl.txt` multipliers; defaults to no scaling.
  * @returns stats the existing combat code can use unchanged.
  */
+export interface MonsterStats113cOptions {
+  readonly difficulty?: Difficulty | number | undefined
+  readonly walkSpeedPx?: number | undefined
+  readonly rng?: number | (() => number) | Rng | undefined
+  readonly playerCount?: number | undefined
+  readonly playersCount?: number | undefined
+  readonly level?: number | undefined
+  readonly areaLevel?: number | undefined
+  readonly rank?: MonsterRank | 'superunique' | undefined
+  readonly art?: MonsterArt | { readonly meleeRange?: number } | null | undefined
+}
+
 export function monsterStatsOf(
   kind: MonsterKind,
   rng: Rng,
   walkSpeedPx: number,
-  scale: MonsterScale = UNSCALED,
+  scale?: MonsterScale,
   art?: MonsterArt | { readonly meleeRange?: number } | null,
   level?: number,
   rank?: MonsterRank,
+): MonsterStats
+export function monsterStatsOf(
+  kind: MonsterKind,
+  difficulty: Difficulty | number,
+  walkSpeedPx?: number,
+  rollOrRng?: number | (() => number) | Rng,
+  options?: MonsterStats113cOptions,
+): MonsterStats
+export function monsterStatsOf(
+  kind: MonsterKind,
+  options?: MonsterStats113cOptions,
+): MonsterStats
+export function monsterStatsOf(
+  kind: MonsterKind,
+  rngOrDiffOrOpts?: Rng | Difficulty | number | MonsterStats113cOptions,
+  walkSpeedPxArg = 170,
+  scaleOrRoll?: MonsterScale | number | (() => number) | Rng,
+  artOrOpts?: (MonsterArt | { readonly meleeRange?: number } | null) | MonsterStats113cOptions,
+  levelArg?: number,
+  rankArg?: MonsterRank,
 ): MonsterStats {
+  const isLegacyRng =
+    rngOrDiffOrOpts !== null &&
+    typeof rngOrDiffOrOpts === 'object' &&
+    typeof (rngOrDiffOrOpts as Rng).int === 'function'
+
+  if (!isLegacyRng) {
+    const isOptsCall =
+      rngOrDiffOrOpts === undefined ||
+      (typeof rngOrDiffOrOpts === 'object' && rngOrDiffOrOpts !== null)
+    const opts: MonsterStats113cOptions = isOptsCall
+      ? ((rngOrDiffOrOpts as MonsterStats113cOptions | undefined) ?? {})
+      : ((artOrOpts as MonsterStats113cOptions | undefined) ?? {})
+    const difficulty = normalizeDifficulty(
+      isOptsCall ? (opts.difficulty ?? kind.difficulty ?? 'normal') : (rngOrDiffOrOpts as Difficulty | number),
+    )
+    const diffIdx: 0 | 1 | 2 = difficulty === 'hell' ? 2 : difficulty === 'nightmare' ? 1 : 0
+    const walkSpeedPx = isOptsCall ? (opts.walkSpeedPx ?? 170) : walkSpeedPxArg
+    const rollSource = isOptsCall ? opts.rng : (scaleOrRoll as number | (() => number) | Rng | undefined)
+
+    const diffKind =
+      kind.difficulty !== undefined && kind.difficulty !== difficulty
+        ? ((typeof kind.hcIdx === 'number'
+            ? getMonsterKindByHcIdx(kind.hcIdx, difficulty)
+            : getCanonicalMonsterKinds(difficulty).get(kind.id)) ?? kind)
+        : kind
+
+    const velocity =
+      diffKind.velocity > 0 ? diffKind.velocity : diffKind.runVelocity > 0 ? diffKind.runVelocity : 1
+    const minHpRaw = Math.min(diffKind.minHp, diffKind.maxHp)
+    const maxHpRaw = Math.max(diffKind.minHp, diffKind.maxHp)
+
+    let rolledHp = minHpRaw
+    if (typeof rollSource === 'number') {
+      const t = Math.max(0, Math.min(1, rollSource))
+      rolledHp = Math.min(maxHpRaw, minHpRaw + Math.floor(t * (maxHpRaw - minHpRaw + 1)))
+    } else if (typeof rollSource === 'function') {
+      const t = Math.max(0, Math.min(1, rollSource()))
+      rolledHp = Math.min(maxHpRaw, minHpRaw + Math.floor(t * (maxHpRaw - minHpRaw + 1)))
+    } else if (rollSource && typeof (rollSource as Rng).int === 'function') {
+      rolledHp = (rollSource as Rng).int(minHpRaw, maxHpRaw)
+    }
+
+    const mlvl =
+      opts.level ??
+      (opts.areaLevel !== undefined
+        ? monsterLevelFor(diffKind, difficulty, opts.areaLevel)
+        : (diffKind.level[diffIdx] ?? diffKind.level[0]))
+    const monLvlRow = getMonLvl113c(mlvl)
+    const bypassRatio = Boolean(diffKind.noRatio) || !monLvlRow
+
+    const lHp = bypassRatio ? 100 : monLvlRow.lHp[diffIdx]
+    const lDm = bypassRatio ? 100 : monLvlRow.lDm[diffIdx]
+    const lAc = bypassRatio ? 100 : monLvlRow.lAc[diffIdx]
+    const lTh = bypassRatio ? 100 : monLvlRow.lTh[diffIdx]
+    const lXp = bypassRatio ? 100 : monLvlRow.lXp[diffIdx]
+
+    const scaleFloor = (raw: number, pct: number): number =>
+      bypassRatio ? raw : Math.floor((raw * pct) / 100)
+
+    let hp = Math.max(1, scaleFloor(rolledHp, lHp))
+    let a1Min = Math.max(0, scaleFloor(diffKind.attack1.minDamage, lDm))
+    let a1Max = Math.max(a1Min, scaleFloor(diffKind.attack1.maxDamage, lDm))
+    let a1Th = Math.max(0, scaleFloor(diffKind.attack1.toHit, lTh))
+    let a2Min = Math.max(0, scaleFloor(diffKind.attack2.minDamage, lDm))
+    let a2Max = Math.max(a2Min, scaleFloor(diffKind.attack2.maxDamage, lDm))
+    let a2Th = Math.max(0, scaleFloor(diffKind.attack2.toHit, lTh))
+    let s1Min = Math.max(0, scaleFloor(diffKind.special1?.minDamage ?? 0, lDm))
+    let s1Max = Math.max(s1Min, scaleFloor(diffKind.special1?.maxDamage ?? 0, lDm))
+    let s1Th = Math.max(0, scaleFloor(diffKind.special1?.toHit ?? 0, lTh))
+    const armor = Math.max(0, scaleFloor(diffKind.armour, lAc))
+    let xp = Math.max(0, scaleFloor(diffKind.experience, lXp))
+
+    const playerCount = Math.max(1, Math.min(8, Math.floor(opts.playerCount ?? opts.playersCount ?? 1)))
+    const bonusDmgAr = (val: number): number =>
+      playerCount > 1 ? val + Math.floor((val * (playerCount - 1)) / 16) : val
+    if (playerCount > 1) {
+      hp = Math.max(1, Math.floor((hp * (playerCount + 1)) / 2))
+      xp = Math.max(0, Math.floor((xp * (playerCount + 1)) / 2))
+      a1Min = bonusDmgAr(a1Min)
+      a1Max = bonusDmgAr(a1Max)
+      a1Th = bonusDmgAr(a1Th)
+      a2Min = bonusDmgAr(a2Min)
+      a2Max = bonusDmgAr(a2Max)
+      a2Th = bonusDmgAr(a2Th)
+      s1Min = bonusDmgAr(s1Min)
+      s1Max = bonusDmgAr(s1Max)
+      s1Th = bonusDmgAr(s1Th)
+    }
+
+    const scaledElementalAttacks: readonly MonsterElementalAttack[] | undefined =
+      diffKind.elementalAttacks?.map((el) => {
+        const scaledMin = Math.max(0, scaleFloor(el.minDamage ?? el.min, lDm))
+        const scaledMax = Math.max(scaledMin, scaleFloor(el.maxDamage ?? el.max, lDm))
+        const elMin = bonusDmgAr(scaledMin)
+        const elMax = Math.max(elMin, bonusDmgAr(scaledMax))
+        return {
+          ...el,
+          min: elMin,
+          max: elMax,
+          minDamage: elMin,
+          maxDamage: elMax,
+        }
+      })
+
+    const damage = Math.max(1, Math.round((a1Min + a1Max) / 2))
+    const meleeRng = opts.art?.meleeRange ?? diffKind.meleeRange ?? diffKind.meleeRng
+    const reach =
+      meleeRng !== undefined && meleeRng > 0
+        ? Math.max(DEFAULT_REACH_PX, meleeRng * PIXELS_PER_SUBTILE)
+        : DEFAULT_REACH_PX
+    const resolvedRank: MonsterRank = diffKind.boss
+      ? 'boss'
+      : opts.rank === 'superunique'
+        ? 'unique'
+        : (opts.rank ?? 'normal')
+
+    return {
+      id: diffKind.id,
+      name: diffKind.nameKey === '' ? diffKind.id : diffKind.nameKey,
+      nameKey: diffKind.nameKey === '' ? diffKind.id : diffKind.nameKey,
+      ...(diffKind.descKey !== undefined &&
+      diffKind.descKey !== '' &&
+      diffKind.descKey.toLowerCase() !== 'dummy'
+        ? { descKey: diffKind.descKey }
+        : {}),
+      isUndead: diffKind.isUndead,
+      isDemon: diffKind.isDemon,
+      isBoss: diffKind.boss,
+      killable: diffKind.killable,
+      inTown: diffKind.inTown,
+      hp,
+      maxHp: hp,
+      damage,
+      armor,
+      toHit: a1Th,
+      cooldownTicks: DEFAULT_ATTACK_COOLDOWN_TICKS,
+      reach,
+      aggroRadius:
+        diffKind.aiDistance > 0 ? diffKind.aiDistance * PIXELS_PER_SUBTILE : DEFAULT_AGGRO_PX,
+      speed: Math.max(8, Math.round((velocity / PLAYER_WALK_VELOCITY) * walkSpeedPx)),
+      xp,
+      level: mlvl,
+      rank: resolvedRank,
+      resistances: diffKind.resistances,
+      lightningResist: diffKind.resistances?.lightning,
+      resists: diffKind.resistances,
+      ...(typeof diffKind.hcIdx === 'number' ? { hcIdx: diffKind.hcIdx } : {}),
+      ...(diffKind.ai ? { ai: diffKind.ai } : {}),
+      ...(typeof diffKind.aiDelay === 'number' ? { aiDelay: diffKind.aiDelay } : {}),
+      aiDistance: diffKind.aiDistance,
+      ...(diffKind.aiParams ? { aiParams: diffKind.aiParams } : {}),
+      attack1: { minDamage: a1Min, maxDamage: a1Max, toHit: a1Th, min: a1Min, max: a1Max },
+      attack2: { minDamage: a2Min, maxDamage: a2Max, toHit: a2Th, min: a2Min, max: a2Max },
+      ...(diffKind.special1
+        ? { special1: { minDamage: s1Min, maxDamage: s1Max, toHit: s1Th, min: s1Min, max: s1Max } }
+        : {}),
+      ...(scaledElementalAttacks ? { elementalAttacks: scaledElementalAttacks } : {}),
+      ...(diffKind.skills ? { skills: diffKind.skills } : {}),
+      ...(diffKind.modeMissiles ? { modeMissiles: diffKind.modeMissiles } : {}),
+      ...(typeof diffKind.drain === 'number' ? { drain: diffKind.drain } : {}),
+      ...(typeof diffKind.coldEffect === 'number' ? { coldEffect: diffKind.coldEffect } : {}),
+      ...(typeof diffKind.damageRegen === 'number' ? { damageRegen: diffKind.damageRegen } : {}),
+      ...(typeof diffKind.toBlock === 'number' ? { toBlock: diffKind.toBlock } : {}),
+      ...(typeof diffKind.crit === 'number' ? { crit: diffKind.crit } : {}),
+      ...(typeof diffKind.align === 'number' ? { align: diffKind.align } : {}),
+      ...(diffKind.noRatio !== undefined ? { noRatio: diffKind.noRatio } : {}),
+      ...(typeof meleeRng === 'number' ? { meleeRng } : {}),
+      ...(diffKind.neverCount !== undefined ? { neverCount: diffKind.neverCount } : {}),
+      ...(diffKind.petIgnore !== undefined ? { petIgnore: diffKind.petIgnore } : {}),
+      ...(diffKind.deathDmg !== undefined ? { deathDmg: diffKind.deathDmg } : {}),
+      ...(diffKind.isPrimeEvil !== undefined ? { isPrimeEvil: diffKind.isPrimeEvil } : {}),
+    }
+  }
+
+  const rng = rngOrDiffOrOpts as Rng
+  const walkSpeedPx = walkSpeedPxArg
+  const scale = (scaleOrRoll as MonsterScale | undefined) ?? UNSCALED
+  const art = artOrOpts as (MonsterArt | { readonly meleeRange?: number } | null) | undefined
+  const level = levelArg
+  const rank = rankArg
+
   const velocity = kind.velocity > 0 ? kind.velocity : (kind.runVelocity > 0 ? kind.runVelocity : 1)
   // Roll first, scale second. Scaling the bounds and rolling between them
   // would round the range's ends before the roll and lose most of its width at
@@ -1510,10 +2142,14 @@ export function monsterStatsOf(
   // each end is rounded first.
   const rolled = rng.int(Math.min(kind.minHp, kind.maxHp), Math.max(kind.minHp, kind.maxHp))
   const averageDamage = (kind.attack1.minDamage + kind.attack1.maxDamage) / 2
-  const meleeRng = art?.meleeRange ?? kind.meleeRange
+  const meleeRng = art?.meleeRange ?? kind.meleeRange ?? kind.meleeRng
   const reach = (meleeRng !== undefined && meleeRng > 0)
     ? Math.max(DEFAULT_REACH_PX, meleeRng * PIXELS_PER_SUBTILE)
     : DEFAULT_REACH_PX
+  const hp = Math.max(1, Math.round((rolled * scale.health) / 100))
+  const damage = Math.max(1, Math.round((averageDamage * scale.damage) / 100))
+  const armor = Math.max(0, Math.round((kind.armour * scale.armour) / 100))
+  const toHit = Math.max(0, Math.round((kind.attack1.toHit * scale.toHit) / 100))
   return {
     id: kind.id,
     name: kind.nameKey === '' ? kind.id : kind.nameKey,
@@ -1524,8 +2160,11 @@ export function monsterStatsOf(
     isBoss: kind.boss,
     killable: kind.killable,
     inTown: kind.inTown,
-    hp: Math.max(1, Math.round((rolled * scale.health) / 100)),
-    damage: Math.max(1, Math.round((averageDamage * scale.damage) / 100)),
+    hp,
+    maxHp: hp,
+    damage,
+    armor,
+    toHit,
     cooldownTicks: DEFAULT_ATTACK_COOLDOWN_TICKS,
     reach,
     aggroRadius: kind.aiDistance > 0 ? kind.aiDistance * PIXELS_PER_SUBTILE : DEFAULT_AGGRO_PX,
@@ -1536,6 +2175,26 @@ export function monsterStatsOf(
     resistances: kind.resistances,
     lightningResist: kind.resistances?.lightning,
     resists: kind.resistances,
+    ...(typeof kind.hcIdx === 'number' ? { hcIdx: kind.hcIdx } : {}),
+    ...(kind.ai ? { ai: kind.ai } : {}),
+    ...(typeof kind.aiDelay === 'number' ? { aiDelay: kind.aiDelay } : {}),
+    aiDistance: kind.aiDistance,
+    ...(kind.aiParams ? { aiParams: kind.aiParams } : {}),
+    ...(kind.elementalAttacks ? { elementalAttacks: kind.elementalAttacks } : {}),
+    ...(kind.skills ? { skills: kind.skills } : {}),
+    ...(kind.modeMissiles ? { modeMissiles: kind.modeMissiles } : {}),
+    ...(typeof kind.drain === 'number' ? { drain: kind.drain } : {}),
+    ...(typeof kind.coldEffect === 'number' ? { coldEffect: kind.coldEffect } : {}),
+    ...(typeof kind.damageRegen === 'number' ? { damageRegen: kind.damageRegen } : {}),
+    ...(typeof kind.toBlock === 'number' ? { toBlock: kind.toBlock } : {}),
+    ...(typeof kind.crit === 'number' ? { crit: kind.crit } : {}),
+    ...(typeof kind.align === 'number' ? { align: kind.align } : {}),
+    ...(kind.noRatio !== undefined ? { noRatio: kind.noRatio } : {}),
+    ...(typeof meleeRng === 'number' ? { meleeRng } : {}),
+    ...(kind.neverCount !== undefined ? { neverCount: kind.neverCount } : {}),
+    ...(kind.petIgnore !== undefined ? { petIgnore: kind.petIgnore } : {}),
+    ...(kind.deathDmg !== undefined ? { deathDmg: kind.deathDmg } : {}),
+    ...(kind.isPrimeEvil !== undefined ? { isPrimeEvil: kind.isPrimeEvil } : {}),
   }
 }
 
@@ -2072,146 +2731,16 @@ export function enrichMonsterPacks(
   }))
 }
 
-const CANONICAL_113C_MONSTER_OVERRIDES: Readonly<
-  Record<
-    string,
-    Partial<
-      Pick<
-        MonsterKind,
-        'velocity' | 'runVelocity' | 'minHp' | 'maxHp' | 'armour' | 'experience' | 'attack1' | 'attack2'
-      >
-    >
-  >
-> = {
-  fallen1: {
-    velocity: 5,
-    runVelocity: 5,
-    minHp: 21,
-    maxHp: 61,
-    armour: 84,
-    experience: 61,
-    attack1: { minDamage: 51, maxDamage: 101, toHit: 101 },
-    attack2: { minDamage: 51, maxDamage: 101, toHit: 101 },
-  },
-  zombie1: {
-    velocity: 1,
-    runVelocity: 3,
-    minHp: 101,
-    maxHp: 181,
-    armour: 84,
-    experience: 111,
-    attack1: { minDamage: 51, maxDamage: 151, toHit: 101 },
-    attack2: { minDamage: 101, maxDamage: 151, toHit: 101 },
-  },
-  quillrat1: {
-    velocity: 3,
-    runVelocity: 3,
-    minHp: 21,
-    maxHp: 81,
-    armour: 70,
-    experience: 71,
-    attack1: { minDamage: 20, maxDamage: 40, toHit: 70 },
-  },
-  skeleton1: {
-    velocity: 3,
-    runVelocity: 3,
-    minHp: 61,
-    maxHp: 121,
-    armour: 100,
-    experience: 95,
-    attack1: { minDamage: 45, maxDamage: 95, toHit: 90 },
-  },
+const DIFFICULTY_TIER_INDEX: Readonly<Record<Difficulty, 0 | 1 | 2>> = {
+  normal: 0,
+  nightmare: 1,
+  hell: 2,
 }
 
-import { MONSTER_HCIDX_TO_ID, MONSTER_HCIDX_VELOCITIES } from './monster-mapping.ts'
-
-const CANONICAL_113C_VELOCITIES_BY_ID: Readonly<Record<string, readonly [number, number]>> = (() => {
-  const out: Record<string, readonly [number, number]> = {}
-  for (let hcIdx = 0; hcIdx < MONSTER_HCIDX_VELOCITIES.length; hcIdx++) {
-    const id = MONSTER_HCIDX_TO_ID[hcIdx]
-    const pair = MONSTER_HCIDX_VELOCITIES[hcIdx]
-    if (id && pair) {
-      out[id] = pair
-    }
-  }
-  return out
-})()
-
-let cachedCanonicalMonsterKinds: Map<string, MonsterKind> | null = null
-
-function getCanonicalMonsterKinds(): Map<string, MonsterKind> {
-  if (cachedCanonicalMonsterKinds === null) {
-    const rawKinds = readMonsterKinds(parseTable(new TextEncoder().encode(RAW_MONSTATS)))
-    const enriched = new Map<string, MonsterKind>()
-    for (const [id, kind] of rawKinds) {
-      if (id.toLowerCase() === 'expansion') continue
-      const ov = CANONICAL_113C_MONSTER_OVERRIDES[id]
-      const canonicalSpeed = CANONICAL_113C_VELOCITIES_BY_ID[id.toLowerCase()]
-      const canonicalVel = canonicalSpeed && canonicalSpeed[0] > 0 ? canonicalSpeed[0] : undefined
-      const canonicalRun = canonicalSpeed && canonicalSpeed[1] > 0 ? canonicalSpeed[1] : undefined
-      const enrichedKind: MonsterKind = {
-        ...kind,
-        enabled: kind.killable || !kind.inTown,
-        velocity: ov?.velocity ?? canonicalVel ?? (kind.velocity > 0 ? kind.velocity : 5),
-        runVelocity: ov?.runVelocity ?? canonicalRun ?? (kind.runVelocity > 0 ? kind.runVelocity : 5),
-        minHp: ov?.minHp ?? (kind.minHp > 0 ? kind.minHp : 21),
-        maxHp: ov?.maxHp ?? (kind.maxHp > 0 ? kind.maxHp : 61),
-        armour: ov?.armour ?? (kind.armour > 0 ? kind.armour : 84),
-        experience: ov?.experience ?? (kind.experience > 0 ? kind.experience : 61),
-        attack1: ov?.attack1 ?? (kind.attack1.maxDamage > 0 ? kind.attack1 : { minDamage: 51, maxDamage: 101, toHit: 101 }),
-        attack2: ov?.attack2 ?? kind.attack2,
-      }
-      if (typeof (kind as any).getTreasureClass === 'function') {
-        Object.defineProperty(enrichedKind, 'getTreasureClass', {
-          value: (kind as any).getTreasureClass,
-          enumerable: false,
-          configurable: true,
-          writable: true,
-        })
-      }
-      enriched.set(id, enrichedKind)
-    }
-    cachedCanonicalMonsterKinds = enriched
-  }
-  return cachedCanonicalMonsterKinds
-}
-
-export const MONSTER_TABLE: ReadonlyMap<string, MonsterKind> & Readonly<Record<string, MonsterKind>> = new Proxy(
-  new Map<string, MonsterKind>(),
-  {
-    get(_target, prop, _receiver) {
-      const map = getCanonicalMonsterKinds()
-      if (prop in map) {
-        const value = Reflect.get(map, prop, map)
-        return typeof value === 'function' ? value.bind(map) : value
-      }
-      if (typeof prop === 'string') {
-        const direct = map.get(prop) ?? map.get(prop.toLowerCase())
-        if (direct !== undefined) return direct
-        if (/^\d+$/.test(prop)) {
-          const id = MONSTER_HCIDX_TO_ID[Number(prop)]
-          if (id) return map.get(id)
-        }
-      }
-      return undefined
-    },
-    has(_target, prop) {
-      const map = getCanonicalMonsterKinds()
-      return typeof prop === 'string' && (map.has(prop) || map.has(prop.toLowerCase()) || prop in map)
-    },
-  },
-) as unknown as ReadonlyMap<string, MonsterKind> & Readonly<Record<string, MonsterKind>>
-
-/**
- * Look up a canonical 1.13c `MonsterKind` by numeric `MonStats.txt` `hcIdx` (`0..733`).
- */
-export function getMonsterKindByClassId(classId: number): MonsterKind | undefined {
-  const id = MONSTER_HCIDX_TO_ID[classId]
-  if (!id) return undefined
-  return getCanonicalMonsterKinds().get(id)
-}
-
+const cachedCanonicalMonsterKindsByDiff = new Map<Difficulty, Map<string, MonsterKind>>()
 const cachedMonsterKindsByHcIdx = new Map<Difficulty, readonly (MonsterKind | undefined)[]>()
+let cachedCanonicalMonAiTable: Map<string, MonAiRecord113c> | null = null
+let cachedCanonicalMonLvlTable: readonly MonLvlEntry[] | null = null
 let cachedSuperUniquesByIndex: readonly SuperUnique[] | null = null
 
 function normalizeDifficulty(difficulty: Difficulty | number = 'normal'): Difficulty {
@@ -2219,6 +2748,313 @@ function normalizeDifficulty(difficulty: Difficulty | number = 'normal'): Diffic
     return difficulty === 2 ? 'hell' : difficulty === 1 ? 'nightmare' : 'normal'
   }
   return difficulty
+}
+
+export const MON_AI_TABLE: Readonly<Record<string, MonAi113cRow>> = (() => {
+  const out: Record<string, MonAi113cRow> = {}
+  for (const row of MONAI_113C_ROWS) {
+    out[row.ai] = row
+    out[row.ai.toLowerCase()] = row
+  }
+  return out
+})()
+
+function hydrateMonsterKindFrom113cRow(rec: MonStats113cRow, difficulty: Difficulty): MonsterKind {
+  const tierIdx = DIFFICULTY_TIER_INDEX[difficulty]
+  const tcByDifficulty: Record<Difficulty, readonly [string, string, string, string]> = {
+    normal: [rec.tc[0], rec.tc[1], rec.tc[2], rec.tc[3]],
+    nightmare: [rec.tc[4], rec.tc[5], rec.tc[6], rec.tc[7]],
+    hell: [rec.tc[8], rec.tc[9], rec.tc[10], rec.tc[11]],
+  }
+  const tcPair = tcByDifficulty[difficulty]
+
+  const elementalAttacks: MonsterElementalAttack[] = rec.elementalAttacks.map((el) => ({
+    slot: el.slot,
+    mode: el.mode,
+    type: el.type,
+    chancePct: el.pct[tierIdx],
+    min: el.minD[tierIdx],
+    max: el.maxD[tierIdx],
+    durationFrames: el.dur[tierIdx],
+    pct: el.pct[tierIdx],
+    minDamage: el.minD[tierIdx],
+    maxDamage: el.maxD[tierIdx],
+    duration: el.dur[tierIdx],
+  }))
+
+  const skills: MonsterSkillEntry[] = rec.skills.map((sk) => ({
+    slot: sk.slot,
+    skill: sk.skill,
+    skillId: sk.skillId,
+    mode: sk.mode,
+    level: sk.level,
+  }))
+
+  const rawMiss = MONSTER_MODE_MISSILES_113C[rec.hcIdx]
+  const modeMissiles: MonsterModeMissiles = {
+    ...rec.modeMissiles,
+    ...(rawMiss?.A1 !== undefined ? { A1: rawMiss.A1, MissA1: rawMiss.A1 } : {}),
+    ...(rawMiss?.A2 !== undefined ? { A2: rawMiss.A2, MissA2: rawMiss.A2 } : {}),
+    ...(rawMiss?.S1 !== undefined ? { S1: rawMiss.S1, MissS1: rawMiss.S1 } : {}),
+    ...(rawMiss?.S2 !== undefined ? { S2: rawMiss.S2, MissS2: rawMiss.S2 } : {}),
+    ...(rawMiss?.S3 !== undefined ? { S3: rawMiss.S3, MissS3: rawMiss.S3 } : {}),
+    ...(rawMiss?.S4 !== undefined ? { S4: rawMiss.S4, MissS4: rawMiss.S4 } : {}),
+    ...(rawMiss?.C !== undefined ? { C: rawMiss.C, MissC: rawMiss.C } : {}),
+    ...(rawMiss?.SQ !== undefined ? { SQ: rawMiss.SQ, MissSQ: rawMiss.SQ } : {}),
+  }
+  const descKey = rec.descStr.toLowerCase() === 'dummy' ? '' : rec.descStr
+  const aiRow = MON_AI_TABLE[rec.ai] ?? MON_AI_TABLE[rec.ai.toLowerCase()]
+
+  const kind: MonsterKind = {
+    id: rec.id,
+    hcIdx: rec.hcIdx,
+    difficulty,
+    baseId: rec.baseId,
+    ...(rec.nextInClass ? { nextInClass: rec.nextInClass } : {}),
+    nameKey: rec.nameStr,
+    descKey,
+    code: rec.code,
+    monType: rec.monType,
+    ai: rec.ai,
+    ...(aiRow !== undefined ? { aiId: aiRow.index } : {}),
+    enabled: rec.enabled,
+    isSpawn: rec.isSpawn,
+    sparsePopulate: rec.sparsePopulate,
+    isMelee: rec.isMelee,
+    ranged: rec.rangedType,
+    isRanged: rec.rangedType,
+    npc: rec.npc,
+    interact: rec.interact,
+    inTown: rec.inTown,
+    isUndead: rec.isLUndead || rec.isHUndead,
+    isLowUndead: rec.isLUndead,
+    isHighUndead: rec.isHUndead,
+    lUndead: rec.isLUndead,
+    hUndead: rec.isHUndead,
+    isDemon: rec.isDemon,
+    demon: rec.isDemon,
+    boss: rec.boss,
+    isBoss: rec.boss,
+    primeevil: rec.primeevil,
+    isPrimeEvil: rec.primeevil,
+    noRatio: rec.noRatio,
+    killable: rec.killable,
+    isKillable: rec.killable,
+    isFlying: rec.flying,
+    flying: rec.flying,
+    canOpenDoors: rec.opendoors,
+    opendoors: rec.opendoors,
+    neverCount: rec.neverCount,
+    petIgnore: rec.petIgnore,
+    deathDmg: rec.deathDmg,
+    rarity: rec.rarity,
+    minGroup: rec.minGrp,
+    minGrp: rec.minGrp,
+    maxGroup: rec.maxGrp,
+    maxGrp: rec.maxGrp,
+    partyMin: rec.partyMin,
+    partyMax: rec.partyMax,
+    level: [rec.level[0], rec.level[1], rec.level[2]],
+    baseLevel: {
+      normal: rec.level[0],
+      nightmare: rec.level[1],
+      hell: rec.level[2],
+    },
+    velocity: rec.velocity,
+    runVelocity: rec.run,
+    threat: rec.threat,
+    aiDelay: rec.aidel[tierIdx],
+    aiDistance: rec.aidist[tierIdx],
+    aiDist: rec.aidist[tierIdx],
+    aiParams: [
+      rec.aip1[tierIdx],
+      rec.aip2[tierIdx],
+      rec.aip3[tierIdx],
+      rec.aip4[tierIdx],
+      rec.aip5[tierIdx],
+      rec.aip6[tierIdx],
+      rec.aip7[tierIdx],
+      rec.aip8[tierIdx],
+    ],
+    minHp: rec.minHP[tierIdx],
+    minHpByDifficulty: rec.minHP,
+    maxHp: rec.maxHP[tierIdx],
+    maxHpByDifficulty: rec.maxHP,
+    armour: rec.ac[tierIdx],
+    armor: rec.ac[tierIdx],
+    armourByDifficulty: rec.ac,
+    experience: rec.exp[tierIdx],
+    xp: rec.exp[tierIdx],
+    experienceByDifficulty: rec.exp,
+    attack1: {
+      minDamage: rec.a1.minD[tierIdx],
+      maxDamage: rec.a1.maxD[tierIdx],
+      toHit: rec.a1.th[tierIdx],
+      min: rec.a1.minD[tierIdx],
+      max: rec.a1.maxD[tierIdx],
+      ...(rec.a1.move !== undefined ? { move: rec.a1.move } : {}),
+      ...(rec.modeMissiles.MissA1 !== undefined ? { missile: rec.modeMissiles.MissA1 } : {}),
+    },
+    attack2: {
+      minDamage: rec.a2.minD[tierIdx],
+      maxDamage: rec.a2.maxD[tierIdx],
+      toHit: rec.a2.th[tierIdx],
+      min: rec.a2.minD[tierIdx],
+      max: rec.a2.maxD[tierIdx],
+      ...(rec.a2.move !== undefined ? { move: rec.a2.move } : {}),
+      ...(rec.modeMissiles.MissA2 !== undefined ? { missile: rec.modeMissiles.MissA2 } : {}),
+    },
+    ...(rec.s1.maxD[tierIdx] > 0 || rec.s1.th[tierIdx] > 0 || rec.modeMissiles.MissS1
+      ? {
+          special1: {
+            minDamage: rec.s1.minD[tierIdx],
+            maxDamage: rec.s1.maxD[tierIdx],
+            toHit: rec.s1.th[tierIdx],
+            min: rec.s1.minD[tierIdx],
+            max: rec.s1.maxD[tierIdx],
+            ...(rec.s1.move !== undefined ? { move: rec.s1.move } : {}),
+            ...(rec.modeMissiles.MissS1 !== undefined ? { missile: rec.modeMissiles.MissS1 } : {}),
+          },
+        }
+      : {}),
+    a1ByDifficulty: rec.a1,
+    a2ByDifficulty: rec.a2,
+    s1ByDifficulty: rec.s1,
+    elementalAttacks,
+    skills,
+    modeMissiles,
+    resistances: {
+      physical: rec.resDm[tierIdx],
+      magic: rec.resMa[tierIdx],
+      fire: rec.resFi[tierIdx],
+      lightning: rec.resLi[tierIdx],
+      cold: rec.resCo[tierIdx],
+      poison: rec.resPo[tierIdx],
+    },
+    drain: rec.drain[tierIdx],
+    coldEffect: rec.coldEffect[tierIdx],
+    damageRegen: rec.damageRegen,
+    toBlock: rec.toBlock[tierIdx],
+    crit: rec.crit,
+    align: rec.align,
+    treasureClasses: tcPair.filter((tc) => tc !== ''),
+    minions: [...rec.minions],
+    setBoss: rec.setBoss,
+    meleeRange: rec.meleeRng,
+    meleeRng: rec.meleeRng,
+    sizeX: rec.sizeX,
+    sizeY: rec.sizeY,
+    height: rec.height,
+    overlayHeight: rec.overlayHeight,
+    pixHeight: rec.pixHeight,
+    baseW: rec.baseW,
+    hitClass: rec.hitClass,
+  }
+
+  const getTc = (diff: Difficulty = difficulty, mType = 1): string => {
+    const tcForDiff = tcByDifficulty[diff] ?? tcByDifficulty.normal
+    const normalTc = tcByDifficulty.normal
+    if (mType === 4) {
+      return tcForDiff[3] || tcForDiff[2] || tcForDiff[0] || normalTc[3] || normalTc[2] || normalTc[0] || ''
+    }
+    if (mType === 3) {
+      return tcForDiff[2] || tcForDiff[0] || normalTc[2] || normalTc[0] || ''
+    }
+    if (mType === 2) {
+      return tcForDiff[1] || tcForDiff[0] || normalTc[1] || normalTc[0] || ''
+    }
+    return tcForDiff[0] || normalTc[0] || ''
+  }
+
+  Object.defineProperty(kind, 'getTreasureClass', {
+    value: getTc,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  })
+
+  return kind
+}
+
+function ensureCanonicalMonsterCache(difficulty: Difficulty = 'normal'): {
+  byId: Map<string, MonsterKind>
+  byHcIdx: readonly (MonsterKind | undefined)[]
+} {
+  let byId = cachedCanonicalMonsterKindsByDiff.get(difficulty)
+  let byHcIdx = cachedMonsterKindsByHcIdx.get(difficulty)
+  if (!byId || !byHcIdx) {
+    byId = new Map<string, MonsterKind>()
+    const arr: (MonsterKind | undefined)[] = new Array(MONSTATS_113C_ROWS.length)
+    for (const rec of MONSTATS_113C_ROWS) {
+      const kind = hydrateMonsterKindFrom113cRow(rec, difficulty)
+      arr[rec.hcIdx] = kind
+      const existing = byId.get(rec.id)
+      if (!existing) {
+        byId.set(rec.id, kind)
+      } else if (!existing.enabled && kind.enabled) {
+        byId.set(`${existing.id}#${existing.hcIdx}`, existing)
+        byId.set(rec.id, kind)
+      } else {
+        byId.set(`${rec.id}#${rec.hcIdx}`, kind)
+      }
+    }
+    byHcIdx = arr
+    cachedCanonicalMonsterKindsByDiff.set(difficulty, byId)
+    cachedMonsterKindsByHcIdx.set(difficulty, byHcIdx)
+  }
+  return { byId, byHcIdx }
+}
+
+/**
+ * Return the canonical 1.13c 734-entry `MonsterKind` map for the requested difficulty (`'normal' | 'nightmare' | 'hell'`).
+ */
+export function getCanonicalMonsterKinds(
+  difficulty: Difficulty | number = 'normal',
+): ReadonlyMap<string, MonsterKind> {
+  const diff = normalizeDifficulty(difficulty)
+  return ensureCanonicalMonsterCache(diff).byId
+}
+
+export const MONSTER_TABLE: ReadonlyMap<string, MonsterKind> & Readonly<Record<string, MonsterKind>> = new Proxy(
+  new Map<string, MonsterKind>(),
+  {
+    get(_target, prop, _receiver) {
+      const { byId, byHcIdx } = ensureCanonicalMonsterCache('normal')
+      if (prop in byId) {
+        const value = Reflect.get(byId, prop, byId)
+        return typeof value === 'function' ? value.bind(byId) : value
+      }
+      if (typeof prop === 'string') {
+        const direct = byId.get(prop) ?? byId.get(prop.toLowerCase())
+        if (direct !== undefined) return direct
+        if (/^\d+$/.test(prop)) {
+          return byHcIdx[Number(prop)]
+        }
+      }
+      return undefined
+    },
+    has(_target, prop) {
+      const { byId, byHcIdx } = ensureCanonicalMonsterCache('normal')
+      if (typeof prop === 'string') {
+        if (byId.has(prop) || byId.has(prop.toLowerCase()) || prop in byId) return true
+        if (/^\d+$/.test(prop)) {
+          const idx = Number(prop)
+          return idx >= 0 && idx < byHcIdx.length && byHcIdx[idx] !== undefined
+        }
+      }
+      return false
+    },
+  },
+) as unknown as ReadonlyMap<string, MonsterKind> & Readonly<Record<string, MonsterKind>>
+
+/**
+ * Look up a canonical 1.13c `MonsterKind` by numeric `MonStats.txt` `hcIdx` (`0..733`).
+ */
+export function getMonsterKindByClassId(
+  classId: number,
+  difficulty: Difficulty | number = 'normal',
+): MonsterKind | undefined {
+  return getMonsterKindByHcIdx(classId, difficulty)
 }
 
 /**
@@ -2229,51 +3065,587 @@ export function getMonsterKindByHcIdx(
   hcIdx: number,
   difficulty: Difficulty | number = 'normal',
 ): MonsterKind | undefined {
-  if (!Number.isInteger(hcIdx) || hcIdx < 0) return undefined
-  const targetId = MONSTER_HCIDX_TO_ID[hcIdx]
-  if (!targetId) return undefined
+  if (!Number.isInteger(hcIdx) || hcIdx < 0 || hcIdx >= MONSTATS_113C_ROWS.length) return undefined
   const diff = normalizeDifficulty(difficulty)
-  let list = cachedMonsterKindsByHcIdx.get(diff)
-  if (!list) {
-    const rawKinds = readMonsterKinds(parseTable(new TextEncoder().encode(RAW_MONSTATS)), diff)
-    const byId = new Map<string, MonsterKind>()
-    for (const [id, kind] of rawKinds) {
-      if (id.toLowerCase() === 'expansion') continue
-      const ov = diff === 'normal' ? CANONICAL_113C_MONSTER_OVERRIDES[id] : undefined
-      const canonicalSpeed = CANONICAL_113C_VELOCITIES_BY_ID[id.toLowerCase()]
-      const canonicalVel = canonicalSpeed && canonicalSpeed[0] > 0 ? canonicalSpeed[0] : undefined
-      const canonicalRun = canonicalSpeed && canonicalSpeed[1] > 0 ? canonicalSpeed[1] : undefined
-      const enrichedKind: MonsterKind = {
-        ...kind,
-        enabled: kind.killable || !kind.inTown,
-        velocity: ov?.velocity ?? canonicalVel ?? (kind.velocity > 0 ? kind.velocity : 5),
-        runVelocity: ov?.runVelocity ?? canonicalRun ?? (kind.runVelocity > 0 ? kind.runVelocity : 5),
-        minHp: ov?.minHp ?? (kind.minHp > 0 ? kind.minHp : 21),
-        maxHp: ov?.maxHp ?? (kind.maxHp > 0 ? kind.maxHp : 61),
-        armour: ov?.armour ?? (kind.armour > 0 ? kind.armour : 84),
-        experience: ov?.experience ?? (kind.experience > 0 ? kind.experience : 61),
-        attack1: ov?.attack1 ?? (kind.attack1.maxDamage > 0 ? kind.attack1 : { minDamage: 51, maxDamage: 101, toHit: 101 }),
-        attack2: ov?.attack2 ?? kind.attack2,
-      }
-      if (typeof (kind as any).getTreasureClass === 'function') {
-        Object.defineProperty(enrichedKind, 'getTreasureClass', {
-          value: (kind as any).getTreasureClass,
-          enumerable: false,
-          configurable: true,
-          writable: true,
-        })
-      }
-      byId.set(id, enrichedKind)
-    }
-    const arr: (MonsterKind | undefined)[] = []
-    for (const [idxStr, mappedId] of Object.entries(MONSTER_HCIDX_TO_ID)) {
-      const idx = Number(idxStr)
-      arr[idx] = byId.get(mappedId) ?? byId.get(mappedId.toLowerCase())
-    }
-    list = arr
-    cachedMonsterKindsByHcIdx.set(diff, list)
+  return ensureCanonicalMonsterCache(diff).byHcIdx[hcIdx]
+}
+
+/**
+ * Look up mode-bound missiles (`MissA1`, `MissA2`, `MissS1..S4`, `MissC`, `MissSQ`) by monster `id` or `hcIdx`.
+ */
+export function getMonsterModeMissiles113c(
+  idOrHcIdx: string | number,
+): MonsterModeMissiles | undefined {
+  if (typeof idOrHcIdx === 'number') {
+    const kind = getMonsterKindByHcIdx(idOrHcIdx, 'normal')
+    return kind?.modeMissiles
   }
-  return list[hcIdx]
+  const kind =
+    getCanonicalMonsterKinds('normal').get(idOrHcIdx) ??
+    getCanonicalMonsterKinds('normal').get(idOrHcIdx.toLowerCase())
+  return kind?.modeMissiles
+}
+
+export interface MonAiRecord113c extends MonAi113cRow {
+  readonly id: number
+  readonly params: readonly string[]
+}
+
+export const CANONICAL_MONAI_TABLE: readonly MonAiRecord113c[] = Object.freeze(
+  MONAI_113C_ROWS.map((row) =>
+    Object.freeze({
+      ...row,
+      id: row.index,
+      params: row.paramDescriptions,
+    }),
+  ),
+)
+
+/**
+ * Return the canonical 1.13c `MonAi.txt` table (`148` AI state machines) keyed by AI name.
+ */
+export function getCanonicalMonAiTable(): ReadonlyMap<string, MonAiRecord113c> {
+  if (cachedCanonicalMonAiTable === null) {
+    const map = new Map<string, MonAiRecord113c>()
+    for (const row of CANONICAL_MONAI_TABLE) {
+      map.set(row.ai, row)
+      map.set(row.ai.toLowerCase(), row)
+    }
+    cachedCanonicalMonAiTable = map
+  }
+  return cachedCanonicalMonAiTable
+}
+
+export function getMonAi113c(aiId: string | number): MonAiRecord113c | undefined {
+  if (typeof aiId === 'number') {
+    return CANONICAL_MONAI_TABLE[aiId]
+  }
+  const map = getCanonicalMonAiTable()
+  return map.get(aiId) ?? map.get(aiId.toLowerCase())
+}
+
+export const getMonAiRecord113c = getMonAi113c
+
+export interface MonLvlEntry extends MonLvl113cRow {
+  readonly armor: readonly [number, number, number]
+  readonly toHit: readonly [number, number, number]
+  readonly damage: readonly [number, number, number]
+  readonly lArmor: readonly [number, number, number]
+  readonly lToHit: readonly [number, number, number]
+  readonly lDamage: readonly [number, number, number]
+  readonly hpByDifficulty: Readonly<Record<Difficulty, number>>
+  readonly damageByDifficulty: Readonly<Record<Difficulty, number>>
+  readonly armorByDifficulty: Readonly<Record<Difficulty, number>>
+  readonly toHitByDifficulty: Readonly<Record<Difficulty, number>>
+  readonly xpByDifficulty: Readonly<Record<Difficulty, number>>
+}
+
+export type MonLvlRecord113c = MonLvlEntry
+
+/**
+ * Return the canonical 1.13c `MonLvl.txt` table (`111` rows for levels `0..110`).
+ * In Expansion mode (`gbExpansion = 1`), `D2Game.dll` uses the `L-*` ladders (`lHp`, `lDm`, `lAc`, `lTh`, `lXp`).
+ */
+export function getCanonicalMonLvlTable(): readonly MonLvlEntry[] {
+  if (cachedCanonicalMonLvlTable === null) {
+    cachedCanonicalMonLvlTable = MONLVL_113C_ROWS.map((row) => ({
+      ...row,
+      armor: row.ac,
+      toHit: row.th,
+      damage: row.dm,
+      lArmor: row.lAc,
+      lToHit: row.lTh,
+      lDamage: row.lDm,
+      hpByDifficulty: {
+        normal: row.level === 0 ? 0 : row.lHp[0],
+        nightmare: row.level === 0 ? 0 : row.lHp[1],
+        hell: row.level === 0 ? 0 : row.lHp[2],
+      },
+      damageByDifficulty: {
+        normal: row.level === 0 ? 0 : row.lDm[0],
+        nightmare: row.level === 0 ? 0 : row.lDm[1],
+        hell: row.level === 0 ? 0 : row.lDm[2],
+      },
+      armorByDifficulty: {
+        normal: row.level === 0 ? 0 : row.lAc[0],
+        nightmare: row.level === 0 ? 0 : row.lAc[1],
+        hell: row.level === 0 ? 0 : row.lAc[2],
+      },
+      toHitByDifficulty: {
+        normal: row.level === 0 ? 0 : row.lTh[0],
+        nightmare: row.level === 0 ? 0 : row.lTh[1],
+        hell: row.level === 0 ? 0 : row.lTh[2],
+      },
+      xpByDifficulty: {
+        normal: row.level === 0 ? 0 : row.lXp[0],
+        nightmare: row.level === 0 ? 0 : row.lXp[1],
+        hell: row.level === 0 ? 0 : row.lXp[2],
+      },
+    }))
+  }
+  return cachedCanonicalMonLvlTable
+}
+
+export const MON_LVL_TABLE: readonly MonLvlEntry[] = getCanonicalMonLvlTable()
+export const CANONICAL_MONLVL_TABLE: readonly MonLvlEntry[] = MON_LVL_TABLE
+
+export function getMonLvl113c(level: number): MonLvlEntry {
+  const clamped = Math.max(0, Math.min(MON_LVL_TABLE.length - 1, Math.trunc(level)))
+  return MON_LVL_TABLE[clamped]!
+}
+
+export const getMonLvlRecord113c = getMonLvl113c
+
+export interface ScaledMonsterKind113c {
+  readonly level: number
+  readonly minHp: number
+  readonly maxHp: number
+  readonly armour: number
+  readonly armor?: number | undefined
+  readonly experience: number
+  readonly xp?: number | undefined
+  readonly a1MinD: number
+  readonly a1MaxD: number
+  readonly a1ToHit: number
+  readonly a2MinD: number
+  readonly a2MaxD: number
+  readonly a2ToHit: number
+  readonly s1MinD: number
+  readonly s1MaxD: number
+  readonly s1ToHit: number
+  readonly attack1: MonsterAttack
+  readonly attack2: MonsterAttack
+  readonly special1?: MonsterAttack | undefined
+  readonly elementalAttacks: readonly MonsterElementalAttack[]
+}
+
+/**
+ * Deterministically scale a 1.13c `MonsterKind` or `MonStats113cRow` for a target `difficulty` and `mlvl`
+ * using `MonLvl.txt` Expansion (`L-*`) columns, respecting `noRatio=1` (`D2Game.dll` `0x6fc613b0`).
+ */
+export function scaleMonsterKindForLevel113c(
+  kindOrRow: MonsterKind | MonStats113cRow,
+  difficulty: Difficulty | number = 'normal',
+  levelOverride?: number,
+): ScaledMonsterKind113c {
+  const diff = normalizeDifficulty(difficulty)
+  const tierIdx = DIFFICULTY_TIER_INDEX[diff]
+  const mlvl = Math.max(
+    0,
+    Math.min(110, Math.trunc(levelOverride ?? kindOrRow.level[tierIdx] ?? kindOrRow.level[0] ?? 1)),
+  )
+
+  const isRawRow = 'minHP' in kindOrRow
+  const rawMinHp = isRawRow
+    ? kindOrRow.minHP[tierIdx]
+    : (kindOrRow.minHpByDifficulty?.[tierIdx] ?? kindOrRow.minHp)
+  const rawMaxHp = isRawRow
+    ? kindOrRow.maxHP[tierIdx]
+    : (kindOrRow.maxHpByDifficulty?.[tierIdx] ?? kindOrRow.maxHp)
+  const rawAc = isRawRow
+    ? kindOrRow.ac[tierIdx]
+    : (kindOrRow.armourByDifficulty?.[tierIdx] ?? kindOrRow.armour)
+  const rawExp = isRawRow
+    ? kindOrRow.exp[tierIdx]
+    : (kindOrRow.experienceByDifficulty?.[tierIdx] ?? kindOrRow.experience)
+
+  const a1MinRaw = isRawRow
+    ? kindOrRow.a1.minD[tierIdx]
+    : (kindOrRow.a1ByDifficulty?.minD[tierIdx] ?? kindOrRow.attack1.minDamage)
+  const a1MaxRaw = isRawRow
+    ? kindOrRow.a1.maxD[tierIdx]
+    : (kindOrRow.a1ByDifficulty?.maxD[tierIdx] ?? kindOrRow.attack1.maxDamage)
+  const a1ThRaw = isRawRow
+    ? kindOrRow.a1.th[tierIdx]
+    : (kindOrRow.a1ByDifficulty?.th[tierIdx] ?? kindOrRow.attack1.toHit)
+
+  const a2MinRaw = isRawRow
+    ? kindOrRow.a2.minD[tierIdx]
+    : (kindOrRow.a2ByDifficulty?.minD[tierIdx] ?? kindOrRow.attack2?.minDamage ?? 0)
+  const a2MaxRaw = isRawRow
+    ? kindOrRow.a2.maxD[tierIdx]
+    : (kindOrRow.a2ByDifficulty?.maxD[tierIdx] ?? kindOrRow.attack2?.maxDamage ?? 0)
+  const a2ThRaw = isRawRow
+    ? kindOrRow.a2.th[tierIdx]
+    : (kindOrRow.a2ByDifficulty?.th[tierIdx] ?? kindOrRow.attack2?.toHit ?? 0)
+
+  const s1MinRaw = isRawRow
+    ? kindOrRow.s1.minD[tierIdx]
+    : (kindOrRow.s1ByDifficulty?.minD[tierIdx] ?? kindOrRow.special1?.minDamage ?? 0)
+  const s1MaxRaw = isRawRow
+    ? kindOrRow.s1.maxD[tierIdx]
+    : (kindOrRow.s1ByDifficulty?.maxD[tierIdx] ?? kindOrRow.special1?.maxDamage ?? 0)
+  const s1ThRaw = isRawRow
+    ? kindOrRow.s1.th[tierIdx]
+    : (kindOrRow.s1ByDifficulty?.th[tierIdx] ?? kindOrRow.special1?.toHit ?? 0)
+
+  const rawElemental: readonly MonsterElementalAttack[] = isRawRow
+    ? kindOrRow.elementalAttacks.map((el) => ({
+        slot: el.slot,
+        mode: el.mode,
+        type: el.type,
+        chancePct: el.pct[tierIdx],
+        min: el.minD[tierIdx],
+        max: el.maxD[tierIdx],
+        durationFrames: el.dur[tierIdx],
+        pct: el.pct[tierIdx],
+        minDamage: el.minD[tierIdx],
+        maxDamage: el.maxD[tierIdx],
+        duration: el.dur[tierIdx],
+      }))
+    : (kindOrRow.elementalAttacks ?? [])
+
+  if (kindOrRow.noRatio) {
+    const a1MaxClamped = Math.max(a1MinRaw, a1MaxRaw)
+    const a2MaxClamped = Math.max(a2MinRaw, a2MaxRaw)
+    const s1MaxClamped = Math.max(s1MinRaw, s1MaxRaw)
+    return {
+      ...(!isRawRow ? kindOrRow : {}),
+      level: mlvl,
+      minHp: rawMinHp,
+      maxHp: Math.max(rawMinHp, rawMaxHp),
+      armour: rawAc,
+      armor: rawAc,
+      experience: rawExp,
+      xp: rawExp,
+      a1MinD: a1MinRaw,
+      a1MaxD: a1MaxClamped,
+      a1ToHit: a1ThRaw,
+      a2MinD: a2MinRaw,
+      a2MaxD: a2MaxClamped,
+      a2ToHit: a2ThRaw,
+      s1MinD: s1MinRaw,
+      s1MaxD: s1MaxClamped,
+      s1ToHit: s1ThRaw,
+      attack1: {
+        ...(!isRawRow ? kindOrRow.attack1 : {}),
+        minDamage: a1MinRaw,
+        maxDamage: a1MaxClamped,
+        toHit: a1ThRaw,
+        min: a1MinRaw,
+        max: a1MaxClamped,
+      },
+      attack2: {
+        ...(!isRawRow ? kindOrRow.attack2 : {}),
+        minDamage: a2MinRaw,
+        maxDamage: a2MaxClamped,
+        toHit: a2ThRaw,
+        min: a2MinRaw,
+        max: a2MaxClamped,
+      },
+      ...((!isRawRow && kindOrRow.special1) || s1MaxClamped > 0 || s1ThRaw > 0
+        ? {
+            special1: {
+              ...(!isRawRow && kindOrRow.special1 ? kindOrRow.special1 : {}),
+              minDamage: s1MinRaw,
+              maxDamage: s1MaxClamped,
+              toHit: s1ThRaw,
+              min: s1MinRaw,
+              max: s1MaxClamped,
+            },
+          }
+        : {}),
+      elementalAttacks: rawElemental,
+    }
+  }
+
+  const monLvl = getMonLvl113c(mlvl)
+  const lHp = monLvl.lHp[tierIdx]
+  const lDm = monLvl.lDm[tierIdx]
+  const lAc = monLvl.lAc[tierIdx]
+  const lTh = monLvl.lTh[tierIdx]
+  const lXp = monLvl.lXp[tierIdx]
+
+  const minHp = Math.max(1, Math.trunc((rawMinHp * lHp) / 100))
+  const maxHp = Math.max(minHp, Math.trunc((rawMaxHp * lHp) / 100))
+  const armour = Math.trunc((rawAc * lAc) / 100)
+  const experience = Math.trunc((rawExp * lXp) / 100)
+
+  const a1MinD = Math.trunc((a1MinRaw * lDm) / 100)
+  const a1MaxD = Math.max(a1MinD, Math.trunc((a1MaxRaw * lDm) / 100))
+  const a1ToHit = Math.trunc((a1ThRaw * lTh) / 100)
+
+  const a2MinD = Math.trunc((a2MinRaw * lDm) / 100)
+  const a2MaxD = Math.max(a2MinD, Math.trunc((a2MaxRaw * lDm) / 100))
+  const a2ToHit = Math.trunc((a2ThRaw * lTh) / 100)
+
+  const s1MinD = Math.trunc((s1MinRaw * lDm) / 100)
+  const s1MaxD = Math.max(s1MinD, Math.trunc((s1MaxRaw * lDm) / 100))
+  const s1ToHit = Math.trunc((s1ThRaw * lTh) / 100)
+
+  const elementalAttacks: readonly MonsterElementalAttack[] = rawElemental.map((el) => {
+    const elMin = Math.max(0, Math.trunc(((el.minDamage ?? el.min) * lDm) / 100))
+    const elMax = Math.max(elMin, Math.trunc(((el.maxDamage ?? el.max) * lDm) / 100))
+    return {
+      ...el,
+      min: elMin,
+      max: elMax,
+      minDamage: elMin,
+      maxDamage: elMax,
+    }
+  })
+
+  return {
+    ...(!isRawRow ? kindOrRow : {}),
+    level: mlvl,
+    minHp,
+    maxHp,
+    armour,
+    armor: armour,
+    experience,
+    xp: experience,
+    a1MinD,
+    a1MaxD,
+    a1ToHit,
+    a2MinD,
+    a2MaxD,
+    a2ToHit,
+    s1MinD,
+    s1MaxD,
+    s1ToHit,
+    attack1: {
+      ...(!isRawRow ? kindOrRow.attack1 : {}),
+      minDamage: a1MinD,
+      maxDamage: a1MaxD,
+      toHit: a1ToHit,
+      min: a1MinD,
+      max: a1MaxD,
+    },
+    attack2: {
+      ...(!isRawRow ? kindOrRow.attack2 : {}),
+      minDamage: a2MinD,
+      maxDamage: a2MaxD,
+      toHit: a2ToHit,
+      min: a2MinD,
+      max: a2MaxD,
+    },
+    ...((!isRawRow && kindOrRow.special1) || s1MaxD > 0 || s1ToHit > 0
+      ? {
+          special1: {
+            ...(!isRawRow && kindOrRow.special1 ? kindOrRow.special1 : {}),
+            minDamage: s1MinD,
+            maxDamage: s1MaxD,
+            toHit: s1ToHit,
+            min: s1MinD,
+            max: s1MaxD,
+          },
+        }
+      : {}),
+    elementalAttacks,
+  }
+}
+
+export function scaleMonsterStatsForDifficulty(
+  kind: MonsterKind,
+  difficulty: Difficulty | number = 'normal',
+  options?: {
+    readonly level?: number
+    readonly rank?: 'normal' | 'minion' | 'champion' | 'unique' | 'superunique'
+    readonly playersCount?: number
+    readonly playerCount?: number
+    readonly roll?: number
+  },
+): MonsterStats {
+  const diff = normalizeDifficulty(difficulty)
+  return monsterStatsOf(kind, diff, 170, options?.roll ?? 0.5, {
+    difficulty: diff,
+    level: options?.level,
+    rank: options?.rank,
+    playersCount: options?.playersCount ?? options?.playerCount,
+    playerCount: options?.playerCount ?? options?.playersCount,
+  })
+}
+
+export interface ResolveMonsterStatsOptions extends Omit<MonsterStats113cOptions, 'rank'> {
+  readonly rank?: MonsterRank | 'superunique' | string | undefined
+  readonly championSubtype?: ChampionSubtype | number | string | undefined
+  readonly modifiers?: readonly (string | number)[] | undefined
+  readonly superUniqueId?: string | undefined
+  readonly seed?: number | undefined
+}
+
+const CHAMPION_SUBTYPE_LOOKUP: Readonly<Record<string, ChampionSubtype | 16 | 36 | 37 | 38 | 39>> = {
+  '16': 16,
+  champion: 'champion',
+  '36': 36,
+  ghostly: 'ghostly',
+  championghostly: 'ghostly',
+  champion_ghostly: 'ghostly',
+  '37': 37,
+  fanatic: 'fanatic',
+  fanatical: 'fanatic',
+  championfanatic: 'fanatic',
+  champion_fanatic: 'fanatic',
+  '38': 38,
+  possessed: 'possessed',
+  championpossessed: 'possessed',
+  champion_possessed: 'possessed',
+  '39': 39,
+  berserk: 'berserk',
+  berserker: 'berserk',
+  championberserk: 'berserk',
+  champion_berserk: 'berserk',
+}
+
+export function resolveMonsterStats(
+  kindOrId: MonsterKind | MonStats113cRow | string | number,
+  difficultyOrOptions?: Difficulty | number | ResolveMonsterStatsOptions,
+  maybeOptions?: ResolveMonsterStatsOptions,
+): MonsterStats {
+  const isOptsSecond =
+    typeof difficultyOrOptions === 'object' && difficultyOrOptions !== null
+  const options: ResolveMonsterStatsOptions | undefined = isOptsSecond
+    ? (difficultyOrOptions as ResolveMonsterStatsOptions)
+    : maybeOptions
+  const fallbackKindDiff =
+    typeof kindOrId === 'object' &&
+    kindOrId !== null &&
+    'difficulty' in kindOrId &&
+    kindOrId.difficulty !== undefined
+      ? kindOrId.difficulty
+      : 'normal'
+  const rawDiff: Difficulty | number = isOptsSecond
+    ? (options?.difficulty ?? fallbackKindDiff)
+    : ((difficultyOrOptions as Difficulty | number | undefined) ??
+      options?.difficulty ??
+      fallbackKindDiff)
+  const diff = normalizeDifficulty(rawDiff)
+
+  const kind: MonsterKind | undefined =
+    typeof kindOrId === 'number'
+      ? getMonsterKindByHcIdx(kindOrId, diff)
+      : typeof kindOrId === 'string'
+        ? (getCanonicalMonsterKinds(diff).get(kindOrId) ??
+          getCanonicalMonsterKinds(diff).get(kindOrId.toLowerCase()))
+        : 'minHP' in kindOrId
+          ? getMonsterKindByHcIdx(kindOrId.hcIdx, diff)
+          : kindOrId
+  if (!kind) {
+    throw new Error(`Unknown monster kind: ${String(kindOrId)}`)
+  }
+
+  const rawRank = String(
+    options?.rank ??
+      (options?.championSubtype !== undefined
+        ? 'champion'
+        : options?.superUniqueId !== undefined
+          ? 'unique'
+          : 'normal'),
+  )
+    .trim()
+    .toLowerCase()
+  const isChampSubtypeRank = rawRank.startsWith('champion_')
+  const effectiveRank: MonsterRank = isChampSubtypeRank
+    ? 'champion'
+    : rawRank === 'superunique'
+      ? 'unique'
+      : ((rawRank as MonsterRank) || 'normal')
+
+  const rng = options?.seed !== undefined ? new Rng(options.seed) : options?.rng
+  const base = monsterStatsOf(kind, {
+    ...options,
+    difficulty: diff,
+    ...(rng !== undefined ? { rng } : {}),
+    playersCount: options?.playersCount ?? options?.playerCount,
+    playerCount: options?.playerCount ?? options?.playersCount,
+    rank: effectiveRank,
+  })
+
+  const rawChampSubtype =
+    options?.championSubtype ??
+    (isChampSubtypeRank ? rawRank.replace(/^champion_/, '') : undefined) ??
+    (effectiveRank === 'champion' && options?.modifiers?.length === 1
+      ? options.modifiers[0]
+      : undefined)
+  if (
+    effectiveRank === 'champion' &&
+    rawChampSubtype !== undefined &&
+    (!options?.modifiers ||
+      options.modifiers.length === 0 ||
+      (options.modifiers.length === 1 &&
+        CHAMPION_SUBTYPE_LOOKUP[String(options.modifiers[0]).trim().toLowerCase()] !== undefined))
+  ) {
+    const mapped = CHAMPION_SUBTYPE_LOOKUP[String(rawChampSubtype).trim().toLowerCase()]
+    if (mapped !== undefined) {
+      return applyChampionSubtypeStats(base, mapped, diff)
+    }
+  }
+
+  const strModifiers = [
+    ...(options?.modifiers?.map((m) => String(m)) ?? []),
+    ...(isChampSubtypeRank ? [rawRank.replace(/^champion_/, '')] : []),
+    ...(options?.championSubtype !== undefined
+      ? [String(options.championSubtype).replace(/^champion_/, '')]
+      : []),
+  ]
+  const withElite =
+    effectiveRank === 'normal' && strModifiers.length === 0 && options?.superUniqueId === undefined
+      ? base
+      : applyEliteModifiers(base, effectiveRank, diff, strModifiers, options?.superUniqueId)
+
+  if (strModifiers.length > 0 && base.resistances) {
+    const cappedRes = applyMonsterUModResistances(
+      {
+        physical: base.resistances.physical ?? 0,
+        magic: base.resistances.magic ?? 0,
+        fire: base.resistances.fire ?? 0,
+        lightning: base.resistances.lightning ?? 0,
+        cold: base.resistances.cold ?? 0,
+        poison: base.resistances.poison ?? 0,
+      },
+      strModifiers,
+    )
+    return {
+      ...withElite,
+      resistances: cappedRes,
+      resists: cappedRes,
+      lightningResist: cappedRes.lightning,
+    }
+  }
+  return withElite
+}
+
+/**
+ * Return all 66 canonical 1.13c `SuperUniques.txt` records.
+ */
+export function getCanonicalSuperUniques(): readonly SuperUnique[] {
+  if (cachedSuperUniquesByIndex === null) {
+    cachedSuperUniquesByIndex = SUPERUNIQUES_113C_ROWS.map((row) => {
+      const su: SuperUnique = {
+        index: row.hcIdx,
+        hcIdx: row.hcIdx,
+        id: row.superunique,
+        nameKey: row.name,
+        name: row.name,
+        monsterId: row.classId,
+        classId: row.classId,
+        monSound: row.monSound,
+        modifiers: row.mods,
+        mods: row.mods,
+        minMinions: row.minGrp,
+        maxMinions: row.maxGrp,
+        minGrp: row.minGrp,
+        maxGrp: row.maxGrp,
+        enhancementClass: row.eClass,
+        eClass: row.eClass,
+        autoPosition: row.autoPos,
+        autoPos: row.autoPos,
+        stacks: row.stacks,
+        replaceable: row.replaceable,
+        uTrans: row.uTrans,
+        treasureClass: row.tc.normal,
+        tc: row.tc,
+      }
+      Object.defineProperty(su, 'getTreasureClass', {
+        value: (diff: Difficulty = 'normal'): string => row.tc[diff] ?? row.tc.normal,
+        enumerable: false,
+        configurable: true,
+        writable: true,
+      })
+      return su
+    })
+  }
+  return cachedSuperUniquesByIndex!
 }
 
 /**
@@ -2281,29 +3653,43 @@ export function getMonsterKindByHcIdx(
  */
 export function getSuperUniqueByIndex(index: number): SuperUnique | undefined {
   if (!Number.isInteger(index) || index < 0) return undefined
-  if (cachedSuperUniquesByIndex === null) {
-    cachedSuperUniquesByIndex = readSuperUniques(
-      parseTable(new TextEncoder().encode(RAW_SUPERUNIQUES.trim())),
-    )
-  }
-  return cachedSuperUniquesByIndex[index]
+  const list = getCanonicalSuperUniques()
+  return list[index]
 }
 
 /**
  * Apply 1.13c `MonUMod` resistance bonuses (`D2Game.dll` `0x6fccf610`) to a monster's base difficulty resistances.
+ *
+ * Canonical 1.13c rules:
+ * - At most 2 immunities (`res >= 100`) may be held when applying `magicresistant` (8), `fireenchant` (9),
+ *   `lightenchant` (17), `coldenchant` (18), or `spectralhit` (27).
+ * - `magicresistant` (8): checks `countImmunities() < 2` before EACH of `fire (+40)`, `lightning (+40)`, `cold (+40)`
+ *   sequentially, so if fire crosses 100 and reaches 2 total immunities, lightning and cold are NOT incremented.
+ * - `spectralhit` (27): checks `countImmunities() < 2` and `res < 75` before adding `+20` to fire, lightning, cold.
+ * - `manahit` (25): adds `+20` magic resistance unconditionally.
+ * - `stoneskin` (28): adds `+50` physical resistance unconditionally.
  */
 export function applyMonsterUModResistances(
-  base: MonsterResistances,
+  base: MonsterResistances | MonsterKind,
   bossMods: readonly (number | string)[] | undefined,
+  difficulty?: Difficulty | number,
 ): MonsterResistances {
-  if (!bossMods || bossMods.length === 0) return base
+  const maybeKind = base as Partial<MonsterKind>
+  const resolvedBase: MonsterResistances =
+    typeof maybeKind.resistances === 'object' && maybeKind.resistances !== null
+      ? difficulty !== undefined && typeof maybeKind.hcIdx === 'number'
+        ? (getMonsterKindByHcIdx(maybeKind.hcIdx, difficulty)?.resistances ??
+          maybeKind.resistances)
+        : maybeKind.resistances
+      : (base as MonsterResistances)
+  if (!bossMods || bossMods.length === 0) return resolvedBase
 
-  let physical = base.physical
-  let magic = base.magic
-  let fire = base.fire
-  let lightning = base.lightning
-  let cold = base.cold
-  const poison = base.poison
+  let physical = resolvedBase.physical
+  let magic = resolvedBase.magic
+  let fire = resolvedBase.fire
+  let lightning = resolvedBase.lightning
+  let cold = resolvedBase.cold
+  const poison = resolvedBase.poison
 
   const countImmunities = () =>
     (physical >= 100 ? 1 : 0) +
@@ -2314,18 +3700,18 @@ export function applyMonsterUModResistances(
     (poison >= 100 ? 1 : 0)
 
   for (const rawMod of bossMods) {
-    const key = String(rawMod).trim().toLowerCase()
+    const key = String(rawMod).trim().toLowerCase().replace(/[\s_-]+/g, '')
     if (key === '8' || key === 'magicresistant') {
       if (countImmunities() < 2) fire += 40
       if (countImmunities() < 2) lightning += 40
       if (countImmunities() < 2) cold += 40
-    } else if (key === '9' || key === 'fireenchant') {
+    } else if (key === '9' || key === 'fireenchant' || key === 'fireenchanted') {
       if (countImmunities() < 2 || fire >= 100) fire += 75
-    } else if (key === '17' || key === 'lightenchant') {
+    } else if (key === '17' || key === 'lightenchant' || key === 'lightningenchanted') {
       if (countImmunities() < 2 || lightning >= 100) lightning += 75
-    } else if (key === '18' || key === 'coldenchant') {
+    } else if (key === '18' || key === 'coldenchant' || key === 'coldenchanted') {
       if (countImmunities() < 2 || cold >= 100) cold += 75
-    } else if (key === '25' || key === 'manahit') {
+    } else if (key === '25' || key === 'manahit' || key === 'manaburn') {
       magic += 20
     } else if (key === '27' || key === 'spectralhit') {
       if (countImmunities() < 2 && fire < 75) fire += 20
@@ -2333,6 +3719,8 @@ export function applyMonsterUModResistances(
       if (countImmunities() < 2 && cold < 75) cold += 20
     } else if (key === '28' || key === 'stoneskin') {
       physical += 50
+    } else if (key === '36' || key === 'ghostly' || key === 'championghostly') {
+      physical = Math.max(80, physical)
     }
   }
 

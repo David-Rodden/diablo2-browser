@@ -210,6 +210,10 @@ export class ClientWorld {
   loading = true
   selfId = 0
 
+  get localPlayerId(): number {
+    return this.selfId
+  }
+
   get areaId(): number {
     return this._areaId
   }
@@ -1755,7 +1759,11 @@ export class ClientWorld {
     return this._pets
   }
 
-  get units(): ReadonlyMap<string, ClientUnit> {
+  get units(): UnitMap {
+    return this._units
+  }
+
+  get entities(): UnitMap {
     return this._units
   }
 

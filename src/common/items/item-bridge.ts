@@ -1669,6 +1669,59 @@ const RUNEWORD_DISPLAY_OVERRIDES_EN: Readonly<Record<string, string>> = {
   Runeword99: 'Voice of Reason',
 }
 
+const ONLINE_CHARM_CODES: ReadonlySet<string> = new Set([
+  'cm1',
+  'cm2',
+  'cm3',
+  'scha',
+  'mcha',
+  'lcha',
+])
+
+const ONLINE_SCROLL_OR_BOOK_CODES: ReadonlySet<string> = new Set([
+  'isc',
+  'tsc',
+  'ibk',
+  'tbk',
+])
+
+/**
+ * Ground Truth (`D2Common.dll` `0x6fd7c0c0`, `0x6fd7a927`, `0x6fd5f7f0` & `0x6fd76190`):
+ * Compact items (`IFLAG_COMPACT`) are always `ITEMQUAL_NORMAL` (`2`) and never carry magic affixes.
+ * For scrolls and tomes (`tsc`, `isc`, `tbk`, `ibk`), `D2ItemDataStrc.wMagicSuffix[0]` is a reused
+ * union slot storing the `Books.txt` spell row index (`0` = Town Portal, `1` = Identify), NOT a
+ * `MagicSuffix.txt` ID. Magic affixes only apply to `ITEMQUAL_MAGIC` (`4`), Normal Charms (`quality === 2`
+ * & `ITYPE_CHARM`), or synthetic test objects where `quality` is omitted.
+ */
+function hasOnlineMagicAffixes(
+  item: ItemData | Record<string, any>,
+  qualityStr: string,
+  code: string,
+  baseRow?: any,
+): boolean {
+  if (Boolean(item.compact || (item as any).simple)) return false
+  const rawType = String(baseRow?.type ?? '').trim().toLowerCase()
+  if (ONLINE_SCROLL_OR_BOOK_CODES.has(code) || rawType === 'scro' || rawType === 'book') {
+    return false
+  }
+  if (qualityStr === 'magic') return true
+  const rawQ = item.quality
+  if (rawQ !== undefined && rawQ !== null && rawQ !== 4 && rawQ !== 'magic') {
+    const isNormalCharm =
+      (rawQ === 2 || rawQ === 'normal') &&
+      (ONLINE_CHARM_CODES.has(code) || rawType === 'scha' || rawType === 'mcha' || rawType === 'lcha')
+    if (!isNormalCharm) return false
+  }
+  return Boolean(
+    item.magicPrefixId ||
+      item.magicSuffixId ||
+      (item as any).magicPrefix ||
+      (item as any).magicSuffix ||
+      (item as any).prefixIds?.length ||
+      (item as any).suffixIds?.length,
+  )
+}
+
 /**
  * Canonical 1.13c Online `ItemData` (`0x9C` / `0x9D`) to `UiInventoryItem` Bridge.
  *
@@ -1858,15 +1911,7 @@ export function onlineItemDataToUiInventoryItem(
           extraReqLevel = Math.max(extraReqLevel, setItemDef.levelreq)
         }
       }
-    } else if (
-      qualityStr === 'magic' ||
-      item.magicPrefixId ||
-      item.magicSuffixId ||
-      (item as any).magicPrefix ||
-      (item as any).magicSuffix ||
-      (item as any).prefixIds?.length ||
-      (item as any).suffixIds?.length
-    ) {
+    } else if (hasOnlineMagicAffixes(item, qualityStr, code, baseRow)) {
       const rawItemType = String(baseRow?.type ?? '').trim().toLowerCase()
       const effectiveItemClass = inferItemClassFromType(rawItemType, tables.isA)
       const rawPlayerClass = String((item as any).charClass ?? (item as any).playerClass ?? '').trim().toLowerCase()
@@ -2384,8 +2429,8 @@ export function onlineItemDataToUiInventoryItem(
     ...(runewordObj ? { runeword: runewordObj, runewordName: runewordObj.name } : {}),
     ...(extraReqLevel > 1 ? { reqLevel: extraReqLevel } : {}),
     ...(typeof item.autoAffixId === 'number' ? { autoAffixId: item.autoAffixId } : {}),
-    ...(typeof item.magicPrefixId === 'number' ? { magicPrefixId: item.magicPrefixId } : {}),
-    ...(typeof item.magicSuffixId === 'number' ? { magicSuffixId: item.magicSuffixId } : {}),
+    ...(rolledMagicAffixes && typeof item.magicPrefixId === 'number' ? { magicPrefixId: item.magicPrefixId } : {}),
+    ...(rolledMagicAffixes && typeof item.magicSuffixId === 'number' ? { magicSuffixId: item.magicSuffixId } : {}),
     ...(quantity !== undefined ? { quantity, stack: quantity } : {}),
     rolledProps: isUnidentified ? [] : rolledProps,
     stats: item.goldAmount !== undefined ? { amount: item.goldAmount } : {},
@@ -2637,15 +2682,7 @@ export function resolveOnlineItemReqLevel(
     if (qualityStr === 'craft') {
       extraReqLevel = Math.min(98, Math.max(baseReqLevel, extraReqLevel) + 10 + 3 * craftAffixCount)
     }
-  } else if (
-    qualityStr === 'magic' ||
-    item.magicPrefixId ||
-    item.magicSuffixId ||
-    (item as any).magicPrefix ||
-    (item as any).magicSuffix ||
-    (item as any).prefixIds?.length ||
-    (item as any).suffixIds?.length
-  ) {
+  } else if (hasOnlineMagicAffixes(item, qualityStr, code, baseRow)) {
     const preId =
       item.magicPrefixId ??
       (item as any).magicPrefix ??

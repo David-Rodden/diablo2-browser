@@ -22,7 +22,7 @@ import {
 import { D2FontRenderer } from '../src/client/ui/font.ts'
 import { HudManager } from '../src/client/ui/hud-manager.ts'
 import { WaypointNetwork } from '../src/common/world/portal.ts'
-import { GameEngine, type GameEngineOptions, type WorldMapProvider } from '../src/server/engine/engine.ts'
+import { GameEngine, type GameEngineOptions, type WorldMapProvider } from '../src/server/engine/game-engine.ts'
 import { rebudgetMonsterPacks } from '../src/common/world/scene-population.ts'
 import {
   CANONICAL_CHAMPION_MODIFIERS,
@@ -846,7 +846,9 @@ describe('Diablo II 1.13c Monster Lifebar & 2-Line Subtext Tooltip Parity', () =
     expect(buildMonsterHoverSubtext(skelInfo, 'en').line1).toBe('Undead')
     expect(buildMonsterHoverSubtext(skelInfo, 'zh').line1).toBe('不死的')
 
-    // 2. SuperUnique Bishibosh (hcIdx = 58 fallenshaman1, superUniqueId = 0, bossMods = [8, 9])
+    // 2. SuperUnique Bishibosh (hcIdx = 58 fallenshaman1, superUniqueId = 0, bossMods = [8, 9, 22])
+    // Note: 22 (questcomplete) is an internal MonUMod with wMonUModStrTable[22] == 0 (D2Client.dll 0x6fb6fca0)
+    // and must be suppressed from modifiers/affixes and never appear as "22" on subtext line 1.
     const bishUnit = new ClientUnit({
       unitType: 1,
       id: 102,
@@ -858,18 +860,30 @@ describe('Diablo II 1.13c Monster Lifebar & 2-Line Subtext Tooltip Parity', () =
       isUnique: true,
       isSuperUnique: true,
       superUniqueId: 0,
-      bossMods: [8, 9],
+      bossMods: [8, 9, 22, 15],
     })
     const bishInfo = clientUnitToMonsterTargetInfo(bishUnit, 0)
     expect(bishInfo.name).toBe('Bishibosh')
     expect(bishInfo.nameKey).toBe('Bishibosh')
     expect(bishInfo.rank).toBe('superunique')
     expect(bishInfo.isDemon).toBe(true)
+    expect(bishInfo.modifiers).toEqual(['magicresistant', 'fireenchant'])
+    expect(bishInfo.affixes).toEqual(['Magic Resistant', 'Fire Enchanted'])
     expect(resolveMonsterTitleAndColor(bishInfo, 'en').titleColor).toBe('gold')
     expect(resolveMonsterTitleAndColor(bishInfo, 'zh').displayName).toBe('畢須博須')
     const bishSubEn = buildMonsterHoverSubtext(bishInfo, 'en')
     expect(bishSubEn.line1).toBe('Demon  Magic Resistant  Fire Enchanted  Raises Fallen')
     expect(bishSubEn.line2).toBe('Immune to Fire')
+    // Direct buildMonsterHoverSubtext call with raw internal MonUMod IDs ('22', 'questcomplete', '12')
+    expect(
+      buildMonsterHoverSubtext(
+        {
+          ...bishInfo,
+          modifiers: ['8', '22', 'questcomplete', '9', '12', 'Mod #22'],
+        },
+        'en',
+      ).line1,
+    ).toBe('Demon  Magic Resistant  Fire Enchanted  Raises Fallen')
 
     // 3. Authentic 1.13c Champion packs (D2Game.dll 0x6fc6ffb9 sets 0x08 MONFLAG_UNIQUE alongside
     // 0x04 MONFLAG_CHAMPION and sends 16-bit nameSeed in 0xAC AssignNPC; D2Client.dll 0x6fad0758

@@ -348,4 +348,15 @@ describe('formatSessionLostReason', () => {
     )
     expect(formatSessionLostReason('client', 'local', 'Disconnected by user')).toBe('Disconnected by user')
   })
+
+  it('resolves wss:// for remote domains (d2.laiseek.xyz, www.laiseek.xyz) and ws:// for localhost even from http://localhost:8080', () => {
+    const session = new OnlineSession({ settingsStore: createSettingsStore(), leaseStorage: null })
+    expect(session.resolveWsBridgeBaseUrl('d2.laiseek.xyz')).toBe('wss://d2.laiseek.xyz/d2net')
+    expect(session.resolveWsBridgeBaseUrl('www.laiseek.xyz')).toBe('wss://www.laiseek.xyz/d2net')
+    expect(session.resolveWsBridgeBaseUrl('localhost:8080')).toBe('ws://localhost:8080/d2net')
+    expect(session.resolveWsBridgeBaseUrl('127.0.0.1:8080')).toBe('ws://127.0.0.1:8080/d2net')
+    expect(session.resolveWsBridgeBaseUrl('ws://d2.laiseek.xyz:8080')).toBe('ws://d2.laiseek.xyz:8080/d2net')
+    expect(session.resolveWsBridgeBaseUrl('wss://localhost:8443')).toBe('wss://localhost:8443/d2net')
+    session.destroy()
+  })
 })

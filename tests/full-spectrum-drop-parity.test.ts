@@ -776,11 +776,17 @@ describe('Issue #428: Full-Spectrum Statistical Drop Verification', () => {
   // PILLAR 4: Anti-Regression Source Sentinels
   // ============================================================================
   describe('4. Anti-Regression Source Code Sentinels', () => {
-    it('src/server/engine/engine.ts contains zero forbidden fallbacks (Act 1 H2H A, player.level + 2, rollDrop)', () => {
-      const engineSrc = readFileSync(resolve(process.cwd(), 'src/server/engine/engine.ts'), 'utf8')
-      expect(engineSrc).not.toContain('Act 1 H2H A')
-      expect(engineSrc).not.toContain('player.level + 2')
-      expect(engineSrc).not.toMatch(/\brollDrop\s*\(/)
+    it('src/server/items/drop-pipeline.ts, src/server/engine/game-instance.ts, and src/server/engine/game-engine.ts contain zero forbidden fallbacks (Act 1 H2H A, player.level + 2, rollDrop)', () => {
+      for (const relPath of [
+        'src/server/items/drop-pipeline.ts',
+        'src/server/engine/game-instance.ts',
+        'src/server/engine/game-engine.ts',
+      ]) {
+        const src = readFileSync(resolve(process.cwd(), relPath), 'utf8')
+        expect(src).not.toContain('Act 1 H2H A')
+        expect(src).not.toContain('player.level + 2')
+        expect(src).not.toMatch(/\brollDrop\s*\(/)
+      }
     })
 
     it('src/common/items/items.ts contains zero legacy rollDrop or [58, 25, 10, 5, 2] fake quality weights', () => {

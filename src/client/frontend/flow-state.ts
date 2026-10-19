@@ -2440,11 +2440,21 @@ export const CAMPFIRE_TO_CHAR_CLASS_ID: Readonly<Record<CampfireClassId, 0 | 1 |
   as: 6,
 } as const
 
+const CLASS_CODE_TO_CAMPFIRE: Readonly<Record<string, CampfireClassId>> = {
+  ama: 'am',
+  sor: 'so',
+  nec: 'ne',
+  pal: 'pa',
+  bar: 'ba',
+  dru: 'dz',
+  ass: 'as',
+} as const
+
 export function charSummaryToRosterCharacter(
   summary: {
     readonly name: string
     readonly charClass?: number | undefined
-    readonly classId?: number | CampfireClassId | undefined
+    readonly classId?: number | CampfireClassId | string | undefined
     readonly level: number
     readonly expansion?: boolean | undefined
     readonly hardcore?: boolean | undefined
@@ -2465,7 +2475,7 @@ export function charSummaryToRosterCharacter(
   const rawClass = summary.charClass ?? summary.classId
   const classId: CampfireClassId | undefined =
     typeof rawClass === 'string'
-      ? rawClass
+      ? (CLASS_CODE_TO_CAMPFIRE[rawClass] ?? (rawClass as CampfireClassId))
       : typeof rawClass === 'number'
         ? CHAR_CLASS_ID_TO_CAMPFIRE[rawClass]
         : undefined

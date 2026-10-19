@@ -35,8 +35,12 @@ import {
   calculateNecromageMissileDamage,
   calculateBoneWallStats,
   calculateBonePrisonStats,
+  ISO_GROUND_ASPECT_RATIO,
   type IronGolemItemProps,
 } from '../engine/missile-engine.ts'
+import { isPetTypeUnsummonable113c } from '../../common/units/pet-type-table.ts'
+import { DRUID_TRANSFORM_CLT_OVERLAYS_113C } from '../skills/druid-shapeshift.ts'
+export { DRUID_TRANSFORM_CLT_OVERLAYS_113C }
 import {
   calculateDecoyStats,
   calculateValkyrieStats,
@@ -149,6 +153,7 @@ export interface SummonedPetUnit {
   equipmentTier?: ValkyrieEquipmentTier | undefined
   shadowEquipment?: ShadowEquipmentLoadout | undefined
   shadowSkills?: ReadonlyMap<number, number> | undefined
+  targetId?: string | number | undefined
 }
 
 export interface CreatePetOutcome {
@@ -1115,9 +1120,38 @@ export class SummonManager {
     let damageDealt = 0
     let corpsesConsumedByPets = 0
 
+    const stationaryKinds = new Set([
+      'dopplezon',
+      'decoy',
+      'hydra',
+      'bonewall',
+      'blade_sentinel',
+      'wake_of_fire',
+      'wake_of_inferno',
+      'lightning_sentry',
+      'ChargedBoltSentry',
+      'death_sentry',
+    ])
     const aliveEnemies = params.enemies.filter(e => e.statList.getHp256() > 0)
-    const primaryTarget = aliveEnemies[0]
-    const primaryPos = primaryTarget ? (params.enemyPositions.get(primaryTarget.id) ?? { x: 0, y: 120 }) : { x: 0, y: 120 }
+    const targetableEnemies = aliveEnemies.filter(e => {
+      const ext = e as {
+        petIgnore?: boolean
+        inTown?: boolean
+        killable?: boolean
+        align?: number
+        stats?: {
+          petIgnore?: boolean
+          inTown?: boolean
+          killable?: boolean
+          align?: number
+        }
+      }
+      if (ext.petIgnore === true || ext.stats?.petIgnore === true) return false
+      if (ext.inTown === true || ext.stats?.inTown === true) return false
+      if (ext.killable === false || ext.stats?.killable === false) return false
+      if ((ext.align ?? ext.stats?.align ?? 0) !== 0) return false
+      return true
+    })
 
     for (let i = this.pets.length - 1; i >= 0; i -= 1) {
       const pet = this.pets[i]!
@@ -1147,6 +1181,47 @@ export class SummonManager {
           continue
         }
       }
+
+      const isStationary =
+        Boolean(pet.isStationary) ||
+        stationaryKinds.has(pet.kind ?? '') ||
+        pet.petType === 'assassintrap' ||
+        pet.petType === 'hydra' ||
+        pet.petType === 'totem' ||
+        pet.petType === 'vine'
+
+      let leashTeleported = false
+      if (!isStationary && params.owner.x !== undefined && params.owner.y !== undefined) {
+        const ownerDx = params.owner.x - pet.x
+        const ownerDy = params.owner.y - pet.y
+        const ownerDist = Math.hypot(ownerDx, ownerDy)
+        if (ownerDist > 480) {
+          pet.x = params.owner.x
+          pet.y = params.owner.y
+          leashTeleported = true
+        } else if (targetableEnemies.length === 0 && ownerDist > 96) {
+          const step = Math.min(8, ownerDist - 64)
+          pet.x += (ownerDx / ownerDist) * step
+          pet.y += (ownerDy / ownerDist) * step
+        }
+      }
+
+      let primaryTarget: CombatUnitContext | undefined
+      let primaryPos = { x: 0, y: 120 }
+      let bestEnemyDist = Infinity
+      for (const enemy of targetableEnemies) {
+        const pos = params.enemyPositions.get(enemy.id) ?? {
+          x: enemy.x ?? 0,
+          y: enemy.y ?? 120,
+        }
+        const d = Math.hypot(pos.x - pet.x, pos.y - pet.y)
+        if (d < bestEnemyDist) {
+          bestEnemyDist = d
+          primaryTarget = enemy
+          primaryPos = pos
+        }
+      }
+      pet.targetId = primaryTarget?.id
 
       const skelMasteryLvl = params.owner.statList.getEffectiveSkillLevel(69)
       const golemMasteryLvl = params.owner.statList.getEffectiveSkillLevel(79)
@@ -1301,14 +1376,16 @@ export class SummonManager {
           continue
         }
 
-        // Spirit Wolf Teleport (`#292`)
-        if (subId === 292 && primaryTarget) {
-          const dx = primaryPos.x - pet.x
-          const dy = primaryPos.y - pet.y
-          if (Math.hypot(dx, dy * 2) > 80) {
-            pet.x = primaryPos.x
-            pet.y = primaryPos.y
-            subSkillsExecuted.push(292)
+        // Spirit Wolf / Shadow Teleport (`#292` — suppressed on the same tick as a > 480 px leash teleport)
+        if (subId === 292) {
+          if (!leashTeleported && primaryTarget) {
+            const dx = primaryPos.x - pet.x
+            const dy = primaryPos.y - pet.y
+            if (Math.hypot(dx, dy * 2) > 80) {
+              pet.x = primaryPos.x
+              pet.y = primaryPos.y
+              subSkillsExecuted.push(292)
+            }
           }
           continue
         }
@@ -1545,16 +1622,22 @@ export class SummonManager {
         }
       }
 
+      if (!leashTeleported && !isStationary && pet.kind !== 'skeleton_mage' && primaryTarget) {
+        const curDx = primaryPos.x - pet.x
+        const curDy = primaryPos.y - pet.y
+        const curDist = Math.hypot(curDx, curDy)
+        if (curDist > 36) {
+          const step = Math.min(8, curDist - 24)
+          pet.x += (curDx / curDist) * step
+          pet.y += (curDy / curDist) * step
+        }
+      }
+
       // Standard melee attack for non-totem, non-vine combat pets (`Skeleton`, `Golem`, `Raven`, `Wolf`, `Grizzly`, `Valkyrie`, `Shadow`)
       // Stationary Decoy (dopplezon), Totems (`totem`), and Vines (`vine`) cannot execute standard melee attacks
       if (
         primaryTarget &&
-        !pet.isStationary &&
-        pet.kind !== 'dopplezon' &&
-        pet.petType !== 'totem' &&
-        pet.petType !== 'vine' &&
-        pet.petType !== 'assassintrap' &&
-        pet.petType !== 'hydra' &&
+        !isStationary &&
         (params.currentTick % 10 === 0 ||
           ((pet.kind === 'shadow_warrior' || pet.kind === 'shadow_master') && params.currentTick % 5 === 0))
       ) {
@@ -1792,5 +1875,123 @@ export class SummonManager {
   getActivePets(): readonly SummonedPetUnit[] {
     return this.pets
   }
+
+  /**
+   * Unsummon (#3): remove and return the caster's own pet nearest `(targetX, targetY)`
+   * whose PetType.txt row has `unsummon = 1` (`SKILLS_SrvSt03_Unsummon` `0x6FCBFEF0`).
+   */
+  unsummonOwnPetAt(
+    ownerId: string | number | undefined,
+    targetX: number,
+    targetY: number,
+    hitRadius = UNSUMMON_PICK_RADIUS,
+  ): SummonedPetUnit | null {
+    return unsummonOwnPetAt({ pets: this.pets }, ownerId ?? '', targetX, targetY, hitRadius) as SummonedPetUnit | null
+  }
 }
+
+/** Scene-space pick radius for Unsummon's targeted pet (same metric as the corpse pick of 70/80/95). */
+export const UNSUMMON_PICK_RADIUS = 80
+
+export type ActivePet = SummonedPetUnit
+
+/**
+ * Unsummon (#3): remove and return the caster's own pet nearest `(x, y)` whose PetType.txt row has
+ * `unsummon = 1` (SKILLS_SrvSt03_Unsummon 0x6FCBFEF0), or `null` when no such pet is under the cursor.
+ *
+ * Supports both call signatures:
+ * 1. `unsummonOwnPetAt(player, x, y, hitRadius?)`
+ * 2. `unsummonOwnPetAt(arenaOrManager, ownerId, targetX, targetY, hitRadius?)`
+ */
+export function unsummonOwnPetAt(
+  player: {
+    summons?: any[] | undefined
+    combatContext?: { stateBus?: { removeState?(state: string): void } | undefined } | undefined
+    activeDruidTotemAura?: unknown
+  } | null | undefined,
+  x: number,
+  y: number,
+  hitRadius?: number,
+): { petType: string; uid: string; [key: string]: any } | null
+export function unsummonOwnPetAt(
+  arena: { pets?: any[] | undefined; summons?: any[] | undefined } | SummonManager | null | undefined,
+  ownerId: number | string,
+  targetX: number,
+  targetY: number,
+  hitRadius?: number,
+): { petType: string; uid: string; [key: string]: any } | null
+export function unsummonOwnPetAt(
+  targetHolder: any,
+  arg1: number | string,
+  arg2: number,
+  arg3?: number,
+  arg4?: number,
+): { petType: string; uid: string; [key: string]: any } | null {
+  if (!targetHolder) return null
+
+  // Determine whether called as (player, x, y, hitRadius?) or (arena, ownerId, targetX, targetY, hitRadius?)
+  const isFourOrFiveArg = arg4 !== undefined || (arg3 !== undefined && ('pets' in targetHolder || targetHolder instanceof SummonManager))
+  const ownerId = isFourOrFiveArg ? arg1 : undefined
+  const x = isFourOrFiveArg ? arg2 : Number(arg1)
+  const y = isFourOrFiveArg ? Number(arg3 ?? 0) : arg2
+  const radius = isFourOrFiveArg ? (arg4 ?? UNSUMMON_PICK_RADIUS) : (arg3 ?? UNSUMMON_PICK_RADIUS)
+
+  const list: any[] = Array.isArray(targetHolder.summons)
+    ? targetHolder.summons
+    : Array.isArray(targetHolder.pets)
+      ? targetHolder.pets
+      : typeof targetHolder.getActivePets === 'function'
+        ? (targetHolder.getActivePets() as any[])
+        : []
+
+  const useIsoAspect = Array.isArray(targetHolder.summons)
+  let bestIdx = -1
+  let bestDist = radius
+
+  list.forEach((s, idx) => {
+    if (!s || s.alive === false || typeof s.petType !== 'string') return
+    if (s.unsummonable === false || !isPetTypeUnsummonable113c(s.petType)) return
+    if (ownerId !== undefined && ownerId !== '') {
+      const petOwner = s.ownerId ?? s.ownerUnitId
+      if (petOwner !== undefined) {
+        if (String(petOwner) !== String(ownerId)) return
+      } else if (!Array.isArray(targetHolder.summons)) {
+        // In a shared arena.pets pool, an unowned pet cannot be unsummoned by a specific ownerId
+        return
+      }
+    }
+    const dx = (s.x ?? 0) - x
+    const dy = (s.y ?? 0) - y
+    const d = useIsoAspect ? Math.hypot(dx, dy / ISO_GROUND_ASPECT_RATIO) : Math.hypot(dx, dy)
+    if (d <= bestDist) {
+      bestDist = d
+      bestIdx = idx
+    }
+  })
+
+  if (bestIdx < 0) return null
+  const [pet] = list.splice(bestIdx, 1)
+  if (pet?.petType === 'totem') {
+    const sb = targetHolder?.combatContext?.stateBus ?? pet?.ownerRef?.stateBus
+    if (sb && typeof sb.removeState === 'function') {
+      sb.removeState('oaksage')
+      sb.removeState('wolverine')
+      sb.removeState('barbs')
+    }
+    if ('activeDruidTotemAura' in targetHolder) {
+      targetHolder.activeDruidTotemAura = undefined
+    }
+  }
+  if (!isFourOrFiveArg && Array.isArray(targetHolder.summons)) {
+    return {
+      petType: String(pet.petType),
+      uid: String(pet.uid ?? pet.id),
+    }
+  }
+  return Object.assign(pet, {
+    petType: String(pet.petType),
+    uid: String(pet.uid ?? pet.id),
+  })
+}
+
 

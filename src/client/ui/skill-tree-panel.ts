@@ -24,7 +24,7 @@ import {
   SKILL_TBL_STRINGS,
   type FormattedTooltipLine,
 } from '../../common/skills/skills-meta.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import { PanelCloseButton } from './close-button.ts'
 
 export {

@@ -16,7 +16,7 @@ import {
 } from '../src/server/engine/missile-engine.ts'
 import { StateBus } from '../src/server/engine/state-bus.ts'
 import { FIXED_ONE, UnitStatList } from '../src/server/engine/stat-list.ts'
-import { DRUID_TRANSFORM_CLT_OVERLAYS_113C, castSkill } from '../src/server/scene/skill-caster.ts'
+import { DRUID_TRANSFORM_CLT_OVERLAYS_113C, castSkill } from '../src/server/skills/skills.ts'
 
 function makeUnit(
   registry: D2DataRegistry,

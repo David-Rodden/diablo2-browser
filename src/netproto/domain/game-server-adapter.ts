@@ -14,14 +14,18 @@ export interface GameServerStats {
   readonly bytesOut: number
   readonly packetsIn?: number | undefined
   readonly packetsOut?: number | undefined
+  readonly packetsReceived?: number | undefined
+  readonly packetsSent?: number | undefined
   readonly protocolErrors?: number | undefined
 }
 
 export interface GameServerAdapter {
-  readonly state: 'loading' | 'ingame' | 'closed'
+  readonly state: 'loading' | 'ingame' | 'inGame' | 'closed'
   send(cmd: ClientCommand): void
   onEvent(cb: (ev: ServerEvent) => void): () => void
   onClose(cb: (reason: CloseReason) => void): () => void
   leave(): void
+  readonly close?: ((reason?: CloseReason) => void) | undefined
+  readonly tick?: ((frames?: number) => void) | undefined
   readonly stats: GameServerStats
 }

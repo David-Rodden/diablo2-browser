@@ -24,7 +24,7 @@ import {
   INV_GRID_ORIGIN,
 } from '../src/client/ui/inventory.ts'
 import { type TownStashEntity, CANONICAL_TOWN_STASHES } from '../src/common/world/scene-population.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 import { createIsoTerrain } from '../src/common/world/iso-terrain.ts'
 import { WaypointNetwork } from '../src/common/world/portal.ts'
 import { HudManager } from '../src/client/ui/hud-manager.ts'

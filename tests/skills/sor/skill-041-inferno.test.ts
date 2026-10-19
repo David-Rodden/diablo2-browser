@@ -37,7 +37,7 @@ import {
   INFERNOFLAME2_META,
 } from '../../../src/client/render/missiles-meta.ts'
 import { FIRE_CAST_2_META } from '../../../src/client/render/overlays-meta.ts'
-import { castSkill } from '../../../src/server/scene/skill-caster.ts'
+import { castSkill } from '../../../src/server/skills/skills.ts'
 
 describe('[Skill #041] Inferno (SOR) — 1.13c Parity (Issue #195)', () => {
   // ==========================================================================

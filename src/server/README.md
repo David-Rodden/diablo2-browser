@@ -29,16 +29,17 @@
 
 ```text
 src/server/
-├── index.ts             # 模块导出入口
+├── index.ts             # 模块导出入口 (GameInstance, LocalLoopbackAdapter, LocalLobbyProvider, MultiClientRoomHost, .d2s 读写器)
 ├── engine.ts            # 顶层模拟引擎导出门面
-├── loopback-adapter.ts  # LocalLoopbackAdapter：将 GameEngine 封装为标准 GameServerAdapter 契约接口
-├── engine/              # 25fps 核心模拟引擎 (GameEngine, combat-pipeline, missile-engine, aura-scanner, summon-manager, stat-list)
+├── loopback-adapter.ts  # LocalLoopbackAdapter & LocalLobbyProvider：将单机 GameInstance 封装为标准 GameServerAdapter 与 LobbyProvider 契约接口
+├── room-host.ts         # MultiClientRoomHost：多客户端 (1..8 玩家) 25Hz 权威房间宿主，支持 TsFramer 与二进制 D2GS 双协议接入
+├── net/                 # 多人网络同步层 (aoi.ts 视野过滤、party.ts 组队/敌对关系管理、session.ts 客户端帧会话)
+├── engine/              # 25fps 核心模拟引擎 (game-instance.ts, game-engine.ts, combat-pipeline, missile-engine, aura-scanner, stat-list, state-hash)
 ├── ai/                  # 怪物 AI 决策树、仇恨/索敌、视野碰撞与动态房间流式加载 (room-streamer)
 ├── skills/              # 七大职业共 221 个技能与通用技能服务端执行器 (Amazon, Sorceress, Necromancer, Paladin, Barbarian, Druid, Assassin)
 ├── items/               # 1.13c 掉落管线 (TC NoDrop/Quality/Affix)、恰西注入 (Charsi Imbue)、符文之语、宝石镶嵌、赫拉迪克方块合成与 NPC 商店服务
 ├── world/               # 场景交互物体 (神殿/宝箱/传送门/小站)、任务状态机 (Quests)、NPC 对话与治疗/赌博交易
-├── save/                # 原版 1.13c .d2s 二进制角色存档读写器 (Checksum, Attributes, Skills, QuestData, Waypoints, ItemList)
-└── scene/               # 服务端关卡实例生命周期与跨幕切换管理
+└── save/                # 原版 1.13c .d2s v96 二进制角色存档读写器 (Checksum, Attributes, Skills, QuestData, Waypoints, ItemList)
 ```
 
 ---
@@ -46,21 +47,21 @@ src/server/
 ### 3. 核心子系统详解（持续完善中）
 
 #### 3.1 25fps 核心引擎与战斗管线 (`engine/`)
-- **`GameEngine` (`engine/game-engine.ts`)**：维护权威世界状态，按 40ms 固定步长推进：
+- **`GameInstance` (`engine/game-instance.ts`) & `GameEngine` (`engine/game-engine.ts`)**：维护权威世界状态，按 40ms 固定步长推进：
   1. 玩家输入指令队列消费（移动、普通攻击、技能施放、拾取/穿戴/药水、NPC 交互与恰西注入）。
   2. 状态持续时间衰减（中毒、冰冻、诅咒、战吼、神殿 Buff）与生命/法力自然回复。
-  3. 光环扫描器 (`aura-scanner.ts`) 周期性范围索敌与属性挂载。
-  4. 投射物引擎 (`missile-engine.ts`) 步进碰撞检测与子投射物分裂。
-  5. 怪物与召唤物 (`summon-manager.ts`) AI 决策与动作帧推进。
-  6. 状态总线 (`state-bus.ts`) 收集本帧脏状态并生成增量事件。
-- **战斗伤害管线 (`combat-pipeline.ts`)**：严格遵循 1.13c 命中率公式（AR vs DR + 等级差修正）、盾牌格挡判定、物理/魔法/元素（火/电/冰/毒）六系伤害结算、抗性穿透/上限、碾压性打击 (Crushing Blow)、致命一击 (Deadly Strike / Critical Strike) 与撕开伤口 (Open Wounds)。
+  3. 光环扫描器 (`engine/aura-scanner.ts`) 周期性范围索敌与属性挂载。
+  4. 投射物引擎 (`engine/missile-engine.ts`) 步进碰撞检测与子投射物分裂。
+  5. 怪物与召唤物 (`ai/summon-manager.ts`) AI 决策与动作帧推进。
+  6. 状态总线 (`engine/state-bus.ts`) 收集本帧脏状态并生成增量事件。
+- **战斗伤害管线 (`engine/combat-pipeline.ts`)**：严格遵循 1.13c 命中率公式（AR vs DR + 等级差修正）、盾牌格挡判定、物理/魔法/元素（火/电/冰/毒）六系伤害结算、抗性穿透/上限、碾压性打击 (Crushing Blow)、致命一击 (Deadly Strike / Critical Strike) 与撕开伤口 (Open Wounds)。
 
 #### 3.2 全职业技能系统 (`skills/`)
-- **`skill-table.ts` & 各职业模块**：基于 `Skills.txt` 的 `srvdofunc` / `srvstfunc` 分发机制，实现亚马逊、法师、死灵法师、圣骑士、野蛮人、德鲁伊、刺客七大职业共 **221 个技能**（含协同加成公式、施法延迟 Cooldown、法力消耗、多段投射物生成与尸体交互）。
+- **`skills/registry.ts` & `skills/skills.ts`**：基于 `Skills.txt` 的 `srvdofunc` / `srvstfunc` 分发机制，实现亚马逊、法师、死灵法师、圣骑士、野蛮人、德鲁伊、刺客七大职业共 **221 个技能**（含协同加成公式、施法延迟 Cooldown、法力消耗、多段投射物生成与尸体交互）。
 
 #### 3.3 怪物 AI 与房间流式激活 (`ai/`)
-- **`monster-ai.ts`**：基于 `MonStats.txt` 的 AI 参数（`aidel`, `aip1..aip8`）驱动沉沦魔复活、巫师远程风筝、冥河娃娃自爆、精英怪暗金词缀（闪电强化、火焰强化死亡尸爆、冰冷强化死亡冰环、特别快速、狂热灵气、免疫计算）及 Act Boss 专属 AI 与死亡演出（安达利尔火柱震屏落石、督瑞尔死亡爆虫等）。
-- **`room-streamer.ts`**：围绕玩家所在子格坐标按九宫格动态激活/休眠 DRLG 房间并按 `MonDen` 与 `SuperUniques.txt` 刷怪。
+- **`ai/monster-ai.ts`**：基于 `MonStats.txt` 的 AI 参数（`aidel`, `aip1..aip8`）驱动沉沦魔复活、巫师远程风筝、冥河娃娃自爆、精英怪暗金词缀（闪电强化、火焰强化死亡尸爆、冰冷强化死亡冰环、特别快速、狂热灵气、免疫计算）及 Act Boss 专属 AI 与死亡演出（安达利尔火柱震屏落石、督瑞尔死亡爆虫等）。
+- **`ai/room-streamer.ts`**：围绕玩家所在子格坐标按九宫格动态激活/休眠 DRLG 房间并按 `MonDen` 与 `SuperUniques.txt` 刷怪。
 
 #### 3.4 1.13c 物品掉落与存档系统 (`items/`, `save/`)
 - **掉落管线与恰西注入 (`items/drop-pipeline.ts`, `items/imbue.ts`)**：复刻 `TreasureClassEx.txt` 递归寻路、多人难度 `NoDrop` 指数衰减、MF (Magic Find) 边际递减有效值转换（Unique / Set / Rare / Magic 四级判定）、`MagicPrefix.txt` / `MagicSuffix.txt` 词缀池权重抽样，以及 Act 1 任务 3 恰西注入（`ilvl = clvl + 4` 亮金物品词缀与 `StaffMods` 生成）。
@@ -106,16 +107,17 @@ npx vitest run tests/arch/boundaries.test.ts tests/drop-pipeline.test.ts
 
 ```text
 src/server/
-├── index.ts             # Module barrel export
+├── index.ts             # Module barrel export (GameInstance, LocalLoopbackAdapter, LocalLobbyProvider, MultiClientRoomHost, .d2s reader/writer)
 ├── engine.ts            # Top-level simulation engine facade
-├── loopback-adapter.ts  # LocalLoopbackAdapter wrapping GameEngine behind the standard GameServerAdapter contract
-├── engine/              # 25fps core simulation engine (GameEngine, combat-pipeline, missile-engine, aura-scanner, summon-manager, stat-list)
+├── loopback-adapter.ts  # LocalLoopbackAdapter & LocalLobbyProvider wrapping singlePlayer GameInstance behind GameServerAdapter & LobbyProvider
+├── room-host.ts         # MultiClientRoomHost multiplexing 1..8 clients over a 25Hz multiplayer GameInstance (TsFramer & binary D2GS)
+├── net/                 # Multiplayer network layer (aoi.ts spatial filtering, party.ts party/hostile roster, session.ts client wire session)
+├── engine/              # 25fps core simulation engine (game-instance.ts, game-engine.ts, combat-pipeline, missile-engine, aura-scanner, stat-list, state-hash)
 ├── ai/                  # Monster AI decision trees, aggro/target acquisition, line-of-sight & room-streamer
 ├── skills/              # Server-side executors for all 221 skills across 7 classes (Amazon, Sorceress, Necromancer, Paladin, Barbarian, Druid, Assassin)
 ├── items/               # 1.13c drop pipeline (TC NoDrop/Quality/Affix), Charsi Imbue, runewords, gem socketing, Horadric Cube recipes & NPC vendor services
 ├── world/               # Interactive world objects (shrines/chests/portals/waypoints), quest state machines & NPC dialogue/healing/gambling
-├── save/                # Authentic 1.13c .d2s binary character save reader/writer (Checksum, Attributes, Skills, QuestData, Waypoints, ItemList)
-└── scene/               # Server-side level instance lifecycle and cross-act transitions
+└── save/                # Authentic 1.13c .d2s v96 binary character save reader/writer (Checksum, Attributes, Skills, QuestData, Waypoints, ItemList)
 ```
 
 ---
@@ -123,21 +125,21 @@ src/server/
 ### 3. Core Subsystems (Work in Progress)
 
 #### 3.1 25fps Core Engine & Combat Pipeline (`engine/`)
-- **`GameEngine` (`engine/game-engine.ts`)**: Maintains authoritative world state and advances in fixed 40ms steps:
+- **`GameInstance` (`engine/game-instance.ts`) & `GameEngine` (`engine/game-engine.ts`)**: Maintains authoritative world state and advances in fixed 40ms steps:
   1. Consumes queued player input commands (movement, normal attacks, skill casts, item pickup/equip/potions, NPC interactions & Charsi Imbue).
   2. Ticks state durations (poison, freeze, curses, warcries, shrine buffs) and natural life/mana regeneration.
-  3. Runs `aura-scanner.ts` for periodic radial target scanning and stat application.
-  4. Advances `missile-engine.ts` for projectile step collision and sub-missile spawning.
-  5. Steps monster and summon (`summon-manager.ts`) AI decisions and action frames.
-  6. Flushes dirty state deltas through `state-bus.ts` into incremental `ServerEvent` emissions.
-- **Combat Damage Pipeline (`combat-pipeline.ts`)**: Implements 1.13c hit-chance formulas (AR vs. DR + level difference), shield blocking, 6-type damage resolution (Physical, Magic, Fire, Lightning, Cold, Poison), resistance piercing/caps, Crushing Blow, Deadly Strike / Critical Strike, and Open Wounds.
+  3. Runs `engine/aura-scanner.ts` for periodic radial target scanning and stat application.
+  4. Advances `engine/missile-engine.ts` for projectile step collision and sub-missile spawning.
+  5. Steps monster and summon (`ai/summon-manager.ts`) AI decisions and action frames.
+  6. Flushes dirty state deltas through `engine/state-bus.ts` into incremental `ServerEvent` emissions.
+- **Combat Damage Pipeline (`engine/combat-pipeline.ts`)**: Implements 1.13c hit-chance formulas (AR vs. DR + level difference), shield blocking, 6-type damage resolution (Physical, Magic, Fire, Lightning, Cold, Poison), resistance piercing/caps, Crushing Blow, Deadly Strike / Critical Strike, and Open Wounds.
 
 #### 3.2 All-Class Skill System (`skills/`)
-- **`skill-table.ts` & Class Modules**: Dispatches `Skills.txt` `srvdofunc` / `srvstfunc` handlers across all 7 classes (**221 skills** total), including synergy formulas, casting delays (cooldowns), mana costs, multi-projectile emitters, and corpse interactions.
+- **`skills/registry.ts` & `skills/skills.ts`**: Dispatches `Skills.txt` `srvdofunc` / `srvstfunc` handlers across all 7 classes (**221 skills** total), including synergy formulas, casting delays (cooldowns), mana costs, multi-projectile emitters, and corpse interactions.
 
 #### 3.3 Monster AI & Room Streaming (`ai/`)
-- **`monster-ai.ts`**: Uses `MonStats.txt` AI parameters (`aidel`, `aip1..aip8`) to drive Fallen shaman revives, ranged kiting, Stygian Doll death explosions, Unique monster boss modifiers (Lightning Enchanted, Fire Enchanted death explosion, Cold Enchanted death Frost Nova, Extra Fast, Fanaticism aura, immunities), and Act Boss AI & death sequences (Andariel fire pillars/screen shake/falling rocks, Duriel maggot burst, etc.).
-- **`room-streamer.ts`**: Dynamically activates and hibernates DRLG rooms in a 3×3 neighborhood around players, spawning monsters according to `MonDen` and `SuperUniques.txt`.
+- **`ai/monster-ai.ts`**: Uses `MonStats.txt` AI parameters (`aidel`, `aip1..aip8`) to drive Fallen shaman revives, ranged kiting, Stygian Doll death explosions, Unique monster boss modifiers (Lightning Enchanted, Fire Enchanted death explosion, Cold Enchanted death Frost Nova, Extra Fast, Fanaticism aura, immunities), and Act Boss AI & death sequences (Andariel fire pillars/screen shake/falling rocks, Duriel maggot burst, etc.).
+- **`ai/room-streamer.ts`**: Dynamically activates and hibernates DRLG rooms in a 3×3 neighborhood around players, spawning monsters according to `MonDen` and `SuperUniques.txt`.
 
 #### 3.4 1.13c Item Drop Pipeline & `.d2s` Save System (`items/`, `save/`)
 - **Drop Pipeline & Charsi Imbue (`items/drop-pipeline.ts`, `items/imbue.ts`)**: Implements `TreasureClassEx.txt` recursive tree traversal, player-count `NoDrop` exponent scaling, diminishing-returns Magic Find (MF) conversion across Unique / Set / Rare / Magic rolls, weighted affix sampling from `MagicPrefix.txt` / `MagicSuffix.txt`, and Act 1 Quest 3 Charsi Imbue rare item generation (`ilvl = clvl + 4` with `StaffMods`).

@@ -21,8 +21,8 @@
  * tick. The `.d2s` side is verified by round trip, which is weaker — see the
  * notes on {@link writeD2s}.
  */
-import { rebindPlayer } from '../engine/combat.ts'
-import type { CombatWorld, Monster } from '../engine/combat.ts'
+import { rebindPlayer } from '../ai/monster-ai.ts'
+import type { CombatWorld, Monster } from '../../common/units/unit-types.ts'
 import type { Inventory, Item, PlacedItem } from '../../common/items/items.ts'
 import type { QuestLog, QuestProgress } from '../../common/world/quests.ts'
 import type { Rng } from '../../common/rng/d2-rng.ts'
@@ -263,35 +263,106 @@ export function restoreSnapshot(
 
 // --- Diablo II character files (.d2s) ---------------------------------------
 
-/** Byte offset of the header checksum. */
-const D2S_CHECKSUM_OFFSET = 0x0c
-/** Diablo II version this writer targets (1.09+ layout, no expansion-only sections). */
-export const D2S_VERSION = 96
+export {
+  D2S_ATTR_BITS,
+  D2S_CHECKSUM_OFFSET,
+  D2S_MAGIC,
+  D2S_VERSION,
+  computeD2sChecksum,
+  d2sChecksum,
+  decodeGfStatSection,
+  encodeGfStatSection,
+  verifyD2sChecksum,
+  writeD2sChecksum,
+  type D2sAttributes,
+  type D2sAttributesInput,
+  type D2sDecodedAttributes,
+} from '../../common/formats/d2s.ts'
+export * from './d2s-reader.ts'
+export * from './d2s-writer.ts'
 
-/**
- * Diablo II's save checksum.
- *
- * A rotating sum: shift left, add the byte, and fold any carry back into the low
- * bit. Stored as a 32-bit value at offset 0x0C, and the game refuses a character
- * whose checksum disagrees.
- *
- * @param data - the file bytes, with the checksum field present.
- * @returns the checksum.
- */
-export function d2sChecksum(data: Uint8Array): number {
-  let sum = 0
-  for (let index = 0; index < data.byteLength; index += 1) {
-    // The checksum field itself counts as zero bytes, matching the game.
-    const byte = index >= D2S_CHECKSUM_OFFSET && index < D2S_CHECKSUM_OFFSET + 4 ? 0 : data[index]!
-    // Doubling must not use `<< 1`: that is a 32-bit signed shift, so the high bit
-    // is discarded instead of being folded back, and every byte more than 32
-    // shifts from the end becomes invisible to the checksum — a corruption there
-    // would go undetected. Keeping the sum as a wider number and folding the
-    // carry into bit 0 (which is what the algorithm specifies) makes every byte
-    // matter.
-    sum = sum * 2 + byte
-    if (sum > 0xffffffff) sum = (sum % 0x100000000) + 1
-  }
-  return sum >>> 0
+import {
+  readD2sSave113c,
+  type D2sCharacterData,
+  type D2sCharacterSave,
+  type D2sDecodedCharacterSave,
+} from './d2s-reader.ts'
+import { writeD2sSave113c } from './d2s-writer.ts'
+
+export interface CharacterSaveStore {
+  save(name: string, bytes: Uint8Array): void
+  saveBytes?(name: string, bytes: Uint8Array): void
+  load(name: string): Uint8Array | null
+  loadBytes?(name: string): Uint8Array | null
+  list(): string[]
+  delete(name: string): boolean
 }
+
+export class InMemoryCharacterSaveStore implements CharacterSaveStore {
+  private readonly files = new Map<string, { readonly name: string; readonly bytes: Uint8Array }>()
+
+  save(name: string, bytes: Uint8Array): void {
+    const key = name.trim().toLowerCase()
+    this.files.set(key, { name: name.trim(), bytes: new Uint8Array(bytes) })
+  }
+
+  saveBytes(name: string, bytes: Uint8Array): void {
+    this.save(name, bytes)
+  }
+
+  saveCharacter(
+    nameOrSave: string | D2sCharacterSave | D2sCharacterData,
+    maybeSave?: D2sCharacterSave | D2sCharacterData | Uint8Array,
+  ): Uint8Array {
+    if (typeof nameOrSave === 'string') {
+      if (maybeSave instanceof Uint8Array) {
+        this.save(nameOrSave, maybeSave)
+        return maybeSave
+      }
+      const bytes = writeD2sSave113c(maybeSave!)
+      this.save(nameOrSave, bytes)
+      return bytes
+    }
+    const bytes = writeD2sSave113c(nameOrSave)
+    this.save(nameOrSave.name, bytes)
+    return bytes
+  }
+
+  load(name: string): Uint8Array | null {
+    const entry = this.files.get(name.trim().toLowerCase())
+    return entry ? new Uint8Array(entry.bytes) : null
+  }
+
+  loadBytes(name: string): Uint8Array | null {
+    return this.load(name)
+  }
+
+  loadCharacter(name: string, _tables?: unknown): D2sDecodedCharacterSave | null {
+    const bytes = this.load(name)
+    return bytes ? readD2sSave113c(bytes) : null
+  }
+
+  list(): string[] {
+    return Array.from(this.files.values(), (e) => e.name)
+  }
+
+  listNames(): string[] {
+    return this.list()
+  }
+
+  has(name: string): boolean {
+    return this.files.has(name.trim().toLowerCase())
+  }
+
+  delete(name: string): boolean {
+    return this.files.delete(name.trim().toLowerCase())
+  }
+}
+
+export {
+  InMemoryCharacterSaveStore as InMemoryD2sCharacterStore,
+  InMemoryCharacterSaveStore as D2sCharacterStoreImpl,
+  InMemoryCharacterSaveStore as D2sCharacterStore,
+}
+
 

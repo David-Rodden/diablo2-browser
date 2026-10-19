@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getSharedDataRegistry } from '../src/baker/mpq-archive-source.ts'
 import { spawnNovaRing } from '../src/server/engine/missile-engine.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
 
 function makeEngine(monsters: any[] = []) {
   const engine = {

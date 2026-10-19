@@ -17,7 +17,7 @@ import {
   CLIENT_LIGHTING_PRESET_ORDER,
   LIGHTING_PRESETS,
   type LightingPresetConfig,
-} from '../scene/lighting-presets.ts'
+} from '../../client/scene/lighting-presets.ts'
 import type { OnlineSession } from '../session/online-session.ts'
 import type { AutoPotionThresholds } from '../input/auto-potion.ts'
 import type { ItemInfoConfig, LootFilter } from '../ui/ground-item-info.ts'

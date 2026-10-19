@@ -589,11 +589,20 @@ export function buildMonsterHoverSubtext(
       : (target.affixes ?? [])
     for (const mod of mods) {
       const normalizedMod = String(mod).trim().toLowerCase()
-      const umodEntry = MONSTER_UMOD_TBL_KEYS[normalizedMod]
-        ?? CANONICAL_ELITE_MODIFIERS.find(m => m.name === normalizedMod || m.tblKey === normalizedMod)
-      const label = umodEntry
-        ? (lookupMonsterTblString(umodEntry.tblKey, locale) ?? umodEntry.label)
-        : (lookupMonsterTblString(mod, locale) ?? mod)
+      const normalizedKey = normalizedMod.replace(/_/g, ' ')
+      const umodEntry =
+        MONSTER_UMOD_TBL_KEYS[normalizedMod] ??
+        MONSTER_UMOD_TBL_KEYS[normalizedKey] ??
+        CANONICAL_ELITE_MODIFIERS.find(
+          m =>
+            m.name === normalizedMod ||
+            m.tblKey === normalizedMod ||
+            m.label.toLowerCase() === normalizedKey,
+        )
+      // D2Client.dll 0x6fb6fca0: wMonUModStrTable (.data:0x6fba9f88) is 0 for all internal
+      // non-display MonUMod IDs (e.g. 22 questcomplete, 12 bloodraven, 15 killminionsdeath).
+      if (!umodEntry) continue
+      const label = lookupMonsterTblString(umodEntry.tblKey, locale) ?? umodEntry.label
       if (label && label.toLowerCase() !== 'dummy') modParts.push(label)
     }
     if (descText) {
