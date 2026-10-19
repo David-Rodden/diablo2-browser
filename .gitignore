@@ -65,3 +65,6 @@ public/weather/
 # 覆盖率报告由 `npm run test:coverage` 生成，可随时重建
 coverage/
 
+
+CLAUDE.md
+.claude/
