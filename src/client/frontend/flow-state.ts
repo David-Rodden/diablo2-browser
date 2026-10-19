@@ -236,6 +236,7 @@ export type BnetConnectStageIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
 export interface BnetFlowState {
   stage: BnetFlowStage
+  playMode?: 'single' | 'bnet' | undefined
   gateway: string
   /** Ticks elapsed in current stage (25 ticks = 1 second). */
   stageTicks: number
@@ -1202,6 +1203,7 @@ export function createInitialFlowState(initialRoster: RosterCharacter[] = []): B
 
   return {
     stage: 'main_menu',
+    playMode: 'bnet',
     gateway: '',
     stageTicks: 0,
     globalTick: 0,
@@ -1751,6 +1753,29 @@ export function completeBnetConnect(
 }
 
 /**
+ * Click `SINGLE PLAYER` on Stage 1 Main Menu -> enters `char_select` (if characters exist)
+ * or `char_create` (if roster is empty) in Single Player mode (`playMode = 'single'`).
+ */
+export function clickSinglePlayerButton(state: BnetFlowState): void {
+  if (state.stage !== 'main_menu') return
+  state.playMode = 'single'
+  state.onlineConnected = false
+  state.popupModal = null
+  state.popup = null
+  state.loginError = null
+  state.lastError = null
+  state.stageTicks = 0
+  if (state.roster.length === 0) {
+    enterCharCreate(state)
+  } else {
+    state.stage = 'char_select'
+    state.selectedSlotIndex = 0
+    state.activeInput = null
+    resetHeroAvatarAnims(state)
+  }
+}
+
+/**
  * Click `BATTLE.NET` on Stage 1 Main Menu -> enters `bnet_connecting` at stage 0 (`.tbl` `5171`).
  */
 export function clickBattleNetButton(
@@ -1758,6 +1783,7 @@ export function clickBattleNetButton(
   strings?: Record<string, unknown>,
 ): void {
   if (state.stage !== 'main_menu') return
+  state.playMode = 'bnet'
   state.stage = 'bnet_connecting'
   state.stageTicks = 0
   state.activeInput = null
@@ -1807,7 +1833,7 @@ export function enterCharCreate(state: BnetFlowState): void {
   state.charName = ''
   state.isExpansion = true
   state.isHardcore = false
-  state.isLadder = true
+  state.isLadder = state.playMode !== 'single'
   state.charCreateError = null
   state.activeInput = null
   for (const id of CAMPFIRE_CLASS_ORDER) {
@@ -1930,10 +1956,16 @@ export function submitCharacterCreate(
   }
   state.roster = [newChar, ...state.roster].slice(0, 8)
   state.selectedSlotIndex = 0
-  state.stage = 'char_select'
   state.stageTicks = 0
   state.activeInput = null
-  resetHeroAvatarAnims(state)
+  if (state.playMode === 'single') {
+    state.stage = 'door_loading'
+    state.doorFrame = 0
+    state.sceneReady = false
+  } else {
+    state.stage = 'char_select'
+    resetHeroAvatarAnims(state)
+  }
   return newChar
 }
 
@@ -2189,6 +2221,17 @@ export function confirmCharacterSelect(state: BnetFlowState): boolean {
   if (state.stage !== 'char_select') return false
   const selected = state.roster[state.selectedSlotIndex]
   if (!selected) return false
+  if (state.playMode === 'single') {
+    if (!isDifficultyUnlocked(selected, state.difficulty)) {
+      state.difficulty = 'normal'
+    }
+    state.stage = 'door_loading'
+    state.stageTicks = 0
+    state.doorFrame = 0
+    state.sceneReady = false
+    state.activeInput = null
+    return true
+  }
   state.stage = 'bnet_lobby'
   state.stageTicks = 0
   state.lobbySubPanel = 'create'

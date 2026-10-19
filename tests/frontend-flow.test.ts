@@ -9,6 +9,9 @@ import {
   backspaceCreateAccountChar,
   cancelCreateAccount,
   cancelPleaseRead,
+  clickBattleNetButton,
+  clickSinglePlayerButton,
+  confirmCharacterSelect,
   createInitialFlowState,
   cycleCreateAccountFocus,
   disagreeTermsOfUse,
@@ -18,6 +21,9 @@ import {
   mapCreateAccountServerStatus,
   openTermsOfUse,
   scrollTermsOfUse,
+  selectCampfireClass,
+  stepFlowFrame,
+  submitCharacterCreate,
   submitCreateAccountForm,
   typeCreateAccountChar,
   validateNewAccountInputs,
@@ -346,5 +352,48 @@ describe('Battle.net Create New Account Frontend Assets & Flow State (R1, R2, R4
     applyOnlineCharactersToFlowState(state, [], { stayOnCharSelect: true })
     assert.equal(state.stage, 'char_select')
     assert.equal(state.roster.length, 0)
+  })
+
+  it('Single Player closed loop: main_menu -> single_player -> char_create / char_select -> door_loading -> in_game', () => {
+    const state = createInitialFlowState()
+    state.roster = []
+    state.stage = 'main_menu'
+
+    // 1. Empty roster: clicking Single Player goes directly to char_create with playMode='single' and isLadder=false
+    clickSinglePlayerButton(state)
+    assert.equal(state.playMode, 'single')
+    assert.equal(state.stage, 'char_create')
+    assert.equal(state.isLadder, false)
+
+    // 2. Creating a character in Single Player transitions directly to door_loading -> in_game
+    selectCampfireClass(state, 'so')
+    state.charName = 'OfflineSorc'
+    assert.ok(submitCharacterCreate(state))
+    assert.equal(state.stage, 'door_loading')
+    assert.equal(state.roster.length, 1)
+    assert.equal(state.roster[0]?.name, 'OfflineSorc')
+    assert.equal(state.roster[0]?.isLadder, false)
+
+    state.sceneReady = true
+    for (let t = 0; t <= 1600; t += 40) {
+      stepFlowFrame(state, t)
+    }
+    assert.equal(state.stage, 'in_game')
+
+    // 3. Returning to main_menu and clicking Single Player with existing character goes to char_select -> door_loading -> in_game
+    state.stage = 'main_menu'
+    clickSinglePlayerButton(state)
+    assert.equal(state.playMode, 'single')
+    assert.equal(state.stage, 'char_select')
+    assert.ok(confirmCharacterSelect(state))
+    assert.equal(state.stage, 'door_loading')
+
+    // 4. Battle.net mode still transitions char_select -> bnet_lobby
+    state.stage = 'main_menu'
+    clickBattleNetButton(state)
+    assert.equal(state.playMode, 'bnet')
+    state.stage = 'char_select'
+    assert.ok(confirmCharacterSelect(state))
+    assert.equal(state.stage, 'bnet_lobby')
   })
 })

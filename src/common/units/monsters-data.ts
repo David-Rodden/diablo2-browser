@@ -1517,6 +1517,7 @@ export function applyEliteModifiers(
 
   let hp = base.hp
   let damage = base.damage
+  let armor = base.armor ?? 0
   let speed = base.speed
   let cooldownTicks = base.cooldownTicks
   let level = base.level ?? 1
@@ -1535,48 +1536,49 @@ export function applyEliteModifiers(
 
   const normMods = new Set(modifiers.map(m => m.trim().toLowerCase().replace(/[_\s-]+/g, '')))
 
-  if (normMods.has('strong') || normMods.has('extrastrong')) {
+  if (normMods.has('strong') || normMods.has('extrastrong') || normMods.has('5')) {
     damage = Math.max(1, Math.round(damage * (MONUMOD_CONSTANTS.uniqueDmgPctStrong / 100)))
   }
-  if (normMods.has('fast') || normMods.has('extrafast')) {
+  if (normMods.has('fast') || normMods.has('extrafast') || normMods.has('6')) {
     speed = Math.round(speed * 1.4 * 100) / 100
   }
-  if (normMods.has('fanatic') || normMods.has('fanatical')) {
+  if (normMods.has('fanatic') || normMods.has('fanatical') || normMods.has('37')) {
     speed = Math.round(speed * 2.0 * 100) / 100
     cooldownTicks = Math.max(5, Math.round(cooldownTicks * 0.3))
   }
-  if (normMods.has('possessed')) {
+  if (normMods.has('possessed') || normMods.has('38')) {
     hp = Math.round(hp * 3)
   }
-  if (normMods.has('berserk') || normMods.has('berserker')) {
+  if (normMods.has('berserk') || normMods.has('berserker') || normMods.has('39')) {
     hp = Math.max(1, Math.round(hp * 0.5))
     damage = Math.max(1, Math.round(damage * 3))
   }
-  if (normMods.has('stoneskin')) {
+  if (normMods.has('stoneskin') || normMods.has('28')) {
     hp = Math.round(hp * 2)
+    armor = Math.max(1, Math.round(armor * 2))
   }
-  if (normMods.has('cursed')) {
+  if (normMods.has('cursed') || normMods.has('7')) {
     damage = Math.round(damage * 1.2)
   }
-  if (normMods.has('coldenchant') || normMods.has('coldenchanted')) {
+  if (normMods.has('coldenchant') || normMods.has('coldenchanted') || normMods.has('18')) {
     damage = Math.round(damage * 1.2)
   }
-  if (normMods.has('fireenchant') || normMods.has('fireenchanted')) {
+  if (normMods.has('fireenchant') || normMods.has('fireenchanted') || normMods.has('9')) {
     damage = Math.round(damage * 1.2)
   }
-  if (normMods.has('lightenchant') || normMods.has('lightningenchanted')) {
+  if (normMods.has('lightenchant') || normMods.has('lightningenchanted') || normMods.has('17')) {
     damage = Math.round(damage * 1.2)
   }
-  if (normMods.has('spectralhit')) {
+  if (normMods.has('spectralhit') || normMods.has('27')) {
     damage = Math.round(damage * 1.2)
   }
-  if (normMods.has('teleport') || normMods.has('teleportation')) {
+  if (normMods.has('teleport') || normMods.has('teleportation') || normMods.has('26')) {
     speed = Math.round(speed * 1.2 * 100) / 100
   }
-  if (normMods.has('magicresistant') || normMods.has('magicresistance')) {
+  if (normMods.has('magicresistant') || normMods.has('magicresistance') || normMods.has('8')) {
     hp = Math.round(hp * 1.2)
   }
-  if (normMods.has('aura') || normMods.has('auraenchanted')) {
+  if (normMods.has('aura') || normMods.has('auraenchanted') || normMods.has('30')) {
     damage = Math.round(damage * 1.2)
     speed = Math.round(speed * 1.1 * 100) / 100
   }
@@ -1587,34 +1589,34 @@ export function applyEliteModifiers(
   let coldRes = base.resistances?.cold ?? 0
   let poisonRes = base.resistances?.poison ?? 0
 
-  if (normMods.has('stoneskin')) {
+  if (normMods.has('stoneskin') || normMods.has('28')) {
     physicalRes += 50
   }
-  if (normMods.has('ghostly')) {
+  if (normMods.has('ghostly') || normMods.has('36')) {
     physicalRes = Math.max(80, physicalRes)
     speed = Math.max(4, Math.round(speed * 0.5 * 100) / 100)
   }
-  if (normMods.has('manahit') || normMods.has('manaburn')) {
+  if (normMods.has('manahit') || normMods.has('manaburn') || normMods.has('25')) {
     magicRes += 20
   }
-  if (normMods.has('fireenchant') || normMods.has('fireenchanted')) {
+  if (normMods.has('fireenchant') || normMods.has('fireenchanted') || normMods.has('9')) {
     fireRes += 75
   }
-  if (normMods.has('coldenchant') || normMods.has('coldenchanted')) {
+  if (normMods.has('coldenchant') || normMods.has('coldenchanted') || normMods.has('18')) {
     coldRes += 75
   }
-  if (normMods.has('lightenchant') || normMods.has('lightningenchanted')) {
+  if (normMods.has('lightenchant') || normMods.has('lightningenchanted') || normMods.has('17')) {
     lightningRes += 75
   }
   if (normMods.has('poisonenchant') || normMods.has('poisonenchanted')) {
     poisonRes += 75
   }
-  if (normMods.has('magicresistant') || normMods.has('magicresistance')) {
+  if (normMods.has('magicresistant') || normMods.has('magicresistance') || normMods.has('8')) {
     fireRes += 40
     coldRes += 40
     lightningRes += 20
   }
-  if (normMods.has('spectralhit')) {
+  if (normMods.has('spectralhit') || normMods.has('27')) {
     fireRes += 20
     coldRes += 20
     lightningRes += 20
@@ -1653,6 +1655,7 @@ export function applyEliteModifiers(
     hp,
     maxHp: hp,
     damage,
+    armor,
     speed,
     cooldownTicks,
     rank,
@@ -2044,8 +2047,8 @@ export function monsterStatsOf(
 
     const scaledElementalAttacks: readonly MonsterElementalAttack[] | undefined =
       diffKind.elementalAttacks?.map((el) => {
-        const scaledMin = Math.max(0, scaleFloor(el.minDamage ?? el.min, lDm))
-        const scaledMax = Math.max(scaledMin, scaleFloor(el.maxDamage ?? el.max, lDm))
+        const scaledMin = Math.max(0, scaleFloor(el.minDamage ?? el.min ?? 0, lDm))
+        const scaledMax = Math.max(scaledMin, scaleFloor(el.maxDamage ?? el.max ?? 0, lDm))
         const elMin = bonusDmgAr(scaledMin)
         const elMax = Math.max(elMin, bonusDmgAr(scaledMax))
         return {
@@ -2057,7 +2060,10 @@ export function monsterStatsOf(
         }
       })
 
-    const damage = Math.max(1, Math.round((a1Min + a1Max) / 2))
+    const damage =
+      a1Min <= 0 && a1Max <= 0 && (!diffKind.killable || diffKind.ai === 'Idle')
+        ? 0
+        : Math.max(1, Math.round((a1Min + a1Max) / 2))
     const meleeRng = opts.art?.meleeRange ?? diffKind.meleeRange ?? diffKind.meleeRng
     const reach =
       meleeRng !== undefined && meleeRng > 0
@@ -3374,8 +3380,8 @@ export function scaleMonsterKindForLevel113c(
   const s1ToHit = Math.trunc((s1ThRaw * lTh) / 100)
 
   const elementalAttacks: readonly MonsterElementalAttack[] = rawElemental.map((el) => {
-    const elMin = Math.max(0, Math.trunc(((el.minDamage ?? el.min) * lDm) / 100))
-    const elMax = Math.max(elMin, Math.trunc(((el.maxDamage ?? el.max) * lDm) / 100))
+    const elMin = Math.max(0, Math.trunc(((el.minDamage ?? el.min ?? 0) * lDm) / 100))
+    const elMax = Math.max(elMin, Math.trunc(((el.maxDamage ?? el.max ?? 0) * lDm) / 100))
     return {
       ...el,
       min: elMin,
@@ -3541,15 +3547,37 @@ export function resolveMonsterStats(
       ? 'unique'
       : ((rawRank as MonsterRank) || 'normal')
 
+  const playerCount = Math.max(
+    1,
+    Math.min(8, Math.floor(options?.playerCount ?? options?.playersCount ?? 1)),
+  )
   const rng = options?.seed !== undefined ? new Rng(options.seed) : options?.rng
   const base = monsterStatsOf(kind, {
     ...options,
     difficulty: diff,
     ...(rng !== undefined ? { rng } : {}),
-    playersCount: options?.playersCount ?? options?.playerCount,
-    playerCount: options?.playerCount ?? options?.playersCount,
+    playersCount: 1,
+    playerCount: 1,
     rank: effectiveRank,
   })
+
+  const applyPlayersScaling = (st: MonsterStats): MonsterStats => {
+    if (playerCount <= 1 || kind.noRatio) return st
+    const scaledHp = Math.max(1, Math.floor((st.hp * (playerCount + 1)) / 2))
+    const scaledXp = Math.max(0, Math.floor((st.xp * (playerCount + 1)) / 2))
+    const bonusDmgAr = (val: number): number =>
+      val <= 0 ? 0 : val + Math.floor((val * (playerCount - 1)) / 16)
+    const scaledDamage = st.damage <= 0 ? 0 : bonusDmgAr(st.damage)
+    const scaledToHit = bonusDmgAr(st.toHit ?? 0)
+    return {
+      ...st,
+      hp: scaledHp,
+      maxHp: scaledHp,
+      xp: scaledXp,
+      damage: scaledDamage,
+      toHit: scaledToHit,
+    }
+  }
 
   const rawChampSubtype =
     options?.championSubtype ??
@@ -3567,7 +3595,7 @@ export function resolveMonsterStats(
   ) {
     const mapped = CHAMPION_SUBTYPE_LOOKUP[String(rawChampSubtype).trim().toLowerCase()]
     if (mapped !== undefined) {
-      return applyChampionSubtypeStats(base, mapped, diff)
+      return applyPlayersScaling(applyChampionSubtypeStats(base, mapped, diff))
     }
   }
 
@@ -3595,15 +3623,50 @@ export function resolveMonsterStats(
       },
       strModifiers,
     )
-    return {
+    return applyPlayersScaling({
       ...withElite,
       resistances: cappedRes,
       resists: cappedRes,
       lightningResist: cappedRes.lightning,
-    }
+    })
   }
-  return withElite
+  return applyPlayersScaling(withElite)
 }
+
+/**
+ * Canonical 1.13c Boss & SuperUnique Minion mapping (`SuperUniques.txt` + `MonStats.txt` `minion1`/`minion2`).
+ */
+export const CANONICAL_BOSS_MINIONS: Readonly<Record<string, readonly string[]>> = (() => {
+  const map: Record<string, readonly string[]> = {
+    fallenshaman1: ['fallen1', 'fallen2'],
+    fallenshaman2: ['fallen2', 'fallen3'],
+    fallenshaman3: ['fallen3', 'fallen4'],
+    fallenshaman4: ['fallen4', 'fallen5'],
+    fallenshaman5: ['fallen5', 'fallen5'],
+    fetishshaman1: ['fetish1', 'fetish2'],
+    fetishshaman2: ['fetish2', 'fetish3'],
+    fetishshaman3: ['fetish3', 'fetish4'],
+    fetishshaman4: ['fetish4', 'fetish5'],
+    fetishshaman5: ['fetish5', 'fetish5'],
+    greatermummy1: ['skeleton1', 'skeleton2'],
+    greatermummy2: ['skeleton2', 'skeleton3'],
+    greatermummy3: ['skeleton3', 'skeleton4'],
+    greatermummy4: ['skeleton4', 'skeleton5'],
+    greatermummy5: ['skeleton5', 'skeleton5'],
+    overseer1: ['minion1', 'minion2'],
+    overseer2: ['minion2', 'minion3'],
+    overseer3: ['minion3', 'minion4'],
+    overseer4: ['minion4', 'minion5'],
+    overseer5: ['minion5', 'minion6'],
+  }
+  const normalKinds = getCanonicalMonsterKinds('normal')
+  for (const row of SUPERUNIQUES_113C_ROWS) {
+    const k = normalKinds.get(row.classId)
+    const minions = k?.minions && k.minions.length > 0 ? k.minions : [row.classId]
+    map[row.superunique] = minions
+  }
+  return Object.freeze(map)
+})()
 
 /**
  * Return all 66 canonical 1.13c `SuperUniques.txt` records.

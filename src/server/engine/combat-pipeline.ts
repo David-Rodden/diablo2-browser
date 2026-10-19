@@ -1090,8 +1090,15 @@ export function executeSUnitDmg(
         ? calculateLowerResistReduction(defender.stateBus.getState('lowerresist')?.slvl ?? 1)
         : 0
 
+  const convictionBonus = defender.statList.getModifierBonus('conviction_pierce')
+  const auraConvictionPierce =
+    convictionBonus > 0
+      ? convictionBonus
+      : defender.stateBus.hasState('conviction')
+        ? Math.min(150, 25 + 5 * Math.max(1, defender.stateBus.getState('conviction')?.slvl ?? 1))
+        : 0
   const convictionPierce = isElemPiercableByConviction
-    ? (packet.convictionPierce ?? defender.statList.getModifierBonus('conviction_pierce'))
+    ? (packet.convictionPierce ?? auraConvictionPierce)
     : 0
   const lowerResistPierce = isElemPiercableByLR
     ? (packet.lowerResistPierce ?? curseLrPierce)

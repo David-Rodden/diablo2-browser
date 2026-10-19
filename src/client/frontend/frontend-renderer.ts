@@ -30,6 +30,7 @@ import {
   cancelCreateAccount,
   cancelPleaseRead,
   clickBattleNetButton,
+  clickSinglePlayerButton,
   computeCharacterExpirationDays,
   confirmCharacterSelect,
   cycleCreateAccountFocus,
@@ -335,6 +336,7 @@ const STATIC_UI_IMAGES = [
 ] as const
 
 export interface FrontendAsyncHandlers {
+  readonly onSinglePlayer?: ((state: BnetFlowState) => Promise<void> | void) | undefined
   readonly onConnect?: ((state: BnetFlowState) => Promise<void> | void) | undefined
   readonly onLogin?: ((state: BnetFlowState, createNewAccount: boolean) => Promise<void> | void) | undefined
   readonly onCreateCharacter?: ((state: BnetFlowState) => Promise<void> | void) | undefined
@@ -1176,8 +1178,12 @@ export class FrontendRenderer {
             h: 35,
             sprite: 'btn-wide.png',
             label: this.requireStr(5106, 'singlePlayer'),
-            disabled: true,
-            onClick: () => {},
+            onClick: () => {
+              clickSinglePlayerButton(this.state)
+              if (this.asyncHandlers?.onSinglePlayer) {
+                void this.asyncHandlers.onSinglePlayer(this.state)
+              }
+            },
           },
           {
             id: 'battle_net',
@@ -1428,6 +1434,10 @@ export class FrontendRenderer {
                 this.state.stageTicks = 0
                 this.state.activeInput = null
                 resetHeroAvatarAnims(this.state)
+              } else if (this.state.playMode === 'single') {
+                this.state.stage = 'main_menu'
+                this.state.stageTicks = 0
+                this.state.activeInput = null
               } else {
                 this.state.stage = 'bnet_login'
                 this.state.stageTicks = 0
@@ -1451,10 +1461,13 @@ export class FrontendRenderer {
               if (this.asyncHandlers?.onCreateCharacter) {
                 void this.asyncHandlers.onCreateCharacter(this.state)
               } else {
-                submitCharacterCreate(
+                const created = submitCharacterCreate(
                   this.state,
                   s as unknown as Record<string, unknown>,
                 )
+                if (created && this.state.stage === 'door_loading') {
+                  this.onEnterDoorLoading?.(this.state)
+                }
               }
             },
           },
@@ -1545,8 +1558,8 @@ export class FrontendRenderer {
             onClick: () => {
               if (this.asyncHandlers?.onSelectCharacter) {
                 void this.asyncHandlers.onSelectCharacter(this.state)
-              } else {
-                confirmCharacterSelect(this.state)
+              } else if (confirmCharacterSelect(this.state) && this.state.stage === 'door_loading') {
+                this.onEnterDoorLoading?.(this.state)
               }
             },
           },
@@ -2398,13 +2411,15 @@ export class FrontendRenderer {
         4,
       )
       this.drawCheckbox(318, 540, this.state.isHardcore, s.hardcore, this.state.isHardcore ? 1 : 4)
-      this.drawCheckbox(
-        318,
-        560,
-        this.state.isLadder,
-        this.requireStr(10927, 'ladderCharacter'),
-        4,
-      )
+      if (this.state.playMode !== 'single') {
+        this.drawCheckbox(
+          318,
+          560,
+          this.state.isLadder,
+          this.requireStr(10927, 'ladderCharacter'),
+          4,
+        )
+      }
     }
 
     if (this.state.charCreateError || this.state.lastError) {
@@ -3201,7 +3216,7 @@ export class FrontendRenderer {
           this.state.isHardcore = !this.state.isHardcore
           return
         }
-        if (x >= 318 && x <= 510 && y >= 558 && y <= 576) {
+        if (this.state.playMode !== 'single' && x >= 318 && x <= 510 && y >= 558 && y <= 576) {
           this.onPlaySound?.(4)
           this.state.isLadder = !this.state.isLadder
           return
@@ -3222,8 +3237,8 @@ export class FrontendRenderer {
             this.state.selectedSlotIndex = i
             if (this.asyncHandlers?.onSelectCharacter) {
               void this.asyncHandlers.onSelectCharacter(this.state)
-            } else {
-              confirmCharacterSelect(this.state)
+            } else if (confirmCharacterSelect(this.state) && this.state.playMode === 'single') {
+              this.onEnterDoorLoading?.(this.state)
             }
           } else {
             this.state.selectedSlotIndex = i
@@ -3499,6 +3514,10 @@ export class FrontendRenderer {
           this.state.stageTicks = 0
           this.state.activeInput = null
           resetHeroAvatarAnims(this.state)
+        } else if (this.state.playMode === 'single') {
+          this.state.stage = 'main_menu'
+          this.state.stageTicks = 0
+          this.state.activeInput = null
         } else {
           this.state.stage = 'bnet_login'
           this.state.stageTicks = 0
@@ -3554,14 +3573,17 @@ export class FrontendRenderer {
         if (this.asyncHandlers?.onCreateCharacter) {
           void this.asyncHandlers.onCreateCharacter(this.state)
         } else {
-          submitCharacterCreate(this.state, localizedRecord)
+          const created = submitCharacterCreate(this.state, localizedRecord)
+          if (created && this.state.playMode === 'single') {
+            this.onEnterDoorLoading?.(this.state)
+          }
         }
       } else if (this.state.stage === 'char_select') {
         this.onPlaySound?.(4)
         if (this.asyncHandlers?.onSelectCharacter) {
           void this.asyncHandlers.onSelectCharacter(this.state)
-        } else {
-          confirmCharacterSelect(this.state)
+        } else if (confirmCharacterSelect(this.state) && this.state.playMode === 'single') {
+          this.onEnterDoorLoading?.(this.state)
         }
       } else if (this.state.stage === 'bnet_lobby') {
         if (this.state.activeInput === 'chatInput') {

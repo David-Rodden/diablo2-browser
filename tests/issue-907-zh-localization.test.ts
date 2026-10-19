@@ -169,10 +169,10 @@ describe('Issue #907 — Chinese Localization for Battle.net Login, Character Se
       '動畫片斷',
       '離開暗黑破壞神II',
     ])
-    // Single Player and Other Multiplayer are disabled (grayed out); other main menu stone buttons are active with engraved black (#0c0c08) CJK labels
+    // Single Player is enabled; Other Multiplayer is disabled (grayed out); active main menu stone buttons use engraved black (#0c0c08) CJK labels
     expect(
       mainMenuButtons.filter((b) => b.disabled).map((b) => b.id),
-    ).toEqual(['single_player', 'other_multiplayer'])
+    ).toEqual(['other_multiplayer'])
     const singlePlayerChar = fillTextCalls.find((c) => c.text === '單')
     expect(singlePlayerChar).toBeDefined()
     expect(singlePlayerChar?.fillStyle).toBe('#0c0c08')

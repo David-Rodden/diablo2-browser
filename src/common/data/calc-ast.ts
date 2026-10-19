@@ -14,7 +14,7 @@
 import type { D2DataRegistry, SkillRecord, MissileRecord } from './data-registry.ts'
 
 export interface CalcEvalContext {
-  readonly registry: D2DataRegistry
+  readonly registry?: D2DataRegistry | undefined
   readonly activeSkill?: SkillRecord
   readonly activeMissile?: MissileRecord
   /** Effective skill level (base + item/buff +skills). */
@@ -726,14 +726,14 @@ export function evaluateCalc(expr: string | undefined | null, ctx: CalcEvalConte
           }
 
           if (fnName === 'skill') {
-            const targetSkill = ctx.registry.getSkillByName(targetName)
+            const targetSkill = ctx.registry?.getSkillByName(targetName)
             if (!targetSkill) return 0
             return resolveSkillProperty(targetSkill, props[0] ?? 'lvl', ctx)
           }
 
           if (fnName === 'sklvl') {
             // Edge Case #4: Two-dot `sklvl('Holy Fire'.ln56.edmn)`
-            const targetSkill = ctx.registry.getSkillByName(targetName)
+            const targetSkill = ctx.registry?.getSkillByName(targetName)
             if (!targetSkill) return 0
             const lvlExprProp = props[0] ?? 'lvl'
             const valProp = props[1] ?? props[0] ?? 'edmn'
@@ -750,7 +750,7 @@ export function evaluateCalc(expr: string | undefined | null, ctx: CalcEvalConte
           }
 
           if (fnName === 'miss') {
-            const targetMissile = ctx.registry.getMissileByName(targetName)
+            const targetMissile = ctx.registry?.getMissileByName(targetName)
             if (!targetMissile) return 0
             return resolveMissileProperty(targetMissile, props[0] ?? 'range', ctx)
           }
