@@ -1178,12 +1178,8 @@ export class FrontendRenderer {
             h: 35,
             sprite: 'btn-wide.png',
             label: this.requireStr(5106, 'singlePlayer'),
-            onClick: () => {
-              clickSinglePlayerButton(this.state)
-              if (this.asyncHandlers?.onSinglePlayer) {
-                void this.asyncHandlers.onSinglePlayer(this.state)
-              }
-            },
+            disabled: true,
+            onClick: () => {},
           },
           {
             id: 'battle_net',
