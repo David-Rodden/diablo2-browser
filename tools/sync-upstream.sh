@@ -25,6 +25,8 @@ fi
 
 if $merge; then
   git config merge.ours.driver true
-  git merge --no-edit -m "Merge $(git log -1 --format=%s upstream | sed 's/^chore: publish d2web source //')" upstream
-  echo "merged. push with: git push origin main upstream"
+  before="$(git rev-parse HEAD)"
+  git merge -q --no-edit -m "Merge $(git log -1 --format=%s upstream | sed 's/^chore: publish d2web source //')" upstream
+  [ "$(git rev-parse HEAD)" != "$before" ] && echo "merged. push with: git push origin main upstream"
 fi
+exit 0
