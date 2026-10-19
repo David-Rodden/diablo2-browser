@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AutoPotionPlanner, bottomBeltPotions, inventoryPotions, potionShortage, type AutoPotionThresholds, type Potion, type PotionVitals } from '../../src/client/input/auto-potion.ts'
+import { AutoPotionPlanner, bottomBeltPotions, inventoryPotions, potionShortage, wantedPotionPickup, type AutoPotionThresholds, type Potion, type PotionVitals } from '../../src/client/input/auto-potion.ts'
 import { CommandMapper } from '../../src/client/input/command-mapper.ts'
 import type { HudModel } from '../../src/client/ui-model/hud-model.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
@@ -74,8 +74,19 @@ describe('auto-potion planner', () => {
     expect(planner.plan(belt('hp4', 'mp2', 'mp5'), vitals({ life: 40, mana: 8, maxMana: 48 }), THRESHOLDS, 1_000)).toEqual({ column: 1, code: 'mp2', kind: 'mana' })
   })
 
-  it('never uses a rejuvenation potion just for mana', () => {
-    expect(new AutoPotionPlanner().plan(belt('rvl'), vitals({ mana: 5 }), THRESHOLDS, 0)).toBeNull()
+  it('uses a rejuvenation potion for mana only when no mana potion is left', () => {
+    expect(new AutoPotionPlanner().plan(belt('rvl', 'mp2'), vitals({ mana: 5 }), THRESHOLDS, 0)).toMatchObject({ code: 'mp2' })
+    expect(new AutoPotionPlanner().plan(belt('rvl'), vitals({ mana: 5 }), THRESHOLDS, 0)).toMatchObject({ code: 'rvl', kind: 'mana' })
+  })
+
+  it('drinks a rejuvenation when life and mana are both low', () => {
+    expect(new AutoPotionPlanner().plan(belt('hp5', 'mp5', 'rvs'), vitals({ life: 40, mana: 10 }), THRESHOLDS, 0)).toEqual({ column: 2, code: 'rvs', kind: 'life' })
+  })
+
+  it('wants ground potions only for a stock that is running low', () => {
+    const wanted = wantedPotionPickup([...belt('hp4', 'hp4', 'hp4', 'hp4'), ...bag('mp2')], THRESHOLDS)
+    expect(['hp3', 'mp3', 'rvs', 'gld', 'yps'].map(wanted)).toEqual([false, true, true, false, false])
+    expect(wantedPotionPickup([], { ...THRESHOLDS, life: 0, mana: 0 })('rvl')).toBe(false)
   })
 
   it('feeds the mercenary the strongest healing potion', () => {

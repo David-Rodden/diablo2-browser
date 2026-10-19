@@ -5,8 +5,9 @@ import { HudModel } from '../../src/client/ui-model/hud-model.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
 import type { ClientCommand } from '../../src/netproto/index.ts'
+import type { MapService } from '../../src/client/map/map-service.ts'
 
-const createSetup = (areaId = 2) => {
+const createSetup = (areaId = 2, mapService?: MapService) => {
   const world = new ClientWorld()
   world.apply({ type: 'LoadAct', act: 0, mapSeed: 0x11223344, areaId })
   world.apply({ type: 'UnitAssign', unit: { unitType: 0, id: 1, classId: 1, name: 'Hero', x: 100, y: 100 }, isSelf: true })
@@ -17,7 +18,7 @@ const createSetup = (areaId = 2) => {
   camera.snapTo(100, 100)
   const sent: ClientCommand[] = []
   const hudModel = new HudModel({ world, hudManager, predictor, onCommand: (cmd) => sent.push(cmd) })
-  const mapper = new CommandMapper({ world, camera, hudManager, hudModel, predictor, sendCommand: (cmd) => sent.push(cmd) })
+  const mapper = new CommandMapper({ world, camera, hudManager, hudModel, predictor, mapService, sendCommand: (cmd) => sent.push(cmd) })
   mapper.autoCombatKey = 'E'
   const spawn = (id: number, classId: number, x: number, y: number) =>
     world.apply({ type: 'UnitAssign', unit: { unitType: 1, id, classId, name: 'Monster', x, y, lifePct: 128, mode: 1 } })
@@ -206,3 +207,34 @@ describe('dead monsters whose corpse cannot be selected', () => {
     expect(s.attacked()).toEqual([])
   })
 })
+
+const walledLevel = (doorway: boolean) => {
+  const [origin, size, wallX] = [80, 40, 104]
+  const walkable = new Uint8Array(size * size).fill(1)
+  for (let y = 0; y < size; y++) if (!doorway || y + origin < 98 || y + origin > 102) walkable[y * size + wallX - origin] = 0
+  const view = { areaId: 8, levelId: 8, subOriginX: origin, subOriginY: origin, subWidth: size, subHeight: size, walkable }
+  const inside = (x: number, y: number) => x >= origin && y >= origin && x < origin + size && y < origin + size
+  return { getActiveLevelView: () => view, findLevelViewAtWorldSubTile: (x: number, y: number) => (inside(x, y) ? view : null) } as unknown as MapService
+}
+
+describe('auto-fight and walls', () => {
+  it('skips a monster behind a wall for a farther one it can walk to', () => {
+    const s = createSetup(8, walledLevel(false))
+    s.spawn(901, 19, 107, 100)
+    s.spawn(902, 19, 91, 100)
+    s.mapper.handleKeyDown({ key: 'e' })
+    s.fightFor(1000, 1400)
+    expect(new Set(s.attacked())).toEqual(new Set([902]))
+  })
+
+  it('opens a closed door instead of chasing a monster on the other side', () => {
+    const s = createSetup(8, walledLevel(true))
+    s.world.apply({ type: 'UnitAssign', unit: { unitType: 'object', id: 700, classId: 15, x: 104, y: 100, mode: 0 } } as never)
+    s.spawn(901, 19, 110, 100)
+    s.mapper.handleKeyDown({ key: 'e' })
+    s.fightFor(1000, 1400)
+    expect(s.attacked()).toEqual([])
+    expect(s.sent.some((c) => JSON.stringify(c).includes('700'))).toBe(true)
+  })
+})
+

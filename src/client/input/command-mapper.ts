@@ -25,7 +25,7 @@ import type { HudManager } from '../ui/hud-manager.ts'
 import type { AutomapView } from '../automap/automap-view.ts'
 import type { LevelView } from '../map/level-view.ts'
 import type { MapService } from '../map/map-service.ts'
-import { findPathWorld, type SubTilePoint } from '../motion/pathfind.ts'
+import { findPathWorld, type SubTilePoint, type SubTileWalkabilityGrid } from '../motion/pathfind.ts'
 import type { LocalMovementPredictor } from '../motion/predictor.ts'
 import { OutboundRateLimiter, type RateLimitAcquireResult } from '../session/rate-limiter.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
@@ -78,7 +78,7 @@ import {
 import { MONSTATS2FLAG_REVIVE, getMonsterPathRecord } from '../../common/path/units.ts'
 import { SKILL_INPUT_FLAGS_113C } from './generated/input-tables-113c.ts'
 import { isMetalItemCode113c } from '../../common/items/metal-items-113c.ts'
-import { AutoPotionPlanner, bottomBeltPotions, inventoryPotions, potionShortage, type PotionDrink, type AutoPotionThresholds } from './auto-potion.ts'
+import { AutoPotionPlanner, bottomBeltPotions, inventoryPotions, potionShortage, wantedPotionPickup, type PotionDrink, type AutoPotionThresholds } from './auto-potion.ts'
 import { PET_TYPE_UNSUMMON_IDX_113C } from '../../common/units/pet-type-table.ts'
 
 export const CORPSE_TARGET_SKILL_IDS = new Set<number>([
@@ -108,15 +108,34 @@ export const CORPSE_TARGET_SKILL_IDS = new Set<number>([
 export const ALLY_OR_PET_TARGET_SKILL_IDS = new Set<number>(TARGET_PET_OR_ALLY_SKILL_IDS_113C)
 
 const ITEM_PICKUP_REACH_SUBTILES = 4
-const GOLD_RETRY_MS = 1000
-const GOLD_DETOUR_RETRY_MS = 2500
-const AUTO_GOLD_RADIUS_SUBTILES = 20
+const PICKUP_RETRY_MS = 1000
+const PICKUP_DETOUR_RETRY_MS = 2500
+const AUTO_PICKUP_RADIUS_SUBTILES = 20
 const AUTO_COMBAT_REPEAT_MS = 40
+const REACH_CACHE_MS = 400
+const REACH_MAX_NODES = 4000
+const REACH_DETOUR_FACTOR = 1.6
+const REACH_DETOUR_SLACK = 12
+const DOOR_SEARCH_MS = 400
+const DOOR_RETRY_MS = 1500
+const DOOR_PATH_RADIUS = 3
 const HIT_CONFIRM_SLACK_MS = 120
 const STATE_HEALTHPOT = 100
 const STATE_MANAPOT = 106
 const DEFAULT_PING_MS = 200
 const CARRIED_GOLD_PER_LEVEL = 10_000
+
+type CollisionMeta = { readonly isDoor?: boolean | undefined; readonly hasCollisionMask?: number | undefined }
+const objectMode = (unit: ClientUnit) => Math.max(0, Math.min(7, Math.floor(unit.mode || 0)))
+const collidesInMode = (meta: CollisionMeta | undefined, mode: number, openDoors = false) => !(openDoors && meta?.isDoor) && ((meta?.hasCollisionMask ?? 0) & (1 << mode)) !== 0
+const isClosedDoor = (unit: ClientUnit) => {
+  const meta = unit.objectMeta ?? CANONICAL_113C_OBJECTS[unit.classId]
+  return !unit.hidden && !unit.dead && Boolean(meta?.isDoor) && collidesInMode(meta, objectMode(unit))
+}
+const isInGrid = (grid: SubTileWalkabilityGrid, x: number, y: number) => {
+  const [ox, oy] = [grid.subOriginX ?? 0, grid.subOriginY ?? 0]
+  return x >= ox && y >= oy && x < ox + grid.subWidth && y < oy + grid.subHeight
+}
 const INTERACTION_PANELS = new Set(['stash', 'cube', 'vendor', 'hire', 'imbue', 'add_sockets', 'personalize', 'trade', 'waypoint'])
 
 function canRightSkillTargetObjectOrItem(skillId: number): boolean {
@@ -334,7 +353,11 @@ export class CommandMapper {
   private readonly dragPickupAttempts = new Set<number>()
 
   autoGoldPickup = false
-  private readonly goldRetryAt = new Map<number, number>()
+  private readonly pickupRetryAt = new Map<number, number>()
+  private readonly reachability = new Map<number, { readonly atMs: number; readonly reachable: boolean }>()
+  private readonly doorAttemptAt = new Map<number, number>()
+  private collisionGrids: { readonly atMs: number; readonly grids: Map<boolean, SubTileWalkabilityGrid | null> } = { atMs: Number.NEGATIVE_INFINITY, grids: new Map() }
+  private lastDoorSearchMs = Number.NEGATIVE_INFINITY
 
   private autoCombatKeyValue: string | null = null
   private autoCombatOn = false
@@ -418,33 +441,42 @@ export class CommandMapper {
     return passes ? { unit: target } : null
   }
 
-  pickUpNearbyGold(nowMs: number): void {
+  pickUpNearbyLoot(nowMs: number): void {
     const { ground } = this.world.containers
-    ;[...this.goldRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.goldRetryAt.delete(id))
-    const { gold, level } = this.world.self
-    if (!this.autoGoldPickup || this.world.isDead || this.isInWorldInteraction() || gold >= level * CARRIED_GOLD_PER_LEVEL) return
+    ;[...this.pickupRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.pickupRetryAt.delete(id))
+    if (this.world.isDead || this.isInWorldInteraction()) return
+    const wanted = this.lootWanted()
     const distance = this.distanceFromSelf()
     const nearest = [...ground.values()]
-      .filter((item) => item.code.trim() === 'gld' && (this.goldRetryAt.get(item.id) ?? 0) <= nowMs)
+      .filter((item) => wanted(item.code.trim()) && (this.pickupRetryAt.get(item.id) ?? 0) <= nowMs)
       .map((item) => this.world.getUnit('item', item.id))
-      .filter((unit): unit is ClientUnit => unit !== undefined && distance(unit) <= AUTO_GOLD_RADIUS_SUBTILES)
+      .filter((unit): unit is ClientUnit => unit !== undefined && distance(unit) <= AUTO_PICKUP_RADIUS_SUBTILES)
       .sort((a, b) => distance(a) - distance(b))[0]
     if (nearest === undefined) return
     const inReach = distance(nearest) <= ITEM_PICKUP_REACH_SUBTILES
-    if (!inReach && !this.isFreeForGoldDetour()) return
-    this.goldRetryAt.set(nearest.id, nowMs + (inReach ? GOLD_RETRY_MS : GOLD_DETOUR_RETRY_MS))
+    if (!inReach && !this.isFreeForLootDetour(nowMs)) return
+    this.pickupRetryAt.set(nearest.id, nowMs + (inReach ? PICKUP_RETRY_MS : PICKUP_DETOUR_RETRY_MS))
     if (inReach) this.sendCommand({ type: 'ItemPickup', itemId: nearest.id, toCursor: false }, nowMs)
     else this.triggerPrimaryWorldAction(nearest.x, nearest.y, nearest, nowMs)
   }
 
-  private isFreeForGoldDetour(): boolean {
-    const fighting = this.autoCombatOn && this.resolveAutoCombatTarget() !== null
+  private lootWanted(): (code: string) => boolean {
+    const { gold, level } = this.world.self
+    const wantsGold = this.autoGoldPickup && gold < level * CARRIED_GOLD_PER_LEVEL
+    const { inventory, belt } = this.world.containers
+    const thresholds = this.autoPotionThresholds
+    const wantsPotion = thresholds === null ? () => false : wantedPotionPickup(inventoryPotions([...inventory.values(), ...belt.values()]), thresholds)
+    return (code) => (wantsGold && code === 'gld') || wantsPotion(code)
+  }
+
+  private isFreeForLootDetour(nowMs: number): boolean {
+    const fighting = this.autoCombatOn && this.resolveAutoCombatTarget(nowMs) !== null
     return !this.leftMouseDown && !this.rightMouseDown && !fighting && !this.predictor?.getSnapshot().moving
   }
 
   tickAssists(nowMs: number): void {
     this.drinkPotionsIfLow(nowMs)
-    this.pickUpNearbyGold(nowMs)
+    this.pickUpNearbyLoot(nowMs)
     this.runAutoCombat(nowMs)
   }
 
@@ -491,8 +523,9 @@ export class CommandMapper {
 
   runAutoCombat(nowMs: number): void {
     if (!this.autoCombatOn || this.leftMouseDown || this.world.isDead || this.isInWorldInteraction() || nowMs - this.lastAutoCombatMs < AUTO_COMBAT_REPEAT_MS) return
-    const target = this.resolveAutoCombatTarget()
-    if (target === null || this.isAwaitingHitResult(target, nowMs)) return
+    const target = this.resolveAutoCombatTarget(nowMs)
+    if (target === null) return this.openDoorTowardMonster(nowMs)
+    if (this.isAwaitingHitResult(target, nowMs)) return
     const freshTarget = target.id !== this.autoCombatTargetId
     this.autoCombatTargetId = target.id
     this.lastAutoCombatMs = nowMs
@@ -521,12 +554,59 @@ export class CommandMapper {
     return screen.x >= 0 && screen.y >= 0 && screen.x <= width && screen.y <= height && !this.isPointIntercepted(screen.x, screen.y)
   }
 
-  private resolveAutoCombatTarget(): ClientUnit | null {
+  private resolveAutoCombatTarget(nowMs: number): ClientUnit | null {
     this.centerCameraOnSelf()
     const current = this.autoCombatTargetId === null ? undefined : this.world.getUnit('monster', this.autoCombatTargetId)
-    if (current !== undefined && this.isAutoCombatTarget(current)) return current
+    if (current !== undefined && this.isAutoCombatTarget(current) && this.isReachable(current, nowMs)) return current
+    return this.visibleHostilesByDistance().find((unit) => this.isReachable(unit, nowMs)) ?? null
+  }
+
+  private visibleHostilesByDistance(): ClientUnit[] {
     const distance = this.distanceFromSelf()
-    return [...this.world.units.values()].filter((unit) => this.isAutoCombatTarget(unit)).sort((a, b) => distance(a) - distance(b))[0] ?? null
+    return [...this.world.units.values()].filter((unit) => this.isAutoCombatTarget(unit)).sort((a, b) => distance(a) - distance(b))
+  }
+
+  private isReachable(unit: ClientUnit, nowMs: number): boolean {
+    const cached = this.reachability.get(unit.id)
+    if (cached !== undefined && nowMs - cached.atMs < REACH_CACHE_MS) return cached.reachable
+    const reachable = this.walkPathTo(unit, false, nowMs) !== null
+    this.reachability.set(unit.id, { atMs: nowMs, reachable })
+    return reachable
+  }
+
+  private walkPathTo(unit: ClientUnit, openDoors: boolean, nowMs: number): readonly SubTilePoint[] | null {
+    const [sx, sy] = [Math.round(this.world.self.x), Math.round(this.world.self.y)]
+    const grid = this.collisionGridAt(sx, sy, openDoors, nowMs)
+    if (grid === null || !isInGrid(grid, sx, sy) || !isInGrid(grid, unit.x, unit.y)) return []
+    const { rawPath, reachedGoal } = findPathWorld(grid, sx, sy, Math.round(unit.x), Math.round(unit.y), { unitSize: 2, allowPartial: false, smooth: false, nearestTargetRadius: 2, maxExpandedNodes: REACH_MAX_NODES })
+    return reachedGoal && rawPath.length <= Math.hypot(unit.x - sx, unit.y - sy) * REACH_DETOUR_FACTOR + REACH_DETOUR_SLACK ? rawPath : null
+  }
+
+  private collisionGridAt(sx: number, sy: number, openDoors: boolean, nowMs: number): SubTileWalkabilityGrid | null {
+    if (nowMs - this.collisionGrids.atMs >= REACH_CACHE_MS) this.collisionGrids = { atMs: nowMs, grids: new Map() }
+    const { grids } = this.collisionGrids
+    if (grids.has(openDoors)) return grids.get(openDoors) ?? null
+    const view = this.resolveLevelViewAt(sx, sy)
+    const objects = this.world.getUnitsByType ? this.world.getUnitsByType(2) : []
+    const isDuranceL3 = view?.levelId === 102 || this.world.areaId === 102
+    const grid = view && view.walkable.length > 0 && isInGrid(view, sx, sy)
+      ? { ...view, walkable: this.applyDynamicCollisionsToGrid(view.walkable, view.subOriginX ?? 0, view.subOriginY ?? 0, view.subWidth, view.subHeight, sx, sy, isDuranceL3, objects, true, openDoors) }
+      : null
+    grids.set(openDoors, grid)
+    return grid
+  }
+
+  private openDoorTowardMonster(nowMs: number): void {
+    if (nowMs - this.lastDoorSearchMs < DOOR_SEARCH_MS) return
+    this.lastDoorSearchMs = nowMs
+    const doors = (this.world.getUnitsByType ? this.world.getUnitsByType(2) : []).filter((door) => isClosedDoor(door) && (this.doorAttemptAt.get(door.id) ?? 0) <= nowMs)
+    if (doors.length === 0) return
+    const doorOnPath = (path: readonly SubTilePoint[]) => path.map((step) => doors.find((door) => Math.hypot(door.x - step.x, door.y - step.y) <= DOOR_PATH_RADIUS)).find((door) => door !== undefined)
+    const door = this.visibleHostilesByDistance().reduce<ClientUnit | undefined>((found, monster) => found ?? doorOnPath(this.walkPathTo(monster, true, nowMs) ?? []), undefined)
+    if (door === undefined) return
+    this.doorAttemptAt.set(door.id, nowMs + DOOR_RETRY_MS)
+    this.lastAutoCombatMs = nowMs
+    this.triggerPrimaryWorldAction(door.x, door.y, door, nowMs)
   }
 
   private isAutoCombatKey(key: string): boolean {
@@ -3813,6 +3893,7 @@ export class CommandMapper {
     isDuranceL3: boolean,
     objects: readonly ClientUnit[],
     cloneGrid: boolean,
+    openDoors = false,
   ): Uint8Array {
     const hasDynamicCollision =
       isDuranceL3 ||
@@ -3821,8 +3902,7 @@ export class CommandMapper {
         if (u.classId === 341 || u.classId === 342) return true
         const meta = u.objectMeta ?? CANONICAL_113C_OBJECTS[u.classId]
         if (!meta || ((meta.subClass ?? 0) & 0x04) !== 0) return false
-        const mode = Math.max(0, Math.min(7, Math.floor(u.mode || 0)))
-        const hasCollision = ((meta.hasCollisionMask ?? 0) & (1 << mode)) !== 0
+        const hasCollision = collidesInMode(meta, objectMode(u), openDoors)
         if (meta.isDoor && !hasCollision) return true
         return hasCollision && (meta.sizeX ?? 0) >= 1 && (meta.sizeY ?? 0) >= 1
       })
@@ -3860,9 +3940,7 @@ export class CommandMapper {
       if (obj.classId === 341 || obj.classId === 342) continue
       const meta = obj.objectMeta ?? CANONICAL_113C_OBJECTS[obj.classId]
       if (!meta || ((meta.subClass ?? 0) & 0x04) !== 0) continue
-      const mode = Math.max(0, Math.min(7, Math.floor(obj.mode || 0)))
-      const hasCollision = ((meta.hasCollisionMask ?? 0) & (1 << mode)) !== 0
-      if (!hasCollision) continue
+      if (!collidesInMode(meta, objectMode(obj), openDoors)) continue
       const sizeX = meta.sizeX ?? 0
       const sizeY = meta.sizeY ?? 0
       if (sizeX >= 1 && sizeY >= 1) {
@@ -3900,8 +3978,7 @@ export class CommandMapper {
     for (const obj of objects) {
       if (obj.hidden || obj.dead || (obj.x === 0 && obj.y === 0)) continue
       const meta = obj.objectMeta ?? CANONICAL_113C_OBJECTS[obj.classId]
-      const mode = Math.max(0, Math.min(7, Math.floor(obj.mode || 0)))
-      const hasCollision = ((meta?.hasCollisionMask ?? 0) & (1 << mode)) !== 0
+      const hasCollision = collidesInMode(meta, objectMode(obj), openDoors)
       if (obj.classId === 341 || obj.classId === 342) {
         const halfX = Math.max(3, Math.ceil((meta?.sizeX ?? 11) / 2) + 1)
         const halfY = Math.max(2, Math.ceil((meta?.sizeY ?? 5) / 2) + 1)
@@ -3929,6 +4006,21 @@ export class CommandMapper {
     return walkable
   }
 
+  private candidateAreaIds(): number[] {
+    return [...(this.world.areaId > 0 ? [this.world.areaId] : []), ...this.world.getRevealedAreaIds()]
+  }
+
+  private resolveLevelViewAt(sx: number, sy: number): LevelView | null {
+    const candidateAreas = this.candidateAreaIds()
+    return (
+      (this.mapService && candidateAreas.length > 0 && (sx !== 0 || sy !== 0) ? this.mapService.findLevelViewAtWorldSubTile(sx, sy, candidateAreas) : null) ??
+      (this.world.areaId > 0 ? this.automapView?.getLevelView(this.world.areaId) : undefined) ??
+      this.mapService?.getActiveLevelView() ??
+      this.automapView?.getLevelView() ??
+      null
+    )
+  }
+
   private startLocalPathPrediction(
     targetX: number,
     targetY: number,
@@ -3952,18 +4044,8 @@ export class CommandMapper {
     const snap = this.predictor.getSnapshot()
     const sx = Math.round(snap.logicalX)
     const sy = Math.round(snap.logicalY)
-    const candidateAreas = [
-      ...(this.world.areaId > 0 ? [this.world.areaId] : []),
-      ...this.world.getRevealedAreaIds(),
-    ]
-    const levelView =
-      (this.mapService && candidateAreas.length > 0 && (sx !== 0 || sy !== 0)
-        ? this.mapService.findLevelViewAtWorldSubTile(sx, sy, candidateAreas)
-        : null) ??
-      (this.world.areaId > 0 ? this.automapView?.getLevelView(this.world.areaId) : undefined) ??
-      this.mapService?.getActiveLevelView() ??
-      this.automapView?.getLevelView() ??
-      null
+    const candidateAreas = this.candidateAreaIds()
+    const levelView = this.resolveLevelViewAt(sx, sy)
 
     if (levelView && levelView.walkable.length > 0) {
       const ox = levelView.subOriginX ?? 0

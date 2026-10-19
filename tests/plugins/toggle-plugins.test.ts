@@ -106,9 +106,9 @@ describe('auto-potion plugin', () => {
   it('applies the default thresholds, follows setting changes and switches off on teardown', async () => {
     let thresholds: AutoPotionThresholds | null = null
     const host = await startEnabled(createHost(autoPotionPlugin, { autoPotion: { getThresholds: () => thresholds, setThresholds: (t) => void (thresholds = t) } }), 'auto-potion')
-    expect([thresholds, host.getStatus('auto-potion').level]).toEqual([{ life: 50, rejuv: 25, mana: 20, merc: 40 }, 'ok'])
+    expect([thresholds, host.getStatus('auto-potion').level]).toEqual([{ life: 65, rejuv: 35, mana: 20, merc: 40 }, 'ok'])
     host.setSetting('auto-potion', 'mana', '0')
-    expect(thresholds).toMatchObject({ life: 50, mana: 0 })
+    expect(thresholds).toMatchObject({ life: 65, mana: 0 })
     await host.destroy()
     expect(thresholds).toBeNull()
   })

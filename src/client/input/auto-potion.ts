@@ -3,6 +3,7 @@ import { CANONICAL_POTION_SPECS } from '../../common/items/misc-items.ts'
 const BELT_COLUMNS = 4
 const FRAME_MS = 40
 const DRINK_GAP_MS = 1_000
+const LOW_STOCK = 4
 
 export interface AutoPotionThresholds {
   readonly life: number
@@ -59,7 +60,16 @@ const smallestCovering = (potions: readonly Potion[], amountOf: (p: Potion) => n
 }
 
 export const potionShortage = (potions: readonly Potion[], thresholds: AutoPotionThresholds, vitals: PotionVitals): PotionShortage =>
-  thresholds.life > 0 && !potions.some((p) => isHealing(p) || isRejuv(p)) ? 'life' : percent(vitals.mana, vitals.maxMana) < thresholds.mana && !potions.some(isMana) ? 'mana' : null
+  thresholds.life > 0 && !potions.some((p) => isHealing(p) || isRejuv(p)) ? 'life' : percent(vitals.mana, vitals.maxMana) < thresholds.mana && !potions.some((p) => isMana(p) || isRejuv(p)) ? 'mana' : null
+
+export const wantedPotionPickup = (stock: readonly Potion[], thresholds: AutoPotionThresholds): ((code: string) => boolean) => {
+  const low = (enabled: boolean, matches: (p: Potion) => boolean) => enabled && stock.filter((p) => matches(p) || isRejuv(p)).length < LOW_STOCK
+  const [lowLife, lowMana] = [low(thresholds.life > 0, isHealing), low(thresholds.mana > 0, isMana)]
+  return (code) => {
+    const potion = { code: normalizeCode(code), itemId: 0 }
+    return isRejuv(potion) ? lowLife || lowMana : (isHealing(potion) && lowLife) || (isMana(potion) && lowMana)
+  }
+}
 
 export class AutoPotionPlanner {
   private readonly effectUntil: Record<PotionKind, number> = { life: Number.NEGATIVE_INFINITY, mana: Number.NEGATIVE_INFINITY, merc: Number.NEGATIVE_INFINITY }
@@ -82,13 +92,16 @@ export class AutoPotionPlanner {
     const rejuvFor = (pct: number, stock = potions) => pick(stock, isRejuv, hpAmount, thresholds.life - pct)
     const healing = (deficit: number, stock = potions) => pick(stock, isHealing, (p) => hpAmount(p) * healFactor, deficit)
     const mana = (deficit: number) => pick(potions, isMana, (p) => (spec(p.code)?.manaAmount ?? 0) * manaFactor, deficit)
+    const anyRejuv = () => pick(potions, isRejuv, hpAmount, 0)
+    const lowMana = manaPct < thresholds.mana && vitals.maxMana > 0
     const belt = potions.filter(inBelt)
     const critical = lifePct < thresholds.rejuv
     const merc = vitals.mercLifePct
     return (
       (critical ? drink(rejuvFor(lifePct) ?? healing(vitals.maxLife - vitals.life), 'life') : null) ??
+      (lifePct < thresholds.life && lowMana ? drink(anyRejuv(), 'life') : null) ??
       (lifePct < thresholds.life && free('life') ? drink(healing(vitals.maxLife - vitals.life) ?? rejuvFor(lifePct), 'life') : null) ??
-      (manaPct < thresholds.mana && vitals.maxMana > 0 && free('mana') ? drink(mana(vitals.maxMana - vitals.mana), 'mana') : null) ??
+      (lowMana && free('mana') ? drink(mana(vitals.maxMana - vitals.mana) ?? anyRejuv(), 'mana') : null) ??
       (merc !== null && merc > 0 && merc < thresholds.merc && free('merc') ? drink(healing(Number.POSITIVE_INFINITY, belt) ?? (merc < thresholds.rejuv ? rejuvFor(merc, belt) : undefined), 'merc') : null)
     )
   }

@@ -6,8 +6,8 @@ export const autoCombatPlugin: D2WebPlugin = {
   id: 'auto-combat',
   name: { zh: '自动战斗', en: 'Auto-Fight' },
   description: {
-    zh: '非 1.13c 增强：按设定的按键开启/关闭自动战斗（法力球上方显示开/关状态）。开启后无需任何操作，角色会自动用左键技能攻击画面内最近的敌人——锁定当前目标直到其死亡或离开画面，再切换到下一个；超出近战距离时先走过去再攻击，与按住鼠标攻击怪物完全一致。按住鼠标时以你的操作为准；打开仓库、商店等窗口时暂停。关闭插件即移除。',
-    en: "Non-1.13c enhancement: press the chosen key to switch Auto-Fight on or off (shown above the mana orb). While it's on you don't need to do anything: your left skill attacks the nearest enemy on screen, sticking with it until it dies or leaves the screen, then moving to the next. Out-of-range targets are walked to and attacked exactly as when you hold the mouse on a monster. Holding the mouse takes over while held, and it pauses while a stash, vendor or similar window is open. Disabling removes it.",
+    zh: '非 1.13c 增强：按设定的按键开启/关闭自动战斗（法力球上方显示开/关状态）。开启后无需任何操作，角色会自动用左键技能攻击画面内最近的敌人——锁定当前目标直到其死亡或离开画面，再切换到下一个；超出近战距离时先走过去再攻击，与按住鼠标攻击怪物完全一致。只攻击能走到的敌人，墙后或其他房间的怪物会被跳过；如果路上有关着的门，会先把门打开。按住鼠标时以你的操作为准；打开仓库、商店等窗口时暂停。关闭插件即移除。',
+    en: "Non-1.13c enhancement: press the chosen key to switch Auto-Fight on or off (shown above the mana orb). While it's on you don't need to do anything: your left skill attacks the nearest enemy on screen, sticking with it until it dies or leaves the screen, then moving to the next. Out-of-range targets are walked to and attacked exactly as when you hold the mouse on a monster. It only goes for enemies it can actually walk to, skipping ones behind walls or in other rooms, and opens a closed door first when one is in the way. Holding the mouse takes over while held, and it pauses while a stash, vendor or similar window is open. Disabling removes it.",
   },
   defaultEnabled: false,
   settings: [
