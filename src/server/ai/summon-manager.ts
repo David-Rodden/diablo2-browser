@@ -12,9 +12,11 @@
  *   and `Revive` (`95`).
  * - Execution of all 17 summoned pet & trap AI sub-skills (`IDs 281..338`).
  */
-import type { D2DataRegistry } from '../../common/data/data-registry.ts'
+import { PET_SUB_SKILL_IDS, type D2DataRegistry, type SkillRecord } from '../../common/data/data-registry.ts'
 import { evaluateCalc } from '../../common/data/calc-ast.ts'
+import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { MONSTATS2FLAG_REVIVE, getMonsterPathRecord } from '../../common/path/units.ts'
+import { getCanonicalMonsterKinds, getMonsterKindByHcIdx } from '../../common/units/monsters-data.ts'
 import { FIXED_ONE, UnitStatList } from '../engine/stat-list.ts'
 import { StateBus } from '../engine/state-bus.ts'
 import { executeSUnitDmg, type CombatUnitContext } from '../engine/combat-pipeline.ts'
@@ -164,6 +166,41 @@ export interface CreatePetOutcome {
   readonly activeCountForType: number
 }
 
+const FALLBACK_SUMMON_SKILL_META: Readonly<
+  Record<number, { readonly name: string; readonly petType: string; readonly summon: string; readonly petMax: string }>
+> = {
+  28: { name: 'Dopplezon', petType: 'dopplezon', summon: 'dopplezon', petMax: '1' },
+  32: { name: 'Valkyrie', petType: 'valkyrie', summon: 'valkyrie', petMax: '1' },
+  62: { name: 'Hydra', petType: 'hydra', summon: 'hydra1', petMax: '' },
+  70: { name: 'Raise Skeleton', petType: 'skeleton', summon: 'necromancerskeleton', petMax: '(lvl < 4) ? lvl : ((lvl / 3) + 2)' },
+  75: { name: 'Clay Golem', petType: 'golem', summon: 'claygolem', petMax: '1' },
+  78: { name: 'Bone Wall', petType: 'bonewall', summon: 'bonewall', petMax: '' },
+  80: { name: 'Raise Skeletal Mage', petType: 'skeletonmage', summon: 'necromage', petMax: '(lvl < 4) ? lvl : ((lvl / 3) + 2)' },
+  85: { name: 'BloodGolem', petType: 'golem', summon: 'bloodgolem', petMax: '1' },
+  88: { name: 'Bone Prison', petType: 'bonewall', summon: 'bonewall', petMax: '' },
+  90: { name: 'IronGolem', petType: 'golem', summon: 'irongolem', petMax: '1' },
+  94: { name: 'FireGolem', petType: 'golem', summon: 'firegolem', petMax: '1' },
+  95: { name: 'Revive', petType: 'revive', summon: '', petMax: 'lvl' },
+  221: { name: 'Raven', petType: 'raven', summon: 'druidhawk', petMax: 'min(lvl, 5)' },
+  222: { name: 'Plague Poppy', petType: 'vine', summon: 'plaguepoppy', petMax: '1' },
+  226: { name: 'Oak Sage', petType: 'spirit', summon: 'oaksage', petMax: '1' },
+  227: { name: 'Summon Spirit Wolf', petType: 'fenris', summon: 'spiritwolf', petMax: 'min(lvl, 5)' },
+  231: { name: 'Cycle of Life', petType: 'vine', summon: 'cycleoflife', petMax: '1' },
+  236: { name: 'Heart of Wolverine', petType: 'spirit', summon: 'heartofwolverine', petMax: '1' },
+  237: { name: 'Summon Fenris', petType: 'fenris', summon: 'fenris', petMax: 'min(lvl, 3)' },
+  241: { name: 'Vines', petType: 'vine', summon: 'vines', petMax: '1' },
+  246: { name: 'Spirit of Barbs', petType: 'spirit', summon: 'spiritofbarbs', petMax: '1' },
+  247: { name: 'Summon Grizzly', petType: 'grizzly', summon: 'druidbear', petMax: '1' },
+  257: { name: 'Blade Sentinel', petType: 'bladesentinel', summon: 'bladesentinel', petMax: '' },
+  261: { name: 'Charged Bolt Sentry', petType: 'assassintrap', summon: 'Wake Of Destruction', petMax: '5' },
+  262: { name: 'Wake of Fire Sentry', petType: 'assassintrap', summon: 'Charts', petMax: '5' },
+  268: { name: 'Shadow Warrior', petType: 'shadowwarrior', summon: 'shadowwarrior', petMax: '1' },
+  271: { name: 'Lightning Sentry', petType: 'assassintrap', summon: 'Lightning Sentry', petMax: '5' },
+  272: { name: 'Inferno Sentry', petType: 'assassintrap', summon: 'Inferno Sentry', petMax: '5' },
+  276: { name: 'Death Sentry', petType: 'assassintrap', summon: 'Death Sentry', petMax: '5' },
+  279: { name: 'Shadow Master', petType: 'shadowwarrior', summon: 'shadowmaster', petMax: '1' },
+}
+
 export class SummonManager {
   readonly registry: D2DataRegistry
   private readonly pets: SummonedPetUnit[] = []
@@ -171,6 +208,233 @@ export class SummonManager {
 
   constructor(registry: D2DataRegistry) {
     this.registry = registry
+  }
+
+  private resolveSkillRecordFallback(skillId: number): SkillRecord | undefined {
+    const regSkill = this.registry?.getSkillById(skillId)
+    if (regSkill) return regSkill
+    const cat = SKILLS_BY_ID[skillId]
+    const meta = FALLBACK_SUMMON_SKILL_META[skillId]
+    const isSubSkill = (PET_SUB_SKILL_IDS as readonly number[]).includes(skillId)
+    if (!cat && !meta && !isSubSkill) return undefined
+    const name = meta?.name ?? cat?.name ?? `Skill_${skillId}`
+    return {
+      id: skillId,
+      name,
+      skill: name,
+      charClass: cat?.classCode ?? '',
+      skillDesc: '',
+      srvStFunc: 0,
+      srvDoFunc: 0,
+      srvPrgFunc1: 0,
+      srvPrgFunc2: 0,
+      srvPrgFunc3: 0,
+      prgCalc1: '',
+      prgCalc2: '',
+      prgCalc3: '',
+      prgDam: 0,
+      srvMissile: '',
+      srvMissileA: '',
+      srvMissileB: '',
+      srvMissileC: '',
+      cltStFunc: 0,
+      cltDoFunc: 0,
+      cltMissile: '',
+      cltMissileA: '',
+      cltMissileB: '',
+      cltMissileC: '',
+      cltMissileD: '',
+      passive: false,
+      passiveState: '',
+      passiveStat1: '',
+      passiveCalc1: '',
+      passiveStat2: '',
+      passiveCalc2: '',
+      passiveStat3: '',
+      passiveCalc3: '',
+      passiveStat4: '',
+      passiveCalc4: '',
+      passiveStat5: '',
+      passiveCalc5: '',
+      aura: false,
+      auraFilter: 0,
+      auraState: '',
+      auraTgtState: '',
+      auraLenCalc: cat?.auraLenCalc ?? '',
+      auraRangeCalc: '',
+      auraStat1: '',
+      auraStatCalc1: '',
+      auraStat2: '',
+      auraStatCalc2: '',
+      auraStat3: '',
+      auraStatCalc3: '',
+      auraStat4: '',
+      auraStatCalc4: '',
+      auraStat5: '',
+      auraStatCalc5: '',
+      auraStat6: '',
+      auraStatCalc6: '',
+      auraEvent1: '',
+      auraEventFunc1: 0,
+      auraEvent2: '',
+      auraEventFunc2: 0,
+      auraEvent3: '',
+      auraEventFunc3: 0,
+      summon: meta?.summon ?? '',
+      petType: meta?.petType ?? '',
+      petMax: meta?.petMax ?? '',
+      sumMode: '',
+      sumSkill1: '',
+      sumSk1Calc: '',
+      sumSkill2: '',
+      sumSk2Calc: '',
+      sumSkill3: '',
+      sumSk3Calc: '',
+      sumSkill4: '',
+      sumSk4Calc: '',
+      sumSkill5: '',
+      sumSk5Calc: '',
+      sumUMod: 0,
+      sumOverlay: '',
+      anim: '',
+      seqTrans: '',
+      monAnim: '',
+      seqNum: 0,
+      seqInput: 0,
+      range: '',
+      selectProc: 0,
+      reqLevel: cat?.reqlevel ?? 1,
+      reqStr: 0,
+      reqDex: 0,
+      reqInt: 0,
+      reqVit: 0,
+      reqSkill1: cat?.reqskills?.[0] !== undefined ? String(cat.reqskills[0]) : '',
+      reqSkill2: cat?.reqskills?.[1] !== undefined ? String(cat.reqskills[1]) : '',
+      reqSkill3: cat?.reqskills?.[2] !== undefined ? String(cat.reqskills[2]) : '',
+      restrict: 0,
+      state1: '',
+      state2: '',
+      state3: '',
+      delay: String(cat?.delay ?? 0),
+      checkFunc: 0,
+      nocostinstate: false,
+      decquant: false,
+      manaShift: cat?.manashift ?? 8,
+      mana: cat?.mana ?? 0,
+      lvlMana: cat?.lvlmana ?? 0,
+      minMana: cat?.minmana ?? 0,
+      interrupt: true,
+      inTown: true,
+      periodic: false,
+      perDelay: '',
+      finishing: false,
+      progressive: false,
+      calc1: '',
+      calc2: '',
+      calc3: '',
+      calc4: '',
+      param1: cat?.params?.par1 ?? 0,
+      param2: cat?.params?.par2 ?? 0,
+      param3: cat?.params?.par3 ?? 0,
+      param4: cat?.params?.par4 ?? 0,
+      param5: cat?.params?.par5 ?? 0,
+      param6: cat?.params?.par6 ?? 0,
+      param7: cat?.params?.par7 ?? 0,
+      param8: cat?.params?.par8 ?? 0,
+      toHit: cat?.toHit ?? 0,
+      toHitLev: cat?.toHitLev ?? 0,
+      toHitCalc: cat?.toHitCalc ?? '',
+      resultFlags: 0,
+      hitFlags: 0,
+      hitClass: 0,
+      kick: false,
+      hitShift: cat?.hitshift ?? 8,
+      srcDam: cat?.srcDamage ?? 0,
+      minDam: cat?.minDam ?? 0,
+      minLevDam1: cat?.minLevDam?.[0] ?? 0,
+      minLevDam2: cat?.minLevDam?.[1] ?? 0,
+      minLevDam3: cat?.minLevDam?.[2] ?? 0,
+      minLevDam4: cat?.minLevDam?.[3] ?? 0,
+      minLevDam5: cat?.minLevDam?.[4] ?? 0,
+      maxDam: cat?.maxDam ?? 0,
+      maxLevDam1: cat?.maxLevDam?.[0] ?? 0,
+      maxLevDam2: cat?.maxLevDam?.[1] ?? 0,
+      maxLevDam3: cat?.maxLevDam?.[2] ?? 0,
+      maxLevDam4: cat?.maxLevDam?.[3] ?? 0,
+      maxLevDam5: cat?.maxLevDam?.[4] ?? 0,
+      dmgSymPerCalc: cat?.synergyFormulas?.physical ?? '',
+      eType: cat?.eType ?? '',
+      eMin: cat?.eMin ?? 0,
+      eMinLev1: cat?.eMinLev?.[0] ?? 0,
+      eMinLev2: cat?.eMinLev?.[1] ?? 0,
+      eMinLev3: cat?.eMinLev?.[2] ?? 0,
+      eMinLev4: cat?.eMinLev?.[3] ?? 0,
+      eMinLev5: cat?.eMinLev?.[4] ?? 0,
+      eMax: cat?.eMax ?? 0,
+      eMaxLev1: cat?.eMaxLev?.[0] ?? 0,
+      eMaxLev2: cat?.eMaxLev?.[1] ?? 0,
+      eMaxLev3: cat?.eMaxLev?.[2] ?? 0,
+      eMaxLev4: cat?.eMaxLev?.[3] ?? 0,
+      eMaxLev5: cat?.eMaxLev?.[4] ?? 0,
+      eDmgSymPerCalc: cat?.synergyFormulas?.elemental ?? '',
+      eLen: cat?.eLen ?? 0,
+      eLevLen1: cat?.eLevLen?.[0] ?? 0,
+      eLevLen2: cat?.eLevLen?.[1] ?? 0,
+      eLevLen3: cat?.eLevLen?.[2] ?? 0,
+      eLenSymPerCalc: cat?.synergyFormulas?.duration ?? '',
+      aiType: 0,
+      aiBonus: 0,
+      castOverlay: '',
+      cltOverlayA: '',
+      cltOverlayB: '',
+      prgOverlay: '',
+      raw: {},
+    }
+  }
+
+  private resolveMonStatsFallback(
+    idOrHcIdx: string | number,
+  ):
+    | {
+        readonly hcIdx: number
+        readonly id: string
+        readonly code: string
+        readonly maxHP: number
+        readonly ac: number
+        readonly a1MinD: number
+        readonly a1MaxD: number
+        readonly a1TH: number
+        readonly resDm: number
+        readonly resMa: number
+        readonly resFi: number
+        readonly resLi: number
+        readonly resCo: number
+        readonly resPo: number
+      }
+    | undefined {
+    const regMon = this.registry?.getMonStats(idOrHcIdx)
+    if (regMon) return regMon
+    const k =
+      typeof idOrHcIdx === 'number'
+        ? getMonsterKindByHcIdx(idOrHcIdx)
+        : getCanonicalMonsterKinds().get(idOrHcIdx.trim().toLowerCase())
+    if (!k) return undefined
+    return {
+      hcIdx: k.hcIdx ?? 0,
+      id: k.id,
+      code: k.code,
+      maxHP: k.maxHp,
+      ac: k.armour,
+      a1MinD: k.attack1.minDamage,
+      a1MaxD: k.attack1.maxDamage,
+      a1TH: k.attack1.toHit,
+      resDm: k.resistances.physical,
+      resMa: k.resistances.magic,
+      resFi: k.resistances.fire,
+      resLi: k.resistances.lightning,
+      resCo: k.resistances.cold,
+      resPo: k.resistances.poison,
+    }
   }
 
   /**
@@ -211,7 +475,7 @@ export class SummonManager {
     ironGolemItem?: IronGolemItemProps | undefined
     groundItems?: (IronGolemItemProps & { id: string; consumed?: boolean | undefined })[] | undefined
   }): CreatePetOutcome {
-    const skill = this.registry.getSkillById(params.skillId)
+    const skill = this.resolveSkillRecordFallback(params.skillId)
     if (!skill) {
       return { created: false, reason: 'invalid_skill', evictedPetUids: [], activeCountForType: 0 }
     }
@@ -256,7 +520,7 @@ export class SummonManager {
             c.classId !== undefined
               ? c.classId
               : c.monId !== undefined
-                ? this.registry.getMonStats(c.monId)?.hcIdx
+                ? this.resolveMonStatsFallback(c.monId)?.hcIdx
                 : undefined
           if (resolvedHcIdx !== undefined) {
             const pathRec = getMonsterPathRecord(resolvedHcIdx)
@@ -288,7 +552,7 @@ export class SummonManager {
                 : 'summon')
     ).toLowerCase()
 
-    const petTypeRec = this.registry.getPetType(petTypeName)
+    const petTypeRec = this.registry?.getPetType(petTypeName)
     const isGolemSkill = [75, 85, 90, 94].includes(params.skillId)
     const petGroup =
       isGolemSkill
@@ -370,9 +634,9 @@ export class SummonManager {
     const corpseMonRec =
       params.skillId === 95
         ? consumedCorpse?.classId !== undefined
-          ? this.registry.getMonStats(consumedCorpse.classId)
+          ? this.resolveMonStatsFallback(consumedCorpse.classId)
           : consumedCorpse?.monId
-            ? this.registry.getMonStats(consumedCorpse.monId)
+            ? this.resolveMonStatsFallback(consumedCorpse.monId)
             : undefined
         : undefined
     const monId = (
@@ -380,7 +644,7 @@ export class SummonManager {
         ? consumedCorpse?.monId || corpseMonRec?.id || skill.summon || skill.name
         : skill.summon || skill.name
     ).toLowerCase()
-    const monRec = corpseMonRec ?? this.registry.getMonStats(monId)
+    const monRec = corpseMonRec ?? this.resolveMonStatsFallback(monId)
     const code =
       (params.skillId === 95 ? consumedCorpse?.code || corpseMonRec?.code : undefined) ||
       monRec?.code ||
@@ -1257,7 +1521,7 @@ export class SummonManager {
 
       // Execute pet's AI sub-skills (`IDs 281..338`)
       for (const subId of pet.subSkillIds) {
-        const subSkill = this.registry.getSkillById(subId)
+        const subSkill = this.resolveSkillRecordFallback(subId)
         if (!subSkill) continue
 
         // Totem Auras (`296` Oak Sage Aura, `297` Wolverine Aura, `298` Barbs Aura)

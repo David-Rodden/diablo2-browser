@@ -257,11 +257,17 @@ export function hasMonsterUMod(
 ): boolean {
   const set = resolveMonsterUModIds(source)
   if (typeof targetMod === 'number') {
+    if (targetMod === MON_UMOD_ID.FIRE) {
+      return set.has(MON_UMOD_ID.FIRE) || set.has(22)
+    }
     return set.has(targetMod)
   }
   const clean = targetMod.trim().toLowerCase()
   const compact = clean.replace(/[\s_-]+/g, '')
   const mapped = MON_UMOD_NAME_TO_ID[clean] ?? MON_UMOD_NAME_TO_ID[compact] ?? Number(clean)
+  if (mapped === MON_UMOD_ID.FIRE) {
+    return set.has(MON_UMOD_ID.FIRE) || set.has(22)
+  }
   return Number.isInteger(mapped) && mapped > 0 ? set.has(mapped) : false
 }
 
@@ -283,7 +289,7 @@ function normalizeDifficultyIndex(difficulty: number | 'normal' | 'nightmare' | 
  *   Normal (`0`): `0.20` (1/5), Nightmare (`1`): `0.35`, Hell (`2`): `0.20` (1/5).
  *   Total damage is split 50% Physical + 50% Fire within a 4-subtile radius.
  */
-export const FIRE_ENCHANT_MIN_HP_PCT = 66
+export const FIRE_ENCHANT_MIN_HP_PCT = 75
 export const FIRE_ENCHANT_MAX_HP_PCT = 100
 export const FIRE_ENCHANT_DIFF_SCALE: readonly [number, number, number] = [0.2, 0.35, 0.2] as const
 export const FIRE_ENCHANT_EXPLOSION_RADIUS = 4
@@ -381,14 +387,13 @@ export function calcBoneFetishDeathDamage(
     }
   }
   const safeHp = Math.max(1, baseMaxHp)
-  const diffIdx = normalizeDifficultyIndex(difficulty)
-  const diffScale = FIRE_ENCHANT_DIFF_SCALE[diffIdx]
+  void difficulty
   const effRoll = typeof rollOrIsMinion === 'number' ? rollOrIsMinion : 0.5
   const clampedRoll = Math.max(0, Math.min(1, effRoll))
-  const pct = 40 + 20 * clampedRoll
-  const basePhys = Math.max(1, Math.round((safeHp * (pct / 100)) * diffScale))
-  const minPhys = Math.max(1, Math.round((safeHp * 0.4) * diffScale))
-  const maxPhys = Math.max(minPhys, Math.round((safeHp * 0.6) * diffScale))
+  const pct = 20 + 20 * clampedRoll
+  const minPhys = Math.floor((safeHp * 20) / 100)
+  const maxPhys = Math.max(minPhys, Math.floor((safeHp * 40) / 100))
+  const basePhys = Math.max(1, Math.floor((safeHp * pct) / 100))
   const isCrit = critRoll01 < 0.05
   return {
     physDmg: isCrit ? basePhys * 2 : basePhys,

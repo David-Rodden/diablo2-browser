@@ -1708,7 +1708,7 @@ export function tickMonsters(
       continue
     }
 
-    if (aiName === 'FetishShaman' || /fetishshaman/i.test(idLower)) {
+    if (aiName === 'FetishShaman' || /fetishshaman/i.test(idLower) || (hcIdx >= 136 && hcIdx <= 140)) {
       if (monster.cooldown === 0) {
         const revived = executeShamanResurrect113c(world, monster, sightRadius)
         if (revived !== null) {
@@ -1951,6 +1951,112 @@ export function tickMonsters(
       }
     }
 
+    if (aiName === 'Overseer' || (hcIdx >= 479 && hcIdx <= 483) || hcIdx === 724) {
+      if (monster.cooldown === 0) {
+        const enslavedTarget = world.monsters.find(
+          (m) =>
+            m.index !== monster.index &&
+            m.state !== 'dead' &&
+            m.hp > 0 &&
+            (m.stats?.ai === 'Imp' ||
+              m.stats?.ai === 'Minion' ||
+              (m.stats?.hcIdx !== undefined &&
+                ((m.stats.hcIdx >= 453 && m.stats.hcIdx <= 460) ||
+                  (m.stats.hcIdx >= 474 && m.stats.hcIdx <= 478) ||
+                  m.stats.hcIdx === 723)) ||
+              /enslaved|slayer|hellspawn|iceboar|fireboar|imp|minion/i.test(m.stats?.id ?? '')) &&
+            Math.hypot(m.x - monster.x, m.y - monster.y) <= 220,
+        )
+        if (enslavedTarget) {
+          enslavedTarget.frenzyStacks = Math.min(8, (enslavedTarget.frenzyStacks ?? 0) + 1)
+          monster.state = 'attack'
+          monster.animMode = 's1'
+          monster.cooldown = Math.max(20, monster.stats.cooldownTicks)
+          monster.facing = facingOf(enslavedTarget.x - monster.x, enslavedTarget.y - monster.y)
+          world.events.push({
+            kind: 'unitSkillEvent',
+            x: enslavedTarget.x,
+            y: enslavedTarget.y,
+            skillId: 'OverseerWhip',
+            monsterIndex: enslavedTarget.index,
+          })
+          continue
+        }
+      }
+    }
+
+    if (aiName === 'SandMaggot' || (hcIdx >= 68 && hcIdx <= 72) || hcIdx === 679 || hcIdx === 716) {
+      if (monster.cooldown === 0) {
+        const activeEggs = world.monsters.filter(
+          (m) =>
+            m.state !== 'dead' &&
+            m.hp > 0 &&
+            (m.stats?.ai === 'MaggotEgg' ||
+              (m.stats?.hcIdx !== undefined &&
+                ((m.stats.hcIdx >= 190 && m.stats.hcIdx <= 194) || m.stats.hcIdx === 681)) ||
+              /maggotegg|sandmaggotegg/i.test(m.stats?.id ?? '')),
+        )
+        if (activeEggs.length < 3 && distance > monster.stats.reach) {
+          const nextIdx = world.monsters.reduce((acc, m) => Math.max(acc, m.index), 0) + 1
+          const eggMon: Monster = {
+            index: nextIdx,
+            x: monster.x + 12,
+            y: monster.y + 12,
+            hp: 40,
+            state: 'idle',
+            animMode: 'nu',
+            facing: 0,
+            cooldown: 10,
+            hitFlash: 0,
+            corpseTicks: 0,
+            stats: {
+              ...monster.stats,
+              id: 'MaggotEgg',
+              name: 'Sand Maggot Egg',
+              ai: 'MaggotEgg',
+              hcIdx: 190,
+              hp: 40,
+              speed: 0,
+              damage: 0,
+              cooldownTicks: 15,
+            },
+          }
+          world.monsters.push(eggMon)
+          monster.state = 'attack'
+          monster.animMode = 's1'
+          monster.cooldown = Math.max(25, monster.stats.cooldownTicks)
+          world.events.push({
+            kind: 'unitSkillEvent',
+            x: eggMon.x,
+            y: eggMon.y,
+            skillId: 'SandMaggotEgg',
+            monsterIndex: eggMon.index,
+          })
+          continue
+        }
+        if (distance > monster.stats.reach) {
+          monster.state = 'attack'
+          monster.animMode = 'a2'
+          monster.cooldown = Math.max(20, monster.stats.cooldownTicks)
+          const spitMsl =
+            (hcIdx >= 0 ? getMonsterModeMissile113c(hcIdx, 'A2') : undefined) ??
+            getMonsterModeMissile113c(monster.stats.id, 'A2') ??
+            'goospit1'
+          world.events.push({
+            kind: 'missileHit',
+            x: player.x,
+            y: player.y,
+            missileType: spitMsl,
+            skillId: 'MaggotSpit',
+            amount: monster.stats.damage,
+            monsterIndex: monster.index,
+          })
+          applyMonsterAttackToPlayer(world, monster, player, options, true, rawMods)
+          continue
+        }
+      }
+    }
+
     // --- R2.7 Act Bosses ---
     if (isActBossMonster(monster) && distance > monster.stats.reach) {
       if (monster.cooldown === 0) {
@@ -1969,6 +2075,112 @@ export function tickMonsters(
     if (stationary) {
       if (aiName === 'BonePrison' || hcIdx === 432) {
         monster.state = 'idle'
+        continue
+      }
+      if (
+        aiName === 'MaggotEgg' ||
+        (hcIdx >= 190 && hcIdx <= 194) ||
+        hcIdx === 681 ||
+        /maggotegg|sandmaggotegg/i.test(idLower)
+      ) {
+        if (monster.cooldown === 0) {
+          const baseIdx = world.monsters.reduce((acc, m) => Math.max(acc, m.index), 0)
+          for (let yIdx = 0; yIdx < 2; yIdx += 1) {
+            const youngMon: Monster = {
+              index: baseIdx + 1 + yIdx,
+              x: monster.x + (yIdx === 0 ? -8 : 8),
+              y: monster.y + (yIdx === 0 ? -6 : 6),
+              hp: Math.max(20, Math.floor(monster.stats.hp * 0.8)),
+              state: 'chase',
+              animMode: 'wl',
+              facing: 0,
+              cooldown: 10,
+              hitFlash: 0,
+              corpseTicks: 0,
+              stats: {
+                ...monster.stats,
+                id: 'SandMaggotYoung',
+                name: 'Sand Maggot Young',
+                ai: 'MaggotBaby',
+                hcIdx: 180,
+                speed: 55,
+                damage: Math.max(4, monster.stats.damage || 6),
+                reach: 28,
+                aggroRadius: 220,
+              },
+            }
+            world.monsters.push(youngMon)
+          }
+          monster.hp = 0
+          monster.state = 'dead'
+          monster.animMode = 'dt'
+          monster.corpseConsumed = true
+          monster.corpseSuppressed = true
+          world.events.push({
+            kind: 'unitSkillEvent',
+            x: monster.x,
+            y: monster.y,
+            skillId: 'MaggotEggHatch',
+            monsterIndex: monster.index,
+          })
+        }
+        continue
+      }
+      if (
+        aiName === 'FoulCrowNest' ||
+        (hcIdx >= 206 && hcIdx <= 209) ||
+        (hcIdx >= 334 && hcIdx <= 337) ||
+        /foulcrownest|crownest|bloodhawk|suckernest/i.test(idLower)
+      ) {
+        if (monster.cooldown === 0) {
+          const MAX_NEST_SPAWNS = 5
+          const spawnedCrows = world.monsters.filter(
+            (m) =>
+              m.index !== monster.index &&
+              (m.stats?.ai === 'FoulCrow' ||
+                (m.stats?.hcIdx !== undefined && m.stats.hcIdx >= 15 && m.stats.hcIdx <= 18) ||
+                /foulcrow|bloodhawk|blackraptor|cloudstalker/i.test(m.stats?.id ?? '')),
+          )
+          if (spawnedCrows.length < MAX_NEST_SPAWNS) {
+            const nextIdx = world.monsters.reduce((acc, m) => Math.max(acc, m.index), 0) + 1
+            const crowMon: Monster = {
+              index: nextIdx,
+              x: monster.x + ((spawnedCrows.length % 3) - 1) * 10,
+              y: monster.y + 10,
+              hp: Math.max(15, Math.floor(monster.stats.hp * 0.35)),
+              state: 'chase',
+              animMode: 'wl',
+              facing: 0,
+              cooldown: 8,
+              hitFlash: 0,
+              corpseTicks: 0,
+              stats: {
+                ...monster.stats,
+                id: 'FoulCrow',
+                name: 'Foul Crow',
+                ai: 'FoulCrow',
+                hcIdx: 15,
+                speed: 75,
+                damage: Math.max(3, monster.stats.damage || 5),
+                reach: 26,
+                aggroRadius: 240,
+              },
+            }
+            world.monsters.push(crowMon)
+            monster.state = 'attack'
+            monster.animMode = 's1'
+            monster.cooldown = Math.max(25, monster.stats.cooldownTicks || 25)
+            world.events.push({
+              kind: 'unitSkillEvent',
+              x: crowMon.x,
+              y: crowMon.y,
+              skillId: 'NestSpawn',
+              monsterIndex: crowMon.index,
+            })
+          } else {
+            monster.state = 'idle'
+          }
+        }
         continue
       }
       monster.state = 'attack'
@@ -2284,7 +2496,14 @@ export function executeShamanResurrect113c(
   for (const candidate of world.monsters) {
     if (candidate.index === shaman.index) continue
     if (candidate.state !== 'dead') continue
-    if (candidate.corpseSuppressed || candidate.corpseConsumed || candidate.shattered) continue
+    if (
+      candidate.corpseSuppressed ||
+      candidate.corpseConsumed ||
+      candidate.shattered ||
+      (candidate as { readonly revivedByShaman?: boolean }).revivedByShaman === true
+    ) {
+      continue
+    }
     if ((candidate.frozenTicks ?? 0) > 0) continue
     if (
       candidate.stats?.rank === 'unique' ||
@@ -2333,6 +2552,7 @@ export function executeShamanResurrect113c(
   bestCorpse.state = 'idle'
   bestCorpse.animMode = 'nu'
   bestCorpse.corpseTicks = 0
+  ;(bestCorpse as { revivedByShaman?: boolean }).revivedByShaman = true
   shaman.cooldown = Math.max(25, shaman.stats.cooldownTicks)
   shaman.facing = facingOf(bestCorpse.x - shaman.x, bestCorpse.y - shaman.y)
 
@@ -3128,6 +3348,7 @@ export interface MercenaryTickOutcome {
   readonly activeAura?: string | undefined
   readonly skillUsed?: string | undefined
   readonly skillId?: string | number | undefined
+  readonly state?: string | undefined
 }
 
 export type MercenaryAiTickResult113c = MercenaryTickOutcome
@@ -3141,7 +3362,7 @@ export interface MercenaryAiTickOptions113c {
 
 /**
  * Server-authoritative 25Hz mercenary AI step (`Hireling.txt` Act 1/2/3/5):
- * - Supports both `(world, merc, ownerOrOpts)` and `(merc, world, ownerOrOpts)` argument orders
+ * - Supports `(world, merc, ownerOrOpts)`, `(merc, world, ownerOrOpts)`, and `(merc, owner, monstersArray, tick)` argument orders
  * - Leashes to owner when distance > 480 px (`teleportedToOwner: true, teleported: true`)
  * - Activates Act 2 Desert Mercenary Paladin aura (`Prayer`, `Blessed Aim`, `Defiance`, `Thorns`, `Holy Freeze`, `Might`)
  * - Acquires and attacks/chases nearest living hostile monster within `aggroRadius` using Hireling.txt skills
@@ -3149,26 +3370,58 @@ export interface MercenaryAiTickOptions113c {
  */
 export function tickMercenaryAi25Hz(
   worldOrMerc: CombatWorld | MercenaryUnitState,
-  mercOrWorld: MercenaryUnitState | CombatWorld,
-  ownerOrOpts?: CombatPlayer | MercenaryAiTickOptions113c,
-  terrain: CombatTerrain = { overlap: () => 0 },
+  mercOrWorld: MercenaryUnitState | CombatWorld | CombatPlayer,
+  ownerOrOpts?: CombatPlayer | MercenaryAiTickOptions113c | readonly Monster[],
+  terrain: CombatTerrain | number = { overlap: () => 0 },
   _rng?: unknown,
 ): MercenaryTickOutcome {
-  const isWorldFirst = 'monsters' in worldOrMerc && Array.isArray(worldOrMerc.monsters)
-  const world = (isWorldFirst ? worldOrMerc : mercOrWorld) as CombatWorld
-  const merc = (isWorldFirst ? mercOrWorld : worldOrMerc) as MercenaryUnitState
+  const isMonstersArrayThird = Array.isArray(ownerOrOpts)
+  const isWorldFirst =
+    !isMonstersArrayThird &&
+    'monsters' in worldOrMerc &&
+    Array.isArray((worldOrMerc as CombatWorld).monsters)
+  const merc = (
+    isMonstersArrayThird ? worldOrMerc : isWorldFirst ? mercOrWorld : worldOrMerc
+  ) as MercenaryUnitState
+  const world = (
+    isMonstersArrayThird
+      ? {
+          monsters: ownerOrOpts as Monster[],
+          player: mercOrWorld as CombatPlayer,
+          events: [],
+          tick: typeof terrain === 'number' ? terrain : 0,
+        }
+      : isWorldFirst
+        ? worldOrMerc
+        : mercOrWorld
+  ) as CombatWorld
   const isOwnerPlayer =
+    !isMonstersArrayThird &&
     ownerOrOpts !== undefined &&
     ownerOrOpts !== null &&
     typeof (ownerOrOpts as { x?: unknown }).x === 'number' &&
     typeof (ownerOrOpts as { y?: unknown }).y === 'number'
   const opts =
-    !isOwnerPlayer && typeof ownerOrOpts === 'object' && ownerOrOpts !== null
+    !isMonstersArrayThird &&
+    !isOwnerPlayer &&
+    typeof ownerOrOpts === 'object' &&
+    ownerOrOpts !== null
       ? (ownerOrOpts as MercenaryAiTickOptions113c)
       : undefined
-  const resolvedOwner = (isOwnerPlayer ? (ownerOrOpts as CombatPlayer) : opts?.owner) ?? world.player
-  const resolvedTerrain = opts?.terrain ?? terrain
-  const effectiveTick = typeof opts?.tick === 'number' ? opts.tick : (world.tick ?? 0)
+  const resolvedOwner =
+    (isMonstersArrayThird
+      ? (mercOrWorld as CombatPlayer)
+      : isOwnerPlayer
+        ? (ownerOrOpts as CombatPlayer)
+        : opts?.owner) ?? world.player
+  const resolvedTerrain: CombatTerrain =
+    opts?.terrain ?? (typeof terrain === 'number' ? { overlap: () => 0 } : terrain)
+  const effectiveTick =
+    typeof terrain === 'number'
+      ? terrain
+      : typeof opts?.tick === 'number'
+        ? opts.tick
+        : (world.tick ?? 0)
 
   if (merc.hp === undefined) {
     merc.hp = merc.maxHp ?? 400
@@ -3179,7 +3432,7 @@ export function tickMercenaryAi25Hz(
   if (merc.alive === false || merc.hp <= 0) {
     merc.alive = false
     merc.state = 'dead'
-    return { teleportedToOwner: false, teleported: false }
+    return { teleportedToOwner: false, teleported: false, state: merc.state }
   }
   merc.alive = true
 
@@ -3258,6 +3511,7 @@ export function tickMercenaryAi25Hz(
     return {
       teleportedToOwner: true,
       teleported: true,
+      state: merc.state,
       ...(merc.activeAura !== undefined ? { activeAura: merc.activeAura } : {}),
     }
   }
@@ -3323,6 +3577,7 @@ export function tickMercenaryAi25Hz(
       return {
         teleportedToOwner: false,
         teleported: false,
+        state: merc.state,
         ...(attackedTargetId !== undefined ? { attackedTargetId } : {}),
         ...(merc.activeAura !== undefined ? { activeAura: merc.activeAura } : {}),
         ...(skillUsed !== undefined ? { skillUsed, skillId: skillUsed } : {}),
@@ -3336,6 +3591,7 @@ export function tickMercenaryAi25Hz(
     return {
       teleportedToOwner: false,
       teleported: false,
+      state: merc.state,
       ...(merc.activeAura !== undefined ? { activeAura: merc.activeAura } : {}),
     }
   }
@@ -3357,6 +3613,7 @@ export function tickMercenaryAi25Hz(
   return {
     teleportedToOwner: false,
     teleported: false,
+    state: merc.state,
     ...(merc.activeAura !== undefined ? { activeAura: merc.activeAura } : {}),
   }
 }

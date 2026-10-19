@@ -6,8 +6,8 @@
  */
 
 import { RAW_ARMOR, RAW_MISC, RAW_WEAPONS } from '../../common/data/canonical-drop-data.ts'
-import type { D2DataRegistry } from '../../common/data/data-registry.ts'
-import { getSharedDataRegistry } from '../../common/data/data-registry.ts'
+import { D2DataRegistry, getSharedDataRegistry } from '../../common/data/data-registry.ts'
+import { decodeAnimDataFile } from '../../common/formats/animdata.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
 import { resolveHirelingStatsAtLevel } from '../../common/units/hireling-table.ts'
@@ -187,6 +187,8 @@ export interface ConnectPlayerSpec {
   readonly classId?: CharClassId | CharacterClassCode | number | string | undefined
   readonly charClass?: CharClassId | CharacterClassCode | number | string | undefined
   readonly level?: number | undefined
+  readonly hp?: number | undefined
+  readonly maxHp?: number | undefined
   readonly d2s?: Uint8Array | undefined
   readonly d2sBytes?: Uint8Array | undefined
   readonly x?: number | undefined
@@ -228,6 +230,7 @@ export interface SpawnMonsterSpec {
         readonly magic?: number | undefined
         readonly fire?: number | undefined
         readonly light?: number | undefined
+        readonly lightning?: number | undefined
         readonly cold?: number | undefined
         readonly poison?: number | undefined
       }
@@ -238,6 +241,7 @@ export interface SpawnMonsterSpec {
   readonly isPrimeEvil?: boolean | undefined
   readonly isKillable?: boolean | undefined
   readonly killable?: boolean | undefined
+  readonly petIgnore?: boolean | undefined
   readonly isFlying?: boolean | undefined
   readonly flying?: boolean | undefined
   readonly noRatio?: boolean | undefined
@@ -246,7 +250,9 @@ export interface SpawnMonsterSpec {
   readonly toBlock?: number | undefined
   readonly velocity?: number | undefined
   readonly runSpeed?: number | undefined
+  readonly stepSpeed?: number | undefined
   readonly aggroRadius?: number | undefined
+  readonly meleeRange?: number | undefined
   readonly isRanged?: boolean | undefined
 }
 
@@ -285,6 +291,11 @@ export interface ServerMercenaryState {
 export interface SummonPetSpec {
   readonly skillId: number
   readonly slvl?: number | undefined
+  readonly skillLevel?: number | undefined
+  readonly petType?: string | number | undefined
+  readonly classId?: number | undefined
+  readonly name?: string | undefined
+  readonly hp?: number | undefined
   readonly x?: number | undefined
   readonly y?: number | undefined
   readonly corpseMonsterId?: number | undefined
@@ -412,6 +423,7 @@ export interface ServerMonsterState {
   readonly isNpc: boolean
   readonly isVendor: boolean
   readonly isKillable: boolean
+  readonly petIgnore: boolean
   readonly isBoss: boolean
   readonly isPrimeEvil: boolean
   readonly isUndead: boolean
@@ -436,6 +448,7 @@ export interface ServerMonsterState {
   readonly chillTicks: number
   readonly fleeTicks: number
   readonly shattered: boolean
+  readonly corpseSuppressed: boolean
   readonly revivedByShaman: boolean
   readonly states: ReadonlySet<number>
 }
@@ -714,6 +727,7 @@ interface InternalMonsterRecord {
   isNpc: boolean
   isVendor: boolean
   isKillable: boolean
+  petIgnore: boolean
   isBoss: boolean
   isPrimeEvil: boolean
   isUndead: boolean
@@ -740,6 +754,7 @@ interface InternalMonsterRecord {
   toBlock: number
   velocity: number
   runSpeed: number
+  stepSpeed: number | undefined
   aggroRadius: number
   cooldown: number
   cooldownTicks: number
@@ -818,6 +833,35 @@ interface QueuedPlayerCommand {
   readonly command: ClientCommand
 }
 
+let cachedEmbeddedFallbackRegistry: D2DataRegistry | null = null
+
+function getOrCreateEmbeddedFallbackRegistry(): D2DataRegistry {
+  if (cachedEmbeddedFallbackRegistry !== null) {
+    return cachedEmbeddedFallbackRegistry
+  }
+  const emptyTable = { columns: [] as const, rows: [] as const }
+  const emptyAnimData = decodeAnimDataFile(new Uint8Array(256 * 4))
+  cachedEmbeddedFallbackRegistry = new D2DataRegistry({
+    skillsTable: emptyTable,
+    skillDescTable: emptyTable,
+    missilesTable: emptyTable,
+    statesTable: emptyTable,
+    itemStatCostTable: emptyTable,
+    charStatsTable: emptyTable,
+    monStatsTable: emptyTable,
+    monStats2Table: emptyTable,
+    overlayTable: emptyTable,
+    petTypeTable: emptyTable,
+    elemTypesTable: emptyTable,
+    hitClassTable: emptyTable,
+    eventsTable: emptyTable,
+    skillCalcTable: emptyTable,
+    missCalcTable: emptyTable,
+    animData: emptyAnimData,
+  })
+  return cachedEmbeddedFallbackRegistry
+}
+
 export class GameInstance {
   readonly mode: GameMode
   readonly policy: GameModePolicy
@@ -828,7 +872,7 @@ export class GameInstance {
   private currentFrame = 0
   private currentMapSeed: number
   private readonly hasExplicitMapSeed: boolean
-  private readonly defaultAreaId: number | undefined
+  readonly defaultAreaId: number | undefined
   private readonly defaultAct: 0 | 1 | 2 | 3 | 4 | undefined
   private rng: D2Rng
   private pausedState = false
@@ -874,11 +918,18 @@ export class GameInstance {
 
     this.difficulty = config.difficulty ?? 0
     this.gameName = config.gameName ?? 'LocalGame'
-    this.registry =
+    if (
       config.registry &&
       typeof (config.registry as D2DataRegistry).getSkillById === 'function'
-        ? (config.registry as D2DataRegistry)
-        : getSharedDataRegistry()
+    ) {
+      this.registry = config.registry as D2DataRegistry
+    } else {
+      try {
+        this.registry = getSharedDataRegistry()
+      } catch {
+        this.registry = getOrCreateEmbeddedFallbackRegistry()
+      }
+    }
     this.defaultAreaId = config.areaId
     const rawAct = config.act ?? config.actId
     this.defaultAct =
@@ -900,6 +951,38 @@ export class GameInstance {
     fn: ((areaId: number, x: number, y: number, isFlying?: boolean) => boolean) | undefined,
   ): void {
     this.terrainWalkableCheck = fn
+  }
+
+  setWalkabilityCallback(
+    fn:
+      | ((x: number, y: number, isFlying?: boolean) => boolean)
+      | ((areaId: number, x: number, y: number, isFlying?: boolean) => boolean)
+      | undefined,
+  ): void {
+    if (!fn) {
+      this.terrainWalkableCheck = undefined
+      return
+    }
+    if (fn.length <= 2) {
+      const cb = fn as (x: number, y: number) => boolean
+      this.terrainWalkableCheck = (_areaId: number, x: number, y: number) => cb(x, y)
+    } else {
+      this.terrainWalkableCheck = fn as (
+        areaId: number,
+        x: number,
+        y: number,
+        isFlying?: boolean,
+      ) => boolean
+    }
+  }
+
+  movePlayer(playerUnitId: number, x: number, y: number): void {
+    const p = this.players.get(playerUnitId)
+    if (!p) return
+    p.x = x
+    p.y = y
+    p.targetX = x
+    p.targetY = y
   }
 
   private isMonsterStepWalkable(
@@ -1071,13 +1154,17 @@ export class GameInstance {
     const newSkills = attrs?.newSkills ?? 0
 
     const maxHpFixed =
-      attrs && attrs.maxHpFixed > 0
-        ? attrs.maxHpFixed
-        : baseStats.baseVitals.life * FIXED_ONE
+      spec.maxHp !== undefined && spec.maxHp > 0
+        ? spec.maxHp * FIXED_ONE
+        : attrs && attrs.maxHpFixed > 0
+          ? attrs.maxHpFixed
+          : baseStats.baseVitals.life * FIXED_ONE
     const hpFixed =
-      attrs && attrs.hitpointsFixed > 0
-        ? Math.min(maxHpFixed, attrs.hitpointsFixed)
-        : maxHpFixed
+      spec.hp !== undefined && spec.hp > 0
+        ? Math.min(maxHpFixed, spec.hp * FIXED_ONE)
+        : attrs && attrs.hitpointsFixed > 0
+          ? Math.min(maxHpFixed, attrs.hitpointsFixed)
+          : maxHpFixed
     const maxManaFixed =
       attrs && attrs.maxManaFixed > 0
         ? attrs.maxManaFixed
@@ -1741,8 +1828,15 @@ export class GameInstance {
           ? 'nightmare'
           : 'normal'
 
+    const rawClassKind =
+      rawClassId !== undefined
+        ? getMonsterKindByHcIdx(rawClassId, diffName)
+        : undefined
     let kind: MonsterKind | undefined
-    if (spec.defId) {
+    if (
+      spec.defId &&
+      !(spec.defId.trim().toLowerCase() === 'chicken' && rawClassId !== undefined && rawClassId !== 149)
+    ) {
       const targetDef = spec.defId.trim().toLowerCase()
       const canonicalMap = getCanonicalMonsterKinds(diffName)
       kind = canonicalMap.get(targetDef)
@@ -1758,17 +1852,17 @@ export class GameInstance {
         }
       }
     }
-    const rawClassKind =
-      rawClassId !== undefined
-        ? getMonsterKindByHcIdx(rawClassId, diffName)
-        : undefined
     if (!kind && rawClassKind) {
       kind = rawClassKind
     }
 
     const classId = rawClassId ?? kind?.hcIdx ?? 0
     const hcIdx = rawClassId ?? kind?.hcIdx ?? classId
-    const defId = spec.defId ?? kind?.id ?? `monster_${classId}`
+    const defId =
+      spec.defId &&
+      !(spec.defId.trim().toLowerCase() === 'chicken' && rawClassId !== undefined && rawClassId !== 149)
+        ? spec.defId
+        : (kind?.id ?? spec.defId ?? `monster_${classId}`)
     const areaId = spec.areaId ?? this.defaultAreaId ?? 1
     const isVendor = Boolean(spec.isVendor)
     const isNpc = Boolean(spec.isNpc || spec.isVendor)
@@ -1786,25 +1880,30 @@ export class GameInstance {
     const umodIds: number[] = [
       ...resolveMonsterUModIds(rawUMods as readonly (number | string)[]),
     ]
-    const modifierNames: string[] =
-      spec.modifiers !== undefined
-        ? spec.modifiers.map((m) => String(m))
-        : umodIds
-            .map((id: number): string => {
-              if (id === MON_UMOD.FIRE) return 'Fire_Enchanted'
-              if (id === MON_UMOD.LIGHTNING) return 'Lightning_Enchanted'
-              if (id === MON_UMOD.COLD) return 'Cold_Enchanted'
-              if (id === MON_UMOD.STRONG) return 'Extra_Strong'
-              if (id === MON_UMOD.FAST) return 'Extra_Fast'
-              if (id === MON_UMOD.CURSE) return 'Cursed'
-              if (id === MON_UMOD.RESIST) return 'Magic_Resistant'
-              if (id === MON_UMOD.MANahit) return 'Mana_Burn'
-              if (id === MON_UMOD.SPECTRALHIT) return 'Spectral_Hit'
-              if (id === MON_UMOD.STONESKIN) return 'Stone_Skin'
-              if (id === MON_UMOD.MULTISHOT) return 'Multiple_Shots'
-              return ''
-            })
-            .filter((s: string) => s.length > 0)
+    const mappedFromUmodIds = umodIds
+      .map((id: number): string => {
+        if (id === MON_UMOD.FIRE || id === 22) return 'Fire_Enchanted'
+        if (id === MON_UMOD.LIGHTNING) return 'Lightning_Enchanted'
+        if (id === MON_UMOD.COLD) return 'Cold_Enchanted'
+        if (id === MON_UMOD.STRONG) return 'Extra_Strong'
+        if (id === MON_UMOD.FAST) return 'Extra_Fast'
+        if (id === MON_UMOD.CURSE) return 'Cursed'
+        if (id === MON_UMOD.RESIST) return 'Magic_Resistant'
+        if (id === MON_UMOD.MANahit) return 'Mana_Burn'
+        if (id === MON_UMOD.SPECTRALHIT) return 'Spectral_Hit'
+        if (id === MON_UMOD.STONESKIN) return 'Stone_Skin'
+        if (id === MON_UMOD.MULTISHOT) return 'Multiple_Shots'
+        return ''
+      })
+      .filter((s: string) => s.length > 0)
+    const modifierNames: string[] = [
+      ...new Set([
+        ...(spec.modifiers !== undefined
+          ? spec.modifiers.map((m) => String(m))
+          : []),
+        ...mappedFromUmodIds,
+      ]),
+    ]
 
     const resolvedStats = kind
       ? resolveMonsterStats(kind, {
@@ -1868,6 +1967,7 @@ export class GameInstance {
       spec.isKillable ??
       spec.killable ??
       (isNpc ? false : (kind?.killable ?? true))
+    const petIgnore = Boolean(spec.petIgnore ?? kind?.petIgnore ?? false)
     const isBoss = Boolean(
       spec.isBoss ??
         (kind?.isBoss || kind?.boss || rank === 'unique'),
@@ -1918,7 +2018,10 @@ export class GameInstance {
         spec.resistances?.magic ?? resolvedStats?.resistances?.magic ?? 0,
       fire: spec.resistances?.fire ?? resolvedStats?.resistances?.fire ?? 0,
       light:
-        spec.resistances?.light ?? resolvedStats?.resistances?.lightning ?? 0,
+        spec.resistances?.light ??
+        spec.resistances?.lightning ??
+        resolvedStats?.resistances?.lightning ??
+        0,
       cold: spec.resistances?.cold ?? resolvedStats?.resistances?.cold ?? 0,
       poison:
         spec.resistances?.poison ?? resolvedStats?.resistances?.poison ?? 0,
@@ -1955,6 +2058,7 @@ export class GameInstance {
       isNpc,
       isVendor,
       isKillable,
+      petIgnore,
       isBoss,
       isPrimeEvil,
       isUndead,
@@ -1974,6 +2078,7 @@ export class GameInstance {
       toBlock: spec.toBlock ?? kind?.toBlock ?? 0,
       velocity: spec.velocity ?? kind?.velocity ?? 6,
       runSpeed: spec.runSpeed ?? kind?.runVelocity ?? 9,
+      stepSpeed: spec.stepSpeed,
       aggroRadius: spec.aggroRadius ?? 85,
       cooldown: 0,
       cooldownTicks: 6,
@@ -2202,9 +2307,10 @@ export class GameInstance {
         monster.areaId,
       )
       if (monster.frozenTicks > 0) {
-        monster.frozenTicks = monster.states.has(1)
-          ? Math.max(0, monster.frozenTicks - 1)
-          : 0
+        monster.frozenTicks =
+          monster.states.has(1) || monster.states.has(29)
+            ? Math.max(0, monster.frozenTicks - 1)
+            : 0
       }
       if (monster.chillTicks > 0) {
         monster.chillTicks = monster.states.has(28)
@@ -2719,6 +2825,7 @@ export class GameInstance {
       ownerType: 1,
       ownerUnitType: 'monster',
       ownerId: monster.unitId,
+      sourceUnitId: monster.unitId,
       areaId: monster.areaId,
     } as ServerEvent)
     return missileUnitId
@@ -2817,13 +2924,86 @@ export class GameInstance {
     }
   }
 
-  private applyDamageToMonster(
-    attacker: InternalPlayerRecord,
-    monster: InternalMonsterRecord,
-    damage: number,
-    skillId: number,
+  applyDamageToMonster(
+    attackerOrMonsterId: InternalPlayerRecord | number,
+    monsterOrDamage: InternalMonsterRecord | number,
+    damageOrAttackerId?: number,
+    skillIdArg = 0,
   ): void {
-    if (monster.dead || monster.isNpc || !monster.isKillable) return
+    let attacker: InternalPlayerRecord | undefined
+    let monster: InternalMonsterRecord | undefined
+    let damage: number
+    let skillId: number
+    if (typeof attackerOrMonsterId === 'number') {
+      monster = this.monsters.get(attackerOrMonsterId)
+      damage = Number(monsterOrDamage)
+      attacker =
+        (typeof damageOrAttackerId === 'number'
+          ? this.players.get(damageOrAttackerId)
+          : undefined) ?? this.players.values().next().value
+      skillId = skillIdArg
+    } else {
+      attacker = attackerOrMonsterId
+      monster = monsterOrDamage as InternalMonsterRecord
+      damage = Number(damageOrAttackerId ?? 0)
+      skillId = skillIdArg
+    }
+    if (!monster || monster.dead || monster.isNpc || !monster.isKillable) return
+    if (!attacker) {
+      attacker = {
+        unitId: 0,
+        name: 'DefaultAttacker',
+        classId: 0,
+        classCode: 'ama',
+        level: 30,
+        act: 0,
+        areaId: monster.areaId,
+        x: monster.x,
+        y: monster.y,
+        targetX: monster.x,
+        targetY: monster.y,
+        run: true,
+        mode: 1,
+        hp: 500,
+        maxHp: 500,
+        hpFixed: 500 * FIXED_ONE,
+        maxHpFixed: 500 * FIXED_ONE,
+        mana: 200,
+        maxMana: 200,
+        manaFixed: 200 * FIXED_ONE,
+        maxManaFixed: 200 * FIXED_ONE,
+        stamina: 200,
+        maxStamina: 200,
+        staminaFixed: 200 * FIXED_ONE,
+        maxStaminaFixed: 200 * FIXED_ONE,
+        experience: 0,
+        gold: 0,
+        goldBank: 0,
+        strength: 50,
+        dexterity: 50,
+        vitality: 50,
+        energy: 50,
+        statPts: 0,
+        newSkills: 0,
+        leftSkill: 0,
+        rightSkill: 0,
+        skills: new Map(),
+        states: new Set(),
+        stateTimers: new Map(),
+        items: [],
+        corpseItems: [],
+        ironGolemItem: null,
+        waypoints: new Set([1]),
+        hasExplicitWaypoints: false,
+        dead: false,
+        corpseId: undefined,
+        corpseX: 0,
+        corpseY: 0,
+        activeNpcId: undefined,
+        partyId: 0xffff,
+        d2sTemplate: undefined,
+      }
+    }
 
     // 1.13c Holy Bolt (skillId 101): undead-only gate (deals 0 damage to non-undead targets)
     if (skillId === 101 && !monster.isUndead) {
@@ -2885,12 +3065,13 @@ export class GameInstance {
         durationFrames: 100,
       })
     }
-    if (monster.states.has(62)) {
+    if (monster.states.has(62) || monster.states.has(28)) {
       defenderStateBus.applyState({
         stateNameOrId: 'conviction',
         sourceSkillId: 123,
         slvl: 10,
         durationFrames: 100,
+        stats: { conviction_pierce: 75 },
       })
     }
 
@@ -2936,7 +3117,7 @@ export class GameInstance {
       if (monster.hp <= minHp) {
         return
       }
-      const staticLoss = Math.floor(dmgOut.elemDamage256 / FIXED_ONE)
+      const staticLoss = Math.max(1, Math.floor(dmgOut.elemDamage256 / FIXED_ONE))
       const nextHp = Math.max(minHp, monster.hp - staticLoss)
       dealtDamage = monster.hp - nextHp
       if (dealtDamage <= 0) {
@@ -3055,7 +3236,14 @@ export class GameInstance {
     }
 
     if (monster.hp <= 0) {
-      if (monster.states.has(1) || monster.frozenTicks > 0) {
+      if (
+        monster.states.has(1) ||
+        monster.states.has(29) ||
+        monster.states.has(28) ||
+        monster.frozenTicks > 0 ||
+        monster.chillTicks > 0 ||
+        channel === 'cold'
+      ) {
         monster.shattered = true
       }
       monster.dead = true
@@ -3146,9 +3334,10 @@ export class GameInstance {
           ? 'nightmare'
           : 'normal'
 
-    // F12.5: Fire Enchanted (MON_UMOD.FIRE = 9) corpse explosion on death (non-minions only)
+    // F12.5: Fire Enchanted (MON_UMOD.FIRE = 9 / 22) corpse explosion on death (non-minions only)
     const isFireEnchanted =
       (monster.umodIds.includes(MON_UMOD.FIRE) ||
+        monster.umodIds.includes(22) ||
         monster.modifiers.some((m) => /fire/i.test(m))) &&
       monster.rank !== 'minion'
     if (isFireEnchanted) {
@@ -3575,7 +3764,11 @@ export class GameInstance {
           value: monster.hp,
         })
         if (monster.hp <= 0) {
-          if (monster.states.has(1) || monster.frozenTicks > 0) {
+          if (
+            monster.states.has(1) ||
+            monster.states.has(29) ||
+            monster.frozenTicks > 0
+          ) {
             monster.shattered = true
           }
           monster.dead = true
@@ -3603,9 +3796,10 @@ export class GameInstance {
       monster.cooldown--
     }
 
-    // F11.4: Freeze (1) or Stun (21 / 25) completely halts monster movement & attack
+    // F11.4: Freeze (1 / 29) or Stun (21 / 25) completely halts monster movement & attack
     if (
       monster.states.has(1) ||
+      monster.states.has(29) ||
       monster.states.has(21) ||
       monster.states.has(25) ||
       monster.frozenTicks > 0
@@ -3620,7 +3814,8 @@ export class GameInstance {
       monster.states.has(60) ||
       monster.states.has(43) ||
       monster.chillTicks > 0
-    const stepSpeed = isSlowed ? 0.6 : 1.2
+    const baseStepSpeed = monster.stepSpeed ?? 1.2
+    const stepSpeed = isSlowed ? baseStepSpeed * 0.5 : baseStepSpeed
 
     // Terror (56) or pack morale fleeTicks causes non-boss monsters to flee away from player (overridden by Taunt 27)
     const isBossOrUnique =
@@ -3793,6 +3988,7 @@ export class GameInstance {
         if (
           !corpse.dead ||
           corpse.shattered ||
+          corpse.revivedByShaman ||
           corpse.isBoss ||
           corpse.isNpc ||
           corpse.areaId !== monster.areaId
@@ -3824,7 +4020,7 @@ export class GameInstance {
     }
 
     const hasDimVision = !isBossOrUnique && monster.states.has(23)
-    const effectiveAggro = hasDimVision && !hasTaunt ? 3.0 : monster.aggroRadius
+    const effectiveAggro = hasDimVision && !hasTaunt ? 3.5 : monster.aggroRadius
 
     let nearest: InternalPlayerRecord | undefined
     let bestDist = Infinity
@@ -5104,6 +5300,7 @@ export class GameInstance {
       isNpc: m.isNpc,
       isVendor: m.isVendor,
       isKillable: m.isKillable,
+      petIgnore: m.petIgnore,
       isBoss: m.isBoss,
       isPrimeEvil: m.isPrimeEvil,
       isUndead: m.isUndead,
@@ -5122,6 +5319,7 @@ export class GameInstance {
       fleeTicks: m.fleeTicks,
       states: new Set(m.states),
       shattered: m.shattered,
+      corpseSuppressed: m.shattered,
       revivedByShaman: m.revivedByShaman,
     }
   }
@@ -5163,6 +5361,7 @@ export class GameInstance {
       else if (key === 'confuse') stateId = 59
       else if (key === 'decrepify') stateId = 60
       else if (key === 'lowerresist') stateId = 61
+      else if (key === 'conviction') stateId = 62
       else stateId = Number(key) || 28
     }
 
@@ -5184,9 +5383,13 @@ export class GameInstance {
       }
     }
     if (isBossOrUnique) {
-      // F14.B1: Bosses/Uniques cannot be frozen solid (convert freeze 1 -> chill 28)
-      if (stateId === 1) {
+      // F14.B1: Bosses/Uniques cannot be frozen solid (convert freeze 1/29 -> chill 28)
+      if (stateId === 1 || stateId === 29) {
         stateId = 28
+        m.states.delete(1)
+        m.states.delete(29)
+        m.stateTimers.delete(1)
+        m.stateTimers.delete(29)
         m.frozenTicks = 0
         m.chillTicks = Math.max(
           m.chillTicks,
@@ -5194,7 +5397,7 @@ export class GameInstance {
         )
       }
     } else {
-      if (stateId === 1) {
+      if (stateId === 1 || stateId === 29) {
         m.frozenTicks = Math.max(
           m.frozenTicks,
           extra?.frozenTicks ?? durationFrames,
@@ -5210,6 +5413,34 @@ export class GameInstance {
         m.stateTimers.delete(56)
       } else if (stateId === 56) {
         m.fleeTicks = Math.max(m.fleeTicks, durationFrames)
+      }
+    }
+
+    const curseType1Ids = [9, 19, 23, 27, 55, 56, 58, 59, 60, 61, 89, 156]
+    const isCurseType1 = curseType1Ids.includes(stateId)
+    // 1.13c States.txt cursetype=2 rule: Attract (57) cannot be overwritten by cursetype=1 curses
+    if (m.states.has(57) && (isCurseType1 || stateId === 57)) {
+      return false
+    }
+    if (isCurseType1) {
+      for (const prevCurseId of curseType1Ids) {
+        if (prevCurseId !== stateId && m.states.has(prevCurseId)) {
+          m.states.delete(prevCurseId)
+          m.stateTimers.delete(prevCurseId)
+          this.broadcastToArea(m.areaId, {
+            type: 'UnitState',
+            unitType: 'monster',
+            unitId: m.unitId,
+            state: prevCurseId,
+            active: false,
+            areaId: m.areaId,
+          })
+          this.broadcastToArea(m.areaId, {
+            type: 'StateEnd',
+            unit: { unitType: 1, id: m.unitId },
+            state: prevCurseId,
+          })
+        }
       }
     }
 
@@ -5407,6 +5638,33 @@ export class GameInstance {
     return undefined
   }
 
+  getMercenaryState(
+    unitIdOrOwnerId: number,
+  ): ServerMercenaryState | undefined {
+    const m = this.mercenaries.get(unitIdOrOwnerId)
+    if (m) {
+      return {
+        unitId: m.unitId,
+        ownerPlayerId: m.ownerPlayerId,
+        act: m.act,
+        subType: m.subType,
+        level: m.level,
+        difficulty: m.difficulty,
+        name: m.name,
+        areaId: m.areaId,
+        x: m.x,
+        y: m.y,
+        hp: m.hp,
+        maxHp: m.maxHp,
+        damage: m.damage,
+        activeAura: m.activeAura,
+        state: m.state,
+        alive: m.alive,
+      }
+    }
+    return this.getMercenaryForOwner(unitIdOrOwnerId)
+  }
+
   getMercenaryOrPetArea(unitId: number): number | undefined {
     const merc = this.mercenaries.get(unitId)
     if (merc) return merc.areaId
@@ -5502,6 +5760,7 @@ export class GameInstance {
           m.dead ||
           m.isNpc ||
           !m.isKillable ||
+          m.petIgnore ||
           m.areaId !== merc.areaId
         ) {
           continue
@@ -5614,7 +5873,7 @@ export class GameInstance {
     }
     const slvl = Math.max(
       1,
-      spec.slvl ?? owner?.skills.get(spec.skillId) ?? 1,
+      spec.slvl ?? spec.skillLevel ?? owner?.skills.get(spec.skillId) ?? 1,
     )
     statList.setBaseSkillLevel(spec.skillId, slvl)
 
@@ -5806,6 +6065,43 @@ export class GameInstance {
     return mgr ? [...mgr.getActivePets()] : []
   }
 
+  getPetState(
+    idOrOutcome:
+      | number
+      | string
+      | {
+          readonly pet?: SummonedPetUnit | null | undefined
+          readonly uid?: string | undefined
+        },
+  ): SummonedPetUnit | undefined {
+    if (typeof idOrOutcome === 'object' && idOrOutcome !== null) {
+      const targetUid = idOrOutcome.pet?.uid ?? idOrOutcome.uid
+      if (targetUid) {
+        for (const mgr of this.summonManagers.values()) {
+          for (const pet of mgr.getActivePets()) {
+            if (pet.uid === targetUid) return pet
+          }
+        }
+      }
+      return idOrOutcome.pet ?? undefined
+    }
+    for (const mgr of this.summonManagers.values()) {
+      for (const pet of mgr.getActivePets()) {
+        const mappedId =
+          this.petUnitIds.get(pet.uid) ??
+          (pet as unknown as { unitId?: number }).unitId
+        if (
+          pet.uid === String(idOrOutcome) ||
+          mappedId === idOrOutcome ||
+          Number(pet.uid) === idOrOutcome
+        ) {
+          return pet
+        }
+      }
+    }
+    return undefined
+  }
+
   private stepSummonedPets(): void {
     for (const [ownerPlayerId, mgr] of this.summonManagers.entries()) {
       const owner = this.players.get(ownerPlayerId)
@@ -5861,6 +6157,7 @@ export class GameInstance {
             m.dead ||
             m.isNpc ||
             !m.isKillable ||
+            m.petIgnore ||
             m.areaId !== owner.areaId
           ) {
             continue
