@@ -40,7 +40,16 @@ import { CHAT_INPUT_MAX_CHARS, resolveChatTblIndex } from '../common/chat/chat-1
 import { LightGrid } from '../common/drlg/light-grid.ts'
 import type { LoadedMonsterArt } from './render/monster-art.ts'
 import { getTblLang, lookupTbl, setLang, type GameLang } from './i18n/lang.ts'
-import { BncsCreateAccountError, type CharClassId } from '../netproto/index.ts'
+import {
+  BncsCreateAccountError,
+  getLocalLobbyProvider,
+  type CharClassId,
+  type GameServerAdapter,
+  type LocalAreaBootstrap,
+  type LocalAreaPresetMonster,
+  type LocalAreaPresetObject,
+  type LocalAreaRoomReveal,
+} from '../netproto/index.ts'
 import { SpriteRenderer, type AtlasHandle } from './render/renderer.ts'
 import { FpsCounter113c } from './render/fps-counter-113c.ts'
 import {
@@ -78,7 +87,7 @@ import { CommandMapper } from './input/command-mapper.ts'
 import { D2_LOGIC_TICK_MS, runOwedTicks } from './loop/logic-clock.ts'
 import { MotionSmoothing } from './loop/motion-smoothing.ts'
 import { SceneMotionSmoother } from './loop/scene-motion-smoothing.ts'
-import { MapService } from './map/map-service.ts'
+import { isWalkableWorldSubTile, MapService } from './map/map-service.ts'
 import type { D2WebPlugin, PluginQuickCastPort } from './plugin-host/api.ts'
 import { PluginHost } from './plugin-host/plugin-host.ts'
 import { PluginMenu } from './plugin-host/plugin-menu.ts'
@@ -134,6 +143,149 @@ const STARTER_EQUIP_BY_HERO_TOKEN: Readonly<Record<string, EquippedAppearanceInp
   ba: { weapon1: 'hax', weapon2: 'buc' },
   dz: { weapon1: 'clb', weapon2: 'buc' },
   ai: { weapon1: 'ktr', weapon2: 'buc' },
+}
+
+const SINGLE_PLAYER_SAVES_STORAGE_KEY = 'd2_sp_saves_v1'
+
+const WAYPOINT_OBJECT_CLASS_IDS_113C = new Set<number>([
+  119, 145, 156, 157, 237, 238, 288, 323, 324, 398, 402, 429, 494, 496, 511, 539,
+])
+
+const TOWN_VENDOR_MONSTER_HCIDX_113C = new Set<number>([
+  147, 148, 154, 177, 178, 199, 202, 252, 253, 254, 255, 405, 511, 512, 513,
+])
+
+const TOWN_AREA_IDS_113C = new Set<number>([1, 40, 75, 103, 109])
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]!)
+  }
+  return window.btoa(binary)
+}
+
+function base64ToUint8(b64: string): Uint8Array {
+  const binary = window.atob(b64)
+  const out = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    out[i] = binary.charCodeAt(i) & 0xff
+  }
+  return out
+}
+
+function buildSinglePlayerAreaBootstrap(
+  mapService: MapService,
+  params: {
+    readonly act: number
+    readonly areaId: number
+    readonly mapSeed: number
+    readonly difficulty: 0 | 1 | 2
+  },
+): LocalAreaBootstrap | null {
+  if (!mapService.isLoaded()) return null
+  const view = mapService.loadAct({
+    act: params.act,
+    seed: params.mapSeed >>> 0,
+    difficulty: params.difficulty,
+    areaId: params.areaId,
+    revealMode: 'all',
+  })
+  if (!view) return null
+
+  const isWalkable = (checkAreaId: number, worldX: number, worldY: number): boolean => {
+    const targetView =
+      checkAreaId === view.areaId
+        ? view
+        : (mapService.getLoadedLevelView(checkAreaId) ?? mapService.peekLevelView(checkAreaId, 'all'))
+    if (!targetView) return false
+    return isWalkableWorldSubTile(targetView, worldX, worldY)
+  }
+
+  const rooms: LocalAreaRoomReveal[] = view.rooms.map((r) => ({
+    areaId: r.areaId,
+    tileX: r.tileX,
+    tileY: r.tileY,
+  }))
+
+  const objects: LocalAreaPresetObject[] = []
+  const monsters: LocalAreaPresetMonster[] = []
+  let bonfireSub: { readonly x: number; readonly y: number } | null = null
+  let warrivSub: { readonly x: number; readonly y: number } | null = null
+  const isTown = TOWN_AREA_IDS_113C.has(view.areaId)
+
+  for (const u of view.presetUnits) {
+    const worldX = view.originX + u.subX
+    const worldY = view.originY + u.subY
+    if (u.type === 2) {
+      if (u.index < 0 || u.index === 573) continue
+      if (u.index === 39 && bonfireSub === null) {
+        bonfireSub = { x: worldX, y: worldY }
+      }
+      const isWaypoint = WAYPOINT_OBJECT_CLASS_IDS_113C.has(u.index)
+      objects.push({
+        classId: u.index,
+        x: worldX,
+        y: worldY,
+        areaId: view.areaId,
+        mode: isWaypoint && isTown ? 1 : (u.mode || 0),
+        isWaypoint,
+      })
+    } else if (u.type === 1) {
+      if (u.index < 0 || u.index >= 733) continue
+      if (u.index === 155 && warrivSub === null) {
+        warrivSub = { x: worldX, y: worldY }
+      }
+      const isVendor = TOWN_VENDOR_MONSTER_HCIDX_113C.has(u.index)
+      monsters.push({
+        classId: u.index,
+        x: worldX,
+        y: worldY,
+        areaId: view.areaId,
+        isNpc: isTown || isVendor,
+        isVendor,
+        isKillable: !isTown && !isVendor,
+        aiDisabled: isTown || isVendor,
+      })
+    }
+  }
+
+  const candidateBase =
+    bonfireSub !== null
+      ? { x: bonfireSub.x + 3, y: bonfireSub.y + 3 }
+      : warrivSub !== null
+        ? { x: warrivSub.x + 2, y: warrivSub.y + 2 }
+        : { x: view.originX + view.spawnX * 5 + 2, y: view.originY + view.spawnY * 5 + 2 }
+
+  let spawnX = candidateBase.x
+  let spawnY = candidateBase.y
+  if (!isWalkable(view.areaId, spawnX, spawnY)) {
+    let found = false
+    for (let r = 1; r <= 25 && !found; r++) {
+      for (let dy = -r; dy <= r && !found; dy++) {
+        for (let dx = -r; dx <= r && !found; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue
+          const cx = candidateBase.x + dx
+          const cy = candidateBase.y + dy
+          if (isWalkable(view.areaId, cx, cy)) {
+            spawnX = cx
+            spawnY = cy
+            found = true
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    areaId: view.areaId,
+    spawnX,
+    spawnY,
+    rooms,
+    objects,
+    monsters,
+    isWalkable,
+  }
 }
 
 export interface PlayAppController {
@@ -802,23 +954,150 @@ export async function startPlayApp(options?: {
     }
   }
 
+  let activeLocalAdapter: GameServerAdapter | null = null
+
+  const syncSinglePlayerSavesFromStorage = async (): Promise<void> => {
+    const lobby = getLocalLobbyProvider()
+    if (!lobby || typeof lobby.importCharacterD2s !== 'function') return
+    try {
+      const raw = window.localStorage?.getItem(SINGLE_PLAYER_SAVES_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      if (!parsed || typeof parsed !== 'object') return
+      for (const val of Object.values(parsed)) {
+        if (typeof val === 'string' && val.length > 0) {
+          try {
+            await lobby.importCharacterD2s(base64ToUint8(val))
+          } catch {
+            // Ignore corrupted save entry
+          }
+        }
+      }
+    } catch {
+      // Ignore localStorage read errors
+    }
+  }
+
+  const persistSinglePlayerSavesToStorage = async (): Promise<void> => {
+    const lobby = getLocalLobbyProvider()
+    if (!lobby || typeof lobby.exportCharacterD2s !== 'function') return
+    try {
+      const chars = await lobby.listCharacters()
+      const out: Record<string, string> = {}
+      for (const c of chars) {
+        const bytes = await lobby.exportCharacterD2s(c.name)
+        if (bytes instanceof Uint8Array && bytes.byteLength > 0) {
+          out[c.name] = uint8ToBase64(bytes)
+        }
+      }
+      window.localStorage?.setItem(SINGLE_PLAYER_SAVES_STORAGE_KEY, JSON.stringify(out))
+    } catch {
+      // Ignore localStorage write errors
+    }
+  }
+
+  const startSinglePlayerGame = async (st: BnetFlowState, charName: string): Promise<void> => {
+    st.stage = 'door_loading'
+    st.stageTicks = 0
+    st.doorFrame = 0
+    st.sceneReady = false
+    st.createGameError = null
+    st.lastError = null
+    st.charCreateError = null
+    st.popupModal = null
+    st.popup = null
+    st.statusText = ''
+    frontendRenderer.render(performance.now())
+    try {
+      const lobby = getLocalLobbyProvider()
+      if (!lobby) {
+        throw new Error('Single Player local server provider is not registered')
+      }
+      await inGameAssetsPromise
+      if (activeLocalAdapter) {
+        try {
+          activeLocalAdapter.leave()
+        } catch {
+          // Ignore close errors
+        }
+        activeLocalAdapter = null
+      }
+      const diffNum: 0 | 1 | 2 =
+        st.difficulty === 'hell' ? 2 : st.difficulty === 'nightmare' ? 1 : 0
+      const adapter = await lobby.enterGame({
+        charName,
+        difficulty: diffNum,
+        resolveAreaBootstrap: (params) => buildSinglePlayerAreaBootstrap(mapService, params),
+      })
+      activeLocalAdapter = adapter
+      session.attachGameServer(adapter)
+      adapter.tick?.(D2_LOGIC_TICK_MS)
+      session.tick(D2_LOGIC_TICK_MS, performance.now())
+      await persistSinglePlayerSavesToStorage()
+      st.sceneReady = true
+      st.stage = 'in_game'
+      st.stageTicks = 0
+      st.tickAccumulatorMs = 0
+      st.lastFrameTimeMs = null
+      inGameView = true
+      syncVisibility()
+    } catch (err) {
+      activeLocalAdapter = null
+      const friendlyMsg = err instanceof Error ? err.message : String(err)
+      session.audioRuntime.playTitleMusic()
+      st.stage = 'char_select'
+      st.stageTicks = 0
+      st.doorFrame = 0
+      st.sceneReady = false
+      st.tickAccumulatorMs = 0
+      st.lastFrameTimeMs = null
+      resetHeroAvatarAnims(st)
+      st.lastError = friendlyMsg
+      openPopupModal(st, friendlyMsg, 'char_select')
+      syncVisibility()
+      frontendRenderer.render(performance.now())
+    }
+  }
+
   const returnToLobby = (): void => {
+    if (activeLocalAdapter) {
+      activeLocalAdapter = null
+      void session.leaveGame()
+    }
     inGameView = false
     ownHeroArtKicked = false
     clearPendingNeighborPreload()
     flowState.sceneReady = false
     session.hudManager.setCursorLayerActive(false)
-    flowState.stage = 'bnet_lobby'
-    flowState.lobbySubPanel = 'create'
-    flowState.createGameError = null
-    flowState.activeInput = 'gameName'
+    if (flowState.playMode === 'single') {
+      flowState.lastError = null
+      flowState.popupModal = null
+      const lobby = getLocalLobbyProvider()
+      if (lobby) {
+        void (async () => {
+          await persistSinglePlayerSavesToStorage()
+          const chars = await lobby.listCharacters()
+          applyOnlineCharactersToFlowState(flowState, chars, { stayOnCharSelect: true })
+          flowState.onlineConnected = false
+          frontendRenderer.render(performance.now())
+        })()
+      }
+      flowState.stage = 'char_select'
+      flowState.activeInput = null
+      toolbar.setConnectionState({ phase: 'disconnected', rttMs: null })
+    } else {
+      flowState.stage = 'bnet_lobby'
+      flowState.lobbySubPanel = 'create'
+      flowState.createGameError = null
+      flowState.activeInput = 'gameName'
+      toolbar.setConnectionState({ phase: 'mcp', rttMs: session.pingMs })
+    }
     flowState.stageTicks = 0
     flowState.doorFrame = 0
     flowState.tickAccumulatorMs = 0
     flowState.lastFrameTimeMs = null
     resetHeroAvatarAnims(flowState)
     session.audioRuntime.playTitleMusic()
-    toolbar.setConnectionState({ phase: 'mcp', rttMs: session.pingMs })
     syncVisibility()
     frontendRenderer.render(performance.now())
   }
@@ -914,7 +1193,26 @@ export async function startPlayApp(options?: {
   }
 
   frontendRenderer.setAsyncHandlers({
+    onSinglePlayer: async (st) => {
+      st.playMode = 'single'
+      st.onlineConnected = false
+      st.lastError = null
+      st.loginError = null
+      st.charCreateError = null
+      st.statusText = ''
+      toolbar.setConnectionState({ phase: 'disconnected', rttMs: null })
+      const lobby = getLocalLobbyProvider()
+      if (lobby) {
+        await syncSinglePlayerSavesFromStorage()
+        const chars = await lobby.listCharacters()
+        applyOnlineCharactersToFlowState(st, chars)
+        st.onlineConnected = false
+        preloadSelectedCharacterAssets(st)
+      }
+      frontendRenderer.render(performance.now())
+    },
     onConnect: async (st) => {
+      st.playMode = 'bnet'
       bnetConnectPending = true
       setBnetConnectStage(st, 0, frontendRenderer.getLocalizedStrings())
       st.lastError = null
@@ -1012,6 +1310,30 @@ export async function startPlayApp(options?: {
         }
         const classId = st.selectedClass === null ? undefined : classMap[st.selectedClass]
         if (classId === undefined) throw new Error(`Unknown selected class ${String(st.selectedClass)}`)
+        if (st.playMode === 'single') {
+          const lobby = getLocalLobbyProvider()
+          if (!lobby) throw new Error('Single Player local server provider is not registered')
+          await lobby.createCharacter({
+            name,
+            classId,
+            hardcore: st.isHardcore,
+            expansion: st.isExpansion,
+            ladder: false,
+          })
+          await persistSinglePlayerSavesToStorage()
+          const chars = await lobby.listCharacters()
+          applyOnlineCharactersToFlowState(st, chars, { stayOnCharSelect: true })
+          st.onlineConnected = false
+          const createdIdx = st.roster.findIndex((c) => c.name.toLowerCase() === name.toLowerCase())
+          if (createdIdx >= 0) {
+            st.selectedSlotIndex = createdIdx
+          }
+          st.charName = ''
+          st.selectedClass = null
+          preloadSelectedCharacterAssets(st)
+          await startSinglePlayerGame(st, name)
+          return
+        }
         const chars = await session.createCharacter({
           name,
           classId,
@@ -1034,8 +1356,18 @@ export async function startPlayApp(options?: {
       st.lastError = null
       frontendRenderer.render(performance.now())
       try {
-        const chars = await session.deleteCharacter(charName)
-        applyOnlineCharactersToFlowState(st, chars)
+        if (st.playMode === 'single') {
+          const lobby = getLocalLobbyProvider()
+          if (!lobby) throw new Error('Single Player local server provider is not registered')
+          await lobby.deleteCharacter(charName)
+          await persistSinglePlayerSavesToStorage()
+          const chars = await lobby.listCharacters()
+          applyOnlineCharactersToFlowState(st, chars, { stayOnCharSelect: true })
+          st.onlineConnected = false
+        } else {
+          const chars = await session.deleteCharacter(charName)
+          applyOnlineCharactersToFlowState(st, chars)
+        }
       } catch (err) {
         if (err instanceof SessionLostError) return
         st.lastError = err instanceof Error ? err.message : String(err)
@@ -1047,8 +1379,20 @@ export async function startPlayApp(options?: {
       st.lastError = null
       frontendRenderer.render(performance.now())
       try {
-        const chars = await session.convertCharacterToExpansion(charName)
-        applyOnlineCharactersToFlowState(st, chars)
+        if (st.playMode === 'single') {
+          const lobby = getLocalLobbyProvider()
+          if (!lobby) throw new Error('Single Player local server provider is not registered')
+          const chars =
+            typeof lobby.convertCharacterToExpansion === 'function'
+              ? await lobby.convertCharacterToExpansion(charName)
+              : await lobby.listCharacters()
+          await persistSinglePlayerSavesToStorage()
+          applyOnlineCharactersToFlowState(st, chars, { stayOnCharSelect: true })
+          st.onlineConnected = false
+        } else {
+          const chars = await session.convertCharacterToExpansion(charName)
+          applyOnlineCharactersToFlowState(st, chars)
+        }
       } catch (err) {
         if (err instanceof SessionLostError) return
         st.lastError = err instanceof Error ? err.message : String(err)
@@ -1062,6 +1406,14 @@ export async function startPlayApp(options?: {
       st.lastError = null
       frontendRenderer.render(performance.now())
       try {
+        if (st.playMode === 'single') {
+          const lobby = getLocalLobbyProvider()
+          if (!lobby) throw new Error('Single Player local server provider is not registered')
+          await lobby.selectCharacter(selected.name)
+          preloadSelectedCharacterAssets(st)
+          await startSinglePlayerGame(st, selected.name)
+          return
+        }
         await session.selectCharacter(selected.name)
         st.stage = 'bnet_lobby'
         st.stageTicks = 0
@@ -1347,7 +1699,11 @@ export async function startPlayApp(options?: {
       flowState.tickAccumulatorMs = 0
       flowState.lastFrameTimeMs = null
       toolbar.setConnectionState({ phase: 'd2gs', rttMs: snap.pingMs })
-    } else if (snap.phase === 'lobby') {
+    } else if (
+      snap.phase === 'lobby' ||
+      (snap.phase === 'idle' && flowState.playMode === 'single')
+    ) {
+      activeLocalAdapter = null
       if (inGameView || flowState.stage === 'in_game') {
         const completion = session.takeGameCompletion()
         if (completion?.showVictoryScreen) {
@@ -1357,7 +1713,9 @@ export async function startPlayApp(options?: {
         returnToLobby()
         return
       }
-      toolbar.setConnectionState({ phase: 'mcp', rttMs: snap.pingMs })
+      if (flowState.playMode !== 'single') {
+        toolbar.setConnectionState({ phase: 'mcp', rttMs: snap.pingMs })
+      }
     } else if (snap.phase === 'connecting') {
       toolbar.setConnectionState({ phase: 'connecting', rttMs: null })
     } else if (snap.phase === 'disconnected' || snap.phase === 'error') {
@@ -1622,6 +1980,7 @@ export async function startPlayApp(options?: {
       logicClockRunning = true
     }
     runOwedTicks(session.logicClock, nowMs, (dtMs, tickNowMs) => {
+      activeLocalAdapter?.tick?.(dtMs)
       session.tick(dtMs, tickNowMs)
     })
   }

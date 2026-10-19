@@ -308,6 +308,14 @@ npm run preview
 npm run bot -- --bridge wss://your-d2gs-domain.com/d2net --user <账号> --pass <密码> --char <角色名>
 ```
 
+### 4. 许可证与素材授权
+
+- **代码**：本项目自身编写的源代码以 **MIT License** 授权，全文见 [`LICENSE`](./LICENSE)。你可以自由使用、修改、分发、商用与再许可，唯一义务是保留原版权声明与许可声明（`Copyright (c) 2026 troytt`）。
+- **文档**：本仓库中的文档与说明文字（`README.md`、`docs/`、`kb/`）同样以 MIT 授权，欢迎转载，建议注明出处。
+- **第三方代码**：移植或参考的第三方实现（如 StormLib）遵循其各自协议，详见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)。
+- **游戏素材不在授权范围内**：由《暗黑破坏神 II》原版 MPQ 提取或衍生的美术、音频、数据表、字符串表等资产，其版权归 Blizzard Entertainment 所有，本仓库不予授权、也不随产物分发（见上方"离线资产烘焙"说明，`public/` 下烘焙产物已从 Git 移出）。使用本项目时，你必须自行合法持有游戏本体与对应 MPQ，并自行承担相应责任。
+- **无商标授权**：MIT 不授予本项目名称或作者名义的商标与背书权，请勿以"官方"或其他误导性名义发布衍生作品。
+
 ---
 ---
 
@@ -614,3 +622,11 @@ Verify your WebSocket bridge and D2GS room creation/entry directly from the term
 ```bash
 npm run bot -- --bridge wss://your-d2gs-domain.com/d2net --user <account> --pass <password> --char <character>
 ```
+
+## License
+
+- **Code**: all source code authored for this project is released under the **MIT License** — see [`LICENSE`](./LICENSE). You may use, modify, distribute, commercialize and sublicense it freely; the only obligation is to retain the copyright and permission notice (`Copyright (c) 2026 troytt`).
+- **Documentation**: the docs in this repository (`README.md`, `docs/`, `kb/`) are likewise MIT-licensed; attribution is appreciated.
+- **Third-party code**: ported or referenced third-party implementations (e.g. StormLib) remain under their own licenses — see [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
+- **Game assets are NOT licensed here**: art, audio, data tables, string tables and any other assets extracted from or derived from Blizzard's original *Diablo II* MPQs remain the property of Blizzard Entertainment. They are neither licensed by this repository nor distributed with it (see the asset-baking note above; baked `public/` output is excluded from Git). You must legally own the game and its MPQs, and you are responsible for your own compliance.
+- **No trademark grant**: MIT grants no rights to the project's name or the author's identity for endorsement purposes. Do not publish derivatives in a way that implies official status.

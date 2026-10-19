@@ -135,6 +135,52 @@ export interface ListGamesOptions {
   readonly onGame?: ((game: GameSummary, games: readonly GameSummary[]) => void) | undefined
 }
 
+export interface LocalAreaPresetObject {
+  readonly classId: number
+  readonly x: number
+  readonly y: number
+  readonly areaId?: number | undefined
+  readonly mode?: number | undefined
+  readonly isWaypoint?: boolean | undefined
+  readonly isShrine?: boolean | undefined
+  readonly destAreaId?: number | undefined
+}
+
+export interface LocalAreaPresetMonster {
+  readonly classId: number
+  readonly x: number
+  readonly y: number
+  readonly areaId?: number | undefined
+  readonly name?: string | undefined
+  readonly isNpc?: boolean | undefined
+  readonly isVendor?: boolean | undefined
+  readonly isKillable?: boolean | undefined
+  readonly aiDisabled?: boolean | undefined
+}
+
+export interface LocalAreaRoomReveal {
+  readonly areaId: number
+  readonly tileX: number
+  readonly tileY: number
+}
+
+export interface LocalAreaBootstrap {
+  readonly areaId?: number | undefined
+  readonly spawnX: number
+  readonly spawnY: number
+  readonly rooms?: readonly LocalAreaRoomReveal[] | undefined
+  readonly objects?: readonly LocalAreaPresetObject[] | undefined
+  readonly monsters?: readonly LocalAreaPresetMonster[] | undefined
+  readonly isWalkable?: ((areaId: number, x: number, y: number, isFlying?: boolean) => boolean) | undefined
+}
+
+export type LocalAreaBootstrapResolver = (params: {
+  readonly act: number
+  readonly areaId: number
+  readonly mapSeed: number
+  readonly difficulty: 0 | 1 | 2
+}) => LocalAreaBootstrap | null | undefined
+
 export interface LobbyEnterGameTarget {
   readonly mode?: 'local' | 'd2gs' | 'ts' | 'single' | 'create' | 'join' | undefined
   readonly charName?: string | undefined
@@ -150,6 +196,7 @@ export interface LobbyEnterGameTarget {
   readonly wsUrl?: string | undefined
   readonly gameToken?: number | undefined
   readonly gameHash?: number | undefined
+  readonly resolveAreaBootstrap?: LocalAreaBootstrapResolver | undefined
 }
 
 export interface LobbyProvider {
@@ -200,6 +247,7 @@ export interface LocalServerOptions {
   readonly allowPause?: boolean | undefined
   readonly persistIntervalTicks?: number | undefined
   readonly onSaveD2s?: ((charName: string, d2sBytes: Uint8Array) => void) | undefined
+  readonly resolveAreaBootstrap?: LocalAreaBootstrapResolver | undefined
 }
 
 export type LocalServerSessionRequest = LocalServerOptions

@@ -65,53 +65,53 @@ export interface CombatOptions {
 }
 
 export interface MonsterStats113cAttack {
-  readonly min: number
-  readonly max: number
+  readonly min?: number | undefined
+  readonly max?: number | undefined
   readonly toHit: number
-  readonly minDamage?: number
-  readonly maxDamage?: number
-  readonly move?: number
+  readonly minDamage?: number | undefined
+  readonly maxDamage?: number | undefined
+  readonly move?: number | undefined
 }
 
 export interface MonsterElementalAttack {
-  readonly slot?: 1 | 2 | 3
+  readonly slot?: 1 | 2 | 3 | undefined
   readonly mode: 'A1' | 'A2' | 'S1' | 'S2' | 'S3' | 'S4' | 'C' | string
   readonly type: 'fire' | 'ltng' | 'cold' | 'pois' | 'mag' | 'stamina' | 'life' | 'mana' | 'burn' | 'frze' | string
   readonly chancePct: number
-  readonly min: number
-  readonly max: number
+  readonly min?: number | undefined
+  readonly max?: number | undefined
   readonly durationFrames: number
-  readonly pct?: number
-  readonly minDamage?: number
-  readonly maxDamage?: number
-  readonly duration?: number
+  readonly pct?: number | undefined
+  readonly minDamage?: number | undefined
+  readonly maxDamage?: number | undefined
+  readonly duration?: number | undefined
 }
 
 export interface MonsterSkillEntry {
-  readonly slot?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+  readonly slot?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | undefined
   readonly skill: string
-  readonly skillId?: number
+  readonly skillId?: number | undefined
   readonly mode: 'A1' | 'A2' | 'S1' | 'S2' | 'S3' | 'S4' | 'C' | 'SC' | 'SQ' | string
   readonly level: number
 }
 
 export interface MonsterModeMissiles {
-  readonly MissA1?: string
-  readonly MissA2?: string
-  readonly MissS1?: string
-  readonly MissS2?: string
-  readonly MissS3?: string
-  readonly MissS4?: string
-  readonly MissC?: string
-  readonly MissSQ?: string
-  readonly A1?: string
-  readonly A2?: string
-  readonly S1?: string
-  readonly S2?: string
-  readonly S3?: string
-  readonly S4?: string
-  readonly C?: string
-  readonly SQ?: string
+  readonly MissA1?: string | undefined
+  readonly MissA2?: string | undefined
+  readonly MissS1?: string | undefined
+  readonly MissS2?: string | undefined
+  readonly MissS3?: string | undefined
+  readonly MissS4?: string | undefined
+  readonly MissC?: string | undefined
+  readonly MissSQ?: string | undefined
+  readonly A1?: string | undefined
+  readonly A2?: string | undefined
+  readonly S1?: string | undefined
+  readonly S2?: string | undefined
+  readonly S3?: string | undefined
+  readonly S4?: string | undefined
+  readonly C?: string | undefined
+  readonly SQ?: string | undefined
 }
 
 export interface MonsterDifficultyStats<T = number> {
@@ -224,7 +224,7 @@ export interface MonsterStats {
   /** AI leash/aggro distance in sub-tiles (`aidist`). */
   readonly aiDistance?: number | undefined
   /** AI parameters `aip1..aip8` for active difficulty. */
-  readonly aiParams?: readonly [number, number, number, number, number, number, number, number] | undefined
+  readonly aiParams?: readonly number[] | undefined
   /** Attack 1 (`A1MinD`, `A1MaxD`, `A1TH`) scaled for active difficulty. */
   readonly attack1?: MonsterStats113cAttack | undefined
   /** Attack 2 (`A2MinD`, `A2MaxD`, `A2TH`) scaled for active difficulty. */
@@ -248,7 +248,7 @@ export interface MonsterStats {
   /** Critical hit percentage (`Crit`). */
   readonly crit?: number | undefined
   /** Alignment (`0` = evil/hostile, `1` = aligned/friendly, `2` = neutral). */
-  readonly align?: 0 | 1 | 2 | undefined
+  readonly align?: 0 | 1 | 2 | number | undefined
   /** Melee sub-tile range (`MeleeRng`). */
   readonly meleeRng?: number | undefined
 }

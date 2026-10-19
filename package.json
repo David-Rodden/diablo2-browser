@@ -2,6 +2,7 @@
   "name": "d2web",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Web-native Diablo II engine: reads assets from a user-supplied classic MPQ. No game assets are bundled.",
   "scripts": {

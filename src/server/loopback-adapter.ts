@@ -29,6 +29,8 @@ import {
   type ListGamesOptions,
   type LobbyEnterGameTarget,
   type LobbyProvider,
+  type LocalAreaBootstrap,
+  type LocalAreaBootstrapResolver,
   type LocalServerOptions,
   type LocalServerSessionHandle,
   type LocalServerSessionRequest,
@@ -102,6 +104,22 @@ function resolveDifficultyNum(diff: GameDifficulty | number | undefined): 0 | 1 
   return 0
 }
 
+const ACT_TOWN_AREA: Record<number, number> = {
+  0: 1,
+  1: 40,
+  2: 75,
+  3: 103,
+  4: 109,
+}
+
+function areaToAct(areaId: number): number {
+  if (areaId >= 109) return 4
+  if (areaId >= 103) return 3
+  if (areaId >= 75) return 2
+  if (areaId >= 40) return 1
+  return 0
+}
+
 export interface LocalLoopbackAdapterOptions {
   readonly game?: GameInstance | undefined
   readonly engine?: GameInstance | undefined
@@ -125,6 +143,7 @@ export interface LocalLoopbackAdapterOptions {
   readonly d2s?: Uint8Array | undefined
   readonly d2sBytes?: Uint8Array | undefined
   readonly onAutoSave?: ((d2sBytes: Uint8Array) => void) | undefined
+  readonly resolveAreaBootstrap?: LocalAreaBootstrapResolver | undefined
 }
 
 export class LocalLoopbackAdapter implements GameServerAdapter {
@@ -172,17 +191,70 @@ export class LocalLoopbackAdapter implements GameServerAdapter {
     this.onAutoSave = opts.onAutoSave
 
     const existingPlayerId = opts.playerUnitId ?? opts.playerId
+    let bootstrap: LocalAreaBootstrap | null | undefined
     if (existingPlayerId !== undefined) {
       this.playerUnitId = existingPlayerId
     } else {
+      const d2sRaw = opts.d2s ?? opts.d2sBytes
+      const parsedD2s = d2sRaw instanceof Uint8Array ? readD2sSave113c(d2sRaw) : undefined
+      const initialAreaId =
+        opts.areaId ??
+        ACT_TOWN_AREA[parsedD2s?.activeAct ?? 0] ??
+        1
+      const initialAct = areaToAct(initialAreaId)
+      const effectiveSeed =
+        (opts.mapSeed ??
+          opts.seed ??
+          (parsedD2s && parsedD2s.mapSeed !== 0 ? parsedD2s.mapSeed : this.gameInstance.mapSeed)) >>> 0
+      bootstrap = opts.resolveAreaBootstrap?.({
+        act: initialAct,
+        areaId: initialAreaId,
+        mapSeed: effectiveSeed,
+        difficulty: this.gameInstance.difficulty,
+      })
+
+      if (bootstrap?.isWalkable) {
+        this.gameInstance.setTerrainWalkableCheck(bootstrap.isWalkable)
+      }
+      const targetAreaId = opts.areaId ?? bootstrap?.areaId ?? initialAreaId
+      if (bootstrap?.objects) {
+        for (const obj of bootstrap.objects) {
+          this.gameInstance.spawnObject({
+            classId: obj.classId,
+            x: obj.x,
+            y: obj.y,
+            areaId: obj.areaId ?? targetAreaId,
+            mode: obj.mode,
+            isWaypoint: obj.isWaypoint,
+            isShrine: obj.isShrine,
+            destAreaId: obj.destAreaId,
+          })
+        }
+      }
+      if (bootstrap?.monsters) {
+        for (const mon of bootstrap.monsters) {
+          this.gameInstance.spawnMonster({
+            classId: mon.classId,
+            x: mon.x,
+            y: mon.y,
+            areaId: mon.areaId ?? targetAreaId,
+            name: mon.name,
+            isNpc: mon.isNpc,
+            isVendor: mon.isVendor,
+            isKillable: mon.isKillable,
+            aiDisabled: mon.aiDisabled,
+          })
+        }
+      }
+
       this.playerUnitId = this.gameInstance.connectPlayer({
         charName: opts.charName ?? opts.playerName ?? opts.name,
         classId: opts.classId ?? opts.charClass,
         level: opts.level,
-        areaId: opts.areaId,
-        x: opts.x,
-        y: opts.y,
-        d2s: opts.d2s ?? opts.d2sBytes,
+        areaId: targetAreaId,
+        x: opts.x ?? bootstrap?.spawnX,
+        y: opts.y ?? bootstrap?.spawnY,
+        d2s: d2sRaw,
       })
     }
 
@@ -190,6 +262,16 @@ export class LocalLoopbackAdapter implements GameServerAdapter {
     const initial = this.gameInstance.drainEvents(this.playerUnitId)
     for (const ev of initial) {
       this.earlyEvents.push(ev)
+      if (ev.type === 'LoadAct' && bootstrap?.rooms) {
+        for (const r of bootstrap.rooms) {
+          this.earlyEvents.push({
+            type: 'RoomReveal',
+            areaId: r.areaId,
+            tileX: r.tileX,
+            tileY: r.tileY,
+          })
+        }
+      }
     }
   }
 
@@ -516,6 +598,25 @@ export class LocalLobbyProvider implements LobbyProvider {
     return false
   }
 
+  async convertCharacterToExpansion(name: string): Promise<readonly CharSummary[]> {
+    const key = this.findCanonicalKey(name)
+    if (key !== undefined) {
+      const bytes = this.saves.get(key)
+      if (bytes) {
+        const parsed = readD2sSave113c(bytes)
+        const updated = writeD2sSave113c(
+          {
+            ...parsed,
+            statusFlags: (parsed.statusFlags | 0x20) & 0xff,
+          },
+          getServerItemDataTables(),
+        )
+        this.saves.set(key, updated)
+      }
+    }
+    return this.listCharacters()
+  }
+
   async selectCharacter(name: string): Promise<void> {
     const key = this.findCanonicalKey(name)
     if (key === undefined) {
@@ -627,12 +728,16 @@ export class LocalLobbyProvider implements LobbyProvider {
       this.saves.set(key, new Uint8Array(d2sBytes))
     }
 
+    const resolveAreaBootstrap =
+      target && 'resolveAreaBootstrap' in target ? target.resolveAreaBootstrap : undefined
+
     return new LocalLoopbackAdapter({
       charName: key,
       d2s: d2sBytes,
       difficulty: requestedDifficulty,
       mapSeed: effectiveSeed,
       registry: this.registry,
+      resolveAreaBootstrap,
       onAutoSave: (updatedBytes) => {
         this.saves.set(key!, new Uint8Array(updatedBytes))
       },
@@ -746,6 +851,7 @@ export function createLocalLoopbackSession(
     mapSeed: req.mapSeed,
     d2sBytes: req.d2sBytes,
     policy: req.allowPause !== undefined ? { allowPause: req.allowPause } : undefined,
+    resolveAreaBootstrap: req.resolveAreaBootstrap,
     onAutoSave:
       req.onSaveD2s && req.charName
         ? (bytes) => req.onSaveD2s!(req.charName!, bytes)
