@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { ClientWorld } from '../src/client/world/client-world.ts'
 import { arcticBlastRangeFrames113c } from '../src/client/world/state-ids-113c.ts'
 import { resolveStateOverlayTokens113c } from '../src/client/view/unit-drawables.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 import {
   calculateCarrionVineStats,
   calculatePoisonCreeperStats,

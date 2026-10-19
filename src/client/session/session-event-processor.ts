@@ -377,11 +377,13 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
   const evAny = rawEv as Record<string, any>
   let ev: ServerEvent = rawEv
   if (evAny.type === 'PortalOwner' || evAny.type === 'PortalInfo') {
+    const portalId = Number(evAny.portalId ?? evAny.localId ?? evAny.unitId ?? 0)
     ev = {
       type: 'Portal',
+      portalId,
       ownerId: evAny.ownerId,
       ownerName: evAny.ownerName,
-      localId: Number(evAny.localId ?? evAny.unitId ?? 0),
+      localId: portalId,
       remoteId: evAny.remoteId,
       areaId: Number(evAny.areaId ?? evAny.levelId ?? 0),
       flags: evAny.flags,

@@ -27,10 +27,10 @@ import {
   resolveMonsterPaletteRow,
 } from '../../common/units/monster-art.ts'
 import { assertDir64, dir64FromPoints, dir64ToClipDirection, dir64ToDcc } from '../../common/units/direction.ts'
-import { reportMissingArt } from '../scene/missing-art.ts'
+import { reportMissingArt } from '../../client/scene/missing-art.ts'
 import type { OverlayTxtRow } from '../../common/data/overlay-txt-row-type.ts'
 import type { UnitKind, UnitSnapshot } from '../../netproto/index.ts'
-import type { LightEmitterInput, PointLightInput } from '../scene/lighting-presets.ts'
+import type { LightEmitterInput, PointLightInput } from '../../client/scene/lighting-presets.ts'
 export type { LightEmitterInput, PointLightInput }
 import type { StatListReaderLike } from '../../common/units/char-anim-speed.ts'
 import type { ClientUnitOverlay, UnitCastState } from '../world/client-unit.ts'

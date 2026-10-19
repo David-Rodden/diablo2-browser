@@ -74,6 +74,8 @@ export const MON_UMOD_ID = Object.freeze({
   PAINWORMDEATH: 40,
   /** MonUMod 42 `novadeath`: `D2Client.dll` 0x6fad0c40 `edi == 0x2a` branch. */
   NOVADEATH: 42,
+  /** MonUMod 43 `freeze` (`MonUMod.txt`). */
+  FREEZE: 43,
   FIRE_ENCHANTED: 9,
   LIGHTNING_ENCHANTED: 17,
   COLD_ENCHANTED: 18,
@@ -114,6 +116,7 @@ export const MON_UMOD_NAME_TO_ID: Readonly<Record<string, number>> = Object.free
   champion: 16,
   lightning: 17,
   lightenchant: 17,
+  lightningenchant: 17,
   lightningenchanted: 17,
   'lightning enchanted': 17,
   cold: 18,
@@ -134,28 +137,40 @@ export const MON_UMOD_NAME_TO_ID: Readonly<Record<string, number>> = Object.free
   teleport: 26,
   teleportation: 26,
   spectralhit: 27,
+  spechit: 27,
   'spectral hit': 27,
   stoneskin: 28,
   'stone skin': 28,
   multishot: 29,
+  multipleshot: 29,
+  multipleshots: 29,
   'multiple shot': 29,
   aura: 30,
+  auraenchant: 30,
+  auraenchanted: 30,
   'aura enchanted': 30,
   goboom: 31,
   bonefetish: 31,
   firespike_explode: 32,
+  firespikeexplode: 32,
   suicideminion_explode: 33,
+  suicideminionexplode: 33,
   suicideminion: 33,
   ai_after_death: 34,
+  aiafterdeath: 34,
   shatter_on_death: 35,
+  shatterondeath: 35,
   ghostly: 36,
   fanatic: 37,
   possessed: 38,
   berserk: 39,
   worms_on_death: 40,
+  wormsondeath: 40,
   painwormdeath: 40,
   always_run_ai: 41,
+  alwaysrunai: 41,
   novadeath: 42,
+  freeze: 43,
   chargedbolts: 20,
   charged_bolts: 20,
 })
@@ -167,6 +182,8 @@ export type MonsterUModSource =
       readonly bossMods?: readonly (number | string)[] | undefined
       readonly mods?: readonly (number | string)[] | undefined
       readonly modifiers?: readonly (number | string)[] | undefined
+      readonly umods?: readonly (number | string)[] | undefined
+      readonly stats?: unknown
     }
   | undefined
   | null
@@ -177,13 +194,33 @@ export type MonsterUModSource =
 export function resolveMonsterUModIds(source: MonsterUModSource): Set<number> {
   const out = new Set<number>()
   if (!source) return out
+  const srcObj = source as {
+    readonly monUMods?: readonly (number | string)[]
+    readonly bossMods?: readonly (number | string)[]
+    readonly mods?: readonly (number | string)[]
+    readonly modifiers?: readonly (number | string)[]
+    readonly umods?: readonly (number | string)[]
+    readonly stats?: {
+      readonly monUMods?: readonly (number | string)[]
+      readonly bossMods?: readonly (number | string)[]
+      readonly mods?: readonly (number | string)[]
+      readonly modifiers?: readonly (number | string)[]
+      readonly umods?: readonly (number | string)[]
+    }
+  }
   const lists: (readonly (number | string)[] | undefined)[] = Array.isArray(source)
     ? [source as readonly (number | string)[]]
     : [
-        (source as { readonly monUMods?: readonly (number | string)[] }).monUMods,
-        (source as { readonly bossMods?: readonly (number | string)[] }).bossMods,
-        (source as { readonly mods?: readonly (number | string)[] }).mods,
-        (source as { readonly modifiers?: readonly (number | string)[] }).modifiers,
+        srcObj.monUMods,
+        srcObj.bossMods,
+        srcObj.mods,
+        srcObj.modifiers,
+        srcObj.umods,
+        srcObj.stats?.monUMods,
+        srcObj.stats?.bossMods,
+        srcObj.stats?.mods,
+        srcObj.stats?.modifiers,
+        srcObj.stats?.umods,
       ]
   for (const mods of lists) {
     if (!mods) continue
@@ -200,7 +237,8 @@ export function resolveMonsterUModIds(source: MonsterUModSource): Set<number> {
           out.add(asNum)
           continue
         }
-        const mapped = MON_UMOD_NAME_TO_ID[clean]
+        const compact = clean.replace(/[\s_-]+/g, '')
+        const mapped = MON_UMOD_NAME_TO_ID[clean] ?? MON_UMOD_NAME_TO_ID[compact]
         if (mapped !== undefined) {
           out.add(mapped)
         }
@@ -222,7 +260,8 @@ export function hasMonsterUMod(
     return set.has(targetMod)
   }
   const clean = targetMod.trim().toLowerCase()
-  const mapped = MON_UMOD_NAME_TO_ID[clean] ?? Number(clean)
+  const compact = clean.replace(/[\s_-]+/g, '')
+  const mapped = MON_UMOD_NAME_TO_ID[clean] ?? MON_UMOD_NAME_TO_ID[compact] ?? Number(clean)
   return Number.isInteger(mapped) && mapped > 0 ? set.has(mapped) : false
 }
 
@@ -271,7 +310,7 @@ export function calcFireEnchantedDeathDamage(
   roll01 = 0.5,
 ): FireEnchantedExplosionDamage {
   const isMinion = typeof rollOrIsMinion === 'boolean' ? rollOrIsMinion : false
-  if (isMinion) {
+  if (isMinion || !Number.isFinite(baseMaxHp) || baseMaxHp <= 0) {
     return {
       physDmg: 0,
       fireDmg: 0,
@@ -330,7 +369,7 @@ export function calcBoneFetishDeathDamage(
   critRoll01 = 0.5,
 ): BoneFetishExplosionDamage {
   const isMinion = typeof rollOrIsMinion === 'boolean' ? rollOrIsMinion : false
-  if (isMinion) {
+  if (isMinion || !Number.isFinite(baseMaxHp) || baseMaxHp <= 0) {
     return {
       physDmg: 0,
       minPhys: 0,
@@ -510,56 +549,52 @@ export function computeChargedBolt8WayVectors(
 /**
  * Innate monster `hcIdx` (`classId`) sets from 1.13c `MonStats.txt`.
  */
-export function isScarabMonster(classId: number, monType?: string): boolean {
+export function isScarabMonster(classId: number | string, monType?: string): boolean {
+  const numId = typeof classId === 'number' ? classId : Number(classId)
   if (
-    (classId >= 91 && classId <= 95) ||
-    classId === 654 ||
-    classId === 655 ||
-    classId === 718
+    (numId >= 91 && numId <= 95) ||
+    numId === 654 ||
+    numId === 655 ||
+    numId === 718
   ) {
     return true
   }
-  if (monType) {
-    const clean = monType.trim().toLowerCase()
-    if (clean.startsWith('scarab')) return true
-  }
+  const clean = (monType ?? (typeof classId === 'string' ? classId : '')).trim().toLowerCase()
+  if (clean.startsWith('scarab')) return true
   return false
 }
 
-export function isPoisonDeadMonster(classId: number, monType?: string): boolean {
+export function isPoisonDeadMonster(classId: number | string, monType?: string): boolean {
+  const numId = typeof classId === 'number' ? classId : Number(classId)
   if (
-    classId === 9 ||
-    (classId >= 96 && classId <= 100) ||
-    classId === 703
+    numId === 9 ||
+    (numId >= 96 && numId <= 100) ||
+    numId === 703
   ) {
     return true
   }
-  if (monType) {
-    const clean = monType.trim().toLowerCase()
-    if (clean === 'zombie5' || clean.startsWith('mummy')) return true
-  }
+  const clean = (monType ?? (typeof classId === 'string' ? classId : '')).trim().toLowerCase()
+  if (clean === 'zombie5' || clean.startsWith('mummy')) return true
   return false
 }
 
-export function isBoneFetishMonster(classId: number, monType?: string): boolean {
-  if ((classId >= 212 && classId <= 216) || classId === 690 || classId === 691) {
+export function isBoneFetishMonster(classId: number | string, monType?: string): boolean {
+  const numId = typeof classId === 'number' ? classId : Number(classId)
+  if ((numId >= 212 && numId <= 216) || numId === 690 || numId === 691) {
     return true
   }
-  if (monType) {
-    const clean = monType.trim().toLowerCase()
-    if (clean.startsWith('bonefetish')) return true
-  }
+  const clean = (monType ?? (typeof classId === 'string' ? classId : '')).trim().toLowerCase()
+  if (clean.startsWith('bonefetish')) return true
   return false
 }
 
-export function isSuicideMinionMonster(classId: number, monType?: string): boolean {
-  if (classId >= 461 && classId <= 468) {
+export function isSuicideMinionMonster(classId: number | string, monType?: string): boolean {
+  const numId = typeof classId === 'number' ? classId : Number(classId)
+  if (numId >= 461 && numId <= 468) {
     return true
   }
-  if (monType) {
-    const clean = monType.trim().toLowerCase()
-    if (clean.startsWith('suicideminion')) return true
-  }
+  const clean = (monType ?? (typeof classId === 'string' ? classId : '')).trim().toLowerCase()
+  if (clean.startsWith('suicideminion')) return true
   return false
 }
 
@@ -836,6 +871,8 @@ export interface BossDeathFxSpec {
     readonly minDelayFrames: number
     readonly maxDelayFrames: number
   }
+  /** Optional post-death maggot spawn offsets (e.g. Duriel `hcIdx=211` -> `DURIEL_MAGGOT_OFFSETS`). */
+  readonly spawnMaggots?: typeof DURIEL_MAGGOT_OFFSETS | undefined
 }
 
 function buildBossDeathSpec(
@@ -854,11 +891,20 @@ function buildBossDeathSpec(
 }
 
 export function getBossDeathFxSpec(
-  classId: number,
+  classId: number | string,
   monType?: string,
 ): BossDeathFxSpec | null {
-  const clean = monType?.trim().toLowerCase() ?? ''
-  if (classId === 45 || clean === 'corruptrogue3' || clean === 'countess') {
+  const numId =
+    typeof classId === 'number'
+      ? classId
+      : classId.trim() !== '' && Number.isFinite(Number(classId))
+        ? Number(classId)
+        : -1
+  const clean = (monType ?? (typeof classId === 'string' ? classId : ''))
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '')
+  if (numId === 45 || clean === 'corruptrogue3' || clean === 'countess' || clean === 'thecountess') {
     // 0x6fad0fb0 (umod 22, mode 0) -> 0x6fb02860: towermist (#291, Range 400) + towerchestspawner (#332, Range 400).
     return buildBossDeathSpec({
       bossKey: 'countess',
@@ -867,7 +913,7 @@ export function getBossDeathFxSpec(
       requiresQuestCompleteUMod: true,
     })
   }
-  if (classId === 156 || clean === 'andariel') {
+  if (numId === 156 || clean === 'andariel') {
     // 0x6fad0fb0 -> 0x6fb02230: andycontrol0 (#307, Range 350).
     return buildBossDeathSpec({
       bossKey: 'andariel',
@@ -886,7 +932,7 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (classId === 211 || clean === 'duriel') {
+  if (numId === 211 || clean === 'duriel') {
     // 0x6fad0fb0 -> 0x6fb02620: durieldeathcontrol (#363, Range 400).
     return buildBossDeathSpec({
       bossKey: 'duriel',
@@ -898,9 +944,10 @@ export function getBossDeathFxSpec(
         rampUpMs: 120,
         rampDownMs: 600,
       },
+      spawnMaggots: DURIEL_MAGGOT_OFFSETS,
     })
   }
-  if (classId === 267 || clean === 'bloodraven') {
+  if (numId === 267 || numId === 2 || clean === 'bloodraven') {
     // 0x6fad0fb0 (umod 22, mode 0) -> 0x6fb02320; Missiles.txt brdeathcontrol (#284) Range = 375.
     return buildBossDeathSpec({
       bossKey: 'bloodraven',
@@ -914,7 +961,7 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (classId === 229 || clean === 'radament') {
+  if (numId === 229 || clean === 'radament') {
     // 0x6fad0fb0 -> 0x6fb027a0: radamentdeath (#347, Range 400).
     return buildBossDeathSpec({
       bossKey: 'radament',
@@ -927,7 +974,7 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (classId === 284 || clean === 'maggotqueen1' || clean === 'coldworm') {
+  if (numId === 284 || clean === 'maggotqueen1' || clean === 'coldworm' || clean === 'coldwormtheburrower') {
     // 0x6fad0fb0 (mode 14) -> 0x6fb026e0: queendeathcenter (#353, Range 100).
     return buildBossDeathSpec({
       bossKey: 'coldworm',
@@ -935,7 +982,7 @@ export function getBossDeathFxSpec(
       controllerClassId: 353,
     })
   }
-  if (classId === 242 || clean === 'mephisto') {
+  if (numId === 242 || clean === 'mephisto') {
     // 0x6fad0fb0 -> 0x6fb02270: mephistodeathcontrol (#299, Range 275) + TargetX/Y 75, mephistoholedelay (#358),
     // mephistodonotdraw (#306); see boss-death-cltdo-113c.ts (#1208).
     return buildBossDeathSpec({
@@ -950,7 +997,7 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (classId === 256 || clean === 'izual') {
+  if (numId === 256 || clean === 'izual') {
     // 0x6fad0fb0 -> 0x6fb03070: izual control (#379, Range 200).
     return buildBossDeathSpec({
       bossKey: 'izual',
@@ -963,7 +1010,7 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (classId === 243 || clean === 'diablo') {
+  if (numId === 243 || clean === 'diablo') {
     // 0x6fad0fb0 -> 0x6fb02600 creates no missile (#1205): no diabwallmaker ring, no controller.
     return buildBossDeathSpec({
       bossKey: 'diablo',
@@ -982,7 +1029,7 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (classId === 479 || clean === 'overseer1' || clean === 'shenk') {
+  if (numId === 479 || numId === 706 || clean === 'overseer1' || clean === 'shenk' || clean === 'shenktheoverseer') {
     // 0x6fad0fb0 (umod 22, mode 0) -> 0x6fb02bd0; Missiles.txt overseercontrol (#602) Range = 500. Only Shenk (a
     // SuperUnique, so umod 22) has the show; a plain overseer1 dies without it (Issue #1042).
     return buildBossDeathSpec({
@@ -1003,7 +1050,7 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (classId === 526 || clean === 'nihlathakboss' || clean === 'nihlathak') {
+  if (numId === 526 || clean === 'nihlathakboss' || clean === 'nihlathak') {
     // nehlithakcontrol (#606, Range 224).
     return buildBossDeathSpec({
       bossKey: 'nihlathak',
@@ -1017,7 +1064,14 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if ((classId >= 540 && classId <= 542) || clean.startsWith('ancientbarb')) {
+  if (
+    (numId >= 540 && numId <= 542) ||
+    clean.startsWith('ancientbarb') ||
+    clean === 'talic' ||
+    clean === 'madawc' ||
+    clean === 'korlic' ||
+    clean === 'ancient'
+  ) {
     // 0x6fad0fb0 -> 0x6fb029f0: ancient death center (#541, Range 400).
     return buildBossDeathSpec({
       bossKey: 'ancient',
@@ -1025,7 +1079,7 @@ export function getBossDeathFxSpec(
       controllerClassId: 541,
     })
   }
-  if (classId === 544 || clean === 'baalcrab') {
+  if (numId === 544 || clean === 'baalcrab' || clean === 'baal') {
     // 0x6fad0fb0 -> 0x6fb02570: baalfx control (#625, Range 650).
     return buildBossDeathSpec({
       bossKey: 'baal',

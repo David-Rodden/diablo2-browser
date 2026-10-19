@@ -679,6 +679,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           : 0
     ev = {
       type: 'UnitAssign',
+      classId: Number(ev.classId ?? 0),
       isSelf:
         uType === 'player' &&
         (this.selfId !== 0 ? this.selfId === uId : (isPlayerEv || ev.isSelf === true)),
@@ -789,12 +790,51 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       ...(ev.manaRegen !== undefined ? { manaRegen: Number(ev.manaRegen) } : {}),
       at: ev.at ?? { x: Number(ev.x ?? 0), y: Number(ev.y ?? 0) },
     }
-  } else if (ev.type === 'StatChange') {
+  } else if (ev.type === 'StatChange' || ev.type === 'UnitStatUpdate') {
     ev = {
       type: 'StatSet',
+      ...(ev.unit
+        ? { unit: ev.unit }
+        : ev.unitType !== undefined && ev.unitId !== undefined
+          ? { unit: { unitType: unitTypeFromId(ev.unitType), id: Number(ev.unitId) } }
+          : {}),
       stat: Number(ev.stat ?? ev.statId ?? 0),
       value: Number(ev.value ?? 0),
       param: Number(ev.param ?? 0),
+    }
+  } else if (ev.type === 'UnitState') {
+    const uRef = ev.unit ?? {
+      unitType: unitTypeFromId(ev.unitType ?? 0),
+      id: Number(ev.unitId ?? (this.selfId || 1)),
+    }
+    if (ev.active === false) {
+      ev = {
+        type: 'StateEnd',
+        unit: uRef,
+        state: Number(ev.stateId ?? ev.state ?? 0),
+      }
+    } else {
+      ev = {
+        type: 'StateSet',
+        unit: uRef,
+        state: Number(ev.stateId ?? ev.state ?? 0),
+      }
+    }
+  } else if (ev.type === 'SkillUpdate') {
+    const baseLevel = Number(ev.baseLevel ?? ev.level ?? 0)
+    const bonus = Number(ev.bonusLevel ?? ev.bonus ?? 0)
+    ev = {
+      type: 'SkillList',
+      unitId: Number(ev.unitId ?? this.selfId),
+      skills: [
+        {
+          skillId: Number(ev.skillId ?? ev.skill ?? 0),
+          skill: Number(ev.skillId ?? ev.skill ?? 0),
+          level: baseLevel + bonus,
+          baseLevel,
+          bonus,
+        },
+      ],
     }
   } else if (ev.type === 'MercStatChange') {
     ev = {
@@ -838,6 +878,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     }
     ev = {
       type: 'UnitAssign',
+      classId: Number(ev.classId ?? 0),
       isSelf: false,
       unit: {
         unitType: 'monster',
@@ -1098,11 +1139,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       break
 
     case 'UnitAssign': {
+      const rawUnitId = (ev as any).id ?? (ev as any).unitId
       const unitPayload =
         ev.unit ??
-        ((ev as any).id !== undefined && (ev as any).unitType !== undefined
+        (rawUnitId !== undefined && (ev as any).unitType !== undefined
           ? {
-              id: (ev as any).id,
+              id: rawUnitId,
               unitType: (ev as any).unitType,
               classId: (ev as any).classId ?? 0,
               name: (ev as any).name,
@@ -2590,6 +2632,14 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         break
       }
       this.invalidatePlayerLightCache()
+      if (!ev.item && (ev as any).itemId !== undefined) {
+        ;(ev as any).item = {
+          id: (ev as any).itemId,
+          code: (ev as any).code ?? 'rin',
+          x: (ev as any).x ?? 0,
+          y: (ev as any).y ?? 0,
+        }
+      }
       if (!ev.item) {
         throw new Error(`${ev.type} missing item payload`)
       }
@@ -3961,8 +4011,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     }
 
     case 'Portal': {
-      this._portals.set(ev.localId, {
-        localId: ev.localId,
+      const localId = ev.localId ?? (ev as any).portalId ?? 0
+      this._portals.set(localId, {
+        localId,
         remoteId: ev.remoteId,
         ownerName: ev.ownerName,
         ownerId: ev.ownerId,

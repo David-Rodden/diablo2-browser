@@ -6,7 +6,7 @@ import {
   type CollisionGrid,
 } from '../../common/world/d2map.ts'
 import type { AmbientLight } from '../../common/world/ambient-light.ts'
-import type { LightingAmbientInputs, LightingInputs, LightingPreset } from '../scene/lighting-presets.ts'
+import type { LightingAmbientInputs, LightingInputs, LightingPreset } from '../../client/scene/lighting-presets.ts'
 import {
   getCollisionWorldSubTile,
   isWalkableWorldSubTile,

@@ -21,6 +21,7 @@ export function decode0x9C0x9DItemAction(pkt: Uint8Array, tables: ItemDataTables
     type: 'ItemEvent',
     action: item.action,
     item,
+    itemId: item.itemId,
     container,
     at,
   }

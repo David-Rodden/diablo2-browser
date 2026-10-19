@@ -25,7 +25,7 @@ export type {
 export type { D2OnlineFlow } from './flow/online-flow.ts'
 export type { GameServerAdapter, GameServerStats } from './domain/game-server-adapter.ts'
 export type { NpcCommandPayload113c, ServerEvent, StateSetEntry } from './domain/server-event.ts'
-export type { ClientCommand } from './domain/client-command.ts'
+export type { ClientCommand, PauseGameCommand } from './domain/client-command.ts'
 export type {
   CharClassId,
   Hand,
@@ -54,12 +54,30 @@ export type {
 export type {
   CharCreateSpec,
   CharSummary,
+  CharacterManageResult,
+  CharacterSummary,
   ChatEvent,
   ChatEventKind,
+  CreateCharacterForm,
+  CreateCharacterInput,
+  CreateGameForm,
   GameCreateSpec,
+  GameDifficulty,
   GameInfoDetail,
   GameListEntry,
   GameSummary,
+  JoinGameForm,
+  ListGamesOptions,
+  LobbyCharacterSummary,
+  LobbyEnterGameTarget,
+  LobbyGameListItem,
+  LobbyGameMode,
+  LobbyProvider,
+  LocalServerFactory,
+  LocalServerOptions,
+  LocalServerSessionFactory,
+  LocalServerSessionHandle,
+  LocalServerSessionRequest,
   RealmInfo,
   RealmSummary,
 } from './domain/lobby.ts'
@@ -97,7 +115,14 @@ export {
   tcpResolver,
   wsBridgeResolver,
 } from './transport/endpoint.ts'
-export { MemoryStream, createMemoryStreamPair } from './transport/memory-stream.ts'
+export {
+  MemoryStream,
+  MemoryStream as InMemoryByteStream,
+  MemoryStream as InMemoryDuplexStream,
+  createMemoryStreamPair,
+  createMemoryStreamPair as createInMemoryByteStreamPair,
+  createMemoryStreamPair as createInMemoryDuplexPair,
+} from './transport/memory-stream.ts'
 export { BitReader } from './core/bit-reader.ts'
 export { BitWriter } from './core/bit-writer.ts'
 export { ByteReader } from './core/byte-reader.ts'
@@ -293,7 +318,34 @@ export { decode0x28QuestInfo } from './d2gs/s2c/quest.ts'
 export { decode0x75PlayerPartyInfo } from './d2gs/s2c/party.ts'
 export { decode0x81AssignMerc } from './d2gs/s2c/merc.ts'
 export { encodeMcpGameList } from './mcp/packets.ts'
-export { decodeD2gsItemPacket, encodeD2gsItemPacket } from './d2gs/items/item-bitstream.ts'
+export {
+  decodeD2gsItemPacket,
+  decodeItemBitstream,
+  decodeItemBitstreamWithLength,
+  encodeD2gsItemPacket,
+  encodeItemBitstream,
+  type DecodeItemBitstreamOptions,
+  type DecodedItemBitstreamResult,
+  type ItemBitstreamEncodeOptions,
+  type ItemPacketHeaderMeta,
+} from './d2gs/items/item-bitstream.ts'
+export {
+  createLocalServerSession,
+  getLocalLobbyProvider,
+  getLocalServerFactory,
+  registerLocalLobbyProvider,
+  registerLocalServerFactory,
+} from './domain/lobby.ts'
+export {
+  D2gsAdapter,
+  D2gsAdapter as D2gsServerAdapter,
+  type D2gsAdapterOptions,
+  type D2gsStreamAdapterOptions,
+} from './d2gs/adapter.ts'
+export { D2gsC2sFramer } from './d2gs/framing-c2s.ts'
+export { D2gsSession, type D2gsSessionOptions, type D2gsSessionState } from './d2gs/session.ts'
+export { TsClientAdapter, TsServerAdapter } from './ts/adapter.ts'
+export { TsFramer, encodeTsFrame, tsJsonReplacer, tsJsonReviver } from './ts/framing.ts'
 
 import { ByteWriter } from './core/byte-writer.ts'
 import { resolveS2cPacketSize } from './d2gs/framing-s2c.ts'
@@ -340,6 +392,9 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
   if (!ev || typeof ev !== 'object') return []
   const e = ev as Record<string, any>
   switch (e.type) {
+    case 'GameLogonAck':
+      return [new Uint8Array([0x04])]
+
     case 'ActDataLoaded':
     case 'LoadAct': {
       const w = new ByteWriter(12)
@@ -354,8 +409,9 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
     case 'PlayerAssign':
     case 'EntitySpawn':
     case 'UnitAssign': {
-      const uType = e.unit ? unitTypeToId(e.unit.unitType) : Number(e.unitType ?? 0)
-      const uId = Number(e.unit?.id ?? e.unitId ?? 1) >>> 0
+      const rawType = e.unit?.unitType ?? e.unitType ?? (e.type === 'PlayerAssign' ? 0 : 0)
+      const uType = typeof rawType === 'string' ? unitTypeToId(rawType as UnitType) : Number(rawType)
+      const uId = Number(e.unit?.id ?? e.unitId ?? e.id ?? 1) >>> 0
       const classId = Number(e.unit?.classId ?? e.classId ?? 0)
       const x = Number(e.unit?.x ?? e.x ?? 0) & 0xffff
       const y = Number(e.unit?.y ?? e.y ?? 0) & 0xffff
@@ -398,6 +454,21 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
       w.u8(0)
       w.u16LE(cx)
       w.u16LE(cy)
+      return [w.toUint8Array()]
+    }
+
+    case 'UnitReassign': {
+      const uType = typeof e.unitType === 'string' ? unitTypeToId(e.unitType as UnitType) : Number(e.unitType ?? 0)
+      const uId = Number(e.id ?? e.unitId ?? 1) >>> 0
+      const x = Number(e.at?.x ?? e.x ?? 0) & 0xffff
+      const y = Number(e.at?.y ?? e.y ?? 0) & 0xffff
+      const w = new ByteWriter(11)
+      w.u8(0x15)
+      w.u8(uType & 0xff)
+      w.u32LE(uId)
+      w.u16LE(x)
+      w.u16LE(y)
+      w.u8(e.snap || e.revalidate ? 1 : 0)
       return [w.toUint8Array()]
     }
 

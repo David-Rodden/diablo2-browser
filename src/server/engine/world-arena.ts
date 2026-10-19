@@ -6,7 +6,7 @@
  *   with exact 1.13c `UnitStatList`, `StateBus`, and `AnimDispatcher`.
  * - 4 Target Dummies (`dummy-normal`, `dummy-undead`, `dummy-demon`, `dummy-immune`)
  *   and 3 Targetable Monster Corpses (`corpse-1`, `corpse-2`, `corpse-3`).
- * - Exposes the `ArenaDebugState` (`window.__d2webArena`) inspection & `triggerCast()` API.
+ * - Exposes the `ArenaDebugState` (`__d2webArena`) inspection & `triggerCast()` API.
  */
 import type { D2DataRegistry } from '../../common/data/data-registry.ts'
 import { FIXED_ONE, UnitStatList } from './stat-list.ts'
@@ -418,7 +418,7 @@ export class WorldArena {
   }
 
   /**
-   * Return the complete `ArenaDebugState` snapshot for `window.__d2webArena` & automated tests.
+   * Return the complete `ArenaDebugState` snapshot for `__d2webArena` & automated tests.
    */
   getDebugState(): ArenaDebugState {
     const anim = this.animDispatcher.getCurrentAnimation()

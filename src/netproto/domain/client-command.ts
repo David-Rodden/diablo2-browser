@@ -5,7 +5,13 @@
 import type { Hand, Pt, UnitRef, UnitType } from './ids.ts'
 
 export type ClientCommand =
-  | { readonly type: 'Move'; readonly run: boolean; readonly to: Pt }
+  | {
+      readonly type: 'Move'
+      readonly run?: boolean | undefined
+      readonly to?: Pt | undefined
+      readonly x?: number | undefined
+      readonly y?: number | undefined
+    }
   | { readonly type: 'WalkToLocation'; readonly x: number; readonly y: number }
   | { readonly type: 'RunToLocation'; readonly x: number; readonly y: number }
   | { readonly type: 'MoveToUnit'; readonly run: boolean; readonly target: UnitRef }
@@ -33,6 +39,14 @@ export type ClientCommand =
   | { readonly type: 'CastLeftSkillOnLocation'; readonly x: number; readonly y: number }
   /** Press (non-hold) right skill on location: 0x0C (1.13c D2Client 0x6facaa4a). */
   | { readonly type: 'CastRightSkillOnLocation'; readonly x: number; readonly y: number }
+  | {
+      readonly type: 'CastSkillAtLocation'
+      readonly skillId: number
+      readonly x: number
+      readonly y: number
+      readonly hand?: Hand | undefined
+      readonly hold?: boolean | undefined
+    }
   /**
    * Skill on unit, 1.13c D2Client 0x6faca060 SendSkillPacket(bOnUnit=1):
    * L 0x06 / shift 0x07 / hold 0x09 / shift+hold 0x0A; R 0x0D / 0x0E / 0x10 / 0x11.
@@ -48,9 +62,19 @@ export type ClientCommand =
   | { readonly type: 'CastLeftSkillOnTarget'; readonly unitKind: UnitType; readonly unitId: number }
   | { readonly type: 'CastRightSkillOnTarget'; readonly unitKind: UnitType; readonly unitId: number }
   | {
+      readonly type: 'CastSkillOnTarget'
+      readonly skillId: number
+      readonly targetType: UnitType
+      readonly targetId: number
+      readonly hand?: Hand | undefined
+      readonly shift?: boolean | undefined
+      readonly hold?: boolean | undefined
+    }
+  | {
       readonly type: 'SelectSkill'
       readonly hand: Hand
-      readonly skill: number
+      readonly skill?: number | undefined
+      readonly skillId?: number | undefined
       readonly itemId?: number | undefined
     }
   /** 0x51 AssignSkillHotkey (9B, D2Client.dll 0x6faed2b6): bind or unbind (skill=0xffff) a skill hotkey slot (0..15). */
@@ -64,6 +88,11 @@ export type ClientCommand =
   /** 0x53 TurnOnRun / 0x54 TurnOffRun (1B, D2Client.dll 0x6faeae40 / 0x6faeadf0). */
   | { readonly type: 'RunToggle'; readonly run: boolean }
   | { readonly type: 'Interact'; readonly target: UnitRef }
+  | {
+      readonly type: 'InteractEntity'
+      readonly targetType: UnitType | 'warp'
+      readonly targetId: number
+    }
   | { readonly type: 'OperateObject'; readonly objectId: number }
   | { readonly type: 'TakeWarp'; readonly warpId: number; readonly at?: Pt | undefined }
   | { readonly type: 'WarpTo'; readonly warpId: number; readonly unitType?: number | undefined }
@@ -80,7 +109,19 @@ export type ClientCommand =
       readonly y: number
       readonly buffer: number
     }
-  | { readonly type: 'ItemEquip'; readonly itemId: number; readonly slot: number }
+  | {
+      readonly type: 'ItemMove'
+      readonly itemId: number
+      readonly container: 'inventory' | 'stash' | 'cube' | 'belt'
+      readonly x: number
+      readonly y: number
+    }
+  | {
+      readonly type: 'ItemEquip'
+      readonly itemId: number
+      readonly slot?: number | undefined
+      readonly bodyLoc?: number | undefined
+    }
   | { readonly type: 'ItemUnequip'; readonly slot: number }
   | { readonly type: 'ItemSwap'; readonly itemId: number; readonly slot: number }
   | { readonly type: 'ItemSwap2Handed'; readonly itemId: number; readonly slot: number }
@@ -144,7 +185,7 @@ export type ClientCommand =
     }
   | {
       readonly type: 'NpcAction'
-      readonly action: number
+      readonly action: number | string
       readonly npcId: number
       readonly param?: number | undefined
       readonly complement?: number | undefined
@@ -154,18 +195,25 @@ export type ClientCommand =
       readonly type: 'NpcBuy'
       readonly npcId: number
       readonly itemId: number
-      readonly itemMode: number
-      readonly gamble: boolean
-      readonly shiftFill: boolean
-      readonly cost: number
+      readonly itemMode?: number | undefined
+      readonly buyType?: number | undefined
+      readonly gamble?: boolean | undefined
+      readonly shiftFill?: boolean | undefined
+      readonly cost?: number | undefined
+    }
+  | {
+      readonly type: 'NpcGamble'
+      readonly npcId: number
+      readonly itemId: number
+      readonly cost?: number | undefined
     }
   | {
       /** 0x33 SellItem; field3 = itemMode. */
       readonly type: 'NpcSell'
       readonly npcId: number
       readonly itemId: number
-      readonly itemMode: number
-      readonly cost: number
+      readonly itemMode?: number | undefined
+      readonly cost?: number | undefined
     }
   | {
       /** 0x35 Repair one item: field3 = itemMode, field4 = current durability (stat 72). */
@@ -186,7 +234,14 @@ export type ClientCommand =
   | { readonly type: 'HireMerc'; readonly npcId: number; readonly mercId: number }
   | { readonly type: 'MercHire'; readonly npcId: number; readonly mercId: number }
   | { readonly type: 'AddStatPoint'; readonly statId: number; readonly count?: number | undefined }
+  | {
+      readonly type: 'AllocateStat'
+      readonly statId: number
+      readonly amount?: number | undefined
+      readonly count?: number | undefined
+    }
   | { readonly type: 'AddSkillPoint'; readonly skillId: number }
+  | { readonly type: 'AllocateSkill'; readonly skillId: number }
   | { readonly type: 'WaypointGo'; readonly waypointId: number; readonly destAreaId: number }
   | { readonly type: 'TownPortal' }
   /** 0x4F ClickButton: see `ClickButtonId` (0x12 close stash, 0x13 withdraw, 0x14 deposit, 0x18 transmute). */
@@ -220,10 +275,17 @@ export type ClientCommand =
       readonly playerUnitId?: number | undefined
     }
   | { readonly type: 'Resurrect' }
+  | { readonly type: 'Respawn' }
   | { readonly type: 'SwapWeapons' }
   | { readonly type: 'Ping' }
   | { readonly type: 'LeaveGame' }
   /** 0x48 CancelController (1B, D2Client.dll 0x6fb39a04 / D2Game.dll 0x6fceb4e0): clears pPlayerData->bBusy (+0x4c) on server upon act transition (S2C 0x61 CanGoToAct). */
   | { readonly type: 'CancelController' }
+  | PauseGameCommand
 
-
+export interface PauseGameCommand {
+  readonly type: 'PauseGame'
+  readonly kind?: 'pauseGame' | undefined
+  readonly tick?: number | undefined
+  readonly paused: boolean
+}

@@ -183,6 +183,7 @@ export interface ItemData {
   readonly stats: readonly ItemStat[]
   readonly setBonusStats: readonly SetBonusStatList[]
   readonly runewordStats: readonly ItemStat[]
+  readonly socketedItems?: readonly ItemData[] | undefined
 }
 
 export interface ItemStatCostMeta {

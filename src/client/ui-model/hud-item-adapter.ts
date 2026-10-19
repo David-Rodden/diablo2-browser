@@ -523,22 +523,29 @@ export function clientUnitToMonsterTargetInfo(
     }
   }
 
-  const modifiers = rawModIds.map(
-    (m) =>
+  // D2Client.dll 0x6fb6fca0 & wMonUModStrTable (.data:0x6fba9f88): only the 14 displayed elite
+  // MonUMod IDs (5..9, 17, 18, 24..30), the 5 Champion subtypes (16, 36..39), and MonUMod 12
+  // (Blood Raven title override at 0x6fad08f8) affect the HUD lifebar title/subtext; internal
+  // server/death-FX MonUMod IDs (e.g. 22 questcomplete, 15 killminionsdeath, 4 leveladd) have
+  // wMonUModStrTable[id] == 0 and must never leak as raw numbers into the HUD.
+  const modifiers = rawModIds.flatMap((m) => {
+    const name =
       CANONICAL_CHAMPION_MODIFIERS.find((e) => e.id === m)?.name ??
-      CANONICAL_ELITE_MODIFIERS.find((e) => e.id === m)?.name ??
-      String(m),
-  )
-  const affixes = rawModIds.map((m) => {
+      CANONICAL_ELITE_MODIFIERS.find((e) => e.id === m)?.name
+    if (name) return [name]
+    if (m === 12) return ['12']
+    return []
+  })
+  const affixes = rawModIds.flatMap((m) => {
     const key = String(m)
     const entry =
       MONSTER_UMOD_TBL_KEYS[key] ??
       CANONICAL_CHAMPION_MODIFIERS.find((e) => e.id === m) ??
       CANONICAL_ELITE_MODIFIERS.find((e) => e.id === m)
     if (entry) {
-      return lookupMonsterTblString(entry.tblKey, 'en') ?? entry.label
+      return [lookupMonsterTblString(entry.tblKey, 'en') ?? entry.label]
     }
-    return `Mod #${m}`
+    return []
   })
 
   const descKey =

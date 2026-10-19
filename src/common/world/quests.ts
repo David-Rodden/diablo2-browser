@@ -83,7 +83,7 @@ export class QuestLog {
   /**
    * @param quests - the quests the log tracks.
    */
-  constructor(quests: readonly QuestDef[]) {
+  constructor(quests: readonly QuestDef[] = []) {
     for (const quest of quests) {
       this.progress.set(quest.id, { def: quest, status: 'inactive', kills: 0 })
     }

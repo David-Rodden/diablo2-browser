@@ -50,6 +50,8 @@ function resolveDefaultNodeMpqDir(): string {
     'samples/d2',
     resolve(import.meta.dirname, '..', '..', 'samples', 'd2'),
     resolve(import.meta.dirname, '..', '..', '..', '..', 'samples', 'd2'),
+    '/usr/local/google/home/taodao/diablo2-web/samples/d2',
+    '/usr/local/google/home/taodao/d2-data',
   ]
   for (const candidate of candidates) {
     if (existsSync(join(candidate, 'd2data.mpq'))) {
@@ -150,46 +152,38 @@ export class NodeMpqArchiveSource implements ArchiveSource {
   }
 }
 
-let cachedNodeMountedPromise: Promise<MountedArchives> | null = null
-let cachedNodeRegistryPromise: Promise<D2DataRegistry> | null = null
+let cachedNodeMounted: MountedArchives | null = null
+let cachedNodeRegistry: D2DataRegistry | null = null
 
 export function resetSharedDataRegistryCache(): void {
-  cachedNodeMountedPromise = null
-  cachedNodeRegistryPromise = null
+  cachedNodeMounted = null
+  cachedNodeRegistry = null
   resetCommonSharedDataRegistryCache()
 }
 
-export async function getSharedMountedArchives(
+export function getSharedMountedArchives(
   baseDirOrSource: string | ArchiveSource | MountedArchives = DEFAULT_NODE_MPQ_DIR,
-): Promise<MountedArchives> {
+): MountedArchives {
   if (typeof baseDirOrSource === 'object' && baseDirOrSource !== null) {
     return getCommonSharedMountedArchives(baseDirOrSource)
   }
-  if (cachedNodeMountedPromise !== null) return cachedNodeMountedPromise
-  cachedNodeMountedPromise = (async () => {
-    const mounted = mountNodeArchives(baseDirOrSource)
-    getCommonSharedMountedArchives(mounted)
-    return mounted
-  })().catch(err => {
-    cachedNodeMountedPromise = null
-    throw err
-  })
-  return cachedNodeMountedPromise
+  if (cachedNodeMounted !== null) return cachedNodeMounted
+  const mounted = mountNodeArchives(baseDirOrSource)
+  getCommonSharedMountedArchives(mounted)
+  cachedNodeMounted = mounted
+  return mounted
 }
 
-export async function getSharedDataRegistry(
+export function getSharedDataRegistry(
   baseDirOrSource: string | ArchiveSource | MountedArchives = DEFAULT_NODE_MPQ_DIR,
-): Promise<D2DataRegistry> {
+): D2DataRegistry {
   if (typeof baseDirOrSource === 'object' && baseDirOrSource !== null) {
     return getCommonSharedDataRegistry(baseDirOrSource)
   }
-  if (cachedNodeRegistryPromise !== null) return cachedNodeRegistryPromise
-  cachedNodeRegistryPromise = (async () => {
-    const mounted = await getSharedMountedArchives(baseDirOrSource)
-    return getCommonSharedDataRegistry(mounted)
-  })().catch(err => {
-    cachedNodeRegistryPromise = null
-    throw err
-  })
-  return cachedNodeRegistryPromise
+  if (cachedNodeRegistry !== null) return cachedNodeRegistry
+  const mounted = getSharedMountedArchives(baseDirOrSource)
+  const reg = getCommonSharedDataRegistry(mounted)
+  cachedNodeRegistry = reg
+  return reg
 }
+

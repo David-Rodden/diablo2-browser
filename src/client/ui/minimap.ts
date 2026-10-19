@@ -47,7 +47,7 @@ import {
 
 export type { AutomapLayerData }
 import { lookupTbl } from '../i18n/lang.ts'
-import { reportMissingArt } from '../scene/world-renderer.ts'
+import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import type { D2ColorCode, D2FontRenderer } from './font.ts'
 
 export type AutomapCrosshairSegment = {

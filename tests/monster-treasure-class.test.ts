@@ -14,7 +14,7 @@ import {
 } from '../src/common/items/drop-tables.ts'
 import { resolveTreasureClassGroup } from '../src/common/items/treasure-class.ts'
 import { effectiveMF } from '../src/common/items/item-ratio.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 import { createItem, type ItemBase } from '../src/common/items/items.ts'
 import { D2Rng, Rng } from '../src/common/rng/d2-rng.ts'
 

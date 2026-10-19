@@ -152,7 +152,7 @@ export class MonsterStreamingManager {
    * being scattered across the whole level. Sets `bPopulated = true` to
    * guarantee idempotency.
    */
-  private populateRoom(room: StreamingRoomState): void {
+  protected populateRoom(room: StreamingRoomState): void {
     if (room.bPopulated) return
 
     const startIndex = this.world.monsters.length

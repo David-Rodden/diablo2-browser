@@ -48,6 +48,33 @@ export const DRUID_SHAPESHIFT_SKILL_IDS = {
   FURY: 248,
 } as const
 
+/**
+ * 1.13c Skills.txt `cltoverlaya` / `cltoverlayb` for the druid transforms (Overlay.txt rows,
+ * `expansion\druidmorph`): `into` plays when the form is entered, `undo` when it is left.
+ */
+export const DRUID_TRANSFORM_CLT_OVERLAYS_113C: Readonly<
+  Record<223 | 228, { readonly into: string; readonly undo: string }> & {
+    readonly werewolf: number
+    readonly werebear: number
+  }
+> = Object.freeze(
+  Object.defineProperties(
+    {
+      223: Object.freeze({ into: 'wolf_into', undo: 'wolf_undo' }),
+      228: Object.freeze({ into: 'bear_into', undo: 'bear_undo' }),
+    },
+    {
+      werewolf: { value: 423, enumerable: false, writable: false },
+      werebear: { value: 424, enumerable: false, writable: false },
+    },
+  ),
+) as Readonly<
+  Record<223 | 228, { readonly into: string; readonly undo: string }> & {
+    readonly werewolf: number
+    readonly werebear: number
+  }
+>
+
 // --- Interfaces for Skill Calculations ---
 
 export interface WerewolfStats {

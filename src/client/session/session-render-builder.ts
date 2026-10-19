@@ -278,14 +278,13 @@ export function tickSessionFrame(
 
   const hasCollisionConstraint =
     host.levelView !== undefined ||
-    host.world.areaId > 0 ||
     host.world.getRevealedAreaIds().length > 0 ||
     Boolean(host.mapService) ||
     Boolean(host.automapView.getLevelView()) ||
     host.world.hasExplicitBlockedSubTiles()
   host.interpolator.update(
     clampedDt,
-    hasCollisionConstraint ? (x, y) => host.world.isSubTileBlocked(x, y) : undefined,
+    hasCollisionConstraint ? (x, y) => host.world.isSubTileBlocked(x, y) : () => false,
   )
   for (const state of host.interpolator.getAllStates()) {
     if (state.dead || state.unitType === 1) continue

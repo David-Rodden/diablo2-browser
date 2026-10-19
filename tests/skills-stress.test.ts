@@ -23,7 +23,7 @@ import {
   calculateSynergyMultiplier,
   type SkillTreeState,
 } from '../src/common/skills/skill-tree.ts'
-import type { CombatPlayer } from '../src/server/engine/combat.ts'
+import type { CombatPlayer } from '../src/server/ai/monster-ai.ts'
 
 function makeTestPlayer(overrides?: Partial<CombatPlayer>): CombatPlayer {
   return {

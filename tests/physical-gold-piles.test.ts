@@ -6,7 +6,7 @@ import {
 } from '../src/client/ui/inventory.ts'
 import { BAKED_UI_MANIFEST } from '../src/common/items/baked-ui-meta.ts'
 import { goldItem } from '../src/common/items/items.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 
 function createTestEngine(playerLevel = 1, initialGold = 0): GameEngine {
   const engine = new GameEngine(

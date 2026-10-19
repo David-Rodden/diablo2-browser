@@ -44,8 +44,8 @@ import {
   resolveCharacterAppearance,
 } from '../src/common/units/char-appearance.ts'
 import { buildSceneDrawables } from '../src/client/view/unit-drawables.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 
 function fireActionFrame(world: ClientWorld, unitKey: string): void {
   const cs = world.units.get(unitKey)?.castState

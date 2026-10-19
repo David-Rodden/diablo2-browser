@@ -15,7 +15,7 @@ import { StatList } from '../../../src/client/world/stat-list.ts'
 import { spawnMissilesForSkillImpl } from '../../../src/client/world/world-skill-missiles.ts'
 import { UnitStatList, FIXED_ONE } from '../../../src/server/engine/stat-list.ts'
 import { StateBus } from '../../../src/server/engine/state-bus.ts'
-import { GameEngine } from '../../../src/server/engine/engine.ts'
+import { GameEngine } from '../../../src/server/engine/game-engine.ts'
 import { DEMO_EXPERIENCE, DEMO_SKILLS, DEMO_QUESTS } from '../../../src/common/data/demo-data.ts'
 import {
   calculateHowlStats,
@@ -33,7 +33,7 @@ import {
 } from '../../../src/server/skills/barbarian-warcries.ts'
 import { executeSkill } from '../../../src/server/skills/skills.ts'
 import { evaluateSkillCore113c, executeSkillCore113c } from '../../../src/server/skills/registry.ts'
-import { castSkill as castSceneSkill } from '../../../src/server/scene/skill-caster.ts'
+import { castSkill as castSceneSkill } from '../../../src/server/skills/skills.ts'
 
 describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', () => {
   it('Layer 1: verifies Missiles.txt entries, Overlays.txt entries, mana costs, and zero casting delays', () => {

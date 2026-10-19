@@ -14,7 +14,7 @@ import {
   ORTHO_CELL_HEIGHT,
   type CollisionGrid,
 } from '../src/common/world/d2map.ts'
-import { GameEngine, worldToCell } from '../src/server/engine/engine.ts'
+import { GameEngine, worldToCell } from '../src/server/engine/game-engine.ts'
 
 describe('Issue #422: Grid Quadrant Spiral Drop Coordinates (1.13c Parity)', () => {
   describe('Suite 1: Discrete Collision Grid Quadrant Spiral Search', () => {

@@ -255,12 +255,16 @@ describe('Diablo II v1.13c In-Game Escape Menu (D2Client.dll gmenu.cpp 0x6fb13b0
     mapper.handleKeyDown({ key: 'ArrowUp' })
     expect(hudManager.escapeMenuSelectedIndex).toBe(2)
 
-    // 5. ArrowDown moves selection 2 -> wraps to 0 (Options); Enter activates Options (stays open)
+    // 5. ArrowDown moves selection 2 -> wraps to 0 (Options); Enter activates Options (enters 'options' submenu, Escape returns to 'main')
     mapper.handleKeyDown({ key: 'ArrowDown' })
     expect(hudManager.escapeMenuSelectedIndex).toBe(0)
     mapper.handleKeyDown({ key: 'Enter' })
     expect(actions).toEqual(['options'])
     expect(hudManager.escapeMenuOpen).toBe(true)
+    expect(hudManager.escapeMenuScreen).toBe('options')
+    mapper.handleKeyDown({ key: 'Escape' })
+    expect(hudManager.escapeMenuOpen).toBe(true)
+    expect(hudManager.escapeMenuScreen).toBe('main')
 
     // 6. Click on Row 2 (Return to Game at y=300) -> closes Escape menu
     mapper.handlePointerDown(400, 300, 0)

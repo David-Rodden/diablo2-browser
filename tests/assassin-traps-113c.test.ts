@@ -14,7 +14,7 @@ import { MissileEngine } from '../src/server/engine/missile-engine.ts'
 import { FIXED_ONE, UnitStatList } from '../src/server/engine/stat-list.ts'
 import { StateBus } from '../src/server/engine/state-bus.ts'
 import { WorldArena } from '../src/server/engine/world-arena.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
 import {
   calcBladeFury113c,
   calcBladeSentinel113c,

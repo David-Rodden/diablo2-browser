@@ -23,7 +23,7 @@ import { buildSceneDrawables } from '../src/client/view/unit-drawables.ts'
 import type { ClientUnit } from '../src/client/world/client-unit.ts'
 import { ClientWorld } from '../src/client/world/client-world.ts'
 import { createActiveOverlay } from '../src/common/skills/missiles-data.ts'
-import { castSkill } from '../src/server/scene/skill-caster.ts'
+import { castSkill } from '../src/server/skills/skills.ts'
 
 const OVERLAY_TXT_NAME_SET: ReadonlySet<string> = new Set(
   OVERLAY_TXT_ROWS.map((r) => r.name.trim().toLowerCase()),

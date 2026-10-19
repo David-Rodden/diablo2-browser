@@ -7,17 +7,43 @@ import { Emitter } from '../core/emitter.ts'
 import type { TextEncoding } from '../core/text-codec.ts'
 import type { ClientCommand } from '../domain/client-command.ts'
 import type { GameServerAdapter, GameServerStats } from '../domain/game-server-adapter.ts'
-import type { ItemDataTables } from '../domain/ids.ts'
+import type { CharClassId, ItemDataTables } from '../domain/ids.ts'
 import type { ServerEvent } from '../domain/server-event.ts'
-import type { CloseReason } from '../transport/byte-stream.ts'
+import type { ByteStream, CloseReason } from '../transport/byte-stream.ts'
 import { decodeD2gsS2cPacket, encodeD2gsClientCommand } from './registry.ts'
-import type { D2gsSession } from './session.ts'
+import { D2gsSession } from './session.ts'
 
 export interface D2gsAdapterOptions {
   readonly session: D2gsSession
   readonly tables: ItemDataTables
   readonly encoding?: TextEncoding | undefined
   readonly clock?: Clock | undefined
+}
+
+export interface D2gsStreamAdapterOptions {
+  readonly charName?: string | undefined
+  readonly classId?: CharClassId | number | string | undefined
+  readonly charClass?: CharClassId | number | undefined
+  readonly gameHash?: number | undefined
+  readonly gameToken?: number | undefined
+  readonly tables?: ItemDataTables | undefined
+  readonly encoding?: TextEncoding | undefined
+  readonly clock?: Clock | undefined
+}
+
+const DEFAULT_ADAPTER_TABLES: ItemDataTables = {
+  itemStatCost: new Map(),
+  armor: new Map(),
+  weapons: new Map(),
+  misc: new Map(),
+  getStatMeta: () => undefined,
+  getStatCost: () => undefined,
+  getItemBaseMeta: () => undefined,
+  getItemMeta: () => undefined,
+}
+
+function isByteStream(arg: D2gsAdapterOptions | ByteStream): arg is ByteStream {
+  return typeof (arg as ByteStream).onData === 'function' && typeof (arg as ByteStream).write === 'function'
 }
 
 /** Reports a failed S2C packet loudly: stage, opcode, raw hex and the error stack. */
@@ -42,11 +68,35 @@ export class D2gsAdapter implements GameServerAdapter {
   private protocolErrorsCount = 0
   private listenerErrorsCount = 0
 
-  constructor(options: D2gsAdapterOptions) {
-    this.session = options.session
-    this.tables = options.tables
-    this.encoding = options.encoding ?? 'gbk'
-    this.clock = options.clock ?? defaultClock
+  constructor(
+    optionsOrStream: D2gsAdapterOptions | ByteStream,
+    streamOptions?: D2gsStreamAdapterOptions,
+  ) {
+    if (isByteStream(optionsOrStream)) {
+      this.encoding = streamOptions?.encoding ?? 'gbk'
+      this.clock = streamOptions?.clock ?? defaultClock
+      this.tables = streamOptions?.tables ?? DEFAULT_ADAPTER_TABLES
+      const rawClass = streamOptions?.classId ?? streamOptions?.charClass ?? 0
+      const charClass = (typeof rawClass === 'number' ? (rawClass & 0x07) : 0) as CharClassId
+      this.session = new D2gsSession({
+        stream: optionsOrStream,
+        logon: {
+          gameHash: streamOptions?.gameHash ?? 0,
+          gameToken: streamOptions?.gameToken ?? 1,
+          charClass,
+          versionByte: 0x0d,
+          charName: streamOptions?.charName ?? 'Hero',
+        },
+        clock: this.clock,
+        pingIntervalMs: 60_000,
+      })
+      this.session.sendRawPacket(new Uint8Array([0x6b]))
+    } else {
+      this.session = optionsOrStream.session
+      this.tables = optionsOrStream.tables
+      this.encoding = optionsOrStream.encoding ?? 'gbk'
+      this.clock = optionsOrStream.clock ?? defaultClock
+    }
 
     this.session.onPacket((pkt) =>
       this.handlePacket(pkt),

@@ -7,8 +7,8 @@
  * screenshot.
  */
 import { describe, expect, it } from 'vitest'
-import { createWorld, spawnMonsterPacks, spawnMonsters } from '../src/server/engine/combat.ts'
-import type { CombatTerrain, MonsterPack, MonsterStats } from '../src/server/engine/combat.ts'
+import { createWorld, spawnMonsterPacks, spawnMonsters } from '../src/server/ai/monster-ai.ts'
+import type { CombatTerrain, MonsterPack, MonsterStats } from '../src/server/ai/monster-ai.ts'
 
 /** Open ground everywhere. */
 const OPEN: CombatTerrain = { overlap: () => 0 }

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 import { DEMO_EXPERIENCE, DEMO_SKILLS, DEMO_QUESTS } from '../src/common/data/demo-data.ts'
 import type { GroundItemEntity } from '../src/common/items/ground-items.ts'
 import { seedDemoBeltPotions } from './fixtures/demo-profile-data.ts'

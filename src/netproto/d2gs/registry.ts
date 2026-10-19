@@ -445,8 +445,10 @@ export function encodeD2gsClientCommand(
   tickCount = 0,
 ): readonly Uint8Array[] {
   switch (cmd.type) {
-    case 'Move':
-      return [encodeC2sMove(cmd.run, cmd.to)]
+    case 'Move': {
+      const to = cmd.to ?? { x: Number(cmd.x ?? 0), y: Number(cmd.y ?? 0) }
+      return [encodeC2sMove(Boolean(cmd.run), to)]
+    }
     case 'WalkToLocation':
       return [encodeC2sMove(false, { x: cmd.x, y: cmd.y })]
     case 'RunToLocation':
@@ -466,6 +468,8 @@ export function encodeD2gsClientCommand(
     case 'SkillAt':
       // 1.13c D2Client 0x6faca060: location opcode = f(hand, hold) — 0x05/0x08/0x0C/0x0F, no shift variant.
       return [encodeC2sSkillAt(cmd.hand, cmd.at, cmd.hold)]
+    case 'CastSkillAtLocation':
+      return [encodeC2sSkillAt(cmd.hand ?? 'right', { x: cmd.x, y: cmd.y }, Boolean(cmd.hold))]
     case 'CastLeftSkillOnLocation':
       // Press, not hold: 0x05 (1.13c D2Client 0x6faca886).
       return [encodeC2sSkillAt('left', { x: cmd.x, y: cmd.y }, false)]
@@ -475,18 +479,31 @@ export function encodeD2gsClientCommand(
     case 'SkillOn':
       // 1.13c D2Client 0x6faca060: unit opcode = f(hand, shift, hold) — 0x06/07/09/0A, 0x0D/0E/10/11.
       return [encodeC2sSkillOnUnit(cmd.hand, cmd.target, cmd.shift, cmd.hold)]
+    case 'CastSkillOnTarget':
+      return [
+        encodeC2sSkillOnUnit(
+          cmd.hand ?? 'right',
+          { unitType: cmd.targetType as any, id: cmd.targetId },
+          Boolean(cmd.shift),
+          Boolean(cmd.hold),
+        ),
+      ]
     case 'CastLeftSkillOnTarget':
       return [encodeC2sSkillOnUnit('left', { unitType: cmd.unitKind, id: cmd.unitId }, false, false)]
     case 'CastRightSkillOnTarget':
       return [encodeC2sSkillOnUnit('right', { unitType: cmd.unitKind, id: cmd.unitId }, false, false)]
     case 'SelectSkill':
-      return [encodeC2sSelectSkill(cmd.hand, cmd.skill, cmd.itemId)]
+      return [encodeC2sSelectSkill(cmd.hand, Number(cmd.skill ?? cmd.skillId ?? 0), cmd.itemId)]
     case 'AssignSkillHotkey':
       return [encodeC2sAssignSkillHotkey(cmd.slot, cmd.hand, cmd.skill, cmd.itemId)]
     case 'RunToggle':
       return [encodeC2sRunToggle(cmd.run)]
     case 'Interact':
       return [encodeC2sInteract(cmd.target)]
+    case 'InteractEntity': {
+      const unitType = cmd.targetType === 'warp' ? 5 : (cmd.targetType as any)
+      return [encodeC2sInteract({ unitType, id: cmd.targetId })]
+    }
     case 'OperateObject':
       return [encodeC2sInteract({ unitType: 2, id: cmd.objectId })]
     case 'TakeWarp':
@@ -504,8 +521,12 @@ export function encodeD2gsClientCommand(
       return [encodeC2sItemToCursor(cmd.itemId)]
     case 'ItemPlace':
       return [encodeC2sItemPlace(cmd.itemId, cmd.x, cmd.y, cmd.buffer)]
+    case 'ItemMove': {
+      const buf = cmd.container === 'stash' ? 4 : cmd.container === 'cube' ? 3 : 0
+      return [encodeC2sItemPlace(cmd.itemId, cmd.x, cmd.y, buf)]
+    }
     case 'ItemEquip':
-      return [encodeC2sItemEquip(cmd.itemId, cmd.slot)]
+      return [encodeC2sItemEquip(cmd.itemId, Number(cmd.slot ?? cmd.bodyLoc ?? 0))]
     case 'ItemUnequip':
       return [encodeC2sItemUnequip(cmd.slot)]
     case 'ItemSwap':
@@ -554,12 +575,48 @@ export function encodeD2gsClientCommand(
       return [encodeC2sNpcEntityAction(NpcActionId.Gamble, cmd.npcId, 0)]
     case 'NpcEntityAction':
       return [encodeC2sNpcEntityAction(cmd.action, cmd.npcId, cmd.complement ?? 0)]
-    case 'NpcAction':
-      return [encodeC2sNpcEntityAction(cmd.action, cmd.npcId, cmd.complement ?? cmd.param ?? 0)]
+    case 'NpcAction': {
+      const actionNum =
+        typeof cmd.action === 'number'
+          ? cmd.action
+          : cmd.action === 'gamble'
+            ? NpcActionId.Gamble
+            : cmd.action === 'hire'
+              ? NpcActionId.Hire
+              : NpcActionId.Trade
+      return [encodeC2sNpcEntityAction(actionNum, cmd.npcId, cmd.complement ?? cmd.param ?? 0)]
+    }
     case 'NpcBuy':
-      return [encodeC2sNpcBuy(cmd)]
+      return [
+        encodeC2sNpcBuy({
+          npcId: cmd.npcId,
+          itemId: cmd.itemId,
+          itemMode: cmd.itemMode ?? 0,
+          gamble: Boolean(cmd.gamble ?? cmd.buyType === 2),
+          shiftFill: Boolean(cmd.shiftFill),
+          cost: cmd.cost ?? 0,
+        }),
+      ]
+    case 'NpcGamble':
+      return [
+        encodeC2sNpcBuy({
+          npcId: cmd.npcId,
+          itemId: cmd.itemId,
+          itemMode: 0,
+          gamble: true,
+          shiftFill: false,
+          cost: cmd.cost ?? 0,
+        }),
+      ]
     case 'NpcSell':
-      return [encodeC2sNpcSell(cmd)]
+      return [
+        encodeC2sNpcSell({
+          npcId: cmd.npcId,
+          itemId: cmd.itemId,
+          itemMode: cmd.itemMode ?? 0,
+          cost: cmd.cost ?? 0,
+        }),
+      ]
     case 'NpcRepairItem':
       return [encodeC2sNpcRepairItem(cmd)]
     case 'NpcRepairAll':
@@ -578,7 +635,10 @@ export function encodeD2gsClientCommand(
       return [encodeC2sHireMerc(cmd.npcId, cmd.mercId)]
     case 'AddStatPoint':
       return [encodeC2sAddStatPoint(cmd.statId, cmd.count)]
+    case 'AllocateStat':
+      return [encodeC2sAddStatPoint(cmd.statId, cmd.amount ?? cmd.count ?? 1)]
     case 'AddSkillPoint':
+    case 'AllocateSkill':
       return [encodeC2sAddSkillPoint(cmd.skillId)]
     case 'WaypointGo':
       return [encodeC2sWaypointGo(cmd.waypointId, cmd.destAreaId)]
@@ -622,6 +682,7 @@ export function encodeD2gsClientCommand(
         ),
       ]
     case 'Resurrect':
+    case 'Respawn':
       return [encodeC2sResurrect()]
     case 'SwapWeapons':
       return [encodeC2sSwapWeapons()]
@@ -631,6 +692,9 @@ export function encodeD2gsClientCommand(
       return [encodeC2sLeaveGame()]
     case 'CancelController':
       return [encodeC2sCancelController()]
+    case 'PauseGame':
+    case undefined:
+      return []
   }
 }
 

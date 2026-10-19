@@ -29,7 +29,7 @@ import {
   getSkillCooldownTicks,
   BATCH1_SKILLS,
 } from '../../../src/server/skills/skills.ts'
-import { applyEnchantBuff, canCastEnchantOn } from '../../../src/server/engine/combat.ts'
+import { applyEnchantBuff, canCastEnchantOn } from '../../../src/server/ai/monster-ai.ts'
 import {
   ENCHANT_OVERLAY_META,
   FIRE_CAST_2_META,

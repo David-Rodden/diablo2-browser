@@ -28,7 +28,7 @@ import {
   type CollisionGrid,
 } from '../src/common/world/d2map.ts'
 import { createIsoTerrain } from '../src/common/world/iso-terrain.ts'
-import { GameEngine } from '../src/server/engine/engine.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
 
 function createSubTileGrid(cellsX = 12, cellsY = 12): CollisionGrid {
   const gridWidth = cellsX * 5

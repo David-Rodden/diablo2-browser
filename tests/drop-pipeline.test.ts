@@ -17,7 +17,7 @@ import {
   type MonsterKind,
 } from '../src/common/units/monsters-data.ts'
 import { resolveTreasureClassGroup } from '../src/common/items/treasure-class.ts'
-import { GameEngine, type GameEngineOptions } from '../src/server/engine/engine.ts'
+import { GameEngine, type GameEngineOptions } from '../src/server/engine/game-engine.ts'
 import { DEMO_EXPERIENCE, DEMO_SKILLS, DEMO_NPCS, DEMO_QUESTS } from '../src/common/data/demo-data.ts'
 
 const hasD2 = fs.existsSync('samples/d2/d2data.mpq')

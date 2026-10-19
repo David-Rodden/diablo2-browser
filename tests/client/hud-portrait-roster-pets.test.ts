@@ -366,8 +366,9 @@ describe('Top-Left HUD Portraits & 1.13c RosterPets Parity (Hireables.cpp)', () 
     expect(portraitY).toBe(16)
 
     // Foreground pass of mercenary name is centered at x = 40 (16 + 24), baseline nameY = 10 (drop shadows at y = 9..11)
-    expect(mercNamePasses[0]!.x).toBe(40)
-    const nameY = mercNamePasses[mercNamePasses.length - 1]!.y
+    const fgMercPass = mercNamePasses[mercNamePasses.length - 1]!
+    expect(fgMercPass.x).toBe(40)
+    const nameY = fgMercPass.y
     expect(nameY).toBe(10)
     expect(nameY).toBeLessThan(portraitY)
 

@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { decodeD2gsS2cPacket } from '../../src/netproto/d2gs/registry.ts'
 import { encode0xA3AuraSkill, serverEventToS2cPackets } from '../../src/netproto/index.ts'
-import { GameEngine } from '../../src/server/engine/engine.ts'
+import { GameEngine } from '../../src/server/engine/game-engine.ts'
 
 /** Thunder Storm (57) level 20 by player 1 on monster 42. */
 const STRIKE = Uint8Array.from([

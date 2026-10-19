@@ -1314,7 +1314,7 @@ export class MissileEngine {
   }
 
   /**
-   * Check if a target unit is currently within its `NextDelay` immunity window.
+   * Check if a target unit is currently within its `NextDelay` immunity period.
    */
   isTargetInNextDelay(targetId: string, currentTick: number): boolean {
     const exp = this.nextDelayExpireByTarget.get(targetId)

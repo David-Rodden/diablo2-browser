@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { GameEngine } from '../src/server/engine/engine.ts'
-import type { Monster } from '../src/server/engine/combat.ts'
+import { GameEngine } from '../src/server/engine/game-engine.ts'
+import type { Monster } from '../src/server/ai/monster-ai.ts'
 import { getEmbeddedDropTables } from '../src/common/items/embedded-drop-tables.ts'
 
 describe('Issue #420: Death Animation Frame Gating (1.13c Parity)', () => {
