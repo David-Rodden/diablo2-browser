@@ -4,12 +4,7 @@
 
 Diablo II: Lord of Destruction (1.13c) in your browser. It connects to real PvPGN + D2GS servers, so you play the actual game online, not a remake. On top of the base game it adds a set of optional quality-of-life mods.
 
-![Fighting in the Blood Moor with Auto-Fight on](.github/media/combat.jpg)
-
-<p>
-  <img src=".github/media/fire-bolt.jpg" width="49%" alt="A Fire Bolt landing, with loot labels and an XP gain">
-  <img src=".github/media/resists.jpg" width="49%" alt="A Zombie's health bar showing its poison resistance">
-</p>
+![Auto-Fight clearing Fallen in the Blood Moor, with loot labels and upgrade arrows](.github/media/auto-fight.jpg)
 
 ## Getting started
 
@@ -40,6 +35,24 @@ Files listed in `.upstream-filter` are left alone by the sync: `drop` keeps them
 ## Mods
 
 All mods can be switched off from the Plugins button in the toolbar. See [MODS.md](MODS.md) for the list.
+
+**Path Guide** follows your quest log and draws the way to the next step on the ground and the minimap.
+
+<p>
+  <img src=".github/media/guide-town.jpg" width="49%" alt="Path Guide in the Rogue Encampment pointing to the Blood Moor for the Den of Evil">
+  <img src=".github/media/guide-moor.jpg" width="49%" alt="Path Guide in the Blood Moor heading for the Den of Evil, with the route on the minimap">
+</p>
+
+**Item Info** puts small icons on ground labels: green arrows for upgrades, item level, sockets and ethereal.
+
+![Loot labels with upgrade arrows and item level badges](.github/media/loot-labels.jpg)
+
+**Monster Resists** adds the monster type and its resistances under the health bar. Every plugin has its own page in the Plugins menu.
+
+<p>
+  <img src=".github/media/resists.jpg" width="49%" alt="A Zombie's health bar showing Undead and its poison resistance">
+  <img src=".github/media/plugin-menu.jpg" width="49%" alt="The Plugins menu with the Path Guide settings">
+</p>
 
 ## Credits
 
