@@ -30,7 +30,10 @@ jobs:
       - name: Write the summary into the PR body
         env:
           GH_TOKEN: ${{ github.token }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SUMMARY_MODEL: ${{ vars.SUMMARY_MODEL }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
         run: |
           gh pr view "$PR" --json body,title,baseRefName > pr.json
