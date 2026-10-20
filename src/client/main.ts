@@ -93,7 +93,8 @@ import { PluginMenu } from './plugin-host/plugin-menu.ts'
 import './theme/index.css'
 import { decorateLoadingScreen } from './ui/loading-screen.ts'
 import { startPageTitle } from './ui/page-title.ts'
-import { PathGuide } from './guide/path-guide.ts'
+import type { PathGuide } from './guide/path-guide.ts'
+import { createSessionGuide } from './guide/session-guide.ts'
 import {
   OnlineSession,
   SessionLostError,
@@ -660,17 +661,7 @@ export async function startPlayApp(options?: {
       session.commandMapper.quickCastMode = enabled
     },
   }
-  const guide = new PathGuide({
-    areaId: () => session.world.areaId,
-    self: () => ({ x: session.world.self.x, y: session.world.self.y, isDead: session.world.isDead }),
-    quests: () => session.world.quests,
-    waypoints: () => session.world.waypoints,
-    levelView: () => session.mapService?.getLoadedLevelView(session.world.areaId) ?? null,
-    walkable: (view) => session.commandMapper.assists.walkableWithDoorsOpen(view),
-    objects: () => session.world.getUnitsByType(2),
-    toScreen: (x, y) => session.camera.subtileToScreen(x, y),
-    automap: () => ({ visible: minimap.visible, viewport: minimap.lastRenderStats.viewport }),
-  })
+  const guide = createSessionGuide(session, minimap)
   pathGuide = guide
   const plugins = new PluginHost({
     plugins: options?.plugins ?? [],

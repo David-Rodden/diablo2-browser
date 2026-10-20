@@ -94,4 +94,18 @@ export class FlowField {
     }
     return path
   }
+
+  lineOfSight(a: SubTilePoint, b: SubTilePoint): boolean {
+    const steps = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 2)
+    return Array.from({ length: steps + 1 }, (_, i) => i / Math.max(1, steps)).every((t) => this.walkable(Math.round(a.x + (b.x - a.x) * t) - this.ox, Math.round(a.y + (b.y - a.y) * t) - this.oy))
+  }
+
+  corners(path: readonly SubTilePoint[], from: SubTilePoint): SubTilePoint[] {
+    const corners: SubTilePoint[] = []
+    for (let i = 0, anchor = from; i < path.length; i++) {
+      while (i + 1 < path.length && this.lineOfSight(anchor, path[i + 1]!)) i++
+      corners.push((anchor = path[i]!))
+    }
+    return corners
+  }
 }
