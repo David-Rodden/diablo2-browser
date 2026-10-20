@@ -190,6 +190,9 @@ export function tickSessionFrame(
   ) {
     host.predictor.setStaminaExhausted(selfState.stamina <= 0)
   }
+  // #1336: FRW / skill velocity / armor penalty / slow, mirrored from the authoritative
+  // stats and equipment before the predictor advances, so both sides use one velocity.
+  host.predictor.setVelocityModifiers(host.world.getSelfMoveVelocityModifiers())
 
   const predSnap = host.predictor.update(clampedDt)
   if (!isMovementSkillCast && (predSnap.x !== 0 || predSnap.y !== 0)) {
@@ -695,6 +698,16 @@ export function buildRenderableUnits(
         direction: interp ? interp.dir64 : u.direction,
         radiusX: bounds.radiusX,
         radiusY: bounds.radiusY,
+        ...(bounds.selectDX > 0 && bounds.selectDY > 0
+          ? {
+              hitBox: {
+                left: bounds.selectX,
+                top: bounds.selectY,
+                width: bounds.selectDX,
+                height: bounds.selectDY,
+              },
+            }
+          : {}),
         isHovered,
       })
       continue

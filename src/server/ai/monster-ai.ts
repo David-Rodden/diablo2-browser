@@ -3,6 +3,10 @@
  *
  * Extracted from `src/server/engine/combat.ts` and unified with `src/common/units/unit-types.ts`.
  * Zero DOM or Node dependencies, and zero wall-clock or Math.random() calls.
+ *
+ * Legacy: the authoritative runtime is `GameInstance.stepMonsterAi` (MonAi.txt dispatch).
+ * `GameInstance` only imports `tickMercenaryAi25Hz` from this module; the monster portion is
+ * kept for the retired `GameEngine` harness until that harness is removed (#1341).
  */
 
 import { numberCell, textCell } from '../../common/items/tables.ts'

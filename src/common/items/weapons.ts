@@ -59,6 +59,10 @@ export interface WeaponBase extends ItemBase {
   readonly twoHanded: boolean
   /** Whether a Barbarian can wield this two-handed weapon in one hand (from 1or2handed column). */
   readonly oneOrTwoHanded?: boolean | undefined
+  /** `StrBonus`: % physical damage per 100 Strength (`floor(str * StrBonus / 100)` %). */
+  readonly strBonus: number
+  /** `DexBonus`: % physical damage per 100 Dexterity (`floor(dex * DexBonus / 100)` %). */
+  readonly dexBonus: number
   /** Minimum thrown / missile physical damage. */
   readonly minMisDam?: number
   /** Maximum thrown / missile physical damage. */
@@ -266,6 +270,8 @@ export function parseWeaponsTable(input: D2Table | Uint8Array | string): WeaponT
     const missiletype = rawMissileType !== undefined && rawMissileType > 0 ? rawMissileType : undefined
 
     const speed = parseNumber(getCell(row, 'speed'), 0)
+    const strBonus = parseNumber(getCell(row, 'strbonus'), 0)
+    const dexBonus = parseNumber(getCell(row, 'dexbonus'), 0)
     const reqstr = parseNumber(getCell(row, 'reqstr'), 0)
     const reqdex = parseNumber(getCell(row, 'reqdex'), 0)
     const durability = parseNumber(getCell(row, 'durability'), 0)
@@ -347,6 +353,8 @@ export function parseWeaponsTable(input: D2Table | Uint8Array | string): WeaponT
       ...(twoHandedMaxdam !== undefined ? { twoHandedMaxdam } : {}),
       twoHanded,
       oneOrTwoHanded,
+      strBonus,
+      dexBonus,
       ...(minMisDam !== undefined ? { minMisDam } : {}),
       ...(maxMisDam !== undefined ? { maxMisDam } : {}),
       ...(missiletype !== undefined ? { missiletype } : {}),

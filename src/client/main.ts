@@ -30,7 +30,10 @@ import {
   type BnetFlowState,
 } from './frontend/flow-state.ts'
 import { FrontendRenderer } from './frontend/frontend-renderer.ts'
-import { buildAvatarSpecFromStatstring } from './frontend/avatar-compositor.ts'
+import {
+  buildAvatarSpecFromStatstring,
+  releaseUnselectedAvatarComposites,
+} from './frontend/avatar-compositor.ts'
 import {
   PLAYER_CLASS_TOKENS,
   resolveCharacterAppearance,
@@ -44,11 +47,6 @@ import {
   BncsCreateAccountError,
   getLocalLobbyProvider,
   type CharClassId,
-  type GameServerAdapter,
-  type LocalAreaBootstrap,
-  type LocalAreaPresetMonster,
-  type LocalAreaPresetObject,
-  type LocalAreaRoomReveal,
 } from '../netproto/index.ts'
 import { SpriteRenderer, type AtlasHandle } from './render/renderer.ts'
 import { FpsCounter113c } from './render/fps-counter-113c.ts'
@@ -87,7 +85,8 @@ import { CommandMapper } from './input/command-mapper.ts'
 import { D2_LOGIC_TICK_MS, runOwedTicks } from './loop/logic-clock.ts'
 import { MotionSmoothing } from './loop/motion-smoothing.ts'
 import { SceneMotionSmoother } from './loop/scene-motion-smoothing.ts'
-import { isWalkableWorldSubTile, MapService } from './map/map-service.ts'
+import { MapService } from './map/map-service.ts'
+import { createMapServiceAreaLevelSource } from './map/map-service-area-source.ts'
 import type { D2WebPlugin, PluginQuickCastPort } from './plugin-host/api.ts'
 import { PluginHost } from './plugin-host/plugin-host.ts'
 import { PluginMenu } from './plugin-host/plugin-menu.ts'
@@ -157,16 +156,6 @@ const STARTER_EQUIP_BY_HERO_TOKEN: Readonly<Record<string, EquippedAppearanceInp
 
 const SINGLE_PLAYER_SAVES_STORAGE_KEY = 'd2_sp_saves_v1'
 
-const WAYPOINT_OBJECT_CLASS_IDS_113C = new Set<number>([
-  119, 145, 156, 157, 237, 238, 288, 323, 324, 398, 402, 429, 494, 496, 511, 539,
-])
-
-const TOWN_VENDOR_MONSTER_HCIDX_113C = new Set<number>([
-  147, 148, 154, 177, 178, 199, 202, 252, 253, 254, 255, 405, 511, 512, 513,
-])
-
-const TOWN_AREA_IDS_113C = new Set<number>([1, 40, 75, 103, 109])
-
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = ''
   for (let i = 0; i < bytes.byteLength; i++) {
@@ -182,120 +171,6 @@ function base64ToUint8(b64: string): Uint8Array {
     out[i] = binary.charCodeAt(i) & 0xff
   }
   return out
-}
-
-function buildSinglePlayerAreaBootstrap(
-  mapService: MapService,
-  params: {
-    readonly act: number
-    readonly areaId: number
-    readonly mapSeed: number
-    readonly difficulty: 0 | 1 | 2
-  },
-): LocalAreaBootstrap | null {
-  if (!mapService.isLoaded()) return null
-  const view = mapService.loadAct({
-    act: params.act,
-    seed: params.mapSeed >>> 0,
-    difficulty: params.difficulty,
-    areaId: params.areaId,
-    revealMode: 'all',
-  })
-  if (!view) return null
-
-  const isWalkable = (checkAreaId: number, worldX: number, worldY: number): boolean => {
-    const targetView =
-      checkAreaId === view.areaId
-        ? view
-        : (mapService.getLoadedLevelView(checkAreaId) ?? mapService.peekLevelView(checkAreaId, 'all'))
-    if (!targetView) return false
-    return isWalkableWorldSubTile(targetView, worldX, worldY)
-  }
-
-  const rooms: LocalAreaRoomReveal[] = view.rooms.map((r) => ({
-    areaId: r.areaId,
-    tileX: r.tileX,
-    tileY: r.tileY,
-  }))
-
-  const objects: LocalAreaPresetObject[] = []
-  const monsters: LocalAreaPresetMonster[] = []
-  let bonfireSub: { readonly x: number; readonly y: number } | null = null
-  let warrivSub: { readonly x: number; readonly y: number } | null = null
-  const isTown = TOWN_AREA_IDS_113C.has(view.areaId)
-
-  for (const u of view.presetUnits) {
-    const worldX = view.originX + u.subX
-    const worldY = view.originY + u.subY
-    if (u.type === 2) {
-      if (u.index < 0 || u.index === 573) continue
-      if (u.index === 39 && bonfireSub === null) {
-        bonfireSub = { x: worldX, y: worldY }
-      }
-      const isWaypoint = WAYPOINT_OBJECT_CLASS_IDS_113C.has(u.index)
-      objects.push({
-        classId: u.index,
-        x: worldX,
-        y: worldY,
-        areaId: view.areaId,
-        mode: isWaypoint && isTown ? 1 : (u.mode || 0),
-        isWaypoint,
-      })
-    } else if (u.type === 1) {
-      if (u.index < 0 || u.index >= 733) continue
-      if (u.index === 155 && warrivSub === null) {
-        warrivSub = { x: worldX, y: worldY }
-      }
-      const isVendor = TOWN_VENDOR_MONSTER_HCIDX_113C.has(u.index)
-      monsters.push({
-        classId: u.index,
-        x: worldX,
-        y: worldY,
-        areaId: view.areaId,
-        isNpc: isTown || isVendor,
-        isVendor,
-        isKillable: !isTown && !isVendor,
-        aiDisabled: isTown || isVendor,
-      })
-    }
-  }
-
-  const candidateBase =
-    bonfireSub !== null
-      ? { x: bonfireSub.x + 3, y: bonfireSub.y + 3 }
-      : warrivSub !== null
-        ? { x: warrivSub.x + 2, y: warrivSub.y + 2 }
-        : { x: view.originX + view.spawnX * 5 + 2, y: view.originY + view.spawnY * 5 + 2 }
-
-  let spawnX = candidateBase.x
-  let spawnY = candidateBase.y
-  if (!isWalkable(view.areaId, spawnX, spawnY)) {
-    let found = false
-    for (let r = 1; r <= 25 && !found; r++) {
-      for (let dy = -r; dy <= r && !found; dy++) {
-        for (let dx = -r; dx <= r && !found; dx++) {
-          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue
-          const cx = candidateBase.x + dx
-          const cy = candidateBase.y + dy
-          if (isWalkable(view.areaId, cx, cy)) {
-            spawnX = cx
-            spawnY = cy
-            found = true
-          }
-        }
-      }
-    }
-  }
-
-  return {
-    areaId: view.areaId,
-    spawnX,
-    spawnY,
-    rooms,
-    objects,
-    monsters,
-    isWalkable,
-  }
 }
 
 export interface PlayAppController {
@@ -576,8 +451,10 @@ export async function startPlayApp(options?: {
       if (token === ownHeroClassToken) continue
       if (nowMs - lastUseMs < CHARACTER_ART_STALE_MS) continue
       characterArtLastUseMs.delete(token)
+      const art = characterArtByToken.get(token)
       characterArtByToken.delete(token)
       characterArtByToken.delete(token.toUpperCase())
+      if (art !== undefined) renderer.deleteAtlas(art.handle)
     }
   }
 
@@ -898,6 +775,7 @@ export async function startPlayApp(options?: {
     if (!plan) return
     lastPreloadedAreaSig = sig
 
+    tileGpuCache.retainPages([...plan.currentTilePages, ...plan.neighborTilePages])
     tileGpuCache.ensureActPalette(plan.actId)
     tileGpuCache.preloadPages(plan.currentTilePages)
     entityArtCache.preloadEntities({
@@ -939,6 +817,11 @@ export async function startPlayApp(options?: {
     const classKey = selectedChar?.classId ?? st.selectedClass ?? selectedChar?.heroToken
     const heroToken = selectedChar?.heroToken ?? campfireSpec?.heroToken
     if (!classKey && !heroToken) return
+    // #1317: this runs even when the asset-preload signature is unchanged, so
+    // the six unselected char-select classes are released as soon as the
+    // player commits to a hero (the in-game block is skipped because
+    // `ownHeroArtKicked` is already set here).
+    if (heroToken) releaseUnselectedAvatarComposites(heroToken)
     const sig = `${classKey ?? ''}:${heroToken ?? ''}:${selectedChar?.id ?? ''}:${selectedChar?.avatarDesc?.cofSignature ?? ''}`
     if (sig === lastPreloadedLobbyHeroSig) return
     lastPreloadedLobbyHeroSig = sig
@@ -996,8 +879,6 @@ export async function startPlayApp(options?: {
       }
     }
   }
-
-  let activeLocalAdapter: GameServerAdapter | null = null
 
   const syncSinglePlayerSavesFromStorage = async (): Promise<void> => {
     const lobby = getLocalLobbyProvider()
@@ -1057,24 +938,36 @@ export async function startPlayApp(options?: {
         throw new Error('Single Player local server provider is not registered')
       }
       await inGameAssetsPromise
-      if (activeLocalAdapter) {
-        try {
-          activeLocalAdapter.leave()
-        } catch {
-          // Ignore close errors
-        }
-        activeLocalAdapter = null
+      if (session.phase === 'ingame') {
+        throw new Error('Single Player game requested while another game is still active')
       }
       const diffNum: 0 | 1 | 2 =
         st.difficulty === 'hell' ? 2 : st.difficulty === 'nightmare' ? 1 : 0
       const adapter = await lobby.enterGame({
         charName,
         difficulty: diffNum,
-        resolveAreaBootstrap: (params) => buildSinglePlayerAreaBootstrap(mapService, params),
+        areaLevelSource: createMapServiceAreaLevelSource(mapService),
       })
-      activeLocalAdapter = adapter
-      session.attachGameServer(adapter)
-      adapter.tick?.(D2_LOGIC_TICK_MS)
+      const writeCharacterProgression = lobby.writeCharacterProgression?.bind(lobby)
+      if (!writeCharacterProgression) {
+        adapter.leave()
+        throw new Error('Single Player local server provider cannot persist character progression')
+      }
+      const characters = await lobby.listCharacters()
+      const selected = characters.find((c) => c.name.toLowerCase() === charName.toLowerCase())
+      if (!selected) {
+        adapter.leave()
+        throw new Error(`Single Player character "${charName}" is not in the local character list`)
+      }
+      // Same in-game lifecycle as Battle.net: the session owns the game-init reset, the 25 Hz adapter
+      // tick (`OnlineSession.tick`), game completion and the intentional leave.
+      session.attachGameServer(adapter, {
+        localCharacter: {
+          characters,
+          selectedName: selected.name,
+          writeProgression: writeCharacterProgression,
+        },
+      })
       session.tick(D2_LOGIC_TICK_MS, performance.now())
       await persistSinglePlayerSavesToStorage()
       st.sceneReady = true
@@ -1085,7 +978,6 @@ export async function startPlayApp(options?: {
       inGameView = true
       syncVisibility()
     } catch (err) {
-      activeLocalAdapter = null
       const friendlyMsg = err instanceof Error ? err.message : String(err)
       session.audioRuntime.playTitleMusic()
       st.stage = 'char_select'
@@ -1103,10 +995,9 @@ export async function startPlayApp(options?: {
   }
 
   const returnToLobby = (): void => {
-    if (activeLocalAdapter) {
-      activeLocalAdapter = null
-      void session.leaveGame()
-    }
+    // Normally reached after the session already left the game (phase `idle`/`lobby`); a Single Player
+    // game still attached is left at the end, once the frontend no longer shows the game.
+    const leaveLocalGame = flowState.playMode === 'single' && session.phase === 'ingame'
     inGameView = false
     ownHeroArtKicked = false
     clearPendingNeighborPreload()
@@ -1143,6 +1034,9 @@ export async function startPlayApp(options?: {
     session.audioRuntime.playTitleMusic()
     syncVisibility()
     frontendRenderer.render(performance.now())
+    if (leaveLocalGame) {
+      void session.leaveGame()
+    }
   }
 
   /** D2Client victory screen `0x6faf3a70` after S2C `0x61 07`; dismissing it continues to the lobby. */
@@ -1746,7 +1640,6 @@ export async function startPlayApp(options?: {
       snap.phase === 'lobby' ||
       (snap.phase === 'idle' && flowState.playMode === 'single')
     ) {
-      activeLocalAdapter = null
       if (inGameView || flowState.stage === 'in_game') {
         const completion = session.takeGameCompletion()
         if (completion?.showVictoryScreen) {
@@ -2023,7 +1916,6 @@ export async function startPlayApp(options?: {
       logicClockRunning = true
     }
     runOwedTicks(session.logicClock, nowMs, (dtMs, tickNowMs) => {
-      activeLocalAdapter?.tick?.(dtMs)
       session.tick(dtMs, tickNowMs)
     })
   }
@@ -2110,6 +2002,8 @@ export async function startPlayApp(options?: {
       if (ownHeroToken !== undefined) {
         ownHeroClassToken = ownHeroToken
         void ensureCharacterArt(ownHeroToken)
+        // #1317: the six unselected char-select classes have no use in-game.
+        releaseUnselectedAvatarComposites(ownHeroToken)
       }
     }
 

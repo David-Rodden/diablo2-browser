@@ -42,6 +42,7 @@ import {
   type GameModePolicy,
 } from './engine/game-instance.ts'
 import { FIXED_ONE } from './engine/stat-list.ts'
+import { createAreaBootstrapResolver } from './world/area-bootstrap.ts'
 import {
   extractCharSummaryFromD2s,
   getServerItemDataTables,
@@ -190,88 +191,30 @@ export class LocalLoopbackAdapter implements GameServerAdapter {
     this.gameInstance = instance
     this.onAutoSave = opts.onAutoSave
 
+    if (opts.resolveAreaBootstrap) {
+      // #1325: area bootstrap runs inside the game server (entry area + on-demand transitions).
+      this.gameInstance.setAreaBootstrapResolver(opts.resolveAreaBootstrap)
+    }
+
     const existingPlayerId = opts.playerUnitId ?? opts.playerId
-    let bootstrap: LocalAreaBootstrap | null | undefined
     if (existingPlayerId !== undefined) {
       this.playerUnitId = existingPlayerId
     } else {
       const d2sRaw = opts.d2s ?? opts.d2sBytes
-      const parsedD2s = d2sRaw instanceof Uint8Array ? readD2sSave113c(d2sRaw) : undefined
-      const initialAreaId =
-        opts.areaId ??
-        ACT_TOWN_AREA[parsedD2s?.activeAct ?? 0] ??
-        1
-      const initialAct = areaToAct(initialAreaId)
-      const effectiveSeed =
-        (opts.mapSeed ??
-          opts.seed ??
-          (parsedD2s && parsedD2s.mapSeed !== 0 ? parsedD2s.mapSeed : this.gameInstance.mapSeed)) >>> 0
-      bootstrap = opts.resolveAreaBootstrap?.({
-        act: initialAct,
-        areaId: initialAreaId,
-        mapSeed: effectiveSeed,
-        difficulty: this.gameInstance.difficulty,
-      })
-
-      if (bootstrap?.isWalkable) {
-        this.gameInstance.setTerrainWalkableCheck(bootstrap.isWalkable)
-      }
-      const targetAreaId = opts.areaId ?? bootstrap?.areaId ?? initialAreaId
-      if (bootstrap?.objects) {
-        for (const obj of bootstrap.objects) {
-          this.gameInstance.spawnObject({
-            classId: obj.classId,
-            x: obj.x,
-            y: obj.y,
-            areaId: obj.areaId ?? targetAreaId,
-            mode: obj.mode,
-            isWaypoint: obj.isWaypoint,
-            isShrine: obj.isShrine,
-            destAreaId: obj.destAreaId,
-          })
-        }
-      }
-      if (bootstrap?.monsters) {
-        for (const mon of bootstrap.monsters) {
-          this.gameInstance.spawnMonster({
-            classId: mon.classId,
-            x: mon.x,
-            y: mon.y,
-            areaId: mon.areaId ?? targetAreaId,
-            name: mon.name,
-            isNpc: mon.isNpc,
-            isVendor: mon.isVendor,
-            isKillable: mon.isKillable,
-            aiDisabled: mon.aiDisabled,
-          })
-        }
-      }
-
       this.playerUnitId = this.gameInstance.connectPlayer({
         charName: opts.charName ?? opts.playerName ?? opts.name,
         classId: opts.classId ?? opts.charClass,
         level: opts.level,
-        areaId: targetAreaId,
-        x: opts.x ?? bootstrap?.spawnX,
-        y: opts.y ?? bootstrap?.spawnY,
+        areaId: opts.areaId,
+        x: opts.x,
+        y: opts.y,
         d2s: d2sRaw,
       })
     }
 
     // Buffer initial handshake events until connect(), stepFrame(), or tick() flushes them
-    const initial = this.gameInstance.drainEvents(this.playerUnitId)
-    for (const ev of initial) {
+    for (const ev of this.gameInstance.drainEvents(this.playerUnitId)) {
       this.earlyEvents.push(ev)
-      if (ev.type === 'LoadAct' && bootstrap?.rooms) {
-        for (const r of bootstrap.rooms) {
-          this.earlyEvents.push({
-            type: 'RoomReveal',
-            areaId: r.areaId,
-            tileX: r.tileX,
-            tileY: r.tileY,
-          })
-        }
-      }
     }
   }
 
@@ -636,6 +579,27 @@ export class LocalLobbyProvider implements LobbyProvider {
     return this.getCharacterD2s(name) ?? null
   }
 
+  /**
+   * Persist a game-completion progression (D2Client `0x6faf52fd`, packed save flags bits 8..12 = `.d2s`
+   * header byte `+0x25`) into the stored save of `name`. Synchronous so `OnlineSession.leaveGame` can
+   * finish the write before the frontend re-reads the character list.
+   */
+  writeCharacterProgression(name: string, progression: number): CharSummary {
+    if (!Number.isInteger(progression) || progression < 0 || progression > 0x1f) {
+      throw new Error(
+        `LocalLobbyProvider.writeCharacterProgression: progression ${progression} is not a 5-bit value`,
+      )
+    }
+    const key = this.findCanonicalKey(name)
+    if (key === undefined) {
+      throw new Error(`LocalLobbyProvider.writeCharacterProgression: unknown character "${name}"`)
+    }
+    const parsed = readD2sSave113c(this.saves.get(key)!)
+    const bytes = writeD2sSave113c({ ...parsed, progression }, getServerItemDataTables())
+    this.saves.set(key, new Uint8Array(bytes))
+    return this.toLobbyCharSummary(bytes, key)
+  }
+
   putCharacterD2s(name: string, d2sBytes: Uint8Array): CharSummary {
     const parsed = readD2sSave113c(d2sBytes)
     const canonicalName = name.trim() || parsed.name
@@ -728,8 +692,8 @@ export class LocalLobbyProvider implements LobbyProvider {
       this.saves.set(key, new Uint8Array(d2sBytes))
     }
 
-    const resolveAreaBootstrap =
-      target && 'resolveAreaBootstrap' in target ? target.resolveAreaBootstrap : undefined
+    const areaLevelSource =
+      target && 'areaLevelSource' in target ? target.areaLevelSource : undefined
 
     return new LocalLoopbackAdapter({
       charName: key,
@@ -737,7 +701,7 @@ export class LocalLobbyProvider implements LobbyProvider {
       difficulty: requestedDifficulty,
       mapSeed: effectiveSeed,
       registry: this.registry,
-      resolveAreaBootstrap,
+      resolveAreaBootstrap: areaLevelSource ? createAreaBootstrapResolver(areaLevelSource) : undefined,
       onAutoSave: (updatedBytes) => {
         this.saves.set(key!, new Uint8Array(updatedBytes))
       },
@@ -851,7 +815,9 @@ export function createLocalLoopbackSession(
     mapSeed: req.mapSeed,
     d2sBytes: req.d2sBytes,
     policy: req.allowPause !== undefined ? { allowPause: req.allowPause } : undefined,
-    resolveAreaBootstrap: req.resolveAreaBootstrap,
+    resolveAreaBootstrap: req.areaLevelSource
+      ? createAreaBootstrapResolver(req.areaLevelSource)
+      : undefined,
     onAutoSave:
       req.onSaveD2s && req.charName
         ? (bytes) => req.onSaveD2s!(req.charName!, bytes)

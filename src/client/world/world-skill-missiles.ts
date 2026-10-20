@@ -70,6 +70,7 @@ import {
 import { getMonsterSizeXByHcIdx } from '../../common/units/monster-mapping.ts'
 import {
   PLAYER_SOUND_TABLE_0x6FBA7694,
+  resolveHitClassSoundIds113c,
   type WorldSoundRequest,
 } from '../audio/d2gs-play-sound-113c.ts'
 import { OVERLAY_TXT_ROWS } from '../render/overlay-txt-rows.ts'
@@ -621,16 +622,41 @@ export function emitUnitDeathSoundImpl(this: ClientWorldInternal, opts: {
 
 export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: ClientUnit, rawMode: number, skillId?: number): void {
   if (unit.unitType !== 'monster') return
-  const row: MonSoundRow113c | undefined = resolveUnitMonSoundRow113c(unit)
-  if (!row) return
-  const effSkillId = skillId ?? unit.castState?.skillId ?? unit.lastSkillId
-  const mode = convertMonsterSoundMode113c(row, rawMode, effSkillId)
   const unitRef = {
     unitType: 'monster' as const,
     id: unit.id,
     x: unit.x,
     y: unit.y,
   }
+  const emitHitClassSounds = () => {
+    // D2Client.dll 0x6fad3630 -> 0x6fad27e0: emit physical + elemental HitClass impact sounds on GH (3), KB (13), and DT (0)
+    if (unit.states?.has(146)) return
+    const hitClass = unit.hitClass ?? 0
+    if (hitClass <= 0) return
+    for (const hitSoundId of resolveHitClassSoundIds113c(hitClass)) {
+      this.pushSoundRequest({
+        soundId: hitSoundId,
+        unit: unitRef,
+        x: unit.x,
+        y: unit.y,
+      })
+    }
+  }
+  const row: MonSoundRow113c | undefined = resolveUnitMonSoundRow113c(unit)
+  if (!row) {
+    if (rawMode === 0) {
+      if (unit.id > 0) {
+        if (this._deadSoundUnitIds.has(unit.id)) return
+        this._deadSoundUnitIds.add(unit.id)
+      }
+      emitHitClassSounds()
+    } else if (rawMode === 3 || rawMode === 13) {
+      emitHitClassSounds()
+    }
+    return
+  }
+  const effSkillId = skillId ?? unit.castState?.skillId ?? unit.lastSkillId
+  const mode = convertMonsterSoundMode113c(row, rawMode, effSkillId)
   switch (mode) {
     case 0: {
       // DT: DeathSound + DeaDelay (deduped per unitId via _deadSoundUnitIds)
@@ -638,8 +664,9 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
         if (this._deadSoundUnitIds.has(unit.id)) return
         this._deadSoundUnitIds.add(unit.id)
       }
-      // D2Client.dll 0x6fad37e9..0x6fad3802: skip monster death vocal when STATE_FREEZE (43) is active
-      if (unit.states?.has(43)) return
+      emitHitClassSounds()
+      // D2Client.dll 0x6fad36d0..0x6fad36ed: skip monster death vocal when STATE_FREEZE (43) or hitClass 0xA0 is active
+      if (unit.states?.has(43) || ((unit.hitClass ?? 0) & 0xf0) === 0xa0) return
       if (row.deathSound > 0) {
         this.pushSoundRequest({
           kind: 'unit-death',
@@ -657,7 +684,9 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
     }
     case 3:
     case 13: {
-      // GH (3) / KB (13): HitSound + HitDelay
+      // GH (3) / KB (13): HitClass physical + elemental impact sounds + HitSound + HitDelay
+      emitHitClassSounds()
+      if (unit.states?.has(43) || ((unit.hitClass ?? 0) & 0xf0) === 0xa0) return
       if (row.hitSound > 0) {
         this.pushSoundRequest({
           soundId: row.hitSound,

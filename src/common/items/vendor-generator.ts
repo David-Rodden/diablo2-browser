@@ -242,6 +242,32 @@ export function resolveVendorBaseUpgrade(
 }
 
 /**
+ * Rolls the armor defense of a freshly created armor item: `[minac, maxac]`, `maxac + 1` scaled by the
+ * enhanced-defense percent (`ac%`) when the item carries one, and 75% of the roll for low quality.
+ * Shared by the store generator and the server drop path (#1326) so both consume the item RNG identically.
+ */
+export function rollArmorDefense113c(
+  base: ItemBase,
+  qualityTier: ItemQualityTier,
+  acPct: number,
+  itemRng: D2Rng,
+): number {
+  if (base.kind !== 'armor') {
+    throw new Error(`rollArmorDefense113c: '${base.id}' is not an armor base`)
+  }
+  const minac = Number((base as any).minac) || base.defense
+  const maxac = Number((base as any).maxac) || base.defense
+  if (acPct > 0) {
+    return Math.trunc(((maxac + 1) * (100 + acPct)) / 100)
+  }
+  if (qualityTier === 'low') {
+    const rawAc = minac < maxac ? itemRng.randRange(minac, maxac) : maxac
+    return Math.max(1, Math.trunc((rawAc * 75) / 100))
+  }
+  return minac < maxac ? itemRng.randRange(minac, maxac) : maxac
+}
+
+/**
  * Generates a single store item instance (`D2GAME_NPC_GenerateStoreItem_6FCC6A60`).
  */
 export function generateVendorStoreItem(options: {
@@ -297,9 +323,9 @@ export function generateVendorStoreItem(options: {
   const magicLvl = base.vendorColumns?.[vendorId]?.magicLvl ?? 255
   const rawAffixIlvl =
     magicLvl > 0 && magicLvl < 255 ? Math.min(nItemLevel, magicLvl) : nItemLevel
-  // Ensure effective ilvl passed to rollMagicAffixes yields alvl >= 1 even when base qlvl > rawAffixIlvl
-  const minIlvlForAlvl1 = Math.trunc((selectedBase.level ?? 1) / 2) + 1
-  const effectiveAffixIlvl = Math.max(rawAffixIlvl, minIlvlForAlvl1, 1)
+  // An item's ilvl can never be below its base qlvl; this also keeps the
+  // D2Common alvl derivation positive without the old ad-hoc half-qlvl hack.
+  const effectiveAffixIlvl = Math.max(rawAffixIlvl, selectedBase.level ?? 1, 1)
 
   const magicAffixes =
     qualityTier === 'magic'
@@ -356,17 +382,7 @@ export function generateVendorStoreItem(options: {
   // Roll authentic armor defense in [minac, maxac] (or maxac + 1 if enhanced defense)
   let defense = created.defense
   if (selectedBase.kind === 'armor') {
-    const minac = Number((selectedBase as any).minac) || selectedBase.defense
-    const maxac = Number((selectedBase as any).maxac) || selectedBase.defense
-    const acPct = created.stats['ac%'] ?? 0
-    if (acPct > 0) {
-      defense = Math.trunc(((maxac + 1) * (100 + acPct)) / 100)
-    } else if (qualityTier === 'low') {
-      const rawAc = minac < maxac ? itemRng.randRange(minac, maxac) : maxac
-      defense = Math.max(1, Math.trunc((rawAc * 75) / 100))
-    } else {
-      defense = minac < maxac ? itemRng.randRange(minac, maxac) : maxac
-    }
+    defense = rollArmorDefense113c(selectedBase, qualityTier, created.stats['ac%'] ?? 0, itemRng)
   }
 
   // Stack / quantity handling for permanent store items, quivers, throwing weapons, and tomes
@@ -436,8 +452,7 @@ export function generateVendorStoreInventory(options: {
   readonly actIndex?: 0 | 1 | 2 | 3 | 4 | undefined
   readonly isExpansion?: boolean | undefined
   readonly tables: DropTables
-  readonly rng?: D2Rng | undefined
-  readonly seed?: number | undefined
+  readonly rng: D2Rng
 }): VendorStoreState {
   const {
     vendorId,
@@ -446,8 +461,8 @@ export function generateVendorStoreInventory(options: {
     actIndex,
     isExpansion = true,
     tables,
+    rng,
   } = options
-  const rng = options.rng ?? new D2Rng(options.seed ?? ((vendorId + 1) * 0x9e3779b9 + cLvl * 131 + difficulty * 997))
 
   const nItemLevel = computeVendorItemLevel(vendorId, difficulty, cLvl, actIndex)
   const cache = buildGlobalVendorItemCache(tables)
@@ -571,11 +586,9 @@ export function generateGambleInventory(options: {
   readonly cLvl: number
   readonly isExpansion?: boolean | undefined
   readonly tables: DropTables
-  readonly rng?: D2Rng | undefined
-  readonly seed?: number | undefined
+  readonly rng: D2Rng
 }): Inventory {
-  const { cLvl, isExpansion = true, tables } = options
-  const rng = options.rng ?? new D2Rng(options.seed ?? (cLvl * 2654435761 + 17))
+  const { cLvl, isExpansion = true, tables, rng } = options
   const grid = new Inventory(VENDOR_GRID_WIDTH, VENDOR_GRID_HEIGHT)
 
   const gambleCodes = tables.gambleCodes ?? []
@@ -669,12 +682,16 @@ export function resolveGambledItem(options: {
   readonly cLvl: number
   readonly isExpansion?: boolean | undefined
   readonly tables: DropTables
-  readonly rng?: D2Rng | undefined
+  readonly rng: D2Rng
 }): Item {
-  const { mysteryItem, cLvl, isExpansion = true, tables } = options
-  const rng = options.rng ?? new D2Rng((mysteryItem.uniqueId ?? 1) ^ (cLvl * 0x45d9f3b))
+  const { mysteryItem, cLvl, isExpansion = true, tables, rng } = options
 
-  const ilvl = Math.max(5, Math.min(99, Math.trunc(cLvl) + rng.rand(10) - 5))
+  // 1.13c rolls the gamble ilvl once when the preview is created; the purchase
+  // reuses it (`D2GAME_NPC_CreateGambleItem` consumes the stored item level).
+  const ilvl = Math.max(
+    5,
+    Math.min(99, Math.trunc(mysteryItem.ilvl ?? mysteryItem.level ?? cLvl)),
+  )
   const normBase = mysteryItem.base
   let selectedBase: ItemBase = normBase
 
@@ -714,7 +731,17 @@ export function resolveGambledItem(options: {
     )
     if (candidates && candidates.length > 0) {
       qualityTier = 'unique'
-      uniqueItem = candidates[rng.rand(candidates.length)]
+      // 1.13c UniqueItems.txt `rarity` weighted pick (same as the drop pipeline).
+      const total = candidates.reduce((sum, u) => sum + Math.max(1, u.rarity), 0)
+      let roll = rng.rand(total)
+      uniqueItem = candidates[candidates.length - 1]!
+      for (const candidate of candidates) {
+        roll -= Math.max(1, candidate.rarity)
+        if (roll < 0) {
+          uniqueItem = candidate
+          break
+        }
+      }
     } else {
       qualityTier = 'rare'
     }
@@ -727,7 +754,16 @@ export function resolveGambledItem(options: {
     )
     if (candidates.length > 0) {
       qualityTier = 'set'
-      setItem = candidates[rng.rand(candidates.length)]
+      const total = candidates.reduce((sum, s) => sum + Math.max(1, s.rarity), 0)
+      let roll = rng.rand(total)
+      setItem = candidates[candidates.length - 1]!
+      for (const candidate of candidates) {
+        roll -= Math.max(1, candidate.rarity)
+        if (roll < 0) {
+          setItem = candidate
+          break
+        }
+      }
     } else {
       qualityTier = 'rare'
     }

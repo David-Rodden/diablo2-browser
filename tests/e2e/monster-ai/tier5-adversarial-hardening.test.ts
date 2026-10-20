@@ -361,7 +361,7 @@ describe('Tier 5 â€” Adversarial Edge Cases & Cross-Milestone Hardening (T5.A1â€
   // Part B: M3/M4 25Hz GameInstance, Combat, State, Pet & Lockstep (T5.B1â€“T5.B11)
   // =========================================================================
 
-  it('T5.B1: GameInstance.applyMonsterState converts Freeze (state 1 & state 29) into Chill (state 28) on Act Bosses and Uniques', () => {
+  it('T5.B1: GameInstance.applyMonsterState converts Freeze (state 1 & state 29) into Cold (state 11) on Act Bosses and Uniques', () => {
     const game = createTestGame({ mapSeed: 0x113cb101 })
     spawnPlayerInGame(game, { x: 100, y: 100 })
 
@@ -399,14 +399,14 @@ describe('Tier 5 â€” Adversarial Edge Cases & Cross-Milestone Hardening (T5.A1â€
     const uniqueState = game.getMonsterState(uniqueId)!
     const normalState = game.getMonsterState(normalId)!
 
-    // Boss and Unique must NOT have freeze state (1 or 29); they must convert to chill (28)
+    // Boss and Unique must NOT have freeze state (1 or 29); they must convert to cold (11)
     expect(diabloState.states.has(29)).toBe(false)
     expect(diabloState.states.has(1)).toBe(false)
-    expect(diabloState.states.has(28)).toBe(true)
+    expect(diabloState.states.has(11)).toBe(true)
 
     expect(uniqueState.states.has(29)).toBe(false)
     expect(uniqueState.states.has(1)).toBe(false)
-    expect(uniqueState.states.has(28)).toBe(true)
+    expect(uniqueState.states.has(11)).toBe(true)
 
     // Normal monster must be frozen
     expect(normalState.states.has(29) || normalState.states.has(1)).toBe(true)

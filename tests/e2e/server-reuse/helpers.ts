@@ -43,6 +43,36 @@ export const RETIRED_LEGACY_FILES = [
 export { getSharedDataRegistry, getSharedMountedArchives, FIXED_ONE, type D2DataRegistry }
 
 /**
+ * #1327: give a map-less `GameInstance` a 3x3 grid of outdoor DRLG rooms
+ * (8x8 tiles = 40x40 sub-tiles each, centred on `(cx, cy)`) and an all-walkable
+ * terrain check, so its 1.13c `Levels.txt` room population has room bounds and
+ * legal cells to work with (the old "spawn a Fallen anywhere" stub is gone).
+ */
+export function installOutdoorRoomGrid(
+  game: {
+    setTerrainWalkableCheck(fn: (areaId: number, x: number, y: number) => boolean): void
+    setAreaRoomProvider(
+      fn: (areaId: number) => readonly { index: number; x: number; y: number; w: number; h: number; seed: number }[] | null,
+    ): void
+  },
+  areaId: number,
+  cx: number,
+  cy: number,
+): void {
+  const rooms: { index: number; x: number; y: number; w: number; h: number; seed: number }[] = []
+  const x0 = Math.floor(cx) - 60
+  const y0 = Math.floor(cy) - 60
+  for (let ry = 0; ry < 3; ry++) {
+    for (let rx = 0; rx < 3; rx++) {
+      const index = ry * 3 + rx
+      rooms.push({ index, x: x0 + rx * 40, y: y0 + ry * 40, w: 40, h: 40, seed: (0x5eed + index * 0x9e3779b1) >>> 0 })
+    }
+  }
+  game.setTerrainWalkableCheck(() => true)
+  game.setAreaRoomProvider((id) => (id === areaId ? rooms : null))
+}
+
+/**
  * Build a complete, canonical 1.13c v96 `D2sCharacterData` fixture conforming to
  * `PROJECT.md § Interface Contracts #2`.
  */

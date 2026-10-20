@@ -498,6 +498,32 @@ describe('1.13c Path Computation (D2Common_10142 / #10334)', () => {
     expect(readPathPoints(mon).at(-1)).toEqual({ X: 120, Y: 120 })
   })
 
+  it('PATHTYPE_WALL_FOLLOW (15) terminates per 1.13c 0x6FD68AA6..0x6FD68AB3 when a synced probe finishes', () => {
+    const r0 = createRoom(100, 100, 60, 60)
+    linkWorld([r0])
+    const mon = createTestUnit(UNIT_MONSTER, 0, 1, r0, 110, 120, true)
+    const path = mon.pDynamicPath!
+    PATH_SetType(path, PATHTYPE_WALL_FOLLOW)
+    PATH_SetNewDistance(path, 7)
+
+    // Pocket where tCache1 (CW) and tCache2 (CCW) converge at (109, 119) with tCache1.nPoints == 2
+    // and tCache2 reaches nLastSyncPointWithOtherPathIndex = 2 right as bPathFinished becomes true.
+    const walls: Array<[number, number]> = [
+      [111, 120],
+      [111, 121],
+      [110, 121],
+      [111, 119],
+      [109, 121],
+      [108, 120],
+      [110, 118],
+    ]
+    for (const [wx, wy] of walls) {
+      r0.grid!.set(wx, wy, COLLIDE_WALL)
+    }
+    D2COMMON_10170_PathSetTargetPos(path, 114, 120)
+    expect(() => D2Common_10142(path, mon, 0)).not.toThrow()
+  })
+
   it('PATHTYPE_KNOCKBACK_CLIENT (11) raytraces and stops at the last collision-free cell before a wall', () => {
     const r0 = createRoom(100, 100, 60, 60)
     linkWorld([r0])

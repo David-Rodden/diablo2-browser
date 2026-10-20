@@ -3142,6 +3142,8 @@ export function createWildernessGameInstance(
     readonly playerX?: number | undefined
     readonly playerY?: number | undefined
     readonly charName?: string | undefined
+    /** Hard skill points (`skillId -> blvl`): only learned skills can be cast (#1328). */
+    readonly playerSkills?: Readonly<Record<number, number>> | undefined
   } = {},
 ): { readonly game: GameInstance; readonly playerId: number } {
   const areaId = config.areaId ?? 2 // Blood Moor (wilderness area 2)
@@ -3161,6 +3163,7 @@ export function createWildernessGameInstance(
     areaId,
     x: config.playerX ?? 500,
     y: config.playerY ?? 500,
+    ...(config.playerSkills !== undefined ? { skills: config.playerSkills } : {}),
   })
   // Drain initial connection events
   game.drainEvents(playerId)

@@ -69,6 +69,8 @@ import { isTownLevel } from '../../common/world/scene-population.ts'
 import {
   PLAYER_SOUND_TABLE_0x6FBA7694,
   resolve0x2CPlaySound113c,
+  resolveBlockSoundId113c,
+  resolveHitClassSoundIds113c,
 } from '../audio/d2gs-play-sound-113c.ts'
 import { STATE_OVERLAYS, STATE_PGSV_OVERLAYS } from '../render/overlays-meta.ts'
 import { resolveGroundItemFlippyKey } from '../ui/inventory.ts'
@@ -4366,9 +4368,9 @@ export function applyUnitModeImmediateImpl(
       unit.modeElapsedMs = 0
       if (
         unit.unitType === 'player' &&
-        (resolvedMode === 4 || (resolvedMode >= 7 && resolvedMode <= 16) || resolvedMode === 18)
+        (resolvedMode === 4 || (resolvedMode >= 7 && resolvedMode <= 16) || resolvedMode === 18 || resolvedMode === 19)
       ) {
-        const speedInfo = this.resolvePlayerAnimSpeed(resolvedMode, unit.id)
+        const speedInfo = this.resolvePlayerAnimSpeed(resolvedMode === 19 ? 4 : resolvedMode, unit.id)
         unit.modeDurationMs = speedInfo.durationMs
         unit.modeUntilMs = now + speedInfo.durationMs
         unit.animStepSpeed256 = speedInfo.stepSpeed256
@@ -4476,11 +4478,25 @@ export function applyUnitModeImmediateImpl(
       }
     }
   }
-  if (unit.unitType === 'player' && ev.mode !== undefined) {
+  if (unit.unitType === 'player' && (ev.mode !== undefined || ev.hitClass !== undefined)) {
     const clsIdx =
       unit.classId >= 0 && unit.classId <= 6 ? unit.classId : (this._self.charClass ?? 0)
     const playerSounds = PLAYER_SOUND_TABLE_0x6FBA7694[clsIdx] ?? PLAYER_SOUND_TABLE_0x6FBA7694[0]!
-    if (!wasDead && (unit.mode === 0 || unit.mode === 17)) {
+    const playerUnitRef = { unitType: 'player' as const, id: unit.id, x: unit.x, y: unit.y }
+    const effHitClass = ev.hitClass ?? 0
+    const emitPlayerHitClassSounds = () => {
+      if (effHitClass <= 0) return
+      for (const hitSoundId of resolveHitClassSoundIds113c(effHitClass)) {
+        this.pushSoundRequest({
+          soundId: hitSoundId,
+          unit: playerUnitRef,
+          x: unit.x,
+          y: unit.y,
+        })
+      }
+    }
+    if (!wasDead && (ev.mode === 0 || ev.mode === 17)) {
+      emitPlayerHitClassSounds()
       this.emitUnitDeathSound({
         unitType: 'player',
         unitId: unit.id,
@@ -4488,24 +4504,40 @@ export function applyUnitModeImmediateImpl(
         x: unit.x,
         y: unit.y,
       })
-    } else if (!unit.dead && unit.mode === 4) {
+    } else if (
+      !unit.dead &&
+      (ev.mode === 4 || ev.mode === 19 || (ev.mode === undefined && ev.hitClass !== undefined))
+    ) {
+      // D2Client.dll 0x6fac99d1 (0x06 GH -> mode 4), 0x6fac9a0d (0x13 damage-no-FHR -> mode 19),
+      // 0x6fac9b0d (0x14 KB -> mode 19), and 0x0C damage-only: emit HitClass impact sounds + player getHit1
+      emitPlayerHitClassSounds()
+      if ((effHitClass & 0xf0) !== 0xa0) {
+        this.pushSoundRequest({
+          soundId: playerSounds.getHit1,
+          unit: playerUnitRef,
+          x: unit.x,
+          y: unit.y,
+        })
+      }
+    } else if (!unit.dead && ev.mode === 9) {
+      // D2Client.dll 0x6fac9b5c (0x12 BL -> mode 9) -> 0x6fad2d60 -> 0x6fad21c0: block_weapon_1 (398) / block_arrow_1 (401)
       this.pushSoundRequest({
-        soundId: playerSounds.getHit1,
-        unit: { unitType: 'player', id: unit.id, x: unit.x, y: unit.y },
+        soundId: resolveBlockSoundId113c(effHitClass || (unit.hitClass ?? 0)),
+        unit: playerUnitRef,
         x: unit.x,
         y: unit.y,
       })
-    } else if (!unit.dead && (unit.mode === 2 || unit.mode === 3 || unit.mode === 6)) {
+    } else if (!unit.dead && (ev.mode === 2 || ev.mode === 3 || ev.mode === 6)) {
       this.pushSoundRequest({
         soundId: playerSounds.taunt1,
-        unit: { unitType: 'player', id: unit.id, x: unit.x, y: unit.y },
+        unit: playerUnitRef,
         x: unit.x,
         y: unit.y,
       })
     } else if (
       !unit.dead &&
       !unit.castState &&
-      (unit.mode === 7 || unit.mode === 8 || unit.mode === 11 || unit.mode === 12)
+      (ev.mode === 7 || ev.mode === 8 || ev.mode === 11 || ev.mode === 12)
     ) {
       this.emitSkillKeyframeSound({
         skillId: unit.mode === 12 ? 1 : unit.mode === 11 ? 2 : 0,

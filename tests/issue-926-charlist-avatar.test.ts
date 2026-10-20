@@ -13,6 +13,8 @@ import { parseMcpAvatarStatstring } from '../src/client/frontend/statstring-avat
 import type { ParsedMcpAvatarStatstring } from '../src/client/frontend/statstring-avatar.ts'
 import {
   buildAvatarSpecFromStatstring,
+  getSharedClassLayerCompositor,
+  releaseUnselectedAvatarComposites,
 } from '../src/client/frontend/avatar-compositor.ts'
 import {
   SorceressLayerCompositor,
@@ -152,6 +154,26 @@ describe('[Issue #926] Character-select avatar equipment compositing', () => {
         }
       }
       expect(opaque).toBeGreaterThan(500)
+
+      // #1317: char select only draws direction 0. The compact composite must
+      // contain one direction group and a smaller R8 sheet than the full clip.
+      const compact = await compositor.composite(spec, ['tn'], { directions: [0] })
+      const compactTn = compact.clips.tn!
+      expect(compactTn.directions).toBe(1)
+      expect(compactTn.group).toBe(0)
+      expect(compact.groups).toHaveLength(1)
+      expect(compact.width * compact.height).toBeLessThan(composited.width * composited.height)
     },
   )
+
+  it('4. releases non-selected class compositors when entering the game (#1317)', () => {
+    const sorceress = getSharedClassLayerCompositor('so')
+    const paladin = getSharedClassLayerCompositor('pa')
+    expect(getSharedClassLayerCompositor('so')).toBe(sorceress)
+
+    releaseUnselectedAvatarComposites('pa')
+
+    expect(getSharedClassLayerCompositor('pa')).toBe(paladin)
+    expect(getSharedClassLayerCompositor('so')).not.toBe(sorceress)
+  })
 })

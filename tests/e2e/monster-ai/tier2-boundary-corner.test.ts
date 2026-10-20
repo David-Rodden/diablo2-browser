@@ -1187,6 +1187,7 @@ describe('Tier 2: Boundary, Corner & Negative Tests (F1–F14)', () => {
         x: 560,
         y: 500,
         hp: 200,
+        aggroRadius: 85,
       })
 
       applyStateToMonsterInGame(game, monsterId, 'freeze', 3)

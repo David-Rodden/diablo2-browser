@@ -37,6 +37,7 @@ import {
   computeStepSpeed256,
   getCharAnimClip113c,
   MORPH_ANIM_CLIPS_113C,
+  resolveArmorSpeed113c,
   resolveCharacterAnimSpeedParams,
   resolveCharacterStatTotal,
   resolveEquippedWeaponClass,
@@ -46,9 +47,11 @@ import {
   STAT_FASTERBLOCKRATE,
   STAT_FASTERCASTRATE,
   STAT_FASTERHITRECOVERY,
+  STAT_FASTERMOVEVELOCITY,
   STAT_LIGHTCOLOR,
   STAT_LIGHTRADIUS,
   STAT_SKILL_IAS,
+  STAT_VELOCITYPERCENT,
   type CharacterAnimSpeedParams,
 } from '../../common/units/char-anim-speed.ts'
 import { getMonsterSizeXByHcIdx } from '../../common/units/monster-mapping.ts'
@@ -184,6 +187,7 @@ export {
   computeStepSpeed256,
   getCharAnimClip113c,
   MORPH_ANIM_CLIPS_113C,
+  resolveArmorSpeed113c,
   resolveCharacterAnimSpeedParams,
   resolveCharacterStatTotal,
   resolveEquippedWeaponClass,
@@ -642,6 +646,7 @@ export class ClientWorld {
     unit.x = npcUnit.preciseX
     unit.y = npcUnit.preciseY
     unit.mode = npcUnit.dwAnimMode
+    unit.hitClass = npcUnit.hitClass
     unit.dead =
       (npcUnit.dwFlags & 0x10000) !== 0 ||
       npcUnit.dwAnimMode === MONMODE_DEATH ||
@@ -1143,6 +1148,38 @@ export class ClientWorld {
       this._selfLocomotionAnimSpeed256 = speedInfo.stepSpeed256
       unit.animStepSpeed256 = speedInfo.stepSpeed256
       unit.animEffRate = speedInfo.effRate
+    }
+  }
+
+  /**
+   * Per-tick velocity modifiers for the local `LocalMovementPredictor` (#1336): the same
+   * item FRW / `velocitypercent` / armor penalty / slow inputs the server uses, so client
+   * prediction and `GameInstance` advance identically.
+   */
+  getSelfMoveVelocityModifiers(): {
+    readonly fasterRunWalkPercent: number
+    readonly skillVelocityPercent: number
+    readonly armorSpeedPenaltyPercent: number
+    readonly slowPercent: number
+    readonly staminaExhausted: boolean
+  } {
+    const selfUnitId = this.selfId !== 0 ? this.selfId : 1
+    const unit = this._units.get(makeUnitKey('player', selfUnitId))
+    const stats = unit?.stats
+    let armorSpeedPenaltyPercent = 0
+    for (const item of this.resolvePlayerActiveEquipment(selfUnitId, true) ?? []) {
+      if (!item.broken && !item.inSocket) {
+        armorSpeedPenaltyPercent += resolveArmorSpeed113c(item.code)
+      }
+    }
+    const stat67 = unit?.velocityPercent ?? stats?.get(STAT_VELOCITYPERCENT) ?? 0
+    const slowRaw = stats?.get(150) ?? 0
+    return {
+      fasterRunWalkPercent: stats?.get(STAT_FASTERMOVEVELOCITY) ?? 0,
+      skillVelocityPercent: Math.max(0, Math.trunc(stat67)),
+      armorSpeedPenaltyPercent,
+      slowPercent: Math.max(0, -Math.trunc(slowRaw)),
+      staminaExhausted: this._self.stamina <= 0,
     }
   }
 

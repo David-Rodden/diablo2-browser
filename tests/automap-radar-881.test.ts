@@ -679,7 +679,7 @@ describe('Automap Reveal Plugin — Monster & Shrine Radar (Issue #881)', () => 
           AUTOMAP_WAYPOINT_HIGHLIGHT_TINT[0],
           AUTOMAP_WAYPOINT_HIGHLIGHT_TINT[1],
           AUTOMAP_WAYPOINT_HIGHLIGHT_TINT[2],
-          1.0,
+          bMinimap ? 1.0 : 0.25,
         ])
       }
     }
