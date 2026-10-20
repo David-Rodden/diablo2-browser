@@ -110,6 +110,18 @@ describe('sync-upstream', () => {
     expect(s.read('docs/extra.md')).toBeNull()
   })
 
+  it('translates english paths with the dictionary and lists the Chinese that is left', () => {
+    const s = setup()
+    writeFiles(s.work, { '.upstream-filter': 'drop .gitea\nkeep README.md\ngenerated src/gen.ts\nenglish page.html\n', 'tools/english.tsv': '插件\tPlugins\n' })
+    git(s.work, 'add', '-A')
+    git(s.work, 'commit', '-q', '-m', 'English')
+    s.publish({ ...s.base, 'page.html': '<b>插件</b>\n<i>未连接</i>\n' }, '2')
+    const result = s.sync()
+    expect([result.status, result.stderr]).toEqual([0, ''])
+    expect(s.read('page.html')).toBe('<b>Plugins</b>\n<i>未连接</i>\n')
+    expect(result.stdout).toContain('page.html:2: <i>未连接</i>')
+  })
+
   it('stops with a clear message when our edits really conflict', () => {
     const s = setup()
     writeFiles(s.work, { 'src/engine.ts': 'my engine tweak\n' })

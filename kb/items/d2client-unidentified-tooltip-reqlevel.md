@@ -2,7 +2,7 @@
 
 ## 1. Binary Ground Truth (`D2Client.dll`, ImageBase `0x6FAB0000`)
 
-In Diablo II v1.13c, the string index `0x0D8D` (`3469`, key `'ItemExp'` / `"Required Level:"` / `"需要等级:"`) is formatted exclusively by helper `0x6FB3DE40`:
+In Diablo II v1.13c, the string index `0x0D8D` (`3469`, key `'ItemExp'` / `"Required Level:"`) is formatted exclusively by helper `0x6FB3DE40`:
 
 | Helper / Caller | Address | Behavior |
 |---|---|---|

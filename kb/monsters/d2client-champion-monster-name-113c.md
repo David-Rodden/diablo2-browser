@@ -19,11 +19,11 @@
   1. `0x6FAD06A2`: `fFlags & 0x02` (`MONFLAG_SUPERUNIQUE`) — resolves `SuperUniques.txt` `Name` string via `superUniqueId`.
   2. `0x6FAD0758`: `fFlags & 0x04` (`MONFLAG_CHAMPION`) — **checked before `0x08` (`Unique`)**:
      - Scans `.rdata:0x6FB86D64` (`4` entries + default fallback at index `4`) against `pMonsterData->nBossMods[0]`:
-       - `36` -> `0x2B4C` (`"champghostlyX"` / `"Ghostly"` / `"幽靈的"`)
-       - `37` -> `0x2B4D` (`"champfanaticX"` / `"Fanatic"` / `"狂信者"`)
-       - `38` -> `0x2B4E` (`"champpossessedX"` / `"Possessed"` / `"著魔者"`)
-       - `39` -> `0x2B4F` (`"champberserkX"` / `"Berserker"` / `"狂戰士"`)
-       - Default / `16` -> `0x0C94` (`"Champion"` / `"Champion"` / `"頭目"`)
+       - `36` -> `0x2B4C` (`"champghostlyX"` / `"Ghostly"`)
+       - `37` -> `0x2B4D` (`"champfanaticX"` / `"Fanatic"`)
+       - `38` -> `0x2B4E` (`"champpossessedX"` / `"Possessed"`)
+       - `39` -> `0x2B4F` (`"champberserkX"` / `"Berserker"`)
+       - Default / `16` -> `0x0C94` (`"Champion"` / `"Champion"`)
      - Formats with `.tbl` string `0x2B40` (`ChampFormatX`: `"%0 %1"`) and jumps to `0x6FAD095C`, bypassing `wNameSeed`.
   3. `0x6FAD0716` -> `0x6FAD08EF`: Only when neither `0x02` nor `0x04` is set does `fFlags & 0x08` roll random Unique prefix/suffix/appellation from `wNameSeed` (`nameSeed & 0xFF`).
 - `0x6FB70850` (`0x6FB70A8B..0x6FB70AA6`) — Monster lifebar plaque color selector:
