@@ -1,0 +1,43 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-upstream
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge the latest snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          before="$(git rev-parse origin/upstream)"
+          git checkout -q -B sync origin/main
+          if tools/sync-upstream.sh --merge; then clean=true; else clean=false; git merge --abort; fi
+          [ "$(git rev-parse upstream)" = "$before" ] && exit 0
+
+          git push origin upstream
+          title="Merge $(git log -1 --format=%s upstream | sed 's/^chore: publish d2web source //')"
+          gh pr list --state open --json number,headRefName -q '.[] | select(.headRefName | startswith("sync/")) | .number' | xargs -r -n1 gh pr close --delete-branch
+          if $clean; then
+            branch="sync/$(git rev-parse --short upstream)"
+            git push origin "HEAD:refs/heads/$branch"
+            gh pr create --base main --head "$branch" --title "$title" --body "Merges cleanly."
+          else
+            gh pr create --base main --head upstream --title "$title (conflicts)" --body "Run \`npm run sync\` locally to resolve." || true
+          fi
