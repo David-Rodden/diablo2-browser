@@ -91,7 +91,9 @@ import { isWalkableWorldSubTile, MapService } from './map/map-service.ts'
 import type { D2WebPlugin, PluginQuickCastPort } from './plugin-host/api.ts'
 import { PluginHost } from './plugin-host/plugin-host.ts'
 import { PluginMenu } from './plugin-host/plugin-menu.ts'
-import './plugin-host/plugin-menu-theme.css'
+import './theme/index.css'
+import { decorateLoadingScreen } from './ui/loading-screen.ts'
+import { startPageTitle } from './ui/page-title.ts'
 import {
   OnlineSession,
   SessionLostError,
@@ -401,8 +403,10 @@ export async function startPlayApp(options?: {
   }
 
   const bootProgress = new BootProgressTracker({ stageEl, expectedTotal: 180 }).install()
+  decorateLoadingScreen(bootProgress)
 
   const settingsStore = getGlobalSettingsStore()
+  if (settingsStore.get().lang !== 'en') settingsStore.update({ lang: 'en' })
   const initialSettings = settingsStore.get()
   setLang(initialSettings.lang)
 
@@ -835,6 +839,7 @@ export async function startPlayApp(options?: {
   }
 
   let inGameView = false
+  startPageTitle(() => (inGameView ? { areaId: session.world.areaId, level: session.world.self.level } : null))
   /** Own class' animation pack is requested exactly once per level entry. */
   let ownHeroArtKicked = false
   /** #954: the played class token — its pack is never staleness-evicted (fallback art insurance). */

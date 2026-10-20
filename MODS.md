@@ -25,4 +25,4 @@ Ground label icons, left to right:
 | ◇ blue | Ethereal |
 | `27` in a box | Item level |
 
-There are some smaller changes that aren't plugins: smoother rendering, faster click response, and crisp pixel scaling.
+There are some smaller changes that aren't plugins: an English-only interface, a new loading screen, steadier lighting in dungeons, smoother rendering, faster click response, and crisp pixel scaling.
