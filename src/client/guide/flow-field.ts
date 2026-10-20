@@ -87,7 +87,7 @@ export class FlowField {
     for (let step = 0; this.distance[cy * width + cx]! > 0; step++) {
       const here = this.distance[cy * width + cx]!
       const toTarget = ([dx, dy]: readonly [number, number]) => Math.hypot(cx + dx + this.ox - this.targetX, cy + dy + this.oy - this.targetY)
-      const best = NEIGHBOURS.filter(([dx, dy]) => this.canStep(cx, cy, dx, dy) && this.distance[(cy + dy) * width + cx + dx]! === here - 1).sort((a, b) => toTarget(a) - toTarget(b))[0]
+      const best = NEIGHBOURS.filter(([dx, dy]) => this.canStep(cx, cy, dx, dy) && here - 1 === this.distance[(cy + dy) * width + cx + dx]).sort((a, b) => toTarget(a) - toTarget(b))[0]
       if (!best) break
       ;[cx, cy] = [cx + best[0], cy + best[1]]
       if (step % every === every - 1 || this.distance[cy * width + cx] === 0) path.push({ x: cx + this.ox, y: cy + this.oy })

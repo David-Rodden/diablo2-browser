@@ -4,7 +4,6 @@ import { CommandMapper } from '../../src/client/input/command-mapper.ts'
 import type { HudModel } from '../../src/client/ui-model/hud-model.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
-import type { ItemData } from '../../src/netproto/index.ts'
 
 const THRESHOLDS: AutoPotionThresholds = { life: 50, rejuv: 25, mana: 20, merc: 40 }
 const belt = (...codes: string[]): Potion[] => codes.map((code, column) => ({ column, code }))
@@ -157,7 +156,7 @@ const putItem = (world: ClientWorld, container: 'belt' | 'inventory', id: number
     type: 'ItemEvent',
     action: 0,
     container,
-    item: { id, itemId: id, code, rawCode: `${code} `, container, action: 0, flags: 0x00200010, rawFlags: 0x00200010, gridX: slot, gridY: 0, x: slot, y: 0 } as unknown as ItemData,
+    item: { id, itemId: id, code, rawCode: `${code} `, container, action: 0, flags: 0x00200010, rawFlags: 0x00200010, gridX: slot, gridY: 0, x: slot, y: 0 },
   })
 
 const createMapperSetup = () => {

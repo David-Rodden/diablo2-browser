@@ -180,7 +180,10 @@ export class PlayAssists {
   runAutoCombat(nowMs: number): void {
     if (!this.autoCombatOn || this.host.mouseHeld().left || this.host.world.isDead || this.isInWorldInteraction() || nowMs - this.lastAutoCombatMs < AUTO_COMBAT_REPEAT_MS) return
     const target = this.resolveTarget(nowMs)
-    if (target === null) return this.openDoorToward(this.visibleHostilesByDistance(), nowMs)
+    if (target === null) {
+      this.openDoorToward(this.visibleHostilesByDistance(), nowMs)
+      return
+    }
     if (this.isAwaitingHitResult(target, nowMs)) return
     const freshTarget = target.id !== this.targetId
     this.targetId = target.id
@@ -200,7 +203,7 @@ export class PlayAssists {
 
   private isInWorldInteraction(): boolean {
     const { hudManager } = this.host
-    return INTERACTION_PANELS.has(hudManager.leftPanel) || Boolean(hudManager.worldPanels?.npcMenu)
+    return INTERACTION_PANELS.has(hudManager.leftPanel) || Boolean(hudManager.worldPanels.npcMenu)
   }
 
   private lootWanted(): (code: string) => boolean {
@@ -237,7 +240,7 @@ export class PlayAssists {
 
   private isAwaitingHitResult(target: ClientUnit, nowMs: number): boolean {
     const last = this.lastHit
-    if (last === null || last.id !== target.id || last.life !== target.lifePct) return false
+    if (last?.id !== target.id || last.life !== target.lifePct) return false
     if (this.host.isPlayerBusyCasting(nowMs)) {
       this.swingFinishedAtMs = null
       return true
@@ -310,8 +313,7 @@ export class PlayAssists {
   }
 
   private objects(): readonly ClientUnit[] {
-    const { world } = this.host
-    return world.getUnitsByType ? world.getUnitsByType(2) : []
+    return this.host.world.getUnitsByType(2)
   }
 
   private openDoorToward(targets: readonly ClientUnit[], nowMs: number): void {

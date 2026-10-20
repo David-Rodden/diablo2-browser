@@ -18,7 +18,15 @@ export const runTimerPlugin: D2WebPlugin = {
     }
     const tooltip = { zh: '点击清零', en: 'Click to reset' }
     observe()
-    const button = ctx.toolbar.addButton({ id: 'timer', label: label(), tooltip, onClick: () => (timer.reset(Date.now()), refresh()) })
+    const button = ctx.toolbar.addButton({
+      id: 'timer',
+      label: label(),
+      tooltip,
+      onClick: () => {
+        timer.reset(Date.now())
+        refresh()
+      },
+    })
     const refresh = () => {
       observe()
       button.update?.({ label: label(), tooltip })
@@ -28,7 +36,11 @@ export const runTimerPlugin: D2WebPlugin = {
     const interval = setInterval(refresh, 1000)
     return {
       getStatus: () => ({ level: 'ok', text: label() }),
-      deactivate: () => (clearInterval(interval), unsubscribe(), button.dispose()),
+      deactivate: () => {
+        clearInterval(interval)
+        unsubscribe()
+        button.dispose()
+      },
     }
   },
 }

@@ -37,7 +37,10 @@ export const itemInfoPlugin: D2WebPlugin = {
         const filter = LOOT_FILTERS[config.lootFilter].status
         return { level: 'ok', text: { zh: `${config.alwaysShow ? '名称常显' : '按 Alt 显示'} · ${filter.zh}`, en: `${config.alwaysShow ? 'Labels always on' : 'Labels on Alt'} · ${filter.en}` } }
       },
-      deactivate: () => (unsubscribe(), ctx.itemInfo.setConfig(null)),
+      deactivate: () => {
+        unsubscribe()
+        ctx.itemInfo.setConfig(null)
+      },
     }
   },
 }

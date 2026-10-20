@@ -28,7 +28,10 @@ export const autoCombatPlugin: D2WebPlugin = {
         const key = ctx.autoCombat.getKey()
         return key ? { level: 'ok', text: { zh: `按 ${key} 开关`, en: `Press ${key} to toggle` } } : { level: 'warn', text: { zh: '未开启', en: 'Inactive' } }
       },
-      deactivate: () => (unsubscribe(), ctx.autoCombat.setKey(null)),
+      deactivate: () => {
+        unsubscribe()
+        ctx.autoCombat.setKey(null)
+      },
     }
   },
 }

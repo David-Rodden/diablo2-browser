@@ -27,7 +27,10 @@ export const pathGuidePlugin: D2WebPlugin = {
         const mode = ctx.pathGuide.getMode()
         return mode ? { level: 'ok', text: MODES[mode].status } : { level: 'warn', text: { zh: '未开启', en: 'Inactive' } }
       },
-      deactivate: () => (unsubscribe(), ctx.pathGuide.setMode(null)),
+      deactivate: () => {
+        unsubscribe()
+        ctx.pathGuide.setMode(null)
+      },
     }
   },
 }

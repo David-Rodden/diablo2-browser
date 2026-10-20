@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "noUncheckedIndexedAccess": true, "noEmit": true },
+  "include": ["../../src/**/*.ts", "../../plugins/**/*.ts", "../../tools/**/*.ts", "../../tests/**/*.ts", "../../vite.config.ts"]
+}

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CommandMapper } from '../../src/client/input/command-mapper.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
-import type { ClientCommand, ItemData } from '../../src/netproto/index.ts'
+import type { ClientCommand } from '../../src/netproto/index.ts'
 import type { MapService } from '../../src/client/map/map-service.ts'
 import { walledLevel } from './walled-level.ts'
 
@@ -11,7 +11,7 @@ const dropOnGround = (world: ClientWorld, id: number, code: string, x: number, y
     type: 'ItemEvent',
     action: 0,
     container: 'ground',
-    item: { id, itemId: id, code, rawCode: `${code} `, container: 'ground', action: 0, flags: 0x00200010, rawFlags: 0x00200010, worldX: x, worldY: y, x, y, goldAmount: 100 } as unknown as ItemData,
+    item: { id, itemId: id, code, rawCode: `${code} `, container: 'ground', action: 0, flags: 0x00200010, rawFlags: 0x00200010, worldX: x, worldY: y, x, y, goldAmount: 100 },
   })
 
 const createSetup = (enabled = true, level = 1, mapService?: MapService) => {

@@ -1,0 +1,40 @@
+name: PR summary
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-summary-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Write the summary into the PR body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          gh pr view "$PR" --json body,title,baseRefName > pr.json
+          git fetch -q origin "pull/$PR/head:pr-head"
+          base="$(git merge-base "origin/$(jq -r .baseRefName pr.json)" pr-head)"
+          PR_BODY="$(jq -r '.body // ""' pr.json)" node tools/pr-summary.ts "$base" pr-head "$(jq -r .title pr.json)" > body.md
+          if [ -s body.md ]; then gh pr edit "$PR" --body-file body.md; fi

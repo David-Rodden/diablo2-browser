@@ -167,7 +167,7 @@ describe('auto-fight hit confirmation', () => {
 })
 
 describe('dead monsters whose corpse cannot be selected', () => {
-  type Corpse = { states: Set<number>; corpseSuppressed: boolean }
+  interface Corpse { states: Set<number>; corpseSuppressed: boolean }
   const UNSELECTABLE: readonly [string, (unit: Corpse) => void][] = [
     ['shattered', (u) => void u.states.add(107)],
     ['corpse no-select', (u) => void u.states.add(118)],

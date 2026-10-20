@@ -38,7 +38,8 @@ jobs:
           if $clean; then
             branch="sync/$(git rev-parse --short upstream)"
             git push origin "HEAD:refs/heads/$branch"
-            gh pr create --base main --head "$branch" --title "$title" --body "Merges cleanly. It lands on main by itself once CI passes."
+            gh pr create --base main --head "$branch" --title "$title" --body ""
+            gh workflow run pr-summary.yml -f pr="$(gh pr view "$branch" --json number -q .number)"
             gh workflow run ci.yml --ref "$branch"
             run=""
             for _ in $(seq 30); do
@@ -52,5 +53,7 @@ jobs:
               gh pr comment "$branch" --body "CI failed, so this was left for review."
             fi
           else
-            gh pr create --base main --head upstream --title "$title (conflicts)" --body "Run \`npm run sync\` locally to resolve." || true
+            if gh pr create --base main --head upstream --title "$title (conflicts)" --body ""; then
+              gh workflow run pr-summary.yml -f pr="$(gh pr view upstream --json number -q .number)"
+            fi
           fi
