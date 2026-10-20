@@ -91,6 +91,7 @@ import { isWalkableWorldSubTile, MapService } from './map/map-service.ts'
 import type { D2WebPlugin, PluginQuickCastPort } from './plugin-host/api.ts'
 import { PluginHost } from './plugin-host/plugin-host.ts'
 import { PluginMenu } from './plugin-host/plugin-menu.ts'
+import './plugin-host/plugin-menu-theme.css'
 import {
   OnlineSession,
   SessionLostError,

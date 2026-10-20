@@ -5,8 +5,8 @@ export const runTimerPlugin: D2WebPlugin = {
   id: 'run-timer',
   name: { zh: '计时器', en: 'Run Timer' },
   description: {
-    zh: '非 1.13c 增强：在顶部工具栏显示本局用时、平均每局用时和每小时局数。每进入一个新游戏（包括 +1）算一局，点击可清零。',
-    en: 'Non-1.13c enhancement: shows how long the current game has run, your average run time and runs per hour in the top toolbar. Every new game counts as a run, including +1. Click it to reset.',
+    zh: '在工具栏显示本局用时、平均用时和每小时局数。点击清零。',
+    en: 'Shows the current run time, average run time and runs per hour in the toolbar. Click to reset.',
   },
   defaultEnabled: true,
   activate(ctx) {
