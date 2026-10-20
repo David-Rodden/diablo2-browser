@@ -91,7 +91,10 @@ import { isWalkableWorldSubTile, MapService } from './map/map-service.ts'
 import type { D2WebPlugin, PluginQuickCastPort } from './plugin-host/api.ts'
 import { PluginHost } from './plugin-host/plugin-host.ts'
 import { PluginMenu } from './plugin-host/plugin-menu.ts'
-import './plugin-host/plugin-menu-theme.css'
+import './theme/index.css'
+import { decorateLoadingScreen } from './ui/loading-screen.ts'
+import { startPageTitle } from './ui/page-title.ts'
+import { PathGuide } from './guide/path-guide.ts'
 import {
   OnlineSession,
   SessionLostError,
@@ -401,8 +404,10 @@ export async function startPlayApp(options?: {
   }
 
   const bootProgress = new BootProgressTracker({ stageEl, expectedTotal: 180 }).install()
+  decorateLoadingScreen(bootProgress)
 
   const settingsStore = getGlobalSettingsStore()
+  if (settingsStore.get().lang !== 'en') settingsStore.update({ lang: 'en' })
   const initialSettings = settingsStore.get()
   setLang(initialSettings.lang)
 
@@ -650,9 +655,11 @@ export async function startPlayApp(options?: {
     }
   })
 
+  let pathGuide: PathGuide | null = null
   const hudManager = new HudManager(hudCanvas, {
     onRenderAutomapOverlay: (ctx, font, logicalWidth, logicalHeight) => {
-      return minimap.drawHudOverlay(ctx, font, logicalWidth, logicalHeight)
+      const drawAutomapText = () => minimap.drawHudOverlay(ctx, font, logicalWidth, logicalHeight)
+      return pathGuide && inGameView ? pathGuide.draw(ctx, font, performance.now(), drawAutomapText, logicalWidth) : drawAutomapText()
     },
     onToggleAutomap: () => {
       sessionRef?.hudModel.toggleAutomap()
@@ -776,6 +783,18 @@ export async function startPlayApp(options?: {
       session.commandMapper.quickCastMode = enabled
     },
   }
+  const guide = new PathGuide({
+    areaId: () => session.world.areaId,
+    self: () => ({ x: session.world.self.x, y: session.world.self.y, isDead: session.world.isDead }),
+    quests: () => session.world.quests,
+    waypoints: () => session.world.waypoints,
+    levelView: () => session.mapService?.getLoadedLevelView(session.world.areaId) ?? null,
+    walkable: (view) => session.commandMapper.assists.walkableWithDoorsOpen(view),
+    objects: () => session.world.getUnitsByType(2),
+    toScreen: (x, y) => session.camera.subtileToScreen(x, y),
+    automap: () => ({ visible: minimap.visible, viewport: minimap.lastRenderStats.viewport }),
+  })
+  pathGuide = guide
   const plugins = new PluginHost({
     plugins: options?.plugins ?? [],
     session,
@@ -790,6 +809,10 @@ export async function startPlayApp(options?: {
     upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
     itemInfo: { getConfig: () => hudManager.itemInfo, setConfig: (config) => hudManager.setItemInfo(config) },
+    pathGuide: {
+      getMode: () => (guide.enabled ? guide.mode : null),
+      setMode: (mode) => void Object.assign(guide, mode ? { enabled: true, mode } : { enabled: false }),
+    },
     autoCombat: { getKey: () => session.commandMapper.assists.autoCombatKey, setKey: (key) => void (session.commandMapper.assists.autoCombatKey = key) },
     autoPotion: {
       getThresholds: () => session.commandMapper.assists.autoPotionThresholds,
@@ -835,6 +858,7 @@ export async function startPlayApp(options?: {
   }
 
   let inGameView = false
+  startPageTitle(() => (inGameView ? { areaId: session.world.areaId, level: session.world.self.level } : null))
   /** Own class' animation pack is requested exactly once per level entry. */
   let ownHeroArtKicked = false
   /** #954: the played class token — its pack is never staleness-evicted (fallback art insurance). */

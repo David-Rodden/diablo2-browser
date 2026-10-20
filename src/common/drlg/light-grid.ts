@@ -1137,10 +1137,13 @@ export function selectLightMode(quality: LightQuality, fps: number, nowMs: numbe
  * FPS counter 0x6fbc9808: rendered frames over a window longer than 3000 ms, divided by 3 (0x6faf23a0–0x6faf23cc);
  * starts at (and is reset to) 25 (0x6faf237c / 0x6faf4cc4). The exact window start is INFERRED.
  */
+const LIGHT_FPS_STALL_MS = 500
+
 export class LightFpsCounter {
   fps = 25
   private frames = 0
   private windowStartMs: number | null = null
+  private lastFrameMs = Number.NEGATIVE_INFINITY
 
   reset(): void {
     this.fps = 25
@@ -1150,7 +1153,9 @@ export class LightFpsCounter {
 
   /** Counts one rendered frame (0x6fbc980c is incremented after each draw, 0x6faf4e7a). */
   onFrameRendered(nowMs: number): void {
-    if (this.windowStartMs === null) {
+    const stalled = nowMs - this.lastFrameMs > LIGHT_FPS_STALL_MS
+    this.lastFrameMs = nowMs
+    if (this.windowStartMs === null || stalled) {
       this.windowStartMs = nowMs
       this.frames = 0
     }

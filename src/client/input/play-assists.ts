@@ -50,7 +50,7 @@ export interface PlayAssistHost {
 const objectMetaOf = (unit: ClientUnit) => unit.objectMeta ?? CANONICAL_113C_OBJECTS[unit.classId]
 const collisionMask = (unit: ClientUnit) => objectMetaOf(unit)?.hasCollisionMask ?? 0
 const objectMode = (unit: ClientUnit) => Math.max(0, Math.min(7, Math.floor(unit.mode || 0)))
-const isClosedDoor = (unit: ClientUnit) => !unit.hidden && !unit.dead && Boolean(objectMetaOf(unit)?.isDoor) && (collisionMask(unit) & (1 << objectMode(unit))) !== 0
+export const isClosedDoor = (unit: ClientUnit) => !unit.hidden && !unit.dead && Boolean(objectMetaOf(unit)?.isDoor) && (collisionMask(unit) & (1 << objectMode(unit))) !== 0
 const openModeOf = (door: ClientUnit) => [0, 1, 2, 3, 4, 5, 6, 7].find((mode) => (collisionMask(door) & (1 << mode)) === 0)
 const asOpened = (door: ClientUnit): ClientUnit => {
   const mode = openModeOf(door)
@@ -273,9 +273,21 @@ export class PlayAssists {
     if (grids.has(openDoors)) return grids.get(openDoors) ?? null
     const view = this.host.levelViewAt(sx, sy)
     const objects = this.objects().map((unit) => (openDoors && isClosedDoor(unit) ? asOpened(unit) : unit))
-    const grid = view && view.walkable.length > 0 && isInGrid(view, sx, sy) ? { ...view, walkable: this.host.walkableWith(view, sx, sy, objects) } : null
+    const grid = view && view.walkable.length > 0 && isInGrid(view, sx, sy) ? { ...view, walkable: this.walkableAround(view, sx, sy, objects) } : null
     grids.set(openDoors, grid)
     return grid
+  }
+
+  walkableWithDoorsOpen(view: LevelView): Uint8Array {
+    return this.walkableAround(view, Math.round(this.host.world.self.x), Math.round(this.host.world.self.y), this.objects().map((unit) => (isClosedDoor(unit) ? asOpened(unit) : unit)))
+  }
+
+  private walkableAround(view: LevelView, sx: number, sy: number, objects: readonly ClientUnit[]): Uint8Array {
+    try {
+      return this.host.walkableWith(view, sx, sy, objects)
+    } catch {
+      return view.walkable
+    }
   }
 
   private objects(): readonly ClientUnit[] {

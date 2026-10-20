@@ -1,0 +1,97 @@
+import type { SubTilePoint, SubTileWalkabilityGrid } from '../motion/pathfind.ts'
+
+const UNREACHED = -1
+const SEED_RADIUS = 6
+const NEIGHBOURS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+] as const
+
+const erodeToPlayerSize = ({ walkable, subWidth: w, subHeight: h }: SubTileWalkabilityGrid): Uint8Array =>
+  walkable.map((open, i) => {
+    const [x, y] = [i % w, Math.floor(i / w)]
+    return open !== 0 && x > 0 && y > 0 && x < w - 1 && y < h - 1 && walkable[i - 1] !== 0 && walkable[i + 1] !== 0 && walkable[i - w] !== 0 && walkable[i + w] !== 0 ? 1 : 0
+  })
+
+export class FlowField {
+  private readonly distance: Int32Array
+  private readonly ox: number
+  private readonly oy: number
+  private readonly grid: SubTileWalkabilityGrid
+
+  constructor(
+    grid: SubTileWalkabilityGrid,
+    readonly targetX: number,
+    readonly targetY: number,
+  ) {
+    this.grid = { ...grid, walkable: erodeToPlayerSize(grid) }
+    this.ox = grid.subOriginX ?? 0
+    this.oy = grid.subOriginY ?? 0
+    this.distance = new Int32Array(grid.subWidth * grid.subHeight).fill(UNREACHED)
+    const seed = this.nearestWalkable(Math.round(targetX) - this.ox, Math.round(targetY) - this.oy)
+    if (seed !== null) this.flood(seed)
+  }
+
+  private walkable(x: number, y: number): boolean {
+    return x >= 0 && y >= 0 && x < this.grid.subWidth && y < this.grid.subHeight && this.grid.walkable[y * this.grid.subWidth + x] !== 0
+  }
+
+  private nearestWalkable(x: number, y: number): number | null {
+    for (let r = 0; r <= SEED_RADIUS; r++)
+      for (let dy = -r; dy <= r; dy++)
+        for (let dx = -r; dx <= r; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === r && this.walkable(x + dx, y + dy)) return (y + dy) * this.grid.subWidth + x + dx
+    return null
+  }
+
+  private canStep(x: number, y: number, dx: number, dy: number): boolean {
+    return this.walkable(x + dx, y + dy) && (dx === 0 || dy === 0 || (this.walkable(x + dx, y) && this.walkable(x, y + dy)))
+  }
+
+  private flood(seed: number): void {
+    const width = this.grid.subWidth
+    const queue = new Int32Array(this.distance.length)
+    let [head, tail] = [0, 0]
+    this.distance[seed] = 0
+    queue[tail++] = seed
+    while (head < tail) {
+      const cell = queue[head++]!
+      const [x, y] = [cell % width, Math.floor(cell / width)]
+      for (const [dx, dy] of NEIGHBOURS) {
+        const next = (y + dy) * width + x + dx
+        if (this.canStep(x, y, dx, dy) && this.distance[next] === UNREACHED) {
+          this.distance[next] = this.distance[cell]! + 1
+          queue[tail++] = next
+        }
+      }
+    }
+  }
+
+  distanceFrom(x: number, y: number): number | null {
+    const [lx, ly] = [Math.round(x) - this.ox, Math.round(y) - this.oy]
+    const d = this.walkable(lx, ly) ? this.distance[ly * this.grid.subWidth + lx]! : UNREACHED
+    return d === UNREACHED ? null : d
+  }
+
+  pathFrom(x: number, y: number, every = 3): SubTilePoint[] {
+    const width = this.grid.subWidth
+    const start = this.nearestWalkable(Math.round(x) - this.ox, Math.round(y) - this.oy)
+    if (start === null || this.distance[start] === UNREACHED) return []
+    const path: SubTilePoint[] = []
+    let [cx, cy] = [start % width, Math.floor(start / width)]
+    for (let step = 0; this.distance[cy * width + cx]! > 0; step++) {
+      const here = this.distance[cy * width + cx]!
+      const toTarget = ([dx, dy]: readonly [number, number]) => Math.hypot(cx + dx + this.ox - this.targetX, cy + dy + this.oy - this.targetY)
+      const best = NEIGHBOURS.filter(([dx, dy]) => this.canStep(cx, cy, dx, dy) && this.distance[(cy + dy) * width + cx + dx]! === here - 1).sort((a, b) => toTarget(a) - toTarget(b))[0]
+      if (!best) break
+      ;[cx, cy] = [cx + best[0], cy + best[1]]
+      if (step % every === every - 1 || this.distance[cy * width + cx] === 0) path.push({ x: cx + this.ox, y: cy + this.oy })
+    }
+    return path
+  }
+}

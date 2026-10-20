@@ -138,7 +138,7 @@ class CdpSession {
   }
 }
 
-const BOT_CHAR_NAME = 'VerifyPlayBot'
+const BOT_CHAR_NAME = process.env.VERIFY_CHAR ?? 'VerifyPlayBotB'
 
 const CAPTURE_FIXTURE_FILES = [
   '01-bncs-mcp-lobby.d2cap',

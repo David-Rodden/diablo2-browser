@@ -17,6 +17,7 @@ import { itemInfoPlugin } from './item-info/index.ts'
 import { killStatsPlugin } from './kill-stats/index.ts'
 import { monsterResistsPlugin } from './monster-resists/index.ts'
 import { nextGamePlugin } from './next-game/index.ts'
+import { pathGuidePlugin } from './path-guide/index.ts'
 import { quickCastPlugin } from './quick-cast/index.ts'
 import { runTimerPlugin } from './run-timer/index.ts'
 import { stashDepositAllPlugin } from './stash-deposit-all/index.ts'
@@ -38,6 +39,7 @@ export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
   autoCombatPlugin,
   autoPotionPlugin,
   upgradeHintsPlugin,
+  pathGuidePlugin,
   itemInfoPlugin,
   monsterResistsPlugin,
   runTimerPlugin,

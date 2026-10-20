@@ -13,6 +13,7 @@ These are the extras this project adds to the base game. Each one can be turned 
 | Item Info | On | Puts small icons on ground labels (see below) and item level in tooltips. Optionally, labels always show and a loot filter hides junk. |
 | Monster Resists | On | Shows a monster's resistances under its health bar. |
 | Upgrade Markers | On | Puts a green arrow on items that are better than what you're wearing. |
+| Path Guide | On | Shows where to go next for your current quest. The minimap gets a route and an arrow toward the exit, the ground gets faint arrows, and the exit and any doors on the way get a ring. You can follow every quest or only the ones the story needs. |
 | Run Timer | On | Shows your run count, average run time and runs per hour in the toolbar. |
 
 Ground label icons, left to right:
@@ -25,4 +26,4 @@ Ground label icons, left to right:
 | ◇ blue | Ethereal |
 | `27` in a box | Item level |
 
-There are some smaller changes that aren't plugins: smoother rendering, faster click response, and crisp pixel scaling.
+There are some smaller changes that aren't plugins: an English-only interface, a new loading screen, steadier lighting in dungeons, smoother rendering, faster click response, and crisp pixel scaling.
