@@ -4,13 +4,14 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-export const SUMMARY_FOOTER = '<sub>Summary generated from the diff; it refreshes on every push.</sub>'
+export const SUMMARY_FOOTER = '<sub>Horadric Insight · refreshes on every push</sub>'
 const DIFF_BUDGET = 80_000
 const MAX_TOKENS = 600
 const SYSTEM_PROMPT = [
   'You summarize pull requests for a Diablo II browser client.',
   'Write two to four plain sentences on what changed and why it matters to a player or maintainer, then up to five short bullets of notable details.',
-  'A commit list and a per-area file table are added below your text, so do not list files or commits.',
+  'A per-area file table is added below your text, so do not list files or commits.',
+  'Never name an AI model, assistant or vendor.',
   'Be concrete and factual, no hype, no headings, no closing remarks.',
 ].join(' ')
 
@@ -20,9 +21,10 @@ export interface FileChange {
   readonly removed: number
 }
 
+const UNBRANDED = /claude|anthropic|sonnet|opus|haiku/i
+
 export interface SummaryInput {
   readonly overview: string
-  readonly commits: readonly string[]
   readonly files: readonly FileChange[]
   readonly upstreamFiles: ReadonlySet<string>
 }
@@ -49,14 +51,11 @@ export const groupByArea = (files: readonly FileChange[]): { readonly area: stri
     })
     .sort((a, b) => b.added + b.removed - (a.added + a.removed))
 
-export function renderSummary({ overview, commits, files, upstreamFiles }: SummaryInput): string {
+export function renderSummary({ overview, files, upstreamFiles }: SummaryInput): string {
   const total = files.reduce((n, f) => ({ added: n.added + f.added, removed: n.removed + f.removed }), { added: 0, removed: 0 })
   const touched = files.map((f) => f.path).filter((path) => upstreamFiles.has(path))
   return [
     overview.trim(),
-    '',
-    `**Commits**`,
-    ...commits.map((c) => `- ${c}`),
     '',
     `**Files** · ${files.length} changed · +${total.added} −${total.removed}`,
     '',
@@ -82,7 +81,7 @@ function modelOverview(prompt: string, model: string | undefined): string | null
     writeFileSync(join(dir, 'system.json'), JSON.stringify([{ text: SYSTEM_PROMPT }]))
     const args = ['bedrock-runtime', 'converse', '--model-id', model, '--messages', `file://${join(dir, 'messages.json')}`, '--system', `file://${join(dir, 'system.json')}`]
     const reply = execFileSync('aws', [...args, '--inference-config', `maxTokens=${MAX_TOKENS}`, '--query', 'output.message.content[0].text', '--output', 'text'], { encoding: 'utf8' }).trim()
-    return reply.length > 0 && reply !== 'None' ? reply : null
+    return reply.length > 0 && reply !== 'None' && !UNBRANDED.test(reply) ? reply : null
   } catch (error) {
     console.error(`model request failed: ${String(error)}`)
     return null
@@ -106,7 +105,7 @@ function main(base: string, head: string, title: string): void {
   const subject = title.length > 0 ? title : (commits[0] ?? 'No commits').replace(/ \([0-9a-f]+\)$/, '')
   const fallback = `${subject}${followUps}.`
   const overview = modelOverview(prompt, process.env.SUMMARY_MODEL) ?? fallback
-  process.stdout.write(renderSummary({ overview, commits, files, upstreamFiles }) + '\n')
+  process.stdout.write(renderSummary({ overview, files, upstreamFiles }) + '\n')
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
