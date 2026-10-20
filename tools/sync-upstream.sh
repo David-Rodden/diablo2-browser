@@ -36,11 +36,12 @@ if [ "$tree" = "$(git rev-parse "$tip^{tree}")" ]; then
   echo "already on the latest snapshot: $(git log -1 --format=%s "$snapshot")"
 else
   meta() { git log -1 --format="$1" "$snapshot"; }
-  export GIT_AUTHOR_NAME="$(meta %an)" GIT_AUTHOR_EMAIL="$(meta %ae)" GIT_AUTHOR_DATE="$(meta %aI)"
-  export GIT_COMMITTER_NAME="$(meta %cn)" GIT_COMMITTER_EMAIL="$(meta %ce)" GIT_COMMITTER_DATE="$(meta %cI)"
   previous="$(git log -1 --format='%(trailers:key=Snapshot,valueonly)' "$tip")"
-  stacked="$(meta %B | git interpret-trailers --trailer "Snapshot: $snapshot" | git commit-tree "$tree" -p "$tip")"
-  unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE
+  stacked="$(
+    export GIT_AUTHOR_NAME="$(meta %an)" GIT_AUTHOR_EMAIL="$(meta %ae)" GIT_AUTHOR_DATE="$(meta %aI)"
+    export GIT_COMMITTER_NAME="$(meta %cn)" GIT_COMMITTER_EMAIL="$(meta %ce)" GIT_COMMITTER_DATE="$(meta %cI)"
+    meta %B | git interpret-trailers --trailer "Snapshot: $snapshot" | git commit-tree "$tree" -p "$tip"
+  )"
   git branch -f upstream "$stacked"
   [ "$previous" = "$snapshot" ] && echo "reapplied .upstream-filter to $(meta %s)" || echo "new snapshot: $(git log -1 --format='%h %s' "$stacked")"
 fi
