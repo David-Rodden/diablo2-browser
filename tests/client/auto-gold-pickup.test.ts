@@ -19,7 +19,7 @@ const createSetup = (enabled = true, level = 1) => {
   const sent: ClientCommand[] = []
   const hudManager = new HudManager()
   const mapper = new CommandMapper({ world, hudManager, sendCommand: (cmd) => sent.push(cmd) })
-  mapper.autoGoldPickup = enabled
+  mapper.assists.autoGoldPickup = enabled
   const pickups = () => sent.flatMap((c) => (c.type === 'ItemPickup' ? [c.itemId] : []))
   return { world, mapper, hudManager, pickups, sent }
 }
@@ -29,8 +29,8 @@ describe('auto gold pickup', () => {
     const { world, mapper, pickups } = createSetup()
     dropOnGround(world, 11, 'gld', 5003, 5000)
     dropOnGround(world, 12, 'gld', 5001, 5001)
-    mapper.pickUpNearbyLoot(1000)
-    mapper.pickUpNearbyLoot(1040)
+    mapper.assists.pickUpNearbyLoot(1000)
+    mapper.assists.pickUpNearbyLoot(1040)
     expect(pickups()).toEqual([12, 11])
   })
 
@@ -38,38 +38,38 @@ describe('auto gold pickup', () => {
     const { world, mapper, pickups } = createSetup()
     dropOnGround(world, 21, 'gld', 5030, 5000)
     dropOnGround(world, 22, 'rin', 5001, 5000)
-    mapper.pickUpNearbyLoot(1000)
+    mapper.assists.pickUpNearbyLoot(1000)
     expect(pickups()).toEqual([])
   })
 
   it('walks over to gold a few tiles away when idle, but not while the player is busy', () => {
     const idle = createSetup()
     dropOnGround(idle.world, 61, 'gld', 5012, 5000)
-    idle.mapper.pickUpNearbyLoot(1000)
+    idle.mapper.assists.pickUpNearbyLoot(1000)
     expect(idle.sent.find((c) => c.type === 'MoveToUnit')).toMatchObject({ target: { id: 61 } })
     const busy = createSetup()
     dropOnGround(busy.world, 62, 'gld', 5012, 5000)
     busy.mapper.handlePointerDown(400, 300, 0, 900)
     busy.sent.length = 0
-    busy.mapper.pickUpNearbyLoot(1000)
+    busy.mapper.assists.pickUpNearbyLoot(1000)
     expect(busy.sent.some((c) => c.type === 'MoveToUnit' || c.type === 'ItemPickup')).toBe(false)
   })
 
   it('retries a pile that is still on the ground only after a second', () => {
     const { world, mapper, pickups } = createSetup()
     dropOnGround(world, 31, 'gld', 5001, 5000)
-    ;[1000, 1040, 1500, 2001].forEach((t) => mapper.pickUpNearbyLoot(t))
+    ;[1000, 1040, 1500, 2001].forEach((t) => mapper.assists.pickUpNearbyLoot(t))
     expect(pickups()).toEqual([31, 31])
   })
 
   it('does nothing when disabled or while carrying the maximum gold', () => {
     const disabled = createSetup(false)
     dropOnGround(disabled.world, 41, 'gld', 5001, 5000)
-    disabled.mapper.pickUpNearbyLoot(1000)
+    disabled.mapper.assists.pickUpNearbyLoot(1000)
     const full = createSetup()
     full.world.apply({ type: 'StatSet', stat: 14, value: 10_000 })
     dropOnGround(full.world, 42, 'gld', 5001, 5000)
-    full.mapper.pickUpNearbyLoot(1000)
+    full.mapper.assists.pickUpNearbyLoot(1000)
     expect([...disabled.pickups(), ...full.pickups()]).toEqual([])
   })
 
@@ -77,18 +77,18 @@ describe('auto gold pickup', () => {
     const { world, mapper, hudManager, pickups } = createSetup()
     dropOnGround(world, 51, 'gld', 5001, 5000)
     hudManager.leftPanel = 'stash'
-    mapper.pickUpNearbyLoot(1000)
+    mapper.assists.pickUpNearbyLoot(1000)
     hudManager.leftPanel = 'none'
-    mapper.pickUpNearbyLoot(1040)
+    mapper.assists.pickUpNearbyLoot(1040)
     expect(pickups()).toEqual([51])
   })
 
   it('picks up potions while Auto-Potion is on and that kind is running low', () => {
     const { world, mapper, pickups } = createSetup(false)
-    mapper.autoPotionThresholds = { life: 65, rejuv: 35, mana: 20, merc: 40 }
+    mapper.assists.autoPotionThresholds = { life: 65, rejuv: 35, mana: 20, merc: 40 }
     dropOnGround(world, 31, 'rvs', 5002, 5000)
     dropOnGround(world, 32, 'gld', 5001, 5000)
-    mapper.pickUpNearbyLoot(1000)
+    mapper.assists.pickUpNearbyLoot(1000)
     expect(pickups()).toEqual([31])
   })
 })

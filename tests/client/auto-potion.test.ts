@@ -170,7 +170,7 @@ const createMapperSetup = () => {
   const used: number[] = []
   const hudModel = { useBeltSlot: (col: number, toMerc: boolean) => drinks.push({ col, toMerc }) > 0, useItem: (itemId: number) => void used.push(itemId) } as unknown as HudModel
   const mapper = new CommandMapper({ world, hudManager, hudModel })
-  mapper.autoPotionThresholds = THRESHOLDS
+  mapper.assists.autoPotionThresholds = THRESHOLDS
   return { world, hudManager, mapper, drinks, used, setLife }
 }
 
@@ -180,7 +180,7 @@ describe('auto-potion in the command mapper', () => {
     putItem(world, 'belt', 41, 'mp3', 0)
     putItem(world, 'belt', 42, 'hp2', 1)
     setLife(30)
-    mapper.drinkPotionsIfLow(1_000)
+    mapper.assists.drinkPotionsIfLow(1_000)
     expect(drinks).toEqual([{ col: 1, toMerc: false }])
   })
 
@@ -189,17 +189,17 @@ describe('auto-potion in the command mapper', () => {
     putItem(world, 'belt', 71, 'hp2', 0)
     putItem(world, 'inventory', 72, 'hp2')
     setLife(30)
-    mapper.drinkPotionsIfLow(1_000)
+    mapper.assists.drinkPotionsIfLow(1_000)
     expect([used, drinks]).toEqual([[72], []])
   })
 
   it('warns when the belt has no healing potions and clears the warning when disabled', () => {
     const { world, hudManager, mapper } = createMapperSetup()
     putItem(world, 'belt', 51, 'mp3', 0)
-    mapper.drinkPotionsIfLow(1_000)
+    mapper.assists.drinkPotionsIfLow(1_000)
     expect(hudManager.potionShortage).toBe('life')
-    mapper.autoPotionThresholds = null
-    mapper.drinkPotionsIfLow(1_040)
+    mapper.assists.autoPotionThresholds = null
+    mapper.assists.drinkPotionsIfLow(1_040)
     expect(hudManager.potionShortage).toBeNull()
   })
 
@@ -208,7 +208,7 @@ describe('auto-potion in the command mapper', () => {
     world.apply({ type: 'LoadAct', act: 0, areaId: 1, mapSeed: 1 } as never)
     putItem(world, 'belt', 61, 'hp2', 0)
     setLife(10)
-    mapper.drinkPotionsIfLow(1_000)
+    mapper.assists.drinkPotionsIfLow(1_000)
     expect([drinks, hudManager.potionShortage]).toEqual([[], null])
   })
 })

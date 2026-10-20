@@ -60,7 +60,7 @@ describe('Issue #1273: Barbarian Leap (#132) & Leap Attack (#143) S2C 0xA5 State
       tickCounter: 0,
       commandMapper: {
         tick: () => {},
-        tickAssists: () => {},
+        assists: { tick: () => {} },
         checkPendingMeleeChaseArrival: () => false,
       },
       world,
