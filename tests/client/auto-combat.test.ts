@@ -6,6 +6,7 @@ import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
 import type { ClientCommand } from '../../src/netproto/index.ts'
 import type { MapService } from '../../src/client/map/map-service.ts'
+import { walledLevel } from './walled-level.ts'
 
 const createSetup = (areaId = 2, mapService?: MapService) => {
   const world = new ClientWorld()
@@ -208,18 +209,9 @@ describe('dead monsters whose corpse cannot be selected', () => {
   })
 })
 
-const walledLevel = (doorway: boolean) => {
-  const [origin, size, wallX] = [80, 40, 104]
-  const walkable = new Uint8Array(size * size).fill(1)
-  for (let y = 0; y < size; y++) if (!doorway || y + origin < 98 || y + origin > 102) walkable[y * size + wallX - origin] = 0
-  const view = { areaId: 8, levelId: 8, subOriginX: origin, subOriginY: origin, subWidth: size, subHeight: size, walkable }
-  const inside = (x: number, y: number) => x >= origin && y >= origin && x < origin + size && y < origin + size
-  return { getActiveLevelView: () => view, findLevelViewAtWorldSubTile: (x: number, y: number) => (inside(x, y) ? view : null) } as unknown as MapService
-}
-
 describe('auto-fight and walls', () => {
   it('skips a monster behind a wall for a farther one it can walk to', () => {
-    const s = createSetup(8, walledLevel(false))
+    const s = createSetup(8, walledLevel())
     s.spawn(901, 19, 107, 100)
     s.spawn(902, 19, 91, 100)
     s.mapper.handleKeyDown({ key: 'e' })
@@ -228,7 +220,7 @@ describe('auto-fight and walls', () => {
   })
 
   it('opens a closed door instead of chasing a monster on the other side', () => {
-    const s = createSetup(8, walledLevel(true))
+    const s = createSetup(8, walledLevel([98, 102]))
     s.world.apply({ type: 'UnitAssign', unit: { unitType: 'object', id: 700, classId: 15, x: 104, y: 100, mode: 0 } } as never)
     s.spawn(901, 19, 110, 100)
     s.mapper.handleKeyDown({ key: 'e' })
