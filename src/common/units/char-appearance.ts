@@ -207,6 +207,11 @@ export interface CompositedSorceressR8 {
   readonly groups: readonly (readonly [number, number, number, number, number, number])[][]
 }
 
+/** Optional composite filters. Char select only needs direction 0 and skips the other 15. */
+export interface CompositeOptions {
+  readonly directions?: readonly number[]
+}
+
 /** Pluggable resource loader for browser `fetch` or Node test runners. */
 export interface CharLayerAssetLoader {
   loadJson(relPath: string): Promise<unknown>
@@ -1198,6 +1203,7 @@ export class SorceressLayerCompositor {
   async composite(
     spec: SorceressAppearanceSpec,
     modes: readonly string[] = SORCERESS_PLAYER_MODES,
+    options: CompositeOptions = {},
   ): Promise<CompositedSorceressR8> {
     await this.ensureInitialized()
     const manifest = this.manifest!
@@ -1317,7 +1323,17 @@ export class SorceressLayerCompositor {
         if (entry.dcc !== null) totalMembers += 1
       }
 
-      for (let direction = 0; direction < cof.numberOfDirections; direction += 1) {
+      const requestedDirections = options.directions;
+      const directionsToRender = requestedDirections
+        ? [...new Set(requestedDirections)]
+            .filter(d => Number.isInteger(d) && d >= 0 && d < cof.numberOfDirections)
+            .sort((a, b) => a - b)
+        : Array.from({ length: cof.numberOfDirections }, (_, i) => i)
+      if (directionsToRender.length === 0) {
+        throw new Error(`No valid directions for ${cofToken}: requested ${String(requestedDirections)} of ${String(cof.numberOfDirections)}`)
+      }
+
+      for (const direction of directionsToRender) {
         const dir64 = Math.round((direction * 64) / cof.numberOfDirections)
         const frames: SpriteFrame[] = []
 
@@ -1396,7 +1412,7 @@ export class SorceressLayerCompositor {
       const events = (animRecord?.events ?? []).map(([f, c]) => ({ f, c }))
       const clipMeta: AnimClipMeta = {
         group: groupOffset,
-        directions: cof.numberOfDirections,
+        directions: directionsToRender.length,
         frames: cof.framesPerDirection,
         speed,
         loop: LOOPING_PLAYER_MODES.has(mode),
@@ -1404,7 +1420,7 @@ export class SorceressLayerCompositor {
       }
       clips[mode] = clipMeta
       compositedClipByCofToken.set(cofToken, clipMeta)
-      groupOffset += cof.numberOfDirections
+      groupOffset += directionsToRender.length
     }
 
     const packed = packAppearanceSheetToR8({ groups: allGroups, width: null }, 172)

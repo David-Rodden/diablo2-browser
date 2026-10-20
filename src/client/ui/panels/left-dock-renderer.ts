@@ -586,7 +586,13 @@ export function handleLeftDockClickImpl(
       const heldCursor = inv?.cursorItem ?? null
       const isIdentify = Boolean(inv?.isIdentifyMode())
 
-      if (callbacks.isShiftClick && !callbacks.isRightClick && !heldCursor && !isIdentify && inv) {
+      if (
+        ((callbacks.isShiftClick && !callbacks.isRightClick) ||
+          (callbacks.isRightClick && hit && !isUsableRightClickItem(hit.item.code))) &&
+        !heldCursor &&
+        !isIdentify &&
+        inv
+      ) {
         if (hit && this.quickTransferFromCube(hit.item, inv)) {
           const placed = inv.gridItems[inv.gridItems.length - 1]
           if (placed && callbacks.onQuickTransferToInventory) {
@@ -737,7 +743,13 @@ export function handleLeftDockClickImpl(
       const heldCursor = inv?.cursorItem ?? null
       const isIdentify = Boolean(inv?.isIdentifyMode())
 
-      if (callbacks.isShiftClick && !callbacks.isRightClick && !heldCursor && !isIdentify && inv) {
+      if (
+        ((callbacks.isShiftClick && !callbacks.isRightClick) ||
+          (callbacks.isRightClick && hit && !isUsableRightClickItem(hit.item.code))) &&
+        !heldCursor &&
+        !isIdentify &&
+        inv
+      ) {
         if (hit && this.quickTransferFromStash(hit.item, inv)) {
           const placed = inv.gridItems[inv.gridItems.length - 1]
           if (placed && callbacks.onQuickTransferToInventory) {

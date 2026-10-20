@@ -81,6 +81,7 @@ import type {
   SceneOverlayDrawable,
   SceneUnitDrawable,
 } from '../view/unit-drawables.ts'
+import { sceneEntityCellDepth } from '../view/unit-drawables.ts'
 import type { SceneWeatherPass } from '../weather/weather-render-pass.ts'
 import { MONSTER_ART_MAP } from '../../common/units/monster-mapping.ts'
 import {
@@ -241,6 +242,9 @@ export class TileAtlasGpuCache {
   private readonly requestedPalettes = new Set<number>()
   private readonly paletteBytesByAct = new Map<number, Uint8Array>()
   private activePaletteAct = 0
+  /** Page keys required by the active level plus its connected neighbours. */
+  private retainedPageKeys: ReadonlySet<string> | null = null
+  private evictTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(renderer: SpriteRenderer) {
     this.renderer = renderer
@@ -291,9 +295,14 @@ export class TileAtlasGpuCache {
     })()
   }
 
+  private pageKey(actId: number, pageIndex: number): string {
+    const normalizedAct = Math.max(1, Math.min(5, Math.floor(actId || 1)))
+    return `${normalizedAct}:${pageIndex}`
+  }
+
   getPageHandle(actId: number, pageIndex: number): AtlasHandle | undefined {
     const normalizedAct = Math.max(1, Math.min(5, Math.floor(actId || 1)))
-    const key = `${normalizedAct}:${pageIndex}`
+    const key = this.pageKey(normalizedAct, pageIndex)
     const cached = this.pageHandles.get(key)
     if (cached !== undefined) {
       return cached
@@ -304,33 +313,43 @@ export class TileAtlasGpuCache {
     this.inflightPages.add(key)
     const urls = [`/act-packs/tiles/act${normalizedAct}/tiles-${pageIndex}.r8`]
     void (async () => {
-      for (const url of urls) {
-        try {
-          const res = await fetch(url)
-          if (!res.ok) continue
-          const r8 = new Uint8Array(await res.arrayBuffer())
-          if (r8.byteLength === 0) continue
-          const width = 2048
-          const height = Math.max(1, Math.floor(r8.byteLength / width))
-          const handle = this.renderer.addIndexedAtlas(r8, width, height)
-          this.pageHandles.set(key, handle)
-          return
-        } catch {
-          // try fallback url
+      try {
+        for (const url of urls) {
+          try {
+            const res = await fetch(url)
+            if (!res.ok) continue
+            const r8 = new Uint8Array(await res.arrayBuffer())
+            if (r8.byteLength === 0) continue
+            const width = 2048
+            const height = Math.max(1, Math.floor(r8.byteLength / width))
+            const handle = this.renderer.addIndexedAtlas(r8, width, height)
+            // The area may have changed while this page was streaming. Do not
+            // keep a page the latest retain set already dropped.
+            if (this.retainedPageKeys !== null && !this.retainedPageKeys.has(key)) {
+              this.renderer.deleteAtlas(handle)
+              return
+            }
+            this.pageHandles.set(key, handle)
+            return
+          } catch {
+            // try fallback url
+          }
         }
+        reportMissingArt(
+          'tile-page',
+          `act${normalizedAct}:${pageIndex}`,
+          `Failed to load act${normalizedAct} tiles-${pageIndex}.r8 from ${urls.join(', ')}`,
+        )
+      } finally {
+        // An evicted page must be streamable again when the player returns.
+        this.inflightPages.delete(key)
       }
-      reportMissingArt(
-        'tile-page',
-        `act${normalizedAct}:${pageIndex}`,
-        `Failed to load act${normalizedAct} tiles-${pageIndex}.r8 from ${urls.join(', ')}`,
-      )
     })()
     return undefined
   }
 
   hasPageHandle(actId: number, pageIndex: number): boolean {
-    const normalizedAct = Math.max(1, Math.min(5, Math.floor(actId || 1)))
-    const key = `${normalizedAct}:${pageIndex}`
+    const key = this.pageKey(actId, pageIndex)
     return this.pageHandles.has(key) || this.inflightPages.has(key)
   }
 
@@ -340,6 +359,38 @@ export class TileAtlasGpuCache {
   preloadPages(pages: Iterable<{ readonly act: number; readonly page: number }>): void {
     for (const p of pages) {
       this.getPageHandle(p.act, p.page)
+    }
+  }
+
+  /**
+   * Declare the pages the active level and its connected neighbours need and
+   * release every other GPU page after `graceMs` (#1316). The grace period lets
+   * transition frames finish drawing the previous level before its textures go.
+   */
+  retainPages(
+    pages: Iterable<{ readonly act: number; readonly page: number }>,
+    graceMs = 2_000,
+  ): void {
+    const keep = new Set<string>()
+    for (const p of pages) keep.add(this.pageKey(p.act, p.page))
+    this.retainedPageKeys = keep
+    if (this.evictTimer !== null) {
+      clearTimeout(this.evictTimer)
+      this.evictTimer = null
+    }
+    this.evictTimer = setTimeout(() => {
+      this.evictTimer = null
+      this.releaseUnretainedPages()
+    }, Math.max(0, graceMs))
+  }
+
+  private releaseUnretainedPages(): void {
+    const keep = this.retainedPageKeys
+    if (keep === null) return
+    for (const [key, handle] of [...this.pageHandles]) {
+      if (keep.has(key)) continue
+      this.renderer.deleteAtlas(handle)
+      this.pageHandles.delete(key)
     }
   }
 }
@@ -2017,9 +2068,30 @@ export function classifyAutomapMonsterMarker(
   }
   const mk = getMonsterKindByClassId(u.classId)
   const tblLang = isEn ? 'ENG' : 'CHI'
-  if (u.isNpc || mk?.npc || mk?.interact) {
+  const isDummyName =
+    mk?.nameKey?.toLowerCase() === 'dummy' ||
+    u.name === 'Dummy' ||
+    u.name === 'An Evil Force' ||
+    u.name === '一股邪恶力量' ||
+    u.name === '一股邪惡力量' ||
+    u.nameZh === '一股邪恶力量' ||
+    u.nameZh === '一股邪惡力量'
+  if (isDummyName) {
+    return null
+  }
+  // 1.13c D2Client 0x6fb11582 & 0x6fb11b6c -> 0x6fab1760(classId, 9):
+  // Non-TownNpc monsters only draw an automap NPC crosshair/label when MonStats.txt `interact` (bit 9) is set.
+  if (u.isNpc || mk?.interact) {
     const resolvedName = mk?.nameKey ? lookupTbl(mk.nameKey, tblLang) ?? mk.nameKey : undefined
     const fallbackName = isEn ? (u.name ?? resolvedName) : (u.nameZh ?? resolvedName ?? u.name)
+    if (
+      fallbackName === 'Dummy' ||
+      fallbackName === 'An Evil Force' ||
+      fallbackName === '一股邪恶力量' ||
+      fallbackName === '一股邪惡力量'
+    ) {
+      return null
+    }
     return {
       x: u.worldX,
       y: u.worldY,
@@ -2416,14 +2488,20 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
         drawTileQuad(q, { tint: [1, 1, 1, 0.5] })
       }
 
-      // 3. Depth-interleaved upper walls and entities (units, missiles, overlays; 0x6fb4ee90)
+      // 3. Depth-interleaved upper walls and entities (units, missiles, overlays; 0x6fb4ee90).
+      // 1.13c DrawGrid_DrawAllCells (`0x6fb2a5d0` / `0x6fb4ee90`) interleaves upper walls and units
+      // by DrawGrid cell row (`cellX + cellY` vs `floor(subX / 5) + floor(subY / 5)`), breaking ties
+      // within the same cell row by intra-cell isometric depth (`w.sortY <= entity.sortY`, #1330).
       const sortedWalls = snapshot.upperWallQuads
       const sortedEntities = snapshot.entities.sortedDrawables
       let wallIdx = 0
-      const drawWallsUpToSortY = (maxSortY: number): void => {
+      const drawWallsBeforeEntity = (maxCellDepth: number, maxSortY: number): void => {
         while (wallIdx < sortedWalls.length) {
           const w = sortedWalls[wallIdx]!
-          if (w.sortY > maxSortY) break
+          const wCellDepth = w.cellX + w.cellY
+          if (wCellDepth > maxCellDepth || (wCellDepth === maxCellDepth && w.sortY > maxSortY)) {
+            break
+          }
           wallIdx += 1
           const popSample = wallFade.samplePopTile(w, activePops, nowMs)
           if (popSample !== null) {
@@ -2476,10 +2554,11 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
         ) {
           continue
         }
-        drawWallsUpToSortY(entity.sortY)
+        const entityCellDepth = sceneEntityCellDepth(entity)
+        drawWallsBeforeEntity(entityCellDepth, entity.sortY)
         drawEntity(entity)
       }
-      drawWallsUpToSortY(Infinity)
+      drawWallsBeforeEntity(Infinity, Infinity)
 
       // 4. Roofs (0x6fac3a00 -> D2gfx.#10023: shifted up by wRoofHeight, lit by ground-cell 6x6 grid).
       // 1.13c advances `[tile+0x28]` when `unk0x24 & 2` is set by `DRLGPRESET_TogglePopsVisibility` (`0x6fd5a180`),
@@ -2519,7 +2598,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
         }
         if (typeof automapWithToggle.consumeVisibilityToggleRequest === 'function') {
           if (automapWithToggle.consumeVisibilityToggleRequest()) {
-            ctx.minimap.toggleVisibility()
+            ctx.minimap.cycleDisplayMode()
           }
         }
         const prevRevealMode = minimapWithLastMode.__lastAutomapRevealMode
@@ -2588,9 +2667,9 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
             effectiveMinimapLevel,
             playerCellX,
             playerCellY,
-            undefined,
-            undefined,
-            true,
+            effectivePlayerWorld.x,
+            effectivePlayerWorld.y,
+            false,
           )
 
           const isEn = getTblLang() === 'ENG'
@@ -2742,10 +2821,21 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
           u.isHovered || (externalHoveredId !== undefined && u.unitId === externalHoveredId)
         if (isUnitHovered) {
           const mk = u.unitKind === 'monster' ? getMonsterKindByClassId(u.classId) : undefined
+          const isDummyMonster =
+            u.unitKind === 'monster' &&
+            !isTownNpcHcIdx(u.classId) &&
+            (mk?.nameKey?.toLowerCase() === 'dummy' ||
+              u.name === 'Dummy' ||
+              u.name === 'An Evil Force' ||
+              u.name === '一股邪恶力量' ||
+              u.name === '一股邪惡力量' ||
+              u.nameZh === '一股邪恶力量' ||
+              u.nameZh === '一股邪惡力量')
           if (
             u.unitKind === 'monster' &&
             !u.isCorpse &&
-            (u.isNpc || isTownNpcHcIdx(u.classId) || mk?.npc || mk?.interact)
+            !isDummyMonster &&
+            (u.isNpc || isTownNpcHcIdx(u.classId) || mk?.interact)
           ) {
             const tblLang = isEn ? 'ENG' : 'CHI'
             const resolvedMkName = mk?.nameKey ? lookupTbl(mk.nameKey, tblLang) : undefined
@@ -2755,7 +2845,13 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
                 ? (u.name || resolvedMkName || u.nameZh)
                 : (u.nameZh || resolvedMkName || u.name)) ??
               ''
-            if (npcText) {
+            if (
+              npcText &&
+              npcText !== 'Dummy' &&
+              npcText !== 'An Evil Force' &&
+              npcText !== '一股邪恶力量' &&
+              npcText !== '一股邪惡力量'
+            ) {
               const screenX = Math.round(u.worldX - camX + vpW / 2)
               const screenY = Math.round(u.worldY - 72 - camY + vpH / 2)
               hoveredNpcLabel = { text: npcText, screenX, screenY }
@@ -2782,8 +2878,10 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
           } else if (u.unitKind === 'warp' || u.unitKind === 'tile') {
             const warpText = (isEn ? (u.name || u.nameZh) : (u.nameZh || u.name)) ?? ''
             if (warpText) {
-              const screenX = Math.round(u.worldX - camX + vpW / 2)
-              const screenY = Math.round(u.worldY - 40 - camY + vpH / 2)
+              const offsetX = u.hitBox ? Math.round(u.hitBox.left + u.hitBox.width / 2) : 0
+              const topY = u.hitBox ? Math.min(u.hitBox.top - 8, -24) : -40
+              const screenX = Math.round(u.worldX + offsetX - camX + vpW / 2)
+              const screenY = Math.round(u.worldY + topY - camY + vpH / 2)
               hoveredNpcLabel = { text: warpText, screenX, screenY }
             }
           }

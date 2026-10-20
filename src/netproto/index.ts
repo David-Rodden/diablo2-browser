@@ -75,9 +75,16 @@ export type {
   LobbyProvider,
   LocalAreaBootstrap,
   LocalAreaBootstrapResolver,
+  LocalAreaLevelGeometry,
+  LocalAreaLevelPresetUnit,
+  LocalAreaLevelRequest,
+  LocalAreaLevelSource,
+  LocalAreaLevelWarp,
   LocalAreaPresetMonster,
   LocalAreaPresetObject,
+  LocalAreaRoomRect,
   LocalAreaRoomReveal,
+  LocalAreaWarp,
   LocalServerFactory,
   LocalServerOptions,
   LocalServerSessionFactory,
@@ -290,6 +297,10 @@ export {
   decode0x11UnitOverlay,
   encode0x11UnitOverlay,
 } from './d2gs/s2c/units.ts'
+export {
+  decode0x63WaypointMenu,
+  encode0x63WaypointMenu,
+} from './d2gs/s2c/waypoint.ts'
 export { C2S_PACKET_SIZES, S2C_PACKET_SIZES } from './d2gs/tables/s2c-sizes.ts'
 export {
   D2GS_S2C_REGISTRY,
@@ -335,6 +346,13 @@ export {
   type ItemPacketHeaderMeta,
 } from './d2gs/items/item-bitstream.ts'
 export {
+  ITEM_FLAG_COMPACT,
+  ITEM_FLAG_ETHEREAL,
+  ITEM_FLAG_IDENTIFIED,
+  ITEM_FLAG_SIMPLE_EXTENDED,
+  ITEM_FLAG_SOCKETED,
+} from './d2gs/items/item-types.ts'
+export {
   createLocalServerSession,
   getLocalLobbyProvider,
   getLocalServerFactory,
@@ -361,6 +379,7 @@ import {
 } from './d2gs/registry.ts'
 import { encode0xA3AuraSkill } from './d2gs/s2c/misc.ts'
 import { encode0x11UnitOverlay } from './d2gs/s2c/units.ts'
+import { encode0x63WaypointMenu } from './d2gs/s2c/waypoint.ts'
 import type { ClientCommand } from './domain/client-command.ts'
 import { unitTypeToId, type ItemDataTables, type UnitType } from './domain/ids.ts'
 import type { ServerEvent } from './domain/server-event.ts'
@@ -550,6 +569,15 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
           },
           x: Number(e.x ?? 0),
           y: Number(e.y ?? 0),
+        }),
+      ]
+    }
+
+    case 'WaypointMenu': {
+      return [
+        encode0x63WaypointMenu({
+          unitId: Number(e.unitId) >>> 0,
+          open: e.open as readonly number[],
         }),
       ]
     }

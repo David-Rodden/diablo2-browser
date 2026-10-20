@@ -927,6 +927,16 @@ describe('Tier 2 — Boundary & Corner Cases (F1–F12, 60 tests)', () => {
       host.stepFrame()
 
       // Move p1 to Cold Plains (areaId = 3) via WaypointGo
+      const p1State = host.game.getPlayerState(p1)!
+      const wp = host.game.spawnObject({
+        classId: 119,
+        x: p1State.x,
+        y: p1State.y,
+        areaId: p1State.areaId,
+        isWaypoint: true,
+      })
+      adapter1.send({ type: 'OperateObject', objectId: wp })
+      host.stepFrame()
       adapter1.send({ type: 'WaypointGo', waypointId: 1, destAreaId: 3 })
       host.stepFrame()
 

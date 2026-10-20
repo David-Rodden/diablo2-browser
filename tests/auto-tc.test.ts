@@ -676,6 +676,8 @@ describe('Auto-TC Runtime Generation (Issue #100)', () => {
           mindam: 3,
           maxdam: 6,
           twoHanded: false,
+          strBonus: 100,
+          dexBonus: 0,
           speed: 0,
           reqstr: 0,
           reqdex: 0,

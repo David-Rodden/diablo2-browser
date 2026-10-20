@@ -13,6 +13,7 @@ import {
   createSampleD2sCharacterData,
   FIXED_ONE,
   getSharedDataRegistry,
+  installOutdoorRoomGrid,
   recordAdapterEvents,
   repoPathExists,
   RETIRED_LEGACY_FILES,
@@ -48,6 +49,7 @@ describe('Tier 3 — Cross-Feature Pairwise Interactions (CF1–CF16, 16 tests)'
       registry,
     })
 
+    installOutdoorRoomGrid(game, 2, 100, 100)
     const p1 = game.addPlayer({
       charName: 'CombatSorc',
       classId: 1,
@@ -77,9 +79,13 @@ describe('Tier 3 — Cross-Feature Pairwise Interactions (CF1–CF16, 16 tests)'
     expect(
       events.some((ev) => ev.type === 'UnitAssign' && ev.unitType === 'monster'),
     ).toBe(true)
+    // The moving player gets no walk/run UnitMove echo (1.13c, issue #1329); the server moved it.
     expect(
       events.some((ev) => ev.type === 'UnitMove' && ev.unitId === p1),
-    ).toBe(true)
+    ).toBe(false)
+    const moved = game.getPlayerState(p1)!
+    expect(moved.x).toBeGreaterThan(100)
+    expect(moved.y).toBeGreaterThan(100)
   })
 
   it('CF3 (F1 × F4): GameInstance command loop × executeDropPipeline and GroundItemManager item lifecycle', () => {

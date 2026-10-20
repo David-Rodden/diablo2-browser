@@ -157,6 +157,28 @@ export class AutomapView {
   private pendingVisibilityToggle = false
   private dirtyVersion = 1
   private cachedMinimapLevel: { readonly key: string; readonly level: MinimapLevel } | null = null
+  private cachedStitchedTopology: {
+    readonly key: string
+    readonly level: MinimapLevel
+    readonly areaSegments: readonly {
+      readonly areaId: number
+      readonly view: LevelView
+      readonly dCellX: number
+      readonly dCellY: number
+      readonly alwaysPreRevealed: boolean
+      readonly isPrimary: boolean
+      readonly floorsStart: number
+      readonly floorsEnd: number
+      readonly wallsStart: number
+      readonly wallsEnd: number
+      readonly objectsStart: number
+      readonly objectsEnd: number
+      readonly extrasStart: number
+      readonly extrasEnd: number
+      readonly markersStart: number
+      readonly markersEnd: number
+    }[]
+  } | null = null
   private cachedRoomSnapshot: {
     readonly key: string
     readonly visibleAreaIds: readonly number[]
@@ -191,6 +213,10 @@ export class AutomapView {
         this.levelViews.delete(id)
         dropped += 1
       }
+    }
+    if (dropped > 0) {
+      this.cachedStitchedTopology = null
+      this.dirtyVersion += 1
     }
     return dropped
   }
@@ -300,6 +326,8 @@ export class AutomapView {
       this.levelViews.clear()
       this.serverRevealedRooms.clear()
       this.serverRevealedRoomsByArea.clear()
+      this.cachedStitchedTopology = null
+      this.cachedMinimapLevel = null
       if (this.mapService && typeof (this.mapService as Partial<MapService>).loadAct === 'function') {
         try {
           const loaded = this.mapService.loadAct({
@@ -841,7 +869,16 @@ export class AutomapView {
         const isAncientStatue = cid >= 537 && cid <= 539
         const mk = typeof u.classId === 'number' ? getMonsterKindByClassId(u.classId) : undefined
         const isTownNpc = Boolean(NPC_HCIDX_TO_DESCRIPTOR_ID.has(cid) || NPC_HCIDX_TO_DESCRIPTOR_ID[cid])
-        const isInteract = Boolean(mk?.interact || (u as { isNpc?: boolean }).isNpc || isTownNpc)
+        const isDummyMonster =
+          !isTownNpc &&
+          (mk?.nameKey?.toLowerCase() === 'dummy' ||
+            u.name === 'Dummy' ||
+            u.name === 'An Evil Force' ||
+            u.name === '一股邪恶力量' ||
+            u.name === '一股邪惡力量')
+        const isInteract =
+          !isDummyMonster &&
+          Boolean(mk?.interact || (u as { isNpc?: boolean }).isNpc || isTownNpc)
         const ownerTypeRaw = (u as { ownerType?: string | number }).ownerType
         const isFriendlySummonOrMerc =
           ownerTypeRaw === 'player' ||
@@ -894,6 +931,10 @@ export class AutomapView {
     if (areaId !== undefined && areaId > 0 && areaId !== this.currentAreaId) {
       this.syncActiveLevel(areaId)
     }
+    const fastCacheKey = `${this.dirtyVersion}:${this.currentAreaId}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}`
+    if (this.cachedMinimapLevel && this.cachedMinimapLevel.key === fastCacheKey) {
+      return this.cachedMinimapLevel.level
+    }
     this.syncConnectedLevelViewsFromMapService()
     const cacheKey = `${this.dirtyVersion}:${this.currentAreaId}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}`
     if (this.cachedMinimapLevel && this.cachedMinimapLevel.key === cacheKey) {
@@ -924,6 +965,121 @@ export class AutomapView {
       )
     }
 
+    const visibleAreaIds = this.resolveStitchedAreaIds(view)
+    const primaryHasServerRevealedRooms =
+      this.mode === 'off' &&
+      !isTownLevel(this.currentAreaId) &&
+      this.hasServerRevealedRoomsForArea(this.currentAreaId)
+    const needsStitchedOrRevealedClone =
+      visibleAreaIds.length > 1 || primaryHasServerRevealedRooms
+    const topologyKey = `${this.currentAreaId}:${visibleAreaIds.join(',')}:${needsStitchedOrRevealedClone ? 1 : 0}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}`
+
+    // Fast path (#1319): when the stitched outdoor topology is unchanged and only
+    // `dirtyVersion` incremented due to `0x07 AddRoomData` / `0x08 RemoveRoomData`,
+    // update `.preRevealed` in-place on the existing cell and marker arrays without
+    // reallocating ~25,000 AutomapCell objects or invalidating Minimap's WeakMap spatial index.
+    if (this.cachedStitchedTopology && this.cachedStitchedTopology.key === topologyKey) {
+      const cachedLevel = this.cachedStitchedTopology.level
+      const automapLayer = cachedLevel.automap
+      const levelMarkers = cachedLevel.markers as (MinimapMarker & { preRevealed?: boolean })[] | undefined
+      if (automapLayer) {
+        const updateSlicePreRevealed = (
+          cells: readonly { cellX?: number; cellY?: number; preRevealed?: boolean }[],
+          start: number,
+          end: number,
+          dCellX: number,
+          dCellY: number,
+          alwaysPreRevealed: boolean,
+          isPrimary: boolean,
+          predicate: ((cellX: number, cellY: number) => boolean) | null,
+        ): void => {
+          for (let i = start; i < end; i += 1) {
+            const c = cells[i]!
+            if (alwaysPreRevealed) {
+              c.preRevealed = true
+            } else if (
+              predicate !== null &&
+              typeof c.cellX === 'number' &&
+              typeof c.cellY === 'number' &&
+              predicate(c.cellX - dCellX, c.cellY - dCellY)
+            ) {
+              c.preRevealed = true
+            } else if (isPrimary) {
+              delete c.preRevealed
+            } else {
+              c.preRevealed = false
+            }
+          }
+        }
+        for (const seg of this.cachedStitchedTopology.areaSegments) {
+          const hasServerRev =
+            !seg.alwaysPreRevealed && this.hasServerRevealedRoomsForArea(seg.areaId)
+          const predicate = hasServerRev
+            ? this.createServerRevealedCellPredicate(seg.areaId, seg.view)
+            : null
+          updateSlicePreRevealed(
+            automapLayer.floors,
+            seg.floorsStart,
+            seg.floorsEnd,
+            seg.dCellX,
+            seg.dCellY,
+            seg.alwaysPreRevealed,
+            seg.isPrimary,
+            predicate,
+          )
+          updateSlicePreRevealed(
+            automapLayer.walls,
+            seg.wallsStart,
+            seg.wallsEnd,
+            seg.dCellX,
+            seg.dCellY,
+            seg.alwaysPreRevealed,
+            seg.isPrimary,
+            predicate,
+          )
+          updateSlicePreRevealed(
+            automapLayer.objects,
+            seg.objectsStart,
+            seg.objectsEnd,
+            seg.dCellX,
+            seg.dCellY,
+            seg.alwaysPreRevealed,
+            seg.isPrimary,
+            predicate,
+          )
+          updateSlicePreRevealed(
+            automapLayer.extras,
+            seg.extrasStart,
+            seg.extrasEnd,
+            seg.dCellX,
+            seg.dCellY,
+            seg.alwaysPreRevealed,
+            seg.isPrimary,
+            predicate,
+          )
+          if (levelMarkers) {
+            for (let i = seg.markersStart; i < seg.markersEnd; i += 1) {
+              const m = levelMarkers[i]!
+              if (seg.alwaysPreRevealed) {
+                m.preRevealed = true
+              } else if (
+                predicate !== null &&
+                predicate(m.cellX - seg.dCellX, m.cellY - seg.dCellY)
+              ) {
+                m.preRevealed = true
+              } else if (seg.isPrimary) {
+                delete m.preRevealed
+              } else {
+                m.preRevealed = false
+              }
+            }
+          }
+        }
+      }
+      this.cachedMinimapLevel = { key: cacheKey, level: cachedLevel }
+      return cachedLevel
+    }
+
     const minCellX = view.tileOriginX ?? Math.floor((view.subOriginX ?? 0) / 5)
     const minCellY = view.tileOriginY ?? Math.floor((view.subOriginY ?? 0) / 5)
     const cellsX = view.cellsX
@@ -934,10 +1090,6 @@ export class AutomapView {
     const originY = view.isoOriginY ?? (minCellX + minCellY) * 40
 
     const markers: MinimapMarker[] = []
-    const primaryHasServerRevealedRooms =
-      this.mode === 'off' &&
-      !isTownLevel(this.currentAreaId) &&
-      this.hasServerRevealedRoomsForArea(this.currentAreaId)
     const isPrimaryCellRevealed = primaryHasServerRevealedRooms
       ? this.createServerRevealedCellPredicate(this.currentAreaId, view)
       : null
@@ -983,31 +1135,58 @@ export class AutomapView {
       isTownLevel(this.currentAreaId) || this.mode === 'level' || this.mode === 'act'
 
     let automap = view.automap
-    const visibleAreaIds = this.resolveStitchedAreaIds(view)
-    if (visibleAreaIds.length > 1 || primaryHasServerRevealedRooms) {
+    const areaSegments: {
+      readonly areaId: number
+      readonly view: LevelView
+      readonly dCellX: number
+      readonly dCellY: number
+      readonly alwaysPreRevealed: boolean
+      readonly isPrimary: boolean
+      readonly floorsStart: number
+      readonly floorsEnd: number
+      readonly wallsStart: number
+      readonly wallsEnd: number
+      readonly objectsStart: number
+      readonly objectsEnd: number
+      readonly extrasStart: number
+      readonly extrasEnd: number
+      readonly markersStart: number
+      readonly markersEnd: number
+    }[] = []
+    if (needsStitchedOrRevealedClone) {
       const mapPrimaryCell = (c: (typeof view.automap.floors)[number]) => {
-        if (isPrimaryCellRevealed === null) return c
         if (
+          isPrimaryCellRevealed !== null &&
           typeof c.cellX === 'number' &&
           typeof c.cellY === 'number' &&
           isPrimaryCellRevealed(c.cellX, c.cellY)
         ) {
           return { ...c, preRevealed: true }
         }
-        return c
+        return { ...c }
       }
-      const mergedFloors = primaryHasServerRevealedRooms
-        ? view.automap.floors.map(mapPrimaryCell)
-        : [...view.automap.floors]
-      const mergedWalls = primaryHasServerRevealedRooms
-        ? view.automap.walls.map(mapPrimaryCell)
-        : [...view.automap.walls]
-      const mergedObjects = primaryHasServerRevealedRooms
-        ? view.automap.objects.map(mapPrimaryCell)
-        : [...view.automap.objects]
-      const mergedExtras = primaryHasServerRevealedRooms
-        ? view.automap.extras.map(mapPrimaryCell)
-        : [...view.automap.extras]
+      const mergedFloors = view.automap.floors.map(mapPrimaryCell)
+      const mergedWalls = view.automap.walls.map(mapPrimaryCell)
+      const mergedObjects = view.automap.objects.map(mapPrimaryCell)
+      const mergedExtras = view.automap.extras.map(mapPrimaryCell)
+      areaSegments.push({
+        areaId: this.currentAreaId,
+        view,
+        dCellX: 0,
+        dCellY: 0,
+        alwaysPreRevealed: preRevealTown,
+        isPrimary: true,
+        floorsStart: 0,
+        floorsEnd: mergedFloors.length,
+        wallsStart: 0,
+        wallsEnd: mergedWalls.length,
+        objectsStart: 0,
+        objectsEnd: mergedObjects.length,
+        extrasStart: 0,
+        extrasEnd: mergedExtras.length,
+        markersStart: 0,
+        markersEnd: markers.length,
+      })
 
       for (const otherAreaId of visibleAreaIds) {
         if (otherAreaId === this.currentAreaId) continue
@@ -1050,10 +1229,19 @@ export class AutomapView {
           }
         }
 
+        const floorsStart = mergedFloors.length
         for (const c of otherView.automap.floors) mergedFloors.push(remapCell(c))
+        const floorsEnd = mergedFloors.length
+        const wallsStart = mergedWalls.length
         for (const c of otherView.automap.walls) mergedWalls.push(remapCell(c))
+        const wallsEnd = mergedWalls.length
+        const objectsStart = mergedObjects.length
         for (const c of otherView.automap.objects) mergedObjects.push(remapCell(c))
+        const objectsEnd = mergedObjects.length
+        const extrasStart = mergedExtras.length
         for (const c of otherView.automap.extras) mergedExtras.push(remapCell(c))
+        const extrasEnd = mergedExtras.length
+        const markersStart = markers.length
 
         if (Array.isArray(otherView.entrances)) {
           for (const ent of otherView.entrances) {
@@ -1097,6 +1285,25 @@ export class AutomapView {
             }
           }
         }
+        const markersEnd = markers.length
+        areaSegments.push({
+          areaId: otherAreaId,
+          view: otherView,
+          dCellX,
+          dCellY,
+          alwaysPreRevealed: otherAlwaysPreRevealed,
+          isPrimary: false,
+          floorsStart,
+          floorsEnd,
+          wallsStart,
+          wallsEnd,
+          objectsStart,
+          objectsEnd,
+          extrasStart,
+          extrasEnd,
+          markersStart,
+          markersEnd,
+        })
       }
 
       automap = {
@@ -1126,6 +1333,13 @@ export class AutomapView {
       difficulty: getLocalizedDifficulty(this.difficulty, lang),
       preRevealTown,
       automap,
+    }
+    if (needsStitchedOrRevealedClone) {
+      this.cachedStitchedTopology = {
+        key: topologyKey,
+        level: result,
+        areaSegments,
+      }
     }
     this.cachedMinimapLevel = { key: cacheKey, level: result }
     return result

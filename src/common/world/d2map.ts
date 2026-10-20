@@ -1525,7 +1525,14 @@ export function subTileCentre(
  */
 export function getCollisionMask(scene: CollisionGrid, subX: number, subY: number): number {
   const gridHeight = scene.cellsY * SUB_TILES_PER_TILE
-  if (subX < 0 || subY < 0 || subX >= scene.gridWidth || subY >= gridHeight) {
+  if (
+    !Number.isFinite(subX) ||
+    !Number.isFinite(subY) ||
+    subX < 0 ||
+    subY < 0 ||
+    subX >= scene.gridWidth ||
+    subY >= gridHeight
+  ) {
     return COLLIDE_MASK_INVALID
   }
   const idx = subY * scene.gridWidth + subX
@@ -1637,6 +1644,14 @@ export function collisionRayTrace(
   endSubY: number,
   mask: number = COLLIDE_MASK_MISSILE,
 ): RayTraceResult {
+  if (
+    !Number.isFinite(startSubX) ||
+    !Number.isFinite(startSubY) ||
+    !Number.isFinite(endSubX) ||
+    !Number.isFinite(endSubY)
+  ) {
+    return { hit: true, hitSubX: 0, hitSubY: 0, hitX: scene.originX, hitY: scene.originY, steps: 0 }
+  }
   let x0 = Math.floor(startSubX)
   let y0 = Math.floor(startSubY)
   const x1 = Math.floor(endSubX)
@@ -1648,8 +1663,9 @@ export function collisionRayTrace(
   const sy = y0 < y1 ? 1 : -1
   let err = dx - dy
   let steps = 0
+  const maxSteps = dx + dy + 1
 
-  while (true) {
+  while (steps <= maxSteps) {
     // Check collision on current sub-tile (skipping the shooter's exact starting sub-tile at step 0
     // so a unit standing at the edge of an obstacle can still fire outward, unless start === end).
     if ((steps > 0 || (x0 === x1 && y0 === y1)) && collisionCheckMask(scene, x0, y0, mask)) {

@@ -287,7 +287,13 @@ export function buildCollisionGridFromLevelView(
  * so a unit at sub-cell offset `(dx, dy) ∈ [0..4]` has `worldY = (cellX + cellY) * 40 + (dx + dy) * 8`.
  * - Left/right/door walls (`type 1, 2, 6, 7, 8, 9`) run across the cell center (`dx + dy = 5` -> `+40`).
  * - North corner walls (`type 3, 4`) sit near the upper-middle baseline (`+24`).
- * - South corner / pillar / tree walls (`type 5, 12, 14`) sit at the southern vertex (`dx + dy = 8` -> `+64`).
+ * - Left/right walls & doors (`type 1, 2, 6, 7, 8, 9`) sit along the north-west (`dx = 0`) or north-east (`dy = 0`)
+ *   edge of cell `(cellX, cellY)` (`+8`), so any unit on a walkable foreground subtile inside `(cellX, cellY)`
+ *   (`dx >= 1` or `dy >= 1`, `(dx + dy) * 8 >= 8`) sorts in front of its own cell's north wall, while any unit
+ *   in a behind-wall cell (`uCellX + uCellY < cellX + cellY`) is occluded by DrawGrid cell-row ordering (`0x6fb4ee90`).
+ * - North corner / pillar / tree walls (`type 3, 4, 5, 12, 14`) occupy the north corner (`dx in {0,1}, dy in {0,1}`,
+ *   `+16`), so any unit on a walkable foreground subtile inside `(cellX, cellY)` (`dx + dy >= 2 -> +16..+64`) sorts
+ *   in front of the cell's pillar/palm tree/corner wall (#1330).
  * - Exit walls (`type 10, 11`), lower walls (`16..19`), floors (`0`), shadows (`13`), roofs (`15`): `+0`.
  */
 export function wallSortOffset(wallType: number | undefined): number {
@@ -298,14 +304,13 @@ export function wallSortOffset(wallType: number | undefined): number {
     case 7:
     case 8:
     case 9:
-      return 40
+      return 8
     case 3:
     case 4:
-      return 24
     case 5:
     case 12:
     case 14:
-      return 64
+      return 16
     default:
       return 0
   }

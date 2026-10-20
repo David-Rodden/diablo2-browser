@@ -280,7 +280,7 @@ describe('R3 Authentic 1.13c Isometric Sprite Automap & Minimap UI', () => {
   })
 
   describe('Dual Viewports & Panel Shifts (computeAutomapViewport)', () => {
-    it('computes 279x225 clipped Corner Minimap viewport and shifts to (0, 75) when right panel is open', () => {
+    it('Issue #1319: computes 279x225 clipped Corner Minimap viewport and keeps it fixed at top-right when right panel is open', () => {
       const vpRightClosed = computeAutomapViewport(800, 600, true, false, false, 0, 0)
       expect(vpRightClosed.bMinimap).toBe(true)
       expect(vpRightClosed.divisor).toBe(20)
@@ -292,12 +292,33 @@ describe('R3 Authentic 1.13c Isometric Sprite Automap & Minimap UI', () => {
       expect(vpRightClosed.centerY).toBe(169) // 57 + 112
 
       const vpRightOpen = computeAutomapViewport(800, 600, true, false, true, 0, 0)
-      expect(vpRightOpen.x).toBe(0)
-      expect(vpRightOpen.y).toBe(75)
+      expect(vpRightOpen.x).toBe(519)
+      expect(vpRightOpen.y).toBe(57)
       expect(vpRightOpen.width).toBe(279)
       expect(vpRightOpen.height).toBe(225)
-      expect(vpRightOpen.centerX).toBe(139)
-      expect(vpRightOpen.centerY).toBe(187)
+      expect(vpRightOpen.centerX).toBe(658)
+      expect(vpRightOpen.centerY).toBe(169)
+    })
+
+    it('Issue #1320: cycles through 3 display modes (top-right -> center -> off -> top-right) and applies center semi-transparency in center mode', () => {
+      const minimap = new Minimap()
+      expect(minimap.displayMode).toBe('top-right')
+      expect(minimap.visible).toBe(true)
+      expect(minimap.mode).toBe('minimap')
+
+      expect(minimap.cycleDisplayMode()).toBe('center')
+      expect(minimap.displayMode).toBe('center')
+      expect(minimap.visible).toBe(true)
+      expect(minimap.mode).toBe('full')
+
+      expect(minimap.cycleDisplayMode()).toBe('off')
+      expect(minimap.displayMode).toBe('off')
+      expect(minimap.visible).toBe(false)
+
+      expect(minimap.cycleDisplayMode()).toBe('top-right')
+      expect(minimap.displayMode).toBe('top-right')
+      expect(minimap.visible).toBe(true)
+      expect(minimap.mode).toBe('minimap')
     })
 
     it('computes Full-Screen Automap viewport [0, 0, W, H] and shifts center +-W>>2 for open side panels', () => {

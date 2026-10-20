@@ -293,6 +293,14 @@ export interface ActiveExplosion {
   readonly radius?: number | undefined
 }
 
+/**
+ * Legacy single-player simulation harness kept for existing unit tests.
+ *
+ * @deprecated Not an authoritative runtime: no production module instantiates it (#1328).
+ * `LocalLoopbackAdapter` (single player) and `MultiClientRoomHost` (multiplayer) both run
+ * `GameInstance` (`game-instance.ts`), which is the single 25 Hz authoritative server. Wire new
+ * 1.13c mechanics into `GameInstance`, never only here.
+ */
 export class GameEngine {
   world: CombatWorld
   loot: Rng

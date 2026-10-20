@@ -1768,6 +1768,63 @@ export function monsterBudget(planOrCells: LevelMonsterPlan | number, cellsOrDen
 }
 
 /**
+ * The kinds an elite (champion / unique) pack may be drawn from on one level.
+ *
+ * `umon1`…`umon10` first; a level that leaves them blank falls back to the
+ * types the level drew (or, failing those, its `mon` pool), which is what
+ * {@link planMonsterGroups} has always done.
+ *
+ * @param plan - the level's columns.
+ * @param types - the types {@link selectLevelTypes} chose.
+ * @param kinds - every known monster.
+ * @returns the candidate kinds, possibly empty.
+ */
+export function resolveEliteCandidates(
+  plan: LevelMonsterPlan,
+  types: readonly MonsterKind[],
+  kinds: ReadonlyMap<string, MonsterKind>,
+): MonsterKind[] {
+  const eliteCandidates = filterCandidateKinds(plan.elitePool.map(name => kinds.get(name)), true)
+  if (eliteCandidates.length > 0) return eliteCandidates
+  return types.length > 0
+    ? [...types]
+    : filterCandidateKinds(plan.pool.map(name => kinds.get(name)), true)
+}
+
+/**
+ * Roll one elite pack: its kind, champion-or-unique rank, size and `MonUMod.txt` affixes.
+ *
+ * - 1.13c `MonUMod.txt`: 20% Champions, 80% Uniques + Minions.
+ * - Champions spawn in groups of 2 to 4 (`2 + rand() % 3`).
+ * - Uniques spawn with 1 boss + 3 to 6 minions (`1 + (3 + rand() % 4)`).
+ *
+ * @param eliteCandidates - from {@link resolveEliteCandidates}; must be non-empty.
+ * @param rng - the pack stream.
+ * @param packIndex - 0-based index of this elite pack, seeds the affix roll.
+ * @param cap - most monsters the pack may contain.
+ * @returns the pack.
+ */
+export function rollEliteGroup(
+  eliteCandidates: readonly MonsterKind[],
+  rng: Rng,
+  packIndex: number,
+  cap: number = Number.POSITIVE_INFINITY,
+): MonsterGroup {
+  if (eliteCandidates.length === 0) {
+    throw new Error('rollEliteGroup: no elite candidates')
+  }
+  const kind = eliteCandidates[rng.int(0, eliteCandidates.length - 1)]!
+  const isChampion = rng.next() < (MONUMOD_CONSTANTS.championChance / 100)
+  const rank: Exclude<MonsterRank, 'minion'> = isChampion ? 'champion' : 'unique'
+  const count = rank === 'champion'
+    ? Math.min(cap, rng.int(2, 4))
+    : Math.min(cap, 1 + rng.int(3, 6))
+  const modSeed = ((packIndex + 1) * 0x9e3779b9) ^ (count * 0x85ebca6b) ^ (rank === 'champion' ? 1 : 2)
+  const modifiers = rollEliteModifiers(rank, new Rng(modSeed))
+  return { kind, count, rank, modifiers }
+}
+
+/**
  * Break a level's budget into packs.
  *
  * Monsters in D2 come in groups, not as evenly scattered individuals:
@@ -1801,12 +1858,7 @@ export function planMonsterGroups(
   const groups: MonsterGroup[] = []
   let remaining = budget
 
-  let eliteCandidates = filterCandidateKinds(plan.elitePool.map(name => kinds.get(name)), true)
-  if (eliteCandidates.length === 0) {
-    eliteCandidates = types.length > 0
-      ? [...types]
-      : filterCandidateKinds(plan.pool.map(name => kinds.get(name)), true)
-  }
+  const eliteCandidates = resolveEliteCandidates(plan, types, kinds)
 
   let minElites = plan.eliteMin
   let maxElites = plan.eliteMax
@@ -1822,19 +1874,9 @@ export function planMonsterGroups(
 
   const elitePacks = maxElites <= 0 ? 0 : rng.int(minElites, maxElites)
   for (let i = 0; i < elitePacks && remaining > 0 && eliteCandidates.length > 0; i += 1) {
-    const kind = eliteCandidates[rng.int(0, eliteCandidates.length - 1)]!
-    // 1.13c MonUMod.txt: 20% Champions, 80% Uniques + Minions
-    const isChampion = rng.next() < (MONUMOD_CONSTANTS.championChance / 100)
-    const rank: Exclude<MonsterRank, 'minion'> = isChampion ? 'champion' : 'unique'
-    // 1.13c: Champions spawn in groups of 2 to 4 (2 + rand() % 3).
-    // Uniques spawn with 1 boss + 3 to 6 minions (1 + (3 + rand() % 4)).
-    const count = rank === 'champion'
-      ? Math.min(remaining, rng.int(2, 4))
-      : Math.min(remaining, 1 + rng.int(3, 6))
-    const modSeed = ((i + 1) * 0x9e3779b9) ^ (count * 0x85ebca6b) ^ (rank === 'champion' ? 1 : 2)
-    const modifiers = rollEliteModifiers(rank, new Rng(modSeed))
-    groups.push({ kind, count, rank, modifiers })
-    remaining -= count
+    const group = rollEliteGroup(eliteCandidates, rng, i, remaining)
+    groups.push(group)
+    remaining -= group.count
   }
 
   const totalRarity = types.reduce((sum, kind) => sum + Math.max(1, kind.rarity), 0)

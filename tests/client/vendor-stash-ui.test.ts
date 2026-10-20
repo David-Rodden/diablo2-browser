@@ -1422,6 +1422,93 @@ describe('NPC quest chain & overhead npcalert indicator (1.13c parity)', () => {
     expect(hud.worldPanels.npcSpeech).not.toBeNull()
     expect(hud.worldPanels.npcSpeech?.text.length).toBeGreaterThan(10)
   })
+
+  it('Issue #1323: right-clicking non-usable items quick-sells at Vendor and quick-transfers between Inventory, Stash (buffer=4), and Cube (buffer=3)', () => {
+    // 1. Vendor Shop open: right-clicking non-usable inventory item sends NpcSell (0x33)
+    const sVendor = openCharsiStore('05-d2gs-vendor-open.d2cap')
+    sVendor.world.apply({
+      type: 'ItemEvent',
+      action: 0x04,
+      container: 'inventory',
+      item: {
+        opcode: 0x9c,
+        action: 0x04,
+        id: 9001,
+        code: 'cap',
+        category: 1,
+        location: 0,
+        container: 'inventory',
+        gridX: 5,
+        gridY: 0,
+        width: 2,
+        height: 2,
+        quality: 2,
+        identified: true,
+        compact: false,
+        ethereal: false,
+        socketed: false,
+        ear: false,
+        starter: false,
+        simple: false,
+        personalized: false,
+        runeword: false,
+        broken: false,
+        version: 100,
+        flags: 0x10,
+      } as any,
+    })
+    sVendor.model.syncFromWorld()
+    const capPl = sVendor.hud.inventory.gridItems.find((p) => p.item.id === '9001')!
+    expect(capPl).toBeDefined()
+    expect(isUsableRightClickItem(capPl.item.code)).toBe(false)
+
+    sVendor.commands.length = 0
+    mouseDown(sVendor.hud, 419 + capPl.col * 29 + 5, 315 + capPl.row * 29 + 5, { button: 2 })
+    expect(sVendor.commands).toEqual([
+      {
+        type: 'NpcSell',
+        npcId: CHARSI_ID,
+        itemId: 9001,
+        itemMode: 0,
+        cost: 1000 * 2 + 9001,
+      },
+    ])
+
+    // 2. Stash open: right-clicking non-usable inventory item sends ItemToCursor (0x19) + ItemPlace(0x18, buffer=4)
+    sVendor.hud.setLeftPanel('stash')
+    sVendor.commands.length = 0
+    mouseDown(sVendor.hud, 419 + capPl.col * 29 + 5, 315 + capPl.row * 29 + 5, { button: 2 })
+    expect(sVendor.commands).toEqual([
+      { type: 'ItemToCursor', itemId: 9001 },
+      { type: 'ItemPlace', itemId: 9001, x: 0, y: 0, buffer: 4 },
+    ])
+
+    // 3. Stash -> Inventory: right-clicking item in Stash grid transfers it back to Inventory (buffer=0)
+    const stashPl = sVendor.hud.worldPanels.stashItems.find((p) => p.item.id === '9001')!
+    expect(stashPl).toBeDefined()
+    sVendor.commands.length = 0
+    mouseDown(sVendor.hud, STASH_X + 73 + stashPl.col * 29 + 5, STASH_Y + 83 + stashPl.row * 29 + 5, { button: 2 })
+    const invPlAfterStash = sVendor.hud.inventory.gridItems.find((p) => p.item.id === '9001')!
+    expect(invPlAfterStash).toBeDefined()
+    expect(sVendor.commands).toEqual([
+      { type: 'ItemToCursor', itemId: 9001 },
+      { type: 'ItemPlace', itemId: 9001, x: invPlAfterStash.col, y: invPlAfterStash.row, buffer: 0 },
+    ])
+
+    // 4. Cube open: right-clicking non-usable inventory item sends ItemToCursor (0x19) + ItemPlace(0x18, buffer=3)
+    sVendor.hud.setLeftPanel('cube')
+    sVendor.commands.length = 0
+    mouseDown(
+      sVendor.hud,
+      419 + invPlAfterStash.col * 29 + 5,
+      315 + invPlAfterStash.row * 29 + 5,
+      { button: 2 },
+    )
+    expect(sVendor.commands).toEqual([
+      { type: 'ItemToCursor', itemId: 9001 },
+      { type: 'ItemPlace', itemId: 9001, x: 0, y: 0, buffer: 3 },
+    ])
+  })
 })
 
 

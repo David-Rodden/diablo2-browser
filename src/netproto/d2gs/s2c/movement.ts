@@ -91,7 +91,7 @@ export function decode0x0DPlayerStop(pkt: Uint8Array): ServerEvent {
   const rawCode = r.u8()
   const x = r.u16LE()
   const y = r.u16LE()
-  r.u8() // unknown
+  const hitClass = r.u8()
   const lifePct = r.u8()
   const mode = map0x0DCodeToPlrMode(rawCode)
   return {
@@ -100,6 +100,7 @@ export function decode0x0DPlayerStop(pkt: Uint8Array): ServerEvent {
     id,
     mode,
     at: { x, y },
+    ...(hitClass > 0 ? { hitClass } : {}),
     lifePct,
   }
 }

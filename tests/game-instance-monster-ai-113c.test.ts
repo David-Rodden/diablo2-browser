@@ -104,7 +104,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
       const gameChilled = new GameInstance({ seed: 405, areaId: 2 });
       gameChilled.connectPlayer({ charClass: 'sor', name: 'Sorc', x: 10, y: 10, areaId: 2 });
       const chilledMonId = gameChilled.spawnMonster({ defId: 'fallen1', x: 22, y: 10, areaId: 2, aggroRadius: 25 });
-      gameChilled.applyMonsterState(chilledMonId, 28, 100);
+      gameChilled.applyMonsterState(chilledMonId, 11, 100);
       gameChilled.stepFrames(12);
       const chilledDist = 22 - gameChilled.getMonster(chilledMonId)!.x;
 
@@ -141,6 +141,41 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
       expect(game.getPlayerState(playerId)!.hp).toBe(startPlayerHp);
     });
 
+    it('converts a monster (state 53) to fight nearby monsters instead of the player (#1334)', () => {
+      const game = new GameInstance({ seed: 707, areaId: 2 });
+      const playerId = game.connectPlayer({ charClass: 'pal', name: 'Pal', x: 30, y: 30, areaId: 2 });
+      const startPlayerHp = game.getPlayerState(playerId)!.hp;
+      const attackerId = game.spawnMonster({
+        defId: 'fallen1',
+        x: 10,
+        y: 10,
+        areaId: 2,
+        minDmg: 15,
+        maxDmg: 20,
+        ar: 5000,
+      });
+      const victimId = game.spawnMonster({
+        defId: 'fallen1',
+        x: 11,
+        y: 10,
+        areaId: 2,
+        hp: 200,
+        maxHp: 200,
+        ac: 0,
+        aiDisabled: true,
+      });
+
+      game.applyMonsterState(attackerId, 53, 60);
+      expect(game.getMonster(attackerId)!.states.has(53)).toBe(true);
+
+      game.stepFrames(10);
+      expect(game.getMonster(victimId)!.hp).toBeLessThan(200);
+      expect(game.getPlayerState(playerId)!.hp).toBe(startPlayerHp);
+
+      game.stepFrames(60);
+      expect(game.getMonster(attackerId)!.states.has(53)).toBe(false);
+    });
+
     it('executes Shaman corpse resurrection while exposing shattered===true on frozen death and skipping shattered corpses', () => {
       const game = new GameInstance({ seed: 606, areaId: 2 });
       const playerId = game.connectPlayer({ charClass: 'pal', name: 'Pal', x: 13, y: 10, areaId: 2 });
@@ -150,7 +185,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         x: 13,
         y: 11,
         areaId: 2,
-        hp: 5,
+        hp: 1, // unarmed Attack (skill 0) hits for 1-2
         maxHp: 50,
         aiDisabled: true,
       });
@@ -170,7 +205,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         x: 14,
         y: 10,
         areaId: 2,
-        hp: 5,
+        hp: 1,
         maxHp: 50,
         aiDisabled: true,
       });
@@ -209,7 +244,8 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
 
       // Dim Vision suppresses ranged firing and shrinks aggro radius to 3 subtiles
       game.applyMonsterState(archerId, 23, 15);
-      game.stepFrames(15);
+      // State 23 expires before the AI step on frame 15; 14 frames stay fully suppressed.
+      game.stepFrames(14);
       const dimmedMissiles = game.drainEvents(playerId).filter((e) => e.type === 'CreateMissile');
       expect(dimmedMissiles.length).toBe(0);
 
@@ -253,7 +289,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
     it('routes player attacks on monsters through executeSUnitDmg (physical immunity, 1/5 curse piercing, Holy Bolt 101 undead gate, Static Field 42 25% & Hell cap)', () => {
       // 1. Physical immunity & 1/5 Amplify Damage (state 9) piercing
       const game = new GameInstance({ seed: 818, difficulty: 0, areaId: 2 });
-      const playerId = game.connectPlayer({ charClass: 'pal', name: 'Paladin', x: 10, y: 10, areaId: 2, level: 30 });
+      const playerId = game.connectPlayer({ charClass: 'pal', name: 'Paladin', x: 10, y: 10, areaId: 2, level: 30, skills: { 101: 1 } });
       const physImmuneId = game.spawnMonster({
         defId: 'fallen1',
         x: 11,
@@ -305,8 +341,10 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
       game.stepFrames(2);
       expect(game.getMonster(demonId)!.hp).toBe(500);
 
-      // 3. Static Field (skillId 42) 25% reduction in Normal and 50% floor cap in Hell
-      const normalBossId = game.spawnMonster({
+      // 3. Static Field (skillId 42) 25% reduction in Normal and 50% floor cap in Hell (Sorceress skill)
+      const sorcGame = new GameInstance({ seed: 820, difficulty: 0, areaId: 2 });
+      const sorcPlayerId = sorcGame.connectPlayer({ charClass: 'sor', name: 'Sorc', x: 10, y: 10, areaId: 2, level: 30, skills: { 42: 1 } });
+      const normalBossId = sorcGame.spawnMonster({
         defId: 'fallen1',
         x: 12,
         y: 10,
@@ -316,17 +354,17 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         resistances: { phys: 0, magic: 0, fire: 0, light: 0, cold: 0, poison: 0 },
         aiDisabled: true,
       });
-      game.enqueueCommand(playerId, {
+      sorcGame.enqueueCommand(sorcPlayerId, {
         type: 'CastSkillOnTarget',
         skillId: 42,
         targetType: 'monster',
         targetId: normalBossId,
       });
-      game.stepFrames(2);
-      expect(game.getMonster(normalBossId)!.hp).toBe(750);
+      sorcGame.stepFrames(2);
+      expect(sorcGame.getMonster(normalBossId)!.hp).toBe(750);
 
       const hellGame = new GameInstance({ seed: 819, difficulty: 2, areaId: 2 });
-      const hellPlayerId = hellGame.connectPlayer({ charClass: 'sor', name: 'HellSorc', x: 10, y: 10, areaId: 2, level: 30 });
+      const hellPlayerId = hellGame.connectPlayer({ charClass: 'sor', name: 'HellSorc', x: 10, y: 10, areaId: 2, level: 30, skills: { 42: 1 } });
       const hellBossId = hellGame.spawnMonster({
         defId: 'fallen1',
         x: 11,
@@ -374,11 +412,11 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
       game.stepFrames(2);
       const missileEvents = game
         .drainEvents(playerId)
-        .filter((e) => e.type === 'CreateMissile' && e.skillId === 38);
+        .filter((e) => e.type === 'CreateMissile' && e.skillId === 195);
       expect(missileEvents.length).toBe(8);
     });
 
-    it('triggers Fire Enchanted death explosion and Cold Enchanted Frost Nova applying chill state 28 on monster death', () => {
+    it('triggers Fire Enchanted death explosion and Cold Enchanted Frost Nova applying chill state 11 on monster death', () => {
       const game = new GameInstance({ seed: 1010, areaId: 2 });
       const playerId = game.connectPlayer({
         charClass: 'bar',
@@ -394,7 +432,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         x: 11,
         y: 10,
         areaId: 2,
-        hp: 5,
+        hp: 1, // unarmed Attack (skill 0) hits for 1-2
         maxHp: 200,
         rank: 'unique',
         monUMods: [MON_UMOD.FIRE, MON_UMOD.COLD],
@@ -412,8 +450,8 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
       const events = game.drainEvents(playerId);
       expect(game.getMonster(feCeBossId)!.dead).toBe(true);
       expect(game.getPlayerState(playerId)!.hp).toBeLessThan(startHp);
-      expect(events.some((e) => e.type === 'CreateMissile' && e.skillId === 44)).toBe(true);
-      expect(game.getPlayerState(playerId)!.states.has(28)).toBe(true);
+      expect(events.some((e) => e.type === 'CreateMissile' && e.skillId === 194)).toBe(true);
+      expect(game.getPlayerState(playerId)!.states.has(11)).toBe(true);
     });
 
     it('enforces non-killable guard (isKillable=false) and Suicide Minion 0-XP / 0-loot rule', () => {
@@ -444,7 +482,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         x: 11,
         y: 10,
         areaId: 2,
-        hp: 5,
+        hp: 1,
         maxHp: 50,
         aiDisabled: true,
       });

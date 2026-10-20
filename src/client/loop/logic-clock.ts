@@ -54,6 +54,14 @@ export const LOAD_ACT_NO_CATCH_UP_MS = 10000
 /** 0x15 Reassign of the local player: `add eax,0xbb8` @0x6FB5F717. */
 export const LOCAL_REASSIGN_NO_CATCH_UP_MS = 3000
 
+/**
+ * Maximum synchronous catch-up ticks in a single frame outside a no-catch-up window
+ * (`LOAD_ACT_NO_CATCH_UP_MS / D2_LOGIC_TICK_MS` = 250 ticks = 10 s).
+ * Prevents main-thread hang / tick storm when a background tab is suspended by browser
+ * intensive wake-up throttling (60 s+) or OS sleep.
+ */
+export const MAX_CATCH_UP_TICKS = LOAD_ACT_NO_CATCH_UP_MS / D2_LOGIC_TICK_MS
+
 function requireFiniteMs(name: string, value: number): void {
   if (!Number.isFinite(value)) {
     throw new RangeError(`${name} must be a finite number of milliseconds, got ${String(value)}`)
@@ -98,6 +106,13 @@ export class LogicClock {
         this.lastTickMs += D2_LOGIC_TICK_MS
       }
       owed++
+      if (owed >= MAX_CATCH_UP_TICKS) {
+        const remaining = nowMs - this.lastTickMs
+        if (remaining >= D2_LOGIC_TICK_MS) {
+          this.lastTickMs = nowMs - (remaining % D2_LOGIC_TICK_MS)
+        }
+        return owed
+      }
     }
   }
 

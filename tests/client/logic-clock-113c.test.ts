@@ -19,6 +19,7 @@ import {
   LOAD_ACT_NO_CATCH_UP_MS,
   LOCAL_REASSIGN_NO_CATCH_UP_MS,
   LogicClock,
+  MAX_CATCH_UP_TICKS,
   NO_CATCH_UP_MAX_CARRY_MS,
   runOwedTicks,
 } from '../../src/client/loop/logic-clock.ts'
@@ -57,6 +58,16 @@ describe('#808 LogicClock — D2Client 1.13c tick schedule (0x6FAF4C6F..0x6FAF4D
     expect(clock.getLastTickMs()).toBe(2000)
     expect(clock.advance(12000)).toBe(250)
     expect(clock.getLastTickMs()).toBe(12000)
+  })
+
+  it('caps extreme background-tab/sleep stalls (> 10 s) at MAX_CATCH_UP_TICKS (250) while preserving sub-tick phase', () => {
+    const clock = new LogicClock(1000)
+    // 60 s background tab throttling + 15 ms sub-tick remainder
+    expect(clock.advance(61_015)).toBe(MAX_CATCH_UP_TICKS)
+    expect(clock.getLastTickMs()).toBe(61_000)
+    // Only 25 ms later, the preserved 15 ms remainder triggers the next 40 ms tick
+    expect(clock.advance(61_040)).toBe(1)
+    expect(clock.getLastTickMs()).toBe(61_040)
   })
 
   it('inside a no-catch-up window runs one tick per frame and keeps at most 39 ms of debt', () => {
