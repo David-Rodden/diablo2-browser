@@ -1,3 +1,4 @@
+import { steadyLightSub } from '../loop/steady-light.ts'
 import {
   COLLIDE_BLANK,
   COLLIDE_MASK_INVALID,
@@ -166,6 +167,8 @@ export interface ClientSceneWorldAdapter {
   readonly levelId?: number | undefined
   readonly playerSubX: number
   readonly playerSubY: number
+  readonly lightSubX?: number | undefined
+  readonly lightSubY?: number | undefined
   /** Local player unit id: the owner of the player light (type 0). The light exists only once it is known. */
   readonly playerUnitId?: number | undefined
   readonly playerLightRadiusBonus?: number | undefined
@@ -1147,7 +1150,7 @@ export class ClientWorldSceneSource implements SceneSource {
         preset,
         levelId: this.resolveLevelId(st),
         collisionGrid,
-        playerSubTile: localPlayerSub,
+        playerSubTile: steadyLightSub(st, localPlayerSub),
         playerUnitId: st.playerUnitId,
         lightEmitters: entities.lightEmitters,
         tick: st.tick ?? 0,
@@ -1178,7 +1181,7 @@ export class ClientWorldSceneSource implements SceneSource {
       preset,
       levelId: this.resolveLevelId(st),
       collisionGrid,
-      playerSubTile: localPlayerSub,
+      playerSubTile: steadyLightSub(st, localPlayerSub),
       playerUnitId: st.playerUnitId,
       lightEmitters: entities.lightEmitters,
       tick: st.tick ?? 0,
