@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { FlowField } from '../../src/client/guide/flow-field.ts'
 import { planGuide, type PathGuideHost } from '../../src/client/guide/path-guide.ts'
 import { actOfLevel, currentGoal, nextStep, shortestRoute } from '../../src/client/guide/route.ts'
+import { fromNearest, RibbonTrail, rounded, sampleAlong } from '../../src/client/guide/ribbon-trail.ts'
 import { outlinePixels } from '../../src/client/guide/sprite-outline.ts'
 import { WaypointMemory } from '../../src/client/guide/waypoint-memory.ts'
 import type { LevelView } from '../../src/client/map/level-view.ts'
@@ -55,6 +56,7 @@ describe('path guide route', () => {
     new WaypointMemory(storage).known('Hero:0', 40, new Set([0, 3, 9]))
     expect([...new WaypointMemory(storage).known('Hero:0', 40, new Set())].sort((a, b) => a - b)).toEqual([0, 3, 9])
     expect([...new WaypointMemory(storage).known('Other:0', 1, new Set())]).toEqual([0])
+    expect([new WaypointMemory(storage).hasMenu('Hero:0'), new WaypointMemory(storage).hasMenu('Other:0')]).toEqual([true, false])
   })
 })
 
@@ -116,6 +118,15 @@ describe('path guide plan', () => {
     expect(planGuide({ ...host, levelView: () => seam }, 'story')!.target).toEqual({ x: 1026, y: 2000, label: 'Cold Plains' })
   })
 
+  it('asks you to touch a nearby waypoint before routing when it does not know yours yet', () => {
+    const waypointAt = (x: number, y: number) => ({ id: 41, unitType: 'object', classId: 119, mode: 0, x, y, hidden: false, dead: false, name: 'Waypoint' }) as unknown as ClientUnit
+    const [near, far] = [waypointAt(1012, 2030), waypointAt(1039, 2000)]
+    const asked = planGuide({ ...host, objects: () => [door, near] }, 'story', undefined, new Set(), true)!
+    expect([asked.hint, asked.target?.unit, asked.highlights]).toEqual(['Touch the waypoint so the guide knows yours', { id: 41, kind: 'object' }, [41]])
+    expect(planGuide({ ...host, objects: () => [door, far] }, 'story', undefined, new Set(), true)!.hint).toBe('Head to Cold Plains')
+    expect(planGuide({ ...host, objects: () => [door, near] }, 'story')!.hint).toBe('Head to Cold Plains')
+  })
+
   it('stays quiet while dead', () => {
     expect(planGuide({ ...host, self: () => ({ x: 1005, y: 2035, isDead: true }) }, 'story')).toBeNull()
   })
@@ -127,5 +138,27 @@ describe('path guide plan', () => {
     const akara = { id: 77, unitType: 'monster', classId: 148, x: 1010, y: 2030, dead: false, name: 'Akara' } as unknown as ClientUnit
     const inTown = planGuide({ ...host, areaId: () => 1, quests: () => quests({ 1: 1, 2: 1 }, { 4: 2 }), monsters: () => [akara] }, 'story')!
     expect([inTown.hint, inTown.target?.unit]).toEqual(['Bring the scroll to Akara', { id: 77, kind: 'npc' }])
+  })
+})
+
+describe('path guide trail', () => {
+  it('starts the trail where you stand, not at corners already behind you', () => {
+    expect(fromNearest([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], { x: 10.5, y: 3 })).toEqual([{ x: 10.5, y: 3 }, { x: 10, y: 10 }])
+  })
+
+  it('rounds corners but keeps both ends, and samples evenly along the way', () => {
+    const line = rounded([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }])
+    expect([line[0], line.at(-1)]).toEqual([{ x: 0, y: 0 }, { x: 10, y: 10 }])
+    expect(line.some((p) => p.x > 5 && p.x < 10 && p.y > 0 && p.y < 5)).toBe(true)
+    expect(sampleAlong([{ x: 0, y: 0 }, { x: 4, y: 0 }], 1, 10, 1)).toEqual([{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }, { x: 4, y: 0 }])
+  })
+
+  it('eases a replanned trail into its new shape instead of snapping, but jumps after a teleport', () => {
+    const trail = new RibbonTrail()
+    trail.update([{ x: 0, y: 0 }, { x: 4, y: 0 }], 0)
+    const eased = trail.update([{ x: 0, y: 0 }, { x: 4, y: 2 }], 16)
+    expect(eased[1]!.y).toBeGreaterThan(0)
+    expect(eased[1]!.y).toBeLessThan(1)
+    expect(trail.update([{ x: 50, y: 50 }, { x: 54, y: 50 }], 32)).toEqual([{ x: 50, y: 50 }, { x: 54, y: 50 }])
   })
 })

@@ -7,6 +7,7 @@ import type { D2FontRenderer } from '../ui/font.ts'
 import type { AutomapHudFootprint, AutomapViewportMetrics } from '../ui/minimap.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import { FlowField } from './flow-field.ts'
+import { fromNearest, RibbonTrail, rounded, sampleAlong } from './ribbon-trail.ts'
 import type { Find, FindKey } from './quest-stages.ts'
 import { currentGoal, levelName, nextStep, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
 import { spriteOutlines, type OutlineTint } from './sprite-outline.ts'
@@ -51,6 +52,7 @@ export interface GuidePlan {
 const GOLD = '#f2c46b'
 const GOLD_RGB = '242, 196, 107'
 const SHADE = 'rgba(0, 0, 0, 0.55)'
+const TRAIL_RGB = '160, 214, 255'
 const GOLD_TINT: OutlineTint = [1, 0.8, 0.45]
 const DOOR_TINT: OutlineTint = [0.6, 0.85, 1]
 const REPLAN_MS = 400
@@ -59,11 +61,16 @@ const REPLAN_MOVE = 3
 const DOOR_NEAR_PATH = 3
 const TEXT_LINE = 13
 const GAP_DEPTH = 10
-const RIBBON_FROM = 2
+const RIBBON_FROM = 1.2
 const RIBBON_LENGTH = 32
 const HUD_PROBE_PX = 6
 const CORNER_RADIUS = 18
+const SAMPLE_SPACING = 0.75
+const CHEVRON_GAP = 3.2
+const CHEVRON_SPEED = 3.2
 const PORTAL_CLASSES = new Set([59, 60, 298, 342])
+const WAYPOINT_NEAR = 45
+const LEARN_WAYPOINTS = 'Touch the waypoint so the guide knows yours'
 
 const hintFor = (step: Step | null, goal: Goal, target: GuideTarget | null): string => {
   if (step === null) return 'No known route from here'
@@ -125,7 +132,7 @@ const findTargets = (find: readonly Find[], view: LevelView, objects: readonly C
 
 const freshField = (host: PathGuideHost): FieldSource => (view, target) => new FlowField({ ...view, walkable: host.walkable?.(view) ?? view.walkable }, target.x, target.y)
 
-export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldSource = freshField(host), waypoints: ReadonlySet<number> = host.waypoints()): GuidePlan | null {
+export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldSource = freshField(host), waypoints: ReadonlySet<number> = host.waypoints(), askForWaypoints = false): GuidePlan | null {
   const level = host.areaId()
   const view = host.levelView()
   const self = host.self()
@@ -135,29 +142,16 @@ export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldS
   const objects = host.objects()
   const monsters = host.monsters?.() ?? []
   const find = step?.kind === 'arrived' ? (goal.find ?? []) : step?.kind === 'portal' ? step.find : step?.kind === 'waypoint' ? [[...WAYPOINT_CLASS_IDS_113C]] : []
-  const marked = findTargets(find, view, objects, monsters, self)
+  const asking = askForWaypoints && step !== null && step.kind !== 'arrived' && step.kind !== 'waypoint'
+  const nearWaypoint = asking ? findTargets([[...WAYPOINT_CLASS_IDS_113C]], view, objects, monsters, self).filter((t) => Math.hypot(t.x - self.x, t.y - self.y) <= WAYPOINT_NEAR).slice(0, 1) : []
+  const marked = nearWaypoint.length > 0 ? nearWaypoint : findTargets(find, view, objects, monsters, self)
   const target = marked[0] ?? (step?.kind === 'exit' ? entranceTarget(view, step.level) : step?.kind === 'arrived' && find.length === 0 && !goal.inTown ? landmarkTarget(view) : null)
   const field = target ? fieldFor(view, target) : null
   const path = field?.pathFrom(self.x, self.y, 1) ?? []
   const route = field?.corners(path, self) ?? []
   const doors = objects.filter((door) => isClosedDoor(door) && path.some((p) => Math.hypot(p.x - door.x, p.y - door.y) <= DOOR_NEAR_PATH)).map((door) => door.id)
   const highlights = marked.flatMap((t) => (t.unit?.kind === 'object' ? [t.unit.id] : []))
-  return { goal, step, hint: hintFor(step, goal, target), target, path, route, doors, highlights }
-}
-
-const pointsAlong = (points: readonly SubTilePoint[], from: number, to: number): SubTilePoint[] => {
-  const out: SubTilePoint[] = []
-  let travelled = 0
-  points.forEach((point, i) => {
-    const prev = points[i - 1]
-    if (!prev) return
-    const length = Math.hypot(point.x - prev.x, point.y - prev.y)
-    const lerp = (d: number) => ({ x: prev.x + ((point.x - prev.x) * (d - travelled)) / (length || 1), y: prev.y + ((point.y - prev.y) * (d - travelled)) / (length || 1) })
-    if (out.length === 0 && travelled + length > from) out.push(lerp(Math.max(from, travelled)))
-    if (out.length > 0 && travelled < to) out.push(travelled + length <= to ? point : lerp(to))
-    travelled += length
-  })
-  return out
+  return { goal, step, hint: nearWaypoint.length > 0 ? LEARN_WAYPOINTS : hintFor(step, goal, target), target, path, route, doors, highlights }
 }
 
 interface ScreenPoint { readonly x: number; readonly y: number }
@@ -194,21 +188,51 @@ const stroke = (ctx: CanvasRenderingContext2D, style: string | CanvasGradient, w
 
 const fade = (ctx: CanvasRenderingContext2D, a: ScreenPoint, b: ScreenPoint, alpha: number) => {
   const gradient = ctx.createLinearGradient(a.x, a.y, b.x, b.y)
-  gradient.addColorStop(0, `rgba(${GOLD_RGB}, ${alpha})`)
-  gradient.addColorStop(0.7, `rgba(${GOLD_RGB}, ${alpha * 0.8})`)
-  gradient.addColorStop(1, `rgba(${GOLD_RGB}, 0)`)
+  gradient.addColorStop(0, `rgba(${TRAIL_RGB}, ${alpha * 0.6})`)
+  gradient.addColorStop(0.25, `rgba(${TRAIL_RGB}, ${alpha})`)
+  gradient.addColorStop(0.75, `rgba(${TRAIL_RGB}, ${alpha * 0.7})`)
+  gradient.addColorStop(1, `rgba(${TRAIL_RGB}, 0)`)
   return gradient
 }
 
-const ribbon = (ctx: CanvasRenderingContext2D, points: readonly ScreenPoint[], scale: number, nowMs: number, fadeOut: boolean) => {
-  const [first, last] = [points[0]!, points.at(-1)!]
-  const style = (alpha: number) => (fadeOut ? fade(ctx, first, last, alpha) : `rgba(${GOLD_RGB}, ${alpha})`)
+const ribbon = (ctx: CanvasRenderingContext2D, points: readonly ScreenPoint[], scale: number, nowMs: number) => {
   traceRounded(ctx, points)
-  stroke(ctx, style(0.12), 11 * scale)
+  stroke(ctx, `rgba(${GOLD_RGB}, 0.12)`, 11 * scale)
   stroke(ctx, SHADE, 4 * scale)
-  stroke(ctx, style(0.3), 5 * scale)
-  stroke(ctx, style(1), 1.8 * scale)
-  stroke(ctx, `rgba(255, 244, 214, ${fadeOut ? 0.9 : 1})`, 3.2 * scale, [0.1, 18 * scale], -nowMs / (36 / scale))
+  stroke(ctx, `rgba(${GOLD_RGB}, 0.3)`, 5 * scale)
+  stroke(ctx, GOLD, 1.8 * scale)
+  stroke(ctx, 'rgb(255, 244, 214)', 3.2 * scale, [0.1, 18 * scale], -nowMs / (36 / scale))
+}
+
+const trail = (ctx: CanvasRenderingContext2D, points: readonly ScreenPoint[]) => {
+  const [first, last] = [points[0]!, points.at(-1)!]
+  ctx.beginPath()
+  points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
+  stroke(ctx, fade(ctx, first, last, 0.1), 14)
+  stroke(ctx, `rgba(0, 0, 0, 0.35)`, 4.5)
+  stroke(ctx, fade(ctx, first, last, 0.75), 2)
+}
+
+const chevrons = (ctx: CanvasRenderingContext2D, samples: readonly SubTilePoint[], toScreen: PathGuideHost['toScreen'], nowMs: number) => {
+  const total = (samples.length - 1) * SAMPLE_SPACING
+  const phase = ((nowMs / 1000) * CHEVRON_SPEED) % CHEVRON_GAP
+  for (let d = phase; d < total - 0.5; d += CHEVRON_GAP) {
+    const i = Math.floor(d / SAMPLE_SPACING)
+    const [a, b] = [samples[i]!, samples[Math.min(i + 1, samples.length - 1)]!]
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1
+    const [tx, ty] = [(b.x - a.x) / length, (b.y - a.y) / length]
+    const t = (d - i * SAMPLE_SPACING) / SAMPLE_SPACING
+    const at = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+    const alpha = Math.min(1, d / 2) * (1 - d / total) ** 0.6
+    const corner = (along: number, side: number) => toScreen(at.x + tx * along - ty * side, at.y + ty * along + tx * side)
+    const [left, tip, right] = [corner(-0.45, 0.62), corner(0.5, 0), corner(-0.45, -0.62)]
+    ctx.beginPath()
+    ctx.moveTo(left.x, left.y)
+    ctx.lineTo(tip.x, tip.y)
+    ctx.lineTo(right.x, right.y)
+    stroke(ctx, `rgba(0, 0, 0, ${0.5 * alpha})`, 4.5)
+    stroke(ctx, `rgba(225, 242, 255, ${alpha})`, 2)
+  }
 }
 
 export class PathGuide {
@@ -218,6 +242,7 @@ export class PathGuide {
   private plannedAt = { ms: Number.NEGATIVE_INFINITY, x: 0, y: 0, level: 0 }
   private field: { readonly view: LevelView; readonly field: FlowField } | null = null
   private readonly memory = new WaypointMemory()
+  private readonly trail = new RibbonTrail()
   private readonly fieldFor: FieldSource = (view, target) => {
     const cached = this.field
     if (cached?.view === view && cached.field.targetX === target.x && cached.field.targetY === target.y) return cached.field
@@ -237,8 +262,10 @@ export class PathGuide {
     const since = nowMs - this.plannedAt.ms
     const moved = Math.hypot(x - this.plannedAt.x, y - this.plannedAt.y) >= REPLAN_MOVE
     if (since >= REPLAN_IDLE_MS || level !== this.plannedAt.level || (since >= REPLAN_MS && moved)) {
-      const waypoints = this.memory.known(this.host.character?.() ?? '', level, this.host.waypoints())
-      this.publish(planGuide(this.host, this.mode, this.fieldFor, waypoints))
+      const character = this.host.character?.() ?? ''
+      const fromMenu = this.host.waypoints()
+      const waypoints = this.memory.known(character, level, fromMenu)
+      this.publish(planGuide(this.host, this.mode, this.fieldFor, waypoints, fromMenu.size === 0 && !this.memory.hasMenu(character)))
       this.plannedAt = { ms: nowMs, x, y, level }
     }
     return this.plan
@@ -262,8 +289,11 @@ export class PathGuide {
     const me = self()
     ctx.save()
     Object.assign(ctx, { lineCap: 'round', lineJoin: 'round' })
-    const shown = untilCovered(pointsAlong([me, ...plan.route], RIBBON_FROM, RIBBON_LENGTH).map((p) => toScreen(p.x, p.y)), this.host.coveredByHud ?? (() => false))
-    if (shown.length > 1) ribbon(ctx, shown, 1, nowMs, true)
+    const line = rounded(fromNearest([plan.path[0] ?? me, ...plan.route], me))
+    const samples = plan.route.length > 0 ? this.trail.update(sampleAlong(line, RIBBON_FROM, RIBBON_LENGTH, SAMPLE_SPACING), nowMs) : (this.trail.reset(), [])
+    const shown = untilCovered(samples.map((p) => toScreen(p.x, p.y)), this.host.coveredByHud ?? (() => false))
+    if (shown.length > 1) trail(ctx, shown)
+    if (shown.length > 1) chevrons(ctx, samples.slice(0, shown.length), toScreen, nowMs)
     if (plan.target && plan.target.unit?.kind !== 'object') this.drawMarker(ctx, plan.target, nowMs)
     ctx.restore()
   }
@@ -310,7 +340,7 @@ export class PathGuide {
     ctx.rect(clip.x, clip.y, clip.w, clip.h)
     ctx.clip()
     Object.assign(ctx, { lineCap: 'round', lineJoin: 'round' })
-    if (plan.route.length > 0) ribbon(ctx, [me, ...plan.route].map(project), 0.6, nowMs, false)
+    if (plan.route.length > 0) ribbon(ctx, [me, ...plan.route].map(project), 0.6, nowMs)
     ctx.restore()
     if (!plan.target) return
     const goal = project(plan.target)

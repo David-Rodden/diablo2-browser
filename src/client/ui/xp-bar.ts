@@ -108,6 +108,11 @@ export const formatTimeToLevel = (state: XpBarState, perHour: number, lang: 'ENG
   return lang === 'ENG' ? `${clock} until next level` : `距下一级 ${clock}`
 }
 
+export const xpRatePlacement = (barX: number, rateW: number, baseline: number, rightLimit: number): readonly [number, number] =>
+  barX + BAR_WIDTH + 2 * RATE_GAP + rateW <= rightLimit ? [barX + BAR_WIDTH + RATE_GAP, baseline]
+  : barX - 2 * RATE_GAP - rateW >= 0 ? [barX - RATE_GAP - rateW, baseline]
+  : [Math.round(barX + (BAR_WIDTH - rateW) / 2), baseline + BAR_HEIGHT]
+
 export interface XpBarExtras {
   readonly perHour: number
   readonly mouseX: number
@@ -129,10 +134,9 @@ export function drawXpBar(ctx: CanvasRenderingContext2D, font: D2FontRenderer, s
   if (extras) {
     const rateText = formatXpRate(extras.perHour)
     const rateW = font.measureText(rateText, 'font8')
-    const fitsBeside = x + BAR_WIDTH + 2 * RATE_GAP + rateW <= (extras.rightLimit ?? viewportWidth)
-    const [rateX, rateBaseline] = fitsBeside ? [x + BAR_WIDTH + RATE_GAP, baseline] : [Math.round(x + (BAR_WIDTH - rateW) / 2), baseline + BAR_HEIGHT]
+    const [rateX, rateBaseline] = xpRatePlacement(x, rateW, baseline, extras.rightLimit ?? viewportWidth)
     font.drawText(ctx, rateText, rateX, rateBaseline, { ...LABEL_STYLE, color: 'gold', align: 'left' })
-    if (extras.mouseX >= x && extras.mouseX <= Math.max(x + BAR_WIDTH, rateX + rateW) && extras.mouseY >= BAR_TOP && extras.mouseY <= rateBaseline + 2) drawTimeToLevelTooltip(ctx, font, formatTimeToLevel(state, extras.perHour, lang), rateX + rateW / 2, rateBaseline + 5, viewportWidth)
+    if (extras.mouseX >= Math.min(x, rateX) && extras.mouseX <= Math.max(x + BAR_WIDTH, rateX + rateW) && extras.mouseY >= BAR_TOP && extras.mouseY <= rateBaseline + 2) drawTimeToLevelTooltip(ctx, font, formatTimeToLevel(state, extras.perHour, lang), rateX + rateW / 2, rateBaseline + 5, viewportWidth)
   }
   ctx.restore()
 }
