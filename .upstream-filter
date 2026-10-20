@@ -1,4 +1,5 @@
 drop .gitea
+drop .github
 keep README.md
 generated src/common/audio/music-tracks-113c.ts
 generated src/common/audio/sfx-pack-index-113c.ts

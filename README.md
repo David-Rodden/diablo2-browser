@@ -26,6 +26,8 @@ npm run sync
 
 This pulls in the latest snapshot of the upstream engine and merges it. After a sync, re-run `npm run bake -- all` so the assets match the new code.
 
+Files listed in `.upstream-filter` are left alone by the sync: `drop` keeps them out for good, and `keep` holds on to our version when upstream edits them.
+
 ## Mods
 
 All mods can be switched off from the Plugins button in the toolbar. See [MODS.md](MODS.md) for the list.
