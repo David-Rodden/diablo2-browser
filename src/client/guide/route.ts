@@ -85,7 +85,10 @@ export function shortestRoute(from: number, to: number, waypointLevels: Readonly
     }
     for (const hop of hopsFrom(level)) {
       const next = cost.get(level)! + (hop.kind === 'waypoint' ? WAYPOINT_COST : WALK_COST)
-      if (next < (cost.get(hop.to) ?? Infinity)) (cost.set(hop.to, next), via.set(hop.to, { from: level, hop }), open.add(hop.to))
+      if (next >= (cost.get(hop.to) ?? Infinity)) continue
+      cost.set(hop.to, next)
+      via.set(hop.to, { from: level, hop })
+      open.add(hop.to)
     }
   }
   return null

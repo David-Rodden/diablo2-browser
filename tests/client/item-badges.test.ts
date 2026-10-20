@@ -9,9 +9,13 @@ import type { UiInventoryItem } from '../../src/common/items/inventory-model.ts'
 const recordingCtx = () => {
   const texts: string[] = []
   let strokes = 0
-  const ctx = new Proxy({} as Record<string, unknown>, {
-    get: (target, key) =>
-      key in target ? target[key as string] : key === 'fillText' ? (t: string) => void texts.push(t) : key === 'stroke' ? () => void strokes++ : key === 'measureText' ? (t: string) => ({ width: t.length * 7 }) : () => {},
+  const fakes: Record<string, unknown> = {
+    fillText: (t: string) => texts.push(t),
+    stroke: () => (strokes += 1),
+    measureText: (t: string) => ({ width: t.length * 7 }),
+  }
+  const ctx = new Proxy<Record<string, unknown>>({}, {
+    get: (target, key) => (typeof key !== 'string' ? undefined : key in target ? target[key] : (fakes[key] ?? (() => undefined))),
     set: (target, key, value) => ((target[key as string] = value), true),
   }) as unknown as CanvasRenderingContext2D
   return { ctx, texts, strokes: () => strokes }

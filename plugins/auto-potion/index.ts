@@ -39,7 +39,10 @@ export const autoPotionPlugin: D2WebPlugin = {
           ? { level: 'ok', text: { zh: `生命 ${thresholds.life}% / 法力 ${thresholds.mana}%`, en: `Life ${thresholds.life}% / mana ${thresholds.mana}%` } }
           : { level: 'warn', text: { zh: '未开启', en: 'Inactive' } }
       },
-      deactivate: () => (unsubscribe(), ctx.autoPotion.setThresholds(null)),
+      deactivate: () => {
+        unsubscribe()
+        ctx.autoPotion.setThresholds(null)
+      },
     }
   },
 }

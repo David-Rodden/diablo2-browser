@@ -1,0 +1,10 @@
+{
+  "name": "d2web-mods-lint",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "typescript-eslint": "8.72.0"
+  }
+}

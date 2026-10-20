@@ -100,7 +100,7 @@ const landmarkTarget = (view: LevelView): GuideTarget | null => {
   return landmark ? { x: view.originX + landmark.subX, y: view.originY + landmark.subY, label: landmark.id } : null
 }
 
-const isSpent = (unit: ClientUnit) => !PORTAL_CLASSES.has(unit.classId) && !WAYPOINT_CLASS_IDS_113C.has(unit.classId) && (unit.mode ?? 0) !== 0
+const isSpent = (unit: ClientUnit) => !PORTAL_CLASSES.has(unit.classId) && !WAYPOINT_CLASS_IDS_113C.has(unit.classId) && unit.mode !== 0
 
 const candidatesFor = (keys: readonly FindKey[], view: LevelView, objects: readonly ClientUnit[], monsters: readonly ClientUnit[]): GuideTarget[] => {
   const ids = (kind: 'object' | 'npc') => new Set(keys.map((key) => (kind === 'object' ? (typeof key === 'number' ? key : -1) : typeof key === 'string' ? MONSTER_PATH_IDS.indexOf(key) : -1)).filter((id) => id >= 0))
@@ -160,7 +160,7 @@ const pointsAlong = (points: readonly SubTilePoint[], from: number, to: number):
   return out
 }
 
-type ScreenPoint = { readonly x: number; readonly y: number }
+interface ScreenPoint { readonly x: number; readonly y: number }
 
 const untilCovered = (points: readonly ScreenPoint[], covered: (x: number, y: number) => boolean): ScreenPoint[] => {
   const out: ScreenPoint[] = points.slice(0, 1)
@@ -180,9 +180,9 @@ const traceRounded = (ctx: CanvasRenderingContext2D, points: readonly ScreenPoin
   points.forEach((p, i) => {
     const next = points[i + 1]
     const prev = points[i - 1]
-    if (!prev) return ctx.moveTo(p.x, p.y)
-    if (!next) return ctx.lineTo(p.x, p.y)
-    ctx.arcTo(p.x, p.y, next.x, next.y, Math.min(CORNER_RADIUS, Math.hypot(p.x - prev.x, p.y - prev.y) / 2, Math.hypot(next.x - p.x, next.y - p.y) / 2))
+    if (!prev) ctx.moveTo(p.x, p.y)
+    else if (!next) ctx.lineTo(p.x, p.y)
+    else ctx.arcTo(p.x, p.y, next.x, next.y, Math.min(CORNER_RADIUS, Math.hypot(p.x - prev.x, p.y - prev.y) / 2, Math.hypot(next.x - p.x, next.y - p.y) / 2))
   })
 }
 
@@ -244,11 +244,11 @@ export class PathGuide {
     return this.plan
   }
 
-  draw(ctx: CanvasRenderingContext2D, font: D2FontRenderer, nowMs: number, drawAutomapText: () => AutomapHudFootprint | null | void, width: number): AutomapHudFootprint | null | void {
+  draw(ctx: CanvasRenderingContext2D, font: D2FontRenderer, nowMs: number, drawAutomapText: () => AutomapHudFootprint | null, width: number): AutomapHudFootprint | null {
     const plan = this.update(nowMs)
     if (plan) this.drawWorld(ctx, plan, nowMs)
     if (plan) this.drawAutomapPath(ctx, plan, nowMs, width)
-    const footprint = drawAutomapText() ?? null
+    const footprint = drawAutomapText()
     return plan ? this.drawObjective(ctx, font, plan, footprint, width) : footprint
   }
 
