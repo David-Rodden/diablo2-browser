@@ -128,6 +128,11 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  animation: d2-loading-fade-in 1.5s ease-out both;
+}
+
+@keyframes d2-loading-fade-in {
+  from { opacity: 0; }
 }
 
 #d2-boot-loading.d2-loading .d2-loading__ember {
@@ -152,6 +157,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   #d2-boot-loading.d2-loading,
+  #d2-boot-loading.d2-loading .d2-loading__embers,
   #d2-boot-loading.d2-loading .d2-loading__ember,
   #d2-boot-loading.d2-loading .d2-loading__tip {
     animation: none;

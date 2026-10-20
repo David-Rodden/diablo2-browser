@@ -2,23 +2,27 @@ import { describe, expect, it } from 'vitest'
 import { CommandMapper } from '../../src/client/input/command-mapper.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
-import type { ClientCommand, ItemData } from '../../src/netproto/index.ts'
+import type { ClientCommand } from '../../src/netproto/index.ts'
+import type { MapService } from '../../src/client/map/map-service.ts'
+import { walledLevel } from './walled-level.ts'
 
 const dropOnGround = (world: ClientWorld, id: number, code: string, x: number, y: number) =>
   world.apply({
     type: 'ItemEvent',
     action: 0,
     container: 'ground',
-    item: { id, itemId: id, code, rawCode: `${code} `, container: 'ground', action: 0, flags: 0x00200010, rawFlags: 0x00200010, worldX: x, worldY: y, x, y, goldAmount: 100 } as unknown as ItemData,
+    item: { id, itemId: id, code, rawCode: `${code} `, container: 'ground', action: 0, flags: 0x00200010, rawFlags: 0x00200010, worldX: x, worldY: y, x, y, goldAmount: 100 },
   })
 
-const createSetup = (enabled = true, level = 1) => {
+const createSetup = (enabled = true, level = 1, mapService?: MapService) => {
   const world = new ClientWorld()
-  world.apply({ type: 'UnitAssign', unit: { unitType: 0, id: 1, classId: 1, name: 'Hero', x: 5000, y: 5000 }, isSelf: true })
+  const [x, y] = mapService ? [100, 100] : [5000, 5000]
+  if (mapService) world.apply({ type: 'LoadAct', act: 0, mapSeed: 0x11223344, areaId: 8 })
+  world.apply({ type: 'UnitAssign', unit: { unitType: 0, id: 1, classId: 1, name: 'Hero', x, y }, isSelf: true })
   world.apply({ type: 'StatSet', stat: 12, value: level })
   const sent: ClientCommand[] = []
   const hudManager = new HudManager()
-  const mapper = new CommandMapper({ world, hudManager, sendCommand: (cmd) => sent.push(cmd) })
+  const mapper = new CommandMapper({ world, hudManager, mapService, sendCommand: (cmd) => sent.push(cmd) })
   mapper.assists.autoGoldPickup = enabled
   const pickups = () => sent.flatMap((c) => (c.type === 'ItemPickup' ? [c.itemId] : []))
   return { world, mapper, hudManager, pickups, sent }
@@ -90,5 +94,35 @@ describe('auto gold pickup', () => {
     dropOnGround(world, 32, 'gld', 5001, 5000)
     mapper.assists.pickUpNearbyLoot(1000)
     expect(pickups()).toEqual([31])
+  })
+})
+
+describe('auto gold pickup and walls', () => {
+  const firstMove = (sent: readonly ClientCommand[]) => sent.find((c) => c.type !== 'ItemPickup')
+
+  it('skips gold behind a wall for a farther pile it can walk to', () => {
+    const { world, mapper, sent } = createSetup(true, 1, walledLevel())
+    dropOnGround(world, 71, 'gld', 107, 100)
+    dropOnGround(world, 72, 'gld', 92, 100)
+    mapper.assists.pickUpNearbyLoot(1000)
+    const move = firstMove(sent) as { readonly target?: { readonly id: number }; readonly to?: { readonly x: number } } | undefined
+    expect(move?.target?.id === 72 || (move?.to?.x ?? 100) < 100).toBe(true)
+  })
+
+  it('walks toward the gap in the wall instead of straight into it', () => {
+    const { world, mapper, sent } = createSetup(true, 1, walledLevel([106, 110]))
+    dropOnGround(world, 81, 'gld', 108, 100)
+    mapper.assists.pickUpNearbyLoot(1000)
+    const move = firstMove(sent) as { readonly type: string; readonly to?: { readonly y: number } } | undefined
+    expect(move?.type).toBe('Move')
+    expect(move?.to?.y).toBeGreaterThan(104)
+  })
+
+  it('opens a closed door between you and the gold', () => {
+    const { world, mapper, sent } = createSetup(true, 1, walledLevel([98, 102]))
+    world.apply({ type: 'UnitAssign', unit: { unitType: 'object', id: 700, classId: 15, x: 104, y: 100, mode: 0 } } as never)
+    dropOnGround(world, 91, 'gld', 110, 100)
+    mapper.assists.pickUpNearbyLoot(1000)
+    expect(sent.some((c) => JSON.stringify(c).includes('700'))).toBe(true)
   })
 })

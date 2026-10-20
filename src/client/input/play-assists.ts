@@ -12,6 +12,8 @@ import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
 export const ITEM_PICKUP_REACH_SUBTILES = 4
 const PICKUP_RETRY_MS = 1000
 const PICKUP_DETOUR_RETRY_MS = 2500
+const LOOT_STEP_MS = 300
+const LOOT_STEP_AHEAD = 8
 const AUTO_PICKUP_RADIUS_SUBTILES = 20
 const CARRIED_GOLD_PER_LEVEL = 10_000
 const AUTO_COMBAT_REPEAT_MS = 40
@@ -73,7 +75,8 @@ export class PlayAssists {
   private lastHit: { readonly id: number; readonly life: number } | null = null
   private swingFinishedAtMs: number | null = null
   private engagedMonsterId: number | null = null
-  private readonly reachability = new Map<number, { readonly atMs: number; readonly reachable: boolean }>()
+  private readonly reachability = new Map<string, { readonly atMs: number; readonly path: readonly SubTilePoint[] | null }>()
+  private lootWalkId: number | null = null
   private collisionGrids: { readonly atMs: number; readonly grids: Map<boolean, SubTileWalkabilityGrid | null> } = { atMs: Number.NEGATIVE_INFINITY, grids: new Map() }
   private readonly doorAttemptAt = new Map<number, number>()
   private lastDoorSearchMs = Number.NEGATIVE_INFINITY
@@ -124,17 +127,29 @@ export class PlayAssists {
     if (world.isDead || this.isInWorldInteraction()) return
     const wanted = this.lootWanted()
     const distance = this.host.distanceFromSelf()
-    const nearest = [...ground.values()]
+    const loot = [...ground.values()]
       .filter((item) => wanted(item.code.trim()) && (this.pickupRetryAt.get(item.id) ?? 0) <= nowMs)
       .map((item) => world.getUnit('item', item.id))
       .filter((unit): unit is ClientUnit => unit !== undefined && distance(unit) <= AUTO_PICKUP_RADIUS_SUBTILES)
-      .sort((a, b) => distance(a) - distance(b))[0]
-    if (nearest === undefined) return
-    const inReach = distance(nearest) <= ITEM_PICKUP_REACH_SUBTILES
-    if (!inReach && !this.isFreeForLootDetour(nowMs)) return
-    this.pickupRetryAt.set(nearest.id, nowMs + (inReach ? PICKUP_RETRY_MS : PICKUP_DETOUR_RETRY_MS))
-    if (inReach) this.host.sendCommand({ type: 'ItemPickup', itemId: nearest.id, toCursor: false }, nowMs)
-    else this.host.triggerPrimaryWorldAction(nearest.x, nearest.y, nearest, nowMs)
+    const walkLength = (route: { readonly unit: ClientUnit; readonly path: readonly SubTilePoint[] }) => route.path.length || distance(route.unit)
+    const nearest = loot
+      .map((unit) => ({ unit, path: this.pathTo(unit, nowMs) }))
+      .filter((route): route is { unit: ClientUnit; path: readonly SubTilePoint[] } => route.path !== null)
+      .sort((a, b) => walkLength(a) - walkLength(b))[0]
+    if (nearest === undefined) {
+      this.lootWalkId = null
+      if (loot.length > 0 && this.isFreeForLootDetour(nowMs, false)) this.openDoorToward(loot, nowMs)
+      return
+    }
+    const { unit, path } = nearest
+    const inReach = walkLength(nearest) <= ITEM_PICKUP_REACH_SUBTILES
+    if (!inReach && !this.isFreeForLootDetour(nowMs, this.lootWalkId === unit.id)) return
+    const stepping = !inReach && path.length > LOOT_STEP_AHEAD
+    this.lootWalkId = inReach ? null : unit.id
+    this.pickupRetryAt.set(unit.id, nowMs + (inReach ? PICKUP_RETRY_MS : stepping ? LOOT_STEP_MS : PICKUP_DETOUR_RETRY_MS))
+    if (inReach) this.host.sendCommand({ type: 'ItemPickup', itemId: unit.id, toCursor: false }, nowMs)
+    else if (stepping) this.host.triggerPrimaryWorldAction(path[LOOT_STEP_AHEAD]!.x, path[LOOT_STEP_AHEAD]!.y, null, nowMs)
+    else this.host.triggerPrimaryWorldAction(unit.x, unit.y, unit, nowMs)
   }
 
   drinkPotionsIfLow(nowMs: number): void {
@@ -165,7 +180,10 @@ export class PlayAssists {
   runAutoCombat(nowMs: number): void {
     if (!this.autoCombatOn || this.host.mouseHeld().left || this.host.world.isDead || this.isInWorldInteraction() || nowMs - this.lastAutoCombatMs < AUTO_COMBAT_REPEAT_MS) return
     const target = this.resolveTarget(nowMs)
-    if (target === null) return this.openDoorTowardMonster(nowMs)
+    if (target === null) {
+      this.openDoorToward(this.visibleHostilesByDistance(), nowMs)
+      return
+    }
     if (this.isAwaitingHitResult(target, nowMs)) return
     const freshTarget = target.id !== this.targetId
     this.targetId = target.id
@@ -185,7 +203,7 @@ export class PlayAssists {
 
   private isInWorldInteraction(): boolean {
     const { hudManager } = this.host
-    return INTERACTION_PANELS.has(hudManager.leftPanel) || Boolean(hudManager.worldPanels?.npcMenu)
+    return INTERACTION_PANELS.has(hudManager.leftPanel) || Boolean(hudManager.worldPanels.npcMenu)
   }
 
   private lootWanted(): (code: string) => boolean {
@@ -196,10 +214,10 @@ export class PlayAssists {
     return (code) => (wantsGold && code === 'gld') || wantsPotion(code)
   }
 
-  private isFreeForLootDetour(nowMs: number): boolean {
+  private isFreeForLootDetour(nowMs: number, walkingToLoot: boolean): boolean {
     const { left, right } = this.host.mouseHeld()
     const fighting = this.autoCombatOn && this.resolveTarget(nowMs) !== null
-    return !left && !right && !fighting && !this.host.isMoving()
+    return !left && !right && !fighting && (walkingToLoot || !this.host.isMoving())
   }
 
   private drinkPotion(drink: PotionDrink, hudModel: HudModel): boolean {
@@ -222,7 +240,7 @@ export class PlayAssists {
 
   private isAwaitingHitResult(target: ClientUnit, nowMs: number): boolean {
     const last = this.lastHit
-    if (last === null || last.id !== target.id || last.life !== target.lifePct) return false
+    if (last?.id !== target.id || last.life !== target.lifePct) return false
     if (this.host.isPlayerBusyCasting(nowMs)) {
       this.swingFinishedAtMs = null
       return true
@@ -252,11 +270,15 @@ export class PlayAssists {
   }
 
   private isReachable(unit: ClientUnit, nowMs: number): boolean {
-    const cached = this.reachability.get(unit.id)
-    if (cached !== undefined && nowMs - cached.atMs < REACH_CACHE_MS) return cached.reachable
-    const reachable = this.walkPathTo(unit, false, nowMs) !== null
-    this.reachability.set(unit.id, { atMs: nowMs, reachable })
-    return reachable
+    return this.pathTo(unit, nowMs) !== null
+  }
+
+  private pathTo(unit: ClientUnit, nowMs: number): readonly SubTilePoint[] | null {
+    const cached = this.reachability.get(unit.key)
+    if (cached !== undefined && nowMs - cached.atMs < REACH_CACHE_MS) return cached.path
+    const path = this.walkPathTo(unit, false, nowMs)
+    this.reachability.set(unit.key, { atMs: nowMs, path })
+    return path
   }
 
   private walkPathTo(unit: ClientUnit, openDoors: boolean, nowMs: number): readonly SubTilePoint[] | null {
@@ -291,17 +313,16 @@ export class PlayAssists {
   }
 
   private objects(): readonly ClientUnit[] {
-    const { world } = this.host
-    return world.getUnitsByType ? world.getUnitsByType(2) : []
+    return this.host.world.getUnitsByType(2)
   }
 
-  private openDoorTowardMonster(nowMs: number): void {
+  private openDoorToward(targets: readonly ClientUnit[], nowMs: number): void {
     if (nowMs - this.lastDoorSearchMs < DOOR_SEARCH_MS) return
     this.lastDoorSearchMs = nowMs
     const doors = this.objects().filter((door) => isClosedDoor(door) && (this.doorAttemptAt.get(door.id) ?? 0) <= nowMs)
     if (doors.length === 0) return
     const doorOnPath = (path: readonly SubTilePoint[]) => path.map((step) => doors.find((door) => Math.hypot(door.x - step.x, door.y - step.y) <= DOOR_PATH_RADIUS)).find((door) => door !== undefined)
-    const door = this.visibleHostilesByDistance().reduce<ClientUnit | undefined>((found, monster) => found ?? doorOnPath(this.walkPathTo(monster, true, nowMs) ?? []), undefined)
+    const door = targets.reduce<ClientUnit | undefined>((found, target) => found ?? doorOnPath(this.walkPathTo(target, true, nowMs) ?? []), undefined)
     if (door === undefined) return
     this.doorAttemptAt.set(door.id, nowMs + DOOR_RETRY_MS)
     this.lastAutoCombatMs = nowMs

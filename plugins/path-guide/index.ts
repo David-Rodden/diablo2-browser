@@ -10,8 +10,8 @@ export const pathGuidePlugin: D2WebPlugin = {
   id: 'path-guide',
   name: { zh: '路线指引', en: 'Path Guide' },
   description: {
-    zh: '根据任务进度指出下一步该去哪里：小地图上画出路线和方向箭头，地面显示指引箭头，并圈出出口和路上要开的门。',
-    en: 'Points you to your next quest: a route and arrow on the minimap, guide arrows on the ground, and rings around the exit and any doors on the way.',
+    zh: '按任务日志的当前步骤指路：小地图和地面上画出路线，并给目标物件和路上的门描边。',
+    en: 'Follows your quest log step by step: a route on the minimap and the ground, using your waypoints, with outlines on the objects and doors along the way.',
   },
   defaultEnabled: true,
   settings: [{ kind: 'select', key: 'mode', label: { zh: '指引', en: 'Guide to' }, default: 'story', options: Object.entries(MODES).map(([value, { option }]) => ({ value, label: option })) }],
@@ -27,7 +27,10 @@ export const pathGuidePlugin: D2WebPlugin = {
         const mode = ctx.pathGuide.getMode()
         return mode ? { level: 'ok', text: MODES[mode].status } : { level: 'warn', text: { zh: '未开启', en: 'Inactive' } }
       },
-      deactivate: () => (unsubscribe(), ctx.pathGuide.setMode(null)),
+      deactivate: () => {
+        unsubscribe()
+        ctx.pathGuide.setMode(null)
+      },
     }
   },
 }

@@ -11,7 +11,10 @@ const roots: string[] = []
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, env: { ...process.env, ...IDENTITY }, encoding: 'utf8' }).trim()
 
 const writeFiles = (dir: string, files: Record<string, string>) =>
-  Object.entries(files).forEach(([path, content]) => (mkdirSync(dirname(join(dir, path)), { recursive: true }), writeFileSync(join(dir, path), content)))
+  Object.entries(files).forEach(([path, content]) => {
+    mkdirSync(dirname(join(dir, path)), { recursive: true })
+    writeFileSync(join(dir, path), content)
+  })
 
 const setup = () => {
   const root = mkdtempSync(join(tmpdir(), 'sync-upstream-'))

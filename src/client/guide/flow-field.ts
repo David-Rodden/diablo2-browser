@@ -87,11 +87,25 @@ export class FlowField {
     for (let step = 0; this.distance[cy * width + cx]! > 0; step++) {
       const here = this.distance[cy * width + cx]!
       const toTarget = ([dx, dy]: readonly [number, number]) => Math.hypot(cx + dx + this.ox - this.targetX, cy + dy + this.oy - this.targetY)
-      const best = NEIGHBOURS.filter(([dx, dy]) => this.canStep(cx, cy, dx, dy) && this.distance[(cy + dy) * width + cx + dx]! === here - 1).sort((a, b) => toTarget(a) - toTarget(b))[0]
+      const best = NEIGHBOURS.filter(([dx, dy]) => this.canStep(cx, cy, dx, dy) && here - 1 === this.distance[(cy + dy) * width + cx + dx]).sort((a, b) => toTarget(a) - toTarget(b))[0]
       if (!best) break
       ;[cx, cy] = [cx + best[0], cy + best[1]]
       if (step % every === every - 1 || this.distance[cy * width + cx] === 0) path.push({ x: cx + this.ox, y: cy + this.oy })
     }
     return path
+  }
+
+  lineOfSight(a: SubTilePoint, b: SubTilePoint): boolean {
+    const steps = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 2)
+    return Array.from({ length: steps + 1 }, (_, i) => i / Math.max(1, steps)).every((t) => this.walkable(Math.round(a.x + (b.x - a.x) * t) - this.ox, Math.round(a.y + (b.y - a.y) * t) - this.oy))
+  }
+
+  corners(path: readonly SubTilePoint[], from: SubTilePoint): SubTilePoint[] {
+    const corners: SubTilePoint[] = []
+    for (let i = 0, anchor = from; i < path.length; i++) {
+      while (i + 1 < path.length && this.lineOfSight(anchor, path[i + 1]!)) i++
+      corners.push((anchor = path[i]!))
+    }
+    return corners
   }
 }

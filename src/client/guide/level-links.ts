@@ -1,3 +1,5 @@
+import { LEVEL_EDGES, WAYPOINT_LEVEL_PAIRS } from './level-graph.gen.ts'
+
 export type LinkKind = 'walk' | 'portal'
 
 export interface LevelLink {
@@ -5,17 +7,9 @@ export interface LevelLink {
   readonly kind: LinkKind
 }
 
-const LINKS = '1-2 2-3 3-4 3-17 5-6 6-7 7-26 40-41 41-42 42-43 43-44 44-45 75-76 76-77 76-78 77-78 78-79 79-80 80-81 81-82 82-83 103-104 104-105 105-106 109-110 110-111 111-112 4~38 1~39 1~40 40~75 54~74 46~74 66~73 67~73 68~73 69~73 70~73 71~73 72~73 102~103 103~109 109~121 111~125 112~126 117~127 109~133 109~134 109~135 109~136 2-8 3-9 4-10 5-10 6-20 6-11 7-12 9-13 10-14 11-15 12-16 17-18 17-19 20-21 21-22 22-23 23-24 24-25 26-27 27-28 28-29 29-30 30-31 31-32 32-33 33-34 34-35 35-36 36-37 40-47 40-50 41-55 42-56 43-62 44-65 45-58 46-66 46-67 46-68 46-69 46-70 46-71 46-72 47-48 48-49 50-51 51-52 52-53 53-54 55-59 56-57 57-60 58-61 62-63 63-64 76-84 76-85 78-86 78-88 80-92 80-94 80-95 81-92 81-96 81-97 82-98 82-99 83-100 86-87 87-90 88-89 89-91 92-93 100-101 101-102 106-107 107-108 112-113 113-115 113-114 115-117 115-116 117-118 118-120 118-119 120-128 121-122 122-123 123-124 128-129 129-130 130-131 131-132'
+export const LEVEL_LINKS: ReadonlyMap<number, readonly LevelLink[]> = LEVEL_EDGES.reduce(
+  (graph, [from, to, kind]) => graph.set(from, [...(graph.get(from) ?? []), { to, kind }]),
+  new Map<number, LevelLink[]>(),
+)
 
-const WAYPOINTS = '0:1 1:3 2:4 3:5 4:6 5:27 6:29 7:32 8:35 9:40 10:48 11:42 12:57 13:43 14:44 15:52 16:74 17:46 18:75 19:76 20:77 21:78 22:79 23:80 24:81 25:83 26:101 27:103 28:106 29:107 30:109 31:111 32:112 33:113 34:115 35:123 36:117 37:118 38:129'
-
-export const LEVEL_LINKS: ReadonlyMap<number, readonly LevelLink[]> = LINKS.split(' ').reduce((graph, token) => {
-  const [, from, op, to] = /^(\d+)([-~>])(\d+)$/.exec(token)!
-  const kind: LinkKind = op === '~' ? 'portal' : 'walk'
-  const add = (a: number, b: number) => graph.set(a, [...(graph.get(a) ?? []), { to: b, kind }])
-  add(Number(from), Number(to))
-  if (op !== '>') add(Number(to), Number(from))
-  return graph
-}, new Map<number, LevelLink[]>())
-
-export const WAYPOINT_LEVELS: ReadonlyMap<number, number> = new Map(WAYPOINTS.split(' ').map((pair) => pair.split(':').map(Number) as [number, number]))
+export const WAYPOINT_LEVELS: ReadonlyMap<number, number> = new Map(WAYPOINT_LEVEL_PAIRS)

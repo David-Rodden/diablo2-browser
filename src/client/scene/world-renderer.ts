@@ -98,6 +98,7 @@ import {
   type GroundItemLabelInput,
 } from '../../common/items/ground-items.ts'
 import { resolveGroundItemFlippyKey, resolveGroundItemSpriteRect } from '../ui/inventory.ts'
+import { spriteOutlines } from '../guide/sprite-outline.ts'
 import {
   applyLightingInputs,
   unitFlatLightInto,
@@ -1801,6 +1802,7 @@ export function drawSceneUnitDrawable(
           elevationY: Math.max(0, frame.height - 16),
           ...(tint ? { tint } : {}),
         })
+        spriteOutlines.draw(renderer, unit.unitId, frame, objArt.handle, drawX, drawY)
         if (objArt.glowGroups !== undefined) {
           const rawGlowClip = objArt.glowClips?.[clipKey]
           const glowClip =
