@@ -650,7 +650,9 @@ export async function startPlayApp(options?: {
   })
 
   const hudManager = new HudManager(hudCanvas, {
-    onRenderAutomapOverlay: (ctx, font, logicalWidth, logicalHeight) => minimap.drawHudOverlay(ctx, font, logicalWidth, logicalHeight),
+    onRenderAutomapOverlay: (ctx, font, logicalWidth, logicalHeight) => {
+      return minimap.drawHudOverlay(ctx, font, logicalWidth, logicalHeight)
+    },
     onToggleAutomap: () => {
       sessionRef?.hudModel.toggleAutomap()
     },
@@ -783,14 +785,14 @@ export async function startPlayApp(options?: {
     dragInteract: togglePortFor(session.commandMapper, 'dragInteractMode'),
     stashDepositAll: togglePortFor(hudManager.worldPanels, 'stashDepositAllEnabled'),
     xpBar: togglePortFor(hudManager, 'showXpBar'),
-    autoGoldPickup: togglePortFor(session.commandMapper, 'autoGoldPickup'),
+    autoGoldPickup: togglePortFor(session.commandMapper.assists, 'autoGoldPickup'),
     upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
     itemInfo: { getConfig: () => hudManager.itemInfo, setConfig: (config) => hudManager.setItemInfo(config) },
-    autoCombat: { getKey: () => session.commandMapper.autoCombatKey, setKey: (key) => void (session.commandMapper.autoCombatKey = key) },
+    autoCombat: { getKey: () => session.commandMapper.assists.autoCombatKey, setKey: (key) => void (session.commandMapper.assists.autoCombatKey = key) },
     autoPotion: {
-      getThresholds: () => session.commandMapper.autoPotionThresholds,
-      setThresholds: (thresholds) => void (session.commandMapper.autoPotionThresholds = thresholds),
+      getThresholds: () => session.commandMapper.assists.autoPotionThresholds,
+      setThresholds: (thresholds) => void (session.commandMapper.assists.autoPotionThresholds = thresholds),
     },
   })
   const pluginMenu = new PluginMenu({

@@ -1,0 +1,56 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-upstream
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Merge the latest snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          before="$(git rev-parse origin/upstream)"
+          git checkout -q -B sync origin/main
+          if tools/sync-upstream.sh --merge; then clean=true; else clean=false; git merge --abort; fi
+          [ "$(git rev-parse upstream)" = "$before" ] && exit 0
+
+          git push origin upstream
+          title="Merge $(git log -1 --format=%s upstream | sed 's/^chore: publish d2web source //')"
+          gh pr list --state open --json number,headRefName -q '.[] | select(.headRefName | startswith("sync/")) | .number' | xargs -r -n1 gh pr close --delete-branch
+          if $clean; then
+            branch="sync/$(git rev-parse --short upstream)"
+            git push origin "HEAD:refs/heads/$branch"
+            gh pr create --base main --head "$branch" --title "$title" --body "Merges cleanly. It lands on main by itself once CI passes."
+            gh workflow run ci.yml --ref "$branch"
+            run=""
+            for _ in $(seq 30); do
+              sleep 10
+              run="$(gh run list --workflow ci.yml --branch "$branch" --event workflow_dispatch --limit 1 --json databaseId -q '.[0].databaseId')"
+              [ -n "$run" ] && break
+            done
+            if [ -n "$run" ] && gh run watch "$run" --exit-status > /dev/null; then
+              git push origin HEAD:main && echo "CI passed, merged into main"
+            else
+              gh pr comment "$branch" --body "CI failed, so this was left for review."
+            fi
+          else
+            gh pr create --base main --head upstream --title "$title (conflicts)" --body "Run \`npm run sync\` locally to resolve." || true
+          fi

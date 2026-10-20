@@ -6,16 +6,16 @@ rules="$(git rev-parse --show-toplevel)/.upstream-filter"
 merge=false
 [ "${1:-}" = "--merge" ] && merge=true
 
-paths() { [ -f "$rules" ] && awk -v kind="$1" '$1 == kind { print $2 }' "$rules" || true; }
+paths() { if [ -f "$rules" ]; then awk -v kind="$1" '$1 == kind { print $2 }' "$rules"; fi; }
 
 filtered_tree() {
   local snapshot="$1" tip="$2" index
   index="$(mktemp -u)"
   export GIT_INDEX_FILE="$index"
   git read-tree "$snapshot"
-  paths drop | xargs -r git rm -r -q --cached --ignore-unmatch --
+  paths drop | xargs -r git rm -r -q -f --cached --ignore-unmatch --
   paths keep | while read -r path; do
-    git rm -r -q --cached --ignore-unmatch -- "$path"
+    git rm -r -q -f --cached --ignore-unmatch -- "$path"
     git ls-tree -r "$tip" -- "$path" | git update-index --index-info
   done
   git write-tree
@@ -36,12 +36,13 @@ if [ "$tree" = "$(git rev-parse "$tip^{tree}")" ]; then
   echo "already on the latest snapshot: $(git log -1 --format=%s "$snapshot")"
 else
   meta() { git log -1 --format="$1" "$snapshot"; }
-  export GIT_AUTHOR_NAME="$(meta %an)" GIT_AUTHOR_EMAIL="$(meta %ae)" GIT_AUTHOR_DATE="$(meta %aI)"
-  export GIT_COMMITTER_NAME="$(meta %cn)" GIT_COMMITTER_EMAIL="$(meta %ce)" GIT_COMMITTER_DATE="$(meta %cI)"
-  stacked="$(meta %B | git commit-tree "$tree" -p "$tip")"
-  unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE
+  previous="$(git log -1 --format='%(trailers:key=Snapshot,valueonly)' "$tip")"
+  stacked="$(meta %B | git interpret-trailers --trailer "Snapshot: $snapshot" | env \
+    GIT_AUTHOR_NAME="$(meta %an)" GIT_AUTHOR_EMAIL="$(meta %ae)" GIT_AUTHOR_DATE="$(meta %aI)" \
+    GIT_COMMITTER_NAME="$(meta %cn)" GIT_COMMITTER_EMAIL="$(meta %ce)" GIT_COMMITTER_DATE="$(meta %cI)" \
+    git commit-tree "$tree" -p "$tip")"
   git branch -f upstream "$stacked"
-  echo "new snapshot: $(git log -1 --format='%h %s' "$stacked")"
+  [ "$previous" = "$snapshot" ] && echo "reapplied .upstream-filter to $(meta %s)" || echo "new snapshot: $(git log -1 --format='%h %s' "$stacked")"
 fi
 
 if $merge; then

@@ -25,7 +25,7 @@ import type { HudManager } from '../ui/hud-manager.ts'
 import type { AutomapView } from '../automap/automap-view.ts'
 import type { LevelView } from '../map/level-view.ts'
 import type { MapService } from '../map/map-service.ts'
-import { findPathWorld, type SubTilePoint, type SubTileWalkabilityGrid } from '../motion/pathfind.ts'
+import { findPathWorld, type SubTilePoint } from '../motion/pathfind.ts'
 import type { LocalMovementPredictor } from '../motion/predictor.ts'
 import { OutboundRateLimiter, type RateLimitAcquireResult } from '../session/rate-limiter.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
@@ -78,7 +78,7 @@ import {
 import { MONSTATS2FLAG_REVIVE, getMonsterPathRecord } from '../../common/path/units.ts'
 import { SKILL_INPUT_FLAGS_113C } from './generated/input-tables-113c.ts'
 import { isMetalItemCode113c } from '../../common/items/metal-items-113c.ts'
-import { AutoPotionPlanner, bottomBeltPotions, inventoryPotions, potionShortage, wantedPotionPickup, type PotionDrink, type AutoPotionThresholds } from './auto-potion.ts'
+import { ITEM_PICKUP_REACH_SUBTILES, PlayAssists, type PlayAssistHost } from './play-assists.ts'
 import { PET_TYPE_UNSUMMON_IDX_113C } from '../../common/units/pet-type-table.ts'
 
 export const CORPSE_TARGET_SKILL_IDS = new Set<number>([
@@ -106,37 +106,6 @@ export const CORPSE_TARGET_SKILL_IDS = new Set<number>([
 ])
 
 export const ALLY_OR_PET_TARGET_SKILL_IDS = new Set<number>(TARGET_PET_OR_ALLY_SKILL_IDS_113C)
-
-const ITEM_PICKUP_REACH_SUBTILES = 4
-const PICKUP_RETRY_MS = 1000
-const PICKUP_DETOUR_RETRY_MS = 2500
-const AUTO_PICKUP_RADIUS_SUBTILES = 20
-const AUTO_COMBAT_REPEAT_MS = 40
-const REACH_CACHE_MS = 400
-const REACH_MAX_NODES = 4000
-const REACH_DETOUR_FACTOR = 1.6
-const REACH_DETOUR_SLACK = 12
-const DOOR_SEARCH_MS = 400
-const DOOR_RETRY_MS = 1500
-const DOOR_PATH_RADIUS = 3
-const HIT_CONFIRM_SLACK_MS = 120
-const STATE_HEALTHPOT = 100
-const STATE_MANAPOT = 106
-const DEFAULT_PING_MS = 200
-const CARRIED_GOLD_PER_LEVEL = 10_000
-
-type CollisionMeta = { readonly isDoor?: boolean | undefined; readonly hasCollisionMask?: number | undefined }
-const objectMode = (unit: ClientUnit) => Math.max(0, Math.min(7, Math.floor(unit.mode || 0)))
-const collidesInMode = (meta: CollisionMeta | undefined, mode: number, openDoors = false) => !(openDoors && meta?.isDoor) && ((meta?.hasCollisionMask ?? 0) & (1 << mode)) !== 0
-const isClosedDoor = (unit: ClientUnit) => {
-  const meta = unit.objectMeta ?? CANONICAL_113C_OBJECTS[unit.classId]
-  return !unit.hidden && !unit.dead && Boolean(meta?.isDoor) && collidesInMode(meta, objectMode(unit))
-}
-const isInGrid = (grid: SubTileWalkabilityGrid, x: number, y: number) => {
-  const [ox, oy] = [grid.subOriginX ?? 0, grid.subOriginY ?? 0]
-  return x >= ox && y >= oy && x < ox + grid.subWidth && y < oy + grid.subHeight
-}
-const INTERACTION_PANELS = new Set(['stash', 'cube', 'vendor', 'hire', 'imbue', 'add_sockets', 'personalize', 'trade', 'waypoint'])
 
 function canRightSkillTargetObjectOrItem(skillId: number): boolean {
   if (!Number.isInteger(skillId) || skillId < 0 || skillId >= SKILL_INPUT_FLAGS_113C.length) {
@@ -352,22 +321,7 @@ export class CommandMapper {
   dragInteractMode = false
   private readonly dragPickupAttempts = new Set<number>()
 
-  autoGoldPickup = false
-  private readonly pickupRetryAt = new Map<number, number>()
-  private readonly reachability = new Map<number, { readonly atMs: number; readonly reachable: boolean }>()
-  private readonly doorAttemptAt = new Map<number, number>()
-  private collisionGrids: { readonly atMs: number; readonly grids: Map<boolean, SubTileWalkabilityGrid | null> } = { atMs: Number.NEGATIVE_INFINITY, grids: new Map() }
-  private lastDoorSearchMs = Number.NEGATIVE_INFINITY
-
-  private autoCombatKeyValue: string | null = null
-  private autoCombatOn = false
-  private autoCombatTargetId: number | null = null
-  private lastAutoCombatMs = Number.NEGATIVE_INFINITY
-  private lastAutoCombatHit: { readonly id: number; readonly life: number } | null = null
-  private swingFinishedAtMs: number | null = null
-
-  autoPotionThresholds: AutoPotionThresholds | null = null
-  private readonly autoPotion = new AutoPotionPlanner()
+  readonly assists: PlayAssists
 
   /** Default F1..F8 skill hotkey bindings (`key.toUpperCase()` -> binding). */
   private readonly skillHotkeys = new Map<string, SkillHotkeyBinding>()
@@ -403,6 +357,7 @@ export class CommandMapper {
     this.onAutomapParty = deps?.onAutomapParty
     this.onAutomapNames = deps?.onAutomapNames
     this.onAutomapCenter = deps?.onAutomapCenter
+    this.assists = new PlayAssists(this.assistHost())
   }
 
   private selfTickPosition(): { readonly x: number; readonly y: number } {
@@ -441,217 +396,46 @@ export class CommandMapper {
     return passes ? { unit: target } : null
   }
 
-  pickUpNearbyLoot(nowMs: number): void {
-    const { ground } = this.world.containers
-    ;[...this.pickupRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.pickupRetryAt.delete(id))
-    if (this.world.isDead || this.isInWorldInteraction()) return
-    const wanted = this.lootWanted()
-    const distance = this.distanceFromSelf()
-    const nearest = [...ground.values()]
-      .filter((item) => wanted(item.code.trim()) && (this.pickupRetryAt.get(item.id) ?? 0) <= nowMs)
-      .map((item) => this.world.getUnit('item', item.id))
-      .filter((unit): unit is ClientUnit => unit !== undefined && distance(unit) <= AUTO_PICKUP_RADIUS_SUBTILES)
-      .sort((a, b) => distance(a) - distance(b))[0]
-    if (nearest === undefined) return
-    const inReach = distance(nearest) <= ITEM_PICKUP_REACH_SUBTILES
-    if (!inReach && !this.isFreeForLootDetour(nowMs)) return
-    this.pickupRetryAt.set(nearest.id, nowMs + (inReach ? PICKUP_RETRY_MS : PICKUP_DETOUR_RETRY_MS))
-    if (inReach) this.sendCommand({ type: 'ItemPickup', itemId: nearest.id, toCursor: false }, nowMs)
-    else this.triggerPrimaryWorldAction(nearest.x, nearest.y, nearest, nowMs)
-  }
-
-  private lootWanted(): (code: string) => boolean {
-    const { gold, level } = this.world.self
-    const wantsGold = this.autoGoldPickup && gold < level * CARRIED_GOLD_PER_LEVEL
-    const { inventory, belt } = this.world.containers
-    const thresholds = this.autoPotionThresholds
-    const wantsPotion = thresholds === null ? () => false : wantedPotionPickup(inventoryPotions([...inventory.values(), ...belt.values()]), thresholds)
-    return (code) => (wantsGold && code === 'gld') || wantsPotion(code)
-  }
-
-  private isFreeForLootDetour(nowMs: number): boolean {
-    const fighting = this.autoCombatOn && this.resolveAutoCombatTarget(nowMs) !== null
-    return !this.leftMouseDown && !this.rightMouseDown && !fighting && !this.predictor?.getSnapshot().moving
-  }
-
-  tickAssists(nowMs: number): void {
-    this.drinkPotionsIfLow(nowMs)
-    this.pickUpNearbyLoot(nowMs)
-    this.runAutoCombat(nowMs)
-  }
-
-  drinkPotionsIfLow(nowMs: number): void {
-    const thresholds = this.autoPotionThresholds
-    const active = thresholds !== null && !this.world.isDead && !this.isTownArea()
-    const { inventory, belt } = this.world.containers
-    const potions = active ? [...inventoryPotions(inventory.values()), ...bottomBeltPotions(belt.values())] : []
-    const { self } = this.world
-    const maxLife = this.hudManager.maxHp || self.maxLife
-    const maxMana = this.hudManager.maxMana || self.maxMana
-    const vitals = {
-      life: Math.min(self.life, maxLife),
-      maxLife,
-      mana: Math.min(self.mana, maxMana),
-      maxMana,
-      mercLifePct: active ? this.mercLifePct() : null,
-      healingActive: self.states.has(STATE_HEALTHPOT),
-      manaActive: self.states.has(STATE_MANAPOT),
-      charClass: self.charClass,
-    }
-    this.hudManager.potionShortage = active ? potionShortage(potions, thresholds, vitals) : null
-    if (!active || this.hudModel === null) return
-    const drink = this.autoPotion.plan(potions, vitals, thresholds, nowMs)
-    if (drink !== null && this.drinkPotion(drink, this.hudModel)) this.autoPotion.record(drink, nowMs)
-  }
-
-  private drinkPotion(drink: PotionDrink, hudModel: HudModel): boolean {
-    const withSound = this.hudManager.commandSink === hudModel
-    if ('itemId' in drink) {
-      if (withSound) return this.hudManager.drinkInventoryPotion(drink.itemId, drink.code)
-      hudModel.useItem(drink.itemId)
-      return true
-    }
-    const toMerc = drink.kind === 'merc'
-    return withSound ? this.hudManager.drinkBeltSlot(drink.column, toMerc) : hudModel.useBeltSlot(drink.column, toMerc)
-  }
-
-  private mercLifePct(): number | null {
-    const { merc } = this.world
-    const unit = merc && !merc.isDead && merc.mercId > 0 ? this.world.getUnit('monster', merc.mercId) : undefined
-    return unit === undefined ? null : (unit.lifePct * 100) / 128
-  }
-
-  runAutoCombat(nowMs: number): void {
-    if (!this.autoCombatOn || this.leftMouseDown || this.world.isDead || this.isInWorldInteraction() || nowMs - this.lastAutoCombatMs < AUTO_COMBAT_REPEAT_MS) return
-    const target = this.resolveAutoCombatTarget(nowMs)
-    if (target === null) return this.openDoorTowardMonster(nowMs)
-    if (this.isAwaitingHitResult(target, nowMs)) return
-    const freshTarget = target.id !== this.autoCombatTargetId
-    this.autoCombatTargetId = target.id
-    this.lastAutoCombatMs = nowMs
-    const record = this.triggerPrimaryWorldAction(target.x, target.y, target, nowMs, !freshTarget)
-    if (record?.command.type === 'SkillOn' && record.rateLimit.allowed) {
-      this.lastAutoCombatHit = { id: target.id, life: target.lifePct }
-      this.swingFinishedAtMs = null
+  private assistHost(): PlayAssistHost {
+    return {
+      world: this.world,
+      hudManager: this.hudManager,
+      hudModel: this.hudModel,
+      camera: this.camera,
+      mouseHeld: () => ({ left: this.leftMouseDown, right: this.rightMouseDown }),
+      isMoving: () => Boolean(this.predictor?.getSnapshot().moving),
+      distanceFromSelf: () => this.distanceFromSelf(),
+      centerCameraOnSelf: () => this.centerCameraOnSelf(),
+      levelViewAt: (sx, sy) => this.levelViewAt(sx, sy),
+      walkableWith: (view, sx, sy, objects) =>
+        this.applyDynamicCollisionsToGrid(view.walkable, view.subOriginX ?? 0, view.subOriginY ?? 0, view.subWidth, view.subHeight, sx, sy, view.levelId === 102 || this.world.areaId === 102, objects, true),
+      triggerPrimaryWorldAction: (x, y, unit, nowMs, isHold) => this.triggerPrimaryWorldAction(x, y, unit, nowMs, isHold),
+      sendCommand: (command, nowMs) => this.sendCommand(command, nowMs),
+      isHostile: (unit) => unit.unitType === 'monster' && !this.isTownOrInteractiveNpc(unit) && !this.isFriendlySummonOrPet(unit) && !this.isMonsterDead(unit),
+      isPointIntercepted: (x, y) => this.isPointIntercepted(x, y),
+      isPlayerBusyCasting: (nowMs) => this.isPlayerBusyCasting(nowMs),
+      isTownArea: () => this.isTownArea(),
     }
   }
 
-  private isAwaitingHitResult(target: ClientUnit, nowMs: number): boolean {
-    const last = this.lastAutoCombatHit
-    if (last === null || last.id !== target.id || last.life !== target.lifePct) return false
-    if (this.isPlayerBusyCasting(nowMs)) {
-      this.swingFinishedAtMs = null
-      return true
-    }
-    this.swingFinishedAtMs ??= nowMs
-    return nowMs - this.swingFinishedAtMs < (this.hudManager.pingMs || DEFAULT_PING_MS) + HIT_CONFIRM_SLACK_MS
+  private levelViewAt(sx: number, sy: number): LevelView | null {
+    const areas = [...(this.world.areaId > 0 ? [this.world.areaId] : []), ...this.world.getRevealedAreaIds()]
+    return (
+      (this.mapService && areas.length > 0 && (sx !== 0 || sy !== 0) ? this.mapService.findLevelViewAtWorldSubTile(sx, sy, areas) : null) ??
+      (this.world.areaId > 0 ? this.automapView?.getLevelView(this.world.areaId) : undefined) ??
+      this.mapService?.getActiveLevelView() ??
+      this.automapView?.getLevelView() ??
+      null
+    )
   }
 
-  private isAutoCombatTarget(unit: ClientUnit): boolean {
-    if (unit.unitType !== 'monster' || this.isTownOrInteractiveNpc(unit) || this.isFriendlySummonOrPet(unit) || this.isMonsterDead(unit)) return false
-    const screen = this.camera.subtileToScreen(unit.x, unit.y)
-    const { width, height } = this.camera.viewportProfile
-    return screen.x >= 0 && screen.y >= 0 && screen.x <= width && screen.y <= height && !this.isPointIntercepted(screen.x, screen.y)
-  }
-
-  private resolveAutoCombatTarget(nowMs: number): ClientUnit | null {
-    this.centerCameraOnSelf()
-    const current = this.autoCombatTargetId === null ? undefined : this.world.getUnit('monster', this.autoCombatTargetId)
-    if (current !== undefined && this.isAutoCombatTarget(current) && this.isReachable(current, nowMs)) return current
-    return this.visibleHostilesByDistance().find((unit) => this.isReachable(unit, nowMs)) ?? null
-  }
-
-  private visibleHostilesByDistance(): ClientUnit[] {
-    const distance = this.distanceFromSelf()
-    return [...this.world.units.values()].filter((unit) => this.isAutoCombatTarget(unit)).sort((a, b) => distance(a) - distance(b))
-  }
-
-  private isReachable(unit: ClientUnit, nowMs: number): boolean {
-    const cached = this.reachability.get(unit.id)
-    if (cached !== undefined && nowMs - cached.atMs < REACH_CACHE_MS) return cached.reachable
-    const reachable = this.walkPathTo(unit, false, nowMs) !== null
-    this.reachability.set(unit.id, { atMs: nowMs, reachable })
-    return reachable
-  }
-
-  private walkPathTo(unit: ClientUnit, openDoors: boolean, nowMs: number): readonly SubTilePoint[] | null {
-    const [sx, sy] = [Math.round(this.world.self.x), Math.round(this.world.self.y)]
-    const grid = this.collisionGridAt(sx, sy, openDoors, nowMs)
-    if (grid === null || !isInGrid(grid, sx, sy) || !isInGrid(grid, unit.x, unit.y)) return []
-    const { rawPath, reachedGoal } = findPathWorld(grid, sx, sy, Math.round(unit.x), Math.round(unit.y), { unitSize: 2, allowPartial: false, smooth: false, nearestTargetRadius: 2, maxExpandedNodes: REACH_MAX_NODES })
-    return reachedGoal && rawPath.length <= Math.hypot(unit.x - sx, unit.y - sy) * REACH_DETOUR_FACTOR + REACH_DETOUR_SLACK ? rawPath : null
-  }
-
-  private collisionGridAt(sx: number, sy: number, openDoors: boolean, nowMs: number): SubTileWalkabilityGrid | null {
-    if (nowMs - this.collisionGrids.atMs >= REACH_CACHE_MS) this.collisionGrids = { atMs: nowMs, grids: new Map() }
-    const { grids } = this.collisionGrids
-    if (grids.has(openDoors)) return grids.get(openDoors) ?? null
-    const view = this.resolveLevelViewAt(sx, sy)
-    const objects = this.world.getUnitsByType ? this.world.getUnitsByType(2) : []
-    const isDuranceL3 = view?.levelId === 102 || this.world.areaId === 102
-    const grid = view && view.walkable.length > 0 && isInGrid(view, sx, sy)
-      ? { ...view, walkable: this.applyDynamicCollisionsToGrid(view.walkable, view.subOriginX ?? 0, view.subOriginY ?? 0, view.subWidth, view.subHeight, sx, sy, isDuranceL3, objects, true, openDoors) }
-      : null
-    grids.set(openDoors, grid)
-    return grid
-  }
-
-  private openDoorTowardMonster(nowMs: number): void {
-    if (nowMs - this.lastDoorSearchMs < DOOR_SEARCH_MS) return
-    this.lastDoorSearchMs = nowMs
-    const doors = (this.world.getUnitsByType ? this.world.getUnitsByType(2) : []).filter((door) => isClosedDoor(door) && (this.doorAttemptAt.get(door.id) ?? 0) <= nowMs)
-    if (doors.length === 0) return
-    const doorOnPath = (path: readonly SubTilePoint[]) => path.map((step) => doors.find((door) => Math.hypot(door.x - step.x, door.y - step.y) <= DOOR_PATH_RADIUS)).find((door) => door !== undefined)
-    const door = this.visibleHostilesByDistance().reduce<ClientUnit | undefined>((found, monster) => found ?? doorOnPath(this.walkPathTo(monster, true, nowMs) ?? []), undefined)
-    if (door === undefined) return
-    this.doorAttemptAt.set(door.id, nowMs + DOOR_RETRY_MS)
-    this.lastAutoCombatMs = nowMs
-    this.triggerPrimaryWorldAction(door.x, door.y, door, nowMs)
-  }
-
-  private isAutoCombatKey(key: string): boolean {
-    return this.autoCombatKey !== null && (key === ' ' ? 'SPACE' : key.toUpperCase()) === this.autoCombatKey
-  }
-
-  private engagedMonsterId: number | null = null
-
-  private engageMonster(id: number): void {
-    this.engagedMonsterId = id
-    this.hudModel?.setHoveredMonster(id)
-  }
-
-  private isEngagedMonsterAlive(): boolean {
-    const unit = this.engagedMonsterId === null ? undefined : this.world.getUnit('monster', this.engagedMonsterId)
-    return unit !== undefined && !this.isMonsterDead(unit)
-  }
-
-  private showHoveredMonster(id: number | null): void {
-    const isShowingEngaged = (this.leftMouseDown || this.autoCombatOn) && this.isEngagedMonsterAlive()
-    if (!isShowingEngaged) this.hudModel?.setHoveredMonster(id)
-  }
-
-  get autoCombatKey(): string | null {
-    return this.autoCombatKeyValue
-  }
-
-  set autoCombatKey(key: string | null) {
-    this.autoCombatKeyValue = key
-    this.setAutoCombatOn(false)
-  }
-
-  private setAutoCombatOn(on: boolean): void {
-    this.autoCombatOn = on
-    this.autoCombatTargetId = null
-    this.hudManager.autoCombatBadge = this.autoCombatKeyValue === null ? null : { on, key: this.autoCombatKeyValue }
-  }
-
-  private isInWorldInteraction(): boolean {
-    return INTERACTION_PANELS.has(this.hudManager.leftPanel) || Boolean(this.hudManager.worldPanels?.npcMenu)
+  private syncPanelCameraShift(): void {
+    const isOpen = (panel: string | undefined) => panel !== undefined && panel !== 'none'
+    if ('panelShiftX' in this.camera) this.camera.panelShiftX = computePanelCameraShift(isOpen(this.hudManager.leftPanel), isOpen(this.hudManager.rightPanel), panelDockWidth(this.camera.viewportProfile))
   }
 
   private centerCameraOnSelf(): void {
-    const isOpen = (panel: string | undefined) => panel !== undefined && panel !== 'none'
-    if ('panelShiftX' in this.camera) this.camera.panelShiftX = computePanelCameraShift(isOpen(this.hudManager.leftPanel), isOpen(this.hudManager.rightPanel), panelDockWidth(this.camera.viewportProfile))
+    this.syncPanelCameraShift()
     const { x, y } = this.selfTickPosition()
     if (x !== 0 || y !== 0) this.camera.update(x, y)
   }
@@ -1437,7 +1221,15 @@ export class CommandMapper {
    * any registered `ViewportProfile`) to world subtile coordinates and hit-test units.
    */
   resolvePointerTarget(screenX: number, screenY: number, hitRadiusSubtiles = 2.5): PointerWorldTarget {
-    this.centerCameraOnSelf()
+    this.syncPanelCameraShift()
+    if (this.predictor) {
+      const snap = this.predictor.getSnapshot()
+      if (snap.x !== 0 || snap.y !== 0) {
+        this.camera.update(snap.x, snap.y)
+      }
+    } else if (this.world.self.x !== 0 || this.world.self.y !== 0) {
+      this.camera.update(this.world.self.x, this.world.self.y)
+    }
     const subtile = this.camera.screenToSubtile(screenX, screenY)
 
     // 1. Hit-test visible ground item label plaques (`Alt` or hovered item label boxes)
@@ -1784,7 +1576,15 @@ export class CommandMapper {
    * Returns the live world sub-tile coordinates under `(screenX, screenY)`.
    */
   private resolveLiveCursorSubtile(screenX: number, screenY: number): { readonly x: number; readonly y: number } {
-    this.centerCameraOnSelf()
+    this.syncPanelCameraShift()
+    if (this.predictor) {
+      const snap = this.predictor.getSnapshot()
+      if (snap.x !== 0 || snap.y !== 0) {
+        this.camera.update(snap.x, snap.y)
+      }
+    } else if (this.world.self.x !== 0 || this.world.self.y !== 0) {
+      this.camera.update(this.world.self.x, this.world.self.y)
+    }
     return this.camera.screenToSubtile(screenX, screenY)
   }
 
@@ -1809,7 +1609,7 @@ export class CommandMapper {
     if (this.isPointIntercepted(screenX, resolvedY)) {
       if (!this.selectionLocked) {
         this.hoveredUnit = null
-        this.showHoveredMonster(null)
+        this.assists.showHoveredMonster(null)
       }
       return
     }
@@ -1824,9 +1624,9 @@ export class CommandMapper {
         !this.isTownOrInteractiveNpc(target.hoveredUnit) &&
         !this.isFriendlySummonOrPet(target.hoveredUnit)
       ) {
-        this.showHoveredMonster(target.hoveredUnit.id)
+        this.assists.showHoveredMonster(target.hoveredUnit.id)
       } else {
-        this.showHoveredMonster(null)
+        this.assists.showHoveredMonster(null)
       }
     }
 
@@ -2581,7 +2381,7 @@ export class CommandMapper {
             return null
           }
           this.cancelActiveNpcOrStashForWorldAction(hoveredUnit, selfX, selfY, nowMs)
-          if (hoveredUnit.unitType === 'monster') this.engageMonster(hoveredUnit.id)
+          if (hoveredUnit.unitType === 'monster') this.assists.engageMonster(hoveredUnit.id)
           return this.dispatchRateLimited(
             {
               type: 'SkillOn',
@@ -2921,11 +2721,7 @@ export class CommandMapper {
       return true
     }
 
-    if (this.isAutoCombatKey(event.key)) {
-      if (!event.repeat) this.setAutoCombatOn(!this.autoCombatOn)
-      event.preventDefault?.()
-      return true
-    }
+    if (this.assists.handleKey(event)) return true
 
     const kb = this.hudManager.getActiveKeyBindings?.()
     if (event.key === 'Shift' || event.shiftKey || matchesKeyBinding(kb, 'standStill', event)) {
@@ -3533,7 +3329,7 @@ export class CommandMapper {
    * Reset transient modifier and mouse down states (e.g. on window blur).
    */
   resetModifiers(): void {
-    this.autoCombatTargetId = null
+    this.assists.reset()
     this.shiftHeld = false
     this.altHeld = false
     this.ctrlHeldForRun = false
@@ -3893,7 +3689,6 @@ export class CommandMapper {
     isDuranceL3: boolean,
     objects: readonly ClientUnit[],
     cloneGrid: boolean,
-    openDoors = false,
   ): Uint8Array {
     const hasDynamicCollision =
       isDuranceL3 ||
@@ -3902,7 +3697,8 @@ export class CommandMapper {
         if (u.classId === 341 || u.classId === 342) return true
         const meta = u.objectMeta ?? CANONICAL_113C_OBJECTS[u.classId]
         if (!meta || ((meta.subClass ?? 0) & 0x04) !== 0) return false
-        const hasCollision = collidesInMode(meta, objectMode(u), openDoors)
+        const mode = Math.max(0, Math.min(7, Math.floor(u.mode || 0)))
+        const hasCollision = ((meta.hasCollisionMask ?? 0) & (1 << mode)) !== 0
         if (meta.isDoor && !hasCollision) return true
         return hasCollision && (meta.sizeX ?? 0) >= 1 && (meta.sizeY ?? 0) >= 1
       })
@@ -3940,7 +3736,9 @@ export class CommandMapper {
       if (obj.classId === 341 || obj.classId === 342) continue
       const meta = obj.objectMeta ?? CANONICAL_113C_OBJECTS[obj.classId]
       if (!meta || ((meta.subClass ?? 0) & 0x04) !== 0) continue
-      if (!collidesInMode(meta, objectMode(obj), openDoors)) continue
+      const mode = Math.max(0, Math.min(7, Math.floor(obj.mode || 0)))
+      const hasCollision = ((meta.hasCollisionMask ?? 0) & (1 << mode)) !== 0
+      if (!hasCollision) continue
       const sizeX = meta.sizeX ?? 0
       const sizeY = meta.sizeY ?? 0
       if (sizeX >= 1 && sizeY >= 1) {
@@ -3978,7 +3776,8 @@ export class CommandMapper {
     for (const obj of objects) {
       if (obj.hidden || obj.dead || (obj.x === 0 && obj.y === 0)) continue
       const meta = obj.objectMeta ?? CANONICAL_113C_OBJECTS[obj.classId]
-      const hasCollision = collidesInMode(meta, objectMode(obj), openDoors)
+      const mode = Math.max(0, Math.min(7, Math.floor(obj.mode || 0)))
+      const hasCollision = ((meta?.hasCollisionMask ?? 0) & (1 << mode)) !== 0
       if (obj.classId === 341 || obj.classId === 342) {
         const halfX = Math.max(3, Math.ceil((meta?.sizeX ?? 11) / 2) + 1)
         const halfY = Math.max(2, Math.ceil((meta?.sizeY ?? 5) / 2) + 1)
@@ -4006,21 +3805,6 @@ export class CommandMapper {
     return walkable
   }
 
-  private candidateAreaIds(): number[] {
-    return [...(this.world.areaId > 0 ? [this.world.areaId] : []), ...this.world.getRevealedAreaIds()]
-  }
-
-  private resolveLevelViewAt(sx: number, sy: number): LevelView | null {
-    const candidateAreas = this.candidateAreaIds()
-    return (
-      (this.mapService && candidateAreas.length > 0 && (sx !== 0 || sy !== 0) ? this.mapService.findLevelViewAtWorldSubTile(sx, sy, candidateAreas) : null) ??
-      (this.world.areaId > 0 ? this.automapView?.getLevelView(this.world.areaId) : undefined) ??
-      this.mapService?.getActiveLevelView() ??
-      this.automapView?.getLevelView() ??
-      null
-    )
-  }
-
   private startLocalPathPrediction(
     targetX: number,
     targetY: number,
@@ -4044,8 +3828,18 @@ export class CommandMapper {
     const snap = this.predictor.getSnapshot()
     const sx = Math.round(snap.logicalX)
     const sy = Math.round(snap.logicalY)
-    const candidateAreas = this.candidateAreaIds()
-    const levelView = this.resolveLevelViewAt(sx, sy)
+    const candidateAreas = [
+      ...(this.world.areaId > 0 ? [this.world.areaId] : []),
+      ...this.world.getRevealedAreaIds(),
+    ]
+    const levelView =
+      (this.mapService && candidateAreas.length > 0 && (sx !== 0 || sy !== 0)
+        ? this.mapService.findLevelViewAtWorldSubTile(sx, sy, candidateAreas)
+        : null) ??
+      (this.world.areaId > 0 ? this.automapView?.getLevelView(this.world.areaId) : undefined) ??
+      this.mapService?.getActiveLevelView() ??
+      this.automapView?.getLevelView() ??
+      null
 
     if (levelView && levelView.walkable.length > 0) {
       const ox = levelView.subOriginX ?? 0

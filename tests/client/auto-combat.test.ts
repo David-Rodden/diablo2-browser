@@ -19,13 +19,13 @@ const createSetup = (areaId = 2, mapService?: MapService) => {
   const sent: ClientCommand[] = []
   const hudModel = new HudModel({ world, hudManager, predictor, onCommand: (cmd) => sent.push(cmd) })
   const mapper = new CommandMapper({ world, camera, hudManager, hudModel, predictor, mapService, sendCommand: (cmd) => sent.push(cmd) })
-  mapper.autoCombatKey = 'E'
+  mapper.assists.autoCombatKey = 'E'
   const spawn = (id: number, classId: number, x: number, y: number) =>
     world.apply({ type: 'UnitAssign', unit: { unitType: 1, id, classId, name: 'Monster', x, y, lifePct: 128, mode: 1 } })
   const attacked = () => sent.flatMap((c) => (c.type === 'SkillOn' ? [c.target.id] : []))
   const barTarget = () => (hudModel as unknown as { hoveredMonsterId: number | null }).hoveredMonsterId
   const fightFor = (fromMs: number, toMs: number) => {
-    for (let t = fromMs; t <= toMs; t += 40) mapper.tickAssists(t)
+    for (let t = fromMs; t <= toMs; t += 40) mapper.assists.tick(t)
   }
   return { world, mapper, sent, spawn, attacked, barTarget, fightFor, camera, hud: hudManager }
 }
@@ -52,7 +52,7 @@ describe('auto-fight toggle', () => {
   it('removes the indicator and switches off when the plugin unbinds the key', () => {
     const s = createSetup()
     s.mapper.handleKeyDown({ key: 'e' })
-    s.mapper.autoCombatKey = null
+    s.mapper.assists.autoCombatKey = null
     s.spawn(901, 19, 103, 100)
     s.fightFor(1000, 1200)
     expect([s.attacked(), s.hud.autoCombatBadge]).toEqual([[], null])
@@ -137,7 +137,7 @@ describe('auto-fight hit confirmation', () => {
     const times: number[] = []
     for (let t = 1000; t <= 4000 && times.length < 3; t += 40) {
       const before = s.attacked().length
-      s.mapper.tickAssists(t)
+      s.mapper.assists.tick(t)
       if (s.attacked().length > before) {
         times.push(t)
         onAttack(s, times.length)

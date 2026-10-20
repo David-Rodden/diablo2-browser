@@ -54,7 +54,8 @@ describe('sync-upstream', () => {
     const s = setup()
     s.publish({ ...s.base, 'src/engine.ts': 'engine v2\n' }, '2')
     const result = s.sync()
-    expect(result.status).toBe(0)
+    expect([result.status, result.stderr]).toEqual([0, ''])
+    expect(result.stdout).toContain('new snapshot')
     expect(s.read('src/engine.ts')).toBe('engine v2\n')
     expect(s.read('src/mod.ts')).toBe('my mod\n')
     expect(git(s.work, 'log', '--format=%s', '-2', 'upstream').split('\n')).toEqual(['chore: publish d2web source snapshot (2)', 'chore: publish d2web source snapshot (1)'])
@@ -71,7 +72,8 @@ describe('sync-upstream', () => {
   it('keeps our version of kept paths when upstream edits them', () => {
     const s = setup()
     s.publish({ ...s.base, 'README.md': 'his new readme\n' }, '2')
-    expect(s.sync().status).toBe(0)
+    const result = s.sync()
+    expect([result.status, result.stderr]).toEqual([0, ''])
     expect(s.read('README.md')).toBe('my readme\n')
   })
 
@@ -90,6 +92,22 @@ describe('sync-upstream', () => {
     const result = s.sync()
     expect([result.status, result.stdout.trim()]).toEqual([0, 'already on the latest snapshot: chore: publish d2web source snapshot (1)'])
     expect(git(s.work, 'rev-parse', 'HEAD')).toBe(head)
+  })
+
+  it('records the source snapshot and reapplies new rules without calling it a new snapshot', () => {
+    const s = setup()
+    s.publish({ ...s.base, 'docs/extra.md': 'docs\n' }, '2')
+    expect(s.sync().status).toBe(0)
+    const raw = git(s.theirs, 'rev-parse', 'main')
+    expect(git(s.work, 'log', '-1', '--format=%(trailers:key=Snapshot,valueonly)', 'upstream')).toBe(raw)
+    writeFiles(s.work, { '.upstream-filter': 'drop .gitea\ndrop docs\nkeep README.md\ngenerated src/gen.ts\n' })
+    git(s.work, 'rm', '-r', '-q', 'docs')
+    git(s.work, 'add', '-A')
+    git(s.work, 'commit', '-q', '-m', 'Drop docs')
+    const result = s.sync()
+    expect([result.status, result.stderr]).toEqual([0, ''])
+    expect(result.stdout).toContain('reapplied .upstream-filter')
+    expect(s.read('docs/extra.md')).toBeNull()
   })
 
   it('stops with a clear message when our edits really conflict', () => {
