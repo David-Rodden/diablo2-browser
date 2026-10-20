@@ -1,6 +1,10 @@
 # diablo2-browser
 
+[![CI](https://github.com/David-Rodden/diablo2-browser/actions/workflows/ci.yml/badge.svg)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/ci.yml)
+
 Diablo II: Lord of Destruction (1.13c) in your browser. It connects to real PvPGN + D2GS servers, so you play the actual game online, not a remake. On top of the base game it adds a set of optional quality-of-life mods.
+
+![In game, with the XP bar and run timer](.github/screenshot.jpg)
 
 ## Getting started
 
