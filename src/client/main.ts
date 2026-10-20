@@ -650,7 +650,9 @@ export async function startPlayApp(options?: {
   })
 
   const hudManager = new HudManager(hudCanvas, {
-    onRenderAutomapOverlay: (ctx, font, logicalWidth, logicalHeight) => minimap.drawHudOverlay(ctx, font, logicalWidth, logicalHeight),
+    onRenderAutomapOverlay: (ctx, font, logicalWidth, logicalHeight) => {
+      return minimap.drawHudOverlay(ctx, font, logicalWidth, logicalHeight)
+    },
     onToggleAutomap: () => {
       sessionRef?.hudModel.toggleAutomap()
     },
