@@ -38,8 +38,19 @@ jobs:
           if $clean; then
             branch="sync/$(git rev-parse --short upstream)"
             git push origin "HEAD:refs/heads/$branch"
-            gh pr create --base main --head "$branch" --title "$title" --body "Merges cleanly. CI runs on this branch before you merge."
+            gh pr create --base main --head "$branch" --title "$title" --body "Merges cleanly. It lands on main by itself once CI passes."
             gh workflow run ci.yml --ref "$branch"
+            run=""
+            for _ in $(seq 30); do
+              sleep 10
+              run="$(gh run list --workflow ci.yml --branch "$branch" --event workflow_dispatch --limit 1 --json databaseId -q '.[0].databaseId')"
+              [ -n "$run" ] && break
+            done
+            if [ -n "$run" ] && gh run watch "$run" --exit-status > /dev/null; then
+              git push origin HEAD:main && echo "CI passed, merged into main"
+            else
+              gh pr comment "$branch" --body "CI failed, so this was left for review."
+            fi
           else
             gh pr create --base main --head upstream --title "$title (conflicts)" --body "Run \`npm run sync\` locally to resolve." || true
           fi
