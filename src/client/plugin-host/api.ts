@@ -21,6 +21,7 @@ import {
 import type { OnlineSession } from '../session/online-session.ts'
 import type { AutoPotionThresholds } from '../input/auto-potion.ts'
 import type { ItemInfoConfig, LootFilter } from '../ui/ground-item-info.ts'
+import type { GuideMode } from '../guide/route.ts'
 import {
   DEFAULT_VIEWPORT_RESOLUTION,
   VALID_AUTOMAP_REVEAL_MODES,
@@ -230,6 +231,13 @@ export interface PluginAutoCombatPort {
 
 export type { AutoPotionThresholds, ItemInfoConfig, LootFilter }
 
+export type { GuideMode }
+
+export interface PluginPathGuidePort {
+  getMode(): GuideMode | null
+  setMode(mode: GuideMode | null): void
+}
+
 export interface PluginItemInfoPort {
   getConfig(): ItemInfoConfig | null
   setConfig(config: ItemInfoConfig | null): void
@@ -330,6 +338,7 @@ export interface PluginContext {
   readonly upgradeHints: PluginTogglePort
   readonly monsterResists: PluginTogglePort
   readonly itemInfo: PluginItemInfoPort
+  readonly pathGuide: PluginPathGuidePort
   readonly autoCombat: PluginAutoCombatPort
   readonly autoPotion: PluginAutoPotionPort
   readonly lang: {
