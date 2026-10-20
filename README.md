@@ -4,7 +4,12 @@
 
 Diablo II: Lord of Destruction (1.13c) in your browser. It connects to real PvPGN + D2GS servers, so you play the actual game online, not a remake. On top of the base game it adds a set of optional quality-of-life mods.
 
-![In game, with the XP bar and run timer](.github/screenshot.jpg)
+![Fighting in the Blood Moor with Auto-Fight on](.github/media/combat.jpg)
+
+<p>
+  <img src=".github/media/fire-bolt.jpg" width="49%" alt="A Fire Bolt landing, with loot labels and an XP gain">
+  <img src=".github/media/resists.jpg" width="49%" alt="A Zombie's health bar showing its poison resistance">
+</p>
 
 ## Getting started
 

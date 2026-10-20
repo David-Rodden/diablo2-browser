@@ -13,8 +13,8 @@ export const autoPotionPlugin: D2WebPlugin = {
   id: 'auto-potion',
   name: { zh: '自动喝药', en: 'Auto-Potion' },
   description: {
-    zh: '非 1.13c 增强：生命或法力过低时自动喝药，优先使用背包中的药剂，背包没有时再用腰带。生命危急、或生命和法力同时过低时喝回复药剂，没有法力药剂时也用回复药剂补法力；否则选用刚好能补满缺口的最小治疗/法力药剂，并等上一瓶的持续回复结束后再喝下一瓶，避免浪费。佣兵生命过低时自动从腰带喂治疗药剂（相当于 Shift+数字键）。某种药剂快用完时（少于 4 瓶）会自动捡起附近地上的同类药剂和回复药剂。腰带只使用每列最下方的药剂，城镇中暂停；背包和腰带中都没有治疗药剂（或法力不足时没有法力药剂）时，生命球上方会显示红色提示。各阈值可在设置中调整。关闭插件即恢复原版行为。',
-    en: "Non-1.13c enhancement: drinks a potion when life or mana runs low, using potions in your inventory first and the belt only when the inventory has none of the right kind. At critical life, or when life and mana are both low, it drinks a rejuvenation potion, and it uses one for mana when no mana potions are left; otherwise it picks the smallest healing or mana potion that covers what you're missing, and waits for the previous potion's heal-over-time to finish before drinking another so nothing is wasted. When your mercenary's life drops it feeds them a healing potion from the belt (like Shift+number). When a kind runs low (fewer than 4 left) it picks up nearby potions of that kind, and rejuvenation potions, from the ground. Only the bottom potion of each belt column is used, it pauses in town, and a red notice above the life orb warns you when neither your inventory nor your belt has healing potions left, or mana potions while your mana is low. Every threshold can be changed in the settings. Disabling restores vanilla behavior.",
+    zh: '生命或法力过低时自动喝药，先用背包里的，再用腰带。危急时喝回复药剂，也会喂佣兵，药快用完时会捡地上的药。',
+    en: "Drinks a potion when life or mana runs low, inventory first, then belt. Uses rejuvenations when things get critical, feeds your mercenary, and picks potions up when you're running out.",
   },
   defaultEnabled: false,
   settings: THRESHOLDS.map(({ key, label, options, default: value }) => ({

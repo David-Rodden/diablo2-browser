@@ -1,4 +1,5 @@
 import type { ItemData } from '../../netproto/index.ts'
+import type { ItemBadge } from './item-badges.ts'
 
 export type LootFilter = 'off' | 'junk' | 'strict'
 
@@ -24,13 +25,11 @@ export const isLootHidden = (data: ItemData, isGear: boolean, filter: LootFilter
   return junk || (filter === 'strict' && (STRICT_CODES.has(code) || (isGear && quality === MAGIC)))
 }
 
-export const groundLabelDetails = (data: ItemData, isEn: boolean): string =>
+export const groundItemBadges = (data: ItemData): ItemBadge[] =>
   data.simple || data.ilvl === undefined
-    ? ''
-    : ` [${[
-        data.totalSockets > 0 ? `${data.totalSockets}${isEn ? 'os' : '孔'}` : null,
-        data.ethereal ? (isEn ? 'eth' : '无形') : null,
-        `${isEn ? 'ilvl' : '等级'} ${data.ilvl}`,
+    ? []
+    : [
+        ...(data.totalSockets > 0 ? [{ kind: 'sockets', count: data.totalSockets } as const] : []),
+        ...(data.ethereal ? [{ kind: 'ethereal' } as const] : []),
+        { kind: 'level', level: data.ilvl },
       ]
-        .filter((part) => part !== null)
-        .join(' · ')}]`

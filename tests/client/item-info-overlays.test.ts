@@ -74,11 +74,10 @@ describe('ground labels', () => {
   }
   const hidden = (filter: ItemInfoConfig['lootFilter']) => Object.keys(ground).map(Number).filter((id) => hudWith({ lootFilter: filter }).hidesGroundItem(id))
 
-  it('adds sockets, ethereal and item level to gear and skips simple items', () => {
+  it('badges gear with sockets, ethereal and item level and skips simple items', () => {
     const hud = hudWith({})
-    expect([1, 2, 3].map((id) => hud.groundLabelSuffix(id, true))).toEqual([' [5os · eth · ilvl 26]', ' [ilvl 12]', ''])
-    expect(hud.groundLabelSuffix(1, false)).toBe(' [5孔 · 无形 · 等级 26]')
-    expect(hudWith({ labelDetails: false }).groundLabelSuffix(1, true)).toBe('')
+    expect([1, 2, 3].map((id) => hud.groundLabelBadges(id))).toEqual([[{ kind: 'sockets', count: 5 }, { kind: 'ethereal' }, { kind: 'level', level: 26 }], [{ kind: 'level', level: 12 }], []])
+    expect(hudWith({ labelDetails: false }).groundLabelBadges(1)).toEqual([])
   })
 
   it('hides junk, or everything but valuables, while keeping quest items, gold, runes and charms', () => {

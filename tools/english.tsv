@@ -1,0 +1,40 @@
+正在下载游戏资源 · LOADING RESOURCES	Loading game files
+请填写详细复现步骤、所在场景/角色及期望行为（必填）	Steps to reproduce, where it happened, and what you expected (required)
+请描述您遇到的问题，提交后将连同当前运行环境信息保存至服务器	Describe the problem. It is sent to the server along with details about your setup.
+配置显示模式、分辨率、帧率、音频音量与本地资源缓存	Display mode, resolution, frame rate, volume and the local asset cache
+简要描述问题（必填）	Short summary (required)
+游戏逻辑 / 技能 / 掉落	Gameplay / Skills / Drops
+画面渲染 / 地图 / 贴图	Graphics / Maps / Textures
+网络连接 / 延迟 / 掉线	Network / Lag / Disconnects
+界面 / HUD / 插件	UI / HUD / Plugins
+配置 (显示 / 音频 / 缓存)	Settings (display / audio / cache)
+切换语言 (中 / EN)	Language
+详细描述与复现步骤	Description & Steps to Reproduce
+加载失败: 	Failed to load: 
+正在初始化...	Starting...
+音效 / 音乐	Sound / Music
+关闭 (Esc)	Close (Esc)
+提交到服务器	Send
+正在下载:	Loading:
+战网服务器	Battle.net Server
+显示模式	Display Mode
+渲染帧率	Frame Rate
+游戏配置	Game Settings
+资源缓存	Asset Cache
+清除缓存	Clear Cache
+问题分类	Category
+问题标题	Summary
+汇报 Bug	Report a Bug
+其他问题	Other
+主音量	Volume
+分辨率	Resolution
+未连接	Offline
+全屏	Fullscreen
+取消	Cancel
+插件	Plugins
+连接	Connect
+静音	Mute
+中	EN
+<html lang="zh-CN">	<html lang="en">
+掉落统计 (Drop Tracker)	Drop Tracker
+击杀统计 (Kill Statistics)	Kill Statistics
