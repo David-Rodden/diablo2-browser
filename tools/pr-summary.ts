@@ -85,7 +85,8 @@ async function modelOverview(prompt: string, token: string | undefined): Promise
       return null
     }
     const data = (await response.json()) as { choices?: { message?: { content?: string } }[] }
-    return data.choices?.[0]?.message?.content?.trim() || null
+    const text = data.choices?.[0]?.message?.content?.trim() ?? ''
+    return text.length > 0 ? text : null
   } catch (error) {
     console.error(`model request failed: ${String(error)}`)
     return null
