@@ -3,8 +3,8 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const SUMMARY_FOOTER = '<sub>Summary generated from the diff; it refreshes on every push.</sub>'
-const MODELS_URL = 'https://models.github.ai/inference/chat/completions'
-const MODEL = 'openai/gpt-4.1-mini'
+const MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
+const MODEL = 'claude-haiku-5-5'
 const DIFF_BUDGET = 24_000
 const SYSTEM_PROMPT = [
   'You summarize pull requests for a Diablo II browser client.',
@@ -72,20 +72,20 @@ export const isGenerated = (body: string | null | undefined): boolean => !body?.
 
 const git = (...args: string[]) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
 
-async function modelOverview(prompt: string, token: string | undefined): Promise<string | null> {
-  if (!token) return null
+async function modelOverview(prompt: string, apiKey: string | undefined): Promise<string | null> {
+  if (!apiKey) return null
   try {
-    const response = await fetch(MODELS_URL, {
+    const response = await fetch(MESSAGES_URL, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 500, temperature: 0.2, messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: prompt }] }),
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: MODEL, max_tokens: 600, system: SYSTEM_PROMPT, messages: [{ role: 'user', content: prompt }] }),
     })
     if (!response.ok) {
       console.error(`model request failed: ${response.status} ${await response.text()}`)
       return null
     }
-    const data = (await response.json()) as { choices?: { message?: { content?: string } }[] }
-    const text = data.choices?.[0]?.message?.content?.trim() ?? ''
+    const data = (await response.json()) as { content?: { type: string; text?: string }[] }
+    const text = (data.content ?? []).map((part) => part.text ?? '').join('').trim()
     return text.length > 0 ? text : null
   } catch (error) {
     console.error(`model request failed: ${String(error)}`)
@@ -104,8 +104,10 @@ async function main(base: string, head: string, title: string): Promise<void> {
   const upstreamFiles = new Set(git('ls-tree', '-r', '--name-only', 'origin/upstream').split('\n'))
   const diff = git('diff', '--stat', range) + '\n' + git('diff', '--unified=2', range, '--', '.', ':!*.gen.ts', ':!package-lock.json')
   const prompt = [`Title: ${title}`, '', 'Commits:', ...commits, '', 'Diff:', diff.slice(0, DIFF_BUDGET)].join('\n')
-  const fallback = commits.length === 1 ? `${commits[0]!.replace(/ \([0-9a-f]+\)$/, '')}.` : `${title}: ${commits.length} commits.`
-  const overview = (await modelOverview(prompt, process.env.GITHUB_TOKEN)) ?? fallback
+  const followUps = commits.length > 1 ? `, plus ${commits.length - 1} follow-up commit${commits.length > 2 ? 's' : ''}` : ''
+  const subject = title.length > 0 ? title : (commits[0] ?? 'No commits').replace(/ \([0-9a-f]+\)$/, '')
+  const fallback = `${subject}${followUps}.`
+  const overview = (await modelOverview(prompt, process.env.ANTHROPIC_API_KEY)) ?? fallback
   process.stdout.write(renderSummary({ overview, commits, files, upstreamFiles }) + '\n')
 }
 
