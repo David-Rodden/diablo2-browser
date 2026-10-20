@@ -25,7 +25,11 @@ import type { HudManager } from '../ui/hud-manager.ts'
 import type { AutomapView } from '../automap/automap-view.ts'
 import type { LevelView } from '../map/level-view.ts'
 import type { MapService } from '../map/map-service.ts'
-import { findPathWorld, type SubTilePoint } from '../motion/pathfind.ts'
+import {
+  findPathWorld,
+  TOWN_ASTAR_OBSTACLE_DISTANCE_SQ,
+  type SubTilePoint,
+} from '../motion/pathfind.ts'
 import type { LocalMovementPredictor } from '../motion/predictor.ts'
 import { OutboundRateLimiter, type RateLimitAcquireResult } from '../session/rate-limiter.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
@@ -76,6 +80,8 @@ import {
   type PressKind113c,
 } from './click-rules-113c.ts'
 import { MONSTATS2FLAG_REVIVE, getMonsterPathRecord } from '../../common/path/units.ts'
+import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../common/units/monstats2-flags.ts'
+import { MONSTATS2_FLAGS_BY_HCIDX } from '../../common/units/monstats2-flags-data.ts'
 import { SKILL_INPUT_FLAGS_113C } from './generated/input-tables-113c.ts'
 import { isMetalItemCode113c } from '../../common/items/metal-items-113c.ts'
 import { ITEM_PICKUP_REACH_SUBTILES, PlayAssists, type PlayAssistHost } from './play-assists.ts'
@@ -1155,6 +1161,22 @@ export class CommandMapper {
         if (unit.states?.has(0x8f)) {
           return false
         }
+        // 1.13c MonStats2.txt `noSel` (bit 5) and `isSel` (bit 3): non-selectable ambient town actors
+        // (e.g. `act2guard1` cid=203 at the Palace gate, `camel` cid=185, `act2male` cid=195) have `isSel = 0`.
+        if (!unit.isNpc && !isTownNpcHcIdx(unit.classId)) {
+          if (hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.NOSEL)) {
+            return false
+          }
+          if (
+            !this.isMonsterCorpse(unit) &&
+            unit.classId >= 0 &&
+            unit.classId < MONSTATS2_FLAGS_BY_HCIDX.length &&
+            MONSTATS2_FLAGS_BY_HCIDX[unit.classId] != null &&
+            !hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.ISSEL)
+          ) {
+            return false
+          }
+        }
         if (this.isFriendlySummonOrPet(unit) && !canTargetAllyOrPet) {
           return false
         }
@@ -1343,6 +1365,20 @@ export class CommandMapper {
           if (unit.states?.has(0x8f)) {
             continue
           }
+          if (!unit.isNpc && !isTownNpcHcIdx(unit.classId)) {
+            if (hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.NOSEL)) {
+              continue
+            }
+            if (
+              !this.isMonsterCorpse(unit) &&
+              unit.classId >= 0 &&
+              unit.classId < MONSTATS2_FLAGS_BY_HCIDX.length &&
+              MONSTATS2_FLAGS_BY_HCIDX[unit.classId] != null &&
+              !hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.ISSEL)
+            ) {
+              continue
+            }
+          }
           if (this.isFriendlySummonOrPet(unit) && !canTargetAllyOrPet) {
             continue
           }
@@ -1350,11 +1386,26 @@ export class CommandMapper {
             continue
           }
         }
-        const dx = unit.x - subtileX
-        const dy = unit.y - subtileY
+        let unitSubX = unit.x
+        let unitSubY = unit.y
+        if (unitType === 5) {
+          const hb =
+            typeof (unit as { getHitBox?: () => { left: number; top: number; width: number; height: number } })
+              .getHitBox === 'function'
+              ? unit.getHitBox()
+              : unit.hitBox
+          if (hb) {
+            const ox = hb.left + hb.width / 2
+            const oy = hb.top + hb.height / 2
+            unitSubX += (ox / 16 + oy / 8) / 2
+            unitSubY += (oy / 8 - ox / 16) / 2
+          }
+        }
+        const dx = unitSubX - subtileX
+        const dy = unitSubY - subtileY
         const d2Primary = dx * dx + dy * dy
         const d2 = hasAlt
-          ? Math.min(d2Primary, (unit.x - altSubtileX!) ** 2 + (unit.y - altSubtileY!) ** 2)
+          ? Math.min(d2Primary, (unitSubX - altSubtileX!) ** 2 + (unitSubY - altSubtileY!) ** 2)
           : d2Primary
         const objMeta = unitType === 2 ? CANONICAL_113C_OBJECTS[unit.classId] : undefined
         const objMaxSpan = objMeta ? Math.max(objMeta.sizeX ?? 0, objMeta.sizeY ?? 0) : 0
@@ -2175,7 +2226,44 @@ export class CommandMapper {
         //    - Within range (`#10407 <= 4`): stop movement and send `C2S 0x13 Interact` (`0x6facafbd..0x6facafd0`).
         const inRange = this.isWithinInteractionMeleeRange(selfX, selfY, hoveredUnit)
         if (!inRange) {
-          const path = this.startLocalPathPrediction(hoveredUnit.x, hoveredUnit.y, isRunning)
+          let path = this.startLocalPathPrediction(hoveredUnit.x, hoveredUnit.y, isRunning)
+          const endPt = path[path.length - 1]
+          if (
+            !endPt ||
+            (path.length <= 1 && Math.floor(endPt.x) === Math.floor(selfX) && Math.floor(endPt.y) === Math.floor(selfY)) ||
+            !this.isWithinInteractionMeleeRange(endPt.x, endPt.y, hoveredUnit)
+          ) {
+            const candidates: { x: number; y: number; distWarpSq: number; distSelfSq: number }[] = []
+            const wx = Math.floor(hoveredUnit.x)
+            const wy = Math.floor(hoveredUnit.y)
+            for (let dy = -4; dy <= 4; dy++) {
+              for (let dx = -4; dx <= 4; dx++) {
+                if (dx === 0 && dy === 0) continue
+                const cx = wx + dx
+                const cy = wy + dy
+                if (!this.isWithinInteractionMeleeRange(cx, cy, hoveredUnit)) continue
+                candidates.push({
+                  x: cx,
+                  y: cy,
+                  distWarpSq: dx * dx + dy * dy,
+                  distSelfSq: (cx - selfX) * (cx - selfX) + (cy - selfY) * (cy - selfY),
+                })
+              }
+            }
+            candidates.sort((a, b) => a.distWarpSq - b.distWarpSq || a.distSelfSq - b.distSelfSq)
+            for (const cand of candidates) {
+              const candPath = this.startLocalPathPrediction(cand.x, cand.y, isRunning)
+              const candEnd = candPath[candPath.length - 1]
+              if (
+                candPath.length > 1 &&
+                candEnd &&
+                this.isWithinInteractionMeleeRange(candEnd.x, candEnd.y, hoveredUnit)
+              ) {
+                path = candPath
+                break
+              }
+            }
+          }
           this.pendingWarpInteractId = hoveredUnit.id
           return this.dispatchRateLimited(
             {
@@ -3125,8 +3213,11 @@ export class CommandMapper {
       return true
     }
     if (matchesKeyBinding(kb, 'toggleMiniMap', event)) {
+      const hudCbs = (this.hudManager as any)?.callbacks
       if (this.onToggleAutomapMode) {
         this.onToggleAutomapMode()
+      } else if (typeof hudCbs?.onToggleAutomapMode === 'function') {
+        hudCbs.onToggleAutomapMode()
       } else if (this.automapView && typeof (this.automapView as any).toggleMiniMap === 'function') {
         ;(this.automapView as any).toggleMiniMap()
       }
@@ -3179,8 +3270,11 @@ export class CommandMapper {
         return true
       }
       case 'V': {
+        const hudCbs = (this.hudManager as any)?.callbacks
         if (this.onToggleAutomapMode) {
           this.onToggleAutomapMode()
+        } else if (typeof hudCbs?.onToggleAutomapMode === 'function') {
+          hudCbs.onToggleAutomapMode()
         } else if (this.automapView && typeof (this.automapView as any).toggleMiniMap === 'function') {
           ;(this.automapView as any).toggleMiniMap()
         }
@@ -3213,8 +3307,11 @@ export class CommandMapper {
       }
       case 'F9': {
         event.preventDefault?.()
+        const hudCbs = (this.hudManager as any)?.callbacks
         if (this.onAutomapFade) {
           this.onAutomapFade()
+        } else if (typeof hudCbs?.onCycleAutomapFade === 'function') {
+          hudCbs.onCycleAutomapFade()
         } else if (this.automapView && typeof (this.automapView as any).cycleFadeMode === 'function') {
           ;(this.automapView as any).cycleFadeMode()
         }
@@ -3223,8 +3320,11 @@ export class CommandMapper {
       case 'F10':
       case 'F12': {
         event.preventDefault?.()
+        const hudCbs = (this.hudManager as any)?.callbacks
         if (this.onAutomapNames) {
           this.onAutomapNames()
+        } else if (typeof hudCbs?.onToggleAutomapNames === 'function') {
+          hudCbs.onToggleAutomapNames()
         } else if (this.automapView && typeof (this.automapView as any).toggleShowPartyNames === 'function') {
           ;(this.automapView as any).toggleShowPartyNames()
         }
@@ -3232,8 +3332,11 @@ export class CommandMapper {
       }
       case 'F11': {
         event.preventDefault?.()
+        const hudCbs = (this.hudManager as any)?.callbacks
         if (this.onAutomapParty) {
           this.onAutomapParty()
+        } else if (typeof hudCbs?.onToggleAutomapParty === 'function') {
+          hudCbs.onToggleAutomapParty()
         } else if (this.automapView && typeof (this.automapView as any).toggleShowParty === 'function') {
           ;(this.automapView as any).toggleShowParty()
         }
@@ -3241,8 +3344,11 @@ export class CommandMapper {
       }
       case 'HOME': {
         event.preventDefault?.()
+        const hudCbs = (this.hudManager as any)?.callbacks
         if (this.onAutomapCenter) {
           this.onAutomapCenter()
+        } else if (typeof hudCbs?.onResetAutomapPan === 'function') {
+          hudCbs.onResetAutomapPan()
         } else if (this.automapView && typeof (this.automapView as any).resetManualPan === 'function') {
           ;(this.automapView as any).resetManualPan()
         }
@@ -3828,6 +3934,12 @@ export class CommandMapper {
     const snap = this.predictor.getSnapshot()
     const sx = Math.round(snap.logicalX)
     const sy = Math.round(snap.logicalY)
+    // Town waypoint/NPC/chest clicks routinely start >18 sub-tiles from the
+    // target after the straight ray hits a wall. Use the wider town detour
+    // budget so the local A* can still route around the obstacle (#1318).
+    const pathfindOptions = this.isTownArea()
+      ? { unitSize: 2 as const, maxAstarObstacleDistanceSq: TOWN_ASTAR_OBSTACLE_DISTANCE_SQ }
+      : { unitSize: 2 as const }
     const candidateAreas = [
       ...(this.world.areaId > 0 ? [this.world.areaId] : []),
       ...this.world.getRevealedAreaIds(),
@@ -3878,7 +3990,7 @@ export class CommandMapper {
       }
 
       if (inBounds) {
-        const pathResult = findPathWorld(effectiveView, sx, sy, targetX, targetY, { unitSize: 2 })
+        const pathResult = findPathWorld(effectiveView, sx, sy, targetX, targetY, pathfindOptions)
         const endPt = pathResult.path[pathResult.path.length - 1]
         const targetIdx = (Math.floor(targetY) - oy) * levelView.subWidth + (Math.floor(targetX) - ox)
         const targetStampedSolid =
@@ -4002,7 +4114,7 @@ export class CommandMapper {
             sy,
             targetX,
             targetY,
-            { unitSize: 2 },
+            pathfindOptions,
           )
           if (
             crossPath.path.length > 0 &&
@@ -4018,7 +4130,7 @@ export class CommandMapper {
       if (startInBounds && !inBounds && this.lastPath.length === 0) {
         const clampedX = Math.max(ox, Math.min(ox + levelView.subWidth - 1, targetX))
         const clampedY = Math.max(oy, Math.min(oy + levelView.subHeight - 1, targetY))
-        const clampedRes = findPathWorld(effectiveView, sx, sy, clampedX, clampedY, { unitSize: 2 })
+        const clampedRes = findPathWorld(effectiveView, sx, sy, clampedX, clampedY, pathfindOptions)
         if (clampedRes.path.length > 0) {
           this.lastPath = clampedRes.path
         }

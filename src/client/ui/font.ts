@@ -681,6 +681,14 @@ const PL2_TEXT_SHIFTS: Record<D2ColorCode, Record<number, readonly [number, numb
 }
 
 /**
+ * `font6` tinted atlases used by the first in-game panels (character sheet, hireling, party trade,
+ * minimap). Under D2GL HD text `font6` keeps the DC6 blit path, so each first-use color would
+ * otherwise run a synchronous `getImageData`/`putImageData` pass in the middle of a render frame
+ * (Issue #1315). Build them while the loading screen is still up instead.
+ */
+const FONT6_PREWARM_COLORS: readonly D2ColorCode[] = ['white', 'blue', 'gold', 'black', 'red', 'tan']
+
+/**
  * Runtime Diablo II Font Manager supporting PD2 D2GL HD Text (`hd_text = true`, `ExocetBlizzardMedium.otf` /
  * `Formal436BT.ttf` / `Chi.ttf`), 1.13c bitmap DC6 glyphs, and CJK fallback.
  */
@@ -798,12 +806,19 @@ export class D2FontRenderer {
         ),
       )
       this.loaded = this.images.size > 0
+      this.prewarmTintedAtlases()
     } catch (err) {
       if (typeof window === 'undefined' && typeof location === 'undefined') {
         return
       }
       throw err
     }
+  }
+
+  /** Build the `font6` tinted atlases whose first render would otherwise stall a frame (Issue #1315). */
+  private prewarmTintedAtlases(): void {
+    if (typeof document === 'undefined' || !this.images.has('font6')) return
+    for (const color of FONT6_PREWARM_COLORS) this.getTintedAtlas('font6', color)
   }
 
   /**

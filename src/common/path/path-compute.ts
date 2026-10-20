@@ -1593,7 +1593,12 @@ function wfFindSubpathWithoutObstacles(
   let pCurPath = tCache1
   let pOtherPath = tCache2
 
-  while (!(tCache1.bPathFinished && tCache2.bPathFinished)) {
+  // 1.13c 0x6FD68AA6..0x6FD68AB3:
+  //   cmp [esp+0x388], edx (0) ; jne 0x6FD68AB9
+  //   cmp [esp+0x40],  edx (0) ; je  0x6FD68950
+  // Exits as soon as EITHER probe sets bPathFinished (not both; D2MOO's `!(a && b)`
+  // spins forever when pCurPath finishes with nLastSyncPointWithOtherPathIndex != 0).
+  while (!tCache1.bPathFinished && !tCache2.bPathFinished) {
     if (!pCurPath.bPathFinished) {
       if (!wfFindNonCollidingTargetPoint(pInfo, pCurPath)) {
         pCurPath.bPathFinished = true
@@ -1669,9 +1674,9 @@ function wfFindSubpathWithoutObstacles(
   }
 
   // 1.13c 0x6FD68B31..0x6FD68B61: when nPoints == 0, `pPoints[nPoints - 1]` reads `bPathFinished`
-  // at offset -4 in the struct (which is {X: 1, Y: 0} since bPathFinished == 1).
-  const pt1: PathPoint = tCache1.nPoints > 0 ? tCache1.pPoints[tCache1.nPoints - 1]! : { X: 1, Y: 0 }
-  const pt2: PathPoint = tCache2.nPoints > 0 ? tCache2.pPoints[tCache2.nPoints - 1]! : { X: 1, Y: 0 }
+  // at offset -4 in the struct (which is {X: bPathFinished ? 1 : 0, Y: 0}).
+  const pt1: PathPoint = tCache1.nPoints > 0 ? tCache1.pPoints[tCache1.nPoints - 1]! : { X: tCache1.bPathFinished ? 1 : 0, Y: 0 }
+  const pt2: PathPoint = tCache2.nPoints > 0 ? tCache2.pPoints[tCache2.nPoints - 1]! : { X: tCache2.bPathFinished ? 1 : 0, Y: 0 }
   const nSquaredDist1 = squaredDist(pt1, pInfo.tTargetCoord)
   const nSquaredDist2 = squaredDist(pt2, pInfo.tTargetCoord)
   const nSquaredDistStartToTarget = squaredDist(pInfo.tStartCoord, pInfo.tTargetCoord)
@@ -2029,7 +2034,13 @@ export function PATH_PreparePathTargetForPathUpdate(pPathInfo: PathInfo): boolea
   const pTestDir: [number, number, number] = [0, 0, 0]
   sub_6FDAB7D0(pTestDir, pPathInfo.tTargetCoord, pPathInfo.tStartCoord)
 
-  while (true) {
+  const maxSteps =
+    Math.abs(p0.X - pPathInfo.tStartCoord.X) + Math.abs(p0.Y - pPathInfo.tStartCoord.Y) + 8
+  if (!Number.isFinite(maxSteps)) {
+    return false
+  }
+
+  for (let step = 0; step < maxSteps; step++) {
     if (pointsEqual(pPathInfo.tStartCoord, p0)) {
       return false
     }
@@ -2090,6 +2101,7 @@ export function PATH_PreparePathTargetForPathUpdate(pPathInfo: PathInfo): boolea
 
     pTestDir[0] = PREPARE_TARGET_DIRECTIONS[sub_6FDAB6A0(p0, pPathInfo.tStartCoord) * 3]!
   }
+  return false
 }
 
 type PathFinderFn = (pPathInfo: PathInfo) => number

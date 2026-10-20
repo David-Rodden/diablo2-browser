@@ -241,7 +241,8 @@ export class WallFadeTracker113c {
       }
       return
     }
-    if (this.popBoxesState.length !== pops.length) {
+    const isInitial = this.popBoxesState.length !== pops.length
+    if (isInitial) {
       this.popBoxesState = pops.map(() => ({ popped: false, toggledAtMs: -Infinity }))
     }
 
@@ -265,13 +266,16 @@ export class WallFadeTracker113c {
 
     // 0x6fd5a7a6..0x6fd5a8c4: toggle any pop entry whose active state changed (all entries in the same
     // preset map sharing `p.index === activePopIndex` pop together).
+    // When spawning directly inside a POPS box on initial level load (`isInitial`), record
+    // `toggledAtMs = -Infinity` so the building starts immediately popped on frame 0 without a
+    // 500ms roof fade-out flash (#1330).
     for (let j = 0; j < pops.length; j++) {
       const p = pops[j]!
       const nextPopped = activePopIndex !== 0 && p.mapIndex === activeMapIndex && p.index === activePopIndex
       const st = this.popBoxesState[j]!
       if (st.popped !== nextPopped) {
         st.popped = nextPopped
-        st.toggledAtMs = nowMs
+        st.toggledAtMs = isInitial ? -Infinity : nowMs
       }
     }
   }
@@ -341,6 +345,19 @@ export class WallFadeTracker113c {
     }
 
     if (st === undefined) {
+      if (isPopped && !Number.isFinite(activeToggleMs)) {
+        st = {
+          popped: true,
+          hidden: !isRevealHidden,
+          flags: 0,
+          alpha: isRevealHidden ? WALL_ALPHA_OPAQUE : 0,
+          from: isRevealHidden ? WALL_ALPHA_OPAQUE : 0,
+          to: isRevealHidden ? WALL_ALPHA_OPAQUE : 0,
+          endMs: 0,
+        }
+        this.popTileStates.set(key, st)
+        return { visible: !st.hidden, alpha: st.alpha }
+      }
       st = {
         popped: false,
         hidden: isRevealHidden,

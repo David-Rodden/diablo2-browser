@@ -1613,11 +1613,11 @@ export function handleHudMouseDown(
             )
           : undefined
 
-        // Stash quick transfer (Shift+Click in online/offline, or Right-Click on non-usable items offline)
-        if (hud.leftPanel === 'stash' && ((e.shiftKey && e.button === 0) || (e.button === 2 && !hud.commandSink))) {
+        // Stash quick transfer (Shift+Left-Click or Right-Click on non-usable items)
+        if (hud.leftPanel === 'stash' && ((e.shiftKey && e.button === 0) || e.button === 2)) {
           if (inInvGrid && hit && (e.shiftKey || !isUsableRightClickItem(hit.item.code))) {
             const transferred = hud.worldPanels.quickTransferToStash(hit.item, hud.inventory)
-            if (transferred && hud.commandSink && e.shiftKey && e.button === 0) {
+            if (transferred && hud.commandSink) {
               const placed = hud.worldPanels.stashItems[hud.worldPanels.stashItems.length - 1]
               const itemId = serverItemIdOf(hit.item)
               hud.commandSink.pickupItemToCursor(itemId)
@@ -1630,11 +1630,11 @@ export function handleHudMouseDown(
           }
         }
 
-        // Horadric Cube quick transfer (Shift+Click in online/offline, or Right-Click on non-usable items offline)
-        if (hud.leftPanel === 'cube' && ((e.shiftKey && e.button === 0) || (e.button === 2 && !hud.commandSink))) {
+        // Horadric Cube quick transfer (Shift+Left-Click or Right-Click on non-usable items)
+        if (hud.leftPanel === 'cube' && ((e.shiftKey && e.button === 0) || e.button === 2)) {
           if (inInvGrid && hit && (e.shiftKey || !isUsableRightClickItem(hit.item.code))) {
             const transferred = hud.worldPanels.quickTransferToCube(hit.item, hud.inventory)
-            if (transferred && hud.commandSink && e.shiftKey && e.button === 0) {
+            if (transferred && hud.commandSink) {
               const placed = hud.worldPanels.cubeItems[hud.worldPanels.cubeItems.length - 1]
               const itemId = serverItemIdOf(hit.item)
               hud.commandSink.pickupItemToCursor(itemId)
@@ -1783,7 +1783,7 @@ export function handleVendorInventoryClick(
   const requireSink = (action: string): HudCommandSink => (hud as any).requireSink(action)
   const state = hud.worldPanels.vendorTradeState
   if (state !== 'sell' && state !== 'repair') {
-    if (state === 'idle' && isCtrlClick && !isRightClick) {
+    if (state === 'idle' && (isCtrlClick || isRightClick) && !hud.inventory.cursorItem) {
       if (
         x >= INV_GRID_ORIGIN.x &&
         x < INV_GRID_ORIGIN.x + INV_GRID_ORIGIN.cols * INV_GRID_ORIGIN.cellPx &&
@@ -1796,7 +1796,7 @@ export function handleVendorInventoryClick(
           hud.inventory.gridItems.find(
             (p) => col >= p.col && col < p.col + p.item.invWidth && row >= p.row && row < p.row + p.item.invHeight,
           )?.item ?? null
-        if (target) {
+        if (target && (isCtrlClick || !isUsableRightClickItem(target.code))) {
           const sink = requireSink('vendorSell')
           sink.vendorSell(serverItemIdOf(target))
           return true
@@ -2175,6 +2175,57 @@ export function forwardGridClick(
         hud.worldPanels.openRecipeScroll()
         hud.setLeftPanel('recipescroll')
       }
+      return
+    }
+    // Right-click on non-usable item: quick-transfer or quick-sell depending on open left panel (#1323)
+    const itemId = serverItemIdOf(hitItem)
+    const w = Math.max(1, hitItem.invWidth ?? 1)
+    const h = Math.max(1, hitItem.invHeight ?? 1)
+    if (buffer === 0) {
+      if (hud.leftPanel === 'vendor' && hud.worldPanels.vendorTradeState === 'idle') {
+        sink.vendorSell(itemId)
+        return
+      }
+      if (hud.leftPanel === 'stash') {
+        for (let srow = 0; srow <= STASH_GRID_ORIGIN.rows - h; srow++) {
+          for (let scol = 0; scol <= STASH_GRID_ORIGIN.cols - w; scol++) {
+            if (hud.worldPanels.canPlaceInStash(scol, srow, w, h)) {
+              sink.pickupItemToCursor(itemId)
+              sink.placeCursorItem(itemId, scol, srow, 4)
+              return
+            }
+          }
+        }
+        ;(hud as any).playCantCarrySound?.()
+        return
+      }
+      if (hud.leftPanel === 'cube') {
+        for (let crow = 0; crow <= CUBE_GRID_ORIGIN.rows - h; crow++) {
+          for (let ccol = 0; ccol <= CUBE_GRID_ORIGIN.cols - w; ccol++) {
+            if (hud.worldPanels.canPlaceInCube(ccol, crow, w, h)) {
+              sink.pickupItemToCursor(itemId)
+              sink.placeCursorItem(itemId, ccol, crow, 3)
+              return
+            }
+          }
+        }
+        ;(hud as any).playCantCarrySound?.()
+        return
+      }
+      return
+    }
+    if (buffer === 4 || buffer === 3) {
+      for (let irow = 0; irow <= INV_GRID_ORIGIN.rows - h; irow++) {
+        for (let icol = 0; icol <= INV_GRID_ORIGIN.cols - w; icol++) {
+          if (hud.inventory.getGridOverlaps(icol, irow, w, h).length === 0) {
+            sink.pickupItemToCursor(itemId)
+            sink.placeCursorItem(itemId, icol, irow, 0)
+            return
+          }
+        }
+      }
+      ;(hud as any).playCantCarrySound?.()
+      return
     }
   } else if (hitItem) {
     // item_pickup (235) comes from the S2C cursor event (D2Client.dll 0x6fb328d9), not here (#991).

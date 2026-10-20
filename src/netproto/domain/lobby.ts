@@ -156,6 +156,22 @@ export interface LocalAreaPresetMonster {
   readonly isVendor?: boolean | undefined
   readonly isKillable?: boolean | undefined
   readonly aiDisabled?: boolean | undefined
+  /**
+   * DRLG preset `type 1` with `index >= MonStats.txt` record count: a
+   * `SuperUniques.txt` row (`index - monStatsCount`). When set, `classId` is the
+   * SuperUnique's `Class` MonStats row and the server spawns boss + minions.
+   */
+  readonly superUniqueIndex?: number | undefined
+}
+
+/** #1327: one DRLG room of a level, in world sub-tiles, with its `room1InitSeed`. */
+export interface LocalAreaRoomRect {
+  readonly index: number
+  readonly x: number
+  readonly y: number
+  readonly w: number
+  readonly h: number
+  readonly seed: number
 }
 
 export interface LocalAreaRoomReveal {
@@ -164,14 +180,33 @@ export interface LocalAreaRoomReveal {
   readonly tileY: number
 }
 
+/** A level warp (`UNIT_TILE = 5`, LvlWarp.txt `Id` as class) of a bootstrapped area, in world sub-tiles. */
+export interface LocalAreaWarp {
+  readonly lvlWarpId: number
+  readonly x: number
+  readonly y: number
+  /** Levels.txt id of the level on the other side. */
+  readonly destAreaId: number
+}
+
+/**
+ * Everything the local game server needs to bring one area online (collision, rooms, presets, warps,
+ * spawn), built by the server-side area bootstrap resolver (`src/server/world/area-bootstrap.ts`).
+ */
 export interface LocalAreaBootstrap {
-  readonly areaId?: number | undefined
+  readonly areaId: number
+  /** The level's DRLG start position snapped onto connected walkable floor (town entry / TP landing). */
   readonly spawnX: number
   readonly spawnY: number
-  readonly rooms?: readonly LocalAreaRoomReveal[] | undefined
-  readonly objects?: readonly LocalAreaPresetObject[] | undefined
-  readonly monsters?: readonly LocalAreaPresetMonster[] | undefined
-  readonly isWalkable?: ((areaId: number, x: number, y: number, isFlying?: boolean) => boolean) | undefined
+  readonly rooms: readonly LocalAreaRoomReveal[]
+  readonly objects: readonly LocalAreaPresetObject[]
+  readonly monsters: readonly LocalAreaPresetMonster[]
+  readonly warps: readonly LocalAreaWarp[]
+  /** #1327: DRLG room rectangles of this level (1.13c room-based monster population). */
+  readonly roomRects: readonly LocalAreaRoomRect[]
+  /** Seamless outdoor neighbours (`dwVis` / gate entrances) loaded on demand at borders (#1335). */
+  readonly adjacentAreaIds?: readonly number[] | undefined
+  readonly isWalkable: (areaId: number, x: number, y: number, isFlying?: boolean) => boolean
 }
 
 export type LocalAreaBootstrapResolver = (params: {
@@ -180,6 +215,60 @@ export type LocalAreaBootstrapResolver = (params: {
   readonly mapSeed: number
   readonly difficulty: 0 | 1 | 2
 }) => LocalAreaBootstrap | null | undefined
+
+/** One DRLG preset unit of a level (level-local sub-tiles). */
+export interface LocalAreaLevelPresetUnit {
+  /** D2C_UnitTypes (`1` monster, `2` object). */
+  readonly type: number
+  readonly index: number
+  readonly mode: number
+  readonly subX: number
+  readonly subY: number
+}
+
+/** One level warp (`D2RoomTileStrc`) in level-local sub-tiles. */
+export interface LocalAreaLevelWarp {
+  readonly lvlWarpId: number
+  readonly subX: number
+  readonly subY: number
+  readonly toLevelId: number
+}
+
+/**
+ * Raw DRLG build result of one level, produced by the process's DRLG host (the browser `MapService`)
+ * and turned into game units by the server-side area bootstrap resolver.
+ */
+export interface LocalAreaLevelGeometry {
+  readonly areaId: number
+  /** World sub-tile origin of the level. */
+  readonly originX: number
+  readonly originY: number
+  /** Collision grid size in sub-tiles. */
+  readonly subWidth: number
+  readonly subHeight: number
+  /** `subWidth * subHeight` walkability (`0` = walkable floor, anything else blocked/void). */
+  readonly blocked: Uint8Array
+  /** DRLG start cell (level-local tiles). */
+  readonly spawnTileX: number
+  readonly spawnTileY: number
+  readonly rooms: readonly LocalAreaRoomReveal[]
+  /** DRLG room rectangles (world sub-tiles + `room1InitSeed`) of this level. */
+  readonly roomRects: readonly LocalAreaRoomRect[]
+  /** Levels.txt `dwVis` / entrance-linked neighbours for seamless outdoor seams (#1335). */
+  readonly adjacentAreaIds?: readonly number[] | undefined
+  readonly presetUnits: readonly LocalAreaLevelPresetUnit[]
+  readonly warps: readonly LocalAreaLevelWarp[]
+}
+
+export interface LocalAreaLevelRequest {
+  readonly act: number
+  readonly areaId: number
+  readonly mapSeed: number
+  readonly difficulty: 0 | 1 | 2
+}
+
+/** Builds the DRLG geometry of a level; `null` when the level cannot be built (map assets not loaded). */
+export type LocalAreaLevelSource = (request: LocalAreaLevelRequest) => LocalAreaLevelGeometry | null
 
 export interface LobbyEnterGameTarget {
   readonly mode?: 'local' | 'd2gs' | 'ts' | 'single' | 'create' | 'join' | undefined
@@ -196,7 +285,8 @@ export interface LobbyEnterGameTarget {
   readonly wsUrl?: string | undefined
   readonly gameToken?: number | undefined
   readonly gameHash?: number | undefined
-  readonly resolveAreaBootstrap?: LocalAreaBootstrapResolver | undefined
+  /** Single Player: DRLG host the local game server builds areas from (server-side area bootstrap). */
+  readonly areaLevelSource?: LocalAreaLevelSource | undefined
 }
 
 export interface LobbyProvider {
@@ -231,6 +321,8 @@ export interface LobbyProvider {
   joinGame?(form: JoinGameForm): Promise<LobbyEnterGameTarget | GameServerAdapter>
   exportCharacterD2s?(name: string): Promise<Uint8Array | null>
   importCharacterD2s?(bytes: Uint8Array): Promise<CharacterManageResult | readonly CharSummary[]>
+  /** Single Player only: persist a game-completion progression into the local `.d2s` (synchronous). */
+  writeCharacterProgression?(name: string, progression: number): CharSummary
 }
 
 export interface LocalServerOptions {
@@ -247,7 +339,8 @@ export interface LocalServerOptions {
   readonly allowPause?: boolean | undefined
   readonly persistIntervalTicks?: number | undefined
   readonly onSaveD2s?: ((charName: string, d2sBytes: Uint8Array) => void) | undefined
-  readonly resolveAreaBootstrap?: LocalAreaBootstrapResolver | undefined
+  /** Single Player: DRLG host the local game server builds areas from (server-side area bootstrap). */
+  readonly areaLevelSource?: LocalAreaLevelSource | undefined
 }
 
 export type LocalServerSessionRequest = LocalServerOptions

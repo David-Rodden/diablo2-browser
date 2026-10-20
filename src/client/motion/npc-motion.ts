@@ -1031,9 +1031,7 @@ export class NpcMotion {
     const prevMode = unit.dwAnimMode
     unit.lastAnimRestarted = false
     unit.lifeByte = lifePct & 0x7f
-    if (hitClass !== undefined) {
-      unit.hitClass = hitClass & 0xff
-    }
+    unit.hitClass = hitClass !== undefined ? hitClass & 0xff : 0
     if (mode === MONMODE_DEATH || mode === MONMODE_DEAD) {
       unit.dwFlags = u32(unit.dwFlags | UNITFLAG_ISDEAD)
       if (unit.pDynamicPath) {

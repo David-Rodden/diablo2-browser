@@ -26,6 +26,10 @@ export interface GameServerAdapter {
   onClose(cb: (reason: CloseReason) => void): () => void
   leave(): void
   readonly close?: ((reason?: CloseReason) => void) | undefined
-  readonly tick?: ((frames?: number) => void) | undefined
+  /**
+   * In-process game servers only (Single Player `LocalLoopbackAdapter`): advance the server by the
+   * client's `LogicClock` step. Driven exclusively by `OnlineSession.tick`; remote adapters omit it.
+   */
+  readonly tick?: ((dtMs?: number) => void) | undefined
   readonly stats: GameServerStats
 }

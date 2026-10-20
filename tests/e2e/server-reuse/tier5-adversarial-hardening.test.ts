@@ -34,6 +34,47 @@ import {
   toRepoRelative,
 } from './helpers.ts'
 
+/** #1337: NpcBuy now requires a real vendor-pool entry instead of the old `cap` fallback. */
+function giveVendorPool(game: Server.GameInstance, npcId: number, costs: readonly number[]): number[] {
+  const monsters = (game as unknown as {
+    monsters: Map<number, { vendorPool: unknown[]; areaId: number }>
+  }).monsters
+  const npc = monsters.get(npcId)!
+  const unitIds: number[] = []
+  npc.vendorPool = costs.map((cost, i) => {
+    const unitId = 9100 + i
+    unitIds.push(unitId)
+    return {
+      unitId,
+      code: 'cap',
+      name: 'Cap',
+      quality: 2,
+      level: 1,
+      location: 'vendor',
+      x: 0,
+      y: 0,
+      width: 2,
+      height: 2,
+      areaId: npc.areaId,
+      ownerId: npcId,
+      bodyLoc: 0,
+      storePage: 1,
+      cost,
+      gamble: false,
+      identified: true,
+      ethereal: false,
+      socketed: false,
+      totalSockets: 0,
+      durability: 0,
+      maxDurability: 0,
+      quantity: 1,
+      stats: new Map(),
+      socketedItems: [],
+    }
+  })
+  return unitIds
+}
+
 describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', () => {
   // T5.A1: GameInstance paused command deferral FIFO replay & control-command pass-through
   it('T5.A1: GameInstance executes /players N while paused and replays deferred gameplay commands in exact FIFO order on unpause', () => {
@@ -117,8 +158,19 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     const p1 = game.addPlayer({ charName: 'CorpseHero', classId: 4, level: 15, d2sBytes })
 
     // Buy an armor piece and equip it to slot 1 (Helm), plus keep a second item in inventory
-    game.enqueueCommand(p1, { type: 'NpcBuy', npcId: 1, itemId: 1, cost: 0 })
-    game.enqueueCommand(p1, { type: 'NpcBuy', npcId: 1, itemId: 2, cost: 0 })
+    const vendorId = game.spawnMonster({
+      classId: 154,
+      x: 120,
+      y: 120,
+      areaId: 2,
+      isNpc: true,
+      isVendor: true,
+      isKillable: false,
+      aiDisabled: true,
+    })
+    const [firstId, secondId] = giveVendorPool(game, vendorId, [0, 0])
+    game.enqueueCommand(p1, { type: 'NpcBuy', npcId: vendorId, itemId: firstId, cost: 0 })
+    game.enqueueCommand(p1, { type: 'NpcBuy', npcId: vendorId, itemId: secondId, cost: 0 })
     game.stepFrame()
 
     const boughtSnap = game.getPlayerState(p1)!
@@ -135,6 +187,7 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     const monsterId = game.spawnMonster({
       defId: 'zombie1',
       name: 'Lethal Zombie',
+      level: 30,
       x: equippedSnap.x + 1,
       y: equippedSnap.y,
       hp: 100,
@@ -150,7 +203,7 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
 
     // Step frames until the zombie's melee swing kills the player
     let died = false
-    for (let i = 0; i < 30; i += 1) {
+    for (let i = 0; i < 60; i += 1) {
       game.stepFrame()
       if (game.getPlayerState(p1)!.mode === 17) {
         died = true
@@ -234,15 +287,9 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     expect(game.getMonsterState(monId)!.maxHp).toBe(30)
     expect(game.getMonsterState(monId)!.hp).toBe(30)
 
-    // Level 1 Sorceress (strength = 10) deals melee baseDmg = Math.max(8, floor(10/3) + 1*12) = 15 -> reduces HP to 15/30 (50%)
-    game.enqueueCommand(p1, {
-      type: 'CastSkillOnTarget',
-      skillId: 0,
-      targetType: 'monster',
-      targetId: monId,
-      hand: 'left',
-    })
-    game.stepFrame()
+    // A deterministic 15-point physical hit from p1 reduces HP to 15/30 (50%). (Player Attack damage is
+    // now the rolled equipped-weapon / unarmed 1-2 hit, so the ratio test uses an exact hit.)
+    game.applyDamageToMonster(monId, 15, p1)
     expect(game.getMonsterState(monId)!.hp).toBe(15)
     expect(game.getMonsterState(monId)!.maxHp).toBe(30)
 
@@ -251,22 +298,9 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     expect(game.getMonsterState(monId)!.maxHp).toBe(60)
     expect(game.getMonsterState(monId)!.hp).toBe(30)
 
-    // Deal 2 more 15-damage attacks (30 total) to kill the monster
-    game.enqueueCommand(p1, {
-      type: 'CastSkillOnTarget',
-      skillId: 0,
-      targetType: 'monster',
-      targetId: monId,
-      hand: 'left',
-    })
-    game.enqueueCommand(p1, {
-      type: 'CastSkillOnTarget',
-      skillId: 0,
-      targetType: 'monster',
-      targetId: monId,
-      hand: 'left',
-    })
-    game.stepFrames(2)
+    // Deal 2 more 15-damage hits (30 total) to kill the monster
+    game.applyDamageToMonster(monId, 15, p1)
+    game.applyDamageToMonster(monId, 15, p1)
     expect(game.getMonsterState(monId)!.hp).toBe(0)
     expect(game.getMonsterState(monId)!.dead).toBe(true)
 
@@ -693,7 +727,7 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
   })
 
   // T5.A10: GameInstance vendor buy with inventory+bank gold split, vendor sell, grid overlap rejection, and belt potion healing
-  it('T5.A10: GameInstance splits NpcBuy cost across inventory and stash gold, credits floor(cost/2) on NpcSell, rejects grid collisions, and heals on BeltUse', () => {
+  it('T5.A10: GameInstance splits NpcBuy cost across inventory and stash gold, credits floor(cost/4) on NpcSell, rejects grid collisions, and heals on BeltUse', () => {
     // Obtain a default belt potion item from a fresh player export so d2sBytes includes a belt healing potion alongside custom gold/goldBank/HP
     const seedGame = new Server.GameInstance({ policy: Server.SINGLE_PLAYER_POLICY, mapSeed: 0x5100 })
     const seedPid = seedGame.addPlayer({ charName: 'SeedPot', classId: 6, level: 20 })
@@ -720,10 +754,21 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
       areaId: 1,
     })
     const p1 = game.addPlayer({ charName: 'EconomyHero', classId: 6, level: 20, d2sBytes })
+    const vendorId = game.spawnMonster({
+      classId: 154,
+      x: 120,
+      y: 120,
+      areaId: 1,
+      isNpc: true,
+      isVendor: true,
+      isKillable: false,
+      aiDisabled: true,
+    })
+    const [vendorItemA, vendorItemB] = giveVendorPool(game, vendorId, [1200, 200])
 
     // 1. NpcBuy costing 1200 gold drains 400 from player.gold and 800 from player.goldBank, then 200 more drains from goldBank -> 1000 left
-    game.enqueueCommand(p1, { type: 'NpcBuy', npcId: 1, itemId: 1, cost: 1200 })
-    game.enqueueCommand(p1, { type: 'NpcBuy', npcId: 1, itemId: 2, cost: 200 })
+    game.enqueueCommand(p1, { type: 'NpcBuy', npcId: vendorId, itemId: vendorItemA, cost: 1200 })
+    game.enqueueCommand(p1, { type: 'NpcBuy', npcId: vendorId, itemId: vendorItemB, cost: 200 })
     game.stepFrame()
 
     const afterBuy = game.getPlayerState(p1)!
@@ -751,8 +796,8 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     expect(movedCapB.x).toBe(origBx)
     expect(movedCapB.y).toBe(origBy)
 
-    // 3. NpcSell on capA removes capA and credits floor(cost / 2) gold
-    const expectedSellGold = Math.max(1, Math.floor(capA.cost / 2))
+    // 3. NpcSell on capA removes capA and credits floor(cost / 4) gold
+    const expectedSellGold = Math.max(1, Math.floor(capA.cost / 4))
     game.enqueueCommand(p1, { type: 'NpcSell', npcId: 1, itemId: capA.unitId })
     game.stepFrame()
     const afterSell = game.getPlayerState(p1)!
@@ -813,19 +858,20 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
 
     game.drainPlayerEvents(p1)
 
-    // 1. Operate Shrine -> state 12 applied, StateSet emitted, expires after 75 frames with StateEnd
+    // 1. Operate Shrine -> Shrines.txt Code 12 (Skill Shrine) applies State 134, expires after 75 frames
     game.enqueueCommand(p1, { type: 'OperateObject', objectId: shrineId })
     game.stepFrame()
     const shrineStartEvents = game.drainPlayerEvents(p1)
-    expect(shrineStartEvents.some((e) => e.type === 'StateSet' && e.state === 12)).toBe(true)
-    expect(game.getPlayerState(p1)!.states.has(12)).toBe(true)
+    expect(shrineStartEvents.some((e) => e.type === 'StateSet' && e.state === 134)).toBe(true)
+    expect(game.getPlayerState(p1)!.states.has(134)).toBe(true)
 
     game.stepFrames(75)
     const shrineEndEvents = game.drainPlayerEvents(p1)
-    expect(shrineEndEvents.some((e) => e.type === 'StateEnd' && e.state === 12)).toBe(true)
-    expect(game.getPlayerState(p1)!.states.has(12)).toBe(false)
+    expect(shrineEndEvents.some((e) => e.type === 'StateEnd' && e.state === 134)).toBe(true)
+    expect(game.getPlayerState(p1)!.states.has(134)).toBe(false)
 
-    // 2. Operate Chest -> opens chest (UnitMode unitType=2 mode=2) and spawns 1 ground item (ItemEvent action='groundSpawn'); second interaction drops nothing
+    // 2. Operate Chest -> opens chest (UnitMode unitType=2 mode=2); Objects.txt OperateFn 4 rolls the 1.13c
+    //    'Act 1 Chest A' TreasureClassEx drop (#1326), one groundSpawn per dropped item; second interaction drops nothing
     game.enqueueCommand(p1, { type: 'OperateObject', objectId: chestId })
     game.stepFrame()
     const chestFirstEvents = game.drainPlayerEvents(p1)
@@ -834,7 +880,9 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
         (e) => e.type === 'UnitMode' && e.unitType === 2 && e.id === chestId && e.mode === 2,
       ),
     ).toBe(true)
-    expect(chestFirstEvents.filter((e) => e.type === 'ItemEvent' && e.action === 'groundSpawn').length).toBe(1)
+    const chestSpawns = chestFirstEvents.filter((e) => e.type === 'ItemEvent' && e.action === 'groundSpawn')
+    expect(chestSpawns.length).toBe(game.getGroundItems().length)
+    expect(game.getGroundItems().every((g) => g.rawItemData !== undefined)).toBe(true)
 
     game.enqueueCommand(p1, { type: 'OperateObject', objectId: chestId })
     game.stepFrame()
@@ -1567,7 +1615,8 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
     expect(eventsA.some((e) => e.type === 'GameLogonAck')).toBe(true)
     expect(eventsB.some((e) => e.type === 'LoadComplete' || e.type === 'LoadAct')).toBe(true)
 
-    // Client B (binary D2GS) sends a Move command; both Client A (TS) and Client B (D2GS) receive UnitMove
+    // Client B (binary D2GS) sends a Move command; Client A (TS) receives B's UnitMove, while B itself
+    // does not (1.13c D2Game skips the moving player's own client, issue #1329)
     eventsA.length = 0
     eventsB.length = 0
     const spawnB = room.gameInstance.getPlayerState(sessionB.playerUnitId)!
@@ -1594,7 +1643,7 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
           ((e as { id?: number; unitId?: number }).id === sessionB.playerUnitId ||
             (e as { id?: number; unitId?: number }).unitId === sessionB.playerUnitId),
       ),
-    ).toBe(true)
+    ).toBe(false)
 
     // Client A (TS) sends a Chat command; Client B (binary D2GS) decodes 0x26 ChatMessage
     eventsB.length = 0
@@ -1646,7 +1695,8 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
       y: Netproto.asSubTile(origin.y),
       run: true,
     })
-    room.stepFrames(25)
+    // 1.13c run = 13.5 sub-tiles/s (0.54 per 25Hz tick, issue #1329): ~70 ticks for 35+ sub-tiles.
+    room.stepFrames(90)
 
     expect(room.aoiFilter.isVisible(s1.playerUnitId, 'player', s2.playerUnitId)).toBe(false)
     expect(
@@ -1666,7 +1716,7 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
       y: Netproto.asSubTile(origin.y),
       run: true,
     })
-    room.stepFrames(25)
+    room.stepFrames(90)
 
     expect(room.aoiFilter.isVisible(s1.playerUnitId, 'player', s2.playerUnitId)).toBe(true)
     expect(

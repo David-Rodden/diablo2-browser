@@ -88,6 +88,16 @@ describe('Tier 4 — Real-World Application Scenarios (RW1–RW6, 6 tests)', () 
     expect(rec1.events.some((ev) => ev.type === 'UnitStatUpdate')).toBe(true)
 
     // 4. Waypoint travel to Cold Plains (areaId = 3), stream monsters, and cast Fire Bolt
+    const spState = spSession1.game.getPlayerState(spSession1.playerUnitId)!
+    const spWp = spSession1.game.spawnObject({
+      classId: 119,
+      x: spState.x,
+      y: spState.y,
+      areaId: spState.areaId,
+      isWaypoint: true,
+    })
+    spSession1.send({ type: 'OperateObject', objectId: spWp })
+    spSession1.stepFrames(1)
     spSession1.send({ type: 'WaypointGo', waypointId: 1, destAreaId: 3 })
     spSession1.stepFrames(3)
 
@@ -213,6 +223,17 @@ describe('Tier 4 — Real-World Application Scenarios (RW1–RW6, 6 tests)', () 
     }
 
     // Player 1 & Player 2 travel to Cold Plains (areaId = 3) while Player 3 remains in Rogue Encampment (areaId = 1)
+    const p1State = host.game.getPlayerState(p1)!
+    const sharedWp = host.game.spawnObject({
+      classId: 119,
+      x: p1State.x,
+      y: p1State.y,
+      areaId: p1State.areaId,
+      isWaypoint: true,
+    })
+    adapter1.send({ type: 'OperateObject', objectId: sharedWp })
+    adapter2.send({ type: 'OperateObject', objectId: sharedWp })
+    host.stepFrames(1)
     adapter1.send({ type: 'WaypointGo', waypointId: 1, destAreaId: 3 })
     adapter2.send({ type: 'WaypointGo', waypointId: 1, destAreaId: 3 })
     host.stepFrames(2)
@@ -327,11 +348,11 @@ describe('Tier 4 — Real-World Application Scenarios (RW1–RW6, 6 tests)', () 
     })
     host.stepFrames(3)
 
-    expect(
-      rec1.events.some(
-        (ev) => ev.type === 'UnitMove' || ev.type === 'GameLogonAck' || ev.type === 'PlayerAssign',
-      ),
-    ).toBe(true)
+    // 1.13c: the walk/run UnitMove goes to the other client, never back to the mover (issue #1329).
+    const isP1Move = (ev: Netproto.ServerEvent): boolean =>
+      ev.type === 'UnitMove' && (ev.id === p1 || ev.unitId === p1)
+    expect(rec2.events.some(isP1Move)).toBe(true)
+    expect(rec1.events.some(isP1Move)).toBe(false)
   })
 
   it('RW4: Deterministic Lockstep Replay & State Hash Verification over 250 frames (10s @ 25Hz)', () => {
@@ -455,9 +476,10 @@ describe('Tier 4 — Real-World Application Scenarios (RW1–RW6, 6 tests)', () 
     session.tick(80, 120)
 
     expect(spAdapter.getPlayersX()).toBe(4)
-    const spEntity = session.world.entities.get(spAdapter.playerUnitId)
-    expect(spEntity?.targetX ?? spEntity?.x).toBe(128)
-    expect(spEntity?.targetY ?? spEntity?.y).toBe(132)
+    // No self UnitMove echo in 1.13c (issue #1329): the authoritative server holds the target.
+    const spState = spAdapter.gameInstance.getPlayerState(spAdapter.playerUnitId)!
+    expect(spState.targetX).toBe(128)
+    expect(spState.targetY).toBe(132)
 
     session.leaveGame()
 
@@ -483,9 +505,9 @@ describe('Tier 4 — Real-World Application Scenarios (RW1–RW6, 6 tests)', () 
     roomHost.stepFrames(2)
     session.tick(80, 240)
 
-    const bnetEntity = session.world.entities.get(bnetUnitId)
-    expect(bnetEntity?.targetX ?? bnetEntity?.x).toBe(128)
-    expect(bnetEntity?.targetY ?? bnetEntity?.y).toBe(132)
+    const bnetState = roomHost.gameInstance.getPlayerState(bnetUnitId)!
+    expect(bnetState.targetX).toBe(128)
+    expect(bnetState.targetY).toBe(132)
 
     session.leaveGame()
   })

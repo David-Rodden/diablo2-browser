@@ -915,6 +915,15 @@ export function createDroppedItem(
     nameZh = translateItemName(name, baseCode)
   }
 
+  // 1.13c item init rolls the stack size for stackable bases (arrows/bolts/throwing weapons).
+  // Keep it seeded from dwInitSeed so the same drop reproduces the same quantity.
+  const stackBase = base as ItemBase & { readonly stackable?: boolean; readonly minstack?: number; readonly maxstack?: number; readonly maxStack?: number }
+  const maxStack = Number(stackBase.maxstack ?? stackBase.maxStack ?? 1) || 1
+  const minStack = Math.max(1, Number(stackBase.minstack ?? 1) || 1)
+  const stack = stackBase.stackable === true && maxStack > 1
+    ? propRng.randRange(Math.min(minStack, maxStack), maxStack)
+    : 1
+
   return {
     base,
     prefix,
@@ -927,7 +936,7 @@ export function createDroppedItem(
     stats,
     invWidth: base.invWidth,
     invHeight: base.invHeight,
-    stack: 1,
+    stack,
     value: base.value,
     rawFlags,
     flags: decodeItemFlags(rawFlags),

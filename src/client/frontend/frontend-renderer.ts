@@ -1178,8 +1178,15 @@ export class FrontendRenderer {
             h: 35,
             sprite: 'btn-wide.png',
             label: this.requireStr(5106, 'singlePlayer'),
-            disabled: true,
-            onClick: () => {},
+            // Enabled when the host registered the in-process `LocalLobbyProvider`
+            // (`play.html` imports `src/server/loopback-adapter.ts`).
+            disabled: !this.asyncHandlers?.onSinglePlayer,
+            onClick: () => {
+              clickSinglePlayerButton(this.state)
+              if (this.asyncHandlers?.onSinglePlayer) {
+                void this.asyncHandlers.onSinglePlayer(this.state)
+              }
+            },
           },
           {
             id: 'battle_net',

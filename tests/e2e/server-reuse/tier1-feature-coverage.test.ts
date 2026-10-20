@@ -18,6 +18,7 @@ import {
   createSampleD2sCharacterData,
   FIXED_ONE,
   getSharedDataRegistry,
+  installOutdoorRoomGrid,
   readRepoFile,
   recordAdapterEvents,
   repoPathExists,
@@ -112,9 +113,14 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
         (ev): ev is Extract<Netproto.ServerEvent, { type: 'UnitMove' }> =>
           ev.type === 'UnitMove' && ev.unitId === playerId,
       )
-      expect(moveEv).toBeDefined()
-      expect(moveEv?.targetX).toBe(135)
-      expect(moveEv?.targetY).toBe(140)
+      // 1.13c D2Game never echoes the walk/run UnitMove to the moving player's own client
+      // (issue #1329); the server state carries the target and advances by the 1.13c run step.
+      expect(moveEv).toBeUndefined()
+      const state = game.getPlayerState(playerId)!
+      expect(state.targetX).toBe(135)
+      expect(state.targetY).toBe(140)
+      expect(state.mode).toBe(3)
+      expect(Math.hypot(state.x - 120, state.y - 120)).toBeCloseTo(0.54, 6)
     })
 
     it('F1.4: processes SelectSkill and CastSkillAtLocation through unified 1.13c SKILL_REGISTRY and MissileEngine', () => {
@@ -133,6 +139,8 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
           level: 20,
         }),
       )
+      // #1327: a Blood Moor Fallen in the Fire Bolt's path (the old wilderness stub used to put one here).
+      game.spawnMonster({ defId: 'fallen1', areaId: 2, x: 106, y: 104 })
       const playerId = game.addPlayer({
         charName: 'FireSorc',
         classId: 1,
@@ -347,6 +355,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
         registry,
       })
 
+      installOutdoorRoomGrid(game, 2, 100, 100)
       const p1 = game.addPlayer({
         charName: 'WildExplorer',
         classId: 4,
@@ -378,6 +387,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
         registry,
       })
 
+      installOutdoorRoomGrid(game, 2, 100, 100)
       const p1 = game.addPlayer({
         charName: 'AggroTarget',
         classId: 3,
@@ -637,6 +647,19 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
         level: 18,
         d2sBytes,
       })
+      game.drainPlayerEvents(p1)
+
+      // 1.13c requires the player to operate the waypoint before 0x49 is accepted.
+      const p1State = game.getPlayerState(p1)!
+      const wpId = game.spawnObject({
+        classId: 119,
+        x: p1State.x,
+        y: p1State.y,
+        areaId: p1State.areaId,
+        isWaypoint: true,
+      })
+      game.enqueueCommand(p1, { type: 'OperateObject', objectId: wpId })
+      game.stepFrame()
       game.drainPlayerEvents(p1)
 
       // Travel to Cold Plains (areaId = 3)
@@ -1489,8 +1512,11 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
 
       const playerEntity = session.world.entities.get(adapter.playerUnitId)
       expect(playerEntity).toBeDefined()
-      expect(playerEntity?.targetX ?? playerEntity?.x).toBe(132)
-      expect(playerEntity?.targetY ?? playerEntity?.y).toBe(128)
+      // The owner is not sent its own walk/run UnitMove (1.13c, issue #1329): the command reaches
+      // the authoritative server, which plans the move toward the requested sub-tile.
+      const serverState = adapter.gameInstance.getPlayerState(adapter.playerUnitId)!
+      expect(serverState.targetX).toBe(132)
+      expect(serverState.targetY).toBe(128)
       session.leaveGame()
     })
 
@@ -1517,8 +1543,11 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
       session.tick(40, 80)
 
       const entity = session.world.entities.get(playerUnitId)
-      expect(entity?.targetX ?? entity?.x).toBe(145)
-      expect(entity?.targetY ?? entity?.y).toBe(150)
+      expect(entity).toBeDefined()
+      // No self UnitMove echo in 1.13c (issue #1329): verify the command reached the room's server.
+      const serverState = host.gameInstance.getPlayerState(playerUnitId)!
+      expect(serverState.targetX).toBe(145)
+      expect(serverState.targetY).toBe(150)
       session.leaveGame()
     })
 

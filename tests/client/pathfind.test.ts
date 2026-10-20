@@ -112,6 +112,23 @@ describe('PATHTYPE_STRAIGHT Pathfinding (Issue #588)', () => {
     expect(lastPoint.y).toBe(10)
   })
 
+  it('invokes local A* beyond 18 sub-tiles with the town detour budget (#1318)', () => {
+    // Same >324 scenario as the vanilla stop test, but town interaction clicks
+    // pass TOWN_ASTAR_OBSTACLE_DISTANCE_SQ (64^2) so the A* can round the wall.
+    const grid = createGrid(50, 50, (x, y) => x === 20 && y >= 0 && y <= 20)
+
+    const res = findPathLocal(grid, 0, 10, 30, 10, {
+      maxAstarObstacleDistanceSq: 4096,
+    })
+
+    expect(res.reachedGoal).toBe(true)
+    expect(res.expandedNodes).toBeGreaterThan(1)
+    expect(res.path[res.path.length - 1]).toEqual({ x: 30, y: 10 })
+    for (const pt of res.path) {
+      expect(pt.x === 20 && pt.y >= 0 && pt.y <= 20).toBe(false)
+    }
+  })
+
   it('prevents diagonal corner cutting through pinch walls', () => {
     // Diagonal pinch: wall at (1, 0) and (0, 1)
     // Transition (0, 0) to (1, 1) should be blocked

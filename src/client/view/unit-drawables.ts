@@ -335,6 +335,14 @@ export interface SceneMissileDrawable {
   readonly altitude?: number | undefined
   readonly subX: number
   readonly subY: number
+  /**
+   * 1.13c path (DrawGrid cell) sub-tile when it differs from the projected draw position `subX/subY`: the Meteor
+   * family's `meteor`/`meteortail` are spawned AT the target sub-tile and only their screen projection is offset by
+   * `UNIT_Set3DTrajectory` (0x6FB77E30, xOffset/zOffset), so DrawGrid buckets them into the target cell (#1340).
+   * Absent = the path position is `subX/subY`.
+   */
+  readonly pathSubX?: number | undefined
+  readonly pathSubY?: number | undefined
   readonly worldX: number
   readonly worldY: number
   readonly sortY: number
@@ -1040,6 +1048,56 @@ function resolveUnitStat(
 }
 
 /**
+ * Meteor-family sub-missiles flown by `MISSMODE_CltDo09_MeteorCenter` (0x6FB68F00): `ClientSubMissile1/2` of
+ * `meteorcenter` (101), `vampiremeteorcenter` and `royalstrikemeteorcenter` (same key set as the client stepper's
+ * `isMeteor3D`, world-missile-stepper.ts).
+ */
+const METEOR_3D_TRAJECTORY_KEYS_113C: ReadonlySet<string> = new Set([
+  'meteor',
+  'meteortail',
+  'vampiremeteor',
+  'royalstrikemeteor',
+  'royalstrikemeteortail',
+])
+/** `meteorcenter` CltParam3 (sliderate, 1/32 sub-tile per frame) and CltParam2 (fallrate, px per frame). */
+const METEOR_SLIDE_RATE_113C = 15
+const METEOR_FALL_RATE_113C = 25
+
+/**
+ * 1.13c path sub-tile of a Meteor-family sub-missile. CltDo09 spawns `meteor`/`meteortail` AT the target sub-tile
+ * and gives them `UNIT_Set3DTrajectory(vx=+15, vz=-25, xOffset=-15*rem, zOffset=+25*rem)` (0x6FB77E30); the
+ * offsets only move the screen projection (`D2Common_10132` 0x6FD9DB40), never the path position DrawGrid buckets
+ * the unit by (kb/skills/missiles/d2client-meteor-cltdofunc-clthitfunc.md §3). The port stores the projected
+ * position (`x = targetX - 15*rem/32`, `altitude = 25*rem`), so the path position is recovered as
+ * `x + 15 * (altitude / 25) / 32`, snapped to the 1/32 sub-tile trajectory grid. `null` for every other missile
+ * (path position = drawn position).
+ */
+export function meteor3dPathSubTile(
+  missileKey: string,
+  x: number,
+  y: number,
+  altitude: number,
+): { readonly x: number; readonly y: number } | null {
+  if (!METEOR_3D_TRAJECTORY_KEYS_113C.has(missileKey) || altitude <= 0) return null
+  const rem = altitude / METEOR_FALL_RATE_113C
+  return { x: Math.round((x + (METEOR_SLIDE_RATE_113C * rem) / 32) * 32) / 32, y }
+}
+
+/**
+ * DrawGrid cell row (`cellX + cellY`) a scene entity is bucketed into by `DrawGrid_DrawAllCells` (0x6fb4ee90),
+ * from its 1.13c path sub-tile. Shared by the entity sort below and the wall/entity interleave in world-renderer.
+ */
+export function sceneEntityCellDepth(d: SceneEntityDrawable): number {
+  if (d.drawableKind === 'missile' && d.pathSubX !== undefined && d.pathSubY !== undefined) {
+    return Math.floor(d.pathSubX / 5) + Math.floor(d.pathSubY / 5)
+  }
+  if ('subX' in d && typeof d.subX === 'number' && typeof d.subY === 'number') {
+    return Math.floor(d.subX / 5) + Math.floor(d.subY / 5)
+  }
+  return Math.floor(d.sortY / 40)
+}
+
+/**
  * Convert a collection of `RenderableUnitInput` or `UnitSnapshot` records into depth-sorted
  * scene drawables (`SceneUnitDrawable`, `SceneMissileDrawable`, `SceneOverlayDrawable`) and
  * the 1.13c light emitters of their units for `applyLightingInputs`.
@@ -1183,6 +1241,7 @@ export function buildSceneDrawables(
       const altitude = unit.altitude ?? 0
       const isTail = key === 'meteortail' || key === 'royalstrikemeteortail'
       const sortY = altitude > 0 ? worldY + altitude - (isTail ? 0.5 : 0) : worldY
+      const pathSub = meteor3dPathSubTile(key, unit.x, unit.y, altitude)
 
       const missileDrawable: SceneMissileDrawable = {
         drawableKind: 'missile',
@@ -1199,6 +1258,7 @@ export function buildSceneDrawables(
         ...(unit.altitude !== undefined ? { altitude: unit.altitude } : {}),
         subX: unit.x,
         subY: unit.y,
+        ...(pathSub !== null ? { pathSubX: pathSub.x, pathSubY: pathSub.y } : {}),
         worldX,
         worldY,
         sortY,
@@ -1763,6 +1823,7 @@ export function buildSceneDrawables(
     ...overlayDrawables,
   ].sort(
     (a, b) =>
+      sceneEntityCellDepth(a) - sceneEntityCellDepth(b) ||
       a.sortY - b.sortY ||
       getEntityLayer(a) - getEntityLayer(b) ||
       a.worldX - b.worldX,

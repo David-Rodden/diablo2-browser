@@ -1164,7 +1164,9 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
       game.spawnMonster({ classId: 5, x: 501, y: 500, level: 20 })
       game.drainEvents(playerId)
 
-      game.stepFrames(30)
+      // 1.13c melee damage lands on the A1/A2 action frame (3–4 frames after the
+      // mode broadcast), so allow several swing cycles for the hit roll to connect.
+      game.stepFrames(60)
       const endHp = game.getPlayerState(playerId)!.hp
       const events = game.drainEvents(playerId)
 
@@ -1243,7 +1245,7 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
         classId: 18,
         x: 501,
         y: 500,
-        hp: 5,
+        hp: 1, // unarmed Attack (skill 0) hits for 1-2
         maxHp: 200,
         rank: 'unique',
         modifiers: ['Fire_Enchanted'],
@@ -1390,6 +1392,7 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
         playerLevel: 25,
         playerX: 500,
         playerY: 500,
+        playerSkills: { 39: 1 },
       })
       const monId = game.spawnMonster({ classId: 0, x: 503, y: 500, hp: 200, maxHp: 200 })
       const assignEvents = game.drainEvents(playerId)
@@ -1534,8 +1537,8 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
         classId: 0,
         x: 501,
         y: 500,
-        hp: 5,
-        maxHp: 5,
+        hp: 1, // unarmed Attack (skill 0) hits for 1-2
+        maxHp: 1,
         experience: 200,
         aiDisabled: true,
       })

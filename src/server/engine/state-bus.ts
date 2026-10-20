@@ -126,7 +126,7 @@ export class StateBus {
       ? stateRec.state.toLowerCase()
       : String(params.stateNameOrId).trim().toLowerCase().replace(/^state_/, '')
     const FALLBACK_STATE_IDS: Readonly<Record<string, number>> = {
-      conversion: 21,
+      conversion: 53,
       venom: 31,
       venomclaws: 31,
       cloaked: 153,

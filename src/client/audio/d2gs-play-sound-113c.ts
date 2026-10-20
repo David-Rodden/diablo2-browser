@@ -621,3 +621,116 @@ export function resolve0x2CPlaySound113c(
 
   return null
 }
+
+/**
+ * Resolve weapon physical + elemental hit impact sound IDs (`Sounds.txt` rows) from `hitClass` byte
+ * (`D2Client.dll` `0x6fad27e0` `UNIT_ResolveHitClassSound`, called from `0x6fad3630`).
+ *
+ * - Base nibble `base = hitClass & 0x0F` (jump table `0x6fad2968` for `base = 1..12`):
+ *   - `0x01`: `321` (`0x141`, `impact_punch_1`)
+ *   - `0x02..0x05`: `341` (`0x155`, `impact_blade_swing_1`)
+ *   - `0x06..0x07`: `335` (`0x14f`, `impact_blade_thrust_1`)
+ *   - `0x08..0x09`: `329` (`0x149`, `impact_blunt_1`)
+ *   - `0x0A..0x0B`: `347` (`0x15b`, `impact_arrow_1`)
+ *   - `0x0C`: `325` (`0x145`, `impact_claw_1`)
+ * - Elemental / special upper nibble `elem = hitClass & 0xF0` (jump table `0x6fad2998` via `0x6fad29c0`):
+ *   - `0x10` (Double): `379` (`0x17b`, `impact_double_1`) when `baseSound !== 0`
+ *   - `0x20` (Fire): `356` (`0x164`, `impact_fire_layer_1`) when `baseSound !== 0`, else `353` (`0x161`, `impact_fire_1`)
+ *   - `0x30` (Cold): `362` (`0x16a`, `impact_cold_layer_1`) when `baseSound !== 0`, else `359` (`0x167`, `impact_cold_1`)
+ *   - `0x40` (Lightning): `372` (`0x174`, `impact_lightning_layer_1`) when `baseSound !== 0`, else `368` (`0x170`, `impact_lightning_1`)
+ *   - `0x50` (Poison): `376` (`0x178`, `impact_poison_1`)
+ *   - `0x60` (Stun): `382` (`0x17e`, `impact_stun_1`)
+ *   - `0x70` (Bash): `395` (`0x18b`, `impact_bash`)
+ *   - `0x80` (Thorns): `2390` (`0x956`, `paladin_thorns_hit`)
+ *   - `0xB0` (Goo): `391` (`0x187`, `impact_goo_1`)
+ */
+export function resolveHitClassSoundIds113c(hitClass: number): readonly number[] {
+  const h = (hitClass | 0) & 0xff
+  if (h === 0) return []
+  const baseNibble = h & 0x0f
+  const elemNibble = h & 0xf0
+
+  let baseSound = 0
+  switch (baseNibble) {
+    case 0x01:
+      baseSound = 321 // 0x141 impact_punch_1
+      break
+    case 0x02:
+    case 0x03:
+    case 0x04:
+    case 0x05:
+      baseSound = 341 // 0x155 impact_blade_swing_1
+      break
+    case 0x06:
+    case 0x07:
+      baseSound = 335 // 0x14f impact_blade_thrust_1
+      break
+    case 0x08:
+    case 0x09:
+      baseSound = 329 // 0x149 impact_blunt_1
+      break
+    case 0x0a:
+    case 0x0b:
+      baseSound = 347 // 0x15b impact_arrow_1
+      break
+    case 0x0c:
+      baseSound = 325 // 0x145 impact_claw_1
+      break
+    default:
+      baseSound = 0
+      break
+  }
+
+  let elemSound = 0
+  switch (elemNibble) {
+    case 0x10:
+      elemSound = baseSound !== 0 ? 379 : 0 // 0x17b impact_double_1
+      break
+    case 0x20:
+      elemSound = baseSound !== 0 ? 356 : 353 // 0x164 impact_fire_layer_1 : 0x161 impact_fire_1
+      break
+    case 0x30:
+      elemSound = baseSound !== 0 ? 362 : 359 // 0x16a impact_cold_layer_1 : 0x167 impact_cold_1
+      break
+    case 0x40:
+      elemSound = baseSound !== 0 ? 372 : 368 // 0x174 impact_lightning_layer_1 : 0x170 impact_lightning_1
+      break
+    case 0x50:
+      elemSound = 376 // 0x178 impact_poison_1
+      break
+    case 0x60:
+      elemSound = 382 // 0x17e impact_stun_1
+      break
+    case 0x70:
+      elemSound = 395 // 0x18b impact_bash
+      break
+    case 0x80:
+      elemSound = 2390 // 0x956 paladin_thorns_hit
+      break
+    case 0xb0:
+      elemSound = 391 // 0x187 impact_goo_1
+      break
+    default:
+      elemSound = 0
+      break
+  }
+
+  if (baseSound > 0 && elemSound > 0) return [baseSound, elemSound]
+  if (baseSound > 0) return [baseSound]
+  if (elemSound > 0) return [elemSound]
+  return []
+}
+
+/**
+ * Resolve shield / weapon block sound ID (`Sounds.txt` row) from `hitClass` byte
+ * (`D2Client.dll` `0x6fad21c0` `UNIT_ResolveBlockSound`, called from `0x6fad2d60`).
+ * - `base = 0x0A..0x0B` (Bow / Crossbow): `401` (`0x191`, `block_arrow_1`)
+ * - `base = 0x01..0x09` (or default `0x00`): `398` (`0x18e`, `block_weapon_1`)
+ */
+export function resolveBlockSoundId113c(hitClass: number): number {
+  const baseNibble = (hitClass | 0) & 0x0f
+  if (baseNibble === 0x0a || baseNibble === 0x0b) {
+    return 401 // 0x191 block_arrow_1
+  }
+  return 398 // 0x18e block_weapon_1
+}

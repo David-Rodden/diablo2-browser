@@ -7,7 +7,34 @@
  */
 
 import { ByteReader } from '../../core/byte-reader.ts'
+import { ByteWriter } from '../../core/byte-writer.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
+
+/**
+ * Encode S2C 0x63 WaypointMenu (21B), the exact inverse of `decode0x63WaypointMenu`:
+ * - [0] u8 = 0x63
+ * - [1..4] u32LE = waypoint object unit id
+ * - [5..6] u16LE = per-difficulty waypoint struct header (`02 01`, as in the `.d2s` `WS` block)
+ * - [7..20] 14 bytes = waypoint bitmask, bit i = waypoint index i (0..38, Acts 1..5)
+ */
+export function encode0x63WaypointMenu(ev: {
+  readonly unitId: number
+  readonly open: readonly number[]
+}): Uint8Array {
+  const w = new ByteWriter(21)
+  w.u8(0x63)
+  w.u32LE(ev.unitId >>> 0)
+  w.u16LE(0x0102)
+  const mask = new Uint8Array(14)
+  for (const wp of ev.open) {
+    if (!Number.isInteger(wp) || wp < 0 || wp > 38) {
+      throw new Error(`encode0x63WaypointMenu: invalid waypoint index ${wp} (expected 0..38)`)
+    }
+    mask[wp >>> 3]! |= 1 << (wp & 7)
+  }
+  w.bytes(mask)
+  return w.toUint8Array()
+}
 
 /** 0x63 WaypointMenu (21B, D2Client.dll 0x6fb5f8b0) */
 export function decode0x63WaypointMenu(pkt: Uint8Array): ServerEvent {

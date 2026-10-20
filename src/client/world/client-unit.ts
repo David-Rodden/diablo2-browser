@@ -29,6 +29,7 @@ import {
   getObjectHitBox113c,
   type CanonicalObjectMeta,
 } from '../../common/world/objects-meta.ts'
+import { resolveLvlWarpBounds } from '../../common/world/level-warps-meta.ts'
 import {
   unitTypeFromId,
   type ItemData,
@@ -701,8 +702,23 @@ export class ClientUnit {
       case 'object': {
         return getObjectHitBox113c(this.classId, this.mode)
       }
-      case 'tile':
+      case 'tile': {
+        // 1.13c D2Client 0x6fb56a77..0x6fb56ae5 (D2Common.#10628):
+        // UNIT_TILE (5) hit-testing uses LvlWarp.txt SelectX/SelectY/SelectDX/SelectDY.
+        const warpId = this.warpId ?? this.classId
+        if (typeof warpId === 'number' && warpId >= 0) {
+          const bounds = resolveLvlWarpBounds(warpId)
+          if (bounds.selectDX > 0 && bounds.selectDY > 0) {
+            return {
+              left: bounds.selectX,
+              top: bounds.selectY,
+              width: bounds.selectDX,
+              height: bounds.selectDY,
+            }
+          }
+        }
         return { left: -32, top: -32, width: 64, height: 48 }
+      }
       case 'item':
         return { left: -16, top: -16, width: 32, height: 24 }
       default:

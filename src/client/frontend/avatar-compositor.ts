@@ -49,6 +49,13 @@ const inflight = new Map<string, Promise<AvatarComposite | null>>()
 const ready = new Map<string, AvatarComposite>()
 const compositorsByClass = new Map<string, SorceressLayerCompositor>()
 let palettePromise: Promise<Uint8Array | null> | null = null
+/** Class retained after entering the game; `null` while the menu still needs every slot. */
+let retainedClassToken: string | null = null
+
+function keyClassToken(key: string): string {
+  const sep = key.indexOf(':')
+  return (sep > 0 ? key.slice(0, sep) : key).toLowerCase()
+}
 
 /**
  * Return the process-wide shared `SorceressLayerCompositor` for a hero class token (`'am'`, `'so'`, `'ne'`, `'pa'`, `'ba'`, `'dz'`, `'ai'`).
@@ -203,7 +210,7 @@ async function compositeAvatar(
   // Char select only ever shows the TN clip — compositing the full in-game mode
   // set costs ~13x more DCC decode time (measured 36s for a paladin) and the
   // menu can't wait for that.
-  const composited = await compositor.composite(spec, ['tn'])
+  const composited = await compositor.composite(spec, ['tn'], { directions: [0] })
   const tnClip = composited.clips.tn
   if (!tnClip) return null
   // Direction 0 (dir64=0 → straight South towards camera), matching the baked
@@ -259,13 +266,13 @@ export function ensureAvatarComposite(
     pending = compositeAvatar(heroToken, desc)
       .catch(() => null)
       .then((composite) => {
-        if (composite) {
+        inflight.delete(key)
+        // Do not latch a null result: a transient fetch failure must be
+        // retriable by the next render frame instead of pinning the menu to
+        // the naked strip until reload. A composite that was still streaming
+        // when the game started is dropped if its class is no longer retained.
+        if (composite && (retainedClassToken === null || keyClassToken(key) === retainedClassToken)) {
           ready.set(key, composite)
-        } else {
-          // Do not latch a null result: a transient fetch failure must be
-          // retriable by the next render frame instead of pinning the menu to
-          // the naked strip until reload.
-          inflight.delete(key)
         }
         return composite
       })
@@ -280,4 +287,24 @@ export function getReadyAvatarComposite(
   desc: ParsedMcpAvatarStatstring,
 ): AvatarComposite | undefined {
   return ready.get(cacheKey(heroToken, desc))
+}
+
+/**
+ * Drop the other six classes' TN canvases and layer-pack compositors once the
+ * player has entered the game (#1317). Only the selected hero needs to stay
+ * warm; the rest re-stream if the player returns to character select.
+ */
+export function releaseUnselectedAvatarComposites(heroToken: string): void {
+  const keep = heroToken.trim().toLowerCase()
+  if (keep.length === 0) return
+  retainedClassToken = keep
+  for (const key of [...ready.keys()]) {
+    if (keyClassToken(key) !== keep) ready.delete(key)
+  }
+  for (const key of [...inflight.keys()]) {
+    if (keyClassToken(key) !== keep) inflight.delete(key)
+  }
+  for (const key of [...compositorsByClass.keys()]) {
+    if (key !== keep) compositorsByClass.delete(key)
+  }
 }

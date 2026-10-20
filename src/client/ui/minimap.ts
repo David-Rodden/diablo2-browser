@@ -75,6 +75,24 @@ export const AUTOMAP_PAN_STEP_PX = 8
 /** 4-state fade alpha cycle (`F9`: `0 -> 1 -> 2 -> 3 -> 0`). */
 export const AUTOMAP_FADE_ALPHAS = [1.0, 0.75, 0.5, 0.25] as const
 
+/**
+ * Three canonical Automap display modes (`#1320`):
+ * - `'off'`: No automap (`visible = false`)
+ * - `'top-right'`: Corner Minimap fixed at top-right (`visible = true, bMinimap = true`)
+ * - `'center'`: Centered Full-Screen Automap with semi-transparent player neighborhood (`visible = true, bMinimap = false`)
+ */
+export type AutomapDisplayMode = 'off' | 'top-right' | 'center'
+
+const AUTOMAP_SPATIAL_BUCKET_SHIFT = 7 // 128 xPixel/yPixel units per spatial bucket
+
+interface SpatialAutomapCellsIndex {
+  readonly buckets: Map<number, AutomapCell[]>
+  readonly minBx: number
+  readonly maxBx: number
+  readonly minBy: number
+  readonly maxBy: number
+}
+
 const AUTOMAP_FADE_TINTS: readonly (readonly [number, number, number, number])[] = [
   [1, 1, 1, 1.0],
   [1, 1, 1, 0.75],
@@ -300,10 +318,10 @@ export function computeAutomapViewport(
   if (bMinimap) {
     const vpW = 279
     const vpH = 225
-    const vpX = rightPanelOpen ? 0 : Math.max(0, safeW - 281)
-    const vpY = rightPanelOpen ? 75 : 57
-    const centerX = rightPanelOpen ? 139 : Math.max(139, safeW - 142)
-    const centerY = rightPanelOpen ? 187 : 169
+    const vpX = Math.max(0, safeW - 281)
+    const vpY = 57
+    const centerX = Math.max(139, safeW - 142)
+    const centerY = 169
     return {
       bMinimap: true,
       divisor: 20,
@@ -651,43 +669,17 @@ export class Minimap {
 
   /** Loaded WebGL atlas handles keyed by sheet name (`MaxiMap`, `MaxiMapS`, etc.). */
   private readonly atlases = new Map<AutomapSpriteKey, AtlasHandle>()
-  /** Decoded atlas PNG sources kept for 2D compositing of the static-layer cache. */
-  private readonly atlasSources = new Map<AutomapSpriteKey, ImageBitmap>()
+
   /**
-   * Static automap-layer cache: while the content-version key (zoom/reveal/mode/
-   * viewport) is stable, the automap cells are composited into a padded canvas
-   * (`vpW + 512` x `vpH + 512`) anchored at `(anchorOffsetX, anchorOffsetY)` and
-   * sampled as ONE translated sub-rectangle quad per frame even while walking.
+   * Per-layer spatial bucket index (`128x128` `(xPixel, yPixel)` cells) keyed by
+   * the `readonly AutomapCell[]` array reference so `drawLayerCells` visits only
+   * the ~150-400 cells intersecting the active viewport in O(1) without 2D canvas
+   * software rasterization or `createImageBitmap` main-thread stalls (`#1319`).
    */
-  private readonly staticCache: {
-    key: string
-    pendingKey: string | null
-    handle: AtlasHandle | null
-    anchorOffsetX: number
-    anchorOffsetY: number
-    w: number
-    h: number
-    uploading: boolean
-    spriteCounts: {
-      floors: number
-      walls: number
-      objects: number
-      extras: number
-      total: number
-    }
-    canvas: { w: number; h: number; surface: OffscreenCanvas | HTMLCanvasElement } | null
-  } = {
-    key: '',
-    pendingKey: null,
-    handle: null,
-    anchorOffsetX: 0,
-    anchorOffsetY: 0,
-    w: 0,
-    h: 0,
-    uploading: false,
-    spriteCounts: { floors: 0, walls: 0, objects: 0, extras: 0, total: 0 },
-    canvas: null,
-  }
+  private readonly spatialIndexByLayerArray = new WeakMap<
+    readonly AutomapCell[],
+    SpatialAutomapCellsIndex
+  >()
 
   /** level key -> one byte per cell, non-zero meaning explored. */
   private readonly explored = new Map<string, Uint8Array>()
@@ -834,8 +826,61 @@ export class Minimap {
   }
 
   /**
-   * Distance-based transparency lookup for fadeState 1 in Full Automap mode (`0x6fb103d5`),
-   * returning uniform alpha in other fade states or Corner Minimap mode.
+   * Current 3-state Automap display mode (`#1320`):
+   * `'off'` (`visible = false`), `'top-right'` (`visible = true, bMinimap = true`),
+   * or `'center'` (`visible = true, bMinimap = false`).
+   */
+  get displayMode(): AutomapDisplayMode {
+    if (!this.visible) return 'off'
+    return this.bMinimap ? 'top-right' : 'center'
+  }
+
+  set displayMode(mode: AutomapDisplayMode) {
+    this.setDisplayMode(mode)
+  }
+
+  /**
+   * Explicitly switches to one of the three canonical Automap display modes (`#1320`).
+   */
+  setDisplayMode(mode: AutomapDisplayMode): AutomapDisplayMode {
+    if (mode === 'off') {
+      this.visible = false
+      this.resetPan()
+    } else if (mode === 'top-right') {
+      this.visible = true
+      this.bMinimap = true
+      this.resetPan()
+    } else {
+      this.visible = true
+      this.bMinimap = false
+    }
+    return this.displayMode
+  }
+
+  /**
+   * Cycles through the three canonical Automap display modes (`#1320`):
+   * `'top-right' -> 'center' -> 'off' -> 'top-right'`.
+   */
+  cycleDisplayMode(): AutomapDisplayMode {
+    const current = this.displayMode
+    if (current === 'top-right') {
+      return this.setDisplayMode('center')
+    }
+    if (current === 'center') {
+      return this.setDisplayMode('off')
+    }
+    return this.setDisplayMode('top-right')
+  }
+
+  /**
+   * Distance-based center semi-transparency lookup in Centered Automap mode
+   * (`D2Client.dll 0x6fb10391..0x6fb1045b`, `#1320`):
+   * - In Corner Minimap mode (`bMinimap === true`), returns the uniform fade alpha
+   *   for the current `fadeState` (`1.0 / 0.75 / 0.5 / 0.25`).
+   * - In Centered Full Automap mode (`bMinimap === false`), cells covering the
+   *   player character and surrounding area (`dx <= 140`, `rawDy ∈ [-150, 130]`)
+   *   fade radially by integer octile distance `((max(dx,dy)*2 + min(dx,dy)) >> 1)`:
+   *   `dist < 50 -> 0.25`, `dist < 100 -> 0.50`, `dist < 150 -> 0.75`.
    */
   getCellFadeAlpha(
     screenX: number,
@@ -844,18 +889,29 @@ export class Minimap {
     centerY: number,
     bMinimap: boolean,
   ): number {
-    if (this.fadeState === 0) return 1.0
-    if (this.fadeState === 2) return 0.5
+    if (bMinimap) {
+      return AUTOMAP_FADE_ALPHAS[this.fadeState]
+    }
     if (this.fadeState === 3) return 0.25
-    if (bMinimap) return 0.75
+    const outerAlpha = AUTOMAP_FADE_ALPHAS[this.fadeState]
     const dx = Math.abs(screenX - centerX)
-    const dy = Math.abs(screenY - centerY)
-    if (dx > 140 || dy > 150) return 0.25
-    const dist = Math.hypot(dx, dy)
-    if (dist < 50) return 1.0
-    if (dist < 100) return 0.75
-    if (dist < 150) return 0.5
-    return 0.25
+    const rawDy = screenY - centerY
+    if (dx > 140 || rawDy < -150 || rawDy > 130) {
+      return outerAlpha
+    }
+    const dy = Math.abs(rawDy)
+    const maxD = dx >= dy ? dx : dy
+    const minD = dx >= dy ? dy : dx
+    const dist = ((maxD << 1) + minD) >> 1
+    let centerAlpha: number = outerAlpha
+    if (dist < 50) {
+      centerAlpha = 0.25
+    } else if (dist < 100) {
+      centerAlpha = 0.5
+    } else if (dist < 150) {
+      centerAlpha = 0.75
+    }
+    return centerAlpha < outerAlpha ? centerAlpha : outerAlpha
   }
 
   /**
@@ -995,9 +1051,8 @@ export class Minimap {
             colorSpaceConversion: 'none',
           })
           const handle = renderer.addAtlas(bitmap, meta.atlasWidth, meta.atlasHeight)
+          bitmap.close()
           this.atlases.set(sheetName, handle)
-          // Keep the decoded source for the static-layer cache compositor.
-          this.atlasSources.set(sheetName, bitmap)
           loadedCount += 1
         } catch (err) {
           reportMissingArt('automap', sheetName, String(err))
@@ -1130,17 +1185,26 @@ export class Minimap {
         this.preRevealedTownLevels.add(level.key)
       }
       if (worldSet !== null) {
-        // Also reveal the 3x3 room neighborhood and REVEAL_RADIUS in worldSet so adjacent
-        // outdoor level tiles right outside the town gate are smoothly revealed as the player approaches.
-        for (let ry = roomY - 1; ry <= roomY + 1; ry += 1) {
-          for (let rx = roomX - 1; rx <= roomX + 1; rx += 1) {
-            const startX = rx * ROOM_SIZE_CELLS
-            const endX = startX + ROOM_SIZE_CELLS
-            const startY = ry * ROOM_SIZE_CELLS
-            const endY = startY + ROOM_SIZE_CELLS
-            for (let y = startY; y < endY; y += 1) {
-              for (let x = startX; x < endX; x += 1) {
-                worldSet.add(this.packWorldCell(tileOriginX + x, tileOriginY + y))
+        const prevCell = this.lastRevealCellPos.get(level.key)
+        if (prevCell === undefined || prevCell.cellX !== cellX || prevCell.cellY !== cellY) {
+          if (prevCell !== undefined) {
+            prevCell.cellX = cellX
+            prevCell.cellY = cellY
+          } else {
+            this.lastRevealCellPos.set(level.key, { cellX, cellY })
+          }
+          // Also reveal the 3x3 room neighborhood in worldSet when the player's cell changes so adjacent
+          // outdoor level tiles right outside the town gate are smoothly revealed as the player approaches.
+          for (let ry = roomY - 1; ry <= roomY + 1; ry += 1) {
+            for (let rx = roomX - 1; rx <= roomX + 1; rx += 1) {
+              const startX = rx * ROOM_SIZE_CELLS
+              const endX = startX + ROOM_SIZE_CELLS
+              const startY = ry * ROOM_SIZE_CELLS
+              const endY = startY + ROOM_SIZE_CELLS
+              for (let y = startY; y < endY; y += 1) {
+                for (let x = startX; x < endX; x += 1) {
+                  worldSet.add(this.packWorldCell(tileOriginX + x, tileOriginY + y))
+                }
               }
             }
           }
@@ -1375,166 +1439,125 @@ export class Minimap {
       gl.scissor(scissorX, scissorY, scissorW, scissorH)
     }
 
-    const isDistanceFade = this.fadeState === 1 && !this.bMinimap
+    const isDistanceFade = !this.bMinimap && this.fadeState !== 3
     const uniformTint = AUTOMAP_FADE_TINTS[this.fadeState]!
     const divisor = this.bMinimap ? 20 : 10
     const halfAnchorX = this.bMinimap ? 4 : 8
     const vpRight = vp.vpX + vp.vpW
     const vpBottom = vp.vpY + vp.vpH
     const drawOptions = this.scratchDrawOptions
+    // Precompute active viewport bounds in `(xPixel, yPixel)` space (with 96px sprite margin)
+    // so spatial buckets outside the viewport are culled in O(1) (`#1319`).
+    const minVisXPixel = Math.floor(((vp.vpX + offsetX - 96) * divisor) / 10)
+    const maxVisXPixel = Math.ceil(((vpRight + offsetX + 96) * divisor) / 10)
+    const minVisYPixel = Math.floor(((vp.vpY + offsetY - 96) * divisor) / 10)
+    const maxVisYPixel = Math.ceil(((vpBottom + offsetY + 96) * divisor) / 10)
+    const minVisBx = minVisXPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
+    const maxVisBx = maxVisXPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
+    const minVisBy = minVisYPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
+    const maxVisBy = maxVisYPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
+
+    const drawSingleCell = (
+      cell: AutomapCell,
+      layerKey: 'floors' | 'walls' | 'objects' | 'extras',
+      ignoreFogOfWar: boolean,
+    ): void => {
+      const sheetName = resolveAutomapSheetName(cell.fSaved ?? 0, this.bMinimap)
+      const sheetMeta = AUTOMAP_UI_MANIFEST.atlases[sheetName]
+      const atlasHandle = this.resolveAtlasHandle(renderer, sheetName, sheetMeta)
+      if (!sheetMeta || !atlasHandle) return
+      if (cell.cellNo < 0 || cell.cellNo >= sheetMeta.frames.length) return
+      if ((!ignoreFogOfWar || cell.preRevealed === false) && !this.isAutomapCellRevealed(level, seen, cell)) return
+      const frame = sheetMeta.frames[cell.cellNo]
+      if (!frame || frame.width <= 0 || frame.height <= 0) return
+
+      const screenX = Math.trunc((cell.xPixel * 10) / divisor) - offsetX
+      const screenY = Math.trunc((cell.yPixel * 10) / divisor) - offsetY
+      const drawLeft = screenX + frame.offsetX - halfAnchorX
+      const drawTop = screenY - frame.height + frame.offsetY
+      // Frustum cull against active viewport `[vpX, vpY, vpX + vpW, vpY + vpH]`
+      if (
+        drawLeft + frame.width < vp.vpX ||
+        drawLeft > vpRight ||
+        drawTop + frame.height < vp.vpY ||
+        drawTop > vpBottom
+      ) {
+        return
+      }
+
+      let tint = uniformTint
+      if (isDistanceFade) {
+        const alpha = this.getCellFadeAlpha(
+          screenX,
+          screenY,
+          vp.centerX,
+          vp.centerY,
+          this.bMinimap,
+        )
+        tint =
+          alpha === 1.0
+            ? AUTOMAP_FADE_TINTS[0]!
+            : alpha === 0.75
+              ? AUTOMAP_FADE_TINTS[1]!
+              : alpha === 0.5
+                ? AUTOMAP_FADE_TINTS[2]!
+                : AUTOMAP_FADE_TINTS[3]!
+      }
+
+      drawOptions.atlas = atlasHandle
+      drawOptions.width = frame.width * invZoom
+      drawOptions.height = frame.height * invZoom
+      drawOptions.tint = tint
+      renderer.draw(
+        frame,
+        toWorldX(drawLeft),
+        toWorldY(drawTop),
+        drawOptions,
+      )
+      this.lastRenderStats.spritesDrawn[layerKey] += 1
+      this.lastRenderStats.spritesDrawn.total += 1
+    }
 
     const drawLayerCells = (
       cells: readonly AutomapCell[],
       layerKey: 'floors' | 'walls' | 'objects' | 'extras',
       ignoreFogOfWar: boolean,
     ): void => {
-      for (const cell of cells) {
-        const sheetName = resolveAutomapSheetName(cell.fSaved ?? 0, this.bMinimap)
-        const sheetMeta = AUTOMAP_UI_MANIFEST.atlases[sheetName]
-        const atlasHandle = this.resolveAtlasHandle(renderer, sheetName, sheetMeta)
-        if (!sheetMeta || !atlasHandle) continue
-        if (cell.cellNo < 0 || cell.cellNo >= sheetMeta.frames.length) continue
-        if ((!ignoreFogOfWar || cell.preRevealed === false) && !this.isAutomapCellRevealed(level, seen, cell)) continue
-        const frame = sheetMeta.frames[cell.cellNo]
-        if (!frame || frame.width <= 0 || frame.height <= 0) continue
-
-        const screenX = Math.trunc((cell.xPixel * 10) / divisor) - offsetX
-        const screenY = Math.trunc((cell.yPixel * 10) / divisor) - offsetY
-        const drawLeft = screenX + frame.offsetX - halfAnchorX
-        const drawTop = screenY - frame.height + frame.offsetY
-        // Frustum cull against active viewport `[vpX, vpY, vpX + vpW, vpY + vpH]`
-        if (
-          drawLeft + frame.width < vp.vpX ||
-          drawLeft > vpRight ||
-          drawTop + frame.height < vp.vpY ||
-          drawTop > vpBottom
-        ) {
-          continue
+      if (cells.length === 0) return
+      if (cells.length <= 256) {
+        for (let i = 0; i < cells.length; i += 1) {
+          drawSingleCell(cells[i]!, layerKey, ignoreFogOfWar)
         }
-
-        let tint = uniformTint
-        if (isDistanceFade) {
-          const alpha = this.getCellFadeAlpha(
-            screenX,
-            screenY,
-            vp.centerX,
-            vp.centerY,
-            this.bMinimap,
-          )
-          tint =
-            alpha === 1.0
-              ? AUTOMAP_FADE_TINTS[0]!
-              : alpha === 0.75
-                ? AUTOMAP_FADE_TINTS[1]!
-                : alpha === 0.5
-                  ? AUTOMAP_FADE_TINTS[2]!
-                  : AUTOMAP_FADE_TINTS[3]!
+        return
+      }
+      const spatialIndex = this.getOrBuildSpatialIndex(cells)
+      const startBy = Math.max(spatialIndex.minBy, minVisBy)
+      const endBy = Math.min(spatialIndex.maxBy, maxVisBy)
+      const startBx = Math.max(spatialIndex.minBx, minVisBx)
+      const endBx = Math.min(spatialIndex.maxBx, maxVisBx)
+      for (let by = startBy; by <= endBy; by += 1) {
+        const byPrefix = (by & 0xffff) << 16
+        for (let bx = startBx; bx <= endBx; bx += 1) {
+          const bucketKey = (byPrefix | (bx & 0xffff)) >>> 0
+          const bucket = spatialIndex.buckets.get(bucketKey)
+          if (bucket === undefined) continue
+          for (let i = 0; i < bucket.length; i += 1) {
+            drawSingleCell(bucket[i]!, layerKey, ignoreFogOfWar)
+          }
         }
-
-        drawOptions.atlas = atlasHandle
-        drawOptions.width = frame.width * invZoom
-        drawOptions.height = frame.height * invZoom
-        drawOptions.tint = tint
-        renderer.draw(
-          frame,
-          toWorldX(drawLeft),
-          toWorldY(drawTop),
-          drawOptions,
-        )
-        this.lastRenderStats.spritesDrawn[layerKey] += 1
-        this.lastRenderStats.spritesDrawn.total += 1
       }
     }
 
     // Strict 1.13c 4-layer draw order (`0x6fb10489`):
     if (automapLayer) {
-      // Static-layer cache: when `!isDistanceFade`, composite a padded window
-      // (`vpW + 512` x `vpH + 512`) around `(offsetX, offsetY)` so continuous
-      // player movement translates the UV sample window within the cached atlas
-      // and emits ONE quad per frame instead of ~500-1000 individual cell quads.
-      const cachePad = isDistanceFade ? 0 : 256
-      const cacheKey = isDistanceFade
-        ? [
-            level.key,
-            this.bMinimap ? 1 : 0,
-            this.fadeState,
-            zoom,
-            offsetX,
-            offsetY,
-            vp.vpX,
-            vp.vpY,
-            vp.vpW,
-            vp.vpH,
-            this.lastRenderStats.revealedRooms,
-          ].join('|')
-        : [
-            level.key,
-            this.bMinimap ? 1 : 0,
-            this.fadeState,
-            zoom,
-            vp.vpX,
-            vp.vpY,
-            vp.vpW,
-            vp.vpH,
-            this.lastRenderStats.revealedRooms,
-          ].join('|')
-      const cacheUsable =
-        this.atlasSources.size > 0 && // atlas PNG sources retained for 2D compositing
-        this.canCreateCacheCanvas()
-      const relX = offsetX - this.staticCache.anchorOffsetX
-      const relY = offsetY - this.staticCache.anchorOffsetY
-      const withinPaddedWindow =
-        this.staticCache.key === cacheKey &&
-        this.staticCache.handle !== null &&
-        relX >= 0 &&
-        relY >= 0 &&
-        relX + vp.vpW <= this.staticCache.w &&
-        relY + vp.vpH <= this.staticCache.h
-      if (cacheUsable && withinPaddedWindow && this.staticCache.handle) {
-        drawOptions.atlas = this.staticCache.handle
-        drawOptions.width = vp.vpW * invZoom
-        drawOptions.height = vp.vpH * invZoom
-        drawOptions.tint = AUTOMAP_FADE_TINTS[0]!
-        renderer.draw(
-          { x: relX, y: relY, width: vp.vpW, height: vp.vpH },
-          toWorldX(vp.vpX),
-          toWorldY(vp.vpY),
-          drawOptions,
-        )
-        this.lastRenderStats.spritesDrawn.floors = this.staticCache.spriteCounts.floors
-        this.lastRenderStats.spritesDrawn.walls = this.staticCache.spriteCounts.walls
-        this.lastRenderStats.spritesDrawn.objects = this.staticCache.spriteCounts.objects
-        this.lastRenderStats.spritesDrawn.extras = this.staticCache.spriteCounts.extras
-        this.lastRenderStats.spritesDrawn.total += this.staticCache.spriteCounts.total
-      } else {
-        // 1. Layer 0 (`floors`)
-        drawLayerCells(automapLayer.floors, 'floors', false)
-        // 2. Layer 1 (`walls`)
-        drawLayerCells(automapLayer.walls, 'walls', false)
-        // 3. Layer 2 (`objects`)
-        drawLayerCells(automapLayer.objects, 'objects', false)
-        // 4. Layer 3 (`extras` — pre-revealed town entrances/crosses + revealed warps/waypoints/shrines)
-        drawLayerCells(automapLayer.extras, 'extras', true)
-        if (cacheUsable && !this.staticCache.uploading) {
-          if (!isDistanceFade || this.staticCache.pendingKey === cacheKey) {
-            this.buildStaticLayerCache(
-              renderer,
-              cacheKey,
-              automapLayer,
-              level,
-              seen,
-              vp,
-              divisor,
-              halfAnchorX,
-              offsetX,
-              offsetY,
-              cachePad,
-            )
-          } else {
-            this.staticCache.pendingKey = cacheKey
-          }
-        }
-      }
+      // 1. Layer 0 (`floors`)
+      drawLayerCells(automapLayer.floors, 'floors', false)
+      // 2. Layer 1 (`walls`)
+      drawLayerCells(automapLayer.walls, 'walls', false)
+      // 3. Layer 2 (`objects`)
+      drawLayerCells(automapLayer.objects, 'objects', false)
+      // 4. Layer 3 (`extras` — pre-revealed town entrances/crosses + revealed warps/waypoints/shrines)
+      drawLayerCells(automapLayer.extras, 'extras', true)
     }
 
     // 5. Dynamic active Town Portals (`0x6fb11490`: `MaxiMap` / `MaxiMapS` frame 300 in Level 4, else 306/307)
@@ -2084,175 +2107,51 @@ export class Minimap {
   }
 
   /**
-   * Resolves the `AtlasHandle` for `sheetName`.
+   * Builds or retrieves a cached `128x128` `(xPixel, yPixel)` spatial bucket index
+   * for `cells` so `drawLayerCells` only visits cells near the active viewport (`#1319`).
    */
-  canCreateCacheCanvas(): boolean {
-    return typeof OffscreenCanvas !== 'undefined' || typeof document !== 'undefined'
-  }
-
-  /**
-   * Composite the 4 static automap layers into the cache canvas at 1:1 screen
-   * pixels (cell iteration mirrors `drawLayerCells`, fog-of-war and distance
-   * fade included — fade tints are alpha-only, so `globalAlpha` reproduces
-   * them exactly), then re-upload it into the persistent cache texture slot.
-   * Async: the blit path activates once the upload lands (`staticCache.key`).
-   */
-  private buildStaticLayerCache(
-    renderer: SpriteRenderer,
-    key: string,
-    automapLayer: MinimapLevel['automap'],
-    level: MinimapLevel,
-    seen: Uint8Array,
-    vp: {
-      readonly vpX: number
-      readonly vpY: number
-      readonly vpW: number
-      readonly vpH: number
-      readonly centerX: number
-      readonly centerY: number
-    },
-    divisor: number,
-    halfAnchorX: number,
-    offsetX: number,
-    offsetY: number,
-    pad = 0,
-  ): void {
-    const w = Math.max(1, Math.round(vp.vpW)) + pad * 2
-    const h = Math.max(1, Math.round(vp.vpH)) + pad * 2
-    const anchorOffsetX = offsetX - pad
-    const anchorOffsetY = offsetY - pad
-    if (this.staticCache.canvas === null || this.staticCache.canvas.w !== w || this.staticCache.canvas.h !== h) {
-      if (this.staticCache.handle !== null) {
-        renderer.deleteAtlas(this.staticCache.handle)
-        this.staticCache.handle = null
-      }
-      const surface: OffscreenCanvas | HTMLCanvasElement =
-        typeof OffscreenCanvas !== 'undefined'
-          ? new OffscreenCanvas(w, h)
-          : document.createElement('canvas')
-      surface.width = w
-      surface.height = h
-      this.staticCache.canvas = { w, h, surface }
+  private getOrBuildSpatialIndex(cells: readonly AutomapCell[]): SpatialAutomapCellsIndex {
+    const cached = this.spatialIndexByLayerArray.get(cells)
+    if (cached !== undefined) {
+      return cached
     }
-    const surface = this.staticCache.canvas.surface
-    const c2d = surface.getContext('2d')
-    if (!c2d) return
-    c2d.imageSmoothingEnabled = false
-    c2d.clearRect(0, 0, w, h)
-    const isDistanceFade = this.fadeState === 1 && !this.bMinimap
-    const uniformAlpha = AUTOMAP_FADE_TINTS[this.fadeState]![3]
-
-    const composeCells = (
-      cells: readonly AutomapCell[],
-      ignoreFogOfWar: boolean,
-    ): void => {
-      for (const cell of cells) {
-        const sheetName = resolveAutomapSheetName(cell.fSaved ?? 0, this.bMinimap)
-        const bitmap = this.atlasSources.get(sheetName)
-        const sheetMeta = AUTOMAP_UI_MANIFEST.atlases[sheetName]
-        if (!bitmap || !sheetMeta) continue
-        if (cell.cellNo < 0 || cell.cellNo >= sheetMeta.frames.length) continue
-        if ((!ignoreFogOfWar || cell.preRevealed === false) && !this.isAutomapCellRevealed(level, seen, cell)) continue
-        const frame = sheetMeta.frames[cell.cellNo]!
-        if (frame.width <= 0 || frame.height <= 0) continue
-        const screenX = Math.trunc((cell.xPixel * 10) / divisor) - anchorOffsetX
-        const screenY = Math.trunc((cell.yPixel * 10) / divisor) - anchorOffsetY
-        const drawLeft = screenX + frame.offsetX - halfAnchorX
-        const drawTop = screenY - frame.height + frame.offsetY
-        const canvasX = Math.round(drawLeft - vp.vpX)
-        const canvasY = Math.round(drawTop - vp.vpY)
-        if (canvasX + frame.width < 0 || canvasX > w || canvasY + frame.height < 0 || canvasY > h) {
-          continue
-        }
-        c2d.globalAlpha = isDistanceFade
-          ? this.getCellFadeAlpha(screenX, screenY, vp.centerX, vp.centerY, this.bMinimap)
-          : uniformAlpha
-        c2d.drawImage(
-          bitmap,
-          frame.x,
-          frame.y,
-          frame.width,
-          frame.height,
-          canvasX,
-          canvasY,
-          frame.width,
-          frame.height,
-        )
-      }
-    }
-    composeCells(automapLayer.floors, false)
-    composeCells(automapLayer.walls, false)
-    composeCells(automapLayer.objects, false)
-    composeCells(automapLayer.extras, true)
-    c2d.globalAlpha = 1
-
-    const spriteCounts = {
-      floors: this.lastRenderStats.spritesDrawn.floors,
-      walls: this.lastRenderStats.spritesDrawn.walls,
-      objects: this.lastRenderStats.spritesDrawn.objects,
-      extras: this.lastRenderStats.spritesDrawn.extras,
-      total:
-        this.lastRenderStats.spritesDrawn.floors +
-        this.lastRenderStats.spritesDrawn.walls +
-        this.lastRenderStats.spritesDrawn.objects +
-        this.lastRenderStats.spritesDrawn.extras,
-    }
-    this.staticCache.uploading = true
-    void this.uploadStaticLayerCache(
-      renderer,
-      key,
-      surface,
-      anchorOffsetX,
-      anchorOffsetY,
-      w,
-      h,
-      spriteCounts,
-    )
-  }
-
-  private async uploadStaticLayerCache(
-    renderer: SpriteRenderer,
-    key: string,
-    surface: OffscreenCanvas | HTMLCanvasElement,
-    anchorOffsetX: number,
-    anchorOffsetY: number,
-    w: number,
-    h: number,
-    spriteCounts: {
-      floors: number
-      walls: number
-      objects: number
-      extras: number
-      total: number
-    },
-  ): Promise<void> {
-    try {
-      if (typeof createImageBitmap !== 'function') return
-      const bmp = await createImageBitmap(surface)
-      if (
-        this.staticCache.handle !== null &&
-        this.staticCache.handle.width === bmp.width &&
-        this.staticCache.handle.height === bmp.height
-      ) {
-        renderer.updateAtlas(this.staticCache.handle, bmp)
+    const buckets = new Map<number, AutomapCell[]>()
+    let minBx = 0x7fffffff
+    let maxBx = -0x80000000
+    let minBy = 0x7fffffff
+    let maxBy = -0x80000000
+    for (let i = 0; i < cells.length; i += 1) {
+      const cell = cells[i]!
+      const bx = cell.xPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
+      const by = cell.yPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
+      if (bx < minBx) minBx = bx
+      if (bx > maxBx) maxBx = bx
+      if (by < minBy) minBy = by
+      if (by > maxBy) maxBy = by
+      const key = (((by & 0xffff) << 16) | (bx & 0xffff)) >>> 0
+      let bucket = buckets.get(key)
+      if (bucket === undefined) {
+        bucket = [cell]
+        buckets.set(key, bucket)
       } else {
-        if (this.staticCache.handle !== null) {
-          renderer.deleteAtlas(this.staticCache.handle)
-        }
-        this.staticCache.handle = renderer.addAtlas(bmp, bmp.width, bmp.height)
+        bucket.push(cell)
       }
-      bmp.close()
-      this.staticCache.anchorOffsetX = anchorOffsetX
-      this.staticCache.anchorOffsetY = anchorOffsetY
-      this.staticCache.w = w
-      this.staticCache.h = h
-      this.staticCache.spriteCounts = spriteCounts
-      this.staticCache.key = key
-    } catch {
-      // Keep the direct per-cell path on any compositing/upload failure.
-    } finally {
-      this.staticCache.uploading = false
     }
+    if (cells.length === 0) {
+      minBx = 0
+      maxBx = -1
+      minBy = 0
+      maxBy = -1
+    }
+    const index: SpatialAutomapCellsIndex = {
+      buckets,
+      minBx,
+      maxBx,
+      minBy,
+      maxBy,
+    }
+    this.spatialIndexByLayerArray.set(cells, index)
+    return index
   }
 
   private resolveAtlasHandle(

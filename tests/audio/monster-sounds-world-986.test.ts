@@ -8,6 +8,11 @@ import {
 } from '../../src/common/audio/mon-sounds-113c.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
 import { AudioRuntime113c } from '../../src/client/audio/audio-runtime-113c.ts'
+import {
+  resolveBlockSoundId113c,
+  resolveHitClassSoundIds113c,
+} from '../../src/client/audio/d2gs-play-sound-113c.ts'
+import { decode0x0DPlayerStop } from '../../src/netproto/d2gs/s2c/movement.ts'
 
 describe('Issue #986: 1.13c MonStats/MonSounds monster SFX in ClientWorld & AudioRuntime113c', () => {
   it('resolves MonStats.txt hcIdx (MonSound / UMonSound) and SuperUniques.txt overrides', () => {
@@ -76,7 +81,7 @@ describe('Issue #986: 1.13c MonStats/MonSounds monster SFX in ClientWorld & Audi
     const wlReqs = world.drainWorldSoundRequests()
     expect(wlReqs.map((r) => r.soundId)).toContain(2720)
 
-    // 3. 0x0C NPCGetHit (mode === undefined && hitClass !== undefined) -> HitSound (895, delay=2)
+    // 3. 0x0C NPCGetHit (mode === undefined && hitClass !== undefined) -> HitClass Fire (353) + HitSound (895, delay=2)
     world.apply({
       type: 'UnitMode',
       unitType: 1,
@@ -85,11 +90,10 @@ describe('Issue #986: 1.13c MonStats/MonSounds monster SFX in ClientWorld & Audi
       hitClass: 32,
     })
     const hit0cReqs = world.drainWorldSoundRequests()
-    expect(hit0cReqs).toHaveLength(1)
-    expect(hit0cReqs[0]?.soundId).toBe(895)
-    expect(hit0cReqs[0]?.delayTicks).toBe(2)
+    expect(hit0cReqs.map((r) => r.soundId)).toEqual([353, 895])
+    expect(hit0cReqs.find((r) => r.soundId === 895)?.delayTicks).toBe(2)
 
-    // 4. Mode 3 (GH) -> HitSound (895, delay=2)
+    // 4. Mode 3 (GH) -> HitClass Fire (353) + HitSound (895, delay=2)
     world.apply({
       type: 'UnitMode',
       unitType: 1,
@@ -99,8 +103,7 @@ describe('Issue #986: 1.13c MonStats/MonSounds monster SFX in ClientWorld & Audi
       hitClass: 32,
     })
     const ghReqs = world.drainWorldSoundRequests()
-    expect(ghReqs).toHaveLength(1)
-    expect(ghReqs[0]?.soundId).toBe(895)
+    expect(ghReqs.map((r) => r.soundId)).toEqual([353, 895])
 
     // 5. Mode 0 (DT) -> Fallen DeathSound (900, delay=1), NOT hardcoded 1094 (thornhulk)
     world.apply({
@@ -335,5 +338,73 @@ describe('Issue #986: 1.13c MonStats/MonSounds monster SFX in ClientWorld & Audi
       totalSustainedWalkFootsteps += world.drainWorldSoundRequests().filter((r) => r.soundId === 2720).length
     }
     expect(totalSustainedWalkFootsteps).toBeGreaterThanOrEqual(6)
+  })
+
+  it('Issues #1321 & #1322: resolves 1.13c HitClass (D2Client.dll 0x6fad27e0) and Block (0x6fad21c0) sounds, decodes 0x0D hitClass, and emits player get-hit & block sounds', () => {
+    // 1. HitClass nibble table (0x6fad27e0)
+    expect(resolveHitClassSoundIds113c(0x01)).toEqual([321]) // impact_punch_1
+    expect(resolveHitClassSoundIds113c(0x02)).toEqual([341]) // impact_blade_swing_1
+    expect(resolveHitClassSoundIds113c(0x06)).toEqual([335]) // impact_blade_thrust_1
+    expect(resolveHitClassSoundIds113c(0x08)).toEqual([329]) // impact_blunt_1
+    expect(resolveHitClassSoundIds113c(0x0a)).toEqual([347]) // impact_arrow_1
+    expect(resolveHitClassSoundIds113c(0x0c)).toEqual([325]) // impact_claw_1
+    expect(resolveHitClassSoundIds113c(0x22)).toEqual([341, 356]) // blade_swing + fire_layer
+    expect(resolveHitClassSoundIds113c(0x20)).toEqual([353]) // pure fire
+    expect(resolveHitClassSoundIds113c(0x32)).toEqual([341, 362]) // blade_swing + cold_layer
+    expect(resolveHitClassSoundIds113c(0x42)).toEqual([341, 372]) // blade_swing + lightning_layer
+    expect(resolveHitClassSoundIds113c(0x52)).toEqual([341, 376]) // blade_swing + poison
+
+    // 2. Block sound table (0x6fad21c0)
+    expect(resolveBlockSoundId113c(0x02)).toBe(398) // block_weapon_1
+    expect(resolveBlockSoundId113c(0x0a)).toBe(401) // block_arrow_1
+    expect(resolveBlockSoundId113c(0x2b)).toBe(401) // block_arrow_1 with fire upper nibble
+
+    // 3. 0x0D PlayerStop packet preserves pkt[11] hitClass
+    const pkt0d = new Uint8Array([0x0d, 0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x10, 0x14, 0x20, 0x14, 0x22, 0x60])
+    const ev0d = decode0x0DPlayerStop(pkt0d)
+    expect(ev0d).toBeDefined()
+    expect(ev0d?.type).toBe('UnitMode')
+    if (ev0d?.type === 'UnitMode') {
+      expect(ev0d.mode).toBe(4)
+      expect(ev0d.hitClass).toBe(0x22)
+    }
+
+    // 4. Player unit emits HitClass + class getHit1 on 0x0D (mode=19) and 0x0C damage-only (mode=undefined, hitClass!=0), and block sound on mode=9
+    const world = new ClientWorld()
+    world.apply({
+      type: 'PlayerAssign',
+      unitId: 1,
+      classId: 4, // Barbarian -> getHit1 = 2905
+      name: 'Hero',
+      x: 5136,
+      y: 5152,
+    })
+    world.drainWorldSoundRequests()
+
+    world.apply(ev0d!)
+    const plrHitReqs = world.drainWorldSoundRequests().map((r) => r.soundId)
+    expect(plrHitReqs).toEqual([341, 356, 2902])
+
+    // 0x0C damage-only packet on player (no mode change, hitClass=0x08 blunt)
+    world.apply({
+      type: 'UnitMode',
+      unitType: 0,
+      id: 1,
+      lifePct: 80,
+      hitClass: 0x08,
+    })
+    const plr0cReqs = world.drainWorldSoundRequests().map((r) => r.soundId)
+    expect(plr0cReqs).toEqual([329, 2902])
+
+    // Player block (mode=9, hitClass=0x0A arrow)
+    world.apply({
+      type: 'UnitMode',
+      unitType: 0,
+      id: 1,
+      mode: 9,
+      hitClass: 0x0a,
+    })
+    const plrBlockReqs = world.drainWorldSoundRequests().map((r) => r.soundId)
+    expect(plrBlockReqs).toContain(401)
   })
 })

@@ -152,6 +152,27 @@ export interface OnlineSessionOptions {
   readonly tabId?: string | undefined
 }
 
+/**
+ * Single Player character context handed to `attachGameServer` for a local (`LocalLoopbackAdapter`)
+ * game. 1.13c keeps the same cached char info (`[0x6fbcb980]`) for open/SP and realm characters, so the
+ * in-game lifecycle (S2C `0x61 07` → `completeGame`) needs the selected character in both modes.
+ */
+export interface LocalGameCharacterContext {
+  /** Local character list (`LocalLobbyProvider.listCharacters`). */
+  readonly characters: readonly CharSummary[]
+  /** Canonical name of the character entering the game; must be one of `characters`. */
+  readonly selectedName: string
+  /**
+   * Persist the progression rewritten by `0x6faf52fd` into the local `.d2s` header (`+0x25`), i.e.
+   * `LocalLobbyProvider.writeCharacterProgression`. Called after the local game was saved and closed.
+   */
+  readonly writeProgression: (name: string, progression: number) => void
+}
+
+export interface AttachGameServerOptions {
+  readonly localCharacter?: LocalGameCharacterContext | undefined
+}
+
 /** Which connection ended the session (`client` = ended on purpose by this client). */
 export type OnlineSessionLostSource = D2OnlineSessionKind | 'client'
 export type OnlineSessionLostCause = D2OnlineSessionLostCause | 'local'
@@ -317,6 +338,10 @@ export class OnlineSession {
   private charactersValue: readonly CharSummary[] = []
   private selectedCharValue: string | null = null
   private pendingGameCompletionValue: GameCompletion113c | null = null
+  /** Single Player `.d2s` progression writer for the active local game (`null` online / idle). */
+  private localProgressionWriter: ((name: string, progression: number) => void) | null = null
+  /** The adapter `leaveGame` is closing on purpose; its `onClose` is not a lost session. */
+  private leavingAdapter: GameServerAdapter | null = null
   private gamesValue: readonly GameListEntry[] = []
   private activeGameNameValue: string | null = null
   private disconnectReasonValue: string | null = null
@@ -1025,23 +1050,7 @@ export class OnlineSession {
       }
       this.acquireOrRefreshActiveCharLease(targetGameName)
       this.setPhase('entering-game')
-      const savedName = this.world.self.name
-      const savedClass = this.world.self.charClass
-      this.world.reset()
-      this.lastObjectLightBuildFrame = 0
-      this.environmentValue = Environment.alloc()
-      this.clientActLoaded = false
-      this.weather.onGameInit()
-      this.audioRuntime.gameInit()
-      this.questFx.resetForNewGame()
-      this.knownAreaIds.clear()
-      this.lastSyncedAreaId = 0
-      this.world.self.name = savedName
-      this.world.self.charClass = savedClass
-      this.syncAudioSkillPacks()
-      this.predictor.setPosition(0, 0)
-      this.interpolator.clear()
-      this.hudModel.syncFromWorld()
+      this.resetForGameInit()
       try {
         let adapter: GameServerAdapter
         if (request.mode === 'create') {
@@ -1069,26 +1078,43 @@ export class OnlineSession {
 
   /**
    * Attach a live or mock `GameServerAdapter` directly to this session.
+   *
+   * Without an online flow (Single Player `LocalLoopbackAdapter`, replay harness, tests) the attach
+   * starts a new game lifecycle, so it runs the same 1.13c game-init reset as `enterGame` every time a
+   * new adapter is attached — also after `leaveGame` already cleared the previous adapter.
+   * `options.localCharacter` binds the Single Player character so `completeGame` works offline.
    */
-  attachGameServer(adapter: GameServerAdapter): void {
-    const hadPreviousAdapter = this.gameAdapter !== null && this.gameAdapter !== adapter
+  attachGameServer(adapter: GameServerAdapter, options?: AttachGameServerOptions): void {
+    const reattach = this.gameAdapter === adapter
     this.detachGameServerListeners()
+    const local = options?.localCharacter
+    if (local) {
+      if (this.flow) {
+        throw new Error(
+          'OnlineSession.attachGameServer: a local character context needs a standalone (offline) session',
+        )
+      }
+      const selected = local.characters.find((c) => c.name === local.selectedName)
+      if (!selected) {
+        throw new Error(
+          `OnlineSession.attachGameServer: local character "${local.selectedName}" is not in the local character list`,
+        )
+      }
+      this.charactersValue = [...local.characters]
+      this.selectedCharValue = selected.name
+      this.localProgressionWriter = local.writeProgression
+      this.world.self.name = selected.name
+      this.world.self.charClass = selected.charClass
+    } else if (!this.flow && !reattach) {
+      this.localProgressionWriter = null
+    }
     if (!this.flow) {
-      // A standalone adapter (replay harness or tests) starts its own session lifecycle.
-      if (hadPreviousAdapter) {
-        const savedName = this.world.self.name
-        const savedClass = this.world.self.charClass
-        this.world.reset()
-        this.world.self.name = savedName
-        this.world.self.charClass = savedClass
-        this.predictor.setPosition(0, 0)
-        this.interpolator.clear()
-        this.knownAreaIds.clear()
+      // A standalone adapter (single player, replay harness or tests) starts its own session lifecycle.
+      if (!reattach) {
+        this.resetForGameInit()
       }
       this.sessionLostValue = null
       this.lostFlow = null
-      this.lastSyncedAreaId = 0
-      this.audioRuntime.gameInit()
     }
     this.rateLimiter.reset()
     this.gameAdapter = adapter
@@ -1102,6 +1128,8 @@ export class OnlineSession {
     if (typeof adapter.onClose === 'function') {
       this.unsubGameClose = adapter.onClose((reason: CloseReason) => {
         if (this.gameAdapter !== adapter) return
+        // Our own LeaveGame (C2S 0x69 / local save-and-exit) closing the game is not a lost session.
+        if (this.leavingAdapter === adapter) return
         if (this.phaseValue === 'ingame' || this.phaseValue === 'entering-game') {
           const technical =
             reason.kind === 'error'
@@ -1119,6 +1147,31 @@ export class OnlineSession {
     } else {
       this.unsubGameClose = null
     }
+  }
+
+  /**
+   * 1.13c game-init reset shared by every game entry (`enterGame` online, standalone `attachGameServer`
+   * for Single Player / replay): clears the client world and every per-game client subsystem while the
+   * selected character's name and class survive.
+   */
+  private resetForGameInit(): void {
+    const savedName = this.world.self.name
+    const savedClass = this.world.self.charClass
+    this.world.reset()
+    this.lastObjectLightBuildFrame = 0
+    this.environmentValue = Environment.alloc()
+    this.clientActLoaded = false
+    this.weather.onGameInit()
+    this.audioRuntime.gameInit()
+    this.questFx.resetForNewGame()
+    this.knownAreaIds.clear()
+    this.lastSyncedAreaId = 0
+    this.world.self.name = savedName
+    this.world.self.charClass = savedClass
+    this.syncAudioSkillPacks()
+    this.predictor.setPosition(0, 0)
+    this.interpolator.clear()
+    this.hudModel.syncFromWorld()
   }
 
   /**
@@ -1163,51 +1216,76 @@ export class OnlineSession {
       c === character ? { ...c, progression: completion.newProgression } : c,
     )
     this.pendingGameCompletionValue = completion
-    void this.leaveGame()
+    // Single Player: the cached char info is the local `.d2s` header, so the rewrite is persisted once the
+    // local game has been saved and closed (realm characters are persisted by the realm instead).
+    const writeProgression = this.localProgressionWriter
+    void this.leaveGame(
+      writeProgression
+        ? () => writeProgression(character.name, completion.newProgression)
+        : undefined,
+    )
   }
 
   /**
    * Leave the active D2GS game and return to lobby (or idle if standalone).
+   *
+   * This is the intentional exit (save-and-exit, C2S `0x69` LeaveGame, game completion): the adapter
+   * closing as a consequence is never reported as a lost session. `afterGameClosed` runs after the game
+   * connection is closed (and the local game saved) but before the phase change is published.
    */
-  async leaveGame(): Promise<void> {
+  async leaveGame(afterGameClosed?: () => void): Promise<void> {
     const flow = this.flow
+    const adapter = this.gameAdapter
+    this.leavingAdapter = adapter
     this.releaseActiveCharLease()
     this.detachGameServerListeners()
     this.hudModel.closeAllPanels()
     this.hudManager.closeAllPanels()
-    if (flow && flow.state === 'ingame') {
-      try {
-        await flow.leaveToLobby()
-      } catch {
-        // Ignore close errors on leave
-      }
-    } else if (this.gameAdapter) {
-      try {
-        if (typeof this.gameAdapter.leave === 'function') {
-          this.gameAdapter.leave()
-        } else if (typeof (this.gameAdapter as any).disconnect === 'function') {
-          ;(this.gameAdapter as any).disconnect()
+    try {
+      if (flow && flow.state === 'ingame') {
+        try {
+          await flow.leaveToLobby()
+        } catch {
+          // Ignore close errors on leave
         }
-      } catch {
-        // Ignore close errors on leave
+      } else if (adapter) {
+        try {
+          if (typeof adapter.leave === 'function') {
+            adapter.leave()
+          } else if (typeof (adapter as any).disconnect === 'function') {
+            ;(adapter as any).disconnect()
+          }
+        } catch {
+          // Ignore close errors on leave
+        }
+        if (!flow) {
+          const savedName = this.world.self.name
+          const savedClass = this.world.self.charClass
+          this.world.reset()
+          this.world.self.name = savedName
+          this.world.self.charClass = savedClass
+          this.predictor.setPosition(0, 0)
+          this.interpolator.clear()
+          this.knownAreaIds.clear()
+        }
       }
-      if (!flow) {
-        const savedName = this.world.self.name
-        const savedClass = this.world.self.charClass
-        this.world.reset()
-        this.world.self.name = savedName
-        this.world.self.charClass = savedClass
-        this.predictor.setPosition(0, 0)
-        this.interpolator.clear()
-        this.knownAreaIds.clear()
-      }
+    } finally {
+      if (this.leavingAdapter === adapter) this.leavingAdapter = null
     }
     this.gameAdapter = null
     this.activeGameNameValue = null
     this.lastSyncedAreaId = 0
+    let afterGameClosedError: unknown = null
+    try {
+      afterGameClosed?.()
+    } catch (err) {
+      afterGameClosedError = err
+    }
+    if (!flow) this.localProgressionWriter = null
     // `leaveToLobby` reports a BNCS/MCP loss deferred during the game; that already ended the session.
     if (flow && this.sessionLostFor(flow)) return
     this.setPhase(flow ? 'lobby' : 'idle')
+    if (afterGameClosedError !== null) throw afterGameClosedError
   }
 
   /**
@@ -1271,6 +1349,7 @@ export class OnlineSession {
     this.detachGameServerListeners()
     const adapter = this.gameAdapter
     this.gameAdapter = null
+    this.localProgressionWriter = null
     this.activeGameNameValue = null
     this.lastSyncedAreaId = 0
     if (adapter && !this.flow) {
@@ -1390,6 +1469,13 @@ export class OnlineSession {
   }
 
   private forwardCommandToAdapter(cmd: ClientCommand, nowMs?: number): void {
+    if (cmd.type === 'LeaveGame') {
+      // D2Client 0x6faf2850: C2S 0x69 LeaveGame is the client's own exit. Route it through `leaveGame`
+      // (which sends 0x69 via `leaveToLobby` online / saves and closes the local game) so the adapter
+      // closing afterwards is the intentional leave, never an unexpected D2GS loss.
+      void this.leaveGame()
+      return
+    }
     forwardSessionCommandToAdapter(this.asEventHost(), cmd, nowMs)
   }
 
@@ -1430,8 +1516,17 @@ export class OnlineSession {
 
   /**
    * Step the session by `dtMs` milliseconds.
+   *
+   * An in-process game server (Single Player `LocalLoopbackAdapter`) is stepped first, from this one
+   * 25 Hz `LogicClock` tick line: the adapter accumulates `dtMs` into whole 40 ms server frames and runs
+   * only its pause frame while the local game is paused (`GameInstance.isPaused`). Remote adapters
+   * (D2GS) have no `tick`.
    */
   tick(dtMs = 40, nowMs = performance.now()): void {
+    const adapter = this.gameAdapter
+    if (adapter && adapter.state !== 'closed' && typeof adapter.tick === 'function') {
+      adapter.tick(dtMs)
+    }
     tickSessionFrame(this.asRenderHost(), dtMs, nowMs)
   }
 
