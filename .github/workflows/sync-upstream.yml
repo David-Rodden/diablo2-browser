@@ -53,5 +53,7 @@ jobs:
               gh pr comment "$branch" --body "CI failed, so this was left for review."
             fi
           else
-            gh pr create --base main --head upstream --title "$title (conflicts)" --body "" && gh workflow run pr-summary.yml -f pr="$(gh pr view upstream --json number -q .number)" || true
+            if gh pr create --base main --head upstream --title "$title (conflicts)" --body ""; then
+              gh workflow run pr-summary.yml -f pr="$(gh pr view upstream --json number -q .number)"
+            fi
           fi
