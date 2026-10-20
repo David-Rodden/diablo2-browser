@@ -40,11 +40,8 @@ const emberStyle = (i: number) => `--x: ${(i * 37) % 100}%; --delay: ${-((i * 1.
 
 export function decorateLoadingScreen(tracker: { subscribe(listener: (snap: BootProgressSnapshot) => void): () => void }, doc: Document = document): void {
   const root = doc.getElementById('d2-boot-loading')
-  const title = root?.querySelector('.d2-boot-title')
   const status = doc.getElementById('d2-boot-progress-file')
-  if (!root || !title || !status) return
-  root.classList.add('d2-loading')
-  title.innerHTML = '<span class="d2-loading__name">Diablo II</span><span class="d2-loading__expansion">Lord of Destruction</span>'
+  if (!root || !status) return
   const embers = Object.assign(doc.createElement('div'), { className: 'd2-loading__embers', ariaHidden: 'true' })
   embers.innerHTML = Array.from({ length: EMBERS }, (_, i) => `<span class="d2-loading__ember" style="${emberStyle(i)}"></span>`).join('')
   const tip = Object.assign(doc.createElement('p'), { className: 'd2-loading__tip' })
