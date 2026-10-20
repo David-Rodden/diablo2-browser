@@ -40,8 +40,8 @@ import { XpGainFeed, XpRateTracker } from './xp-bar.ts'
 import type { AutomapHudFootprint } from './minimap.ts'
 import { onlineItemDataToUiInventoryItem } from '../../common/items/item-bridge.ts'
 import type { ItemData } from '../../netproto/index.ts'
-import { groundLabelDetails, isLootHidden, type ItemInfoConfig } from './ground-item-info.ts'
-import { upgradeSuffix } from './upgrade-marker.ts'
+import { groundItemBadges, isLootHidden, type ItemInfoConfig } from './ground-item-info.ts'
+import { badgesWidth, type ItemBadge } from './item-badges.ts'
 import { D2_EXPERIENCE_TABLE_99 } from '../../common/skills/formulas.ts'
 import { CharacterSheetPanel, type BaseStatKey } from './character-sheet.ts'
 import { SkillTreePanel } from './skill-tree-panel.ts'
@@ -1911,14 +1911,14 @@ export class HudManager {
     return this.groundUiItems.get(data) ?? this.groundUiItems.set(data, onlineItemDataToUiInventoryItem(data)).get(data)!
   }
 
-  groundUpgradeVerdict(unitId: number): UpgradeVerdict | null {
-    const data = this.upgradeHints ? this.resolveGroundItem?.(unitId) : undefined
-    return data ? this.upgradeVerdictFor(this.groundUiItem(data)) : null
+  groundLabelBadges(unitId: number): readonly ItemBadge[] {
+    const data = this.resolveGroundItem?.(unitId)
+    const verdict = data ? this.upgradeVerdictFor(this.groundUiItem(data)) : null
+    return [...(verdict ? [{ kind: 'upgrade', verdict } as const] : []), ...(data && this.itemInfo?.labelDetails ? groundItemBadges(data) : [])]
   }
 
-  groundLabelSuffix(unitId: number, isEn: boolean): string {
-    const data = this.itemInfo?.labelDetails ? this.resolveGroundItem?.(unitId) : undefined
-    return (data ? groundLabelDetails(data, isEn) : '') + upgradeSuffix(this.groundUpgradeVerdict(unitId))
+  groundLabelBadgesWidth(unitId: number): number {
+    return badgesWidth(this.groundLabelBadges(unitId), this.font)
   }
 
   hidesGroundItem(unitId: number): boolean {

@@ -11,13 +11,13 @@ export const itemInfoPlugin: D2WebPlugin = {
   id: 'item-info',
   name: { zh: '物品信息与过滤', en: 'Item Info & Loot Filter' },
   description: {
-    zh: '非 1.13c 增强：在物品提示中显示物品等级；地面物品名称后显示凹槽数、无形和物品等级；可让地面物品名称常显（无需按住 Alt）；拾取过滤可隐藏垃圾物品的名称（鼠标悬停时仍会显示）。',
-    en: "Non-1.13c enhancement: shows item level in tooltips, adds sockets, ethereal and item level to ground labels, can keep ground labels up without holding Alt, and a loot filter hides the labels of junk (they still show when you hover them).",
+    zh: '地面物品名称旁显示小图标：凹槽、无形和物品等级。可让名称常显，并用拾取过滤隐藏垃圾。',
+    en: 'Adds small icons to ground labels for sockets, ethereal and item level, shows item level in tooltips, can keep labels up without Alt, and a loot filter hides junk.',
   },
   defaultEnabled: true,
   settings: [
     { kind: 'boolean', key: 'itemLevel', label: { zh: '物品提示显示物品等级', en: 'Item level in tooltips' }, default: true },
-    { kind: 'boolean', key: 'labelDetails', label: { zh: '地面名称显示凹槽 / 无形 / 等级', en: 'Sockets, ethereal and item level on ground labels' }, default: true },
+    { kind: 'boolean', key: 'labelDetails', label: { zh: '地面名称显示图标', en: 'Icons on ground labels' }, default: true },
     { kind: 'boolean', key: 'alwaysShow', label: { zh: '地面物品名称常显（无需 Alt）', en: 'Always show ground labels (no Alt)' }, default: false },
     { kind: 'select', key: 'lootFilter', label: { zh: '拾取过滤', en: 'Loot filter' }, default: 'off', options: Object.entries(LOOT_FILTERS).map(([value, { option }]) => ({ value, label: option })) },
   ],

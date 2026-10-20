@@ -1,5 +1,5 @@
 import type { WorldPanelsHud } from '../world-panels.ts'
-import { drawUpgradeCrosses, upgradeSuffix } from '../upgrade-marker.ts'
+import { drawUpgradeMarks, upgradeSuffix } from '../item-badges.ts'
 import { D2FontRenderer, type D2ColorCode } from '../font.ts'
 import { getEffectiveItemReqClass, isUiItemUnidentified, type UiInventoryItem } from '../inventory.ts'
 import type { WeaponDamageInfo } from '../../../common/items/inventory-model.ts'
@@ -1546,7 +1546,7 @@ export function drawItemTooltipImpl(
       align: 'center',
     })
   })
-  drawUpgradeCrosses(ctx, font, lines[0]!.text, upgrade, bx + Math.round(boxW / 2), by + padY + 12)
+  drawUpgradeMarks(ctx, font, lines[0]!.text, upgrade, bx + Math.round(boxW / 2), by + padY + 12)
 }
 /**
  * Draw the authentic Diablo II v1.13c In-Game Escape Menu (`D2Client.dll` `gmenu.cpp` `0x6fb15230..0x6fb15555`

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { D2FontRenderer } from '../../src/client/ui/font.ts'
-import { upgradeSuffix } from '../../src/client/ui/upgrade-marker.ts'
+import { badgesWidth, drawBadges, upgradeSuffix } from '../../src/client/ui/item-badges.ts'
 import { WorldPanelsHud } from '../../src/client/ui/world-panels.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import type { UpgradeVerdict } from '../../src/common/items/item-comparison.ts'
@@ -26,15 +26,25 @@ const tooltipFor = (verdict: UpgradeVerdict | null) => {
   return { header: texts[0], strokes: strokes() }
 }
 
-describe('upgrade markers', () => {
-  it('reserves room after the name for one or two crosses and spells the unsure mark', () => {
-    expect([upgradeSuffix('better'), upgradeSuffix('much-better'), upgradeSuffix('unsure'), upgradeSuffix(null)]).toEqual(['  ', '   ', ' ÿc;?', ''])
+describe('item badges', () => {
+  it('reserves room after the tooltip title for one or two arrows', () => {
+    expect([upgradeSuffix('better'), upgradeSuffix('much-better'), upgradeSuffix('unsure'), upgradeSuffix(null)]).toEqual(['  ', '   ', '  ', ''])
   })
 
-  it('draws crosses after the tooltip title only for upgrades', () => {
+  it('draws arrows after the tooltip title only for upgrades', () => {
     expect(tooltipFor('much-better').strokes).toBe(4)
     expect(tooltipFor('better').strokes).toBe(2)
     expect(tooltipFor(null)).toMatchObject({ header: 'Cap', strokes: 0 })
+  })
+
+  it('lays badges out left to right with a gap before each', () => {
+    const font = new D2FontRenderer()
+    const badges = [{ kind: 'upgrade', verdict: 'much-better' }, { kind: 'sockets', count: 3 }, { kind: 'ethereal' }] as const
+    expect(badgesWidth(badges, font)).toBe(4 + 6 + 17 + 6 + 19 + 6 + 8)
+    expect(badgesWidth([], font)).toBe(0)
+    const { ctx, strokes } = recordingCtx()
+    drawBadges(ctx, font, badges, 0, 10)
+    expect(strokes()).toBe(4 + 3 + 1)
   })
 
   it('marks an unidentified item you could wear as unsure instead of hiding it', () => {

@@ -28,7 +28,7 @@ import { drawXpBar, drawXpGains } from './xp-bar.ts'
 import type { AutomapHudFootprint } from './minimap.ts'
 import { drawAutoCombatBadge } from './auto-combat-badge.ts'
 import { drawPotionShortageBadge } from './potion-shortage-badge.ts'
-import { drawUpgradeCrosses } from './upgrade-marker.ts'
+import { badgesWidth, drawBadges } from './item-badges.ts'
 import type { GroundItemEnhancementsConfig } from '../settings/client-settings.ts'
 import {
   CHAT_OVERLAY_LINE_HEIGHT,
@@ -447,14 +447,15 @@ export function renderHudFrame(
         : 'rgba(0, 0, 0, 0.75)'
       ctx.fillRect(box.x, box.y, box.width, box.height)
       const d2Color = groundLabelHexToD2Color(box.color)
-      const textCenterX = Math.round(box.x + box.width / 2)
+      const badges = hud.groundLabelBadges(box.id)
+      const textCenterX = Math.round(box.x + (box.width - badgesWidth(badges, hud.font)) / 2)
       const textBaselineY = Math.round(box.y + box.height - 4)
       hud.font.drawText(ctx, box.text, textCenterX, textBaselineY, {
         font: 'font16',
         color: d2Color,
         align: 'center',
       })
-      drawUpgradeCrosses(ctx, hud.font, box.text, hud.groundUpgradeVerdict(box.id), textCenterX, textBaselineY)
+      drawBadges(ctx, hud.font, badges, textCenterX + hud.font.measureText(box.text, 'font16') / 2, box.y + box.height / 2)
     }
     ctx.restore()
   }

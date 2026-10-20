@@ -2841,10 +2841,9 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
                 u.goldAmount,
               )
             : undefined
-        const labelText =
-          (isEn
-            ? (u.name || meta?.labelEn || rawCode || `Item #${u.unitId}`)
-            : (u.nameZh || meta?.labelZh || u.name || meta?.labelEn || rawCode || `Item #${u.unitId}`)) + hudManager.groundLabelSuffix(u.unitId, isEn)
+        const labelText = isEn
+          ? (u.name || meta?.labelEn || rawCode || `Item #${u.unitId}`)
+          : (u.nameZh || meta?.labelZh || u.name || meta?.labelEn || rawCode || `Item #${u.unitId}`)
         const color =
           u.itemColor ||
           meta?.color ||
@@ -2853,7 +2852,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
             : lootBeamQuality === 'set'
               ? '#00fc00'
               : '#ffffff')
-        const measuredW = Math.max(40, hudManager.font.measureText(labelText, 'font16') + 14)
+        const measuredW = Math.max(40, hudManager.font.measureText(labelText, 'font16') + 14) + hudManager.groundLabelBadgesWidth(u.unitId)
         labelInputs.push({
           id: u.unitId,
           text: labelText,
