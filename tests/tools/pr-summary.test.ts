@@ -12,10 +12,9 @@ describe('pr summary', () => {
     ])
   })
 
-  it('renders the overview, commits, totals and the upstream files it touches', () => {
-    const body = renderSummary({ overview: 'Guide follows the quest log.', commits: ['Path Guide stages (abc1234)'], files, upstreamFiles: new Set(['src/client/main.ts']) })
+  it('renders the overview, totals and the upstream files it touches', () => {
+    const body = renderSummary({ overview: 'Guide follows the quest log.', files, upstreamFiles: new Set(['src/client/main.ts']) })
     expect(body).toContain('Guide follows the quest log.')
-    expect(body).toContain('- Path Guide stages (abc1234)')
     expect(body).toContain('**Files** · 4 changed · +17 −3')
     expect(body).toContain('**Upstream files touched:** `src/client/main.ts`')
     expect(body.endsWith(SUMMARY_FOOTER)).toBe(true)
