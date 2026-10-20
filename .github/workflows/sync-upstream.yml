@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -37,7 +38,8 @@ jobs:
           if $clean; then
             branch="sync/$(git rev-parse --short upstream)"
             git push origin "HEAD:refs/heads/$branch"
-            gh pr create --base main --head "$branch" --title "$title" --body "Merges cleanly."
+            gh pr create --base main --head "$branch" --title "$title" --body "Merges cleanly. CI runs on this branch before you merge."
+            gh workflow run ci.yml --ref "$branch"
           else
             gh pr create --base main --head upstream --title "$title (conflicts)" --body "Run \`npm run sync\` locally to resolve." || true
           fi
