@@ -1,6 +1,6 @@
 # Mods
 
-These are the extras this fork adds on top of upstream. Each one can be turned on or off from the Plugins button in the toolbar, and your choices are saved in the browser.
+These are the extras this project adds to the base game. Each one can be turned on or off from the Plugins button in the toolbar, and your choices are saved in the browser.
 
 | Mod | Default | What it does |
 |---|---|---|
