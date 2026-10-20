@@ -1,8 +1,6 @@
 # diablo2-browser
 
-Diablo II: Lord of Destruction (1.13c) in your browser. It connects to real PvPGN + D2GS servers, so you play the actual game online, not a remake.
-
-This is a fork of [troytt/diablo2-web](https://github.com/troytt/diablo2-web) with a few extra quality-of-life mods. It follows his snapshots closely.
+Diablo II: Lord of Destruction (1.13c) in your browser. It connects to real PvPGN + D2GS servers, so you play the actual game online, not a remake. On top of the base game it adds a set of optional quality-of-life mods.
 
 ## Getting started
 
@@ -26,7 +24,7 @@ The dev server connects to a public test server by default. To play on your own 
 npm run sync
 ```
 
-This pulls in the latest upstream snapshot and merges it. After a sync, re-run `npm run bake -- all` so the assets match the new code.
+This pulls in the latest snapshot of the upstream engine and merges it. After a sync, re-run `npm run bake -- all` so the assets match the new code.
 
 ## Mods
 
@@ -34,6 +32,6 @@ All mods can be switched off from the Plugins button in the toolbar. See [MODS.m
 
 ## Credits
 
-The port itself is [troytt](https://github.com/troytt)'s work. It builds on [D2MOO](https://github.com/ThePhrozenKeep/D2MOO) and [StormLib](https://github.com/ladislav-zezula/StormLib).
+The engine builds on [diablo2-web](https://github.com/troytt/diablo2-web), [D2MOO](https://github.com/ThePhrozenKeep/D2MOO) and [StormLib](https://github.com/ladislav-zezula/StormLib).
 
-MIT licensed, the same as upstream (see [LICENSE](LICENSE)). Diablo II is a trademark of Blizzard Entertainment. This project is not affiliated with Blizzard.
+MIT licensed (see [LICENSE](LICENSE)). Diablo II is a trademark of Blizzard Entertainment. This project is not affiliated with Blizzard.
