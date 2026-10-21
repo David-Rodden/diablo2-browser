@@ -11,7 +11,6 @@ import {
   isNpcIntroMessageId,
   resolveNpcIntroMsgIdByTblKey,
 } from '../../common/data/canonical-npc-dialog-table.ts'
-import { imbueUiInventoryItem113c } from '../../common/items/item-bridge.ts'
 import {
   getTownNpcDescriptorByHcIdx,
   NPC_CANONICAL_INTRO_KEYS,
@@ -615,12 +614,6 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
     })
     return
   }
-  const wasImbue =
-    model.world.npcInteraction.window === 'imbue' ||
-    model.world.npcInteraction.activeWindow === 'imbue' ||
-    model.hudManager?.leftPanel === 'imbue' ||
-    (model.hudManager?.worldPanels as any)?.activePanel === 'imbue'
-  const slotUiItem = (model.hudManager?.worldPanels as any)?.questRewardItem ?? null
   model.pendingArtisanConfirmNpcId = npcId > 0 ? npcId : null
   if (model.hudManager) {
     ;(model.hudManager.worldPanels as any).questRewardItem = null
@@ -648,23 +641,7 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
     npcId: npcId >>> 0,
     complement: itemId >>> 0,
   })
-  if (wasImbue && model.world.containers.cursor?.quality !== 6) {
-    model.world.executeCharsiImbue(itemId, npcId)
-  }
-  if (model.hudManager) {
-    model.syncFromWorld()
-    if (wasImbue && slotUiItem && model.hudManager.inventory.cursorItem?.quality !== 'rare') {
-      try {
-        const playerLevel = Math.max(
-          1,
-          model.world.self.level || model.world.self.stats.get(12) || 8,
-        )
-        model.hudManager.inventory.cursorItem = imbueUiInventoryItem113c(slotUiItem, playerLevel)
-      } catch {
-        // Keep existing cursorItem if ineligible
-      }
-    }
-  }
+  if (model.hudManager) model.syncFromWorld()
 }
 
 export function closeActiveNpcPanelImpl(model: any): void {

@@ -89,7 +89,8 @@ import { MapService } from './map/map-service.ts'
 import { createMapServiceAreaLevelSource } from './map/map-service-area-source.ts'
 import type { D2WebPlugin, PluginQuickCastPort } from './plugin-host/api.ts'
 import { PluginHost } from './plugin-host/plugin-host.ts'
-import { PluginMenu } from './plugin-host/plugin-menu.ts'
+import { ModMenu } from './plugin-host/mod-menu.ts'
+import type { MenuLayout } from './plugin-host/mod-menu-text.ts'
 import './theme/index.css'
 import { decorateLoadingScreen } from './ui/loading-screen.ts'
 import { startPageTitle } from './ui/page-title.ts'
@@ -182,7 +183,7 @@ export interface PlayAppController {
   readonly settingsStore: SettingsStore
   readonly session: OnlineSession
   readonly plugins: PluginHost
-  readonly pluginMenu: PluginMenu
+  readonly pluginMenu: ModMenu
   readonly toolbar: Toolbar
   readonly hudManager: HudManager
   readonly hudModel: HudModel
@@ -221,6 +222,7 @@ declare global {
 
 export async function startPlayApp(options?: {
   readonly plugins?: readonly D2WebPlugin[]
+  readonly menuLayout?: MenuLayout
 }): Promise<PlayAppController> {
   // #954 re-boot guard: dev HMR re-execution of the play.html module (and any
   // future in-page re-login flow) can call `startPlayApp` again in the SAME JS
@@ -288,7 +290,7 @@ export async function startPlayApp(options?: {
   setLang(initialSettings.lang)
 
   let sessionRef: OnlineSession | null = null
-  let pluginMenuRef: PluginMenu | null = null
+  let pluginMenuRef: ModMenu | null = null
   let gestureReceivedBeforeSession = false
 
   const unlockAndWarmUiAudio = (): void => {
@@ -674,22 +676,28 @@ export async function startPlayApp(options?: {
     stashDepositAll: togglePortFor(hudManager.worldPanels, 'stashDepositAllEnabled'),
     xpBar: togglePortFor(hudManager, 'showXpBar'),
     autoGoldPickup: togglePortFor(session.commandMapper.assists, 'autoGoldPickup'),
+    beltRefill: togglePortFor(session.commandMapper.assists, 'beltRefill'),
     upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
+    lowLifeWarning: togglePortFor(hudManager, 'lowLifeWarning'),
+    notify: { show: (toast) => hudManager.toasts.push(toast, performance.now()) },
     itemInfo: { getConfig: () => hudManager.itemInfo, setConfig: (config) => hudManager.setItemInfo(config) },
     pathGuide: {
       getMode: () => (guide.enabled ? guide.mode : null),
       setMode: (mode) => void Object.assign(guide, mode ? { enabled: true, mode } : { enabled: false }),
     },
     autoCombat: { getKey: () => session.commandMapper.assists.autoCombatKey, setKey: (key) => void (session.commandMapper.assists.autoCombatKey = key) },
+    townPortal: { getKey: () => session.commandMapper.assists.townPortalKey, setKey: (key) => void (session.commandMapper.assists.townPortalKey = key) },
+    autoLoot: { getRules: () => session.commandMapper.assists.autoLootRules, setRules: (rules) => void (session.commandMapper.assists.autoLootRules = rules) },
     autoPotion: {
       getThresholds: () => session.commandMapper.assists.autoPotionThresholds,
       setThresholds: (thresholds) => void (session.commandMapper.assists.autoPotionThresholds = thresholds),
     },
   })
-  const pluginMenu = new PluginMenu({
+  const pluginMenu = new ModMenu({
     host: plugins,
     toolbar,
+    layout: options?.menuLayout,
   })
   pluginMenuRef = pluginMenu
 

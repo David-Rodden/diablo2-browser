@@ -19,7 +19,6 @@ import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { calculateManaCost } from '../../common/skills/skill-calc-engine.ts'
 import { getSkillName } from '../../common/skills/skills-meta.ts'
 import { getEmbeddedDropTables } from '../../common/items/embedded-drop-tables.ts'
-import { imbueUiInventoryItem113c } from '../../common/items/item-bridge.ts'
 import {
   type EquipSlotId,
   type UiInventoryItem,
@@ -1480,13 +1479,7 @@ export function handleHudMouseDown(
                     | ((itemId: number, npcId?: number) => void)
                     | undefined
                 )?.(itemId, npcId)
-              } else if (dockKind === 'imbue' && priorSlotItem) {
-                const playerLevel = Math.max(
-                  1,
-                  hud.charSheet.attrs.level || hud.inventory.playerContext.level || 8,
-                )
-                hud.inventory.cursorItem = imbueUiInventoryItem113c(priorSlotItem, playerLevel)
-              } else if ((dockKind === 'add_sockets' || dockKind === 'personalize') && priorSlotItem) {
+              } else if ((dockKind === 'imbue' || dockKind === 'add_sockets' || dockKind === 'personalize') && priorSlotItem) {
                 hud.inventory.cursorItem = priorSlotItem
               }
               hud.leftPanel = 'none'

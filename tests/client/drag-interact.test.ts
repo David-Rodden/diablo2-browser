@@ -36,7 +36,15 @@ function createSetup(dragInteractMode: boolean, areaId = 2) {
   const spawnItem = (x: number, y: number) =>
     world.apply({ type: 'UnitAssign', unit: { unitType: 4, id: ITEM_ID, classId: 10, name: 'Gold', x, y } })
   const targets = (id: number) => sent.filter((c) => [`"id":${id}`, `"itemId":${id}`].some((needle) => JSON.stringify(c).includes(needle)))
-  return { mapper, sent, pressOnGroundThenDragTo, spawnMonster, spawnItem, targets }
+  const pressOn = (subX: number, subY: number, nowMs: number) => {
+    const at = camera.subtileToScreen(subX, subY)
+    mapper.handlePointerDown(at.x, at.y, 0, nowMs)
+  }
+  const dragTo = (subX: number, subY: number, nowMs: number) => {
+    const at = camera.subtileToScreen(subX, subY)
+    mapper.handlePointerMove(at.x, at.y, nowMs)
+  }
+  return { mapper, sent, pressOn, dragTo, pressOnGroundThenDragTo, spawnMonster, spawnItem, targets }
 }
 
 describe('drag-interact mode', () => {
@@ -75,5 +83,28 @@ describe('drag-interact mode', () => {
     s.spawnMonster(148, 97, 100)
     s.pressOnGroundThenDragTo(97, 100, 1000)
     expect(s.targets(MONSTER_ID)).toEqual([])
+  })
+
+  it.each([true, false])('keeps talking to a town NPC clicked from nearby while the button is held (drag mode %s)', (drag) => {
+    const s = createSetup(drag, 1)
+    s.spawnMonster(148, 101, 100)
+    s.pressOn(101, 100, 1000)
+    s.mapper.tick(1040)
+    s.dragTo(100, 94, 1080)
+    s.mapper.tick(1120)
+    s.mapper.tick(1160)
+    expect(s.sent.map((c) => c.type)).toContain('NpcInit')
+    expect(s.sent.filter((c) => c.type === 'Move')).toEqual([])
+  })
+
+  it.each([true, false])('still walks to a far town NPC clicked once and held (drag mode %s)', (drag) => {
+    const s = createSetup(drag, 1)
+    s.spawnMonster(148, 110, 100)
+    s.pressOn(110, 100, 1000)
+    s.mapper.tick(1040)
+    s.dragTo(100, 94, 1080)
+    s.mapper.tick(1120)
+    expect(s.sent.filter((c) => c.type === 'Move')).toEqual([])
+    expect(s.sent.map((c) => c.type)).toContain('MoveToUnit')
   })
 })

@@ -476,6 +476,8 @@ function normalizeUnitsToLocalSubTiles(
       y: u.y - shiftY,
       ...(u.targetX !== undefined ? { targetX: u.targetX - shiftX } : {}),
       ...(u.targetY !== undefined ? { targetY: u.targetY - shiftY } : {}),
+      ...(u.lightX !== undefined ? { lightX: u.lightX - shiftX } : {}),
+      ...(u.lightY !== undefined ? { lightY: u.lightY - shiftY } : {}),
     })
   }
   return result

@@ -15,6 +15,10 @@ import { dragInteractPlugin } from '../../plugins/drag-interact/index.ts'
 import { stashDepositAllPlugin } from '../../plugins/stash-deposit-all/index.ts'
 import { experienceBarPlugin } from '../../plugins/experience-bar/index.ts'
 import { autoGoldPickupPlugin } from '../../plugins/auto-gold-pickup/index.ts'
+import { beltRefillPlugin } from '../../plugins/belt-refill/index.ts'
+import type { AutoLootRules } from '../../src/client/plugin-host/api.ts'
+import { lowLifeWarningPlugin } from '../../plugins/low-life-warning/index.ts'
+import { townPortalKeyPlugin } from '../../plugins/town-portal-key/index.ts'
 import { autoCombatPlugin } from '../../plugins/auto-combat/index.ts'
 import { autoPotionPlugin } from '../../plugins/auto-potion/index.ts'
 import { upgradeHintsPlugin } from '../../plugins/upgrade-hints/index.ts'
@@ -51,9 +55,10 @@ describe.each([
   { plugin: dragInteractPlugin, portName: 'dragInteract', defaultOn: true },
   { plugin: stashDepositAllPlugin, portName: 'stashDepositAll', defaultOn: true },
   { plugin: experienceBarPlugin, portName: 'xpBar', defaultOn: true },
-  { plugin: autoGoldPickupPlugin, portName: 'autoGoldPickup', defaultOn: false },
+  { plugin: beltRefillPlugin, portName: 'beltRefill', defaultOn: false },
   { plugin: upgradeHintsPlugin, portName: 'upgradeHints', defaultOn: true },
   { plugin: monsterResistsPlugin, portName: 'monsterResists', defaultOn: true },
+  { plugin: lowLifeWarningPlugin, portName: 'lowLifeWarning', defaultOn: true },
 ])('$plugin.id toggle plugin', ({ plugin, portName, defaultOn }) => {
   const createToggleHost = (port: PluginTogglePort | null) => createHost(plugin, { [portName]: port })
 
@@ -140,11 +145,13 @@ describe('item-info plugin', () => {
 })
 
 describe('automation plugins', () => {
-  it.each([autoCombatPlugin, autoPotionPlugin, autoGoldPickupPlugin])('$id starts off and stays on in the same browser once switched on', async (plugin) => {
+  it.each([autoCombatPlugin, autoPotionPlugin, autoGoldPickupPlugin, beltRefillPlugin])('$id starts off and stays on in the same browser once switched on', async (plugin) => {
     const ports: Partial<PluginHostOptions> = {
       autoCombat: { getKey: () => null, setKey() {} },
       autoPotion: { getThresholds: () => null, setThresholds() {} },
       autoGoldPickup: portStub(),
+      autoLoot: { getRules: () => null, setRules() {} },
+      beltRefill: portStub(),
     }
     const storage = memoryStorage()
     const first = createHost(plugin, ports, storage)
@@ -157,5 +164,36 @@ describe('automation plugins', () => {
     expect(reloaded.isEnabled(plugin.id)).toBe(true)
     await reloaded.destroy()
     expect(createHost(plugin, ports).isEnabled(plugin.id)).toBe(false)
+  })
+})
+
+describe('auto pickup plugin', () => {
+  it('picks up gold and the chosen loot kinds, and stops everything on teardown', async () => {
+    const gold = portStub()
+    const loot = { rules: null as AutoLootRules | null, getRules: () => loot.rules, setRules: (rules: AutoLootRules | null) => void (loot.rules = rules) }
+    const host = await startEnabled(createHost(autoGoldPickupPlugin, { autoGoldPickup: gold, autoLoot: loot }), 'auto-gold-pickup')
+    expect([gold.enabled, loot.rules]).toEqual([true, { runes: true, uniques: true, sets: true, charms: true, jewels: true, gems: false, rares: false }])
+    host.setSetting('auto-gold-pickup', 'gold', false)
+    host.setSetting('auto-gold-pickup', 'rares', true)
+    expect([gold.enabled, loot.rules?.rares]).toEqual([false, true])
+    expect(host.getStatus('auto-gold-pickup').text.en).toBe('Picking up runes, unique items, set items, charms, jewels, rare items')
+    await host.setEnabled('auto-gold-pickup', false)
+    expect([gold.enabled, loot.rules]).toEqual([false, null])
+    await host.destroy()
+  })
+})
+
+describe('town portal key plugin', () => {
+  it('is on by default, binds G and frees the key on teardown', async () => {
+    const port = { key: null as string | null, getKey: () => port.key, setKey: (key: string | null) => void (port.key = key) }
+    const host = createHost(townPortalKeyPlugin, { townPortal: port })
+    await host.start()
+    expect([BUILTIN_PLUGINS.includes(townPortalKeyPlugin), host.isEnabled(townPortalKeyPlugin.id), port.key]).toEqual([true, true, 'G'])
+    expect(host.getStatus(townPortalKeyPlugin.id).text.en).toBe('Press G for a portal')
+    host.setSetting(townPortalKeyPlugin.id, 'key', 'F')
+    expect(port.key).toBe('F')
+    await host.setEnabled(townPortalKeyPlugin.id, false)
+    expect(port.key).toBeNull()
+    await host.destroy()
   })
 })

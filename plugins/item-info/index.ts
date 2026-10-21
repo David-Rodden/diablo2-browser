@@ -12,7 +12,7 @@ export const itemInfoPlugin: D2WebPlugin = {
   name: { zh: '物品信息与过滤', en: 'Item Info & Loot Filter' },
   description: {
     zh: '地面物品名称旁显示小图标：凹槽、无形和物品等级。可让名称常显，并用拾取过滤隐藏垃圾。',
-    en: 'Adds small icons to ground labels for sockets, ethereal and item level, shows item level in tooltips, can keep labels up without Alt, and a loot filter hides junk.',
+    en: 'Ground labels get small icons for sockets, ethereal and item level, and tooltips show the item level. Labels can stay up without holding Alt, and the loot filter hides junk.',
   },
   defaultEnabled: true,
   settings: [

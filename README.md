@@ -1,6 +1,11 @@
 # diablo2-browser
 
-[![CI](https://github.com/David-Rodden/diablo2-browser/actions/workflows/ci.yml/badge.svg)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/ci.yml)
+[![Checks](https://img.shields.io/github/actions/workflow/status/David-Rodden/diablo2-browser/ci.yml?branch=main&label=checks&style=flat-square&logo=githubactions&logoColor=white)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/ci.yml)
+[![Mod tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDavid-Rodden%2Fdiablo2-browser%2Fbadges%2Ftests.json&style=flat-square&logo=vitest&logoColor=white)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/ci.yml)
+[![Upstream](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDavid-Rodden%2Fdiablo2-browser%2Fbadges%2Fupstream.json&style=flat-square&logo=git&logoColor=white)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/sync-upstream.yml)
+[![Diablo II](https://img.shields.io/badge/Diablo%20II-1.13c%20LoD-8b1a1a?style=flat-square&logo=battledotnet&logoColor=white)](#getting-started)
+[![Last commit](https://img.shields.io/github/last-commit/David-Rodden/diablo2-browser/main?style=flat-square&label=last%20commit)](https://github.com/David-Rodden/diablo2-browser/commits/main)
+[![License](https://img.shields.io/github/license/David-Rodden/diablo2-browser?style=flat-square)](LICENSE)
 
 Diablo II: Lord of Destruction (1.13c) in your browser. It connects to real PvPGN + D2GS servers, so you play the actual game online, not a remake. On top of the base game it adds a set of optional quality-of-life mods.
 
@@ -45,13 +50,13 @@ All mods can be switched off from the Plugins button in the toolbar. See [MODS.m
 
 **Item Info** puts small icons on ground labels: green arrows for upgrades, item level, sockets and ethereal.
 
-![Loot labels with upgrade arrows and item level badges](.github/media/loot-labels.jpg)
+![Loot labels with item levels after a fight in the Blood Moor](.github/media/loot-labels.jpg)
 
 **Monster Resists** adds the monster type and its resistances under the health bar. Every plugin has its own page in the Plugins menu.
 
 <p>
   <img src=".github/media/resists.jpg" width="49%" alt="A Zombie's health bar showing Undead and its poison resistance">
-  <img src=".github/media/plugin-menu.jpg" width="49%" alt="The Plugins menu with the Path Guide settings">
+  <img src=".github/media/plugin-menu.jpg" width="49%" alt="The Plugins menu, grouped by what each plugin does">
 </p>
 
 ## Credits

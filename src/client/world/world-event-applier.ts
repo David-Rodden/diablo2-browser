@@ -25,12 +25,7 @@ import {
   formatEventPacket0x5A,
 } from '../../common/chat/chat-113c.ts'
 import { BAKED_UI_MANIFEST } from '../../common/items/baked-ui-meta.ts'
-import {
-  imbueItemData113c,
-  isEligibleForCharsiImbue113c,
-  onlineItemDataToUiInventoryItem,
-  type CharsiImbueOptions,
-} from '../../common/items/item-bridge.ts'
+import { onlineItemDataToUiInventoryItem } from '../../common/items/item-bridge.ts'
 import {
   D2COMMON_10160_PathUpdateDirection,
   D2COMMON_10212_PATH_SetMoveFlags,
@@ -127,6 +122,13 @@ function isSelfStaminaExhausted(world: ClientWorldInternal): boolean {
  * When the local player is in `PLRMODE_RUN (3)` and `STAT_STAMINA (10) == 0`, immediately
  * transitions the local player into walk mode (`PLRMODE_WALK = 2` or `PLRMODE_TWALK = 6` in town).
  */
+const PLAYER_DEATH_MODES = new Set([0, 17])
+
+function clearZeroLifeDeathInTown(world: ClientWorldInternal): void {
+  const mode = world.getUnit('player', world.selfId)?.mode
+  if (world._self.isDead && isTownLevel(world.areaId) && (mode === undefined || !PLAYER_DEATH_MODES.has(mode))) world._self.isDead = false
+}
+
 function downgradeSelfRunOnStaminaExhausted(world: ClientWorldInternal): void {
   if (!isSelfStaminaExhausted(world)) return
   const walkMode = isTownLevel(world.areaId) ? 6 : 2
@@ -279,9 +281,7 @@ export function noteOutgoingCommandImpl(
         ) {
           this._awaitingArtisanConfirmNpcId = (cmd.npcId || cur.npcId) ?? null
         }
-        if (isCharsi) {
-          this.executeCharsiImbue(cmd.complement, cmd.npcId)
-        } else if (curWin === 'add_sockets' || curWin === 'personalize' || curWin === 'orifice') {
+        if (isCharsi || curWin === 'add_sockets' || curWin === 'personalize' || curWin === 'orifice') {
           this._npcInteraction = { ...cur, window: 'none', activeWindow: 'none' }
         }
       } else if (cmd.action === 1) {
@@ -1027,15 +1027,6 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           curWin === 'personalize' ||
           this._awaitingArtisanConfirmNpcId !== null
         if (isCompletion) {
-          if (this._containers.cursor === null && (this as any)._lastOptimisticImbuedItem) {
-            this._containers.applyItemEvent(
-              0x02,
-              (this as any)._lastOptimisticImbuedItem,
-              'cursor',
-              this.selfId,
-            )
-          }
-          ;(this as any)._lastOptimisticImbuedItem = null
           this._awaitingArtisanConfirmNpcId = null
           this._npcInteraction = {
             ...this._npcInteraction,
@@ -1045,7 +1036,6 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             activeWindow: 'none',
           }
         } else {
-          ;(this as any)._lastOptimisticImbuedItem = null
           this._npcInteraction = {
             ...this._npcInteraction,
             npcId: ev.unitId > 0 ? ev.unitId : this._npcInteraction.npcId,
@@ -2277,6 +2267,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       this.invalidatePlayerLightCache()
       if (!ev.unit || (unitTypeFromId(ev.unit.unitType) === 'player' && (ev.unit.id === this.selfId || this.selfId === 0))) {
         this._self.applyStat(ev.stat, ev.value, ev.param ?? 0)
+        clearZeroLifeDeathInTown(this)
         this._isSelfDead = this._self.isDead
         if (this.selfId !== 0) {
           const selfUnit = this._units.get(makeUnitKey('player', this.selfId))
@@ -2375,6 +2366,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         ev.lifeRegen,
         ev.manaRegen,
       )
+      clearZeroLifeDeathInTown(this)
       if (ev.life > 0) {
         this._isSelfDead = false
         this._self.isDead = false
@@ -2679,7 +2671,6 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       let effectiveContainer = ev.container ?? ev.item?.container ?? defaultContainer
       if (isCursorImode && effectiveAction === 0x02) {
         effectiveContainer = 'cursor'
-        ;(this as any)._lastOptimisticImbuedItem = null
       }
       if (
         effectiveAction === 0x0f &&
@@ -4557,62 +4548,4 @@ export function applyUnitModeImmediateImpl(
     this._self.mode = unit.mode
     this._self.moving = unit.mode === 2 || unit.mode === 3 || unit.mode === 6
   }
-}
-
-export function executeCharsiImbueImpl(
-  this: ClientWorldInternal,
-  itemId?: number,
-  _npcId?: number,
-  options?: CharsiImbueOptions,
-): ItemData | null {
-  const q3 = this._quests[3] ?? this._gameQuestLog[3] ?? 0
-  if ((q3 & 0x0001) !== 0 && (q3 & 0x0002) === 0) {
-    return null
-  }
-  const isImbueWindowOpen =
-    this._npcInteraction.window === 'imbue' ||
-    this._npcInteraction.activeWindow === 'imbue' ||
-    this._awaitingArtisanConfirmNpcId !== null
-  if (this._hasQuestInfo && !isImbueWindowOpen && (q3 & 0x0002) === 0) {
-    return null
-  }
-
-  const targetId =
-    typeof itemId === 'number' && Number.isFinite(itemId) && itemId > 0
-      ? itemId
-      : this._containers.cursor?.id
-  const targetItem =
-    (targetId !== undefined ? this._containers.allById.get(targetId) : undefined) ??
-    (this._containers.cursor && (targetId === undefined || this._containers.cursor.id === targetId)
-      ? this._containers.cursor
-      : undefined)
-  if (!targetItem || !isEligibleForCharsiImbue113c(targetItem, options?.dropTables)) {
-    return null
-  }
-
-  const rawLvl = this._self.stats.get(12) ?? (this._self as any).level
-  const playerLevel =
-    typeof rawLvl === 'number' && Number.isFinite(rawLvl) && rawLvl > 0 ? Math.trunc(rawLvl) : 8
-
-  const imbued = imbueItemData113c(targetItem, playerLevel, options)
-  this._containers.removeItemById(targetItem.id)
-  this._containers.applyItemEvent(0x02, imbued, 'cursor', this.selfId)
-  ;(this as any)._lastOptimisticImbuedItem = imbued
-
-  const nextQ3 = ((this._quests[3] ?? 0) & ~0x0002) | 0x0001
-  this._quests[3] = nextQ3
-  if ((this._gameQuests[3] ?? 0) !== 0 || !this._hasPlayerQuests) {
-    this._gameQuests[3] = ((this._gameQuests[3] ?? 0) & ~0x0002) | 0x0001
-    this._gameQuestLog[3] = this._gameQuests[3]!
-  }
-  this._hasQuestInfo = true
-
-  this._npcInteraction = {
-    ...this._npcInteraction,
-    npcId: null,
-    infoNpcId: null,
-    window: 'none',
-    activeWindow: 'none',
-  }
-  return imbued
 }

@@ -25,7 +25,8 @@ const ARROWS: Record<UpgradeVerdict, { readonly count: number; readonly ink: rea
 }
 const SOCKET = { pitch: 7, radius: 2.5, fill: '#0c0c0c', ring: '#b4b4b4' }
 const ETHEREAL = { width: 8, fill: 'rgba(130, 190, 255, 0.4)', ring: '#a8d4ff' }
-const LEVEL = { padding: 3, height: 14, fill: 'rgba(0, 0, 0, 0.6)', frame: '#8a7448' }
+const LEVEL = { lead: 5, divider: 'rgba(200, 161, 90, 0.45)' }
+const levelText = (level: number) => `ilvl ${level}`
 const UPGRADE_SUFFIX: Record<UpgradeVerdict, string> = { 'much-better': ' '.repeat(3), better: ' '.repeat(2), unsure: ' '.repeat(2) }
 const TOOLTIP_MARK_LIFT = 5
 
@@ -67,13 +68,10 @@ const ART: { readonly [K in ItemBadge['kind']]: BadgeArt<BadgeOf<K>> } = {
     },
   },
   level: {
-    width: ({ level }, font) => font.measureText(String(level), 'font8') + LEVEL.padding * 2,
-    draw: (ctx, badge, font, x, cy) => {
-      const width = ART.level.width(badge, font)
-      const top = Math.round(cy - LEVEL.height / 2)
-      Object.assign(ctx, { fillStyle: LEVEL.fill }).fillRect(x, top, width, LEVEL.height)
-      Object.assign(ctx, { strokeStyle: LEVEL.frame, lineWidth: 1 }).strokeRect(Math.round(x) + 0.5, top + 0.5, Math.round(width) - 1, LEVEL.height - 1)
-      font.drawText(ctx, String(badge.level), x + width / 2, top + LEVEL.height - 3, { font: 'font8', color: 'white', align: 'center' })
+    width: ({ level }, font) => font.measureText(levelText(level), 'font8') + LEVEL.lead,
+    draw: (ctx, { level }, font, x, cy) => {
+      Object.assign(ctx, { fillStyle: LEVEL.divider }).fillRect(Math.round(x), Math.round(cy - 5), 1, 11)
+      font.drawText(ctx, levelText(level), x + LEVEL.lead, cy + 4, { font: 'font8', color: 'tan', shadow: true })
     },
   },
 }

@@ -25,6 +25,8 @@ import {
 import { requireTbl, type TblLang } from '../i18n/lang.ts'
 import { LineGlide } from './line-glide.ts'
 import { drawXpBar, drawXpGains } from './xp-bar.ts'
+import { drawToasts } from './toasts.ts'
+import { drawLowLifeWarning, lowLifeIntensity } from './low-life-warning.ts'
 import type { AutomapHudFootprint } from './minimap.ts'
 import { drawAutoCombatBadge } from './auto-combat-badge.ts'
 import { drawPotionShortageBadge } from './potion-shortage-badge.ts'
@@ -300,6 +302,7 @@ export function renderHudFrame(
   // 0. Automap 2D Text Overlay (Warp/Stash Font6 labels, NPC names, Top-Right Gold Font16 Level Name + Difficulty)
   ctx.translate(Math.round(offsetX * dpr), Math.round(offsetY * dpr))
   ctx.scale(uiScale * dpr, uiScale * dpr)
+  if (hud.lowLifeWarning) drawLowLifeWarning(ctx, profile.width, profile.height, lowLifeIntensity(hud.hp, hud.maxHp), nowMs)
   const automapFootprint = internal.callbacks.onRenderAutomapOverlay?.(ctx, hud.font, profile.width, profile.height) ?? null
 
   // 0b. Top-Left Mercenary Portrait & Life Bar (R3.3) + Summoned Minions + Party Mini-Portraits (R5.1)
@@ -448,14 +451,16 @@ export function renderHudFrame(
       ctx.fillRect(box.x, box.y, box.width, box.height)
       const d2Color = groundLabelHexToD2Color(box.color)
       const badges = hud.groundLabelBadges(box.id)
-      const textCenterX = Math.round(box.x + (box.width - badgesWidth(badges, hud.font)) / 2)
+      const textWidth = hud.font.renderedWidth(ctx, box.text, 'font16')
+      const textLeft = Math.round(box.x + (box.width - textWidth - badgesWidth(badges, hud.font)) / 2)
+      const textCenterX = textLeft + textWidth / 2
       const textBaselineY = Math.round(box.y + box.height - 4)
       hud.font.drawText(ctx, box.text, textCenterX, textBaselineY, {
         font: 'font16',
         color: d2Color,
         align: 'center',
       })
-      drawBadges(ctx, hud.font, badges, textCenterX + hud.font.measureText(box.text, 'font16') / 2, box.y + box.height / 2)
+      drawBadges(ctx, hud.font, badges, textLeft + textWidth, box.y + box.height / 2)
     }
     ctx.restore()
   }
@@ -706,10 +711,11 @@ export function renderHudFrame(
     hud.xpRate.record(xpState.xp, nowMs)
     hud.xpGains.record(xpState.xp, nowMs)
     if (hud.leftPanel === 'none' && hud.rightPanel === 'none' && !hud.worldPanels.escapeMenuOpen) {
-      drawXpBar(ctx, hud.font, xpState, profile.width, overlayLang, { perHour: hud.xpRate.perHour(nowMs), mouseX: hud.mouseX, mouseY: hud.mouseY, rightLimit: automapFootprint?.titleLeft ?? profile.width })
-      drawXpGains(ctx, hud.font, hud.xpGains, nowMs, profile.width - 16, automapFootprint?.bottom ?? 0)
+      const gainAnchor = drawXpBar(ctx, hud.font, xpState, profile.width, overlayLang, { perHour: hud.xpRate.perHour(nowMs), mouseX: hud.mouseX, mouseY: hud.mouseY, rightLimit: automapFootprint?.titleLeft ?? profile.width })
+      if (gainAnchor) drawXpGains(ctx, hud.font, hud.xpGains, nowMs, gainAnchor)
     }
   }
+  drawToasts(ctx, hud.font, hud.toasts, nowMs, profile.width / 2, hud.showXpBar ? 36 : 8)
 
   // 3..6. Bottom Control Panel, Globes, Belt, and Skill Hotkeys (translated by barOffsetX, barOffsetY)
   const activeCtrlPnlImg = is640

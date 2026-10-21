@@ -1,6 +1,9 @@
 import type { D2WebPlugin } from '../../src/client/plugin-host/api.ts'
 import { formatRunSummary, RunTimer } from './run-timer.ts'
 
+const HOURGLASS_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4 2.5h8M4 13.5h8M5 2.5c0 3 6 3.5 6 5.5s-6 2.5-6 5.5M11 2.5c0 3-6 3.5-6 5.5s6 2.5 6 5.5"/></svg>'
+
 export const runTimerPlugin: D2WebPlugin = {
   id: 'run-timer',
   name: { zh: '计时器', en: 'Run Timer' },
@@ -22,6 +25,7 @@ export const runTimerPlugin: D2WebPlugin = {
       id: 'timer',
       label: label(),
       tooltip,
+      iconSvg: HOURGLASS_SVG,
       onClick: () => {
         timer.reset(Date.now())
         refresh()

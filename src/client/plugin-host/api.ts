@@ -20,8 +20,10 @@ import {
 } from '../../client/scene/lighting-presets.ts'
 import type { OnlineSession } from '../session/online-session.ts'
 import type { AutoPotionThresholds } from '../input/auto-potion.ts'
+import type { AutoLootRules } from '../input/auto-loot.ts'
 import type { ItemInfoConfig, LootFilter } from '../ui/ground-item-info.ts'
 import type { GuideMode } from '../guide/route.ts'
+import type { MenuLayout } from './mod-menu-text.ts'
 import {
   DEFAULT_VIEWPORT_RESOLUTION,
   VALID_AUTOMAP_REVEAL_MODES,
@@ -224,14 +226,30 @@ export interface PluginQuickCastPort {
 
 export type PluginTogglePort = PluginQuickCastPort
 
-export interface PluginAutoCombatPort {
+export type PluginToastColor = 'white' | 'red' | 'green' | 'blue' | 'gold' | 'tan' | 'orange' | 'yellow' | 'purple'
+
+export interface PluginToast {
+  readonly title: string
+  readonly detail?: string | undefined
+  readonly color: PluginToastColor
+}
+
+export interface PluginNotifyPort {
+  show(toast: PluginToast): void
+}
+
+export interface PluginHotkeyPort {
   getKey(): string | null
   setKey(key: string | null): void
 }
 
-export type { AutoPotionThresholds, ItemInfoConfig, LootFilter }
+export type PluginAutoCombatPort = PluginHotkeyPort
+
+export type { AutoLootRules, AutoPotionThresholds, ItemInfoConfig, LootFilter }
 
 export type { GuideMode }
+
+export type { MenuLayout }
 
 export interface PluginPathGuidePort {
   getMode(): GuideMode | null
@@ -241,6 +259,11 @@ export interface PluginPathGuidePort {
 export interface PluginItemInfoPort {
   getConfig(): ItemInfoConfig | null
   setConfig(config: ItemInfoConfig | null): void
+}
+
+export interface PluginAutoLootPort {
+  getRules(): AutoLootRules | null
+  setRules(rules: AutoLootRules | null): void
 }
 
 export interface PluginAutoPotionPort {
@@ -335,12 +358,17 @@ export interface PluginContext {
   readonly stashDepositAll: PluginTogglePort
   readonly xpBar: PluginTogglePort
   readonly autoGoldPickup: PluginTogglePort
+  readonly beltRefill: PluginTogglePort
   readonly upgradeHints: PluginTogglePort
   readonly monsterResists: PluginTogglePort
+  readonly lowLifeWarning: PluginTogglePort
+  readonly notify: PluginNotifyPort
   readonly itemInfo: PluginItemInfoPort
   readonly pathGuide: PluginPathGuidePort
   readonly autoCombat: PluginAutoCombatPort
+  readonly townPortal: PluginHotkeyPort
   readonly autoPotion: PluginAutoPotionPort
+  readonly autoLoot: PluginAutoLootPort
   readonly lang: {
     get(): GameLang
     subscribe(fn: (lang: GameLang) => void): () => void
