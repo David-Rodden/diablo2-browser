@@ -3,7 +3,7 @@
  * `D2Game.dll` (`0x6fcecfe0 -> 0x6fce00c0 -> 0x6fce0947`) parity for Charsi Imbue, Larzuk Add Sockets,
  * and Anya Personalize confirmation lifecycle.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ClientWorld } from '../src/client/world/client-world.ts'
 import { HudManager } from '../src/client/ui/hud-manager.ts'
 import { HudModel } from '../src/client/ui-model/hud-model.ts'
@@ -356,5 +356,42 @@ describe('Issue #937: Larzuk Add Sockets, Charsi Imbue, and Anya Personalize con
     clickHud(hud, 138, 240)
     expect(hud.inventory.cursorItem).toMatchObject({ id: '8001', quality: 'normal' })
     expect(world.quests[3]! & 0x0002).toBe(0x0002)
+  })
+
+  const imbueWithCharsi = () => {
+    const harness = createArtisanTestHarness()
+    const { world, hud, model } = harness
+    world.apply({ type: 'UnitAssign', unit: { unitType: 'monster', id: 5154, classId: 154, x: 5104, y: 5050, lifePct: 128, mode: 1 } } as any)
+    world.quests[3] = 0x0002
+    world.containers.applyItemEvent(0x02, makeItemData({ id: 8001, code: 'ssd', quality: 2, invWidth: 1, invHeight: 3, location: 4, container: 'cursor' }), 'cursor', 1)
+    model.syncFromWorld()
+    world.noteOutgoingCommand({ type: 'NpcInit', target: { unitType: 1, id: 5154 } })
+    model.handleNpcMenuAction('imbue', 5154)
+    clickHud(hud, 167, 160)
+    clickHud(hud, 138, 240)
+    return harness
+  }
+  const lastMessage = (world: ClientWorld) => world.messageLog.at(-1)?.text
+
+  it('says so in red when Charsi refuses the item', () => {
+    const { world } = imbueWithCharsi()
+    world.apply({ type: 'OpenUi', unitId: 5154, unitType: 1, uiId: 7, extra: 0 })
+    expect(lastMessage(world)).toBe("Charsi can't imbue that item.")
+  })
+
+  it('says so when Charsi never answers, and stays quiet once she does', () => {
+    vi.useFakeTimers()
+    try {
+      const silent = imbueWithCharsi()
+      vi.advanceTimersByTime(3100)
+      expect(lastMessage(silent.world)).toBe("Charsi didn't answer. Stand next to Charsi and try again.")
+      const answered = imbueWithCharsi()
+      answered.world.apply({ type: 'CursorClear', unitType: 0, id: 1 })
+      answered.world.apply({ type: 'OpenUi', unitId: 5154, unitType: 1, uiId: 6, extra: 0 })
+      vi.advanceTimersByTime(3100)
+      expect(answered.world.messageLog.some((entry) => entry.text.includes("didn't answer"))).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
