@@ -33,7 +33,14 @@ export const lootAlertsPlugin: D2WebPlugin = {
       announced.add(item.id)
       ctx.notify.show(toast)
     })
-    const unsubscribeState = ctx.session.onStateChange((snap) => void (snap.phase !== 'ingame' && announced.clear()))
-    return { deactivate: () => [unsubscribe, unsubscribeState].forEach((off) => off()) }
+    const unsubscribeState = ctx.session.onStateChange((snap) => {
+      if (snap.phase !== 'ingame') announced.clear()
+    })
+    return {
+      deactivate: () => {
+        unsubscribe()
+        unsubscribeState()
+      },
+    }
   },
 }
