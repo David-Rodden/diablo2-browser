@@ -128,7 +128,7 @@ export interface PluginHostOptions {
 
 const TOGGLE_PORT_NAMES = ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists', 'lowLifeWarning'] as const
 type TogglePortName = (typeof TOGGLE_PORT_NAMES)[number]
-type SettingPortName = 'autoCombat' | 'townPortal' | 'autoPotion' | 'itemInfo' | 'pathGuide'
+type SettingPortName = 'autoCombat' | 'townPortal' | 'autoPotion' | 'autoLoot' | 'itemInfo' | 'pathGuide'
 type WiredPortOptions = { readonly [K in TogglePortName | SettingPortName]?: PluginContext[K] | null | undefined }
 
 export interface PluginHostOptions extends WiredPortOptions {}
@@ -185,7 +185,7 @@ export class PluginHost {
     this.toolbar = options.toolbar ?? null
     this.quickCastPort = options.quickCast ?? null
     this.notifyPort = options.notify ?? null
-    this.settingPorts = { autoCombat: options.autoCombat, townPortal: options.townPortal, autoPotion: options.autoPotion, itemInfo: options.itemInfo, pathGuide: options.pathGuide }
+    this.settingPorts = { autoCombat: options.autoCombat, townPortal: options.townPortal, autoPotion: options.autoPotion, autoLoot: options.autoLoot, itemInfo: options.itemInfo, pathGuide: options.pathGuide }
     this.togglePorts = new Map(TOGGLE_PORT_NAMES.map((name) => [name, { port: options[name] ?? null, claims: new Set<string>() }]))
     this.settingsStore = options.settingsStore ?? getGlobalSettingsStore()
     this.enforceClientDefaults = options.enforceClientDefaults ?? false
@@ -572,13 +572,14 @@ export class PluginHost {
 
   private createWiredPorts(record: InternalPluginRecord, isDisposed: () => boolean): Pick<PluginContext, TogglePortName | SettingPortName> {
     const pluginId = record.plugin.id
-    const { autoCombat, townPortal, autoPotion, itemInfo, pathGuide } = this.settingPorts
+    const { autoCombat, townPortal, autoPotion, autoLoot, itemInfo, pathGuide } = this.settingPorts
     const wired = <K extends SettingPortName>(name: K) => requireWiredPort(this.settingPorts[name], name, pluginId)
     return {
       ...(Object.fromEntries(TOGGLE_PORT_NAMES.map((name) => [name, this.createClaimedTogglePort(record, isDisposed, name)])) as Record<TogglePortName, PluginTogglePort>),
       autoCombat: { getKey: () => autoCombat?.getKey() ?? null, setKey: (key) => wired('autoCombat').setKey(key) },
       townPortal: { getKey: () => townPortal?.getKey() ?? null, setKey: (key) => wired('townPortal').setKey(key) },
       autoPotion: { getThresholds: () => autoPotion?.getThresholds() ?? null, setThresholds: (thresholds) => wired('autoPotion').setThresholds(thresholds) },
+      autoLoot: { getRules: () => autoLoot?.getRules() ?? null, setRules: (rules) => wired('autoLoot').setRules(rules) },
       itemInfo: { getConfig: () => itemInfo?.getConfig() ?? null, setConfig: (config) => wired('itemInfo').setConfig(config) },
       pathGuide: { getMode: () => pathGuide?.getMode() ?? null, setMode: (mode) => wired('pathGuide').setMode(mode) },
     }

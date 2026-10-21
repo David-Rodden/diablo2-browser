@@ -688,6 +688,7 @@ export async function startPlayApp(options?: {
     },
     autoCombat: { getKey: () => session.commandMapper.assists.autoCombatKey, setKey: (key) => void (session.commandMapper.assists.autoCombatKey = key) },
     townPortal: { getKey: () => session.commandMapper.assists.townPortalKey, setKey: (key) => void (session.commandMapper.assists.townPortalKey = key) },
+    autoLoot: { getRules: () => session.commandMapper.assists.autoLootRules, setRules: (rules) => void (session.commandMapper.assists.autoLootRules = rules) },
     autoPotion: {
       getThresholds: () => session.commandMapper.assists.autoPotionThresholds,
       setThresholds: (thresholds) => void (session.commandMapper.assists.autoPotionThresholds = thresholds),

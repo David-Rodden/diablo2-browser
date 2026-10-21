@@ -16,6 +16,7 @@ import { stashDepositAllPlugin } from '../../plugins/stash-deposit-all/index.ts'
 import { experienceBarPlugin } from '../../plugins/experience-bar/index.ts'
 import { autoGoldPickupPlugin } from '../../plugins/auto-gold-pickup/index.ts'
 import { beltRefillPlugin } from '../../plugins/belt-refill/index.ts'
+import type { AutoLootRules } from '../../src/client/plugin-host/api.ts'
 import { lowLifeWarningPlugin } from '../../plugins/low-life-warning/index.ts'
 import { townPortalKeyPlugin } from '../../plugins/town-portal-key/index.ts'
 import { autoCombatPlugin } from '../../plugins/auto-combat/index.ts'
@@ -54,7 +55,6 @@ describe.each([
   { plugin: dragInteractPlugin, portName: 'dragInteract', defaultOn: true },
   { plugin: stashDepositAllPlugin, portName: 'stashDepositAll', defaultOn: true },
   { plugin: experienceBarPlugin, portName: 'xpBar', defaultOn: true },
-  { plugin: autoGoldPickupPlugin, portName: 'autoGoldPickup', defaultOn: false },
   { plugin: beltRefillPlugin, portName: 'beltRefill', defaultOn: false },
   { plugin: upgradeHintsPlugin, portName: 'upgradeHints', defaultOn: true },
   { plugin: monsterResistsPlugin, portName: 'monsterResists', defaultOn: true },
@@ -150,6 +150,7 @@ describe('automation plugins', () => {
       autoCombat: { getKey: () => null, setKey() {} },
       autoPotion: { getThresholds: () => null, setThresholds() {} },
       autoGoldPickup: portStub(),
+      autoLoot: { getRules: () => null, setRules() {} },
       beltRefill: portStub(),
     }
     const storage = memoryStorage()
@@ -163,6 +164,22 @@ describe('automation plugins', () => {
     expect(reloaded.isEnabled(plugin.id)).toBe(true)
     await reloaded.destroy()
     expect(createHost(plugin, ports).isEnabled(plugin.id)).toBe(false)
+  })
+})
+
+describe('auto pickup plugin', () => {
+  it('picks up gold and the chosen loot kinds, and stops everything on teardown', async () => {
+    const gold = portStub()
+    const loot = { rules: null as AutoLootRules | null, getRules: () => loot.rules, setRules: (rules: AutoLootRules | null) => void (loot.rules = rules) }
+    const host = await startEnabled(createHost(autoGoldPickupPlugin, { autoGoldPickup: gold, autoLoot: loot }), 'auto-gold-pickup')
+    expect([gold.enabled, loot.rules]).toEqual([true, { runes: true, uniques: true, sets: true, charms: true, jewels: true, gems: false, rares: false }])
+    host.setSetting('auto-gold-pickup', 'gold', false)
+    host.setSetting('auto-gold-pickup', 'rares', true)
+    expect([gold.enabled, loot.rules?.rares]).toEqual([false, true])
+    expect(host.getStatus('auto-gold-pickup').text.en).toBe('Picking up runes, unique items, set items, charms, jewels, rare items')
+    await host.setEnabled('auto-gold-pickup', false)
+    expect([gold.enabled, loot.rules]).toEqual([false, null])
+    await host.destroy()
   })
 })
 

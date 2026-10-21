@@ -9,7 +9,7 @@ These are the extras this project adds to the base game. Each one can be turned 
 | Belt Refill | Off | Moves potions from your inventory into the belt. A column you drink empty gets the same kind back. |
 | Low-Life Warning | On | The screen edges glow red when your life drops below 40%, pulsing faster the lower it gets. |
 | Town Portal Key | On | Press G (you can pick another key) to open a Town Portal from your tome, or from a scroll if the tome is empty. |
-| Auto Gold Pickup | Off | Picks up gold near you, walking around walls and opening doors to reach it. |
+| Auto Pickup | Off | Picks up gold and the loot you choose near you: runes, uniques, sets, charms and jewels by default, plus flawless gems and rares if you want them. It walks around walls and opens doors to reach it, and skips anything your inventory has no room for. |
 | Hold-and-Drag Interact | On | Hold the mouse button and drag over items or monsters to pick up or attack. |
 | Stash: Deposit All | On | Adds a button to the stash that moves your whole inventory in. |
 | Experience Bar | On | An XP bar at the top of the screen. It shows experience per hour, time to the next level, and a "+xp" number each time you gain experience. |
