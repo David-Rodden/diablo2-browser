@@ -448,14 +448,16 @@ export function renderHudFrame(
       ctx.fillRect(box.x, box.y, box.width, box.height)
       const d2Color = groundLabelHexToD2Color(box.color)
       const badges = hud.groundLabelBadges(box.id)
-      const textCenterX = Math.round(box.x + (box.width - badgesWidth(badges, hud.font)) / 2)
+      const textWidth = hud.font.renderedWidth(ctx, box.text, 'font16')
+      const textLeft = Math.round(box.x + (box.width - textWidth - badgesWidth(badges, hud.font)) / 2)
+      const textCenterX = textLeft + textWidth / 2
       const textBaselineY = Math.round(box.y + box.height - 4)
       hud.font.drawText(ctx, box.text, textCenterX, textBaselineY, {
         font: 'font16',
         color: d2Color,
         align: 'center',
       })
-      drawBadges(ctx, hud.font, badges, textCenterX + hud.font.measureText(box.text, 'font16') / 2, box.y + box.height / 2)
+      drawBadges(ctx, hud.font, badges, textLeft + textWidth, box.y + box.height / 2)
     }
     ctx.restore()
   }
