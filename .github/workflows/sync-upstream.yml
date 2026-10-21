@@ -48,7 +48,7 @@ jobs:
               [ -n "$run" ] && break
             done
             if [ -n "$run" ] && gh run watch "$run" --exit-status > /dev/null; then
-              git push origin HEAD:main && echo "CI passed, merged into main"
+              git push origin HEAD:main && git push origin --delete "$branch" && echo "CI passed, merged into main"
             else
               gh pr comment "$branch" --body "CI failed, so this was left for review."
             fi
