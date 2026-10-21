@@ -16,6 +16,8 @@ import { groundItemBeamPlugin } from './ground-item-beam/index.ts'
 import { hudEnhancementsPlugin } from './hud-enhancements/index.ts'
 import { itemInfoPlugin } from './item-info/index.ts'
 import { killStatsPlugin } from './kill-stats/index.ts'
+import { lootAlertsPlugin } from './loot-alerts/index.ts'
+import { lowLifeWarningPlugin } from './low-life-warning/index.ts'
 import { monsterResistsPlugin } from './monster-resists/index.ts'
 import { nextGamePlugin } from './next-game/index.ts'
 import { pathGuidePlugin } from './path-guide/index.ts'
@@ -42,9 +44,11 @@ export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
   autoPotionPlugin,
   beltRefillPlugin,
   townPortalKeyPlugin,
+  lowLifeWarningPlugin,
   upgradeHintsPlugin,
   pathGuidePlugin,
   itemInfoPlugin,
+  lootAlertsPlugin,
   monsterResistsPlugin,
   runTimerPlugin,
 ]
@@ -55,10 +59,12 @@ export const PLUGIN_MENU_LAYOUT: MenuLayout = {
     'auto-potion': 'combat',
     'belt-refill': 'combat',
     'town-portal-key': 'combat',
+    'low-life-warning': 'combat',
     'quick-cast': 'combat',
     'drag-interact': 'combat',
     'monster-resists': 'combat',
     'item-info': 'loot',
+    'loot-alerts': 'loot',
     'upgrade-hints': 'loot',
     'ground-item-beam': 'loot',
     'auto-gold-pickup': 'loot',

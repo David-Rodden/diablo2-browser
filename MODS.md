@@ -7,12 +7,14 @@ These are the extras this project adds to the base game. Each one can be turned 
 | Auto-Fight | Off | A hotkey (E by default) turns it on and off. While it's on, you attack the nearest monster you can walk to. It ignores monsters behind walls and opens doors on the way. |
 | Auto-Potion | Off | Drinks potions when your life or mana gets low, and feeds your mercenary. It picks up potions from the ground when you're running out. You set the thresholds. |
 | Belt Refill | Off | Moves potions from your inventory into the belt. A column you drink empty gets the same kind back. |
+| Low-Life Warning | On | The screen edges glow red when your life drops below 40%, pulsing faster the lower it gets. |
 | Town Portal Key | On | Press G (you can pick another key) to open a Town Portal from your tome, or from a scroll if the tome is empty. |
 | Auto Gold Pickup | Off | Picks up gold near you, walking around walls and opening doors to reach it. |
 | Hold-and-Drag Interact | On | Hold the mouse button and drag over items or monsters to pick up or attack. |
 | Stash: Deposit All | On | Adds a button to the stash that moves your whole inventory in. |
 | Experience Bar | On | An XP bar at the top of the screen. It shows experience per hour, time to the next level, and a "+xp" number each time you gain experience. |
 | Item Info | On | Puts small icons on ground labels (see below) and item level in tooltips. Optionally, labels always show and a loot filter hides junk. |
+| Loot Alerts | On | A banner at the top of the screen when a monster drops a unique, set item or rune. You can include rares, charms, jewels and perfect gems, or only runes. |
 | Monster Resists | On | Shows a monster's resistances under its health bar. |
 | Upgrade Markers | On | Puts a green arrow on items that are better than what you're wearing. |
 | Path Guide | On | Follows your quest log step by step, so it sends you to the Tree of Inifuss before the Cairn Stones. It draws a route on the minimap and the ground, takes the waypoints you have unlocked, outlines the quest objects and doors on the way, and marks the NPC to talk to. You can follow every quest or only the ones the story needs. |

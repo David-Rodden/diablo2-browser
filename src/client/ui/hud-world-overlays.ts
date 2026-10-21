@@ -25,6 +25,8 @@ import {
 import { requireTbl, type TblLang } from '../i18n/lang.ts'
 import { LineGlide } from './line-glide.ts'
 import { drawXpBar, drawXpGains } from './xp-bar.ts'
+import { drawToasts } from './toasts.ts'
+import { drawLowLifeWarning, lowLifeIntensity } from './low-life-warning.ts'
 import type { AutomapHudFootprint } from './minimap.ts'
 import { drawAutoCombatBadge } from './auto-combat-badge.ts'
 import { drawPotionShortageBadge } from './potion-shortage-badge.ts'
@@ -300,6 +302,7 @@ export function renderHudFrame(
   // 0. Automap 2D Text Overlay (Warp/Stash Font6 labels, NPC names, Top-Right Gold Font16 Level Name + Difficulty)
   ctx.translate(Math.round(offsetX * dpr), Math.round(offsetY * dpr))
   ctx.scale(uiScale * dpr, uiScale * dpr)
+  if (hud.lowLifeWarning) drawLowLifeWarning(ctx, profile.width, profile.height, lowLifeIntensity(hud.hp, hud.maxHp), nowMs)
   const automapFootprint = internal.callbacks.onRenderAutomapOverlay?.(ctx, hud.font, profile.width, profile.height) ?? null
 
   // 0b. Top-Left Mercenary Portrait & Life Bar (R3.3) + Summoned Minions + Party Mini-Portraits (R5.1)
@@ -712,6 +715,7 @@ export function renderHudFrame(
       if (gainAnchor) drawXpGains(ctx, hud.font, hud.xpGains, nowMs, gainAnchor)
     }
   }
+  drawToasts(ctx, hud.font, hud.toasts, nowMs, profile.width / 2, hud.showXpBar ? 36 : 8)
 
   // 3..6. Bottom Control Panel, Globes, Belt, and Skill Hotkeys (translated by barOffsetX, barOffsetY)
   const activeCtrlPnlImg = is640
