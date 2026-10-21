@@ -1,12 +1,14 @@
 import type { D2WebPlugin } from '../../src/client/plugin-host/api.ts'
-import { lootAlert, type AlertLevel, type DroppedItem } from './alerts.ts'
+import { appraisalContextOf } from '../../src/common/items/loot-context.ts'
+import type { ItemData } from '../../src/netproto/index.ts'
+import { lootAlert, type AlertLevel } from './alerts.ts'
 
 export const lootAlertsPlugin: D2WebPlugin = {
   id: 'loot-alerts',
   name: { zh: '掉落提醒', en: 'Loot Alerts' },
   description: {
-    zh: '怪物掉落暗金、套装、符文等好东西时，在屏幕上方弹出提示。',
-    en: 'Pops a banner at the top of the screen when a monster drops a unique, set item, rune or other good loot.',
+    zh: '怪物掉落对你的角色有用的好东西时，在屏幕上方弹出提示，并说明好在哪里。',
+    en: 'Pops a banner at the top of the screen when a monster drops loot worth having for your character, and says why.',
   },
   defaultEnabled: true,
   settings: [
@@ -14,8 +16,9 @@ export const lootAlertsPlugin: D2WebPlugin = {
       kind: 'select',
       key: 'level',
       label: { zh: '提醒哪些', en: 'Announce' },
-      default: 'notable',
+      default: 'smart',
       options: [
+        { value: 'smart', label: { zh: '对我的角色有用的', en: 'Whatever helps my character' } },
         { value: 'notable', label: { zh: '暗金、套装、符文', en: 'Uniques, sets and runes' } },
         { value: 'valuable', label: { zh: '再加稀有、护身符、珠宝、完美宝石', en: 'Also rares, charms, jewels and perfect gems' } },
         { value: 'runes', label: { zh: '只提醒符文', en: 'Runes only' } },
@@ -26,9 +29,9 @@ export const lootAlertsPlugin: D2WebPlugin = {
     const announced = new Set<number>()
     const unsubscribe = ctx.session.onServerEvent((ev) => {
       if (ev.type !== 'ItemEvent' || ev.container !== 'ground' || typeof ev.action !== 'number') return
-      const item = ev.item as DroppedItem | undefined
+      const item = ev.item as ItemData | undefined
       if (!item || announced.has(item.id)) return
-      const toast = lootAlert(ev.action, item, ctx.settings.get('level') as AlertLevel, ctx.session.world.areaId)
+      const toast = lootAlert(ev.action, item, ctx.settings.get('level') as AlertLevel, ctx.session.world.areaId, appraisalContextOf(ctx.session.world))
       if (toast === null) return
       announced.add(item.id)
       ctx.notify.show(toast)

@@ -1,51 +1,36 @@
 import type { PluginToast } from '../../src/client/plugin-host/api.ts'
+import { GEM_INFO } from '../../src/common/items/gems-data.ts'
 import { onlineItemDataToUiInventoryItem } from '../../src/common/items/item-bridge.ts'
+import { appraiseItem, TIER_RANK, type Appraisal, type AppraisalContext } from '../../src/common/items/loot-appraisal.ts'
 import { levelDisplayName } from '../../src/common/world/level-names-zh.ts'
+import type { ItemData } from '../../src/netproto/index.ts'
+import STYLES from './alert-styles.json'
 
-export type AlertLevel = 'notable' | 'valuable' | 'runes'
-
-export interface DroppedItem {
-  readonly id: number
-  readonly code: string
-  readonly quality?: number | undefined
-}
+export type AlertLevel = 'smart' | 'notable' | 'valuable' | 'runes'
 
 const NEW_DROP = 0x00
-const CHARMS = new Set(['cm1', 'cm2', 'cm3'])
-const PERFECT_GEMS = new Set(['gpv', 'gpw', 'gpg', 'gpr', 'gpb', 'gpy', 'skz'])
-const [SET, RARE, UNIQUE] = [5, 6, 7]
-const RUNE = /^r(0[1-9]|[12]\d|3[0-3])$/
+const PERFECT = 5
+const STYLE = STYLES as Readonly<Partial<Record<Appraisal['kind'], { readonly label: string; readonly color: PluginToast['color'] }>>>
 
-type Kind = 'unique' | 'set' | 'rune' | 'rare' | 'charm' | 'jewel' | 'gem'
+const isPerfectGem = (item: Pick<ItemData, 'code'>) => (GEM_INFO[item.code.trim().toLowerCase()]?.tier ?? 0) >= PERFECT
 
-const STYLE: Record<Kind, { readonly label: string; readonly color: PluginToast['color'] }> = {
-  unique: { label: 'Unique', color: 'gold' },
-  set: { label: 'Set item', color: 'green' },
-  rune: { label: 'Rune', color: 'orange' },
-  rare: { label: 'Rare', color: 'yellow' },
-  charm: { label: 'Charm', color: 'blue' },
-  jewel: { label: 'Jewel', color: 'blue' },
-  gem: { label: 'Perfect gem', color: 'white' },
+const WANTED: Record<Exclude<AlertLevel, 'smart'>, (appraisal: Appraisal, item: ItemData) => boolean> = {
+  notable: ({ kind }) => kind === 'unique' || kind === 'set' || kind === 'rune',
+  valuable: ({ kind }, item) => ['unique', 'set', 'rune', 'rare', 'charm', 'jewel'].includes(kind) || (kind === 'gem' && isPerfectGem(item)),
+  runes: ({ kind }) => kind === 'rune',
 }
 
-const kindOf = (item: DroppedItem): Kind | null => {
-  const code = item.code.trim().toLowerCase()
-  if (RUNE.test(code)) return 'rune'
-  const byQuality = ({ [UNIQUE]: 'unique', [SET]: 'set', [RARE]: 'rare' } as const)[item.quality ?? 0]
-  return byQuality ?? (CHARMS.has(code) ? 'charm' : code === 'jew' ? 'jewel' : PERFECT_GEMS.has(code) ? 'gem' : null)
-}
+const wants = (level: AlertLevel, appraisal: Appraisal, item: ItemData): boolean =>
+  level === 'smart' ? TIER_RANK[appraisal.tier] >= TIER_RANK.good && appraisal.kind !== 'consumable' && appraisal.kind !== 'gold' : WANTED[level](appraisal, item)
 
-const WANTED: Record<AlertLevel, ReadonlySet<Kind>> = {
-  notable: new Set(['unique', 'set', 'rune']),
-  valuable: new Set(['unique', 'set', 'rune', 'rare', 'charm', 'jewel', 'gem']),
-  runes: new Set(['rune']),
-}
+const nameOf = (item: ItemData): string => onlineItemDataToUiInventoryItem(item).name || item.code
 
-const nameOf = (item: DroppedItem): string => onlineItemDataToUiInventoryItem(item).name || item.code
-
-export function lootAlert(action: number, item: DroppedItem, level: AlertLevel, areaId: number): PluginToast | null {
-  const kind = action === NEW_DROP ? kindOf(item) : null
-  if (kind === null || !WANTED[level].has(kind)) return null
+export function lootAlert(action: number, item: ItemData, level: AlertLevel, areaId: number, context: AppraisalContext): PluginToast | null {
+  if (action !== NEW_DROP) return null
+  const appraisal = appraiseItem(item, context)
+  const style = STYLE[appraisal.kind]
+  if (style === undefined || !wants(level, appraisal, item)) return null
   const area = areaId > 0 ? levelDisplayName(areaId, 'en') : ''
-  return { title: nameOf(item), detail: area ? `${STYLE[kind].label} · ${area}` : STYLE[kind].label, color: STYLE[kind].color }
+  const what = level === 'smart' ? appraisal.reason : style.label
+  return { title: nameOf(item), detail: [what, area].filter(Boolean).join(' · '), color: style.color }
 }

@@ -68,6 +68,16 @@ describe('item comparison', () => {
       expect(wear(wand([stat(107, 3, 74)]), wand([]))).toBeNull()
     })
 
+    it('settles trade-offs by what the build values most', () => {
+      const helm = (mods: ReturnType<typeof stat>[]) => item({ code: 'cap', mods })
+      const sorc = { classIndex: 1, level: 30, skillPoints: new Map([[59, 10], [64, 8]]) }
+      const casterHelm = helm([stat(105, 20), stat(83, 1, 1)])
+      const lifeHelm = helm([stat(7, 15)])
+      expect(upgradeVerdict(casterHelm, { helm: lifeHelm }, { ...usable, build: sorc })).toBe('much-better')
+      expect(upgradeVerdict(lifeHelm, { helm: casterHelm }, { ...usable, build: sorc })).toBeNull()
+      expect(upgradeVerdict(casterHelm, { helm: lifeHelm }, usable)).toBe('unsure')
+    })
+
     it('ignores weapon damage and attack-only stats for a caster build', () => {
       expect(wear(wand([], 20, 30), wand([stat(83, 1, NEC)]))).toBeNull()
       expect(wear(wand([stat(19, 50), stat(83, 1, NEC)]), wand([stat(83, 1, NEC)]))).toBeNull()

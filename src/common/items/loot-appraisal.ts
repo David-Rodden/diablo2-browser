@@ -72,7 +72,7 @@ function runeAppraisal(code: string, { build, owned }: AppraisalContext): Apprai
   const wanted = runewordsFor(build)
     .filter((rw) => rw.runes.includes(code))
     .map((rw) => ({ rw, progress: progress(rw), needed: new Set(rw.runes).size }))
-    .sort((a, b) => b.progress / b.needed - a.progress / a.needed || b.rw.score - a.rw.score)[0]
+    .sort((a, b) => b.progress / b.needed - a.progress / a.needed || Number(a.rw.forMerc) - Number(b.rw.forMerc) || b.rw.score - a.rw.score)[0]
   const forText = wanted ? `For ${wanted.rw.name}${wanted.rw.forMerc ? ' (mercenary)' : ''} · ${wanted.progress}/${wanted.needed} runes` : ''
   if (num >= HIGH_RUNE) return result('great', 'rune', 100 + num, forText || 'High rune')
   if (wanted) return result(wanted.progress === wanted.needed ? 'great' : 'good', 'rune', 40 + num + wanted.progress * 10, forText)

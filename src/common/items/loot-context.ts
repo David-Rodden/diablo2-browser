@@ -20,10 +20,13 @@ export interface CharacterView {
   }
 }
 
+const NEUTRAL: AppraisalContext = { build: characterBuild({ classIndex: -1, level: 1, strength: 0, dexterity: 0, skillPoints: new Map() }), equipped: [], owned: [] }
+
 const cache = new WeakMap<CharacterView, { readonly key: string; readonly context: AppraisalContext }>()
 
-export function appraisalContextOf(view: CharacterView): AppraisalContext {
-  const { self, containers } = view
+export function appraisalContextOf(view: Partial<CharacterView> | null | undefined): AppraisalContext {
+  if (!view?.self || !view.containers) return NEUTRAL
+  const { self, containers } = view as CharacterView
   const skillPoints = new Map([...self.skillEntries.values()].map((skill) => [skill.skillId, skill.baseLevel ?? skill.level]))
   const sheet = { classIndex: self.charClass ?? -1, level: Math.max(1, self.level), strength: self.stats.get(STRENGTH), dexterity: self.stats.get(DEXTERITY), skillPoints }
   const key = `${containers.revision ?? -1}|${JSON.stringify({ ...sheet, skillPoints: [...skillPoints] })}`
