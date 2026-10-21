@@ -385,7 +385,12 @@ export class CommandMapper {
     return pendingIds[unit.unitType] === unit.id
   }
 
+  private isFriendlyInteraction(unit: ClientUnit | null): boolean {
+    return unit !== null && (unit.unitType === 'object' || unit.unitType === 'tile' || (unit.unitType === 'monster' && (this.isTownOrInteractiveNpc(unit) || this.isFriendlySummonOrPet(unit))))
+  }
+
   private resolveDragHoldTarget(screenX: number, screenY: number): ClientUnit | null | 'wait' {
+    if (this.isFriendlyInteraction(this.lockedTargetUnit)) return 'wait'
     const hovered = this.resolvePointerTarget(screenX, screenY).hoveredUnit
     if (hovered === null) return null
     if (this.isAwaitingInteractionWith(hovered)) return 'wait'
