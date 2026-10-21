@@ -8,7 +8,7 @@ import { buildSceneDrawables, type RenderableUnitInput } from '../../src/client/
 import type { ClientSceneWorldAdapter } from '../../src/client/view/scene-source.ts'
 
 const walker = (x: number): RenderableUnitInput => ({ kind: 'player', id: 7, classId: 1, x, y: 20, mode: 2, isLocalPlayer: false })
-const scene = (tick: number, units: RenderableUnitInput[]): ClientSceneWorldAdapter => ({ tick, levelId: 8, actId: 0, playerSubX: 100, playerSubY: 100, ambient: null, units })
+const scene = (tick: number, units: RenderableUnitInput[]): ClientSceneWorldAdapter => ({ tick, levelId: 8, actId: 1, playerSubX: 100, playerSubY: 100, ambient: null, units })
 
 describe('steady dungeon light', () => {
   it('places the player light at the last tick position instead of the smoothed one', () => {
