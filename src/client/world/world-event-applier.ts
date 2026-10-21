@@ -87,6 +87,7 @@ import {
 import { releasePredictedState113c } from './state-ids-113c.ts'
 import { stateOffSoundRequest113c, stateOnSoundRequest113c } from './state-on-sound-113c.ts'
 import { isMonsterUndead113c, SANCTUARY_AURA_113C } from './world-missile-stepper.ts'
+import { addLocalSystemMessageImpl } from './world-chat-social.ts'
 import { ensureBladeShieldAttachment113c } from './world-skill-missiles.ts'
 import {
   ALL_PALADIN_AURA_STATES,
@@ -103,6 +104,8 @@ import {
 
 /** D2Common `IFLAG_BROKEN` (D2Items.h); toggled by S2C 0x7D (D2Client.dll 0x6fb34df0). */
 const ITEM_FLAG_BROKEN = 0x00000100
+const RED_TEXT = 1
+const ARTISAN_REFUSALS: Readonly<Record<number, string>> = { 154: "Charsi can't imbue that item.", 511: "Larzuk can't add sockets to that item.", 512: "Anya can't personalize that item." }
 /** D2Common `IFLAG_REPAIRED` (D2Items.h); S2C 0x7D with this flag clears IFLAG_BROKEN. */
 const ITEM_FLAG_REPAIRED = 0x00000200
 
@@ -1045,6 +1048,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
       } else if (ev.uiId === 7) {
         const curWin = this._npcInteraction.activeWindow ?? this._npcInteraction.window
+        const refusedBy = this._awaitingArtisanConfirmNpcId === null ? undefined : this.getUnit('monster', this._awaitingArtisanConfirmNpcId)?.classId
+        const refusal = refusedBy === undefined ? undefined : ARTISAN_REFUSALS[refusedBy]
+        if (refusal !== undefined) addLocalSystemMessageImpl.call(this, refusal, RED_TEXT)
         const isCompletion =
           ev.unitType === 0 ||
           ev.unitId === 0 ||

@@ -257,6 +257,19 @@ describe('mod menu', () => {
     expect(leaked).toEqual(['i'])
   })
 
+  it('keeps its controls in place while only plugin statuses change, so an open dropdown stays open', async () => {
+    const { host, menu } = await start()
+    menu.open()
+    await host.setEnabled('ground-item-beam', true)
+    menu.selectPlugin('ground-item-beam')
+    const panel = doc.querySelector('[data-plugin-id="ground-item-beam"]')
+    menu.render()
+    menu.render()
+    expect(doc.querySelector('[data-plugin-id="ground-item-beam"]')).toBe(panel)
+    menu.setQuery('beam')
+    expect(doc.querySelector('[data-plugin-id="ground-item-beam"]')).not.toBe(panel)
+  })
+
   it('switches a plugin on from its list row without selecting it', async () => {
     const { menu, host } = await start()
     menu.open()

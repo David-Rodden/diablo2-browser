@@ -33,6 +33,7 @@ export class ModMenu {
   private readonly unsubscribe: readonly (() => void)[]
   private selectedId: string | null = null
   private query = ''
+  private renderedLayout: string | null = null
   private openState = false
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
@@ -202,6 +203,12 @@ export class ModMenu {
     parts.count.textContent = menuText('count', lang, { on: cards.filter((card) => card.enabled).length, all: cards.length })
     parts.alert.hidden = vm.alertText === null
     parts.alert.textContent = vm.alertText ?? ''
+    const layout = JSON.stringify({ lang, query: this.query, selected: selected?.id, sections: sections.map((section) => [section.title, section.cards.map((card) => ({ ...card, statusText: '', statusLevel: '' }))]) })
+    if (layout === this.renderedLayout) {
+      shown.forEach((card) => this.refreshStatus(card))
+      return
+    }
+    this.renderedLayout = layout
     const doc = parts.overlay.ownerDocument
     const scroll = { list: parts.list.scrollTop, detail: parts.detail.scrollTop, id: this.selectedId }
     parts.list.innerHTML = ''
@@ -215,6 +222,21 @@ export class ModMenu {
     else parts.detail.appendChild(note(cards.length === 0 ? menuText('empty', lang) : menuText('nothing', lang, { q: this.query.trim() })))
     parts.list.scrollTop = scroll.list
     parts.detail.scrollTop = scroll.id === this.selectedId ? scroll.detail : 0
+  }
+
+  private refreshStatus(card: PluginMenuCardViewModel): void {
+    const root = this.parts?.overlay
+    const isError = card.statusLevel === 'error'
+    const flag = (node: HTMLElement | null | undefined) => {
+      if (node) node.className = [...node.className.split(' ').filter((name) => name !== 'is-error'), ...(isError ? ['is-error'] : [])].join(' ')
+    }
+    const status = root?.querySelector<HTMLElement>(`[data-plugin-status="${card.id}"]`)
+    if (status) Object.assign(status, { className: `d2-mods__status d2-mods__status--${card.statusLevel}`, textContent: card.statusText })
+    const row = root?.querySelector<HTMLElement>(`[data-plugin-nav="${card.id}"]`)
+    flag(row)
+    flag(root?.querySelector<HTMLElement>(`[data-plugin-id="${card.id}"]`))
+    const dot = row?.querySelector<HTMLElement>('.d2-mods__dot')
+    if (dot) dot.className = `d2-mods__dot d2-mods__dot--${card.statusLevel}`
   }
 
   private sectionHeader(doc: Document, title: string, cards: readonly PluginMenuCardViewModel[]): HTMLElement {
