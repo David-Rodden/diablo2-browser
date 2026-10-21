@@ -225,10 +225,12 @@ export interface PluginQuickCastPort {
 
 export type PluginTogglePort = PluginQuickCastPort
 
-export interface PluginAutoCombatPort {
+export interface PluginHotkeyPort {
   getKey(): string | null
   setKey(key: string | null): void
 }
+
+export type PluginAutoCombatPort = PluginHotkeyPort
 
 export type { AutoPotionThresholds, ItemInfoConfig, LootFilter }
 
@@ -338,11 +340,13 @@ export interface PluginContext {
   readonly stashDepositAll: PluginTogglePort
   readonly xpBar: PluginTogglePort
   readonly autoGoldPickup: PluginTogglePort
+  readonly beltRefill: PluginTogglePort
   readonly upgradeHints: PluginTogglePort
   readonly monsterResists: PluginTogglePort
   readonly itemInfo: PluginItemInfoPort
   readonly pathGuide: PluginPathGuidePort
   readonly autoCombat: PluginAutoCombatPort
+  readonly townPortal: PluginHotkeyPort
   readonly autoPotion: PluginAutoPotionPort
   readonly lang: {
     get(): GameLang

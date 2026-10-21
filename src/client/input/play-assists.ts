@@ -7,7 +7,9 @@ import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import { CANONICAL_113C_OBJECTS } from '../../common/world/objects-meta.ts'
 import { AutoPotionPlanner, bottomBeltPotions, inventoryPotions, potionShortage, wantedPotionPickup, type AutoPotionThresholds, type PotionDrink } from './auto-potion.ts'
+import { beltColumnKinds, beltRefillPick, type BeltColumnKinds } from './belt-refill.ts'
 import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
+import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from './town-portal.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
 const PICKUP_RETRY_MS = 1000
@@ -28,6 +30,9 @@ const REACH_DETOUR_SLACK = 12
 const DOOR_SEARCH_MS = 400
 const DOOR_RETRY_MS = 1500
 const DOOR_PATH_RADIUS = 3
+const BELT_REFILL_MS = 250
+const BELT_REFILL_WAIT_MS = 1500
+const RED_TEXT = 1
 const INTERACTION_PANELS = new Set(['stash', 'cube', 'vendor', 'hire', 'imbue', 'add_sockets', 'personalize', 'trade', 'waypoint'])
 
 export interface PlayAssistHost {
@@ -66,6 +71,8 @@ const isInGrid = (grid: SubTileWalkabilityGrid, x: number, y: number) => {
 export class PlayAssists {
   autoGoldPickup = false
   autoPotionThresholds: AutoPotionThresholds | null = null
+  beltRefill = false
+  townPortalKey: string | null = null
   private readonly autoPotion = new AutoPotionPlanner()
   private readonly pickupRetryAt = new Map<number, number>()
   private autoCombatKeyValue: string | null = null
@@ -80,6 +87,8 @@ export class PlayAssists {
   private collisionGrids: { readonly atMs: number; readonly grids: Map<boolean, SubTileWalkabilityGrid | null> } = { atMs: Number.NEGATIVE_INFINITY, grids: new Map() }
   private readonly doorAttemptAt = new Map<number, number>()
   private lastDoorSearchMs = Number.NEGATIVE_INFINITY
+  private beltRefillSent: { readonly atMs: number; readonly beltSize: number; readonly itemId: number } | null = null
+  private beltKinds: BeltColumnKinds = []
 
   constructor(private readonly host: PlayAssistHost) {}
 
@@ -94,15 +103,46 @@ export class PlayAssists {
 
   tick(nowMs: number): void {
     this.drinkPotionsIfLow(nowMs)
+    this.refillBelt(nowMs)
     this.pickUpNearbyLoot(nowMs)
     this.runAutoCombat(nowMs)
   }
 
   handleKey(event: { readonly key: string; readonly repeat?: boolean | undefined; readonly preventDefault?: (() => void) | undefined }): boolean {
-    if (this.autoCombatKey === null || (event.key === ' ' ? 'SPACE' : event.key.toUpperCase()) !== this.autoCombatKey) return false
-    if (!event.repeat) this.setAutoCombatOn(!this.autoCombatOn)
+    const key = event.key === ' ' ? 'SPACE' : event.key.toUpperCase()
+    const action = key === this.autoCombatKey ? () => this.setAutoCombatOn(!this.autoCombatOn) : key === this.townPortalKey ? () => this.castTownPortal() : null
+    if (action === null) return false
+    if (!event.repeat) action()
     event.preventDefault?.()
     return true
+  }
+
+  castTownPortal(): void {
+    const { world, hudManager, hudModel } = this.host
+    if (world.isDead || hudModel === null) return
+    const source = townPortalSource(world.containers.inventory.values())
+    const refusal: TownPortalRefusal | null = this.host.isTownArea() ? 'in-town' : source === null ? 'no-scrolls' : null
+    if (source !== null && refusal === null) this.useInventoryItem(source.id, source.code, hudModel)
+    else world.addLocalSystemMessage(townPortalRefusalText(refusal ?? 'no-scrolls', hudManager.lang === 'ENG' ? 'ENG' : 'CHI'), RED_TEXT)
+  }
+
+  refillBelt(nowMs: number): void {
+    const { world, hudManager, hudModel } = this.host
+    if (!this.beltRefill) return
+    this.beltKinds = beltColumnKinds(hudManager.belt, this.beltKinds)
+    if (hudModel === null || world.isDead || world.containers.cursor !== null || this.isInWorldInteraction() || this.isBeltRefillInFlight(nowMs)) return
+    const itemId = beltRefillPick(hudManager.belt, inventoryPotions(world.containers.inventory.values()), this.beltKinds, this.beltRefillSent?.itemId)
+    if (itemId === null) return
+    this.beltRefillSent = { atMs: nowMs, beltSize: world.containers.belt.size, itemId }
+    hudModel.autoBeltItem(itemId)
+  }
+
+  private isBeltRefillInFlight(nowMs: number): boolean {
+    const sent = this.beltRefillSent
+    if (sent === null) return false
+    const { belt, inventory } = this.host.world.containers
+    const answered = belt.size !== sent.beltSize || !inventory.has(sent.itemId)
+    return nowMs - sent.atMs < (answered ? BELT_REFILL_MS : BELT_REFILL_WAIT_MS)
   }
 
   reset(): void {
@@ -223,13 +263,15 @@ export class PlayAssists {
   private drinkPotion(drink: PotionDrink, hudModel: HudModel): boolean {
     const { hudManager } = this.host
     const withSound = hudManager.commandSink === hudModel
-    if ('itemId' in drink) {
-      if (withSound) return hudManager.drinkInventoryPotion(drink.itemId, drink.code)
-      hudModel.useItem(drink.itemId)
-      return true
-    }
+    if ('itemId' in drink) return this.useInventoryItem(drink.itemId, drink.code, hudModel)
     const toMerc = drink.kind === 'merc'
     return withSound ? hudManager.drinkBeltSlot(drink.column, toMerc) : hudModel.useBeltSlot(drink.column, toMerc)
+  }
+
+  private useInventoryItem(itemId: number, code: string, hudModel: HudModel): boolean {
+    if (this.host.hudManager.commandSink === hudModel) return this.host.hudManager.drinkInventoryPotion(itemId, code)
+    hudModel.useItem(itemId)
+    return true
   }
 
   private mercLifePct(): number | null {
