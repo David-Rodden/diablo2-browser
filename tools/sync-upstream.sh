@@ -58,9 +58,15 @@ fi
 if $merge; then
   paths generated | xargs -r git checkout -q HEAD --
   before="$(git rev-parse HEAD)"
-  if ! git merge -q --no-edit -m "Merge $(git log -1 --format=%s upstream | sed 's/^chore: publish d2web source //')" upstream; then
-    echo "the merge has conflicts: fix them, then run git commit" >&2
-    exit 1
+  message="Merge $(git log -1 --format=%s upstream | sed 's/^chore: publish d2web source //')"
+  if ! git merge -q --no-edit -m "$message" upstream; then
+    unresolved="$(git diff --name-only --diff-filter=U)"
+    if [ -n "$unresolved" ] || git diff --cached --name-only | xargs -r grep -l -E '^(<{7}|>{7})( |$)' -- 2>/dev/null | grep -q .; then
+      printf 'the merge has conflicts: fix them, then run git commit\n%s\n' "$unresolved" >&2
+      exit 1
+    fi
+    git commit -q --no-edit -m "$message"
+    echo "reused earlier conflict resolutions"
   fi
   [ "$(git rev-parse HEAD)" != "$before" ] && echo "merged. push with: git push origin main upstream"
   leftover="$(paths english | xargs -r git ls-files -- | xargs -r perl -CSD -ne 'print "  $ARGV:$.: $_" if /\p{Han}/; close ARGV if eof')"

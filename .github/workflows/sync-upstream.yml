@@ -29,6 +29,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           before="$(git rev-parse origin/upstream)"
+          git fetch -q origin upstream:upstream
+          tools/train-rerere.sh origin/main upstream
           git checkout -q -B sync origin/main
           if tools/sync-upstream.sh --merge; then clean=true; else clean=false; git merge --abort; fi
           [ "$(git rev-parse upstream)" = "$before" ] && exit 0
