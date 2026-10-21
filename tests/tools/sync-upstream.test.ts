@@ -5,6 +5,8 @@ import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const SCRIPT = resolve(__dirname, '../../tools/sync-upstream.sh')
+const TRAINER = resolve(__dirname, '../../tools/train-rerere.sh')
+const ROOT = resolve(__dirname, '../..')
 const IDENTITY = { GIT_AUTHOR_NAME: 'Tester', GIT_AUTHOR_EMAIL: 'tester@example.com', GIT_COMMITTER_NAME: 'Tester', GIT_COMMITTER_EMAIL: 'tester@example.com' }
 const roots: string[] = []
 
@@ -133,5 +135,35 @@ describe('sync-upstream', () => {
     const result = s.sync()
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('the merge has conflicts')
+  })
+
+  it('reuses how an earlier snapshot conflict was resolved', () => {
+    const s = setup()
+    writeFiles(s.work, { 'src/engine.ts': 'my engine tweak\n' })
+    git(s.work, 'commit', '-q', '-am', 'Tweak engine')
+    git(s.work, 'push', '-q', 'origin', 'main')
+    s.publish({ ...s.base, 'src/engine.ts': 'engine v2\n' }, '2')
+    expect(s.sync().status).toBe(1)
+    git(s.work, 'merge', '--abort')
+    git(s.work, 'checkout', '-q', '-b', 'resolved')
+    expect(spawnSync('git', ['merge', '-q', '--no-edit', 'upstream'], { cwd: s.work, env: { ...process.env, ...IDENTITY } }).status).toBe(1)
+    writeFiles(s.work, { 'src/engine.ts': 'engine v2 with my tweak\n' })
+    git(s.work, 'commit', '-q', '-am', 'Merge snapshot (2)')
+    git(s.work, 'checkout', '-q', 'main')
+    const trained = spawnSync('bash', [TRAINER, 'resolved', 'upstream'], { cwd: s.work, env: { ...process.env, ...IDENTITY }, encoding: 'utf8' })
+    expect([trained.status, trained.stdout]).toEqual([0, expect.stringContaining('learned 1 resolution(s)')])
+    const result = s.sync()
+    expect([result.status, result.stdout]).toEqual([0, expect.stringContaining('reused earlier conflict resolutions')])
+    expect(s.read('src/engine.ts')).toBe('engine v2 with my tweak\n')
+  })
+})
+
+describe('workflows', () => {
+  it('only call tools that are committed', () => {
+    const tracked = new Set(execFileSync('git', ['ls-files', 'tools'], { cwd: ROOT, encoding: 'utf8' }).trim().split('\n'))
+    const workflows = execFileSync('git', ['ls-files', '.github/workflows'], { cwd: ROOT, encoding: 'utf8' }).trim().split('\n')
+    const called = workflows.flatMap((file) => [...readFileSync(join(ROOT, file), 'utf8').matchAll(/\btools\/[\w./-]+\.(?:sh|ts)\b/g)].map(([path]) => path))
+    expect(called.length).toBeGreaterThan(0)
+    expect(called.filter((path) => !tracked.has(path))).toEqual([])
   })
 })
