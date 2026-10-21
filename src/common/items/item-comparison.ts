@@ -1,10 +1,15 @@
 import { SKILLS_BY_ID } from '../data/skills-catalog.ts'
 import type { EquipSlotId, UiInventoryItem } from './inventory-model.ts'
+import { characterBuild } from './character-build.ts'
+import { getEmbeddedDropTables } from './embedded-drop-tables.ts'
+import { baseGearScore, fitScore, weaponFit } from './item-score.ts'
+import type { LootStat } from './loot-item.ts'
 
 export type UpgradeVerdict = 'much-better' | 'better' | 'unsure'
 
 const FOLDED_OR_NOISE_STATS = new Set([16, 17, 18, 21, 22, 23, 24, 31, 70, 72, 73, 75, 91, 92, 159, 160, 194])
 const MUCH_BETTER_RATIO = 1.5
+const BETTER_RATIO = 1.1
 const MUCH_BETTER_GAINS = 3
 const RANK: Record<UpgradeVerdict, number> = { unsure: 1, better: 2, 'much-better': 3 }
 const CLASS_CODES = ['ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass'] as const
@@ -16,6 +21,7 @@ const STAT_SINGLE_SKILLS = new Set([97, 107])
 export interface BuildProfile {
   readonly classIndex: number
   readonly skillPoints: ReadonlyMap<number, number>
+  readonly level?: number | undefined
 }
 
 interface BuildView {
@@ -79,6 +85,24 @@ const statsOf = (item: UiInventoryItem, build: BuildView): Map<string, number> =
     .reduce((acc, [key, value]) => acc.set(key, (acc.get(key) ?? 0) + value), new Map<string, number>())
 
 const NO_BUILD: BuildProfile = { classIndex: -1, skillPoints: new Map() }
+const WORSE_RATIO = 0.95
+
+const rawStatsOf = (item: UiInventoryItem): LootStat[] =>
+  [item, ...(item.socketedItems ?? [])].flatMap((part) => {
+    const raw = part.rawItem as { readonly stats?: unknown; readonly runewordStats?: unknown } | undefined
+    return [raw?.stats, raw?.runewordStats].flatMap((list) => (Array.isArray(list) ? (list as LootStat[]) : []))
+  })
+
+const weightedScore = (item: UiInventoryItem, profile: BuildProfile): number => {
+  const build = characterBuild({ classIndex: profile.classIndex, level: profile.level ?? 1, strength: 0, dexterity: 0, skillPoints: profile.skillPoints })
+  const fit = weaponFit(getEmbeddedDropTables().getBase(item.code.trim().toLowerCase())?.type ?? '', build)
+  return fitScore(rawStatsOf(item), build, fit) + baseGearScore(damageOf(item), item.defense ?? 0, build, fit)
+}
+
+const weighedTradeOff = (candidate: UiInventoryItem, current: UiInventoryItem, profile: BuildProfile): UpgradeVerdict | null => {
+  const [mine, theirs] = [weightedScore(candidate, profile), weightedScore(current, profile)]
+  return mine >= theirs * MUCH_BETTER_RATIO && mine > theirs ? 'much-better' : mine >= theirs * BETTER_RATIO && mine > theirs ? 'better' : mine <= theirs * WORSE_RATIO ? null : 'unsure'
+}
 
 export function compareItems(candidate: UiInventoryItem, current: UiInventoryItem | null, profile: BuildProfile = NO_BUILD): UpgradeVerdict | null {
   if (current === null) return 'much-better'
@@ -88,7 +112,7 @@ export function compareItems(candidate: UiInventoryItem, current: UiInventoryIte
   const diffs = [primary - rivalPrimary, ...[...new Set([...mine.keys(), ...theirs.keys()])].map((key) => (mine.get(key) ?? 0) - (theirs.get(key) ?? 0))]
   const gains = diffs.filter((d) => d > 0).length
   if (gains === 0) return null
-  if (diffs.some((d) => d < 0)) return 'unsure'
+  if (diffs.some((d) => d < 0)) return profile.classIndex >= 0 ? weighedTradeOff(candidate, current, profile) : 'unsure'
   return (rivalPrimary > 0 ? primary >= rivalPrimary * MUCH_BETTER_RATIO : gains >= MUCH_BETTER_GAINS) ? 'much-better' : 'better'
 }
 

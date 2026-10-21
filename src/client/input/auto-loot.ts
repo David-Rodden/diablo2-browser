@@ -1,6 +1,8 @@
 import type { ItemData } from '../../netproto/index.ts'
+import { GEM_INFO } from '../../common/items/gems-data.ts'
+import { TIER_RANK, type Appraisal, type LootTier } from '../../common/items/loot-appraisal.ts'
 
-export interface AutoLootRules {
+export interface LootCategories {
   readonly runes: boolean
   readonly uniques: boolean
   readonly sets: boolean
@@ -10,35 +12,57 @@ export interface AutoLootRules {
   readonly gems: boolean
 }
 
+export type AutoLootRules = { readonly mode: 'smart'; readonly minTier: LootTier } | ({ readonly mode: 'categories' } & LootCategories)
+
 const INVENTORY_COLUMNS = 10
 const INVENTORY_ROWS = 4
-const RUNE = /^r(0[1-9]|[12]\d|3[0-3])$/
-const CHARMS = new Set(['cm1', 'cm2', 'cm3'])
-const GOOD_GEMS = new Set(['gzv', 'glw', 'glg', 'glr', 'glb', 'gly', 'skl', 'gpv', 'gpw', 'gpg', 'gpr', 'gpb', 'gpy', 'skz'])
-const [SET, RARE, UNIQUE] = [5, 6, 7]
+const FLAWLESS = 4
+const MAX_DROPPED_RANK = TIER_RANK.keep
 
-type LootItem = Pick<ItemData, 'code' | 'quality'>
+const CATEGORY_OF_KIND: Partial<Record<Appraisal['kind'], keyof LootCategories>> = { rune: 'runes', unique: 'uniques', set: 'sets', rare: 'rares', charm: 'charms', jewel: 'jewels', gem: 'gems' }
 
-export const isWantedLoot = (rules: AutoLootRules, { code, quality }: LootItem): boolean => {
-  const c = code.trim().toLowerCase()
-  return (
-    (rules.runes && RUNE.test(c)) ||
-    (rules.uniques && quality === UNIQUE) ||
-    (rules.sets && quality === SET) ||
-    (rules.rares && quality === RARE) ||
-    (rules.charms && CHARMS.has(c)) ||
-    (rules.jewels && c === 'jew') ||
-    (rules.gems && GOOD_GEMS.has(c))
-  )
+const inCategory = (rules: LootCategories, { code }: Pick<ItemData, 'code'>, { kind }: Appraisal): boolean => {
+  const category = CATEGORY_OF_KIND[kind]
+  return category !== undefined && rules[category] && (kind !== 'gem' || (GEM_INFO[code.trim().toLowerCase()]?.tier ?? 0) >= FLAWLESS)
 }
 
-type Placed = Pick<ItemData, 'gridX' | 'gridY' | 'invWidth' | 'invHeight'>
+export const isWantedLoot = (rules: AutoLootRules, item: Pick<ItemData, 'code'>, appraisal: Appraisal): boolean =>
+  rules.mode === 'smart' ? appraisal.kind !== 'gold' && appraisal.kind !== 'consumable' && TIER_RANK[appraisal.tier] >= TIER_RANK[rules.minTier] : inCategory(rules, item, appraisal)
 
-export function fitsInInventory(items: Iterable<Placed>, width: number, height: number): boolean {
-  const taken = new Set<number>()
-  for (const item of items) {
-    for (let dy = 0; dy < Math.max(1, item.invHeight); dy++) for (let dx = 0; dx < Math.max(1, item.invWidth); dx++) taken.add((item.gridY + dy) * INVENTORY_COLUMNS + item.gridX + dx)
-  }
-  const freeAt = (x: number, y: number) => [...Array(height).keys()].every((dy) => [...Array(width).keys()].every((dx) => !taken.has((y + dy) * INVENTORY_COLUMNS + x + dx)))
-  return [...Array(INVENTORY_ROWS - height + 1).keys()].some((y) => [...Array(INVENTORY_COLUMNS - width + 1).keys()].some((x) => freeAt(x, y)))
+export type Placed = Pick<ItemData, 'id' | 'gridX' | 'gridY' | 'invWidth' | 'invHeight'>
+
+const cellsOf = (item: Pick<Placed, 'gridX' | 'gridY' | 'invWidth' | 'invHeight'>): number[] =>
+  [...Array(Math.max(1, item.invHeight)).keys()].flatMap((dy) => [...Array(Math.max(1, item.invWidth)).keys()].map((dx) => (item.gridY + dy) * INVENTORY_COLUMNS + item.gridX + dx))
+
+export function freeSpots(items: Iterable<Placed>, width: number, height: number): { readonly x: number; readonly y: number }[] {
+  const taken = new Set([...items].flatMap(cellsOf))
+  const spots = [...Array(Math.max(0, INVENTORY_ROWS - height + 1)).keys()].flatMap((y) => [...Array(Math.max(0, INVENTORY_COLUMNS - width + 1)).keys()].map((x) => ({ x, y })))
+  return spots.filter(({ x, y }) => cellsOf({ gridX: x, gridY: y, invWidth: width, invHeight: height }).every((cell) => !taken.has(cell)))
+}
+
+export const fitsInInventory = (items: Iterable<Placed>, width: number, height: number): boolean => freeSpots(items, width, height).length > 0
+
+export type RoomPlan = { readonly kind: 'fits' } | { readonly kind: 'move'; readonly itemId: number; readonly x: number; readonly y: number } | { readonly kind: 'drop'; readonly itemIds: readonly number[] }
+
+export interface JudgedItem extends Placed {
+  readonly appraisal: Appraisal
+}
+
+const rankOf = ({ appraisal }: JudgedItem) => TIER_RANK[appraisal.tier] * 1000 + appraisal.score
+
+export function planRoom(items: readonly JudgedItem[], width: number, height: number, incoming: Appraisal, allowDrops: boolean): RoomPlan | null {
+  if (fitsInInventory(items, width, height)) return { kind: 'fits' }
+  const without = (gone: readonly JudgedItem[]) => items.filter((item) => !gone.includes(item))
+  const move = items
+    .flatMap((item) => freeSpots(without([item]), item.invWidth, item.invHeight).filter(({ x, y }) => x !== item.gridX || y !== item.gridY).map((spot) => ({ item, spot })))
+    .find(({ item, spot }) => fitsInInventory([...without([item]), { ...item, gridX: spot.x, gridY: spot.y }], width, height))
+  if (move) return { kind: 'move', itemId: move.item.id, x: move.spot.x, y: move.spot.y }
+  if (!allowDrops) return null
+  const expendable = items.filter(({ appraisal }) => !appraisal.locked && TIER_RANK[appraisal.tier] <= MAX_DROPPED_RANK && TIER_RANK[appraisal.tier] < TIER_RANK[incoming.tier]).sort((a, b) => rankOf(a) - rankOf(b))
+  const single = expendable.find((item) => fitsInInventory(without([item]), width, height))
+  if (single) return { kind: 'drop', itemIds: [single.id] }
+  const greedy = expendable.reduce<JudgedItem[]>((dropped, item) => (fitsInInventory(without(dropped), width, height) ? dropped : [...dropped, item]), [])
+  if (!fitsInInventory(without(greedy), width, height)) return null
+  const needed = [...greedy].reverse().reduce((dropped, item) => (fitsInInventory(without(dropped.filter((other) => other !== item)), width, height) ? dropped.filter((other) => other !== item) : dropped), greedy)
+  return { kind: 'drop', itemIds: needed.map(({ id }) => id) }
 }
