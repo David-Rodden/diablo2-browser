@@ -19,6 +19,10 @@ export class WaypointMemory {
     return new Set([...(this.saved[character] ?? []), ...fromMenu, ...reachedTowns])
   }
 
+  hasMenu(character: string): boolean {
+    return character in this.saved
+  }
+
   private matches(character: string, menu: ReadonlySet<number>): boolean {
     const saved = this.saved[character] ?? []
     return saved.length === menu.size && saved.every((id) => menu.has(id))
