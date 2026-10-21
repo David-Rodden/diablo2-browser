@@ -1,10 +1,10 @@
-export type LootStat = {
+export interface LootStat {
   readonly statId: number
   readonly param: number
   readonly value: number
 }
 
-export type LootItem = {
+export interface LootItem {
   readonly id: number
   readonly code: string
   readonly quality?: number | undefined
