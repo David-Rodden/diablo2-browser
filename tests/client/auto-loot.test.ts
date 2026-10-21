@@ -12,8 +12,8 @@ describe('auto loot', () => {
   it('wants runes, uniques, sets, charms and jewels, and gems or rares only when asked', () => {
     expect([{ code: 'r01 ' }, { code: 'cap', quality: 7 }, { code: 'lrg', quality: 5 }, { code: 'cm2', quality: 4 }, { code: 'jew', quality: 4 }].every((item) => isWantedLoot(NOTABLE, item as never))).toBe(true)
     expect([{ code: 'gpv' }, { code: 'cap', quality: 6 }, { code: 'hp1' }, { code: 'r34' }, { code: 'cap', quality: 4 }].some((item) => isWantedLoot(NOTABLE, item as never))).toBe(false)
-    expect(isWantedLoot({ ...NOTABLE, gems: true }, { code: 'glr' } as never)).toBe(true)
-    expect(isWantedLoot({ ...NOTABLE, gems: true }, { code: 'gcr' } as never)).toBe(false)
+    expect(isWantedLoot({ ...NOTABLE, gems: true }, { code: 'glr' })).toBe(true)
+    expect(isWantedLoot({ ...NOTABLE, gems: true }, { code: 'gcr' })).toBe(false)
   })
 
   it('only picks up what the inventory has room for', () => {
