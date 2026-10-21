@@ -1,9 +1,11 @@
-name: CI
+name: Checks
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '7 6 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -12,6 +14,7 @@ concurrency:
 
 jobs:
   check:
+    name: Types, mod tests and lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,10 +27,16 @@ jobs:
       - run: npm ci
       - run: git branch upstream origin/upstream
       - run: npm run typecheck
-      - run: npm run test:mods
+      - run: npm run test:mods -- --reporter=default --reporter=json --outputFile.json=mod-tests.json
       - run: tools/lint-mods.sh
+      - run: node tools/badges.ts check badges mod-tests.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: badges-check
+          path: badges
 
   build:
+    name: Production build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,8 +46,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: node tools/badges.ts build badges dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: badges-build
+          path: badges
 
   lint:
+    name: Workflow and shell lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -46,18 +61,27 @@ jobs:
       - run: ./actionlint
       - run: shellcheck -e SC2016 tools/sync-upstream.sh tools/test-mods.sh tools/lint-mods.sh
 
-  secrets:
+  badges:
+    name: Publish README badges
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [check, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
-          fetch-depth: 0
-      - name: Scan every commit for leaked keys
+          pattern: badges-*
+          merge-multiple: true
+          path: badges
+      - name: Push the badge data to the badges branch
+        working-directory: badges
         env:
-          VERSION: 8.30.1
-          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          GH_TOKEN: ${{ github.token }}
         run: |
-          curl -sSLo gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v$VERSION/gitleaks_${VERSION}_linux_x64.tar.gz"
-          echo "$SHA256  gitleaks.tgz" | sha256sum -c -
-          tar xzf gitleaks.tgz gitleaks
-          ./gitleaks git --config .gitleaks.toml --log-opts=--all --redact --no-banner .
+          git init -q -b badges
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ./*.json
+          git commit -qm 'Update badges'
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges

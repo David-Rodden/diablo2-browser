@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   prune:
+    name: Prune merged and idle branches
     if: github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const KEEP = /^(main|upstream|backup\/.+)$/
+const KEEP = /^(main|upstream|badges|backup\/.+)$/
 const IDLE_DAYS = 7
 const DAY_MS = 86_400_000
 
