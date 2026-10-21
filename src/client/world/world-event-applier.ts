@@ -122,6 +122,13 @@ function isSelfStaminaExhausted(world: ClientWorldInternal): boolean {
  * When the local player is in `PLRMODE_RUN (3)` and `STAT_STAMINA (10) == 0`, immediately
  * transitions the local player into walk mode (`PLRMODE_WALK = 2` or `PLRMODE_TWALK = 6` in town).
  */
+const PLAYER_DEATH_MODES = new Set([0, 17])
+
+function clearZeroLifeDeathInTown(world: ClientWorldInternal): void {
+  const mode = world.getUnit('player', world.selfId)?.mode
+  if (world._self.isDead && isTownLevel(world.areaId) && (mode === undefined || !PLAYER_DEATH_MODES.has(mode))) world._self.isDead = false
+}
+
 function downgradeSelfRunOnStaminaExhausted(world: ClientWorldInternal): void {
   if (!isSelfStaminaExhausted(world)) return
   const walkMode = isTownLevel(world.areaId) ? 6 : 2
@@ -2260,6 +2267,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       this.invalidatePlayerLightCache()
       if (!ev.unit || (unitTypeFromId(ev.unit.unitType) === 'player' && (ev.unit.id === this.selfId || this.selfId === 0))) {
         this._self.applyStat(ev.stat, ev.value, ev.param ?? 0)
+        clearZeroLifeDeathInTown(this)
         this._isSelfDead = this._self.isDead
         if (this.selfId !== 0) {
           const selfUnit = this._units.get(makeUnitKey('player', this.selfId))
@@ -2358,6 +2366,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         ev.lifeRegen,
         ev.manaRegen,
       )
+      clearZeroLifeDeathInTown(this)
       if (ev.life > 0) {
         this._isSelfDead = false
         this._self.isDead = false
