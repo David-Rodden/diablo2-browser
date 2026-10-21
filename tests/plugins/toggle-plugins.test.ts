@@ -180,7 +180,7 @@ describe('auto pickup plugin', () => {
     expect(loot.rules).toEqual({ mode: 'categories', runes: true, uniques: true, sets: true, charms: true, jewels: true, gems: false, rares: true })
     host.setSetting('auto-gold-pickup', 'pickup', 'items')
     expect(gold.enabled).toBe(false)
-    expect(host.getStatus('auto-gold-pickup').text.en).toBe('Picking up runes, unique items, set items, charms, jewels, rare items')
+    expect(host.getStatus('auto-gold-pickup').text.en).toBe('Picking up runes, unique items, set items, charms, jewels and rare items')
     host.setSetting('auto-gold-pickup', 'pickup', 'gold')
     expect([gold.enabled, loot.rules, care.config?.makeRoom, care.config?.sellJunk]).toEqual([true, null, false, true])
     await host.setEnabled('auto-gold-pickup', false)

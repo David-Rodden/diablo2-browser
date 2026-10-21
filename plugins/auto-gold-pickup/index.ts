@@ -45,6 +45,8 @@ const SETTINGS: readonly PluginSettingSpec[] = [
   { kind: 'boolean', key: 'stashValuables', label: { zh: '打开仓库时存入符文、宝石等好东西', en: 'Stash runes, gems and other valuables when you open the stash' }, default: true },
 ]
 
+const listText = (parts: readonly string[]): string => (parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`)
+
 export const autoGoldPickupPlugin: D2WebPlugin = {
   id: 'auto-gold-pickup',
   name: { zh: '自动拾取', en: 'Auto Pickup' },
@@ -76,8 +78,8 @@ export const autoGoldPickupPlugin: D2WebPlugin = {
     return {
       getStatus: () => {
         const rules = ctx.autoLoot.getRules()
-        const items = rules === null ? null : rules.mode === 'smart' ? (rules.minTier === 'great' ? 'great finds' : 'useful items') : CATEGORIES.filter(({ key }) => rules[key]).map(({ label }) => label.en.toLowerCase()).join(', ') || null
-        const picked = [ctx.autoGoldPickup.isEnabled() ? 'gold' : null, items].filter(Boolean).join(', ')
+        const items = rules === null ? [] : rules.mode === 'smart' ? [rules.minTier === 'great' ? 'great finds' : 'useful items'] : CATEGORIES.filter(({ key }) => rules[key]).map(({ label }) => label.en.toLowerCase())
+        const picked = listText([...(ctx.autoGoldPickup.isEnabled() ? ['gold'] : []), ...items])
         const build = rules?.mode === 'smart' ? buildText() : null
         if (!picked) return { level: 'warn', text: { zh: '没有选择任何物品', en: 'Nothing selected' } }
         return { level: 'ok', text: { zh: '已开启', en: `Picking up ${picked}${build ? ` for a ${build}` : ''}` } }
