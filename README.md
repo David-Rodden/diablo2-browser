@@ -51,7 +51,7 @@ All mods can be switched off from the Plugins button in the toolbar. See [MODS.m
 
 <p>
   <img src=".github/media/resists.jpg" width="49%" alt="A Zombie's health bar showing Undead and its poison resistance">
-  <img src=".github/media/plugin-menu.jpg" width="49%" alt="The Plugins menu with the Path Guide settings">
+  <img src=".github/media/plugin-menu.jpg" width="49%" alt="The Plugins menu, grouped by what each plugin does">
 </p>
 
 ## Credits
