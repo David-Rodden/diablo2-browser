@@ -34,7 +34,10 @@ describe('loot alerts', () => {
     await host.start()
     await host.setEnabled('loot-alerts', true)
     const drop = { type: 'ItemEvent', action: 0, container: 'ground', item: { id: 9, code: 'r01', quality: 2 } } as unknown as ServerEvent
-    listeners.forEach((cb) => [cb(drop), cb(drop)])
+    listeners.forEach((cb) => {
+      cb(drop)
+      cb(drop)
+    })
     expect(shown.map((t) => t.title)).toEqual(['El Rune'])
     await host.setEnabled('loot-alerts', false)
     listeners.forEach((cb) => cb({ ...drop, item: { id: 10, code: 'r02' } } as unknown as ServerEvent))
