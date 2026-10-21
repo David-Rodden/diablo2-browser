@@ -2212,6 +2212,22 @@ export function formatJoinGameDetailLines(
 }
 
 /**
+ * Reset the Battle.net Lobby Create/Join Game form fields (`D2Multi.dll` `0x6f9e4bc0` & `0x6f9e533f..0x6f9e535c`)
+ * when entering the lobby from Character Select or returning from an in-game session, preventing
+ * stale `gameName` or `gamePassword` values from leaking into subsequent room creations.
+ */
+export function resetLobbyGameFormState(state: BnetFlowState): void {
+  state.gameName = ''
+  state.gamePassword = ''
+  state.gameDescription = ''
+  state.selectedGameName = ''
+  state.selectedGameInfo = null
+  state.joinGameListScroll = 0
+  state.joinGameDetailsScroll = 0
+  state.createGameError = null
+}
+
+/**
  * Confirm Character Selection (`OK` button or double-click on Stage 4):
  * Transitions to Stage 5 (`bnet_lobby`) with the Create Game sub-panel open.
  * Per `D2Multi.dll` (`0x6f9e4bc0` & `0x6f9e533f..0x6f9e535c`), `gameName` and `gameDescription`
@@ -2235,7 +2251,7 @@ export function confirmCharacterSelect(state: BnetFlowState): boolean {
   state.stage = 'bnet_lobby'
   state.stageTicks = 0
   state.lobbySubPanel = 'create'
-  state.createGameError = null
+  resetLobbyGameFormState(state)
   if (!isDifficultyUnlocked(selected, state.difficulty)) {
     state.difficulty = 'normal'
   }
@@ -2626,6 +2642,166 @@ export function applyOnlineCharactersToFlowState(
  */
 export const JOIN_GAME_LIST_REFRESH_INTERVAL_MS = 15_000
 
+const RECENT_REALM_GAMES_STORAGE_KEY = 'd2_recent_realm_games_v1'
+const RECENT_REALM_GAMES_TTL_MS = 30 * 60 * 1000
+const RECENT_REALM_GAMES_MAX = 12
+
+interface RecentRealmGameRecord {
+  readonly name: string
+  readonly host: string
+  readonly updatedAt: number
+}
+
+const memoryRecentRealmGames: RecentRealmGameRecord[] = []
+
+function readRecentRealmGameRecords(nowMs = Date.now()): RecentRealmGameRecord[] {
+  const byKey = new Map<string, RecentRealmGameRecord>()
+  const addRecord = (rec: RecentRealmGameRecord) => {
+    const trimmed = rec.name.trim()
+    if (!trimmed || nowMs - rec.updatedAt > RECENT_REALM_GAMES_TTL_MS) return
+    const hostKey = (rec.host || 'default').trim().toLowerCase()
+    const key = `${hostKey}::${trimmed.toLowerCase()}`
+    const prev = byKey.get(key)
+    if (!prev || rec.updatedAt >= prev.updatedAt) {
+      byKey.set(key, { name: trimmed, host: hostKey, updatedAt: rec.updatedAt })
+    }
+  }
+  for (const rec of memoryRecentRealmGames) {
+    addRecord(rec)
+  }
+  try {
+    if (typeof globalThis.localStorage !== 'undefined') {
+      const raw = globalThis.localStorage.getItem(RECENT_REALM_GAMES_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (
+              item &&
+              typeof item === 'object' &&
+              typeof (item as { name?: unknown }).name === 'string' &&
+              typeof (item as { updatedAt?: unknown }).updatedAt === 'number'
+            ) {
+              addRecord({
+                name: (item as { name: string }).name,
+                host:
+                  typeof (item as { host?: unknown }).host === 'string'
+                    ? (item as { host: string }).host
+                    : 'default',
+                updatedAt: (item as { updatedAt: number }).updatedAt,
+              })
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore storage access errors in headless/restricted environments
+  }
+  return [...byKey.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+function writeRecentRealmGameRecords(records: readonly RecentRealmGameRecord[]): void {
+  const capped = records.slice(0, RECENT_REALM_GAMES_MAX * 2)
+  memoryRecentRealmGames.length = 0
+  memoryRecentRealmGames.push(...capped)
+  try {
+    if (typeof globalThis.localStorage !== 'undefined') {
+      globalThis.localStorage.setItem(RECENT_REALM_GAMES_STORAGE_KEY, JSON.stringify(capped))
+    }
+  } catch {
+    // Ignore storage access errors
+  }
+}
+
+/**
+ * Record a known/recent realm room name (created, joined, or discovered via `0x1F` / `MCP_GAMEINFO`)
+ * so `refreshJoinGameList` can probe `MCP_GAMEINFO (0x06)` for rooms that are still open on `d2cs`
+ * (`GAME_STAT_OPEN = 0x04`) even when PvPGN `d2cs_gamelist_cb` omits `0`-player or passworded rooms
+ * from `MCP_GAMELIST (0x05)`.
+ */
+export function recordRecentRealmGameName(
+  gameName: string,
+  host: string | null | undefined = 'default',
+  nowMs = Date.now(),
+): void {
+  const trimmed = gameName.trim()
+  if (!trimmed) return
+  const hostKey = (host || 'default').trim().toLowerCase()
+  const records = readRecentRealmGameRecords(nowMs).filter(
+    (r) => !(r.host === hostKey && r.name.toLowerCase() === trimmed.toLowerCase()),
+  )
+  records.unshift({ name: trimmed, host: hostKey, updatedAt: nowMs })
+  writeRecentRealmGameRecords(records)
+}
+
+export function removeRecentRealmGameName(
+  gameName: string,
+  host: string | null | undefined = 'default',
+  nowMs = Date.now(),
+): void {
+  const trimmed = gameName.trim()
+  if (!trimmed) return
+  const hostKey = (host || 'default').trim().toLowerCase()
+  const records = readRecentRealmGameRecords(nowMs).filter(
+    (r) =>
+      !(
+        (r.host === hostKey || r.host === 'default') &&
+        r.name.toLowerCase() === trimmed.toLowerCase()
+      ),
+  )
+  writeRecentRealmGameRecords(records)
+}
+
+export function getRecentRealmGameNames(
+  host: string | null | undefined = 'default',
+  nowMs = Date.now(),
+): readonly string[] {
+  const hostKey = (host || 'default').trim().toLowerCase()
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const r of readRecentRealmGameRecords(nowMs)) {
+    if (r.host !== hostKey && r.host !== 'default') continue
+    const k = r.name.toLowerCase()
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(r.name)
+    if (out.length >= RECENT_REALM_GAMES_MAX) break
+  }
+  return out
+}
+
+/**
+ * Returns `true` when an `MCP_GAMEINFO (0x06)` response represents an open game on `d2cs`
+ * (`GAME_STAT_OPEN = 0x04` bit set, or `status === 0` with valid `maxPlayers > 0`).
+ */
+export function isRealmGameInfoOpen(info: LobbyJoinGameInfo | null | undefined): boolean {
+  if (!info) return false
+  const statusU32 = (info.status ?? 0) >>> 0
+  if (statusU32 === 0xffffffff || statusU32 === 0xfffffffe) return false
+  if (statusU32 !== 0) {
+    return (statusU32 & 0x04) !== 0
+  }
+  return info.maxPlayers > 0 || info.players.length > 0
+}
+
+/**
+ * Check whether an `MCP_GAMEINFO (0x06)` game status bitmask is compatible with the active
+ * character's Hardcore (`0x00000800`) and Expansion (`0x00100000`) flags per `d2cs_gamelist_cb`.
+ */
+export function isRealmGameStatusCompatibleWithCharacter(
+  status: number,
+  char: Pick<RosterCharacter, 'isHardcore' | 'isExpansion'> | null | undefined,
+): boolean {
+  const statusU32 = status >>> 0
+  if (statusU32 === 0 || !char) return true
+  const gameIsHardcore = (statusU32 & 0x00000800) !== 0
+  if (gameIsHardcore !== Boolean(char.isHardcore)) return false
+  const gameIsExpansion = (statusU32 & 0x00100000) !== 0
+  if (gameIsExpansion !== Boolean(char.isExpansion)) return false
+  return true
+}
+
 /**
  * Apply an incoming or finalized `MCP_GAMELIST (0x05)` game list to `BnetFlowState`
  * (`D2Multi.dll` `0x6f9e2120` & `0x6f9e1f80`):
@@ -2676,7 +2852,7 @@ export function applyRealmGamesToFlowState(
     },
     fallbackIdx: number,
   ): void => {
-    if (!g.name || g.playerCount <= 0) return
+    if (!g.name || g.playerCount < 0) return
     const rawFlags = (g.status ?? g.flags ?? 0) >>> 0
     if (rawFlags !== 0 && (rawFlags & 0x04) === 0) return
     const idxVal = g.index ?? fallbackIdx
@@ -2746,15 +2922,31 @@ export function applyRealmGamesToFlowState(
     }
   }
 
-  if (state.selectedGameName === '' && deduped[0] && state.gameName.trim() === '') {
-    const firstName = deduped[0].name
-    state.selectedGameName = firstName
-    state.selectedGameInfo = null
-    state.joinGameDetailsScroll = 0
-    if (state.lobbySubPanel === 'join') {
-      state.gameName = firstName
+  if (state.selectedGameName === '') {
+    const typedName = state.gameName.trim()
+    if (typedName !== '') {
+      const matchedByInput = deduped.find(
+        (g) => g.name.toLowerCase() === typedName.toLowerCase(),
+      )
+      if (matchedByInput) {
+        state.selectedGameName = matchedByInput.name
+        state.selectedGameInfo = null
+        state.joinGameDetailsScroll = 0
+        if (state.lobbySubPanel === 'join') {
+          state.gameName = matchedByInput.name
+        }
+        shouldFetchGameInfo = true
+      }
+    } else if (deduped[0]) {
+      const firstName = deduped[0].name
+      state.selectedGameName = firstName
+      state.selectedGameInfo = null
+      state.joinGameDetailsScroll = 0
+      if (state.lobbySubPanel === 'join') {
+        state.gameName = firstName
+      }
+      shouldFetchGameInfo = true
     }
-    shouldFetchGameInfo = true
   }
 
   return {

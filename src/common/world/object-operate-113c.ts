@@ -36,7 +36,9 @@ export function classifyObjectOperate113c(classId: number): ObjectOperateKind113
   if (meta?.isShrine || record.operateFn === 2) return 'shrine'
   if (record.isDoor === 1) return 'door'
   if (record.operateFn === 15 || nameHas(record.name, ['portal'])) return 'portal'
-  if (record.operateFn === 32 || nameHas(record.name, ['bank', 'stash'])) return 'stash'
+  // Objects.txt: Bank/Stash is OperateFn 14; 31/32 are Armor Stand / Weapon Rack.
+  if (classId === 267 || nameHas(record.name, ['bank'])) return 'stash'
+  if (record.operateFn === 31 || record.operateFn === 32) return 'container'
   if (nameHas(record.name, ['well'])) return 'well'
   if (nameHas(record.name, ['trap'])) return 'trap'
   if (CONTAINER_OPERATE_FNS_113C.has(record.operateFn)) return 'container'

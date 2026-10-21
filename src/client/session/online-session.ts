@@ -56,7 +56,8 @@ import { computeGameCompletion113c, type GameCompletion113c } from './game-compl
 import { AudioRuntime113c } from '../audio/audio-runtime-113c.ts'
 import {
   ACTIVE_CHAR_LEASE_HEARTBEAT_MS, DuplicateCharacterLoginError, createMemoryLeaseStorage,
-  findConflictingCharacterLease, formatLobbyGameEnterError, getDefaultBrowserLeaseStorage,
+  findConflictingCharacterLease, formatLobbyGameEnterError, formatMcpCreateGameStatusError,
+  formatMcpJoinGameStatusError, getDefaultBrowserLeaseStorage, parseMcpGameErrorStatus,
   releaseActiveCharacterLease, writeActiveCharacterLease, type ActiveCharLeaseStorage,
 } from './active-char-lock.ts'
 import {
@@ -88,7 +89,15 @@ export * from './session-d2cap-replay.ts'
 export * from './session-level-navigation.ts'
 export * from './session-event-processor.ts'
 export * from './session-render-builder.ts'
-export { DuplicateCharacterLoginError, createMemoryLeaseStorage, formatLobbyGameEnterError, type ActiveCharLeaseStorage }
+export {
+  DuplicateCharacterLoginError,
+  createMemoryLeaseStorage,
+  formatLobbyGameEnterError,
+  formatMcpCreateGameStatusError,
+  formatMcpJoinGameStatusError,
+  parseMcpGameErrorStatus,
+  type ActiveCharLeaseStorage,
+}
 
 export type OnlineSessionPhase =
   | 'idle'
@@ -395,6 +404,7 @@ export class OnlineSession {
       showBasePlusBonusSkills: currentSettings.showBasePlusBonusSkills,
       showStatGainTooltips: currentSettings.showStatGainTooltips,
       showWeaponDamageFormula: currentSettings.showWeaponDamageFormula,
+      showAdvancedStatsButton: currentSettings.showAdvancedStatsButton,
     })
     this.hudManager.setGroundItemEnhancements({
       showUniqueSetBeams: currentSettings.showUniqueSetBeams,
@@ -583,13 +593,15 @@ export class OnlineSession {
         next.showBasePlusBonusStats !== prev.showBasePlusBonusStats ||
         next.showBasePlusBonusSkills !== prev.showBasePlusBonusSkills ||
         next.showStatGainTooltips !== prev.showStatGainTooltips ||
-        next.showWeaponDamageFormula !== prev.showWeaponDamageFormula
+        next.showWeaponDamageFormula !== prev.showWeaponDamageFormula ||
+        next.showAdvancedStatsButton !== prev.showAdvancedStatsButton
       ) {
         this.hudManager.setHudEnhancements({
           showBasePlusBonusStats: next.showBasePlusBonusStats,
           showBasePlusBonusSkills: next.showBasePlusBonusSkills,
           showStatGainTooltips: next.showStatGainTooltips,
           showWeaponDamageFormula: next.showWeaponDamageFormula,
+          showAdvancedStatsButton: next.showAdvancedStatsButton,
         })
       }
       if (

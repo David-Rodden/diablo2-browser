@@ -49,6 +49,7 @@ import {
   isValidCharacterName,
   openTermsOfUse,
   parseMcpAvatarStatstring,
+  recordRecentRealmGameName,
   resetHeroAvatarAnims,
   resolveBnetConnectStageText,
   resolveStringByTblId,
@@ -345,6 +346,7 @@ export interface FrontendAsyncHandlers {
   readonly onConvertCharacter?: ((state: BnetFlowState, charName: string) => Promise<void> | void) | undefined
   readonly onListGames?: ((state: BnetFlowState) => Promise<void> | void) | undefined
   readonly onSelectJoinGame?: ((state: BnetFlowState, gameName: string) => Promise<void> | void) | undefined
+  readonly onTypeJoinGameName?: ((state: BnetFlowState, gameName: string) => Promise<void> | void) | undefined
   readonly onCreateGame?: ((state: BnetFlowState) => Promise<void> | void) | undefined
   readonly onJoinGame?: ((state: BnetFlowState, gameName: string, gamePassword: string) => Promise<void> | void) | undefined
   readonly onSendChat?: ((state: BnetFlowState, message: string) => Promise<void> | void) | undefined
@@ -1178,15 +1180,8 @@ export class FrontendRenderer {
             h: 35,
             sprite: 'btn-wide.png',
             label: this.requireStr(5106, 'singlePlayer'),
-            // Enabled when the host registered the in-process `LocalLobbyProvider`
-            // (`play.html` imports `src/server/loopback-adapter.ts`).
-            disabled: !this.asyncHandlers?.onSinglePlayer,
-            onClick: () => {
-              clickSinglePlayerButton(this.state)
-              if (this.asyncHandlers?.onSinglePlayer) {
-                void this.asyncHandlers.onSinglePlayer(this.state)
-              }
-            },
+            disabled: true,
+            onClick: () => {},
           },
           {
             id: 'battle_net',
@@ -1673,6 +1668,10 @@ export class FrontendRenderer {
             label: L.join,
             onClick: () => {
               if (this.state.lobbySubPanel !== 'join') {
+                const prevTypedName = this.state.gameName.trim()
+                if (prevTypedName) {
+                  recordRecentRealmGameName(prevTypedName)
+                }
                 this.state.gameName = ''
                 this.state.gamePassword = ''
                 this.state.selectedGameName = ''
@@ -1889,7 +1888,7 @@ export class FrontendRenderer {
     // shouldRenderMenuFrame) — an idle main menu stops repainting 800x600 at
     // display refresh rate and the GPU load drops with it.
     const signal: MenuFrameDirtySignal = {
-      stage: `${this.state.stage}:${this.state.lobbySubPanel}:${this.state.popupModal?.message ?? ''}:${this.state.createGameError ?? ''}:${this.state.lastError ?? ''}`,
+      stage: `${this.state.stage}:${this.state.lobbySubPanel}:${this.state.popupModal?.message ?? ''}:${this.state.createGameError ?? ''}:${this.state.lastError ?? ''}:${this.state.realmGames.length}:${this.state.selectedGameName}:${this.state.selectedGameInfo?.name ?? ''}:${this.state.selectedGameInfo?.uptimeSec ?? -1}`,
       tick: this.state.globalTick,
       mouseX: this.lastMouseX,
       mouseY: this.lastMouseY,
@@ -3772,6 +3771,10 @@ export class FrontendRenderer {
           this.state.selectedGameName = ''
           this.state.selectedGameInfo = null
           this.state.joinGameDetailsScroll = 0
+          const trimmed = val.trim()
+          if (trimmed && this.asyncHandlers?.onTypeJoinGameName) {
+            void this.asyncHandlers.onTypeJoinGameName(this.state, trimmed)
+          }
         }
         break
       case 'gamePassword':

@@ -710,6 +710,7 @@ export const INTENTIONALLY_UNCACHED_PUBLIC_FILES: readonly string[] = [
   'asset-manifest.json',
   'musicbox.html',
   'sw.js',
+  'updates.json',
 ] as const
 
 const CACHEABLE_EXT_RE =

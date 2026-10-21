@@ -43,6 +43,7 @@ function playerRecord(game: GameInstance, id: number): {
   goldBank: number
   items: unknown[]
   activeNpcId: number | undefined
+  activeVendorMode: 'trade' | 'gamble' | null
   vendorPools: Map<number, VendorEntry[]>
 } {
   return (game as unknown as {
@@ -51,6 +52,7 @@ function playerRecord(game: GameInstance, id: number): {
       goldBank: number
       items: unknown[]
       activeNpcId: number | undefined
+      activeVendorMode: 'trade' | 'gamble' | null
       vendorPools: Map<number, VendorEntry[]>
     }>
   }).players.get(id)!
@@ -114,6 +116,8 @@ describe('issue #1354 NpcBuy atomicity and stock', () => {
     p.gold = 1000
     const { npc, id: npcId } = vendor(game)
     npc.vendorPool = [entry(9001, 500)]
+    p.activeNpcId = npcId
+    p.activeVendorMode = 'trade'
     game.enqueueCommand(playerId, { type: 'NpcBuy', npcId, itemId: 9001, cost: 0 })
     game.stepFrames(1)
     expect(p.gold).toBe(500)
@@ -138,6 +142,8 @@ describe('issue #1354 NpcBuy atomicity and stock', () => {
     }
     const { npc, id: npcId } = vendor(game)
     npc.vendorPool = [entry(9101, 500)]
+    p.activeNpcId = npcId
+    p.activeVendorMode = 'trade'
     game.enqueueCommand(playerId, { type: 'NpcBuy', npcId, itemId: 9101, cost: 0 })
     game.stepFrames(1)
     expect(p.gold).toBe(1000)
@@ -152,6 +158,8 @@ describe('issue #1354 NpcBuy atomicity and stock', () => {
     p.gold = 5000
     const { npc, id: npcId } = vendor(game)
     npc.vendorPool = [entry(9201, 100)]
+    p.activeNpcId = npcId
+    p.activeVendorMode = 'trade'
     game.drainEvents(playerId)
     game.enqueueCommand(playerId, { type: 'NpcBuy', npcId, itemId: 9201, cost: 0 })
     game.stepFrames(1)
@@ -173,6 +181,8 @@ describe('issue #1354 NpcBuy atomicity and stock', () => {
     p.gold = 1000
     const { npc, id: npcId } = vendor(game)
     npc.vendorPool = [entry(9301, 50, true)]
+    p.activeNpcId = npcId
+    p.activeVendorMode = 'trade'
     game.enqueueCommand(playerId, { type: 'NpcBuy', npcId, itemId: 9301, cost: 0 })
     game.stepFrames(1)
     game.enqueueCommand(playerId, { type: 'NpcBuy', npcId, itemId: 9301, cost: 0 })
@@ -197,7 +207,9 @@ describe('issue #1354 NpcBuy atomicity and stock', () => {
     expect(a.gold).toBe(1000)
 
     a.activeNpcId = npcId
+    a.activeVendorMode = 'trade'
     b.activeNpcId = npcId
+    b.activeVendorMode = 'trade'
     a.vendorPools.set(npcId, [entry(9402, 100)])
     b.vendorPools.set(npcId, [entry(9403, 100)])
     game.enqueueCommand(p1, { type: 'NpcBuy', npcId, itemId: 9402, cost: 0 })

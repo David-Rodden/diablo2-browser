@@ -776,6 +776,14 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     attrs.coldRes = Math.max(-100, Math.min(tot(43) + diffPenalty, attrs.maxColdRes))
     attrs.lightRes = Math.max(-100, Math.min(tot(41) + diffPenalty, attrs.maxLightRes))
     attrs.poisRes = Math.max(-100, Math.min(tot(45) + diffPenalty, attrs.maxPoisonRes))
+    attrs.uncappedFireRes = tot(39) + diffPenalty
+    attrs.uncappedColdRes = tot(43) + diffPenalty
+    attrs.uncappedLightRes = tot(41) + diffPenalty
+    attrs.uncappedPoisonRes = tot(45) + diffPenalty
+    attrs.poisonLengthPct = Math.max(25, 100 - diffPenalty - tot(110))
+    attrs.curseRes = tot(109)
+    attrs.maxCurseRes = 50
+    attrs.curseLengthPct = Math.max(25, 100 - tot(109))
     attrs.baseFireRes = wost(39) + diffPenalty
     attrs.baseColdRes = wost(43) + diffPenalty
     attrs.baseLightRes = wost(41) + diffPenalty
@@ -1467,6 +1475,117 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
         attrs.blockChance = 0
       }
     }
+
+    // Advanced Character Stats (`hud-enhancements` / `StatsDisplay::Draw`)
+    attrs.fireAbsorbFlat = tot(143)
+    attrs.fireAbsorbPct = tot(142)
+    attrs.coldAbsorbFlat = tot(149)
+    attrs.coldAbsorbPct = tot(148)
+    attrs.lightAbsorbFlat = tot(145)
+    attrs.lightAbsorbPct = tot(144)
+    attrs.magicAbsorbFlat = tot(147)
+    attrs.magicAbsorbPct = tot(146)
+
+    attrs.drFlat = tot(34)
+    attrs.drPct = tot(36)
+    attrs.mdrFlat = tot(35)
+    attrs.mdrPct = tot(37)
+    attrs.atdPhys = tot(78)
+    attrs.atdLight = tot(128)
+
+    attrs.fireMasteryPct = tot(329)
+    attrs.coldMasteryPct = tot(331)
+    attrs.lightMasteryPct = tot(330)
+    attrs.poisonMasteryPct = tot(332)
+    attrs.magicMasteryPct = tot(357)
+    attrs.firePiercePct = tot(333)
+    attrs.coldPiercePct = tot(335)
+    attrs.lightPiercePct = tot(334)
+    attrs.poisonPiercePct = tot(336)
+    attrs.magicPiercePct = tot(358)
+
+    const toHitFactor = CANONICAL_CHARSTATS[resolveClassCode(self.charClass)]?.toHitFactor ?? 0
+    attrs.baseArDex = Math.max(0, (attrs.dex - 7) * 5 + toHitFactor)
+    attrs.baseArEquip = tot(19)
+    attrs.baseDefDex = Math.floor(attrs.dex / 4)
+    attrs.baseDefEquip = tot(31)
+    attrs.baseDmg1hMin = tot(21)
+    attrs.baseDmg1hMax = tot(22)
+    attrs.baseDmg2hMin = tot(23)
+    attrs.baseDmg2hMax = tot(24)
+
+    attrs.fcr = tot(105)
+    attrs.fbr = tot(102) + (self.states.has(101) ? 50 : 0)
+    attrs.fhr = tot(99)
+    attrs.frw = tot(96)
+    attrs.arPct = tot(119)
+    attrs.ias = tot(93)
+
+    const activeWeaponEq = playerAgg.equipment.find(
+      (x) => (x.bodyLoc === 4 || x.bodyLoc === 5) && x.baseTable === 'weapons',
+    )
+    const hitClass = activeWeaponEq ? (activeWeaponEq.row.text('hit class') || '').trim().toLowerCase() : ''
+    attrs.weaponWsm = activeWeaponEq ? Number(activeWeaponEq.row.text('speed')) || 0 : 0
+    attrs.weaponClass = activeWeaponEq ? (activeWeaponEq.row.text('wclass') || '').trim().toLowerCase() : ''
+    attrs.isOneHandSwinging = hitClass === '1hss' || hitClass === '1hsl'
+    attrs.isSpearOrStaff = activeWeaponEq
+      ? itemCodeIsA(activeWeaponEq.item.code, 'spea') || itemCodeIsA(activeWeaponEq.item.code, 'staf')
+      : false
+    attrs.werewolfState = self.states.has(139)
+    attrs.werebearState = self.states.has(140)
+    attrs.vampireState = self.states.has(65)
+    attrs.skillEias = tot(68)
+
+    attrs.crushingBlow = tot(136)
+    attrs.openWounds = tot(135)
+    attrs.openWoundsFlat = 0
+    attrs.deadlyStrike = tot(141)
+
+    const csLvl = (hardSkillLevels.get(9) ?? 0) > 0 ? resolveEffectiveSkillLvl(9) : 0
+    const amaCrit =
+      csLvl > 0 ? Math.min(80, 5 + Math.trunc((75 * Math.trunc((110 * csLvl) / (csLvl + 6))) / 100)) : 0
+    let masteryCrit = 0
+    if (activeWeaponEq) {
+      for (const m of masteries) {
+        if ((m.statId === 344 || m.statId === 347) && itemCodeIsA(activeWeaponEq.item.code, m.itemType)) {
+          masteryCrit = Math.max(masteryCrit, m.value)
+        }
+      }
+    }
+    attrs.criticalStrike = amaCrit + Math.trunc(((100 - amaCrit) * masteryCrit) / 100)
+
+    attrs.lifeLeech = tot(60)
+    attrs.manaLeech = tot(62)
+    const pierceLvl = (hardSkillLevels.get(23) ?? 0) > 0 ? resolveEffectiveSkillLvl(23) : 0
+    const amaPierce =
+      pierceLvl > 0
+        ? Math.min(100, 10 + Math.trunc((90 * Math.trunc((110 * pierceLvl) / (pierceLvl + 6))) / 100))
+        : 0
+    attrs.projectilePierce = tot(156) + amaPierce
+    attrs.lifeAfterKill = tot(86)
+    attrs.manaAfterKill = tot(138)
+
+    attrs.addedPhysDmg = tot(111)
+    attrs.addedMagicMin = tot(52)
+    attrs.addedMagicMax = tot(53)
+    attrs.addedFireMin = tot(48)
+    attrs.addedFireMax = tot(49)
+    attrs.addedColdMin = tot(54)
+    attrs.addedColdMax = tot(55)
+    attrs.addedLightMin = tot(50)
+    attrs.addedLightMax = tot(51)
+    const poisMinRate = tot(57)
+    const poisMaxRate = tot(58)
+    const poisLenFrames = tot(59)
+    const poisCount = Math.max(1, tot(326))
+    const avgPoisFrames = poisLenFrames > 0 ? Math.trunc(poisLenFrames / poisCount) : 0
+    attrs.addedPoisonMin = avgPoisFrames > 0 ? Math.trunc((poisMinRate * avgPoisFrames + 128) / 256) : 0
+    attrs.addedPoisonMax = avgPoisFrames > 0 ? Math.trunc((poisMaxRate * avgPoisFrames + 128) / 256) : 0
+    attrs.addedPoisonSec = avgPoisFrames > 0 ? Number((avgPoisFrames / 25).toFixed(1)) : 0
+
+    attrs.magicFind = tot(80)
+    attrs.goldFind = tot(79)
+    attrs.stashGold = stats.get(D2StatId.GoldBank)
   } else {
     attrs.weaponStrBonus = 100
     attrs.weaponDexBonus = 0

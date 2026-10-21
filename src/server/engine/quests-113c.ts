@@ -32,9 +32,11 @@ export const QUEST_INFO_BY_ID_113C: ReadonlyMap<string, QuestFlagInfo113c> = (()
   return out
 })()
 
-/** Bit 0: quest completed / reward granted. Bit 1: quest accepted (in progress). */
-export const QUEST_FLAG_COMPLETED_113C = 0x0001
-export const QUEST_FLAG_STARTED_113C = 0x0002
+/** 1.13c D2BitBufferStrc quest bits. */
+export const QUEST_FLAG_COMPLETED_113C = 0x0001 // reward granted
+export const QUEST_FLAG_REWARD_PENDING_113C = 0x0002 // objective done, NPC reward pending
+export const QUEST_FLAG_STARTED_113C = 0x0004 // quest accepted
+export const QUEST_FLAG_PRIMARY_GOAL_DONE_113C = 0x1000
 
 export function questWordIndex113c(questId: string): number | undefined {
   return QUEST_INFO_BY_ID_113C.get(questId)?.wordIndex
@@ -62,23 +64,40 @@ export function setQuestFlag113c(
   return true
 }
 
-/** Quest-gated areas: entering requires the quest to be accepted or completed. */
-export const QUEST_AREA_GATES_113C: Readonly<Record<number, string>> = Object.freeze({
-  38: 'a1q3', // Tristram
-  74: 'a2q4', // Arcane Sanctuary
-  102: 'a3q6', // Durance of Hate Level 2
-  103: 'a3q6', // Durance of Hate Level 3
-  108: 'a4q3', // Chaos Sanctuary
-  120: 'a5q5', // Arreat Summit
-  128: 'a5q6', // Worldstone Keep Level 1
-  129: 'a5q6', // Worldstone Keep Level 2
+/** Quest-gated areas with the exact 1.13c required bit (STARTED vs COMPLETED). */
+export const QUEST_AREA_GATES_113C: Readonly<
+  Record<number, { readonly quest: string; readonly mask: number }>
+> = Object.freeze({
+  38: { quest: 'a1q3', mask: QUEST_FLAG_STARTED_113C }, // Tristram red portal
+  46: { quest: 'a2q5', mask: QUEST_FLAG_COMPLETED_113C }, // Canyon of the Magi: Summoner dead
+  73: { quest: 'a2q2', mask: QUEST_FLAG_COMPLETED_113C }, // Tal Rasha's Chamber: staff used
+  74: { quest: 'a2q3', mask: QUEST_FLAG_STARTED_113C }, // Arcane Sanctuary: after Tainted Sun
+  100: { quest: 'a3q3', mask: QUEST_FLAG_COMPLETED_113C }, // Durance of Hate 1: Khalim's Will
+  101: { quest: 'a3q3', mask: QUEST_FLAG_COMPLETED_113C }, // Durance of Hate 2
+  102: { quest: 'a3q3', mask: QUEST_FLAG_COMPLETED_113C }, // Durance of Hate 3
+  128: { quest: 'a5q5', mask: QUEST_FLAG_COMPLETED_113C }, // Worldstone Keep 1
+  129: { quest: 'a5q5', mask: QUEST_FLAG_COMPLETED_113C }, // Worldstone Keep 2
+  131: { quest: 'a5q5', mask: QUEST_FLAG_COMPLETED_113C }, // Throne of Destruction
 })
 
 /** Quest objects that advance a quest when operated (Objects.txt class id). */
 export const QUEST_OBJECT_TO_QUEST_113C: Readonly<Record<number, string>> = Object.freeze({
+  8: 'a1q3', // The Moldy Tome
+  17: 'a1q3', // Cairn Stone
+  18: 'a1q3',
+  19: 'a1q3',
+  20: 'a1q3',
+  21: 'a1q3',
+  26: 'a1q3', // Cain's Gibbet
   30: 'a1q3', // Inifuss
+  108: 'a1q5', // Horadric Malus
   149: 'a2q3', // Tainted Sun Altar
   193: 'a3q4', // Lam Esen's Tome
+  244: 'a3q1', // Rat's Nest (Jade Figurine)
+  246: 'a3q1',
+  251: 'a3q2', // Gidbinn Altar
+  252: 'a3q2', // Gidbinn
+  357: 'a2q4', // Horazon's Journal
   376: 'a4q2', // Hellforge
   392: 'a4q3', // Chaos Sanctuary Seal
   393: 'a4q3',
@@ -87,4 +106,6 @@ export const QUEST_OBJECT_TO_QUEST_113C: Readonly<Record<number, string>> = Obje
   396: 'a4q3',
   404: 'a3q3', // Compelling Orb
   546: 'a5q5', // Ancients' Altar
+  473: 'a5q2', // Cage (rescue barbarians)
+  558: 'a5q3', // Frozen Anya
 })
