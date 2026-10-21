@@ -45,7 +45,7 @@ All mods can be switched off from the Plugins button in the toolbar. See [MODS.m
 
 **Item Info** puts small icons on ground labels: green arrows for upgrades, item level, sockets and ethereal.
 
-![Loot labels with upgrade arrows and item level badges](.github/media/loot-labels.jpg)
+![Loot labels with item levels after a fight in the Blood Moor](.github/media/loot-labels.jpg)
 
 **Monster Resists** adds the monster type and its resistances under the health bar. Every plugin has its own page in the Plugins menu.
 

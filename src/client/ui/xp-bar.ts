@@ -1,3 +1,4 @@
+import { drawBronzePlate, vertical } from './framed-badge.ts'
 import type { D2FontRenderer } from './font.ts'
 
 const BAR_WIDTH = 300
@@ -71,8 +72,14 @@ export class XpGainFeed {
 
 export const formatXpGain = (amount: number): string => `+${amount.toLocaleString('en-US')} xp`
 
-export function drawXpGains(ctx: CanvasRenderingContext2D, font: D2FontRenderer, feed: XpGainFeed, nowMs: number, rightX: number, topLimit: number): void {
-  const restY = topLimit + GAIN_LINE
+export interface XpGainAnchor {
+  readonly x: number
+  readonly y: number
+  readonly align: 'left' | 'right' | 'center'
+}
+
+export function drawXpGains(ctx: CanvasRenderingContext2D, font: D2FontRenderer, feed: XpGainFeed, nowMs: number, anchor: XpGainAnchor): void {
+  const restY = anchor.y + GAIN_LINE
   const rows = [...feed.active(nowMs)].reverse().reduce<{ text: string; y: number; t: number }[]>((placed, g) => {
     const t = (nowMs - g.atMs) / GAIN_LIFE_MS
     return [...placed, { text: formatXpGain(g.amount), t, y: Math.min(restY + GAIN_DRIFT * (1 - t), (placed.at(-1)?.y ?? Infinity) - GAIN_LINE) }]
@@ -80,7 +87,7 @@ export function drawXpGains(ctx: CanvasRenderingContext2D, font: D2FontRenderer,
   ctx.save()
   for (const { text, y, t } of rows.filter((r) => r.y >= restY)) {
     ctx.globalAlpha = 1 - t * t
-    font.drawText(ctx, text, rightX, Math.round(y), { font: 'font16', color: 'white', align: 'right', shadow: true })
+    font.drawText(ctx, text, anchor.x, Math.round(y), { font: 'font16', color: 'white', align: anchor.align, shadow: true })
   }
   ctx.restore()
 }
@@ -120,29 +127,46 @@ export interface XpBarExtras {
   readonly rightLimit?: number
 }
 
-export function drawXpBar(ctx: CanvasRenderingContext2D, font: D2FontRenderer, state: XpBarState, viewportWidth: number, lang: 'ENG' | 'CHI', extras?: XpBarExtras): void {
+export const xpGainAnchor = (barX: number, rateX: number, rateW: number, rateBaseline: number): XpGainAnchor =>
+  rateX >= barX + BAR_WIDTH ? { x: rateX, y: rateBaseline, align: 'left' }
+  : rateX + rateW <= barX ? { x: rateX + rateW, y: rateBaseline, align: 'right' }
+  : { x: rateX + rateW / 2, y: rateBaseline, align: 'center' }
+
+function drawTrack(ctx: CanvasRenderingContext2D, x: number, progress: number): void {
+  drawBronzePlate(ctx, x, BAR_TOP, BAR_WIDTH, BAR_HEIGHT)
+  const [left, top, width, height] = [x + 2, BAR_TOP + 2, Math.round((BAR_WIDTH - 4) * progress), BAR_HEIGHT - 4]
+  if (width > 0) {
+    ctx.fillStyle = vertical(ctx, top, height, '#e2c27a', '#7a5a24')
+    ctx.fillRect(left, top, width, height)
+    ctx.fillStyle = 'rgba(255, 244, 210, 0.45)'
+    ctx.fillRect(left, top, width, 1)
+    ctx.fillStyle = 'rgba(255, 236, 180, 0.7)'
+    ctx.fillRect(left + width - 1, top, 1, height)
+  }
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'
+  for (let tick = 1; tick < 10; tick++) ctx.fillRect(left + Math.round(((BAR_WIDTH - 4) * tick) / 10), top + 1, 1, height - 2)
+}
+
+export function drawXpBar(ctx: CanvasRenderingContext2D, font: D2FontRenderer, state: XpBarState, viewportWidth: number, lang: 'ENG' | 'CHI', extras?: XpBarExtras): XpGainAnchor | null {
   const x = Math.round((viewportWidth - BAR_WIDTH) / 2)
   const baseline = BAR_TOP + BAR_HEIGHT - 2
   ctx.save()
-  ctx.fillStyle = 'rgba(8, 6, 4, 0.78)'
-  ctx.fillRect(x, BAR_TOP, BAR_WIDTH, BAR_HEIGHT)
-  ctx.fillStyle = 'rgba(176, 148, 82, 0.85)'
-  ctx.fillRect(x + 1, BAR_TOP + 1, (BAR_WIDTH - 2) * xpProgress(state), BAR_HEIGHT - 2)
-  ctx.strokeStyle = '#6c5838'
-  ctx.strokeRect(x + 0.5, BAR_TOP + 0.5, BAR_WIDTH - 1, BAR_HEIGHT - 1)
+  drawTrack(ctx, x, xpProgress(state))
   font.drawText(ctx, xpBarLabel(state, lang), x + BAR_WIDTH / 2, baseline, { ...LABEL_STYLE, color: 'white' })
-  if (extras) {
-    const rateText = formatXpRate(extras.perHour)
-    const rateW = font.measureText(rateText, 'font8')
-    const [rateX, rateBaseline] = xpRatePlacement(x, rateW, baseline, extras.rightLimit ?? viewportWidth)
-    font.drawText(ctx, rateText, rateX, rateBaseline, { ...LABEL_STYLE, color: 'gold', align: 'left' })
-    if (extras.mouseX >= Math.min(x, rateX) && extras.mouseX <= Math.max(x + BAR_WIDTH, rateX + rateW) && extras.mouseY >= BAR_TOP && extras.mouseY <= rateBaseline + 2) drawTimeToLevelTooltip(ctx, font, formatTimeToLevel(state, extras.perHour, lang), rateX + rateW / 2, rateBaseline + 5, viewportWidth)
-  }
   ctx.restore()
+  if (!extras) return null
+  ctx.save()
+  const rateText = formatXpRate(extras.perHour)
+  const rateW = font.renderedWidth(ctx, rateText, 'font8')
+  const [rateX, rateBaseline] = xpRatePlacement(x, rateW, baseline, extras.rightLimit ?? viewportWidth)
+  font.drawText(ctx, rateText, rateX, rateBaseline, { ...LABEL_STYLE, color: 'gold', align: 'left' })
+  if (extras.mouseX >= Math.min(x, rateX) && extras.mouseX <= Math.max(x + BAR_WIDTH, rateX + rateW) && extras.mouseY >= BAR_TOP && extras.mouseY <= rateBaseline + 2) drawTimeToLevelTooltip(ctx, font, formatTimeToLevel(state, extras.perHour, lang), rateX + rateW / 2, rateBaseline + 5, viewportWidth)
+  ctx.restore()
+  return xpGainAnchor(x, rateX, rateW, rateBaseline)
 }
 
 function drawTimeToLevelTooltip(ctx: CanvasRenderingContext2D, font: D2FontRenderer, text: string, anchorX: number, top: number, viewportWidth: number): void {
-  const width = font.measureText(text, 'font8') + 12
+  const width = font.renderedWidth(ctx, text, 'font8') + 12
   const left = Math.max(4, Math.min(viewportWidth - width - 4, Math.round(anchorX - width / 2)))
   ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'
   ctx.fillRect(left, top, width, 15)

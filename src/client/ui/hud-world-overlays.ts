@@ -706,8 +706,8 @@ export function renderHudFrame(
     hud.xpRate.record(xpState.xp, nowMs)
     hud.xpGains.record(xpState.xp, nowMs)
     if (hud.leftPanel === 'none' && hud.rightPanel === 'none' && !hud.worldPanels.escapeMenuOpen) {
-      drawXpBar(ctx, hud.font, xpState, profile.width, overlayLang, { perHour: hud.xpRate.perHour(nowMs), mouseX: hud.mouseX, mouseY: hud.mouseY, rightLimit: automapFootprint?.titleLeft ?? profile.width })
-      drawXpGains(ctx, hud.font, hud.xpGains, nowMs, profile.width - 16, automapFootprint?.bottom ?? 0)
+      const gainAnchor = drawXpBar(ctx, hud.font, xpState, profile.width, overlayLang, { perHour: hud.xpRate.perHour(nowMs), mouseX: hud.mouseX, mouseY: hud.mouseY, rightLimit: automapFootprint?.titleLeft ?? profile.width })
+      if (gainAnchor) drawXpGains(ctx, hud.font, hud.xpGains, nowMs, gainAnchor)
     }
   }
 
