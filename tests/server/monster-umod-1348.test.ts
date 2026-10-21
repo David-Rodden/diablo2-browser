@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { GameInstance } from '../../src/server/engine/game-instance.ts'
 import { MONUMOD_113C_ROWS } from '../../src/common/units/monstats-113c-data.ts'
+import { getMissileTxtData } from '../../src/common/skills/missiles-data.ts'
 
 function connectPlayer(game: GameInstance, x: number, y: number, name = 'Target'): number {
   return game.connectPlayer({ charClass: 'bar', name, x, y, areaId: 1 })
@@ -73,6 +74,7 @@ describe('issue #1348 MonUMod affixes', () => {
     const resistBefore = game.getPlayerState(resist)!.hp
     game.drainEvents(noResist)
     game.applyDamageToMonster(monster, 1000, noResist)
+    game.stepFrames(6)
 
     expect(game.getPlayerState(noResist)!.hp).toBeLessThan(noResistBefore)
     const noResistLoss = noResistBefore - game.getPlayerState(noResist)!.hp
@@ -100,7 +102,7 @@ describe('issue #1348 MonUMod affixes', () => {
     })
     game.drainEvents(playerId)
     game.applyDamageToMonster(monster, 1000, playerId)
-    expect(missilesOfType(game.drainEvents(playerId), 194).length).toBe(8)
+    expect(missilesOfType(game.drainEvents(playerId), 194).length).toBe(64)
     game.stepFrames(3)
     const state = game.getPlayerState(playerId)!
     expect(state.states.has(11)).toBe(true)
@@ -144,7 +146,8 @@ describe('issue #1348 MonUMod affixes', () => {
     const game = new GameInstance({ seed: 1352, areaId: 1, maxPlayers: 8 })
     const playerId = connectPlayer(game, 38, 30)
     const shooter = game.spawnMonster({
-      defId: 'fallen1',
+      hcIdx: 160,
+      defId: 'cr_archer1',
       x: 30,
       y: 30,
       areaId: 1,
@@ -157,7 +160,7 @@ describe('issue #1348 MonUMod affixes', () => {
     })
     game.drainEvents(playerId)
     game.stepFrames(1)
-    const shots = missilesOfType(game.drainEvents(playerId), 1)
+    const shots = missilesOfType(game.drainEvents(playerId), getMissileTxtData('cr_arrow1').id)
     expect(shots.length).toBe(3)
 
     const cursed = game.spawnMonster({

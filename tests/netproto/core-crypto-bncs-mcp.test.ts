@@ -443,7 +443,7 @@ describe('BNCS & MCP framing, packets, and sessions', () => {
           (chunk[5]! | (chunk[6]! << 8) | (chunk[7]! << 16) | (chunk[8]! << 24)) >>> 0
         receivedFlags.push(flags)
 
-        // 1. Stale/empty game with name.length > 0 and playerCount === 0 (must NOT terminate listGames!)
+        // 1. Open game with name.length > 0 and playerCount === 0 (must be retained per D2Multi.dll 0x6f9e2120 and NOT terminate listGames!)
         serverStream.write(buildGameListPkt(reqId, 1, 0, 0x00300004, 'StaleEmptyGame', ''))
         // 2. Closed/invalid status game without GAME_STAT_OPEN (0x04) bit (must be skipped without terminating!)
         serverStream.write(buildGameListPkt(reqId, 2, 2, 0x00300000, 'ClosedGame', ''))
@@ -473,8 +473,20 @@ describe('BNCS & MCP framing, packets, and sessions', () => {
     })
 
     expect(receivedFlags).toEqual([0x0800])
-    expect(streamedNames).toEqual(['NormalOpen1:1', 'NormalOpen1:3', 'HellBaal01:2'])
+    expect(streamedNames).toEqual([
+      'StaleEmptyGame:0',
+      'NormalOpen1:1',
+      'NormalOpen1:3',
+      'HellBaal01:2',
+    ])
     expect(games).toEqual([
+      {
+        index: 1,
+        name: 'StaleEmptyGame',
+        description: '',
+        playerCount: 0,
+        status: 0x00300004,
+      },
       {
         index: 3,
         name: 'NormalOpen1',
@@ -491,6 +503,16 @@ describe('BNCS & MCP framing, packets, and sessions', () => {
       },
     ])
     mcp.close()
+
+    // Also verify McpSession.getGameInfo resolves with unavailable status 0xffffffff (no TimeoutError)
+    // when d2cs sends no S2C 0x06 response for a non-existent/closed game
+    const [clientStream2] = createMemoryStreamPair()
+    const mcp2 = new McpSession(clientStream2)
+    const missingInfo = await mcp2.getGameInfo('MissingRoom', { timeoutMs: 25 })
+    expect(missingInfo.name).toBe('MissingRoom')
+    expect(missingInfo.status >>> 0).toBe(0xffffffff)
+    expect(missingInfo.players).toEqual([])
+    mcp2.close()
   })
 })
 

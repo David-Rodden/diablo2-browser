@@ -18,9 +18,11 @@
 
 import { sub_6FDAB610 } from './path-compute.ts'
 import {
+  ASTAR_HEURISTIC,
   DIRECTION_TO_OFFSET_A,
   PREPARE_TARGET_DIRECTIONS,
   SNAP_TO_CARDINAL,
+  TOWARD_DIRECTIONS,
 } from './tables.ts'
 
 export interface SubTileWalkabilityGrid {
@@ -147,10 +149,13 @@ export function isUnitWalkableLocal(
 /**
  * Diagonal step check from `(cx, cy)` to `(cx + stepX, cy + stepY)`.
  * - Both cardinal neighbors `(cx + stepX, cy)` and `(cx, cy + stepY)` must be walkable cells
- *   (which is also required by the 5-cell `"+"` cross of `(cx + stepX, cy + stepY)` when `unitSize = 2`).
- * - For `unitSize = 2`, at least one cardinal neighbor must also have a clear 5-cell `"+"` cross so
- *   a size-2 unit can step diagonally away from a wall edge (`0x6FD9C140`) without pinching through
- *   a diagonal gap between two opposing walls.
+ *   so units never pinch through a diagonal corner between two touching wall cells.
+ * - For `unitSize = 2` (1.13c `nCollisionPattern = 1`, `COLLISION_CheckAnyCollisionWithAdjacentCells`
+ *   `0x6FD9C140`), `isUnitWalkableLocal(grid, cx + stepX, cy + stepY, 2)` checks the 5-cell `"+"` cross
+ *   at the destination `(cx + stepX, cy + stepY)`, which already includes both cardinal corners
+ *   `(cx + stepX, cy)` and `(cx, cy + stepY)`. 1.13c `astarExploreChildren` (`0x6FDCB3C0`),
+ *   `idastarVisitNodes` (`0x6FDC08F0`), `sub_6FDAA880` (`0x6FDB71B0`), and `PATH_RayTrace` (`0x6FDB6C20`)
+ *   never require a second 5-cell `"+"` cross centered on `(cx + stepX, cy)` or `(cx, cy + stepY)`.
  */
 function canStepDiagonalLocal(
   grid: SubTileWalkabilityGrid,
@@ -158,21 +163,12 @@ function canStepDiagonalLocal(
   cy: number,
   stepX: number,
   stepY: number,
-  unitSize: 1 | 2,
+  _unitSize: 1 | 2,
 ): boolean {
-  if (
-    !isCellWalkableLocal(grid, cx + stepX, cy) ||
-    !isCellWalkableLocal(grid, cx, cy + stepY)
-  ) {
-    return false
-  }
-  if (unitSize === 2) {
-    return (
-      isUnitWalkableLocal(grid, cx + stepX, cy, 2) ||
-      isUnitWalkableLocal(grid, cx, cy + stepY, 2)
-    )
-  }
-  return true
+  return (
+    isCellWalkableLocal(grid, cx + stepX, cy) &&
+    isCellWalkableLocal(grid, cx, cy + stepY)
+  )
 }
 
 /**
@@ -314,6 +310,65 @@ export function traceStraightRayLocal(
   }
 
   return { points, blocked: !isUnitWalkableLocal(grid, tx, ty, unitSize) }
+}
+
+/**
+ * 1.13c `PATH_Toward_6FDAA9F0` (`0x6FDB78B0`) + `sub_6FDAA880` (`0x6FDB71B0`) wall-sliding
+ * continuation after `traceStraightRayLocal` hits an obstacle:
+ * Starting from the last walkable sub-tile of `rayPoints`, advances up to `MAXPATHLEN` (78) steps
+ * by testing the 3 candidate directions `TOWARD_DIRECTIONS[sub_6FDAB610(cur, target) * 3 + 0..2]`
+ * (`0x6FDDC320`, primary direction toward target and ±45° adjacent directions), stopping if all 3
+ * directions collide or if the chosen direction is a 180-degree reversal (`((dir - 4) & 7) === prevDir`).
+ */
+export function traceTowardLocal(
+  grid: SubTileWalkabilityGrid,
+  rayPoints: readonly SubTilePoint[],
+  x1: number,
+  y1: number,
+  unitSize: 1 | 2 = 1,
+): { readonly points: SubTilePoint[]; readonly reachedGoal: boolean } {
+  if (rayPoints.length === 0) {
+    return { points: [], reachedGoal: false }
+  }
+  const points: SubTilePoint[] = rayPoints.slice(0, MAXPATHLEN)
+  const last = points[points.length - 1]!
+  let cx = last.x
+  let cy = last.y
+  const tx = Math.floor(x1)
+  const ty = Math.floor(y1)
+
+  let prevDir = 255
+  while (points.length < MAXPATHLEN && (cx !== tx || cy !== ty)) {
+    const base = sub_6FDAB610(cx, cy, tx, ty) * 3
+    let chosenDir = -1
+    for (let k = 0; k < 3; k++) {
+      const d = TOWARD_DIRECTIONS[base + k]! & 7
+      const odx = DIRECTION_TO_OFFSET_A[d * 2]!
+      const ody = DIRECTION_TO_OFFSET_A[d * 2 + 1]!
+      const nx = cx + odx
+      const ny = cy + ody
+      if (!isUnitWalkableLocal(grid, nx, ny, unitSize)) continue
+      if (odx !== 0 && ody !== 0 && !canStepDiagonalLocal(grid, cx, cy, odx, ody, unitSize)) {
+        continue
+      }
+      chosenDir = d
+      break
+    }
+    if (chosenDir === -1 || ((chosenDir - 4) & 7) === prevDir) {
+      break
+    }
+    cx += DIRECTION_TO_OFFSET_A[chosenDir * 2]!
+    cy += DIRECTION_TO_OFFSET_A[chosenDir * 2 + 1]!
+    points.push({ x: cx, y: cy })
+    prevDir = chosenDir
+  }
+
+  const adx = Math.abs(cx - tx)
+  const ady = Math.abs(cy - ty)
+  const rawH = adx < 8 && ady < 8 ? ASTAR_HEURISTIC[adx + 8 * ady]! : -2
+  const heuristicDist =
+    rawH !== -2 ? (rawH >= 0 ? rawH + 1 : 0) : adx <= ady ? adx + 2 * ady : ady + 2 * adx
+  return { points, reachedGoal: heuristicDist <= 1 && points.length > 1 }
 }
 
 /**
@@ -721,16 +776,16 @@ export function findPathLocal(
   // Obstructed ray: check distance squared
   const distSq = (gx - sx) * (gx - sx) + (gy - sy) * (gy - sy)
   if (distSq > maxAstarDistSq) {
-    // Distance > 18 sub-tiles: 1.13c does not invoke A*, stops at obstacle
-    const rawPath = ray.points.slice(0, MAXPATHLEN)
+    // Distance > 18 sub-tiles: 1.13c PATH_Straight_Compute (0x6FDB7AD0) does not invoke A*,
+    // continuing via PATH_Toward_6FDAA9F0 (0x6FDB78B0) 3-direction wall-sliding.
+    const toward = traceTowardLocal(grid, ray.points, gx, gy, unitSize)
+    const rawPath = toward.points.slice(0, MAXPATHLEN)
     const finalPath =
-      smooth && rawPath.length > 2
-        ? [{ x: sx, y: sy }, rawPath[rawPath.length - 1]!]
-        : rawPath
+      smooth && rawPath.length > 2 ? smoothPathLocal(grid, rawPath, unitSize) : rawPath
     return {
-      path: finalPath,
+      path: finalPath.slice(0, MAXPATHLEN),
       rawPath,
-      reachedGoal: false,
+      reachedGoal: toward.reachedGoal,
       expandedNodes: 1,
     }
   }
@@ -808,16 +863,15 @@ export function findPathLocal(
 
   const endIdx = reachedGoal ? goalIdx : allowPartial ? bestIdx : -1
   if (endIdx < 0 || (!reachedGoal && endIdx === startIdx)) {
-    // If A* failed or could not leave start, stop at the straight ray obstacle
-    const rawPath = ray.points.slice(0, MAXPATHLEN)
+    // If A* failed or could not leave start, fall back to 1.13c PATH_Toward_6FDAA9F0 (0x6FDB78B0)
+    const toward = traceTowardLocal(grid, ray.points, gx, gy, unitSize)
+    const rawPath = toward.points.slice(0, MAXPATHLEN)
     const finalPath =
-      smooth && rawPath.length > 2
-        ? [{ x: sx, y: sy }, rawPath[rawPath.length - 1]!]
-        : rawPath
+      smooth && rawPath.length > 2 ? smoothPathLocal(grid, rawPath, unitSize) : rawPath
     return {
-      path: finalPath,
+      path: finalPath.slice(0, MAXPATHLEN),
       rawPath,
-      reachedGoal: false,
+      reachedGoal: toward.reachedGoal,
       expandedNodes,
     }
   }

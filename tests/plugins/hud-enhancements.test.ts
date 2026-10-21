@@ -7,10 +7,14 @@ import { PluginHost } from '../../src/client/plugin-host/plugin-host.ts'
 import { OnlineSession } from '../../src/client/session/online-session.ts'
 import { SettingsStore } from '../../src/client/settings/settings-store.ts'
 import {
+  CHAR_ADV_STATS_BTN_BOUNDS,
   CHAR_PANEL_ORIGIN,
   CharacterSheetPanel,
   DAMAGE_ROW_BOUNDS,
   STAT_ROW_BOUNDS,
+  computeFcrBreakpoints,
+  computeFhrBreakpoints,
+  computeIasBreakpoints,
   formatCharacterDamageTooltipLines,
   formatStatBasePlusBonus,
   formatStatGainTooltipLines,
@@ -82,11 +86,13 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(false)
     expect(settingsStore.get().showStatGainTooltips).toBe(false)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(false)
+    expect(settingsStore.get().showAdvancedStatsButton).toBe(false)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: false,
       showBasePlusBonusSkills: false,
       showStatGainTooltips: false,
       showWeaponDamageFormula: false,
+      showAdvancedStatsButton: false,
     })
 
     const host = new PluginHost({
@@ -98,16 +104,18 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     })
     await host.whenStarted()
 
-    // Plugin is defaultEnabled: true -> all 4 enhancements active
+    // Plugin is defaultEnabled: true -> all 5 enhancements active
     expect(settingsStore.get().showBasePlusBonusStats).toBe(true)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(true)
     expect(settingsStore.get().showStatGainTooltips).toBe(true)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(true)
+    expect(settingsStore.get().showAdvancedStatsButton).toBe(true)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: true,
       showBasePlusBonusSkills: true,
       showStatGainTooltips: true,
       showWeaponDamageFormula: true,
+      showAdvancedStatsButton: true,
     })
 
     const snap1 = host.list().find((p) => p.id === hudEnhancementsPlugin.id)!
@@ -116,9 +124,11 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(snap1.status.text.zh).toContain('属性x+y')
     expect(snap1.status.text.zh).toContain('属性增益提示')
     expect(snap1.status.text.zh).toContain('武器伤害公式')
+    expect(snap1.status.text.zh).toContain('更多属性面板')
     expect(snap1.status.text.en).toContain('Stats x+y')
     expect(snap1.status.text.en).toContain('Stat Gain Tips')
     expect(snap1.status.text.en).toContain('Weapon Dmg Formula')
+    expect(snap1.status.text.en).toContain('Advanced Stats')
 
     // Toggle individual setting: disable showBasePlusBonusSkills only
     host.setSetting('hud-enhancements', 'showBasePlusBonusSkills', false)
@@ -126,6 +136,7 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(false)
     expect(settingsStore.get().showStatGainTooltips).toBe(true)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(true)
+    expect(settingsStore.get().showAdvancedStatsButton).toBe(true)
     expect(session.hudManager.skillTree.showBasePlusBonusSkills).toBe(false)
     expect(session.hudManager.hotkeys.showBasePlusBonusSkills).toBe(false)
 
@@ -149,17 +160,31 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showWeaponDamageFormula).toBe(true)
     expect(session.hudManager.worldPanels.showWeaponDamageFormula).toBe(true)
 
-    // Disable the entire plugin -> strictly reverts all 4 flags to 1.13c vanilla false
+    // Toggle showAdvancedStatsButton off individually
+    session.hudManager.charSheet.advancedStatsOpen = true
+    host.setSetting('hud-enhancements', 'showAdvancedStatsButton', false)
+    expect(settingsStore.get().showAdvancedStatsButton).toBe(false)
+    expect(session.hudManager.charSheet.showAdvancedStatsButton).toBe(false)
+    expect(session.hudManager.charSheet.advancedStatsOpen).toBe(false)
+
+    // Re-enable showAdvancedStatsButton
+    host.setSetting('hud-enhancements', 'showAdvancedStatsButton', true)
+    expect(settingsStore.get().showAdvancedStatsButton).toBe(true)
+    expect(session.hudManager.charSheet.showAdvancedStatsButton).toBe(true)
+
+    // Disable the entire plugin -> strictly reverts all 5 flags to 1.13c vanilla false
     await host.setEnabled('hud-enhancements', false)
     expect(settingsStore.get().showBasePlusBonusStats).toBe(false)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(false)
     expect(settingsStore.get().showStatGainTooltips).toBe(false)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(false)
+    expect(settingsStore.get().showAdvancedStatsButton).toBe(false)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: false,
       showBasePlusBonusSkills: false,
       showStatGainTooltips: false,
       showWeaponDamageFormula: false,
+      showAdvancedStatsButton: false,
     })
   })
 
@@ -716,5 +741,159 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
 
     hud.charSheet.handleMouseMove(DAMAGE_ROW_BOUNDS.right.x + 10, DAMAGE_ROW_BOUNDS.right.y + 10)
     expect(hud.charSheet.hoveredDamageHand).toBe('right')
+  })
+
+  it('renders the Diablo-styled (?) button next to Close and toggles the Advanced Character Stats overlay with breakpoints', () => {
+    const panel = new CharacterSheetPanel()
+    panel.visible = true
+    panel.lang = 'ENG'
+    panel.classCode = 'pal'
+    panel.showAdvancedStatsButton = true
+    panel.attrs = {
+      ...panel.attrs,
+      name: 'Jads',
+      level: 85,
+      dex: 175,
+      uncappedFireRes: 108,
+      maxFireRes: 83,
+      uncappedColdRes: 86,
+      maxColdRes: 75,
+      uncappedLightRes: 136,
+      maxLightRes: 83,
+      uncappedPoisonRes: 48,
+      maxPoisonRes: 75,
+      poisonLengthPct: 200,
+      curseRes: 0,
+      maxCurseRes: 50,
+      curseLengthPct: 50,
+      drFlat: 7,
+      drPct: 10,
+      mdrFlat: 6,
+      mdrPct: 0,
+      atdPhys: 47,
+      atdLight: 0,
+      firePiercePct: 28,
+      baseArDex: 875,
+      baseArEquip: 877,
+      baseDefDex: 44,
+      baseDefEquip: 2580,
+      baseDmg1hMin: 261,
+      baseDmg1hMax: 517,
+      baseDmg2hMin: 15,
+      baseDmg2hMax: 220,
+      fcr: 25,
+      fbr: 18,
+      fhr: 30,
+      frw: 25,
+      arPct: 116,
+      ias: 40,
+      rightSkillId: 106, // Zeal
+      weaponClass: '1hs',
+      weaponWsm: -16,
+      skillEias: 0,
+      lifeLeech: 13,
+      manaLeech: 8,
+      addedColdMin: 4,
+      addedColdMax: 8,
+      addedLightMin: 76,
+      addedLightMax: 592,
+      addedPoisonMin: 171,
+      addedPoisonMax: 171,
+      addedPoisonSec: 4.0,
+      magicFind: 77,
+      goldFind: 151,
+      stashGold: 1363259,
+    }
+
+    // Verify FCR, FHR, and IAS breakpoints match Paladin Zeal reference
+    expect(computeFcrBreakpoints('pal', panel.attrs)).toEqual([9, 18, 30, 48, 75, 125])
+    expect(computeFhrBreakpoints('pal', panel.attrs)).toEqual([7, 15, 27, 48, 86, 200])
+    const iasRes = computeIasBreakpoints('pal', panel.attrs)
+    expect(iasRes.isAttack).toBe(true)
+    expect(iasRes.entries.map((e) => e.ias)).toEqual([0, 2, 10, 26, 32, 48, 89, 117])
+    expect(iasRes.entries[iasRes.activeIndex]).toEqual({ ias: 32, frames: '6|5|9' })
+
+    // Hovering the `?` button sets hoveredElement = 'advStats' and formats tooltip
+    const btnCenterX = CHAR_ADV_STATS_BTN_BOUNDS.x + 16
+    const btnCenterY = CHAR_ADV_STATS_BTN_BOUNDS.y + 16
+    panel.handleMouseMove(btnCenterX, btnCenterY)
+    expect(panel.hoveredElement).toBe('advStats')
+    expect(panel.formatVanillaHoverTooltipLines()).toEqual(['Advanced Stats'])
+
+    // Clicking the `?` button toggles `advancedStatsOpen` on
+    expect(panel.advancedStatsOpen).toBe(false)
+    expect(panel.handleMouseDown(btnCenterX, btnCenterY)).toBe(true)
+    expect(panel.handleMouseUp(btnCenterX, btnCenterY)).toBe(true)
+    expect(panel.advancedStatsOpen).toBe(true)
+
+    const ctx = createMockCanvasCtx()
+    const font = createMockFont()
+    const runtime = {
+      hp: 1500,
+      maxHp: 1500,
+      mana: 400,
+      maxMana: 400,
+      stamina: 500,
+      maxStamina: 500,
+      leftSkillDmg: '1000-2000',
+      rightSkillDmg: '1000-2000',
+    }
+    panel.draw(ctx, runtime, { borderLeftImg: null, charSheetImg: null, levelBtnImg: null, buySellBtnImg: null }, font)
+
+    // Verify `?` glyph and key overlay rows/colors were drawn
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '?',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'fontexocet10', color: 'yellow' }),
+    )
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '108',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font6', color: 'red' }),
+    )
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '18',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font6', color: 'orange' }),
+    )
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '27',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font6', color: 'orange' }),
+    )
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '32 (6|5|9)',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font6', color: 'orange' }),
+    )
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '171-171 over 4.0s',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font6', color: 'green' }),
+    )
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '1363259',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font6', color: 'yellow' }),
+    )
+
+    // Clicking the `?` button again closes the overlay
+    expect(panel.handleMouseDown(btnCenterX, btnCenterY)).toBe(true)
+    expect(panel.handleMouseUp(btnCenterX, btnCenterY)).toBe(true)
+    expect(panel.advancedStatsOpen).toBe(false)
   })
 })

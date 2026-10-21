@@ -257,16 +257,13 @@ export function hasMonsterUMod(
 ): boolean {
   const set = resolveMonsterUModIds(source)
   if (typeof targetMod === 'number') {
-    if (targetMod === MON_UMOD_ID.FIRE) {
-      return set.has(MON_UMOD_ID.FIRE) || set.has(22)
-    }
     return set.has(targetMod)
   }
   const clean = targetMod.trim().toLowerCase()
   const compact = clean.replace(/[\s_-]+/g, '')
   const mapped = MON_UMOD_NAME_TO_ID[clean] ?? MON_UMOD_NAME_TO_ID[compact] ?? Number(clean)
   if (mapped === MON_UMOD_ID.FIRE) {
-    return set.has(MON_UMOD_ID.FIRE) || set.has(22)
+    return set.has(MON_UMOD_ID.FIRE)
   }
   return Number.isInteger(mapped) && mapped > 0 ? set.has(mapped) : false
 }

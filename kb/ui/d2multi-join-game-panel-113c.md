@@ -109,10 +109,43 @@ Each S2C `MCP_GAMELIST (0x05)` packet carries a single game summary entry or the
 | `14..` | `+0x0C..` | `gameName` | `cstring` | Null-terminated game name (`<= 15` chars; empty `""` on `d2cs` end-of-list sentinel) |
 | `..` | `..` | `description` | `cstring` | Null-terminated game description (`<= 31` chars) |
 
-- **Premature-Termination Invariant (`#931`)**: `d2cs` iterates its internal game list and may emit recently-emptied games (`gameName != ""` and `playerCount == 0`) *before* active open games (`playerCount >= 1`), followed by a 17-byte end-of-list sentinel (`11 00 05 <reqId:u16> 00 00 00 00 00 00 00 00 00 00 00 00 00`, where `gameName == ""`). In `D2MCPClient.dll` `0x6FA263E0` and `D2Multi.dll` `0x6F9DDC48..0x6F9DDCA5`:
-  - End-of-list is reached **only** when `gameName.length === 0` (`parsedLen < payloadLen` on the 17-byte `d2cs` sentinel) or `status === 0xFFFFFFFE` / `0xFFFFFFFF`.
-  - Non-empty entries with `playerCount === 0` or closed status (`(status & 0x04) === 0`) are skipped without terminating the `MCP_GAMELIST` stream.
+- **Premature-Termination Invariant (`#931`)**: `d2cs` iterates its internal game list and may emit recently-emptied open games (`gameName != ""` and `playerCount == 0`, `status & 0x04`) *before* active open games (`playerCount >= 1`), followed by a 17-byte end-of-list sentinel (`11 00 05 <reqId:u16> 00 00 00 00 00 00 00 00 00 00 00 00 00`, where `gameName == ""`). In `D2MCPClient.dll` `0x6FA263E0..0x6FA264C5` and `D2Multi.dll` `0x6F9DDC48..0x6F9DDCA5`:
+  - End-of-list is reached **only** when `gameName.length === 0` (`parsedLen < payloadLen` sets `[0x6FA2B030] = 1` on the 17-byte `d2cs` sentinel) or `status === 0xFFFFFFFE` (`0x33`) / `0xFFFFFFFF` (`0x32`).
+  - `D2Multi.dll` `0x6F9E2120` appends every non-sentinel open entry (`gameName != ""`) into `s_aGameList` (`0x6F9EBF20`) regardless of whether `playerCount == 0` or `playerCount >= 1`, and `0x6F9E205F` formats `playerCount` (`0`, `1`, ...) via `_itoa` into column 1 (`Players`). Only closed entries (`(status & 0x04) === 0` when `status !== 0`) are skipped without terminating the `MCP_GAMELIST` stream.
 - **Deduplication (`0x6F9E2120`)**: Incoming games are deduplicated against existing entries in `s_aGameList` (`0x6F9EBF20`, stride `0x3B`) by game `index` (and case-insensitive `gameName`).
 - **Selection Preservation (`0x6F9E1F80`, `0x6F9E209A..0x6F9E20F8`)**: When rebuilding the Join Game list box, if the previously selected game name still exists in the refreshed list, its selection highlight is preserved; if no game was selected and `gameName` is empty, the first entry is selected and `MCP_GAMEINFO (0x06)` is requested.
 - **Periodic Auto-Refresh (`0x6F9DDF3B..0x6F9DDF7F`)**: While the Join Game sub-panel is active (`s_dwActiveSubPanel == 3`), the lobby loop checks `GetTickCount() - s_dwLastGameListRefreshMs >= 0x3A98` (**15,000 ms**) and automatically re-requests `MCP_GAMELIST (0x05)`.
+
+---
+
+## 6. `MCP_JOINGAME (0x04)` & `MCP_CREATEGAME (0x03)` Status Code `.tbl` String Mappings (`D2Multi.dll`)
+
+### 6.1 `MCP_JOINGAME (0x04)` S2C Status Switch (`D2Multi.dll` `0x6F9DDD0E..0x6F9DDDFD`, Jump Table `0x6F9DE068`, Byte Table `0x6F9DE098`)
+
+When `MCP_JOINGAME (0x04)` returns a non-zero `result` status (`0x6FA265A0`), `D2Multi.dll` maps the status code to a localized `.tbl` string ID and displays it in the lobby error status / popup (`0x6F9DC610`):
+
+| Status Code | Hex | `.tbl` String ID | English (`d2data.mpq` / `d2exp.mpq`) | Traditional Chinese (`Chi/string.tbl` / `expansionstring.tbl`) |
+|---:|---|---:|---|---|
+| `0` | `0x00` | — | Success (connects to D2GS at `ip` with `gameToken` / `gameHash`) | 成功（連線至 D2GS） |
+| `41` | `0x29` | `5160` (`0x1428`) | `"Game name and password don't match."` | `"遊戲名稱及密碼不符。"` |
+| `42` | `0x2A` | `5159` (`0x1427`) | `"Game does not exist."` | `"遊戲並不存在。"` |
+| `43` | `0x2B` | `5161` (`0x1429`) | `"Game is Full."` | `"遊戲人數已滿。"` |
+| `44` | `0x2C` | `5162` (`0x142A`) | `"You do not meet the level restrictions for this game."` | `"你未達到這個遊戲的等級限制。"` |
+| `113` | `0x71` | `5158` (`0x1426`) | `"Hardcore and Normal Characters may not be in the same game."` | `"專家級和一般級人物不能在同一個遊戲中。"` |
+| `115` | `0x73` | `21794` (`0x5522`) / `5364` (`0x14F4`) | `"Unable to enter game. Your character must kill Baal to play in a Nightmare game."` | `"無法進入遊戲。你的人物必須殺死巴爾才能進入惡夢級的遊戲。"` |
+| `116` | `0x74` | `21793` (`0x5521`) / `5363` (`0x14F3`) | `"Unable to enter game. Your character must kill Baal in Nightmare difficulty to play in a Hell game."` | `"無法進入遊戲。你的人物必須殺死惡夢級的巴爾才能進入地獄級的遊戲。"` |
+| `120` | `0x78` | `10101` (`0x2775`) | `"Unable to enter game. A Diablo II character cannot join a game created by a Diablo II Expansion character."` | `"無法進入遊戲。暗黑破壞神 II 的人物無法加入由資料片人物所開創的遊戲。"` |
+| `121` | `0x79` | `10102` (`0x2776`) | `"Unable to enter game. A Diablo II Expansion character cannot join a game created by a Diablo II character."` | `"無法進入遊戲。資料片的人物無法加入由暗黑破壞神 II 人物所開創的遊戲。"` |
+| `125` | `0x7D` | `10929` (`0x2AB1`) / `10930` (`0x2AB2`) | `"Unable to enter game. A Non-Ladder character cannot join a game created by a Ladder character."` | `"無法進入遊戲。非天梯人物無法加入由天梯人物所開創的遊戲。"` |
+| Default | `*` | `5141` (`0x1415`) | `"Join Failed"` | `"加入失敗"` |
+
+### 6.2 `MCP_CREATEGAME (0x03)` S2C Status Switch (`D2Multi.dll` `0x6F9DDE2E..0x6F9DDEB3`, Jump Table `0x6F9DE118`, Byte Table `0x6F9DE12C`)
+
+| Status Code | Hex | `.tbl` String ID | English (`d2data.mpq`) | Traditional Chinese (`Chi/string.tbl`) |
+|---:|---|---:|---|---|
+| `0` | `0x00` | — | Success (automatically sends `MCP_JOINGAME 0x04` at `0x6F9DDE6F`) | 成功（自動發送 `MCP_JOINGAME 0x04`） |
+| `30`, `50` | `0x1E`, `0x32` | `5137` (`0x1411`) | `"Invalid Game Name"` | `"無效的遊戲名稱"` |
+| `31` | `0x1F` | `5138` (`0x1412`) | `"A Game Already Exists With That Name"` | `"已經有相同名稱的遊戲存在"` |
+| `32` | `0x20` | `5139` (`0x1413`) | `"Server Down"` | `"伺服器停機"` |
+| Default | `*` | `5140` (`0x1414`) | `"Error Creating Game"` | `"開創遊戲錯誤"` |
 

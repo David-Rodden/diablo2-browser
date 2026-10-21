@@ -30,6 +30,7 @@ interface PlayerRecord {
   states: Set<number>
   activeNpcId: number | undefined
   items: Entry[]
+  questFlags: Uint16Array
 }
 interface Merc {
   unitId: number
@@ -152,8 +153,10 @@ describe('issue #1358 NPC services', () => {
     const armor = item(9401, 10, 10, false)
     armor.location = 'inventory'
     armor.quality = 2
+    armor.identified = true
     record.items.push(armor)
     record.activeNpcId = charsi
+    record.questFlags[3] |= 1
     game.enqueueCommand(playerId, {
       type: 'NpcEntityAction',
       npcId: charsi,
@@ -161,7 +164,10 @@ describe('issue #1358 NPC services', () => {
       complement: 9401,
     } as never)
     game.stepFrames(1)
-    expect((armor as Entry & { quality?: number }).quality).toBe(6)
-    expect(armor.identified).toBe(true)
+    const imbued = (record.items as (Entry & { quality?: number })[]).find(
+      (entry) => entry.unitId === 9401,
+    )!
+    expect(imbued.quality).toBe('rare')
+    expect(imbued.identified).toBe(true)
   })
 })

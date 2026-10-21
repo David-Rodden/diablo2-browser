@@ -227,13 +227,13 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
       expect(game.getMonster(shamanId)!.alive).toBe(true);
     });
 
-    it('fires monster-owned projectiles (with ownerUnitType: "monster") from ranged monsters (hcIdx 5 & 10) unless suppressed by Dim Vision (state 23)', () => {
+    it('fires monster-owned projectiles (with ownerUnitType: "monster") from ranged monsters (Corrupt Archer, hcIdx 160) unless suppressed by Dim Vision (state 23)', () => {
       const game = new GameInstance({ seed: 707, areaId: 2 });
       const playerId = game.connectPlayer({ charClass: 'ama', name: 'Zon', x: 10, y: 10, areaId: 2 });
       const archerId = game.spawnMonster({
-        hcIdx: 5,
-        defId: 'skeleton2',
-        name: 'Returned Archer',
+        hcIdx: 160,
+        defId: 'cr_archer1',
+        name: 'Corrupt Archer',
         x: 18,
         y: 10,
         areaId: 2,

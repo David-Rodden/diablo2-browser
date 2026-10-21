@@ -607,25 +607,15 @@ export function generateGambleInventory(options: {
     return grid
   }
 
-  // Always guarantee Ring ('rin') and Amulet ('amu') are included in Gamble inventory per 1.13c
-  const rinBase = tables.getBase('rin')
-  const amuBase = tables.getBase('amu')
-  const priorityBases: ItemBase[] = [rinBase, amuBase].filter((b): b is ItemBase => Boolean(b))
-
-  const targetCount = 14
-  const usedCodes = new Set<string>()
-  let placedCount = 0
+  // 1.13c D2GAME_NPC_FillGamble_6FCC73E0 keeps adding random bases to the
+  // 10x10 grid until 12 consecutive placements fail (no fixed item count and
+  // no forced ring/amulet priority).
+  let consecutiveFailures = 0
   let attempts = 0
 
-  while (placedCount < targetCount && attempts < 80) {
+  while (consecutiveFailures < 12 && attempts < 1000) {
     attempts++
-    const base =
-      placedCount < priorityBases.length
-        ? priorityBases[placedCount]!
-        : candidates[rng.rand(candidates.length)]!
-    if (usedCodes.has(base.id) && attempts < 40 && placedCount >= priorityBases.length) {
-      continue
-    }
+    const base = candidates[rng.rand(candidates.length)]!
     const dwInitSeed = rng.rand(0x7fffffff) >>> 0
     const rawFlags = ItemFlag.GAMBLE
     const ilvl = Math.max(5, Math.min(99, Math.trunc(cLvl) + rng.rand(10) - 5))
@@ -656,10 +646,7 @@ export function generateGambleInventory(options: {
     }
 
     const pos = grid.add(mysteryItem)
-    if (pos) {
-      usedCodes.add(base.id)
-      placedCount++
-    }
+    consecutiveFailures = pos ? 0 : consecutiveFailures + 1
   }
 
   return grid
@@ -721,6 +708,7 @@ export function resolveGambledItem(options: {
 
   const qRoll = rng.rand(100000)
   let qualityTier: ItemQualityTier = 'magic'
+  let durabilityMultiplier = 1
   let uniqueItem = undefined
   let setItem = undefined
 
@@ -743,7 +731,9 @@ export function resolveGambledItem(options: {
         }
       }
     } else {
+      // Failed Unique -> rare with 3x durability (1.13c).
       qualityTier = 'rare'
+      durabilityMultiplier = 3
     }
   } else if (qRoll < 150) {
     // Try Set (0.10%)
@@ -765,7 +755,9 @@ export function resolveGambledItem(options: {
         }
       }
     } else {
-      qualityTier = 'rare'
+      // Failed Set -> magic with 2x durability (1.13c), not rare.
+      qualityTier = 'magic'
+      durabilityMultiplier = 2
     }
   } else if (qRoll < 10150) {
     qualityTier = 'rare'
@@ -817,6 +809,7 @@ export function resolveGambledItem(options: {
     dwInitSeed,
     itemRng,
     identified: true,
+    durabilityMultiplier,
   })
 
   return {
