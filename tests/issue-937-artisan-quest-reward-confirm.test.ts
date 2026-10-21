@@ -314,4 +314,47 @@ describe('Issue #937: Larzuk Add Sockets, Charsi Imbue, and Anya Personalize con
       },
     ])
   })
+
+  it('Charsi imbue shows the rare the server puts in the inventory, not a client-made copy on the cursor', () => {
+    const { world, hud, model, commands } = createArtisanTestHarness()
+    const charsiId = 5154
+    world.apply({ type: 'UnitAssign', unit: { unitType: 'monster', id: charsiId, classId: 154, x: 5104, y: 5050, lifePct: 128, mode: 1 } } as any)
+    world.quests[3] = 0x0002
+    const sword = makeItemData({ id: 8001, code: 'ssd', quality: 2, ilvl: 12, invWidth: 1, invHeight: 3, location: 4, container: 'cursor' })
+    world.containers.applyItemEvent(0x02, sword, 'cursor', 1)
+    model.syncFromWorld()
+    world.noteOutgoingCommand({ type: 'NpcInit', target: { unitType: 1, id: charsiId } })
+    model.handleNpcMenuAction('imbue', charsiId)
+    clickHud(hud, 167, 160)
+    commands.length = 0
+    clickHud(hud, 138, 240)
+    expect(commands).toEqual([{ type: 'NpcEntityAction', action: 0, npcId: charsiId, complement: 8001 }])
+    expect(world.containers.cursor).toMatchObject({ id: 8001, quality: 2 })
+
+    const rare = makeItemData({ id: 8100, code: 'ssd', quality: 6, ilvl: 39, invWidth: 1, invHeight: 3, gridX: 3, x: 3 })
+    world.apply({ type: 'CursorClear', unitType: 0, id: 1 })
+    world.apply({ type: 'ItemEvent', action: 0x04, item: rare, itemId: 8100, container: 'inventory' } as any)
+    world.apply({ type: 'OpenUi', unitId: charsiId, unitType: 1, uiId: 6, extra: 0 })
+    model.syncFromWorld()
+
+    expect(world.containers.cursor).toBeNull()
+    expect(hud.inventory.cursorItem).toBeNull()
+    expect(world.containers.allById.get(8100)).toMatchObject({ quality: 6 })
+    expect(world.containers.allById.has(8001)).toBe(false)
+  })
+
+  it('Charsi imbue keeps the original item when the server never answers', () => {
+    const { world, hud, model } = createArtisanTestHarness()
+    const charsiId = 5154
+    world.apply({ type: 'UnitAssign', unit: { unitType: 'monster', id: charsiId, classId: 154, x: 5104, y: 5050, lifePct: 128, mode: 1 } } as any)
+    world.quests[3] = 0x0002
+    world.containers.applyItemEvent(0x02, makeItemData({ id: 8001, code: 'ssd', quality: 2, invWidth: 1, invHeight: 3, location: 4, container: 'cursor' }), 'cursor', 1)
+    model.syncFromWorld()
+    world.noteOutgoingCommand({ type: 'NpcInit', target: { unitType: 1, id: charsiId } })
+    model.handleNpcMenuAction('imbue', charsiId)
+    clickHud(hud, 167, 160)
+    clickHud(hud, 138, 240)
+    expect(hud.inventory.cursorItem).toMatchObject({ id: '8001', quality: 'normal' })
+    expect(world.quests[3]! & 0x0002).toBe(0x0002)
+  })
 })

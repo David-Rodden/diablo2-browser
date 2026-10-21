@@ -15,7 +15,6 @@ import {
   type UnitRef,
   type UnitType,
 } from '../../netproto/index.ts'
-import { type CharsiImbueOptions } from '../../common/items/item-bridge.ts'
 import { computeSetBonusStats, resolveSetItemIdByCodeOrName } from '../ui-model/set-bonuses.ts'
 import {
   isInMeleeRange113c,
@@ -164,7 +163,6 @@ import {
 import {
   applyUnitModeImmediateImpl,
   applyWorldEventImpl,
-  executeCharsiImbueImpl,
   noteOutgoingCommandImpl,
 } from './world-event-applier.ts'
 
@@ -2676,14 +2674,6 @@ export class ClientWorld {
       offsetX: 0,
       offsetY: 0,
     }
-  }
-
-  executeCharsiImbue(
-    itemId?: number,
-    _npcId?: number,
-    options?: CharsiImbueOptions,
-  ): ItemData | null {
-    return executeCharsiImbueImpl.call(this as unknown as ClientWorldInternal, itemId, _npcId, options)
   }
 
   clear(): void {
