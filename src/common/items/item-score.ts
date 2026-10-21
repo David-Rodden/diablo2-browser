@@ -1,4 +1,4 @@
-import type { ItemData, ItemStat } from '../../netproto/index.ts'
+import type { LootItem, LootStat } from './loot-item.ts'
 import { SKILLS_CATALOG } from '../data/skills-catalog.ts'
 import type { CharacterBuild, Element, PlayStyle } from './character-build.ts'
 import VALUATION from './data/item-valuation.json'
@@ -65,7 +65,7 @@ const paramOf = (prop: ItemProp): number | undefined => {
   return Number.isFinite(asNumber) ? asNumber : skillId(String(raw))
 }
 
-export function propStats(props: readonly ItemProp[]): ItemStat[] {
+export function propStats(props: readonly ItemProp[]): LootStat[] {
   const { properties, itemStatCost } = getEmbeddedDropTables()
   if (!properties) return []
   return props.flatMap((prop) => {
@@ -85,7 +85,7 @@ export function propStats(props: readonly ItemProp[]): ItemStat[] {
 
 export const isFighter = (build: CharacterBuild): boolean => FIGHTER_STYLES.has(build.style)
 
-export function statValue({ statId: id, param, value }: ItemStat, build: CharacterBuild): number {
+export function statValue({ statId: id, param, value }: LootStat, build: CharacterBuild): number {
   const perLevel = PER_LEVEL.get(id)
   if (perLevel !== undefined) return statValue({ statId: perLevel, param: 0, value: (value * Math.max(1, build.level)) / PER_LEVEL_DIVISOR }, build)
   const skills = VALUATION.skillBonus[build.style]
@@ -114,9 +114,9 @@ export function statValue({ statId: id, param, value }: ItemStat, build: Charact
   return value * (STYLE_WEIGHTS[build.style].get(id) ?? 0)
 }
 
-export const scoreStats = (stats: readonly ItemStat[], build: CharacterBuild): number => stats.reduce((sum, stat) => sum + statValue(stat, build), 0)
+export const scoreStats = (stats: readonly LootStat[], build: CharacterBuild): number => stats.reduce((sum, stat) => sum + statValue(stat, build), 0)
 
-type StatSource = Pick<ItemData, 'code' | 'quality' | 'identified' | 'stats' | 'runewordStats'> & Partial<Pick<ItemData, 'uniqueItemId' | 'setItemId' | 'socketedItems'>>
+type StatSource = Pick<LootItem, 'code' | 'quality' | 'identified' | 'stats' | 'runewordStats'> & Partial<Pick<LootItem, 'uniqueItemId' | 'setItemId' | 'socketedItems'>>
 
 interface NamedRecord {
   readonly index: string
@@ -134,7 +134,7 @@ export const setRecord = (item: Pick<StatSource, 'quality' | 'setItemId'>): (Nam
   return item.quality === SET && item.setItemId !== undefined ? items.get(item.setItemId) : undefined
 }
 
-export function itemStats(item: StatSource): ItemStat[] {
+export function itemStats(item: StatSource): LootStat[] {
   if (item.identified) return [...item.stats, ...item.runewordStats, ...(item.socketedItems ?? []).flatMap((child) => child.stats)]
   return propStats(uniqueRecord(item)?.props ?? setRecord(item)?.props ?? [])
 }
@@ -157,7 +157,7 @@ export function weaponFit(typeCode: string, build: CharacterBuild): WeaponFit {
   }
 }
 
-export const fitScore = (stats: readonly ItemStat[], build: CharacterBuild, fit: WeaponFit): number =>
+export const fitScore = (stats: readonly LootStat[], build: CharacterBuild, fit: WeaponFit): number =>
   fit === 'none' ? 0 : scoreStats(fit === 'spell' ? stats.filter((stat) => SPELL_STATS.has(stat.statId)) : stats, build)
 
 export const baseGearScore = (damage: { readonly min: number; readonly max: number } | undefined, defense: number, build: CharacterBuild, fit: WeaponFit): number =>

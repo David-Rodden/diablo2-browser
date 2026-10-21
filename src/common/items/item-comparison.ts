@@ -3,7 +3,7 @@ import type { EquipSlotId, UiInventoryItem } from './inventory-model.ts'
 import { characterBuild } from './character-build.ts'
 import { getEmbeddedDropTables } from './embedded-drop-tables.ts'
 import { baseGearScore, fitScore, weaponFit } from './item-score.ts'
-import type { ItemStat } from '../../netproto/index.ts'
+import type { LootStat } from './loot-item.ts'
 
 export type UpgradeVerdict = 'much-better' | 'better' | 'unsure'
 
@@ -87,10 +87,10 @@ const statsOf = (item: UiInventoryItem, build: BuildView): Map<string, number> =
 const NO_BUILD: BuildProfile = { classIndex: -1, skillPoints: new Map() }
 const WORSE_RATIO = 0.95
 
-const rawStatsOf = (item: UiInventoryItem): ItemStat[] =>
+const rawStatsOf = (item: UiInventoryItem): LootStat[] =>
   [item, ...(item.socketedItems ?? [])].flatMap((part) => {
     const raw = part.rawItem as { readonly stats?: unknown; readonly runewordStats?: unknown } | undefined
-    return [raw?.stats, raw?.runewordStats].flatMap((list) => (Array.isArray(list) ? (list as ItemStat[]) : []))
+    return [raw?.stats, raw?.runewordStats].flatMap((list) => (Array.isArray(list) ? (list as LootStat[]) : []))
   })
 
 const weightedScore = (item: UiInventoryItem, profile: BuildProfile): number => {

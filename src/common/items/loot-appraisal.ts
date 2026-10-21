@@ -1,4 +1,4 @@
-import type { ItemData } from '../../netproto/index.ts'
+import type { LootItem } from './loot-item.ts'
 import { SKILLS_CATALOG } from '../data/skills-catalog.ts'
 import { CHARACTER_CLASS_CODES } from '../units/classes.ts'
 import { className, type CharacterBuild } from './character-build.ts'
@@ -26,8 +26,8 @@ export interface Appraisal {
 
 export interface AppraisalContext {
   readonly build: CharacterBuild
-  readonly equipped: readonly ItemData[]
-  readonly owned: readonly ItemData[]
+  readonly equipped: readonly LootItem[]
+  readonly owned: readonly LootItem[]
 }
 
 type CharmSize = keyof typeof KNOWLEDGE.charmScore
@@ -54,13 +54,13 @@ const BETTER = 1.1
 const MIN_GAIN = 5
 const FUTURE_LEVELS = 10
 
-const codeOf = (item: Pick<ItemData, 'code'>) => item.code.trim().toLowerCase()
+const codeOf = (item: Pick<LootItem, 'code'>) => item.code.trim().toLowerCase()
 const isRune = (code: string) => RUNE_INFO[code] !== undefined
 
 const result = (tier: LootTier, kind: LootKind, score: number, reason: string, extra: Partial<Appraisal> = {}): Appraisal => ({ tier, kind, score: Math.round(score), reason, locked: false, ...extra })
 
 const uiCache = new WeakMap<object, UiInventoryItem>()
-const uiOf = (item: ItemData): UiInventoryItem => uiCache.get(item) ?? (uiCache.set(item, onlineItemDataToUiInventoryItem(item)), uiCache.get(item)!)
+const uiOf = (item: LootItem): UiInventoryItem => uiCache.get(item) ?? (uiCache.set(item, onlineItemDataToUiInventoryItem(item)), uiCache.get(item)!)
 
 const tabName = (classIndex: number, tab: number) => SKILLS_CATALOG.find((skill) => skill.classCode === CHARACTER_CLASS_CODES[classIndex] && skill.tabIndex === tab)?.tabName
 
@@ -94,12 +94,12 @@ function gemAppraisal(code: string, { build }: AppraisalContext): Appraisal {
   return result(verdict, 'gem', best.score + tier * 5, reason)
 }
 
-function skillerReason(item: ItemData, build: CharacterBuild): string | null {
+function skillerReason(item: LootItem, build: CharacterBuild): string | null {
   const tab = item.stats.find((stat) => stat.statId === 188 && stat.param >> 3 === build.classIndex && build.investedTabs.has(stat.param & 7))
   return tab ? `+${tab.value} to your ${tabName(build.classIndex, tab.param & 7) ?? 'skills'}` : null
 }
 
-function charmAppraisal(item: ItemData, size: CharmSize, { build }: AppraisalContext): Appraisal {
+function charmAppraisal(item: LootItem, size: CharmSize, { build }: AppraisalContext): Appraisal {
   const { good, great, unidentified } = KNOWLEDGE.charmScore[size]
   if (!item.identified) return result(unidentified as LootTier, 'charm', good, `Unidentified ${size} charm`, { locked: true })
   const skiller = skillerReason(item, build)
@@ -108,26 +108,26 @@ function charmAppraisal(item: ItemData, size: CharmSize, { build }: AppraisalCon
   return result(tier, 'charm', score, skiller ?? `Worth ${Math.round(score)} to your build`, { locked: tier !== 'junk' })
 }
 
-function jewelAppraisal(item: ItemData, { build }: AppraisalContext): Appraisal {
+function jewelAppraisal(item: LootItem, { build }: AppraisalContext): Appraisal {
   if (!item.identified) return result('good', 'jewel', 20, 'Unidentified jewel')
   const score = scoreStats(itemStats(item), build)
   return result(score >= 50 ? 'great' : score >= 20 ? 'good' : score >= 6 ? 'keep' : 'junk', 'jewel', score, `Worth ${Math.round(score)} to your build`)
 }
 
-const slotOf = (item: ItemData): EquipSlotId | undefined => BODY_LOC_SLOT[String(item.bodyLoc || item.equippedSlot)]
-const equippedBySlot = (equipped: readonly ItemData[]) => new Map(equipped.flatMap((item) => (slotOf(item) ? [[slotOf(item)!, item] as const] : [])))
+const slotOf = (item: LootItem): EquipSlotId | undefined => BODY_LOC_SLOT[String(item.bodyLoc || item.equippedSlot)]
+const equippedBySlot = (equipped: readonly LootItem[]) => new Map(equipped.flatMap((item) => (slotOf(item) ? [[slotOf(item)!, item] as const] : [])))
 
 const baseTypeOf = (code: string) => getEmbeddedDropTables().getBase(code)?.type ?? ''
 
 const damageOf = (ui: UiInventoryItem) => ui.twoHanded ? ui.twoHandDamage : ui.oneHandDamage ?? ui.twoHandDamage
 
-export function gearScore(item: ItemData, build: CharacterBuild): number {
+export function gearScore(item: LootItem, build: CharacterBuild): number {
   const ui = uiOf(item)
   const fit = weaponFit(baseTypeOf(codeOf(item)), build)
   return fitScore(itemStats(item), build, fit) + baseGearScore(damageOf(ui), ui.defense ?? item.defense ?? 0, build, fit)
 }
 
-const requiredLevel = (item: ItemData, ui: UiInventoryItem) => Math.max(ui.reqLevel ?? 0, uniqueRecord(item)?.levelreq ?? 0, setRecord(item)?.levelreq ?? 0)
+const requiredLevel = (item: LootItem, ui: UiInventoryItem) => Math.max(ui.reqLevel ?? 0, uniqueRecord(item)?.levelreq ?? 0, setRecord(item)?.levelreq ?? 0)
 
 const usableBy = (ui: UiInventoryItem, build: CharacterBuild, levelSlack = 0) =>
   (ui.reqClass === undefined || ui.reqClass === CHARACTER_CLASS_CODES[build.classIndex]) && (ui.reqStr ?? 0) <= build.strength + levelSlack * 5 && (ui.reqDex ?? 0) <= build.dexterity + levelSlack * 5
@@ -138,7 +138,7 @@ interface Upgrade {
   readonly current: number
 }
 
-function bestUpgrade(item: ItemData, { build, equipped }: AppraisalContext): Upgrade | null {
+function bestUpgrade(item: LootItem, { build, equipped }: AppraisalContext): Upgrade | null {
   const ui = uiOf(item)
   const worn = equippedBySlot(equipped)
   const score = gearScore(item, build)
@@ -152,7 +152,7 @@ function bestUpgrade(item: ItemData, { build, equipped }: AppraisalContext): Upg
 
 const gainOf = ({ score, current }: Upgrade) => (current <= 0 ? (score > MIN_GAIN ? Infinity : 0) : score / current)
 
-function upgradeAppraisal(item: ItemData, kind: LootKind, ctx: AppraisalContext): Appraisal | null {
+function upgradeAppraisal(item: LootItem, kind: LootKind, ctx: AppraisalContext): Appraisal | null {
   const ui = uiOf(item)
   if (ui.allowedSlots.length === 0 || !usableBy(ui, ctx.build, FUTURE_LEVELS)) return null
   const upgrade = bestUpgrade(item, ctx)
@@ -166,7 +166,7 @@ function upgradeAppraisal(item: ItemData, kind: LootKind, ctx: AppraisalContext)
   return result(gain >= MUCH_BETTER ? 'great' : 'good', kind, upgrade.score, `Upgrade for your ${slot}${pct}`, { upgradeSlot: upgrade.slot })
 }
 
-function namedAppraisal(item: ItemData, kind: 'unique' | 'set', ctx: AppraisalContext): Appraisal {
+function namedAppraisal(item: LootItem, kind: 'unique' | 'set', ctx: AppraisalContext): Appraisal {
   const unique = kind === 'unique' ? uniqueRecord(item) : undefined
   const setItem = kind === 'set' ? setRecord(item) : undefined
   const upgrade = upgradeAppraisal(item, kind, ctx)
@@ -182,7 +182,7 @@ function namedAppraisal(item: ItemData, kind: 'unique' | 'set', ctx: AppraisalCo
 
 const ownClassItem = (ui: UiInventoryItem, build: CharacterBuild) => ui.reqClass !== undefined && ui.reqClass === CHARACTER_CLASS_CODES[build.classIndex]
 
-function unknownAffixAppraisal(item: ItemData, kind: 'rare' | 'magic', ctx: AppraisalContext): Appraisal {
+function unknownAffixAppraisal(item: LootItem, kind: 'rare' | 'magic', ctx: AppraisalContext): Appraisal {
   const ui = uiOf(item)
   const code = codeOf(item)
   const jewelry = JEWELRY.has(code)
@@ -193,7 +193,7 @@ function unknownAffixAppraisal(item: ItemData, kind: 'rare' | 'magic', ctx: Appr
   return result(jewelry || classItem ? 'keep' : 'junk', kind, jewelry || classItem ? 10 : 1, classItem ? `Could roll ${className(ctx.build.classIndex)} skills` : jewelry ? 'Unidentified magic jewelry' : 'Plain magic item')
 }
 
-function knownAffixAppraisal(item: ItemData, kind: LootKind, ctx: AppraisalContext): Appraisal {
+function knownAffixAppraisal(item: LootItem, kind: LootKind, ctx: AppraisalContext): Appraisal {
   const upgrade = upgradeAppraisal(item, kind, ctx)
   if (upgrade) return upgrade
   const skiller = skillerReason(item, ctx.build)
@@ -202,7 +202,7 @@ function knownAffixAppraisal(item: ItemData, kind: LootKind, ctx: AppraisalConte
   return result(score >= 80 ? 'keep' : 'junk', kind, score, score >= 80 ? `Worth ${Math.round(score)} to your build` : 'Not an upgrade')
 }
 
-function baseAppraisal(item: ItemData, { build }: AppraisalContext): Appraisal {
+function baseAppraisal(item: LootItem, { build }: AppraisalContext): Appraisal {
   const sockets = item.totalSockets
   const type = baseTypeOf(codeOf(item))
   const { isA } = getEmbeddedDropTables()
@@ -212,7 +212,7 @@ function baseAppraisal(item: ItemData, { build }: AppraisalContext): Appraisal {
   return result('junk', item.runeword ? 'base' : 'normal', 0, sockets > 0 ? `${sockets} sockets, no runeword for you` : 'Plain item')
 }
 
-export function appraiseItem(item: ItemData, ctx: AppraisalContext): Appraisal {
+export function appraiseItem(item: LootItem, ctx: AppraisalContext): Appraisal {
   const code = codeOf(item)
   if (code === 'gld') return result('keep', 'gold', 0, 'Gold', { locked: true })
   if (CANONICAL_QUEST_ITEM_CODES.has(code) || CANONICAL_ORANGE_SPECIAL_ITEM_CODES.has(code)) return result('great', 'quest', 300, 'Quest or key item', { locked: true })

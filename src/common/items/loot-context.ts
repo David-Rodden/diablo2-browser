@@ -1,4 +1,4 @@
-import type { ItemData, SkillLevel } from '../../netproto/index.ts'
+import type { LootItem } from './loot-item.ts'
 import { characterBuild } from './character-build.ts'
 import type { AppraisalContext } from './loot-appraisal.ts'
 
@@ -9,24 +9,24 @@ export interface CharacterView {
     readonly charClass: number | null
     readonly level: number
     readonly stats: { get(statId: number): number }
-    readonly skillEntries: ReadonlyMap<number, SkillLevel>
+    readonly skillEntries: ReadonlyMap<number, { readonly skillId: number; readonly level: number; readonly baseLevel?: number | undefined }>
   }
   readonly containers: {
-    readonly equipment: ReadonlyMap<number, ItemData>
-    readonly inventory: ReadonlyMap<number, ItemData>
-    readonly stash: ReadonlyMap<number, ItemData>
-    readonly cube: ReadonlyMap<number, ItemData>
+    readonly equipment: ReadonlyMap<number, LootItem>
+    readonly inventory: ReadonlyMap<number, LootItem>
+    readonly stash: ReadonlyMap<number, LootItem>
+    readonly cube: ReadonlyMap<number, LootItem>
     readonly revision?: number | undefined
   }
 }
 
 const NEUTRAL: AppraisalContext = { build: characterBuild({ classIndex: -1, level: 1, strength: 0, dexterity: 0, skillPoints: new Map() }), equipped: [], owned: [] }
 
-const cache = new WeakMap<CharacterView, { readonly key: string; readonly context: AppraisalContext }>()
+const cache = new WeakMap<object, { readonly key: string; readonly context: AppraisalContext }>()
 
 export function appraisalContextOf(view: Partial<CharacterView> | null | undefined): AppraisalContext {
   if (!view?.self || !view.containers) return NEUTRAL
-  const { self, containers } = view as CharacterView
+  const { self, containers } = view
   const skillPoints = new Map([...self.skillEntries.values()].map((skill) => [skill.skillId, skill.baseLevel ?? skill.level]))
   const sheet = { classIndex: self.charClass ?? -1, level: Math.max(1, self.level), strength: self.stats.get(STRENGTH), dexterity: self.stats.get(DEXTERITY), skillPoints }
   const key = `${containers.revision ?? -1}|${JSON.stringify({ ...sheet, skillPoints: [...skillPoints] })}`
