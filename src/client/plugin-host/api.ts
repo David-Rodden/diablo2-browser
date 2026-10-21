@@ -225,6 +225,18 @@ export interface PluginQuickCastPort {
 
 export type PluginTogglePort = PluginQuickCastPort
 
+export type PluginToastColor = 'white' | 'red' | 'green' | 'blue' | 'gold' | 'tan' | 'orange' | 'yellow' | 'purple'
+
+export interface PluginToast {
+  readonly title: string
+  readonly detail?: string | undefined
+  readonly color: PluginToastColor
+}
+
+export interface PluginNotifyPort {
+  show(toast: PluginToast): void
+}
+
 export interface PluginHotkeyPort {
   getKey(): string | null
   setKey(key: string | null): void
@@ -343,6 +355,8 @@ export interface PluginContext {
   readonly beltRefill: PluginTogglePort
   readonly upgradeHints: PluginTogglePort
   readonly monsterResists: PluginTogglePort
+  readonly lowLifeWarning: PluginTogglePort
+  readonly notify: PluginNotifyPort
   readonly itemInfo: PluginItemInfoPort
   readonly pathGuide: PluginPathGuidePort
   readonly autoCombat: PluginAutoCombatPort

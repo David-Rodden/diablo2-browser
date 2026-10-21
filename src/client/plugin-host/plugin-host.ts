@@ -44,6 +44,7 @@ import {
   type PluginInstance,
   type PluginLogger,
   type PluginQuickCastPort,
+  type PluginNotifyPort,
   type PluginTogglePort,
   type PluginSessionView,
   type PluginStatus,
@@ -122,9 +123,10 @@ export interface PluginHostOptions {
    * toggle).
    */
   readonly quickCast?: PluginQuickCastPort | null | undefined
+  readonly notify?: PluginNotifyPort | null | undefined
 }
 
-const TOGGLE_PORT_NAMES = ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists'] as const
+const TOGGLE_PORT_NAMES = ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists', 'lowLifeWarning'] as const
 type TogglePortName = (typeof TOGGLE_PORT_NAMES)[number]
 type SettingPortName = 'autoCombat' | 'townPortal' | 'autoPotion' | 'itemInfo' | 'pathGuide'
 type WiredPortOptions = { readonly [K in TogglePortName | SettingPortName]?: PluginContext[K] | null | undefined }
@@ -168,6 +170,7 @@ export class PluginHost {
     DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS
   private readonly unsubConfig: () => void
   private readonly quickCastPort: PluginQuickCastPort | null
+  private readonly notifyPort: PluginNotifyPort | null
   /** Plugins currently claiming Quick Cast (Issue #952); empty set = vanilla behavior. */
   private readonly quickCastClaims = new Set<string>()
   private readonly settingPorts: Pick<WiredPortOptions, SettingPortName>
@@ -181,6 +184,7 @@ export class PluginHost {
     this.session = options.session
     this.toolbar = options.toolbar ?? null
     this.quickCastPort = options.quickCast ?? null
+    this.notifyPort = options.notify ?? null
     this.settingPorts = { autoCombat: options.autoCombat, townPortal: options.townPortal, autoPotion: options.autoPotion, itemInfo: options.itemInfo, pathGuide: options.pathGuide }
     this.togglePorts = new Map(TOGGLE_PORT_NAMES.map((name) => [name, { port: options[name] ?? null, claims: new Set<string>() }]))
     this.settingsStore = options.settingsStore ?? getGlobalSettingsStore()
@@ -1481,6 +1485,7 @@ export class PluginHost {
       })(),
       client: this.createClientCapabilities(record, () => contextDisposed),
       quickCast: this.createQuickCastPort(record, () => contextDisposed),
+      notify: { show: (toast) => void (contextDisposed || this.notifyPort?.show(toast)) },
       ...this.createWiredPorts(record, () => contextDisposed),
       lang: (() => {
         const subscribe = (fn: (lang: GameLang) => void): (() => void) => {

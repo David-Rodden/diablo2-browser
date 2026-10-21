@@ -37,6 +37,7 @@ import {
 } from './inventory.ts'
 import { upgradeVerdict, type BuildProfile, type UpgradeVerdict } from '../../common/items/item-comparison.ts'
 import { XpGainFeed, XpRateTracker } from './xp-bar.ts'
+import { ToastFeed } from './toasts.ts'
 import type { AutomapHudFootprint } from './minimap.ts'
 import { onlineItemDataToUiInventoryItem } from '../../common/items/item-bridge.ts'
 import type { ItemData } from '../../netproto/index.ts'
@@ -500,6 +501,8 @@ export class HudManager {
   showXpBar = false
   readonly xpRate = new XpRateTracker()
   readonly xpGains = new XpGainFeed()
+  readonly toasts = new ToastFeed()
+  lowLifeWarning = false
   upgradeHints = false
   resolveGroundItem: ((unitId: number) => ItemData | undefined) | null = null
   resolveBuild: (() => BuildProfile) | null = null

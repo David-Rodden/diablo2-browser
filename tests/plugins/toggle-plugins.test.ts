@@ -16,6 +16,7 @@ import { stashDepositAllPlugin } from '../../plugins/stash-deposit-all/index.ts'
 import { experienceBarPlugin } from '../../plugins/experience-bar/index.ts'
 import { autoGoldPickupPlugin } from '../../plugins/auto-gold-pickup/index.ts'
 import { beltRefillPlugin } from '../../plugins/belt-refill/index.ts'
+import { lowLifeWarningPlugin } from '../../plugins/low-life-warning/index.ts'
 import { townPortalKeyPlugin } from '../../plugins/town-portal-key/index.ts'
 import { autoCombatPlugin } from '../../plugins/auto-combat/index.ts'
 import { autoPotionPlugin } from '../../plugins/auto-potion/index.ts'
@@ -57,6 +58,7 @@ describe.each([
   { plugin: beltRefillPlugin, portName: 'beltRefill', defaultOn: false },
   { plugin: upgradeHintsPlugin, portName: 'upgradeHints', defaultOn: true },
   { plugin: monsterResistsPlugin, portName: 'monsterResists', defaultOn: true },
+  { plugin: lowLifeWarningPlugin, portName: 'lowLifeWarning', defaultOn: true },
 ])('$plugin.id toggle plugin', ({ plugin, portName, defaultOn }) => {
   const createToggleHost = (port: PluginTogglePort | null) => createHost(plugin, { [portName]: port })
 

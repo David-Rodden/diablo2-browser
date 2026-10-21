@@ -679,6 +679,8 @@ export async function startPlayApp(options?: {
     beltRefill: togglePortFor(session.commandMapper.assists, 'beltRefill'),
     upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
+    lowLifeWarning: togglePortFor(hudManager, 'lowLifeWarning'),
+    notify: { show: (toast) => hudManager.toasts.push(toast, performance.now()) },
     itemInfo: { getConfig: () => hudManager.itemInfo, setConfig: (config) => hudManager.setItemInfo(config) },
     pathGuide: {
       getMode: () => (guide.enabled ? guide.mode : null),
