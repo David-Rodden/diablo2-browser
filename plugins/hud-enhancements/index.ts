@@ -35,8 +35,8 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
       en: 'HUD Display Enhancements',
     },
     description: {
-      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示、悬停伤害时显示计算公式。关闭插件后严格恢复 1.13c 原版显示。',
-      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, and shows damage calculation formulas. Reverts to 1.13c vanilla display when disabled.',
+      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示、悬停伤害时显示计算公式，并在人物属性界面提供暗黑风格“?”更多属性面板按钮。关闭插件后严格恢复 1.13c 原版显示。',
+      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, shows damage calculation formulas, and adds a Diablo-styled "?" Advanced Character Stats button on the Character Sheet. Reverts to 1.13c vanilla display when disabled.',
     },
     defaultEnabled: true,
     settings: [
@@ -76,6 +76,15 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         },
         default: true,
       },
+      {
+        kind: 'boolean',
+        key: 'showAdvancedStatsButton',
+        label: {
+          zh: '人物属性界面显示更多属性按钮 (?)',
+          en: 'Character Sheet: Show Advanced Stats Button (?)',
+        },
+        default: true,
+      },
     ],
     activate(ctx: PluginContext): HudEnhancementsPluginInstance {
       const readSettingsConfig = (): HudEnhancementsConfig => ({
@@ -83,6 +92,7 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         showBasePlusBonusSkills: ctx.settings.get('showBasePlusBonusSkills') === true,
         showStatGainTooltips: ctx.settings.get('showStatGainTooltips') === true,
         showWeaponDamageFormula: ctx.settings.get('showWeaponDamageFormula') === true,
+        showAdvancedStatsButton: ctx.settings.get('showAdvancedStatsButton') === true,
       })
 
       ctx.client.setHudEnhancements(readSettingsConfig())
@@ -100,6 +110,9 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         if (ctx.settings.get('showWeaponDamageFormula') !== clientCfg.showWeaponDamageFormula) {
           ctx.settings.set('showWeaponDamageFormula', clientCfg.showWeaponDamageFormula)
         }
+        if (ctx.settings.get('showAdvancedStatsButton') !== clientCfg.showAdvancedStatsButton) {
+          ctx.settings.set('showAdvancedStatsButton', clientCfg.showAdvancedStatsButton)
+        }
         ctx.notifyStatusChanged()
       })
 
@@ -108,7 +121,8 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
           key === 'showBasePlusBonusStats' ||
           key === 'showBasePlusBonusSkills' ||
           key === 'showStatGainTooltips' ||
-          key === 'showWeaponDamageFormula'
+          key === 'showWeaponDamageFormula' ||
+          key === 'showAdvancedStatsButton'
         ) {
           ctx.client.setHudEnhancements(readSettingsConfig())
           ctx.notifyStatusChanged()
@@ -134,6 +148,10 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         if (cfg.showWeaponDamageFormula) {
           activeZh.push('武器伤害公式')
           activeEn.push('Weapon Dmg Formula')
+        }
+        if (cfg.showAdvancedStatsButton) {
+          activeZh.push('更多属性面板')
+          activeEn.push('Advanced Stats')
         }
         if (activeZh.length === 0) {
           return {
@@ -167,6 +185,9 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
           }
           if (typeof patch.showWeaponDamageFormula === 'boolean') {
             ctx.settings.set('showWeaponDamageFormula', patch.showWeaponDamageFormula)
+          }
+          if (typeof patch.showAdvancedStatsButton === 'boolean') {
+            ctx.settings.set('showAdvancedStatsButton', patch.showAdvancedStatsButton)
           }
         },
         getStatus,

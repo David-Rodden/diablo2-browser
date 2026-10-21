@@ -12,7 +12,7 @@ const PLUGINS_DIR = resolve(ROOT_DIR, 'plugins')
 const TOOLS_DIR = resolve(ROOT_DIR, 'tools')
 
 const CANONICAL_MODULES = ['baker', 'client', 'common', 'netproto', 'server'] as const
-const LEGACY_HTML_FILES = ['index.html', 'acts.html', 'acts-zh.html', 'acts-en.html', 'bnet.html'] as const
+const LEGACY_HTML_FILES = ['acts.html', 'acts-zh.html', 'acts-en.html', 'bnet.html', 'stats.html'] as const
 const RETIRED_SERVER_SUBPATHS = [
   'engine/engine.ts',
   'engine/combat.ts',
@@ -254,13 +254,23 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1â€“10 â
     expect(violations).toEqual([])
   })
 
-  it('Rule 7: root HTML entry file is solely play.html, play.html composes /src/client/main.ts and /plugins/index.ts with D2Exocet/D2Formal436, and all 5 legacy HTML files remain deleted', () => {
+  it('Rule 7: root HTML entry files are solely index.html (Sanctuary homepage) and play.html (game client composing /src/client/main.ts + /plugins/index.ts), and all 5 legacy prototype HTML files remain deleted', () => {
     const rootHtmlFiles = readdirSync(ROOT_DIR)
       .filter((f) => f.endsWith('.html'))
       .sort()
-    expect(rootHtmlFiles).toEqual(['play.html'])
-    expect(existsSync(resolve(ROOT_DIR, 'stats.html'))).toBe(false)
+    expect(rootHtmlFiles).toEqual(['index.html', 'play.html'])
+    expect(existsSync(resolve(ROOT_DIR, 'public/home.html'))).toBe(false)
 
+    // 1. index.html is the lightweight Sanctuary Web Portal homepage (no WebGL game engine imports)
+    const indexHtml = readFileSync(resolve(ROOT_DIR, 'index.html'), 'utf8')
+    expect(indexHtml).toContain('D2Exocet')
+    expect(indexHtml).toContain('D2Formal436')
+    expect(indexHtml).toContain('href="/play.html"')
+    expect(indexHtml).toContain('href="/musicbox.html"')
+    expect(indexHtml).not.toContain('/src/client/main.ts')
+    expect(indexHtml).not.toContain('/plugins/index.ts')
+
+    // 2. play.html is the game client entry composing /src/client/main.ts and /plugins/index.ts
     expect(existsSync(resolve(ROOT_DIR, 'play.html'))).toBe(true)
     const playHtml = readFileSync(resolve(ROOT_DIR, 'play.html'), 'utf8')
     expect(playHtml).toContain('/src/client/main.ts')
@@ -274,16 +284,12 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1â€“10 â
     expect(inlineImports).toEqual(['/src/client/main.ts', '/plugins/index.ts'])
 
     const viteCfg = readFileSync(resolve(ROOT_DIR, 'vite.config.ts'), 'utf8')
+    expect(viteCfg).toContain('index.html')
     expect(viteCfg).toContain('play.html')
-    expect(viteCfg).not.toContain('stats.html')
 
     for (const legacyHtml of LEGACY_HTML_FILES) {
       expect(existsSync(resolve(ROOT_DIR, legacyHtml))).toBe(false)
-      if (legacyHtml === 'index.html') {
-        expect(viteCfg).not.toMatch(/resolve\(\s*__dirname\s*,\s*['"]index\.html['"]\)/)
-      } else {
-        expect(viteCfg).not.toContain(legacyHtml)
-      }
+      expect(viteCfg).not.toContain(legacyHtml)
     }
   })
 
@@ -432,6 +438,7 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1â€“10 â
   it('Rule 10: every plugins/<id>/index.html declares local D2Exocet & D2Formal436 @font-face rules, contains zero http(s):// URLs, references only /plugins/<id>/... module scripts, and is auto-included in vite.config.ts build inputs', () => {
     const pluginIds = listPluginIds()
     const rawInput = (viteConfig.build?.rollupOptions?.input ?? {}) as Record<string, string>
+    expect(rawInput.index).toBe(resolve(ROOT_DIR, 'index.html'))
     expect(rawInput.play).toBe(resolve(ROOT_DIR, 'play.html'))
     expect('stats' in rawInput).toBe(false)
 

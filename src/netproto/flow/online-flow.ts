@@ -591,7 +591,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
     async createGame(spec: GameCreateSpec): Promise<void> {
       const m = requireMcp('createGame')
       const res = await exchange('mcp', () => m.createGame(spec))
-      if (res.status !== 0 && res.status !== 0x1e) {
+      if (res.status !== 0) {
         throw new ProtocolError(
           `MCP_CREATEGAME failed for "${spec.name}" with status=0x${res.status.toString(16)}`,
           { proto: 'mcp', packetId: 0x03 },

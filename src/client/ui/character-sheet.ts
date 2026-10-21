@@ -26,7 +26,7 @@ import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 
 export type { BaseStatKey, CharacterAttributes }
 export type DamageHandKey = 'left' | 'right'
-export type CharSheetHoveredElement = 'leftAr' | 'rightAr' | 'defense' | 'close'
+export type CharSheetHoveredElement = 'leftAr' | 'rightAr' | 'defense' | 'close' | 'advStats'
 
 /**
  * Skills that always hit or bypass Attack Rating in Diablo II v1.13c (`D2Client.dll 0x6FADE350` & `Skills.txt`):
@@ -399,6 +399,186 @@ export function formatStatGainTooltipLines(
 
 export const CHAR_PANEL_ORIGIN = { x: 80, y: 60, width: 320, height: 432 } as const
 export const CHAR_CLOSE_BTN_BOUNDS = { x: 80 + 128, y: 60 + 388, w: 32, h: 32 } as const
+export const CHAR_ADV_STATS_BTN_BOUNDS = { x: 80 + 92, y: 60 + 388, w: 32, h: 32 } as const
+export const CHAR_ADV_STATS_PANEL_BOUNDS = { x: 80 + 6, y: 60 + 6, w: 308, h: 376 } as const
+
+export interface IasBreakpointEntry {
+  readonly ias: number
+  readonly frames: string
+}
+
+export interface IasBreakpointResult {
+  readonly isAttack: boolean
+  readonly entries: readonly IasBreakpointEntry[]
+  readonly activeIndex: number
+}
+
+/**
+ * Computes 1.13c FCR (Faster Cast Rate) breakpoints for the character class, shapeshift/vampire form,
+ * and right-click skill (`AnimData.d2` & `BH.dll` `0x10116c20`).
+ */
+export function computeFcrBreakpoints(
+  classCode: CharacterClassCode | null,
+  attrs: CharacterSheetAttributes,
+): readonly number[] {
+  if (attrs.vampireState) return [6, 11, 18, 24, 35, 48, 65, 86, 120, 180]
+  if (attrs.werebearState) return [7, 15, 26, 40, 63, 99, 163]
+  if (attrs.werewolfState) return [6, 14, 26, 40, 60, 95, 157]
+  const rSkill = attrs.rightSkillId ?? 0
+  if (classCode === 'sor' && (rSkill === 41 || rSkill === 43 || rSkill === 49 || rSkill === 53)) {
+    return [7, 15, 23, 35, 52, 78, 117, 194]
+  }
+  switch (classCode) {
+    case 'ama':
+      return [7, 14, 22, 32, 48, 68, 99, 152]
+    case 'sor':
+    case 'bar':
+      return [9, 20, 37, 63, 105, 200]
+    case 'nec':
+    case 'pal':
+      return [9, 18, 30, 48, 75, 125]
+    case 'dru':
+      return [4, 10, 19, 30, 46, 68, 99, 163]
+    case 'ass':
+      return [8, 16, 27, 42, 65, 102, 174]
+    default:
+      return [9, 18, 30, 48, 75, 125]
+  }
+}
+
+/**
+ * Computes 1.13c FHR (Faster Hit Recovery) breakpoints for the character class, shapeshift/vampire form,
+ * and equipped weapon type (`AnimData.d2` & `BH.dll` `0x10116d60`).
+ */
+export function computeFhrBreakpoints(
+  classCode: CharacterClassCode | null,
+  attrs: CharacterSheetAttributes,
+): readonly number[] {
+  if (attrs.vampireState) return [2, 6, 10, 16, 24, 34, 48, 72, 117]
+  if (attrs.werebearState) return [5, 10, 16, 24, 37, 54, 86, 152, 360]
+  if (attrs.werewolfState) return [9, 20, 42, 86, 280]
+  switch (classCode) {
+    case 'ama':
+      return [6, 13, 20, 32, 52, 86, 174, 600]
+    case 'sor':
+      return [5, 9, 14, 20, 30, 42, 60, 86, 142, 280]
+    case 'nec':
+      return [5, 10, 16, 26, 39, 56, 86, 152, 377]
+    case 'pal':
+      return attrs.isSpearOrStaff ? [3, 7, 13, 20, 32, 48, 75, 129, 280] : [7, 15, 27, 48, 86, 200]
+    case 'bar':
+    case 'ass':
+      return [7, 15, 27, 48, 86, 200]
+    case 'dru':
+      return attrs.isOneHandSwinging
+        ? [3, 7, 13, 19, 29, 42, 63, 99, 174, 456]
+        : [5, 10, 16, 26, 39, 56, 86, 152, 377]
+    default:
+      return [7, 15, 27, 48, 86, 200]
+  }
+}
+
+const TRAP_SKILL_IDS = new Set<number>([251, 256, 261, 262, 271, 272, 276])
+const ROLLBACK_MULTI_HIT_SKILLS = new Set<number>([26, 30, 106, 248, 255])
+
+function isIasGovernedSkill(skillId: number): boolean {
+  if (skillId === 0 || skillId === 1 || skillId === 2 || skillId === 4) return true
+  if (skillId === 22 || skillId === 25 || skillId === 35 || skillId === 97) return true
+  if (TRAP_SKILL_IDS.has(skillId)) return true
+  if (doesSkillUseAttackRating(skillId)) return true
+  return false
+}
+
+function resolveBaseAttackAnimFrames(
+  classCode: CharacterClassCode | null,
+  wclass: string,
+  skillId: number,
+): { actionFrame: number; totalFrames: number; isRollback: boolean } {
+  const wc = (wclass || '1hs').toLowerCase()
+  const isRollback = ROLLBACK_MULTI_HIT_SKILLS.has(skillId)
+  if (TRAP_SKILL_IDS.has(skillId)) {
+    return { actionFrame: 7, totalFrames: 16, isRollback: false }
+  }
+  switch (classCode) {
+    case 'pal':
+      if (wc === '2hs') return { actionFrame: 8, totalFrames: 18, isRollback }
+      if (wc === '2ht' || wc === 'stf') return { actionFrame: 9, totalFrames: 19, isRollback }
+      if (wc === 'bow' || wc === 'xbw') return { actionFrame: 8, totalFrames: 16, isRollback }
+      return { actionFrame: 7, totalFrames: 15, isRollback }
+    case 'ama':
+      if (wc === 'bow') return { actionFrame: 6, totalFrames: 14, isRollback }
+      if (wc === 'xbw') return { actionFrame: 9, totalFrames: 20, isRollback }
+      if (wc === '1ht' || wc === '2ht') return { actionFrame: 8, totalFrames: 16, isRollback }
+      return { actionFrame: 7, totalFrames: 16, isRollback }
+    case 'bar':
+      if (wc === '2hs' || wc === '2ht' || wc === 'stf') return { actionFrame: 8, totalFrames: 18, isRollback }
+      return { actionFrame: 7, totalFrames: 16, isRollback }
+    case 'dru':
+      if (wc === '2hs' || wc === '2ht' || wc === 'stf') return { actionFrame: 8, totalFrames: 17, isRollback }
+      return { actionFrame: 9, totalFrames: 19, isRollback }
+    case 'ass':
+      if (wc === 'ht1' || wc === 'ht2' || wc === 'h2h' || wc === 'h2h2') {
+        return { actionFrame: 6, totalFrames: 12, isRollback }
+      }
+      return { actionFrame: 7, totalFrames: 15, isRollback }
+    case 'nec':
+    case 'sor':
+      if (wc === '2hs' || wc === '2ht' || wc === 'stf') return { actionFrame: 9, totalFrames: 18, isRollback }
+      return { actionFrame: 9, totalFrames: 19, isRollback }
+    default:
+      return { actionFrame: 7, totalFrames: 15, isRollback }
+  }
+}
+
+/**
+ * Computes 1.13c IAS (Increased Attack Speed) breakpoints and frame counts relative to the right-click skill
+ * (`AnimData.d2` & `BH.dll` `0x10116eb0`).
+ */
+export function computeIasBreakpoints(
+  classCode: CharacterClassCode | null,
+  attrs: CharacterSheetAttributes,
+): IasBreakpointResult {
+  const rightSkillId = attrs.rightSkillId ?? 0
+  if (!isIasGovernedSkill(rightSkillId)) {
+    return { isAttack: false, entries: [], activeIndex: -1 }
+  }
+  const wsm = attrs.weaponWsm ?? 0
+  const skillEias = attrs.skillEias ?? 0
+  const { actionFrame, totalFrames, isRollback } = resolveBaseAttackAnimFrames(
+    classCode,
+    attrs.weaponClass ?? '1hs',
+    rightSkillId,
+  )
+
+  const entries: IasBreakpointEntry[] = []
+  let prevFrames = ''
+  for (let ias = 0; ias <= 250; ias++) {
+    const itemEias = Math.trunc((120 * ias) / (120 + ias))
+    const eias = Math.max(-75, Math.min(75, itemEias + skillEias - wsm))
+    const step = Math.max(1, Math.trunc((256 * (100 + eias)) / 100))
+    let frames: string
+    if (isRollback) {
+      const f2 = Math.ceil((256 * actionFrame) / step)
+      const f1 = f2 + 1
+      const f3 = Math.max(f2, Math.ceil((256 * totalFrames) / step) - 2)
+      frames = `${f1}|${f2}|${f3}`
+    } else {
+      const fTot = Math.max(4, Math.ceil((256 * totalFrames) / step) - 1)
+      frames = `${fTot}`
+    }
+    if (frames !== prevFrames) {
+      entries.push({ ias, frames })
+      prevFrames = frames
+    }
+  }
+
+  const curIas = Math.max(0, Math.trunc(attrs.ias ?? 0))
+  let activeIndex = 0
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i]!.ias <= curIas) activeIndex = i
+  }
+  return { isAttack: true, entries, activeIndex }
+}
 
 /**
  * Stat allocation `+` button cells: the same native 30x30 `Panel\Level.dc6` cells as the
@@ -798,6 +978,9 @@ export class CharacterSheetPanel {
   showBasePlusBonusStats = false
   showStatGainTooltips = false
   showDamageFormulaTooltips = false
+  showAdvancedStatsButton = false
+  advancedStatsOpen = false
+  advStatsBtnPressed = false
   hoveredStat: BaseStatKey | null = null
   hoveredDamageHand: DamageHandKey | null = null
   hoveredElement: CharSheetHoveredElement | null = null
@@ -837,6 +1020,7 @@ export class CharacterSheetPanel {
     }
     const ox = CHAR_PANEL_ORIGIN.x
     const oy = CHAR_PANEL_ORIGIN.y
+    const isOverlayOpen = this.showAdvancedStatsButton && this.advancedStatsOpen
     if (
       localX >= CHAR_CLOSE_BTN_BOUNDS.x &&
       localX <= CHAR_CLOSE_BTN_BOUNDS.x + CHAR_CLOSE_BTN_BOUNDS.w &&
@@ -845,6 +1029,15 @@ export class CharacterSheetPanel {
     ) {
       this.hoveredElement = 'close'
     } else if (
+      this.showAdvancedStatsButton &&
+      localX >= CHAR_ADV_STATS_BTN_BOUNDS.x &&
+      localX <= CHAR_ADV_STATS_BTN_BOUNDS.x + CHAR_ADV_STATS_BTN_BOUNDS.w &&
+      localY >= CHAR_ADV_STATS_BTN_BOUNDS.y &&
+      localY <= CHAR_ADV_STATS_BTN_BOUNDS.y + CHAR_ADV_STATS_BTN_BOUNDS.h
+    ) {
+      this.hoveredElement = 'advStats'
+    } else if (
+      !isOverlayOpen &&
       localX >= ox + 162 &&
       localX <= ox + 320 &&
       localY >= oy + 138 &&
@@ -852,6 +1045,7 @@ export class CharacterSheetPanel {
     ) {
       this.hoveredElement = doesSkillUseAttackRating(this.attrs.leftSkillId ?? 0) ? 'leftAr' : null
     } else if (
+      !isOverlayOpen &&
       localX >= ox + 162 &&
       localX <= ox + 320 &&
       localY >= oy + 166 &&
@@ -859,6 +1053,7 @@ export class CharacterSheetPanel {
     ) {
       this.hoveredElement = doesSkillUseAttackRating(this.attrs.rightSkillId ?? 0) ? 'rightAr' : null
     } else if (
+      !isOverlayOpen &&
       localX >= ox + 166 &&
       localX <= ox + 311 &&
       localY >= oy + 192 &&
@@ -869,7 +1064,7 @@ export class CharacterSheetPanel {
       this.hoveredElement = null
     }
 
-    if (this.showStatGainTooltips) {
+    if (this.showStatGainTooltips && !isOverlayOpen) {
       let foundStat: BaseStatKey | null = null
       for (const [key, b] of Object.entries(STAT_ROW_BOUNDS) as [
         BaseStatKey,
@@ -885,7 +1080,7 @@ export class CharacterSheetPanel {
       this.hoveredStat = null
     }
 
-    if (this.showDamageFormulaTooltips) {
+    if (this.showDamageFormulaTooltips && !isOverlayOpen) {
       let foundHand: DamageHandKey | null = null
       for (const [hand, b] of Object.entries(DAMAGE_ROW_BOUNDS) as [
         DamageHandKey,
@@ -989,8 +1184,8 @@ export class CharacterSheetPanel {
   }
 
   /**
-   * Mouse-down inside the sheet: latches the pressed cell of the stat `+` buttons and
-   * the close `X` (1.13c semantics — nothing fires until mouse-up).
+   * Mouse-down inside the sheet: latches the pressed cell of the stat `+` buttons,
+   * the close `X`, and the `?` Advanced Stats button (1.13c semantics — nothing fires until mouse-up).
    */
   handleMouseDown(logicalX: number, logicalY: number): boolean {
     if (!this.visible) return false
@@ -1008,6 +1203,21 @@ export class CharacterSheetPanel {
       return true
     }
 
+    if (
+      this.showAdvancedStatsButton &&
+      logicalX >= CHAR_ADV_STATS_BTN_BOUNDS.x &&
+      logicalX <= CHAR_ADV_STATS_BTN_BOUNDS.x + CHAR_ADV_STATS_BTN_BOUNDS.w &&
+      logicalY >= CHAR_ADV_STATS_BTN_BOUNDS.y &&
+      logicalY <= CHAR_ADV_STATS_BTN_BOUNDS.y + CHAR_ADV_STATS_BTN_BOUNDS.h
+    ) {
+      this.advStatsBtnPressed = true
+      return true
+    }
+
+    if (this.showAdvancedStatsButton && this.advancedStatsOpen) {
+      return true
+    }
+
     // Stat allocation `+` buttons: latch only; `LevelPlusButton.press` self-gates on
     // lit cells (buttons hidden from drawing with 0 unspent points never latch).
     const lit = this.attrs.statPoints > 0
@@ -1018,7 +1228,7 @@ export class CharacterSheetPanel {
   /**
    * Mouse-up: allocates only when the release lands back on the same pressed `+`
    * button — dragging off the button and releasing cancels the allocation. The close
-   * `X` follows the same semantics: the sheet closes only when released back on it.
+   * `X` and `?` Advanced Stats buttons follow the same semantics.
    */
   handleMouseUp(logicalX: number, logicalY: number, onStatAllocated?: (key: BaseStatKey) => void): boolean {
     let fired = false
@@ -1026,7 +1236,24 @@ export class CharacterSheetPanel {
       this.visible = false
       this.hoveredStat = null
       this.hoveredDamageHand = null
+      this.advStatsBtnPressed = false
       fired = true
+    }
+    if (this.advStatsBtnPressed) {
+      this.advStatsBtnPressed = false
+      if (
+        this.visible &&
+        this.showAdvancedStatsButton &&
+        logicalX >= CHAR_ADV_STATS_BTN_BOUNDS.x &&
+        logicalX <= CHAR_ADV_STATS_BTN_BOUNDS.x + CHAR_ADV_STATS_BTN_BOUNDS.w &&
+        logicalY >= CHAR_ADV_STATS_BTN_BOUNDS.y &&
+        logicalY <= CHAR_ADV_STATS_BTN_BOUNDS.y + CHAR_ADV_STATS_BTN_BOUNDS.h
+      ) {
+        this.advancedStatsOpen = !this.advancedStatsOpen
+        this.hoveredStat = null
+        this.hoveredDamageHand = null
+        fired = true
+      }
     }
     if (!this.visible) return fired
     for (const [key, button] of this.plusButtonEntries) {
@@ -1390,6 +1617,14 @@ export class CharacterSheetPanel {
       )
     }
 
+    // 8b. Advanced Character Stats `?` Button & Overlay (`hud-enhancements`)
+    if (this.showAdvancedStatsButton) {
+      this.drawAdvancedStatsQuestionButton(ctx, font)
+      if (this.advancedStatsOpen) {
+        this.drawAdvancedStatsOverlay(ctx, font, ox, oy)
+      }
+    }
+
     // 9. Canonical 1.13c Hover Tooltips (`0x6FB6C760` Defense/Block, `0x6FB6C8F0` Attack Rating, `0x6FB6CFD4` Close)
     if (this.hoveredElement !== null) {
       this.drawVanillaHoverTooltip(ctx, font, ox, oy)
@@ -1402,6 +1637,422 @@ export class CharacterSheetPanel {
     if (this.showDamageFormulaTooltips && this.hoveredDamageHand && !skipTooltip) {
       this.drawDamageTooltip(ctx, font)
     }
+  }
+
+  private drawAdvancedStatsQuestionButton(ctx: CanvasRenderingContext2D, font: D2FontRenderer): void {
+    const b = CHAR_ADV_STATS_BTN_BOUNDS
+    const depressed = this.advStatsBtnPressed || this.advancedStatsOpen
+
+    // Outer dark stone recess matching `buysellbtn.dc6` socket
+    ctx.fillStyle = '#0c0a08'
+    ctx.fillRect(b.x, b.y, b.w, b.h)
+
+    // Beveled gothic stone/bronze button face
+    const faceX = b.x + 2
+    const faceY = b.y + 2
+    const faceW = b.w - 4
+    const faceH = b.h - 4
+    ctx.fillStyle = depressed ? '#1e1912' : '#2d261c'
+    ctx.fillRect(faceX, faceY, faceW, faceH)
+
+    // Top/Left & Bottom/Right 3D bevel rails
+    ctx.fillStyle = depressed ? '#14100b' : '#a8925a'
+    ctx.fillRect(faceX, faceY, faceW, 2)
+    ctx.fillRect(faceX, faceY, 2, faceH)
+    ctx.fillStyle = depressed ? '#8c7848' : '#14100b'
+    ctx.fillRect(faceX, faceY + faceH - 2, faceW, 2)
+    ctx.fillRect(faceX + faceW - 2, faceY, 2, faceH)
+
+    // Inner bronze frame highlight
+    ctx.strokeStyle = this.advancedStatsOpen ? '#d0c27d' : '#6c5a36'
+    ctx.lineWidth = 1
+    ctx.strokeRect(faceX + 2.5, faceY + 2.5, faceW - 5, faceH - 5)
+
+    // Centered Diablo Exocet `?` glyph
+    const offset = depressed ? 1 : 0
+    font.drawText(ctx, '?', b.x + Math.round(b.w / 2) + offset, b.y + 22 + offset, {
+      font: 'fontexocet10',
+      color: this.advancedStatsOpen ? 'yellow' : 'gold',
+      align: 'center',
+      shadow: true,
+    })
+  }
+
+  private drawColoredSegments(
+    ctx: CanvasRenderingContext2D,
+    font: D2FontRenderer,
+    startX: number,
+    y: number,
+    segments: readonly { readonly text: string; readonly color: D2ColorCode }[],
+  ): void {
+    let curX = startX
+    for (const seg of segments) {
+      if (!seg.text) continue
+      font.drawText(ctx, seg.text, curX, y, {
+        font: 'font6',
+        color: seg.color,
+        align: 'left',
+      })
+      const w =
+        typeof font?.measureText === 'function' ? font.measureText(seg.text, 'font6') : seg.text.length * 6
+      curX += w
+    }
+  }
+
+  private drawAdvancedStatsOverlay(
+    ctx: CanvasRenderingContext2D,
+    font: D2FontRenderer,
+    ox: number,
+    oy: number,
+  ): void {
+    const isEn = this.lang === 'ENG'
+    const a = this.attrs
+    const box = CHAR_ADV_STATS_PANEL_BOUNDS
+
+    // Dark stone overlay with double gothic gold/bronze frame
+    ctx.fillStyle = 'rgba(4, 4, 4, 0.98)'
+    ctx.fillRect(box.x, box.y, box.w, box.h)
+    ctx.strokeStyle = '#8c7244'
+    ctx.lineWidth = 1
+    ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1)
+    ctx.strokeStyle = '#2e2618'
+    ctx.strokeRect(box.x + 2.5, box.y + 2.5, box.w - 5, box.h - 5)
+
+    const leftX = ox + 12
+    const rightX = ox + 166
+    const rowStep = 11
+    const sectionGap = 5
+    let y = oy + 19
+
+    // 1. Name
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Name: ' : '名称: ', color: 'tan' },
+      { text: a.name || '-', color: 'white' },
+    ])
+    y += rowStep + sectionGap
+
+    // 2. Resistances (Uncapped / Max + Poison/Curse Length)
+    const uncappedFire = a.uncappedFireRes ?? a.fireRes ?? 0
+    const maxFire = a.maxFireRes ?? 75
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Fire Resist: ' : '火焰抗性: ', color: 'tan' },
+      { text: `${uncappedFire}`, color: 'red' },
+      { text: ` / ${maxFire}`, color: 'white' },
+    ])
+    y += rowStep
+
+    const uncappedCold = a.uncappedColdRes ?? a.coldRes ?? 0
+    const maxCold = a.maxColdRes ?? 75
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Cold Resist: ' : '冰冷抗性: ', color: 'tan' },
+      { text: `${uncappedCold}`, color: 'blue' },
+      { text: ` / ${maxCold}`, color: 'white' },
+    ])
+    y += rowStep
+
+    const uncappedLight = a.uncappedLightRes ?? a.lightRes ?? 0
+    const maxLight = a.maxLightRes ?? 75
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Lightning Resist: ' : '闪电抗性: ', color: 'tan' },
+      { text: `${uncappedLight}`, color: 'yellow' },
+      { text: ` / ${maxLight}`, color: 'white' },
+    ])
+    y += rowStep
+
+    const uncappedPois = a.uncappedPoisonRes ?? a.poisRes ?? 0
+    const maxPois = a.maxPoisonRes ?? 75
+    const poisLen = a.poisonLengthPct ?? 100
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Poison Resist: ' : '毒素抗性: ', color: 'tan' },
+      { text: `${uncappedPois}`, color: 'green' },
+      { text: ` / ${maxPois}  `, color: 'white' },
+      { text: isEn ? 'Length: ' : '持续时间: ', color: 'tan' },
+      { text: `${poisLen}%`, color: 'green' },
+    ])
+    y += rowStep
+
+    const curseRes = a.curseRes ?? 0
+    const maxCurseRes = a.maxCurseRes ?? 50
+    const curseLen = a.curseLengthPct ?? Math.max(25, 100 - curseRes)
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Curse Resist: ' : '诅咒抗性: ', color: 'tan' },
+      { text: `${curseRes}`, color: 'orange' },
+      { text: ` / ${maxCurseRes} `, color: 'white' },
+      { text: isEn ? 'Length: ' : '持续时间: ', color: 'tan' },
+      { text: `${curseLen}%`, color: 'white' },
+    ])
+    y += rowStep + sectionGap
+
+    // 3. Absorption, Damage Reduction, Attacker Takes Damage
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Absorption: ' : '伤害吸收: ', color: 'tan' },
+      { text: `${a.fireAbsorbFlat ?? 0}/${a.fireAbsorbPct ?? 0}% `, color: 'red' },
+      { text: `${a.coldAbsorbFlat ?? 0}/${a.coldAbsorbPct ?? 0}% `, color: 'blue' },
+      { text: `${a.lightAbsorbFlat ?? 0}/${a.lightAbsorbPct ?? 0}% `, color: 'yellow' },
+      { text: `${a.magicAbsorbFlat ?? 0}/${a.magicAbsorbPct ?? 0}%`, color: 'orange' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Damage Reduction: ' : '伤害减免: ', color: 'tan' },
+      { text: `${a.drFlat ?? 0}/${a.drPct ?? 0}% `, color: 'white' },
+      { text: `${a.mdrFlat ?? 0}/${a.mdrPct ?? 0}%`, color: 'orange' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Attacker Takes Damage: ' : '攻击者受到伤害: ', color: 'tan' },
+      { text: `${a.atdPhys ?? 0} `, color: 'white' },
+      { text: `${a.atdLight ?? 0}`, color: 'yellow' },
+    ])
+    y += rowStep + sectionGap
+
+    // 4. Elemental Mastery, Elemental Pierce, Base AR, Base Def, Base Damage
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Elemental Mastery: ' : '元素掌握: ', color: 'tan' },
+      { text: `${a.fireMasteryPct ?? 0}% `, color: 'red' },
+      { text: `${a.coldMasteryPct ?? 0}% `, color: 'blue' },
+      { text: `${a.lightMasteryPct ?? 0}% `, color: 'yellow' },
+      { text: `${a.poisonMasteryPct ?? 0}% `, color: 'green' },
+      { text: `${a.magicMasteryPct ?? 0}%`, color: 'orange' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Elemental Pierce: ' : '元素穿透: ', color: 'tan' },
+      { text: `${a.firePiercePct ?? 0}% `, color: 'red' },
+      { text: `${a.coldPiercePct ?? 0}% `, color: 'blue' },
+      { text: `${a.lightPiercePct ?? 0}% `, color: 'yellow' },
+      { text: `${a.poisonPiercePct ?? 0}% `, color: 'green' },
+      { text: `${a.magicPiercePct ?? 0}%`, color: 'orange' },
+    ])
+    y += rowStep
+
+    const toHitFactor = this.classCode ? (CANONICAL_CHARSTATS[this.classCode]?.toHitFactor ?? 0) : 0
+    const dexAr = a.baseArDex ?? Math.max(0, ((a.dex ?? 0) - 7) * 5 + toHitFactor)
+    const equipAr = a.baseArEquip ?? 0
+    const totalBaseAr = dexAr + equipAr
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Base AR: ' : '基础命中: ', color: 'tan' },
+      { text: isEn ? 'dex: ' : '敏捷: ', color: 'gray' },
+      { text: `${dexAr} `, color: 'white' },
+      { text: isEn ? 'equip: ' : '装备: ', color: 'gray' },
+      { text: `${equipAr} `, color: 'white' },
+      { text: isEn ? 'total: ' : '总计: ', color: 'gray' },
+      { text: `${totalBaseAr}`, color: 'white' },
+    ])
+    y += rowStep
+
+    const dexDef = a.baseDefDex ?? Math.floor((a.dex ?? 0) / 4)
+    const equipDef = a.baseDefEquip ?? Math.max(0, (a.baseDefense ?? a.defense ?? 0) - dexDef)
+    const totalBaseDef = dexDef + equipDef
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Base Def: ' : '基础防御: ', color: 'tan' },
+      { text: isEn ? 'dex: ' : '敏捷: ', color: 'gray' },
+      { text: `${dexDef} `, color: 'white' },
+      { text: isEn ? 'equip: ' : '装备: ', color: 'gray' },
+      { text: `${equipDef} `, color: 'white' },
+      { text: isEn ? 'total: ' : '总计: ', color: 'gray' },
+      { text: `${totalBaseDef}`, color: 'white' },
+    ])
+    y += rowStep
+
+    const dmg1hMin = a.baseDmg1hMin ?? a.weaponPhysBaseMin ?? 0
+    const dmg1hMax = a.baseDmg1hMax ?? a.weaponPhysBaseMax ?? 0
+    const dmg2hMin = a.baseDmg2hMin ?? 0
+    const dmg2hMax = a.baseDmg2hMax ?? 0
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Base Damage: ' : '基础伤害: ', color: 'tan' },
+      { text: isEn ? '1h: ' : '单手: ', color: 'gray' },
+      { text: `${dmg1hMin}-${dmg1hMax} `, color: 'white' },
+      { text: isEn ? '2h: ' : '双手: ', color: 'gray' },
+      { text: `${dmg2hMin}-${dmg2hMax}`, color: 'white' },
+    ])
+    y += rowStep + sectionGap
+
+    // 5. Rates (2 columns)
+    const fcr = a.fcr ?? 0
+    const fbr = a.fbr ?? 0
+    const fhr = a.fhr ?? 0
+    const frw = a.frw ?? 0
+    const arPct = a.arPct ?? a.arPctBonus ?? 0
+    const ias = a.ias ?? 0
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Cast Rate: ' : '施法速度: ', color: 'tan' },
+      { text: `${fcr}`, color: 'white' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: isEn ? 'Block Rate: ' : '格挡速度: ', color: 'tan' },
+      { text: `${fbr}`, color: 'white' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Hit Recovery: ' : '打击恢复: ', color: 'tan' },
+      { text: `${fhr}`, color: 'white' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: isEn ? 'Run/Walk: ' : '高跑速度: ', color: 'tan' },
+      { text: `${frw}`, color: 'white' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Attack Rate: ' : '命中加成: ', color: 'tan' },
+      { text: `${arPct}`, color: 'white' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: 'IAS: ', color: 'tan' },
+      { text: `${ias}`, color: 'white' },
+    ])
+    y += rowStep + sectionGap
+
+    // 6. Breakpoints (relative to Right Click Skill)
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      {
+        text: isEn ? 'Breakpoints (relative to Right Click Skill):' : '档位断点 (基于右键技能):',
+        color: 'tan',
+      },
+    ])
+    y += rowStep
+
+    const fcrBps = computeFcrBreakpoints(this.classCode, a)
+    let activeFcrIdx = -1
+    for (let i = 0; i < fcrBps.length; i++) {
+      if (fcr >= fcrBps[i]!) activeFcrIdx = i
+    }
+    const fcrSegs: { text: string; color: D2ColorCode }[] = [{ text: 'FCR: ', color: 'tan' }]
+    fcrBps.forEach((bp, idx) => {
+      if (idx > 0) fcrSegs.push({ text: ' / ', color: 'white' })
+      fcrSegs.push({ text: `${bp}`, color: idx === activeFcrIdx ? 'orange' : 'white' })
+    })
+    this.drawColoredSegments(ctx, font, leftX, y, fcrSegs)
+    y += rowStep
+
+    const fhrBps = computeFhrBreakpoints(this.classCode, a)
+    let activeFhrIdx = -1
+    for (let i = 0; i < fhrBps.length; i++) {
+      if (fhr >= fhrBps[i]!) activeFhrIdx = i
+    }
+    const fhrSegs: { text: string; color: D2ColorCode }[] = [{ text: 'FHR: ', color: 'tan' }]
+    fhrBps.forEach((bp, idx) => {
+      if (idx > 0) fhrSegs.push({ text: ' / ', color: 'white' })
+      fhrSegs.push({ text: `${bp}`, color: idx === activeFhrIdx ? 'orange' : 'white' })
+    })
+    this.drawColoredSegments(ctx, font, leftX, y, fhrSegs)
+    y += rowStep
+
+    const iasRes = computeIasBreakpoints(this.classCode, a)
+    if (!iasRes.isAttack || iasRes.entries.length === 0) {
+      this.drawColoredSegments(ctx, font, leftX, y, [
+        { text: 'IAS: ', color: 'tan' },
+        { text: isEn ? 'N/A (not an attack)' : '无 (非攻击技能)', color: 'white' },
+      ])
+    } else {
+      const iasSegs: { text: string; color: D2ColorCode }[] = [
+        { text: isEn ? 'IAS (Frames): ' : 'IAS (帧数): ', color: 'tan' },
+      ]
+      iasRes.entries.forEach((entry, idx) => {
+        if (idx > 0) iasSegs.push({ text: ' / ', color: 'white' })
+        const isActive = idx === iasRes.activeIndex
+        const label = isActive ? `${entry.ias} (${entry.frames})` : `${entry.ias}`
+        iasSegs.push({ text: label, color: isActive ? 'orange' : 'white' })
+      })
+      this.drawColoredSegments(ctx, font, leftX, y, iasSegs)
+    }
+    y += rowStep + sectionGap
+
+    // 7. Combat Modifiers (2 columns)
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Crushing Blow: ' : '压碎性打击: ', color: 'tan' },
+      { text: `${a.crushingBlow ?? 0}`, color: 'white' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: isEn ? 'Open Wounds: ' : '撕开伤口: ', color: 'tan' },
+      { text: `${a.openWounds ?? 0}%/+${a.openWoundsFlat ?? 0}`, color: 'white' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Deadly Strike: ' : '致命攻击: ', color: 'tan' },
+      { text: `${a.deadlyStrike ?? 0}`, color: 'white' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: isEn ? 'Critical Strike: ' : '双倍打击: ', color: 'tan' },
+      { text: `${a.criticalStrike ?? 0}`, color: 'white' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Life Leech: ' : '生命偷取: ', color: 'tan' },
+      { text: `${a.lifeLeech ?? 0}`, color: 'red' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: isEn ? 'Mana Leech: ' : '法力偷取: ', color: 'tan' },
+      { text: `${a.manaLeech ?? 0}`, color: 'blue' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Projectile Pierce: ' : '穿刺几率: ', color: 'tan' },
+      { text: `${a.projectilePierce ?? 0}`, color: 'white' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: isEn ? 'HP/MP per Kill: ' : '击杀回血/回蓝: ', color: 'tan' },
+      { text: `${a.lifeAfterKill ?? 0}`, color: 'red' },
+      { text: ' / ', color: 'white' },
+      { text: `${a.manaAfterKill ?? 0}`, color: 'blue' },
+    ])
+    y += rowStep + sectionGap
+
+    // 8. Added Damage, Magic Find, Gold Find, Stash Gold
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Added Damage: ' : '附加伤害: ', color: 'tan' },
+      { text: `${a.addedPhysDmg ?? 0}`, color: 'white' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: `${a.addedMagicMin ?? 0}-${a.addedMagicMax ?? 0}`, color: 'orange' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: `${a.addedFireMin ?? 0}-${a.addedFireMax ?? 0}`, color: 'red' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: `${a.addedColdMin ?? 0}-${a.addedColdMax ?? 0}`, color: 'blue' },
+    ])
+    y += rowStep
+
+    const poisMin = a.addedPoisonMin ?? 0
+    const poisMax = a.addedPoisonMax ?? 0
+    const poisSec = a.addedPoisonSec ?? 0
+    const poisText =
+      poisMin > 0 || poisMax > 0
+        ? isEn
+          ? `${poisMin}-${poisMax} over ${poisSec.toFixed(1)}s`
+          : `${poisMin}-${poisMax} (${poisSec.toFixed(1)}秒)`
+        : '0-0'
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: `${a.addedLightMin ?? 0}-${a.addedLightMax ?? 0}`, color: 'yellow' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [{ text: poisText, color: 'green' }])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Magic Find: ' : '魔法装备掉率: ', color: 'tan' },
+      { text: `${a.magicFind ?? 0}`, color: 'blue' },
+    ])
+    this.drawColoredSegments(ctx, font, rightX, y, [
+      { text: isEn ? 'Gold Find: ' : '额外金币掉率: ', color: 'tan' },
+      { text: `${a.goldFind ?? 0}`, color: 'yellow' },
+    ])
+    y += rowStep
+
+    this.drawColoredSegments(ctx, font, leftX, y, [
+      { text: isEn ? 'Stash Gold: ' : '储物箱金币: ', color: 'tan' },
+      { text: `${a.stashGold ?? 0}`, color: 'yellow' },
+    ])
   }
 
   formatVanillaHoverTooltipLines(): string[] {
@@ -1417,6 +2068,9 @@ export class CharacterSheetPanel {
 
     if (this.hoveredElement === 'close') {
       return [requireTbl('strClose', this.lang)]
+    }
+    if (this.hoveredElement === 'advStats') {
+      return [this.lang === 'ENG' ? 'Advanced Stats' : '更多属性']
     }
     if (this.hoveredElement === 'defense') {
       const monAr = this.attrs.lastMonsterAttackRating ?? monLvl * 15
@@ -1470,11 +2124,13 @@ export class CharacterSheetPanel {
     const centerX =
       this.hoveredElement === 'close'
         ? ox + 143
-        : this.hoveredElement === 'defense'
-          ? ox + 239
-          : ox + 241
+        : this.hoveredElement === 'advStats'
+          ? ox + 180
+          : this.hoveredElement === 'defense'
+            ? ox + 239
+            : ox + 241
     const anchorY =
-      this.hoveredElement === 'close'
+      this.hoveredElement === 'close' || this.hoveredElement === 'advStats'
         ? oy + 385
         : this.hoveredElement === 'defense'
           ? oy + 190

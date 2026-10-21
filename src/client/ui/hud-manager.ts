@@ -996,6 +996,12 @@ export class HudManager {
         this.charSheet.hoveredDamageHand = null
       }
     }
+    if (typeof patch.showAdvancedStatsButton === 'boolean') {
+      this.charSheet.showAdvancedStatsButton = patch.showAdvancedStatsButton
+      if (!patch.showAdvancedStatsButton) {
+        this.charSheet.advancedStatsOpen = false
+      }
+    }
   }
 
   getHudEnhancements(): HudEnhancementsConfig {
@@ -1004,6 +1010,7 @@ export class HudManager {
       showBasePlusBonusSkills: this.skillTree.showBasePlusBonusSkills,
       showStatGainTooltips: this.charSheet.showStatGainTooltips,
       showWeaponDamageFormula: this.worldPanels.showWeaponDamageFormula,
+      showAdvancedStatsButton: this.charSheet.showAdvancedStatsButton,
     }
   }
 

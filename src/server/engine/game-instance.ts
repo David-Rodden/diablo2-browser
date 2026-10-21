@@ -23,20 +23,28 @@ import {
   VENDOR_TAB_KEYS,
 } from '../../common/items/vendor-generator.ts'
 import { LocalMovementPredictor } from '../../common/path/movement-predictor.ts'
-import { MONMODE_KNOCKBACK } from '../../common/path/types.ts'
+import { MONMODE_KNOCKBACK, MONMODE_RUN, MONMODE_WALK } from '../../common/path/types.ts'
 import { resolveArmorSpeed113c } from '../../common/units/char-anim-speed.ts'
-import { findPathWorld, type SubTilePoint } from '../../common/path/pathfind.ts'
+import {
+  findPathWorld,
+  TOWN_ASTAR_OBSTACLE_DISTANCE_SQ,
+  type SubTilePoint,
+} from '../../common/path/pathfind.ts'
 import { D2Common_10399_AtSubtiles } from '../../common/path/step.ts'
 import { CANONICAL_113C_OBJECTS, CANONICAL_113C_SHRINES, isObjectInInteractRange113c } from '../../common/world/objects-meta.ts'
 import { classifyObjectOperate113c } from '../../common/world/object-operate-113c.ts'
 import {
   QUEST_AREA_GATES_113C,
   QUEST_FLAG_COMPLETED_113C,
+  QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
+  QUEST_FLAG_REWARD_PENDING_113C,
   QUEST_FLAG_STARTED_113C,
   QUEST_OBJECT_TO_QUEST_113C,
   hasQuestFlag113c,
+  questWordIndex113c,
   setQuestFlag113c,
 } from './quests-113c.ts'
+import { createDroppedItem, imbueItem113c, isEligibleForCharsiImbue113c, rollHellforgeDrop } from '../../common/items/drop-tables.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
 import { D2_EXPERIENCE_TABLE_99, PARSED_EXPERIENCE_TABLE } from '../../common/skills/formulas.ts'
 import {
@@ -45,7 +53,7 @@ import {
   calculateHolyShockStats,
   calculateMightStats,
 } from '../../common/skills/paladin-auras.ts'
-import { MONUMOD_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
+import { MONAI_113C_ROWS, MONUMOD_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
 import { HIRELING_RECORDS, resolveHirelingStatsAtLevel } from '../../common/units/hireling-table.ts'
 import {
@@ -58,6 +66,8 @@ import {
   calcColdEnchantedDeathNova,
   calcFireEnchantedDeathDamage,
   computeChargedBolt8WayVectors,
+  D2CLIENT_NOVA_RING_X,
+  D2CLIENT_NOVA_RING_Y,
   isBoneFetishMonster,
   isDurielMonster,
   isPoisonDeadMonster,
@@ -66,6 +76,7 @@ import {
   resolveMonsterUModIds,
 } from '../../common/units/monster-death-fx.ts'
 import { getTownNpcDescriptorByHcIdx } from '../../common/units/npc-table.ts'
+import { GEM_INFO } from '../../common/items/gems-data.ts'
 import {
   CANONICAL_BOSS_MINIONS,
   getCanonicalMonsterKinds,
@@ -77,7 +88,7 @@ import {
   type MonsterModeMissiles113c,
   type MonsterRank,
 } from '../../common/units/monsters-data.ts'
-import type { MonsterElementalAttack } from '../../common/units/unit-types.ts'
+import type { MonsterElementalAttack, MonsterSkillEntry } from '../../common/units/unit-types.ts'
 import { getMissileTxtData, MISSILE_CLASS_ID_TO_KEY } from '../../common/skills/missiles-data.ts'
 import { PET_TYPE_IDX_BY_NAME_113C, PET_TYPE_PORTRAIT_TABLE } from '../../common/units/pet-type-table.ts'
 import { parseTable } from '../../common/world/acts.ts'
@@ -136,6 +147,7 @@ import { StateBus } from './state-bus.ts'
 import type { MissileRecord, SkillRecord } from '../../common/data/data-registry.ts'
 import { calculatePhysicalWeaponDamage } from '../../common/skills/formulas.ts'
 import {
+  computeRepairAllCost113c,
   computeTransactionCost113c,
   getCanonicalTransactionCostTables,
   type TransactionCostContext,
@@ -143,6 +155,7 @@ import {
   type TransactionCostStat,
 } from '../../common/items/transaction-cost.ts'
 import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
+import { resolveActiveSetBonuses } from '../../common/items/set-items.ts'
 import { getAttackWeaponInfo } from '../../common/skills/weapon-combat-meta.ts'
 import { resolveWeaponBase113c } from '../../common/units/char-anim-speed.ts'
 import type { ItemStat } from '../../netproto/index.ts'
@@ -467,6 +480,8 @@ export interface ServerItemEntry {
   socketedItems: ServerItemEntry[]
   /** `Misc/Armor/Weapons.txt` `PermStoreItem`: permanent shop stock. */
   permStore?: boolean | undefined
+  /** Item was sold back by this customer; repurchase uses the recorded sell value. */
+  buyback?: boolean | undefined
   rawItemData?: ItemData | undefined
 }
 
@@ -713,27 +728,163 @@ const MAX_PLAYER_LEVEL_113C: number = PARSED_EXPERIENCE_TABLE.maxLevel
  * behavior family per AI row (the full 148-row state machines are the long-term target; this
  * table replaces the old defId/name regexes at least for the AI rows with distinct behavior).
  */
-type MonsterAiBehavior = 'melee' | 'ranged' | 'resurrector' | 'curse' | 'flee'
+type MonsterAiBehavior =
+  | 'melee'
+  | 'ranged'
+  | 'resurrector'
+  | 'curse'
+  | 'flee'
+  | 'stationary'
+  | 'suicide'
+  | 'spawner'
 
-const MONSTER_AI_BEHAVIOR_BY_AI: Readonly<Record<string, MonsterAiBehavior>> = (() => {
+/**
+ * D2Game dispatches on `MonStats.AI` -> `MonAi.txt` row. The runtime currently
+ * implements six behavior families; every one of the 148 MonAi rows is assigned
+ * explicitly below so no AI silently falls through an unknown-name branch. The
+ * per-row state machines are the long-term target (#1341).
+ */
+export const MONSTER_AI_BEHAVIOR_BY_AI: Readonly<Record<string, MonsterAiBehavior>> = (() => {
   const out: Record<string, MonsterAiBehavior> = {}
   const add = (behavior: MonsterAiBehavior, names: readonly string[]): void => {
     for (const name of names) out[name.trim().toLowerCase().replace(/[\s_-]/g, '')] = behavior
   }
   add('resurrector', ['FallenShaman', 'GreaterMummy', 'HighPriest', 'Overseer', 'FetishShaman'])
-  add('curse', ['OblivionKnight', 'DoomKnight', 'AbyssKnight'])
-  add('flee', ['Fallen', 'Fetish'])
-  add('ranged', [
-    'SkeletonBow', 'CorruptArcher', 'CorruptLancer', 'QuillRat', 'QuillMother', 'Vulture',
-    'Mosquito', 'Vampire', 'BatDemon', 'FingerMage', 'FetishBlowgun', 'Succubus',
-    'SuccubusWitch', 'Imp', 'Catapult', 'CatapultSpotter', 'SandMaggot', 'SandMaggotQueen',
-    'ClawViper', 'ClawViperEx', 'WillOWisp', 'Bighead', 'SkeletonMage', 'ZakarumPriest',
+  add('curse', [
+    'OblivionKnight',
+    'DoomKnight',
+    'AbyssKnight',
+    'Succubus',
+    'SuccubusWitch',
+    'FingerMage',
+    'Summoner',
+    'Nihlathak',
   ])
+  add('flee', ['Fallen', 'Fetish', 'Wussie'])
+  add('suicide', ['SuicideMinion'])
+  add('stationary', [
+    'None',
+    'Idle',
+    'NpcOutOfTown',
+    'Npc',
+    'Towner',
+    'Vendor',
+    'NpcStationary',
+    'MaggotEgg',
+    'Sarcophagus',
+    'BoneWall',
+    'FoulCrowNest',
+    'EvilHole',
+    'InvisoSpawner',
+    'MosquitoNest',
+    'MinionSpawner',
+    'GenericSpawner',
+    'AncientStatue',
+    'Totem',
+    'Vines',
+    'CycleOfLife',
+    'Navi',
+    'InvisoPet',
+    'Hireable',
+    'TownRogue',
+    'GoodNpcRanged',
+  ])
+  add('ranged', [
+    'Bighead',
+    'QuillRat',
+    'QuillMother',
+    'SandMaggot',
+    'SandMaggotQueen',
+    'ClawViper',
+    'ClawViperEx',
+    'Vulture',
+    'Mosquito',
+    'WillOWisp',
+    'Arach',
+    'Vampire',
+    'CorruptArcher',
+    'CorruptLancer',
+    'SkeletonBow',
+    'PinHead',
+    'ZakarumPriest',
+    'Mephisto',
+    'Andariel',
+    'FrogDemon',
+    'Izual',
+    'TentacleHead',
+    'GargoyleTrap',
+    'SkeletonMage',
+    'VileMother',
+    'Regurgitator',
+    'Trap-Missile',
+    'Trap-RightArrow',
+    'Trap-LeftArrow',
+    'Trap-Poison',
+    'Trap-Nova',
+    'HellMeteor',
+    'ArcaneTower',
+    'DesertTurret',
+    'FetishBlowgun',
+    'Spirit',
+    'SiegeTower',
+    'Imp',
+    'Catapult',
+    'CatapultSpotter',
+    'Hydra',
+    'AssassinSentry',
+    'DeathSentry',
+    'BloodRaven',
+  ])
+  // Spawner rows override their earlier ranged/stationary classification.
+  add('spawner', ['VileMother', 'SandMaggotQueen', 'FoulCrowNest', 'MosquitoNest'])
+
+  // Every remaining MonAi row is an explicit melee state machine. Reading the
+  // canonical table (not a hand-maintained list) keeps this complete when rows
+  // are added, and the dispatch test asserts all 148 are covered.
+  for (const row of MONAI_113C_ROWS) {
+    const key = row.ai.trim().toLowerCase().replace(/[\s_-]/g, '')
+    if (out[key] === undefined) out[key] = 'melee'
+  }
   return out
 })()
 
+/** AI rows that periodically spawn a child monster in 1.13c. */
+const MONSTER_SPAWNER_CHILD_113C: Readonly<Record<string, string>> = {
+  vilemother: 'viledog1',
+  sandmaggotqueen: 'maggotegg1',
+  foulcrownest: 'foulcrow1',
+  mosquitonest: 'mosquito1',
+}
+
 function monsterAiBehavior(ai: string): MonsterAiBehavior {
   return MONSTER_AI_BEHAVIOR_BY_AI[ai.trim().toLowerCase().replace(/[\s_-]/g, '')] ?? 'melee'
+}
+
+/**
+ * MonAi.txt shoot/cast distance parameter per AI row (0-based `aip` index).
+ * Row 14 QuillRat = aip1, row 13 FallenShaman = aip5, row 37 SkeletonBow =
+ * aip5, row 64 SkeletonMage = aip6, etc. AI rows without a documented shoot
+ * distance keep the 1.13c default engagement radius.
+ */
+const MON_AI_SHOOT_DIST_PARAM: Readonly<Record<string, number>> = {
+  quillrat: 0,
+  fallenshaman: 4,
+  skeletonbow: 4,
+  skeletonmage: 5,
+  gargoyletrap: 0,
+  fingermage: 4,
+  vampire: 2,
+  arach: 3,
+  clawviper: 1,
+  clawviperex: 1,
+}
+
+function monsterShootRange(monster: { readonly ai: string; readonly aiParams: readonly number[] }): number {
+  const key = monster.ai.trim().toLowerCase().replace(/[\s_-]/g, '')
+  const index = MON_AI_SHOOT_DIST_PARAM[key]
+  if (index === undefined) return 35
+  const value = monster.aiParams[index]
+  return value !== undefined && value > 0 ? Math.min(40, Math.max(4, value)) : 35
 }
 
 /** Total experience required to reach `level` (1..99) per `Experience.txt`. */
@@ -903,6 +1054,8 @@ interface InternalPlayerRecord {
   vendorPools: Map<number, ServerItemEntry[]>
   /** Which window generated each cached vendor pool (`trade`/`gamble`). */
   vendorPoolModes: Map<number, 'trade' | 'gamble'>
+  /** Per-player, per-mode shop cache: switching windows must not reroll. */
+  vendorPoolsByMode: Map<number, { trade?: ServerItemEntry[]; gamble?: ServerItemEntry[] }>
   activeVendorMode: 'trade' | 'gamble' | null
   dead: boolean
   corpseId: number | undefined
@@ -941,6 +1094,7 @@ interface PlayerMotionState {
  * local A* detour radius (`MAX_ASTAR_OBSTACLE_DISTANCE_SQ` = 18²) plus the size-2 `+` footprint.
  */
 const PLAYER_PATH_WINDOW_MARGIN = 20
+const PLAYER_TOWN_PATH_WINDOW_MARGIN = 36
 
 /**
  * D2Game `D2GAME_PACKETCALLBACK_Rcv0x5F_UpdatePlayerPos` (0x6FC88530, D2MOO `PlrMsg.cpp`)
@@ -1040,6 +1194,37 @@ interface InternalMonsterRecord {
   monType: string
   /** `MonStats.txt` `SizeX` — NPC interaction distance (`D2Common #10407`). */
   sizeX: number
+  /** `MonStats.txt` `Skill1..8` (skill id, animation mode, base level). */
+  readonly skills: readonly MonsterSkillEntry[]
+  /** Frames until the next `Skill1..8` cast; set from `Skills.txt` delay / AI delay. */
+  skillCooldown: number
+  /** Round-robin cursor over the monster's projectile skill slots. */
+  skillCursor: number
+  /** Player who last damaged this monster (1.13c threat / retaliate target). */
+  threatPlayerId: number
+  threatUntilFrame: number
+  /** Idle wander target / cooldown (MonAi wander when no hostile is in range). */
+  wanderCooldown: number
+  wanderTargetX: number
+  wanderTargetY: number
+  /** End frame of the GetHit animation; AI cannot act before it. */
+  hitRecoveryUntilFrame: number
+  /** S1 resurrection wind-up: the corpse only revives on the action frame. */
+  pendingResurrection:
+    | { readonly corpseUnitId: number; readonly frame: number }
+    | undefined
+  /** MonUMod 26 Teleportation cooldown. */
+  teleportCooldownUntilFrame: number
+  /** Fire Enchanted corpse explosion resolved a few frames after death. */
+  pendingDeathExplosion:
+    | {
+        readonly frame: number
+        readonly radius: number
+        readonly phys: number
+        readonly fire: number
+        readonly total: number
+      }
+    | undefined
   /** `MonStats.txt` `Skill1..8` resurrection skill id (181/327/158), when the row has one. */
   resurrectSkillId: number | undefined
   ai: string
@@ -1112,6 +1297,9 @@ interface InternalMercenaryRecord {
   hp: number
   maxHp: number
   damage: number
+  /** Hireling.txt defense and all-resist at this level. */
+  defense: number
+  resist: number
   reach: number
   aggroRadius: number
   speed: number
@@ -1136,6 +1324,10 @@ interface InternalObjectRecord {
   portalOwnerId: number | undefined
   isLocked: boolean
   isSparkling: boolean
+  /** Frame at which a used shrine returns to mode 0 (Shrines.txt ResetTime). */
+  shrineResetFrame: number
+  /** Compelling Orb hit counter (1.13c requires two Khalim's Will hits). */
+  useCount: number
 }
 
 /** A level warp (`UNIT_TILE = 5`, S2C 0x09 AssignWarp) of a bootstrapped area. */
@@ -1167,6 +1359,8 @@ export type AreaArrival =
   | { readonly kind: 'warp'; readonly fromAreaId: number }
   | { readonly kind: 'respawn' }
 
+type MissileDamageChannel = 'phys' | 'fire' | 'ltng' | 'cold' | 'pois' | 'mag'
+
 interface InternalMissileRecord {
   unitId: number
   missileId: number
@@ -1180,6 +1374,24 @@ interface InternalMissileRecord {
   vy: number
   damage: number
   remainingFrames: number
+  /** `Missiles.txt` `CollideType` (0 = ignore terrain, 8 = floor-hugging, 1/3/6 = flying). */
+  collideType: number
+  /** `Missiles.txt` `Size` — collision radius contribution. */
+  size: number
+  /** `Missiles.txt` `Pierce` — keep flying after a hit. */
+  pierce: boolean
+  /** `Missiles.txt` `NextHit` / `NextDelay` — re-hit the same unit after this many frames. */
+  nextHit: boolean
+  nextDelay: number
+  /** Damage channel resolved from `Missiles.txt` `EType` or the cast skill. */
+  element: MissileDamageChannel
+  physDamage: number
+  elemDamage: number
+  elemDurationFrames: number
+  /** Piercing missiles may only re-hit a unit after `nextDelay` frames. */
+  hitCooldowns: Map<number, number>
+  /** Death-effect novas apply their elemental packet without a to-hit roll. */
+  guaranteedHit: boolean
 }
 
 function toItemContainer(loc: ServerItemEntry['location']): ItemContainer {
@@ -1236,6 +1448,41 @@ function resolvePlayerServerMissileName(skill: SkillRecord, evalResult: SkillEva
   return ''
 }
 
+/** Map `Missiles.txt` / `Skills.txt` `EType` tokens onto the combat damage channels. */
+function stableUnitKey(unitKey: string): number {
+  let hash = 0
+  for (let i = 0; i < unitKey.length; i++) {
+    hash = (hash * 31 + unitKey.charCodeAt(i)) | 0
+  }
+  return hash >>> 0
+}
+
+function missileClassElementFallback(id: number): MissileDamageChannel | undefined {
+  if (id === 194) return 'cold'
+  if (id === 195) return 'ltng'
+  if (id === 82) return 'fire'
+  return undefined
+}
+
+function normalizeMissileElement(eType: string | undefined): MissileDamageChannel | undefined {
+  switch ((eType ?? '').trim().toLowerCase()) {
+    case 'fire':
+    case 'burn':
+      return 'fire'
+    case 'ltng':
+      return 'ltng'
+    case 'cold':
+    case 'frze':
+      return 'cold'
+    case 'pois':
+      return 'pois'
+    case 'mag':
+      return 'mag'
+    default:
+      return undefined
+  }
+}
+
 /**
  * Skills every player owns without hard points (`Skills.txt` rows with no `charclass` that D2Game
  * adds to each player: Attack, Kick, Throw, Unsummon, Left Hand Throw, Left Hand Swing, and the
@@ -1270,6 +1517,12 @@ const REDEMPTION_RADIUS_SUBTILES = 16
 const MONSTER_HIT_RECOVERY_DENOMINATOR = 16
 /** 1.13c monsters spawn their drop at the death animation's drop frame (~0.4 s at 25 Hz). */
 const MONSTER_DEATH_DROP_DELAY_FRAMES = 10
+/** Room/AOI activation radius: monsters farther than this stop running AI (1.13c room sleep). */
+const MONSTER_ACTIVATION_RADIUS_SUBTILES = 80
+/** Retaliation (last attacker) window; 1.13c monsters re-target their attacker for ~10 s. */
+const MONSTER_THREAT_FRAMES = 250
+/** GetHit animation lock (AnimData `GH`); no AI action may start before it ends. */
+const MONSTER_HIT_RECOVERY_FRAMES = 6
 /** Server knockback travel in sub-tiles before terrain stops the push. */
 const MONSTER_KNOCKBACK_DISTANCE = 20
 /** `Skills.txt` rows whose hits apply 1.13c knockback (Smite, Bash, Charge, kicks, psi). */
@@ -1295,6 +1548,7 @@ const MON_UMOD_LABELS_113C: Readonly<Record<number, string>> = Object.freeze({
   17: 'Lightning_Enchanted',
   18: 'Cold_Enchanted',
   25: 'Mana_Burn',
+  26: 'Teleportation',
   27: 'Spectral_Hit',
   28: 'Stone_Skin',
   29: 'Multiple_Shots',
@@ -1417,6 +1671,37 @@ function getOrCreateEmbeddedFallbackRegistry(): D2DataRegistry {
   return cachedEmbeddedFallbackRegistry
 }
 
+
+/** Non-act-boss quest monsters whose death completes a 1.13c quest. */
+const QUEST_BOSS_KILL_113C: readonly (readonly [string, string])[] = [
+  ['bloodraven', 'a1q2'],
+  ['countess', 'a1q4'],
+  ['radament', 'a2q1'],
+  ['summoner', 'a2q5'],
+  ['izual', 'a4q1'],
+  ['shenk', 'a5q1'],
+  ['nihlathak', 'a5q4'],
+]
+
+/** Ancients' Altar -> the three Ancient Barbarians. */
+const ANCIENT_BARBARIANS_113C: readonly {
+  readonly defId: string
+  readonly superUniqueId: string
+}[] = Object.freeze([
+  { defId: 'ancientbarb1', superUniqueId: 'Ancient Barbarian 1' },
+  { defId: 'ancientbarb2', superUniqueId: 'Ancient Barbarian 2' },
+  { defId: 'ancientbarb3', superUniqueId: 'Ancient Barbarian 3' },
+])
+
+/** Chaos Sanctuary seal -> SuperUnique boss spawned by that seal. */
+const SEAL_BOSS_113C: Readonly<
+  Record<number, { readonly defId: string; readonly superUniqueId: string }>
+> = Object.freeze({
+  392: { defId: 'fingermage3', superUniqueId: 'Grand Vizier of Chaos' },
+  394: { defId: 'doomknight3', superUniqueId: 'Lord De Seis' },
+  396: { defId: 'megademon3', superUniqueId: 'Infector of Souls' },
+})
+
 export class GameInstance {
   readonly mode: GameMode
   readonly policy: GameModePolicy
@@ -1440,6 +1725,25 @@ export class GameInstance {
   private readonly summonManagers = new Map<number, SummonManager>()
   private readonly petUnitIds = new Map<string, number>()
   private readonly objects = new Map<number, InternalObjectRecord>()
+  /** Deferred quest object spawns (e.g. Duriel's Lair portal after the staff). */
+  /** SuperUnique seal bosses killed per area. */
+  private readonly sealBossDeaths = new Map<number, Set<string>>()
+  /** Areas where Diablo has already been spawned after the seals. */
+  private readonly diabloSpawnedAreas = new Set<number>()
+  /** Ancient Barbarian deaths per area. */
+  private readonly ancientDeaths = new Map<number, Set<string>>()
+  /** Areas where the five Cairn Stones already opened the Tristram portal. */
+  private readonly cairnPortalAreas = new Set<number>()
+  /** Council member defIds killed per area (a3q5 needs all three). */
+  private readonly councilDeaths = new Map<number, Set<string>>()
+  private readonly pendingObjectSpawns: {
+    frame: number
+    classId: number
+    x: number
+    y: number
+    areaId: number
+    destAreaId?: number | undefined
+  }[] = []
   private readonly groundItems = new Map<number, ServerItemEntry>()
   /** Gamble-window mystery items by vendor entry unit id, resolved by `resolveGambledItem` on purchase. */
   private readonly gambleSourceItems = new Map<number, Item>()
@@ -2182,6 +2486,7 @@ export class GameInstance {
       questFlags,
       vendorPools: new Map(),
       vendorPoolModes: new Map(),
+      vendorPoolsByMode: new Map(),
       activeVendorMode: null,
       dead: false,
       corpseId: undefined,
@@ -2811,8 +3116,29 @@ export class GameInstance {
     npcClass: number,
   ): TransactionCostContext {
     let reduced = 0
+    const equipped = player.items.filter((item) => item.location === 'equipped')
+    // Client parity: price reductions come from the active weapon set only.
+    // BodyLoc 4/5 is the primary set, 11/12 the swap set; if both exist the
+    // primary set is active (the runtime has no explicit swap state yet).
+    const hasPrimary = equipped.some((item) => item.bodyLoc === 4 || item.bodyLoc === 5)
+    for (const item of equipped) {
+      if (hasPrimary && (item.bodyLoc === 11 || item.bodyLoc === 12)) continue
+      if (!hasPrimary && (item.bodyLoc === 4 || item.bodyLoc === 5)) continue
+      reduced += item.stats.get(87) ?? 0
+      for (const socketed of item.socketedItems) reduced += socketed.stats.get(87) ?? 0
+    }
+    // The client also counts carried small charms (cm1/cm2/cm3), including
+    // their socketed children; unique charms are only counted once.
+    const seenCharmIds = new Set<number>()
     for (const item of player.items) {
-      if (item.location !== 'equipped') continue
+      if (item.location !== 'inventory') continue
+      const code = item.code.toLowerCase()
+      if (code !== 'cm1' && code !== 'cm2' && code !== 'cm3') continue
+      const uniqueId = item.rawItemData?.uniqueItemId
+      if (uniqueId !== undefined && uniqueId >= 0) {
+        if (seenCharmIds.has(uniqueId)) continue
+        seenCharmIds.add(uniqueId)
+      }
       reduced += item.stats.get(87) ?? 0
       for (const socketed of item.socketedItems) reduced += socketed.stats.get(87) ?? 0
     }
@@ -2858,13 +3184,14 @@ export class GameInstance {
     vItem: ServerItemEntry,
     player: InternalPlayerRecord,
     cell: { readonly x: number; readonly y: number },
+    location: 'inventory' | 'belt' = 'inventory',
   ): ServerItemEntry {
     const unitId = this.allocateUnitId()
     const raw = vItem.rawItemData
     return {
       ...vItem,
       unitId,
-      location: 'inventory',
+      location,
       x: cell.x,
       y: cell.y,
       areaId: player.areaId,
@@ -3051,6 +3378,44 @@ export class GameInstance {
       total += item.stats.get(statId) ?? 0
       for (const socketed of item.socketedItems) {
         total += socketed.stats.get(statId) ?? 0
+      }
+    }
+    // 1.13c set bonuses (green/gold properties) also feed magic find / gold
+    // find. Compute worn-piece counts per set and resolve each active bonus.
+    if (statId !== 80 && statId !== 79) return total
+    const tables = getEmbeddedDropTables()
+    if (!tables.properties || !tables.itemStatCost) return total
+    const worn = player.items.filter((item) => item.location === 'equipped')
+    const counts = new Map<string, number>()
+    const pieces: { item: (typeof worn)[number]; setItem: NonNullable<ReturnType<typeof tables.sets.items.getById>> }[] = []
+    for (const item of worn) {
+      const setId = item.rawItemData?.setItemId
+      if (setId === undefined || setId < 0 || setId === 0xfff) continue
+      const setItem = tables.sets.items.getById(setId)
+      if (setItem === undefined) continue
+      counts.set(setItem.set, (counts.get(setItem.set) ?? 0) + 1)
+      pieces.push({ item, setItem })
+    }
+    for (const { setItem } of pieces) {
+      const setDef = tables.sets.sets.get(setItem.set)
+      if (setDef === undefined) continue
+      const bonuses = resolveActiveSetBonuses(
+        setItem,
+        setDef,
+        counts.get(setItem.set) ?? 1,
+      )
+      for (const prop of bonuses.all) {
+        const param = typeof prop.par === 'number' ? prop.par : Number(prop.par ?? 0) || 0
+        for (const resolved of tables.properties.resolveProperty(
+          prop.code,
+          param,
+          prop.min,
+          prop.max,
+          tables.itemStatCost,
+        )) {
+          if (resolved.statId !== statId) continue
+          total += Math.floor((resolved.min + resolved.max) / 2)
+        }
       }
     }
     return total
@@ -3333,10 +3698,6 @@ export class GameInstance {
           rawClassKind?.ranged ||
           rawClassKind?.isRanged ||
           hasModeMissile ||
-          classId === 5 ||
-          classId === 10 ||
-          hcIdx === 5 ||
-          hcIdx === 10 ||
           monsterAiBehavior(aiName) === 'ranged'),
     )
 
@@ -3457,6 +3818,18 @@ export class GameInstance {
       umodIds,
       monType: spec.monType ?? kind?.monType ?? rawClassKind?.monType ?? '',
       sizeX: kind?.sizeX ?? rawClassKind?.sizeX ?? 2,
+      skills: resolvedStats?.skills ?? kind?.skills ?? [],
+      skillCooldown: 0,
+      skillCursor: 0,
+      threatPlayerId: 0,
+      threatUntilFrame: 0,
+      wanderCooldown: 90,
+      wanderTargetX: Number.NaN,
+      wanderTargetY: Number.NaN,
+      hitRecoveryUntilFrame: 0,
+      pendingResurrection: undefined,
+      teleportCooldownUntilFrame: 0,
+      pendingDeathExplosion: undefined,
       resurrectSkillId,
       auraSkillId,
       ai: spec.ai ?? kind?.ai ?? 'Default',
@@ -3535,11 +3908,15 @@ export class GameInstance {
       mode: spec.mode ?? 0,
       isWaypoint: Boolean(spec.isWaypoint),
       isShrine: Boolean(spec.isShrine),
-      shrineType: spec.shrineType ?? 1,
+      shrineType:
+        spec.shrineType ??
+        (CANONICAL_113C_OBJECTS[spec.classId]?.isShrine ? 1 + this.rng.rand(22) : 1),
       destAreaId: spec.destAreaId,
       portalOwnerId: undefined,
       isLocked: Boolean(spec.isLocked),
       isSparkling: Boolean(spec.isSparkling),
+      shrineResetFrame: 0,
+      useCount: 0,
     }
     this.objects.set(unitId, record)
 
@@ -3771,6 +4148,20 @@ export class GameInstance {
   }
 
   stepFrame(): Map<number, readonly ServerEvent[]> {
+    for (let i = this.pendingObjectSpawns.length - 1; i >= 0; i--) {
+      const pending = this.pendingObjectSpawns[i]!
+      if (this.currentFrame < pending.frame) continue
+      this.pendingObjectSpawns.splice(i, 1)
+      this.spawnObject({
+        classId: pending.classId,
+        x: pending.x,
+        y: pending.y,
+        areaId: pending.areaId,
+        mode: 1,
+        ...(pending.destAreaId !== undefined ? { destAreaId: pending.destAreaId } : {}),
+      })
+    }
+
     // Drain queued C2S commands in deterministic FIFO order; control commands
     // (`PauseGame` and `/players N` chat commands) execute even around pause transitions.
     const pending = this.commandQueue.splice(0, this.commandQueue.length)
@@ -3792,7 +4183,7 @@ export class GameInstance {
       }
       try {
         this.processPlayerCommand(player, command)
-      } catch {
+      } catch (err) {
         // A malformed command must not abort the whole 25 Hz frame for every player.
         this.emitToPlayer(playerUnitId, {
           type: 'Chat',
@@ -3839,9 +4230,18 @@ export class GameInstance {
     // 3. Step missiles & collision
     this.stepMissiles()
 
+    // Shrines return to their idle mode after Shrines.txt ResetTime.
+    for (const obj of this.objects.values()) {
+      if (obj.mode === 2 && obj.shrineResetFrame > 0 && this.currentFrame >= obj.shrineResetFrame) {
+        obj.shrineResetFrame = 0
+        this.setObjectMode(obj, 0)
+      }
+    }
+
     // 4. Step monster AI & state timers
     for (const monster of this.monsters.values()) {
       if (monster.dead) {
+        this.resolvePendingDeathExplosion(monster)
         if (
           monster.pendingDropItems !== undefined &&
           this.currentFrame >= monster.pendingDropFrame
@@ -3873,10 +4273,15 @@ export class GameInstance {
       if (!monster.isNpc) {
         this.stepMonsterRegen(monster)
       }
-      if (!monster.aiDisabled && !monster.isNpc) {
+      if (
+        !monster.aiDisabled &&
+        !monster.isNpc &&
+        this.isMonsterInActiveAoi(monster)
+      ) {
         this.stepMonsterAi(monster)
       }
       this.stepPendingMonsterAttack(monster)
+      this.stepPendingResurrection(monster)
     }
 
     // 5. Step mercenaries & summoned pets (F13)
@@ -4143,13 +4548,15 @@ export class GameInstance {
           break
         }
         const actionType =
-          cmd.type === 'NpcAction'
+          cmd.type === 'NpcAction' || cmd.type === 'NpcEntityAction'
             ? cmd.action
             : cmd.type === 'NpcOpenGamble'
               ? 'gamble'
               : 'trade'
         if (actionType === 'heal' || actionType === 0) {
           this.handleNpcInteract(player, npcId, actionType === 'heal')
+        } else if (Number(actionType) === 3) {
+          this.handleNpcHireList(player, npcId)
         } else {
           this.handleNpcAction(player, npcId, actionType === 'gamble')
         }
@@ -4180,7 +4587,7 @@ export class GameInstance {
         break
       }
       case 'NpcIdentifyGamble': {
-        this.handleNpcIdentifyItem(player, cmd.itemId)
+        this.handleNpcIdentifyItem(player, player.activeNpcId ?? 0, cmd.itemId)
         break
       }
       case 'HireMerc':
@@ -4659,6 +5066,17 @@ export class GameInstance {
       vy: (dy / dist) * speed,
       damage,
       remainingFrames: lifetime,
+      collideType: missileRec.collideType,
+      size: Math.max(1, missileRec.size),
+      pierce: missileRec.pierce,
+      nextHit: missileRec.nextHit,
+      nextDelay: Math.max(0, missileRec.nextDelay),
+      element: normalizeMissileElement(missileRec.eType) ?? 'phys',
+      physDamage: damage,
+      elemDamage: 0,
+      elemDurationFrames: 0,
+      hitCooldowns: new Map(),
+      guaranteedHit: false,
     }
     // Zero-damage missiles (warcry / curse / buff carriers) are visual only: they must never collide
     // and run the `applyDamageToMonster` minimum-1 hit path.
@@ -4775,10 +5193,12 @@ export class GameInstance {
   ): readonly SubTilePoint[] {
     const check = this.terrainWalkableCheck
     if (!check) return [{ x: toX, y: toY }]
-    const minX = Math.max(0, Math.floor(Math.min(fromX, toX)) - PLAYER_PATH_WINDOW_MARGIN)
-    const minY = Math.max(0, Math.floor(Math.min(fromY, toY)) - PLAYER_PATH_WINDOW_MARGIN)
-    const maxX = Math.floor(Math.max(fromX, toX)) + PLAYER_PATH_WINDOW_MARGIN
-    const maxY = Math.floor(Math.max(fromY, toY)) + PLAYER_PATH_WINDOW_MARGIN
+    const isTown = TOWN_AREAS.has(areaId)
+    const margin = isTown ? PLAYER_TOWN_PATH_WINDOW_MARGIN : PLAYER_PATH_WINDOW_MARGIN
+    const minX = Math.max(0, Math.floor(Math.min(fromX, toX)) - margin)
+    const minY = Math.max(0, Math.floor(Math.min(fromY, toY)) - margin)
+    const maxX = Math.floor(Math.max(fromX, toX)) + margin
+    const maxY = Math.floor(Math.max(fromY, toY)) + margin
     const subWidth = maxX - minX + 1
     const subHeight = maxY - minY + 1
     const walkable = new Uint8Array(subWidth * subHeight)
@@ -4793,7 +5213,9 @@ export class GameInstance {
       fromY,
       toX,
       toY,
-      { unitSize: 2 },
+      isTown
+        ? { unitSize: 2, maxAstarObstacleDistanceSq: TOWN_ASTAR_OBSTACLE_DISTANCE_SQ }
+        : { unitSize: 2 },
     ).path
   }
 
@@ -5470,6 +5892,23 @@ export class GameInstance {
       this.applyDirectSkillDamage(player, cast, m)
       if (m.dead) continue
       this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, stunned.id, stunFrames)
+      // Mind Blast 1.13c conversion: the target fights for the caster while stunned.
+      m.convertedUntilFrame = this.currentFrame + stunFrames
+      m.convertedByPlayerId = player.unitId
+      m.threatPlayerId = 0
+      m.threatUntilFrame = 0
+      const conversionState = this.registry.getStateByName('conversion')
+      if (conversionState !== undefined) {
+        this.applyUnitState(
+          m.states,
+          m.stateTimers,
+          'monster',
+          m.unitId,
+          m.areaId,
+          conversionState.id,
+          stunFrames,
+        )
+      }
     }
   }
 
@@ -5684,45 +6123,81 @@ export class GameInstance {
     damage: number,
     missileClassId = 1,
     skillId = 0,
+    options: {
+      readonly missile?: MissileRecord | undefined
+      readonly skillLevel?: number | undefined
+      readonly physDamage?: number | undefined
+      readonly elemDamage?: number | undefined
+      readonly element?: MissileDamageChannel | undefined
+      readonly elemDurationFrames?: number | undefined
+      /** Death-effect nova: never miss, never block, never stop on terrain. */
+      readonly guaranteed?: boolean | undefined
+    } = {},
   ): number {
     const dx = targetX - monster.x
     const dy = targetY - monster.y
     const dist = Math.max(0.5, Math.hypot(dx, dy))
-    // Missiles.txt Vel/Range: 1 world sub-tile = 16 px, 25 ticks/s.
-    const missileKey = MISSILE_CLASS_ID_TO_KEY[missileClassId]
-    const meta = missileKey ? getMissileTxtData(missileKey) : undefined
-    const speed = meta && meta.speedPxPerSec > 0 ? Math.max(0.2, meta.speedPxPerSec / 16 / 25) : 1.8
-    const rangeSubtiles = meta && meta.distancePx > 0 ? Math.max(2, meta.distancePx / 16) : 35
-    const flightDist = Math.min(dist, rangeSubtiles)
+    // The data registry carries the full Missiles.txt row (Vel/Range/LevRange/Size/
+    // CollideType/Pierce/NextDelay/EType); `getMissileTxtData` only has the art subset.
+    const meta = options.missile ?? this.registry.getMissileById(missileClassId)
+    const resolvedClassId = meta?.id ?? missileClassId
+    const skillLevel = Math.max(1, options.skillLevel ?? monster.level)
+    const speed = meta === undefined ? 1.8 : meta.vel > 0 ? meta.vel / 16 : 0
+    const rangeTicks =
+      meta === undefined ? 45 : Math.max(2, meta.range + meta.levRange * (skillLevel - 1))
+    const element =
+      options.element ??
+      normalizeMissileElement(meta?.eType) ??
+      missileClassElementFallback(resolvedClassId) ??
+      'phys'
+    const stationary = meta !== undefined && meta.vel <= 0
+    const startX = stationary ? targetX : monster.x
+    const startY = stationary ? targetY : monster.y
+    const physDamage =
+      Math.max(0, Math.floor(options.physDamage ?? (element === 'phys' ? damage : 0)))
+    const elemDamage =
+      Math.max(0, Math.floor(options.elemDamage ?? (element === 'phys' ? 0 : damage)))
+    const totalDamage = Math.max(1, physDamage + elemDamage)
     const missileUnitId = this.allocateUnitId()
     const missile: InternalMissileRecord = {
       unitId: missileUnitId,
-      missileId: missileClassId,
+      missileId: resolvedClassId,
       skillId,
       ownerType: 'monster',
       ownerId: monster.unitId,
       areaId: monster.areaId,
-      x: monster.x,
-      y: monster.y,
-      vx: (dx / dist) * speed,
-      vy: (dy / dist) * speed,
-      damage: Math.max(1, Math.floor(damage)),
-      remainingFrames: Math.min(45, Math.max(2, Math.ceil(flightDist / speed) + 4)),
+      x: startX,
+      y: startY,
+      vx: speed > 0 ? (dx / dist) * speed : 0,
+      vy: speed > 0 ? (dy / dist) * speed : 0,
+      damage: totalDamage,
+      remainingFrames: rangeTicks,
+      collideType: options.guaranteed === true ? 0 : (meta?.collideType ?? 3),
+      size: Math.max(1, meta?.size ?? 1),
+      pierce: meta?.pierce === true,
+      nextHit: meta?.nextHit === true,
+      nextDelay: Math.max(0, meta?.nextDelay ?? 0),
+      element,
+      physDamage,
+      elemDamage,
+      elemDurationFrames: Math.max(0, options.elemDurationFrames ?? 0),
+      hitCooldowns: new Map(),
+      guaranteedHit: options.guaranteed === true,
     }
     this.missiles.set(missileUnitId, missile)
 
     this.broadcastToArea(monster.areaId, {
       type: 'CreateMissile',
       missileId: missileUnitId,
-      missileClassId,
-      at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+      missileClassId: resolvedClassId,
+      at: { x: Math.round(startX), y: Math.round(startY) },
       target: { x: Math.round(targetX), y: Math.round(targetY) },
-      x: Math.round(monster.x),
-      y: Math.round(monster.y),
+      x: Math.round(startX),
+      y: Math.round(startY),
       targetX: Math.round(targetX),
       targetY: Math.round(targetY),
       skillId,
-      level: Math.max(1, monster.level),
+      level: skillLevel,
       ownerType: 1,
       ownerUnitType: 'monster',
       ownerId: monster.unitId,
@@ -5904,6 +6379,7 @@ export class GameInstance {
         questFlags: new Uint16Array(48),
         vendorPools: new Map(),
         vendorPoolModes: new Map(),
+        vendorPoolsByMode: new Map(),
         activeVendorMode: null,
         dead: false,
         corpseId: undefined,
@@ -6106,6 +6582,16 @@ export class GameInstance {
     channel: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois',
   ): void {
     monster.hp = Math.max(0, monster.hp - dealtDamage)
+    if (
+      monster.umodIds.includes(26) &&
+      monster.hp > 0 &&
+      monster.hp * 2 < monster.maxHp &&
+      this.currentFrame >= monster.teleportCooldownUntilFrame
+    ) {
+      this.teleportEliteAwayFrom(monster, attacker)
+    }
+    monster.threatPlayerId = attacker.unitId
+    monster.threatUntilFrame = this.currentFrame + MONSTER_THREAT_FRAMES
 
     if (
       (skillId === 39 ||
@@ -6190,6 +6676,7 @@ export class GameInstance {
   ): void {
     if (monster.dead) return
     monster.pendingAttack = undefined
+    monster.pendingResurrection = undefined
     if (
       monster.states.has(1) ||
       monster.states.has(29) ||
@@ -6216,6 +6703,71 @@ export class GameInstance {
     this.onMonsterKilled(creditedPlayer, monster)
   }
 
+  private resolvePendingDeathExplosion(monster: InternalMonsterRecord): void {
+    const pending = monster.pendingDeathExplosion
+    if (pending === undefined || this.currentFrame < pending.frame) return
+    monster.pendingDeathExplosion = undefined
+    for (const p of this.players.values()) {
+      if (p.dead || p.areaId !== monster.areaId) continue
+      if (Math.hypot(p.x - monster.x, p.y - monster.y) > pending.radius) continue
+      this.applyPlayerElementalDamage(p, { phys: pending.phys, fire: pending.fire })
+    }
+    this.damageMercsAndPetsInRadius(
+      monster.areaId,
+      monster.x,
+      monster.y,
+      pending.radius,
+      pending.total,
+    )
+  }
+
+  /** MonUMod 26 Teleportation: blink away when badly hurt. */
+  private teleportEliteAwayFrom(
+    monster: InternalMonsterRecord,
+    attacker: InternalPlayerRecord,
+  ): void {
+    const fromX = monster.x
+    const fromY = monster.y
+    const baseAngle = Math.atan2(monster.y - attacker.y, monster.x - attacker.x)
+    for (const offset of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, Math.PI]) {
+      const angle = baseAngle + offset
+      const tx = monster.x + Math.cos(angle) * 8
+      const ty = monster.y + Math.sin(angle) * 8
+      if (
+        this.terrainWalkableCheck &&
+        !this.terrainWalkableCheck(monster.areaId, Math.round(tx), Math.round(ty), monster.isFlying)
+      ) {
+        continue
+      }
+      if (this.isMonsterCellOccupied(monster, tx, ty)) continue
+      monster.x = tx
+      monster.y = ty
+      monster.path = []
+      monster.pathIndex = 0
+      monster.pathTargetX = Number.NaN
+      monster.pathTargetY = Number.NaN
+      monster.mode = 1
+      monster.teleportCooldownUntilFrame = this.currentFrame + 250
+      this.broadcastToArea(monster.areaId, {
+        type: 'UnitMove',
+        unitType: 'monster',
+        id: monster.unitId,
+        unitId: monster.unitId,
+        mode: 'run',
+        from: { x: Math.round(fromX), y: Math.round(fromY) },
+        to: { x: Math.round(tx), y: Math.round(ty) },
+        x: Math.round(tx),
+        y: Math.round(ty),
+        currentX: Math.round(tx),
+        currentY: Math.round(ty),
+        targetX: Math.round(tx),
+        targetY: Math.round(ty),
+        areaId: monster.areaId,
+      })
+      return
+    }
+  }
+
   /** 1.13c gethit: only a hit removing at least 1/16 max life interrupts the current action. */
   private maybeEnterMonsterHitRecovery(
     monster: InternalMonsterRecord,
@@ -6231,11 +6783,20 @@ export class GameInstance {
     ) {
       return
     }
-    const hitRecoveryThreshold = Math.max(
-      1,
-      Math.floor(monster.maxHp / MONSTER_HIT_RECOVERY_DENOMINATOR),
-    )
-    if (dealtDamage < hitRecoveryThreshold) return
+    // 1.13c gethit probability tiers: >= 3/8 max life always, >= 1/6 75%,
+    // >= 1/12 37.5%, below 1/12 never.
+    const ratio = monster.maxHp > 0 ? dealtDamage / monster.maxHp : 0
+    let chancePct = 0
+    if (ratio >= 3 / 8) chancePct = 100
+    else if (ratio >= 1 / 6) chancePct = 75
+    else if (ratio >= 1 / 12) chancePct = 38
+    if (chancePct <= 0 || this.rng.rand(100) >= chancePct) return
+    monster.pendingAttack = undefined
+    monster.hitRecoveryUntilFrame = this.currentFrame + MONSTER_HIT_RECOVERY_FRAMES
+    monster.path = []
+    monster.pathIndex = 0
+    monster.pathTargetX = Number.NaN
+    monster.pathTargetY = Number.NaN
     monster.mode = 3
     this.broadcastToArea(monster.areaId, {
       type: 'UnitMode',
@@ -6320,12 +6881,41 @@ export class GameInstance {
           : 0,
     })
     const auraDmgPct = this.monsterAuraDamageBonusPct(attacker)
+    // Confused/attracted monsters use their real A1/A2 damage riders too, not
+    // just the pure physical band.
+    const rider = attacker.elementalAttacks.find(
+      (entry) =>
+        (entry.mode === 'A1' || entry.mode === 'A2') &&
+        (entry.chancePct >= 100 || this.rng.rand(100) < entry.chancePct),
+    )
+    const riderType =
+      rider?.type === 'ltng'
+        ? 'ltng'
+        : rider?.type === 'cold' || rider?.type === 'frze'
+          ? 'cold'
+          : rider?.type === 'pois'
+            ? 'pois'
+            : rider?.type === 'mag'
+              ? 'mag'
+              : rider?.type === 'fire'
+                ? 'fire'
+                : undefined
     const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
       skillId: 0,
       attackKind: 'melee',
       srcDam: 0,
       flatPhysMin256: Math.floor(attacker.minDmg * FIXED_ONE * (1 + auraDmgPct / 100)),
       flatPhysMax256: Math.floor(attacker.maxDmg * FIXED_ONE * (1 + auraDmgPct / 100)),
+      ...(riderType !== undefined
+        ? {
+            elemType: riderType,
+            elemMin256:
+              Math.max(0, rider?.minDamage ?? rider?.min ?? 0) * FIXED_ONE,
+            elemMax256:
+              Math.max(0, rider?.maxDamage ?? rider?.max ?? 0) * FIXED_ONE,
+            elemDurationFrames: rider?.durationFrames ?? rider?.duration ?? 0,
+          }
+        : {}),
       roll100: this.rng.rand(100),
     })
     if (!dmgOut.hit) return
@@ -6597,6 +7187,13 @@ export class GameInstance {
         if (p.dead || p.areaId !== monster.areaId) continue
         if (Math.hypot(p.x - monster.x, p.y - monster.y) > radius) continue
         this.applyUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, 28, 75)
+        this.playerCombatContext(p).stateBus.applyState({
+          stateNameOrId: 'conviction',
+          sourceSkillId: 123,
+          slvl: lvl,
+          durationFrames: 75,
+          stats: { conviction_pierce: Math.min(100, 30 + lvl) },
+        })
       }
       for (const other of this.monsters.values()) {
         if (other.dead || other.isNpc || other.areaId !== monster.areaId) continue
@@ -6652,6 +7249,73 @@ export class GameInstance {
       this.rollMonsterDeathDrop(killer, monster)
     }
 
+    // 1.13c side/quest bosses complete their quest on death.
+    if (killer) {
+      const defId = monster.defId.toLowerCase()
+      const quest = QUEST_BOSS_KILL_113C.find(([prefix]) => defId.startsWith(prefix))
+      if (
+        quest !== undefined &&
+        !hasQuestFlag113c(killer.questFlags, quest[1], QUEST_FLAG_COMPLETED_113C)
+      ) {
+        this.setPlayerQuestFlag(killer, quest[1], QUEST_FLAG_COMPLETED_113C)
+      }
+    }
+
+    // Chaos Sanctuary: once the three seal bosses die and all five seals are
+    // open, spawn Diablo in the middle of the seal ring.
+    if (
+      monster.superUniqueId !== undefined &&
+      Object.values(SEAL_BOSS_113C).some((boss) => boss.superUniqueId === monster.superUniqueId)
+    ) {
+      let deaths = this.sealBossDeaths.get(monster.areaId)
+      if (deaths === undefined) {
+        deaths = new Set()
+        this.sealBossDeaths.set(monster.areaId, deaths)
+      }
+      deaths.add(monster.superUniqueId)
+      if (deaths.size >= 3 && !this.diabloSpawnedAreas.has(monster.areaId)) {
+        const sealIds = [392, 393, 394, 395, 396]
+        const seals = [...this.objects.values()].filter(
+          (obj) => obj.areaId === monster.areaId && sealIds.includes(obj.classId) && obj.mode === 2,
+        )
+        if (seals.length === sealIds.length) {
+          this.diabloSpawnedAreas.add(monster.areaId)
+          const x = seals.reduce((sum, obj) => sum + obj.x, 0) / seals.length
+          const y = seals.reduce((sum, obj) => sum + obj.y, 0) / seals.length
+          this.spawnMonster({ defId: 'diablo', x, y, areaId: monster.areaId })
+        }
+      }
+    }
+
+    // Travincal Council: all three council members must die for a3q5.
+    if (monster.defId.toLowerCase().startsWith('councilmember')) {
+      let deaths = this.councilDeaths.get(monster.areaId)
+      if (deaths === undefined) {
+        deaths = new Set()
+        this.councilDeaths.set(monster.areaId, deaths)
+      }
+      deaths.add(monster.defId.toLowerCase())
+      if (deaths.size >= 3 && killer) {
+        this.setPlayerQuestFlag(killer, 'a3q5', QUEST_FLAG_COMPLETED_113C)
+      }
+    }
+
+    // Ancients: killing all three barbarians completes a5q5.
+    if (
+      monster.superUniqueId !== undefined &&
+      ANCIENT_BARBARIANS_113C.some((boss) => boss.superUniqueId === monster.superUniqueId)
+    ) {
+      let deaths = this.ancientDeaths.get(monster.areaId)
+      if (deaths === undefined) {
+        deaths = new Set()
+        this.ancientDeaths.set(monster.areaId, deaths)
+      }
+      deaths.add(monster.superUniqueId)
+      if (deaths.size >= ANCIENT_BARBARIANS_113C.length && killer) {
+        this.setPlayerQuestFlag(killer, 'a5q5', QUEST_FLAG_COMPLETED_113C)
+      }
+    }
+
     // Act I Den of Evil: clearing every monster in level 8 completes a1q1.
     if (
       killer &&
@@ -6666,7 +7330,12 @@ export class GameInstance {
           m.areaId === 8 &&
           m.unitId !== monster.unitId,
       )
-      if (!remaining) {
+      // Rooms are streamed on demand; only finish the quest after every DRLG
+      // room has been populated (otherwise killing the entrance room clears it).
+      const population = this.areaPopulations.get(8)
+      const allRoomsVisited =
+        population === undefined || population.populated.size >= population.rooms.length
+      if (!remaining && allRoomsVisited) {
         if (this.setPlayerQuestFlag(killer, 'a1q1', QUEST_FLAG_COMPLETED_113C)) {
           killer.newSkills += 1
           this.emitToPlayer(killer.unitId, {
@@ -6716,6 +7385,18 @@ export class GameInstance {
           ? 'nightmare'
           : 'normal'
 
+    // Suicide minions detonate on death for half their max life in a small radius.
+    if (isSuicideMinionMonster(monster.hcIdx, monster.defId)) {
+      const dmg = Math.max(1, Math.floor(monster.maxHp / 2))
+      for (const p of this.players.values()) {
+        if (p.dead || p.areaId !== monster.areaId) continue
+        if (Math.hypot(p.x - monster.x, p.y - monster.y) <= 3.5) {
+          this.applyPlayerElementalDamage(p, { phys: dmg })
+        }
+      }
+      this.damageMercsAndPetsInRadius(monster.areaId, monster.x, monster.y, 3.5, dmg)
+    }
+
     // F12.5: Fire Enchanted (MonUMod #9 `fire`) corpse explosion (non-minions only).
     // Damage is 50% physical + 50% fire from MonUMod constants, resolved against
     // player resistances and applied to mercenaries / summons in the same radius.
@@ -6729,22 +7410,14 @@ export class GameInstance {
       )
       const radius = feDmg.radiusSubTiles
       this.broadcastExplosionMissile(monster, 82)
-      for (const p of this.players.values()) {
-        if (p.dead || p.areaId !== monster.areaId) continue
-        if (Math.hypot(p.x - monster.x, p.y - monster.y) <= radius) {
-          this.applyPlayerElementalDamage(p, {
-            phys: feDmg.physDmg,
-            fire: feDmg.fireDmg,
-          })
-        }
-      }
-      this.damageMercsAndPetsInRadius(
-        monster.areaId,
-        monster.x,
-        monster.y,
+      // 1.13c corpse-boom resolves a short time after the death animation starts.
+      monster.pendingDeathExplosion = {
+        frame: this.currentFrame + 5,
         radius,
-        Math.max(1, feDmg.totalDmg),
-      )
+        phys: feDmg.physDmg,
+        fire: feDmg.fireDmg,
+        total: Math.max(1, feDmg.totalDmg),
+      }
     }
 
     // Cold Enchanted (MonUMod #18 `cold`) Frost Nova on death (non-minions only).
@@ -6754,20 +7427,25 @@ export class GameInstance {
       monster.umodIds.includes(MON_UMOD.COLD) && monster.rank !== 'minion'
     if (isColdEnchanted) {
       const ceNova = calcColdEnchantedDeathNova(monster.level, diffKey)
-      const vectors = computeChargedBolt8WayVectors(monster.x, monster.y, 1.8)
       const novaDmg = Math.max(
         ceNova.coldMinDmg,
         ceNova.coldMinDmg +
           this.rng.rand(Math.max(1, ceNova.coldMaxDmg - ceNova.coldMinDmg + 1)),
       )
-      for (const vec of vectors) {
+      // D2Client 0x6fb51020 emits the full 64-entry nova ring; scale the client
+      // ring (radius 30) down to coldunique's Range 14.
+      for (let i = 0; i < D2CLIENT_NOVA_RING_X.length; i++) {
+        const rx = D2CLIENT_NOVA_RING_X[i]!
+        const ry = D2CLIENT_NOVA_RING_Y[i]!
+        const len = Math.max(1, Math.hypot(rx, ry))
         this.spawnMonsterMissile(
           monster,
-          vec.targetX,
-          vec.targetY,
+          monster.x + (rx / len) * ceNova.rangeTicks,
+          monster.y + (ry / len) * ceNova.rangeTicks,
           novaDmg,
           194,
           194,
+          { guaranteed: true },
         )
       }
     }
@@ -6775,8 +7453,7 @@ export class GameInstance {
     // Bone Fetish / Undead Stygian Doll physical death explosion
     if (
       isBoneFetishMonster(monster.hcIdx, monster.defId) ||
-      monster.umodIds.includes(MON_UMOD.BONEFETISH) ||
-      /bonefetish|stygian\s*doll|undead\s*doll/i.test(monster.name)
+      monster.umodIds.includes(MON_UMOD.BONEFETISH)
     ) {
       const bfDmg = calcBoneFetishDeathDamage(monster.maxHp, diffKey)
       const explosionDmg = Math.max(
@@ -6795,10 +7472,7 @@ export class GameInstance {
     // Poison dead cloud on Zombie / Mummy death
     if (
       isPoisonDeadMonster(monster.hcIdx, monster.defId) ||
-      monster.umodIds.includes(MON_UMOD.POISONDEAD) ||
-      /mummy|embalmed|preserved\s*dead|cadaver|horadrim\s*ancient/i.test(
-        monster.name,
-      )
+      monster.umodIds.includes(MON_UMOD.POISONDEAD)
     ) {
       for (const p of this.players.values()) {
         if (p.dead || p.areaId !== monster.areaId) continue
@@ -6819,8 +7493,7 @@ export class GameInstance {
     // Duriel spawns 5 Maggots on death
     if (
       isDurielMonster(monster.hcIdx, monster.defId) ||
-      monster.umodIds.includes(MON_UMOD.DURIELDEAD) ||
-      /duriel/i.test(monster.name)
+      monster.umodIds.includes(MON_UMOD.DURIELDEAD)
     ) {
       for (const offset of DURIEL_MAGGOT_OFFSETS) {
         this.spawnMonster({
@@ -6917,21 +7590,114 @@ export class GameInstance {
     }
   }
 
+  /** Route a monster projectile hit through `executeSUnitDmg` for mercs/pets too (#1345). */
+  private applyMonsterMissileToDefender(
+    monster: InternalMonsterRecord,
+    missile: Pick<
+      InternalMissileRecord,
+      'skillId' | 'physDamage' | 'elemDamage' | 'element' | 'elemDurationFrames'
+    >,
+    defender: {
+      readonly id: string
+      readonly name: string
+      readonly unitType: 'mercenary' | 'minion'
+      readonly level: number
+      readonly hp: number
+      readonly maxHp: number
+      readonly defense?: number | undefined
+      readonly resist?: number | undefined
+      readonly stats?: UnitStatList | undefined
+      readonly stateBus?: StateBus | undefined
+      readonly x?: number | undefined
+      readonly y?: number | undefined
+    },
+    attackKind: 'melee' | 'missile' = 'missile',
+  ): number {
+    const stats =
+      defender.stats ??
+      (() => {
+        const list = new UnitStatList()
+        list.setBaseStat('level', Math.max(1, defender.level))
+        list.setBaseStat('maxhp', Math.max(1, defender.maxHp) * FIXED_ONE)
+        list.setHp256(Math.max(0, defender.hp) * FIXED_ONE)
+        list.setBaseStat('armorclass', Math.max(0, defender.defense ?? 0))
+        const resist = Math.max(0, defender.resist ?? 0)
+        list.setBaseStat('fireresist', resist)
+        list.setBaseStat('lightresist', resist)
+        list.setBaseStat('coldresist', resist)
+        list.setBaseStat('poisonresist', resist)
+        list.setBaseStat('magicresist', resist)
+        list.setBaseStat('damageresist', 0)
+        return list
+      })()
+    const ctx: CombatUnitContext = {
+      id: defender.id,
+      name: defender.name,
+      unitType: defender.unitType,
+      statList: stats,
+      stateBus: defender.stateBus ?? new StateBus(stats, this.registry),
+      x: defender.x ?? monster.x,
+      y: defender.y ?? monster.y,
+    }
+    executeSUnitDmg(this.buildMonsterAttackerContext(monster), ctx, {
+      skillId: missile.skillId,
+      attackKind,
+      srcDam: 0,
+      flatPhysMin256: missile.physDamage * FIXED_ONE,
+      flatPhysMax256: missile.physDamage * FIXED_ONE,
+      ...(missile.element !== 'phys'
+        ? {
+            elemType: missile.element,
+            elemMin256: missile.elemDamage * FIXED_ONE,
+            elemMax256: missile.elemDamage * FIXED_ONE,
+            elemDurationFrames: missile.elemDurationFrames,
+          }
+        : {}),
+      roll100: this.rng.rand(100),
+    })
+    return Math.max(0, Math.floor(stats.getHp256() / FIXED_ONE))
+  }
+
+  private missileSegmentBlocked(
+    missile: InternalMissileRecord,
+    prevX: number,
+    prevY: number,
+  ): boolean {
+    const dx = missile.x - prevX
+    const dy = missile.y - prevY
+    const distance = Math.hypot(dx, dy)
+    const steps = Math.max(1, Math.ceil(distance / 0.5))
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps
+      if (
+        !this.terrainWalkableCheck!(
+          missile.areaId,
+          Math.round(prevX + dx * t),
+          Math.round(prevY + dy * t),
+          missile.collideType !== 8,
+        )
+      ) {
+        return true
+      }
+    }
+    return false
+  }
+
   private stepMissiles(): void {
     for (const [mId, missile] of this.missiles.entries()) {
+      const prevX = missile.x
+      const prevY = missile.y
       missile.x += missile.vx
       missile.y += missile.vy
       missile.remainingFrames--
 
-      // Missiles.txt CollideType: ground projectiles stop on a blocked sub-tile.
+      // Missiles.txt CollideType: 0 ignores terrain, 1/3/6 fly over low obstacles,
+      // 8 hugs the floor. Sweep the whole segment so a fast projectile cannot
+      // tunnel through a one-tile wall between two point samples.
       if (
+        missile.collideType !== 0 &&
         this.terrainWalkableCheck &&
-        !this.terrainWalkableCheck(
-          missile.areaId,
-          Math.round(missile.x),
-          Math.round(missile.y),
-          false,
-        )
+        this.missileSegmentBlocked(missile, prevX, prevY)
       ) {
         this.missiles.delete(mId)
         continue
@@ -6939,75 +7705,117 @@ export class GameInstance {
 
       let hit = false
       if (missile.ownerType === 'monster') {
-        const isColdMissile =
-          missile.missileId === 194 ||
-          missile.skillId === 194 ||
-          missile.missileId === 44 ||
-          missile.skillId === 44
-        const isLightMissile = missile.missileId === 195 || missile.skillId === 195
-        const isFireMissile = missile.missileId === 82 || missile.skillId === 82
-        const damageParts = isColdMissile
-          ? { cold: missile.damage }
-          : isLightMissile
-            ? { light: missile.damage }
-            : isFireMissile
-              ? { fire: missile.damage }
-              : { phys: missile.damage }
-        for (const player of this.players.values()) {
-          if (player.dead || player.areaId !== missile.areaId) continue
-          if (Math.hypot(player.x - missile.x, player.y - missile.y) <= 2.5) {
-            this.applyPlayerElementalDamage(player, damageParts)
-            if (isColdMissile) {
-              const diffKey: 'normal' | 'nightmare' | 'hell' =
-                this.difficulty === 2
-                  ? 'hell'
-                  : this.difficulty === 1
-                    ? 'nightmare'
-                    : 'normal'
-              const ownerMon = this.monsters.get(missile.ownerId)
-              const chillFrames = calcColdEnchantedDeathNova(
-                ownerMon?.level ?? 1,
-                diffKey,
-              ).chillFrames
-              this.applyUnitState(
-                player.states,
-                player.stateTimers,
-                'player',
-                player.unitId,
-                player.areaId,
-                11,
-                chillFrames,
-              )
-            }
-            hit = true
-            break
+        const ownerMon = this.monsters.get(missile.ownerId)
+        if (ownerMon === undefined) {
+          this.missiles.delete(mId)
+          continue
+        }
+        const hitRadius = 1 + missile.size * 0.75
+        const canHit = (unitId: number): boolean => {
+          const until = missile.hitCooldowns.get(unitId)
+          return until === undefined || this.currentFrame >= until
+        }
+        const markHit = (unitId: number): void => {
+          if (missile.pierce) {
+            missile.hitCooldowns.set(
+              unitId,
+              this.currentFrame + (missile.nextHit ? Math.max(1, missile.nextDelay) : 1_000_000),
+            )
           }
         }
-        if (!hit) {
+        for (const player of this.players.values()) {
+          if (player.dead || player.areaId !== missile.areaId) continue
+          if (Math.hypot(player.x - missile.x, player.y - missile.y) > hitRadius) continue
+          if (!canHit(player.unitId)) continue
+          this.resolveMonsterAttackOnPlayer(ownerMon, player, {
+            minDmg: missile.physDamage,
+            maxDmg: missile.physDamage,
+            skillMode: 'A1',
+            attackKind: 'missile',
+            skillId: missile.skillId,
+            ...(missile.element !== 'phys'
+              ? {
+                  elementType: missile.element,
+                  elemMin: missile.elemDamage,
+                  elemMax: missile.elemDamage,
+                  elemDurationFrames: missile.elemDurationFrames,
+                }
+              : {}),
+            fromMissile: true,
+            autoHit: missile.guaranteedHit,
+          })
+          if (missile.element === 'cold') {
+            const diffKey: 'normal' | 'nightmare' | 'hell' =
+              this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
+            const chillFrames =
+              missile.elemDurationFrames > 0
+                ? missile.elemDurationFrames
+                : calcColdEnchantedDeathNova(ownerMon.level, diffKey).chillFrames
+            this.applyUnitState(
+              player.states,
+              player.stateTimers,
+              'player',
+              player.unitId,
+              player.areaId,
+              11,
+              chillFrames,
+            )
+          }
+          markHit(player.unitId)
+          hit = true
+          if (!missile.pierce) break
+        }
+        if (!hit || missile.pierce) {
           for (const merc of this.mercenaries.values()) {
             if (!merc.alive || merc.areaId !== missile.areaId) continue
-            if (Math.hypot(merc.x - missile.x, merc.y - missile.y) > 2.5) continue
-            merc.hp = Math.max(0, merc.hp - missile.damage)
+            if (Math.hypot(merc.x - missile.x, merc.y - missile.y) > hitRadius) continue
+            if (!canHit(merc.unitId)) continue
+            merc.hp = this.applyMonsterMissileToDefender(ownerMon, missile, {
+              id: `merc_${merc.unitId}`,
+              name: merc.name,
+              unitType: 'mercenary',
+              level: merc.level,
+              hp: merc.hp,
+              maxHp: merc.maxHp,
+              defense: merc.defense,
+              resist: merc.resist,
+            })
             if (merc.hp <= 0) {
               merc.hp = 0
               merc.alive = false
               merc.state = 'dead'
             }
+            markHit(merc.unitId)
             hit = true
-            break
+            if (!missile.pierce) break
           }
-          if (!hit) {
-            for (const mgr of this.summonManagers.values()) {
-              for (const pet of mgr.getActivePets()) {
-                if (pet.alive === false) continue
-                if (Math.hypot(pet.x - missile.x, pet.y - missile.y) > 2.5) continue
-                pet.hp = Math.max(0, pet.hp - missile.damage)
-                if (pet.hp <= 0) pet.alive = false
-                hit = true
-                break
-              }
-              if (hit) break
+        }
+        if (!hit || missile.pierce) {
+          for (const mgr of this.summonManagers.values()) {
+            let petHit = false
+            for (const pet of mgr.getActivePets()) {
+              if (pet.alive === false) continue
+              if (Math.hypot(pet.x - missile.x, pet.y - missile.y) > hitRadius) continue
+              if (!canHit(stableUnitKey(pet.uid))) continue
+              pet.hp = this.applyMonsterMissileToDefender(ownerMon, missile, {
+                id: pet.uid,
+                name: pet.name,
+                unitType: 'minion',
+                level: pet.statList.getAccruedStat('level'),
+                hp: pet.hp,
+                maxHp: pet.maxHp,
+                stats: pet.statList,
+                stateBus: pet.stateBus,
+                x: pet.x,
+                y: pet.y,
+              })
+              if (pet.hp <= 0) pet.alive = false
+              markHit(stableUnitKey(pet.uid))
+              hit = true
+              petHit = true
+              if (!missile.pierce) break
             }
+            if (petHit && !missile.pierce) break
           }
         }
       } else {
@@ -7037,7 +7845,7 @@ export class GameInstance {
         }
       }
 
-      if (hit || missile.remainingFrames <= 0) {
+      if ((hit && !missile.pierce) || missile.remainingFrames <= 0) {
         this.missiles.delete(mId)
       }
     }
@@ -7087,6 +7895,68 @@ export class GameInstance {
     }
   }
 
+  private stepPendingResurrection(monster: InternalMonsterRecord): void {
+    const pending = monster.pendingResurrection
+    if (pending === undefined || this.currentFrame < pending.frame) return
+    monster.pendingResurrection = undefined
+    const corpse = this.monsters.get(pending.corpseUnitId)
+    if (
+      corpse === undefined ||
+      !corpse.dead ||
+      corpse.shattered ||
+      corpse.areaId !== monster.areaId
+    ) {
+      return
+    }
+    this.reviveMonsterCorpse(monster, corpse)
+  }
+
+  /** Apply the 1.13c Resurrect action frame: full life, cleared death states. */
+  private reviveMonsterCorpse(
+    caster: InternalMonsterRecord,
+    corpse: InternalMonsterRecord,
+  ): void {
+    corpse.dead = false
+    corpse.hp = corpse.maxHp
+    corpse.mode = 1
+    corpse.revivedByShaman = true
+    for (const stateId of corpse.states) {
+      this.broadcastToArea(caster.areaId, {
+        type: 'UnitState',
+        unitType: 'monster',
+        unitId: corpse.unitId,
+        state: stateId,
+        active: false,
+        areaId: caster.areaId,
+      })
+      this.broadcastToArea(caster.areaId, {
+        type: 'StateEnd',
+        unit: { unitType: 1, id: corpse.unitId },
+        state: stateId,
+      })
+    }
+    corpse.states.clear()
+    corpse.stateTimers.clear()
+    corpse.path = []
+    corpse.pathIndex = 0
+    corpse.pathTargetX = Number.NaN
+    corpse.pathTargetY = Number.NaN
+    this.broadcastToArea(caster.areaId, {
+      type: 'UnitStatUpdate',
+      unitType: 'monster',
+      unitId: corpse.unitId,
+      statId: 6,
+      value: corpse.hp,
+    })
+    this.broadcastToArea(caster.areaId, {
+      type: 'UnitMode',
+      unitType: 1,
+      id: corpse.unitId,
+      mode: 1,
+      lifePct: 128,
+    })
+  }
+
   private stepPendingMonsterAttack(monster: InternalMonsterRecord): void {
     const pending = monster.pendingAttack
     if (!pending || this.currentFrame < pending.frame) return
@@ -7097,15 +7967,7 @@ export class GameInstance {
     this.resolveMonsterAttackOnPlayer(monster, player, pending)
   }
 
-  private resolveMonsterAttackOnPlayer(
-    monster: InternalMonsterRecord,
-    player: InternalPlayerRecord,
-    swing?: {
-      readonly minDmg: number
-      readonly maxDmg: number
-      readonly skillMode: 'A1' | 'A2' | 'S1'
-    },
-  ): void {
+  private buildMonsterAttackerContext(monster: InternalMonsterRecord): CombatUnitContext {
     const attackerStats = new UnitStatList()
     attackerStats.setBaseStat('level', monster.level)
     attackerStats.setBaseStat('tohit', monster.ar)
@@ -7118,7 +7980,7 @@ export class GameInstance {
     attackerStats.setBaseStat('coldresist', monster.resistances.cold)
     attackerStats.setBaseStat('poisonresist', monster.resistances.poison)
     const attackerStateBus = new StateBus(attackerStats, this.registry)
-    const attackerCtx: CombatUnitContext = {
+    return {
       id: `monster_${monster.unitId}`,
       name: monster.name,
       unitType: 'monster',
@@ -7133,6 +7995,30 @@ export class GameInstance {
       weaponMinPhys: 0,
       weaponMaxPhys: 0,
     }
+  }
+
+  private resolveMonsterAttackOnPlayer(
+    monster: InternalMonsterRecord,
+    player: InternalPlayerRecord,
+    swing?: {
+      readonly minDmg: number
+      readonly maxDmg: number
+      readonly skillMode: 'A1' | 'A2' | 'S1'
+      /** Missile hits use the projectile block/dodge path; melee uses the melee path. */
+      readonly attackKind?: 'melee' | 'missile' | undefined
+      readonly skillId?: number | undefined
+      /** Explicit projectile element (Missiles.txt EType) instead of a MonStats El1..3 rider. */
+      readonly elementType?: MissileDamageChannel | undefined
+      readonly elemMin?: number | undefined
+      readonly elemMax?: number | undefined
+      readonly elemDurationFrames?: number | undefined
+      /** Projectile hits must not re-roll the monster's melee El1..3 rider. */
+      readonly fromMissile?: boolean | undefined
+      /** Death-effect novae bypass to-hit/block but still apply resistances. */
+      readonly autoHit?: boolean | undefined
+    },
+  ): void {
+    const attackerCtx = this.buildMonsterAttackerContext(monster)
 
     const defenderStats = new UnitStatList()
     defenderStats.setBaseStat('level', player.level)
@@ -7249,46 +8135,59 @@ export class GameInstance {
       stateBus: defenderStateBus,
       x: player.x,
       y: player.y,
+      hasShield: player.items.some(
+        (item) => item.location === 'equipped' && item.bodyLoc === 5,
+      ),
+      isMoving: this.playerMotion.get(player.unitId)?.moving === true,
     }
 
     const swingMode = swing?.skillMode ?? 'A1'
-    const elemental = monster.elementalAttacks.find(
-      (entry) =>
-        entry.mode === swingMode &&
-        (entry.chancePct >= 100 || this.rng.rand(100) < entry.chancePct),
-    )
+    const rider =
+      swing?.fromMissile === true && swing.elementType === undefined
+        ? undefined
+        : monster.elementalAttacks.find(
+            (entry) =>
+              entry.mode === swingMode &&
+              (entry.chancePct >= 100 || this.rng.rand(100) < entry.chancePct),
+          )
     const elementalType =
-      elemental?.type === 'ltng'
+      swing?.elementType ??
+      (rider?.type === 'ltng'
         ? 'ltng'
-        : elemental?.type === 'cold' || elemental?.type === 'frze'
+        : rider?.type === 'cold' || rider?.type === 'frze'
           ? 'cold'
-          : elemental?.type === 'pois'
+          : rider?.type === 'pois'
             ? 'pois'
-            : elemental?.type === 'mag'
+            : rider?.type === 'mag'
               ? 'mag'
-              : elemental?.type === 'fire'
+              : rider?.type === 'fire'
                 ? 'fire'
-                : undefined
+                : undefined)
     const auraDmgPct = this.monsterAuraDamageBonusPct(monster)
+    const physMin = swing?.fromMissile === true ? (swing.minDmg ?? 0) : (swing?.minDmg ?? monster.minDmg)
+    const physMax = swing?.fromMissile === true ? (swing.maxDmg ?? 0) : (swing?.maxDmg ?? monster.maxDmg)
+    const elemMin = swing?.fromMissile === true ? (swing.elemMin ?? 0) : (rider?.minDamage ?? rider?.min ?? 0)
+    const elemMax = swing?.fromMissile === true ? (swing.elemMax ?? 0) : (rider?.maxDamage ?? rider?.max ?? 0)
+    const elemDuration =
+      swing?.fromMissile === true
+        ? (swing.elemDurationFrames ?? 0)
+        : (rider?.durationFrames ?? rider?.duration ?? 0)
     const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
-      skillId: 0,
-      attackKind: 'melee',
+      skillId: swing?.skillId ?? 0,
+      attackKind: swing?.attackKind ?? 'melee',
       srcDam: 0,
-      flatPhysMin256: Math.floor(
-        (swing?.minDmg ?? monster.minDmg) * FIXED_ONE * (1 + auraDmgPct / 100),
-      ),
-      flatPhysMax256: Math.floor(
-        (swing?.maxDmg ?? monster.maxDmg) * FIXED_ONE * (1 + auraDmgPct / 100),
-      ),
+      flatPhysMin256: Math.floor(physMin * FIXED_ONE * (1 + auraDmgPct / 100)),
+      flatPhysMax256: Math.floor(physMax * FIXED_ONE * (1 + auraDmgPct / 100)),
       ...(elementalType !== undefined
         ? {
             elemType: elementalType,
-            elemMin256: Math.max(0, elemental?.minDamage ?? elemental?.min ?? 0) * FIXED_ONE,
-            elemMax256: Math.max(0, elemental?.maxDamage ?? elemental?.max ?? 0) * FIXED_ONE,
-            elemDurationFrames: elemental?.durationFrames ?? elemental?.duration ?? 0,
+            elemMin256: Math.max(0, elemMin) * FIXED_ONE,
+            elemMax256: Math.max(0, elemMax) * FIXED_ONE,
+            elemDurationFrames: elemDuration,
           }
         : {}),
       roll100: this.rng.rand(100),
+      ...(swing?.autoHit === true ? { autoHit: true } : {}),
     })
 
     if (dmgOut.hit) {
@@ -7478,6 +8377,9 @@ export class GameInstance {
    */
   private stepMonsterRegen(monster: InternalMonsterRecord): void {
     if (monster.dead || monster.damageRegen <= 0 || monster.hp >= monster.maxHp) return
+    // Poison (state 2), Open Wounds (62) and Prevent Monster Heal (52) suppress
+    // natural regeneration in 1.13c.
+    if (monster.states.has(2) || monster.states.has(62) || monster.states.has(52)) return
     monster.regenCarry += (monster.maxHp * monster.damageRegen) / 8192
     const whole = Math.floor(monster.regenCarry)
     if (whole <= 0) return
@@ -7529,15 +8431,44 @@ export class GameInstance {
 
   /** Unit-size cell occupancy: monsters and players block each other's cell. */
   private isMonsterCellOccupied(monster: InternalMonsterRecord, x: number, y: number): boolean {
-    // A stacked monster must be able to leave its current cell even if another unit shares it.
+    // A unit stacked on the current cell must be able to step away; once it is
+    // separated, the destination cell is checked normally.
+    let stacked = false
     for (const other of this.monsters.values()) {
       if (other.unitId === monster.unitId || other.dead || other.isNpc || other.areaId !== monster.areaId) continue
-      if (Math.hypot(other.x - monster.x, other.y - monster.y) < 0.75) return false
-      if (Math.hypot(other.x - x, other.y - y) < 0.75) return true
+      if (Math.hypot(other.x - monster.x, other.y - monster.y) < 0.75) {
+        stacked = true
+        break
+      }
+    }
+    if (!stacked) {
+      for (const p of this.players.values()) {
+        if (p.dead || p.areaId !== monster.areaId) continue
+        if (Math.hypot(p.x - monster.x, p.y - monster.y) < 0.75) {
+          stacked = true
+          break
+        }
+      }
+    }
+    const selfRadius = Math.max(0.5, 0.75 + (monster.sizeX - 2) * 0.25)
+    for (const other of this.monsters.values()) {
+      if (other.unitId === monster.unitId || other.dead || other.isNpc || other.areaId !== monster.areaId) continue
+      const otherRadius = Math.max(0.5, 0.75 + (other.sizeX - 2) * 0.25)
+      if (Math.hypot(other.x - x, other.y - y) < (selfRadius + otherRadius) / 2) return !stacked
+    }
+    for (const merc of this.mercenaries.values()) {
+      if (!merc.alive || merc.areaId !== monster.areaId) continue
+      if (Math.hypot(merc.x - x, merc.y - y) < 0.75) return !stacked
+    }
+    for (const mgr of this.summonManagers.values()) {
+      for (const pet of mgr.getActivePets()) {
+        if (pet.alive === false) continue
+        if (Math.hypot(pet.x - x, pet.y - y) < 0.75) return !stacked
+      }
     }
     for (const p of this.players.values()) {
       if (p.dead || p.areaId !== monster.areaId) continue
-      if (Math.hypot(p.x - x, p.y - y) < 0.75) return true
+      if (Math.hypot(p.x - x, p.y - y) < 0.75) return !stacked
     }
     return false
   }
@@ -7559,6 +8490,8 @@ export class GameInstance {
       monster.pathTargetY = targetY
     }
     const speed = this.monsterStepSpeed(monster, running)
+    const fromX = monster.x
+    const fromY = monster.y
     let remaining = speed
     while (remaining > 0 && monster.pathIndex < monster.path.length) {
       const wp = monster.path[monster.pathIndex]!
@@ -7581,21 +8514,87 @@ export class GameInstance {
     }
     const moved = monster.pathIndex > 0 || remaining < speed
     if (moved) {
-      monster.mode = running ? 3 : 2
-      const at = { x: Math.round(monster.x), y: Math.round(monster.y) }
+      // 1.13c MonMode: 2 = walk, 15 = run (3 is MONMODE_GETHIT, not run).
+      monster.mode = running ? MONMODE_RUN : MONMODE_WALK
+      const current = { x: Math.round(monster.x), y: Math.round(monster.y) }
       this.broadcastToArea(monster.areaId, {
         type: 'UnitMove',
         unitType: 'monster',
         id: monster.unitId,
         unitId: monster.unitId,
         mode: running ? 'run' : 'walk',
-        from: at,
-        to: at,
-        x: at.x,
-        y: at.y,
+        from: { x: Math.round(fromX), y: Math.round(fromY) },
+        to: { x: Math.round(targetX), y: Math.round(targetY) },
+        x: current.x,
+        y: current.y,
+        currentX: current.x,
+        currentY: current.y,
+        targetX: Math.round(targetX),
+        targetY: Math.round(targetY),
+        moveType: running ? 1 : 0,
+        pathType: running ? 1 : 0,
+        areaId: monster.areaId,
+        ...(monster.isNpc
+          ? {
+              npc: {
+                opcode: 0x68 as const,
+                cmd: running ? 1 : 0,
+                s: [
+                  current.x,
+                  current.y,
+                  Math.round(targetX),
+                  Math.round(targetY),
+                  0,
+                  0,
+                  null,
+                ] as const,
+                driftCheckAt: current,
+              },
+            }
+          : {}),
       })
     }
     return Math.hypot(targetX - monster.x, targetY - monster.y)
+  }
+
+  /**
+   * 1.13c room sleep: a monster only runs its AI while a player is in the same
+   * area and within the room/adjacent-room activation radius. Far units still
+   * process state timers and death drops, but skip pathfinding and attacks.
+   */
+  private isMonsterInActiveAoi(monster: InternalMonsterRecord): boolean {
+    const rooms = this.loadedAreas.get(monster.areaId)?.roomRects ?? []
+    const roomAt = (x: number, y: number) =>
+      rooms.find((room) => x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h)
+    const monsterRoom = rooms.length > 0 ? roomAt(monster.x, monster.y) : undefined
+    for (const player of this.players.values()) {
+      if (player.dead || player.areaId !== monster.areaId) continue
+      if (monsterRoom !== undefined) {
+        const playerRoom = roomAt(player.x, player.y)
+        if (playerRoom !== undefined) {
+          // 1.13c runs the player's room and its 8 neighbours.
+          const gapX = Math.max(
+            0,
+            Math.max(playerRoom.x - (monsterRoom.x + monsterRoom.w), monsterRoom.x - (playerRoom.x + playerRoom.w)),
+          )
+          const gapY = Math.max(
+            0,
+            Math.max(playerRoom.y - (monsterRoom.y + monsterRoom.h), monsterRoom.y - (playerRoom.y + playerRoom.h)),
+          )
+          if (gapX <= 1 && gapY <= 1) return true
+          continue
+        }
+      }
+      // Units outside any room (or a level without room rects) fall back to
+      // the previous distance proxy.
+      if (
+        Math.hypot(player.x - monster.x, player.y - monster.y) <=
+        MONSTER_ACTIVATION_RADIUS_SUBTILES
+      ) {
+        return true
+      }
+    }
+    return false
   }
 
   /**
@@ -7605,14 +8604,13 @@ export class GameInstance {
   private nearestHostileForMonster(
     monster: InternalMonsterRecord,
     radius: number,
-  ): { readonly kind: 'player'; readonly x: number; readonly y: number; readonly player: InternalPlayerRecord } | { readonly kind: 'merc'; readonly x: number; readonly y: number; readonly merc: InternalMercenaryRecord } | { readonly kind: 'pet'; readonly x: number; readonly y: number; readonly pet: { hp: number; alive?: boolean | undefined } } | null {
-    let best: { kind: 'player'; x: number; y: number; player: InternalPlayerRecord } | { kind: 'merc'; x: number; y: number; merc: InternalMercenaryRecord } | { kind: 'pet'; x: number; y: number; pet: { hp: number; alive?: boolean | undefined } } | null = null
+  ): { readonly kind: 'player'; readonly x: number; readonly y: number; readonly player: InternalPlayerRecord } | { readonly kind: 'merc'; readonly x: number; readonly y: number; readonly merc: InternalMercenaryRecord } | { readonly kind: 'pet'; readonly x: number; readonly y: number; readonly pet: SummonedPetUnit } | null {
+    let best: { kind: 'player'; x: number; y: number; player: InternalPlayerRecord } | { kind: 'merc'; x: number; y: number; merc: InternalMercenaryRecord } | { kind: 'pet'; x: number; y: number; pet: SummonedPetUnit } | null = null
     let bestDist = radius
     // 1.13c line-of-sight: an open ray, or a reachable D2Common path around obstacles.
     const hasLineOfSight = (x: number, y: number): boolean =>
       !this.terrainWalkableCheck ||
-      this.isMonsterStepWalkable(monster.areaId, monster.x, monster.y, x, y, monster.isFlying) ||
-      this.findMonsterPath(monster, x, y).length > 0
+      this.isMonsterStepWalkable(monster.areaId, monster.x, monster.y, x, y, monster.isFlying)
     for (const p of this.players.values()) {
       if (p.dead || p.areaId !== monster.areaId) continue
       const d = Math.hypot(p.x - monster.x, p.y - monster.y)
@@ -7642,12 +8640,272 @@ export class GameInstance {
     return best
   }
 
+  /**
+   * Cast one of MonStats `Skill1..8` when it is ready and in range. Projectile
+   * skills are evaluated through the same `evaluateSkill113c` registry as player
+   * casts; their `srvmissile`/`srvmissilea` row and `Missiles.txt` EType decide
+   * the launch and damage channel. Non-projectile utility skills (resurrection,
+   * curses, summons) keep their dedicated handlers.
+   */
+  private tryCastMonsterSkill(
+    monster: InternalMonsterRecord,
+    target: { readonly x: number; readonly y: number },
+    distance: number,
+  ): boolean {
+    if (monster.skillCooldown > 0 || monster.skills.length === 0) return false
+    const difficulty = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+    const ordered = [...monster.skills].sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
+    const candidates: {
+      readonly entry: MonsterSkillEntry
+      readonly skill: SkillRecord
+      readonly missileRec: MissileRecord
+    }[] = []
+    for (const entry of ordered) {
+      if (entry.skillId === undefined) continue
+      // Resurrection (181/327/158) is executed by the shaman/undead handler with
+      // its own corpse/race rules, not as a projectile.
+      if (entry.skillId === 181 || entry.skillId === 327 || entry.skillId === 158) continue
+      const skill = this.registry.getSkillById(entry.skillId)
+      if (skill === undefined) continue
+      if (skill.summon !== '' || skill.petType !== '') continue
+      if (/heal|vortex|aura|teleport|armor|bestow/i.test(skill.name)) continue
+      const missileName =
+        skill.srvMissile !== ''
+          ? skill.srvMissile
+          : skill.srvMissileA !== ''
+            ? skill.srvMissileA
+            : ''
+      if (missileName === '') continue
+      const missileRec = this.registry.getMissileByName(missileName)
+      if (missileRec === undefined) continue
+      candidates.push({ entry, skill, missileRec })
+    }
+    if (candidates.length === 0) return this.tryCastMonsterUtilitySkill(monster, target, distance)
+    // Melee-range monsters alternate between their skill and A1 instead of never
+    // swinging; at range the cooldown alone paces the casts.
+    if (distance <= 2.5 && this.rng.rand(2) !== 0) return false
+    const chosen = candidates[monster.skillCursor % candidates.length]!
+    const { entry, skill, missileRec } = chosen
+    monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, candidates.length)
+    if (distance > Math.min(35, Math.max(4, missileRec.range))) return false
+    const statList = new UnitStatList()
+    statList.setBaseStat('level', monster.level)
+    statList.setBaseStat('strength', 0)
+    statList.setBaseStat('dexterity', 0)
+    statList.setBaseStat('vitality', 0)
+    statList.setBaseStat('energy', 0)
+    statList.setBaseSkillLevel(entry.skillId!, Math.max(1, entry.level))
+    const evalResult = evaluateSkill113c({
+      registry: this.registry,
+      skill,
+      slvl: Math.max(1, entry.level),
+      blvl: Math.max(1, entry.level),
+      statList,
+      difficulty,
+    })
+    let phys = this.rollInclusive(evalResult.minPhysDmg, evalResult.maxPhysDmg)
+    let elem = this.rollInclusive(evalResult.minElemDmg, evalResult.maxElemDmg)
+    if (phys + elem <= 0 && missileRec.minDamage + missileRec.maxDamage > 0) {
+      // Most rows store 8-bit fixed point (1792 = 7), but some flat rows store
+      // the literal damage (Mephisto 12..16).
+      const divisor =
+        missileRec.minDamage >= 256 || missileRec.maxDamage >= 256 ? 256 : 1
+      const lo = Math.trunc(missileRec.minDamage / divisor)
+      const hi = Math.trunc(missileRec.maxDamage / divisor)
+      if (normalizeMissileElement(missileRec.eType) !== undefined) {
+        elem = this.rollInclusive(lo, hi)
+      } else {
+        phys = this.rollInclusive(lo, hi)
+      }
+    }
+    if (phys + elem <= 0) {
+      phys = this.rollInclusive(monster.minDmg, monster.maxDmg)
+    }
+    const element =
+      normalizeMissileElement(missileRec.eType) ??
+      normalizeMissileElement(skill.eType) ??
+      'phys'
+    if (element !== 'phys') {
+      elem += phys
+      phys = 0
+    }
+    const mode = this.monsterSkillMode(entry.mode)
+    monster.mode = mode
+    this.broadcastToArea(monster.areaId, {
+      type: 'UnitMode',
+      unitType: 1,
+      id: monster.unitId,
+      mode,
+      at: { x: Math.round(target.x), y: Math.round(target.y) },
+      lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+    })
+    this.spawnMonsterMissile(monster, target.x, target.y, phys + elem, missileRec.id, skill.id, {
+      missile: missileRec,
+      skillLevel: Math.max(1, entry.level),
+      physDamage: phys,
+      elemDamage: elem,
+      element,
+    })
+    const delay = Number.parseInt(skill.delay, 10)
+    monster.skillCooldown =
+      Number.isFinite(delay) && delay > 0
+        ? delay
+        : Math.max(25, monster.cooldownTicks * 2)
+    return true
+  }
+
+  /**
+   * Non-projectile `Skill1..8` (ZakarumHeal, MonTeleport, MonBoneArmor,
+   * FetishAura): heal, blink or apply the skill's self state. Summons/turrets
+   * keep their dedicated runtime.
+   */
+  private tryCastMonsterUtilitySkill(
+    monster: InternalMonsterRecord,
+    target: { readonly x: number; readonly y: number },
+    distance: number,
+  ): boolean {
+    for (const entry of monster.skills) {
+      if (entry.skillId === undefined) continue
+      if (entry.skillId === 181 || entry.skillId === 327 || entry.skillId === 158) continue
+      const skill = this.registry.getSkillById(entry.skillId)
+      if (skill === undefined) continue
+      const name = skill.name.toLowerCase()
+      if (/heal/.test(name)) {
+        const heal = Math.max(1, Math.floor(monster.maxHp * 0.25))
+        const nextHp = Math.min(monster.maxHp, monster.hp + heal)
+        if (nextHp === monster.hp) return false
+        monster.hp = nextHp
+        monster.mode = 8
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitStatUpdate',
+          unitType: 'monster',
+          unitId: monster.unitId,
+          statId: 6,
+          value: monster.hp,
+        })
+        this.setMonsterSkillCooldown(monster, skill.delay)
+        return true
+      }
+      if (/teleport/.test(name)) {
+        const tx = monster.x + (target.x - monster.x) * 0.6
+        const ty = monster.y + (target.y - monster.y) * 0.6
+        if (
+          this.terrainWalkableCheck &&
+          !this.terrainWalkableCheck(monster.areaId, Math.round(tx), Math.round(ty), monster.isFlying)
+        ) {
+          continue
+        }
+        const from = { x: Math.round(monster.x), y: Math.round(monster.y) }
+        monster.x = tx
+        monster.y = ty
+        monster.path = []
+        monster.pathIndex = 0
+        monster.pathTargetX = Number.NaN
+        monster.pathTargetY = Number.NaN
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMove',
+          unitType: 'monster',
+          id: monster.unitId,
+          unitId: monster.unitId,
+          mode: 'run',
+          from,
+          to: { x: Math.round(tx), y: Math.round(ty) },
+          x: Math.round(tx),
+          y: Math.round(ty),
+          currentX: Math.round(tx),
+          currentY: Math.round(ty),
+          targetX: Math.round(tx),
+          targetY: Math.round(ty),
+          areaId: monster.areaId,
+        })
+        this.setMonsterSkillCooldown(monster, skill.delay)
+        return true
+      }
+      if (skill.summon !== '') {
+        monster.mode = 8
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: 8,
+          at: { x: Math.round(target.x), y: Math.round(target.y) },
+          lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+        })
+        try {
+          this.spawnMonster({
+            defId: skill.summon,
+            x: target.x,
+            y: target.y,
+            areaId: monster.areaId,
+            level: monster.level,
+          })
+        } catch {
+          continue
+        }
+        this.setMonsterSkillCooldown(monster, skill.delay)
+        return true
+      }
+      const stateName = skill.auraState !== '' ? skill.auraState : skill.state1
+      if (stateName !== '') {
+        const state = this.registry.getStateByName(stateName)
+        if (state === undefined) continue
+        this.applyMonsterState(monster.unitId, state.id, 100)
+        monster.mode = 8
+        this.setMonsterSkillCooldown(monster, skill.delay)
+        return true
+      }
+      if (distance > 20) continue
+    }
+    return false
+  }
+
+  private setMonsterSkillCooldown(monster: InternalMonsterRecord, delay: string): void {
+    const parsed = Number.parseInt(delay, 10)
+    monster.skillCooldown =
+      Number.isFinite(parsed) && parsed > 0
+        ? parsed
+        : Math.max(25, monster.cooldownTicks * 2)
+  }
+
+  /** Map `MonStats.txt Sk*Mode` onto the 1.13c unit mode ids. */
+  private monsterSkillMode(mode: string): number {
+    switch (mode.toUpperCase()) {
+      case 'A1':
+        return 4
+      case 'A2':
+        return 5
+      case 'S1':
+        return 8
+      case 'S2':
+        return 9
+      case 'S3':
+        return 10
+      case 'S4':
+        return 11
+      case 'C':
+        return 4
+      case 'SC':
+      case 'SQ':
+        return 8
+      default:
+        return 8
+    }
+  }
+
   private stepMonsterAi(monster: InternalMonsterRecord): void {
     if (monster.cooldown > 0) {
       monster.cooldown--
     }
+    if (monster.skillCooldown > 0) {
+      monster.skillCooldown--
+    }
     if (monster.auraSkillId !== undefined) {
       this.applyMonsterAura(monster)
+    }
+    // GetHit animation lock: the monster may not start a new action while the
+    // GH animation plays (1.13c AnimData `GH`).
+    if (this.currentFrame < monster.hitRecoveryUntilFrame) {
+      return
     }
     const isConverted = this.isMonsterConverted(monster)
     const aiBehavior = monsterAiBehavior(monster.ai)
@@ -7857,9 +9115,10 @@ export class GameInstance {
       monster.resurrectSkillId !== undefined &&
       monster.cooldown <= 0
     ) {
+      // MonAi.txt FallenShaman row: aip4 = resurrection distance, aip5 = shoot distance.
       const resurrectRange = Math.max(
         1,
-        Math.floor(monster.aiParams[4] || monster.aiParams[3] || 15),
+        Math.floor(monster.aiParams[3] || monster.aiParams[4] || 15),
       )
       for (const corpse of this.monsters.values()) {
         if (
@@ -7898,46 +9157,10 @@ export class GameInstance {
               ? Math.round((monster.hp / monster.maxHp) * 128)
               : 0,
         })
-        // Revived units come back at full life with their corpse states cleared.
-        corpse.dead = false
-        corpse.hp = corpse.maxHp
-        corpse.mode = 1
-        corpse.revivedByShaman = true
-        for (const stateId of corpse.states) {
-          this.broadcastToArea(monster.areaId, {
-            type: 'UnitState',
-            unitType: 'monster',
-            unitId: corpse.unitId,
-            state: stateId,
-            active: false,
-            areaId: monster.areaId,
-          })
-          this.broadcastToArea(monster.areaId, {
-            type: 'StateEnd',
-            unit: { unitType: 1, id: corpse.unitId },
-            state: stateId,
-          })
+        monster.pendingResurrection = {
+          corpseUnitId: corpse.unitId,
+          frame: this.currentFrame + 6,
         }
-        corpse.states.clear()
-        corpse.stateTimers.clear()
-        corpse.path = []
-        corpse.pathIndex = 0
-        corpse.pathTargetX = Number.NaN
-        corpse.pathTargetY = Number.NaN
-        this.broadcastToArea(monster.areaId, {
-          type: 'UnitStatUpdate',
-          unitType: 'monster',
-          unitId: corpse.unitId,
-          statId: 6,
-          value: corpse.hp,
-        })
-        this.broadcastToArea(monster.areaId, {
-          type: 'UnitMode',
-          unitType: 1,
-          id: corpse.unitId,
-          mode: 1,
-          lifePct: 128,
-        })
         return
       }
     }
@@ -7945,11 +9168,69 @@ export class GameInstance {
     const hasDimVision = !isBossOrUnique && monster.states.has(23)
     const effectiveAggro = hasDimVision && !hasTaunt ? 3.5 : monster.aggroRadius
 
-    const nearest = this.nearestHostileForMonster(monster, effectiveAggro)
+    let nearest = this.nearestHostileForMonster(monster, effectiveAggro)
+    // Being attacked pulls the monster's attention even when the attacker is
+    // outside its normal `aidist` (1.13c last-attacker threat).
+    if (this.currentFrame <= monster.threatUntilFrame) {
+      const threat = this.players.get(monster.threatPlayerId)
+      if (
+        threat !== undefined &&
+        !threat.dead &&
+        threat.areaId === monster.areaId &&
+        Math.hypot(threat.x - monster.x, threat.y - monster.y) <=
+          Math.max(effectiveAggro, MONSTER_ACTIVATION_RADIUS_SUBTILES)
+      ) {
+        nearest = { kind: 'player', x: threat.x, y: threat.y, player: threat }
+      }
+    }
     if (!nearest) {
       // Return to the DRLG spawn anchor when pulled too far away.
       if (Math.hypot(monster.homeX - monster.x, monster.homeY - monster.y) > 12) {
         this.moveMonsterToward(monster, monster.homeX, monster.homeY, false)
+        monster.wanderTargetX = Number.NaN
+        monster.wanderTargetY = Number.NaN
+        return
+      }
+      // 1.13c idle AI: stationary rows stay put, others wander a few sub-tiles
+      // around their spawn anchor between fights.
+      if (aiBehavior === 'stationary') return
+      if (monster.wanderCooldown > 0) monster.wanderCooldown--
+      if (
+        Number.isFinite(monster.wanderTargetX) &&
+        Number.isFinite(monster.wanderTargetY)
+      ) {
+        const remaining = Math.hypot(
+          monster.wanderTargetX - monster.x,
+          monster.wanderTargetY - monster.y,
+        )
+        if (remaining > 0.75) {
+          this.moveMonsterToward(
+            monster,
+            monster.wanderTargetX,
+            monster.wanderTargetY,
+            false,
+          )
+          return
+        }
+        monster.wanderTargetX = Number.NaN
+        monster.wanderTargetY = Number.NaN
+        monster.wanderCooldown = 60 + this.rng.rand(90)
+      }
+      if (monster.wanderCooldown <= 0) {
+        const angle = (this.rng.rand(360) * Math.PI) / 180
+        const radius = 1 + this.rng.rand(4)
+        const tx = monster.homeX + Math.cos(angle) * radius
+        const ty = monster.homeY + Math.sin(angle) * radius
+        if (
+          !this.terrainWalkableCheck ||
+          this.terrainWalkableCheck(monster.areaId, Math.round(tx), Math.round(ty), monster.isFlying)
+        ) {
+          monster.wanderTargetX = tx
+          monster.wanderTargetY = ty
+          monster.wanderCooldown = 45 + this.rng.rand(60)
+        } else {
+          monster.wanderCooldown = 20 + this.rng.rand(40)
+        }
       }
       return
     }
@@ -7967,6 +9248,15 @@ export class GameInstance {
         curseIds[
           ((this.currentFrame >>> 0) + monster.unitId) % curseIds.length
         ]!
+      monster.mode = 8
+      this.broadcastToArea(monster.areaId, {
+        type: 'UnitMode',
+        unitType: 1,
+        id: monster.unitId,
+        mode: 8,
+        at: { x: Math.round(nearest.x), y: Math.round(nearest.y) },
+        lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+      })
       if (nearest.kind === 'player') {
         this.applyUnitState(
           nearest.player.states,
@@ -7980,80 +9270,235 @@ export class GameInstance {
       }
     }
 
+    // MonStats `Skill1..8`: cast a data-driven projectile skill (ShamanFire,
+    // ZakarumLightning, PrimeLightning, DoomKnightMissile, ...) before the plain
+    // `MissA1/A2/S1/C` attack. The action mode comes from the MonStats `Sk*Mode`.
+    if (
+      !hasDimVision &&
+      !hasTaunt &&
+      this.tryCastMonsterSkill(monster, nearest, bestDist)
+    ) {
+      return
+    }
+
+    // 1.13c spawner AIs (VileMother/FoulCrowNest/SandMaggotQueen/MosquitoNest)
+    // periodically create their child monster while a hostile is in range.
+    if (aiBehavior === 'spawner' && bestDist <= 30 && monster.cooldown <= 0) {
+      const key = monster.ai.trim().toLowerCase().replace(/[\s_-]/g, '')
+      const child = MONSTER_SPAWNER_CHILD_113C[key]
+      if (child !== undefined) {
+        const angle = (this.rng.rand(360) * Math.PI) / 180
+        const tx = monster.x + Math.cos(angle) * (1 + this.rng.rand(2))
+        const ty = monster.y + Math.sin(angle) * (1 + this.rng.rand(2))
+        if (
+          !this.terrainWalkableCheck ||
+          this.terrainWalkableCheck(monster.areaId, Math.round(tx), Math.round(ty), false)
+        ) {
+          this.spawnMonster({
+            defId: child,
+            x: tx,
+            y: ty,
+            areaId: monster.areaId,
+            level: monster.level,
+          })
+          monster.cooldown = 125
+          monster.mode = 8
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: monster.unitId,
+            mode: 8,
+            at: { x: Math.round(tx), y: Math.round(ty) },
+            lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+          })
+          return
+        }
+      }
+    }
+
     // F12.3: Ranged monster missile firing (suppressed when Dim Vision 23 or Taunt 27 is active)
     if (
       (monster.isRanged || aiBehavior === 'ranged') &&
       !hasDimVision &&
       !hasTaunt &&
       bestDist > 2.5 &&
-      bestDist <= 35
+      bestDist <= monsterShootRange(monster)
     ) {
       if (monster.cooldown <= 0) {
-        monster.cooldown = monster.cooldownTicks
-        monster.mode = 4
-        const mslDmg = Math.max(
-          2,
-          Math.floor(
-            (monster.minDmg +
-              this.rng.rand(Math.max(0, monster.maxDmg - monster.minDmg) + 1)) *
-              (1 + this.monsterAuraDamageBonusPct(monster) / 100),
-          ),
-        )
+        // The AI mode picks the MonStats Missiles.txt column: S1 for pure casters,
+        // A2 for rows with a secondary attack, otherwise A1. Only fall back to the
+        // next declared column when the selected one is empty.
+        const preferredMode =
+          monster.modeMissiles?.S1 !== undefined && monster.maxDmg <= 1
+            ? 'S1'
+            : monster.modeMissiles?.A2 !== undefined &&
+                monster.hasAttack2 &&
+                this.rng.rand(2) === 0
+              ? 'A2'
+              : 'A1'
         const missileName =
+          monster.modeMissiles?.[preferredMode] ??
           monster.modeMissiles?.A1 ??
           monster.modeMissiles?.A2 ??
           monster.modeMissiles?.S1 ??
           monster.modeMissiles?.C
-        const missileClassId = missileName ? getMissileTxtData(missileName).id : 1
-        // MonUMod 29 `multishot`: three bolts in a shallow fan.
-        const offsets = monster.umodIds.includes(MON_UMOD.MULTISHOT)
-          ? [-0.22, 0, 0.22]
-          : [0]
-        const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
-        for (const offset of offsets) {
-          const tx = monster.x + Math.cos(baseAngle + offset) * 12
-          const ty = monster.y + Math.sin(baseAngle + offset) * 12
-          this.spawnMonsterMissile(monster, tx, ty, mslDmg, missileClassId, 0)
-        }
-        if (nearest.kind !== 'player') {
-          // Missile collision is player-only today; still apply the hit to mercs/pets.
-          const dmg = mslDmg
-          if (nearest.kind === 'merc') {
-            nearest.merc.hp = Math.max(0, nearest.merc.hp - dmg)
-            if (nearest.merc.hp <= 0) {
-              nearest.merc.hp = 0
-              nearest.merc.alive = false
-              nearest.merc.state = 'dead'
-            }
-          } else {
-            nearest.pet.hp = Math.max(0, nearest.pet.hp - dmg)
-            if (nearest.pet.hp <= 0) nearest.pet.alive = false
+        const missileRec = missileName
+          ? this.registry.getMissileByName(missileName)
+          : undefined
+        // A `rangedtype` row without a Missiles.txt row falls through to melee
+        // instead of silently firing missile id 1 (javelin).
+        if (missileRec !== undefined) {
+          monster.cooldown = monster.cooldownTicks
+          monster.mode = 4
+          // `resolveMonsterAttackOnPlayer` applies `monsterAuraDamageBonusPct` to
+          // the projectile packet, so roll the raw MonStats band here.
+          const mslDmg = Math.max(
+            2,
+            monster.minDmg +
+              this.rng.rand(Math.max(0, monster.maxDmg - monster.minDmg) + 1),
+          )
+          const element = normalizeMissileElement(missileRec.eType) ?? 'phys'
+          // MonUMod 29 `multishot`: three bolts in a shallow fan.
+          const offsets = monster.umodIds.includes(MON_UMOD.MULTISHOT)
+            ? [-0.22, 0, 0.22]
+            : [0]
+          const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+          for (const offset of offsets) {
+            const tx = monster.x + Math.cos(baseAngle + offset) * 12
+            const ty = monster.y + Math.sin(baseAngle + offset) * 12
+            this.spawnMonsterMissile(monster, tx, ty, mslDmg, missileRec.id, 0, {
+              missile: missileRec,
+              skillLevel: monster.level,
+              ...(element === 'phys'
+                ? { physDamage: mslDmg }
+                : { elemDamage: mslDmg, element }),
+            })
           }
+          return
         }
+      } else {
+        return
       }
-      return
     }
 
     if (bestDist <= 2.5) {
+      if (aiBehavior === 'suicide') {
+        monster.hp = 0
+        this.applyMonsterDeath(
+          monster,
+          nearest.kind === 'player' ? nearest.player : undefined,
+          'phys',
+        )
+        return
+      }
       if (monster.cooldown <= 0 && monster.pendingAttack === undefined) {
         monster.cooldown = monster.cooldownTicks
         if (nearest.kind === 'player') {
           this.beginMonsterMeleeAttack(monster, nearest.player)
         } else if (nearest.kind === 'merc') {
-          const dmg = Math.max(1, Math.floor((monster.minDmg + monster.maxDmg) / 2))
-          nearest.merc.hp = Math.max(0, nearest.merc.hp - dmg)
+          monster.mode = 4
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: monster.unitId,
+            mode: 4,
+            at: { x: Math.round(nearest.merc.x), y: Math.round(nearest.merc.y) },
+            lifePct:
+              monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+          })
+          nearest.merc.hp = this.applyMonsterMissileToDefender(
+            monster,
+            {
+              skillId: 0,
+              physDamage: this.rollInclusive(monster.minDmg, monster.maxDmg),
+              elemDamage: 0,
+              element: 'phys',
+              elemDurationFrames: 0,
+            },
+            {
+              id: `merc_${nearest.merc.unitId}`,
+              name: nearest.merc.name,
+              unitType: 'mercenary',
+              level: nearest.merc.level,
+              hp: nearest.merc.hp,
+              maxHp: nearest.merc.maxHp,
+              defense: nearest.merc.defense,
+              resist: nearest.merc.resist,
+            },
+            'melee',
+          )
           if (nearest.merc.hp <= 0) {
             nearest.merc.hp = 0
             nearest.merc.alive = false
             nearest.merc.state = 'dead'
+            this.broadcastToArea(nearest.merc.areaId, {
+              type: 'UnitRemove',
+              unitType: 'monster',
+              id: nearest.merc.unitId,
+              unitId: nearest.merc.unitId,
+              areaId: nearest.merc.areaId,
+            })
           }
         } else {
-          const dmg = Math.max(1, Math.floor((monster.minDmg + monster.maxDmg) / 2))
-          nearest.pet.hp = Math.max(0, nearest.pet.hp - dmg)
-          if (nearest.pet.hp <= 0) nearest.pet.alive = false
+          const pet = this.getPetState(nearest.pet.uid)
+          monster.mode = 4
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: monster.unitId,
+            mode: 4,
+            at: { x: Math.round(nearest.pet.x), y: Math.round(nearest.pet.y) },
+            lifePct:
+              monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+          })
+          if (pet !== undefined) {
+            pet.hp = this.applyMonsterMissileToDefender(
+              monster,
+              {
+                skillId: 0,
+                physDamage: this.rollInclusive(monster.minDmg, monster.maxDmg),
+                elemDamage: 0,
+                element: 'phys',
+                elemDurationFrames: 0,
+              },
+              {
+                id: pet.uid,
+                name: pet.name,
+                unitType: 'minion',
+                level: pet.statList.getAccruedStat('level'),
+                hp: pet.hp,
+                maxHp: pet.maxHp,
+                stats: pet.statList,
+                stateBus: pet.stateBus,
+                x: pet.x,
+                y: pet.y,
+              },
+              'melee',
+            )
+            nearest.pet.hp = pet.hp
+            if (pet.hp <= 0) {
+              pet.alive = false
+              const petUnitId = this.petUnitIds.get(pet.uid)
+              if (petUnitId !== undefined) {
+                this.broadcastToArea(monster.areaId, {
+                  type: 'UnitRemove',
+                  unitType: 'monster',
+                  id: petUnitId,
+                  unitId: petUnitId,
+                  areaId: monster.areaId,
+                })
+              }
+            }
+          } else {
+            nearest.pet.hp = Math.max(
+              0,
+              nearest.pet.hp - this.rollInclusive(monster.minDmg, monster.maxDmg),
+            )
+            if (nearest.pet.hp <= 0) nearest.pet.alive = false
+          }
         }
       }
-    } else {
+    } else if (aiBehavior !== 'stationary') {
       const running = bestDist > 5 && !isSlowed
       this.moveMonsterToward(monster, nearest.x, nearest.y, running)
     }
@@ -8387,6 +9832,7 @@ export class GameInstance {
   private applyShrineEffect(player: InternalPlayerRecord, code: number): void {
     const stateId = GameInstance.SHRINE_CODE_TO_STATE_113C[code]
     if (stateId !== undefined) {
+      const duration = 1200 // Shrines.txt DurationFrames (48 s at 25 Hz)
       this.applyUnitState(
         player.states,
         player.stateTimers,
@@ -8394,8 +9840,35 @@ export class GameInstance {
         player.unitId,
         player.areaId,
         stateId,
-        75,
+        duration,
       )
+      const stats =
+        code === 6
+          ? { item_armor_percent: 100 }
+          : code === 7
+            ? { item_tohit_percent: 200, item_damage_percent: 200 }
+            : code === 8
+              ? { fireresist: 75 }
+              : code === 9
+                ? { coldresist: 75 }
+                : code === 10
+                  ? { lightresist: 75 }
+                  : code === 11
+                    ? { poisonresist: 75 }
+                    : code === 12
+                      ? { item_allskills: 2 }
+                      : code === 13
+                        ? { manaregeneration: 400 }
+                        : undefined
+      if (stats !== undefined) {
+        this.playerCombatContext(player).stateBus.applyState({
+          stateNameOrId: stateId,
+          sourceSkillId: 0,
+          slvl: 1,
+          durationFrames: duration,
+          stats,
+        })
+      }
       return
     }
     switch (code) {
@@ -8433,6 +9906,30 @@ export class GameInstance {
       case 17: // Portal Shrine: opens a town portal
         this.openTownPortal(player)
         break
+      case 18: { // Gem Shrine: upgrade one carried gem one tier
+        const gem = player.items.find(
+          (item) => item.location === 'inventory' && GEM_INFO[item.code.toLowerCase()] !== undefined,
+        )
+        if (gem !== undefined) {
+          const info = GEM_INFO[gem.code.toLowerCase()]!
+          const next = Object.values(GEM_INFO).find(
+            (candidate) => candidate.gemType === info.gemType && candidate.tier === info.tier + 1,
+          )
+          if (next !== undefined) {
+            gem.code = next.code
+            gem.name = next.nameEn
+            this.emitToPlayer(player.unitId, {
+              type: 'ItemEvent',
+              action: 'update',
+              itemId: gem.unitId,
+              code: gem.code,
+              container: 'inventory',
+              item: this.serverEntryToItemData(gem),
+            })
+          }
+        }
+        break
+      }
       case 19: // Fire Shrine
       case 21: // Exploding Shrine
         this.applyDamageToPlayer(player, Math.max(1, Math.floor(player.maxHp * 0.15)))
@@ -8475,12 +9972,100 @@ export class GameInstance {
 
   /** Objects.txt OperateFn dispatch (D2Game 0x6fd27bb8), including one-shot semantics. */
   private operateObject(player: InternalPlayerRecord, obj: InternalObjectRecord): void {
+    // Objects.txt 546 Ancients' Altar: requires clvl 20/40/60 and spawns the
+    // three Ancient Barbarians once.
+    if (obj.classId === 546) {
+      const requiredLevel = (this.difficulty + 1) * 20
+      if (obj.useCount === 0 && player.level >= requiredLevel) {
+        obj.useCount = 1
+        this.setPlayerQuestFlag(player, 'a5q5', QUEST_FLAG_STARTED_113C)
+        const offsets = [
+          { dx: 2, dy: 0 },
+          { dx: -2, dy: 0 },
+          { dx: 0, dy: 2 },
+        ]
+        for (let i = 0; i < ANCIENT_BARBARIANS_113C.length; i++) {
+          const spec = ANCIENT_BARBARIANS_113C[i]!
+          this.spawnMonster({
+            defId: spec.defId,
+            superUniqueId: spec.superUniqueId,
+            x: obj.x + offsets[i]!.dx,
+            y: obj.y + offsets[i]!.dy,
+            areaId: obj.areaId,
+          })
+        }
+      }
+      return
+    }
+
+    // Chaos Sanctuary seals spawn their SuperUnique boss on first use.
+    const sealBoss = SEAL_BOSS_113C[obj.classId]
+    if (sealBoss !== undefined && obj.useCount === 0) {
+      obj.useCount = 1
+      const bossId = this.spawnMonster({
+        defId: sealBoss.defId,
+        superUniqueId: sealBoss.superUniqueId,
+        x: obj.x + 2,
+        y: obj.y,
+        areaId: obj.areaId,
+        rank: 'unique',
+      })
+      this.broadcastToArea(obj.areaId, {
+        type: 'UnitMode',
+        unitType: 1,
+        id: bossId,
+        mode: 1,
+        at: { x: Math.round(obj.x + 2), y: Math.round(obj.y) },
+        lifePct: 128,
+      })
+    }
+
+    // Objects.txt 376 Hellforge (OperateFn 49, D2Game 0x6fcdb8d0): requires
+    // the Hellforge Hammer ('hfh ') and three hits, then drops the reward.
+    if (obj.classId === 376) {
+      if (obj.mode !== 0) return
+      const hammer = player.items.find(
+        (item) => item.location === 'equipped' && item.code.toLowerCase().trim() === 'hfh',
+      )
+      if (hammer === undefined) return
+      obj.useCount += 1
+      if (obj.useCount <= 2) return
+      this.setPlayerQuestFlag(player, 'a4q2', QUEST_FLAG_COMPLETED_113C)
+      const difficulty =
+        this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
+      const drop = rollHellforgeDrop(difficulty, this.rng, getEmbeddedDropTables(), 27)
+      this.spawnDroppedItems(drop.items, obj.areaId, obj.x, obj.y)
+      this.setObjectMode(obj, 2)
+      return
+    }
+
+    // Objects.txt 404 Compelling Orb (D2Game 0x6fd0a140): requires Khalim's
+    // Will ('qf2 ') and two hits before the orb breaks.
+    if (obj.classId === 404) {
+      if (obj.mode !== 0) return
+      const flail = player.items.find(
+        (item) => item.location === 'equipped' && item.code.toLowerCase().trim() === 'qf2',
+      )
+      if (flail === undefined) {
+        this.emitToPlayer(player.unitId, { type: 'Chat', kind: 'system', text: "Need Khalim's Will" })
+        return
+      }
+      obj.useCount += 1
+      if (obj.useCount < 2) return
+      player.items = player.items.filter((item) => item !== flail)
+      this.setPlayerQuestFlag(player, 'a3q3', QUEST_FLAG_COMPLETED_113C)
+      this.setObjectMode(obj, 2)
+      this.emitToPlayer(player.unitId, {
+        type: 'QuestState',
+        kind: 'special',
+        source: 0x89,
+        quests: new Uint16Array(player.questFlags),
+        specialEventId: 10,
+      })
+      return
+    }
     const record = getObjectsTxtRecord113c(obj.classId)
     const kind = classifyObjectOperate113c(obj.classId)
-    const questId = QUEST_OBJECT_TO_QUEST_113C[obj.classId]
-    if (questId !== undefined) {
-      this.setPlayerQuestFlag(player, questId, QUEST_FLAG_STARTED_113C)
-    }
     if (kind === 'door') {
       this.setObjectMode(obj, obj.mode === 2 ? 0 : 2)
       return
@@ -8490,11 +10075,25 @@ export class GameInstance {
       this.setObjectMode(obj, 1)
       this.applyShrineEffect(player, obj.shrineType)
       this.setObjectMode(obj, 2)
+      obj.shrineResetFrame = this.currentFrame + 1200
       this.emitToPlayer(player.unitId, {
         type: 'Chat',
         kind: 'system',
         text: `${CANONICAL_113C_SHRINES[obj.shrineType]?.name ?? 'Shrine'} activated`,
       })
+      return
+    }
+    // Stash and well are re-usable in 1.13c; only one-shot containers change mode.
+    if (kind === 'stash') {
+      this.emitToPlayer(player.unitId, { type: 'Trade', action: 0x10 })
+      return
+    }
+    if (kind === 'well') {
+      player.hpFixed = player.maxHpFixed
+      player.hp = player.maxHp
+      player.manaFixed = player.maxManaFixed
+      player.mana = player.maxMana
+      this.emitPlayerVitals(player)
       return
     }
     if (obj.mode !== 0) return
@@ -8505,16 +10104,6 @@ export class GameInstance {
     }
     this.setObjectMode(obj, 1)
     switch (kind) {
-      case 'stash':
-        this.emitToPlayer(player.unitId, { type: 'Trade', action: 0x10 })
-        break
-      case 'well':
-        player.hpFixed = player.maxHpFixed
-        player.hp = player.maxHp
-        player.manaFixed = player.maxManaFixed
-        player.mana = player.maxMana
-        this.emitPlayerVitals(player)
-        break
       case 'trap':
         this.applyDamageToPlayer(player, Math.max(1, Math.floor(player.maxHp * 0.1)))
         break
@@ -8532,6 +10121,138 @@ export class GameInstance {
         break
     }
     this.setObjectMode(obj, 2)
+    this.advanceQuestObject(player, obj)
+  }
+
+  /** Quest objects set STARTED; the canonical single-use objects also complete. */
+  private advanceQuestObject(
+    player: InternalPlayerRecord,
+    obj: InternalObjectRecord,
+  ): void {
+    // A3Q5: the Compelling Orb requires Khalim's Will equipped.
+    if (obj.classId === 404) {
+      const hasFlail = player.items.some(
+        (item) => item.location === 'equipped' && item.code.toLowerCase().trim() === 'qf2',
+      )
+      if (!hasFlail) return
+      player.items = player.items.filter(
+        (item) => !(item.location === 'equipped' && item.code.toLowerCase().trim() === 'qf2'),
+      )
+    }
+
+    // A1Q3: Inifuss drops the scroll; five Cairn Stones open the Tristram
+    // portal (Objects.txt 60); Cain's Gibbet frees Cain.
+    if (obj.classId === 30 || obj.classId === 244 || obj.classId === 246) {
+      // Inifuss drops the Scroll of Inifuss; Rat's Nest drops the Jade Figurine.
+      const code = obj.classId === 30 ? 'bks' : 'j34'
+      const tables = getEmbeddedDropTables()
+      const base = tables.getBase(code)
+      if (base) {
+        const seed = this.rng.rand(0x7fffffff) >>> 0
+        const item = createDroppedItem(base, 'normal', {
+          itemTypes: tables.itemTypes,
+          ilvl: 1,
+          dwInitSeed: seed,
+          itemRng: new D2Rng(seed || 1),
+        })
+        this.spawnDroppedItems([item], obj.areaId, obj.x, obj.y)
+      }
+    }
+    if (obj.classId === 473) {
+      // Rescue on Mount Arreat: three cages (five barbarians each).
+      obj.useCount = 1
+      const cages = [...this.objects.values()].filter(
+        (candidate) => candidate.areaId === obj.areaId && candidate.classId === 473 && candidate.useCount > 0,
+      )
+      if (cages.length >= 3) {
+        this.setPlayerQuestFlag(player, 'a5q2', QUEST_FLAG_REWARD_PENDING_113C)
+      }
+    }
+    if (obj.classId >= 17 && obj.classId <= 21) {
+      obj.useCount = 1
+      const opened = [...this.objects.values()].filter(
+        (candidate) =>
+          candidate.areaId === obj.areaId &&
+          candidate.classId >= 17 &&
+          candidate.classId <= 21 &&
+          candidate.useCount > 0,
+      )
+      if (opened.length >= 5 && !this.cairnPortalAreas.has(obj.areaId)) {
+        this.cairnPortalAreas.add(obj.areaId)
+        this.spawnObject({
+          classId: 60,
+          x: opened[0]!.x,
+          y: opened[0]!.y,
+          areaId: obj.areaId,
+          mode: 1,
+          destAreaId: 38,
+        })
+      }
+    }
+    if (obj.classId === 26) {
+      this.setPlayerQuestFlag(player, 'a1q3', QUEST_FLAG_COMPLETED_113C)
+    }
+
+    // A2Q6: the Horadric Staff in the orifice deletes hst/vip/msf and spawns
+    // Duriel's Lair (Objects.txt 100) at (x-13, y+3) after 18 ticks.
+    if (obj.classId === 152) {
+      const parts = player.items.filter((item) =>
+        ['hst', 'vip', 'msf'].includes(item.code.toLowerCase()),
+      )
+      if (parts.length === 0) return
+      player.items = player.items.filter((item) => !parts.includes(item))
+      this.setPlayerQuestFlag(player, 'a2q2', QUEST_FLAG_COMPLETED_113C)
+      this.pendingObjectSpawns.push({
+        frame: this.currentFrame + 18,
+        classId: 100,
+        x: obj.x - 13,
+        y: obj.y + 3,
+        areaId: obj.areaId,
+        destAreaId: 73,
+      })
+      this.emitToPlayer(player.unitId, {
+        type: 'QuestState',
+        kind: 'special',
+        source: 0x89,
+        quests: new Uint16Array(player.questFlags),
+        specialEventId: 3,
+      })
+    }
+    const questId = QUEST_OBJECT_TO_QUEST_113C[obj.classId]
+    if (questId === undefined) return
+    this.setPlayerQuestFlag(player, questId, QUEST_FLAG_STARTED_113C)
+    const sealIds = [392, 393, 394, 395, 396]
+    if (sealIds.includes(obj.classId)) {
+      const opened = [...this.objects.values()].filter(
+        (candidate) =>
+          candidate.areaId === obj.areaId &&
+          sealIds.includes(candidate.classId) &&
+          candidate.mode === 2,
+      )
+      if (opened.length === sealIds.length) {
+        this.setPlayerQuestFlag(player, 'a4q3', QUEST_FLAG_PRIMARY_GOAL_DONE_113C)
+      }
+      return
+    }
+    // Reward-pending quest objects consumed by their NPC.
+    const pendingQuest =
+      obj.classId === 108
+        ? 'a1q5'
+        : obj.classId === 193
+          ? 'a3q4'
+          : obj.classId === 252
+            ? 'a3q2'
+            : obj.classId === 558
+              ? 'a5q3'
+              : undefined
+    if (pendingQuest !== undefined) {
+      this.setPlayerQuestFlag(player, pendingQuest, QUEST_FLAG_REWARD_PENDING_113C)
+      return
+    }
+    // 1.13c objects whose operation itself completes the objective.
+    if ([149, 357, 376, 546].includes(obj.classId)) {
+      this.setPlayerQuestFlag(player, questId, QUEST_FLAG_COMPLETED_113C)
+    }
   }
 
   private emitQuestLog(player: InternalPlayerRecord): void {
@@ -8551,22 +10272,60 @@ export class GameInstance {
   ): boolean {
     if (!setQuestFlag113c(player.questFlags, questId, mask)) return false
     this.emitQuestLog(player)
+    // S2C 0x28 QuestInfo: the per-quest update channel.
+    this.emitToPlayer(player.unitId, {
+      type: 'QuestState',
+      kind: 'update',
+      source: 0x28,
+      quests: new Uint16Array(player.questFlags),
+      flags: Array.from(player.questFlags),
+    })
+    // S2C 0x5D QuestStatus for the quest that just changed.
+    const questIndex = questWordIndex113c(questId)
+    if (questIndex !== undefined) {
+      this.emitToPlayer(player.unitId, {
+        type: 'QuestState',
+        kind: 'status',
+        source: 0x5d,
+        quests: new Uint16Array([questIndex]),
+        questStatus: {
+          questId: questIndex,
+          alertFlags: 0,
+          filterStatus: (player.questFlags[questIndex] ?? 0) & QUEST_FLAG_STARTED_113C ? 2 : 1,
+          extra: 0,
+        },
+      })
+    }
     return true
   }
 
   private playerCanEnterArea(player: InternalPlayerRecord, areaId: number): boolean {
-    const questId = QUEST_AREA_GATES_113C[areaId]
-    if (questId === undefined) return true
-    return (
-      hasQuestFlag113c(player.questFlags, questId, QUEST_FLAG_COMPLETED_113C) ||
-      hasQuestFlag113c(player.questFlags, questId, QUEST_FLAG_STARTED_113C)
-    )
+    const gate = QUEST_AREA_GATES_113C[areaId]
+    if (gate === undefined) return true
+    return hasQuestFlag113c(player.questFlags, gate.quest, gate.mask)
+  }
+
+  /**
+   * 1.13c interaction sight: the player must have a clear walkability ray to the
+   * object/NPC/corpse. Without a terrain callback (synthetic tests) the ray is
+   * treated as open.
+   */
+  private hasInteractionLineOfSight(
+    areaId: number,
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+  ): boolean {
+    if (!this.terrainWalkableCheck) return true
+    return this.isMonsterStepWalkable(areaId, fromX, fromY, toX, toY, false)
   }
 
   private handleInteract(player: InternalPlayerRecord, targetId: number): void {
     if (player.corpseId === targetId) {
       // 1.13c corpse recovery: the same 3-sub-tile reach used by the walk-over pickup.
       if (Math.hypot(player.x - player.corpseX, player.y - player.corpseY) > 3) return
+      if (!this.hasInteractionLineOfSight(player.areaId, player.x, player.y, player.corpseX, player.corpseY)) return
       this.recoverPlayerCorpse(player)
       return
     }
@@ -8575,7 +10334,8 @@ export class GameInstance {
     if (
       obj &&
       obj.areaId === player.areaId &&
-      this.playerInObjectRange(player, obj)
+      this.playerInObjectRange(player, obj) &&
+      this.hasInteractionLineOfSight(player.areaId, player.x, player.y, obj.x, obj.y)
     ) {
       if (obj.destAreaId !== undefined) {
         // Warp / portal interactions share the 1.13c 500 ms click cooldown.
@@ -8686,6 +10446,7 @@ export class GameInstance {
     ) {
       return
     }
+    if (!this.hasInteractionLineOfSight(player.areaId, player.x, player.y, tile.x, tile.y)) return
     if (!this.consumeWarpCooldown(player)) return
     this.transitionPlayerArea(player, tile.destAreaId, { kind: 'warp', fromAreaId: tile.areaId })
   }
@@ -9302,25 +11063,127 @@ export class GameInstance {
         (candidate.location === 'inventory' || candidate.location === 'equipped'),
     )
     if (!item) return false
+    // 1.13c quest rewards are one-shot: require and consume the completed
+    // quest flag for Charsi (a1q5), Larzuk (a5q1) and Anya (a5q4).
+    const questId =
+      action === 'imbue' ? 'a1q5' : action === 'add_sockets' ? 'a5q1' : 'a5q4'
+    const questIndexForReward = questWordIndex113c(questId)
+    const questBits =
+      questIndexForReward === undefined ? 0 : (player.questFlags[questIndexForReward] ?? 0)
+    if ((questBits & (QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C)) === 0) {
+      return false
+    }
     if (action === 'imbue') {
-      item.quality = 6 // rare
-      item.identified = true
+      if (
+        !isEligibleForCharsiImbue113c(
+          {
+            code: item.code,
+            identified: item.identified,
+            quality: item.quality,
+            sockets: item.totalSockets,
+            socketed: item.socketed,
+            socketedItems: item.socketedItems,
+            ethereal: item.ethereal,
+          },
+          getEmbeddedDropTables(),
+        )
+      ) {
+        return false
+      }
+      const imbued = finalizeDroppedItem113c(imbueItem113c(
+        {
+          code: item.code,
+          identified: item.identified,
+          quality: item.quality,
+          sockets: item.totalSockets,
+          socketed: item.socketed,
+          socketedItems: item.socketedItems,
+          ethereal: item.ethereal,
+        } as never,
+        player.level,
+        { dropTables: getEmbeddedDropTables() },
+      ) as never)
+      const index = player.items.findIndex((candidate) => candidate.unitId === item.unitId)
+      const replacement = this.createServerEntryFromItem(imbued as never, {
+        location: item.location,
+        x: item.x,
+        y: item.y,
+        areaId: item.areaId,
+        ownerId: item.ownerId,
+        storePage: item.storePage,
+        gamble: false,
+      })
+      replacement.unitId = item.unitId
+      if (replacement.rawItemData !== undefined) {
+        replacement.rawItemData = {
+          ...replacement.rawItemData,
+          id: item.unitId,
+          itemId: item.unitId,
+        }
+      }
+      if (index !== -1) player.items[index] = replacement
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action,
+        itemId: replacement.unitId,
+        code: replacement.code,
+        x: replacement.x,
+        y: replacement.y,
+        container: item.location === 'equipped' ? 'equipment' : 'inventory',
+        item: this.serverEntryToItemData(replacement),
+      })
     } else if (action === 'add_sockets') {
+      if (item.socketed || item.totalSockets > 0) return false
+      // 1.13c QUESTS_Act5Q1_AddSockets: white items get the ilvl-tier max,
+      // magic items 50/50 1-2, rare/set/unique/crafted exactly 1.
+      let sockets: number
+      if (item.quality <= 3) {
+        sockets = item.level < 25 ? 3 : item.level < 40 ? 4 : 6
+      } else if (item.quality === 4) {
+        sockets = this.rng.rand(2) === 0 ? 1 : 2
+      } else {
+        sockets = 1
+      }
       item.socketed = true
-      item.totalSockets = Math.max(1, item.totalSockets)
+      item.totalSockets = sockets
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action,
+        itemId: item.unitId,
+        code: item.code,
+        x: item.x,
+        y: item.y,
+        container: item.location === 'equipped' ? 'equipment' : 'inventory',
+        item: this.serverEntryToItemData(item),
+      })
     } else {
       item.name = `${player.name}'s ${item.name}`
+      if (item.rawItemData !== undefined) {
+        item.rawItemData = {
+          ...item.rawItemData,
+          personalized: true,
+          personalizedName: player.name,
+        }
+      }
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action,
+        itemId: item.unitId,
+        code: item.code,
+        x: item.x,
+        y: item.y,
+        container: item.location === 'equipped' ? 'equipment' : 'inventory',
+        item: this.serverEntryToItemData(item),
+      })
     }
-    this.emitToPlayer(player.unitId, {
-      type: 'ItemEvent',
-      action,
-      itemId: item.unitId,
-      code: item.code,
-      x: item.x,
-      y: item.y,
-      container: item.location === 'equipped' ? 'equipment' : 'inventory',
-      item: this.serverEntryToItemData(item),
-    })
+    const questIndex = questWordIndex113c(questId)
+    if (questIndex !== undefined) {
+      player.questFlags[questIndex] =
+        ((player.questFlags[questIndex] ?? 0) &
+          ~(QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_113C)) |
+        QUEST_FLAG_COMPLETED_113C
+      this.emitQuestLog(player)
+    }
     return true
   }
 
@@ -9337,6 +11200,18 @@ export class GameInstance {
       return undefined
     }
     return npc
+  }
+
+  /** Resolve an NPC and require the descriptor capability advertised by Npc.txt. */
+  private serviceNpcWithCapability(
+    player: InternalPlayerRecord,
+    npcId: number,
+    capability: 'canRepair' | 'canIdentify' | 'canHeal' | 'canHire',
+  ): InternalMonsterRecord | undefined {
+    const npc = this.resolveServiceNpc(player, npcId)
+    if (npc === undefined) return undefined
+    const descriptor = getTownNpcDescriptorByHcIdx(npc.hcIdx)
+    return descriptor?.[capability] === true ? npc : undefined
   }
 
   private spendGold(player: InternalPlayerRecord, cost: number): boolean {
@@ -9365,16 +11240,30 @@ export class GameInstance {
     npcId: number,
     itemId?: number,
   ): void {
-    const npc = this.resolveServiceNpc(player, npcId)
+    const npc = this.serviceNpcWithCapability(player, npcId, 'canRepair')
     if (npc === undefined && this.monsters.has(npcId)) return
     const targets =
       itemId !== undefined
         ? player.items.filter((item) => item.unitId === itemId)
         : player.items.filter((item) => item.location === 'equipped')
+    // Repair-all uses D2Common #10071 (`computeRepairAllCost113c`), which also
+    // covers refillable throwing stacks and charged items. Single-item repair
+    // keeps the per-item #10107 type-3 path.
+    const ctx = this.transactionCostContext(player, npc?.hcIdx ?? 0)
     let total = 0
-    for (const item of targets) {
-      if (item.durability >= item.maxDurability) continue
-      total += this.serverItemPrice113c(player, npc?.hcIdx ?? 0, item, 3)
+    if (itemId === undefined) {
+      const slots: (TransactionCostInput | null)[] = new Array(13).fill(null)
+      for (const item of targets) {
+        if (item.bodyLoc > 0 && item.bodyLoc < slots.length) {
+          slots[item.bodyLoc] = this.transactionInputFromEntry(item)
+        }
+      }
+      total = computeRepairAllCost113c(slots, ctx)
+    } else {
+      for (const item of targets) {
+        if (item.durability >= item.maxDurability) continue
+        total += this.serverItemPrice113c(player, npc?.hcIdx ?? 0, item, 3)
+      }
     }
     if (total <= 0 || !this.spendGold(player, total)) return
     for (const item of targets) {
@@ -9410,7 +11299,7 @@ export class GameInstance {
 
   /** NpcIdentifyAll (Deckard Cain): identify every unidentified carried item. */
   private handleNpcIdentifyAll(player: InternalPlayerRecord, npcId: number): void {
-    const npc = this.resolveServiceNpc(player, npcId)
+    const npc = this.serviceNpcWithCapability(player, npcId, 'canIdentify')
     if (npc === undefined && this.monsters.has(npcId)) return
     for (const item of player.items) {
       if (item.location === 'inventory' || item.location === 'equipped') {
@@ -9419,9 +11308,35 @@ export class GameInstance {
     }
   }
 
-  private handleNpcIdentifyItem(player: InternalPlayerRecord, itemId: number): void {
+  private handleNpcIdentifyItem(
+    player: InternalPlayerRecord,
+    npcId: number,
+    itemId: number,
+  ): void {
+    const npc = this.serviceNpcWithCapability(player, npcId, 'canIdentify')
+    if (npc === undefined && this.monsters.has(npcId)) return
     const item = player.items.find((candidate) => candidate.unitId === itemId)
     if (item) this.identifyItem(player, item)
+  }
+
+  /** 0x4F + 0x4E: send the hire list for a mercenary vendor's act. */
+  private handleNpcHireList(player: InternalPlayerRecord, npcId: number): void {
+    const npc = this.serviceNpcWithCapability(player, npcId, 'canHire')
+    if (npc === undefined) return
+    const descriptor = getTownNpcDescriptorByHcIdx(npc.hcIdx)
+    const act = (descriptor?.actIndex ?? 0) + 1
+    const difficulty = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+    this.emitToPlayer(player.unitId, { type: 'Merc', kind: 'hireList' })
+    for (const record of HIRELING_RECORDS) {
+      if (record.act !== act) continue
+      if (record.difficulty !== undefined && record.difficulty !== difficulty + 1) continue
+      this.emitToPlayer(player.unitId, {
+        type: 'Merc',
+        kind: 'hireList',
+        nameId: record.id,
+        value: record.subTypeId,
+      })
+    }
   }
 
   /** HireMerc/MercHire: deduct Hireling.txt hireCost and assign the mercenary. */
@@ -9448,13 +11363,19 @@ export class GameInstance {
 
   /** Resurrect the player's dead mercenary at the NPC. */
   private handleMercResurrect(player: InternalPlayerRecord, npcId: number): void {
-    const npc = this.resolveServiceNpc(player, npcId)
+    const npc = this.serviceNpcWithCapability(player, npcId, 'canHire')
     if (npc === undefined && this.monsters.has(npcId)) return
     const merc = [...this.mercenaries.values()].find(
       (entry) => entry.ownerPlayerId === player.unitId,
     )
     if (!merc || merc.alive) return
     const cost = Math.max(1, merc.level * 100)
+    this.emitToPlayer(player.unitId, {
+      type: 'Merc',
+      kind: 'stat',
+      nameId: merc.subType,
+      value: cost,
+    })
     if (!this.spendGold(player, cost)) return
     merc.alive = true
     merc.state = 'follow'
@@ -9476,13 +11397,49 @@ export class GameInstance {
     const npc = this.monsters.get(npcId)
     // Static quest NPCs may not have a runtime record in synthetic tests; when one
     // exists, enforce the 1.13c #10407 arrival reach.
-    if (npc && (!npc.isNpc || npc.areaId !== player.areaId || !this.playerInNpcRange(player, npc))) {
+    if (
+      npc &&
+      (!npc.isNpc ||
+        npc.areaId !== player.areaId ||
+        !this.playerInNpcRange(player, npc) ||
+        !this.hasInteractionLineOfSight(player.areaId, player.x, player.y, npc.x, npc.y))
+    ) {
       return
     }
     player.activeNpcId = npcId
+    // A3Q1: Alkor exchanges the Jade Figurine for the Golden Bird.
+    if (npc?.hcIdx === 254) {
+      const figurine = player.items.find(
+        (item) => item.location === 'inventory' && item.code.toLowerCase().trim() === 'j34',
+      )
+      if (figurine !== undefined) {
+        player.items = player.items.filter((item) => item !== figurine)
+        this.setPlayerQuestFlag(player, 'a3q1', QUEST_FLAG_COMPLETED_113C)
+      }
+    }
+    // Quest turn-ins handled by the canonical NPC.
+    const turnInQuest =
+      npc?.hcIdx === 254
+        ? 'a3q1'
+        : npc?.hcIdx === 255
+          ? 'a3q2'
+          : npc?.hcIdx === 513
+            ? 'a5q3'
+            : npc?.hcIdx === 515
+              ? 'a5q2'
+              : npc?.hcIdx === 146
+                ? 'a3q4'
+                : undefined
+    if (turnInQuest !== undefined) {
+      const idx = questWordIndex113c(turnInQuest)
+      const bits = idx === undefined ? 0 : (player.questFlags[idx] ?? 0)
+      if ((bits & QUEST_FLAG_REWARD_PENDING_113C) !== 0) {
+        this.setPlayerQuestFlag(player, turnInQuest, QUEST_FLAG_COMPLETED_113C)
+      }
+    }
     const canHeal =
-      healRequested ||
-      (npc !== undefined && getTownNpcDescriptorByHcIdx(npc.hcIdx)?.canHeal === true)
+      npc !== undefined && getTownNpcDescriptorByHcIdx(npc.hcIdx)?.canHeal === true
+    void healRequested
     if (canHeal) {
       player.hpFixed = player.maxHpFixed
       player.hp = player.maxHp
@@ -9520,6 +11477,26 @@ export class GameInstance {
     this.emitNpcTravelOptions(player, npc)
   }
 
+  /** Quest flag required by a forward NPC travel action from the player's current act. */
+  private npcTravelQuestGate(currentAct: number, action: string): string | undefined {
+    if (action === 'travel_west') return undefined
+    if (action === 'travel_harrogath') return currentAct === 3 ? 'a4q6' : undefined
+    if (action === 'travel_east') {
+      if (currentAct === 0) return 'a1q6'
+      if (currentAct === 1) return 'a2q6'
+      if (currentAct === 2) return 'a3q6'
+    }
+    return undefined
+  }
+
+  private npcTravelDestinationAct(currentAct: number, action: string): number | undefined {
+    if (action === 'travel_west') return currentAct > 0 ? currentAct - 1 : undefined
+    if (action === 'travel_east' || action === 'travel_harrogath') {
+      return currentAct + 1 < ACT_TOWN_AREAS.length ? currentAct + 1 : undefined
+    }
+    return undefined
+  }
+
   /** S2C 0x61 CanGoToAct for travel NPCs (Warriv/Meshif/Tyrael), gated by act progression. */
   private emitNpcTravelOptions(
     player: InternalPlayerRecord,
@@ -9528,9 +11505,15 @@ export class GameInstance {
     if (!npc) return
     const descriptor = getTownNpcDescriptorByHcIdx(npc.hcIdx)
     if (!descriptor?.travelActions?.length) return
-    const maxAct = Math.min(ACT_TOWN_AREAS.length - 1, player.unlockedAct + 1)
-    for (let act = 0; act <= maxAct; act++) {
-      this.emitToPlayer(player.unitId, { type: 'CanGoToAct', act })
+    const currentAct = areaToAct(player.areaId)
+    for (const action of descriptor.travelActions) {
+      const destAct = this.npcTravelDestinationAct(currentAct, action)
+      if (destAct === undefined) continue
+      const questId = this.npcTravelQuestGate(currentAct, action)
+      if (questId !== undefined && !hasQuestFlag113c(player.questFlags, questId, QUEST_FLAG_COMPLETED_113C)) {
+        continue
+      }
+      this.emitToPlayer(player.unitId, { type: 'CanGoToAct', act: destAct })
     }
   }
 
@@ -9544,11 +11527,18 @@ export class GameInstance {
     if (npc && (!npc.isNpc || npc.areaId !== player.areaId || !this.playerInNpcRange(player, npc))) {
       return
     }
-    if (npc && !getTownNpcDescriptorByHcIdx(npc.hcIdx)?.travelActions?.length) {
+    const descriptor = npc ? getTownNpcDescriptorByHcIdx(npc.hcIdx) : undefined
+    if (npc && !descriptor?.travelActions?.length) {
       return
     }
+    const currentAct = areaToAct(player.areaId)
     const destAct = areaToAct(destAreaId)
-    if (destAct > Math.min(ACT_TOWN_AREAS.length - 1, player.unlockedAct + 1)) {
+    const action = descriptor?.travelActions?.find(
+      (candidate) => this.npcTravelDestinationAct(currentAct, candidate) === destAct,
+    )
+    if (action === undefined) return
+    const questId = this.npcTravelQuestGate(currentAct, action)
+    if (questId !== undefined && !hasQuestFlag113c(player.questFlags, questId, QUEST_FLAG_COMPLETED_113C)) {
       return
     }
     this.emitToPlayer(player.unitId, { type: 'CanGoToAct', act: destAct })
@@ -9563,28 +11553,45 @@ export class GameInstance {
     for (const pool of player.vendorPools.values()) {
       for (const item of pool) this.gambleSourceItems.delete(item.unitId)
     }
+    for (const byMode of player.vendorPoolsByMode.values()) {
+      for (const pool of [byMode.trade, byMode.gamble]) {
+        for (const item of pool ?? []) this.gambleSourceItems.delete(item.unitId)
+      }
+    }
     player.vendorPools.clear()
     player.vendorPoolModes.clear()
+    player.vendorPoolsByMode.clear()
     player.activeVendorMode = null
   }
 
   private handleNpcAction(player: InternalPlayerRecord, npcId: number, gamble: boolean): void {
     const npc = this.monsters.get(npcId)
-    if (npc && (!npc.isNpc || npc.areaId !== player.areaId || !this.playerInNpcRange(player, npc))) {
+    if (
+      npc &&
+      (!npc.isNpc ||
+        npc.areaId !== player.areaId ||
+        !this.playerInNpcRange(player, npc) ||
+        !this.hasInteractionLineOfSight(player.areaId, player.x, player.y, npc.x, npc.y))
+    ) {
       return
     }
     player.activeNpcId = npcId
     if (!npc) return
     const mode: 'trade' | 'gamble' = gamble ? 'gamble' : 'trade'
-    let pool = player.vendorPools.get(npcId)
-    // 1.13c keeps the generated shop for the customer: opening/closing the
-    // window does not reroll it. It refreshes after leaving town (cleared on
-    // area transition) or when switching between trade and gamble.
-    if (!pool || player.vendorPoolModes.get(npcId) !== mode) {
-      for (const stale of pool ?? npc.vendorPool) {
-        this.gambleSourceItems.delete(stale.unitId)
-      }
+    // 1.13c keeps each window's generated shop for the customer: opening,
+    // closing and switching trade <-> gamble must not reroll either pool.
+    let byMode = player.vendorPoolsByMode.get(npcId)
+    if (byMode === undefined) {
+      byMode = {}
+      player.vendorPoolsByMode.set(npcId, byMode)
+    }
+    let pool = byMode[mode]
+    if (pool === undefined) {
       pool = this.createVendorStorePool(npc, player, gamble)
+      byMode[mode] = pool
+      player.vendorPools.set(npcId, pool)
+      player.vendorPoolModes.set(npcId, mode)
+    } else {
       player.vendorPools.set(npcId, pool)
       player.vendorPoolModes.set(npcId, mode)
     }
@@ -9636,15 +11643,12 @@ export class GameInstance {
     const npc = this.monsters.get(npcId)
     if (!npc || !npc.isNpc || npc.areaId !== player.areaId) return
     // 1.13c trade context: the requested NPC must be the one currently open,
-    // within reach, and the window type must match the request.
-    if (player.activeNpcId !== undefined && player.activeNpcId !== npcId) return
-    if (player.activeNpcId === npcId && !this.playerInNpcRange(player, npc)) return
-    if (
-      player.activeVendorMode !== null &&
-      (player.activeVendorMode === 'gamble') !== isGamble
-    ) {
-      return
-    }
+    // within reach, and the window type must match the request. A closed window
+    // (activeNpcId / activeVendorMode cleared) rejects the transaction.
+    if (player.activeNpcId !== npcId) return
+    if (!this.playerInNpcRange(player, npc)) return
+    if (player.activeVendorMode === null) return
+    if ((player.activeVendorMode === 'gamble') !== isGamble) return
     const pool = player.vendorPools.get(npcId) ?? npc.vendorPool
     const vItem = pool.find((i) => i.unitId === itemId)
     // Gamble previews live in `gambleSourceItems`, not the normal store pool.
@@ -9656,19 +11660,43 @@ export class GameInstance {
     void explicitCost
     // Server-owned price; the client's 0x32 `cost` field is informational only.
     const cost = vItem
-      ? this.serverItemPrice113c(player, npc.hcIdx, vItem, isGamble ? 2 : 0)
+      ? vItem.buyback === true
+        ? vItem.cost
+        : this.serverItemPrice113c(player, npc.hcIdx, vItem, isGamble ? 2 : 0)
       : info.cost
 
-    // Atomic purchase: verify a free inventory cell before deducting gold.
-    const free = this.findFreeGridSlot(
-      player,
-      'inventory',
-      vItem?.width ?? info.width,
-      vItem?.height ?? info.height,
-      10,
-      4,
-    )
-    if (!free) return
+    // 1.13c placement: stackable items merge into an existing pile, potions
+    // go to the belt when a slot is free, otherwise a free grid cell is needed.
+    const lowerCode = code.toLowerCase()
+    const stackable = /^(hp[1-5]|mp[1-5]|rv[ls]|tsc|isc|key|aqv|abv|tbk|ibk)$/.test(lowerCode)
+    const stackTarget = stackable
+      ? player.items.find(
+          (item) => item.location === 'inventory' && item.code.toLowerCase() === lowerCode,
+        )
+      : undefined
+    let beltSlot: { x: number; y: number } | undefined
+    if (stackTarget === undefined && /^(hp|mp|rv)/.test(lowerCode)) {
+      for (let by = 0; by < 4 && beltSlot === undefined; by++) {
+        for (let bx = 0; bx < 4; bx++) {
+          if (player.items.some((it) => it.location === 'belt' && it.x === bx && it.y === by)) continue
+          beltSlot = { x: bx, y: by }
+          break
+        }
+      }
+    }
+    const free =
+      stackTarget === undefined && beltSlot === undefined
+        ? this.findFreeGridSlot(
+            player,
+            'inventory',
+            vItem?.width ?? info.width,
+            vItem?.height ?? info.height,
+            10,
+            4,
+          )
+        : (beltSlot ?? { x: 0, y: 0 })
+    if (!stackTarget && !beltSlot && !free) return
+    const cell = free ?? beltSlot!
 
     const totalGold = player.gold + player.goldBank
     if (totalGold < cost) return
@@ -9679,6 +11707,24 @@ export class GameInstance {
       const rem = cost - player.gold
       player.gold = 0
       player.goldBank = Math.max(0, player.goldBank - rem)
+    }
+
+    if (stackTarget !== undefined) {
+      stackTarget.quantity += 1
+      if (vItem && !vItem.permStore && !isGamble) {
+        this.removeVendorPoolEntry(player, npc, npcId, itemId)
+      }
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 'update',
+        itemId: stackTarget.unitId,
+        code: stackTarget.code,
+        x: stackTarget.x,
+        y: stackTarget.y,
+        container: 'inventory',
+        item: this.serverEntryToItemData(stackTarget),
+      })
+      return
     }
 
     let quality = vItem?.quality ?? 2
@@ -9702,9 +11748,9 @@ export class GameInstance {
               }),
             ),
             {
-              location: 'inventory',
-              x: free.x,
-              y: free.y,
+              location: beltSlot ? 'belt' : 'inventory',
+              x: cell.x,
+              y: cell.y,
               areaId: player.areaId,
               ownerId: player.unitId,
               storePage: 1,
@@ -9713,16 +11759,16 @@ export class GameInstance {
           )
         : vItem?.rawItemData && !isGamble
           ? // Store purchase: the bought item is the rolled store item itself.
-            this.cloneVendorEntryForPlayer(vItem, player, free)
+            this.cloneVendorEntryForPlayer(vItem, player, cell, beltSlot ? 'belt' : 'inventory')
           : {
               unitId: this.allocateUnitId(),
               code,
               name: info.name,
               quality,
               level: player.level,
-              location: 'inventory',
-              x: free.x,
-              y: free.y,
+              location: beltSlot ? 'belt' : 'inventory',
+              x: cell.x,
+              y: cell.y,
               width: info.width,
               height: info.height,
               areaId: player.areaId,
@@ -9775,14 +11821,10 @@ export class GameInstance {
     itemId: number,
   ): void {
     const npc = this.monsters.get(npcId)
-    if (npc) {
-      if (!npc.isNpc || npc.areaId !== player.areaId) return
-      if (player.activeNpcId !== undefined && player.activeNpcId !== npcId) return
-      if (player.activeNpcId === npcId && !this.playerInNpcRange(player, npc)) return
-      if (player.activeVendorMode !== null && player.activeVendorMode !== 'trade') return
-    } else if (player.activeNpcId !== undefined) {
-      return
-    }
+    if (!npc || !npc.isNpc || npc.areaId !== player.areaId) return
+    if (player.activeNpcId !== npcId) return
+    if (!this.playerInNpcRange(player, npc)) return
+    if (player.activeVendorMode !== 'trade') return
 
     const idx = this.findPlayerItemIndex(player, itemId)
     if (idx === -1) return
@@ -9795,7 +11837,7 @@ export class GameInstance {
 
     player.items.splice(idx, 1)
     // D2Common #10107 sell price (client `priceItem113c` type 1).
-    const sellValue = this.serverItemPrice113c(player, npc?.hcIdx ?? 0, sold, 1)
+    const sellValue = this.serverItemPrice113c(player, npc.hcIdx, sold, 1)
     const maxInventoryGold = getInventoryGoldLimit(player.level)
     const room = Math.max(0, maxInventoryGold - player.gold)
     const toInventory = Math.min(sellValue, room)
@@ -9830,6 +11872,7 @@ export class GameInstance {
       sold.ownerId = npcId
       sold.storePage = 1
       sold.gamble = false
+      sold.buyback = true
       sold.cost = sellValue
       const pool = player.vendorPools.get(npcId)
       if (pool) {
@@ -10498,6 +12541,8 @@ export class GameInstance {
       hp,
       maxHp,
       damage,
+      defense: stats?.defense ?? 0,
+      resist: stats?.resist ?? 0,
       reach: act === 1 || act === 3 ? 14 : 2.8,
       aggroRadius: 30,
       speed: 30,
