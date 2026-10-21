@@ -726,21 +726,52 @@ export function findPathLocal(
     ? (preparedGoal.x - floorGoalX) * (preparedGoal.x - floorGoalX) +
       (preparedGoal.y - floorGoalY) * (preparedGoal.y - floorGoalY)
     : Infinity
-  const resolvedGoal =
-    (!preparedGoal || preparedShiftSq > 16) &&
+  const preparedCollapsedToStart =
+    preparedGoal !== null &&
+    preparedGoal.x === resolvedStart.x &&
+    preparedGoal.y === resolvedStart.y &&
+    rawGoalDistSq > 2
+  let effectiveUnitSize: 1 | 2 | 3 = unitSize
+  let resolvedGoal =
+    (!preparedGoal || preparedShiftSq > 16 || preparedCollapsedToStart) &&
     unitSize === 2 &&
-    rawGoalDistSq <= maxAstarDistSq &&
-    isCellWalkableLocal(grid, floorGoalX, floorGoalY)
+    rawGoalDistSq <= maxAstarDistSq
       ? (findNearestWalkableLocal(
           grid,
           floorGoalX,
           floorGoalY,
-          2,
+          Math.min(nearestRadius, 5),
           resolvedStart.x,
           resolvedStart.y,
           unitSize,
         ) ?? preparedGoal)
       : preparedGoal
+  if (
+    (!resolvedGoal ||
+      (resolvedGoal.x === resolvedStart.x &&
+        resolvedGoal.y === resolvedStart.y &&
+        rawGoalDistSq > 2)) &&
+    rawGoalDistSq <= maxAstarDistSq
+  ) {
+    const unit1Goal = isCellWalkableLocal(grid, floorGoalX, floorGoalY)
+      ? { x: floorGoalX, y: floorGoalY }
+      : findNearestWalkableLocal(
+          grid,
+          floorGoalX,
+          floorGoalY,
+          Math.min(nearestRadius, 5),
+          resolvedStart.x,
+          resolvedStart.y,
+          1,
+        )
+    if (
+      unit1Goal &&
+      (unit1Goal.x !== resolvedStart.x || unit1Goal.y !== resolvedStart.y)
+    ) {
+      resolvedGoal = unit1Goal
+      effectiveUnitSize = 1
+    }
+  }
   if (!resolvedGoal) {
     return {
       path: [resolvedStart],
@@ -761,7 +792,7 @@ export function findPathLocal(
   }
 
   // PATHTYPE_STRAIGHT: trace straight ray
-  const ray = traceStraightRayLocal(grid, sx, sy, gx, gy, unitSize)
+  const ray = traceStraightRayLocal(grid, sx, sy, gx, gy, effectiveUnitSize)
   if (!ray.blocked) {
     const rawPath = ray.points.slice(0, MAXPATHLEN)
     const finalPath = smooth ? [{ x: sx, y: sy }, { x: gx, y: gy }] : rawPath
@@ -778,10 +809,10 @@ export function findPathLocal(
   if (distSq > maxAstarDistSq) {
     // Distance > 18 sub-tiles: 1.13c PATH_Straight_Compute (0x6FDB7AD0) does not invoke A*,
     // continuing via PATH_Toward_6FDAA9F0 (0x6FDB78B0) 3-direction wall-sliding.
-    const toward = traceTowardLocal(grid, ray.points, gx, gy, unitSize)
+    const toward = traceTowardLocal(grid, ray.points, gx, gy, effectiveUnitSize)
     const rawPath = toward.points.slice(0, MAXPATHLEN)
     const finalPath =
-      smooth && rawPath.length > 2 ? smoothPathLocal(grid, rawPath, unitSize) : rawPath
+      smooth && rawPath.length > 2 ? smoothPathLocal(grid, rawPath, effectiveUnitSize) : rawPath
     return {
       path: finalPath.slice(0, MAXPATHLEN),
       rawPath,
@@ -841,11 +872,11 @@ export function findPathLocal(
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
       const nIdx = ny * w + nx
       if (closedGen[nIdx] === gen) continue
-      if (!isUnitWalkableLocal(grid, nx, ny, unitSize)) continue
+      if (!isUnitWalkableLocal(grid, nx, ny, effectiveUnitSize)) continue
 
       // Prevent diagonal corner cutting
       if (dir.dx !== 0 && dir.dy !== 0) {
-        if (!canStepDiagonalLocal(grid, cx, cy, dir.dx, dir.dy, unitSize)) {
+        if (!canStepDiagonalLocal(grid, cx, cy, dir.dx, dir.dy, effectiveUnitSize)) {
           continue
         }
       }
@@ -864,10 +895,10 @@ export function findPathLocal(
   const endIdx = reachedGoal ? goalIdx : allowPartial ? bestIdx : -1
   if (endIdx < 0 || (!reachedGoal && endIdx === startIdx)) {
     // If A* failed or could not leave start, fall back to 1.13c PATH_Toward_6FDAA9F0 (0x6FDB78B0)
-    const toward = traceTowardLocal(grid, ray.points, gx, gy, unitSize)
+    const toward = traceTowardLocal(grid, ray.points, gx, gy, effectiveUnitSize)
     const rawPath = toward.points.slice(0, MAXPATHLEN)
     const finalPath =
-      smooth && rawPath.length > 2 ? smoothPathLocal(grid, rawPath, unitSize) : rawPath
+      smooth && rawPath.length > 2 ? smoothPathLocal(grid, rawPath, effectiveUnitSize) : rawPath
     return {
       path: finalPath.slice(0, MAXPATHLEN),
       rawPath,
@@ -888,7 +919,7 @@ export function findPathLocal(
   rawPath.reverse()
 
   const cappedRaw = rawPath.slice(0, MAXPATHLEN)
-  const finalPath = smooth ? smoothPathLocal(grid, cappedRaw, unitSize) : cappedRaw
+  const finalPath = smooth ? smoothPathLocal(grid, cappedRaw, effectiveUnitSize) : cappedRaw
   return {
     path: finalPath.slice(0, MAXPATHLEN),
     rawPath: cappedRaw,

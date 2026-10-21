@@ -364,6 +364,8 @@ export interface SceneOverlayDrawable {
   readonly loop?: boolean | undefined
   readonly preDraw?: boolean | undefined
   readonly xOffset?: number | undefined
+  readonly subX?: number | undefined
+  readonly subY?: number | undefined
   readonly worldX: number
   readonly worldY: number
   readonly sortY: number
@@ -1444,6 +1446,8 @@ export function buildSceneDrawables(
           loop: !isOneShot,
           ...(preDraw ? { preDraw: true } : {}),
           ...(xOffset !== 0 ? { xOffset } : {}),
+          subX: unit.x,
+          subY: unit.y,
           worldX: worldX + xOffset,
           worldY: worldY + yOffset - (unit.altitude ?? 0),
           sortY: worldY,
@@ -1545,6 +1549,8 @@ export function buildSceneDrawables(
               loop: true,
               ...(preDraw ? { preDraw: true } : {}),
               ...(xOffset !== 0 ? { xOffset } : {}),
+              subX: unit.x,
+              subY: unit.y,
               worldX: worldX + xOffset,
               worldY: worldY + yOffset - (unit.altitude ?? 0),
               sortY: worldY,
@@ -1653,6 +1659,8 @@ export function buildSceneDrawables(
             totalFrames,
             loop: false,
             ...(preDraw ? { preDraw: true } : {}),
+            subX: unit.x,
+            subY: unit.y,
             worldX: worldX + xOffset,
             worldY: worldY + yOffset - (unit.altitude ?? 0),
             sortY: worldY,

@@ -4,9 +4,12 @@
  * Extracted from `src/server/engine/combat.ts` and unified with `src/common/units/unit-types.ts`.
  * Zero DOM or Node dependencies, and zero wall-clock or Math.random() calls.
  *
- * Legacy: the authoritative runtime is `GameInstance.stepMonsterAi` (MonAi.txt dispatch).
- * `GameInstance` only imports `tickMercenaryAi25Hz` from this module; the monster portion is
- * kept for the retired `GameEngine` harness until that harness is removed (#1341).
+ * Decision for #1341: the authoritative monster runtime is
+ * `GameInstance.stepMonsterAi`. This file is kept as the `GameEngine` compatibility
+ * harness (legacy tests still exercise it); `GameInstance` only imports the
+ * mercenary tick. Both paths consume `src/common/units/monai-113c.ts` for the
+ * 148-row dispatch families and `aip1..aip8` parameter layout, so the mapping
+ * itself has a single source of truth.
  */
 
 import { numberCell, textCell } from '../../common/items/tables.ts'
@@ -24,6 +27,7 @@ import {
   calculatePenetrateStats,
 } from '../../common/skills/amazon-passive.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
+import { findMonaiProfile113c } from '../../common/units/monai-113c.ts'
 import {
   HIRELING_RECORDS,
   resolveHirelingStatsAtLevel,
@@ -1034,6 +1038,9 @@ const AURA_ENCHANTED_PALADIN_AURAS = [
 
 function isStationaryMonster(monster: Monster): boolean {
   const ai = (monster.stats?.ai ?? '').trim()
+  // Shared MonAi profile table (#1341): every MonAi row has one authoritative
+  // family. Fall through to the legacy alias/hcIdx rules for harness-only names.
+  if (findMonaiProfile113c(ai)?.family === 'stationary') return true
   if (STATIONARY_AI_SET.has(ai)) return true
   if (ai === 'Frenzy' || ai === 'Minotaur' || ai === 'DeathLord' || ai === 'BloodLord') return false
   const hc = monster.stats?.hcIdx
@@ -1044,6 +1051,7 @@ function isStationaryMonster(monster: Monster): boolean {
 
 function isRangedKiterMonster(monster: Monster): boolean {
   const ai = (monster.stats?.ai ?? '').trim()
+  if (findMonaiProfile113c(ai)?.family === 'kiter') return true
   if (RANGED_KITER_AI_SET.has(ai)) return true
   if (monster.stats?.isRanged === true && !isStationaryMonster(monster)) {
     const nonKiterCasters = new Set([

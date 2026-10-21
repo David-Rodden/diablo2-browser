@@ -816,10 +816,19 @@ export class ClientWorldSceneSource implements SceneSource {
     const cameraBucketX = cameraBucketPx > 0 ? Math.floor(cameraTopLeft.x / cameraBucketPx) : cameraTopLeft.x
     const cameraBucketY = cameraBucketPx > 0 ? Math.floor(cameraTopLeft.y / cameraBucketPx) : cameraTopLeft.y
     const passCache = this.staticPassCache
+    const prevNeighbours = passCache?.neighbours
+    const nextNeighbours = st.neighbourLevelViews
+    const neighboursMatch =
+      passCache !== null &&
+      (prevNeighbours === nextNeighbours ||
+        (prevNeighbours != null &&
+          nextNeighbours != null &&
+          prevNeighbours.length === nextNeighbours.length &&
+          prevNeighbours.every((nv, idx) => nv === nextNeighbours[idx])))
     const signatureHit =
       passCache !== null &&
       passCache.levelView === st.levelView &&
-      passCache.neighbours === st.neighbourLevelViews &&
+      neighboursMatch &&
       passCache.actId === actId &&
       passCache.viewportWidth === profile.width &&
       passCache.viewportHeight === profile.height &&
@@ -1053,10 +1062,22 @@ export class ClientWorldSceneSource implements SceneSource {
       }
 
       c.lowerWallQuads.sort(
-        (a, b) => a.sortY - b.sortY || a.cellX + a.cellY - (b.cellX + b.cellY),
+        (a, b) =>
+          a.cellX + a.cellY - (b.cellX + b.cellY) ||
+          a.sortY - b.sortY ||
+          a.cellY - b.cellY ||
+          a.cellX - b.cellX ||
+          a.worldX - b.worldX ||
+          a.worldY - b.worldY,
       )
       c.upperWallQuads.sort(
-        (a, b) => a.sortY - b.sortY || a.cellX + a.cellY - (b.cellX + b.cellY),
+        (a, b) =>
+          a.cellX + a.cellY - (b.cellX + b.cellY) ||
+          a.sortY - b.sortY ||
+          a.cellY - b.cellY ||
+          a.cellX - b.cellX ||
+          a.worldX - b.worldX ||
+          a.worldY - b.worldY,
       )
       floorQuads = c.floorQuads
       shadowQuads = c.shadowQuads
@@ -1069,8 +1090,8 @@ export class ClientWorldSceneSource implements SceneSource {
     let wallFadePlayer: SceneWallFadePlayer | undefined
     const logicalGrid = st.levelView?.logicalIndex
     if (logicalGrid !== undefined) {
-      const cellX = Math.floor(Math.floor(playerLocalSubTile.x) / 5)
-      const cellY = Math.floor(Math.floor(playerLocalSubTile.y) / 5)
+      const cellX = Math.floor(Math.floor(playerLocalSubTile.x + 0.5) / 5)
+      const cellY = Math.floor(Math.floor(playerLocalSubTile.y + 0.5) / 5)
       const inside = cellX >= 0 && cellY >= 0 && cellX < logicalGrid.width && cellY < logicalGrid.height
       wallFadePlayer = {
         cellX,

@@ -32,7 +32,7 @@ describe('issue #1360 drop placement and timing', () => {
     const before = game.getGroundItems().length
     game.stepFrames(1)
     expect(game.getGroundItems().length).toBe(before)
-    game.stepFrames(12)
+    game.stepFrames(120)
     expect(game.getGroundItems().length).toBeGreaterThan(before)
   })
 

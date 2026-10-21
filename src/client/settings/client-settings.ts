@@ -62,6 +62,8 @@ export type WeatherOverrideSetting = 'off' | 'rain' | 'snow'
  * the light grid mode (0x6fb58800) and gates missile lights (0x6fb63647). Issue #830; default high (SPEC §11 Q7).
  */
 export type LightQualitySetting = 0 | 1 | 2
+export type HudLayoutMode = 'auto' | 'classic' | 'compact-d2r'
+export type SkillWheelBankMode = 'toggle' | 'hold'
 
 export interface HudEnhancementsConfig {
   readonly showBasePlusBonusStats: boolean
@@ -106,6 +108,10 @@ export interface ClientSettings
   readonly showRuneNumbers: boolean // default: true
   readonly extraItemContext: boolean // default: true
   readonly keyBindings: KeyBindingsConfig
+  readonly hudLayoutMode?: HudLayoutMode | undefined
+  readonly skillWheelBankMode?: SkillWheelBankMode | undefined
+  readonly mobileAutoPickupGoldAndPotions?: boolean | undefined
+  readonly mobileHapticsEnabled?: boolean | undefined
 }
 
 export const VALID_LIGHTING_PRESETS: readonly ClientLightingPreset[] = [
@@ -604,6 +610,22 @@ export function sanitizeClientSettings(
   const extraItemContext =
     typeof rec.extraItemContext === 'boolean' ? rec.extraItemContext : defaults.extraItemContext
   const keyBindings = sanitizeKeyBindings(rec.keyBindings)
+  const hudLayoutMode: HudLayoutMode | undefined =
+    rec.hudLayoutMode === 'auto' || rec.hudLayoutMode === 'classic' || rec.hudLayoutMode === 'compact-d2r'
+      ? rec.hudLayoutMode
+      : undefined
+  const skillWheelBankMode: SkillWheelBankMode | undefined =
+    rec.skillWheelBankMode === 'toggle' || rec.skillWheelBankMode === 'hold'
+      ? rec.skillWheelBankMode
+      : undefined
+  const mobileAutoPickupGoldAndPotions: boolean | undefined =
+    typeof rec.mobileAutoPickupGoldAndPotions === 'boolean'
+      ? rec.mobileAutoPickupGoldAndPotions
+      : undefined
+  const mobileHapticsEnabled: boolean | undefined =
+    typeof rec.mobileHapticsEnabled === 'boolean'
+      ? rec.mobileHapticsEnabled
+      : undefined
 
   return {
     version: 1,
@@ -634,6 +656,10 @@ export function sanitizeClientSettings(
     showRuneNumbers,
     extraItemContext,
     keyBindings,
+    ...(hudLayoutMode !== undefined ? { hudLayoutMode } : {}),
+    ...(skillWheelBankMode !== undefined ? { skillWheelBankMode } : {}),
+    ...(mobileAutoPickupGoldAndPotions !== undefined ? { mobileAutoPickupGoldAndPotions } : {}),
+    ...(mobileHapticsEnabled !== undefined ? { mobileHapticsEnabled } : {}),
   }
 }
 

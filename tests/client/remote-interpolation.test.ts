@@ -11,6 +11,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  D2_REMOTE_PLAYER_SNAP_THRESHOLD,
   RemoteEntityInterpolator,
   resolveRemoteMoveSpeed,
 } from '../../src/client/motion/interpolate.ts'
@@ -18,11 +19,17 @@ import {
   D2_BASE_RUN_SUBTILES_PER_SEC,
   D2_BASE_WALK_SUBTILES_PER_SEC,
 } from '../../src/client/motion/predictor.ts'
+import { OnlineSession } from '../../src/client/session/online-session.ts'
+import { ClientWorld } from '../../src/client/world/client-world.ts'
 import { ByteWriter } from '../../src/netproto/core/byte-writer.ts'
 import {
+  decode0x0DPlayerStop,
+  decode0x0FPlayerMove,
   decode0x67NpcMove,
   decode0x68NpcMoveToTarget,
 } from '../../src/netproto/d2gs/s2c/movement.ts'
+import { serverEventToS2cPackets } from '../../src/netproto/index.ts'
+import { GameInstance } from '../../src/server/engine/game-instance.ts'
 
 describe('S2C Movement Packet Decoders for nPathType & nVelocity (Issue #586)', () => {
   it('decodes nPathType and nVelocity from 0x67 NpcMove', () => {
@@ -251,5 +258,206 @@ describe('RemoteEntityInterpolator Kinematics & Parity (Issue #598)', () => {
     expect(afterUpdateState.moving).toBe(false)
     expect(afterUpdateState.x).toBe(movingState.x)
     expect(afterUpdateState.y).toBe(100)
+  })
+})
+
+describe('Remote Player Locomotion & Anti-Rubberbanding Parity (Issue #1387)', () => {
+  it('resolves CharStats 9.0 walk / 13.5 run sub-tiles/s for all 7 player classes (classId 0..6) without falling into MonStats.txt', () => {
+    for (let classId = 0; classId <= 6; classId++) {
+      const walk = resolveRemoteMoveSpeed({
+        unitType: 0,
+        classId,
+        running: false,
+      })
+      expect(walk.running).toBe(false)
+      expect(walk.speedSubTilesPerSec).toBe(D2_BASE_WALK_SUBTILES_PER_SEC)
+
+      const run = resolveRemoteMoveSpeed({
+        unitType: 0,
+        classId,
+        running: true,
+      })
+      expect(run.running).toBe(true)
+      expect(run.speedSubTilesPerSec).toBe(D2_BASE_RUN_SUBTILES_PER_SEC)
+
+      // With +30% FRW boots (EFRW = 25 -> 175% total velocityPercent on run)
+      const frwRun = resolveRemoteMoveSpeed({
+        unitType: 0,
+        classId,
+        running: true,
+        velocityPercent: 175,
+      })
+      expect(frwRun.speedSubTilesPerSec).toBe(D2_BASE_WALK_SUBTILES_PER_SEC * 1.75)
+    }
+  })
+
+  it('uses 15-sub-tile drift tolerance (D2Client.dll 0x6FADA2AF) for remote players and halts cleanly on 0x0D stop within 1 sub-tile (0x6FADA460)', () => {
+    expect(D2_REMOTE_PLAYER_SNAP_THRESHOLD).toBe(15)
+    const interp = new RemoteEntityInterpolator()
+    interp.spawnOrSnap({ unitType: 0, unitId: 2, classId: 1, x: 5000, y: 5000, dir64: 56 })
+
+    // Start running to (5030, 5000)
+    interp.startMove({
+      unitType: 0,
+      unitId: 2,
+      classId: 1,
+      currentX: 5000,
+      currentY: 5000,
+      targetX: 5030,
+      targetY: 5000,
+      running: true,
+    })
+
+    // Drift of 8 sub-tiles (> 7 monster RN limit, but <= 15 remote player limit) must NOT hard-snap!
+    const stateWithin15 = interp.startMove({
+      unitType: 0,
+      unitId: 2,
+      classId: 1,
+      currentX: 5008,
+      currentY: 5000,
+      targetX: 5030,
+      targetY: 5000,
+      running: true,
+    })
+    expect(stateWithin15.x).toBe(5000)
+    expect(stateWithin15.speedSubTilesPerSec).toBeGreaterThan(D2_BASE_RUN_SUBTILES_PER_SEC)
+
+    // Drift of 16 sub-tiles (> 15 limit) hard-snaps to currentX
+    const stateBeyond15 = interp.startMove({
+      unitType: 0,
+      unitId: 2,
+      classId: 1,
+      currentX: 5016,
+      currentY: 5000,
+      targetX: 5030,
+      targetY: 5000,
+      running: true,
+    })
+    expect(stateBeyond15.x).toBe(5016)
+
+    // Advance 400ms (5.4 sub-tiles -> 5021.4)
+    interp.update(400)
+    const beforeStop = interp.getEntityState(0, 2)!
+    expect(beforeStop.x).toBeCloseTo(5021.4, 4)
+
+    // Server sends 0x0D PlayerStop at integer (5021, 5000) (0.4 sub-tiles behind visual position):
+    // Per D2Client.dll 0x6FADA460 (|dx| <= 1 && |dy| <= 1), player halts in place at 5021.4 without snapping backward or turning 180°!
+    const stopped = interp.stopEntity({
+      unitType: 0,
+      unitId: 2,
+      x: 5021,
+      y: 5000,
+    })
+    expect(stopped.moving).toBe(false)
+    expect(stopped.x).toBeCloseTo(5021.4, 4)
+    expect(stopped.dir64).toBe(56)
+    expect(stopped.targetDir64).toBe(56)
+  })
+
+  it('encodes UnitMove walk (0x01), run (0x17), and stop (0x0D PlayerStop / 0x6D NPCStop) accurately in serverEventToS2cPackets', () => {
+    const walkPkts = serverEventToS2cPackets({
+      type: 'UnitMove',
+      unitType: 0,
+      id: 2,
+      mode: 'walk',
+      from: { x: 5000, y: 5000 },
+      to: { x: 5010, y: 5000 },
+    })
+    expect(walkPkts).toHaveLength(1)
+    expect(walkPkts[0]![0]).toBe(0x0f)
+    expect(walkPkts[0]![6]).toBe(0x01)
+    expect(decode0x0FPlayerMove(walkPkts[0]!)).toMatchObject({
+      type: 'UnitMove',
+      unitType: 0,
+      id: 2,
+      mode: 'walk',
+      from: { x: 5000, y: 5000 },
+      to: { x: 5010, y: 5000 },
+    })
+
+    const runPkts = serverEventToS2cPackets({
+      type: 'UnitMove',
+      unitType: 0,
+      id: 2,
+      mode: 'run',
+      from: { x: 5000, y: 5000 },
+      to: { x: 5010, y: 5000 },
+    })
+    expect(runPkts[0]![0]).toBe(0x0f)
+    expect(runPkts[0]![6]).toBe(0x17)
+    expect(decode0x0FPlayerMove(runPkts[0]!)).toMatchObject({
+      type: 'UnitMove',
+      unitType: 0,
+      id: 2,
+      mode: 'run',
+    })
+
+    const stopPkts = serverEventToS2cPackets({
+      type: 'UnitMove',
+      unitType: 0,
+      id: 2,
+      mode: 'stop',
+      from: { x: 5010, y: 5000 },
+      to: { x: 5010, y: 5000 },
+    })
+    expect(stopPkts).toHaveLength(1)
+    expect(stopPkts[0]![0]).toBe(0x0d)
+    expect(decode0x0DPlayerStop(stopPkts[0]!)).toMatchObject({
+      type: 'UnitMode',
+      unitType: 0,
+      id: 2,
+      mode: 1,
+      at: { x: 5010, y: 5000 },
+    })
+  })
+
+  it('synchronizes remote player movement in multiplayer OnlineSession + GameInstance without rubberbanding (naked and with FRW)', () => {
+    const game = new GameInstance({ mode: 'open', maxPlayers: 8, seed: 1387, difficulty: 0, act: 0, areaId: 1 })
+    const watcherId = game.connectPlayer({ charClass: 'sor', name: 'Watcher', x: 5000, y: 5000, areaId: 1 })
+    const runnerId = game.connectPlayer({ charClass: 'pal', name: 'Runner', x: 5000, y: 5005, areaId: 1 })
+
+    const world = new ClientWorld()
+    const session = new OnlineSession({ world })
+    for (const ev of game.drainEvents(watcherId)) {
+      session.handleServerEvent(ev)
+    }
+
+    // Equip +30% FRW boots on Runner (both on server and in client remoteEquipmentByPlayerId)
+    const runnerRecord = (game as unknown as { players: Map<number, { items: unknown[] }> }).players.get(runnerId)!
+    runnerRecord.items.push({
+      id: 9001,
+      code: 'lbt',
+      location: 'equipped',
+      equipSlot: 9,
+      durability: 12,
+      stats: new Map([[96, 30]]),
+    })
+
+    // Runner runs 27 sub-tiles from (5000, 5005) to (5027, 5005)
+    game.enqueueCommand(runnerId, { type: 'Move', to: { x: 5027, y: 5005 }, run: true })
+
+    let prevVisualX = world.getUnit('player', runnerId)!.x
+    expect(prevVisualX).toBe(5000)
+
+    for (let tick = 1; tick <= 60; tick++) {
+      game.stepFrame()
+      for (const ev of game.drainEvents(watcherId)) {
+        session.handleServerEvent(ev)
+      }
+      session.tick(40, tick * 40)
+      const remoteUnit = world.getUnit('player', runnerId)!
+      const serverPos = game.getPlayerState(runnerId)!
+      // Remote player must NEVER be pulled backward (monotonic X progression)
+      expect(remoteUnit.x).toBeGreaterThanOrEqual(prevVisualX - 1e-6)
+      // And visual position must stay tightly aligned with server position (< 1.0 sub-tile)
+      expect(Math.abs(remoteUnit.x - serverPos.x)).toBeLessThan(1.0)
+      prevVisualX = remoteUnit.x
+    }
+
+    const finalRemote = world.getUnit('player', runnerId)!
+    expect(finalRemote.x).toBeCloseTo(5027, 1)
+    expect(finalRemote.y).toBeCloseTo(5005, 1)
+    expect(finalRemote.moving).toBe(false)
+    session.destroy()
   })
 })

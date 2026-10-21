@@ -1965,10 +1965,37 @@ export class Minimap {
     const scaleX = vp.screenWidth > 0 && logicalWidth > 0 ? logicalWidth / vp.screenWidth : 1
     const scaleY = vp.screenHeight > 0 && logicalHeight > 0 ? logicalHeight / vp.screenHeight : 1
 
+    const placedLabelRects: { left: number; right: number; top: number; bottom: number }[] = []
+    const placeNonOverlappingY = (lx: number, baseLy: number, text: string): number => {
+      const measuredW =
+        typeof (font as { measureText?: unknown }).measureText === 'function'
+          ? font.measureText(text, 'font6')
+          : text.length * 6
+      const halfW = Math.max(16, Math.ceil(measuredW / 2) + 2)
+      const lineH = 11
+      let ly = baseLy
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const left = lx - halfW
+        const right = lx + halfW
+        const top = ly - lineH
+        const bottom = ly
+        const hit = placedLabelRects.find(
+          (r) => left < r.right && right > r.left && top < r.bottom && bottom > r.top,
+        )
+        if (!hit) {
+          placedLabelRects.push({ left, right, top, bottom })
+          return ly
+        }
+        ly = hit.top - 1
+      }
+      placedLabelRects.push({ left: lx - halfW, right: lx + halfW, top: ly - lineH, bottom: ly })
+      return ly
+    }
+
     // 1. Warp & Stash labels (`Font6`)
     for (const label of this.lastRenderStats.warpLabels) {
       const lx = Math.round(label.x * scaleX)
-      const ly = Math.round(label.y * scaleY)
+      const ly = placeNonOverlappingY(lx, Math.round(label.y * scaleY), label.text)
       font.drawText(ctx, label.text, lx, ly, {
         font: 'font6',
         color: label.color,
@@ -1981,7 +2008,7 @@ export class Minimap {
     if (this.showNames) {
       for (const label of this.lastRenderStats.entityLabels) {
         const lx = Math.round(label.x * scaleX)
-        const ly = Math.round(label.y * scaleY)
+        const ly = placeNonOverlappingY(lx, Math.round(label.y * scaleY), label.text)
         font.drawText(ctx, label.text, lx, ly, {
           font: 'font6',
           color: label.color,

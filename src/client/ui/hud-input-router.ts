@@ -12,7 +12,7 @@
  */
 
 import { isPassiveSkill, isAuraSkill, isLeftUsableSkill } from './hotkeys.ts'
-import { isAutoBeltablePotion } from './belt.ts'
+import { isAutoBeltablePotion, itemToBeltPotion } from './belt.ts'
 import { STASH_GRID_ORIGIN, CUBE_GRID_ORIGIN } from './panels/panel-layout-constants.ts'
 import type { MiniPanelAction } from './control-bar.ts'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
@@ -55,6 +55,11 @@ import {
   hitTestEscapeMenu,
 } from './world-panels.ts'
 import { matchesKeyBinding } from '../settings/client-settings.ts'
+import {
+  hitTestCompactD2rHud,
+  type CompactHudHitResult,
+  type TouchContextActionKind,
+} from './touch-controls.ts'
 import { serverItemIdOf, type HudCommandSink, type HudManager } from './hud-manager.ts'
 
 /** 1.13c class cantuseyet sound IDs (D2Client.dll 0x6fb46110 -> 0x6fad3200 code 20). */
@@ -126,6 +131,14 @@ export function handleHudMouseMove(hud: HudManager, logicalX: number, logicalY: 
   hud.mouseX = logicalX
   hud.mouseY = logicalY
   hud.cursor.handleMouseMove(logicalX, logicalY)
+  if (hud.touchControls.enabled && hud.touchControls.joystick.active) {
+    hud.touchControls.handlePointerMove(
+      hud.touchControls.joystick.pointerId ?? 1,
+      logicalX,
+      logicalY,
+    )
+    hud.syncPublishedState()
+  }
   if (hud.worldPanels.escapeMenuOpen) {
     if (hud.worldPanels.escapeMenuScreen !== 'main') {
       const prevSel = hud.worldPanels.optionsSubmenuSelectedIndex
@@ -294,8 +307,35 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
   ) {
     return true
   }
+  hud.touchControls.syncFromEnvironment()
   const is640: boolean = (hud as any).syncResolutionMode()
   const profile = hud.viewportProfile
+  if (
+    hud.touchControls.enabled &&
+    (hud.touchControls.joystick.active ||
+      hud.touchControls.isInLeftJoystickZone(
+        logicalX,
+        logicalY,
+        profile.width,
+        profile.height,
+        hud.leftPanel !== 'none',
+      ))
+  ) {
+    return true
+  }
+  if (
+    hud.touchControls.compactHudActive &&
+    hitTestCompactD2rHud(
+      logicalX,
+      logicalY,
+      profile.width,
+      profile.height,
+      hud.belt.isExpanded,
+      hud.touchControls.activeSkillBank,
+    ) !== null
+  ) {
+    return true
+  }
   const docking = hud.getDockingLayout()
   const { marginW } = docking
 
@@ -316,13 +356,15 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     }
     if (hud.hitTestQuestAlert(logicalX, logicalY)) return true
     if (hud.isPointInMercPortrait(logicalX, logicalY)) return true
-    const barX = logicalX - profile.barOffsetX
-    const barY = logicalY - profile.barOffsetY
-    if (barY >= 540 && barY <= 600 && barX >= 0 && barX <= 800) return true
-    if (barX >= 0 && barX <= 117 && barY >= 496 && barY <= 600) return true
-    if (barX >= 683 && barX <= 800 && barY >= 496 && barY <= 600) return true
-    if (hud.controlBar.miniPanelOpen && barX >= 312 && barX <= 488 && barY >= 522 && barY <= 600) return true
-    if (hud.belt.isExpanded && barX >= 420 && barX <= 550 && barY >= 460 && barY <= 600) return true
+    if (!hud.touchControls.compactHudActive) {
+      const barX = logicalX - profile.barOffsetX
+      const barY = logicalY - profile.barOffsetY
+      if (barY >= 540 && barY <= 600 && barX >= 0 && barX <= 800) return true
+      if (barX >= 0 && barX <= 117 && barY >= 496 && barY <= 600) return true
+      if (barX >= 683 && barX <= 800 && barY >= 496 && barY <= 600) return true
+      if (hud.controlBar.miniPanelOpen && barX >= 312 && barX <= 488 && barY >= 522 && barY <= 600) return true
+      if (hud.belt.isExpanded && barX >= 420 && barX <= 550 && barY >= 460 && barY <= 600) return true
+    }
     if (hud.hotkeys.openPopup !== null) return true
     const panelY = logicalY - profile.panelOffsetY
     if (
@@ -393,11 +435,13 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
   }
   if (hud.hitTestQuestAlert(logicalX, logicalY)) return true
   if (hud.isPointInMercPortrait(logicalX, logicalY)) return true
-  if (logicalY >= 540 && logicalX >= 0 && logicalX <= 800) return true
-  if (logicalX >= 0 && logicalX <= 117 && logicalY >= 496) return true
-  if (logicalX >= 683 && logicalX <= 800 && logicalY >= 496) return true
-  if (hud.controlBar.miniPanelOpen && logicalX >= 312 && logicalX <= 488 && logicalY >= 522) return true
-  if (hud.belt.isExpanded && logicalX >= 420 && logicalX <= 550 && logicalY >= 460) return true
+  if (!hud.touchControls.compactHudActive) {
+    if (logicalY >= 540 && logicalX >= 0 && logicalX <= 800) return true
+    if (logicalX >= 0 && logicalX <= 117 && logicalY >= 496) return true
+    if (logicalX >= 683 && logicalX <= 800 && logicalY >= 496) return true
+    if (hud.controlBar.miniPanelOpen && logicalX >= 312 && logicalX <= 488 && logicalY >= 522) return true
+    if (hud.belt.isExpanded && logicalX >= 420 && logicalX <= 550 && logicalY >= 460) return true
+  }
   if (hud.hotkeys.openPopup !== null) return true
   if (
     hud.leftPanel !== 'none' &&
@@ -412,6 +456,184 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
   }
   if (hud.rightPanel !== 'none' && logicalX >= 400 && logicalX <= 800 && logicalY >= 0 && logicalY <= 553) return true
   return false
+}
+
+export function handleCompactD2rHudClick(
+  hud: HudManager,
+  logicalX: number,
+  logicalY: number,
+): CompactHudHitResult | null {
+  const profile = hud.viewportProfile
+  const hit = hitTestCompactD2rHud(
+    logicalX,
+    logicalY,
+    profile.width,
+    profile.height,
+    hud.belt.isExpanded,
+    hud.touchControls.activeSkillBank,
+  )
+  if (hit === null) return null
+
+  switch (hit.kind) {
+    case 'utilityAction':
+      switch (hit.action) {
+        case 'char':
+          hud.toggleLeftPanel('char')
+          break
+        case 'inv':
+          hud.toggleRightPanel('inv')
+          break
+        case 'skill':
+          hud.toggleRightPanel('skill')
+          break
+        case 'automap':
+          ;(hud as any).callbacks?.onToggleAutomap?.()
+          break
+        case 'altLabels':
+          hud.showGroundLabels = !hud.showGroundLabels
+          break
+        case 'menu':
+          hud.worldPanels.escapeMenuOpen = !hud.worldPanels.escapeMenuOpen
+          break
+      }
+      hud.syncPublishedState()
+      return hit
+    case 'l2BankSwitch':
+      hud.touchControls.toggleSkillBank()
+      hud.syncPublishedState()
+      return hit
+    case 'popbeltCell':
+      hud.drinkBeltSlot(hit.row * 4 + hit.col, false)
+      return hit
+    case 'beltSlot':
+      hud.drinkBeltSlot(hit.col, false)
+      return hit
+    case 'beltAutoRefill':
+      hud.belt.togglePopup()
+      hud.syncPublishedState()
+      return hit
+    case 'runToggle':
+      hud.isRunning = !hud.isRunning
+      ;(hud as any).callbacks?.onRunWalkToggle?.(hud.isRunning)
+      hud.syncPublishedState()
+      return hit
+    case 'weaponSwap':
+      if (hud.commandSink) {
+        hud.commandSink.swapWeapons()
+      } else if (hud.onWeaponSwitch) {
+        hud.onWeaponSwitch()
+      } else {
+        hud.inventory.toggleWeaponSwap()
+      }
+      hud.syncPublishedState()
+      return hit
+    case 'primarySkill':
+    case 'wheelSkill': {
+      const slot = hud.touchControls.resolveWheelSlot(hit.hotkeyIndex, hud.hotkeys)
+      if (slot && slot.skillId >= 0) {
+        if (slot.hand === 'left') {
+          hud.hotkeys.leftSkillId = slot.skillId
+          hud.commandSink?.selectSkill?.('left', slot.skillId)
+        } else if (slot.skillId > 0) {
+          hud.hotkeys.rightSkillId = slot.skillId
+          hud.commandSink?.selectSkill?.('right', slot.skillId)
+        }
+        ;(hud as any).onTouchSkillCast?.(slot)
+      }
+      hud.syncPublishedState()
+      return hit
+    }
+    case 'contextLootInteract': {
+      const nextLoot = hud.touchControls.popNextFootLoot()
+      const targetId = nextLoot?.id ?? hud.touchControls.lockedInteractable?.id
+      if (targetId !== undefined) {
+        ;(hud as any).onTouchLootInteract?.(targetId)
+        ;(hud.commandSink as any)?.pickupGroundItem?.(targetId)
+      }
+      hud.syncPublishedState()
+      return hit
+    }
+    default:
+      hud.syncPublishedState()
+      return hit
+  }
+}
+
+export function executeTouchContextAction(
+  hud: HudManager,
+  action: TouchContextActionKind,
+): boolean {
+  const selected = hud.touchControls.selectedPanelItem
+  if (!selected) return false
+  const { item, source } = selected
+
+  switch (action) {
+    case 'equip': {
+      const targetSlot = item.allowedSlots?.[0]
+      if (!targetSlot) return false
+      if (source === 'inv') {
+        hud.inventory.gridItems = hud.inventory.gridItems.filter((g) => g.item.id !== item.id)
+      }
+      const prevEquipped = hud.inventory.equipped[targetSlot]
+      hud.inventory.equipped[targetSlot] = item
+      if (prevEquipped && selected.col !== undefined && selected.row !== undefined) {
+        hud.inventory.gridItems.push({
+          item: prevEquipped,
+          col: selected.col,
+          row: selected.row,
+        })
+      }
+      hud.touchControls.clearSelectedPanelItem()
+      hud.syncPublishedState()
+      return true
+    }
+    case 'unequip': {
+      const slot = selected.equipSlot
+      if (!slot || !hud.inventory.equipped[slot]) return false
+      delete hud.inventory.equipped[slot]
+      hud.inventory.gridItems.push({
+        item,
+        col: selected.col ?? 0,
+        row: selected.row ?? 0,
+      })
+      hud.touchControls.clearSelectedPanelItem()
+      hud.syncPublishedState()
+      return true
+    }
+    case 'putBelt': {
+      const beltPot = itemToBeltPotion(item)
+      if (!beltPot) return false
+      for (let col = 0; col < 4; col++) {
+        for (let row = 0; row < 4; row++) {
+          if (!hud.belt.getSlot(col, row)) {
+            hud.belt.setSlot(col, row, beltPot)
+            if (source === 'inv') {
+              hud.inventory.gridItems = hud.inventory.gridItems.filter(
+                (g) => g.item.id !== item.id,
+              )
+            }
+            hud.touchControls.clearSelectedPanelItem()
+            hud.syncPublishedState()
+            return true
+          }
+        }
+      }
+      return false
+    }
+    case 'drop': {
+      if (source === 'inv') {
+        hud.inventory.gridItems = hud.inventory.gridItems.filter((g) => g.item.id !== item.id)
+      }
+      hud.commandSink?.dropItem?.(serverItemIdOf(item))
+      hud.touchControls.clearSelectedPanelItem()
+      hud.syncPublishedState()
+      return true
+    }
+    default:
+      hud.touchControls.clearSelectedPanelItem()
+      hud.syncPublishedState()
+      return true
+  }
 }
 
 export function drinkHudBeltSlot(hud: HudManager, col: number, shiftToMerc = false): boolean {
@@ -794,7 +1016,10 @@ export function bindHudWindowEvents(hud: HudManager): void {
     internal.boundWindowEvents.push([target, type, fn as EventListener, options])
   }
 
-  on(window, 'resize', () => internal.invalidateCanvasRectCache())
+  on(window, 'resize', () => {
+    internal.invalidateCanvasRectCache()
+    hud.touchControls.syncFromEnvironment()
+  })
 
   on(window, 'keydown', (e) => hud.handleKeyDown(e as KeyboardEvent))
 
@@ -904,6 +1129,10 @@ export function disposeHudWindowEvents(hud: HudManager): void {
 }
 
 export function handleHudMouseUp(hud: HudManager, logicalX: number, logicalY: number, button = 0): void {
+  if (button === 0 && hud.touchControls.enabled && hud.touchControls.joystick.active) {
+    hud.touchControls.handlePointerUp(hud.touchControls.joystick.pointerId ?? 1)
+    hud.syncPublishedState()
+  }
   if (button === 0 && hud.questAlert) {
     const inside = hud.hitTestQuestAlert(logicalX, logicalY)
     if (hud.questAlert.releaseAlert(inside)) {
@@ -1167,6 +1396,28 @@ export function handleHudMouseDown(
   }
 
   ;(hud as any).syncResolutionMode()
+  if (
+    e.button === 0 &&
+    hud.touchControls.enabled &&
+    hud.leftPanel === 'none' &&
+    hud.touchControls.handlePointerDown(
+      1,
+      pt.x,
+      pt.y,
+      hud.viewportProfile.width,
+      hud.viewportProfile.height,
+      false,
+    )
+  ) {
+    hud.syncPublishedState()
+    return
+  }
+  if (hud.touchControls.compactHudActive) {
+    const compactHit = handleCompactD2rHudClick(hud, pt.x, pt.y)
+    if (compactHit !== null) {
+      return
+    }
+  }
   const docking = hud.getDockingLayout()
   const barPt = toControlBarLocal(pt.x, pt.y, docking)
 
@@ -1273,12 +1524,12 @@ export function handleHudMouseDown(
     return
   }
 
-  if (e.button === 0 && !hud.inventory.cursorItem && hud.globes.handleClick(barPt.x, barPt.y)) {
+  if (hud.hotkeys.handleClick(barPt.x, barPt.y)) {
     hud.syncPublishedState()
     return
   }
 
-  if (hud.hotkeys.handleClick(barPt.x, barPt.y)) {
+  if (e.button === 0 && !hud.inventory.cursorItem && hud.globes.handleClick(barPt.x, barPt.y)) {
     hud.syncPublishedState()
     return
   }

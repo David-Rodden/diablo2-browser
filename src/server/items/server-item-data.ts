@@ -250,6 +250,7 @@ export const CONTAINER_OPERATE_DROP_CHANCE_113C: Readonly<Record<number, number>
   5: 21,
   14: 100,
   48: 90,
+  58: 100,
   68: 100,
 })
 

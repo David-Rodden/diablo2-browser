@@ -65,7 +65,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
       game.connectPlayer({ charClass: 'bar', name: 'Hero', x: 10, y: 10, areaId: 2 });
       const groundFrom15Id = game.spawnMonster({ defId: 'fallen1', x: 15, y: 10, areaId: 2, aggroRadius: 20 });
       const groundFrom16Id = game.spawnMonster({ defId: 'fallen1', x: 16, y: 10, areaId: 2, aggroRadius: 20 });
-      const flyingId = game.spawnMonster({ hcIdx: 15, x: 15, y: 10, areaId: 2, aggroRadius: 20, isFlying: true });
+      const flyingId = game.spawnMonster({ hcIdx: 15, x: 15, y: 11, areaId: 2, aggroRadius: 20, isFlying: true });
 
       // Block column Math.round(x) === 13 with a 2-argument callback
       game.setTerrainWalkableCheck((_areaId, x) => Math.round(x) !== 13);

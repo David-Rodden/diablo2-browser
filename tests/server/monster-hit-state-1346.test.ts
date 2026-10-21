@@ -68,9 +68,13 @@ describe('issue #1346 monster hit reaction', () => {
     const before = game.getMonsterState(monsterId)!
     game.drainEvents(playerId)
 
-    // Bash (#126) is a 100% knockback skill.
-    game.applyDamageToMonster(monsterId, 10, playerId, 126)
-    const after = game.getMonsterState(monsterId)!
+    // Bash (#126) is a 100% knockback skill; 1.13c still rolls the monster's
+    // size resistance (Medium 50%), so retry until the deterministic RNG lands.
+    let after = game.getMonsterState(monsterId)!
+    for (let attempt = 0; attempt < 10 && after.x <= before.x; attempt++) {
+      game.applyDamageToMonster(monsterId, 10, playerId, 126)
+      after = game.getMonsterState(monsterId)!
+    }
     expect(after.x).toBeGreaterThan(before.x)
     const events = game.drainEvents(playerId)
     expect(
@@ -190,5 +194,22 @@ describe('issue #1346 monster hit reaction', () => {
     // 2000 * 8 / 8192 = 1.953 HP per frame, ~48 HP over 25 frames.
     expect(healed - damaged).toBeGreaterThanOrEqual(40)
     expect(healed).toBeLessThanOrEqual(2000)
+  })
+
+  it('freeze cancels a pending melee action frame', () => {
+    const game = new GameInstance({ seed: 13461, areaId: 1 })
+    const playerId = connectTestPlayer(game)
+    const monsterId = game.spawnMonster({
+      defId: 'fallen1', x: 11, y: 10, areaId: 1, hp: 500, maxHp: 500, damageRegen: 0,
+    })
+    game.stepFrames(1)
+    const monster = (game as unknown as {
+      monsters: Map<number, { pendingAttack: unknown }>
+    }).monsters.get(monsterId)!
+    expect(monster.pendingAttack).toBeDefined()
+    game.applyMonsterState(monsterId, 1, 100)
+    const hp = game.getPlayerState(playerId)!.hp
+    game.stepFrames(20)
+    expect(game.getPlayerState(playerId)!.hp).toBe(hp)
   })
 })

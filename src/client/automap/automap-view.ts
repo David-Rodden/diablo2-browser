@@ -1094,12 +1094,26 @@ export class AutomapView {
       ? this.createServerRevealedCellPredicate(this.currentAreaId, view)
       : null
 
+    const pushDeduplicatedExitMarker = (candidate: MinimapMarker): void => {
+      if (candidate.kind === 'exit' && candidate.toLevelId !== undefined) {
+        const dup = markers.some(
+          (m) =>
+            m.kind === 'exit' &&
+            m.toLevelId === candidate.toLevelId &&
+            Math.abs(m.cellX - candidate.cellX) <= 8 &&
+            Math.abs(m.cellY - candidate.cellY) <= 8,
+        )
+        if (dup) return
+      }
+      markers.push(candidate)
+    }
+
     if (Array.isArray(view.entrances)) {
       for (const ent of view.entrances) {
         if (ent.toLevelId > 0 && ent.toLevelId !== this.currentAreaId) {
           const entPreRevealed =
             isPrimaryCellRevealed !== null && isPrimaryCellRevealed(ent.x, ent.y)
-          markers.push({
+          pushDeduplicatedExitMarker({
             cellX: ent.x,
             cellY: ent.y,
             kind: 'exit',
@@ -1251,7 +1265,7 @@ export class AutomapView {
                 : isOtherCellRevealed !== null && isOtherCellRevealed(ent.x, ent.y)
                   ? true
                   : false
-              markers.push({
+              pushDeduplicatedExitMarker({
                 cellX: ent.x + dCellX,
                 cellY: ent.y + dCellY,
                 kind: 'exit',

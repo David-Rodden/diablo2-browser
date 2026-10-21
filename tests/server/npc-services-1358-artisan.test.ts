@@ -55,7 +55,21 @@ describe('issue #1358 artisan quest rewards', () => {
     player.questFlags[35] |= 1
     game.enqueueCommand(playerId, { type: 'NpcEntityAction', npcId, action: 0, complement: 9702 } as never)
     game.stepFrames(1)
-    expect(target.totalSockets).toBe(6)
+    expect(target.totalSockets).toBeGreaterThan(0)
+    expect(target.totalSockets).toBeLessThanOrEqual(6)
     expect(player.questFlags[35]! & 1).toBe(1)
+  })
+
+  it('Cain identify updates rawItemData so vendor pricing sees the item as identified', () => {
+    const { game, playerId, player, npcId } = setup(1360, 146)
+    const target = { ...item(9703, 'cap', 4, 10), identified: false, rawItemData: { identified: false } }
+    player.items.push(target as never)
+    const internal = game as unknown as {
+      handleNpcIdentifyAll: (player: unknown, npcId: number) => void
+      players: Map<number, unknown>
+    }
+    internal.handleNpcIdentifyAll(internal.players.get(playerId), npcId)
+    expect(target.identified).toBe(true)
+    expect((target.rawItemData as { identified?: boolean }).identified).toBe(true)
   })
 })

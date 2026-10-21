@@ -1537,7 +1537,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         moveMode === 'stop' &&
         unit.castState !== undefined &&
         now < unit.castState.untilMs &&
-        now - unit.castState.startedAtMs <= 150
+        (!unit.castState.missileSpawned || now - unit.castState.startedAtMs <= 250)
       if (!preserveActiveCast) {
         this.clearUnitCastState(unit)
       }
@@ -1752,7 +1752,15 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         isSelfPlayer &&
         moveMode !== 'stop' &&
         (this._pendingMeleeAttack !== null || ev.target !== undefined)
-      const snapLimit = moveMode === 'run' ? 7 : moveMode === 'knockback' ? 10 : 5
+      const isRemotePlayer = unit.unitType === 'player' && !isSelfPlayer
+      const snapLimit =
+        moveMode === 'knockback'
+          ? 10
+          : isRemotePlayer
+            ? 15
+            : moveMode === 'run'
+              ? 7
+              : 5
 
       if (ev.from && (ev.from.x !== 0 || ev.from.y !== 0)) {
         if (unit.x === 0 && unit.y === 0) {
@@ -1802,6 +1810,8 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         (Math.hypot(targetX - unit.x, targetY - unit.y) > 1e-4 || ev.target !== undefined)
       if (ev.velocityPercent !== undefined) {
         unit.velocityPercent = ev.velocityPercent
+      } else if (unit.unitType === 'player') {
+        unit.velocityPercent = undefined
       }
       if (ev.pathType !== undefined) {
         unit.pathType = ev.pathType
@@ -1868,7 +1878,11 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)
       const wasDead = isSelfPlayer && (this._isSelfDead || this._self.isDead)
       const roomAreaId = isSelfPlayer ? this.resolveAreaFromRevealedRooms(ev.at.x, ev.at.y) : 0
-      const targetAreaId = roomAreaId > 0 ? roomAreaId : this.areaId
+      const targetAreaId = roomAreaId > 0 ? roomAreaId : (ev.areaId ?? this.areaId)
+      if (isSelfPlayer && targetAreaId > 0 && targetAreaId !== this.areaId) {
+        this.areaId = targetAreaId
+        this.syncPlayerTownModes()
+      }
       // 1.13c D2Client.dll 0x6FB5F640 -> 0x6FB57E20:
       // S2C 0x15 ReassignPlayer repositions the unit's DynamicPath and drops its walk/run path,
       // but does NOT clear an active cast/skill animation (mode 10 PLRMODE_CAST for Teleport #54,

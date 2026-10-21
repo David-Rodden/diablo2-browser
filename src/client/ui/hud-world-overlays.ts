@@ -44,6 +44,7 @@ import {
 } from './hud-viewport-layout.ts'
 import type { HudManager } from './hud-manager.ts'
 import { renderLevelEntryTitle113c } from './level-entry-title.ts'
+import { toMonsterTargetHudInfo } from './touch-controls.ts'
 
 interface HudRenderInternal {
   lastHudFrameTiming: { mouseX: number; mouseY: number; drawMs: number } | null
@@ -149,6 +150,13 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
     // `pingMs` is deliberately excluded: it jitters on nearly every sync and
     // the 4Hz safety repaint bounds its display staleness.
     hud.showFps ? hud.currentFps : -1,
+    hud.touchControls.enabled ? 1 : 0,
+    hud.touchControls.compactHudActive ? 1 : 0,
+    hud.touchControls.activeSkillBank,
+    hud.touchControls.joystick.active ? 1 : 0,
+    Math.round(hud.touchControls.joystick.knobX),
+    Math.round(hud.touchControls.joystick.knobY),
+    hud.touchControls.lockedMonster?.candidate.unitId ?? -1,
     hud.hudRevision,
   ].join('|')
   const prevSignature = internal.lastIdleRepaintSignature
@@ -215,6 +223,17 @@ export function renderHudFrame(
   playerMoving: boolean = false,
 ): void {
   const internal = hud as unknown as HudRenderInternal
+  // Auto-detect mobile / Chrome DevTools responsive touch mode on each frame so toggling
+  // mobile emulation in the browser immediately activates D2R compact HUD & virtual controls.
+  const prevTouchEnabled = hud.touchControls.enabled
+  const prevCompactActive = hud.touchControls.compactHudActive
+  hud.touchControls.syncFromEnvironment()
+  if (
+    prevTouchEnabled !== hud.touchControls.enabled ||
+    prevCompactActive !== hud.touchControls.compactHudActive
+  ) {
+    internal.lastHudFrameTiming = null
+  }
   // #940 R3: the cursor lives on its own layer and repaints every call, ahead
   // of both idle gates — cursor animation must never be throttled away.
   if (internal.cursorCanvas !== null) {
@@ -430,6 +449,16 @@ export function renderHudFrame(
     hud.renderGroundItemBeams(ctx, nowMs)
   }
 
+  // 0c-touch. D2R Forward Targeting Cone & Locked Monster Ground Halo (Mobile Phase 2, Issue #1382)
+  if (hud.touchControls.enabled && hud.leftPanel === 'none' && hud.rightPanel === 'none') {
+    hud.touchControls.drawWorldConeAndTargetOverlay(
+      ctx,
+      hud.font,
+      Math.round(profile.width / 2),
+      Math.round(profile.height / 2 - 20),
+    )
+  }
+
   // 0c. Ground Item Labels (`D2Client.dll` `0x6fb08fb0` Alt labels & `0x6fb6fec0` / `D2Win_10085` single hover plaque)
   if (hud.groundItemLabelBoxes.length > 0) {
     ctx.save()
@@ -454,10 +483,17 @@ export function renderHudFrame(
     ctx.restore()
   }
 
-  // 0d. Hovered NPC Overhead Name Label (`D2Client.dll` `0x6fb70920` world-space overhead text)
-  if (hud.hoveredNpcLabel && !hud.worldPanels.npcMenu && !hud.worldPanels.npcSpeech) {
+  // 0d. Hovered NPC / Object Overhead Name Label (`D2Client.dll` `0x6fb70920` world-space overhead text)
+  if (hud.hoveredNpcLabel && !hud.worldPanels.npcMenu) {
     const { text, screenX, screenY } = hud.hoveredNpcLabel
-    if (text) {
+    // Suppress only if the label's screen position falls directly inside an open npcSpeech box
+    const overlapsSpeech =
+      Boolean(hud.worldPanels.npcSpeech) &&
+      screenX >= 200 &&
+      screenX <= 600 &&
+      screenY >= 50 &&
+      screenY <= 300
+    if (text && !overlapsSpeech) {
       ctx.save()
       const boxW = Math.max(48, hud.font.measureText(text, 'font16') + 16)
       const boxH = 20
@@ -508,6 +544,7 @@ export function renderHudFrame(
         charSheetImg: internal.images.get('charSheet') ?? null,
         buySellBtnImg: internal.images.get('buySellBtn') ?? null,
         levelBtnImg: internal.images.get('levelBtn') ?? null,
+        questLastImg: internal.images.get('questLast') ?? null,
       },
       hud.font,
       true,
@@ -693,111 +730,149 @@ export function renderHudFrame(
   // 2b. Top-Left Real-Time Chat & Event Message Stream Overlay (`D2Client.dll` `0x6fb2b730` `MSG_DrawChatOverlay`)
   hud.renderChatOverlay(ctx, profile.width, nowMs)
 
-  // 3..6. Bottom Control Panel, Globes, Belt, and Skill Hotkeys (translated by barOffsetX, barOffsetY)
-  const activeCtrlPnlImg = is640
-    ? (internal.images.get('ctrlPnl640') ?? internal.images.get('ctrlPnl') ?? null)
-    : (internal.images.get('ctrlPnl') ?? null)
-  const activeMiniPanelImg =
-    !hud.controlBar.isMultiplayer && internal.images.get('miniPanelSingle')
-      ? internal.images.get('miniPanelSingle')!
-      : (internal.images.get('miniPanel') ?? null)
-
-  ctx.save()
-  ctx.translate(barOffsetX, barOffsetY)
-  hud.controlBar.draw(
-    ctx,
-    internal.buildControlBarState(),
-    {
-      ctrlPnlImg: activeCtrlPnlImg,
-      runBtnImg: internal.images.get('runBtn') ?? null,
-      menuBtnImg: internal.images.get('menuBtn') ?? null,
-      miniPanelImg: activeMiniPanelImg,
-      miniPanelBtnsImg: internal.images.get('miniPanelBtns') ?? null,
-      levelBtnImg: internal.images.get('levelBtn') ?? null,
-      levelSocketImg: internal.images.get('levelSocket') ?? null,
-    },
-    hud.font,
-  )
-
-  // 4. Life & Mana Globes (`Hlthmana.dc6` + `overlap.dc6`)
-  hud.globes.draw(
-    ctx,
-    {
-      hp: hud.hp,
-      maxHp: hud.maxHp,
-      mana: hud.mana,
-      maxMana: hud.maxMana,
-      poisoned: hud.poisoned,
-      healthPotActive: hud.healthPotActive,
-      potionLifePercent: hud.potionLifePercent,
-      manaPotActive: hud.manaPotActive,
-      potionManaPercent: hud.potionManaPercent,
-    },
-    {
-      lifeImg: internal.images.get('globeLife') ?? null,
-      manaImg: internal.images.get('globeMana') ?? null,
-      poisonImg: internal.images.get('globePoison') ?? null,
-      overlapLeftImg: internal.images.get('overlapLeft') ?? null,
-      overlapRightImg: internal.images.get('overlapRight') ?? null,
-    },
-    hud.font,
-  )
-
-  // 5. 4x4 Belt & Pop-up Belt (`ctrlpnl_popbelt.dc6`)
-  hud.belt.draw(
-    ctx,
-    {
-      popbeltImg: internal.images.get('popbelt') ?? null,
-      itemsAtlasImg: internal.images.get('itemsAtlas') ?? null,
-      itemRects: internal.itemRects,
-    },
-    hud.font,
-  )
-
-  // 6. Left & Right Active Skill Slots & Speedbar Popup (`spellsel.cpp`) — drawn above belt so speedbar popup & tooltips are never occluded
-  if (hud.maxMana > 0 || hud.mana > 0) {
-    hud.hotkeys.currentMana = hud.mana
-  }
-  hud.hotkeys.draw(
-    ctx,
-    internal.images.get('genericSkills') ?? null,
-    hud.font,
-    Boolean(hud.inventory.equipped.weapon1),
-  )
-
-  // 6b. 1.13c Quest Alert button (`UI 0x11`, `D2Client.dll` `0x6face5f0`)
-  const alertRect = hud.getQuestAlertBarLocalRect()
-  if (alertRect && hud.questAlert) {
-    const label = requireTbl('CfgQuestLog', hud.lang)
-    const textW = hud.font.measureText(label, 'font16')
-    const labelX = alertRect.x1 + 1 + 17 - Math.trunc(textW / 2)
-    hud.font.drawText(ctx, label, labelX, alertRect.yText, {
-      font: 'font16',
-      color: 'white',
-      align: 'left',
+  // 3..6. Bottom Control Panel, Globes, Belt, and Skill Hotkeys
+  // When Mobile Phase 3 (#1383) D2R Compact HUD mode is active, render the 524px Demon/Angel Compact Center Bar,
+  // Top-Right 6-in-1 Utility Bar, and Bottom-Right 6x2 Skill Wheel (`F1–F6` / `F7–F12`).
+  if (hud.touchControls.compactHudActive) {
+    const cbState = internal.buildControlBarState()
+    hud.touchControls.drawCompactD2rHudAndWheel(ctx, hud.font, {
+      logicalWidth: profile.width,
+      logicalHeight: profile.height,
+      hp: Math.round(hud.hp),
+      maxHp: Math.round(hud.maxHp),
+      mana: Math.round(hud.mana),
+      maxMana: Math.round(hud.maxMana),
+      stamina: Math.round(hud.stamina),
+      maxStamina: Math.round(hud.maxStamina),
+      xpRatio: cbState.experienceRatio,
+      isRunning: hud.isRunning,
+      beltExpanded: hud.belt.isExpanded,
+      showGroundLabels: hud.showGroundLabels,
+      unspentStatPoints: hud.charSheet.attrs.statPoints,
+      unspentSkillPoints: hud.skillTree.unspentSkillPoints,
+      weaponSwapSet: hud.inventory.weaponSwapSet,
+      leftPanel: hud.leftPanel,
+      rightPanel: hud.rightPanel,
+      images: internal.images,
+      hotkeys: hud.hotkeys,
+      belt: hud.belt,
     })
-    const socketImg = internal.images.get('levelSocket') ?? null
-    if (socketImg) {
-      ctx.drawImage(socketImg, alertRect.x1, alertRect.y2 - 36)
+  } else {
+    const activeCtrlPnlImg = is640
+      ? (internal.images.get('ctrlPnl640') ?? internal.images.get('ctrlPnl') ?? null)
+      : (internal.images.get('ctrlPnl') ?? null)
+    const activeMiniPanelImg =
+      !hud.controlBar.isMultiplayer && internal.images.get('miniPanelSingle')
+        ? internal.images.get('miniPanelSingle')!
+        : (internal.images.get('miniPanel') ?? null)
+
+    ctx.save()
+    ctx.translate(barOffsetX, barOffsetY)
+    hud.controlBar.draw(
+      ctx,
+      internal.buildControlBarState(),
+      {
+        ctrlPnlImg: activeCtrlPnlImg,
+        runBtnImg: internal.images.get('runBtn') ?? null,
+        menuBtnImg: internal.images.get('menuBtn') ?? null,
+        miniPanelImg: activeMiniPanelImg,
+        miniPanelBtnsImg: internal.images.get('miniPanelBtns') ?? null,
+        levelBtnImg: internal.images.get('levelBtn') ?? null,
+        levelSocketImg: internal.images.get('levelSocket') ?? null,
+      },
+      hud.font,
+    )
+
+    // 4. Life & Mana Globes (`Hlthmana.dc6` + `overlap.dc6`)
+    hud.globes.draw(
+      ctx,
+      {
+        hp: hud.hp,
+        maxHp: hud.maxHp,
+        mana: hud.mana,
+        maxMana: hud.maxMana,
+        poisoned: hud.poisoned,
+        healthPotActive: hud.healthPotActive,
+        potionLifePercent: hud.potionLifePercent,
+        manaPotActive: hud.manaPotActive,
+        potionManaPercent: hud.potionManaPercent,
+      },
+      {
+        lifeImg: internal.images.get('globeLife') ?? null,
+        manaImg: internal.images.get('globeMana') ?? null,
+        poisonImg: internal.images.get('globePoison') ?? null,
+        overlapLeftImg: internal.images.get('overlapLeft') ?? null,
+        overlapRightImg: internal.images.get('overlapRight') ?? null,
+      },
+      hud.font,
+    )
+
+    // 5. 4x4 Belt & Pop-up Belt (`ctrlpnl_popbelt.dc6`)
+    hud.belt.draw(
+      ctx,
+      {
+        popbeltImg: internal.images.get('popbelt') ?? null,
+        itemsAtlasImg: internal.images.get('itemsAtlas') ?? null,
+        itemRects: internal.itemRects,
+      },
+      hud.font,
+    )
+
+    // 6. Left & Right Active Skill Slots & Speedbar Popup (`spellsel.cpp`) — drawn above belt so speedbar popup & tooltips are never occluded
+    if (hud.maxMana > 0 || hud.mana > 0) {
+      hud.hotkeys.currentMana = hud.mana
     }
-    const btnImg = internal.images.get('levelBtn') ?? null
-    if (btnImg) {
-      const frame =
-        hud.questAlert.alertPressed && hud.hitTestQuestAlert(hud.mouseX, hud.mouseY) ? 1 : 0
-      ctx.drawImage(btnImg, frame * 30, 0, 30, 30, alertRect.x1 + 3, alertRect.y2 - 34, 30, 30)
+    hud.hotkeys.draw(
+      ctx,
+      internal.images.get('genericSkills') ?? null,
+      hud.font,
+      Boolean(hud.inventory.equipped.weapon1),
+    )
+
+    // 6b. 1.13c Quest Alert button (`UI 0x11`, `D2Client.dll` `0x6face5f0`)
+    const alertRect = hud.getQuestAlertBarLocalRect()
+    if (alertRect && hud.questAlert) {
+      const label = requireTbl('CfgQuestLog', hud.lang)
+      const textW = hud.font.measureText(label, 'font16')
+      const labelX = alertRect.x1 + 1 + 17 - Math.trunc(textW / 2)
+      hud.font.drawText(ctx, label, labelX, alertRect.yText, {
+        font: 'font16',
+        color: 'white',
+        align: 'left',
+      })
+      const socketImg = internal.images.get('levelSocket') ?? null
+      if (socketImg) {
+        ctx.drawImage(socketImg, alertRect.x1, alertRect.y2 - 36)
+      }
+      const btnImg = internal.images.get('levelBtn') ?? null
+      if (btnImg) {
+        const frame =
+          hud.questAlert.alertPressed && hud.hitTestQuestAlert(hud.mouseX, hud.mouseY) ? 1 : 0
+        ctx.drawImage(btnImg, frame * 30, 0, 30, 30, alertRect.x1 + 3, alertRect.y2 - 34, 30, 30)
+      }
     }
+    ctx.restore()
   }
-  ctx.restore()
 
   // 6c. In-Game Chat Input Box (`D2Client.dll` `0x6fb20140` `CHAT_DrawChatInputBox` + `0x6fb1ef20` `CHAT_DrawCursor`)
   hud.renderChatInputBox(ctx, profile.width, profile.height, nowMs)
 
-  // 7. Top-Center Monster Target Health Bar & Plaque (`D2Client.dll` `0x6FB70850`)
-  hud.worldPanels.drawMonsterTargetBar(ctx, hud.targetMonster, hud.font, {
+  // 7. Top-Center Monster Target Health Bar & Plaque (`D2Client.dll` `0x6FB70850` + Mobile Phase 2 Cone Target Fallback)
+  const effectiveTargetMonster =
+    hud.targetMonster ??
+    (hud.touchControls.enabled && hud.touchControls.lockedMonster !== null
+      ? toMonsterTargetHudInfo(hud.touchControls.lockedMonster.candidate)
+      : null)
+  hud.worldPanels.drawMonsterTargetBar(ctx, effectiveTargetMonster, hud.font, {
     leftPanelOpen: hud.leftPanel !== 'none',
     rightPanelOpen: hud.rightPanel !== 'none',
     canvasWidth: profile.width,
   })
+
+  // 7b. Mobile Left-Thumb Dynamic Floating Joystick Overlay (Mobile Phase 2, Issue #1382)
+  if (hud.touchControls.enabled && hud.leftPanel === 'none') {
+    hud.touchControls.drawJoystick(ctx, hud.font)
+  }
 
   // 8. Town NPC Stone Interaction Menu (`npcmenu.cpp` + `dialog.cpp` + `boxpieces.dc6`)
   if (
@@ -858,6 +933,18 @@ export function renderHudFrame(
     ctx.translate(deltaRight, panelOffsetY)
     hud.skillTree.drawSkillTooltip(ctx, hud.font, 8 - deltaRight)
     ctx.restore()
+  }
+
+  // 10a-mobile. Mobile Phase 4 (#1384): Tap-locked Item Inspection, Equipped-vs-Selected Comparison Card & Context Action Bar
+  if (hud.touchControls.enabled && hud.touchControls.selectedPanelItem !== null) {
+    hud.touchControls.drawSelectedItemContextOverlay(ctx, hud.font, {
+      logicalWidth: profile.width,
+      logicalHeight: profile.height,
+      leftPanel: hud.leftPanel,
+      rightPanel: hud.rightPanel,
+      vendorMode: hud.worldPanels.vendorMode,
+      equipped: hud.inventory.equipped,
+    })
   }
 
   // 10b. Gold dialog (drop / deposit / withdraw)

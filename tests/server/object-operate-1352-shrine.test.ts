@@ -11,7 +11,7 @@ describe('issue #1352 object operate follow-up', () => {
     expect(classifyObjectOperate113c(252)).toBe("container")
   })
 
-  it('applies shrine stats for 1200 frames and resets the shrine afterwards', () => {
+  it('applies shrine stats for Shrines.txt duration and resets the shrine afterwards', () => {
     const game = new GameInstance({ seed: 1352, areaId: 1 })
     const playerId = game.connectPlayer({ charClass: 'pal', name: 'Hero', x: 10, y: 10, areaId: 1 })
     const shrineId = game.spawnObject({
@@ -29,7 +29,20 @@ describe('issue #1352 object operate follow-up', () => {
     const player = internal.players.get(playerId)!
     expect(internal.playerCombatContext(player).statList.getModifierBonus('item_armor_percent')).toBeGreaterThan(0)
     expect(internal.objects.get(shrineId)!.shrineResetFrame).toBeGreaterThan(game.frame)
-    game.stepFrames(1202)
+    game.stepFrames(6002)
     expect(internal.objects.get(shrineId)!.mode).toBe(0)
+  })
+
+  it('drops a chipped gem when a Gem Shrine finds no upgradeable gem', () => {
+    const game = new GameInstance({ seed: 13521, areaId: 1 })
+    const playerId = game.connectPlayer({ charClass: 'pal', name: 'Gemless', x: 10, y: 10, areaId: 1 })
+    const internal = game as unknown as {
+      players: Map<number, unknown>
+      applyShrineEffect: (player: unknown, code: number) => void
+    }
+    internal.applyShrineEffect(internal.players.get(playerId), 18)
+    expect(game.getGroundItems().length).toBeGreaterThan(0)
+    const code = game.getGroundItems()[0]!.code.toLowerCase()
+    expect(['gcv', 'gcr', 'gcg', 'gcb', 'gcy', 'gcw']).toContain(code)
   })
 })

@@ -83,7 +83,7 @@ describe('issue #1357 vendor refresh and gamble rolls', () => {
     expect(second).not.toEqual(first)
   })
 
-  it('does not reroll the trade or gamble pool when switching windows', () => {
+  it('reuses the trade pool but refreshes the gamble pool on each open', () => {
     const { game, playerId, record } = setup(1360)
     const npcId = game.spawnMonster({
       classId: 147,
@@ -105,7 +105,7 @@ describe('issue #1357 vendor refresh and gamble rolls', () => {
     expect(record.vendorPools.get(npcId)!.map((e) => e.unitId)).toEqual(tradeFirst)
     game.enqueueCommand(playerId, { type: 'NpcAction', npcId, action: 'gamble' } as never)
     game.stepFrames(1)
-    expect(record.vendorPools.get(npcId)!.map((e) => e.unitId)).toEqual(gambleFirst)
+    expect(record.vendorPools.get(npcId)!.map((e) => e.unitId)).not.toEqual(gambleFirst)
   })
 
   it('reuses the gamble preview ilvl when the item is revealed', () => {

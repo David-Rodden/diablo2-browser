@@ -35,8 +35,10 @@ import { OutboundRateLimiter, type RateLimitAcquireResult } from '../session/rat
 import type { HudModel } from '../ui-model/hud-model.ts'
 import {
   VIEWPORT_800x600,
+  computePanelCameraShift,
   getViewportProfile,
   getViewportProfileBySize,
+  panelDockWidth,
   screenToSubTile,
   subTileToScreen,
   type ViewportProfile,
@@ -62,6 +64,11 @@ import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { calculateManaCost } from '../../common/skills/skill-calc-engine.ts'
 import { PLAYER_SOUND_TABLE_0x6FBA7694 } from '../audio/d2gs-play-sound-113c.ts'
 import { SkillHotkeysHud } from '../ui/hotkeys.ts'
+import {
+  computeJoystickWorldSubTileTarget,
+  type SkillWheelSlotDescriptor,
+  type TouchControlsHud,
+} from '../ui/touch-controls.ts'
 import { handleEscapeSubmenuKeyDown } from '../ui/world-panels.ts'
 import { matchesKeyBinding } from '../settings/client-settings.ts'
 import { isTownLevel } from '../../common/world/scene-population.ts'
@@ -140,10 +147,20 @@ export interface CameraLike {
   readonly subX: number
   readonly subY: number
   readonly viewportProfile: ViewportProfile
-  screenToSubtile(screenX: number, screenY: number): { readonly x: number; readonly y: number }
-  subtileToScreen(subX: number, subY: number): { readonly x: number; readonly y: number }
+  readonly panelShiftX?: number | undefined
+  screenToSubtile(
+    screenX: number,
+    screenY: number,
+    panelShiftX?: number,
+  ): { readonly x: number; readonly y: number }
+  subtileToScreen(
+    subX: number,
+    subY: number,
+    panelShiftX?: number,
+  ): { readonly x: number; readonly y: number }
   snapTo(subX: number, subY: number): void
   update(subX: number, subY: number): void
+  setPanelShiftX?(panelShiftX: number): void
   resize(widthOrProfile: number | ViewportProfile | ViewportResolution, height?: number): void
 }
 
@@ -153,6 +170,7 @@ export interface CameraLike {
 export class ViewportCamera implements CameraLike {
   subX = 0
   subY = 0
+  panelShiftX = 0
   viewportProfile: ViewportProfile
 
   constructor(
@@ -165,16 +183,35 @@ export class ViewportCamera implements CameraLike {
         : getViewportProfile(widthOrProfile)
   }
 
-  screenToSubtile(screenX: number, screenY: number): { readonly x: number; readonly y: number } {
-    const raw = screenToSubTile(screenX, screenY, this.subX, this.subY, this.viewportProfile)
+  setPanelShiftX(panelShiftX: number): void {
+    this.panelShiftX = panelShiftX
+  }
+
+  screenToSubtile(
+    screenX: number,
+    screenY: number,
+    panelShiftX = this.panelShiftX,
+  ): { readonly x: number; readonly y: number } {
+    const raw = screenToSubTile(
+      screenX,
+      screenY,
+      this.subX,
+      this.subY,
+      this.viewportProfile,
+      panelShiftX,
+    )
     return {
       x: Math.round(raw.x),
       y: Math.round(raw.y),
     }
   }
 
-  subtileToScreen(subX: number, subY: number): { readonly x: number; readonly y: number } {
-    return subTileToScreen(subX, subY, this.subX, this.subY, this.viewportProfile)
+  subtileToScreen(
+    subX: number,
+    subY: number,
+    panelShiftX = this.panelShiftX,
+  ): { readonly x: number; readonly y: number } {
+    return subTileToScreen(subX, subY, this.subX, this.subY, this.viewportProfile, panelShiftX)
   }
 
   snapTo(subX: number, subY: number): void {
@@ -283,10 +320,14 @@ export class CommandMapper {
   private lastNeedManaSpeechAtMs = -Infinity
   private leftMouseDown = false
   private rightMouseDown = false
+  private hasPointerMoved = false
   private lastPointerX = 0
   private lastPointerY = 0
   private pointerDownX = 0
   private pointerDownY = 0
+  private lastSyncedLeftPanel = 'none'
+  private lastSyncedRightPanel = 'none'
+  private lastSyncedPanelShiftX = 0
   private hoveredUnit: ClientUnit | null = null
   private lockedPointerUnit: ClientUnit | null = null
   /** 1.13c D2Client 0x6fbcc2f8: selection lock active for the current mouse button press. */
@@ -352,6 +393,51 @@ export class CommandMapper {
     this.onAutomapParty = deps?.onAutomapParty
     this.onAutomapNames = deps?.onAutomapNames
     this.onAutomapCenter = deps?.onAutomapCenter
+    const hudWithTouch = this.hudManager as {
+      onTouchSkillCast?: (slot: SkillWheelSlotDescriptor) => void
+      touchControls?: TouchControlsHud
+    }
+    if (hudWithTouch && typeof hudWithTouch === 'object' && !hudWithTouch.onTouchSkillCast) {
+      hudWithTouch.onTouchSkillCast = (slot: SkillWheelSlotDescriptor) => {
+        this.castTouchWheelSkill(slot)
+      }
+    }
+  }
+
+  /**
+   * Mobile Phase 3 (#1383): Cast a tapped 6x2 Skill Wheel slot in the forward cone / locked monster direction.
+   */
+  castTouchWheelSkill(slot: SkillWheelSlotDescriptor, nowMs = performance.now()): void {
+    if (!slot || slot.skillId < 0) return
+    const tc = (this.hudManager as { touchControls?: TouchControlsHud } | undefined)?.touchControls
+    const predSnap = this.predictor?.getSnapshot()
+    const selfX =
+      predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.x : (this.world.self?.x ?? 0)
+    const selfY =
+      predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.y : (this.world.self?.y ?? 0)
+    const lockedId = tc?.lockedMonster?.candidate.unitId
+    const lockedUnit =
+      lockedId !== undefined ? (this.world.getUnit?.('monster', lockedId) ?? null) : null
+    const angle = tc?.lastFacingAngleRad ?? -Math.PI / 5
+    const aimTarget = computeJoystickWorldSubTileTarget(
+      selfX,
+      selfY,
+      Math.cos(angle),
+      Math.sin(angle),
+      6,
+    )
+    if (slot.hand === 'left') {
+      this.triggerPrimaryWorldAction(aimTarget.x, aimTarget.y, lockedUnit, nowMs, false)
+    } else if (slot.skillId > 0) {
+      this.triggerSecondaryWorldAction(
+        aimTarget.x,
+        aimTarget.y,
+        lockedUnit,
+        nowMs,
+        false,
+        slot.skillId,
+      )
+    }
   }
 
   private isTownArea(world: ClientWorld = this.world): boolean {
@@ -1004,6 +1090,94 @@ export class CommandMapper {
   }
 
   /**
+   * Compute the active 1.13c horizontal camera shift (`computePanelCameraShift`) from open HUD
+   * side panels (`leftPanel` / `rightPanel`) and the active viewport profile's dock width.
+   */
+  private resolvePanelShiftX(): number {
+    const hud = (this.hudManager ?? this.hudModel?.hudManager) as
+      | {
+          readonly leftPanel?: string | undefined
+          readonly rightPanel?: string | undefined
+          readonly viewportProfile?: ViewportProfile | undefined
+        }
+      | undefined
+    const profile = hud?.viewportProfile ?? this.camera.viewportProfile ?? VIEWPORT_800x600
+    const leftOpen = Boolean(hud?.leftPanel && hud.leftPanel !== 'none')
+    const rightOpen = Boolean(hud?.rightPanel && hud.rightPanel !== 'none')
+    return computePanelCameraShift(leftOpen, rightOpen, panelDockWidth(profile))
+  }
+
+  /**
+   * Sync the camera sub-tile anchor from the local movement predictor / server position and
+   * update its `panelShiftX` from open HUD side panels. Returns the active `panelShiftX`.
+   */
+  private syncCameraState(): number {
+    if (this.predictor) {
+      const snap = this.predictor.getSnapshot()
+      if (snap.x !== 0 || snap.y !== 0) {
+        this.camera.update(snap.x, snap.y)
+      }
+    } else if (this.world.self.x !== 0 || this.world.self.y !== 0) {
+      this.camera.update(this.world.self.x, this.world.self.y)
+    }
+    const panelShiftX = this.resolvePanelShiftX()
+    if (typeof this.camera.setPanelShiftX === 'function') {
+      this.camera.setPanelShiftX(panelShiftX)
+    }
+    return panelShiftX
+  }
+
+  private cameraScreenToSubtile(
+    screenX: number,
+    screenY: number,
+    panelShiftX = this.resolvePanelShiftX(),
+  ): { readonly x: number; readonly y: number } {
+    this.camera.setPanelShiftX?.(panelShiftX)
+    return this.camera.screenToSubtile(screenX, screenY, panelShiftX)
+  }
+
+  private cameraSubtileToScreen(
+    subX: number,
+    subY: number,
+    panelShiftX = this.resolvePanelShiftX(),
+  ): { readonly x: number; readonly y: number } {
+    this.camera.setPanelShiftX?.(panelShiftX)
+    return this.camera.subtileToScreen(subX, subY, panelShiftX)
+  }
+
+  /**
+   * When a side panel opens or closes while the pointer is on screen, re-evaluate HUD
+   * interception and world hover against the newly panned camera (`panelShiftX`).
+   */
+  private syncHoverAfterPanelChange(): void {
+    const hud = (this.hudManager ?? this.hudModel?.hudManager) as
+      | {
+          readonly leftPanel?: string | undefined
+          readonly rightPanel?: string | undefined
+        }
+      | undefined
+    const leftPanel = String(hud?.leftPanel ?? 'none')
+    const rightPanel = String(hud?.rightPanel ?? 'none')
+    const panelShiftX = this.syncCameraState()
+    const changed =
+      leftPanel !== this.lastSyncedLeftPanel ||
+      rightPanel !== this.lastSyncedRightPanel ||
+      panelShiftX !== this.lastSyncedPanelShiftX
+    this.lastSyncedLeftPanel = leftPanel
+    this.lastSyncedRightPanel = rightPanel
+    this.lastSyncedPanelShiftX = panelShiftX
+    if (!changed || !this.hasPointerMoved || this.selectionLocked) {
+      return
+    }
+    if (this.isPointIntercepted(this.lastPointerX, this.lastPointerY)) {
+      this.setHoveredUnit(null)
+      return
+    }
+    const target = this.resolvePointerTarget(this.lastPointerX, this.lastPointerY)
+    this.setHoveredUnit(target.hoveredUnit)
+  }
+
+  /**
    * Test if unit's screen-space bounding box contains `(screenX, screenY)`.
    * Follows 1.13c `D2Client.dll` `0x6fb01e80` (`HoverUpdate`):
    * - Skips monsters with state `0x8F` (`143`).
@@ -1012,6 +1186,7 @@ export class CommandMapper {
    *   at the top priority tier.
    */
   findUnitAtScreenPoint(screenX: number, screenY: number): ClientUnit | null {
+    const panelShiftX = this.syncCameraState()
     const localPlayerId = this.world.selfId
     const predSnap = this.predictor?.getSnapshot()
     const selfX =
@@ -1095,7 +1270,7 @@ export class CommandMapper {
       const hb = typeof (unit as any).getHitBox === 'function'
         ? (unit as any).getHitBox()
         : ((unit as any).hitBox ?? { left: -24, top: -48, width: 48, height: 48 })
-      const pos = this.camera.subtileToScreen(unit.x, unit.y)
+      const pos = this.cameraSubtileToScreen(unit.x, unit.y, panelShiftX)
       return (
         screenX >= pos.x + hb.left &&
         screenX <= pos.x + hb.left + hb.width &&
@@ -1147,15 +1322,8 @@ export class CommandMapper {
    * any registered `ViewportProfile`) to world subtile coordinates and hit-test units.
    */
   resolvePointerTarget(screenX: number, screenY: number, hitRadiusSubtiles = 2.5): PointerWorldTarget {
-    if (this.predictor) {
-      const snap = this.predictor.getSnapshot()
-      if (snap.x !== 0 || snap.y !== 0) {
-        this.camera.update(snap.x, snap.y)
-      }
-    } else if (this.world.self.x !== 0 || this.world.self.y !== 0) {
-      this.camera.update(this.world.self.x, this.world.self.y)
-    }
-    const subtile = this.camera.screenToSubtile(screenX, screenY)
+    const panelShiftX = this.syncCameraState()
+    const subtile = this.cameraScreenToSubtile(screenX, screenY, panelShiftX)
 
     // 1. Hit-test visible ground item label plaques (`Alt` or hovered item label boxes)
     const labelBoxes = this.hudManager.groundItemLabelBoxes
@@ -1191,7 +1359,7 @@ export class CommandMapper {
     }
 
     // 3. Fall back to radial subtile distance
-    const renderAlignedSubtile = this.camera.screenToSubtile(screenX, screenY - 16)
+    const renderAlignedSubtile = this.cameraScreenToSubtile(screenX, screenY - 16, panelShiftX)
     const unit = this.pickUnitAtSubtile(
       subtile.x,
       subtile.y,
@@ -1315,7 +1483,13 @@ export class CommandMapper {
         const isLargeInteractiveObj =
           unitType === 2 &&
           (objMaxSpan > 2 ||
+            unit.classId === 59 ||
+            unit.classId === 60 ||
             unit.classId === 342 ||
+            unit.classId === 563 ||
+            unit.classId === 565 ||
+            unit.classId === 566 ||
+            unit.classId === 569 ||
             WAYPOINT_CLASS_IDS_113C.has(unit.classId) ||
             Boolean(objMeta?.isDoor))
         const minObjRadius = Math.max(4, objMaxSpan / 2 + 1.5)
@@ -1449,11 +1623,18 @@ export class CommandMapper {
       if (isObjectInInteractRange113c(sx, sy, 2, tx, ty, targetUnit.classId)) {
         return true
       }
-      // #801 workaround kept ONLY for the Durance HellGate (342) and doors whose
-      // canonical box needs the separate hitbox audit; waypoints are pure #10594.
+      // #801 workaround kept for interactive portals (59, 60, 342, 563, 565, 566, 569) and doors
+      // whose center subtile may be blocked by preset walls; waypoints are pure #10594.
       const objMeta = CANONICAL_113C_OBJECTS[targetUnit.classId]
       const isLargePortalOrDoor =
-        targetUnit.classId === 342 || Boolean(objMeta?.isDoor)
+        targetUnit.classId === 59 ||
+        targetUnit.classId === 60 ||
+        targetUnit.classId === 342 ||
+        targetUnit.classId === 563 ||
+        targetUnit.classId === 565 ||
+        targetUnit.classId === 566 ||
+        targetUnit.classId === 569 ||
+        Boolean(objMeta?.isDoor)
       if (isLargePortalOrDoor) {
         return Math.hypot(targetUnit.x - selfX, targetUnit.y - selfY) <= 4.5
       }
@@ -1530,15 +1711,8 @@ export class CommandMapper {
    * Returns the live world sub-tile coordinates under `(screenX, screenY)`.
    */
   private resolveLiveCursorSubtile(screenX: number, screenY: number): { readonly x: number; readonly y: number } {
-    if (this.predictor) {
-      const snap = this.predictor.getSnapshot()
-      if (snap.x !== 0 || snap.y !== 0) {
-        this.camera.update(snap.x, snap.y)
-      }
-    } else if (this.world.self.x !== 0 || this.world.self.y !== 0) {
-      this.camera.update(this.world.self.x, this.world.self.y)
-    }
-    return this.camera.screenToSubtile(screenX, screenY)
+    const panelShiftX = this.syncCameraState()
+    return this.cameraScreenToSubtile(screenX, screenY, panelShiftX)
   }
 
   /**
@@ -1555,9 +1729,50 @@ export class CommandMapper {
       typeof screenXOrEvent === 'number' ? screenY : screenXOrEvent.clientY
     const resolvedNowMs =
       typeof screenXOrEvent === 'number' ? nowMs : (screenY || performance.now())
+    this.hasPointerMoved = true
     this.lastPointerX = screenX
     this.lastPointerY = resolvedY
+    const hud = (this.hudManager ?? this.hudModel?.hudManager) as
+      | {
+          readonly leftPanel?: string | undefined
+          readonly rightPanel?: string | undefined
+        }
+      | undefined
+    this.lastSyncedLeftPanel = String(hud?.leftPanel ?? 'none')
+    this.lastSyncedRightPanel = String(hud?.rightPanel ?? 'none')
+    this.lastSyncedPanelShiftX = this.syncCameraState()
     this.hudManager.handleMouseMove(screenX, resolvedY)
+
+    const tc = (this.hudManager as { touchControls?: TouchControlsHud } | undefined)?.touchControls
+    if (tc?.enabled && tc.joystick.active) {
+      if (tc.joystick.magnitude > 0 && resolvedNowMs - this.lastHoldDispatchMs >= 40) {
+        this.lastHoldDispatchMs = resolvedNowMs
+        const predSnap = this.predictor?.getSnapshot()
+        const selfX =
+          predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.x : (this.world.self?.x ?? 0)
+        const selfY =
+          predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.y : (this.world.self?.y ?? 0)
+        const joyTarget = computeJoystickWorldSubTileTarget(
+          selfX,
+          selfY,
+          tc.joystick.dx,
+          tc.joystick.dy,
+          6,
+        )
+        const isRunning = tc.joystick.locomotionMode === 'run' || this.isCurrentlyRunning()
+        const path = this.startLocalPathPrediction(joyTarget.x, joyTarget.y, isRunning)
+        this.dispatchRateLimited(
+          {
+            type: 'Move',
+            run: isRunning,
+            to: { x: joyTarget.x, y: joyTarget.y },
+          },
+          resolvedNowMs,
+          path,
+        )
+      }
+      return
+    }
 
     if (this.isPointIntercepted(screenX, resolvedY)) {
       if (!this.selectionLocked) {
@@ -1721,6 +1936,7 @@ export class CommandMapper {
           ctrlKey: this.ctrlHeldForRun,
           altKey: this.altHeld,
         })
+        this.syncHoverAfterPanelChange()
       }
       return null
     }
@@ -1835,7 +2051,8 @@ export class CommandMapper {
    * Whether the primary (left) or secondary (right) mouse button is currently held down.
    */
   isPointerDown(): boolean {
-    return this.leftMouseDown || this.rightMouseDown
+    const tc = (this.hudManager as { touchControls?: TouchControlsHud } | undefined)?.touchControls
+    return this.leftMouseDown || this.rightMouseDown || Boolean(tc?.joystick?.active)
   }
 
   /**
@@ -1843,6 +2060,11 @@ export class CommandMapper {
    */
   handlePointerUp(button: number): void {
     if (button === 0) {
+      const tc = (this.hudManager as { touchControls?: TouchControlsHud } | undefined)?.touchControls
+      if (tc?.joystick?.active) {
+        tc.handlePointerUp(tc.joystick.pointerId ?? 1)
+        this.hudManager.syncPublishedState?.()
+      }
       this.leftMouseDown = false
       this.lastHoldDispatchMs = 0
       this.lockedPointerUnit = null
@@ -2679,6 +2901,7 @@ export class CommandMapper {
       }
     }
     const handled = this.handleKeyDownInternal(event, nowMs)
+    this.syncHoverAfterPanelChange()
     if (handled && event && typeof event === 'object') {
       const ev = event as { _d2KeyHandled?: boolean; _d2HandledByCommandMapper?: boolean }
       ev._d2HandledByCommandMapper = true
@@ -3354,6 +3577,7 @@ export class CommandMapper {
    * - Repeats held mouse actions at rate-limited intervals.
    */
   tick(nowMs = performance.now()): ClientCommand | null {
+    this.syncHoverAfterPanelChange()
     const flushed = this.rateLimiter.flushPendingMove(nowMs)
     if (flushed) {
       const predSnap = this.predictor?.getSnapshot()

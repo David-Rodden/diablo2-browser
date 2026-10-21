@@ -25,6 +25,7 @@ import { GlobesHud } from './globes.ts'
 import { BeltHud } from './belt.ts'
 import { SkillHotkeysHud } from './hotkeys.ts'
 import { ControlBarHud, type MiniPanelAction } from './control-bar.ts'
+import { TouchControlsHud } from './touch-controls.ts'
 import { BAKED_UI_MANIFEST } from '../../common/items/baked-ui-meta.ts'
 import { resolveHirelingName } from '../../common/units/hireling-table.ts'
 import {
@@ -361,6 +362,7 @@ export class HudManager {
   readonly skillTree = new SkillTreePanel()
   readonly worldPanels = new WorldPanelsHud()
   readonly cursor = new CursorController()
+  readonly touchControls = new TouchControlsHud()
 
   /**
    * Idle 25fps throttle for the 2D HUD repaint (see {@link shouldRenderHudFrame}).
