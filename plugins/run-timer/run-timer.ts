@@ -45,7 +45,7 @@ export class RunTimer {
 export const formatRunSummary = ({ currentMs, runs, averageMs, perHour }: RunSummary, lang: 'zh' | 'en'): string => {
   const isEnglish = lang === 'en'
   const parts = [
-    currentMs !== null && `${isEnglish ? `Run ${runs + 1}` : `第${runs + 1}局`} ${formatDuration(currentMs)}`,
+    currentMs !== null && `${isEnglish ? `Run ${runs + 1}` : `第${runs + 1}局`} · ${formatDuration(currentMs)}`,
     averageMs !== null && `${isEnglish ? 'avg' : '平均'} ${formatDuration(averageMs)}`,
     perHour !== null && `${perHour.toFixed(1)}${isEnglish ? '/hr' : '局/小时'}`,
   ]

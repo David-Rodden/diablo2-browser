@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { D2_EXPERIENCE_TABLE_99 } from '../../src/common/skills/formulas.ts'
-import { XpGainFeed, XpRateTracker, drawXpBar, drawXpGains, formatTimeToLevel, formatXpRate, xpBarLabel, xpProgress, xpRatePlacement } from '../../src/client/ui/xp-bar.ts'
+import { XpGainFeed, XpRateTracker, drawXpBar, drawXpGains, formatTimeToLevel, formatXpRate, xpBarLabel, xpProgress, xpGainAnchor, xpRatePlacement } from '../../src/client/ui/xp-bar.ts'
 import type { D2FontRenderer } from '../../src/client/ui/font.ts'
+
+const canvas = (fillRect: (...r: number[]) => void = () => {}) =>
+  ({ save() {}, restore() {}, strokeRect() {}, fillRect, createLinearGradient: () => ({ addColorStop() {} }) }) as unknown as CanvasRenderingContext2D
+const measuring = (drawText: (_: unknown, text: string, x: number, y: number) => void) =>
+  ({ drawText, measureText: (t: string) => t.length * 6, renderedWidth: (_: unknown, t: string) => t.length * 6 }) as unknown as D2FontRenderer
 
 const at = (level: number, fraction: number) => {
   const currentLevelXp = D2_EXPERIENCE_TABLE_99[level]!
@@ -21,14 +26,12 @@ describe('experience bar', () => {
     expect(xpBarLabel(at(12, 0.9999), 'CHI')).toBe('等级 12: 99.9%')
   })
 
-  it('fills the bar in proportion to progress, centred in the viewport', () => {
+  it('frames the bar and fills it in proportion to progress, centred in the viewport', () => {
     const rects: number[][] = []
-    const ctx = { save() {}, restore() {}, strokeRect() {}, fillRect: (...r: number[]) => void rects.push(r) } as unknown as CanvasRenderingContext2D
     const texts: string[] = []
-    const font = { drawText: (_: unknown, text: string) => void texts.push(text) } as unknown as D2FontRenderer
-    drawXpBar(ctx, font, at(5, 0.5), 800, 'ENG')
-    expect(rects[0]).toEqual([250, 4, 300, 13])
-    expect(rects[1]![2]).toBeCloseTo(149)
+    expect(drawXpBar(canvas((...r) => void rects.push(r)), measuring((_, text) => void texts.push(text)), at(5, 0.5), 800, 'ENG')).toBeNull()
+    expect(rects[1]).toEqual([250, 4, 300, 13])
+    expect(rects.find((r) => r[0] === 252 && r[1] === 6)?.[2]).toBe(148)
     expect(texts).toEqual(['Level 5: 50.0%'])
   })
 
@@ -60,9 +63,7 @@ describe('experience bar', () => {
   it('draws the rate to the right of the bar and the time-to-level tooltip only on hover', () => {
     const run = (mouseX: number) => {
       const texts: string[] = []
-      const ctx = { save() {}, restore() {}, strokeRect() {}, fillRect() {} } as unknown as CanvasRenderingContext2D
-      const font = { drawText: (_: unknown, text: string) => void texts.push(text), measureText: (t: string) => t.length * 6 } as unknown as D2FontRenderer
-      drawXpBar(ctx, font, at(5, 0.5), 800, 'ENG', { perHour: 12_400, mouseX, mouseY: 10 })
+      drawXpBar(canvas(), measuring((_, text) => void texts.push(text)), at(5, 0.5), 800, 'ENG', { perHour: 12_400, mouseX, mouseY: 10 })
       return texts
     }
     expect(run(0)).toEqual(['Level 5: 50.0%', '12k xp/hr'])
@@ -71,16 +72,21 @@ describe('experience bar', () => {
 
   it('moves the rate to the left of the bar when the area title takes the right, keeping clear of the monster bar below', () => {
     const drawn: { text: string; x: number; y: number }[] = []
-    const ctx = { save() {}, restore() {}, strokeRect() {}, fillRect() {} } as unknown as CanvasRenderingContext2D
-    const font = { drawText: (_: unknown, text: string, x: number, y: number) => void drawn.push({ text, x, y }), measureText: (t: string) => t.length * 6 } as unknown as D2FontRenderer
-    drawXpBar(ctx, font, at(5, 0.5), 800, 'ENG', { perHour: 12_400, mouseX: 200, mouseY: 10, rightLimit: 590 })
+    const anchor = drawXpBar(canvas(), measuring((_, text, x, y) => void drawn.push({ text, x, y })), at(5, 0.5), 800, 'ENG', { perHour: 12_400, mouseX: 200, mouseY: 10, rightLimit: 590 })
     expect(drawn[1]).toEqual({ text: '12k xp/hr', x: 190, y: 15 })
+    expect(anchor).toEqual({ x: 244, y: 15, align: 'right' })
     expect(drawn[2]!.text).toMatch(/until next level$/)
     expect(drawn[2]!.y).toBeGreaterThan(15)
     expect(xpRatePlacement(10, 54, 15, 300)).toEqual([133, 28])
   })
 
-  it('floats each experience gain up from under the map and fades it out', () => {
+  it('hangs gains under the rate readout on whichever side of the bar it sits', () => {
+    expect(xpGainAnchor(250, 556, 54, 15)).toEqual({ x: 556, y: 15, align: 'left' })
+    expect(xpGainAnchor(250, 190, 54, 15)).toEqual({ x: 244, y: 15, align: 'right' })
+    expect(xpGainAnchor(250, 373, 54, 28)).toEqual({ x: 400, y: 28, align: 'center' })
+  })
+
+  it('floats each experience gain up into the rate readout and fades it out', () => {
     const feed = new XpGainFeed()
     feed.record(500, 0)
     feed.record(500, 100)
@@ -92,7 +98,7 @@ describe('experience bar', () => {
       const drawn: { text: string; y: number }[] = []
       const ctx = { save() {}, restore() {}, globalAlpha: 1 } as unknown as CanvasRenderingContext2D
       const font = { drawText: (_: unknown, text: string, _x: number, y: number) => void drawn.push({ text, y }) } as unknown as D2FontRenderer
-      drawXpGains(ctx, font, feed, nowMs, 784, 282)
+      drawXpGains(ctx, font, feed, nowMs, { x: 556, y: 282, align: 'left' })
       return drawn
     }
     expect(draw(200)).toEqual([{ text: '+1,300 xp', y: 338 }])
@@ -109,14 +115,14 @@ describe('experience bar', () => {
     expect(feed.isActive(200)).toBe(false)
   })
 
-  it('keeps stacked gains below the map instead of pushing them onto it', () => {
+  it('keeps stacked gains below the readout instead of pushing them onto it', () => {
     const feed = new XpGainFeed()
     feed.record(100, 0)
     ;[300, 600, 900, 1_200].forEach((at, i) => feed.record(200 + i * 100, at))
     const ys: number[] = []
     const ctx = { save() {}, restore() {}, globalAlpha: 1 } as unknown as CanvasRenderingContext2D
     const font = { drawText: (_: unknown, _t: string, _x: number, y: number) => void ys.push(y) } as unknown as D2FontRenderer
-    drawXpGains(ctx, font, feed, 1_200, 784, 282)
+    drawXpGains(ctx, font, feed, 1_200, { x: 556, y: 282, align: 'left' })
     expect(Math.min(...ys)).toBeGreaterThanOrEqual(298)
     expect(ys.every((y, i) => i === 0 || ys[i - 1]! - y >= 16)).toBe(true)
   })

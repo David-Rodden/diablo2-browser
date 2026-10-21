@@ -24,7 +24,7 @@ describe('run timer', () => {
 
   it('formats durations and summaries', () => {
     expect([formatDuration(65_000), formatDuration(3_725_000), formatDuration(-5)]).toEqual(['1:05', '1:02:05', '0:00'])
-    expect(formatRunSummary({ currentMs: 83_000, runs: 4, averageMs: 130_000, perHour: 18 }, 'en')).toBe('Run 5 1:23 · avg 2:10 · 18.0/hr')
+    expect(formatRunSummary({ currentMs: 83_000, runs: 4, averageMs: 130_000, perHour: 18 }, 'en')).toBe('Run 5 · 1:23 · avg 2:10 · 18.0/hr')
     expect(formatRunSummary({ currentMs: null, runs: 0, averageMs: null, perHour: null }, 'en')).toBe('No runs yet')
   })
 })
