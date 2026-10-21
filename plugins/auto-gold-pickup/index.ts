@@ -69,7 +69,10 @@ export const autoGoldPickupPlugin: D2WebPlugin = {
     }
     apply()
     const unsubscribe = ctx.settings.subscribe(apply)
-    const buildText = () => (ctx.session.world?.self?.charClass == null ? null : describeBuild(appraisalContextOf(ctx.session.world).build))
+    const buildText = () => {
+      const { build } = appraisalContextOf(ctx.session.world)
+      return build.classIndex < 0 ? null : describeBuild(build)
+    }
     return {
       getStatus: () => {
         const rules = ctx.autoLoot.getRules()

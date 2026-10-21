@@ -58,7 +58,9 @@ describe('loot appraisal', () => {
   it('compares identified gear with what the character wears', () => {
     const wornHelm = item({ id: 5, code: 'cap', quality: 4, identified: true, bodyLoc: 1, container: 'equipment', stats: [{ statId: 7, param: 0, value: 10 }] })
     const better = item({ code: 'skp', quality: 6, identified: true, stats: [{ statId: 83, param: 1, value: 2 }, { statId: 105, param: 0, value: 20 }] })
-    expect(appraiseItem(better, context(coldSorc, { equipped: [wornHelm] }))).toMatchObject({ tier: 'great', upgradeSlot: 'helm', reason: expect.stringContaining('Upgrade for your helm') })
+    const judged = appraiseItem(better, context(coldSorc, { equipped: [wornHelm] }))
+    expect(judged).toMatchObject({ tier: 'great', upgradeSlot: 'helm' })
+    expect(judged.reason).toContain('Upgrade for your helm')
     const worse = item({ code: 'cap', quality: 4, identified: true, stats: [{ statId: 7, param: 0, value: 3 }] })
     expect(appraiseItem(worse, context(coldSorc, { equipped: [wornHelm] })).tier).toBe('junk')
   })

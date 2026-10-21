@@ -55,7 +55,7 @@ const SKILL_TAB_MASK = 7
 
 const { base, fighter, ...styleExtras } = VALUATION.styleWeights
 const STYLE_WEIGHTS = Object.fromEntries(
-  (Object.keys(styleExtras) as PlayStyle[]).map((style) => [style, byStatId({ ...base, ...(FIGHTER_STYLES.has(style) ? fighter : {}), ...styleExtras[style] } as Readonly<Record<string, number>>)]),
+  (Object.keys(styleExtras) as PlayStyle[]).map((style) => [style, byStatId({ ...base, ...(FIGHTER_STYLES.has(style) ? fighter : {}), ...styleExtras[style] })]),
 ) as Record<PlayStyle, ReadonlyMap<number, number>>
 
 const paramOf = (prop: ItemProp): number | undefined => {
@@ -135,7 +135,7 @@ export const setRecord = (item: Pick<StatSource, 'quality' | 'setItemId'>): (Nam
 }
 
 export function itemStats(item: StatSource): ItemStat[] {
-  if (item.identified) return [...(item.stats ?? []), ...(item.runewordStats ?? []), ...(item.socketedItems ?? []).flatMap((child) => child.stats ?? [])]
+  if (item.identified) return [...item.stats, ...item.runewordStats, ...(item.socketedItems ?? []).flatMap((child) => child.stats)]
   return propStats(uniqueRecord(item)?.props ?? setRecord(item)?.props ?? [])
 }
 

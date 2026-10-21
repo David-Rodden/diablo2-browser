@@ -53,7 +53,7 @@ describe('auto loot pickup in play', () => {
     const mapper = new CommandMapper({ world, hudManager: new HudManager(), sendCommand: (cmd) => sent.push(cmd) })
     mapper.assists.autoLootRules = NOTABLE
     const drop = (id: number, code: string, quality: number, invWidth = 1, invHeight = 1) =>
-      world.apply({ type: 'ItemEvent', action: 0, container: 'ground', item: { id, itemId: id, code, rawCode: `${code} `, quality, invWidth, invHeight, container: 'ground', action: 0, flags: 0x10, rawFlags: 0x10, x: 5001, y: 5000, worldX: 5001, worldY: 5000 } })
+      world.apply({ type: 'ItemEvent', action: 0, container: 'ground', item: { id, itemId: id, code, rawCode: `${code} `, quality, invWidth, invHeight, stats: [], runewordStats: [], container: 'ground', action: 0, flags: 0x10, rawFlags: 0x10, x: 5001, y: 5000, worldX: 5001, worldY: 5000 } })
     return { world, mapper, drop, pickups: () => sent.flatMap((c) => (c.type === 'ItemPickup' ? [c.itemId] : [])) }
   }
 

@@ -56,7 +56,6 @@ const FUTURE_LEVELS = 10
 
 const codeOf = (item: Pick<ItemData, 'code'>) => item.code.trim().toLowerCase()
 const isRune = (code: string) => RUNE_INFO[code] !== undefined
-const runeName = (code: string) => RUNE_INFO[code]?.letter ?? code
 
 const result = (tier: LootTier, kind: LootKind, score: number, reason: string, extra: Partial<Appraisal> = {}): Appraisal => ({ tier, kind, score: Math.round(score), reason, locked: false, ...extra })
 
@@ -96,7 +95,7 @@ function gemAppraisal(code: string, { build }: AppraisalContext): Appraisal {
 }
 
 function skillerReason(item: ItemData, build: CharacterBuild): string | null {
-  const tab = (item.stats ?? []).find((stat) => stat.statId === 188 && stat.param >> 3 === build.classIndex && build.investedTabs.has(stat.param & 7))
+  const tab = item.stats.find((stat) => stat.statId === 188 && stat.param >> 3 === build.classIndex && build.investedTabs.has(stat.param & 7))
   return tab ? `+${tab.value} to your ${tabName(build.classIndex, tab.param & 7) ?? 'skills'}` : null
 }
 
