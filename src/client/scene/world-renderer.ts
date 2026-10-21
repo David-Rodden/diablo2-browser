@@ -2521,13 +2521,13 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
         if (entity.drawableKind === 'unit') {
           if (litGrid !== null) {
             const dynamic = entity.unitKind === 'player' || entity.unitKind === 'monster'
-            renderer.setUnitLight(unitFlatLightInto(litGrid, entity.subX, entity.subY, dynamic, scratchUnitLight))
+            renderer.setUnitLight(unitFlatLightInto(litGrid, entity.lightSubX ?? entity.subX, entity.lightSubY ?? entity.subY, dynamic, scratchUnitLight))
           }
           drawSceneUnitDrawable(renderer, entity, ctx, nowMs, snapshot.actId)
           if (litGrid !== null) renderer.setUnitLight(null)
         } else if (entity.drawableKind === 'missile') {
           if (litGrid !== null) {
-            renderer.setUnitLight(unitFlatLightInto(litGrid, entity.subX, entity.subY, true, scratchUnitLight))
+            renderer.setUnitLight(unitFlatLightInto(litGrid, entity.lightSubX ?? entity.subX, entity.lightSubY ?? entity.subY, true, scratchUnitLight))
           }
           drawSceneMissileDrawable(renderer, entity, ctx, nowMs)
           if (litGrid !== null) renderer.setUnitLight(null)
