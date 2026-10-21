@@ -60,4 +60,4 @@ function main(dryRun: boolean): void {
   if (!dryRun && prunes.length > 0) run('git', 'push', 'origin', '--delete', ...prunes.map((p) => p.name))
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main(process.argv.includes('--dry-run'))
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main(process.argv.includes('--dry-run') || process.env.DRY_RUN === 'true')

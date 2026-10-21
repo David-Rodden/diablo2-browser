@@ -33,5 +33,5 @@ jobs:
       - name: Delete merged, closed and idle branches
         env:
           GH_TOKEN: ${{ github.token }}
-          DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
-        run: node tools/prune-branches.ts $DRY_RUN
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: node tools/prune-branches.ts
