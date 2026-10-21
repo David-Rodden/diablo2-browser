@@ -197,6 +197,102 @@ export class DuplicateCharacterLoginError extends Error {
 }
 
 /**
+ * Extract the MCP opcode kind (`'join'` for `MCP_JOINGAME 0x04` or `'create'` for `MCP_CREATEGAME 0x03`)
+ * and numeric status code from a thrown `ProtocolError` or error message string.
+ */
+export function parseMcpGameErrorStatus(
+  err: unknown,
+): { readonly kind: 'join' | 'create'; readonly status: number } | null {
+  const raw = err instanceof Error ? err.message : String(err)
+  const joinMatch = /MCP_JOINGAME\b[^\n]*?\bstatus=0x([0-9a-f]+)/i.exec(raw)
+  if (joinMatch && joinMatch[1]) {
+    const status = Number.parseInt(joinMatch[1], 16)
+    if (Number.isFinite(status)) {
+      return { kind: 'join', status: status >>> 0 }
+    }
+  }
+  const createMatch = /MCP_CREATEGAME\b[^\n]*?\bstatus=0x([0-9a-f]+)/i.exec(raw)
+  if (createMatch && createMatch[1]) {
+    const status = Number.parseInt(createMatch[1], 16)
+    if (Number.isFinite(status)) {
+      return { kind: 'create', status: status >>> 0 }
+    }
+  }
+  return null
+}
+
+/**
+ * Format an `MCP_JOINGAME (0x04)` S2C status code into its authentic 1.13c `D2Multi.dll`
+ * (`0x6F9DDD0E..0x6F9DDDFD`, jump table `0x6F9DE068`) `.tbl` localized string.
+ */
+export function formatMcpJoinGameStatusError(
+  status: number,
+  lang: 'zh' | 'en' = getGameLang(),
+): string {
+  const isEn = lang === 'en'
+  switch (status >>> 0) {
+    case 0x29: // strId 5160 (0x1428)
+      return isEn ? "Game name and password don't match." : '遊戲名稱及密碼不符。'
+    case 0x2a: // strId 5159 (0x1427)
+      return isEn ? 'Game does not exist.' : '遊戲並不存在。'
+    case 0x2b: // strId 5161 (0x1429)
+      return isEn ? 'Game is Full.' : '遊戲人數已滿。'
+    case 0x2c: // strId 5162 (0x142A)
+      return isEn
+        ? 'You do not meet the level restrictions for this game.'
+        : '你未達到這個遊戲的等級限制。'
+    case 0x71: // strId 5158 (0x1426)
+      return isEn
+        ? 'Hardcore and Normal Characters may not be in the same game.'
+        : '專家級和一般級人物不能在同一個遊戲中。'
+    case 0x73: // strId 21794 (0x5522)
+      return isEn
+        ? 'Unable to enter game. Your character must kill Baal to play in a Nightmare game.'
+        : '無法進入遊戲。你的人物必須殺死巴爾才能進入惡夢級的遊戲。'
+    case 0x74: // strId 21793 (0x5521)
+      return isEn
+        ? 'Unable to enter game. Your character must kill Baal in Nightmare difficulty to play in a Hell game.'
+        : '無法進入遊戲。你的人物必須殺死惡夢級的巴爾才能進入地獄級的遊戲。'
+    case 0x78: // strId 10101 (0x2775)
+      return isEn
+        ? 'Unable to enter game. A Diablo II character cannot join a game created by a Diablo II Expansion character.'
+        : '無法進入遊戲。暗黑破壞神 II 的人物無法加入由資料片人物所開創的遊戲。'
+    case 0x79: // strId 10102 (0x2776)
+      return isEn
+        ? 'Unable to enter game. A Diablo II Expansion character cannot join a game created by a Diablo II character.'
+        : '無法進入遊戲。資料片的人物無法加入由暗黑破壞神 II 人物所開創的遊戲。'
+    case 0x7d: // strId 10929 (0x2AB1)
+      return isEn
+        ? 'Unable to enter game. A Non-Ladder character cannot join a game created by a Ladder character.'
+        : '無法進入遊戲。非天梯人物無法加入由天梯人物所開創的遊戲。'
+    default: // strId 5141 (0x1415)
+      return isEn ? 'Join Failed' : '加入失敗'
+  }
+}
+
+/**
+ * Format an `MCP_CREATEGAME (0x03)` S2C status code into its authentic 1.13c `D2Multi.dll`
+ * (`0x6F9DDE2E..0x6F9DDEB3`, jump table `0x6F9DE118`) `.tbl` localized string.
+ */
+export function formatMcpCreateGameStatusError(
+  status: number,
+  lang: 'zh' | 'en' = getGameLang(),
+): string {
+  const isEn = lang === 'en'
+  switch (status >>> 0) {
+    case 0x1e: // strId 5137 (0x1411)
+    case 0x32:
+      return isEn ? 'Invalid Game Name' : '無效的遊戲名稱'
+    case 0x1f: // strId 5138 (0x1412)
+      return isEn ? 'A Game Already Exists With That Name' : '已經有相同名稱的遊戲存在'
+    case 0x20: // strId 5139 (0x1413)
+      return isEn ? 'Server Down' : '伺服器停機'
+    default: // strId 5140 (0x1414)
+      return isEn ? 'Error Creating Game' : '開創遊戲錯誤'
+  }
+}
+
+/**
  * Strip internal `[ProtocolError ...]` prefixes and normalize duplicate-character / game-entry
  * errors into a clean, user-facing prompt suitable for the lobby panel and popup modal.
  */
@@ -207,6 +303,12 @@ export function formatLobbyGameEnterError(
 ): string {
   if (err instanceof DuplicateCharacterLoginError) {
     return formatDuplicateCharacterLoginMessage(err.charName || charName, lang)
+  }
+  const mcpStatus = parseMcpGameErrorStatus(err)
+  if (mcpStatus) {
+    return mcpStatus.kind === 'join'
+      ? formatMcpJoinGameStatusError(mcpStatus.status, lang)
+      : formatMcpCreateGameStatusError(mcpStatus.status, lang)
   }
   const raw = err instanceof Error ? err.message : String(err)
   const stripped = raw.replace(/^\[ProtocolError[^\]]*\]\s*/i, '').trim()

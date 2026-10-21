@@ -20,14 +20,21 @@ import {
   applyRealmGamesToFlowState,
   CAMPFIRE_CLASS_SPECS,
   createInitialFlowState,
+  getRecentRealmGameNames,
   isDifficultyUnlocked,
+  isRealmGameInfoOpen,
+  isRealmGameStatusCompatibleWithCharacter,
   JOIN_GAME_LIST_REFRESH_INTERVAL_MS,
   openPopupModal,
+  recordRecentRealmGameName,
+  removeRecentRealmGameName,
   resetHeroAvatarAnims,
+  resetLobbyGameFormState,
   returnToLoginAfterSessionLoss,
   setBnetConnectStage,
   stepFlowFrame,
   type BnetFlowState,
+  type LobbyJoinGameInfo,
 } from './frontend/flow-state.ts'
 import { FrontendRenderer } from './frontend/frontend-renderer.ts'
 import {
@@ -100,6 +107,7 @@ import {
   OnlineSession,
   SessionLostError,
   formatLobbyGameEnterError,
+  parseMcpGameErrorStatus,
 } from './session/online-session.ts'
 import type { GameCompletion113c } from './session/game-completion-113c.ts'
 import { getGlobalSettingsStore, type SettingsStore } from './settings/settings-store.ts'
@@ -285,7 +293,9 @@ export async function startPlayApp(options?: {
   decorateLoadingScreen(bootProgress)
 
   const settingsStore = getGlobalSettingsStore()
-  if (settingsStore.get().lang !== 'en') settingsStore.update({ lang: 'en' })
+  const urlLang = typeof window === 'undefined' ? null : new URLSearchParams(window.location?.search ?? '').get('lang')?.trim().toLowerCase()
+  const lang: GameLang = urlLang === 'zh' || urlLang === 'chi' || urlLang === 'zh-cn' || urlLang === 'cn' || urlLang === 'chinese' ? 'zh' : 'en'
+  if (settingsStore.get().lang !== lang) settingsStore.update({ lang })
   const initialSettings = settingsStore.get()
   setLang(initialSettings.lang)
 
@@ -1019,9 +1029,13 @@ export async function startPlayApp(options?: {
       flowState.activeInput = null
       toolbar.setConnectionState({ phase: 'disconnected', rttMs: null })
     } else {
+      const prevGameName = flowState.gameName.trim()
+      if (prevGameName) {
+        recordRecentRealmGameName(prevGameName, session.loginHost)
+      }
       flowState.stage = 'bnet_lobby'
       flowState.lobbySubPanel = 'create'
-      flowState.createGameError = null
+      resetLobbyGameFormState(flowState)
       flowState.activeInput = 'gameName'
       toolbar.setConnectionState({ phase: 'mcp', rttMs: session.pingMs })
     }
@@ -1062,11 +1076,21 @@ export async function startPlayApp(options?: {
   let joinListRefreshSeq = 0
   let joinListRefreshInFlight = false
   let lastJoinListRefreshMs: number | null = null
+  let typedJoinGameProbeSeq = 0
+  let typedJoinGameProbeTimer: ReturnType<typeof setTimeout> | null = null
 
   const fetchJoinGameDetails = async (st: BnetFlowState, gameName: string): Promise<void> => {
     try {
       const info = await session.getGameInfo(gameName)
-      if (st.selectedGameName === gameName && st.lobbySubPanel === 'join') {
+      if (isRealmGameInfoOpen(info)) {
+        recordRecentRealmGameName(gameName, session.loginHost)
+      } else {
+        removeRecentRealmGameName(gameName, session.loginHost)
+      }
+      if (
+        (st.selectedGameName === gameName || st.gameName.trim() === gameName) &&
+        st.lobbySubPanel === 'join'
+      ) {
         st.selectedGameInfo = info
       }
     } catch (err) {
@@ -1104,8 +1128,94 @@ export async function startPlayApp(options?: {
       if (seq !== joinListRefreshSeq || st.stage !== 'bnet_lobby' || st.lobbySubPanel !== 'join') {
         return
       }
+      for (const g of games) {
+        if (g.name) {
+          recordRecentRealmGameName(g.name, session.loginHost)
+        }
+      }
+
+      // Probe known/recent candidate room names (e.g. rooms created or encountered in this browser
+      // that PvPGN d2cs_gamelist_cb omits from MCP_GAMELIST when playerCount === 0 or passworded)
+      const listedLower = new Set(games.map((g) => g.name.toLowerCase()))
+      const candidateNames: string[] = []
+      const addCandidate = (rawName: string) => {
+        const trimmed = rawName.trim()
+        if (!trimmed) return
+        const lower = trimmed.toLowerCase()
+        if (listedLower.has(lower)) return
+        if (candidateNames.some((c) => c.toLowerCase() === lower)) return
+        candidateNames.push(trimmed)
+      }
+      addCandidate(st.gameName)
+      addCandidate(st.selectedGameName)
+      for (const recentName of getRecentRealmGameNames(session.loginHost)) {
+        if (candidateNames.length >= 4) break
+        addCandidate(recentName)
+      }
+      for (const prev of st.realmGames) {
+        if (candidateNames.length >= 4) break
+        addCandidate(prev.name)
+      }
+
+      if (games.length > 0 && candidateNames.length > 0) {
+        applyRealmGamesToFlowState(st, games, { finalized: false })
+        frontendRenderer.render(performance.now())
+      }
+
+      const probedGames: {
+        readonly index: number
+        readonly name: string
+        readonly description: string
+        readonly playerCount: number
+        readonly status: number
+      }[] = []
+      const probedInfoByLower = new Map<string, LobbyJoinGameInfo>()
+
+      if (candidateNames.length > 0) {
+        const probedResults = await Promise.all(
+          candidateNames.map(async (candidate) => {
+            try {
+              const info = await session.getGameInfo(candidate)
+              return { candidate, info }
+            } catch (err) {
+              if (err instanceof SessionLostError) throw err
+              return { candidate, info: null }
+            }
+          }),
+        )
+        if (seq !== joinListRefreshSeq || st.stage !== 'bnet_lobby' || st.lobbySubPanel !== 'join') {
+          return
+        }
+        for (const { candidate, info } of probedResults) {
+          if (info && isRealmGameInfoOpen(info)) {
+            recordRecentRealmGameName(candidate, session.loginHost)
+            if (isRealmGameStatusCompatibleWithCharacter(info.status, selectedChar)) {
+              const resolvedName = info.name || candidate
+              probedGames.push({
+                index: 0,
+                name: resolvedName,
+                description: info.description ?? '',
+                playerCount: info.players.length,
+                status: info.status,
+              })
+              probedInfoByLower.set(resolvedName.toLowerCase(), info)
+            }
+          } else if (info) {
+            removeRecentRealmGameName(candidate, session.loginHost)
+          }
+        }
+      }
+
       lastJoinListRefreshMs = performance.now()
-      const res = applyRealmGamesToFlowState(st, games, { finalized: true })
+      const mergedGames = probedGames.length > 0 ? [...games, ...probedGames] : games
+      const res = applyRealmGamesToFlowState(st, mergedGames, { finalized: true })
+      const preloadedInfo = res.selectedGameName
+        ? probedInfoByLower.get(res.selectedGameName.toLowerCase())
+        : undefined
+      if (preloadedInfo) {
+        st.selectedGameInfo = preloadedInfo
+        infoFetchedInThisPass = res.selectedGameName
+      }
       frontendRenderer.render(performance.now())
       if (
         res.shouldFetchGameInfo &&
@@ -1355,7 +1465,7 @@ export async function startPlayApp(options?: {
         st.stageTicks = 0
         resetHeroAvatarAnims(st)
         st.lobbySubPanel = 'create'
-        st.createGameError = null
+        resetLobbyGameFormState(st)
         st.activeInput = 'gameName'
         preloadSelectedCharacterAssets(st)
       } catch (err) {
@@ -1377,6 +1487,68 @@ export async function startPlayApp(options?: {
       st.joinGameDetailsScroll = 0
       frontendRenderer.render(performance.now())
       await fetchJoinGameDetails(st, gameName)
+    },
+    onTypeJoinGameName: (st, gameName) => {
+      if (typedJoinGameProbeTimer !== null) {
+        clearTimeout(typedJoinGameProbeTimer)
+        typedJoinGameProbeTimer = null
+      }
+      const trimmed = gameName.trim()
+      if (!trimmed) return
+      const probeSeq = ++typedJoinGameProbeSeq
+      typedJoinGameProbeTimer = setTimeout(() => {
+        typedJoinGameProbeTimer = null
+        if (
+          probeSeq !== typedJoinGameProbeSeq ||
+          st.stage !== 'bnet_lobby' ||
+          st.lobbySubPanel !== 'join' ||
+          st.gameName.trim() !== trimmed
+        ) {
+          return
+        }
+        void (async () => {
+          try {
+            const info = await session.getGameInfo(trimmed)
+            if (
+              probeSeq !== typedJoinGameProbeSeq ||
+              st.stage !== 'bnet_lobby' ||
+              st.lobbySubPanel !== 'join' ||
+              st.gameName.trim() !== trimmed
+            ) {
+              return
+            }
+            if (isRealmGameInfoOpen(info)) {
+              const resolvedName = info.name || trimmed
+              recordRecentRealmGameName(resolvedName, session.loginHost)
+              st.selectedGameInfo = info
+              const selectedChar = st.roster[st.selectedSlotIndex]
+              if (isRealmGameStatusCompatibleWithCharacter(info.status, selectedChar)) {
+                const lower = resolvedName.toLowerCase()
+                const existingIdx = st.realmGames.findIndex(
+                  (g) => g.name.toLowerCase() === lower,
+                )
+                const entry = {
+                  index: existingIdx >= 0 ? st.realmGames[existingIdx]!.index : 0,
+                  name: resolvedName,
+                  description: info.description ?? '',
+                  playerCount: info.players.length,
+                  flags: info.status,
+                }
+                if (existingIdx >= 0) {
+                  const next = [...st.realmGames]
+                  next[existingIdx] = entry
+                  st.realmGames = next
+                } else {
+                  st.realmGames = [...st.realmGames, entry]
+                }
+              }
+              frontendRenderer.render(performance.now())
+            }
+          } catch (err) {
+            if (err instanceof SessionLostError) return
+          }
+        })()
+      }, 250)
     },
     onCreateGame: async (st) => {
       const gameName = st.gameName.trim()
@@ -1426,6 +1598,7 @@ export async function startPlayApp(options?: {
             levelDiff,
           },
         })
+        recordRecentRealmGameName(gameName, session.loginHost)
         st.sceneReady = true
         st.stage = 'in_game'
         st.stageTicks = 0
@@ -1442,6 +1615,11 @@ export async function startPlayApp(options?: {
           syncVisibility()
           frontendRenderer.render(performance.now())
           return
+        }
+        const mcpStatus = parseMcpGameErrorStatus(err)
+        if (mcpStatus?.kind === 'create' && mcpStatus.status === 0x1f) {
+          // 0x1F = A Game Already Exists With That Name: record it so switching to Join Game probes and displays it
+          recordRecentRealmGameName(gameName, session.loginHost)
         }
         const friendlyMsg = formatLobbyGameEnterError(
           err,
@@ -1481,6 +1659,7 @@ export async function startPlayApp(options?: {
           name: gameName,
           password: gamePassword,
         })
+        recordRecentRealmGameName(gameName, session.loginHost)
         st.sceneReady = true
         st.stage = 'in_game'
         st.stageTicks = 0
@@ -1497,6 +1676,21 @@ export async function startPlayApp(options?: {
           syncVisibility()
           frontendRenderer.render(performance.now())
           return
+        }
+        const mcpStatus = parseMcpGameErrorStatus(err)
+        if (mcpStatus?.kind === 'join') {
+          if (mcpStatus.status === 0x2a) {
+            removeRecentRealmGameName(gameName, session.loginHost)
+            st.realmGames = st.realmGames.filter(
+              (g) => g.name.toLowerCase() !== gameName.toLowerCase(),
+            )
+            if (st.selectedGameName.toLowerCase() === gameName.toLowerCase()) {
+              st.selectedGameName = ''
+              st.selectedGameInfo = null
+            }
+          } else {
+            recordRecentRealmGameName(gameName, session.loginHost)
+          }
         }
         const friendlyMsg = formatLobbyGameEnterError(
           err,

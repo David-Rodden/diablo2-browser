@@ -108,6 +108,10 @@ describe('issue #1351 area transition stream', () => {
     const playerId = game.connectPlayer({ charClass: 'sor', name: 'Traveler', x: 20, y: 20, areaId: 1 })
     const record = (game as unknown as { players: Map<number, { areaId: number; unlockedAct: number }> }).players.get(playerId)!
     const npcId = game.spawnMonster({ defId: 'warriv1', x: 21, y: 20, areaId: 1, isNpc: true })
+    // Warriv may only sail east after Andariel (a1q6).
+    ;(game as unknown as {
+      players: Map<number, { questFlags: Uint16Array }>
+    }).players.get(playerId)!.questFlags[6] |= 0x0001
     game.drainEvents(playerId)
 
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: npcId } })

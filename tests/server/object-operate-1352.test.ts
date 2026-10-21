@@ -124,7 +124,15 @@ describe('issue #1352 object OperateFn', () => {
         (e) => e.type === 'Trade' && (e as { action?: number }).action === 0x10,
       ),
     ).toBe(true)
-    expect(objectRecord(game, stashId).mode).toBe(2)
+    expect(objectRecord(game, stashId).mode).toBe(0)
+    // The stash stays re-usable, unlike one-shot containers.
+    game.enqueueCommand(playerId, { type: 'OperateObject', objectId: stashId })
+    game.stepFrames(1)
+    expect(
+      game.drainEvents(playerId).some(
+        (e) => e.type === 'Trade' && (e as { action?: number }).action === 0x10,
+      ),
+    ).toBe(true)
   })
 
   it('requires and consumes a key for locked containers', () => {

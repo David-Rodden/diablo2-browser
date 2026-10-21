@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { refreshAssetManifestPublicSubdirs } from './src/baker/io/asset-manifest.ts'
 import { createBugReportHttpMiddleware } from './src/baker/io/bug-report-store.ts'
+import {
+  createHomeFallbackHttpMiddleware,
+  createServerStatusHttpMiddleware,
+} from './src/baker/io/server-status-probe.ts'
 import type { AssetManifest } from './src/common/pack-contract/index.ts'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
@@ -39,6 +43,15 @@ export default defineConfig({
         server.middlewares.use(
           createBugReportHttpMiddleware({ bugsDir: resolve(__dirname, 'bugs') }),
         )
+      },
+    },
+    {
+      name: 'd2-server-status-api',
+      configureServer(server) {
+        server.middlewares.use(createServerStatusHttpMiddleware())
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(createServerStatusHttpMiddleware())
       },
     },
     {
@@ -80,15 +93,27 @@ export default defineConfig({
       },
     },
     {
-      name: 'd2-root-to-play-html',
+      name: 'd2-home-and-routes',
       configureServer(server) {
-        server.middlewares.use((req, _res, next) => {
+        const homeFallback = createHomeFallbackHttpMiddleware({ rootDir: __dirname })
+        server.middlewares.use((req, res, next) => {
           if (req.url === '/' || req.url?.startsWith('/?')) {
-            req.url = `/play.html${req.url.slice(1)}`
+            req.url = `/index.html${req.url.slice(1)}`
           } else if (req.url === '/drops.html' || req.url?.startsWith('/drops.html?')) {
             req.url = `/plugins/drop-tracker/index.html${req.url.slice('/drops.html'.length)}`
           }
-          next()
+          homeFallback(req, res, next)
+        })
+      },
+      configurePreviewServer(server) {
+        const homeFallback = createHomeFallbackHttpMiddleware({ rootDir: __dirname })
+        server.middlewares.use((req, res, next) => {
+          if (req.url === '/' || req.url?.startsWith('/?')) {
+            req.url = `/index.html${req.url.slice(1)}`
+          } else if (req.url === '/drops.html' || req.url?.startsWith('/drops.html?')) {
+            req.url = `/plugins/drop-tracker/index.html${req.url.slice('/drops.html'.length)}`
+          }
+          homeFallback(req, res, next)
         })
       },
     },
@@ -144,6 +169,7 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       input: {
+        index: resolve(__dirname, 'index.html'),
         play: resolve(__dirname, 'play.html'),
         ...discoverPluginHtmlEntries(__dirname),
         sw: resolve(__dirname, 'src/client/sw/sw.ts'),

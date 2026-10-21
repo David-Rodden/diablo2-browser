@@ -1262,6 +1262,8 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
       })
       game.stepFrames(2)
       expect(game.getMonsterState(feId)!.dead).toBe(true)
+      // Fire Enchanted corpse-boom resolves a few frames after death.
+      game.stepFrames(6)
       expect(game.getPlayerState(playerId)!.hp).toBeLessThan(startHp)
     })
   })

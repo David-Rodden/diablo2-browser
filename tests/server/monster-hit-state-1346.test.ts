@@ -16,7 +16,7 @@ function connectTestPlayer(game: GameInstance): number {
 }
 
 describe('issue #1346 monster hit reaction', () => {
-  it('only enters GetHit when a single hit removes at least 1/16 max life', () => {
+  it('only enters GetHit at the 1.13c 3/8 max-life tier', () => {
     const game = new GameInstance({ seed: 1346, areaId: 1 })
     const playerId = connectTestPlayer(game)
     const monsterId = game.spawnMonster({
@@ -41,7 +41,7 @@ describe('issue #1346 monster hit reaction', () => {
       ),
     ).toBe(false)
 
-    game.applyDamageToMonster(monsterId, 100, playerId)
+    game.applyDamageToMonster(monsterId, 600, playerId)
     events = game.drainEvents(playerId)
     expect(
       events.some(

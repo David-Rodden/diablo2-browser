@@ -920,7 +920,8 @@ export class D2FontRenderer {
       for (let i = 0; i < span.text.length; i++) {
         const code = normalizeDc6CharCode(span.text.charCodeAt(i))
         if (code < 256 && meta?.glyphs[code]) {
-          total += meta.glyphs[code]!.width
+          const rawW = meta.glyphs[code]!.width
+          total += font === 'font6' && code === 0x7c ? Math.max(rawW, 4) : rawW
         } else {
           total += code > 255 ? pxSize : Math.round(pxSize * 0.58)
         }
@@ -1041,8 +1042,8 @@ export class D2FontRenderer {
           if (this.canBlitGlyph(meta, rawCode)) {
             const code = normalizeDc6CharCode(rawCode)
             const g = meta.glyphs[code]!
-            const adv = g.width
-            const gx = Math.round(curX)
+            const adv = font === 'font6' && code === 0x7c ? Math.max(g.width, 4) : g.width
+            const gx = Math.round(curX) - (font === 'font6' && code === 0x7c ? 1 : 0)
             if (code !== 0x20 && code !== 0xa0 && g.frameW > 0 && g.frameH > 0 && tinted) {
               if (shadow && span.color !== 'black' && shadowAtlas) {
                 ctx.drawImage(

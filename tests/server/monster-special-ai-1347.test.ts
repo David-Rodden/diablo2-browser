@@ -60,7 +60,7 @@ describe('issue #1347 special monster AI', () => {
     game.applyDamageToMonster(mummyCorpse, 1000, playerId)
     game.drainEvents(playerId)
 
-    game.stepFrames(1)
+    game.stepFrames(10)
     expect(game.getMonsterState(fallenCorpse)!.dead).toBe(false)
     expect(game.getMonsterState(fallenCorpse)!.hp).toBe(50)
     expect(game.getMonsterState(mummyCorpse)!.dead).toBe(true)
@@ -105,7 +105,7 @@ describe('issue #1347 special monster AI', () => {
     game.applyDamageToMonster(fallenCorpse, 1000, playerId)
     game.drainEvents(playerId)
 
-    game.stepFrames(1)
+    game.stepFrames(10)
     expect(game.getMonsterState(mummyCorpse)!.dead).toBe(false)
     expect(game.getMonsterState(fallenCorpse)!.dead).toBe(true)
     expect(game.getMonsterState(mummyPriest)!.mode).toBe(8)

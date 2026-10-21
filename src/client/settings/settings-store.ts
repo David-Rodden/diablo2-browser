@@ -46,6 +46,7 @@ const COMPARE_KEYS: readonly SettingsKey[] = [
   'showBasePlusBonusSkills',
   'showStatGainTooltips',
   'showWeaponDamageFormula',
+  'showAdvancedStatsButton',
   'showUniqueSetBeams',
   'alwaysShowUniqueSetLabels',
   'weatherOverride',

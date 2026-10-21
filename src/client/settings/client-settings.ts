@@ -68,6 +68,7 @@ export interface HudEnhancementsConfig {
   readonly showBasePlusBonusSkills: boolean
   readonly showStatGainTooltips: boolean
   readonly showWeaponDamageFormula: boolean
+  readonly showAdvancedStatsButton: boolean
 }
 
 export interface AutomapRadarConfig {
@@ -181,6 +182,7 @@ export function createDefaultClientSettings(defaultLang?: GameLang): ClientSetti
     showBasePlusBonusSkills: false,
     showStatGainTooltips: false,
     showWeaponDamageFormula: false,
+    showAdvancedStatsButton: false,
     showUniqueSetBeams: false,
     alwaysShowUniqueSetLabels: false,
     weatherOverride: 'off',
@@ -212,6 +214,7 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
   showBasePlusBonusSkills: false,
   showStatGainTooltips: false,
   showWeaponDamageFormula: false,
+  showAdvancedStatsButton: false,
   showUniqueSetBeams: false,
   alwaysShowUniqueSetLabels: false,
   weatherOverride: 'off',
@@ -560,6 +563,11 @@ export function sanitizeClientSettings(
       ? rec.showWeaponDamageFormula
       : defaults.showWeaponDamageFormula
 
+  const showAdvancedStatsButton =
+    typeof rec.showAdvancedStatsButton === 'boolean'
+      ? rec.showAdvancedStatsButton
+      : defaults.showAdvancedStatsButton
+
   const showUniqueSetBeams =
     typeof rec.showUniqueSetBeams === 'boolean'
       ? rec.showUniqueSetBeams
@@ -613,6 +621,7 @@ export function sanitizeClientSettings(
     showBasePlusBonusSkills,
     showStatGainTooltips,
     showWeaponDamageFormula,
+    showAdvancedStatsButton,
     showUniqueSetBeams,
     alwaysShowUniqueSetLabels,
     weatherOverride,

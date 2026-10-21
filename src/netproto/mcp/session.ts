@@ -248,10 +248,11 @@ export class McpSession {
 
       const unsubPkt = this.packetEmitter.on(pkt => {
         if (pkt.type === 'MCP_GAMELIST' && pkt.requestId === reqId) {
-          // Per D2MCPClient.dll (0x6fa263e0) and d2cs handle_d2cs_gamelistreq:
+          // Per D2MCPClient.dll (0x6fa263e0) and D2Multi.dll (0x6f9ddc48..0x6f9ddca5, 0x6f9e2120):
           // End-of-list is signaled by an empty game name (`name === ""`) or sentinel status
-          // `0xfffffffe` (`-2`) / `0xffffffff` (`-1`). Non-empty games with `playerCount === 0`
-          // or closed status (`(status & 0x04) === 0`) are skipped without terminating the stream.
+          // `0xfffffffe` (`-2`) / `0xffffffff` (`-1`). Closed status entries (`(status & 0x04) === 0`
+          // when `status !== 0`) are skipped without terminating the stream, while non-empty open
+          // games (`(status & 0x04) !== 0`) are retained even when `playerCount === 0`.
           const statusU32 = pkt.game.status >>> 0
           if (
             pkt.game.name.length === 0 ||
@@ -262,7 +263,7 @@ export class McpSession {
             return
           }
           const isClosedStatus = statusU32 !== 0 && (statusU32 & 0x04) === 0
-          if (pkt.game.playerCount === 0 || isClosedStatus) {
+          if (isClosedStatus) {
             return
           }
           // Deduplicate by u16/u32 game index (`D2Multi.dll` 0x6f9e2120) or case-insensitive name
@@ -299,13 +300,70 @@ export class McpSession {
     })
   }
 
-  async getGameInfo(gameName: string): Promise<GameInfoDetail> {
-    const reqId = this.nextReqId++ & 0xffff
-    const wait = this.waitForPacket('MCP_GAMEINFO', 'MCP_GAMEINFO', pkt => pkt.requestId === reqId)
-    const pkt = encodeMcpGameInfo(reqId, gameName, this.codec)
-    this.sendRaw(pkt, 0x06, 'MCP_GAMEINFO')
-    const { info } = await wait
-    return { ...info, name: gameName }
+  async getGameInfo(
+    gameName: string,
+    options?: {
+      readonly timeoutMs?: number | undefined
+    },
+  ): Promise<GameInfoDetail> {
+    let reqId = this.nextReqId++ & 0xffff
+    if (reqId === 0) {
+      reqId = this.nextReqId++ & 0xffff
+    }
+    const timeoutMs = options?.timeoutMs ?? 1500
+    const unavailableInfo: GameInfoDetail = {
+      name: gameName,
+      status: 0xffffffff,
+      uptimeSec: 0,
+      creatorLevel: 0,
+      levelDiff: 0,
+      maxPlayers: 0,
+      description: '',
+      players: [],
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false
+      const cleanup = () => {
+        cancelTimer()
+        unsubPkt()
+        unsubClose()
+      }
+
+      const cancelTimer = this.clock.setTimeout(() => {
+        if (settled) return
+        settled = true
+        cleanup()
+        // Per PvPGN d2cs handle_d2cs_gameinforeq: when a requested game name does not exist
+        // or has already closed, d2cs returns 0 without sending an S2C 0x06 packet.
+        // Resolve with an unavailable GameInfoDetail (status = 0xffffffff) rather than throwing
+        // TimeoutError so D2OnlineFlow does not tear down the active MCP connection.
+        resolve(unavailableInfo)
+      }, timeoutMs)
+
+      const unsubPkt = this.packetEmitter.on(pkt => {
+        if (pkt.type === 'MCP_GAMEINFO' && pkt.requestId === reqId) {
+          if (settled) return
+          settled = true
+          cleanup()
+          resolve({ ...pkt.info, name: gameName })
+        }
+      })
+
+      const unsubClose = this.closeEmitter.on(reason => {
+        if (settled) return
+        settled = true
+        cleanup()
+        reject(
+          reason.kind === 'error'
+            ? reason.error
+            : new Error(`MCP closed during getGameInfo (${reason.kind})`),
+        )
+      })
+
+      const pkt = encodeMcpGameInfo(reqId, gameName, this.codec)
+      this.sendRaw(pkt, 0x06, 'MCP_GAMEINFO')
+    })
   }
 
   async createGame(options: {
