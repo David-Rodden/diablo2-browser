@@ -135,7 +135,7 @@ export const setRecord = (item: Pick<StatSource, 'quality' | 'setItemId'>): (Nam
 }
 
 export function itemStats(item: StatSource): ItemStat[] {
-  if (item.identified) return [...item.stats, ...item.runewordStats, ...(item.socketedItems ?? []).flatMap((child) => child.stats)]
+  if (item.identified) return [...(item.stats ?? []), ...(item.runewordStats ?? []), ...(item.socketedItems ?? []).flatMap((child) => child.stats ?? [])]
   return propStats(uniqueRecord(item)?.props ?? setRecord(item)?.props ?? [])
 }
 

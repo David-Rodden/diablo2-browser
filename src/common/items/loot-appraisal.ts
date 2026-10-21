@@ -96,7 +96,7 @@ function gemAppraisal(code: string, { build }: AppraisalContext): Appraisal {
 }
 
 function skillerReason(item: ItemData, build: CharacterBuild): string | null {
-  const tab = item.stats.find((stat) => stat.statId === 188 && stat.param >> 3 === build.classIndex && build.investedTabs.has(stat.param & 7))
+  const tab = (item.stats ?? []).find((stat) => stat.statId === 188 && stat.param >> 3 === build.classIndex && build.investedTabs.has(stat.param & 7))
   return tab ? `+${tab.value} to your ${tabName(build.classIndex, tab.param & 7) ?? 'skills'}` : null
 }
 

@@ -1,5 +1,6 @@
 import { STASH_GOLD_CAP } from '../../common/items/inventory-model.ts'
 import type { ClientWorld } from '../world/client-world.ts'
+import type { ItemData } from '../world/inventory.ts'
 import { getCanonicalItemDataTables } from '../world/item-tables-provider.ts'
 
 const STASH_BUFFER = 4
@@ -47,18 +48,17 @@ export const findFreeSlot = (occupied: readonly Footprint[], w: number, h: numbe
     .flatMap((col) => range(rows - h + 1).map((row) => ({ col, row, w, h })))
     .find((slot) => occupied.every((o) => !overlaps(slot, o))) ?? null
 
-const waitFor = (condition: () => boolean, timeoutMs = STEP_TIMEOUT_MS): Promise<boolean> =>
+export const waitFor = (condition: () => boolean, timeoutMs = STEP_TIMEOUT_MS): Promise<boolean> =>
   new Promise((resolve) => {
     const deadline = performance.now() + timeoutMs
     const poll = (): void => (condition() ? resolve(true) : performance.now() > deadline ? resolve(false) : void setTimeout(poll, POLL_MS))
     poll()
   })
 
-export async function depositAllToStash(host: StashDepositHost, isStashOpen: () => boolean): Promise<StashDepositResult> {
-  const { containers, self } = host.world
-  const candidates = [...containers.inventory.values()].filter((item) => !KEPT_IN_INVENTORY.has(codeOf(item)))
+export async function depositItemsToStash(host: StashDepositHost, items: readonly ItemData[], isStashOpen: () => boolean): Promise<number> {
+  const { containers } = host.world
   let moved = 0
-  for (const item of candidates) {
+  for (const item of items) {
     if (!isStashOpen() || containers.cursor !== null) break
     const { w, h } = sizeOf(item)
     const slot = findFreeSlot([...containers.stash.values()].map((s) => ({ col: s.gridX, row: s.gridY, ...sizeOf(s) })), w, h)
@@ -72,6 +72,13 @@ export async function depositAllToStash(host: StashDepositHost, isStashOpen: () 
     }
     moved++
   }
+  return moved
+}
+
+export async function depositAllToStash(host: StashDepositHost, isStashOpen: () => boolean): Promise<StashDepositResult> {
+  const { containers, self } = host.world
+  const candidates = [...containers.inventory.values()].filter((item) => !KEPT_IN_INVENTORY.has(codeOf(item)))
+  const moved = await depositItemsToStash(host, candidates, isStashOpen)
   const gold = isStashOpen() ? Math.min(self.gold, STASH_GOLD_CAP - self.stashGold) : 0
   if (gold > 0) host.depositGold(gold)
   return { moved, left: candidates.length - moved, gold: Math.max(0, gold) }

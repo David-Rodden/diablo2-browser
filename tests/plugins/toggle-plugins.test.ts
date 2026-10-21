@@ -16,7 +16,7 @@ import { stashDepositAllPlugin } from '../../plugins/stash-deposit-all/index.ts'
 import { experienceBarPlugin } from '../../plugins/experience-bar/index.ts'
 import { autoGoldPickupPlugin } from '../../plugins/auto-gold-pickup/index.ts'
 import { beltRefillPlugin } from '../../plugins/belt-refill/index.ts'
-import type { AutoLootRules } from '../../src/client/plugin-host/api.ts'
+import type { AutoLootRules, InventoryCareConfig } from '../../src/client/plugin-host/api.ts'
 import { lowLifeWarningPlugin } from '../../plugins/low-life-warning/index.ts'
 import { townPortalKeyPlugin } from '../../plugins/town-portal-key/index.ts'
 import { autoCombatPlugin } from '../../plugins/auto-combat/index.ts'
@@ -151,6 +151,7 @@ describe('automation plugins', () => {
       autoPotion: { getThresholds: () => null, setThresholds() {} },
       autoGoldPickup: portStub(),
       autoLoot: { getRules: () => null, setRules() {} },
+      inventoryCare: { getConfig: () => null, setConfig() {} },
       beltRefill: portStub(),
     }
     const storage = memoryStorage()
@@ -168,18 +169,31 @@ describe('automation plugins', () => {
 })
 
 describe('auto pickup plugin', () => {
-  it('picks up gold and the chosen loot kinds, and stops everything on teardown', async () => {
+  it('picks up gold and what helps the character, switches to chosen categories, and stops everything on teardown', async () => {
     const gold = portStub()
     const loot = { rules: null as AutoLootRules | null, getRules: () => loot.rules, setRules: (rules: AutoLootRules | null) => void (loot.rules = rules) }
-    const host = await startEnabled(createHost(autoGoldPickupPlugin, { autoGoldPickup: gold, autoLoot: loot }), 'auto-gold-pickup')
-    expect([gold.enabled, loot.rules]).toEqual([true, { runes: true, uniques: true, sets: true, charms: true, jewels: true, gems: false, rares: false }])
-    host.setSetting('auto-gold-pickup', 'gold', false)
+    const care = { config: null as InventoryCareConfig | null, getConfig: () => care.config, setConfig: (config: InventoryCareConfig | null) => void (care.config = config) }
+    const host = await startEnabled(createHost(autoGoldPickupPlugin, { autoGoldPickup: gold, autoLoot: loot, inventoryCare: care }), 'auto-gold-pickup')
+    expect([gold.enabled, loot.rules, care.config]).toEqual([true, { mode: 'smart', minTier: 'good' }, { makeRoom: true, sellJunk: true, stashValuables: true }])
+    host.setSetting('auto-gold-pickup', 'choose', 'categories')
     host.setSetting('auto-gold-pickup', 'rares', true)
-    expect([gold.enabled, loot.rules?.rares]).toEqual([false, true])
+    expect(loot.rules).toEqual({ mode: 'categories', runes: true, uniques: true, sets: true, charms: true, jewels: true, gems: false, rares: true })
+    host.setSetting('auto-gold-pickup', 'pickup', 'items')
+    expect(gold.enabled).toBe(false)
     expect(host.getStatus('auto-gold-pickup').text.en).toBe('Picking up runes, unique items, set items, charms, jewels, rare items')
+    host.setSetting('auto-gold-pickup', 'pickup', 'gold')
+    expect([gold.enabled, loot.rules, care.config?.makeRoom, care.config?.sellJunk]).toEqual([true, null, false, true])
     await host.setEnabled('auto-gold-pickup', false)
-    expect([gold.enabled, loot.rules]).toEqual([false, null])
+    expect([gold.enabled, loot.rules, care.config]).toEqual([false, null, null])
     await host.destroy()
+  })
+
+  it('only shows the category switches when picking categories', () => {
+    const shown = (settings: Record<string, string | boolean>) =>
+      (autoGoldPickupPlugin.settings ?? []).filter(({ shownWhen = [] }) => shownWhen.every(({ key, is }) => is.includes(settings[key] ?? ''))).map(({ key }) => key)
+    expect(shown({ pickup: 'gold', choose: 'smart' })).toEqual(['pickup', 'sellJunk', 'stashValuables'])
+    expect(shown({ pickup: 'both', choose: 'smart' })).toEqual(['pickup', 'choose', 'makeRoom', 'sellJunk', 'stashValuables'])
+    expect(shown({ pickup: 'items', choose: 'categories' })).toContain('rares')
   })
 })
 
