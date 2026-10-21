@@ -1,4 +1,4 @@
-name: PR summary
+name: Horadric Insight
 
 on:
   pull_request:
@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   summarize:
+    name: Write the PR description
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
