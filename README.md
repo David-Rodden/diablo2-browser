@@ -2,15 +2,9 @@
 
 [![Checks](https://img.shields.io/github/actions/workflow/status/David-Rodden/diablo2-browser/ci.yml?branch=main&label=checks&style=flat-square&logo=githubactions&logoColor=white)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/ci.yml)
 [![Mod tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDavid-Rodden%2Fdiablo2-browser%2Fbadges%2Ftests.json&style=flat-square&logo=vitest&logoColor=white)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/ci.yml)
-[![Secret scan](https://img.shields.io/github/actions/workflow/status/David-Rodden/diablo2-browser/secret-scan.yml?branch=main&label=secret%20scan&style=flat-square&logo=gitguardian&logoColor=white)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/secret-scan.yml)
 [![Upstream](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDavid-Rodden%2Fdiablo2-browser%2Fbadges%2Fupstream.json&style=flat-square&logo=git&logoColor=white)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/sync-upstream.yml)
-[![Branch cleanup](https://img.shields.io/github/actions/workflow/status/David-Rodden/diablo2-browser/branch-cleanup.yml?branch=main&label=branch%20cleanup&style=flat-square&logo=git&logoColor=white)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/branch-cleanup.yml)
-<br>
 [![Diablo II](https://img.shields.io/badge/Diablo%20II-1.13c%20LoD-8b1a1a?style=flat-square&logo=battledotnet&logoColor=white)](#getting-started)
-[![Plugins](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDavid-Rodden%2Fdiablo2-browser%2Fbadges%2Fplugins.json&style=flat-square)](MODS.md)
-[![Client size](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDavid-Rodden%2Fdiablo2-browser%2Fbadges%2Fbundle.json&style=flat-square&logo=vite&logoColor=white)](https://github.com/David-Rodden/diablo2-browser/actions/workflows/ci.yml)
 [![Last commit](https://img.shields.io/github/last-commit/David-Rodden/diablo2-browser/main?style=flat-square&label=last%20commit)](https://github.com/David-Rodden/diablo2-browser/commits/main)
-[![PR notes](https://img.shields.io/badge/PR%20notes-Horadric%20Insight-6a4c93?style=flat-square&logo=github)](https://github.com/apps/horadric-insight)
 [![License](https://img.shields.io/github/license/David-Rodden/diablo2-browser?style=flat-square)](LICENSE)
 
 Diablo II: Lord of Destruction (1.13c) in your browser. It connects to real PvPGN + D2GS servers, so you play the actual game online, not a remake. On top of the base game it adds a set of optional quality-of-life mods.
