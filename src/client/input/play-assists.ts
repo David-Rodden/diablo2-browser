@@ -1,4 +1,6 @@
 import type { ClientCommand } from '../../netproto/index.ts'
+import { fitsInInventory, isWantedLoot, type AutoLootRules } from './auto-loot.ts'
+import type { ItemData } from '../../netproto/index.ts'
 import type { LevelView } from '../map/level-view.ts'
 import { findPathWorld, type SubTilePoint, type SubTileWalkabilityGrid } from '../motion/pathfind.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
@@ -71,6 +73,7 @@ const isInGrid = (grid: SubTileWalkabilityGrid, x: number, y: number) => {
 export class PlayAssists {
   autoGoldPickup = false
   autoPotionThresholds: AutoPotionThresholds | null = null
+  autoLootRules: AutoLootRules | null = null
   beltRefill = false
   townPortalKey: string | null = null
   private readonly autoPotion = new AutoPotionPlanner()
@@ -168,7 +171,7 @@ export class PlayAssists {
     const wanted = this.lootWanted()
     const distance = this.host.distanceFromSelf()
     const loot = [...ground.values()]
-      .filter((item) => wanted(item.code.trim()) && (this.pickupRetryAt.get(item.id) ?? 0) <= nowMs)
+      .filter((item) => wanted(item) && (this.pickupRetryAt.get(item.id) ?? 0) <= nowMs)
       .map((item) => world.getUnit('item', item.id))
       .filter((unit): unit is ClientUnit => unit !== undefined && distance(unit) <= AUTO_PICKUP_RADIUS_SUBTILES)
     const walkLength = (route: { readonly unit: ClientUnit; readonly path: readonly SubTilePoint[] }) => route.path.length || distance(route.unit)
@@ -246,12 +249,14 @@ export class PlayAssists {
     return INTERACTION_PANELS.has(hudManager.leftPanel) || Boolean(hudManager.worldPanels.npcMenu)
   }
 
-  private lootWanted(): (code: string) => boolean {
+  private lootWanted(): (item: ItemData) => boolean {
     const { self, containers } = this.host.world
     const wantsGold = this.autoGoldPickup && self.gold < self.level * CARRIED_GOLD_PER_LEVEL
     const thresholds = this.autoPotionThresholds
     const wantsPotion = thresholds === null ? () => false : wantedPotionPickup(inventoryPotions([...containers.inventory.values(), ...containers.belt.values()]), thresholds)
-    return (code) => (wantsGold && code === 'gld') || wantsPotion(code)
+    const rules = this.autoLootRules
+    const wantsLoot = (item: ItemData) => rules !== null && isWantedLoot(rules, item) && fitsInInventory(containers.inventory.values(), item.invWidth, item.invHeight)
+    return (item) => (wantsGold && item.code.trim() === 'gld') || wantsPotion(item.code.trim()) || wantsLoot(item)
   }
 
   private isFreeForLootDetour(nowMs: number, walkingToLoot: boolean): boolean {
