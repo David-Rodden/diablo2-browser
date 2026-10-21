@@ -676,6 +676,7 @@ export async function startPlayApp(options?: {
     stashDepositAll: togglePortFor(hudManager.worldPanels, 'stashDepositAllEnabled'),
     xpBar: togglePortFor(hudManager, 'showXpBar'),
     autoGoldPickup: togglePortFor(session.commandMapper.assists, 'autoGoldPickup'),
+    beltRefill: togglePortFor(session.commandMapper.assists, 'beltRefill'),
     upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
     itemInfo: { getConfig: () => hudManager.itemInfo, setConfig: (config) => hudManager.setItemInfo(config) },
@@ -684,6 +685,7 @@ export async function startPlayApp(options?: {
       setMode: (mode) => void Object.assign(guide, mode ? { enabled: true, mode } : { enabled: false }),
     },
     autoCombat: { getKey: () => session.commandMapper.assists.autoCombatKey, setKey: (key) => void (session.commandMapper.assists.autoCombatKey = key) },
+    townPortal: { getKey: () => session.commandMapper.assists.townPortalKey, setKey: (key) => void (session.commandMapper.assists.townPortalKey = key) },
     autoPotion: {
       getThresholds: () => session.commandMapper.assists.autoPotionThresholds,
       setThresholds: (thresholds) => void (session.commandMapper.assists.autoPotionThresholds = thresholds),

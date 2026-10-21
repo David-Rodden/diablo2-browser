@@ -6,6 +6,8 @@ These are the extras this project adds to the base game. Each one can be turned 
 |---|---|---|
 | Auto-Fight | Off | A hotkey (E by default) turns it on and off. While it's on, you attack the nearest monster you can walk to. It ignores monsters behind walls and opens doors on the way. |
 | Auto-Potion | Off | Drinks potions when your life or mana gets low, and feeds your mercenary. It picks up potions from the ground when you're running out. You set the thresholds. |
+| Belt Refill | Off | Moves potions from your inventory into the belt. A column you drink empty gets the same kind back. |
+| Town Portal Key | On | Press G (you can pick another key) to open a Town Portal from your tome, or from a scroll if the tome is empty. |
 | Auto Gold Pickup | Off | Picks up gold near you, walking around walls and opening doors to reach it. |
 | Hold-and-Drag Interact | On | Hold the mouse button and drag over items or monsters to pick up or attack. |
 | Stash: Deposit All | On | Adds a button to the stash that moves your whole inventory in. |

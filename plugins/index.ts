@@ -6,6 +6,7 @@ import type { D2WebPlugin, MenuLayout } from '../src/client/plugin-host/api.ts'
 import { autoCombatPlugin } from './auto-combat/index.ts'
 import { autoPotionPlugin } from './auto-potion/index.ts'
 import { autoGoldPickupPlugin } from './auto-gold-pickup/index.ts'
+import { beltRefillPlugin } from './belt-refill/index.ts'
 import { automapRevealPlugin } from './automap-reveal/index.ts'
 import { dragInteractPlugin } from './drag-interact/index.ts'
 import { dropTrackerPlugin } from './drop-tracker/index.ts'
@@ -21,6 +22,7 @@ import { pathGuidePlugin } from './path-guide/index.ts'
 import { quickCastPlugin } from './quick-cast/index.ts'
 import { runTimerPlugin } from './run-timer/index.ts'
 import { stashDepositAllPlugin } from './stash-deposit-all/index.ts'
+import { townPortalKeyPlugin } from './town-portal-key/index.ts'
 import { upgradeHintsPlugin } from './upgrade-hints/index.ts'
 
 export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
@@ -38,6 +40,8 @@ export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
   autoGoldPickupPlugin,
   autoCombatPlugin,
   autoPotionPlugin,
+  beltRefillPlugin,
+  townPortalKeyPlugin,
   upgradeHintsPlugin,
   pathGuidePlugin,
   itemInfoPlugin,
@@ -49,6 +53,8 @@ export const PLUGIN_MENU_LAYOUT: MenuLayout = {
   groupOf: {
     'auto-combat': 'combat',
     'auto-potion': 'combat',
+    'belt-refill': 'combat',
+    'town-portal-key': 'combat',
     'quick-cast': 'combat',
     'drag-interact': 'combat',
     'monster-resists': 'combat',
