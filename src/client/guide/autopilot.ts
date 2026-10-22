@@ -3,6 +3,7 @@ import { MONSTER_PATH_IDS } from '../../common/path/monster-path-data.ts'
 import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { TELEPORT } from '../input/combat-planner.ts'
+import { portalsCarried } from '../input/town-portal.ts'
 import type { PlayAssists } from '../input/play-assists.ts'
 import type { LevelView } from '../map/level-view.ts'
 import type { SubTilePoint } from '../motion/pathfind.ts'
@@ -60,6 +61,9 @@ const HEAL_COOLDOWN_MS = 45_000
 const ERRAND_TIMEOUT_MS = 45_000
 const RETREAT_LIFE = 0.35
 const DRY_LIFE = 0.6
+const LAST_POTION_LIFE = 0.45
+const BURST_MS = 3000
+const BURST_LOSS = 0.4
 const KITE_NEAR = 5
 const KITE_STEP = 9
 const KITE_MS = 2500
@@ -71,7 +75,12 @@ const REPAIR_BELOW = 0.3
 const POTION_COLUMNS = { melee: [3, 1], caster: [2, 2] } as const
 const POTION_GOLD = 100
 const BUY_TRIES = 16
+const TOME_GOLD = 500
+const TOME_SIZE = 10
+const SPARE_SCROLLS = 2
+const SCROLL_GOLD = 100
 const ROOM_REACHED = 8
+const ROOM_END = 3
 const STASH_CLASS = 267
 const TOWN_PORTAL_CLASS = 59
 const PORTAL_REACH = 12
@@ -106,6 +115,7 @@ export class Autopilot {
   private leftBehind: typeof this.trail = []
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
+  private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
   private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
   private lastSpend = Number.NEGATIVE_INFINITY
@@ -151,7 +161,7 @@ export class Autopilot {
     const { assists } = this.host
     const town = this.town()
     this.trip = town && this.trip === 'retreat' ? 'return' : !town && this.trip === 'return' ? null : this.trip
-    const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger()
+    const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
     assists.pilotCombat = assists.autoCombatKey !== null && danger === null
     assists.standDown = danger !== null
     if (danger === null) this.spend(nowMs)
@@ -209,9 +219,11 @@ export class Autopilot {
     else this.walkRoute(nowMs)
   }
 
-  private walkRoute(nowMs: number, route = this.host.guide.routeFrom(this.host.world.self)): void {
+  private walkRoute(nowMs: number, found = this.host.guide.routeFrom(this.host.world.self)): void {
     const { world, assists } = this.host
     const me = world.self
+    const goal = this.host.guide.currentPlan?.target
+    const route = found.length >= 2 || !goal || distance(goal, me) <= REACH ? found : [me, goal]
     if (route.length < 2) return
     const blink = this.blink
     if (blink?.pending && nowMs - blink.at >= TELEPORT_MS) {
@@ -382,7 +394,7 @@ export class Autopilot {
     if (this.exploreField?.key !== key) this.exploreField = { key, field: new FlowField({ ...view, walkable: assists.walkableWithDoorsOpen(view) }, goal.x, goal.y) }
     const field = this.exploreField.field
     const path = field.pathFrom(me.x, me.y, 1, 40)
-    if (path.length === 0) visited.add(next.index)
+    if (path.length <= ROOM_END) visited.add(next.index)
     else this.walkRoute(nowMs, [me, ...field.corners(path, me)])
   }
 
@@ -399,13 +411,17 @@ export class Autopilot {
     this.lastSpot = { level: areaId, x: self.x, y: self.y }
   }
 
-  private danger(): string | null {
+  private danger(nowMs: number): string | null {
     const { world, hudManager } = this.host
     const me = world.self
     const life = me.life / (hudManager.maxHp || me.maxLife)
     const { belt, inventory } = world.containers
-    const healing = [...belt.values(), ...inventory.values()].some((item) => /^(hp|rv)/.test(item.code))
-    return life < RETREAT_LIFE ? 'Low on life, heading to town' : !healing && life < DRY_LIFE ? 'Out of healing potions, heading to town' : null
+    const healing = [...belt.values(), ...inventory.values()].filter((item) => /^(hp|rv)/.test(item.code)).length
+    this.lifeLog = [...this.lifeLog.filter((entry) => nowMs - entry.at <= BURST_MS), { at: nowMs, life }]
+    const burst = Math.max(...this.lifeLog.map((entry) => entry.life)) - life
+    if (life < RETREAT_LIFE) return 'Low on life, heading to town'
+    if (healing === 0 && life < DRY_LIFE) return 'Out of healing potions, heading to town'
+    return (burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
   }
 
   private retreat(why: string, nowMs: number): void {
@@ -532,7 +548,9 @@ export class Autopilot {
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
       worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repair() },
-      (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length > 0) ? ready('potions') && { key: 'potions', reason: 'Buying potions', npc: 'potions', action: 'trade', work: () => this.buyPotions() } : false,
+      (this.portalsWanted() > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length > 0)
+        ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
+        : false,
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
     ]
     const errand = errands.find((e): e is Errand => e !== false) ?? null
@@ -616,6 +634,31 @@ export class Autopilot {
     const count = (prefix: string) => [...world.containers.belt.values()].filter((item) => item.code.startsWith(prefix)).length
     const free = rows * 4 - world.containers.belt.size
     return Math.min(free, Math.max(0, healing * rows - count('hp')) + Math.max(0, mana * rows - count('mp')))
+  }
+
+  private portalsWanted(): number {
+    const { tome, portals } = portalsCarried(this.host.world.containers.inventory.values())
+    return Math.max(0, (tome ? TOME_SIZE : SPARE_SCROLLS) - portals)
+  }
+
+  private async restock(): Promise<void> {
+    await this.buyPortal()
+    await this.buyPotions()
+    await this.topUpPortals(BUY_TRIES)
+  }
+
+  private async topUpPortals(tries: number): Promise<void> {
+    if (tries > 0 && (await this.buyPortal())) await this.topUpPortals(tries - 1)
+  }
+
+  private async buyPortal(): Promise<boolean> {
+    const { world, hudManager, hudModel } = this.host
+    const { tome } = portalsCarried(world.containers.inventory.values())
+    const code = !tome && world.self.gold >= TOME_GOLD ? 'tbk' : 'tsc'
+    const ware = [...world.containers.shop.values()].find((item) => item.code.trim() === code)
+    const before = world.self.gold
+    if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || this.portalsWanted() === 0) return false
+    return hudModel.vendorBuy(ware.id, false) && waitFor(() => world.self.gold < before, 1500)
   }
 
   private isCaster(): boolean {

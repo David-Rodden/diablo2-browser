@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { beltColumnKinds, beltRefillPick } from '../../src/client/input/belt-refill.ts'
 import { CommandMapper } from '../../src/client/input/command-mapper.ts'
-import { townPortalSource } from '../../src/client/input/town-portal.ts'
+import { portalsCarried, townPortalSource } from '../../src/client/input/town-portal.ts'
 import type { HudModel } from '../../src/client/ui-model/hud-model.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
@@ -21,6 +21,11 @@ describe('town portal source', () => {
     expect(townPortalSource([{ id: 1, code: 'tsc' }, { id: 2, code: 'tbk', quantity: 0 }])?.id).toBe(1)
     expect(townPortalSource([{ id: 2, code: 'tbk', stats: [{ statId: 70, value: 4 }] }])?.id).toBe(2)
     expect(townPortalSource([{ id: 2, code: 'tbk', quantity: 0 }, { id: 3, code: 'hp1' }])).toBeNull()
+  })
+
+  it('counts every portal carried in tomes and scrolls', () => {
+    expect(portalsCarried([{ id: 1, code: 'tsc' }, { id: 2, code: 'tbk ', quantity: 3 }, { id: 3, code: 'tsc' }])).toEqual({ tome: true, portals: 5 })
+    expect(portalsCarried([{ id: 3, code: 'hp1' }])).toEqual({ tome: false, portals: 0 })
   })
 })
 

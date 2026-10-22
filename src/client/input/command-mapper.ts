@@ -518,7 +518,7 @@ export class CommandMapper {
 
   private stepToward(x: number, y: number, nowMs: number): void {
     const running = this.isCurrentlyRunning()
-    if (this.startLocalPathPrediction(x, y, running).length === 0) this.predictor?.setPath([{ x, y }], running)
+    this.predictor?.setPath([{ x, y }], running)
     this.sendCommand({ type: running ? 'RunToLocation' : 'WalkToLocation', x: Math.round(x), y: Math.round(y) }, nowMs)
   }
 

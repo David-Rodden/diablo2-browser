@@ -133,6 +133,16 @@ describe('autopilot', () => {
     expect(assists.castTownPortal).toHaveBeenCalled()
   })
 
+  it('heads home when life drops fast, even with potions left', () => {
+    const { world, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.containers.belt.set(1, { id: 1, code: 'hp1' })
+    world.containers.belt.set(2, { id: 2, code: 'hp1' })
+    tick()
+    world.self.life = 55
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Taking a beating, heading to town')
+  })
+
   it('steps away from monsters at its feet before opening a portal', () => {
     const { world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.self.life = 20
