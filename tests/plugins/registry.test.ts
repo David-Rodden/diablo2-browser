@@ -587,6 +587,7 @@ describe('BUILTIN_PLUGINS Registry & Built-In Plugin Lifecycles', () => {
       townPortal: { getKey: () => null, setKey() {} },
       autoPotion: { getThresholds: () => null, setThresholds() {} },
       autoLoot: { getRules: () => null, setRules() {} },
+      inventoryCare: { getConfig: () => null, setConfig() {} },
       itemInfo: { getConfig: () => null, setConfig() {} },
     })
     await host.start()

@@ -79,6 +79,10 @@ export const NPC_SELL_SOUND_ID = 0xdd
 /** `UnitType` id of monsters / NPCs in `UnitRef`. */
 export const UNIT_TYPE_MONSTER = 1
 
+const RED_TEXT = 1
+const ARTISAN_ANSWER_MS = 3000
+const ARTISAN_NAMES: Readonly<Record<number, string>> = { 154: 'Charsi', 511: 'Larzuk', 512: 'Anya' }
+
 const EQUIP_SLOT_ALIAS_MAP: Readonly<Record<string, number>> = {
   ...EQUIP_SLOT_TO_BODY_LOC,
   head: 1,
@@ -642,6 +646,12 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
     complement: itemId >>> 0,
   })
   if (model.hudManager) model.syncFromWorld()
+  const artisan = ARTISAN_NAMES[model.world.getUnit('monster', npcId)?.classId ?? -1]
+  if (artisan !== undefined) {
+    setTimeout(() => {
+      if (model.world.awaitingArtisanConfirmNpcId === npcId && model.world.containers.cursor?.id === itemId) model.world.addLocalSystemMessage(`${artisan} didn't answer. Stand next to ${artisan} and try again.`, RED_TEXT)
+    }, ARTISAN_ANSWER_MS)
+  }
 }
 
 export function closeActiveNpcPanelImpl(model: any): void {

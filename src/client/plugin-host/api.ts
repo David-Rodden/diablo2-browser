@@ -20,7 +20,8 @@ import {
 } from '../../client/scene/lighting-presets.ts'
 import type { OnlineSession } from '../session/online-session.ts'
 import type { AutoPotionThresholds } from '../input/auto-potion.ts'
-import type { AutoLootRules } from '../input/auto-loot.ts'
+import type { AutoLootRules, LootCategories } from '../input/auto-loot.ts'
+import type { InventoryCareConfig } from '../input/inventory-care.ts'
 import type { ItemInfoConfig, LootFilter } from '../ui/ground-item-info.ts'
 import type { GuideMode } from '../guide/route.ts'
 import type { MenuLayout } from './mod-menu-text.ts'
@@ -85,7 +86,12 @@ export interface LocalizedText {
   readonly en: string
 }
 
-export type PluginSettingSpec =
+export interface PluginSettingCondition {
+  readonly key: string
+  readonly is: readonly (string | boolean)[]
+}
+
+export type PluginSettingSpec = (
   | {
       readonly kind: 'boolean'
       readonly key: string
@@ -102,6 +108,7 @@ export type PluginSettingSpec =
         readonly label: LocalizedText
       }[]
     }
+) & { readonly shownWhen?: readonly PluginSettingCondition[] | undefined }
 
 export type PluginActionSpec =
   | {
@@ -245,7 +252,7 @@ export interface PluginHotkeyPort {
 
 export type PluginAutoCombatPort = PluginHotkeyPort
 
-export type { AutoLootRules, AutoPotionThresholds, ItemInfoConfig, LootFilter }
+export type { AutoLootRules, AutoPotionThresholds, InventoryCareConfig, ItemInfoConfig, LootCategories, LootFilter }
 
 export type { GuideMode }
 
@@ -264,6 +271,11 @@ export interface PluginItemInfoPort {
 export interface PluginAutoLootPort {
   getRules(): AutoLootRules | null
   setRules(rules: AutoLootRules | null): void
+}
+
+export interface PluginInventoryCarePort {
+  getConfig(): InventoryCareConfig | null
+  setConfig(config: InventoryCareConfig | null): void
 }
 
 export interface PluginAutoPotionPort {
@@ -369,6 +381,7 @@ export interface PluginContext {
   readonly townPortal: PluginHotkeyPort
   readonly autoPotion: PluginAutoPotionPort
   readonly autoLoot: PluginAutoLootPort
+  readonly inventoryCare: PluginInventoryCarePort
   readonly lang: {
     get(): GameLang
     subscribe(fn: (lang: GameLang) => void): () => void
@@ -613,6 +626,9 @@ export function validatePluginDefinition(plugin: D2WebPlugin): void {
         )
       }
     }
+    const keys = new Set(plugin.settings.map((spec) => spec.key))
+    const dangling = plugin.settings.flatMap((spec) => (spec.shownWhen ?? []).filter(({ key }: PluginSettingCondition) => !keys.has(key) || key === spec.key).map(({ key }: PluginSettingCondition) => `${spec.key} → ${key}`))
+    if (dangling.length > 0) throw new Error(`[PluginHost] Plugin "${plugin.id}" shows settings based on unknown settings: ${dangling.join(', ')}`)
   }
 
   if (plugin.actions !== undefined) {

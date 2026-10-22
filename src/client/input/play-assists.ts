@@ -1,5 +1,6 @@
 import type { ClientCommand } from '../../netproto/index.ts'
-import { fitsInInventory, isWantedLoot, type AutoLootRules } from './auto-loot.ts'
+import { isWantedLoot, type AutoLootRules, type RoomPlan } from './auto-loot.ts'
+import { InventoryCare } from './inventory-care.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import type { LevelView } from '../map/level-view.ts'
 import { findPathWorld, type SubTilePoint, type SubTileWalkabilityGrid } from '../motion/pathfind.ts'
@@ -76,6 +77,7 @@ export class PlayAssists {
   autoLootRules: AutoLootRules | null = null
   beltRefill = false
   townPortalKey: string | null = null
+  readonly inventoryCare: InventoryCare
   private readonly autoPotion = new AutoPotionPlanner()
   private readonly pickupRetryAt = new Map<number, number>()
   private autoCombatKeyValue: string | null = null
@@ -93,7 +95,9 @@ export class PlayAssists {
   private beltRefillSent: { readonly atMs: number; readonly beltSize: number; readonly itemId: number } | null = null
   private beltKinds: BeltColumnKinds = []
 
-  constructor(private readonly host: PlayAssistHost) {}
+  constructor(private readonly host: PlayAssistHost) {
+    this.inventoryCare = new InventoryCare(host)
+  }
 
   get autoCombatKey(): string | null {
     return this.autoCombatKeyValue
@@ -107,6 +111,7 @@ export class PlayAssists {
   tick(nowMs: number): void {
     this.drinkPotionsIfLow(nowMs)
     this.refillBelt(nowMs)
+    this.inventoryCare.tick()
     this.pickUpNearbyLoot(nowMs)
     this.runAutoCombat(nowMs)
   }
@@ -167,7 +172,7 @@ export class PlayAssists {
     const { world } = this.host
     const { ground } = world.containers
     ;[...this.pickupRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.pickupRetryAt.delete(id))
-    if (world.isDead || this.isInWorldInteraction()) return
+    if (world.isDead || this.isInWorldInteraction() || this.inventoryCare.busy) return
     const wanted = this.lootWanted()
     const distance = this.host.distanceFromSelf()
     const loot = [...ground.values()]
@@ -190,7 +195,9 @@ export class PlayAssists {
     const stepping = !inReach && path.length > LOOT_STEP_AHEAD
     this.lootWalkId = inReach ? null : unit.id
     this.pickupRetryAt.set(unit.id, nowMs + (inReach ? PICKUP_RETRY_MS : stepping ? LOOT_STEP_MS : PICKUP_DETOUR_RETRY_MS))
-    if (inReach) this.host.sendCommand({ type: 'ItemPickup', itemId: unit.id, toCursor: false }, nowMs)
+    const room = inReach ? this.roomFor(unit.id) : null
+    if (room !== null && room.kind !== 'fits') this.inventoryCare.makeRoom(room, ground.get(unit.id)!)
+    else if (inReach) this.host.sendCommand({ type: 'ItemPickup', itemId: unit.id, toCursor: false }, nowMs)
     else if (stepping) this.host.triggerPrimaryWorldAction(path[LOOT_STEP_AHEAD]!.x, path[LOOT_STEP_AHEAD]!.y, null, nowMs)
     else this.host.triggerPrimaryWorldAction(unit.x, unit.y, unit, nowMs)
   }
@@ -249,13 +256,19 @@ export class PlayAssists {
     return INTERACTION_PANELS.has(hudManager.leftPanel) || Boolean(hudManager.worldPanels.npcMenu)
   }
 
+  private roomFor(itemId: number): RoomPlan | null {
+    const item = this.host.world.containers.ground.get(itemId)
+    return item === undefined || item.code.trim() === 'gld' || this.inventoryCare.appraise(item).kind === 'consumable' ? null : this.inventoryCare.roomFor(item)
+  }
+
   private lootWanted(): (item: ItemData) => boolean {
     const { self, containers } = this.host.world
     const wantsGold = this.autoGoldPickup && self.gold < self.level * CARRIED_GOLD_PER_LEVEL
     const thresholds = this.autoPotionThresholds
     const wantsPotion = thresholds === null ? () => false : wantedPotionPickup(inventoryPotions([...containers.inventory.values(), ...containers.belt.values()]), thresholds)
     const rules = this.autoLootRules
-    const wantsLoot = (item: ItemData) => rules !== null && isWantedLoot(rules, item) && fitsInInventory(containers.inventory.values(), item.invWidth, item.invHeight)
+    const care = this.inventoryCare
+    const wantsLoot = (item: ItemData) => rules !== null && !care.discarded.has(item.id) && isWantedLoot(rules, item, care.appraise(item)) && care.roomFor(item) !== null
     return (item) => (wantsGold && item.code.trim() === 'gld') || wantsPotion(item.code.trim()) || wantsLoot(item)
   }
 
