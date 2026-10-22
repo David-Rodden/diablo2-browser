@@ -104,6 +104,7 @@ import { decorateLoadingScreen } from './ui/loading-screen.ts'
 import { startPageTitle } from './ui/page-title.ts'
 import type { PathGuide } from './guide/path-guide.ts'
 import { createSessionGuide } from './guide/session-guide.ts'
+import { loadSinglePlayerData } from './session/single-player-data.ts'
 import {
   OnlineSession,
   SessionLostError,
@@ -963,7 +964,7 @@ export async function startPlayApp(options?: {
       if (!lobby) {
         throw new Error('Single Player local server provider is not registered')
       }
-      await inGameAssetsPromise
+      await Promise.all([inGameAssetsPromise, loadSinglePlayerData()])
       if (session.phase === 'ingame') {
         throw new Error('Single Player game requested while another game is still active')
       }
