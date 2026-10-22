@@ -105,6 +105,8 @@ import { startPageTitle } from './ui/page-title.ts'
 import type { PathGuide } from './guide/path-guide.ts'
 import { createSessionGuide } from './guide/session-guide.ts'
 import { Autopilot } from './guide/autopilot.ts'
+import { pilotReport } from './guide/pilot-report.ts'
+import { PlayLog } from './session/play-log.ts'
 import { loadSinglePlayerData } from './session/single-player-data.ts'
 import {
   OnlineSession,
@@ -703,6 +705,11 @@ export async function startPlayApp(options?: {
     levelView: () => session.mapService?.getLoadedLevelView(session.world.areaId) ?? null,
   })
   assists().pilot = pilot
+  if ((import.meta as { readonly env?: { readonly DEV?: boolean } }).env?.DEV === true) {
+    const playLog = new PlayLog((body) => void fetch('/api/play-log', { method: 'POST', body, keepalive: true }).catch(() => undefined), () => pilotReport(session.world, hudManager, assists(), pilot, guide))
+    assists().journal = (kind, detail) => playLog.note(kind, detail)
+    setInterval(() => playLog.tick(performance.now()), 250)
+  }
   const plugins = new PluginHost({
     plugins: options?.plugins ?? [],
     session,

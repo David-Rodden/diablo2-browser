@@ -4,7 +4,7 @@ import { getLevelMonsterLevel113c } from '../../common/world/levels-monlvl-113c.
 import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { TELEPORT } from '../input/combat-planner.ts'
-import { portalsCarried } from '../input/town-portal.ts'
+import { scrollsCarried, scrollSource } from '../input/town-portal.ts'
 import { isClosedDoor, type PlayAssists } from '../input/play-assists.ts'
 import type { LevelView } from '../map/level-view.ts'
 import type { SubTilePoint } from '../motion/pathfind.ts'
@@ -87,10 +87,13 @@ const REPAIR_BELOW = 0.3
 const POTION_COLUMNS = { melee: [3, 1], caster: [2, 2] } as const
 const POTION_GOLD = 100
 const BUY_TRIES = 16
-const TOME_GOLD = 500
-const TOME_SIZE = 10
-const SPARE_SCROLLS = 2
+const SCROLL_KINDS = {
+  portal: { tome: 'tbk', scroll: 'tsc', tomeGold: 500, keep: 10, spare: 2 },
+  identify: { tome: 'ibk', scroll: 'isc', tomeGold: 300, keep: 10, spare: 0 },
+} as const
 const SCROLL_GOLD = 100
+const IDENTIFY_MS = 1500
+const QUEST_STALE_MS = 30_000
 const ROOM_REACHED = 8
 const ROOM_END = 3
 const STASH_CLASS = 267
@@ -127,6 +130,7 @@ export class Autopilot {
   private leftBehind: typeof this.trail = []
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
+  private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
   private chase: { readonly id: number; readonly since: number } | null = null
   private readonly ignored = new Map<number, number>()
   private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
@@ -173,6 +177,7 @@ export class Autopilot {
 
   private decide(nowMs: number): void {
     const { assists } = this.host
+    this.refreshQuests(nowMs)
     const town = this.town()
     this.trip = town && this.trip === 'retreat' ? 'return' : !town && this.trip === 'return' ? null : this.trip
     const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
@@ -193,11 +198,27 @@ export class Autopilot {
     else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
+  private refreshQuests(nowMs: number): void {
+    const hint = this.host.guide.currentPlan?.hint ?? ''
+    if (this.questWatch.hint !== hint) this.questWatch = { hint, since: nowMs, asked: this.questWatch.asked }
+    const stale = nowMs - this.questWatch.since >= QUEST_STALE_MS && nowMs - this.questWatch.asked >= QUEST_STALE_MS
+    if (!stale || this.host.hudModel === null) return
+    this.questWatch = { ...this.questWatch, asked: nowMs }
+    this.host.hudModel.requestQuestData()
+    this.host.assists.journal?.('quests', { hint })
+  }
+
   private say(status: string): void {
+    if (this.host.guide.pilotStatus !== status) this.host.assists.journal?.('status', { status })
     this.host.guide.pilotStatus = status
   }
 
+  report(): Readonly<Record<string, unknown>> {
+    return { on: this.active, trip: this.trip, job: this.job !== null, crossing: this.crossing !== null, trail: this.trail.map((spot) => spot.level), gap: this.levelGap(), potions: this.healingPotions() }
+  }
+
   private toast(title: string, detail: string, color: 'green' | 'tan' | 'red' | 'gold'): void {
+    this.host.assists.journal?.('toast', { title, detail })
     this.host.hudManager.toasts.push({ title, detail, color }, performance.now())
   }
 
@@ -387,6 +408,7 @@ export class Autopilot {
     if (!menu) return false
     if (talk) Object.assign(talk, { spoke: true })
     hudModel.closeActiveNpcPanel()
+    hudModel.requestQuestData()
     return true
   }
 
@@ -592,9 +614,10 @@ export class Autopilot {
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
       worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repair() },
-      (this.portalsWanted() > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length > 0)
+      (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
+      this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
     ]
     const errand = errands.find((e): e is Errand => e !== false) ?? null
@@ -615,6 +638,10 @@ export class Autopilot {
     const { world, hudManager, hudModel } = this.host
     const town = this.town()
     if (!town || hudModel === null) return
+    if (!errand.npc && !errand.stash) {
+      await errand.work?.()
+      return
+    }
     const find = errand.stash ? () => world.getUnitsByType(2).find((unit) => unit.classId === STASH_CLASS) : () => world.getUnitsByType(1).find((unit) => unit.classId === MONSTER_PATH_IDS.indexOf(town[errand.npc!]))
     const unit = await this.reach(find, errand)
     if (!unit || !this.active) return
@@ -680,29 +707,51 @@ export class Autopilot {
     return Math.min(free, Math.max(0, healing * rows - count('hp')) + Math.max(0, mana * rows - count('mp')))
   }
 
-  private portalsWanted(): number {
-    const { tome, portals } = portalsCarried(this.host.world.containers.inventory.values())
-    return Math.max(0, (tome ? TOME_SIZE : SPARE_SCROLLS) - portals)
+  private scrollsWanted(kind: keyof typeof SCROLL_KINDS): number {
+    const { tome: tomeCode, scroll, keep, spare } = SCROLL_KINDS[kind]
+    const { tome, scrolls } = scrollsCarried(this.host.world.containers.inventory.values(), tomeCode, scroll)
+    return Math.max(0, (tome ? keep : spare) - scrolls)
   }
 
   private async restock(): Promise<void> {
-    await this.buyPortal()
+    await this.buyScroll('portal')
     await this.buyPotions()
-    await this.topUpPortals(BUY_TRIES)
+    await this.topUp('portal', BUY_TRIES)
+    await this.buyScroll('identify')
+    await this.topUp('identify', BUY_TRIES)
   }
 
-  private async topUpPortals(tries: number): Promise<void> {
-    if (tries > 0 && (await this.buyPortal())) await this.topUpPortals(tries - 1)
+  private async topUp(kind: keyof typeof SCROLL_KINDS, tries: number): Promise<void> {
+    if (tries > 0 && (await this.buyScroll(kind))) await this.topUp(kind, tries - 1)
   }
 
-  private async buyPortal(): Promise<boolean> {
+  private async buyScroll(kind: keyof typeof SCROLL_KINDS): Promise<boolean> {
     const { world, hudManager, hudModel } = this.host
-    const { tome } = portalsCarried(world.containers.inventory.values())
-    const code = !tome && world.self.gold >= TOME_GOLD ? 'tbk' : 'tsc'
+    const { tome: tomeCode, scroll, tomeGold } = SCROLL_KINDS[kind]
+    const { tome } = scrollsCarried(world.containers.inventory.values(), tomeCode, scroll)
+    const code = tome ? scroll : world.self.gold >= tomeGold ? tomeCode : kind === 'portal' ? scroll : null
     const ware = [...world.containers.shop.values()].find((item) => item.code.trim() === code)
     const before = world.self.gold
-    if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || this.portalsWanted() === 0) return false
+    const wanted = code === tomeCode || this.scrollsWanted(kind) > 0
+    if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || !wanted) return false
     return hudModel.vendorBuy(ware.id, false) && waitFor(() => world.self.gold < before, 1500)
+  }
+
+  private unidentified(): ItemData[] {
+    return [...this.host.world.containers.inventory.values()].filter((item) => !item.identified)
+  }
+
+  private async identifyAll(): Promise<void> {
+    const { world, hudManager, hudModel } = this.host
+    for (const item of this.unidentified()) {
+      const source = scrollSource(world.containers.inventory.values(), 'ibk', 'isc')
+      if (!source || hudModel === null || !this.active) break
+      hudModel.useItem(source.id)
+      if (!(await waitFor(() => hudManager.pendingIdentifyScrollId !== null, IDENTIFY_MS))) break
+      hudModel.identifyItem(item.id, source.id)
+      await waitFor(() => world.containers.inventory.get(item.id)?.identified !== false, IDENTIFY_MS)
+    }
+    if (hudManager.rightPanel === 'inv') hudManager.toggleRightPanel('inv')
   }
 
   private isCaster(): boolean {

@@ -43,6 +43,10 @@ const SUPPORT_MS = 600
 const CORPSE_USED_STATE = 0x8f
 const CORPSE_REACH = 10
 const RECAST_MS = 6000
+const CROWD_REACH = 3
+const CROWD_SIZE = 2
+const BACK_OFF_MS = 2500
+const BACK_OFF_STEP = 7
 const CURSE_RECAST_MS = 20_000
 const PACK_REACH = 6
 const BLAST_REACH = 5
@@ -104,6 +108,7 @@ export class PlayAssists {
   private pilotFights = false
   questPickup = false
   standDown = false
+  journal: ((kind: string, detail: Readonly<Record<string, unknown>>) => void) | null = null
   pilot: Pilot | null = null
   pilotKey: string | null = null
   townPortalKey: string | null = null
@@ -128,6 +133,7 @@ export class PlayAssists {
   private lastSupportMs = Number.NEGATIVE_INFINITY
   private readonly supportCastAt = new Map<string, number>()
   private readonly givenUp = new Map<number, number>()
+  private lastBackOff = Number.NEGATIVE_INFINITY
   private fight: { readonly id: number; readonly life: number; readonly since: number } | null = null
 
   constructor(private readonly host: PlayAssistHost) {
@@ -331,6 +337,7 @@ export class PlayAssists {
     }
     const { x, y } = use.on === 'self' ? this.host.world.self : target!
     this.supportCastAt.set(castKey(use.skillId), nowMs)
+    this.logCast(use.on === 'self' ? 'support' : 'curse', use.skillId, use.on === 'self' ? null : target)
     this.holdSkill('right', use.skillId, nowMs)
     return this.host.triggerSecondaryWorldAction(x, y, use.on === 'self' ? null : target, nowMs) !== null
   }
@@ -373,13 +380,43 @@ export class PlayAssists {
   private strike(target: ClientUnit, nowMs: number, isHold: boolean): DispatchedCommandRecord | null {
     const corpse = this.corpseToBlast(target, nowMs)
     if (corpse) {
+      this.logCast('blast', CORPSE_EXPLOSION, corpse)
       this.holdSkill('right', CORPSE_EXPLOSION, nowMs)
       return this.host.triggerSecondaryWorldAction(corpse.x, corpse.y, corpse, nowMs)
     }
     const use = attackSkill(this.combatSelf(), this.combatTarget(target), (skillId) => this.host.canCastSkill(skillId, nowMs))
     if (use.reach === 'close' && this.host.distanceFromSelf()(target) > CLOSE_REACH) return this.host.triggerPrimaryWorldAction(target.x, target.y, null, nowMs)
+    if (use.reach !== 'melee' && !this.clearShot(target)) return this.host.triggerPrimaryWorldAction(target.x, target.y, null, nowMs)
+    const room = use.reach === 'ranged' ? this.roomToBreathe(nowMs) : null
+    if (room) return this.host.triggerPrimaryWorldAction(room.x, room.y, null, nowMs)
+    if (!isHold) this.logCast('attack', use.skillId, target)
     this.holdSkill(use.hand, use.skillId, nowMs)
     return use.hand === 'left' ? this.host.triggerPrimaryWorldAction(target.x, target.y, target, nowMs, isHold) : this.host.triggerSecondaryWorldAction(target.x, target.y, target, nowMs)
+  }
+
+  private roomToBreathe(nowMs: number): SubTilePoint | null {
+    const me = this.host.world.self
+    const crowd = this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= CROWD_REACH)
+    if (crowd.length < CROWD_SIZE || nowMs - this.lastBackOff < BACK_OFF_MS) return null
+    const gap = (spot: SubTilePoint) => Math.min(...crowd.map((unit) => Math.hypot(unit.x - spot.x, unit.y - spot.y)))
+    const spot = Array.from({ length: 12 }, (_, i) => ({ x: Math.round(me.x + Math.cos((i * Math.PI) / 6) * BACK_OFF_STEP), y: Math.round(me.y + Math.sin((i * Math.PI) / 6) * BACK_OFF_STEP) }))
+      .filter((candidate) => this.clearPath(me, candidate))
+      .sort((a, b) => gap(b) - gap(a))[0]
+    if (!spot || gap(spot) <= gap(me) + 1) return null
+    this.lastBackOff = nowMs
+    this.journal?.('back-off', { crowd: crowd.length, to: [spot.x, spot.y] })
+    return spot
+  }
+
+  private clearPath(from: SubTilePoint, to: SubTilePoint): boolean {
+    const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y))
+    return Array.from({ length: steps }, (_, i) => (i + 1) / steps).every((t) => !this.host.world.isSubTileBlocked(Math.round(from.x + (to.x - from.x) * t), Math.round(from.y + (to.y - from.y) * t)))
+  }
+
+  private clearShot(target: SubTilePoint): boolean {
+    const me = this.host.world.self
+    const steps = Math.ceil(Math.hypot(target.x - me.x, target.y - me.y))
+    return Array.from({ length: Math.max(0, steps - 1) }, (_, i) => (i + 1) / steps).every((t) => !this.host.world.isSubTileMissileBlocked(Math.round(me.x + (target.x - me.x) * t), Math.round(me.y + (target.y - me.y) * t)))
   }
 
   private corpseToBlast(target: ClientUnit, nowMs: number): ClientUnit | undefined {
@@ -396,6 +433,14 @@ export class PlayAssists {
     return this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - spot.x, unit.y - spot.y) <= reach).length
   }
 
+  get currentTargetId(): number | null {
+    return this.targetId
+  }
+
+  private logCast(why: string, skillId: number, unit: ClientUnit | null): void {
+    this.journal?.('cast', { why, skillId, target: unit && { id: unit.id, classId: unit.classId, name: unit.name, lifePct: unit.lifePct, dead: unit.dead } })
+  }
+
   private holdSkill(hand: Hand, skillId: number, nowMs: number): void {
     const { self } = this.host.world
     if ((hand === 'left' ? self.leftSkill : self.rightSkill) !== skillId) this.host.selectSkill(hand, skillId, nowMs)
@@ -410,6 +455,7 @@ export class PlayAssists {
       states: self.states,
       petClasses: [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).map((pet) => pet.classId),
       lifeFraction: self.life / Math.max(1, this.host.hudManager.maxHp || self.maxLife),
+      manaFraction: self.mana / Math.max(1, this.host.hudManager.maxMana || self.maxMana),
       corpsesNear: this.corpses().filter((unit) => Math.hypot(unit.x - self.x, unit.y - self.y) <= CORPSE_REACH).length,
     }
   }
@@ -423,6 +469,7 @@ export class PlayAssists {
       states: unit.states,
       trapsNear: world.getUnitsByType(1).filter((other) => TRAP_CLASSES.has(other.classId) && near(other)).length,
       tough: isTough(unit),
+      lifeFraction: unit.lifePct / 128,
       packSize: this.hostilesNear(unit, PACK_REACH),
     }
   }

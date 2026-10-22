@@ -13,10 +13,11 @@ const character = (skills: Record<string, number>, extra: Partial<CombatSelf> = 
   states: noStates,
   petClasses: [],
   lifeFraction: 1,
+  manaFraction: 1,
   corpsesNear: 0,
   ...extra,
 })
-const monster = (extra: Partial<CombatTarget> = {}): CombatTarget => ({ distance: 6, resists: {}, states: noStates, trapsNear: 0, tough: false, packSize: 1, ...extra })
+const monster = (extra: Partial<CombatTarget> = {}): CombatTarget => ({ distance: 6, resists: {}, states: noStates, trapsNear: 0, tough: false, packSize: 1, lifeFraction: 1, ...extra })
 const anything = () => true
 
 describe('combat planner', () => {
@@ -31,6 +32,14 @@ describe('combat planner', () => {
   it('prefers the stronger of two equally trained attacks, but not one with a cooldown', () => {
     const fire = character({ 'Fire Bolt': 20, 'Fire Ball': 20, Meteor: 20 }, { mainSkills: [id('Fire Bolt'), id('Fire Ball'), id('Meteor')] })
     expect(attackSkill(fire, monster(), anything).skillId).toBe(id('Fire Ball'))
+  })
+
+  it('swings instead of casting when mana is low or a nearby monster is nearly dead, but not on a boss', () => {
+    const teeth = character({ Teeth: 10 }, { manaFraction: 0.2 })
+    expect(attackSkill(teeth, monster(), anything).skillId).toBe(BASIC_ATTACK)
+    expect(attackSkill(teeth, monster({ tough: true }), anything).skillId).toBe(id('Teeth'))
+    expect(attackSkill({ ...teeth, manaFraction: 1 }, monster({ lifeFraction: 0.2, distance: 3 }), anything).skillId).toBe(BASIC_ATTACK)
+    expect(attackSkill({ ...teeth, manaFraction: 1 }, monster({ lifeFraction: 0.2, distance: 12 }), anything).skillId).toBe(id('Teeth'))
   })
 
   it('falls back to a plain attack when nothing can be cast', () => {

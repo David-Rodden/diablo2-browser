@@ -20,7 +20,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     getUnitsByType: (type: number) => units.filter((unit) => ({ 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
   }
   const hudManager = { leftPanel: 'none', worldPanels: { npcMenu: null as unknown, npcSpeech: null, clickNpcMenuOption: vi.fn() }, toasts: { push: vi.fn() }, maxHp: 0, maxMana: 0, belt: { maxRows: 4 } }
-  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn() }
+  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), requestQuestData: vi.fn() }
   const assists = {
     autoCombatKey: 'E' as string | null,
     pilotKey: 'Y',
@@ -106,7 +106,16 @@ describe('autopilot', () => {
     tick()
     expect(hudManager.worldPanels.clickNpcMenuOption).toHaveBeenLastCalledWith('talk_quest:12', undefined)
     tick()
-    expect(hudModel.closeActiveNpcPanel).toHaveBeenCalled()
+    expect([hudModel.closeActiveNpcPanel.mock.calls.length > 0, hudModel.requestQuestData.mock.calls.length > 0]).toEqual([true, true])
+  })
+
+  it('asks the server for fresh quest state when the step has not moved for a while', () => {
+    const { hudModel, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    tick()
+    tick(31_000)
+    expect(hudModel.requestQuestData).toHaveBeenCalledTimes(1)
+    tick(1000)
+    expect(hudModel.requestQuestData).toHaveBeenCalledTimes(1)
   })
 
   it('walks up to a boss instead of trying to talk to it', () => {
