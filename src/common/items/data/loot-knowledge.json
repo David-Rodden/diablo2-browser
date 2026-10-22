@@ -29,5 +29,6 @@
     { "slot": "weapon", "mods": "weaponMods", "text": "weaponsEn" },
     { "slot": "helm or armor", "mods": "helmMods", "text": "helmsEn" },
     { "slot": "shield", "mods": "shieldMods", "text": "shieldsEn" }
-  ]
+  ],
+  "imbue": { "questWord": 3, "rewardPending": 2, "alwaysWorthTypes": ["circ"] }
 }

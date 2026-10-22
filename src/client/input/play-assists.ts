@@ -89,6 +89,7 @@ export class PlayAssists {
   private engagedMonsterId: number | null = null
   private readonly reachability = new Map<string, { readonly atMs: number; readonly path: readonly SubTilePoint[] | null }>()
   private lootWalkId: number | null = null
+  private itemPickup: { readonly id: number; readonly until: number } | null = null
   private collisionGrids: { readonly atMs: number; readonly grids: Map<boolean, SubTileWalkabilityGrid | null> } = { atMs: Number.NEGATIVE_INFINITY, grids: new Map() }
   private readonly doorAttemptAt = new Map<number, number>()
   private lastDoorSearchMs = Number.NEGATIVE_INFINITY
@@ -175,8 +176,10 @@ export class PlayAssists {
     if (world.isDead || this.isInWorldInteraction() || this.inventoryCare.busy) return
     const wanted = this.lootWanted()
     const distance = this.host.distanceFromSelf()
+    const pending = this.itemPickup
+    const settling = world.containers.cursor !== null || (pending !== null && ground.has(pending.id) && nowMs < pending.until)
     const loot = [...ground.values()]
-      .filter((item) => wanted(item) && (this.pickupRetryAt.get(item.id) ?? 0) <= nowMs)
+      .filter((item) => wanted(item) && (this.pickupRetryAt.get(item.id) ?? 0) <= nowMs && !(settling && this.roomFor(item.id) !== null))
       .map((item) => world.getUnit('item', item.id))
       .filter((unit): unit is ClientUnit => unit !== undefined && distance(unit) <= AUTO_PICKUP_RADIUS_SUBTILES)
     const walkLength = (route: { readonly unit: ClientUnit; readonly path: readonly SubTilePoint[] }) => route.path.length || distance(route.unit)
@@ -195,10 +198,12 @@ export class PlayAssists {
     const stepping = !inReach && path.length > LOOT_STEP_AHEAD
     this.lootWalkId = inReach ? null : unit.id
     this.pickupRetryAt.set(unit.id, nowMs + (inReach ? PICKUP_RETRY_MS : stepping ? LOOT_STEP_MS : PICKUP_DETOUR_RETRY_MS))
-    const room = inReach ? this.roomFor(unit.id) : null
+    const room = this.roomFor(unit.id)
     if (room !== null && room.kind !== 'fits') this.inventoryCare.makeRoom(room, ground.get(unit.id)!)
-    else if (inReach) this.host.sendCommand({ type: 'ItemPickup', itemId: unit.id, toCursor: false }, nowMs)
-    else if (stepping) this.host.triggerPrimaryWorldAction(path[LOOT_STEP_AHEAD]!.x, path[LOOT_STEP_AHEAD]!.y, null, nowMs)
+    else if (inReach) {
+      if (room !== null) this.itemPickup = { id: unit.id, until: nowMs + PICKUP_RETRY_MS }
+      this.host.sendCommand({ type: 'ItemPickup', itemId: unit.id, toCursor: false }, nowMs)
+    } else if (stepping) this.host.triggerPrimaryWorldAction(path[LOOT_STEP_AHEAD]!.x, path[LOOT_STEP_AHEAD]!.y, null, nowMs)
     else this.host.triggerPrimaryWorldAction(unit.x, unit.y, unit, nowMs)
   }
 
