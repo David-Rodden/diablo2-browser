@@ -42,6 +42,14 @@ describe('loot appraisal', () => {
     expect(['r01', 'r03'].map((code) => appraiseItem(item({ code }), context({ ...coldSorc, level: 70 })).tier)).toEqual(['junk', 'junk'])
   })
 
+  it("keeps a good imbue base only while Charsi's reward is waiting", () => {
+    const crown = item({ code: 'xrn', identified: true, invWidth: 2, invHeight: 2 })
+    expect(appraiseItem(crown, context(coldSorc, { imbueReady: true }))).toMatchObject({ tier: 'keep', reason: "Good base for Charsi's imbue" })
+    expect(appraiseItem(crown, context()).tier).toBe('junk')
+    expect(appraiseItem(item({ code: 'cap', identified: true }), context(coldSorc, { imbueReady: true })).tier).toBe('junk')
+    expect(appraiseItem(item({ code: 'xrn', identified: true, totalSockets: 2 }), context(coldSorc, { imbueReady: true })).tier).toBe('junk')
+  })
+
   it('says where a gem helps most', () => {
     expect(appraiseItem(item({ code: 'gpw' }), context())).toMatchObject({ tier: 'good', kind: 'gem', reason: 'In your shield: All Resistances +19' })
     expect(appraiseItem(item({ code: 'skz' }), context(zealot)).reason).toContain('In your weapon')

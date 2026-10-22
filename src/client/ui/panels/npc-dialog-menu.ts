@@ -711,7 +711,8 @@ export function wrapSpeechText(
   maxW: number,
   fontName: 'fontformal12' | 'font8' = 'fontformal12',
 ): string[] {
-  const cleanedText = text.replace(/(?:\r?\n)+$/, '')
+  const trimmedText = text.replace(/(?:\r?\n)+$/, '')
+  const cleanedText = /\p{Script=Han}/u.test(trimmedText) ? trimmedText : trimmedText.replace(/([^\r\n])\r?\n(?=[^\r\n])/g, '$1 ')
   const paragraphs = cleanedText.split(/\r?\n/)
   const allLines: string[] = []
 

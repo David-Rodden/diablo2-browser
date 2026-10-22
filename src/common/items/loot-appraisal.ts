@@ -2,6 +2,7 @@ import type { LootItem } from './loot-item.ts'
 import { SKILLS_CATALOG } from '../data/skills-catalog.ts'
 import { CHARACTER_CLASS_CODES } from '../units/classes.ts'
 import { className, type CharacterBuild } from './character-build.ts'
+import { isEligibleForCharsiImbue113c } from './drop-tables.ts'
 import { getEmbeddedDropTables } from './embedded-drop-tables.ts'
 import { GEM_INFO, RUNE_INFO } from './gems-data.ts'
 import { CANONICAL_GEMS_TABLE } from './gems.ts'
@@ -28,6 +29,7 @@ export interface AppraisalContext {
   readonly build: CharacterBuild
   readonly equipped: readonly LootItem[]
   readonly owned: readonly LootItem[]
+  readonly imbueReady?: boolean | undefined
 }
 
 type CharmSize = keyof typeof KNOWLEDGE.charmScore
@@ -53,6 +55,16 @@ const MUCH_BETTER = 1.4
 const BETTER = 1.1
 const MIN_GAIN = 5
 const FUTURE_LEVELS = 10
+
+const IMBUE_TYPES = KNOWLEDGE.imbue.alwaysWorthTypes
+
+const isImbueBase = (item: LootItem, build: CharacterBuild): boolean => {
+  const { getBase, isA } = getEmbeddedDropTables()
+  const base = getBase(codeOf(item))
+  const type = base?.type ?? ''
+  const upperTier = base?.normcode !== undefined && base.normcode !== base.id
+  return isEligibleForCharsiImbue113c(item) && (IMBUE_TYPES.some((t) => isA(type, t)) || upperTier) && weaponFit(type, build) !== 'none'
+}
 
 const codeOf = (item: Pick<LootItem, 'code'>) => item.code.trim().toLowerCase()
 const isRune = (code: string) => RUNE_INFO[code] !== undefined
@@ -202,13 +214,15 @@ function knownAffixAppraisal(item: LootItem, kind: LootKind, ctx: AppraisalConte
   return result(score >= 80 ? 'keep' : 'junk', kind, score, score >= 80 ? `Worth ${Math.round(score)} to your build` : 'Not an upgrade')
 }
 
-function baseAppraisal(item: LootItem, { build }: AppraisalContext): Appraisal {
+function baseAppraisal(item: LootItem, ctx: AppraisalContext): Appraisal {
+  const { build } = ctx
   const sockets = item.totalSockets
   const type = baseTypeOf(codeOf(item))
   const { isA } = getEmbeddedDropTables()
   const fits = (rw: RunewordPick) => rw.runes.length === sockets && rw.itypes.some((t) => isA(type, t))
   const pick = sockets > 0 && item.usedSockets === 0 ? runewordsFor(build).find(fits) : undefined
   if (pick) return result('good', 'base', 30 + pick.score / 10, `Base for ${pick.name}${pick.forMerc ? ' (mercenary)' : ''} · ${sockets} sockets`)
+  if (ctx.imbueReady && isImbueBase(item, build)) return result('keep', 'base', 20, "Good base for Charsi's imbue")
   return result('junk', item.runeword ? 'base' : 'normal', 0, sockets > 0 ? `${sockets} sockets, no runeword for you` : 'Plain item')
 }
 

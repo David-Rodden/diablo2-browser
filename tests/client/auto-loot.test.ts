@@ -81,4 +81,23 @@ describe('auto loot pickup in play', () => {
     ;[1000, 1040].forEach((t) => s.mapper.assists.pickUpNearbyLoot(t))
     expect(s.pickups()).toEqual([75])
   })
+
+  it('waits for one item to land in the bag before reaching for the next, so the room count stays true', () => {
+    const s = setup()
+    s.drop(76, 'r08', 2)
+    s.drop(77, 'r09', 2)
+    ;[1000, 1040, 1080].forEach((t) => s.mapper.assists.pickUpNearbyLoot(t))
+    expect(s.pickups()).toEqual([76])
+    s.world.apply({ type: 'UnitRemove', unitType: 4, id: 76, unitId: 76 } as never)
+    s.mapper.assists.pickUpNearbyLoot(1120)
+    expect(s.pickups()).toEqual([76, 77])
+  })
+
+  it('holds off on items while something is on the cursor', () => {
+    const s = setup()
+    s.world.containers.applyItemEvent(0x05, { id: 950, itemId: 950, code: 'r10', quality: 2, invWidth: 1, invHeight: 1, container: 'cursor', location: 4 } as never, 'cursor', 1)
+    s.drop(78, 'r08', 2)
+    s.mapper.assists.pickUpNearbyLoot(1000)
+    expect(s.pickups()).toEqual([])
+  })
 })
