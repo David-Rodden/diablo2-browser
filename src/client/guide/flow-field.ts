@@ -78,13 +78,13 @@ export class FlowField {
     return d === UNREACHED ? null : d
   }
 
-  pathFrom(x: number, y: number, every = 3): SubTilePoint[] {
+  pathFrom(x: number, y: number, every = 3, limit = Number.POSITIVE_INFINITY): SubTilePoint[] {
     const width = this.grid.subWidth
     const start = this.nearestWalkable(Math.round(x) - this.ox, Math.round(y) - this.oy)
     if (start === null || this.distance[start] === UNREACHED) return []
     const path: SubTilePoint[] = []
     let [cx, cy] = [start % width, Math.floor(start / width)]
-    for (let step = 0; this.distance[cy * width + cx]! > 0; step++) {
+    for (let step = 0; step < limit && this.distance[cy * width + cx]! > 0; step++) {
       const here = this.distance[cy * width + cx]!
       const toTarget = ([dx, dy]: readonly [number, number]) => Math.hypot(cx + dx + this.ox - this.targetX, cy + dy + this.oy - this.targetY)
       const best = NEIGHBOURS.filter(([dx, dy]) => this.canStep(cx, cy, dx, dy) && here - 1 === this.distance[(cy + dy) * width + cx + dx]).sort((a, b) => toTarget(a) - toTarget(b))[0]

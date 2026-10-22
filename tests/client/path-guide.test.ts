@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { FlowField } from '../../src/client/guide/flow-field.ts'
 import { planGuide, type PathGuideHost } from '../../src/client/guide/path-guide.ts'
 import { actOfLevel, currentGoal, nextStep, shortestRoute } from '../../src/client/guide/route.ts'
-import { fromNearest, RibbonTrail, rounded, sampleAlong } from '../../src/client/guide/ribbon-trail.ts'
+import { ChevronFlow } from '../../src/client/guide/chevron-flow.ts'
+import { fromNearest, rounded } from '../../src/client/guide/ribbon-trail.ts'
 import { outlinePixels } from '../../src/client/guide/sprite-outline.ts'
 import { WaypointMemory } from '../../src/client/guide/waypoint-memory.ts'
 import type { LevelView } from '../../src/client/map/level-view.ts'
@@ -146,19 +147,31 @@ describe('path guide trail', () => {
     expect(fromNearest([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], { x: 10.5, y: 3 })).toEqual([{ x: 10.5, y: 3 }, { x: 10, y: 10 }])
   })
 
-  it('rounds corners but keeps both ends, and samples evenly along the way', () => {
+  it('rounds corners but keeps both ends', () => {
     const line = rounded([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }])
     expect([line[0], line.at(-1)]).toEqual([{ x: 0, y: 0 }, { x: 10, y: 10 }])
     expect(line.some((p) => p.x > 5 && p.x < 10 && p.y > 0 && p.y < 5)).toBe(true)
-    expect(sampleAlong([{ x: 0, y: 0 }, { x: 4, y: 0 }], 1, 10, 1)).toEqual([{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }, { x: 4, y: 0 }])
   })
 
-  it('eases a replanned trail into its new shape instead of snapping, but jumps after a teleport', () => {
-    const trail = new RibbonTrail()
-    trail.update([{ x: 0, y: 0 }, { x: 4, y: 0 }], 0)
-    const eased = trail.update([{ x: 0, y: 0 }, { x: 4, y: 2 }], 16)
-    expect(eased[1]!.y).toBeGreaterThan(0)
-    expect(eased[1]!.y).toBeLessThan(1)
-    expect(trail.update([{ x: 50, y: 50 }, { x: 54, y: 50 }], 32)).toEqual([{ x: 50, y: 50 }, { x: 54, y: 50 }])
+  const corner = (me = { x: 0, y: 0 }) => [me, { x: 12, y: 0 }, { x: 12, y: 30 }]
+  const style = { from: 1, length: 20, gap: 2, speed: 3, pulseSpeed: 10, pulseWidth: 2 }
+
+  it('lays evenly spaced chevrons ahead of you that turn with the path and fade at both ends', () => {
+    const shown = new ChevronFlow(style).place(corner(), 0)
+    expect(shown.length).toBeGreaterThanOrEqual(8)
+    expect(shown.every((c, i) => i === 0 || Math.abs(Math.hypot(c.at.x - shown[i - 1]!.at.x, c.at.y - shown[i - 1]!.at.y) - 2) < 0.01 || c.at.x === 12)).toBe(true)
+    expect([shown[0]!.heading, shown.at(-1)!.heading]).toEqual([{ x: 1, y: 0 }, { x: 0, y: 1 }])
+    expect(shown[0]!.alpha).toBeLessThan(shown[3]!.alpha)
+    expect(shown.at(-1)!.alpha).toBeLessThan(shown[3]!.alpha)
+    expect(new ChevronFlow(style).place([{ x: 0, y: 0 }], 0)).toEqual([])
+  })
+
+  it('keeps chevrons fixed on the ground while you walk, and lets them drift forward over time', () => {
+    const flow = new ChevronFlow(style)
+    const before = flow.place(corner(), 0).map((c) => c.at.x)
+    const walked = flow.place(corner({ x: 0.5, y: 0 }), 0).map((c) => c.at.x)
+    expect(walked.slice(0, 3)).toEqual(before.slice(0, 3))
+    const later = flow.place(corner({ x: 0.5, y: 0 }), 100).map((c) => c.at.x)
+    expect(later[0]! - walked[0]!).toBeCloseTo(0.3, 5)
   })
 })
