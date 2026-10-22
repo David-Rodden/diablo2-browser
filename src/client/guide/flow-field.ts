@@ -42,11 +42,15 @@ export class FlowField {
     return x >= 0 && y >= 0 && x < this.grid.subWidth && y < this.grid.subHeight && this.grid.walkable[y * this.grid.subWidth + x] !== 0
   }
 
-  private nearestWalkable(x: number, y: number): number | null {
-    for (let r = 0; r <= SEED_RADIUS; r++)
+  private nearestWalkable(x: number, y: number, radius = SEED_RADIUS, usable = (cx: number, cy: number) => this.walkable(cx, cy)): number | null {
+    for (let r = 0; r <= radius; r++)
       for (let dy = -r; dy <= r; dy++)
-        for (let dx = -r; dx <= r; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === r && this.walkable(x + dx, y + dy)) return (y + dy) * this.grid.subWidth + x + dx
+        for (let dx = -r; dx <= r; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === r && usable(x + dx, y + dy)) return (y + dy) * this.grid.subWidth + x + dx
     return null
+  }
+
+  private reached(x: number, y: number): boolean {
+    return this.walkable(x, y) && this.distance[y * this.grid.subWidth + x] !== UNREACHED
   }
 
   private canStep(x: number, y: number, dx: number, dy: number): boolean {
@@ -80,8 +84,8 @@ export class FlowField {
 
   pathFrom(x: number, y: number, every = 3, limit = Number.POSITIVE_INFINITY): SubTilePoint[] {
     const width = this.grid.subWidth
-    const start = this.nearestWalkable(Math.round(x) - this.ox, Math.round(y) - this.oy)
-    if (start === null || this.distance[start] === UNREACHED) return []
+    const start = this.nearestWalkable(Math.round(x) - this.ox, Math.round(y) - this.oy, SEED_RADIUS * 2, (cx, cy) => this.reached(cx, cy))
+    if (start === null) return []
     const path: SubTilePoint[] = []
     let [cx, cy] = [start % width, Math.floor(start / width)]
     for (let step = 0; step < limit && this.distance[cy * width + cx]! > 0; step++) {

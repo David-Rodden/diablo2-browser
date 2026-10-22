@@ -375,6 +375,7 @@ export interface PluginContext {
   readonly monsterResists: PluginTogglePort
   readonly lowLifeWarning: PluginTogglePort
   readonly smartSkills: PluginTogglePort
+  readonly spendPoints: PluginTogglePort
   readonly notify: PluginNotifyPort
   readonly itemInfo: PluginItemInfoPort
   readonly pathGuide: PluginPathGuidePort

@@ -61,6 +61,7 @@ export interface PlayAssistHost {
   readonly selectSkill: (hand: Hand, skillId: number, nowMs: number) => void
   readonly canCastSkill: (skillId: number, nowMs: number) => boolean
   readonly sendCommand: (command: ClientCommand, nowMs?: number) => void
+  readonly stepToward: (x: number, y: number, nowMs: number) => void
   readonly isHostile: (unit: ClientUnit) => boolean
   readonly isPointIntercepted: (screenX: number, screenY: number) => boolean
   readonly isPlayerBusyCasting: (nowMs: number) => boolean
@@ -94,6 +95,7 @@ export class PlayAssists {
   smartSkills = false
   private pilotFights = false
   questPickup = false
+  standDown = false
   pilot: Pilot | null = null
   pilotKey: string | null = null
   townPortalKey: string | null = null
@@ -171,6 +173,10 @@ export class PlayAssists {
     else world.addLocalSystemMessage(townPortalRefusalText(refusal ?? 'no-scrolls', hudManager.lang === 'ENG' ? 'ENG' : 'CHI'), RED_TEXT)
   }
 
+  hasTownPortal(): boolean {
+    return townPortalSource(this.host.world.containers.inventory.values()) !== null
+  }
+
   refillBelt(nowMs: number): void {
     const { world, hudManager, hudModel } = this.host
     if (!this.beltRefill) return
@@ -232,7 +238,7 @@ export class PlayAssists {
     const { world } = this.host
     const { ground } = world.containers
     ;[...this.pickupRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.pickupRetryAt.delete(id))
-    if (world.isDead || this.isInWorldInteraction() || this.inventoryCare.busy) return
+    if (world.isDead || this.standDown || this.isInWorldInteraction() || this.inventoryCare.busy) return
     const { loot, nearest } = this.lootRoute(nowMs)
     if (nearest === undefined) {
       this.lootWalkId = null
@@ -280,7 +286,7 @@ export class PlayAssists {
   }
 
   runAutoCombat(nowMs: number): void {
-    if (!(this.autoCombatOn || this.pilotCombat) || this.host.mouseHeld().left || this.host.world.isDead || this.isInWorldInteraction() || nowMs - this.lastAutoCombatMs < AUTO_COMBAT_REPEAT_MS) return
+    if (!(this.autoCombatOn || this.pilotCombat) || this.standDown || this.host.mouseHeld().left || this.host.world.isDead || this.isInWorldInteraction() || nowMs - this.lastAutoCombatMs < AUTO_COMBAT_REPEAT_MS) return
     const target = this.resolveTarget(nowMs)
     if (target === null) {
       if (this.smartSkills) this.keepUp(null, nowMs)
@@ -339,7 +345,7 @@ export class PlayAssists {
   }
 
   stepTo(x: number, y: number, nowMs: number): void {
-    this.host.sendCommand({ type: this.host.world.self.runMode ? 'RunToLocation' : 'WalkToLocation', x: Math.round(x), y: Math.round(y) }, nowMs)
+    this.host.stepToward(x, y, nowMs)
   }
 
   use(unit: ClientUnit, nowMs: number): void {
