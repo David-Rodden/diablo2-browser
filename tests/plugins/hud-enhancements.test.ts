@@ -838,15 +838,43 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
       leftSkillDmg: '1000-2000',
       rightSkillDmg: '1000-2000',
     }
-    panel.draw(ctx, runtime, { borderLeftImg: null, charSheetImg: null, levelBtnImg: null, buySellBtnImg: null }, font)
-
-    // Verify `?` glyph and key overlay rows/colors were drawn
-    expect(font.drawText).toHaveBeenCalledWith(
+    const mockCharSheetImg = {} as HTMLImageElement
+    const mockQuestLastImg = {} as HTMLImageElement
+    panel.draw(
       ctx,
-      '?',
-      expect.any(Number),
-      expect.any(Number),
-      expect.objectContaining({ font: 'fontexocet10', color: 'yellow' }),
+      runtime,
+      {
+        borderLeftImg: null,
+        charSheetImg: mockCharSheetImg,
+        levelBtnImg: null,
+        buySellBtnImg: null,
+        questLastImg: mockQuestLastImg,
+      },
+      font,
+    )
+
+    // Verify sunken socket from charSheetImg and depressed frame 1 of questLastImg were drawn
+    expect(ctx.drawImage).toHaveBeenCalledWith(
+      mockCharSheetImg,
+      126,
+      386,
+      36,
+      36,
+      CHAR_ADV_STATS_BTN_BOUNDS.x - 2,
+      CHAR_ADV_STATS_BTN_BOUNDS.y - 2,
+      36,
+      36,
+    )
+    expect(ctx.drawImage).toHaveBeenCalledWith(
+      mockQuestLastImg,
+      30,
+      0,
+      30,
+      30,
+      CHAR_ADV_STATS_BTN_BOUNDS.x + 1,
+      CHAR_ADV_STATS_BTN_BOUNDS.y + 1,
+      30,
+      30,
     )
     expect(font.drawText).toHaveBeenCalledWith(
       ctx,
@@ -891,9 +919,33 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
       expect.objectContaining({ font: 'font6', color: 'yellow' }),
     )
 
-    // Clicking the `?` button again closes the overlay
+    // Clicking the button again closes the overlay and draws raised frame 0
     expect(panel.handleMouseDown(btnCenterX, btnCenterY)).toBe(true)
     expect(panel.handleMouseUp(btnCenterX, btnCenterY)).toBe(true)
     expect(panel.advancedStatsOpen).toBe(false)
+    ;(ctx.drawImage as ReturnType<typeof vi.fn>).mockClear()
+    panel.draw(
+      ctx,
+      runtime,
+      {
+        borderLeftImg: null,
+        charSheetImg: mockCharSheetImg,
+        levelBtnImg: null,
+        buySellBtnImg: null,
+        questLastImg: mockQuestLastImg,
+      },
+      font,
+    )
+    expect(ctx.drawImage).toHaveBeenCalledWith(
+      mockQuestLastImg,
+      0,
+      0,
+      30,
+      30,
+      CHAR_ADV_STATS_BTN_BOUNDS.x + 1,
+      CHAR_ADV_STATS_BTN_BOUNDS.y + 1,
+      30,
+      30,
+    )
   })
 })

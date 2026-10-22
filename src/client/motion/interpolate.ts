@@ -31,8 +31,14 @@ import {
   D2_TICK_MS,
 } from './predictor.ts'
 
-/** Default drift (sub-tiles) beyond which a remote unit snaps to the server position. */
+/** Default drift (sub-tiles) beyond which a remote monster/NPC snaps to the server position (`D2Client.dll 0x6FADA2CF`). */
 const DEFAULT_REMOTE_SNAP_THRESHOLD = 5.0
+
+/**
+ * Per-axis drift tolerance (sub-tiles) for remote players (`unitType === 0`, `pUnit != gpPlayerUnit`)
+ * in 1.13c (`D2Client.dll 0x6FADA1B0` at `0x6FADA25D..0x6FADA2B4`: `mov ecx, 0xf`).
+ */
+export const D2_REMOTE_PLAYER_SNAP_THRESHOLD = 15.0
 
 export type RemoteCollisionChecker = (x: number, y: number) => boolean
 
@@ -306,7 +312,13 @@ export function resolveRemoteMoveSpeed(options: {
   const velPct = options.velocityPercent ?? options.nVelocity
 
   // If monster / NPC (unitType === 1) with known classId (1.13c #10819 at 0x6FD83331):
-  if (options.classId !== undefined && options.classId >= 0 && options.classId < MONSTATS_TXT_RECORD_COUNT) {
+  // Never route remote players (`unitType === 0`, classId 0..6 = Amazon..Assassin) into MonStats.txt!
+  if (
+    options.unitType !== 0 &&
+    options.classId !== undefined &&
+    options.classId >= 0 &&
+    options.classId < MONSTATS_TXT_RECORD_COUNT
+  ) {
     const rec = getMonsterPathRecord(options.classId)
     const pct = Math.max(25, velPct !== undefined && velPct !== 0 ? velPct : 75)
     const dwVelocity = Math.trunc((pct * (rec.velocity << 8)) / 100)
@@ -479,6 +491,12 @@ export class RemoteEntityInterpolator {
     const startX = currentX ?? state?.x ?? targetX
     const startY = currentY ?? state?.y ?? targetY
 
+    let snapped = false
+    let effectiveSpeed = speedSubTilesPerSec
+    const sameTarget =
+      state !== undefined &&
+      Math.hypot(targetX - state.targetX, targetY - state.targetY) <= 1e-4
+
     if (!state) {
       state = {
         unitType: cmd.unitType,
@@ -499,6 +517,7 @@ export class RemoteEntityInterpolator {
         turnState: createUnitTurnState(0),
       }
       this.entities.set(key, state)
+      snapped = true
     } else {
       if (classId !== undefined) {
         state.classId = classId
@@ -507,26 +526,44 @@ export class RemoteEntityInterpolator {
         state.pathType = cmd.pathType
       }
       if (currentX !== undefined && currentY !== undefined) {
-        // D2Client.dll 0x6FADA1B0 per-axis tolerance gate: WL=5, RN=7, KB=10
+        // D2Client.dll 0x6FADA1B0 per-axis tolerance gate:
+        // - Remote player (unitType === 0, pUnit != gpPlayerUnit): 15 sub-tiles (0x6FADA2AF: mov ecx, 0xf)
+        // - Monster / self: WL=5, RN=7 (0x6FADA2CF / 0x6FADA2D6)
+        const defaultLimit =
+          cmd.unitType === 0
+            ? D2_REMOTE_PLAYER_SNAP_THRESHOLD
+            : running
+              ? 7
+              : this.snapThreshold
         const snapLimit =
           cmd.hardSnapThreshold ??
           this.customSnapThreshold ??
-          (running ? 7 : this.snapThreshold)
+          defaultLimit
         const maxAxisDrift = Math.max(Math.abs(currentX - state.x), Math.abs(currentY - state.y))
         if (maxAxisDrift > snapLimit) {
           state.x = currentX
           state.y = currentY
+          snapped = true
+        } else if (cmd.unitType === 0 && maxAxisDrift > 1.5) {
+          const serverRemDist = Math.hypot(targetX - currentX, targetY - currentY)
+          const clientRemDist = Math.hypot(targetX - state.x, targetY - state.y)
+          if (serverRemDist > 1.5 && clientRemDist > 1e-4) {
+            const ratio = Math.max(0.8, Math.min(1.25, clientRemDist / serverRemDist))
+            effectiveSpeed = speedSubTilesPerSec * ratio
+          }
         }
       }
     }
 
     state.targetX = targetX
     state.targetY = targetY
-    state.waypoints = [{ x: targetX, y: targetY }]
-    state.waypointIndex = 0
-    state.detourAttempted = false
+    if (snapped || !sameTarget || !state.moving || state.waypoints.length === 0) {
+      state.waypoints = [{ x: targetX, y: targetY }]
+      state.waypointIndex = 0
+      state.detourAttempted = false
+    }
     state.running = running
-    state.speedSubTilesPerSec = speedSubTilesPerSec
+    state.speedSubTilesPerSec = effectiveSpeed
 
     const dx = state.targetX - state.x
     const dy = state.targetY - state.y
@@ -572,16 +609,47 @@ export class RemoteEntityInterpolator {
     const dy = cmd.y - state.y
     const dist = Math.hypot(dx, dy)
     const maxAxisDrift = Math.max(Math.abs(dx), Math.abs(dy))
+    const defaultLimit =
+      cmd.unitType === 0
+        ? D2_REMOTE_PLAYER_SNAP_THRESHOLD
+        : state.running
+          ? 7
+          : this.snapThreshold
     const snapLimit =
       cmd.hardSnapThreshold ??
       this.customSnapThreshold ??
-      (state.running ? 7 : this.snapThreshold)
+      defaultLimit
     const blockedSegment =
       this.collisionChecker !== undefined &&
       dist > 0.15 &&
       isSegmentBlocked(this.collisionChecker, state.x, state.y, cmd.x, cmd.y)
 
-    if (!state.moving || dist <= 0.15 || maxAxisDrift > snapLimit || blockedSegment) {
+    const fwdX = state.targetX - state.x
+    const fwdY = state.targetY - state.y
+    const dot = dx * fwdX + dy * fwdY
+    // D2Client.dll 0x6FADA460 (0x6FADA494..0x6FADA4DF): when a remote player stops within 1 sub-tile
+    // on both axes (or has slightly overshot the integer stop coordinate along its current heading),
+    // halt in place without snapping backward or turning 180° to walk backward.
+    const haltRemotePlayerInPlace =
+      cmd.unitType === 0 &&
+      cmd.hardSnapThreshold === undefined &&
+      (state.x !== 0 || state.y !== 0) &&
+      dist > 0.25 &&
+      dot <= 0 &&
+      (maxAxisDrift <= 1.0 || (state.moving && maxAxisDrift <= 2.5))
+
+    if (haltRemotePlayerInPlace) {
+      state.targetX = state.x
+      state.targetY = state.y
+      state.waypoints = []
+      state.waypointIndex = 0
+      state.moving = false
+    } else if (
+      !state.moving ||
+      dist <= (cmd.unitType === 0 ? 0.25 : 0.15) ||
+      maxAxisDrift > snapLimit ||
+      blockedSegment
+    ) {
       state.x = cmd.x
       state.y = cmd.y
       state.targetX = cmd.x

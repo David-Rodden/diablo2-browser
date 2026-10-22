@@ -1518,5 +1518,11 @@ function getIntroTblKeyToMsgIdMap(): Map<string, number> {
  * the single indexed variant. Returns `undefined` when the NPC has no indexed intro msgId.
  */
 export function resolveNpcIntroMsgIdByTblKey(tblKey: string): number | undefined {
-  return getIntroTblKeyToMsgIdMap().get(tblKey)
+  const map = getIntroTblKeyToMsgIdMap()
+  const direct = map.get(tblKey)
+  if (direct !== undefined) return direct
+  for (const [idStr, key] of Object.entries(CANONICAL_NPC_MSG_ID_TO_TBL_KEY)) {
+    if (key === tblKey) return Number(idStr)
+  }
+  return undefined
 }

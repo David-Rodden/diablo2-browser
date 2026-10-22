@@ -604,6 +604,9 @@ describe('Tier 5 â€” Adversarial Edge Cases & Cross-Milestone Hardening (T5.A1â€
 
     const hpBeforeFe = game.getPlayerState(pid)!.hp
     game.applyDamageToMonster(feId, 1000, pid)
+    // 1.13c resolves the Fire Enchanted corpse explosion on its action frame
+    // (pendingDeathExplosion, currentFrame + 5), not synchronously on death.
+    game.stepFrames(6)
     const hpAfterFe = game.getPlayerState(pid)!.hp
     expect(hpAfterFe).toBeLessThan(hpBeforeFe)
 

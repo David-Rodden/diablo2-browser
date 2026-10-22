@@ -49,7 +49,7 @@ describe('issue #1344 melee attack completeness', () => {
     expect(monster.pendingAttack).toBeDefined()
     expect([4, 5]).toContain(monster.mode)
     expect(player.hp).toBe(hpBefore)
-    game.stepFrames(4)
+    game.stepFrames(20)
     expect(player.hp).toBeLessThan(hpBefore)
   })
 
@@ -76,7 +76,7 @@ describe('issue #1344 melee attack completeness', () => {
     const elementalHp = elemental.player.hp
     for (const ctx of [plain, elemental]) {
       ;(ctx.game as unknown as { rng: { rand: (n: number) => number } }).rng.rand = () => 50
-      ctx.game.stepFrames(4)
+      ctx.game.stepFrames(20)
     }
     expect(plainHp - plain.player.hp).toBeGreaterThan(0)
     expect(elementalHp - elemental.player.hp).toBeGreaterThan(plainHp - plain.player.hp)

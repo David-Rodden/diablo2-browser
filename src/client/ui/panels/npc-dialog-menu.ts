@@ -1670,7 +1670,7 @@ export function drawNpcMenuImpl(
     const bodyText = dialogLines.join('\n')
     // D2Client.dll 0x6fb2bcbd: left/right text margin is 0x10 (16px) inside 0x145 (325px) box.
     const textW = boxW - 32
-    const textH = boxH - 60
+    const textH = boxH - 64
     const textX = bx + 16
     const textY = by + 44
     const lineH = 16
@@ -1712,7 +1712,8 @@ export function drawNpcMenuImpl(
 
     for (let i = 0; i < wrappedLines.length; i++) {
       const lineTop = textY + i * lineH - scrollY
-      if (lineTop + lineH >= textY && lineTop <= textY + textH) {
+      // Only draw lines whose glyphs fit inside the inner box without being sliced at top/bottom borders
+      if (lineTop >= textY - 3 && lineTop + lineH <= textY + textH + 2) {
         font.drawText(ctx, wrappedLines[i]!, textX, lineTop + baselineOffset, {
           font: 'fontformal12',
           color: 'white',

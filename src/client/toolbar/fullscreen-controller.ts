@@ -23,11 +23,19 @@ export interface FullscreenTargetLike {
   requestFullscreen?: (options?: FullscreenOptions) => Promise<void>
 }
 
+/** Optional Web Screen Orientation API surface (`window.screen?.orientation`). */
+export interface ScreenOrientationLike {
+  lock?: (orientation: 'landscape' | 'landscape-primary' | 'landscape-secondary' | 'any') => Promise<void>
+  unlock?: () => void
+}
+
 export type FullscreenErrorKind = 'unsupported' | 'enter' | 'exit' | 'rejected'
 
 export interface FullscreenControllerOptions {
   readonly doc: FullscreenDocLike
   readonly target: FullscreenTargetLike
+  /** Optional `screen.orientation` handle for automatic landscape locking on mobile fullscreen. */
+  readonly screenOrientation?: ScreenOrientationLike | null | undefined
   /** Called after every `fullscreenchange` (browser- or button-driven). */
   readonly onChange: (active: boolean) => void
   readonly onError: (kind: FullscreenErrorKind, detail: string) => void
@@ -36,10 +44,15 @@ export interface FullscreenControllerOptions {
 export class FullscreenController {
   private readonly doc: FullscreenDocLike
   private readonly target: FullscreenTargetLike
+  private readonly screenOrientation: ScreenOrientationLike | null
   private readonly onChange: (active: boolean) => void
   private readonly onError: (kind: FullscreenErrorKind, detail: string) => void
   private readonly handleChange = (): void => {
-    this.onChange(this.isActive())
+    const active = this.isActive()
+    if (!active) {
+      this.tryUnlockOrientation()
+    }
+    this.onChange(active)
   }
   private readonly handleError = (): void => {
     this.onError('rejected', 'fullscreenerror')
@@ -48,6 +61,15 @@ export class FullscreenController {
   constructor(opts: FullscreenControllerOptions) {
     this.doc = opts.doc
     this.target = opts.target
+    this.screenOrientation =
+      opts.screenOrientation !== undefined
+        ? opts.screenOrientation
+        : typeof globalThis !== 'undefined' &&
+            typeof (globalThis as { screen?: { orientation?: ScreenOrientationLike } }).screen
+              ?.orientation === 'object'
+          ? ((globalThis as { screen?: { orientation?: ScreenOrientationLike } }).screen
+              ?.orientation ?? null)
+          : null
     this.onChange = opts.onChange
     this.onError = opts.onError
     this.doc.addEventListener('fullscreenchange', this.handleChange)
@@ -66,19 +88,58 @@ export class FullscreenController {
   /** Enter or exit fullscreen. Call synchronously from the click handler. */
   toggle(): void {
     if (this.isActive()) {
+      this.tryUnlockOrientation()
       this.doc.exitFullscreen().catch((err: unknown) => {
         this.onError('exit', describeError(err))
       })
       return
     }
+    this.requestFullscreenLandscape()
+  }
+
+  /**
+   * Explicitly enter fullscreen and attempt `screen.orientation.lock('landscape')` when supported.
+   * Safe to invoke from mobile orientation guard buttons.
+   */
+  requestFullscreenLandscape(): void {
     const request = this.target.requestFullscreen
     if (typeof request !== 'function') {
       this.onError('unsupported', 'requestFullscreen is not available')
       return
     }
-    request.call(this.target, { navigationUI: 'hide' }).catch((err: unknown) => {
-      this.onError('enter', describeError(err))
-    })
+    request
+      .call(this.target, { navigationUI: 'hide' })
+      .then(() => {
+        this.tryLockLandscape()
+      })
+      .catch((err: unknown) => {
+        this.onError('enter', describeError(err))
+      })
+  }
+
+  private tryLockLandscape(): void {
+    const lockFn = this.screenOrientation?.lock
+    if (typeof lockFn !== 'function') return
+    try {
+      const p = lockFn.call(this.screenOrientation, 'landscape')
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          // Desktop browsers and iOS Safari reject orientation.lock with NotSupportedError; ignore silently.
+        })
+      }
+    } catch {
+      // Ignore synchronous orientation lock throws
+    }
+  }
+
+  private tryUnlockOrientation(): void {
+    const unlockFn = this.screenOrientation?.unlock
+    if (typeof unlockFn !== 'function') return
+    try {
+      unlockFn.call(this.screenOrientation)
+    } catch {
+      // Ignore orientation unlock errors
+    }
   }
 
   dispose(): void {

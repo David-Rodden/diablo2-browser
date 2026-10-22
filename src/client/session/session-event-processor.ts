@@ -813,6 +813,11 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
           unitId: u.id,
           x: u.x,
           y: u.y,
+          ...(u.classId !== undefined
+            ? { classId: u.classId }
+            : assignedUnit?.classId !== undefined
+              ? { classId: assignedUnit.classId }
+              : {}),
           ...(u.direction !== undefined ? { dir64: u.direction } : {}),
           ...(assignedUnit?.dead ? { dead: true } : {}),
         })
@@ -1029,10 +1034,22 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
           unit.targetX = motionState.targetX
           unit.targetY = motionState.targetY
           unit.moving = motionState.moving
+          if (motionState.moving && evTypeId === 0) {
+            const unitInTown = host.isSubTileInTown(motionState.x, motionState.y)
+            unit.mode = motionState.running ? 3 : unitInTown ? 6 : 2
+            unit.moveMode = motionState.running ? 'run' : 'walk'
+          } else {
+            unit.moveMode = 'stop'
+          }
           unit.targetUnit = undefined
           unit.syncTurnState(motionState.dir64, motionState.targetDir64, motionState.stepDir)
         }
       } else {
+        const resolvedVelPct =
+          ev.velocityPercent ??
+          (evTypeId === 0 && unit
+            ? host.world.resolvePlayerAnimSpeed(unit.mode, evUnitId).velocityPercent
+            : undefined)
         const motionState = host.interpolator.startMove({
           unitType: evTypeId,
           unitId: evUnitId,
@@ -1042,7 +1059,7 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
           targetX: toX,
           targetY: toY,
           running: ev.mode === 'run',
-          ...(ev.velocityPercent !== undefined ? { velocityPercent: ev.velocityPercent } : {}),
+          ...(resolvedVelPct !== undefined ? { velocityPercent: resolvedVelPct } : {}),
           ...(ev.pathType !== undefined ? { pathType: ev.pathType } : {}),
         })
         if (unit) {
@@ -1162,21 +1179,29 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
           const isMovingMode =
             ev.mode === 2 || ev.mode === 3 || ev.mode === 6 || ev.mode === 19
           if (stopX !== undefined && stopY !== undefined && !isMovingMode) {
+            const isNeutralStop = ev.mode === 1 || ev.mode === 5
             const stopped = host.interpolator.stopEntity({
               unitType: uType,
               unitId: uId,
               x: stopX,
               y: stopY,
-              hardSnapThreshold: 0,
+              ...(isNeutralStop ? {} : { hardSnapThreshold: 0 }),
             })
             if (unit) {
               unit.x = stopped.x
               unit.y = stopped.y
-              unit.targetX = stopped.x
-              unit.targetY = stopped.y
-              unit.moving = false
-              unit.moveMode = 'stop'
+              unit.targetX = stopped.targetX
+              unit.targetY = stopped.targetY
+              unit.moving = stopped.moving
+              if (stopped.moving && uType === 0 && isNeutralStop) {
+                const unitInTown = host.isSubTileInTown(stopped.x, stopped.y)
+                unit.mode = stopped.running ? 3 : unitInTown ? 6 : 2
+                unit.moveMode = stopped.running ? 'run' : 'walk'
+              } else {
+                unit.moveMode = 'stop'
+              }
               unit.targetUnit = undefined
+              unit.syncTurnState(stopped.dir64, stopped.targetDir64, stopped.stepDir)
             }
           }
         }

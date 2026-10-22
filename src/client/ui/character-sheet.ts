@@ -1283,6 +1283,7 @@ export class CharacterSheetPanel {
       charSheetImg: HTMLImageElement | null
       buySellBtnImg: HTMLImageElement | null
       levelBtnImg?: HTMLImageElement | null
+      questLastImg?: HTMLImageElement | null
     },
     font: D2FontRenderer,
     skipTooltip = false,
@@ -1412,13 +1413,13 @@ export class CharacterSheetPanel {
     drawStatPointsSunkenSlot(ctx, STAT_POINTS_NUMBER_BOX_BOUNDS.x, STAT_POINTS_NUMBER_BOX_BOUNDS.y, STAT_POINTS_NUMBER_BOX_BOUNDS.w, STAT_POINTS_NUMBER_BOX_BOUNDS.h)
     const statPtsLabel = requireTbl('strchrstat', this.lang)
     const remLabel = requireTbl('strchrrema', this.lang)
-    font.drawText(ctx, statPtsLabel, ox + 44, oy + 352, {
-      font: isEn ? 'font6' : 'font8',
+    font.drawText(ctx, statPtsLabel, ox + 44, oy + 349, {
+      font: 'font6',
       color: 'red',
       align: 'center',
     })
-    font.drawText(ctx, remLabel, ox + 44, oy + 362, {
-      font: isEn ? 'font6' : 'font8',
+    font.drawText(ctx, remLabel, ox + 44, oy + 358, {
+      font: 'font6',
       color: 'red',
       align: 'center',
     })
@@ -1617,9 +1618,9 @@ export class CharacterSheetPanel {
       )
     }
 
-    // 8b. Advanced Character Stats `?` Button & Overlay (`hud-enhancements`)
+    // 8b. Advanced Character Stats Button (`questlast.dc6` in sunken socket) & Overlay (`hud-enhancements`)
     if (this.showAdvancedStatsButton) {
-      this.drawAdvancedStatsQuestionButton(ctx, font)
+      this.drawAdvancedStatsQuestionButton(ctx, assets, font)
       if (this.advancedStatsOpen) {
         this.drawAdvancedStatsOverlay(ctx, font, ox, oy)
       }
@@ -1639,43 +1640,98 @@ export class CharacterSheetPanel {
     }
   }
 
-  private drawAdvancedStatsQuestionButton(ctx: CanvasRenderingContext2D, font: D2FontRenderer): void {
+  private advStatsCompositeCache: {
+    charSheetImg: HTMLImageElement
+    questLastImg: HTMLImageElement
+    frames: [HTMLCanvasElement | null, HTMLCanvasElement | null]
+  } | null = null
+
+  private getAdvStatsCompositeCanvas(
+    charSheetImg: HTMLImageElement,
+    questLastImg: HTMLImageElement,
+    frame: 0 | 1,
+  ): HTMLCanvasElement | null {
+    if (typeof document === 'undefined') return null
+    if (
+      !this.advStatsCompositeCache ||
+      this.advStatsCompositeCache.charSheetImg !== charSheetImg ||
+      this.advStatsCompositeCache.questLastImg !== questLastImg
+    ) {
+      this.advStatsCompositeCache = {
+        charSheetImg,
+        questLastImg,
+        frames: [null, null],
+      }
+    }
+    const existing = this.advStatsCompositeCache.frames[frame]
+    if (existing) return existing
+    const canvas = document.createElement('canvas')
+    canvas.width = CHAR_PANEL_ORIGIN.width
+    canvas.height = CHAR_PANEL_ORIGIN.height
+    const cctx = canvas.getContext('2d')
+    if (!cctx || typeof cctx.drawImage !== 'function') return null
+    cctx.imageSmoothingEnabled = false
+    const panelX = CHAR_ADV_STATS_BTN_BOUNDS.x - CHAR_PANEL_ORIGIN.x
+    const panelY = CHAR_ADV_STATS_BTN_BOUNDS.y - CHAR_PANEL_ORIGIN.y
+    cctx.drawImage(charSheetImg, 126, 386, 36, 36, panelX - 2, panelY - 2, 36, 36)
+    cctx.drawImage(questLastImg, frame * 30, 0, 30, 30, panelX + 1, panelY + 1, 30, 30)
+    this.advStatsCompositeCache.frames[frame] = canvas
+    return canvas
+  }
+
+  private drawAdvancedStatsQuestionButton(
+    ctx: CanvasRenderingContext2D,
+    assets: {
+      charSheetImg: HTMLImageElement | null
+      questLastImg?: HTMLImageElement | null
+    },
+    font: D2FontRenderer,
+  ): void {
     const b = CHAR_ADV_STATS_BTN_BOUNDS
     const depressed = this.advStatsBtnPressed || this.advancedStatsOpen
+    const frame: 0 | 1 = depressed ? 1 : 0
 
-    // Outer dark stone recess matching `buysellbtn.dc6` socket
-    ctx.fillStyle = '#0c0a08'
-    ctx.fillRect(b.x, b.y, b.w, b.h)
+    // When both native sprites are loaded in the browser (`width > 0`), pre-composite the 36x36
+    // socket and 30x30 `questlast.dc6` frame at 1:1 native texel resolution on a 320x432 layer
+    // and draw it at `(CHAR_PANEL_ORIGIN.x, CHAR_PANEL_ORIGIN.y)`. This guarantees identical
+    // texel-to-pixel rounding with the neighboring Close button socket and prevents Skia subrect
+    // perimeter anti-aliasing from blending `questlast.dc6` row 0 into the top gold border under fractional `uiScale`.
+    if (
+      assets.charSheetImg &&
+      assets.charSheetImg.width > 0 &&
+      assets.questLastImg &&
+      assets.questLastImg.width > 0
+    ) {
+      const composite = this.getAdvStatsCompositeCanvas(assets.charSheetImg, assets.questLastImg, frame)
+      if (composite) {
+        ctx.drawImage(composite, CHAR_PANEL_ORIGIN.x, CHAR_PANEL_ORIGIN.y)
+        return
+      }
+    }
 
-    // Beveled gothic stone/bronze button face
-    const faceX = b.x + 2
-    const faceY = b.y + 2
-    const faceW = b.w - 4
-    const faceH = b.h - 4
-    ctx.fillStyle = depressed ? '#1e1912' : '#2d261c'
-    ctx.fillRect(faceX, faceY, faceW, faceH)
+    // 1. Sunken gold-beveled button socket (cloned from the native `invchar6.dc6` Close button socket at 126,386)
+    if (assets.charSheetImg) {
+      ctx.drawImage(assets.charSheetImg, 126, 386, 36, 36, b.x - 2, b.y - 2, 36, 36)
+    } else {
+      ctx.fillStyle = '#0c0a08'
+      ctx.fillRect(b.x, b.y, b.w, b.h)
+      ctx.strokeStyle = '#ac9c64'
+      ctx.lineWidth = 1
+      ctx.strokeRect(b.x - 0.5, b.y - 0.5, b.w + 1, b.h + 1)
+    }
 
-    // Top/Left & Bottom/Right 3D bevel rails
-    ctx.fillStyle = depressed ? '#14100b' : '#a8925a'
-    ctx.fillRect(faceX, faceY, faceW, 2)
-    ctx.fillRect(faceX, faceY, 2, faceH)
-    ctx.fillStyle = depressed ? '#8c7848' : '#14100b'
-    ctx.fillRect(faceX, faceY + faceH - 2, faceW, 2)
-    ctx.fillRect(faceX + faceW - 2, faceY, 2, faceH)
-
-    // Inner bronze frame highlight
-    ctx.strokeStyle = this.advancedStatsOpen ? '#d0c27d' : '#6c5a36'
-    ctx.lineWidth = 1
-    ctx.strokeRect(faceX + 2.5, faceY + 2.5, faceW - 5, faceH - 5)
-
-    // Centered Diablo Exocet `?` glyph
-    const offset = depressed ? 1 : 0
-    font.drawText(ctx, '?', b.x + Math.round(b.w / 2) + offset, b.y + 22 + offset, {
-      font: 'fontexocet10',
-      color: this.advancedStatsOpen ? 'yellow' : 'gold',
-      align: 'center',
-      shadow: true,
-    })
+    // 2. Authentic `data/global/ui/MENU/questlast.dc6` speech-bubble `!` button (frame 0 raised / frame 1 pressed, 30x30)
+    if (assets.questLastImg) {
+      ctx.drawImage(assets.questLastImg, frame * 30, 0, 30, 30, b.x + 1, b.y + 1, 30, 30)
+    } else {
+      const offset = depressed ? 1 : 0
+      font.drawText(ctx, '!', b.x + Math.round(b.w / 2) + offset, b.y + 22 + offset, {
+        font: 'fontexocet10',
+        color: this.advancedStatsOpen ? 'yellow' : 'gold',
+        align: 'center',
+        shadow: true,
+      })
+    }
   }
 
   private drawColoredSegments(
@@ -2125,7 +2181,7 @@ export class CharacterSheetPanel {
       this.hoveredElement === 'close'
         ? ox + 143
         : this.hoveredElement === 'advStats'
-          ? ox + 180
+          ? ox + 108
           : this.hoveredElement === 'defense'
             ? ox + 239
             : ox + 241
