@@ -22,9 +22,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/create-github-app-token@v3
+        id: insight
+        with:
+          client-id: ${{ secrets.INSIGHT_CLIENT_ID }}
+          private-key: ${{ secrets.INSIGHT_PRIVATE_KEY }}
+          permission-pull-requests: write
+          permission-contents: read
+
       - name: Merge the latest snapshot
         env:
           GH_TOKEN: ${{ github.token }}
+          INSIGHT_TOKEN: ${{ steps.insight.outputs.token }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -41,23 +50,19 @@ jobs:
           if $clean; then
             branch="sync/$(git rev-parse --short upstream)"
             git push origin "HEAD:refs/heads/$branch"
-            gh pr create --base main --head "$branch" --title "$title" --body ""
-            gh workflow run pr-summary.yml -f pr="$(gh pr view "$branch" --json number -q .number)"
-            gh workflow run ci.yml --ref "$branch"
-            run=""
+            GH_TOKEN="$INSIGHT_TOKEN" gh pr create --base main --head "$branch" --title "$title" --body ""
             for _ in $(seq 30); do
               sleep 10
-              run="$(gh run list --workflow ci.yml --branch "$branch" --event workflow_dispatch --limit 1 --json databaseId -q '.[0].databaseId')"
-              [ -n "$run" ] && break
+              [ -n "$(gh pr checks "$branch" --json name -q '.[].name' 2> /dev/null)" ] && break
             done
-            if [ -n "$run" ] && gh run watch "$run" --exit-status > /dev/null; then
-              git push origin HEAD:main && git push origin --delete "$branch" && gh workflow run ci.yml --ref main && echo "CI passed, merged into main"
+            if gh pr checks "$branch" --watch --fail-fast > /dev/null; then
+              git push origin HEAD:main && git push origin --delete "$branch" && gh workflow run ci.yml --ref main && gh workflow run upstream-tests.yml --ref main && echo "CI passed, merged into main"
+              tools/release-snapshot.sh
             else
-              gh pr comment "$branch" --body "CI failed, so this was left for review."
+              GH_TOKEN="$INSIGHT_TOKEN" gh pr comment "$branch" --body "CI failed, so this was left for review."
             fi
           else
             branch="sync/$(git rev-parse --short upstream)-conflicts"
             git push origin "upstream:refs/heads/$branch"
-            gh pr create --base main --head "$branch" --title "$title (conflicts)" --body ""
-            gh workflow run pr-summary.yml -f pr="$(gh pr view "$branch" --json number -q .number)"
+            GH_TOKEN="$INSIGHT_TOKEN" gh pr create --base main --head "$branch" --title "$title (conflicts)" --body ""
           fi
