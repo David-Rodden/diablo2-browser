@@ -1,0 +1,3 @@
+{
+  "tests/audio/issue-964-sfx-ffmpeg.test.ts > Issue #964 — README.md and src/baker/README.md documentation parity documents ffmpeg, libopus, FFMPEG_PATH, --ffmpeg, pack:sfx, pack:music, and >= 7.0 version note in both READMEs": "Our README.md replaces his, so it doesn't carry his ffmpeg notes"
+}
