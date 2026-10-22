@@ -1,0 +1,46 @@
+name: Upstream tests
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '37 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: upstream-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: troytt's tests (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - id: upstream
+        run: echo "sha=$(git rev-parse origin/upstream)" >> "$GITHUB_OUTPUT"
+      - id: theirs
+        uses: actions/cache@v6
+        with:
+          path: theirs.json
+          key: upstream-tests-${{ steps.upstream.outputs.sha }}
+      - name: Run his tests on his snapshot
+        if: steps.theirs.outputs.cache-hit != 'true'
+        run: |
+          git worktree add -q ../theirs origin/upstream
+          ln -s "$PWD/node_modules" ../theirs/node_modules
+          (cd ../theirs && npx vitest run --reporter=json --outputFile="$GITHUB_WORKSPACE/theirs.json" > /dev/null) || true
+      - name: Run his tests here
+        run: |
+          mapfile -t his < <(git ls-tree -r --name-only origin/upstream -- tests | grep '\.test\.ts$' | while read -r file; do [ -f "$file" ] && echo "$file"; done)
+          npx vitest run "${his[@]}" --reporter=json --outputFile=ours.json > /dev/null || true
+      - name: Compare
+        run: node tools/upstream-regressions.ts theirs.json ours.json >> "$GITHUB_STEP_SUMMARY"

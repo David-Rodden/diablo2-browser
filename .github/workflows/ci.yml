@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v7
       - run: bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
       - run: ./actionlint
-      - run: shellcheck -e SC2016 tools/sync-upstream.sh tools/test-mods.sh tools/lint-mods.sh
+      - run: shellcheck -e SC2016 tools/sync-upstream.sh tools/test-mods.sh tools/lint-mods.sh tools/release-snapshot.sh tools/train-rerere.sh
 
   badges:
     name: Publish README badges
