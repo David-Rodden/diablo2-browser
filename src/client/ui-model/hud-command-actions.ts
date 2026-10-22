@@ -82,6 +82,7 @@ export const UNIT_TYPE_MONSTER = 1
 const RED_TEXT = 1
 const ARTISAN_ANSWER_MS = 3000
 const ARTISAN_NAMES: Readonly<Record<number, string>> = { 154: 'Charsi', 511: 'Larzuk', 512: 'Anya' }
+const ARTISAN_WINDOWS = new Set(['imbue', 'add_sockets', 'personalize'])
 
 const EQUIP_SLOT_ALIAS_MAP: Readonly<Record<string, number>> = {
   ...EQUIP_SLOT_TO_BODY_LOC,
@@ -1173,6 +1174,19 @@ export function castTownPortalImpl(model: any): void {
 
 export function pickupItemToCursorImpl(model: any, itemId: number): void {
   model.emitCommand({ type: 'ItemToCursor', itemId })
+  const { npcId, activeWindow } = model.world.npcInteraction
+  if (ARTISAN_WINDOWS.has(activeWindow) && ARTISAN_NAMES[model.world.getUnit('monster', npcId)?.classId ?? -1] !== undefined) reopenArtisan(model, npcId)
+}
+
+function reopenArtisan(model: any, npcId: number): void {
+  const { window, activeWindow } = model.world.npcInteraction
+  const [pending, panel] = [model.pendingArtisanConfirmNpcId, model.hudManager?.leftPanel]
+  const target = { unitType: 1, id: npcId }
+  model.pendingArtisanConfirmNpcId = npcId
+  ;[{ type: 'NpcCancel', target }, { type: 'Interact', target }, { type: 'NpcInit', target }].forEach((command) => model.emitCommand(command))
+  Object.assign(model.world.npcInteraction, { window, activeWindow })
+  model.pendingArtisanConfirmNpcId = pending
+  if (model.hudManager) model.hudManager.leftPanel = panel
 }
 
 export function placeCursorItemImpl(model: any, itemId: number, col: number, row: number, buffer = 0): void {
