@@ -9,7 +9,7 @@ const id = (name: string) => SKILLS_CATALOG.find((skill) => skill.name === name)
 describe('build plans', () => {
   it('only names skills of their own class', () => {
     CLASS_NAMES.forEach((name, charClass) => {
-      const strangers = (BUILDS as Record<string, { skills: [string, number][] }>)[name]!.skills.filter(([skill]) => SKILLS_CATALOG.find((entry) => entry.name === skill)?.classCode !== CLASS_CODES[charClass])
+      const strangers = (BUILDS as unknown as Record<string, { skills: [string, number][] }>)[name]!.skills.filter(([skill]) => SKILLS_CATALOG.find((entry) => entry.name === skill)?.classCode !== CLASS_CODES[charClass])
       expect(strangers, name).toEqual([])
     })
   })
