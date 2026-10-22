@@ -42,6 +42,7 @@ export type ToolbarConnectionPhase =
   | 'bncs'
   | 'mcp'
   | 'd2gs'
+  | 'local'
   | 'error'
 
 export type ToolbarDiagnosticKind =
@@ -995,7 +996,7 @@ export class Toolbar {
     const statusKey = `toolbar.status.${this.connection.phase}` as const
     const statusLabel = tToolbar(statusKey, lang)
     const rttLabel =
-      this.connection.rttMs !== null ? `${this.connection.rttMs} ms` : '-- ms'
+      this.connection.phase === 'local' ? '' : this.connection.rttMs !== null ? `${this.connection.rttMs} ms` : '-- ms'
 
     let diagnosticBannerText: string | null = null
     const kind = this.connection.diagnosticKind ?? 'none'
@@ -1138,6 +1139,7 @@ export class Toolbar {
 .d2-toolbar__status-dot--bncs { background: #4495e8; box-shadow: 0 0 6px #4495e8; }
 .d2-toolbar__status-dot--mcp { background: #36c5d6; box-shadow: 0 0 6px #36c5d6; }
 .d2-toolbar__status-dot--d2gs { background: #2ecc71; box-shadow: 0 0 6px #2ecc71; }
+.d2-toolbar__status-dot--local { background: #d4a23c; box-shadow: 0 0 6px #d4a23c; }
 .d2-toolbar__status-dot--error { background: #e74c3c; box-shadow: 0 0 6px #e74c3c; }
 .d2-toolbar__rtt {
   padding-left: 6px;
@@ -2169,6 +2171,7 @@ a.d2-toolbar__btn:active {
     }
     if (this.rttTextEl) {
       this.rttTextEl.textContent = snap.rttLabel
+      this.rttTextEl.hidden = snap.rttLabel === ''
     }
     if (this.pluginsBtnEl) {
       const baseLabel = tToolbar('toolbar.plugins.open', lang)

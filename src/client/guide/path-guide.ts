@@ -7,7 +7,8 @@ import type { D2FontRenderer } from '../ui/font.ts'
 import type { AutomapHudFootprint, AutomapViewportMetrics } from '../ui/minimap.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import { FlowField } from './flow-field.ts'
-import { fromNearest, RibbonTrail, rounded, sampleAlong } from './ribbon-trail.ts'
+import { ChevronFlow, type Chevron } from './chevron-flow.ts'
+import { fromNearest, rounded } from './ribbon-trail.ts'
 import type { Find, FindKey } from './quest-stages.ts'
 import { currentGoal, levelName, nextStep, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
 import { spriteOutlines, type OutlineTint } from './sprite-outline.ts'
@@ -52,7 +53,7 @@ export interface GuidePlan {
 const GOLD = '#f2c46b'
 const GOLD_RGB = '242, 196, 107'
 const SHADE = 'rgba(0, 0, 0, 0.55)'
-const TRAIL_RGB = '160, 214, 255'
+const TRAIL_RGB = '110, 226, 255'
 const GOLD_TINT: OutlineTint = [1, 0.8, 0.45]
 const DOOR_TINT: OutlineTint = [0.6, 0.85, 1]
 const REPLAN_MS = 400
@@ -61,13 +62,9 @@ const REPLAN_MOVE = 3
 const DOOR_NEAR_PATH = 3
 const TEXT_LINE = 13
 const GAP_DEPTH = 10
-const RIBBON_FROM = 1.2
-const RIBBON_LENGTH = 32
-const HUD_PROBE_PX = 6
 const CORNER_RADIUS = 18
-const SAMPLE_SPACING = 0.75
-const CHEVRON_GAP = 3.2
-const CHEVRON_SPEED = 3.2
+const TRAIL_STEPS = 40
+const TRAIL_ROUNDS = 3
 const PORTAL_CLASSES = new Set([59, 60, 298, 342])
 const WAYPOINT_NEAR = 45
 const LEARN_WAYPOINTS = 'Touch the waypoint so the guide knows yours'
@@ -156,19 +153,6 @@ export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldS
 
 interface ScreenPoint { readonly x: number; readonly y: number }
 
-const untilCovered = (points: readonly ScreenPoint[], covered: (x: number, y: number) => boolean): ScreenPoint[] => {
-  const out: ScreenPoint[] = points.slice(0, 1)
-  for (const [i, p] of points.entries()) {
-    const prev = points[i - 1]
-    if (!prev) continue
-    const steps = Math.max(1, Math.ceil(Math.hypot(p.x - prev.x, p.y - prev.y) / HUD_PROBE_PX))
-    const hit = Array.from({ length: steps }, (_, k) => (k + 1) / steps).find((t) => covered(prev.x + (p.x - prev.x) * t, prev.y + (p.y - prev.y) * t))
-    if (hit !== undefined) return [...out, { x: prev.x + (p.x - prev.x) * (hit - 1 / steps), y: prev.y + (p.y - prev.y) * (hit - 1 / steps) }]
-    out.push(p)
-  }
-  return out
-}
-
 const traceRounded = (ctx: CanvasRenderingContext2D, points: readonly ScreenPoint[]) => {
   ctx.beginPath()
   points.forEach((p, i) => {
@@ -186,15 +170,6 @@ const stroke = (ctx: CanvasRenderingContext2D, style: string | CanvasGradient, w
   ctx.stroke()
 }
 
-const fade = (ctx: CanvasRenderingContext2D, a: ScreenPoint, b: ScreenPoint, alpha: number) => {
-  const gradient = ctx.createLinearGradient(a.x, a.y, b.x, b.y)
-  gradient.addColorStop(0, `rgba(${TRAIL_RGB}, ${alpha * 0.6})`)
-  gradient.addColorStop(0.25, `rgba(${TRAIL_RGB}, ${alpha})`)
-  gradient.addColorStop(0.75, `rgba(${TRAIL_RGB}, ${alpha * 0.7})`)
-  gradient.addColorStop(1, `rgba(${TRAIL_RGB}, 0)`)
-  return gradient
-}
-
 const ribbon = (ctx: CanvasRenderingContext2D, points: readonly ScreenPoint[], scale: number, nowMs: number) => {
   traceRounded(ctx, points)
   stroke(ctx, `rgba(${GOLD_RGB}, 0.12)`, 11 * scale)
@@ -204,35 +179,18 @@ const ribbon = (ctx: CanvasRenderingContext2D, points: readonly ScreenPoint[], s
   stroke(ctx, 'rgb(255, 244, 214)', 3.2 * scale, [0.1, 18 * scale], -nowMs / (36 / scale))
 }
 
-const trail = (ctx: CanvasRenderingContext2D, points: readonly ScreenPoint[]) => {
-  const [first, last] = [points[0]!, points.at(-1)!]
+const chevron = (ctx: CanvasRenderingContext2D, { at, heading, alpha, glow }: Chevron, toScreen: PathGuideHost['toScreen']) => {
+  const size = 1 + glow * 0.16
+  const corner = (along: number, side: number) => toScreen(at.x + heading.x * along * size - heading.y * side * size, at.y + heading.y * along * size + heading.x * side * size)
+  const [left, tip, right] = [corner(-0.4, 0.58), corner(0.42, 0), corner(-0.4, -0.58)]
   ctx.beginPath()
-  points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
-  stroke(ctx, fade(ctx, first, last, 0.1), 14)
-  stroke(ctx, `rgba(0, 0, 0, 0.35)`, 4.5)
-  stroke(ctx, fade(ctx, first, last, 0.75), 2)
-}
-
-const chevrons = (ctx: CanvasRenderingContext2D, samples: readonly SubTilePoint[], toScreen: PathGuideHost['toScreen'], nowMs: number) => {
-  const total = (samples.length - 1) * SAMPLE_SPACING
-  const phase = ((nowMs / 1000) * CHEVRON_SPEED) % CHEVRON_GAP
-  for (let d = phase; d < total - 0.5; d += CHEVRON_GAP) {
-    const i = Math.floor(d / SAMPLE_SPACING)
-    const [a, b] = [samples[i]!, samples[Math.min(i + 1, samples.length - 1)]!]
-    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1
-    const [tx, ty] = [(b.x - a.x) / length, (b.y - a.y) / length]
-    const t = (d - i * SAMPLE_SPACING) / SAMPLE_SPACING
-    const at = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
-    const alpha = Math.min(1, d / 2) * (1 - d / total) ** 0.6
-    const corner = (along: number, side: number) => toScreen(at.x + tx * along - ty * side, at.y + ty * along + tx * side)
-    const [left, tip, right] = [corner(-0.45, 0.62), corner(0.5, 0), corner(-0.45, -0.62)]
-    ctx.beginPath()
-    ctx.moveTo(left.x, left.y)
-    ctx.lineTo(tip.x, tip.y)
-    ctx.lineTo(right.x, right.y)
-    stroke(ctx, `rgba(0, 0, 0, ${0.5 * alpha})`, 4.5)
-    stroke(ctx, `rgba(225, 242, 255, ${alpha})`, 2)
-  }
+  ctx.moveTo(left.x, left.y)
+  ctx.lineTo(tip.x, tip.y)
+  ctx.lineTo(right.x, right.y)
+  stroke(ctx, `rgba(${TRAIL_RGB}, ${alpha * (0.1 + glow * 0.14)})`, 8)
+  stroke(ctx, `rgba(0, 16, 26, ${alpha * 0.38})`, 3.8)
+  stroke(ctx, `rgba(${TRAIL_RGB}, ${alpha * (0.62 + glow * 0.3)})`, 2)
+  stroke(ctx, `rgba(236, 252, 255, ${alpha * glow * 0.85})`, 1)
 }
 
 export class PathGuide {
@@ -242,7 +200,7 @@ export class PathGuide {
   private plannedAt = { ms: Number.NEGATIVE_INFINITY, x: 0, y: 0, level: 0 }
   private field: { readonly view: LevelView; readonly field: FlowField } | null = null
   private readonly memory = new WaypointMemory()
-  private readonly trail = new RibbonTrail()
+  private readonly flow = new ChevronFlow()
   private readonly fieldFor: FieldSource = (view, target) => {
     const cached = this.field
     if (cached?.view === view && cached.field.targetX === target.x && cached.field.targetY === target.y) return cached.field
@@ -286,16 +244,25 @@ export class PathGuide {
 
   private drawWorld(ctx: CanvasRenderingContext2D, plan: GuidePlan, nowMs: number): void {
     const { toScreen, self } = this.host
-    const me = self()
+    const covered = this.host.coveredByHud ?? (() => false)
     ctx.save()
     Object.assign(ctx, { lineCap: 'round', lineJoin: 'round' })
-    const line = rounded(fromNearest([plan.path[0] ?? me, ...plan.route], me))
-    const samples = plan.route.length > 0 ? this.trail.update(sampleAlong(line, RIBBON_FROM, RIBBON_LENGTH, SAMPLE_SPACING), nowMs) : (this.trail.reset(), [])
-    const shown = untilCovered(samples.map((p) => toScreen(p.x, p.y)), this.host.coveredByHud ?? (() => false))
-    if (shown.length > 1) trail(ctx, shown)
-    if (shown.length > 1) chevrons(ctx, samples.slice(0, shown.length), toScreen, nowMs)
+    this.flow
+      .place(this.trailFrom(plan, self()), nowMs)
+      .filter(({ at }) => {
+        const p = toScreen(at.x, at.y)
+        return !covered(p.x, p.y)
+      })
+      .forEach((c) => chevron(ctx, c, toScreen))
     if (plan.target && plan.target.unit?.kind !== 'object') this.drawMarker(ctx, plan.target, nowMs)
     ctx.restore()
+  }
+
+  private trailFrom(plan: GuidePlan, me: SubTilePoint): SubTilePoint[] {
+    if (plan.route.length === 0) return []
+    const field = this.field?.view === this.host.levelView() && this.field.field.targetX === plan.target?.x && this.field.field.targetY === plan.target.y ? this.field.field : null
+    const path = field?.pathFrom(me.x, me.y, 1, TRAIL_STEPS) ?? []
+    return rounded(path.length > 0 ? [me, ...field!.corners(path, me)] : fromNearest([plan.path[0] ?? me, ...plan.route], me), TRAIL_ROUNDS)
   }
 
   private drawMarker(ctx: CanvasRenderingContext2D, target: GuideTarget, nowMs: number): void {
