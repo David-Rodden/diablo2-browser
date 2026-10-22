@@ -10416,11 +10416,11 @@ export class GameInstance {
   ): boolean {
     return (
       D2Common_10399_AtSubtiles(
-        npc.x,
-        npc.y,
+        Math.floor(npc.x),
+        Math.floor(npc.y),
         npc.sizeX,
-        player.x,
-        player.y,
+        Math.floor(player.x),
+        Math.floor(player.y),
         PLAYER_SIZE_X_113C,
       ) <= NPC_INTERACT_DISTANCE_SUBTILES
     )
@@ -11273,8 +11273,8 @@ export class GameInstance {
         tile.x,
         tile.y,
         0,
-        player.x,
-        player.y,
+        Math.floor(player.x),
+        Math.floor(player.y),
         PLAYER_SIZE_X_113C,
       ) > WARP_INTERACT_DISTANCE_SUBTILES
     ) {
