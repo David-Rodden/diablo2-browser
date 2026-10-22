@@ -47,7 +47,7 @@ export function characterBuild(sheet: CharacterSheet): CharacterBuild {
   const style = [...pointsByStyle].sort((a, b) => b[1] - a[1])[0]?.[0] ?? (ownCode ? DEFAULT_STYLE[ownCode] : undefined) ?? 'melee'
   const mainSkills = invested.filter(({ skill }) => styleOf(skill) === style).sort((a, b) => b.points - a.points)
   const elementPoints = tally(mainSkills.flatMap(({ skill, points }) => (isElement(skill.eType) ? [[skill.eType, points] as const] : [])))
-  const elementTotal = [...elementPoints.values()].reduce((a, b) => a + b, 0)
+  const elementTotal = mainSkills.reduce((sum, { points }) => sum + points, 0)
   const topTab = mainSkills[0]?.skill.tabName
   return {
     ...sheet,
