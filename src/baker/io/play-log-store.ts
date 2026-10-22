@@ -8,7 +8,10 @@ const fileNameOf = (session: unknown) => `${String(session).replace(/[^\w-]/g, '
 
 export function createPlayLogHttpMiddleware(dir: string) {
   return (req: IncomingMessage, res: ServerResponse, next: () => void): void => {
-    if (req.method !== 'POST' || req.url !== PLAY_LOG_ROUTE) return next()
+    if (req.method !== 'POST' || req.url !== PLAY_LOG_ROUTE) {
+      next()
+      return
+    }
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', () => {
