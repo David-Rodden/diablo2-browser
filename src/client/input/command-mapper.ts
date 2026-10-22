@@ -508,11 +508,18 @@ export class CommandMapper {
       canCastSkill: (skillId, nowMs) =>
         (!this.isTownArea() || isSkillAllowedInTown(skillId)) && this.isSkillWeaponUsable(skillId) && this.hasEnoughManaForSkill(skillId, this.world) && !this.world.isSkillOnCooldown?.(skillId, nowMs),
       sendCommand: (command, nowMs) => this.sendCommand(command, nowMs),
+      stepToward: (x, y, nowMs) => this.stepToward(x, y, nowMs),
       isHostile: (unit) => unit.unitType === 'monster' && !this.isTownOrInteractiveNpc(unit) && !this.isFriendlySummonOrPet(unit) && !this.isMonsterDead(unit),
       isPointIntercepted: (x, y) => this.isPointIntercepted(x, y),
       isPlayerBusyCasting: (nowMs) => this.isPlayerBusyCasting(nowMs),
       isTownArea: () => this.isTownArea(),
     }
+  }
+
+  private stepToward(x: number, y: number, nowMs: number): void {
+    const running = this.isCurrentlyRunning()
+    this.predictor?.setPath([{ x, y }], running)
+    this.sendCommand({ type: running ? 'RunToLocation' : 'WalkToLocation', x: Math.round(x), y: Math.round(y) }, nowMs)
   }
 
   private levelViewAt(sx: number, sy: number): LevelView | null {

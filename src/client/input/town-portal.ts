@@ -17,5 +17,11 @@ export const townPortalSource = (items: Iterable<TownPortalItem>): TownPortalIte
   return carried.find((item) => codeOf(item) === 'tbk' && charges(item) > 0) ?? carried.find((item) => codeOf(item) === 'tsc') ?? null
 }
 
+export const portalsCarried = (items: Iterable<TownPortalItem>): { readonly tome: boolean; readonly portals: number } => {
+  const carried = [...items]
+  const tomes = carried.filter((item) => codeOf(item) === 'tbk')
+  return { tome: tomes.length > 0, portals: tomes.reduce((sum, tome) => sum + charges(tome), 0) + carried.filter((item) => codeOf(item) === 'tsc').length }
+}
+
 export const townPortalRefusalText = (refusal: TownPortalRefusal, lang: 'ENG' | 'CHI'): string =>
   refusal === 'in-town' ? (lang === 'ENG' ? "You're already in town" : '你已经在城里了') : lang === 'ENG' ? 'No Town Portal scrolls' : '没有城镇传送卷轴'

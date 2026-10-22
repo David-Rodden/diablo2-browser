@@ -719,6 +719,7 @@ export async function startPlayApp(options?: {
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
     lowLifeWarning: togglePortFor(hudManager, 'lowLifeWarning'),
     smartSkills: togglePortFor(session.commandMapper.assists, 'smartSkills'),
+    spendPoints: togglePortFor(pilot, 'spendPoints'),
     notify: { show: (toast) => hudManager.toasts.push(toast, performance.now()) },
     itemInfo: { getConfig: () => hudManager.itemInfo, setConfig: (config) => hudManager.setItemInfo(config) },
     pathGuide: {

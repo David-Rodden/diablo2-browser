@@ -41,17 +41,20 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     castAt: vi.fn(),
     isHostile: (unit: ClientUnit) => unit.name === 'Fallen',
     castTownPortal: vi.fn(),
+    hasTownPortal: () => true,
+    standDown: false,
     stepTo: vi.fn(),
     walkableWithDoorsOpen: (view: { walkable: Uint8Array }) => view.walkable,
   }
   const route = [{ x: 100, y: 100 }, { x: 130, y: 100 }]
   const guide = { enabled: false, pilotStatus: null as string | null, update: () => (plan ? ({ goal: { level: 2, title: 'Den of Evil' }, step: null, hint: 'Head to Blood Moor', target: null, path: [], route, doors: [], highlights: [], ...plan }) : null), routeFrom: () => route }
-  const host = { world, hudManager, hudModel, assists, guide, levelView: () => null } as unknown as AutopilotHost
+  const view = { id: area, originX: 0, originY: 0, subWidth: 400, subHeight: 400, walkable: new Uint8Array(400 * 400).fill(1), rooms: [] as { index: number; worldSubX: number; worldSubY: number; subW: number; subH: number }[], presetUnits: [] as { type: number; index: number; subX: number; subY: number }[], entrances: [] }
+  const host = { world, hudManager, hudModel, assists, guide, levelView: () => view } as unknown as AutopilotHost
   const pilot = new Autopilot(host)
   pilot.start()
   let now = 1000
   const tick = (ms = 200) => pilot.tick((now += ms))
-  return { pilot, world, units, hudManager, hudModel, assists, guide, tick }
+  return { pilot, world, units, hudManager, hudModel, assists, guide, view, tick }
 }
 
 const unit = (fields: Partial<ClientUnit>) => ({ unitType: 'monster', classId: 0, mode: 0, hidden: false, dead: false, lifePct: 128, ...fields }) as ClientUnit
@@ -120,6 +123,110 @@ describe('autopilot', () => {
     units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
     tick(2000)
     expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+  })
+
+  it('stops fighting and heads home once the potions are gone and life is half down', () => {
+    const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.self.life = 55
+    tick(2000)
+    expect([assists.standDown, assists.pilotCombat, guide.pilotStatus]).toEqual([true, false, 'Out of healing potions, heading to town'])
+    expect(assists.castTownPortal).toHaveBeenCalled()
+  })
+
+  it('heads home when life drops fast, even with potions left', () => {
+    const { world, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.containers.belt.set(1, { id: 1, code: 'hp1' })
+    world.containers.belt.set(2, { id: 2, code: 'hp1' })
+    tick()
+    world.self.life = 55
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Taking a beating, heading to town')
+  })
+
+  it('steps away from monsters at its feet before opening a portal', () => {
+    const { world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.self.life = 20
+    units.push(unit({ id: 60, x: 103, y: 100, name: 'Fallen' }), unit({ id: 61, x: 102, y: 102, name: 'Fallen' }))
+    tick(2000)
+    const [x, y] = assists.walkTo.mock.calls[0] as [number, number]
+    expect([assists.castTownPortal.mock.calls.length, x < 100]).toEqual([0, true])
+    expect(Math.hypot(x - 100, y - 100)).toBeCloseTo(9)
+    tick(3000)
+    expect(assists.castTownPortal).toHaveBeenCalled()
+  })
+
+  it('keeps retreating once life comes back up, until it reaches town', () => {
+    const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.self.life = 20
+    tick(2000)
+    world.self.life = 90
+    tick(2000)
+    expect([assists.standDown, guide.pilotStatus]).toEqual([true, 'Low on life, heading to town'])
+    world.areaId = ROGUE_ENCAMPMENT
+    tick(2000)
+    expect(assists.standDown).toBe(false)
+  })
+
+  it('walks back the way it came when it has no town portal', () => {
+    const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    assists.hasTownPortal = () => false
+    world.self.gold = 0
+    world.areaId = ROGUE_ENCAMPMENT
+    tick()
+    world.areaId = BLOOD_MOOR
+    world.self.x = 101
+    tick()
+    world.self.life = 20
+    world.self.x = 104
+    tick(2000)
+    world.self.x = 101
+    tick(2000)
+    expect(assists.stepTo).toHaveBeenLastCalledWith(81, 100, expect.any(Number))
+  })
+
+  it('remembers the way back to town across a portal trip', () => {
+    const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.self.gold = 0
+    const enter = (area: number, x: number) => {
+      world.areaId = area
+      world.self.x = x
+      tick()
+    }
+    enter(ROGUE_ENCAMPMENT, 100)
+    enter(BLOOD_MOOR, 101)
+    enter(ROGUE_ENCAMPMENT, 300)
+    enter(BLOOD_MOOR, 160)
+    assists.hasTownPortal = () => false
+    world.self.life = 20
+    tick(2000)
+    expect(assists.walkTo).toHaveBeenLastCalledWith(151, 100, expect.any(Number))
+  })
+
+  it('hands control back when it is in trouble with no portal and no way back', () => {
+    const { pilot, world, assists, hudManager, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    assists.hasTownPortal = () => false
+    world.self.life = 20
+    tick(2000)
+    expect(pilot.active).toBe(false)
+    expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you', color: 'red' }), expect.any(Number))
+  })
+
+  it('feels along a fence for the gap when it is stuck on the edge of a level', () => {
+    const { assists, view, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' }, step: { kind: 'exit', level: 3 } })
+    view.walkable.fill(0, 100 * 400, 101 * 400)
+    for (let y = 0; y < 400; y++) view.walkable[y * 400 + 100] = 0
+    const steps = [0, 2500, 2500].map((ms) => {
+      tick(ms || 200)
+      return assists.stepTo.mock.lastCall?.slice(0, 2)
+    })
+    expect(steps).toEqual([[112, 100], [112, 112], [112, 88]])
+  })
+
+  it('searches the rest of the level once it reaches a spot that does not finish the quest', () => {
+    const { assists, view, tick } = setup({ hint: 'Clear the Den of Evil', target: { x: 101, y: 100, label: 'Den of Evil' } })
+    view.rooms.push({ index: 0, worldSubX: 90, worldSubY: 90, subW: 20, subH: 20 }, { index: 1, worldSubX: 200, worldSubY: 90, subW: 20, subH: 20 })
+    tick()
+    expect(assists.walkTo).toHaveBeenLastCalledWith(109, 100, expect.any(Number))
   })
 
   it('switches itself off when you die', () => {

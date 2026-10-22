@@ -1,7 +1,9 @@
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { MONSTER_PATH_IDS } from '../../common/path/monster-path-data.ts'
+import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { TELEPORT } from '../input/combat-planner.ts'
+import { portalsCarried } from '../input/town-portal.ts'
 import type { PlayAssists } from '../input/play-assists.ts'
 import type { LevelView } from '../map/level-view.ts'
 import type { SubTilePoint } from '../motion/pathfind.ts'
@@ -10,10 +12,11 @@ import { waitFor } from '../ui-model/stash-deposit.ts'
 import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
+import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
-import { levelName } from './route.ts'
+import { ACT_TOWNS, actOfLevel, levelName } from './route.ts'
 import TOWNS from './data/towns.json'
 
 export interface AutopilotHost {
@@ -56,20 +59,38 @@ const MANUAL_PAUSE_MS = 4000
 const ERRAND_COOLDOWN_MS = 300_000
 const HEAL_COOLDOWN_MS = 45_000
 const ERRAND_TIMEOUT_MS = 45_000
-const RETREAT_LIFE = 0.3
+const RETREAT_LIFE = 0.35
+const DRY_LIFE = 0.6
+const LAST_POTION_LIFE = 0.45
+const BURST_MS = 3000
+const BURST_LOSS = 0.4
+const KITE_NEAR = 5
+const KITE_STEP = 9
+const KITE_MS = 2500
+const SEAM_JUMP = 20
+const SPEND_MS = 1500
 const HEAL_LIFE = 0.7
 const HEAL_MANA = 0.4
 const REPAIR_BELOW = 0.3
 const POTION_COLUMNS = { melee: [3, 1], caster: [2, 2] } as const
-const POTION_GOLD = 600
+const POTION_GOLD = 100
 const BUY_TRIES = 16
+const TOME_GOLD = 500
+const TOME_SIZE = 10
+const SPARE_SCROLLS = 2
+const SCROLL_GOLD = 100
 const ROOM_REACHED = 8
+const ROOM_END = 3
 const STASH_CLASS = 267
 const TOWN_PORTAL_CLASS = 59
 const PORTAL_REACH = 12
 const TRAVEL_OPTIONS = ['travel_east', 'travel_west', 'travel_harrogath']
 const WARP_NEAR = 7
-const SEAM_STEP = 8
+const SEAM_STEP = 20
+const CROSS_MS = 4000
+const GAP_MS = 2500
+const GAP_STEP = 12
+const GAP_TRIES = 6
 
 const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y - b.y)
 const potionTier = (code: string) => Number(code.slice(2)) || 0
@@ -89,6 +110,16 @@ export class Autopilot {
   private readonly explored = new Map<number, Set<number>>()
   private exploreField: { readonly key: string; readonly field: FlowField } | null = null
   private trip: 'retreat' | 'return' | null = null
+  private retreatWhy = ''
+  private trail: { readonly level: number; readonly at: SubTilePoint; readonly before: SubTilePoint }[] = []
+  private leftBehind: typeof this.trail = []
+  private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
+  private kiteSince: number | null = null
+  private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
+  private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
+  private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
+  private lastSpend = Number.NEGATIVE_INFINITY
+  spendPoints = false
 
   constructor(private readonly host: AutopilotHost) {}
 
@@ -109,8 +140,8 @@ export class Autopilot {
 
   stop(title: string, color: 'tan' | 'red' | 'gold' = 'tan', detail = ''): void {
     const { assists, guide } = this.host
-    Object.assign(this, { active: false, job: null, talk: null })
-    Object.assign(assists, { pilotCombat: false, questPickup: false })
+    Object.assign(this, { active: false, job: null, talk: null, crossing: null })
+    Object.assign(assists, { pilotCombat: false, questPickup: false, standDown: false })
     guide.pilotStatus = null
     this.toast(title, detail, color)
   }
@@ -120,6 +151,7 @@ export class Autopilot {
     this.lastTick = nowMs
     const { world, assists } = this.host
     if (assists.playerSteering) this.pausedUntil = nowMs + MANUAL_PAUSE_MS
+    if (world.areaId > 0) this.noteArea()
     if (world.isDead) this.stop('Autopilot off', 'red', 'You died')
     else if (nowMs < this.pausedUntil) this.say('Paused while you play')
     else if (world.areaId > 0 && !this.job) this.decide(nowMs)
@@ -129,9 +161,12 @@ export class Autopilot {
     const { assists } = this.host
     const town = this.town()
     this.trip = town && this.trip === 'retreat' ? 'return' : !town && this.trip === 'return' ? null : this.trip
-    const fleeing = !town && this.shouldRetreat()
-    assists.pilotCombat = assists.autoCombatKey !== null && !fleeing
-    if (fleeing) this.retreat(nowMs)
+    const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
+    assists.pilotCombat = assists.autoCombatKey !== null && danger === null
+    assists.standDown = danger !== null
+    if (danger === null) this.spend(nowMs)
+    if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
+    else if (danger !== null) this.retreat(danger, nowMs)
     else if (assists.isFighting(nowMs)) this.say('Fighting')
     else if (assists.inventoryCare.busy || assists.hasLootNearby(nowMs)) this.say('Picking up loot')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
@@ -139,7 +174,7 @@ export class Autopilot {
 
   private carryOn(town: (typeof TOWNS)['Rogue Encampment'] | null, nowMs: number): void {
     const { assists, guide } = this.host
-    const errand = town ? this.nextErrand(town, nowMs) : null
+    const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
@@ -175,6 +210,7 @@ export class Autopilot {
     } else if (unit && target.unit.kind === 'npc' && !assists.isHostile(unit)) this.reachThen(target, nowMs, () => this.speakTo(unit, plan, nowMs))
     else if (unit && target.unit.kind === 'object') this.reachThen(target, nowMs, () => this.useOnce(unit, nowMs))
     else if (step?.kind === 'exit') this.exitThrough(target, nowMs)
+    else if (distance(target, world.self) <= REACH) this.explore(nowMs, plan.hint)
     else this.walkRoute(nowMs)
   }
 
@@ -183,9 +219,11 @@ export class Autopilot {
     else this.walkRoute(nowMs)
   }
 
-  private walkRoute(nowMs: number, route = this.host.guide.routeFrom(this.host.world.self)): void {
+  private walkRoute(nowMs: number, found = this.host.guide.routeFrom(this.host.world.self)): void {
     const { world, assists } = this.host
     const me = world.self
+    const goal = this.host.guide.currentPlan?.target
+    const route = found.length >= 2 || !goal || distance(goal, me) <= REACH ? found : [me, goal]
     if (route.length < 2) return
     const blink = this.blink
     if (blink?.pending && nowMs - blink.at >= TELEPORT_MS) {
@@ -201,8 +239,29 @@ export class Autopilot {
     this.watchProgress(nowMs)
     if (nowMs - this.lastWalk < WALK_MS && this.host.assists.moving) return
     const aim = alongLine(route, LOOKAHEAD)
-    assists.walkTo(aim.x, aim.y, nowMs)
+    if (this.offTheGrid()) this.findGap(aim, nowMs)
+    else {
+      this.gapSearch = null
+      assists.walkTo(aim.x, aim.y, nowMs)
+    }
     this.lastWalk = nowMs
+  }
+
+  private findGap(aim: SubTilePoint, nowMs: number): void {
+    const me = this.host.world.self
+    const search = (this.gapSearch ??= { since: nowMs, from: { x: me.x, y: me.y } })
+    const tries = Math.floor((nowMs - search.since) / GAP_MS)
+    const length = Math.max(1e-6, distance(aim, search.from))
+    const [nx, ny] = [(aim.x - search.from.x) / length, (aim.y - search.from.y) / length]
+    const side = (tries % 2 === 1 ? 1 : -1) * Math.ceil((tries % (GAP_TRIES + 1)) / 2) * GAP_STEP
+    this.host.assists.stepTo(search.from.x + nx * GAP_STEP - ny * side, search.from.y + ny * GAP_STEP + nx * side, nowMs)
+  }
+
+  private offTheGrid(): boolean {
+    const view = this.host.levelView()
+    const me = this.host.world.self
+    const [gx, gy] = view ? [Math.round(me.x) - view.originX, Math.round(me.y) - view.originY] : [0, 0]
+    return view !== null && gx >= 0 && gy >= 0 && gx < view.subWidth && gy < view.subHeight && view.walkable[gy * view.subWidth + gx] === 0
   }
 
   private watchProgress(nowMs: number): void {
@@ -230,9 +289,25 @@ export class Autopilot {
     const inward = this.host.levelView()?.entrances.find((entrance) => entrance.toLevelId === this.host.guide.currentPlan?.step?.level)
     const out = inward ? { x: inward.x - inward.interiorX, y: inward.y - inward.interiorY } : { x: target.x - me.x, y: target.y - me.y }
     const length = Math.max(1e-6, Math.hypot(out.x, out.y))
-    if (nowMs - this.lastWalk < WALK_MS) return
-    this.host.assists.stepTo(target.x + (out.x / length) * SEAM_STEP, target.y + (out.y / length) * SEAM_STEP, nowMs)
-    this.lastWalk = nowMs
+    this.cross({ x: target.x + (out.x / length) * SEAM_STEP, y: target.y + (out.y / length) * SEAM_STEP }, nowMs)
+  }
+
+  private cross(to: SubTilePoint, nowMs: number): void {
+    this.crossing = { to, until: nowMs + CROSS_MS }
+    this.keepCrossing(nowMs)
+  }
+
+  private keepCrossing(nowMs: number): boolean {
+    const crossing = this.crossing
+    if (!crossing || nowMs >= crossing.until || distance(crossing.to, this.host.world.self) <= STUCK_MOVE) {
+      this.crossing = null
+      return false
+    }
+    if (nowMs - this.lastWalk >= WALK_MS) {
+      this.host.assists.stepTo(crossing.to.x, crossing.to.y, nowMs)
+      this.lastWalk = nowMs
+    }
+    return true
   }
 
   private useOnce(unit: ClientUnit, nowMs: number): void {
@@ -319,29 +394,133 @@ export class Autopilot {
     if (this.exploreField?.key !== key) this.exploreField = { key, field: new FlowField({ ...view, walkable: assists.walkableWithDoorsOpen(view) }, goal.x, goal.y) }
     const field = this.exploreField.field
     const path = field.pathFrom(me.x, me.y, 1, 40)
-    if (path.length === 0) visited.add(next.index)
+    if (path.length <= ROOM_END) visited.add(next.index)
     else this.walkRoute(nowMs, [me, ...field.corners(path, me)])
   }
 
-  private shouldRetreat(): boolean {
-    const { world, hudManager } = this.host
-    const me = world.self
-    const { belt, inventory } = world.containers
-    const healing = [...belt.values(), ...inventory.values()].some((item) => /^(hp|rv)/.test(item.code))
-    return me.life < (hudManager.maxHp || me.maxLife) * RETREAT_LIFE && !healing
+  private noteArea(): void {
+    const { world } = this.host
+    const { areaId, self } = world
+    const last = this.lastSpot
+    if (last && last.level !== areaId) {
+      const back = this.trail.findIndex((spot) => spot.level === areaId)
+      const resumed = this.trail.length === 0 && this.leftBehind.at(-1)?.level === areaId
+      if (this.town()) [this.leftBehind, this.trail] = [this.trail.length > 0 ? this.trail : this.leftBehind, []]
+      else this.trail = resumed ? this.leftBehind : back >= 0 ? this.trail.slice(0, back + 1) : [...this.trail, { level: areaId, at: { x: self.x, y: self.y }, before: { x: last.x, y: last.y } }]
+    }
+    this.lastSpot = { level: areaId, x: self.x, y: self.y }
   }
 
-  private retreat(nowMs: number): void {
+  private danger(nowMs: number): string | null {
+    const { world, hudManager } = this.host
+    const me = world.self
+    const life = me.life / (hudManager.maxHp || me.maxLife)
+    const { belt, inventory } = world.containers
+    const healing = [...belt.values(), ...inventory.values()].filter((item) => /^(hp|rv)/.test(item.code)).length
+    this.lifeLog = [...this.lifeLog.filter((entry) => nowMs - entry.at <= BURST_MS), { at: nowMs, life }]
+    const burst = Math.max(...this.lifeLog.map((entry) => entry.life)) - life
+    if (life < RETREAT_LIFE) return 'Low on life, heading to town'
+    if (healing === 0 && life < DRY_LIFE) return 'Out of healing potions, heading to town'
+    return (burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
+  }
+
+  private retreat(why: string, nowMs: number): void {
     const { world, assists } = this.host
-    this.say('Low on life, heading to town')
-    const portal = world.getUnitsByType(2).find((unit) => unit.classId === TOWN_PORTAL_CLASS && distance(unit, world.self) <= PORTAL_REACH)
-    if (portal) {
-      this.trip = 'retreat'
-      this.useOnce(portal, nowMs)
-    } else if (nowMs - (this.errandsAt.get('portal') ?? Number.NEGATIVE_INFINITY) > USE_MS * 2) {
-      this.errandsAt.set('portal', nowMs)
-      assists.castTownPortal()
+    const me = world.self
+    Object.assign(this, { trip: 'retreat', retreatWhy: why })
+    this.say(why)
+    const threats = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= KITE_NEAR)
+    this.kiteSince = threats.length === 0 ? null : (this.kiteSince ?? nowMs)
+    const portal = world.getUnitsByType(2).find((unit) => unit.classId === TOWN_PORTAL_CLASS && distance(unit, me) <= PORTAL_REACH)
+    if (portal) this.touch(portal, nowMs)
+    else if (threats.length > 0 && nowMs - this.kiteSince! < KITE_MS && this.kite(threats, nowMs)) return
+    else if (assists.hasTownPortal()) this.castPortal(nowMs)
+    else this.walkHome(nowMs)
+  }
+
+  private touch(unit: ClientUnit, nowMs: number): void {
+    if (nowMs - (this.uses.get(unit.id)?.at ?? Number.NEGATIVE_INFINITY) < USE_MS) return
+    this.uses.set(unit.id, { at: nowMs, tries: 0 })
+    this.host.assists.use(unit, nowMs)
+  }
+
+  private castPortal(nowMs: number): void {
+    if (nowMs - (this.errandsAt.get('portal') ?? Number.NEGATIVE_INFINITY) <= USE_MS * 2) return
+    this.errandsAt.set('portal', nowMs)
+    this.host.assists.castTownPortal()
+  }
+
+  private kite(threats: readonly ClientUnit[], nowMs: number): boolean {
+    const view = this.host.levelView()
+    if (!view) return false
+    const me = this.host.world.self
+    const walkable = this.host.assists.walkableWithDoorsOpen(view)
+    const open = ({ x, y }: SubTilePoint) => {
+      const [gx, gy] = [Math.round(x) - view.originX, Math.round(y) - view.originY]
+      return gx >= 0 && gy >= 0 && gx < view.subWidth && gy < view.subHeight && walkable[gy * view.subWidth + gx] !== 0
     }
+    const gap = (spot: SubTilePoint) => Math.min(...threats.map((threat) => distance(threat, spot)))
+    const safest = Array.from({ length: 16 }, (_, i) => ({ x: me.x + Math.cos((i * Math.PI) / 8) * KITE_STEP, y: me.y + Math.sin((i * Math.PI) / 8) * KITE_STEP }))
+      .filter((spot) => open(spot) && open({ x: (spot.x + me.x) / 2, y: (spot.y + me.y) / 2 }))
+      .sort((a, b) => gap(b) - gap(a))[0]
+    if (!safest || gap(safest) <= gap(me)) return false
+    if (nowMs - this.lastWalk >= WALK_MS) {
+      this.host.assists.walkTo(safest.x, safest.y, nowMs)
+      this.lastWalk = nowMs
+    }
+    return true
+  }
+
+  private walkHome(nowMs: number): void {
+    const me = this.host.world.self
+    const here = this.trail.at(-1)
+    if (here?.level !== this.host.world.areaId) this.homeByWaypoint(nowMs)
+    else if (distance(here.at, me) > REACH) this.walkTowards(here.at, nowMs)
+    else this.leaveBy(here, nowMs)
+  }
+
+  private leaveBy(here: (typeof this.trail)[number], nowMs: number): void {
+    const { world } = this.host
+    const near = (unit: ClientUnit) => distance(unit, here.at) <= WARP_NEAR
+    const way = [...world.getUnitsByType(2).filter((unit) => unit.classId === TOWN_PORTAL_CLASS || WAYPOINT_CLASS_IDS_113C.has(unit.classId)), ...world.getUnitsByType(5)].find(near)
+    const across = { x: here.before.x - here.at.x, y: here.before.y - here.at.y }
+    const length = Math.hypot(across.x, across.y)
+    if (way) this.takeHome(way, nowMs)
+    else if (length > SEAM_JUMP || length < 1e-6) this.homeByWaypoint(nowMs)
+    else this.cross({ x: here.at.x + (across.x / length) * SEAM_STEP, y: here.at.y + (across.y / length) * SEAM_STEP }, nowMs)
+  }
+
+  private takeHome(way: ClientUnit, nowMs: number): void {
+    if (WAYPOINT_CLASS_IDS_113C.has(way.classId)) this.waypointTo = ACT_TOWNS[actOfLevel(this.host.world.areaId)]!
+    if (distance(way, this.host.world.self) <= REACH) this.touch(way, nowMs)
+    else this.walkTowards(way, nowMs)
+  }
+
+  private homeByWaypoint(nowMs: number): void {
+    const { world } = this.host
+    const view = this.host.levelView()
+    const seen = world.getUnitsByType(2).find((unit) => WAYPOINT_CLASS_IDS_113C.has(unit.classId))
+    const preset = view?.presetUnits.find((unit) => unit.type === 2 && WAYPOINT_CLASS_IDS_113C.has(unit.index))
+    if (seen) this.takeHome(seen, nowMs)
+    else if (view && preset) this.walkTowards({ x: view.originX + preset.subX, y: view.originY + preset.subY }, nowMs)
+    else {
+      this.trip = null
+      this.stop('Autopilot needs you', 'red', 'Low on life with no town portal or way back')
+    }
+  }
+
+  private spend(nowMs: number): void {
+    const { world, hudManager, hudModel } = this.host
+    const build = buildOf(world.self.charClass)
+    if (!this.spendPoints || build === null || hudModel === null || nowMs - this.lastSpend < SPEND_MS) return
+    const tree = hudManager.skillTree
+    const attrs = hudManager.charSheet.attrs
+    const skill = tree.unspentSkillPoints > 0 ? nextSkill(build, (id) => tree.getHardPoints(id), (id) => tree.canAllocate(id)) : null
+    const stat = attrs.statPoints > 0 ? nextStat(build, { str: attrs.baseStr ?? 0, dex: attrs.baseDex ?? 0, vit: attrs.baseVit ?? 0, ene: attrs.baseEne ?? 0 }) : null
+    if (skill !== null) hudModel.allocateSkill(skill)
+    else if (stat !== null) hudModel.allocateStat(stat)
+    else return
+    this.lastSpend = nowMs
   }
 
   private returnThroughPortal(nowMs: number): boolean {
@@ -369,7 +548,9 @@ export class Autopilot {
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
       worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repair() },
-      (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length > 0) ? ready('potions') && { key: 'potions', reason: 'Buying potions', npc: 'potions', action: 'trade', work: () => this.buyPotions() } : false,
+      (this.portalsWanted() > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length > 0)
+        ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
+        : false,
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
     ]
     const errand = errands.find((e): e is Errand => e !== false) ?? null
@@ -416,7 +597,7 @@ export class Autopilot {
   private async reach(find: () => ClientUnit | undefined, errand: Errand): Promise<ClientUnit | null> {
     const deadline = performance.now() + ERRAND_TIMEOUT_MS
     const preset = this.presetOf(errand)
-    while (this.active && !this.host.assists.playerSteering && performance.now() < deadline) {
+    while (this.active && this.town() !== null && !this.host.assists.playerSteering && performance.now() < deadline) {
       const unit = find()
       const goal = unit ?? preset
       if (!goal) return null
@@ -453,6 +634,31 @@ export class Autopilot {
     const count = (prefix: string) => [...world.containers.belt.values()].filter((item) => item.code.startsWith(prefix)).length
     const free = rows * 4 - world.containers.belt.size
     return Math.min(free, Math.max(0, healing * rows - count('hp')) + Math.max(0, mana * rows - count('mp')))
+  }
+
+  private portalsWanted(): number {
+    const { tome, portals } = portalsCarried(this.host.world.containers.inventory.values())
+    return Math.max(0, (tome ? TOME_SIZE : SPARE_SCROLLS) - portals)
+  }
+
+  private async restock(): Promise<void> {
+    await this.buyPortal()
+    await this.buyPotions()
+    await this.topUpPortals(BUY_TRIES)
+  }
+
+  private async topUpPortals(tries: number): Promise<void> {
+    if (tries > 0 && (await this.buyPortal())) await this.topUpPortals(tries - 1)
+  }
+
+  private async buyPortal(): Promise<boolean> {
+    const { world, hudManager, hudModel } = this.host
+    const { tome } = portalsCarried(world.containers.inventory.values())
+    const code = !tome && world.self.gold >= TOME_GOLD ? 'tbk' : 'tsc'
+    const ware = [...world.containers.shop.values()].find((item) => item.code.trim() === code)
+    const before = world.self.gold
+    if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || this.portalsWanted() === 0) return false
+    return hudModel.vendorBuy(ware.id, false) && waitFor(() => world.self.gold < before, 1500)
   }
 
   private isCaster(): boolean {

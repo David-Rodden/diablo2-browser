@@ -112,13 +112,14 @@ describe('auto-combat plugin', () => {
 
 describe('path-guide plugin', () => {
   it('binds the autopilot key with the guide, can switch it off, and releases both on teardown', async () => {
-    let [mode, key]: [string | null, string | null] = [null, null]
-    const host = await startEnabled(createHost(pathGuidePlugin, { pathGuide: { getMode: () => mode as never, setMode: (m) => void (mode = m) }, autopilot: { getKey: () => key, setKey: (k) => void (key = k) } }), 'path-guide')
-    expect([mode, key, host.getStatus('path-guide').text.en]).toEqual(['story', 'Y', 'Every quest · Y for autopilot'])
+    let [mode, key, spend]: [string | null, string | null, boolean] = [null, null, false]
+    const host = await startEnabled(createHost(pathGuidePlugin, { pathGuide: { getMode: () => mode as never, setMode: (m) => void (mode = m) }, autopilot: { getKey: () => key, setKey: (k) => void (key = k) }, spendPoints: { isEnabled: () => spend, setEnabled: (on) => void (spend = on) } }), 'path-guide')
+    expect([mode, key, spend, host.getStatus('path-guide').text.en]).toEqual(['story', 'Y', false, 'Every quest · Y for autopilot'])
     host.setSetting('path-guide', 'autopilot', 'off')
-    expect([key, host.getStatus('path-guide').text.en]).toEqual([null, 'Every quest'])
+    host.setSetting('path-guide', 'points', 'build')
+    expect([key, spend, host.getStatus('path-guide').text.en]).toEqual([null, true, 'Every quest'])
     await host.destroy()
-    expect([mode, key]).toEqual([null, null])
+    expect([mode, key, spend]).toEqual([null, null, false])
   })
 })
 
