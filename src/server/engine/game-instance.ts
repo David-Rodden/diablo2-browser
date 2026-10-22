@@ -2600,7 +2600,7 @@ export class GameInstance {
     else if (locNum === 2) location = 'belt'
     else if (locNum === 4) location = 'cursor'
     else if (locNum === 6) location = 'socket'
-    else if (itemData.storePage === 4) location = 'stash'
+    else if (itemData.storePage === 4 || itemData.storePage === 5) location = 'stash'
     else if (itemData.storePage === 3) location = 'cube'
 
     const stats = new Map<number, number>()
@@ -4505,6 +4505,11 @@ export class GameInstance {
         this.handleItemDrop(player, cmd.itemId)
         break
       }
+      case 'ItemToCursor': {
+        if (player.dead) return
+        this.handleItemToCursor(player, cmd.itemId)
+        break
+      }
       case 'ItemPlace':
       case 'ItemMove': {
         if (player.dead) return
@@ -4572,7 +4577,8 @@ export class GameInstance {
           travelAction &&
           complement !== undefined &&
           !ACT_TOWN_AREAS.includes(complement) &&
-          this.handleArtisanService(player, npcId, complement)
+          (this.handleCursorArtisanService(player, npcId, complement) ||
+            this.handleArtisanService(player, npcId, complement))
         ) {
           break
         }
@@ -11947,6 +11953,61 @@ export class GameInstance {
       }
     }
     return undefined
+  }
+
+  private handleItemToCursor(player: InternalPlayerRecord, itemId: number): void {
+    const item = player.items.find(
+      (candidate) =>
+        candidate.unitId === itemId &&
+        (candidate.location === 'inventory' || candidate.location === 'stash' || candidate.location === 'cube'),
+    )
+    if (!item || player.items.some((candidate) => candidate.location === 'cursor')) return
+    item.location = 'cursor'
+    item.x = 0
+    item.y = 0
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x05,
+      itemId: item.unitId,
+      code: item.code,
+      x: 0,
+      y: 0,
+      container: 'cursor',
+      item: this.serverEntryToItemData(item),
+    })
+  }
+
+  private handleCursorArtisanService(
+    player: InternalPlayerRecord,
+    npcId: number,
+    itemId: number,
+  ): boolean {
+    const item = player.items.find(
+      (candidate) => candidate.unitId === itemId && candidate.location === 'cursor',
+    )
+    const npc = item && this.resolveServiceNpc(player, npcId)
+    if (!item || !npc || !getTownNpcDescriptorByHcIdx(npc.hcIdx)?.questRewardActions?.[0]) {
+      return false
+    }
+    const slot = this.findFreeGridSlot(player, 'inventory', item.width, item.height, 10, 4)
+    item.location = 'inventory'
+    item.x = slot?.x ?? 0
+    item.y = slot?.y ?? 0
+    item.storePage = 1
+    const rewarded = this.handleArtisanService(player, npcId, itemId)
+    if (!rewarded) {
+      item.location = 'cursor'
+      item.x = 0
+      item.y = 0
+    }
+    if (!rewarded || !slot) this.handleItemDrop(player, itemId)
+    this.emitToPlayer(player.unitId, {
+      type: 'OpenUi',
+      unitType: 1,
+      unitId: npcId,
+      uiId: rewarded ? 6 : 7,
+    })
+    return true
   }
 
   /** Charsi imbue / Larzuk sockets / Anya personalize (quest reward actions). */

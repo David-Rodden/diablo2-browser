@@ -39,6 +39,7 @@ describe('test characters', () => {
     const spec = TEST_CHARACTERS[name]!
     expect(state.items).toHaveLength(itemCount(name))
     expect(state.items.filter((item) => item.location === 'equipped')).toHaveLength(Object.keys(spec.equipped).length)
+    expect(state.items.filter((item) => item.location === 'stash')).toHaveLength(spec.stash.length)
     expect([state.gold, state.goldBank]).toEqual([spec.gold, spec.stashGold])
     expect(describeBuild(characterBuild({ classIndex: CHARACTER_CLASS_NAMES.indexOf(spec.class as never), level: state.level, strength: spec.attributes.strength, dexterity: spec.attributes.dexterity, skillPoints: state.skills }))).toBe(build)
     adapter.close()
