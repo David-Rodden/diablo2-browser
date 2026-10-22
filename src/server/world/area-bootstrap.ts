@@ -36,6 +36,7 @@ import {
 } from '../../common/units/monsters-data.ts'
 import { getTownNpcDescriptorByHcIdx } from '../../common/units/npc-table.ts'
 import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
+import { OBJECTS_TXT_113C } from '../../common/world/objects-txt-113c.ts'
 
 /** Levels.txt ids of the five towns (Rogue Encampment, Lut Gholein, Kurast Docks, Pandemonium Fortress, Harrogath). */
 export const TOWN_AREA_IDS_113C: ReadonlySet<number> = new Set([1, 40, 75, 103, 109])
@@ -123,7 +124,7 @@ export function buildAreaBootstrap(level: AreaLevelGeometry): LocalAreaBootstrap
     const x = level.originX + u.subX
     const y = level.originY + u.subY
     if (u.type === 2) {
-      if (u.index < 0 || u.index === OBJECT_SKIPPED_PRESET) continue
+      if (u.index < 0 || u.index === OBJECT_SKIPPED_PRESET || u.index >= OBJECTS_TXT_113C.length) continue
       if (u.index === OBJECT_ROGUE_BONFIRE && bonfire === null) bonfire = { x, y }
       const isWaypoint = WAYPOINT_CLASS_IDS_113C.has(u.index)
       objects.push({

@@ -4,12 +4,13 @@ import { pathToFileURL } from 'node:url'
 import type { D2sItemInput } from '../src/server/save/d2s-reader.ts'
 import type { ItemStat } from '../src/netproto/index.ts'
 import { writeD2s } from '../src/server/save/d2s-writer.ts'
+import { FIXED_ONE } from '../src/server/engine/stat-list.ts'
 import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_REWARD_PENDING_113C, QUEST_INFO_BY_ID_113C } from '../src/server/engine/quests-113c.ts'
 import { getEmbeddedDropTables } from '../src/common/items/embedded-drop-tables.ts'
 import { propStats, type ItemProp } from '../src/common/items/item-score.ts'
 import { SKILLS_CATALOG } from '../src/common/data/skills-catalog.ts'
 import { EXPERIENCE_TABLE_BY_CLASS } from '../src/common/skills/formulas.ts'
-import { CHARACTER_CLASS_CODES, CHARACTER_CLASS_NAMES } from '../src/common/units/classes.ts'
+import { CANONICAL_CHARSTATS, CHARACTER_CLASS_CODES, CHARACTER_CLASS_NAMES, calculateVitalsAtLevel } from '../src/common/units/classes.ts'
 import SPECS from './test-characters.json'
 
 export interface ItemSpec {
@@ -153,6 +154,9 @@ export function buildTestCharacter(name: string, spec: CharacterSpec): Uint8Arra
   const belt = spec.belt.map((item, slot) => ({ ...itemFields(item), location: LOCATION.belt, gridX: slot, gridY: 0, x: slot % BELT_COLUMNS, y: Math.floor(slot / BELT_COLUMNS) }))
   const experience = EXPERIENCE_TABLE_BY_CLASS[spec.class.toLowerCase()]?.[spec.level] ?? 0
   const [left, right] = [skillId(spec.leftSkill), skillId(spec.rightSkill)]
+  const stats = CANONICAL_CHARSTATS[classCode]
+  const vitals = calculateVitalsAtLevel(stats, spec.level, { vitality: spec.attributes.vitality - stats.baseAttributes.vitality, energy: spec.attributes.energy - stats.baseAttributes.energy })
+  const [life, mana, stamina] = [vitals.life, vitals.mana, vitals.stamina].map((value) => Math.floor(value) * FIXED_ONE) as [number, number, number]
   return writeD2s({
     name,
     classId: classIndex,
@@ -163,7 +167,7 @@ export function buildTestCharacter(name: string, spec: CharacterSpec): Uint8Arra
     hotkeys: [left, right],
     leftRightSkills: [left, right, left, right],
     quests: questData(spec.quests),
-    attributes: { ...spec.attributes, level: spec.level, experience, gold: spec.gold, goldBank: spec.stashGold, statPts: 0, skillPts: 0 },
+    attributes: { ...spec.attributes, level: spec.level, experience, gold: spec.gold, goldBank: spec.stashGold, statPts: 0, skillPts: 0, hitpointsFixed: life, maxHpFixed: life, manaFixed: mana, maxManaFixed: mana, staminaFixed: stamina, maxStaminaFixed: stamina },
     skillLevels: skillLevels(classCode, spec.skills),
     items: [...equipped, ...belt, ...packGrid(spec.inventory, GRIDS.inventory, PAGE.inventory), ...packGrid(spec.stash, GRIDS.stash, PAGE.stash)],
   })
