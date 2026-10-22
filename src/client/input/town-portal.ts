@@ -12,15 +12,17 @@ export type TownPortalRefusal = 'no-scrolls' | 'in-town'
 const codeOf = (item: TownPortalItem) => item.code.trim().toLowerCase()
 const charges = (item: TownPortalItem) => item.quantity ?? item.stats?.find((s) => s.statId === QUANTITY_STAT)?.value ?? 0
 
-export const townPortalSource = (items: Iterable<TownPortalItem>): TownPortalItem | null => {
+export const townPortalSource = (items: Iterable<TownPortalItem>): TownPortalItem | null => scrollSource(items, 'tbk', 'tsc')
+
+export const scrollsCarried = (items: Iterable<TownPortalItem>, tomeCode: string, scrollCode: string): { readonly tome: boolean; readonly scrolls: number } => {
   const carried = [...items]
-  return carried.find((item) => codeOf(item) === 'tbk' && charges(item) > 0) ?? carried.find((item) => codeOf(item) === 'tsc') ?? null
+  const tomes = carried.filter((item) => codeOf(item) === tomeCode)
+  return { tome: tomes.length > 0, scrolls: tomes.reduce((sum, tome) => sum + charges(tome), 0) + carried.filter((item) => codeOf(item) === scrollCode).length }
 }
 
-export const portalsCarried = (items: Iterable<TownPortalItem>): { readonly tome: boolean; readonly portals: number } => {
+export const scrollSource = (items: Iterable<TownPortalItem>, tomeCode: string, scrollCode: string): TownPortalItem | null => {
   const carried = [...items]
-  const tomes = carried.filter((item) => codeOf(item) === 'tbk')
-  return { tome: tomes.length > 0, portals: tomes.reduce((sum, tome) => sum + charges(tome), 0) + carried.filter((item) => codeOf(item) === 'tsc').length }
+  return carried.find((item) => codeOf(item) === tomeCode && charges(item) > 0) ?? carried.find((item) => codeOf(item) === scrollCode) ?? null
 }
 
 export const townPortalRefusalText = (refusal: TownPortalRefusal, lang: 'ENG' | 'CHI'): string =>

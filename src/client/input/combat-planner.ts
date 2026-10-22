@@ -22,6 +22,7 @@ export interface CombatSelf {
   readonly states: { has(stateId: number): boolean }
   readonly petClasses: readonly number[]
   readonly lifeFraction: number
+  readonly manaFraction: number
   readonly corpsesNear: number
 }
 
@@ -32,6 +33,7 @@ export interface CombatTarget {
   readonly trapsNear: number
   readonly tough: boolean
   readonly packSize: number
+  readonly lifeFraction: number
 }
 
 export type CanCast = (skillId: number) => boolean
@@ -40,6 +42,8 @@ export const CLOSE_REACH = 5
 export const TRAP_REACH = 14
 const MAIN_SKILL_WEIGHT = 2
 const RECOVER_BELOW = 0.45
+const SAVE_MANA_BELOW = 0.35
+const WEAK_LIFE = 0.35
 const ELEMENTS: Readonly<Record<string, Element>> = { fire: 'fire', cold: 'cold', ltng: 'lightning', pois: 'poison', mag: 'magic' }
 
 const SKILL_ID = new Map(SKILLS_CATALOG.map((skill) => [skill.name, skill.id]))
@@ -75,7 +79,9 @@ export function attackSkill(self: CombatSelf, target: CombatTarget, canCast: Can
   const damage = (skillId: number) => Math.max(0, 1 - (target.resists[elementOf(skillId)] ?? 0) / 100)
   const tier = (skillId: number) => ((SKILLS_BY_ID[skillId]?.delay ?? 0) > 0 ? 0 : (SKILLS_BY_ID[skillId]?.reqlevel ?? 0) / 100)
   const score = (skillId: number) => (levelOf(self, skillId) * (self.mainSkills.includes(skillId) ? MAIN_SKILL_WEIGHT : 1) + tier(skillId)) * damage(skillId)
-  const chosen = [...ATTACKS.keys()].filter((id) => levelOf(self, id) > 0 && score(id) > 0 && canCast(id)).sort((a, b) => score(b) - score(a))[0]
+  const thrifty = !target.tough && (self.manaFraction < SAVE_MANA_BELOW || (target.lifeFraction < WEAK_LIFE && target.distance <= CLOSE_REACH))
+  const costly = (skillId: number) => thrifty && (SKILLS_BY_ID[skillId]?.mana ?? 0) > 0
+  const chosen = [...ATTACKS.keys()].filter((id) => levelOf(self, id) > 0 && score(id) > 0 && !costly(id) && canCast(id)).sort((a, b) => score(b) - score(a))[0]
   return chosen === undefined ? { skillId: BASIC_ATTACK, hand: 'left', reach: 'melee', on: 'target' } : { skillId: chosen, hand: handOf(chosen), reach: ATTACKS.get(chosen)!, on: 'target' }
 }
 
