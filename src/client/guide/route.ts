@@ -38,21 +38,22 @@ const withCount = (hint: string, page: QuestLogPage | null) => hint.replace('{n}
 export interface Goal {
   readonly level: number
   readonly title: string
+  readonly row?: number
   readonly hint?: string
   readonly find?: readonly Find[]
   readonly inTown?: true
 }
 
-export function currentGoal(level: number, progress: QuestProgress, mode: GuideMode = 'story', carries: (code: string) => boolean = () => false): Goal | null {
+export function currentGoal(level: number, progress: QuestProgress, mode: GuideMode = 'story', carries: (code: string) => boolean = () => false, skipped: ReadonlySet<number> = new Set()): Goal | null {
   const act = actOfLevel(level)
   const town = ACT_TOWNS[act]!
   const goal = OBJECTIVES[act]
-    ?.filter((o) => (mode === 'story' || o.required) && !isDone(progress.words[o.row] ?? 0))
+    ?.filter((o) => (mode === 'story' || o.required) && !isDone(progress.words[o.row] ?? 0) && !skipped.has(o.row))
     .map((o) => {
       const page = buildQuestLogPage({ row: o.row, playerWords: progress.words, gameWords: progress.gameWords, status: progress.status?.[o.row] ?? 0, den: progress.den ?? 0, barbs: progress.barbs ?? 0 })
       const key = page ? page.text.key : o.start
       const stage = key === undefined ? undefined : STAGES[key]?.find((s) => !s.unless?.some(carries))
-      return stage && { level: stage.level === 'town' ? town : stage.level, title: o.name, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}) }
+      return stage && { level: stage.level === 'town' ? town : stage.level, title: o.name, row: o.row, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}) }
     })
     .find((g) => g !== undefined)
   return goal ?? (act < 4 ? { level: ACT_TOWNS[act + 1]!, title: `Travel to Act ${ROMAN[act + 1]}` } : null)

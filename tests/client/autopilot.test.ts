@@ -1,0 +1,131 @@
+import { describe, expect, it, vi } from 'vitest'
+import { Autopilot, type AutopilotHost } from '../../src/client/guide/autopilot.ts'
+import type { GuidePlan } from '../../src/client/guide/path-guide.ts'
+import type { ClientUnit } from '../../src/client/world/client-unit.ts'
+
+const BLOOD_MOOR = 2
+const ROGUE_ENCAMPMENT = 1
+
+function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
+  const units: ClientUnit[] = []
+  const self = { x: 100, y: 100, life: 100, maxLife: 100, mana: 50, maxMana: 50, gold: 5000, level: 10, charClass: 1, stats: { get: () => 0 }, skillEntries: new Map() }
+  const world = {
+    isDead: false,
+    areaId: area,
+    self,
+    merc: null,
+    containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map() },
+    getUnit: (_: string, id: number) => units.find((unit) => unit.id === id),
+    getUnitsByType: (type: number) => units.filter((unit) => ({ 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
+  }
+  const hudManager = { leftPanel: 'none', worldPanels: { npcMenu: null as unknown, npcSpeech: null, clickNpcMenuOption: vi.fn() }, toasts: { push: vi.fn() }, maxHp: 0, maxMana: 0, belt: { maxRows: 4 } }
+  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn() }
+  const assists = {
+    autoCombatKey: 'E' as string | null,
+    pilotKey: 'Y',
+    pilotCombat: false,
+    questPickup: false,
+    smartSkills: false,
+    playerSteering: false,
+    moving: false,
+    fighting: false,
+    isFighting() {
+      return this.fighting
+    },
+    hasLootNearby: () => false,
+    inventoryCare: { busy: false, config: null, junk: [], stashable: [] },
+    keepUp: () => false,
+    walkTo: vi.fn(),
+    use: vi.fn(),
+    canCast: () => false,
+    castAt: vi.fn(),
+    isHostile: (unit: ClientUnit) => unit.name === 'Fallen',
+    castTownPortal: vi.fn(),
+    stepTo: vi.fn(),
+    walkableWithDoorsOpen: (view: { walkable: Uint8Array }) => view.walkable,
+  }
+  const route = [{ x: 100, y: 100 }, { x: 130, y: 100 }]
+  const guide = { enabled: false, pilotStatus: null as string | null, update: () => (plan ? ({ goal: { level: 2, title: 'Den of Evil' }, step: null, hint: 'Head to Blood Moor', target: null, path: [], route, doors: [], highlights: [], ...plan }) : null), routeFrom: () => route }
+  const host = { world, hudManager, hudModel, assists, guide, levelView: () => null } as unknown as AutopilotHost
+  const pilot = new Autopilot(host)
+  pilot.start()
+  let now = 1000
+  const tick = (ms = 200) => pilot.tick((now += ms))
+  return { pilot, world, units, hudManager, hudModel, assists, guide, tick }
+}
+
+const unit = (fields: Partial<ClientUnit>) => ({ unitType: 'monster', classId: 0, mode: 0, hidden: false, dead: false, lifePct: 128, ...fields }) as ClientUnit
+
+describe('autopilot', () => {
+  it('walks ahead along the guide route and shows what it is doing', () => {
+    const { assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' }, step: { kind: 'exit', level: 3 } })
+    tick()
+    expect(assists.walkTo).toHaveBeenCalledWith(109, 100, expect.any(Number))
+    expect([guide.enabled, guide.pilotStatus, assists.pilotCombat, assists.questPickup]).toEqual([true, 'Head to Blood Moor', true, true])
+  })
+
+  it('lets Auto-Fight and looting finish first, and backs off while you steer', () => {
+    const { assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    assists.fighting = true
+    tick()
+    expect([assists.walkTo.mock.calls.length, guide.pilotStatus]).toEqual([0, 'Fighting'])
+    assists.fighting = false
+    assists.playerSteering = true
+    tick()
+    assists.playerSteering = false
+    tick(1000)
+    expect([assists.walkTo.mock.calls.length, guide.pilotStatus]).toEqual([0, 'Paused while you play'])
+    tick(4000)
+    expect(assists.walkTo).toHaveBeenCalled()
+  })
+
+  it('touches the waypoint and picks the level the guide wants', () => {
+    const { assists, hudManager, hudModel, units, tick } = setup({ step: { kind: 'waypoint', level: 5 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
+    tick()
+    expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+    hudManager.leftPanel = 'waypoint'
+    tick()
+    expect(hudModel.teleportToLevel).toHaveBeenCalledWith(5)
+  })
+
+  it('talks to the quest NPC and picks the quest topic', () => {
+    const { world, assists, hudManager, hudModel, units, tick } = setup({ goal: { level: 1, title: 'Den of Evil', inTown: true }, hint: 'Talk to Akara', target: { x: 101, y: 100, label: 'Akara', unit: { id: 7, kind: 'npc' } } }, ROGUE_ENCAMPMENT)
+    units.push(unit({ id: 7, classId: 148, x: 101, y: 100, name: 'Akara' }))
+    world.self.gold = 0
+    tick()
+    expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'main', options: [{ id: 'talk' }, { id: 'trade' }, { id: 'cancel' }] }
+    tick()
+    expect(hudManager.worldPanels.clickNpcMenuOption).toHaveBeenLastCalledWith('talk', undefined)
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'talk', options: [{ id: 'talk_intro' }, { id: 'talk_quest:12' }, { id: 'cancel' }] }
+    tick()
+    expect(hudManager.worldPanels.clickNpcMenuOption).toHaveBeenLastCalledWith('talk_quest:12', undefined)
+    tick()
+    expect(hudModel.closeActiveNpcPanel).toHaveBeenCalled()
+  })
+
+  it('walks up to a boss instead of trying to talk to it', () => {
+    const { assists, units, tick } = setup({ hint: 'Kill Blood Raven', target: { x: 101, y: 100, label: 'Blood Raven', unit: { id: 9, kind: 'npc' } } })
+    units.push(unit({ id: 9, x: 101, y: 100, name: 'Fallen' }))
+    tick()
+    expect(assists.use).not.toHaveBeenCalled()
+  })
+
+  it('heads home through a town portal when it is nearly dead with no potions left', () => {
+    const { world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.self.life = 20
+    tick(2000)
+    expect(assists.castTownPortal).toHaveBeenCalled()
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    tick(2000)
+    expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+  })
+
+  it('switches itself off when you die', () => {
+    const { pilot, world, guide, tick } = setup({})
+    world.isDead = true
+    tick()
+    expect([pilot.active, guide.pilotStatus]).toEqual([false, null])
+  })
+})
