@@ -103,6 +103,12 @@
     "Lower Resist": "lowerresist",
     "Decrepify": "decrepify"
   },
+  "corpseExplosion": "Corpse Explosion",
+  "bosses": ["andariel", "duriel", "mephisto", "diablo", "baalcrab"],
+  "raises": {
+    "Raise Skeletal Mage": "necromage",
+    "Raise Skeleton": "necroskeleton"
+  },
   "summons": {
     "Valkyrie": ["valkyrie"],
     "Shadow Master": ["shadowmaster"],

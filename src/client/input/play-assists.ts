@@ -15,7 +15,7 @@ import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
 import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from './town-portal.ts'
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
-import { attackSkill, auraSkill, CLOSE_REACH, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
+import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
 const PICKUP_RETRY_MS = 1000
@@ -40,7 +40,13 @@ const BELT_REFILL_MS = 250
 const BELT_REFILL_WAIT_MS = 1500
 const RED_TEXT = 1
 const SUPPORT_MS = 600
+const CORPSE_USED_STATE = 0x8f
+const CORPSE_REACH = 10
 const RECAST_MS = 6000
+const CURSE_RECAST_MS = 20_000
+const PACK_REACH = 6
+const BLAST_REACH = 5
+const BLAST_PACK = 2
 const GIVE_UP_MS = 15_000
 const IGNORE_MS = 30_000
 const INTERACTION_PANELS = new Set(['stash', 'cube', 'vendor', 'hire', 'imbue', 'add_sockets', 'personalize', 'trade', 'waypoint'])
@@ -71,6 +77,8 @@ export interface PlayAssistHost {
 const objectMetaOf = (unit: ClientUnit) => unit.objectMeta ?? CANONICAL_113C_OBJECTS[unit.classId]
 const collisionMask = (unit: ClientUnit) => objectMetaOf(unit)?.hasCollisionMask ?? 0
 const objectMode = (unit: ClientUnit) => Math.max(0, Math.min(7, Math.floor(unit.mode || 0)))
+const isTough = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true) || BOSS_CLASSES.has(unit.classId)
+
 export const isClosedDoor = (unit: ClientUnit) => !unit.hidden && !unit.dead && Boolean(objectMetaOf(unit)?.isDoor) && (collisionMask(unit) & (1 << objectMode(unit))) !== 0
 const openModeOf = (door: ClientUnit) => [0, 1, 2, 3, 4, 5, 6, 7].find((mode) => (collisionMask(door) & (1 << mode)) === 0)
 const asOpened = (door: ClientUnit): ClientUnit => {
@@ -313,9 +321,9 @@ export class PlayAssists {
     this.lastSupportMs = nowMs
     const castKey = (skillId: number) => `${skillId}:${target?.id ?? 0}`
     const canCast = (skillId: number) => this.host.canCastSkill(skillId, nowMs)
-    const fresh = (skillId: number) => canCast(skillId) && nowMs - (this.supportCastAt.get(castKey(skillId)) ?? Number.NEGATIVE_INFINITY) >= RECAST_MS
+    const fresh = (skillId: number) => canCast(skillId) && nowMs - (this.supportCastAt.get(castKey(skillId)) ?? Number.NEGATIVE_INFINITY) >= (CURSE_SKILLS.has(skillId) ? CURSE_RECAST_MS : RECAST_MS)
     const self = this.combatSelf()
-    const use = supportSkill(self, target && this.combatTarget(target), fresh)
+    const use = raiseSkill(self, canCast) ?? supportSkill(self, target && this.combatTarget(target), fresh)
     if (use === null) {
       const aura = auraSkill(self, target !== null, canCast)
       if (aura !== null) this.holdSkill('right', aura, nowMs)
@@ -363,10 +371,29 @@ export class PlayAssists {
   }
 
   private strike(target: ClientUnit, nowMs: number, isHold: boolean): DispatchedCommandRecord | null {
+    const corpse = this.corpseToBlast(target, nowMs)
+    if (corpse) {
+      this.holdSkill('right', CORPSE_EXPLOSION, nowMs)
+      return this.host.triggerSecondaryWorldAction(corpse.x, corpse.y, corpse, nowMs)
+    }
     const use = attackSkill(this.combatSelf(), this.combatTarget(target), (skillId) => this.host.canCastSkill(skillId, nowMs))
     if (use.reach === 'close' && this.host.distanceFromSelf()(target) > CLOSE_REACH) return this.host.triggerPrimaryWorldAction(target.x, target.y, null, nowMs)
     this.holdSkill(use.hand, use.skillId, nowMs)
     return use.hand === 'left' ? this.host.triggerPrimaryWorldAction(target.x, target.y, target, nowMs, isHold) : this.host.triggerSecondaryWorldAction(target.x, target.y, target, nowMs)
+  }
+
+  private corpseToBlast(target: ClientUnit, nowMs: number): ClientUnit | undefined {
+    if ((this.host.world.self.skills.get(CORPSE_EXPLOSION) ?? 0) === 0 || !this.host.canCastSkill(CORPSE_EXPLOSION, nowMs)) return undefined
+    const worth = (corpse: ClientUnit) => this.hostilesNear(corpse, BLAST_REACH) >= BLAST_PACK || (isTough(target) && Math.hypot(corpse.x - target.x, corpse.y - target.y) <= BLAST_REACH)
+    return this.corpses().find((corpse) => Math.hypot(corpse.x - target.x, corpse.y - target.y) <= BLAST_REACH && worth(corpse))
+  }
+
+  private corpses(): ClientUnit[] {
+    return this.host.world.getUnitsByType(1).filter((unit) => unit.dead && !unit.hidden && !unit.states.has(CORPSE_USED_STATE))
+  }
+
+  private hostilesNear(spot: SubTilePoint, reach: number): number {
+    return this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - spot.x, unit.y - spot.y) <= reach).length
   }
 
   private holdSkill(hand: Hand, skillId: number, nowMs: number): void {
@@ -383,6 +410,7 @@ export class PlayAssists {
       states: self.states,
       petClasses: [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).map((pet) => pet.classId),
       lifeFraction: self.life / Math.max(1, this.host.hudManager.maxHp || self.maxLife),
+      corpsesNear: this.corpses().filter((unit) => Math.hypot(unit.x - self.x, unit.y - self.y) <= CORPSE_REACH).length,
     }
   }
 
@@ -394,6 +422,8 @@ export class PlayAssists {
       resists: clientUnitToMonsterTargetInfo(unit, world.difficulty).resistances ?? {},
       states: unit.states,
       trapsNear: world.getUnitsByType(1).filter((other) => TRAP_CLASSES.has(other.classId) && near(other)).length,
+      tough: isTough(unit),
+      packSize: this.hostilesNear(unit, PACK_REACH),
     }
   }
 

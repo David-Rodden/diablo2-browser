@@ -11,6 +11,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
   const self = { x: 100, y: 100, life: 100, maxLife: 100, mana: 50, maxMana: 50, gold: 5000, level: 10, charClass: 1, stats: { get: () => 0 }, skillEntries: new Map() }
   const world = {
     isDead: false,
+    difficulty: 0,
     areaId: area,
     self,
     merc: null,
@@ -63,7 +64,7 @@ describe('autopilot', () => {
   it('walks ahead along the guide route and shows what it is doing', () => {
     const { assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' }, step: { kind: 'exit', level: 3 } })
     tick()
-    expect(assists.walkTo).toHaveBeenCalledWith(109, 100, expect.any(Number))
+    expect(assists.walkTo).toHaveBeenCalledWith(115, 100, expect.any(Number))
     expect([guide.enabled, guide.pilotStatus, assists.pilotCombat, assists.questPickup]).toEqual([true, 'Head to Blood Moor', true, true])
   })
 
@@ -157,7 +158,7 @@ describe('autopilot', () => {
 
   it('keeps retreating once life comes back up, until it reaches town', () => {
     const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
-    world.self.life = 20
+    world.self.life = 15
     tick(2000)
     world.self.life = 90
     tick(2000)
@@ -199,7 +200,7 @@ describe('autopilot', () => {
     assists.hasTownPortal = () => false
     world.self.life = 20
     tick(2000)
-    expect(assists.walkTo).toHaveBeenLastCalledWith(151, 100, expect.any(Number))
+    expect(assists.walkTo).toHaveBeenLastCalledWith(145, 100, expect.any(Number))
   })
 
   it('hands control back when it is in trouble with no portal and no way back', () => {
@@ -226,7 +227,21 @@ describe('autopilot', () => {
     const { assists, view, tick } = setup({ hint: 'Clear the Den of Evil', target: { x: 101, y: 100, label: 'Den of Evil' } })
     view.rooms.push({ index: 0, worldSubX: 90, worldSubY: 90, subW: 20, subH: 20 }, { index: 1, worldSubX: 200, worldSubY: 90, subW: 20, subH: 20 })
     tick()
-    expect(assists.walkTo).toHaveBeenLastCalledWith(109, 100, expect.any(Number))
+    expect(assists.walkTo).toHaveBeenLastCalledWith(115, 100, expect.any(Number))
+  })
+
+  it('holds its nerve with a full belt in an easy area, and hunts the monsters nearby', () => {
+    const { world, assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    assists.pilotCombat = true
+    assists.autoCombatKey = 'E'
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.life = 30
+    tick()
+    expect(assists.standDown).toBe(false)
+    world.self.life = 100
+    units.push(unit({ id: 70, x: 120, y: 100, name: 'Fallen' }))
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Hunting Fallen')
   })
 
   it('switches itself off when you die', () => {

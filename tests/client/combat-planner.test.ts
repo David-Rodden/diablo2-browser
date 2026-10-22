@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { SKILLS_CATALOG } from '../../src/common/data/skills-catalog.ts'
 import { MONSTER_PATH_IDS } from '../../src/common/path/monster-path-data.ts'
 import { STATE_OVERLAY_ROWS_113C } from '../../src/common/skills/skill-state-overlays-113c.ts'
-import { attackSkill, auraSkill, BASIC_ATTACK, supportSkill, type CombatSelf, type CombatTarget } from '../../src/client/input/combat-planner.ts'
+import { attackSkill, auraSkill, BASIC_ATTACK, raiseSkill, supportSkill, type CombatSelf, type CombatTarget } from '../../src/client/input/combat-planner.ts'
 
 const id = (name: string) => SKILLS_CATALOG.find((skill) => skill.name === name)!.id
 const state = (name: string) => STATE_OVERLAY_ROWS_113C.find((row) => row.state === name)!.id
@@ -13,9 +13,10 @@ const character = (skills: Record<string, number>, extra: Partial<CombatSelf> = 
   states: noStates,
   petClasses: [],
   lifeFraction: 1,
+  corpsesNear: 0,
   ...extra,
 })
-const monster = (extra: Partial<CombatTarget> = {}): CombatTarget => ({ distance: 6, resists: {}, states: noStates, trapsNear: 0, ...extra })
+const monster = (extra: Partial<CombatTarget> = {}): CombatTarget => ({ distance: 6, resists: {}, states: noStates, trapsNear: 0, tough: false, packSize: 1, ...extra })
 const anything = () => true
 
 describe('combat planner', () => {
@@ -47,13 +48,23 @@ describe('combat planner', () => {
     expect([shouted([]), shouted(['battlecommand']), shouted(['battlecommand', 'battleorders']), shouted(['battlecommand', 'battleorders', 'shout'])]).toEqual([id('Battle Command'), id('Battle Orders'), id('Shout'), undefined])
   })
 
-  it('summons a Valkyrie only while she is gone, and curses the target before attacking', () => {
+  it('summons a Valkyrie only while she is gone, and curses bosses, champions and packs, not lone monsters', () => {
     const zon = character({ Valkyrie: 5, Strafe: 15 })
     expect(supportSkill(zon, null, anything)?.skillId).toBe(id('Valkyrie'))
     expect(supportSkill({ ...zon, petClasses: [MONSTER_PATH_IDS.indexOf('valkyrie')] }, null, anything)).toBeNull()
     const necro = character({ 'Amplify Damage': 3, 'Bone Spear': 10 })
-    expect(supportSkill(necro, monster(), anything)).toMatchObject({ skillId: id('Amplify Damage'), on: 'target' })
-    expect(supportSkill(necro, monster({ states: { has: (s) => s === state('amplifydamage') } }), anything)).toBeNull()
+    expect(supportSkill(necro, monster({ tough: true }), anything)).toMatchObject({ skillId: id('Amplify Damage'), on: 'target' })
+    expect(supportSkill(necro, monster({ packSize: 4 }), anything)?.skillId).toBe(id('Amplify Damage'))
+    expect(supportSkill(necro, monster(), anything)).toBeNull()
+    expect(supportSkill(necro, monster({ tough: true, states: { has: (s) => s === state('amplifydamage') } }), anything)).toBeNull()
+  })
+
+  it('raises skeletons from nearby corpses up to the skill limit, then mages', () => {
+    const necro = character({ 'Raise Skeleton': 6, 'Raise Skeletal Mage': 1 }, { corpsesNear: 2 })
+    const skeletons = (count: number) => Array.from({ length: count }, () => MONSTER_PATH_IDS.indexOf('necroskeleton'))
+    expect(raiseSkill(necro, anything)).toMatchObject({ skillId: id('Raise Skeleton'), hand: 'right' })
+    expect(raiseSkill({ ...necro, petClasses: skeletons(4) }, anything)?.skillId).toBe(id('Raise Skeletal Mage'))
+    expect(raiseSkill({ ...necro, corpsesNear: 0 }, anything)).toBeNull()
   })
 
   it('lays assassin traps up to five near the target', () => {
