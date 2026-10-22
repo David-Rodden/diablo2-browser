@@ -1845,7 +1845,7 @@ export async function startPlayApp(options?: {
       flowState.stageTicks = 0
       flowState.tickAccumulatorMs = 0
       flowState.lastFrameTimeMs = null
-      toolbar.setConnectionState({ phase: 'd2gs', rttMs: snap.pingMs })
+      toolbar.setConnectionState({ phase: flowState.playMode === 'single' ? 'local' : 'd2gs', rttMs: snap.pingMs })
     } else if (
       snap.phase === 'lobby' ||
       (snap.phase === 'idle' && flowState.playMode === 'single')
