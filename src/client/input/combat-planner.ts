@@ -22,6 +22,7 @@ export interface CombatSelf {
   readonly states: { has(stateId: number): boolean }
   readonly petClasses: readonly number[]
   readonly lifeFraction: number
+  readonly corpsesNear: number
 }
 
 export interface CombatTarget {
@@ -29,6 +30,8 @@ export interface CombatTarget {
   readonly resists: Resists
   readonly states: { has(stateId: number): boolean }
   readonly trapsNear: number
+  readonly tough: boolean
+  readonly packSize: number
 }
 
 export type CanCast = (skillId: number) => boolean
@@ -49,9 +52,14 @@ const TRAPS = new Map(Object.entries(COMBAT.traps).map(([name, monster]) => [idO
 const BUFFS = Object.entries(COMBAT.buffs).map(([name, state]) => ({ skillId: idOf(name), stateId: STATE_ID.get(state) ?? -1 }))
 const CURSES = Object.entries(COMBAT.curses).map(([name, state]) => ({ skillId: idOf(name), stateId: STATE_ID.get(state) ?? -1 }))
 const SUMMONS = Object.entries(COMBAT.summons).map(([name, monsters]) => ({ skillId: idOf(name), classes: new Set(monsterIds(monsters)) }))
+const RAISES = Object.entries(COMBAT.raises).map(([name, monster]) => ({ skillId: idOf(name), classId: monsterIds([monster])[0]! }))
 const GROUPS = COMBAT.oneOf.map((names) => names.map(idOf))
 const AURAS = { fight: COMBAT.auras.fight.map(idOf), travel: COMBAT.auras.travel.map(idOf), recover: COMBAT.auras.recover.map(idOf) }
 export const TRAP_CLASSES: ReadonlySet<number> = new Set(TRAPS.values())
+export const CURSE_SKILLS: ReadonlySet<number> = new Set(CURSES.map(({ skillId }) => skillId))
+export const BOSS_CLASSES: ReadonlySet<number> = new Set(monsterIds(COMBAT.bosses))
+export const CORPSE_EXPLOSION = idOf(COMBAT.corpseExplosion)
+export const CURSE_PACK = 3
 export const TELEPORT = idOf(COMBAT.mobility)
 export const BASIC_ATTACK = COMBAT.basicAttack
 
@@ -71,6 +79,14 @@ export function attackSkill(self: CombatSelf, target: CombatTarget, canCast: Can
   return chosen === undefined ? { skillId: BASIC_ATTACK, hand: 'left', reach: 'melee', on: 'target' } : { skillId: chosen, hand: handOf(chosen), reach: ATTACKS.get(chosen)!, on: 'target' }
 }
 
+const raiseLimit = (level: number) => (level < 3 ? level : 2 + Math.floor(level / 3))
+
+export function raiseSkill(self: CombatSelf, canCast: CanCast): SkillUse | null {
+  const short = (classId: number, skillId: number) => self.petClasses.filter((pet) => pet === classId).length < raiseLimit(levelOf(self, skillId))
+  const raise = self.corpsesNear === 0 ? undefined : RAISES.filter(({ skillId, classId }) => levelOf(self, skillId) > 0 && short(classId, skillId) && canCast(skillId)).sort((a, b) => levelOf(self, b.skillId) - levelOf(self, a.skillId))[0]
+  return raise ? { skillId: raise.skillId, hand: 'right', reach: 'ranged', on: 'self' } : null
+}
+
 export function supportSkill(self: CombatSelf, target: CombatTarget | null, canCast: CanCast): SkillUse | null {
   const ready = (skillId: number) => levelOf(self, skillId) > 0 && !outranked(self, skillId) && canCast(skillId)
   const buff = BUFFS.find(({ skillId, stateId }) => ready(skillId) && !self.states.has(stateId))
@@ -79,7 +95,7 @@ export function supportSkill(self: CombatSelf, target: CombatTarget | null, canC
   if (summon && !self.petClasses.some((classId) => summon.classes.has(classId))) return { skillId: summon.skillId, hand: 'right', reach: 'ranged', on: 'self' }
   if (!target) return null
   const curse = CURSES.filter(({ skillId }) => ready(skillId)).sort((a, b) => levelOf(self, b.skillId) - levelOf(self, a.skillId))[0]
-  if (curse && !target.states.has(curse.stateId)) return { skillId: curse.skillId, hand: 'right', reach: 'ranged', on: 'target' }
+  if (curse && (target.tough || target.packSize >= CURSE_PACK) && !target.states.has(curse.stateId)) return { skillId: curse.skillId, hand: 'right', reach: 'ranged', on: 'target' }
   const trap = best(self, [...TRAPS.keys()], canCast)
   return trap !== null && target.distance <= TRAP_REACH && target.trapsNear < COMBAT.maxTraps ? { skillId: trap, hand: 'right', reach: 'ranged', on: 'target' } : null
 }

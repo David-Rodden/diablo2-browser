@@ -1,10 +1,11 @@
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { MONSTER_PATH_IDS } from '../../common/path/monster-path-data.ts'
+import { getLevelMonsterLevel113c } from '../../common/world/levels-monlvl-113c.ts'
 import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { TELEPORT } from '../input/combat-planner.ts'
 import { portalsCarried } from '../input/town-portal.ts'
-import type { PlayAssists } from '../input/play-assists.ts'
+import { isClosedDoor, type PlayAssists } from '../input/play-assists.ts'
 import type { LevelView } from '../map/level-view.ts'
 import type { SubTilePoint } from '../motion/pathfind.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
@@ -39,19 +40,19 @@ interface Errand {
   readonly work?: () => Promise<unknown>
 }
 
-const TICK_MS = 150
-const WALK_MS = 380
-const LOOKAHEAD = 9
+const TICK_MS = 100
+const WALK_MS = 260
+const LOOKAHEAD = 15
 const TELEPORT_AHEAD = 17
 const TELEPORT_MS = 420
 const TELEPORT_MANA = 0.5
 const TELEPORT_MISSES = 3
 const TELEPORT_OFF_MS = 60_000
 const REACH = 4
-const USE_MS = 1400
+const USE_MS = 900
 const USE_TRIES = 5
-const TALK_MS = 2200
-const SPEECH_MS = 6000
+const TALK_MS = 1200
+const SPEECH_SKIP_MS = 250
 const STUCK_TALK_MS = 20_000
 const STUCK_MS = 3200
 const STUCK_MOVE = 1.5
@@ -61,6 +62,17 @@ const HEAL_COOLDOWN_MS = 45_000
 const ERRAND_TIMEOUT_MS = 45_000
 const RETREAT_LIFE = 0.35
 const DRY_LIFE = 0.6
+const MIN_RETREAT_LIFE = 0.2
+const MAX_RETREAT_LIFE = 0.5
+const GAP_CAUTION = 0.03
+const STOCKED_POTIONS = 4
+const STOCKED_NERVE = 0.12
+const HUNT_LIFE = 0.6
+const HUNT_POTIONS = 2
+const HUNT_GAP = 2
+const HUNT_RADIUS = 30
+const HUNT_MS = 8000
+const HUNT_IGNORE_MS = 30_000
 const LAST_POTION_LIFE = 0.45
 const BURST_MS = 3000
 const BURST_LOSS = 0.4
@@ -115,6 +127,8 @@ export class Autopilot {
   private leftBehind: typeof this.trail = []
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
+  private chase: { readonly id: number; readonly since: number } | null = null
+  private readonly ignored = new Map<number, number>()
   private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
   private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
@@ -176,7 +190,7 @@ export class Autopilot {
     const { assists, guide } = this.host
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
-    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private say(status: string): void {
@@ -200,7 +214,7 @@ export class Autopilot {
     const { world, assists } = this.host
     const { target, step } = plan
     this.say(plan.hint)
-    const door = plan.doors.map((id) => world.getUnit('object', id)).find((unit): unit is ClientUnit => unit !== undefined && distance(unit, world.self) <= REACH + 1)
+    const door = plan.doors.map((id) => world.getUnit('object', id)).find((unit): unit is ClientUnit => unit !== undefined && isClosedDoor(unit) && distance(unit, world.self) <= REACH + 1)
     const unit = target?.unit && world.getUnit(target.unit.kind === 'object' ? 'object' : 'monster', target.unit.id)
     if (door) this.useOnce(door, nowMs)
     else if (!target) this.explore(nowMs, plan.hint)
@@ -366,8 +380,11 @@ export class Autopilot {
       wp.clickNpcMenuOption(topic, menu.context)
       return true
     }
-    if (wp.npcSpeech && talk && nowMs - talk.at < SPEECH_MS) return true
-    if (!menu && !wp.npcSpeech) return false
+    if (wp.npcSpeech) {
+      if (!talk || nowMs - talk.at >= SPEECH_SKIP_MS) wp.closeNpcSpeech()
+      return true
+    }
+    if (!menu) return false
     if (talk) Object.assign(talk, { spoke: true })
     hudModel.closeActiveNpcPanel()
     return true
@@ -415,13 +432,40 @@ export class Autopilot {
     const { world, hudManager } = this.host
     const me = world.self
     const life = me.life / (hudManager.maxHp || me.maxLife)
-    const { belt, inventory } = world.containers
-    const healing = [...belt.values(), ...inventory.values()].filter((item) => /^(hp|rv)/.test(item.code)).length
+    const healing = this.healingPotions()
+    const stocked = healing >= STOCKED_POTIONS
     this.lifeLog = [...this.lifeLog.filter((entry) => nowMs - entry.at <= BURST_MS), { at: nowMs, life }]
     const burst = Math.max(...this.lifeLog.map((entry) => entry.life)) - life
-    if (life < RETREAT_LIFE) return 'Low on life, heading to town'
+    const retreatAt = Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0)))
+    if (life < retreatAt) return 'Low on life, heading to town'
     if (healing === 0 && life < DRY_LIFE) return 'Out of healing potions, heading to town'
-    return (burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
+    return (!stocked && burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
+  }
+
+  private healingPotions(): number {
+    const { belt, inventory } = this.host.world.containers
+    return [...belt.values(), ...inventory.values()].filter((item) => /^(hp|rv)/.test(item.code)).length
+  }
+
+  private levelGap(): number {
+    const { world } = this.host
+    return getLevelMonsterLevel113c(world.areaId, world.difficulty) - world.self.level
+  }
+
+  private hunt(nowMs: number): boolean {
+    const { world, hudManager, assists } = this.host
+    const me = world.self
+    const bold = me.life >= (hudManager.maxHp || me.maxLife) * HUNT_LIFE && this.healingPotions() >= HUNT_POTIONS && this.levelGap() <= HUNT_GAP
+    const prey = bold ? world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= HUNT_RADIUS && (this.ignored.get(unit.id) ?? 0) <= nowMs).sort((a, b) => distance(a, me) - distance(b, me))[0] : undefined
+    if (!prey) return false
+    const chase = this.chase?.id === prey.id ? this.chase : (this.chase = { id: prey.id, since: nowMs })
+    if (nowMs - chase.since > HUNT_MS) {
+      this.ignored.set(prey.id, nowMs + HUNT_IGNORE_MS)
+      return false
+    }
+    this.say(`Hunting ${prey.name ?? 'monsters'}`)
+    this.walkTowards(prey, nowMs)
+    return true
   }
 
   private retreat(why: string, nowMs: number): void {
@@ -583,7 +627,7 @@ export class Autopilot {
       return
     }
     if (!(await waitFor(() => Boolean(hudManager.worldPanels.npcMenu) || Boolean(hudManager.worldPanels.npcSpeech), 6000))) return
-    await waitFor(() => !hudManager.worldPanels.npcSpeech, SPEECH_MS)
+    if (hudManager.worldPanels.npcSpeech) hudManager.worldPanels.closeNpcSpeech()
     if (errand.action) {
       hudModel.handleNpcMenuAction(errand.action, unit.id)
       await waitFor(() => hudManager.leftPanel === 'vendor' || !hudManager.worldPanels.npcMenu, 5000)
