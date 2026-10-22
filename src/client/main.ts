@@ -84,6 +84,7 @@ import {
 import { isModalDomOverlayOpen } from './ui/dom-overlay.ts'
 import { HudManager } from './ui/hud-manager.ts'
 import { Minimap } from './ui/minimap.ts'
+import { detectMobileTouchEnvironment } from './ui/touch-controls.ts'
 import {
   installBrowserGestureGuard,
   type BrowserGestureGuardHandle,
@@ -340,14 +341,29 @@ export async function startPlayApp(options?: {
   )
 
   const syncStageViewportFit = (
-    profileOrId: ViewportProfile | typeof initialSettings.viewport = settingsStore.get().viewport,
+    profileOrId?: ViewportProfile | typeof initialSettings.viewport,
   ): ViewportProfile => {
-    const profile = applyViewportProfileToDom(profileOrId, {
+    let effectiveProfileOrId = profileOrId ?? settingsStore.get().viewport
+    if (
+      profileOrId === undefined &&
+      detectMobileTouchEnvironment(window) &&
+      typeof window !== 'undefined' &&
+      window.innerWidth > window.innerHeight * 1.38
+    ) {
+      const currentId =
+        typeof effectiveProfileOrId === 'string' ? effectiveProfileOrId : effectiveProfileOrId.id
+      if (currentId === '800x600' || currentId === '640x480') {
+        effectiveProfileOrId = '1068x600'
+        settingsStore.set({ viewport: '1068x600' })
+      }
+    }
+    const profile = applyViewportProfileToDom(effectiveProfileOrId, {
       containerEl: stageWrapperEl ?? stageEl.parentElement,
       stageEl,
       glCanvas: viewCanvas,
       hudCanvas,
     })
+    sessionRef?.hudManager.touchControls.syncFromEnvironment(window)
     sessionRef?.hudManager.resize(profile.width, profile.height)
     sessionRef?.camera.resize(profile)
     return profile
@@ -713,7 +729,7 @@ export async function startPlayApp(options?: {
   pluginMenuRef = pluginMenu
 
   // Apply the initial viewport profile's dimensions, stretched to fit the browser at its own aspect ratio
-  syncStageViewportFit(settingsStore.get().viewport)
+  syncStageViewportFit()
 
   trackListener(window, 'resize', () => {
     syncStageViewportFit()
@@ -2020,6 +2036,97 @@ export async function startPlayApp(options?: {
   trackListener(stageEl, 'contextmenu', (e: Event) => {
     e.preventDefault()
   })
+
+  // Direct touch support on `#play-stage` for mobile & Chrome DevTools touch emulation
+  const isInteractiveDomFormTarget = (target: EventTarget | null): boolean => {
+    if (!target || typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) {
+      return false
+    }
+    const tag = target.tagName
+    return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON'
+  }
+
+  trackListener(
+    stageEl,
+    'touchstart',
+    (e: TouchEvent) => {
+      session.audioRuntime.unlock()
+      if (isInteractiveDomFormTarget(e.target)) return
+      const touch = e.changedTouches?.[0] ?? e.touches?.[0]
+      if (!touch) return
+      const fakeMouse = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        button: 0,
+      } as unknown as MouseEvent
+      if (!inGameView) {
+        const pt = toFrontendCoords(fakeMouse)
+        frontendRenderer.handleMouseMove(pt.x, pt.y, performance.now())
+        frontendRenderer.handleMouseDown(pt.x, pt.y, performance.now())
+        e.preventDefault()
+        return
+      }
+      session.hudManager.touchControls.syncFromEnvironment(window)
+      const pt = toStageCoords(fakeMouse)
+      session.commandMapper.handlePointerMove(pt.x, pt.y, performance.now())
+      session.commandMapper.handlePointerDown(pt.x, pt.y, 0, performance.now())
+      e.preventDefault()
+    },
+    { passive: false },
+  )
+
+  trackListener(
+    stageEl,
+    'touchmove',
+    (e: TouchEvent) => {
+      const touch = e.changedTouches?.[0] ?? e.touches?.[0]
+      if (!touch) return
+      const fakeMouse = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        button: 0,
+      } as unknown as MouseEvent
+      if (!inGameView) {
+        const pt = toFrontendCoords(fakeMouse)
+        frontendRenderer.handleMouseMove(pt.x, pt.y, performance.now())
+        e.preventDefault()
+        return
+      }
+      const pt = toStageCoords(fakeMouse)
+      session.commandMapper.handlePointerMove(pt.x, pt.y, performance.now())
+      e.preventDefault()
+    },
+    { passive: false },
+  )
+
+  const handleStageTouchEnd = (e: TouchEvent): void => {
+    const touch = e.changedTouches?.[0]
+    if (!inGameView) {
+      if (touch) {
+        const pt = toFrontendCoords({
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          button: 0,
+        } as unknown as MouseEvent)
+        frontendRenderer.handleMouseUp(pt.x, pt.y, performance.now())
+      }
+      e.preventDefault()
+      return
+    }
+    if (touch) {
+      const pt = toStageCoords({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        button: 0,
+      } as unknown as MouseEvent)
+      session.hudManager.handleHudMouseUp(pt.x, pt.y, 0)
+    }
+    session.commandMapper.handlePointerUp(0)
+    e.preventDefault()
+  }
+
+  trackListener(stageEl, 'touchend', handleStageTouchEnd, { passive: false })
+  trackListener(stageEl, 'touchcancel', handleStageTouchEnd, { passive: false })
 
   trackListener(
     stageEl,

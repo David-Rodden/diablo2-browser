@@ -45,6 +45,94 @@ export interface HudLayout {
   readonly physicalOffsetY: number
 }
 
+/** CSS `env(safe-area-inset-*)` values in CSS pixels for mobile notch / Dynamic Island / Home Indicator. */
+export interface SafeAreaInsets {
+  readonly top: number
+  readonly right: number
+  readonly bottom: number
+  readonly left: number
+}
+
+/** Logical viewport safe bounds after projecting CSS safe-area insets into logical HUD space. */
+export interface SafeAreaHudBounds {
+  readonly insetsCss: SafeAreaInsets
+  readonly insetTopLogical: number
+  readonly insetRightLogical: number
+  readonly insetBottomLogical: number
+  readonly insetLeftLogical: number
+  readonly safeLeftLogical: number
+  readonly safeRightLogical: number
+  readonly safeTopLogical: number
+  readonly safeBottomLogical: number
+  readonly safeWidthLogical: number
+  readonly safeHeightLogical: number
+}
+
+export function normalizeSafeAreaInsets(
+  insets?: Partial<SafeAreaInsets> | null | undefined,
+): SafeAreaInsets {
+  const clamp = (v: number | undefined): number =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.min(200, v) : 0
+  return {
+    top: clamp(insets?.top),
+    right: clamp(insets?.right),
+    bottom: clamp(insets?.bottom),
+    left: clamp(insets?.left),
+  }
+}
+
+/**
+ * Computes the logical HUD safe area box inside `0..profile.width` × `0..profile.height`
+ * after accounting for pillarbox/letterbox margins (`offsetX`, `offsetY`) and physical
+ * screen cutouts (`SafeAreaInsets`).
+ *
+ * When a pillarbox margin (`offsetX`) already absorbs part or all of a horizontal notch inset,
+ * only the remaining unabsorbed portion pushes `safeLeftLogical` / `safeRightLogical` inward.
+ */
+export function computeSafeAreaHudBounds(
+  cssW: number,
+  cssH: number,
+  dpr: number = 1,
+  profile: ViewportProfile = VIEWPORT_800x600,
+  insets?: Partial<SafeAreaInsets> | null | undefined,
+): SafeAreaHudBounds {
+  const layout = computeHudLayout(cssW, cssH, dpr, profile)
+  const norm = normalizeSafeAreaInsets(insets)
+  const scale = layout.uiScale > 0 ? layout.uiScale : 1
+
+  const rightMarginCss = Math.max(0, cssW - layout.offsetX - profile.width * scale)
+  const bottomMarginCss = Math.max(0, cssH - layout.offsetY - profile.height * scale)
+
+  const effectiveLeftCss = Math.max(0, norm.left - layout.offsetX)
+  const effectiveRightCss = Math.max(0, norm.right - rightMarginCss)
+  const effectiveTopCss = Math.max(0, norm.top - layout.offsetY)
+  const effectiveBottomCss = Math.max(0, norm.bottom - bottomMarginCss)
+
+  const insetLeftLogical = Math.min(profile.width * 0.25, effectiveLeftCss / scale)
+  const insetRightLogical = Math.min(profile.width * 0.25, effectiveRightCss / scale)
+  const insetTopLogical = Math.min(profile.height * 0.25, effectiveTopCss / scale)
+  const insetBottomLogical = Math.min(profile.height * 0.25, effectiveBottomCss / scale)
+
+  const safeLeftLogical = insetLeftLogical
+  const safeRightLogical = Math.max(safeLeftLogical, profile.width - insetRightLogical)
+  const safeTopLogical = insetTopLogical
+  const safeBottomLogical = Math.max(safeTopLogical, profile.height - insetBottomLogical)
+
+  return {
+    insetsCss: norm,
+    insetTopLogical,
+    insetRightLogical,
+    insetBottomLogical,
+    insetLeftLogical,
+    safeLeftLogical,
+    safeRightLogical,
+    safeTopLogical,
+    safeBottomLogical,
+    safeWidthLogical: safeRightLogical - safeLeftLogical,
+    safeHeightLogical: safeBottomLogical - safeTopLogical,
+  }
+}
+
 export interface DockingLayout extends HudLayout {
   marginW: number
   leftDockX: number

@@ -193,7 +193,14 @@ export function tickObjectAnim(unit: ObjectLightUnit, record: ObjectsTxtRecord11
   if (record.isDoor !== 0) return false
   if (unit.objectAnim === undefined || unit.objectAnim.mode !== unit.mode) resetObjectAnim(unit, record)
   const anim = unit.objectAnim!
-  const mode = modeIndex(record, unit.mode)
+  let mode = modeIndex(record, unit.mode)
+  if (mode === 0 && record.frameCnt[0] === 0 && (record.frameCnt[1]! > 0 || record.frameCnt[2]! > 0)) {
+    unit.mode = record.frameCnt[2]! > 0 ? 2 : 1
+    resetObjectAnim(unit, record)
+    setObjectLight(unit, record, objectLitForMode(record, unit.mode))
+    restartModeClocks(unit, nowMs)
+    mode = modeIndex(record, unit.mode)
+  }
   const fc = (record.frameCnt[mode]! << 8) | 0
   if (fc === 0x100) return false
   const cycle = record.cycleAnim[mode]!

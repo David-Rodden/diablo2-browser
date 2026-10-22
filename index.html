@@ -2,7 +2,12 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a0806" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="referrer" content="no-referrer" />
   <title>暗黑破坏神 II：毁灭之王 · 庇护之地网页端 (Sanctuary Web Portal)</title>
   <style>
@@ -837,22 +842,40 @@
           copiedPrefix: "已复制：",
           fallbackUpdates: [
             {
+              date: "2026-10-22",
+              version: "v1.13c",
+              title: "手机端触控上线：虚拟摇杆、紧凑 HUD 与一键拾取",
+              summary: "手机与平板可用虚拟双摇杆移动并配合锥形瞄准，紧凑 HUD、6x2 技能轮盘、一键拾取与触感反馈一并到位；桌面端同时修复远程玩家移动回弹与怪物 AI 行为。"
+            },
+            {
+              date: "2026-10-21",
+              version: "v1.13c",
+              title: "首页状态灯改为浏览器端实测网关延迟",
+              summary: "三条网关（BNet / Realm / Game）的延迟与在线状态改由浏览器直接探测，首页显示更贴近真实连接体验。"
+            },
+            {
               date: "2026-10-20",
               version: "v1.13c",
-              title: "庇护之地门户首页上线 & 网关三色状态灯整合",
-              summary: "新增复古暗黑哥特门户首页（index.html），整合网关实时延迟状态灯与酒馆音乐盒入口。"
+              title: "角色面板新增「高级角色属性」与 (?) 帮助按钮",
+              summary: "角色面板可展开高级属性（派生伤害、抗性等数值），并新增暗黑风格 (?) 说明按钮，放在关闭按钮左侧。"
             },
             {
-              date: "2026-10-18",
+              date: "2026-10-20",
               version: "v1.13c",
-              title: "D2GS 0x00..0xAF 报文解析与 1.13c 物品比特流对齐",
-              summary: "完成完整战网房间同步、0x9C/0x9D 物品属性比特流解码、赫拉迪克方块合成与铁匠铺修理交易闭环。"
+              title: "门户首页石质按钮、按 IP 自动中英切换与语言传递",
+              summary: "首页按钮改为 D2 石质质感；按访客 IP 所在地区自动选择中文/英文，且语言选择会带到 play.html。"
             },
             {
-              date: "2026-10-15",
+              date: "2026-10-20",
               version: "v1.13c",
-              title: "136 张原版关卡全光谱审计与 SplitMix64 瓦片哈希",
-              summary: "全量加载 Blank / InvisWal / Warp 通用 DT1，修复稀疏空洞碰撞掩码，并通过 800×600 与 1280×720 宽屏双分辨率校验。"
+              title: "「加入游戏」列出已有房间，MCP 错误提示本地化",
+              summary: "加入游戏面板会显示当前开放的房间；建房/加入失败时按 1.13c 的 MCP 错误文案给出本地化提示。"
+            },
+            {
+              date: "2026-10-19",
+              version: "v1.13c",
+              title: "小地图性能与淡出、按 HitClass 播放受击音效、右键物品",
+              summary: "小地图改用空间索引并支持三档淡出；受击音效按 1.13c HitClass 选择；右键可快速转移/出售物品。"
             }
           ]
         },
@@ -884,22 +907,40 @@
           copiedPrefix: "Copied: ",
           fallbackUpdates: [
             {
+              date: "2026-10-22",
+              version: "v1.13c",
+              title: "Mobile Touch Controls: Twin-Stick, Compact HUD & One-Tap Loot",
+              summary: "Phones and tablets now get virtual twin-stick movement with cone targeting, a compact HUD with a 6x2 skill wheel, one-tap looting and haptic feedback; desktop also fixes remote player rubberbanding and monster AI behavior."
+            },
+            {
+              date: "2026-10-21",
+              version: "v1.13c",
+              title: "Home Gateway Gems Now Probe Latency From the Browser",
+              summary: "BNet / Realm / Game latency and online state are measured directly in the browser, so the portal reflects your real connection."
+            },
+            {
               date: "2026-10-20",
               version: "v1.13c",
-              title: "Sanctuary Gothic Home Portal & Gateway Traffic-Light Probe",
-              summary: "Launched the gothic portal homepage (index.html) with merged BNet/Realm/Game gateway RTT probe and Tavern Music Box link."
+              title: "Advanced Character Stats Panel & Diablo-Style (?) Button",
+              summary: "The Character Sheet can expand advanced derived stats (damage, resistances, …) and gained a Diablo-styled help button left of Close."
             },
             {
-              date: "2026-10-18",
+              date: "2026-10-20",
               version: "v1.13c",
-              title: "D2GS 0x00..0xAF Packet Decoding & 1.13c Item Bitstream Parity",
-              summary: "Completed Battle.net room state sync, 0x9C/0x9D item stat bitstream decoding, Horadric Cube transmutation, and vendor repair loop."
+              title: "D2 Stone Buttons, IP-Based i18n and Language Propagation",
+              summary: "Portal buttons now use D2 stone styling; zh/en is auto-selected by visitor IP region and carries over to play.html."
             },
             {
-              date: "2026-10-15",
+              date: "2026-10-20",
               version: "v1.13c",
-              title: "136-Level Full-Spectrum Audit & SplitMix64 Tile Variant Hash",
-              summary: "Loaded universal Blank / InvisWal / Warp DT1s across all 5 Acts and verified both 800×600 and 1280×720 widescreen viewports."
+              title: "Join Game Lists Open Rooms; MCP Errors Localized",
+              summary: "The Join Game panel shows currently open rooms, and create/join failures surface localized 1.13c MCP error text."
+            },
+            {
+              date: "2026-10-19",
+              version: "v1.13c",
+              title: "Minimap Spatial Index & Fade, HitClass SFX, Right-Click Items",
+              summary: "Minimap uses a spatial index with three fade modes; hit SFX follow 1.13c HitClass; right-click transfers and sells items."
             }
           ]
         }
@@ -1077,26 +1118,128 @@
         });
       }
 
-      async function fetchServerStatus() {
+      // =================================================================
+      // 服务器状态灯：在浏览器端实测「本机 → 三个网关」的真实延迟。
+      //   对 wss://<本站>/d2net/{bnet,realm,game} 做一次握手计时（和游戏走的
+      //   同一条链路），三服全通且最大值 <150ms 为绿灯，偏高为黄灯，任一不通即红灯。
+      //   /api/server-status 仍保留，但只用来按访客 IP 自动选语言，不再取它的 RTT。
+      // =================================================================
+      var GATEWAY_PROBES = [
+        { id: "bncs", path: "/d2net/bnet" },
+        { id: "mcp", path: "/d2net/realm" },
+        { id: "d2gs", path: "/d2net/game" }
+      ];
+      var GATEWAY_PROBE_TIMEOUT_MS = 2500;
+      var GATEWAY_YELLOW_THRESHOLD_MS = 150;
+
+      function nowMs() {
+        return window.performance && performance.now ? performance.now() : Date.now();
+      }
+
+      function probeGatewayHandshake(path, timeoutMs) {
+        return new Promise(function (resolveProbe) {
+          if (typeof WebSocket !== "function") {
+            resolveProbe(null);
+            return;
+          }
+          var startedAt = 0;
+          var settled = false;
+          var socket = null;
+          var timer = null;
+
+          function finish(ms) {
+            if (settled) return;
+            settled = true;
+            if (timer !== null) clearTimeout(timer);
+            try {
+              if (socket) socket.close();
+            } catch (_e) {
+              // 握手失败/已关闭时 close 可能抛错，忽略
+            }
+            resolveProbe(ms);
+          }
+
+          try {
+            var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+            startedAt = nowMs();
+            socket = new WebSocket(proto + "//" + window.location.host + path);
+            socket.onopen = function () {
+              finish(Math.max(1, Math.round(nowMs() - startedAt)));
+            };
+            socket.onerror = function () { finish(null); };
+            socket.onclose = function () { finish(null); };
+            timer = setTimeout(function () { finish(null); }, timeoutMs);
+          } catch (_err) {
+            finish(null);
+          }
+        });
+      }
+
+      function buildGatewayReport(services) {
+        var online = services.filter(function (s) { return typeof s.rttMs === "number"; });
+        var maxRttMs = online.length
+          ? Math.max.apply(null, online.map(function (s) { return s.rttMs; }))
+          : null;
+        var avgRttMs = online.length
+          ? Math.round(online.reduce(function (acc, s) { return acc + s.rttMs; }, 0) / online.length)
+          : null;
+        var allOnline = services.length > 0 && online.length === services.length;
+        var light = "red";
+        if (allOnline) {
+          light = maxRttMs !== null && maxRttMs >= GATEWAY_YELLOW_THRESHOLD_MS ? "yellow" : "green";
+        }
+        return {
+          ok: true,
+          light: light,
+          allOnline: allOnline,
+          onlineCount: online.length,
+          totalCount: services.length,
+          maxRttMs: maxRttMs,
+          avgRttMs: avgRttMs,
+          services: services
+        };
+      }
+
+      var gatewayProbeInFlight = false;
+      async function probeClientGateways() {
+        if (gatewayProbeInFlight || document.hidden) return;
+        gatewayProbeInFlight = true;
+        try {
+          var services = await Promise.all(
+            GATEWAY_PROBES.map(async function (probe) {
+              var rttMs = await probeGatewayHandshake(probe.path, GATEWAY_PROBE_TIMEOUT_MS);
+              // 握手首次会带 DNS/TLS 冷启动，偶发抖动会误报黄/红；慢于阈值或失败时再试一次取更优值
+              if (rttMs === null || rttMs >= GATEWAY_YELLOW_THRESHOLD_MS) {
+                var retryMs = await probeGatewayHandshake(probe.path, GATEWAY_PROBE_TIMEOUT_MS);
+                if (retryMs !== null && (rttMs === null || retryMs < rttMs)) {
+                  rttMs = retryMs;
+                }
+              }
+              return { id: probe.id, path: probe.path, online: typeof rttMs === "number", rttMs: rttMs };
+            })
+          );
+          lastGatewayReport = buildGatewayReport(services);
+          applyGatewayReport(lastGatewayReport);
+        } finally {
+          gatewayProbeInFlight = false;
+        }
+      }
+
+      async function fetchVisitorLanguage() {
         try {
           var statusUrl = "/api/server-status";
           if (ipQueryOverride) {
             statusUrl += "?ip=" + encodeURIComponent(ipQueryOverride);
           }
           var res = await fetch(statusUrl, { cache: "no-store" });
-          if (!res.ok) throw new Error("HTTP " + res.status);
+          if (!res.ok) return;
           var data = await res.json();
-          lastGatewayReport = data;
-
-          // Auto-select language based on visitor IP unless manually overridden
+          // 只取服务端判定的访客语言；延迟与红绿灯一律由浏览器端实测决定
           if (!manualLangSelected && (data.visitorLang === "en" || data.visitorLang === "zh")) {
             applyLanguage(data.visitorLang);
-          } else {
-            applyGatewayReport(data);
           }
         } catch (_err) {
-          lastGatewayReport = { ok: false };
-          applyGatewayReport(lastGatewayReport);
+          // 语言探测失败保持默认中文，不影响状态灯
         }
       }
 
@@ -1147,11 +1290,15 @@
       });
 
       applyLanguage(currentLang);
-      fetchServerStatus();
+      fetchVisitorLanguage();
+      probeClientGateways();
       fetchRecentUpdates();
       setInterval(function () {
-        fetchServerStatus();
-      }, 15000);
+        probeClientGateways();
+      }, 30000);
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) probeClientGateways();
+      });
     })();
   </script>
 </body>

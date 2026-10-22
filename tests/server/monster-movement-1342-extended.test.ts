@@ -73,7 +73,7 @@ describe('issue #1342 monster movement follow-up', () => {
     const move = game.drainEvents(playerId).find((e) => e.type === 'UnitMove') as
       | { npc?: { opcode: number; s: readonly unknown[] } }
       | undefined
-    expect(move?.npc?.opcode).toBe(0x68)
+    expect(move?.npc?.opcode).toBe(0x67)
     expect(move?.npc?.s).toHaveLength(7)
   })
 

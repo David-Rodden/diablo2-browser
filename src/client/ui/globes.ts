@@ -126,13 +126,13 @@ export class GlobesHud {
     const screenW = this.is640 ? 640 : 800
     const screenH = this.is640 ? 480 : 600
     const inLifeBox =
-      logicalX >= 30 && logicalX <= 110 && logicalY >= screenH - 75 && logicalY <= screenH - 15
+      logicalX >= 30 && logicalX <= 105 && logicalY >= screenH - 75 && logicalY <= screenH - 15
     if (inLifeBox || this.hitGlobe(this.lifeGlobeBounds, logicalX, logicalY)) {
       this.lifeTextPinned = !this.lifeTextPinned
       return true
     }
     const inManaBox =
-      logicalX >= screenW - 111 &&
+      logicalX >= screenW - 106 &&
       logicalX <= screenW - 31 &&
       logicalY >= screenH - 75 &&
       logicalY <= screenH - 15
@@ -148,7 +148,7 @@ export class GlobesHud {
     const cy = b.y + b.height / 2
     const dx = x - cx
     const dy = y - cy
-    return dx * dx + dy * dy <= 42 * 42
+    return dx * dx + dy * dy <= 38 * 38
   }
 
   draw(
@@ -287,20 +287,20 @@ export class GlobesHud {
     }
 
     // 4. Full localized numerical readouts on mouse hover or pinned state via tbl format strings (`panelhealth`, `panelmana`, D2Client.dll 0x6FAD7590)
-    const tipY = this.is640 ? 356 : 484
+    const tipY = this.is640 ? 385 : 505
     if (this.lifeTextPinned || this.lifeHovered) {
       const tmpl = resolveTblKey('panelhealth', this.lang) ?? (this.lang === 'ENG' ? 'Life: %d / %d' : '生命： %d / %d')
       const text = tmpl
         .replace(/%[du]/, String(Math.max(0, Math.round(state.hp))))
         .replace(/%[du]/, String(Math.round(state.maxHp)))
-      this.drawGlobeTooltip(ctx, font, text, lifeBounds.x + 40, tipY)
+      this.drawGlobeTooltip(ctx, font, text, lifeBounds.x + 36, tipY)
     }
     if (this.manaTextPinned || this.manaHovered) {
       const tmpl = resolveTblKey('panelmana', this.lang) ?? (this.lang === 'ENG' ? 'Mana: %d / %d' : '法力： %d / %d')
       const text = tmpl
         .replace(/%[du]/, String(Math.max(0, Math.round(state.mana))))
         .replace(/%[du]/, String(Math.round(state.maxMana)))
-      this.drawGlobeTooltip(ctx, font, text, manaBounds.x + 40, tipY)
+      this.drawGlobeTooltip(ctx, font, text, manaBounds.x + 44, tipY)
     }
   }
 
@@ -312,16 +312,13 @@ export class GlobesHud {
     y: number,
   ): void {
     const maxW = this.is640 ? 640 : 800
-    const w = Math.max(100, font.measureText(text, 'fontexocet10') + 16)
-    const x = Math.max(8, Math.min(maxW - w - 8, Math.round(cx - w / 2)))
-    ctx.fillStyle = 'rgba(6, 6, 6, 0.92)'
-    ctx.fillRect(x, y, w, 22)
-    ctx.strokeStyle = '#8c7244'
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 21)
-    font.drawText(ctx, text, x + Math.round(w / 2), y + 16, {
-      font: 'fontexocet10',
+    const w = font.measureText(text, 'font16')
+    const clampedCx = Math.max(Math.ceil(w / 2) + 6, Math.min(maxW - Math.ceil(w / 2) - 6, Math.round(cx)))
+    font.drawText(ctx, text, clampedCx, y, {
+      font: 'font16',
       color: 'white',
       align: 'center',
+      shadow: true,
     })
   }
 

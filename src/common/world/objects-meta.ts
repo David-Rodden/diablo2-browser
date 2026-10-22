@@ -5658,7 +5658,17 @@ export const WAYPOINT_CLASS_IDS_113C: ReadonlySet<number> = new Set([
  *   object in transient `OP (1)` mode whose `ON (2)` bit is set in `selectableMask` remains selectable.
  */
 export function isObjectSelectableInMode(classId: number, mode = 0): boolean {
-  if (classId === 59 || classId === 60 || classId === 342) return true
+  if (
+    classId === 59 ||
+    classId === 60 ||
+    classId === 342 ||
+    classId === 563 ||
+    classId === 565 ||
+    classId === 566 ||
+    classId === 569
+  ) {
+    return true
+  }
   const m = Math.max(0, Math.min(7, Math.floor(mode || 0)))
   if (WAYPOINT_CLASS_IDS_113C.has(classId) && (m === 0 || m === 1 || m === 2)) {
     return true
@@ -5671,6 +5681,11 @@ export function isObjectSelectableInMode(classId: number, mode = 0): boolean {
     return true
   }
   if (m === 1 && (meta.selectableMask & (1 << 2)) !== 0) {
+    return true
+  }
+  // Objects with FrameCnt0 = 0 (no NU frames, e.g. LastPortal 565, Zoo 566, Drehya 558)
+  // that spawn in mode 0 before server/client mode promotion remain selectable if OP/ON is selectable.
+  if (m === 0 && meta.frameCnt?.[0] === 0 && (meta.selectableMask & 0b110) !== 0) {
     return true
   }
   return false
@@ -5881,8 +5896,13 @@ export function isObjectInInteractRange113c(
     return true
   }
   const meta = CANONICAL_113C_OBJECTS[classId]
-  const objSizeX = meta?.sizeX ?? 0
-  const objSizeY = meta?.sizeY ?? 0
+  const rawSizeX = meta?.sizeX ?? 0
+  const rawSizeY = meta?.sizeY ?? 0
+  // Selectable objects with SizeX/SizeY === 0 in Objects.txt (274, 564, 565 LastPortal, 566 Zoo)
+  // use a minimum 1x1 footprint so adjacent walkable sub-tiles satisfy #10594 when center tile is blocked.
+  const hasSelectableMode = Boolean(meta && meta.selectableMask !== 0)
+  const objSizeX = hasSelectableMode ? Math.max(1, rawSizeX) : rawSizeX
+  const objSizeY = hasSelectableMode ? Math.max(1, rawSizeY) : rawSizeY
   const minX = ox - Math.trunc(objSizeX / 2)
   const minY = oy - Math.trunc(objSizeY / 2)
 

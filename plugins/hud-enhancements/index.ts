@@ -35,8 +35,8 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
       en: 'HUD Display Enhancements',
     },
     description: {
-      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示、悬停伤害时显示计算公式，并在人物属性界面提供暗黑风格“?”更多属性面板按钮。关闭插件后严格恢复 1.13c 原版显示。',
-      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, shows damage calculation formulas, and adds a Diablo-styled "?" Advanced Character Stats button on the Character Sheet. Reverts to 1.13c vanilla display when disabled.',
+      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示、悬停伤害时显示计算公式，并在人物属性界面提供更多属性面板按钮。关闭插件后严格恢复 1.13c 原版显示。',
+      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, shows damage calculation formulas, and adds an Advanced Character Stats button on the Character Sheet. Reverts to 1.13c vanilla display when disabled.',
     },
     defaultEnabled: true,
     settings: [
@@ -80,8 +80,8 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         kind: 'boolean',
         key: 'showAdvancedStatsButton',
         label: {
-          zh: '人物属性界面显示更多属性按钮 (?)',
-          en: 'Character Sheet: Show Advanced Stats Button (?)',
+          zh: '人物属性界面显示更多属性按钮 (!)',
+          en: 'Character Sheet: Show Advanced Stats Button (!)',
         },
         default: true,
       },

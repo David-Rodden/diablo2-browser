@@ -917,19 +917,19 @@ export class SkillTreePanel {
         align: 'center',
       })
     }
-    if (vm.current.damage.hasDamage) {
+    if (vm.current.effects.length === 0 && vm.current.damage.hasDamage) {
       const d = vm.current.damage
       lines.push({
         text: isEn
           ? `${formatDamageTypeEn(d.type)}: ${d.finalMin} - ${d.finalMax}`
-          : `${d.typeZh || '伤害'}: ${d.finalMin} - ${d.finalMax}`,
+          : `${d.typeZh || '傷害'}: ${d.finalMin} - ${d.finalMax}`,
         color: 'blue',
         font: 'font8',
         align: 'center',
       })
       if (d.durationSeconds !== undefined && d.durationSeconds > 0) {
         lines.push({
-          text: isEn ? `Duration: ${d.durationSeconds} sec` : `持续时间: ${d.durationSeconds} 秒`,
+          text: isEn ? `Duration: ${d.durationSeconds} sec` : `持續時間: ${d.durationSeconds} 秒`,
           color: 'white',
           font: 'font8',
           align: 'center',
@@ -937,7 +937,7 @@ export class SkillTreePanel {
       }
       if (d.weaponDamagePercent !== undefined && d.weaponDamagePercent > 0) {
         lines.push({
-          text: isEn ? `Weapon Damage: ${d.weaponDamagePercent}%` : `武器伤害: ${d.weaponDamagePercent}%`,
+          text: isEn ? `Weapon Damage: ${d.weaponDamagePercent}%` : `武器傷害: ${d.weaponDamagePercent}%`,
           color: 'white',
           font: 'font8',
           align: 'center',
@@ -973,19 +973,19 @@ export class SkillTreePanel {
           align: 'center',
         })
       }
-      if (vm.nextLevel.damage.hasDamage) {
+      if (vm.nextLevel.effects.length === 0 && vm.nextLevel.damage.hasDamage) {
         const nd = vm.nextLevel.damage
         lines.push({
           text: isEn
             ? `${formatDamageTypeEn(nd.type)}: ${nd.finalMin} - ${nd.finalMax}`
-            : `${nd.typeZh || '伤害'}: ${nd.finalMin} - ${nd.finalMax}`,
+            : `${nd.typeZh || '傷害'}: ${nd.finalMin} - ${nd.finalMax}`,
           color: 'green',
           font: 'font8',
           align: 'center',
         })
         if (nd.durationSeconds !== undefined && nd.durationSeconds > 0 && nd.durationSeconds !== vm.current.damage.durationSeconds) {
           lines.push({
-            text: isEn ? `Duration: ${nd.durationSeconds} sec` : `持续时间: ${nd.durationSeconds} 秒`,
+            text: isEn ? `Duration: ${nd.durationSeconds} sec` : `持續時間: ${nd.durationSeconds} 秒`,
             color: 'green',
             font: 'font8',
             align: 'center',
@@ -993,7 +993,7 @@ export class SkillTreePanel {
         }
         if (nd.weaponDamagePercent !== undefined && nd.weaponDamagePercent !== vm.current.damage.weaponDamagePercent) {
           lines.push({
-            text: isEn ? `Weapon Damage: ${nd.weaponDamagePercent}%` : `武器伤害: ${nd.weaponDamagePercent}%`,
+            text: isEn ? `Weapon Damage: ${nd.weaponDamagePercent}%` : `武器傷害: ${nd.weaponDamagePercent}%`,
             color: 'green',
             font: 'font8',
             align: 'center',

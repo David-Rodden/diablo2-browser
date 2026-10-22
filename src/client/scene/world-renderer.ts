@@ -2452,8 +2452,8 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
       const activePops = snapshot.pops ?? levelView?.pops
       wallFade.updatePops(
         activePops,
-        Math.floor(snapshot.playerLocalSubTile.x),
-        Math.floor(snapshot.playerLocalSubTile.y),
+        Math.floor(snapshot.playerLocalSubTile.x + 0.5),
+        Math.floor(snapshot.playerLocalSubTile.y + 0.5),
         nowMs,
       )
       const fadePlayer = snapshot.wallFadePlayer
@@ -2559,7 +2559,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
           continue
         }
         const entityCellDepth = sceneEntityCellDepth(entity)
-        drawWallsBeforeEntity(entityCellDepth, entity.sortY)
+        drawWallsBeforeEntity(entityCellDepth, entity.sortY - (levelView?.isoOriginY ?? 0))
         drawEntity(entity)
       }
       drawWallsBeforeEntity(Infinity, Infinity)
@@ -2867,7 +2867,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
             isObjectSelectableInMode(u.classId, u.mode)
           ) {
             const fallbackObjNames =
-              !u.name && !u.nameZh
+              (!isEn && !u.nameZh) || (isEn && !u.name)
                 ? resolveObjectDisplayName(u.classId, u.mode, undefined, undefined, snapshot.levelId)
                 : undefined
             const objText =

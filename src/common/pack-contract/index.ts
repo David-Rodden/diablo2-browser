@@ -708,6 +708,7 @@ export const INTENTIONALLY_UNCACHED_PUBLIC_DIRS: readonly string[] = [] as const
  */
 export const INTENTIONALLY_UNCACHED_PUBLIC_FILES: readonly string[] = [
   'asset-manifest.json',
+  'manifest.webmanifest',
   'musicbox.html',
   'sw.js',
   'updates.json',
