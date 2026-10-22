@@ -104,6 +104,7 @@ import { decorateLoadingScreen } from './ui/loading-screen.ts'
 import { startPageTitle } from './ui/page-title.ts'
 import type { PathGuide } from './guide/path-guide.ts'
 import { createSessionGuide } from './guide/session-guide.ts'
+import { Autopilot } from './guide/autopilot.ts'
 import { loadSinglePlayerData } from './session/single-player-data.ts'
 import {
   OnlineSession,
@@ -692,6 +693,16 @@ export async function startPlayApp(options?: {
   }
   const guide = createSessionGuide(session, minimap)
   pathGuide = guide
+  const assists = () => session.commandMapper.assists
+  const pilot = new Autopilot({
+    get world() { return session.world },
+    get hudModel() { return session.hudModel },
+    get assists() { return assists() },
+    hudManager,
+    guide,
+    levelView: () => session.mapService?.getLoadedLevelView(session.world.areaId) ?? null,
+  })
+  assists().pilot = pilot
   const plugins = new PluginHost({
     plugins: options?.plugins ?? [],
     session,
@@ -707,6 +718,7 @@ export async function startPlayApp(options?: {
     upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
     lowLifeWarning: togglePortFor(hudManager, 'lowLifeWarning'),
+    smartSkills: togglePortFor(session.commandMapper.assists, 'smartSkills'),
     notify: { show: (toast) => hudManager.toasts.push(toast, performance.now()) },
     itemInfo: { getConfig: () => hudManager.itemInfo, setConfig: (config) => hudManager.setItemInfo(config) },
     pathGuide: {
@@ -715,6 +727,13 @@ export async function startPlayApp(options?: {
     },
     autoCombat: { getKey: () => session.commandMapper.assists.autoCombatKey, setKey: (key) => void (session.commandMapper.assists.autoCombatKey = key) },
     townPortal: { getKey: () => session.commandMapper.assists.townPortalKey, setKey: (key) => void (session.commandMapper.assists.townPortalKey = key) },
+    autopilot: {
+      getKey: () => assists().pilotKey,
+      setKey: (key) => {
+        assists().pilotKey = key
+        if (key === null && pilot.active) pilot.stop('Autopilot off')
+      },
+    },
     autoLoot: { getRules: () => session.commandMapper.assists.autoLootRules, setRules: (rules) => void (session.commandMapper.assists.autoLootRules = rules) },
     inventoryCare: { getConfig: () => session.commandMapper.assists.inventoryCare.config, setConfig: (config) => void (session.commandMapper.assists.inventoryCare.config = config) },
     autoPotion: {

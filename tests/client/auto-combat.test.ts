@@ -230,3 +230,19 @@ describe('auto-fight and walls', () => {
   })
 })
 
+
+describe('auto-fight with build-aware skills', () => {
+  it('puts the strongest attack on the left hand, casts it at the monster and keeps the armor up', () => {
+    const s = createSetup()
+    const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number }
+    ;[[36, 1], [47, 20], [40, 1]].forEach(([skill, level]) => self.skills.set(skill!, level!))
+    Object.assign(self, { mana: 200, maxMana: 200 })
+    s.mapper.assists.smartSkills = true
+    s.spawn(901, 19, 106, 100)
+    s.mapper.handleKeyDown({ key: 'e' })
+    s.fightFor(1000, 3000)
+    const selected = s.sent.flatMap((c) => (c.type === 'SelectSkill' ? [`${c.hand}:${c.skill}`] : []))
+    expect(selected).toEqual(expect.arrayContaining(['right:40', 'left:47']))
+    expect(s.attacked()).toContain(901)
+  })
+})

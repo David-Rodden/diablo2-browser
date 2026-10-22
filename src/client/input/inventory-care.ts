@@ -97,17 +97,25 @@ export class InventoryCare {
     if (hudModel === null) return
     const goldBefore = world.self.gold
     let sold = 0
-    for (const item of this.inventoryWhere((appraisal) => appraisal.tier === 'junk' && !appraisal.locked)) {
+    for (const item of this.junk) {
       if (hudManager.leftPanel !== 'vendor' || !hudModel.vendorSell(item.id) || !(await waitFor(() => !world.containers.inventory.has(item.id)))) break
       sold++
     }
     if (sold > 0) this.toast(`Sold ${plural(sold, 'junk item')}`, `+${Math.max(0, world.self.gold - goldBefore).toLocaleString('en-US')} gold`, 'gold')
   }
 
+  get stashable(): ItemData[] {
+    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && STASHED_KINDS.has(appraisal.kind) && TIER_RANK[appraisal.tier] >= TIER_RANK.good)
+  }
+
+  get junk(): ItemData[] {
+    return this.inventoryWhere((appraisal) => appraisal.tier === 'junk' && !appraisal.locked)
+  }
+
   private async stashValuables(): Promise<void> {
     const { hudModel, hudManager } = this.host
     if (hudModel === null) return
-    const valuables = this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && STASHED_KINDS.has(appraisal.kind) && TIER_RANK[appraisal.tier] >= TIER_RANK.good)
+    const valuables = this.stashable
     const moved = await depositItemsToStash(hudModel, valuables, () => hudManager.leftPanel === 'stash')
     if (moved > 0) this.toast(`Stashed ${plural(moved, 'valuable')}`, valuables.slice(0, moved).map(nameOf).join(', '), 'green')
   }

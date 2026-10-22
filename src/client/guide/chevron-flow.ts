@@ -50,6 +50,8 @@ function walker(line: readonly SubTilePoint[]): Walker {
   }
 }
 
+export const alongLine = (line: readonly SubTilePoint[], distance: number): SubTilePoint => walker(line).pointAt(distance)
+
 const unit = (from: SubTilePoint, to: SubTilePoint): SubTilePoint => {
   const length = Math.hypot(to.x - from.x, to.y - from.y)
   return length > 1e-6 ? { x: (to.x - from.x) / length, y: (to.y - from.y) / length } : { x: 0, y: 0 }
