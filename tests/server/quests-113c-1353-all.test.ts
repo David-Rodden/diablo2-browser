@@ -98,9 +98,12 @@ describe('issue #1353 full quest coverage', () => {
     const events = game.drainEvents(playerId).filter((e) => e.type === 'QuestState') as {
       source?: number
       questStatus?: { questId: number }
+      availabilityBytes?: Uint8Array
     }[]
     expect(events.some((e) => e.source === 0x28)).toBe(true)
     expect(events.some((e) => e.source === 0x5d && e.questStatus !== undefined)).toBe(true)
+    const availability = events.find((e) => e.source === 0x5e)
+    expect(availability?.availabilityBytes).toHaveLength(37)
   })
 
   it('completes the Act III quest objects (Jade Figurine, Gidbinn, Journal, Anya, Cage)', () => {
@@ -108,22 +111,37 @@ describe('issue #1353 full quest coverage', () => {
     operate(game, playerId, 357)
     expect(player.questFlags[questIndex('a2q4')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
 
-    for (const [classId, quest, npcClass] of [
-      [252, 'a3q2', 255],
-      [558, 'a5q3', 513],
-      [193, 'a3q4', 146],
-    ] as const) {
-      operate(game, playerId, classId)
-      expect(player.questFlags[questIndex(quest)]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
-        QUEST_FLAG_REWARD_PENDING_113C,
-      )
-      const npc = game.spawnMonster({
-        classId: npcClass, name: 'NPC', x: 11, y: 10, areaId: 1, isNpc: true,
-      })
-      game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: npc } } as never)
-      game.stepFrames(1)
-      expect(player.questFlags[questIndex(quest)]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
-    }
+    // Lam Esen: pickup -> reward pending -> Cain.
+    operate(game, playerId, 193)
+    expect(player.questFlags[questIndex('a3q4')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
+      QUEST_FLAG_REWARD_PENDING_113C,
+    )
+    const cain = game.spawnMonster({ classId: 146, name: 'Cain', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: cain } } as never)
+    game.stepFrames(1)
+    expect(player.questFlags[questIndex('a3q4')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+
+    // Gidbinn: object drops g33 -> Ormus accepts the dagger.
+    operate(game, playerId, 252)
+    expect(player.questFlags[questIndex('a3q2')]! & QUEST_FLAG_STARTED_113C).toBe(QUEST_FLAG_STARTED_113C)
+    player.items.push(item(9801, 'g33'))
+    const ormus = game.spawnMonster({ classId: 255, name: 'Ormus', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: ormus } } as never)
+    game.stepFrames(1)
+    expect(player.questFlags[questIndex('a3q2')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+
+    // Anya: Malah gives ice -> thaw Anya -> Malah completes.
+    const malah = game.spawnMonster({ classId: 513, name: 'Malah', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
+    game.stepFrames(1)
+    expect(player.items.some((i) => i.code === 'ice')).toBe(true)
+    operate(game, playerId, 558)
+    expect(player.questFlags[questIndex('a5q3')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
+      QUEST_FLAG_REWARD_PENDING_113C,
+    )
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
+    game.stepFrames(1)
+    expect(player.questFlags[questIndex('a5q3')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
 
     // Rat's Nest only starts a3q1 and drops the Jade Figurine; Alkor completes it.
     operate(game, playerId, 244)

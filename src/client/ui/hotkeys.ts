@@ -1100,20 +1100,20 @@ export class SkillHotkeysHud {
         })
       }
 
-      // Damage / stats
-      if (vm.current.damage.hasDamage) {
+      // Damage / stats fallback when canonical SkillDesc.txt descline effects are empty
+      if (vm.current.effects.length === 0 && vm.current.damage.hasDamage) {
         const d = vm.current.damage
         lines.push({
           text: isEn
             ? `${formatDamageTypeEn(d.type)}: ${d.finalMin} - ${d.finalMax}`
-            : `${d.typeZh || '伤害'}: ${d.finalMin} - ${d.finalMax}`,
+            : `${d.typeZh || '傷害'}: ${d.finalMin} - ${d.finalMax}`,
           color: 'blue',
           font: 'font8',
           align: 'center',
         })
         if (d.durationSeconds !== undefined && d.durationSeconds > 0) {
           lines.push({
-            text: isEn ? `Duration: ${d.durationSeconds} sec` : `持续时间: ${d.durationSeconds} 秒`,
+            text: isEn ? `Duration: ${d.durationSeconds} sec` : `持續時間: ${d.durationSeconds} 秒`,
             color: 'white',
             font: 'font8',
             align: 'center',
@@ -1121,7 +1121,7 @@ export class SkillHotkeysHud {
         }
         if (d.weaponDamagePercent !== undefined && d.weaponDamagePercent > 0) {
           lines.push({
-            text: isEn ? `Weapon Damage: ${d.weaponDamagePercent}%` : `武器伤害: ${d.weaponDamagePercent}%`,
+            text: isEn ? `Weapon Damage: ${d.weaponDamagePercent}%` : `武器傷害: ${d.weaponDamagePercent}%`,
             color: 'white',
             font: 'font8',
             align: 'center',
@@ -1129,7 +1129,7 @@ export class SkillHotkeysHud {
         }
       }
 
-      // Effects
+      // Effects (`SkillDesc.txt` `dsc2` + `dsc1` lines)
       for (const eff of vm.current.effects) {
         const effText = isEn ? eff.textEn : eff.textZh
         if (effText) {

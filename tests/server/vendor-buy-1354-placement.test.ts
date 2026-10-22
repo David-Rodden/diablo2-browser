@@ -45,14 +45,26 @@ describe('issue #1354 purchase placement', () => {
     expect(player.items.some((it) => it.code === 'hp1' && it.location === 'belt')).toBe(true)
   })
 
-  it('merges a stackable potion into an existing inventory pile', () => {
+  it('keeps potions as independent items instead of stacking them', () => {
     const { game, playerId, player, npcId } = setup(1355)
     const pile = { ...entry(9902, 'hp1'), unitId: 9903, location: 'inventory', quantity: 1 }
     player.items.push(pile)
     player.vendorPools.set(npcId, [entry(9902, 'hp1')])
     game.enqueueCommand(playerId, { type: 'NpcBuy', npcId, itemId: 9902, cost: 0 } as never)
     game.stepFrames(1)
-    expect(pile.quantity).toBe(2)
-    expect(player.items.filter((it) => it.code === 'hp1')).toHaveLength(1)
+    expect(pile.quantity).toBe(1)
+    expect(player.items.filter((it) => it.code === 'hp1')).toHaveLength(2)
+  })
+
+  it('merges a purchased scroll into an unfilled tome instead of stacking scrolls', () => {
+    const { game, playerId, player, npcId } = setup(13541)
+    const tome = { ...entry(9911, 'tbk'), unitId: 9912, location: 'inventory', permStore: false, quantity: 7 }
+    player.items.push(tome)
+    player.vendorPools.set(npcId, [entry(9911, 'tsc')])
+    game.enqueueCommand(playerId, { type: 'NpcBuy', npcId, itemId: 9911, cost: 0 } as never)
+    game.stepFrames(1)
+    expect(tome.quantity).toBe(8)
+    expect(player.items.filter((it) => it.code === 'tsc')).toHaveLength(0)
+    expect(player.items.filter((it) => it.code === 'tbk')).toHaveLength(1)
   })
 })

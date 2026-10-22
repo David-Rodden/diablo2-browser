@@ -1204,8 +1204,9 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
 
     it('F12.3: ranged & caster monsters in GameInstance spawn server missiles (CreateMissile) that travel and damage target player', () => {
       const { game, playerId } = createWildernessGameInstance({ playerX: 500, playerY: 500 })
-      // Spawn Skeleton Archer (hcIdx=10) at ranged distance
-      game.spawnMonster({ classId: 10, x: 512, y: 500, level: 15 })
+      // Spawn a Corrupt Archer at ranged distance. (hcIdx 10 is bighead1, which
+      // only fires its A2 lightning after dropping below its MonAi aip1 hurt%.)
+      game.spawnMonster({ hcIdx: 160, defId: 'cr_archer1', x: 512, y: 500, level: 15 })
       game.drainEvents(playerId)
 
       game.stepFrames(40)

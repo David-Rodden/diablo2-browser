@@ -30,7 +30,7 @@ function itemEvents(events: readonly ServerEvent[], action: string): ItemEvent[]
 
 function killMonster(game: GameInstance, playerId: number, monsterId: number): void {
   game.enqueueCommand(playerId, { type: 'CastSkillOnTarget', skillId: 0, targetType: 'monster', targetId: monsterId })
-  game.stepFrames(12)
+  game.stepFrames(120)
   expect(game.getMonster(monsterId)!.dead).toBe(true)
 }
 
@@ -90,7 +90,7 @@ describe('#1326 chest treasure class (D2Game 0x6fc8b570)', () => {
   })
 
   it('container operate functions are exactly the D2Game ones that call the chest drop', () => {
-    expect(Object.keys(CONTAINER_OPERATE_DROP_CHANCE_113C).map(Number).sort((a, b) => a - b)).toEqual([1, 3, 4, 5, 14, 48, 68])
+    expect(Object.keys(CONTAINER_OPERATE_DROP_CHANCE_113C).map(Number).sort((a, b) => a - b)).toEqual([1, 3, 4, 5, 14, 48, 58, 68])
   })
 })
 

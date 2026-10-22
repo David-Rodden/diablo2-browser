@@ -637,6 +637,8 @@ export class QuestLogState {
    */
   openQuestLog(act0: number, fallbackScan?: () => number): number {
     if (this.alertState === 1) {
+      this.alertVisible = false
+      this.alertPressed = false
       this.alertState = 0
     }
     this.alertState = 2

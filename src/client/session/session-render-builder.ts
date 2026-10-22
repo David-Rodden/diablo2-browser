@@ -18,6 +18,7 @@ import {
 } from '../../common/units/char-appearance.ts'
 import { resolveLevelAmbient } from '../../common/world/ambient-light.ts'
 import type { Environment } from '../../common/world/environment.ts'
+import { levelDisplayName } from '../../common/world/level-names-zh.ts'
 import { resolveLevelWarpName, resolveLvlWarpBounds } from '../../common/world/level-warps-meta.ts'
 import { CANONICAL_LEVEL_LIGHTING } from '../../common/world/levels-meta.ts'
 import {
@@ -37,6 +38,7 @@ import type { HudManager } from '../ui/hud-manager.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
 import type { ClientSceneWorldAdapter, SceneAmbientState } from '../view/scene-source.ts'
 import type { RenderableUnitInput } from '../view/unit-drawables.ts'
+import { computePanelCameraShift, panelDockWidth } from '../view/viewport-profile.ts'
 import type { WeatherController } from '../weather/weather-controller.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import type { EnvEffectController } from '../world/env-effect.ts'
@@ -108,6 +110,15 @@ export function buildSceneSnapshot(host: SessionRenderBuilderHost): ClientSceneW
   const neighbourLevelViews = host.resolveNeighbourLevelViews(levelView)
   const levelId = levelView?.areaId ?? (host.world.areaId > 0 ? host.world.areaId : 0)
   const actId = levelId > 0 ? getActForArea(levelId) : undefined
+  const leftPanelOpen = host.hudManager.leftPanel !== 'none'
+  const rightPanelOpen = host.hudManager.rightPanel !== 'none'
+  const profile = host.hudManager.viewportProfile ?? host.camera.viewportProfile
+  const panelShiftX = computePanelCameraShift(
+    leftPanelOpen,
+    rightPanelOpen,
+    panelDockWidth(profile),
+  )
+  host.camera.setPanelShiftX?.(panelShiftX)
   return {
     tick: host.world.frameCount,
     ...(levelId > 0 && actId !== undefined ? { actId, levelId } : {}),
@@ -127,8 +138,9 @@ export function buildSceneSnapshot(host: SessionRenderBuilderHost): ClientSceneW
     // Half-screen panel state drives the 1.13c panel camera shift (player
     // centered in the visible half); without these the scene reports no
     // panels and the camera never pans (user-reported vs vanilla).
-    leftPanelOpen: host.hudManager.leftPanel !== 'none',
-    rightPanelOpen: host.hudManager.rightPanel !== 'none',
+    leftPanelOpen,
+    rightPanelOpen,
+    panelShiftX,
     shakeOffsetX: host.world.screenShake.offsetX,
     shakeOffsetY: host.world.screenShake.offsetY,
   }
@@ -195,6 +207,16 @@ export function tickSessionFrame(
   host.predictor.setVelocityModifiers(host.world.getSelfMoveVelocityModifiers())
 
   const predSnap = host.predictor.update(clampedDt)
+  const tickProfile = host.hudManager?.viewportProfile ?? host.camera?.viewportProfile
+  if (tickProfile) {
+    host.camera.setPanelShiftX?.(
+      computePanelCameraShift(
+        (host.hudManager?.leftPanel ?? 'none') !== 'none',
+        (host.hudManager?.rightPanel ?? 'none') !== 'none',
+        panelDockWidth(tickProfile),
+      ),
+    )
+  }
   if (!isMovementSkillCast && (predSnap.x !== 0 || predSnap.y !== 0)) {
     host.camera.update(predSnap.x, predSnap.y)
     if (selfUnit) {
@@ -208,10 +230,19 @@ export function tickSessionFrame(
     if (activeCastSkillId !== 151) {
       selfUnit.syncTurnState(predSnap.dir64, predSnap.targetDir64, predSnap.stepDir)
     }
-    if (!selfUnit.dead && !selfUnit.castState && predSnap.moving) {
+    if (!selfUnit.dead && !selfUnit.castState) {
       const selfInTown = host.isSubTileInTown(predSnap.x, predSnap.y)
-      selfUnit.moveMode = predSnap.running && !selfInTown ? 'run' : 'walk'
-      selfUnit.mode = predSnap.running && !selfInTown ? 3 : selfInTown ? 6 : 2
+      if (predSnap.moving) {
+        selfUnit.moveMode = predSnap.running && !selfInTown ? 'run' : 'walk'
+        selfUnit.mode = predSnap.running && !selfInTown ? 3 : selfInTown ? 6 : 2
+        host.world.self.moving = true
+        host.world.self.mode = selfUnit.mode
+      } else if (host.world.self.moving || selfUnit.mode === 2 || selfUnit.mode === 3 || selfUnit.mode === 6) {
+        const neutralMode = selfInTown ? 5 : 1
+        selfUnit.mode = neutralMode
+        host.world.self.moving = false
+        host.world.self.mode = neutralMode
+      }
     }
   }
 
@@ -239,6 +270,11 @@ export function tickSessionFrame(
           !state.moving ||
           Math.hypot(goalX - state.targetX, goalY - state.targetY) > 0.05
         ) {
+          const resolvedVelPct =
+            unit.velocityPercent ??
+            (uTypeId === 0
+              ? host.world.resolvePlayerAnimSpeed(unit.mode, unit.id).velocityPercent
+              : undefined)
           host.interpolator.startMove({
             unitType: uTypeId,
             unitId: unit.id,
@@ -246,8 +282,8 @@ export function tickSessionFrame(
             targetX: goalX,
             targetY: goalY,
             running: unit.moveMode === 'run',
-            ...(unit.velocityPercent !== undefined
-              ? { velocityPercent: unit.velocityPercent }
+            ...(resolvedVelPct !== undefined
+              ? { velocityPercent: resolvedVelPct }
               : {}),
             ...(unit.pathType !== undefined ? { pathType: unit.pathType } : {}),
           })
@@ -772,6 +808,9 @@ export function buildRenderableUnits(
       const destAreaName = portal?.areaId
         ? CANONICAL_LEVEL_LIGHTING[portal.areaId]?.levelName
         : undefined
+      const destAreaNameZh = portal?.areaId
+        ? levelDisplayName(portal.areaId, 'CHI')
+        : undefined
       const basePortalName = portal?.ownerName
         ? `${portal.ownerName}'s Town Portal`
         : u.name && u.name.trim() !== ''
@@ -781,11 +820,21 @@ export function buildRenderableUnits(
         destAreaName && !basePortalName.includes(destAreaName)
           ? `${basePortalName} (${destAreaName})`
           : basePortalName
+      const basePortalNameZh = portal?.ownerName
+        ? `${portal.ownerName} 的傳送門`
+        : u.nameZh && u.nameZh.trim() !== ''
+          ? u.nameZh
+          : '傳送門'
+      const portalNameZh =
+        destAreaNameZh && !basePortalNameZh.includes(destAreaNameZh)
+          ? `${basePortalNameZh} (${destAreaNameZh})`
+          : basePortalNameZh
       out.push({
         id: u.id,
         kind: 'object',
         classId: u.classId,
         name: portalName,
+        nameZh: portalNameZh,
         x: ux,
         y: uy,
         mode,

@@ -862,15 +862,26 @@ export function resolveGroundItemSpriteRect(
 /** Maximum scrolls held in a Tome of Town Portal (`tbk`) or Tome of Identify (`ibk`) per `Books.txt`. */
 export const TOME_MAX_QUANTITY = 20
 
+/** Maximum keys held in a Key stack (`key`) per `Misc.txt` (`maxstack = 12`). */
+export const KEY_MAX_QUANTITY = 12
+
 export function isTomeCode(code: string | undefined): code is 'tbk' | 'ibk' {
   const c = (code ?? '').trim().toLowerCase()
   return c === 'tbk' || c === 'ibk'
+}
+
+export function isKeyCode(code: string | undefined): code is 'key' {
+  return (code ?? '').trim().toLowerCase() === 'key'
 }
 
 export function isScrollForTome(scrollCode: string | undefined, tomeCode: string | undefined): boolean {
   const sc = (scrollCode ?? '').trim().toLowerCase()
   const tc = (tomeCode ?? '').trim().toLowerCase()
   return (sc === 'tsc' && tc === 'tbk') || (sc === 'isc' && tc === 'ibk')
+}
+
+export function isKeyStackPair(cursorCode: string | undefined, targetCode: string | undefined): boolean {
+  return isKeyCode(cursorCode) && isKeyCode(targetCode)
 }
 
 /**
@@ -897,7 +908,7 @@ export function getTomeQuantity(item: UiInventoryItem): number {
   if (typeof item.rawItem?.quantity === 'number' && Number.isFinite(item.rawItem.quantity)) {
     return Math.max(0, Math.trunc(item.rawItem.quantity))
   }
-  if (isTomeCode(item.code) && typeof item.rawItem?.stack === 'number' && Number.isFinite(item.rawItem.stack)) {
+  if ((isTomeCode(item.code) || isKeyCode(item.code)) && typeof item.rawItem?.stack === 'number' && Number.isFinite(item.rawItem.stack)) {
     return Math.max(0, Math.trunc(item.rawItem.stack))
   }
   const rawStatList = (item.rawItem as { readonly stats?: readonly { statId?: number; id?: number; value?: number }[] } | undefined)?.stats
@@ -921,7 +932,13 @@ export function getTomeQuantity(item: UiInventoryItem): number {
 }
 
 export function setTomeQuantity(item: UiInventoryItem, newQty: number): UiInventoryItem {
-  const maxQty = item.maxQuantity ?? (isTomeCode(item.code) ? TOME_MAX_QUANTITY : 99)
+  const maxQty =
+    item.maxQuantity ??
+    (isTomeCode(item.code)
+      ? TOME_MAX_QUANTITY
+      : isKeyCode(item.code)
+        ? KEY_MAX_QUANTITY
+        : 99)
   const qty = Math.max(0, Math.min(maxQty, Math.trunc(newQty)))
   ;(item as { quantity?: number }).quantity = qty
 
@@ -2677,6 +2694,23 @@ export class InventoryPanel {
    */
   autoPlaceInGrid(rawItem: UiInventoryItem | Item): boolean {
     const item = rawItem as UiInventoryItem
+    if (isKeyCode(item.code)) {
+      let remQty = Math.max(1, getTomeQuantity(item))
+      for (const p of this.gridItems) {
+        if (!isKeyCode(p.item.code)) continue
+        const curQty = getTomeQuantity(p.item)
+        const maxQty = p.item.maxQuantity ?? KEY_MAX_QUANTITY
+        if (curQty < maxQty) {
+          const addQty = Math.min(maxQty - curQty, remQty)
+          setTomeQuantity(p.item, curQty + addQty)
+          remQty -= addQty
+          if (remQty <= 0) {
+            return true
+          }
+        }
+      }
+      setTomeQuantity(item, remQty)
+    }
     for (let col = 0; col <= INV_GRID_ORIGIN.cols - item.invWidth; col++) {
       for (let row = 0; row <= INV_GRID_ORIGIN.rows - item.invHeight; row++) {
         if (this.getGridOverlaps(col, row, item.invWidth, item.invHeight).length === 0) {
@@ -2713,16 +2747,22 @@ export class InventoryPanel {
       return true
     }
 
-    // Check direct hit for Scroll-into-Tome stacking (`tsc` -> `tbk`, `isc` -> `ibk`) or Socketing
+    // Check direct hit for Scroll-into-Tome stacking (`tsc` -> `tbk`, `isc` -> `ibk`), Key stacking (`key` -> `key`), or Socketing
     const directHit = this.gridItems.find(
       p => col >= p.col && col < p.col + p.item.invWidth && row >= p.row && row < p.row + p.item.invHeight,
     )
-    if (directHit && isScrollForTome(this.cursorItem.code, directHit.item.code)) {
+    if (
+      directHit &&
+      (isScrollForTome(this.cursorItem.code, directHit.item.code) ||
+        isKeyStackPair(this.cursorItem.code, directHit.item.code))
+    ) {
       const curQty = getTomeQuantity(directHit.item)
-      const maxQty = directHit.item.maxQuantity ?? TOME_MAX_QUANTITY
+      const maxQty =
+        directHit.item.maxQuantity ??
+        (isKeyCode(directHit.item.code) ? KEY_MAX_QUANTITY : TOME_MAX_QUANTITY)
       if (curQty < maxQty) {
-        const scrollQty = this.cursorItem.quantity ?? this.cursorItem.rawItem?.quantity ?? 1
-        const addQty = Math.min(maxQty - curQty, scrollQty)
+        const scrollQty = getTomeQuantity(this.cursorItem)
+        const addQty = Math.min(maxQty - curQty, Math.max(1, scrollQty))
         setTomeQuantity(directHit.item, curQty + addQty)
         if (scrollQty > addQty) {
           setTomeQuantity(this.cursorItem, scrollQty - addQty)
@@ -2757,12 +2797,17 @@ export class InventoryPanel {
     }
     if (overlaps.length === 1) {
       const single = overlaps[0]!
-      if (isScrollForTome(this.cursorItem.code, single.item.code)) {
+      if (
+        isScrollForTome(this.cursorItem.code, single.item.code) ||
+        isKeyStackPair(this.cursorItem.code, single.item.code)
+      ) {
         const curQty = getTomeQuantity(single.item)
-        const maxQty = single.item.maxQuantity ?? TOME_MAX_QUANTITY
+        const maxQty =
+          single.item.maxQuantity ??
+          (isKeyCode(single.item.code) ? KEY_MAX_QUANTITY : TOME_MAX_QUANTITY)
         if (curQty < maxQty) {
-          const scrollQty = this.cursorItem.quantity ?? this.cursorItem.rawItem?.quantity ?? 1
-          const addQty = Math.min(maxQty - curQty, scrollQty)
+          const scrollQty = getTomeQuantity(this.cursorItem)
+          const addQty = Math.min(maxQty - curQty, Math.max(1, scrollQty))
           setTomeQuantity(single.item, curQty + addQty)
           if (scrollQty > addQty) {
             setTomeQuantity(this.cursorItem, scrollQty - addQty)

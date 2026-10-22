@@ -468,11 +468,38 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
       const ty = Number(e.to?.y ?? e.targetY ?? e.y ?? 0) & 0xffff
       const cx = Number(e.from?.x ?? e.currentX ?? e.x ?? tx) & 0xffff
       const cy = Number(e.from?.y ?? e.currentY ?? e.y ?? ty) & 0xffff
+      if (e.mode === 'stop') {
+        if (uType === 1) {
+          const w = new ByteWriter(10)
+          w.u8(0x6d)
+          w.u32LE(uId)
+          w.u16LE(tx)
+          w.u16LE(ty)
+          w.u8(Number(e.lifePct ?? 128) & 0xff)
+          return [w.toUint8Array()]
+        }
+        const w = new ByteWriter(13)
+        w.u8(0x0d)
+        w.u8(uType & 0xff)
+        w.u32LE(uId)
+        w.u8(0x07)
+        w.u16LE(tx)
+        w.u16LE(ty)
+        w.u8(Number(e.hitClass ?? 0) & 0xff)
+        w.u8(Number(e.lifePct ?? 128) & 0xff)
+        return [w.toUint8Array()]
+      }
+      const defaultMoveType =
+        e.mode === 'walk'
+          ? 0x01
+          : e.mode === 'knockback'
+            ? 0x13
+            : 0x17
       const w = new ByteWriter(16)
       w.u8(0x0f)
       w.u8(uType & 0xff)
       w.u32LE(uId)
-      w.u8(Number(e.moveType ?? 0x17) & 0xff)
+      w.u8(Number(e.moveType ?? defaultMoveType) & 0xff)
       w.u16LE(tx)
       w.u16LE(ty)
       w.u8(0)
