@@ -282,6 +282,7 @@ export type ToolbarI18nKey =
   | 'toolbar.status.bncs'
   | 'toolbar.status.mcp'
   | 'toolbar.status.d2gs'
+  | 'toolbar.status.local'
   | 'toolbar.status.error'
   | 'toolbar.server.label'
   | 'toolbar.server.placeholder'
@@ -344,6 +345,7 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
   'toolbar.status.bncs': { zh: '战网大厅 (BNCS)', en: 'Lobby (BNCS)' },
   'toolbar.status.mcp': { zh: '角色选择 (MCP)', en: 'Characters (MCP)' },
   'toolbar.status.d2gs': { zh: '游戏中 (D2GS)', en: 'In-Game (D2GS)' },
+  'toolbar.status.local': { zh: '单人游戏', en: 'Single Player' },
   'toolbar.status.error': { zh: '连接异常', en: 'Conn Error' },
   'toolbar.server.label': { zh: '战网服务器', en: 'Battle.net Server' },
   'toolbar.server.placeholder': { zh: 'www.laiseek.xyz', en: 'www.laiseek.xyz' },
