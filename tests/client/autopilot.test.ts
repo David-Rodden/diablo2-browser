@@ -8,10 +8,11 @@ const ROGUE_ENCAMPMENT = 1
 
 function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
   const units: ClientUnit[] = []
-  const self = { x: 100, y: 100, life: 100, maxLife: 100, mana: 50, maxMana: 50, gold: 5000, level: 10, charClass: 1, stats: { get: () => 0 }, skillEntries: new Map() }
+  const self = { x: 100, y: 100, life: 100, maxLife: 100, mana: 50, maxMana: 50, gold: 5000, stashGold: 0, level: 10, charClass: 1, stats: { get: () => 0 }, skillEntries: new Map() }
   const world = {
     isDead: false,
     difficulty: 0,
+    waypoints: new Set<number>(),
     areaId: area,
     self,
     merc: null,
@@ -51,7 +52,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     walkableWithDoorsOpen: (view: { walkable: Uint8Array }) => view.walkable,
   }
   const route = [{ x: 100, y: 100 }, { x: 130, y: 100 }]
-  const guide = { enabled: false, pilotStatus: null as string | null, update: () => (plan ? ({ goal: { level: 2, title: 'Den of Evil' }, step: null, hint: 'Head to Blood Moor', target: null, path: [], route, doors: [], highlights: [], ...plan }) : null), routeFrom: () => route, reaches: () => true, knowsWaypointIn: () => true }
+  const guide = { enabled: false, pilotStatus: null as string | null, detour: null as unknown, focus: vi.fn(), update: () => (plan ? ({ goal: { level: 2, title: 'Den of Evil' }, step: null, hint: 'Head to Blood Moor', target: null, path: [], route, doors: [], highlights: [], ...plan }) : null), routeFrom: () => route, reaches: () => true, knowsWaypointIn: () => true }
   const view = { id: area, originX: 0, originY: 0, subWidth: 400, subHeight: 400, walkable: new Uint8Array(400 * 400).fill(1), rooms: [] as { index: number; worldSubX: number; worldSubY: number; subW: number; subH: number }[], presetUnits: [] as { type: number; index: number; subX: number; subY: number }[], entrances: [] }
   const host = { world, hudManager, hudModel, assists, guide, levelView: () => view } as unknown as AutopilotHost
   const pilot = new Autopilot(host)
@@ -394,6 +395,15 @@ describe('autopilot', () => {
     expect(assists.castTownPortal).toHaveBeenCalled()
   })
 
+  it('goes training first when the next goal is too dangerous for its level', () => {
+    const { world, guide, tick } = setup({ goal: { level: 37, title: 'Sisters to the Slaughter' }, target: { x: 130, y: 100, label: 'Catacombs' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    world.self.level = 3
+    tick()
+    expect(guide.detour).toMatchObject({ title: 'Training' })
+    expect((guide.detour as { hint: string }).hint).toContain('Training to level')
+  })
+
   it('respawns after dying and goes back for its body', () => {
     const { pilot, world, guide, hudModel, units, tick } = setup({})
     Object.assign(hudModel, { resurrect: vi.fn() })
@@ -403,7 +413,7 @@ describe('autopilot', () => {
     tick()
     expect([pilot.active, guide.pilotStatus]).toEqual([true, 'Died, going back for your body'])
     expect((hudModel as unknown as { resurrect: ReturnType<typeof vi.fn> }).resurrect).toHaveBeenCalled()
-    expect((guide as unknown as { detour: unknown }).detour).toBeUndefined()
+    expect(guide.detour).toBeNull()
     world.isDead = false
     world.self.x = 140
     tick()
