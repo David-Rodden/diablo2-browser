@@ -13,6 +13,8 @@ import { waitFor } from '../ui-model/stash-deposit.ts'
 import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
+import { useArtisan, type ArtisanKind } from './artisan.ts'
+import { readyRecipe, transmute } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { FlowField } from './flow-field.ts'
@@ -104,6 +106,7 @@ const STASH_CLASS = 267
 const TOWN_PORTAL_CLASS = 59
 const PORTAL_REACH = 12
 const TRAVEL_OPTIONS = ['travel_east', 'travel_west', 'travel_harrogath']
+const ARTISANS: readonly ArtisanKind[] = ['imbue', 'add_sockets']
 const WARP_NEAR = 7
 const SEAM_STEP = 20
 const CROSS_MS = 4000
@@ -137,6 +140,7 @@ export class Autopilot {
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
   private chase: { readonly id: number; readonly since: number } | null = null
   private readonly ignored = new Map<number, number>()
+  private readonly served = new Set<ArtisanKind>()
   private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
   private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
@@ -401,6 +405,12 @@ export class Autopilot {
     const talk = this.talk
     const ours = menu !== null && talk !== null && (menu.npcUnitId ?? menu.npcId ?? 0) === talk.npcId ? talk : null
     const ids = (menu?.options ?? []).map((option) => option.id)
+    const service = ours && ARTISANS.find((kind) => ids.includes(kind) && !this.served.has(kind))
+    if (ours && service) {
+      this.served.add(service)
+      this.serve(service, ours.npcId)
+      return true
+    }
     const topic = ours && (ids.find((id) => TRAVEL_OPTIONS.includes(id)) ?? ids.find((id) => id.startsWith('talk_quest') && !ours.heard.has(id)) ?? (!ours.opened && menu?.submenu !== 'talk' && ids.includes('talk') ? 'talk' : undefined))
     if (menu && ours && topic) {
       if (topic === 'talk') ours.opened = true
@@ -640,11 +650,12 @@ export class Autopilot {
     const me = world.self
     const care = assists.inventoryCare
     const dry = this.healingPotions() === 0
-    const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : key === 'potions' && dry ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
+    const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : (key === 'potions' && dry) || key === 'cube' ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
     const ready = (key: string) => nowMs - (this.errandsAt.get(key) ?? Number.NEGATIVE_INFINITY) >= cooldown(key)
     const wounded = me.life < (hudManager.maxHp || me.maxLife) * HEAL_LIFE || me.mana < (hudManager.maxMana || me.maxMana) * HEAL_MANA
     const merc = world.merc
     const worn = [...world.containers.equipment.values()].some((item) => (item.maxDurability ?? 0) > 0 && (item.curDurability ?? item.durability ?? 0) < (item.maxDurability ?? 0) * REPAIR_BELOW)
+    const recipe = readyRecipe(world)
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
@@ -652,6 +663,7 @@ export class Autopilot {
       (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
+      recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe[0]} in the Horadric Cube`, work: () => this.cube(recipe[1]) },
       care.upgrades.length > 0 && ready('gear') && { key: 'gear', reason: 'Putting on better gear', work: () => care.wearUpgrades() },
       this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
@@ -664,6 +676,29 @@ export class Autopilot {
     this.errandsAt.set(errand.key, nowMs)
     this.say(errand.reason)
     this.job = this.errand(errand)
+      .catch(() => undefined)
+      .finally(() => {
+        this.job = null
+      })
+  }
+
+  private async cube(recipe: Parameters<typeof transmute>[1]): Promise<void> {
+    const { world, hudManager, hudModel } = this.host
+    if (hudModel === null) return
+    const made = await transmute({ world, hudManager, hudModel }, recipe)
+    if (made) this.toast('Transmuted in the Horadric Cube', recipe.makes, 'green')
+    hudModel.requestQuestData()
+  }
+
+  private serve(kind: ArtisanKind, npcId: number): void {
+    const { world, hudManager, hudModel } = this.host
+    if (hudModel === null) return
+    this.say(kind === 'imbue' ? 'Imbuing your best white item' : 'Socketing your best item')
+    this.job = useArtisan({ world, hudManager, hudModel }, kind, npcId)
+      .then((item) => {
+        this.toast(item ? (kind === 'imbue' ? 'Imbued an item' : 'Socketed an item') : 'Nothing worth using the reward on', item?.code.trim() ?? 'Saving it for later', item ? 'green' : 'gold')
+        hudModel.requestQuestData()
+      })
       .catch(() => undefined)
       .finally(() => {
         this.job = null
