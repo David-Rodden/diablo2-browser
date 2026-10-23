@@ -45,6 +45,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     castTownPortal: vi.fn(),
     hasTownPortal: () => true,
     standDown: false,
+    holdLoot: false,
     stepTo: vi.fn(),
     walkableWithDoorsOpen: (view: { walkable: Uint8Array }) => view.walkable,
   }
@@ -293,6 +294,15 @@ describe('autopilot', () => {
     assists.inventoryCare.upgrades = [{ id: 9 }]
     tick()
     expect([assists.inventoryCare.wearUpgrades.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Putting on better gear'])
+  })
+
+  it('opens the quest chest before going back to the loot around it', () => {
+    const { assists, units, guide, tick } = setup({ hint: 'Open the chest', target: { x: 110, y: 100, label: 'Chest', unit: { id: 80, kind: 'object' } } })
+    Object.assign(guide, { currentPlan: { target: { x: 110, y: 100, unit: { id: 80, kind: 'object' } } } })
+    units.push(unit({ id: 80, unitType: 'object', classId: 355, x: 110, y: 100 }))
+    assists.hasLootNearby = () => true
+    tick()
+    expect([assists.holdLoot, assists.use.mock.calls[0]?.[0]]).toEqual([true, units[0]])
   })
 
   it('switches itself off when you die', () => {
