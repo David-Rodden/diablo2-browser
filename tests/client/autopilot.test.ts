@@ -253,6 +253,17 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toBe('Hunting Fallen')
   })
 
+  it('stays in town until it is healed instead of bouncing back through the portal', () => {
+    const { world, assists, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    world.self.gold = 0
+    world.self.life = 30
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    tick(9000)
+    tick(200)
+    expect(assists.use).not.toHaveBeenCalledWith(units[0], expect.any(Number))
+    expect(guide.pilotStatus).not.toBe('Back through the portal')
+  })
+
   it('switches itself off when you die', () => {
     const { pilot, world, guide, tick } = setup({})
     world.isDead = true

@@ -58,7 +58,8 @@ const STUCK_MS = 3200
 const STUCK_MOVE = 1.5
 const MANUAL_PAUSE_MS = 4000
 const ERRAND_COOLDOWN_MS = 300_000
-const HEAL_COOLDOWN_MS = 45_000
+const HEAL_COOLDOWN_MS = 8000
+const RESTOCK_COOLDOWN_MS = 20_000
 const ERRAND_TIMEOUT_MS = 45_000
 const RETREAT_LIFE = 0.35
 const DRY_LIFE = 0.6
@@ -195,6 +196,7 @@ export class Autopilot {
     const { assists, guide } = this.host
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
+    else if (town && this.wounded()) this.say('Waiting to heal before heading out')
     else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
@@ -464,6 +466,11 @@ export class Autopilot {
     return (!stocked && burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
   }
 
+  private wounded(): boolean {
+    const { world, hudManager } = this.host
+    return world.self.life < (hudManager.maxHp || world.self.maxLife) * HEAL_LIFE
+  }
+
   private healingPotions(): number {
     const { belt, inventory } = this.host.world.containers
     return [...belt.values(), ...inventory.values()].filter((item) => /^(hp|rv)/.test(item.code)).length
@@ -606,7 +613,9 @@ export class Autopilot {
     const { world, hudManager, assists } = this.host
     const me = world.self
     const care = assists.inventoryCare
-    const ready = (key: string) => nowMs - (this.errandsAt.get(key) ?? Number.NEGATIVE_INFINITY) >= (key === 'heal' ? HEAL_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
+    const dry = this.healingPotions() === 0
+    const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : key === 'potions' && dry ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
+    const ready = (key: string) => nowMs - (this.errandsAt.get(key) ?? Number.NEGATIVE_INFINITY) >= cooldown(key)
     const wounded = me.life < (hudManager.maxHp || me.maxLife) * HEAL_LIFE || me.mana < (hudManager.maxMana || me.maxMana) * HEAL_MANA
     const merc = world.merc
     const worn = [...world.containers.equipment.values()].some((item) => (item.maxDurability ?? 0) > 0 && (item.curDurability ?? item.durability ?? 0) < (item.maxDurability ?? 0) * REPAIR_BELOW)
