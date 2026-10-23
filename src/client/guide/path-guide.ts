@@ -14,6 +14,7 @@ import type { Find, FindKey } from './quest-stages.ts'
 import { currentGoal, levelName, nextStep, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
 import { spriteOutlines, type OutlineTint } from './sprite-outline.ts'
 import { WaypointMemory } from './waypoint-memory.ts'
+import { WAYPOINT_LEVELS } from './level-links.ts'
 
 export interface PathGuideHost {
   readonly areaId: () => number
@@ -199,6 +200,7 @@ export class PathGuide {
   mode: GuideMode = 'story'
   pilotStatus: string | null = null
   readonly skipped = new Set<number>()
+  private knownWaypoints: ReadonlySet<number> = new Set()
   private plan: GuidePlan | null = null
   private plannedAt = { ms: Number.NEGATIVE_INFINITY, x: 0, y: 0, level: 0 }
   private field: { readonly view: LevelView; readonly field: FlowField } | null = null
@@ -231,6 +233,7 @@ export class PathGuide {
       const character = this.host.character?.() ?? ''
       const fromMenu = this.host.waypoints()
       const waypoints = this.memory.known(character, level, fromMenu)
+      this.knownWaypoints = waypoints
       this.publish(planGuide(this.host, this.mode, this.fieldFor, waypoints, fromMenu.size === 0 && !this.memory.hasMenu(character), this.skipped))
       this.plannedAt = { ms: nowMs, x, y, level }
     }
@@ -270,9 +273,22 @@ export class PathGuide {
     return rounded(this.routeFrom(me, plan), TRAIL_ROUNDS)
   }
 
+  knowsWaypointIn(level: number): boolean {
+    return [...this.knownWaypoints].some((id) => WAYPOINT_LEVELS.get(id) === level)
+  }
+
+  reaches(me: SubTilePoint, plan: GuidePlan | null = this.plan): boolean {
+    const field = this.fieldOf(plan)
+    return field === null || field.distanceFrom(me.x, me.y) !== null || field.pathFrom(me.x, me.y, 1, 1).length > 0
+  }
+
+  private fieldOf(plan: GuidePlan | null): FlowField | null {
+    return plan && this.field?.view === this.host.levelView() && this.field.field.targetX === plan.target?.x && this.field.field.targetY === plan.target.y ? this.field.field : null
+  }
+
   routeFrom(me: SubTilePoint, plan: GuidePlan | null = this.plan, steps = TRAIL_STEPS): SubTilePoint[] {
     if (!plan || plan.route.length === 0) return []
-    const field = this.field?.view === this.host.levelView() && this.field.field.targetX === plan.target?.x && this.field.field.targetY === plan.target.y ? this.field.field : null
+    const field = this.fieldOf(plan)
     const path = field?.pathFrom(me.x, me.y, 1, steps) ?? []
     return path.length > 0 ? [me, ...field!.corners(path, me)] : fromNearest([plan.path[0] ?? me, ...plan.route], me)
   }
