@@ -3,9 +3,19 @@ import { decode0x58OpenUi } from '../src/netproto/d2gs/s2c/misc.js'
 import { encodeC2sStaffInOrifice } from '../src/netproto/d2gs/c2s/interact.js'
 import { encodeD2gsC2sCommand } from '../src/netproto/d2gs/registry.js'
 import { WorldPanelsHud, isEligibleArtisanItem } from '../src/client/ui/world-panels.js'
+import { HudManager } from '../src/client/ui/hud-manager.js'
+import { CommandMapper } from '../src/client/input/command-mapper.js'
+import { LocalMovementPredictor } from '../src/client/motion/predictor.js'
 import { ClientWorld } from '../src/client/world/client-world.js'
 import { HudModel } from '../src/client/ui-model/hud-model.js'
 import type { ClientCommand } from '../src/netproto/domain/client-command.js'
+
+if (typeof globalThis.window === 'undefined') {
+  ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }
+}
 
 describe('Act 2 Quests Audit Fixes (1.13c Ground Truth)', () => {
   describe('S2C 0x58 OpenUi & C2S 0x44 StaffInOrifice', () => {
@@ -164,6 +174,168 @@ describe('Act 2 Quests Audit Fixes (1.13c Ground Truth)', () => {
           orificeObjectId: 42,
           staffItemId: 0,
           state: 2,
+          playerUnitId: 7,
+        },
+      ])
+    })
+
+    it('clicking world ground while orifice panel is open sends C2S 0x44 StaffInOrifice(state=2), returns slotted staff, and closes panel', () => {
+      const selfX = 5000
+      const selfY = 5000
+      const orificeId = 42
+      const world = new ClientWorld()
+      const hud = new HudManager()
+      hud.resize(1280, 720)
+      const commands: ClientCommand[] = []
+      let nowMs = 10_000
+
+      const hudModel = new HudModel({
+        world,
+        hudManager: hud,
+        onCommand: (cmd: ClientCommand) => {
+          commands.push(cmd)
+          world.noteOutgoingCommand(cmd, nowMs)
+        },
+        now: () => nowMs,
+      })
+      hud.commandSink = hudModel
+
+      const predictor = new LocalMovementPredictor({ initialX: selfX, initialY: selfY })
+      const walkable = new Uint8Array(128 * 128).fill(1)
+      const levelView = {
+        levelId: 72,
+        subOriginX: selfX - 64,
+        subOriginY: selfY - 64,
+        subWidth: 128,
+        subHeight: 128,
+        walkable,
+      }
+      const mapper = new CommandMapper({
+        world,
+        hudManager: hud,
+        hudModel,
+        predictor,
+        automapView: { getLevelView: () => levelView } as any,
+        sendCommand: (cmd) => {
+          commands.push(cmd)
+          world.noteOutgoingCommand(cmd, nowMs)
+        },
+      })
+
+      world.apply({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 'player', id: 7, classId: 1, name: 'Hero', x: selfX, y: selfY },
+      })
+      world.apply({
+        type: 'UnitAssign',
+        unit: { unitType: 'object', id: orificeId, classId: 152, mode: 1, x: selfX, y: selfY + 1 },
+      })
+      world.apply({
+        type: 'OpenUi',
+        unitType: 2,
+        unitId: orificeId,
+        uiId: 0,
+        extra: 0,
+      })
+      hudModel.openArtisanWindow('orifice', orificeId)
+      const slottedStaff = { id: '99', code: 'hst', name: 'Horadric Staff', invWidth: 1, invHeight: 4, identified: true } as any
+      ;(hud.worldPanels as any).questRewardItem = slottedStaff
+      expect(hud.leftPanel).toBe('orifice')
+      expect(hud.rightPanel).toBe('inv')
+      commands.length = 0
+
+      nowMs += 200
+      mapper.triggerPrimaryWorldAction(selfX + 6, selfY + 6, null, nowMs)
+
+      expect(commands.filter((c) => c.type === 'StaffInOrifice')).toEqual([
+        {
+          type: 'StaffInOrifice',
+          orificeObjectId: orificeId,
+          staffItemId: 0,
+          state: 2,
+          playerUnitId: 7,
+        },
+      ])
+      expect(commands.some((c) => c.type === 'Move')).toBe(true)
+      expect(hud.leftPanel).toBe('none')
+      expect(hud.rightPanel).toBe('none')
+      expect((hud.worldPanels as any).questRewardItem).toBeNull()
+      expect(hud.inventory.cursorItem).toBe(slottedStaff)
+      expect(world.npcInteraction.window).toBe('none')
+      expect(world.npcInteraction.npcId).toBeNull()
+    })
+
+    it('clicking the open orifice object again in melee range does not send duplicate C2S 0x13 Interact and keeps orifice panel open for confirmation', () => {
+      const selfX = 5000
+      const selfY = 5000
+      const orificeId = 42
+      const world = new ClientWorld()
+      const hud = new HudManager()
+      hud.resize(1280, 720)
+      const commands: ClientCommand[] = []
+      let nowMs = 10_000
+
+      const hudModel = new HudModel({
+        world,
+        hudManager: hud,
+        onCommand: (cmd: ClientCommand) => {
+          commands.push(cmd)
+          world.noteOutgoingCommand(cmd, nowMs)
+        },
+        now: () => nowMs,
+      })
+      hud.commandSink = hudModel
+
+      const predictor = new LocalMovementPredictor({ initialX: selfX, initialY: selfY })
+      const mapper = new CommandMapper({
+        world,
+        hudManager: hud,
+        hudModel,
+        predictor,
+        sendCommand: (cmd) => {
+          commands.push(cmd)
+          world.noteOutgoingCommand(cmd, nowMs)
+        },
+      })
+
+      world.apply({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 'player', id: 7, classId: 1, name: 'Hero', x: selfX, y: selfY },
+      })
+      world.apply({
+        type: 'UnitAssign',
+        unit: { unitType: 'object', id: orificeId, classId: 152, mode: 1, x: selfX, y: selfY + 1 },
+      })
+      world.apply({
+        type: 'OpenUi',
+        unitType: 2,
+        unitId: orificeId,
+        uiId: 0,
+        extra: 0,
+      })
+      hudModel.openArtisanWindow('orifice', orificeId)
+      commands.length = 0
+
+      const orificeUnit = world.getUnit('object', orificeId)!
+      nowMs += 200
+      const res = mapper.triggerPrimaryWorldAction(orificeUnit.x, orificeUnit.y, orificeUnit, nowMs)
+
+      expect(res).toBeNull()
+      expect(commands).toEqual([])
+      expect(hud.leftPanel).toBe('orifice')
+      expect(world.npcInteraction.window).toBe('orifice')
+      expect(world.npcInteraction.npcId).toBe(orificeId)
+
+      // Subsequent checkmark confirmation still emits StaffInOrifice(state = 3)
+      hudModel.confirmQuestReward(99, orificeId)
+      expect(commands).toEqual([
+        {
+          type: 'StaffInOrifice',
+          orificeObjectId: orificeId,
+          staffItemId: 99,
+          state: 3,
           playerUnitId: 7,
         },
       ])

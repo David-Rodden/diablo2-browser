@@ -16,6 +16,9 @@ import {
   CANONICAL_GEMS_TABLE,
   type GemModifier,
 } from '../../common/items/gems.ts'
+import { parseWeaponsTable, type WeaponTable, type WeaponBase } from '../../common/items/weapons.ts'
+import { parseArmorTable, type ArmorTable, type ArmorBase } from '../../common/items/armor.ts'
+import { parseTable } from '../../common/world/acts.ts'
 import { D2_EXPERIENCE_TABLE_99 } from '../../common/skills/formulas.ts'
 import {
   HIRELING_RECORDS,
@@ -54,12 +57,28 @@ const SHIELD_TYPE_CODES = new Set(['shie', 'shld', 'ashd', 'pala', 'head', 'vood
 const THROWING_WEAPON_TYPES = new Set(['tkni', 'taxe', 'jav', 'ajav', 'tpot'])
 const RANGED_WEAPON_TYPES = new Set(['bow', 'xbow', 'abow'])
 
-function getWeaponRow(code: string): Record<string, any> | undefined {
-  return ((RAW_WEAPONS as unknown) as Record<string, any>)[code]
+let cachedWeaponsTable: WeaponTable | null = null
+export function getWeaponsTable(): WeaponTable {
+  if (!cachedWeaponsTable) {
+    cachedWeaponsTable = parseWeaponsTable(RAW_WEAPONS)
+  }
+  return cachedWeaponsTable
 }
 
-function getArmorRow(code: string): Record<string, any> | undefined {
-  return ((RAW_ARMOR as unknown) as Record<string, any>)[code]
+let cachedArmorTable: ArmorTable | null = null
+export function getArmorTable(): ArmorTable {
+  if (!cachedArmorTable) {
+    cachedArmorTable = parseArmorTable(parseTable(new TextEncoder().encode(RAW_ARMOR)))
+  }
+  return cachedArmorTable
+}
+
+export function getWeaponRow(code: string): WeaponBase | undefined {
+  return getWeaponsTable().get(code)
+}
+
+export function getArmorRow(code: string): ArmorBase | undefined {
+  return getArmorTable().get(code)
 }
 
 function getItemKind(code: string): 'weapon' | 'armor' | 'misc' {
@@ -340,6 +359,9 @@ export interface WeaponHandSummary {
   readonly isOneOrTwoHanded: boolean
   readonly isRanged: boolean
   readonly isThrowing: boolean
+  readonly strBonus: number
+  readonly dexBonus: number
+  readonly flatDam111: number
   readonly minDam1H: number
   readonly maxDam1H: number
   readonly minDam2H: number
@@ -347,6 +369,8 @@ export interface WeaponHandSummary {
   readonly minMisDam: number
   readonly maxMisDam: number
   readonly localEdPct: number
+  readonly localEdMinPct: number
+  readonly localEdMaxPct: number
   readonly localMaxDamPerLevel8ths: number
   readonly localMaxEdPerLevel8ths: number
   readonly localMin1H: number
@@ -388,20 +412,24 @@ function buildWeaponHandSummary(
   const aRow = getArmorRow(code)
   const isWeapon = Boolean(wRow)
   const type = String(wRow?.type ?? aRow?.type ?? '').trim().toLowerCase() || null
-  const isTwoHanded = Boolean(wRow?.['2handed'] === 1 || wRow?.twoHanded || wRow?.twohanded === '1')
-  const isOneOrTwoHanded = Boolean(wRow?.['1or2handed'] === 1 || wRow?.oneOrTwoHanded || wRow?.['1or2handed'] === '1')
+  const isTwoHanded = Boolean(wRow?.twoHanded)
+  const isOneOrTwoHanded = Boolean(wRow?.oneOrTwoHanded)
   const isRanged = type !== null && RANGED_WEAPON_TYPES.has(type)
   const isThrowing = type !== null && THROWING_WEAPON_TYPES.has(type)
   const ethMult = item.ethereal ? 1.5 : 1
 
   const minDam1H = Math.max(0, Math.floor((Number(wRow?.mindam ?? 0) || 0) * ethMult))
   const maxDam1H = Math.max(0, Math.floor((Number(wRow?.maxdam ?? 0) || 0) * ethMult))
-  const minDam2H = Math.max(0, Math.floor((Number(wRow?.['2handmindam'] ?? wRow?.twoHandedMindam ?? wRow?.mindam ?? 0) || 0) * ethMult))
-  const maxDam2H = Math.max(0, Math.floor((Number(wRow?.['2handmaxdam'] ?? wRow?.twoHandedMaxdam ?? wRow?.maxdam ?? 0) || 0) * ethMult))
-  const minMisDam = Math.max(0, Math.floor((Number(wRow?.minmisdam ?? wRow?.minMisDam ?? 0) || 0) * ethMult))
-  const maxMisDam = Math.max(0, Math.floor((Number(wRow?.maxmisdam ?? wRow?.maxMisDam ?? 0) || 0) * ethMult))
+  const minDam2H = Math.max(0, Math.floor((Number(wRow?.twoHandedMindam ?? wRow?.mindam ?? 0) || 0) * ethMult))
+  const maxDam2H = Math.max(0, Math.floor((Number(wRow?.twoHandedMaxdam ?? wRow?.maxdam ?? 0) || 0) * ethMult))
+  const minMisDam = Math.max(0, Math.floor((Number(wRow?.minMisDam ?? 0) || 0) * ethMult))
+  const maxMisDam = Math.max(0, Math.floor((Number(wRow?.maxMisDam ?? 0) || 0) * ethMult))
+  const strBonus = wRow ? (wRow.strBonus ?? 0) : 0
+  const dexBonus = wRow ? (wRow.dexBonus ?? 0) : 0
+  let flatDam111 = 0
 
-  let localEdPct = 0
+  let localStat17 = 0
+  let localStat18 = 0
   let localMaxDamPerLevel8ths = 0
   let localMaxEdPerLevel8ths = 0
   let localMin1H = 0
@@ -429,10 +457,10 @@ function buildWeaponHandSummary(
   for (const s of stats) {
     switch (s.statId) {
       case 17:
+        localStat17 += s.value
+        break
       case 18:
-        // Avoid double-counting if both 17 (maxdamage_percent) and 18 (mindamage_percent) are emitted with identical value
-        if (s.statId === 17) localEdPct += s.value
-        else if (!stats.some((o) => o.statId === 17)) localEdPct += s.value
+        localStat18 += s.value
         break
       case 21:
         localMin1H += s.value
@@ -503,6 +531,9 @@ function buildWeaponHandSummary(
       case 59:
         poisFrames += s.value
         break
+      case 111:
+        flatDam111 += s.value
+        break
     }
   }
 
@@ -516,6 +547,10 @@ function buildWeaponHandSummary(
       ? Math.floor((poisRateMax * effPoisFrames + 128) / 256)
       : Math.max(elemPoisTotalMin, poisRateMax)
 
+  const localEdMaxPct = localStat17
+  const localEdMinPct = localStat18 !== 0 ? localStat18 : localStat17
+  const localEdPct = localStat17 !== 0 ? localStat17 : localStat18
+
   return {
     item,
     code,
@@ -525,6 +560,9 @@ function buildWeaponHandSummary(
     isOneOrTwoHanded,
     isRanged,
     isThrowing,
+    strBonus,
+    dexBonus,
+    flatDam111,
     minDam1H,
     maxDam1H,
     minDam2H,
@@ -532,6 +570,8 @@ function buildWeaponHandSummary(
     minMisDam,
     maxMisDam,
     localEdPct,
+    localEdMinPct,
+    localEdMaxPct,
     localMaxDamPerLevel8ths,
     localMaxEdPerLevel8ths,
     localMin1H,
@@ -680,7 +720,11 @@ export function computeEffectiveMercenaryStats(
       return mercRaw[propKey]
     }
     if (mercUnitForStats?.stats && typeof mercUnitForStats.stats.has === 'function' && mercUnitForStats.stats.has(statId)) {
-      const v = Number(mercUnitForStats.stats.get(statId))
+      const getter =
+        typeof mercUnitForStats.stats.getBase === 'function'
+          ? mercUnitForStats.stats.getBase.bind(mercUnitForStats.stats)
+          : mercUnitForStats.stats.get.bind(mercUnitForStats.stats)
+      const v = Number(getter(statId))
       if (Number.isFinite(v)) return v
     }
     if (rawStatsMap.has(statId)) {
@@ -689,7 +733,11 @@ export function computeEffectiveMercenaryStats(
     }
     if (mercRaw.stats && typeof mercRaw.stats === 'object' && !(mercRaw.stats instanceof Map)) {
       if (typeof mercRaw.stats.has === 'function' && mercRaw.stats.has(statId)) {
-        const v = Number(mercRaw.stats.get(statId))
+        const getter =
+          typeof mercRaw.stats.getBase === 'function'
+            ? mercRaw.stats.getBase.bind(mercRaw.stats)
+            : mercRaw.stats.get.bind(mercRaw.stats)
+        const v = Number(getter(statId))
         if (Number.isFinite(v)) return v
       }
       if (propKey in mercRaw.stats) {
@@ -792,35 +840,33 @@ export function computeEffectiveMercenaryStats(
   let maxLightAdd = 0
   let maxColdAdd = 0
   let maxPoisAdd = 0
-  let offWeapEdPct = 0
+  let offWeapEdMinPct = 0
+  let offWeapEdMaxPct = 0
+  let damagePct25 = 0
   let globalMinDmg = 0
   let globalMaxDmg = 0
-  let elemDmgMin = 0
-  let elemDmgMax = 0
+  let globalFlatDam111 = 0
+  let totalFireMin = 0
+  let totalFireMax = 0
+  let totalLtngMin = 0
+  let totalLtngMax = 0
+  let totalMagMin = 0
+  let totalMagMax = 0
+  let totalColdMin = 0
+  let totalColdMax = 0
+  let offWeapPoisRateMin = 0
+  let offWeapPoisRateMax = 0
+  let offWeapPoisFrames = 0
   let mercW1: WeaponHandSummary | null = null
   let mercW2: WeaponHandSummary | null = null
 
-  for (const { slot, item } of mercSlots) {
-    const code = (item.code ?? '').trim().toLowerCase()
-    const kind = getItemKind(code)
-    const extracted = extractItemAndSocketStats(item, getSocketChildrenForItem(world, item), slot)
-
-    if (kind === 'armor') {
-      const defPerLvl = Math.floor((extracted.localDefPerLevel8ths * mlvl) / 8)
-      const enh =
-        extracted.localEdPct > 0
-          ? Math.floor(((extracted.baseArmorDefense + 1) * (100 + extracted.localEdPct)) / 100)
-          : Math.floor((extracted.baseArmorDefense * (100 + extracted.localEdPct)) / 100)
-      pieceArmorDef += Math.max(0, enh + extracted.localFlatDefense + defPerLvl)
-    }
-
-    if (kind === 'weapon' && (slot === 4 || slot === 5)) {
-      const wSum = buildWeaponHandSummary(item, extracted.itemStats)
-      if (slot === 4) mercW1 = wSum
-      else mercW2 = wSum
-    }
-
-    for (const st of extracted.itemStats) {
+  const accumulateStatList = (
+    stats: readonly ItemStat[],
+    kind: 'weapon' | 'armor' | 'misc' | 'state',
+  ): void => {
+    let listStat17 = 0
+    let listStat18 = 0
+    for (const st of stats) {
       switch (st.statId) {
         case 0:
           addStr += st.value
@@ -850,6 +896,7 @@ export function computeEffectiveMercenaryStats(
           flatHp += Math.floor((st.value * mlvl) / 8)
           break
         case 16:
+        case 171:
           if (kind !== 'armor') defPct += st.value
           break
         case 31:
@@ -895,58 +942,145 @@ export function computeEffectiveMercenaryStats(
           maxPoisAdd += st.value
           break
         case 17:
+          if (kind !== 'weapon') listStat17 += st.value
+          break
         case 18:
+          if (kind !== 'weapon') listStat18 += st.value
+          break
         case 25:
-          if (kind !== 'weapon') {
-            if (st.statId === 18 && extracted.itemStats.some((o) => o.statId === 17)) break
-            offWeapEdPct += st.value
-          }
+          damagePct25 += st.value
           break
         case 21:
         case 23:
           if (kind !== 'weapon') {
-            if (st.statId === 23 && extracted.itemStats.some((o) => o.statId === 21)) break
+            if (st.statId === 23 && stats.some((o) => o.statId === 21)) break
             globalMinDmg += st.value
           }
           break
         case 22:
         case 24:
           if (kind !== 'weapon') {
-            if (st.statId === 24 && extracted.itemStats.some((o) => o.statId === 22)) break
+            if (st.statId === 24 && stats.some((o) => o.statId === 22)) break
             globalMaxDmg += st.value
           }
           break
+        case 218:
+          if (kind !== 'weapon') {
+            globalMaxDmg += Math.floor((st.value * mlvl) / 8)
+          }
+          break
+        case 111:
+          if (kind !== 'weapon') {
+            globalFlatDam111 += st.value
+          }
+          break
         case 48:
-        case 50:
-        case 52:
-        case 54:
-          elemDmgMin += st.value
+          totalFireMin += st.value
           break
         case 49:
+          totalFireMax += st.value
+          break
+        case 50:
+          totalLtngMin += st.value
+          break
         case 51:
+          totalLtngMax += st.value
+          break
+        case 52:
+          totalMagMin += st.value
+          break
         case 53:
+          totalMagMax += st.value
+          break
+        case 54:
+          totalColdMin += st.value
+          break
         case 55:
-          elemDmgMax += st.value
+          totalColdMax += st.value
+          break
+        case 57:
+          if (kind !== 'weapon') offWeapPoisRateMin += st.value
+          break
+        case 58:
+          if (kind !== 'weapon') offWeapPoisRateMax += st.value
+          break
+        case 59:
+          if (kind !== 'weapon') offWeapPoisFrames += st.value
           break
       }
     }
+    if (kind !== 'weapon') {
+      offWeapEdMaxPct += listStat17
+      offWeapEdMinPct += listStat18 !== 0 ? listStat18 : listStat17
+    }
   }
 
-  // Merc unit state stats (e.g. Battle Orders state 32, Shout state 26, Defiance state 39, Might state 33, Fade state 159)
+  for (const { slot, item } of mercSlots) {
+    const code = (item.code ?? '').trim().toLowerCase()
+    const kind = getItemKind(code)
+    const extracted = extractItemAndSocketStats(item, getSocketChildrenForItem(world, item), slot)
+
+    if (kind === 'armor') {
+      const defPerLvl = Math.floor((extracted.localDefPerLevel8ths * mlvl) / 8)
+      const enh =
+        extracted.localEdPct > 0
+          ? Math.floor(((extracted.baseArmorDefense + 1) * (100 + extracted.localEdPct)) / 100)
+          : Math.floor((extracted.baseArmorDefense * (100 + extracted.localEdPct)) / 100)
+      pieceArmorDef += Math.max(0, enh + extracted.localFlatDefense + defPerLvl)
+    }
+
+    if (kind === 'weapon' && (slot === 4 || slot === 5)) {
+      const wSum = buildWeaponHandSummary(item, extracted.itemStats)
+      if (slot === 4) mercW1 = wSum
+      else mercW2 = wSum
+    }
+
+    accumulateStatList(extracted.itemStats, kind)
+  }
+
+  // Aggregate attached 0xA8 state stat lists on the mercenary unit (and mercRaw.stats if distinct)
+  const attachedStateIds = new Set<number>()
+  const collectAttachedStateLists = (sl: unknown): void => {
+    if (
+      sl &&
+      typeof sl === 'object' &&
+      typeof (sl as { stateIds?: unknown }).stateIds === 'function' &&
+      typeof (sl as { getStateStats?: unknown }).getStateStats === 'function'
+    ) {
+      const typed = sl as {
+        stateIds(): number[]
+        getStateStats(stateId: number): readonly ItemStat[] | undefined
+      }
+      for (const stateId of typed.stateIds()) {
+        const list = typed.getStateStats(stateId)
+        if (list && list.length > 0) {
+          attachedStateIds.add(stateId)
+          accumulateStatList(list, 'state')
+        }
+      }
+    }
+  }
+  collectAttachedStateLists(mercUnitForStats?.stats)
+  if (mercRaw.stats !== mercUnitForStats?.stats) {
+    collectAttachedStateLists(mercRaw.stats)
+  }
+
+  // Merc unit state fallbacks when state bit is active without an explicit 0xA8 state stat list
+  // (e.g. Battle Orders state 32, Shout state 26, Defiance state 37/39, Might state 33, Concentration state 42, Fanaticism state 49, Fade state 159)
   const mercUnit = mercRaw.mercId ? world.getUnit('monster', mercRaw.mercId) : undefined
-  if (mercUnit?.states.has(32) || world.self.states.has(32)) {
+  if (!attachedStateIds.has(32) && (mercUnit?.states.has(32) || world.self.states.has(32))) {
     const boLvl = Math.max(1, world.self.skills.get(149) ?? 1)
     if (mercUnit?.states.has(32)) maxHpPct += 50 + 3 * (boLvl - 1)
   }
-  if (mercUnit?.states.has(26)) {
+  if (!attachedStateIds.has(26) && mercUnit?.states.has(26)) {
     const shoutLvl = Math.max(1, world.self.skills.get(138) ?? 1)
     defPct += 100 + 10 * (shoutLvl - 1)
   }
-  if (mercUnit?.states.has(39)) {
+  if (!attachedStateIds.has(37) && !attachedStateIds.has(39) && (mercUnit?.states.has(37) || mercUnit?.states.has(39))) {
     defPct += 70
   }
   let fadeRes = 0
-  if (mercUnit?.states.has(159)) {
+  if (!attachedStateIds.has(159) && mercUnit?.states.has(159)) {
     fadeRes = 60
   }
 
@@ -954,8 +1088,9 @@ export function computeEffectiveMercenaryStats(
   const dex = Math.max(0, baseDex + addDex)
   const maxHp = Math.max(1, Math.floor(((baseMaxHp + flatHp) * (100 + maxHpPct)) / 100) + addVit * 2)
 
-  // Merc lifePct is on a 0..128 scale in D2GS (0x7F / 0x0C / 0xAC)
+  // Merc lifePct is on a 0..128 scale in D2GS (0x0C / 0xAC / 0x6D) or 0..100 scale via S2C 0x7F
   const rawLifePct = typeof mercRaw.lifePct === 'number' ? mercRaw.lifePct : 128
+  const lifePctScale = mercRaw.lifePctScale === 100 ? 100 : 128
   const explicitLife = readRawStat(6, 'life') ?? readRawStat(6, 'hp')
   const normExplicitLife =
     explicitLife !== undefined ? normalizeItemPoolStat(explicitLife) : undefined
@@ -963,7 +1098,7 @@ export function computeEffectiveMercenaryStats(
     ? 0
     : normExplicitLife !== undefined && normExplicitLife > 0
       ? Math.min(maxHp, normExplicitLife)
-      : Math.max(0, Math.min(maxHp, Math.round((Math.max(0, rawLifePct) / 128) * maxHp)))
+      : Math.max(0, Math.min(maxHp, Math.round((Math.max(0, rawLifePct) / lifePctScale) * maxHp)))
 
   // Defense
   const explicitMercDef = readRawStat(31, 'defense') ?? 0
@@ -994,6 +1129,8 @@ export function computeEffectiveMercenaryStats(
   const primaryW = mercW1 ?? mercW2
   let wAddedMin = 0
   let wAddedMax = 0
+  let lEdMin = 0
+  let lEdMax = 0
   if (primaryW && primaryW.isWeapon) {
     const use2H =
       primaryW.isTwoHanded &&
@@ -1002,34 +1139,136 @@ export function computeEffectiveMercenaryStats(
     const rawWMax = use2H && primaryW.maxDam2H > 0 ? primaryW.maxDam2H : primaryW.maxDam1H
     const lFlatMin = use2H ? (primaryW.localMin2H || primaryW.localMin1H) : primaryW.localMin1H
     const lFlatMax = use2H ? (primaryW.localMax2H || primaryW.localMax1H) : primaryW.localMax1H
-    const lEd = primaryW.localEdPct + Math.floor((primaryW.localMaxEdPerLevel8ths * mlvl) / 8)
-    wAddedMin = Math.floor((rawWMin * (100 + lEd)) / 100) + lFlatMin
+    lEdMin = primaryW.localEdMinPct
+    lEdMax = primaryW.localEdMaxPct + Math.floor((primaryW.localMaxEdPerLevel8ths * mlvl) / 8)
+    wAddedMin = Math.floor((rawWMin * (100 + lEdMin)) / 100) + lFlatMin
     wAddedMax =
-      Math.floor((rawWMax * (100 + lEd)) / 100) +
+      Math.floor((rawWMax * (100 + lEdMax)) / 100) +
       lFlatMax +
       Math.floor((primaryW.localMaxDamPerLevel8ths * mlvl) / 8)
   }
 
-  const statDmgPct =
-    primaryW?.isRanged
-      ? dex
-      : str
-  const totalMercEdPct = statDmgPct + offWeapEdPct
-  const computedMinDmg =
-    Math.floor(((baseMinDamage + wAddedMin + globalMinDmg) * (100 + totalMercEdPct)) / 100) +
-    elemDmgMin
-  const computedMaxDmg =
-    Math.floor(((baseMaxDamage + wAddedMax + globalMaxDmg) * (100 + totalMercEdPct)) / 100) +
-    Math.max(elemDmgMin, elemDmgMax)
+  // Server raw stats for %ED (D2Client.dll 0x6fb3eb96..0x6fb3ebbc: stat 25 = damagepercent, stat 18 = mindamage_percent, stat 17 = maxdamage_percent)
+  const serverStat17 = readRawStat(17, 'enhancedDamage') ?? 0
+  const serverStat18 = readRawStat(18, 'minDamagePercent') ?? 0
+  const serverStat25 = (readRawStat(25, 'damagePercent') ?? readRawStat(25, 'itemMaxDamagePercent')) ?? 0
+  offWeapEdMaxPct += serverStat17
+  offWeapEdMinPct += serverStat18 !== 0 ? serverStat18 : serverStat17
+  damagePct25 += serverStat25
 
-  const minDamage =
-    explicitMinDmg > 0 && !primaryW && offWeapEdPct === 0 && elemDmgMin === 0
-      ? explicitMinDmg
-      : Math.max(baseMinDamage, computedMinDmg)
-  const maxDamage =
-    explicitMaxDmg > 0 && !primaryW && offWeapEdPct === 0 && elemDmgMax === 0
-      ? explicitMaxDmg
-      : Math.max(minDamage + 1, computedMaxDmg)
+  // Offensive aura state fallbacks when state bit is active without an explicit 0xA8 state stat list
+  if (!attachedStateIds.has(33) && (mercUnit?.states.has(33) || world.self.states.has(33))) {
+    let mightLvl = 0
+    if (finalRec?.skillEntries) {
+      const mEntry = finalRec.skillEntries.find((s) => s.skillId === 98)
+      if (mEntry) {
+        mightLvl = mEntry.level + Math.floor((deltaLvl * mEntry.lvlPerLvl) / 8)
+      }
+    }
+    if (mightLvl <= 0 && world.self.skills.has(98)) {
+      mightLvl = Math.max(1, world.self.skills.get(98) ?? 1)
+    }
+    if (mightLvl <= 0) {
+      mightLvl = 1
+    }
+    damagePct25 += 40 + 10 * (mightLvl - 1)
+  }
+  if (!attachedStateIds.has(42) && mercUnit?.states.has(42)) {
+    const concLvl = Math.max(1, world.self.skills.get(113) ?? 1)
+    damagePct25 += 60 + 15 * (concLvl - 1)
+  }
+  if (!attachedStateIds.has(49) && mercUnit?.states.has(49)) {
+    const fanatLvl = Math.max(1, world.self.skills.get(122) ?? 1)
+    damagePct25 += Math.floor((50 + 17 * (fanatLvl - 1)) / 2)
+  }
+
+  // Stat scaling: Weapons.txt StrBonus/DexBonus if weapon equipped; naked Act 1 Rogue scales with dex, others with str (D2Client.dll 0x6fb3ecc7)
+  let statBonus = 0
+  if (primaryW && primaryW.isWeapon) {
+    const sBonus = primaryW.strBonus ?? 0
+    const dBonus = primaryW.dexBonus ?? 0
+    statBonus = Math.floor((str * sBonus) / 100) + Math.floor((dex * dBonus) / 100)
+  } else {
+    statBonus = classId === 271 ? dex : str
+  }
+
+  // Total %ED is clamped to minimum -90% per D2Client.dll 0x6fb3ece0..0x6fb3ed06
+  const clampedEdi = Math.max(-90, statBonus + damagePct25)
+  const totalEdMin = Math.max(-90, clampedEdi + offWeapEdMinPct)
+  const totalEdMax = Math.max(-90, clampedEdi + offWeapEdMaxPct)
+
+  // Flat normal damage (+Damage, stat 111, e.g. Grief)
+  const totalFlat111 =
+    (primaryW?.flatDam111 ?? 0) + globalFlatDam111 + (readRawStat(111, 'itemNormalDamage') ?? 0)
+
+  // Physical damage calculation
+  const physMinDmg =
+    Math.floor(((baseMinDamage + wAddedMin + globalMinDmg) * (100 + totalEdMin)) / 100) +
+    totalFlat111
+  const physMaxDmg =
+    Math.floor(((baseMaxDamage + wAddedMax + globalMaxDmg) * (100 + totalEdMax)) / 100) +
+    totalFlat111
+
+  // Poison damage calculation
+  const effOffPoisFrames =
+    offWeapPoisFrames > 0
+      ? offWeapPoisFrames
+      : offWeapPoisRateMin > 0 || offWeapPoisRateMax > 0
+        ? 50
+        : 0
+  const offPoisMin =
+    effOffPoisFrames > 0 && offWeapPoisRateMin >= 16
+      ? Math.floor((offWeapPoisRateMin * effOffPoisFrames + 128) / 256)
+      : offWeapPoisRateMin
+  const offPoisMax =
+    effOffPoisFrames > 0 && offWeapPoisRateMax >= 16
+      ? Math.floor((offWeapPoisRateMax * effOffPoisFrames + 128) / 256)
+      : Math.max(offPoisMin, offWeapPoisRateMax)
+  const totalPoisMin = (primaryW?.elemPoisTotalMin ?? 0) + offPoisMin
+  const totalPoisMax = (primaryW?.elemPoisTotalMax ?? 0) + offPoisMax
+
+  // Total elemental & poison damage
+  const effFireMax = Math.max(totalFireMin, totalFireMax)
+  const effLtngMax = Math.max(totalLtngMin, totalLtngMax)
+  const effMagMax = Math.max(totalMagMin, totalMagMax)
+  const effColdMax = Math.max(totalColdMin, totalColdMax)
+  const totalElemMin = totalFireMin + totalLtngMin + totalMagMin + totalColdMin + totalPoisMin
+  const totalElemMax = effFireMax + effLtngMax + effMagMax + effColdMax + totalPoisMax
+
+  const minDamage = Math.max(1, physMinDmg + totalElemMin)
+  const maxDamage = Math.max(minDamage, physMaxDmg + totalElemMax)
+
+  // Authentic D2Client.dll 0x6fb3ea20 color priority:
+  // 1. Base stat 21/22 comparison (0x6fb3ea96): weapon / flat damage vs naked base
+  let damageColor: D2ColorCode = 'white'
+  if (wAddedMin > 0 || wAddedMax > 0 || globalMinDmg > 0 || globalMaxDmg > 0 || totalFlat111 > 0) {
+    damageColor = 'blue'
+  } else if (wAddedMin + globalMinDmg < 0 || wAddedMax + globalMaxDmg < 0) {
+    damageColor = 'red'
+  }
+  // 2. Off-weapon & aura %ED check (0x6fb3ebc0: stat 18 + stat 25; natural str/dex at 0x6fb3ecde does NOT change color)
+  const netPctMin = offWeapEdMinPct + damagePct25
+  const netPctMax = offWeapEdMaxPct + damagePct25
+  if (netPctMin < 0 || netPctMax < 0) {
+    damageColor = 'red'
+  } else if (netPctMin > 0 || netPctMax > 0 || lEdMin > 0 || lEdMax > 0) {
+    damageColor = 'blue'
+  } else if (lEdMin < 0 || lEdMax < 0) {
+    damageColor = 'red'
+  }
+  // 3. Elemental & poison priority override (0x6fb3ed93..0x6fb3ee02):
+  // Poison (2=green) > Cold (3=blue) > Magic (8=orange) > Lightning (9=yellow) > Fire (1=red)
+  if (totalPoisMax > 0 || totalPoisMin > 0) {
+    damageColor = 'green'
+  } else if (effColdMax > 0 || totalColdMin > 0) {
+    damageColor = 'blue'
+  } else if (effMagMax > 0 || totalMagMin > 0) {
+    damageColor = 'orange'
+  } else if (effLtngMax > 0 || totalLtngMin > 0) {
+    damageColor = 'yellow'
+  } else if (effFireMax > 0 || totalFireMin > 0) {
+    damageColor = 'red'
+  }
 
   // Resistances (`tableBaseResist` + difficulty penalty + gear/sockets/auras, clamped to `[-100, min(95, 75 + maxAdd)]`)
   const diffPenalty = RESIST_PENALTY_BY_DIFFICULTY[world.difficulty] ?? 0
@@ -1090,12 +1329,7 @@ export function computeEffectiveMercenaryStats(
     minDamage,
     baseMaxDamage,
     maxDamage,
-    damageColor:
-      minDamage > baseMinDamage || maxDamage > baseMaxDamage || elemDmgMax > 0
-        ? 'blue'
-        : minDamage < baseMinDamage
-          ? 'red'
-          : 'white',
+    damageColor,
     baseDefense,
     defense,
     defenseColor: resolveMercStatColor(defense, baseDefense),

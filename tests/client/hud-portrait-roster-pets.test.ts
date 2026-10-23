@@ -636,4 +636,168 @@ describe('Top-Left HUD Portraits & 1.13c RosterPets Parity (Hireables.cpp)', () 
     expect((hud as any).summonPortraits[0].petType).toBe(4)
     expect((hud as any).summonPortraits[0].count).toBe(3)
   })
+
+  it('P12: hudRepaintUnchanged invalidates immediately on mercenary, summon, or party portrait HP change', () => {
+    const world = new ClientWorld()
+    world.selfId = 1
+    const mockCtx = createMockContext()
+    const hud = new HudManager()
+    hud.ctx = mockCtx
+    hud.enableIdleThrottle = true
+    const model = new HudModel({ world, hudManager: hud })
+
+    world.apply({
+      type: 'Merc',
+      kind: 'assign',
+      ownerId: 1,
+      mercId: 77,
+      classId: 271,
+      nameId: 1,
+    })
+    model.syncFromWorld()
+    hud.render(1000)
+    const countAfterFirst = mockCtx.drawnRects.length
+    expect(countAfterFirst).toBeGreaterThan(0)
+
+    // Same state 50ms later (> 40ms 25fps tick, < 250ms safety repaint) -> skipped by hudRepaintUnchanged
+    hud.render(1050)
+    expect(mockCtx.drawnRects.length).toBe(countAfterFirst)
+
+    // Mercenary takes damage via 0x0C NPCGetHit -> next 25fps frame at 1100ms must repaint immediately
+    world.apply({
+      type: 'UnitMode',
+      unitType: 'monster',
+      id: 77,
+      mode: 3,
+      lifePct: 64,
+    })
+    model.syncFromWorld()
+    hud.render(1100)
+    expect(mockCtx.drawnRects.length).toBeGreaterThan(countAfterFirst)
+  })
+
+  it('P13: 0x6D NPCStop lifeByte and 0x7F PartyMemberState (0..100) vs 0..128 scale keep unit, merc, and summon portrait HP synchronized', () => {
+    const world = new ClientWorld()
+    world.selfId = 1
+    const mockCtx = createMockContext()
+    const hud = new HudManager()
+    hud.ctx = mockCtx
+    const model = new HudModel({ world, hudManager: hud })
+
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 'monster', id: 88, classId: 271, x: 5100, y: 5100, mode: 1, lifePct: 128 },
+    })
+    world.apply({
+      type: 'Merc',
+      kind: 'assign',
+      ownerId: 1,
+      mercId: 88,
+      classId: 271,
+      nameId: 2,
+    })
+    // Also summon a Clay Golem (id=89, petType=3, classId=289)
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 'monster', id: 89, classId: 289, x: 5102, y: 5102, mode: 1, lifePct: 128 },
+    })
+    world.apply(
+      decode0x7ASummonAction(new Uint8Array([0x7a, 1, 3, 0x21, 0x01, 1, 0, 0, 0, 89, 0, 0, 0])),
+    )
+    model.syncFromWorld()
+    const fullMaxHp = (hud as any).merc.maxHp
+    expect(fullMaxHp).toBeGreaterThan(0)
+    expect((hud as any).merc.hp).toBe(fullMaxHp)
+    expect((hud as any).summonPortraits[0].lifePct).toBe(100)
+
+    // 1. 0x6D NPCStop with lifeByte = 64 (50% of 128) on living merc and golem
+    for (const uId of [88, 89]) {
+      world.apply({
+        type: 'UnitMove',
+        unit: { unitType: 'monster', id: uId },
+        to: { x: 5104, y: 5104 },
+        lifePct: 64,
+        npc: {
+          opcode: 0x6d,
+          cmd: 0x01,
+          unitId: uId,
+          s: [5104, 5104, 64],
+          b: [],
+          d: [],
+        },
+      } as any)
+    }
+    model.syncFromWorld()
+    expect(world.getUnit('monster', 88)?.lifePct).toBe(64)
+    expect(world.merc?.lifePct).toBe(64)
+    expect((hud as any).merc.hp).toBe(Math.round(fullMaxHp * 0.5))
+    expect(world.getUnit('monster', 89)?.lifePct).toBe(64)
+    expect((hud as any).summonPortraits[0].lifePct).toBe(50)
+
+    // 2. 0x7F PartyMemberState with lifePct = 100 (full HP on 0..100 scale) must restore 100% of maxHp (not 100/128 = 78%)
+    world.apply({
+      type: 'Party',
+      kind: 'memberState',
+      isPlayer: false,
+      relation: 0,
+      unitId: 88,
+      lifePct: 100,
+    })
+    model.syncFromWorld()
+    expect(world.merc?.lifePct).toBe(100)
+    expect(world.merc?.lifePctScale).toBe(100)
+    expect((hud as any).merc.hp).toBe(fullMaxHp)
+    expect(world.getUnit('monster', 88)?.lifePct).toBe(128)
+  })
+
+  it('P14: StatSet (stat 6 / stat 7) synchronizes merc & pet lifePct and invalidates stale stat 6 on subsequent lifePct packets', () => {
+    const world = new ClientWorld()
+    world.selfId = 1
+    const mockCtx = createMockContext()
+    const hud = new HudManager()
+    hud.ctx = mockCtx
+    const model = new HudModel({ world, hudManager: hud })
+
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 'monster', id: 95, classId: 271, x: 5000, y: 5000, mode: 1, lifePct: 128 },
+    })
+    world.apply({
+      type: 'Merc',
+      kind: 'assign',
+      ownerId: 1,
+      mercId: 95,
+      classId: 271,
+      nameId: 1,
+    })
+
+    // Server sends StatSet maxHp=200 (stat 7) and hp=50 (stat 6, i.e. 25%)
+    world.apply({
+      type: 'StatSet',
+      unit: { unitType: 'monster', id: 95 },
+      stat: 7,
+      value: 200,
+    })
+    world.apply({
+      type: 'StatSet',
+      unit: { unitType: 'monster', id: 95 },
+      stat: 6,
+      value: 50,
+    })
+    model.syncFromWorld()
+    expect(world.getUnit('monster', 95)?.lifePct).toBe(32)
+    expect(world.merc?.lifePct).toBe(32)
+    expect((hud as any).merc.maxHp).toBe(200)
+    expect((hud as any).merc.hp).toBe(50)
+
+    // Subsequent 0x3E Npc heal (lifePct=128) invalidates stale stat 6=50 and restores full 200/200 HP
+    world.apply({
+      type: 'Npc',
+      kind: 'heal',
+      unitId: 95,
+      result: 128,
+    })
+    model.syncFromWorld()
+    expect((hud as any).merc.hp).toBe(200)
+  })
 })

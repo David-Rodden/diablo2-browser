@@ -138,6 +138,18 @@ describe('Tier 3 — Cross-Feature Pairwise Interactions (CF1–CF16, 16 tests)'
       y: 100,
       d2sBytes,
     })
+    ;(game as unknown as { players: Map<number, { items: unknown[] }> }).players
+      .get(p1)!
+      .items.push({
+        unitId: 9001,
+        code: 'tsc',
+        location: 'inventory',
+        x: 0,
+        y: 0,
+        quantity: 1,
+        stats: new Map(),
+        socketedItems: [],
+      })
     game.drainPlayerEvents(p1)
 
     // Cast TownPortal in Blood Moor

@@ -58,6 +58,17 @@ describe('issue #1338: two-ended town portal', () => {
   it('spawns both mouths, travels to the paired mouth, and closes after returning', () => {
     const game = makeGame()
     const playerId = game.connectPlayer({ charClass: 'pal', name: 'PortalUser', x: 1030, y: 1030, areaId: 2 })
+    const player = (game as unknown as { players: Map<number, { items: unknown[] }> }).players.get(playerId)!
+    player.items.push({
+      unitId: 9001,
+      code: 'tsc',
+      location: 'inventory',
+      x: 0,
+      y: 0,
+      quantity: 1,
+      stats: new Map(),
+      socketedItems: [],
+    })
     game.drainEvents(playerId)
 
     game.enqueueCommand(playerId, { type: 'TownPortal' })
@@ -89,5 +100,67 @@ describe('issue #1338: two-ended town portal', () => {
     expect(Math.hypot(back.x - wildMouth.x, back.y - wildMouth.y)).toBeLessThanOrEqual(3)
     // Entering from the town mouth closes both ends.
     expect(ownedPortals(game, playerId)).toHaveLength(0)
+  })
+
+  it('refuses to open a town portal without a scroll or tome charge', () => {
+    const game = makeGame()
+    const playerId = game.connectPlayer({ charClass: 'pal', name: 'Empty', x: 1030, y: 1030, areaId: 2 })
+    game.enqueueCommand(playerId, { type: 'TownPortal' })
+    game.stepFrame()
+    expect(ownedPortals(game, playerId)).toHaveLength(0)
+  })
+
+  it('consumes one tome charge and emits an ItemEvent update', () => {
+    const game = makeGame()
+    const playerId = game.connectPlayer({ charClass: 'pal', name: 'Tome', x: 1030, y: 1030, areaId: 2 })
+    const player = (game as unknown as { players: Map<number, { items: any[] }> }).players.get(playerId)!
+    const tome = {
+      unitId: 9002,
+      code: 'tbk',
+      location: 'inventory',
+      x: 0,
+      y: 0,
+      quantity: 2,
+      stats: new Map(),
+      socketedItems: [],
+    }
+    player.items.push(tome)
+    game.drainEvents(playerId)
+    game.enqueueCommand(playerId, { type: 'TownPortal' })
+    game.stepFrame()
+    expect(tome.quantity).toBe(1)
+    expect(ownedPortals(game, playerId)).toHaveLength(2)
+    expect(
+      game.drainEvents(playerId).some(
+        (event) => event.type === 'ItemEvent' && (event as { action?: string }).action === 'update',
+      ),
+    ).toBe(true)
+  })
+
+  it('opens an independent public pair for the Portal Shrine', () => {
+    const game = makeGame()
+    const playerId = game.connectPlayer({ charClass: 'pal', name: 'ShrineUser', x: 1030, y: 1030, areaId: 2 })
+    const player = (game as unknown as { players: Map<number, any> }).players.get(playerId)!
+    player.items.push({
+      unitId: 9003,
+      code: 'tsc',
+      location: 'inventory',
+      x: 0,
+      y: 0,
+      quantity: 1,
+      stats: new Map(),
+      socketedItems: [],
+    })
+    game.enqueueCommand(playerId, { type: 'TownPortal' })
+    game.stepFrame()
+    expect(ownedPortals(game, playerId)).toHaveLength(2)
+    ;(game as unknown as { applyShrineEffect(p: unknown, code: number, id: number): void }).applyShrineEffect(
+      player,
+      17,
+      777,
+    )
+    // The player's personal pair survives; the shrine pair uses the public key.
+    expect(ownedPortals(game, playerId)).toHaveLength(2)
+    expect(ownedPortals(game, -777)).toHaveLength(2)
   })
 })

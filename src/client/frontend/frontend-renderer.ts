@@ -446,6 +446,12 @@ export class FrontendRenderer {
    * `D2Client` / `D2Launch` `PlaySound(4)` `cursor_button_click` `cursor\button.wav`).
    */
   onPlaySound?: (soundId: number) => void
+  /**
+   * Callback invoked whenever active keyboard focus changes (e.g. editbox clicked/tabbed/cleared).
+   * When `focusSink` is false, the IME sink updates its value/bounds and blurs without opening the soft keyboard.
+   */
+  onActiveInputChange?: (field: ActiveInputField, focusSink?: boolean) => void
+  onRenderSync?: () => void
   asyncHandlers: FrontendAsyncHandlers | null = null
 
   constructor(canvas: HTMLCanvasElement, state: BnetFlowState) {
@@ -463,6 +469,97 @@ export class FrontendRenderer {
 
   setAsyncHandlers(handlers: FrontendAsyncHandlers | null): void {
     this.asyncHandlers = handlers
+  }
+
+  markDirty(): void {
+    this.inputVersion += 1
+  }
+
+  getActiveInput(): ActiveInputField {
+    return this.state.activeInput
+  }
+
+  setActiveInput(field: ActiveInputField, focusSink = true): void {
+    const changed = this.state.activeInput !== field
+    this.state.activeInput = field
+    this.markDirty()
+    if (!focusSink) {
+      this.onActiveInputChange?.(field, false)
+    } else if (changed || field !== null) {
+      this.onActiveInputChange?.(field)
+    }
+  }
+
+  blurImeSink(): void {
+    this.onActiveInputChange?.(this.state.activeInput, false)
+  }
+
+  getActiveInputBounds(field: ActiveInputField = this.state.activeInput): {
+    readonly x: number
+    readonly y: number
+    readonly width: number
+    readonly height: number
+  } | null {
+    if (!field) return null
+
+    if (this.state.stage === 'bnet_login') {
+      if (field === 'accountName' || field === 'bnet_account') {
+        return { x: 278, y: 316, width: 243, height: 31 }
+      }
+      if (field === 'accountPassword' || field === 'bnet_password') {
+        return { x: 278, y: 376, width: 243, height: 31 }
+      }
+    }
+
+    if (this.state.stage === 'bnet_create_account') {
+      if (field === 'accountName' || field === 'bnet_account') {
+        return { x: 278, y: 318, width: 243, height: 34 }
+      }
+      if (field === 'accountPassword' || field === 'bnet_password') {
+        return { x: 278, y: 372, width: 243, height: 39 }
+      }
+      if (field === 'accountVerifyPassword' || field === 'bnet_verify_password') {
+        return { x: 278, y: 426, width: 243, height: 45 }
+      }
+    }
+
+    if (this.state.stage === 'char_create') {
+      if (field === 'charName') {
+        return { x: 318, y: 485, width: 175, height: 28 }
+      }
+    }
+
+    if (this.state.stage === 'bnet_lobby') {
+      if (field === 'chatInput') {
+        return { x: 28, y: 418, width: 335, height: 28 }
+      }
+      if (this.state.lobbySubPanel === 'join') {
+        if (field === 'gameName') {
+          return { x: 425, y: 123, width: 167, height: 25 }
+        }
+        if (field === 'gamePassword') {
+          return { x: 599, y: 123, width: 168, height: 25 }
+        }
+      } else if (this.state.lobbySubPanel === 'create') {
+        if (field === 'gameName') {
+          return { x: 427, y: 137, width: 188, height: 25 }
+        }
+        if (field === 'gamePassword') {
+          return { x: 427, y: 191, width: 188, height: 25 }
+        }
+        if (field === 'gameDescription') {
+          return { x: 427, y: 245, width: 342, height: 25 }
+        }
+        if (field === 'maxPlayers') {
+          return { x: 655, y: 278, width: 42, height: 29 }
+        }
+        if (field === 'charDifference') {
+          return { x: 650, y: 313, width: 55, height: 33 }
+        }
+      }
+    }
+
+    return null
   }
 
   getLocalizedStrings(): FrontendManifest['strings'] {
@@ -1327,7 +1424,7 @@ export class FrontendRenderer {
             onClick: () => {
               this.state.stage = 'main_menu'
               this.state.stageTicks = 0
-              this.state.activeInput = null
+              this.setActiveInput(null, false)
             },
           },
         ]
@@ -1344,6 +1441,7 @@ export class FrontendRenderer {
             label: this.requireStr(5182, 'disagree'),
             onClick: () => {
               disagreeTermsOfUse(this.state)
+              this.setActiveInput(this.state.activeInput, false)
             },
           },
           {
@@ -1356,6 +1454,7 @@ export class FrontendRenderer {
             label: this.requireStr(5181, 'agree'),
             onClick: () => {
               agreeTermsOfUse(this.state)
+              this.setActiveInput(this.state.activeInput, false)
             },
           },
         ]
@@ -1372,6 +1471,7 @@ export class FrontendRenderer {
             label: this.requireStr(5101, 'exit'),
             onClick: () => {
               cancelCreateAccount(this.state)
+              this.setActiveInput(this.state.activeInput, false)
             },
           },
           {
@@ -1384,6 +1484,7 @@ export class FrontendRenderer {
             label: this.requireStr(5102, 'ok'),
             onClick: () => {
               submitCreateAccountForm(this.state, s as unknown as Record<string, unknown>)
+              this.setActiveInput(this.state.activeInput, false)
             },
           },
         ]
@@ -1400,6 +1501,7 @@ export class FrontendRenderer {
             label: this.requireStr(5103, 'cancel'),
             onClick: () => {
               cancelPleaseRead(this.state)
+              this.setActiveInput(this.state.activeInput, false)
             },
           },
           {
@@ -1430,16 +1532,16 @@ export class FrontendRenderer {
               if (this.state.roster.length > 0) {
                 this.state.stage = 'char_select'
                 this.state.stageTicks = 0
-                this.state.activeInput = null
+                this.setActiveInput(null, false)
                 resetHeroAvatarAnims(this.state)
               } else if (this.state.playMode === 'single') {
                 this.state.stage = 'main_menu'
                 this.state.stageTicks = 0
-                this.state.activeInput = null
+                this.setActiveInput(null, false)
               } else {
                 this.state.stage = 'bnet_login'
                 this.state.stageTicks = 0
-                this.state.activeInput = 'accountName'
+                this.setActiveInput('accountName', false)
               }
             },
           },
@@ -1485,6 +1587,7 @@ export class FrontendRenderer {
             label: this.requireStr(5273, 'createNewCharacter'),
             onClick: () => {
               enterCharCreate(this.state)
+              this.setActiveInput(null, false)
             },
           },
           {
@@ -1541,7 +1644,7 @@ export class FrontendRenderer {
             onClick: () => {
               this.state.stage = 'main_menu'
               this.state.stageTicks = 0
-              this.state.activeInput = null
+              this.setActiveInput(null, false)
             },
           },
           {
@@ -1655,7 +1758,7 @@ export class FrontendRenderer {
                 this.state.difficulty = 'normal'
               }
               this.state.lobbySubPanel = 'create'
-              this.state.activeInput = 'gameName'
+              this.setActiveInput('gameName', false)
             },
           },
           {
@@ -1681,7 +1784,7 @@ export class FrontendRenderer {
                 this.state.createGameError = null
               }
               this.state.lobbySubPanel = 'join'
-              this.state.activeInput = 'gameName'
+              this.setActiveInput('gameName', false)
               if (this.asyncHandlers?.onListGames) {
                 void this.asyncHandlers.onListGames(this.state)
               }
@@ -1718,7 +1821,7 @@ export class FrontendRenderer {
             onClick: () => {
               this.state.stage = 'char_select'
               this.state.stageTicks = 0
-              this.state.activeInput = null
+              this.setActiveInput(null, false)
               resetHeroAvatarAnims(this.state)
             },
           },
@@ -1739,7 +1842,7 @@ export class FrontendRenderer {
               this.state.selectedGameInfo = null
               this.state.joinGameDetailsScroll = 0
               this.state.createGameError = null
-              this.state.activeInput = 'gameName'
+              this.setActiveInput('gameName', false)
             },
           },
           {
@@ -1822,6 +1925,9 @@ export class FrontendRenderer {
       }
     }
     this.state.chatInput = ''
+    if (this.state.activeInput === 'chatInput') {
+      this.onActiveInputChange?.('chatInput', false)
+    }
     if (this.asyncHandlers?.onSendChat) {
       void this.asyncHandlers.onSendChat(this.state, trimmed)
     }
@@ -1834,7 +1940,7 @@ export class FrontendRenderer {
       this.state.roster = []
       this.state.stage = 'char_select'
       this.state.stageTicks = 0
-      this.state.activeInput = null
+      this.setActiveInput(null, false)
     }
   }
 
@@ -1883,12 +1989,13 @@ export class FrontendRenderer {
    * Render the active pre-game stage onto the 800x600 canvas.
    */
   render(nowMs = performance.now()): void {
+    this.onRenderSync?.()
     if (!this.ready || !this.manifest) return
     // On-demand rendering: skip frames whose scene inputs did not change (see
     // shouldRenderMenuFrame) — an idle main menu stops repainting 800x600 at
     // display refresh rate and the GPU load drops with it.
     const signal: MenuFrameDirtySignal = {
-      stage: `${this.state.stage}:${this.state.lobbySubPanel}:${this.state.popupModal?.message ?? ''}:${this.state.createGameError ?? ''}:${this.state.lastError ?? ''}:${this.state.realmGames.length}:${this.state.selectedGameName}:${this.state.selectedGameInfo?.name ?? ''}:${this.state.selectedGameInfo?.uptimeSec ?? -1}`,
+      stage: `${this.state.stage}:${this.state.lobbySubPanel}:${this.state.activeInput ?? ''}:${this.state.popupModal?.message ?? ''}:${this.state.createGameError ?? ''}:${this.state.lastError ?? ''}:${this.state.realmGames.length}:${this.state.selectedGameName}:${this.state.selectedGameInfo?.name ?? ''}:${this.state.selectedGameInfo?.uptimeSec ?? -1}`,
       tick: this.state.globalTick,
       mouseX: this.lastMouseX,
       mouseY: this.lastMouseY,
@@ -3148,11 +3255,13 @@ export class FrontendRenderer {
       ) {
         this.onPlaySound?.(4)
         btn.onClick()
+        this.blurImeSink()
         return
       }
     }
 
     if (this.state.popupModal !== null) {
+      this.blurImeSink()
       return
     }
 
@@ -3170,25 +3279,30 @@ export class FrontendRenderer {
         const targetLine = Math.round(ratio * maxLine)
         scrollTermsOfUse(this.state, targetLine - this.state.termsScrollLine, maxLine)
       }
+      this.blurImeSink()
       return
     }
 
     if (this.state.stage === 'bnet_login') {
       if (x >= 278 && x <= 521 && y >= 316 && y <= 347) {
-        this.state.activeInput = 'accountName'
+        this.setActiveInput('accountName')
       } else if (x >= 278 && x <= 521 && y >= 376 && y <= 407) {
-        this.state.activeInput = 'accountPassword'
+        this.setActiveInput('accountPassword')
+      } else {
+        this.blurImeSink()
       }
       return
     }
 
     if (this.state.stage === 'bnet_create_account') {
       if (x >= 278 && x <= 521 && y >= 318 && y <= 352) {
-        this.state.activeInput = 'accountName'
+        this.setActiveInput('accountName')
       } else if (x >= 278 && x <= 521 && y >= 372 && y <= 411) {
-        this.state.activeInput = 'accountPassword'
+        this.setActiveInput('accountPassword')
       } else if (x >= 278 && x <= 521 && y >= 426 && y <= 471) {
-        this.state.activeInput = 'accountVerifyPassword'
+        this.setActiveInput('accountVerifyPassword')
+      } else {
+        this.blurImeSink()
       }
       return
     }
@@ -3200,34 +3314,40 @@ export class FrontendRenderer {
         if (x >= hb.x && x < hb.x + hb.w && y >= hb.y && y < hb.y + hb.h) {
           this.onPlaySound?.(4)
           selectCampfireClass(this.state, id)
+          this.setActiveInput('charName', false)
           return
         }
       }
       if (this.state.selectedClass) {
-        if (x >= 318 && x <= 493 && y >= 485 && y <= 513) {
-          this.state.activeInput = 'charName'
+        if (x >= 318 && x <= 493 && y >= 465 && y <= 515) {
+          this.setActiveInput('charName')
           return
         }
         if (x >= 318 && x <= 520 && y >= 518 && y <= 536) {
           this.onPlaySound?.(4)
           this.state.isExpansion = !this.state.isExpansion
+          this.blurImeSink()
           return
         }
         if (x >= 318 && x <= 480 && y >= 538 && y <= 556) {
           this.onPlaySound?.(4)
           this.state.isHardcore = !this.state.isHardcore
+          this.blurImeSink()
           return
         }
         if (this.state.playMode !== 'single' && x >= 318 && x <= 510 && y >= 558 && y <= 576) {
           this.onPlaySound?.(4)
           this.state.isLadder = !this.state.isLadder
+          this.blurImeSink()
           return
         }
       }
+      this.blurImeSink()
       return
     }
 
     if (this.state.stage === 'char_select') {
+      this.setActiveInput(null, false)
       for (let i = 0; i < this.state.roster.length; i++) {
         const col = i % 2
         const row = Math.floor(i / 2)
@@ -3263,11 +3383,12 @@ export class FrontendRenderer {
             ? (this.getLocalizedStrings() as unknown as Record<string, unknown>)
             : undefined,
         )
+        this.blurImeSink()
         return
       }
       // Left Chat Input box
       if (x >= 28 && x <= 363 && y >= 418 && y <= 446) {
-        this.state.activeInput = 'chatInput'
+        this.setActiveInput('chatInput')
         return
       }
       if (this.state.lobbySubPanel === 'join') {
@@ -3275,11 +3396,11 @@ export class FrontendRenderer {
         // - `gameName` inside gold border `(425, 123, 167, 25)`
         // - `gamePassword` inside gold border `(599, 123, 168, 25)`
         if (x >= 425 && x <= 592 && y >= 123 && y <= 148) {
-          this.state.activeInput = 'gameName'
+          this.setActiveInput('gameName')
           return
         }
         if (x >= 599 && x <= 767 && y >= 123 && y <= 148) {
-          this.state.activeInput = 'gamePassword'
+          this.setActiveInput('gamePassword')
           return
         }
         // Left Game List scrollbar (`x = 592, y = 214..394`, `w = 12`)
@@ -3298,6 +3419,7 @@ export class FrontendRenderer {
             const ratio = Math.max(0, Math.min(1, (y - 228) / (380 - 228)))
             this.state.joinGameListScroll = Math.round(ratio * maxListScroll)
           }
+          this.blurImeSink()
           return
         }
         // Right Game Details scrollbar (`x = 753, y = 192..394`, `w = 12`)
@@ -3316,6 +3438,7 @@ export class FrontendRenderer {
             const ratio = Math.max(0, Math.min(1, (y - 206) / (380 - 206)))
             this.state.joinGameDetailsScroll = Math.round(ratio * maxDetailScroll)
           }
+          this.blurImeSink()
           return
         }
         // Left Game List rows (`0x6f9ea660` & `0x6f9e4730`: `x = 432, y = 220 + i*15, w = 160, h = 173`)
@@ -3330,6 +3453,7 @@ export class FrontendRenderer {
               this.onPlaySound?.(4)
               this.state.selectedGameName = game.name
               this.state.gameName = game.name
+              this.setActiveInput('gameName', false)
               this.state.joinGameDetailsScroll = 0
               this.state.createGameError = null
               if (
@@ -3348,26 +3472,28 @@ export class FrontendRenderer {
               }
             }
           }
+          this.blurImeSink()
           return
         }
+        this.blurImeSink()
         return
       }
       // Vertically stacked Create Game editboxes (`0x6f9ea990..0x6f9eab10`)
       if (x >= 427 && x <= 615 && y >= 137 && y <= 162) {
-        this.state.activeInput = 'gameName'
+        this.setActiveInput('gameName')
         return
       }
       if (x >= 427 && x <= 615 && y >= 191 && y <= 216) {
-        this.state.activeInput = 'gamePassword'
+        this.setActiveInput('gamePassword')
         return
       }
       if (x >= 427 && x <= 769 && y >= 245 && y <= 270) {
-        this.state.activeInput = 'gameDescription'
+        this.setActiveInput('gameDescription')
         return
       }
       // Max Number of Players label & editbox (`x = 427..705, y = 276..310`)
       if (x >= 427 && x <= 705 && y >= 276 && y <= 310) {
-        this.state.activeInput = 'maxPlayers'
+        this.setActiveInput('maxPlayers')
         return
       }
       // Character Difference checkbox (`x = 431..649, y = 315..346`)
@@ -3378,9 +3504,11 @@ export class FrontendRenderer {
           if (!this.state.charDifference.trim()) {
             this.state.charDifference = '99'
           }
-          this.state.activeInput = 'charDifference'
+          this.setActiveInput('charDifference')
         } else if (this.state.activeInput === 'charDifference') {
-          this.state.activeInput = 'gameName'
+          this.setActiveInput('gameName', false)
+        } else {
+          this.blurImeSink()
         }
         return
       }
@@ -3390,7 +3518,7 @@ export class FrontendRenderer {
         if (!this.state.charDifference.trim()) {
           this.state.charDifference = '99'
         }
-        this.state.activeInput = 'charDifference'
+        this.setActiveInput('charDifference')
         return
       }
       // Difficulty radio buttons (`Normal`, `Nightmare`, `Hell` gated by character progression)
@@ -3407,10 +3535,14 @@ export class FrontendRenderer {
             this.state.difficulty = d.id
             this.state.createGameError = null
           }
+          this.blurImeSink()
           return
         }
       }
+      this.blurImeSink()
+      return
     }
+    this.blurImeSink()
   }
 
   handleWheel(deltaY: number, x?: number, y?: number): void {
@@ -3495,46 +3627,50 @@ export class FrontendRenderer {
       if (this.state.stage === 'bnet_connecting') {
         this.onPlaySound?.(4)
         cancelConnecting(this.state)
+        this.setActiveInput(null, false)
       } else if (this.state.stage === 'bnet_login') {
         this.onPlaySound?.(4)
         this.state.stage = 'main_menu'
         this.state.stageTicks = 0
-        this.state.activeInput = null
+        this.setActiveInput(null, false)
       } else if (this.state.stage === 'bnet_terms_of_use') {
         this.onPlaySound?.(4)
         disagreeTermsOfUse(this.state)
+        this.setActiveInput(this.state.activeInput, false)
       } else if (this.state.stage === 'bnet_create_account') {
         this.onPlaySound?.(4)
         cancelCreateAccount(this.state)
+        this.setActiveInput(this.state.activeInput, false)
       } else if (this.state.stage === 'bnet_please_read') {
         this.onPlaySound?.(4)
         cancelPleaseRead(this.state)
+        this.setActiveInput(this.state.activeInput, false)
       } else if (this.state.stage === 'char_create') {
         this.onPlaySound?.(4)
         if (this.state.roster.length > 0) {
           this.state.stage = 'char_select'
           this.state.stageTicks = 0
-          this.state.activeInput = null
+          this.setActiveInput(null, false)
           resetHeroAvatarAnims(this.state)
         } else if (this.state.playMode === 'single') {
           this.state.stage = 'main_menu'
           this.state.stageTicks = 0
-          this.state.activeInput = null
+          this.setActiveInput(null, false)
         } else {
           this.state.stage = 'bnet_login'
           this.state.stageTicks = 0
-          this.state.activeInput = 'accountName'
+          this.setActiveInput('accountName', false)
         }
       } else if (this.state.stage === 'char_select') {
         this.onPlaySound?.(4)
         this.state.stage = 'main_menu'
         this.state.stageTicks = 0
-        this.state.activeInput = null
+        this.setActiveInput(null, false)
       } else if (this.state.stage === 'bnet_lobby') {
         this.onPlaySound?.(4)
         this.state.stage = 'char_select'
         this.state.stageTicks = 0
-        this.state.activeInput = null
+        this.setActiveInput(null, false)
         resetHeroAvatarAnims(this.state)
       }
       return
@@ -3605,10 +3741,12 @@ export class FrontendRenderer {
     if (e.key === 'Tab') {
       e.preventDefault()
       if (this.state.stage === 'bnet_login') {
-        this.state.activeInput =
-          this.state.activeInput === 'accountName' ? 'accountPassword' : 'accountName'
+        this.setActiveInput(
+          this.state.activeInput === 'accountName' ? 'accountPassword' : 'accountName',
+        )
       } else if (this.state.stage === 'bnet_create_account') {
         cycleCreateAccountFocus(this.state, e.shiftKey)
+        this.setActiveInput(this.state.activeInput)
       } else if (this.state.stage === 'bnet_lobby') {
         const order: ActiveInputField[] =
           this.state.lobbySubPanel === 'join'
@@ -3622,7 +3760,7 @@ export class FrontendRenderer {
                 'chatInput',
               ]
         const idx = order.indexOf(this.state.activeInput)
-        this.state.activeInput = order[(idx + 1) % order.length]!
+        this.setActiveInput(order[(idx + 1) % order.length]!)
       }
       return
     }
@@ -3718,7 +3856,7 @@ export class FrontendRenderer {
     }
   }
 
-  private getFieldValue(field: Exclude<ActiveInputField, null>): string {
+  getFieldValue(field: Exclude<ActiveInputField, null>): string {
     switch (field) {
       case 'accountName':
       case 'bnet_account':
@@ -3746,7 +3884,7 @@ export class FrontendRenderer {
     }
   }
 
-  private setFieldValue(field: Exclude<ActiveInputField, null>, val: string): void {
+  setFieldValue(field: Exclude<ActiveInputField, null>, val: string): void {
     switch (field) {
       case 'accountName':
       case 'bnet_account':

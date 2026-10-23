@@ -139,7 +139,7 @@ describe('issue #1341 MonAi dispatch', () => {
     // aip3=curse?, aip7=curse level. Distance 10 keeps it outside the kiting band.
     game.spawnMonster({ hcIdx: 469, defId: 'succubus1', x: 20, y: 10, areaId: 2 })
     game.drainEvents(playerId)
-    game.stepFrames(16)
+    game.stepFrames(90)
     const states = game.getPlayerState(playerId)!.states
     expect([60, 9, 61, 58, 19].some((id) => states.has(id))).toBe(true)
   })

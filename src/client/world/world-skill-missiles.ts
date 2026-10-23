@@ -79,6 +79,7 @@ import { reportMissingArt } from '../../client/scene/missing-art.ts'
 import { syncBoneArmorOverlays113c } from './bone-armor-overlays-113c.ts'
 import { catapultBallTraj3d } from './boss-death-cltdo-113c.ts'
 import { ClientUnit, type ClientUnitOverlay, type UnitCastState } from './client-unit.ts'
+import { isAlliedCombatMonster113c } from './world-missile-stepper.ts'
 import { TRAJ_FIXED_SHIFT } from './quest-fx-horadric-113c.ts'
 import {
   CURSECENTER_RANGE_113C,
@@ -1078,11 +1079,14 @@ export function spawnMissileByKeyImpl(
   unit.piercedTargets = unit.hitUnitIds
   unit.altitude = opts?.altitude
   unit.verticalDescentPerTick = opts?.verticalDescentPerTick
-  // 1.13c Lobbed Potions (pCltDoFunc = 2 / rows #44..49 & #238..239, Issue #1276):
-  // Calculate parabolic arc duration from distance and velocity so the potion lands at (targetX, targetY)
+  // 1.13c Lobbed Potions (pCltDoFunc = 2 / rows #44..49 & #238..239, Issue #1276) &
+  // #286 Baal Monster Spawn ('baal spawn monsters' #550, Skills.txt lob = 1):
+  // Calculate parabolic arc duration from distance and velocity so the projectile lands at (targetX, targetY)
   // with peak altitude > 0 during flight and altitude = 0 on impact.
   const isLobbedPotion113c =
     rawRow?.pCltDoFunc === 2 ||
+    cleanKey === 'baal spawn monsters' ||
+    opts?.sourceSkillId === 286 ||
     cleanKey === 'pantherpotorange' ||
     cleanKey === 'pantherpotgreen' ||
     cleanKey === 'oilpotion' ||
@@ -5123,6 +5127,46 @@ export function spawnMissilesForSkillImpl(
     return
   }
 
+  if (skillId === 285) {
+    // 1.13c Skills.txt #285 'Baal Corpse Explode' (CltDoFunc=82 @ 0x6FB745C0, cltmissilea='baalcorpseexplodedelay' #587, Param1=40):
+    // Scans monster corpses within 40 sub-tiles of caster, marks each with STATE_CORPSE_NODRAW (104),
+    // and spawns 'baalcorpseexplodedelay' (#587) with random Range=1..19 ticks (pCltHitFunc=44 -> 'baalcorpseexplodeexpl' #588 -> 'baalcorpseexplodefade' #622).
+    const slvl = Math.max(1, skillLevel)
+    for (const m of this._monsters.values()) {
+      if (m.id === caster.id) continue
+      if (!m.dead && m.mode !== 0 && m.mode !== 12 && m.lifePct > 0) continue
+      if (
+        m.states.has(99) ||
+        m.states.has(107) ||
+        m.states.has(118) ||
+        m.states.has(173)
+      ) {
+        continue
+      }
+      if (Math.hypot(m.x - startX, m.y - startY) > 40) continue
+      m.states.add(104)
+      const delayTicks = 1 + SEED_RollLimitedRandomNumber(caster.seed, 19)
+      const delayM = this.spawnMissileByKey(
+        'baalcorpseexplodedelay',
+        m.x,
+        m.y,
+        m.x,
+        m.y,
+        {
+          ownerType,
+          ownerId,
+          sourceSkillId: 285,
+          skillLevel: slvl,
+          maxTicks: delayTicks,
+        },
+      )
+      delayM.vx = 0
+      delayM.vy = 0
+      delayM.alwaysExplode = true
+    }
+    return
+  }
+
   if (skillId === 216) {
     // 1.13c Skills.txt #216 'QueenDeath' (CltDoFunc=64 @ 0x6FB07860 -> 0x6FB078F0, cltmissilea='queendeathcenter' #353, Issue #1202):
     // Spawns stationary 'queendeathcenter' (#353, Range=100, pCltDoFunc=35 -> 'queendeathglob' #354 -> 'queendeathsplat1'/'queendeathsplat2').
@@ -6087,7 +6131,7 @@ export function resolveEnchantTargetUnit113c(
     if (u.unitType === 'player') return true
     if (u.unitType === 'monster' && !u.isNpc) {
       return (
-        world.isFriendlyOrNonHostileMonster(u) ||
+        isAlliedCombatMonster113c(world, u) ||
         (world._merc !== null && u.id === world._merc.mercId) ||
         world._pets.has(u.id) ||
         u.ownerType === 'player'

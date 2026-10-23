@@ -178,6 +178,9 @@ describe('Diablo II v1.13c Mercenary Screen (UI_DrawMercScreen @ 0x6fb4ae80)', (
     expect(wpMerc.nextExp).toBeGreaterThan(0)
     expect(wpMerc.headItem?.code).toBe('cap')
     expect(wpMerc.weaponItem?.code).toBe('sbw')
+    expect(wpMerc.minDamage).toBe(4)
+    expect(wpMerc.maxDamage).toBe(12)
+    expect(wpMerc.damageColor).toBe('blue')
   })
 
   it('draws NPCInv.dc6 background, empty slot silhouettes, equipped sprites, 2H phantom, and font16->font6 overflow fallback', () => {
@@ -876,6 +879,278 @@ describe('Diablo II v1.13c Mercenary Screen (UI_DrawMercScreen @ 0x6fb4ae80)', (
     expect(world.containers.merc.size).toBe(0)
     expect(world.containers.mercBySlot.size).toBe(0)
     expect(hud.worldPanels.merc?.weaponItem).toBeNull()
+  })
+
+  it('calculates authentic 1.13c mercenary damage with weapon damage, stat scaling, Might aura, stat 111, and elemental color priorities', () => {
+    const world = new ClientWorld()
+
+    // 1. Act 1 Rogue Scout (classId 271, Level 1)
+    world.apply({
+      type: 'PlayerAssign',
+      unitId: 1,
+      charClass: 1,
+      name: 'Sorceress',
+      x: 5100,
+      y: 5100,
+    })
+    world.apply({
+      type: 'Merc',
+      kind: 'assign',
+      ownerId: 1,
+      mercId: 901,
+      classId: 271,
+      nameId: 1,
+    } as any)
+
+    // Naked level 3 Rogue (Hireling.txt lowest bracket: level 3, baseDex=45, dmgMin=1, dmgMax=3)
+    const nakedRogue = computeEffectiveMercenaryStats(world)
+    expect(nakedRogue).not.toBeNull()
+    // Naked Act 1 Rogue scales with Dex (45% ED), but natural Dex scaling at 0x6fb3ecde does NOT change damageColor from 'white'
+    // min: floor(1 * 1.45) = 1, max: floor(3 * 1.45) = 4
+    expect(nakedRogue?.minDamage).toBe(1)
+    expect(nakedRogue?.maxDamage).toBe(4)
+    expect(nakedRogue?.damageColor).toBe('white')
+
+    // Equip Hunter's Bow ('hbw', 2H 2-6 damage, dexBonus=100)
+    ;(world.containers.merc as Map<number, any>).set(9001, {
+      id: 9001,
+      code: 'hbw',
+      name: "Hunter's Bow",
+      container: 'merc',
+      bodyLoc: 4,
+      equippedSlot: 4,
+      width: 2,
+      height: 3,
+      quality: 2,
+      identified: true,
+      stats: [],
+    })
+    ;(world.containers.mercBySlot as Map<number, any>).set(4, world.containers.merc.get(9001))
+
+    const equippedRogue = computeEffectiveMercenaryStats(world)
+    // Bow adds 2-6 damage: total base min = 1 + 2 = 3, base max = 3 + 6 = 9
+    // Dex bonus = floor(45 * 100 / 100) = 45%
+    // min: floor(3 * 1.45) = 4, max: floor(9 * 1.45) = 13
+    expect(equippedRogue?.minDamage).toBe(4)
+    expect(equippedRogue?.maxDamage).toBe(13)
+    expect(equippedRogue?.damageColor).toBe('blue')
+
+    // Add fire damage to bow (+5-10 fire damage, stat 48/49)
+    ;(world.containers.merc as Map<number, any>).set(9001, {
+      id: 9001,
+      code: 'hbw',
+      name: "Hunter's Bow",
+      container: 'merc',
+      bodyLoc: 4,
+      equippedSlot: 4,
+      width: 2,
+      height: 3,
+      quality: 2,
+      identified: true,
+      stats: [
+        { statId: 48, param: 0, value: 5 },
+        { statId: 49, param: 0, value: 10 },
+      ],
+    })
+    ;(world.containers.mercBySlot as Map<number, any>).set(4, world.containers.merc.get(9001))
+
+    const fireRogue = computeEffectiveMercenaryStats(world)
+    // min: 4 + 5 = 9, max: 13 + 10 = 23
+    expect(fireRogue?.minDamage).toBe(9)
+    expect(fireRogue?.maxDamage).toBe(23)
+    expect(fireRogue?.damageColor).toBe('red') // Fire element color
+
+    // Add cold damage to helm (+3-5 cold damage, stat 54/55)
+    ;(world.containers.merc as Map<number, any>).set(9002, {
+      id: 9002,
+      code: 'cap',
+      name: 'Cap',
+      container: 'merc',
+      bodyLoc: 1,
+      equippedSlot: 1,
+      width: 2,
+      height: 2,
+      quality: 2,
+      identified: true,
+      stats: [
+        { statId: 54, param: 0, value: 3 },
+        { statId: 55, param: 0, value: 5 },
+      ],
+    })
+    ;(world.containers.mercBySlot as Map<number, any>).set(1, world.containers.merc.get(9002))
+
+    const coldRogue = computeEffectiveMercenaryStats(world)
+    // Cold takes priority over Fire
+    expect(coldRogue?.damageColor).toBe('blue')
+
+    // Add poison damage to armor (+20 poison over 50 frames, stat 57/58/59)
+    ;(world.containers.merc as Map<number, any>).set(9003, {
+      id: 9003,
+      code: 'qui',
+      name: 'Quilted Armor',
+      container: 'merc',
+      bodyLoc: 3,
+      equippedSlot: 3,
+      width: 2,
+      height: 3,
+      quality: 2,
+      identified: true,
+      stats: [
+        { statId: 57, param: 0, value: 50 },
+        { statId: 58, param: 0, value: 50 },
+        { statId: 59, param: 0, value: 50 },
+      ],
+    })
+    ;(world.containers.mercBySlot as Map<number, any>).set(3, world.containers.merc.get(9003))
+
+    const poisonRogue = computeEffectiveMercenaryStats(world)
+    // Poison takes highest priority -> green
+    expect(poisonRogue?.damageColor).toBe('green')
+
+    // 2. Act 2 Desert Mercenary with Voulge ('vou', 2H 6-21) and Might aura (state 33)
+    ;(world.containers.merc as Map<number, any>).clear()
+    ;(world.containers.mercBySlot as Map<number, any>).clear()
+    world.apply({
+      type: 'Merc',
+      kind: 'assign',
+      ownerId: 1,
+      mercId: 902,
+      classId: 338,
+      nameId: 1,
+    } as any)
+    const mUnit = (world as any).ensureUnit('monster', 902)
+    mUnit.classId = 338
+    mUnit.stats.set(12, 10) // Level 10
+
+    // Equip Voulge ('vou', 2H 6-21 damage, strBonus=100)
+    ;(world.containers.merc as Map<number, any>).set(9004, {
+      id: 9004,
+      code: 'vou',
+      name: 'Voulge',
+      container: 'merc',
+      bodyLoc: 4,
+      equippedSlot: 4,
+      width: 2,
+      height: 4,
+      quality: 2,
+      identified: true,
+      stats: [],
+    })
+    ;(world.containers.mercBySlot as Map<number, any>).set(4, world.containers.merc.get(9004))
+
+    const a2BeforeMight = computeEffectiveMercenaryStats(world)
+    expect(a2BeforeMight).not.toBeNull()
+    const dmgBeforeMight = a2BeforeMight?.maxDamage ?? 0
+
+    // Activate Might aura (state 33)
+    mUnit.states.add(33)
+    const a2AfterMight = computeEffectiveMercenaryStats(world)
+    expect(a2AfterMight).not.toBeNull()
+    // Might adds at least 40% ED, so damage must increase
+    expect(a2AfterMight!.maxDamage).toBeGreaterThan(dmgBeforeMight)
+    expect(a2AfterMight!.damageColor).toBe('blue')
+
+    // 3. Act 5 Barbarian with Grief flat damage (stat 111)
+    ;(world.containers.merc as Map<number, any>).clear()
+    ;(world.containers.mercBySlot as Map<number, any>).clear()
+    mUnit.states.clear()
+    world.apply({
+      type: 'Merc',
+      kind: 'assign',
+      ownerId: 1,
+      mercId: 903,
+      classId: 560,
+      nameId: 1,
+    } as any)
+
+    ;(world.containers.merc as Map<number, any>).set(9005, {
+      id: 9005,
+      code: 'ssd',
+      name: 'Short Sword',
+      container: 'merc',
+      bodyLoc: 4,
+      equippedSlot: 4,
+      width: 1,
+      height: 3,
+      quality: 2,
+      identified: true,
+      stats: [{ statId: 111, param: 0, value: 340 }],
+    })
+    ;(world.containers.mercBySlot as Map<number, any>).set(4, world.containers.merc.get(9005))
+
+    const barbWithGrief = computeEffectiveMercenaryStats(world)
+    expect(barbWithGrief).not.toBeNull()
+    // Flat 340 damage added directly after %ED
+    expect(barbWithGrief!.minDamage).toBeGreaterThanOrEqual(340)
+    expect(barbWithGrief!.maxDamage).toBeGreaterThanOrEqual(340)
+
+    // 4. Audit checks:
+    // (a) stat 219 (item_maxdamage_percent_perlevel) applies ONLY to wAddedMax, never wAddedMin
+    ;(world.containers.merc as Map<number, any>).clear()
+    ;(world.containers.mercBySlot as Map<number, any>).clear()
+    const bUnit = (world as any).ensureUnit('monster', 903)
+    bUnit.classId = 560
+    bUnit.stats.set(12, 16) // Level 16 -> floor(16 * 80 / 8) = +160% max damage on weapon
+    bUnit.stats.set(0, 200) // Str 200 (> tableBaseStr 113)
+    bUnit.stats.set(21, 20) // BaseMin 20 (> tableBaseMinDmg 15)
+    bUnit.stats.set(22, 30) // BaseMax 30 (> tableBaseMaxDmg 18)
+
+    ;(world.containers.merc as Map<number, any>).set(9006, {
+      id: 9006,
+      code: 'ssd', // Short Sword: 1H 2-7, strBonus=100
+      name: 'Short Sword',
+      container: 'merc',
+      bodyLoc: 4,
+      equippedSlot: 4,
+      width: 1,
+      height: 3,
+      quality: 2,
+      identified: true,
+      stats: [{ statId: 219, param: 0, value: 80 }], // +10% Max Damage/lvl -> +160% at lvl 16
+    })
+    ;(world.containers.mercBySlot as Map<number, any>).set(4, world.containers.merc.get(9006))
+
+    const barbStat219 = computeEffectiveMercenaryStats(world)
+    // wAddedMin uses lEdMin = 0 -> floor(2 * 100 / 100) = 2; totalMin = floor((20 + 2) * (100 + 200) / 100) = 66
+    // wAddedMax uses lEdMax = 160 -> floor(7 * 260 / 100) = 18; totalMax = floor((30 + 18) * (100 + 200) / 100) = 144
+    expect(barbStat219?.minDamage).toBe(66)
+    expect(barbStat219?.maxDamage).toBe(144)
+
+    // (b) Off-weapon stat 17 + stat 18 + stat 25 (from 0xA8 state list) do not double-count stat 18 on minDamage,
+    // and sum stat 25 + stat 17/18 rather than taking Math.max
+    ;(world.containers.merc as Map<number, any>).set(9007, {
+      id: 9007,
+      code: 'cap',
+      name: 'Cap',
+      container: 'merc',
+      bodyLoc: 1,
+      equippedSlot: 1,
+      width: 2,
+      height: 2,
+      quality: 2,
+      identified: true,
+      stats: [
+        { statId: 17, param: 0, value: 30 },
+        { statId: 18, param: 0, value: 30 },
+      ],
+    })
+    ;(world.containers.mercBySlot as Map<number, any>).set(1, world.containers.merc.get(9007))
+    // Attach 0xA8 Might state stat list (state 33, stat 25 = 50) without setting stat 25 in baseStats
+    bUnit.stats.setStateStats(33, [{ statId: 25, param: 0, value: 50 }])
+
+    const barbOffWeapAndState = computeEffectiveMercenaryStats(world)
+    // totalEdMin = totalEdMax = 200 (strBonus) + 50 (state 25) + 30 (helm 17/18) = 280%
+    // min: floor(22 * 380 / 100) = 83, max: floor(48 * 380 / 100) = 182
+    expect(barbOffWeapAndState?.minDamage).toBe(83)
+    expect(barbOffWeapAndState?.maxDamage).toBe(182)
+    expect(barbOffWeapAndState?.damageColor).toBe('blue')
+
+    // (c) Cursed with Decrepify (state 60, stat 25 = -100) turns damageColor 'red' per 0x6fb3ebd3 even when strBonus is +200%
+    bUnit.stats.removeStateStats(33)
+    bUnit.stats.setStateStats(60, [{ statId: 25, param: 0, value: -100 }])
+    const barbDecrep = computeEffectiveMercenaryStats(world)
+    // netPctMin = 30 + (-100) = -70 < 0 -> 'red'
+    expect(barbDecrep?.damageColor).toBe('red')
   })
 })
 

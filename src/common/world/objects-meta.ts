@@ -860,8 +860,6 @@ const RAW_CANONICAL_113C_OBJECTS: Record<number, CanonicalObjectMeta> = {
     "selectableMask": 3,
     "nameEn": "an evil force",
     "nameZh": "一股邪惡力量",
-    "isShrine": true,
-    "parm0": 3,
     "token": "SG",
     "xOffset": 0,
     "yOffset": 0
@@ -1148,8 +1146,6 @@ const RAW_CANONICAL_113C_OBJECTS: Record<number, CanonicalObjectMeta> = {
     "selectableMask": 1,
     "nameEn": "an evil force",
     "nameZh": "一股邪惡力量",
-    "isShrine": true,
-    "parm0": 1,
     "token": "DJ",
     "xOffset": 0,
     "yOffset": 0
@@ -2696,8 +2692,6 @@ const RAW_CANONICAL_113C_OBJECTS: Record<number, CanonicalObjectMeta> = {
     "selectableMask": 1,
     "nameEn": "an evil force",
     "nameZh": "一股邪惡力量",
-    "isShrine": true,
-    "parm0": 1,
     "token": "QF",
     "xOffset": 0,
     "yOffset": 0
@@ -2846,8 +2840,6 @@ const RAW_CANONICAL_113C_OBJECTS: Record<number, CanonicalObjectMeta> = {
     "selectableMask": 1,
     "nameEn": "an evil force",
     "nameZh": "一股邪惡力量",
-    "isShrine": true,
-    "parm0": 1,
     "token": "AX",
     "xOffset": 0,
     "yOffset": 0
@@ -5770,6 +5762,9 @@ export function resolveObjectDisplayName(
   if (!meta) {
     return undefined
   }
+  if (meta.selectableMask === 0 || classId === 625 || meta.nameEn?.toLowerCase() === 'an evil force') {
+    return undefined
+  }
   if (meta.isShrine) {
     const shrineCode = interactType !== undefined && interactType > 0 ? interactType : flags
     if (shrineCode !== undefined && shrineCode >= 1 && shrineCode <= 22) {
@@ -5794,6 +5789,8 @@ export function resolveObjectDisplayName(
     nameZh: meta.nameZh || meta.nameEn,
   }
 }
+
+export const resolveObjectName = resolveObjectDisplayName
 
 export interface ShrineOverlayPair113c {
   readonly icon: string
@@ -5851,6 +5848,9 @@ export function resolveShrineOverlays113c(
 ): ShrineOverlayPair113c | undefined {
   const meta = CANONICAL_113C_OBJECTS[classId]
   if (!meta?.isShrine) return undefined
+  if (meta.selectableMask === 0 || classId === 625 || meta.nameEn?.toLowerCase() === 'an evil force') {
+    return undefined
+  }
   const rawCode = interactType !== undefined && interactType > 0 ? interactType : flags
   if (rawCode === undefined || rawCode < 6 || rawCode > 15) {
     return undefined

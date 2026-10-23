@@ -702,13 +702,25 @@ export function spawnCompellingOrbMistImpl(this: ClientWorldInternal, orb: Clien
   if (orb.unitType !== 'monster' || orb.classId !== COMPELLING_ORB_MONSTER_CLASS) {
     throw new Error(`spawnCompellingOrbMist: unit ${orb.key} is not MonStats 366 compellingorb`)
   }
-  const finder = this._nearRoomObjectFinder
-  if (finder === null) {
-    throw new Error('spawnCompellingOrbMist: no D2Common #10754 room object finder registered')
-  }
   const x = Math.floor(orb.x)
   const y = Math.floor(orb.y)
-  const stairs = finder(x, y, DURANCE_STAIRS_OBJECT_CLASS)
+  const finder = this._nearRoomObjectFinder
+  let stairs: ClientUnit | null = null
+  if (finder !== null) {
+    stairs = finder(x, y, DURANCE_STAIRS_OBJECT_CLASS)
+  } else {
+    let bestDistSq = Number.POSITIVE_INFINITY
+    for (const u of this._units.values()) {
+      if (u.unitType !== 'object' || u.classId !== DURANCE_STAIRS_OBJECT_CLASS) continue
+      const dx = u.x - x
+      const dy = u.y - y
+      const dSq = dx * dx + dy * dy
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq
+        stairs = u
+      }
+    }
+  }
   const target = orbMistTarget({ x, y }, stairs === null ? null : { x: Math.floor(stairs.x), y: Math.floor(stairs.y) })
   const row = ORB_MIST_MISSILE_ROWS.mist
   const mist = this.spawnMissileByKey(row.name, x, y, target.x, target.y, {

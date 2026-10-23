@@ -297,6 +297,8 @@ export interface TownNpcServiceDescriptor {
   readonly canIdentify: boolean;
   readonly canTalk?: boolean | undefined;
   readonly canHire?: boolean | undefined;
+  /** 1.13c `NPC_ResurrectMerc`: Tyrael (Act 4) can revive the player's mercenary. */
+  readonly canResurrectMerc?: boolean | undefined;
   readonly hireBeforeTrade?: boolean | undefined;
   readonly travelActions?: readonly ('travel_east' | 'travel_west' | 'travel_harrogath')[] | undefined;
   readonly questRewardActions?: readonly ('imbue' | 'add_sockets' | 'personalize')[] | undefined;
@@ -1144,6 +1146,7 @@ const RAW_TOWN_NPC_DESCRIPTORS: readonly RawTownNpcServiceDescriptor[] = [
     canGamble: false,
     canHeal: false,
     canIdentify: false,
+    canResurrectMerc: true,
     travelActions: ['travel_harrogath'],
     greetingLines: [
       'Hail to you, champion. The hour of judgment upon Diablo is at hand.',
