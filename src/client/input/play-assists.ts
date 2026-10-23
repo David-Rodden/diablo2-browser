@@ -18,9 +18,9 @@ import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
 import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
-const PICKUP_RETRY_MS = 1000
+const PICKUP_RETRY_MS = 600
 const PICKUP_DETOUR_RETRY_MS = 2500
-const LOOT_STEP_MS = 300
+const LOOT_STEP_MS = 200
 const LOOT_STEP_AHEAD = 8
 const AUTO_PICKUP_RADIUS_SUBTILES = 20
 const CARRIED_GOLD_PER_LEVEL = 10_000
@@ -34,12 +34,12 @@ const REACH_MAX_NODES = 4000
 const REACH_DETOUR_FACTOR = 1.6
 const REACH_DETOUR_SLACK = 12
 const DOOR_SEARCH_MS = 400
-const DOOR_RETRY_MS = 1500
+const DOOR_RETRY_MS = 900
 const DOOR_PATH_RADIUS = 3
 const BELT_REFILL_MS = 250
 const BELT_REFILL_WAIT_MS = 1500
 const RED_TEXT = 1
-const SUPPORT_MS = 600
+const SUPPORT_MS = 400
 const CORPSE_USED_STATE = 0x8f
 const CORPSE_REACH = 10
 const RECAST_MS = 6000
