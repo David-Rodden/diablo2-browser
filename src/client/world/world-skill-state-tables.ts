@@ -81,6 +81,7 @@ export interface MercenaryState {
   nameZh?: string | undefined
   exp?: number | undefined
   lifePct: number
+  lifePctScale?: 100 | 128 | undefined
   isDead: boolean
   reviveCost: number
   deadNameId?: number | undefined
@@ -95,6 +96,7 @@ export interface RosterPetState {
   readonly petType: number
   readonly classId: number
   lifePct: number
+  lifePctScale?: 100 | 128 | undefined
   isDead: boolean
 }
 

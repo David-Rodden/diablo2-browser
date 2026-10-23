@@ -99,10 +99,10 @@ describe('issue #1353 Horadric orifice', () => {
 })
 
 describe('issue #1353 Compelling Orb', () => {
-  it("requires Khalim's Will and two hits (D2Game 0x6fd0a140)", () => {
+  it("requires Khalim's Will and two hits, plays mode 1 -> 2 smash show, kills MonStats 366, and opens stairs 386 (D2Game 0x6fd0a140)", () => {
     const game = new GameInstance({ seed: 1363, areaId: 1 })
     const playerId = game.connectPlayer({ charClass: 'pal', name: 'Hero', x: 10, y: 10, areaId: 1 })
-    const player = (game as unknown as { players: Map<number, { items: any[]; questFlags: Uint16Array }> })
+    const player = (game as unknown as { players: Map<number, { items: any[]; questFlags: Uint16Array; areaId: number }> })
       .players.get(playerId)!
     const flail = {
       unitId: 9901, code: 'qf2', name: "Khalim's Will", quality: 2, level: 1,
@@ -113,8 +113,25 @@ describe('issue #1353 Compelling Orb', () => {
       socketedItems: [],
     }
     player.items.push(flail)
+    const stairs = game.spawnObject({ classId: 386, x: 11, y: 11, areaId: 1 })
     const orb = game.spawnObject({ classId: 404, x: 11, y: 10, areaId: 1 })
-    const orbRec = (game as unknown as { objects: Map<number, { mode: number }> }).objects.get(orb)!
+    const objects = (game as unknown as { objects: Map<number, { mode: number; linkedMonsterId?: number }> }).objects
+    const orbRec = objects.get(orb)!
+    const stairsRec = objects.get(stairs)!
+    expect(orbRec.linkedMonsterId).toBeDefined()
+    const assignEvents = game.drainEvents(playerId)
+    const orbMonsterAssign = assignEvents.find(
+      (e) => e.type === 'UnitAssign' && e.unitType === 'monster' && e.classId === 366,
+    ) as { unit?: { bossMods?: number[] } } | undefined
+    expect(orbMonsterAssign?.unit?.bossMods).toEqual([22])
+
+    // Sealed stairs (mode 0) cannot warp the player or be forced open before the orb is smashed.
+    game.enqueueCommand(playerId, { type: 'Interact', target: { unitType: 2, id: stairs } })
+    game.enqueueCommand(playerId, { type: 'OperateObject', objectId: stairs })
+    game.stepFrames(1)
+    expect(player.areaId).toBe(1)
+    expect(stairsRec.mode).toBe(0)
+
     game.enqueueCommand(playerId, { type: 'OperateObject', objectId: orb })
     game.stepFrames(1)
     expect(player.items.includes(flail)).toBe(true)
@@ -125,8 +142,18 @@ describe('issue #1353 Compelling Orb', () => {
     game.enqueueCommand(playerId, { type: 'OperateObject', objectId: orb })
     game.stepFrames(1)
     expect(player.items.includes(flail)).toBe(false)
-    expect(game.drainEvents(playerId).some((e) => e.type === 'QuestState' && (e as { specialEventId?: number }).specialEventId === 10)).toBe(true)
+    const smashEvents = game.drainEvents(playerId)
+    expect(smashEvents.some((e) => e.type === 'ItemEvent' && (e as { action?: string; itemId?: number }).action === 'remove' && (e as { itemId?: number }).itemId === 9901)).toBe(true)
+    expect(smashEvents.some((e) => e.type === 'UnitMode' && (e as { unitType?: number; id?: number; mode?: number }).unitType === 1 && (e as { id?: number }).id === orbRec.linkedMonsterId && (e as { mode?: number }).mode === 0)).toBe(true)
+    expect(smashEvents.some((e) => e.type === 'QuestState' && (e as { specialEventId?: number }).specialEventId === 10)).toBe(true)
     expect(player.questFlags[questWordIndex113c('a3q3')!]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+    // Enters OBJMODE_OPERATING (1) immediately, then settles into OBJMODE_OPENED (2) after 58 ticks.
+    expect(orbRec.mode).toBe(1)
+    game.stepFrames(11)
+    expect(stairsRec.mode).toBe(1)
+    game.stepFrames(19)
+    expect(stairsRec.mode).toBe(2)
+    game.stepFrames(28)
     expect(orbRec.mode).toBe(2)
   })
 })

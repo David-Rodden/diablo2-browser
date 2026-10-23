@@ -696,6 +696,18 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
         x: 110,
         y: 110,
       })
+      ;(game as unknown as { players: Map<number, { items: unknown[] }> }).players
+        .get(p1)!
+        .items.push({
+          unitId: 9001,
+          code: 'tsc',
+          location: 'inventory',
+          x: 0,
+          y: 0,
+          quantity: 1,
+          stats: new Map(),
+          socketedItems: [],
+        })
       game.drainPlayerEvents(p1)
 
       game.enqueueCommand(p1, { type: 'TownPortal' })
@@ -766,6 +778,18 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
         x: 100,
         y: 100,
       })
+      ;(game as unknown as { players: Map<number, { items: unknown[] }> }).players
+        .get(p1)!
+        .items.push({
+          unitId: 9002,
+          code: 'tsc',
+          location: 'inventory',
+          x: 0,
+          y: 0,
+          quantity: 1,
+          stats: new Map(),
+          socketedItems: [],
+        })
       game.drainPlayerEvents(p1)
 
       game.enqueueCommand(p1, { type: 'TownPortal' })

@@ -127,9 +127,24 @@ export function decodeD2gsC2sPacketToCommand(pkt: Uint8Array): ClientCommand | n
       const slot = r.u16LE()
       return { type: 'ItemEquip', itemId, slot }
     }
+    case 0x1b: {
+      const itemId = r.u32LE()
+      const slot = r.u16LE()
+      return { type: 'ItemSwap2Handed', itemId, slot }
+    }
     case 0x1c: {
       const slot = r.u16LE()
       return { type: 'ItemUnequip', slot }
+    }
+    case 0x1d: {
+      const itemId = r.u32LE()
+      const slot = r.u16LE()
+      return { type: 'ItemSwap', itemId, slot }
+    }
+    case 0x1e: {
+      const itemId = r.u32LE()
+      const slot = r.u16LE()
+      return { type: 'ItemSwap2HandedDual', itemId, slot }
     }
     case 0x20: {
       const itemId = r.u32LE()

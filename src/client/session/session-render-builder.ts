@@ -686,7 +686,7 @@ export function buildRenderableUnits(
     const isCorpse =
       u.dead ||
       (u.unitType === 'monster' && (u.mode === 0 || u.mode === 12 || u.lifePct <= 0)) ||
-      (u.unitType === 'player' && (u.mode === 0 || u.mode === 17 || u.lifePct <= 0))
+      (u.unitType === 'player' && (u.mode === 0 || u.mode === 17))
     const ux = !isCorpse && interp ? interp.x : u.x
     const uy = !isCorpse && interp ? interp.y : u.y
     const dx = ux - selfX

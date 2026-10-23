@@ -844,8 +844,7 @@ export class AutomapView {
         const isDeadPlayer =
           Boolean(u.isCorpse) ||
           u.mode === 17 ||
-          u.mode === 0 ||
-          (u.lifePct !== undefined && u.lifePct <= 0)
+          u.mode === 0
         entityDots.push({
           worldX,
           worldY,
@@ -1095,15 +1094,33 @@ export class AutomapView {
       : null
 
     const pushDeduplicatedExitMarker = (candidate: MinimapMarker): void => {
-      if (candidate.kind === 'exit' && candidate.toLevelId !== undefined) {
-        const dup = markers.some(
-          (m) =>
-            m.kind === 'exit' &&
-            m.toLevelId === candidate.toLevelId &&
-            Math.abs(m.cellX - candidate.cellX) <= 8 &&
-            Math.abs(m.cellY - candidate.cellY) <= 8,
-        )
-        if (dup) return
+      if (candidate.kind === 'exit') {
+        // Issue #1368: Never render an exit marker pointing back to the current area
+        if (candidate.toLevelId !== undefined && candidate.toLevelId === this.currentAreaId) {
+          return
+        }
+        if (candidate.toLevelId !== undefined) {
+          const dup = markers.some((m) => {
+            if (m.kind !== 'exit') return false
+            const close =
+              Math.abs(m.cellX - candidate.cellX) <= 8 &&
+              Math.abs(m.cellY - candidate.cellY) <= 8
+            if (!close) return false
+            // Same target exit marker nearby
+            if (m.toLevelId === candidate.toLevelId) return true
+            // Issue #1368: Reciprocal exit marker pair across stitched boundary (e.g. A->B and B->A within <= 8 cells)
+            if (
+              candidate.fromLevelId !== undefined &&
+              m.fromLevelId !== undefined &&
+              m.toLevelId === candidate.fromLevelId &&
+              candidate.toLevelId === m.fromLevelId
+            ) {
+              return true
+            }
+            return false
+          })
+          if (dup) return
+        }
       }
       markers.push(candidate)
     }
@@ -1117,6 +1134,7 @@ export class AutomapView {
             cellX: ent.x,
             cellY: ent.y,
             kind: 'exit',
+            fromLevelId: this.currentAreaId,
             toLevelId: ent.toLevelId,
             targetName: levelDisplayName(ent.toLevelId, lang),
             ...(entPreRevealed ? { preRevealed: true } : {}),
@@ -1182,7 +1200,7 @@ export class AutomapView {
       const mergedFloors = view.automap.floors.map(mapPrimaryCell)
       const mergedWalls = view.automap.walls.map(mapPrimaryCell)
       const mergedObjects = view.automap.objects.map(mapPrimaryCell)
-      const mergedExtras = view.automap.extras.map(mapPrimaryCell)
+      const mergedExtras = (view.automap.extras ?? []).map(mapPrimaryCell)
       areaSegments.push({
         areaId: this.currentAreaId,
         view,
@@ -1253,13 +1271,18 @@ export class AutomapView {
         for (const c of otherView.automap.objects) mergedObjects.push(remapCell(c))
         const objectsEnd = mergedObjects.length
         const extrasStart = mergedExtras.length
-        for (const c of otherView.automap.extras) mergedExtras.push(remapCell(c))
+        for (const c of otherView.automap.extras ?? []) mergedExtras.push(remapCell(c))
         const extrasEnd = mergedExtras.length
         const markersStart = markers.length
 
         if (Array.isArray(otherView.entrances)) {
           for (const ent of otherView.entrances) {
-            if (ent.toLevelId > 0 && ent.toLevelId !== otherAreaId) {
+            // Issue #1368: Ignore transitions pointing back to otherAreaId or to currentAreaId
+            if (
+              ent.toLevelId > 0 &&
+              ent.toLevelId !== otherAreaId &&
+              ent.toLevelId !== this.currentAreaId
+            ) {
               const entPreRevealed = otherAlwaysPreRevealed
                 ? true
                 : isOtherCellRevealed !== null && isOtherCellRevealed(ent.x, ent.y)
@@ -1269,6 +1292,7 @@ export class AutomapView {
                 cellX: ent.x + dCellX,
                 cellY: ent.y + dCellY,
                 kind: 'exit',
+                fromLevelId: otherAreaId,
                 toLevelId: ent.toLevelId,
                 targetName: levelDisplayName(ent.toLevelId, lang),
                 preRevealed: entPreRevealed,

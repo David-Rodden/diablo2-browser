@@ -1461,7 +1461,8 @@ export function buildSceneDrawables(
 
     const isCorpse =
       Boolean(unit.isCorpse) ||
-      (unit.lifePct !== undefined && unit.lifePct <= 0 && (unit.kind === 'monster' || unit.kind === 'player'))
+      (unit.lifePct !== undefined && unit.lifePct <= 0 && unit.kind === 'monster') ||
+      (unit.kind === 'player' && (unit.mode === 0 || unit.mode === 17))
     const isDeadAnim =
       isCorpse ||
       unit.animMode === 'DT' ||
@@ -1562,15 +1563,25 @@ export function buildSceneDrawables(
         }
       }
       if (highestShift) {
-        tintColor = highestShift.tintColor
-        activePaletteRow = highestShift.paletteRow
+        // Issue #1369: Prevent double tinting when palette shift is active.
+        // If paletteRow > 0 is present, apply palette transform and suppress multiplicative RGB tintColor.
+        if (highestShift.paletteRow > 0) {
+          activePaletteRow = highestShift.paletteRow
+          tintColor = null
+        } else {
+          tintColor = highestShift.tintColor
+        }
       }
     }
     if (activePaletteRow === undefined && unit.kind === 'monster') {
       const resolvedRow = getMonsterPaletteRow(unit)
       if (resolvedRow > 0) {
         activePaletteRow = resolvedRow
+        tintColor = null
       }
+    }
+    if (activePaletteRow !== undefined && activePaletteRow > 0) {
+      tintColor = null
     }
 
     const activeCastState = !isCorpse ? unit.castState : undefined

@@ -2731,14 +2731,60 @@ export interface ActBossAiDecision113c {
 }
 
 /**
- * 1.13c Baal Throne Room 5 Minion Waves (`D2Game.dll` BaalThrone / Worldstone Keep).
+ * 1.13c Baal Throne Room 5 Minion Waves (`D2Game.dll` `g_aBaalWaveSuperUniques` @ `0x6FD1B688`
+ * & `D2GAME_SpawnSuperUnique` @ `0x6FC451F0` / `0x6FC456CB`).
  */
 export const BAAL_THRONE_WAVES_113C = [
-  { wave: 1, superUniqueId: 'Colenzo the Annihilator', leaderHcIdx: 58, minionHcIdx: 18 },
-  { wave: 2, superUniqueId: 'Achmel the Cursed', leaderHcIdx: 288, minionHcIdx: 363 },
-  { wave: 3, superUniqueId: 'Bartuc the Bloody', leaderHcIdx: 345, minionHcIdx: 345 },
-  { wave: 4, superUniqueId: 'Ventar the Unholy', leaderHcIdx: 332, minionHcIdx: 332 },
-  { wave: 5, superUniqueId: 'Lister the Tormentor', leaderHcIdx: 571, minionHcIdx: 571 },
+  {
+    wave: 1,
+    superUniqueIndex: 61,
+    superUniqueKey: 'Baal Subject 1',
+    superUniqueId: 'Colenzo the Annihilator',
+    leaderHcIdx: 62,
+    minionHcIdx: 23,
+    extraMinionHcIdx: undefined,
+    extraMinionCount: 0,
+  },
+  {
+    wave: 2,
+    superUniqueIndex: 62,
+    superUniqueKey: 'Baal Subject 2',
+    superUniqueId: 'Achmel the Cursed',
+    leaderHcIdx: 105,
+    minionHcIdx: 105,
+    extraMinionHcIdx: 381,
+    extraMinionCount: 10,
+  },
+  {
+    wave: 3,
+    superUniqueIndex: 63,
+    superUniqueKey: 'Baal Subject 3',
+    superUniqueId: 'Bartuc the Bloody',
+    leaderHcIdx: 557,
+    minionHcIdx: 557,
+    extraMinionHcIdx: undefined,
+    extraMinionCount: 0,
+  },
+  {
+    wave: 4,
+    superUniqueIndex: 64,
+    superUniqueKey: 'Baal Subject 4',
+    superUniqueId: 'Ventar the Unholy',
+    leaderHcIdx: 558,
+    minionHcIdx: 558,
+    extraMinionHcIdx: undefined,
+    extraMinionCount: 0,
+  },
+  {
+    wave: 5,
+    superUniqueIndex: 65,
+    superUniqueKey: 'Baal Subject 5',
+    superUniqueId: 'Lister the Tormentor',
+    leaderHcIdx: 571,
+    minionHcIdx: 571,
+    extraMinionHcIdx: undefined,
+    extraMinionCount: 0,
+  },
 ] as const
 
 /**

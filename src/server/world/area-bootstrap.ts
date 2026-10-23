@@ -149,6 +149,8 @@ export function buildAreaBootstrap(level: AreaLevelGeometry): LocalAreaBootstrap
       const townNpc = getTownNpcDescriptorByHcIdx(u.index)
       const isVendor = townNpc !== undefined && townNpc.vendorId !== null
       const isNpc = isTown || townNpc !== undefined
+      const row = MONSTATS_113C_ROWS[u.index]
+      const isKillable = !isNpc && (row?.killable ?? true)
       monsters.push({
         classId: u.index,
         x,
@@ -156,7 +158,7 @@ export function buildAreaBootstrap(level: AreaLevelGeometry): LocalAreaBootstrap
         areaId,
         isNpc,
         isVendor,
-        isKillable: !isNpc,
+        isKillable,
         aiDisabled: isNpc,
       })
     }

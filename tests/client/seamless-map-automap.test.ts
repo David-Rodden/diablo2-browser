@@ -349,6 +349,22 @@ describe('Seamless Multi-Level Big Map & Automap Rendering (No Discrete Level Sw
     expect(endPt.y).toBe(25)
   })
 
+  it('updates world.areaId from RoomReveal without a MapService', () => {
+    const world = new ClientWorld()
+    world.apply({ type: 'LoadAct', act: 0, mapSeed: 0x12345678, areaId: 1 })
+    world.apply({ type: 'PlayerAssign', unitId: 1, classId: 0, name: 'Hero', x: 80, y: 25 })
+    world.apply({
+      type: 'RoomReveal',
+      areaId: 2,
+      tileX: 15,
+      tileY: 0,
+      tileW: 8,
+      tileH: 8,
+      roomSeed: 1,
+    })
+    expect(world.areaId).toBe(2)
+  })
+
   it('retains live monsters and ground items in adjacent revealed rooms across area borders', () => {
     const world = new ClientWorld()
     world.apply({ type: 'MapReveal', roomX: 0, roomY: 0, areaId: 1 })

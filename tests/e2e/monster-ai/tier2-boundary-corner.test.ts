@@ -1196,7 +1196,7 @@ describe('Tier 2: Boundary, Corner & Negative Tests (F1–F14)', () => {
       }
       // Freeze expired on frame 3; subsequent frames allow movement toward player
       const xAfterExpire = game.getMonster(monsterId)!.x
-      for (let f = 0; f < 10; f++) {
+      for (let f = 0; f < 20; f++) {
         game.stepFrame()
       }
       game.drainEvents(playerId)

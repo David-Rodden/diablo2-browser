@@ -554,6 +554,111 @@ function cullAndNormalizeUnitsToPaddedView(
 }
 
 /**
+ * Converges camera viewport coordinates safely at outdoor level boundaries in widescreen modes
+ * (profile.width > 800), clamping excessive overshoot so viewport corners do not expose unrendered
+ * voids outside the map diamond, while keeping the local player safely within the standard 800x600
+ * viewport center box (distance to screen edge >= 400px horizontally, >= 300px vertically).
+ */
+export function computeConvergedCameraTopLeft(
+  baseCamX: number,
+  baseCamY: number,
+  profile: ViewportProfile,
+  levelView: LevelView | null | undefined,
+  neighbours: readonly LevelView[] | null | undefined,
+): { readonly x: number; readonly y: number } {
+  if (!levelView || profile.width <= 800) {
+    return { x: baseCamX, y: baseCamY }
+  }
+
+  const cellsX = levelView.cellsX
+  const cellsY = levelView.cellsY
+  if (!cellsX || !cellsY || cellsX <= 0 || cellsY <= 0) {
+    return { x: baseCamX, y: baseCamY }
+  }
+
+  const isoOriginX = levelView.isoOriginX ?? 0
+  const isoOriginY = levelView.isoOriginY ?? 0
+
+  const maxShiftX = Math.round((profile.width - 800) / 2)
+  const maxShiftY = Math.round(Math.max(0, profile.height - 600) / 2)
+
+  let hasNeighbourPositiveX = false
+  let hasNeighbourPositiveY = false
+  let hasNeighbourNegativeX = false
+  let hasNeighbourNegativeY = false
+
+  if (neighbours && neighbours.length > 0) {
+    const shiftX = levelView.subOriginX ?? 0
+    const shiftY = levelView.subOriginY ?? 0
+    for (const nv of neighbours) {
+      if (!nv || nv.areaId === levelView.areaId || nv.act !== levelView.act) continue
+      const dSubX = (nv.subOriginX ?? 0) - shiftX
+      const dSubY = (nv.subOriginY ?? 0) - shiftY
+      const dCellX = Math.round(dSubX / 5)
+      const dCellY = Math.round(dSubY / 5)
+      if (dCellX + nv.cellsX >= cellsX) hasNeighbourPositiveX = true
+      if (dCellY + nv.cellsY >= cellsY) hasNeighbourPositiveY = true
+      if (dCellX <= 0) hasNeighbourNegativeX = true
+      if (dCellY <= 0) hasNeighbourNegativeY = true
+    }
+  }
+
+  let deltaX = 0
+  let deltaY = 0
+
+  // 1. Bottom-Right corner: max visible cellX
+  if (!hasNeighbourPositiveX) {
+    const cellX_br =
+      (baseCamY + profile.height - isoOriginY) / 80 + (baseCamX + profile.width - isoOriginX) / 160
+    if (cellX_br > cellsX) {
+      const overshoot = cellX_br - cellsX
+      deltaX -= Math.round(overshoot * 80)
+      deltaY -= Math.round(overshoot * 40)
+    }
+  }
+
+  // 2. Bottom-Left corner: max visible cellY
+  if (!hasNeighbourPositiveY) {
+    const cellY_bl =
+      (baseCamY + profile.height - isoOriginY) / 80 - (baseCamX - isoOriginX) / 160
+    if (cellY_bl > cellsY) {
+      const overshoot = cellY_bl - cellsY
+      deltaX += Math.round(overshoot * 80)
+      deltaY -= Math.round(overshoot * 40)
+    }
+  }
+
+  // 3. Top-Left corner: min visible cellX
+  if (!hasNeighbourNegativeX) {
+    const cellX_tl = (baseCamY - isoOriginY) / 80 + (baseCamX - isoOriginX) / 160
+    if (cellX_tl < 0) {
+      const overshoot = -cellX_tl
+      deltaX += Math.round(overshoot * 80)
+      deltaY += Math.round(overshoot * 40)
+    }
+  }
+
+  // 4. Top-Right corner: min visible cellY
+  if (!hasNeighbourNegativeY) {
+    const cellY_tr =
+      (baseCamY - isoOriginY) / 80 - (baseCamX + profile.width - isoOriginX) / 160
+    if (cellY_tr < 0) {
+      const overshoot = -cellY_tr
+      deltaX -= Math.round(overshoot * 80)
+      deltaY += Math.round(overshoot * 40)
+    }
+  }
+
+  const clampedDeltaX = Math.max(-maxShiftX, Math.min(maxShiftX, deltaX))
+  const clampedDeltaY = Math.max(-maxShiftY, Math.min(maxShiftY, deltaY))
+
+  return {
+    x: baseCamX + clampedDeltaX,
+    y: baseCamY + clampedDeltaY,
+  }
+}
+
+/**
  * Concrete `SceneSource` implementation backed by `ClientWorld` unit state, `LevelView`, and `TileAtlas`.
  */
 export class ClientWorldSceneSource implements SceneSource {
@@ -754,10 +859,15 @@ export class ClientWorldSceneSource implements SceneSource {
       st.panelShiftX ?? computePanelCameraShift(st.leftPanelOpen, st.rightPanelOpen, panelDockWidth(profile))
     const shakeX = st.shakeOffsetX ?? 0
     const shakeY = st.shakeOffsetY ?? 0
-    return {
-      x: playerWorld.x + panelShiftX + shakeX - profile.width / 2,
-      y: playerWorld.y + CAMERA_Y_OFFSET + shakeY - profile.height / 2,
-    }
+    const baseCamX = playerWorld.x + panelShiftX + shakeX - profile.width / 2
+    const baseCamY = playerWorld.y + CAMERA_Y_OFFSET + shakeY - profile.height / 2
+    return computeConvergedCameraTopLeft(
+      baseCamX,
+      baseCamY,
+      profile,
+      st.levelView,
+      st.neighbourLevelViews,
+    )
   }
 
   isSubTileWalkable(subX: number, subY: number): boolean {
@@ -793,10 +903,15 @@ export class ClientWorldSceneSource implements SceneSource {
       st.panelShiftX ?? computePanelCameraShift(st.leftPanelOpen, st.rightPanelOpen, panelDockWidth(profile))
     const shakeX = st.shakeOffsetX ?? 0
     const shakeY = st.shakeOffsetY ?? 0
-    const cameraTopLeft = {
-      x: playerWorld.x + panelShiftX + shakeX - profile.width / 2,
-      y: playerWorld.y + CAMERA_Y_OFFSET + shakeY - profile.height / 2,
-    }
+    const rawCamX = playerWorld.x + panelShiftX + shakeX - profile.width / 2
+    const rawCamY = playerWorld.y + CAMERA_Y_OFFSET + shakeY - profile.height / 2
+    const cameraTopLeft = computeConvergedCameraTopLeft(
+      rawCamX,
+      rawCamY,
+      profile,
+      st.levelView,
+      st.neighbourLevelViews,
+    )
 
     const actId = this.resolveActId(st)
     const levelId = this.resolveLevelId(st)
@@ -896,13 +1011,13 @@ export class ClientWorldSceneSource implements SceneSource {
         const hasNeighbours = Boolean(
           st.neighbourLevelViews && st.neighbourLevelViews.length > 0,
         )
+        c.drawnFloorCells.clear()
         if (hasNeighbours) {
-          c.drawnFloorCells.clear()
           c.drawnShadowCells.clear()
           c.drawnWallCells.clear()
           c.drawnRoofCells.clear()
         }
-        const drawnFloorCells = hasNeighbours ? c.drawnFloorCells : null
+        const drawnFloorCells = c.drawnFloorCells
         const drawnShadowCells = hasNeighbours ? c.drawnShadowCells : null
         const drawnWallCells = hasNeighbours ? c.drawnWallCells : null
         const drawnRoofCells = hasNeighbours ? c.drawnRoofCells : null
@@ -916,13 +1031,17 @@ export class ClientWorldSceneSource implements SceneSource {
           return x + w >= minX && x <= maxX && y + h >= minY && y <= maxY
         }
 
+        let sampleFloor: LevelDrawItem | null = null
         for (const f of st.levelView.floors) {
           if (!f.placement && f.blockCount === 0) continue
+          if (sampleFloor === null && f.placement) {
+            sampleFloor = f
+          }
           if (inView(f.x, f.y, f.placement)) {
             const quad = nextQuad()
             fillQuadFromLevelDraw(quad, f, actId)
             c.floorQuads.push(quad)
-            drawnFloorCells?.add(packCellKey(f.cellX, f.cellY))
+            drawnFloorCells.add(packCellKey(f.cellX, f.cellY))
           }
         }
         for (const s of st.levelView.shadows) {
@@ -1057,6 +1176,40 @@ export class ClientWorldSceneSource implements SceneSource {
               }
             }
             for (const k of nvRoofCells) drawnRoofCells?.add(k)
+          }
+        }
+
+        // In widescreen modes (>800x600), generate border skirt margin floor quads for any visible
+        // frustum cells extending outside the map diamond (Issue #1370) to eliminate black triangular voids.
+        if (profile.width > 800 && sampleFloor !== null && sampleFloor.placement) {
+          const cellsX = st.levelView.cellsX
+          const cellsY = st.levelView.cellsY
+          const cellMinX = Math.floor((minY - isoOriginY) / 80 + (minX - isoOriginX) / 160) - 1
+          const cellMaxX = Math.ceil((maxY - isoOriginY) / 80 + (maxX - isoOriginX) / 160) + 1
+          const cellMinY = Math.floor((minY - isoOriginY) / 80 - (maxX - isoOriginX) / 160) - 1
+          const cellMaxY = Math.ceil((maxY - isoOriginY) / 80 - (minX - isoOriginX) / 160) + 1
+          for (let cy = cellMinY; cy <= cellMaxY; cy++) {
+            for (let cx = cellMinX; cx <= cellMaxX; cx++) {
+              if (cx >= 0 && cx < cellsX && cy >= 0 && cy < cellsY) {
+                continue
+              }
+              const cellKey = packCellKey(cx, cy)
+              if (drawnFloorCells.has(cellKey)) {
+                continue
+              }
+              const isoX = (cx - cy) * 80 + isoOriginX
+              const isoY = (cx + cy) * 40 + isoOriginY
+              if (inView(isoX, isoY, sampleFloor.placement)) {
+                const quad = nextQuad()
+                const dCellX = cx - sampleFloor.cellX
+                const dCellY = cy - sampleFloor.cellY
+                const dIsoX = isoX - sampleFloor.x
+                const dIsoY = isoY - sampleFloor.y
+                fillQuadFromLevelDraw(quad, sampleFloor, actId, dCellX, dCellY, dIsoX, dIsoY)
+                c.floorQuads.push(quad)
+                drawnFloorCells.add(cellKey)
+              }
+            }
           }
         }
       }

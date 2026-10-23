@@ -50,6 +50,7 @@ import {
   clickButtonImpl,
   closeActiveNpcPanelImpl,
   closeCubeImpl,
+  closeHoradricOrificeImpl,
   closeNpcImpl,
   closeStashImpl,
   closeWaypointImpl,
@@ -1262,6 +1263,15 @@ export class HudModel implements HudCommandSink {
    */
   closeActiveNpcPanel(): void {
     closeActiveNpcPanelImpl(this)
+  }
+
+  /**
+   * Cancel the active Horadric Orifice UI (`D2Client.dll` `0x6fb4fd70..0x6fb4fe3b`):
+   * return any unconfirmed staff to cursor/inventory, send `C2S 0x44 StaffInOrifice(state = 2)`,
+   * and hide the orifice panel.
+   */
+  closeHoradricOrifice(orificeObjectId?: number): void {
+    closeHoradricOrificeImpl(this, orificeObjectId)
   }
 
   /**

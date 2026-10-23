@@ -654,7 +654,7 @@ export class ClientWorld {
     if (!wasDead && unit.dead) {
       unit.diedAtMs = this._timeMs
     }
-    if (!unit.dead && unit.lifePct <= 0 && npcUnit.lifeByte > 0) {
+    if (!unit.dead && npcUnit.lifeByte > 0) {
       unit.lifePct = npcUnit.lifeByte
     }
     unit.moving = npcUnit.moving

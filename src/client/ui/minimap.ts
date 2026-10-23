@@ -314,9 +314,11 @@ export function computeAutomapViewport(
     const vpW = 279
     const vpH = 225
     const vpX = Math.max(0, safeW - 281)
-    const vpY = 57
+    // Issue #1371: shift corner minimap topOffset down to 120px to prevent
+    // overlapping the multi-line room HUD text (Area, Difficulty, Room, Server, Timer down to y ≈ 115px).
+    const vpY = 120
     const centerX = Math.max(139, safeW - 142)
-    const centerY = 169
+    const centerY = 232 // vpY + 112
     return {
       bMinimap: true,
       divisor: 20,
@@ -445,10 +447,14 @@ export interface MinimapMarker {
   readonly kind: 'exit' | 'waypoint'
   /** Optional destination area name for entrance/warp labels (`Font6`). */
   readonly targetName?: string
+  /** Optional alias for `targetName`. */
+  readonly label?: string
   /** Optional destination level ID (`1..136`). */
   readonly targetLevelId?: number
   /** Optional alias for `targetLevelId`. */
   readonly toLevelId?: number
+  /** Optional source level ID for reciprocal boundary filtering (Issue #1368). */
+  readonly fromLevelId?: number
   /** Optional explicit reveal override for stitched multi-level markers. */
   readonly preRevealed?: boolean
 }

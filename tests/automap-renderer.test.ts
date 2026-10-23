@@ -280,24 +280,24 @@ describe('R3 Authentic 1.13c Isometric Sprite Automap & Minimap UI', () => {
   })
 
   describe('Dual Viewports & Panel Shifts (computeAutomapViewport)', () => {
-    it('Issue #1319: computes 279x225 clipped Corner Minimap viewport and keeps it fixed at top-right when right panel is open', () => {
+    it('Issue #1319, #1371: computes 279x225 clipped Corner Minimap viewport below room HUD and keeps it fixed at top-right when right panel is open', () => {
       const vpRightClosed = computeAutomapViewport(800, 600, true, false, false, 0, 0)
       expect(vpRightClosed.bMinimap).toBe(true)
       expect(vpRightClosed.divisor).toBe(20)
       expect(vpRightClosed.x).toBe(519) // 800 - 281
-      expect(vpRightClosed.y).toBe(57)
+      expect(vpRightClosed.y).toBe(120)
       expect(vpRightClosed.width).toBe(279)
       expect(vpRightClosed.height).toBe(225)
       expect(vpRightClosed.centerX).toBe(658) // 800 - 142
-      expect(vpRightClosed.centerY).toBe(169) // 57 + 112
+      expect(vpRightClosed.centerY).toBe(232) // 120 + 112
 
       const vpRightOpen = computeAutomapViewport(800, 600, true, false, true, 0, 0)
       expect(vpRightOpen.x).toBe(519)
-      expect(vpRightOpen.y).toBe(57)
+      expect(vpRightOpen.y).toBe(120)
       expect(vpRightOpen.width).toBe(279)
       expect(vpRightOpen.height).toBe(225)
       expect(vpRightOpen.centerX).toBe(658)
-      expect(vpRightOpen.centerY).toBe(169)
+      expect(vpRightOpen.centerY).toBe(232)
     })
 
     it('Issue #1320: cycles through 3 display modes (top-right -> center -> off -> top-right) and applies center semi-transparency in center mode', () => {

@@ -330,6 +330,7 @@ export interface HudCommandSink {
   onQuestLogClosed?(): void
   confirmQuestReward?(itemId?: number): void
   closeActiveNpcPanel?(): void
+  closeHoradricOrifice?(orificeObjectId?: number): void
   handleNpcMenuAction?(action: string, payload?: any): void
   onResurrect?(): void
   onSwapContainerItem?(cursorItemId: number, targetItemId: number, col: number, row: number, buffer: number): void
@@ -1251,13 +1252,25 @@ export class HudManager {
   }
 
   /** World state closed `kind` (already noted by `ClientWorld`): hide it without sending anything. */
-  hideLeftPanelFromWorld(kind: 'vendor' | 'stash' | 'cube'): void {
+  hideLeftPanelFromWorld(kind: 'vendor' | 'stash' | 'cube' | 'orifice'): void {
     if (this.leftPanel !== kind) return
     this.leftPanel = 'none'
     ;(this.worldPanels as any).activePanel = 'none'
     if (kind === 'vendor') {
       this.worldPanels.vendorTradeState = 'idle'
       this.worldPanels.releaseMomentaryVendorButton()
+    }
+    if (kind === 'orifice') {
+      if (this.worldPanels.questRewardItem) {
+        if (!this.inventory.cursorItem) {
+          this.inventory.cursorItem = this.worldPanels.questRewardItem
+        } else {
+          this.inventory.autoPlaceInGrid(this.worldPanels.questRewardItem)
+        }
+        this.worldPanels.questRewardItem = null
+      }
+      this.worldPanels.hoveredQuestRewardItem = null
+      ;(this.worldPanels as any).activeNpcId = null
     }
     if ((this.goldDialog?.mode === 3 || this.goldDialog?.mode === 4) && kind === 'stash') {
       this.goldDialog = null

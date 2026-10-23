@@ -658,6 +658,69 @@ export const OBJECTS_TXT_113C: readonly ObjectsTxtRecord113c[] = Object.freeze([
   rec('Dummy', [0, 0, 0, 0, 0, 0, 0, 0], [255, 255, 255], [1, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0], 1, 0, 0, 0, 0), // 572
 ])
 
+/** Objects.txt `Lockable` column, indexed by class id. */
+export const OBJECTS_LOCKABLE_113C: ReadonlySet<number> = new Set([
+  5, // chest
+  6, // chest
+  87, // Chest3
+  88, // Chest3
+  139, // chest
+  140, // chest
+  141, // chest
+  144, // chest
+  146, // chest
+  147, // chest
+  148, // chest
+  176, // chest
+  177, // chest
+  181, // chest
+  182, // coffin
+  183, // chest
+  198, // chest
+  240, // chest
+  241, // chest
+  242, // chest
+  243, // chest
+  329, // chest
+  330, // chest
+  331, // chest
+  332, // chest
+  333, // chest
+  334, // chest
+  335, // chest
+  336, // chest
+  341, // Dummy
+  342, // portal
+  354, // chest
+  355, // chest
+  356, // chest
+  360, // RockPIle
+  362, // basket
+  371, // chest
+  375, // Dummy
+  387, // chest
+  388, // casket
+  389, // chest
+  390, // chest
+  391, // chest
+  397, // chest
+  405, // chest
+  406, // chest
+  407, // chest
+  410, // Siege Control
+  413, // chestR
+  420, // woodchestL
+  430, // ChestL
+  431, // woodchestR
+  432, // ChestSL
+  433, // ChestSR
+  455, // chest
+  501, // woodchestL
+  502, // woodchestR
+  504, // woodchest2L
+  505, // woodchest2R
+])
+
 /**
  * The compiled record of an object class (D2Common #10688 0x6fd8e980 asserts the id is in range).
  *

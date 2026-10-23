@@ -35,7 +35,7 @@ const U16_MAX = 0xffff
 const U32_MAX = 0xffffffff
 
 const PER_MODE_COLUMNS = ['Lit', 'FrameCnt', 'FrameDelta', 'CycleAnim', 'Start'] as const
-const SCALAR_COLUMNS = ['Name', 'Id', 'Red', 'Green', 'Blue', 'Sync', 'IsDoor', 'EnvEffect', 'ClientFn', 'OperateFn'] as const
+const SCALAR_COLUMNS = ['Name', 'Id', 'Red', 'Green', 'Blue', 'Sync', 'IsDoor', 'Lockable', 'EnvEffect', 'ClientFn', 'OperateFn'] as const
 
 /** One compiled record, as the generated module stores it. */
 export interface ObjectsTxtRow {
@@ -54,6 +54,7 @@ export interface ObjectsTxtRow {
   readonly start: readonly number[]
   readonly sync: number
   readonly isDoor: number
+  readonly lockable: number
   readonly envEffect: number
   readonly clientFn: number
   readonly operateFn: number
@@ -124,6 +125,7 @@ export function readObjectsTxtRows(table: D2Table): ObjectsTxtRow[] {
       start: perMode(table, row, 'Start', where, U8_MAX),
       sync: intCell(table, row, 'Sync', where, U8_MAX),
       isDoor: intCell(table, row, 'IsDoor', where, U8_MAX),
+      lockable: intCell(table, row, 'Lockable', where, U8_MAX),
       envEffect: intCell(table, row, 'EnvEffect', where, U8_MAX),
       clientFn: intCell(table, row, 'ClientFn', where, U8_MAX),
       operateFn: intCell(table, row, 'OperateFn', where, U8_MAX),
@@ -230,6 +232,15 @@ export function renderObjectsTxt(rows: readonly ObjectsTxtRow[]): string {
         `${list(row.frameCnt)}, ${list(row.frameDelta)}, ${list(row.cycleAnim)}, ${list(row.start)}, ` +
         `${String(row.sync)}, ${String(row.isDoor)}, ${String(row.envEffect)}, ${String(row.clientFn)}, ${String(row.operateFn)}), // ${comment}`,
     )
+  }
+  lines.push(
+    '])',
+    '',
+    '/** Objects.txt `Lockable` column, indexed by class id. */',
+    'export const OBJECTS_LOCKABLE_113C: ReadonlySet<number> = new Set([',
+  )
+  for (const row of rows) {
+    if (row.lockable !== 0) lines.push(`  ${String(row.index)}, // ${row.name}`)
   }
   lines.push(
     '])',

@@ -589,8 +589,13 @@ describe('ClientWorld authoritative state mirror', () => {
     expect(selfUnit.castState?.skillId).toBe(36)
     expect(world.self.castState?.skillId).toBe(36)
 
-    // 6. Player death and town resurrection
+    // 6. Player death and town resurrection (D2Client.dll 0x6fac9830 / 0x6fb5ebe0 / 0x6fb5eca0)
+    // Sub-integer poison HP (life === 0 on 0x95/0x18) never kills a living player without 0x0D mode 0/17:
     world.apply({ type: 'LifeMana', life: 0, mana: 10, stamina: 50, at: { x: 5000, y: 5000 } })
+    expect(world.isDead).toBe(false)
+    expect(world.self.isDead).toBe(false)
+    // Authoritative player death via S2C 0x0D PlayerStop (rawCode 0x08 -> mode 0 / rawCode 0x09 -> mode 17):
+    world.apply({ type: 'UnitMode', unitType: 0, id: 1, mode: 17, at: { x: 5000, y: 5000 }, lifePct: 0 })
     expect(world.isDead).toBe(true)
     expect(world.self.isDead).toBe(true)
     world.noteOutgoingCommand({ type: 'Resurrect' })
@@ -1992,6 +1997,48 @@ describe('ClientWorld authoritative state mirror', () => {
       ls.hitUnitIds = new Set([101, 102])
       ;(world as any).triggerMissileImpact(ls, 112, 100, false, world.getUnit('monster', 102)!)
       expect(ls.pierce).toBe(false) // reached maxHits = 1 + 1 = 2
+    })
+
+    it('poison clamping at 1/256 HP (raw STAT_HITPOINTS=1..255, LifeMana life=0) never triggers false death on town return or new room entry (D2Client.dll 0x6fb55440 / 0x6fb5ebe0 / 0x6fb5eb10)', () => {
+      const world = new ClientWorld()
+      // 1. Poisoned player returns to Kurast Docks (areaId = 75) via Town Portal
+      world.apply({ type: 'LoadAct', act: 2, mapSeed: 0x11223344, areaId: 75 })
+      world.apply({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 0, id: 1, classId: 1, name: 'Sorceress', x: 5128, y: 5052, mode: 5 },
+      })
+      world.apply({ type: 'StatSet', stat: 7, value: 420 << 8 })
+      world.apply({ type: 'StatSet', stat: 6, value: 1 }) // 1/256 HP (poison clamp)
+      world.apply({ type: 'LifeMana', life: 0, mana: 120, stamina: 100, at: { x: 5128, y: 5052 } })
+
+      const selfUnit = world.getUnit('player', 1)!
+      expect(world.isDead).toBe(false)
+      expect(world.isSelfDead).toBe(false)
+      expect(world.self.isDead).toBe(false)
+      expect(world.self.life).toBe(0)
+      expect(world.self.stats.get(6)).toBe(1)
+      expect(selfUnit.dead).toBe(false)
+      expect(selfUnit.mode).toBe(5)
+
+      // 2. Player saves & exits and creates a new room where STAT_HITPOINTS (1..255) arrives before STAT_MAXHP
+      const newRoomWorld = new ClientWorld()
+      newRoomWorld.apply({ type: 'LoadAct', act: 2, mapSeed: 0x55667788, areaId: 75 })
+      newRoomWorld.apply({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 0, id: 1, classId: 1, name: 'Sorceress', x: 5128, y: 5052, mode: 5 },
+      })
+      newRoomWorld.apply({ type: 'StatSet', stat: 6, value: 1 })
+      newRoomWorld.apply({ type: 'StatSet', stat: 7, value: 420 << 8 })
+      newRoomWorld.apply({ type: 'LifeMana', life: 0, mana: 120, stamina: 100, at: { x: 5128, y: 5052 } })
+
+      const newRoomSelf = newRoomWorld.getUnit('player', 1)!
+      expect(newRoomWorld.isDead).toBe(false)
+      expect(newRoomWorld.isSelfDead).toBe(false)
+      expect(newRoomWorld.self.isDead).toBe(false)
+      expect(newRoomSelf.dead).toBe(false)
+      expect(newRoomSelf.mode).toBe(5)
     })
   })
 })

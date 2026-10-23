@@ -731,7 +731,9 @@ export class ClientUnit {
       return this.lifePct <= 0 || this.mode === 0 || this.mode === 12
     }
     if (this.unitType === 'player') {
-      return this.lifePct <= 0 || this.mode === 0 || this.mode === 17
+      // D2Client.dll 0x6fb55440 (UNIT_IsDead): UNIT_PLAYER (0) is dead only in PLRMODE_DEATH (0) or PLRMODE_DEAD (17)
+      // (or UNITFLAG_DEAD 0x10000, set exclusively by 0x0D codes 0x08/0x09 in 0x6fac9830), never from lifePct <= 0.
+      return this.mode === 0 || this.mode === 17
     }
     return false
   }
