@@ -302,10 +302,20 @@ export function noteOutgoingCommandImpl(
           : cur.npcId
             ? this.getUnit('monster', cur.npcId)
             : undefined
+        const isArtisanNpc =
+          npcUnit?.classId === 154 || npcUnit?.classId === 511 || npcUnit?.classId === 512
         const isTravelComplement =
-          cmd.complement === 1 || cmd.complement === 40 || cmd.complement === 75 || cmd.complement === 109
+          !isArtisanNpc &&
+          curWin !== 'imbue' &&
+          curWin !== 'add_sockets' &&
+          curWin !== 'personalize' &&
+          (cmd.complement === 1 || cmd.complement === 40 || cmd.complement === 75 || cmd.complement === 109)
         const isCharsi =
           curWin === 'imbue' ||
+          (npcUnit?.classId === 154 &&
+            curWin !== 'trade' &&
+            curWin !== 'gamble' &&
+            !isTravelComplement) ||
           (curWin === 'none' &&
             !isTravelComplement &&
             (this._quests[3]! & 0x0002) !== 0 &&
@@ -2851,7 +2861,10 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               ? 'equipment'
               : 'inventory'
       let effectiveContainer = ev.container ?? ev.item?.container ?? defaultContainer
-      if (isCursorImode && effectiveAction === 0x02) {
+      if (
+        isCursorImode &&
+        (effectiveAction === 0x02 || effectiveAction === 0x00 || effectiveAction === 0x04)
+      ) {
         effectiveContainer = 'cursor'
         ;(this as any)._lastOptimisticImbuedItem = null
       }
@@ -4785,16 +4798,17 @@ export function executeCharsiImbueImpl(
   this: ClientWorldInternal,
   itemId?: number,
   _npcId?: number,
-  options?: CharsiImbueOptions,
+  options?: CharsiImbueOptions & { readonly force?: boolean },
 ): ItemData | null {
   const q3 = this._quests[3] ?? this._gameQuestLog[3] ?? 0
-  if ((q3 & 0x0001) !== 0 && (q3 & 0x0002) === 0) {
-    return null
-  }
   const isImbueWindowOpen =
+    Boolean(options?.force) ||
     this._npcInteraction.window === 'imbue' ||
     this._npcInteraction.activeWindow === 'imbue' ||
     this._awaitingArtisanConfirmNpcId !== null
+  if (!isImbueWindowOpen && (q3 & 0x0001) !== 0 && (q3 & 0x0002) === 0) {
+    return null
+  }
   if (this._hasQuestInfo && !isImbueWindowOpen && (q3 & 0x0002) === 0) {
     return null
   }

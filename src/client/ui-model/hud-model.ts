@@ -263,6 +263,7 @@ export class HudModel implements HudCommandSink {
   private lastSyncedContainersRev = -1
   private lastSyncedContainersDigest = 0
   private lastSyncedPlayerLevel = -1
+  private lastSyncedMercLevel = -1
   private lastSyncedWeaponSet = -1
   private lastSyncedArtisanOpen = false
   private lastSyncedQuestRewardId: string | number | null = null
@@ -614,8 +615,15 @@ export class HudModel implements HudCommandSink {
   /**
    * Convert a `ClientWorld` `ItemData` into a canonical 1.13c `UiInventoryItem` with its socketed children.
    */
-  toUiItem(item: ItemData): UiInventoryItem {
-    return convertWorldItemToUiItem(this, item)
+  toUiItem(
+    item: ItemData,
+    options?: {
+      readonly unitLevel?: number | undefined
+      readonly equippedItems?: readonly ItemData[] | undefined
+      readonly equippedSig?: string | undefined
+    },
+  ): UiInventoryItem {
+    return convertWorldItemToUiItem(this, item, options)
   }
 
   /**

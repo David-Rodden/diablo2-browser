@@ -2362,18 +2362,10 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
       (snapshot.playerLocalSubTile.x !== 0 || snapshot.playerLocalSubTile.y !== 0)
         ? subTileToWorldOrtho(snapshot.playerLocalSubTile.x, snapshot.playerLocalSubTile.y)
         : snapshot.playerWorld
-    const rawCamX = effectivePlayerWorld.x + panelShiftX
-    const rawCamY = effectivePlayerWorld.y + CAMERA_Y_OFFSET
-    const renderCamX =
-      ctx.source && snapshot.cameraTopLeft !== undefined
-        ? snapshot.cameraTopLeft.x + snapshot.viewportProfile.width / 2 + (snapshot.shakeOffsetX ?? 0)
-        : rawCamX + (snapshot.shakeOffsetX ?? 0)
-    const renderCamY =
-      ctx.source && snapshot.cameraTopLeft !== undefined
-        ? snapshot.cameraTopLeft.y + snapshot.viewportProfile.height / 2 + (snapshot.shakeOffsetY ?? 0)
-        : rawCamY + (snapshot.shakeOffsetY ?? 0)
-    const camX = renderCamX - (snapshot.shakeOffsetX ?? 0)
-    const camY = renderCamY - (snapshot.shakeOffsetY ?? 0)
+    const camX = effectivePlayerWorld.x + panelShiftX
+    const camY = effectivePlayerWorld.y + CAMERA_Y_OFFSET
+    const renderCamX = camX + (snapshot.shakeOffsetX ?? 0)
+    const renderCamY = camY + (snapshot.shakeOffsetY ?? 0)
 
     if (renderer !== null) {
       ctx.tileGpuCache?.ensureActPalette(snapshot.actId)

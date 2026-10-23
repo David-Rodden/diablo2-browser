@@ -121,6 +121,8 @@ export interface WeaponBase extends ItemBase {
   readonly maxStack: number
   /** Optional AutoMagic group from 'auto prefix' column (e.g. 300, 302, 303). */
   readonly autoPrefix?: number
+  /** Optional magic level bonus from 'magic lvl' column (e.g. Staves/Wands/Orbs: 1). */
+  readonly magicLvl?: number | undefined
   /** Authentic drop SFX sound linker from dropsound column (e.g. 'item_sword', 'item_bow'). */
   readonly dropsound?: string | undefined
   /** Authentic frame at which dropsound triggers (from dropsfxframe column). */
@@ -294,6 +296,8 @@ export function parseWeaponsTable(input: D2Table | Uint8Array | string): WeaponT
     const invWidth = parseNumber(getCell(row, 'invwidth'), 0)
     const invHeight = parseNumber(getCell(row, 'invheight'), 0)
     const autoPrefix = parseOptionalNumber(getCell(row, 'auto prefix'))
+    const parsedMagicLvl = parseOptionalNumber(getCell(row, 'magic lvl'))
+    const itemMagicLvl = parsedMagicLvl !== undefined && parsedMagicLvl > 0 ? parsedMagicLvl : undefined
     const tags = type2 ? [type, type2] : [type]
     const damage = maxdam
     const dropsound = getCell(row, 'dropsound') || undefined
@@ -384,6 +388,7 @@ export function parseWeaponsTable(input: D2Table | Uint8Array | string): WeaponT
       defense: 0,
       maxStack: maxstack ?? 1,
       ...(autoPrefix !== undefined && autoPrefix > 0 ? { autoPrefix } : {}),
+      ...(itemMagicLvl !== undefined ? { magicLvl: itemMagicLvl } : {}),
       ...(dropsound ? { dropsound } : {}),
       ...(dropsfxframe !== undefined ? { dropsfxframe } : {}),
       ...(usesound ? { usesound } : {}),

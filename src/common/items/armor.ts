@@ -118,6 +118,8 @@ export interface ArmorBase extends ItemBase {
   readonly transform?: number | undefined
   /** Inventory 2D icon palette shift table index (0..8) from InvTrans column. */
   readonly invTrans?: number | undefined
+  /** Optional magic level bonus from 'magic lvl' column (e.g. Circlets: 3/8/13/18). */
+  readonly magicLvl?: number | undefined
 }
 
 import { CaseInsensitiveMap } from './tables.ts'
@@ -222,6 +224,8 @@ export function parseArmorTable(table: D2Table): ArmorTable {
     const rawAutoPrefix = strAt(row, 'auto prefix')
     const parsedAutoPrefix = rawAutoPrefix ? numAt(row, 'auto prefix', 0) : 0
     const autoPrefix = parsedAutoPrefix > 0 ? parsedAutoPrefix : undefined
+    const parsedMagicLvl = numAt(row, 'magic lvl', 0)
+    const itemMagicLvl = parsedMagicLvl > 0 ? parsedMagicLvl : undefined
 
     const tags: string[] = []
     if (type) tags.push(type)
@@ -306,6 +310,7 @@ export function parseArmorTable(table: D2Table): ArmorTable {
       value: cost,
       damage: 0,
       ...(autoPrefix !== undefined ? { autoPrefix } : {}),
+      ...(itemMagicLvl !== undefined ? { magicLvl: itemMagicLvl } : {}),
       ...(dropsound ? { dropsound } : {}),
       ...(dropsfxframe !== undefined ? { dropsfxframe } : {}),
       ...(usesound ? { usesound } : {}),

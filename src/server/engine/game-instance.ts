@@ -4768,6 +4768,27 @@ export class GameInstance {
         this.handleItemPickup(player, cmd.itemId, Boolean(cmd.toCursor))
         break
       }
+      case 'ItemToCursor': {
+        if (player.dead) return
+        const target = player.items.find((entry) => entry.unitId === cmd.itemId)
+        if (target !== undefined) {
+          target.location = 'cursor'
+          target.x = 0
+          target.y = 0
+          target.bodyLoc = 0
+          this.emitToPlayer(player.unitId, {
+            type: 'ItemEvent',
+            action: 0x05,
+            itemId: target.unitId,
+            code: target.code,
+            x: 0,
+            y: 0,
+            container: 'cursor',
+            item: this.serverEntryToItemData(target),
+          })
+        }
+        break
+      }
       case 'ItemDrop': {
         if (player.dead) return
         this.handleItemDrop(player, cmd.itemId)
@@ -4844,7 +4865,6 @@ export class GameInstance {
           cmd.type === 'NpcEntityAction' &&
           travelAction &&
           complement !== undefined &&
-          !ACT_TOWN_AREAS.includes(complement) &&
           this.handleArtisanService(player, npcId, complement)
         ) {
           break
@@ -13010,9 +13030,17 @@ export class GameInstance {
     const item = player.items.find(
       (candidate) =>
         candidate.unitId === itemId &&
-        (candidate.location === 'inventory' || candidate.location === 'equipped'),
+        (candidate.location === 'inventory' ||
+          candidate.location === 'equipped' ||
+          candidate.location === 'cursor'),
     )
     if (!item) return false
+    const resultContainer =
+      item.location === 'equipped'
+        ? 'equipment'
+        : item.location === 'cursor'
+          ? 'cursor'
+          : 'inventory'
     // 1.13c quest rewards are one-shot: require and consume the completed
     // quest flag for Charsi (a1q5), Larzuk (a5q1) and Anya (a5q4).
     const questId =
@@ -13079,7 +13107,7 @@ export class GameInstance {
         code: replacement.code,
         x: replacement.x,
         y: replacement.y,
-        container: item.location === 'equipped' ? 'equipment' : 'inventory',
+        container: resultContainer,
         item: this.serverEntryToItemData(replacement),
       })
     } else if (action === 'add_sockets') {
@@ -13131,7 +13159,7 @@ export class GameInstance {
         code: item.code,
         x: item.x,
         y: item.y,
-        container: item.location === 'equipped' ? 'equipment' : 'inventory',
+        container: resultContainer,
         item: this.serverEntryToItemData(item),
       })
     } else {
@@ -13156,8 +13184,18 @@ export class GameInstance {
         code: item.code,
         x: item.x,
         y: item.y,
-        container: item.location === 'equipped' ? 'equipment' : 'inventory',
+        container: resultContainer,
         item: this.serverEntryToItemData(item),
+      })
+    }
+    if (item.location === 'cursor') {
+      const uiId = action === 'imbue' ? 0x06 : action === 'add_sockets' ? 0x0e : 0x0f
+      this.emitToPlayer(player.unitId, {
+        type: 'OpenUi',
+        uiId,
+        unitType: 1,
+        unitId: npc.unitId,
+        extra: 0,
       })
     }
     const questIndex = questWordIndex113c(questId)

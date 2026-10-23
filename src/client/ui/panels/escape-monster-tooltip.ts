@@ -1214,10 +1214,66 @@ export function drawItemTooltipImpl(
     }
   }
 
-  const playerCtx = this.getEffectivePlayerContext()
+  const basePlayerCtx = this.getEffectivePlayerContext()
   const rawItemForLive = item.rawItem as
-    | (Item & { charLevel?: number; playerLevel?: number })
+    | (Item & {
+        charLevel?: number
+        playerLevel?: number
+        container?: string
+        equippedSetIds?: Iterable<string | number>
+        wornSetPieceCount?: number
+      })
     | undefined
+  const isMercOwnedItem = Boolean(
+    this.hoveredMercItem?.item === item ||
+      (this.hoveredMercItem?.item?.id !== undefined &&
+        item.id !== undefined &&
+        String(this.hoveredMercItem.item.id) === String(item.id)) ||
+      rawItemForLive?.container === 'merc' ||
+      (this.merc?.equipped &&
+        Object.values(
+          this.merc.equipped as Record<string, UiInventoryItem | null | undefined>,
+        ).some(
+          (eq) =>
+            eq === item ||
+            (eq?.id !== undefined && item.id !== undefined && String(eq.id) === String(item.id)),
+        )) ||
+      (this.merc?.equipment &&
+        Object.values(
+          this.merc.equipment as Record<string, UiInventoryItem | null | undefined>,
+        ).some(
+          (eq) =>
+            eq === item ||
+            (eq?.id !== undefined && item.id !== undefined && String(eq.id) === String(item.id)),
+        )),
+  )
+  const mercAny = this.merc as
+    | {
+        level?: number
+        str?: number
+        strength?: number
+        dex?: number
+        dexterity?: number
+        classId?: number
+        hcIdx?: number
+      }
+    | null
+    | undefined
+  const mercClassNum = Number(mercAny?.classId ?? mercAny?.hcIdx ?? 0)
+  const playerCtx: {
+    str: number
+    dex: number
+    level: number
+    classCode?: CharacterClassCode | undefined
+  } =
+    isMercOwnedItem && mercAny
+      ? {
+          level: Math.max(1, Math.trunc(Number(mercAny.level ?? basePlayerCtx.level ?? 1) || 1)),
+          str: Math.trunc(Number(mercAny.str ?? mercAny.strength ?? 0) || 0),
+          dex: Math.trunc(Number(mercAny.dex ?? mercAny.dexterity ?? 0) || 0),
+          classCode: mercClassNum === 560 || mercClassNum === 561 ? 'bar' : undefined,
+        }
+      : basePlayerCtx
   const hasPerLevelProps =
     !unid &&
     Boolean(
@@ -1498,7 +1554,10 @@ export function drawItemTooltipImpl(
     }
     if (activeSetPieces) {
       activeSetPieces.forEach((piece, pieceIdx) => {
-        const pieceColor: D2ColorCode = item.setPieceColors?.[pieceIdx] ?? 'red'
+        const pieceColor: D2ColorCode =
+          (livePerLevelTooltip?.setPieceColors?.[pieceIdx] as D2ColorCode | undefined) ??
+          item.setPieceColors?.[pieceIdx] ??
+          'red'
         lines.push({
           text: localizeStarterTooltipLine(piece, isEn),
           color: pieceColor,

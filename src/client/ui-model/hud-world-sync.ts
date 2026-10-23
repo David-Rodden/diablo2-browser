@@ -75,6 +75,7 @@ import { computeEffectiveMercenaryStats } from './derived-stats.ts'
 import { NPC_SELL_SOUND_ID, npcTransactionMessageKey } from './hud-command-actions.ts'
 import {
   clientUnitToMonsterTargetInfo,
+  computeEquippedItemsSignature,
   nextLevelExperience,
   resolveClassCode,
 } from './hud-item-adapter.ts'
@@ -1876,7 +1877,32 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   }
 
   // 5c. Mercenary state & equipment (slots 1=head/helm, 3=torso/armor, 4=rightHand/weapon1, 5=leftHand/weapon2)
-  if (containersDirty || !model.cachedMercEquipped || !model.cachedMercEquipment) {
+  const mercRaw = model.world.merc as any
+  const mUnit = model.world.getUnit ? model.world.getUnit('monster', mercRaw?.mercId) : undefined
+  const mercStats = mUnit?.stats ?? (mercRaw?.stats ?? { get: () => 0, getBase: () => 0, has: () => false, entries: () => [] })
+  const mercIconKey = resolveMercPortraitIcon(model.world.merc?.classId ?? mercRaw?.classId)
+  const mercLang = hud.lang === 'ENG' ? 'ENG' : 'CHI'
+  const effectiveMerc = model.world.merc ? computeEffectiveMercenaryStats(model.world, mercLang) : null
+  const mercUnitLevel = Math.max(
+    1,
+    Math.trunc(
+      Number(
+        effectiveMerc?.level ||
+          (typeof mercStats.get === 'function' ? mercStats.get(12) : 0) ||
+          mercRaw?.level ||
+          model.world.self.level ||
+          (model.world.self as any).stats?.get?.(12) ||
+          1,
+      ) || 1,
+    ),
+  )
+
+  if (
+    containersDirty ||
+    !model.cachedMercEquipped ||
+    !model.cachedMercEquipment ||
+    model.lastSyncedMercLevel !== mercUnitLevel
+  ) {
     const findMercSlotItem = (slotNum: number): ItemData | undefined => {
       const bySlot = model.world.containers.mercBySlot?.get(slotNum) ?? model.world.containers.merc.get(slotNum)
       if (bySlot && (bySlot.bodyLoc || bySlot.equippedSlot || slotNum) === slotNum) {
@@ -1891,10 +1917,19 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     const rawMerc3 = findMercSlotItem(3)
     const rawMerc4 = findMercSlotItem(4)
     const rawMerc5 = findMercSlotItem(5)
-    const uiMerc1 = rawMerc1 ? model.toUiItem(rawMerc1) : null
-    const uiMerc3 = rawMerc3 ? model.toUiItem(rawMerc3) : null
-    const uiMerc4 = rawMerc4 ? model.toUiItem(rawMerc4) : null
-    const uiMerc5 = rawMerc5 ? model.toUiItem(rawMerc5) : null
+    const mercEquippedRawItems = [rawMerc1, rawMerc3, rawMerc4, rawMerc5].filter(
+      (x): x is ItemData => Boolean(x),
+    )
+    const mercEquippedSig = 'merc:' + computeEquippedItemsSignature(mercEquippedRawItems)
+    const mercUiOpts = {
+      unitLevel: mercUnitLevel,
+      equippedItems: mercEquippedRawItems,
+      equippedSig: mercEquippedSig,
+    }
+    const uiMerc1 = rawMerc1 ? model.toUiItem(rawMerc1, mercUiOpts) : null
+    const uiMerc3 = rawMerc3 ? model.toUiItem(rawMerc3, mercUiOpts) : null
+    const uiMerc4 = rawMerc4 ? model.toUiItem(rawMerc4, mercUiOpts) : null
+    const uiMerc5 = rawMerc5 ? model.toUiItem(rawMerc5, mercUiOpts) : null
     const mapMercNumericItem = (ui: UiInventoryItem | null, it: ItemData | undefined) =>
       ui && it ? { ...ui, id: it.id as unknown as string } : null
     const mapMercStringItem = (ui: UiInventoryItem | null, it: ItemData | undefined) =>
@@ -1927,6 +1962,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       leftHand: mercLeftUi,
       weapon2: mercLeftUi,
     }
+    model.lastSyncedMercLevel = mercUnitLevel
   }
   const mercEquipped = model.cachedMercEquipped!
   const mercEquipment = model.cachedMercEquipment!
@@ -1934,13 +1970,6 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   const mercTorsoUi = mercEquipment.torso
   const mercRightUi = mercEquipment.rightHand
   const mercLeftUi = mercEquipment.leftHand
-
-  const mercRaw = model.world.merc as any
-  const mUnit = model.world.getUnit ? model.world.getUnit('monster', mercRaw?.mercId) : undefined
-  const mercStats = mUnit?.stats ?? (mercRaw?.stats ?? { get: () => 0, getBase: () => 0, has: () => false, entries: () => [] })
-  const mercIconKey = resolveMercPortraitIcon(model.world.merc?.classId ?? mercRaw?.classId)
-  const mercLang = hud.lang === 'ENG' ? 'ENG' : 'CHI'
-  const effectiveMerc = model.world.merc ? computeEffectiveMercenaryStats(model.world, mercLang) : null
 
   const rawMercClassId = Number(mercRaw?.classId ?? mercRaw?.hcIdx ?? 0)
   const normMercClassId = rawMercClassId === 560 ? 561 : (rawMercClassId || 338)
@@ -2640,6 +2669,20 @@ export function refreshHoveredItemsImpl(hud: HudManager): void {
     if (hud.inventory.swapWeapons.weapon2 && matchId(hud.inventory.swapWeapons.weapon2)) {
       return hud.inventory.swapWeapons.weapon2
     }
+    if (hud.worldPanels.merc?.equipped) {
+      for (const eq of Object.values(
+        hud.worldPanels.merc.equipped as Record<string, UiInventoryItem | null | undefined>,
+      )) {
+        if (eq && typeof eq === 'object' && matchId(eq)) return eq
+      }
+    }
+    if (hud.worldPanels.merc?.equipment) {
+      for (const eq of Object.values(
+        hud.worldPanels.merc.equipment as Record<string, UiInventoryItem | null | undefined>,
+      )) {
+        if (eq && typeof eq === 'object' && matchId(eq)) return eq
+      }
+    }
     for (const p of hud.worldPanels.stashItems) {
       if (matchId(p.item)) return p.item
     }
@@ -2687,6 +2730,12 @@ export function refreshHoveredItemsImpl(hud: HudManager): void {
     const fresh = findFreshUiItem(hud.worldPanels.hoveredCubeItem.item)
     if (fresh) {
       hud.worldPanels.hoveredCubeItem = { ...hud.worldPanels.hoveredCubeItem, item: fresh }
+    }
+  }
+  if (hud.worldPanels.hoveredMercItem) {
+    const fresh = findFreshUiItem(hud.worldPanels.hoveredMercItem.item)
+    if (fresh) {
+      hud.worldPanels.hoveredMercItem = { ...hud.worldPanels.hoveredMercItem, item: fresh }
     }
   }
   if (hud.worldPanels.hoveredQuestRewardItem) {

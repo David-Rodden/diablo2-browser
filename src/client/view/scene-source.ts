@@ -6,6 +6,7 @@ import {
   type CollisionGrid,
 } from '../../common/world/d2map.ts'
 import type { AmbientLight } from '../../common/world/ambient-light.ts'
+import { CANONICAL_LEVEL_LIGHTING } from '../../common/world/levels-meta.ts'
 import type { LightingAmbientInputs, LightingInputs, LightingPreset } from '../../client/scene/lighting-presets.ts'
 import {
   getCollisionWorldSubTile,
@@ -554,108 +555,22 @@ function cullAndNormalizeUnitsToPaddedView(
 }
 
 /**
- * Converges camera viewport coordinates safely at outdoor level boundaries in widescreen modes
- * (profile.width > 800), clamping excessive overshoot so viewport corners do not expose unrendered
- * voids outside the map diamond, while keeping the local player safely within the standard 800x600
- * viewport center box (distance to screen edge >= 400px horizontally, >= 300px vertically).
+ * Returns the canonical 1.13c / SGD2FreeRes player-anchored viewport top-left coordinates
+ * (`D2Client.dll` `0x6fb3b142..0x6fb3b1a7` & `0x6fb010f0..0x6fb0116c`, Issue #1401).
+ *
+ * Diablo II never shifts or clamps the camera center away from the local player at map boundaries;
+ * shifting the render camera decouples world rendering from `ViewportCamera` / `CommandMapper`
+ * mouse hit-testing, pathfinding, and Teleport targeting, and causes violent camera swings across
+ * dungeon rooms. Widescreen outdoor margin corners are filled via border skirt floor quads instead.
  */
 export function computeConvergedCameraTopLeft(
   baseCamX: number,
   baseCamY: number,
-  profile: ViewportProfile,
-  levelView: LevelView | null | undefined,
-  neighbours: readonly LevelView[] | null | undefined,
+  _profile?: ViewportProfile,
+  _levelView?: LevelView | null | undefined,
+  _neighbours?: readonly LevelView[] | null | undefined,
 ): { readonly x: number; readonly y: number } {
-  if (!levelView || profile.width <= 800) {
-    return { x: baseCamX, y: baseCamY }
-  }
-
-  const cellsX = levelView.cellsX
-  const cellsY = levelView.cellsY
-  if (!cellsX || !cellsY || cellsX <= 0 || cellsY <= 0) {
-    return { x: baseCamX, y: baseCamY }
-  }
-
-  const isoOriginX = levelView.isoOriginX ?? 0
-  const isoOriginY = levelView.isoOriginY ?? 0
-
-  const maxShiftX = Math.round((profile.width - 800) / 2)
-  const maxShiftY = Math.round(Math.max(0, profile.height - 600) / 2)
-
-  let hasNeighbourPositiveX = false
-  let hasNeighbourPositiveY = false
-  let hasNeighbourNegativeX = false
-  let hasNeighbourNegativeY = false
-
-  if (neighbours && neighbours.length > 0) {
-    const shiftX = levelView.subOriginX ?? 0
-    const shiftY = levelView.subOriginY ?? 0
-    for (const nv of neighbours) {
-      if (!nv || nv.areaId === levelView.areaId || nv.act !== levelView.act) continue
-      const dSubX = (nv.subOriginX ?? 0) - shiftX
-      const dSubY = (nv.subOriginY ?? 0) - shiftY
-      const dCellX = Math.round(dSubX / 5)
-      const dCellY = Math.round(dSubY / 5)
-      if (dCellX + nv.cellsX >= cellsX) hasNeighbourPositiveX = true
-      if (dCellY + nv.cellsY >= cellsY) hasNeighbourPositiveY = true
-      if (dCellX <= 0) hasNeighbourNegativeX = true
-      if (dCellY <= 0) hasNeighbourNegativeY = true
-    }
-  }
-
-  let deltaX = 0
-  let deltaY = 0
-
-  // 1. Bottom-Right corner: max visible cellX
-  if (!hasNeighbourPositiveX) {
-    const cellX_br =
-      (baseCamY + profile.height - isoOriginY) / 80 + (baseCamX + profile.width - isoOriginX) / 160
-    if (cellX_br > cellsX) {
-      const overshoot = cellX_br - cellsX
-      deltaX -= Math.round(overshoot * 80)
-      deltaY -= Math.round(overshoot * 40)
-    }
-  }
-
-  // 2. Bottom-Left corner: max visible cellY
-  if (!hasNeighbourPositiveY) {
-    const cellY_bl =
-      (baseCamY + profile.height - isoOriginY) / 80 - (baseCamX - isoOriginX) / 160
-    if (cellY_bl > cellsY) {
-      const overshoot = cellY_bl - cellsY
-      deltaX += Math.round(overshoot * 80)
-      deltaY -= Math.round(overshoot * 40)
-    }
-  }
-
-  // 3. Top-Left corner: min visible cellX
-  if (!hasNeighbourNegativeX) {
-    const cellX_tl = (baseCamY - isoOriginY) / 80 + (baseCamX - isoOriginX) / 160
-    if (cellX_tl < 0) {
-      const overshoot = -cellX_tl
-      deltaX += Math.round(overshoot * 80)
-      deltaY += Math.round(overshoot * 40)
-    }
-  }
-
-  // 4. Top-Right corner: min visible cellY
-  if (!hasNeighbourNegativeY) {
-    const cellY_tr =
-      (baseCamY - isoOriginY) / 80 - (baseCamX + profile.width - isoOriginX) / 160
-    if (cellY_tr < 0) {
-      const overshoot = -cellY_tr
-      deltaX -= Math.round(overshoot * 80)
-      deltaY += Math.round(overshoot * 40)
-    }
-  }
-
-  const clampedDeltaX = Math.max(-maxShiftX, Math.min(maxShiftX, deltaX))
-  const clampedDeltaY = Math.max(-maxShiftY, Math.min(maxShiftY, deltaY))
-
-  return {
-    x: baseCamX + clampedDeltaX,
-    y: baseCamY + clampedDeltaY,
-  }
+  return { x: baseCamX, y: baseCamY }
 }
 
 /**
@@ -1179,9 +1094,23 @@ export class ClientWorldSceneSource implements SceneSource {
           }
         }
 
-        // In widescreen modes (>800x600), generate border skirt margin floor quads for any visible
-        // frustum cells extending outside the map diamond (Issue #1370) to eliminate black triangular voids.
-        if (profile.width > 800 && sampleFloor !== null && sampleFloor.placement) {
+        // In widescreen modes (>800x600) on standalone outdoor levels (`IsInside == 0` in Levels.txt and no
+        // stitched `neighbourLevelViews`), generate border skirt margin floor quads for any visible frustum
+        // cells extending outside the map diamond (Issues #1370, #1401). Indoor dungeons (`isInside === true`,
+        // e.g. Catacombs Level 4 areaId=37) must keep authentic black void outside walls instead of stamping
+        // floating floor tiles, and stitched outdoor views rely on `neighbourLevelViews` for adjacent tiles.
+        const isInsideLevel = CANONICAL_LEVEL_LIGHTING[levelId]?.isInside === true
+        const hasStitchedNeighbours =
+          st.neighbourLevelViews !== undefined &&
+          st.neighbourLevelViews !== null &&
+          st.neighbourLevelViews.length > 0
+        if (
+          !isInsideLevel &&
+          !hasStitchedNeighbours &&
+          profile.width > 800 &&
+          sampleFloor !== null &&
+          sampleFloor.placement
+        ) {
           const cellsX = st.levelView.cellsX
           const cellsY = st.levelView.cellsY
           const cellMinX = Math.floor((minY - isoOriginY) / 80 + (minX - isoOriginX) / 160) - 1

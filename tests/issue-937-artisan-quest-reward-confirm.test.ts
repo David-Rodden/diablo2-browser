@@ -314,4 +314,66 @@ describe('Issue #937: Larzuk Add Sockets, Charsi Imbue, and Anya Personalize con
       },
     ])
   })
+
+  it('Charsi imbue confirm imbues white/normal items to rare even when itemId matches a town area id (1, 40, 75, 109) or npcInteraction was cleared', () => {
+    for (const itemId of [1, 40, 75, 109]) {
+      const { world, hud, model, commands } = createArtisanTestHarness()
+      const charsiId = 1540
+      world.apply({
+        type: 'UnitAssign',
+        unit: {
+          unitType: 'monster',
+          id: charsiId,
+          classId: 154, // Charsi
+          x: 5100,
+          y: 5040,
+          lifePct: 128,
+          mode: 1,
+        },
+      } as any)
+
+      const diadem: ItemData = makeItemData({
+        id: itemId,
+        code: 'ci3',
+        quality: 2,
+        ilvl: 85,
+        invWidth: 2,
+        invHeight: 2,
+        location: 4,
+        container: 'cursor',
+      })
+      world.containers.applyItemEvent(0x02, diadem, 'cursor', 1)
+      model.syncFromWorld()
+
+      // Simulate imbue window open where world.npcInteraction was reset to 'none' / null npcId,
+      // and _hasQuestInfo is true with q3 === 0:
+      ;(world as any)._hasQuestInfo = true
+      world.quests[3] = 0
+      hud.leftPanel = 'imbue'
+      ;(hud.worldPanels as any).activePanel = 'imbue'
+      ;(hud.worldPanels as any).questRewardItem = hud.inventory.cursorItem
+      hud.inventory.cursorItem = null
+
+      commands.length = 0
+      clickHud(hud, 138, 240)
+
+      expect(commands).toEqual([
+        {
+          type: 'NpcEntityAction',
+          action: 0,
+          npcId: charsiId,
+          complement: itemId,
+        },
+      ])
+      expect(hud.leftPanel).toBe('none')
+      expect(hud.rightPanel).toBe('inv')
+      expect(hud.inventory.visible).toBe(true)
+      expect(world.containers.cursor?.id).toBe(itemId)
+      expect(world.containers.cursor?.quality).toBe(6)
+      expect((world.containers.cursor?.stats?.length ?? 0) > 0).toBe(true)
+      const cursorAfter = hud.inventory.cursorItem as any
+      expect(cursorAfter?.id).toBe(String(itemId))
+      expect(cursorAfter?.quality).toBe('rare')
+    }
+  })
 })

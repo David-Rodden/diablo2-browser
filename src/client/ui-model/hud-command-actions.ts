@@ -584,14 +584,34 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
     model.world.npcInteraction.activeWindow === 'orifice' ||
     model.hudManager?.leftPanel === 'orifice' ||
     (model.hudManager?.worldPanels as any)?.activePanel === 'orifice'
-  const npcId =
+  const wasImbue =
+    model.world.npcInteraction.window === 'imbue' ||
+    model.world.npcInteraction.activeWindow === 'imbue' ||
+    model.hudManager?.leftPanel === 'imbue' ||
+    (model.hudManager?.worldPanels as any)?.activePanel === 'imbue'
+  const wasAddSockets =
+    model.world.npcInteraction.window === 'add_sockets' ||
+    model.world.npcInteraction.activeWindow === 'add_sockets' ||
+    model.hudManager?.leftPanel === 'add_sockets' ||
+    (model.hudManager?.worldPanels as any)?.activePanel === 'add_sockets'
+  let npcId =
     explicitNpcId ||
     model.world.npcInteraction.npcId ||
+    model.world.npcInteraction.infoNpcId ||
     (model.hudManager?.worldPanels as any)?.npcMenu?.npcUnitId ||
     (model.hudManager?.worldPanels as any)?.npcMenu?.npcId ||
     (model.hudManager?.worldPanels as any)?.activeNpcId ||
     (model.hudManager?.worldPanels as any)?.vendorNpcId ||
     0
+  if (!isOrifice && npcId <= 0 && model.world.units?.values) {
+    const targetClassId = wasImbue ? 154 : wasAddSockets ? 511 : 512
+    for (const u of model.world.units.values()) {
+      if (u && (u.unitType === 'monster' || u.type === 1) && u.classId === targetClassId) {
+        npcId = u.id
+        break
+      }
+    }
+  }
   if (isOrifice) {
     ;(model.world.npcInteraction as any).window = 'none'
     ;(model.world.npcInteraction as any).activeWindow = 'none'
@@ -615,12 +635,46 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
     })
     return
   }
-  const wasImbue =
-    model.world.npcInteraction.window === 'imbue' ||
-    model.world.npcInteraction.activeWindow === 'imbue' ||
-    model.hudManager?.leftPanel === 'imbue' ||
-    (model.hudManager?.worldPanels as any)?.activePanel === 'imbue'
   const slotUiItem = (model.hudManager?.worldPanels as any)?.questRewardItem ?? null
+  if (
+    wasImbue &&
+    slotUiItem &&
+    !model.world.containers.allById.has(itemId) &&
+    model.world.containers.cursor?.id !== itemId
+  ) {
+    const rawCode = String(slotUiItem.code ?? '').trim() || 'cap'
+    const rawQuality =
+      slotUiItem.quality === 'low'
+        ? 1
+        : slotUiItem.quality === 'superior'
+          ? 3
+          : typeof slotUiItem.quality === 'number'
+            ? slotUiItem.quality
+            : 2
+    const synthItem: ItemData = {
+      id: itemId >>> 0,
+      code: rawCode,
+      name: slotUiItem.name ?? rawCode,
+      width: slotUiItem.width ?? 1,
+      height: slotUiItem.height ?? 1,
+      quality: rawQuality,
+      identified: slotUiItem.identified !== false,
+      ethereal: Boolean(slotUiItem.ethereal),
+      socketed: Boolean(slotUiItem.sockets && slotUiItem.sockets > 0),
+      totalSockets: Number(slotUiItem.sockets ?? 0),
+      usedSockets: Array.isArray(slotUiItem.socketedItems) ? slotUiItem.socketedItems.length : 0,
+      level: Number(slotUiItem.itemLevel ?? slotUiItem.level ?? 1),
+      stats: [],
+      container: 'cursor',
+      location: 4,
+    } as any
+    ;(model.world.containers as any).applyItemEvent?.(
+      0x02,
+      synthItem,
+      'cursor',
+      model.world.selfId || 1,
+    )
+  }
   model.pendingArtisanConfirmNpcId = npcId > 0 ? npcId : null
   if (model.hudManager) {
     ;(model.hudManager.worldPanels as any).questRewardItem = null
@@ -648,8 +702,12 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
     npcId: npcId >>> 0,
     complement: itemId >>> 0,
   })
-  if (wasImbue && model.world.containers.cursor?.quality !== 6) {
-    model.world.executeCharsiImbue(itemId, npcId)
+  if (
+    wasImbue &&
+    model.world.containers.cursor?.quality !== 6 &&
+    (model.world.containers.cursor?.quality as any) !== 'rare'
+  ) {
+    model.world.executeCharsiImbue(itemId, npcId, { force: true } as any)
   }
   if (model.hudManager) {
     model.syncFromWorld()
@@ -659,7 +717,13 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
           1,
           model.world.self.level || model.world.self.stats.get(12) || 8,
         )
-        model.hudManager.inventory.cursorItem = imbueUiInventoryItem113c(slotUiItem, playerLevel)
+        const imbuedUi = imbueUiInventoryItem113c(slotUiItem, playerLevel)
+        model.hudManager.inventory.cursorItem = imbuedUi
+        model.hudManager.inventory.gridItems = model.hudManager.inventory.gridItems.filter(
+          (g: any) => String(g.item?.id) !== String(itemId),
+        )
+        model.lastSyncedCursorItemRef = model.hudManager.inventory.cursorItem
+        model.lastSyncedGridItemsRef = model.hudManager.inventory.gridItems
       } catch {
         // Keep existing cursorItem if ineligible
       }
