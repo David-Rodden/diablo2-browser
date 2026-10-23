@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { MISSILE_METAS } from '../../src/client/render/missiles-meta.ts'
+import { CANONICAL_113C_MISSILES } from '../../src/common/skills/missiles-data.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
 import { QUEST_FX_MISSILES_113C } from '../../src/client/world/quest-fx-data-113c.ts'
 import {
@@ -86,8 +87,13 @@ describe('Issue #917: Compelling Orb smash (1.13c)', () => {
     expect(stairs.frameDelta[1]).toBe(120)
   })
 
-  it('bakes the trail art (mist_Fade_Orb_Loop); orbmist itself has CelFile null (light only)', () => {
+  it('bakes the trail art (mist_Fade_Orb_Loop) and runtime CltDoFunc 25 / pCltHitFunc 0 metadata; orbmist itself has CelFile null (light only)', () => {
+    expect(CANONICAL_113C_MISSILES['orbmist']?.pCltDoFunc).toBe(25)
+    expect(CANONICAL_113C_MISSILES['orbmist']?.cltSubMissile1).toBe('orbmisttrail')
     expect(MISSILE_METAS['orbmisttrail']?.celFile).toBe('mist_Fade_Orb_Loop')
+    expect(CANONICAL_113C_MISSILES['orbmisttrail']?.pCltDoFunc).toBe(1)
+    expect(CANONICAL_113C_MISSILES['orbmisttrail']?.alwaysExplode).toBe(true)
+    expect(CANONICAL_113C_MISSILES['orbmisttrail']?.pCltHitFunc).toBeUndefined()
     expect(MISSILE_METAS['orbmistfade']?.celFile).toBe('mist_Fade_Orb')
   })
 
@@ -148,6 +154,27 @@ describe('Issue #917: Compelling Orb smash (1.13c)', () => {
     expect(Math.abs(trail.x - 5000)).toBeLessThanOrEqual(4)
     // the mist's carrier and trails never hit the local player (client-only visuals)
     expect(world.getUnitsByType('missile').some(m => m.missileKey === 'orbmist')).toBe(true)
+
+    // Advance 50 more ticks so the first trail expires; AlwaysExplode = 0 means no orbmistfade is spawned on expiry.
+    for (let t = 0; t < 50; t++) {
+      world.tick(40)
+    }
+    expect(world.getUnitsByType('missile').some(m => m.missileKey === 'orbmistfade')).toBe(false)
+  })
+
+  it('ClientWorld: finds stairs 386 from world units when no custom nearRoomObjectFinder is registered', () => {
+    const world = new ClientWorld()
+    world.setCollisionChecker(() => false)
+    world.setQuestFxSeed(0x917917)
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 'object', id: 386, classId: DURANCE_STAIRS_OBJECT_CLASS, x: 5012, y: 5994, mode: 0 },
+    } as any)
+    assignOrbMonster(world, [22])
+    world.apply({ type: 'UnitMode', unitType: 'monster', id: 366366, mode: 0, lifePct: 0 } as any)
+    const mist = world.getUnitsByType('missile').find(m => m.missileKey === 'orbmist')!
+    expect(mist).toBeDefined()
+    expect([mist.targetX, mist.targetY]).toEqual([5012, 5994])
   })
 
   it('ClientWorld: without the stairs in the near rooms the mist goes to (x - 15, y - 15)', () => {

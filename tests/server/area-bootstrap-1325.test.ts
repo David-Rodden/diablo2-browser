@@ -244,6 +244,16 @@ describe('Issue #1325 — GameInstance loads target areas on demand', () => {
     const reassign = events.find((e) => e.type === 'UnitReassign') as { x: number; y: number }
     expect(Math.hypot(reassign.x - 3030, reassign.y - 3050)).toBeLessThanOrEqual(3)
 
+    ;(game as unknown as { players: Map<number, { items: any[] }> }).players.get(pid)!.items.push({
+      unitId: 9001,
+      code: 'tsc',
+      location: 'inventory',
+      x: 0,
+      y: 0,
+      quantity: 1,
+      stats: new Map(),
+      socketedItems: [],
+    })
     game.enqueueCommand(pid, { type: 'TownPortal' } as never)
     game.stepFrame()
     const portalEv = game.drainEvents(pid).find((e) => e.type === 'Portal') as { portalId: number }

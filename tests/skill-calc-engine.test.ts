@@ -517,4 +517,48 @@ describe('Diablo II Skill Calculator Engine (Issue #26)', () => {
       expect(restored?.tabSoftPoints[0]).toBe(2)
     })
   })
+
+  describe('Paladin Holy Fire/Freeze/Shock & SkillDesc lineType 43/49/50/59/72/73', () => {
+    it('formats Holy Fire (#102) lineType 43 by dividing 256ths edns/edxs instead of +27468', () => {
+      const palState = createInitialState('pal')
+      palState.hardPoints[98] = 1
+      palState.hardPoints[102] = 20
+      palState.hardPoints[100] = 20 // Resist Fire (+360%)
+      palState.hardPoints[125] = 20 // Salvation (+120%)
+      const vm = buildTooltipViewModel(palState, 102)
+      expect(vm).not.toBeNull()
+      const line43 = vm?.current.effects.find(e => e.lineType === 43)
+      const line38 = vm?.current.effects.find(e => e.lineType === 38)
+      expect(line43?.textZh).toBe('火焰傷害：107 - 118')
+      expect(line43?.textEn).toBe('Fire Damage: 107-118')
+      expect(line38?.textZh).toBe('火焰傷害：643 - 713對你的攻擊')
+      expect(line38?.textEn).toBe('Fire Damage: 643-713 to your attack')
+    })
+
+    it('formats Holy Shield (#117 lt 49), Fist of the Heavens (#121 lt 50), Wake of Inferno (#272 lt 59), and Weapon Damage fractions (lt 72/73)', () => {
+      const palState = createInitialState('pal')
+      palState.hardPoints[117] = 20
+      palState.hardPoints[101] = 20
+      palState.hardPoints[121] = 20
+      const hsVm = buildTooltipViewModel(palState, 117)
+      expect(hsVm?.current.effects.find(e => e.lineType === 49)?.textZh).toBe('重擊傷害：+57 - 60')
+      const fohVm = buildTooltipViewModel(palState, 121)
+      expect(fohVm?.current.effects.find(e => e.lineType === 50)?.textZh).toBe('聖光彈的傷害：904 - 944')
+
+      const assState = createInitialState('ass')
+      assState.hardPoints[272] = 20
+      const woiVm = buildTooltipViewModel(assState, 272)
+      expect(woiVm?.current.effects.find(e => e.lineType === 59)?.textZh).toBe('每秒平均火焰傷害：214 - 249')
+      expect(woiVm?.current.effects.find(e => e.lineType === 72 || e.lineType === 73)).toBeUndefined()
+
+      assState.hardPoints[266] = 1
+      const bfVm = buildTooltipViewModel(assState, 266)
+      expect(bfVm?.current.effects.find(e => e.lineType === 72)?.textZh).toBe('3/4 武器傷害')
+
+      const amaState = createInitialState('ama')
+      amaState.hardPoints[12] = 1
+      const msVm = buildTooltipViewModel(amaState, 12)
+      expect(msVm?.current.effects.find(e => e.lineType === 73)?.textZh).toBe('3/4 武器傷害')
+    })
+  })
 })

@@ -1065,7 +1065,9 @@ export function drawSceneUnitDrawable(
           unit.blendMode === 'trans50' ||
           unit.overlays.some((o) => o.token.toLowerCase() === 'fade')
         const baseAlpha = isFaded ? 0.55 : 1.0
-        const tint = unit.tintColor
+        // Issue #1369: Do not multiply RGB tintColor on top of an active palette row shift (double tinting)
+        const hasActivePaletteShift = unit.paletteRow !== undefined && unit.paletteRow > 0
+        const tint = (unit.tintColor && !hasActivePaletteShift)
           ? ([
               unit.tintColor[0] / 255,
               unit.tintColor[1] / 255,
@@ -1198,7 +1200,8 @@ export function drawSceneUnitDrawable(
             // 1.13c: Decoy (356) blue-white sheen; Valkyrie (357) golden sheen; Shadow Warrior (417) dark shadow sheen; Shadow Master (418) ethereal violet sheen
             const isFaded = unit.overlays.some((o) => o.token === 'fade')
             const baseAlpha = isFaded ? 0.55 : isAmazonDisguiseSummon && unit.classId === 356 ? 0.85 : isAssassinDisguiseSummon ? 0.8 : 1.0
-            const tint = unit.tintColor
+            const hasActivePaletteShift = unit.paletteRow !== undefined && unit.paletteRow > 0
+            const tint = (unit.tintColor && !hasActivePaletteShift)
               ? ([
                   unit.tintColor[0] / 255,
                   unit.tintColor[1] / 255,
@@ -1358,7 +1361,8 @@ export function drawSceneUnitDrawable(
         const baseBlendMode = isOpaqueTownNpc
           ? 'normal'
           : normalizeMonsterBlendMode(resolvedToken, art.blendMode)
-        const tint = unit.tintColor
+        const hasActivePaletteShift = unit.paletteRow !== undefined && unit.paletteRow > 0
+        const tint = (unit.tintColor && !hasActivePaletteShift)
           ? ([
               unit.tintColor[0] / 255,
               unit.tintColor[1] / 255,
@@ -1928,18 +1932,24 @@ export function drawSceneMissileDrawable(
         (frame.anchorY !== undefined
           ? missile.worldY + frame.anchorY
           : missile.worldY - frame.height / 2) - altitude
+      const isTranslucentBlend =
+        art.meta.blendMode === 'trans25' ||
+        art.meta.blendMode === 'trans50' ||
+        art.meta.blendMode === 'trans75'
       const resolvedBlendMode =
         missile.blendMode && missile.blendMode !== 'normal'
           ? missile.blendMode
-          : missile.trans !== undefined && missile.trans !== 0
-            ? missileTransToDrawBlend(missile.trans)
-            : art.meta.trans !== undefined && art.meta.trans !== 0
-              ? missileTransToDrawBlend(art.meta.trans)
-              : art.meta.blendMode === 'lighter' || art.meta.blendMode === 'additive'
-                ? 'additive'
-                : art.meta.blendMode === 'burn' || art.meta.blendMode === 'multiply'
-                  ? 'burn'
-                  : (missile.blendMode ?? 'normal')
+          : isTranslucentBlend
+            ? art.meta.blendMode
+            : missile.trans !== undefined && missile.trans !== 0
+              ? missileTransToDrawBlend(missile.trans)
+              : art.meta.trans !== undefined && art.meta.trans !== 0
+                ? missileTransToDrawBlend(art.meta.trans)
+                : art.meta.blendMode === 'lighter' || art.meta.blendMode === 'additive'
+                  ? 'additive'
+                  : art.meta.blendMode === 'burn' || art.meta.blendMode === 'multiply'
+                    ? 'burn'
+                    : (missile.blendMode ?? 'normal')
       renderer.draw(frame, drawX, drawY, {
         atlas: art.handle,
         blendMode: resolvedBlendMode,
@@ -2193,7 +2203,13 @@ export function buildAutomapShrineDescriptor(
   overlayArtMap?: ReadonlyMap<string, LoadedOverlayArt> | null,
 ): AutomapShrineDescriptor | null {
   const objMeta = CANONICAL_113C_OBJECTS[u.classId]
-  if (!objMeta?.isShrine) {
+  // Issue #1371: Require selectableMask !== 0, exclude inactive desert shrine (625) and dummy evil force objects
+  if (
+    !objMeta?.isShrine ||
+    objMeta.selectableMask === 0 ||
+    u.classId === 625 ||
+    (objMeta.nameEn && objMeta.nameEn.toLowerCase() === 'an evil force')
+  ) {
     return null
   }
   const shrineCode =
@@ -2295,7 +2311,10 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
           playerWorld: { x: anyCtx.cameraX ?? 0, y: (anyCtx.cameraY ?? 0) - CAMERA_Y_OFFSET },
           playerSubTile: { x: 0, y: 0 },
           playerLocalSubTile: { x: 0, y: 0 },
-          cameraTopLeft: { x: 0, y: 0 },
+          cameraTopLeft: anyCtx.cameraTopLeft ?? {
+            x: (anyCtx.cameraX ?? 0) - (anyCtx.viewportProfile?.width ?? 800) / 2,
+            y: (anyCtx.cameraY ?? 0) - (anyCtx.viewportProfile?.height ?? 600) / 2,
+          },
           floorQuads: [],
           shadowQuads: [],
           lowerWallQuads: [],
@@ -2345,12 +2364,22 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
       (snapshot.playerLocalSubTile.x !== 0 || snapshot.playerLocalSubTile.y !== 0)
         ? subTileToWorldOrtho(snapshot.playerLocalSubTile.x, snapshot.playerLocalSubTile.y)
         : snapshot.playerWorld
-    const camX = effectivePlayerWorld.x + panelShiftX
-    const camY = effectivePlayerWorld.y + CAMERA_Y_OFFSET
+    const rawCamX = effectivePlayerWorld.x + panelShiftX
+    const rawCamY = effectivePlayerWorld.y + CAMERA_Y_OFFSET
     const pixelScale = renderer?.pixelScale ?? 1
     const snapToPixel = (v: number) => Math.round(v * pixelScale) / pixelScale
-    const renderCamX = snapToPixel(camX + (snapshot.shakeOffsetX ?? 0))
-    const renderCamY = snapToPixel(camY + (snapshot.shakeOffsetY ?? 0))
+    const renderCamX = snapToPixel(
+      ctx.source && snapshot.cameraTopLeft !== undefined
+        ? snapshot.cameraTopLeft.x + snapshot.viewportProfile.width / 2 + (snapshot.shakeOffsetX ?? 0)
+        : rawCamX + (snapshot.shakeOffsetX ?? 0),
+    )
+    const renderCamY = snapToPixel(
+      ctx.source && snapshot.cameraTopLeft !== undefined
+        ? snapshot.cameraTopLeft.y + snapshot.viewportProfile.height / 2 + (snapshot.shakeOffsetY ?? 0)
+        : rawCamY + (snapshot.shakeOffsetY ?? 0),
+    )
+    const camX = renderCamX - (snapshot.shakeOffsetX ?? 0)
+    const camY = renderCamY - (snapshot.shakeOffsetY ?? 0)
 
     if (renderer !== null) {
       ctx.tileGpuCache?.ensureActPalette(snapshot.actId)

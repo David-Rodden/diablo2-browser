@@ -46,6 +46,8 @@ import type { CombatUnitContext } from '../src/server/engine/combat-pipeline.ts'
 import { MissileEngine } from '../src/server/engine/missile-engine.ts'
 import { FIXED_ONE, UnitStatList } from '../src/server/engine/stat-list.ts'
 import { StateBus } from '../src/server/engine/state-bus.ts'
+import { GameInstance } from '../src/server/engine/game-instance.ts'
+import { ClientWorld } from '../src/client/world/client-world.ts'
 
 const OPEN_TERRAIN: CombatTerrain = {
   overlap: () => 0,
@@ -1034,6 +1036,163 @@ describe('Diablo II v1.13c Authoritative Monster, Boss, Mercenary & Pet AI Arche
       expect(wolf.y).toBe(100)
       expect(shadow.x).toBe(100)
       expect(shadow.y).toBe(100)
+    })
+  })
+
+  describe('Baal Throne 5-Wave Choreography (1.13c D2Game 0x6FCC8430 / 0x6FCC8350 & D2Client VFX)', () => {
+    it('matches exact 1.13c SuperUniques.txt / MonStats.txt wave definitions and executes all 5 waves + BaalToStairs portal entry', () => {
+      expect(BAAL_THRONE_WAVES_113C.map((w) => ({
+        wave: w.wave,
+        superUniqueIndex: w.superUniqueIndex,
+        leaderHcIdx: w.leaderHcIdx,
+        minionHcIdx: w.minionHcIdx,
+        extraMinionHcIdx: w.extraMinionHcIdx,
+        extraMinionCount: w.extraMinionCount,
+      }))).toEqual([
+        { wave: 1, superUniqueIndex: 61, leaderHcIdx: 62, minionHcIdx: 23, extraMinionHcIdx: undefined, extraMinionCount: 0 },
+        { wave: 2, superUniqueIndex: 62, leaderHcIdx: 105, minionHcIdx: 105, extraMinionHcIdx: 381, extraMinionCount: 10 },
+        { wave: 3, superUniqueIndex: 63, leaderHcIdx: 557, minionHcIdx: 557, extraMinionHcIdx: undefined, extraMinionCount: 0 },
+        { wave: 4, superUniqueIndex: 64, leaderHcIdx: 558, minionHcIdx: 558, extraMinionHcIdx: undefined, extraMinionCount: 0 },
+        { wave: 5, superUniqueIndex: 65, leaderHcIdx: 571, minionHcIdx: 571, extraMinionHcIdx: undefined, extraMinionCount: 0 },
+      ])
+
+      const game = new GameInstance({ seed: 12345, areaId: 131, difficulty: 0 })
+      const playerId = game.addPlayer({
+        name: 'Hero',
+        classId: 1,
+        level: 80,
+        hp: 99999,
+        maxHp: 99999,
+        areaId: 131,
+        x: 100,
+        y: 125,
+      })
+      const portalId = game.spawnObject({ classId: 563, areaId: 131, x: 100, y: 94, mode: 0 })
+      const baalThroneId = game.spawnMonster({ classId: 543, areaId: 131, x: 100, y: 100 })
+      const baalState0 = game.getMonster(baalThroneId)!
+      expect(baalState0.isKillable).toBe(false)
+      expect(baalState0.ai).toBe('BaalThrone')
+
+      // Step through all 5 waves:
+      const expectedLeaderHcIdx = [62, 105, 557, 558, 571]
+      for (let w = 0; w < 5; w++) {
+        // Run frames until wave (w + 1) boss spawns at (100, 113)
+        let bossFound = false
+        for (let f = 0; f < 500; f++) {
+          game.stepFrame()
+          const livingWaveMonsters = game
+            .getAllUnits()
+            .filter((u) => u.unitType === 'monster' && u.areaId === 131 && u.unitId !== baalThroneId)
+            .map((u) => game.getMonster(u.unitId)!)
+            .filter((m) => m !== undefined && m.alive)
+          if (livingWaveMonsters.length > 0) {
+            const leader = livingWaveMonsters.find((m) => m.rank === 'unique')
+            expect(leader).toBeDefined()
+            expect(leader!.hcIdx).toBe(expectedLeaderHcIdx[w])
+            expect(leader!.umodIds).toContain(MON_UMOD.QUESTCOMPLETE)
+            if (w === 1) {
+              // Wave 2 includes 10 extra Burning Dead Mages (skmage_cold3, hcIdx = 381)
+              const coldMages = livingWaveMonsters.filter((m) => m.hcIdx === 381)
+              expect(coldMages.length).toBe(10)
+            }
+            // Kill all wave monsters so the next wave can proceed
+            for (const m of livingWaveMonsters) {
+              game.applyDamageToMonster(m.unitId, 999999, playerId)
+            }
+            bossFound = true
+            break
+          }
+        }
+        expect(bossFound).toBe(true)
+      }
+
+      // After Wave 5 is cleared, Baal casts #285 Corpse Explode, waits 250 frames, transforms into #559 baalcrabstairs,
+      // walks to #563 Baals Portal, activates destAreaId = 132, and removes himself.
+      let transformed = false
+      let removed = false
+      for (let f = 0; f < 450; f++) {
+        const eventsMap = game.stepFrame()
+        const events = eventsMap.get(playerId) ?? []
+        if (events.some((e) => e.type === 'StateSet' && e.state === 142)) {
+          transformed = true
+        }
+        if (game.getMonster(baalThroneId) === undefined) {
+          removed = true
+          break
+        }
+      }
+      expect(transformed).toBe(true)
+      expect(removed).toBe(true)
+      const portalObj = game.getAllUnits().find((u) => u.unitType === 'object' && u.unitId === portalId)
+      expect(portalObj?.mode).toBe(2)
+    })
+
+    it('applies STATE_CHANGECLASS (142), #285 Baal Corpse Explode chain, and #286 lobbed Baal Monster Spawn disc scatter on ClientWorld', () => {
+      const world = new ClientWorld()
+      world.apply({
+        type: 'UnitAssign',
+        unit: { unitType: 1, id: 700, classId: 543, x: 100, y: 100, lifePct: 128, mode: 1 },
+      })
+      const baal = world.getUnit('monster', 700)!
+
+      // 1. STATE_CHANGECLASS (142) with STAT_SHORTPARAM1 (355) = 559
+      world.apply({
+        type: 'StateSet',
+        unit: { unitType: 1, id: 700 },
+        state: 142,
+        stats: [{ statId: 355, param: 0, value: 559 }],
+        origin: 0xa8,
+        complete: true,
+      })
+      expect(baal.classId).toBe(559)
+
+      // 2. #285 Baal Corpse Explode consumes corpses within 40 sub-tiles and chains #587 -> #588 -> #622
+      world.apply({
+        type: 'UnitAssign',
+        unit: { unitType: 1, id: 701, classId: 23, x: 105, y: 108, lifePct: 0, mode: 12 },
+      })
+      const corpse = world.getUnit('monster', 701)!
+      corpse.dead = true
+      corpse.mode = 12
+      corpse.lifePct = 0
+
+      ;(world as any).spawnMissilesForSkill(baal, 285, 100, 100, 1)
+      expect(corpse.states.has(104)).toBe(true)
+      const getMissiles = () =>
+        Array.from(world.units.values()).filter((u) => u.unitType === 'missile')
+      const delayMissiles = getMissiles().filter(
+        (m) => m.missileKey === 'baalcorpseexplodedelay',
+      )
+      expect(delayMissiles.length).toBe(1)
+
+      // Tick until delay -> expl -> fade
+      let sawExpl = false
+      let sawFade = false
+      for (let t = 0; t < 40; t++) {
+        world.tick(40)
+        const keys = getMissiles().map((m) => m.missileKey)
+        if (keys.includes('baalcorpseexplodeexpl')) sawExpl = true
+        if (keys.includes('baalcorpseexplodefade')) sawFade = true
+      }
+      expect(sawExpl).toBe(true)
+      expect(sawFade).toBe(true)
+
+      // 3. #286 Baal Monster Spawn lobs 'baal spawn monsters' (#550) with altitude > 0 and scatters 'baal spawn monsters exp' (#591)
+      ;(world as any).spawnMissilesForSkill(baal, 286, 100, 113, 1)
+      const spawnProj = getMissiles().find((m) => m.missileKey === 'baal spawn monsters')
+      expect(spawnProj).toBeDefined()
+      expect(spawnProj!.alwaysExplode).toBe(true)
+      expect((spawnProj as any).lobPeakAltitude).toBeGreaterThan(0)
+
+      let sawSpawnExp = false
+      for (let t = 0; t < 30; t++) {
+        world.tick(40)
+        if (getMissiles().some((m) => m.missileKey === 'baal spawn monsters exp')) {
+          sawSpawnExp = true
+          break
+        }
+      }
+      expect(sawSpawnExp).toBe(true)
     })
   })
 })

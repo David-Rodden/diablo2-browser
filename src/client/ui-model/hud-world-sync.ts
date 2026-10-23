@@ -1978,8 +1978,17 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
 
     const aggMaxHp = Math.floor(mercAgg.total(7) / 256)
     const aggHp = Math.floor(mercAgg.total(6) / 256)
-    const mercMaxHp = isMercDead ? 0 : (aggMaxHp > 0 ? aggMaxHp : (effectiveMerc?.maxHp ?? 0))
-    const mercHp = isMercDead ? 0 : (aggMaxHp > 0 ? aggHp : (effectiveMerc?.hp ?? 0))
+    const hasExplicitMercHpStats = mercAgg.base(7) > 0 && mercStats.has(6)
+    const mercMaxHp = isMercDead
+      ? 0
+      : hasExplicitMercHpStats
+        ? aggMaxHp
+        : (effectiveMerc?.maxHp ?? aggMaxHp)
+    const mercHp = isMercDead
+      ? 0
+      : hasExplicitMercHpStats
+        ? aggHp
+        : (effectiveMerc?.hp ?? aggHp)
 
     const diffPenalty = model.world.difficulty === 2 ? -100 : model.world.difficulty === 1 ? -40 : 0
     const fireRes = Math.min(mercAgg.total(40) + 75, mercAgg.total(39) + diffPenalty)
@@ -2032,10 +2041,10 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       baseDexterity: mercAgg.base(2),
       strengthColor: getColor(0),
       dexterityColor: getColor(2),
-      minDamage: mercAgg.total(21) || (effectiveMerc?.minDamage ?? 0),
-      maxDamage: mercAgg.total(22) || (effectiveMerc?.maxDamage ?? 0),
-      damageColor: hasFlag('damblue') ? 'blue' : hasFlag('damred') ? 'red' : (mercAgg.total(21) > mercAgg.base(21) ? 'blue' : (effectiveMerc?.damageColor ?? 'white')),
-      defense: mercAgg.total(31) || (effectiveMerc?.defense ?? 0),
+      minDamage: effectiveMerc ? effectiveMerc.minDamage : (mercAgg.total(21) || 0),
+      maxDamage: effectiveMerc ? effectiveMerc.maxDamage : (mercAgg.total(22) || 0),
+      damageColor: hasFlag('damblue') ? 'blue' : hasFlag('damred') ? 'red' : (effectiveMerc?.damageColor ?? (mercAgg.total(21) > mercAgg.base(21) ? 'blue' : 'white')),
+      defense: effectiveMerc ? effectiveMerc.defense : (mercAgg.total(31) || 0),
       defenseColor: getColor(31) !== 'white' ? getColor(31) : (effectiveMerc?.defenseColor ?? 'white'),
       fireResist: fireRes,
       lightResist: lightRes,
@@ -2149,7 +2158,19 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       const portInfo = resolvePetPortraitInfo(petTypeIdx, first.classId)
       if (!portInfo) continue
       const count = pets.length
-      const avgLifePct = Math.round(pets.reduce((sum: number, p: any) => sum + (p.lifePct ?? 100), 0) / count)
+      const avgLifePct = Math.round(
+        pets.reduce((sum: number, p: any) => {
+          const rawPct = typeof p.lifePct === 'number' ? p.lifePct : 100
+          const scale =
+            p.lifePctScale === 100
+              ? 100
+              : p.lifePctScale === 128 || rawPct > 100
+                ? 128
+                : 100
+          const pct100 = Math.max(0, Math.min(100, Math.round((rawPct * 100) / scale)))
+          return sum + pct100
+        }, 0) / count,
+      )
       summonPortraits.push({
         petType: petTypeIdx,
         iconKey: portInfo.iconKey,
@@ -3060,7 +3081,8 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
         (hud.leftPanel === 'hire' ||
           hud.leftPanel === 'imbue' ||
           hud.leftPanel === 'add_sockets' ||
-          hud.leftPanel === 'personalize'))
+          hud.leftPanel === 'personalize' ||
+          hud.leftPanel === 'orifice'))
     ) {
       if ((wp as any).questRewardItem) {
         if (!hud.inventory.cursorItem) {

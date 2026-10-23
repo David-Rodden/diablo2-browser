@@ -655,6 +655,66 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
   }
 }
 
+export function closeHoradricOrificeImpl(model: any, explicitOrificeId?: number): void {
+  const returnedSlotItem = (model.hudManager?.worldPanels as any)?.questRewardItem ?? null
+  if (model.hudManager) {
+    if (returnedSlotItem) {
+      if (!model.hudManager.inventory.cursorItem) {
+        model.hudManager.inventory.cursorItem = returnedSlotItem
+      } else {
+        model.hudManager.inventory.autoPlaceInGrid(returnedSlotItem)
+      }
+      ;(model.hudManager.worldPanels as any).questRewardItem = null
+    }
+    ;(model.hudManager.worldPanels as any).hoveredQuestRewardItem = null
+  }
+  const orificeId =
+    explicitOrificeId ??
+    model.world.npcInteraction.npcId ??
+    (model.hudManager?.worldPanels as any)?.activeNpcId ??
+    (model.hudManager?.worldPanels as any)?.npcMenu?.npcUnitId ??
+    (model.hudManager?.worldPanels as any)?.npcMenu?.npcId ??
+    null
+  model.pendingArtisanConfirmNpcId = null
+  ;(model.world.npcInteraction as any).window = 'none'
+  ;(model.world.npcInteraction as any).activeWindow = 'none'
+  ;(model.world.npcInteraction as any).npcId = null
+  if (model.hudManager) {
+    ;(model.hudManager.worldPanels as any).activeNpcId = null
+    if (typeof model.hudManager.hideLeftPanelFromWorld === 'function') {
+      model.hudManager.hideLeftPanelFromWorld('orifice')
+    }
+    if (model.hudManager.leftPanel === 'orifice') {
+      model.hudManager.leftPanel = 'none'
+    }
+    if ((model.hudManager.worldPanels as any).activePanel === 'orifice') {
+      ;(model.hudManager.worldPanels as any).activePanel = 'none'
+    }
+  }
+  if (orificeId !== null && orificeId > 0) {
+    const cmd: ClientCommand = {
+      type: 'StaffInOrifice',
+      orificeObjectId: orificeId >>> 0,
+      staffItemId: 0,
+      state: 2,
+      playerUnitId: (model.world.selfId || 0xffffffff) >>> 0,
+    }
+    model.world.noteOutgoingCommand?.(cmd)
+    model.emitCommand(cmd)
+  }
+  model.syncFromWorld?.()
+  if (
+    returnedSlotItem &&
+    model.hudManager &&
+    !model.hudManager.inventory.cursorItem &&
+    !model.world.containers?.cursor
+  ) {
+    model.hudManager.inventory.cursorItem = returnedSlotItem
+    model.lastSyncedCursorItemRef = returnedSlotItem
+    model.hudManager.syncPublishedState?.()
+  }
+}
+
 export function closeActiveNpcPanelImpl(model: any): void {
   const wasOrifice =
     model.world.npcInteraction.window === 'orifice' ||
@@ -685,18 +745,7 @@ export function closeActiveNpcPanelImpl(model: any): void {
     null
   model.pendingArtisanConfirmNpcId = null
   if (wasOrifice) {
-    ;(model.world.npcInteraction as any).window = 'none'
-    ;(model.world.npcInteraction as any).activeWindow = 'none'
-    ;(model.world.npcInteraction as any).npcId = null
-    if (npcId !== null && npcId > 0) {
-      model.emitCommand({
-        type: 'StaffInOrifice',
-        orificeObjectId: npcId >>> 0,
-        staffItemId: 0,
-        state: 2,
-        playerUnitId: (model.world.selfId || 0xffffffff) >>> 0,
-      })
-    }
+    closeHoradricOrificeImpl(model, npcId ?? undefined)
     model.hudManager?.closeAllPanels()
     return
   }

@@ -530,14 +530,16 @@ function buildLoadedObjectArt(
     groups,
     ...(glowGroups !== undefined ? { glowGroups } : {}),
     blendMode:
-      meta.blendMode === 'additive' ||
-      indexEntry?.blendMode === 'additive' ||
-      indexEntry?.trans === 1 ||
-      indexEntry?.trans === 2
-        ? 'additive'
-        : meta.blendMode === 'trans25' || meta.blendMode === 'trans50' || meta.blendMode === 'trans75'
-          ? meta.blendMode
-          : 'normal',
+      meta.blendMode === 'trans25' || meta.blendMode === 'trans50' || meta.blendMode === 'trans75'
+        ? meta.blendMode
+        : indexEntry?.blendMode === 'trans25' || indexEntry?.blendMode === 'trans50' || indexEntry?.blendMode === 'trans75'
+          ? indexEntry.blendMode
+          : meta.blendMode === 'additive' ||
+            indexEntry?.blendMode === 'additive' ||
+            indexEntry?.trans === 1 ||
+            indexEntry?.trans === 2
+            ? 'additive'
+            : 'normal',
     directions: Math.max(1, meta.directions || 1),
     standOffset: meta.standOffset ?? 0,
     standFrames: Math.max(1, meta.standFrames || 1),

@@ -68,7 +68,9 @@ import {
   resolveHitClassSoundIds113c,
 } from '../audio/d2gs-play-sound-113c.ts'
 import { STATE_OVERLAYS, STATE_PGSV_OVERLAYS } from '../render/overlays-meta.ts'
+import { computeEffectiveMercenaryStats } from '../ui-model/derived-stats.ts'
 import { resolveGroundItemFlippyKey } from '../ui/inventory.ts'
+import type { ClientWorld } from './client-world.ts'
 import { unitSkillEventForcesLightning113c } from '../weather/weather-controller.ts'
 import {
   STATE_BONEARMOR,
@@ -109,6 +111,43 @@ const ARTISAN_REFUSALS: Readonly<Record<number, string>> = { 154: "Charsi can't 
 /** D2Common `IFLAG_REPAIRED` (D2Items.h); S2C 0x7D with this flag clears IFLAG_BROKEN. */
 const ITEM_FLAG_REPAIRED = 0x00000200
 
+function normalizeMonsterHpStatValue(v: number | undefined): number | undefined {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return undefined
+  return v > 4096 ? Math.floor(v / 256) : Math.floor(v)
+}
+
+function syncMercStat6FromLifePct(
+  world: ClientWorldInternal,
+  mercUnit: ClientUnit | undefined,
+  pct: number,
+  scale: 100 | 128,
+): void {
+  const merc = world._merc
+  if (!merc) return
+  const hasMercStat6 = merc.stats.has(6)
+  const hasUnitStat6 = mercUnit ? mercUnit.stats.has(6) : false
+  if (!hasMercStat6 && !hasUnitStat6) return
+  if (pct <= 0) {
+    merc.stats.delete(6)
+    mercUnit?.stats.delete(6)
+    return
+  }
+  const rawHp = normalizeMonsterHpStatValue(merc.stats.get(6) ?? mercUnit?.stats.get(6))
+  const rawMaxHp =
+    normalizeMonsterHpStatValue(merc.stats.get(7) ?? mercUnit?.stats.get(7)) ??
+    computeEffectiveMercenaryStats(world as unknown as ClientWorld)?.maxHp
+  if (
+    rawHp !== undefined &&
+    rawMaxHp !== undefined &&
+    rawMaxHp > 0 &&
+    Math.min(scale, Math.max(1, Math.round((rawHp * scale) / rawMaxHp))) === Math.round(pct)
+  ) {
+    return
+  }
+  merc.stats.delete(6)
+  mercUnit?.stats.delete(6)
+}
+
 /**
  * 1.13c `D2Client.dll` (`0x6facbfd5..0x6facbfee`, `0x6fac9d80`) & `D2Game.dll` (`0x6fc9865e..0x6fc98684`):
  * Returns `true` when the local player's stamina stat has been initialized and `stamina <= 0`.
@@ -129,7 +168,7 @@ const PLAYER_DEATH_MODES = new Set([0, 17])
 
 function clearZeroLifeDeathInTown(world: ClientWorldInternal): void {
   const mode = world.getUnit('player', world.selfId)?.mode
-  if (world._self.isDead && isTownLevel(world.areaId) && (mode === undefined || !PLAYER_DEATH_MODES.has(mode))) world._self.isDead = false
+  if (world._self.isDead && isTownLevel(world.areaId) && (mode === undefined || !PLAYER_DEATH_MODES.has(mode))) [world._self.isDead, world._isSelfDead] = [false, false]
 }
 
 function downgradeSelfRunOnStaminaExhausted(world: ClientWorldInternal): void {
@@ -343,6 +382,16 @@ export function noteOutgoingCommandImpl(
         hadWantsInteract: undefined,
       }
       this.pushSoundRequest({ kind: 'speech-stop' })
+      break
+    }
+    case 'StaffInOrifice': {
+      this._awaitingArtisanConfirmNpcId = null
+      this._npcInteraction = {
+        ...cur,
+        npcId: null,
+        window: 'none',
+        activeWindow: 'none',
+      }
       break
     }
     case 'ClickButton': {
@@ -959,7 +1008,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         cubeOpen: false,
       }
       this._containers.clearShop()
-      if (this._self.maxLife === 0 || this._self.life > 0) {
+      if (!this._isSelfDead || this._self.maxLife === 0 || this._self.life > 0 || this._self.stats.get(6) > 0) {
         this._isSelfDead = false
         this._self.isDead = false
         if (this.selfId !== 0) {
@@ -967,7 +1016,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           if (selfUnit) {
             if (selfUnit.lifePct <= 0) {
               selfUnit.lifePct =
-                this._self.maxLife > 0
+                this._self.maxLife > 0 && this._self.life > 0
                   ? Math.max(1, Math.round((this._self.life / this._self.maxLife) * 128))
                   : 128
             }
@@ -1351,6 +1400,8 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             }
           }
           this._merc.lifePct = unit.lifePct
+          this._merc.lifePctScale = 128
+          syncMercStat6FromLifePct(this, unit, unit.lifePct, 128)
           if (unit.lifePct <= 0 || unit.mode === 0 || unit.mode === 12) {
             this._merc.isDead = true
           } else {
@@ -1364,6 +1415,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               classId: unit.classId,
               ownerId: this._merc.ownerId || this.selfId,
               lifePct: unit.lifePct,
+              lifePctScale: 128,
               isDead: this._merc.isDead,
             })
           }
@@ -1374,6 +1426,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             ;(pet as { classId: number }).classId = unit.classId
           }
           pet.lifePct = unit.lifePct
+          pet.lifePctScale = 128
           if (unit.lifePct <= 0 || unit.mode === 0 || unit.mode === 12) {
             pet.isDead = true
           } else {
@@ -1408,6 +1461,13 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           this._self.y = unit.y
           this._self.targetX = unit.x
           this._self.targetY = unit.y
+        }
+        if (unit.mode === 0 || unit.mode === 17) {
+          this._isSelfDead = true
+          this._self.isDead = true
+        } else {
+          this._isSelfDead = false
+          this._self.isDead = false
         }
         this._self.mode = unit.mode
         this._self.moving = unit.mode === 2 || unit.mode === 3 || unit.mode === 6
@@ -1692,6 +1752,31 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
         const prevMode = unit.mode
         this.npcMotion.applyCommandForUnit(uId, npcPayload)
+        const moveLifeByte =
+          typeof evAny.lifePct === 'number' && evAny.lifePct >= 0
+            ? evAny.lifePct
+            : npcPayload.opcode === 0x6d && typeof npcPayload.s[2] === 'number' && npcPayload.s[2] >= 0
+              ? npcPayload.s[2]
+              : undefined
+        if (moveLifeByte !== undefined && !unit.dead) {
+          unit.lifePct = moveLifeByte
+          if (this._merc && unit.id === this._merc.mercId) {
+            this._merc.lifePct = moveLifeByte
+            this._merc.lifePctScale = 128
+            if (moveLifeByte > 0) {
+              this._merc.isDead = false
+            }
+            syncMercStat6FromLifePct(this, unit, moveLifeByte, 128)
+          }
+          const movePet = this._pets.get(unit.id)
+          if (movePet) {
+            movePet.lifePct = moveLifeByte
+            movePet.lifePctScale = 128
+            if (moveLifeByte > 0) {
+              movePet.isDead = false
+            }
+          }
+        }
         if (wasDead && !unit.dead) {
           unit.deathFxTriggered = false
           this._deadSoundUnitIds.delete(unit.id)
@@ -1709,6 +1794,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             existingPet.isDead = false
             if (existingPet.lifePct <= 0) {
               existingPet.lifePct = unit.lifePct
+              existingPet.lifePctScale = 128
             }
           }
         }
@@ -2287,11 +2373,21 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       this.invalidatePlayerLightCache()
       if (!ev.unit || (unitTypeFromId(ev.unit.unitType) === 'player' && (ev.unit.id === this.selfId || this.selfId === 0))) {
         this._self.applyStat(ev.stat, ev.value, ev.param ?? 0)
+        // D2Client.dll 0x6fb5ee00 -> 0x6fb5eb10 (0x6fb5eb2a..0x6fb5eb47):
+        // When STAT_HITPOINTS (6) has raw 8.8 value > 0 (`test eax, eax; jne`), revives from PLRMODE_DEAD (17)
+        // (`dwMode = 5`, clears UNITFLAG_DEAD). StatSet never sets death when STAT_HITPOINTS or STAT_MAXHP updates.
+        if (ev.stat === 6 && ev.value > 0) {
+          this._isSelfDead = false
+          this._self.isDead = false
+        }
         clearZeroLifeDeathInTown(this)
-        this._isSelfDead = this._self.isDead
         if (this.selfId !== 0) {
           const selfUnit = this._units.get(makeUnitKey('player', this.selfId))
           selfUnit?.stats.set(ev.stat, this._self.stats.get(ev.stat), ev.param ?? 0)
+          if (selfUnit && ev.stat === 6 && ev.value > 0 && (selfUnit.mode === 0 || selfUnit.mode === 17)) {
+            selfUnit.mode = isTownLevel(this.areaId) ? 5 : 1
+            this._self.mode = selfUnit.mode
+          }
           if (selfUnit && !this._self.isDead && this._self.life > 0 && selfUnit.lifePct <= 0) {
             selfUnit.lifePct =
               this._self.maxLife > 0
@@ -2358,6 +2454,46 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         if (this._merc && targetUnit.unitType === 'monster' && targetUnit.id === this._merc.mercId) {
           this._merc.stats.set(ev.stat, ev.value)
         }
+        if (targetUnit.unitType === 'monster' && (ev.stat === 6 || ev.stat === 7)) {
+          const rawHp = normalizeMonsterHpStatValue(
+            targetUnit.stats.get(6) ??
+              (this._merc && targetUnit.id === this._merc.mercId
+                ? this._merc.stats.get(6)
+                : undefined),
+          )
+          const rawMaxHp =
+            normalizeMonsterHpStatValue(
+              targetUnit.stats.get(7) ??
+                (this._merc && targetUnit.id === this._merc.mercId
+                  ? this._merc.stats.get(7)
+                  : undefined),
+            ) ??
+            (this._merc && targetUnit.id === this._merc.mercId
+              ? computeEffectiveMercenaryStats(this as unknown as ClientWorld)?.maxHp
+              : undefined)
+          if (rawHp !== undefined && rawMaxHp !== undefined && rawMaxHp > 0) {
+            const life128 =
+              rawHp <= 0
+                ? 0
+                : Math.min(128, Math.max(1, Math.round((rawHp * 128) / rawMaxHp)))
+            targetUnit.lifePct = life128
+            const motionUnit = this.npcMotion.getUnit(targetUnit.id)
+            if (motionUnit) {
+              motionUnit.lifeByte = life128
+            }
+            if (this._merc && targetUnit.id === this._merc.mercId) {
+              this._merc.lifePct = life128
+              this._merc.lifePctScale = 128
+              this._merc.isDead = rawHp <= 0
+            }
+            const pet = this._pets.get(targetUnit.id)
+            if (pet) {
+              pet.lifePct = life128
+              pet.lifePctScale = 128
+              pet.isDead = rawHp <= 0
+            }
+          }
+        }
       }
       break
     }
@@ -2392,6 +2528,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         this._self.isDead = false
       }
       if (selfUnit) {
+        // D2Client.dll 0x6fb5ebe0 (0x95, 0x6fb5ec78) & 0x6fb5eca0 (0x18, 0x6fb5ed58):
+        // When life > 0 and dwMode == 17 (or 0), transitions to mode 5 (PLRMODE_TNEUTRAL) and clears UNITFLAG_DEAD.
+        if (ev.life > 0 && (selfUnit.mode === 0 || selfUnit.mode === 17)) {
+          selfUnit.mode = isTownLevel(this.areaId) ? 5 : 1
+          this._self.mode = selfUnit.mode
+        }
         if (ev.life > 0 && selfUnit.lifePct <= 0) {
           selfUnit.lifePct =
             this._self.maxLife > 0
@@ -2524,6 +2666,23 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
         if (entry.state === 158) {
           ensureBladeShieldAttachment113c(this, unit)
+        }
+        // States.txt #142 `changeclass` (StateSetFunc[8] @ 0x6FB235B0):
+        // Reads STAT_SHORTPARAM1 (355) from the state stat list and updates the monster's classId
+        // (e.g. Baal on Throne #543 `baalthrone` -> #559 `baalcrabstairs`) and resets mode to NU (1).
+        if (entry.state === 142 && unit.unitType === 'monster') {
+          const newClassId =
+            entry.stats?.find((s: { statId: number; value: number }) => s.statId === 355)?.value ??
+            unit.stats.get(355)
+          if (typeof newClassId === 'number' && newClassId > 0) {
+            unit.classId = newClassId
+            unit.mode = 1
+            const npcUnit = this.npcMotion.getUnit(unit.id)
+            if (npcUnit) {
+              npcUnit.dwTxtFileNo = newClassId
+              npcUnit.dwAnimMode = 1
+            }
+          }
         }
       }
       if (unit.unitType === 'player' && (unit.mode === 2 || unit.mode === 3 || unit.mode === 6)) {
@@ -2672,6 +2831,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       const defaultContainer =
         effectiveAction === 0x01 ||
         effectiveAction === 0x12 ||
+        effectiveAction === 0x16 ||
         isCursorImode
           ? 'cursor'
           : ev.type === 'WorldItemAction' ||
@@ -2980,15 +3140,22 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         if (unit) {
           unit.lifePct = healPct
         }
+        const motionUnit = this.npcMotion.getUnit(targetId)
+        if (motionUnit) {
+          motionUnit.lifeByte = healPct
+        }
         if (this._merc && this._merc.mercId === targetId) {
           this._merc.lifePct = healPct
+          this._merc.lifePctScale = 128
           if (healPct > 0) {
             this._merc.isDead = false
           }
+          syncMercStat6FromLifePct(this, unit, healPct, 128)
         }
         const pet = this._pets.get(targetId)
         if (pet) {
           pet.lifePct = healPct
+          pet.lifePctScale = 128
           if (healPct > 0) {
             pet.isDead = false
           }
@@ -3247,14 +3414,34 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       // 0x7F PartyMemberState for pets / hirelings (isPlayer === 0)
       if (ev.kind === 'memberState' && (ev.isPlayer === false || ev.relation === 0)) {
         const targetId = ev.unitId ?? 0
+        const pct100 = ev.lifePct
+        const unit = targetId !== 0 ? this.getUnit('monster', targetId) : undefined
+        if (pct100 !== undefined) {
+          const life128 =
+            pct100 <= 0 ? 0 : Math.min(128, Math.max(1, Math.round((pct100 * 128) / 100)))
+          if (unit) {
+            unit.lifePct = life128
+          }
+          const motionUnit = targetId !== 0 ? this.npcMotion.getUnit(targetId) : undefined
+          if (motionUnit) {
+            motionUnit.lifeByte = life128
+          }
+        }
         if (this._merc && this._merc.mercId === targetId) {
-          this._merc.lifePct = ev.lifePct ?? this._merc.lifePct
-          if (this._merc.lifePct > 0) this._merc.isDead = false
+          if (pct100 !== undefined) {
+            this._merc.lifePct = pct100
+            this._merc.lifePctScale = 100
+            this._merc.isDead = pct100 <= 0
+            syncMercStat6FromLifePct(this, unit, pct100, 100)
+          }
         }
         const pet = this._pets.get(targetId)
         if (pet) {
-          pet.lifePct = ev.lifePct ?? pet.lifePct
-          if (pet.lifePct > 0) pet.isDead = false
+          if (pct100 !== undefined) {
+            pet.lifePct = pct100
+            pet.lifePctScale = 100
+            pet.isDead = pct100 <= 0
+          }
         }
         break
       }
@@ -3395,6 +3582,13 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           this._ignoredPlayerIds.has(id) ??
           (resolvedCharName ? this._ignoredPlayerNames.has(resolvedCharName.toLowerCase()) : false)
 
+        if (ev.lifePct !== undefined && playerUnit) {
+          if (playerUnit.mode === 0 || playerUnit.mode === 17) {
+            playerUnit.lifePct = 0
+          } else if (ev.lifePct > 0) {
+            playerUnit.lifePct = Math.min(128, Math.max(1, Math.round((ev.lifePct * 128) / 100)))
+          }
+        }
         this._party.set(id, {
           ...prev,
           ...(resolvedCharName !== undefined ? { charName: resolvedCharName } : {}),
@@ -3804,6 +3998,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               petType,
               classId: resolvedPetClassId,
               lifePct: petUnit?.lifePct && petUnit.lifePct > 0 ? petUnit.lifePct : 128,
+              lifePctScale: 128,
               isDead: false,
             })
           }
@@ -3901,6 +4096,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                       ...(resolvedNameZh !== undefined ? { nameZh: resolvedNameZh } : {}),
                       exp: isReplacingMerc ? undefined : prevMerc?.exp,
                       lifePct: mercUnit?.lifePct && mercUnit.lifePct > 0 ? mercUnit.lifePct : 128,
+                      lifePctScale: 128,
                       isDead: false,
                       reviveCost: 0,
                       stats: isReplacingMerc
@@ -3924,6 +4120,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                   petType: 7,
                   classId: resolvedClassId,
                   lifePct: mercUnit?.lifePct && mercUnit.lifePct > 0 ? mercUnit.lifePct : 128,
+                  lifePctScale: 128,
                   isDead: false,
                 })
               } else {
@@ -4306,20 +4503,26 @@ export function applyUnitModeImmediateImpl(
     if (this._merc && unit.id === this._merc.mercId) {
       if (ev.lifePct !== undefined) {
         this._merc.lifePct = ev.lifePct
+        this._merc.lifePctScale = 128
+        syncMercStat6FromLifePct(this, unit, ev.lifePct, 128)
       }
       if (ev.mode === 0 || ev.mode === 12 || (ev.lifePct !== undefined && ev.lifePct <= 0)) {
         this._merc.isDead = true
         this._merc.lifePct = 0
+        this._merc.lifePctScale = 128
+        syncMercStat6FromLifePct(this, unit, 0, 128)
       }
     }
     const pet = this._pets.get(unit.id)
     if (pet) {
       if (ev.lifePct !== undefined) {
         pet.lifePct = ev.lifePct
+        pet.lifePctScale = 128
       }
       if (ev.mode === 0 || ev.mode === 12 || (ev.lifePct !== undefined && ev.lifePct <= 0)) {
         pet.isDead = true
         pet.lifePct = 0
+        pet.lifePctScale = 128
       }
     }
     return
@@ -4564,6 +4767,11 @@ export function applyUnitModeImmediateImpl(
     if (ev.mode === 0 || ev.mode === 17) {
       this._isSelfDead = true
       this._self.isDead = true
+    } else if (ev.mode !== undefined) {
+      // D2Client.dll 0x6fac9830 (PLAYER_SetMode, e.g. 0x6fac9c39 rawCode=0x07 Neutral -> sub_6FB56210):
+      // Transitioning to a non-death player mode clears UNITFLAG_DEAD.
+      this._isSelfDead = false
+      this._self.isDead = false
     }
     this._self.mode = unit.mode
     this._self.moving = unit.mode === 2 || unit.mode === 3 || unit.mode === 6

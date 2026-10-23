@@ -141,7 +141,8 @@ describe('issue #1341 per-row state machines', () => {
     const player = stamina.connectPlayer({ charClass: 'bar', name: 'Target', x: 10, y: 10, areaId: 1 })
     stamina.spawnMonster({ defId: 'swarm1', x: 11, y: 10, areaId: 1 })
     const before = stamina.getPlayerState(player)!.stamina
-    stamina.stepFrames(30)
+    // Check right after the first `aidel`-gated swing, before stamina regen refills it.
+    stamina.stepFrames(10)
     expect(stamina.getPlayerState(player)!.stamina).toBeLessThan(before)
   })
 
@@ -166,10 +167,11 @@ describe('issue #1341 per-row state machines', () => {
       areaId: 1,
       hp: 5000,
       maxHp: 5000,
-      // aip4 = 100% frenzy chance, aip5 = +5% speed, aip6 = one A2 swing.
-      aiParams: [80, 15, 10, 100, 5, 1, 0, 0],
+      // aip4 = 100% frenzy chance, aip5 = +5% speed, aip6 = one A2 swing,
+      // aip2 = 100% A2 selection so the `aidel` think cadence still reaches it.
+      aiParams: [80, 100, 10, 100, 5, 1, 0, 0],
     })
-    game.stepFrames(180)
+    game.stepFrames(120)
     expect(internalMonster(game, hulk).frenzyUntilFrame).toBeGreaterThan(0)
   })
 

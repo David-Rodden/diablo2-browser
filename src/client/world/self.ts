@@ -146,17 +146,15 @@ export class MutableSelfPlayerState implements SelfPlayerState {
     switch (stat) {
       case STAT_HITPOINTS:
         this.life = poolStatValue(value)
-        if (this.life > 0) {
+        // D2Client.dll 0x6fb5ee00 -> 0x6fb5eb10 (0x6fb5eb2a: `test eax, eax; je ...; cmp [esi+0x10], 0x11`):
+        // A positive raw 8.8 STAT_HITPOINTS value (including sub-integer 1..255 from poison clamping at 1/256 HP)
+        // revives a dead player, and STAT_HITPOINTS / STAT_MAXHP updates NEVER mark a living player dead.
+        if (value > 0) {
           this.isDead = false
-        } else if (this.maxLife > 0 && this.life <= 0) {
-          this.isDead = true
         }
         break
       case STAT_MAXHP:
         this.maxLife = poolStatValue(value)
-        if (this.maxLife > 0 && this.life <= 0 && this.stats.has(STAT_HITPOINTS)) {
-          this.isDead = true
-        }
         break
       case STAT_MANA:
         this.mana = poolStatValue(value)
@@ -202,11 +200,15 @@ export class MutableSelfPlayerState implements SelfPlayerState {
   ): void {
     if (life >= 0) {
       this.life = life
-      this.stats.set(STAT_HITPOINTS, life << POOL_STAT_VAL_SHIFT)
+      const rawHp = this.stats.get(STAT_HITPOINTS)
+      if (life > 0 || rawHp <= 0 || rawHp >= (1 << POOL_STAT_VAL_SHIFT)) {
+        this.stats.set(STAT_HITPOINTS, life << POOL_STAT_VAL_SHIFT)
+      }
+      // D2Client.dll 0x6fb5ebe0 (0x95, 0x6fb5ec78) & 0x6fb5eca0 (0x18, 0x6fb5ed58):
+      // `test edi, edi; je ...; cmp [esi+0x10], 0x11`: life > 0 revives from PLRMODE_DEAD (17),
+      // whereas life == 0 (e.g. poisoned to 1..255 raw 8.8 HP where rawHp >> 8 == 0) NEVER sets death.
       if (life > 0) {
         this.isDead = false
-      } else if (life === 0 && this.maxLife > 0) {
-        this.isDead = true
       }
     }
     if (mana >= 0) {

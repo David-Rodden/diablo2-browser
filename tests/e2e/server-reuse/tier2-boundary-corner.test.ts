@@ -546,6 +546,16 @@ describe('Tier 2 — Boundary & Corner Cases (F1–F12, 60 tests)', () => {
         areaId: 2, // Blood Moor
       })
       const p1 = game.addPlayer({ charName: 'DoubleTpCaster', classId: 1, x: 100, y: 100 })
+      ;(game as unknown as { players: Map<number, { items: any[] }> }).players.get(p1)!.items.push({
+        unitId: 9001,
+        code: 'tbk',
+        location: 'inventory',
+        x: 0,
+        y: 0,
+        quantity: 2,
+        stats: new Map(),
+        socketedItems: [],
+      })
       game.drainPlayerEvents(p1)
 
       game.enqueueCommand(p1, { type: 'TownPortal' })
