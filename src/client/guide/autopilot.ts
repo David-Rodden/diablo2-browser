@@ -92,6 +92,8 @@ const HEAL_MANA = 0.4
 const REPAIR_BELOW = 0.3
 const POTION_COLUMNS = { melee: [3, 1], caster: [2, 2] } as const
 const POTION_GOLD = 100
+const SPARE_POTIONS = { melee: [4, 1], caster: [3, 3] } as const
+const SPARE_GOLD = 2000
 const BUY_TRIES = 16
 const SCROLL_KINDS = {
   portal: { tome: 'tbk', scroll: 'tsc', tomeGold: 500, keep: 10, spare: 2 },
@@ -841,6 +843,16 @@ export class Autopilot {
       for (let tries = 0; potion && tries < BUY_TRIES && belt(prefix) < columns * rows && world.containers.belt.size < rows * 4; tries++) {
         const before = belt(prefix)
         if (!hudModel.vendorBuy(potion.id, false) || !(await waitFor(() => belt(prefix) > before, 1500))) break
+      }
+    }
+    const spares = this.isCaster() ? SPARE_POTIONS.caster : SPARE_POTIONS.melee
+    const total = (prefix: string) => [...world.containers.belt.values(), ...world.containers.inventory.values()].filter((item) => item.code.startsWith(prefix)).length
+    for (const [prefix, spare] of [['hp', spares[0]], ['mp', spares[1]]] as const) {
+      const potion = bestIn(prefix)
+      const wanted = belt(prefix) + spare
+      for (let tries = 0; potion && tries < BUY_TRIES && total(prefix) < wanted && world.self.gold >= SPARE_GOLD; tries++) {
+        const before = total(prefix)
+        if (!hudModel.vendorBuy(potion.id, false) || !(await waitFor(() => total(prefix) > before, 1500))) break
       }
     }
   }
