@@ -39,6 +39,7 @@ export function appraisalContextOf(view: Partial<CharacterView> | null | undefin
     build: characterBuild(sheet),
     equipped: [...containers.equipment.values()],
     owned: [...containers.inventory.values(), ...containers.stash.values(), ...containers.cube.values()],
+    carried: [...containers.inventory.values()],
     imbueReady,
   }
   cache.set(view, { key, context })

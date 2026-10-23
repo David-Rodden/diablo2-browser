@@ -8,6 +8,14 @@ import type { PathGuide } from './path-guide.ts'
 const NEAR = 15
 const QUEST_CODES = new Set(['box', 'msf', 'vip', 'hst', 'qf1', 'qf2', 'qey', 'qbr', 'qhr', 'leg', 'hdm', 'tr1', 'ass', 'bks', 'bkd', 'j34', 'g34', 'bbb', 'xyz', 'g33', 'd33', 'mss', 'ice'])
 const round = (value: number) => Math.round(value)
+let bagSeen = ''
+
+const bagReport = (world: ClientWorld, assists: PlayAssists) => {
+  const key = [...world.containers.inventory.values()].map((item) => `${item.id}${item.identified ? 'i' : ''}`).join()
+  if (key === bagSeen) return undefined
+  bagSeen = key
+  return [...world.containers.inventory.values()].map((item) => ({ item, appraisal: assists.inventoryCare.appraise(item) })).filter(({ appraisal }) => appraisal.kind !== 'consumable').map(({ item, appraisal }) => `${item.code.trim()} ${appraisal.tier} ${appraisal.kind}: ${appraisal.reason}`)
+}
 
 export function pilotReport(world: ClientWorld, hudManager: HudManager, assists: PlayAssists, pilot: Autopilot, guide: PathGuide): Readonly<Record<string, unknown>> | null {
   const me = world.self
@@ -35,6 +43,7 @@ export function pilotReport(world: ClientWorld, hudManager: HudManager, assists:
     belt: world.containers.belt.size,
     gold: me.gold,
     quest: [...world.containers.inventory.values(), ...world.containers.cube.values(), ...world.containers.stash.values()].filter((item) => QUEST_CODES.has(item.code.trim())).map((item) => `${item.code.trim()}@${world.containers.stash.has(item.id) ? 'stash' : world.containers.cube.has(item.id) ? 'cube' : 'bag'}`),
+    bag: bagReport(world, assists),
     panel: hudManager.leftPanel,
     menu: Boolean(hudManager.worldPanels.npcMenu),
     speech: Boolean(hudManager.worldPanels.npcSpeech),
