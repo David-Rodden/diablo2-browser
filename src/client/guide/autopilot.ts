@@ -220,6 +220,7 @@ export class Autopilot {
     assists.holdLoot = this.questInReach()
     if (danger === null) this.spend(nowMs)
     if (this.host.hudManager.leftPanel === 'waypoint') this.answerPanels(nowMs)
+    else if (assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
     else if (assists.isFighting(nowMs)) this.say('Fighting')

@@ -34,6 +34,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
       return this.fighting
     },
     hasLootNearby: () => false,
+    dodging: () => false,
     inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], stashable: [], wearUpgrades: vi.fn() },
     keepUp: () => false,
     walkTo: vi.fn(),
