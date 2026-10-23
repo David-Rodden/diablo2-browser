@@ -708,6 +708,20 @@ export async function startPlayApp(options?: {
   if ((import.meta as { readonly env?: { readonly DEV?: boolean } }).env?.DEV === true) {
     const playLog = new PlayLog((body) => void fetch('/api/play-log', { method: 'POST', body, keepalive: true }).catch(() => undefined), () => pilotReport(session.world, hudManager, assists(), pilot, guide))
     assists().journal = (kind, detail) => playLog.note(kind, detail)
+    const seenErrors = new Map<string, number>()
+    const noteError = (message: string) => {
+      const key = message.slice(0, 160)
+      const count = (seenErrors.get(key) ?? 0) + 1
+      seenErrors.set(key, count)
+      if (count === 1 || count % 100 === 0) playLog.note('error', { message: key, count })
+    }
+    window.addEventListener('error', (event) => noteError(String(event.message)))
+    window.addEventListener('unhandledrejection', (event) => noteError(String(event.reason)))
+    const consoleError = console.error.bind(console)
+    console.error = (...args: unknown[]) => {
+      noteError(args.map(String).join(' '))
+      consoleError(...args)
+    }
     setInterval(() => playLog.tick(performance.now()), 250)
   }
   const plugins = new PluginHost({
