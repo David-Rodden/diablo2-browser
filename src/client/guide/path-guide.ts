@@ -4,6 +4,7 @@ import { isClosedDoor } from '../input/play-assists.ts'
 import type { LevelView } from '../map/level-view.ts'
 import type { SubTilePoint } from '../motion/pathfind.ts'
 import type { D2FontRenderer } from '../ui/font.ts'
+import type { D2ColorCode } from '../../common/skills/skills-meta.ts'
 import type { AutomapHudFootprint, AutomapViewportMetrics } from '../ui/minimap.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import { FlowField } from './flow-field.ts'
@@ -13,6 +14,7 @@ import type { Find, FindKey } from './quest-stages.ts'
 import { currentGoal, levelName, nextStep, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
 import { spriteOutlines, type OutlineTint } from './sprite-outline.ts'
 import { WaypointMemory } from './waypoint-memory.ts'
+import { WAYPOINT_LEVELS } from './level-links.ts'
 
 export interface PathGuideHost {
   readonly areaId: () => number
@@ -129,11 +131,11 @@ const findTargets = (find: readonly Find[], view: LevelView, objects: readonly C
 
 const freshField = (host: PathGuideHost): FieldSource => (view, target) => new FlowField({ ...view, walkable: host.walkable?.(view) ?? view.walkable }, target.x, target.y)
 
-export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldSource = freshField(host), waypoints: ReadonlySet<number> = host.waypoints(), askForWaypoints = false): GuidePlan | null {
+export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldSource = freshField(host), waypoints: ReadonlySet<number> = host.waypoints(), askForWaypoints = false, skipped: ReadonlySet<number> = new Set()): GuidePlan | null {
   const level = host.areaId()
   const view = host.levelView()
   const self = host.self()
-  const goal = level > 0 ? currentGoal(level, host.quests(), mode, host.carries) : null
+  const goal = level > 0 ? currentGoal(level, host.quests(), mode, host.carries, skipped) : null
   if (!goal || !view || self.isDead) return null
   const step = nextStep(level, goal.level, waypoints)
   const objects = host.objects()
@@ -196,6 +198,9 @@ const chevron = (ctx: CanvasRenderingContext2D, { at, heading, alpha, glow }: Ch
 export class PathGuide {
   enabled = false
   mode: GuideMode = 'story'
+  pilotStatus: string | null = null
+  readonly skipped = new Set<number>()
+  private knownWaypoints: ReadonlySet<number> = new Set()
   private plan: GuidePlan | null = null
   private plannedAt = { ms: Number.NEGATIVE_INFINITY, x: 0, y: 0, level: 0 }
   private field: { readonly view: LevelView; readonly field: FlowField } | null = null
@@ -213,6 +218,11 @@ export class PathGuide {
     return this.plan
   }
 
+  skip(row: number): void {
+    this.skipped.add(row)
+    this.plannedAt = { ...this.plannedAt, ms: Number.NEGATIVE_INFINITY }
+  }
+
   update(nowMs: number): GuidePlan | null {
     if (!this.enabled) return this.publish(null)
     const { x, y } = this.host.self()
@@ -223,7 +233,8 @@ export class PathGuide {
       const character = this.host.character?.() ?? ''
       const fromMenu = this.host.waypoints()
       const waypoints = this.memory.known(character, level, fromMenu)
-      this.publish(planGuide(this.host, this.mode, this.fieldFor, waypoints, fromMenu.size === 0 && !this.memory.hasMenu(character)))
+      this.knownWaypoints = waypoints
+      this.publish(planGuide(this.host, this.mode, this.fieldFor, waypoints, fromMenu.size === 0 && !this.memory.hasMenu(character), this.skipped))
       this.plannedAt = { ms: nowMs, x, y, level }
     }
     return this.plan
@@ -259,10 +270,28 @@ export class PathGuide {
   }
 
   private trailFrom(plan: GuidePlan, me: SubTilePoint): SubTilePoint[] {
-    if (plan.route.length === 0) return []
-    const field = this.field?.view === this.host.levelView() && this.field.field.targetX === plan.target?.x && this.field.field.targetY === plan.target.y ? this.field.field : null
-    const path = field?.pathFrom(me.x, me.y, 1, TRAIL_STEPS) ?? []
-    return rounded(path.length > 0 ? [me, ...field!.corners(path, me)] : fromNearest([plan.path[0] ?? me, ...plan.route], me), TRAIL_ROUNDS)
+    return rounded(this.routeFrom(me, plan), TRAIL_ROUNDS)
+  }
+
+  knowsWaypointIn(level: number): boolean {
+    return [...this.knownWaypoints].some((id) => WAYPOINT_LEVELS.get(id) === level)
+  }
+
+  reaches(me: SubTilePoint, plan: GuidePlan | null = this.plan): boolean {
+    const field = this.fieldOf(plan)
+    if (field === null) return true
+    return field.distanceFrom(me.x, me.y) !== null || field.pathFrom(me.x, me.y, 1, 1).length > 0
+  }
+
+  private fieldOf(plan: GuidePlan | null): FlowField | null {
+    return plan && this.field?.view === this.host.levelView() && this.field.field.targetX === plan.target?.x && this.field.field.targetY === plan.target.y ? this.field.field : null
+  }
+
+  routeFrom(me: SubTilePoint, plan: GuidePlan | null = this.plan, steps = TRAIL_STEPS): SubTilePoint[] {
+    if (!plan || plan.route.length === 0) return []
+    const field = this.fieldOf(plan)
+    const path = field?.pathFrom(me.x, me.y, 1, steps) ?? []
+    return path.length > 0 ? [me, ...field!.corners(path, me)] : fromNearest([plan.path[0] ?? me, ...plan.route], me)
   }
 
   private drawMarker(ctx: CanvasRenderingContext2D, target: GuideTarget, nowMs: number): void {
@@ -345,9 +374,9 @@ export class PathGuide {
   private drawObjective(ctx: CanvasRenderingContext2D, font: D2FontRenderer, plan: GuidePlan, footprint: AutomapHudFootprint | null, width: number): AutomapHudFootprint {
     const right = width - 16
     const top = (footprint?.bottom ?? 4) + TEXT_LINE
-    const lines = [[plan.goal.title, 'white'], [plan.hint, 'gold']] as const
+    const lines: readonly (readonly [string, D2ColorCode])[] = [[plan.goal.title, 'white'], [plan.hint, 'gold'], ...(this.pilotStatus ? [[`Autopilot: ${this.pilotStatus}`, 'green'] as const] : [])]
     lines.forEach(([text, color], i) => font.drawText(ctx, text, right, top + i * TEXT_LINE, { font: 'font8', color, align: 'right', shadow: true }))
     const left = right - Math.max(...lines.map(([text]) => font.measureText(text, 'font8')))
-    return { titleLeft: Math.min(footprint?.titleLeft ?? left, left), bottom: top + TEXT_LINE + 4 }
+    return { titleLeft: Math.min(footprint?.titleLeft ?? left, left), bottom: top + (lines.length - 1) * TEXT_LINE + 4 }
   }
 }

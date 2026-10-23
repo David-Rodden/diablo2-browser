@@ -13,11 +13,14 @@ import { AutoPotionPlanner, bottomBeltPotions, inventoryPotions, potionShortage,
 import { beltColumnKinds, beltRefillPick, type BeltColumnKinds } from './belt-refill.ts'
 import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
 import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from './town-portal.ts'
+import { appraisalContextOf } from '../../common/items/loot-context.ts'
+import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
+import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
-const PICKUP_RETRY_MS = 1000
+const PICKUP_RETRY_MS = 600
 const PICKUP_DETOUR_RETRY_MS = 2500
-const LOOT_STEP_MS = 300
+const LOOT_STEP_MS = 200
 const LOOT_STEP_AHEAD = 8
 const AUTO_PICKUP_RADIUS_SUBTILES = 20
 const CARRIED_GOLD_PER_LEVEL = 10_000
@@ -31,11 +34,36 @@ const REACH_MAX_NODES = 4000
 const REACH_DETOUR_FACTOR = 1.6
 const REACH_DETOUR_SLACK = 12
 const DOOR_SEARCH_MS = 400
-const DOOR_RETRY_MS = 1500
+const DOOR_RETRY_MS = 900
 const DOOR_PATH_RADIUS = 3
 const BELT_REFILL_MS = 250
 const BELT_REFILL_WAIT_MS = 1500
 const RED_TEXT = 1
+const SUPPORT_MS = 400
+const CORPSE_USED_STATE = 0x8f
+const CORPSE_REACH = 10
+const RECAST_MS = 6000
+const SWITCH_MS = 700
+const SWITCH_RESEND_MS = 350
+const PRIORITY_BONUS = 12
+const FINISH_LIFE_PCT = 45
+const FINISH_BONUS = 4
+const TARGET_CANDIDATES = 8
+const SWITCH_MARGIN = 6
+const MELEE_CROWD = 4
+const MELEE_CROWD_LIFE = 0.5
+const CROWD_REACH = 3
+const CROWD_SIZE = 2
+const BACK_OFF_MS = 2500
+const BACK_OFF_STEP = 7
+const CURSE_RECAST_MS = 20_000
+const PACK_REACH = 6
+const BLAST_REACH = 5
+const BLAST_PACK = 2
+const BLAST_GAP_MS = 700
+const BLAST_RANGE = 20
+const GIVE_UP_MS = 15_000
+const IGNORE_MS = 30_000
 const INTERACTION_PANELS = new Set(['stash', 'cube', 'vendor', 'hire', 'imbue', 'add_sockets', 'personalize', 'trade', 'waypoint'])
 
 export interface PlayAssistHost {
@@ -50,7 +78,11 @@ export interface PlayAssistHost {
   readonly levelViewAt: (sx: number, sy: number) => LevelView | null
   readonly walkableWith: (view: LevelView, sx: number, sy: number, objects: readonly ClientUnit[]) => Uint8Array
   readonly triggerPrimaryWorldAction: (x: number, y: number, unit: ClientUnit | null, nowMs: number, isHold?: boolean) => DispatchedCommandRecord | null
+  readonly triggerSecondaryWorldAction: (x: number, y: number, unit: ClientUnit | null, nowMs: number) => DispatchedCommandRecord | null
+  readonly selectSkill: (hand: Hand, skillId: number, nowMs: number) => void
+  readonly canCastSkill: (skillId: number, nowMs: number) => boolean
   readonly sendCommand: (command: ClientCommand, nowMs?: number) => void
+  readonly stepToward: (x: number, y: number, nowMs: number) => void
   readonly isHostile: (unit: ClientUnit) => boolean
   readonly isPointIntercepted: (screenX: number, screenY: number) => boolean
   readonly isPlayerBusyCasting: (nowMs: number) => boolean
@@ -60,6 +92,10 @@ export interface PlayAssistHost {
 const objectMetaOf = (unit: ClientUnit) => unit.objectMeta ?? CANONICAL_113C_OBJECTS[unit.classId]
 const collisionMask = (unit: ClientUnit) => objectMetaOf(unit)?.hasCollisionMask ?? 0
 const objectMode = (unit: ClientUnit) => Math.max(0, Math.min(7, Math.floor(unit.mode || 0)))
+const isPriorityTarget = (unit: ClientUnit) => isPriorityClass(unit.classId)
+
+const isTough = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true) || BOSS_CLASSES.has(unit.classId)
+
 export const isClosedDoor = (unit: ClientUnit) => !unit.hidden && !unit.dead && Boolean(objectMetaOf(unit)?.isDoor) && (collisionMask(unit) & (1 << objectMode(unit))) !== 0
 const openModeOf = (door: ClientUnit) => [0, 1, 2, 3, 4, 5, 6, 7].find((mode) => (collisionMask(door) & (1 << mode)) === 0)
 const asOpened = (door: ClientUnit): ClientUnit => {
@@ -71,11 +107,24 @@ const isInGrid = (grid: SubTileWalkabilityGrid, x: number, y: number) => {
   return x >= ox && y >= oy && x < ox + grid.subWidth && y < oy + grid.subHeight
 }
 
+export interface Pilot {
+  toggle(): void
+  tick(nowMs: number): void
+}
+
 export class PlayAssists {
   autoGoldPickup = false
   autoPotionThresholds: AutoPotionThresholds | null = null
   autoLootRules: AutoLootRules | null = null
   beltRefill = false
+  smartSkills = false
+  private pilotFights = false
+  questPickup = false
+  standDown = false
+  holdLoot = false
+  journal: ((kind: string, detail: Readonly<Record<string, unknown>>) => void) | null = null
+  pilot: Pilot | null = null
+  pilotKey: string | null = null
   townPortalKey: string | null = null
   readonly inventoryCare: InventoryCare
   private readonly autoPotion = new AutoPotionPlanner()
@@ -95,9 +144,27 @@ export class PlayAssists {
   private lastDoorSearchMs = Number.NEGATIVE_INFINITY
   private beltRefillSent: { readonly atMs: number; readonly beltSize: number; readonly itemId: number } | null = null
   private beltKinds: BeltColumnKinds = []
+  private lastSupportMs = Number.NEGATIVE_INFINITY
+  private readonly supportCastAt = new Map<string, number>()
+  private readonly givenUp = new Map<number, number>()
+  private lastBackOff = Number.NEGATIVE_INFINITY
+  private readonly switching: Partial<Record<Hand, { readonly skillId: number; readonly at: number }>> = {}
+  private lastBlast = Number.NEGATIVE_INFINITY
+  private readonly blasted = new Set<number>()
+  private fight: { readonly id: number; readonly life: number; readonly since: number } | null = null
 
   constructor(private readonly host: PlayAssistHost) {
     this.inventoryCare = new InventoryCare(host)
+  }
+
+  get pilotCombat(): boolean {
+    return this.pilotFights
+  }
+
+  set pilotCombat(on: boolean) {
+    if (on === this.pilotFights) return
+    this.pilotFights = on
+    this.showCombatBadge()
   }
 
   get autoCombatKey(): string | null {
@@ -115,11 +182,13 @@ export class PlayAssists {
     this.inventoryCare.tick()
     this.pickUpNearbyLoot(nowMs)
     this.runAutoCombat(nowMs)
+    this.pilot?.tick(nowMs)
   }
 
   handleKey(event: { readonly key: string; readonly repeat?: boolean | undefined; readonly preventDefault?: (() => void) | undefined }): boolean {
     const key = event.key === ' ' ? 'SPACE' : event.key.toUpperCase()
-    const action = key === this.autoCombatKey ? () => this.setAutoCombatOn(!this.autoCombatOn) : key === this.townPortalKey ? () => this.castTownPortal() : null
+    const pilot = this.pilot
+    const action = key === this.autoCombatKey ? () => this.setAutoCombatOn(!this.autoCombatOn) : key === this.townPortalKey ? () => this.castTownPortal() : key === this.pilotKey && pilot ? () => pilot.toggle() : null
     if (action === null) return false
     if (!event.repeat) action()
     event.preventDefault?.()
@@ -133,6 +202,10 @@ export class PlayAssists {
     const refusal: TownPortalRefusal | null = this.host.isTownArea() ? 'in-town' : source === null ? 'no-scrolls' : null
     if (source !== null && refusal === null) this.useInventoryItem(source.id, source.code, hudModel)
     else world.addLocalSystemMessage(townPortalRefusalText(refusal ?? 'no-scrolls', hudManager.lang === 'ENG' ? 'ENG' : 'CHI'), RED_TEXT)
+  }
+
+  hasTownPortal(): boolean {
+    return townPortalSource(this.host.world.containers.inventory.values()) !== null
   }
 
   refillBelt(nowMs: number): void {
@@ -169,11 +242,13 @@ export class PlayAssists {
     if (!isShowingEngaged) this.host.hudModel?.setHoveredMonster(id)
   }
 
-  pickUpNearbyLoot(nowMs: number): void {
+  hasLootNearby(nowMs: number): boolean {
+    return this.lootWalkId !== null || this.lootRoute(nowMs).nearest !== undefined
+  }
+
+  private lootRoute(nowMs: number): { readonly loot: readonly ClientUnit[]; readonly nearest: { readonly unit: ClientUnit; readonly path: readonly SubTilePoint[] } | undefined } {
     const { world } = this.host
     const { ground } = world.containers
-    ;[...this.pickupRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.pickupRetryAt.delete(id))
-    if (world.isDead || this.isInWorldInteraction() || this.inventoryCare.busy) return
     const wanted = this.lootWanted()
     const distance = this.host.distanceFromSelf()
     const pending = this.itemPickup
@@ -187,13 +262,22 @@ export class PlayAssists {
       .map((unit) => ({ unit, path: this.pathTo(unit, nowMs) }))
       .filter((route): route is { unit: ClientUnit; path: readonly SubTilePoint[] } => route.path !== null)
       .sort((a, b) => walkLength(a) - walkLength(b))[0]
+    return { loot, nearest }
+  }
+
+  pickUpNearbyLoot(nowMs: number): void {
+    const { world } = this.host
+    const { ground } = world.containers
+    ;[...this.pickupRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.pickupRetryAt.delete(id))
+    if (world.isDead || this.standDown || this.holdLoot || this.isInWorldInteraction() || this.inventoryCare.busy) return
+    const { loot, nearest } = this.lootRoute(nowMs)
     if (nearest === undefined) {
       this.lootWalkId = null
       if (loot.length > 0 && this.isFreeForLootDetour(nowMs, false)) this.openDoorToward(loot, nowMs)
       return
     }
     const { unit, path } = nearest
-    const inReach = walkLength(nearest) <= ITEM_PICKUP_REACH_SUBTILES
+    const inReach = (path.length || this.host.distanceFromSelf()(unit)) <= ITEM_PICKUP_REACH_SUBTILES
     if (!inReach && !this.isFreeForLootDetour(nowMs, this.lootWalkId === unit.id)) return
     const stepping = !inReach && path.length > LOOT_STEP_AHEAD
     this.lootWalkId = inReach ? null : unit.id
@@ -233,27 +317,197 @@ export class PlayAssists {
   }
 
   runAutoCombat(nowMs: number): void {
-    if (!this.autoCombatOn || this.host.mouseHeld().left || this.host.world.isDead || this.isInWorldInteraction() || nowMs - this.lastAutoCombatMs < AUTO_COMBAT_REPEAT_MS) return
+    if (!(this.autoCombatOn || this.pilotCombat) || this.standDown || this.host.mouseHeld().left || this.host.world.isDead || this.isInWorldInteraction() || nowMs - this.lastAutoCombatMs < AUTO_COMBAT_REPEAT_MS) return
     const target = this.resolveTarget(nowMs)
     if (target === null) {
+      if (this.smartSkills) this.keepUp(null, nowMs)
       this.openDoorToward(this.visibleHostilesByDistance(), nowMs)
       return
     }
-    if (this.isAwaitingHitResult(target, nowMs)) return
+    if (!this.noteProgress(target, nowMs) || this.isAwaitingHitResult(target, nowMs) || (this.smartSkills && this.keepUp(target, nowMs))) return
     const freshTarget = target.id !== this.targetId
     this.targetId = target.id
     this.lastAutoCombatMs = nowMs
-    const record = this.host.triggerPrimaryWorldAction(target.x, target.y, target, nowMs, !freshTarget)
+    const record = this.smartSkills ? this.strike(target, nowMs, !freshTarget) : this.host.triggerPrimaryWorldAction(target.x, target.y, target, nowMs, !freshTarget)
     if (record?.command.type === 'SkillOn' && record.rateLimit.allowed) {
       this.lastHit = { id: target.id, life: target.lifePct }
       this.swingFinishedAtMs = null
     }
   }
 
+  isFighting(nowMs: number): boolean {
+    return (this.autoCombatOn || this.pilotCombat) && !this.host.world.isDead && this.resolveTarget(nowMs) !== null
+  }
+
+  keepUp(target: ClientUnit | null, nowMs: number): boolean {
+    if (nowMs - this.lastSupportMs < SUPPORT_MS || this.host.isPlayerBusyCasting(nowMs)) return false
+    this.lastSupportMs = nowMs
+    const castKey = (skillId: number) => `${skillId}:${target?.id ?? 0}`
+    const canCast = (skillId: number) => this.host.canCastSkill(skillId, nowMs)
+    const fresh = (skillId: number) => canCast(skillId) && nowMs - (this.supportCastAt.get(castKey(skillId)) ?? Number.NEGATIVE_INFINITY) >= (CURSE_SKILLS.has(skillId) ? CURSE_RECAST_MS : RECAST_MS)
+    const self = this.combatSelf()
+    const use = raiseSkill(self, canCast) ?? supportSkill(self, target && this.combatTarget(target), fresh)
+    if (use === null) {
+      const aura = auraSkill(self, target !== null, canCast)
+      if (aura !== null) this.holdSkill('right', aura, nowMs)
+      return false
+    }
+    const { x, y } = use.on === 'self' ? this.host.world.self : target!
+    if (!this.holdSkill('right', use.skillId, nowMs)) return true
+    this.supportCastAt.set(castKey(use.skillId), nowMs)
+    this.logCast(use.on === 'self' ? 'support' : 'curse', use.skillId, use.on === 'self' ? null : target)
+    return this.host.triggerSecondaryWorldAction(x, y, use.on === 'self' ? null : target, nowMs) !== null
+  }
+
+  get moving(): boolean {
+    return this.host.isMoving()
+  }
+
+  get playerSteering(): boolean {
+    const { left, right } = this.host.mouseHeld()
+    return left || right
+  }
+
+  isHostile(unit: ClientUnit): boolean {
+    return this.host.isHostile(unit)
+  }
+
+  walkTo(x: number, y: number, nowMs: number): void {
+    this.host.triggerPrimaryWorldAction(x, y, null, nowMs)
+  }
+
+  stepTo(x: number, y: number, nowMs: number): void {
+    this.host.stepToward(x, y, nowMs)
+  }
+
+  use(unit: ClientUnit, nowMs: number): void {
+    this.host.triggerPrimaryWorldAction(unit.x, unit.y, unit, nowMs)
+  }
+
+  canCast(skillId: number, nowMs: number): boolean {
+    return (this.host.world.self.skills.get(skillId) ?? 0) > 0 && this.host.canCastSkill(skillId, nowMs)
+  }
+
+  castAt(skillId: number, x: number, y: number, nowMs: number): boolean {
+    if (this.host.isPlayerBusyCasting(nowMs) || !this.holdSkill('right', skillId, nowMs)) return false
+    return this.host.triggerSecondaryWorldAction(x, y, null, nowMs) !== null
+  }
+
+  private strike(target: ClientUnit, nowMs: number, isHold: boolean): DispatchedCommandRecord | null {
+    const corpse = this.corpseToBlast(target, nowMs)
+    if (corpse) {
+      if (!this.holdSkill('right', CORPSE_EXPLOSION, nowMs)) return null
+      this.blasted.add(corpse.id)
+      this.lastBlast = nowMs
+      this.logCast('blast', CORPSE_EXPLOSION, corpse)
+      return this.host.triggerSecondaryWorldAction(corpse.x, corpse.y, corpse, nowMs)
+    }
+    const use = attackSkill(this.combatSelf(), this.combatTarget(target), (skillId) => this.host.canCastSkill(skillId, nowMs))
+    if (use.reach === 'close' && this.host.distanceFromSelf()(target) > CLOSE_REACH) return this.host.triggerPrimaryWorldAction(target.x, target.y, null, nowMs)
+    if (use.reach !== 'melee' && !this.clearShot(target)) return this.host.triggerPrimaryWorldAction(target.x, target.y, null, nowMs)
+    const life = this.combatSelf().lifeFraction
+    const room = use.reach === 'ranged' ? this.roomToBreathe(nowMs, CROWD_SIZE) : life < MELEE_CROWD_LIFE ? this.roomToBreathe(nowMs, MELEE_CROWD) : null
+    if (room) return this.host.triggerPrimaryWorldAction(room.x, room.y, null, nowMs)
+    if (!this.holdSkill(use.hand, use.skillId, nowMs)) return null
+    if (!isHold) this.logCast('attack', use.skillId, target)
+    return use.hand === 'left' ? this.host.triggerPrimaryWorldAction(target.x, target.y, target, nowMs, isHold) : this.host.triggerSecondaryWorldAction(target.x, target.y, target, nowMs)
+  }
+
+  private roomToBreathe(nowMs: number, crowdSize: number): SubTilePoint | null {
+    const me = this.host.world.self
+    const crowd = this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= CROWD_REACH)
+    if (crowd.length < crowdSize || nowMs - this.lastBackOff < BACK_OFF_MS) return null
+    const gap = (spot: SubTilePoint) => Math.min(...crowd.map((unit) => Math.hypot(unit.x - spot.x, unit.y - spot.y)))
+    const spot = Array.from({ length: 12 }, (_, i) => ({ x: Math.round(me.x + Math.cos((i * Math.PI) / 6) * BACK_OFF_STEP), y: Math.round(me.y + Math.sin((i * Math.PI) / 6) * BACK_OFF_STEP) }))
+      .filter((candidate) => this.clearPath(me, candidate))
+      .sort((a, b) => gap(b) - gap(a))[0]
+    if (!spot || gap(spot) <= gap(me) + 1) return null
+    this.lastBackOff = nowMs
+    this.journal?.('back-off', { crowd: crowd.length, to: [spot.x, spot.y] })
+    return spot
+  }
+
+  private clearPath(from: SubTilePoint, to: SubTilePoint): boolean {
+    const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y))
+    return Array.from({ length: steps }, (_, i) => (i + 1) / steps).every((t) => !this.host.world.isSubTileBlocked(Math.round(from.x + (to.x - from.x) * t), Math.round(from.y + (to.y - from.y) * t)))
+  }
+
+  private clearShot(target: SubTilePoint): boolean {
+    const me = this.host.world.self
+    const steps = Math.ceil(Math.hypot(target.x - me.x, target.y - me.y))
+    return Array.from({ length: Math.max(0, steps - 1) }, (_, i) => (i + 1) / steps).every((t) => !this.host.world.isSubTileMissileBlocked(Math.round(me.x + (target.x - me.x) * t), Math.round(me.y + (target.y - me.y) * t)))
+  }
+
+  private corpseToBlast(target: ClientUnit, nowMs: number): ClientUnit | undefined {
+    if ((this.host.world.self.skills.get(CORPSE_EXPLOSION) ?? 0) === 0 || nowMs - this.lastBlast < BLAST_GAP_MS || !this.host.canCastSkill(CORPSE_EXPLOSION, nowMs)) return undefined
+    const me = this.host.world.self
+    const worth = (corpse: ClientUnit) => this.hostilesNear(corpse, BLAST_REACH) >= BLAST_PACK || (isTough(target) && Math.hypot(corpse.x - target.x, corpse.y - target.y) <= BLAST_REACH)
+    const corpse = this.corpses().find((body) => !this.blasted.has(body.id) && Math.hypot(body.x - me.x, body.y - me.y) <= BLAST_RANGE && Math.hypot(body.x - target.x, body.y - target.y) <= BLAST_REACH && worth(body))
+    return corpse
+  }
+
+  private corpses(): ClientUnit[] {
+    return this.host.world.getUnitsByType(1).filter((unit) => unit.dead && !unit.hidden && !unit.states.has(CORPSE_USED_STATE))
+  }
+
+  private hostilesNear(spot: SubTilePoint, reach: number): number {
+    return this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - spot.x, unit.y - spot.y) <= reach).length
+  }
+
+  get currentTargetId(): number | null {
+    return this.targetId
+  }
+
+  private logCast(why: string, skillId: number, unit: ClientUnit | null): void {
+    this.journal?.('cast', { why, skillId, target: unit && { id: unit.id, classId: unit.classId, name: unit.name, lifePct: unit.lifePct, dead: unit.dead } })
+  }
+
+  private holdSkill(hand: Hand, skillId: number, nowMs: number): boolean {
+    const { self } = this.host.world
+    if ((hand === 'left' ? self.leftSkill : self.rightSkill) === skillId) return true
+    const pending = this.switching[hand]
+    if (pending && nowMs - pending.at < SWITCH_MS && (pending.skillId !== skillId || nowMs - pending.at < SWITCH_RESEND_MS)) return false
+    this.switching[hand] = { skillId, at: nowMs }
+    this.host.selectSkill(hand, skillId, nowMs)
+    return false
+  }
+
+  private combatSelf(): CombatSelf {
+    const { world } = this.host
+    const { self } = world
+    return {
+      skills: self.skills,
+      mainSkills: appraisalContextOf(world).build.mainSkills,
+      states: self.states,
+      petClasses: [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).map((pet) => pet.classId),
+      lifeFraction: self.life / Math.max(1, this.host.hudManager.maxHp || self.maxLife),
+      manaFraction: self.mana / Math.max(1, this.host.hudManager.maxMana || self.maxMana),
+      corpsesNear: this.corpses().filter((unit) => Math.hypot(unit.x - self.x, unit.y - self.y) <= CORPSE_REACH).length,
+    }
+  }
+
+  private combatTarget(unit: ClientUnit): CombatTarget {
+    const { world } = this.host
+    const near = (other: ClientUnit) => Math.hypot(other.x - unit.x, other.y - unit.y) <= TRAP_REACH
+    return {
+      distance: this.host.distanceFromSelf()(unit),
+      resists: clientUnitToMonsterTargetInfo(unit, world.difficulty).resistances ?? {},
+      states: unit.states,
+      trapsNear: world.getUnitsByType(1).filter((other) => TRAP_CLASSES.has(other.classId) && near(other)).length,
+      tough: isTough(unit),
+      lifeFraction: unit.lifePct / 128,
+      packSize: this.hostilesNear(unit, PACK_REACH),
+    }
+  }
+
   private setAutoCombatOn(on: boolean): void {
     this.autoCombatOn = on
     this.targetId = null
-    this.host.hudManager.autoCombatBadge = this.autoCombatKeyValue === null ? null : { on, key: this.autoCombatKeyValue }
+    this.showCombatBadge()
+  }
+
+  private showCombatBadge(): void {
+    this.host.hudManager.autoCombatBadge = this.autoCombatKeyValue === null ? null : { on: this.autoCombatOn || this.pilotFights, key: this.autoCombatKeyValue }
   }
 
   private isInWorldInteraction(): boolean {
@@ -274,12 +528,13 @@ export class PlayAssists {
     const rules = this.autoLootRules
     const care = this.inventoryCare
     const wantsLoot = (item: ItemData) => rules !== null && !care.discarded.has(item.id) && isWantedLoot(rules, item, care.appraise(item)) && care.roomFor(item) !== null
-    return (item) => (wantsGold && item.code.trim() === 'gld') || wantsPotion(item.code.trim()) || wantsLoot(item)
+    const wantsQuest = (item: ItemData) => this.questPickup && care.appraise(item).kind === 'quest' && care.roomFor(item) !== null
+    return (item) => (wantsGold && item.code.trim() === 'gld') || wantsPotion(item.code.trim()) || wantsLoot(item) || wantsQuest(item)
   }
 
   private isFreeForLootDetour(nowMs: number, walkingToLoot: boolean): boolean {
     const { left, right } = this.host.mouseHeld()
-    const fighting = this.autoCombatOn && this.resolveTarget(nowMs) !== null
+    const fighting = this.isFighting(nowMs)
     return !left && !right && !fighting && (walkingToLoot || !this.host.isMoving())
   }
 
@@ -325,13 +580,35 @@ export class PlayAssists {
   private resolveTarget(nowMs: number): ClientUnit | null {
     this.host.centerCameraOnSelf()
     const current = this.targetId === null ? undefined : this.host.world.getUnit('monster', this.targetId)
-    if (current !== undefined && this.isOnScreenHostile(current) && this.isReachable(current, nowMs)) return current
-    return this.visibleHostilesByDistance().find((unit) => this.isReachable(unit, nowMs)) ?? null
+    const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs
+    const distance = this.host.distanceFromSelf()
+    const urgency = (unit: ClientUnit) => distance(unit) - (isPriorityTarget(unit) ? PRIORITY_BONUS : 0) - (unit.lifePct < FINISH_LIFE_PCT ? FINISH_BONUS : 0)
+    const visible = this.visibleHostilesByDistance()
+    const best = [...new Set([...visible.slice(0, TARGET_CANDIDATES), ...visible.filter(isPriorityTarget)])].sort((a, b) => urgency(a) - urgency(b)).find(worthIt)
+    const keep = current !== undefined && this.isOnScreenHostile(current) && worthIt(current) && (best === undefined || urgency(best) > urgency(current) - SWITCH_MARGIN)
+    return keep ? current : (best ?? null)
+  }
+
+  private noteProgress(target: ClientUnit, nowMs: number): boolean {
+    const fight = this.fight
+    if (fight?.id !== target.id || fight.life !== target.lifePct) {
+      this.fight = { id: target.id, life: target.lifePct, since: nowMs }
+      return true
+    }
+    if (nowMs - fight.since < GIVE_UP_MS) return true
+    this.givenUp.set(target.id, nowMs + IGNORE_MS)
+    this.targetId = null
+    this.fight = null
+    return false
   }
 
   private visibleHostilesByDistance(): ClientUnit[] {
     const distance = this.host.distanceFromSelf()
     return [...this.host.world.units.values()].filter((unit) => this.isOnScreenHostile(unit)).sort((a, b) => distance(a) - distance(b))
+  }
+
+  canReach(unit: ClientUnit, nowMs: number): boolean {
+    return this.isReachable(unit, nowMs)
   }
 
   private isReachable(unit: ClientUnit, nowMs: number): boolean {

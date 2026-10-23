@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { refreshAssetManifestPublicSubdirs } from './src/baker/io/asset-manifest.ts'
 import { createBugReportHttpMiddleware } from './src/baker/io/bug-report-store.ts'
+import { createPlayLogHttpMiddleware } from './src/baker/io/play-log-store.ts'
 import {
   createHomeFallbackHttpMiddleware,
   createServerStatusHttpMiddleware,
@@ -43,6 +44,13 @@ export default defineConfig({
         server.middlewares.use(
           createBugReportHttpMiddleware({ bugsDir: resolve(__dirname, 'bugs') }),
         )
+      },
+    },
+    {
+      name: 'd2-play-log-api',
+      apply: 'serve',
+      configureServer(server) {
+        server.middlewares.use(createPlayLogHttpMiddleware(resolve(__dirname, 'scratch/play-logs')))
       },
     },
     {

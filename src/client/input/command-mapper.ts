@@ -503,12 +503,23 @@ export class CommandMapper {
       walkableWith: (view, sx, sy, objects) =>
         this.applyDynamicCollisionsToGrid(view.walkable, view.subOriginX ?? 0, view.subOriginY ?? 0, view.subWidth, view.subHeight, sx, sy, view.levelId === 102 || this.world.areaId === 102, objects, true),
       triggerPrimaryWorldAction: (x, y, unit, nowMs, isHold) => this.triggerPrimaryWorldAction(x, y, unit, nowMs, isHold),
+      triggerSecondaryWorldAction: (x, y, unit, nowMs) => this.triggerSecondaryWorldAction(x, y, unit, nowMs),
+      selectSkill: (hand, skillId, nowMs) => this.dispatchSkillSelectForQuickCast(hand, skillId, 0xffffffff, nowMs),
+      canCastSkill: (skillId, nowMs) =>
+        (!this.isTownArea() || isSkillAllowedInTown(skillId)) && this.isSkillWeaponUsable(skillId) && this.hasEnoughManaForSkill(skillId, this.world) && !this.world.isSkillOnCooldown?.(skillId, nowMs),
       sendCommand: (command, nowMs) => this.sendCommand(command, nowMs),
+      stepToward: (x, y, nowMs) => this.stepToward(x, y, nowMs),
       isHostile: (unit) => unit.unitType === 'monster' && !this.isTownOrInteractiveNpc(unit) && !this.isFriendlySummonOrPet(unit) && !this.isMonsterDead(unit),
       isPointIntercepted: (x, y) => this.isPointIntercepted(x, y),
       isPlayerBusyCasting: (nowMs) => this.isPlayerBusyCasting(nowMs),
       isTownArea: () => this.isTownArea(),
     }
+  }
+
+  private stepToward(x: number, y: number, nowMs: number): void {
+    const running = this.isCurrentlyRunning()
+    this.predictor?.setPath([{ x, y }], running)
+    this.sendCommand({ type: running ? 'RunToLocation' : 'WalkToLocation', x: Math.round(x), y: Math.round(y) }, nowMs)
   }
 
   private levelViewAt(sx: number, sy: number): LevelView | null {

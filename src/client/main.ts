@@ -104,6 +104,9 @@ import { decorateLoadingScreen } from './ui/loading-screen.ts'
 import { startPageTitle } from './ui/page-title.ts'
 import type { PathGuide } from './guide/path-guide.ts'
 import { createSessionGuide } from './guide/session-guide.ts'
+import { Autopilot } from './guide/autopilot.ts'
+import { pilotReport } from './guide/pilot-report.ts'
+import { PlayLog } from './session/play-log.ts'
 import { loadSinglePlayerData } from './session/single-player-data.ts'
 import {
   OnlineSession,
@@ -692,6 +695,35 @@ export async function startPlayApp(options?: {
   }
   const guide = createSessionGuide(session, minimap)
   pathGuide = guide
+  const assists = () => session.commandMapper.assists
+  const pilot = new Autopilot({
+    get world() { return session.world },
+    get hudModel() { return session.hudModel },
+    get assists() { return assists() },
+    hudManager,
+    guide,
+    levelView: () => session.mapService?.getLoadedLevelView(session.world.areaId) ?? null,
+  })
+  assists().pilot = pilot
+  if ((import.meta as { readonly env?: { readonly DEV?: boolean } }).env?.DEV === true) {
+    const playLog = new PlayLog((body) => void fetch('/api/play-log', { method: 'POST', body, keepalive: true }).catch(() => undefined), () => pilotReport(session.world, hudManager, assists(), pilot, guide))
+    assists().journal = (kind, detail) => playLog.note(kind, detail)
+    const seenErrors = new Map<string, number>()
+    const noteError = (message: string) => {
+      const key = message.slice(0, 160)
+      const count = (seenErrors.get(key) ?? 0) + 1
+      seenErrors.set(key, count)
+      if (count === 1 || count % 100 === 0) playLog.note('error', { message: key, count })
+    }
+    window.addEventListener('error', (event) => noteError(String(event.message)))
+    window.addEventListener('unhandledrejection', (event) => noteError(String(event.reason)))
+    const consoleError = console.error.bind(console)
+    console.error = (...args: unknown[]) => {
+      noteError(args.map(String).join(' '))
+      consoleError(...args)
+    }
+    setInterval(() => playLog.tick(performance.now()), 250)
+  }
   const plugins = new PluginHost({
     plugins: options?.plugins ?? [],
     session,
@@ -707,6 +739,8 @@ export async function startPlayApp(options?: {
     upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
     lowLifeWarning: togglePortFor(hudManager, 'lowLifeWarning'),
+    smartSkills: togglePortFor(session.commandMapper.assists, 'smartSkills'),
+    spendPoints: togglePortFor(pilot, 'spendPoints'),
     notify: { show: (toast) => hudManager.toasts.push(toast, performance.now()) },
     itemInfo: { getConfig: () => hudManager.itemInfo, setConfig: (config) => hudManager.setItemInfo(config) },
     pathGuide: {
@@ -715,6 +749,13 @@ export async function startPlayApp(options?: {
     },
     autoCombat: { getKey: () => session.commandMapper.assists.autoCombatKey, setKey: (key) => void (session.commandMapper.assists.autoCombatKey = key) },
     townPortal: { getKey: () => session.commandMapper.assists.townPortalKey, setKey: (key) => void (session.commandMapper.assists.townPortalKey = key) },
+    autopilot: {
+      getKey: () => assists().pilotKey,
+      setKey: (key) => {
+        assists().pilotKey = key
+        if (key === null && pilot.active) pilot.stop('Autopilot off')
+      },
+    },
     autoLoot: { getRules: () => session.commandMapper.assists.autoLootRules, setRules: (rules) => void (session.commandMapper.assists.autoLootRules = rules) },
     inventoryCare: { getConfig: () => session.commandMapper.assists.inventoryCare.config, setConfig: (config) => void (session.commandMapper.assists.inventoryCare.config = config) },
     autoPotion: {

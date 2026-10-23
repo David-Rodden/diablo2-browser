@@ -374,11 +374,14 @@ export interface PluginContext {
   readonly upgradeHints: PluginTogglePort
   readonly monsterResists: PluginTogglePort
   readonly lowLifeWarning: PluginTogglePort
+  readonly smartSkills: PluginTogglePort
+  readonly spendPoints: PluginTogglePort
   readonly notify: PluginNotifyPort
   readonly itemInfo: PluginItemInfoPort
   readonly pathGuide: PluginPathGuidePort
   readonly autoCombat: PluginAutoCombatPort
   readonly townPortal: PluginHotkeyPort
+  readonly autopilot: PluginHotkeyPort
   readonly autoPotion: PluginAutoPotionPort
   readonly autoLoot: PluginAutoLootPort
   readonly inventoryCare: PluginInventoryCarePort

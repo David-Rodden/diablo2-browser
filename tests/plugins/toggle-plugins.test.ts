@@ -20,6 +20,7 @@ import type { AutoLootRules, InventoryCareConfig } from '../../src/client/plugin
 import { lowLifeWarningPlugin } from '../../plugins/low-life-warning/index.ts'
 import { townPortalKeyPlugin } from '../../plugins/town-portal-key/index.ts'
 import { autoCombatPlugin } from '../../plugins/auto-combat/index.ts'
+import { pathGuidePlugin } from '../../plugins/path-guide/index.ts'
 import { autoPotionPlugin } from '../../plugins/auto-potion/index.ts'
 import { upgradeHintsPlugin } from '../../plugins/upgrade-hints/index.ts'
 import { itemInfoPlugin } from '../../plugins/item-info/index.ts'
@@ -98,12 +99,27 @@ describe.each([
 describe('auto-combat plugin', () => {
   it('binds the configured key while active, follows setting changes and unbinds on teardown', async () => {
     let key: string | null = null
-    const host = await startEnabled(createHost(autoCombatPlugin, { autoCombat: { getKey: () => key, setKey: (k) => void (key = k) } }), 'auto-combat')
-    expect([key, host.getStatus('auto-combat').level]).toEqual(['E', 'ok'])
+    let smart = false
+    const host = await startEnabled(createHost(autoCombatPlugin, { autoCombat: { getKey: () => key, setKey: (k) => void (key = k) }, smartSkills: { isEnabled: () => smart, setEnabled: (on) => void (smart = on) } }), 'auto-combat')
+    expect([key, smart, host.getStatus('auto-combat').level]).toEqual(['E', true, 'ok'])
     host.setSetting('auto-combat', 'key', 'SPACE')
-    expect(key).toBe('SPACE')
+    host.setSetting('auto-combat', 'skills', 'mine')
+    expect([key, smart]).toEqual(['SPACE', false])
     await host.destroy()
-    expect(key).toBeNull()
+    expect([key, smart]).toEqual([null, false])
+  })
+})
+
+describe('path-guide plugin', () => {
+  it('binds the autopilot key with the guide, can switch it off, and releases both on teardown', async () => {
+    let [mode, key, spend]: [string | null, string | null, boolean] = [null, null, false]
+    const host = await startEnabled(createHost(pathGuidePlugin, { pathGuide: { getMode: () => mode as never, setMode: (m) => void (mode = m) }, autopilot: { getKey: () => key, setKey: (k) => void (key = k) }, spendPoints: { isEnabled: () => spend, setEnabled: (on) => void (spend = on) } }), 'path-guide')
+    expect([mode, key, spend, host.getStatus('path-guide').text.en]).toEqual(['story', 'Y', false, 'Every quest · Y for autopilot'])
+    host.setSetting('path-guide', 'autopilot', 'off')
+    host.setSetting('path-guide', 'points', 'build')
+    expect([key, spend, host.getStatus('path-guide').text.en]).toEqual([null, true, 'Every quest'])
+    await host.destroy()
+    expect([mode, key, spend]).toEqual([null, null, false])
   })
 })
 

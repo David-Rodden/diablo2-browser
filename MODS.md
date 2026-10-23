@@ -4,7 +4,7 @@ These are the extras this project adds to the base game. Each one can be turned 
 
 | Mod | Default | What it does |
 |---|---|---|
-| Auto-Fight | Off | A hotkey (E by default) turns it on and off. While it's on, you attack the nearest monster you can walk to. It ignores monsters behind walls and opens doors on the way. |
+| Auto-Fight | Off | A hotkey (E by default) turns it on and off. While it's on, you attack the nearest monster you can walk to. It ignores monsters behind walls and opens doors on the way. It picks skills for your build: your strongest attack the monster isn't immune to, and it keeps your armors, warcries, auras, curses, traps and summons up. You can switch that off and keep the skills you picked. |
 | Auto-Potion | Off | Drinks potions when your life or mana gets low, and feeds your mercenary. It picks up potions from the ground when you're running out. You set the thresholds. |
 | Belt Refill | Off | Moves potions from your inventory into the belt. A column you drink empty gets the same kind back. |
 | Low-Life Warning | On | The screen edges glow red when your life drops below 40%, pulsing faster the lower it gets. |
@@ -17,7 +17,7 @@ These are the extras this project adds to the base game. Each one can be turned 
 | Loot Alerts | On | A banner at the top of the screen when a monster drops something worth having for your character, with the reason: "For Spirit · 3/4 runes", "In your shield: All Resistances +19", "Upgrade for your helm (+45%)". You can switch to fixed lists instead: uniques, sets and runes, those plus rares, charms, jewels and perfect gems, or only runes. |
 | Monster Resists | On | Shows a monster's resistances under its health bar. |
 | Upgrade Markers | On | Puts a green arrow on items that are better than what you're wearing. Trade-offs are weighed for your class and skills, so a caster sees faster cast rate beat a little extra defense. |
-| Path Guide | On | Follows your quest log step by step, so it sends you to the Tree of Inifuss before the Cairn Stones. It draws a route on the minimap and the ground, takes the waypoints you have unlocked, outlines the quest objects and doors on the way, and marks the NPC to talk to. You can follow every quest or only the ones the story needs. |
+| Path Guide | On | Follows your quest log step by step, so it sends you to the Tree of Inifuss before the Cairn Stones. It draws a route on the minimap and the ground, takes the waypoints you have unlocked, outlines the quest objects and doors on the way, and marks the NPC to talk to. You can follow every quest or only the ones the story needs. Press the autopilot key (Y by default) and it plays for you: it walks the route (teleporting if you can), opens doors, takes waypoints, talks to NPCs and picks up quest items. In town it heals, buys potions and town portals, repairs, revives your mercenary and stashes valuables. With Auto-Fight on it fights. When life runs low, drops fast or the potions run out, it steps away from the monsters and goes back to town through a portal, or walks back the way it came if you have none. It can also spend your skill and stat points on a proven build for your class. Clicking takes over until you let go. |
 | Run Timer | On | Shows your run count, average run time and runs per hour in the toolbar. |
 
 Ground label icons, left to right:

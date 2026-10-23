@@ -126,10 +126,14 @@ function jewelAppraisal(item: LootItem, { build }: AppraisalContext): Appraisal 
   return result(score >= 50 ? 'great' : score >= 20 ? 'good' : score >= 6 ? 'keep' : 'junk', 'jewel', score, `Worth ${Math.round(score)} to your build`)
 }
 
-const slotOf = (item: LootItem): EquipSlotId | undefined => BODY_LOC_SLOT[String(item.bodyLoc || item.equippedSlot)]
+export const slotOf = (item: LootItem): EquipSlotId | undefined => BODY_LOC_SLOT[String(item.bodyLoc || item.equippedSlot)]
 const equippedBySlot = (equipped: readonly LootItem[]) => new Map(equipped.flatMap((item) => (slotOf(item) ? [[slotOf(item)!, item] as const] : [])))
 
 const baseTypeOf = (code: string) => getEmbeddedDropTables().getBase(code)?.type ?? ''
+
+export const isTwoHanded = (item: LootItem): boolean => uiOf(item).twoHanded === true
+
+export const equipSlotsOf = (item: LootItem): readonly EquipSlotId[] => uiOf(item).allowedSlots
 
 const damageOf = (ui: UiInventoryItem) => ui.twoHanded ? ui.twoHandDamage : ui.oneHandDamage ?? ui.twoHandDamage
 

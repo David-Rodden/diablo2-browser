@@ -1,4 +1,4 @@
-import { appraiseItem, TIER_RANK, type Appraisal, type AppraisalContext } from '../../common/items/loot-appraisal.ts'
+import { appraiseItem, isTwoHanded, slotOf, TIER_RANK, type Appraisal, type AppraisalContext } from '../../common/items/loot-appraisal.ts'
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { onlineItemDataToUiInventoryItem } from '../../common/items/item-bridge.ts'
 import type { ItemData } from '../../netproto/index.ts'
@@ -6,7 +6,7 @@ import type { HudModel } from '../ui-model/hud-model.ts'
 import { depositItemsToStash, waitFor } from '../ui-model/stash-deposit.ts'
 import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientWorld } from '../world/client-world.ts'
-import { planRoom, type JudgedItem, type RoomPlan } from './auto-loot.ts'
+import { freeSpots, planRoom, type JudgedItem, type RoomPlan } from './auto-loot.ts'
 
 export interface InventoryCareConfig {
   readonly makeRoom: boolean
@@ -21,6 +21,8 @@ export interface InventoryCareHost {
 }
 
 const INVENTORY_BUFFER = 0
+const GEAR_KINDS = new Set(['magic', 'rare', 'set', 'base', 'normal'])
+const FUTURE_UPGRADE = 'Better'
 const STASHED_KINDS = new Set<Appraisal['kind']>(['rune', 'gem', 'jewel', 'unique', 'set', 'rare', 'base'])
 
 const nameOf = (item: ItemData) => onlineItemDataToUiInventoryItem(item).name || item.code.trim()
@@ -97,17 +99,56 @@ export class InventoryCare {
     if (hudModel === null) return
     const goldBefore = world.self.gold
     let sold = 0
-    for (const item of this.inventoryWhere((appraisal) => appraisal.tier === 'junk' && !appraisal.locked)) {
+    for (const item of [...this.junk, ...this.clutter]) {
       if (hudManager.leftPanel !== 'vendor' || !hudModel.vendorSell(item.id) || !(await waitFor(() => !world.containers.inventory.has(item.id)))) break
       sold++
     }
     if (sold > 0) this.toast(`Sold ${plural(sold, 'junk item')}`, `+${Math.max(0, world.self.gold - goldBefore).toLocaleString('en-US')} gold`, 'gold')
   }
 
+  get stashable(): ItemData[] {
+    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && STASHED_KINDS.has(appraisal.kind) && TIER_RANK[appraisal.tier] >= TIER_RANK.good)
+  }
+
+  get clutter(): ItemData[] {
+    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.tier === 'keep' && GEAR_KINDS.has(appraisal.kind) && !appraisal.reason.startsWith(FUTURE_UPGRADE)).filter((item) => item.identified)
+  }
+
+  get upgrades(): ItemData[] {
+    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot !== undefined).filter((item) => item.identified && !isTwoHanded(item))
+  }
+
+  async wearUpgrades(): Promise<number> {
+    const { world, hudModel } = this.host
+    let worn = 0
+    for (const item of this.upgrades) {
+      const slot = this.appraise(item).upgradeSlot
+      if (hudModel === null || slot === undefined) break
+      const current = [...world.containers.equipment.values()].find((equipped) => slotOf(equipped) === slot)
+      hudModel.pickupItemToCursor(item.id)
+      if (!(await waitFor(() => world.containers.cursor?.id === item.id))) break
+      if (current) hudModel.swapEquipItem(item.id, slot)
+      else hudModel.equipItem(item.id, slot)
+      if (!(await waitFor(() => world.containers.cursor?.id !== item.id))) break
+      const old = world.containers.cursor
+      const spot = old && freeSpots(world.containers.inventory.values(), old.invWidth, old.invHeight)[0]
+      if (old && spot) hudModel.placeCursorItem(old.id, spot.x, spot.y, INVENTORY_BUFFER)
+      else if (old) hudModel.dropItem(old.id)
+      if (!(await waitFor(() => world.containers.cursor === null))) break
+      worn++
+    }
+    if (worn > 0) this.toast(`Equipped ${plural(worn, 'upgrade')}`, '', 'green')
+    return worn
+  }
+
+  get junk(): ItemData[] {
+    return this.inventoryWhere((appraisal) => appraisal.tier === 'junk' && !appraisal.locked)
+  }
+
   private async stashValuables(): Promise<void> {
     const { hudModel, hudManager } = this.host
     if (hudModel === null) return
-    const valuables = this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && STASHED_KINDS.has(appraisal.kind) && TIER_RANK[appraisal.tier] >= TIER_RANK.good)
+    const valuables = this.stashable
     const moved = await depositItemsToStash(hudModel, valuables, () => hudManager.leftPanel === 'stash')
     if (moved > 0) this.toast(`Stashed ${plural(moved, 'valuable')}`, valuables.slice(0, moved).map(nameOf).join(', '), 'green')
   }
