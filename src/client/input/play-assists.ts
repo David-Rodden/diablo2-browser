@@ -43,6 +43,8 @@ const SUPPORT_MS = 400
 const CORPSE_USED_STATE = 0x8f
 const CORPSE_REACH = 10
 const RECAST_MS = 6000
+const SWITCH_MS = 700
+const SWITCH_RESEND_MS = 350
 const PRIORITY_BONUS = 12
 const FINISH_LIFE_PCT = 45
 const FINISH_BONUS = 4
@@ -146,6 +148,7 @@ export class PlayAssists {
   private readonly supportCastAt = new Map<string, number>()
   private readonly givenUp = new Map<number, number>()
   private lastBackOff = Number.NEGATIVE_INFINITY
+  private readonly switching: Partial<Record<Hand, { readonly skillId: number; readonly at: number }>> = {}
   private lastBlast = Number.NEGATIVE_INFINITY
   private readonly blasted = new Set<number>()
   private fight: { readonly id: number; readonly life: number; readonly since: number } | null = null
@@ -350,9 +353,9 @@ export class PlayAssists {
       return false
     }
     const { x, y } = use.on === 'self' ? this.host.world.self : target!
+    if (!this.holdSkill('right', use.skillId, nowMs)) return true
     this.supportCastAt.set(castKey(use.skillId), nowMs)
     this.logCast(use.on === 'self' ? 'support' : 'curse', use.skillId, use.on === 'self' ? null : target)
-    this.holdSkill('right', use.skillId, nowMs)
     return this.host.triggerSecondaryWorldAction(x, y, use.on === 'self' ? null : target, nowMs) !== null
   }
 
@@ -386,16 +389,17 @@ export class PlayAssists {
   }
 
   castAt(skillId: number, x: number, y: number, nowMs: number): boolean {
-    if (this.host.isPlayerBusyCasting(nowMs)) return false
-    this.holdSkill('right', skillId, nowMs)
+    if (this.host.isPlayerBusyCasting(nowMs) || !this.holdSkill('right', skillId, nowMs)) return false
     return this.host.triggerSecondaryWorldAction(x, y, null, nowMs) !== null
   }
 
   private strike(target: ClientUnit, nowMs: number, isHold: boolean): DispatchedCommandRecord | null {
     const corpse = this.corpseToBlast(target, nowMs)
     if (corpse) {
+      if (!this.holdSkill('right', CORPSE_EXPLOSION, nowMs)) return null
+      this.blasted.add(corpse.id)
+      this.lastBlast = nowMs
       this.logCast('blast', CORPSE_EXPLOSION, corpse)
-      this.holdSkill('right', CORPSE_EXPLOSION, nowMs)
       return this.host.triggerSecondaryWorldAction(corpse.x, corpse.y, corpse, nowMs)
     }
     const use = attackSkill(this.combatSelf(), this.combatTarget(target), (skillId) => this.host.canCastSkill(skillId, nowMs))
@@ -404,8 +408,8 @@ export class PlayAssists {
     const life = this.combatSelf().lifeFraction
     const room = use.reach === 'ranged' ? this.roomToBreathe(nowMs, CROWD_SIZE) : life < MELEE_CROWD_LIFE ? this.roomToBreathe(nowMs, MELEE_CROWD) : null
     if (room) return this.host.triggerPrimaryWorldAction(room.x, room.y, null, nowMs)
+    if (!this.holdSkill(use.hand, use.skillId, nowMs)) return null
     if (!isHold) this.logCast('attack', use.skillId, target)
-    this.holdSkill(use.hand, use.skillId, nowMs)
     return use.hand === 'left' ? this.host.triggerPrimaryWorldAction(target.x, target.y, target, nowMs, isHold) : this.host.triggerSecondaryWorldAction(target.x, target.y, target, nowMs)
   }
 
@@ -439,10 +443,6 @@ export class PlayAssists {
     const me = this.host.world.self
     const worth = (corpse: ClientUnit) => this.hostilesNear(corpse, BLAST_REACH) >= BLAST_PACK || (isTough(target) && Math.hypot(corpse.x - target.x, corpse.y - target.y) <= BLAST_REACH)
     const corpse = this.corpses().find((body) => !this.blasted.has(body.id) && Math.hypot(body.x - me.x, body.y - me.y) <= BLAST_RANGE && Math.hypot(body.x - target.x, body.y - target.y) <= BLAST_REACH && worth(body))
-    if (corpse) {
-      this.blasted.add(corpse.id)
-      this.lastBlast = nowMs
-    }
     return corpse
   }
 
@@ -462,9 +462,14 @@ export class PlayAssists {
     this.journal?.('cast', { why, skillId, target: unit && { id: unit.id, classId: unit.classId, name: unit.name, lifePct: unit.lifePct, dead: unit.dead } })
   }
 
-  private holdSkill(hand: Hand, skillId: number, nowMs: number): void {
+  private holdSkill(hand: Hand, skillId: number, nowMs: number): boolean {
     const { self } = this.host.world
-    if ((hand === 'left' ? self.leftSkill : self.rightSkill) !== skillId) this.host.selectSkill(hand, skillId, nowMs)
+    if ((hand === 'left' ? self.leftSkill : self.rightSkill) === skillId) return true
+    const pending = this.switching[hand]
+    if (pending && nowMs - pending.at < SWITCH_MS && (pending.skillId !== skillId || nowMs - pending.at < SWITCH_RESEND_MS)) return false
+    this.switching[hand] = { skillId, at: nowMs }
+    this.host.selectSkill(hand, skillId, nowMs)
+    return false
   }
 
   private combatSelf(): CombatSelf {

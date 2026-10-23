@@ -241,6 +241,22 @@ describe('auto-fight and walls', () => {
 
 
 describe('auto-fight with build-aware skills', () => {
+  it('waits for the server to switch the hand before casting, so it never fires the old skill', () => {
+    const s = createSetup()
+    const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number; rightSkill: number }
+    ;[[40, 1], [47, 20]].forEach(([skill, level]) => self.skills.set(skill!, level!))
+    Object.assign(self, { mana: 200, maxMana: 200, rightSkill: 75 })
+    s.mapper.assists.smartSkills = true
+    s.spawn(901, 19, 106, 100)
+    s.mapper.handleKeyDown({ key: 'e' })
+    s.fightFor(1000, 1600)
+    const rightCasts = () => s.sent.filter((c) => (c.type === 'SkillAt' || c.type === 'SkillOn') && c.hand === 'right').length
+    expect(rightCasts()).toBe(0)
+    self.rightSkill = 40
+    s.fightFor(1640, 2600)
+    expect(rightCasts()).toBeGreaterThan(0)
+  })
+
   it('puts the strongest attack on the left hand, casts it at the monster and keeps the armor up', () => {
     const s = createSetup()
     const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number }
