@@ -16,6 +16,7 @@ import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from 
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
 import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
+import { dodgeSpot, hits, threatOf, type Threat } from './danger-dodge.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
 const PICKUP_RETRY_MS = 600
@@ -64,6 +65,11 @@ const BLAST_GAP_MS = 700
 const BLAST_RANGE = 20
 const GIVE_UP_MS = 15_000
 const IGNORE_MS = 30_000
+const DODGE_GAP_MS = 250
+const DODGE_MS_PER_SUBTILE = 90
+const DODGE_MAX_MS = 700
+const DODGE_CROWD_COST = 4
+const DODGE_SHOT_BONUS = 3
 const INTERACTION_PANELS = new Set(['stash', 'cube', 'vendor', 'hire', 'imbue', 'add_sockets', 'personalize', 'trade', 'waypoint'])
 
 export interface PlayAssistHost {
@@ -108,6 +114,7 @@ const isInGrid = (grid: SubTileWalkabilityGrid, x: number, y: number) => {
 }
 
 export interface Pilot {
+  readonly active?: boolean
   toggle(): void
   tick(nowMs: number): void
 }
@@ -152,6 +159,8 @@ export class PlayAssists {
   private lastBlast = Number.NEGATIVE_INFINITY
   private readonly blasted = new Set<number>()
   private fight: { readonly id: number; readonly life: number; readonly since: number } | null = null
+  private dodge: { readonly to: SubTilePoint; readonly until: number } | null = null
+  private lastDodge = Number.NEGATIVE_INFINITY
 
   constructor(private readonly host: PlayAssistHost) {
     this.inventoryCare = new InventoryCare(host)
@@ -180,8 +189,10 @@ export class PlayAssists {
     this.drinkPotionsIfLow(nowMs)
     this.refillBelt(nowMs)
     this.inventoryCare.tick()
-    this.pickUpNearbyLoot(nowMs)
-    this.runAutoCombat(nowMs)
+    if (!this.avoidDanger(nowMs)) {
+      this.pickUpNearbyLoot(nowMs)
+      this.runAutoCombat(nowMs)
+    }
     this.pilot?.tick(nowMs)
   }
 
@@ -335,6 +346,48 @@ export class PlayAssists {
     }
   }
 
+  dodging(nowMs: number): boolean {
+    const me = this.host.world.self
+    if (this.dodge !== null && (nowMs >= this.dodge.until || Math.hypot(this.dodge.to.x - me.x, this.dodge.to.y - me.y) <= 1)) this.dodge = null
+    return this.dodge !== null
+  }
+
+  avoidDanger(nowMs: number): boolean {
+    const { world } = this.host
+    const { left, right } = this.host.mouseHeld()
+    if (!(this.autoCombatOn || this.pilotCombat || this.pilot?.active === true) || world.isDead || left || right || this.host.isTownArea() || this.isInWorldInteraction()) return false
+    if (this.dodging(nowMs)) return true
+    if (nowMs - this.lastDodge < DODGE_GAP_MS) return false
+    const me = world.self
+    const threats = this.threats()
+    const incoming = threats.filter((threat) => hits(threat, me))
+    if (incoming.length === 0) return false
+    const target = this.targetId === null ? undefined : world.getUnit('monster', this.targetId)
+    const preference = (spot: SubTilePoint) => -Math.hypot(spot.x - me.x, spot.y - me.y) - this.hostilesNear(spot, CROWD_REACH) * DODGE_CROWD_COST + (target && !target.dead && this.clearShot(target, spot) ? DODGE_SHOT_BONUS : 0)
+    const spot = dodgeSpot(me, threats, (candidate) => this.clearPath(me, candidate), preference)
+    if (spot === null) return false
+    this.lastDodge = nowMs
+    this.dodge = { to: spot, until: nowMs + Math.min(DODGE_MAX_MS, Math.hypot(spot.x - me.x, spot.y - me.y) * DODGE_MS_PER_SUBTILE) }
+    this.host.stepToward(spot.x, spot.y, nowMs)
+    this.journal?.('dodge', { from: [...new Set(incoming.map((threat) => threat.name))], to: [spot.x, spot.y] })
+    return true
+  }
+
+  private threats(): Threat[] {
+    return this.host.world.getUnitsByType(3).flatMap((missile) => {
+      const threat = this.isHostileMissile(missile) ? threatOf({ name: missile.missileKey ?? '', x: missile.x, y: missile.y, vx: missile.vx ?? 0, vy: missile.vy ?? 0, ticksLeft: (missile.maxTicks ?? 0) - (missile.ageTicks ?? 0) }) : null
+      return threat ? [threat] : []
+    })
+  }
+
+  private isHostileMissile(missile: ClientUnit): boolean {
+    const { world } = this.host
+    if (missile.ownerType === 'object') return true
+    if (missile.ownerType !== 'monster' || missile.ownerId === undefined || world.pets.has(missile.ownerId)) return false
+    const owner = world.getUnit('monster', missile.ownerId)
+    return owner === undefined || this.host.isHostile(owner)
+  }
+
   isFighting(nowMs: number): boolean {
     return (this.autoCombatOn || this.pilotCombat) && !this.host.world.isDead && this.resolveTarget(nowMs) !== null
   }
@@ -418,8 +471,9 @@ export class PlayAssists {
     const crowd = this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= CROWD_REACH)
     if (crowd.length < crowdSize || nowMs - this.lastBackOff < BACK_OFF_MS) return null
     const gap = (spot: SubTilePoint) => Math.min(...crowd.map((unit) => Math.hypot(unit.x - spot.x, unit.y - spot.y)))
+    const threats = this.threats()
     const spot = Array.from({ length: 12 }, (_, i) => ({ x: Math.round(me.x + Math.cos((i * Math.PI) / 6) * BACK_OFF_STEP), y: Math.round(me.y + Math.sin((i * Math.PI) / 6) * BACK_OFF_STEP) }))
-      .filter((candidate) => this.clearPath(me, candidate))
+      .filter((candidate) => this.clearPath(me, candidate) && !threats.some((threat) => hits(threat, candidate)))
       .sort((a, b) => gap(b) - gap(a))[0]
     if (!spot || gap(spot) <= gap(me) + 1) return null
     this.lastBackOff = nowMs
@@ -432,8 +486,7 @@ export class PlayAssists {
     return Array.from({ length: steps }, (_, i) => (i + 1) / steps).every((t) => !this.host.world.isSubTileBlocked(Math.round(from.x + (to.x - from.x) * t), Math.round(from.y + (to.y - from.y) * t)))
   }
 
-  private clearShot(target: SubTilePoint): boolean {
-    const me = this.host.world.self
+  private clearShot(target: SubTilePoint, me: SubTilePoint = this.host.world.self): boolean {
     const steps = Math.ceil(Math.hypot(target.x - me.x, target.y - me.y))
     return Array.from({ length: Math.max(0, steps - 1) }, (_, i) => (i + 1) / steps).every((t) => !this.host.world.isSubTileMissileBlocked(Math.round(me.x + (target.x - me.x) * t), Math.round(me.y + (target.y - me.y) * t)))
   }
