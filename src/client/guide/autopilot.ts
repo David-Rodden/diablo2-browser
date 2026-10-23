@@ -14,7 +14,7 @@ import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import { useArtisan, type ArtisanKind } from './artisan.ts'
-import { readyRecipe, transmute } from './cube-recipes.ts'
+import { readyRecipe, transmute, withdraw, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { FlowField } from './flow-field.ts'
@@ -667,7 +667,7 @@ export class Autopilot {
       (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
-      recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe[0]} in the Horadric Cube`, work: () => this.cube(recipe[1]) },
+      recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.upgrades.length > 0 && ready('gear') && { key: 'gear', reason: 'Putting on better gear', work: () => care.wearUpgrades() },
       this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
@@ -686,11 +686,22 @@ export class Autopilot {
       })
   }
 
-  private async cube(recipe: Parameters<typeof transmute>[1]): Promise<void> {
+  private async cube({ recipe, inStash }: ReadyRecipe): Promise<void> {
     const { world, hudManager, hudModel } = this.host
     if (hudModel === null) return
-    const made = await transmute({ world, hudManager, hudModel }, recipe)
-    if (made) this.toast('Transmuted in the Horadric Cube', recipe.makes, 'green')
+    const host = { world, hudManager, hudModel }
+    this.host.assists.journal?.('cube', { makes: recipe.makes, inStash })
+    if (inStash.length > 0) {
+      const stash = await this.reach(() => world.getUnitsByType(2).find((unit) => unit.classId === STASH_CLASS), { key: 'cube', reason: '', stash: true })
+      if (!stash) return
+      this.host.assists.use(stash, performance.now())
+      if (!(await waitFor(() => hudManager.leftPanel === 'stash', 6000))) return
+      const taken = await withdraw(host, inStash)
+      hudModel.closeStash()
+      if (!taken) return
+    }
+    const made = await transmute(host, recipe)
+    this.toast(made ? 'Transmuted in the Horadric Cube' : "Couldn't use the Horadric Cube", made ? recipe.makes : 'Try it by hand', made ? 'green' : 'gold')
     hudModel.requestQuestData()
   }
 
