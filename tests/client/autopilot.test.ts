@@ -305,6 +305,28 @@ describe('autopilot', () => {
     expect([assists.holdLoot, assists.use.mock.calls[0]?.[0]]).toEqual([true, units[0]])
   })
 
+  it('opens a closed door on its route instead of walking into it, and gives up on one that will not open', () => {
+    const { assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' }, step: { kind: 'exit', level: 3 } })
+    units.push(unit({ id: 90, unitType: 'object', classId: 13, x: 104, y: 100, mode: 0 }))
+    const door = units[0]!
+    Object.defineProperty(door, 'mode', { value: 0 })
+    for (let i = 0; i < 12; i++) tick(700)
+    const knocks = assists.use.mock.calls.filter(([used]) => used === door).length
+    expect(knocks).toBeGreaterThan(0)
+    expect(knocks).toBeLessThanOrEqual(8)
+    expect(assists.walkTo).toHaveBeenCalled()
+  })
+
+  it('fights back when monsters pin it in place on the way to town', () => {
+    const { pilot, world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.self.life = 15
+    units.push(unit({ id: 60, x: 102, y: 100, name: 'Fallen' }))
+    tick(200)
+    expect(assists.standDown).toBe(true)
+    tick(2000)
+    expect([pilot.active, assists.standDown]).toEqual([true, false])
+  })
+
   it('switches itself off when you die', () => {
     const { pilot, world, guide, tick } = setup({})
     world.isDead = true

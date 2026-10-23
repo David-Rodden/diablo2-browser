@@ -53,6 +53,12 @@ const TELEPORT_OFF_MS = 60_000
 const REACH = 4
 const INTERACT_REACH = 14
 const QUEST_FOCUS = 25
+const LOOT_SETTLE_MS = 700
+const STALL_MS = 1500
+const STALL_MOVE = 3
+const DOOR_NEAR = 8
+const DOOR_LOOKAHEAD = 20
+const DOOR_ON_ROUTE = 4
 const USE_MS = 600
 const USE_TRIES = 8
 const TALK_MS = 700
@@ -145,6 +151,8 @@ export class Autopilot {
   private chase: { readonly id: number; readonly since: number } | null = null
   private readonly ignored = new Map<number, number>()
   private readonly served = new Set<ArtisanKind>()
+  private lootUntil = Number.NEGATIVE_INFINITY
+  private stall = { x: 0, y: 0, at: 0 }
   private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
   private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
@@ -195,13 +203,13 @@ export class Autopilot {
     if (this.trip === 'retreat' && !town && this.recovered()) this.trip = null
     const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
     assists.pilotCombat = assists.autoCombatKey !== null && danger === null
-    assists.standDown = danger !== null
+    assists.standDown = danger !== null && !this.cornered(nowMs)
     assists.holdLoot = this.questInReach()
     if (danger === null) this.spend(nowMs)
     if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
     else if (assists.isFighting(nowMs)) this.say('Fighting')
-    else if (!this.questInReach() && (assists.inventoryCare.busy || assists.hasLootNearby(nowMs))) this.say('Picking up loot')
+    else if (!this.questInReach() && this.looting(nowMs)) this.say('Picking up loot')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
   }
 
@@ -275,6 +283,11 @@ export class Autopilot {
     const goal = this.host.guide.currentPlan?.target
     const route = found.length >= 2 || !goal || distance(goal, me) <= REACH ? found : [me, goal]
     if (route.length < 2) return
+    const door = this.doorAhead(route)
+    if (door) {
+      this.knock(door, nowMs)
+      return
+    }
     const blink = this.blink
     if (blink?.pending && nowMs - blink.at >= TELEPORT_MS) {
       const misses = distance(me, blink.from) < STUCK_MOVE ? blink.misses + 1 : 0
@@ -483,6 +496,32 @@ export class Autopilot {
     if (life < retreatAt) return 'Low on life, heading to town'
     if (healing === 0 && life < DRY_LIFE) return 'Out of healing potions, heading to town'
     return (!stocked && burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
+  }
+
+  private cornered(nowMs: number): boolean {
+    const { world, assists } = this.host
+    const me = world.self
+    if (distance(me, this.stall) >= STALL_MOVE) this.stall = { x: me.x, y: me.y, at: nowMs }
+    return nowMs - this.stall.at >= STALL_MS && world.getUnitsByType(1).some((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= KITE_NEAR)
+  }
+
+  private doorAhead(route: readonly SubTilePoint[]): ClientUnit | undefined {
+    const me = this.host.world.self
+    const ahead = route.filter((point) => distance(point, me) <= DOOR_LOOKAHEAD)
+    return this.host.world.getUnitsByType(2).find((unit) => isClosedDoor(unit) && (this.uses.get(unit.id)?.tries ?? 0) < USE_TRIES && distance(unit, me) <= DOOR_NEAR && ahead.some((point) => distance(point, unit) <= DOOR_ON_ROUTE))
+  }
+
+  private knock(door: ClientUnit, nowMs: number): void {
+    const used = this.uses.get(door.id)
+    if (used && nowMs - used.at < USE_MS) return
+    this.uses.set(door.id, { at: nowMs, tries: (used?.tries ?? 0) + 1 })
+    this.host.assists.use(door, nowMs)
+  }
+
+  private looting(nowMs: number): boolean {
+    const { assists } = this.host
+    if (assists.inventoryCare.busy || assists.hasLootNearby(nowMs)) this.lootUntil = nowMs + LOOT_SETTLE_MS
+    return nowMs < this.lootUntil
   }
 
   private questInReach(): boolean {
