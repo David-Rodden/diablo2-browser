@@ -39,6 +39,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     walkTo: vi.fn(),
     use: vi.fn(),
     canCast: () => false,
+    canReach: () => true,
     castAt: vi.fn(),
     isHostile: (unit: ClientUnit) => unit.name === 'Fallen',
     castTownPortal: vi.fn(),
@@ -262,6 +263,28 @@ describe('autopilot', () => {
     tick(200)
     expect(assists.use).not.toHaveBeenCalledWith(units[0], expect.any(Number))
     expect(guide.pilotStatus).not.toBe('Back through the portal')
+  })
+
+  it('calls off a retreat once life is back and the belt has potions', () => {
+    const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.self.life = 15
+    tick(2000)
+    expect(assists.standDown).toBe(true)
+    ;[1, 2].forEach((id) => world.containers.belt.set(id, { id, code: 'hp3' }))
+    world.self.life = 95
+    tick(2000)
+    expect(assists.standDown).toBe(false)
+  })
+
+  it('does not hunt a monster it cannot walk to', () => {
+    const { world, assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    assists.pilotCombat = true
+    assists.canReach = () => false
+    ;[1, 2, 3].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    units.push(unit({ id: 70, x: 120, y: 100, name: 'Fallen' }))
+    tick()
+    tick(500)
+    expect(guide.pilotStatus).toBe('Head to Blood Moor')
   })
 
   it('switches itself off when you die', () => {

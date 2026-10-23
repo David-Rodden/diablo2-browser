@@ -83,6 +83,7 @@ const KITE_MS = 2500
 const SEAM_JUMP = 20
 const SPEND_MS = 1500
 const HEAL_LIFE = 0.7
+const RECOVERED_LIFE = 0.85
 const HEAL_MANA = 0.4
 const REPAIR_BELOW = 0.3
 const POTION_COLUMNS = { melee: [3, 1], caster: [2, 2] } as const
@@ -181,6 +182,7 @@ export class Autopilot {
     this.refreshQuests(nowMs)
     const town = this.town()
     this.trip = town && this.trip === 'retreat' ? 'return' : !town && this.trip === 'return' ? null : this.trip
+    if (this.trip === 'retreat' && !town && this.recovered()) this.trip = null
     const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
     assists.pilotCombat = assists.autoCombatKey !== null && danger === null
     assists.standDown = danger !== null
@@ -466,6 +468,11 @@ export class Autopilot {
     return (!stocked && burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
   }
 
+  private recovered(): boolean {
+    const { world, hudManager } = this.host
+    return world.self.life >= (hudManager.maxHp || world.self.maxLife) * RECOVERED_LIFE && this.healingPotions() >= HUNT_POTIONS
+  }
+
   private wounded(): boolean {
     const { world, hudManager } = this.host
     return world.self.life < (hudManager.maxHp || world.self.maxLife) * HEAL_LIFE
@@ -474,6 +481,11 @@ export class Autopilot {
   private healingPotions(): number {
     const { belt, inventory } = this.host.world.containers
     return [...belt.values(), ...inventory.values()].filter((item) => /^(hp|rv)/.test(item.code)).length
+  }
+
+  private ignore(unit: ClientUnit, nowMs: number): boolean {
+    this.ignored.set(unit.id, nowMs + HUNT_IGNORE_MS)
+    return true
   }
 
   private levelGap(): number {
@@ -485,8 +497,14 @@ export class Autopilot {
     const { world, hudManager, assists } = this.host
     const me = world.self
     const bold = me.life >= (hudManager.maxHp || me.maxLife) * HUNT_LIFE && this.healingPotions() >= HUNT_POTIONS && this.levelGap() <= HUNT_GAP
-    const prey = bold ? world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= HUNT_RADIUS && (this.ignored.get(unit.id) ?? 0) <= nowMs).sort((a, b) => distance(a, me) - distance(b, me))[0] : undefined
-    if (!prey) return false
+    const chased = this.chase && world.getUnit('monster', this.chase.id)
+    const huntable = (unit: ClientUnit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= HUNT_RADIUS && (this.ignored.get(unit.id) ?? 0) <= nowMs
+    const fresh = () => world.getUnitsByType(1).filter(huntable).sort((a, b) => distance(a, me) - distance(b, me)).find((unit) => assists.canReach(unit, nowMs) || !this.ignore(unit, nowMs))
+    const prey = bold ? (chased && huntable(chased) ? chased : fresh()) : undefined
+    if (!prey) {
+      this.chase = null
+      return false
+    }
     const chase = this.chase?.id === prey.id ? this.chase : (this.chase = { id: prey.id, since: nowMs })
     if (nowMs - chase.since > HUNT_MS) {
       this.ignored.set(prey.id, nowMs + HUNT_IGNORE_MS)

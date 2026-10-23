@@ -587,6 +587,10 @@ export class PlayAssists {
     return [...this.host.world.units.values()].filter((unit) => this.isOnScreenHostile(unit)).sort((a, b) => distance(a) - distance(b))
   }
 
+  canReach(unit: ClientUnit, nowMs: number): boolean {
+    return this.isReachable(unit, nowMs)
+  }
+
   private isReachable(unit: ClientUnit, nowMs: number): boolean {
     return this.pathTo(unit, nowMs) !== null
   }
