@@ -58,6 +58,10 @@ const LOOT_SETTLE_MS = 700
 const STALL_MS = 1500
 const PAD_CLASSES: ReadonlySet<number> = new Set([192, 304, 305, 306])
 const PAD_SAME = 4
+const ELITE_PULL = 12
+const PACK_PULL = 3
+const PACK_RADIUS = 6
+const UNREACHED_ROOM = 1000
 const WAYPOINT_GRAB = 40
 const PAD_REUSE_MS = 120_000
 const PAD_ARRIVAL_MS = 4000
@@ -137,6 +141,7 @@ const GAP_STEP = 12
 const GAP_TRIES = 6
 
 const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y - b.y)
+const isElite = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true)
 const padKey = (pad: SubTilePoint) => `${Math.round(pad.x)},${Math.round(pad.y)}`
 const potionTier = (code: string) => Number(code.slice(2)) || 0
 
@@ -486,7 +491,12 @@ export class Autopilot {
     const me = world.self
     const centre = (room: LevelView['rooms'][number]) => ({ x: room.worldSubX + room.subW / 2, y: room.worldSubY + room.subH / 2 })
     view.rooms.filter((room) => distance(centre(room), me) <= Math.max(room.subW, room.subH) / 2 + ROOM_REACHED).forEach((room) => visited.add(room.index))
-    const next = view.rooms.filter((room) => !visited.has(room.index)).sort((a, b) => distance(centre(a), me) - distance(centre(b), me))[0]
+    const here = this.padField(view, nowMs)
+    const walk = (room: LevelView['rooms'][number]) => {
+      const entry = here.pathFrom(centre(room).x, centre(room).y, 1, 1)[0]
+      return (entry ? here.distanceFrom(entry.x, entry.y) : null) ?? distance(centre(room), me) + UNREACHED_ROOM
+    }
+    const next = view.rooms.filter((room) => !visited.has(room.index)).map((room) => ({ room, cost: walk(room) })).sort((a, b) => a.cost - b.cost)[0]?.room
     this.say(next ? status : `${status} (explored everything)`)
     if (!next) return
     const goal = centre(next)
@@ -664,7 +674,9 @@ export class Autopilot {
     const bold = me.life >= (hudManager.maxHp || me.maxLife) * HUNT_LIFE && this.healingPotions() >= HUNT_POTIONS && this.levelGap() <= HUNT_GAP
     const chased = this.chase && world.getUnit('monster', this.chase.id)
     const huntable = (unit: ClientUnit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= HUNT_RADIUS && (this.ignored.get(unit.id) ?? 0) <= nowMs
-    const fresh = () => world.getUnitsByType(1).filter(huntable).sort((a, b) => distance(a, me) - distance(b, me)).find((unit) => assists.canReach(unit, nowMs) || !this.ignore(unit, nowMs))
+    const hostiles = world.getUnitsByType(1).filter(huntable)
+    const worth = (unit: ClientUnit) => distance(unit, me) - (isElite(unit) ? ELITE_PULL : 0) - PACK_PULL * hostiles.filter((other) => other !== unit && distance(other, unit) <= PACK_RADIUS).length
+    const fresh = () => [...hostiles].sort((a, b) => worth(a) - worth(b)).find((unit) => assists.canReach(unit, nowMs) || !this.ignore(unit, nowMs))
     const prey = bold ? (chased && huntable(chased) ? chased : fresh()) : undefined
     if (!prey) {
       this.chase = null

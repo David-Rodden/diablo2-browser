@@ -18,6 +18,7 @@ export const ACT_TOWNS = [1, 40, 75, 103, 109] as const
 const FIRST_TOMB = 66
 const TOMB_COUNT = 7
 const DURIELS_LAIR = 73
+const RED_PORTAL = 60
 const ROMAN = ['I', 'II', 'III', 'IV', 'V']
 const PORTALS: Readonly<Record<string, { readonly hint: string; readonly find: readonly Find[] }>> = {
   '1>40': { hint: 'Talk to Warriv', find: ['warriv1'] },
@@ -28,6 +29,13 @@ const PORTALS: Readonly<Record<string, { readonly hint: string; readonly find: r
   '54>74': { hint: 'Take the portal in the Palace Cellar', find: [298] },
   '74>46': { hint: "Take the Summoner's portal", find: [60, 357] },
   '46>73': { hint: 'Enter the true tomb', find: [] },
+  ...Object.fromEntries([66, 67, 68, 69, 70, 71, 72].map((tomb) => [`${tomb}>73`, { hint: "Enter Duriel's Lair", find: [100] }])),
+  '109>121': { hint: "Take Anya's red portal", find: [60] },
+  '111>125': { hint: 'Take the red portal to Abaddon', find: [60] },
+  '112>126': { hint: 'Take the red portal to the Pit of Acheron', find: [60] },
+  '117>127': { hint: 'Take the red portal to the Infernal Pit', find: [60] },
+  '120>128': { hint: 'Enter the Worldstone Keep', find: [547] },
+  '131>132': { hint: "Take Baal's portal to the Worldstone Chamber", find: [563] },
 }
 const REWARD_GRANTED = 0x0001
 const COMPLETED_NOW = 0x2000
@@ -108,5 +116,5 @@ export function nextStep(from: number, to: number, waypoints: ReadonlySet<number
   if (!hop) return null
   if (hop.kind === 'waypoint') return { kind: 'waypoint', level: hop.to }
   const portal = PORTALS[`${from}>${hop.to}`]
-  return hop.kind === 'portal' || portal ? { kind: 'portal', level: hop.to, hint: portal?.hint ?? `Find the way to ${levelName(hop.to)}`, find: portal?.find ?? [] } : { kind: 'exit', level: hop.to }
+  return hop.kind === 'portal' || portal ? { kind: 'portal', level: hop.to, hint: portal?.hint ?? `Take the portal to ${levelName(hop.to)}`, find: portal?.find ?? [RED_PORTAL] } : { kind: 'exit', level: hop.to }
 }

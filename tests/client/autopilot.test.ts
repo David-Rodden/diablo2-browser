@@ -376,6 +376,15 @@ describe('autopilot', () => {
     expect((hudModel as unknown as { confirmQuestReward: ReturnType<typeof vi.fn> }).confirmQuestReward).toHaveBeenCalledWith(5)
   })
 
+  it('hunts a pack or an elite before a lone monster a little closer', () => {
+    const { world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(assists, { pilotCombat: true, autoCombatKey: 'E' })
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    units.push(unit({ id: 70, x: 110, y: 100, name: 'Fallen' }), ...[71, 72, 73, 74].map((id, i) => unit({ id, x: 100 + (i % 2), y: 116 + i, name: 'Fallen' })))
+    tick(1000)
+    expect(assists.walkTo.mock.calls.at(-1)?.[1] ?? assists.stepTo.mock.calls.at(-1)?.[1]).toBeGreaterThan(105)
+  })
+
   it('switches itself off when you die', () => {
     const { pilot, world, guide, tick } = setup({})
     world.isDead = true
