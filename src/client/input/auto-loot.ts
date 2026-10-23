@@ -31,13 +31,13 @@ export const isWantedLoot = (rules: AutoLootRules, item: Pick<ItemData, 'code'>,
 
 export type Placed = Pick<ItemData, 'id' | 'gridX' | 'gridY' | 'invWidth' | 'invHeight'>
 
-const cellsOf = (item: Pick<Placed, 'gridX' | 'gridY' | 'invWidth' | 'invHeight'>): number[] =>
-  [...Array(Math.max(1, item.invHeight)).keys()].flatMap((dy) => [...Array(Math.max(1, item.invWidth)).keys()].map((dx) => (item.gridY + dy) * INVENTORY_COLUMNS + item.gridX + dx))
+const cellsOf = (item: Pick<Placed, 'gridX' | 'gridY' | 'invWidth' | 'invHeight'>, columns = INVENTORY_COLUMNS): number[] =>
+  [...Array(Math.max(1, item.invHeight)).keys()].flatMap((dy) => [...Array(Math.max(1, item.invWidth)).keys()].map((dx) => (item.gridY + dy) * columns + item.gridX + dx))
 
-export function freeSpots(items: Iterable<Placed>, width: number, height: number): { readonly x: number; readonly y: number }[] {
-  const taken = new Set([...items].flatMap(cellsOf))
-  const spots = [...Array(Math.max(0, INVENTORY_ROWS - height + 1)).keys()].flatMap((y) => [...Array(Math.max(0, INVENTORY_COLUMNS - width + 1)).keys()].map((x) => ({ x, y })))
-  return spots.filter(({ x, y }) => cellsOf({ gridX: x, gridY: y, invWidth: width, invHeight: height }).every((cell) => !taken.has(cell)))
+export function freeSpots(items: Iterable<Placed>, width: number, height: number, columns = INVENTORY_COLUMNS, rows = INVENTORY_ROWS): { readonly x: number; readonly y: number }[] {
+  const taken = new Set([...items].flatMap((item) => cellsOf(item, columns)))
+  const spots = [...Array(Math.max(0, rows - height + 1)).keys()].flatMap((y) => [...Array(Math.max(0, columns - width + 1)).keys()].map((x) => ({ x, y })))
+  return spots.filter(({ x, y }) => cellsOf({ gridX: x, gridY: y, invWidth: width, invHeight: height }, columns).every((cell) => !taken.has(cell)))
 }
 
 export const fitsInInventory = (items: Iterable<Placed>, width: number, height: number): boolean => freeSpots(items, width, height).length > 0

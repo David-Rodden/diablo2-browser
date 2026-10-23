@@ -133,6 +133,8 @@ const baseTypeOf = (code: string) => getEmbeddedDropTables().getBase(code)?.type
 
 export const isTwoHanded = (item: LootItem): boolean => uiOf(item).twoHanded === true
 
+export const equipSlotsOf = (item: LootItem): readonly EquipSlotId[] => uiOf(item).allowedSlots
+
 const damageOf = (ui: UiInventoryItem) => ui.twoHanded ? ui.twoHandDamage : ui.oneHandDamage ?? ui.twoHandDamage
 
 export function gearScore(item: LootItem, build: CharacterBuild): number {
