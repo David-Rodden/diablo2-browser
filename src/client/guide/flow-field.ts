@@ -13,7 +13,7 @@ const NEIGHBOURS = [
   [-1, -1],
 ] as const
 
-const erodeToPlayerSize = ({ walkable, subWidth: w, subHeight: h }: SubTileWalkabilityGrid): Uint8Array =>
+export const erodeToPlayerSize = ({ walkable, subWidth: w, subHeight: h }: SubTileWalkabilityGrid): Uint8Array =>
   walkable.map((open, i) => {
     const [x, y] = [i % w, Math.floor(i / w)]
     return open !== 0 && x > 0 && y > 0 && x < w - 1 && y < h - 1 && walkable[i - 1] !== 0 && walkable[i + 1] !== 0 && walkable[i - w] !== 0 && walkable[i + w] !== 0 ? 1 : 0
@@ -54,7 +54,7 @@ export class FlowField {
   }
 
   private canStep(x: number, y: number, dx: number, dy: number): boolean {
-    return this.walkable(x + dx, y + dy) && (dx === 0 || dy === 0 || (this.walkable(x + dx, y) && this.walkable(x, y + dy)))
+    return this.walkable(x + dx, y + dy)
   }
 
   private flood(seed: number): void {

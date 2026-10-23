@@ -2,10 +2,11 @@ export type FindKey = number | string
 export type Find = FindKey | readonly FindKey[]
 
 export interface Stage {
-  readonly level: number | 'town'
+  readonly level: number | 'town' | 'tomb'
   readonly hint: string
   readonly find: readonly Find[]
   readonly unless?: readonly string[]
+  readonly bring?: string
 }
 
 export interface Objective {
@@ -15,7 +16,9 @@ export interface Objective {
   readonly required?: true
 }
 
-const at = (level: number | 'town', hint: string, ...find: Find[]): Stage => ({ level, hint, find })
+const at = (level: number | 'town' | 'tomb', hint: string, ...find: Find[]): Stage => ({ level, hint, find })
+const ORIFICE = 152
+const TO_THE_TOMB: Stage = { ...at('tomb', "Take the Staff to Tal Rasha's Tomb", ORIFICE), bring: 'hst' }
 const talk = (name: string, npc: string, hint = `Talk to ${name}`): Stage => at('town', hint, npc)
 const SEALS: Find = [392, 393, 394, 395, 396]
 
@@ -91,16 +94,15 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa2q12: at(49, 'Kill Radament', 'radament'),
   qstsa2q13: talk('Atma', 'atma'),
   qstsa2q21: talk('Cain', 'cain2', 'Show the scroll to Cain'),
-  qstsa2q23: at('town', 'Combine the Staff and Amulet in the Cube'),
   qstsa2q25: talk('Cain', 'cain2', 'Show the artifacts to Cain'),
-  qstsa2q24: at(73, "Take the Staff to Tal Rasha's Tomb"),
+  qstsa2q24: TO_THE_TOMB,
   qstsa2q31a: talk('Drognan', 'drognan'),
   qstsa2q32: at(61, 'Destroy the Serpent Altar', 149),
   qstsa2q33: talk('Drognan', 'drognan'),
   qstsa2q41a: talk('Drognan', 'drognan'),
   qstsa2q41: at(74, 'Find the portal in the Palace Cellar'),
   qstsa2q42: at(74, "Read Horazon's Journal", 357, 'summoner'),
-  qstsa2q43: at(73, 'Find the true tomb in the Canyon'),
+  qstsa2q43: { ...at('tomb', 'Find the true tomb in the Canyon', ORIFICE), bring: 'hst' },
   qstsa2q51: at(74, 'Find the Summoner', 'summoner'),
   qstsa2q52: at(74, 'Kill the Summoner', 'summoner'),
   qstsa2q53: at('town', 'Return to town'),
@@ -184,6 +186,8 @@ export const STAGES: Readonly<Record<string, readonly Stage[]>> = {
     { ...at(60, 'Open the chest with the Horadric Cube in the Halls of the Dead', 354), unless: ['box'] },
     { ...at(64, 'Open the chest with the Staff of Kings in the Maggot Lair', 356), unless: ['msf', 'hst'] },
     { ...at(61, 'Take the Viper Amulet from the altar in the Claw Viper Temple', 149), unless: ['vip', 'hst'] },
-    at('town', 'Combine the Staff and Amulet in the Cube'),
+    { ...at('town', 'Combine the Staff and Amulet in the Cube'), unless: ['hst'] },
+    TO_THE_TOMB,
   ],
+  qstsa2q23: [{ ...at('town', 'Combine the Staff and Amulet in the Cube'), unless: ['hst'] }, TO_THE_TOMB],
 }
