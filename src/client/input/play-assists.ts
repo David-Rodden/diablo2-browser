@@ -110,6 +110,7 @@ export class PlayAssists {
   private pilotFights = false
   questPickup = false
   standDown = false
+  holdLoot = false
   journal: ((kind: string, detail: Readonly<Record<string, unknown>>) => void) | null = null
   pilot: Pilot | null = null
   pilotKey: string | null = null
@@ -256,7 +257,7 @@ export class PlayAssists {
     const { world } = this.host
     const { ground } = world.containers
     ;[...this.pickupRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.pickupRetryAt.delete(id))
-    if (world.isDead || this.standDown || this.isInWorldInteraction() || this.inventoryCare.busy) return
+    if (world.isDead || this.standDown || this.holdLoot || this.isInWorldInteraction() || this.inventoryCare.busy) return
     const { loot, nearest } = this.lootRoute(nowMs)
     if (nearest === undefined) {
       this.lootWalkId = null

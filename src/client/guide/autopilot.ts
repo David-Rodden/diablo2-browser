@@ -50,6 +50,7 @@ const TELEPORT_MISSES = 3
 const TELEPORT_OFF_MS = 60_000
 const REACH = 4
 const INTERACT_REACH = 14
+const QUEST_FOCUS = 25
 const USE_MS = 900
 const USE_TRIES = 8
 const TALK_MS = 1200
@@ -162,7 +163,7 @@ export class Autopilot {
   stop(title: string, color: 'tan' | 'red' | 'gold' = 'tan', detail = ''): void {
     const { assists, guide } = this.host
     Object.assign(this, { active: false, job: null, talk: null, crossing: null })
-    Object.assign(assists, { pilotCombat: false, questPickup: false, standDown: false })
+    Object.assign(assists, { pilotCombat: false, questPickup: false, standDown: false, holdLoot: false })
     guide.pilotStatus = null
     this.toast(title, detail, color)
   }
@@ -187,11 +188,12 @@ export class Autopilot {
     const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
     assists.pilotCombat = assists.autoCombatKey !== null && danger === null
     assists.standDown = danger !== null
+    assists.holdLoot = this.questInReach()
     if (danger === null) this.spend(nowMs)
     if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
     else if (assists.isFighting(nowMs)) this.say('Fighting')
-    else if (assists.inventoryCare.busy || assists.hasLootNearby(nowMs)) this.say('Picking up loot')
+    else if (!this.questInReach() && (assists.inventoryCare.busy || assists.hasLootNearby(nowMs))) this.say('Picking up loot')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
   }
 
@@ -467,6 +469,11 @@ export class Autopilot {
     if (life < retreatAt) return 'Low on life, heading to town'
     if (healing === 0 && life < DRY_LIFE) return 'Out of healing potions, heading to town'
     return (!stocked && burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
+  }
+
+  private questInReach(): boolean {
+    const target = this.host.guide.currentPlan?.target
+    return target?.unit?.kind === 'object' && distance(target, this.host.world.self) <= QUEST_FOCUS
   }
 
   private recovered(): boolean {
