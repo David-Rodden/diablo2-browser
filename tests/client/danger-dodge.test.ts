@@ -22,7 +22,9 @@ const createSetup = () => {
   mapper.assists.autoCombatKey = 'E'
   mapper.handleKeyDown({ key: 'e' })
   const dodges: unknown[] = []
-  mapper.assists.journal = (kind, detail) => void (kind === 'dodge' && dodges.push(detail))
+  mapper.assists.journal = (kind, detail) => {
+    if (kind === 'dodge') dodges.push(detail)
+  }
   world.apply({ type: 'UnitAssign', unit: { unitType: 1, id: 901, classId: 19, name: 'Monster', x: 112, y: 100, lifePct: 128, mode: 1 } })
   const fire = (name: string, owner: { unitType: number; id: number }, at: { x: number; y: number }, target: { x: number; y: number }) =>
     world.apply({ type: 'CreateMissile', missileClassId: MISSILE_DATA[name]!.id, owner, at, target } as never)
