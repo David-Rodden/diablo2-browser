@@ -279,7 +279,8 @@ export class PathGuide {
 
   reaches(me: SubTilePoint, plan: GuidePlan | null = this.plan): boolean {
     const field = this.fieldOf(plan)
-    return field === null || field.distanceFrom(me.x, me.y) !== null || field.pathFrom(me.x, me.y, 1, 1).length > 0
+    if (field === null) return true
+    return field.distanceFrom(me.x, me.y) !== null || field.pathFrom(me.x, me.y, 1, 1).length > 0
   }
 
   private fieldOf(plan: GuidePlan | null): FlowField | null {
