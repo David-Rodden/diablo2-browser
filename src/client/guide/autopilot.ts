@@ -15,12 +15,16 @@ import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import { useArtisan, type ArtisanKind } from './artisan.ts'
+import { freeSpots } from '../input/auto-loot.ts'
+import { vendorPrice113c } from '../ui-model/vendor-price.ts'
 import { readyRecipe, takeOut, transmute, withdraw, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
+import { WAYPOINT_LEVELS } from './level-links.ts'
+import { readiness, trainingGround, type Readiness, type Trainee } from './training.ts'
 import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 
@@ -60,6 +64,7 @@ const STALL_MS = 1500
 const PAD_CLASSES: ReadonlySet<number> = new Set([192, 304, 305, 306])
 const PAD_SAME = 4
 const CORPSE_SAME = 3
+const ASSESS_MS = 5000
 const PREP = 'Stocking up before'
 const CORPSE_GONE = 10
 const BODY_GONE_MS = 3000
@@ -128,6 +133,7 @@ const POTION_COLUMNS = { melee: [3, 1], caster: [2, 2] } as const
 const POTION_GOLD = 100
 const SPARE_POTIONS = { melee: [4, 1], caster: [3, 3] } as const
 const SPARE_GOLD = 2000
+const SHOP_GOLD = 6000
 const BUY_TRIES = 16
 const SCROLL_KINDS = {
   portal: { tome: 'tbk', scroll: 'tsc', tomeGold: 500, keep: 10, spare: 2 },
@@ -193,7 +199,11 @@ export class Autopilot {
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
   private lastSpend = Number.NEGATIVE_INFINITY
   private corpse: { readonly level: number; readonly x: number; readonly y: number } | null = null
-  private deaths: readonly number[] = []
+  private deaths: readonly { readonly at: number; readonly level: number }[] = []
+  private training: (Readiness & { readonly ground: number }) | null = null
+  private readonly trainedOut = new Set<number>()
+  private questLevel: number | null = null
+  private assessedAt = Number.NEGATIVE_INFINITY
   private lastRevive = Number.NEGATIVE_INFINITY
   private bodySeen = Number.NEGATIVE_INFINITY
   private readonly prepared = new Map<string, number>()
@@ -221,6 +231,7 @@ export class Autopilot {
     Object.assign(this, { active: false, job: null, talk: null, crossing: null })
     Object.assign(assists, { pilotCombat: false, questPickup: false, standDown: false, holdLoot: false })
     guide.pilotStatus = null
+    guide.detour = null
     this.toast(title, detail, color)
   }
 
@@ -240,7 +251,7 @@ export class Autopilot {
     const { world, hudModel } = this.host
     if (this.corpse?.level !== world.areaId || distance(this.corpse, world.self) > CORPSE_SAME) {
       this.corpse = { level: world.areaId, x: world.self.x, y: world.self.y }
-      this.deaths = [...this.deaths.filter((at) => nowMs - at < DEATH_MEMORY_MS), nowMs]
+      this.deaths = [...this.deaths.filter((death) => nowMs - death.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? world.areaId }]
       Object.assign(this, { trip: null, crossing: null, talk: null, chase: null })
       this.toast('You died', 'Going back for your body', 'red')
     }
@@ -303,8 +314,58 @@ export class Autopilot {
     Object.assign(this, { trip: 'retreat', retreatWhy: `${PREP} ${boss}, heading to town` })
   }
 
+  private assess(nowMs: number): void {
+    const { world, guide } = this.host
+    const plan = guide.currentPlan
+    if (guide.detour === null && plan) this.questLevel = plan.goal.level
+    if (nowMs - this.assessedAt < ASSESS_MS || this.corpse !== null || this.trip !== null || this.questLevel === null) return
+    this.assessedAt = nowMs
+    const me = this.trainee()
+    const training = this.training
+    if (training) {
+      if (me.level >= training.level && me.gold >= training.gold) {
+        this.training = null
+        this.toast('Ready to carry on', `Heading back to ${levelName(this.questLevel)}`, 'green')
+      }
+      return
+    }
+    const setbacks = this.deaths.filter((death) => death.level === this.questLevel && nowMs - death.at < DEATH_MEMORY_MS).length
+    const need = readiness(me, this.questLevel, setbacks)
+    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.trainedOut)
+    if (!need || ground === null) return
+    this.training = { ...need, ground }
+    this.toast(need.why, `In ${levelName(ground)}`, 'gold')
+  }
+
+  private trainee(): Trainee {
+    const { world } = this.host
+    return { level: world.self.level, gold: world.self.gold + world.self.stashGold, difficulty: world.difficulty }
+  }
+
+  private waypointLevels(): ReadonlySet<number> {
+    return new Set([...this.host.world.waypoints].flatMap((id) => WAYPOINT_LEVELS.get(id) ?? []))
+  }
+
+  private trainingGoal(): Goal | null {
+    const training = this.training
+    return training && { level: training.ground, title: 'Training', hint: `${training.why} in ${levelName(training.ground)}` }
+  }
+
+  private train(nowMs: number): boolean {
+    const training = this.training
+    const view = this.host.levelView()
+    if (!training || !view || this.host.world.areaId !== training.ground) return false
+    if (this.exploreLevel(view, nowMs, `${training.why} in ${levelName(training.ground)}`)) return true
+    this.trainedOut.add(training.ground)
+    this.explored.delete(training.ground)
+    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.trainedOut)
+    if (next === null) this.trainedOut.clear()
+    this.training = { ...training, ground: next ?? training.ground }
+    return true
+  }
+
   private caution(nowMs: number): number {
-    return Math.min(MAX_CAUTION, this.deaths.filter((at) => nowMs - at < DEATH_MEMORY_MS).length * DEATH_CAUTION)
+    return Math.min(MAX_CAUTION, this.deaths.filter((death) => nowMs - death.at < DEATH_MEMORY_MS).length * DEATH_CAUTION)
   }
 
   private decide(nowMs: number): void {
@@ -315,7 +376,8 @@ export class Autopilot {
     if (this.trip === 'retreat' && !town && this.recovered() && !this.retreatWhy.startsWith(PREP)) this.trip = null
     if (!town && this.trip === null) this.prepareFor(nowMs)
     const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
-    this.host.guide.detour = this.corpseGoal()
+    this.assess(nowMs)
+    this.host.guide.detour = this.corpseGoal() ?? this.trainingGoal()
     const body = town ? null : this.bodyRun(nowMs)
     assists.pilotCombat = assists.autoCombatKey !== null && danger === null && (body === null || this.cornered(nowMs))
     assists.standDown = danger !== null && !this.cornered(nowMs)
@@ -336,7 +398,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.wounded()) this.say('Waiting to heal before heading out')
-    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.grabWaypoint(nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private refreshQuests(nowMs: number): void {
@@ -576,7 +638,7 @@ export class Autopilot {
     else this.exploreLevel(view, nowMs, status)
   }
 
-  private exploreLevel(view: LevelView, nowMs: number, status: string): void {
+  private exploreLevel(view: LevelView, nowMs: number, status: string): boolean {
     const { world, assists } = this.host
     const visited = this.explored.get(view.id) ?? new Set<number>()
     this.explored.set(view.id, visited)
@@ -590,7 +652,7 @@ export class Autopilot {
     }
     const next = view.rooms.filter((room) => !visited.has(room.index)).map((room) => ({ room, cost: walk(room) })).sort((a, b) => a.cost - b.cost)[0]?.room
     this.say(next ? status : `${status} (explored everything)`)
-    if (!next) return
+    if (!next) return false
     const goal = centre(next)
     const key = `${view.id}:${next.index}`
     if (this.exploreField?.key !== key) this.exploreField = { key, field: new FlowField({ ...view, walkable: assists.walkableWithDoorsOpen(view) }, goal.x, goal.y) }
@@ -598,6 +660,8 @@ export class Autopilot {
     const path = field.pathFrom(me.x, me.y, 1, 40)
     if (path.length <= ROOM_END) visited.add(next.index)
     else this.walkRoute(nowMs, [me, ...field.corners(path, me)])
+    this.host.guide.focus(goal, nowMs)
+    return true
   }
 
   private noteArea(): void {
@@ -912,7 +976,8 @@ export class Autopilot {
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
-      worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repair() },
+      worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repairAndShop() },
+      me.gold >= SHOP_GOLD && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
       (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
@@ -1071,6 +1136,7 @@ export class Autopilot {
   private walkTowards(goal: SubTilePoint, nowMs: number): void {
     const view = this.host.levelView()
     if (!view) return
+    this.host.guide.focus(goal, nowMs)
     const me = this.host.world.self
     const key = `walk:${Math.round(goal.x)},${Math.round(goal.y)}`
     if (this.exploreField?.key !== key) this.exploreField = { key, field: new FlowField({ ...view, walkable: this.host.assists.walkableWithDoorsOpen(view) }, goal.x, goal.y) }
@@ -1100,6 +1166,35 @@ export class Autopilot {
     await this.topUp('portal', BUY_TRIES)
     await this.buyScroll('identify')
     await this.topUp('identify', BUY_TRIES)
+    await this.buyUpgrade()
+  }
+
+  private async repairAndShop(): Promise<void> {
+    await this.repair()
+    await this.buyUpgrade()
+  }
+
+  private async buyUpgrade(): Promise<void> {
+    const { world, hudManager, hudModel, assists } = this.host
+    const npcId = world.npcInteraction.npcId
+    const npc = npcId === null ? undefined : world.getUnit('monster', npcId)
+    if (hudModel === null || hudManager.leftPanel !== 'vendor' || !npc) return
+    const budget = world.self.gold - SPARE_GOLD
+    const price = (item: ItemData) => {
+      try {
+        return vendorPrice113c(item, 0, { world, npcClass: npc.classId })
+      } catch {
+        return Infinity
+      }
+    }
+    const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
+    const pick = [...world.containers.shop.values()]
+      .map((item) => ({ item, appraisal: assists.inventoryCare.appraise(item), cost: price(item) }))
+      .filter(({ item, appraisal, cost }) => appraisal.upgradeSlot !== undefined && cost <= budget && fits(item))
+      .sort((a, b) => b.appraisal.score / Math.max(1, b.cost) - a.appraisal.score / Math.max(1, a.cost))[0]
+    const before = world.self.gold
+    if (!pick || !hudModel.vendorBuy(pick.item.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
+    this.toast('Bought better gear', pick.appraisal.reason, 'green')
   }
 
   private async topUp(kind: keyof typeof SCROLL_KINDS, tries: number): Promise<void> {
