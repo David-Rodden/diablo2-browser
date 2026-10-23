@@ -51,6 +51,8 @@ const CURSE_RECAST_MS = 20_000
 const PACK_REACH = 6
 const BLAST_REACH = 5
 const BLAST_PACK = 2
+const BLAST_GAP_MS = 700
+const BLAST_RANGE = 20
 const GIVE_UP_MS = 15_000
 const IGNORE_MS = 30_000
 const INTERACTION_PANELS = new Set(['stash', 'cube', 'vendor', 'hire', 'imbue', 'add_sockets', 'personalize', 'trade', 'waypoint'])
@@ -134,6 +136,8 @@ export class PlayAssists {
   private readonly supportCastAt = new Map<string, number>()
   private readonly givenUp = new Map<number, number>()
   private lastBackOff = Number.NEGATIVE_INFINITY
+  private lastBlast = Number.NEGATIVE_INFINITY
+  private readonly blasted = new Set<number>()
   private fight: { readonly id: number; readonly life: number; readonly since: number } | null = null
 
   constructor(private readonly host: PlayAssistHost) {
@@ -420,9 +424,15 @@ export class PlayAssists {
   }
 
   private corpseToBlast(target: ClientUnit, nowMs: number): ClientUnit | undefined {
-    if ((this.host.world.self.skills.get(CORPSE_EXPLOSION) ?? 0) === 0 || !this.host.canCastSkill(CORPSE_EXPLOSION, nowMs)) return undefined
+    if ((this.host.world.self.skills.get(CORPSE_EXPLOSION) ?? 0) === 0 || nowMs - this.lastBlast < BLAST_GAP_MS || !this.host.canCastSkill(CORPSE_EXPLOSION, nowMs)) return undefined
+    const me = this.host.world.self
     const worth = (corpse: ClientUnit) => this.hostilesNear(corpse, BLAST_REACH) >= BLAST_PACK || (isTough(target) && Math.hypot(corpse.x - target.x, corpse.y - target.y) <= BLAST_REACH)
-    return this.corpses().find((corpse) => Math.hypot(corpse.x - target.x, corpse.y - target.y) <= BLAST_REACH && worth(corpse))
+    const corpse = this.corpses().find((body) => !this.blasted.has(body.id) && Math.hypot(body.x - me.x, body.y - me.y) <= BLAST_RANGE && Math.hypot(body.x - target.x, body.y - target.y) <= BLAST_REACH && worth(body))
+    if (corpse) {
+      this.blasted.add(corpse.id)
+      this.lastBlast = nowMs
+    }
+    return corpse
   }
 
   private corpses(): ClientUnit[] {
