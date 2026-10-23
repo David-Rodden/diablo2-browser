@@ -577,6 +577,14 @@ export function syncActiveAreaFromPlayerPosition(
  * the in-process DRLG session; a test-injected `levelView` has no rooms, so only the player's room
  * light is used then.
  */
+function revealedNearRooms(mapService: NonNullable<SessionLevelNavigationHost['mapService']>, areaId: number, subX: number, subY: number): ReturnType<NonNullable<SessionLevelNavigationHost['mapService']>['getRevealedNearRooms']> {
+  try {
+    return mapService.getRevealedNearRooms(areaId, subX, subY)
+  } catch {
+    return []
+  }
+}
+
 export function resolveSceneAmbient(
   host: SessionLevelNavigationHost,
   levelView: LevelView,
@@ -586,7 +594,7 @@ export function resolveSceneAmbient(
   const env = host.environmentValue
   const nearRooms =
     host.levelView == null && host.mapService
-      ? host.mapService.getRevealedNearRooms(levelView.areaId, playerSubX, playerSubY).map((room) => ({
+      ? revealedNearRooms(host.mapService, levelView.areaId, playerSubX, playerSubY).map((room) => ({
           worldSubX: room.worldSubX,
           worldSubY: room.worldSubY,
           subW: room.subW,
