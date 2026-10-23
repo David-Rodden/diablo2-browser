@@ -34,7 +34,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
       return this.fighting
     },
     hasLootNearby: () => false,
-    inventoryCare: { busy: false, config: null, junk: [], stashable: [] },
+    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], stashable: [], wearUpgrades: vi.fn() },
     keepUp: () => false,
     walkTo: vi.fn(),
     use: vi.fn(),
@@ -285,6 +285,14 @@ describe('autopilot', () => {
     tick()
     tick(500)
     expect(guide.pilotStatus).toBe('Head to Blood Moor')
+  })
+
+  it('puts on better gear it is carrying while in town', () => {
+    const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    world.self.gold = 0
+    assists.inventoryCare.upgrades = [{ id: 9 }]
+    tick()
+    expect([assists.inventoryCare.wearUpgrades.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Putting on better gear'])
   })
 
   it('switches itself off when you die', () => {
