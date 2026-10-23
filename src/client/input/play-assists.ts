@@ -15,7 +15,7 @@ import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
 import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from './town-portal.ts'
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
-import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
+import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
 const PICKUP_RETRY_MS = 1000
@@ -43,6 +43,13 @@ const SUPPORT_MS = 600
 const CORPSE_USED_STATE = 0x8f
 const CORPSE_REACH = 10
 const RECAST_MS = 6000
+const PRIORITY_BONUS = 12
+const FINISH_LIFE_PCT = 45
+const FINISH_BONUS = 4
+const TARGET_CANDIDATES = 8
+const SWITCH_MARGIN = 6
+const MELEE_CROWD = 4
+const MELEE_CROWD_LIFE = 0.5
 const CROWD_REACH = 3
 const CROWD_SIZE = 2
 const BACK_OFF_MS = 2500
@@ -83,6 +90,8 @@ export interface PlayAssistHost {
 const objectMetaOf = (unit: ClientUnit) => unit.objectMeta ?? CANONICAL_113C_OBJECTS[unit.classId]
 const collisionMask = (unit: ClientUnit) => objectMetaOf(unit)?.hasCollisionMask ?? 0
 const objectMode = (unit: ClientUnit) => Math.max(0, Math.min(7, Math.floor(unit.mode || 0)))
+const isPriorityTarget = (unit: ClientUnit) => isPriorityClass(unit.classId)
+
 const isTough = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true) || BOSS_CLASSES.has(unit.classId)
 
 export const isClosedDoor = (unit: ClientUnit) => !unit.hidden && !unit.dead && Boolean(objectMetaOf(unit)?.isDoor) && (collisionMask(unit) & (1 << objectMode(unit))) !== 0
@@ -392,17 +401,18 @@ export class PlayAssists {
     const use = attackSkill(this.combatSelf(), this.combatTarget(target), (skillId) => this.host.canCastSkill(skillId, nowMs))
     if (use.reach === 'close' && this.host.distanceFromSelf()(target) > CLOSE_REACH) return this.host.triggerPrimaryWorldAction(target.x, target.y, null, nowMs)
     if (use.reach !== 'melee' && !this.clearShot(target)) return this.host.triggerPrimaryWorldAction(target.x, target.y, null, nowMs)
-    const room = use.reach === 'ranged' ? this.roomToBreathe(nowMs) : null
+    const life = this.combatSelf().lifeFraction
+    const room = use.reach === 'ranged' ? this.roomToBreathe(nowMs, CROWD_SIZE) : life < MELEE_CROWD_LIFE ? this.roomToBreathe(nowMs, MELEE_CROWD) : null
     if (room) return this.host.triggerPrimaryWorldAction(room.x, room.y, null, nowMs)
     if (!isHold) this.logCast('attack', use.skillId, target)
     this.holdSkill(use.hand, use.skillId, nowMs)
     return use.hand === 'left' ? this.host.triggerPrimaryWorldAction(target.x, target.y, target, nowMs, isHold) : this.host.triggerSecondaryWorldAction(target.x, target.y, target, nowMs)
   }
 
-  private roomToBreathe(nowMs: number): SubTilePoint | null {
+  private roomToBreathe(nowMs: number, crowdSize: number): SubTilePoint | null {
     const me = this.host.world.self
     const crowd = this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= CROWD_REACH)
-    if (crowd.length < CROWD_SIZE || nowMs - this.lastBackOff < BACK_OFF_MS) return null
+    if (crowd.length < crowdSize || nowMs - this.lastBackOff < BACK_OFF_MS) return null
     const gap = (spot: SubTilePoint) => Math.min(...crowd.map((unit) => Math.hypot(unit.x - spot.x, unit.y - spot.y)))
     const spot = Array.from({ length: 12 }, (_, i) => ({ x: Math.round(me.x + Math.cos((i * Math.PI) / 6) * BACK_OFF_STEP), y: Math.round(me.y + Math.sin((i * Math.PI) / 6) * BACK_OFF_STEP) }))
       .filter((candidate) => this.clearPath(me, candidate))
@@ -566,8 +576,12 @@ export class PlayAssists {
     this.host.centerCameraOnSelf()
     const current = this.targetId === null ? undefined : this.host.world.getUnit('monster', this.targetId)
     const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs
-    if (current !== undefined && this.isOnScreenHostile(current) && worthIt(current)) return current
-    return this.visibleHostilesByDistance().find(worthIt) ?? null
+    const distance = this.host.distanceFromSelf()
+    const urgency = (unit: ClientUnit) => distance(unit) - (isPriorityTarget(unit) ? PRIORITY_BONUS : 0) - (unit.lifePct < FINISH_LIFE_PCT ? FINISH_BONUS : 0)
+    const visible = this.visibleHostilesByDistance()
+    const best = [...new Set([...visible.slice(0, TARGET_CANDIDATES), ...visible.filter(isPriorityTarget)])].sort((a, b) => urgency(a) - urgency(b)).find(worthIt)
+    const keep = current !== undefined && this.isOnScreenHostile(current) && worthIt(current) && (best === undefined || urgency(best) > urgency(current) - SWITCH_MARGIN)
+    return keep ? current : (best ?? null)
   }
 
   private noteProgress(target: ClientUnit, nowMs: number): boolean {

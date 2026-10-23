@@ -81,6 +81,15 @@ describe('auto-fight toggle', () => {
     expect(s.attacked().at(-1)).toBe(902)
   })
 
+  it('goes for a shaman that raises the dead before the fallen around it', () => {
+    const s = createSetup()
+    s.spawn(901, 19, 102, 100)
+    s.spawn(902, 58, 110, 101)
+    s.mapper.handleKeyDown({ key: 'E' })
+    s.fightFor(1000, 1000)
+    expect(s.attacked()).toEqual([902])
+  })
+
   it('ignores enemies off screen and town NPCs', () => {
     const s = createSetup(1)
     s.spawn(901, 19, 160, 160)

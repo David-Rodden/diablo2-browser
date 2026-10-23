@@ -64,6 +64,8 @@ export const CURSE_SKILLS: ReadonlySet<number> = new Set(CURSES.map(({ skillId }
 export const BOSS_CLASSES: ReadonlySet<number> = new Set(monsterIds(COMBAT.bosses))
 export const CORPSE_EXPLOSION = idOf(COMBAT.corpseExplosion)
 export const CURSE_PACK = 3
+const PRIORITY_PREFIXES: readonly string[] = COMBAT.priorityTargets
+export const isPriorityClass = (classId: number): boolean => PRIORITY_PREFIXES.some((prefix) => MONSTER_PATH_IDS[classId]?.startsWith(prefix) === true)
 export const TELEPORT = idOf(COMBAT.mobility)
 export const BASIC_ATTACK = COMBAT.basicAttack
 

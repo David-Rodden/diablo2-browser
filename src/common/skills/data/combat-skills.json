@@ -104,6 +104,7 @@
     "Decrepify": "decrepify"
   },
   "corpseExplosion": "Corpse Explosion",
+  "priorityTargets": ["fallenshaman", "unraveler", "fetishshaman"],
   "bosses": ["andariel", "duriel", "mephisto", "diablo", "baalcrab"],
   "raises": {
     "Raise Skeletal Mage": "necromage",
