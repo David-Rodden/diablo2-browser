@@ -343,6 +343,27 @@ describe('autopilot', () => {
     expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Taking the teleport pad', units[0]])
   })
 
+  it('heads for a pad it has not seen yet when the level layout has one', () => {
+    const { assists, guide, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    Object.assign(guide, { reaches: () => false })
+    view.presetUnits.push({ type: 2, index: 192, subX: 160, subY: 100 }, { type: 2, index: 192, subX: 40, subY: 100 })
+    tick()
+    expect(guide.pilotStatus).toBe('Taking the teleport pad')
+    expect(assists.stepTo.mock.calls[0]?.[0] ?? assists.walkTo.mock.calls[0]?.[0]).toBeGreaterThan(100)
+  })
+
+  it('picks town on the waypoint it opened while heading home', () => {
+    const { world, assists, hudManager, hudModel, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    assists.hasTownPortal = () => false
+    world.self.life = 20
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 100 }))
+    tick(2000)
+    expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+    hudManager.leftPanel = 'waypoint'
+    tick()
+    expect(hudModel.teleportToLevel).toHaveBeenCalledWith(ROGUE_ENCAMPMENT)
+  })
+
   it('switches itself off when you die', () => {
     const { pilot, world, guide, tick } = setup({})
     world.isDead = true
