@@ -66,6 +66,7 @@ const BLAST_RANGE = 20
 const GIVE_UP_MS = 15_000
 const IGNORE_MS = 30_000
 const DODGE_GAP_MS = 400
+const STANDOFF = 7
 const STEER_GRACE_MS = 1500
 const PORTAL_CAST_MS = 1500
 const DODGE_MS_PER_SUBTILE = 90
@@ -470,16 +471,17 @@ export class PlayAssists {
     if (use.reach === 'close' && this.host.distanceFromSelf()(target) > CLOSE_REACH) return this.host.triggerPrimaryWorldAction(target.x, target.y, null, nowMs)
     if (use.reach !== 'melee' && !this.clearShot(target)) return this.host.triggerPrimaryWorldAction(target.x, target.y, null, nowMs)
     const life = this.combatSelf().lifeFraction
-    const room = use.reach === 'ranged' ? this.roomToBreathe(nowMs, CROWD_SIZE) : life < MELEE_CROWD_LIFE ? this.roomToBreathe(nowMs, MELEE_CROWD) : null
+    const standoff = use.reach === 'ranged' && isTough(target) && Math.hypot(target.x - this.host.world.self.x, target.y - this.host.world.self.y) < STANDOFF
+    const room = standoff ? this.roomToBreathe(nowMs, 1, [target]) : use.reach === 'ranged' ? this.roomToBreathe(nowMs, CROWD_SIZE) : life < MELEE_CROWD_LIFE ? this.roomToBreathe(nowMs, MELEE_CROWD) : null
     if (room) return this.host.triggerPrimaryWorldAction(room.x, room.y, null, nowMs)
     if (!this.holdSkill(use.hand, use.skillId, nowMs)) return null
     if (!isHold) this.logCast('attack', use.skillId, target)
     return use.hand === 'left' ? this.host.triggerPrimaryWorldAction(target.x, target.y, target, nowMs, isHold) : this.host.triggerSecondaryWorldAction(target.x, target.y, target, nowMs)
   }
 
-  private roomToBreathe(nowMs: number, crowdSize: number): SubTilePoint | null {
+  private roomToBreathe(nowMs: number, crowdSize: number, around?: readonly ClientUnit[]): SubTilePoint | null {
     const me = this.host.world.self
-    const crowd = this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= CROWD_REACH)
+    const crowd = around ?? this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= CROWD_REACH)
     if (crowd.length < crowdSize || nowMs - this.lastBackOff < BACK_OFF_MS) return null
     const gap = (spot: SubTilePoint) => Math.min(...crowd.map((unit) => Math.hypot(unit.x - spot.x, unit.y - spot.y)))
     const threats = this.threats()

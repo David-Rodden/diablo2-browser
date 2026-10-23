@@ -270,4 +270,18 @@ describe('auto-fight with build-aware skills', () => {
     expect(selected).toEqual(expect.arrayContaining(['right:40', 'left:47']))
     expect(s.attacked()).toContain(901)
   })
+
+  it('backs away from a boss that gets close instead of trading blows', () => {
+    const s = createSetup()
+    const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number; leftSkill: number }
+    self.skills.set(36, 10)
+    Object.assign(self, { mana: 200, maxMana: 200, leftSkill: 36 })
+    s.mapper.assists.smartSkills = true
+    s.spawn(901, 19, 103, 100)
+    Object.assign(s.world.getUnit('monster', 901)!, { isUnique: true })
+    s.mapper.handleKeyDown({ key: 'e' })
+    s.fightFor(1000, 1400)
+    const moves = s.sent.flatMap((c) => (c.type === 'Move' && c.to ? [c.to.x] : []))
+    expect(moves.some((x) => x < 100)).toBe(true)
+  })
 })
