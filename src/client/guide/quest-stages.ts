@@ -181,9 +181,9 @@ const SINGLE: Readonly<Record<string, Stage>> = {
 export const STAGES: Readonly<Record<string, readonly Stage[]>> = {
   ...Object.fromEntries(Object.entries(SINGLE).map(([key, stage]) => [key, [stage]])),
   qstsa2q22: [
-    { ...at(60, 'Find the Horadric Cube in the Halls of the Dead'), unless: ['box'] },
-    { ...at(64, 'Find the Staff of Kings in the Maggot Lair'), unless: ['msf', 'hst'] },
-    { ...at(61, 'Find the Viper Amulet in the Claw Viper Temple'), unless: ['vip', 'hst'] },
+    { ...at(60, 'Open the chest with the Horadric Cube in the Halls of the Dead', 354), unless: ['box'] },
+    { ...at(64, 'Open the chest with the Staff of Kings in the Maggot Lair', 356), unless: ['msf', 'hst'] },
+    { ...at(61, 'Take the Viper Amulet from the altar in the Claw Viper Temple', 149), unless: ['vip', 'hst'] },
     at('town', 'Combine the Staff and Amulet in the Cube'),
   ],
 }
