@@ -164,7 +164,7 @@ function slotUpgrades(item: LootItem, { build, equipped }: AppraisalContext): Up
   const wornScore = (slot: EquipSlotId) => (worn.get(slot) ? gearScore(worn.get(slot)!, build) : 0)
   return ui.allowedSlots
     .map((slot) => ({ slot, score, current: wornScore(slot) + (ui.twoHanded && slot === 'weapon1' ? wornScore('weapon2') : 0) }))
-    .filter((u) => !(u.slot === 'weapon2' && (ui.twoHanded || twoHanding)) && worn.get(u.slot)?.id !== item.id)
+    .filter((u) => !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding)) && worn.get(u.slot)?.id !== item.id)
     .sort((a, b) => a.current - b.current)
 }
 
