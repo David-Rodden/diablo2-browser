@@ -1,3 +1,4 @@
+import { getExperienceTable } from '../../common/skills/formulas.ts'
 import { getLevelMonsterLevel113c, LEVELS_MONLVL_113C } from '../../common/world/levels-monlvl-113c.ts'
 import { ACT_TOWNS, actOfLevel, levelName, shortestRoute } from './route.ts'
 import TRAINING from './data/training.json'
@@ -16,6 +17,14 @@ export interface Trainee {
 
 const AVOID = new Set(Object.values(TRAINING.avoid))
 const TOWNS = new Set<number>(ACT_TOWNS)
+
+const EXPERIENCE = getExperienceTable()
+
+export const levelProgress = (level: number, gained: number) => gained / Math.max(1, (EXPERIENCE[level + 1] ?? Infinity) - (EXPERIENCE[level] ?? 0))
+
+export const slowGround = (level: number, gained: number, elapsedMs: number) => elapsedMs >= TRAINING.rateCheckMs && levelProgress(level, gained) / (elapsedMs / 60_000) < TRAINING.minLevelPerMinute
+
+export const setbacksOf = (deaths: number, retreats: number) => deaths + retreats * TRAINING.retreatWeight
 
 export const monsterLevel = (level: number, difficulty: 0 | 1 | 2) => getLevelMonsterLevel113c(level, difficulty)
 

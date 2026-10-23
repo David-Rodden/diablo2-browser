@@ -17,14 +17,14 @@ import type { ClientWorld } from '../world/client-world.ts'
 import { useArtisan, type ArtisanKind } from './artisan.ts'
 import { freeSpots } from '../input/auto-loot.ts'
 import { vendorPrice113c } from '../ui-model/vendor-price.ts'
-import { readyRecipe, takeOut, transmute, withdraw, type ReadyRecipe } from './cube-recipes.ts'
+import { readyRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
 import { WAYPOINT_LEVELS } from './level-links.ts'
-import { readiness, trainingGround, type Readiness, type Trainee } from './training.ts'
+import { readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
 import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 
@@ -65,6 +65,7 @@ const PAD_CLASSES: ReadonlySet<number> = new Set([192, 304, 305, 306])
 const PAD_SAME = 4
 const CORPSE_SAME = 3
 const ASSESS_MS = 5000
+const STASH_OPEN_MS = 6000
 const PREP = 'Stocking up before'
 const CORPSE_GONE = 10
 const BODY_GONE_MS = 3000
@@ -200,6 +201,9 @@ export class Autopilot {
   private lastSpend = Number.NEGATIVE_INFINITY
   private corpse: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private deaths: readonly { readonly at: number; readonly level: number }[] = []
+  private retreats: readonly { readonly at: number; readonly level: number }[] = []
+  private forgiven = Number.NEGATIVE_INFINITY
+  private ground: { readonly level: number; readonly at: number; readonly experience: number; readonly charLevel: number } | null = null
   private training: (Readiness & { readonly ground: number }) | null = null
   private readonly trainedOut = new Set<number>()
   private questLevel: number | null = null
@@ -324,17 +328,21 @@ export class Autopilot {
     const training = this.training
     if (training) {
       if (me.level >= training.level && me.gold >= training.gold) {
-        this.training = null
+        Object.assign(this, { training: null, ground: null, forgiven: nowMs })
         this.toast('Ready to carry on', `Heading back to ${levelName(this.questLevel)}`, 'green')
       }
       return
     }
-    const setbacks = this.deaths.filter((death) => death.level === this.questLevel && nowMs - death.at < DEATH_MEMORY_MS).length
-    const need = readiness(me, this.questLevel, setbacks)
+    const need = readiness(me, this.questLevel, this.setbacks(nowMs))
     const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.trainedOut)
     if (!need || ground === null) return
     this.training = { ...need, ground }
     this.toast(need.why, `In ${levelName(ground)}`, 'gold')
+  }
+
+  private setbacks(nowMs: number): number {
+    const counts = (log: readonly { readonly at: number; readonly level: number }[]) => log.filter((entry) => entry.level === this.questLevel && entry.at > this.forgiven && nowMs - entry.at < DEATH_MEMORY_MS).length
+    return setbacksOf(counts(this.deaths), counts(this.retreats))
   }
 
   private trainee(): Trainee {
@@ -354,13 +362,16 @@ export class Autopilot {
   private train(nowMs: number): boolean {
     const training = this.training
     const view = this.host.levelView()
+    const me = this.host.world.self
     if (!training || !view || this.host.world.areaId !== training.ground) return false
-    if (this.exploreLevel(view, nowMs, `${training.why} in ${levelName(training.ground)}`)) return true
+    if (this.ground?.level !== training.ground || this.ground.charLevel !== me.level) this.ground = { level: training.ground, at: nowMs, experience: me.experience, charLevel: me.level }
+    const slow = slowGround(me.level, me.experience - this.ground.experience, nowMs - this.ground.at)
+    if (!slow && this.exploreLevel(view, nowMs, `${training.why} in ${levelName(training.ground)}`)) return true
     this.trainedOut.add(training.ground)
     this.explored.delete(training.ground)
     const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.trainedOut)
     if (next === null) this.trainedOut.clear()
-    this.training = { ...training, ground: next ?? training.ground }
+    Object.assign(this, { training: { ...training, ground: next ?? training.ground }, ground: null })
     return true
   }
 
@@ -853,6 +864,7 @@ export class Autopilot {
   private retreat(why: string, nowMs: number): void {
     const { world, assists } = this.host
     const me = world.self
+    if (this.trip !== 'retreat' && !why.startsWith(PREP)) this.retreats = [...this.retreats.filter((entry) => nowMs - entry.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? this.host.world.areaId }]
     Object.assign(this, { trip: 'retreat', retreatWhy: why })
     this.say(why)
     const threats = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= KITE_NEAR)
@@ -983,6 +995,7 @@ export class Autopilot {
         : false,
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
+      care.armoury.length > 0 && ready('armoury') && { key: 'armoury', reason: 'Taking better gear out of the stash', work: () => this.arm() },
       care.upgrades.length > 0 && ready('gear') && { key: 'gear', reason: 'Putting on better gear', work: () => care.wearUpgrades() },
       this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
@@ -1014,16 +1027,24 @@ export class Autopilot {
     const host = { world, hudManager, hudModel }
     const inCube = [...world.containers.cube.values()].some((item) => item.code.trim() === code)
     const stored = [code, ...(inCube ? [CUBE_CODE] : [])].filter((wanted) => [...world.containers.stash.values()].some((item) => item.code.trim() === wanted))
-    if (stored.length > 0) {
-      const stash = await this.reach(() => world.getUnitsByType(2).find((unit) => unit.classId === STASH_CLASS), { key: 'fetch', reason: '', stash: true })
-      if (!stash) return
-      this.host.assists.use(stash, performance.now())
-      if (!(await waitFor(() => hudManager.leftPanel === 'stash', 6000))) return
-      const taken = await withdraw(host, stored)
-      hudModel.closeStash()
-      if (!taken) return
-    }
+    if (stored.length > 0 && !(await this.fromStash('fetch', () => withdraw(host, stored)))) return
     if (inCube) await takeOut(host, code)
+  }
+
+  private async fromStash(key: string, take: () => Promise<boolean>): Promise<boolean> {
+    const { world, hudManager, hudModel } = this.host
+    const stash = await this.reach(() => world.getUnitsByType(2).find((unit) => unit.classId === STASH_CLASS), { key, reason: '', stash: true })
+    if (!stash || hudModel === null) return false
+    this.host.assists.use(stash, performance.now())
+    if (!(await waitFor(() => hudManager.leftPanel === 'stash', STASH_OPEN_MS))) return false
+    const taken = await take()
+    hudModel.closeStash()
+    return taken
+  }
+
+  private async arm(): Promise<void> {
+    const { world, hudManager, hudModel, assists } = this.host
+    if (hudModel !== null && (await this.fromStash('armoury', () => withdrawItems({ world, hudManager, hudModel }, assists.inventoryCare.armoury)))) await assists.inventoryCare.wearUpgrades()
   }
 
   private offerStaff(): void {

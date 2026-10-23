@@ -36,7 +36,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     },
     hasLootNearby: () => false,
     dodging: () => false,
-    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], stashable: [], wearUpgrades: vi.fn() },
+    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], wearUpgrades: vi.fn() },
     keepUp: () => false,
     walkTo: vi.fn(),
     use: vi.fn(),
@@ -402,6 +402,29 @@ describe('autopilot', () => {
     tick()
     expect(guide.detour).toMatchObject({ title: 'Training' })
     expect((guide.detour as { hint: string }).hint).toContain('Training to level')
+  })
+
+  it('trains after being chased out of the goal area again and again, and carries on once stronger', () => {
+    const { world, guide, tick } = setup({ goal: { level: 2, title: 'Den of Evil' }, target: { x: 130, y: 100, label: 'Den of Evil' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    Object.assign(world.self, { gold: 0, stashGold: 50_000 })
+    for (let i = 0; i < 4; i++) {
+      Object.assign(world.self, { life: 20 })
+      tick(6000)
+      Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+      world.self.life = 100
+      tick()
+      Object.assign(world, { areaId: BLOOD_MOOR })
+      tick()
+    }
+    tick(6000)
+    expect(guide.detour).toMatchObject({ title: 'Training' })
+    expect((guide.detour as { hint: string }).hint).toContain('training to level 12')
+    world.self.level = 12
+    tick(6000)
+    tick(6000)
+    tick(6000)
+    expect(guide.detour).toBeNull()
   })
 
   it('respawns after dying and goes back for its body', () => {

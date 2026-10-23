@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { monsterLevel, readiness, trainingGround } from '../../src/client/guide/training.ts'
+import { monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
 
 const BLOOD_MOOR = 2
 const COLD_PLAINS = 3
@@ -21,5 +21,13 @@ describe('training before a hard goal', () => {
     expect(ground).not.toBe(1)
     expect(trainingGround(COLD_PLAINS, me(4), new Set([1, 3]), new Set([ground]))).not.toBe(ground)
     expect(trainingGround(BLOOD_MOOR, me(1), new Set(), new Set())).toBeNull()
+  })
+
+  it('counts a retreat as half a death and moves on from areas that give too little experience', () => {
+    expect(readiness(me(20), ARCANE, setbacksOf(1, 2))).toMatchObject({ level: 22 })
+    expect(readiness(me(20), ARCANE, setbacksOf(0, 3))).toBeNull()
+    expect(slowGround(20, 500, 5 * 60_000)).toBe(true)
+    expect(slowGround(20, 20_000, 5 * 60_000)).toBe(false)
+    expect(slowGround(20, 0, 60_000)).toBe(false)
   })
 })
