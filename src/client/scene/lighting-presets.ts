@@ -778,8 +778,7 @@ function buildLightGrid(
   } else {
     grid.fillAmbient(inputs.ambient?.playerRoom ?? null, inputs.ambient?.nearRooms ?? [])
   }
-  // #940 R2 B1: the obstacle raster is a pure function of (masks identity, origin, level) —
-  // flicker-driven rebuilds with a stationary frame skip the 48×48 collision walk.
+  st.obstacleMasks = null
   if (
     st.obstacleMasks !== collision.masks ||
     st.obstacleOriginSubX !== originSubX ||
