@@ -21,6 +21,7 @@ const createSetup = () => {
   const mapper = new CommandMapper({ world, camera, hudManager, hudModel, predictor, sendCommand: (cmd) => sent.push(cmd) })
   mapper.assists.autoCombatKey = 'E'
   mapper.handleKeyDown({ key: 'e' })
+  Object.assign(mapper.assists, { pilot: { active: true, tick: () => undefined } })
   const dodges: unknown[] = []
   mapper.assists.journal = (kind, detail) => {
     if (kind === 'dodge') dodges.push(detail)

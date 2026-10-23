@@ -65,7 +65,9 @@ const BLAST_GAP_MS = 700
 const BLAST_RANGE = 20
 const GIVE_UP_MS = 15_000
 const IGNORE_MS = 30_000
-const DODGE_GAP_MS = 250
+const DODGE_GAP_MS = 400
+const STEER_GRACE_MS = 1500
+const PORTAL_CAST_MS = 1500
 const DODGE_MS_PER_SUBTILE = 90
 const DODGE_MAX_MS = 700
 const DODGE_CROWD_COST = 4
@@ -160,6 +162,8 @@ export class PlayAssists {
   private readonly blasted = new Set<number>()
   private fight: { readonly id: number; readonly life: number; readonly since: number } | null = null
   private dodge: { readonly to: SubTilePoint; readonly until: number } | null = null
+  private lastManual = Number.NEGATIVE_INFINITY
+  private lastPortalCast = Number.NEGATIVE_INFINITY
   private lastDodge = Number.NEGATIVE_INFINITY
 
   constructor(private readonly host: PlayAssistHost) {
@@ -211,7 +215,10 @@ export class PlayAssists {
     if (world.isDead || hudModel === null) return
     const source = townPortalSource(world.containers.inventory.values())
     const refusal: TownPortalRefusal | null = this.host.isTownArea() ? 'in-town' : source === null ? 'no-scrolls' : null
-    if (source !== null && refusal === null) this.useInventoryItem(source.id, source.code, hudModel)
+    if (source !== null && refusal === null) {
+      this.lastPortalCast = performance.now()
+      this.useInventoryItem(source.id, source.code, hudModel)
+    }
     else world.addLocalSystemMessage(townPortalRefusalText(refusal ?? 'no-scrolls', hudManager.lang === 'ENG' ? 'ENG' : 'CHI'), RED_TEXT)
   }
 
@@ -355,7 +362,7 @@ export class PlayAssists {
   avoidDanger(nowMs: number): boolean {
     const { world } = this.host
     const { left, right } = this.host.mouseHeld()
-    if (!(this.autoCombatOn || this.pilotCombat || this.pilot?.active === true) || world.isDead || left || right || this.host.isTownArea() || this.isInWorldInteraction()) return false
+    if (this.pilot?.active !== true || world.isDead || left || right || this.playerSteering || nowMs - this.lastPortalCast < PORTAL_CAST_MS || this.host.isTownArea() || this.isInWorldInteraction()) return false
     if (this.dodging(nowMs)) return true
     if (nowMs - this.lastDodge < DODGE_GAP_MS) return false
     const me = world.self
@@ -418,7 +425,11 @@ export class PlayAssists {
 
   get playerSteering(): boolean {
     const { left, right } = this.host.mouseHeld()
-    return left || right
+    return left || right || performance.now() - this.lastManual < STEER_GRACE_MS
+  }
+
+  noteManual(nowMs: number): void {
+    this.lastManual = nowMs
   }
 
   isHostile(unit: ClientUnit): boolean {

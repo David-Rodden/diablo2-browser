@@ -55,6 +55,7 @@ export interface Goal {
   readonly find?: readonly Find[]
   readonly inTown?: true
   readonly bring?: string
+  readonly spot?: { readonly x: number; readonly y: number }
 }
 
 export function currentGoal(level: number, progress: QuestProgress, mode: GuideMode = 'story', carries: (code: string) => boolean = () => false, skipped: ReadonlySet<number> = new Set()): Goal | null {

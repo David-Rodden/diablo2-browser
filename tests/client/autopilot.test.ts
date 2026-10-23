@@ -17,7 +17,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     merc: null,
     containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map() },
     getUnit: (_: string, id: number) => units.find((unit) => unit.id === id),
-    getUnitsByType: (type: number) => units.filter((unit) => ({ 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
+    getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
   }
   const hudManager = { leftPanel: 'none', worldPanels: { npcMenu: null as unknown, npcSpeech: null, clickNpcMenuOption: vi.fn() }, toasts: { push: vi.fn() }, maxHp: 0, maxMana: 0, belt: { maxRows: 4 } }
   const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), requestQuestData: vi.fn() }
@@ -299,7 +299,7 @@ describe('autopilot', () => {
 
   it('opens the quest chest before going back to the loot around it', () => {
     const { assists, units, guide, tick } = setup({ hint: 'Open the chest', target: { x: 110, y: 100, label: 'Chest', unit: { id: 80, kind: 'object' } } })
-    Object.assign(guide, { currentPlan: { target: { x: 110, y: 100, unit: { id: 80, kind: 'object' } } } })
+    Object.assign(guide, { currentPlan: { goal: { level: 2, title: 'Chest' }, target: { x: 110, y: 100, unit: { id: 80, kind: 'object' } } } })
     units.push(unit({ id: 80, unitType: 'object', classId: 355, x: 110, y: 100 }))
     assists.hasLootNearby = () => true
     tick()
@@ -385,10 +385,32 @@ describe('autopilot', () => {
     expect(assists.walkTo.mock.calls.at(-1)?.[1] ?? assists.stepTo.mock.calls.at(-1)?.[1]).toBeGreaterThan(105)
   })
 
-  it('switches itself off when you die', () => {
-    const { pilot, world, guide, tick } = setup({})
+  it('goes to town to stock up before walking into a boss', () => {
+    const { world, assists, guide, tick } = setup({ step: { kind: 'portal', level: 46, hint: "Take the Summoner's portal", find: [60, 357] }, target: { x: 130, y: 100, label: 'Objective' } })
+    world.areaId = 74
+    Object.assign(guide, { currentPlan: guide.update() })
+    tick()
+    expect(guide.pilotStatus).toBe('Stocking up before the Summoner, heading to town')
+    expect(assists.castTownPortal).toHaveBeenCalled()
+  })
+
+  it('respawns after dying and goes back for its body', () => {
+    const { pilot, world, guide, hudModel, units, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    Object.assign(world, { selfId: 1 })
+    Object.assign(world.self, { name: 'Hero' })
     world.isDead = true
     tick()
-    expect([pilot.active, guide.pilotStatus]).toEqual([false, null])
+    expect([pilot.active, guide.pilotStatus]).toEqual([true, 'Died, going back for your body'])
+    expect((hudModel as unknown as { resurrect: ReturnType<typeof vi.fn> }).resurrect).toHaveBeenCalled()
+    expect((guide as unknown as { detour: unknown }).detour).toBeUndefined()
+    world.isDead = false
+    world.self.x = 140
+    tick()
+    expect((guide as unknown as { detour: { level: number; spot: { x: number } } }).detour).toMatchObject({ level: BLOOD_MOOR, spot: { x: 100 } })
+    world.self.x = 100
+    units.push(unit({ id: 2, unitType: 'player', name: 'Hero', x: 101, y: 100, mode: 17 }))
+    tick()
+    expect(guide.pilotStatus).toBe('Picking up your body')
   })
 })

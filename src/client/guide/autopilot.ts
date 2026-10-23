@@ -20,7 +20,8 @@ import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
-import { ACT_TOWNS, actOfLevel, levelName } from './route.ts'
+import LAIRS from './data/boss-lairs.json'
+import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 
 export interface AutopilotHost {
@@ -58,6 +59,17 @@ const LOOT_SETTLE_MS = 700
 const STALL_MS = 1500
 const PAD_CLASSES: ReadonlySet<number> = new Set([192, 304, 305, 306])
 const PAD_SAME = 4
+const CORPSE_SAME = 3
+const PREP = 'Stocking up before'
+const CORPSE_GONE = 10
+const BODY_GONE_MS = 3000
+const REVIVE_MS = 2500
+const DEATH_MEMORY_MS = 20 * 60_000
+const DEATH_CAUTION = 0.08
+const MAX_CAUTION = 0.24
+const HUNT_CAUTION = 0.16
+const DOOM_MS = 4000
+const DOOM_MIN_LOSS = 0.15
 const ELITE_PULL = 12
 const PACK_PULL = 3
 const PACK_RADIUS = 6
@@ -180,6 +192,11 @@ export class Autopilot {
   private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
   private lastSpend = Number.NEGATIVE_INFINITY
+  private corpse: { readonly level: number; readonly x: number; readonly y: number } | null = null
+  private deaths: readonly number[] = []
+  private lastRevive = Number.NEGATIVE_INFINITY
+  private bodySeen = Number.NEGATIVE_INFINITY
+  private readonly prepared = new Map<string, number>()
   spendPoints = false
 
   constructor(private readonly host: AutopilotHost) {}
@@ -214,9 +231,80 @@ export class Autopilot {
     if (assists.playerSteering) this.pausedUntil = nowMs + MANUAL_PAUSE_MS
     if (world.areaId > 0) this.noteArea()
     this.noteArrival(nowMs)
-    if (world.isDead) this.stop('Autopilot off', 'red', 'You died')
+    if (world.isDead) this.mourn(nowMs)
     else if (nowMs < this.pausedUntil) this.say('Paused while you play')
     else if (world.areaId > 0 && !this.job) this.decide(nowMs)
+  }
+
+  private mourn(nowMs: number): void {
+    const { world, hudModel } = this.host
+    if (this.corpse?.level !== world.areaId || distance(this.corpse, world.self) > CORPSE_SAME) {
+      this.corpse = { level: world.areaId, x: world.self.x, y: world.self.y }
+      this.deaths = [...this.deaths.filter((at) => nowMs - at < DEATH_MEMORY_MS), nowMs]
+      Object.assign(this, { trip: null, crossing: null, talk: null, chase: null })
+      this.toast('You died', 'Going back for your body', 'red')
+    }
+    this.say('Died, going back for your body')
+    if (nowMs - this.lastRevive < REVIVE_MS) return
+    this.lastRevive = nowMs
+    hudModel?.resurrect()
+  }
+
+  private corpseGoal(): Goal | null {
+    const corpse = this.corpse
+    return corpse && { level: corpse.level, title: 'Your body', hint: 'Get your body back', spot: { x: corpse.x, y: corpse.y } }
+  }
+
+  private ownBody(): ClientUnit | undefined {
+    const { world } = this.host
+    return world.getUnitsByType(0).find((unit) => unit.id !== world.selfId && unit.name === world.self.name)
+  }
+
+  private bodyRun(nowMs: number): ClientUnit | null {
+    const corpse = this.corpse
+    const { world } = this.host
+    if (corpse?.level !== world.areaId) return null
+    const body = this.ownBody()
+    if (body) {
+      this.corpse = { level: corpse.level, x: body.x, y: body.y }
+      this.bodySeen = nowMs
+      return body
+    }
+    if (distance(corpse, world.self) <= CORPSE_GONE && nowMs - this.bodySeen > BODY_GONE_MS) {
+      this.corpse = null
+      this.toast('Got your body back', '', 'green')
+    }
+    return null
+  }
+
+  private recover(body: ClientUnit, nowMs: number): void {
+    this.say('Picking up your body')
+    if (distance(body, this.host.world.self) <= REACH) this.touch(body, nowMs)
+    else this.walkTowards(body, nowMs)
+  }
+
+  private bossAhead(): string | null {
+    const { world, guide } = this.host
+    const plan = guide.currentPlan
+    const target = plan?.target
+    const near = target !== null && target !== undefined && distance(target, world.self) <= LAIRS.range
+    const marks = new Set([...(plan?.step?.kind === 'portal' ? plan.step.find.flat() : []), ...(plan?.goal.find ?? []).flat()])
+    const lair = Object.entries(LAIRS.levels).find(([, level]) => level === world.areaId)?.[0]
+    const spot = near ? Object.entries(LAIRS.objects).find(([, classId]) => marks.has(classId))?.[0] : undefined
+    return lair ?? spot ?? null
+  }
+
+  private prepareFor(nowMs: number): void {
+    const { world, hudManager, assists } = this.host
+    const boss = this.bossAhead()
+    if (boss === null || nowMs - (this.prepared.get(boss) ?? Number.NEGATIVE_INFINITY) < LAIRS.lingerMs || !assists.hasTownPortal()) return
+    if (this.potionsWanted() === 0 && world.self.life >= (hudManager.maxHp || world.self.maxLife) * RECOVERED_LIFE) return
+    this.prepared.set(boss, nowMs)
+    Object.assign(this, { trip: 'retreat', retreatWhy: `${PREP} ${boss}, heading to town` })
+  }
+
+  private caution(nowMs: number): number {
+    return Math.min(MAX_CAUTION, this.deaths.filter((at) => nowMs - at < DEATH_MEMORY_MS).length * DEATH_CAUTION)
   }
 
   private decide(nowMs: number): void {
@@ -224,9 +312,12 @@ export class Autopilot {
     this.refreshQuests(nowMs)
     const town = this.town()
     this.trip = town && this.trip === 'retreat' ? 'return' : !town && this.trip === 'return' ? null : this.trip
-    if (this.trip === 'retreat' && !town && this.recovered()) this.trip = null
+    if (this.trip === 'retreat' && !town && this.recovered() && !this.retreatWhy.startsWith(PREP)) this.trip = null
+    if (!town && this.trip === null) this.prepareFor(nowMs)
     const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
-    assists.pilotCombat = assists.autoCombatKey !== null && danger === null
+    this.host.guide.detour = this.corpseGoal()
+    const body = town ? null : this.bodyRun(nowMs)
+    assists.pilotCombat = assists.autoCombatKey !== null && danger === null && (body === null || this.cornered(nowMs))
     assists.standDown = danger !== null && !this.cornered(nowMs)
     assists.holdLoot = this.questInReach()
     if (danger === null) this.spend(nowMs)
@@ -234,6 +325,7 @@ export class Autopilot {
     else if (assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
+    else if (body !== null && !this.cornered(nowMs)) this.recover(body, nowMs)
     else if (assists.isFighting(nowMs)) this.say('Fighting')
     else if (!this.questInReach() && this.looting(nowMs)) this.say('Picking up loot')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
@@ -529,8 +621,10 @@ export class Autopilot {
     const stocked = healing >= STOCKED_POTIONS
     this.lifeLog = [...this.lifeLog.filter((entry) => nowMs - entry.at <= BURST_MS), { at: nowMs, life }]
     const burst = Math.max(...this.lifeLog.map((entry) => entry.life)) - life
-    const retreatAt = Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0)))
+    const retreatAt = Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0))) + this.caution(nowMs)
+    const doomedIn = burst > DOOM_MIN_LOSS ? (life * BURST_MS) / burst : Infinity
     if (life < retreatAt) return 'Low on life, heading to town'
+    if (doomedIn < DOOM_MS) return 'Taking a beating, heading to town'
     if (healing === 0 && life < DRY_LIFE) return 'Out of healing potions, heading to town'
     return (!stocked && burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
   }
@@ -671,7 +765,7 @@ export class Autopilot {
   private hunt(nowMs: number): boolean {
     const { world, hudManager, assists } = this.host
     const me = world.self
-    const bold = me.life >= (hudManager.maxHp || me.maxLife) * HUNT_LIFE && this.healingPotions() >= HUNT_POTIONS && this.levelGap() <= HUNT_GAP
+    const bold = me.life >= (hudManager.maxHp || me.maxLife) * HUNT_LIFE && this.healingPotions() >= HUNT_POTIONS && this.levelGap() <= HUNT_GAP && this.caution(nowMs) < HUNT_CAUTION && this.corpse === null
     const chased = this.chase && world.getUnit('monster', this.chase.id)
     const huntable = (unit: ClientUnit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= HUNT_RADIUS && (this.ignored.get(unit.id) ?? 0) <= nowMs
     const hostiles = world.getUnitsByType(1).filter(huntable)
