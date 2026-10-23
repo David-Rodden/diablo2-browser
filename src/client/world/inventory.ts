@@ -337,8 +337,8 @@ export class ClientInventoryManager implements ClientItemContainers {
       this.deleteSocketChildren(item.id)
       return
     }
-    // 0x08 Unequip (D2Client.dll 0x6fb35ed0):
-    // At 0x6fb36031, D2Client checks ITEMS_CheckItemFlag(pItem, 0x20) (IFLAG_DELETED).
+    // 0x08 Unequip (D2Client.dll 0x6fb35ed0) & 0x09 SwapBodyItem IFLAG_SWITCHOUT (D2Client.dll 0x6fb369e0 -> 0x6fb34300):
+    // At 0x6fb36031 / 0x6fb3446d, D2Client checks ITEMS_CheckItemFlag(pItem, 0x20) (IFLAG_DELETED).
     // When a dead player presses ESC (0x41 Resurrect), D2Game.dll (PLAYER_CreateCorpse
     // 0x6fc99250 -> 0x6fc9951c -> 0x6fc98d00 @ 0x6fc98d88) sets IFLAG_DELETED (0x20) and
     // IEVENT_UNEQUIP (0x10) on each equipped item of the player (ownerId = selfId, location = 1)
@@ -346,7 +346,12 @@ export class ClientInventoryManager implements ClientItemContainers {
     // When IFLAG_DELETED (0x20) is set (or when owner is a remote player/corpse at 0x6fb35fee),
     // D2Client removes the item from the owner's equipment and deletes it without calling
     // INVENTORY_SetCursorItem (0x6fabc7d8).
-    if (action === 0x08 && (isDeleted || isRemotePlayerOwner)) {
+    const isSwapBodySwitchOut =
+      action === 0x09 &&
+      (((numericFlags & 0x80) !== 0 && (numericFlags & 0x40) === 0) ||
+        container === 'cursor' ||
+        item.location === 4)
+    if ((action === 0x08 || isSwapBodySwitchOut || action === 0x16) && (isDeleted || isRemotePlayerOwner)) {
       if (isRemotePlayerOwner) {
         const remoteLoc = this.remoteEquipmentByItemId.get(item.id)
         if (remoteLoc && (!item.ownerId || remoteLoc.playerId === item.ownerId)) {
@@ -428,20 +433,30 @@ export class ClientInventoryManager implements ClientItemContainers {
     }
     // Removal-to-cursor and login-cursor actions:
     // 0x01 GroundToCursor, 0x02 ToCursor (when container is cursor or location === 4), 0x05 RemoveFromContainer (to cursor),
-    // 0x08 Unequip (to cursor when IFLAG_DELETED is clear), 0x0F RemoveFromBelt (to cursor when picked up via 0x24 BeltRemove without IFLAG_DELETED),
-    // 0x12 ToCursor (ITEMACTION_TOCURSOR = 18 on login/rejoin per D2Game.dll 0x6fc3efa0 / InvMode.cpp:172)
+    // 0x08 Unequip (to cursor when IFLAG_DELETED is clear), 0x09 SwapBodyItem (when IFLAG_SWITCHOUT 0x80 is set or location === 4 per D2Client.dll 0x6fb369e0 -> 0x6fb34300),
+    // 0x0F RemoveFromBelt (to cursor when picked up via 0x24 BeltRemove without IFLAG_DELETED),
+    // 0x12 ToCursor (ITEMACTION_TOCURSOR = 18 on login/rejoin per D2Game.dll 0x6fc3efa0 / InvMode.cpp:172),
+    // 0x16 (D2Client.dll 0x6fb33790 -> INVENTORY_SetCursorItem 0x6fb33830)
     if (
       action === 0x01 ||
       (action === 0x02 && (container === 'cursor' || item.location === 4)) ||
       action === 0x05 ||
       action === 0x08 ||
+      isSwapBodySwitchOut ||
       action === 0x12 ||
+      action === 0x16 ||
       (action === 0x0f && (container === 'cursor' || item.location === 4)) ||
       ((action === 0x00 || action === 0x04) && (container === 'cursor' || item.location === 4))
     ) {
       this.removeItemById(item.id)
       if (!isRemotePlayerOwner) {
-        const cursorItem: ItemData = { ...item, container: 'cursor' }
+        const cursorItem: ItemData = {
+          ...item,
+          container: 'cursor',
+          ...(action === 0x08 || isSwapBodySwitchOut || action === 0x16
+            ? { location: 4, bodyLoc: 0, equippedSlot: 0 }
+            : {}),
+        }
         this.cursor = cursorItem
         this.allById.set(item.id, cursorItem)
       }
@@ -554,6 +569,27 @@ export class ClientInventoryManager implements ClientItemContainers {
             playerSlots = new Map<number, ItemData>()
             this.remoteEquipmentByPlayerId.set(stored.ownerId!, playerSlots)
           }
+          // 0x07 IndirectlySwapBodyItem (D2Client.dll 0x6fb361a0, jump table 0x6fb36518: 4<->5, 11<->12):
+          // Removes the incompatible item in the opposite hand slot before equipping `stored` into `slot`.
+          if (action === 0x07) {
+            const oppositeSlot =
+              slot === 4 ? 5 : slot === 5 ? 4 : slot === 11 ? 12 : slot === 12 ? 11 : 0
+            if (oppositeSlot > 0) {
+              const oppItem = playerSlots.get(oppositeSlot)
+              if (oppItem && oppItem.id !== stored.id) {
+                playerSlots.delete(oppositeSlot)
+                this.remoteEquipmentByItemId.delete(oppItem.id)
+                this.allById.delete(oppItem.id)
+                const socketChildren = this.sockets.get(oppItem.id)
+                if (socketChildren) {
+                  for (const child of socketChildren) {
+                    this.allById.delete(child.id)
+                  }
+                  this.sockets.delete(oppItem.id)
+                }
+              }
+            }
+          }
           const prevInSlot = playerSlots.get(slot)
           if (prevInSlot && prevInSlot.id !== stored.id) {
             const counterpartSlot =
@@ -618,6 +654,31 @@ export class ClientInventoryManager implements ClientItemContainers {
       case 'equipment': {
         const slot = stored.bodyLoc || stored.equippedSlot || (stored as { equipSlot?: number }).equipSlot || 0
         if (slot > 0) {
+          // 0x07 IndirectlySwapBodyItem (D2Client.dll 0x6fb361a0, jump table 0x6fb36518: 4<->5, 11<->12):
+          // Sent by D2Game.dll sInsertItemBodyRmvOpp (0x6fc93860) in response to C2S 0x1B (Swap2HandedItem).
+          // D2GS sends a single 0x9D action=0x07 packet carrying the newly equipped item in `slot`;
+          // D2Client removes the incompatible item in `oppositeSlot` (4<->5, 11<->12) and places it onto
+          // the local player's cursor (INVENTORY_SetCursorItem at 0x6fb3635d, mode=4).
+          if (action === 0x07) {
+            const oppositeSlot =
+              slot === 4 ? 5 : slot === 5 ? 4 : slot === 11 ? 12 : slot === 12 ? 11 : 0
+            if (oppositeSlot > 0) {
+              const oppItem = this.equipmentBySlot.get(oppositeSlot)
+              if (oppItem && oppItem.id !== stored.id) {
+                this.equipmentBySlot.delete(oppositeSlot)
+                this.equipment.delete(oppItem.id)
+                const cursorOppItem: ItemData = {
+                  ...oppItem,
+                  container: 'cursor',
+                  location: 4,
+                  bodyLoc: 0,
+                  equippedSlot: 0,
+                }
+                this.cursor = cursorOppItem
+                this.allById.set(oppItem.id, cursorOppItem)
+              }
+            }
+          }
           const prevInSlot = this.equipmentBySlot.get(slot)
           if (prevInSlot && prevInSlot.id !== stored.id) {
             const counterpartSlot =
@@ -641,6 +702,17 @@ export class ClientInventoryManager implements ClientItemContainers {
               this.equipmentBySlot.set(counterpartSlot, displaced)
               this.equipment.set(displaced.id, displaced)
               this.allById.set(displaced.id, displaced)
+            } else if (action === 0x09 && !this.cursor) {
+              this.equipment.delete(prevInSlot.id)
+              const cursorPrevItem: ItemData = {
+                ...prevInSlot,
+                container: 'cursor',
+                location: 4,
+                bodyLoc: 0,
+                equippedSlot: 0,
+              }
+              this.cursor = cursorPrevItem
+              this.allById.set(prevInSlot.id, cursorPrevItem)
             } else {
               this.equipment.delete(prevInSlot.id)
               this.allById.delete(prevInSlot.id)
@@ -665,10 +737,43 @@ export class ClientInventoryManager implements ClientItemContainers {
       case 'merc': {
         const mSlot = stored.bodyLoc || stored.equippedSlot || (stored as { equipSlot?: number }).equipSlot || 0
         if (mSlot > 0) {
+          if (action === 0x07) {
+            const oppositeSlot =
+              mSlot === 4 ? 5 : mSlot === 5 ? 4 : mSlot === 11 ? 12 : mSlot === 12 ? 11 : 0
+            if (oppositeSlot > 0) {
+              const oppItem = this.mercBySlot.get(oppositeSlot)
+              if (oppItem && oppItem.id !== stored.id) {
+                this.mercBySlot.delete(oppositeSlot)
+                this.merc.delete(oppItem.id)
+                const cursorOppItem: ItemData = {
+                  ...oppItem,
+                  container: 'cursor',
+                  location: 4,
+                  bodyLoc: 0,
+                  equippedSlot: 0,
+                }
+                this.cursor = cursorOppItem
+                this.allById.set(oppItem.id, cursorOppItem)
+              }
+            }
+          }
           const prevInSlot = this.mercBySlot.get(mSlot)
           if (prevInSlot && prevInSlot.id !== stored.id) {
-            this.merc.delete(prevInSlot.id)
-            this.allById.delete(prevInSlot.id)
+            if (action === 0x09 && !this.cursor) {
+              this.merc.delete(prevInSlot.id)
+              const cursorPrevItem: ItemData = {
+                ...prevInSlot,
+                container: 'cursor',
+                location: 4,
+                bodyLoc: 0,
+                equippedSlot: 0,
+              }
+              this.cursor = cursorPrevItem
+              this.allById.set(prevInSlot.id, cursorPrevItem)
+            } else {
+              this.merc.delete(prevInSlot.id)
+              this.allById.delete(prevInSlot.id)
+            }
           }
           this.mercBySlot.set(mSlot, stored)
         }

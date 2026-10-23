@@ -830,7 +830,8 @@ export function drawMercenaryPanelImpl(
   // 8. D2Client.dll `0x6fb3ea20` (`.data` @ `0x6fb91210`): 12 dynamic stat readouts (`font16` -> `font6` overflow fallback)
   const maxLife = getStatVal(7, 'maxHp', m.maxLife ?? m.maxHp, 100)
   const rawLifePct = Number(m.lifePct ?? 128) || 0
-  const lifePctScale = rawLifePct > 100 ? 128 : 100
+  const lifePctScale =
+    m.lifePctScale === 100 ? 100 : m.lifePctScale === 128 || rawLifePct > 100 ? 128 : 100
   const life = getStatVal(
     6,
     'hp',

@@ -36,6 +36,7 @@ import {
   type BnetFlowState,
   type LobbyJoinGameInfo,
 } from './frontend/flow-state.ts'
+import { FrontendImeSink } from './frontend/frontend-ime-sink.ts'
 import { FrontendRenderer } from './frontend/frontend-renderer.ts'
 import {
   buildAvatarSpecFromStatstring,
@@ -802,6 +803,13 @@ export async function startPlayApp(options?: {
     session.audioRuntime.uiTick(1)
   }
 
+  const frontendImeSink = new FrontendImeSink({
+    renderer: frontendRenderer,
+    container: bnetShell,
+    canvas: bnetCanvas,
+  })
+  bootDisposers.push(() => frontendImeSink.dispose())
+
   let inGameView = false
   startPageTitle(() => (inGameView ? { areaId: session.world.areaId, level: session.world.self.level } : null))
   /** Own class' animation pack is requested exactly once per level entry. */
@@ -938,6 +946,9 @@ export async function startPlayApp(options?: {
 
   const syncVisibility = (): void => {
     bnetShell.style.display = inGameView ? 'none' : 'flex'
+    if (inGameView) {
+      frontendImeSink.syncFromActiveInput(null, false)
+    }
     if (disconnectBanner) {
       if (session.disconnectReason) {
         disconnectBanner.textContent = session.disconnectReason

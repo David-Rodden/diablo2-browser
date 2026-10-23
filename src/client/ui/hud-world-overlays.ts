@@ -167,6 +167,13 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
     Math.round(hud.touchControls.joystick.knobX),
     Math.round(hud.touchControls.joystick.knobY),
     hud.touchControls.lockedMonster?.candidate.unitId ?? -1,
+    hud.merc && !hud.merc.isDead ? `${hud.merc.hp}/${hud.merc.maxHp}/${hud.merc.lifePct}` : 'nomerc',
+    hud.summonPortraits && hud.summonPortraits.length > 0
+      ? hud.summonPortraits.map((s) => `${s.petType}:${s.count}:${s.lifePct}`).join(',')
+      : '',
+    hud.partyMembers && hud.partyMembers.length > 0
+      ? hud.partyMembers.map((p) => `${p.unitId}:${p.lifePct}:${p.partyState}`).join(',')
+      : '',
     hud.hudRevision,
   ].join('|')
   const prevSignature = internal.lastIdleRepaintSignature

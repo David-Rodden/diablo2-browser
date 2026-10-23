@@ -54,11 +54,13 @@ export function resolveItemContainer(
   if (action === 0x0a || action === 0x13 || location === 6) {
     return 'socket'
   }
-  // Cursor actions (0x01 GroundToCursor, 0x12 ToCursor on login/rejoin per D2Game.dll 0x6fc3efa0)
-  // or location 4 (IMODE_ONCURSOR, including 0x02 from INVMODE_PutInCursor on Charsi Imbue 0x6fce0310)
+  // Cursor actions (0x01 GroundToCursor, 0x12 ToCursor on login/rejoin per D2Game.dll 0x6fc3efa0,
+  // 0x16 D2Client.dll 0x6fb33790) or location 4 (IMODE_ONCURSOR, including 0x02 from INVMODE_PutInCursor
+  // on Charsi Imbue 0x6fce0310 and 0x09 SwapBodyItem IFLAG_SWITCHOUT 0x6fb34300)
   if (
     action === 0x01 ||
     action === 0x12 ||
+    action === 0x16 ||
     (location === 4 && action !== 0x03)
   ) {
     return 'cursor'

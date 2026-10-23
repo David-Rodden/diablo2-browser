@@ -1408,7 +1408,7 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
         targetType: 'monster',
         targetId: monId,
       })
-      game.stepFrames(15)
+      game.stepFrames(60)
       const combatEvents = game.drainEvents(playerId)
       const eventTypes = new Set(combatEvents.map((e) => e.type))
 

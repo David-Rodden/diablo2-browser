@@ -304,18 +304,18 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     expect(game.getMonsterState(monId)!.hp).toBe(0)
     expect(game.getMonsterState(monId)!.dead).toBe(true)
 
-    // Total XP at /players 7 = floor(1500 * (7 + 1) / 2) = 6000; split across 2 party members = 3000 each
-    // Level 1 -> Level 3 threshold is 1500 XP (Level 2 = 500, Level 3 = 1500, Level 4 = 3750)
+    // Total XP at /players 7 = floor(1500 * (7 + 1) / 2) = 6000; 2-player party pool = 6000 + floor(6000*89/256) = 8085 -> 4042 each
+    // Level 1 -> Level 4 threshold is 3750 XP (Level 2 = 500, Level 3 = 1500, Level 4 = 3750, Level 5 = 7875)
     const s1 = game.getPlayerState(p1)!
     const s2 = game.getPlayerState(p2)!
     const s3 = game.getPlayerState(p3)!
-    expect(s1.experience).toBe(3000)
-    expect(s2.experience).toBe(3000)
+    expect(s1.experience).toBe(4042)
+    expect(s2.experience).toBe(4042)
     expect(s3.experience).toBe(0)
-    expect(s1.level).toBe(3)
-    expect(s2.level).toBe(3)
-    expect(s1.statPts).toBe(10) // +5 per level * 2 levels gained
-    expect(s1.newSkills).toBe(2) // +1 per level * 2 levels gained
+    expect(s1.level).toBe(4)
+    expect(s2.level).toBe(4)
+    expect(s1.statPts).toBe(15) // +5 per level * 3 levels gained
+    expect(s1.newSkills).toBe(3) // +1 per level * 3 levels gained
   })
 
   // T5.A4: resolveGameModePolicy clamping & overrides, duplicate case-insensitive character name rejection, and whisper chat isolation
@@ -858,14 +858,14 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
 
     game.drainPlayerEvents(p1)
 
-    // 1. Operate Shrine -> Shrines.txt Code 12 (Skill Shrine) applies State 134, expires after 75 frames
+    // 1. Operate Shrine -> Shrines.txt Code 12 (Skill Shrine) applies State 134, expires after 2400 frames
     game.enqueueCommand(p1, { type: 'OperateObject', objectId: shrineId })
     game.stepFrame()
     const shrineStartEvents = game.drainPlayerEvents(p1)
     expect(shrineStartEvents.some((e) => e.type === 'StateSet' && e.state === 134)).toBe(true)
     expect(game.getPlayerState(p1)!.states.has(134)).toBe(true)
 
-    game.stepFrames(75)
+    game.stepFrames(2400)
     const shrineEndEvents = game.drainPlayerEvents(p1)
     expect(shrineEndEvents.some((e) => e.type === 'StateEnd' && e.state === 134)).toBe(true)
     expect(game.getPlayerState(p1)!.states.has(134)).toBe(false)

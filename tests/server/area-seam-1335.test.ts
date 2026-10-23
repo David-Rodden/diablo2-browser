@@ -88,7 +88,8 @@ describe('issue #1335: seamless outdoor area seams', () => {
     expect(
       events.some(e => e.type === 'RoomReveal' && e.areaId === 2),
     ).toBe(true)
-    expect(types).toContain('UnitReassign')
+    // 1.13c PLAYER_UpdateRoom keeps the path: no UnitReassign / stop at the seam.
+    expect(types).not.toContain('UnitReassign')
   })
 
   it('forwards the level graph neighbours into the server area geometry', () => {
@@ -116,6 +117,84 @@ describe('issue #1335: seamless outdoor area seams', () => {
     const source = createMapServiceAreaLevelSource(mapService as never)
     const geo = source({ act: 0, areaId: 1, mapSeed: 1, difficulty: 0 })!
     expect(geo.adjacentAreaIds).toEqual([2, 3])
+  })
+
+  it('lets a monster target and hit a player across a loaded seam', () => {
+    const { game } = makeGame()
+    game.ensureAreaLoaded(1)
+    const playerId = game.connectPlayer({
+      charClass: 'bar',
+      name: 'SeamTarget',
+      x: 1062,
+      y: 1030,
+      areaId: 2,
+      hp: 500,
+      maxHp: 500,
+    })
+    game.spawnMonster({
+      defId: 'fallen1',
+      x: 1059,
+      y: 1030,
+      areaId: 1,
+      minDmg: 10,
+      maxDmg: 10,
+      ar: 100_000,
+      aggroRadius: 10,
+      hp: 500,
+      maxHp: 500,
+    })
+    game.stepFrames(120)
+    expect(game.getPlayerState(playerId)!.hp).toBeLessThan(500)
+  })
+
+  it('lets a monster projectile hit a player across a loaded seam', () => {
+    const { game } = makeGame()
+    game.ensureAreaLoaded(1)
+    const playerId = game.connectPlayer({
+      charClass: 'bar',
+      name: 'MissileTarget',
+      x: 1062,
+      y: 1030,
+      areaId: 2,
+      hp: 500,
+      maxHp: 500,
+    })
+    const monsterId = game.spawnMonster({
+      defId: 'fallen1',
+      x: 1059,
+      y: 1030,
+      areaId: 1,
+      hp: 500,
+      maxHp: 500,
+    })
+    const internal = game as unknown as { missiles: Map<number, unknown> }
+    internal.missiles.set(9001, {
+      unitId: 9001,
+      missileId: 0,
+      skillId: 0,
+      ownerType: 'monster',
+      ownerId: monsterId,
+      areaId: 1,
+      x: 1059,
+      y: 1030,
+      vx: 0.25,
+      vy: 0,
+      damage: 10,
+      remainingFrames: 20,
+      collideType: 0,
+      size: 1,
+      pierce: false,
+      nextHit: false,
+      nextDelay: 0,
+      element: 'phys',
+      physDamage: 10,
+      elemDamage: 0,
+      elemDurationFrames: 0,
+      hitCooldowns: new Map(),
+      guaranteedHit: true,
+    })
+    game.stepFrames(20)
+    expect(game.getPlayerState(playerId)!.hp).toBeLessThan(500)
   })
 
   it('does not switch into an adjacent area the player never reaches', () => {

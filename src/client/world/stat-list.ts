@@ -145,6 +145,27 @@ export class StatList {
     this.set(statId, prev + delta, param)
   }
 
+  delete(statId: number, param = 0): boolean {
+    const existed =
+      param === 0 ? this.baseStats.delete(statId) : this.paramStats.delete(`${statId}:${param}`)
+    if (existed) {
+      const nextRev = ++statListRevisionSeq
+      this.revisionValue = nextRev
+      if (
+        param !== 0 ||
+        (statId !== STAT_HITPOINTS &&
+          statId !== STAT_MANA &&
+          statId !== STAT_STAMINA &&
+          statId !== STAT_EXPERIENCE &&
+          statId !== STAT_GOLD &&
+          statId !== STAT_GOLDBANK)
+      ) {
+        this.combatRevisionValue = nextRev
+      }
+    }
+    return existed
+  }
+
   setStateStats(stateId: number, stats: readonly ItemStat[]): void {
     this.stateStats.set(stateId, stats)
     const nextRev = ++statListRevisionSeq

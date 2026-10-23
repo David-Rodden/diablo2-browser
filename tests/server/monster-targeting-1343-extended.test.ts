@@ -78,6 +78,8 @@ describe('issue #1343 monster targeting', () => {
       ar: 100_000,
       minDmg: 20,
       maxDmg: 20,
+      hp: 5000,
+      maxHp: 5000,
       aggroRadius: 40,
     })
     game.drainEvents(playerId)

@@ -46,7 +46,7 @@ import {
 } from '../view/viewport-profile.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
-import { getMonsterKindByHcIdx } from '../../common/units/monsters-data.ts'
+import { MONSTATS_113C_ROWS, getMonsterKindByHcIdx } from '../../common/units/monsters-data.ts'
 import { getTownNpcDescriptorByHcIdx, isTownNpcHcIdx } from '../../common/units/npc-table.ts'
 import {
   CANONICAL_113C_OBJECTS,
@@ -137,6 +137,7 @@ function canRightSkillTargetObjectOrItem(skillId: number): boolean {
 export function isPlayerSummonClassId(classId: number): boolean {
   return (
     (classId >= 289 && classId <= 292) ||
+    classId === 344 ||
     (classId >= 351 && classId <= 353) ||
     (classId >= 356 && classId <= 357) ||
     (classId >= 363 && classId <= 364) ||
@@ -711,18 +712,46 @@ export class CommandMapper {
   isFriendlySummonOrPet(unit: ClientUnit, world: ClientWorld = this.world): boolean {
     if (unit.unitType !== 'monster') return false
     if (isPlayerSummonClassId(unit.classId)) return true
+    if (
+      unit.classId === 271 ||
+      unit.classId === 338 ||
+      unit.classId === 359 ||
+      unit.classId === 560 ||
+      unit.classId === 561
+    ) {
+      return true
+    }
     if (world.pets?.has(unit.id)) return true
     if (world.merc && world.merc.mercId === unit.id) return true
     if (unit.ownerType === 'player' || (unit as { ownerType?: unknown }).ownerType === 0) return true
     const selfId = world.selfId || (world.self as { id?: number | undefined })?.id || 0
     if (selfId !== 0 && unit.ownerId === selfId) return true
     if ((unit as { align?: number }).align === 1) return true
-    if (
-      (unit as { killable?: boolean }).killable === false &&
-      !unit.isNpc &&
-      !isTownNpcHcIdx(unit.classId)
-    ) {
+    const isExplicitNpc =
+      Boolean(unit.isNpc) ||
+      isTownNpcHcIdx(unit.classId) ||
+      getTownNpcDescriptorByHcIdx(unit.classId) !== undefined
+    if ((unit as { killable?: boolean }).killable === false && !isExplicitNpc) {
       return true
+    }
+    // 1.13c D2Client 0x6FB562A0: consult MonStats.txt Align & MonStats2.txt isAtt/critter
+    // for non-NPC monster units when unit.align / unit.killable properties are not attached.
+    if (
+      !isExplicitNpc &&
+      Number.isInteger(unit.classId) &&
+      unit.classId >= 0 &&
+      unit.classId < MONSTATS_113C_ROWS.length
+    ) {
+      const monRow = MONSTATS_113C_ROWS[unit.classId]
+      if (monRow && !monRow.npc && !monRow.interact) {
+        if (monRow.align !== 0) return true
+        if (
+          !hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.ISATT) ||
+          hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.CRITTER)
+        ) {
+          return true
+        }
+      }
     }
     return false
   }
@@ -823,6 +852,17 @@ export class CommandMapper {
     if (unit.unitType === 'monster') {
       if (this.isTownOrInteractiveNpc(unit, world)) return false
       if (this.isFriendlySummonOrPet(unit, world)) {
+        if ((unit as { killable?: boolean }).killable === false) return false
+        if (
+          Number.isInteger(unit.classId) &&
+          unit.classId >= 0 &&
+          unit.classId < MONSTATS_113C_ROWS.length &&
+          (!hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.ISATT) ||
+            hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.CRITTER) ||
+            MONSTATS_113C_ROWS[unit.classId]?.align === 2)
+        ) {
+          return false
+        }
         return ALLY_OR_PET_TARGET_SKILL_IDS.has(skillId)
       }
       if (this.isMonsterCorpse(unit, world)) {
@@ -2307,6 +2347,59 @@ export class CommandMapper {
         this.hudManager.hideLeftPanelFromWorld('cube')
       }
     }
+
+    const isOrificeOpen = Boolean(
+      npcInt.window === 'orifice' ||
+        npcInt.activeWindow === 'orifice' ||
+        this.hudManager.leftPanel === 'orifice' ||
+        wp?.activePanel === 'orifice',
+    )
+    if (isOrificeOpen) {
+      const activeOrificeId =
+        (npcInt.unitType === 2 ? npcInt.npcId : null) ??
+        wp?.activeNpcId ??
+        npcInt.npcId ??
+        null
+      const clickingOrificeInRange =
+        hoveredUnit !== null &&
+        hoveredUnit.unitType === 'object' &&
+        (hoveredUnit.classId === 152 ||
+          (activeOrificeId !== null && hoveredUnit.id === activeOrificeId)) &&
+        this.isWithinInteractionMeleeRange(selfX, selfY, hoveredUnit)
+      if (!clickingOrificeInRange) {
+        if (this.hudModel) {
+          this.hudModel.closeHoradricOrifice(activeOrificeId ?? undefined)
+          if (this.hudManager.leftPanel === 'orifice') {
+            this.hudManager.hideLeftPanelFromWorld('orifice')
+          }
+        } else {
+          if (wp?.questRewardItem) {
+            if (!this.hudManager.inventory.cursorItem) {
+              this.hudManager.inventory.cursorItem = wp.questRewardItem
+            } else {
+              this.hudManager.inventory.autoPlaceInGrid(wp.questRewardItem)
+            }
+            wp.questRewardItem = null
+          }
+          if (wp) {
+            wp.hoveredQuestRewardItem = null
+            wp.activeNpcId = null
+          }
+          if (activeOrificeId !== null && activeOrificeId > 0) {
+            const closeCmd: ClientCommand = {
+              type: 'StaffInOrifice',
+              orificeObjectId: activeOrificeId >>> 0,
+              staffItemId: 0,
+              state: 2,
+              playerUnitId: (this.world.selfId || 0xffffffff) >>> 0,
+            }
+            this.world.noteOutgoingCommand(closeCmd, nowMs)
+            this.sendCommand(closeCmd, nowMs)
+          }
+          this.hudManager.hideLeftPanelFromWorld('orifice')
+        }
+      }
+    }
   }
 
   /**
@@ -2535,6 +2628,25 @@ export class CommandMapper {
         }
         this.pendingObjectInteractId = null
         this.predictor?.stop()
+        const npcInt = this.world.npcInteraction
+        const wp = this.hudManager.worldPanels as any
+        const activeOrificeId =
+          (npcInt.unitType === 2 ? npcInt.npcId : null) ??
+          wp?.activeNpcId ??
+          npcInt.npcId ??
+          null
+        const isOrificeAlreadyOpenForUnit =
+          Boolean(
+            npcInt.window === 'orifice' ||
+              npcInt.activeWindow === 'orifice' ||
+              this.hudManager.leftPanel === 'orifice' ||
+              wp?.activePanel === 'orifice',
+          ) &&
+          (hoveredUnit.classId === 152 ||
+            (activeOrificeId !== null && hoveredUnit.id === activeOrificeId))
+        if (isOrificeAlreadyOpenForUnit) {
+          return null
+        }
         return this.dispatchRateLimited(
           {
             type: 'Interact',
@@ -3779,6 +3891,27 @@ export class CommandMapper {
           (this.world.self.x !== 0 || this.world.self.y !== 0) &&
           this.isWithinInteractionMeleeRange(this.world.self.x, this.world.self.y, pendingObj)
         if (arrivedViaPredictor || arrivedViaServer) {
+          const npcInt = this.world.npcInteraction
+          const wp = this.hudManager.worldPanels as any
+          const activeOrificeId =
+            (npcInt.unitType === 2 ? npcInt.npcId : null) ??
+            wp?.activeNpcId ??
+            npcInt.npcId ??
+            null
+          const isOrificeAlreadyOpenForUnit =
+            Boolean(
+              npcInt.window === 'orifice' ||
+                npcInt.activeWindow === 'orifice' ||
+                this.hudManager.leftPanel === 'orifice' ||
+                wp?.activePanel === 'orifice',
+            ) &&
+            (pendingObj.classId === 152 ||
+              (activeOrificeId !== null && pendingObj.id === activeOrificeId))
+          if (isOrificeAlreadyOpenForUnit) {
+            this.pendingObjectInteractId = null
+            this.predictor?.stop()
+            return null
+          }
           this.pendingObjectInteractId = null
           const record = this.dispatchRateLimited(
             {

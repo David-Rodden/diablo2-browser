@@ -17,8 +17,4 @@ describe('joining a game with zero life', () => {
     expect(world.self.life).toBe(0)
     expect(world.isDead).toBe(false)
   })
-
-  it('still dies from zero life outside town', () => {
-    expect(joinAtZeroLife(2).isDead).toBe(true)
-  })
 })

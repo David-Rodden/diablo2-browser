@@ -24,7 +24,8 @@ import {
 } from '../../common/units/monster-death-fx.ts'
 import { isInMeleeRange113c } from '../../common/skills/weapon-combat-meta.ts'
 import { getMonsterSizeXByHcIdx } from '../../common/units/monster-mapping.ts'
-import { getMonsterKindByClassId } from '../../common/units/monsters-data.ts'
+import { MONSTATS_113C_ROWS, getMonsterKindByClassId } from '../../common/units/monsters-data.ts'
+import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../common/units/monstats2-flags.ts'
 import { isTownNpcHcIdx } from '../../common/units/npc-table.ts'
 import { getObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
 import { isTownLevel } from '../../common/world/scene-population.ts'
@@ -84,6 +85,33 @@ function isMonsterDemon113c(m: ClientUnit): boolean {
   return getMonsterKindByClassId(m.classId)?.isDemon ?? false
 }
 
+export function isAlliedCombatMonster113c(
+  world: ClientWorldInternal,
+  target: ClientUnit,
+): boolean {
+  if (target.unitType !== 'monster' || target.dead || target.isNpc || isTownNpcHcIdx(target.classId)) {
+    return false
+  }
+  if (
+    Number.isInteger(target.classId) &&
+    target.classId >= 0 &&
+    target.classId < MONSTATS_113C_ROWS.length
+  ) {
+    const monRow = MONSTATS_113C_ROWS[target.classId]
+    if (monRow !== undefined) {
+      if (monRow.npc || monRow.align === 2) return false
+      if (
+        !hasMonStats2Flag(target.classId, MONSTATS2_FLAGINDEX.ISATT) ||
+        hasMonStats2Flag(target.classId, MONSTATS2_FLAGINDEX.CRITTER) ||
+        target.classId === 344
+      ) {
+        return false
+      }
+    }
+  }
+  return world.isFriendlyOrNonHostileMonster(target)
+}
+
 function isFriendlyTargetForMissile113c(
   world: ClientWorldInternal,
   missile: ClientUnit,
@@ -97,7 +125,7 @@ function isFriendlyTargetForMissile113c(
   if (target.unitType === 'player') return true
   if (world._merc && target.id === world._merc.mercId) return true
   if (world._pets.has(target.id) || target.ownerType === 'player') return true
-  if (target.unitType === 'monster' && world.isFriendlyOrNonHostileMonster(target)) return true
+  if (target.unitType === 'monster' && isAlliedCombatMonster113c(world, target)) return true
   return false
 }
 
@@ -125,6 +153,7 @@ import {
   shouldCltDo07Repath113c,
   unitDistance113c,
 } from './nec-poison-bone-113c.ts'
+export { rollPoisonCloudPuffTargets113c }
 import {
   CANONICAL_113C_MISSILES,
   MISSILE_CLASS_ID_TO_KEY,
@@ -562,6 +591,74 @@ export function triggerMissileImpactImpl(
     })
     fade.vx = 0
     fade.vy = 0
+  } else if (missile.missileKey === 'baalcorpseexplodedelay') {
+    // 1.13c Missiles.txt row #587 ('baalcorpseexplodedelay', AlwaysExplode=1, pCltHitFunc=44 @ 0x6FB63150):
+    // Spawns CltHitSubMissile1 = 'baalcorpseexplodeexpl' (#588, Range=14, AlwaysExplode=1, HitSound=impact_gore_light_1).
+    if (!expKey) {
+      const sub1Key = hitRow?.cltHitSubMissile1 || 'baalcorpseexplodeexpl'
+      const expl = this.spawnMissileByKey(sub1Key, hitX, hitY, hitX, hitY, {
+        ownerType: missile.ownerType,
+        ownerId: missile.ownerId,
+        sourceSkillId: missile.sourceSkillId,
+        skillLevel: missile.skillLevel,
+        loopAnim: false,
+      })
+      expl.vx = 0
+      expl.vy = 0
+      expl.alwaysExplode = true
+    }
+  } else if (missile.missileKey === 'baalcorpseexplodeexpl') {
+    // 1.13c Missiles.txt row #588 ('baalcorpseexplodeexpl', Range=14, AlwaysExplode=1, pCltHitFunc=44 @ 0x6FB63150):
+    // Spawns CltHitSubMissile1 = 'baalcorpseexplodefade' (#622, Range=128).
+    const sub1Key = hitRow?.cltHitSubMissile1 || 'baalcorpseexplodefade'
+    const fade = this.spawnMissileByKey(sub1Key, hitX, hitY, hitX, hitY, {
+      ownerType: missile.ownerType,
+      ownerId: missile.ownerId,
+      sourceSkillId: missile.sourceSkillId,
+      skillLevel: missile.skillLevel,
+    })
+    fade.vx = 0
+    fade.vy = 0
+  } else if (missile.missileKey === 'baal spawn monsters') {
+    // 1.13c Missiles.txt row #550 ('baal spawn monsters', pCltHitFunc=57 @ 0x6FB6BF30 -> 0x6FB66D40,
+    // cHitPar1=10, cHitPar2=20, CltHitSubMissile1='baal spawn monsters exp' #591):
+    // Scans circular disc dx^2 + dy^2 <= 10^2 (317 sub-tiles) around (hitX, hitY), rolling 1/20 per cell
+    // to spawn 'baal spawn monsters exp' (#591, AnimLen=12, Range=12) with randomized initial frame rand(11).
+    const radius = Math.max(1, hitRow?.cHitPar1 ?? 10)
+    const chanceDenom = Math.max(1, hitRow?.cHitPar2 ?? 20)
+    const sub1Key = hitRow?.cltHitSubMissile1 || 'baal spawn monsters exp'
+    const rSq = radius * radius
+    let spawnedCount = 0
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy > rSq) continue
+        if (SEED_RollLimitedRandomNumber(missile.seed, chanceDenom) !== 0) continue
+        const sx = hitX + dx
+        const sy = hitY + dy
+        const exp = this.spawnMissileByKey(sub1Key, sx, sy, sx, sy, {
+          ownerType: missile.ownerType,
+          ownerId: missile.ownerId,
+          sourceSkillId: missile.sourceSkillId,
+          skillLevel: missile.skillLevel,
+          loopAnim: false,
+        })
+        exp.vx = 0
+        exp.vy = 0
+        ;(exp as any).initialFrameOffset = SEED_RollLimitedRandomNumber(missile.seed, 11)
+        spawnedCount++
+      }
+    }
+    if (spawnedCount === 0) {
+      const exp = this.spawnMissileByKey(sub1Key, hitX, hitY, hitX, hitY, {
+        ownerType: missile.ownerType,
+        ownerId: missile.ownerId,
+        sourceSkillId: missile.sourceSkillId,
+        skillLevel: missile.skillLevel,
+        loopAnim: false,
+      })
+      exp.vx = 0
+      exp.vy = 0
+    }
   } else if (missile.missileKey === 'catapultchargedball') {
     // 1.13c Missiles.txt row #407 ('catapultchargedball', pCltHitFunc=46 @ 0x6FB6AAC0, cHitPar1=4, cHitPar2=2,
     // CltHitSubMissile1='catapultchargedballbolt' #408, Issue #1199):
@@ -1206,10 +1303,11 @@ export function isFriendlyOrNonHostileMonsterImpl(
   ) {
     return true
   }
-  // Player summons/totems/sentries (Clay/Blood/Iron/Fire Golem 289..292, Hydra 351..353,
+  // Player summons/totems/sentries (Clay/Blood/Iron/Fire Golem 289..292, Bone Wall/Prison 344, Hydra 351..353,
   // Decoy/Dopplezon 356, Valkyrie 357, Iron Wolf/Necro Skeletons 363..364, Assassin traps/Shadow & Druid pets 410..428)
   if (
     (m.classId >= 289 && m.classId <= 292) ||
+    m.classId === 344 ||
     (m.classId >= 351 && m.classId <= 353) ||
     m.classId === 356 ||
     m.classId === 357 ||
@@ -1218,6 +1316,24 @@ export function isFriendlyOrNonHostileMonsterImpl(
     (m.classId >= 410 && m.classId <= 428)
   ) {
     return true
+  }
+  if ((m as { align?: number }).align === 1 || (m as { align?: number }).align === 2) return true
+  if ((m as { killable?: boolean }).killable === false) return true
+  // 1.13c D2Client 0x6FB562A0 / 0x6FB51620 & D2Game sub_6FD0FA00:
+  // Non-hostile alignment (MonStats.txt Align != 0), NPC flag (npc == 1), non-attackable
+  // units (MonStats2.txt isAtt == 0 / UNITFLAG_CANBEATTACKED == 0), and critters (critter == 1)
+  // are never valid hostile missile/skill/melee targets.
+  if (Number.isInteger(m.classId) && m.classId >= 0 && m.classId < MONSTATS_113C_ROWS.length) {
+    const monRow = MONSTATS_113C_ROWS[m.classId]
+    if (monRow !== undefined) {
+      if (monRow.align !== 0 || monRow.npc) return true
+      if (
+        !hasMonStats2Flag(m.classId, MONSTATS2_FLAGINDEX.ISATT) ||
+        hasMonStats2Flag(m.classId, MONSTATS2_FLAGINDEX.CRITTER)
+      ) {
+        return true
+      }
+    }
   }
   return false
 }
@@ -1737,7 +1853,7 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
     const subKey = row?.cltSubMissile1 || POISONEXPLOSIONCLOUD_113C.cltSubMissile1
     for (const aim of rollPoisonCloudPuffTargets113c(
       unit.missileSeed,
-      remBeforeStep,
+      Math.max(0, (unit.maxTicks ?? 1) - unit.ageTicks),
       prevX,
       prevY,
       cltParam1,
@@ -3245,6 +3361,7 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
       gwStop.vy = 0
     } else if (
       (unit.alwaysExplode || unit.missileKey === 'towermisttrail') &&
+      unit.missileKey !== 'orbmisttrail' &&
       (unit.explosionMissile ||
         (CANONICAL_113C_MISSILES[unit.missileKey ?? '']?.pCltHitFunc ?? 0) > 0 ||
         (unit as any).lobPeakAltitude !== undefined ||
@@ -3267,6 +3384,9 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
         unit.missileKey === 'recycler vine' ||
         unit.missileKey === 'baal taunt lightning control' ||
         unit.missileKey === 'baal taunt poison control' ||
+        unit.missileKey === 'baalcorpseexplodedelay' ||
+        unit.missileKey === 'baalcorpseexplodeexpl' ||
+        unit.missileKey === 'baal spawn monsters' ||
         unit.missileKey === 'moltenboulder' ||
         unit.missileKey === 'moltenboulderemerge' ||
         (unit.missileKey?.startsWith('blizzard') && unit.missileKey !== 'blizzardcenter') ||

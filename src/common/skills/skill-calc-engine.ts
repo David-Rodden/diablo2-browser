@@ -574,18 +574,20 @@ export function calculateDetailedDamage(
     withSynergyMin = Math.floor((minRateSyn256 * durationFrames) / 256)
     withSynergyMax = Math.floor((maxRateSyn256 * durationFrames) / 256)
   } else if ((skill.descdam === '8' || skill.descdam === '9') && (skill.hitshift ?? 8) < 8) {
-    // 1.13c Per-Second Stream Display (SkillDesc.txt descdam=8 for Arctic Blast/Inferno, descdam=9 for Firestorm):
-    // descdam=8 scales per-frame 256ths bitrate by 25 frames/sec; descdam=9 scales by 3 trails * 25 = 75 frames/sec.
+    // 1.13c Per-Second Stream Display (SkillDesc.txt descdam=8 for Arctic Blast/Inferno/Wake of Inferno, descdam=9 for Firestorm):
+    // descdam=8 scales per-frame 256ths bitrate by 25 frames/sec (divided by ddam calc2=3 for #272 Wake of Inferno -> 25/768);
+    // descdam=9 scales by 3 trails * 25 = 75 frames/sec.
     const hitShift = skill.hitshift ?? 8
     const framesFactor = skill.descdam === '9' ? 75 : 25
+    const denom = skill.id === 272 ? 768 : 256
     const minRate256 = rawBaseMin * (2 ** hitShift)
     const maxRate256 = rawBaseMax * (2 ** hitShift)
-    baseMin = Math.floor((minRate256 * framesFactor) / 256)
-    baseMax = Math.floor((maxRate256 * framesFactor) / 256)
+    baseMin = Math.floor((minRate256 * framesFactor) / denom)
+    baseMax = Math.floor((maxRate256 * framesFactor) / denom)
     const minRateSyn256 = Math.trunc((minRate256 * (100 + primarySynPct)) / 100)
     const maxRateSyn256 = Math.trunc((maxRate256 * (100 + primarySynPct)) / 100)
-    withSynergyMin = Math.floor((minRateSyn256 * framesFactor) / 256)
-    withSynergyMax = Math.floor((maxRateSyn256 * framesFactor) / 256)
+    withSynergyMin = Math.floor((minRateSyn256 * framesFactor) / denom)
+    withSynergyMax = Math.floor((maxRateSyn256 * framesFactor) / denom)
   } else {
     const shiftMultiplier = 2 ** ((skill.hitshift ?? 8) - 8)
     baseMin = Math.round(rawBaseMin * shiftMultiplier)
@@ -1277,7 +1279,14 @@ export function evaluateSkillEffects(
   let m2ex = 0
   let m3en = 0
   let m3ex = 0
-  if (skill.id === 259) {
+  if (skill.id === 121) {
+    // Fist of the Heavens Descmissile1: fistoftheheavensbolt (#234: HitShift=8, EMin=40, EMax=50, EMinLev=[6,10,16,32,48], EMaxLev=[6,10,16,32,48], syn=#101*15%)
+    const hbSyn = (state.hardPoints[101] ?? 0) * 15
+    m1en = Math.floor((evaluateLevelBand(40, [6, 10, 16, 32, 48], lvl) * (100 + hbSyn)) / 100)
+    m1ex = Math.floor((evaluateLevelBand(50, [6, 10, 16, 32, 48], lvl) * (100 + hbSyn)) / 100)
+    m1eo = m1en * 256
+    m1ey = m1ex * 256
+  } else if (skill.id === 259) {
     // Fists of Fire Descmissile1: fistsoffirefirewall (#557: HitShift=3, EMin=6, EMax=10, EMinLev=[5,10,16,22,30], EMaxLev=[5,10,17,24,32], syn=#280*6%)
     const psSyn = (state.hardPoints[280] ?? 0) * 6
     m1eo = Math.floor((evaluateLevelBand(6, [5, 10, 16, 22, 30], lvl) * 8 * (100 + psSyn)) / 100)
@@ -1598,9 +1607,28 @@ export function evaluateSkillEffects(
     } else if (lt === 41) {
       zh = `火焰傷害：${valA} - ${valB}`
       en = `Fire Damage: ${valA} - ${valB}`
+    } else if (lt === 43) {
+      const min43 = Math.floor(valA / 256)
+      const max43 = Math.floor(valB / 256)
+      zh = `${textaZh}${min43} - ${max43}${line.textbZh || ''}`
+      en = `${(line.textaEn || '').trim()} ${min43}-${max43}${line.textbEn || ''}`.trim()
     } else if (lt === 45) {
       zh = `反彈物理傷害：${valA}%`
       en = `Damage Returned: ${valA}%`
+    } else if (lt === 49) {
+      const sMin =
+        ctx.edmn > 0 || ctx.edmx > 0
+          ? ctx.edmn
+          : Math.round(evaluateLevelBand(skill.minDam, skill.minLevDam, lvl) * shiftMultiplier)
+      const sMax =
+        ctx.edmn > 0 || ctx.edmx > 0
+          ? ctx.edmx
+          : Math.round(evaluateLevelBand(skill.maxDam, skill.maxLevDam, lvl) * shiftMultiplier)
+      zh = `${textaZh || '重擊傷害：'}+${sMin} - ${sMax}`
+      en = `${line.textaEn || 'Smite Damage:'} +${sMin}-${sMax}`
+    } else if (lt === 50) {
+      zh = `${textaZh || '聖光彈的傷害：'}${ctx.m1en ?? 0} - ${ctx.m1ex ?? 0}`
+      en = `${line.textaEn || 'Holy Bolt Damage:'} ${ctx.m1en ?? 0}-${ctx.m1ex ?? 0}`
     } else if (lt === 52) {
       zh = `${textaZh}+${valA} - ${valB}%`
       en = `${line.textaEn || ''} +${valA}-${valB}%`.trim()
@@ -1608,6 +1636,9 @@ export function evaluateSkillEffects(
       const sec = Math.round((valA / 25) * 10) / 10
       zh = `${textaZh || '持續：'}+${sec} 秒`
       en = `${line.textaEn || 'Duration:'} +${sec} seconds`
+    } else if (lt === 59) {
+      zh = `每秒平均${textaZh || '火焰傷害：'}${valA} - ${valB}`
+      en = `Average ${(line.textaEn || 'Fire Damage:').trim()} ${valA}-${valB} per second`
     } else if (lt === 61) {
       zh = `${textaZh}${valA}${line.textbZh ? ' ' + line.textbZh : ''}`
       en = `${line.textaEn || ''} ${valA}${line.textbEn ? ' ' + line.textbEn : ''}`.trim()
@@ -1624,6 +1655,9 @@ export function evaluateSkillEffects(
       const tbEn = (line.textbEn || '').replace(/:$/, '')
       zh = `${textaZh}+${valA}${tbZh ? ' ' + tbZh : ''}`
       en = `${line.textaEn || ''} +${valA}${tbEn ? ' ' + tbEn : ''}`.trim()
+    } else if (lt === 72 || lt === 73) {
+      zh = `${valA}/${valB} ${textaZh || '武器傷害'}`
+      en = `${valA}/${valB} ${line.textaEn || 'Weapon Damage'}`
     } else if (textaZh || line.textaEn) {
       zh = `${textaZh}${valA > 0 ? ' +' + valA : ''}`
       en = `${line.textaEn || ''}${valA > 0 ? ' +' + valA : ''}`
