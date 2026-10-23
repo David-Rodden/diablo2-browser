@@ -50,7 +50,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     walkableWithDoorsOpen: (view: { walkable: Uint8Array }) => view.walkable,
   }
   const route = [{ x: 100, y: 100 }, { x: 130, y: 100 }]
-  const guide = { enabled: false, pilotStatus: null as string | null, update: () => (plan ? ({ goal: { level: 2, title: 'Den of Evil' }, step: null, hint: 'Head to Blood Moor', target: null, path: [], route, doors: [], highlights: [], ...plan }) : null), routeFrom: () => route }
+  const guide = { enabled: false, pilotStatus: null as string | null, update: () => (plan ? ({ goal: { level: 2, title: 'Den of Evil' }, step: null, hint: 'Head to Blood Moor', target: null, path: [], route, doors: [], highlights: [], ...plan }) : null), routeFrom: () => route, reaches: () => true, knowsWaypointIn: () => true }
   const view = { id: area, originX: 0, originY: 0, subWidth: 400, subHeight: 400, walkable: new Uint8Array(400 * 400).fill(1), rooms: [] as { index: number; worldSubX: number; worldSubY: number; subW: number; subH: number }[], presetUnits: [] as { type: number; index: number; subX: number; subY: number }[], entrances: [] }
   const host = { world, hudManager, hudModel, assists, guide, levelView: () => view } as unknown as AutopilotHost
   const pilot = new Autopilot(host)
@@ -325,6 +325,22 @@ describe('autopilot', () => {
     expect(assists.standDown).toBe(true)
     tick(2000)
     expect([pilot.active, assists.standDown]).toEqual([true, false])
+  })
+
+  it('activates a waypoint it walks past that you do not have yet', () => {
+    const { assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(guide, { knowsWaypointIn: () => false })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 110, y: 100 }))
+    tick()
+    expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Activating the waypoint', units[0]])
+  })
+
+  it('takes a teleport pad when the target cannot be walked to', () => {
+    const { assists, guide, units, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    Object.assign(guide, { reaches: () => false })
+    units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 106, y: 100 }))
+    tick()
+    expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Taking the teleport pad', units[0]])
   })
 
   it('switches itself off when you die', () => {

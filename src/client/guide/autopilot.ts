@@ -55,6 +55,15 @@ const INTERACT_REACH = 14
 const QUEST_FOCUS = 25
 const LOOT_SETTLE_MS = 700
 const STALL_MS = 1500
+const PAD_CLASSES: ReadonlySet<number> = new Set([192, 304, 305, 306])
+const PAD_SEARCH = 80
+const WAYPOINT_GRAB = 40
+const PAD_REUSE_MS = 120_000
+const PAD_ARRIVAL_MS = 4000
+const PAD_JUMP = 20
+const PAD_ARRIVAL_NEAR = 12
+const PAD_FIELD_CELL = 4
+const PAD_FIELD_MS = 3000
 const STALL_MOVE = 3
 const DOOR_NEAR = 8
 const DOOR_LOOKAHEAD = 20
@@ -153,6 +162,9 @@ export class Autopilot {
   private readonly served = new Set<ArtisanKind>()
   private lootUntil = Number.NEGATIVE_INFINITY
   private stall = { x: 0, y: 0, at: 0 }
+  private readonly padsUsed = new Map<number, number>()
+  private padFrom: { readonly x: number; readonly y: number; readonly at: number } | null = null
+  private padCache: { readonly key: string; readonly at: number; readonly field: FlowField } | null = null
   private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
   private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
@@ -190,6 +202,7 @@ export class Autopilot {
     const { world, assists } = this.host
     if (assists.playerSteering) this.pausedUntil = nowMs + MANUAL_PAUSE_MS
     if (world.areaId > 0) this.noteArea()
+    this.noteArrival(nowMs)
     if (world.isDead) this.stop('Autopilot off', 'red', 'You died')
     else if (nowMs < this.pausedUntil) this.say('Paused while you play')
     else if (world.areaId > 0 && !this.job) this.decide(nowMs)
@@ -218,7 +231,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.wounded()) this.say('Waiting to heal before heading out')
-    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.grabWaypoint(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private refreshQuests(nowMs: number): void {
@@ -261,6 +274,7 @@ export class Autopilot {
     const door = plan.doors.map((id) => world.getUnit('object', id)).find((unit): unit is ClientUnit => unit !== undefined && isClosedDoor(unit) && distance(unit, world.self) <= REACH + 1)
     const unit = target?.unit && world.getUnit(target.unit.kind === 'object' ? 'object' : 'monster', target.unit.id)
     if (door) this.useOnce(door, nowMs)
+    else if (target && !this.host.guide.reaches(world.self) && this.takePad(target, nowMs)) return
     else if (!target) this.explore(nowMs, plan.hint)
     else if (step?.kind === 'waypoint' && unit) {
       this.waypointTo = step.level
@@ -509,6 +523,55 @@ export class Autopilot {
     const me = this.host.world.self
     const ahead = route.filter((point) => distance(point, me) <= DOOR_LOOKAHEAD)
     return this.host.world.getUnitsByType(2).find((unit) => isClosedDoor(unit) && (this.uses.get(unit.id)?.tries ?? 0) < USE_TRIES && distance(unit, me) <= DOOR_NEAR && ahead.some((point) => distance(point, unit) <= DOOR_ON_ROUTE))
+  }
+
+  private grabWaypoint(nowMs: number): boolean {
+    const { world, guide } = this.host
+    const me = world.self
+    if (guide.knowsWaypointIn(world.areaId)) return false
+    const waypoint = world.getUnitsByType(2).find((unit) => WAYPOINT_CLASS_IDS_113C.has(unit.classId) && distance(unit, me) <= WAYPOINT_GRAB && (this.uses.get(unit.id)?.tries ?? 0) < USE_TRIES)
+    if (!waypoint) return false
+    this.say('Activating the waypoint')
+    if (distance(waypoint, me) <= INTERACT_REACH) this.knock(waypoint, nowMs)
+    else this.walkTowards(waypoint, nowMs)
+    return true
+  }
+
+  private takePad(target: SubTilePoint, nowMs: number): boolean {
+    const { world } = this.host
+    const view = this.host.levelView()
+    const me = world.self
+    if (!view) return false
+    const here = this.padField(view, nowMs)
+    const reachable = (pad: ClientUnit) => distance(pad, me) <= INTERACT_REACH || here.pathFrom(pad.x, pad.y, 1, 1).length > 0
+    const pad = world
+      .getUnitsByType(2)
+      .filter((unit) => PAD_CLASSES.has(unit.classId) && (this.padsUsed.get(unit.id) ?? 0) <= nowMs && distance(unit, me) <= PAD_SEARCH && reachable(unit))
+      .sort((a, b) => distance(a, target) - distance(b, target))[0]
+    if (!pad) return false
+    this.say('Taking the teleport pad')
+    if (distance(pad, me) > INTERACT_REACH) this.walkTowards(pad, nowMs)
+    else {
+      this.padsUsed.set(pad.id, nowMs + PAD_REUSE_MS)
+      this.padFrom = { x: me.x, y: me.y, at: nowMs }
+      this.touch(pad, nowMs)
+    }
+    return true
+  }
+
+  private padField(view: LevelView, nowMs: number): FlowField {
+    const me = this.host.world.self
+    const key = `${view.id}:${Math.round(me.x / PAD_FIELD_CELL)}:${Math.round(me.y / PAD_FIELD_CELL)}`
+    if (this.padCache?.key !== key || nowMs - this.padCache.at > PAD_FIELD_MS) this.padCache = { key, at: nowMs, field: new FlowField({ ...view, walkable: this.host.assists.walkableWithDoorsOpen(view) }, me.x, me.y) }
+    return this.padCache.field
+  }
+
+  private noteArrival(nowMs: number): void {
+    const from = this.padFrom
+    const me = this.host.world.self
+    if (!from || nowMs - from.at > PAD_ARRIVAL_MS || distance(from, me) < PAD_JUMP) return
+    this.padFrom = null
+    this.host.world.getUnitsByType(2).filter((unit) => PAD_CLASSES.has(unit.classId) && distance(unit, me) <= PAD_ARRIVAL_NEAR).forEach((unit) => this.padsUsed.set(unit.id, nowMs + PAD_REUSE_MS))
   }
 
   private knock(door: ClientUnit, nowMs: number): void {
