@@ -56,7 +56,7 @@ const QUEST_FOCUS = 25
 const LOOT_SETTLE_MS = 700
 const STALL_MS = 1500
 const PAD_CLASSES: ReadonlySet<number> = new Set([192, 304, 305, 306])
-const PAD_SEARCH = 80
+const PAD_SAME = 4
 const WAYPOINT_GRAB = 40
 const PAD_REUSE_MS = 120_000
 const PAD_ARRIVAL_MS = 4000
@@ -162,7 +162,7 @@ export class Autopilot {
   private readonly served = new Set<ArtisanKind>()
   private lootUntil = Number.NEGATIVE_INFINITY
   private stall = { x: 0, y: 0, at: 0 }
-  private readonly padsUsed = new Map<number, number>()
+  private padsUsed: { readonly x: number; readonly y: number; readonly until: number }[] = []
   private padFrom: { readonly x: number; readonly y: number; readonly at: number } | null = null
   private padCache: { readonly key: string; readonly at: number; readonly field: FlowField } | null = null
   private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
@@ -219,7 +219,8 @@ export class Autopilot {
     assists.standDown = danger !== null && !this.cornered(nowMs)
     assists.holdLoot = this.questInReach()
     if (danger === null) this.spend(nowMs)
-    if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
+    if (this.host.hudManager.leftPanel === 'waypoint') this.answerPanels(nowMs)
+    else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
     else if (assists.isFighting(nowMs)) this.say('Fighting')
     else if (!this.questInReach() && this.looting(nowMs)) this.say('Picking up loot')
@@ -250,7 +251,8 @@ export class Autopilot {
   }
 
   report(): Readonly<Record<string, unknown>> {
-    return { on: this.active, trip: this.trip, job: this.job !== null, crossing: this.crossing !== null, trail: this.trail.map((spot) => spot.level), gap: this.levelGap(), potions: this.healingPotions() }
+    const target = this.host.guide.currentPlan?.target
+    return { on: this.active, trip: this.trip, job: this.job !== null, crossing: this.crossing !== null, trail: this.trail.map((spot) => spot.level), gap: this.levelGap(), potions: this.healingPotions(), target: target && [Math.round(target.x), Math.round(target.y), target.label], reaches: this.host.guide.reaches(this.host.world.self) }
   }
 
   private toast(title: string, detail: string, color: 'green' | 'tan' | 'red' | 'gold'): void {
@@ -543,20 +545,31 @@ export class Autopilot {
     const me = world.self
     if (!view) return false
     const here = this.padField(view, nowMs)
-    const reachable = (pad: ClientUnit) => distance(pad, me) <= INTERACT_REACH || here.pathFrom(pad.x, pad.y, 1, 1).length > 0
-    const pad = world
-      .getUnitsByType(2)
-      .filter((unit) => PAD_CLASSES.has(unit.classId) && (this.padsUsed.get(unit.id) ?? 0) <= nowMs && distance(unit, me) <= PAD_SEARCH && reachable(unit))
-      .sort((a, b) => distance(a, target) - distance(b, target))[0]
+    const reachable = (pad: SubTilePoint) => distance(pad, me) <= INTERACT_REACH || here.pathFrom(pad.x, pad.y, 1, 1).length > 0
+    const pad = this.padSpots(view).filter((spot) => !this.padUsed(spot, nowMs) && reachable(spot)).sort((a, b) => distance(a, target) - distance(b, target))[0]
     if (!pad) return false
     this.say('Taking the teleport pad')
-    if (distance(pad, me) > INTERACT_REACH) this.walkTowards(pad, nowMs)
+    if (!pad.unit || distance(pad, me) > INTERACT_REACH) this.walkTowards(pad, nowMs)
     else {
-      this.padsUsed.set(pad.id, nowMs + PAD_REUSE_MS)
+      this.banPad(pad, nowMs)
       this.padFrom = { x: me.x, y: me.y, at: nowMs }
-      this.touch(pad, nowMs)
+      this.touch(pad.unit, nowMs)
     }
     return true
+  }
+
+  private padSpots(view: LevelView): { readonly x: number; readonly y: number; readonly unit?: ClientUnit }[] {
+    const live = this.host.world.getUnitsByType(2).filter((unit) => PAD_CLASSES.has(unit.classId)).map((unit) => ({ x: unit.x, y: unit.y, unit }))
+    const preset = view.presetUnits.filter((u) => u.type === 2 && PAD_CLASSES.has(u.index)).map((u) => ({ x: view.originX + u.subX, y: view.originY + u.subY }))
+    return [...live, ...preset.filter((spot) => !live.some((pad) => distance(pad, spot) <= PAD_SAME))]
+  }
+
+  private padUsed(spot: SubTilePoint, nowMs: number): boolean {
+    return this.padsUsed.some((used) => used.until > nowMs && distance(used, spot) <= PAD_SAME)
+  }
+
+  private banPad(spot: SubTilePoint, nowMs: number): void {
+    this.padsUsed = [...this.padsUsed.filter((used) => used.until > nowMs), { x: spot.x, y: spot.y, until: nowMs + PAD_REUSE_MS }]
   }
 
   private padField(view: LevelView, nowMs: number): FlowField {
@@ -571,7 +584,8 @@ export class Autopilot {
     const me = this.host.world.self
     if (!from || nowMs - from.at > PAD_ARRIVAL_MS || distance(from, me) < PAD_JUMP) return
     this.padFrom = null
-    this.host.world.getUnitsByType(2).filter((unit) => PAD_CLASSES.has(unit.classId) && distance(unit, me) <= PAD_ARRIVAL_NEAR).forEach((unit) => this.padsUsed.set(unit.id, nowMs + PAD_REUSE_MS))
+    const view = this.host.levelView()
+    if (view) this.padSpots(view).filter((spot) => distance(spot, me) <= PAD_ARRIVAL_NEAR).forEach((spot) => this.banPad(spot, nowMs))
   }
 
   private knock(door: ClientUnit, nowMs: number): void {
