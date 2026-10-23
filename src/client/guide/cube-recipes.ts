@@ -23,10 +23,25 @@ type Recipe = (typeof RECIPES)[keyof typeof RECIPES]
 
 const codeOf = (item: ItemData) => item.code.trim()
 const carried = (world: ClientWorld) => [...world.containers.inventory.values(), ...world.containers.cube.values()]
+const owned = (world: ClientWorld) => [...carried(world), ...world.containers.stash.values()]
 
-export function readyRecipe(world: ClientWorld): readonly [string, Recipe] | null {
-  const codes = new Set(carried(world).map(codeOf))
-  return codes.has(CUBE) ? (Object.entries(RECIPES).find(([, recipe]) => !codes.has(recipe.makes) && recipe.inputs.every((code) => codes.has(code))) ?? null) : null
+export interface ReadyRecipe {
+  readonly name: string
+  readonly recipe: Recipe
+  readonly inStash: readonly string[]
+}
+
+export function readyRecipe(world: ClientWorld): ReadyRecipe | null {
+  const codes = new Set(owned(world).map(codeOf))
+  const onHand = new Set(carried(world).map(codeOf))
+  const found = codes.has(CUBE) ? Object.entries(RECIPES).find(([, recipe]) => !codes.has(recipe.makes) && recipe.inputs.every((code) => codes.has(code))) : undefined
+  return found ? { name: found[0], recipe: found[1], inStash: [CUBE, ...found[1].inputs].filter((code) => !onHand.has(code)) } : null
+}
+
+export async function withdraw(host: CubeHost, codes: readonly string[]): Promise<boolean> {
+  const { stash, inventory } = host.world.containers
+  for (const item of [...stash.values()].filter((stored) => codes.includes(codeOf(stored)))) if (!(await move(host, item, INVENTORY_BUFFER, inventory))) return false
+  return true
 }
 
 async function move(host: CubeHost, item: ItemData, buffer: number, container: ReadonlyMap<number, ItemData>, grid: readonly [number, number] | [] = []): Promise<boolean> {
