@@ -5,7 +5,7 @@ const islands = (...spans: readonly (readonly [number, number])[]) => {
   const [w, h] = [60, 10]
   const walkable = new Uint8Array(w * h)
   for (const [from, to] of spans) for (let y = 1; y < h - 1; y++) for (let x = from; x <= to; x++) walkable[y * w + x] = 1
-  return new Regions({ subWidth: w, subHeight: h, walkable } as never)
+  return new Regions({ subWidth: w, subHeight: h, walkable })
 }
 
 describe('teleport pad routes', () => {
