@@ -41,6 +41,11 @@ describe('path guide route', () => {
     expect([staff([]), staff(['box']), staff(['box', 'msf']), staff(['box', 'msf', 'vip'])]).toEqual([60, 64, 61, 40])
   })
 
+  it('takes a finished Horadric Staff to the true tomb the quest log marks', () => {
+    const goal = currentGoal(40, { ...quests({ 9: 1 }, { 10: 2 }), tomb: 3 }, 'story', (code) => ['box', 'hst'].includes(code))
+    expect([goal?.level, goal?.bring, goal?.find]).toEqual([69, 'hst', [152]])
+  })
+
   it('walks level by level, and takes a waypoint you own when it is shorter', () => {
     expect(shortestRoute(1, 8)?.map((hop) => hop.to)).toEqual([2, 8])
     expect(nextStep(1, 8)).toEqual({ kind: 'exit', level: 2 })

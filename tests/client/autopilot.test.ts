@@ -365,6 +365,17 @@ describe('autopilot', () => {
     expect(hudModel.teleportToLevel).toHaveBeenCalledWith(ROGUE_ENCAMPMENT)
   })
 
+  it('puts the Horadric Staff into the orifice when it opens', async () => {
+    const { world, hudManager, hudModel, tick } = setup({ target: { x: 130, y: 100, label: 'Orifice' } })
+    const staff = { id: 5, code: 'hst' }
+    world.containers.inventory.set(5, staff)
+    Object.assign(hudModel, { pickupItemToCursor: vi.fn(() => Object.assign(world.containers, { cursor: staff })), confirmQuestReward: vi.fn(), closeHoradricOrifice: vi.fn() })
+    hudManager.leftPanel = 'orifice'
+    tick()
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    expect((hudModel as unknown as { confirmQuestReward: ReturnType<typeof vi.fn> }).confirmQuestReward).toHaveBeenCalledWith(5)
+  })
+
   it('switches itself off when you die', () => {
     const { pilot, world, guide, tick } = setup({})
     world.isDead = true

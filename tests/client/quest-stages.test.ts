@@ -29,7 +29,7 @@ describe('quest stages', () => {
 
   it('point at levels the guide can reach from the act town', () => {
     const towns = [1, 40, 75, 103, 109]
-    const unreachable = stages.flatMap(({ key, stage }) => (stage.level === 'town' || towns.some((town) => shortestRoute(town, stage.level as number) !== null) ? [] : [`${key}:${stage.level}`]))
+    const unreachable = stages.flatMap(({ key, stage }) => (stage.level === 'town' || towns.some((town) => shortestRoute(town, stage.level === 'tomb' ? 66 : (stage.level as number)) !== null) ? [] : [`${key}:${stage.level}`]))
     expect(unreachable).toEqual([])
     expect(LEVEL_LINKS.size).toBeGreaterThan(100)
   })

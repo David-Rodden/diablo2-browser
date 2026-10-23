@@ -73,3 +73,17 @@ export async function transmute(host: CubeHost, recipe: Recipe): Promise<boolean
   hudModel.closeCube()
   return made
 }
+
+export async function takeOut(host: CubeHost, code: string): Promise<boolean> {
+  const { world, hudManager, hudModel } = host
+  const { inventory, cube } = world.containers
+  const item = [...cube.values()].find((stored) => codeOf(stored) === code)
+  const box = [...inventory.values()].find((owned) => codeOf(owned) === CUBE)
+  if (!item) return true
+  if (!box) return false
+  hudModel.useItem(box.id)
+  if (!(await waitFor(() => hudManager.leftPanel === 'cube', STEP_MS))) return false
+  const moved = await move(host, item, INVENTORY_BUFFER, inventory)
+  hudModel.closeCube()
+  return moved
+}

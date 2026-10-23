@@ -7,6 +7,7 @@ import { TELEPORT } from '../input/combat-planner.ts'
 import { scrollsCarried, scrollSource } from '../input/town-portal.ts'
 import { isClosedDoor, type PlayAssists } from '../input/play-assists.ts'
 import type { LevelView } from '../map/level-view.ts'
+import { firstPad, guessPartner, Regions, type Pad } from './pad-routes.ts'
 import type { SubTilePoint } from '../motion/pathfind.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
 import { waitFor } from '../ui-model/stash-deposit.ts'
@@ -14,7 +15,7 @@ import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import { useArtisan, type ArtisanKind } from './artisan.ts'
-import { readyRecipe, transmute, withdraw, type ReadyRecipe } from './cube-recipes.ts'
+import { readyRecipe, takeOut, transmute, withdraw, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { FlowField } from './flow-field.ts'
@@ -122,6 +123,8 @@ const QUEST_STALE_MS = 30_000
 const ROOM_REACHED = 8
 const ROOM_END = 3
 const STASH_CLASS = 267
+const CUBE_CODE = 'box'
+const STAFF_CODE = 'hst'
 const TOWN_PORTAL_CLASS = 59
 const PORTAL_REACH = 12
 const TRAVEL_OPTIONS = ['travel_east', 'travel_west', 'travel_harrogath']
@@ -134,6 +137,7 @@ const GAP_STEP = 12
 const GAP_TRIES = 6
 
 const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y - b.y)
+const padKey = (pad: SubTilePoint) => `${Math.round(pad.x)},${Math.round(pad.y)}`
 const potionTier = (code: string) => Number(code.slice(2)) || 0
 
 export class Autopilot {
@@ -163,7 +167,9 @@ export class Autopilot {
   private lootUntil = Number.NEGATIVE_INFINITY
   private stall = { x: 0, y: 0, at: 0 }
   private padsUsed: { readonly x: number; readonly y: number; readonly until: number }[] = []
-  private padFrom: { readonly x: number; readonly y: number; readonly at: number } | null = null
+  private padFrom: { readonly x: number; readonly y: number; readonly at: number; readonly pad: SubTilePoint } | null = null
+  private regions: { readonly level: number; readonly regions: Regions } | null = null
+  private readonly landings = new Map<string, SubTilePoint>()
   private padCache: { readonly key: string; readonly at: number; readonly field: FlowField } | null = null
   private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
   private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
@@ -219,7 +225,7 @@ export class Autopilot {
     assists.standDown = danger !== null && !this.cornered(nowMs)
     assists.holdLoot = this.questInReach()
     if (danger === null) this.spend(nowMs)
-    if (this.host.hudManager.leftPanel === 'waypoint') this.answerPanels(nowMs)
+    if (this.host.hudManager.leftPanel === 'waypoint' || this.host.hudManager.leftPanel === 'orifice') this.answerPanels(nowMs)
     else if (assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
@@ -429,6 +435,10 @@ export class Autopilot {
     const { hudManager, hudModel, world } = this.host
     if (hudModel === null) return false
     const wp = hudManager.worldPanels
+    if (hudManager.leftPanel === 'orifice') {
+      this.offerStaff()
+      return true
+    }
     if (hudManager.leftPanel === 'waypoint') {
       if (this.waypointTo !== null && this.waypointTo !== world.areaId) hudModel.teleportToLevel(this.waypointTo)
       else hudModel.closeWaypoint()
@@ -547,21 +557,34 @@ export class Autopilot {
     if (!view) return false
     const here = this.padField(view, nowMs)
     const reachable = (pad: SubTilePoint) => distance(pad, me) <= INTERACT_REACH || here.pathFrom(pad.x, pad.y, 1, 1).length > 0
-    const pad = this.padSpots(view).filter((spot) => !this.padUsed(spot, nowMs) && reachable(spot)).sort((a, b) => distance(a, target) - distance(b, target))[0]
+    const spots = this.padSpots(view)
+    const free = (spot: (typeof spots)[number]) => !this.padUsed(spot, nowMs) && reachable(spot)
+    const regions = this.regionsOf(view)
+    const pad = firstPad(regions, spots, me, target, (spot) => this.landingOf(spot, spots, regions), free) ?? spots.filter(free).sort((a, b) => distance(a, target) - distance(b, target))[0]
     if (!pad) return false
     this.say('Taking the teleport pad')
     if (!pad.unit || distance(pad, me) > INTERACT_REACH) this.walkTowards(pad, nowMs)
     else {
       this.banPad(pad, nowMs)
-      this.padFrom = { x: me.x, y: me.y, at: nowMs }
+      this.padFrom = { x: me.x, y: me.y, at: nowMs, pad }
       this.touch(pad.unit, nowMs)
     }
     return true
   }
 
-  private padSpots(view: LevelView): { readonly x: number; readonly y: number; readonly unit?: ClientUnit }[] {
-    const live = this.host.world.getUnitsByType(2).filter((unit) => PAD_CLASSES.has(unit.classId)).map((unit) => ({ x: unit.x, y: unit.y, unit }))
-    const preset = view.presetUnits.filter((u) => u.type === 2 && PAD_CLASSES.has(u.index)).map((u) => ({ x: view.originX + u.subX, y: view.originY + u.subY }))
+  private regionsOf(view: LevelView): Regions {
+    if (this.regions?.level !== view.id) this.regions = { level: view.id, regions: new Regions(view) }
+    return this.regions.regions
+  }
+
+  private landingOf<P extends Pad>(pad: P, pads: readonly P[], regions: Regions): P | undefined {
+    const landed = this.landings.get(padKey(pad))
+    return landed ? pads.find((other) => distance(other, landed) <= PAD_SAME) : guessPartner(pad, pads, regions)
+  }
+
+  private padSpots(view: LevelView): { readonly x: number; readonly y: number; readonly classId: number; readonly unit?: ClientUnit }[] {
+    const live = this.host.world.getUnitsByType(2).filter((unit) => PAD_CLASSES.has(unit.classId)).map((unit) => ({ x: unit.x, y: unit.y, classId: unit.classId, unit }))
+    const preset = view.presetUnits.filter((u) => u.type === 2 && PAD_CLASSES.has(u.index)).map((u) => ({ x: view.originX + u.subX, y: view.originY + u.subY, classId: u.index }))
     return [...live, ...preset.filter((spot) => !live.some((pad) => distance(pad, spot) <= PAD_SAME))]
   }
 
@@ -586,7 +609,10 @@ export class Autopilot {
     if (!from || nowMs - from.at > PAD_ARRIVAL_MS || distance(from, me) < PAD_JUMP) return
     this.padFrom = null
     const view = this.host.levelView()
-    if (view) this.padSpots(view).filter((spot) => distance(spot, me) <= PAD_ARRIVAL_NEAR).forEach((spot) => this.banPad(spot, nowMs))
+    const arrived = view ? this.padSpots(view).filter((spot) => distance(spot, me) <= PAD_ARRIVAL_NEAR) : []
+    arrived.forEach((spot) => this.banPad(spot, nowMs))
+    const landing = arrived.sort((a, b) => distance(a, me) - distance(b, me))[0]
+    if (landing) this.landings.set(padKey(from.pad), landing)
   }
 
   private knock(door: ClientUnit, nowMs: number): void {
@@ -784,6 +810,7 @@ export class Autopilot {
       (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
+      this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.upgrades.length > 0 && ready('gear') && { key: 'gear', reason: 'Putting on better gear', work: () => care.wearUpgrades() },
       this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
@@ -797,6 +824,51 @@ export class Autopilot {
     this.errandsAt.set(errand.key, nowMs)
     this.say(errand.reason)
     this.job = this.errand(errand)
+      .catch(() => undefined)
+      .finally(() => {
+        this.job = null
+      })
+  }
+
+  private storedQuestItem(): string | null {
+    const code = this.host.guide.currentPlan?.goal.bring
+    const { inventory, stash, cube } = this.host.world.containers
+    const has = (items: ReadonlyMap<number, { readonly code: string }>) => [...items.values()].some((item) => item.code.trim() === code)
+    return code !== undefined && !has(inventory) && (has(stash) || has(cube)) ? code : null
+  }
+
+  private async fetch(code: string): Promise<void> {
+    const { world, hudManager, hudModel } = this.host
+    if (hudModel === null) return
+    const host = { world, hudManager, hudModel }
+    const inCube = [...world.containers.cube.values()].some((item) => item.code.trim() === code)
+    const stored = [code, ...(inCube ? [CUBE_CODE] : [])].filter((wanted) => [...world.containers.stash.values()].some((item) => item.code.trim() === wanted))
+    if (stored.length > 0) {
+      const stash = await this.reach(() => world.getUnitsByType(2).find((unit) => unit.classId === STASH_CLASS), { key: 'fetch', reason: '', stash: true })
+      if (!stash) return
+      this.host.assists.use(stash, performance.now())
+      if (!(await waitFor(() => hudManager.leftPanel === 'stash', 6000))) return
+      const taken = await withdraw(host, stored)
+      hudModel.closeStash()
+      if (!taken) return
+    }
+    if (inCube) await takeOut(host, code)
+  }
+
+  private offerStaff(): void {
+    const { world, hudManager, hudModel } = this.host
+    const staff = [...world.containers.inventory.values()].find((item) => item.code.trim() === STAFF_CODE)
+    if (hudModel === null || !staff) {
+      hudModel?.closeHoradricOrifice()
+      return
+    }
+    this.say('Placing the Horadric Staff')
+    this.job = (async () => {
+      hudModel.pickupItemToCursor(staff.id)
+      if (await waitFor(() => world.containers.cursor?.id === staff.id, 3000)) hudModel.confirmQuestReward(staff.id)
+      await waitFor(() => hudManager.leftPanel !== 'orifice', 4000)
+      hudModel.requestQuestData()
+    })()
       .catch(() => undefined)
       .finally(() => {
         this.job = null
