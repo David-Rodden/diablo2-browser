@@ -42,21 +42,23 @@ interface Errand {
   readonly work?: () => Promise<unknown>
 }
 
-const TICK_MS = 100
-const WALK_MS = 260
+const TICK_MS = 60
+const WALK_MS = 200
 const LOOKAHEAD = 15
-const TELEPORT_AHEAD = 17
-const TELEPORT_MS = 420
+const TELEPORT_AHEAD = 24
+const TELEPORT_MS = 300
 const TELEPORT_MANA = 0.5
 const TELEPORT_MISSES = 3
 const TELEPORT_OFF_MS = 60_000
 const REACH = 4
 const INTERACT_REACH = 14
 const QUEST_FOCUS = 25
-const USE_MS = 900
+const USE_MS = 600
 const USE_TRIES = 8
-const TALK_MS = 1200
-const SPEECH_SKIP_MS = 250
+const TALK_MS = 700
+const SPEECH_SKIP_MS = 80
+const CARE_START_MS = 350
+const REPAIR_MS = 300
 const STUCK_TALK_MS = 20_000
 const STUCK_MS = 3200
 const STUCK_MOVE = 1.5
@@ -721,7 +723,7 @@ export class Autopilot {
     this.host.assists.use(unit, performance.now())
     if (errand.stash) {
       if (!(await waitFor(() => hudManager.leftPanel === 'stash', 6000))) return
-      await waitFor(() => this.host.assists.inventoryCare.busy, 1200)
+      await waitFor(() => this.host.assists.inventoryCare.busy, CARE_START_MS)
       await waitFor(() => !this.host.assists.inventoryCare.busy, 20000)
       hudModel.closeStash()
       return
@@ -731,7 +733,7 @@ export class Autopilot {
     if (errand.action) {
       hudModel.handleNpcMenuAction(errand.action, unit.id)
       await waitFor(() => hudManager.leftPanel === 'vendor' || !hudManager.worldPanels.npcMenu, 5000)
-      await waitFor(() => this.host.assists.inventoryCare.busy, 1200)
+      await waitFor(() => this.host.assists.inventoryCare.busy, CARE_START_MS)
       await waitFor(() => !this.host.assists.inventoryCare.busy, 20000)
       await errand.work?.()
     }
@@ -747,7 +749,7 @@ export class Autopilot {
       if (!goal) return null
       if (unit && distance(unit, this.host.world.self) <= REACH) return unit
       this.walkTowards(goal, performance.now())
-      await new Promise((resolve) => setTimeout(resolve, WALK_MS))
+      await new Promise((resolve) => setTimeout(resolve, TICK_MS * 2))
     }
     return null
   }
@@ -860,6 +862,6 @@ export class Autopilot {
   private async repair(): Promise<void> {
     const { hudManager, hudModel } = this.host
     if (hudModel !== null && hudManager.leftPanel === 'vendor') hudModel.vendorRepairAll()
-    await new Promise((resolve) => setTimeout(resolve, 600))
+    await new Promise((resolve) => setTimeout(resolve, REPAIR_MS))
   }
 }
