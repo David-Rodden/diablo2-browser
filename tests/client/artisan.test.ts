@@ -9,7 +9,7 @@ const worldWith = (equipped: ItemData[], carried: ItemData[]) =>
 
 describe('artisan rewards', () => {
   it('imbues a white item you are wearing before one in the bag, and never a magic one', () => {
-    const helm = item(1, 'cap', { bodyLoc: 1 } as Partial<ItemData>)
+    const helm = item(1, 'cap', { bodyLoc: 1 })
     const bagArmor = item(2, 'qui')
     const magic = item(3, 'lbt', { quality: 4 })
     expect(artisanPick(worldWith([helm, magic], [bagArmor]), 'imbue')?.id).toBe(1)
@@ -17,7 +17,7 @@ describe('artisan rewards', () => {
   })
 
   it('sockets an unsocketed item but skips magic and already socketed ones', () => {
-    const unique = item(4, 'qui', { quality: 7, bodyLoc: 3 } as Partial<ItemData>)
+    const unique = item(4, 'qui', { quality: 7, bodyLoc: 3 })
     const socketed = item(5, 'cap', { socketed: true, totalSockets: 2 })
     expect(artisanPick(worldWith([unique], [socketed]), 'add_sockets')?.id).toBe(4)
     expect(artisanPick(worldWith([], [socketed, item(6, 'lbt', { quality: 4 })]), 'add_sockets')).toBeNull()
