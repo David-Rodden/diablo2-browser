@@ -21,7 +21,7 @@ export interface InventoryCareHost {
 }
 
 const INVENTORY_BUFFER = 0
-const GEAR_KINDS = new Set(['magic', 'rare', 'set', 'base', 'normal'])
+const GEAR_KINDS = new Set(['magic', 'rare', 'set', 'unique', 'jewel', 'base', 'normal'])
 const FUTURE_UPGRADE = 'Better'
 const STASHED_KINDS = new Set<Appraisal['kind']>(['rune', 'gem', 'jewel', 'unique', 'set', 'rare', 'base'])
 
@@ -115,7 +115,19 @@ export class InventoryCare {
   }
 
   get upgrades(): ItemData[] {
-    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot !== undefined).filter((item) => item.identified && !isTwoHanded(item))
+    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot !== undefined).filter((item) => item.identified)
+  }
+
+  private async freeOffhand(item: ItemData): Promise<boolean> {
+    const { world, hudModel } = this.host
+    const shield = [...world.containers.equipment.values()].find((equipped) => slotOf(equipped) === 'weapon2')
+    if (!isTwoHanded(item) || shield === undefined) return true
+    const spot = freeSpots([...world.containers.inventory.values()], shield.invWidth, shield.invHeight)[0]
+    if (hudModel === null || spot === undefined) return false
+    hudModel.unequipItem('weapon2')
+    if (!(await waitFor(() => world.containers.cursor?.id === shield.id))) return false
+    hudModel.placeCursorItem(shield.id, spot.x, spot.y, INVENTORY_BUFFER)
+    return waitFor(() => world.containers.cursor === null)
   }
 
   async wearUpgrades(): Promise<number> {
@@ -123,7 +135,7 @@ export class InventoryCare {
     let worn = 0
     for (const item of this.upgrades) {
       const slot = this.appraise(item).upgradeSlot
-      if (hudModel === null || slot === undefined) break
+      if (hudModel === null || slot === undefined || !(await this.freeOffhand(item))) break
       const current = [...world.containers.equipment.values()].find((equipped) => slotOf(equipped) === slot)
       hudModel.pickupItemToCursor(item.id)
       if (!(await waitFor(() => world.containers.cursor?.id === item.id))) break

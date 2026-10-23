@@ -34,6 +34,24 @@ describe('character build', () => {
   })
 })
 
+describe('keeping only what the character will use', () => {
+  const helm = (id: number, life: number) => item({ id, code: 'cap', quality: 4, identified: true, stats: [{ statId: 7, param: 0, value: life }] })
+
+  it('treats only the best carried piece for a slot as the upgrade', () => {
+    const [weak, strong] = [helm(10, 20), helm(11, 40)]
+    const ctx = context(coldSorc, { carried: [weak, strong], owned: [weak, strong] })
+    expect(appraiseItem(strong, ctx).upgradeSlot).toBe('helm')
+    expect(appraiseItem(weak, ctx).upgradeSlot).toBeUndefined()
+  })
+
+  it('keeps one runeword base, not every match', () => {
+    const [first, second] = [item({ id: 20, code: 'crs', totalSockets: 4 }), item({ id: 21, code: 'crs', totalSockets: 4 })]
+    expect(appraiseItem(second, context(coldSorc, { owned: [first, second] })).tier).toBe('junk')
+    expect(appraiseItem(first, context(coldSorc, { owned: [first, second] })).tier).toBe('good')
+    expect(appraiseItem(item({ id: 22, code: 'crs', totalSockets: 4 }), context(coldSorc, { owned: [first] })).tier).toBe('junk')
+  })
+})
+
 describe('loot appraisal', () => {
   it('tracks runeword progress for runes the character can use', () => {
     expect(appraiseItem(item({ code: 'r07' }), context(coldSorc, { owned: [item({ code: 'r10' }), item({ code: 'r09' })] }))).toMatchObject({ tier: 'good', reason: 'For Spirit · 3/4 runes' })
