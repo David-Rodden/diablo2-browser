@@ -10,14 +10,16 @@ const ACT_TWO = 1
 
 export function sessionGuideHost(session: OnlineSession, minimap: Pick<Minimap, 'visible' | 'lastRenderStats'>): PathGuideHost {
   const world = () => session.world
-  const tombs = new Map<string, number>()
+  const tombs = new Map<string, { checked: number; found: number }>()
   const trueTomb = () => {
     const map = session.mapService
     const key = map && map.getActiveAct() === ACT_TWO ? `${map.getActiveSeed()}:${map.getActiveDifficulty()}` : null
     if (!map || key === null) return world().questTombOffset
-    if (!tombs.has(key)) tombs.set(key, TOMBS.findIndex((level) => map.peekLevelView(level)?.presetUnits.some((unit) => unit.type === 2 && unit.index === ORIFICE)))
-    const found = tombs.get(key)!
-    return found >= 0 ? found : world().questTombOffset
+    const search = tombs.get(key) ?? { checked: 0, found: -1 }
+    tombs.set(key, search)
+    if (search.found < 0 && search.checked < TOMBS.length && map.peekLevelView(TOMBS[search.checked]!)?.presetUnits.some((unit) => unit.type === 2 && unit.index === ORIFICE)) search.found = search.checked
+    search.checked++
+    return search.found >= 0 ? search.found : world().questTombOffset
   }
   const carried = () => {
     const { inventory, cube, stash, equipment, cursor } = world().containers

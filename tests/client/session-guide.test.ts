@@ -18,15 +18,16 @@ const sessionWith = (act: number, orificeIn: number | null, told = 3) => {
 }
 
 describe('session guide host', () => {
-  it('reads the true tomb off the act map, once per map', () => {
+  it('reads the true tomb off the act map, one tomb per look so it never stalls a frame', () => {
     const { host, peeked } = sessionWith(1, 70)
-    expect(host.quests().tomb).toBe(4)
-    expect(host.quests().tomb).toBe(4)
+    const answers = Array.from({ length: 9 }, () => host.quests().tomb)
+    expect(answers).toEqual([3, 3, 3, 3, 4, 4, 4, 4, 4])
     expect(peeked).toEqual([66, 67, 68, 69, 70])
   })
 
   it('falls back to what the server said outside act 2 or without an orifice', () => {
     expect(sessionWith(0, 70).host.quests().tomb).toBe(3)
-    expect(sessionWith(1, null).host.quests().tomb).toBe(3)
+    const lost = sessionWith(1, null).host
+    expect(Array.from({ length: 9 }, () => lost.quests().tomb)).toEqual(Array(9).fill(3))
   })
 })
