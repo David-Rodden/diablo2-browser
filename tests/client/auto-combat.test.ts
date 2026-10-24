@@ -280,6 +280,21 @@ describe('auto-fight with build-aware skills', () => {
     expect(s.attacked()).toContain(901)
   })
 
+  it('raises skeletons from a corpse it aims at, not from the spot it stands on', () => {
+    const s = createSetup()
+    const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number }
+    self.skills.set(70, 4)
+    Object.assign(self, { mana: 200, maxMana: 200 })
+    s.mapper.assists.smartSkills = true
+    s.spawn(901, 19, 108, 100)
+    s.spawn(902, 19, 105, 104)
+    Object.assign(s.world.getUnit('monster', 902)!, { lifePct: 0, mode: 12 })
+    s.mapper.handleKeyDown({ key: 'e' })
+    s.fightFor(1000, 3000)
+    const raised = s.sent.flatMap((c) => (c.type === 'SkillOn' && c.hand === 'right' ? [c.target.id] : []))
+    expect(raised).toContain(902)
+  })
+
   it('backs away from a boss that gets close instead of trading blows', () => {
     const s = createSetup()
     const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number; leftSkill: number }
