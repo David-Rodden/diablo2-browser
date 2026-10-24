@@ -96,6 +96,8 @@ const DOOR_ON_ROUTE = 4
 const USE_MS = 600
 const USE_TRIES = 8
 const BACK_OFF = 5
+const CURSOR_SETTLE_MS = 1000
+const INVENTORY_BUFFER = 0
 const TALK_MS = 700
 const SPEECH_SKIP_MS = 80
 const CARE_START_MS = 350
@@ -182,6 +184,7 @@ export class Autopilot {
   private job: Promise<unknown> | null = null
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
   private readonly stubborn = new Set<number>()
+  private held: { readonly id: number; readonly since: number; at: number; tries: number } | null = null
   private readonly errandsAt = new Map<string, number>()
   private talk: { readonly npcId: number; readonly hint: string; readonly since: number; at: number; spoke: boolean; opened: boolean; readonly heard: Set<string> } | null = null
   private waypointTo: number | null = null
@@ -422,6 +425,7 @@ export class Autopilot {
     assists.holdLoot = this.questInReach()
     if (danger === null) this.spend(nowMs)
     if (this.host.hudManager.leftPanel === 'waypoint' || this.host.hudManager.leftPanel === 'orifice') this.answerPanels(nowMs)
+    else if (this.clearCursor(nowMs)) this.say('Putting away the item in hand')
     else if (assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
@@ -429,6 +433,27 @@ export class Autopilot {
     else if (assists.isFighting(nowMs)) this.say('Fighting')
     else if (!this.questInReach() && this.looting(nowMs)) this.say('Picking up loot')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
+  }
+
+  private clearCursor(nowMs: number): boolean {
+    const { world, hudModel, assists } = this.host
+    const held = world.containers.cursor
+    if (!held || hudModel === null || assists.inventoryCare.busy) {
+      this.held = null
+      return false
+    }
+    if (this.held?.id !== held.id) this.held = { id: held.id, since: nowMs, at: Number.NEGATIVE_INFINITY, tries: 0 }
+    const hold = this.held
+    if (nowMs - hold.since < CURSOR_SETTLE_MS) return false
+    if (nowMs - hold.at < USE_MS) return true
+    const spot = freeSpots(world.containers.inventory.values(), held.invWidth, held.invHeight)[0]
+    if (spot && hold.tries < USE_TRIES) hudModel.placeCursorItem(held.id, spot.x, spot.y, INVENTORY_BUFFER)
+    else {
+      hudModel.dropItem(held.id)
+      assists.inventoryCare.discarded.add(held.id)
+    }
+    Object.assign(hold, { at: nowMs, tries: hold.tries + 1 })
+    return true
   }
 
   private carryOn(town: (typeof TOWNS)['Rogue Encampment'] | null, nowMs: number): void {
