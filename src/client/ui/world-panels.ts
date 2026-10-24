@@ -351,6 +351,7 @@ export class WorldPanelsHud {
   stashDepositAllEnabled = false
   showItemLevel = false
   showMonsterResists = false
+  showMonsterLevel = false
   upgradeVerdictFor: (item: UiInventoryItem) => UpgradeVerdict | null = () => null
   cubeTransmuteCount = 0
   escapeMenuOpen = false

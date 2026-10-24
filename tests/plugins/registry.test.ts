@@ -88,6 +88,7 @@ describe('BUILTIN_PLUGINS Registry & Built-In Plugin Lifecycles', () => {
       'item-info',
       'loot-alerts',
       'low-life-warning',
+      'monster-level',
       'monster-resists',
       'path-guide',
       'run-timer',
@@ -608,7 +609,7 @@ describe('BUILTIN_PLUGINS Registry & Built-In Plugin Lifecycles', () => {
         setEnabled() {},
       },
       ...Object.fromEntries(
-        ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists', 'lowLifeWarning'].map((name) => [name, { isEnabled: () => false, setEnabled() {} }]),
+        ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists', 'monsterLevel', 'lowLifeWarning'].map((name) => [name, { isEnabled: () => false, setEnabled() {} }]),
       ),
       autoCombat: { getKey: () => null, setKey() {} },
       townPortal: { getKey: () => null, setKey() {} },
