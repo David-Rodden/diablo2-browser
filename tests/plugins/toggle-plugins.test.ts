@@ -25,6 +25,7 @@ import { autoPotionPlugin } from '../../plugins/auto-potion/index.ts'
 import { upgradeHintsPlugin } from '../../plugins/upgrade-hints/index.ts'
 import { itemInfoPlugin } from '../../plugins/item-info/index.ts'
 import { monsterResistsPlugin } from '../../plugins/monster-resists/index.ts'
+import { monsterLevelPlugin } from '../../plugins/monster-level/index.ts'
 
 const memoryStorage = () => {
   const map = new Map<string, string>()
@@ -59,6 +60,7 @@ describe.each([
   { plugin: beltRefillPlugin, portName: 'beltRefill', defaultOn: false },
   { plugin: upgradeHintsPlugin, portName: 'upgradeHints', defaultOn: true },
   { plugin: monsterResistsPlugin, portName: 'monsterResists', defaultOn: true },
+  { plugin: monsterLevelPlugin, portName: 'monsterLevel', defaultOn: true },
   { plugin: lowLifeWarningPlugin, portName: 'lowLifeWarning', defaultOn: true },
 ])('$plugin.id toggle plugin', ({ plugin, portName, defaultOn }) => {
   const createToggleHost = (port: PluginTogglePort | null) => createHost(plugin, { [portName]: port })

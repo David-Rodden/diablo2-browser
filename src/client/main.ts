@@ -784,6 +784,7 @@ export async function startPlayApp(options?: {
     beltRefill: togglePortFor(session.commandMapper.assists, 'beltRefill'),
     upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
+    monsterLevel: togglePortFor(hudManager.worldPanels, 'showMonsterLevel'),
     lowLifeWarning: togglePortFor(hudManager, 'lowLifeWarning'),
     smartSkills: togglePortFor(session.commandMapper.assists, 'smartSkills'),
     spendPoints: togglePortFor(pilot, 'spendPoints'),

@@ -1,5 +1,6 @@
 import type { WorldPanelsHud } from '../world-panels.ts'
 import { drawUpgradeMarks, upgradeSuffix } from '../item-badges.ts'
+import { titleWithLevel } from '../monster-level.ts'
 import { D2FontRenderer, type D2ColorCode } from '../font.ts'
 import { getEffectiveItemReqClass, isUiItemUnidentified, type UiInventoryItem } from '../inventory.ts'
 import type { WeaponDamageInfo } from '../../../common/items/inventory-model.ts'
@@ -222,6 +223,7 @@ export interface MonsterTargetHudInfo {
   readonly hp: number
   readonly maxHp: number
   readonly rank?: 'normal' | 'champion' | 'unique' | 'superunique' | 'minion' | 'boss' | undefined
+  readonly level?: number | undefined
   readonly isBoss?: boolean | undefined
   readonly isUndead?: boolean | undefined
   readonly isDemon?: boolean | undefined
@@ -927,7 +929,7 @@ export function drawMonsterTargetBarImpl(
   const canvasWidth = options?.canvasWidth ?? 800
   const locale = options?.locale ?? (this.lang === 'ENG' ? 'en' : 'zh')
 
-  const { paddedTitle, titleColor } = resolveMonsterTitleAndColor(monster, locale)
+  const { paddedTitle, titleColor } = titleWithLevel(resolveMonsterTitleAndColor(monster, locale), this.showMonsterLevel ? monster.level : undefined)
   const textWidth = font.measureText(paddedTitle, 'font16')
   const layout = computeMonsterLifebarLayout(
     canvasWidth,

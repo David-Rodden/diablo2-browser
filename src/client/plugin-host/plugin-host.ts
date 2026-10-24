@@ -126,7 +126,7 @@ export interface PluginHostOptions {
   readonly notify?: PluginNotifyPort | null | undefined
 }
 
-const TOGGLE_PORT_NAMES = ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists', 'lowLifeWarning', 'smartSkills', 'spendPoints'] as const
+const TOGGLE_PORT_NAMES = ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists', 'monsterLevel', 'lowLifeWarning', 'smartSkills', 'spendPoints'] as const
 type TogglePortName = (typeof TOGGLE_PORT_NAMES)[number]
 type SettingPortName = 'autoCombat' | 'townPortal' | 'autopilot' | 'autoPotion' | 'autoLoot' | 'inventoryCare' | 'itemInfo' | 'pathGuide'
 type WiredPortOptions = { readonly [K in TogglePortName | SettingPortName]?: PluginContext[K] | null | undefined }
