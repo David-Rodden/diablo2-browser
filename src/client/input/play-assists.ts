@@ -15,7 +15,7 @@ import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
 import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from './town-portal.ts'
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
-import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
+import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, missingSummons, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
 import { dodgeSpot, hits, threatOf, type Threat } from './danger-dodge.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
@@ -400,6 +400,11 @@ export class PlayAssists {
 
   isFighting(nowMs: number): boolean {
     return (this.autoCombatOn || this.pilotCombat) && !this.host.world.isDead && this.resolveTarget(nowMs) !== null
+  }
+
+  canRaise(): boolean {
+    const self = this.combatSelf()
+    return self.corpsesNear > 0 && missingSummons(self) > 0
   }
 
   keepUp(target: ClientUnit | null, nowMs: number): boolean {

@@ -38,6 +38,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     dodging: () => false,
     inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], wearUpgrades: vi.fn() },
     keepUp: () => false,
+    canRaise: () => false,
     walkTo: vi.fn(),
     use: vi.fn(),
     canCast: () => false,
@@ -393,6 +394,20 @@ describe('autopilot', () => {
     tick()
     expect(guide.pilotStatus).toBe('Stocking up before the Summoner, heading to town')
     expect(assists.castTownPortal).toHaveBeenCalled()
+  })
+
+  it('raises a full army from the corpses around before walking up to a boss, but not forever', () => {
+    const { world, assists, guide, tick } = setup({ step: { kind: 'portal', level: 46, hint: "Take the Summoner's portal", find: [60, 357] }, target: { x: 130, y: 100, label: 'Objective' } })
+    world.areaId = 74
+    Object.assign(guide, { currentPlan: guide.update() })
+    Array.from({ length: 16 }, (_, i) => world.containers.belt.set(i, { id: i, code: 'hp3' }))
+    Object.assign(assists, { canRaise: () => true })
+    tick()
+    expect(guide.pilotStatus).toBe('Raising an army before the Summoner')
+    expect(assists.walkTo).not.toHaveBeenCalled()
+    tick(46_000)
+    tick()
+    expect(guide.pilotStatus).not.toBe('Raising an army before the Summoner')
   })
 
   it('goes training first when the next goal is too dangerous for its level', () => {

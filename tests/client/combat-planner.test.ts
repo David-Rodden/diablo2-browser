@@ -34,6 +34,12 @@ describe('combat planner', () => {
     expect(attackSkill(fire, monster(), anything).skillId).toBe(id('Fire Ball'))
   })
 
+  it('keeps using a melee skill on low mana until it can no longer pay for it', () => {
+    const bash = character({ Bash: 3 }, { manaFraction: 0.2 })
+    expect(attackSkill(bash, monster(), anything).skillId).toBe(id('Bash'))
+    expect(attackSkill(bash, monster(), (skillId) => skillId !== id('Bash')).skillId).toBe(BASIC_ATTACK)
+  })
+
   it('swings instead of casting when mana is low or a nearby monster is nearly dead, but not on a boss', () => {
     const teeth = character({ Teeth: 10 }, { manaFraction: 0.2 })
     expect(attackSkill(teeth, monster(), anything).skillId).toBe(BASIC_ATTACK)

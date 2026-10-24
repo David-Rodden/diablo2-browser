@@ -66,6 +66,7 @@ const PAD_SAME = 4
 const CORPSE_SAME = 3
 const ASSESS_MS = 5000
 const STASH_OPEN_MS = 6000
+const RALLY_MS = 45_000
 const PREP = 'Stocking up before'
 const CORPSE_GONE = 10
 const BODY_GONE_MS = 3000
@@ -211,6 +212,7 @@ export class Autopilot {
   private lastRevive = Number.NEGATIVE_INFINITY
   private bodySeen = Number.NEGATIVE_INFINITY
   private readonly prepared = new Map<string, number>()
+  private rallying: { readonly boss: string; readonly since: number } | null = null
   spendPoints = false
 
   constructor(private readonly host: AutopilotHost) {}
@@ -318,6 +320,15 @@ export class Autopilot {
     Object.assign(this, { trip: 'retreat', retreatWhy: `${PREP} ${boss}, heading to town` })
   }
 
+  private rally(nowMs: number): boolean {
+    const boss = this.bossAhead()
+    if (boss === null || !this.host.assists.canRaise()) return false
+    if (this.rallying?.boss !== boss || nowMs - this.rallying.since > LAIRS.lingerMs) this.rallying = { boss, since: nowMs }
+    if (nowMs - this.rallying.since > RALLY_MS) return false
+    this.say(`Raising an army before ${boss}`)
+    return true
+  }
+
   private assess(nowMs: number): void {
     const { world, guide } = this.host
     const plan = guide.currentPlan
@@ -413,7 +424,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.wounded()) this.say('Waiting to heal before heading out')
-    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private refreshQuests(nowMs: number): void {
