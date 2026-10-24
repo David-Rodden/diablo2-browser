@@ -9,9 +9,19 @@ const id = (name: string) => SKILLS_CATALOG.find((skill) => skill.name === name)
 describe('build plans', () => {
   it('only names skills of their own class', () => {
     CLASS_NAMES.forEach((name, charClass) => {
-      const strangers = (BUILDS as unknown as Record<string, { skills: [string, number][] }>)[name]!.skills.filter(([skill]) => SKILLS_CATALOG.find((entry) => entry.name === skill)?.classCode !== CLASS_CODES[charClass])
+      const strangers = (BUILDS as unknown as Record<string, { builds: { skills: [string, number][] }[] }>)[name]!.builds.flatMap((build) => build.skills).filter(([skill]) => SKILLS_CATALOG.find((entry) => entry.name === skill)?.classCode !== CLASS_CODES[charClass])
       expect(strangers, name).toEqual([])
     })
+  })
+
+  it('follows the build the character is already on, and the default one for a fresh character', () => {
+    const points = (spent: Record<string, number>) => (skillId: number) => Object.entries(spent).find(([name]) => id(name) === skillId)?.[1] ?? 0
+    expect(buildOf(2)?.name).toBe('Bone')
+    expect(buildOf(2, points({ 'Raise Skeleton': 8, 'Skeleton Mastery': 4, 'Amplify Damage': 1, Teeth: 1 }))?.name).toBe('Summoner')
+    expect(buildOf(1, points({ 'Ice Bolt': 6, 'Frozen Armor': 1, 'Fire Bolt': 1 }))?.name).toBe('Cold')
+    expect(buildOf(2, points({ 'Raise Skeleton': 8, 'Skeleton Mastery': 4 }))!.skills.some(([name]) => name === 'Bone Spear')).toBe(false)
+    const summoner = buildOf(2, points({ 'Raise Skeleton': 4, 'Skeleton Mastery': 1, 'Amplify Damage': 1, 'Clay Golem': 1 }))!
+    expect(nextSkill(summoner, points({ 'Raise Skeleton': 4, 'Skeleton Mastery': 1, 'Amplify Damage': 1, 'Clay Golem': 1 }), () => true)).toBe(id('Teeth'))
   })
 
   it('learns the prerequisites on the way to a skill, and saves the point while the next one is locked', () => {

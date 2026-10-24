@@ -30,6 +30,14 @@ describe('training before a hard goal', () => {
     expect(trainingGround(BLOOD_MOOR, me(1), new Set(), new Set())).toBeNull()
   })
 
+  it('goes where it measured the best experience, and tries unmeasured areas before settling', () => {
+    const nearest = trainingGround(COLD_PLAINS, me(12), new Set([1, 3, 4]), new Set())!
+    const rival = trainingGround(COLD_PLAINS, me(12), new Set([1, 3, 4]), new Set([nearest]))!
+    expect(trainingGround(COLD_PLAINS, me(12), new Set([1, 3, 4]), new Set(), (area) => (area === rival ? 0.05 : area === nearest ? 0.01 : undefined))).not.toBe(nearest)
+    const everything = (area: number) => (area === rival ? 0.05 : 0.01)
+    expect(trainingGround(COLD_PLAINS, me(12), new Set([1, 3, 4]), new Set(), everything)).toBe(rival)
+  })
+
   it('counts a retreat as half a death and moves on from areas that give too little experience', () => {
     expect(readiness(me(20), ARCANE, setbacksOf(1, 2))).toMatchObject({ level: 22 })
     expect(readiness(me(20), ARCANE, setbacksOf(0, 3))).toBeNull()
