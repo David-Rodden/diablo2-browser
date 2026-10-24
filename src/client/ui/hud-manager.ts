@@ -19,6 +19,7 @@
  * - `hud-world-overlays.ts`: Main HUD frame renderer, ground item beams, speech bubbles, chat & cursor layer
  */
 
+import type { PotionShortageKind } from './potion-shortage-badge.ts'
 import { D2FontRenderer } from './font.ts'
 import type { GroundItemLabelBox } from '../../common/items/ground-items.ts'
 import { GlobesHud } from './globes.ts'
@@ -30,9 +31,19 @@ import { BAKED_UI_MANIFEST } from '../../common/items/baked-ui-meta.ts'
 import { resolveHirelingName } from '../../common/units/hireling-table.ts'
 import {
   InventoryPanel,
+  canPlayerUseUiItem,
+  isUiItemUnidentified,
   type EquipSlotId,
   type UiInventoryItem,
 } from './inventory.ts'
+import { upgradeVerdict, type BuildProfile, type UpgradeVerdict } from '../../common/items/item-comparison.ts'
+import { XpGainFeed, XpRateTracker } from './xp-bar.ts'
+import { ToastFeed } from './toasts.ts'
+import type { AutomapHudFootprint } from './minimap.ts'
+import { onlineItemDataToUiInventoryItem } from '../../common/items/item-bridge.ts'
+import type { ItemData } from '../../netproto/index.ts'
+import { groundItemBadges, isLootHidden, type ItemInfoConfig } from './ground-item-info.ts'
+import { badgesWidth, type ItemBadge } from './item-badges.ts'
 import { D2_EXPERIENCE_TABLE_99 } from '../../common/skills/formulas.ts'
 import { CharacterSheetPanel, type BaseStatKey } from './character-sheet.ts'
 import { SkillTreePanel } from './skill-tree-panel.ts'
@@ -154,6 +165,7 @@ import {
   LEVEL_ENTRY_TITLE_ATLAS,
   LEVEL_ENTRY_TITLE_KEY_BY_LEVEL,
 } from '../../common/world/level-entry-titles-113c.ts'
+import { SharedAssetPool } from '../multibox/shared-asset-pool.ts'
 
 export * from './hud-viewport-layout.ts'
 export * from './hud-gold-dialog.ts'
@@ -307,6 +319,7 @@ export interface HudCommandSink {
   vendorRepairAll(): void
   /** Gold dialog mode 3: `0x4F` button 0x14. */
   depositGold(amount: number): void
+  depositAllToStash?(): Promise<unknown>
   /** Gold dialog mode 4: `0x4F` button 0x13. */
   withdrawGold(amount: number): void
   /** Stash panel closed: `0x4F` button 0x12 (no reply). */
@@ -361,7 +374,7 @@ export class HudManager {
   readonly inventory = new InventoryPanel()
   readonly charSheet = new CharacterSheetPanel()
   readonly skillTree = new SkillTreePanel()
-  readonly worldPanels = new WorldPanelsHud()
+  readonly worldPanels = Object.assign(new WorldPanelsHud(), { upgradeVerdictFor: (item: UiInventoryItem) => this.upgradeVerdictFor(item) })
   readonly cursor = new CursorController()
   readonly touchControls = new TouchControlsHud()
 
@@ -402,7 +415,14 @@ export class HudManager {
     }
   }
   isRunning = true
-  showGroundLabels = false
+  itemInfo: ItemInfoConfig | null = null
+  private altGroundLabels = false
+  get showGroundLabels(): boolean {
+    return this.altGroundLabels || Boolean(this.itemInfo?.alwaysShow)
+  }
+  set showGroundLabels(shown: boolean) {
+    this.altGroundLabels = shown
+  }
   /** Screen-space (800x600 viewport) ground item label boxes laid out for the current frame. */
   groundItemLabelBoxes: readonly GroundItemLabelBox[] = []
   /** Screen-space (logical viewport) Diablo III-style loot beams for Unique/Set ground items (Issue #957). */
@@ -445,6 +465,19 @@ export class HudManager {
 
   /** Server-authoritative death / mercenary / party / trade state synced by `HudModel`. */
   isDead = false
+  /**
+   * When `true` (Standalone Trade Hall `/trade.html`), `HudManager`:
+   * - loads only the 16 Trade Hall panel/item/cursor images + fonts (`loadAssets(baseUrl, { tradeHallOnly: true })`)
+   * - skips control bar, globes, belt, skill speedbar, portraits, and level-entry title rendering
+   * - keeps the Right-Half Dock (`invchar6.dc6` Inventory) open alongside the Left-Half Dock (`stash` / `trade` / `cube`)
+   * - blocks accidental `dropItem` onto the unrendered town ground when clicking outside panels with a `cursorItem`.
+   */
+  tradeHallMode = false
+  /** Optional status text displayed on the Left-Half Dock when `tradeHallMode` is true and `leftPanel === 'none'`. */
+  tradeHallIdleHint: {
+    readonly title: string
+    readonly subtitle?: string | undefined
+  } | null = null
   merc: any = null
   hireList: readonly any[] = []
   mercHireList: readonly any[] = []
@@ -482,6 +515,19 @@ export class HudManager {
   chatInputOpen = false
   /** D2Client.dll `0x6fb8a468` (`g_wszChatInputBuffer`): active typed string in in-game chat input box. */
   chatInputText = ''
+  showXpBar = false
+  readonly xpRate = new XpRateTracker()
+  readonly xpGains = new XpGainFeed()
+  readonly toasts = new ToastFeed()
+  lowLifeWarning = false
+  upgradeHints = false
+  resolveGroundItem: ((unitId: number) => ItemData | undefined) | null = null
+  resolveBuild: (() => BuildProfile) | null = null
+  private readonly groundUiItems = new WeakMap<ItemData, UiInventoryItem>()
+  private upgradeVerdicts = new Map<UiInventoryItem, UpgradeVerdict | null>()
+  private upgradeMarkersKey = ''
+  autoCombatBadge: { readonly on: boolean; readonly key: string } | null = null
+  potionShortage: PotionShortageKind | null = null
   currentFps = 0
   pingMs = 0
   trade: any = null
@@ -516,6 +562,7 @@ export class HudManager {
   private decodedDc6Count = 415
   private dc6DecodeFailures = 0
   private eventsBound = false
+  private inputFocused = true
   /** #954: `[target, type, handler, options]` tuples registered by `bindEvents` for `dispose()`. */
   private readonly boundWindowEvents: [
     Window | HTMLCanvasElement,
@@ -653,6 +700,13 @@ export class HudManager {
    * Hard points, bonus levels and quickbar skills are cleared; `HudModel` rebuilds them from the server skill list.
    */
   setCharacterClass(classCode: CharacterClassCode): void {
+    if (this.tradeHallMode) {
+      this.currentClass = classCode
+      this.charSheet.classCode = classCode
+      this.inventory.updatePlayerContext({ classCode })
+      this.syncPublishedState()
+      return
+    }
     if (this.currentClass === classCode && this.skillTree.characterClass === classCode) {
       this.hotkeys.preloadClassSkillIcons(classCode)
       return
@@ -820,7 +874,7 @@ export class HudManager {
       font: D2FontRenderer,
       logicalWidth: number,
       logicalHeight: number,
-    ) => void
+    ) => AutomapHudFootprint | null | void
     onCastTownPortal?: (source?: 'tbk' | 'tsc', item?: UiInventoryItem) => boolean | void
     onDropItemToGround?: (item: UiInventoryItem, mousePos?: { x: number; y: number }) => void
     onDropGoldToGround?: (amount: number, mousePos?: { x: number; y: number }) => void
@@ -842,7 +896,7 @@ export class HudManager {
         font: D2FontRenderer,
         logicalWidth: number,
         logicalHeight: number,
-      ) => void
+      ) => AutomapHudFootprint | null | void
       onCastTownPortal?: (source?: 'tbk' | 'tsc', item?: UiInventoryItem) => boolean | void
       onDropItemToGround?: (item: UiInventoryItem, mousePos?: { x: number; y: number }) => void
       onDropGoldToGround?: (amount: number, mousePos?: { x: number; y: number }) => void
@@ -973,6 +1027,9 @@ export class HudManager {
         this.charSheet.advancedStatsOpen = false
       }
     }
+    if (typeof patch.showRuneNumbers === 'boolean') {
+      this.worldPanels.showRuneNumbers = patch.showRuneNumbers
+    }
   }
 
   getHudEnhancements(): HudEnhancementsConfig {
@@ -982,6 +1039,7 @@ export class HudManager {
       showStatGainTooltips: this.charSheet.showStatGainTooltips,
       showWeaponDamageFormula: this.worldPanels.showWeaponDamageFormula,
       showAdvancedStatsButton: this.charSheet.showAdvancedStatsButton,
+      showRuneNumbers: this.worldPanels.showRuneNumbers,
     }
   }
 
@@ -1064,9 +1122,18 @@ export class HudManager {
     this.handleHudMouseDown(fakeEvent)
   }
 
-  async init(baseUrl = '/ui'): Promise<void> {
-    this.hotkeys.preloadSkillIcons()
-    this.skillTree.preloadAssets()
+  async init(
+    baseUrl = '/ui',
+    options?: { readonly tradeHallOnly?: boolean | undefined },
+  ): Promise<void> {
+    if (options?.tradeHallOnly) {
+      this.tradeHallMode = true
+      this.rightPanel = 'inv'
+      this.inventory.visible = true
+    } else {
+      this.hotkeys.preloadSkillIcons()
+      this.skillTree.preloadAssets()
+    }
 
     try {
       await this.font.load(`${baseUrl}/fonts`)
@@ -1108,7 +1175,30 @@ export class HudManager {
       // Fallback to default 128x35 2-frame mediumbuttonblank dimensions
     }
 
-    const imageFiles: Record<string, string> = {
+    const tradeHallImageFiles: Record<string, string> = {
+      borderLeft: `${baseUrl}/border-left.png`,
+      borderRight: `${baseUrl}/border-right.png`,
+      invSheet: `${baseUrl}/inv-sheet.png`,
+      invTab0: `${baseUrl}/inv-tab-0.png`,
+      invTab1: `${baseUrl}/inv-tab-1.png`,
+      stashBg: `${baseUrl}/stash-bg.png`,
+      cubeBg: `${baseUrl}/cube-bg.png`,
+      tradeBg: `${baseUrl}/trade-bg.png`,
+      tradeBtn: `${baseUrl}/tradebtn.png`,
+      buySellBtn: `${baseUrl}/buysellbtn.png`,
+      goldCoinBtn: `${baseUrl}/goldcoinbtn.png`,
+      boxPieces: `${baseUrl}/boxpieces.png`,
+      cursorHand: `${baseUrl}/cursor-hand.png`,
+      cursorAtlas: `${baseUrl}/cursor.png`,
+      itemsAtlas: `${baseUrl}/items-atlas.png`,
+      gemSocket: `${baseUrl}/gemsocket.png`,
+      btnMedium: `${baseUrl}/frontend/btn-medium.png`,
+      mediumButtonBlank: `${baseUrl}/frontend/btn-medium.png`,
+    }
+
+    const imageFiles: Record<string, string> = options?.tradeHallOnly
+      ? tradeHallImageFiles
+      : {
       ctrlPnl: `${baseUrl}/ctrlpnl-800.png`,
       ctrlPnl640: `${baseUrl}/ctrlpnl-640.png`,
       globeLife: `${baseUrl}/globe-life.png`,
@@ -1184,23 +1274,14 @@ export class HudManager {
       levelEntryTitles: `${baseUrl}/${LEVEL_ENTRY_TITLE_ATLAS.image}`,
     }
 
+    const pool = SharedAssetPool.getGlobal()
     await Promise.all(
-      Object.entries(imageFiles).map(
-        ([key, src]) =>
-          new Promise<void>((resolve) => {
-            if (typeof Image === 'undefined') {
-              resolve()
-              return
-            }
-            const img = new Image()
-            img.onload = () => {
-              this.images.set(key, img)
-              resolve()
-            }
-            img.onerror = () => resolve()
-            img.src = src
-          }),
-      ),
+      Object.entries(imageFiles).map(async ([key, src]) => {
+        const img = await pool.loadImage(src)
+        if (img) {
+          this.images.set(key, img)
+        }
+      }),
     )
 
     this.bindEvents()
@@ -1275,7 +1356,7 @@ export class HudManager {
     if ((this.goldDialog?.mode === 3 || this.goldDialog?.mode === 4) && kind === 'stash') {
       this.goldDialog = null
     }
-    if (this.rightPanel === 'inv') {
+    if (this.rightPanel === 'inv' && !this.tradeHallMode) {
       this.rightPanel = 'none'
       this.inventory.visible = false
     }
@@ -1798,6 +1879,15 @@ export class HudManager {
     return drinkHudBeltSlot(this, col, shiftToMerc)
   }
 
+  drinkInventoryPotion(itemId: number, code: string): boolean {
+    const sink = this._commandSink
+    if (!sink) return false
+    this.playItemUseUiSound(code)
+    if (sink.onUseInventoryItem) sink.onUseInventoryItem(itemId)
+    else sink.useItem(itemId)
+    return true
+  }
+
   private triggerResurrect(): void {
     triggerHudResurrect(this)
   }
@@ -1806,6 +1896,18 @@ export class HudManager {
     rawEvent: KeyboardEvent | { key: string; preventDefault?: () => void; target?: any } | string,
   ): void {
     handleHudKeyDown(this, rawEvent)
+  }
+
+  isInputFocused(): boolean {
+    return this.inputFocused
+  }
+
+  setInputFocused(focused: boolean): void {
+    this.inputFocused = focused
+    if (!focused && this.showGroundLabels) {
+      this.showGroundLabels = false
+      this.syncPublishedState()
+    }
   }
 
   private bindEvents(): void {
@@ -1870,6 +1972,45 @@ export class HudManager {
 
   private computeActiveSkillDmgString(skillId: number): string {
     return computeHudSkillDamageString(skillId, this)
+  }
+
+  upgradeVerdictFor(item: UiInventoryItem): UpgradeVerdict | null {
+    if (!this.upgradeHints) return null
+    const context = this.inventory.playerContext
+    const build = this.resolveBuild?.()
+    const key = `${Object.values(this.inventory.equipped).map((e) => (typeof e === 'object' && e ? e.id : '-')).join(',')}|${JSON.stringify(context)}|${build?.classIndex}:${[...(build?.skillPoints ?? [])].join(';')}`
+    if (key !== this.upgradeMarkersKey) [this.upgradeVerdicts, this.upgradeMarkersKey] = [new Map(), key]
+    if (!this.upgradeVerdicts.has(item)) {
+      const unidentified = isUiItemUnidentified(item)
+      const requirementsView = unidentified ? { ...item, identified: true, isGambleMystery: false, rawItem: undefined } : item
+      this.upgradeVerdicts.set(item, upgradeVerdict(item, this.inventory.equipped, { canUse: canPlayerUseUiItem(requirementsView, context), unidentified, ...(build ? { build } : {}) }))
+    }
+    return this.upgradeVerdicts.get(item) ?? null
+  }
+
+  setItemInfo(config: ItemInfoConfig | null): void {
+    this.itemInfo = config
+    this.worldPanels.showItemLevel = Boolean(config?.itemLevel)
+  }
+
+  private groundUiItem(data: ItemData): UiInventoryItem {
+    return this.groundUiItems.get(data) ?? this.groundUiItems.set(data, onlineItemDataToUiInventoryItem(data)).get(data)!
+  }
+
+  groundLabelBadges(unitId: number): readonly ItemBadge[] {
+    const data = this.resolveGroundItem?.(unitId)
+    const verdict = data ? this.upgradeVerdictFor(this.groundUiItem(data)) : null
+    return [...(verdict ? [{ kind: 'upgrade', verdict } as const] : []), ...(data && this.itemInfo?.labelDetails ? groundItemBadges(data) : [])]
+  }
+
+  groundLabelBadgesWidth(unitId: number): number {
+    return badgesWidth(this.groundLabelBadges(unitId), this.font)
+  }
+
+  hidesGroundItem(unitId: number): boolean {
+    const filter = this.itemInfo?.lootFilter ?? 'off'
+    const data = filter === 'off' ? undefined : this.resolveGroundItem?.(unitId)
+    return data !== undefined && isLootHidden(data, this.groundUiItem(data).allowedSlots.length > 0, filter)
   }
 
   private buildControlBarState() {

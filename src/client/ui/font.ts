@@ -930,6 +930,17 @@ export class D2FontRenderer {
     return total
   }
 
+  renderedWidth(ctx: CanvasRenderingContext2D, text: string, font: D2FontName = 'font16'): number {
+    const spans = parseColoredText(text)
+    if (typeof ctx.measureText !== 'function' || this.hasAnyBlitableGlyph(font, spans)) return this.measureText(text, font)
+    const pxSize = this.hdText && this.hdTextScale !== 1 ? Math.max(1, Math.round(FONT_PX_SIZE[font] * this.hdTextScale)) : FONT_PX_SIZE[font]
+    ctx.save()
+    ctx.font = `${font === 'font16' || font === 'font30' || font === 'fontexocet10' ? 'bold ' : ''}${pxSize}px ${font === 'fontformal12' ? D2_FORMAL_FONT_STACK : D2_EXOCET_FONT_STACK}`
+    const width = spans.reduce((sum, span) => sum + ctx.measureText(span.text).width, 0)
+    ctx.restore()
+    return Math.ceil(width)
+  }
+
   private canBlitGlyph(meta: FontAtlasMeta, rawCode: number): boolean {
     const code = normalizeDc6CharCode(rawCode)
     const g = code < 256 ? meta.glyphs[code] : undefined

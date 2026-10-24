@@ -290,21 +290,25 @@ export class BootProgressTracker {
   private bindOrCreateDom(): void {
     if (typeof document === 'undefined') return
 
-    let overlay = document.getElementById('d2-boot-loading')
+    let overlay =
+      (this.stageEl
+        ? (this.stageEl.querySelector('#d2-boot-loading, .d2-boot-loading') as HTMLElement | null)
+        : null) ?? document.getElementById('d2-boot-loading')
     if (!overlay && this.stageEl) {
       overlay = document.createElement('div')
       overlay.id = 'd2-boot-loading'
+      overlay.className = 'd2-boot-loading'
       overlay.innerHTML = [
         '<div class="d2-boot-panel">',
         '  <div class="d2-boot-title">DIABLO II: LORD OF DESTRUCTION</div>',
         '  <div class="d2-boot-subtitle">正在下载游戏资源 · LOADING RESOURCES</div>',
-        '  <div id="d2-boot-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">',
-        '    <div id="d2-boot-progress-fill" style="width: 0%"></div>',
-        '    <div id="d2-boot-progress-percent">0%</div>',
+        '  <div id="d2-boot-progress-bar" class="d2-boot-bar-bg" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">',
+        '    <div id="d2-boot-progress-fill" class="d2-boot-bar-fill" style="width: 0%"></div>',
+        '    <div id="d2-boot-progress-percent" class="d2-boot-pct">0%</div>',
         '  </div>',
         '  <div class="d2-boot-meta">',
         '    <span class="d2-boot-file-label">正在下载:</span>',
-        '    <span id="d2-boot-progress-file">正在初始化...</span>',
+        '    <span id="d2-boot-progress-file" class="d2-boot-phase">正在初始化...</span>',
         '    <span id="d2-boot-progress-count">(0/0)</span>',
         '  </div>',
         '</div>',
@@ -313,11 +317,14 @@ export class BootProgressTracker {
     }
 
     this.overlayEl = overlay
-    this.barEl = document.getElementById('d2-boot-progress-bar')
-    this.fillEl = document.getElementById('d2-boot-progress-fill')
-    this.percentEl = document.getElementById('d2-boot-progress-percent')
-    this.fileEl = document.getElementById('d2-boot-progress-file')
-    this.countEl = document.getElementById('d2-boot-progress-count')
+    const q = (selector: string, fallbackId: string): HTMLElement | null =>
+      (overlay ? (overlay.querySelector(selector) as HTMLElement | null) : null) ??
+      document.getElementById(fallbackId)
+    this.barEl = q('#d2-boot-progress-bar, .d2-boot-bar-bg', 'd2-boot-progress-bar')
+    this.fillEl = q('#d2-boot-progress-fill, .d2-boot-bar-fill', 'd2-boot-progress-fill')
+    this.percentEl = q('#d2-boot-progress-percent, .d2-boot-pct', 'd2-boot-progress-percent')
+    this.fileEl = q('#d2-boot-progress-file, .d2-boot-phase', 'd2-boot-progress-file')
+    this.countEl = q('#d2-boot-progress-count', 'd2-boot-progress-count')
     this.renderDom()
   }
 

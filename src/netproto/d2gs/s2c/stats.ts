@@ -100,14 +100,17 @@ export function decode0x1BExpWord(pkt: Uint8Array): ServerEvent {
   }
 }
 
-/** 0x1C AddExpDword (5B, D2Client.dll 0x6fb5edf0) */
+/**
+ * 0x1C SetExpDword (5B, D2Client.dll 0x6fb5edf0 / 0x6fb5ee80, D2Game.dll 0x6fcabda0 / 0x6fcabdd6):
+ * Unlike 0x1A (u8 delta) and 0x1B (u16 delta), 0x1C carries the absolute 32-bit total experience.
+ */
 export function decode0x1CExpDword(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8()
   return {
     type: 'Experience',
     value: r.u32LE(),
-    isDelta: true,
+    isDelta: false,
   }
 }
 

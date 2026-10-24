@@ -3,6 +3,7 @@
  * Gitea Tracking Issue: #187
  */
 import { describe, expect, it } from 'vitest'
+import { resolveUnitPierceTotal, rollMissilePierceIdx } from '../../../src/server/engine/missile-pierce.ts'
 import { getSharedDataRegistry } from '../../../src/baker/mpq-archive-source.ts'
 import { UnitStatList } from '../../../src/server/engine/stat-list.ts'
 import { WorldArena } from '../../../src/server/engine/world-arena.ts'
@@ -136,7 +137,7 @@ describe('[Skill #033] Pierce (AMA) — 1.13c Parity (Issue #187)', () => {
     expect(gaPierceLvl20.chancePct).toBe(86)
   })
 
-  it('uses 1.13c dm(10, 100, slvl) + item_pierce in registry and respects pierceChancePct and 4-pierce cap in MissileEngine', async () => {
+  it('rolls the 1.13c pierce_idx once at creation from Skills.txt dm12 skill_pierce + item_pierce (Issue #1420)', async () => {
     const registry = await getSharedDataRegistry()
     const arena = new WorldArena({
       registry,
@@ -149,6 +150,13 @@ describe('[Skill #033] Pierce (AMA) — 1.13c Parity (Issue #187)', () => {
     arena.triggerCast()
     const missiles = arena.missileEngine.getActiveMissiles()
     expect(missiles.length).toBeGreaterThanOrEqual(1)
-    expect(missiles[0]!.pierceChancePct).toBe(95) // 86 + 9 = 95 (not old linear 25 + 20*3 = 85)
+    // Skills.txt Pierce (#33) passivecalc1 = dm12 (10, 100): slvl 20 -> 86, + 9 item_pierce = 95.
+    expect(resolveUnitPierceTotal(arena.player, registry)).toBe(95)
+    // The cast advanced the caster's base pierce_idx attack counter (`0x6FCEE520`), which seeds the roll (`0x6FC8F660`).
+    const seed = arena.player.statList.getBaseStat('pierce_idx')
+    expect(seed).toBeGreaterThan(0)
+    // Remaining + already consumed pierces (the arena may already have stepped the missile into a target).
+    expect(missiles[0]!.pierceIdx + missiles[0]!.pierceCount).toBe(rollMissilePierceIdx(95, seed))
+    expect(missiles[0]!.pierceIdx).toBeLessThanOrEqual(4)
   })
 })

@@ -10,6 +10,8 @@
  * - 0x6fad0fa0 -> 0x6fad0a60 umod 40 painwormdeath: 0x75 monstercorpseexplode + 0x221 'pain worm appear'.
  */
 
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { ClientWorld } from '../src/client/world/client-world.ts'
@@ -23,7 +25,7 @@ import {
   calcColdEnchantedDeathNova,
 } from '../src/common/units/monster-death-fx.ts'
 
-const D2CLIENT = '/usr/local/google/home/taodao/d2-data/D2Client.dll'
+const D2CLIENT = join(homedir(), 'd2-data', 'D2Client.dll')
 
 function readD2ClientRdataInts(va: number, n: number): number[] | null {
   let buf: Buffer

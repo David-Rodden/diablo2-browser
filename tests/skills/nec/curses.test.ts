@@ -305,6 +305,7 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
 
     it('verifies computeEffectiveResistance under Amplify Damage physical pierce', () => {
       const res = computeEffectiveResistance({
+        isDefenderPlayer: false,
         baseRes: 110,
         convictionPierce: 100, // 1/5th penalty applies
       })
@@ -527,7 +528,7 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
         flatPhysMin256: 100 * FIXED_ONE,
         flatPhysMax256: 100 * FIXED_ONE,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
 
       expect(outcome.hit).toBe(true)
       expect(outcome.physDamage256).toBe(100 * FIXED_ONE)
@@ -585,7 +586,7 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
         flatPhysMin256: 100 * FIXED_ONE,
         flatPhysMax256: 100 * FIXED_ONE,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
 
       // Raw reflected: 100 * 200% = 200. Mitigated by attacker's 50% phys res: 200 * (100 - 50)% = 100!
       expect(outcome.reflectedPhys256).toBe(100 * FIXED_ONE)
@@ -790,7 +791,7 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
         flatPhysMin256: 100 * FIXED_ONE,
         flatPhysMax256: 100 * FIXED_ONE,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       // 100 * floor(200 / 4)% = 50 reflected damage
       expect(outcome.reflectedPhys256).toBe(50 * FIXED_ONE)
     })
@@ -834,7 +835,7 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
         flatPhysMin256: 100 * FIXED_ONE,
         flatPhysMax256: 100 * FIXED_ONE,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       // Base 100 * (100 + 100 [Might] - 50 [Decrepify]) / 100 = 150 physical damage
       expect(outcome.physDamage256).toBe(150 * FIXED_ONE)
     })

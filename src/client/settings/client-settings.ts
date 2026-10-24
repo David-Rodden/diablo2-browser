@@ -64,6 +64,7 @@ export type WeatherOverrideSetting = 'off' | 'rain' | 'snow'
 export type LightQualitySetting = 0 | 1 | 2
 export type HudLayoutMode = 'auto' | 'classic' | 'compact-d2r'
 export type SkillWheelBankMode = 'toggle' | 'hold'
+export type MultiboxAudioFocusPolicy = 'focus-only' | 'all'
 
 export interface HudEnhancementsConfig {
   readonly showBasePlusBonusStats: boolean
@@ -71,6 +72,7 @@ export interface HudEnhancementsConfig {
   readonly showStatGainTooltips: boolean
   readonly showWeaponDamageFormula: boolean
   readonly showAdvancedStatsButton: boolean
+  readonly showRuneNumbers: boolean
 }
 
 export interface AutomapRadarConfig {
@@ -105,13 +107,18 @@ export interface ClientSettings
   readonly showItemLevel: boolean // default: true
   readonly showSocketCount: boolean // default: true
   readonly showEtherealTag: boolean // default: true
-  readonly showRuneNumbers: boolean // default: true
   readonly extraItemContext: boolean // default: true
   readonly keyBindings: KeyBindingsConfig
   readonly hudLayoutMode?: HudLayoutMode | undefined
   readonly skillWheelBankMode?: SkillWheelBankMode | undefined
   readonly mobileAutoPickupGoldAndPotions?: boolean | undefined
   readonly mobileHapticsEnabled?: boolean | undefined
+  /** Single-Tab multi-instance (multibox) architecture (#1362): disabled by default, manually enabled in config. */
+  readonly multiboxEnabled?: boolean | undefined
+  /** Audio focus policy across multibox instances (#1363): 'focus-only' (default) or 'all'. */
+  readonly multiboxAudioFocusPolicy?: MultiboxAudioFocusPolicy | undefined
+  /** Whether background survival alert sounds are enabled when non-focused instances take damage (#1363). */
+  readonly multiboxAlertSoundEnabled?: boolean | undefined
 }
 
 export const VALID_LIGHTING_PRESETS: readonly ClientLightingPreset[] = [
@@ -170,6 +177,9 @@ export const VALID_WEATHER_OVERRIDES: readonly WeatherOverrideSetting[] = ['off'
 export const DEFAULT_LIGHT_QUALITY: LightQualitySetting = 2
 export const DEFAULT_AUDIO_MUTED = false
 export const DEFAULT_MASTER_VOLUME = 0.8
+export const DEFAULT_MULTIBOX_ENABLED = false
+export const DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY: MultiboxAudioFocusPolicy = 'focus-only'
+export const DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED = true
 
 export function createDefaultClientSettings(defaultLang?: GameLang): ClientSettings {
   return {
@@ -198,9 +208,12 @@ export function createDefaultClientSettings(defaultLang?: GameLang): ClientSetti
     showItemLevel: true,
     showSocketCount: true,
     showEtherealTag: true,
-    showRuneNumbers: true,
+    showRuneNumbers: false,
     extraItemContext: true,
     keyBindings: createDefaultKeyBindings(),
+    multiboxEnabled: DEFAULT_MULTIBOX_ENABLED,
+    multiboxAudioFocusPolicy: DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY,
+    multiboxAlertSoundEnabled: DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED,
   }
 }
 
@@ -230,9 +243,12 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
   showItemLevel: true,
   showSocketCount: true,
   showEtherealTag: true,
-  showRuneNumbers: true,
+  showRuneNumbers: false,
   extraItemContext: true,
   keyBindings: DEFAULT_KEY_BINDINGS,
+  multiboxEnabled: DEFAULT_MULTIBOX_ENABLED,
+  multiboxAudioFocusPolicy: DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY,
+  multiboxAlertSoundEnabled: DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED,
 }
 
 export type ServerHostValidationErrorReason =
@@ -626,6 +642,16 @@ export function sanitizeClientSettings(
     typeof rec.mobileHapticsEnabled === 'boolean'
       ? rec.mobileHapticsEnabled
       : undefined
+  const multiboxEnabled: boolean =
+    typeof rec.multiboxEnabled === 'boolean' ? rec.multiboxEnabled : DEFAULT_MULTIBOX_ENABLED
+  const multiboxAudioFocusPolicy: MultiboxAudioFocusPolicy =
+    rec.multiboxAudioFocusPolicy === 'all' || rec.multiboxAudioFocusPolicy === 'focus-only'
+      ? rec.multiboxAudioFocusPolicy
+      : DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY
+  const multiboxAlertSoundEnabled: boolean =
+    typeof rec.multiboxAlertSoundEnabled === 'boolean'
+      ? rec.multiboxAlertSoundEnabled
+      : DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED
 
   return {
     version: 1,
@@ -656,6 +682,9 @@ export function sanitizeClientSettings(
     showRuneNumbers,
     extraItemContext,
     keyBindings,
+    multiboxEnabled,
+    multiboxAudioFocusPolicy,
+    multiboxAlertSoundEnabled,
     ...(hudLayoutMode !== undefined ? { hudLayoutMode } : {}),
     ...(skillWheelBankMode !== undefined ? { skillWheelBankMode } : {}),
     ...(mobileAutoPickupGoldAndPotions !== undefined ? { mobileAutoPickupGoldAndPotions } : {}),

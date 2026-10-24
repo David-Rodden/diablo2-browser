@@ -225,6 +225,8 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       attackKind: 'melee',
       srcDam: 128,
       roll100: 0,
+      masteryCritRoll100: 0,
+      rng: { rand: () => 0 },
     })
     expect(hitMatchingCrit.hit).toBe(true)
     expect(hitMatchingCrit.totalDamage).toBe(346)
@@ -236,6 +238,8 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       attackKind: 'melee',
       srcDam: 128,
       roll100: 50,
+      masteryCritRoll100: 50,
+      rng: { rand: () => 50 },
     })
     expect(hitMatchingNoCrit.totalDamage).toBe(173)
 
@@ -247,6 +251,8 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       attackKind: 'melee',
       srcDam: 128,
       roll100: 0,
+      masteryCritRoll100: 0,
+      rng: { rand: () => 0 },
     })
     expect(hitNonMatching.totalDamage).toBe(100)
 
@@ -260,6 +266,8 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       attackKind: 'melee',
       srcDam: 128,
       roll100: 0,
+      masteryCritRoll100: 0,
+      rng: { rand: () => 0 },
     })
     expect(hitCsPlusDs.totalDamage).toBe(346)
     expect(calculateEffectiveCriticalStrike(50, 50)).toBe(75)
@@ -273,6 +281,8 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       physToElemPct: 100,
       elemType: 'mag',
       roll100: 0,
+      masteryCritRoll100: 0,
+      rng: { rand: () => 0 },
     })
     expect(hitBerserkCrit.physDamage256).toBe(0)
     expect(hitBerserkCrit.elemDamage256).toBe(346 * FIXED_ONE)
@@ -314,6 +324,8 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       attackKind: 'missile',
       srcDam: 128,
       roll100: 50, // no crit
+      masteryCritRoll100: 50,
+      rng: { rand: () => 50 },
     })
     expect(hitThrow.totalDamage).toBe(173)
 

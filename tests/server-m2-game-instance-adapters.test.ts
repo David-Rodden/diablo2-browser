@@ -180,6 +180,41 @@ describe('M2: LocalLoopbackAdapter & LocalLobbyProvider', () => {
     expect(handle!.adapter).toBeInstanceOf(LocalLoopbackAdapter)
     handle!.stop?.()
   })
+
+  it('persists /players N across consecutive new games in OnlineSession and LocalLobbyProvider (Issue #1407)', async () => {
+    const lobby = new LocalLobbyProvider({ seed: 777 })
+    await lobby.createCharacter({ name: 'PlayersPersistHero', charClass: 1 })
+    const session = new OnlineSession()
+
+    // Game 1: starts at default playersX = 1, then player sets /players 6
+    const adapter1 = await lobby.enterGame({ charName: 'PlayersPersistHero', difficulty: 0 })
+    session.attachGameServer(adapter1)
+    adapter1.stepFrame()
+    expect(adapter1.getPlayersX()).toBe(1)
+
+    expect(session.submitChatInput('/players 6', 1_000)).toBe(true)
+    adapter1.stepFrame()
+    expect(adapter1.getPlayersX()).toBe(6)
+    expect(lobby.getPersistedPlayersX()).toBe(6)
+    expect(
+      session.world.activeChatOverlayEntries.filter((m) => m.text === 'players set to 6'),
+    ).toHaveLength(1)
+
+    await session.leaveGame()
+
+    // Game 2: entering a new game automatically inherits /players 6 without manual input
+    const adapter2 = await lobby.enterGame({ charName: 'PlayersPersistHero', difficulty: 0 })
+    expect(adapter2.getPlayersX()).toBe(6)
+    session.attachGameServer(adapter2)
+    adapter2.stepFrame()
+
+    expect(adapter2.getPlayersX()).toBe(6)
+    expect(
+      session.world.activeChatOverlayEntries.filter((m) => m.text === 'players set to 6'),
+    ).toHaveLength(1)
+
+    await session.leaveGame()
+  })
 })
 
 describe('M2: AoiFilter, PartyManager, RoomClientSession & MultiClientRoomHost', () => {

@@ -179,6 +179,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
   let selectedCharName = ''
   let selectedCharClass = 0
   let selectedCharHardcore = false
+  let lastRealmTitle = ''
   let knownChars: readonly CharSummary[] = []
   let lost: D2OnlineSessionLost | null = null
   /** BNCS/MCP loss seen while a D2GS game runs: reported when that game ends instead of aborting it. */
@@ -297,6 +298,40 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
     return new ProtocolError(`D2OnlineFlow was closed while ${SESSION_LABEL[kind]} was connecting`, { proto: kind })
   }
 
+  /**
+   * Per `D2Launch.dll` (`0x6fa5ac25..0x6fa5ac30`) and `D2Multi.dll` (`0x6f9de5cf..0x6f9de5d8`),
+   * PvPGN `d2cs` (`handle_d2cs.c`) only accepts character-screen packets (`0x02 MCP_CHARCREATE`,
+   * `0x0A MCP_CHARDELETE`, `0x18 MCP_CHARUPGRADE`, `0x07 MCP_CHARLOGON`) in `d2cs_conn_state_authed`
+   * (`McpSession.state === 'ready'`). When returning from the lobby (`state === 'charLoggedIn'`) to
+   * switch/create/delete/upgrade characters, `D2Multi.dll` closes the current MCP connection
+   * (`D2MCPClient_10018`) and `D2Launch.dll` re-logs into the realm via `SID_LOGONREALMEX`.
+   */
+  async function ensureRealmReadyForCharSelect(op: string): Promise<McpSession> {
+    let m = requireMcp(op)
+    if (m.state === 'charLoggedIn') {
+      await flow.enterRealm(lastRealmTitle || undefined)
+      m = requireMcp(op)
+    }
+    return m
+  }
+
+  /**
+   * Per `D2Launch.dll` (`0x6fa5ac25 -> D2MCPClient_10007`) and PvPGN `d2cs` (`handle_d2cs.c`),
+   * lobby packets (`0x03 MCP_CREATEGAME`, `0x04 MCP_JOINGAME`, `0x05 MCP_GAMELIST`, `0x06 MCP_GAMEINFO`)
+   * are only valid in `d2cs_conn_state_charloggedin` (`McpSession.state === 'charLoggedIn'`). Sending
+   * `0x05 MCP_GAMELIST` in `state === 'ready'` causes `d2cs` to immediately close the MCP socket.
+   */
+  async function ensureCharLoggedInForLobby(op: string): Promise<McpSession> {
+    const m = requireMcp(op)
+    if (m.state === 'ready') {
+      const charToSelect = selectedCharName || knownChars[0]?.name || ''
+      if (charToSelect) {
+        await flow.selectCharacter(charToSelect)
+      }
+    }
+    return requireMcp(op)
+  }
+
   const flow: D2OnlineFlow = {
     get state(): D2OnlineState {
       return currentState
@@ -319,6 +354,11 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
       teardownConnections()
       lost = null
       pendingLost = null
+      selectedCharName = ''
+      selectedCharClass = 0
+      selectedCharHardcore = false
+      lastRealmTitle = ''
+      knownChars = []
       const startEpoch = epoch
       setState('connecting_bnet')
       let stream
@@ -428,12 +468,18 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
 
     async enterRealm(realm?: string): Promise<readonly CharSummary[]> {
       const session = requireBncs('enterRealm')
-      let targetRealm = realm ?? config.defaultRealm
+      let targetRealm = realm ?? (lastRealmTitle || config.defaultRealm)
       if (!targetRealm) {
         const realms = await exchange('bncs', () => session.listRealms())
         targetRealm = realms[0]?.title ?? 'D2CS'
       }
       const realmTitle = targetRealm
+      lastRealmTitle = realmTitle
+
+      // Close any existing MCP realm session cleanly before opening a new one (`D2MCPClient_10018`).
+      const prevMcp = mcp
+      mcp = undefined
+      prevMcp?.close()
 
       setState('connecting_realm')
       const realmData = await exchange('bncs', () => session.logonRealm(realmTitle))
@@ -475,7 +521,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
     },
 
     async listCharacters(): Promise<readonly CharSummary[]> {
-      const m = requireMcp('listCharacters')
+      const m = await ensureRealmReadyForCharSelect('listCharacters')
       knownChars = await exchange('mcp', () => m.listChars(8))
       return knownChars
     },
@@ -485,7 +531,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
     },
 
     async createCharacter(spec: CharCreateSpec): Promise<void> {
-      const m = requireMcp('createCharacter')
+      const m = await ensureRealmReadyForCharSelect('createCharacter')
       const status = await exchange('mcp', () =>
         m.createChar(spec.name, spec.classId, {
           expansion: spec.expansion,
@@ -524,7 +570,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
     },
 
     async deleteCharacter(name: string): Promise<void> {
-      const m = requireMcp('deleteCharacter')
+      const m = await ensureRealmReadyForCharSelect('deleteCharacter')
       await exchange('mcp', () => m.deleteChar(name))
       knownChars = await exchange('mcp', () => m.listChars(8))
     },
@@ -534,7 +580,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
     },
 
     async upgradeCharacter(name: string): Promise<void> {
-      const m = requireMcp('upgradeCharacter')
+      const m = await ensureRealmReadyForCharSelect('upgradeCharacter')
       await exchange('mcp', () => m.upgradeChar(name))
       knownChars = await exchange('mcp', () => m.listChars(8))
     },
@@ -544,7 +590,20 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
     },
 
     async selectCharacter(name: string): Promise<void> {
-      const m = requireMcp('selectCharacter')
+      let m = requireMcp('selectCharacter')
+      if (m.state === 'charLoggedIn') {
+        if (m.activeCharacter && m.activeCharacter.toLowerCase() === name.toLowerCase()) {
+          selectedCharName = name
+          const foundSame = knownChars.find((c) => c.name.toLowerCase() === name.toLowerCase())
+          if (foundSame) {
+            selectedCharClass = foundSame.charClass
+            selectedCharHardcore = foundSame.hardcore
+          }
+          return
+        }
+        await flow.enterRealm(lastRealmTitle || undefined)
+        m = requireMcp('selectCharacter')
+      }
       const status = await exchange('mcp', () => m.charLogon(name))
       if (status !== 0) {
         throw new ProtocolError(
@@ -571,7 +630,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
         readonly onGame?: ((game: GameListEntry, games: readonly GameListEntry[]) => void) | undefined
       },
     ): Promise<readonly GameListEntry[]> {
-      const m = requireMcp('listGames')
+      const m = await ensureCharLoggedInForLobby('listGames')
       // Per D2Multi.dll (0x6f9e4850 -> D2MCPClient.dll 0x6fa27230):
       // flags is 0x800 when the active character is Hardcore (`flags & 0x04`), else 0.
       const flags = options?.flags ?? (selectedCharHardcore ? 0x800 : 0)
@@ -584,12 +643,12 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
     },
 
     async getGameInfo(name: string): Promise<GameInfoDetail> {
-      const m = requireMcp('getGameInfo')
+      const m = await ensureCharLoggedInForLobby('getGameInfo')
       return await exchange('mcp', () => m.getGameInfo(name))
     },
 
     async createGame(spec: GameCreateSpec): Promise<void> {
-      const m = requireMcp('createGame')
+      const m = await ensureCharLoggedInForLobby('createGame')
       const res = await exchange('mcp', () => m.createGame(spec))
       if (res.status !== 0) {
         throw new ProtocolError(
@@ -600,10 +659,11 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
     },
 
     async joinGame(name: string, password = ''): Promise<GameServerAdapter> {
-      const m = requireMcp('joinGame')
+      requireMcp('joinGame')
       if (!selectedCharName) {
         throw new ProtocolError('Cannot joinGame before selectCharacter()', { proto: 'mcp' })
       }
+      const m = await ensureCharLoggedInForLobby('joinGame')
       const ticket = await exchange('mcp', () => m.joinGame(name, password))
       if (ticket.status !== 0) {
         throw new ProtocolError(

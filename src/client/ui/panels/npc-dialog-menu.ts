@@ -511,7 +511,12 @@ export function buildNpcMenuOptions(
       allowRespec = context.respecAvailable
     } else if (context?.questFlags && context.questFlags.length > 0) {
       const q = context.questFlags
-      allowRespec = ((q[1] ?? 0) & 2) !== 0
+      // D2Client.dll quest gate table 0x6fba2330: Akara = quest 1, bit 0, wantSet 1 (0x6fafa3a0).
+      // D2Client.dll 0x6faf8f18..0x6faf8f67: Quest 41 (0x29) bit 0 (0x0001) hides the option once
+      // respec is consumed; when Quest 41 is populated, bit 1 (0x0002) must be set.
+      const q1 = q[1] ?? 0
+      const q41 = q[41] ?? 0
+      allowRespec = (q1 & 1) !== 0 && (q41 & 1) === 0 && (q41 === 0 || (q41 & 2) !== 0)
     }
     if (allowRespec) {
       const tblKey = 'ResetStatSkillPoints'
@@ -711,7 +716,8 @@ export function wrapSpeechText(
   maxW: number,
   fontName: 'fontformal12' | 'font8' = 'fontformal12',
 ): string[] {
-  const cleanedText = text.replace(/(?:\r?\n)+$/, '')
+  const trimmedText = text.replace(/(?:\r?\n)+$/, '')
+  const cleanedText = /\p{Script=Han}/u.test(trimmedText) ? trimmedText : trimmedText.replace(/([^\r\n])\r?\n(?=[^\r\n])/g, '$1 ')
   const paragraphs = cleanedText.split(/\r?\n/)
   const allLines: string[] = []
 
@@ -761,10 +767,11 @@ export interface NpcMenuState {
   y: number
   dialogLines: readonly string[]
   talking: boolean
-  submenu?: 'main' | 'talk' | undefined
+  // 'respec': Akara confirm submenu (D2Client.dll 0x6fafa2a0 -> 0x6faf9c80), kept across per-frame menu sync.
+  submenu?: 'main' | 'talk' | 'respec' | undefined
   primaryOptions?: readonly NpcMenuOption[] | undefined
   questMessages?: readonly NpcTalkQuestTopic[] | undefined
-  returnToSubmenu?: 'main' | 'talk' | undefined
+  returnToSubmenu?: 'main' | 'talk' | 'respec' | undefined
   descriptor?: TownNpcServiceDescriptor | undefined
   options?: readonly NpcMenuOption[] | undefined
   hoveredOptionIdx?: number | null | undefined
@@ -1252,7 +1259,11 @@ export function clickNpcMenuOptionImpl(this: WorldPanelsHud, optionId: string, c
     return true
   }
 
-  if (optionId === 'cancel' && menu.submenu === 'talk' && !menu.talking) {
+  if (
+    optionId === 'cancel' &&
+    (menu.submenu === 'talk' || menu.submenu === 'respec') &&
+    !menu.talking
+  ) {
     const effectiveCtx =
       context ??
       menu.context ?? {
@@ -1277,11 +1288,14 @@ export function clickNpcMenuOptionImpl(this: WorldPanelsHud, optionId: string, c
         context.questFlags !== undefined ||
         context.questMessages !== undefined),
   )
-  const opts = hasMenuFilterContext
-    ? menu.submenu === 'talk'
-      ? this.buildNpcTalkSubmenuOptions(desc, context)
-      : this.buildNpcMenuOptions(desc, context)
-    : (menu.options ?? [])
+  const opts =
+    menu.submenu === 'respec'
+      ? (menu.options ?? [])
+      : hasMenuFilterContext
+        ? menu.submenu === 'talk'
+          ? this.buildNpcTalkSubmenuOptions(desc, context)
+          : this.buildNpcMenuOptions(desc, context)
+        : (menu.options ?? [])
   const opt = opts.find(
     o =>
       o.id === optionId ||
@@ -1413,6 +1427,7 @@ export function clickNpcMenuOptionImpl(this: WorldPanelsHud, optionId: string, c
   if (opt.id === 'respec') {
     this._npcMenu = {
       ...menu,
+      submenu: 'respec',
       options: [
         {
           id: 'confirm_respec',
@@ -1437,8 +1452,9 @@ export function clickNpcMenuOptionImpl(this: WorldPanelsHud, optionId: string, c
   if (opt.id === 'confirm_respec') {
     this._npcMenu = null
     if (!hadOnNpcMenuAction) {
-      this.onNpcEntityAction?.(0, npcUnitId, 0)
+      // D2Client.dll 0x6faf90d0: C2S 0x30 NpcCancel (0x6faf8150) first, then C2S 0x38 action 0 / complement 0.
       this.onNpcCancel?.(npcUnitId)
+      this.onNpcEntityAction?.(0, npcUnitId, 0)
     }
     return true
   }
@@ -1599,7 +1615,7 @@ export function handleNpcMenuClickImpl(
       this.npcMenu = null
       callbacks.onIdentifyAll(desc)
     } else if (opt.id === 'cancel') {
-      if (this.npcMenu.submenu === 'talk') {
+      if (this.npcMenu.submenu === 'talk' || this.npcMenu.submenu === 'respec') {
         this.clickNpcMenuOption('cancel')
       } else {
         this.npcMenu = null

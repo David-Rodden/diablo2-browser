@@ -12,6 +12,7 @@
 
 import type { DrlgMapContext } from '../../common/drlg/drlg-map.ts'
 import type { DrlgEnv } from '../../common/drlg/drlg-types.ts'
+import { SharedAssetPool } from '../multibox/shared-asset-pool.ts'
 import {
   UNIVERSAL_DT1_PATHS,
   validatePackManifest,
@@ -278,38 +279,23 @@ export class MapService {
   /**
    * Create a `MapService` immediately with an in-process engine, while asynchronously
    * streaming `index.json`, `drlg-bundle.json`, and `drlg-bundle.bin` in the background.
+   * Shares the ~30MB DRLG bundle & TileAtlas via `SharedAssetPool` across multibox instances (#1362).
    */
   static fromPackedUrlsLazy(baseUrl = '/act-packs/tiles'): MapService {
     const engine = new MapWorkerEngine()
     const mapService = new MapService({ engine })
     const cleanBase = baseUrl.replace(/\/+$/, '')
+    const pool = SharedAssetPool.getGlobal()
+    const cached = pool.getCachedDrlgBundle(cleanBase)
+    if (cached) {
+      engine.initWithEnv(cached.env, cached.ctx, cached.tileAtlas)
+      mapService.tileAtlas = engine.getTileAtlas()
+      mapService.readyPromise = Promise.resolve(mapService)
+      return mapService
+    }
     mapService.readyPromise = (async (): Promise<MapService> => {
-      const [indexRes, manifestRes, bundleRes] = await Promise.all([
-        fetch(`${cleanBase}/index.json`),
-        fetch(`${cleanBase}/drlg-bundle.json`),
-        fetch(`${cleanBase}/drlg-bundle.bin`),
-      ])
-      if (!indexRes.ok) {
-        throw new Error(
-          `MapService.fromPackedUrlsLazy: failed to fetch index.json (${String(indexRes.status)})`,
-        )
-      }
-      if (!manifestRes.ok) {
-        throw new Error(
-          `MapService.fromPackedUrlsLazy: failed to fetch drlg-bundle.json (${String(manifestRes.status)})`,
-        )
-      }
-      if (!bundleRes.ok) {
-        throw new Error(
-          `MapService.fromPackedUrlsLazy: failed to fetch drlg-bundle.bin (${String(bundleRes.status)})`,
-        )
-      }
-      const [catalogIndex, manifest, bundleBuffer] = await Promise.all([
-        indexRes.json() as Promise<PackedTileCatalogIndex>,
-        manifestRes.json() as Promise<PackedDrlgBundleManifest>,
-        bundleRes.arrayBuffer(),
-      ])
-      engine.initFromBundle(manifest, new Uint8Array(bundleBuffer), catalogIndex)
+      const entry = await pool.getOrLoadDrlgBundle(cleanBase)
+      engine.initWithEnv(entry.env, entry.ctx, entry.tileAtlas)
       mapService.tileAtlas = engine.getTileAtlas()
       return mapService
     })()

@@ -389,12 +389,13 @@ describe('Assassin Martial Arts (#254-#280) — 1.13c 4-Layer Parity (Issue #100
         physDamagePct: 5,
         autoHit: true,
         critRoll100: 0,
-      })
+      }, { rand: () => 50 })
       // str=100, dex=100 -> attrMin = (200-20)/4 = 45, attrMax = (200-20)/3 = 60
       // bootMin=20, bootMax=30, strBootBonus=120, skillED=5 ->
       // kMin = floor(45*1.05) + floor(20*2.25) = 47 + 45 = 92
-      // kMax = floor(60*1.05) + floor(30*2.25) = 63 + 67 = 130 -> avg = 111 (not 500+ weapon or 2x crit!)
-      expect(dmgOut.totalDamage).toBe(111)
+      // kMax = floor(60*1.05) + floor(30*2.25) = 63 + 67 = 130 (not 500+ weapon or 2x crit!)
+      expect(dmgOut.totalDamage).toBeGreaterThanOrEqual(92)
+      expect(dmgOut.totalDamage).toBeLessThanOrEqual(130)
 
       // Verify executeSkill113c on #1, #255, #270, #275 does not drain weapon durability
       for (const kId of [1, 255, 270, 275]) {

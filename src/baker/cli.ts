@@ -43,6 +43,7 @@ const TARGET_SCRIPTS: Readonly<Record<string, string>> = {
   ui: 'src/baker/packers/pack-ui.ts',
   'frontend-ui': 'src/baker/packers/pack-frontend-ui.ts',
   animdata: 'src/baker/packers/pack-animdata.ts',
+  excel: 'src/baker/packers/pack-excel-tables.ts',
   'char-layers': 'src/baker/packers/pack-char-so-layers.ts',
   'char-so': 'src/baker/packers/pack-char-so-layers.ts',
   characters: 'src/baker/packers/pack-characters.ts',
@@ -79,6 +80,7 @@ const TARGET_SCRIPTS: Readonly<Record<string, string>> = {
 
 export const ALL_BAKE_TARGETS: readonly string[] = [
   'animdata',
+  'excel',
   'tiles',
   'characters',
   'char-layers',

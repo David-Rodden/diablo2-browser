@@ -11,13 +11,13 @@ import {
   isNpcIntroMessageId,
   resolveNpcIntroMsgIdByTblKey,
 } from '../../common/data/canonical-npc-dialog-table.ts'
-import { imbueUiInventoryItem113c } from '../../common/items/item-bridge.ts'
 import {
   getTownNpcDescriptorByHcIdx,
   NPC_CANONICAL_INTRO_KEYS,
   type TownNpcServiceDescriptor,
 } from '../../common/units/npc-table.ts'
 import { ClickButtonId } from '../../netproto/index.ts'
+import { imbueUiInventoryItem113c } from '../../common/items/item-bridge.ts'
 import { resolveItemDropSoundId113c } from '../audio/item-drop-sound-113c.ts'
 import type { ClientCommand, Hand, ItemData } from '../../netproto/index.ts'
 import { lookupTbl, requireTbl } from '../i18n/lang.ts'
@@ -79,6 +79,11 @@ export const NPC_SELL_SOUND_ID = 0xdd
 
 /** `UnitType` id of monsters / NPCs in `UnitRef`. */
 export const UNIT_TYPE_MONSTER = 1
+
+const RED_TEXT = 1
+const ARTISAN_ANSWER_MS = 3000
+const ARTISAN_NAMES: Readonly<Record<number, string>> = { 154: 'Charsi', 511: 'Larzuk', 512: 'Anya' }
+const ARTISAN_WINDOWS = new Set(['imbue', 'add_sockets', 'personalize'])
 
 const EQUIP_SLOT_ALIAS_MAP: Readonly<Record<string, number>> = {
   ...EQUIP_SLOT_TO_BODY_LOC,
@@ -175,6 +180,8 @@ export function findWorldItemImpl(model: any, itemId: number): ItemData | undefi
     model.world.containers.equipment.get(itemId) ??
     model.world.containers.stash.get(itemId) ??
     model.world.containers.cube.get(itemId) ??
+    model.world.containers.tradeSelf?.get?.(itemId) ??
+    model.world.containers.tradePartner?.get?.(itemId) ??
     (model.world.containers.cursor?.id === itemId ? model.world.containers.cursor : undefined)
   )
 }
@@ -568,10 +575,39 @@ export function setHostileImpl(model: any, targetPlayerId: number, hostile: bool
 }
 
 export function clickButtonImpl(model: any, buttonId: number, complement = 0): void {
+  const btn = buttonId & 0xffff
+  const trade = model.world?.trade
+  if (trade) {
+    // D2Client.dll 0x6fb09600 / 0x6fb095c0 / 0x6fb09740:
+    // Local trade button clicks mutate client state immediately because D2Game.dll (0x6fc90750)
+    // only sends S2C 0x77 0x05 (PartnerAccepted) to the partner, not 0x77 0x04 back to self.
+    if (btn === 0x02) {
+      trade.pendingModal = null
+      trade.active = false
+      trade.selfAccepted = false
+      trade.partnerAccepted = false
+      trade.acceptDisabled = false
+      trade.partnerGold = 0
+      trade.selfGold = 0
+      model.world?.containers?.clearTrade?.()
+    } else if (btn === 0x03) {
+      trade.pendingModal = null
+    } else if (btn === 0x04) {
+      if (!trade.acceptDisabled) {
+        trade.selfAccepted = true
+      }
+    } else if (btn === 0x07) {
+      trade.selfAccepted = false
+    } else if (btn === 0x08) {
+      trade.selfGold = complement >>> 0
+      trade.selfAccepted = false
+      trade.partnerAccepted = false
+    }
+  }
   model.emitCommand({
     type: 'ClickButton',
-    button: buttonId & 0xffff,
-    buttonId: buttonId & 0xffff,
+    button: btn,
+    buttonId: btn,
     complement: complement >>> 0,
     amount: complement >>> 0,
   })
@@ -728,6 +764,12 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
         // Keep existing cursorItem if ineligible
       }
     }
+  }
+  const artisan = ARTISAN_NAMES[model.world.getUnit('monster', npcId)?.classId ?? -1]
+  if (artisan !== undefined) {
+    setTimeout(() => {
+      if (model.world.awaitingArtisanConfirmNpcId === npcId && model.world.containers.cursor?.id === itemId) model.world.addLocalSystemMessage(`${artisan} didn't answer. Stand next to ${artisan} and try again.`, RED_TEXT)
+    }, ARTISAN_ANSWER_MS)
   }
 }
 
@@ -1031,6 +1073,7 @@ export function handleNpcMenuActionImpl(
         if (wp.npcMenu) {
           wp.npcMenu = {
             ...wp.npcMenu,
+            submenu: 'respec',
             options: [
               {
                 id: 'confirm_respec',
@@ -1054,8 +1097,15 @@ export function handleNpcMenuActionImpl(
       break
     }
     case 'confirm_respec': {
-      model.npcEntityAction(12, resolvedNpcId, 0)
+      // D2Client.dll 0x6faf90d0: send C2S 0x30 NpcCancel (0x6faf8150) first, then C2S 0x38 action 0,
+      // complement 0. D2Game 0x6fce00c0 routes non-trade/gamble/hire actions by NPC class; Akara (0x94)
+      // at 0x6fce0504 checks quest 1 bit 0 and quest 41 bits 0/1 before resetting (0x6fc82340).
       model.cancelNpcSession(resolvedNpcId)
+      model.npcEntityAction(0, resolvedNpcId, 0)
+      model.activeMenu = null
+      if (model.hudManager?.worldPanels) {
+        ;(model.hudManager.worldPanels as any).npcMenu = null
+      }
       break
     }
     case 'hire': {
@@ -1299,6 +1349,19 @@ export function castTownPortalImpl(model: any): void {
 
 export function pickupItemToCursorImpl(model: any, itemId: number): void {
   model.emitCommand({ type: 'ItemToCursor', itemId })
+  const { npcId, activeWindow } = model.world.npcInteraction
+  if (ARTISAN_WINDOWS.has(activeWindow) && ARTISAN_NAMES[model.world.getUnit('monster', npcId)?.classId ?? -1] !== undefined) reopenArtisan(model, npcId)
+}
+
+function reopenArtisan(model: any, npcId: number): void {
+  const { window, activeWindow } = model.world.npcInteraction
+  const [pending, panel] = [model.pendingArtisanConfirmNpcId, model.hudManager?.leftPanel]
+  const target = { unitType: 1, id: npcId }
+  model.pendingArtisanConfirmNpcId = npcId
+  ;[{ type: 'NpcCancel', target }, { type: 'Interact', target }, { type: 'NpcInit', target }].forEach((command) => model.emitCommand(command))
+  Object.assign(model.world.npcInteraction, { window, activeWindow })
+  model.pendingArtisanConfirmNpcId = pending
+  if (model.hudManager) model.hudManager.leftPanel = panel
 }
 
 export function placeCursorItemImpl(model: any, itemId: number, col: number, row: number, buffer = 0): void {

@@ -282,6 +282,7 @@ export type ToolbarI18nKey =
   | 'toolbar.status.bncs'
   | 'toolbar.status.mcp'
   | 'toolbar.status.d2gs'
+  | 'toolbar.status.local'
   | 'toolbar.status.error'
   | 'toolbar.server.label'
   | 'toolbar.server.placeholder'
@@ -308,6 +309,11 @@ export type ToolbarI18nKey =
   | 'toolbar.config.mute'
   | 'toolbar.config.muted'
   | 'toolbar.config.cache'
+  | 'toolbar.config.multibox'
+  | 'toolbar.config.multiboxOff'
+  | 'toolbar.config.multiboxOn'
+  | 'toolbar.config.multiboxAlertOn'
+  | 'toolbar.config.multiboxAlertOff'
   | 'toolbar.bug.open'
   | 'toolbar.bug.title'
   | 'toolbar.bug.subtitle'
@@ -344,6 +350,7 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
   'toolbar.status.bncs': { zh: '战网大厅 (BNCS)', en: 'Lobby (BNCS)' },
   'toolbar.status.mcp': { zh: '角色选择 (MCP)', en: 'Characters (MCP)' },
   'toolbar.status.d2gs': { zh: '游戏中 (D2GS)', en: 'In-Game (D2GS)' },
+  'toolbar.status.local': { zh: '单机游戏', en: 'Single Player' },
   'toolbar.status.error': { zh: '连接异常', en: 'Conn Error' },
   'toolbar.server.label': { zh: '战网服务器', en: 'Battle.net Server' },
   'toolbar.server.placeholder': { zh: 'www.laiseek.xyz', en: 'www.laiseek.xyz' },
@@ -376,6 +383,11 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
   'toolbar.config.mute': { zh: '静音', en: 'Mute' },
   'toolbar.config.muted': { zh: '已静音', en: 'Muted' },
   'toolbar.config.cache': { zh: '资源缓存', en: 'Asset Cache' },
+  'toolbar.config.multibox': { zh: '单 Tab 多开', en: 'Single-Tab Multibox' },
+  'toolbar.config.multiboxOff': { zh: '已关闭 (单实例)', en: 'Off (Single)' },
+  'toolbar.config.multiboxOn': { zh: '已开启 (多实例)', en: 'Enabled (Multibox)' },
+  'toolbar.config.multiboxAlertOn': { zh: '后台受击音: 开', en: 'Bg Alert: On' },
+  'toolbar.config.multiboxAlertOff': { zh: '后台受击音: 关', en: 'Bg Alert: Off' },
   'toolbar.bug.open': { zh: '汇报 Bug', en: 'Report Bug' },
   'toolbar.bug.title': { zh: '汇报 Bug', en: 'Report a Bug' },
   'toolbar.bug.subtitle': {

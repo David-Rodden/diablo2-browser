@@ -98,6 +98,7 @@ import {
   type GroundItemLabelInput,
 } from '../../common/items/ground-items.ts'
 import { resolveGroundItemFlippyKey, resolveGroundItemSpriteRect } from '../ui/inventory.ts'
+import { spriteOutlines } from '../guide/sprite-outline.ts'
 import {
   applyLightingInputs,
   unitFlatLightInto,
@@ -1805,6 +1806,7 @@ export function drawSceneUnitDrawable(
           elevationY: Math.max(0, frame.height - 16),
           ...(tint ? { tint } : {}),
         })
+        spriteOutlines.draw(renderer, unit.unitId, frame, objArt.handle, drawX, drawY)
         if (objArt.glowGroups !== undefined) {
           const rawGlowClip = objArt.glowClips?.[clipKey]
           const glowClip =
@@ -2362,10 +2364,22 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
       (snapshot.playerLocalSubTile.x !== 0 || snapshot.playerLocalSubTile.y !== 0)
         ? subTileToWorldOrtho(snapshot.playerLocalSubTile.x, snapshot.playerLocalSubTile.y)
         : snapshot.playerWorld
-    const camX = effectivePlayerWorld.x + panelShiftX
-    const camY = effectivePlayerWorld.y + CAMERA_Y_OFFSET
-    const renderCamX = camX + (snapshot.shakeOffsetX ?? 0)
-    const renderCamY = camY + (snapshot.shakeOffsetY ?? 0)
+    const rawCamX = effectivePlayerWorld.x + panelShiftX
+    const rawCamY = effectivePlayerWorld.y + CAMERA_Y_OFFSET
+    const pixelScale = renderer?.pixelScale ?? 1
+    const snapToPixel = (v: number) => Math.round(v * pixelScale) / pixelScale
+    const renderCamX = snapToPixel(
+      ctx.source && snapshot.cameraTopLeft !== undefined
+        ? snapshot.cameraTopLeft.x + snapshot.viewportProfile.width / 2
+        : rawCamX + (snapshot.shakeOffsetX ?? 0),
+    )
+    const renderCamY = snapToPixel(
+      ctx.source && snapshot.cameraTopLeft !== undefined
+        ? snapshot.cameraTopLeft.y + snapshot.viewportProfile.height / 2
+        : rawCamY + (snapshot.shakeOffsetY ?? 0),
+    )
+    const camX = renderCamX - (snapshot.shakeOffsetX ?? 0)
+    const camY = renderCamY - (snapshot.shakeOffsetY ?? 0)
 
     if (renderer !== null) {
       ctx.tileGpuCache?.ensureActPalette(snapshot.actId)
@@ -2536,13 +2550,13 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
         if (entity.drawableKind === 'unit') {
           if (litGrid !== null) {
             const dynamic = entity.unitKind === 'player' || entity.unitKind === 'monster'
-            renderer.setUnitLight(unitFlatLightInto(litGrid, entity.subX, entity.subY, dynamic, scratchUnitLight))
+            renderer.setUnitLight(unitFlatLightInto(litGrid, entity.lightSubX ?? entity.subX, entity.lightSubY ?? entity.subY, dynamic, scratchUnitLight))
           }
           drawSceneUnitDrawable(renderer, entity, ctx, nowMs, snapshot.actId)
           if (litGrid !== null) renderer.setUnitLight(null)
         } else if (entity.drawableKind === 'missile') {
           if (litGrid !== null) {
-            renderer.setUnitLight(unitFlatLightInto(litGrid, entity.subX, entity.subY, true, scratchUnitLight))
+            renderer.setUnitLight(unitFlatLightInto(litGrid, entity.lightSubX ?? entity.subX, entity.lightSubY ?? entity.subY, true, scratchUnitLight))
           }
           drawSceneMissileDrawable(renderer, entity, ctx, nowMs)
           if (litGrid !== null) renderer.setUnitLight(null)
@@ -2938,7 +2952,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
           })
         }
         const forceUniqueSetLabel = alwaysShowUniqueSetLabels && lootBeamQuality !== null
-        if (!showAll && !isUnitHovered && !forceUniqueSetLabel) continue
+        if (!isUnitHovered && ((!showAll && !forceUniqueSetLabel) || hudManager.hidesGroundItem(u.unitId))) continue
         const screenX = itemScreenX
         const screenY = Math.round(u.worldY - 14 - camY + vpH / 2)
         if (screenX < -60 || screenX > vpW + 60 || screenY < -10 || screenY > vpH + 20) {
@@ -2967,7 +2981,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
             : lootBeamQuality === 'set'
               ? '#00fc00'
               : '#ffffff')
-        const measuredW = Math.max(40, hudManager.font.measureText(labelText, 'font16') + 14)
+        const measuredW = Math.max(40, hudManager.font.measureText(labelText, 'font16') + 14) + hudManager.groundLabelBadgesWidth(u.unitId)
         labelInputs.push({
           id: u.unitId,
           text: labelText,

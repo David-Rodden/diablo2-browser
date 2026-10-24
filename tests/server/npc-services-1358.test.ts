@@ -197,6 +197,6 @@ describe('issue #1358 NPC services', () => {
     )!
     expect(imbued.quality).toBe('rare')
     expect(imbued.identified).toBe(true)
-    expect(imbued.location).toBe('cursor')
+    expect(imbued.location).toBe('inventory')
   })
 })

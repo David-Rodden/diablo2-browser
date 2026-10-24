@@ -4,7 +4,7 @@
  *
  * Rules this harness follows (see `.agents/teamwork/test_writer_m21r1_e2e/TEST_INFRA.md`):
  * - Every expected value is derived from the authoritative 1.13c MPQ archives
- *   (`/usr/local/google/home/taodao/d2-data`, read through the repo's own MPQ reader:
+ *   (`samples/d2`, read through the repo's own MPQ reader:
  *   `MpqArchive` + `MountedArchives`) or from D2Client.dll facts cited by address. The product's
  *   generated tables are NEVER used as the oracle.
  * - The text tables are parsed by this file's own TSV reader and the D2Client post-processing is
@@ -19,7 +19,7 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { tmpdir, homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { MpqArchive } from '../../../src/common/mpq/archive.ts'
@@ -34,7 +34,7 @@ import { syncNodeFileSource } from '../../../src/baker/mpq-archive-source.ts'
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 
 /** Authoritative 1.13c data directory (MPQs + DLLs). Override with `M21_D2_DATA_DIR`. */
-export const D2_DATA_DIR = process.env.M21_D2_DATA_DIR ?? '/usr/local/google/home/taodao/d2-data'
+export const D2_DATA_DIR = process.env.M21_D2_DATA_DIR ?? join(homedir(), 'd2-data')
 
 /**
  * 1.13c archive priority, highest first (PROJECT.md § Architecture: Patch_D2 > d2exp > d2char >

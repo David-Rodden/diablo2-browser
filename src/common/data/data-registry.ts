@@ -394,7 +394,7 @@ export interface StateRecord {
   readonly nosend: boolean
   readonly transform: boolean
   readonly aura: boolean
-  readonly cursetype: number
+  readonly curse: boolean
   readonly curable: boolean
   readonly active: boolean
   readonly restrict: boolean
@@ -892,7 +892,7 @@ export class D2DataRegistry {
         hitFlags: numberCell(row, 'HitFlags', 0),
         hitClass: numberCell(row, 'HitClass', 0),
         kick: numberCell(row, 'Kick', 0) !== 0,
-        hitShift: numberCell(row, 'HitShift', 8),
+        hitShift: numberCell(row, 'HitShift', 0),
         srcDam: numberCell(row, 'SrcDam', 0),
         minDam: numberCell(row, 'MinDam', 0),
         minLevDam1: numberCell(row, 'MinLevDam1', 0),
@@ -1028,7 +1028,7 @@ export class D2DataRegistry {
         toHit: numberCell(row, 'ToHit', 0) !== 0,
         pierce: numberCell(row, 'Pierce', 0) !== 0,
         skill: textCell(row, 'Skill'),
-        hitShift: numberCell(row, 'HitShift', 8),
+        hitShift: numberCell(row, 'HitShift', 0),
         srcDamage: numberCell(row, 'SrcDamage', 0),
         minDamage: numberCell(row, 'MinDamage', 0),
         minLevDam1: numberCell(row, 'MinLevDam1', 0),
@@ -1104,7 +1104,7 @@ export class D2DataRegistry {
         nosend: numberCell(row, 'nosend', 0) !== 0,
         transform: numberCell(row, 'transform', 0) !== 0,
         aura: numberCell(row, 'aura', 0) !== 0,
-        cursetype: numberCell(row, 'cursetype', 0),
+        curse: numberCell(row, 'curse', 0) !== 0,
         curable: numberCell(row, 'curable', 0) !== 0,
         active: numberCell(row, 'active', 0) !== 0,
         restrict: numberCell(row, 'restrict', 0) !== 0,
@@ -1674,6 +1674,25 @@ let cachedRegistryInstance: D2DataRegistry | null = null
 export function resetSharedDataRegistryCache(): void {
   cachedMountedSource = null
   cachedRegistryInstance = null
+}
+
+/**
+ * Returns the cached `D2DataRegistry` instance if an archive source has already been mounted,
+ * or `undefined` if no archive source has been initialized yet.
+ */
+export function tryGetSharedDataRegistry(): D2DataRegistry | undefined {
+  if (cachedRegistryInstance !== null) {
+    return cachedRegistryInstance
+  }
+  if (cachedMountedSource !== null) {
+    try {
+      cachedRegistryInstance = D2DataRegistry.fromArchiveSourceSync(cachedMountedSource)
+      return cachedRegistryInstance
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
 }
 
 /**

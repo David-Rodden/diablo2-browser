@@ -4,7 +4,8 @@
  * Offline extraction & packaging script for Diablo II v1.13c canonical drop tables:
  * - MonStats.txt: Extracts 19 essential drop & level columns across 3 difficulties
  * - SuperUniques.txt: Extracts 21 columns including multi-difficulty TC columns (TC, TC(N), TC(H))
- * - Difficultylevels.txt: Extracts 7 columns for 1.13c base upgrade odds (Normal, Nightmare, Hell)
+ * - Difficultylevels.txt: Extracts 9 columns: base upgrade odds plus ResistPenalty / DeathExpPenalty and
+ *   LifeStealDivisor / ManaStealDivisor (D2Game 0x6FCFBA40 life/mana steal) for Normal, Nightmare, Hell
  *
  * Aligns offline extraction with runtime contracts in `src/data/canonical-drop-data.ts`
  * and `src/game/embedded-drop-tables.ts` per Diablo II 1.13c ground truth parity rules.
@@ -99,6 +100,8 @@ export const DIFFICULTY_LEVELS_DROP_COLUMNS = [
   'UberCodeOddsGood',
   'UltraCodeOddsNormal',
   'UltraCodeOddsGood',
+  'LifeStealDivisor',
+  'ManaStealDivisor',
 ] as const
 
 /**

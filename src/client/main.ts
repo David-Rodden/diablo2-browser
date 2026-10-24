@@ -98,7 +98,17 @@ import { MapService } from './map/map-service.ts'
 import { createMapServiceAreaLevelSource } from './map/map-service-area-source.ts'
 import type { D2WebPlugin, PluginQuickCastPort } from './plugin-host/api.ts'
 import { PluginHost } from './plugin-host/plugin-host.ts'
-import { PluginMenu } from './plugin-host/plugin-menu.ts'
+import { ModMenu } from './plugin-host/mod-menu.ts'
+import type { MenuLayout } from './plugin-host/mod-menu-text.ts'
+import './theme/index.css'
+import { decorateLoadingScreen } from './ui/loading-screen.ts'
+import { startPageTitle } from './ui/page-title.ts'
+import type { PathGuide } from './guide/path-guide.ts'
+import { createSessionGuide } from './guide/session-guide.ts'
+import { Autopilot } from './guide/autopilot.ts'
+import { pilotReport } from './guide/pilot-report.ts'
+import { PlayLog } from './session/play-log.ts'
+import { loadSinglePlayerData } from './session/single-player-data.ts'
 import {
   OnlineSession,
   SessionLostError,
@@ -114,6 +124,7 @@ import {
 import { Toolbar } from './toolbar/toolbar.ts'
 import { HudModel } from './ui-model/hud-model.ts'
 import type { SceneFrameSnapshot } from './view/scene-source.ts'
+import { syncCrispBackingStore } from './view/crisp-scale.ts'
 import {
   applyViewportProfileToDom,
   getViewportProfile,
@@ -125,6 +136,16 @@ import {
   weatherPanelFromSidePanels,
   weatherWorldDrawnFromSidePanels,
 } from './weather/weather-render-pass.ts'
+import {
+  createStageContainer,
+  MultiInstanceManager,
+  type StageContainerRefs,
+} from './multibox/index.ts'
+
+const togglePortFor = <K extends PropertyKey>(target: Record<K, boolean>, key: K) => ({
+  isEnabled: () => target[key],
+  setEnabled: (enabled: boolean) => void (target[key] = enabled),
+})
 
 const PRELOAD_MONSTER_IDS = [
   'fallen1',
@@ -174,6 +195,9 @@ function base64ToUint8(b64: string): Uint8Array {
 }
 
 export interface PlayAppController {
+  readonly slotId?: number | undefined
+  readonly stageRefs?: StageContainerRefs | undefined
+  readonly multibox?: MultiInstanceManager | undefined
   readonly ready: boolean
   readonly bootProgress: BootProgressSnapshot
   readonly bootProgressTracker: BootProgressTracker
@@ -181,7 +205,7 @@ export interface PlayAppController {
   readonly settingsStore: SettingsStore
   readonly session: OnlineSession
   readonly plugins: PluginHost
-  readonly pluginMenu: PluginMenu
+  readonly pluginMenu: ModMenu
   readonly toolbar: Toolbar
   readonly hudManager: HudManager
   readonly hudModel: HudModel
@@ -207,6 +231,8 @@ export interface PlayAppController {
   readonly replayD2Cap: (jsonlText: string) => number
   readonly simulateDisconnect: (reason?: string) => Promise<void>
   readonly renderFrame: (nowMs?: number) => void
+  setInstanceFocused?(focused: boolean): void
+  isInstanceFocused?(): boolean
 }
 
 declare global {
@@ -215,23 +241,34 @@ declare global {
     __d2BootProgress?: BootProgressSnapshot
     __d2PlayApp?: PlayAppController
     __d2Play?: PlayAppController
+    __d2PlayInstances?: Map<number, PlayAppController>
+    __d2Multibox?: MultiInstanceManager
   }
 }
 
 export async function startPlayApp(options?: {
   readonly plugins?: readonly D2WebPlugin[]
+  readonly slotId?: number
+  readonly stageRefs?: StageContainerRefs
+  readonly isChildSlot?: boolean
+  readonly menuLayout?: MenuLayout
 }): Promise<PlayAppController> {
+  const slotId = options?.slotId ?? 1
+  const isChildSlot = options?.isChildSlot === true
+
   // #954 re-boot guard: dev HMR re-execution of the play.html module (and any
   // future in-page re-login flow) can call `startPlayApp` again in the SAME JS
   // context. Retire the previous controller's DOM listeners and rAF loop
   // first — otherwise every re-boot pins one full OnlineSession graph through
   // immortal window/stage listeners (measured 4 retained worlds / 811MB).
-  const previousController = window.__d2Play
-  if (previousController && typeof previousController.dispose === 'function') {
-    try {
-      previousController.dispose()
-    } catch {
-      // Best-effort teardown; the fresh boot re-registers its own listeners.
+  if (!isChildSlot) {
+    const previousController = window.__d2Play
+    if (previousController && typeof previousController.dispose === 'function') {
+      try {
+        previousController.dispose()
+      } catch {
+        // Best-effort teardown; the fresh boot re-registers its own listeners.
+      }
     }
   }
 
@@ -255,22 +292,43 @@ export async function startPlayApp(options?: {
 
   window.__d2SkipAutoBoot = true
 
-  const toolbarContainer = document.querySelector<HTMLElement>('#d2-toolbar-container')
+  const toolbarContainer = isChildSlot
+    ? null
+    : document.querySelector<HTMLElement>('#d2-toolbar-container')
   const workspaceEl = document.querySelector<HTMLElement>('#play-workspace')
-  const stageWrapperEl = document.querySelector<HTMLElement>('#play-stage-wrapper')
-  const stageEl = document.querySelector<HTMLElement>('#play-stage')
-  const bnetShell = document.querySelector<HTMLElement>('#bnet-shell')
-  const bnetCanvas = document.querySelector<HTMLCanvasElement>('#bnet-canvas')
-  const viewCanvas = document.querySelector<HTMLCanvasElement>('#view')
-  const hudCanvas = document.querySelector<HTMLCanvasElement>('#d2-hud-canvas')
+  let stageRefs: StageContainerRefs | null = options?.stageRefs ?? null
+  if (!stageRefs) {
+    try {
+      stageRefs = createStageContainer(slotId, workspaceEl)
+    } catch {
+      stageRefs = null
+    }
+  }
+  const stageWrapperEl =
+    stageRefs?.stageWrapperEl ?? document.querySelector<HTMLElement>('#play-stage-wrapper')
+  const stageEl = stageRefs?.stageEl ?? document.querySelector<HTMLElement>('#play-stage')
+  const bnetShell = stageRefs?.bnetShell ?? document.querySelector<HTMLElement>('#bnet-shell')
+  const bnetCanvas =
+    stageRefs?.bnetCanvas ?? document.querySelector<HTMLCanvasElement>('#bnet-canvas')
+  const viewCanvas = stageRefs?.viewCanvas ?? document.querySelector<HTMLCanvasElement>('#view')
+  const hudCanvas =
+    stageRefs?.hudCanvas ?? document.querySelector<HTMLCanvasElement>('#d2-hud-canvas')
   // #940 R3: dedicated cursor layer above the HUD; optional — HudManager falls
   // back to drawing the cursor on the HUD canvas when the host page lacks it.
-  const cursorLayerCanvas = document.querySelector<HTMLCanvasElement>('#d2-cursor-canvas')
-  const disconnectBanner = document.querySelector<HTMLElement>('#play-disconnect-banner')
+  const cursorLayerCanvas =
+    stageRefs !== null
+      ? stageRefs.cursorLayerCanvas
+      : document.querySelector<HTMLCanvasElement>('#d2-cursor-canvas')
+  const disconnectBanner =
+    stageRefs !== null
+      ? stageRefs.disconnectBanner
+      : document.querySelector<HTMLElement>('#play-disconnect-banner')
 
   if (!stageEl || !bnetShell || !bnetCanvas || !viewCanvas || !hudCanvas) {
     throw new Error('Missing required DOM elements in play.html')
   }
+
+  let instanceFocused = true
 
   for (const el of [stageEl, bnetShell, bnetCanvas, viewCanvas, hudCanvas]) {
     if (el.style) {
@@ -279,6 +337,7 @@ export async function startPlayApp(options?: {
   }
 
   const bootProgress = new BootProgressTracker({ stageEl, expectedTotal: 180 }).install()
+  decorateLoadingScreen(bootProgress)
 
   const settingsStore = getGlobalSettingsStore()
   if (typeof window !== 'undefined' && window.location?.search) {
@@ -297,10 +356,11 @@ export async function startPlayApp(options?: {
   setLang(initialSettings.lang)
 
   let sessionRef: OnlineSession | null = null
-  let pluginMenuRef: PluginMenu | null = null
+  let pluginMenuRef: ModMenu | null = null
   let gestureReceivedBeforeSession = false
 
   const unlockAndWarmUiAudio = (): void => {
+    if (!instanceFocused) return
     gestureReceivedBeforeSession = true
     if (!sessionRef) return
     sessionRef.audioRuntime.unlock()
@@ -486,7 +546,9 @@ export async function startPlayApp(options?: {
   // In-game chat input keyboard/IME sink (`D2Client.dll` `0x6fb20140` `CHAT_DrawChatInputBox` + `0x6fb1ef20` `CHAT_DrawCursor`
   // renders the authentic translucent box, wrapped `font16` text, and blinking `_` cursor directly on `hudCanvas`).
   const chatInputEl = document.createElement('input')
-  chatInputEl.id = 'd2-ingame-chat-input'
+  chatInputEl.className = 'd2-ingame-chat-input'
+  chatInputEl.id =
+    slotId === 1 ? 'd2-ingame-chat-input' : `d2-ingame-chat-input-slot-${String(slotId)}`
   chatInputEl.type = 'text'
   chatInputEl.maxLength = CHAT_INPUT_MAX_CHARS
   chatInputEl.placeholder = ''
@@ -557,9 +619,11 @@ export async function startPlayApp(options?: {
     }
   })
 
+  let pathGuide: PathGuide | null = null
   const hudManager = new HudManager(hudCanvas, {
     onRenderAutomapOverlay: (ctx, font, logicalWidth, logicalHeight) => {
-      minimap.drawHudOverlay(ctx, font, logicalWidth, logicalHeight)
+      const drawAutomapText = () => minimap.drawHudOverlay(ctx, font, logicalWidth, logicalHeight)
+      return pathGuide && inGameView ? pathGuide.draw(ctx, font, performance.now(), drawAutomapText, logicalWidth) : drawAutomapText()
     },
     onToggleAutomap: () => {
       sessionRef?.hudModel.toggleAutomap()
@@ -683,6 +747,37 @@ export async function startPlayApp(options?: {
       session.commandMapper.quickCastMode = enabled
     },
   }
+  const guide = createSessionGuide(session, minimap)
+  pathGuide = guide
+  const assists = () => session.commandMapper.assists
+  const pilot = new Autopilot({
+    get world() { return session.world },
+    get hudModel() { return session.hudModel },
+    get assists() { return assists() },
+    hudManager,
+    guide,
+    levelView: () => session.mapService?.getLoadedLevelView(session.world.areaId) ?? null,
+  })
+  assists().pilot = pilot
+  if ((import.meta as { readonly env?: { readonly DEV?: boolean } }).env?.DEV === true) {
+    const playLog = new PlayLog((body) => void fetch('/api/play-log', { method: 'POST', body, keepalive: true }).catch(() => undefined), () => pilotReport(session.world, hudManager, assists(), pilot, guide))
+    assists().journal = (kind, detail) => playLog.note(kind, detail)
+    const seenErrors = new Map<string, number>()
+    const noteError = (message: string) => {
+      const key = message.slice(0, 160)
+      const count = (seenErrors.get(key) ?? 0) + 1
+      seenErrors.set(key, count)
+      if (count === 1 || count % 100 === 0) playLog.note('error', { message: key, count })
+    }
+    window.addEventListener('error', (event) => noteError(String(event.message)))
+    window.addEventListener('unhandledrejection', (event) => noteError(String(event.reason)))
+    const consoleError = console.error.bind(console)
+    console.error = (...args: unknown[]) => {
+      noteError(args.map(String).join(' '))
+      consoleError(...args)
+    }
+    setInterval(() => playLog.tick(performance.now()), 250)
+  }
   const plugins = new PluginHost({
     plugins: options?.plugins ?? [],
     session,
@@ -690,10 +785,42 @@ export async function startPlayApp(options?: {
     settingsStore,
     enforceClientDefaults: true,
     quickCast: quickCastPort,
+    dragInteract: togglePortFor(session.commandMapper, 'dragInteractMode'),
+    stashDepositAll: togglePortFor(hudManager.worldPanels, 'stashDepositAllEnabled'),
+    xpBar: togglePortFor(hudManager, 'showXpBar'),
+    autoGoldPickup: togglePortFor(session.commandMapper.assists, 'autoGoldPickup'),
+    beltRefill: togglePortFor(session.commandMapper.assists, 'beltRefill'),
+    upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
+    monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
+    lowLifeWarning: togglePortFor(hudManager, 'lowLifeWarning'),
+    smartSkills: togglePortFor(session.commandMapper.assists, 'smartSkills'),
+    spendPoints: togglePortFor(pilot, 'spendPoints'),
+    notify: { show: (toast) => hudManager.toasts.push(toast, performance.now()) },
+    itemInfo: { getConfig: () => hudManager.itemInfo, setConfig: (config) => hudManager.setItemInfo(config) },
+    pathGuide: {
+      getMode: () => (guide.enabled ? guide.mode : null),
+      setMode: (mode) => void Object.assign(guide, mode ? { enabled: true, mode } : { enabled: false }),
+    },
+    autoCombat: { getKey: () => session.commandMapper.assists.autoCombatKey, setKey: (key) => void (session.commandMapper.assists.autoCombatKey = key) },
+    townPortal: { getKey: () => session.commandMapper.assists.townPortalKey, setKey: (key) => void (session.commandMapper.assists.townPortalKey = key) },
+    autopilot: {
+      getKey: () => assists().pilotKey,
+      setKey: (key) => {
+        assists().pilotKey = key
+        if (key === null && pilot.active) pilot.stop('Autopilot off')
+      },
+    },
+    autoLoot: { getRules: () => session.commandMapper.assists.autoLootRules, setRules: (rules) => void (session.commandMapper.assists.autoLootRules = rules) },
+    inventoryCare: { getConfig: () => session.commandMapper.assists.inventoryCare.config, setConfig: (config) => void (session.commandMapper.assists.inventoryCare.config = config) },
+    autoPotion: {
+      getThresholds: () => session.commandMapper.assists.autoPotionThresholds,
+      setThresholds: (thresholds) => void (session.commandMapper.assists.autoPotionThresholds = thresholds),
+    },
   })
-  const pluginMenu = new PluginMenu({
+  const pluginMenu = new ModMenu({
     host: plugins,
     toolbar,
+    layout: options?.menuLayout,
   })
   pluginMenuRef = pluginMenu
 
@@ -737,6 +864,7 @@ export async function startPlayApp(options?: {
   bootDisposers.push(() => frontendImeSink.dispose())
 
   let inGameView = false
+  startPageTitle(() => (inGameView ? { areaId: session.world.areaId, level: session.world.self.level } : null))
   /** Own class' animation pack is requested exactly once per level entry. */
   let ownHeroArtKicked = false
   /** #954: the played class token — its pack is never staleness-evicted (fallback art insurance). */
@@ -941,7 +1069,7 @@ export async function startPlayApp(options?: {
       if (!lobby) {
         throw new Error('Single Player local server provider is not registered')
       }
-      await inGameAssetsPromise
+      await Promise.all([inGameAssetsPromise, loadSinglePlayerData()])
       if (session.phase === 'ingame') {
         throw new Error('Single Player game requested while another game is still active')
       }
@@ -1823,7 +1951,7 @@ export async function startPlayApp(options?: {
       flowState.stageTicks = 0
       flowState.tickAccumulatorMs = 0
       flowState.lastFrameTimeMs = null
-      toolbar.setConnectionState({ phase: 'd2gs', rttMs: snap.pingMs })
+      toolbar.setConnectionState({ phase: flowState.playMode === 'single' ? 'local' : 'd2gs', rttMs: snap.pingMs })
     } else if (
       snap.phase === 'lobby' ||
       (snap.phase === 'idle' && flowState.playMode === 'single')
@@ -1954,6 +2082,7 @@ export async function startPlayApp(options?: {
   // stage pointer coordinates and ensure releasing the button outside `#play-stage` cleanly
   // ends the hold state.
   trackListener(window, 'mousemove', (e: MouseEvent) => {
+    if (!instanceFocused) return
     if (!inGameView) return
     if (!session.commandMapper.isPointerDown()) return
     const targetNode = e.target as Node | null
@@ -2002,6 +2131,7 @@ export async function startPlayApp(options?: {
   })
 
   trackListener(window, 'mouseup', (e: MouseEvent) => {
+    if (!instanceFocused) return
     if (!inGameView) return
     if (!session.commandMapper.isPointerDown()) return
     const targetNode = e.target as Node | null
@@ -2138,6 +2268,18 @@ export async function startPlayApp(options?: {
     window,
     'keydown',
     (e: KeyboardEvent) => {
+      if (!instanceFocused) return
+      // Allow Alt+1..8 / Alt+` multibox hotkeys to be handled first when multiboxEnabled is true
+      if (
+        e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        settingsStore.get().multiboxEnabled &&
+        (e.code === 'Backquote' || /^Digit[1-8]$/.test(e.code))
+      ) {
+        return
+      }
       session.audioRuntime.unlock()
       if (isModalDomOverlayOpen()) {
         return
@@ -2168,6 +2310,7 @@ export async function startPlayApp(options?: {
     window,
     'keyup',
     (e: KeyboardEvent) => {
+      if (!instanceFocused) return
       if (isModalDomOverlayOpen()) {
         return
       }
@@ -2203,7 +2346,7 @@ export async function startPlayApp(options?: {
   // `push 0xa ; call [Sleep]` @0x6FAECB94). Hidden tabs get no requestAnimationFrame, so a
   // timer runs the owed ticks until the tab is visible again.
   let hiddenTickTimer: ReturnType<typeof setInterval> | null = null
-  let lastWorldRenderMs: number | null = null
+  let nextWorldRenderMs: number | null = null
   trackListener(document, 'visibilitychange', () => {
     if (document.hidden) {
       if (hiddenTickTimer === null) {
@@ -2259,7 +2402,11 @@ export async function startPlayApp(options?: {
         flowState.lastFrameTimeMs = null
         syncVisibility()
       } else {
-        frontendRenderer.render(nowMs)
+        // Issue #1362: Background instances skip Canvas2D front-end rasterization while
+        // keeping flow-state ticks and join-list / login state progression alive.
+        if (instanceFocused) {
+          frontendRenderer.render(nowMs)
+        }
         return
       }
     } else {
@@ -2287,6 +2434,15 @@ export async function startPlayApp(options?: {
     }
 
     runOwedLogicTicks(nowMs)
+
+    // Issue #1362: Background instances keep 25Hz logic & network heartbeats alive,
+    // and tick audio (for looping ambient/music or unmuted background slots), while
+    // skipping all WebGL2 / HUD 2D GPU rasterization (0 GPU draw calls in background).
+    if (!instanceFocused) {
+      session.audioRuntime.soundTick(session.world.frameCount)
+      return
+    }
+
     motionSmoother.beginFrame(nowMs)
     preloadActiveAreaAssets()
     sweepStaleCharacterArt(nowMs)
@@ -2296,16 +2452,10 @@ export async function startPlayApp(options?: {
     // only the world+HUD draw is postponed.
     const worldRenderFpsCap = settingsStore.get().worldRenderFps === 30 ? 30 : 0
     if (worldRenderFpsCap > 0) {
-      // 2ms slack: rAF timestamps jitter ±0.5ms, and an exact-multiple cap
-      // (e.g. 33.3ms on 60Hz) otherwise flaps at the boundary and skips to the
-      // next frame slot (a "30" cap measuring ~22).
-      const capMs = 1000 / worldRenderFpsCap - 2
-      if (lastWorldRenderMs !== null && nowMs - lastWorldRenderMs < capMs) {
-        return
-      }
-    }
-    lastWorldRenderMs = nowMs
-
+      const frameMs = 1000 / worldRenderFpsCap
+      if (nextWorldRenderMs !== null && nowMs < nextWorldRenderMs - 2) return
+      nextWorldRenderMs = nextWorldRenderMs === null || nowMs - nextWorldRenderMs > frameMs ? nowMs + frameMs : nextWorldRenderMs + frameMs
+    } else nextWorldRenderMs = null
     const currentSettings = settingsStore.get()
     const profile = getViewportProfile(currentSettings.viewport)
     renderer.setSceneViewportSize(profile.width, profile.height)
@@ -2321,13 +2471,15 @@ export async function startPlayApp(options?: {
       renderer.isPostProcessEnabled() &&
       viewCanvas.clientWidth > 0 &&
       viewCanvas.clientHeight > 0
-    const targetCanvasW = useUpscaledBackbuffer ? Math.max(profile.width, Math.round(cssW * dpr)) : profile.width
-    const targetCanvasH = useUpscaledBackbuffer ? Math.max(profile.height, Math.round(cssH * dpr)) : profile.height
-
-    if (viewCanvas.width !== targetCanvasW || viewCanvas.height !== targetCanvasH) {
-      viewCanvas.width = targetCanvasW
-      viewCanvas.height = targetCanvasH
+    if (useUpscaledBackbuffer) {
+      const targetCanvasW = Math.max(profile.width, Math.round(cssW * dpr))
+      const targetCanvasH = Math.max(profile.height, Math.round(cssH * dpr))
+      if (viewCanvas.width !== targetCanvasW || viewCanvas.height !== targetCanvasH) {
+        viewCanvas.width = targetCanvasW
+        viewCanvas.height = targetCanvasH
+      }
     }
+    renderer.pixelScale = useUpscaledBackbuffer ? 1 : syncCrispBackingStore(viewCanvas, profile.width, profile.height)
 
     lastRenderSnapshot = renderSceneSourceFrame({
       source: session.sceneSource,
@@ -2375,7 +2527,40 @@ export async function startPlayApp(options?: {
 
   await plugins.whenStarted()
 
+  const setInstanceFocused = (focused: boolean): void => {
+    const changed = instanceFocused !== focused
+    instanceFocused = focused
+    hudManager.setInputFocused(focused)
+    if (!focused) {
+      if (!chatInputEl.hidden) {
+        chatInputEl.value = ''
+        chatInputEl.hidden = true
+        syncChatInputToHud()
+        chatInputEl.blur()
+      }
+      frontendImeSink.syncFromActiveInput(null, false)
+      if (inGameView) {
+        session.commandMapper.resetModifiers()
+        session.commandMapper.handlePointerUp(0)
+        session.commandMapper.handlePointerUp(2)
+      }
+    } else if (changed) {
+      syncStageViewportFit()
+      if (!inGameView && flowState.activeInput) {
+        frontendImeSink.syncFromActiveInput(flowState.activeInput, false)
+      }
+      renderFrame(performance.now())
+    }
+  }
+
+  let multiboxManager: MultiInstanceManager | undefined
+
   const controller: PlayAppController = {
+    slotId,
+    ...(stageRefs ? { stageRefs } : {}),
+    get multibox(): MultiInstanceManager | undefined {
+      return multiboxManager
+    },
     ready: true,
     bootProgress: bootProgress.getSnapshot(),
     bootProgressTracker: bootProgress,
@@ -2405,6 +2590,11 @@ export async function startPlayApp(options?: {
         clearInterval(hiddenTickTimer)
         hiddenTickTimer = null
       }
+      if (multiboxManager) {
+        multiboxManager.dispose()
+        multiboxManager = undefined
+      }
+      session.audioRuntime.dispose()
       hudManager.dispose()
       for (const disposeOne of bootDisposers) disposeOne()
       chatInputEl.remove()
@@ -2432,9 +2622,30 @@ export async function startPlayApp(options?: {
       renderFrame(performance.now())
     },
     renderFrame,
+    setInstanceFocused,
+    isInstanceFocused: () => instanceFocused,
   }
 
-  window.__d2PlayApp = controller
-  window.__d2Play = controller
+  if (!isChildSlot) {
+    if (stageRefs) {
+      multiboxManager = new MultiInstanceManager({
+        initialController: controller,
+        initialStageRefs: stageRefs,
+        workspaceEl,
+        multiboxSlotEl: toolbar.getMultiboxSlotElement(),
+        settingsStore,
+        createControllerForSlot: (childSlotId, childStageRefs) =>
+          startPlayApp({
+            ...(options?.plugins ? { plugins: options.plugins } : {}),
+            slotId: childSlotId,
+            stageRefs: childStageRefs,
+            isChildSlot: true,
+          }),
+      })
+      window.__d2Multibox = multiboxManager
+    }
+    window.__d2PlayApp = controller
+    window.__d2Play = controller
+  }
   return controller
 }

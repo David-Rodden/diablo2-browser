@@ -19,7 +19,8 @@ import { MONSTATS2FLAG_REVIVE, getMonsterPathRecord } from '../../common/path/un
 import { getCanonicalMonsterKinds, getMonsterKindByHcIdx } from '../../common/units/monsters-data.ts'
 import { FIXED_ONE, UnitStatList } from '../engine/stat-list.ts'
 import { StateBus } from '../engine/state-bus.ts'
-import { executeSUnitDmg, type CombatUnitContext } from '../engine/combat-pipeline.ts'
+import { executeSUnitDmg, rollDamageRange256, type CombatUnitContext } from '../engine/combat-pipeline.ts'
+import { D2Rng } from '../../common/rng/d2-rng.ts'
 import type { MissileEngine } from '../engine/missile-engine.ts'
 import type { AuraScanner } from '../engine/aura-scanner.ts'
 import { calcSentrySubSkillDamage113c } from '../skills/assassin-traps.ts'
@@ -205,6 +206,7 @@ export class SummonManager {
   readonly registry: D2DataRegistry
   private readonly pets: SummonedPetUnit[] = []
   private uidCounter = 1
+  private readonly rng = new D2Rng(0x53554d4e)
 
   constructor(registry: D2DataRegistry) {
     this.registry = registry
@@ -569,6 +571,16 @@ export class SummonManager {
                   : 0))
 
     const evictedPetUids: string[] = []
+
+    // 0. Purge any already-dead pets (`alive === false` or `hp <= 0`) so they
+    // do not count toward `maxPets` or trigger false FIFO evictions.
+    for (let i = this.pets.length - 1; i >= 0; i -= 1) {
+      const p = this.pets[i]!
+      if (p.alive === false || p.hp <= 0) {
+        this.clearTotemAurasForPet(p, params.owner)
+        this.pets.splice(i, 1)
+      }
+    }
 
     // 1. Evict any existing pets in the same `petGroup` (`group > 0`) that have a different `petType`
     // (e.g. summoning Grizzly evicts Spirit Wolves / Dire Wolves; summoning Shadow Master evicts Shadow Warrior)
@@ -1119,7 +1131,7 @@ export class SummonManager {
         passive_evade: valkStats.inheritedEvadeLvl > 0 ? calculateEvadeStats(valkStats.inheritedEvadeLvl).chancePct : 0,
       } : {}),
       ...(slowPct ? { clay_golem_slow: slowPct } : {}),
-      ...(thornsReturnPct ? { thorns_return_pct: thornsReturnPct } : {}),
+      ...(thornsReturnPct ? { thorns_percent: thornsReturnPct } : {}),
       ...(fireAbsorbPct ? { fire_golem_absorb: fireAbsorbPct, item_absorbfire_percent: fireAbsorbPct } : {}),
       ...(bloodGolemDamageShare ? { blood_golem_damage_share: bloodGolemDamageShare } : {}),
     })
@@ -1513,7 +1525,7 @@ export class SummonManager {
               elemMin256: fgStats.holyFirePulseMin256,
               elemMax256: fgStats.holyFirePulseMax256,
               autoHit: true,
-            })
+            }, this.rng)
             damageDealt += out.totalDamage
           }
         }
@@ -1622,7 +1634,7 @@ export class SummonManager {
             elemMax256: pcStats.totalPoisonMax256,
             elemDurationFrames: pcStats.poisonLengthFrames,
             autoHit: true,
-          })
+          }, this.rng)
           primaryTarget.stateBus.applyState({
             stateNameOrId: 'poison',
             sourceUnitId: pet.id,
@@ -1631,7 +1643,7 @@ export class SummonManager {
             durationFrames: pcStats.poisonLengthFrames,
             currentFrame: params.currentTick,
             stats: {
-              poison_bitrate_256: Math.trunc((pcStats.poisonMinRate256 + pcStats.poisonMaxRate256) / 2),
+              poison_bitrate_256: rollDamageRange256(pcStats.poisonMinRate256, pcStats.poisonMaxRate256, this.rng),
             },
           })
           damageDealt += out.totalDamage
@@ -1708,7 +1720,7 @@ export class SummonManager {
                   elemMax256: Math.trunc(maxDmg / 2),
                   passiveEnemyPierce: 0,
                   autoHit: true,
-                })
+                }, this.rng)
                 damageDealt += out.totalDamage
               }
             }
@@ -1865,7 +1877,7 @@ export class SummonManager {
               startY: pet.y,
               targetX: primaryPos.x,
               targetY: primaryPos.y,
-              ...(subId === 313 || subId === 324 ? { piercePct: 100, nextDelayFrames: 4 } : {}),
+              ...(subId === 313 || subId === 324 ? { nextDelayFrames: 4 } : {}),
               dmgPacket: {
                 skillId: pet.sourceSkillId,
                 attackKind: 'spell',
@@ -2027,7 +2039,7 @@ export class SummonManager {
           ...(stunDurationFrames !== undefined ? { stunDurationFrames } : {}),
           ...(knockback ? { knockback: true } : {}),
           autoHit: true,
-        })
+        }, this.rng)
         damageDealt += out.totalDamage
         petAttacks += 1
         if (stunDurationFrames !== undefined && stunDurationFrames > 0 && !primaryTarget.isBoss) {
@@ -2138,6 +2150,45 @@ export class SummonManager {
 
   getActivePets(): readonly SummonedPetUnit[] {
     return this.pets
+  }
+
+  removePetByUid(uid: string): SummonedPetUnit | null {
+    const idx = this.pets.findIndex((p) => p.uid === uid)
+    if (idx === -1) return null
+    const pet = this.pets.splice(idx, 1)[0] ?? null
+    if (pet) {
+      pet.alive = false
+      pet.hp = 0
+      this.clearTotemAurasForPet(pet)
+    }
+    return pet
+  }
+
+  /**
+   * Remove a killed or dismissed summon by `uid` / `id` and clear any totem aura it provided.
+   */
+  removePet(uidOrUnitId: string | number, owner?: CombatUnitContext): SummonedPetUnit | null {
+    const key = String(uidOrUnitId)
+    for (let i = this.pets.length - 1; i >= 0; i -= 1) {
+      const pet = this.pets[i]!
+      const unitId = (pet as unknown as { unitId?: number }).unitId
+      if (
+        String(pet.uid) === key ||
+        String(pet.id) === key ||
+        (unitId !== undefined && String(unitId) === key)
+      ) {
+        this.pets.splice(i, 1)
+        pet.alive = false
+        pet.hp = 0
+        this.clearTotemAurasForPet(pet, owner)
+        return pet
+      }
+    }
+    return null
+  }
+
+  removeSummon(uidOrUnitId: string | number, owner?: CombatUnitContext): SummonedPetUnit | null {
+    return this.removePet(uidOrUnitId, owner)
   }
 
   /**

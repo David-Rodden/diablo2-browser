@@ -38,6 +38,33 @@ interface GeneratedItemExtras {
   readonly sockets?: number | undefined
   readonly rolledAutoMagic?: RolledAutoMagic | undefined
   readonly isGambleMystery?: boolean | undefined
+  readonly personalized?: boolean | undefined
+  readonly personalizedName?: string | undefined
+}
+
+function normalizeWireItemQuality(raw: unknown): WireItemQuality {
+  if (typeof raw === 'number' && raw >= 1 && raw <= 8) return raw as WireItemQuality
+  if (typeof raw === 'string') {
+    switch (raw.trim().toLowerCase()) {
+      case 'low':
+        return ItemQuality.LOW as WireItemQuality
+      case 'normal':
+        return ItemQuality.NORMAL as WireItemQuality
+      case 'superior':
+        return ItemQuality.SUPERIOR as WireItemQuality
+      case 'magic':
+        return ItemQuality.MAGIC as WireItemQuality
+      case 'set':
+        return ItemQuality.SET as WireItemQuality
+      case 'rare':
+        return ItemQuality.RARE as WireItemQuality
+      case 'unique':
+        return ItemQuality.UNIQUE as WireItemQuality
+      case 'crafted':
+        return ItemQuality.CRAFTED as WireItemQuality
+    }
+  }
+  return ItemQuality.NORMAL as WireItemQuality
 }
 
 export interface DomainItemToItemDataOptions {
@@ -78,10 +105,12 @@ export function domainItemToItemData113c(
   // Items.txt code (gold's base row is 'gold' but its Misc.txt / wire code is 'gld').
   const code = (item.code ?? item.base.id).trim()
   const isGold = code === 'gld'
-  const quality = (item.quality ?? ItemQuality.NORMAL) as WireItemQuality
+  const quality = normalizeWireItemQuality(item.quality ?? item.rarity)
   const isGambleMystery = extras.isGambleMystery === true
   const identified = isGambleMystery ? false : (extras.identified ?? item.flags?.identified ?? false)
   const ethereal = Boolean(extras.ethereal)
+  const personalized = Boolean(extras.personalized ?? item.flags?.personalized)
+  const personalizedName = extras.personalizedName
   const totalSockets = item.totalSockets ?? extras.sockets ?? 0
   const quantity = item.quantity ?? item.stack
   const simple = options.compactSave
@@ -140,6 +169,7 @@ export function domainItemToItemData113c(
     (identified ? ITEM_FLAG_IDENTIFIED : 0) |
     (totalSockets > 0 ? ITEM_FLAG_SOCKETED : 0) |
     (ethereal ? ITEM_FLAG_ETHEREAL : 0) |
+    (personalized ? 0x01000000 : 0) |
     (simple ? ITEM_FLAG_COMPACT : 0) |
     (isGambleMystery ? ITEM_FLAG_SIMPLE_EXTENDED : 0)
 
@@ -175,7 +205,8 @@ export function domainItemToItemData113c(
     socketed: totalSockets > 0,
     ethereal,
     runeword: false,
-    personalized: false,
+    personalized,
+    ...(personalizedName !== undefined ? { personalizedName, earOrPersonalizedName: personalizedName } : {}),
     isEar: false,
     newItem: false,
     starterItem: false,

@@ -192,8 +192,8 @@ describe('Issue #964 — verify-audio-113c sfx-core duration mismatch diagnostic
 })
 
 describe('Issue #964 — Baker CLI ffmpeg preflight & asset-manifest fallback on mid-bake failure', () => {
-  it('includes all 23 targets in ALL_BAKE_TARGETS including sfx, music, and manifest', () => {
-    expect(ALL_BAKE_TARGETS).toHaveLength(23)
+  it('includes all 24 targets in ALL_BAKE_TARGETS including sfx, music, and manifest', () => {
+    expect(ALL_BAKE_TARGETS).toHaveLength(24)
     expect(ALL_BAKE_TARGETS.slice(-4)).toEqual(['monster-sounds', 'speech', 'skill-sounds', 'manifest'])
   })
 

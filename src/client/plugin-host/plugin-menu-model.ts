@@ -48,6 +48,7 @@ export interface PluginMenuCardViewModel {
   readonly id: string
   readonly name: string
   readonly description: string
+  readonly author?: string | undefined
   readonly enabled: boolean
   readonly toggleLabel: string
   readonly statusLevel: PluginStatus['level'] | 'disabled'
@@ -112,7 +113,7 @@ export function buildPluginMenuViewModel(
     }
 
     const settings: PluginMenuSettingControlViewModel[] = snap.enabled
-      ? (plugin.settings ?? []).map((spec) => {
+      ? (plugin.settings ?? []).filter(({ shownWhen = [] }) => shownWhen.every(({ key, is }) => is.includes(snap.settings[key] ?? plugin.settings?.find((other) => other.key === key)?.default ?? ''))).map((spec) => {
           if (spec.kind === 'boolean') {
             return {
               kind: 'boolean',
@@ -156,6 +157,7 @@ export function buildPluginMenuViewModel(
       id: plugin.id,
       name,
       description,
+      author: plugin.author,
       enabled: snap.enabled,
       toggleLabel: snap.enabled
         ? tPluginMenu('pluginMenu.toggle.enable', lang)

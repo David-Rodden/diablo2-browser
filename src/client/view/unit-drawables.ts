@@ -125,6 +125,8 @@ export interface RenderableUnitInput {
   /** Sub-tile coordinates (may be fractional when interpolated by MotionPredictor). */
   readonly x: number
   readonly y: number
+  readonly lightX?: number | undefined
+  readonly lightY?: number | undefined
   /** Target sub-tile for moving units / missiles. */
   readonly targetX?: number | undefined
   readonly targetY?: number | undefined
@@ -260,6 +262,8 @@ export interface SceneUnitDrawable {
   readonly frame: number
   readonly subX: number
   readonly subY: number
+  readonly lightSubX?: number | undefined
+  readonly lightSubY?: number | undefined
   readonly worldX: number
   readonly worldY: number
   readonly sortY: number
@@ -335,6 +339,8 @@ export interface SceneMissileDrawable {
   readonly altitude?: number | undefined
   readonly subX: number
   readonly subY: number
+  readonly lightSubX?: number | undefined
+  readonly lightSubY?: number | undefined
   /**
    * 1.13c path (DrawGrid cell) sub-tile when it differs from the projected draw position `subX/subY`: the Meteor
    * family's `meteor`/`meteortail` are spawned AT the target sub-tile and only their screen projection is offset by
@@ -640,9 +646,11 @@ function lightOwnerType(kind: SceneUnitKind): number {
  * the port convention (D2 precise − 0.5): `(precise >> 13) + 4` (0x6fb59b9d). Static units stand on their sub-tile
  * (logical N.0), which 1.13c places at `sub * 8 + 4` (#827).
  */
+const lightSub = (unit: RenderableUnitInput) => (unit.lightX === undefined || unit.lightY === undefined ? {} : { lightSubX: unit.lightX, lightSubY: unit.lightY })
+
 function unitLightPos8(unit: RenderableUnitInput): { readonly x8: number; readonly y8: number } {
   if (unit.kind === 'player' || unit.kind === 'monster' || unit.kind === 'missile') {
-    return { x8: lightPos8(unit.x + 0.5), y8: lightPos8(unit.y + 0.5) }
+    return { x8: lightPos8((unit.lightX ?? unit.x) + 0.5), y8: lightPos8((unit.lightY ?? unit.y) + 0.5) }
   }
   return { x8: Math.floor(unit.x * 8) + 4, y8: Math.floor(unit.y * 8) + 4 }
 }
@@ -1260,6 +1268,7 @@ export function buildSceneDrawables(
         ...(unit.altitude !== undefined ? { altitude: unit.altitude } : {}),
         subX: unit.x,
         subY: unit.y,
+        ...lightSub(unit),
         ...(pathSub !== null ? { pathSubX: pathSub.x, pathSubY: pathSub.y } : {}),
         worldX,
         worldY,
@@ -1719,6 +1728,7 @@ export function buildSceneDrawables(
       frame: unit.frame ?? (unit.kind === 'item' ? 0 : (tick % 8)),
       subX: unit.x,
       subY: unit.y,
+      ...lightSub(unit),
       worldX,
       worldY,
       sortY: worldY,

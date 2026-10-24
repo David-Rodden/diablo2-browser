@@ -681,8 +681,8 @@ export function parseInGameChatInput(
       return { kind: 'local_fps' }
     }
 
-    // /players [N] or /players set N
-    const playersMatch = trimmed.match(/^\/players(?:\s+(?:set\s+)?(\d+))?$/i)
+    // /players [N], /players set N, or /players:N
+    const playersMatch = trimmed.match(/^\/players(?:\s+(?:set\s+)?|\s*:\s*)(-?\d+)$|^\/players$/i)
     if (playersMatch) {
       if (playersMatch[1] === undefined) {
         return { kind: 'local_players', count: null, valid: true }
@@ -741,7 +741,7 @@ export function parseInGameChatInput(
   }
 
   // Also support bare "players N" (1.13c single-player parity)
-  const barePlayersMatch = trimmed.match(/^players\s+(?:set\s+)?(\d+)$/i)
+  const barePlayersMatch = trimmed.match(/^players(?:\s+(?:set\s+)?|\s*:\s*)(-?\d+)$/i)
   if (barePlayersMatch && barePlayersMatch[1] !== undefined) {
     const n = parseInt(barePlayersMatch[1], 10)
     if (n >= 1 && n <= 8) {
@@ -751,6 +751,18 @@ export function parseInGameChatInput(
   }
 
   return { kind: 'say', text: trimmed.slice(0, CHAT_INPUT_MAX_CHARS) }
+}
+
+/**
+ * Extracts a valid `/players N` (`1..8`) count from an in-game chat command string,
+ * or returns `null` if the string is not a valid `/players 1..8` command.
+ */
+export function extractPlayersCommandCount(rawInput: string): number | null {
+  const parsed = parseInGameChatInput(rawInput)
+  if (parsed.kind === 'local_players' && parsed.valid && parsed.count !== null) {
+    return parsed.count
+  }
+  return null
 }
 
 // ─── BNCS `SID_CHATEVENT (0x0F)` Formatting (`D2Client.dll` `0x6fb1fce0` `UI\chat.cpp`) ───

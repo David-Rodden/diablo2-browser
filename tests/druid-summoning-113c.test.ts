@@ -221,6 +221,9 @@ describe('Issue #1019: Druid Summoning (#221-#247) 4-Layer 1.13c Fidelity', () =
         name: 'Druid',
         statList: ownerStats,
         stateBus: ownerStateBus,
+        // #1410: the spirit aura scan needs a position (Oak Sage spawned at 100,100).
+        x: 101,
+        y: 100,
       }
 
       // 1. Summon Oak Sage (#226) -> subSkillId 298 -> applies 'oaksage' and boosts MaxHP

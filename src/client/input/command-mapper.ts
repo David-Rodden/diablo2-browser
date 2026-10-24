@@ -89,6 +89,7 @@ import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../common/units/monsta
 import { MONSTATS2_FLAGS_BY_HCIDX } from '../../common/units/monstats2-flags-data.ts'
 import { SKILL_INPUT_FLAGS_113C } from './generated/input-tables-113c.ts'
 import { isMetalItemCode113c } from '../../common/items/metal-items-113c.ts'
+import { ITEM_PICKUP_REACH_SUBTILES, PlayAssists, type PlayAssistHost } from './play-assists.ts'
 import { PET_TYPE_UNSUMMON_IDX_113C } from '../../common/units/pet-type-table.ts'
 
 export const CORPSE_TARGET_SKILL_IDS = new Set<number>([
@@ -312,6 +313,7 @@ export class CommandMapper {
   private readonly onAutomapParty?: (() => void) | undefined
   private readonly onAutomapNames?: (() => void) | undefined
   private readonly onAutomapCenter?: (() => void) | undefined
+  private dispatchingFreshPress = false
 
   private shiftHeld = false
   private altHeld = false
@@ -360,6 +362,11 @@ export class CommandMapper {
    */
   quickCastMode = false
 
+  dragInteractMode = false
+  private readonly dragPickupAttempts = new Set<number>()
+
+  readonly assists: PlayAssists
+
   /** Default F1..F8 skill hotkey bindings (`key.toUpperCase()` -> binding). */
   private readonly skillHotkeys = new Map<string, SkillHotkeyBinding>()
 
@@ -394,6 +401,7 @@ export class CommandMapper {
     this.onAutomapParty = deps?.onAutomapParty
     this.onAutomapNames = deps?.onAutomapNames
     this.onAutomapCenter = deps?.onAutomapCenter
+    this.assists = new PlayAssists(this.assistHost())
     const hudWithTouch = this.hudManager as {
       onTouchSkillCast?: (slot: SkillWheelSlotDescriptor) => void
       touchControls?: TouchControlsHud
@@ -439,6 +447,95 @@ export class CommandMapper {
         slot.skillId,
       )
     }
+  }
+
+  private selfTickPosition(): { readonly x: number; readonly y: number } {
+    return this.predictor?.getSnapshot() ?? this.world.self
+  }
+
+  private distanceFromSelf(): (unit: ClientUnit) => number {
+    const self = this.selfTickPosition()
+    return (unit) => Math.hypot(unit.x - self.x, unit.y - self.y)
+  }
+
+  private isAwaitingInteractionWith(unit: ClientUnit): boolean {
+    const pendingIds: Partial<Record<ClientUnit['unitType'], number | null>> = {
+      item: this.pendingItemPickupId,
+      monster: this.pendingNpcInteractId,
+      object: this.pendingObjectInteractId,
+      tile: this.pendingWarpInteractId,
+    }
+    return pendingIds[unit.unitType] === unit.id
+  }
+
+  private isFriendlyInteraction(unit: ClientUnit | null): boolean {
+    return unit !== null && (unit.unitType === 'object' || unit.unitType === 'tile' || (unit.unitType === 'monster' && (this.isTownOrInteractiveNpc(unit) || this.isFriendlySummonOrPet(unit))))
+  }
+
+  private resolveDragHoldTarget(screenX: number, screenY: number): ClientUnit | null | 'wait' {
+    if (this.isFriendlyInteraction(this.lockedTargetUnit)) return 'wait'
+    const hovered = this.resolvePointerTarget(screenX, screenY).hoveredUnit
+    if (hovered === null) return null
+    if (this.isAwaitingInteractionWith(hovered)) return 'wait'
+    if (hovered.unitType === 'monster') return this.isTownOrInteractiveNpc(hovered) || this.isFriendlySummonOrPet(hovered) ? null : hovered
+    if (hovered.unitType !== 'item' || this.dragPickupAttempts.has(hovered.id) || this.distanceFromSelf()(hovered) > ITEM_PICKUP_REACH_SUBTILES) return null
+    this.dragPickupAttempts.add(hovered.id)
+    return hovered
+  }
+
+  private resolveLeftHoldAction(screenX: number, screenY: number, vanillaTarget: () => ClientUnit | null): { readonly unit: ClientUnit | null } | null {
+    const target = this.dragInteractMode ? this.resolveDragHoldTarget(screenX, screenY) : vanillaTarget()
+    if (target === 'wait') return null
+    const passes = (this.dragInteractMode && target !== null) || clickGate113c({ phase: 'hold', pressKind: this.pressKind, targetType: target?.unitType ?? null, selfMode: this.getSelfPlayerMode() }).pass
+    return passes ? { unit: target } : null
+  }
+
+  private assistHost(): PlayAssistHost {
+    return {
+      world: this.world,
+      hudManager: this.hudManager,
+      hudModel: this.hudModel,
+      camera: this.camera,
+      mouseHeld: () => ({ left: this.leftMouseDown, right: this.rightMouseDown }),
+      isMoving: () => Boolean(this.predictor?.getSnapshot().moving),
+      distanceFromSelf: () => this.distanceFromSelf(),
+      centerCameraOnSelf: () => this.centerCameraOnSelf(),
+      levelViewAt: (sx, sy) => this.levelViewAt(sx, sy),
+      walkableWith: (view, sx, sy, objects) =>
+        this.applyDynamicCollisionsToGrid(view.walkable, view.subOriginX ?? 0, view.subOriginY ?? 0, view.subWidth, view.subHeight, sx, sy, view.levelId === 102 || this.world.areaId === 102, objects, true),
+      triggerPrimaryWorldAction: (x, y, unit, nowMs, isHold) => this.triggerPrimaryWorldAction(x, y, unit, nowMs, isHold),
+      triggerSecondaryWorldAction: (x, y, unit, nowMs) => this.triggerSecondaryWorldAction(x, y, unit, nowMs),
+      selectSkill: (hand, skillId, nowMs) => this.dispatchSkillSelectForQuickCast(hand, skillId, 0xffffffff, nowMs),
+      canCastSkill: (skillId, nowMs) =>
+        (!this.isTownArea() || isSkillAllowedInTown(skillId)) && this.isSkillWeaponUsable(skillId) && this.hasEnoughManaForSkill(skillId, this.world) && !this.world.isSkillOnCooldown?.(skillId, nowMs),
+      sendCommand: (command, nowMs) => this.sendCommand(command, nowMs),
+      stepToward: (x, y, nowMs) => this.stepToward(x, y, nowMs),
+      isHostile: (unit) => unit.unitType === 'monster' && !this.isTownOrInteractiveNpc(unit) && !this.isFriendlySummonOrPet(unit) && !this.isMonsterDead(unit),
+      isPointIntercepted: (x, y) => this.isPointIntercepted(x, y),
+      isPlayerBusyCasting: (nowMs) => this.isPlayerBusyCasting(nowMs),
+      isTownArea: () => this.isTownArea(),
+    }
+  }
+
+  private stepToward(x: number, y: number, nowMs: number): void {
+    const running = this.isCurrentlyRunning()
+    this.predictor?.setPath([{ x, y }], running)
+    this.sendCommand({ type: running ? 'RunToLocation' : 'WalkToLocation', x: Math.round(x), y: Math.round(y) }, nowMs)
+  }
+
+  private levelViewAt(sx: number, sy: number): LevelView | null {
+    const areas = [...(this.world.areaId > 0 ? [this.world.areaId] : []), ...this.world.getRevealedAreaIds()]
+    return (
+      (this.mapService && areas.length > 0 && (sx !== 0 || sy !== 0) ? this.mapService.findLevelViewAtWorldSubTile(sx, sy, areas) : null) ??
+      (this.world.areaId > 0 ? this.automapView?.getLevelView(this.world.areaId) : undefined) ??
+      this.mapService?.getActiveLevelView() ??
+      this.automapView?.getLevelView() ??
+      null
+    )
+  }
+
+  private centerCameraOnSelf(): void {
+    this.syncCameraState()
   }
 
   private isTownArea(world: ClientWorld = this.world): boolean {
@@ -702,12 +799,15 @@ export class CommandMapper {
     ) {
       return false
     }
-    return (
-      Boolean((unit as { dead?: boolean }).dead) ||
-      unit.mode === 0 ||
-      unit.mode === 12 ||
-      unit.lifePct <= 0
-    )
+    return this.isMonsterDead(unit, world)
+  }
+
+  isMonsterDead(unit: ClientUnit, world: ClientWorld = this.world): boolean {
+    return unit.unitType === 'monster' && !this.isTownOrInteractiveNpc(unit, world) && (unit.dead || unit.mode === 0 || unit.mode === 12 || unit.lifePct <= 0)
+  }
+
+  private isDeadOutOfReach(unit: ClientUnit, canTargetCorpse: boolean): boolean {
+    return this.isMonsterDead(unit) && !(canTargetCorpse && this.isMonsterCorpse(unit))
   }
 
   /**
@@ -787,6 +887,7 @@ export class CommandMapper {
         }
         return true
       }
+      if (this.isMonsterDead(unit, world)) return false
       // Live monster: 1.13c TargetCorpse=1 skills (70/74/80/83/95/131/142/150) cannot target live monsters.
       if (TARGET_CORPSE_SKILL_IDS_113C.has(skillId)) return false
       const monKind = getMonsterKindByHcIdx(unit.classId, world.difficulty)
@@ -857,7 +958,7 @@ export class CommandMapper {
     for (const unit of world.getUnitsByType(1)) {
       if (unit.hidden || unit.states?.has(0x8f)) continue
       if (unit.x === 0 && unit.y === 0) continue
-      if (this.isMonsterCorpse(unit, world)) continue
+      if (this.isMonsterDead(unit, world)) continue
       if (!this.isValidSkillTargetUnit(unit, skillId, world)) continue
       const dx = unit.x - subtileX
       const dy = unit.y - subtileY
@@ -1117,7 +1218,7 @@ export class CommandMapper {
       case 'player':
         return unit.dead ? 1 : 0
       case 'monster':
-        return this.isMonsterCorpse(unit) ? -8 : 0
+        return this.isMonsterDead(unit) ? -8 : 0
       case 'tile':
         return 0
       case 'item':
@@ -1142,7 +1243,12 @@ export class CommandMapper {
         }
       | undefined
     const profile = hud?.viewportProfile ?? this.camera.viewportProfile ?? VIEWPORT_800x600
-    const leftOpen = Boolean(hud?.leftPanel && hud.leftPanel !== 'none')
+    const tradeState = (hud as any)?.trade ?? (hud as any)?.worldPanels?.trade
+    const isPendingTradeOnly =
+      hud?.leftPanel === 'trade' &&
+      !tradeState?.active &&
+      (tradeState?.pendingModal === 'wait' || tradeState?.pendingModal === 'request')
+    const leftOpen = Boolean(hud?.leftPanel && hud.leftPanel !== 'none' && !isPendingTradeOnly)
     const rightOpen = Boolean(hud?.rightPanel && hud.rightPanel !== 'none')
     return computePanelCameraShift(leftOpen, rightOpen, panelDockWidth(profile))
   }
@@ -1299,7 +1405,7 @@ export class CommandMapper {
         if (this.isFriendlySummonOrPet(unit) && !canTargetAllyOrPet) {
           return false
         }
-        if (this.isMonsterCorpse(unit) && !canTargetCorpse) {
+        if (this.isDeadOutOfReach(unit, canTargetCorpse)) {
           return false
         }
       }
@@ -1493,7 +1599,7 @@ export class CommandMapper {
           if (this.isFriendlySummonOrPet(unit) && !canTargetAllyOrPet) {
             continue
           }
-          if (this.isMonsterCorpse(unit) && !canTargetCorpse) {
+          if (this.isDeadOutOfReach(unit, canTargetCorpse)) {
             continue
           }
         }
@@ -1724,7 +1830,7 @@ export class CommandMapper {
           this.lockedTargetUnit = null
           return null
         }
-      } else if (this.isMonsterCorpse(liveUnit) && !CORPSE_TARGET_SKILL_IDS.has(skillId)) {
+      } else if (this.isDeadOutOfReach(liveUnit, CORPSE_TARGET_SKILL_IDS.has(skillId))) {
         this.lockedTargetUnit = null
         return null
       }
@@ -1817,7 +1923,7 @@ export class CommandMapper {
     if (this.isPointIntercepted(screenX, resolvedY)) {
       if (!this.selectionLocked) {
         this.hoveredUnit = null
-        this.hudModel?.setHoveredMonster(null)
+        this.assists.showHoveredMonster(null)
       }
       return
     }
@@ -1832,9 +1938,9 @@ export class CommandMapper {
         !this.isTownOrInteractiveNpc(target.hoveredUnit) &&
         !this.isFriendlySummonOrPet(target.hoveredUnit)
       ) {
-        this.hudModel?.setHoveredMonster(target.hoveredUnit.id)
+        this.assists.showHoveredMonster(target.hoveredUnit.id)
       } else {
-        this.hudModel?.setHoveredMonster(null)
+        this.assists.showHoveredMonster(null)
       }
     }
 
@@ -1855,23 +1961,13 @@ export class CommandMapper {
         return
       }
       if (resolvedNowMs - this.lastHoldDispatchMs >= 40) {
-        const holdUnit = this.selectionLocked
-          ? this.resolveLockedHoldTarget113c(leftSkillId)
-          : this.hoveredUnit
-        const gate = clickGate113c({
-          phase: 'hold',
-          pressKind: this.pressKind,
-          targetType: holdUnit ? holdUnit.unitType : null,
-          selfMode: this.getSelfPlayerMode(),
-        })
-        if (!gate.pass) {
-          return
-        }
+        const hold = this.resolveLeftHoldAction(screenX, resolvedY, () => (this.selectionLocked ? this.resolveLockedHoldTarget113c(leftSkillId) : this.hoveredUnit))
+        if (hold === null) return
         this.lastHoldDispatchMs = resolvedNowMs
         this.triggerPrimaryWorldAction(
           liveSubtile.x,
           liveSubtile.y,
-          holdUnit,
+          hold.unit,
           resolvedNowMs,
           true,
         )
@@ -1932,6 +2028,7 @@ export class CommandMapper {
     if (typeof screenXOrEvent !== 'number') {
       ;(screenXOrEvent as { _d2HandledByCommandMapper?: boolean })._d2HandledByCommandMapper = true
     }
+    this.assists.noteManual(resolvedNowMs)
     this.lastPointerX = screenX
     this.lastPointerY = resolvedY
     this.pointerDownX = screenX
@@ -1992,6 +2089,7 @@ export class CommandMapper {
 
     if (resolvedButton === 0) {
       this.leftMouseDown = true
+      this.dragPickupAttempts.clear()
       this.lastHoldDispatchMs = resolvedNowMs
       this.lockedPointerUnit =
         target.hoveredUnit?.unitType === 'item' ? target.hoveredUnit : null
@@ -2106,6 +2204,7 @@ export class CommandMapper {
         this.hudManager.syncPublishedState?.()
       }
       this.leftMouseDown = false
+      this.dragPickupAttempts.clear()
       this.lastHoldDispatchMs = 0
       this.lockedPointerUnit = null
       if (!this.rightMouseDown) {
@@ -2319,6 +2418,16 @@ export class CommandMapper {
     nowMs = performance.now(),
     isHold = false,
   ): DispatchedCommandRecord | null {
+    const outer = this.dispatchingFreshPress
+    this.dispatchingFreshPress = !isHold
+    try {
+      return this.runPrimaryWorldAction(subtileX, subtileY, hoveredUnit, nowMs, isHold)
+    } finally {
+      this.dispatchingFreshPress = outer
+    }
+  }
+
+  private runPrimaryWorldAction(subtileX: number, subtileY: number, hoveredUnit: ClientUnit | null, nowMs: number, isHold: boolean): DispatchedCommandRecord | null {
     const isRunning = this.isCurrentlyRunning()
     const leftSkillId =
       this.world.self?.leftSkill || (this.hudModel ? this.hudModel.leftSkillId : this.hudManager.hotkeys.leftSkillId)
@@ -2409,6 +2518,13 @@ export class CommandMapper {
           this.hudManager.rightPanel === 'inv' ||
           (this.hudModel?.hudManager && (this.hudModel.hudManager.inventory?.visible || this.hudModel.hudManager.rightPanel === 'inv'))
         )
+        const hasCursorItem = Boolean(
+          this.hudManager?.inventory?.cursorItem || this.world.containers.cursor,
+        )
+        if (toCursor && hasCursorItem) {
+          this.pendingItemPickupId = null
+          return null
+        }
         return this.dispatchRateLimited(
           {
             type: 'ItemPickup',
@@ -2703,6 +2819,7 @@ export class CommandMapper {
             return null
           }
           this.cancelActiveNpcOrStashForWorldAction(hoveredUnit, selfX, selfY, nowMs)
+          if (hoveredUnit.unitType === 'monster') this.assists.engageMonster(hoveredUnit.id)
           return this.dispatchRateLimited(
             {
               type: 'SkillOn',
@@ -3002,6 +3119,7 @@ export class CommandMapper {
       altKey?: boolean | undefined
       ctrlKey?: boolean | undefined
       metaKey?: boolean | undefined
+      repeat?: boolean | undefined
       preventDefault?: (() => void) | undefined
     },
     nowMs = performance.now(),
@@ -3030,6 +3148,7 @@ export class CommandMapper {
       altKey?: boolean | undefined
       ctrlKey?: boolean | undefined
       metaKey?: boolean | undefined
+      repeat?: boolean | undefined
       preventDefault?: (() => void) | undefined
     },
     nowMs = performance.now(),
@@ -3040,6 +3159,8 @@ export class CommandMapper {
       this.hudManager.syncPublishedState?.()
       return true
     }
+
+    if (this.assists.handleKey(event)) return true
 
     const kb = this.hudManager.getActiveKeyBindings?.()
     if (event.key === 'Shift' || event.shiftKey || matchesKeyBinding(kb, 'standStill', event)) {
@@ -3665,10 +3786,12 @@ export class CommandMapper {
    * Reset transient modifier and mouse down states (e.g. on window blur).
    */
   resetModifiers(): void {
+    this.assists.reset()
     this.shiftHeld = false
     this.altHeld = false
     this.ctrlHeldForRun = false
     this.leftMouseDown = false
+    this.dragPickupAttempts.clear()
     this.rightMouseDown = false
     this.lockedPointerUnit = null
     this.selectionLocked = false
@@ -3718,11 +3841,19 @@ export class CommandMapper {
           predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.y : this.world.self.y
         const dist = Math.hypot(pendingItem.x - selfX, pendingItem.y - selfY)
         if (dist <= 4) {
+          const toCursor = this.hudManager?.rightPanel === 'inv'
+          const hasCursorItem = Boolean(
+            this.hudManager?.inventory?.cursorItem || this.world.containers.cursor,
+          )
+          if (toCursor && hasCursorItem) {
+            this.pendingItemPickupId = null
+            return null
+          }
           const record = this.dispatchRateLimited(
             {
               type: 'ItemPickup',
               itemId: pendingItem.id,
-              toCursor: this.hudManager?.rightPanel === 'inv',
+              toCursor,
             },
             nowMs,
           )
@@ -3859,7 +3990,7 @@ export class CommandMapper {
     }
 
     if (this.leftMouseDown && !this.isPointIntercepted(this.lastPointerX, this.lastPointerY)) {
-      if (this.lockedPointerUnit?.unitType === 'item' || this.lockedPointerUnit?.unitType === 'object') {
+      if (!this.dragInteractMode && (this.lockedPointerUnit?.unitType === 'item' || this.lockedPointerUnit?.unitType === 'object')) {
         return null
       }
       const leftSkillId =
@@ -3872,23 +4003,15 @@ export class CommandMapper {
         return null
       }
       const liveSubtile = this.resolveLiveCursorSubtile(this.lastPointerX, this.lastPointerY)
-      const holdUnit = this.selectionLocked
-        ? this.resolveLockedHoldTarget113c(leftSkillId)
-        : this.resolvePointerTarget(this.lastPointerX, this.lastPointerY).hoveredUnit
-      const gate = clickGate113c({
-        phase: 'hold',
-        pressKind: this.pressKind,
-        targetType: holdUnit ? holdUnit.unitType : null,
-        selfMode: this.getSelfPlayerMode(),
-      })
-      if (!gate.pass) {
-        return null
-      }
+      const hold = this.resolveLeftHoldAction(this.lastPointerX, this.lastPointerY, () =>
+        this.selectionLocked ? this.resolveLockedHoldTarget113c(leftSkillId) : this.resolvePointerTarget(this.lastPointerX, this.lastPointerY).hoveredUnit,
+      )
+      if (hold === null) return null
       this.lastHoldDispatchMs = nowMs
       const record = this.triggerPrimaryWorldAction(
         liveSubtile.x,
         liveSubtile.y,
-        holdUnit,
+        hold.unit,
         nowMs,
         true,
       )
@@ -4410,7 +4533,7 @@ export class CommandMapper {
     nowMs = performance.now(),
     path: readonly SubTilePoint[] = [],
   ): DispatchedCommandRecord {
-    const rateLimit = this.rateLimiter.tryAcquire(command, nowMs)
+    const rateLimit = this.rateLimiter.tryAcquire(command, nowMs, { freshPress: this.dispatchingFreshPress })
     if (rateLimit.allowed) {
       const predSnap = this.predictor?.getSnapshot()
       const selfX =

@@ -205,4 +205,117 @@ describe('issue #1353 full quest coverage', () => {
     game.applyDamageToMonster(diablo, 1000, playerId)
     expect(player.questFlags[questIndex('a4q3')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
   })
+
+  it('grants 1.13c quest rewards (Akara bks->bkd, Radament/Izual skill pts, Lam Esen +5 statPts, Golden Bird +20 maxHp, Qual-Kehk runes, Anya +10 all resist, Shenk/Nihlathak pending bits)', () => {
+    const { game, playerId } = setup(1373)
+    const p = (game as unknown as {
+      players: Map<number, {
+        level: number
+        questFlags: Uint16Array
+        items: any[]
+        newSkills: number
+        statPts: number
+        maxHp: number
+        maxHpFixed: number
+      }>
+      playerResistPct: (player: unknown, kind: 'fire' | 'cold' | 'light') => number
+      groundItems: Map<number, { code: string }>
+    })
+    const player = p.players.get(playerId)!
+
+    // A1Q3: Akara (148) translates Scroll of Inifuss ('bks') into Key to the Cairn Stones ('bkd').
+    player.items.push(item(9810, 'bks'))
+    const akara = game.spawnMonster({ classId: 148, name: 'Akara', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: akara } } as never)
+    game.stepFrames(1)
+    expect(player.items.some((i) => i.code === 'bks')).toBe(false)
+    expect(player.items.some((i) => i.code === 'bkd')).toBe(true)
+
+    // A2Q1 (Radament) -> +1 skill point + drops Book of Skill ('ass'); A4Q1 (Izual) -> +2 skill points.
+    const skills0 = player.newSkills
+    const level0 = player.level
+    const radament = game.spawnMonster({ defId: 'radament', x: 12, y: 10, areaId: 1, hp: 10, maxHp: 10 })
+    game.applyDamageToMonster(radament, 1000, playerId)
+    expect(player.newSkills - (player.level - level0)).toBe(skills0 + 1)
+    expect([...p.groundItems.values()].some((g) => g.code.trim().toLowerCase() === 'ass')).toBe(true)
+
+    const izual = game.spawnMonster({ defId: 'izual', x: 13, y: 10, areaId: 1, hp: 10, maxHp: 10 })
+    game.applyDamageToMonster(izual, 1000, playerId)
+    expect(player.newSkills - (player.level - level0)).toBe(skills0 + 3)
+
+    // A3Q4 (Lam Esen's Tome) turned in to Alkor (254) -> +5 stat points.
+    const stats0 = player.statPts
+    operate(game, playerId, 193)
+    const alkor = game.spawnMonster({ classId: 254, name: 'Alkor', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: alkor } } as never)
+    game.stepFrames(1)
+    expect(player.statPts).toBe(stats0 + 5)
+
+    // A3Q1 (Jade Figurine -> Alkor) -> +20 Max HP.
+    const maxHp0 = player.maxHp
+    player.items.push(item(9811, 'j34'))
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: alkor } } as never)
+    game.stepFrames(1)
+    expect(player.maxHp).toBe(maxHp0 + 20)
+
+    // A5Q2 (3 cages -> Qual-Kehk) -> Ral (r08), Ort (r09), Tal (r07).
+    for (let i = 0; i < 3; i++) operate(game, playerId, 473)
+    const qualKehk = game.spawnMonster({ classId: 515, name: 'Qual-Kehk', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: qualKehk } } as never)
+    game.stepFrames(1)
+    for (const rune of ['r08', 'r09', 'r07']) {
+      expect(player.items.some((i) => i.code === rune)).toBe(true)
+    }
+
+    // A5Q3 (Malah -> Anya -> Malah) -> +10 all resistances.
+    const res0 = p.playerResistPct(player, 'fire')
+    const malah = game.spawnMonster({ classId: 513, name: 'Malah', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
+    game.stepFrames(1)
+    operate(game, playerId, 558)
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
+    game.stepFrames(1)
+    expect(p.playerResistPct(player, 'fire')).toBe(res0 + 10)
+    expect(p.playerResistPct(player, 'cold')).toBe(res0 + 10)
+    expect(p.playerResistPct(player, 'light')).toBe(res0 + 10)
+
+    // A1Q4 (The Countess: corruptrogue3 + SuperUnique 'The Countess'),
+    // A5Q1 (Shenk: overseer1 + SuperUnique 'Siege Boss') & A5Q4 (nihlathakboss) set quest flags & pending bits.
+    const countess = game.spawnMonster({
+      defId: 'corruptrogue3',
+      superUniqueId: 'The Countess',
+      x: 13,
+      y: 11,
+      areaId: 1,
+      hp: 10,
+      maxHp: 10,
+    })
+    game.applyDamageToMonster(countess, 1000, playerId)
+    expect(player.questFlags[questIndex('a1q4')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+
+    const shenk = game.spawnMonster({
+      defId: 'overseer1',
+      superUniqueId: 'Siege Boss',
+      x: 14,
+      y: 10,
+      areaId: 1,
+      hp: 10,
+      maxHp: 10,
+    })
+    game.applyDamageToMonster(shenk, 1000, playerId)
+    expect(player.questFlags[questIndex('a5q1')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+    expect(player.questFlags[questIndex('a5q1')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(QUEST_FLAG_REWARD_PENDING_113C)
+    const nihlathak = game.spawnMonster({
+      defId: 'nihlathakboss',
+      superUniqueId: 'Nihlathak Boss',
+      x: 15,
+      y: 10,
+      areaId: 1,
+      hp: 10,
+      maxHp: 10,
+    })
+    game.applyDamageToMonster(nihlathak, 1000, playerId)
+    expect(player.questFlags[questIndex('a5q4')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+    expect(player.questFlags[questIndex('a5q4')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(QUEST_FLAG_REWARD_PENDING_113C)
+  })
 })

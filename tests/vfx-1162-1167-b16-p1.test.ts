@@ -10,6 +10,8 @@
  * - #1167 (B16-6): Monster-cast `#97 Smite`, `#107 Charge`, `#132 Leap`, `#143 Leap Attack` must not apply overlays/states/knockback to monster allies.
  */
 
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
@@ -26,7 +28,7 @@ import {
 import { CANONICAL_113C_MISSILES, getMissileTxtData } from '../src/common/skills/missiles-data.ts'
 
 const EXCEL_DIR =
-  '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel'
+  join(homedir(), 'd2-data', 'excel')
 
 describe('Diablo II v1.13c Monster Skills VFX Parity — Work Unit B16-p1 (#1162..#1167)', () => {
   describe('#1162 (B16-1): MonStats.txt MissA1/A2/S1-S4/C/SQ monster mode projectiles', () => {

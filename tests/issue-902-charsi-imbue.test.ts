@@ -229,7 +229,7 @@ describe('Issue #902: Charsi Imbue UI, 1.13c Eligibility, and End-to-End Protoco
         quality: 3, // superior
         ethereal: true,
         personalized: true,
-        personalizedName: 'Taodao',
+        personalizedName: 'Deckard',
       })
       const imbuedData = imbueItemData113c(baseData, 20, 123456)
       expect(imbuedData.id).toBe(505)
@@ -238,7 +238,7 @@ describe('Issue #902: Charsi Imbue UI, 1.13c Eligibility, and End-to-End Protoco
       expect(imbuedData.identified).toBe(true)
       expect(imbuedData.ethereal).toBe(true)
       expect(imbuedData.personalized).toBe(true)
-      expect(imbuedData.personalizedName).toBe('Taodao')
+      expect(imbuedData.personalizedName).toBe('Deckard')
       expect(imbuedData.container).toBe(0) // cursor
       expect(imbuedData.destination).toBe(1) // cursor
       expect(imbuedData.stats?.length ?? 0).toBeGreaterThan(0)

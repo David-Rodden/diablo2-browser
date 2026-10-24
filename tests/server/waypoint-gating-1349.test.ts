@@ -70,13 +70,62 @@ describe('issue #1349 waypoint gating', () => {
     game.stepFrames(1)
     expect(record.areaId).toBe(1)
 
-    // Player walked away from the operated waypoint.
+    // Player walked away from the operated waypoint: clears activeWaypointUnitId and does not auto-approach.
     openWaypoint(game, playerId)
     record.x = 80
     record.y = 80
     game.enqueueCommand(playerId, { type: 'WaypointGo', waypointId: 1, destAreaId: 3 })
+    game.stepFrames(20)
+    expect(record.areaId).toBe(1)
+
+    // Standing next to an unopened waypoint also rejects a forged 0x49 across multiple frames.
+    const unopenedWpId = game.spawnObject({
+      classId: 119,
+      x: Math.round(record.x),
+      y: Math.round(record.y),
+      areaId: 1,
+      isWaypoint: true,
+    })
+    game.enqueueCommand(playerId, { type: 'WaypointGo', waypointId: unopenedWpId, destAreaId: 3 })
+    game.stepFrames(20)
+    expect(record.areaId).toBe(1)
+  })
+
+  it('0x49 with destAreaId=0 or current areaId closes the active waypoint session (D2Game 0x6fc8e9c8)', () => {
+    const game = new GameInstance({ seed: 1353, areaId: 1 })
+    const playerId = connect(game)
+    const record = playerRecord(game, playerId)
+    record.waypoints.add(3)
+
+    const wpId = openWaypoint(game, playerId)
+    game.enqueueCommand(playerId, { type: 'WaypointGo', waypointId: wpId, destAreaId: 0 })
     game.stepFrames(1)
     expect(record.areaId).toBe(1)
+    // Subsequent 0x49 without re-operating the waypoint must be rejected.
+    game.enqueueCommand(playerId, { type: 'WaypointGo', waypointId: wpId, destAreaId: 3 })
+    game.stepFrames(1)
+    expect(record.areaId).toBe(1)
+  })
+
+  it('exportPlayerD2s persists only operated waypoints in the WS block', () => {
+    const game = new GameInstance({ seed: 1354, areaId: 1 })
+    const playerId = connect(game)
+    const record = playerRecord(game, playerId)
+    ;(game as unknown as {
+      transitionPlayerArea: (p: unknown, area: number, arrival: { kind: string }) => void
+    }).transitionPlayerArea(record, 3, { kind: 'warp' })
+    expect(record.areaId).toBe(3)
+
+    const d2sBefore = game.exportPlayerD2s(playerId)!
+    const gameCheck1 = new GameInstance({ seed: 1355, areaId: 1 })
+    const pid1 = gameCheck1.connectPlayer({ d2s: d2sBefore })
+    expect(playerRecord(gameCheck1, pid1).waypoints.has(3)).toBe(false)
+
+    openWaypoint(game, playerId)
+    const d2sAfter = game.exportPlayerD2s(playerId)!
+    const gameCheck2 = new GameInstance({ seed: 1356, areaId: 1 })
+    const pid2 = gameCheck2.connectPlayer({ d2s: d2sAfter })
+    expect(playerRecord(gameCheck2, pid2).waypoints.has(3)).toBe(true)
   })
 
   it('accepts an activated in-act destination from the operated waypoint', () => {

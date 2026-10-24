@@ -110,7 +110,12 @@ export function buildSceneSnapshot(host: SessionRenderBuilderHost): ClientSceneW
   const neighbourLevelViews = host.resolveNeighbourLevelViews(levelView)
   const levelId = levelView?.areaId ?? (host.world.areaId > 0 ? host.world.areaId : 0)
   const actId = levelId > 0 ? getActForArea(levelId) : undefined
-  const leftPanelOpen = host.hudManager.leftPanel !== 'none'
+  const tradeState = (host.hudManager as any).trade ?? (host.hudManager.worldPanels as any)?.trade
+  const isPendingTradeOnly =
+    host.hudManager.leftPanel === 'trade' &&
+    !tradeState?.active &&
+    (tradeState?.pendingModal === 'wait' || tradeState?.pendingModal === 'request')
+  const leftPanelOpen = host.hudManager.leftPanel !== 'none' && !isPendingTradeOnly
   const rightPanelOpen = host.hudManager.rightPanel !== 'none'
   const profile = host.hudManager.viewportProfile ?? host.camera.viewportProfile
   const panelShiftX = computePanelCameraShift(
@@ -168,6 +173,7 @@ export function tickSessionFrame(
   const clampedDt = Math.min(200, safeDt)
   host.tickCounter++
   host.commandMapper.tick(nowMs)
+  host.commandMapper.assists.tick(nowMs)
 
   const selfUnit = host.world.getUnit('player', host.world.selfId || 1)
   if (selfUnit) {
@@ -402,11 +408,15 @@ export function tickSessionFrame(
     )
     if (env.updatePeriodOfDay(activeView?.areaId ?? 0)) {
       host.envEffects.refresh(objects, env.period, nowMs)
-      host.audioRuntime.setTimeOfDay(periodOfDayToSoundEnvironTod113c(env.period))
+      if (!host.hudManager?.tradeHallMode) {
+        host.audioRuntime.setTimeOfDay(periodOfDayToSoundEnvironTod113c(env.period))
+      }
     }
-    const isRaining = !host.weather.sim.snow && host.weather.sim.intensity > 0
-    const rainTargetVol = isRaining ? Math.round(host.weather.sim.intensity * 255) : 0
-    host.audioRuntime.setRaining(isRaining, rainTargetVol)
+    if (!host.hudManager?.tradeHallMode) {
+      const isRaining = !host.weather.sim.snow && host.weather.sim.intensity > 0
+      const rainTargetVol = isRaining ? Math.round(host.weather.sim.intensity * 255) : 0
+      host.audioRuntime.setRaining(isRaining, rainTargetVol)
+    }
   }
   host.enforceActiveInteractionRange113c()
   if (host.world.npcInteraction.npcId !== null) {
@@ -702,14 +712,62 @@ export function buildRenderableUnits(
 
     if (u.unitType === 'tile') {
       const warpId = u.warpId ?? u.classId
-      let matchedWarp = activeLevelView?.warps.find((w) => w.lvlWarpId === warpId)
-      if (!matchedWarp && activeLevelView) {
+      const pickWarpToLevelId = (
+        view: NonNullable<typeof activeLevelView>,
+      ): number | undefined => {
+        let bestSameIdToLevel: number | undefined
+        let bestSameIdDist = Number.POSITIVE_INFINITY
+        let bestNearToLevel: number | undefined
+        let bestNearDist = 8
+        const originX = view.originX ?? 0
+        const originY = view.originY ?? 0
+        for (const e of view.entrances ?? []) {
+          if (!e.warp) continue
+          const wx = originX + e.warp.subX
+          const wy = originY + e.warp.subY
+          const d = Math.hypot(wx - ux, wy - uy)
+          if (e.warp.lvlWarpId === warpId && d < bestSameIdDist) {
+            bestSameIdDist = d
+            bestSameIdToLevel = e.toLevelId
+          }
+          if (d <= bestNearDist) {
+            bestNearDist = d
+            bestNearToLevel = e.toLevelId
+          }
+        }
+        if (bestSameIdToLevel !== undefined && bestSameIdDist <= 16) return bestSameIdToLevel
+        if (bestNearToLevel !== undefined) return bestNearToLevel
+        for (const w of view.warps ?? []) {
+          const rawW = w as { readonly subX?: number; readonly subY?: number }
+          if (typeof rawW.subX === 'number' && typeof rawW.subY === 'number') {
+            const d = Math.hypot(rawW.subX - ux, rawW.subY - uy)
+            if (w.lvlWarpId === warpId && d < bestSameIdDist) {
+              bestSameIdDist = d
+              bestSameIdToLevel = w.toLevelId
+            }
+          } else if (w.lvlWarpId === warpId && Array.isArray(view.rooms)) {
+            const room = view.rooms.find((r) => r.index === w.room)
+            if (
+              room &&
+              ux >= room.worldSubX &&
+              ux < room.worldSubX + room.subW &&
+              uy >= room.worldSubY &&
+              uy < room.worldSubY + room.subH
+            ) {
+              return w.toLevelId
+            }
+          }
+        }
+        if (bestSameIdToLevel !== undefined) return bestSameIdToLevel
+        return view.warps?.find((w) => w.lvlWarpId === warpId)?.toLevelId
+      }
+      let toLevelId = activeLevelView ? pickWarpToLevelId(activeLevelView) : undefined
+      if (toLevelId === undefined && activeLevelView) {
         for (const nv of host.resolveNeighbourLevelViews(activeLevelView)) {
-          matchedWarp = nv.warps.find((w) => w.lvlWarpId === warpId)
-          if (matchedWarp) break
+          toLevelId = pickWarpToLevelId(nv)
+          if (toLevelId !== undefined) break
         }
       }
-      const toLevelId = matchedWarp?.toLevelId
       const warpNames = toLevelId !== undefined ? resolveLevelWarpName(toLevelId) : undefined
       const bounds = resolveLvlWarpBounds(warpId)
       const warpName =

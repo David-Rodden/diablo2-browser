@@ -2,7 +2,7 @@
  * M21-P4 (#946) — F16 `SoundEnviron113c` 25 Hz controller across all 50 environments × 136 levels,
  * F17 weather rain loop (`id 64`) + thunder (`id 202..204`) superimposed on environment via Opus pack.
  *
- * Authoritative 1.13c ground truth (`D2Client.dll` disassembly, verified from `/usr/local/google/home/taodao/d2-data/D2Client.dll`):
+ * Authoritative 1.13c ground truth (`D2Client.dll` disassembly, verified from `samples/d2/D2Client.dll`):
  * - `0x6fb0f020` (`SoundTick`): calls `SoundEnvironTick` (`0x6faff860`) BEFORE `SoundUpdate` (`0x6fb38dd0`).
  * - `0x6faff8af–0x6faff8c2`: `tod ∈ {1, 2, 3}` (Dawn/Day/Dusk) → `Day Ambience` (`+0x04`) & `Day Event` (`+0x0c`);
  *   `tod ∈ {0, 4}` (Night) → `Night Ambience` (`+0x08`) & `Night Event` (`+0x10`).

@@ -32,6 +32,43 @@ import {
 } from '../skills/barbarian-masteries.ts'
 import { computeVenomPoisonDamage } from '../skills/assassin-shadow.ts'
 
+/**
+ * RNG contract required by 1.13c combat pipeline functions (`D2Game.dll` `pUnit + 0x20` LCG).
+ * Compatible with `D2Rng` (`src/common/rng/d2-rng.ts`).
+ */
+export interface CombatRng {
+  rand(max: number): number
+}
+
+/**
+ * Roll a damage value in `[min256, max256]` (8.8 fixed-point) using 1.13c RNG (`D2Game.dll`
+ * `SUNITDMG_RollDamageValue` `0x6FCFCD80` -> `0x6FCFBED0`).
+ *
+ * - When `max256 <= min256`, returns `Math.max(0, min256)` without advancing RNG (`0x6FCFC009`).
+ * - When both `min256` and `max256` are exact integer multiples of `FIXED_ONE` (`256`),
+ *   rolls uniformly in whole-damage units `[minWhole, maxWhole]` and shifts `<< 8`, so integer
+ *   damage ranges (`[10..20]`) produce exact uniform integer hits without ceiling bias.
+ * - Otherwise rolls uniformly across the 256-fixed sub-interval `[min256, max256]`.
+ */
+function boundedRand(rng: CombatRng, span: number): number {
+  if (span <= 1) return 0
+  const raw = Math.trunc(rng.rand(span))
+  if (!Number.isFinite(raw) || raw < 0) return 0
+  return raw >= span ? raw % span : raw
+}
+
+export function rollDamageRange256(min256: number, max256: number, rng: CombatRng): number {
+  const lo = Math.max(0, Math.trunc(min256))
+  const hi = Math.max(0, Math.trunc(max256))
+  if (hi <= lo) return lo
+  if ((lo & 0xff) === 0 && (hi & 0xff) === 0) {
+    const loWhole = Math.trunc(lo / FIXED_ONE)
+    const hiWhole = Math.trunc(hi / FIXED_ONE)
+    return (loWhole + boundedRand(rng, hiWhole - loWhole + 1)) * FIXED_ONE
+  }
+  return lo + boundedRand(rng, hi - lo + 1)
+}
+
 export interface CombatUnitContext {
   readonly id: string
   readonly name: string
@@ -55,6 +92,28 @@ export interface CombatUnitContext {
   readonly weaponPoisonBitrate256?: number
   readonly weaponPoisonFrames?: number
   readonly unitType?: 'player' | 'mercenary' | 'party' | 'party_mercenary' | 'minion' | 'monster'
+  /**
+   * `DifficultyLevels.txt` `ResistPenalty` (0 / -40 / -100) of the game this unit lives in.
+   * Read only on the player/hireling branch of `D2Game.dll` 0x6FCFB3C0 (see
+   * {@link defenderResistParams113c}); fixtures built outside a game instance leave it unset,
+   * which is the Normal row (0).
+   */
+  readonly resistPenalty?: number | undefined
+  /**
+   * `DifficultyLevels.txt` `LifeStealDivisor` / `ManaStealDivisor` (1 / 2 / 3) of the game a
+   * player attacker lives in. `D2Game.dll` 0x6FCFBACF..0x6FCFBAF3 divides only a `UNIT_PLAYER`
+   * attacker's steal % by them (see {@link computeLifeManaSteal113c}); fixtures built outside a
+   * game instance leave them unset, which is the Normal row (1).
+   */
+  readonly lifeStealDivisor?: number | undefined
+  readonly manaStealDivisor?: number | undefined
+  /**
+   * `MonStats.txt` `Drain` / `Drain(N)` / `Drain(H)` of the current difficulty for a
+   * monster-class defender (`MonStatsTxt + 0xA0 + difficulty`, read at `D2Game.dll` 0x6FCFBA8E).
+   * Steal against a monster-class defender is scaled by `Drain / 100` and skipped when
+   * `Drain <= 0` (e.g. `skeleton1`). Required whenever a monster-class defender is stolen from.
+   */
+  readonly drain?: number | undefined
   readonly isBoss?: boolean
   readonly isPrimeEvil?: boolean
   readonly coldEffect?: number
@@ -101,9 +160,64 @@ export interface ResistanceResult {
   readonly effectiveRes: number
 }
 
+/** Resistance channel of the `D2Game.dll` descriptor table at 0x6FD22AB0 (0x2C-byte records). */
+export type ResistChannel113c = 'phys' | 'mag' | 'fire' | 'ltng' | 'cold' | 'pois'
+
+/**
+ * True when `D2Game.dll` 0x6FCFB3C0 resolves this unit on the player branch.
+ *
+ * The context flag `[ctx+0x14]` (set at 0x6FCFC10A..0x6FCFC121) is 1 only for a
+ * `UNIT_MONSTER` whose D2Common #11104 hireling type is 0. Players and hirelings
+ * therefore share the penalised / capped branch, while ordinary monsters and
+ * player summons (minions) take the uncapped monster branch.
+ */
+export function usesPlayerResistBranch113c(unit: Pick<CombatUnitContext, 'unitType'>): boolean {
+  return (
+    unit.unitType === 'player' ||
+    unit.unitType === 'mercenary' ||
+    unit.unitType === 'party' ||
+    unit.unitType === 'party_mercenary'
+  )
+}
+
+/**
+ * Player/hireling upper bound, `D2Game.dll` 0x6FCFB44A..0x6FCFB4B3:
+ * - descriptors with a max stat (fire 40, ltng 42, cold 44, pois 46, magic 38) cap at
+ *   `min(95, 75 + stat(max))`;
+ * - `damageresist` (36) has no max stat and caps at 50.
+ */
+export function playerResistCap113c(statList: UnitStatList, channel: ResistChannel113c): number {
+  if (channel === 'phys') return 50
+  return statList.getEffectiveMaxResistance(channel)
+}
+
+/** 0x6FCFB405..0x6FCFB410: `damageresist` (0x24) and `magicresist` (0x25) never take the difficulty penalty. */
+export function channelTakesDifficultyPenalty113c(channel: ResistChannel113c): boolean {
+  return channel !== 'phys' && channel !== 'mag'
+}
+
+/** Branch selection + player cap + difficulty penalty for {@link computeEffectiveResistance}. */
+export function defenderResistParams113c(
+  unit: Pick<CombatUnitContext, 'unitType' | 'statList' | 'resistPenalty'>,
+  channel: ResistChannel113c,
+): { isDefenderPlayer: boolean; maxResistance?: number; resistPenalty?: number } {
+  if (!usesPlayerResistBranch113c(unit)) return { isDefenderPlayer: false }
+  return {
+    isDefenderPlayer: true,
+    maxResistance: playerResistCap113c(unit.statList, channel),
+    resistPenalty: channelTakesDifficultyPenalty113c(channel) ? Math.trunc(unit.resistPenalty ?? 0) : 0,
+  }
+}
+
 /**
  * Compute effective resistance under 1.13c Conviction (`123`) + Lower Resist (`91`)
  * `1/5` immunity-breaking rule and `-Enemy Resistance` (`Cold Mastery` / facets).
+ *
+ * Mirrors `D2Game.dll` 0x6FCFB3C0:
+ * - monster branch: `-enemy res` is skipped when `res >= 100`; no difficulty penalty and no
+ *   upper cap (`>= 100` stays immune); lower bound -100.
+ * - player/hireling branch (`isDefenderPlayer`): `res - pierce + ResistPenalty`, then
+ *   `res <= 0 ? max(-100, res) : min(res, maxResistance)`. Never immune.
  */
 export function computeEffectiveResistance(params: {
   baseRes: number
@@ -112,7 +226,10 @@ export function computeEffectiveResistance(params: {
   passiveEnemyPierce?: number
   canBreakImmunity?: boolean
   maxResistance?: number | undefined
-  isDefenderPlayer?: boolean | undefined
+  /** Player/hireling branch of 0x6FCFB3C0 (see {@link usesPlayerResistBranch113c}). Must be explicit. */
+  isDefenderPlayer: boolean
+  /** `DifficultyLevels.txt` `ResistPenalty` (player branch only; 0 for phys/magic channels). */
+  resistPenalty?: number | undefined
 }): ResistanceResult {
   const baseRes = Math.trunc(params.baseRes)
   const rawConvictionAndLR = Math.max(0, Math.trunc((params.convictionPierce ?? 0) + (params.lowerResistPierce ?? 0)))
@@ -120,12 +237,14 @@ export function computeEffectiveResistance(params: {
 
   // 1.13c Rule: When base resistance >= 100%, Conviction and Lower Resist apply at 1/5 effectiveness!
   // Note: For player units, positive resistance stacks to buffer against -res, but cannot grant immunity.
-  const isPlayerOrAlly = params.isDefenderPlayer ?? false
-  if (isPlayerOrAlly) {
+  if (params.isDefenderPlayer) {
+    if (params.maxResistance === undefined) {
+      throw new Error('computeEffectiveResistance: player/hireling defender requires maxResistance (D2Game 0x6FCFB44A)')
+    }
     const resAfterConvictionLR = baseRes - rawConvictionAndLR
     const passivePierce = Math.max(0, Math.trunc(params.passiveEnemyPierce ?? 0))
-    const maxRes = params.maxResistance !== undefined ? Math.min(95, Math.max(0, params.maxResistance)) : 95
-    const effectiveRes = Math.max(-100, Math.min(maxRes, resAfterConvictionLR - passivePierce))
+    const res = resAfterConvictionLR - passivePierce + Math.trunc(params.resistPenalty ?? 0)
+    const effectiveRes = res <= 0 ? Math.max(-100, res) : Math.min(res, Math.trunc(params.maxResistance))
     return {
       baseRes,
       convictionAndLRApplied: rawConvictionAndLR,
@@ -194,28 +313,43 @@ export function computeToHitChance(params: {
 }
 
 /**
- * Evaluate shield block, Assassin Weapon Block (`263`), and Amazon Dodge (`13`), Avoid (`18`), Evade (`29`).
+ * Evaluate shield block (`D2Game.dll` `0x6FCFB790`), Assassin Weapon Block (`263`, `0x6FCFB0DE`),
+ * and Amazon Evade (`29`, `0x6FCFB065`), Dodge (`13`, `0x6FCFB11F`), Avoid (`18`, `0x6FCFB156`).
+ *
+ * Each active check draws its own independent `rng.rand(100)` roll in 1.13c (never reusing the
+ * attacker's `RollToHit` roll or a previous avoidance roll).
  */
 export function evaluateAvoidanceAndBlock(params: {
   defender: CombatUnitContext
   attackKind: 'melee' | 'missile' | 'spell'
+  rng: CombatRng
   unblockable?: boolean
   isPersistentGroundFire?: boolean
-  roll100?: number // deterministic roll in [0..99], default 50
+  roll100?: number | undefined
+  shieldBlockRoll100?: number | undefined
+  weaponBlockRoll100?: number | undefined
+  evadeRoll100?: number | undefined
+  dodgeRoll100?: number | undefined
+  avoidRoll100?: number | undefined
 }): { avoided: boolean; reason: 'none' | 'block' | 'weapon_block' | 'dodge' | 'avoid' | 'evade' } {
+  if (!params.rng || typeof params.rng.rand !== 'function') {
+    throw new Error('evaluateAvoidanceAndBlock: rng is required (D2Game.dll 0x6FCFB790 / 0x6FCFB030)')
+  }
   if (params.unblockable) return { avoided: false, reason: 'none' }
-  const roll = params.roll100 ?? 50
   const defStats = params.defender.statList
 
-  // 1. Shield Block (applies to physical melee/missile)
+  // 1. Shield Block (0x6FCFB790..0x6FCFB7FF, applies to physical melee/missile)
   if (params.attackKind !== 'spell' && params.defender.hasShield) {
     const blockChance = Math.min(75, Math.max(0, defStats.getAccruedStat('toblock')))
-    if (roll < blockChance) {
-      return { avoided: true, reason: 'block' }
+    if (blockChance > 0) {
+      const blockRoll = params.shieldBlockRoll100 ?? params.roll100 ?? params.rng.rand(100)
+      if (blockRoll < blockChance) {
+        return { avoided: true, reason: 'block' }
+      }
     }
   }
 
-  // 2. Assassin Weapon Block (`skillId = 263`, blocks melee, missiles, and most spells while stationary/attacking with dual claws)
+  // 2. Assassin Weapon Block (`skillId = 263`, 0x6FCFB0DE, blocks melee, missiles, and most spells while stationary/attacking with dual claws)
   const defAny = params.defender as unknown as Record<string, unknown>
   const isMovingOrRunning = Boolean(
     params.defender.isMoving || defAny['isWalking'] || defAny['isRunning']
@@ -227,30 +361,42 @@ export function evaluateAvoidanceAndBlock(params: {
       (wType === '' || wType === 'h2h' || wType === 'h2h2' || wType === 'claw' || wType === 'katar'))
   if (isClawWielded && !isMovingOrRunning && !params.isPersistentGroundFire) {
     const wbChance = Math.min(65, Math.max(0, defStats.getAccruedStat('passive_weaponblock')))
-    if (roll < wbChance) {
-      return { avoided: true, reason: 'weapon_block' }
+    if (wbChance > 0) {
+      const wbRoll = params.weaponBlockRoll100 ?? params.roll100 ?? params.rng.rand(100)
+      if (wbRoll < wbChance) {
+        return { avoided: true, reason: 'weapon_block' }
+      }
     }
   }
 
-  // 3. Amazon Evade (`skillId = 29`, while moving)
+  // 3. Amazon Evade (`skillId = 29`, 0x6FCFB065, while moving)
   if (params.defender.isMoving) {
     const evadeChance = Math.min(75, Math.max(0, defStats.getAccruedStat('passive_evade')))
-    if (roll < evadeChance) {
-      return { avoided: true, reason: 'evade' }
-    }
-  } else {
-    // 4. Amazon Dodge (`skillId = 13`, melee while stationary)
-    if (params.attackKind === 'melee') {
-      const dodgeChance = Math.min(75, Math.max(0, defStats.getAccruedStat('passive_dodge')))
-      if (roll < dodgeChance) {
-        return { avoided: true, reason: 'dodge' }
+    if (evadeChance > 0) {
+      const evadeRoll = params.evadeRoll100 ?? params.roll100 ?? params.rng.rand(100)
+      if (evadeRoll < evadeChance) {
+        return { avoided: true, reason: 'evade' }
       }
     }
-    // 5. Amazon Avoid (`skillId = 18`, missile/ranged while stationary)
+  } else {
+    // 4. Amazon Dodge (`skillId = 13`, 0x6FCFB11F, melee while stationary)
+    if (params.attackKind === 'melee') {
+      const dodgeChance = Math.min(75, Math.max(0, defStats.getAccruedStat('passive_dodge')))
+      if (dodgeChance > 0) {
+        const dodgeRoll = params.dodgeRoll100 ?? params.roll100 ?? params.rng.rand(100)
+        if (dodgeRoll < dodgeChance) {
+          return { avoided: true, reason: 'dodge' }
+        }
+      }
+    }
+    // 5. Amazon Avoid (`skillId = 18`, 0x6FCFB156, missile/ranged while stationary)
     if (params.attackKind === 'missile') {
       const avoidChance = Math.min(75, Math.max(0, defStats.getAccruedStat('passive_avoid')))
-      if (roll < avoidChance) {
-        return { avoided: true, reason: 'avoid' }
+      if (avoidChance > 0) {
+        const avoidRoll = params.avoidRoll100 ?? params.roll100 ?? params.rng.rand(100)
+        if (avoidRoll < avoidChance) {
+          return { avoided: true, reason: 'avoid' }
+        }
       }
     }
   }
@@ -317,7 +463,8 @@ export function resolveVenomPoisonApplication(params: {
  */
 export function computeCorpseExplosion113c(params: {
   corpseBaseHp: number
-  rollPct?: number // percentage in [70..120], defaults to midpoint 95%
+  rollPct?: number // percentage in [70..120]; if omitted and rng is provided, rolled in [70..120]
+  rng?: CombatRng | undefined
   targetPhysRes?: number
   targetFireRes?: number
   convictionPierce?: number
@@ -343,7 +490,13 @@ export function computeCorpseExplosion113c(params: {
 } {
   const minRollPct = 70
   const maxRollPct = 120
-  const chosenPct = Math.max(minRollPct, Math.min(maxRollPct, params.rollPct ?? 95))
+  const rawRollPct =
+    params.rollPct !== undefined
+      ? params.rollPct
+      : params.rng !== undefined
+        ? minRollPct + params.rng.rand(maxRollPct - minRollPct + 1)
+        : 95
+  const chosenPct = Math.max(minRollPct, Math.min(maxRollPct, rawRollPct))
   const effectiveCorpseBaseHp =
     params.casterLevel !== undefined &&
     params.corpseLevel !== undefined &&
@@ -361,11 +514,14 @@ export function computeCorpseExplosion113c(params: {
   const rawFireDamage = Math.trunc((rawTotalDamage * 50) / 100)
   const rawPhysDamage = rawTotalDamage - rawFireDamage
 
+  // Corpse Explosion callers only iterate monsters: monster branch of 0x6FCFB3C0.
   const physRes = computeEffectiveResistance({
+    isDefenderPlayer: false,
     baseRes: params.targetPhysRes ?? 0,
     convictionPierce: params.amplifyDamagePierce ?? 0,
   })
   const fireRes = computeEffectiveResistance({
+    isDefenderPlayer: false,
     baseRes: params.targetFireRes ?? 0,
     convictionPierce: params.convictionPierce ?? 0,
     lowerResistPierce: params.lowerResistPierce ?? 0,
@@ -421,6 +577,7 @@ export interface SUnitDmgPacket {
   readonly autoHit?: boolean
   readonly unblockable?: boolean
   readonly roll100?: number
+  readonly blockRoll100?: number | undefined
   readonly isPoison?: boolean
   readonly isOpenWounds?: boolean
   readonly returnFire?: boolean
@@ -445,6 +602,7 @@ export interface SUnitDmgPacket {
   readonly toHitBonusPct?: number | undefined
   readonly bypassUndeadMagicRes?: boolean | undefined
   readonly concentrationAlreadyApplied?: boolean | undefined
+  readonly rng?: CombatRng | undefined
 }
 
 export interface SUnitDmgOutcome {
@@ -475,13 +633,139 @@ export interface SUnitDmgOutcome {
 }
 
 /**
- * Execute the complete 1.13c `SUnitDmg` damage pipeline from `attacker` onto `defender`.
+ * `D2Game.dll` 0x6FC214D0: overflow-guarded `a * b / c` (truncating) used by the steal path.
+ * - `c == 0` returns 0;
+ * - `b > 0x100000`: `(b / c) * a` unless `c > b >> 4`, which takes the 64-bit product;
+ * - `a > 0x10000`: `(a / c) * b` unless `c > a >> 4`, which takes the 64-bit product;
+ * - otherwise the 32-bit `a * b / c`.
+ */
+export function mulDiv113c(a: number, b: number, c: number): number {
+  if (c === 0) return 0
+  const wide = (): number => Number((BigInt(a) * BigInt(b)) / BigInt(c))
+  if (b > 0x100000) {
+    return c > b >> 4 ? wide() : Math.imul(Math.trunc(b / c), a)
+  }
+  if (a > 0x10000) {
+    return c > a >> 4 ? wide() : Math.imul(Math.trunc(a / c), b)
+  }
+  return Math.trunc(Math.imul(a, b) / c)
+}
+
+/**
+ * Attacker branch of `D2Game.dll` 0x6FCFBA40 (life / mana steal):
+ * - `'player'`: `UNIT_PLAYER` (0x6FCFBABA `[attacker] == 0`) — steal % divided by
+ *   `DifficultyLevels.txt` `LifeStealDivisor` / `ManaStealDivisor`;
+ * - `'owned'`: a `UNIT_MONSTER` that is a hireling (D2Common hireling check at 0x6FCFBBBE) or is
+ *   owned by a player (owner lookup at 0x6FCFBC11) — same formula without the divisor;
+ * - `undefined`: any other monster takes the separate MonStats drain branch at 0x6FCFBC22, which
+ *   does not read `lifedrainmindam` / `manadrainmindam` percentages and is not modelled here.
+ */
+export function stealAttackerClass113c(
+  unit: Pick<CombatUnitContext, 'unitType'>,
+): 'player' | 'owned' | undefined {
+  switch (unit.unitType) {
+    case 'player':
+    case 'party':
+      return 'player'
+    case 'mercenary':
+    case 'party_mercenary':
+    case 'minion':
+      return 'owned'
+    default:
+      return undefined
+  }
+}
+
+/** `UNIT_MONSTER` defenders (monsters, hirelings, summons) carry a `MonStats.txt` `Drain` row. */
+export function isMonsterClassUnit113c(unit: Pick<CombatUnitContext, 'unitType'>): boolean {
+  return (
+    unit.unitType === 'monster' ||
+    unit.unitType === 'minion' ||
+    unit.unitType === 'mercenary' ||
+    unit.unitType === 'party_mercenary'
+  )
+}
+
+/**
+ * Life / mana steal amounts (256-fixed, before the attacker's max life / max mana clamp) per
+ * `D2Game.dll` 0x6FCFBA40 (`kb/combat/d2game-life-mana-steal-113c.md`):
+ *
+ * 1. both steal % zero → nothing (0x6FCFBA47..0x6FCFBA5A);
+ * 2. monster-class defender: `drain = MonStats.Drain[difficulty]`, `drain <= 0` → nothing
+ *    (0x6FCFBA75..0x6FCFBA9C); any other defender uses 100;
+ * 3. `pct <<= 6` (0x6FCFBAA2..0x6FCFBAB1);
+ * 4. player attacker: `pct /= LifeStealDivisor | ManaStealDivisor` when non-zero (0x6FCFBACF..0x6FCFBAF3);
+ * 5. `phys <= 0` → nothing (0x6FCFBAFD);
+ * 6. `v = MulDiv(pct, phys, 100)`, then `v = MulDiv(drain, v, 100)` when `drain != 100`,
+ *    then `v / 64` truncated toward zero (0x6FCFBB0A..0x6FCFBB35 mana, 0x6FCFBB4E..0x6FCFBB6C life).
+ */
+export function computeLifeManaSteal113c(params: {
+  readonly phys256: number
+  readonly lifeStealPct: number
+  readonly manaStealPct: number
+  readonly attackerIsPlayer: boolean
+  readonly lifeStealDivisor: number
+  readonly manaStealDivisor: number
+  readonly defenderIsMonster: boolean
+  readonly defenderDrain: number | undefined
+}): { readonly life256: number; readonly mana256: number } {
+  const none = { life256: 0, mana256: 0 }
+  let life = Math.trunc(params.lifeStealPct)
+  let mana = Math.trunc(params.manaStealPct)
+  if (life === 0 && mana === 0) return none
+  let drain = 100
+  if (params.defenderIsMonster) {
+    if (params.defenderDrain === undefined) {
+      throw new Error('life/mana steal: monster-class defender has no MonStats Drain value')
+    }
+    drain = Math.trunc(params.defenderDrain)
+    if (drain <= 0) return none
+  }
+  life *= 64
+  mana *= 64
+  if (params.attackerIsPlayer) {
+    if (params.lifeStealDivisor !== 0) life = Math.trunc(life / params.lifeStealDivisor)
+    if (params.manaStealDivisor !== 0) mana = Math.trunc(mana / params.manaStealDivisor)
+  }
+  const phys = Math.trunc(params.phys256)
+  if (phys <= 0) return none
+  const scale = (pct64: number): number => {
+    if (pct64 === 0) return 0
+    let v = mulDiv113c(pct64, phys, 100)
+    if (drain !== 100) v = mulDiv113c(drain, v, 100)
+    return Math.trunc(v / 64)
+  }
+  return { life256: scale(life), mana256: scale(mana) }
+}
+
+/**
+ * Execute the complete 1.13c `SUnitDmg` damage pipeline from `attacker` onto `defender`
+ * (`D2Game.dll` `0x6FCFE011`, `0x6FCFB790`, `0x6FCFB030`, `0x6FCFC530`, `0x6FCFD51A`, `0x6FCFCD80`).
+ *
+ * Requires a `CombatRng` instance either via the 4th parameter `rng` or inside `packet.rng`.
  */
 export function executeSUnitDmg(
   attacker: CombatUnitContext,
   defender: CombatUnitContext,
+  packet: SUnitDmgPacket & { readonly rng: CombatRng },
+  rng?: CombatRng,
+): SUnitDmgOutcome
+export function executeSUnitDmg(
+  attacker: CombatUnitContext,
+  defender: CombatUnitContext,
   packet: SUnitDmgPacket,
+  rng: CombatRng,
+): SUnitDmgOutcome
+export function executeSUnitDmg(
+  attacker: CombatUnitContext,
+  defender: CombatUnitContext,
+  packet: SUnitDmgPacket,
+  rng?: CombatRng,
 ): SUnitDmgOutcome {
+  const resolvedRng = rng ?? packet.rng
+  if (!resolvedRng || typeof resolvedRng.rand !== 'function') {
+    throw new Error('executeSUnitDmg: rng is required (D2Game.dll SUnitDmg 0x6FCFCD80 / 0x6FCFE011)')
+  }
   const hpBefore256 = defender.statList.getHp256()
 
   // 1.13c Pre-requisite equipment guards with tri-state semantics:
@@ -532,7 +816,6 @@ export function executeSUnitDmg(
   }
 
   const attackKind = packet.attackKind ?? (packet.srcDam && packet.srcDam > 0 ? 'melee' : 'spell')
-  const roll = packet.roll100 ?? 25
 
   const attackerStatesApplied: string[] = []
   let attackerColdDamage256 = 0
@@ -548,7 +831,9 @@ export function executeSUnitDmg(
 
   // If melee attack, trigger 'attackedinmelee' proactively on attack initiation
   if (attackKind === 'melee') {
-    const initialPhys = packet.flatPhysMax256 ?? ((attacker.weaponMaxPhys ?? 45) * FIXED_ONE)
+    const unarmedMax = Math.max(2, Math.trunc(attacker.statList.getAccruedStat('maxdamage')))
+    const initialPhys =
+      packet.flatPhysMax256 ?? ((attacker.weaponMaxPhys ?? attacker.weaponMinPhys ?? unarmedMax) * FIXED_ONE)
     const reactiveAttack = defender.stateBus.triggerReactiveEvents({
       event: 'attackedinmelee',
       incomingPhys256: initialPhys,
@@ -685,6 +970,7 @@ export function executeSUnitDmg(
   }
 
   // 1. RollToHit check for weapon attacks (unless autoHit, e.g. Smite 97 / Guided Arrow 22 / Spells)
+  // D2Game.dll 0x6FCFE011: draws an independent rng.rand(100) against clamped toHitChance [5..95].
   const isAutoHit = packet.autoHit ?? (packet.skillId === 97 || packet.skillId === 22 || attackKind === 'spell')
   if (!isAutoHit) {
     const effectiveToHitBonusPct = (packet.toHitBonusPct ?? 0) + barMasteryArBonusPct
@@ -697,7 +983,8 @@ export function executeSUnitDmg(
         ? { skillArBonusPct: effectiveToHitBonusPct }
         : {}),
     })
-    if (roll >= toHitChance) {
+    const hitRoll = packet.roll100 ?? resolvedRng.rand(100)
+    if (hitRoll >= toHitChance) {
       return {
         hit: false,
         avoidedReason: 'miss',
@@ -716,13 +1003,15 @@ export function executeSUnitDmg(
     }
   }
 
-  // 2. Avoidance & Block (Smite `97` is unblockable by shield block)
+  // 2. Avoidance & Block (Smite `97` is unblockable by shield block; D2Game.dll 0x6FCFB790 / 0x6FCFB030).
+  // Draws its own independent rng.rand(100) roll(s), never reusing hitRoll.
   const avoidCheck = evaluateAvoidanceAndBlock({
     defender,
     attackKind,
+    rng: resolvedRng,
     unblockable: packet.unblockable ?? packet.skillId === 97,
     isPersistentGroundFire: Boolean((packet as unknown as Record<string, unknown>)['isPersistentGroundFire']),
-    roll100: roll,
+    ...(packet.blockRoll100 !== undefined ? { roll100: packet.blockRoll100 } : {}),
   })
   if (avoidCheck.avoided) {
     return {
@@ -742,7 +1031,7 @@ export function executeSUnitDmg(
     }
   }
 
-  // 3. Weapon `srcdam` (128 = 100%) + Physical Damage calculation
+  // 3. Weapon `srcdam` (128 = 100%) + Physical Damage calculation (D2Game.dll 0x6FCFC530 / 0x6FCFCD80)
   const hasFlatPhys = (packet.flatPhysMin256 !== undefined && packet.flatPhysMin256 > 0) || (packet.flatPhysMax256 !== undefined && packet.flatPhysMax256 > 0)
   const isSpellWithoutFlatPhys = attackKind === 'spell' && !hasFlatPhys
   const srcDam =
@@ -758,12 +1047,33 @@ export function executeSUnitDmg(
   let baseWeapPhys256 = 0
   let isCritical = false
   if (!isSpellWithoutFlatPhys && (srcDam > 0 || hasFlatPhys)) {
-    const weapMin256 = (attacker.weaponMinPhys ?? 25) * FIXED_ONE
-    const weapMax256 = (attacker.weaponMaxPhys ?? 45) * FIXED_ONE
+    // 1.13c Unarmed / missing weapon base damage (`D2Game.dll` `0x6FCFC5A2..0x6FCFC5C8`):
+    // Reads `D2Common_GetStatSigned(pAttacker, STAT_MINDAMAGE=21)` (if <= 0, 1) and
+    // `D2Common_GetStatSigned(pAttacker, STAT_MAXDAMAGE=22)` (if <= 1, 2) when no weapon is equipped
+    // and no explicit flat physical packet override is supplied. Never fabricates 25-45!
+    const hasExplicitWeaponDmg =
+      attacker.weaponMinPhys !== undefined || attacker.weaponMaxPhys !== undefined
+    let weapMin = 0
+    let weapMax = 0
+    if (hasExplicitWeaponDmg) {
+      weapMin = Math.max(0, attacker.weaponMinPhys ?? 0)
+      weapMax = Math.max(weapMin, attacker.weaponMaxPhys ?? weapMin)
+    } else if (!hasFlatPhys && srcDam > 0) {
+      const statMin = Math.trunc(attacker.statList.getAccruedStat('mindamage'))
+      const statMax = Math.trunc(attacker.statList.getAccruedStat('maxdamage'))
+      weapMin = statMin <= 0 ? 1 : statMin
+      weapMax = statMax <= 1 ? 2 : Math.max(weapMin, statMax)
+    }
+    const weapMin256 = weapMin * FIXED_ONE
+    const weapMax256 = weapMax * FIXED_ONE
     const effectiveSrcDam = srcDam
-    const avgWeap256 = effectiveSrcDam > 0 ? Math.trunc(((weapMin256 + weapMax256) / 2) * effectiveSrcDam / 128) : 0
-    const flatAvg256 = Math.trunc(((packet.flatPhysMin256 ?? 0) + (packet.flatPhysMax256 ?? 0)) / 2)
-    baseWeapPhys256 = Math.max(0, avgWeap256 + flatAvg256)
+    const scaledWeapMin256 = effectiveSrcDam > 0 ? Math.trunc((weapMin256 * effectiveSrcDam) / 128) : 0
+    const scaledWeapMax256 = effectiveSrcDam > 0 ? Math.trunc((weapMax256 * effectiveSrcDam) / 128) : 0
+    const flatMin256 = Math.max(0, Math.trunc(packet.flatPhysMin256 ?? 0))
+    const flatMax256 = Math.max(flatMin256, Math.trunc(packet.flatPhysMax256 ?? flatMin256))
+    const totalBaseMin256 = Math.max(0, scaledWeapMin256 + flatMin256)
+    const totalBaseMax256 = Math.max(totalBaseMin256, scaledWeapMax256 + flatMax256)
+    baseWeapPhys256 = rollDamageRange256(totalBaseMin256, totalBaseMax256, resolvedRng)
     const dmgPctBonus = attacker.statList.getModifierBonus('damagepercent')
     const weakenEntry = attacker.stateBus.getState('weaken')
     const decrepifyEntry = attacker.stateBus.getState('decrepify')
@@ -774,8 +1084,7 @@ export function executeSUnitDmg(
       (packet.physDamagePct ?? 0) +
       barMasteryEdBonusPct +
       dmgPctBonus +
-      curseDmgMod +
-      attacker.statList.getModifierBonus('skill_damage_percent')
+      curseDmgMod
 
     // Fanaticism: caster vs ally %ED distinction if not already accrued in statList
     if (attacker.stateBus.hasState('fanaticism') && dmgPctBonus === 0) {
@@ -811,7 +1120,7 @@ export function executeSUnitDmg(
       edPct += sanctEd
     }
 
-    rawPhys256 = Math.max(0, Math.trunc(((avgWeap256 + flatAvg256) * (100 + edPct)) / 100))
+    rawPhys256 = Math.max(0, Math.trunc((baseWeapPhys256 * (100 + edPct)) / 100))
 
     // 1.13c SKILLS_CalculateKickDamage (0x6FC9AE10): Kick skills (#1, #255, #270, #275)
     // use Strength + Dexterity + Boot Min/Max damage (never weapon base damage or on-weapon ED)
@@ -823,7 +1132,7 @@ export function executeSUnitDmg(
     if (isKickPacket) {
       if (hasFlatPhys && srcDam === 0) {
         // Pre-calculated by SKILLS_CalculateKickDamage in registry.ts
-        rawPhys256 = Math.max(0, flatAvg256)
+        rawPhys256 = baseWeapPhys256
       } else {
         const str = attacker.statList.getAccruedStat('strength') || 20
         const dex = attacker.statList.getAccruedStat('dexterity') || 20
@@ -832,8 +1141,7 @@ export function executeSUnitDmg(
         const skillED = packet.skillId === 255 || packet.skillId === 275 ? (packet.physDamagePct ?? 0) : 0
         const offWeaponED =
           dmgPctBonus +
-          curseDmgMod +
-          attacker.statList.getModifierBonus('skill_damage_percent')
+          curseDmgMod
         const attrMin = Math.max(1, Math.floor(Math.max(0, dex + str - 20) / 4))
         const attrMax = Math.max(2, Math.floor(Math.max(0, dex + str - 20) / 3))
         const strBootBonus = Math.floor((str * 120) / 100)
@@ -843,36 +1151,47 @@ export function executeSUnitDmg(
         const kMax =
           Math.floor((attrMax * (100 + skillED)) / 100) +
           Math.floor((bootMax * (100 + strBootBonus + offWeaponED + skillED)) / 100)
-        rawPhys256 = Math.max(0, Math.trunc(((kMin + kMax) * FIXED_ONE) / 2))
+        rawPhys256 = rollDamageRange256(kMin * FIXED_ONE, kMax * FIXED_ONE, resolvedRng)
       }
     }
 
-    // 3b. 1.13c Critical Strike (`passive_critical_strike`), Weapon Mastery Crit (`passive_mastery_crit`),
-    //     and Deadly Strike (`item_deadlystrike`) sequential evaluation (`SUnitDmg.cpp` `0x6FCBE2F0`).
+    // 3b. 1.13c Weapon Mastery Crit (`0x6FCFD549`), Critical Strike (`0x6FCFD573`),
+    //     and Deadly Strike (`0x6FCFD59D`) sequential evaluation (`D2Game.dll` `0x6FCFD51A..0x6FCFD5A6`).
     //     Triggered BEFORE physical-to-elemental conversion; mutually exclusive (never 4x/8x).
+    //     Each stage draws its own independent `rng.rand(100)` roll only if the previous stage did not proc!
     //     NOTE: Smite (`skillId === 97`, `SKILLS_SrvDo150_Smite` @ `0x6FCB9000`) and Kick skills
     //     (`#1, #255, #270, #275`, `SKILLS_CalculateKickDamage` @ `0x6FC9AE10`) do NOT call
     //     `SUNITDMG_FillDamageValues` and strictly CANNOT Critical Strike or Deadly Strike!
     if (packet.skillId !== 97 && !isKickPacket) {
       const csChance = Math.min(100, Math.max(0, attacker.statList.getAccruedStat('passive_critical_strike')))
+      const masteryCritStat =
+        attackKind === 'missile'
+          ? attacker.statList.getAccruedStat('passive_mastery_throw_crit') ||
+            attacker.statList.getAccruedStat('passive_mastery_melee_crit')
+          : attacker.statList.getAccruedStat('passive_mastery_melee_crit')
       const rawMasteryCrit =
         barMasteryCritPct !== undefined
-          ? Math.max(
-              barMasteryCritPct,
-              attacker.weaponItemType ? 0 : attacker.statList.getAccruedStat('passive_mastery_crit'),
-            )
-          : attacker.statList.getAccruedStat('passive_mastery_crit')
+          ? Math.max(barMasteryCritPct, attacker.weaponItemType ? 0 : masteryCritStat)
+          : masteryCritStat
       const masteryCritChance = Math.min(100, Math.max(0, rawMasteryCrit))
       const dsChance = Math.min(100, Math.max(0, attacker.statList.getAccruedStat('item_deadlystrike')))
-      const csRoll = packet.csRoll100 ?? packet.critRoll100 ?? roll
-      const masteryRoll = packet.masteryCritRoll100 ?? packet.critRoll100 ?? roll
-      const dsRoll = packet.dsRoll100 ?? packet.critRoll100 ?? roll
-      if (csChance > 0 && csRoll < csChance) {
-        isCritical = true
-      } else if (masteryCritChance > 0 && masteryRoll < masteryCritChance) {
-        isCritical = true
-      } else if (dsChance > 0 && dsRoll < dsChance) {
-        isCritical = true
+      if (masteryCritChance > 0) {
+        const masteryRoll = packet.masteryCritRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
+        if (masteryRoll < masteryCritChance) {
+          isCritical = true
+        }
+      }
+      if (!isCritical && csChance > 0) {
+        const csRoll = packet.csRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
+        if (csRoll < csChance) {
+          isCritical = true
+        }
+      }
+      if (!isCritical && dsChance > 0) {
+        const dsRoll = packet.dsRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
+        if (dsRoll < dsChance) {
+          isCritical = true
+        }
       }
       if (isCritical) {
         rawPhys256 *= 2
@@ -881,7 +1200,9 @@ export function executeSUnitDmg(
   }
 
   // 4. Physical-to-Elemental/Magic Conversion (e.g. Berserk 100% Magic, Magic Arrow, Fire Arrow, Cold Arrow)
-  let rawElem256 = Math.trunc(((packet.elemMin256 ?? 0) + (packet.elemMax256 ?? 0)) / 2)
+  const elemMin256 = Math.max(0, Math.trunc(packet.elemMin256 ?? 0))
+  const elemMax256 = Math.max(elemMin256, Math.trunc(packet.elemMax256 ?? elemMin256))
+  let rawElem256 = rollDamageRange256(elemMin256, elemMax256, resolvedRng)
   const effectiveSlvl = Math.max(
     1,
     packet.slvl ?? (packet.skillId !== undefined ? attacker.statList.getEffectiveSkillLevel(packet.skillId) : 1) ?? 1,
@@ -919,8 +1240,11 @@ export function executeSUnitDmg(
       const rfBlvl = attacker.statList.getBaseSkillLevel(100)
       const salvBlvl = attacker.statList.getBaseSkillLevel(125)
       const hfStats = calculateHolyFireStats(hfSlvl, { resistFire: rfBlvl, salvation: salvBlvl })
-      const avgHf256 = Math.trunc(((hfStats.weaponFireMin + hfStats.weaponFireMax) * FIXED_ONE) / 2)
-      rawElem256 += avgHf256
+      rawElem256 += rollDamageRange256(
+        hfStats.weaponFireMin * FIXED_ONE,
+        hfStats.weaponFireMax * FIXED_ONE,
+        resolvedRng,
+      )
       if (!packet.elemType) {
         elemType = 'fire'
       }
@@ -931,8 +1255,11 @@ export function executeSUnitDmg(
       const rcBlvl = attacker.statList.getBaseSkillLevel(105)
       const salvBlvl = attacker.statList.getBaseSkillLevel(125)
       const freezeStats = calculateHolyFreezeStats(freezeSlvl, { resistCold: rcBlvl, salvation: salvBlvl })
-      const avgFreeze256 = Math.trunc(((freezeStats.weaponColdMin + freezeStats.weaponColdMax) * FIXED_ONE) / 2)
-      rawElem256 += avgFreeze256
+      rawElem256 += rollDamageRange256(
+        freezeStats.weaponColdMin * FIXED_ONE,
+        freezeStats.weaponColdMax * FIXED_ONE,
+        resolvedRng,
+      )
       if (!packet.elemType) {
         elemType = 'cold'
       }
@@ -942,8 +1269,11 @@ export function executeSUnitDmg(
       const rlBlvl = attacker.statList.getBaseSkillLevel(110)
       const salvBlvl = attacker.statList.getBaseSkillLevel(125)
       const shockStats = calculateHolyShockStats(shockSlvl, { resistLightning: rlBlvl, salvation: salvBlvl })
-      const avgShock256 = Math.trunc(((shockStats.weaponLightningMin + shockStats.weaponLightningMax) * FIXED_ONE) / 2)
-      rawElem256 += avgShock256
+      rawElem256 += rollDamageRange256(
+        shockStats.weaponLightningMin * FIXED_ONE,
+        shockStats.weaponLightningMax * FIXED_ONE,
+        resolvedRng,
+      )
       if (!packet.elemType) {
         elemType = 'ltng'
       }
@@ -1052,6 +1382,7 @@ export function executeSUnitDmg(
   let physResRec = computeEffectiveResistance({
     baseRes: defender.statList.getAccruedStat('damageresist'),
     convictionPierce: curseAmpPierce,
+    ...defenderResistParams113c(defender, 'phys'),
   })
 
   // Sanctuary (1.13c SUnitDmg.cpp:1002): Paladin physical attacks ignore positive Undead physical resistance
@@ -1115,16 +1446,8 @@ export function executeSUnitDmg(
             ? attacker.statList.getAccruedStat('passive_pois_pierce')
             : 0)
 
-  const isDefenderPlayer =
-    defender.unitType === 'player' ||
-    defender.unitType === 'mercenary' ||
-    defender.unitType === 'party' ||
-    defender.unitType === 'party_mercenary'
-
-  const maxResistance =
-    isDefenderPlayer && (elemType === 'fire' || elemType === 'ltng' || elemType === 'cold' || elemType === 'pois')
-      ? defender.statList.getEffectiveMaxResistance(elemType)
-      : undefined
+  const elemChannel: ResistChannel113c =
+    elemType === 'fire' || elemType === 'ltng' || elemType === 'cold' || elemType === 'pois' ? elemType : 'mag'
 
   let elemResRec = computeEffectiveResistance({
     baseRes: defender.statList.getAccruedStat(resStatKey),
@@ -1133,8 +1456,7 @@ export function executeSUnitDmg(
     passiveEnemyPierce: passivePierce,
     // Magic resistance cannot be broken by Conviction/Lower Resist
     canBreakImmunity: isElemPiercableByLR,
-    maxResistance,
-    isDefenderPlayer,
+    ...defenderResistParams113c(defender, elemChannel),
   })
 
   // 1.13c Holy Bolt (#101, Holy=1) & FoH Holy Bolt (#234, Holy=3):
@@ -1185,8 +1507,13 @@ export function executeSUnitDmg(
   if (reactive.unitOverlays) {
     unitOverlays.push(...reactive.unitOverlays)
   }
-  const remRawPhys256 = Math.max(0, rawPhys256 - reactive.absorbedPhys256)
-  const remRawElem256 = Math.max(0, rawElem256 - reactive.absorbedElem256)
+  const flatPhysDr256 = Math.max(0, defender.statList.getAccruedStat('normal_damage_reduction')) * FIXED_ONE
+  const flatMagicDr256 =
+    elemType === 'pois'
+      ? 0
+      : Math.max(0, defender.statList.getAccruedStat('magic_damage_reduction')) * FIXED_ONE
+  const remRawPhys256 = Math.max(0, rawPhys256 - reactive.absorbedPhys256 - flatPhysDr256)
+  const remRawElem256 = Math.max(0, rawElem256 - reactive.absorbedElem256 - flatMagicDr256)
 
   // 1.13c Fire Golem Fire Absorption (`aurastat1 = fireresist = 100 - dm12`, `aurastat2 = item_absorbfire_percent = dm12`):
   // Fire Golem takes 0 net fire damage and heals by `dm12%` of incoming fire damage.
@@ -1219,30 +1546,33 @@ export function executeSUnitDmg(
     attacker.statList.setHp256(curHp + attackerHealed256)
   }
 
-  // 1.13c Life / Mana Leech from attacker gear & stats (suppressed when canTriggerProcs === false or for Smite skillId === 97 per D2Game SkillPal.cpp:197 & SUnitDmg.cpp:2669)
+  // 1.13c Life / Mana steal (`D2Game.dll` 0x6FCFBA40) from ItemStatCost `lifedrainmindam` (60) /
+  // `manadrainmindam` (62) — the stats the damage filler at 0x6FCFD6FB copies into the damage
+  // record (+0x38 / +0x3C). Suppressed when canTriggerProcs === false or for Smite (97).
   const canLeechGear = canTriggerProcs && packet.skillId !== 97 && !packet.suppressGearLeech
-  if (canLeechGear && finalPhys256 > 0) {
-    const lifeLeechPct =
-      attacker.statList.getAccruedStat('item_parasite') ||
-      attacker.statList.getAccruedStat('lifesteal') ||
-      attacker.statList.getAccruedStat('life_leech') ||
-      attacker.statList.getModifierBonus('life_leech_pct')
-    if (lifeLeechPct > 0) {
-      const leeched = Math.trunc((finalPhys256 * lifeLeechPct) / 100)
-      attackerHealed256 += leeched
-      const curHp = attacker.statList.getHp256()
-      attacker.statList.setHp256(curHp + leeched)
-    }
-
-    const manaLeechPct =
-      attacker.statList.getAccruedStat('item_parasitemana') ||
-      attacker.statList.getAccruedStat('manasteal') ||
-      attacker.statList.getAccruedStat('mana_leech') ||
-      attacker.statList.getModifierBonus('mana_leech_pct')
-    if (manaLeechPct > 0) {
-      attackerManaLeeched256 = Math.trunc((finalPhys256 * manaLeechPct) / 100)
+  const stealClass = stealAttackerClass113c(attacker)
+  if (canLeechGear && finalPhys256 > 0 && stealClass !== undefined) {
+    const steal = computeLifeManaSteal113c({
+      phys256: finalPhys256,
+      lifeStealPct: attacker.statList.getAccruedStat('lifedrainmindam'),
+      manaStealPct: attacker.statList.getAccruedStat('manadrainmindam'),
+      attackerIsPlayer: stealClass === 'player',
+      lifeStealDivisor: attacker.lifeStealDivisor ?? 1,
+      manaStealDivisor: attacker.manaStealDivisor ?? 1,
+      defenderIsMonster: isMonsterClassUnit113c(defender),
+      defenderDrain: defender.drain,
+    })
+    // Mana first (0x6FCFAE70: `min(mana + v, maxmana)`), then life (0x6FCFB570: skipped for a dead
+    // attacker or one in `death_delay` (state 92), `min(hp + v, maxhp)`).
+    if (steal.mana256 > 0) {
       const curMana = attacker.statList.getMana256()
-      attacker.statList.setMana256(curMana + attackerManaLeeched256)
+      attacker.statList.setMana256(curMana + steal.mana256)
+      attackerManaLeeched256 = attacker.statList.getMana256() - curMana
+    }
+    if (steal.life256 > 0 && attacker.statList.getHp256() > 0 && !attacker.stateBus.hasState('death_delay')) {
+      const curHp = attacker.statList.getHp256()
+      attacker.statList.setHp256(curHp + steal.life256)
+      attackerHealed256 += attacker.statList.getHp256() - curHp
     }
   }
 
@@ -1288,7 +1618,7 @@ export function executeSUnitDmg(
         convictionPierce,
         lowerResistPierce,
         passiveEnemyPierce: packet.passiveEnemyPierce ?? attacker.statList.getAccruedStat('passive_fire_pierce'),
-        maxResistance: defender.statList.getEffectiveMaxResistance('fire'),
+        ...defenderResistParams113c(defender, 'fire'),
       })
       if (!fireRes.isImmune) {
         finalElem256 += Math.max(0, Math.trunc((rawFire256 * (100 - fireRes.effectiveRes)) / 100))
@@ -1306,11 +1636,11 @@ export function executeSUnitDmg(
         convictionPierce,
         lowerResistPierce,
         passiveEnemyPierce: packet.passiveEnemyPierce ?? attacker.statList.getAccruedStat('passive_cold_pierce'),
-        maxResistance: defender.statList.getEffectiveMaxResistance('cold'),
+        ...defenderResistParams113c(defender, 'cold'),
       })
       if (!coldRes.isImmune) {
         finalElem256 += Math.max(0, Math.trunc((rawCold256 * (100 - coldRes.effectiveRes)) / 100))
-        if (!defender.statList.getAccruedStat('cannot_be_frozen')) {
+        if (!defender.statList.getAccruedStat('item_cannotbefrozen')) {
           const chillFrames = mep.chillDurationFrames ?? 30
           defender.stateBus.applyState({
             stateNameOrId: 'chill',
@@ -1333,7 +1663,7 @@ export function executeSUnitDmg(
         convictionPierce,
         lowerResistPierce,
         passiveEnemyPierce: packet.passiveEnemyPierce ?? attacker.statList.getAccruedStat('passive_ltng_pierce'),
-        maxResistance: defender.statList.getEffectiveMaxResistance('ltng'),
+        ...defenderResistParams113c(defender, 'ltng'),
       })
       if (!ltngRes.isImmune) {
         finalElem256 += Math.max(0, Math.trunc((rawLtng256 * (100 - ltngRes.effectiveRes)) / 100))
@@ -1412,15 +1742,21 @@ export function executeSUnitDmg(
       (attacker.unitType === 'player' || attacker.ownerUnitId !== undefined)
     )
 
-    // Iron Golem / stat-based Thorns reflection (if not already handled by stateBus thorns)
-    const thornsReturnPct = defender.statList.getAccruedStat('thorns_return_pct')
-    if (thornsReturnPct > 0 && finalPhys256 > 0 && !defender.stateBus.hasState('thorns')) {
+    // Iron Golem / stat-based Thorns reflection (ItemStatCost thorns_percent 131, if not already handled by stateBus thorns/barbs/ironmaiden)
+    const thornsReturnPct =
+      !defender.stateBus.hasState('thorns') &&
+      !defender.stateBus.hasState('barbs') &&
+      !defender.stateBus.hasState('ironmaiden')
+        ? defender.statList.getAccruedStat('thorns_percent')
+        : 0
+    if (thornsReturnPct > 0 && finalPhys256 > 0) {
       let rawThorns256 = Math.trunc((finalPhys256 * thornsReturnPct) / 100)
       if (isPvP) {
         rawThorns256 = Math.trunc(rawThorns256 / 4)
       }
       const attackerPhysRes = computeEffectiveResistance({
         baseRes: attacker.statList.getAccruedStat('damageresist'),
+        ...defenderResistParams113c(attacker, 'phys'),
       })
       const reflected256 = attackerPhysRes.isImmune
         ? 0
@@ -1489,6 +1825,7 @@ export function executeSUnitDmg(
       const rawReflected256 = Math.trunc((finalPhys256 * returnPct) / 100)
       const attackerPhysRes = computeEffectiveResistance({
         baseRes: attacker.statList.getAccruedStat('damageresist'),
+        ...defenderResistParams113c(attacker, 'phys'),
       })
       const imReflected256 = attackerPhysRes.isImmune
         ? 0
@@ -1533,14 +1870,14 @@ export function executeSUnitDmg(
     }
   }
 
-  // Concentration: 20% chance that attack will not be interrupted
+  // Concentration: 20% chance that attack will not be interrupted (D2Game.dll 0x6FCFC8D6..0x6FCFC8FA)
   const hasConcentration =
     attacker.stateBus.hasState('concentration') ||
     attacker.statList.getModifierBonus('skill_concentration') > 0
   const isUninterrupted = hasConcentration
     ? (packet.rollUninterrupted !== undefined
         ? packet.rollUninterrupted < 20
-        : (packet.roll100 !== undefined ? packet.roll100 < 20 : true))
+        : resolvedRng.rand(100) < 20)
     : false
 
   return {

@@ -287,7 +287,7 @@ describe('[Skill #063] Lightning Mastery (SOR) — 1.13c 7-Dimensional Verificat
         elemType: 'ltng',
         elemMin256: 100 * FIXED_ONE,
         elemMax256: 100 * FIXED_ONE,
-      })
+      }, { rand: () => 50 })
 
       // Raw 100 scaled by +278% mastery: 100 * 3.78 = 378 total damage!
       expect(res.elemDamage256).toBe(378 * FIXED_ONE)
@@ -322,7 +322,7 @@ describe('[Skill #063] Lightning Mastery (SOR) — 1.13c 7-Dimensional Verificat
         elemType: 'fire',
         elemMin256: 100 * FIXED_ONE,
         elemMax256: 100 * FIXED_ONE,
-      })
+      }, { rand: () => 50 })
       // Lightning Mastery does NOT boost Fire damage: remains 100
       expect(resFire.totalDamage).toBe(100)
 
@@ -333,7 +333,7 @@ describe('[Skill #063] Lightning Mastery (SOR) — 1.13c 7-Dimensional Verificat
         autoHit: true,
         flatPhysMin256: 100 * FIXED_ONE,
         flatPhysMax256: 100 * FIXED_ONE,
-      })
+      }, { rand: () => 50 })
       // Lightning Mastery does NOT boost Physical damage: remains 100
       expect(resPhys.totalDamage).toBe(100)
     })

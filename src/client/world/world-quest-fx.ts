@@ -17,6 +17,7 @@ import {
   getFreezeShatterMissiles,
   getInnateMonsterDeathOverlays,
   hasMonsterUMod,
+  hasShatterState113c,
   isBaalCloneMonster,
   isBoneFetishMonster,
   isDurielMonster,
@@ -208,8 +209,9 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
   }
   const mlvl = Math.max(1, unit.stats.get(12) || 1)
 
-  // 1. Freeze / Shatter on Death (STATE_FREEZE = 1 or MonUMod #35 shatter_on_death)
-  if (unit.states.has(1) || hasMonsterUMod(unit, MON_UMOD.SHATTER_ON_DEATH)) {
+  // 1. Freeze / Shatter on Death: States.txt shatter=1 (#1 freeze, #107 shatter, #184 uberminion) or MonUMod #35
+  // shatter_on_death. The icebreak shards' MissCltHitFunc[31] leaves the icebreak*melt puddle (#1453).
+  if (hasShatterState113c(unit.states) || hasMonsterUMod(unit, MON_UMOD.SHATTER_ON_DEATH)) {
     unit.corpseSuppressed = true
     const shatterMissiles = getFreezeShatterMissiles(unit.classId, this.getUnitSizeX(unit))
     for (const mKey of shatterMissiles) {

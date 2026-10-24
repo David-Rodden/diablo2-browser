@@ -1,4 +1,5 @@
 import type { WorldPanelsHud } from '../world-panels.ts'
+import { drawUpgradeMarks, upgradeSuffix } from '../item-badges.ts'
 import { D2FontRenderer, type D2ColorCode } from '../font.ts'
 import { getEffectiveItemReqClass, isUiItemUnidentified, type UiInventoryItem } from '../inventory.ts'
 import type { WeaponDamageInfo } from '../../../common/items/inventory-model.ts'
@@ -6,7 +7,13 @@ import type { CharacterClassCode } from '../../../common/units/classes.ts'
 import { requireTbl } from '../../i18n/lang.ts'
 import { CANONICAL_CHI_TBL_DICT, CANONICAL_ENG_TBL_DICT } from '../../../common/data/canonical-tbl-strings.ts'
 import { CANONICAL_ELITE_MODIFIERS, FIXED_UNIQUE_BOSS_HCIDX_SET, monsterDisplayName, rollUniqueMonsterNameKeys } from '../../../common/units/monsters-data.ts'
-import { getSocketableInfo, isJewelCode } from '../../../common/items/gems-data.ts'
+import {
+  getSocketableInfo,
+  isJewelCode,
+  isRuneCode,
+  RUNE_INFO,
+  type RuneInfo,
+} from '../../../common/items/gems-data.ts'
 import { formatItemTooltip } from '../../../common/items/item-tooltip.ts'
 import type { Item } from '../../../common/items/items.ts'
 import { STONE_BOX_BG_FILL } from './panel-layout-constants.ts'
@@ -553,9 +560,19 @@ export const MONSTER_UMOD_TBL_KEYS: Readonly<Record<string, { readonly tblKey: s
  * - Line 2 (`y = 69` when Line 1 is non-empty, `y = 55` when Line 1 is empty):
  *   - `", "`-separated immunities (`res >= 100`) in exact `.rdata:0x6FB834EC` order.
  */
+const RESIST_NAMES: Record<(typeof CANONICAL_IMMUNITY_DESCRIPTORS)[number]['key'], { readonly en: string; readonly zh: string }> = {
+  physical: { en: 'Physical', zh: '物理' },
+  magic: { en: 'Magic', zh: '魔法' },
+  fire: { en: 'Fire', zh: '火焰' },
+  lightning: { en: 'Lightning', zh: '闪电' },
+  cold: { en: 'Cold', zh: '冰冷' },
+  poison: { en: 'Poison', zh: '毒素' },
+}
+
 export function buildMonsterHoverSubtext(
   target: MonsterTargetHudInfo,
   locale: 'en' | 'zh' = 'en',
+  showResists = false,
 ): MonsterHoverSubtextResult {
   const raceText = target.isUndead
     ? (lookupMonsterTblString('UndeadDescriptX', locale) ?? 'Undead')
@@ -637,8 +654,8 @@ export function buildMonsterHoverSubtext(
   if (res) {
     for (const desc of CANONICAL_IMMUNITY_DESCRIPTORS) {
       const val = res[desc.key]
-      if (typeof val === 'number' && val >= 100) {
-        const label = lookupMonsterTblString(desc.tblKey, locale) ?? desc.fallbackEn
+      if (typeof val === 'number' && (val >= 100 || (showResists && val !== 0))) {
+        const label = val >= 100 ? (lookupMonsterTblString(desc.tblKey, locale) ?? desc.fallbackEn) : `${RESIST_NAMES[desc.key][locale]} ${val}%`
         immPlainParts.push(label)
         immColoredParts.push(`${desc.colorCode}${label}`)
       }
@@ -700,7 +717,21 @@ function localizeStarterTooltipLine(text: string, isEn: boolean): string {
     let zh = text
       .replace(/^带插槽\s*\((\d+)\)$/, '凹槽 ($1)')
       .replace(/^精神\s*\(Spirit\)\s*统盾$/, '精神')
-      .replace(/\s*\(([A-Za-z]+)\s+符文\)$/, '符文')
+      .replace(/^(.*?)\s*\(([A-Za-z]+)\s+(?:符文|Rune)\)$/i, (_m, prefix: string, letter: string) => {
+        const cleanPrefix = prefix.trim()
+        if (cleanPrefix && cleanPrefix !== '符文') {
+          return cleanPrefix.endsWith('符文') ? cleanPrefix : `${cleanPrefix}符文`
+        }
+        const byLetter = Object.values(RUNE_INFO).find(
+          (r) => r.letter.toLowerCase() === letter.trim().toLowerCase(),
+        )
+        return byLetter ? `${byLetter.nameZh}符文` : '符文'
+      })
+      .replace(/^符文\s*\(#(\d+)\)$/, (_m, numStr: string) => {
+        const num = Number(numStr)
+        const byNum = Object.values(RUNE_INFO).find((r) => r.num === num)
+        return byNum ? `${byNum.nameZh}符文` : '符文'
+      })
       .replace(/\s*\(Rainbow Facet\s*-\s*([^)]+)\)$/, ' ($1)')
       .replace(/\s*\/\s*每次命中偷取生命\s*\([^)]+\)$/, '')
       .replace(/\s*\/\s*防止怪物自疗\s*\([^)]+\)$/, '')
@@ -926,7 +957,7 @@ export function drawMonsterTargetBarImpl(
   })
 
   // 4. 2-Line Subtext (`font6` at `y = 55` and `y = 69` / `55`)
-  const subtext = buildMonsterHoverSubtext(monster, locale)
+  const subtext = buildMonsterHoverSubtext(monster, locale, this.showMonsterResists)
   const singleSidePanelOpen = (leftPanelOpen && !rightPanelOpen) || (rightPanelOpen && !leftPanelOpen)
   const activeViewportWidth = singleSidePanelOpen ? Math.max(200, canvasWidth - 400) : canvasWidth
   // D2Client.dll 0x6facff8d caps modifier accumulation at 0x1e0 (480px), further bounded by open viewport width
@@ -1111,6 +1142,7 @@ export function drawItemTooltipImpl(
   const { item } = hover
   const isEn = this.lang === 'ENG'
   const lines: { text: string; color: D2ColorCode; font: 'font16' }[] = []
+  const upgrade = this.upgradeVerdictFor(item)
 
   const rawItemCode = (item.code ?? '').trim().toLowerCase()
   const isQuestCode =
@@ -1165,7 +1197,8 @@ export function drawItemTooltipImpl(
 
   // Header: Title, Runeword Runes line, Base item name
   const socketableInfo = item.code ? getSocketableInfo(item.code) : undefined
-  const unid = isUiItemUnidentified(item)
+  const runeInfo = isRuneCode(rawItemCode) ? (socketableInfo as RuneInfo | undefined) : undefined
+  const unid = !socketableInfo && isUiItemUnidentified(item)
   if (unid) {
     const maskedBaseHeader = isEn
       ? item.baseNameEn ||
@@ -1174,12 +1207,37 @@ export function drawItemTooltipImpl(
         localizeStarterTooltipLine(item.nameZh, true)
       : (item.baseNameZh ? resolveHeaderZh(item.baseNameZh.split(' · ')[0]!) : undefined) ||
         resolveHeaderZh(item.nameZh)
-    lines.push({ text: maskedBaseHeader, color: titleColor, font: 'font16' })
+    lines.push({ text: maskedBaseHeader + upgradeSuffix(upgrade), color: titleColor, font: 'font16' })
   } else {
-    const headerText = isEn
+    let headerText = isEn
       ? (item.name && !/[\u4e00-\u9fff]/.test(item.name) ? item.name : localizeStarterTooltipLine(item.nameZh, true))
       : resolveHeaderZh(item.nameZh)
-    lines.push({ text: headerText, color: titleColor, font: 'font16' })
+    if (runeInfo) {
+      const strippedHeader = headerText.replace(/\s*\(#\d+\)\s*$/, '').trim()
+      if (isEn) {
+        headerText =
+          !strippedHeader || strippedHeader === 'Rune' || /[\u4e00-\u9fff]/.test(strippedHeader)
+            ? runeInfo.nameEn
+            : strippedHeader
+      } else {
+        const canonicalRuneZh = `${runeInfo.nameZh}符文`
+        if (
+          !strippedHeader ||
+          strippedHeader === '符文' ||
+          strippedHeader === runeInfo.nameZh ||
+          /^符文[:：]/.test(strippedHeader) ||
+          !/[\u4e00-\u9fff]/.test(strippedHeader)
+        ) {
+          headerText = canonicalRuneZh
+        } else {
+          headerText = strippedHeader.endsWith('符文') ? strippedHeader : `${strippedHeader}符文`
+        }
+      }
+      if (this.showRuneNumbers) {
+        headerText = `${headerText} (#${runeInfo.num})`
+      }
+    }
+    lines.push({ text: headerText + upgradeSuffix(upgrade), color: titleColor, font: 'font16' })
     if (item.runewordRunes) {
       lines.push({ text: item.runewordRunes, color: 'gold', font: 'font16' })
     }
@@ -1404,6 +1462,8 @@ export function drawItemTooltipImpl(
   if (speedLine) {
     lines.push({ text: speedLine, color: 'white', font: 'font16' })
   }
+  const itemLevel = this.showItemLevel && !item.rawItem?.flags?.simple ? item.rawItem?.ilvl : undefined
+  if (itemLevel !== undefined) lines.push({ text: (isEn ? 'Item Level: ' : '物品等级: ') + itemLevel, color: 'white', font: 'font16' })
 
   if (unid) {
     if (item.isGambleMystery) {
@@ -1591,6 +1651,7 @@ export function drawItemTooltipImpl(
       align: 'center',
     })
   })
+  drawUpgradeMarks(ctx, font, lines[0]!.text, upgrade, bx + Math.round(boxW / 2), by + padY + 12)
 }
 /**
  * Draw the authentic Diablo II v1.13c In-Game Escape Menu (`D2Client.dll` `gmenu.cpp` `0x6fb15230..0x6fb15555`

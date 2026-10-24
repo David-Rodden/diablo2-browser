@@ -2531,7 +2531,8 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   ;(hud as any).trade = tradeState
   ;(hud.worldPanels as any).trade = tradeState
   const tradeUiOpen = Boolean(model.world.trade.active || pendingModal)
-  if (model.world.trade.active) {
+  const tradeSessionActive = Boolean(model.world.trade.active)
+  if (tradeSessionActive) {
     hud.leftPanel = 'trade' as any
     ;(hud.worldPanels as any).activePanel = 'trade'
     hud.rightPanel = 'inv'
@@ -2542,8 +2543,17 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   } else if (model.prevTradeActive && (hud.leftPanel as string) === 'trade') {
     hud.leftPanel = 'none'
     ;(hud.worldPanels as any).activePanel = 'none'
+    if (model.prevTradeSessionActive) {
+      // D2Client.dll 0x6fb09740: Closing an active trade session closes both PANEL_TRADE and PANEL_INVENTORY
+      hud.rightPanel = 'none'
+      hud.inventory.visible = false
+      if (hud.goldDialog?.mode === 2) {
+        hud.goldDialog = null
+      }
+    }
   }
   model.prevTradeActive = tradeUiOpen
+  model.prevTradeSessionActive = tradeSessionActive
 
   // 6. Area, Waypoints & Quests
   if (model.world.areaId > 0) {
@@ -2791,7 +2801,12 @@ export function resolveNpcScreenPositionImpl(
     return null
   }
   const profile = hud?.viewportProfile ?? VIEWPORT_800x600
-  const leftOpen = hud ? hud.leftPanel !== 'none' : false
+  const tradeState = (hud as any)?.trade ?? (hud?.worldPanels as any)?.trade
+  const isPendingTradeOnly =
+    hud?.leftPanel === 'trade' &&
+    !tradeState?.active &&
+    (tradeState?.pendingModal === 'wait' || tradeState?.pendingModal === 'request')
+  const leftOpen = hud ? hud.leftPanel !== 'none' && !isPendingTradeOnly : false
   const rightOpen = hud ? hud.rightPanel !== 'none' : false
   const panelShiftX = computePanelCameraShift(leftOpen, rightOpen, panelDockWidth(profile))
   return subTileToScreen(npcUnit.x, npcUnit.y, camSubX, camSubY, profile, panelShiftX)
@@ -2886,7 +2901,11 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
         introPlayed,
         canGoToAct: (act: number) => model.world.canGoToAct(act),
         expansion: model.world.expansion,
-        respecAvailable: (model.world as any).respecAvailable ?? (((model.world.quests[1] ?? 0) & 1) !== 0),
+        respecAvailable:
+          (model.world as any).respecAvailable ??
+          (((model.world.quests[1] ?? 0) & 1) !== 0 &&
+            ((model.world.quests[41] ?? 0) & 1) === 0 &&
+            ((model.world.quests[41] ?? 0) === 0 || ((model.world.quests[41] ?? 0) & 2) !== 0)),
       }
       if (wp.npcMenu && wp.npcMenu.npcId === npc.npcId && npc.npcId === prev.npcId) {
         wp.npcMenu.x = anchor.x
@@ -2896,7 +2915,8 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
         if (typeof (wp as any).buildNpcMenuOptions === 'function') {
           const nextPrimaryOptions = (wp as any).buildNpcMenuOptions(desc, menuCtx)
           wp.npcMenu.primaryOptions = nextPrimaryOptions
-          if (!wp.npcMenu.talking) {
+          if (!wp.npcMenu.talking && wp.npcMenu.submenu !== 'respec') {
+            // The Akara respec confirm submenu (D2Client.dll 0x6faf9c80) owns its options until confirm/cancel.
             const nextOptions =
               wp.npcMenu.submenu === 'talk' && typeof (wp as any).buildNpcTalkSubmenuOptions === 'function'
                 ? (wp as any).buildNpcTalkSubmenuOptions(desc, menuCtx)

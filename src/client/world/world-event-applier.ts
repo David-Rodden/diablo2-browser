@@ -94,6 +94,7 @@ import {
 import { releasePredictedState113c } from './state-ids-113c.ts'
 import { stateOffSoundRequest113c, stateOnSoundRequest113c } from './state-on-sound-113c.ts'
 import { isMonsterUndead113c, SANCTUARY_AURA_113C } from './world-missile-stepper.ts'
+import { addLocalSystemMessageImpl } from './world-chat-social.ts'
 import { ensureBladeShieldAttachment113c } from './world-skill-missiles.ts'
 import {
   ALL_PALADIN_AURA_STATES,
@@ -110,6 +111,8 @@ import {
 
 /** D2Common `IFLAG_BROKEN` (D2Items.h); toggled by S2C 0x7D (D2Client.dll 0x6fb34df0). */
 const ITEM_FLAG_BROKEN = 0x00000100
+const RED_TEXT = 1
+const ARTISAN_REFUSALS: Readonly<Record<number, string>> = { 154: "Charsi can't imbue that item.", 511: "Larzuk can't add sockets to that item.", 512: "Anya can't personalize that item." }
 /** D2Common `IFLAG_REPAIRED` (D2Items.h); S2C 0x7D with this flag clears IFLAG_BROKEN. */
 const ITEM_FLAG_REPAIRED = 0x00000200
 
@@ -166,6 +169,13 @@ function isSelfStaminaExhausted(world: ClientWorldInternal): boolean {
  * When the local player is in `PLRMODE_RUN (3)` and `STAT_STAMINA (10) == 0`, immediately
  * transitions the local player into walk mode (`PLRMODE_WALK = 2` or `PLRMODE_TWALK = 6` in town).
  */
+const PLAYER_DEATH_MODES = new Set([0, 17])
+
+function clearZeroLifeDeathInTown(world: ClientWorldInternal): void {
+  const mode = world.getUnit('player', world.selfId)?.mode
+  if (world._self.isDead && isTownLevel(world.areaId) && (mode === undefined || !PLAYER_DEATH_MODES.has(mode))) [world._self.isDead, world._isSelfDead] = [false, false]
+}
+
 function downgradeSelfRunOnStaminaExhausted(world: ClientWorldInternal): void {
   if (!isSelfStaminaExhausted(world)) return
   const walkMode = isTownLevel(world.areaId) ? 6 : 2
@@ -328,9 +338,7 @@ export function noteOutgoingCommandImpl(
         ) {
           this._awaitingArtisanConfirmNpcId = (cmd.npcId || cur.npcId) ?? null
         }
-        if (isCharsi) {
-          this.executeCharsiImbue(cmd.complement, cmd.npcId)
-        } else if (curWin === 'add_sockets' || curWin === 'personalize' || curWin === 'orifice') {
+        if (isCharsi || curWin === 'add_sockets' || curWin === 'personalize' || curWin === 'orifice') {
           this._npcInteraction = { ...cur, window: 'none', activeWindow: 'none' }
         }
       } else if (cmd.action === 1) {
@@ -1086,15 +1094,6 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           curWin === 'personalize' ||
           this._awaitingArtisanConfirmNpcId !== null
         if (isCompletion) {
-          if (this._containers.cursor === null && (this as any)._lastOptimisticImbuedItem) {
-            this._containers.applyItemEvent(
-              0x02,
-              (this as any)._lastOptimisticImbuedItem,
-              'cursor',
-              this.selfId,
-            )
-          }
-          ;(this as any)._lastOptimisticImbuedItem = null
           this._awaitingArtisanConfirmNpcId = null
           this._npcInteraction = {
             ...this._npcInteraction,
@@ -1104,7 +1103,6 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             activeWindow: 'none',
           }
         } else {
-          ;(this as any)._lastOptimisticImbuedItem = null
           this._npcInteraction = {
             ...this._npcInteraction,
             npcId: ev.unitId > 0 ? ev.unitId : this._npcInteraction.npcId,
@@ -1114,6 +1112,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
       } else if (ev.uiId === 7) {
         const curWin = this._npcInteraction.activeWindow ?? this._npcInteraction.window
+        const refusedBy = this._awaitingArtisanConfirmNpcId === null ? undefined : this.getUnit('monster', this._awaitingArtisanConfirmNpcId)?.classId
+        const refusal = refusedBy === undefined ? undefined : ARTISAN_REFUSALS[refusedBy]
+        if (refusal !== undefined) addLocalSystemMessageImpl.call(this, refusal, RED_TEXT)
         const isCompletion =
           ev.unitType === 0 ||
           ev.unitId === 0 ||
@@ -1167,7 +1168,10 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       }
       this._revealedAreaIdsCache = null
       this._collisionRevision++
-      if (this.areaId === 0 && ev.areaId > 0) {
+      if (
+        ev.areaId > 0 &&
+        (this.areaId === 0 || !this.getRevealedAreaIds().includes(this.areaId))
+      ) {
         this.areaId = ev.areaId
         this.syncPlayerTownModes()
       } else if (this._self.x !== 0 || this._self.y !== 0) {
@@ -1179,12 +1183,14 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       }
       break
 
-    case 'RoomHide':
-      this._revealedRooms.delete(`${ev.areaId}:${ev.tileX}:${ev.tileY}`)
-      this._revealedRoomSeeds.delete(`${ev.areaId}:${ev.tileX}:${ev.tileY}`)
+    case 'RoomHide': {
+      const roomKey = `${ev.areaId}:${ev.tileX}:${ev.tileY}`
+      const seededRoom = this._revealedRoomSeeds.get(roomKey)
+      this._revealedRooms.delete(roomKey)
+      this._revealedRoomSeeds.delete(roomKey)
       this._revealedAreaIdsCache = null
       this._collisionRevision++
-      this.pruneUnitsInHiddenRoom(ev.tileX, ev.tileY)
+      this.pruneUnitsInHiddenRoom(ev.tileX, ev.tileY, seededRoom?.subW, seededRoom?.subH)
       if (this.areaId > 0 && ev.areaId === this.areaId && this._revealedRooms.size > 0) {
         const revealedAreas = this.getRevealedAreaIds()
         if (!revealedAreas.includes(this.areaId)) {
@@ -1198,6 +1204,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
       }
       break
+    }
 
     case 'UnitAssign': {
       const rawUnitId = (ev as any).id ?? (ev as any).unitId
@@ -2049,8 +2056,8 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         this._self.y = ev.at.y
         this._self.targetX = ev.at.x
         this._self.targetY = ev.at.y
-        if (roomAreaId > 0 && roomAreaId !== this.areaId) {
-          this.areaId = roomAreaId
+        if (targetAreaId > 0 && targetAreaId !== this.areaId) {
+          this.areaId = targetAreaId
         }
         this._isSelfDead = false
         this._self.isDead = false
@@ -2394,6 +2401,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           this._isSelfDead = false
           this._self.isDead = false
         }
+        clearZeroLifeDeathInTown(this)
         if (this.selfId !== 0) {
           const selfUnit = this._units.get(makeUnitKey('player', this.selfId))
           selfUnit?.stats.set(ev.stat, this._self.stats.get(ev.stat), ev.param ?? 0)
@@ -2535,6 +2543,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         ev.lifeRegen,
         ev.manaRegen,
       )
+      clearZeroLifeDeathInTown(this)
       if (ev.life > 0) {
         this._isSelfDead = false
         this._self.isDead = false
@@ -2570,9 +2579,13 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       break
     }
 
-    case 'Experience':
+    case 'Experience': {
       this._self.applyExperience(ev.value, ev.isDelta ?? false)
+      const selfUnit =
+        this.selfId !== 0 ? this._units.get(makeUnitKey('player', this.selfId)) : undefined
+      if (selfUnit) selfUnit.stats.set(13, this._self.experience)
       break
+    }
 
     case 'StateSkillEffect': {
       const unitRef = ev.unit ?? (ev as any).target
@@ -2939,13 +2952,15 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             : (uiItem.nameZh || uiItem.baseNameZh || itemUnit.name)
 
         // D2Client.dll 0x6fb34bb0 / 0x6fb34990 / 0x6fb36810:
-        // - Action 0x02 (DropToGround) -> mode 5 (ITEMMODE_DROPPING)
-        // - Action 0x00 (AddToGround) -> mode 5 if IFLAG_NEWITEM (0x2000) is set, else mode 3
+        // - Action 0x02 / 'drop' (DropToGround) -> mode 5 (ITEMMODE_DROPPING)
+        // - Action 0x00 / 'groundSpawn' (AddToGround) -> mode 5 if IFLAG_NEWITEM (0x2000) is set, else mode 3
         // - Action 0x03 (OnGround / static room reveal) -> mode 3 (ITEMMODE_ON_GROUND)
         const rawFlags = ev.item.rawFlags ?? ev.item.flags ?? 0
         const isDropping =
           effectiveAction === 0x02 ||
-          (effectiveAction === 0x00 && (rawFlags & 0x2000) !== 0)
+          effectiveAction === 'drop' ||
+          ((effectiveAction === 0x00 || effectiveAction === 'groundSpawn') &&
+            ((rawFlags & 0x2000) !== 0 || ev.item.newItem === true))
         if (isDropping) {
           const now = this.resolveEventNowMs(nowMs)
           const flippyKey = resolveGroundItemFlippyKey(

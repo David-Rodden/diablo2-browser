@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { refreshAssetManifestPublicSubdirs } from './src/baker/io/asset-manifest.ts'
 import { createBugReportHttpMiddleware } from './src/baker/io/bug-report-store.ts'
+import { createPlayLogHttpMiddleware } from './src/baker/io/play-log-store.ts'
 import {
   createHomeFallbackHttpMiddleware,
   createServerStatusHttpMiddleware,
@@ -43,6 +44,13 @@ export default defineConfig({
         server.middlewares.use(
           createBugReportHttpMiddleware({ bugsDir: resolve(__dirname, 'bugs') }),
         )
+      },
+    },
+    {
+      name: 'd2-play-log-api',
+      apply: 'serve',
+      configureServer(server) {
+        server.middlewares.use(createPlayLogHttpMiddleware(resolve(__dirname, 'scratch/play-logs')))
       },
     },
     {
@@ -101,6 +109,8 @@ export default defineConfig({
             req.url = `/index.html${req.url.slice(1)}`
           } else if (req.url === '/drops.html' || req.url?.startsWith('/drops.html?')) {
             req.url = `/plugins/drop-tracker/index.html${req.url.slice('/drops.html'.length)}`
+          } else if (req.url === '/trade.html' || req.url?.startsWith('/trade.html?')) {
+            req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
           }
           homeFallback(req, res, next)
         })
@@ -112,6 +122,8 @@ export default defineConfig({
             req.url = `/index.html${req.url.slice(1)}`
           } else if (req.url === '/drops.html' || req.url?.startsWith('/drops.html?')) {
             req.url = `/plugins/drop-tracker/index.html${req.url.slice('/drops.html'.length)}`
+          } else if (req.url === '/trade.html' || req.url?.startsWith('/trade.html?')) {
+            req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
           }
           homeFallback(req, res, next)
         })
@@ -127,6 +139,14 @@ export default defineConfig({
             type: 'asset',
             fileName: 'drops.html',
             source: dropHtmlAsset.source,
+          })
+        }
+        const tradeHtmlAsset = bundle['plugins/trade-hall/index.html']
+        if (tradeHtmlAsset && tradeHtmlAsset.type === 'asset') {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'trade.html',
+            source: tradeHtmlAsset.source,
           })
         }
       },

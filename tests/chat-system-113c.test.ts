@@ -213,6 +213,24 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       expect(renderedTexts).toContain('Line 25')
       expect(fillRectCalls.filter((r) => r.fillStyle === 'rgba(0, 0, 0, 0.65)')).toHaveLength(18)
     })
+
+    it('glides the remaining lines up when the top line expires instead of jumping a line', () => {
+      const { canvas, ctx, fillRectCalls } = createMockCanvas(800, 600)
+      const hud = new HudManager(canvas)
+      const line = (text: string, expireAtMs: number) => ({ text, color: 0, createdAtMs: 1000, expireAtMs })
+      hud.chatOverlayMessages = [line('Old', 2010), line('Newer', 9000)]
+      const newerTopAt = (nowMs: number) => {
+        fillRectCalls.length = 0
+        hud.renderChatOverlay(ctx, 800, nowMs)
+        return fillRectCalls.filter((r) => r.fillStyle === 'rgba(0, 0, 0, 0.65)').at(-1)!.y
+      }
+      const before = newerTopAt(2000)
+      const [justExpired, midGlide, settled] = [2016, 2066, 2400].map(newerTopAt)
+      expect(justExpired).toBe(before)
+      expect(midGlide).toBeLessThan(before)
+      expect(midGlide).toBeGreaterThan(settled)
+      expect(settled).toBe(before - CHAT_OVERLAY_LINE_HEIGHT)
+    })
   })
 
   describe('R2. Unit Overhead Speech Bubble (!text Overhead Speech, 0x6fb2b470 / 0x6fb2dc00 / 0x6fb2af20)', () => {
@@ -882,6 +900,98 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       expect(gbkColored[1]).toBe(0x63)
       expect(gbkColored[2]).toBe(0x39)
       expect(defaultTextCodec.decode(gbkColored)).toBe('\xffc9欢迎来到暗黑破坏神2\xffc1')
+    })
+
+    it('persists /players N across consecutive games within the same session and resets on new session (Issue #1407)', async () => {
+      const { canvas } = createMockCanvas(800, 600)
+      const hudManager = new HudManager(canvas)
+      const session = new OnlineSession({ hudManager })
+
+      // Initial state before any /players command: null
+      expect(session.persistedPlayersCount).toBeNull()
+
+      // Enter Game 1
+      session.handleServerEvent({
+        type: 'LoadAct',
+        act: 0,
+        mapSeed: 0x11112222,
+        areaId: 1,
+        objectSeed: 0,
+      })
+      session.handleServerEvent({
+        type: 'UnitAssign',
+        unit: { unitType: 'player', id: 1, classId: 1, name: 'Sorc', x: 5000, y: 5000 },
+        isSelf: true,
+      })
+      // No /players command auto-sent in Game 1
+      expect(session.getSentCommands().some((c) => c.type === 'Chat' && c.text.startsWith('/players'))).toBe(
+        false,
+      )
+
+      // Set /players 8 in Game 1
+      expect(session.submitChatInput('/players 8', 1_000)).toBe(true)
+      expect(session.persistedPlayersCount).toBe(8)
+      expect(session.getSentCommands().at(-1)).toEqual({ type: 'Chat', text: '/players 8' })
+
+      // Invalid /players inputs do not overwrite persistedPlayersCount
+      expect(session.submitChatInput('/players 0', 1_500)).toBe(false)
+      expect(session.submitChatInput('/players 9', 1_600)).toBe(false)
+      expect(session.submitChatInput('/players -3', 1_700)).toBe(false)
+      expect(session.persistedPlayersCount).toBe(8)
+
+      // Leave Game 1 and enter Game 2 in the same session
+      await session.leaveGame()
+      expect(session.persistedPlayersCount).toBe(8)
+
+      const cmdsBeforeGame2 = session.getSentCommands().length
+      session.handleServerEvent({
+        type: 'LoadAct',
+        act: 0,
+        mapSeed: 0x33334444,
+        areaId: 1,
+        objectSeed: 0,
+      })
+      // Game 2 automatically applies /players 8
+      expect(session.getSentCommands().slice(cmdsBeforeGame2)).toEqual([
+        { type: 'Chat', text: '/players 8' },
+      ])
+      expect(
+        session.world.activeChatOverlayEntries.filter((m) => m.text === 'players set to 8'),
+      ).toHaveLength(1)
+
+      // Subsequent init events in the same Game 2 do not re-send /players 8
+      session.handleServerEvent({
+        type: 'UnitAssign',
+        unit: { unitType: 'player', id: 1, classId: 1, name: 'Sorc', x: 5000, y: 5000 },
+        isSelf: true,
+      })
+      expect(session.getSentCommands().slice(cmdsBeforeGame2)).toEqual([
+        { type: 'Chat', text: '/players 8' },
+      ])
+
+      // Change to "players 3" in Game 2, then leave and enter Game 3
+      expect(session.submitChatInput('players 3', 2_000)).toBe(true)
+      expect(session.persistedPlayersCount).toBe(3)
+      await session.leaveGame()
+
+      const cmdsBeforeGame3 = session.getSentCommands().length
+      session.handleServerEvent({
+        type: 'LoadAct',
+        act: 0,
+        mapSeed: 0x55556666,
+        areaId: 1,
+        objectSeed: 0,
+      })
+      expect(session.getSentCommands().slice(cmdsBeforeGame3)).toEqual([
+        { type: 'Chat', text: '/players 3' },
+      ])
+      expect(
+        session.world.activeChatOverlayEntries.some((m) => m.text === 'players set to 3'),
+      ).toBe(true)
+
+      // A brand-new OnlineSession (fresh page load) resets to null
+      const freshSession = new OnlineSession()
+      expect(freshSession.persistedPlayersCount).toBeNull()
     })
   })
 })

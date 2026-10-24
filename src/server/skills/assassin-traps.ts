@@ -440,7 +440,8 @@ export function calcDeathSentry113c(slvl: number, synergies: AssassinTrapSynergy
  * - Weapon fraction: SrcDam = 32 (1/4), Half2HSrc = 0 (always 1/4 for both 1H and 2H)
  * - descdam = 5: both weapon physical and flat skill physical are scaled by 32 / 128
  * - Duration: 500 + 125 * (slvl - 1) frames (20s + 5s per level)
- * - Periodic pulse: perdelay = 25 frames (1.0s), radius = 4 sub-tiles
+ * - Periodic pulse: perdelay = 25 frames (1.0s), radius = `aurarangecalc = par4` = 6 sub-tiles
+ *   (`samples/d2/excel/Skills.txt` #277 Param4; SrvDo054 0x6FCB3508 reads `[skill+0x64]`)
  * - Mana: 27 + 2 * (slvl - 1)
  */
 export function calcBladeShield113c(
@@ -466,7 +467,7 @@ export function calcBladeShield113c(
     effectiveSrcDam,
     durationFrames: 500 + 125 * Math.max(0, slvl - 1),
     perDelayFrames: 25,
-    radiusSubtiles: 4,
+    radiusSubtiles: 6,
     manaCost: 27 + 2 * Math.max(0, slvl - 1),
   };
 }

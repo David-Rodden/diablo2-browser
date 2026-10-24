@@ -277,6 +277,7 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
     // Base 110% Fire Res vs Conviction (-60%) + Lower Resist (-45%) = -105% raw -> 105 / 5 = 21% pierce -> 110 - 21 = 89% (< 100, broken!)
     // Then -25% passive_fire_pierce applies at 100% -> 89 - 25 = 64% effective resistance!
     const brokenRes = computeEffectiveResistance({
+      isDefenderPlayer: false,
       baseRes: 110,
       convictionPierce: 60,
       lowerResistPierce: 45,
@@ -288,6 +289,7 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
 
     // Base 130% Cold Res vs Conviction (-60%) -> 60 / 5 = 12% -> 118% >= 100 -> still Immune! Level 20 Cold Mastery (-115%) cannot apply!
     const unbrokenRes = computeEffectiveResistance({
+      isDefenderPlayer: false,
       baseRes: 130,
       convictionPierce: 60,
       passiveEnemyPierce: 115,
@@ -325,7 +327,7 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
       elemMin256: 400 * FIXED_ONE,
       elemMax256: 400 * FIXED_ONE,
       concentrationBonusPct: 300,
-    })
+    }, { rand: () => 50 })
     expect(bhVsImmuneUndead.immuneToElem).toBe(true)
     expect(bhVsImmuneUndead.totalDamage).toBe(0)
 
@@ -350,7 +352,7 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
       elemMin256: 400 * FIXED_ONE,
       elemMax256: 400 * FIXED_ONE,
       concentrationBonusPct: 300,
-    })
+    }, { rand: () => 50 })
     expect(bhVs50Undead.immuneToElem).toBe(false)
     expect(bhVs50Undead.totalDamage).toBe(750)
 

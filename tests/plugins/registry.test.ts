@@ -77,6 +77,33 @@ describe('BUILTIN_PLUGINS Registry & Built-In Plugin Lifecycles', () => {
     expect(BUILTIN_PLUGINS).toContain(extendedViewportsPlugin)
     expect(BUILTIN_PLUGINS).toContain(hudEnhancementsPlugin)
     expect(BUILTIN_PLUGINS).toContain(groundItemBeamPlugin)
+
+    const davidRoddenPluginIds = [
+      'auto-combat',
+      'auto-gold-pickup',
+      'auto-potion',
+      'belt-refill',
+      'drag-interact',
+      'experience-bar',
+      'item-info',
+      'loot-alerts',
+      'low-life-warning',
+      'monster-resists',
+      'path-guide',
+      'run-timer',
+      'stash-deposit-all',
+      'town-portal-key',
+      'upgrade-hints',
+    ] as const
+    for (const id of davidRoddenPluginIds) {
+      const plugin = BUILTIN_PLUGINS.find((p) => p.id === id)
+      expect(plugin, `plugin ${id} should be registered`).toBeDefined()
+      expect(plugin?.author).toBe('David-Rodden')
+      expect(plugin?.description.zh).toContain('David-Rodden')
+      expect(plugin?.description.zh).toContain('感谢')
+      expect(plugin?.description.en).toContain('David-Rodden')
+      expect(plugin?.description.en.toLowerCase()).toContain('thanks')
+    }
   })
 
   it('manages #d2-toolbar-plugin-kill-stats-open shortcut, reports mid-game warn/recording/ready statuses, and flushes pending kills on deactivate', async () => {
@@ -580,6 +607,15 @@ describe('BUILTIN_PLUGINS Registry & Built-In Plugin Lifecycles', () => {
         isEnabled: () => false,
         setEnabled() {},
       },
+      ...Object.fromEntries(
+        ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists', 'lowLifeWarning'].map((name) => [name, { isEnabled: () => false, setEnabled() {} }]),
+      ),
+      autoCombat: { getKey: () => null, setKey() {} },
+      townPortal: { getKey: () => null, setKey() {} },
+      autoPotion: { getThresholds: () => null, setThresholds() {} },
+      autoLoot: { getRules: () => null, setRules() {} },
+      inventoryCare: { getConfig: () => null, setConfig() {} },
+      itemInfo: { getConfig: () => null, setConfig() {} },
     })
     await host.start()
 

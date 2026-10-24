@@ -713,6 +713,8 @@ export class SpriteRenderer {
     return this.postProcessPass?.passCount ?? 0
   }
 
+  pixelScale = 1
+
   /**
    * Configure the logical game viewport dimensions (e.g. `1068x600`) rendered into the offscreen scene FBO
    * before `D2GlPostProcessPass` upscales to the physical output canvas (`gl.drawingBufferWidth x Height`).
@@ -1847,7 +1849,7 @@ export class SpriteRenderer {
       this.cachedViewportHeight = vpHeight
     }
 
-    const zoom = this.camera.zoom
+    const zoom = this.camera.zoom * this.pixelScale
     if (zoom !== this.cachedZoom) {
       if (typeof gl.uniform1f === 'function') {
         gl.uniform1f(this.uniformZoom, zoom)

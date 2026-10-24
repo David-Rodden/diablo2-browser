@@ -81,14 +81,16 @@ export class SceneMotionSmoother {
       const p = this.history.sample(unitKey(u), alpha)
       if (!p || (p.x === u.x && p.y === u.y)) return u
       changed = true
-      return { ...u, x: p.x, y: p.y }
+      const light = this.history.sample(unitKey(u), 0) ?? p
+      return { ...u, x: p.x, y: p.y, lightX: light.x, lightY: light.y }
     })
     const playerSubX = anchor ? anchor.x : st.playerSubX
     const playerSubY = anchor ? anchor.y : st.playerSubY
     if (!changed && playerSubX === st.playerSubX && playerSubY === st.playerSubY) {
       return { ...st, units }
     }
-    return { ...st, playerSubX, playerSubY, units: smoothed }
+    const light = this.history.sample(PLAYER_ANCHOR_KEY, 0)
+    return { ...st, playerSubX, playerSubY, units: smoothed, ...(light ? { lightSubX: light.x, lightSubY: light.y } : {}) }
   }
 
   private commit(st: ClientSceneWorldAdapter, units: readonly RenderableUnitInput[]): void {

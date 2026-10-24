@@ -18,7 +18,33 @@ import {
   LIGHTING_PRESETS,
   type LightingPresetConfig,
 } from '../../client/scene/lighting-presets.ts'
-import type { OnlineSession } from '../session/online-session.ts'
+import {
+  DuplicateCharacterLoginError,
+  OnlineSession,
+  formatLobbyGameEnterError,
+  parseMcpGameErrorStatus,
+  type OnlineSessionLobbySnapshot,
+  type OnlineSessionLoginParams,
+  type OnlineSessionOptions,
+} from '../session/online-session.ts'
+import type { AutoPotionThresholds } from '../input/auto-potion.ts'
+import type { AutoLootRules, LootCategories } from '../input/auto-loot.ts'
+import type { InventoryCareConfig } from '../input/inventory-care.ts'
+import type { ItemInfoConfig, LootFilter } from '../ui/ground-item-info.ts'
+import type { GuideMode } from '../guide/route.ts'
+import type { MenuLayout } from './mod-menu-text.ts'
+import { HudManager } from '../ui/hud-manager.ts'
+import {
+  INV_COLS,
+  INV_ROWS,
+  findFreeGridSlot,
+  getInventoryGoldLimit,
+  getStashGoldLimit,
+  type GridPlacement,
+  type UiInventoryItem,
+} from '../ui/inventory.ts'
+import type { ClientUnit } from '../world/client-unit.ts'
+import type { ChatLogEntry, ClientWorld } from '../world/client-world.ts'
 import {
   DEFAULT_VIEWPORT_RESOLUTION,
   VALID_AUTOMAP_REVEAL_MODES,
@@ -52,24 +78,42 @@ export {
   CLIENT_LIGHTING_PRESET_ORDER,
   DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS,
   DEFAULT_VIEWPORT_RESOLUTION,
+  DuplicateCharacterLoginError,
   EXTENDED_VIEWPORT_RESOLUTIONS,
+  HudManager,
+  INV_COLS,
+  INV_ROWS,
   LIGHTING_PRESETS,
   NATIVE_113C_VIEWPORT_RESOLUTIONS,
+  OnlineSession,
   VALID_AUTOMAP_REVEAL_MODES,
   VALID_LIGHTING_PRESETS,
   VALID_VIEWPORT_RESOLUTIONS,
   VALID_WEATHER_OVERRIDES,
   VIEWPORT_PROFILES,
+  findFreeGridSlot,
+  formatLobbyGameEnterError,
   formatViewportLabel,
+  getInventoryGoldLimit,
+  getStashGoldLimit,
   getViewportProfile,
   isExtendedViewport,
+  parseMcpGameErrorStatus,
   type AutomapRadarConfig,
   type AutomapRevealMode,
+  type ChatLogEntry,
   type ClientLightingPreset,
+  type ClientUnit,
+  type ClientWorld,
   type GameLang,
+  type GridPlacement,
   type GroundItemEnhancementsConfig,
   type HudEnhancementsConfig,
   type LightingPresetConfig,
+  type OnlineSessionLobbySnapshot,
+  type OnlineSessionLoginParams,
+  type OnlineSessionOptions,
+  type UiInventoryItem,
   type ViewportProfile,
   type ViewportResolution,
   type WeatherOverrideSetting,
@@ -80,7 +124,12 @@ export interface LocalizedText {
   readonly en: string
 }
 
-export type PluginSettingSpec =
+export interface PluginSettingCondition {
+  readonly key: string
+  readonly is: readonly (string | boolean)[]
+}
+
+export type PluginSettingSpec = (
   | {
       readonly kind: 'boolean'
       readonly key: string
@@ -97,6 +146,7 @@ export type PluginSettingSpec =
         readonly label: LocalizedText
       }[]
     }
+) & { readonly shownWhen?: readonly PluginSettingCondition[] | undefined }
 
 export type PluginActionSpec =
   | {
@@ -116,6 +166,7 @@ export interface D2WebPlugin {
   readonly id: string
   readonly name: LocalizedText
   readonly description: LocalizedText
+  readonly author?: string | undefined
   readonly defaultEnabled: boolean
   readonly settings?: readonly PluginSettingSpec[]
   readonly actions?: readonly PluginActionSpec[]
@@ -219,6 +270,79 @@ export interface PluginQuickCastPort {
   setEnabled(enabled: boolean): void
 }
 
+export type PluginTogglePort = PluginQuickCastPort
+
+export type PluginToastColor = 'white' | 'red' | 'green' | 'blue' | 'gold' | 'tan' | 'orange' | 'yellow' | 'purple'
+
+export interface PluginToast {
+  readonly title: string
+  readonly detail?: string | undefined
+  readonly color: PluginToastColor
+}
+
+export interface PluginNotifyPort {
+  show(toast: PluginToast): void
+}
+
+export interface PluginHotkeyPort {
+  getKey(): string | null
+  setKey(key: string | null): void
+}
+
+export type PluginAutoCombatPort = PluginHotkeyPort
+
+export type { AutoLootRules, AutoPotionThresholds, InventoryCareConfig, ItemInfoConfig, LootCategories, LootFilter }
+
+export type { GuideMode }
+
+export type { MenuLayout }
+
+export interface PluginPathGuidePort {
+  getMode(): GuideMode | null
+  setMode(mode: GuideMode | null): void
+}
+
+export interface PluginItemInfoPort {
+  getConfig(): ItemInfoConfig | null
+  setConfig(config: ItemInfoConfig | null): void
+}
+
+export interface PluginAutoLootPort {
+  getRules(): AutoLootRules | null
+  setRules(rules: AutoLootRules | null): void
+}
+
+export interface PluginInventoryCarePort {
+  getConfig(): InventoryCareConfig | null
+  setConfig(config: InventoryCareConfig | null): void
+}
+
+export interface PluginAutoPotionPort {
+  getThresholds(): AutoPotionThresholds | null
+  setThresholds(thresholds: AutoPotionThresholds | null): void
+}
+
+const ACTIVE_STATUS: PluginStatus = { level: 'ok', text: { zh: '已开启', en: 'Active' } }
+const INACTIVE_STATUS: PluginStatus = { level: 'warn', text: { zh: '未开启', en: 'Inactive' } }
+
+export function createTogglePlugin({
+  port,
+  defaultEnabled = true,
+  ...meta
+}: Pick<D2WebPlugin, 'id' | 'name' | 'description' | 'author'> & { readonly port: (ctx: PluginContext) => PluginTogglePort; readonly defaultEnabled?: boolean }): D2WebPlugin {
+  return {
+    ...meta,
+    defaultEnabled,
+    activate: (ctx) => {
+      port(ctx).setEnabled(true)
+      return {
+        getStatus: () => (port(ctx).isEnabled() ? ACTIVE_STATUS : INACTIVE_STATUS),
+        deactivate: () => port(ctx).setEnabled(false),
+      }
+    },
+  }
+}
+
 export interface ToolbarContributionPatch {
   readonly label?: LocalizedText | undefined
   readonly tooltip?: LocalizedText | undefined
@@ -230,6 +354,9 @@ export const TOOLBAR_KILL_STATS_ICON_SVG =
 
 export const TOOLBAR_DROP_TRACKER_ICON_SVG =
   '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" focusable="false" aria-hidden="true"><path d="M8 1.5L13.5 7 8 14.5 2.5 7 8 1.5Z"/></svg>'
+
+export const TOOLBAR_TRADE_HALL_ICON_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M2.5 5.5h11l-2.5-2.5M13.5 10.5h-11l2.5 2.5"/></svg>'
 
 export interface ToolbarContributionHandle {
   (): void
@@ -281,6 +408,25 @@ export interface PluginContext {
    * host releases it automatically when the plugin deactivates (vanilla behavior restored).
    */
   readonly quickCast: PluginQuickCastPort
+  readonly dragInteract: PluginTogglePort
+  readonly stashDepositAll: PluginTogglePort
+  readonly xpBar: PluginTogglePort
+  readonly autoGoldPickup: PluginTogglePort
+  readonly beltRefill: PluginTogglePort
+  readonly upgradeHints: PluginTogglePort
+  readonly monsterResists: PluginTogglePort
+  readonly lowLifeWarning: PluginTogglePort
+  readonly smartSkills: PluginTogglePort
+  readonly spendPoints: PluginTogglePort
+  readonly notify: PluginNotifyPort
+  readonly itemInfo: PluginItemInfoPort
+  readonly pathGuide: PluginPathGuidePort
+  readonly autoCombat: PluginAutoCombatPort
+  readonly townPortal: PluginHotkeyPort
+  readonly autopilot: PluginHotkeyPort
+  readonly autoPotion: PluginAutoPotionPort
+  readonly autoLoot: PluginAutoLootPort
+  readonly inventoryCare: PluginInventoryCarePort
   readonly lang: {
     get(): GameLang
     subscribe(fn: (lang: GameLang) => void): () => void
@@ -525,6 +671,9 @@ export function validatePluginDefinition(plugin: D2WebPlugin): void {
         )
       }
     }
+    const keys = new Set(plugin.settings.map((spec) => spec.key))
+    const dangling = plugin.settings.flatMap((spec) => (spec.shownWhen ?? []).filter(({ key }: PluginSettingCondition) => !keys.has(key) || key === spec.key).map(({ key }: PluginSettingCondition) => `${spec.key} → ${key}`))
+    if (dangling.length > 0) throw new Error(`[PluginHost] Plugin "${plugin.id}" shows settings based on unknown settings: ${dangling.join(', ')}`)
   }
 
   if (plugin.actions !== undefined) {

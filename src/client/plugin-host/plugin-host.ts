@@ -44,6 +44,8 @@ import {
   type PluginInstance,
   type PluginLogger,
   type PluginQuickCastPort,
+  type PluginNotifyPort,
+  type PluginTogglePort,
   type PluginSessionView,
   type PluginStatus,
   type PluginToolbarContributionSpec,
@@ -121,6 +123,19 @@ export interface PluginHostOptions {
    * toggle).
    */
   readonly quickCast?: PluginQuickCastPort | null | undefined
+  readonly notify?: PluginNotifyPort | null | undefined
+}
+
+const TOGGLE_PORT_NAMES = ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists', 'lowLifeWarning', 'smartSkills', 'spendPoints'] as const
+type TogglePortName = (typeof TOGGLE_PORT_NAMES)[number]
+type SettingPortName = 'autoCombat' | 'townPortal' | 'autopilot' | 'autoPotion' | 'autoLoot' | 'inventoryCare' | 'itemInfo' | 'pathGuide'
+type WiredPortOptions = { readonly [K in TogglePortName | SettingPortName]?: PluginContext[K] | null | undefined }
+
+export interface PluginHostOptions extends WiredPortOptions {}
+
+const requireWiredPort = <T>(port: T, name: string, pluginId: string): NonNullable<T> => {
+  if (!port) throw new Error(`[plugin-host] ${name} port is not wired by the composition root (plugin "${pluginId}")`)
+  return port
 }
 
 interface InternalPluginRecord {
@@ -155,8 +170,11 @@ export class PluginHost {
     DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS
   private readonly unsubConfig: () => void
   private readonly quickCastPort: PluginQuickCastPort | null
+  private readonly notifyPort: PluginNotifyPort | null
   /** Plugins currently claiming Quick Cast (Issue #952); empty set = vanilla behavior. */
   private readonly quickCastClaims = new Set<string>()
+  private readonly settingPorts: Pick<WiredPortOptions, SettingPortName>
+  private readonly togglePorts: ReadonlyMap<TogglePortName, { readonly port: PluginTogglePort | null; readonly claims: Set<string> }>
   private ready = false
   private destroyed = false
   private startPromise: Promise<void> | null = null
@@ -166,6 +184,9 @@ export class PluginHost {
     this.session = options.session
     this.toolbar = options.toolbar ?? null
     this.quickCastPort = options.quickCast ?? null
+    this.notifyPort = options.notify ?? null
+    this.settingPorts = { autoCombat: options.autoCombat, townPortal: options.townPortal, autopilot: options.autopilot, autoPotion: options.autoPotion, autoLoot: options.autoLoot, inventoryCare: options.inventoryCare, itemInfo: options.itemInfo, pathGuide: options.pathGuide }
+    this.togglePorts = new Map(TOGGLE_PORT_NAMES.map((name) => [name, { port: options[name] ?? null, claims: new Set<string>() }]))
     this.settingsStore = options.settingsStore ?? getGlobalSettingsStore()
     this.enforceClientDefaults = options.enforceClientDefaults ?? false
     this.configStore =
@@ -527,6 +548,45 @@ export class PluginHost {
     }
   }
 
+  private createClaimedTogglePort(record: InternalPluginRecord, isDisposed: () => boolean, name: TogglePortName): PluginTogglePort {
+    const pluginId = record.plugin.id
+    const { port, claims } = this.togglePorts.get(name)!
+    return {
+      isEnabled: () => claims.size > 0,
+      setEnabled: (enabled) => {
+        if (isDisposed()) return
+        const wiredPort = requireWiredPort(port, name, pluginId)
+        const release = (): void => {
+          record.disposers.delete(release)
+          claims.delete(pluginId)
+          if (claims.size === 0) wiredPort.setEnabled(false)
+        }
+        if (!enabled) return release()
+        if (claims.has(pluginId)) return
+        claims.add(pluginId)
+        record.disposers.add(release)
+        wiredPort.setEnabled(true)
+      },
+    }
+  }
+
+  private createWiredPorts(record: InternalPluginRecord, isDisposed: () => boolean): Pick<PluginContext, TogglePortName | SettingPortName> {
+    const pluginId = record.plugin.id
+    const { autoCombat, townPortal, autopilot, autoPotion, autoLoot, inventoryCare, itemInfo, pathGuide } = this.settingPorts
+    const wired = <K extends SettingPortName>(name: K) => requireWiredPort(this.settingPorts[name], name, pluginId)
+    return {
+      ...(Object.fromEntries(TOGGLE_PORT_NAMES.map((name) => [name, this.createClaimedTogglePort(record, isDisposed, name)])) as Record<TogglePortName, PluginTogglePort>),
+      autoCombat: { getKey: () => autoCombat?.getKey() ?? null, setKey: (key) => wired('autoCombat').setKey(key) },
+      townPortal: { getKey: () => townPortal?.getKey() ?? null, setKey: (key) => wired('townPortal').setKey(key) },
+      autopilot: { getKey: () => autopilot?.getKey() ?? null, setKey: (key) => wired('autopilot').setKey(key) },
+      autoPotion: { getThresholds: () => autoPotion?.getThresholds() ?? null, setThresholds: (thresholds) => wired('autoPotion').setThresholds(thresholds) },
+      autoLoot: { getRules: () => autoLoot?.getRules() ?? null, setRules: (rules) => wired('autoLoot').setRules(rules) },
+      inventoryCare: { getConfig: () => inventoryCare?.getConfig() ?? null, setConfig: (config) => wired('inventoryCare').setConfig(config) },
+      itemInfo: { getConfig: () => itemInfo?.getConfig() ?? null, setConfig: (config) => wired('itemInfo').setConfig(config) },
+      pathGuide: { getMode: () => pathGuide?.getMode() ?? null, setMode: (mode) => wired('pathGuide').setMode(mode) },
+    }
+  }
+
   private createClientCapabilities(
     record: InternalPluginRecord,
     isDisposed: () => boolean,
@@ -880,6 +940,7 @@ export class PluginHost {
           showStatGainTooltips: s.showStatGainTooltips,
           showWeaponDamageFormula: s.showWeaponDamageFormula,
           showAdvancedStatsButton: s.showAdvancedStatsButton,
+          showRuneNumbers: s.showRuneNumbers,
         }
       },
       setHudEnhancements: (patch: Partial<HudEnhancementsConfig>): void => {
@@ -898,7 +959,9 @@ export class PluginHost {
           (patch.showWeaponDamageFormula !== undefined &&
             typeof patch.showWeaponDamageFormula !== 'boolean') ||
           (patch.showAdvancedStatsButton !== undefined &&
-            typeof patch.showAdvancedStatsButton !== 'boolean')
+            typeof patch.showAdvancedStatsButton !== 'boolean') ||
+          (patch.showRuneNumbers !== undefined &&
+            typeof patch.showRuneNumbers !== 'boolean')
         ) {
           throw new Error(
             `[PluginHost] HudEnhancementsConfig fields must be booleans on plugin "${pluginId}"`,
@@ -912,12 +975,14 @@ export class PluginHost {
         const nextStatTips = patch.showStatGainTooltips ?? curr.showStatGainTooltips
         const nextWeapDmgFormula = patch.showWeaponDamageFormula ?? curr.showWeaponDamageFormula
         const nextAdvStatsBtn = patch.showAdvancedStatsButton ?? curr.showAdvancedStatsButton
+        const nextRuneNumbers = patch.showRuneNumbers ?? curr.showRuneNumbers
         if (
           nextStats !== curr.showBasePlusBonusStats ||
           nextSkills !== curr.showBasePlusBonusSkills ||
           nextStatTips !== curr.showStatGainTooltips ||
           nextWeapDmgFormula !== curr.showWeaponDamageFormula ||
-          nextAdvStatsBtn !== curr.showAdvancedStatsButton
+          nextAdvStatsBtn !== curr.showAdvancedStatsButton ||
+          nextRuneNumbers !== curr.showRuneNumbers
         ) {
           this.settingsStore.set({
             showBasePlusBonusStats: nextStats,
@@ -925,6 +990,7 @@ export class PluginHost {
             showStatGainTooltips: nextStatTips,
             showWeaponDamageFormula: nextWeapDmgFormula,
             showAdvancedStatsButton: nextAdvStatsBtn,
+            showRuneNumbers: nextRuneNumbers,
           })
         }
         this.syncToolbarState()
@@ -938,12 +1004,14 @@ export class PluginHost {
               !changed.includes('showBasePlusBonusSkills') &&
               !changed.includes('showStatGainTooltips') &&
               !changed.includes('showWeaponDamageFormula') &&
-              !changed.includes('showAdvancedStatsButton')) ||
+              !changed.includes('showAdvancedStatsButton') &&
+              !changed.includes('showRuneNumbers')) ||
             (next.showBasePlusBonusStats === prev.showBasePlusBonusStats &&
               next.showBasePlusBonusSkills === prev.showBasePlusBonusSkills &&
               next.showStatGainTooltips === prev.showStatGainTooltips &&
               next.showWeaponDamageFormula === prev.showWeaponDamageFormula &&
-              next.showAdvancedStatsButton === prev.showAdvancedStatsButton)
+              next.showAdvancedStatsButton === prev.showAdvancedStatsButton &&
+              next.showRuneNumbers === prev.showRuneNumbers)
           ) {
             return
           }
@@ -954,6 +1022,7 @@ export class PluginHost {
               showStatGainTooltips: next.showStatGainTooltips,
               showWeaponDamageFormula: next.showWeaponDamageFormula,
               showAdvancedStatsButton: next.showAdvancedStatsButton,
+              showRuneNumbers: next.showRuneNumbers,
             })
           } catch (err) {
             this.recordPluginError(record, 'hudEnhancements subscriber', err)
@@ -1134,7 +1203,8 @@ export class PluginHost {
       curr.showBasePlusBonusSkills ||
       curr.showStatGainTooltips ||
       curr.showWeaponDamageFormula ||
-      curr.showAdvancedStatsButton
+      curr.showAdvancedStatsButton ||
+      curr.showRuneNumbers
     ) {
       this.settingsStore.set({
         showBasePlusBonusStats: false,
@@ -1142,6 +1212,7 @@ export class PluginHost {
         showStatGainTooltips: false,
         showWeaponDamageFormula: false,
         showAdvancedStatsButton: false,
+        showRuneNumbers: false,
       })
     }
   }
@@ -1439,6 +1510,8 @@ export class PluginHost {
       })(),
       client: this.createClientCapabilities(record, () => contextDisposed),
       quickCast: this.createQuickCastPort(record, () => contextDisposed),
+      notify: { show: (toast) => void (contextDisposed || this.notifyPort?.show(toast)) },
+      ...this.createWiredPorts(record, () => contextDisposed),
       lang: (() => {
         const subscribe = (fn: (lang: GameLang) => void): (() => void) => {
           if (contextDisposed) {
