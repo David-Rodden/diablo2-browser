@@ -70,6 +70,7 @@ const GAP_DEPTH = 10
 const CORNER_RADIUS = 18
 const TRAIL_STEPS = 40
 const TRAIL_ROUNDS = 3
+const REACH_SNAP = 3
 const PORTAL_CLASSES = new Set([59, 60, 298, 342])
 const WAYPOINT_NEAR = 45
 const LEARN_WAYPOINTS = 'Touch the waypoint so the guide knows yours'
@@ -313,7 +314,7 @@ export class PathGuide {
   reaches(me: SubTilePoint, plan: GuidePlan | null = this.plan): boolean {
     const field = this.fieldOf(plan)
     if (field === null) return true
-    return field.distanceFrom(me.x, me.y) !== null || field.pathFrom(me.x, me.y, 1, 1).length > 0
+    return field.distanceFrom(me.x, me.y) !== null || field.pathFrom(me.x, me.y, 1, 1, REACH_SNAP).length > 0
   }
 
   private fieldOf(plan: GuidePlan | null): FlowField | null {

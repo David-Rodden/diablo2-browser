@@ -7,7 +7,7 @@ import { TELEPORT } from '../input/combat-planner.ts'
 import { scrollsCarried, scrollSource } from '../input/town-portal.ts'
 import { isClosedDoor, type PlayAssists } from '../input/play-assists.ts'
 import type { LevelView } from '../map/level-view.ts'
-import { firstPad, guessPartner, Regions, type Pad } from './pad-routes.ts'
+import { firstPad, guessPartner, presetPartners, Regions, type Pad } from './pad-routes.ts'
 import type { SubTilePoint } from '../motion/pathfind.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
 import { waitFor } from '../ui-model/stash-deposit.ts'
@@ -207,6 +207,7 @@ const GAP_TRIES = 6
 
 const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y - b.y)
 const isElite = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true)
+type PadSpot = Pad & { readonly unit?: ClientUnit; readonly partner?: SubTilePoint | undefined }
 const padKey = (pad: SubTilePoint) => `${Math.round(pad.x)},${Math.round(pad.y)}`
 const potionTier = (code: string) => Number(code.slice(2)) || 0
 
@@ -596,7 +597,7 @@ export class Autopilot {
     const { world, assists } = this.host
     const { target, step } = plan
     const door = plan.doors.map((id) => world.getUnit('object', id)).find((unit): unit is ClientUnit => unit !== undefined && isClosedDoor(unit) && distance(unit, world.self) <= REACH + 1)
-    if (!door && target && !this.host.guide.reaches(world.self) && this.takePad(target, nowMs)) return
+    if (!door && target && this.takePad(target, nowMs)) return
     this.say(plan.hint)
     const unit = target?.unit && world.getUnit(target.unit.kind === 'object' ? 'object' : 'monster', target.unit.id)
     if (door) this.useOnce(door, nowMs)
@@ -951,13 +952,11 @@ export class Autopilot {
     const { world } = this.host
     const view = this.host.levelView()
     const me = world.self
-    if (!view) return false
-    const here = this.padField(view, nowMs)
-    const reachable = (pad: SubTilePoint) => distance(pad, me) <= INTERACT_REACH || here.pathFrom(pad.x, pad.y, 1, 1).length > 0
-    const spots = this.padSpots(view)
-    const free = (spot: (typeof spots)[number]) => !this.padUsed(spot, nowMs) && reachable(spot)
+    const spots = view ? this.padSpots(view) : []
+    if (!view || spots.length === 0) return false
     const regions = this.regionsOf(view)
-    const pad = firstPad(regions, spots, me, target, (spot) => this.landingOf(spot, spots, regions), free) ?? spots.filter(free).sort((a, b) => distance(a, target) - distance(b, target))[0]
+    const free = (spot: (typeof spots)[number]) => !this.padUsed(spot, nowMs) && regions.at(spot) === regions.at(me)
+    const pad = firstPad(regions, spots, me, target, (spot) => this.landingOf(spot, spots, regions), free)
     if (!pad) return false
     this.say('Taking the teleport pad')
     if (!pad.unit || distance(pad, me) > INTERACT_REACH) this.walkTowards(pad, nowMs)
@@ -986,15 +985,17 @@ export class Autopilot {
     return this.regions.regions
   }
 
-  private landingOf<P extends Pad>(pad: P, pads: readonly P[], regions: Regions): P | undefined {
-    const landed = this.landings.get(padKey(pad))
+  private landingOf<P extends PadSpot>(pad: P, pads: readonly P[], regions: Regions): P | undefined {
+    const landed = this.landings.get(padKey(pad)) ?? pad.partner
     return landed ? pads.find((other) => distance(other, landed) <= PAD_SAME) : guessPartner(pad, pads, regions)
   }
 
-  private padSpots(view: LevelView): { readonly x: number; readonly y: number; readonly classId: number; readonly unit?: ClientUnit }[] {
-    const live = this.host.world.getUnitsByType(2).filter((unit) => PAD_CLASSES.has(unit.classId)).map((unit) => ({ x: unit.x, y: unit.y, classId: unit.classId, unit }))
+  private padSpots(view: LevelView): PadSpot[] {
     const preset = view.presetUnits.filter((u) => u.type === 2 && PAD_CLASSES.has(u.index)).map((u) => ({ x: view.originX + u.subX, y: view.originY + u.subY, classId: u.index }))
-    return [...live, ...preset.filter((spot) => !live.some((pad) => distance(pad, spot) <= PAD_SAME))]
+    const partners = presetPartners(preset)
+    const partnerNear = (spot: SubTilePoint) => partners.get(preset.find((other) => distance(other, spot) <= PAD_SAME)!)
+    const live = this.host.world.getUnitsByType(2).filter((unit) => PAD_CLASSES.has(unit.classId)).map((unit) => ({ x: unit.x, y: unit.y, classId: unit.classId, unit, partner: partnerNear(unit) }))
+    return [...live, ...preset.filter((spot) => !live.some((pad) => distance(pad, spot) <= PAD_SAME)).map((spot) => ({ ...spot, partner: partners.get(spot) }))]
   }
 
   private padUsed(spot: SubTilePoint, nowMs: number): boolean {

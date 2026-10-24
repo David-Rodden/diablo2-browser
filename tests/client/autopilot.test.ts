@@ -511,17 +511,22 @@ describe('autopilot', () => {
     expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Activating the waypoint', units[0]])
   })
 
+  const islands = (view: { walkable: Uint8Array; presetUnits: { type: number; index: number; subX: number; subY: number }[] }, near: number) => {
+    for (let y = 0; y < 400; y++) view.walkable.fill(0, y * 400 + 200, y * 400 + 206)
+    view.presetUnits.push({ type: 2, index: 192, subX: near, subY: 100 }, { type: 2, index: 192, subX: 210, subY: 100 })
+  }
+
   it('takes a teleport pad when the target cannot be walked to', () => {
-    const { assists, guide, units, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
-    Object.assign(guide, { reaches: () => false })
+    const { assists, guide, units, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    islands(view, 106)
     units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 106, y: 100 }))
     tick()
     expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Taking the teleport pad', units[0]])
   })
 
   it('waits on a pad it pressed instead of walking off and cancelling it', () => {
-    const { assists, guide, units, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
-    Object.assign(guide, { reaches: () => false })
+    const { assists, guide, units, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    islands(view, 110)
     units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 110, y: 100 }))
     tick()
     const walks = assists.walkTo.mock.calls.length + assists.stepTo.mock.calls.length
@@ -532,8 +537,8 @@ describe('autopilot', () => {
   })
 
   it('gives up on a pad that never carries it after a few presses', () => {
-    const { assists, guide, units, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
-    Object.assign(guide, { reaches: () => false })
+    const { assists, guide, units, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    islands(view, 110)
     units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 110, y: 100 }))
     for (let i = 0; i < 12; i++) tick(1600)
     expect([assists.use.mock.calls.length, guide.pilotStatus]).toEqual([5, 'Head to Blood Moor'])
@@ -541,11 +546,23 @@ describe('autopilot', () => {
 
   it('heads for a pad it has not seen yet when the level layout has one', () => {
     const { assists, guide, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
-    Object.assign(guide, { reaches: () => false })
-    view.presetUnits.push({ type: 2, index: 192, subX: 160, subY: 100 }, { type: 2, index: 192, subX: 40, subY: 100 })
+    islands(view, 160)
     tick()
     expect(guide.pilotStatus).toBe('Taking the teleport pad')
     expect(assists.stepTo.mock.calls[0]?.[0] ?? assists.walkTo.mock.calls[0]?.[0]).toBeGreaterThan(100)
+  })
+
+  it('takes the pad across a gap too narrow to see, but walks when the target is on its own platform', () => {
+    const { assists, guide, units, view, tick } = setup({ target: { x: 208, y: 100, label: 'The Summoner' } })
+    islands(view, 106)
+    units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 106, y: 100 }))
+    tick()
+    expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Taking the teleport pad', units[0]])
+    const walker = setup({ target: { x: 180, y: 100, label: 'The Summoner' } })
+    islands(walker.view, 106)
+    walker.units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 106, y: 100 }))
+    walker.tick()
+    expect([walker.guide.pilotStatus, walker.assists.use]).toEqual(['Head to Blood Moor', expect.objectContaining({ mock: expect.objectContaining({ calls: [] }) })])
   })
 
   it('picks town on the waypoint it opened while heading home', () => {

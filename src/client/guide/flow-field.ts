@@ -82,9 +82,9 @@ export class FlowField {
     return d === UNREACHED ? null : d
   }
 
-  pathFrom(x: number, y: number, every = 3, limit = Number.POSITIVE_INFINITY): SubTilePoint[] {
+  pathFrom(x: number, y: number, every = 3, limit = Number.POSITIVE_INFINITY, snap = SEED_RADIUS * 2): SubTilePoint[] {
     const width = this.grid.subWidth
-    const start = this.nearestWalkable(Math.round(x) - this.ox, Math.round(y) - this.oy, SEED_RADIUS * 2, (cx, cy) => this.reached(cx, cy))
+    const start = this.nearestWalkable(Math.round(x) - this.ox, Math.round(y) - this.oy, snap, (cx, cy) => this.reached(cx, cy))
     if (start === null) return []
     const path: SubTilePoint[] = []
     let [cx, cy] = [start % width, Math.floor(start / width)]
