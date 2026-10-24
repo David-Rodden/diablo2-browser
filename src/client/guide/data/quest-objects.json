@@ -15,6 +15,10 @@
   "levers": {
     "Sewer Stairs": { "object": 366, "lever": 367 }
   },
+  "rotate": {
+    "Cairn Stones": [17, 18, 19, 20, 21]
+  },
+  "rotateMs": 1500,
   "exitReach": 30,
   "leverReach": 40
 }

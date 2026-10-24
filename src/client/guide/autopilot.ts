@@ -212,6 +212,7 @@ const WIELD = new Map(Object.values(QUEST_OBJECTS.wield).map((entry) => [entry.o
 const TOOLS = new Set(Object.values(QUEST_OBJECTS.wield).map((entry) => entry.item))
 const EXIT_OBJECTS: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.exits))
 const LEVERS = new Map(Object.values(QUEST_OBJECTS.levers).map((entry) => [entry.object, entry.lever]))
+const ROTATE: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.rotate).flat())
 const selectable = (unit: ClientUnit) => (((CANONICAL_113C_OBJECTS[unit.classId]?.selectableMask ?? 1) >> unit.mode) & 1) === 1
 const codeOf = (item: ItemData) => item.code.trim()
 type PadSpot = Pad & { readonly unit?: ClientUnit; readonly partner?: SubTilePoint | undefined }
@@ -248,6 +249,7 @@ export class Autopilot {
   private deadEnd: (typeof this.trail)[number] | null = null
   private sheathed: number | null = null
   private gearRestUntil = Number.NEGATIVE_INFINITY
+  private rotatedAt = Number.NEGATIVE_INFINITY
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -617,10 +619,24 @@ export class Autopilot {
       this.waypointTo = step.level
       this.reachThen(target, nowMs, () => this.useOnce(unit, nowMs))
     } else if (unit && target.unit.kind === 'npc' && !assists.isHostile(unit)) this.reachThen(target, nowMs, () => this.speakTo(unit, plan, nowMs))
+    else if (unit && ROTATE.has(unit.classId)) this.rotate(unit, nowMs)
     else if (unit && target.unit.kind === 'object') this.reachThen(target, nowMs, () => this.wieldFor(unit) || this.useOnce(unit, nowMs))
     else if (step?.kind === 'exit') this.exitThrough(target, nowMs)
     else if (distance(target, world.self) <= REACH) this.explore(nowMs, plan.hint)
     else this.walkRoute(nowMs)
+  }
+
+  private rotate(unit: ClientUnit, nowMs: number): void {
+    const me = this.host.world.self
+    const lastTouch = (stone: ClientUnit) => this.uses.get(stone.id)?.at ?? Number.NEGATIVE_INFINITY
+    const next = this.host.world.getUnitsByType(2).filter((stone) => ROTATE.has(stone.classId) && !stone.hidden && stone.mode === 0 && distance(stone, unit) <= QUEST_OBJECTS.exitReach).sort((a, b) => lastTouch(a) - lastTouch(b) || distance(a, me) - distance(b, me))[0] ?? unit
+    this.host.guide.focus(next, nowMs)
+    if (nowMs - this.rotatedAt < QUEST_OBJECTS.rotateMs) return
+    if (distance(next, me) > INTERACT_REACH) this.walkTowards(next, nowMs)
+    else {
+      this.rotatedAt = nowMs
+      this.useOnce(next, nowMs)
+    }
   }
 
   private reachThen(target: GuideTarget, nowMs: number, then: () => void): void {

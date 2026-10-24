@@ -621,6 +621,13 @@ describe('autopilot', () => {
     expect((hudModel as unknown as { equipItem: ReturnType<typeof vi.fn> }).equipItem).toHaveBeenCalledWith(5, 'weapon1')
   })
 
+  it('goes round the Cairn Stones one at a time instead of clicking one over and over', () => {
+    const { units, assists, tick } = setup({ hint: 'Touch the Cairn Stones, then take the portal', target: { x: 104, y: 100, label: 'Stone', unit: { id: 70, kind: 'object' } }, step: { kind: 'portal', level: 38 } })
+    units.push(...[17, 18, 19, 20, 21].map((classId, i) => unit({ id: 70 + i, unitType: 'object', classId, x: 104 + i * 2, y: 100 })))
+    for (let i = 0; i < 6; i++) tick(1600)
+    expect(new Set(assists.use.mock.calls.map(([used]) => (used as ClientUnit).id)).size).toBe(5)
+  })
+
   it('pulls the sewer lever before taking the stairs it opens', () => {
     const { units, assists, guide, tick } = setup({ hint: 'Enter Kurast Sewers Level 2', target: { x: 110, y: 100, label: 'Kurast Sewers Level 2' }, step: { kind: 'exit', level: 93 } })
     units.push(unit({ id: 90, unitType: 'object', classId: 366, x: 110, y: 100, mode: 0 }), unit({ id: 91, unitType: 'object', classId: 367, x: 104, y: 100, mode: 0 }))
