@@ -32,7 +32,7 @@ import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
 import { WAYPOINT_LEVELS } from './level-links.ts'
-import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
+import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, lockedLevels, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
 import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 import THREAT from '../../common/skills/data/monster-threat.json'
@@ -420,10 +420,14 @@ export class Autopilot {
       return
     }
     const need = readiness(me, this.questLevel, this.setbacks(nowMs), nowMs >= this.gearRestUntil)
-    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.trainedOut, this.rateOf())
+    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.offLimits(), this.rateOf())
     if (!need || ground === null) return
     this.training = { ...need, ground, since: nowMs }
     this.toast(need.why, `In ${levelName(ground)}`, 'gold')
+  }
+
+  private offLimits(): ReadonlySet<number> {
+    return new Set([...this.trainedOut, ...lockedLevels(this.host.world.quests)])
   }
 
   private setbacks(nowMs: number): number {
@@ -477,7 +481,7 @@ export class Autopilot {
     if (!slow && this.exploreLevel(view, nowMs, `${training.why} in ${levelName(training.ground)}`)) return true
     this.trainedOut.add(training.ground)
     this.explored.delete(training.ground)
-    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.trainedOut, this.rateOf())
+    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.offLimits(), this.rateOf())
     if (next === null) this.trainedOut.clear()
     Object.assign(this, { training: { ...training, ground: next ?? training.ground }, ground: null })
     return true

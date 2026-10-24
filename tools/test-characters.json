@@ -166,5 +166,36 @@
       { "item": "El Rune" }
     ],
     "stash": []
+  },
+  "TestKurastPala": {
+    "class": "Paladin",
+    "level": 60,
+    "attributes": { "strength": 135, "dexterity": 75, "vitality": 350, "energy": 40 },
+    "gold": 600000,
+    "stashGold": 2000000,
+    "skills": {"Might": 1, "Prayer": 1, "Holy Fire": 1, "Thorns": 1, "Defiance": 1, "Blessed Aim": 20, "Concentration": 20, "Vigor": 20, "Smite": 1, "Charge": 1, "Holy Shield": 1, "Blessed Hammer": 20, "Sacrifice": 1, "Zeal": 1},
+    "leftSkill": "Blessed Hammer",
+    "rightSkill": "Concentration",
+    "quests": {
+      "Den of Evil": "completed", "Sisters' Burial Grounds": "completed", "Tools of the Trade": "completed", "The Search for Cain": "completed",
+      "The Forgotten Tower": "completed", "Sisters to the Slaughter": "completed", "Radament's Lair": "completed", "The Horadric Staff": "completed",
+      "Tainted Sun": "completed", "Arcane Sanctuary": "completed", "The Summoner": "completed", "The Seven Tombs": "completed"
+    },
+    "equipped": {
+      "Head": {"unique": "Harlequin Crest"},
+      "Neck": {"unique": "Highlord's Wrath"},
+      "Torso": {"unique": "Shaftstop"},
+      "Right Arm": {"unique": "Hand of Blessed Light"},
+      "Left Arm": {"unique": "Herald of Zakarum"},
+      "Right Ring": {"unique": "The Stone of Jordan"},
+      "Left Ring": {"unique": "Bul Katho's Wedding Band"},
+      "Belt": {"unique": "Verdugo's Hearty Cord"},
+      "Feet": {"unique": "Gorerider"},
+      "Gloves": {"unique": "Bloodfist"}
+    },
+    "belt": [{"item": "Greater Healing Potion"}, {"item": "Greater Healing Potion"}, {"item": "Greater Mana Potion"}, {"item": "Full Rejuv Potion"}],
+    "inventory": [{ "item": "Town Portal Book", "quantity": 20 }, { "item": "Identify Book", "quantity": 20 }, { "item": "SuperKhalimFlail" }],
+    "stash": [],
+    "waypoints": "all"
   }
 }

@@ -17,6 +17,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     areaId: area,
     self,
     merc: null,
+    quests: new Uint16Array(48),
     containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map(), merc: new Map() },
     getUnit: (_: string, id: number) => units.find((unit) => unit.id === id),
     getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
