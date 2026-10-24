@@ -23,6 +23,7 @@ import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { ENVIRONMENT, worthUsing } from './environment.ts'
 import { mercUpgrade } from './merc-gear.ts'
+import { XpLedger } from './xp-ledger.ts'
 import { hireIdOf, MERCENARIES, pickMercenary, type HireCandidate } from './mercenary.ts'
 import { gamblePick, gambleReserve, GAMBLING_RULES } from './gambling.ts'
 import { slotOf } from '../../common/items/loot-appraisal.ts'
@@ -213,6 +214,8 @@ export class Autopilot {
   private readonly stubborn = new Set<number>()
   private readonly scavenged = new Set<number>()
   private readonly mercTried = new Set<number>()
+  private readonly ledger = new XpLedger()
+  private stint: { readonly area: number; readonly level: number; readonly at: number; readonly xp: number } | null = null
   private game: { readonly selfId: number; readonly at: number } | null = null
   private headway: { readonly goal: SubTilePoint; best: number; from: SubTilePoint; at: number; tries: number } | null = null
   private blocked: SubTilePoint[] = []
@@ -290,6 +293,7 @@ export class Autopilot {
     const { world, assists } = this.host
     if (assists.playerSteering) this.pausedUntil = nowMs + MANUAL_PAUSE_MS
     if (world.areaId > 0) this.noteArea()
+    if (world.areaId > 0 && !world.isDead) this.noteExperience(nowMs)
     this.noteArrival(nowMs)
     if (world.isDead) this.mourn(nowMs)
     else if (nowMs < this.pausedUntil) this.say('Paused while you play')
@@ -388,7 +392,7 @@ export class Autopilot {
       return
     }
     const need = readiness(me, this.questLevel, this.setbacks(nowMs))
-    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.trainedOut)
+    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.trainedOut, this.rateOf())
     if (!need || ground === null) return
     this.training = { ...need, ground, since: nowMs }
     this.toast(need.why, `In ${levelName(ground)}`, 'gold')
@@ -401,6 +405,20 @@ export class Autopilot {
 
   private passingThrough(): boolean {
     return this.training !== null && this.host.world.areaId !== this.training.ground
+  }
+
+  private rateOf(): (area: number) => number | undefined {
+    const { self } = this.host.world
+    return (area) => this.ledger.rate(self.name, area, self.level)
+  }
+
+  private noteExperience(nowMs: number): void {
+    const { world } = this.host
+    const me = world.self
+    const stint = this.stint
+    if (stint && stint.area === world.areaId && stint.level === me.level) return
+    if (stint && !(ACT_TOWNS as readonly number[]).includes(stint.area)) this.ledger.add(me.name, stint.area, stint.level, me.experience - stint.xp, nowMs - stint.at)
+    this.stint = { area: world.areaId, level: me.level, at: nowMs, xp: me.experience }
   }
 
   private trainee(): Trainee {
@@ -431,7 +449,7 @@ export class Autopilot {
     if (!slow && this.exploreLevel(view, nowMs, `${training.why} in ${levelName(training.ground)}`)) return true
     this.trainedOut.add(training.ground)
     this.explored.delete(training.ground)
-    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.trainedOut)
+    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.trainedOut, this.rateOf())
     if (next === null) this.trainedOut.clear()
     Object.assign(this, { training: { ...training, ground: next ?? training.ground }, ground: null })
     return true
@@ -1097,9 +1115,10 @@ export class Autopilot {
 
   private spend(nowMs: number): void {
     const { world, hudManager, hudModel } = this.host
-    const build = buildOf(world.self.charClass)
-    if (!this.spendPoints || build === null || hudModel === null || nowMs - this.lastSpend < SPEND_MS) return
+    if (!this.spendPoints || hudModel === null || nowMs - this.lastSpend < SPEND_MS) return
     const tree = hudManager.skillTree
+    const build = buildOf(world.self.charClass, (id) => tree.getHardPoints(id))
+    if (build === null) return
     const attrs = hudManager.charSheet.attrs
     const skill = tree.unspentSkillPoints > 0 ? nextSkill(build, (id) => tree.getHardPoints(id), (id) => tree.canAllocate(id)) : null
     const stat = attrs.statPoints > 0 ? nextStat(build, { str: attrs.baseStr ?? 0, dex: attrs.baseDex ?? 0, vit: attrs.baseVit ?? 0, ene: attrs.baseEne ?? 0 }) : null

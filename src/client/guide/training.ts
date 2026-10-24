@@ -51,12 +51,15 @@ export function readiness(me: Trainee, questLevel: number, setbacks: number): Re
   return me.gold < gold / 4 ? { level: me.level, gold, bare: DRESSED.length, why: `Gathering gold for supplies` } : null
 }
 
-export function trainingGround(from: number, me: Trainee, waypointLevels: ReadonlySet<number>, skip: ReadonlySet<number>): number | null {
+export function trainingGround(from: number, me: Trainee, waypointLevels: ReadonlySet<number>, skip: ReadonlySet<number>, rateOf: (area: number) => number | undefined = () => undefined): number | null {
   const maxAct = actOfLevel(from)
   const ceiling = me.level - TRAINING.belowGoal
   const hops = (level: number) => shortestRoute(from, level, waypointLevels)?.length ?? Infinity
   const candidates = LEVELS_MONLVL_113C.map((_, id) => id).filter((id) => id > 0 && !TOWNS.has(id) && !AVOID.has(id) && !skip.has(id) && actOfLevel(id) <= maxAct && monsterLevel(id, me.difficulty) <= ceiling)
   const scored = candidates.map((id) => ({ id, mon: monsterLevel(id, me.difficulty), hops: hops(id) })).filter((c) => Number.isFinite(c.hops))
   const best = Math.max(...scored.map((c) => c.mon))
-  return scored.filter((c) => c.mon >= Math.max(1, best - TRAINING.spread / 3)).sort((a, b) => a.hops - b.hops || b.mon - a.mon)[0]?.id ?? null
+  const fit = scored.filter((c) => c.mon >= Math.max(1, best - TRAINING.spread / 3))
+  const known = fit.flatMap((c) => rateOf(c.id) ?? [])
+  const value = (area: number) => (known.length === 0 ? 0 : (rateOf(area) ?? Math.max(...known) * TRAINING.ledger.optimism))
+  return fit.sort((a, b) => value(b.id) - value(a.id) || a.hops - b.hops || b.mon - a.mon)[0]?.id ?? null
 }

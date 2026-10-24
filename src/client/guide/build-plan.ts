@@ -6,7 +6,8 @@ export const CLASS_NAMES = ['Amazon', 'Sorceress', 'Necromancer', 'Paladin', 'Ba
 
 type Attribute = keyof (typeof BUILDS)['Amazon']['start']
 
-interface Build {
+export interface Build {
+  readonly name: string
   readonly start: Readonly<Record<Attribute, number>>
   readonly stats: Readonly<Partial<Record<Attribute, { readonly weight: number; readonly upTo?: number }>>>
   readonly skills: readonly (readonly [string, number])[]
@@ -16,7 +17,22 @@ const STAT_KEYS: Readonly<Record<Attribute, BaseStatKey>> = { strength: 'str', d
 const SKILL_IDS = new Map(SKILLS_CATALOG.map((skill) => [skill.name, skill.id]))
 const PREREQS = new Map(SKILLS_CATALOG.map((skill) => [skill.id, skill.reqskills]))
 
-export const buildOf = (charClass: number | null): Build | null => (BUILDS as unknown as Readonly<Record<string, Build>>)[CLASS_NAMES[charClass ?? -1] ?? ''] ?? null
+interface ClassBuilds {
+  readonly start: Build['start']
+  readonly builds: readonly Omit<Build, 'start'>[]
+}
+
+const CLASSES = BUILDS as unknown as Readonly<Record<string, ClassBuilds>>
+
+export const buildsOf = (charClass: number | null): readonly Build[] => {
+  const options = CLASSES[CLASS_NAMES[charClass ?? -1] ?? '']
+  return options ? options.builds.map((build) => ({ ...build, start: options.start })) : []
+}
+
+const invested = (build: Build, hard: (skillId: number) => number) => [...new Set(build.skills.map(([name]) => SKILL_IDS.get(name)!))].reduce((sum, skillId) => sum + hard(skillId), 0)
+
+export const buildOf = (charClass: number | null, hard: (skillId: number) => number = () => 0): Build | null =>
+  buildsOf(charClass).reduce<Build | null>((best, build) => (best === null || invested(build, hard) > invested(best, hard) ? build : best), null)
 
 const withPrereqs = (skillId: number, hard: (id: number) => number): readonly number[] => [...(PREREQS.get(skillId) ?? []).filter((id) => hard(id) === 0).flatMap((id) => withPrereqs(id, hard)), skillId]
 
