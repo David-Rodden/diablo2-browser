@@ -327,6 +327,30 @@ describe('autopilot', () => {
     expect(world.self.gold).toBe(5000)
   })
 
+  it('puts an item left on the cursor back in the bag instead of walking around holding it', () => {
+    const { world, hudModel, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(hudModel, { placeCursorItem: vi.fn(), dropItem: vi.fn() })
+    Object.assign(world.containers, { cursor: { id: 77, code: 'rin', invWidth: 1, invHeight: 1 } })
+    world.containers.inventory.set(1, { id: 1, gridX: 0, gridY: 0, invWidth: 2, invHeight: 3 })
+    tick()
+    expect(assists.walkTo).toHaveBeenCalled()
+    tick(1200)
+    expect(guide.pilotStatus).toBe('Putting away the item in hand')
+    expect((hudModel as unknown as { placeCursorItem: ReturnType<typeof vi.fn> }).placeCursorItem).toHaveBeenCalledWith(77, 2, 0, 0)
+  })
+
+  it('drops the item in hand when the bag has no room for it, and leaves it on the ground', () => {
+    const { world, hudModel, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(hudModel, { placeCursorItem: vi.fn(), dropItem: vi.fn() })
+    Object.assign(assists.inventoryCare, { discarded: new Set<number>() })
+    Object.assign(world.containers, { cursor: { id: 78, code: 'aar', invWidth: 2, invHeight: 3 } })
+    world.containers.inventory.set(1, { id: 1, gridX: 0, gridY: 0, invWidth: 10, invHeight: 4 })
+    tick()
+    tick(1200)
+    expect((hudModel as unknown as { dropItem: ReturnType<typeof vi.fn> }).dropItem).toHaveBeenCalledWith(78)
+    expect((assists.inventoryCare as unknown as { discarded: Set<number> }).discarded.has(78)).toBe(true)
+  })
+
   it('puts on better gear it is carrying while in town', () => {
     const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
     world.self.gold = 0
