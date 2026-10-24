@@ -17,6 +17,7 @@ export interface Defender {
   readonly resists: Readonly<Record<'fire' | 'cold' | 'lightning' | 'poison', number>>
   readonly difficulty: 0 | 1 | 2
   readonly areaId: number
+  readonly guarded: boolean
 }
 
 export interface Danger {
@@ -31,12 +32,13 @@ interface Entry {
 
 type Book = Record<string, Record<string, Entry>>
 
-const KEY = 'd2web.autopilot.threat.v1'
+const KEY = 'd2web.autopilot.threat.v2'
 const PRIOR_CACHE = 2000
 const DIFFICULTIES = ['normal', 'nightmare', 'hell'] as const
 const RESISTED: Readonly<Record<string, keyof Defender['resists']>> = { fire: 'fire', ltng: 'lightning', cold: 'cold', pois: 'poison' }
 const BONUS: Partial<Record<Rank, { readonly dmgBonusPct: Readonly<Record<(typeof DIFFICULTIES)[number], number>> }>> = { champion: CHAMPION_MODIFIER, unique: UNIQUE_MODIFIER, superunique: UNIQUE_MODIFIER, minion: MINION_MODIFIER }
 const AFFIXES: Readonly<Record<string, number>> = THREAT.affixes
+const entryKey = (me: Defender, classId: number) => `${me.difficulty}:${classId}:${me.guarded ? 'guarded' : 'exposed'}`
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value))
 
 export function priorDps(classId: number, me: Defender): number {
@@ -74,7 +76,7 @@ export class ThreatSense {
   }
 
   private learned(me: Defender, classId: number): Entry | undefined {
-    return this.book[me.name]?.[`${me.difficulty}:${classId}`]
+    return this.book[me.name]?.[entryKey(me, classId)]
   }
 
   private prior(me: Defender, classId: number): number {
@@ -111,7 +113,7 @@ export class ThreatSense {
     const book = (this.book[me.name] ??= {})
     shares.forEach((share, classId) => {
       const entry = this.learned(me, classId) ?? { dps: this.prior(me, classId), ms: 0 }
-      book[`${me.difficulty}:${classId}`] = { dps: Math.max(THREAT.floorDps, entry.dps * (1 + THREAT.learningRate * (share / predicted) * (ratio - 1))), ms: entry.ms + seconds * 1000 }
+      book[entryKey(me, classId)] = { dps: Math.max(THREAT.floorDps, entry.dps * (1 + THREAT.learningRate * (share / predicted) * (ratio - 1))), ms: entry.ms + seconds * 1000 }
     })
     if (nowMs - this.savedAt < THREAT.saveMs) return
     this.savedAt = nowMs

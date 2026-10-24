@@ -1,7 +1,7 @@
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { MONSTER_PATH_IDS } from '../../common/path/monster-path-data.ts'
 import { getLevelMonsterLevel113c } from '../../common/world/levels-monlvl-113c.ts'
-import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
+import { CANONICAL_113C_OBJECTS, WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { TELEPORT } from '../input/combat-planner.ts'
 import { scrollsCarried, scrollSource } from '../input/town-portal.ts'
@@ -32,10 +32,11 @@ import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
 import { WAYPOINT_LEVELS } from './level-links.ts'
-import { bareSlots, GEAR_HUNT_MS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
+import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
 import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 import THREAT from '../../common/skills/data/monster-threat.json'
+import QUEST_OBJECTS from './data/quest-objects.json'
 
 export interface AutopilotHost {
   readonly world: ClientWorld
@@ -207,6 +208,12 @@ const GAP_TRIES = 6
 
 const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y - b.y)
 const isElite = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true)
+const WIELD = new Map(Object.values(QUEST_OBJECTS.wield).map((entry) => [entry.object, entry]))
+const TOOLS = new Set(Object.values(QUEST_OBJECTS.wield).map((entry) => entry.item))
+const EXIT_OBJECTS: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.exits))
+const LEVERS = new Map(Object.values(QUEST_OBJECTS.levers).map((entry) => [entry.object, entry.lever]))
+const selectable = (unit: ClientUnit) => (((CANONICAL_113C_OBJECTS[unit.classId]?.selectableMask ?? 1) >> unit.mode) & 1) === 1
+const codeOf = (item: ItemData) => item.code.trim()
 type PadSpot = Pad & { readonly unit?: ClientUnit; readonly partner?: SubTilePoint | undefined }
 const padKey = (pad: SubTilePoint) => `${Math.round(pad.x)},${Math.round(pad.y)}`
 const potionTier = (code: string) => Number(code.slice(2)) || 0
@@ -239,6 +246,8 @@ export class Autopilot {
   private trail: { readonly level: number; readonly at: SubTilePoint; readonly before: SubTilePoint }[] = []
   private leftBehind: typeof this.trail = []
   private deadEnd: (typeof this.trail)[number] | null = null
+  private sheathed: number | null = null
+  private gearRestUntil = Number.NEGATIVE_INFINITY
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -398,12 +407,12 @@ export class Autopilot {
     const training = this.training
     if (training) {
       if (me.level >= training.level && me.gold >= training.gold && (me.bare <= training.bare || nowMs - training.since > GEAR_HUNT_MS)) {
-        Object.assign(this, { training: null, ground: null, forgiven: nowMs })
+        Object.assign(this, { training: null, ground: null, forgiven: nowMs, gearRestUntil: me.bare > training.bare ? nowMs + GEAR_REST_MS : this.gearRestUntil })
         this.toast('Ready to carry on', `Heading back to ${levelName(this.questLevel)}`, 'green')
       }
       return
     }
-    const need = readiness(me, this.questLevel, this.setbacks(nowMs))
+    const need = readiness(me, this.questLevel, this.setbacks(nowMs), nowMs >= this.gearRestUntil)
     const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.trainedOut, this.rateOf())
     if (!need || ground === null) return
     this.training = { ...need, ground, since: nowMs }
@@ -489,6 +498,7 @@ export class Autopilot {
     if (danger === null) this.spend(nowMs)
     if (this.host.hudManager.leftPanel === 'waypoint' || this.host.hudManager.leftPanel === 'orifice') this.answerPanels(nowMs)
     else if (this.clearCursor(nowMs)) this.say('Putting away the item in hand')
+    else if (this.rearm()) this.say('Taking my weapon back')
     else if (assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
@@ -607,7 +617,7 @@ export class Autopilot {
       this.waypointTo = step.level
       this.reachThen(target, nowMs, () => this.useOnce(unit, nowMs))
     } else if (unit && target.unit.kind === 'npc' && !assists.isHostile(unit)) this.reachThen(target, nowMs, () => this.speakTo(unit, plan, nowMs))
-    else if (unit && target.unit.kind === 'object') this.reachThen(target, nowMs, () => this.useOnce(unit, nowMs))
+    else if (unit && target.unit.kind === 'object') this.reachThen(target, nowMs, () => this.wieldFor(unit) || this.useOnce(unit, nowMs))
     else if (step?.kind === 'exit') this.exitThrough(target, nowMs)
     else if (distance(target, world.self) <= REACH) this.explore(nowMs, plan.hint)
     else this.walkRoute(nowMs)
@@ -707,9 +717,23 @@ export class Autopilot {
     const { world } = this.host
     const me = world.self
     const warp = world.getUnitsByType(5).filter((tile) => distance(tile, target) <= WARP_NEAR).sort((a, b) => distance(a, target) - distance(b, target))[0]
+    const stairs = warp ? undefined : world.getUnitsByType(2).filter((unit) => EXIT_OBJECTS.has(unit.classId) && distance(unit, target) <= QUEST_OBJECTS.exitReach).sort((a, b) => distance(a, target) - distance(b, target))[0]
+    if (stairs && this.climb(stairs, nowMs)) return
     if (warp && distance(warp, me) <= REACH + 2) this.useOnce(warp, nowMs)
     else if (warp || distance(target, me) > REACH) this.walkRoute(nowMs)
     else this.stepAcross(target, nowMs)
+  }
+
+  private climb(stairs: ClientUnit, nowMs: number): boolean {
+    const { world } = this.host
+    const leverClass = LEVERS.get(stairs.classId)
+    const lever = leverClass === undefined || selectable(stairs) ? undefined : world.getUnitsByType(2).find((unit) => unit.classId === leverClass && selectable(unit) && distance(unit, stairs) <= QUEST_OBJECTS.leverReach)
+    const use = lever ?? (selectable(stairs) ? stairs : undefined)
+    if (!use) return false
+    this.say(lever ? 'Pulling the lever' : `Taking the ${CANONICAL_113C_OBJECTS[stairs.classId]?.nameEn ?? 'stairs'}`)
+    if (distance(use, world.self) <= INTERACT_REACH) this.useOnce(use, nowMs)
+    else this.walkTowards(use, nowMs)
+    return true
   }
 
   private stepAcross(target: GuideTarget, nowMs: number): void {
@@ -1348,6 +1372,57 @@ export class Autopilot {
   private async arm(): Promise<void> {
     const { world, hudManager, hudModel, assists } = this.host
     if (hudModel !== null && (await this.fromStash('armoury', () => withdrawItems({ world, hudManager, hudModel }, assists.inventoryCare.armoury)))) await assists.inventoryCare.wearUpgrades()
+  }
+
+  private wieldFor(unit: ClientUnit): boolean {
+    const { world, hudModel } = this.host
+    const wield = WIELD.get(unit.classId)
+    const tool = wield && [...world.containers.inventory.values()].find((item) => codeOf(item) === wield.item)
+    if (!wield || !tool || hudModel === null) return false
+    const held = this.wielded()
+    const rest = [...world.containers.inventory.values()].filter((item) => item.id !== tool.id)
+    if (held && !freeSpots(rest, held.invWidth, held.invHeight)[0]) return false
+    this.say(`Wielding ${wield.tool}`)
+    this.sheathed = held?.id ?? null
+    this.job = this.equip(tool, held)
+      .catch(() => undefined)
+      .finally(() => {
+        this.job = null
+      })
+    return true
+  }
+
+  private wielded(): ItemData | undefined {
+    return [...this.host.world.containers.equipment.values()].find((item) => slotOf(item) === 'weapon1')
+  }
+
+  private async equip(item: ItemData, held: ItemData | undefined): Promise<void> {
+    const { world, hudModel } = this.host
+    if (hudModel === null) return
+    hudModel.pickupItemToCursor(item.id)
+    if (!(await waitFor(() => world.containers.cursor?.id === item.id, 3000))) return
+    if (held) hudModel.swapEquipItem(item.id, 'weapon1')
+    else hudModel.equipItem(item.id, 'weapon1')
+    if (!(await waitFor(() => world.containers.cursor?.id !== item.id, 3000))) return
+    const old = world.containers.cursor
+    const spot = old && freeSpots(world.containers.inventory.values(), old.invWidth, old.invHeight)[0]
+    if (old && spot) hudModel.placeCursorItem(old.id, spot.x, spot.y, INVENTORY_BUFFER)
+    await waitFor(() => world.containers.cursor === null, 3000)
+  }
+
+  private rearm(): boolean {
+    const id = this.sheathed
+    const held = this.wielded()
+    if (id === null || (held && TOOLS.has(codeOf(held)))) return false
+    this.sheathed = null
+    const spare = this.host.world.containers.inventory.get(id)
+    if (held || !spare) return false
+    this.job = this.equip(spare, undefined)
+      .catch(() => undefined)
+      .finally(() => {
+        this.job = null
+      })
+    return true
   }
 
   private offerStaff(): void {

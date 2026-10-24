@@ -6,7 +6,7 @@ const memory = () => {
   const data = new Map<string, string>()
   return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value) }
 }
-const me: Defender = { name: 'Hero', level: 21, defense: 150, resists: { fire: 0, cold: 0, lightning: 0, poison: 0 }, difficulty: 0, areaId: 74 }
+const me: Defender = { name: 'Hero', level: 21, defense: 150, resists: { fire: 0, cold: 0, lightning: 0, poison: 0 }, difficulty: 0, areaId: 74, guarded: false }
 const VAMPIRE = MONSTER_PATH_IDS.indexOf('vampire1')
 const ZOMBIE = MONSTER_PATH_IDS.indexOf('zombie1')
 const foe = (classId: number) => ({ classId, rank: 'normal' as const, modifiers: [] })
@@ -43,5 +43,14 @@ describe('threat sense', () => {
     const guess = sense.dpsOf(me, foe(VAMPIRE))
     for (let now = 0; now <= 30_000; now += 1000) sense.observe(me, 500, () => [foe(VAMPIRE)], now)
     expect(sense.dpsOf(me, foe(VAMPIRE))).toBeLessThan(guess / 4)
+  })
+
+  it('keeps what it learned behind its pets apart from what it meets on its own', () => {
+    const sense = new ThreatSense(memory())
+    const guarded = { ...me, guarded: true }
+    const before = sense.dpsOf(me, foe(VAMPIRE))
+    for (let t = 0, life = 200; t <= 30_000; t += 250) sense.observe(guarded, life, () => [foe(VAMPIRE)], t)
+    expect(sense.dpsOf(guarded, foe(VAMPIRE))).toBeLessThan(before)
+    expect(sense.dpsOf(me, foe(VAMPIRE))).toBe(before)
   })
 })

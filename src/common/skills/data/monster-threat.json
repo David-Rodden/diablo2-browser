@@ -3,6 +3,7 @@
   "unknownDps": 4,
   "floorDps": 0.3,
   "near": 12,
+  "guards": 2,
   "windowMs": 1000,
   "learningRate": 0.2,
   "maxRatio": 6,

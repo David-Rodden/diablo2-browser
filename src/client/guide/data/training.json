@@ -22,5 +22,6 @@
   "bareSlots": 3,
   "bareFromLevel": 12,
   "gearMinutes": 20,
+  "gearRestMinutes": 60,
   "ledger": { "minMs": 30000, "trustMs": 180000, "levelWindow": 3, "keep": 12, "optimism": 1.15 }
 }

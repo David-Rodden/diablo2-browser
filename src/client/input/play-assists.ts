@@ -598,7 +598,9 @@ export class PlayAssists {
   private defender(): Defender {
     const { world, hudManager } = this.host
     const attrs = hudManager.charSheet.attrs
-    return { name: world.self.name ?? '', level: world.self.level, defense: attrs.defense ?? 0, resists: { fire: attrs.fireRes ?? 0, cold: attrs.coldRes ?? 0, lightning: attrs.lightRes ?? 0, poison: attrs.poisRes ?? 0 }, difficulty: world.difficulty, areaId: world.areaId }
+    const me = world.self
+    const guards = [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).flatMap((pet) => world.getUnit('monster', pet.unitId) ?? []).filter((pet) => Math.hypot(pet.x - me.x, pet.y - me.y) <= THREAT.near).length
+    return { name: me.name ?? '', level: me.level, defense: attrs.defense ?? 0, resists: { fire: attrs.fireRes ?? 0, cold: attrs.coldRes ?? 0, lightning: attrs.lightRes ?? 0, poison: attrs.poisRes ?? 0 }, difficulty: world.difficulty, areaId: world.areaId, guarded: guards >= THREAT.guards }
   }
 
   private foeOf(unit: ClientUnit): Foe {
