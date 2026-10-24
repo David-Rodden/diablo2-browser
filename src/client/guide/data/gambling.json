@@ -1,0 +1,7 @@
+{
+  "jewellery": ["rin", "amu"],
+  "circlets": ["ci0", "ci1"],
+  "reserve": { "base": 5000, "perLevel": 500 },
+  "spare": 10000,
+  "buys": 6
+}
