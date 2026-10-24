@@ -545,6 +545,13 @@ export class PlayAssists {
     return false
   }
 
+  private manaFloor(): number | undefined {
+    const thresholds = this.autoPotionThresholds
+    const { inventory, belt } = this.host.world.containers
+    const refill = [...inventory.values(), ...belt.values()].some((item) => /^(mp[1-5]|rvs|rvl)$/.test(item.code.trim()))
+    return thresholds !== null && thresholds.mana > 0 && refill ? thresholds.mana / 100 : undefined
+  }
+
   private combatSelf(): CombatSelf {
     const { world } = this.host
     const { self } = world
@@ -555,6 +562,7 @@ export class PlayAssists {
       petClasses: [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).map((pet) => pet.classId),
       lifeFraction: self.life / Math.max(1, this.host.hudManager.maxHp || self.maxLife),
       manaFraction: self.mana / Math.max(1, this.host.hudManager.maxMana || self.maxMana),
+      saveManaBelow: this.manaFloor(),
       corpsesNear: this.corpses().filter((unit) => Math.hypot(unit.x - self.x, unit.y - self.y) <= CORPSE_REACH).length,
     }
   }

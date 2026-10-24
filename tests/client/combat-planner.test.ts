@@ -34,6 +34,13 @@ describe('combat planner', () => {
     expect(attackSkill(fire, monster(), anything).skillId).toBe(id('Fire Ball'))
   })
 
+  it('spends mana down to the potion line when it carries mana potions', () => {
+    const teeth = character({ Teeth: 10 }, { manaFraction: 0.3 })
+    expect(attackSkill(teeth, monster(), anything).skillId).toBe(BASIC_ATTACK)
+    expect(attackSkill({ ...teeth, saveManaBelow: 0.2 }, monster(), anything).skillId).toBe(id('Teeth'))
+    expect(attackSkill({ ...teeth, manaFraction: 0.15, saveManaBelow: 0.2 }, monster(), anything).skillId).toBe(BASIC_ATTACK)
+  })
+
   it('keeps using a melee skill on low mana until it can no longer pay for it', () => {
     const bash = character({ Bash: 3 }, { manaFraction: 0.2 })
     expect(attackSkill(bash, monster(), anything).skillId).toBe(id('Bash'))

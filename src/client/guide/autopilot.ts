@@ -154,6 +154,7 @@ const POTION_COLUMNS = { melee: [3, 1], caster: [2, 2] } as const
 const POTION_GOLD = 100
 const SPARE_POTIONS = { melee: [4, 1], caster: [3, 3] } as const
 const SPARE_GOLD = 2000
+const BELT_ROWS = 4
 const SHOP_GOLD = 6000
 const BARE_SHOP_GOLD = 300
 const BARE_RESERVE = 150
@@ -1432,7 +1433,7 @@ export class Autopilot {
     }
     const spares = this.isCaster() ? SPARE_POTIONS.caster : SPARE_POTIONS.melee
     const total = (prefix: string) => [...world.containers.belt.values(), ...world.containers.inventory.values()].filter((item) => item.code.startsWith(prefix)).length
-    for (const [prefix, spare] of [['hp', spares[0]], ['mp', spares[1]]] as const) {
+    for (const [prefix, spare] of [['hp', spares[0] + (BELT_ROWS - rows) * healing], ['mp', spares[1]]] as const) {
       const potion = bestIn(prefix)
       const wanted = belt(prefix) + spare
       for (let tries = 0; potion && tries < BUY_TRIES && total(prefix) < wanted && world.self.gold >= (prefix === 'hp' ? price(potion) : SPARE_GOLD); tries++) {
