@@ -96,6 +96,8 @@ const PAD_JUMP = 20
 const PAD_ARRIVAL_NEAR = 12
 const PAD_FIELD_CELL = 4
 const PAD_FIELD_MS = 3000
+const PAD_PRESS_MS = 1500
+const PAD_PRESSES = 5
 const STALL_MOVE = 3
 const DOOR_NEAR = 8
 const DOOR_LOOKAHEAD = 20
@@ -616,7 +618,7 @@ export class Autopilot {
     else if (left < headway.best - HEADWAY_GAIN || distance(me, headway.from) > HEADWAY_TRAVEL) Object.assign(headway, { best: Math.min(left, headway.best), from: here, at: nowMs })
     else if (nowMs - headway.at > HEADWAY_MS) {
       Object.assign(headway, { at: nowMs, from: here, tries: headway.tries + 1 })
-      this.host.assists.journal?.('unstick', { tries: headway.tries, at: [Math.round(me.x), Math.round(me.y)], to: [Math.round(end.x), Math.round(end.y)] })
+      this.host.assists.journal?.('unstick', { tries: headway.tries, from: [Math.round(me.x), Math.round(me.y)], to: [Math.round(end.x), Math.round(end.y)] })
       if (headway.tries >= UNSTICK_MOVES.length) {
         this.blocked.push(end)
         this.headway = null
@@ -909,12 +911,24 @@ export class Autopilot {
     if (!pad) return false
     this.say('Taking the teleport pad')
     if (!pad.unit || distance(pad, me) > INTERACT_REACH) this.walkTowards(pad, nowMs)
-    else {
-      this.banPad(pad, nowMs)
-      this.padFrom = { x: me.x, y: me.y, at: nowMs, pad }
-      this.touch(pad.unit, nowMs)
-    }
+    else this.pressPad(pad, pad.unit, nowMs)
     return true
+  }
+
+  private pressPad(pad: SubTilePoint, unit: ClientUnit, nowMs: number): void {
+    const me = this.host.world.self
+    const pressed = this.uses.get(unit.id)
+    if (pressed && nowMs - pressed.at < PAD_PRESS_MS) return
+    const presses = (pressed?.tries ?? 0) + 1
+    this.host.assists.journal?.('pad', { presses, from: [Math.round(me.x), Math.round(me.y)], pad: [Math.round(pad.x), Math.round(pad.y)], classId: unit.classId, mode: unit.mode })
+    if (presses > PAD_PRESSES) {
+      this.banPad(pad, nowMs)
+      this.uses.delete(unit.id)
+      return
+    }
+    this.uses.set(unit.id, { at: nowMs, tries: presses })
+    this.padFrom = { x: me.x, y: me.y, at: nowMs, pad }
+    this.host.assists.use(unit, nowMs)
   }
 
   private regionsOf(view: LevelView): Regions {
@@ -953,6 +967,7 @@ export class Autopilot {
     const me = this.host.world.self
     if (!from || nowMs - from.at > PAD_ARRIVAL_MS || distance(from, me) < PAD_JUMP) return
     this.padFrom = null
+    this.banPad(from.pad, nowMs)
     const view = this.host.levelView()
     const arrived = view ? this.padSpots(view).filter((spot) => distance(spot, me) <= PAD_ARRIVAL_NEAR) : []
     arrived.forEach((spot) => this.banPad(spot, nowMs))
