@@ -67,6 +67,7 @@ const TELEPORT_MANA = 0.5
 const TELEPORT_MISSES = 3
 const TELEPORT_OFF_MS = 60_000
 const REACH = 4
+const ARRIVED = 8
 const INTERACT_REACH = 14
 const QUEST_FOCUS = 25
 const LOOT_SETTLE_MS = 700
@@ -623,7 +624,7 @@ export class Autopilot {
     else if (unit && ROTATE.has(unit.classId)) this.rotate(unit, nowMs)
     else if (unit && target.unit.kind === 'object') this.reachThen(target, nowMs, () => this.wieldFor(unit) || this.useOnce(unit, nowMs))
     else if (step?.kind === 'exit') this.exitThrough(target, nowMs)
-    else if (distance(target, world.self) <= REACH) this.explore(nowMs, plan.hint)
+    else if (distance(target, world.self) <= ARRIVED) this.explore(nowMs, plan.hint)
     else this.walkRoute(nowMs)
   }
 

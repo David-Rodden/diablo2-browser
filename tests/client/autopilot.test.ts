@@ -628,6 +628,13 @@ describe('autopilot', () => {
     expect(new Set(assists.use.mock.calls.map(([used]) => (used as ClientUnit).id)).size).toBe(5)
   })
 
+  it('counts a quest spot it cannot quite stand on as reached and starts exploring', () => {
+    const { world, guide, tick } = setup({ hint: 'Kill every monster in the Den', target: { x: 106, y: 100, label: 'Corpsefire' } })
+    world.self.x = 101.5
+    tick()
+    expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+  })
+
   it('pulls the sewer lever before taking the stairs it opens', () => {
     const { units, assists, guide, tick } = setup({ hint: 'Enter Kurast Sewers Level 2', target: { x: 110, y: 100, label: 'Kurast Sewers Level 2' }, step: { kind: 'exit', level: 93 } })
     units.push(unit({ id: 90, unitType: 'object', classId: 366, x: 110, y: 100, mode: 0 }), unit({ id: 91, unitType: 'object', classId: 367, x: 104, y: 100, mode: 0 }))
