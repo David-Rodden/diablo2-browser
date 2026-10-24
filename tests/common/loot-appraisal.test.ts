@@ -14,6 +14,7 @@ const zealot = characterBuild({ classIndex: 3, level: 40, strength: 90, dexterit
 const bowazon = characterBuild({ classIndex: 0, level: 50, strength: 80, dexterity: 120, skillPoints: new Map([[26, 20], [6, 5], [12, 10]]) })
 const skeleMancer = characterBuild({ classIndex: 2, level: 25, strength: 30, dexterity: 30, skillPoints: new Map([[70, 15], [69, 5]]) })
 const context = (build = coldSorc, extra: Partial<AppraisalContext> = {}): AppraisalContext => ({ build, equipped: [], owned: [], ...extra })
+const geared = { equipped: [item({ id: 90, code: 'cap', quality: 4, identified: true, bodyLoc: 1, stats: [{ statId: 7, param: 0, value: 30 }] }), item({ id: 91, code: 'ssd', quality: 4, identified: true, bodyLoc: 4, stats: [{ statId: 7, param: 0, value: 30 }] })] }
 
 describe('character build', () => {
   it('reads the play style and elements from where the skill points went', () => {
@@ -36,6 +37,14 @@ describe('character build', () => {
 
 describe('keeping only what the character will use', () => {
   const helm = (id: number, life: number) => item({ id, code: 'cap', quality: 4, identified: true, stats: [{ statId: 7, param: 0, value: life }] })
+
+  it('fills an empty slot with any plain piece it can wear, and stops there once the slot is filled', () => {
+    const plain = (code: string, id = 30) => item({ id, code, identified: true, defense: 12 } as Partial<ItemData> & { code: string })
+    expect(['cap', 'lbl', 'qui', 'lbt'].map((code) => appraiseItem(plain(code), context(skeleMancer)).upgradeSlot)).toEqual(['helm', 'belt', 'armor', 'boots'])
+    expect(appraiseItem(plain('buc'), context(skeleMancer)).upgradeSlot).toBe('weapon2')
+    const worn = { ...plain('cap', 31), bodyLoc: 1 } as ItemData
+    expect(appraiseItem(plain('skp'), context(skeleMancer, { equipped: [worn] })).upgradeSlot).toBeUndefined()
+  })
 
   it('treats only the best carried piece for a slot as the upgrade', () => {
     const [weak, strong] = [helm(10, 20), helm(11, 40)]
@@ -63,9 +72,9 @@ describe('loot appraisal', () => {
   it("keeps a good imbue base only while Charsi's reward is waiting", () => {
     const crown = item({ code: 'xrn', identified: true, invWidth: 2, invHeight: 2 })
     expect(appraiseItem(crown, context(coldSorc, { imbueReady: true }))).toMatchObject({ tier: 'keep', reason: "Good base for Charsi's imbue" })
-    expect(appraiseItem(crown, context()).tier).toBe('junk')
-    expect(appraiseItem(item({ code: 'cap', identified: true }), context(coldSorc, { imbueReady: true })).tier).toBe('junk')
-    expect(appraiseItem(item({ code: 'xrn', identified: true, totalSockets: 2 }), context(coldSorc, { imbueReady: true })).tier).toBe('junk')
+    expect(appraiseItem(crown, context(coldSorc, geared)).tier).toBe('junk')
+    expect(appraiseItem(item({ code: 'cap', identified: true }), context(coldSorc, { imbueReady: true, ...geared })).tier).toBe('junk')
+    expect(appraiseItem(item({ code: 'xrn', identified: true, totalSockets: 2 }), context(coldSorc, { imbueReady: true, ...geared })).tier).toBe('junk')
   })
 
   it('says where a gem helps most', () => {
@@ -77,7 +86,7 @@ describe('loot appraisal', () => {
   it('values unidentified uniques by their known stats and fame', () => {
     expect(appraiseItem(item({ code: 'uap', quality: 7, uniqueItemId: uniqueId('Harlequin Crest') }), context())).toMatchObject({ tier: 'great', reason: 'Sought-after find' })
     const lateSorc = { ...coldSorc, level: 70 }
-    expect(appraiseItem(item({ code: 'hax', quality: 7, uniqueItemId: uniqueId('The Gnasher') }), context(lateSorc))).toMatchObject({ tier: 'junk', reason: 'Outgrown' })
+    expect(appraiseItem(item({ code: 'hax', quality: 7, uniqueItemId: uniqueId('The Gnasher') }), context(lateSorc, geared))).toMatchObject({ tier: 'junk', reason: 'Outgrown' })
     expect(appraiseItem(item({ code: 'hax', quality: 7, uniqueItemId: uniqueId('The Gnasher') }), context({ ...zealot, level: 12 })).tier).not.toBe('junk')
   })
 
@@ -96,7 +105,7 @@ describe('loot appraisal', () => {
     expect(appraiseItem(item({ code: 'ne1', quality: 4 }), context())).toMatchObject({ tier: 'junk', reason: 'Made for another class' })
     expect(appraiseItem(item({ code: 'cm3', quality: 4, identified: true, stats: [{ statId: 188, param: (1 << 3) | 2, value: 1 }] }), context())).toMatchObject({ tier: 'great', reason: '+1 to your Cold Spells', locked: true })
     expect(appraiseItem(item({ code: 'crs', totalSockets: 4 }), context())).toMatchObject({ tier: 'good', reason: 'Base for Spirit · 4 sockets' })
-    expect(appraiseItem(item({ code: 'crs' }), context()).tier).toBe('junk')
+    expect(appraiseItem(item({ code: 'crs' }), context(coldSorc, geared)).tier).toBe('junk')
   })
 
   it('never offers supplies, quest items or gold up for clearing out', () => {
