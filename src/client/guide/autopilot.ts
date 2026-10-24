@@ -23,6 +23,9 @@ import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { ENVIRONMENT, worthUsing } from './environment.ts'
 import { hireIdOf, MERCENARIES, pickMercenary, type HireCandidate } from './mercenary.ts'
+import { gamblePick, gambleReserve, GAMBLING_RULES } from './gambling.ts'
+import { slotOf } from '../../common/items/loot-appraisal.ts'
+import type { EquipSlotId } from '../../common/items/inventory-model.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
@@ -164,6 +167,9 @@ const PURSE_GOLD = 10_000
 const POTION_SHARE = 4
 const BUY_TRIES = 16
 const HIRE_LIST_MS = 3000
+const BUY = 0 as const
+const GAMBLE = 2 as const
+const EQUIP_SLOTS: readonly EquipSlotId[] = ['helm', 'amulet', 'weapon1', 'armor', 'weapon2', 'gloves', 'ring1', 'belt', 'ring2', 'boots']
 const GEAR_BUYS = 6
 const SCROLL_KINDS = {
   portal: { tome: 'tbk', scroll: 'tsc', tomeGold: 500, keep: 10, spare: 2 },
@@ -1134,6 +1140,7 @@ export class Autopilot {
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
       (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
+      me.gold >= gambleReserve(me.level) + GAMBLING_RULES.spare && ready('gamble') && { key: 'gamble', reason: 'Gambling for rings and amulets', npc: 'gamble', action: 'gamble', work: () => this.gamble() },
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.armoury.length > 0 && ready('armoury') && { key: 'armoury', reason: 'Taking better gear out of the stash', work: () => this.arm() },
@@ -1368,17 +1375,35 @@ export class Autopilot {
     await this.buyUpgrade()
   }
 
-  private priceList(): (item: ItemData) => number {
+  private priceList(transaction: typeof BUY | typeof GAMBLE = BUY): (item: ItemData) => number {
     const { world } = this.host
     const npcId = world.npcInteraction.npcId
     const npc = npcId === null ? undefined : world.getUnit('monster', npcId)
     return (item) => {
       try {
-        return npc ? vendorPrice113c(item, 0, { world, npcClass: npc.classId }) : Infinity
+        return npc ? vendorPrice113c(item, transaction, { world, npcClass: npc.classId }) : Infinity
       } catch {
         return Infinity
       }
     }
+  }
+
+  private store(): ItemData[] {
+    return [...this.host.world.containers.shop.values()]
+  }
+
+  private async gamble(gambled = 1): Promise<void> {
+    const { world, hudManager, hudModel, assists } = this.host
+    if (hudModel === null || world.npcInteraction.window !== 'gamble' || !(await waitFor(() => this.store().length > 0, HIRE_LIST_MS))) return
+    const worn = new Set([...world.containers.equipment.values()].map(slotOf))
+    const bare = new Set(EQUIP_SLOTS.filter((slot) => !worn.has(slot)))
+    const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
+    const offered = this.store().filter((item) => assists.inventoryCare.appraise(item).tier !== 'junk')
+    const pick = gamblePick(offered, bare, world.self.gold - gambleReserve(world.self.level), this.priceList(GAMBLE), fits)
+    const before = world.self.gold
+    if (!pick || hudManager.leftPanel !== 'vendor' || !hudModel.vendorBuy(pick.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
+    this.toast('Gambled', `${pick.code.trim()} for ${(before - world.self.gold).toLocaleString('en-US')} gold`, 'gold')
+    if (gambled < GAMBLING_RULES.buys) await this.gamble(gambled + 1)
   }
 
   private async buyUpgrade(bought = 1): Promise<void> {
@@ -1387,7 +1412,7 @@ export class Autopilot {
     const budget = world.self.gold - (this.bare() > 0 ? BARE_RESERVE : SPARE_GOLD)
     const price = this.priceList()
     const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
-    const pick = [...world.containers.shop.values()]
+    const pick = this.store()
       .map((item) => ({ item, appraisal: assists.inventoryCare.appraise(item), cost: price(item) }))
       .filter(({ item, appraisal, cost }) => appraisal.upgradeSlot !== undefined && cost <= budget && fits(item))
       .sort((a, b) => b.appraisal.score / Math.max(1, b.cost) - a.appraisal.score / Math.max(1, a.cost))[0]
@@ -1406,7 +1431,7 @@ export class Autopilot {
     const { tome: tomeCode, scroll, tomeGold } = SCROLL_KINDS[kind]
     const { tome } = scrollsCarried(world.containers.inventory.values(), tomeCode, scroll)
     const code = tome ? scroll : world.self.gold >= tomeGold ? tomeCode : kind === 'portal' ? scroll : null
-    const ware = [...world.containers.shop.values()].find((item) => item.code.trim() === code)
+    const ware = this.store().find((item) => item.code.trim() === code)
     const before = world.self.gold
     const wanted = code === tomeCode || this.scrollsWanted(kind) > 0
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || !wanted) return false
@@ -1442,7 +1467,7 @@ export class Autopilot {
     const belt = (prefix: string) => [...world.containers.belt.values()].filter((item) => item.code.startsWith(prefix)).length
     const price = this.priceList()
     const bestIn = (prefix: string): ItemData | undefined => {
-      const tiers = [...world.containers.shop.values()].filter((item) => item.code.startsWith(prefix)).sort((a, b) => potionTier(b.code) - potionTier(a.code))
+      const tiers = this.store().filter((item) => item.code.startsWith(prefix)).sort((a, b) => potionTier(b.code) - potionTier(a.code))
       return tiers.find((item) => price(item) * POTION_SHARE <= world.self.gold) ?? tiers.at(-1)
     }
     for (const [prefix, columns] of [['hp', healing], ['mp', mana]] as const) {
