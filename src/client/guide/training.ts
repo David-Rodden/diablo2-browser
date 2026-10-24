@@ -40,14 +40,15 @@ export const setbacksOf = (deaths: number, retreats: number) => deaths + retreat
 export const monsterLevel = (level: number, difficulty: 0 | 1 | 2) => getLevelMonsterLevel113c(level, difficulty)
 
 export const GEAR_HUNT_MS = TRAINING.gearMinutes * 60_000
+export const GEAR_REST_MS = TRAINING.gearRestMinutes * 60_000
 
-export function readiness(me: Trainee, questLevel: number, setbacks: number): Readiness | null {
+export function readiness(me: Trainee, questLevel: number, setbacks: number, gearHunt = true): Readiness | null {
   const act = actOfLevel(questLevel)
   const fightable = TOWNS.has(questLevel) ? 0 : monsterLevel(questLevel, me.difficulty) - TRAINING.safety
   const level = Math.max(fightable, setbacks >= TRAINING.setbacks ? me.level + TRAINING.levelsPerSetback * Math.floor(setbacks / TRAINING.setbacks) : 0)
   const gold = TRAINING.goldPerAct[act] ?? 0
   if (me.level < level) return { level, gold: 0, bare: DRESSED.length, why: setbacks >= TRAINING.setbacks ? `Too strong for now, training to level ${level}` : `Training to level ${level} for ${levelName(questLevel)}` }
-  if (me.level >= TRAINING.bareFromLevel && me.bare >= TRAINING.bareSlots) return { level: me.level, gold: 0, bare: TRAINING.bareSlots - 1, why: `Gathering gear before ${levelName(questLevel)}` }
+  if (gearHunt && me.level >= TRAINING.bareFromLevel && me.bare >= TRAINING.bareSlots) return { level: me.level, gold: 0, bare: TRAINING.bareSlots - 1, why: `Gathering gear before ${levelName(questLevel)}` }
   return me.gold < gold / 4 ? { level: me.level, gold, bare: DRESSED.length, why: `Gathering gold for supplies` } : null
 }
 

@@ -583,6 +583,80 @@ describe('autopilot', () => {
     expect([walker.guide.pilotStatus, walker.assists.use]).toEqual(['Head to Blood Moor', expect.objectContaining({ mock: expect.objectContaining({ calls: [] }) })])
   })
 
+  it("wields Khalim's Will before smashing the Compelling Orb, and takes its own weapon back afterwards", async () => {
+    const { world, units, hudModel, guide, assists, tick } = setup({ hint: 'Smash the Compelling Orb', target: { x: 104, y: 100, label: 'Compelling Orb', unit: { id: 80, kind: 'object' } } })
+    units.push(unit({ id: 80, unitType: 'object', classId: 404, x: 104, y: 100 }))
+    const sword = { id: 5, code: 'lsd', bodyLoc: 4, invWidth: 1, invHeight: 3 }
+    const will = { id: 6, code: 'qf2', gridX: 0, gridY: 0, invWidth: 2, invHeight: 3 }
+    world.containers.equipment.set(5, sword)
+    world.containers.inventory.set(6, will)
+    const containers = world.containers as unknown as { cursor: unknown }
+    Object.assign(hudModel, {
+      pickupItemToCursor: vi.fn((id: number) => {
+        containers.cursor = world.containers.inventory.get(id)
+        world.containers.inventory.delete(id)
+      }),
+      swapEquipItem: vi.fn(() => {
+        world.containers.equipment.set(6, { ...will, bodyLoc: 4 })
+        world.containers.equipment.delete(5)
+        containers.cursor = sword
+      }),
+      equipItem: vi.fn((id: number) => {
+        world.containers.equipment.set(id, { ...sword, bodyLoc: 4 })
+        containers.cursor = null
+      }),
+      placeCursorItem: vi.fn(() => {
+        world.containers.inventory.set(5, { ...sword, gridX: 4, gridY: 0 })
+        containers.cursor = null
+      }),
+    })
+    tick()
+    expect(guide.pilotStatus).toBe("Wielding Khalim's Will")
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    tick(700)
+    expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+    world.containers.equipment.delete(6)
+    tick(700)
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect((hudModel as unknown as { equipItem: ReturnType<typeof vi.fn> }).equipItem).toHaveBeenCalledWith(5, 'weapon1')
+  })
+
+  it('goes round the Cairn Stones one at a time instead of clicking one over and over', () => {
+    const { units, assists, tick } = setup({ hint: 'Touch the Cairn Stones, then take the portal', target: { x: 104, y: 100, label: 'Stone', unit: { id: 70, kind: 'object' } }, step: { kind: 'portal', level: 38, hint: 'Touch the Cairn Stones, then take the portal', find: [60, [17, 18, 19, 20, 21]] } })
+    units.push(...[17, 18, 19, 20, 21].map((classId, i) => unit({ id: 70 + i, unitType: 'object', classId, x: 104 + i * 2, y: 100 })))
+    for (let i = 0; i < 6; i++) tick(1600)
+    expect(new Set(assists.use.mock.calls.map(([used]) => (used as ClientUnit).id)).size).toBe(5)
+  })
+
+  it('counts a quest spot it cannot quite stand on as reached and starts exploring', () => {
+    const { world, guide, tick } = setup({ hint: 'Kill every monster in the Den', target: { x: 106, y: 100, label: 'Corpsefire' } })
+    world.self.x = 101.5
+    tick()
+    expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+  })
+
+  it('explores from a quest spot it cannot get any closer to, and keeps exploring from there', () => {
+    const { world, view, guide, assists, tick } = setup({ hint: 'Kill every monster in the Den', target: { x: 130, y: 100, label: 'Corpsefire' } })
+    for (let y = 0; y < 400; y++) view.walkable.fill(0, y * 400 + 114, y * 400 + 140)
+    world.self.x = 112
+    Object.assign(assists, { moving: false })
+    for (let i = 0; i < 8; i++) tick(700)
+    expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+    tick(700)
+    expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+  })
+
+  it('pulls the sewer lever before taking the stairs it opens', () => {
+    const { units, assists, guide, tick } = setup({ hint: 'Enter Kurast Sewers Level 2', target: { x: 110, y: 100, label: 'Kurast Sewers Level 2' }, step: { kind: 'exit', level: 93 } })
+    units.push(unit({ id: 90, unitType: 'object', classId: 366, x: 110, y: 100, mode: 0 }), unit({ id: 91, unitType: 'object', classId: 367, x: 104, y: 100, mode: 0 }))
+    tick()
+    expect([guide.pilotStatus, assists.use.mock.calls.at(-1)?.[0]]).toEqual(['Pulling the lever', units[1]])
+    Object.assign(units[0]!, { mode: 2 })
+    Object.assign(units[1]!, { mode: 2 })
+    tick(700)
+    expect([guide.pilotStatus, assists.use.mock.calls.at(-1)?.[0]]).toEqual(['Taking the Sewer Stairs', units[0]])
+  })
+
   it('picks town on the waypoint it opened while heading home', () => {
     const { world, assists, hudManager, hudModel, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     assists.hasTownPortal = () => false

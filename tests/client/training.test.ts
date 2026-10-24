@@ -20,6 +20,7 @@ describe('training before a hard goal', () => {
     expect(readiness(me(20, 50_000, 4), ARCANE, 0)).toMatchObject({ level: 20, bare: 2, why: 'Gathering gear before Arcane Sanctuary' })
     expect(readiness(me(20, 50_000, 2), ARCANE, 0)).toBeNull()
     expect(readiness(me(6, 50_000, 6), BLOOD_MOOR, 0)).toBeNull()
+    expect(readiness(me(20, 50_000, 4), ARCANE, 0, false)).toBeNull()
   })
 
   it('picks a nearby area with monsters just below the character', () => {
