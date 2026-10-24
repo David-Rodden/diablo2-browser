@@ -161,6 +161,7 @@ const PURSE_LOW = 3000
 const PURSE_GOLD = 10_000
 const POTION_SHARE = 4
 const BUY_TRIES = 16
+const GEAR_BUYS = 6
 const SCROLL_KINDS = {
   portal: { tome: 'tbk', scroll: 'tsc', tomeGold: 500, keep: 10, spare: 2 },
   identify: { tome: 'ibk', scroll: 'isc', tomeGold: 300, keep: 10, spare: 0 },
@@ -1352,7 +1353,7 @@ export class Autopilot {
     }
   }
 
-  private async buyUpgrade(): Promise<void> {
+  private async buyUpgrade(bought = 1): Promise<void> {
     const { world, hudManager, hudModel, assists } = this.host
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || world.npcInteraction.npcId === null) return
     const budget = world.self.gold - (this.bare() > 0 ? BARE_RESERVE : SPARE_GOLD)
@@ -1365,6 +1366,7 @@ export class Autopilot {
     const before = world.self.gold
     if (!pick || !hudModel.vendorBuy(pick.item.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
     this.toast('Bought better gear', pick.appraisal.reason, 'green')
+    if (bought < GEAR_BUYS) await this.buyUpgrade(bought + 1)
   }
 
   private async topUp(kind: keyof typeof SCROLL_KINDS, tries: number): Promise<void> {
