@@ -21,6 +21,7 @@ import { getInventoryGoldLimit } from '../../common/items/inventory-model.ts'
 import { readyRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
+import { ENVIRONMENT, worthUsing } from './environment.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
@@ -184,6 +185,7 @@ export class Autopilot {
   private job: Promise<unknown> | null = null
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
   private readonly stubborn = new Set<number>()
+  private readonly scavenged = new Set<number>()
   private held: { readonly id: number; readonly since: number; at: number; tries: number } | null = null
   private readonly errandsAt = new Map<string, number>()
   private talk: { readonly npcId: number; readonly hint: string; readonly since: number; at: number; spoke: boolean; opened: boolean; readonly heard: Set<string> } | null = null
@@ -461,7 +463,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.wounded()) this.say('Waiting to heal before heading out')
-    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private refreshQuests(nowMs: number): void {
@@ -741,6 +743,7 @@ export class Autopilot {
     if (last && last.level !== areaId) {
       this.uses.clear()
       this.stubborn.clear()
+      this.scavenged.clear()
       const back = this.trail.findIndex((spot) => spot.level === areaId)
       const resumed = this.trail.length === 0 && this.leftBehind.at(-1)?.level === areaId
       if (this.town()) [this.leftBehind, this.trail] = [this.trail.length > 0 ? this.trail : this.leftBehind, []]
@@ -776,6 +779,33 @@ export class Autopilot {
     const me = this.host.world.self
     const ahead = route.filter((point) => distance(point, me) <= DOOR_LOOKAHEAD)
     return this.host.world.getUnitsByType(2).find((unit) => isClosedDoor(unit) && (this.uses.get(unit.id)?.tries ?? 0) < USE_TRIES && distance(unit, me) <= DOOR_NEAR && ahead.some((point) => distance(point, unit) <= DOOR_ON_ROUTE))
+  }
+
+  private scavenge(nowMs: number): boolean {
+    const { world, assists, hudManager } = this.host
+    const me = world.self
+    const bearing = {
+      life: me.life / (hudManager.maxHp || me.maxLife),
+      mana: me.mana / (hudManager.maxMana || me.maxMana),
+      states: me.states,
+      looting: this.corpse === null && (assists.autoGoldPickup || assists.autoLootRules !== null) && freeSpots(world.containers.inventory.values(), 2, 2).length > 0,
+    }
+    const pick = world
+      .getUnitsByType(2)
+      .filter((unit) => !this.scavenged.has(unit.id) && distance(unit, me) <= ENVIRONMENT.reach)
+      .map((unit) => ({ unit, why: worthUsing(unit, bearing) }))
+      .filter((found): found is { unit: ClientUnit; why: string } => found.why !== null)
+      .sort((a, b) => distance(a.unit, me) - distance(b.unit, me))
+      .find((found) => assists.canReach(found.unit, nowMs))
+    if (!pick) return false
+    if ((this.uses.get(pick.unit.id)?.tries ?? 0) >= ENVIRONMENT.giveUpAfter) {
+      this.scavenged.add(pick.unit.id)
+      return false
+    }
+    this.say(pick.why)
+    if (distance(pick.unit, me) <= INTERACT_REACH) this.knock(pick.unit, nowMs)
+    else this.walkTowards(pick.unit, nowMs)
+    return true
   }
 
   private grabWaypoint(nowMs: number): boolean {

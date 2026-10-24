@@ -8,7 +8,7 @@ const ROGUE_ENCAMPMENT = 1
 
 function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
   const units: ClientUnit[] = []
-  const self = { x: 100, y: 100, life: 100, maxLife: 100, mana: 50, maxMana: 50, gold: 5000, stashGold: 0, level: 10, charClass: 1, stats: { get: () => 0 }, skillEntries: new Map() }
+  const self = { x: 100, y: 100, life: 100, maxLife: 100, mana: 50, maxMana: 50, gold: 5000, stashGold: 0, states: new Set<number>(), level: 10, charClass: 1, stats: { get: () => 0 }, skillEntries: new Map() }
   const world = {
     isDead: false,
     difficulty: 0,
@@ -349,6 +349,16 @@ describe('autopilot', () => {
     tick(1200)
     expect((hudModel as unknown as { dropItem: ReturnType<typeof vi.fn> }).dropItem).toHaveBeenCalledWith(78)
     expect((assists.inventoryCare as unknown as { discarded: Set<number> }).discarded.has(78)).toBe(true)
+  })
+
+  it('walks over to a shrine worth taking on its way and uses it', () => {
+    const { assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    units.push(unit({ id: 95, unitType: 'object', classId: 2, x: 104, y: 103, flags: 0, interactType: 15 }))
+    tick()
+    expect(guide.pilotStatus).toBe('Using the Experience Shrine')
+    expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+    for (let i = 0; i < 5; i++) tick(700)
+    expect(guide.pilotStatus).toBe('Head to Blood Moor')
   })
 
   it('puts on better gear it is carrying while in town', () => {

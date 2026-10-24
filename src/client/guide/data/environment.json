@@ -1,0 +1,24 @@
+{
+  "reach": 22,
+  "hurt": 0.7,
+  "dry": 0.4,
+  "giveUpAfter": 3,
+  "restores": {
+    "Refilling Shrine": { "code": 1, "life": true, "mana": true },
+    "Health Shrine": { "code": 2, "life": true },
+    "Mana Shrine": { "code": 3, "mana": true }
+  },
+  "buffs": {
+    "Experience Shrine": { "code": 15, "state": 137, "rank": 9 },
+    "Skill Shrine": { "code": 12, "state": 134, "rank": 8 },
+    "Combat Shrine": { "code": 7, "state": 129, "rank": 7 },
+    "Armor Shrine": { "code": 6, "state": 128, "rank": 6 },
+    "Mana Recharge Shrine": { "code": 13, "state": 135, "rank": 5 },
+    "Resist Fire Shrine": { "code": 8, "state": 131, "rank": 4 },
+    "Resist Cold Shrine": { "code": 9, "state": 132, "rank": 4 },
+    "Resist Lightning Shrine": { "code": 10, "state": 130, "rank": 4 },
+    "Resist Poison Shrine": { "code": 11, "state": 133, "rank": 4 },
+    "Stamina Shrine": { "code": 14, "state": 136, "rank": 2 },
+    "Gem Shrine": { "code": 18, "rank": 1 }
+  }
+}
