@@ -17,7 +17,7 @@ const AURA_RANK = new Map(MERCS.auras.map((name, i) => [SKILLS_CATALOG.find((ski
 
 const auraRank = (candidate: HireCandidate) => Math.max(0, ...candidate.skills.map((skillId) => AURA_RANK.get(skillId) ?? 0))
 
-export const hireIdOf = (candidate: HireCandidate) => Number(candidate.nameId ?? candidate.mercId)
+export const hireIdOf = (candidate: HireCandidate) => candidate.nameId ?? candidate.mercId
 
 export const pickMercenary = (candidates: readonly HireCandidate[], gold: number): HireCandidate | null =>
   candidates.filter((candidate) => candidate.cost <= gold - MERCS.keepGold).sort((a, b) => auraRank(b) - auraRank(a) || b.level - a.level || b.hp - a.hp)[0] ?? null
