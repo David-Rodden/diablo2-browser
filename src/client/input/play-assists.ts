@@ -66,6 +66,7 @@ const BLAST_RANGE = 20
 const GIVE_UP_MS = 15_000
 const IGNORE_MS = 30_000
 const DODGE_GAP_MS = 400
+const BOLT_DODGE_LIFE = 0.5
 const STANDOFF = 7
 const STEER_GRACE_MS = 1500
 const PORTAL_CAST_MS = 1500
@@ -368,7 +369,8 @@ export class PlayAssists {
     if (nowMs - this.lastDodge < DODGE_GAP_MS) return false
     const me = world.self
     const threats = this.threats()
-    const incoming = threats.filter((threat) => hits(threat, me))
+    const shaken = me.life < (this.host.hudManager.maxHp || me.maxLife) * BOLT_DODGE_LIFE
+    const incoming = threats.filter((threat) => (shaken || !threat.bolt) && hits(threat, me))
     if (incoming.length === 0) return false
     const target = this.targetId === null ? undefined : world.getUnit('monster', this.targetId)
     const preference = (spot: SubTilePoint) => -Math.hypot(spot.x - me.x, spot.y - me.y) - this.hostilesNear(spot, CROWD_REACH) * DODGE_CROWD_COST + (target && !target.dead && this.clearShot(target, spot) ? DODGE_SHOT_BONUS : 0)

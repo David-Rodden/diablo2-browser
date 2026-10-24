@@ -12,6 +12,7 @@ export interface FlyingMissile {
 
 export interface Threat extends FlyingMissile {
   readonly radius: number
+  readonly bolt: boolean
 }
 
 const HAZARD_RADIUS = HAZARDS.hazards as Readonly<Record<string, number>>
@@ -27,8 +28,9 @@ const ANGLES = 16
 export function threatOf(missile: FlyingMissile): Threat | null {
   if (HARMLESS.has(missile.name)) return null
   const moving = Math.hypot(missile.vx, missile.vy) > 1e-3
-  const radius = moving ? (BLAST_RADIUS[missile.name] ?? BOLT_RADIUS) : HAZARD_RADIUS[missile.name]
-  return radius === undefined ? null : { ...missile, ticksLeft: moving ? Math.min(HORIZON_TICKS, Math.max(0, missile.ticksLeft)) : 0, radius }
+  const blast = moving ? BLAST_RADIUS[missile.name] : HAZARD_RADIUS[missile.name]
+  const radius = blast ?? (moving ? BOLT_RADIUS : undefined)
+  return radius === undefined ? null : { ...missile, ticksLeft: moving ? Math.min(HORIZON_TICKS, Math.max(0, missile.ticksLeft)) : 0, radius, bolt: blast === undefined }
 }
 
 export function hits(threat: Threat, at: SubTilePoint, margin = 0): boolean {
