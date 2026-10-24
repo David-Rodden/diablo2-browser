@@ -20,6 +20,7 @@
  * where the bands can replace it.
  */
 import type { Rng } from '../../common/rng/d2-rng.ts'
+import { MISSILE_PIERCE_ROLL_CAP, rollMissilePierceIdx } from '../engine/missile-pierce.ts'
 import type { CharacterClassCode } from '../../common/units/classes.ts'
 import type { CombatPlayer } from '../../common/units/unit-types.ts'
 import { FACING_VECTORS, parseColorChannel, type Caster, type CastResult } from '../../common/skills/missiles-data.ts'
@@ -2138,19 +2139,28 @@ export function tickProjectiles(
 
         let canPierceTarget = Boolean(projectile.pierce)
         if (canPierceTarget && (projectile.pierceChancePct !== undefined || projectile.maxPierceCount !== undefined)) {
-          const currentPierceCount = (moved as { pierceCount?: number }).pierceCount ?? projectile.pierceCount ?? 0
-          const maxPierces = projectile.maxPierceCount ?? 4
-          const chancePct = projectile.pierceChancePct ?? 100
-          if (currentPierceCount >= maxPierces || chancePct <= 0) {
-            canPierceTarget = false
-          } else if (chancePct < 100) {
-            const roll = options.rng
-              ? Math.floor(options.rng() * 100)
-              : (currentPierceCount * 20 + 15) % 100
-            canPierceTarget = roll < chancePct
+          // 1.13c `pierce_idx` (Issue #1420): the pierce count is rolled once (`D2Game.dll` `0x6FC8F660`:
+          // consecutive `rand % 100 < item_pierce + skill_pierce`, at most 4) and consumed per hit (`0x6FC58F40`).
+          // No pierce total means no pierce at all (never a 100% default).
+          const mv = moved as { pierceCount?: number; pierceIdx?: number }
+          const currentPierceCount = mv.pierceCount ?? projectile.pierceCount ?? 0
+          let remaining = mv.pierceIdx ?? projectile.pierceIdx
+          if (remaining === undefined) {
+            const total = Math.trunc(projectile.pierceChancePct ?? 0)
+            const cap = Math.min(MISSILE_PIERCE_ROLL_CAP, projectile.maxPierceCount ?? MISSILE_PIERCE_ROLL_CAP)
+            if (options.rng) {
+              remaining = 0
+              while (remaining < cap && total !== 0 && Math.floor(options.rng() * 100) < total) remaining += 1
+            } else {
+              remaining = Math.min(cap, rollMissilePierceIdx(total, projectile.seed ?? 0))
+            }
           }
+          canPierceTarget = remaining > 0
           if (canPierceTarget) {
-            ;(moved as { pierceCount?: number }).pierceCount = currentPierceCount + 1
+            mv.pierceIdx = remaining - 1
+            mv.pierceCount = currentPierceCount + 1
+          } else {
+            mv.pierceIdx = 0
           }
         }
 
@@ -7004,11 +7014,11 @@ function castSceneSkill113c(
     }
 
     if (skillId === 264) {
-      // #264 Cloak of Shadows (Caster State 153 cloaked +Def%, Enemy State 156 cloak_of_shadows -Def% & blind on normal monsters, 200+25*(slvl-1) frames, 30 subtiles)
+      // #264 Cloak of Shadows (Caster State 153 cloak_of_shadows +Def%, Enemy State 156 cloaked -Def% & blind on normal monsters, 200+25*(slvl-1) frames, 30 subtiles)
       const alreadyActive =
         Number((player as any).cloakOfShadowsTicks ?? 0) > 0 ||
         Boolean((player as any).states?.has?.(153)) ||
-        Boolean(sb?.hasState?.('cloaked')) ||
+        Boolean(sb?.hasState?.(153)) ||
         Boolean(sb?.hasState?.('cloak_of_shadows'))
       if (alreadyActive) {
         status.textContent = isEn ? 'Cloak of Shadows is already active!' : '暗影斗篷仍在持续时间内！'
@@ -7025,7 +7035,7 @@ function castSceneSkill113c(
       ;(player as any).states?.add?.(153)
       if (sb && typeof sb.applyState === 'function') {
         sb.applyState({
-          stateNameOrId: 'cloaked',
+          stateNameOrId: 'cloak_of_shadows',
           sourceUnitId: 'player',
           sourceSkillId: 264,
           slvl,

@@ -1,3 +1,8 @@
+/**
+ * Auto Pickup (`auto-gold-pickup`) plugin.
+ * Author: David-Rodden (https://github.com/David-Rodden/diablo2-browser)
+ * Special thanks to David-Rodden for contributing this plugin! / 感谢 David-Rodden 贡献此插件！
+ */
 import type { AutoLootRules, D2WebPlugin, LocalizedText, LootCategories, PluginSettingSpec } from '../../src/client/plugin-host/api.ts'
 import { describeBuild } from '../../src/common/items/character-build.ts'
 import { appraisalContextOf } from '../../src/common/items/loot-context.ts'
@@ -49,10 +54,11 @@ const listText = (parts: readonly string[]): string => (parts.length < 2 ? parts
 
 export const autoGoldPickupPlugin: D2WebPlugin = {
   id: 'auto-gold-pickup',
+  author: 'David-Rodden',
   name: { zh: '自动拾取', en: 'Auto Pickup' },
   description: {
-    zh: '自动捡起附近的金币和好东西。会看你的职业、技能和装备，判断什么对你有用，并帮你整理背包、卖垃圾、存仓库。',
-    en: "Picks up gold and loot near you. It reads your class, skills and gear to judge what's worth having, and can tidy your inventory, sell junk and stash valuables.",
+    zh: '自动捡起附近的金币和好东西。会看你的职业、技能和装备，判断什么对你有用，并帮你整理背包、卖垃圾、存仓库。（作者：David-Rodden，感谢贡献！）',
+    en: "Picks up gold and loot near you. It reads your class, skills and gear to judge what's worth having, and can tidy your inventory, sell junk and stash valuables. (Author: David-Rodden — Special thanks for contributing!)",
   },
   defaultEnabled: false,
   settings: SETTINGS,

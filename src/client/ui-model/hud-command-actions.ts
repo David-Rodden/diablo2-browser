@@ -179,6 +179,8 @@ export function findWorldItemImpl(model: any, itemId: number): ItemData | undefi
     model.world.containers.equipment.get(itemId) ??
     model.world.containers.stash.get(itemId) ??
     model.world.containers.cube.get(itemId) ??
+    model.world.containers.tradeSelf?.get?.(itemId) ??
+    model.world.containers.tradePartner?.get?.(itemId) ??
     (model.world.containers.cursor?.id === itemId ? model.world.containers.cursor : undefined)
   )
 }
@@ -572,10 +574,39 @@ export function setHostileImpl(model: any, targetPlayerId: number, hostile: bool
 }
 
 export function clickButtonImpl(model: any, buttonId: number, complement = 0): void {
+  const btn = buttonId & 0xffff
+  const trade = model.world?.trade
+  if (trade) {
+    // D2Client.dll 0x6fb09600 / 0x6fb095c0 / 0x6fb09740:
+    // Local trade button clicks mutate client state immediately because D2Game.dll (0x6fc90750)
+    // only sends S2C 0x77 0x05 (PartnerAccepted) to the partner, not 0x77 0x04 back to self.
+    if (btn === 0x02) {
+      trade.pendingModal = null
+      trade.active = false
+      trade.selfAccepted = false
+      trade.partnerAccepted = false
+      trade.acceptDisabled = false
+      trade.partnerGold = 0
+      trade.selfGold = 0
+      model.world?.containers?.clearTrade?.()
+    } else if (btn === 0x03) {
+      trade.pendingModal = null
+    } else if (btn === 0x04) {
+      if (!trade.acceptDisabled) {
+        trade.selfAccepted = true
+      }
+    } else if (btn === 0x07) {
+      trade.selfAccepted = false
+    } else if (btn === 0x08) {
+      trade.selfGold = complement >>> 0
+      trade.selfAccepted = false
+      trade.partnerAccepted = false
+    }
+  }
   model.emitCommand({
     type: 'ClickButton',
-    button: buttonId & 0xffff,
-    buttonId: buttonId & 0xffff,
+    button: btn,
+    buttonId: btn,
     complement: complement >>> 0,
     amount: complement >>> 0,
   })
@@ -588,14 +619,34 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
     model.world.npcInteraction.activeWindow === 'orifice' ||
     model.hudManager?.leftPanel === 'orifice' ||
     (model.hudManager?.worldPanels as any)?.activePanel === 'orifice'
-  const npcId =
+  const wasImbue =
+    model.world.npcInteraction.window === 'imbue' ||
+    model.world.npcInteraction.activeWindow === 'imbue' ||
+    model.hudManager?.leftPanel === 'imbue' ||
+    (model.hudManager?.worldPanels as any)?.activePanel === 'imbue'
+  const wasAddSockets =
+    model.world.npcInteraction.window === 'add_sockets' ||
+    model.world.npcInteraction.activeWindow === 'add_sockets' ||
+    model.hudManager?.leftPanel === 'add_sockets' ||
+    (model.hudManager?.worldPanels as any)?.activePanel === 'add_sockets'
+  let npcId =
     explicitNpcId ||
     model.world.npcInteraction.npcId ||
+    model.world.npcInteraction.infoNpcId ||
     (model.hudManager?.worldPanels as any)?.npcMenu?.npcUnitId ||
     (model.hudManager?.worldPanels as any)?.npcMenu?.npcId ||
     (model.hudManager?.worldPanels as any)?.activeNpcId ||
     (model.hudManager?.worldPanels as any)?.vendorNpcId ||
     0
+  if (!isOrifice && npcId <= 0 && model.world.units?.values) {
+    const targetClassId = wasImbue ? 154 : wasAddSockets ? 511 : 512
+    for (const u of model.world.units.values()) {
+      if (u && (u.unitType === 'monster' || u.type === 1) && u.classId === targetClassId) {
+        npcId = u.id
+        break
+      }
+    }
+  }
   if (isOrifice) {
     ;(model.world.npcInteraction as any).window = 'none'
     ;(model.world.npcInteraction as any).activeWindow = 'none'
@@ -955,6 +1006,7 @@ export function handleNpcMenuActionImpl(
         if (wp.npcMenu) {
           wp.npcMenu = {
             ...wp.npcMenu,
+            submenu: 'respec',
             options: [
               {
                 id: 'confirm_respec',
@@ -978,8 +1030,15 @@ export function handleNpcMenuActionImpl(
       break
     }
     case 'confirm_respec': {
-      model.npcEntityAction(12, resolvedNpcId, 0)
+      // D2Client.dll 0x6faf90d0: send C2S 0x30 NpcCancel (0x6faf8150) first, then C2S 0x38 action 0,
+      // complement 0. D2Game 0x6fce00c0 routes non-trade/gamble/hire actions by NPC class; Akara (0x94)
+      // at 0x6fce0504 checks quest 1 bit 0 and quest 41 bits 0/1 before resetting (0x6fc82340).
       model.cancelNpcSession(resolvedNpcId)
+      model.npcEntityAction(0, resolvedNpcId, 0)
+      model.activeMenu = null
+      if (model.hudManager?.worldPanels) {
+        ;(model.hudManager.worldPanels as any).npcMenu = null
+      }
       break
     }
     case 'hire': {

@@ -47,11 +47,15 @@ const COMPARE_KEYS: readonly SettingsKey[] = [
   'showStatGainTooltips',
   'showWeaponDamageFormula',
   'showAdvancedStatsButton',
+  'showRuneNumbers',
   'showUniqueSetBeams',
   'alwaysShowUniqueSetLabels',
   'weatherOverride',
   'audioMuted',
   'masterVolume',
+  'multiboxEnabled',
+  'multiboxAudioFocusPolicy',
+  'multiboxAlertSoundEnabled',
 ] as const
 
 function resolveDefaultStorage(): StorageLike | null {

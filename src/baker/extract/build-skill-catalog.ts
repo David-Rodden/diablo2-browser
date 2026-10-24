@@ -429,7 +429,7 @@ async function main() {
 
       // Damage & mechanics
       descdam,
-      hitshift: ext.HitShift ?? 8,
+      hitshift: ext.HitShift ?? 0,
       srcDamage: ext.SrcDam ?? 0,
       minDam: ext.MinDam ?? 0,
       maxDam: ext.MaxDam ?? 0,

@@ -6,6 +6,7 @@
  *   - lifetime = Missiles.txt Range + LevRange*lvl;
  *   - diabfire (id 176) toggles param flag 0x4000 (no light) before every create (0x6FB50E47).
  */
+import { homedir } from 'node:os'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -27,7 +28,7 @@ import { CANONICAL_113C_MISSILES } from '../src/common/skills/missiles-data.ts'
 function readD2ClientTable(va: number): number[] | null {
   let buf: Buffer
   try {
-    buf = readFileSync('/usr/local/google/home/taodao/d2-data/D2Client.dll')
+    buf = readFileSync(join(homedir(), 'd2-data', 'D2Client.dll'))
   } catch {
     return null
   }

@@ -1,3 +1,4 @@
+import { homedir } from 'node:os'
 import { closeSync, existsSync, openSync, readSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { MpqArchive } from '../common/mpq/archive.ts'
@@ -50,8 +51,8 @@ function resolveDefaultNodeMpqDir(): string {
     'samples/d2',
     resolve(import.meta.dirname, '..', '..', 'samples', 'd2'),
     resolve(import.meta.dirname, '..', '..', '..', '..', 'samples', 'd2'),
-    '/usr/local/google/home/taodao/diablo2-web/samples/d2',
-    '/usr/local/google/home/taodao/d2-data',
+    join(homedir(), 'diablo2-web', 'samples', 'd2'),
+    join(homedir(), 'd2-data'),
   ]
   for (const candidate of candidates) {
     if (existsSync(join(candidate, 'd2data.mpq'))) {

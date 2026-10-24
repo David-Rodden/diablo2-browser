@@ -5,6 +5,7 @@ import { ClientWorld } from '../src/client/world/client-world.ts'
 import { HudManager } from '../src/client/ui/hud-manager.ts'
 import { HudModel } from '../src/client/ui-model/hud-model.ts'
 import { computeEffectiveMercenaryStats } from '../src/client/ui-model/derived-stats.ts'
+import { aggregateUnit } from '../src/client/ui-model/stat-engine.ts'
 import { WorldPanelsHud } from '../src/client/ui/world-panels.ts'
 import { clearMissingArtEntries, getMissingArtEntries } from '../src/client/scene/world-renderer.ts'
 import { BAKED_UI_MANIFEST } from '../src/common/items/baked-ui-meta.ts'
@@ -1151,6 +1152,209 @@ describe('Diablo II v1.13c Mercenary Screen (UI_DrawMercScreen @ 0x6fb4ae80)', (
     const barbDecrep = computeEffectiveMercenaryStats(world)
     // netPctMin = 30 + (-100) = -70 < 0 -> 'red'
     expect(barbDecrep?.damageColor).toBe('red')
+  })
+
+  it('computes and renders Mercenary set item bonuses, green member names, per-level tooltip stats, and stat sheet bonuses', () => {
+    const world = new ClientWorld()
+    const hud = new HudManager()
+    const model = new HudModel({
+      world,
+      hudManager: hud,
+    })
+
+    // Player is Level 10 Sorceress with low Str/Dex
+    world.apply({
+      type: 'PlayerAssign',
+      unitId: 1,
+      charClass: 1,
+      name: 'Sorceress',
+      x: 5100,
+      y: 5100,
+    })
+    world.self.level = 10
+    world.self.stats.set(12, 10)
+    world.self.stats.set(0, 15) // Str 15
+    world.self.stats.set(2, 25) // Dex 25
+
+    // Act 2 Desert Mercenary at Level 60 with high Str/Dex
+    const mercUnit = (world as any).ensureUnit('monster', 777)
+    mercUnit.classId = 338
+    mercUnit.stats.set(12, 60)
+    mercUnit.stats.set(0, 150)
+    mercUnit.stats.set(2, 120)
+    mercUnit.stats.set(6, 1000 << 8)
+    mercUnit.stats.set(7, 1000 << 8)
+
+    world.apply({
+      type: 'Merc',
+      kind: 'assign',
+      ownerId: 1,
+      mercId: 777,
+      classId: 338,
+      nameId: 7,
+    } as any)
+
+    // Equip 3 pieces of Hwanin's Majesty on Mercenary:
+    // Slot 1 (Head): Hwanin's Splendor (xrn)
+    // Slot 3 (Torso): Hwanin's Refuge (xcl)
+    // Slot 4 (Weapon): Hwanin's Justice (9vo)
+    const mercHelm = {
+      id: 5001,
+      code: 'xrn',
+      name: "Hwanin's Splendor",
+      container: 'merc',
+      bodyLoc: 1,
+      equippedSlot: 1,
+      width: 2,
+      height: 2,
+      quality: 5,
+      identified: true,
+      defense: 228,
+      stats: [{ statId: 31, param: 0, value: 228 }],
+    }
+    const mercArmor = {
+      id: 5003,
+      code: 'xcl',
+      name: "Hwanin's Refuge",
+      container: 'merc',
+      bodyLoc: 3,
+      equippedSlot: 3,
+      width: 2,
+      height: 3,
+      quality: 5,
+      identified: true,
+      defense: 370,
+      stats: [{ statId: 31, param: 0, value: 370 }],
+    }
+    const mercWeapon = {
+      id: 5004,
+      code: '9vo',
+      name: "Hwanin's Justice",
+      container: 'merc',
+      bodyLoc: 4,
+      equippedSlot: 4,
+      width: 2,
+      height: 4,
+      quality: 5,
+      identified: true,
+      stats: [],
+    }
+    ;(world.containers.merc as Map<number, any>).set(5001, mercHelm)
+    ;(world.containers.mercBySlot as Map<number, any>).set(1, mercHelm)
+    ;(world.containers.merc as Map<number, any>).set(5003, mercArmor)
+    ;(world.containers.mercBySlot as Map<number, any>).set(3, mercArmor)
+    ;(world.containers.merc as Map<number, any>).set(5004, mercWeapon)
+    ;(world.containers.mercBySlot as Map<number, any>).set(4, mercWeapon)
+
+    // Put an unequipped Hwanin's Blessing (mbl) in the player's inventory to verify isolation
+    const playerInvBelt = {
+      id: 6001,
+      code: 'mbl',
+      name: "Hwanin's Blessing",
+      container: 'inventory',
+      gridX: 0,
+      gridY: 0,
+      width: 2,
+      height: 1,
+      quality: 5,
+      identified: true,
+      defense: 6,
+      stats: [{ statId: 31, param: 0, value: 6 }],
+    }
+    ;(world.containers.inventory as Map<number, any>).set(6001, playerInvBelt)
+    ;(world.containers as any).hudRevision = ((world.containers as any).hudRevision ?? 0) + 1
+
+    model.syncFromWorld()
+
+    const uiMercHelm = hud.worldPanels.merc?.equipped?.head
+    const uiMercArmor = hud.worldPanels.merc?.equipped?.torso
+    const uiMercWeapon = hud.worldPanels.merc?.equipped?.rightHand
+    expect(uiMercHelm).toBeTruthy()
+    expect(uiMercArmor).toBeTruthy()
+    expect(uiMercWeapon).toBeTruthy()
+
+    // 3 of 4 pieces of Hwanin's Majesty are worn by the mercenary -> 3 green, 1 red
+    expect(uiMercHelm!.setPieceColors?.filter((c: string) => c === 'green').length).toBe(3)
+    expect(uiMercHelm!.setPieceColors?.filter((c: string) => c === 'red').length).toBe(1)
+    expect(uiMercHelm!.setBonuses?.length).toBeGreaterThan(0)
+    expect(uiMercHelm!.setBonuses?.some((b: { color?: string }) => b.color === 'gold')).toBe(true)
+
+    // Player's inventory item must NOT inherit the mercenary's equipped set pieces
+    const playerGridBelt = hud.inventory.gridItems.find((g) => String(g.item.id) === '6001')?.item
+    expect(playerGridBelt).toBeTruthy()
+    expect(playerGridBelt!.setPieceColors?.every((c: string) => c === 'red')).toBe(true)
+    expect(playerGridBelt!.setBonuses ?? []).toHaveLength(0)
+
+    // Verify drawItemTooltipImpl with hoveredMercItem
+    hud.worldPanels.hoveredMercItem = {
+      item: uiMercHelm!,
+      x: 200,
+      y: 200,
+    }
+    const rec = createRecordingCtx()
+    const drawnColors: Array<{ text: string; color: string }> = []
+    const fakeFont = {
+      measureText: (t: string) => t.length * 8,
+      drawText: (_c: unknown, text: string, _x: number, _y: number, opts?: { color?: string }) => {
+        drawnColors.push({ text, color: opts?.color ?? 'white' })
+      },
+    }
+    ;(hud.worldPanels as any).drawItemTooltip(
+      rec.ctx,
+      { item: uiMercHelm!, x: 200, y: 200 },
+      fakeFont,
+      false,
+      800,
+      600,
+    )
+
+    // Tooltip must have 3 green set member lines and gold partial set bonus
+    const greenSetMemberLines = drawnColors.filter(
+      (l) =>
+        l.color === 'green' &&
+        (l.text.includes('Hwanin') || l.text.includes('桓因') || l.text.includes('华宁')),
+    )
+    expect(greenSetMemberLines.length).toBeGreaterThanOrEqual(3)
+    expect(
+      drawnColors.some(
+        (l) =>
+          l.color === 'gold' &&
+          (l.text.includes('Defense') || l.text.includes('防御') || l.text.includes('防禦')),
+      ),
+    ).toBe(true)
+
+    // Required Level (45) and Required Strength (103) on Hwanin's Splendor must be white for the Level 60 / Str 150 mercenary
+    // (whereas for the Level 10 / Str 15 player they would be red!)
+    const reqLines = drawnColors.filter(
+      (l) =>
+        l.text.includes('Required Strength') ||
+        l.text.includes('需要力量') ||
+        l.text.includes('Required Level') ||
+        l.text.includes('需要等级') ||
+        l.text.includes('需要等級'),
+    )
+    expect(reqLines.length).toBeGreaterThan(0)
+    expect(reqLines.every((l) => l.color === 'white')).toBe(true)
+
+    // Verify mercenary stat aggregation (aggregateUnit + computeEffectiveMercenaryStats) includes partial set bonus (+100 + +200 = +300 Defense for 3 pieces of Hwanin's Majesty)
+    const mercAgg = aggregateUnit({
+      kind: 'merc',
+      stats: mercUnit.stats,
+      activeStates: mercUnit.states,
+      classId: null,
+      hardSkillLevels: null,
+      containers: world.containers,
+    })
+    const effStatsWith3Pieces = computeEffectiveMercenaryStats(world)
+
+    // Remove armor and weapon so only 1 piece of Hwanin's Majesty remains
+    ;(world.containers.merc as Map<number, any>).delete(5003)
+    ;(world.containers.mercBySlot as Map<number, any>).delete(3)
+    ;(world.containers.merc as Map<number, any>).delete(5004)
+    ;(world.containers.mercBySlot as Map<number, any>).delete(4)
+    const effStatsWith1Piece = computeEffectiveMercenaryStats(world)
+    expect(effStatsWith3Pieces!.defense - effStatsWith1Piece!.defense).toBeGreaterThanOrEqual(300 + 370)
+    expect(mercAgg.total(31)).toBeGreaterThanOrEqual(228 + 370 + 300)
   })
 })
 

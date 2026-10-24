@@ -1,6 +1,12 @@
 import type { WorldPanelsHud } from '../world-panels.ts'
 import { D2FontRenderer, type D2ColorCode } from '../font.ts'
-import { getInventoryLayout, resolveGridItemBackgroundFill, type InventoryPanel, type UiInventoryItem } from '../inventory.ts'
+import {
+  computeCursorItemGridPlacement,
+  getInventoryLayout,
+  resolveGridItemBackgroundFill,
+  type InventoryPanel,
+  type UiInventoryItem,
+} from '../inventory.ts'
 import { lookupTbl, requireTbl, type TblLang } from '../../i18n/lang.ts'
 import { CANONICAL_LEVEL_LIGHTING } from '../../../common/world/levels-meta.ts'
 import { reportMissingArt } from '../../scene/world-renderer.ts'
@@ -626,9 +632,34 @@ export function handleActiveLeftPanelClickImpl(
     if (inAuthSelfGrid || inLegacySelfGrid) {
       const gridOriginX = inAuthSelfGrid ? ox + 18 : 100
       const gridOriginY = inAuthSelfGrid ? oy + 252 : 315
+      const selfItems = (this.trade?.selfItems ?? this.trade?.myItems ?? []) as UiInventoryItem[]
+      const cursor = callbacks?.inventory?.cursorItem ?? this.activePlayerInventory?.cursorItem ?? null
+      if (cursor && !isRightClick) {
+        const placements = selfItems.map((it: any) => ({
+          item: it,
+          col: Number(it.gridX ?? it.col ?? 0),
+          row: Number(it.gridY ?? it.row ?? 0),
+        }))
+        const placement = computeCursorItemGridPlacement(
+          mx,
+          my,
+          { x: gridOriginX, y: gridOriginY, cols: 10, rows: 4, cellPx: 29 },
+          cursor,
+          placements,
+        )
+        if (!placement.inBounds || placement.overlaps.length > 1) {
+          return true
+        }
+        ;(callbacks?.onTradeGridClick ?? this.onTradeGridClick)?.(
+          placement.col,
+          placement.row,
+          placement.overlaps[0]?.item ?? null,
+          false,
+        )
+        return true
+      }
       const col = Math.max(0, Math.min(9, Math.floor((mx - gridOriginX) / 29)))
       const row = Math.max(0, Math.min(3, Math.floor((my - gridOriginY) / 29)))
-      const selfItems = (this.trade?.selfItems ?? this.trade?.myItems ?? []) as UiInventoryItem[]
       const hitItem =
         selfItems.find((it: any) => {
           const gx = Number(it.gridX ?? it.col ?? 0)
@@ -1406,11 +1437,17 @@ export function drawPendingTradeModalImpl(
     ctx.strokeRect(l.x + 0.5, l.y + 0.5, l.w - 1, l.h - 1)
   }
 
-  const partnerName = this.trade?.partnerName || 'Player'
+  // D2Client.dll 0x6fb099e0 (`0x77 0x00`) & 0x6fb09ac0 (`0x77 0x01`):
+  // Line 0 is `D2LANG_GetStringByReferenceIndex(0x0fcb)` (`strWaitingForOtherPlayer`, #4043) for 'wait',
+  // and `D2LANG_GetStringByReferenceIndex(0x0fca)` (`string#4042`, "agree to trade" / "同意進行交易") for 'request'
+  // without fabricating a placeholder name when `S2C 0x77 0x01` arrives before `S2C 0x78`.
+  const partnerName = this.trade?.partnerName?.trim()
   const rawPrompt =
     mode === 'wait'
-      ? requireTbl('strParty9', this.lang)
-      : requireTbl('strParty8', this.lang).replace('%s', partnerName)
+      ? requireTbl('strWaitingForOtherPlayer', this.lang)
+      : partnerName
+        ? `${partnerName} ${requireTbl('string#4042', this.lang)}`
+        : requireTbl('string#4042', this.lang)
   font.drawText(ctx, rawPrompt, l.x + Math.round(l.w / 2), l.y + 34, {
     font: 'font16',
     color: 'white',
@@ -1602,27 +1639,40 @@ export function drawTradePanelImpl(
   // 7. Partner accept indicator (`buysellbtn.dc6` frame 16/17 at ox + 275, oy + 170),
   //    Self accept button (`buysellbtn.dc6` frame 16/17 at ox + 223, oy + 384),
   //    and Cancel [X] button (`buysellbtn.dc6` frame 10/11 at ox + 275, oy + 384)
+  //    D2Client.dll 0x6fb4a262..0x6fb4a370:
+  //    - Partner accepted (`g_bPartnerAccepted != 0`): frame 17 tinted green (`colorTint = 2`, `0x6fabd0e4`).
+  //    - Self accept disabled (`g_bAcceptDisabled != 0`): frame 16 tinted red (`colorTint = 1`, `0x6fabd0e4`).
+  //    - Self accepted (`g_bSelfAccepted != 0`): frame 17 tinted green (`colorTint = 2`, `0x6fabd0e4`).
+  const partnerAccepted = Boolean(this.trade?.partnerAccepted)
+  const selfAccepted = Boolean(this.trade?.selfAccepted ?? this.trade?.myAccepted)
   if (buySellBtnImg) {
-    const partnerFrame = this.trade?.partnerAccepted ? 17 : 16
+    const partnerFrame = partnerAccepted ? 17 : 16
     ctx.drawImage(buySellBtnImg, partnerFrame * 32, 0, 32, 32, ox + 275, oy + 170, 32, 32)
 
-    const selfAccepted = Boolean(this.trade?.selfAccepted ?? this.trade?.myAccepted)
-    const selfFrame = selfAccepted ? 17 : 16
+    const selfFrame = !this.trade?.acceptDisabled && selfAccepted ? 17 : 16
     ctx.drawImage(buySellBtnImg, selfFrame * 32, 0, 32, 32, ox + 223, oy + 384, 32, 32)
 
     const cancelFrame = this.pressedTradeButton === 'cancel' ? 11 : 10
     ctx.drawImage(buySellBtnImg, cancelFrame * 32, 0, 32, 32, ox + 275, oy + 384, 32, 32)
   }
 
-  // D2Client.dll 0x6fb4a6ba: When `acceptDisabled` (`0x77 0x0e`), draw red lockout overlay over self accept button
+  if (partnerAccepted) {
+    ctx.fillStyle = 'rgba(0, 200, 0, 0.42)'
+    ctx.fillRect(ox + 275, oy + 170, 32, 32)
+  }
+
+  // D2Client.dll 0x6fb4a2d3..0x6fb4a370: red lockout overlay when `acceptDisabled`, or green tint when `selfAccepted`
   if (this.trade?.acceptDisabled) {
     ctx.fillStyle = 'rgba(180, 0, 0, 0.55)'
     ctx.fillRect(ox + 223, oy + 384, 32, 32)
+  } else if (selfAccepted) {
+    ctx.fillStyle = 'rgba(0, 200, 0, 0.42)'
+    ctx.fillRect(ox + 223, oy + 384, 32, 32)
   }
 
-  // 8. Button hover tooltips (D2Client.dll 0x6fb49889 / 0x6fb49ca7: cancel #4115, strTradeAccept/strParty20 #4125, strDropGoldHowMuch #3379)
+  // 8. Button hover tooltips (D2Client.dll 0x6fb09810: cancel #4130, accept #4131, gold #4046 strTradeGoldHowMuch)
   if (this.hoveredTradeButton === 'cancel') {
-    const tip = requireTbl('cancel', this.lang)
+    const tip = requireTbl('string#4130', this.lang)
     const w = font.measureText(tip, 'font16')
     const bx = ox + 291 - Math.trunc(w / 2) - 6
     const by = oy + 358
@@ -1634,7 +1684,7 @@ export function drawTradePanelImpl(
       align: 'center',
     })
   } else if (this.hoveredTradeButton === 'selfAccept') {
-    const tip = requireTbl('strParty20', this.lang)
+    const tip = requireTbl('string#4131', this.lang)
     const w = font.measureText(tip, 'font16')
     const bx = ox + 239 - Math.trunc(w / 2) - 6
     const by = oy + 358
@@ -1646,7 +1696,7 @@ export function drawTradePanelImpl(
       align: 'center',
     })
   } else if (this.hoveredTradeButton === 'gold') {
-    const tip = requireTbl('strDropGoldHowMuch', this.lang)
+    const tip = requireTbl('strTradeGoldHowMuch', this.lang)
     const w = font.measureText(tip, 'font16')
     const bx = ox + 100 - Math.trunc(w / 2) - 6
     const by = oy + 195
@@ -1658,7 +1708,7 @@ export function drawTradePanelImpl(
       align: 'center',
     })
   } else if (this.hoveredTradeButton === 'partnerAccept' && this.trade?.partnerAccepted) {
-    const tip = requireTbl('strParty20', this.lang)
+    const tip = requireTbl('string#4131', this.lang)
     const w = font.measureText(tip, 'font16')
     const bx = ox + 291 - Math.trunc(w / 2) - 6
     const by = oy + 144

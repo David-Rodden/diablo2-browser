@@ -113,6 +113,7 @@ describe('[Skill #065] Cold Mastery (SOR) — 1.13c 7-Dimensional Verification S
     it('Case 1: Reduces non-immune positive resistance (50% base, slvl 20 CM -> -65%)', () => {
       const pierce = calculateColdMasteryPierce(20) // 115
       const res = computeEffectiveResistance({
+        isDefenderPlayer: false,
         baseRes: 50,
         passiveEnemyPierce: pierce,
       })
@@ -123,6 +124,7 @@ describe('[Skill #065] Cold Mastery (SOR) — 1.13c 7-Dimensional Verification S
     it('Case 2: Enforces strict -100% resistance floor clamp (0% base, slvl 20 CM -> -100%)', () => {
       const pierce = calculateColdMasteryPierce(20) // 115
       const res = computeEffectiveResistance({
+        isDefenderPlayer: false,
         baseRes: 0,
         passiveEnemyPierce: pierce,
       })
@@ -134,6 +136,7 @@ describe('[Skill #065] Cold Mastery (SOR) — 1.13c 7-Dimensional Verification S
     it('Case 3: Invariant: Cold Mastery CANNOT break natural cold immunity (110% base -> 100% immune)', () => {
       const pierce = calculateColdMasteryPierce(20) // 115
       const res = computeEffectiveResistance({
+        isDefenderPlayer: false,
         baseRes: 110,
         passiveEnemyPierce: pierce,
       })
@@ -148,6 +151,7 @@ describe('[Skill #065] Cold Mastery (SOR) — 1.13c 7-Dimensional Verification S
       // Resistance after Conviction: 110 - 17 = 93% (< 100%, broken!)
       // Cold Mastery now applies at 100% power: 93 - 115 = -22%
       const res = computeEffectiveResistance({
+        isDefenderPlayer: false,
         baseRes: 110,
         convictionPierce: 85,
         passiveEnemyPierce: pierce,
@@ -186,7 +190,7 @@ describe('[Skill #065] Cold Mastery (SOR) — 1.13c 7-Dimensional Verification S
         elemType: 'cold',
         elemMin256: 100 * 256,
         elemMax256: 100 * 256,
-      })
+      }, { rand: () => 50 })
 
       expect(dmgResult.immuneToElem).toBe(false)
       expect(dmgResult.totalDamage).toBe(200)

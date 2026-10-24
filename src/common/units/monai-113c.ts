@@ -101,6 +101,8 @@ export interface MonAiProfile113c {
     | undefined
   /** 0-based `aip` slot with the heal radius. */
   readonly healRangeParam?: number | undefined
+  /** 0-based `aip` slot with the corpse resurrection search radius. */
+  readonly resurrectRangeParam?: number | undefined
   /** Whip/rally aura used by Overseer. */
   readonly whip?: boolean | undefined
   readonly boss?: boolean | undefined
@@ -176,9 +178,9 @@ add(['FallenShaman', 'GreaterMummy', 'FetishShaman'], {
   family: 'resurrector',
   resurrect: true,
 })
-add(['FallenShaman'], { ranged: true, shootDistanceParam: 4 })
-add(['GreaterMummy'], { ranged: true, shootDistanceParam: 3 })
-add(['FetishShaman'], { healRangeParam: 4 })
+add(['FallenShaman'], { ranged: true, shootDistanceParam: 4, resurrectRangeParam: 3 })
+add(['GreaterMummy'], { ranged: true, shootDistanceParam: 3, resurrectRangeParam: 4 })
+add(['FetishShaman'], { healRangeParam: 4, resurrectRangeParam: 4 })
 
 add(['OblivionKnight', 'DoomKnight', 'AbyssKnight', 'Summoner', 'Nihlathak'], {
   family: 'curse',

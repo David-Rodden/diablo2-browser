@@ -1,3 +1,4 @@
+import { findChromeBinary } from './find-chrome.ts'
 /**
  * Full-Spectrum 136-Level Isometric Automap & Minimap Verification (`scripts/verify-automap.ts`).
  *
@@ -337,7 +338,7 @@ async function verifyHeadlessBrowserCdp(
   console.log(`   Vite dev server listening at ${baseUrl}`)
 
   const debugPort = 9244
-  const chromeProc = spawn('/usr/bin/google-chrome', [
+  const chromeProc = spawn(findChromeBinary(), [
     '--headless=new',
     `--remote-debugging-port=${debugPort}`,
     '--no-sandbox',

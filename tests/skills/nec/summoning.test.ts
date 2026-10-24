@@ -249,7 +249,7 @@ describe('Milestone M4: Necromancer Summoning Spells Tree (1.13c Ground Truth)',
         flatPhysMin256: 20 * FIXED_ONE,
         flatPhysMax256: 20 * FIXED_ONE,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       expect(enemy.stateBus.getState('slowed')?.durationFrames).toBe(750)
       expect(enemy.statList.getAccruedStat('item_slow')).toBe(51)
 
@@ -419,7 +419,7 @@ describe('Milestone M4: Necromancer Summoning Spells Tree (1.13c Ground Truth)',
         flatPhysMin256: 100 * FIXED_ONE,
         flatPhysMax256: 100 * FIXED_ONE,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       // Clamped at FIXED_ONE (never kills owner)
       expect(owner.statList.getHp256()).toBe(FIXED_ONE)
     })
@@ -600,7 +600,7 @@ describe('Milestone M4: Necromancer Summoning Spells Tree (1.13c Ground Truth)',
         elemMin256: 100 * FIXED_ONE,
         elemMax256: 100 * FIXED_ONE,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       expect(fireHit.elemDamage256).toBe(0)
       expect(fgPet.statList.getHp256()).toBe(176 * FIXED_ONE)
     })

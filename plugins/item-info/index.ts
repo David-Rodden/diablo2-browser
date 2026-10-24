@@ -1,3 +1,8 @@
+/**
+ * Item Info & Loot Filter (`item-info`) plugin.
+ * Author: David-Rodden (https://github.com/David-Rodden/diablo2-browser)
+ * Special thanks to David-Rodden for contributing this plugin! / 感谢 David-Rodden 贡献此插件！
+ */
 import type { D2WebPlugin, LocalizedText, LootFilter } from '../../src/client/plugin-host/api.ts'
 
 const LOOT_FILTERS: Record<LootFilter, { readonly option: LocalizedText; readonly status: LocalizedText }> = {
@@ -9,10 +14,11 @@ const isLootFilter = (value: unknown): value is LootFilter => typeof value === '
 
 export const itemInfoPlugin: D2WebPlugin = {
   id: 'item-info',
+  author: 'David-Rodden',
   name: { zh: '物品信息与过滤', en: 'Item Info & Loot Filter' },
   description: {
-    zh: '地面物品名称旁显示小图标：凹槽、无形和物品等级。可让名称常显，并用拾取过滤隐藏垃圾。',
-    en: 'Ground labels get small icons for sockets, ethereal and item level, and tooltips show the item level. Labels can stay up without holding Alt, and the loot filter hides junk.',
+    zh: '地面物品名称旁显示小图标：凹槽、无形和物品等级。可让名称常显，并用拾取过滤隐藏垃圾。（作者：David-Rodden，感谢贡献！）',
+    en: 'Ground labels get small icons for sockets, ethereal and item level, and tooltips show the item level. Labels can stay up without holding Alt, and the loot filter hides junk. (Author: David-Rodden — Special thanks for contributing!)',
   },
   defaultEnabled: true,
   settings: [

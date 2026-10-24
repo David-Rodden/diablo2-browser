@@ -1,6 +1,7 @@
+import { homedir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, join } from 'node:path'
 import {
   CANONICAL_113C_MISSILES,
   getMissileTxtData,
@@ -189,7 +190,7 @@ describe('B7-p2: De-aliasing & 1.13c Row Alignment (#1093..#1098)', () => {
 
     it('has zero scalar drift between CANONICAL_113C_MISSILES and 1.13c Missiles.txt across all 684 rows', () => {
       const missilesTxtPath =
-        '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel/Missiles.txt'
+        join(homedir(), 'd2-data', 'excel', 'Missiles.txt')
       const lines = readFileSync(resolve(missilesTxtPath), 'utf-8').split(/\r?\n/)
       const headers = lines[0]!.split('\t')
       const idx = (col: string) => headers.indexOf(col)

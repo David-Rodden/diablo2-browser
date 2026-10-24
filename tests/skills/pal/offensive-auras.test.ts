@@ -96,7 +96,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         skillId: 0,
         attackKind: 'melee',
         autoHit: true,
-      })
+      }, { rand: () => 50 })
 
       // 100 base damage with slvl 10 Might (+130% ED) = 230 damage
       expect(out.physDamage256).toBe(230 * FIXED_ONE)
@@ -166,7 +166,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         skillId: 0,
         attackKind: 'melee',
         autoHit: true,
-      })
+      }, { rand: () => 50 })
 
       expect(out.physDamage256).toBe(50 * FIXED_ONE)
       expect(out.elemDamage256).toBeGreaterThan(0)
@@ -215,7 +215,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         skillId: 0,
         attackKind: 'melee',
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       // 100 phys damage dealt -> reflects 250% = 250 damage back to monster
       expect(outPvM.reflectedPhys256).toBe(250 * FIXED_ONE)
       expect(monsterAtk.statList.getHp256()).toBe(750 * FIXED_ONE)
@@ -235,7 +235,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         skillId: 0,
         attackKind: 'melee',
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       // 250 reflected * (100 - 50)% = 125 reflected
       expect(out50.reflectedPhys256).toBe(125 * FIXED_ONE)
 
@@ -254,7 +254,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         skillId: 0,
         attackKind: 'melee',
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       // In PvP, 1/4th penalty applies: 250 * 256 / 4 = 16000 (62.5 damage in 256-fixed-point)
       expect(outPvP.reflectedPhys256).toBe(Math.trunc((250 * FIXED_ONE) / 4))
     })
@@ -344,7 +344,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         attackKind: 'melee',
         autoHit: true,
         rollUninterrupted: 10, // < 20%
-      })
+      }, { rand: () => 10 })
       expect(out.uninterrupted).toBe(true)
     })
   })
@@ -388,16 +388,21 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         statList: statsP,
         stateBus: new StateBus(statsP, registry),
         unitType: 'player',
+        x: 0,
+        y: 0,
       }
 
       // Enemy has cannot_be_frozen = 1
-      const statsE = new UnitStatList(registry, { maxhp: 500 * FIXED_ONE, hitpoints: 500 * FIXED_ONE, cannot_be_frozen: 1 })
+      const statsE = new UnitStatList(registry, { maxhp: 500 * FIXED_ONE, hitpoints: 500 * FIXED_ONE, item_cannotbefrozen: 1 })
       const enemy: CombatUnitContext = {
         id: 'enemy',
         name: 'CBF Enemy',
         statList: statsE,
         stateBus: new StateBus(statsE, registry),
         unitType: 'monster',
+        // #1410: position-less units are never scanned (0x6FCC0C70); within ln12 = 15 sub-tiles.
+        x: 5,
+        y: 0,
       }
 
       const auraSource = scanner.setActiveAura(paladin, 114, 10)!
@@ -409,10 +414,21 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
       expect(paladin.stateBus.hasState('holywind')).toBe(true)
       expect(enemy.stateBus.hasState('holywindcold')).toBe(true)
       expect(enemy.stateBus.hasState('shatter')).toBe(true)
-      expect(enemy.statList.getModifierBonus('item_slow')).toBe(49)
+      // 1.13c SrvDo081 (D2Game 0x6FCBABC0): targets get only Skills.txt aurastat1..3 = -dm34; no item_slow.
+      expect(enemy.statList.getModifierBonus('item_slow')).toBe(0)
       expect(enemy.statList.getModifierBonus('velocitypercent')).toBe(-49)
       expect(enemy.statList.getModifierBonus('attackrate')).toBe(-49)
       expect(enemy.statList.getModifierBonus('other_animrate')).toBe(-49)
+
+      // Caster's `holywind` carries passivestat1/2 (coldmindam/coldmaxdam = enms*par5/256), never aurastat.
+      expect(paladin.statList.getModifierBonus('velocitypercent')).toBe(0)
+      expect(paladin.statList.getModifierBonus('attackrate')).toBe(0)
+      expect(paladin.statList.getModifierBonus('other_animrate')).toBe(0)
+      const hf10 = calculateHolyFreezeStats(10)
+      expect(paladin.stateBus.getState('holywind')?.stats).toEqual({
+        coldmindam: hf10.weaponColdMin,
+        coldmaxdam: hf10.weaponColdMax,
+      })
 
       // Paladin with 'holywind' aura state from AuraScanner deals 5x weapon cold damage in executeSUnitDmg
       const paladinAtk: CombatUnitContext = {
@@ -424,7 +440,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         skillId: 0,
         attackKind: 'melee',
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       expect(outAtk.elemDamage256).toBeGreaterThan(0)
 
       // Prime Evils and coldEffect === 0 monsters are excluded by Holy Freeze pulse
@@ -522,7 +538,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         skillId: 0,
         attackKind: 'melee',
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       // Physical immunity pierced and set to 0%, +150% ED vs Undead applied = 250 damage dealt!
       expect(outUndead.immuneToPhys).toBe(false)
       expect(outUndead.physDamage256).toBe(250 * FIXED_ONE)
@@ -543,7 +559,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         skillId: 0,
         attackKind: 'melee',
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       // 250 base * 1.5 (-50% physical resistance preserved!) = 375 damage!
       expect(outCursedUndead.physDamage256).toBe(375 * FIXED_ONE)
 
@@ -563,7 +579,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         skillId: 0,
         attackKind: 'melee',
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       expect(outDemon.immuneToPhys).toBe(true)
       expect(outDemon.physDamage256).toBe(0)
     })
@@ -636,10 +652,10 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
         unitType: 'monster',
       }
 
-      const outCaster = executeSUnitDmg(caster, monster, { skillId: 0, attackKind: 'melee', autoHit: true })
+      const outCaster = executeSUnitDmg(caster, monster, { skillId: 0, attackKind: 'melee', autoHit: true }, { rand: () => 50 })
       expect(outCaster.physDamage256).toBe(150 * FIXED_ONE) // 100 + 50% = 150
 
-      const outAlly = executeSUnitDmg(ally, monster, { skillId: 0, attackKind: 'melee', autoHit: true })
+      const outAlly = executeSUnitDmg(ally, monster, { skillId: 0, attackKind: 'melee', autoHit: true }, { rand: () => 50 })
       expect(outAlly.physDamage256).toBe(125 * FIXED_ONE) // 100 + 25% = 125
     })
   })
@@ -675,6 +691,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
       // Slvl 25 Conviction has 150% pierce -> 1/5th = 30% against immunity
       // Effective res = 105 - 30 = 75% (Immunity Broken!)
       const resFire = computeEffectiveResistance({
+        isDefenderPlayer: false,
         baseRes: 105,
         convictionPierce: 150,
       })
@@ -683,6 +700,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
 
       // 140% base fire resistance -> 140 - 30 = 110% (Still immune!)
       const resUnbreakable = computeEffectiveResistance({
+        isDefenderPlayer: false,
         baseRes: 140,
         convictionPierce: 150,
       })

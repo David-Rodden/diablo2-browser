@@ -291,6 +291,14 @@ export class ModMenu {
     head.appendChild(titles)
     head.appendChild(switchLabel)
     panel.appendChild(head)
+    if (card.author) {
+      const credit = Object.assign(doc.createElement('p'), {
+        className: 'd2-mods__author',
+        textContent: menuText('authorCredit', lang, { author: card.author }),
+      })
+      credit.setAttribute('data-plugin-author', card.author)
+      panel.appendChild(credit)
+    }
     panel.appendChild(Object.assign(doc.createElement('p'), { className: 'd2-mods__desc', textContent: card.description }))
     const hint = !card.enabled ? menuText('disabled', lang) : card.settings.length === 0 && card.actions.length === 0 ? menuText('noSettings', lang) : null
     if (hint !== null) panel.appendChild(Object.assign(doc.createElement('p'), { className: 'd2-mods__note', textContent: hint }))

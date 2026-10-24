@@ -2047,18 +2047,25 @@ export class ClientWorld {
   }
 
   /**
-   * Prunes non-self units (especially dead corpses, monsters, objects, missiles, and ground items)
-   * whose floor tile `(Math.floor(x / 5), Math.floor(y / 5))` lies inside the 8×8 tile room
-   * `[tileX, tileX + 8) × [tileY, tileY + 8)` hidden by `RoomHide` (`0x08`) and is no longer
+   * Prunes non-self units (especially dead corpses, monsters, objects, missiles, warps, and ground items)
+   * whose sub-tile `(x, y)` lies inside the DRLG room `[tileX * 5, tileX * 5 + subW) × [tileY * 5, tileY * 5 + subH)`
+   * (8×8, 12×12, 16×16, etc. floor-tiles) hidden by `RoomHide` (`0x08`) and is no longer
    * covered by any still-revealed room.
    */
-  private pruneUnitsInHiddenRoom(tileX: number, tileY: number): void {
+  private pruneUnitsInHiddenRoom(
+    tileX: number,
+    tileY: number,
+    subW = 40,
+    subH = 40,
+  ): void {
+    const minSubX = tileX * 5
+    const minSubY = tileY * 5
+    const maxSubX = minSubX + Math.max(40, subW)
+    const maxSubY = minSubY + Math.max(40, subH)
     for (const u of Array.from(this._units.values())) {
       if (this.isSelfUnit(u) || this.isOwnMercUnit(u)) continue
       if (u.x === 0 && u.y === 0) continue
-      const tx = Math.floor(u.x / 5)
-      const ty = Math.floor(u.y / 5)
-      if (tx >= tileX && tx < tileX + 8 && ty >= tileY && ty < tileY + 8) {
+      if (u.x >= minSubX && u.x < maxSubX && u.y >= minSubY && u.y < maxSubY) {
         if (this.resolveAreaFromRevealedRooms(u.x, u.y) === 0) {
           this.removeNonSelfUnit(u)
         }
@@ -2066,9 +2073,7 @@ export class ClientWorld {
     }
     for (const item of Array.from(this._containers.ground.values())) {
       if (item.x === 0 && item.y === 0) continue
-      const tx = Math.floor(item.x / 5)
-      const ty = Math.floor(item.y / 5)
-      if (tx >= tileX && tx < tileX + 8 && ty >= tileY && ty < tileY + 8) {
+      if (item.x >= minSubX && item.x < maxSubX && item.y >= minSubY && item.y < maxSubY) {
         if (this.resolveAreaFromRevealedRooms(item.x, item.y) === 0) {
           this._containers.removeItemById(item.id)
           this._units.delete(makeUnitKey('item', item.id))
@@ -2095,7 +2100,10 @@ export class ClientWorld {
       const unitRoomArea =
         this._revealedRooms.size > 0 ? this.resolveAreaFromRevealedRooms(u.x, u.y) : 0
       const unrevealedFar =
-        this._revealedRooms.size > 0 && unitRoomArea === 0 && dist > 60
+        this._revealedRooms.size > 0 &&
+        unitRoomArea === 0 &&
+        dist > 60 &&
+        u.unitType !== 'tile'
       if (
         u.unitType === 'missile' ||
         dist > maxDistanceSubTiles ||

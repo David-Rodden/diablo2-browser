@@ -1,3 +1,4 @@
+import { homedir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -335,11 +336,11 @@ describe('B8: Missing 1.13c Missiles.txt DCC Atlas Baking (#1100, #1101, #1102, 
     it('walks all Weapons.txt / Misc.txt missiletype > 0 rows and sub-chains with 0 missing CelFiles', () => {
       const seeds: string[] = []
       const weaponsTxt = readFileSync(
-        '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel/Weapons.txt',
+        join(homedir(), 'd2-data', 'excel', 'Weapons.txt'),
         'utf-8',
       )
       const miscTxt = readFileSync(
-        '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel/Misc.txt',
+        join(homedir(), 'd2-data', 'excel', 'Misc.txt'),
         'utf-8',
       )
       for (const content of [weaponsTxt, miscTxt]) {

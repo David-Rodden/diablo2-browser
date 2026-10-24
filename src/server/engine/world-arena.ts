@@ -19,6 +19,21 @@ import { SummonManager } from '../ai/summon-manager.ts'
 import { evaluateSkill113c, executeSkill113c } from '../skills/registry.ts'
 import type { SkillEvalResult, SkillExecOutcome } from '../skills/types.ts'
 import { resolvePlayerCharToken } from '../../common/units/classes.ts'
+import { MISSILE_SUBTILE_FLAT_PX } from './missile-engine.ts'
+
+/** 2:1 isometric ground squash of the arena's missile-space `targetPositions` (y axis). */
+const ARENA_ISO_GROUND_ASPECT_RATIO = 0.5
+
+/**
+ * Arena missile-space position (player at the origin) -> sub-tile coordinates on the unit context,
+ * which the 1.13c aura scan 0x6FCC0C70 measures (`dx² + dy² <= r²` in sub-tiles).
+ */
+function arenaPxToSubtiles(pos: { x: number; y: number }): { x: number; y: number } {
+  return {
+    x: pos.x / MISSILE_SUBTILE_FLAT_PX,
+    y: pos.y / ARENA_ISO_GROUND_ASPECT_RATIO / MISSILE_SUBTILE_FLAT_PX,
+  }
+}
 
 export interface ArenaDebugState {
   ready: boolean
@@ -135,6 +150,9 @@ export class WorldArena {
       hasShield: this.classCode === 'pal',
       weaponMinPhys: 45,
       weaponMaxPhys: 85,
+      // The arena player stands at the origin (sub-tile 0,0) for radius scans.
+      x: 0,
+      y: 0,
     }
 
     // If the skill requires shapeshift (`restrict === 2`: Feral Rage, Maul, Rabies, Fire Claws, Hunger, Shock Wave, Fury),
@@ -225,6 +243,7 @@ export class WorldArena {
       stateBus: sb,
       isUndead: opts.isUndead,
       isDemon: opts.isDemon,
+      ...arenaPxToSubtiles(pos),
     }
     this.targets.push(dummy)
     this.targetPositions.set(id, pos)
@@ -249,6 +268,7 @@ export class WorldArena {
       statList: st,
       stateBus: sb,
       unitType: opts.unitType ?? 'mercenary',
+      ...arenaPxToSubtiles(pos),
     }
     this.allies.push(ally)
     return ally

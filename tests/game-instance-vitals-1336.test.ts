@@ -167,12 +167,21 @@ describe('issue #1336: server player vitals', () => {
       getPlayerMotion: (p: unknown) => { mover: { slowPercent?: number } }
       applyPlayerVelocityModifiers: (p: unknown, mover: unknown) => void
     }
+    // Caster's own Holy Freeze aura state (`holywind` #43) must not slow the caster (#1409).
     internal.playerCombatContext(record).stateBus.applyState({
       stateNameOrId: 'holywind',
       slvl: 1,
       durationFrames: 100,
     })
     const motion = internal.getPlayerMotion(record)
+    internal.applyPlayerVelocityModifiers(record, motion.mover)
+    expect(motion.mover.slowPercent).toBe(0)
+    // Enemy Holy Freeze target state `holywindcold` (#44) applies dm34(25,60) slow.
+    internal.playerCombatContext(record).stateBus.applyState({
+      stateNameOrId: 'holywindcold',
+      slvl: 1,
+      durationFrames: 100,
+    })
     internal.applyPlayerVelocityModifiers(record, motion.mover)
     expect(motion.mover.slowPercent).toBe(30)
   })

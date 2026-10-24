@@ -328,7 +328,7 @@ describe('[Skill #045] Ice Blast (SOR) — 1.13c 7-Dimensional Verification Suit
       const engine2 = new MissileEngine(registry)
       const monStats2 = new UnitStatList()
       monStats2.addStat('hp', 500 * 256)
-      monStats2.addStat('cannot_be_frozen', 1)
+      monStats2.addStat('item_cannotbefrozen', 1)
       const monCtx2 = {
         id: 'champion_zombie',
         statList: monStats2,

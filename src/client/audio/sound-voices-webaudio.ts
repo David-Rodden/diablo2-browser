@@ -40,6 +40,7 @@ export class WebAudioSoundVoices implements SoundVoiceBackend {
   private readonly voices = new Map<number, ActiveVoiceNodes>()
   private readonly lastGains = new Map<number, { left: number; right: number }>()
   private readonly pendingTokens = new Map<number, number>()
+  private focusMuted = false
 
   constructor(
     output: () => WebAudioOutputBus113c | null,
@@ -51,8 +52,20 @@ export class WebAudioSoundVoices implements SoundVoiceBackend {
     this.loadBuffer = loadBuffer
   }
 
+  setFocusMuted(muted: boolean): void {
+    this.focusMuted = muted
+  }
+
+  isFocusMuted(): boolean {
+    return this.focusMuted
+  }
+
   start(voice: number, soundId: number, loop: boolean, offsetFrames: number): void {
     this.stop(voice)
+    // #1363: When focus-muted in background instance, skip creating WebAudio nodes for
+    // transient one-shot SFX (!loop) to save CPU/WebAudio graph overhead while keeping
+    // looping ambient/environment voices alive for seamless focus restoration.
+    if (this.focusMuted && !loop) return
     const out = this.getOutput()
     if (out === null) return
     const resolved = this.getBuffer(soundId)

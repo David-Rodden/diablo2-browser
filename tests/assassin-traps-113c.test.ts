@@ -286,12 +286,12 @@ describe('Assassin Traps (#251-#277) — 1.13c 4-Layer Parity (Issue #1005)', ()
       expect(ds.totalShots).toBe(7)
       expect(ds.synPct).toBe(120)
 
-      // #277 Blade Shield: SrcDam=32, duration=500 + 125*(slvl-1), perdelay=25, radius=4
+      // #277 Blade Shield: SrcDam=32, duration=500 + 125*(slvl-1), perdelay=25, radius=aurarangecalc par4=6 (Skills.txt #277)
       const bsh = calcBladeShield113c(1, 40, 80)
       expect(bsh.effectiveSrcDam).toBe(32)
       expect(bsh.durationFrames).toBe(500)
       expect(bsh.perDelayFrames).toBe(25)
-      expect(bsh.radiusSubtiles).toBe(4)
+      expect(bsh.radiusSubtiles).toBe(6)
     })
 
     it('enforces all 5 SummonManager.tickPets sentry trap fixes + #257 non-eviction + sentry owner isolation', async () => {

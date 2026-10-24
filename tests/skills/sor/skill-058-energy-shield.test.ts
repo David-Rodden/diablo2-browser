@@ -231,7 +231,7 @@ describe('[Skill #058] Energy Shield (SOR) — 1.13c 7-Dimensional Verification 
         elemType: 'fire',
         elemMin256: 400 * FIXED_ONE,
         elemMax256: 400 * FIXED_ONE,
-      })
+      }, { rand: () => 50 })
 
       // Ground truth logic:
       // 1. Raw Fire = 400.

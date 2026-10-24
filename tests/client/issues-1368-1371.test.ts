@@ -196,8 +196,8 @@ describe('Issue #1369: Poison Cloud trans75 & Double Tinting Elimination', () =>
   })
 })
 
-describe('Issue #1370: Widescreen Viewport Boundary Convergence & Skirt Fill', () => {
-  it('converges camera safely in widescreen when corners overshoot outdoor map boundaries without neighbours', () => {
+describe('Issue #1370 / #1401: Widescreen Player-Anchored Camera & Outdoor-Only Skirt Fill', () => {
+  it('keeps camera strictly anchored to the player in widescreen modes so render and input coordinates never drift (#1401)', () => {
     const levelView = makeMockLevelView({
       areaId: 2,
       tileOriginX: 0,
@@ -207,8 +207,6 @@ describe('Issue #1370: Widescreen Viewport Boundary Convergence & Skirt Fill', (
     })
     const profileWidescreen = getViewportProfile('1068x600')
 
-    // At bottom-right corner of the level:
-    // baseCamX and baseCamY configured near the boundary
     const baseCamX = 800
     const baseCamY = 800
 
@@ -220,15 +218,10 @@ describe('Issue #1370: Widescreen Viewport Boundary Convergence & Skirt Fill', (
       [],
     )
 
-    // Camera converged inward (shifted left)
-    expect(converged.x).toBeLessThan(baseCamX)
-    expect(converged.y).toBeLessThanOrEqual(baseCamY)
+    // 1.13c D2Client.dll (0x6fb3b142 / 0x6fb010f0) & SGD2FreeRes: camera never shifts away from player at boundaries
+    expect(converged.x).toBe(baseCamX)
+    expect(converged.y).toBe(baseCamY)
 
-    // The shift does not exceed the allowed widescreen convergence bounds
-    const maxShiftX = Math.round((1068 - 800) / 2)
-    expect(baseCamX - converged.x).toBeLessThanOrEqual(maxShiftX)
-
-    // In 1280x720, height also expands from 600 to 720, so Y converges upward
     const profile720 = getViewportProfile('1280x720')
     const converged720 = computeConvergedCameraTopLeft(
       baseCamX,
@@ -237,8 +230,8 @@ describe('Issue #1370: Widescreen Viewport Boundary Convergence & Skirt Fill', (
       levelView,
       [],
     )
-    expect(converged720.x).toBeLessThan(baseCamX)
-    expect(converged720.y).toBeLessThan(baseCamY)
+    expect(converged720.x).toBe(baseCamX)
+    expect(converged720.y).toBe(baseCamY)
   })
 
   it('leaves camera coordinates strictly untouched in standard 800x600 mode', () => {
@@ -264,7 +257,7 @@ describe('Issue #1370: Widescreen Viewport Boundary Convergence & Skirt Fill', (
     expect(result.y).toBe(baseCamY)
   })
 
-  it('generates border skirt floor quads in widescreen mode for visible frustum cells outside map diamond', () => {
+  it('generates border skirt floor quads in widescreen mode on outdoor levels (areaId=2) but NOT on indoor dungeons (areaId=37)', () => {
     const sampleFloor: LevelDrawItem = {
       x: 0,
       y: 0,
@@ -279,7 +272,7 @@ describe('Issue #1370: Widescreen Viewport Boundary Convergence & Skirt Fill', (
       frameIndex: 0,
     } as unknown as LevelDrawItem
 
-    const levelView = makeMockLevelView({
+    const outdoorLevelView = makeMockLevelView({
       areaId: 2,
       tileOriginX: 0,
       tileOriginY: 0,
@@ -288,7 +281,7 @@ describe('Issue #1370: Widescreen Viewport Boundary Convergence & Skirt Fill', (
       floors: [sampleFloor],
     })
 
-    const source = new ClientWorldSceneSource(
+    const outdoorSource = new ClientWorldSceneSource(
       () => ({
         tick: 1,
         actId: 1,
@@ -296,19 +289,48 @@ describe('Issue #1370: Widescreen Viewport Boundary Convergence & Skirt Fill', (
         playerSubX: 10,
         playerSubY: 10,
         ambient: null,
-        levelView,
+        levelView: outdoorLevelView,
         neighbourLevelViews: [],
         units: [],
       }),
       '1068x600',
     )
 
-    const snapshot = source.buildFrameSnapshot(240)
-    // Any cells outside [0..cellsX, 0..cellsY] that are visible must have skirt quads
-    const outOfBoundsQuads = snapshot.floorQuads.filter(
+    const outdoorSnapshot = outdoorSource.buildFrameSnapshot(240)
+    // Outdoor level (Blood Moor areaId=2, isInside=false) generates skirt quads outside [0..4, 0..4]
+    const outdoorOutOfBoundsQuads = outdoorSnapshot.floorQuads.filter(
       (q) => q.cellX < 0 || q.cellX >= 4 || q.cellY < 0 || q.cellY >= 4,
     )
-    expect(outOfBoundsQuads.length).toBeGreaterThan(0)
+    expect(outdoorOutOfBoundsQuads.length).toBeGreaterThan(0)
+
+    // Indoor dungeon (Catacombs Level 4 areaId=37, isInside=true) must NOT stamp fake floor tiles in void
+    const indoorLevelView = makeMockLevelView({
+      areaId: 37,
+      tileOriginX: 0,
+      tileOriginY: 0,
+      cellsX: 4,
+      cellsY: 4,
+      floors: [sampleFloor],
+    })
+    const indoorSource = new ClientWorldSceneSource(
+      () => ({
+        tick: 1,
+        actId: 1,
+        levelId: 37,
+        playerSubX: 10,
+        playerSubY: 10,
+        ambient: null,
+        levelView: indoorLevelView,
+        neighbourLevelViews: [],
+        units: [],
+      }),
+      '1424x800',
+    )
+    const indoorSnapshot = indoorSource.buildFrameSnapshot(240)
+    const indoorOutOfBoundsQuads = indoorSnapshot.floorQuads.filter(
+      (q) => q.cellX < 0 || q.cellX >= 4 || q.cellY < 0 || q.cellY >= 4,
+    )
+    expect(indoorOutOfBoundsQuads).toHaveLength(0)
   })
 })
 

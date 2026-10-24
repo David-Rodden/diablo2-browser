@@ -7,7 +7,13 @@ import type { CharacterClassCode } from '../../../common/units/classes.ts'
 import { requireTbl } from '../../i18n/lang.ts'
 import { CANONICAL_CHI_TBL_DICT, CANONICAL_ENG_TBL_DICT } from '../../../common/data/canonical-tbl-strings.ts'
 import { CANONICAL_ELITE_MODIFIERS, FIXED_UNIQUE_BOSS_HCIDX_SET, monsterDisplayName, rollUniqueMonsterNameKeys } from '../../../common/units/monsters-data.ts'
-import { getSocketableInfo, isJewelCode } from '../../../common/items/gems-data.ts'
+import {
+  getSocketableInfo,
+  isJewelCode,
+  isRuneCode,
+  RUNE_INFO,
+  type RuneInfo,
+} from '../../../common/items/gems-data.ts'
 import { formatItemTooltip } from '../../../common/items/item-tooltip.ts'
 import type { Item } from '../../../common/items/items.ts'
 import { STONE_BOX_BG_FILL } from './panel-layout-constants.ts'
@@ -711,7 +717,21 @@ function localizeStarterTooltipLine(text: string, isEn: boolean): string {
     let zh = text
       .replace(/^带插槽\s*\((\d+)\)$/, '凹槽 ($1)')
       .replace(/^精神\s*\(Spirit\)\s*统盾$/, '精神')
-      .replace(/\s*\(([A-Za-z]+)\s+符文\)$/, '符文')
+      .replace(/^(.*?)\s*\(([A-Za-z]+)\s+(?:符文|Rune)\)$/i, (_m, prefix: string, letter: string) => {
+        const cleanPrefix = prefix.trim()
+        if (cleanPrefix && cleanPrefix !== '符文') {
+          return cleanPrefix.endsWith('符文') ? cleanPrefix : `${cleanPrefix}符文`
+        }
+        const byLetter = Object.values(RUNE_INFO).find(
+          (r) => r.letter.toLowerCase() === letter.trim().toLowerCase(),
+        )
+        return byLetter ? `${byLetter.nameZh}符文` : '符文'
+      })
+      .replace(/^符文\s*\(#(\d+)\)$/, (_m, numStr: string) => {
+        const num = Number(numStr)
+        const byNum = Object.values(RUNE_INFO).find((r) => r.num === num)
+        return byNum ? `${byNum.nameZh}符文` : '符文'
+      })
       .replace(/\s*\(Rainbow Facet\s*-\s*([^)]+)\)$/, ' ($1)')
       .replace(/\s*\/\s*每次命中偷取生命\s*\([^)]+\)$/, '')
       .replace(/\s*\/\s*防止怪物自疗\s*\([^)]+\)$/, '')
@@ -1177,7 +1197,8 @@ export function drawItemTooltipImpl(
 
   // Header: Title, Runeword Runes line, Base item name
   const socketableInfo = item.code ? getSocketableInfo(item.code) : undefined
-  const unid = isUiItemUnidentified(item)
+  const runeInfo = isRuneCode(rawItemCode) ? (socketableInfo as RuneInfo | undefined) : undefined
+  const unid = !socketableInfo && isUiItemUnidentified(item)
   if (unid) {
     const maskedBaseHeader = isEn
       ? item.baseNameEn ||
@@ -1188,9 +1209,34 @@ export function drawItemTooltipImpl(
         resolveHeaderZh(item.nameZh)
     lines.push({ text: maskedBaseHeader + upgradeSuffix(upgrade), color: titleColor, font: 'font16' })
   } else {
-    const headerText = isEn
+    let headerText = isEn
       ? (item.name && !/[\u4e00-\u9fff]/.test(item.name) ? item.name : localizeStarterTooltipLine(item.nameZh, true))
       : resolveHeaderZh(item.nameZh)
+    if (runeInfo) {
+      const strippedHeader = headerText.replace(/\s*\(#\d+\)\s*$/, '').trim()
+      if (isEn) {
+        headerText =
+          !strippedHeader || strippedHeader === 'Rune' || /[\u4e00-\u9fff]/.test(strippedHeader)
+            ? runeInfo.nameEn
+            : strippedHeader
+      } else {
+        const canonicalRuneZh = `${runeInfo.nameZh}符文`
+        if (
+          !strippedHeader ||
+          strippedHeader === '符文' ||
+          strippedHeader === runeInfo.nameZh ||
+          /^符文[:：]/.test(strippedHeader) ||
+          !/[\u4e00-\u9fff]/.test(strippedHeader)
+        ) {
+          headerText = canonicalRuneZh
+        } else {
+          headerText = strippedHeader.endsWith('符文') ? strippedHeader : `${strippedHeader}符文`
+        }
+      }
+      if (this.showRuneNumbers) {
+        headerText = `${headerText} (#${runeInfo.num})`
+      }
+    }
     lines.push({ text: headerText + upgradeSuffix(upgrade), color: titleColor, font: 'font16' })
     if (item.runewordRunes) {
       lines.push({ text: item.runewordRunes, color: 'gold', font: 'font16' })
@@ -1226,10 +1272,66 @@ export function drawItemTooltipImpl(
     }
   }
 
-  const playerCtx = this.getEffectivePlayerContext()
+  const basePlayerCtx = this.getEffectivePlayerContext()
   const rawItemForLive = item.rawItem as
-    | (Item & { charLevel?: number; playerLevel?: number })
+    | (Item & {
+        charLevel?: number
+        playerLevel?: number
+        container?: string
+        equippedSetIds?: Iterable<string | number>
+        wornSetPieceCount?: number
+      })
     | undefined
+  const isMercOwnedItem = Boolean(
+    this.hoveredMercItem?.item === item ||
+      (this.hoveredMercItem?.item?.id !== undefined &&
+        item.id !== undefined &&
+        String(this.hoveredMercItem.item.id) === String(item.id)) ||
+      rawItemForLive?.container === 'merc' ||
+      (this.merc?.equipped &&
+        Object.values(
+          this.merc.equipped as Record<string, UiInventoryItem | null | undefined>,
+        ).some(
+          (eq) =>
+            eq === item ||
+            (eq?.id !== undefined && item.id !== undefined && String(eq.id) === String(item.id)),
+        )) ||
+      (this.merc?.equipment &&
+        Object.values(
+          this.merc.equipment as Record<string, UiInventoryItem | null | undefined>,
+        ).some(
+          (eq) =>
+            eq === item ||
+            (eq?.id !== undefined && item.id !== undefined && String(eq.id) === String(item.id)),
+        )),
+  )
+  const mercAny = this.merc as
+    | {
+        level?: number
+        str?: number
+        strength?: number
+        dex?: number
+        dexterity?: number
+        classId?: number
+        hcIdx?: number
+      }
+    | null
+    | undefined
+  const mercClassNum = Number(mercAny?.classId ?? mercAny?.hcIdx ?? 0)
+  const playerCtx: {
+    str: number
+    dex: number
+    level: number
+    classCode?: CharacterClassCode | undefined
+  } =
+    isMercOwnedItem && mercAny
+      ? {
+          level: Math.max(1, Math.trunc(Number(mercAny.level ?? basePlayerCtx.level ?? 1) || 1)),
+          str: Math.trunc(Number(mercAny.str ?? mercAny.strength ?? 0) || 0),
+          dex: Math.trunc(Number(mercAny.dex ?? mercAny.dexterity ?? 0) || 0),
+          classCode: mercClassNum === 560 || mercClassNum === 561 ? 'bar' : undefined,
+        }
+      : basePlayerCtx
   const hasPerLevelProps =
     !unid &&
     Boolean(
@@ -1512,7 +1614,10 @@ export function drawItemTooltipImpl(
     }
     if (activeSetPieces) {
       activeSetPieces.forEach((piece, pieceIdx) => {
-        const pieceColor: D2ColorCode = item.setPieceColors?.[pieceIdx] ?? 'red'
+        const pieceColor: D2ColorCode =
+          (livePerLevelTooltip?.setPieceColors?.[pieceIdx] as D2ColorCode | undefined) ??
+          item.setPieceColors?.[pieceIdx] ??
+          'red'
         lines.push({
           text: localizeStarterTooltipLine(piece, isEn),
           color: pieceColor,

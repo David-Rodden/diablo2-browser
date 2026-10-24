@@ -37,6 +37,7 @@ export const QUEST_FLAG_COMPLETED_113C = 0x0001 // reward granted
 export const QUEST_FLAG_REWARD_PENDING_113C = 0x0002 // objective done, NPC reward pending
 export const QUEST_FLAG_STARTED_113C = 0x0004 // quest accepted
 export const QUEST_FLAG_PRIMARY_GOAL_DONE_113C = 0x1000
+export const QUEST_FLAG_COMPLETED_NOW_113C = 0x2000 // QFLAG_COMPLETEDNOW (bit 13: reward consumed in session)
 
 export function questWordIndex113c(questId: string): number | undefined {
   return QUEST_INFO_BY_ID_113C.get(questId)?.wordIndex

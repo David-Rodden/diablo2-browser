@@ -143,6 +143,7 @@ export interface LocalAreaPresetObject {
   readonly mode?: number | undefined
   readonly isWaypoint?: boolean | undefined
   readonly isShrine?: boolean | undefined
+  readonly isSparkling?: boolean | undefined
   readonly destAreaId?: number | undefined
 }
 

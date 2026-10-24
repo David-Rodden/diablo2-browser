@@ -707,7 +707,9 @@ describe('Milestone M2: Necromancer Poison and Bone Spells (1.13c Ground Truth)'
       const activeBefore = engine.getActiveMissiles()
       expect(activeBefore.length).toBe(1)
       const spear = activeBefore[0]!
-      expect(spear.canPierce).toBe(true)
+      // Bone Spear: Missiles.txt Pierce empty, CollideKill = 0 -> never removed by a unit hit (Issue #1420).
+      expect(spear.canPierce).toBe(false)
+      expect(spear.record.collideKill).toBe(false)
 
       // Step simulation until missile reaches mon_1 and continues to mon_2
       for (let t = 1; t <= 10; t++) {

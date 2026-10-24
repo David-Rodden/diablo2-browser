@@ -14,6 +14,7 @@
 import { CursorController } from '../ui/cursor.ts'
 import { syncCrispBackingStore } from '../view/crisp-scale.ts'
 import type { FontAtlasMeta } from '../ui/font.ts'
+import { SharedAssetPool } from '../multibox/shared-asset-pool.ts'
 import {
   CAMPFIRE_CLASS_ORDER,
   CAMPFIRE_FLAME_CONTROL_SPEC,
@@ -583,28 +584,23 @@ export class FrontendRenderer {
     )
   }
 
-  private loadImage(url: string, key: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const img = new Image()
-      img.onload = () => {
-        this.images.set(key, img)
-        resolve()
-      }
-      img.onerror = () => reject(new Error(`Failed to load frontend image: ${url}`))
-      img.src = url
-    })
+  private async loadImage(url: string, key: string): Promise<void> {
+    const img = await SharedAssetPool.getGlobal().loadImage(url)
+    if (!img) {
+      throw new Error(`Failed to load frontend image: ${url}`)
+    }
+    this.images.set(key, img)
   }
 
   async load(baseUrl = '/ui/frontend'): Promise<void> {
-    const [manifestRes, fontRes] = await Promise.all([
-      fetch(`${baseUrl}/manifest.json`),
-      fetch(`${baseUrl}/fonts/metrics.json`),
+    const pool = SharedAssetPool.getGlobal()
+    const [manifest, fontMetas] = await Promise.all([
+      pool.fetchJson<FrontendManifest>(`${baseUrl}/manifest.json`),
+      pool.fetchJson<Record<string, FontAtlasMeta>>(`${baseUrl}/fonts/metrics.json`),
     ])
-    if (!manifestRes.ok) throw new Error(`Failed to fetch ${baseUrl}/manifest.json`)
-    if (!fontRes.ok) throw new Error(`Failed to fetch ${baseUrl}/fonts/metrics.json`)
 
-    this.manifest = (await manifestRes.json()) as FrontendManifest
-    this.fontMetas = (await fontRes.json()) as Record<string, FontAtlasMeta>
+    this.manifest = manifest
+    this.fontMetas = fontMetas
 
     // Synchronize frame counts, playback rates, and frame-0 bounds from manifest into flow state; fail fast if missing.
     for (const id of CAMPFIRE_CLASS_ORDER) {
@@ -709,15 +705,11 @@ export class FrontendRenderer {
 
     // Load full 34-frame cursor atlas (/ui/cursor.png, 256x176: protate, ohand, orotate, buysell)
     promises.push(
-      new Promise<void>((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => {
-          this.cursorAtlas = img
-          resolve()
+      pool.loadImage('/ui/cursor.png').then((img) => {
+        if (!img) {
+          throw new Error('Failed to load frontend cursor atlas: /ui/cursor.png')
         }
-        img.onerror = () =>
-          reject(new Error('Failed to load frontend cursor atlas: /ui/cursor.png'))
-        img.src = '/ui/cursor.png'
+        this.cursorAtlas = img
       }),
     )
 

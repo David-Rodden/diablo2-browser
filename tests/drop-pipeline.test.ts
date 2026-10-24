@@ -155,6 +155,7 @@ describe('TreasureClass Drop Pipeline (Issue #107)', () => {
         difficulty: 'normal',
         gamePlayers: 1,
         partyPlayers: 1,
+        monsterRng: 12345,
       })
 
       // Drops may be empty due to NoDrop, or contain items/gold

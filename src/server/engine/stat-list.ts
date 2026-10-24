@@ -330,6 +330,45 @@ export class UnitStatList {
           total += 10 + Math.trunc((50 * Math.trunc((110 * eff263) / (eff263 + 6))) / 100)
         }
       }
+    } else if (key === 'passive_dodge') {
+      const base13 = this.getBaseSkillLevel(13)
+      const single13 = this.bonusSkillLevels.get(13) ?? 0
+      if (
+        total === 0 &&
+        (base13 > 0 || single13 > 0) &&
+        !this.modifiers.some(m => m.sourceSkillId === 13 || m.stateName === 'dodge')
+      ) {
+        const eff13 = this.getEffectiveSkillLevel(13)
+        if (eff13 > 0) {
+          total += 10 + Math.trunc((55 * Math.trunc((110 * eff13) / (eff13 + 6))) / 100)
+        }
+      }
+    } else if (key === 'passive_avoid') {
+      const base18 = this.getBaseSkillLevel(18)
+      const single18 = this.bonusSkillLevels.get(18) ?? 0
+      if (
+        total === 0 &&
+        (base18 > 0 || single18 > 0) &&
+        !this.modifiers.some(m => m.sourceSkillId === 18 || m.stateName === 'avoid')
+      ) {
+        const eff18 = this.getEffectiveSkillLevel(18)
+        if (eff18 > 0) {
+          total += 15 + Math.trunc((60 * Math.trunc((110 * eff18) / (eff18 + 6))) / 100)
+        }
+      }
+    } else if (key === 'passive_evade') {
+      const base29 = this.getBaseSkillLevel(29)
+      const single29 = this.bonusSkillLevels.get(29) ?? 0
+      if (
+        total === 0 &&
+        (base29 > 0 || single29 > 0) &&
+        !this.modifiers.some(m => m.sourceSkillId === 29 || m.stateName === 'evade')
+      ) {
+        const eff29 = this.getEffectiveSkillLevel(29)
+        if (eff29 > 0) {
+          total += 10 + Math.trunc((55 * Math.trunc((110 * eff29) / (eff29 + 6))) / 100)
+        }
+      }
     } else if (
       key === 'passive_mastery_melee_th' ||
       key === 'passive_mastery_melee_dmg' ||
@@ -441,11 +480,12 @@ export class UnitStatList {
   }
 
   /**
-   * Helper method to compute effective max resistance for an elemental/poison type.
-   * In 1.13c: base max resistance is 75%, boosted by accrued max resistance (`max{elem}resist`),
-   * and hard-capped between 75% and 95%.
+   * Player/hireling resistance cap for a channel with a max stat.
+   * 1.13c `D2Game.dll` 0x6FCFB457..0x6FCFB46B: `min(95, 75 + stat(max))` where the max stat is
+   * `maxfireresist` (40) / `maxlightresist` (42) / `maxcoldresist` (44) / `maxpoisonresist` (46) /
+   * `maxmagicresist` (38). There is no lower clamp on the cap.
    */
-  getEffectiveMaxResistance(elemType: 'fire' | 'cold' | 'ltng' | 'pois'): number {
+  getEffectiveMaxResistance(elemType: 'fire' | 'cold' | 'ltng' | 'pois' | 'mag'): number {
     const statKey =
       elemType === 'fire'
         ? 'maxfireresist'
@@ -453,9 +493,11 @@ export class UnitStatList {
           ? 'maxcoldresist'
           : elemType === 'ltng'
             ? 'maxlightresist'
-            : 'maxpoisonresist'
-    const bonus = this.getAccruedStat(statKey)
-    return Math.max(75, Math.min(95, 75 + bonus))
+            : elemType === 'pois'
+              ? 'maxpoisonresist'
+              : 'maxmagicresist'
+    const bonus = Math.trunc(this.getAccruedStat(statKey))
+    return Math.min(95, 75 + bonus)
   }
 
   /**

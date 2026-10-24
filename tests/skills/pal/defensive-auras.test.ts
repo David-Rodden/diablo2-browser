@@ -101,8 +101,9 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
         statList: statsAlly,
         stateBus: busAlly,
         unitType: 'party',
-        x: 50,
-        y: 25, // within range in 2:1 isometric space
+        // #1410: sub-tile Euclidean radius (Prayer slvl 10 ln12 = 34): 10² + 5² <= 34²
+        x: 10,
+        y: 5,
       }
 
       const aura = scanner.setActiveAura(caster, 99, 10, 0)!
@@ -195,6 +196,8 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
         statList: stats,
         stateBus: new StateBus(stats, registry),
         unitType: 'player',
+        x: 0,
+        y: 0,
       }
       const statsAlly = new UnitStatList(registry)
       const ally: CombatUnitContext = {
@@ -203,6 +206,8 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
         statList: statsAlly,
         stateBus: new StateBus(statsAlly, registry),
         unitType: 'party',
+        x: 3,
+        y: 0,
       }
       const aura = scanner.setActiveAura(paladin, 100, 20, 0)!
       scanner.pulseAura(aura, 0, [paladin, ally], [])
@@ -491,10 +496,11 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
       }
 
       const corpses = [
-        { id: 'corpse_1', consumed: false, x: 20, y: 10 }, // inside 16 subtiles (~213px)
-        { id: 'corpse_2', consumed: false, x: 50, y: 25 }, // inside
-        { id: 'corpse_3', consumed: true, x: 10, y: 5 },   // already consumed
-        { id: 'corpse_4', consumed: false, x: 300, y: 150 }, // outside range
+        // #1410: Redemption ln12 = 16 sub-tiles, dx² + dy² <= 256
+        { id: 'corpse_1', consumed: false, x: 10, y: 5 }, // inside (125)
+        { id: 'corpse_2', consumed: false, x: 12, y: 10 }, // inside (244)
+        { id: 'corpse_3', consumed: true, x: 5, y: 3 },   // already consumed
+        { id: 'corpse_4', consumed: false, x: 12, y: 11 }, // outside range (265)
       ]
 
       const aura = scanner.setActiveAura(paladin, 124, 10, 0)! // slvl 10: 70 Life/Mana

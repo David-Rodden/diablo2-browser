@@ -8,6 +8,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#0a0806" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/src/client/theme/index.css" />
     <title>Diablo II: Lord of Destruction · Online Client (play.html)</title>
     <script>
       window.__d2SkipAutoBoot = true;
@@ -420,6 +421,7 @@
         position: relative;
       }
 
+      .play-stage-wrapper,
       #play-stage-wrapper {
         flex: 1 1 auto;
         width: 100%;
@@ -437,6 +439,7 @@
         -webkit-user-drag: none;
       }
 
+      .play-stage,
       #play-stage {
         position: relative;
         width: 100%;
@@ -452,11 +455,14 @@
         cursor: none;
       }
 
+      .play-stage,
+      .play-stage *,
       #play-stage,
       #play-stage * {
         cursor: none !important;
       }
 
+      .bnet-shell,
       #bnet-shell {
         position: absolute;
         inset: 0;
@@ -468,6 +474,7 @@
         cursor: none;
       }
 
+      .bnet-canvas,
       #bnet-canvas {
         /* The 800x600 front-end stays 4:3 (pillarboxed) when the stage is sized for a 16:9 profile. */
         height: 100%;
@@ -479,6 +486,7 @@
         cursor: none;
       }
 
+      .play-view-canvas,
       #view {
         position: absolute;
         inset: 0;
@@ -491,6 +499,7 @@
         cursor: none;
       }
 
+      .d2-hud-canvas,
       #d2-hud-canvas {
         position: absolute;
         inset: 0;
@@ -505,6 +514,7 @@
 
       /* #940 R3: dedicated animated-cursor layer above the HUD so cursor frames
          never force a full HUD repaint; hidden whenever the in-game view is left. */
+      .d2-cursor-canvas,
       #d2-cursor-canvas {
         position: absolute;
         inset: 0;
@@ -517,6 +527,7 @@
         cursor: none;
       }
 
+      .play-disconnect-banner,
       #play-disconnect-banner {
         position: absolute;
         top: 14px;
@@ -533,10 +544,12 @@
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
       }
 
+      .play-disconnect-banner[hidden],
       #play-disconnect-banner[hidden] {
         display: none !important;
       }
 
+      .d2-boot-loading,
       #d2-boot-loading {
         position: absolute;
         inset: 0;
@@ -550,6 +563,7 @@
         padding: 24px;
       }
 
+      .d2-boot-loading[hidden],
       #d2-boot-loading[hidden] {
         display: none !important;
       }
@@ -585,7 +599,8 @@
         text-align: center;
       }
 
-      #d2-boot-progress-bar {
+      #d2-boot-progress-bar,
+      .d2-boot-bar-bg {
         width: 100%;
         height: 22px;
         background: #070504;
@@ -595,7 +610,8 @@
         overflow: hidden;
       }
 
-      #d2-boot-progress-fill {
+      #d2-boot-progress-fill,
+      .d2-boot-bar-fill {
         width: 0%;
         height: 100%;
         background: linear-gradient(90deg, #56100c 0%, #9b2217 55%, #d68a28 100%);
@@ -603,7 +619,8 @@
         transition: width 60ms linear;
       }
 
-      #d2-boot-progress-percent {
+      #d2-boot-progress-percent,
+      .d2-boot-pct {
         position: absolute;
         inset: 0;
         display: flex;
@@ -781,6 +798,7 @@
         <button id="d2-toolbar-plugins-btn" type="button" class="d2-toolbar__btn" disabled><span class="d2-toolbar__btn-icon" aria-hidden="true"><svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" focusable="false" aria-hidden="true"><path d="M4 5h1.5v-.5a1.5 1.5 0 0 1 3 0V5H10a1 1 0 0 1 1 1v1.5h.5a1.5 1.5 0 0 1 0 3H11V12a1 1 0 0 1-1 1H8.5v-.4a1.5 1.5 0 0 0-3 0V13H4a1 1 0 0 1-1-1v-1.5h.4a1.5 1.5 0 0 0 0-3H3V6a1 1 0 0 1 1-1Z"/></svg></span><span class="d2-toolbar__btn-label">Plugins</span></button>
         <div id="d2-toolbar-plugin-slot" class="d2-toolbar__group"></div>
         <div id="d2-toolbar-right" class="d2-toolbar__right">
+          <div id="d2-multibox-slot" class="d2-toolbar__group d2-toolbar__multibox-slot" hidden></div>
           <div class="d2-toolbar__group">
             <div id="d2-toolbar-status" class="d2-toolbar__status">
               <span id="d2-toolbar-status-dot" class="d2-toolbar__status-dot d2-toolbar__status-dot--disconnected"></span>
@@ -835,6 +853,13 @@
                   <button id="d2-toolbar-mute-btn" type="button" class="d2-toolbar__btn" aria-pressed="false"><span class="d2-toolbar__btn-icon" aria-hidden="true"><svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M2.5 6.2h2.6L8.5 3.5v9l-3.4-2.7H2.5v-3.6Z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></svg></span><span class="d2-toolbar__btn-label">Mute</span></button>
                   <input id="d2-toolbar-volume-slider" type="range" min="0" max="100" step="1" value="80" class="d2-toolbar__slider" />
                   <span id="d2-toolbar-volume-value" class="d2-toolbar__volume-value">80%</span>
+                </div>
+              </div>
+              <div id="d2-config-multibox-row" class="d2-toolbar-modal__row">
+                <span id="d2-config-multibox-label" class="d2-toolbar-modal__row-label">Single-Tab Multibox</span>
+                <div class="d2-toolbar-modal__row-control">
+                  <button id="d2-toolbar-multibox-btn" type="button" class="d2-toolbar__btn" aria-pressed="false">Off (Single)</button>
+                  <button id="d2-toolbar-multibox-alert-btn" type="button" class="d2-toolbar__btn d2-toolbar__btn--active" aria-pressed="true">Bg Alert: On</button>
                 </div>
               </div>
               <div class="d2-toolbar-modal__row">

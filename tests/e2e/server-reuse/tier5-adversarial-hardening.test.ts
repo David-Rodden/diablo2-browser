@@ -646,6 +646,7 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
       deathTicks: 4,
       animMode: 'dt',
       dropRolled: false,
+      dwInitSeed: 0x13572468,
     }
     const triggeredDrops: Array<readonly unknown[]> = []
     const queuedPending = Server.queueMonsterDeathDrop113c(

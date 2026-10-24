@@ -12,6 +12,7 @@
 import type { D2Table } from '../world/acts.ts'
 import { parseTable } from '../world/acts.ts'
 import type { MountedArchives } from '../mpq/mount.ts'
+import { CANONICAL_ENG_TBL_DICT } from '../data/canonical-tbl-strings.ts'
 
 /** Single bonus modifier with property code, optional parameter, and min/max range. */
 export interface SetBonusProp {
@@ -160,6 +161,7 @@ export function parseParam(raw: string | undefined): string | number | undefined
 
 function createSetItemTable(entries: SetItem[], table?: D2Table): SetItemTable {
   const byIndex = new Map<string, SetItem>()
+  const byDisplayName = new Map<string, SetItem>()
   const byId = new Map<number, SetItem>()
   const bySet = new Map<string, SetItem[]>()
 
@@ -169,6 +171,13 @@ function createSetItemTable(entries: SetItem[], table?: D2Table): SetItemTable {
     byIndex.set(entry.index.trim(), entry)
     byIndex.set(entry.index.toLowerCase(), entry)
     byIndex.set(entry.index.trim().toLowerCase(), entry)
+    const tblEn = CANONICAL_ENG_TBL_DICT[entry.index] ?? CANONICAL_ENG_TBL_DICT[entry.index.trim()]
+    if (tblEn) {
+      byDisplayName.set(tblEn, entry)
+      byDisplayName.set(tblEn.trim(), entry)
+      byDisplayName.set(tblEn.toLowerCase(), entry)
+      byDisplayName.set(tblEn.trim().toLowerCase(), entry)
+    }
 
     const setKey = entry.set.trim().toLowerCase()
     let setList = bySet.get(setKey)
@@ -185,9 +194,16 @@ function createSetItemTable(entries: SetItem[], table?: D2Table): SetItemTable {
     byIndex,
     byId,
     table,
-    get: (key: string | number) =>
-      typeof key === 'number' ? byId.get(key) : byIndex.get(typeof key === 'string' ? key.trim().toLowerCase() : key),
-    getByIndex: (index: string) => byIndex.get(index) ?? byIndex.get(index.trim().toLowerCase()),
+    get: (key: string | number) => {
+      if (typeof key === 'number') return byId.get(key)
+      const norm = typeof key === 'string' ? key.trim().toLowerCase() : key
+      return byIndex.get(norm) ?? byDisplayName.get(norm)
+    },
+    getByIndex: (index: string) =>
+      byIndex.get(index) ??
+      byIndex.get(index.trim().toLowerCase()) ??
+      byDisplayName.get(index) ??
+      byDisplayName.get(index.trim().toLowerCase()),
     getById: (id: number) => byId.get(id),
     getBySet: (setName: string) => bySet.get(setName.trim().toLowerCase()) ?? [],
     [Symbol.iterator]: () => entries[Symbol.iterator](),
