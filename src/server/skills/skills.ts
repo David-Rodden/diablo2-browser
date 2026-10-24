@@ -20,6 +20,7 @@
  * where the bands can replace it.
  */
 import type { Rng } from '../../common/rng/d2-rng.ts'
+import { getSharedDataRegistry } from '../../common/data/data-registry.ts'
 import { MISSILE_PIERCE_ROLL_CAP, rollMissilePierceIdx } from '../engine/missile-pierce.ts'
 import type { CharacterClassCode } from '../../common/units/classes.ts'
 import type { CombatPlayer } from '../../common/units/unit-types.ts'
@@ -155,6 +156,8 @@ import {
   type DamageRange,
   type PoisonDamageSpec,
   type SynergyState,
+  getMissileCollideEntry113c,
+  stepMissileSubtileRay113c,
 } from '../engine/missile-engine.ts'
 export {
   calculateFrostNovaDamage,
@@ -284,6 +287,8 @@ export {
   type DamageRange,
   type PoisonDamageSpec,
   type SynergyState,
+  getMissileCollideEntry113c,
+  stepMissileSubtileRay113c,
 } from '../engine/missile-engine.ts'
 import {
   BLIZZARD_CIRCLE_X,
@@ -766,7 +771,7 @@ export function tickProjectiles(
   targets: readonly ProjectileTarget[],
   options: {
     readonly overlap: (x: number, y: number) => number
-    readonly isMissileBlocked?: ((x: number, y: number, fromX?: number, fromY?: number) => boolean) | undefined
+    readonly isMissileBlocked?: ((x: number, y: number, fromX?: number, fromY?: number, mask?: number) => boolean) | undefined
     readonly radius?: number
     readonly nextDelayByTarget?: Map<number | string, number> | Map<number, number> | undefined
     readonly currentTick?: number | undefined
@@ -1577,24 +1582,25 @@ export function tickProjectiles(
       ttl: projectile.ttl - 1,
     }
 
-    // Walls first: a projectile dies against missile barriers (solid walls, closed doors)
+    // Walls first: a projectile dies against missile barriers (solid walls, closed doors) per 1.13c CollideType (0x6FD2D928)
+    const missileRow = projectile.missileType ? getSharedDataRegistry().getMissileByName(projectile.missileType) : undefined
+    const collideEntry = getMissileCollideEntry113c(missileRow?.collideType ?? 3)
+    const terrainMask = collideEntry.terrainMask
     const isAirborne =
       (projectile.missileType === 'meteor' || projectile.missileType === 'meteortail' || projectile.missileType === 'armageddonrock') &&
       altitude !== undefined &&
       altitude > 0
     let blockedByTerrain = false
-    if (!isAirborne) {
-      const moveDist = Math.hypot(x - projectile.x, y - projectile.y)
-      const stepSize = 8
-      const steps = Math.max(1, Math.ceil(moveDist / stepSize))
+    if (!isAirborne && terrainMask !== 0) {
+      const raySteps = stepMissileSubtileRay113c(projectile.x, projectile.y, x, y, 20)
       let checkPrevX = projectile.x
       let checkPrevY = projectile.y
-      for (let s = 1; s <= steps; s++) {
-        const t = s / steps
-        const curX = projectile.x + (x - projectile.x) * t
-        const curY = projectile.y + (y - projectile.y) * t
+      for (let s = 1; s < raySteps.length; s++) {
+        const pt = raySteps[s]!
+        const curX = pt.x
+        const curY = pt.y
         if (options.isMissileBlocked !== undefined) {
-          if (options.isMissileBlocked(curX, curY, checkPrevX, checkPrevY)) {
+          if (options.isMissileBlocked(curX, curY, checkPrevX, checkPrevY, terrainMask)) {
             blockedByTerrain = true
             break
           }
@@ -1846,6 +1852,8 @@ export function tickProjectiles(
 
     let struck = false
     const isHarmlessEmitter =
+      collideEntry.callbackVa === 0 ||
+      collideEntry.collideType === 7 ||
       projectile.missileType === 'frozenorb' ||
       projectile.missileType === 'blizzardcenter' ||
       projectile.missileType === 'meteorcenter' ||
@@ -1868,10 +1876,22 @@ export function tickProjectiles(
       projectile.missileType === 'lightninghit' ||
       isTurretEmitter
     if (!isHarmlessEmitter) {
+      const collideFriend = Boolean(missileRow?.collideFriend || (projectile as { isFriendlyHeal?: boolean }).isFriendlyHeal)
       for (const target of targets) {
         if (!target.alive) continue
         if (hitTargets.has(target.index)) continue // already struck by piercing projectile
-        if (projectile.missileType === 'blaze' && projectile.fromPlayer && (target as any).isPlayer) {
+        const tgtAny = target as { isPlayer?: boolean; isMonster?: boolean; isAlly?: boolean }
+        const targetIsPlayerOrAlly = Boolean(tgtAny.isPlayer || tgtAny.isAlly)
+        if (collideEntry.unitTypeMask === 0x0080 && tgtAny.isPlayer === false && !tgtAny.isAlly) {
+          continue
+        }
+        if (collideEntry.unitTypeMask === 0x0100 && targetIsPlayerOrAlly) {
+          continue
+        }
+        if (projectile.fromPlayer !== false && targetIsPlayerOrAlly && !collideFriend) {
+          continue
+        }
+        if (projectile.fromPlayer === false && (tgtAny.isMonster === true || tgtAny.isPlayer === false) && !collideFriend) {
           continue
         }
         const isGroundPatch =
@@ -5345,7 +5365,7 @@ function castSceneSkill113c(
       spacing: 24,
       isBlocked: (x, y) => {
         if (runtime?.grid) {
-          return isMissileBlockedAt(runtime.grid, x, y)
+          return isMissileBlockedAt(runtime.grid, x, y, 0x05)
         }
         if ((runtime as any)?.walkable) {
           return !(runtime as any).walkable.isWalkable(x, y)
