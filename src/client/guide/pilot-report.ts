@@ -41,6 +41,8 @@ export function pilotReport(world: ClientWorld, hudManager: HudManager, assists:
     corpses: monsters.filter((unit) => unit.dead).length,
     pets,
     belt: world.containers.belt.size,
+    xp: me.experience,
+    merc: world.merc && { life: world.merc.lifePct, dead: world.merc.isDead },
     gold: me.gold,
     stashGold: me.stashGold,
     cursor: world.containers.cursor?.code.trim() ?? null,
