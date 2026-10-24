@@ -68,6 +68,15 @@ describe('auto-fight toggle', () => {
     expect(s.attacked()).toEqual([902])
   })
 
+  it('goes for the monster that hits hardest before a weaker one a little closer', () => {
+    const s = createSetup()
+    s.spawn(901, 19, 104, 100)
+    s.spawn(902, 131, 108, 100)
+    s.mapper.handleKeyDown({ key: 'E' })
+    s.fightFor(1000, 1000)
+    expect(s.attacked()).toEqual([902])
+  })
+
   it('sticks with its target until it dies, then moves to the next', () => {
     const s = createSetup()
     s.spawn(901, 19, 104, 100)
