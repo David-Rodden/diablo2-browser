@@ -12,6 +12,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
   const world = {
     isDead: false,
     difficulty: 0,
+    npcInteraction: { npcId: null as number | null, window: 'none' },
     waypoints: new Set<number>(),
     areaId: area,
     self,
@@ -21,7 +22,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
   }
   const hudManager = { leftPanel: 'none', worldPanels: { npcMenu: null as unknown, npcSpeech: null, clickNpcMenuOption: vi.fn() }, toasts: { push: vi.fn() }, maxHp: 0, maxMana: 0, belt: { maxRows: 4 } }
-  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), requestQuestData: vi.fn() }
+  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), cancelNpcSession: vi.fn(), requestQuestData: vi.fn() }
   const assists = {
     autoCombatKey: 'E' as string | null,
     pilotKey: 'Y',
@@ -292,10 +293,11 @@ describe('autopilot', () => {
   })
 
   it('backs off and tries a stuck waypoint again, then hands control back instead of skipping goals', () => {
-    const { pilot, assists, hudManager, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    const { pilot, assists, hudManager, hudModel, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
     for (let i = 0; i < 30; i++) tick(700)
     expect(assists.stepTo).toHaveBeenCalled()
+    expect(hudModel.cancelNpcSession).toHaveBeenCalled()
     expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(16)
     expect(guide.skip).not.toHaveBeenCalled()
     expect(pilot.active).toBe(false)
