@@ -553,11 +553,11 @@ export class Autopilot {
   private pursue(plan: GuidePlan, nowMs: number): void {
     const { world, assists } = this.host
     const { target, step } = plan
-    this.say(plan.hint)
     const door = plan.doors.map((id) => world.getUnit('object', id)).find((unit): unit is ClientUnit => unit !== undefined && isClosedDoor(unit) && distance(unit, world.self) <= REACH + 1)
+    if (!door && target && !this.host.guide.reaches(world.self) && this.takePad(target, nowMs)) return
+    this.say(plan.hint)
     const unit = target?.unit && world.getUnit(target.unit.kind === 'object' ? 'object' : 'monster', target.unit.id)
     if (door) this.useOnce(door, nowMs)
-    else if (target && !this.host.guide.reaches(world.self) && this.takePad(target, nowMs)) return
     else if (!target) this.explore(nowMs, plan.hint)
     else if (step?.kind === 'waypoint' && unit) {
       this.waypointTo = step.level
