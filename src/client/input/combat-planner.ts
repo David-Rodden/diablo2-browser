@@ -23,6 +23,7 @@ export interface CombatSelf {
   readonly petClasses: readonly number[]
   readonly lifeFraction: number
   readonly manaFraction: number
+  readonly saveManaBelow?: number | undefined
   readonly corpsesNear: number
 }
 
@@ -81,7 +82,7 @@ export function attackSkill(self: CombatSelf, target: CombatTarget, canCast: Can
   const damage = (skillId: number) => Math.max(0, 1 - (target.resists[elementOf(skillId)] ?? 0) / 100)
   const tier = (skillId: number) => ((SKILLS_BY_ID[skillId]?.delay ?? 0) > 0 ? 0 : (SKILLS_BY_ID[skillId]?.reqlevel ?? 0) / 100)
   const score = (skillId: number) => (levelOf(self, skillId) * (self.mainSkills.includes(skillId) ? MAIN_SKILL_WEIGHT : 1) + tier(skillId)) * damage(skillId)
-  const thrifty = !target.tough && (self.manaFraction < SAVE_MANA_BELOW || (target.lifeFraction < WEAK_LIFE && target.distance <= CLOSE_REACH))
+  const thrifty = !target.tough && (self.manaFraction < (self.saveManaBelow ?? SAVE_MANA_BELOW) || (target.lifeFraction < WEAK_LIFE && target.distance <= CLOSE_REACH))
   const costly = (skillId: number) => thrifty && ATTACKS.get(skillId) !== 'melee' && (SKILLS_BY_ID[skillId]?.mana ?? 0) > 0
   const chosen = [...ATTACKS.keys()].filter((id) => levelOf(self, id) > 0 && score(id) > 0 && !costly(id) && canCast(id)).sort((a, b) => score(b) - score(a))[0]
   return chosen === undefined ? { skillId: BASIC_ATTACK, hand: 'left', reach: 'melee', on: 'target' } : { skillId: chosen, hand: handOf(chosen), reach: ATTACKS.get(chosen)!, on: 'target' }
