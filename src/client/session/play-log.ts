@@ -7,7 +7,7 @@ export class PlayLog {
   private lines: PlayLogDetail[] = []
   private lastSample = Number.NEGATIVE_INFINITY
   private lastFlush = Number.NEGATIVE_INFINITY
-  readonly session = `play-${new Date().toISOString().replace(/[:.]/g, '-')}`
+  readonly session = `play-${new Date().toISOString().replace(/[:.]/g, '-')}-${Math.random().toString(36).slice(2, 6)}`
 
   constructor(
     private readonly send: (body: string) => void,
