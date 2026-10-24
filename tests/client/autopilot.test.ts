@@ -635,6 +635,17 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
   })
 
+  it('explores from a quest spot it cannot get any closer to, and keeps exploring from there', () => {
+    const { world, view, guide, assists, tick } = setup({ hint: 'Kill every monster in the Den', target: { x: 130, y: 100, label: 'Corpsefire' } })
+    for (let y = 0; y < 400; y++) view.walkable.fill(0, y * 400 + 114, y * 400 + 140)
+    world.self.x = 112
+    Object.assign(assists, { moving: false })
+    for (let i = 0; i < 8; i++) tick(700)
+    expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+    tick(700)
+    expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+  })
+
   it('pulls the sewer lever before taking the stairs it opens', () => {
     const { units, assists, guide, tick } = setup({ hint: 'Enter Kurast Sewers Level 2', target: { x: 110, y: 100, label: 'Kurast Sewers Level 2' }, step: { kind: 'exit', level: 93 } })
     units.push(unit({ id: 90, unitType: 'object', classId: 366, x: 110, y: 100, mode: 0 }), unit({ id: 91, unitType: 'object', classId: 367, x: 104, y: 100, mode: 0 }))

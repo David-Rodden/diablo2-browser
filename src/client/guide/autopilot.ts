@@ -68,6 +68,7 @@ const TELEPORT_MISSES = 3
 const TELEPORT_OFF_MS = 60_000
 const REACH = 4
 const ARRIVED = 8
+const SPOT_NEAR = 20
 const INTERACT_REACH = 14
 const QUEST_FOCUS = 25
 const LOOT_SETTLE_MS = 700
@@ -252,6 +253,7 @@ export class Autopilot {
   private sheathed: number | null = null
   private gearRestUntil = Number.NEGATIVE_INFINITY
   private rotatedAt = Number.NEGATIVE_INFINITY
+  private reachedSpot: string | null = null
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -624,7 +626,7 @@ export class Autopilot {
     else if (unit && ROTATE.has(unit.classId)) this.rotate(unit, nowMs)
     else if (unit && target.unit.kind === 'object') this.reachThen(target, nowMs, () => this.wieldFor(unit) || this.useOnce(unit, nowMs))
     else if (step?.kind === 'exit') this.exitThrough(target, nowMs)
-    else if (distance(target, world.self) <= ARRIVED) this.explore(nowMs, plan.hint)
+    else if (this.arrivedAt(target)) this.explore(nowMs, plan.hint)
     else this.walkRoute(nowMs)
   }
 
@@ -639,6 +641,14 @@ export class Autopilot {
       this.rotatedAt = nowMs
       this.useOnce(next, nowMs)
     }
+  }
+
+  private arrivedAt(spot: GuideTarget): boolean {
+    const headway = this.headway
+    const key = `${this.host.world.areaId}:${Math.round(spot.x)},${Math.round(spot.y)}`
+    const stuckNear = !spot.unit && headway !== null && headway.tries > 0 && distance(headway.goal, spot) <= HEADWAY_SAME && headway.best <= SPOT_NEAR
+    if (distance(spot, this.host.world.self) <= ARRIVED || stuckNear) this.reachedSpot = key
+    return this.reachedSpot === key
   }
 
   private reachThen(target: GuideTarget, nowMs: number, then: () => void): void {
