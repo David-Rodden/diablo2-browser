@@ -254,6 +254,7 @@ export class Autopilot {
   private gearRestUntil = Number.NEGATIVE_INFINITY
   private rotatedAt = Number.NEGATIVE_INFINITY
   private reachedSpot: string | null = null
+  private reading: Readonly<Record<string, number | null>> = {}
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -937,6 +938,7 @@ export class Autopilot {
     const burst = Math.max(...this.lifeLog.map((entry) => entry.life)) - life
     const retreatAt = Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0))) + this.caution(nowMs)
     const doomedIn = burst > DOOM_MIN_LOSS ? (life * BURST_MS) / burst : Infinity
+    this.reading = { life: Math.round(life * 100) / 100, burst: Math.round(burst * 100) / 100, doomedIn: Number.isFinite(doomedIn) ? Math.round(doomedIn) : null, healing, retreatAt: Math.round(retreatAt * 100) / 100 }
     if (life < retreatAt) return 'Low on life, heading to town'
     if (doomedIn < DOOM_MS) return 'Taking a beating, heading to town'
     if (life < THREAT.doomLife && this.outmatched()) return 'Too dangerous here, heading to town'
@@ -1161,6 +1163,7 @@ export class Autopilot {
   private retreat(why: string, nowMs: number): void {
     const { world, assists } = this.host
     const me = world.self
+    if (this.trip !== 'retreat') this.host.assists.journal?.('retreat', { why, ...this.reading, hostiles: world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= THREAT.near).length })
     if (this.trip !== 'retreat' && !planned(why)) this.retreats = [...this.retreats.filter((entry) => nowMs - entry.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? this.host.world.areaId }]
     Object.assign(this, { trip: 'retreat', retreatWhy: why })
     this.say(why)
