@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { SKILLS_CATALOG } from '../../src/common/data/skills-catalog.ts'
 import { MONSTER_PATH_IDS } from '../../src/common/path/monster-path-data.ts'
 import { STATE_OVERLAY_ROWS_113C } from '../../src/common/skills/skill-state-overlays-113c.ts'
-import { attackSkill, auraSkill, BASIC_ATTACK, raiseSkill, supportSkill, type CombatSelf, type CombatTarget } from '../../src/client/input/combat-planner.ts'
+import { attackSkill, auraSkill, BASIC_ATTACK, hopeless, raiseSkill, supportSkill, type CombatSelf, type CombatTarget } from '../../src/client/input/combat-planner.ts'
 
 const id = (name: string) => SKILLS_CATALOG.find((skill) => skill.name === name)!.id
 const state = (name: string) => STATE_OVERLAY_ROWS_113C.find((row) => row.state === name)!.id
@@ -39,6 +39,16 @@ describe('combat planner', () => {
     expect(attackSkill(teeth, monster(), anything).skillId).toBe(BASIC_ATTACK)
     expect(attackSkill({ ...teeth, saveManaBelow: 0.2 }, monster(), anything).skillId).toBe(id('Teeth'))
     expect(attackSkill({ ...teeth, manaFraction: 0.15, saveManaBelow: 0.2 }, monster(), anything).skillId).toBe(BASIC_ATTACK)
+  })
+
+  it('calls a monster hopeless only when it shrugs off every attack the character has and nothing else can kill it', () => {
+    const fireSorc = character({ 'Fire Bolt': 10 })
+    expect(hopeless(fireSorc, monster({ resists: { fire: 100 } }))).toBe(true)
+    expect(hopeless(fireSorc, monster({ resists: { fire: 75 } }))).toBe(false)
+    expect(hopeless(character({ 'Fire Bolt': 10, 'Ice Bolt': 1 }), monster({ resists: { fire: 100 } }))).toBe(false)
+    expect(hopeless({ ...fireSorc, petClasses: [363] }, monster({ resists: { fire: 100 } }))).toBe(false)
+    expect(hopeless(character({ Bash: 5 }), monster({ resists: { physical: 100 } }))).toBe(true)
+    expect(hopeless(character({ Bash: 5 }), monster({ resists: { fire: 100 } }))).toBe(false)
   })
 
   it('keeps using a melee skill on low mana until it can no longer pay for it', () => {
