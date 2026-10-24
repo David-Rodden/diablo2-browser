@@ -106,6 +106,20 @@ const REPAIR_MS = 300
 const STUCK_TALK_MS = 20_000
 const STUCK_MS = 3200
 const STUCK_MOVE = 1.5
+const HEADWAY_MS = 4000
+const HEADWAY_GAIN = 3
+const HEADWAY_TRAVEL = 8
+const HEADWAY_IDLE_MS = 1000
+const HEADWAY_SAME = 8
+const BLOCKED_NEAR = 10
+const UNSTICK_MOVES = [
+  { ahead: LOOKAHEAD, side: 0, back: 0 },
+  { ahead: 4, side: 0, back: 0 },
+  { ahead: 2, side: 0, back: 0 },
+  { ahead: 4, side: 4, back: 0 },
+  { ahead: 4, side: -4, back: 0 },
+  { ahead: 2, side: 0, back: 10 },
+] as const
 const MANUAL_PAUSE_MS = 4000
 const ERRAND_COOLDOWN_MS = 300_000
 const HEAL_COOLDOWN_MS = 8000
@@ -186,6 +200,8 @@ export class Autopilot {
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
   private readonly stubborn = new Set<number>()
   private readonly scavenged = new Set<number>()
+  private headway: { readonly goal: SubTilePoint; best: number; from: SubTilePoint; at: number; tries: number } | null = null
+  private blocked: SubTilePoint[] = []
   private held: { readonly id: number; readonly since: number; at: number; tries: number } | null = null
   private readonly errandsAt = new Map<string, number>()
   private talk: { readonly npcId: number; readonly hint: string; readonly since: number; at: number; spoke: boolean; opened: boolean; readonly heard: Set<string> } | null = null
@@ -548,13 +564,37 @@ export class Autopilot {
     }
     this.watchProgress(nowMs)
     if (nowMs - this.lastWalk < WALK_MS && this.host.assists.moving) return
-    const aim = alongLine(route, LOOKAHEAD)
+    const aim = this.unstuckAim(route, nowMs)
     if (this.offTheGrid()) this.findGap(aim, nowMs)
     else {
       this.gapSearch = null
       assists.walkTo(aim.x, aim.y, nowMs)
     }
     this.lastWalk = nowMs
+  }
+
+  private unstuckAim(route: readonly SubTilePoint[], nowMs: number): SubTilePoint {
+    const me = this.host.world.self
+    const end = route.at(-1)!
+    const left = distance(end, me)
+    const here = { x: me.x, y: me.y }
+    const headway = this.headway
+    if (headway && nowMs - this.lastWalk > HEADWAY_IDLE_MS) Object.assign(headway, { from: here, at: nowMs })
+    if (!headway || distance(headway.goal, end) > HEADWAY_SAME) this.headway = { goal: end, best: left, from: here, at: nowMs, tries: 0 }
+    else if (left < headway.best - HEADWAY_GAIN || distance(me, headway.from) > HEADWAY_TRAVEL) Object.assign(headway, { best: Math.min(left, headway.best), from: here, at: nowMs })
+    else if (nowMs - headway.at > HEADWAY_MS) {
+      Object.assign(headway, { at: nowMs, from: here, tries: headway.tries + 1 })
+      this.host.assists.journal?.('unstick', { tries: headway.tries, at: [Math.round(me.x), Math.round(me.y)], to: [Math.round(end.x), Math.round(end.y)] })
+      if (headway.tries >= UNSTICK_MOVES.length) {
+        this.blocked.push(end)
+        this.headway = null
+      }
+    }
+    const move = UNSTICK_MOVES[this.headway?.tries ?? 0]!
+    const ahead = alongLine(route, move.ahead)
+    const length = Math.max(1e-6, distance(ahead, me))
+    const [nx, ny] = [(ahead.x - me.x) / length, (ahead.y - me.y) / length]
+    return { x: ahead.x - ny * move.side - nx * move.back, y: ahead.y + nx * move.side - ny * move.back }
   }
 
   private findGap(aim: SubTilePoint, nowMs: number): void {
@@ -722,7 +762,7 @@ export class Autopilot {
       const entry = here.pathFrom(centre(room).x, centre(room).y, 1, 1)[0]
       return (entry ? here.distanceFrom(entry.x, entry.y) : null) ?? distance(centre(room), me) + UNREACHED_ROOM
     }
-    const next = view.rooms.filter((room) => !visited.has(room.index)).map((room) => ({ room, cost: walk(room) })).sort((a, b) => a.cost - b.cost)[0]?.room
+    const next = view.rooms.filter((room) => !visited.has(room.index) && !this.blocked.some((spot) => distance(spot, centre(room)) <= BLOCKED_NEAR)).map((room) => ({ room, cost: walk(room) })).sort((a, b) => a.cost - b.cost)[0]?.room
     this.say(next ? status : `${status} (explored everything)`)
     if (!next) return false
     const goal = centre(next)
@@ -744,6 +784,7 @@ export class Autopilot {
       this.uses.clear()
       this.stubborn.clear()
       this.scavenged.clear()
+      Object.assign(this, { headway: null, blocked: [] })
       const back = this.trail.findIndex((spot) => spot.level === areaId)
       const resumed = this.trail.length === 0 && this.leftBehind.at(-1)?.level === areaId
       if (this.town()) [this.leftBehind, this.trail] = [this.trail.length > 0 ? this.trail : this.leftBehind, []]

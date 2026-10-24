@@ -361,6 +361,19 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toBe('Head to Blood Moor')
   })
 
+  it('tries a different way through when it keeps bouncing in a narrow passage', () => {
+    const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' }, step: { kind: 'exit', level: 3 } })
+    Object.assign(assists, { journal: vi.fn() })
+    const aims = () => assists.walkTo.mock.calls.map(([x]) => Math.round(x - world.self.x))
+    for (let i = 0; i < 24; i++) {
+      world.self.y = i % 2 === 0 ? 100 : 106
+      tick(250)
+    }
+    expect(aims().slice(0, 3)).toEqual([15, 15, 15])
+    expect(aims().at(-1)).toBeLessThan(15)
+    expect((assists as unknown as { journal: ReturnType<typeof vi.fn> }).journal).toHaveBeenCalledWith('unstick', expect.objectContaining({ tries: 1 }))
+  })
+
   it('puts on better gear it is carrying while in town', () => {
     const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
     world.self.gold = 0
