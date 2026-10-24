@@ -457,6 +457,26 @@ describe('autopilot', () => {
     expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Taking the teleport pad', units[0]])
   })
 
+  it('waits on a pad it pressed instead of walking off and cancelling it', () => {
+    const { assists, guide, units, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    Object.assign(guide, { reaches: () => false })
+    units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 110, y: 100 }))
+    tick()
+    const walks = assists.walkTo.mock.calls.length + assists.stepTo.mock.calls.length
+    for (let i = 0; i < 5; i++) tick(200)
+    expect([assists.use.mock.calls.length, assists.walkTo.mock.calls.length + assists.stepTo.mock.calls.length, guide.pilotStatus]).toEqual([1, walks, 'Taking the teleport pad'])
+    tick(600)
+    expect(assists.use.mock.calls.length).toBe(2)
+  })
+
+  it('gives up on a pad that never carries it after a few presses', () => {
+    const { assists, guide, units, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    Object.assign(guide, { reaches: () => false })
+    units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 110, y: 100 }))
+    for (let i = 0; i < 12; i++) tick(1600)
+    expect([assists.use.mock.calls.length, guide.pilotStatus]).toEqual([5, 'Head to Blood Moor'])
+  })
+
   it('heads for a pad it has not seen yet when the level layout has one', () => {
     const { assists, guide, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
     Object.assign(guide, { reaches: () => false })
