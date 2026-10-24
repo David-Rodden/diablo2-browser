@@ -1,6 +1,13 @@
 {
-  "slots": { "helm": 1, "armor": 3, "weapon2": 5 },
+  "slots": { "helm": 1, "armor": 3, "weapon1": 4, "weapon2": 5 },
   "shieldUsers": { "Iron Wolf": 359 },
+  "weapons": {
+    "Rogue Scout": { "classes": [271], "types": ["bow"], "twoHanded": true },
+    "Desert Mercenary": { "classes": [338], "types": ["spea", "pole"], "twoHanded": true },
+    "Iron Wolf": { "classes": [359], "types": ["swor"], "twoHanded": false },
+    "Barbarian": { "classes": [560, 561], "types": ["swor"], "twoHanded": true }
+  },
   "minGain": 5,
+  "weaponGain": 2,
   "stats": { "strength": 0, "dexterity": 2, "level": 12 }
 }
