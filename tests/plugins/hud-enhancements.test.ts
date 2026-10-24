@@ -87,12 +87,14 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showStatGainTooltips).toBe(false)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(false)
     expect(settingsStore.get().showAdvancedStatsButton).toBe(false)
+    expect(settingsStore.get().showRuneNumbers).toBe(false)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: false,
       showBasePlusBonusSkills: false,
       showStatGainTooltips: false,
       showWeaponDamageFormula: false,
       showAdvancedStatsButton: false,
+      showRuneNumbers: false,
     })
 
     const host = new PluginHost({
@@ -104,18 +106,20 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     })
     await host.whenStarted()
 
-    // Plugin is defaultEnabled: true -> all 5 enhancements active
+    // Plugin is defaultEnabled: true -> all 6 enhancements active
     expect(settingsStore.get().showBasePlusBonusStats).toBe(true)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(true)
     expect(settingsStore.get().showStatGainTooltips).toBe(true)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(true)
     expect(settingsStore.get().showAdvancedStatsButton).toBe(true)
+    expect(settingsStore.get().showRuneNumbers).toBe(true)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: true,
       showBasePlusBonusSkills: true,
       showStatGainTooltips: true,
       showWeaponDamageFormula: true,
       showAdvancedStatsButton: true,
+      showRuneNumbers: true,
     })
 
     const snap1 = host.list().find((p) => p.id === hudEnhancementsPlugin.id)!
@@ -125,10 +129,12 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(snap1.status.text.zh).toContain('属性增益提示')
     expect(snap1.status.text.zh).toContain('武器伤害公式')
     expect(snap1.status.text.zh).toContain('更多属性面板')
+    expect(snap1.status.text.zh).toContain('符文编号')
     expect(snap1.status.text.en).toContain('Stats x+y')
     expect(snap1.status.text.en).toContain('Stat Gain Tips')
     expect(snap1.status.text.en).toContain('Weapon Dmg Formula')
     expect(snap1.status.text.en).toContain('Advanced Stats')
+    expect(snap1.status.text.en).toContain('Rune #')
 
     // Toggle individual setting: disable showBasePlusBonusSkills only
     host.setSetting('hud-enhancements', 'showBasePlusBonusSkills', false)
@@ -137,6 +143,7 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showStatGainTooltips).toBe(true)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(true)
     expect(settingsStore.get().showAdvancedStatsButton).toBe(true)
+    expect(settingsStore.get().showRuneNumbers).toBe(true)
     expect(session.hudManager.skillTree.showBasePlusBonusSkills).toBe(false)
     expect(session.hudManager.hotkeys.showBasePlusBonusSkills).toBe(false)
 
@@ -172,19 +179,31 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showAdvancedStatsButton).toBe(true)
     expect(session.hudManager.charSheet.showAdvancedStatsButton).toBe(true)
 
-    // Disable the entire plugin -> strictly reverts all 5 flags to 1.13c vanilla false
+    // Toggle showRuneNumbers off individually
+    host.setSetting('hud-enhancements', 'showRuneNumbers', false)
+    expect(settingsStore.get().showRuneNumbers).toBe(false)
+    expect(session.hudManager.worldPanels.showRuneNumbers).toBe(false)
+
+    // Re-enable showRuneNumbers
+    host.setSetting('hud-enhancements', 'showRuneNumbers', true)
+    expect(settingsStore.get().showRuneNumbers).toBe(true)
+    expect(session.hudManager.worldPanels.showRuneNumbers).toBe(true)
+
+    // Disable the entire plugin -> strictly reverts all 6 flags to 1.13c vanilla false
     await host.setEnabled('hud-enhancements', false)
     expect(settingsStore.get().showBasePlusBonusStats).toBe(false)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(false)
     expect(settingsStore.get().showStatGainTooltips).toBe(false)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(false)
     expect(settingsStore.get().showAdvancedStatsButton).toBe(false)
+    expect(settingsStore.get().showRuneNumbers).toBe(false)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: false,
       showBasePlusBonusSkills: false,
       showStatGainTooltips: false,
       showWeaponDamageFormula: false,
       showAdvancedStatsButton: false,
+      showRuneNumbers: false,
     })
   })
 
@@ -946,6 +965,113 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
       CHAR_ADV_STATS_BTN_BOUNDS.y + 1,
       30,
       30,
+    )
+  })
+
+  it('renders rune hover tooltips with (#N) when showRuneNumbers is enabled and preserves full Chinese rune names without degrading to bare 符文 (#1403)', () => {
+    const hud = new HudManager()
+    const ctx = createMockCanvasCtx()
+    const font = createMockFont()
+
+    const starterLoRune = {
+      id: 'stash-r-lo',
+      code: 'r28',
+      invFile: 'invrlo',
+      name: 'Lo Rune',
+      nameZh: '罗 (Lo 符文)',
+      baseNameZh: '符文 (#28)',
+      quality: 'rune' as const,
+      invWidth: 1,
+      invHeight: 1,
+      allowedSlots: [],
+      reqLevel: 59,
+      stats: [{ text: '可镶嵌进有凹槽的装备', color: 'white' as const }],
+    }
+
+    // 1. Default vanilla (showRuneNumbers = false) -> 罗符文 (CHI) & Lo Rune (ENG)
+    expect(hud.worldPanels.showRuneNumbers).toBe(false)
+    hud.worldPanels.lang = 'CHI'
+    hud.worldPanels.drawItemTooltip(ctx, { item: starterLoRune, x: 200, y: 200 }, font)
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '罗符文',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font16', color: 'gold' }),
+    )
+
+    vi.clearAllMocks()
+    hud.worldPanels.lang = 'ENG'
+    hud.worldPanels.drawItemTooltip(ctx, { item: starterLoRune, x: 200, y: 200 }, font)
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      'Lo Rune',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font16', color: 'gold' }),
+    )
+
+    // 2. Enable showRuneNumbers via HudManager -> 罗符文 (#28) (CHI) & Lo Rune (#28) (ENG)
+    hud.setHudEnhancements({ showRuneNumbers: true })
+    expect(hud.worldPanels.showRuneNumbers).toBe(true)
+
+    vi.clearAllMocks()
+    hud.worldPanels.lang = 'CHI'
+    hud.worldPanels.drawItemTooltip(ctx, { item: starterLoRune, x: 200, y: 200 }, font)
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '罗符文 (#28)',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font16', color: 'gold' }),
+    )
+
+    vi.clearAllMocks()
+    hud.worldPanels.lang = 'ENG'
+    hud.worldPanels.drawItemTooltip(ctx, { item: starterLoRune, x: 200, y: 200 }, font)
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      'Lo Rune (#28)',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font16', color: 'gold' }),
+    )
+
+    // 3. Edge cases: bare '符文', '符文 (#28)', '符文：夏' (r13), or compact packet with identified: false
+    const degradedLoRune = {
+      ...starterLoRune,
+      nameZh: '符文 (#28)',
+      identified: false,
+    }
+    vi.clearAllMocks()
+    hud.worldPanels.lang = 'CHI'
+    hud.setHudEnhancements({ showRuneNumbers: false })
+    hud.worldPanels.drawItemTooltip(ctx, { item: degradedLoRune, x: 200, y: 200 }, font)
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '罗符文',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font16', color: 'gold' }),
+    )
+
+    const onlineShaelRune = onlineItemDataToUiInventoryItem({
+      id: 901,
+      code: 'r13',
+      quality: 2,
+      compact: true,
+      identified: false,
+    })
+    vi.clearAllMocks()
+    hud.setHudEnhancements({ showRuneNumbers: true })
+    hud.worldPanels.lang = 'CHI'
+    hud.worldPanels.drawItemTooltip(ctx, { item: onlineShaelRune, x: 200, y: 200 }, font)
+    expect(font.drawText).toHaveBeenCalledWith(
+      ctx,
+      '夏符文 (#13)',
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ font: 'font16', color: 'gold' }),
     )
   })
 })

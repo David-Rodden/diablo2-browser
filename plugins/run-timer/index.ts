@@ -1,3 +1,8 @@
+/**
+ * Run Timer (`run-timer`) plugin.
+ * Author: David-Rodden (https://github.com/David-Rodden/diablo2-browser)
+ * Special thanks to David-Rodden for contributing this plugin! / 感谢 David-Rodden 贡献此插件！
+ */
 import type { D2WebPlugin } from '../../src/client/plugin-host/api.ts'
 import { formatRunSummary, RunTimer } from './run-timer.ts'
 
@@ -6,10 +11,11 @@ const HOURGLASS_SVG =
 
 export const runTimerPlugin: D2WebPlugin = {
   id: 'run-timer',
+  author: 'David-Rodden',
   name: { zh: '计时器', en: 'Run Timer' },
   description: {
-    zh: '在工具栏显示本局用时、平均用时和每小时局数。点击清零。',
-    en: 'Shows the current run time, average run time and runs per hour in the toolbar. Click to reset.',
+    zh: '在工具栏显示本局用时、平均用时和每小时局数。点击清零。（作者：David-Rodden，感谢贡献！）',
+    en: 'Shows the current run time, average run time and runs per hour in the toolbar. Click to reset. (Author: David-Rodden — Special thanks for contributing!)',
   },
   defaultEnabled: true,
   activate(ctx) {

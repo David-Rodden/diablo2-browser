@@ -873,7 +873,7 @@ function tickPlayer(
         let physPierce = 0
         if (target.curse?.name === 'amplifydamage') physPierce = 100
         else if (target.curse?.name === 'decrepify') physPierce = 50
-        const physRes = computeEffectiveResistance({ baseRes: basePhysRes, convictionPierce: physPierce })
+        const physRes = computeEffectiveResistance({ baseRes: basePhysRes, convictionPierce: physPierce, isDefenderPlayer: false })
         let rawPhysDmg = options.playerDamage
         if ((player.criticalStrikeSlvl ?? 0) > 0) {
           const csChancePct = calculateCriticalStrikeStats(player.criticalStrikeSlvl!).chancePct
@@ -2339,7 +2339,8 @@ export function computeEffectiveMonsterDefense(monster: Monster): number {
 }
 
 /**
- * Compute effective monster projectile speed after Slow Missiles (#17) velocity scaling (`skill_handofathena = 33%`).
+ * Compute effective monster projectile speed after Slow Missiles (#17) creation-time velocity scaling
+ * (`D2Game.dll` `0x6FC8FA54`: reads `STAT_SKILL_HANDOFATHENA` (161) from `STATE_SLOWMISSILES` (87) stat list).
  */
 export function computeEffectiveMonsterMissileSpeed(
   monster: Monster,
@@ -2347,9 +2348,34 @@ export function computeEffectiveMonsterMissileSpeed(
   canSlow = true,
 ): number {
   if (!canSlow) return baseSpeed
-  if ((monster.slowMissilesTicks ?? 0) > 0) {
-    const mult = monster.slowMissilesMult ?? 0.33
-    return baseSpeed * mult
+  const anyMon = monster as Monster & {
+    readonly stateBus?: {
+      readonly getState?: (idOrName: string | number) => { readonly stats?: Record<string, number> } | undefined
+      readonly hasState?: (idOrName: string | number) => boolean
+    }
+    readonly statList?: {
+      readonly getAccruedStat?: (stat: string) => number
+    }
+  }
+  const slowState = anyMon.stateBus?.getState?.('slowmissiles') ?? anyMon.stateBus?.getState?.(87)
+  const hasSlowState =
+    slowState !== undefined ||
+    (anyMon.stateBus?.hasState?.('slowmissiles') ?? false) ||
+    (anyMon.stateBus?.hasState?.(87) ?? false)
+  if (hasSlowState) {
+    const handOfAthena =
+      slowState?.stats?.['skill_handofathena'] ??
+      slowState?.stats?.['161'] ??
+      anyMon.statList?.getAccruedStat?.('skill_handofathena') ??
+      0
+    return (baseSpeed * handOfAthena) / 100
+  }
+  if ((monster.slowMissilesTicks ?? 0) > 0 && monster.slowMissilesMult !== undefined) {
+    return baseSpeed * monster.slowMissilesMult
+  }
+  const statListHandOfAthena = anyMon.statList?.getAccruedStat?.('skill_handofathena') ?? 0
+  if (statListHandOfAthena > 0) {
+    return (baseSpeed * statListHandOfAthena) / 100
   }
   return baseSpeed
 }

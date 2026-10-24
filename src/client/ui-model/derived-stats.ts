@@ -28,6 +28,7 @@ import {
 import type { D2ColorCode } from '../../common/skills/skills-meta.ts'
 import type { ItemData, ItemStat } from '../../netproto/index.ts'
 import type { ClientWorld } from '../world/client-world.ts'
+import { computeFullSetBonusStats, computeItemSetBonusStats } from './set-bonuses.ts'
 
 /** `DifficultyLevels.txt` row `ResistPenalty` column (Normal / Nightmare / Hell). */
 export const RESIST_PENALTY_BY_DIFFICULTY: readonly [number, number, number] = [
@@ -230,6 +231,7 @@ function extractItemAndSocketStats(
   item: ItemData,
   socketChildren: readonly ItemData[],
   bodyLoc: number,
+  activeEquipped?: readonly ItemData[],
 ): {
   readonly itemStats: ItemStat[]
   readonly baseArmorDefense: number
@@ -242,7 +244,7 @@ function extractItemAndSocketStats(
   const rawList: ItemStat[] = [
     ...(Array.isArray(item.stats) ? item.stats : []),
     ...(Array.isArray(item.runewordStats) ? item.runewordStats : []),
-    ...(Array.isArray(item.setBonusStats) ? item.setBonusStats : []),
+    ...(activeEquipped ? computeItemSetBonusStats(item, activeEquipped) : []),
   ]
 
   let consumedArmorStat = false
@@ -821,6 +823,7 @@ export function computeEffectiveMercenaryStats(
     const it = findMercSlot(s)
     if (it && isItemUsable(it)) mercSlots.push({ slot: s, item: it })
   }
+  const activeMercItems = mercSlots.map((s) => s.item)
 
   let addStr = 0
   let addDex = 0
@@ -1018,7 +1021,12 @@ export function computeEffectiveMercenaryStats(
   for (const { slot, item } of mercSlots) {
     const code = (item.code ?? '').trim().toLowerCase()
     const kind = getItemKind(code)
-    const extracted = extractItemAndSocketStats(item, getSocketChildrenForItem(world, item), slot)
+    const extracted = extractItemAndSocketStats(
+      item,
+      getSocketChildrenForItem(world, item),
+      slot,
+      activeMercItems,
+    )
 
     if (kind === 'armor') {
       const defPerLvl = Math.floor((extracted.localDefPerLevel8ths * mlvl) / 8)
@@ -1036,6 +1044,11 @@ export function computeEffectiveMercenaryStats(
     }
 
     accumulateStatList(extracted.itemStats, kind)
+  }
+
+  const fullSetBonusStats = computeFullSetBonusStats(activeMercItems)
+  if (fullSetBonusStats.length > 0) {
+    accumulateStatList(fullSetBonusStats, 'state')
   }
 
   // Aggregate attached 0xA8 state stat lists on the mercenary unit (and mercRaw.stats if distinct)

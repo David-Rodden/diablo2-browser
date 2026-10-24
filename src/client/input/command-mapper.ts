@@ -1243,7 +1243,12 @@ export class CommandMapper {
         }
       | undefined
     const profile = hud?.viewportProfile ?? this.camera.viewportProfile ?? VIEWPORT_800x600
-    const leftOpen = Boolean(hud?.leftPanel && hud.leftPanel !== 'none')
+    const tradeState = (hud as any)?.trade ?? (hud as any)?.worldPanels?.trade
+    const isPendingTradeOnly =
+      hud?.leftPanel === 'trade' &&
+      !tradeState?.active &&
+      (tradeState?.pendingModal === 'wait' || tradeState?.pendingModal === 'request')
+    const leftOpen = Boolean(hud?.leftPanel && hud.leftPanel !== 'none' && !isPendingTradeOnly)
     const rightOpen = Boolean(hud?.rightPanel && hud.rightPanel !== 'none')
     return computePanelCameraShift(leftOpen, rightOpen, panelDockWidth(profile))
   }
@@ -2513,6 +2518,13 @@ export class CommandMapper {
           this.hudManager.rightPanel === 'inv' ||
           (this.hudModel?.hudManager && (this.hudModel.hudManager.inventory?.visible || this.hudModel.hudManager.rightPanel === 'inv'))
         )
+        const hasCursorItem = Boolean(
+          this.hudManager?.inventory?.cursorItem || this.world.containers.cursor,
+        )
+        if (toCursor && hasCursorItem) {
+          this.pendingItemPickupId = null
+          return null
+        }
         return this.dispatchRateLimited(
           {
             type: 'ItemPickup',
@@ -3829,11 +3841,19 @@ export class CommandMapper {
           predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.y : this.world.self.y
         const dist = Math.hypot(pendingItem.x - selfX, pendingItem.y - selfY)
         if (dist <= 4) {
+          const toCursor = this.hudManager?.rightPanel === 'inv'
+          const hasCursorItem = Boolean(
+            this.hudManager?.inventory?.cursorItem || this.world.containers.cursor,
+          )
+          if (toCursor && hasCursorItem) {
+            this.pendingItemPickupId = null
+            return null
+          }
           const record = this.dispatchRateLimited(
             {
               type: 'ItemPickup',
               itemId: pendingItem.id,
-              toCursor: this.hudManager?.rightPanel === 'inv',
+              toCursor,
             },
             nowMs,
           )

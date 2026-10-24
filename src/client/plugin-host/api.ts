@@ -18,13 +18,33 @@ import {
   LIGHTING_PRESETS,
   type LightingPresetConfig,
 } from '../../client/scene/lighting-presets.ts'
-import type { OnlineSession } from '../session/online-session.ts'
+import {
+  DuplicateCharacterLoginError,
+  OnlineSession,
+  formatLobbyGameEnterError,
+  parseMcpGameErrorStatus,
+  type OnlineSessionLobbySnapshot,
+  type OnlineSessionLoginParams,
+  type OnlineSessionOptions,
+} from '../session/online-session.ts'
 import type { AutoPotionThresholds } from '../input/auto-potion.ts'
 import type { AutoLootRules, LootCategories } from '../input/auto-loot.ts'
 import type { InventoryCareConfig } from '../input/inventory-care.ts'
 import type { ItemInfoConfig, LootFilter } from '../ui/ground-item-info.ts'
 import type { GuideMode } from '../guide/route.ts'
 import type { MenuLayout } from './mod-menu-text.ts'
+import { HudManager } from '../ui/hud-manager.ts'
+import {
+  INV_COLS,
+  INV_ROWS,
+  findFreeGridSlot,
+  getInventoryGoldLimit,
+  getStashGoldLimit,
+  type GridPlacement,
+  type UiInventoryItem,
+} from '../ui/inventory.ts'
+import type { ClientUnit } from '../world/client-unit.ts'
+import type { ChatLogEntry, ClientWorld } from '../world/client-world.ts'
 import {
   DEFAULT_VIEWPORT_RESOLUTION,
   VALID_AUTOMAP_REVEAL_MODES,
@@ -58,24 +78,42 @@ export {
   CLIENT_LIGHTING_PRESET_ORDER,
   DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS,
   DEFAULT_VIEWPORT_RESOLUTION,
+  DuplicateCharacterLoginError,
   EXTENDED_VIEWPORT_RESOLUTIONS,
+  HudManager,
+  INV_COLS,
+  INV_ROWS,
   LIGHTING_PRESETS,
   NATIVE_113C_VIEWPORT_RESOLUTIONS,
+  OnlineSession,
   VALID_AUTOMAP_REVEAL_MODES,
   VALID_LIGHTING_PRESETS,
   VALID_VIEWPORT_RESOLUTIONS,
   VALID_WEATHER_OVERRIDES,
   VIEWPORT_PROFILES,
+  findFreeGridSlot,
+  formatLobbyGameEnterError,
   formatViewportLabel,
+  getInventoryGoldLimit,
+  getStashGoldLimit,
   getViewportProfile,
   isExtendedViewport,
+  parseMcpGameErrorStatus,
   type AutomapRadarConfig,
   type AutomapRevealMode,
+  type ChatLogEntry,
   type ClientLightingPreset,
+  type ClientUnit,
+  type ClientWorld,
   type GameLang,
+  type GridPlacement,
   type GroundItemEnhancementsConfig,
   type HudEnhancementsConfig,
   type LightingPresetConfig,
+  type OnlineSessionLobbySnapshot,
+  type OnlineSessionLoginParams,
+  type OnlineSessionOptions,
+  type UiInventoryItem,
   type ViewportProfile,
   type ViewportResolution,
   type WeatherOverrideSetting,
@@ -128,6 +166,7 @@ export interface D2WebPlugin {
   readonly id: string
   readonly name: LocalizedText
   readonly description: LocalizedText
+  readonly author?: string | undefined
   readonly defaultEnabled: boolean
   readonly settings?: readonly PluginSettingSpec[]
   readonly actions?: readonly PluginActionSpec[]
@@ -290,7 +329,7 @@ export function createTogglePlugin({
   port,
   defaultEnabled = true,
   ...meta
-}: Pick<D2WebPlugin, 'id' | 'name' | 'description'> & { readonly port: (ctx: PluginContext) => PluginTogglePort; readonly defaultEnabled?: boolean }): D2WebPlugin {
+}: Pick<D2WebPlugin, 'id' | 'name' | 'description' | 'author'> & { readonly port: (ctx: PluginContext) => PluginTogglePort; readonly defaultEnabled?: boolean }): D2WebPlugin {
   return {
     ...meta,
     defaultEnabled,
@@ -315,6 +354,9 @@ export const TOOLBAR_KILL_STATS_ICON_SVG =
 
 export const TOOLBAR_DROP_TRACKER_ICON_SVG =
   '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" focusable="false" aria-hidden="true"><path d="M8 1.5L13.5 7 8 14.5 2.5 7 8 1.5Z"/></svg>'
+
+export const TOOLBAR_TRADE_HALL_ICON_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M2.5 5.5h11l-2.5-2.5M13.5 10.5h-11l2.5 2.5"/></svg>'
 
 export interface ToolbarContributionHandle {
   (): void

@@ -139,6 +139,8 @@ export interface LocalLoopbackAdapterOptions {
   readonly areaId?: number | undefined
   readonly x?: number | undefined
   readonly y?: number | undefined
+  readonly playersX?: number | undefined
+  readonly onPlayersXChange?: ((playersX: number) => void) | undefined
   readonly policy?: Partial<GameModePolicy> | undefined
   readonly registry?: unknown
   readonly d2s?: Uint8Array | undefined
@@ -184,12 +186,17 @@ export class LocalLoopbackAdapter implements GameServerAdapter {
           difficulty: opts.difficulty ?? 0,
           mapSeed: opts.mapSeed ?? opts.seed,
           areaId: opts.areaId,
+          playersX: opts.playersX,
+          onPlayersXChange: opts.onPlayersXChange,
           registry: opts.registry,
         }))
 
     this.game = instance
     this.gameInstance = instance
     this.onAutoSave = opts.onAutoSave
+    if (opts.playersX !== undefined && (isInstance || opts.game || opts.engine || opts.gameInstance)) {
+      this.gameInstance.setPlayersX(opts.playersX)
+    }
 
     if (opts.resolveAreaBootstrap) {
       // #1325: area bootstrap runs inside the game server (entry area + on-demand transitions).
@@ -407,6 +414,19 @@ export class LocalLobbyProvider implements LobbyProvider {
   private readonly defaultMapSeed: number
   private readonly registry: unknown
   private selectedCharName: string | undefined
+  private persistedPlayersX: number | undefined = undefined
+
+  getPersistedPlayersX(): number | undefined {
+    return this.persistedPlayersX
+  }
+
+  setPersistedPlayersX(value: number | undefined): void {
+    if (value === undefined) {
+      this.persistedPlayersX = undefined
+      return
+    }
+    this.persistedPlayersX = Math.max(1, Math.min(8, Math.floor(Number(value) || 1)))
+  }
 
   constructor(options: LocalLobbyProviderOptions = {}) {
     this.defaultMapSeed = ((options.defaultMapSeed ?? options.seed ?? 0x12345678) >>> 0) || 1
@@ -700,6 +720,10 @@ export class LocalLobbyProvider implements LobbyProvider {
       d2s: d2sBytes,
       difficulty: requestedDifficulty,
       mapSeed: effectiveSeed,
+      playersX: this.persistedPlayersX,
+      onPlayersXChange: (nextPlayersX) => {
+        this.persistedPlayersX = nextPlayersX
+      },
       registry: this.registry,
       resolveAreaBootstrap: areaLevelSource ? createAreaBootstrapResolver(areaLevelSource) : undefined,
       onAutoSave: (updatedBytes) => {

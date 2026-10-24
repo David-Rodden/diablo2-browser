@@ -106,7 +106,7 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
         flatPhysMax256: 500 * FIXED_ONE,
         selfDamagePct: 8,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
 
       expect(out.hit).toBe(true)
       expect(out.physDamage256).toBe(500 * FIXED_ONE)
@@ -125,7 +125,7 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
         flatPhysMax256: 500 * FIXED_ONE,
         selfDamagePct: 8,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       expect(outLethal.selfDamageTaken256).toBe(20 * FIXED_ONE)
       expect(attackerStats.getHp256()).toBe(0)
     })
@@ -187,7 +187,7 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
         unblockable: true,
         stunDurationFrames: 50,
         roll100: 10, // Normally would be blocked by 75% block
-      })
+      }, { rand: () => 10 })
 
       expect(out.hit).toBe(true)
       expect(out.avoidedReason).toBe('none')
@@ -206,13 +206,14 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
         maxhp: 1000 * FIXED_ONE,
         mana: initialMana,
         maxmana: 500 * FIXED_ONE,
-        lifesteal: 25, // 25% Life Leech from gear
-        manasteal: 20, // 20% Mana Leech from gear
+        lifedrainmindam: 25, // 25% Life Leech from gear
+        manadrainmindam: 20, // 20% Mana Leech from gear
       })
       const attackerBus = new StateBus(attackerStats, registry)
       const attacker: CombatUnitContext = {
         id: 'smiter_leech_test',
         name: 'Paladin',
+        unitType: 'player',
         statList: attackerStats,
         stateBus: attackerBus,
         hasShield: true,
@@ -240,7 +241,7 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
         flatPhysMax256: 100 * FIXED_ONE,
         autoHit: true,
         unblockable: true,
-      })
+      }, { rand: () => 50 })
 
       expect(outNoLifeTap.hit).toBe(true)
       expect(outNoLifeTap.physDamage256).toBe(100 * FIXED_ONE)
@@ -264,7 +265,7 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
         flatPhysMax256: 100 * FIXED_ONE,
         autoHit: true,
         unblockable: true,
-      })
+      }, { rand: () => 50 })
 
       expect(outWithLifeTap.hit).toBe(true)
       expect(outWithLifeTap.physDamage256).toBe(100 * FIXED_ONE)
@@ -296,7 +297,7 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
         attackKind: 'melee',
         flatPhysMin256: 100 * FIXED_ONE,
         flatPhysMax256: 100 * FIXED_ONE,
-      })
+      }, { rand: () => 50 })
       expect(out.hit).toBe(false)
       expect(out.avoidedReason).toBe('miss')
 
@@ -523,7 +524,7 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
           chillDurationFrames: 50,
         },
         autoHit: true,
-      })
+      }, { rand: () => 50 })
 
       expect(out.hit).toBe(true)
       expect(out.physDamage256).toBe(100 * FIXED_ONE)
@@ -584,7 +585,7 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
         elemMin256: 500 * FIXED_ONE,
         elemMax256: 500 * FIXED_ONE,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
 
       expect(out.hit).toBe(true)
       expect(out.immuneToElem).toBe(true)
@@ -599,7 +600,7 @@ describe('Milestone M7 — Paladin Combat Skills Tree Unit Suite', () => {
         elemMin256: 500 * FIXED_ONE,
         elemMax256: 500 * FIXED_ONE,
         autoHit: true,
-      })
+      }, { rand: () => 50 })
       expect(outHb.immuneToElem).toBe(false)
       expect(outHb.totalDamage).toBe(500)
     })

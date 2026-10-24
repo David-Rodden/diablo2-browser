@@ -9,7 +9,7 @@
  *   apply the highest `slvl` modifier while retaining lower-level pulses until expiration.
  * - Reactive `auraeventfunc` triggers (`1..5`, `22..27` from `Events.txt` & `Skills.txt`).
  */
-import type { D2DataRegistry } from '../../common/data/data-registry.ts'
+import { tryGetSharedDataRegistry, type D2DataRegistry } from '../../common/data/data-registry.ts'
 import { UnitStatList, FIXED_ONE } from './stat-list.ts'
 import {
   calculateBoneArmorCapacity,
@@ -96,10 +96,13 @@ export class StateBus {
   ) {
     if (statListOrRegistry instanceof UnitStatList) {
       this.statList = statListOrRegistry
-      this.registry = (registryOrStatList as D2DataRegistry | undefined) ?? statListOrRegistry.registry
+      this.registry =
+        (registryOrStatList as D2DataRegistry | undefined) ??
+        statListOrRegistry.registry ??
+        tryGetSharedDataRegistry()
     } else {
       this.statList = registryOrStatList as UnitStatList
-      this.registry = statListOrRegistry
+      this.registry = statListOrRegistry ?? tryGetSharedDataRegistry()
     }
   }
 
@@ -117,64 +120,48 @@ export class StateBus {
     curseTypeOverride?: number
     isAuraOverride?: boolean
   }): ApplyStateResult {
+    const rawCleanName =
+      typeof params.stateNameOrId === 'string'
+        ? params.stateNameOrId.trim().toLowerCase().replace(/^state_/, '')
+        : undefined
     const stateRec =
       typeof params.stateNameOrId === 'number'
         ? this.registry?.getStateById(params.stateNameOrId)
-        : this.registry?.getStateByName(params.stateNameOrId)
+        : (this.registry?.getStateByName(rawCleanName!) ??
+          (rawCleanName === 'venom' ? this.registry?.getStateById(31) : undefined))
 
-    const stateName = stateRec
-      ? stateRec.state.toLowerCase()
-      : String(params.stateNameOrId).trim().toLowerCase().replace(/^state_/, '')
-    const FALLBACK_STATE_IDS: Readonly<Record<string, number>> = {
-      conversion: 53,
-      venom: 31,
-      venomclaws: 31,
-      cloaked: 153,
-      cloak_of_shadows: 156,
-      quickness: 157,
-      bladeshield: 158,
-      fade: 159,
-    }
+    const stateName =
+      rawCleanName === 'venom'
+        ? 'venom'
+        : stateRec
+          ? stateRec.state.toLowerCase()
+          : (rawCleanName ?? String(params.stateNameOrId))
     const stateId =
       stateRec?.id ??
-      (typeof params.stateNameOrId === 'number'
-        ? params.stateNameOrId
-        : (FALLBACK_STATE_IDS[stateName] ?? 0))
+      (typeof params.stateNameOrId === 'number' ? params.stateNameOrId : 0)
     const slvl = Math.max(1, params.slvl ?? 1)
     const currentFrame = params.currentFrame ?? 0
     let durationFrames = params.durationFrames ?? 0
     const sourceUnitId = params.sourceUnitId ?? 'player'
     const sourceSkillId = params.sourceSkillId ?? 0
 
-    // Determine curseType (`1` = standard curse, `2` = Attract)
-    const isKnownCurse1 = [
-      'amplifydamage',
-      'dimvision',
-      'weaken',
-      'ironmaiden',
-      'terror',
-      'confuse',
-      'lifetap',
-      'decrepify',
-      'lowerresist',
-      'cloak_of_shadows',
-      'battlecry',
-      'taunt',
-    ].includes(stateName)
-
+    // 1.13c sub_6FCC00B0 (0x6FCC00B0, D2Game.dll) + D2Common #10033 (0x6FD83B40):
+    // Curse states are determined by States.txt `curse` boolean column (`fStateMasks[11]`).
+    // All 26 `curse=1` states (`9, 19, 23, 27, 55..61, 89, 113, 114, 128..137, 141, 156`) share
+    // the single STATLIST_CURSE (0x20) slot; STATE_ATTRACT (57) has overwrite immunity (`curseType = 2`).
+    const isCurseFromTable = Boolean(stateRec?.curse)
     const curseType =
-      params.curseTypeOverride ??
-      (stateRec && stateRec.cursetype > 0
-        ? stateRec.cursetype
-        : stateName === 'attract'
-          ? 2
-          : isKnownCurse1
-            ? 1
-            : 0)
+      params.curseTypeOverride !== undefined
+        ? params.curseTypeOverride
+        : isCurseFromTable
+          ? stateId === 57
+            ? 2
+            : 1
+          : 0
 
-    // 1.13c Fade curse resistance reduces incoming curse duration
-    // (D2Game Skills.cpp:1287-1299)
-    if (curseType === 1 || curseType === 2) {
+    // 1.13c sub_6FCC00B0 (0x6FCC0192..0x6FCC01BF): STAT_CURSE_RESISTANCE (stat 109)
+    // Rejects incoming curse if curse_resistance >= 100; otherwise subtracts (duration * curseRes / 100).
+    if (curseType > 0) {
       const curseResPct = Math.min(100, Math.max(0, this.statList.getAccruedStat('curse_resistance')))
       if (curseResPct >= 100) {
         return {
@@ -185,7 +172,7 @@ export class StateBus {
         }
       }
       if (curseResPct > 0 && durationFrames > 0) {
-        durationFrames = Math.max(1, Math.floor((durationFrames * (100 - curseResPct)) / 100))
+        durationFrames = Math.max(1, durationFrames - Math.trunc((durationFrames * curseResPct) / 100))
       }
     }
 
@@ -193,11 +180,11 @@ export class StateBus {
 
     const isAura = params.isAuraOverride ?? stateRec?.aura ?? false
 
-    // CRITICAL 1.13c RULE: `STATE_ATTRACT` (`cursetype === 2`) cannot be overwritten by
-    // any standard `cursetype === 1` curse! Furthermore, casting Attract on an already
-    // Attracted monster cannot reset or duplicate.
-    if (curseType === 1 || curseType === 2 || stateName === 'attract') {
-      const existingAttract = this.entries.find(e => e.curseType === 2 || e.stateName === 'attract')
+    // 1.13c sub_6FCC00B0 (0x6FCC01C1): if bIsCurse and STATES_CheckState(pTarget, STATE_ATTRACT = 57), reject!
+    if (curseType > 0 || stateId === 57 || stateName === 'attract') {
+      const existingAttract = this.entries.find(
+        e => e.stateId === 57 || e.curseType === 2 || e.stateName === 'attract',
+      )
       if (existingAttract) {
         return {
           applied: false,
@@ -211,30 +198,77 @@ export class StateBus {
 
     let evictedState: string | undefined
 
-    // 1.13c sub_6FD10EC0 (D2Game.dll): when re-applying the SAME cursetype === 1 state,
-    // reject if newSlvl < oldSlvl (higher-level instance of the same curse cannot be downgraded).
-    // Different cursetype === 1 states overwrite regardless of slvl.
-    if (curseType === 1) {
-      const sameCurse = this.entries.find(e => e.stateName === stateName)
-      if (sameCurse && sameCurse.slvl > slvl) {
-        return {
-          applied: false,
-          stateName,
-          stateId,
-          activeSlvl: sameCurse.slvl,
+    // 1.13c sub_6FCC00B0 (0x6FCC01DD..0x6FCC0263, D2Game.dll):
+    // All `curse=1` states occupy the single STATLIST_CURSE (0x20) slot (`STATLIST_GetStatListFromUnitAndFlag(pTarget, 0x20)`).
+    // - If existing curse has the SAME stateId and SAME skillId:
+    //   * newSlvl < oldSlvl (0x6FCC0257): reject (0x6FCC0259: xor eax, eax; ret).
+    //   * newSlvl == oldSlvl (0x6FCC021B): refresh expireFrame in-place via STATLIST_SetExpireFrame (0x6FCC0233) and return existing StatList.
+    //   * newSlvl > oldSlvl (0x6FCC0257: jge 0x6FCC0263): unlink old StatList and replace with higher-level instance.
+    // - If existing curse has a DIFFERENT stateId or DIFFERENT skillId: unlink old StatList and replace regardless of slvl.
+    if (curseType > 0) {
+      const existingCurse = this.entries.find(e => e.curseType > 0)
+      if (existingCurse) {
+        const sameState =
+          (stateId > 0 && existingCurse.stateId === stateId) ||
+          existingCurse.stateName === stateName
+        const sameSkill =
+          existingCurse.sourceSkillId === sourceSkillId ||
+          existingCurse.sourceSkillId === 0 ||
+          sourceSkillId === 0
+        if (sameState && sameSkill) {
+          if (slvl < existingCurse.slvl) {
+            return {
+              applied: false,
+              stateName,
+              stateId,
+              activeSlvl: existingCurse.slvl,
+            }
+          }
+          if (slvl === existingCurse.slvl) {
+            existingCurse.expireFrame = expireFrame
+            ;(existingCurse as { durationFrames?: number }).durationFrames = durationFrames
+            if (params.stats && Object.keys(params.stats).length > 0) {
+              ;(existingCurse as { stats: Readonly<Record<string, number>> }).stats = params.stats
+              this.statList.addOrUpdateModifier({
+                id: `state:${stateName}`,
+                stateName,
+                stateId,
+                sourceUnitId,
+                sourceSkillId,
+                slvl,
+                expireFrame,
+                isAura,
+                isCurse: true,
+                curseType,
+                stats: params.stats,
+              })
+            } else {
+              for (const mod of this.statList.getActiveModifiers()) {
+                if (mod.stateName === stateName || (stateId > 0 && mod.stateId === stateId)) {
+                  mod.expireFrame = expireFrame
+                }
+              }
+            }
+            return {
+              applied: true,
+              stateName,
+              stateId,
+              activeSlvl: existingCurse.slvl,
+            }
+          }
         }
       }
-    }
 
-    // Standard `cursetype === 1` exclusivity: remove any existing `cursetype === 1` state
-    if (curseType === 1 || curseType === 2) {
       for (let i = this.entries.length - 1; i >= 0; i -= 1) {
         const prev = this.entries[i]!
-        if (prev.curseType === 1) {
+        if (prev.curseType > 0) {
           if (prev.stateName !== stateName) {
             evictedState = prev.stateName
           }
           this.statList.removeModifiersByState(prev.stateName)
+          if (prev.stateId > 0) {
+            this.statList.removeModifiersByState(prev.stateId)
+          }
           this.entries.splice(i, 1)
         }
       }

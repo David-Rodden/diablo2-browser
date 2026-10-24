@@ -159,7 +159,7 @@ describe('[Skill #009] Critical Strike (AMA) — 1.13c Parity (Issue #163)', () 
       physToElemPct: 20,
       autoHit: true,
       critRoll100: 10,
-    })
+    }, { rand: () => 10 })
     expect(outBoth.isCritical).toBe(true)
     expect(outBoth.physDamage256).toBe(160 * FIXED_ONE) // 200 * 80% = 160
     expect(outBoth.elemDamage256).toBe(40 * FIXED_ONE)  // 200 * 20% = 40

@@ -20,6 +20,7 @@ import { SEED_RollLimitedRandomNumber, SEED_RollRandomNumber } from '../../commo
 import { dir64FromPoints } from '../../common/units/direction.ts'
 import {
   computeIsoRadialRingVectors,
+  getIcebreakMeltMissile113c,
   isMaggotSmallMonster,
 } from '../../common/units/monster-death-fx.ts'
 import { isInMeleeRange113c } from '../../common/skills/weapon-combat-meta.ts'
@@ -277,6 +278,28 @@ export function triggerMissileImpactImpl(
       exp.vx = 0
       exp.vy = 0
     }
+    return
+  }
+
+  // 1.13c D2Client.dll MissCltHitFunc[31] (0x6FB605B0, Issue #1453): icebreaksmall (#272) / icebreakmedium (#273) /
+  // icebreaklarge (#274) / catapult cold explosion (#417). Returns 0 for a unit hit (edx != 0); otherwise the class
+  // switch (bytes 0x6FB606A0, jumps 0x6FB60694) creates icebreaksmallmelt (#344) for 272 and icebreaklargemelt (#345)
+  // for 273 / 274 / 417 at the missile position, copying the missile direction.
+  if (pCltHitFunc === 31) {
+    if (hitUnit) return
+    const missileId = hitRow?.id ?? missile.classId
+    const meltKey = getIcebreakMeltMissile113c(missileId)
+    if (meltKey === undefined) return
+    const melt = this.spawnMissileByKey(meltKey, hitX, hitY, hitX, hitY, {
+      ownerType: missile.ownerType,
+      ownerId: missile.ownerId,
+      sourceSkillId: missile.sourceSkillId,
+      skillLevel: missile.skillLevel,
+      direction: missile.direction,
+      loopAnim: false,
+    })
+    melt.vx = 0
+    melt.vy = 0
     return
   }
 

@@ -11,10 +11,15 @@ import {
   getTownNpcDescriptorByVendorId,
   type VendorItemColumns,
 } from '../units/npc-table.ts'
+import {
+  computeGambleBaseCost113c,
+  getCanonicalTransactionCostTables,
+} from './transaction-cost.ts'
 
 /**
  * 1.13c Normal difficulty vendor item level caps per Act (Acts 1..5).
- * D2Game.dll `D2GAME_NPC_FillStoreInventory_6FCC7100`: `[12, 20, 28, 36, 45]`.
+ * D2Game.dll v1.13c `NPC_GetVendorItemLevel` (`0x6FCDCB20`, table `0x6FD296F8`): `[12, 20, 28, 36, 45]`.
+ * Full reverse-engineering reference: `kb/items/d2game-vendor-gamble-113c.md`.
  */
 export const NORMAL_ACT_VENDOR_ILVL_CAP: readonly [number, number, number, number, number] = [
   12, 20, 28, 36, 45,
@@ -619,6 +624,12 @@ export function generateGambleInventory(options: {
     const dwInitSeed = rng.rand(0x7fffffff) >>> 0
     const rawFlags = ItemFlag.GAMBLE
     const ilvl = Math.max(5, Math.min(99, Math.trunc(cLvl) + rng.rand(10) - 5))
+    const costTables = isExpansion ? getCanonicalTransactionCostTables() : undefined
+    const baseCode = base.id.trim()
+    const gambleValue =
+      costTables && costTables.items.has(baseCode)
+        ? computeGambleBaseCost113c(baseCode, cLvl, costTables)
+        : (base.gambleCost ?? base.value)
     const mysteryItem: Item = {
       base,
       prefix: null,
@@ -633,7 +644,7 @@ export function generateGambleInventory(options: {
       invWidth: base.invWidth,
       invHeight: base.invHeight,
       stack: 1,
-      value: base.gambleCost ?? base.value,
+      value: gambleValue,
       rawFlags,
       flags: decodeItemFlags(rawFlags),
       version: 0x65,

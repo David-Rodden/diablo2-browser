@@ -16,7 +16,11 @@ import {
   type UnitType,
   type UnitTypeId,
 } from '../../netproto/index.ts'
-import { parseInGameChatInput, resolveChatTblIndex } from '../../common/chat/chat-113c.ts'
+import {
+  extractPlayersCommandCount,
+  parseInGameChatInput,
+  resolveChatTblIndex,
+} from '../../common/chat/chat-113c.ts'
 import { Environment } from '../../common/world/environment.ts'
 import { getObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
 import type { AudioRuntime113c } from '../audio/audio-runtime-113c.ts'
@@ -82,6 +86,8 @@ export interface SessionEventProcessorHost {
   readonly c2sDedupe: C2sIdenticalPacketDedupe113c
   readonly chatInputHistory: string[]
   chatInputHistoryIndex: number
+  persistedPlayersCount: number | null
+  appliedPersistedPlayersForGame: boolean
   readonly eventListeners: Set<(ev: ServerEvent) => void>
   readonly chatListeners: Set<(entry: ChatLogEntry) => void>
   setPhase(next: OnlineSessionPhase): void
@@ -168,6 +174,13 @@ export function dispatchSessionCommand(
           y: Number(rawCmd.targetY ?? rawCmd.y ?? 0),
         }
       : (cmd as ClientCommand)
+  if (normalized.type === 'Chat' && typeof normalized.text === 'string') {
+    const playersCount = extractPlayersCommandCount(normalized.text)
+    if (playersCount !== null) {
+      host.persistedPlayersCount = playersCount
+      host.appliedPersistedPlayersForGame = true
+    }
+  }
   const category = classifyClientCommand(normalized)
   // Non-movement commands (interaction, skill, UI) bypass generic rate limiter per 1.13c parity (#575)
   // to prevent player clicks and interactions from being silently swallowed.
@@ -254,6 +267,8 @@ export function submitSessionChatInput(
       return true
     case 'local_players': {
       if (parsed.valid && parsed.count !== null) {
+        host.persistedPlayersCount = parsed.count
+        host.appliedPersistedPlayersForGame = true
         host.world.addSystemChatMessage(`players set to ${parsed.count}`, 0, nowMs)
         host.dispatchCommand({ type: 'Chat', text: `/players ${parsed.count}` }, nowMs)
         host.hudModel.syncFromWorld()
@@ -276,6 +291,27 @@ export function submitSessionChatInput(
       return false
     }
   }
+}
+
+export function applyPersistedPlayersToCurrentGame(
+  host: SessionEventProcessorHost,
+  nowMs = performance.now(),
+): boolean {
+  const count = host.persistedPlayersCount
+  if (count === null || count < 1 || count > 8 || host.appliedPersistedPlayersForGame) {
+    return false
+  }
+  host.appliedPersistedPlayersForGame = true
+  const msgText = `players set to ${count}`
+  const alreadyShown = host.world.activeChatOverlayEntries.some(
+    (m) => m.kind === 'system' && m.text.toLowerCase() === msgText.toLowerCase(),
+  )
+  if (!alreadyShown) {
+    host.world.addSystemChatMessage(msgText, 0, nowMs)
+  }
+  host.dispatchCommand({ type: 'Chat', text: `/players ${count}` }, nowMs)
+  host.hudModel.syncFromWorld()
+  return true
 }
 
 export function forwardSessionCommandToAdapter(
@@ -503,20 +539,43 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
               ev.unitId)
           : null))
       : null
+  let skipDuplicatePlayersChatApply = false
+  if (ev.type === 'Chat' && ev.kind === 'system' && typeof ev.text === 'string') {
+    const playersSetMatch = /^players set to (\d+)$/i.exec(ev.text.trim())
+    if (playersSetMatch && playersSetMatch[1] !== undefined) {
+      const count = parseInt(playersSetMatch[1], 10)
+      if (count >= 1 && count <= 8) {
+        host.persistedPlayersCount = count
+        host.appliedPersistedPlayersForGame = true
+        const targetLower = ev.text.trim().toLowerCase()
+        if (
+          host.world.activeChatOverlayEntries.some(
+            (m) => m.kind === 'system' && m.from === undefined && m.text.toLowerCase() === targetLower,
+          )
+        ) {
+          skipDuplicatePlayersChatApply = true
+        }
+      }
+    }
+  }
   host.hudModel.suppressAutoSync = true
   try {
-    host.world.apply(ev)
+    if (!skipDuplicatePlayersChatApply) {
+      host.world.apply(ev)
+    }
   } finally {
     host.hudModel.suppressAutoSync = false
   }
 
-  if (
-    host.phaseValue === 'entering-game' &&
-    (ev.type === 'LoadAct' ||
-      ev.type === 'LoadComplete' ||
-      (ev.type === 'UnitAssign' && Boolean(ev.isSelf)))
-  ) {
+  const isGameInitEvent =
+    ev.type === 'LoadAct' ||
+    ev.type === 'LoadComplete' ||
+    (ev.type === 'UnitAssign' && Boolean(ev.isSelf))
+  if (host.phaseValue === 'entering-game' && isGameInitEvent) {
     host.setPhase('ingame')
+  }
+  if (isGameInitEvent && !host.appliedPersistedPlayersForGame) {
+    applyPersistedPlayersToCurrentGame(host)
   }
 
   if ((ev as any).type === 'Interact') {
@@ -860,6 +919,12 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         // no tolerance check whatever its flag byte, and drops the path.
         host.predictor.setPosition(ev.at.x, ev.at.y)
         host.camera.snapTo(ev.at.x, ev.at.y)
+        // Sync active area immediately on UnitReassign (before emitAreaSnapshotToPlayer's
+        // UnitAssign packets arrive) so same-act warp/waypoint transitions prune stale units
+        // from the old area now rather than pruning the new area's snapshot on the next render frame.
+        if (host.lastSyncedAreaId > 0) {
+          host.syncActiveAreaFromPlayerPosition({ emitHudSync: false })
+        }
         // 0x6FB5F6EC `cmp esi,[0x6fbcbbfc]` (local player) → `[0x6FBC981C] = max(old, now + 3000)`
         // (0x6FB5F70B..0x6FB5F720). The `D2Common #10716` gate in between is a 1.13c stub
         // returning 0 (0x6FD8C380).
@@ -1355,6 +1420,7 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
 }
 
 export function syncAudioSkillPacks(host: SessionEventProcessorHost): void {
+  if (host.hudManager?.tradeHallMode) return
   const classes: Array<number | string> = []
   const selfClass = host.world.self.charClass
   if (selfClass !== null && selfClass >= 0 && selfClass <= 6) {
@@ -1383,7 +1449,7 @@ export function drainWorldSoundRequests(
   },
 ): void {
   const reqs = host.world.drainWorldSoundRequests()
-  if (reqs.length === 0) return
+  if (reqs.length === 0 || host.hudManager?.tradeHallMode) return
   const runtime = host.audioRuntime
   const predSnap = host.predictor?.getSnapshot()
   const selfPos = host.world?.self

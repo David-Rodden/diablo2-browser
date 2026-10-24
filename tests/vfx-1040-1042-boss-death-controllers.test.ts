@@ -10,6 +10,7 @@
  *   delay 0x6fb5ff80 (20 / 15 / 10 / 5 / 25).
  */
 
+import { homedir } from 'node:os'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -26,7 +27,7 @@ import {
 } from '../src/client/world/boss-death-cltdo-113c.ts'
 import { CANONICAL_113C_MISSILES, getMissileTxtData } from '../src/common/skills/missiles-data.ts'
 
-const EXCEL = '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel/Missiles.txt'
+const EXCEL = join(homedir(), 'd2-data', 'excel', 'Missiles.txt')
 
 function readMissilesTxt(): Map<string, Record<string, string>> | null {
   let text: string

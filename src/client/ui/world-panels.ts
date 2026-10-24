@@ -196,6 +196,11 @@ export class WorldPanelsHud {
    * Defaults to `false` (vanilla 1.13c item tooltip with no extra base white damage / formula lines).
    */
   showWeaponDamageFormula = false
+  /**
+   * NOT 1.13c: controlled by `plugins/hud-enhancements` (`showRuneNumbers`).
+   * Defaults to `false` (vanilla 1.13c rune tooltip title without `(#1..#33)` suffix).
+   */
+  showRuneNumbers = false
   onDefaultClose: (() => void) | null = null
   onDefaultWaypointTeleport: ((act: number, slug: string, levelId: number) => void) | null = null
   onReplayQuestSpeech: ((speechKey: string) => void) | null = null

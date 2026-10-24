@@ -2370,12 +2370,12 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
     const snapToPixel = (v: number) => Math.round(v * pixelScale) / pixelScale
     const renderCamX = snapToPixel(
       ctx.source && snapshot.cameraTopLeft !== undefined
-        ? snapshot.cameraTopLeft.x + snapshot.viewportProfile.width / 2 + (snapshot.shakeOffsetX ?? 0)
+        ? snapshot.cameraTopLeft.x + snapshot.viewportProfile.width / 2
         : rawCamX + (snapshot.shakeOffsetX ?? 0),
     )
     const renderCamY = snapToPixel(
       ctx.source && snapshot.cameraTopLeft !== undefined
-        ? snapshot.cameraTopLeft.y + snapshot.viewportProfile.height / 2 + (snapshot.shakeOffsetY ?? 0)
+        ? snapshot.cameraTopLeft.y + snapshot.viewportProfile.height / 2
         : rawCamY + (snapshot.shakeOffsetY ?? 0),
     )
     const camX = renderCamX - (snapshot.shakeOffsetX ?? 0)

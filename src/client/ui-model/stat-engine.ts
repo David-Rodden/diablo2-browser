@@ -1036,7 +1036,7 @@ export function activeEquipment(
     if (!item || item.broken) continue
     resolvedByLoc.set(loc, item)
   }
-  const activeEquipped = unit === 'player' ? [...resolvedByLoc.values()] : undefined
+  const activeEquipped = [...resolvedByLoc.values()]
   const out: ActiveEquipmentItem[] = []
   for (const loc of locs) {
     const item = resolvedByLoc.get(loc)
@@ -1227,12 +1227,10 @@ export function aggregateUnit(input: StatEngineUnitInput): UnitAggregate {
   for (const e of equipment) sources.push({ kind: 'item', id: e.item.id, detail: e.bodyLoc, stats: itemFlatList(e) })
   for (const c of charms) sources.push({ kind: 'charm', id: c.id, detail: -1, stats: charmFlatList(c, level) })
   
-  if (isPlayer) {
-    const activeEquipped = equipment.map(e => e.item)
-    const setBonuses = computeFullSetBonusStats(activeEquipped)
-    if (setBonuses.length > 0) {
-      sources.push({ kind: 'passive', id: -1, detail: 0, stats: (() => { const f = new FlatStatList(); f.addAll(setBonuses); return f })() })
-    }
+  const activeEquipped = equipment.map(e => e.item)
+  const setBonuses = computeFullSetBonusStats(activeEquipped)
+  if (setBonuses.length > 0) {
+    sources.push({ kind: 'passive', id: -1, detail: 0, stats: (() => { const f = new FlatStatList(); f.addAll(setBonuses); return f })() })
   }
 
   const fromStates = stateSources(stats)

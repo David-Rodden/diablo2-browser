@@ -259,9 +259,9 @@ export function handleMouseMoveImpl(this: WorldPanelsHud, logicalX: number, logi
       this.hoveredTradeButton = 'cancel'
     } else if (
       logicalX >= ox + 35 &&
-      logicalX <= ox + 165 &&
-      logicalY >= oy + 221 &&
-      logicalY <= oy + 239
+      logicalX <= ox + 301 &&
+      logicalY >= oy + 220 &&
+      logicalY <= oy + 248
     ) {
       this.hoveredTradeButton = 'gold'
     }

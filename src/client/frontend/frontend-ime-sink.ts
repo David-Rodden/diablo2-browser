@@ -221,10 +221,15 @@ export class FrontendImeSink {
     if (options.inputElement) {
       this.inputEl = options.inputElement
     } else {
-      let el = this.container.querySelector<HTMLInputElement>('#d2-frontend-ime-sink')
+      let el = this.container.querySelector<HTMLInputElement>(
+        '.d2-frontend-ime-sink, #d2-frontend-ime-sink',
+      )
       if (!el) {
         el = document.createElement('input')
-        el.id = 'd2-frontend-ime-sink'
+        el.className = 'd2-frontend-ime-sink'
+        if (!document.getElementById('d2-frontend-ime-sink')) {
+          el.id = 'd2-frontend-ime-sink'
+        }
         this.container.appendChild(el)
       }
       this.inputEl = el

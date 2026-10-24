@@ -170,4 +170,33 @@ describe('issue #1358 NPC services', () => {
     expect(imbued.quality).toBe('rare')
     expect(imbued.identified).toBe(true)
   })
+
+  it('applies Charsi imbue when item is picked up to cursor (ItemToCursor) even if itemId is 1', () => {
+    const { game, playerId, record } = setup(1363)
+    const charsi = npc(game, 154)
+    const armor = item(1, 10, 10, false)
+    armor.location = 'inventory'
+    armor.quality = 2
+    armor.identified = true
+    record.items.push(armor)
+    record.activeNpcId = charsi
+    record.questFlags[3] |= 2
+    game.enqueueCommand(playerId, {
+      type: 'ItemToCursor',
+      itemId: 1,
+    } as never)
+    game.enqueueCommand(playerId, {
+      type: 'NpcEntityAction',
+      npcId: charsi,
+      action: 0,
+      complement: 1,
+    } as never)
+    game.stepFrames(1)
+    const imbued = (record.items as (Entry & { quality?: number; location?: string })[]).find(
+      (entry) => entry.unitId === 1,
+    )!
+    expect(imbued.quality).toBe('rare')
+    expect(imbued.identified).toBe(true)
+    expect(imbued.location).toBe('inventory')
+  })
 })

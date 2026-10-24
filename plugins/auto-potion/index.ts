@@ -1,3 +1,8 @@
+/**
+ * Auto-Potion (`auto-potion`) plugin.
+ * Author: David-Rodden (https://github.com/David-Rodden/diablo2-browser)
+ * Special thanks to David-Rodden for contributing this plugin! / 感谢 David-Rodden 贡献此插件！
+ */
 import type { AutoPotionThresholds, D2WebPlugin, LocalizedText } from '../../src/client/plugin-host/api.ts'
 
 const THRESHOLDS: readonly { readonly key: keyof AutoPotionThresholds; readonly label: LocalizedText; readonly options: readonly number[]; readonly default: number }[] = [
@@ -11,10 +16,11 @@ const optionLabel = (value: number): LocalizedText => (value === 0 ? { zh: '关�
 
 export const autoPotionPlugin: D2WebPlugin = {
   id: 'auto-potion',
+  author: 'David-Rodden',
   name: { zh: '自动喝药', en: 'Auto-Potion' },
   description: {
-    zh: '生命或法力过低时自动喝药，先用背包里的，再用腰带。危急时喝回复药剂，也会喂佣兵，药快用完时会捡地上的药。',
-    en: "Drinks a potion when life or mana runs low, inventory first, then belt. Uses rejuvenations when things get critical, feeds your mercenary, and picks potions up when you're running out.",
+    zh: '生命或法力过低时自动喝药，先用背包里的，再用腰带。危急时喝回复药剂，也会喂佣兵，药快用完时会捡地上的药。（作者：David-Rodden，感谢贡献！）',
+    en: "Drinks a potion when life or mana runs low, inventory first, then belt. Uses rejuvenations when things get critical, feeds your mercenary, and picks potions up when you're running out. (Author: David-Rodden — Special thanks for contributing!)",
   },
   defaultEnabled: false,
   settings: THRESHOLDS.map(({ key, label, options, default: value }) => ({

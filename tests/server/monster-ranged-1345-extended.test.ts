@@ -304,4 +304,221 @@ describe('issue #1345 monster skills and missile physics', () => {
     expect(events.some((e) => e.type === 'UnitStatUpdate' && e.statId === 6)).toBe(true)
     expect(events.some((e) => e.type === 'LifeMana')).toBe(true)
   })
+
+  it('blocks a monster projectile on a closed door (COLLIDE_DOOR) and lets it pass when opened', () => {
+    const game = new GameInstance({ seed: 1353, areaId: 2 })
+    connectPlayer(game, 25, 10)
+    const monsterId = game.spawnMonster({
+      defId: 'fallen1',
+      x: 5,
+      y: 10,
+      areaId: 2,
+      aiDisabled: true,
+    })
+    // Object classId 13 (Doorby1, isDoor = 1 in Objects.txt) closed (mode 0) at (12, 10).
+    const doorId = game.spawnObject({ classId: 13, x: 12, y: 10, areaId: 2, mode: 0 })
+    const internal = game as unknown as {
+      monsters: Map<number, unknown>
+      objects: Map<number, { mode: number }>
+      spawnMonsterMissile: (
+        monster: unknown,
+        x: number,
+        y: number,
+        damage: number,
+        missileClassId: number,
+        skillId: number,
+      ) => number
+      missiles: Map<number, unknown>
+    }
+    const blockedMissileId = internal.spawnMonsterMissile(
+      internal.monsters.get(monsterId),
+      25,
+      10,
+      5,
+      getMissileTxtData('arrow').id,
+      0,
+    )
+    game.stepFrames(10)
+    expect(internal.missiles.has(blockedMissileId)).toBe(false)
+
+    // Open the door (mode 2) and verify the arrow passes through x=12.
+    internal.objects.get(doorId)!.mode = 2
+    const openMissileId = internal.spawnMonsterMissile(
+      internal.monsters.get(monsterId),
+      25,
+      10,
+      5,
+      getMissileTxtData('arrow').id,
+      0,
+    )
+    game.stepFrames(6)
+    expect(internal.missiles.has(openMissileId)).toBe(true)
+  })
+
+  it('broadcasts UnitMode for ranged MissA1/A2/S1 attacks and aims at the target coordinate instead of fixed 12', () => {
+    const game = new GameInstance({ seed: 1354, areaId: 2 })
+    const playerId = game.connectPlayer({ charClass: 'pal', name: 'FarTarget', x: 30, y: 10, areaId: 2 })
+    const archerId = game.spawnMonster({
+      hcIdx: 160,
+      defId: 'cr_archer1',
+      x: 10,
+      y: 10,
+      areaId: 2,
+      aggroRadius: 40,
+    })
+    game.drainEvents(playerId)
+    game.stepFrames(30)
+    const events = game.drainEvents(playerId)
+    expect(
+      events.some(
+        (e) =>
+          e.type === 'UnitMode' &&
+          (e as { id?: number }).id === archerId &&
+          (e as { mode?: number }).mode === 4,
+      ),
+    ).toBe(true)
+    const shot = events.find((e) => e.type === 'CreateMissile') as
+      | { targetX?: number; targetY?: number }
+      | undefined
+    expect(shot).toBeDefined()
+    expect(shot!.targetX).toBe(30)
+    expect(shot!.targetY).toBe(10)
+  })
+
+  it('emits UnitStatUpdate and UnitRemove when a monster missile kills a summon and ignores summons in other areas', () => {
+    const game = new GameInstance({ seed: 1355, areaId: 2, maxPlayers: 8 })
+    const sameAreaDruid = game.connectPlayer({
+      charClass: 'dru',
+      name: 'SameAreaDruid',
+      x: 25,
+      y: 10,
+      areaId: 2,
+      level: 30,
+    })
+    const otherAreaDruid = game.connectPlayer({
+      charClass: 'dru',
+      name: 'OtherAreaDruid',
+      x: 10,
+      y: 10,
+      areaId: 4,
+      level: 30,
+    })
+    const sameWolf = game.summonPet(sameAreaDruid, { skillId: 227, slvl: 1, x: 10, y: 10 })
+    const otherWolf = game.summonPet(otherAreaDruid, { skillId: 227, slvl: 1, x: 10, y: 10 })
+    expect(sameWolf.created).toBe(true)
+    expect(otherWolf.created).toBe(true)
+    const otherPetBeforeHp = game.getPetsForOwner(otherAreaDruid)[0]!.hp
+
+    const monsterId = game.spawnMonster({
+      defId: 'fallen1',
+      x: 6,
+      y: 10,
+      areaId: 2,
+      level: 99,
+      ar: 100_000,
+      aiDisabled: true,
+    })
+    game.drainEvents(sameAreaDruid)
+    const internal = game as unknown as {
+      monsters: Map<number, unknown>
+      spawnMonsterMissile: (
+        monster: unknown,
+        x: number,
+        y: number,
+        damage: number,
+        missileClassId: number,
+        skillId: number,
+        opts?: Record<string, unknown>,
+      ) => number
+    }
+    internal.spawnMonsterMissile(
+      internal.monsters.get(monsterId),
+      15,
+      10,
+      500,
+      getMissileTxtData('arrow').id,
+      0,
+      { physDamage: 500, guaranteed: true },
+    )
+    game.stepFrames(6)
+    const events = game.drainEvents(sameAreaDruid)
+    expect(events.some((e) => e.type === 'UnitStatUpdate' && e.statId === 6)).toBe(true)
+    expect(events.some((e) => e.type === 'UnitRemove')).toBe(true)
+    expect(game.getPetsForOwner(sameAreaDruid)).toHaveLength(0)
+    // Summon in area 4 must be completely untouched by a missile in area 2.
+    expect(game.getPetsForOwner(otherAreaDruid)).toHaveLength(1)
+    expect(game.getPetsForOwner(otherAreaDruid)[0]!.hp).toBe(otherPetBeforeHp)
+  })
+
+  it('applies Amazon Avoid (skill 18) and player physical damage reduction (stat 36/34) to monster missiles', () => {
+    const game = new GameInstance({ seed: 1356, areaId: 2 })
+    const amaId = game.connectPlayer({
+      charClass: 'ama',
+      name: 'Zon',
+      x: 10,
+      y: 10,
+      areaId: 2,
+      hp: 500,
+      maxHp: 500,
+    })
+    const internal = game as unknown as {
+      players: Map<
+        number,
+        {
+          skills: Map<number, number>
+          items: { location: string; bodyLoc: number; stats: Map<number, number> }[]
+        }
+      >
+      monsters: Map<number, unknown>
+      resolveMonsterAttackOnPlayer: (
+        monster: unknown,
+        player: unknown,
+        swing: Record<string, unknown>,
+      ) => void
+    }
+    const ama = internal.players.get(amaId)!
+    // Skill 18 = Avoid (stationary missile avoidance) at slvl 20 (~65% chance)
+    ama.skills.set(18, 20)
+    // Equip 50% physical DR (stat 36) + 5 flat DR (stat 34)
+    ama.items.push({
+      location: 'equipped',
+      bodyLoc: 3,
+      stats: new Map([
+        [36, 50],
+        [34, 5],
+      ]),
+    })
+    const monsterId = game.spawnMonster({
+      defId: 'cr_archer1',
+      x: 14,
+      y: 10,
+      areaId: 2,
+      level: 80,
+      ar: 100_000,
+      aiDisabled: true,
+    })
+    const monster = internal.monsters.get(monsterId)
+    let hitsLanded = 0
+    for (let i = 0; i < 20; i++) {
+      const before = game.getPlayerState(amaId)!.hp
+      internal.resolveMonsterAttackOnPlayer(monster, ama, {
+        minDmg: 20,
+        maxDmg: 20,
+        skillMode: 'A1',
+        attackKind: 'missile',
+        skillId: 0,
+        fromMissile: true,
+        autoHit: true,
+      })
+      const after = game.getPlayerState(amaId)!.hp
+      if (after < before) {
+        hitsLanded += 1
+        // 20 raw phys - 5 flat DR = 15, then 50% damageresist -> floor(15 * 0.5) = 7 damage
+        expect(before - after).toBe(7)
+      }
+    }
+    // Avoid (~65%) must avoid a significant portion of the 20 shots, while non-avoided shots take mitigated damage.
+    expect(hitsLanded).toBeGreaterThan(0)
+    expect(hitsLanded).toBeLessThan(20)
+  })
 })

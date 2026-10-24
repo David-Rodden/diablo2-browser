@@ -12,6 +12,8 @@
  *   for crossbows (`xbow`) on normal ranged attack (`skillId=0` and `roguehire` attack modes `4`/`5`).
  */
 
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { clearMissingArtEntries, getMissingArtEntries } from '../src/client/scene/missing-art.ts'
@@ -26,7 +28,7 @@ import {
 import { CANONICAL_113C_MISSILES } from '../src/common/skills/missiles-data.ts'
 
 const EXCEL_DIR =
-  '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel'
+  join(homedir(), 'd2-data', 'excel')
 
 function getActiveMissiles(world: ClientWorld): ClientUnit[] {
   return Array.from(world.units.values()).filter((u) => u.unitType === 'missile')

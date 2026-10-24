@@ -522,6 +522,7 @@ describe('SuperUnique Multi-Difficulty TC & Minion Drop Inheritance (Issue #411)
       difficulty: 'hell',
       isNoRatio: true,
       dropTables,
+      monsterRng: 12345,
     })
     expect(tcUpgradeSpy).not.toHaveBeenCalled()
 
@@ -532,6 +533,7 @@ describe('SuperUnique Multi-Difficulty TC & Minion Drop Inheritance (Issue #411)
       difficulty: 'hell',
       isNoRatio: false,
       dropTables,
+      monsterRng: 12345,
     })
     expect(tcUpgradeSpy).toHaveBeenCalledWith(dropTables.tcTable, 'Act 1 H2H A', 80)
     tcUpgradeSpy.mockRestore()

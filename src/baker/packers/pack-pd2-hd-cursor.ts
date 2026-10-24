@@ -9,6 +9,7 @@
  * Usage: npm run bake -- pd2-hd-cursor   (or: tsx src/baker/packers/pack-pd2-hd-cursor.ts)
  */
 
+import { homedir } from 'node:os'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -27,14 +28,14 @@ function resolveDefaultNodePd2Dir(): string {
   }
   const candidates = [
     'samples/pd2',
-    '/usr/local/google/home/taodao/pd2-data',
+    join(homedir(), 'pd2-data'),
   ]
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
       return candidate
     }
   }
-  return process.env.PD2_DATA_DIR ?? '/usr/local/google/home/taodao/pd2-data'
+  return process.env.PD2_DATA_DIR ?? join(homedir(), 'pd2-data')
 }
 
 export const DEFAULT_NODE_PD2_DIR = resolveDefaultNodePd2Dir()

@@ -48,6 +48,7 @@ export interface PluginMenuCardViewModel {
   readonly id: string
   readonly name: string
   readonly description: string
+  readonly author?: string | undefined
   readonly enabled: boolean
   readonly toggleLabel: string
   readonly statusLevel: PluginStatus['level'] | 'disabled'
@@ -156,6 +157,7 @@ export function buildPluginMenuViewModel(
       id: plugin.id,
       name,
       description,
+      author: plugin.author,
       enabled: snap.enabled,
       toggleLabel: snap.enabled
         ? tPluginMenu('pluginMenu.toggle.enable', lang)

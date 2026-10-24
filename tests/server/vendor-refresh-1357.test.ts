@@ -149,4 +149,86 @@ describe('issue #1357 vendor refresh and gamble rolls', () => {
       resolveGambledItem({ mysteryItem: mystery, cLvl: 20, tables, rng: new D2Rng(2) }).identified,
     ).toBe(true)
   })
+
+  it('shares the town vendor trade stock across players and refreshes only after the last player leaves town (0x6FCDF730 / 0x6FCB0320)', () => {
+    const game = new GameInstance({ seed: 1361, areaId: 1, maxPlayers: 8 })
+    const p1 = game.connectPlayer({ charClass: 'pal', name: 'One', x: 10, y: 10, areaId: 1 })
+    const p2 = game.connectPlayer({ charClass: 'sor', name: 'Two', x: 10, y: 11, areaId: 1 })
+    const players = (game as unknown as { players: Map<number, PlayerRecord> }).players
+    const r1 = players.get(p1)!
+    const r2 = players.get(p2)!
+    const npcId = game.spawnMonster({
+      classId: 154,
+      name: 'Charsi',
+      x: 11,
+      y: 10,
+      areaId: 1,
+      isNpc: true,
+      isVendor: true,
+    })
+
+    // Both players open Charsi trade: they share the same town store inventory.
+    game.enqueueCommand(p1, { type: 'NpcAction', npcId, action: 'trade' } as never)
+    game.enqueueCommand(p2, { type: 'NpcAction', npcId, action: 'trade' } as never)
+    game.stepFrames(1)
+    const initialStock = r1.vendorPools.get(npcId)!.map((e) => e.unitId)
+    expect(r2.vendorPools.get(npcId)!.map((e) => e.unitId)).toEqual(initialStock)
+
+    const transition = (game as unknown as {
+      transitionPlayerArea: (p: PlayerRecord, area: number, arrival: { kind: string }) => boolean
+    }).transitionPlayerArea.bind(game)
+
+    // Player 1 leaves town to Blood Moor (area 2) while Player 2 remains in town (area 1):
+    // town is not empty, so Charsi's trade stock must NOT be cleared.
+    transition(r1, 2, { kind: 'townPortal' })
+    transition(r1, 1, { kind: 'townPortal' })
+    game.enqueueCommand(p1, { type: 'NpcAction', npcId, action: 'trade' } as never)
+    game.stepFrames(1)
+    expect(r1.vendorPools.get(npcId)!.map((e) => e.unitId)).toEqual(initialStock)
+
+    // Both players leave town (area 1 becomes completely empty), then Player 1 returns:
+    // Charsi's trade stock must now be regenerated.
+    transition(r1, 2, { kind: 'townPortal' })
+    transition(r2, 2, { kind: 'townPortal' })
+    transition(r1, 1, { kind: 'townPortal' })
+    game.enqueueCommand(p1, { type: 'NpcAction', npcId, action: 'trade' } as never)
+    game.stepFrames(1)
+    expect(r1.vendorPools.get(npcId)!.map((e) => e.unitId)).not.toEqual(initialStock)
+  })
+
+  it('keeps gamble inventories per-player and invalidates stale gamble preview itemIds on reopen', () => {
+    const game = new GameInstance({ seed: 1362, areaId: 1, maxPlayers: 8 })
+    const p1 = game.connectPlayer({ charClass: 'pal', name: 'G1', x: 10, y: 10, areaId: 1 })
+    const p2 = game.connectPlayer({ charClass: 'sor', name: 'G2', x: 10, y: 11, areaId: 1 })
+    const players = (game as unknown as { players: Map<number, PlayerRecord> }).players
+    const r1 = players.get(p1)!
+    const r2 = players.get(p2)!
+    r1.gold = 1_000_000
+    r2.gold = 1_000_000
+    const npcId = game.spawnMonster({
+      classId: 147,
+      name: 'Gheed',
+      x: 11,
+      y: 10,
+      areaId: 1,
+      isNpc: true,
+      isVendor: true,
+    })
+
+    game.enqueueCommand(p1, { type: 'NpcAction', npcId, action: 'gamble' } as never)
+    game.enqueueCommand(p2, { type: 'NpcAction', npcId, action: 'gamble' } as never)
+    game.stepFrames(1)
+    const g1First = r1.vendorPools.get(npcId)!.map((e) => e.unitId)
+    const g2First = r2.vendorPools.get(npcId)!.map((e) => e.unitId)
+    expect(g1First).not.toEqual(g2First)
+
+    // Reopening gamble for Player 1 refreshes Player 1's gamble pool and invalidates g1First[0].
+    const staleItemId = g1First[0]!
+    game.enqueueCommand(p1, { type: 'NpcAction', npcId, action: 'gamble' } as never)
+    game.stepFrames(1)
+    const countBefore = r1.items.length
+    game.enqueueCommand(p1, { type: 'NpcBuy', npcId, itemId: staleItemId, gamble: true } as never)
+    game.stepFrames(1)
+    expect(r1.items.length).toBe(countBefore)
+  })
 })

@@ -1,6 +1,7 @@
+import { homedir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, join } from 'node:path'
 import {
   CANONICAL_113C_MISSILES,
   getMissileTxtData,
@@ -357,7 +358,7 @@ describe('B7-p1: De-aliasing & Missiles.txt Row Alignment (#1087..#1092)', () =>
   describe('#1092 (B7-6): CANONICAL_113C_MISSILES populates SubStart for all 59 SubLoop=1 rows and loops from subStart', () => {
     it('matches Missiles.txt SubStart for all 59 SubLoop=1 rows', () => {
       const missilesTxtPath =
-        '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel/Missiles.txt'
+        join(homedir(), 'd2-data', 'excel', 'Missiles.txt')
       const lines = readFileSync(resolve(missilesTxtPath), 'utf-8').split(/\r?\n/)
       const headers = lines[0]!.split('\t')
       const nameIdx = headers.indexOf('Missile')

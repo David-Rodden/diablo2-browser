@@ -1,13 +1,18 @@
 /**
  * Built-in plugins registry (`plugins/index.ts`).
+ *
+ * Includes 15 gameplay & QoL plugins and the grouped searchable ModMenu
+ * contributed by David-Rodden (https://github.com/David-Rodden/diablo2-browser).
+ * Special thanks to David-Rodden for contributing these plugins!
+ * 特别感谢 David-Rodden 贡献这 15 款实用插件与分组搜索插件菜单！
  */
 
 import type { D2WebPlugin, MenuLayout } from '../src/client/plugin-host/api.ts'
 import { autoCombatPlugin } from './auto-combat/index.ts'
-import { autoPotionPlugin } from './auto-potion/index.ts'
 import { autoGoldPickupPlugin } from './auto-gold-pickup/index.ts'
-import { beltRefillPlugin } from './belt-refill/index.ts'
 import { automapRevealPlugin } from './automap-reveal/index.ts'
+import { autoPotionPlugin } from './auto-potion/index.ts'
+import { beltRefillPlugin } from './belt-refill/index.ts'
 import { dragInteractPlugin } from './drag-interact/index.ts'
 import { dropTrackerPlugin } from './drop-tracker/index.ts'
 import { experienceBarPlugin } from './experience-bar/index.ts'
@@ -25,6 +30,7 @@ import { quickCastPlugin } from './quick-cast/index.ts'
 import { runTimerPlugin } from './run-timer/index.ts'
 import { stashDepositAllPlugin } from './stash-deposit-all/index.ts'
 import { townPortalKeyPlugin } from './town-portal-key/index.ts'
+import { tradeHallPlugin } from './trade-hall/index.ts'
 import { upgradeHintsPlugin } from './upgrade-hints/index.ts'
 
 export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
@@ -36,6 +42,7 @@ export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
   groundItemBeamPlugin,
   quickCastPlugin,
   nextGamePlugin,
+  tradeHallPlugin,
   dragInteractPlugin,
   stashDepositAllPlugin,
   experienceBarPlugin,
@@ -78,12 +85,13 @@ export const PLUGIN_MENU_LAYOUT: MenuLayout = {
     'hud-enhancements': 'interface',
     'extended-viewports': 'interface',
     'next-game': 'interface',
+    'trade-hall': 'interface',
   },
   plain: {
     'path-guide': {
       description: {
-        zh: '告诉你当前任务下一步去哪：地面和小地图上画出路线，会用你已有的小站，并给路上的门和任务物件描边。',
-        en: 'Shows where to go next for your current quest. The route is drawn on the ground and the minimap, it uses the waypoints you have, and doors and quest objects along the way get an outline.',
+        zh: '告诉你当前任务下一步去哪：地面和小地图上画出路线，会用你已有的小站，并给路上的门和任务物件描边。（作者：David-Rodden，感谢贡献！）',
+        en: 'Shows where to go next for your current quest. The route is drawn on the ground and the minimap, it uses the waypoints you have, and doors and quest objects along the way get an outline. (Author: David-Rodden — Special thanks for contributing!)',
       },
     },
     'automap-reveal': {
@@ -115,14 +123,16 @@ export const PLUGIN_MENU_LAYOUT: MenuLayout = {
     'hud-enhancements': {
       name: { zh: '角色面板增强', en: 'Character Sheet Extras' },
       description: {
-        zh: '属性和技能点按“基础+加成”显示，悬停属性时显示再加一点的效果，悬停伤害时显示怎么算出来的。',
-        en: 'Shows stats and skill points as base + bonus, what one more point in a stat gets you, and how your damage numbers are worked out.',
+        zh: '属性和技能点按“基础+加成”显示，悬停属性时显示再加一点的效果，悬停伤害时显示怎么算出来的，支持高级属性与符文序号。',
+        en: 'Shows stats and skill points as base + bonus, what one more point in a stat gets you, how your damage numbers are worked out, plus advanced stats and rune numbers.',
       },
       settings: {
         showBasePlusBonusStats: { zh: '属性显示 基础+加成', en: 'Stats as base + bonus' },
         showStatGainTooltips: { zh: '悬停属性显示加一点的效果', en: 'What +1 point gives, on hover' },
         showBasePlusBonusSkills: { zh: '技能点显示 基础+加成', en: 'Skill points as base + bonus' },
         showWeaponDamageFormula: { zh: '悬停伤害显示算法', en: 'Damage formula on hover' },
+        showAdvancedStatsButton: { zh: '角色面板显示高级属性页按钮', en: 'Advanced stats button on character sheet' },
+        showRuneNumbers: { zh: '符文名称显示序号 (#1~#33)', en: 'Show rune numbers (#1~#33)' },
       },
     },
     'quick-cast': {

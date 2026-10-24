@@ -307,10 +307,20 @@ export function noteOutgoingCommandImpl(
           : cur.npcId
             ? this.getUnit('monster', cur.npcId)
             : undefined
+        const isArtisanNpc =
+          npcUnit?.classId === 154 || npcUnit?.classId === 511 || npcUnit?.classId === 512
         const isTravelComplement =
-          cmd.complement === 1 || cmd.complement === 40 || cmd.complement === 75 || cmd.complement === 109
+          !isArtisanNpc &&
+          curWin !== 'imbue' &&
+          curWin !== 'add_sockets' &&
+          curWin !== 'personalize' &&
+          (cmd.complement === 1 || cmd.complement === 40 || cmd.complement === 75 || cmd.complement === 109)
         const isCharsi =
           curWin === 'imbue' ||
+          (npcUnit?.classId === 154 &&
+            curWin !== 'trade' &&
+            curWin !== 'gamble' &&
+            !isTravelComplement) ||
           (curWin === 'none' &&
             !isTravelComplement &&
             (this._quests[3]! & 0x0002) !== 0 &&
@@ -1153,7 +1163,10 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       }
       this._revealedAreaIdsCache = null
       this._collisionRevision++
-      if (this.areaId === 0 && ev.areaId > 0) {
+      if (
+        ev.areaId > 0 &&
+        (this.areaId === 0 || !this.getRevealedAreaIds().includes(this.areaId))
+      ) {
         this.areaId = ev.areaId
         this.syncPlayerTownModes()
       } else if (this._self.x !== 0 || this._self.y !== 0) {
@@ -1165,12 +1178,14 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       }
       break
 
-    case 'RoomHide':
-      this._revealedRooms.delete(`${ev.areaId}:${ev.tileX}:${ev.tileY}`)
-      this._revealedRoomSeeds.delete(`${ev.areaId}:${ev.tileX}:${ev.tileY}`)
+    case 'RoomHide': {
+      const roomKey = `${ev.areaId}:${ev.tileX}:${ev.tileY}`
+      const seededRoom = this._revealedRoomSeeds.get(roomKey)
+      this._revealedRooms.delete(roomKey)
+      this._revealedRoomSeeds.delete(roomKey)
       this._revealedAreaIdsCache = null
       this._collisionRevision++
-      this.pruneUnitsInHiddenRoom(ev.tileX, ev.tileY)
+      this.pruneUnitsInHiddenRoom(ev.tileX, ev.tileY, seededRoom?.subW, seededRoom?.subH)
       if (this.areaId > 0 && ev.areaId === this.areaId && this._revealedRooms.size > 0) {
         const revealedAreas = this.getRevealedAreaIds()
         if (!revealedAreas.includes(this.areaId)) {
@@ -1184,6 +1199,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
       }
       break
+    }
 
     case 'UnitAssign': {
       const rawUnitId = (ev as any).id ?? (ev as any).unitId
@@ -2035,8 +2051,8 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         this._self.y = ev.at.y
         this._self.targetX = ev.at.x
         this._self.targetY = ev.at.y
-        if (roomAreaId > 0 && roomAreaId !== this.areaId) {
-          this.areaId = roomAreaId
+        if (targetAreaId > 0 && targetAreaId !== this.areaId) {
+          this.areaId = targetAreaId
         }
         this._isSelfDead = false
         this._self.isDead = false
@@ -2558,9 +2574,13 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       break
     }
 
-    case 'Experience':
+    case 'Experience': {
       this._self.applyExperience(ev.value, ev.isDelta ?? false)
+      const selfUnit =
+        this.selfId !== 0 ? this._units.get(makeUnitKey('player', this.selfId)) : undefined
+      if (selfUnit) selfUnit.stats.set(13, this._self.experience)
       break
+    }
 
     case 'StateSkillEffect': {
       const unitRef = ev.unit ?? (ev as any).target
@@ -2849,7 +2869,10 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               ? 'equipment'
               : 'inventory'
       let effectiveContainer = ev.container ?? ev.item?.container ?? defaultContainer
-      if (isCursorImode && effectiveAction === 0x02) {
+      if (
+        isCursorImode &&
+        (effectiveAction === 0x02 || effectiveAction === 0x00 || effectiveAction === 0x04)
+      ) {
         effectiveContainer = 'cursor'
       }
       if (
@@ -2923,13 +2946,15 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             : (uiItem.nameZh || uiItem.baseNameZh || itemUnit.name)
 
         // D2Client.dll 0x6fb34bb0 / 0x6fb34990 / 0x6fb36810:
-        // - Action 0x02 (DropToGround) -> mode 5 (ITEMMODE_DROPPING)
-        // - Action 0x00 (AddToGround) -> mode 5 if IFLAG_NEWITEM (0x2000) is set, else mode 3
+        // - Action 0x02 / 'drop' (DropToGround) -> mode 5 (ITEMMODE_DROPPING)
+        // - Action 0x00 / 'groundSpawn' (AddToGround) -> mode 5 if IFLAG_NEWITEM (0x2000) is set, else mode 3
         // - Action 0x03 (OnGround / static room reveal) -> mode 3 (ITEMMODE_ON_GROUND)
         const rawFlags = ev.item.rawFlags ?? ev.item.flags ?? 0
         const isDropping =
           effectiveAction === 0x02 ||
-          (effectiveAction === 0x00 && (rawFlags & 0x2000) !== 0)
+          effectiveAction === 'drop' ||
+          ((effectiveAction === 0x00 || effectiveAction === 'groundSpawn') &&
+            ((rawFlags & 0x2000) !== 0 || ev.item.newItem === true))
         if (isDropping) {
           const now = this.resolveEventNowMs(nowMs)
           const flippyKey = resolveGroundItemFlippyKey(

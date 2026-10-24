@@ -9,6 +9,8 @@
  * - `showStatGainTooltips`: displays a floating tooltip with 1-point attribute gains (e.g.
  *   `+x Life`, `+y Melee Damage`) when hovering over primary attributes on the Character Sheet.
  * - `showWeaponDamageFormula`: displays weapon attack and spell calculation breakdown tooltips.
+ * - `showAdvancedStatsButton`: displays the Advanced Character Stats button (`!`) on the Character Sheet.
+ * - `showRuneNumbers`: appends the rune number (`(#1)`..`(#33)`) to rune hover tooltip titles.
  *
  * When disabled in the Plugin Menu, `PluginHost` automatically releases the capability claim
  * and reverts all settings to 100% authentic Diablo II v1.13c vanilla display (`false`).
@@ -35,8 +37,8 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
       en: 'HUD Display Enhancements',
     },
     description: {
-      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示、悬停伤害时显示计算公式，并在人物属性界面提供更多属性面板按钮。关闭插件后严格恢复 1.13c 原版显示。',
-      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, shows damage calculation formulas, and adds an Advanced Character Stats button on the Character Sheet. Reverts to 1.13c vanilla display when disabled.',
+      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示、悬停伤害时显示计算公式、在人物属性界面提供更多属性面板按钮，并在符文悬停提示中显示符文编号 (#1~#33)。关闭插件后严格恢复 1.13c 原版显示。',
+      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, shows damage calculation formulas, adds an Advanced Character Stats button on the Character Sheet, and appends rune numbers (#1~#33) to rune hover tooltips. Reverts to 1.13c vanilla display when disabled.',
     },
     defaultEnabled: true,
     settings: [
@@ -85,6 +87,15 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         },
         default: true,
       },
+      {
+        kind: 'boolean',
+        key: 'showRuneNumbers',
+        label: {
+          zh: '符文悬停显示编号 (#1~#33)',
+          en: 'Rune Tooltip: Show Rune Number (#1~#33)',
+        },
+        default: true,
+      },
     ],
     activate(ctx: PluginContext): HudEnhancementsPluginInstance {
       const readSettingsConfig = (): HudEnhancementsConfig => ({
@@ -93,6 +104,7 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         showStatGainTooltips: ctx.settings.get('showStatGainTooltips') === true,
         showWeaponDamageFormula: ctx.settings.get('showWeaponDamageFormula') === true,
         showAdvancedStatsButton: ctx.settings.get('showAdvancedStatsButton') === true,
+        showRuneNumbers: ctx.settings.get('showRuneNumbers') === true,
       })
 
       ctx.client.setHudEnhancements(readSettingsConfig())
@@ -113,6 +125,9 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         if (ctx.settings.get('showAdvancedStatsButton') !== clientCfg.showAdvancedStatsButton) {
           ctx.settings.set('showAdvancedStatsButton', clientCfg.showAdvancedStatsButton)
         }
+        if (ctx.settings.get('showRuneNumbers') !== clientCfg.showRuneNumbers) {
+          ctx.settings.set('showRuneNumbers', clientCfg.showRuneNumbers)
+        }
         ctx.notifyStatusChanged()
       })
 
@@ -122,7 +137,8 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
           key === 'showBasePlusBonusSkills' ||
           key === 'showStatGainTooltips' ||
           key === 'showWeaponDamageFormula' ||
-          key === 'showAdvancedStatsButton'
+          key === 'showAdvancedStatsButton' ||
+          key === 'showRuneNumbers'
         ) {
           ctx.client.setHudEnhancements(readSettingsConfig())
           ctx.notifyStatusChanged()
@@ -152,6 +168,10 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         if (cfg.showAdvancedStatsButton) {
           activeZh.push('更多属性面板')
           activeEn.push('Advanced Stats')
+        }
+        if (cfg.showRuneNumbers) {
+          activeZh.push('符文编号')
+          activeEn.push('Rune #')
         }
         if (activeZh.length === 0) {
           return {
@@ -188,6 +208,9 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
           }
           if (typeof patch.showAdvancedStatsButton === 'boolean') {
             ctx.settings.set('showAdvancedStatsButton', patch.showAdvancedStatsButton)
+          }
+          if (typeof patch.showRuneNumbers === 'boolean') {
+            ctx.settings.set('showRuneNumbers', patch.showRuneNumbers)
           }
         },
         getStatus,

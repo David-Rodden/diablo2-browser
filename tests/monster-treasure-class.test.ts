@@ -196,6 +196,7 @@ describe('Monster & SuperUnique TreasureClass Resolution (Issue #405)', () => {
         nLevel: 85,
         difficulty: 'normal',
         isExpansion: true,
+        monsterRng: 12345,
       })
       // Normal difficulty must not upgrade to Act 5 (H) H2H C
       // resolveTreasureClassGroup called directly on Normal gating:
@@ -217,6 +218,7 @@ describe('Monster & SuperUnique TreasureClass Resolution (Issue #405)', () => {
         difficulty: 'hell',
         isBoss: true,
         monsterType: 4,
+        monsterRng: 12345,
       })
       expect(result).toBeDefined()
     })

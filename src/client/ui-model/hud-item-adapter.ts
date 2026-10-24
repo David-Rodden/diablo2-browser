@@ -247,6 +247,11 @@ export function computeHudContainersDigestForWorld(world: ClientWorld): number {
     mix(item.quantity ?? -1)
     mix(item.identified === false ? 0 : 1)
     mix(item.rawFlags ?? 0)
+    mix(typeof item.quality === 'number' ? item.quality : String(item.quality ?? '').length)
+    mix(Number((item as any).rareName1 ?? (item as any).rarePrefixId ?? 0))
+    mix(Number((item as any).rareName2 ?? (item as any).rareSuffixId ?? 0))
+    mix(Number(item.totalSockets ?? (item as any).sockets ?? 0))
+    mix(item.personalized ? 1 : 0)
     mix(item.stats?.length ?? 0)
     const firstStat = item.stats?.[0]
     if (firstStat) {
@@ -286,12 +291,33 @@ export function computeHudContainersDigestForWorld(world: ClientWorld): number {
   return h
 }
 
-export function convertWorldItemToUiItem(model: any, item: ItemData): UiInventoryItem {
-  const playerLevel = Math.max(
-    1,
-    model.world.self.level || model.world.self.stats.get(D2StatId.Level) || 1,
-  )
-  const { equippedItems, equippedSig } = model.resolveEquippedContext()
+export interface ConvertWorldItemOptions {
+  readonly unitLevel?: number | undefined
+  readonly equippedItems?: readonly ItemData[] | undefined
+  readonly equippedSig?: string | undefined
+}
+
+export function convertWorldItemToUiItem(
+  model: any,
+  item: ItemData,
+  options?: ConvertWorldItemOptions,
+): UiInventoryItem {
+  const playerLevel =
+    options?.unitLevel !== undefined && options.unitLevel > 0
+      ? Math.max(1, Math.trunc(options.unitLevel))
+      : Math.max(
+          1,
+          model.world.self.level || model.world.self.stats.get(D2StatId.Level) || 1,
+        )
+  const resolvedContext =
+    options?.equippedItems !== undefined
+      ? {
+          equippedItems: options.equippedItems,
+          equippedSig:
+            options.equippedSig ?? ('merc:' + computeEquippedItemsSignature(options.equippedItems)),
+        }
+      : model.resolveEquippedContext()
+  const { equippedItems, equippedSig } = resolvedContext
   const socketChildren = model.world.containers.sockets.get(item.id)
 
   const itemId = item.id as number | string | undefined

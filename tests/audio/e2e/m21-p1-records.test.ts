@@ -2,7 +2,7 @@
  * M21-P1 (#943) — F3 product record layer `SoundRecords113c` (src/client/audio/sound-records-113c.ts).
  *
  * Every expectation below is a D2Client.dll 1.13c fact (image base 0x6fab0000; verified with
- * `objdump -d` on /usr/local/google/home/taodao/d2-data/D2Client.dll, cross-checked with
+ * `objdump -d` on samples/d2/D2Client.dll, cross-checked with
  * PROJECT.md D22/D23 and explorer_m21r1_943_2/reland_design.md §3). Sample facts injected into the
  * product come from the shipped MPQ WAV headers (independent RIFF walk in the harness).
  *

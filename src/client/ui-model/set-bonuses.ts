@@ -26,6 +26,7 @@
  */
 
 import { RAW_ITEM_TYPES, RAW_SET_ITEMS, RAW_SETS, RAW_WEAPONS } from '../../common/data/canonical-drop-data.ts'
+import { CANONICAL_ENG_TBL_DICT } from '../../common/data/canonical-tbl-strings.ts'
 import { RAW_ITEM_STAT_COST, RAW_PROPERTIES } from '../../common/data/canonical-vendor-data.ts'
 import { SKILLS_CATALOG } from '../../common/data/skills-catalog.ts'
 import {
@@ -223,6 +224,13 @@ function loadTables(): SetBonusTables {
     setItemIdsByCode.set(si.item, codeList)
     setItemIdByName.set(si.index.toLowerCase(), si.id)
     setItemIdByName.set(si.index.trim().toLowerCase(), si.id)
+    const tblEn = CANONICAL_ENG_TBL_DICT[si.index] ?? CANONICAL_ENG_TBL_DICT[si.index.trim()]
+    if (tblEn) {
+      const lowerEn = tblEn.trim().toLowerCase()
+      if (!setItemIdByName.has(lowerEn)) {
+        setItemIdByName.set(lowerEn, si.id)
+      }
+    }
   }
 
   // ItemStatCost.txt / Properties.txt (existing parsers).

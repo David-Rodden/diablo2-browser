@@ -431,7 +431,7 @@ export function subTileToScreen(
   const dSubY = subY - camSubY
   return {
     x: profile.width / 2 - panelShiftX + (dSubX - dSubY) * ORTHO_SUB_TILE_WIDTH,
-    y: profile.height / 2 + CAMERA_Y_OFFSET + (dSubX + dSubY) * ORTHO_SUB_TILE_HEIGHT,
+    y: profile.height / 2 - CAMERA_Y_OFFSET + (dSubX + dSubY) * ORTHO_SUB_TILE_HEIGHT,
   }
 }
 
@@ -448,7 +448,7 @@ export function screenToSubTile(
   panelShiftX = 0,
 ): { x: number; y: number } {
   const relX = screenX - (profile.width / 2 - panelShiftX)
-  const relY = screenY - (profile.height / 2 + CAMERA_Y_OFFSET)
+  const relY = screenY - (profile.height / 2 - CAMERA_Y_OFFSET)
   const dx = relX / ORTHO_SUB_TILE_WIDTH
   const dy = relY / ORTHO_SUB_TILE_HEIGHT
   return {

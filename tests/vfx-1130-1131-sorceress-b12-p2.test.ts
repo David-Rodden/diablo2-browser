@@ -296,7 +296,7 @@ describe('Unit B12-p2: Sorceress Reactive Defense Hit Overlays (#1130, #1131)', 
         flatPhysMax256: 30 * FIXED_ONE,
         autoHit: true,
         unblockable: true,
-      })
+      }, { rand: () => 50 })
       expect(outcome.attackerOverlaysApplied).toContain('shiverarmor_hit')
       expect(outcome.unitOverlays?.[0]?.overlayIndex).toBe(43)
       expect(outcome.unitOverlays?.[0]?.unitOverlay.rawUnitType).toBe(1)
@@ -472,7 +472,7 @@ describe('Unit B12-p2: Sorceress Reactive Defense Hit Overlays (#1130, #1131)', 
         flatPhysMax256: 40 * FIXED_ONE,
         autoHit: true,
         unblockable: true,
-      })
+      }, { rand: () => 50 })
       expect(hitOutcome.defenderOverlaysApplied).toEqual(['energyshieldhit3'])
       expect(hitOutcome.unitOverlays).toHaveLength(1)
       expect(hitOutcome.unitOverlays![0]!.overlayIndex).toBe(90)
@@ -487,7 +487,7 @@ describe('Unit B12-p2: Sorceress Reactive Defense Hit Overlays (#1130, #1131)', 
         isPoison: true,
         autoHit: true,
         unblockable: true,
-      })
+      }, { rand: () => 50 })
       expect(poisonOutcome.defenderOverlaysApplied).toBeUndefined()
       expect(poisonOutcome.unitOverlays).toBeUndefined()
     })

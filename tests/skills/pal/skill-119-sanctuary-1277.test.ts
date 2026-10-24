@@ -118,7 +118,8 @@ describe('Issue #1277: Paladin Sanctuary (#119) tgtoverlay=cast_undead (#79) & c
       isUndead: true,
       statList: skelStats,
       stateBus: skelStateBus,
-      x: 110,
+      // #1410: Sanctuary slvl 5 radius = ln12 (5 + 4*1) = 9 sub-tiles (dx²+dy² <= 81).
+      x: 105,
       y: 100,
     }
 

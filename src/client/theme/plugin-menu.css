@@ -394,6 +394,14 @@
   user-select: none;
 }
 
+.d2-mods__author {
+  margin: -6px 0 0;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+  opacity: 0.92;
+}
+
 .d2-mods__desc {
   margin: 0;
   font-size: 14.5px;

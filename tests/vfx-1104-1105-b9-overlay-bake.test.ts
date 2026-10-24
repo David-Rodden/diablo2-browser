@@ -18,6 +18,7 @@
  *    `public/overlays/` with normalized `/` path separators and 0 scalar drift.
  */
 
+import { homedir } from 'node:os'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -40,7 +41,7 @@ import {
 import { overlayTransToDrawBlend } from '../src/common/gfx/draw-mode.ts'
 
 const EXCEL_DIR =
-  '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel'
+  join(homedir(), 'd2-data', 'excel')
 
 /**
  * `mephisto` (row 122, `Filename = MephistoOverlay`) is the sole `Overlay.txt` row whose DCC

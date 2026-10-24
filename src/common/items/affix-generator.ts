@@ -95,7 +95,7 @@ export function calculateAlvl(ilvl: number, qlvl: number, magicLvl = 0): number 
   } else {
     alvl = ilvl
   }
-  alvl = Math.min(alvl, 99)
+  alvl = Math.max(1, Math.min(alvl, 99))
   return alvl
 }
 

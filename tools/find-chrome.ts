@@ -24,7 +24,7 @@ const PLAYWRIGHT_BUILD_BINARIES = [
 
 /** System Chromium/Chrome installations, tried after the Playwright cache. */
 const SYSTEM_BINARIES = [
-  '/usr/bin/google-chrome',
+  '/usr/bin/x-www-browser',
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
   '/snap/bin/chromium',
