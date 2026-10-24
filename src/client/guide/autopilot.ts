@@ -22,6 +22,7 @@ import { readyRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRec
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { ENVIRONMENT, worthUsing } from './environment.ts'
+import { mercUpgrade } from './merc-gear.ts'
 import { hireIdOf, MERCENARIES, pickMercenary, type HireCandidate } from './mercenary.ts'
 import { gamblePick, gambleReserve, GAMBLING_RULES } from './gambling.ts'
 import { slotOf } from '../../common/items/loot-appraisal.ts'
@@ -166,6 +167,7 @@ const PURSE_LOW = 3000
 const PURSE_GOLD = 10_000
 const POTION_SHARE = 4
 const BUY_TRIES = 16
+const MERC_ITEM_MS = 1500
 const HIRE_LIST_MS = 3000
 const BUY = 0 as const
 const GAMBLE = 2 as const
@@ -210,6 +212,7 @@ export class Autopilot {
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
   private readonly stubborn = new Set<number>()
   private readonly scavenged = new Set<number>()
+  private readonly mercTried = new Set<number>()
   private game: { readonly selfId: number; readonly at: number } | null = null
   private headway: { readonly goal: SubTilePoint; best: number; from: SubTilePoint; at: number; tries: number } | null = null
   private blocked: SubTilePoint[] = []
@@ -1134,6 +1137,7 @@ export class Autopilot {
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
       merc === null && world.expansion === true && me.gold >= MERCENARIES.minGold && this.settledIn(nowMs) && ready('hire') && { key: 'hire', reason: 'Hiring a mercenary', npc: 'mercs', action: 'hire', work: () => this.hire() },
+      this.mercGear() !== null && ready('mercGear') && { key: 'mercGear', reason: 'Giving your mercenary better gear', work: () => this.dressMerc() },
       me.gold < PURSE_LOW && me.stashGold > 0 && ready('purse') && { key: 'purse', reason: 'Taking gold out of the stash', work: () => this.fillPurse() },
       worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repairAndShop() },
       (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length > 0)
@@ -1205,6 +1209,30 @@ export class Autopilot {
     if (!pick || world.merc !== null) return
     hudModel.hireMerc(npcId, hireIdOf(pick))
     if (await waitFor(() => world.merc !== null, HIRE_LIST_MS)) this.toast('Hired a mercenary', `${pick.name}, level ${pick.level}`, 'green')
+  }
+
+  private mercGear(): ReturnType<typeof mercUpgrade> {
+    const { world, assists } = this.host
+    const merc = world.merc
+    if (!merc || merc.isDead || merc.mercId <= 0) return null
+    const spare = [...world.containers.inventory.values()].filter((item) => !this.mercTried.has(item.id) && assists.inventoryCare.appraise(item).upgradeSlot === undefined)
+    return mercUpgrade(spare, { classId: merc.classId, stats: merc.stats, worn: world.containers.merc.values() })
+  }
+
+  private async dressMerc(): Promise<void> {
+    const { world, hudModel } = this.host
+    const gear = this.mercGear()
+    if (hudModel === null || gear === null) return
+    this.mercTried.add(gear.item.id)
+    hudModel.cancelNpcSession()
+    hudModel.pickupItemToCursor(gear.item.id)
+    if (!(await waitFor(() => world.containers.cursor?.id === gear.item.id, MERC_ITEM_MS))) return
+    hudModel.mercItem(gear.bodyLoc)
+    if (!(await waitFor(() => world.containers.cursor?.id !== gear.item.id, MERC_ITEM_MS))) return
+    this.toast('Gave your mercenary better gear', gear.item.code.trim(), 'green')
+    const old = world.containers.cursor
+    const spot = old && freeSpots(world.containers.inventory.values(), old.invWidth, old.invHeight)[0]
+    if (old && spot) hudModel.placeCursorItem(old.id, spot.x, spot.y, INVENTORY_BUFFER)
   }
 
   private async fillPurse(): Promise<void> {

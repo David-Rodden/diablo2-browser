@@ -1,0 +1,6 @@
+{
+  "slots": { "helm": 1, "armor": 3, "weapon2": 5 },
+  "shieldUsers": { "Iron Wolf": 359 },
+  "minGain": 5,
+  "stats": { "strength": 0, "dexterity": 2, "level": 12 }
+}

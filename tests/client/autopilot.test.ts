@@ -17,7 +17,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     areaId: area,
     self,
     merc: null,
-    containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map() },
+    containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map(), merc: new Map() },
     getUnit: (_: string, id: number) => units.find((unit) => unit.id === id),
     getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
   }
@@ -37,7 +37,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     },
     hasLootNearby: () => false,
     dodging: () => false,
-    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], wearUpgrades: vi.fn() },
+    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
     keepUp: () => false,
     canRaise: () => false,
     walkTo: vi.fn(),
