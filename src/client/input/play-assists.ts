@@ -15,7 +15,7 @@ import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
 import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from './town-portal.ts'
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
-import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, missingSummons, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
+import { attackSkill, auraSkill, BOSS_CLASSES, hopeless, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, missingSummons, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
 import { dodgeSpot, hits, threatOf, type Threat } from './danger-dodge.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
@@ -567,6 +567,11 @@ export class PlayAssists {
     }
   }
 
+  isHopeless(unit: ClientUnit): boolean {
+    const merc = this.host.world.merc
+    return this.smartSkills && !(merc && !merc.isDead && merc.mercId > 0) && hopeless(this.combatSelf(), this.combatTarget(unit))
+  }
+
   private combatTarget(unit: ClientUnit): CombatTarget {
     const { world } = this.host
     const near = (other: ClientUnit) => Math.hypot(other.x - unit.x, other.y - unit.y) <= TRAP_REACH
@@ -661,7 +666,7 @@ export class PlayAssists {
   private resolveTarget(nowMs: number): ClientUnit | null {
     this.host.centerCameraOnSelf()
     const current = this.targetId === null ? undefined : this.host.world.getUnit('monster', this.targetId)
-    const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs
+    const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs && !this.isHopeless(unit)
     const distance = this.host.distanceFromSelf()
     const urgency = (unit: ClientUnit) => distance(unit) - (isPriorityTarget(unit) ? PRIORITY_BONUS : 0) - (unit.lifePct < FINISH_LIFE_PCT ? FINISH_BONUS : 0)
     const visible = this.visibleHostilesByDistance()

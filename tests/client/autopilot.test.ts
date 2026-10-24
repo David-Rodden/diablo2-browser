@@ -46,6 +46,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     canReach: () => true,
     castAt: vi.fn(),
     isHostile: (unit: ClientUnit) => unit.name === 'Fallen',
+    isHopeless: () => false,
     castTownPortal: vi.fn(),
     hasTownPortal: () => true,
     standDown: false,

@@ -78,6 +78,13 @@ const levelOf = (self: CombatSelf, skillId: number) => self.skills.get(skillId) 
 const outranked = (self: CombatSelf, skillId: number) => GROUPS.some((group) => group.includes(skillId) && group.some((other) => other !== skillId && levelOf(self, other) > levelOf(self, skillId)))
 const best = (self: CombatSelf, ids: readonly number[], canCast: CanCast) => ids.filter((id) => levelOf(self, id) > 0 && canCast(id)).sort((a, b) => levelOf(self, b) - levelOf(self, a))[0] ?? null
 
+export function hopeless(self: CombatSelf, target: CombatTarget): boolean {
+  const learned = [...ATTACKS.keys()].filter((skillId) => levelOf(self, skillId) > 0)
+  const spells = learned.filter((skillId) => ATTACKS.get(skillId) !== 'melee')
+  const elements = new Set([...spells.map(elementOf), ...(spells.length === 0 || spells.length < learned.length ? ['physical' as const] : [])])
+  return self.petClasses.length === 0 && [...elements].every((element) => (target.resists[element] ?? 0) >= 100)
+}
+
 export function attackSkill(self: CombatSelf, target: CombatTarget, canCast: CanCast): SkillUse {
   const damage = (skillId: number) => Math.max(0, 1 - (target.resists[elementOf(skillId)] ?? 0) / 100)
   const tier = (skillId: number) => ((SKILLS_BY_ID[skillId]?.delay ?? 0) > 0 ? 0 : (SKILLS_BY_ID[skillId]?.reqlevel ?? 0) / 100)
