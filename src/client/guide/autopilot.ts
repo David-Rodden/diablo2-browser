@@ -212,6 +212,7 @@ const WIELD = new Map(Object.values(QUEST_OBJECTS.wield).map((entry) => [entry.o
 const TOOLS = new Set(Object.values(QUEST_OBJECTS.wield).map((entry) => entry.item))
 const EXIT_OBJECTS: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.exits))
 const LEVERS = new Map(Object.values(QUEST_OBJECTS.levers).map((entry) => [entry.object, entry.lever]))
+const SWEEP: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.sweep))
 const ROTATE: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.rotate).flat())
 const selectable = (unit: ClientUnit) => (((CANONICAL_113C_OBJECTS[unit.classId]?.selectableMask ?? 1) >> unit.mode) & 1) === 1
 const codeOf = (item: ItemData) => item.code.trim()
@@ -883,7 +884,9 @@ export class Autopilot {
       return (entry ? here.distanceFrom(entry.x, entry.y) : null) ?? distance(centre(room), me) + UNREACHED_ROOM
     }
     const next = view.rooms.filter((room) => !visited.has(room.index) && !this.blocked.some((spot) => distance(spot, centre(room)) <= BLOCKED_NEAR)).map((room) => ({ room, cost: walk(room) })).sort((a, b) => a.cost - b.cost)[0]?.room
-    this.say(next ? status : `${status} (explored everything)`)
+    const sweeping = !next && SWEEP.has(view.id) && this.host.guide.currentPlan?.goal.level === view.id
+    if (sweeping) visited.clear()
+    this.say(next ? status : sweeping ? `${status} (sweeping again)` : `${status} (explored everything)`)
     if (!next) return false
     const goal = centre(next)
     const key = `${view.id}:${next.index}`

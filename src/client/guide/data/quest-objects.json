@@ -19,6 +19,9 @@
     "Cairn Stones": [17, 18, 19, 20, 21]
   },
   "rotateMs": 1500,
+  "sweep": {
+    "Den of Evil": 8
+  },
   "exitReach": 30,
   "leverReach": 40
 }
