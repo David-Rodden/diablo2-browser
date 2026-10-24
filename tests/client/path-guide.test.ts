@@ -27,6 +27,12 @@ describe('path guide route', () => {
     expect(actOfLevel(108)).toBe(3)
   })
 
+  it('comes back to a skipped quest the act needs instead of sailing on without it', () => {
+    const skippedGoal = (done: Record<number, number>, skipped: readonly number[]) => currentGoal(1, quests(done), 'story', undefined, new Set(skipped))?.title
+    expect(skippedGoal({}, [1, 2, 3, 4, 5, 6])).toBe('Sisters to the Slaughter')
+    expect(skippedGoal({ 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 }, [1])).toBe('Travel to Act II')
+  })
+
   it('walks the Search for Cain one quest-log stage at a time', () => {
     const cain = (status: number) => goalOf(4, quests({ 1: 1, 2: 1 }, { 4: status }))
     expect(cain(0)).toEqual([1, 'The Search for Cain', 'Talk to Akara'])

@@ -53,7 +53,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     walkableWithDoorsOpen: (view: { walkable: Uint8Array }) => view.walkable,
   }
   const route = [{ x: 100, y: 100 }, { x: 130, y: 100 }]
-  const guide = { enabled: false, pilotStatus: null as string | null, detour: null as unknown, focus: vi.fn(), update: () => (plan ? ({ goal: { level: 2, title: 'Den of Evil' }, step: null, hint: 'Head to Blood Moor', target: null, path: [], route, doors: [], highlights: [], ...plan }) : null), routeFrom: () => route, reaches: () => true, knowsWaypointIn: () => true }
+  const guide = { skipped: new Set<number>(), skip: vi.fn(), enabled: false, pilotStatus: null as string | null, detour: null as unknown, focus: vi.fn(), update: () => (plan ? ({ goal: { level: 2, title: 'Den of Evil' }, step: null, hint: 'Head to Blood Moor', target: null, path: [], route, doors: [], highlights: [], ...plan }) : null), routeFrom: () => route, reaches: () => true, knowsWaypointIn: () => true }
   const view = { id: area, originX: 0, originY: 0, subWidth: 400, subHeight: 400, walkable: new Uint8Array(400 * 400).fill(1), rooms: [] as { index: number; worldSubX: number; worldSubY: number; subW: number; subH: number }[], presetUnits: [] as { type: number; index: number; subX: number; subY: number }[], entrances: [] }
   const host = { world, hudManager, hudModel, assists, guide, levelView: () => view } as unknown as AutopilotHost
   const pilot = new Autopilot(host)
@@ -291,6 +291,42 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toBe('Head to Blood Moor')
   })
 
+  it('backs off and tries a stuck waypoint again, then hands control back instead of skipping goals', () => {
+    const { pilot, assists, hudManager, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
+    for (let i = 0; i < 30; i++) tick(700)
+    expect(assists.stepTo).toHaveBeenCalled()
+    expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(16)
+    expect(guide.skip).not.toHaveBeenCalled()
+    expect(pilot.active).toBe(false)
+    expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
+  })
+
+  it('starts each level with fresh tries, so a waypoint it used before still works later', () => {
+    const { pilot, world, assists, units, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
+    for (let trip = 0; trip < 4; trip++) {
+      for (let i = 0; i < 5; i++) tick(700)
+      world.areaId = 74
+      tick(700)
+      world.areaId = BLOOD_MOOR
+    }
+    expect(assists.stepTo).not.toHaveBeenCalled()
+    expect(pilot.active).toBe(true)
+  })
+
+  it('takes gold out of the stash when it has none on hand', async () => {
+    const { world, assists, hudManager, hudModel, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world.self, { gold: 0, stashGold: 5000 })
+    units.push(unit({ id: 30, unitType: 'object', classId: 267, x: 102, y: 100 }))
+    assists.use.mockImplementation(() => void (hudManager.leftPanel = 'stash'))
+    Object.assign(hudModel, { withdrawGold: vi.fn((amount: number) => void (world.self.gold += amount)), closeStash: vi.fn() })
+    tick()
+    expect(guide.pilotStatus).toBe('Taking gold out of the stash')
+    await vi.waitFor(() => expect((hudModel as unknown as { withdrawGold: ReturnType<typeof vi.fn> }).withdrawGold).toHaveBeenCalledWith(5000))
+    expect(world.self.gold).toBe(5000)
+  })
+
   it('puts on better gear it is carrying while in town', () => {
     const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
     world.self.gold = 0
@@ -419,16 +455,18 @@ describe('autopilot', () => {
     expect((guide.detour as { hint: string }).hint).toContain('Training to level')
   })
 
-  it('trains after being chased out of the goal area again and again, and carries on once stronger', () => {
+  it('trains after being chased out of the goal area again and again, and carries on once stronger', async () => {
     const { world, guide, tick } = setup({ goal: { level: 2, title: 'Den of Evil' }, target: { x: 130, y: 100, label: 'Den of Evil' } })
     Object.assign(guide, { currentPlan: guide.update() })
     Object.assign(world.self, { gold: 0, stashGold: 50_000 })
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: bodyLoc, bodyLoc }))
     for (let i = 0; i < 4; i++) {
       Object.assign(world.self, { life: 20 })
       tick(6000)
       Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
       world.self.life = 100
       tick()
+      await new Promise((resolve) => setTimeout(resolve, 0))
       Object.assign(world, { areaId: BLOOD_MOOR })
       tick()
     }
