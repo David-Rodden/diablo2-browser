@@ -132,9 +132,10 @@ export interface CountingTerrain {
   overlap(x: number, y: number): number
   /**
    * Whether a projectile / missile is blocked at `(x, y)` or along the segment from `(fromX, fromY)` to `(x, y)`.
-   * Uses `COLLIDE_MASK_MISSILE` so projectiles pass over rivers, lava, and low obstacles while stopping on walls/doors.
+   * Uses `COLLIDE_MASK_MISSILE` (`0x0804`) by default, or checks the caller-provided 1.13c `CollideType` terrain mask
+   * (e.g. `0x05` for `CollideType = 8`, which includes `COLLIDE_WALL` `0x01`).
    */
-  isMissileBlocked?(x: number, y: number, fromX?: number, fromY?: number): boolean
+  isMissileBlocked?(x: number, y: number, fromX?: number, fromY?: number, mask?: number): boolean
   /**
    * Whether there is an unobstructed Line-of-Sight (LoS) between `(fromX, fromY)` and `(toX, toY)` (`COLLIDE_MASK_LOS`).
    */
@@ -163,11 +164,13 @@ export function createIsoTerrain(
     originX: grid.originX,
     originY: grid.originY,
     overlap: (x: number, y: number): number => isoOverlap(grid, x, y, body.width, body.height),
-    isMissileBlocked: (x: number, y: number, fromX?: number, fromY?: number): boolean => {
+    isMissileBlocked: (x: number, y: number, fromX?: number, fromY?: number, mask?: number): boolean => {
+      if (mask === 0) return false
+      const effectiveMask = mask !== undefined ? (mask | 0x0800) : COLLIDE_MASK_MISSILE
       if (fromX !== undefined && fromY !== undefined) {
-        return rayTraceScene(grid, fromX, fromY, x, y, COLLIDE_MASK_MISSILE).hit
+        return rayTraceScene(grid, fromX, fromY, x, y, effectiveMask).hit
       }
-      return isMissileBlockedAt(grid, x, y)
+      return isMissileBlockedAt(grid, x, y, effectiveMask)
     },
     hasLineOfSight: (fromX: number, fromY: number, toX: number, toY: number): boolean => {
       return !rayTraceScene(grid, fromX, fromY, toX, toY, COLLIDE_MASK_LOS).hit

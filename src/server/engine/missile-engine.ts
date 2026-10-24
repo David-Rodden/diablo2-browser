@@ -27,6 +27,7 @@ import { FIXED_ONE } from './stat-list.ts'
 import { compute3BandDuration, compute5BandScaling, computeDiminishingReturns, evaluateCalc } from '../../common/data/calc-ast.ts'
 import { D2Rng, hashString32 } from '../../common/rng/d2-rng.ts'
 import { ownerCanConsumePierce, resolveMissilePierceIdx } from './missile-pierce.ts'
+import { getMonsterPathRecord } from '../../common/path/units.ts'
 import {
   calculateColdArrowStats,
   calculateMultipleShotStats,
@@ -579,26 +580,30 @@ export function hasLineOfSight(
   y0: number,
   x1: number,
   y1: number,
-  terrain: MissileTerrainCollision | ((x: number, y: number, fromX?: number, fromY?: number) => boolean) | undefined,
+  terrain:
+    | MissileTerrainCollision
+    | ((x: number, y: number, fromX?: number, fromY?: number, mask?: number) => boolean)
+    | undefined,
+  mask?: number,
 ): boolean {
   if (!terrain) {
     throw new Error('hasLineOfSight requires a valid terrain collision provider')
   }
+  if (mask === 0) return true
   const dist = Math.hypot(x1 - x0, y1 - y0)
   if (dist === 0) return true
-  const stepSize = 8
-  const steps = Math.max(1, Math.ceil(dist / stepSize))
+  const steps = stepMissileSubtileRay113c(x0, y0, x1, y1, MISSILE_SUBTILE_FLAT_PX)
   let prevX = x0
   let prevY = y0
-  for (let i = 1; i <= steps; i++) {
-    const t = Math.min(1, i / steps)
-    const curX = x0 + (x1 - x0) * t
-    const curY = y0 + (y1 - y0) * t
+  for (let i = 1; i < steps.length; i++) {
+    const pt = steps[i]!
+    const curX = pt.x
+    const curY = pt.y
     let blocked = false
     if (typeof terrain === 'function') {
-      blocked = Boolean(terrain(curX, curY, prevX, prevY))
+      blocked = Boolean(terrain(curX, curY, prevX, prevY, mask))
     } else if (terrain.isMissileBlocked !== undefined) {
-      blocked = terrain.isMissileBlocked(curX, curY, prevX, prevY)
+      blocked = terrain.isMissileBlocked(curX, curY, prevX, prevY, mask)
     } else if (terrain.overlap !== undefined) {
       blocked = terrain.overlap(curX, curY) > 0
     } else {
@@ -725,9 +730,329 @@ export interface ActiveMissile {
 /** One sub-tile in the server missile engine's flat world pixels (subtile x = 20 px, y = 10 px on screen). */
 export const MISSILE_SUBTILE_FLAT_PX = 20
 
+/**
+ * 1.13c `D2Game.dll` `0x6FD2D928` (`g_aMissileCollideTypes[9]`, 8 bytes/entry: `{ pfnUnitCallback, dwCollisionMask }`).
+ * Indexed by `MissilesTxt.nCollideType` (`+0x185`, `0..8`) at `MISSILE_CreateMissileFromParams` (`0x6FC8FD52..0x6FC8FD77`)
+ * and `MISSMODE_MoveMissile` (`0x6FC5F3FB..0x6FC5F426`).
+ */
+export interface MissileCollideTypeEntry113c {
+  readonly collideType: number
+  /** 1.13c unit collision callback VA (`0` = NULL, `0x6FC5AD70` = player/good, `0x6FC5ADD0` = monster, `0x6FC5AD30` = player+monster, `0x6FC59510` = missile). */
+  readonly callbackVa: number
+  /** 1.13c `D2Common.#10212` 32-bit collision mask (`0x6FD2D92C + collideType * 8`). */
+  readonly collisionMask: number
+  /** Terrain bitmask subset (`0x00`, `0x04` = `COLLIDE_MISSILE_BARRIER`, `0x05` = `COLLIDE_MISSILE_BARRIER | COLLIDE_WALL`). */
+  readonly terrainMask: number
+  /** Unit category bitmask subset (`0x0000`, `0x0080` = player/good, `0x0100` = monster, `0x0180` = player+monster). */
+  readonly unitTypeMask: number
+  /** Whether this `CollideType` tests player-category / good-aligned units (`0x80`). */
+  readonly collidesWithPlayers: boolean
+  /** Whether this `CollideType` tests monster-category units (`0x100`). */
+  readonly collidesWithMonsters: boolean
+  /** Whether this `CollideType` tests destructible missiles (`0x40` with `CanDestroy`). */
+  readonly collidesWithMissiles: boolean
+}
+
+export const MISSILE_COLLIDE_TABLE_113C: readonly MissileCollideTypeEntry113c[] = [
+  // 0: { 0x00000000, 0x0000 } — no unit or terrain collision
+  { collideType: 0, callbackVa: 0x00000000, collisionMask: 0x0000, terrainMask: 0x00, unitTypeMask: 0x0000, collidesWithPlayers: false, collidesWithMonsters: false, collidesWithMissiles: false },
+  // 1: { 0x6FC5AD70, 0x0084 } — COLLIDE_PLAYER (0x80) | COLLIDE_MISSILE_BARRIER (0x04) (+ good-aligned mercs/summons via 0x6FC5ACB0)
+  { collideType: 1, callbackVa: 0x6FC5AD70, collisionMask: 0x0084, terrainMask: 0x04, unitTypeMask: 0x0080, collidesWithPlayers: true, collidesWithMonsters: false, collidesWithMissiles: false },
+  // 2: { 0x6FC5ADD0, 0x0104 } — COLLIDE_MONSTER (0x100) | COLLIDE_MISSILE_BARRIER (0x04)
+  { collideType: 2, callbackVa: 0x6FC5ADD0, collisionMask: 0x0104, terrainMask: 0x04, unitTypeMask: 0x0100, collidesWithPlayers: false, collidesWithMonsters: true, collidesWithMissiles: false },
+  // 3: { 0x6FC5AD30, 0x0184 } — COLLIDE_MONSTER (0x100) | COLLIDE_PLAYER (0x80) | COLLIDE_MISSILE_BARRIER (0x04)
+  { collideType: 3, callbackVa: 0x6FC5AD30, collisionMask: 0x0184, terrainMask: 0x04, unitTypeMask: 0x0180, collidesWithPlayers: true, collidesWithMonsters: true, collidesWithMissiles: false },
+  // 4: { 0x00000000, 0x0000 } — unused
+  { collideType: 4, callbackVa: 0x00000000, collisionMask: 0x0000, terrainMask: 0x00, unitTypeMask: 0x0000, collidesWithPlayers: false, collidesWithMonsters: false, collidesWithMissiles: false },
+  // 5: { 0x6FC5ADD0, 0x0104 } — COLLIDE_MONSTER (0x100) | COLLIDE_MISSILE_BARRIER (0x04)
+  { collideType: 5, callbackVa: 0x6FC5ADD0, collisionMask: 0x0104, terrainMask: 0x04, unitTypeMask: 0x0100, collidesWithPlayers: false, collidesWithMonsters: true, collidesWithMissiles: false },
+  // 6: { 0x00000000, 0x0004 } — COLLIDE_MISSILE_BARRIER (0x04) terrain-only; pfnUnitCallback == NULL (never collides with units)
+  { collideType: 6, callbackVa: 0x00000000, collisionMask: 0x0004, terrainMask: 0x04, unitTypeMask: 0x0000, collidesWithPlayers: false, collidesWithMonsters: false, collidesWithMissiles: false },
+  // 7: { 0x6FC59510, 0x0040 } — COLLIDE_MISSILE (0x40) with CanDestroy
+  { collideType: 7, callbackVa: 0x6FC59510, collisionMask: 0x0040, terrainMask: 0x00, unitTypeMask: 0x0000, collidesWithPlayers: false, collidesWithMonsters: false, collidesWithMissiles: true },
+  // 8: { 0x6FC5AD30, 0x0185 } — COLLIDE_MONSTER (0x100) | COLLIDE_PLAYER (0x80) | COLLIDE_MISSILE_BARRIER (0x04) | COLLIDE_WALL (0x01)
+  { collideType: 8, callbackVa: 0x6FC5AD30, collisionMask: 0x0185, terrainMask: 0x05, unitTypeMask: 0x0180, collidesWithPlayers: true, collidesWithMonsters: true, collidesWithMissiles: false },
+] as const
+
+export function getMissileCollideEntry113c(collideType: number): MissileCollideTypeEntry113c {
+  const idx = Math.trunc(collideType)
+  if (idx >= 0 && idx < MISSILE_COLLIDE_TABLE_113C.length) {
+    return MISSILE_COLLIDE_TABLE_113C[idx]!
+  }
+  return MISSILE_COLLIDE_TABLE_113C[0]!
+}
+
+function getUnitMonHcIdx(unit: unknown): number | undefined {
+  if (!unit || typeof unit !== 'object') return undefined
+  const u = unit as { monHcIdx?: number; hcIdx?: number }
+  if (typeof u.monHcIdx === 'number' && u.monHcIdx >= 0) return u.monHcIdx
+  if (typeof u.hcIdx === 'number' && u.hcIdx >= 0) return u.hcIdx
+  return undefined
+}
+
+/**
+ * Resolve a unit's 1.13c alignment side (`'good'` = player / party / mercenary / player minion,
+ * `'evil'` = hostile monster).
+ */
+export function resolveUnitAlignmentSide113c(
+  unit: CombatUnitContext | undefined,
+  referenceOwner?: CombatUnitContext | undefined,
+): 'good' | 'evil' {
+  if (!unit) return 'good'
+  if (unit.ownerRef && unit.ownerRef !== unit) {
+    return resolveUnitAlignmentSide113c(unit.ownerRef, referenceOwner)
+  }
+  if (
+    unit.unitType === 'player' ||
+    unit.unitType === 'mercenary' ||
+    unit.unitType === 'party' ||
+    unit.unitType === 'party_mercenary' ||
+    unit.unitType === 'minion'
+  ) {
+    return 'good'
+  }
+  if (unit.unitType === 'monster') {
+    if (
+      referenceOwner &&
+      unit.ownerUnitId !== undefined &&
+      (unit.ownerUnitId === referenceOwner.id || unit.ownerUnitId === referenceOwner.ownerUnitId)
+    ) {
+      return resolveUnitAlignmentSide113c(referenceOwner)
+    }
+    return 'evil'
+  }
+  // When `unitType` is omitted in unit tests:
+  // - If `unit` is the missile owner (no `referenceOwner` or `unit === referenceOwner`), it is player-side unless `monHcIdx` is set.
+  if (!referenceOwner || unit.id === referenceOwner.id) {
+    return getUnitMonHcIdx(unit) !== undefined ? 'evil' : 'good'
+  }
+  if (
+    unit.ownerUnitId !== undefined &&
+    (unit.ownerUnitId === referenceOwner.id || unit.ownerUnitId === referenceOwner.ownerUnitId)
+  ) {
+    return resolveUnitAlignmentSide113c(referenceOwner)
+  }
+  const ownerSide = resolveUnitAlignmentSide113c(referenceOwner)
+  if (ownerSide === 'good') {
+    return 'evil'
+  }
+  if (getUnitMonHcIdx(unit) !== undefined) {
+    return 'evil'
+  }
+  return 'good'
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FC58FB0` (`MISSMODE_IsTargetEnemy`) + `0x6FD00A60` (`SUNIT_IsEnemy`):
+ * Returns `true` when `owner` and `target` are hostile enemies, `false` when friendly/allied or same unit.
+ */
+export function areUnitsEnemies113c(
+  owner: CombatUnitContext | undefined,
+  target: CombatUnitContext | undefined,
+): boolean {
+  if (!owner || !target) return false
+  if (owner.id === target.id) return false
+  const rootOwnerId = owner.ownerRef?.id ?? owner.ownerUnitId ?? owner.id
+  const rootTargetId = target.ownerRef?.id ?? target.ownerUnitId ?? target.id
+  if (rootOwnerId === rootTargetId) return false
+  const ownerSide = resolveUnitAlignmentSide113c(owner)
+  const targetSide = resolveUnitAlignmentSide113c(target, owner)
+  return ownerSide !== targetSide
+}
+
+/**
+ * 1.13c unit collision gate (`0x6FC5F3FB..0x6FC5F426` -> `0x6FC5AD30/0x6FC5AD70/0x6FC5ADD0` -> `0x6FC5AA20` -> `0x6FC58FB0` / `0x6FC5EDE0`):
+ * 1. `CollideType` `0, 4, 6` (`callbackVa == 0`) and `7` (`0x40` missile-only) never collide with player/monster units.
+ * 2. `LastCollide` (`+0x04` bit `0x01`, initialized to `pOwner` at `0x6FC8FDA3`): a missile never collides with its own caster.
+ * 3. `CollideType = 1` (`0x0084`, `0x6FC5AD70` / `0x6FC5ACB0`) only collides with player-aligned (`'good'`) units.
+ * 4. `CollideType = 2` or `5` (`0x0104`, `0x6FC5ADD0` / `0x6FC5AC00`) only collides with monster (`dwUnitType == 1`) units.
+ * 5. `0x6FC58FB0` (`SUNIT_IsEnemy`): if target is not an enemy of `missile.owner`, only collides when `MissilesTxt.CollideFriend == 1`.
+ */
+export function canMissileCollideWithUnit113c(
+  missileOrRecord:
+    | {
+        readonly record: Pick<MissileRecord, 'collideType' | 'collideFriend' | 'lastCollide' | 'size'>
+        readonly owner?: CombatUnitContext | undefined
+      }
+    | Pick<MissileRecord, 'collideType' | 'collideFriend' | 'lastCollide' | 'size'>,
+  targetOrOwner: CombatUnitContext,
+  maybeTarget?: CombatUnitContext | undefined,
+): boolean {
+  const isWrapper = 'record' in missileOrRecord
+  const record = isWrapper ? missileOrRecord.record : missileOrRecord
+  const owner = isWrapper ? missileOrRecord.owner : targetOrOwner
+  const target = isWrapper ? targetOrOwner : maybeTarget!
+  const entry = getMissileCollideEntry113c(record.collideType)
+  if (entry.callbackVa === 0 || (!entry.collidesWithPlayers && !entry.collidesWithMonsters)) {
+    return false
+  }
+  if (owner && target.id === owner.id) {
+    return false
+  }
+  const targetSide = resolveUnitAlignmentSide113c(target, owner)
+  const isPlayerUnit = target.unitType === 'player' || target.unitType === 'party'
+  if (entry.collideType === 1) {
+    // 0x6FC5AD70 -> 0x6FC5ACB0: only players (dwUnitType == 0) or good-aligned monsters (mercenaries/summons)
+    if (targetSide !== 'good') return false
+  } else if (entry.collideType === 2 || entry.collideType === 5) {
+    // 0x6FC5ADD0 -> 0x6FC5AC00: only dwUnitType == 1 (monsters), never players
+    if (isPlayerUnit) return false
+  }
+  const isEnemy = areUnitsEnemies113c(owner, target)
+  if (!isEnemy && !record.collideFriend) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Resolve a unit's 1.13c subtile footprint size (`1..3`, `D2Common.#10336`):
+ * - Players (`dwUnitType == 0`): `SizeX = 2`.
+ * - Monsters (`dwUnitType == 1`): `MonStats2.SizeX` (`1..3`), defaulting to `2`.
+ */
+export function resolveUnitSubtileSize113c(
+  unit:
+    | CombatUnitContext
+    | {
+        readonly unitType?: string | undefined
+        readonly monHcIdx?: number | undefined
+        readonly hcIdx?: number | undefined
+        readonly sizeX?: number | undefined
+      },
+): number {
+  const explicitSize = (unit as { readonly sizeX?: number | undefined }).sizeX
+  if (explicitSize !== undefined && explicitSize >= 1 && explicitSize <= 3) {
+    return Math.trunc(explicitSize)
+  }
+  if (unit.unitType === 'player' || unit.unitType === 'party') {
+    return 2
+  }
+  const monHcIdx = getUnitMonHcIdx(unit)
+  if (monHcIdx !== undefined && monHcIdx >= 0) {
+    const rec = getMonsterPathRecord(monHcIdx)
+    if (rec && rec.sizeX >= 1 && rec.sizeX <= 3) {
+      return rec.sizeX
+    }
+  }
+  return 2
+}
+
+/**
+ * 1.13c `D2Common.#10389` (`0x6FDCF6A0`, 9-case jump table at `0x6FDCF8E8`):
+ * Subtile footprint overlap between a missile of size `missileSize` (`1..3`, `Missiles.txt` `Size`)
+ * and a target unit of size `targetSize` (`1..3`, `MonStats2.txt` `SizeX` or `2` for players).
+ */
+export function checkMissileSizeFootprintOverlap113c(
+  dxSub: number,
+  dySub: number,
+  missileSize: number,
+  targetSize: number = 2,
+): boolean {
+  const mSize = Math.trunc(missileSize)
+  const tSize = Math.trunc(targetSize)
+  if (mSize < 1 || mSize > 3 || tSize < 1 || tSize > 3) {
+    return false
+  }
+  const dx = Math.abs(dxSub)
+  const dy = Math.abs(dySub)
+  const caseIdx = (mSize - 1) * 3 + (tSize - 1)
+  switch (caseIdx) {
+    case 0: // (1, 1): dx == 0 && dy == 0
+      return dx < 1 && dy < 1
+    case 1: // (1, 2): dx + dy <= 1
+    case 3: // (2, 1): dx + dy <= 1
+      return dx + dy <= 1
+    case 4: // (2, 2): dx + dy <= 2
+      return dx + dy <= 2
+    case 2: // (1, 3): dx <= 1 && dy <= 1
+    case 6: // (3, 1): dx <= 1 && dy <= 1
+      return dx <= 1 && dy <= 1
+    case 5: // (2, 3): (dx <= 2 && dy <= 1) || (dy <= 2 && dx <= 1)
+    case 7: // (3, 2): (dx <= 2 && dy <= 1) || (dy <= 2 && dx <= 1)
+      return (dx <= 2 && dy <= 1) || (dy <= 2 && dx <= 1)
+    case 8: // (3, 3): dx <= 2 && dy <= 2
+      return dx <= 2 && dy <= 2
+    default:
+      return false
+  }
+}
+
+/**
+ * 1.13c `D2Common.#10229` (`PATH_StepMissile`, `0x6FD80F80` -> `0x6FD5D420` -> `0x6FD5D580` / `0x6FD8E110`):
+ * Halves `(dx, dy)` (`sar 1`) until both `|stepX| <= subtilePx` (`< 0x10000` in 16.16 fixed-point) and
+ * `|stepY| <= subtilePx`, returning the sequence of stepped points from `(x0, y0)` to `(x1, y1)`.
+ */
+export function stepMissileSubtileRay113c(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  subtilePx: number = MISSILE_SUBTILE_FLAT_PX,
+): { readonly x: number; readonly y: number }[] {
+  let stepX = x1 - x0
+  let stepY = y1 - y0
+  let steps = 1
+  const limit = Math.max(1e-6, subtilePx)
+  while ((Math.abs(stepX) > limit || Math.abs(stepY) > limit) && steps < 256) {
+    stepX *= 0.5
+    stepY *= 0.5
+    steps <<= 1
+  }
+  const points: { readonly x: number; readonly y: number }[] = [{ x: x0, y: y0 }]
+  for (let i = 1; i <= steps; i++) {
+    points.push({
+      x: i === steps ? x1 : x0 + stepX * i,
+      y: i === steps ? y1 : y0 + stepY * i,
+    })
+  }
+  return points
+}
+
+/**
+ * Check `0x6FDCF6A0` `Size` footprint overlap along a missile's per-tick movement segment `(x0, y0) -> (x1, y1)`.
+ */
+export function checkMissileSegmentFootprintOverlap113c(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  tx: number,
+  ty: number,
+  missileSize: number,
+  targetSize: number = 2,
+  subtilePx: number = MISSILE_SUBTILE_FLAT_PX,
+  yAspect: number = 1,
+): boolean {
+  const stepPoints = stepMissileSubtileRay113c(x0, y0, x1, y1, subtilePx)
+  for (const pt of stepPoints) {
+    const dxSub = Math.abs(tx - pt.x) / subtilePx
+    const dySub = Math.abs((ty - pt.y) / yAspect) / subtilePx
+    if (checkMissileSizeFootprintOverlap113c(dxSub, dySub, missileSize, targetSize)) {
+      return true
+    }
+  }
+  const segDx = x1 - x0
+  const segDy = (y1 - y0) / yAspect
+  const segLenSq = segDx * segDx + segDy * segDy
+  if (segLenSq > 1e-6) {
+    const relY = (ty - y0) / yAspect
+    const t = Math.max(0, Math.min(1, ((tx - x0) * segDx + relY * segDy) / segLenSq))
+    const cx = x0 + segDx * t
+    const cy = y0 + (y1 - y0) * t
+    const dxSub = Math.abs(tx - cx) / subtilePx
+    const dySub = Math.abs((ty - cy) / yAspect) / subtilePx
+    if (checkMissileSizeFootprintOverlap113c(dxSub, dySub, missileSize, targetSize)) {
+      return true
+    }
+  }
+  return false
+}
+
 export interface MissileTerrainCollision {
   readonly overlap?: ((x: number, y: number) => number) | undefined
-  readonly isMissileBlocked?: ((x: number, y: number, fromX?: number, fromY?: number) => boolean) | undefined
+  readonly isMissileBlocked?:
+    | ((x: number, y: number, fromX?: number, fromY?: number, mask?: number) => boolean)
+    | undefined
 }
 
 export interface MissileStepResult {
@@ -1546,6 +1871,7 @@ export class MissileEngine {
           const radiusPx = 180 // 9 subtiles = 6.0 yards = 180px
           for (const target of targets) {
             if (target.statList.getHp256() <= 0) continue
+            if (!areUnitsEnemies113c(m.owner, target)) continue
             const pos = targetPositions.get(target.id) ?? { x: m.x, y: m.y }
             if (Math.hypot(pos.x - m.x, (pos.y - m.y) / ISO_GROUND_ASPECT_RATIO) <= radiusPx) {
               const dmgOut = executeSUnitDmg(m.owner, target, m.dmgPacket, m.doFuncRng ?? this.rng)
@@ -1677,6 +2003,9 @@ export class MissileEngine {
         }
       }
 
+      const tickStartX = m.x
+      const tickStartY = m.y
+
       // Spiral flight for Blessed Hammer (`blessedhammer`, `skillId = 112`)
       // Authentic Archimedean spiral: r = a * theta, foreshortened by 0.5 on y-axis in 2:1 isometric space
       if (isTurretEmitter) {
@@ -1717,7 +2046,6 @@ export class MissileEngine {
             m.ageTicks % 5 === 0 &&
             m.hitTargetIds.size > 0
           ) {
-            const hitRadius = Math.max(24, (m.record.size || 2) * 14)
             for (const hitId of Array.from(m.hitTargetIds)) {
               const hitUnit = targets.find((t) => t.id === hitId)
               const hitPos = hitUnit
@@ -1726,14 +2054,22 @@ export class MissileEngine {
                     y: hitUnit.statList.getAccruedStat('y') || 0,
                   })
                 : undefined
-              if (!hitPos || Math.hypot(hitPos.x - m.x, hitPos.y - m.y) > hitRadius) {
+              if (
+                !hitPos ||
+                !checkMissileSizeFootprintOverlap113c(
+                  Math.abs(hitPos.x - m.x) / MISSILE_SUBTILE_FLAT_PX,
+                  Math.abs(hitPos.y - m.y) / MISSILE_SUBTILE_FLAT_PX,
+                  m.record.size || 1,
+                  hitUnit ? resolveUnitSubtileSize113c(hitUnit) : 2,
+                )
+              ) {
                 m.hitTargetIds.delete(hitId)
               }
             }
           }
           if (m.lockedTargetId !== undefined && !m.hitTargetIds.has(m.lockedTargetId)) {
             const lockedUnit = targets.find((t) => t.id === m.lockedTargetId && t.statList.getHp256() > 0)
-            if (lockedUnit) {
+            if (lockedUnit && areUnitsEnemies113c(m.owner, lockedUnit)) {
               const pos = targetPositions.get(lockedUnit.id) ?? {
                 x: lockedUnit.statList.getAccruedStat('x') || 0,
                 y: lockedUnit.statList.getAccruedStat('y') || 0,
@@ -1756,6 +2092,7 @@ export class MissileEngine {
             for (const target of targets) {
               if (target.statList.getHp256() <= 0) continue
               if (m.hitTargetIds.has(target.id)) continue
+              if (!areUnitsEnemies113c(m.owner, target)) continue
               const pos = targetPositions.get(target.id) ?? {
                 x: target.statList.getAccruedStat('x') || 0,
                 y: target.statList.getAccruedStat('y') || 0,
@@ -1846,23 +2183,30 @@ export class MissileEngine {
         m.x += m.vx
         m.y += m.vy
 
+        // 1.13c D2Game.dll 0x6FD2D928 + D2Common.#10229 (PATH_StepMissile 0x6FD80F80 -> 0x6FD5D580):
+        // Step by halved subtile increments and test terrain collision with the CollideType's terrainMask
+        // (`0x00` for CollideType 0/4/7 -> no terrain collision; `0x04` for 1/2/3/5/6; `0x05` for 8).
+        const collideEntry = getMissileCollideEntry113c(m.record.collideType)
+        const terrainMask = collideEntry.terrainMask
         const effectiveTerrain = collision ?? this.terrain
-        if (effectiveTerrain !== undefined && !isTurretEmitter && (m.altitude === undefined || m.altitude <= 0)) {
-          // Continuous collision stepping between (prevX, prevY) and (m.x, m.y) to prevent tunneling through thin (<24px) walls
-          const moveDist = Math.hypot(m.vx, m.vy)
-          const stepSize = 8
-          const steps = Math.max(1, Math.ceil(moveDist / stepSize))
+        if (
+          effectiveTerrain !== undefined &&
+          terrainMask !== 0 &&
+          !isTurretEmitter &&
+          (m.altitude === undefined || m.altitude <= 0)
+        ) {
+          const raySteps = stepMissileSubtileRay113c(prevX, prevY, m.x, m.y, MISSILE_SUBTILE_FLAT_PX)
           let blocked = false
           let checkPrevX = prevX
           let checkPrevY = prevY
           let hitWallX = m.x
           let hitWallY = m.y
-          for (let s = 1; s <= steps; s++) {
-            const t = s / steps
-            const curX = prevX + (m.x - prevX) * t
-            const curY = prevY + (m.y - prevY) * t
+          for (let s = 1; s < raySteps.length; s++) {
+            const pt = raySteps[s]!
+            const curX = pt.x
+            const curY = pt.y
             if (effectiveTerrain.isMissileBlocked !== undefined) {
-              if (effectiveTerrain.isMissileBlocked(curX, curY, checkPrevX, checkPrevY)) {
+              if (effectiveTerrain.isMissileBlocked(curX, curY, checkPrevX, checkPrevY, terrainMask)) {
                 blocked = true
                 hitWallX = curX
                 hitWallY = curY
@@ -1878,11 +2222,14 @@ export class MissileEngine {
             checkPrevY = curY
           }
           if (blocked) {
+            m.x = hitWallX
+            m.y = hitWallY
             // Glacial Spike (pSrvHitFunc === 13) explodes at wall collision coordinates (64px AoE burst)
             if (m.record.pSrvHitFunc === 13 || m.name === 'glacialspike' || m.sourceSkillId === 55) {
               const splashRadius = 64
               for (const other of targets) {
                 if (other.statList.getHp256() <= 0) continue
+                if (!areUnitsEnemies113c(m.owner, other)) continue
                 const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
                 if (Math.hypot(oPos.x - hitWallX, oPos.y - hitWallY) <= splashRadius) {
                   const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket, m.doFuncRng ?? this.rng)
@@ -1963,7 +2310,7 @@ export class MissileEngine {
                 subMissilesSpawned,
               })
             } else if (m.name === 'plaguejavelin' || m.record.pSrvHitFunc === 2) {
-              // 1.13c AlwaysExplode = 1 / pSrvHitFunc = 2: Plague Javelin (#25) bursts on wall collision!
+              // 1.13c AlwaysExplode = 1 / pSrvHitFunc = 2: Plague Javelin (#25) / Gas Potions (#47..#49) burst on wall collision!
               this.triggerPlagueJavelinBurst({
                 missile: m,
                 impactX: hitWallX,
@@ -1973,6 +2320,21 @@ export class MissileEngine {
                 hits,
                 subMissilesSpawned,
               })
+            } else if (m.record.pSrvHitFunc === 3) {
+              // 1.13c pSrvHitFunc = 3 (Fire Potions #44..#46, CollideType = 6): detonate on terrain barrier impact!
+              const expName = m.record.explosionMissile || m.record.hitSubMissile1 || 'fireexplode'
+              this.spawnMissile({
+                missileNameOrId: expName,
+                sourceSkillId: m.sourceSkillId,
+                slvl: m.slvl,
+                owner: m.owner,
+                startX: hitWallX,
+                startY: hitWallY,
+                targetX: hitWallX,
+                targetY: hitWallY,
+                dmgPacket: m.dmgPacket,
+              })
+              subMissilesSpawned.push(expName)
             } else if (m.name === 'lightningfury' || m.record.pSrvHitFunc === 20) {
               // 1.13c pSrvHitFunc = 20: Lightning Fury (#35) releases furylightning bolts on wall collision!
               this.triggerLightningFuryBolts({
@@ -1992,6 +2354,7 @@ export class MissileEngine {
               const splashRadius = 140
               for (const other of targets) {
                 if (other.statList.getHp256() <= 0) continue
+                if (!areUnitsEnemies113c(m.owner, other)) continue
                 const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
                 if (Math.hypot(oPos.x - hitWallX, oPos.y - hitWallY) <= splashRadius) {
                   const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket, m.doFuncRng ?? this.rng)
@@ -2023,7 +2386,36 @@ export class MissileEngine {
         }
       }
 
-      // Check collision against alive enemy targets
+      // 1.13c CollideType = 7 (0x6FC59510, mask 0x0040 COLLIDE_MISSILE):
+      // Destroys overlapping missiles that have MissilesTxt.CanDestroy (+0x04 bit 0x08).
+      if (m.record.collideType === 7) {
+        const sweeperSize = Math.max(1, m.record.size || 1)
+        for (const otherM of this.missiles) {
+          if (otherM === m || otherM.expired || !otherM.record.canDestroy) continue
+          if (
+            checkMissileSegmentFootprintOverlap113c(
+              tickStartX,
+              tickStartY,
+              m.x,
+              m.y,
+              otherM.x,
+              otherM.y,
+              sweeperSize,
+              Math.max(1, otherM.record.size || 1),
+              MISSILE_SUBTILE_FLAT_PX,
+            )
+          ) {
+            otherM.expired = true
+            if (m.record.collideKill) {
+              m.expired = true
+              break
+            }
+          }
+        }
+      }
+
+      // Check collision against target units per 1.13c g_aMissileCollideTypes (0x6FD2D928),
+      // SUNIT_IsEnemy + CollideFriend (0x6FC58FB0), and D2Common.#10389 Size footprint (0x6FDCF6A0)
       if (
         (m.name === 'meteorfire' && m.ageTicks % 5 === 0) ||
         (m.name === 'immolationfire' && m.ageTicks % 5 === 0) ||
@@ -2034,39 +2426,30 @@ export class MissileEngine {
       ) {
         m.hitTargetIds.clear()
       }
-      const hitRadius = Math.max(24, (m.record.size || 2) * 14)
       for (const target of targets) {
         if (target.statList.getHp256() <= 0) continue
         if (m.hitTargetIds.has(target.id)) continue
-        if (
-          m.record.collideType === 0 &&
-          m.name !== 'fistoftheheavensdelay' &&
-          m.record.pSrvHitFunc !== 22
-        ) {
+        if (!canMissileCollideWithUnit113c(m, target)) {
           continue
         }
 
-        // Blaze self-hit immunity: caster does not take damage from their own footstep fire
-        if (m.name === 'blaze' && m.owner && target.id === m.owner.id) {
-          continue
-        }
-
-        // Holy Bolt (`skillId = 101` or `fistoftheheavensbolt` `234`):
-        // 1. Undead: Takes Magic damage, consumes missile.
-        // 2. Friendly Ally (player, mercenary, party, minion): Heals ally, consumes missile.
-        // 3. Living Non-Undead (Demon, Beast, Monster without isUndead): Passes through without collision!
+        // 1.13c MISSMODE_SrvHit07_HolyBolt (0x6FC5E220, pSrvHitFunc = 7):
+        // - Reached on allies because Missiles.txt CollideFriend = 1 (#55 holybolt, #234 fistoftheheavensbolt).
+        // - Calls 0x6FC58FB0(pMissile, pTarget):
+        //   * If enemy (isEnemyTarget): tests MONSTERS_IsUndead (0x6FD60950). If not undead, returns 0 (passes through).
+        //   * If friendly (!isEnemyTarget): tests MissilesTxt.nHoly & 1; heals friendly target and consumes bolt.
         const isHolyBoltMissile =
-          m.name.toLowerCase() === 'holybolt' || m.name.toLowerCase() === 'fistoftheheavensbolt'
-        const isFriendlyAlly =
-          target.unitType === 'player' ||
-          target.unitType === 'mercenary' ||
-          target.unitType === 'party' ||
-          target.unitType === 'party_mercenary' ||
-          target.unitType === 'minion'
+          m.record.pSrvHitFunc === 7 ||
+          m.name.toLowerCase() === 'holybolt' ||
+          m.name.toLowerCase() === 'fistoftheheavensbolt'
+        const isEnemyTarget = areUnitsEnemies113c(m.owner, target)
 
         if (isHolyBoltMissile) {
-          if (!target.isUndead && !isFriendlyAlly) {
-            // Passes through living monsters/demons/beasts without collision!
+          if (isEnemyTarget) {
+            if (!target.isUndead) {
+              continue
+            }
+          } else if (((m.record.holy || 1) & 1) === 0) {
             continue
           }
         }
@@ -2110,10 +2493,20 @@ export class MissileEngine {
           m.name === 'blaze' ||
           m.name === 'poisonjavcloud' ||
           m.name === 'plaguejavcloud'
-        const dist = isGroundPatch
-          ? Math.hypot(pos.x - m.x, (pos.y - m.y) / ISO_GROUND_ASPECT_RATIO)
-          : Math.hypot(pos.x - m.x, pos.y - m.y)
-        if (dist <= hitRadius) {
+        const targetSize = resolveUnitSubtileSize113c(target)
+        const overlapsFootprint = checkMissileSegmentFootprintOverlap113c(
+          tickStartX,
+          tickStartY,
+          m.x,
+          m.y,
+          pos.x,
+          pos.y,
+          m.record.size,
+          targetSize,
+          MISSILE_SUBTILE_FLAT_PX,
+          isGroundPatch ? ISO_GROUND_ASPECT_RATIO : 1,
+        )
+        if (overlapsFootprint) {
           // Multiple Shot volley multi-hit immunity
           if (m.volleyId) {
             const vKey = `${m.volleyId}:${target.id}`
@@ -2135,7 +2528,7 @@ export class MissileEngine {
 
           // Holy Bolt friendly heal (`#101 holybolt`: 1+2*(slvl-1) to 6+4*(slvl-1) + Prayer 15%/blvl;
           // `#234 fistoftheheavensbolt`: 1+2*(slvl-1) to 6+2*(slvl-1), no Prayer synergy)
-          if (isHolyBoltMissile && isFriendlyAlly) {
+          if (isHolyBoltMissile && !isEnemyTarget) {
             const isFohBolt = m.name.toLowerCase() === 'fistoftheheavensbolt'
             const prayerBlvl = isFohBolt ? 0 : m.owner.statList.getBaseSkillLevel(99)
             const rawHealMin = 1 + (m.slvl - 1) * 2
@@ -2412,6 +2805,7 @@ export class MissileEngine {
               m.record.pSrvHitFunc === 13 || m.name === 'glacialspike' || m.sourceSkillId === 55 ? 64 : 85
             for (const other of targets) {
               if (other.id === target.id || other.statList.getHp256() <= 0) continue
+              if (!areUnitsEnemies113c(m.owner, other)) continue
               const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
               if (Math.hypot(oPos.x - pos.x, oPos.y - pos.y) <= splashRadius) {
                 const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket, m.doFuncRng ?? this.rng)
@@ -2446,6 +2840,7 @@ export class MissileEngine {
             let minDistance = Infinity
             for (const cand of targets) {
               if (cand.id === target.id || cand.statList.getHp256() <= 0) continue
+              if (!areUnitsEnemies113c(m.owner, cand)) continue
               const candPos = targetPositions.get(cand.id) ?? { x: 0, y: 120 }
               const dist = Math.hypot(candPos.x - pos.x, candPos.y - pos.y)
               if (dist <= searchRadiusPx && dist < minDistance) {
@@ -2512,6 +2907,7 @@ export class MissileEngine {
             const fohSearchRadiusPx = 400 // 20 subtiles = 400 px
             for (const other of targets) {
               if (other.id === target.id || other.statList.getHp256() <= 0) continue
+              if (!areUnitsEnemies113c(m.owner, other)) continue
               const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
               if (Math.hypot(oPos.x - pos.x, oPos.y - pos.y) > fohSearchRadiusPx) continue
               this.spawnMissile({
@@ -2729,6 +3125,21 @@ export class MissileEngine {
             hits,
             subMissilesSpawned,
           })
+        } else if (!m.expired && m.record.pSrvHitFunc === 3) {
+          // 1.13c pSrvHitFunc = 3 (Fire Potions #44..#46, CollideType = 6): detonate at landing / range expiry!
+          const expName = m.record.explosionMissile || m.record.hitSubMissile1 || 'fireexplode'
+          this.spawnMissile({
+            missileNameOrId: expName,
+            sourceSkillId: m.sourceSkillId,
+            slvl: m.slvl,
+            owner: m.owner,
+            startX: m.x,
+            startY: m.y,
+            targetX: m.x,
+            targetY: m.y,
+            dmgPacket: m.dmgPacket,
+          })
+          subMissilesSpawned.push(expName)
         } else if (
           !m.expired &&
           (m.name === 'moltenboulder' ||
@@ -2739,6 +3150,7 @@ export class MissileEngine {
           const splashRadius = 140
           for (const other of targets) {
             if (other.statList.getHp256() <= 0) continue
+            if (!areUnitsEnemies113c(m.owner, other)) continue
             const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
             if (Math.hypot(oPos.x - m.x, oPos.y - m.y) <= splashRadius) {
               const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket, m.doFuncRng ?? this.rng)
@@ -2798,6 +3210,35 @@ export class MissileEngine {
           (!m.currentHitFrame || m.currentHitFrame === 0)
         ) {
           m.currentHitFrame = 1
+          // `fistoftheheavensdelay` (#233, `CollideType = 0`, `Vel = 0`, `Range = 10`) is stationary at the primary target:
+          // apply primary lightning strike on the enemy at (m.x, m.y) if not yet struck, then release radial Holy Bolts
+          // toward all other enemies within 20 subtiles (400 px).
+          let primaryTargetId: string | undefined
+          if ((m.dmgPacket.elemMin256 ?? 0) > 0 || (m.dmgPacket.elemMax256 ?? 0) > 0) {
+            let closestPrimary: CombatUnitContext | undefined
+            let closestPrimaryDist = Infinity
+            for (const cand of targets) {
+              if (cand.statList.getHp256() <= 0) continue
+              if (!areUnitsEnemies113c(m.owner, cand)) continue
+              const cPos = targetPositions.get(cand.id) ?? { x: 0, y: 120 }
+              const dist = Math.hypot(cPos.x - m.x, cPos.y - m.y)
+              if (dist <= 40 && dist < closestPrimaryDist) {
+                closestPrimaryDist = dist
+                closestPrimary = cand
+              }
+            }
+            if (closestPrimary && !m.hitTargetIds.has(closestPrimary.id)) {
+              m.hitTargetIds.add(closestPrimary.id)
+              primaryTargetId = closestPrimary.id
+              const dmgOut = executeSUnitDmg(m.owner, closestPrimary, m.dmgPacket, m.doFuncRng ?? this.rng)
+              hits.push({
+                missileName: m.name,
+                targetId: closestPrimary.id,
+                damage: dmgOut.totalDamage,
+                immune: dmgOut.immuneToElem || dmgOut.immuneToPhys,
+              })
+            }
+          }
           const subBolt = m.record.hitSubMissile1 || 'fistoftheheavensbolt'
           const hbBlvl = m.owner.statList.getBaseSkillLevel(101)
           const fohBoltDmg = calculateFistOfTheHeavensHolyBoltDamage(m.slvl, hbBlvl)
@@ -2814,7 +3255,8 @@ export class MissileEngine {
           }
           const fohSearchRadiusPx = 400
           for (const other of targets) {
-            if (other.statList.getHp256() <= 0) continue
+            if (other.id === primaryTargetId || other.statList.getHp256() <= 0) continue
+            if (!areUnitsEnemies113c(m.owner, other)) continue
             const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
             if (Math.hypot(oPos.x - m.x, oPos.y - m.y) > fohSearchRadiusPx) continue
             this.spawnMissile({
@@ -2842,6 +3284,7 @@ export class MissileEngine {
           const blastRadius = 120
           for (const target of targets) {
             if (target.statList.getHp256() <= 0) continue
+            if (!areUnitsEnemies113c(m.owner, target)) continue
             const pos = targetPositions.get(target.id) ?? { x: 0, y: 120 }
             const inRange =
               Math.hypot(pos.x - m.x, (pos.y - m.y) / ISO_GROUND_ASPECT_RATIO) <= blastRadius
@@ -3042,6 +3485,7 @@ export class MissileEngine {
     const burstRadius = 120
     for (const other of targets) {
       if (other.id === excludeTargetId || other.statList.getHp256() <= 0) continue
+      if (!areUnitsEnemies113c(m.owner, other)) continue
       const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
       if (Math.hypot(oPos.x - impactX, oPos.y - impactY) <= burstRadius) {
         const splashOut = executeSUnitDmg(m.owner, other, cloudPacket, m.doFuncRng ?? this.rng)
@@ -3090,6 +3534,7 @@ export class MissileEngine {
     for (const other of targets) {
       if (boltsSpawned >= maxBolts) break
       if (other.id === excludeTargetId || other.statList.getHp256() <= 0) continue
+      if (!areUnitsEnemies113c(m.owner, other)) continue
       const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
       const dist = Math.hypot(oPos.x - impactX, oPos.y - impactY)
       if (dist <= searchRadiusPx) {
@@ -3181,6 +3626,7 @@ export class MissileEngine {
     const splashRadius = 80
     for (const other of targets) {
       if (other.id === excludeTargetId || other.statList.getHp256() <= 0) continue
+      if (!areUnitsEnemies113c(m.owner, other)) continue
       const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
       if (Math.hypot(oPos.x - impactX, oPos.y - impactY) <= splashRadius) {
         const splashOut = executeSUnitDmg(m.owner, other, explosionPacket, m.doFuncRng ?? this.rng)

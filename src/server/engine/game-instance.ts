@@ -36,7 +36,7 @@ import {
 import { MONSTER_PATH_DATA, MONSTER_PATH_DATA_STRIDE } from '../../common/path/monster-path-data.ts'
 import { MONMODE_KNOCKBACK, MONMODE_RUN, MONMODE_WALK } from '../../common/path/types.ts'
 import { getMonsterModeBaseFrameCount113c } from '../../common/path/monster-anim-metrics-113c.ts'
-import { getMonsterModeBaseAnimSpeed256 } from '../../common/path/units.ts'
+import { getMonsterModeBaseAnimSpeed256, getMonsterPathRecord } from '../../common/path/units.ts'
 import { resolveArmorSpeed113c } from '../../common/units/char-anim-speed.ts'
 import {
   findPathWorld,
@@ -210,6 +210,10 @@ import {
   srvdo008FanTargets113c,
   strafeShotCount113c,
 } from './player-srvdo-113c.ts'
+import {
+  checkMissileSegmentFootprintOverlap113c,
+  getMissileCollideEntry113c,
+} from './missile-engine.ts'
 import type { SkillEvalResult } from '../skills/types.ts'
 
 export type GameMode = 'sp' | 'open' | 'realm' | 'singlePlayer' | 'multiplayer'
@@ -7360,7 +7364,7 @@ export class GameInstance {
       vy: speed > 0 ? (dy / dist) * speed : 0,
       damage: totalDamage,
       remainingFrames: rangeTicks,
-      collideType: options.guaranteed === true ? 0 : (meta?.collideType ?? 3),
+      collideType: meta?.collideType ?? 3,
       size: Math.max(1, meta?.size ?? 1),
       pierce: meta?.pierce === true,
       nextHit: meta?.nextHit === true,
@@ -9485,14 +9489,26 @@ export class GameInstance {
       missile.y += missile.vy
       missile.remainingFrames--
 
-      // Missiles.txt CollideType: 0 ignores terrain, 1/3/6 fly over low obstacles,
-      // 8 hugs the floor. Sweep the whole segment so a fast projectile cannot
-      // tunnel through a one-tile wall or closed door between two point samples.
+      const collideEntry = getMissileCollideEntry113c(missile.collideType)
+
+      // 1.13c D2Game.dll 0x6FD2D928 CollideType:
+      // - terrainMask 0x00 (CollideType 0, 4, 7): ignores terrain
+      // - terrainMask 0x04 (CollideType 1, 2, 3, 5, 6): flies over walk-only obstacles (0x01), stops on missile barriers (0x04)
+      // - terrainMask 0x05 (CollideType 8): stops on walk-only obstacles (0x01) and missile barriers (0x04)
       if (
-        missile.collideType !== 0 &&
+        !missile.guaranteedHit &&
+        collideEntry.terrainMask !== 0 &&
         this.missileSegmentBlocked(missile, prevX, prevY)
       ) {
         this.missiles.delete(mId)
+        continue
+      }
+
+      // CollideType 0, 4, 6 (callbackVa === 0) and 7 (CanDestroy missile sweeper) never collide with units
+      if (collideEntry.callbackVa === 0 || collideEntry.collideType === 7) {
+        if (missile.remainingFrames <= 0) {
+          this.missiles.delete(mId)
+        }
         continue
       }
 
@@ -9509,18 +9525,29 @@ export class GameInstance {
           )
         }
       }
+      const hitsTargetFootprint = (tx: number, ty: number, targetSize: number): boolean =>
+        checkMissileSegmentFootprintOverlap113c(
+          prevX,
+          prevY,
+          missile.x,
+          missile.y,
+          tx,
+          ty,
+          missile.size,
+          targetSize,
+          1,
+        )
       if (missile.ownerType === 'monster') {
         const ownerMon = this.monsters.get(missile.ownerId)
         if (ownerMon === undefined) {
           this.missiles.delete(mId)
           continue
         }
-        const hitRadius = 1 + missile.size * 0.75
         const ownerConverted = this.isMonsterConverted(ownerMon)
-        if (!ownerConverted) {
+        if (!ownerConverted && (collideEntry.unitTypeMask & 0x0080) !== 0) {
           for (const player of this.players.values()) {
             if (player.dead || !this.isAreaSeamAdjacent(missile.areaId, player.areaId)) continue
-            if (Math.hypot(player.x - missile.x, player.y - missile.y) > hitRadius) continue
+            if (!hitsTargetFootprint(player.x, player.y, 2)) continue
             if (!canHit(player.unitId)) continue
             this.resolveMonsterAttackOnPlayer(ownerMon, player, {
               minDmg: missile.physDamage,
@@ -9565,7 +9592,7 @@ export class GameInstance {
               if (!merc.alive || !this.isAreaSeamAdjacent(missile.areaId, merc.areaId)) continue
               const mercOwner = this.players.get(merc.ownerPlayerId)
               if (mercOwner !== undefined && (mercOwner.dead || !this.isAreaSeamAdjacent(missile.areaId, mercOwner.areaId))) continue
-              if (Math.hypot(merc.x - missile.x, merc.y - missile.y) > hitRadius) continue
+              if (!hitsTargetFootprint(merc.x, merc.y, 2)) continue
               if (!canHit(merc.unitId)) continue
               const prevHp = merc.hp
               const nextHp = this.applyMonsterMissileToDefender(ownerMon, missile, {
@@ -9597,7 +9624,9 @@ export class GameInstance {
                 const petAreaId =
                   (pet as unknown as { areaId?: number }).areaId ?? owner.areaId
                 if (!this.isAreaSeamAdjacent(missile.areaId, petAreaId)) continue
-                if (Math.hypot(pet.x - missile.x, pet.y - missile.y) > hitRadius) continue
+                const petHcIdx = (pet as unknown as { hcIdx?: number }).hcIdx ?? -1
+                const petSize = Math.max(1, Math.min(3, getMonsterPathRecord(petHcIdx)?.sizeX ?? 2))
+                if (!hitsTargetFootprint(pet.x, pet.y, petSize)) continue
                 if (!canHit(stableUnitKey(pet.uid))) continue
                 const prevHp = pet.hp
                 const nextHp = this.applyMonsterMissileToDefender(ownerMon, missile, {
@@ -9625,7 +9654,11 @@ export class GameInstance {
             }
           }
         }
-        if ((!hit || missile.pierce) && (missile.hitMonsters || ownerConverted || ownerMon.states.has(59))) {
+        if (
+          (!hit || missile.pierce) &&
+          (collideEntry.unitTypeMask & 0x0100) !== 0 &&
+          (missile.hitMonsters || ownerConverted || ownerMon.states.has(59))
+        ) {
           for (const target of this.monsters.values()) {
             if (
               target.unitId === ownerMon.unitId ||
@@ -9636,7 +9669,8 @@ export class GameInstance {
             ) {
               continue
             }
-            if (Math.hypot(target.x - missile.x, target.y - missile.y) > hitRadius) continue
+            const targetSize = Math.max(1, Math.min(3, getMonsterPathRecord(target.hcIdx)?.sizeX ?? 2))
+            if (!hitsTargetFootprint(target.x, target.y, targetSize)) continue
             if (!canHit(target.unitId)) continue
             const defenderStats = new UnitStatList()
             defenderStats.setBaseStat('level', target.level)
@@ -9717,21 +9751,21 @@ export class GameInstance {
             if (!missile.pierce) break
           }
         }
-      } else {
+      } else if ((collideEntry.unitTypeMask & 0x0100) !== 0) {
         const owner = this.players.get(missile.ownerId)
         if (owner) {
           for (const monster of this.monsters.values()) {
             if (
               monster.dead ||
               monster.isNpc ||
-              monster.areaId !== missile.areaId
+              monster.areaId !== missile.areaId ||
+              this.isMonsterConverted(monster)
             ) {
               continue
             }
             if (!canHit(monster.unitId)) continue
-            if (
-              Math.hypot(monster.x - missile.x, monster.y - missile.y) <= 2.5
-            ) {
+            const monsterSize = Math.max(1, Math.min(3, getMonsterPathRecord(monster.hcIdx)?.sizeX ?? 2))
+            if (hitsTargetFootprint(monster.x, monster.y, monsterSize)) {
               if (
                 missile.element === 'pois' &&
                 missile.elemDurationFrames > 0 &&

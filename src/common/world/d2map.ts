@@ -1749,12 +1749,14 @@ export function isBlockedAt(
 }
 
 /**
- * Whether a projectile / missile is blocked at scene-space `(x, y)` (`COLLIDE_MASK_MISSILE`).
- * Water, lava, rivers, and low cliffs (`COLLIDE_WALL` without `COLLIDE_MISSILE_BARRIER`) return `false`,
- * allowing projectiles to fly across them.
+ * Whether a projectile / missile is blocked at scene-space `(x, y)`.
+ * Defaults to `COLLIDE_MASK_MISSILE` (`0x0804`: `COLLIDE_MISSILE_BARRIER | COLLIDE_DOOR`),
+ * or checks the caller-provided 1.13c `CollideType` terrain mask (e.g. `0x05` for `CollideType = 8`,
+ * which includes `COLLIDE_WALL` `0x01`).
  */
-export function isMissileBlockedAt(scene: CollisionGrid, x: number, y: number): boolean {
-  return isBlockedAt(scene, x, y, COLLIDE_MASK_MISSILE)
+export function isMissileBlockedAt(scene: CollisionGrid, x: number, y: number, mask?: number): boolean {
+  if (mask === 0) return false
+  return isBlockedAt(scene, x, y, mask !== undefined ? (mask | 0x0800) : COLLIDE_MASK_MISSILE)
 }
 
 /**
