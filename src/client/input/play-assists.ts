@@ -17,6 +17,8 @@ import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
 import { attackSkill, auraSkill, BOSS_CLASSES, hopeless, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, missingSummons, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
 import { dodgeSpot, hits, threatOf, type Threat } from './danger-dodge.ts'
+import THREAT from '../../common/skills/data/monster-threat.json'
+import { ThreatSense, type Danger, type Defender, type Foe } from './threat-sense.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
 const PICKUP_RETRY_MS = 600
@@ -138,6 +140,7 @@ export class PlayAssists {
   pilotKey: string | null = null
   townPortalKey: string | null = null
   readonly inventoryCare: InventoryCare
+  readonly threat = new ThreatSense()
   private readonly autoPotion = new AutoPotionPlanner()
   private readonly pickupRetryAt = new Map<number, number>()
   private autoCombatKeyValue: string | null = null
@@ -195,6 +198,7 @@ export class PlayAssists {
     this.drinkPotionsIfLow(nowMs)
     this.refillBelt(nowMs)
     this.inventoryCare.tick()
+    this.senseThreat(nowMs)
     if (!this.avoidDanger(nowMs)) {
       this.pickUpNearbyLoot(nowMs)
       this.runAutoCombat(nowMs)
@@ -567,6 +571,29 @@ export class PlayAssists {
     }
   }
 
+  private defender(): Defender {
+    const { world, hudManager } = this.host
+    const attrs = hudManager.charSheet.attrs
+    return { name: world.self.name ?? '', level: world.self.level, defense: attrs.defense ?? 0, resists: { fire: attrs.fireRes ?? 0, cold: attrs.coldRes ?? 0, lightning: attrs.lightRes ?? 0, poison: attrs.poisRes ?? 0 }, difficulty: world.difficulty, areaId: world.areaId }
+  }
+
+  private foeOf(unit: ClientUnit): Foe {
+    const info = clientUnitToMonsterTargetInfo(unit, this.host.world.difficulty)
+    return { classId: unit.classId, rank: info.rank ?? 'normal', modifiers: info.modifiers ?? [] }
+  }
+
+  dangerOf(units: readonly ClientUnit[]): Danger {
+    return this.threat.danger(this.defender(), units.map((unit) => this.foeOf(unit)))
+  }
+
+  private senseThreat(nowMs: number): void {
+    const { world } = this.host
+    if (world.areaId <= 0 || world.isDead) return
+    const me = world.self
+    const near = () => world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= THREAT.near).map((unit) => this.foeOf(unit))
+    this.threat.observe(this.defender(), me.life, near, nowMs)
+  }
+
   isHopeless(unit: ClientUnit): boolean {
     const merc = this.host.world.merc
     return this.smartSkills && !(merc && !merc.isDead && merc.mercId > 0) && hopeless(this.combatSelf(), this.combatTarget(unit))
@@ -668,9 +695,13 @@ export class PlayAssists {
     const current = this.targetId === null ? undefined : this.host.world.getUnit('monster', this.targetId)
     const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs && !this.isHopeless(unit)
     const distance = this.host.distanceFromSelf()
-    const urgency = (unit: ClientUnit) => distance(unit) - (isPriorityTarget(unit) ? PRIORITY_BONUS : 0) - (unit.lifePct < FINISH_LIFE_PCT ? FINISH_BONUS : 0)
     const visible = this.visibleHostilesByDistance()
-    const best = [...new Set([...visible.slice(0, TARGET_CANDIDATES), ...visible.filter(isPriorityTarget)])].sort((a, b) => urgency(a) - urgency(b)).find(worthIt)
+    const candidates = [...new Set([...visible.slice(0, TARGET_CANDIDATES), ...visible.filter(isPriorityTarget)])]
+    const me = this.defender()
+    const menace = new Map([...candidates, ...(current ? [current] : [])].map((unit) => [unit.id, this.threat.dpsOf(me, this.foeOf(unit))]))
+    const worst = Math.max(1e-6, ...menace.values())
+    const urgency = (unit: ClientUnit) => distance(unit) - (isPriorityTarget(unit) ? PRIORITY_BONUS : 0) - (unit.lifePct < FINISH_LIFE_PCT ? FINISH_BONUS : 0) - THREAT.focusBonus * ((menace.get(unit.id) ?? 0) / worst)
+    const best = [...candidates].sort((a, b) => urgency(a) - urgency(b)).find(worthIt)
     const keep = current !== undefined && this.isOnScreenHostile(current) && worthIt(current) && (best === undefined || urgency(best) > urgency(current) - SWITCH_MARGIN)
     return keep ? current : (best ?? null)
   }

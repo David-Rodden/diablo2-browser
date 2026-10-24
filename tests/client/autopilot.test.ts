@@ -47,6 +47,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     castAt: vi.fn(),
     isHostile: (unit: ClientUnit) => unit.name === 'Fallen',
     isHopeless: () => false,
+    dangerOf: (_: readonly ClientUnit[]) => ({ dps: 1, trusted: false }),
     castTownPortal: vi.fn(),
     hasTownPortal: () => true,
     standDown: false,
@@ -237,6 +238,31 @@ describe('autopilot', () => {
       return assists.stepTo.mock.lastCall?.slice(0, 2)
     })
     expect(steps).toEqual([[112, 100], [112, 112], [112, 88]])
+  })
+
+  it('leaves a pack alone when it would bring the character down within seconds', () => {
+    const { world, assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    const journal = vi.fn()
+    Object.assign(assists, { autoCombatKey: 'E', journal, dangerOf: (pack: readonly ClientUnit[]) => ({ dps: pack.some((foe) => foe.id === 71) ? 50 : 1, trusted: false }) })
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    units.push(unit({ id: 71, x: 112, y: 100, name: 'Fallen' }), unit({ id: 72, x: 125, y: 110, name: 'Fallen' }))
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Hunting Fallen')
+    expect(assists.walkTo.mock.calls.at(-1)?.[1]).toBeGreaterThan(100)
+    expect(journal).toHaveBeenCalledWith('threat', expect.objectContaining({ dps: 50, fall: 2 }))
+  })
+
+  it('heads home before a pack it knows well can finish it off', () => {
+    const { world, assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    units.push(unit({ id: 71, x: 104, y: 100, name: 'Fallen' }))
+    world.self.life = 55
+    Object.assign(assists, { dangerOf: () => ({ dps: 15, trusted: false }) })
+    tick()
+    expect(guide.pilotStatus).not.toBe('Too dangerous here, heading to town')
+    Object.assign(assists, { dangerOf: () => ({ dps: 15, trusted: true }) })
+    tick(4000)
+    expect(guide.pilotStatus).toBe('Too dangerous here, heading to town')
   })
 
   it('searches the rest of the level once it reaches a spot that does not finish the quest', () => {

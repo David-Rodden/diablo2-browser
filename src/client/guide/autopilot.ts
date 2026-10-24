@@ -35,6 +35,7 @@ import { WAYPOINT_LEVELS } from './level-links.ts'
 import { bareSlots, GEAR_HUNT_MS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
 import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
+import THREAT from '../../common/skills/data/monster-threat.json'
 
 export interface AutopilotHost {
   readonly world: ClientWorld
@@ -841,8 +842,16 @@ export class Autopilot {
     const doomedIn = burst > DOOM_MIN_LOSS ? (life * BURST_MS) / burst : Infinity
     if (life < retreatAt) return 'Low on life, heading to town'
     if (doomedIn < DOOM_MS) return 'Taking a beating, heading to town'
+    if (life < THREAT.doomLife && this.outmatched()) return 'Too dangerous here, heading to town'
     if (healing === 0 && life < DRY_LIFE) return 'Out of healing potions, heading to town'
     return (!stocked && burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
+  }
+
+  private outmatched(): boolean {
+    const { world, assists } = this.host
+    const me = world.self
+    const { dps, trusted } = assists.dangerOf(world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= THREAT.near))
+    return trusted && (me.life / Math.max(1e-6, dps)) * 1000 < THREAT.escapeMs
   }
 
   private cornered(nowMs: number): boolean {
@@ -1025,8 +1034,9 @@ export class Autopilot {
     const chased = this.chase && world.getUnit('monster', this.chase.id)
     const huntable = (unit: ClientUnit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= HUNT_RADIUS && (this.ignored.get(unit.id) ?? 0) <= nowMs && !assists.isHopeless(unit)
     const hostiles = world.getUnitsByType(1).filter(huntable)
-    const worth = (unit: ClientUnit) => distance(unit, me) - (isElite(unit) ? ELITE_PULL : 0) - PACK_PULL * hostiles.filter((other) => other !== unit && distance(other, unit) <= PACK_RADIUS).length
-    const fresh = () => [...hostiles].sort((a, b) => worth(a) - worth(b)).find((unit) => assists.canReach(unit, nowMs) || !this.ignore(unit, nowMs))
+    const packOf = (unit: ClientUnit) => hostiles.filter((other) => distance(other, unit) <= PACK_RADIUS)
+    const worth = (unit: ClientUnit) => distance(unit, me) - (isElite(unit) ? ELITE_PULL : 0) - PACK_PULL * (packOf(unit).length - 1)
+    const fresh = () => [...hostiles].sort((a, b) => worth(a) - worth(b)).find((unit) => (assists.canReach(unit, nowMs) || !this.ignore(unit, nowMs)) && this.dareFight(unit, packOf(unit), nowMs))
     const prey = bold ? (chased && huntable(chased) ? chased : fresh()) : undefined
     if (!prey) {
       this.chase = null
@@ -1040,6 +1050,15 @@ export class Autopilot {
     this.say(`Hunting ${prey.name ?? 'monsters'}`)
     this.walkTowards(prey, nowMs)
     return true
+  }
+
+  private dareFight(unit: ClientUnit, pack: readonly ClientUnit[], nowMs: number): boolean {
+    const { dps } = this.host.assists.dangerOf(pack)
+    const fall = this.host.world.self.life / Math.max(1e-6, dps)
+    if (fall >= THREAT.huntSeconds) return true
+    this.ignored.set(unit.id, nowMs + HUNT_IGNORE_MS)
+    this.host.assists.journal?.('threat', { classId: unit.classId, pack: pack.length, dps: Math.round(dps), fall: Math.round(fall * 10) / 10 })
+    return false
   }
 
   private retreat(why: string, nowMs: number): void {
