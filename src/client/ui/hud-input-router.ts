@@ -337,6 +337,24 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
   }
   const docking = hud.getDockingLayout()
   const { marginW } = docking
+  const tradeState = (hud as any).trade ?? (hud.worldPanels as any).trade
+  const pendingModal = tradeState?.pendingModal
+  const hasPendingTradeModal = pendingModal === 'wait' || pendingModal === 'request'
+  const isPendingTradeOnly =
+    hud.leftPanel === 'trade' && !tradeState?.active && hasPendingTradeModal
+  if (hasPendingTradeModal && typeof hud.worldPanels?.getPendingTradeModalLayout === 'function') {
+    const sw = is640 ? 640 : profile.width
+    const sh = is640 ? 480 : profile.height
+    const modalLayout = hud.worldPanels.getPendingTradeModalLayout(sw, sh)
+    if (
+      logicalX >= modalLayout.x &&
+      logicalX <= modalLayout.x + modalLayout.w &&
+      logicalY >= modalLayout.y &&
+      logicalY <= modalLayout.y + modalLayout.h
+    ) {
+      return true
+    }
+  }
 
   if (isExtendedViewport(profile)) {
     if (logicalX < -marginW || logicalX > profile.width + marginW || logicalY < 0 || logicalY > profile.height) {
@@ -370,6 +388,7 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
       hud.leftPanel !== 'none' &&
       hud.leftPanel !== 'hire' &&
       hud.leftPanel !== 'msg' &&
+      !isPendingTradeOnly &&
       logicalX >= 0 &&
       logicalX <= 400 &&
       panelY >= 0 &&
@@ -409,6 +428,7 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     if (
       hud.leftPanel !== 'none' &&
       hud.leftPanel !== 'msg' &&
+      !isPendingTradeOnly &&
       logicalX >= 0 &&
       logicalX <= 320 &&
       logicalY >= 0 &&
@@ -446,6 +466,7 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     hud.leftPanel !== 'none' &&
     hud.leftPanel !== 'hire' &&
     hud.leftPanel !== 'msg' &&
+    !isPendingTradeOnly &&
     logicalX >= 0 &&
     logicalX <= 400 &&
     logicalY >= 0 &&
@@ -1020,9 +1041,13 @@ export function bindHudWindowEvents(hud: HudManager): void {
     hud.touchControls.syncFromEnvironment()
   })
 
-  on(window, 'keydown', (e) => hud.handleKeyDown(e as KeyboardEvent))
+  on(window, 'keydown', (e) => {
+    if (!hud.isInputFocused()) return
+    hud.handleKeyDown(e as KeyboardEvent)
+  })
 
   on(window, 'keyup', (e) => {
+    if (!hud.isInputFocused()) return
     if (isModalDomOverlayOpen()) return
     const ke = e as KeyboardEvent
     if (matchesKeyBinding(hud.getActiveKeyBindings(), 'showItems', ke) || ke.key === 'Alt') {
@@ -1040,6 +1065,7 @@ export function bindHudWindowEvents(hud: HudManager): void {
   })
 
   on(window, 'mousemove', (e) => {
+    if (!hud.isInputFocused()) return
     const pt = hud.clientToLogical((e as MouseEvent).clientX, (e as MouseEvent).clientY)
     hud.handleMouseMove(pt.x, pt.y)
 
@@ -1053,6 +1079,7 @@ export function bindHudWindowEvents(hud: HudManager): void {
   })
 
   on(window, 'mousedown', (e) => {
+    if (!hud.isInputFocused()) return
     hud.cursor.handleMouseDown()
     if (e.defaultPrevented) return
     if ((e as { _d2HandledByCommandMapper?: boolean })._d2HandledByCommandMapper) return
@@ -1066,6 +1093,7 @@ export function bindHudWindowEvents(hud: HudManager): void {
   })
 
   on(window, 'mouseup', (e) => {
+    if (!hud.isInputFocused()) return
     hud.cursor.handleMouseUp()
     const pt = hud.clientToLogical((e as MouseEvent).clientX, (e as MouseEvent).clientY)
     // `handleHudMouseUp` first: a latched panel close `X` must fire on this release
@@ -1078,6 +1106,7 @@ export function bindHudWindowEvents(hud: HudManager): void {
     window,
     'wheel',
     (e) => {
+      if (!hud.isInputFocused()) return
       if ((e as { _d2WheelHandled?: boolean })._d2WheelHandled) return
       const we = e as WheelEvent
       if (hud.leftPanel === 'msg') {
@@ -1206,8 +1235,13 @@ export function handleHudMouseUp(hud: HudManager, logicalX: number, logicalY: nu
         : hud.skillTree.handleMouseUp(rightPt.x, rightPt.y)
     if (fired) {
       hud.onPlayUiSound?.(4)
-      if (!hud.inventory.visible && hud.rightPanel === 'inv') hud.rightPanel = 'none'
-      if (!hud.skillTree.visible && hud.rightPanel === 'skill') hud.rightPanel = 'none'
+      if (hud.tradeHallMode) {
+        hud.inventory.visible = true
+        hud.rightPanel = 'inv'
+      } else {
+        if (!hud.inventory.visible && hud.rightPanel === 'inv') hud.rightPanel = 'none'
+        if (!hud.skillTree.visible && hud.rightPanel === 'skill') hud.rightPanel = 'none'
+      }
       hud.syncPublishedState()
     }
   }
@@ -1328,6 +1362,12 @@ export function handleHudMouseDown(
     if (hud.inventory.cursorItem !== null) {
       e.preventDefault()
       e.stopPropagation()
+      if (hud.tradeHallMode) {
+        // Trade Hall safety guard: never drop a held cursor item onto the unrendered town ground
+        hud.onPlayUiSound?.(3)
+        hud.syncPublishedState()
+        return
+      }
       const dropped = hud.inventory.cursorItem
       if (hud.commandSink) {
         hud.commandSink.dropItem(serverItemIdOf(dropped))
@@ -1420,124 +1460,126 @@ export function handleHudMouseDown(
   const docking = hud.getDockingLayout()
   const barPt = toControlBarLocal(pt.x, pt.y, docking)
 
-  hud.controlBar.handleMouseDown(barPt.x, barPt.y, {
-    unspentStatPoints: hud.charSheet.attrs.statPoints,
-    unspentSkillPoints: hud.skillTree.unspentSkillPoints,
-  })
+  if (!hud.tradeHallMode) {
+    hud.controlBar.handleMouseDown(barPt.x, barPt.y, {
+      unspentStatPoints: hud.charSheet.attrs.statPoints,
+      unspentSkillPoints: hud.skillTree.unspentSkillPoints,
+    })
 
-  // Belt slot click: right-click drinks potion; Shift+Left-Click returns to inventory; left-click places/swaps/removes belt item
-  const beltHit = hud.belt.slotAtPoint(barPt.x, barPt.y)
-  if (beltHit) {
-    if (e.button === 2) {
-      hud.drinkBeltSlot(beltHit.row * 4 + beltHit.col, Boolean(e.shiftKey))
+    // Belt slot click: right-click drinks potion; Shift+Left-Click returns to inventory; left-click places/swaps/removes belt item
+    const beltHit = hud.belt.slotAtPoint(barPt.x, barPt.y)
+    if (beltHit) {
+      if (e.button === 2) {
+        hud.drinkBeltSlot(beltHit.row * 4 + beltHit.col, Boolean(e.shiftKey))
+        return
+      }
+      const beltPotion = hud.belt.getSlot(beltHit.col, beltHit.row)
+      const rawBeltId =
+        (beltPotion as { itemId?: number } | null)?.itemId ??
+        (beltPotion ? Number(beltPotion.id) : NaN)
+      const beltItemId = Number.isInteger(rawBeltId) && rawBeltId >= 0 ? beltItemIdFromRaw(rawBeltId) : undefined
+      function beltItemIdFromRaw(id: number): number {
+        return id
+      }
+      // D2Client.dll 0x6fb4b5f0: Shift + Left-Click on a belt slot moves the potion back into the inventory grid
+      if (e.shiftKey && !hud.inventory.cursorItem && beltPotion) {
+        if (hud.commandSink && beltItemId !== undefined) {
+          const sink = hud.commandSink
+          for (let irow = 0; irow < INV_GRID_ORIGIN.rows; irow++) {
+            for (let icol = 0; icol < INV_GRID_ORIGIN.cols; icol++) {
+              if (hud.inventory.getGridOverlaps(icol, irow, 1, 1).length === 0) {
+                if (sink.onRemoveBeltItem) sink.onRemoveBeltItem(beltItemId)
+                else sink.removeBeltItem?.(beltItemId)
+                sink.placeCursorItem(beltItemId, icol, irow, 0)
+                hud.syncPublishedState()
+                return
+              }
+            }
+          }
+          ;(hud as any).playCantCarrySound?.()
+          return
+        }
+        if (!hud.commandSink) {
+          for (let irow = 0; irow < INV_GRID_ORIGIN.rows; irow++) {
+            for (let icol = 0; icol < INV_GRID_ORIGIN.cols; icol++) {
+              if (hud.inventory.getGridOverlaps(icol, irow, 1, 1).length === 0) {
+                const removed = hud.belt.getSlot(beltHit.col, beltHit.row)
+                hud.belt.setSlot(beltHit.col, beltHit.row, null)
+                if (removed) {
+                  hud.inventory.gridItems.push({
+                    item: {
+                      id: removed.id,
+                      code: removed.code ?? 'hp1',
+                      name: removed.name,
+                      nameZh: removed.nameZh,
+                      baseNameZh: removed.nameZh,
+                      invFile: removed.invFile,
+                      quality: 'normal',
+                      identified: true,
+                      invWidth: 1,
+                      invHeight: 1,
+                      allowedSlots: [],
+                      stats: [],
+                    },
+                    col: icol,
+                    row: irow,
+                  })
+                  hud.onPlayUiSound?.(235)
+                  hud.syncPublishedState()
+                }
+                return
+              }
+            }
+          }
+          ;(hud as any).playCantCarrySound?.()
+          return
+        }
+      }
+      if (hud.commandSink) {
+        const sink = hud.commandSink
+        const slotIndex = beltHit.row * 4 + beltHit.col
+        const cursor = hud.inventory.cursorItem
+        if (cursor) {
+          const cursorId = serverItemIdOf(cursor)
+          ;(hud as any).playItemDropUiSound(cursor)
+          if (beltPotion && beltItemId !== undefined) {
+            if (sink.onSwapBeltItem) sink.onSwapBeltItem(cursorId, beltItemId)
+            else sink.swapBeltItem?.(cursorId, beltItemId)
+          } else {
+            if (sink.onPutBeltItem) sink.onPutBeltItem(cursorId, slotIndex)
+            else sink.putBeltItem?.(cursorId, slotIndex)
+          }
+          hud.syncPublishedState()
+          return
+        }
+        if (beltPotion && beltItemId !== undefined && (sink.onRemoveBeltItem || sink.removeBeltItem)) {
+          // item_pickup (235) is played once when the server moves the item to the cursor
+          // (D2Client.dll 0x6fb328d9, ClientWorld ItemAction cursor branch) — never optimistically here (#991).
+          if (sink.onRemoveBeltItem) sink.onRemoveBeltItem(beltItemId)
+          else sink.removeBeltItem?.(beltItemId)
+          hud.syncPublishedState()
+          return
+        }
+      }
       return
     }
-    const beltPotion = hud.belt.getSlot(beltHit.col, beltHit.row)
-    const rawBeltId =
-      (beltPotion as { itemId?: number } | null)?.itemId ??
-      (beltPotion ? Number(beltPotion.id) : NaN)
-    const beltItemId = Number.isInteger(rawBeltId) && rawBeltId >= 0 ? beltItemIdFromRaw(rawBeltId) : undefined
-    function beltItemIdFromRaw(id: number): number {
-      return id
-    }
-    // D2Client.dll 0x6fb4b5f0: Shift + Left-Click on a belt slot moves the potion back into the inventory grid
-    if (e.shiftKey && !hud.inventory.cursorItem && beltPotion) {
-      if (hud.commandSink && beltItemId !== undefined) {
-        const sink = hud.commandSink
-        for (let irow = 0; irow < INV_GRID_ORIGIN.rows; irow++) {
-          for (let icol = 0; icol < INV_GRID_ORIGIN.cols; icol++) {
-            if (hud.inventory.getGridOverlaps(icol, irow, 1, 1).length === 0) {
-              if (sink.onRemoveBeltItem) sink.onRemoveBeltItem(beltItemId)
-              else sink.removeBeltItem?.(beltItemId)
-              sink.placeCursorItem(beltItemId, icol, irow, 0)
-              hud.syncPublishedState()
-              return
-            }
-          }
-        }
-        ;(hud as any).playCantCarrySound?.()
-        return
-      }
-      if (!hud.commandSink) {
-        for (let irow = 0; irow < INV_GRID_ORIGIN.rows; irow++) {
-          for (let icol = 0; icol < INV_GRID_ORIGIN.cols; icol++) {
-            if (hud.inventory.getGridOverlaps(icol, irow, 1, 1).length === 0) {
-              const removed = hud.belt.getSlot(beltHit.col, beltHit.row)
-              hud.belt.setSlot(beltHit.col, beltHit.row, null)
-              if (removed) {
-                hud.inventory.gridItems.push({
-                  item: {
-                    id: removed.id,
-                    code: removed.code ?? 'hp1',
-                    name: removed.name,
-                    nameZh: removed.nameZh,
-                    baseNameZh: removed.nameZh,
-                    invFile: removed.invFile,
-                    quality: 'normal',
-                    identified: true,
-                    invWidth: 1,
-                    invHeight: 1,
-                    allowedSlots: [],
-                    stats: [],
-                  },
-                  col: icol,
-                  row: irow,
-                })
-                hud.onPlayUiSound?.(235)
-                hud.syncPublishedState()
-              }
-              return
-            }
-          }
-        }
-        ;(hud as any).playCantCarrySound?.()
-        return
-      }
-    }
-    if (hud.commandSink) {
-      const sink = hud.commandSink
-      const slotIndex = beltHit.row * 4 + beltHit.col
-      const cursor = hud.inventory.cursorItem
-      if (cursor) {
-        const cursorId = serverItemIdOf(cursor)
-        ;(hud as any).playItemDropUiSound(cursor)
-        if (beltPotion && beltItemId !== undefined) {
-          if (sink.onSwapBeltItem) sink.onSwapBeltItem(cursorId, beltItemId)
-          else sink.swapBeltItem?.(cursorId, beltItemId)
-        } else {
-          if (sink.onPutBeltItem) sink.onPutBeltItem(cursorId, slotIndex)
-          else sink.putBeltItem?.(cursorId, slotIndex)
-        }
-        hud.syncPublishedState()
-        return
-      }
-      if (beltPotion && beltItemId !== undefined && (sink.onRemoveBeltItem || sink.removeBeltItem)) {
-        // item_pickup (235) is played once when the server moves the item to the cursor
-        // (D2Client.dll 0x6fb328d9, ClientWorld ItemAction cursor branch) — never optimistically here (#991).
-        if (sink.onRemoveBeltItem) sink.onRemoveBeltItem(beltItemId)
-        else sink.removeBeltItem?.(beltItemId)
-        hud.syncPublishedState()
-        return
-      }
-    }
-    return
-  }
 
-  if (hud.hotkeys.handleClick(barPt.x, barPt.y)) {
-    hud.syncPublishedState()
-    return
-  }
+    if (hud.hotkeys.handleClick(barPt.x, barPt.y)) {
+      hud.syncPublishedState()
+      return
+    }
 
-  if (e.button === 0 && !hud.inventory.cursorItem && hud.globes.handleClick(barPt.x, barPt.y)) {
-    hud.syncPublishedState()
-    return
-  }
+    if (e.button === 0 && !hud.inventory.cursorItem && hud.globes.handleClick(barPt.x, barPt.y)) {
+      hud.syncPublishedState()
+      return
+    }
 
-  // Bar buttons only latch the pressed cell here; the action itself fires on
-  // mouse-up inside the same button (see handleHudMouseUp).
-  if (hud.controlBar.isInteractiveHit(barPt.x, barPt.y)) {
-    hud.syncPublishedState()
-    return
+    // Bar buttons only latch the pressed cell here; the action itself fires on
+    // mouse-up inside the same button (see handleHudMouseUp).
+    if (hud.controlBar.isInteractiveHit(barPt.x, barPt.y)) {
+      hud.syncPublishedState()
+      return
+    }
   }
 
   // Centered Trade Invitation / Waiting Modal (D2Client.dll 0x6fb099e0) spans across x = 400
@@ -1716,7 +1758,14 @@ export function handleHudMouseDown(
               if (typeof (hud.worldPanels as any).onTradeGridClick === 'function') {
                 ;(hud.worldPanels as any).onTradeGridClick(col, row, hitItem, isRightClick)
               } else {
-                ;(hud as any).forwardGridClick(2, col, row, hitItem ?? null, isRightClick)
+                ;(hud as any).forwardGridClick(
+                  2,
+                  col,
+                  row,
+                  hitItem ?? null,
+                  isRightClick,
+                  Boolean(e.shiftKey),
+                )
               }
             },
             onConfirmQuestReward: (itemId: number, npcId = 0) => {
@@ -2000,7 +2049,12 @@ export function handleHudMouseDown(
           cubeItems: hud.worldPanels.cubeItems,
         },
       )
-      if (!hud.inventory.visible) hud.rightPanel = 'none'
+      if (hud.tradeHallMode) {
+        hud.inventory.visible = true
+        hud.rightPanel = 'inv'
+      } else if (!hud.inventory.visible) {
+        hud.rightPanel = 'none'
+      }
       hud.syncPublishedState()
       return
     } else if (hud.rightPanel === 'skill') {
@@ -2359,6 +2413,31 @@ export function forwardGridClick(
         ;(hud as any).playCantCarrySound?.()
         return
       }
+      // 2b) If Trade panel is open, quick-transfer to first available Self Trade Grid slot (buffer 2).
+      if (hud.leftPanel === 'trade' && Boolean(hud.trade?.active)) {
+        const selfItems = (hud.worldPanels.trade?.selfItems ?? hud.worldPanels.trade?.myItems ?? []) as any[]
+        const canPlaceTrade = (tcol: number, trow: number): boolean => {
+          if (tcol < 0 || trow < 0 || tcol + w > 10 || trow + h > 4) return false
+          return !selfItems.some((it) => {
+            const gx = Number(it.gridX ?? it.col ?? 0)
+            const gy = Number(it.gridY ?? it.row ?? 0)
+            const gw = Math.max(1, Number(it.invWidth ?? it.w ?? 1))
+            const gh = Math.max(1, Number(it.invHeight ?? it.h ?? 1))
+            return tcol < gx + gw && tcol + w > gx && trow < gy + gh && trow + h > gy
+          })
+        }
+        for (let trow = 0; trow <= 4 - h; trow++) {
+          for (let tcol = 0; tcol <= 10 - w; tcol++) {
+            if (canPlaceTrade(tcol, trow)) {
+              sink.pickupItemToCursor(itemId)
+              sink.placeCursorItem(itemId, tcol, trow, 2)
+              return
+            }
+          }
+        }
+        ;(hud as any).playCantCarrySound?.()
+        return
+      }
       // 3) Otherwise, if item is a beltable potion, send C2S 0x63 ItemToBelt (`0x6fb49fb0` -> `0x6fb47240`).
       if (isAutoBeltablePotion(hitItem)) {
         if (hud.belt.canAutoPlacePotion(hitItem)) {
@@ -2373,8 +2452,8 @@ export function forwardGridClick(
       sink.pickupItemToCursor(itemId)
       return
     }
-    if (buffer === 4 || buffer === 3) {
-      // Shift + Left-Click in Stash (4) or Cube (3): quick-transfer to first available Inventory slot (buffer 0).
+    if (buffer === 4 || buffer === 3 || buffer === 2) {
+      // Shift + Left-Click in Stash (4), Cube (3), or Self Trade (2): quick-transfer to first available Inventory slot (buffer 0).
       for (let irow = 0; irow <= INV_GRID_ORIGIN.rows - h; irow++) {
         for (let icol = 0; icol <= INV_GRID_ORIGIN.cols - w; icol++) {
           if (hud.inventory.getGridOverlaps(icol, irow, w, h).length === 0) {
@@ -2456,9 +2535,33 @@ export function forwardGridClick(
         ;(hud as any).playCantCarrySound?.()
         return
       }
+      if (hud.leftPanel === 'trade' && Boolean(hud.trade?.active)) {
+        const selfItems = (hud.worldPanels.trade?.selfItems ?? hud.worldPanels.trade?.myItems ?? []) as any[]
+        const canPlaceTrade = (tcol: number, trow: number): boolean => {
+          if (tcol < 0 || trow < 0 || tcol + w > 10 || trow + h > 4) return false
+          return !selfItems.some((it) => {
+            const gx = Number(it.gridX ?? it.col ?? 0)
+            const gy = Number(it.gridY ?? it.row ?? 0)
+            const gw = Math.max(1, Number(it.invWidth ?? it.w ?? 1))
+            const gh = Math.max(1, Number(it.invHeight ?? it.h ?? 1))
+            return tcol < gx + gw && tcol + w > gx && trow < gy + gh && trow + h > gy
+          })
+        }
+        for (let trow = 0; trow <= 4 - h; trow++) {
+          for (let tcol = 0; tcol <= 10 - w; tcol++) {
+            if (canPlaceTrade(tcol, trow)) {
+              sink.pickupItemToCursor(itemId)
+              sink.placeCursorItem(itemId, tcol, trow, 2)
+              return
+            }
+          }
+        }
+        ;(hud as any).playCantCarrySound?.()
+        return
+      }
       return
     }
-    if (buffer === 4 || buffer === 3) {
+    if (buffer === 4 || buffer === 3 || buffer === 2) {
       for (let irow = 0; irow <= INV_GRID_ORIGIN.rows - h; irow++) {
         for (let icol = 0; icol <= INV_GRID_ORIGIN.cols - w; icol++) {
           if (hud.inventory.getGridOverlaps(icol, irow, w, h).length === 0) {

@@ -197,11 +197,13 @@ export function drawGoldDialog(hud: HudManager, ctx: CanvasRenderingContext2D): 
   if (!dlg) return
   const l = hud.getGoldDialogLayout()
   const titleKey =
-    dlg.mode === 0 || dlg.mode === 2
+    dlg.mode === 0
       ? 'strDropGoldHowMuch'
-      : dlg.mode === 3
-        ? 'strBankGoldDeposit'
-        : 'strBankGoldWithdraw'
+      : dlg.mode === 2
+        ? 'strTradeGoldHowMuch'
+        : dlg.mode === 3
+          ? 'strBankGoldDeposit'
+          : 'strBankGoldWithdraw'
   const images = (hud as unknown as { images: Map<string, HTMLImageElement> }).images
   const boxPiecesImg = images.get('boxPieces') as HTMLImageElement | undefined
   if (boxPiecesImg) {

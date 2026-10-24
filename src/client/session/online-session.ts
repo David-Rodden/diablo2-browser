@@ -75,9 +75,10 @@ import {
   type SessionLevelNavigationHost,
 } from './session-level-navigation.ts'
 import {
-  dispatchSessionCommand, drainWorldSoundRequests, forwardSessionCommandToAdapter,
-  handleServerEvent, navigateSessionChatInputHistory, resolveReassignWeatherArg,
-  resolveTargetUnitWorldPos, submitSessionChatInput, syncAudioSkillPacks, unitKnownByRawType,
+  applyPersistedPlayersToCurrentGame, dispatchSessionCommand, drainWorldSoundRequests,
+  forwardSessionCommandToAdapter, handleServerEvent, navigateSessionChatInputHistory,
+  resolveReassignWeatherArg, resolveTargetUnitWorldPos, submitSessionChatInput,
+  syncAudioSkillPacks, unitKnownByRawType,
   type SessionEventProcessorHost,
 } from './session-event-processor.ts'
 import {
@@ -346,6 +347,7 @@ export class OnlineSession {
   private selectedRealmValue: RealmSummary | null = null
   private charactersValue: readonly CharSummary[] = []
   private selectedCharValue: string | null = null
+  private mcpLoggedInChar: string | null = null
   private pendingGameCompletionValue: GameCompletion113c | null = null
   /** Single Player `.d2s` progression writer for the active local game (`null` online / idle). */
   private localProgressionWriter: ((name: string, progression: number) => void) | null = null
@@ -405,6 +407,7 @@ export class OnlineSession {
       showStatGainTooltips: currentSettings.showStatGainTooltips,
       showWeaponDamageFormula: currentSettings.showWeaponDamageFormula,
       showAdvancedStatsButton: currentSettings.showAdvancedStatsButton,
+      showRuneNumbers: currentSettings.showRuneNumbers,
     })
     this.hudManager.setGroundItemEnhancements({
       showUniqueSetBeams: currentSettings.showUniqueSetBeams,
@@ -485,13 +488,16 @@ export class OnlineSession {
       vendorPrice: vendorPrice113c,
       vendorRepairAll: vendorRepairAll113c,
       playUiSound: (soundId) => {
+        if (this.hudManager.tradeHallMode) return
         this.audioRuntime.playUi(soundId)
       },
     })
     this.hudManager.worldPanels.onCloseNpcSpeech = () => {
+      if (this.hudManager.tradeHallMode) return
       this.audioRuntime.onNpcDialogClose()
     }
     this.hudManager.worldPanels.onPlayNpcSpeech = (soundId) => {
+      if (this.hudManager.tradeHallMode) return
       this.audioRuntime.playSpeech(soundId)
     }
 
@@ -594,7 +600,8 @@ export class OnlineSession {
         next.showBasePlusBonusSkills !== prev.showBasePlusBonusSkills ||
         next.showStatGainTooltips !== prev.showStatGainTooltips ||
         next.showWeaponDamageFormula !== prev.showWeaponDamageFormula ||
-        next.showAdvancedStatsButton !== prev.showAdvancedStatsButton
+        next.showAdvancedStatsButton !== prev.showAdvancedStatsButton ||
+        next.showRuneNumbers !== prev.showRuneNumbers
       ) {
         this.hudManager.setHudEnhancements({
           showBasePlusBonusStats: next.showBasePlusBonusStats,
@@ -602,6 +609,7 @@ export class OnlineSession {
           showStatGainTooltips: next.showStatGainTooltips,
           showWeaponDamageFormula: next.showWeaponDamageFormula,
           showAdvancedStatsButton: next.showAdvancedStatsButton,
+          showRuneNumbers: next.showRuneNumbers,
         })
       }
       if (
@@ -778,6 +786,7 @@ export class OnlineSession {
     this.sessionLostValue = null
     this.lostFlow = null
     this.disconnectReasonValue = null
+    this.mcpLoggedInChar = null
     this.usernameValue = params.username
     this.loginHostValue = (params.host ?? this.defaultHost).trim() || this.defaultHost
     this.setPhase('connecting')
@@ -851,6 +860,7 @@ export class OnlineSession {
 
   async refreshCharacters(): Promise<readonly CharSummary[]> {
     return await this.lobbyOp('refreshCharacters', 'mcp', async (flow) => {
+      this.mcpLoggedInChar = null
       const chars = await flow.listCharacters()
       this.charactersValue = chars
       this.emitState()
@@ -859,12 +869,14 @@ export class OnlineSession {
   }
 
   async createCharacter(spec: CharCreateSpec): Promise<readonly CharSummary[]> {
+    this.mcpLoggedInChar = null
     await this.lobbyOp('createCharacter', 'mcp', (flow) => flow.createCharacter(spec))
     this.selectedCharValue = spec.name
     return await this.refreshCharacters()
   }
 
   async deleteCharacter(name: string): Promise<readonly CharSummary[]> {
+    this.mcpLoggedInChar = null
     await this.lobbyOp('deleteCharacter', 'mcp', (flow) => flow.deleteCharacter(name))
     if (this.selectedCharValue === name) {
       this.selectedCharValue = null
@@ -873,6 +885,7 @@ export class OnlineSession {
   }
 
   async convertCharacterToExpansion(name: string): Promise<readonly CharSummary[]> {
+    this.mcpLoggedInChar = null
     await this.lobbyOp('convertCharacterToExpansion', 'mcp', (flow) => flow.upgradeCharacter(name))
     return await this.refreshCharacters()
   }
@@ -880,6 +893,7 @@ export class OnlineSession {
   async selectCharacter(name: string): Promise<void> {
     await this.lobbyOp('selectCharacter', 'mcp', (flow) => flow.selectCharacter(name))
     this.selectedCharValue = name
+    this.mcpLoggedInChar = name
     const charMeta = this.charactersValue.find((c) => c.name === name)
     if (charMeta) {
       this.world.self.name = charMeta.name
@@ -890,6 +904,25 @@ export class OnlineSession {
     this.syncAudioSkillPacks()
     this.hudModel.syncFromWorld()
     this.emitState()
+  }
+
+  /**
+   * Ensure the selected character has been logged into the MCP realm via `0x07 MCP_CHARLOGON`
+   * before sending lobby packets (`0x05 MCP_GAMELIST`, `0x06 MCP_GAMEINFO`, `0x03 MCP_CREATEGAME`,
+   * `0x04 MCP_JOINGAME`). On PvPGN `d2cs`, sending lobby packets in `d2cs_conn_state_authed`
+   * immediately closes the MCP socket.
+   */
+  private async ensureMcpCharLoggedIn(flow: D2OnlineFlow): Promise<void> {
+    const targetChar = this.selectedCharValue || this.charactersValue[0]?.name || null
+    if (!targetChar) return
+    if (
+      this.mcpLoggedInChar === null ||
+      this.mcpLoggedInChar.toLowerCase() !== targetChar.toLowerCase()
+    ) {
+      await flow.selectCharacter(targetChar)
+      this.selectedCharValue = targetChar
+      this.mcpLoggedInChar = targetChar
+    }
   }
 
   async sendLobbyChat(text: string): Promise<void> {
@@ -1007,6 +1040,7 @@ export class OnlineSession {
     },
   ): Promise<readonly GameListEntry[]> {
     return await this.lobbyOp('listGames', 'mcp', async (flow) => {
+      await this.ensureMcpCharLoggedIn(flow)
       const games = await flow.listGames(filter, {
         flags: options?.flags,
         onGame: (game, partialGames) => {
@@ -1023,6 +1057,7 @@ export class OnlineSession {
 
   async getGameInfo(name: string): Promise<GameInfoDetail> {
     return await this.lobbyOp('getGameInfo', 'mcp', async (flow) => {
+      await this.ensureMcpCharLoggedIn(flow)
       return await flow.getGameInfo(name)
     })
   }
@@ -1043,6 +1078,7 @@ export class OnlineSession {
       await (this.mapService as { ensureLoaded: () => Promise<unknown> }).ensureLoaded()
     }
     return await this.lobbyOp('enterGame', 'mcp', async (flow) => {
+      await this.ensureMcpCharLoggedIn(flow)
       const charName = this.selectedCharValue || this.world.self.name
       const host = this.loginHostValue || this.defaultHost
       const targetGameName = request.mode === 'create' ? request.spec.name : request.name
@@ -1128,6 +1164,10 @@ export class OnlineSession {
       this.sessionLostValue = null
       this.lostFlow = null
     }
+    if (!reattach) {
+      this.appliedPersistedPlayersForGame = false
+      this.c2sDedupe.reset()
+    }
     this.rateLimiter.reset()
     this.gameAdapter = adapter
     this.disconnectReasonValue = null
@@ -1136,6 +1176,10 @@ export class OnlineSession {
     this.unsubGameEvent = adapter.onEvent((ev) => {
       this.handleServerEvent(ev)
     })
+
+    if (!reattach) {
+      applyPersistedPlayersToCurrentGame(this.asEventHost())
+    }
 
     if (typeof adapter.onClose === 'function') {
       this.unsubGameClose = adapter.onClose((reason: CloseReason) => {
@@ -1178,6 +1222,8 @@ export class OnlineSession {
     this.questFx.resetForNewGame()
     this.knownAreaIds.clear()
     this.lastSyncedAreaId = 0
+    this.appliedPersistedPlayersForGame = false
+    this.c2sDedupe.reset()
     this.world.self.name = savedName
     this.world.self.charClass = savedClass
     this.syncAudioSkillPacks()
@@ -1287,6 +1333,8 @@ export class OnlineSession {
     this.gameAdapter = null
     this.activeGameNameValue = null
     this.lastSyncedAreaId = 0
+    this.appliedPersistedPlayersForGame = false
+    this.c2sDedupe.reset()
     let afterGameClosedError: unknown = null
     try {
       afterGameClosed?.()
@@ -1437,6 +1485,12 @@ export class OnlineSession {
   /** Recent in-game chat input lines for `ArrowUp` / `ArrowDown` recall (max 32). */
   readonly chatInputHistory: string[] = []
   chatInputHistoryIndex = 0
+  /**
+   * In-memory `/players N` (`1..8`) setting persisted across games within the current session
+   * (`null` when the player has not set `/players N` in this session; resets to default on page reload).
+   */
+  persistedPlayersCount: number | null = null
+  appliedPersistedPlayersForGame = false
 
   /**
    * Navigate the in-game chat input history (`ArrowUp` / `ArrowDown`).

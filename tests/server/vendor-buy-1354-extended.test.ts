@@ -72,4 +72,60 @@ describe('issue #1354 trade window validation', () => {
     game.stepFrames(1)
     expect(player.gold).toBeLessThan(1000)
   })
+
+  it('isolates simultaneous multi-player gamble pools and prevents cross-player gamble purchases', () => {
+    const game = new GameInstance({ seed: 13549, areaId: 1, maxPlayers: 8 })
+    const p1 = game.connectPlayer({ charClass: 'pal', name: 'P1', x: 10, y: 10, areaId: 1 })
+    const p2 = game.connectPlayer({ charClass: 'sor', name: 'P2', x: 10, y: 11, areaId: 1 })
+    const players = (game as unknown as {
+      players: Map<number, {
+        gold: number
+        level: number
+        items: Entry[]
+        vendorPools: Map<number, Entry[]>
+      }>
+    }).players
+    const rec1 = players.get(p1)!
+    const rec2 = players.get(p2)!
+    rec1.gold = 500_000
+    rec2.gold = 500_000
+    rec1.level = 20
+    rec2.level = 20
+
+    const gheedId = game.spawnMonster({
+      classId: 147, name: 'Gheed', x: 11, y: 10, areaId: 1, isNpc: true, isVendor: true,
+    })
+
+    // Both players open gamble windows with Gheed
+    game.enqueueCommand(p1, { type: 'NpcAction', npcId: gheedId, action: 'gamble' } as never)
+    game.enqueueCommand(p2, { type: 'NpcAction', npcId: gheedId, action: 'gamble' } as never)
+    game.stepFrames(1)
+
+    const pool1 = rec1.vendorPools.get(gheedId)!
+    const pool2 = rec2.vendorPools.get(gheedId)!
+    expect(pool1.length).toBeGreaterThan(0)
+    expect(pool2.length).toBeGreaterThan(0)
+    const p1TargetId = pool1[0]!.unitId
+    const p2TargetId = pool2[0]!.unitId
+    expect(p1TargetId).not.toBe(p2TargetId)
+
+    // P1 refreshes gamble window; P2's gamble pool and gambleSourceItems must remain intact
+    game.enqueueCommand(p1, { type: 'NpcAction', npcId: gheedId, action: 'gamble' } as never)
+    game.stepFrames(1)
+    const pool1Refreshed = rec1.vendorPools.get(gheedId)!
+    const p1NewTargetId = pool1Refreshed[0]!.unitId
+
+    // P2 tries to gamble P1's gamble item: must be rejected without deducting P2's gold
+    const p2GoldBefore = rec2.gold
+    game.enqueueCommand(p2, { type: 'NpcBuy', npcId: gheedId, itemId: p1NewTargetId, gamble: true, cost: 0 })
+    game.stepFrames(1)
+    expect(rec2.gold).toBe(p2GoldBefore)
+    expect(pool1Refreshed.some((e) => e.unitId === p1NewTargetId)).toBe(true)
+
+    // P2 gambles their own item: succeeds even after P1 refreshed their gamble pool
+    game.enqueueCommand(p2, { type: 'NpcBuy', npcId: gheedId, itemId: p2TargetId, gamble: true, cost: 0 })
+    game.stepFrames(1)
+    expect(rec2.gold).toBeLessThan(p2GoldBefore)
+    expect(rec2.vendorPools.get(gheedId)!.some((e) => e.unitId === p2TargetId)).toBe(false)
+  })
 })

@@ -109,6 +109,8 @@ export default defineConfig({
             req.url = `/index.html${req.url.slice(1)}`
           } else if (req.url === '/drops.html' || req.url?.startsWith('/drops.html?')) {
             req.url = `/plugins/drop-tracker/index.html${req.url.slice('/drops.html'.length)}`
+          } else if (req.url === '/trade.html' || req.url?.startsWith('/trade.html?')) {
+            req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
           }
           homeFallback(req, res, next)
         })
@@ -120,6 +122,8 @@ export default defineConfig({
             req.url = `/index.html${req.url.slice(1)}`
           } else if (req.url === '/drops.html' || req.url?.startsWith('/drops.html?')) {
             req.url = `/plugins/drop-tracker/index.html${req.url.slice('/drops.html'.length)}`
+          } else if (req.url === '/trade.html' || req.url?.startsWith('/trade.html?')) {
+            req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
           }
           homeFallback(req, res, next)
         })
@@ -135,6 +139,14 @@ export default defineConfig({
             type: 'asset',
             fileName: 'drops.html',
             source: dropHtmlAsset.source,
+          })
+        }
+        const tradeHtmlAsset = bundle['plugins/trade-hall/index.html']
+        if (tradeHtmlAsset && tradeHtmlAsset.type === 'asset') {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'trade.html',
+            source: tradeHtmlAsset.source,
           })
         }
       },

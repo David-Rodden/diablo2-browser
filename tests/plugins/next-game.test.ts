@@ -309,7 +309,7 @@ describe('next-game plugin (+1 seamless room switcher)', () => {
       flowFactory: () => mockFlow,
     })
 
-    await session.login({ username: 'taodao', password: 'pw' })
+    await session.login({ username: 'hero', password: 'pw' })
     await session.selectCharacter('SorcRunner')
     await session.enterGame({
       mode: 'create',

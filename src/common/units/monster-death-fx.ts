@@ -815,6 +815,45 @@ export function getFreezeShatterMissiles(
 }
 
 /**
+ * 1.13c `States.txt` rows with `shatter = 1`: `freeze` (#1), `shatter` (#107, Holy Freeze 20% roll) and
+ * `uberminion` (#184). A monster that dies while carrying any of them shatters into ice (no corpse).
+ */
+export const SHATTER_STATES_113C: ReadonlySet<number> = new Set([1, 107, 184])
+
+/** True when the unit carries a `States.txt` `shatter = 1` state (#1 / #107 / #184). */
+export function hasShatterState113c(states: ReadonlySet<number> | Iterable<number> | undefined): boolean {
+  if (!states) return false
+  for (const s of states) {
+    if (SHATTER_STATES_113C.has(s)) return true
+  }
+  return false
+}
+
+/**
+ * 1.13c `D2Client.dll` `MissCltHitFunc[31]` (0x6FB605B0), the `pCltHitFunc = 31` rows `icebreaksmall` (#272),
+ * `icebreakmedium` (#273), `icebreaklarge` (#274) and `catapult cold explosion` (#417).
+ *
+ * `classId - 0x110` indexes the byte table at 0x6FB606A0 into the jump table at 0x6FB60694:
+ * `272 -> 0x158 icebreaksmallmelt` (#344), `273 / 274 / 417 -> 0x159 icebreaklargemelt` (#345), every other id
+ * creates nothing. The handler returns 0 without a melt when it is called for a unit hit (`edx != 0`); otherwise the
+ * melt is created at the missile's position with the missile's direction.
+ */
+export const ICEBREAK_MELT_BY_MISSILE_ID_113C: Readonly<Record<number, 'icebreaksmallmelt' | 'icebreaklargemelt'>> =
+  Object.freeze({
+    272: 'icebreaksmallmelt',
+    273: 'icebreaklargemelt',
+    274: 'icebreaklargemelt',
+    417: 'icebreaklargemelt',
+  })
+
+/** Resolves the CltHit31 melt missile for a Missiles.txt id, or `undefined` when the switch creates none. */
+export function getIcebreakMeltMissile113c(
+  missileId: number,
+): 'icebreaksmallmelt' | 'icebreaklargemelt' | undefined {
+  return ICEBREAK_MELT_BY_MISSILE_ID_113C[missileId]
+}
+
+/**
  * Boss Death Sequence & Minion Purge specification (`QuestsFX.cpp` & `Missiles.txt`).
  *
  * The client show is the D2Client MonUMod 22 `questcomplete` event-1 handler 0x6fad0fb0, a class switch (byte table

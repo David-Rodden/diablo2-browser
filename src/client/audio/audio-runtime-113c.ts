@@ -161,6 +161,7 @@ export class AudioRuntime113c {
   private masterGain: GainNode | null = null
   private sfxGain: GainNode | null = null
   private musicGain: GainNode | null = null
+  private focusMuted = false
   private lastGameTick: number | null = null
   private sessionEpoch = 0
   private readonly inFlightHandles = new Set<number>()
@@ -188,7 +189,7 @@ export class AudioRuntime113c {
         return { ctx: this.ctx, node: this.musicGain }
       },
       getMasterVolume: () => this.settings.masterVolume(),
-      isMuted: () => this.settings.muted(),
+      isMuted: () => this.isEffectiveMuted(),
     })
     this.voices = new WebAudioSoundVoices(
       (): WebAudioOutputBus113c | null => {
@@ -247,7 +248,7 @@ export class AudioRuntime113c {
       records: this.records,
       musicStreamer: this.musicStreamer,
       getMasterVolume: () => this.settings.masterVolume(),
-      isMuted: () => this.settings.muted(),
+      isMuted: () => this.isEffectiveMuted(),
     })
     this.soundEnviron = new SoundEnviron113c({
       records: this.records,
@@ -324,12 +325,73 @@ export class AudioRuntime113c {
     }
   }
 
+  isFocusMuted(): boolean {
+    return this.focusMuted
+  }
+
+  setFocusMuted(muted: boolean): void {
+    if (this.focusMuted === muted) return
+    this.focusMuted = muted
+    this.voices.setFocusMuted(muted)
+    this.applySettings()
+  }
+
+  isEffectiveMuted(): boolean {
+    return this.settings.muted() || this.focusMuted
+  }
+
   applySettings(): void {
     if (this.masterGain !== null) {
-      this.masterGain.gain.value = this.settings.muted() ? 0 : 1
+      this.masterGain.gain.value = this.isEffectiveMuted() ? 0 : 1
     }
     this.musicStreamer.applySettings()
     this.speechStreamer.applySettings()
+  }
+
+  /**
+   * Plays a high-priority background survival warning cue on this instance
+   * when a non-focused multibox character takes damage or drops below 35% HP (#1363).
+   * Uses authentic 1.13c `Sounds.txt` UI/warning sound IDs (`cursor_button_click` = 4,
+   * `cursor_tone_1` = 14) via `SoundRecords113c`.
+   */
+  playBackgroundAlertCue(kind: 'damage' | 'hit' | 'low-hp' | 'dead' | 'death' = 'damage'): boolean {
+    if (this.settings.muted()) return false
+    const vol = Math.max(0, Math.min(1, this.settings.masterVolume()))
+    if (vol <= 0) return false
+    const prevFocusMuted = this.focusMuted
+    if (prevFocusMuted) {
+      this.setFocusMuted(false)
+    }
+    try {
+      // 1.13c Sounds.txt ID 14 (`cursor_tone_1`) for low-hp/death, ID 4 (`cursor_button_click`) for damage
+      const soundId = kind === 'damage' || kind === 'hit' ? 4 : 14
+      return this.playBySoundId(soundId) > 0
+    } finally {
+      if (prevFocusMuted) {
+        this.setFocusMuted(true)
+      }
+    }
+  }
+
+  playBySoundId(soundId: number, options?: AudioRuntimePlayOptions113c): number {
+    return this.playSound(soundId, options)
+  }
+
+  dispose(): void {
+    this.gameExit()
+    if (this.ctx !== null) {
+      try {
+        if (typeof this.ctx.close === 'function') {
+          void this.ctx.close().catch(() => {})
+        }
+      } catch {
+        /* ignore */
+      }
+      this.ctx = null
+      this.masterGain = null
+      this.sfxGain = null
+      this.musicGain = null
+    }
   }
 
   gameInit(): void {

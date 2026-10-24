@@ -10,6 +10,7 @@
  * - MissCltDoFunc[26] 0x6fb6b780, [28] 0x6fb68010, MissCltHitFunc[33] 0x6fb65dd0.
  */
 
+import { homedir } from 'node:os'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -28,7 +29,7 @@ import {
 import { getMissileTxtData } from '../src/common/skills/missiles-data.ts'
 import { getBossDeathFxSpec } from '../src/common/units/monster-death-fx.ts'
 
-const EXCEL = '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel/Missiles.txt'
+const EXCEL = join(homedir(), 'd2-data', 'excel', 'Missiles.txt')
 
 function readMissilesTxt(): Map<string, Record<string, string>> | null {
   let text: string

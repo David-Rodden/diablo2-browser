@@ -318,7 +318,7 @@ describe('Gateway Server Status Probe & Sanctuary Home Portal (server-status-pro
     expect(classifyIpCountry('180.76.76.76')).toBe('CN')
     expect(classifyIpCountry('240e:3b7:3272::1')).toBe('CN')
 
-    // International public IPv4 (Google DNS 8.8.8.8, Cloudflare 1.1.1.1, AWS US 52.4.12.1)
+    // International public IPv4 (Public DNS 8.8.8.8, Cloudflare 1.1.1.1, AWS US 52.4.12.1)
     expect(classifyIpCountry('8.8.8.8')).toBe('INTL')
     expect(classifyIpCountry('1.1.1.1')).toBe('INTL')
     expect(classifyIpCountry('52.4.12.1')).toBe('INTL')

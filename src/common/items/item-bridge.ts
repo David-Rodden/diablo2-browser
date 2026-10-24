@@ -1896,6 +1896,16 @@ export function onlineItemDataToUiInventoryItem(
           setItemDef = sidCandidate
         }
       }
+      if (!setItemDef && typeof item.name === 'string' && item.name.trim().length > 0 && tables.sets?.items) {
+        const targetSetItemName = item.name.trim().toLowerCase()
+        setItemDef =
+          tables.sets.items.getByIndex?.(item.name.trim()) ??
+          tables.sets.items.entries?.find(
+            (s: any) =>
+              s.index?.trim().toLowerCase() === targetSetItemName ||
+              resolveBaseItemNameEn(s.index ?? '').trim().toLowerCase() === targetSetItemName,
+          )
+      }
       if (!setItemDef && tables.sets?.items?.entries) {
         setItemDef = tables.sets.items.entries.find(
           (s: any) => s.item?.trim().toLowerCase() === code,
@@ -2257,6 +2267,23 @@ export function onlineItemDataToUiInventoryItem(
       if (typeof sid === 'number' && tables.sets?.items) {
         sidFound = (tables.sets.items as any).byId?.get?.(sid) ?? tables.sets.items.entries?.[sid]
         if (sidFound && (!itCode || sidFound.item?.trim().toLowerCase() === itCode)) return sidFound
+      }
+      if (typeof it.name === 'string' && it.name.trim().length > 0) {
+        const itNameLower = it.name.trim().toLowerCase()
+        const byMemberName = memberItems.find(
+          (m: any) =>
+            m.index?.trim().toLowerCase() === itNameLower ||
+            resolveBaseItemNameEn(m.index ?? '').trim().toLowerCase() === itNameLower,
+        )
+        if (byMemberName) return byMemberName
+        const byTableName =
+          tables.sets?.items?.getByIndex?.(it.name.trim()) ??
+          tables.sets?.items?.entries?.find(
+            (s: any) =>
+              s.index?.trim().toLowerCase() === itNameLower ||
+              resolveBaseItemNameEn(s.index ?? '').trim().toLowerCase() === itNameLower,
+          )
+        if (byTableName) return byTableName
       }
       if (itCode && memberItems.length > 0) {
         const byCode = memberItems.find((m: any) => m.item?.trim().toLowerCase() === itCode)

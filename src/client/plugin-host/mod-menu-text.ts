@@ -34,6 +34,7 @@ export const MENU_TEXT = {
   count: { zh: '已开启 {on}/{all}', en: '{on} of {all} on' },
   reset: { zh: '全部恢复默认', en: 'Reset everything' },
   empty: { zh: '还没有插件。', en: 'No plugins yet.' },
+  authorCredit: { zh: '作者：{author} · 感谢贡献！', en: 'Author: {author} · Special thanks for contributing!' },
 } as const satisfies Record<string, Text>
 
 export type MenuTextKey = keyof typeof MENU_TEXT

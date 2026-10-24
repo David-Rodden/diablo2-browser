@@ -2738,7 +2738,12 @@ export function executeSUnitDmg(
     ...(elemMin256 !== undefined ? { elemMin256 } : {}),
     ...(elemMax256 !== undefined ? { elemMax256 } : {}),
   }
-  const out = rawExecuteSUnitDmg(normAttacker, normDefender, normPacket)
+  const out = rawExecuteSUnitDmg(
+    normAttacker,
+    normDefender,
+    normPacket,
+    packet.rng ?? { rand: (max: number) => Math.floor(0.5 * max) },
+  )
   if (defender.hpFixed !== undefined) {
     defender.hpFixed = normDefender.statList.getBaseStat(6)
   }

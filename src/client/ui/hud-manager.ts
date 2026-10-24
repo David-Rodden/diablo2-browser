@@ -165,6 +165,7 @@ import {
   LEVEL_ENTRY_TITLE_ATLAS,
   LEVEL_ENTRY_TITLE_KEY_BY_LEVEL,
 } from '../../common/world/level-entry-titles-113c.ts'
+import { SharedAssetPool } from '../multibox/shared-asset-pool.ts'
 
 export * from './hud-viewport-layout.ts'
 export * from './hud-gold-dialog.ts'
@@ -464,6 +465,19 @@ export class HudManager {
 
   /** Server-authoritative death / mercenary / party / trade state synced by `HudModel`. */
   isDead = false
+  /**
+   * When `true` (Standalone Trade Hall `/trade.html`), `HudManager`:
+   * - loads only the 16 Trade Hall panel/item/cursor images + fonts (`loadAssets(baseUrl, { tradeHallOnly: true })`)
+   * - skips control bar, globes, belt, skill speedbar, portraits, and level-entry title rendering
+   * - keeps the Right-Half Dock (`invchar6.dc6` Inventory) open alongside the Left-Half Dock (`stash` / `trade` / `cube`)
+   * - blocks accidental `dropItem` onto the unrendered town ground when clicking outside panels with a `cursorItem`.
+   */
+  tradeHallMode = false
+  /** Optional status text displayed on the Left-Half Dock when `tradeHallMode` is true and `leftPanel === 'none'`. */
+  tradeHallIdleHint: {
+    readonly title: string
+    readonly subtitle?: string | undefined
+  } | null = null
   merc: any = null
   hireList: readonly any[] = []
   mercHireList: readonly any[] = []
@@ -548,6 +562,7 @@ export class HudManager {
   private decodedDc6Count = 415
   private dc6DecodeFailures = 0
   private eventsBound = false
+  private inputFocused = true
   /** #954: `[target, type, handler, options]` tuples registered by `bindEvents` for `dispose()`. */
   private readonly boundWindowEvents: [
     Window | HTMLCanvasElement,
@@ -685,6 +700,13 @@ export class HudManager {
    * Hard points, bonus levels and quickbar skills are cleared; `HudModel` rebuilds them from the server skill list.
    */
   setCharacterClass(classCode: CharacterClassCode): void {
+    if (this.tradeHallMode) {
+      this.currentClass = classCode
+      this.charSheet.classCode = classCode
+      this.inventory.updatePlayerContext({ classCode })
+      this.syncPublishedState()
+      return
+    }
     if (this.currentClass === classCode && this.skillTree.characterClass === classCode) {
       this.hotkeys.preloadClassSkillIcons(classCode)
       return
@@ -1005,6 +1027,9 @@ export class HudManager {
         this.charSheet.advancedStatsOpen = false
       }
     }
+    if (typeof patch.showRuneNumbers === 'boolean') {
+      this.worldPanels.showRuneNumbers = patch.showRuneNumbers
+    }
   }
 
   getHudEnhancements(): HudEnhancementsConfig {
@@ -1014,6 +1039,7 @@ export class HudManager {
       showStatGainTooltips: this.charSheet.showStatGainTooltips,
       showWeaponDamageFormula: this.worldPanels.showWeaponDamageFormula,
       showAdvancedStatsButton: this.charSheet.showAdvancedStatsButton,
+      showRuneNumbers: this.worldPanels.showRuneNumbers,
     }
   }
 
@@ -1096,9 +1122,18 @@ export class HudManager {
     this.handleHudMouseDown(fakeEvent)
   }
 
-  async init(baseUrl = '/ui'): Promise<void> {
-    this.hotkeys.preloadSkillIcons()
-    this.skillTree.preloadAssets()
+  async init(
+    baseUrl = '/ui',
+    options?: { readonly tradeHallOnly?: boolean | undefined },
+  ): Promise<void> {
+    if (options?.tradeHallOnly) {
+      this.tradeHallMode = true
+      this.rightPanel = 'inv'
+      this.inventory.visible = true
+    } else {
+      this.hotkeys.preloadSkillIcons()
+      this.skillTree.preloadAssets()
+    }
 
     try {
       await this.font.load(`${baseUrl}/fonts`)
@@ -1140,7 +1175,30 @@ export class HudManager {
       // Fallback to default 128x35 2-frame mediumbuttonblank dimensions
     }
 
-    const imageFiles: Record<string, string> = {
+    const tradeHallImageFiles: Record<string, string> = {
+      borderLeft: `${baseUrl}/border-left.png`,
+      borderRight: `${baseUrl}/border-right.png`,
+      invSheet: `${baseUrl}/inv-sheet.png`,
+      invTab0: `${baseUrl}/inv-tab-0.png`,
+      invTab1: `${baseUrl}/inv-tab-1.png`,
+      stashBg: `${baseUrl}/stash-bg.png`,
+      cubeBg: `${baseUrl}/cube-bg.png`,
+      tradeBg: `${baseUrl}/trade-bg.png`,
+      tradeBtn: `${baseUrl}/tradebtn.png`,
+      buySellBtn: `${baseUrl}/buysellbtn.png`,
+      goldCoinBtn: `${baseUrl}/goldcoinbtn.png`,
+      boxPieces: `${baseUrl}/boxpieces.png`,
+      cursorHand: `${baseUrl}/cursor-hand.png`,
+      cursorAtlas: `${baseUrl}/cursor.png`,
+      itemsAtlas: `${baseUrl}/items-atlas.png`,
+      gemSocket: `${baseUrl}/gemsocket.png`,
+      btnMedium: `${baseUrl}/frontend/btn-medium.png`,
+      mediumButtonBlank: `${baseUrl}/frontend/btn-medium.png`,
+    }
+
+    const imageFiles: Record<string, string> = options?.tradeHallOnly
+      ? tradeHallImageFiles
+      : {
       ctrlPnl: `${baseUrl}/ctrlpnl-800.png`,
       ctrlPnl640: `${baseUrl}/ctrlpnl-640.png`,
       globeLife: `${baseUrl}/globe-life.png`,
@@ -1216,23 +1274,14 @@ export class HudManager {
       levelEntryTitles: `${baseUrl}/${LEVEL_ENTRY_TITLE_ATLAS.image}`,
     }
 
+    const pool = SharedAssetPool.getGlobal()
     await Promise.all(
-      Object.entries(imageFiles).map(
-        ([key, src]) =>
-          new Promise<void>((resolve) => {
-            if (typeof Image === 'undefined') {
-              resolve()
-              return
-            }
-            const img = new Image()
-            img.onload = () => {
-              this.images.set(key, img)
-              resolve()
-            }
-            img.onerror = () => resolve()
-            img.src = src
-          }),
-      ),
+      Object.entries(imageFiles).map(async ([key, src]) => {
+        const img = await pool.loadImage(src)
+        if (img) {
+          this.images.set(key, img)
+        }
+      }),
     )
 
     this.bindEvents()
@@ -1307,7 +1356,7 @@ export class HudManager {
     if ((this.goldDialog?.mode === 3 || this.goldDialog?.mode === 4) && kind === 'stash') {
       this.goldDialog = null
     }
-    if (this.rightPanel === 'inv') {
+    if (this.rightPanel === 'inv' && !this.tradeHallMode) {
       this.rightPanel = 'none'
       this.inventory.visible = false
     }
@@ -1847,6 +1896,18 @@ export class HudManager {
     rawEvent: KeyboardEvent | { key: string; preventDefault?: () => void; target?: any } | string,
   ): void {
     handleHudKeyDown(this, rawEvent)
+  }
+
+  isInputFocused(): boolean {
+    return this.inputFocused
+  }
+
+  setInputFocused(focused: boolean): void {
+    this.inputFocused = focused
+    if (!focused && this.showGroundLabels) {
+      this.showGroundLabels = false
+      this.syncPublishedState()
+    }
   }
 
   private bindEvents(): void {

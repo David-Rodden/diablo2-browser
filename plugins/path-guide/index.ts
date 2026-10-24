@@ -1,3 +1,8 @@
+/**
+ * Path Guide (`path-guide`) plugin.
+ * Author: David-Rodden (https://github.com/David-Rodden/diablo2-browser)
+ * Special thanks to David-Rodden for contributing this plugin! / 感谢 David-Rodden 贡献此插件！
+ */
 import type { D2WebPlugin, GuideMode, LocalizedText } from '../../src/client/plugin-host/api.ts'
 
 const MODES: Record<GuideMode, { readonly option: LocalizedText; readonly status: LocalizedText }> = {
@@ -9,10 +14,11 @@ const isMode = (value: unknown): value is GuideMode => typeof value === 'string'
 
 export const pathGuidePlugin: D2WebPlugin = {
   id: 'path-guide',
+  author: 'David-Rodden',
   name: { zh: '路线指引', en: 'Path Guide' },
   description: {
-    zh: '按任务日志的当前步骤指路：小地图和地面上画出路线，并给目标物件和路上的门描边。按自动驾驶键后会替你玩：沿路线走、开门、用传送点、和NPC对话，回城治疗、买药、修理和存仓库；血少或药喝完时会先回城，还可以按常用加点替你分配技能点和属性点；开了自动战斗还会替你打怪。',
-    en: 'Follows your quest log step by step: a route on the minimap and the ground, using your waypoints, with outlines on the objects and doors along the way. Press the autopilot key and it plays for you: it walks the route, opens doors, takes waypoints, talks to NPCs, and visits town to heal, buy potions, repair and stash. It heads back to town when life runs low or the potions run out, and can spend your skill and stat points on a proven build. With Auto-Fight on, it fights too.',
+    zh: '按任务日志的当前步骤指路：小地图和地面上画出路线，并给目标物件和路上的门描边。按自动驾驶键后会替你玩：沿路线走、开门、用传送点、和NPC对话，回城治疗、买药、修理和存仓库；血少或药喝完时会先回城，还可以按常用加点替你分配技能点和属性点；开了自动战斗还会替你打怪。（作者：David-Rodden，感谢贡献！）',
+    en: 'Follows your quest log step by step: a route on the minimap and the ground, using your waypoints, with outlines on the objects and doors along the way. Press the autopilot key and it plays for you: it walks the route, opens doors, takes waypoints, talks to NPCs, and visits town to heal, buy potions, repair and stash. It heads back to town when life runs low or the potions run out, and can spend your skill and stat points on a proven build. With Auto-Fight on, it fights too. (Author: David-Rodden — Special thanks for contributing!)',
   },
   defaultEnabled: true,
   settings: [

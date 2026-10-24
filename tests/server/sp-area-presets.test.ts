@@ -23,7 +23,7 @@ const level = (presetUnits: LocalAreaLevelGeometry['presetUnits']): LocalAreaLev
 describe('Single Player area presets', () => {
   it('skips a preset object Objects.txt has no row for instead of failing the whole area', () => {
     const bootstrap = buildAreaBootstrap(level([
-      { type: 2, index: OBJECTS_TXT_113C.length + 7, mode: 0, subX: 10, subY: 10 },
+      { type: 2, index: OBJECTS_TXT_113C.length + 17, mode: 0, subX: 10, subY: 10 },
       { type: 2, index: WAYPOINT, mode: 0, subX: 20, subY: 20 },
     ]))
     expect(bootstrap.objects.map((object) => object.classId)).toEqual([WAYPOINT])

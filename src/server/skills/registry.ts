@@ -15,6 +15,7 @@ import type {
   SkillExecOutcome,
   SkillModule,
 } from './types.ts'
+import type { SkillRecord } from '../../common/data/data-registry.ts'
 import {
   compute3BandDuration,
   compute5BandScaling,
@@ -24,7 +25,12 @@ import {
 } from '../../common/data/calc-ast.ts'
 import { FIXED_ONE } from '../engine/stat-list.ts'
 import { canMonsterTargetBeCursed113c } from '../../common/units/monstats2-flags.ts'
-import { computeCorpseExplosion113c, executeSUnitDmg, type CombatUnitContext } from '../engine/combat-pipeline.ts'
+import {
+  computeCorpseExplosion113c,
+  executeSUnitDmg,
+  type CombatRng,
+  type CombatUnitContext,
+} from '../engine/combat-pipeline.ts'
 import {
   MissileEngine,
   calculateBoneArmorCapacity,
@@ -66,6 +72,7 @@ import {
 } from './barbarian-warcries.ts'
 import { townLevelForAct } from '../../common/world/portal.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
+import { advanceUnitPierceSeed } from '../engine/missile-pierce.ts'
 import { resolveThrowMissileForItemCode } from '../../common/skills/weapon-combat-meta.ts'
 
 function resolveThrowMissileForCasterWeapon(code?: string, itemType?: string): string | null {
@@ -84,23 +91,49 @@ declare global {
   }
 }
 
-const fallbackSkillRegistryRng = new D2Rng(0x13579bdf)
+const fallbackSkillRngByCtx = new WeakMap<object, D2Rng>()
 
 function rollSkill100(ctx: SkillExecContext): number {
+  return resolveSkillRng(ctx).rand(100)
+}
+
+function resolveSkillRng(ctx: SkillExecContext): CombatRng {
   const ctxRng = (ctx as { rng?: ({ rand?(n: number): number; roll?(n: number): number }) | (() => number) }).rng
   if (typeof ctxRng === 'function') {
-    return Math.floor(ctxRng() * 100)
+    return {
+      rand(max: number): number {
+        const m = Math.trunc(max)
+        return m <= 0 ? 0 : Math.floor(ctxRng() * m)
+      },
+    }
   }
   if (ctxRng) {
-    if (typeof ctxRng.rand === 'function') return ctxRng.rand(100)
-    if (typeof ctxRng.roll === 'function') return ctxRng.roll(100)
+    if (typeof ctxRng.rand === 'function') return { rand: (max: number) => ctxRng.rand!(max) }
+    if (typeof ctxRng.roll === 'function') return { rand: (max: number) => ctxRng.roll!(max) }
   }
   const casterRng = (ctx.caster as { rng?: { rand?(n: number): number; roll?(n: number): number } }).rng
   if (casterRng) {
-    if (typeof casterRng.rand === 'function') return casterRng.rand(100)
-    if (typeof casterRng.roll === 'function') return casterRng.roll(100)
+    if (typeof casterRng.rand === 'function') return { rand: (max: number) => casterRng.rand!(max) }
+    if (typeof casterRng.roll === 'function') return { rand: (max: number) => casterRng.roll!(max) }
   }
-  return fallbackSkillRegistryRng.rand(100)
+  let cached = fallbackSkillRngByCtx.get(ctx)
+  if (!cached) {
+    cached = new D2Rng(0x00000001)
+    fallbackSkillRngByCtx.set(ctx, cached)
+  }
+  return cached
+}
+
+function resolveDefaultWeaponMinPhys(unit: CombatUnitContext): number {
+  if (unit.weaponMinPhys !== undefined) return unit.weaponMinPhys
+  const baseMin = Math.trunc(unit.statList.getAccruedStat('mindamage'))
+  return baseMin <= 0 ? 1 : baseMin
+}
+
+function resolveDefaultWeaponMaxPhys(unit: CombatUnitContext): number {
+  if (unit.weaponMaxPhys !== undefined) return unit.weaponMaxPhys
+  const baseMax = Math.trunc(unit.statList.getAccruedStat('maxdamage'))
+  return baseMax <= 1 ? 2 : baseMax
 }
 
 const REGISTERED_SKILL_MODULES = new Map<number, SkillModule>()
@@ -177,6 +210,48 @@ export function listRegisteredSkillModules(): SkillModule[] {
  * Evaluate exact 1.13c numbers (`MinDmg`, `MaxDmg`, `ManaCost`, `ToHit`, `Radius`, `Duration`,
  * `SynergyBonusPct`, `PetMax`, `CooldownFrames`) for any skill from `Skills.txt` + `Missiles.txt`.
  */
+/**
+ * Which `Skills.txt` calc column a `SrcDam` attack skill feeds into the weapon-damage percent
+ * (`D2DamageStrc+0x0C` `dwEnDmgPct`, or `damagepercent` stat #25 on a thrown missile).
+ *
+ * 1.13c `D2Game.dll` reads the calc column inside each srvstfunc/srvdofunc (skill record
+ * `+0x138/+0x13C/+0x140/+0x144` = `calc1..calc4`, evaluated through `0x6FC2AC9A`), so the
+ * column is NOT always `calc1`. See `kb/skills/skill-damage-pct-calc-113c.md`.
+ *
+ * - `calc2`: SrvDo012 Strafe `0x6FC6DCD0` (`[ebp+0x13C]` @ `0x6FC6DE0B`),
+ *   SrvDo013 Fend/Zeal/Fury `0x6FC6DAC0` (`[ebp+0x13C]` @ `0x6FC6DBC7` -> `dwEnDmgPct`).
+ * - `calc1`: SrvDo007 Jab, SrvDo009 Frenzy (`0x6FC47A10`), SrvDo010 Guided Arrow, SrvDo046 Dragon Claw
+ *   (`0x6FCB2A60`), SrvDo067 Charge, SrvDo070 Double Swing (-> `0x6FC473C0`), SrvDo074 Double Throw
+ *   (stat #25 on the missile), SrvDo076 Whirlwind, SrvDo078 Leap Attack (`0x6FC47820`);
+ *   SrvSt006/007/016/029/032/039/056/058 melee strikes (`[skill+0x138]` -> `dwEnDmgPct`,
+ *   St007/St029 via `0x6FCFC530`).
+ * - `none`: SrvDo008 Multiple Shot (calc1 = missile count, calc2 = activation frame),
+ *   SrvDo034/035 charge-up strikes (no calc read on the hit), SrvSt035 Vengeance (calc1..3 are the
+ *   fire/cold/lightning % of weapon damage; `0x6FCFC530` gets skill% = 0), and plain arrow/bolt
+ *   skills (SrvSt004 without a damage srvdofunc: Immolation/Freezing Arrow calc1 is a radius).
+ * - `unknown`: not reverse-engineered — contributes 0 rather than guessing `calc1`.
+ */
+export type SkillDamagePctCalc = 'calc1' | 'calc2' | 'none' | 'unknown'
+
+const DMG_PCT_CALC2_SRVDO: ReadonlySet<number> = new Set([12, 13])
+const DMG_PCT_CALC1_SRVDO: ReadonlySet<number> = new Set([7, 9, 10, 46, 67, 70, 74, 76, 78, 122])
+const DMG_PCT_NONE_SRVDO: ReadonlySet<number> = new Set([8, 34, 35, 44, 48, 54, 116])
+const DMG_PCT_CALC1_SRVST: ReadonlySet<number> = new Set([6, 7, 16, 29, 32, 39, 56, 58])
+const DMG_PCT_NONE_SRVST: ReadonlySet<number> = new Set([4, 35])
+
+export function resolveSkillDamagePctCalc(
+  skill: Pick<SkillRecord, 'srvStFunc' | 'srvDoFunc'>,
+): SkillDamagePctCalc {
+  if (DMG_PCT_CALC2_SRVDO.has(skill.srvDoFunc)) return 'calc2'
+  if (DMG_PCT_CALC1_SRVDO.has(skill.srvDoFunc)) return 'calc1'
+  if (DMG_PCT_NONE_SRVDO.has(skill.srvDoFunc)) return 'none'
+  if (DMG_PCT_CALC1_SRVST.has(skill.srvStFunc)) return 'calc1'
+  if (DMG_PCT_NONE_SRVST.has(skill.srvStFunc)) return 'none'
+  // Unmapped SrcDam srvstfunc/srvdofunc (e.g. basic Attack/Throw with empty calc columns):
+  // return 'unknown' -> 0 rather than guessing calc1.
+  return 'unknown'
+}
+
 export function evaluateSkill113c(ctx: SkillEvalContext): SkillEvalResult {
   const customMod = REGISTERED_SKILL_MODULES.get(ctx.skill.id)
   if (customMod?.evaluate) {
@@ -255,17 +330,20 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
     skill.id === 126 ? (skill.calc2 ? evaluateCalc(skill.calc2, calcCtx) : effLvl) : 0
   const physMinScaled = Math.trunc((basePhysMin * (100 + physSynPct)) / 100) + bashFlatPhys
   const physMaxScaled = Math.trunc((basePhysMax * (100 + physSynPct)) / 100) + bashFlatPhys
-  const calc1Val = skill.calc1 ? evaluateCalc(skill.calc1, calcCtx) : 0
+  // Weapon-damage % column is chosen per srvstfunc/srvdofunc (see `resolveSkillDamagePctCalc`).
+  const dmgPctCalc = skill.srcDam > 0 ? resolveSkillDamagePctCalc(skill) : 'none'
+  const dmgPctCalcVal =
+    dmgPctCalc === 'calc1'
+      ? (skill.calc1 ? evaluateCalc(skill.calc1, calcCtx) : 0)
+      : dmgPctCalc === 'calc2'
+        ? (skill.calc2 ? evaluateCalc(skill.calc2, calcCtx) : 0)
+        : 0
   const physDamagePct =
     skill.id === 275 || skill.id === 255
       ? evaluateCalc('ln12', calcCtx) + physSynPct
-      : skill.id === 30
-        ? (skill.calc2 ? evaluateCalc(skill.calc2, calcCtx) : 0) + physSynPct
-        : [24, 34, 35].includes(skill.id)
-          ? physSynPct
-          : skill.srcDam > 0
-            ? calc1Val + physSynPct
-            : physSynPct
+      : [24, 34, 35].includes(skill.id)
+        ? physSynPct
+        : dmgPctCalcVal + physSynPct
 
   // 5. Elemental / Magic / Poison damage (`EMin`..`EMinLev5`, `EMax`..`EMaxLev5`, or primary missile fallback)
   let baseEMin = compute5BandScaling(
@@ -333,6 +411,18 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
   const maxElemDmg256 = Math.trunc((rawMax256 * (100 + eSynPct)) / 100)
 
   // 6. Duration (`auralencalc` or `ELen`..`ELevLen3` or 1.13c Assassin combo charge 375 frames)
+  let elemDurationFrames = 0
+  if (skill.eLen > 0 || skill.eLevLen1 > 0) {
+    const baseLen = compute3BandDuration(effLvl, skill.eLen, skill.eLevLen1, skill.eLevLen2, skill.eLevLen3)
+    const lenSyn = skill.eLenSymPerCalc ? evaluateCalc(skill.eLenSymPerCalc, calcCtx) : 0
+    const rawDur = Math.trunc((baseLen * (100 + lenSyn)) / 100)
+    elemDurationFrames = skill.id === 139 ? Math.min(250, rawDur) : rawDur
+  } else if (primaryMissileName) {
+    const msl = registry.getMissileByName(primaryMissileName)
+    if (msl && (msl.eLen > 0 || msl.eLevLen1 > 0)) {
+      elemDurationFrames = compute3BandDuration(effLvl, msl.eLen, msl.eLevLen1, msl.eLevLen2, msl.eLevLen3)
+    }
+  }
   let durationFrames = 0
   const aiCurseDiv = resolveAiCurseDivisor(ctx.difficulty)
   if (skill.id === 147) {
@@ -349,11 +439,8 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
     if (ctx.difficulty !== undefined && [71, 77, 81, 86, 130, 146, 150].includes(skill.id)) {
       durationFrames = Math.floor(durationFrames / aiCurseDiv)
     }
-  } else if (skill.eLen > 0 || skill.eLevLen1 > 0) {
-    const baseLen = compute3BandDuration(effLvl, skill.eLen, skill.eLevLen1, skill.eLevLen2, skill.eLevLen3)
-    const lenSyn = skill.eLenSymPerCalc ? evaluateCalc(skill.eLenSymPerCalc, calcCtx) : 0
-    const rawDur = Math.trunc((baseLen * (100 + lenSyn)) / 100)
-    durationFrames = skill.id === 139 ? Math.min(250, rawDur) : rawDur
+  } else if (elemDurationFrames > 0) {
+    durationFrames = elemDurationFrames
   } else if (skill.progressive) {
     // 1.13c Assassin Martial Arts charge duration (`Param3 = 375` frames = 15s)
     durationFrames = skill.param3 || 375
@@ -385,9 +472,17 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
   // 8. State & Curse type
   const stateName = skill.auraTgtState || skill.auraState || skill.passiveState || skill.state1
   const stateRec = stateName ? registry.getStateByName(stateName) : undefined
-  const curseType =
-    stateRec?.cursetype ??
-    (skill.id === 86 ? 2 : skill.srvDoFunc === 30 || skill.id === 81 || skill.id === 264 || skill.id === 130 || skill.id === 137 || skill.id === 146 || skill.id === 150 ? 1 : 0)
+  const curseType = stateRec
+    ? stateRec.curse
+      ? stateRec.id === 57
+        ? 2
+        : 1
+      : 0
+    : skill.id === 86
+      ? 2
+      : skill.srvDoFunc === 30 || skill.id === 150
+        ? 1
+        : 0
 
   // 9. Pet max
   const petMax = skill.petMax
@@ -400,6 +495,15 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
 
   // 10. Cooldown (`delay` in frames, e.g. Hydra 40 frames in 1.13c)
   const cooldownFrames = skill.delay ? evaluateCalc(skill.delay, calcCtx) : 0
+
+  // 1.13c `EType = pois`: `minElemDmg256` / `maxElemDmg256` are per-frame 1/256 poison bitrates
+  // (`D2Common.dll` `SKILLS_GetElementalMinDamage` `0x6FDA0360`), while total poison damage over `ELen`
+  // (`SKILLS_GetElementalLength` `0x6FDA0460`) is `(bitrate256 * ELen) >> 8`.
+  const poisonFrames = elemType === 'pois' ? (elemDurationFrames || durationFrames) : 0
+  const minElemDmg =
+    poisonFrames > 0 ? Math.floor((minElemDmg256 * poisonFrames) / FIXED_ONE) : minElemDmg256 >> 8
+  const maxElemDmg =
+    poisonFrames > 0 ? Math.floor((maxElemDmg256 * poisonFrames) / FIXED_ONE) : maxElemDmg256 >> 8
 
   return {
     skillId: skill.id,
@@ -415,8 +519,8 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
     minPhysDmg: physMinScaled,
     maxPhysDmg: physMaxScaled,
     elemType: elemType || (skill.srcDam > 0 ? 'phys' : 'mag'),
-    minElemDmg: minElemDmg256 >> 8,
-    maxElemDmg: maxElemDmg256 >> 8,
+    minElemDmg,
+    maxElemDmg,
     minElemDmg256,
     maxElemDmg256,
     durationFrames,
@@ -445,6 +549,7 @@ export function executeSkill113c(ctx: SkillExecContext): SkillExecOutcome {
 
 export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
   const { skill, caster, targetPositions, auraScanner, summonManager } = ctx
+  const skillRng = resolveSkillRng(ctx)
   const targets = ctx.targets ?? []
   const corpses = ctx.corpses ?? []
   const missileEngine = ctx.missileEngine ?? new MissileEngine(ctx.registry)
@@ -884,6 +989,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
             corpseLevel,
             slvl: evalResult.slvl,
             distanceSubtiles: distSubtiles,
+            rng: skillRng,
           })
           const dmg256 = ce.finalTotalDamage * FIXED_ONE
           t.statList.setHp256(t.statList.getHp256() - dmg256)
@@ -927,7 +1033,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
             elemMax256: evalResult.maxElemDmg256 * peDurationFrames,
             elemDurationFrames: peDurationFrames,
             autoHit: true,
-          })
+          }, skillRng)
           totalDamageDealt += poisOut.totalDamage
           if (t.stateBus) {
             t.stateBus.applyState({
@@ -983,7 +1089,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
             sourceSkillId: skill.id,
             slvl: evalResult.slvl,
             durationFrames: gwFleeDuration,
-            curseTypeOverride: 1,
           })
           statesApplied.push('terror')
         }
@@ -1048,7 +1153,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
     // Cloak of Shadows (Skill 264, srvDoFunc = 47) recast lockout & self-buff
     if (skill.id === 264) {
       if (
-        caster.stateBus.hasState('cloaked') ||
         caster.stateBus.hasState('cloak_of_shadows') ||
         caster.stateBus.hasState(153)
       ) {
@@ -1069,7 +1173,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
       }
       const cosDuration = evalResult.durationFrames || (200 + 25 * (evalResult.slvl - 1))
       caster.stateBus.applyState({
-        stateNameOrId: 'cloaked',
+        stateNameOrId: skill.auraState || 'cloak_of_shadows',
         sourceUnitId: caster.id,
         sourceSkillId: skill.id,
         slvl: evalResult.slvl,
@@ -1080,7 +1184,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           skill_armor_percent: 10 + 3 * (evalResult.slvl - 1),
         },
       })
-      statesApplied.push('cloaked')
+      statesApplied.push('cloak_of_shadows')
     }
 
     const difficulty: 'normal' | 'nightmare' | 'hell' =
@@ -1095,7 +1199,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
 
     const curseState =
       skill.id === 264
-        ? 'cloak_of_shadows'
+        ? (skill.auraTgtState || 'cloaked')
         : (curseEffect?.stateName ||
           skill.auraTgtState ||
           skill.auraState ||
@@ -1196,7 +1300,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
               : (evalResult.durationFrames || (skill.id === 264 ? 200 + 25 * (evalResult.slvl - 1) : 250)),
         currentFrame: currentTick,
         stats: targetDebuffStats,
-        curseTypeOverride: skill.id === 8 || skill.id === 17 ? 0 : (skill.id === 86 ? 2 : 1),
       })
       if (res.applied) {
         statesApplied.push(res.stateName)
@@ -1477,7 +1580,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
             flatPhysMin256: Math.trunc((evalResult.minPhysDmg * FIXED_ONE * 32) / 128),
             flatPhysMax256: Math.trunc((evalResult.maxPhysDmg * FIXED_ONE * 32) / 128),
             autoHit: true,
-          })
+          }, skillRng)
           totalDamageDealt += out.totalDamage
           caster.statList.drainEquippedWeaponDurability?.(1)
         } else {
@@ -1489,7 +1592,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
             elemMin256: Math.max(FIXED_ONE * 15, evalResult.minElemDmg256),
             elemMax256: Math.max(FIXED_ONE * 25, evalResult.maxElemDmg256),
             autoHit: true,
-          })
+          }, skillRng)
           totalDamageDealt += out.totalDamage
         }
       }
@@ -1652,7 +1755,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         srcDam: skill.srcDam || 128,
         physDamagePct: evalResult.physDamagePct,
         ...(evalResult.toHitBonusPct !== 0 ? { toHitBonusPct: evalResult.toHitBonusPct } : {}),
-      })
+      }, skillRng)
       totalDamageDealt += out.totalDamage
 
       const isBossOrChamp = Boolean(
@@ -1860,7 +1963,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
             item_mindamage_percent: dmgReduction,
             item_maxdamage_percent: dmgReduction,
           },
-          curseTypeOverride: 1,
         })
         if (res.applied) {
           statesApplied.push('battlecry')
@@ -2032,7 +2134,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           slvl: evalResult.slvl,
           durationFrames: howlDuration,
           currentFrame: currentTick,
-          curseTypeOverride: 1,
         })
         statesApplied.push('terror')
         continue
@@ -2045,18 +2146,37 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           : undefined
       // 1.13c War Cry (#154): bosses/champions take full physical damage (autoHit: true) but are immune to stun
       const stunDuration = skill.id === 154 && isBossOrChamp ? undefined : rawStunDuration
+      const novaElemMin256 =
+        evalResult.elemType === 'pois' && evalResult.durationFrames > 0
+          ? evalResult.minElemDmg256 * evalResult.durationFrames
+          : evalResult.minElemDmg256
+      const novaElemMax256 =
+        evalResult.elemType === 'pois' && evalResult.durationFrames > 0
+          ? evalResult.maxElemDmg256 * evalResult.durationFrames
+          : evalResult.maxElemDmg256
       const out = executeSUnitDmg(caster, t, {
         skillId: skill.id,
         attackKind: 'spell',
         flatPhysMin256: evalResult.minPhysDmg * FIXED_ONE,
         flatPhysMax256: evalResult.maxPhysDmg * FIXED_ONE,
         elemType: evalResult.elemType,
-        elemMin256: evalResult.minElemDmg256,
-        elemMax256: evalResult.maxElemDmg256,
+        elemMin256: novaElemMin256,
+        elemMax256: novaElemMax256,
+        ...(evalResult.durationFrames > 0 ? { elemDurationFrames: evalResult.durationFrames } : {}),
         stunDurationFrames: stunDuration,
         autoHit: true,
-      })
+      }, skillRng)
       totalDamageDealt += out.totalDamage
+      if (evalResult.elemType === 'pois' && evalResult.durationFrames > 0 && t.stateBus) {
+        t.stateBus.applyState({
+          stateNameOrId: 'poison',
+          sourceUnitId: String(caster.id),
+          sourceSkillId: skill.id,
+          slvl: evalResult.slvl,
+          durationFrames: evalResult.durationFrames,
+        })
+        if (!statesApplied.includes('poison')) statesApplied.push('poison')
+      }
       if (skill.id === 154 && stunDuration && stunDuration > 0) {
         t.stateBus.applyState({
           stateNameOrId: 'stunned',
@@ -2088,8 +2208,15 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           skillId: skill.id,
           attackKind: 'spell',
           elemType: evalResult.elemType,
-          elemMin256: evalResult.minElemDmg256,
-          elemMax256: evalResult.maxElemDmg256,
+          elemMin256:
+            evalResult.elemType === 'pois' && evalResult.durationFrames > 0
+              ? evalResult.minElemDmg256 * evalResult.durationFrames
+              : evalResult.minElemDmg256,
+          elemMax256:
+            evalResult.elemType === 'pois' && evalResult.durationFrames > 0
+              ? evalResult.maxElemDmg256 * evalResult.durationFrames
+              : evalResult.maxElemDmg256,
+          ...(evalResult.durationFrames > 0 ? { elemDurationFrames: evalResult.durationFrames } : {}),
           autoHit: true,
         },
       })
@@ -2149,7 +2276,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         elemMax256: dmg.maxMagic * FIXED_ONE,
         knockback: kbTriggered,
         autoHit: true,
-      })
+      }, skillRng)
       totalDamageDealt += out.totalDamage
     }
     return {
@@ -2183,7 +2310,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         flatPhysMax256: dmg.maxPhys * FIXED_ONE,
         stunDurationFrames: stunFrames,
         autoHit: true,
-      })
+      }, skillRng)
       totalDamageDealt += out.totalDamage
       if (!statesApplied.includes('stun')) {
         statesApplied.push('stun')
@@ -2579,19 +2706,25 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
       ...(throwMasteryCritPct > 0 ? { criticalStrikePct: throwMasteryCritPct } : {}),
       flatPhysMin256:
         isOffHandThrow && caster.offHandMinPhys !== undefined
-          ? (evalResult.minPhysDmg + Math.max(0, caster.offHandMinPhys - (caster.weaponMinPhys ?? 25))) * FIXED_ONE
+          ? (evalResult.minPhysDmg + Math.max(0, caster.offHandMinPhys - resolveDefaultWeaponMinPhys(caster))) * FIXED_ONE
           : skill.id === 257
             ? Math.trunc((evalResult.minPhysDmg * FIXED_ONE * effectiveMissileSrcDam) / 128)
             : (evalResult.minPhysDmg * FIXED_ONE),
       flatPhysMax256:
         isOffHandThrow && caster.offHandMaxPhys !== undefined
-          ? (evalResult.maxPhysDmg + Math.max(0, caster.offHandMaxPhys - (caster.weaponMaxPhys ?? 45))) * FIXED_ONE
+          ? (evalResult.maxPhysDmg + Math.max(0, caster.offHandMaxPhys - resolveDefaultWeaponMaxPhys(caster))) * FIXED_ONE
           : skill.id === 257
             ? Math.trunc((evalResult.maxPhysDmg * FIXED_ONE * effectiveMissileSrcDam) / 128)
             : (evalResult.maxPhysDmg * FIXED_ONE),
       elemType: skill.id === 6 ? 'mag' : evalResult.elemType,
-      elemMin256: evalResult.minElemDmg256,
-      elemMax256: evalResult.maxElemDmg256,
+      elemMin256:
+        evalResult.elemType === 'pois' && evalResult.durationFrames > 0
+          ? evalResult.minElemDmg256 * evalResult.durationFrames
+          : evalResult.minElemDmg256,
+      elemMax256:
+        evalResult.elemType === 'pois' && evalResult.durationFrames > 0
+          ? evalResult.maxElemDmg256 * evalResult.durationFrames
+          : evalResult.maxElemDmg256,
       ...(bowOrJavPhysToElemPct !== undefined ? { physToElemPct: bowOrJavPhysToElemPct } : {}),
       ...(evalResult.durationFrames > 0 ? { elemDurationFrames: evalResult.durationFrames } : {}),
       // 1.13c Missiles.txt: Guided Arrow (#22), Lightning Bolt (#20 lightningjavelin), and Lightning Fury (#35 lightningfury) have ToHit = 0 (auto-hit)
@@ -2604,14 +2737,10 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
       ...(throwWeapMax > 0 ? { weaponMaxPhys: throwWeapMax } : {}),
     }
 
-    const pierceSlvl = caster.statList.getEffectiveSkillLevel(33)
-    const itemPiercePct = Math.max(0, caster.statList.getAccruedStat('item_pierce'))
-    const piercePct =
-      skill.id === 243
-        ? 100
-        : pierceSlvl > 0
-          ? Math.min(100, computeDiminishingReturns(10, 100, pierceSlvl) + itemPiercePct)
-          : Math.min(100, itemPiercePct)
+    // 1.13c attack-sequence start (`0x6FCEE520` & siblings): the caster's base `pierce_idx` (#328) advances once per
+    // attack and seeds the creation-time pierce roll of every missile of this attack (`0x6FC8F660`, Issue #1420).
+    // The roll itself (owner `item_pierce + skill_pierce`, Missiles.txt `Pierce` flag) happens in `spawnMissile`.
+    advanceUnitPierceSeed(caster)
 
     if (skill.id === 12) {
       const vol = missileEngine.spawnMultipleShotVolley({
@@ -2623,7 +2752,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         targetX,
         targetY,
         dmgPacket,
-        pierceChancePct: piercePct,
         missileName: resolvedRangedMissile || 'multipleshotarrow',
       })
       missilesSpawned.push(...vol.map(m => m.name))
@@ -2639,7 +2767,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         targetX,
         targetY,
         dmgPacket,
-        pierceChancePct: piercePct,
         missileName: resolvedRangedMissile || 'strafearrow',
       })
       missilesSpawned.push(...st.map(m => m.name))
@@ -2691,7 +2818,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
             skill.id === 250
               ? { ...dmgPacket, elemDurationFrames: skill.eLen || 50 }
               : dmgPacket,
-          pierceChancePct: piercePct,
           ...(mslRangeOverride !== undefined ? { maxRangeTicks: mslRangeOverride } : {}),
           ...(skill.id === 257 ? { nextDelayFrames: 25 } : {}),
         })
@@ -2807,15 +2933,15 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           const effectiveCaster = useOffHand
             ? {
                 ...caster,
-                weaponMinPhys: caster.offHandMinPhys ?? caster.weaponMinPhys ?? 25,
-                weaponMaxPhys: caster.offHandMaxPhys ?? caster.weaponMaxPhys ?? 45,
+                weaponMinPhys: caster.offHandMinPhys ?? resolveDefaultWeaponMinPhys(caster),
+                weaponMaxPhys: caster.offHandMaxPhys ?? resolveDefaultWeaponMaxPhys(caster),
               }
             : caster
           const out = executeSUnitDmg(effectiveCaster, primaryTarget, {
             ...dmgPacket,
             flatPhysMin256: evalResult.minPhysDmg * FIXED_ONE,
             flatPhysMax256: evalResult.maxPhysDmg * FIXED_ONE,
-          })
+          }, skillRng)
           totalDamageDealt += out.totalDamage
         }
       }
@@ -3158,9 +3284,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
       const bootMin = caster.bootMinDam ?? caster.kickMinDam ?? 0
       const bootMax = caster.bootMaxDam ?? caster.kickMaxDam ?? 0
       const skillED = skill.id === 255 || skill.id === 275 ? evalResult.physDamagePct : 0
-      const offWeaponED =
-        caster.statList.getModifierBonus('damagepercent') +
-        caster.statList.getModifierBonus('skill_damage_percent')
+      const offWeaponED = caster.statList.getModifierBonus('damagepercent')
       const attrMin = Math.max(1, Math.floor(Math.max(0, dex + str - 20) / 4))
       const attrMax = Math.max(2, Math.floor(Math.max(0, dex + str - 20) / 3))
       const strBootBonus = Math.floor((str * 120) / 100)
@@ -3184,8 +3308,8 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
       isLeftHandSwing && (caster.offHandMinPhys !== undefined || caster.offHandMaxPhys !== undefined)
         ? {
             ...caster,
-            weaponMinPhys: caster.offHandMinPhys ?? caster.weaponMinPhys ?? 25,
-            weaponMaxPhys: caster.offHandMaxPhys ?? caster.weaponMaxPhys ?? 45,
+            weaponMinPhys: caster.offHandMinPhys ?? resolveDefaultWeaponMinPhys(caster),
+            weaponMaxPhys: caster.offHandMaxPhys ?? resolveDefaultWeaponMaxPhys(caster),
           }
         : isKick
           ? {
@@ -3267,8 +3391,8 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
       const swingCaster: CombatUnitContext = isDualWieldSecondSwing
         ? {
             ...effectiveMeleeCaster,
-            weaponMinPhys: caster.offHandMinPhys ?? effectiveMeleeCaster.weaponMinPhys ?? 25,
-            weaponMaxPhys: caster.offHandMaxPhys ?? effectiveMeleeCaster.weaponMaxPhys ?? 45,
+            weaponMinPhys: caster.offHandMinPhys ?? resolveDefaultWeaponMinPhys(effectiveMeleeCaster),
+            weaponMaxPhys: caster.offHandMaxPhys ?? resolveDefaultWeaponMaxPhys(effectiveMeleeCaster),
           }
         : effectiveMeleeCaster
       const maulExistingForHit = skill.id === 233 ? caster.stateBus.getState('maul') : undefined
@@ -3310,8 +3434,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
           stats: {
             lifedrainmindam: hungerLeechPct,
             manadrainmindam: hungerLeechPct,
-            life_leech: hungerLeechPct,
-            mana_leech: hungerLeechPct,
           },
         })
       }
@@ -3350,20 +3472,11 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         canTriggerProcs: skill.id !== 151 && effectiveDoFunc !== 76,
         multiElemPacket: vengeanceMultiPacket,
         selfDamagePct: skill.id === 96 ? 8 : undefined,
-      })
+      }, skillRng)
       if (isHunger) {
+        // The injected lifedrainmindam / manadrainmindam are stolen inside executeSUnitDmg by the
+        // shared 0x6FCFBA40 steal path (difficulty divisor + MonStats Drain), no extra heal here.
         caster.statList.removeModifiersByState('hunger_temp')
-        if (out.physDamage256 > 0 && !(out.attackerHealed256 && out.attackerHealed256 > 0)) {
-          const leeched256 = Math.floor((out.physDamage256 * hungerLeechPct) / 100)
-          if (leeched256 > 0) {
-            caster.statList.setHp256(
-              Math.min(caster.statList.getMaxHp256(), caster.statList.getHp256() + leeched256),
-            )
-            caster.statList.setMana256(
-              Math.min(caster.statList.getMaxMana256(), caster.statList.getMana256() + leeched256),
-            )
-          }
-        }
         notes.push(`hunger_leech:${hungerLeechPct}%`)
       }
       totalDamageDealt += out.totalDamage
@@ -3510,7 +3623,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                     flatPhysMin256: bonusPhys * FIXED_ONE,
                     flatPhysMax256: bonusPhys * FIXED_ONE,
                     autoHit: true,
-                  })
+                  }, skillRng)
                   totalDamageDealt += bOut.totalDamage
                   finisherPhysBase += bOut.totalDamage
                 }
@@ -3544,7 +3657,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                   elemMin256: payload.fireDamage.min * FIXED_ONE,
                   elemMax256: payload.fireDamage.max * FIXED_ONE,
                   autoHit: true,
-                })
+                }, skillRng)
                 totalDamageDealt += fOut.totalDamage
                 if (payload.chargeLevel >= 2) {
                   missilesSpawned.push('fistsoffireexplode')
@@ -3560,7 +3673,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                       elemMin256: payload.fireDamage.min * FIXED_ONE,
                       elemMax256: payload.fireDamage.max * FIXED_ONE,
                       autoHit: true,
-                    })
+                    }, skillRng)
                     totalDamageDealt += expOut.totalDamage
                   }
                 }
@@ -3577,7 +3690,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                   elemMin256: payload.ltngDamage.min * FIXED_ONE,
                   elemMax256: payload.ltngDamage.max * FIXED_ONE,
                   autoHit: true,
-                })
+                }, skillRng)
                 totalDamageDealt += lOut.totalDamage
                 if (payload.ltngDamage.hasNova) {
                   missilesSpawned.push('clawsofthundernova')
@@ -3592,7 +3705,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                       elemMin256: payload.ltngDamage.min * FIXED_ONE,
                       elemMax256: payload.ltngDamage.max * FIXED_ONE,
                       autoHit: true,
-                    })
+                    }, skillRng)
                     totalDamageDealt += novaOut.totalDamage
                   }
                 }
@@ -3614,7 +3727,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                   elemMax256: payload.coldDamage.max * FIXED_ONE,
                   elemDurationFrames: payload.coldDamage.freezeDurationFrames ?? chillFrames,
                   autoHit: true,
-                })
+                }, skillRng)
                 totalDamageDealt += cOut.totalDamage
                 if (payload.chargeLevel >= 2) {
                   missilesSpawned.push('bladesoficeexplode')
@@ -3631,7 +3744,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                       elemMax256: payload.coldDamage.max * FIXED_ONE,
                       elemDurationFrames: chillFrames,
                       autoHit: true,
-                    })
+                    }, skillRng)
                     totalDamageDealt += aoeOut.totalDamage
                   }
                 }
@@ -3677,7 +3790,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                       elemMin256: mMin * FIXED_ONE,
                       elemMax256: mMax * FIXED_ONE,
                       autoHit: true,
-                    })
+                    }, skillRng)
                     totalDamageDealt += pOut.totalDamage
                   }
                 } else if (payload.phoenixPayload.type === 'chain_lightning') {
@@ -3698,7 +3811,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                       elemMin256: 1 * FIXED_ONE,
                       elemMax256: clMax * FIXED_ONE,
                       autoHit: true,
-                    })
+                    }, skillRng)
                     totalDamageDealt += pOut.totalDamage
                   }
                 } else if (payload.phoenixPayload.type === 'chaos_ice') {
@@ -3717,7 +3830,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                     elemMax256: ciMax * FIXED_ONE,
                     elemDurationFrames: frzFrames,
                     autoHit: true,
-                  })
+                  }, skillRng)
                   totalDamageDealt += pOut.totalDamage
                   if (!curTarget.isBoss && curTarget.rank !== 'boss') {
                     curTarget.stateBus.applyState({
@@ -3776,7 +3889,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
                 elemMax256: fireDmg * FIXED_ONE,
                 knockback: true,
                 autoHit: true,
-              })
+              }, skillRng)
               totalDamageDealt += dtOut.totalDamage
             }
           }
@@ -3802,8 +3915,6 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
               charge: nextCharge,
               progressive_charges: nextCharge,
               max_charges: maxCharges,
-              life_leech: lifeLeech,
-              life_leech_pct: lifeLeech,
               lifedrainmindam: lifeLeech,
               lifedrainmaxdam: lifeLeech,
               velocitypercent: velocity,

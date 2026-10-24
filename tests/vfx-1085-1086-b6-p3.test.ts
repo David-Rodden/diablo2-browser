@@ -12,8 +12,9 @@
  *   or CelFile/mixed-case alias keys).
  */
 
+import { homedir } from 'node:os'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { celFileArtKey } from '../src/client/render/cel-file-key.ts'
 import { MISSILE_METAS } from '../src/client/render/missiles-meta.ts'
@@ -34,7 +35,7 @@ import { createActiveOverlay } from '../src/common/skills/missiles-data.ts'
 import { castSkill } from '../src/server/skills/skills.ts'
 
 const EXCEL_DIR =
-  '/usr/local/google/home/taodao/.gemini/jetski/brain/270ee6c5-9745-4fc2-aec8-33c71c866c5f/scratch/excel'
+  join(homedir(), 'd2-data', 'excel')
 
 const OVERLAY_TXT_NAME_SET: ReadonlySet<string> = new Set(
   OVERLAY_TXT_ROWS.map((r) => r.name.trim().toLowerCase()),

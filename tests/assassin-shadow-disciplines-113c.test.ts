@@ -307,6 +307,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
           srcDam: 128,
           autoHit: true,
           roll100: 50,
+          rng: { rand: () => 50 },
         },
       )
 
@@ -373,6 +374,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
           defender: baseDef,
           attackKind: 'melee',
           roll100: 20, // 20 < 50 -> blocked
+          rng: { rand: () => 20 },
         }),
       ).toEqual({ avoided: true, reason: 'weapon_block' })
 
@@ -381,6 +383,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
           defender: baseDef,
           attackKind: 'missile',
           roll100: 20,
+          rng: { rand: () => 20 },
         }),
       ).toEqual({ avoided: true, reason: 'weapon_block' })
 
@@ -389,6 +392,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
           defender: baseDef,
           attackKind: 'spell',
           roll100: 20,
+          rng: { rand: () => 20 },
         }),
       ).toEqual({ avoided: true, reason: 'weapon_block' })
 
@@ -399,6 +403,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
           attackKind: 'spell',
           isPersistentGroundFire: true,
           roll100: 20,
+          rng: { rand: () => 20 },
         }).avoided,
       ).toBe(false)
 
@@ -408,6 +413,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
           defender: { ...baseDef, isDualClaw: false },
           attackKind: 'melee',
           roll100: 20,
+          rng: { rand: () => 20 },
         }).avoided,
       ).toBe(false)
 
@@ -417,6 +423,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
           defender: { ...baseDef, isMoving: true },
           attackKind: 'melee',
           roll100: 1,
+          rng: { rand: () => 1 },
         }).avoided,
       ).toBe(false)
     })
@@ -499,6 +506,8 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
           srcDam: 128,
           autoHit: true,
           roll100: 1,
+          masteryCritRoll100: 1,
+          rng: { rand: () => 1 },
         },
       )
 
@@ -644,27 +653,32 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
         difficulty: 'normal',
       })
 
-      // Caster gets State 153 ('cloaked') for 300 frames with +22% Defense
-      const casterCloak = stateBus.getState('cloaked')
+      // Caster gets State 153 ('cloak_of_shadows', curse=0) for 300 frames with +22% Defense
+      const casterCloak = stateBus.getState('cloak_of_shadows')
       expect(casterCloak).toBeDefined()
+      expect(casterCloak!.stateId).toBe(153)
+      expect(casterCloak!.curseType).toBe(0)
       expect(casterCloak!.durationFrames).toBe(300)
       expect(casterCloak!.stats.item_armor_percent).toBe(22)
 
-      // Normal monster in 30 subtiles gets State 156 ('cloak_of_shadows') with -Defense% AND ai_blind=1
-      const normCloak = normalMob.stateBus.getState('cloak_of_shadows')
+      // Normal monster in 30 subtiles gets State 156 ('cloaked', curse=1) with -Defense% AND ai_blind=1
+      const normCloak = normalMob.stateBus.getState('cloaked')
       expect(normCloak).toBeDefined()
+      expect(normCloak!.stateId).toBe(156)
+      expect(normCloak!.curseType).toBe(1)
       expect(normCloak!.durationFrames).toBe(300)
       expect(normCloak!.stats.item_armor_percent).toBe(-27)
       expect(normCloak!.stats.ai_blind).toBe(1)
 
       // Boss in 30 subtiles gets -Defense% WITHOUT ai_blind
-      const bossCloak = bossMob.stateBus.getState('cloak_of_shadows')
+      const bossCloak = bossMob.stateBus.getState('cloaked')
       expect(bossCloak).toBeDefined()
+      expect(bossCloak!.stateId).toBe(156)
       expect(bossCloak!.stats.item_armor_percent).toBe(-27)
       expect(bossCloak!.stats.ai_blind).toBeUndefined()
 
       // Monster outside 30 subtiles is unaffected
-      expect(farMob.stateBus.hasState('cloak_of_shadows')).toBe(false)
+      expect(farMob.stateBus.hasState('cloaked')).toBe(false)
     })
 
     it('implements #268 Shadow Warrior & #279 Shadow Master stats, mlvl, resistances, MonEquip gear, and AI skill casting in SummonManager', async () => {

@@ -86,7 +86,9 @@ export function resolveItemContainer(
     return 'equipment'
   }
   // Stored in container (location === 0):
-  // Raw 3-bit storePage in bitstream: 1 = Inventory, 2 = Trade, 4 = Cube, 5 = Stash
+  // Raw 3-bit storePage in bitstream (`bInvPage + 1`, D2Common.dll 0x6fd7c158 / 0x6fd7a6d0):
+  // 1 = Inventory (bInvPage 0), 2 = Partner Trade Offer (bInvPage 1), 3 = Self Trade Offer (bInvPage 2),
+  // 4 = Cube (bInvPage 3), 5 = Stash (bInvPage 4)
   switch (storePage) {
     case 1:
     case 0:

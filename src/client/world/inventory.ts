@@ -332,7 +332,10 @@ export class ClientInventoryManager implements ClientItemContainers {
     // 0x22 -> 0x9D act 5 loc 0 -> 0x2A result 1 flag 3), or when selling from cursor
     // (location 4 / container 'cursor' while this.cursor?.id === item.id), the item
     // leaves the player's containers / cursor.
-    if (action === 0x05 && (isDeleted || container !== 'cursor' || this.cursor?.id === item.id)) {
+    if (
+      action === 0x05 &&
+      (isDeleted || container !== 'cursor' || this.cursor?.id === item.id || this.tradePartner.has(item.id))
+    ) {
       this.removeItemById(item.id)
       this.deleteSocketChildren(item.id)
       return
@@ -474,7 +477,14 @@ export class ClientInventoryManager implements ClientItemContainers {
     if (item.ownerType === 1 && (effectiveContainer === 'equipment' || action === 0x06 || action === 0x07 || action === 0x09)) {
       effectiveContainer = 'merc'
     } else if (effectiveContainer === 'trade') {
-      if (item.ownerId !== undefined && selfId !== undefined && item.ownerId !== selfId) {
+      // Per D2Common.dll 0x6fd7c158 and D2Game.dll 0x6fc91b00:
+      // - storePage === 2 (bInvPage = 1) is the partner's trade offer grid (sent via S2C 0x9C action=0x04 with no ownerId header).
+      // - storePage === 3 (bInvPage = 2) is the local player's self trade offer grid.
+      // Also support explicit remote ownerId on S2C 0x9D packets.
+      if (
+        (item.ownerId !== undefined && selfId !== undefined && item.ownerId !== selfId) ||
+        (item.storePage === 2 && (item.ownerId === undefined || item.ownerId === 0 || item.ownerId === selfId))
+      ) {
         effectiveContainer = 'tradePartner'
       } else {
         effectiveContainer = 'tradeSelf'

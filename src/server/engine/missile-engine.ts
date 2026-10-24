@@ -6,7 +6,8 @@
  * - `NextHit` & `NextDelay` per-target immunity window (`lastNextDelayTickByTargetId`) so
  *   multi-projectile skills (`Multiple Shot`, `Teeth`, `Charged Bolt`, `Nova`, `Shock Web`,
  *   `Tornado`, `Twister`, `Wake of Fire`) obey exact 1.13c `NextDelay` frames.
- * - `Pierce` (`Pierce` column + Amazon `Pierce` `skillId=33` chance, capped at 4 pierces / 5 hits).
+ * - `Pierce`: Missiles.txt `Pierce` flag + creation-time `pierce_idx` roll from the owner's
+ *   `item_pierce + skill_pierce` (at most 4), consumed per hit (`missile-pierce.ts`, Issue #1420).
  * - `pSrvDoFunc` (linear flight, spiral `Blessed Hammer`, homing `Guided Arrow`/`Bone Spirit`,
  *   radial bolt emitter `Frozen Orb` `pSrvDoFunc=15`, ground fire trail `Blaze`/`Fire Wall`/`Molten Boulder`).
  * - `pSrvHitFunc` (`Fire Ball` radial splash `1`, `Holy Bolt` undead/ally heal `7`,
@@ -25,6 +26,7 @@ import {
 import { FIXED_ONE } from './stat-list.ts'
 import { compute3BandDuration, compute5BandScaling, computeDiminishingReturns, evaluateCalc } from '../../common/data/calc-ast.ts'
 import { D2Rng, hashString32 } from '../../common/rng/d2-rng.ts'
+import { ownerCanConsumePierce, resolveMissilePierceIdx } from './missile-pierce.ts'
 import {
   calculateColdArrowStats,
   calculateMultipleShotStats,
@@ -644,13 +646,44 @@ export interface ActiveMissile {
   y: number
   vx: number
   vy: number
+  /**
+   * Fixed-point velocity (`Vel << 8`), initialized in `MISSILE_CreateMissileFromParams` (`0x6FC8F930`)
+   * and stepped each frame by `accel` in `PATH_StepVelocity` (`0x6FD5CEB0`).
+   */
+  vel256: number
+  /**
+   * Fixed-point maximum velocity (`MaxVel << 8` when `Accel != 0`, otherwise initial `vel256`) per `0x6FC8FB13..0x6FC8FB5A`.
+   */
+  readonly maxVel256: number
+  /**
+   * Fixed-point acceleration per frame (`Missiles.txt Accel`) per `0x6FC8FB37`.
+   */
+  readonly accel: number
+  /**
+   * Current scalar speed in `Vel` (`px/tick`) units (`vel256 / 256`).
+   */
+  speed: number
+  /**
+   * Whether `vy` uses 2:1 isometric ground foreshortening (`ISO_GROUND_ASPECT_RATIO = 0.5`).
+   */
+  readonly isoGroundForeshorten?: boolean | undefined
+  /**
+   * Optional `nLoops` passed at creation for `SubLoop` range extension (`0x6FC8FC90`).
+   */
+  readonly loops?: number | undefined
   angleRad: number
   ageTicks: number
   readonly maxRangeTicks: number
   readonly nextHit: boolean
   readonly nextDelayFrames: number
+  /** Missiles.txt `Pierce` flag: the row may consume its owner's pierce roll (`0x6FC8F6A3` / `0x6FC58F7B`). */
   readonly canPierce: boolean
-  readonly pierceChancePct: number
+  /**
+   * Remaining pierces (`pierce_idx`, stat #328) rolled once at creation from the owner's `item_pierce + skill_pierce`
+   * (`0x6FC8F660`, at most 4) and decremented on each unit hit (`0x6FC58F40`). See `missile-pierce.ts`.
+   */
+  pierceIdx: number
+  /** Number of units this missile has passed through without being removed (bookkeeping only). */
   pierceCount: number
   readonly hitTargetIds: Set<string>
   readonly dmgPacket: SUnitDmgPacket
@@ -723,6 +756,7 @@ export class MissileEngine {
   private readonly nextDelayExpireByTarget = new Map<string, number>()
   private readonly volleyHits = new Set<string>()
   private uidCounter = 1
+  private readonly rng = new D2Rng(0x4d534c45)
   terrain?: MissileTerrainCollision | undefined
 
   constructor(registry: D2DataRegistry, terrain?: MissileTerrainCollision) {
@@ -744,7 +778,6 @@ export class MissileEngine {
     targetX: number
     targetY: number
     dmgPacket?: SUnitDmgPacket | undefined
-    pierceChancePct?: number
     chainCount?: number
     chainRemaining?: number
     lastHitTargetId?: string
@@ -759,6 +792,10 @@ export class MissileEngine {
     vx?: number
     vy?: number
     angleRad?: number
+    velocityOverride?: number
+    velocityIs256?: boolean
+    loops?: number
+    isoGroundForeshorten?: boolean
     volleyId?: string
     canTriggerProcs?: boolean
     isSlowed?: boolean
@@ -916,11 +953,84 @@ export class MissileEngine {
       effectiveRec.name.toLowerCase() === 'volcano' ||
       effectiveRec.name.toLowerCase() === 'armageddoncontrol' ||
       effectiveRec.name.toLowerCase() === 'hurricaneswoosh'
-    const speedPxPerTick = isStationary ? 0 : Math.max(8, effectiveRec.vel || 18)
+    const slvlInt = Math.max(0, Math.trunc(params.slvl))
+    let vel256: number
+    if (isStationary) {
+      vel256 = 0
+    } else if (params.velocityOverride !== undefined) {
+      // 1.13c D2Game.dll 0x6FC8FA05..0x6FC8FA13: flags 0x04 / 0x10 velocity override
+      const rawOverride = Math.trunc(params.velocityOverride)
+      vel256 = params.velocityIs256 ? rawOverride : rawOverride << 8
+    } else {
+      // 1.13c D2Game.dll 0x6FC8FA15..0x6FC8FA36: rawVel = Vel + trunc((VelLev * slvl) / 8), vel256 = rawVel << 8
+      const rawVel = effectiveRec.vel + Math.trunc((effectiveRec.velLev * slvlInt) / 8)
+      vel256 = rawVel << 8
+    }
+
+    // 1.13c D2Game.dll 0x6FC8FA54..0x6FC8FA9F:
+    // One-time creation Slow Missiles check when Missiles.txt CanSlow is set and owner has STATE_SLOWMISSILES (87).
+    // Reads STAT_SKILL_HANDOFATHENA (161) from the slowmissiles state's stat list and scales vel256 = trunc((vel256 * handOfAthena) / 100).
+    const canSlowRecord = rec === undefined || effectiveRec.canSlow
+    let slowedAtCreation = Boolean(params.isSlowed)
+    if (!isStationary && canSlowRecord) {
+      const slowState =
+        params.owner?.stateBus?.getState?.('slowmissiles') ??
+        params.owner?.stateBus?.getState?.(87 as any)
+      const hasSlowState =
+        slowState !== undefined ||
+        (params.owner?.stateBus?.hasState?.('slowmissiles') ?? false) ||
+        (params.owner?.stateBus?.hasState?.(87 as any) ?? false)
+      const stateHandOfAthena = slowState?.stats?.['skill_handofathena'] ?? slowState?.stats?.['161']
+      const statListHandOfAthena = params.owner?.statList?.getAccruedStat?.('skill_handofathena') ?? 0
+      if (hasSlowState) {
+        const handOfAthena =
+          stateHandOfAthena !== undefined
+            ? stateHandOfAthena
+            : statListHandOfAthena
+        vel256 = Math.trunc((vel256 * handOfAthena) / 100)
+        slowedAtCreation = true
+      } else if (params.slowMultiplier !== undefined) {
+        vel256 = Math.trunc(vel256 * params.slowMultiplier)
+        slowedAtCreation = true
+      } else if (params.isSlowed || statListHandOfAthena > 0) {
+        vel256 = Math.trunc((vel256 * statListHandOfAthena) / 100)
+        slowedAtCreation = true
+      }
+    }
+
+    // 1.13c D2Game.dll 0x6FC8FAA3..0x6FC8FAB8: global 75% velocity multiplier for all non-zero-velocity missiles
+    if (vel256 !== 0) {
+      vel256 = Math.trunc((vel256 * 75) / 100)
+    }
+
+    // 1.13c D2Game.dll 0x6FC8FB13..0x6FC8FB5A:
+    // PATH_SetVelocity sets nVelocity = vel256 and nMaxVelocity = vel256;
+    // when Missiles.txt Accel != 0, PATH_SetAcceleration(Accel) and PATH_SetMaxVelocity(MaxVel << 8) are applied.
+    const accel = isStationary ? 0 : effectiveRec.accel
+    const maxVel256 = isStationary ? 0 : accel !== 0 ? effectiveRec.maxVel << 8 : vel256
+    const foreshortenY = params.isoGroundForeshorten ? ISO_GROUND_ASPECT_RATIO : 1
+    const speedPxPerTick = isStationary ? 0 : vel256 / 256
     const vx = params.vx !== undefined ? params.vx : (isStationary ? 0 : Math.cos(angleRad) * speedPxPerTick)
-    const vy = params.vy !== undefined ? params.vy : (isStationary ? 0 : Math.sin(angleRad) * speedPxPerTick)
+    const vy =
+      params.vy !== undefined
+        ? params.vy
+        : isStationary
+          ? 0
+          : Math.sin(angleRad) * speedPxPerTick * foreshortenY
+    if (!isStationary && params.velocityOverride === undefined && (params.vx !== undefined || params.vy !== undefined)) {
+      const explicitSpeed = Math.hypot(vx, vy / foreshortenY)
+      vel256 = Math.round(explicitSpeed * 256)
+    }
+    const initialSpeed = isStationary ? 0 : vel256 / 256
+
+    // 1.13c D2Game.dll 0x6FC8FC75..0x6FC8FCC8:
+    // range = Range + slvl * LevRange (+ (SubStop - SubStart) * nLoops when SubLoop != 0 and nLoops > 0)
     const baseRange = effectiveRec.range !== undefined && effectiveRec.range > 0 ? effectiveRec.range : 35
-    const calculatedRange = baseRange + Math.max(0, params.slvl - 1) * (effectiveRec.levRange || 0)
+    let calculatedRange = baseRange + slvlInt * (effectiveRec.levRange || 0)
+    const loopsInt = params.loops !== undefined ? Math.trunc(params.loops) : 0
+    if (effectiveRec.subLoop && loopsInt > 0) {
+      calculatedRange += (effectiveRec.subStop - effectiveRec.subStart) * loopsInt
+    }
     const maxRangeTicks = params.maxRangeTicks ?? (
       isTurret
         ? 250 // 1.13c Hydra duration: 250 frames (10 seconds)
@@ -940,40 +1050,21 @@ export class MissileEngine {
       y: params.startY,
       vx,
       vy,
+      vel256,
+      maxVel256,
+      accel,
+      speed: initialSpeed,
+      ...(params.isoGroundForeshorten !== undefined ? { isoGroundForeshorten: params.isoGroundForeshorten } : {}),
+      ...(params.loops !== undefined ? { loops: loopsInt } : {}),
       angleRad,
       ageTicks: 0,
       maxRangeTicks,
       nextHit: effectiveRec.nextHit || (params.nextDelayFrames ?? 0) > 0,
       nextDelayFrames: params.nextDelayFrames ?? effectiveRec.nextDelay,
-      canPierce:
-        params.sourceSkillId === 22 ||
-        effectiveRec.name.toLowerCase() === 'guidedarrow' ||
-        effectiveRec.id === 86 ||
-        effectiveRec.pierce ||
-        !effectiveRec.collideKill ||
-        (params.pierceChancePct ?? 0) > 0 ||
-        effectiveRec.name === 'bonespear' ||
-        effectiveRec.name === 'shockwave' ||
-        params.sourceSkillId === 243,
-      pierceChancePct:
-        params.pierceChancePct ??
-        (params.sourceSkillId === 22 ||
-        effectiveRec.name.toLowerCase() === 'guidedarrow' ||
-        effectiveRec.id === 86
-          ? (() => {
-              const pSlvl = params.owner?.statList?.getEffectiveSkillLevel?.(33) ?? 0
-              const itemPierce = Math.max(0, params.owner?.statList?.getAccruedStat?.('item_pierce') ?? 0)
-              const skillPierce = Math.max(0, params.owner?.statList?.getAccruedStat?.('skill_pierce') ?? 0)
-              const passivePct = pSlvl > 0 ? Math.trunc((110 * pSlvl * 90) / (100 * (pSlvl + 6))) + 10 : skillPierce
-              return Math.min(100, passivePct + itemPierce)
-            })()
-          : effectiveRec.pierce ||
-              !effectiveRec.collideKill ||
-              effectiveRec.name === 'bonespear' ||
-              effectiveRec.name === 'shockwave' ||
-              params.sourceSkillId === 243
-            ? 100
-            : 0),
+      // 1.13c `0x6FC8F660`: only the Missiles.txt `Pierce` flag enables the roll; the count is rolled once here from
+      // the owner's `item_pierce + skill_pierce` (Issue #1420). `CollideKill = 0` is a separate, unrelated property.
+      canPierce: effectiveRec.pierce,
+      pierceIdx: resolveMissilePierceIdx(effectiveRec, params.owner, this.registry),
       pierceCount: 0,
       hitTargetIds: new Set<string>(),
       dmgPacket:
@@ -1020,7 +1111,7 @@ export class MissileEngine {
       originX: params.startX,
       originY: params.startY,
       spiralTheta: angleRad,
-      ...(params.isSlowed !== undefined ? { isSlowed: params.isSlowed } : {}),
+      ...(slowedAtCreation ? { isSlowed: true } : {}),
       ...(params.slowMultiplier !== undefined ? { slowMultiplier: params.slowMultiplier } : {}),
       ...(params.linkedUnit !== undefined ? { linkedUnit: params.linkedUnit } : {}),
       ...(params.lockedTargetId !== undefined ? { lockedTargetId: params.lockedTargetId } : {}),
@@ -1222,7 +1313,7 @@ export class MissileEngine {
           const pos = this.resolveUnitPosition(target, ctx.targetPositions)
           if (!pos) continue
           if (Math.hypot(pos.x - m.x, (pos.y - m.y) / ISO_GROUND_ASPECT_RATIO) > radiusPx) continue
-          const dmgOut = executeSUnitDmg(m.owner, target, m.dmgPacket)
+          const dmgOut = executeSUnitDmg(m.owner, target, m.dmgPacket, m.doFuncRng ?? this.rng)
           ctx.hits.push({
             missileName: m.name,
             targetId: target.id,
@@ -1457,14 +1548,14 @@ export class MissileEngine {
             if (target.statList.getHp256() <= 0) continue
             const pos = targetPositions.get(target.id) ?? { x: m.x, y: m.y }
             if (Math.hypot(pos.x - m.x, (pos.y - m.y) / ISO_GROUND_ASPECT_RATIO) <= radiusPx) {
-              const dmgOut = executeSUnitDmg(m.owner, target, m.dmgPacket)
+              const dmgOut = executeSUnitDmg(m.owner, target, m.dmgPacket, m.doFuncRng ?? this.rng)
               hits.push({
                 missileName: 'hurricane',
                 targetId: target.id,
                 damage: dmgOut.totalDamage,
                 immune: dmgOut.immuneToElem || dmgOut.immuneToPhys,
               })
-              if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('cannot_be_frozen')) {
+              if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('item_cannotbefrozen')) {
                 const chillFrames = m.dmgPacket.elemDurationFrames ?? 50
                 target.stateBus.applyState({
                   stateNameOrId: 'chill',
@@ -1560,6 +1651,32 @@ export class MissileEngine {
         }
       }
 
+      // 1.13c D2Common.dll PATH_StepVelocity (0x6FD5CEB0):
+      // Step fixed-point velocity by Accel each frame; clamp to MaxVel<<8 when Accel > 0 or 0 when Accel < 0.
+      if (!isTurretEmitter && m.accel !== 0) {
+        m.vel256 += m.accel
+        if (m.accel > 0) {
+          if (m.vel256 > m.maxVel256) {
+            m.vel256 = m.maxVel256
+          }
+        } else if (m.vel256 < 0) {
+          m.vel256 = 0
+        }
+        m.speed = m.vel256 / 256
+        const foreshortenY = m.isoGroundForeshorten ? ISO_GROUND_ASPECT_RATIO : 1
+        const curFlatVx = m.vx
+        const curFlatVy = m.vy / foreshortenY
+        const curFlatMag = Math.hypot(curFlatVx, curFlatVy)
+        if (curFlatMag > 0) {
+          const scale = m.speed / curFlatMag
+          m.vx = curFlatVx * scale
+          m.vy = curFlatVy * scale * foreshortenY
+        } else {
+          m.vx = Math.cos(m.angleRad) * m.speed
+          m.vy = Math.sin(m.angleRad) * m.speed * foreshortenY
+        }
+      }
+
       // Spiral flight for Blessed Hammer (`blessedhammer`, `skillId = 112`)
       // Authentic Archimedean spiral: r = a * theta, foreshortened by 0.5 on y-axis in 2:1 isometric space
       if (isTurretEmitter) {
@@ -1573,6 +1690,9 @@ export class MissileEngine {
         const r = Math.max(12, 13 * theta)
         m.x = cx + r * Math.cos(theta)
         m.y = cy + r * Math.sin(theta) * ISO_GROUND_ASPECT_RATIO
+        const foreshortenY = m.isoGroundForeshorten ? ISO_GROUND_ASPECT_RATIO : 1
+        m.vx = Math.cos(theta) * m.speed
+        m.vy = Math.sin(theta) * m.speed * foreshortenY
       } else {
         // Authentic 1.13c Homing mechanics (Bone Spirit / Guided Arrow, pSrvDoFunc = 7):
         // Continuously tracks and steers toward closest active hostile target in 2:1 isometric perspective
@@ -1654,7 +1774,7 @@ export class MissileEngine {
             }
           }
           if (closestTarget) {
-            const speed = m.record.vel ? m.record.vel : 12
+            const speed = m.speed > 0 ? m.speed : (m.record.vel ? (m.record.vel * 75) / 100 : 12)
             const targetAngle = Math.atan2((closestTarget.y - m.y) / ISO_GROUND_ASPECT_RATIO, closestTarget.x - m.x)
             // 1.13c MISSMODE_SrvDo07_GuidedArrow_BoneSpirit (0x6FC59DC0): re-paths directly to target without turn-rate cap.
             m.angleRad = targetAngle
@@ -1721,16 +1841,10 @@ export class MissileEngine {
           }
         }
 
-        // Slow Missiles: scale velocity by skill_handofathena / 100 (default 0.33) if missile is slowed
-        // or if owner is affected by slowmissiles / skill_handofathena and missile record allows slowing (CanSlow = 1)
-        const handOfAthenaPct = m.owner?.statList?.getAccruedStat?.('skill_handofathena') ?? 0
-        const hasSlowMissilesState = (m.owner?.stateBus?.hasState?.('slowmissiles') ?? false) || handOfAthenaPct > 0
-        const canSlowRecord = m.record.id === 0 || m.record.canSlow
-        const isOwnerSlowed = hasSlowMissilesState && canSlowRecord
-        const slowFactor = handOfAthenaPct > 0 ? handOfAthenaPct / 100 : 0.33
-        const effectiveSpeedMult = m.slowMultiplier ?? (m.isSlowed || isOwnerSlowed ? slowFactor : 1.0)
-        m.x += m.vx * effectiveSpeedMult
-        m.y += m.vy * effectiveSpeedMult
+        // 1.13c D2Game.dll 0x6FC8FA54: Slow Missiles was already applied once at creation in `spawnMissile`;
+        // `MISSMODE_MoveMissile` (0x6FC5F320) / `PATH_Step` (0x6FD5E230) never re-reads owner's slowmissiles state in flight.
+        m.x += m.vx
+        m.y += m.vy
 
         const effectiveTerrain = collision ?? this.terrain
         if (effectiveTerrain !== undefined && !isTurretEmitter && (m.altitude === undefined || m.altitude <= 0)) {
@@ -1771,14 +1885,14 @@ export class MissileEngine {
                 if (other.statList.getHp256() <= 0) continue
                 const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
                 if (Math.hypot(oPos.x - hitWallX, oPos.y - hitWallY) <= splashRadius) {
-                  const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket)
+                  const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket, m.doFuncRng ?? this.rng)
                   hits.push({
                     missileName: `${m.name}:splash`,
                     targetId: other.id,
                     damage: splashOut.totalDamage,
                     immune: splashOut.immuneToElem || splashOut.immuneToPhys,
                   })
-                  if (!splashOut.immuneToElem && !other.statList.getAccruedStat('cannot_be_frozen')) {
+                  if (!splashOut.immuneToElem && !other.statList.getAccruedStat('item_cannotbefrozen')) {
                     const frzFrames = m.dmgPacket.elemDurationFrames ?? calculateGlacialSpikeFreezeLength(m.slvl)
                     other.stateBus.applyState({
                       stateNameOrId: 'freeze',
@@ -1880,7 +1994,7 @@ export class MissileEngine {
                 if (other.statList.getHp256() <= 0) continue
                 const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
                 if (Math.hypot(oPos.x - hitWallX, oPos.y - hitWallY) <= splashRadius) {
-                  const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket)
+                  const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket, m.doFuncRng ?? this.rng)
                   hits.push({
                     missileName: `${m.name}:explode`,
                     targetId: other.id,
@@ -2060,7 +2174,7 @@ export class MissileEngine {
             : isHolyBoltMissile && basePacket.bypassUndeadMagicRes !== true
               ? { ...basePacket, bypassUndeadMagicRes: true }
               : basePacket
-          const dmgOut = executeSUnitDmg(m.owner, target, packet)
+          const dmgOut = executeSUnitDmg(m.owner, target, packet, m.doFuncRng ?? this.rng)
           hits.push({
             missileName: m.name,
             targetId: target.id,
@@ -2071,7 +2185,7 @@ export class MissileEngine {
           // Solid freeze on hit:
           // Ice Blast (pSrvDmgFunc = 4 or skillId 45): converts cold chill into solid freeze
           if (m.name === 'iceblast' || m.sourceSkillId === 45 || m.record.pSrvDmgFunc === 4) {
-            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('cannot_be_frozen')) {
+            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('item_cannotbefrozen')) {
               const frzFrames = m.dmgPacket.elemDurationFrames ?? calculateIceBlastFreezeLength(m.slvl)
               target.stateBus.applyState({
                 stateNameOrId: 'freeze',
@@ -2083,7 +2197,7 @@ export class MissileEngine {
           }
           // Glacial Spike (skillId 55 or pSrvHitFunc = 13): freezes primary target solid
           if (m.name === 'glacialspike' || m.sourceSkillId === 55 || m.record.pSrvHitFunc === 13) {
-            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('cannot_be_frozen')) {
+            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('item_cannotbefrozen')) {
               const frzFrames = m.dmgPacket.elemDurationFrames ?? calculateGlacialSpikeFreezeLength(m.slvl)
               target.stateBus.applyState({
                 stateNameOrId: 'freeze',
@@ -2102,7 +2216,7 @@ export class MissileEngine {
             m.name === 'arcticblast2' ||
             m.sourceSkillId === 230
           ) {
-            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('cannot_be_frozen')) {
+            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('item_cannotbefrozen')) {
               const chillFrames =
                 m.dmgPacket.elemDurationFrames ??
                 (m.sourceSkillId === 230 || m.name.startsWith('arcticblast')
@@ -2187,7 +2301,7 @@ export class MissileEngine {
 
           // Cold Arrow (Skill 11 / missile coldarrow): applies chilling slow with Ice Arrow (+12%/blvl) length synergy
           if (m.name === 'coldarrow' || m.sourceSkillId === 11) {
-            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('cannot_be_frozen')) {
+            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('item_cannotbefrozen')) {
               const iceBlvl = m.owner.statList.getBaseSkillLevel(21)
               const chillFrames =
                 m.dmgPacket.elemDurationFrames ??
@@ -2203,7 +2317,7 @@ export class MissileEngine {
 
           // Ice Arrow (Skill 21 / missile icearrow): freezes primary target solid with Freezing Arrow (+5%/blvl) length synergy
           if (m.name === 'icearrow' || m.sourceSkillId === 21) {
-            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('cannot_be_frozen')) {
+            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('item_cannotbefrozen')) {
               const frzBlvl = m.owner.statList.getBaseSkillLevel(31)
               const frzFrames =
                 m.dmgPacket.elemDurationFrames ??
@@ -2219,7 +2333,7 @@ export class MissileEngine {
 
           // Freezing Arrow (Skill 31 / missile freezingarrow): freezes primary target solid with Ice Arrow (+5%/blvl) length synergy
           if (m.name === 'freezingarrow' || m.sourceSkillId === 31) {
-            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('cannot_be_frozen')) {
+            if (!dmgOut.immuneToElem && !target.statList.getAccruedStat('item_cannotbefrozen')) {
               const iceBlvl = m.owner.statList.getBaseSkillLevel(21)
               const frzFrames =
                 m.dmgPacket.elemDurationFrames ??
@@ -2300,7 +2414,7 @@ export class MissileEngine {
               if (other.id === target.id || other.statList.getHp256() <= 0) continue
               const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
               if (Math.hypot(oPos.x - pos.x, oPos.y - pos.y) <= splashRadius) {
-                const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket)
+                const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket, m.doFuncRng ?? this.rng)
                 hits.push({
                   missileName: `${m.name}:splash`,
                   targetId: other.id,
@@ -2309,7 +2423,7 @@ export class MissileEngine {
                 })
                 // Glacial Spike splash targets also receive solid freeze
                 if (m.name === 'glacialspike' || m.sourceSkillId === 55 || m.record.pSrvHitFunc === 13) {
-                  if (!splashOut.immuneToElem && !other.statList.getAccruedStat('cannot_be_frozen')) {
+                  if (!splashOut.immuneToElem && !other.statList.getAccruedStat('item_cannotbefrozen')) {
                     const frzFrames = m.dmgPacket.elemDurationFrames ?? calculateGlacialSpikeFreezeLength(m.slvl)
                     other.stateBus.applyState({
                       stateNameOrId: 'freeze',
@@ -2415,14 +2529,11 @@ export class MissileEngine {
             }
           }
 
-          // Pierce evaluation (1.13c cap: max 4 pierces = 5 total targets hit, EXCEPT infinite piercing missiles like Lightning / Bone Spear / Blessed Hammer)
-          const isInfinitePierce =
-            (m.name === 'lightningbolt' ||
-              m.name === 'bonespear' ||
-              m.name === 'blessedhammer' ||
-              (!m.record.collideKill && m.canPierce)) &&
-            !m.name.includes('explode') &&
-            !m.name.endsWith('explode')
+          // 1.13c unit-collision outcome (`0x6FC5EDE0`, Issue #1420):
+          // - `Pierce` row + owner has skill_pierce/item_pierce + `pierce_idx > 0` => `pierce_idx -= 1`, keep flying
+          //   (`0x6FC58F40` returns 2);
+          // - otherwise `CollideKill` decides: `CollideKill = 0` rows (lightningbolt, bonespear, blessedhammer,
+          //   shockwave, ...) are never removed by a unit hit, `CollideKill = 1` rows end here.
           if (
             m.name === 'meteorfire' ||
             m.name === 'immolationfire' ||
@@ -2441,7 +2552,10 @@ export class MissileEngine {
             m.name === 'plaguejavcloud'
           ) {
             // Ground fire, poison clouds, and stream flames persist for their full duration and do not die on hit
-          } else if (isInfinitePierce) {
+          } else if (m.canPierce && m.pierceIdx > 0 && ownerCanConsumePierce(m.owner, this.registry)) {
+            m.pierceIdx -= 1
+            m.pierceCount += 1
+          } else if (!m.record.collideKill) {
             m.pierceCount += 1
             if (m.name === 'bonespear') {
               const expName = m.record.explosionMissile || 'bonespearexplode'
@@ -2458,15 +2572,7 @@ export class MissileEngine {
               })
               subMissilesSpawned.push(expName)
             }
-          } else if (
-            m.canPierce &&
-            m.pierceCount < 4 &&
-            m.pierceChancePct > 0 &&
-            (m.pierceChancePct >= 100 ||
-              ((m.pierceCount * 20 + 15) % 100) < m.pierceChancePct)
-          ) {
-            m.pierceCount += 1
-          } else if (m.record.collideKill || !m.canPierce || m.pierceCount >= 4 || m.pierceChancePct < 100) {
+          } else {
             if (
               m.name.startsWith('blizzard') &&
               !m.name.includes('explode') &&
@@ -2635,7 +2741,7 @@ export class MissileEngine {
             if (other.statList.getHp256() <= 0) continue
             const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
             if (Math.hypot(oPos.x - m.x, oPos.y - m.y) <= splashRadius) {
-              const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket)
+              const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket, m.doFuncRng ?? this.rng)
               hits.push({
                 missileName: `${m.name}:explode`,
                 targetId: other.id,
@@ -2740,7 +2846,7 @@ export class MissileEngine {
             const inRange =
               Math.hypot(pos.x - m.x, (pos.y - m.y) / ISO_GROUND_ASPECT_RATIO) <= blastRadius
             if (inRange) {
-              const dmgOut = executeSUnitDmg(m.owner, target, m.dmgPacket)
+              const dmgOut = executeSUnitDmg(m.owner, target, m.dmgPacket, m.doFuncRng ?? this.rng)
               hits.push({
                 missileName: 'meteorexplode',
                 targetId: target.id,
@@ -2938,7 +3044,7 @@ export class MissileEngine {
       if (other.id === excludeTargetId || other.statList.getHp256() <= 0) continue
       const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
       if (Math.hypot(oPos.x - impactX, oPos.y - impactY) <= burstRadius) {
-        const splashOut = executeSUnitDmg(m.owner, other, cloudPacket)
+        const splashOut = executeSUnitDmg(m.owner, other, cloudPacket, m.doFuncRng ?? this.rng)
         hits.push({
           missileName: `${m.name}:plagueburst`,
           targetId: other.id,
@@ -3077,7 +3183,7 @@ export class MissileEngine {
       if (other.id === excludeTargetId || other.statList.getHp256() <= 0) continue
       const oPos = targetPositions.get(other.id) ?? { x: 0, y: 120 }
       if (Math.hypot(oPos.x - impactX, oPos.y - impactY) <= splashRadius) {
-        const splashOut = executeSUnitDmg(m.owner, other, explosionPacket)
+        const splashOut = executeSUnitDmg(m.owner, other, explosionPacket, m.doFuncRng ?? this.rng)
         hits.push({
           missileName: `${m.name}:splash`,
           targetId: other.id,
@@ -3085,7 +3191,7 @@ export class MissileEngine {
           immune: splashOut.immuneToElem,
         })
         if (isFreezing) {
-          if (!splashOut.immuneToElem && !other.statList.getAccruedStat('cannot_be_frozen')) {
+          if (!splashOut.immuneToElem && !other.statList.getAccruedStat('item_cannotbefrozen')) {
             const iceBlvl = m.owner.statList.getBaseSkillLevel(21)
             const frzFrames =
               m.dmgPacket.elemDurationFrames ??
@@ -3203,7 +3309,7 @@ export class MissileEngine {
 
   /**
    * Spawns authentic 1.13c 64-bolt circular Nova ring with 2:1 isometric ground foreshortening.
-   * Speed = 24, Range = 13 frames, NextDelay = 4 frames.
+   * Velocity and acceleration (`Vel = 24, MaxVel = 24, Accel = -1000`, `× 75/100`) are derived from `Missiles.txt`.
    */
   spawnNovaRing(params: {
     sourceSkillId?: number
@@ -3218,11 +3324,8 @@ export class MissileEngine {
     const skillId = params.sourceSkillId ?? 48
     const slvl = params.slvl ?? 1
     const missileName = params.missileName ?? (skillId === 44 ? 'frostnova' : 'nova')
-    const speed = 24 // 1.13c Missiles.txt: Vel = 24
     for (let i = 0; i < 64; i++) {
       const angle = (i / 64) * 2 * Math.PI
-      const vx = Math.cos(angle) * speed
-      const vy = Math.sin(angle) * speed * ISO_GROUND_ASPECT_RATIO
       const m = this.spawnMissile({
         missileNameOrId: missileName,
         sourceSkillId: skillId,
@@ -3233,9 +3336,8 @@ export class MissileEngine {
         targetX: params.startX + Math.cos(angle) * 100,
         targetY: params.startY + Math.sin(angle) * 100 * ISO_GROUND_ASPECT_RATIO,
         dmgPacket: params.dmgPacket,
-        vx,
-        vy,
         angleRad: angle,
+        isoGroundForeshorten: true,
       })
       if (m) spawned.push(m)
     }
@@ -3259,7 +3361,6 @@ export class MissileEngine {
     targetX: number
     targetY: number
     dmgPacket: SUnitDmgPacket
-    pierceChancePct?: number
     missileName?: string
   }): ActiveMissile[] {
     const stats = calculateMultipleShotStats(params.slvl)
@@ -3290,7 +3391,6 @@ export class MissileEngine {
           srcDam: 96,
           canTriggerProcs,
         },
-        ...(params.pierceChancePct !== undefined ? { pierceChancePct: params.pierceChancePct } : {}),
         volleyId,
         canTriggerProcs,
       })
@@ -3317,7 +3417,6 @@ export class MissileEngine {
     targetX?: number
     targetY?: number
     dmgPacket: SUnitDmgPacket
-    pierceChancePct?: number
     missileName?: string
   }): ActiveMissile[] {
     const stats = calculateStrafeStats(params.slvl)
@@ -3365,7 +3464,6 @@ export class MissileEngine {
           physDamagePct: (params.dmgPacket.physDamagePct ?? 0) + stats.enhancedDamagePct,
           canTriggerProcs: true,
         },
-        ...(params.pierceChancePct !== undefined ? { pierceChancePct: params.pierceChancePct } : {}),
         canTriggerProcs: true,
       })
       if (m) missiles.push(m)

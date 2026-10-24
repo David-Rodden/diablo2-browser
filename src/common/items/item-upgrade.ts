@@ -226,6 +226,7 @@ function isValidUpgradeCode(code: unknown): code is string {
  * @param qf5 - Ultra code odds (qf[5], e.g. UltraCodeOddsNormal or UltraCodeOddsGood).
  * @param rng - Diablo II PRNG instance.
  * @param lookupBase - Lookup function resolving a 3-4 letter item code to an {@link ItemBase}.
+ * @param ilvl - Optional item level (`nLevel`); when provided, upgraded bases whose `qlvl > ilvl` are rejected (`D2Game!0x6FCF2BD1`).
  * @returns {@link BaseUpgradeResult} containing the new or original base and `isUber`.
  */
 export function rollBaseUpgrade(
@@ -234,6 +235,7 @@ export function rollBaseUpgrade(
   qf5: number,
   rng: D2Rng,
   lookupBase: (code: string) => ItemBase | undefined,
+  ilvl?: number | undefined,
 ): BaseUpgradeResult {
   let genFlags = 0
 
@@ -252,6 +254,12 @@ export function rollBaseUpgrade(
   const ultracode = isValidUpgradeCode(rawUltra) ? rawUltra.trim() : undefined
   const ubercode = isValidUpgradeCode(rawUber) ? rawUber.trim() : undefined
 
+  const canUseUpgraded = (candidate: ItemBase | undefined): candidate is ItemBase => {
+    if (!candidate) return false
+    if (ilvl !== undefined && (candidate.level ?? 1) > ilvl) return false
+    return true
+  }
+
   let targetCode: string | undefined
   if ((genFlags & ITEM_UPGRADE_FLAG_ELITE) && ultracode) {
     targetCode = ultracode
@@ -261,10 +269,10 @@ export function rollBaseUpgrade(
 
   if (targetCode) {
     const upgraded = lookupBase(targetCode) ?? lookupBase(targetCode.toLowerCase())
-    if (upgraded) {
+    if (canUseUpgraded(upgraded)) {
       return { base: upgraded, isUber: true }
     }
-    // If elite was selected but lookup failed, fall back to exceptional if rolled and valid
+    // If elite was selected but lookup failed or qlvl > ilvl, fall back to exceptional if rolled and valid
     if (
       (genFlags & ITEM_UPGRADE_FLAG_ELITE) &&
       (genFlags & ITEM_UPGRADE_FLAG_EXCEPTIONAL) &&
@@ -272,7 +280,7 @@ export function rollBaseUpgrade(
       targetCode !== ubercode
     ) {
       const fallbackUber = lookupBase(ubercode) ?? lookupBase(ubercode.toLowerCase())
-      if (fallbackUber) {
+      if (canUseUpgraded(fallbackUber)) {
         return { base: fallbackUber, isUber: true }
       }
     }

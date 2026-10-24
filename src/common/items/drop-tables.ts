@@ -336,6 +336,8 @@ export interface DropPipelineOptions {
   readonly isExpansion?: boolean | undefined
   /** Maximum items emitted per drop roll (default: MAX_DROPPED_ITEMS = 6). */
   readonly maxDrops?: number | undefined
+  /** Optional forced item quality tier (`D2GAME_DropTreasureClass` `nQuality` 1..7 or tier name, e.g. Sparkling Chest). */
+  readonly forcedQuality?: ItemQualityTier | number | undefined
   /** Parsed drop tables (defaults to `getEmbeddedDropTables()` when omitted in 1-arg form). */
   readonly dropTables?: DropTables | undefined
   /** Alias for `dropTables` used by 1-arg callers. */
@@ -1037,14 +1039,20 @@ export function executeDropPipeline(
     : dropTables.tcTable.get(initialTcName)
   const effectiveTcName = resolvedNode?.name ?? initialTcName
 
-  // 2. Setup RNG
+  // 2. Setup RNG (D2Game!0x6FC51BB0 uses pMonster->pSeed; never fall back to a fixed constant seed)
   let rng: D2Rng
   if (rawMonsterRng instanceof D2Rng) {
     rng = rawMonsterRng
+  } else if (
+    rawMonsterRng !== null &&
+    typeof rawMonsterRng === 'object' &&
+    typeof (rawMonsterRng as D2Rng).rand === 'function'
+  ) {
+    rng = rawMonsterRng as D2Rng
   } else if (typeof rawMonsterRng === 'number') {
     rng = new D2Rng(rawMonsterRng >>> 0)
   } else {
-    rng = new D2Rng(0x13579bdf)
+    throw new Error('executeDropPipeline requires an explicit monsterRng or seed')
   }
 
   // 3. Expand TC tree (enforcing 6-item cap per D2Game!6FC51BB0)
@@ -1113,11 +1121,13 @@ export function executeDropPipeline(
 
     const base = dropTables.getBase(leaf.code)
     if (!base) {
-      continue
+      throw new Error(
+        `Drop pipeline failure: unknown item base code "${leaf.code}" in TreasureClass "${effectiveTcName}"`,
+      )
     }
 
-    // Base upgrade
-    const upgradeResult = upgradeItemBase(base, qf4, qf5, rng, dropTables.getBase)
+    // Base upgrade (D2Game!0x6FC2FB20 enforces candidate.level <= ilvl)
+    const upgradeResult = upgradeItemBase(base, qf4, qf5, rng, dropTables.getBase, effectiveIlvl)
     const effectiveBase = upgradeResult.base
     const isUber = upgradeResult.isUber
 
@@ -1136,7 +1146,23 @@ export function executeDropPipeline(
         effectiveBase.kind === 'armor' ||
         typeFlags.isAlwaysMagic)
 
-    // Roll quality
+    // Roll quality (D2Game!0x6FC2FC40 passes untruncated qlvl = effectiveBase.level)
+    const forcedQualityTier: ItemQualityTier | undefined =
+      options.forcedQuality === 7 || options.forcedQuality === 'unique'
+        ? 'unique'
+        : options.forcedQuality === 5 || options.forcedQuality === 'set'
+          ? 'set'
+          : options.forcedQuality === 6 || options.forcedQuality === 'rare'
+            ? 'rare'
+            : options.forcedQuality === 4 || options.forcedQuality === 'magic'
+              ? 'magic'
+              : options.forcedQuality === 3 || options.forcedQuality === 'superior'
+                ? 'superior'
+                : options.forcedQuality === 2 || options.forcedQuality === 'normal'
+                  ? 'normal'
+                  : options.forcedQuality === 1 || options.forcedQuality === 'low'
+                    ? 'low'
+                    : undefined
     let quality: ItemQualityTier
     if (!canHaveQuality) {
       quality = 'normal'
@@ -1144,10 +1170,12 @@ export function executeDropPipeline(
       quality = 'unique'
     } else if (leaf.forcedSet) {
       quality = 'set'
+    } else if (forcedQualityTier !== undefined) {
+      quality = forcedQualityTier
     } else {
       quality = rollItemQuality({
         ilvl: effectiveIlvl,
-        qlvl: Math.min(effectiveIlvl, effectiveBase.level ?? 1),
+        qlvl: effectiveBase.level ?? 1,
         magicFind: playerMf,
         tcFactors: {
           unique: leaf.qualityFactors[0],
@@ -1205,16 +1233,13 @@ export function executeDropPipeline(
         continue
       }
       // Unique check failed (no eligible unique exists or ilvl < unique lvl)
-      // D2 1.13c Fallback:
-      // If the item can be Rare: Degrade to Rare + 3x durability (Triple Durability)
-      // If the item CANNOT be Rare (e.g. Charms): Degrade to Magic + 2x durability (Double Durability)
-      if (canItemBeRare(effectiveBase, dropTables.itemTypes, dropTables.isA)) {
-        quality = 'rare'
-        durabilityMultiplier = 3
-      } else {
-        quality = 'magic'
-        durabilityMultiplier = 2
-      }
+      // D2 1.13c Fallback (D2Game!0x6FC30A20 @ 0x6FC30D64..0x6FC30DF5):
+      // Unconditionally triple durability (3x) first, then roll Rare if CanBeRare
+      // (0x6FC30730) or fall back to Magic (0x6FC304F0) retaining 3x durability.
+      durabilityMultiplier = 3
+      quality = canItemBeRare(effectiveBase, dropTables.itemTypes, dropTables.isA)
+        ? 'rare'
+        : 'magic'
     }
 
     if (quality === 'set') {
@@ -1492,10 +1517,16 @@ export function rollHellforgeDrop(
   let rng: D2Rng
   if (rngSource instanceof D2Rng) {
     rng = rngSource
+  } else if (
+    rngSource !== null &&
+    typeof rngSource === 'object' &&
+    typeof (rngSource as D2Rng).rand === 'function'
+  ) {
+    rng = rngSource as D2Rng
   } else if (typeof rngSource === 'number') {
     rng = new D2Rng(rngSource >>> 0)
   } else {
-    rng = new D2Rng(0x13579bdf)
+    throw new Error('rollHellforgeDrop requires an explicit rngSource (D2Rng or numeric seed)')
   }
 
   const runePool = HELLFORGE_RUNES_BY_DIFFICULTY[difficulty] ?? HELLFORGE_RUNES_BY_DIFFICULTY.normal

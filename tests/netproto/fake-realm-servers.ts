@@ -43,6 +43,12 @@ export interface FakeRealmOptions {
   readonly createAccountSuggestion?: string | undefined
   /** How D2GS responds to C2S 0x68 GameLogon (default 'ok'). */
   readonly d2gsLogonMode?: 'ok' | 'charlocked_0xb4' | 'silent_logon' | undefined
+  /**
+   * When true, enforce PvPGN `d2cs` (`handle_d2cs.c`) state machine on MCP connections:
+   * - `d2cs_conn_state_authed`: only `MCP_CHARLIST2`, `MCP_CHARCREATE`, `MCP_CHARDELETE`, `MCP_CHARUPGRADE`, `MCP_CHARLOGON` are allowed; sending `MCP_GAMELIST`/`MCP_CREATEGAME`/`MCP_JOINGAME` closes the socket (`reason "Target closed"`).
+   * - `d2cs_conn_state_charloggedin`: only lobby packets (`MCP_GAMELIST`, `MCP_GAMEINFO`, `MCP_CREATEGAME`, `MCP_JOINGAME`) are allowed; sending a second `MCP_CHARLOGON` on the same socket closes the socket.
+   */
+  readonly strictD2csState?: boolean | undefined
 }
 
 export interface FakeRealm {
@@ -148,9 +154,15 @@ function wireBncs(
   })
 }
 
-function wireMcp(server: MemoryStream, silent: ReadonlySet<number>, characters: number): void {
+function wireMcp(
+  server: MemoryStream,
+  silent: ReadonlySet<number>,
+  characters: number,
+  strictD2csState = false,
+): void {
   const framer = new McpFramer()
   let initSeen = false
+  let d2csState: 'init' | 'authed' | 'charloggedin' = 'init'
   server.onData((chunk) => {
     let data = chunk
     if (!initSeen && data[0] === 0x01) {
@@ -159,12 +171,61 @@ function wireMcp(server: MemoryStream, silent: ReadonlySet<number>, characters: 
     }
     for (const pkt of framer.push(data)) {
       if (silent.has(pkt.id) || server.isClosed) continue
+      if (strictD2csState) {
+        if (pkt.id === McpOpcode.MCP_STARTUP) {
+          if (d2csState !== 'init') {
+            server.close({ kind: 'remote', code: 1000, reason: 'Target closed' })
+            return
+          }
+        } else if (
+          pkt.id === McpOpcode.MCP_CHARLIST2 ||
+          pkt.id === McpOpcode.MCP_CHARCREATE ||
+          pkt.id === McpOpcode.MCP_CHARDELETE ||
+          pkt.id === McpOpcode.MCP_CHARUPGRADE ||
+          pkt.id === McpOpcode.MCP_CHARLOGON
+        ) {
+          if (d2csState !== 'authed') {
+            server.close({ kind: 'remote', code: 1000, reason: 'Target closed' })
+            return
+          }
+        } else if (
+          pkt.id === McpOpcode.MCP_GAMELIST ||
+          pkt.id === McpOpcode.MCP_GAMEINFO ||
+          pkt.id === McpOpcode.MCP_CREATEGAME ||
+          pkt.id === McpOpcode.MCP_JOINGAME
+        ) {
+          if (d2csState !== 'charloggedin') {
+            server.close({ kind: 'remote', code: 1000, reason: 'Target closed' })
+            return
+          }
+        }
+      }
       if (pkt.id === McpOpcode.MCP_STARTUP) {
+        d2csState = 'authed'
         server.write(encodeMcpFrame(McpOpcode.MCP_STARTUP, new Uint8Array([0, 0, 0, 0])))
       } else if (pkt.id === McpOpcode.MCP_CHARLIST2) {
         server.write(encodeMcpFrame(McpOpcode.MCP_CHARLIST2, charList(characters)))
       } else if (pkt.id === McpOpcode.MCP_CHARLOGON) {
+        d2csState = 'charloggedin'
         server.write(encodeMcpFrame(McpOpcode.MCP_CHARLOGON, new Uint8Array([0, 0, 0, 0])))
+      } else if (pkt.id === McpOpcode.MCP_GAMELIST) {
+        const reqId = new ByteReader(pkt.payload).u16LE()
+        const entry = new ByteWriter()
+        entry.u16LE(reqId)
+        entry.u32LE(1)
+        entry.u8(2)
+        entry.u32LE(0)
+        entry.cstring('trade-shako')
+        entry.cstring('O Shako N Ist')
+        server.write(encodeMcpFrame(McpOpcode.MCP_GAMELIST, entry.toUint8Array()))
+        const term = new ByteWriter()
+        term.u16LE(reqId)
+        term.u32LE(0)
+        term.u8(0)
+        term.u32LE(0)
+        term.cstring('')
+        term.cstring('')
+        server.write(encodeMcpFrame(McpOpcode.MCP_GAMELIST, term.toUint8Array()))
       } else if (pkt.id === McpOpcode.MCP_CREATEGAME) {
         const reqId = new ByteReader(pkt.payload).u16LE()
         const w = new ByteWriter()
@@ -237,8 +298,9 @@ export function createFakeRealm(options: FakeRealmOptions = {}): FakeRealm {
           options.createAccountStatus ?? 0,
           options.createAccountSuggestion ?? '',
         )
-      } else if (role === 'realm') wireMcp(server, silentMcp, characters)
-      else {
+      } else if (role === 'realm') {
+        wireMcp(server, silentMcp, characters, Boolean(options.strictD2csState))
+      } else {
         wireGame(server, d2gsLogonMode)
         setTimeout(() => {
           if (!server.isClosed) server.write(new Uint8Array([0xaf, 0x01]))

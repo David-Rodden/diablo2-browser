@@ -26,6 +26,9 @@ type AnyEvent = ServerEvent & Record<string, unknown>
 
 const CLASS_CODES = ['ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass'] as const
 
+/** #1417 slvl-1 server missile counts of the multi-missile srvdofuncs (see srvdo-missile-volleys-1417.test.ts). */
+const SLVL1_VOLLEY_COUNTS_1417: Readonly<Record<number, number>> = { 12: 2, 26: 2, 38: 3, 67: 2, 225: 3, 240: 3 }
+
 function richCasterD2s(charClass: number): Uint8Array {
   return writeD2sSave113c(
     createSampleD2sCharacterData({
@@ -216,8 +219,12 @@ describe('#1328 GameInstance skill casts via the 1.13c skill registry', () => {
       expect(cast, `skill ${skill.id} ${skill.name} must be cast`).toBeDefined()
       if (missileName !== '') {
         const expectedId = registry.getMissileByName(missileName)!.id
-        expect(created, `skill ${skill.id} ${skill.name}`).toHaveLength(1)
-        expect(created[0]!.missileClassId, `skill ${skill.id} ${skill.name}`).toBe(expectedId)
+        // #1417: Skills.txt srvdofunc volleys at slvl 1 with one target in range (D2Game.dll SrvDo008
+        // Multiple Shot / Teeth calc1 = 2, SrvDo012 Strafe calc3 = 2, SrvDo017 Charged Bolt calc1 = 3,
+        // SrvDo117 Firestorm / SrvDo118 Twister calc1 = 3); every other missile skill launches one.
+        const expectedCount = SLVL1_VOLLEY_COUNTS_1417[skill.id] ?? 1
+        expect(created, `skill ${skill.id} ${skill.name}`).toHaveLength(expectedCount)
+        expect(created.every((e) => e.missileClassId === expectedId), `skill ${skill.id} ${skill.name}`).toBe(true)
         castsWithMissile += 1
       } else {
         expect(created, `skill ${skill.id} ${skill.name} has no server missile`).toHaveLength(0)

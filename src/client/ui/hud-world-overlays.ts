@@ -122,6 +122,7 @@ export function groundLabelHexToD2Color(hex: string | undefined): D2ColorCode {
  * panels, ground labels) is active, and the 250ms safety repaint is not due.
  */
 export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
+  if (hud.tradeHallMode) return false
   const internal = hud as unknown as HudRenderInternal
   if (hud.leftPanel !== 'none' || hud.rightPanel !== 'none') return false
   if (hud.worldPanels.escapeMenuOpen) return false
@@ -264,6 +265,10 @@ export function renderHudFrame(
     return
   }
   internal.lastHudFrameTiming = { mouseX: hud.mouseX, mouseY: hud.mouseY, drawMs: nowMs }
+  if (hud.tradeHallMode) {
+    hud.rightPanel = 'inv'
+    hud.inventory.visible = true
+  }
   hud.syncPlayerContext()
   // Stamina is server state (stat 10 / 0x95); no client-side drain/regen simulation.
   void playerMoving
@@ -332,7 +337,7 @@ export function renderHudFrame(
   const automapFootprint = internal.callbacks.onRenderAutomapOverlay?.(ctx, hud.font, profile.width, profile.height) ?? null
 
   // 0b. Top-Left Mercenary Portrait & Life Bar (R3.3) + Summoned Minions + Party Mini-Portraits (R5.1)
-  if (hud.leftPanel === 'none' && hud.showPartyPortraits !== false) {
+  if (!hud.tradeHallMode && hud.leftPanel === 'none' && hud.showPartyPortraits !== false) {
     const atlasImg = internal.images.get('portraitsAtlas')
     let slotX = 16
 
@@ -704,6 +709,38 @@ export function renderHudFrame(
       )
     }
     ctx.restore()
+  } else if (hud.tradeHallMode) {
+    ctx.save()
+    ctx.translate(deltaLeft, panelOffsetY)
+    ctx.fillStyle = '#0c0a08'
+    ctx.fillRect(0, 0, 400, 553)
+    if (borderLeftImg) {
+      ctx.drawImage(borderLeftImg, 0, 0)
+    }
+    ctx.fillStyle = 'rgba(14, 12, 10, 0.94)'
+    ctx.fillRect(80, 60, 320, 432)
+    ctx.strokeStyle = '#5a482c'
+    ctx.lineWidth = 1
+    ctx.strokeRect(80.5, 60.5, 319, 431)
+    const hintTitle =
+      hud.tradeHallIdleHint?.title ||
+      (hud.lang === 'ENG' ? 'Trade Hall Workspace' : '暗黑破坏神 II · 交易工作台')
+    const hintSub =
+      hud.tradeHallIdleHint?.subtitle ||
+      (hud.lang === 'ENG'
+        ? 'Open A1 Stash or select a player to start trading'
+        : '点击上方「打开 A1 储藏箱」整理装备，或在左侧选择玩家发起交易')
+    hud.font.drawText(ctx, hintTitle, 240, 256, {
+      font: 'font16',
+      color: 'gold',
+      align: 'center',
+    })
+    hud.font.drawText(ctx, hintSub, 240, 286, {
+      font: 'font16',
+      color: 'white',
+      align: 'center',
+    })
+    ctx.restore()
   }
 
   // 2. Right-Half Dock Panel (`400+deltaRight..800+deltaRight, panelOffsetY..panelOffsetY+553`, or `320..640, 0..432` in 640x480)
@@ -764,7 +801,9 @@ export function renderHudFrame(
   // 3..6. Bottom Control Panel, Globes, Belt, and Skill Hotkeys
   // When Mobile Phase 3 (#1383) D2R Compact HUD mode is active, render the 524px Demon/Angel Compact Center Bar,
   // Top-Right 6-in-1 Utility Bar, and Bottom-Right 6x2 Skill Wheel (`F1–F6` / `F7–F12`).
-  if (hud.touchControls.compactHudActive) {
+  if (hud.tradeHallMode) {
+    // Trade Hall mode intentionally omits the bottom control bar, globes, belt, and skill speedbar.
+  } else if (hud.touchControls.compactHudActive) {
     const cbState = internal.buildControlBarState()
     hud.touchControls.drawCompactD2rHudAndWheel(ctx, hud.font, {
       logicalWidth: profile.width,
@@ -998,17 +1037,19 @@ export function renderHudFrame(
 
   // 10c-2. Level entry title (`D2Client.dll` `0x6fb6f0d0`, called from the UI draw at `0x6fb73aa1` after the
   // escape menu `0x6fb15230`): "Entering The Blood Moor", 120 frames, centred at (W/2, H/2 - 0x8c).
-  renderLevelEntryTitle113c(
-    ctx,
-    hud.levelEntryTitle,
-    hud.resolveLevelEntryLevelId(),
-    hud.levelEntryQuestSource,
-    internal.images.get('levelEntryTitles') ?? null,
-    hud.state.ready,
-    nowMs,
-    profile.width,
-    profile.height,
-  )
+  if (!hud.tradeHallMode) {
+    renderLevelEntryTitle113c(
+      ctx,
+      hud.levelEntryTitle,
+      hud.resolveLevelEntryLevelId(),
+      hud.levelEntryQuestSource,
+      internal.images.get('levelEntryTitles') ?? null,
+      hud.state.ready,
+      nowMs,
+      profile.width,
+      profile.height,
+    )
+  }
 
   // 10d. Authentic Death Presentation (`youdiedhardcore.dc6` & `youdiedinst.dc6` centered at (W/2, H/2 - 94) and (W/2, H/2 - 46))
   if (hud.isDead || Boolean((hud.worldPanels as any).isDead)) {

@@ -1469,6 +1469,26 @@ export function applyChampionSubtypeStats(
     cold: base.resistances?.cold ?? 0,
     poison: base.resistances?.poison ?? 0,
   }
+  const dmgMult =
+    normalizedSubtype === 'berserk'
+      ? Math.max(3, champDmgMult * 2)
+      : champDmgMult
+  const scaleSlot = (
+    slot: NonNullable<MonsterStats['attack1']>,
+  ): NonNullable<MonsterStats['attack1']> => {
+    const rawMin = slot.minDamage ?? slot.min ?? 0
+    const rawMax = slot.maxDamage ?? slot.max ?? 0
+    const minDamage = rawMin > 0 ? Math.max(1, Math.round(rawMin * dmgMult)) : 0
+    const maxDamage =
+      rawMax > 0 ? Math.max(minDamage, Math.round(rawMax * dmgMult)) : 0
+    return {
+      ...slot,
+      minDamage,
+      maxDamage,
+      min: minDamage,
+      max: maxDamage,
+    }
+  }
 
   return {
     ...base,
@@ -1483,6 +1503,9 @@ export function applyChampionSubtypeStats(
     resistances: updatedResistances,
     resists: updatedResistances,
     lightningResist: updatedResistances.lightning,
+    ...(base.attack1 ? { attack1: scaleSlot(base.attack1) } : {}),
+    ...(base.attack2 ? { attack2: scaleSlot(base.attack2) } : {}),
+    ...(base.special1 ? { special1: scaleSlot(base.special1) } : {}),
   }
 }
 
@@ -1650,6 +1673,28 @@ export function applyEliteModifiers(
         }
       : undefined
 
+  const modDmgScale = base.damage > 0 ? damage / base.damage : 1
+  const scaleEliteSlot = (
+    slot: NonNullable<MonsterStats['attack1']>,
+  ): NonNullable<MonsterStats['attack1']> => {
+    if (modDmgScale === 1) return slot
+    const rawMin = slot.minDamage ?? slot.min ?? 0
+    const rawMax = slot.maxDamage ?? slot.max ?? 0
+    const minDamage =
+      rawMin > 0 ? Math.max(1, Math.round(rawMin * modDmgScale)) : 0
+    const maxDamage =
+      rawMax > 0
+        ? Math.max(minDamage, Math.round(rawMax * modDmgScale))
+        : 0
+    return {
+      ...slot,
+      minDamage,
+      maxDamage,
+      min: minDamage,
+      max: maxDamage,
+    }
+  }
+
   return {
     ...base,
     hp,
@@ -1663,6 +1708,9 @@ export function applyEliteModifiers(
     ...(modifiers.length > 0 ? { modifiers } : {}),
     ...(superUniqueId !== undefined ? { superUniqueId } : {}),
     ...(updatedResistances !== undefined ? { resistances: updatedResistances, resists: updatedResistances, lightningResist: lightningRes } : {}),
+    ...(base.attack1 && modDmgScale !== 1 ? { attack1: scaleEliteSlot(base.attack1) } : {}),
+    ...(base.attack2 && modDmgScale !== 1 ? { attack2: scaleEliteSlot(base.attack2) } : {}),
+    ...(base.special1 && modDmgScale !== 1 ? { special1: scaleEliteSlot(base.special1) } : {}),
   }
 }
 
@@ -3629,13 +3677,15 @@ export function resolveMonsterStats(
       : undefined)
   if (
     effectiveRank === 'champion' &&
-    rawChampSubtype !== undefined &&
     (!options?.modifiers ||
       options.modifiers.length === 0 ||
       (options.modifiers.length === 1 &&
         CHAMPION_SUBTYPE_LOOKUP[String(options.modifiers[0]).trim().toLowerCase()] !== undefined))
   ) {
-    const mapped = CHAMPION_SUBTYPE_LOOKUP[String(rawChampSubtype).trim().toLowerCase()]
+    const mapped =
+      rawChampSubtype !== undefined
+        ? CHAMPION_SUBTYPE_LOOKUP[String(rawChampSubtype).trim().toLowerCase()]
+        : 'champion'
     if (mapped !== undefined) {
       return applyPlayersScaling(applyChampionSubtypeStats(base, mapped, diff))
     }

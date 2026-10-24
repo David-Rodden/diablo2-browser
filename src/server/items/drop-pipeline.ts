@@ -244,10 +244,13 @@ export function executePendingMonsterDrop113c(
   dropTables: DropTables,
   pending: PendingMonsterDrop,
   difficulty: Difficulty = 'normal',
-  fallbackSeed = 0x5eed,
+  seed?: number,
 ): Item[] {
   if (pending.items) return [...(pending.items as Item[])]
-  const dropSeed = pending.seed !== 0 ? pending.seed : fallbackSeed
+  const dropSeed = seed ?? pending.seed
+  if (!dropSeed) {
+    throw new Error('executePendingMonsterDrop113c requires a non-zero monster seed')
+  }
   return executeDropPipeline(dropTables, {
     tcName: pending.tcName,
     nLevel: pending.monsterLevel,

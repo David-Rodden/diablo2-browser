@@ -11,7 +11,7 @@
  *    - In town, enemy debuffs and enemy ground rings are completely suspended.
  * 3. Holy Freeze Parity:
  *    - Caster displays cyan frost ground ring (holyfreeze).
- *    - In wilderness, hostile enemies in range receive cold pulse damage, slow (item_slow), and blue chill tint (chillTicks).
+ *    - In wilderness, hostile enemies in range receive cold pulse damage, slow (aurastat velocitypercent/attackrate/other_animrate), and blue chill tint (chillTicks).
  *    - Authentic D2 Invariant: Holy Freeze NEVER displays an aura ring under enemy feet!
  *    - In town, enemy damage pulses and slow are completely suspended.
  * 4. Complete Paladin Aura Coverage:

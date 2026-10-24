@@ -301,6 +301,10 @@ export class Toolbar {
   private serverInputEl: HTMLInputElement | null = null
   private serverApplyBtnEl: HTMLButtonElement | null = null
   private serverStatusEl: HTMLElement | null = null
+  private multiboxSlotEl: HTMLElement | null = null
+  private multiboxRowLabelEl: HTMLElement | null = null
+  private multiboxToggleBtnEl: HTMLButtonElement | null = null
+  private multiboxAlertBtnEl: HTMLButtonElement | null = null
 
   // Bug report modal DOM elements
   private bugOverlayEl: HTMLElement | null = null
@@ -558,6 +562,32 @@ export class Toolbar {
     const next = !this.store.get().audioMuted
     this.setAudioMuted(next)
     return next
+  }
+
+  setMultiboxEnabled(enabled: boolean): void {
+    this.store.set({ multiboxEnabled: Boolean(enabled) })
+    this.syncDom()
+  }
+
+  toggleMultiboxEnabled(): boolean {
+    const next = !(this.store.get().multiboxEnabled ?? false)
+    this.setMultiboxEnabled(next)
+    return next
+  }
+
+  setMultiboxAlertSoundEnabled(enabled: boolean): void {
+    this.store.set({ multiboxAlertSoundEnabled: Boolean(enabled) })
+    this.syncDom()
+  }
+
+  toggleMultiboxAlertSoundEnabled(): boolean {
+    const next = !(this.store.get().multiboxAlertSoundEnabled ?? true)
+    this.setMultiboxAlertSoundEnabled(next)
+    return next
+  }
+
+  getMultiboxSlotElement(): HTMLElement | null {
+    return this.multiboxSlotEl
   }
 
   isConfigModalOpen(): boolean {
@@ -1490,6 +1520,94 @@ a.d2-toolbar__btn:active {
   border-top: 1px solid #352a19;
   background: rgba(18, 14, 10, 0.95);
 }
+.d2-toolbar__multibox-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  max-width: 560px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.d2-toolbar__multibox-slot[hidden] {
+  display: none !important;
+}
+.d2-multibox-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #1b150e 0%, #0f0c08 100%);
+  border: 1px solid #4d3d22;
+  border-radius: 3px;
+  color: #cbb888;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.d2-multibox-tab:hover {
+  border-color: #8c703c;
+  color: #f0dfaf;
+}
+.d2-multibox-tab--active {
+  background: linear-gradient(180deg, #382a14 0%, #1d150a 100%);
+  border-color: #d6b25e;
+  color: #fff2c6;
+  box-shadow: 0 0 6px rgba(214, 178, 94, 0.32);
+}
+.d2-multibox-tab--alert-damage {
+  border-color: #e67e22;
+  box-shadow: 0 0 6px rgba(230, 126, 34, 0.65);
+}
+.d2-multibox-tab--alert-low-hp,
+.d2-multibox-tab--alert-dead {
+  border-color: #e74c3c;
+  background: linear-gradient(180deg, #4a1210 0%, #240807 100%);
+  color: #ffd6d1;
+  box-shadow: 0 0 8px rgba(231, 76, 60, 0.85);
+}
+.d2-multibox-tab__hp {
+  width: 24px;
+  height: 4px;
+  background: #221010;
+  border: 1px solid #552828;
+  border-radius: 2px;
+  overflow: hidden;
+  display: inline-block;
+}
+.d2-multibox-tab__hp-fill {
+  height: 100%;
+  background: #c0392b;
+  transition: width 120ms linear;
+}
+.d2-multibox-tab__speaker,
+.d2-multibox-tab__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.d2-multibox-tab__speaker:hover,
+.d2-multibox-tab__close:hover {
+  opacity: 1;
+  color: #fff5d6;
+}
+.d2-multibox-add-btn {
+  height: 22px;
+  padding: 0 7px;
+  font-size: 11px;
+}
 `
     doc.head.appendChild(styleEl)
   }
@@ -1639,6 +1757,13 @@ a.d2-toolbar__btn:active {
     actionsGroup.appendChild(configBtn)
     actionsGroup.appendChild(bugBtn)
 
+    // Multibox Tab Slot (#d2-multibox-slot, hidden when multiboxEnabled === false)
+    const multiboxSlot = doc.createElement('div')
+    multiboxSlot.id = 'd2-multibox-slot'
+    multiboxSlot.className = 'd2-toolbar__group d2-toolbar__multibox-slot'
+    multiboxSlot.hidden = !(this.store.get().multiboxEnabled ?? false)
+
+    rightContainer.appendChild(multiboxSlot)
     rightContainer.appendChild(statusGroup)
     rightContainer.appendChild(divider)
     rightContainer.appendChild(actionsGroup)
@@ -1879,12 +2004,41 @@ a.d2-toolbar__btn:active {
     cacheRow.appendChild(cacheRowLabel)
     cacheRow.appendChild(cacheClearBtn)
 
+    // Config Row 6: Single-Tab Multibox (#1362 / #1363, default disabled)
+    const multiboxRow = doc.createElement('div')
+    multiboxRow.id = 'd2-config-multibox-row'
+    multiboxRow.className = 'd2-toolbar-modal__row'
+    const multiboxRowLabel = doc.createElement('span')
+    multiboxRowLabel.id = 'd2-config-multibox-label'
+    multiboxRowLabel.className = 'd2-toolbar-modal__row-label'
+    const multiboxControls = doc.createElement('div')
+    multiboxControls.className = 'd2-toolbar-modal__row-control'
+    const multiboxToggleBtn = doc.createElement('button')
+    multiboxToggleBtn.type = 'button'
+    multiboxToggleBtn.id = 'd2-toolbar-multibox-btn'
+    multiboxToggleBtn.className = 'd2-toolbar__btn'
+    multiboxToggleBtn.addEventListener('click', () => {
+      this.toggleMultiboxEnabled()
+    })
+    const multiboxAlertBtn = doc.createElement('button')
+    multiboxAlertBtn.type = 'button'
+    multiboxAlertBtn.id = 'd2-toolbar-multibox-alert-btn'
+    multiboxAlertBtn.className = 'd2-toolbar__btn'
+    multiboxAlertBtn.addEventListener('click', () => {
+      this.toggleMultiboxAlertSoundEnabled()
+    })
+    multiboxControls.appendChild(multiboxToggleBtn)
+    multiboxControls.appendChild(multiboxAlertBtn)
+    multiboxRow.appendChild(multiboxRowLabel)
+    multiboxRow.appendChild(multiboxControls)
+
     configBody.appendChild(displayRow)
     configBody.appendChild(viewportRow)
     configBody.appendChild(fpsRow)
     configBody.appendChild(serverRow)
     configBody.appendChild(serverStatus)
     configBody.appendChild(volumeRow)
+    configBody.appendChild(multiboxRow)
     configBody.appendChild(cacheRow)
 
     configDialog.appendChild(configHeader)
@@ -2134,6 +2288,10 @@ a.d2-toolbar__btn:active {
     this.serverInputEl = serverInput
     this.serverApplyBtnEl = serverApplyBtn
     this.serverStatusEl = serverStatus
+    this.multiboxSlotEl = multiboxSlot
+    this.multiboxRowLabelEl = multiboxRowLabel
+    this.multiboxToggleBtnEl = multiboxToggleBtn
+    this.multiboxAlertBtnEl = multiboxAlertBtn
 
     this.bugOverlayEl = bugOverlay
     this.bugTitleEl = bugTitle
@@ -2342,6 +2500,39 @@ a.d2-toolbar__btn:active {
     }
     if (this.cacheRowLabelEl) {
       this.cacheRowLabelEl.textContent = tToolbar('toolbar.config.cache', lang)
+    }
+    const multiboxEnabled = Boolean(snap.settings.multiboxEnabled)
+    const multiboxAlertOn = snap.settings.multiboxAlertSoundEnabled ?? true
+    if (this.multiboxSlotEl) {
+      this.multiboxSlotEl.hidden = !multiboxEnabled
+    }
+    if (this.multiboxRowLabelEl) {
+      this.multiboxRowLabelEl.textContent = tToolbar('toolbar.config.multibox', lang)
+    }
+    if (this.multiboxToggleBtnEl) {
+      const label = tToolbar(
+        multiboxEnabled ? 'toolbar.config.multiboxOn' : 'toolbar.config.multiboxOff',
+        lang,
+      )
+      this.multiboxToggleBtnEl.textContent = label
+      this.multiboxToggleBtnEl.title = label
+      this.multiboxToggleBtnEl.setAttribute('aria-pressed', multiboxEnabled ? 'true' : 'false')
+      this.multiboxToggleBtnEl.className = multiboxEnabled
+        ? 'd2-toolbar__btn d2-toolbar__btn--active'
+        : 'd2-toolbar__btn'
+    }
+    if (this.multiboxAlertBtnEl) {
+      this.multiboxAlertBtnEl.hidden = !multiboxEnabled
+      const alertLabel = tToolbar(
+        multiboxAlertOn ? 'toolbar.config.multiboxAlertOn' : 'toolbar.config.multiboxAlertOff',
+        lang,
+      )
+      this.multiboxAlertBtnEl.textContent = alertLabel
+      this.multiboxAlertBtnEl.title = alertLabel
+      this.multiboxAlertBtnEl.setAttribute('aria-pressed', multiboxAlertOn ? 'true' : 'false')
+      this.multiboxAlertBtnEl.className = multiboxAlertOn
+        ? 'd2-toolbar__btn d2-toolbar__btn--active'
+        : 'd2-toolbar__btn'
     }
     if (this.viewportSelectEl && typeof document !== 'undefined') {
       const existingValues = Array.from(this.viewportSelectEl.options).map((o) => o.value)
