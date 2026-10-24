@@ -58,6 +58,9 @@ const MELEE_CROWD = 4
 const MELEE_CROWD_LIFE = 0.5
 const CROWD_REACH = 3
 const CROWD_SIZE = 2
+const PET_COVER = 2
+const COVER_WIDTH = 2.5
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
 const BACK_OFF_MS = 2500
 const BACK_OFF_STEP = 7
 const CURSE_RECAST_MS = 20_000
@@ -500,10 +503,20 @@ export class PlayAssists {
     const crowd = around ?? this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= CROWD_REACH)
     if (crowd.length < crowdSize || nowMs - this.lastBackOff < BACK_OFF_MS) return null
     const gap = (spot: SubTilePoint) => Math.min(...crowd.map((unit) => Math.hypot(unit.x - spot.x, unit.y - spot.y)))
+    const { world } = this.host
+    const pets = [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).flatMap((pet) => world.getUnit('monster', pet.unitId) ?? [])
+    const centre = { x: crowd.reduce((sum, unit) => sum + unit.x, 0) / crowd.length, y: crowd.reduce((sum, unit) => sum + unit.y, 0) / crowd.length }
+    const fromCrowd = (spot: SubTilePoint) => Math.hypot(spot.x - centre.x, spot.y - centre.y)
+    const shields = (pet: SubTilePoint, spot: SubTilePoint) => {
+      const [dx, dy] = [centre.x - spot.x, centre.y - spot.y]
+      const along = clamp01(((pet.x - spot.x) * dx + (pet.y - spot.y) * dy) / Math.max(1e-6, dx * dx + dy * dy))
+      return fromCrowd(pet) < fromCrowd(spot) && Math.hypot(spot.x + dx * along - pet.x, spot.y + dy * along - pet.y) <= COVER_WIDTH
+    }
+    const cover = (spot: SubTilePoint) => pets.filter((pet) => shields(pet, spot)).length * PET_COVER
     const threats = this.threats()
     const spot = Array.from({ length: 12 }, (_, i) => ({ x: Math.round(me.x + Math.cos((i * Math.PI) / 6) * BACK_OFF_STEP), y: Math.round(me.y + Math.sin((i * Math.PI) / 6) * BACK_OFF_STEP) }))
       .filter((candidate) => this.clearPath(me, candidate) && !threats.some((threat) => hits(threat, candidate)))
-      .sort((a, b) => gap(b) - gap(a))[0]
+      .sort((a, b) => gap(b) + cover(b) - gap(a) - cover(a))[0]
     if (!spot || gap(spot) <= gap(me) + 1) return null
     this.lastBackOff = nowMs
     this.journal?.('back-off', { crowd: crowd.length, to: [spot.x, spot.y] })
