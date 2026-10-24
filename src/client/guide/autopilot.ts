@@ -184,6 +184,11 @@ const SCROLL_KINDS = {
 const SCROLL_GOLD = 100
 const IDENTIFY_MS = 1500
 const QUEST_STALE_MS = 30_000
+const RETHINK_MS = 90_000
+const RETHINK_EXPLORE_MS = 30_000
+const RETHINK_GAIN = 10
+const REGROUP = 'Stuck here, regrouping in town'
+const planned = (why: string) => why.startsWith(PREP) || why === REGROUP
 const ROOM_REACHED = 8
 const ROOM_END = 3
 const STASH_CLASS = 267
@@ -235,6 +240,8 @@ export class Autopilot {
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
+  private lastHeadway: { at: number; xp: number; area: number; hint: string; best: number; tries: number } | null = null
+  private rethinkUntil = Number.NEGATIVE_INFINITY
   private chase: { readonly id: number; readonly since: number } | null = null
   private readonly ignored = new Map<number, number>()
   private readonly served = new Set<ArtisanKind>()
@@ -465,9 +472,10 @@ export class Autopilot {
   private decide(nowMs: number): void {
     const { assists } = this.host
     this.refreshQuests(nowMs)
+    this.rethink(nowMs)
     const town = this.town()
     this.trip = town && this.trip === 'retreat' ? 'return' : !town && this.trip === 'return' ? null : this.trip
-    if (this.trip === 'retreat' && !town && this.recovered() && !this.retreatWhy.startsWith(PREP)) this.trip = null
+    if (this.trip === 'retreat' && !town && this.recovered() && !planned(this.retreatWhy)) this.trip = null
     if (!town && this.trip === null) this.prepareFor(nowMs)
     const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
     this.assess(nowMs)
@@ -546,8 +554,41 @@ export class Autopilot {
     return (TOWNS as Readonly<Record<string, (typeof TOWNS)['Rogue Encampment']>>)[levelName(this.host.world.areaId)] ?? null
   }
 
+  private rethink(nowMs: number): void {
+    const { world, guide } = this.host
+    const me = world.self
+    const plan = guide.currentPlan
+    const hint = plan?.hint ?? ''
+    const left = plan?.target ? distance(plan.target, me) : Number.POSITIVE_INFINITY
+    const last = this.lastHeadway
+    if (this.town() || nowMs < this.pausedUntil || this.host.assists.isFighting(nowMs)) {
+      if (last) Object.assign(last, { at: nowMs })
+      return
+    }
+    if (!last || last.hint !== hint || me.experience > last.xp) {
+      this.lastHeadway = { at: nowMs, xp: me.experience, area: world.areaId, hint, best: left, tries: 0 }
+      return
+    }
+    if (last.area !== world.areaId || left < last.best - RETHINK_GAIN) {
+      Object.assign(last, { at: nowMs, area: world.areaId, best: left })
+      return
+    }
+    if (nowMs - last.at < RETHINK_MS) return
+    Object.assign(last, { at: nowMs, tries: last.tries + 1 })
+    this.host.assists.journal?.('rethink', { tries: last.tries, hint, left: Math.round(left) })
+    if (last.tries === 1) {
+      this.uses.clear()
+      this.ignored.clear()
+      this.explored.delete(world.areaId)
+      Object.assign(this, { padsUsed: [], blocked: [], headway: null, rethinkUntil: nowMs + RETHINK_EXPLORE_MS })
+      this.toast('Trying another way', hint, 'tan')
+    } else if (last.tries === 2 && this.host.assists.hasTownPortal()) this.retreat(REGROUP, nowMs)
+    else this.stop('Autopilot needs you', 'gold', `No headway on ${hint}`)
+  }
+
   private follow(plan: GuidePlan | null, nowMs: number): void {
-    if (plan) this.pursue(plan, nowMs)
+    if (plan && nowMs < this.rethinkUntil) this.explore(nowMs, 'Looking for another way')
+    else if (plan) this.pursue(plan, nowMs)
     else this.explore(nowMs, 'No route from here, exploring')
   }
 
@@ -1064,7 +1105,7 @@ export class Autopilot {
   private retreat(why: string, nowMs: number): void {
     const { world, assists } = this.host
     const me = world.self
-    if (this.trip !== 'retreat' && !why.startsWith(PREP)) this.retreats = [...this.retreats.filter((entry) => nowMs - entry.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? this.host.world.areaId }]
+    if (this.trip !== 'retreat' && !planned(why)) this.retreats = [...this.retreats.filter((entry) => nowMs - entry.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? this.host.world.areaId }]
     Object.assign(this, { trip: 'retreat', retreatWhy: why })
     this.say(why)
     const threats = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= KITE_NEAR)

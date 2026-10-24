@@ -265,6 +265,42 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toBe('Too dangerous here, heading to town')
   })
 
+  it('tries another way, then regroups in town, then asks for help when it makes no headway', () => {
+    const { pilot, assists, guide, tick } = setup({ hint: 'Find the Summoner', target: { x: 300, y: 300, label: 'The Summoner' } })
+    const journal = vi.fn()
+    Object.assign(assists, { journal })
+    const seconds = (count: number) => Array.from({ length: count * 5 }, () => tick())
+    seconds(89)
+    expect(guide.pilotStatus).toBe('Find the Summoner')
+    seconds(2)
+    expect(guide.pilotStatus).toContain('Looking for another way')
+    expect(journal).toHaveBeenCalledWith('rethink', expect.objectContaining({ tries: 1 }))
+    seconds(90)
+    expect(guide.pilotStatus).toBe('Stuck here, regrouping in town')
+    expect(assists.castTownPortal).toHaveBeenCalled()
+    seconds(90)
+    expect(pilot.active).toBe(false)
+  })
+
+  it('does not count a long fight as being stuck', () => {
+    const { assists, guide, tick } = setup({ hint: 'Kill Duriel', target: { x: 300, y: 300, label: 'Duriel' } })
+    assists.fighting = true
+    Array.from({ length: 1000 }, () => tick())
+    assists.fighting = false
+    tick()
+    expect(guide.pilotStatus).toBe('Kill Duriel')
+  })
+
+  it('counts experience as headway', () => {
+    const { world, guide, tick } = setup({ hint: 'Find the Summoner', target: { x: 300, y: 300, label: 'The Summoner' } })
+    const self = Object.assign(world.self, { experience: 0 })
+    for (let second = 0; second < 200; second++) {
+      Array.from({ length: 5 }, () => tick())
+      if (second % 60 === 0) self.experience += 100
+    }
+    expect(guide.pilotStatus).toBe('Find the Summoner')
+  })
+
   it('searches the rest of the level once it reaches a spot that does not finish the quest', () => {
     const { assists, view, tick } = setup({ hint: 'Clear the Den of Evil', target: { x: 101, y: 100, label: 'Den of Evil' } })
     view.rooms.push({ index: 0, worldSubX: 90, worldSubY: 90, subW: 20, subH: 20 }, { index: 1, worldSubX: 200, worldSubY: 90, subW: 20, subH: 20 })
