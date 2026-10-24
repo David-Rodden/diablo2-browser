@@ -17,5 +17,9 @@
   "goldPerAct": [1500, 3000, 6000, 10000, 15000],
   "retreatWeight": 0.5,
   "rateCheckMs": 240000,
-  "minLevelPerMinute": 0.01
+  "minLevelPerMinute": 0.01,
+  "dressed": ["weapon1", "armor", "helm", "gloves", "belt", "boots"],
+  "bareSlots": 3,
+  "bareFromLevel": 12,
+  "gearMinutes": 20
 }
