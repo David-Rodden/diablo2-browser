@@ -345,6 +345,10 @@ export class Autopilot {
     return setbacksOf(counts(this.deaths), counts(this.retreats))
   }
 
+  private passingThrough(): boolean {
+    return this.training !== null && this.host.world.areaId !== this.training.ground
+  }
+
   private trainee(): Trainee {
     const { world } = this.host
     return { level: world.self.level, gold: world.self.gold + world.self.stashGold, difficulty: world.difficulty }
@@ -840,7 +844,7 @@ export class Autopilot {
   private hunt(nowMs: number): boolean {
     const { world, hudManager, assists } = this.host
     const me = world.self
-    const bold = me.life >= (hudManager.maxHp || me.maxLife) * HUNT_LIFE && this.healingPotions() >= HUNT_POTIONS && this.levelGap() <= HUNT_GAP && this.caution(nowMs) < HUNT_CAUTION && this.corpse === null
+    const bold = me.life >= (hudManager.maxHp || me.maxLife) * HUNT_LIFE && this.healingPotions() >= HUNT_POTIONS && this.levelGap() <= HUNT_GAP && this.caution(nowMs) < HUNT_CAUTION && this.corpse === null && !this.passingThrough()
     const chased = this.chase && world.getUnit('monster', this.chase.id)
     const huntable = (unit: ClientUnit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= HUNT_RADIUS && (this.ignored.get(unit.id) ?? 0) <= nowMs
     const hostiles = world.getUnitsByType(1).filter(huntable)

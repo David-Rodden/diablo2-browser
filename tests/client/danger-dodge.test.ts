@@ -52,6 +52,16 @@ describe('dodging hostile missiles and ground hazards', () => {
     expect(Math.hypot(step.x - 100, step.y - 100)).toBeGreaterThan(4)
   })
 
+  it('shrugs off a plain arrow while healthy, but sidesteps it when hurt', () => {
+    const s = createSetup()
+    s.fire('arrow', { unitType: 1, id: 901 }, { x: 110, y: 100 }, { x: 100, y: 100 })
+    s.mapper.assists.tick(1000)
+    expect(s.dodges).toEqual([])
+    Object.assign(s.world.self, { life: 10, maxLife: 100 })
+    s.mapper.assists.tick(1500)
+    expect(s.dodges).toHaveLength(1)
+  })
+
   it('ignores its own missiles', () => {
     const s = createSetup()
     s.fire('fireball', { unitType: 0, id: 1 }, { x: 110, y: 100 }, { x: 100, y: 100 })
