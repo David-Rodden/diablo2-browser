@@ -29,6 +29,7 @@ export interface AppraisalContext {
   readonly build: CharacterBuild
   readonly equipped: readonly LootItem[]
   readonly owned: readonly LootItem[]
+  readonly carried?: readonly LootItem[] | undefined
   readonly imbueReady?: boolean | undefined
 }
 
@@ -54,7 +55,8 @@ const GEM_HELPS = 15
 const MUCH_BETTER = 1.4
 const BETTER = 1.1
 const MIN_GAIN = 5
-const FUTURE_LEVELS = 10
+const SOON_LEVELS = 3
+const BASE_HEADROOM = 6
 
 const IMBUE_TYPES = KNOWLEDGE.imbue.alwaysWorthTypes
 
@@ -154,31 +156,45 @@ interface Upgrade {
   readonly current: number
 }
 
-function bestUpgrade(item: LootItem, { build, equipped }: AppraisalContext): Upgrade | null {
+function slotUpgrades(item: LootItem, { build, equipped }: AppraisalContext): Upgrade[] {
   const ui = uiOf(item)
   const worn = equippedBySlot(equipped)
   const score = gearScore(item, build)
-  return (
-    ui.allowedSlots
-      .map((slot) => ({ slot, score, current: worn.get(slot) ? gearScore(worn.get(slot)!, build) : 0 }))
-      .filter((u) => !(u.slot === 'weapon2' && ui.twoHanded) && worn.get(u.slot)?.id !== item.id)
-      .sort((a, b) => a.current - b.current)[0] ?? null
-  )
+  const twoHanding = worn.get('weapon1') !== undefined && isTwoHanded(worn.get('weapon1')!)
+  const wornScore = (slot: EquipSlotId) => (worn.get(slot) ? gearScore(worn.get(slot)!, build) : 0)
+  return ui.allowedSlots
+    .map((slot) => ({ slot, score, current: wornScore(slot) + (ui.twoHanded && slot === 'weapon1' ? wornScore('weapon2') : 0) }))
+    .filter((u) => !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding)) && worn.get(u.slot)?.id !== item.id)
+    .sort((a, b) => a.current - b.current)
 }
 
 const gainOf = ({ score, current }: Upgrade) => (current <= 0 ? (score > MIN_GAIN ? Infinity : 0) : score / current)
 
+const isGain = (upgrade: Upgrade) => upgrade.score - upgrade.current >= MIN_GAIN && gainOf(upgrade) >= BETTER
+
+const wearableBy = (item: LootItem, build: CharacterBuild, levels: number) => usableBy(uiOf(item), build, levels) && requiredLevel(item, uiOf(item)) <= build.level + levels
+
+function outrankedBy(item: LootItem, score: number, slots: readonly EquipSlotId[], { build, carried = [] }: AppraisalContext, levels: number): number {
+  return carried.filter((other) => {
+    if (other.id === item.id || !equipSlotsOf(other).some((slot) => slots.includes(slot)) || !wearableBy(other, build, levels)) return false
+    const rival = gearScore(other, build)
+    return rival > score || (rival === score && other.id < item.id)
+  }).length
+}
+
 function upgradeAppraisal(item: LootItem, kind: LootKind, ctx: AppraisalContext): Appraisal | null {
   const ui = uiOf(item)
-  if (ui.allowedSlots.length === 0 || !usableBy(ui, ctx.build, FUTURE_LEVELS)) return null
-  const upgrade = bestUpgrade(item, ctx)
-  if (upgrade === null || upgrade.score - upgrade.current < MIN_GAIN) return null
+  if (ui.allowedSlots.length === 0 || !usableBy(ui, ctx.build, SOON_LEVELS)) return null
+  const gains = slotUpgrades(item, ctx).filter(isGain)
+  const upgrade = gains[0]
+  if (upgrade === undefined) return null
   const gain = gainOf(upgrade)
-  if (gain < BETTER) return null
   const reqLevel = requiredLevel(item, ui)
+  const wearableNow = reqLevel <= ctx.build.level && usableBy(ui, ctx.build)
+  if (outrankedBy(item, upgrade.score, gains.map((u) => u.slot), ctx, wearableNow ? 0 : SOON_LEVELS) >= gains.length) return null
   const slot = SLOT_LABEL[upgrade.slot]
   const pct = Number.isFinite(gain) ? ` (+${Math.round((gain - 1) * 100)}%)` : ''
-  if (reqLevel > ctx.build.level || !usableBy(ui, ctx.build)) return reqLevel <= ctx.build.level + FUTURE_LEVELS ? result('keep', kind, upgrade.score, `Better ${slot} at level ${Math.max(reqLevel, ctx.build.level + 1)}`) : null
+  if (!wearableNow) return reqLevel <= ctx.build.level + SOON_LEVELS ? result('keep', kind, upgrade.score, `Better ${slot} at level ${Math.max(reqLevel, ctx.build.level + 1)}`) : null
   return result(gain >= MUCH_BETTER ? 'great' : 'good', kind, upgrade.score, `Upgrade for your ${slot}${pct}`, { upgradeSlot: upgrade.slot })
 }
 
@@ -221,9 +237,12 @@ function knownAffixAppraisal(item: LootItem, kind: LootKind, ctx: AppraisalConte
 function baseAppraisal(item: LootItem, ctx: AppraisalContext): Appraisal {
   const { build } = ctx
   const sockets = item.totalSockets
-  const type = baseTypeOf(codeOf(item))
   const { isA } = getEmbeddedDropTables()
-  const fits = (rw: RunewordPick) => rw.runes.length === sockets && rw.itypes.some((t) => isA(type, t))
+  const fitsBase = (base: LootItem, rw: RunewordPick) => base.totalSockets === rw.runes.length && base.usedSockets === 0 && !base.runeword && rw.itypes.some((t) => isA(baseTypeOf(codeOf(base)), t))
+  const wieldable = (rw: RunewordPick) => rw.forMerc || usableBy(uiOf(item), build, SOON_LEVELS)
+  const owned = ctx.owned.some((other) => other.id === item.id)
+  const spare = (rw: RunewordPick) => !ctx.owned.some((other) => other.id !== item.id && (!owned || other.id < item.id) && fitsBase(other, rw))
+  const fits = (rw: RunewordPick) => fitsBase(item, rw) && rw.levelreq <= build.level + BASE_HEADROOM && wieldable(rw) && spare(rw)
   const pick = sockets > 0 && item.usedSockets === 0 ? runewordsFor(build).find(fits) : undefined
   if (pick) return result('good', 'base', 30 + pick.score / 10, `Base for ${pick.name}${pick.forMerc ? ' (mercenary)' : ''} · ${sockets} sockets`)
   if (ctx.imbueReady && isImbueBase(item, build)) return result('keep', 'base', 20, "Good base for Charsi's imbue")

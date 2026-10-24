@@ -2023,6 +2023,7 @@ export class CommandMapper {
     if (typeof screenXOrEvent !== 'number') {
       ;(screenXOrEvent as { _d2HandledByCommandMapper?: boolean })._d2HandledByCommandMapper = true
     }
+    this.assists.noteManual(resolvedNowMs)
     this.lastPointerX = screenX
     this.lastPointerY = resolvedY
     this.pointerDownX = screenX

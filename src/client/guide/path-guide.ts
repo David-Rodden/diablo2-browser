@@ -59,6 +59,9 @@ const TRAIL_RGB = '110, 226, 255'
 const GOLD_TINT: OutlineTint = [1, 0.8, 0.45]
 const DOOR_TINT: OutlineTint = [0.6, 0.85, 1]
 const REPLAN_MS = 400
+const FOCUS_MS = 1500
+const FOCUS_SAME = 4
+const FOCUS_CELL = 2
 const REPLAN_IDLE_MS = 3000
 const REPLAN_MOVE = 3
 const DOOR_NEAR_PATH = 3
@@ -131,11 +134,11 @@ const findTargets = (find: readonly Find[], view: LevelView, objects: readonly C
 
 const freshField = (host: PathGuideHost): FieldSource => (view, target) => new FlowField({ ...view, walkable: host.walkable?.(view) ?? view.walkable }, target.x, target.y)
 
-export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldSource = freshField(host), waypoints: ReadonlySet<number> = host.waypoints(), askForWaypoints = false, skipped: ReadonlySet<number> = new Set()): GuidePlan | null {
+export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldSource = freshField(host), waypoints: ReadonlySet<number> = host.waypoints(), askForWaypoints = false, skipped: ReadonlySet<number> = new Set(), detour: Goal | null = null): GuidePlan | null {
   const level = host.areaId()
   const view = host.levelView()
   const self = host.self()
-  const goal = level > 0 ? currentGoal(level, host.quests(), mode, host.carries, skipped) : null
+  const goal = level > 0 ? (detour ?? currentGoal(level, host.quests(), mode, host.carries, skipped)) : null
   if (!goal || !view || self.isDead) return null
   const step = nextStep(level, goal.level, waypoints)
   const objects = host.objects()
@@ -144,7 +147,7 @@ export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldS
   const asking = askForWaypoints && step !== null && step.kind !== 'arrived' && step.kind !== 'waypoint'
   const nearWaypoint = asking ? findTargets([[...WAYPOINT_CLASS_IDS_113C]], view, objects, monsters, self).filter((t) => Math.hypot(t.x - self.x, t.y - self.y) <= WAYPOINT_NEAR).slice(0, 1) : []
   const marked = nearWaypoint.length > 0 ? nearWaypoint : findTargets(find, view, objects, monsters, self)
-  const target = marked[0] ?? (step?.kind === 'exit' ? entranceTarget(view, step.level) : step?.kind === 'arrived' && find.length === 0 && !goal.inTown ? landmarkTarget(view) : null)
+  const target = marked[0] ?? (step?.kind === 'arrived' && goal.spot ? { ...goal.spot, label: goal.title } : null) ?? (step?.kind === 'exit' ? entranceTarget(view, step.level) : step?.kind === 'arrived' && find.length === 0 && !goal.inTown ? landmarkTarget(view) : null)
   const field = target ? fieldFor(view, target) : null
   const path = field?.pathFrom(self.x, self.y, 1) ?? []
   const route = field?.corners(path, self) ?? []
@@ -200,6 +203,9 @@ export class PathGuide {
   mode: GuideMode = 'story'
   pilotStatus: string | null = null
   readonly skipped = new Set<number>()
+  private detourGoal: Goal | null = null
+  private focusPoint: { readonly x: number; readonly y: number; readonly at: number } | null = null
+  private focusField: { readonly key: string; readonly field: FlowField } | null = null
   private knownWaypoints: ReadonlySet<number> = new Set()
   private plan: GuidePlan | null = null
   private plannedAt = { ms: Number.NEGATIVE_INFINITY, x: 0, y: 0, level: 0 }
@@ -218,6 +224,33 @@ export class PathGuide {
     return this.plan
   }
 
+  set detour(goal: Goal | null) {
+    if (goal?.level === this.detourGoal?.level && goal?.spot?.x === this.detourGoal?.spot?.x) return
+    this.detourGoal = goal
+    this.plannedAt = { ...this.plannedAt, ms: Number.NEGATIVE_INFINITY }
+  }
+
+  get detour(): Goal | null {
+    return this.detourGoal
+  }
+
+  focus(point: SubTilePoint, nowMs: number): void {
+    this.focusPoint = { x: point.x, y: point.y, at: nowMs }
+  }
+
+  private shown(plan: GuidePlan | null, nowMs: number): GuidePlan | null {
+    const focus = this.focusPoint
+    const view = this.host.levelView()
+    if (!plan || !focus || !view || this.pilotStatus === null || nowMs - focus.at > FOCUS_MS) return plan
+    if (plan.target && Math.hypot(plan.target.x - focus.x, plan.target.y - focus.y) <= FOCUS_SAME) return plan
+    const key = `${view.id}:${Math.round(focus.x / FOCUS_CELL)}:${Math.round(focus.y / FOCUS_CELL)}`
+    if (this.focusField?.key !== key) this.focusField = { key, field: freshField(this.host)(view, { x: focus.x, y: focus.y, label: this.pilotStatus }) }
+    const self = this.host.self()
+    const { field } = this.focusField
+    const path = field.pathFrom(self.x, self.y, 1)
+    return { ...plan, target: { x: focus.x, y: focus.y, label: this.pilotStatus }, path, route: field.corners(path, self), doors: [], highlights: [] }
+  }
+
   skip(row: number): void {
     this.skipped.add(row)
     this.plannedAt = { ...this.plannedAt, ms: Number.NEGATIVE_INFINITY }
@@ -234,14 +267,14 @@ export class PathGuide {
       const fromMenu = this.host.waypoints()
       const waypoints = this.memory.known(character, level, fromMenu)
       this.knownWaypoints = waypoints
-      this.publish(planGuide(this.host, this.mode, this.fieldFor, waypoints, fromMenu.size === 0 && !this.memory.hasMenu(character), this.skipped))
+      this.publish(planGuide(this.host, this.mode, this.fieldFor, waypoints, fromMenu.size === 0 && !this.memory.hasMenu(character), this.skipped, this.detourGoal))
       this.plannedAt = { ms: nowMs, x, y, level }
     }
     return this.plan
   }
 
   draw(ctx: CanvasRenderingContext2D, font: D2FontRenderer, nowMs: number, drawAutomapText: () => AutomapHudFootprint | null, width: number): AutomapHudFootprint | null {
-    const plan = this.update(nowMs)
+    const plan = this.shown(this.update(nowMs), nowMs)
     if (plan) this.drawWorld(ctx, plan, nowMs)
     if (plan) this.drawAutomapPath(ctx, plan, nowMs, width)
     const footprint = drawAutomapText()

@@ -82,12 +82,14 @@ export function attackSkill(self: CombatSelf, target: CombatTarget, canCast: Can
   const tier = (skillId: number) => ((SKILLS_BY_ID[skillId]?.delay ?? 0) > 0 ? 0 : (SKILLS_BY_ID[skillId]?.reqlevel ?? 0) / 100)
   const score = (skillId: number) => (levelOf(self, skillId) * (self.mainSkills.includes(skillId) ? MAIN_SKILL_WEIGHT : 1) + tier(skillId)) * damage(skillId)
   const thrifty = !target.tough && (self.manaFraction < SAVE_MANA_BELOW || (target.lifeFraction < WEAK_LIFE && target.distance <= CLOSE_REACH))
-  const costly = (skillId: number) => thrifty && (SKILLS_BY_ID[skillId]?.mana ?? 0) > 0
+  const costly = (skillId: number) => thrifty && ATTACKS.get(skillId) !== 'melee' && (SKILLS_BY_ID[skillId]?.mana ?? 0) > 0
   const chosen = [...ATTACKS.keys()].filter((id) => levelOf(self, id) > 0 && score(id) > 0 && !costly(id) && canCast(id)).sort((a, b) => score(b) - score(a))[0]
   return chosen === undefined ? { skillId: BASIC_ATTACK, hand: 'left', reach: 'melee', on: 'target' } : { skillId: chosen, hand: handOf(chosen), reach: ATTACKS.get(chosen)!, on: 'target' }
 }
 
 const raiseLimit = (level: number) => (level < 3 ? level : 2 + Math.floor(level / 3))
+
+export const missingSummons = (self: CombatSelf) => RAISES.filter(({ skillId }) => levelOf(self, skillId) > 0).reduce((missing, { skillId, classId }) => missing + Math.max(0, raiseLimit(levelOf(self, skillId)) - self.petClasses.filter((pet) => pet === classId).length), 0)
 
 export function raiseSkill(self: CombatSelf, canCast: CanCast): SkillUse | null {
   const short = (classId: number, skillId: number) => self.petClasses.filter((pet) => pet === classId).length < raiseLimit(levelOf(self, skillId))

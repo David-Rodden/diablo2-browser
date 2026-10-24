@@ -38,9 +38,10 @@ export function readyRecipe(world: ClientWorld): ReadyRecipe | null {
   return found ? { name: found[0], recipe: found[1], inStash: [CUBE, ...found[1].inputs].filter((code) => !onHand.has(code)) } : null
 }
 
-export async function withdraw(host: CubeHost, codes: readonly string[]): Promise<boolean> {
-  const { stash, inventory } = host.world.containers
-  for (const item of [...stash.values()].filter((stored) => codes.includes(codeOf(stored)))) if (!(await move(host, item, INVENTORY_BUFFER, inventory))) return false
+export const withdraw = (host: CubeHost, codes: readonly string[]) => withdrawItems(host, [...host.world.containers.stash.values()].filter((stored) => codes.includes(codeOf(stored))))
+
+export async function withdrawItems(host: CubeHost, items: readonly ItemData[]): Promise<boolean> {
+  for (const item of items) if (!(await move(host, item, INVENTORY_BUFFER, host.world.containers.inventory))) return false
   return true
 }
 
@@ -72,4 +73,18 @@ export async function transmute(host: CubeHost, recipe: Recipe): Promise<boolean
   if (result) await move(host, result, INVENTORY_BUFFER, inventory)
   hudModel.closeCube()
   return made
+}
+
+export async function takeOut(host: CubeHost, code: string): Promise<boolean> {
+  const { world, hudManager, hudModel } = host
+  const { inventory, cube } = world.containers
+  const item = [...cube.values()].find((stored) => codeOf(stored) === code)
+  const box = [...inventory.values()].find((owned) => codeOf(owned) === CUBE)
+  if (!item) return true
+  if (!box) return false
+  hudModel.useItem(box.id)
+  if (!(await waitFor(() => hudManager.leftPanel === 'cube', STEP_MS))) return false
+  const moved = await move(host, item, INVENTORY_BUFFER, inventory)
+  hudModel.closeCube()
+  return moved
 }
