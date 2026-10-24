@@ -47,6 +47,7 @@ export function pilotReport(world: ClientWorld, hudManager: HudManager, assists:
     quest: [...world.containers.inventory.values(), ...world.containers.cube.values(), ...world.containers.stash.values()].filter((item) => QUEST_CODES.has(item.code.trim())).map((item) => `${item.code.trim()}@${world.containers.stash.has(item.id) ? 'stash' : world.containers.cube.has(item.id) ? 'cube' : 'bag'}`),
     bag: bagReport(world, assists),
     panel: hudManager.leftPanel,
+    npc: world.npcInteraction.npcId === null ? null : { id: world.npcInteraction.npcId, window: world.npcInteraction.window },
     menu: Boolean(hudManager.worldPanels.npcMenu),
     speech: Boolean(hudManager.worldPanels.npcSpeech),
   }

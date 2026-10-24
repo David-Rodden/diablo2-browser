@@ -677,6 +677,8 @@ export class Autopilot {
     if (!this.stubborn.has(unit.id)) {
       this.stubborn.add(unit.id)
       this.uses.delete(unit.id)
+      this.host.hudModel?.cancelNpcSession()
+      this.host.assists.journal?.('stubborn', { classId: unit.classId, npc: this.host.world.npcInteraction.npcId, window: this.host.world.npcInteraction.window })
       const away = Math.max(1e-6, distance(me, unit))
       this.host.assists.stepTo(me.x + ((me.x - unit.x) / away) * BACK_OFF, me.y + ((me.y - unit.y) / away) * BACK_OFF, nowMs)
     } else if (WAYPOINT_CLASS_IDS_113C.has(unit.classId)) this.stop('Autopilot needs you', 'gold', "The waypoint wouldn't open")
@@ -1265,16 +1267,20 @@ export class Autopilot {
       hudModel.closeStash()
       return
     }
-    if (!(await waitFor(() => Boolean(hudManager.worldPanels.npcMenu) || Boolean(hudManager.worldPanels.npcSpeech), 6000))) return
-    if (hudManager.worldPanels.npcSpeech) hudManager.worldPanels.closeNpcSpeech()
-    if (errand.action) {
-      hudModel.handleNpcMenuAction(errand.action, unit.id)
-      await waitFor(() => hudManager.leftPanel === 'vendor' || !hudManager.worldPanels.npcMenu, 5000)
-      await waitFor(() => this.host.assists.inventoryCare.busy, CARE_START_MS)
-      await waitFor(() => !this.host.assists.inventoryCare.busy, 20000)
-      await errand.work?.()
+    try {
+      if (!(await waitFor(() => Boolean(hudManager.worldPanels.npcMenu) || Boolean(hudManager.worldPanels.npcSpeech), 6000))) return
+      if (hudManager.worldPanels.npcSpeech) hudManager.worldPanels.closeNpcSpeech()
+      if (errand.action) {
+        hudModel.handleNpcMenuAction(errand.action, unit.id)
+        await waitFor(() => hudManager.leftPanel === 'vendor' || !hudManager.worldPanels.npcMenu, 5000)
+        await waitFor(() => this.host.assists.inventoryCare.busy, CARE_START_MS)
+        await waitFor(() => !this.host.assists.inventoryCare.busy, 20000)
+        await errand.work?.()
+      }
+    } finally {
+      hudModel.closeActiveNpcPanel()
+      hudModel.cancelNpcSession(unit.id)
     }
-    hudModel.closeActiveNpcPanel()
   }
 
   private async reach(find: () => ClientUnit | undefined, errand: Errand): Promise<ClientUnit | null> {
