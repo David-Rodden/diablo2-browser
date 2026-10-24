@@ -220,6 +220,24 @@ describe('autopilot', () => {
     expect(assists.walkTo).toHaveBeenLastCalledWith(145, 100, expect.any(Number))
   })
 
+  it('takes the waypoint home when the portal it came through is gone, instead of pacing between the two', () => {
+    const { world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.self.gold = 0
+    const enter = (area: number, x: number) => {
+      world.areaId = area
+      world.self.x = x
+      tick()
+    }
+    enter(ROGUE_ENCAMPMENT, 100)
+    enter(BLOOD_MOOR, 101)
+    enter(3, 300)
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 290, y: 100 }))
+    assists.hasTownPortal = () => false
+    world.self.life = 20
+    for (let i = 0; i < 4; i++) tick(700)
+    expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+  })
+
   it('hands control back when it is in trouble with no portal and no way back', () => {
     const { pilot, world, assists, hudManager, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     assists.hasTownPortal = () => false

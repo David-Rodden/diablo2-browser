@@ -238,6 +238,7 @@ export class Autopilot {
   private retreatWhy = ''
   private trail: { readonly level: number; readonly at: SubTilePoint; readonly before: SubTilePoint }[] = []
   private leftBehind: typeof this.trail = []
+  private deadEnd: (typeof this.trail)[number] | null = null
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -1154,7 +1155,7 @@ export class Autopilot {
   private walkHome(nowMs: number): void {
     const me = this.host.world.self
     const here = this.trail.at(-1)
-    if (here?.level !== this.host.world.areaId) this.homeByWaypoint(nowMs)
+    if (here?.level !== this.host.world.areaId || here === this.deadEnd) this.homeByWaypoint(nowMs)
     else if (distance(here.at, me) > REACH) this.walkTowards(here.at, nowMs)
     else this.leaveBy(here, nowMs)
   }
@@ -1166,13 +1167,16 @@ export class Autopilot {
     const across = { x: here.before.x - here.at.x, y: here.before.y - here.at.y }
     const length = Math.hypot(across.x, across.y)
     if (way) this.takeHome(way, nowMs)
-    else if (length > SEAM_JUMP || length < 1e-6) this.homeByWaypoint(nowMs)
-    else this.cross({ x: here.at.x + (across.x / length) * SEAM_STEP, y: here.at.y + (across.y / length) * SEAM_STEP }, nowMs)
+    else if (length > SEAM_JUMP || length < 1e-6) {
+      this.deadEnd = here
+      this.homeByWaypoint(nowMs)
+    } else this.cross({ x: here.at.x + (across.x / length) * SEAM_STEP, y: here.at.y + (across.y / length) * SEAM_STEP }, nowMs)
   }
 
   private takeHome(way: ClientUnit, nowMs: number): void {
-    if (WAYPOINT_CLASS_IDS_113C.has(way.classId)) this.waypointTo = ACT_TOWNS[actOfLevel(this.host.world.areaId)]!
-    if (distance(way, this.host.world.self) <= REACH) this.touch(way, nowMs)
+    const waypoint = WAYPOINT_CLASS_IDS_113C.has(way.classId)
+    if (waypoint) this.waypointTo = ACT_TOWNS[actOfLevel(this.host.world.areaId)]!
+    if (distance(way, this.host.world.self) <= (waypoint ? INTERACT_REACH : REACH)) this.touch(way, nowMs)
     else this.walkTowards(way, nowMs)
   }
 
