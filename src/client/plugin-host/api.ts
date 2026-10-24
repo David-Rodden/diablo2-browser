@@ -415,6 +415,7 @@ export interface PluginContext {
   readonly beltRefill: PluginTogglePort
   readonly upgradeHints: PluginTogglePort
   readonly monsterResists: PluginTogglePort
+  readonly monsterLevel: PluginTogglePort
   readonly lowLifeWarning: PluginTogglePort
   readonly smartSkills: PluginTogglePort
   readonly spendPoints: PluginTogglePort

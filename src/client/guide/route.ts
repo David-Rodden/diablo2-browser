@@ -71,7 +71,9 @@ export function currentGoal(level: number, progress: QuestProgress, mode: GuideM
       return stage && { level: stage.level === 'town' ? town : stage.level === 'tomb' ? tomb : stage.level === DURIELS_LAIR && level !== tomb && level !== DURIELS_LAIR ? tomb : stage.level, title: o.name, row: o.row, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}), ...(stage.bring ? { bring: stage.bring } : {}) }
     })
     .find((g) => g !== undefined)
-  return goal ?? (act < 4 ? { level: ACT_TOWNS[act + 1]!, title: `Travel to Act ${ROMAN[act + 1]}` } : null)
+  if (goal) return goal
+  if (skipped.size > 0) return currentGoal(level, progress, 'required', carries)
+  return act < 4 ? { level: ACT_TOWNS[act + 1]!, title: `Travel to Act ${ROMAN[act + 1]}` } : null
 }
 
 export type Step =

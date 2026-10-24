@@ -24,6 +24,7 @@ import { killStatsPlugin } from './kill-stats/index.ts'
 import { lootAlertsPlugin } from './loot-alerts/index.ts'
 import { lowLifeWarningPlugin } from './low-life-warning/index.ts'
 import { monsterResistsPlugin } from './monster-resists/index.ts'
+import { monsterLevelPlugin } from './monster-level/index.ts'
 import { nextGamePlugin } from './next-game/index.ts'
 import { pathGuidePlugin } from './path-guide/index.ts'
 import { quickCastPlugin } from './quick-cast/index.ts'
@@ -57,6 +58,7 @@ export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
   itemInfoPlugin,
   lootAlertsPlugin,
   monsterResistsPlugin,
+  monsterLevelPlugin,
   runTimerPlugin,
 ]
 
@@ -70,6 +72,7 @@ export const PLUGIN_MENU_LAYOUT: MenuLayout = {
     'quick-cast': 'combat',
     'drag-interact': 'combat',
     'monster-resists': 'combat',
+    'monster-level': 'combat',
     'item-info': 'loot',
     'loot-alerts': 'loot',
     'upgrade-hints': 'loot',

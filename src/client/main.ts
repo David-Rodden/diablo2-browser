@@ -92,6 +92,7 @@ import {
 } from './input/browser-gesture-guard.ts'
 import { CommandMapper } from './input/command-mapper.ts'
 import { D2_LOGIC_TICK_MS, runOwedTicks } from './loop/logic-clock.ts'
+import { backgroundInterval } from './loop/background-timer.ts'
 import { MotionSmoothing } from './loop/motion-smoothing.ts'
 import { SceneMotionSmoother } from './loop/scene-motion-smoothing.ts'
 import { MapService } from './map/map-service.ts'
@@ -783,6 +784,7 @@ export async function startPlayApp(options?: {
     beltRefill: togglePortFor(session.commandMapper.assists, 'beltRefill'),
     upgradeHints: togglePortFor(hudManager, 'upgradeHints'),
     monsterResists: togglePortFor(hudManager.worldPanels, 'showMonsterResists'),
+    monsterLevel: togglePortFor(hudManager.worldPanels, 'showMonsterLevel'),
     lowLifeWarning: togglePortFor(hudManager, 'lowLifeWarning'),
     smartSkills: togglePortFor(session.commandMapper.assists, 'smartSkills'),
     spendPoints: togglePortFor(pilot, 'spendPoints'),
@@ -2336,12 +2338,12 @@ export async function startPlayApp(options?: {
   // The original keeps looping while its window is inactive (at most a `Sleep(10)` per pass,
   // `push 0xa ; call [Sleep]` @0x6FAECB94). Hidden tabs get no requestAnimationFrame, so a
   // timer runs the owed ticks until the tab is visible again.
-  let hiddenTickTimer: ReturnType<typeof setInterval> | null = null
+  let hiddenTickTimer: (() => void) | null = null
   let nextWorldRenderMs: number | null = null
   trackListener(document, 'visibilitychange', () => {
     if (document.hidden) {
       if (hiddenTickTimer === null) {
-        hiddenTickTimer = setInterval(() => {
+        hiddenTickTimer = backgroundInterval(() => {
           if (inGameView) {
             runOwedLogicTicks(performance.now())
           } else {
@@ -2351,7 +2353,7 @@ export async function startPlayApp(options?: {
         }, D2_LOGIC_TICK_MS)
       }
     } else if (hiddenTickTimer !== null) {
-      clearInterval(hiddenTickTimer)
+      hiddenTickTimer()
       hiddenTickTimer = null
     }
   })
@@ -2578,7 +2580,7 @@ export async function startPlayApp(options?: {
       renderLoopDisposed = true
       clearPendingNeighborPreload()
       if (hiddenTickTimer !== null) {
-        clearInterval(hiddenTickTimer)
+        hiddenTickTimer()
         hiddenTickTimer = null
       }
       if (multiboxManager) {

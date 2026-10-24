@@ -93,6 +93,7 @@ import {
   stateColorFlags,
 } from './stat-engine.ts'
 import type { VendorPriceContext, VendorPriceFn } from './vendor-price.ts'
+import { withMonsterLevel } from '../ui/monster-level.ts'
 
 export const NPC_STATE_CLOSED: NpcInteractionState = {
   npcId: null,
@@ -3287,6 +3288,6 @@ export function syncHoveredMonsterTargetImpl(model: any): void {
     hud.worldPanels.hoveredMonster = null
     return
   }
-  hud.targetMonster = clientUnitToMonsterTargetInfo(unit, model.world.difficulty)
+  hud.targetMonster = withMonsterLevel(clientUnitToMonsterTargetInfo(unit, model.world.difficulty), unit.classId, model.world)
   hud.worldPanels.hoveredMonster = hud.targetMonster
 }

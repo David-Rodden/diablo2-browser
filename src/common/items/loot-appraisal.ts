@@ -55,6 +55,8 @@ const GEM_HELPS = 15
 const MUCH_BETTER = 1.4
 const BETTER = 1.1
 const MIN_GAIN = 5
+const BARE_SLOT = MIN_GAIN + 1
+const DUAL_WIELDERS = new Set([4, 6])
 const SOON_LEVELS = 3
 const BASE_HEADROOM = 6
 
@@ -156,6 +158,8 @@ interface Upgrade {
   readonly current: number
 }
 
+const handOrder = (ui: UiInventoryItem, slot: EquipSlotId) => (slot === (damageOf(ui) ? 'weapon2' : 'weapon1') ? 1 : 0)
+
 function slotUpgrades(item: LootItem, { build, equipped }: AppraisalContext): Upgrade[] {
   const ui = uiOf(item)
   const worn = equippedBySlot(equipped)
@@ -163,9 +167,9 @@ function slotUpgrades(item: LootItem, { build, equipped }: AppraisalContext): Up
   const twoHanding = worn.get('weapon1') !== undefined && isTwoHanded(worn.get('weapon1')!)
   const wornScore = (slot: EquipSlotId) => (worn.get(slot) ? gearScore(worn.get(slot)!, build) : 0)
   return ui.allowedSlots
-    .map((slot) => ({ slot, score, current: wornScore(slot) + (ui.twoHanded && slot === 'weapon1' ? wornScore('weapon2') : 0) }))
-    .filter((u) => !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding)) && worn.get(u.slot)?.id !== item.id)
-    .sort((a, b) => a.current - b.current)
+    .map((slot) => ({ slot, score: worn.get(slot) === undefined ? BARE_SLOT + score : score, current: wornScore(slot) + (ui.twoHanded && slot === 'weapon1' ? wornScore('weapon2') : 0) }))
+    .filter((u) => !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding || (damageOf(ui) !== undefined && !DUAL_WIELDERS.has(build.classIndex)))) && worn.get(u.slot)?.id !== item.id)
+    .sort((a, b) => a.current - b.current || handOrder(ui, a.slot) - handOrder(ui, b.slot))
 }
 
 const gainOf = ({ score, current }: Upgrade) => (current <= 0 ? (score > MIN_GAIN ? Infinity : 0) : score / current)
@@ -191,7 +195,7 @@ function upgradeAppraisal(item: LootItem, kind: LootKind, ctx: AppraisalContext)
   const gain = gainOf(upgrade)
   const reqLevel = requiredLevel(item, ui)
   const wearableNow = reqLevel <= ctx.build.level && usableBy(ui, ctx.build)
-  if (outrankedBy(item, upgrade.score, gains.map((u) => u.slot), ctx, wearableNow ? 0 : SOON_LEVELS) >= gains.length) return null
+  if (outrankedBy(item, gearScore(item, ctx.build), gains.map((u) => u.slot), ctx, wearableNow ? 0 : SOON_LEVELS) >= gains.length) return null
   const slot = SLOT_LABEL[upgrade.slot]
   const pct = Number.isFinite(gain) ? ` (+${Math.round((gain - 1) * 100)}%)` : ''
   if (!wearableNow) return reqLevel <= ctx.build.level + SOON_LEVELS ? result('keep', kind, upgrade.score, `Better ${slot} at level ${Math.max(reqLevel, ctx.build.level + 1)}`) : null
