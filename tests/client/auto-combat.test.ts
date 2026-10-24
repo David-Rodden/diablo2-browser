@@ -295,6 +295,22 @@ describe('auto-fight with build-aware skills', () => {
     expect(raised).toContain(902)
   })
 
+  it('steps back behind its own skeletons when a pack crowds it', () => {
+    const s = createSetup()
+    const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number }
+    self.skills.set(67, 5)
+    Object.assign(self, { mana: 200, maxMana: 200 })
+    s.mapper.assists.smartSkills = true
+    s.spawn(901, 19, 100, 98)
+    s.spawn(902, 19, 101, 98)
+    s.spawn(950, 363, 104, 103.5)
+    ;(s.world as unknown as { _pets: Map<number, unknown> })._pets.set(950, { unitId: 950, ownerId: 1, petType: 4, classId: 363, lifePct: 100, isDead: false })
+    s.mapper.handleKeyDown({ key: 'e' })
+    s.fightFor(1000, 1400)
+    const moves = s.sent.flatMap((c) => (c.type === 'Move' && c.to ? [c.to] : []))
+    expect(moves[0]).toEqual(expect.objectContaining({ x: 104, y: 106 }))
+  })
+
   it('backs away from a boss that gets close instead of trading blows', () => {
     const s = createSetup()
     const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number; leftSkill: number }
