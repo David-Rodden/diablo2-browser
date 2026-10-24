@@ -22,6 +22,7 @@ import { readyRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRec
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { ENVIRONMENT, worthUsing } from './environment.ts'
+import { hireIdOf, MERCENARIES, pickMercenary, type HireCandidate } from './mercenary.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
@@ -162,6 +163,7 @@ const PURSE_LOW = 3000
 const PURSE_GOLD = 10_000
 const POTION_SHARE = 4
 const BUY_TRIES = 16
+const HIRE_LIST_MS = 3000
 const GEAR_BUYS = 6
 const SCROLL_KINDS = {
   portal: { tome: 'tbk', scroll: 'tsc', tomeGold: 500, keep: 10, spare: 2 },
@@ -202,6 +204,7 @@ export class Autopilot {
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
   private readonly stubborn = new Set<number>()
   private readonly scavenged = new Set<number>()
+  private game: { readonly selfId: number; readonly at: number } | null = null
   private headway: { readonly goal: SubTilePoint; best: number; from: SubTilePoint; at: number; tries: number } | null = null
   private blocked: SubTilePoint[] = []
   private held: { readonly id: number; readonly since: number; at: number; tries: number } | null = null
@@ -1124,6 +1127,7 @@ export class Autopilot {
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
+      merc === null && world.expansion === true && me.gold >= MERCENARIES.minGold && this.settledIn(nowMs) && ready('hire') && { key: 'hire', reason: 'Hiring a mercenary', npc: 'mercs', action: 'hire', work: () => this.hire() },
       me.gold < PURSE_LOW && me.stashGold > 0 && ready('purse') && { key: 'purse', reason: 'Taking gold out of the stash', work: () => this.fillPurse() },
       worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repairAndShop() },
       (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length > 0)
@@ -1177,6 +1181,23 @@ export class Autopilot {
     const taken = await take()
     hudModel.closeStash()
     return taken
+  }
+
+  private settledIn(nowMs: number): boolean {
+    const { selfId } = this.host.world
+    if (this.game === null || this.game.selfId !== selfId) this.game = { selfId, at: nowMs }
+    return nowMs - this.game.at >= MERCENARIES.joinGraceMs
+  }
+
+  private async hire(): Promise<void> {
+    const { world, hudManager, hudModel } = this.host
+    const npcId = world.npcInteraction.npcId
+    const offered = () => hudManager.worldPanels.hireList as readonly HireCandidate[]
+    if (hudModel === null || npcId === null || world.merc !== null || !(await waitFor(() => offered().length > 0, HIRE_LIST_MS))) return
+    const pick = pickMercenary(offered(), world.self.gold)
+    if (!pick || world.merc !== null) return
+    hudModel.hireMerc(npcId, hireIdOf(pick))
+    if (await waitFor(() => world.merc !== null, HIRE_LIST_MS)) this.toast('Hired a mercenary', `${pick.name}, level ${pick.level}`, 'green')
   }
 
   private async fillPurse(): Promise<void> {

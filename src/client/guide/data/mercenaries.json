@@ -1,0 +1,6 @@
+{
+  "auras": ["Might", "Holy Freeze", "Blessed Aim", "Defiance", "Prayer", "Thorns", "Vigor", "Cleansing", "Meditation"],
+  "keepGold": 500,
+  "minGold": 300,
+  "joinGraceMs": 20000
+}

@@ -376,6 +376,31 @@ describe('autopilot', () => {
     expect((assists as unknown as { journal: ReturnType<typeof vi.fn> }).journal).toHaveBeenCalledWith('unstick', expect.objectContaining({ tries: 1 }))
   })
 
+  it('hires a mercenary in town when it has none, but only once an existing one has had time to show up', () => {
+    const { world, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world, { merc: null, expansion: true })
+    world.self.gold = 2000
+    Array.from({ length: 16 }, (_, i) => world.containers.belt.set(i, { id: i, code: 'hp3' }))
+    ;[40, 41].forEach((id) => world.containers.inventory.set(id, { id, code: 'tsc', gridX: id - 40, gridY: 0, invWidth: 1, invHeight: 1 }))
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, bodyLoc }))
+    tick()
+    expect(guide.pilotStatus).not.toBe('Hiring a mercenary')
+    tick(21_000)
+    expect(guide.pilotStatus).toBe('Hiring a mercenary')
+  })
+
+  it('never hires over a mercenary it already has', () => {
+    const { world, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world, { merc: { mercId: 9, isDead: false, reviveCost: 0 }, expansion: true })
+    world.self.gold = 2000
+    Array.from({ length: 16 }, (_, i) => world.containers.belt.set(i, { id: i, code: 'hp3' }))
+    ;[40, 41].forEach((id) => world.containers.inventory.set(id, { id, code: 'tsc', gridX: id - 40, gridY: 0, invWidth: 1, invHeight: 1 }))
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, bodyLoc }))
+    tick()
+    tick(21_000)
+    expect(guide.pilotStatus).not.toBe('Hiring a mercenary')
+  })
+
   it('puts on better gear it is carrying while in town', () => {
     const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
     world.self.gold = 0
