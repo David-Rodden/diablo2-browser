@@ -58,6 +58,7 @@ const BUFFS = Object.entries(COMBAT.buffs).map(([name, state]) => ({ skillId: id
 const CURSES = Object.entries(COMBAT.curses).map(([name, state]) => ({ skillId: idOf(name), stateId: STATE_ID.get(state) ?? -1 }))
 const SUMMONS = Object.entries(COMBAT.summons).map(([name, monsters]) => ({ skillId: idOf(name), classes: new Set(monsterIds(monsters)) }))
 const RAISES = Object.entries(COMBAT.raises).map(([name, monster]) => ({ skillId: idOf(name), classId: monsterIds([monster])[0]! }))
+export const RAISE_SKILLS: ReadonlySet<number> = new Set(RAISES.map(({ skillId }) => skillId))
 const GROUPS = COMBAT.oneOf.map((names) => names.map(idOf))
 const AURAS = { fight: COMBAT.auras.fight.map(idOf), travel: COMBAT.auras.travel.map(idOf), recover: COMBAT.auras.recover.map(idOf) }
 export const TRAP_CLASSES: ReadonlySet<number> = new Set(TRAPS.values())

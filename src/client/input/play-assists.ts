@@ -15,7 +15,7 @@ import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
 import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from './town-portal.ts'
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
-import { attackSkill, auraSkill, BOSS_CLASSES, hopeless, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, missingSummons, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
+import { attackSkill, auraSkill, BOSS_CLASSES, hopeless, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, missingSummons, RAISE_SKILLS, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
 import { dodgeSpot, hits, threatOf, type Threat } from './danger-dodge.ts'
 import THREAT from '../../common/skills/data/monster-threat.json'
 import { ThreatSense, type Danger, type Defender, type Foe } from './threat-sense.ts'
@@ -45,6 +45,7 @@ const RED_TEXT = 1
 const SUPPORT_MS = 400
 const CORPSE_USED_STATE = 0x8f
 const CORPSE_REACH = 10
+const RAISE_RETRY_MS = 4000
 const RECAST_MS = 6000
 const SWITCH_MS = 700
 const SWITCH_RESEND_MS = 350
@@ -165,6 +166,7 @@ export class PlayAssists {
   private readonly switching: Partial<Record<Hand, { readonly skillId: number; readonly at: number }>> = {}
   private lastBlast = Number.NEGATIVE_INFINITY
   private readonly blasted = new Set<number>()
+  private readonly raiseTried = new Map<number, number>()
   private fight: { readonly id: number; readonly life: number; readonly since: number } | null = null
   private dodge: { readonly to: SubTilePoint; readonly until: number } | null = null
   private lastManual = Number.NEGATIVE_INFINITY
@@ -424,11 +426,14 @@ export class PlayAssists {
       if (aura !== null) this.holdSkill('right', aura, nowMs)
       return false
     }
-    const { x, y } = use.on === 'self' ? this.host.world.self : target!
+    const corpse = RAISE_SKILLS.has(use.skillId) ? this.nearestCorpse(nowMs) : undefined
+    const aim = corpse ?? (use.on === 'self' ? null : target)
+    const { x, y } = aim ?? this.host.world.self
     if (!this.holdSkill('right', use.skillId, nowMs)) return true
     this.supportCastAt.set(castKey(use.skillId), nowMs)
-    this.logCast(use.on === 'self' ? 'support' : 'curse', use.skillId, use.on === 'self' ? null : target)
-    return this.host.triggerSecondaryWorldAction(x, y, use.on === 'self' ? null : target, nowMs) !== null
+    if (corpse) this.raiseTried.set(corpse.id, nowMs)
+    this.logCast(use.on === 'self' ? 'support' : 'curse', use.skillId, aim)
+    return this.host.triggerSecondaryWorldAction(x, y, aim, nowMs) !== null
   }
 
   get moving(): boolean {
@@ -523,8 +528,14 @@ export class PlayAssists {
     return corpse
   }
 
-  private corpses(): ClientUnit[] {
-    return this.host.world.getUnitsByType(1).filter((unit) => unit.dead && !unit.hidden && !unit.states.has(CORPSE_USED_STATE))
+  private corpses(nowMs = performance.now()): ClientUnit[] {
+    return this.host.world.getUnitsByType(1).filter((unit) => unit.dead && !unit.hidden && !unit.states.has(CORPSE_USED_STATE) && nowMs - (this.raiseTried.get(unit.id) ?? Number.NEGATIVE_INFINITY) >= RAISE_RETRY_MS)
+  }
+
+  private nearestCorpse(nowMs: number): ClientUnit | undefined {
+    const me = this.host.world.self
+    const away = (unit: ClientUnit) => Math.hypot(unit.x - me.x, unit.y - me.y)
+    return this.corpses(nowMs).filter((unit) => !this.blasted.has(unit.id) && away(unit) <= CORPSE_REACH).sort((a, b) => away(a) - away(b))[0]
   }
 
   private hostilesNear(spot: SubTilePoint, reach: number): number {
@@ -567,7 +578,7 @@ export class PlayAssists {
       lifeFraction: self.life / Math.max(1, this.host.hudManager.maxHp || self.maxLife),
       manaFraction: self.mana / Math.max(1, this.host.hudManager.maxMana || self.maxMana),
       saveManaBelow: this.manaFloor(),
-      corpsesNear: this.corpses().filter((unit) => Math.hypot(unit.x - self.x, unit.y - self.y) <= CORPSE_REACH).length,
+      corpsesNear: this.corpses().filter((unit) => !this.blasted.has(unit.id) && Math.hypot(unit.x - self.x, unit.y - self.y) <= CORPSE_REACH).length,
     }
   }
 
