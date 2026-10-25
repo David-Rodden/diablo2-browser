@@ -1,3 +1,4 @@
+import { slotOf } from '../../common/items/loot-appraisal.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { freeSpots } from '../input/auto-loot.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
@@ -23,7 +24,7 @@ type Recipe = (typeof RECIPES)[keyof typeof RECIPES]
 
 const codeOf = (item: ItemData) => item.code.trim()
 const carried = (world: ClientWorld) => [...world.containers.inventory.values(), ...world.containers.cube.values()]
-const owned = (world: ClientWorld) => [...carried(world), ...world.containers.stash.values()]
+const owned = (world: ClientWorld) => [...carried(world), ...world.containers.stash.values(), ...world.containers.equipment.values()]
 
 export interface ReadyRecipe {
   readonly name: string
@@ -35,7 +36,8 @@ export function readyRecipe(world: ClientWorld): ReadyRecipe | null {
   const codes = new Set(owned(world).map(codeOf))
   const onHand = new Set(carried(world).map(codeOf))
   const found = codes.has(CUBE) ? Object.entries(RECIPES).find(([, recipe]) => !codes.has(recipe.makes) && recipe.inputs.every((code) => codes.has(code))) : undefined
-  return found ? { name: found[0], recipe: found[1], inStash: [CUBE, ...found[1].inputs].filter((code) => !onHand.has(code)) } : null
+  const stored = new Set([...world.containers.stash.values()].map(codeOf))
+  return found ? { name: found[0], recipe: found[1], inStash: [CUBE, ...found[1].inputs].filter((code) => !onHand.has(code) && stored.has(code)) } : null
 }
 
 export const withdraw = (host: CubeHost, codes: readonly string[]) => withdrawItems(host, [...host.world.containers.stash.values()].filter((stored) => codes.includes(codeOf(stored))))
@@ -55,11 +57,23 @@ async function move(host: CubeHost, item: ItemData, buffer: number, container: R
   return waitFor(() => world.containers.cursor === null && container.has(item.id), STEP_MS)
 }
 
+async function takeOff(host: CubeHost, item: ItemData): Promise<boolean> {
+  const { world, hudModel } = host
+  const [spot, slot] = [freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight)[0], slotOf(item)]
+  if (!spot || slot === undefined) return false
+  hudModel.unequipItem(slot)
+  if (!(await waitFor(() => world.containers.cursor?.id === item.id, STEP_MS))) return false
+  hudModel.placeCursorItem(item.id, spot.x, spot.y, INVENTORY_BUFFER)
+  return waitFor(() => world.containers.cursor === null && world.containers.inventory.has(item.id), STEP_MS)
+}
+
 export async function transmute(host: CubeHost, recipe: Recipe): Promise<boolean> {
   const { world, hudManager, hudModel } = host
   const { inventory, cube } = world.containers
   const box = [...inventory.values()].find((item) => codeOf(item) === CUBE)
   if (!box) return false
+  for (const worn of [...world.containers.equipment.values()].filter((item) => recipe.inputs.includes(codeOf(item)) && ![...inventory.values()].some((owned) => codeOf(owned) === codeOf(item))))
+    if (!(await takeOff(host, worn))) return false
   hudModel.useItem(box.id)
   if (!(await waitFor(() => hudManager.leftPanel === 'cube', STEP_MS))) return false
   for (const stray of [...cube.values()].filter((item) => !recipe.inputs.includes(codeOf(item)))) if (!(await move(host, stray, INVENTORY_BUFFER, inventory))) return false
