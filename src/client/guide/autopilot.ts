@@ -124,6 +124,7 @@ const USE_TRIES = 8
 const BACK_OFF = 5
 const WAYPOINT_ROUNDS = 3
 const PORTAL_LOOK_MS = 3000
+const BODY_GRAB = 12
 const CURSOR_SETTLE_MS = 1000
 const INVENTORY_BUFFER = 0
 const TALK_MS = 700
@@ -559,6 +560,7 @@ export class Autopilot {
     else if (this.rearm()) this.say('Taking my weapon back')
     else if ((danger === null || !assists.hasTownPortal()) && assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
+    else if (body !== null && distance(body, this.host.world.self) <= BODY_GRAB) this.recover(body, nowMs)
     else if (danger !== null) this.retreat(danger, nowMs)
     else if (body !== null && !this.cornered(nowMs)) this.recover(body, nowMs)
     else if (!disengaged && assists.isFighting(nowMs)) this.say('Fighting')

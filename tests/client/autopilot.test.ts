@@ -919,8 +919,12 @@ describe('autopilot', () => {
     expect((guide as unknown as { detour: { level: number; spot: { x: number } } }).detour).toMatchObject({ level: BLOOD_MOOR, spot: { x: 100 } })
     world.self.x = 100
     units.push(unit({ id: 2, unitType: 'player', name: 'Hero', x: 101, y: 100, mode: 17 }))
+    world.self.life = 20
+    units.push(unit({ id: 81, x: 103, y: 100, name: 'Fallen' }))
     tick()
     expect(guide.pilotStatus).toBe('Picking up your body')
+    units.pop()
+    world.self.life = 100
     ;[1, 3, 4].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
     tick(1000)
     tick(1000)
