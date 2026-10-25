@@ -17,7 +17,7 @@ import type { ClientWorld } from '../world/client-world.ts'
 import { useArtisan, type ArtisanKind } from './artisan.ts'
 import { freeSpots } from '../input/auto-loot.ts'
 import { vendorPrice113c } from '../ui-model/vendor-price.ts'
-import { getInventoryGoldLimit } from '../../common/items/inventory-model.ts'
+import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
 import { readyRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
@@ -186,6 +186,7 @@ const BARE_RESERVE = 150
 const RESERVE_PER_LEVEL = 25
 const PURSE_LOW = 3000
 const PURSE_GOLD = 10_000
+const BANK_MARGIN = 2000
 const POTION_SHARE = 4
 const BUY_TRIES = 16
 const MERC_ITEM_MS = 1500
@@ -1403,6 +1404,7 @@ export class Autopilot {
         : false,
       (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
       me.gold >= gambleReserve(me.level) + GAMBLING_RULES.spare && ready('gamble') && { key: 'gamble', reason: 'Gambling for rings and amulets', npc: 'gamble', action: 'gamble', work: () => this.gamble() },
+      me.gold > this.purseKeep() + BANK_MARGIN && me.stashGold < getStashGoldLimit(me.level) && ready('bank') && { key: 'bank', reason: 'Putting gold in the stash', work: () => this.bank() },
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.armoury.length > 0 && ready('armoury') && { key: 'armoury', reason: 'Taking better gear out of the stash', work: () => this.arm() },
@@ -1491,6 +1493,21 @@ export class Autopilot {
     const old = world.containers.cursor
     const spot = old && freeSpots(world.containers.inventory.values(), old.invWidth, old.invHeight)[0]
     if (old && spot) hudModel.placeCursorItem(old.id, spot.x, spot.y, INVENTORY_BUFFER)
+  }
+
+  private purseKeep(): number {
+    return Math.max(PURSE_GOLD, gambleReserve(this.host.world.self.level) + GAMBLING_RULES.spare)
+  }
+
+  private async bank(): Promise<void> {
+    const { world, hudModel } = this.host
+    const amount = Math.min(world.self.gold - this.purseKeep(), getStashGoldLimit(world.self.level) - world.self.stashGold)
+    const before = world.self.gold
+    if (hudModel === null || amount <= 0) return
+    await this.fromStash('bank', () => {
+      hudModel.depositGold(amount)
+      return waitFor(() => world.self.gold < before, 1500)
+    })
   }
 
   private async fillPurse(): Promise<void> {
