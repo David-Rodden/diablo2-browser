@@ -145,7 +145,7 @@ export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldS
   const self = host.self()
   const goal = level > 0 ? (detour ? { ...detour, level: throughTomb(detour.level, level, host.quests()) } : currentGoal(level, host.quests(), mode, host.carries, skipped)) : null
   if (!goal || !view || self.isDead) return null
-  const step = nextStep(level, goal.level, waypoints)
+  const step = nextStep(level, goal.level, waypoints, new Set(view.entrances.map((entrance) => entrance.toLevelId)))
   const objects = host.objects()
   const monsters = host.monsters?.() ?? []
   const find = step?.kind === 'arrived' ? (goal.find ?? []) : step?.kind === 'portal' ? step.find : step?.kind === 'waypoint' ? [[...WAYPOINT_CLASS_IDS_113C]] : []

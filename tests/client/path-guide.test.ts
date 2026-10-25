@@ -135,10 +135,17 @@ describe('path guide plan', () => {
   })
 
   it("sends a body run into Duriel's Lair through the true tomb, not the nearest one", () => {
-    const inTombOne = { ...host, areaId: () => 66, quests: () => ({ ...quests({ 1: 1, 2: 1 }, { 4: 1 }), tomb: 4 }) }
+    const tombView = { ...view, entrances: [{ x: 7, y: 1, interiorX: 7, interiorY: 2, toLevelId: 46, side: null, kind: 'preset', warp: { subX: 35, subY: 5, lvlWarpId: 1 } }] } as unknown as LevelView
+    const inTombOne = { ...host, areaId: () => 66, levelView: () => tombView, quests: () => ({ ...quests({ 1: 1, 2: 1 }, { 4: 1 }), tomb: 4 }) }
     const body = { level: 73, title: 'Your body', hint: 'Get your body back', spot: { x: 1010, y: 2010 } }
     expect(planGuide(inTombOne, 'story', undefined, new Set(), false, new Set(), body)!.step).toEqual({ kind: 'exit', level: 46 })
     expect(planGuide({ ...inTombOne, areaId: () => 70 }, 'story', undefined, new Set(), false, new Set(), body)!.step).toMatchObject({ kind: 'portal', level: 73 })
+  })
+
+  it('routes by the exits this map really has, through the Great Marsh when the forest has no jungle border', () => {
+    const forest = { ...view, entrances: [77, 75, 85].map((toLevelId) => ({ x: 7, y: 1, interiorX: 7, interiorY: 2, toLevelId, side: null, kind: 'gate' })) } as unknown as LevelView
+    const plan = planGuide({ ...host, areaId: () => 76, levelView: () => forest }, 'story', undefined, new Set(), false, new Set(), { level: 78, title: 'Training' })!
+    expect(plan.step).toEqual({ kind: 'exit', level: 77 })
   })
 
   it('aims a seam exit at the open gap in the fence, not at the anchor tile', () => {

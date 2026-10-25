@@ -119,10 +119,11 @@ export function shortestRoute(from: number, to: number, waypointLevels: Readonly
   return null
 }
 
-export function nextStep(from: number, to: number, waypoints: ReadonlySet<number> = new Set()): Step | null {
+export function nextStep(from: number, to: number, waypoints: ReadonlySet<number> = new Set(), exits: ReadonlySet<number> = new Set()): Step | null {
   if (from === to) return { kind: 'arrived', level: to }
   const levels = new Set([...waypoints].map((id) => WAYPOINT_LEVELS.get(id)).filter((level): level is number => level !== undefined))
-  const hop = shortestRoute(from, to, levels)?.[0]
+  const here = (LEVEL_LINKS.get(from) ?? []).filter((link) => link.kind !== 'walk' || exits.size === 0 || exits.has(link.to))
+  const hop = shortestRoute(from, to, levels, new Map([...LEVEL_LINKS, [from, here], [DURIELS_LAIR, []]]))?.[0]
   if (!hop) return null
   if (hop.kind === 'waypoint') return { kind: 'waypoint', level: hop.to }
   const portal = PORTALS[`${from}>${hop.to}`]
