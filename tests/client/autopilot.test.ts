@@ -864,6 +864,15 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).not.toBe('Raising an army before the Summoner')
   })
 
+  it('keeps hunting for gear while it wears almost nothing, even after a long hunt', () => {
+    const { pilot, world, guide, tick } = setup({ goal: { level: 50, title: 'Arcane Sanctuary' }, target: { x: 130, y: 100, label: 'Harem' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    Object.assign(world.self, { level: 23, gold: 0, stashGold: 50_000 })
+    Object.assign(pilot as unknown as { gearRestUntil: number }, { gearRestUntil: Number.POSITIVE_INFINITY })
+    tick()
+    expect((guide.detour as { hint?: string } | null)?.hint).toContain('Gathering gear')
+  })
+
   it('goes training first when the next goal is too dangerous for its level', () => {
     const { world, guide, tick } = setup({ goal: { level: 37, title: 'Sisters to the Slaughter' }, target: { x: 130, y: 100, label: 'Catacombs' } })
     Object.assign(guide, { currentPlan: guide.update() })

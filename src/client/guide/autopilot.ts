@@ -32,7 +32,7 @@ import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
 import { WAYPOINT_LEVELS } from './level-links.ts'
-import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, lockedLevels, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
+import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, lockedLevels, NAKED_SLOTS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
 import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 import THREAT from '../../common/skills/data/monster-threat.json'
@@ -456,13 +456,13 @@ export class Autopilot {
     const me = this.trainee()
     const training = this.training
     if (training) {
-      if (me.level >= training.level && me.gold >= training.gold && (me.bare <= training.bare || nowMs - training.since > GEAR_HUNT_MS)) {
+      if (me.level >= training.level && me.gold >= training.gold && (me.bare <= training.bare || (nowMs - training.since > GEAR_HUNT_MS && me.bare < NAKED_SLOTS))) {
         Object.assign(this, { training: null, ground: null, forgiven: nowMs, gearRestUntil: me.bare > training.bare ? nowMs + GEAR_REST_MS : this.gearRestUntil })
         this.toast('Ready to carry on', `Heading back to ${levelName(this.questLevel)}`, 'green')
       }
       return
     }
-    const need = readiness(me, this.questLevel, this.setbacks(nowMs), nowMs >= this.gearRestUntil)
+    const need = readiness(me, this.questLevel, this.setbacks(nowMs), nowMs >= this.gearRestUntil || me.bare >= NAKED_SLOTS)
     const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests))
     if (!need || ground === null) return
     this.training = { ...need, ground, since: nowMs }
