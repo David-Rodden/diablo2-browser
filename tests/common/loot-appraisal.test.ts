@@ -52,6 +52,8 @@ describe('keeping only what the character will use', () => {
     expect(javazon.weaponKind).toBe('javelin')
     expect(appraiseItem(plain('lxb'), context(javazon)).upgradeSlot).toBeUndefined()
     expect(appraiseItem(plain('jav'), context(javazon)).upgradeSlot).toBe('weapon1')
+    const barb = characterBuild({ classIndex: 4, level: 17, strength: 60, dexterity: 30, skillPoints: new Map([[126, 5]]) })
+    expect(['wnd', 'sbb', 'hax'].map((code) => appraiseItem(plain(code), context(barb)).upgradeSlot)).toEqual([undefined, undefined, 'weapon1'])
   })
 
   it('treats only the best carried piece for a slot as the upgrade', () => {

@@ -153,7 +153,7 @@ export function weaponFit(typeCode: string, build: CharacterBuild): WeaponFit {
     case 'javelin':
       return isA(typeCode, 'jave') || isA(typeCode, 'spea') ? 'full' : 'none'
     case 'melee':
-      return isBow ? 'none' : 'full'
+      return isBow || isA(typeCode, 'wand') || isA(typeCode, 'orb') ? 'none' : 'full'
   }
 }
 

@@ -26,7 +26,7 @@ import { mercUpgrade } from './merc-gear.ts'
 import { XpLedger } from './xp-ledger.ts'
 import { hireIdOf, MERCENARIES, pickMercenary, type HireCandidate } from './mercenary.ts'
 import { gamblePick, gambleReserve, GAMBLING_RULES } from './gambling.ts'
-import { slotOf } from '../../common/items/loot-appraisal.ts'
+import { misfits, slotOf } from '../../common/items/loot-appraisal.ts'
 import type { EquipSlotId } from '../../common/items/inventory-model.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
@@ -37,6 +37,7 @@ import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 import THREAT from '../../common/skills/data/monster-threat.json'
 import QUEST_OBJECTS from './data/quest-objects.json'
+import POTIONS from './data/potions.json'
 
 export interface AutopilotHost {
   readonly world: ClientWorld
@@ -481,7 +482,9 @@ export class Autopilot {
   }
 
   private bare(): number {
-    return bareSlots(this.host.world.containers.equipment.values())
+    const { equipment } = this.host.world.containers
+    const build = appraisalContextOf(this.host.world).build
+    return bareSlots(equipment.values()) + [...equipment.values()].filter((item) => Boolean(item.code) && misfits(item, build)).length
   }
 
   private waypointLevels(): ReadonlySet<number> {
@@ -1765,9 +1768,12 @@ export class Autopilot {
     const [healing, mana] = POTION_COLUMNS[this.isCaster() ? 'caster' : 'melee']
     const belt = (prefix: string) => [...world.containers.belt.values()].filter((item) => item.code.startsWith(prefix)).length
     const price = this.priceList()
-    const bestIn = (prefix: string): ItemData | undefined => {
-      const tiers = this.store().filter((item) => item.code.startsWith(prefix)).sort((a, b) => potionTier(b.code) - potionTier(a.code))
-      return tiers.find((item) => price(item) * POTION_SHARE <= world.self.gold) ?? tiers.at(-1)
+    const pool = { hp: hudManager.maxHp || world.self.maxLife, mp: hudManager.maxMana || world.self.maxMana }
+    const restores = POTIONS.restores as Readonly<Record<string, number>>
+    const bestIn = (prefix: 'hp' | 'mp'): ItemData | undefined => {
+      const tiers = this.store().filter((item) => item.code.startsWith(prefix)).sort((a, b) => potionTier(a.code) - potionTier(b.code))
+      const affordable = tiers.filter((item) => price(item) * POTION_SHARE <= world.self.gold)
+      return affordable.find((item) => (restores[item.code.trim()] ?? 0) >= pool[prefix] * POTIONS.enough) ?? affordable.at(-1) ?? tiers[0]
     }
     for (const [prefix, columns] of [['hp', healing], ['mp', mana]] as const) {
       const potion = bestIn(prefix)
