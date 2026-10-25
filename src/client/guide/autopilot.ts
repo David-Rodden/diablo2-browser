@@ -3,7 +3,7 @@ import { MONSTER_PATH_IDS } from '../../common/path/monster-path-data.ts'
 import { getLevelMonsterLevel113c } from '../../common/world/levels-monlvl-113c.ts'
 import { CANONICAL_113C_OBJECTS, WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import type { ItemData } from '../../netproto/index.ts'
-import { TELEPORT } from '../input/combat-planner.ts'
+import { BOSS_CLASSES, TELEPORT } from '../input/combat-planner.ts'
 import { scrollsCarried, scrollSource } from '../input/town-portal.ts'
 import { isClosedDoor, type PlayAssists } from '../input/play-assists.ts'
 import type { LevelView } from '../map/level-view.ts'
@@ -68,6 +68,9 @@ const TELEPORT_MISSES = 3
 const TELEPORT_OFF_MS = 60_000
 const REACH = 4
 const ARRIVED = 8
+const FIGHT_ROAM = 20
+const FUTILE_FIGHT_MS = 120_000
+const DISENGAGE_MS = 25_000
 const SPOT_NEAR = 20
 const INTERACT_REACH = 14
 const QUEST_FOCUS = 25
@@ -255,6 +258,8 @@ export class Autopilot {
   private rotatedAt = Number.NEGATIVE_INFINITY
   private reachedSpot: string | null = null
   private reading: Readonly<Record<string, number | null>> = {}
+  private fightWatch: { readonly x: number; readonly y: number; readonly since: number } | null = null
+  private disengagedUntil = Number.NEGATIVE_INFINITY
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -503,8 +508,9 @@ export class Autopilot {
     this.assess(nowMs)
     this.host.guide.detour = this.corpseGoal() ?? this.trainingGoal()
     const body = town ? null : this.bodyRun(nowMs)
-    assists.pilotCombat = assists.autoCombatKey !== null && danger === null && (body === null || this.cornered(nowMs))
-    assists.standDown = danger !== null && !this.cornered(nowMs)
+    const disengaged = this.futileFight(nowMs)
+    assists.pilotCombat = assists.autoCombatKey !== null && danger === null && !disengaged && (body === null || this.cornered(nowMs))
+    assists.standDown = (danger !== null || disengaged) && !this.cornered(nowMs)
     assists.holdLoot = this.questInReach()
     if (danger === null) this.spend(nowMs)
     if (this.host.hudManager.leftPanel === 'waypoint' || this.host.hudManager.leftPanel === 'orifice') this.answerPanels(nowMs)
@@ -514,7 +520,7 @@ export class Autopilot {
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
     else if (body !== null && !this.cornered(nowMs)) this.recover(body, nowMs)
-    else if (assists.isFighting(nowMs)) this.say('Fighting')
+    else if (!disengaged && assists.isFighting(nowMs)) this.say('Fighting')
     else if (!this.questInReach() && this.looting(nowMs)) this.say('Picking up loot')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
   }
@@ -955,6 +961,22 @@ export class Autopilot {
     const me = world.self
     const { dps, trusted } = assists.dangerOf(world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= THREAT.near))
     return trusted && (me.life / Math.max(1e-6, dps)) * 1000 < THREAT.escapeMs
+  }
+
+  private futileFight(nowMs: number): boolean {
+    const { world, assists } = this.host
+    const me = world.self
+    if (nowMs < this.disengagedUntil) return true
+    const watch = this.fightWatch
+    if (!assists.isFighting(nowMs) || this.town()) this.fightWatch = null
+    else if (!watch || distance(watch, me) > FIGHT_ROAM) this.fightWatch = { x: me.x, y: me.y, since: nowMs }
+    else if (nowMs - watch.since > FUTILE_FIGHT_MS && !world.getUnitsByType(1).some((unit) => !unit.dead && BOSS_CLASSES.has(unit.classId) && distance(unit, me) <= HUNT_RADIUS)) {
+      this.fightWatch = null
+      this.disengagedUntil = nowMs + DISENGAGE_MS
+      assists.journal?.('disengage', { from: [Math.round(me.x), Math.round(me.y)], seconds: Math.round((nowMs - watch.since) / 1000) })
+      return true
+    }
+    return false
   }
 
   private cornered(nowMs: number): boolean {

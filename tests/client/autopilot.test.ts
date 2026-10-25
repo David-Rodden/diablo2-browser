@@ -647,6 +647,21 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
   })
 
+  it('breaks off a fight that has gone nowhere for two minutes, but never walks away from a boss', () => {
+    const { assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(assists, { fighting: true, autoCombatKey: 'E' })
+    units.push(unit({ id: 60, x: 104, y: 100, name: 'Flayer Shaman' }))
+    tick()
+    expect(guide.pilotStatus).toBe('Fighting')
+    for (let i = 0; i < 125; i++) tick(1000)
+    expect([guide.pilotStatus, assists.standDown]).toEqual(['Head to Blood Moor', true])
+    const boss = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(boss.assists, { fighting: true, autoCombatKey: 'E' })
+    boss.units.push(unit({ id: 61, x: 104, y: 100, classId: 156, name: 'Andariel' }))
+    for (let i = 0; i < 125; i++) boss.tick(1000)
+    expect(boss.guide.pilotStatus).toBe('Fighting')
+  })
+
   it('pulls the sewer lever before taking the stairs it opens', () => {
     const { units, assists, guide, tick } = setup({ hint: 'Enter Kurast Sewers Level 2', target: { x: 110, y: 100, label: 'Kurast Sewers Level 2' }, step: { kind: 'exit', level: 93 } })
     units.push(unit({ id: 90, unitType: 'object', classId: 366, x: 110, y: 100, mode: 0 }), unit({ id: 91, unitType: 'object', classId: 367, x: 104, y: 100, mode: 0 }))
