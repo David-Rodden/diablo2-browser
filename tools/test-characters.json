@@ -179,7 +179,8 @@
     "quests": {
       "Den of Evil": "completed", "Sisters' Burial Grounds": "completed", "Tools of the Trade": "completed", "The Search for Cain": "completed",
       "The Forgotten Tower": "completed", "Sisters to the Slaughter": "completed", "Radament's Lair": "completed", "The Horadric Staff": "completed",
-      "Tainted Sun": "completed", "Arcane Sanctuary": "completed", "The Summoner": "completed", "The Seven Tombs": "completed"
+      "Tainted Sun": "completed", "Arcane Sanctuary": "completed", "The Summoner": "completed", "The Seven Tombs": "completed",
+      "Blade of the Old Religion": "completed", "The Golden Bird": "completed", "Lam Esen's Tome": "completed"
     },
     "equipped": {
       "Head": {"unique": "Harlequin Crest"},
