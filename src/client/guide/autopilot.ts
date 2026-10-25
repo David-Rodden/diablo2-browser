@@ -122,6 +122,7 @@ const DOOR_ON_ROUTE = 4
 const USE_MS = 600
 const USE_TRIES = 8
 const BACK_OFF = 5
+const WAYPOINT_ROUNDS = 3
 const CURSOR_SETTLE_MS = 1000
 const INVENTORY_BUFFER = 0
 const TALK_MS = 700
@@ -249,7 +250,7 @@ export class Autopilot {
   private progress = { ms: 0, x: 0, y: 0 }
   private job: Promise<unknown> | null = null
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
-  private readonly stubborn = new Set<number>()
+  private readonly stubborn = new Map<number, number>()
   private readonly scavenged = new Set<number>()
   private readonly mercTried = new Set<number>()
   private readonly ledger = new XpLedger()
@@ -850,14 +851,16 @@ export class Autopilot {
   private giveUpOn(unit: ClientUnit, nowMs: number): void {
     const plan = this.host.guide.currentPlan
     const me = this.host.world.self
-    if (!this.stubborn.has(unit.id)) {
-      this.stubborn.add(unit.id)
+    const waypoint = WAYPOINT_CLASS_IDS_113C.has(unit.classId)
+    const rounds = this.stubborn.get(unit.id) ?? 0
+    if (rounds < (waypoint ? WAYPOINT_ROUNDS : 1)) {
+      this.stubborn.set(unit.id, rounds + 1)
       this.uses.delete(unit.id)
       this.host.hudModel?.cancelNpcSession()
-      this.host.assists.journal?.('stubborn', { classId: unit.classId, npc: this.host.world.npcInteraction.npcId, window: this.host.world.npcInteraction.window })
-      const away = Math.max(1e-6, distance(me, unit))
-      this.host.assists.stepTo(me.x + ((me.x - unit.x) / away) * BACK_OFF, me.y + ((me.y - unit.y) / away) * BACK_OFF, nowMs)
-    } else if (WAYPOINT_CLASS_IDS_113C.has(unit.classId)) this.stop('Autopilot needs you', 'gold', "The waypoint wouldn't open")
+      this.host.assists.journal?.('stubborn', { classId: unit.classId, rounds: rounds + 1, npc: this.host.world.npcInteraction.npcId, window: this.host.world.npcInteraction.window })
+      const away = Math.atan2(me.y - unit.y, me.x - unit.x) + (rounds * 2 * Math.PI) / WAYPOINT_ROUNDS
+      this.host.assists.stepTo(unit.x + Math.cos(away) * BACK_OFF, unit.y + Math.sin(away) * BACK_OFF, nowMs)
+    } else if (waypoint) this.stop('Autopilot needs you', 'gold', "The waypoint wouldn't open")
     else if (plan?.target?.unit?.id === unit.id) this.skip(plan, `${unit.name ?? 'It'} wouldn't respond`)
     else this.walkRoute(nowMs)
   }

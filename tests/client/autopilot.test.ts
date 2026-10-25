@@ -411,13 +411,13 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toBe('Head to Blood Moor')
   })
 
-  it('backs off and tries a stuck waypoint again, then hands control back instead of skipping goals', () => {
+  it('tries a stuck waypoint again from three sides, then hands control back instead of skipping goals', () => {
     const { pilot, assists, hudManager, hudModel, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
-    for (let i = 0; i < 30; i++) tick(700)
-    expect(assists.stepTo).toHaveBeenCalled()
+    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+    expect(new Set(assists.stepTo.mock.calls.map(([x, y]) => `${Math.round(x as number)},${Math.round(y as number)}`)).size).toBe(3)
     expect(hudModel.cancelNpcSession).toHaveBeenCalled()
-    expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(16)
+    expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(32)
     expect(guide.skip).not.toHaveBeenCalled()
     expect(pilot.active).toBe(false)
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
