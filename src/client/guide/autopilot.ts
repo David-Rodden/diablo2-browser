@@ -591,7 +591,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.wounded()) this.say('Waiting to heal before heading out')
-    else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private refreshQuests(nowMs: number): void {
@@ -1205,6 +1205,10 @@ export class Autopilot {
   private wounded(): boolean {
     const { world, hudManager } = this.host
     return world.self.life < (hudManager.maxHp || world.self.maxLife) * HEAL_LIFE
+  }
+
+  private dryAndBroke(): boolean {
+    return this.healingPotions() === 0 && this.host.world.self.gold + this.host.world.self.stashGold < POTION_GOLD
   }
 
   private healingPotions(): number {

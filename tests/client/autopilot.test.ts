@@ -401,6 +401,16 @@ describe('autopilot', () => {
     expect(assists.walkTo.mock.calls.at(-1)![0]).toBeLessThan(300)
   })
 
+  it('does not step back through its portal with no potions and no gold to buy any', () => {
+    const { pilot, world, units, guide, tick } = setup({ goal: { level: 62, title: 'The Horadric Staff' }, step: { kind: 'waypoint', level: 43 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world.self, { gold: 16, stashGold: 0 })
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    tick()
+    tick(5000)
+    expect(guide.pilotStatus).not.toBe('Back through the portal')
+  })
+
   it('calls off a retreat once life is back and the belt has potions', () => {
     const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.self.life = 15
