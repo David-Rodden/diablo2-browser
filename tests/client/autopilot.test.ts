@@ -671,7 +671,7 @@ describe('autopilot', () => {
       tick(500)
       world.self.life = 66
       tick(1000)
-      return { status: guide.pilotStatus, dodges: assists.dodging.mock.calls.length, portal: assists.castTownPortal.mock.calls.length }
+      return { status: guide.pilotStatus, portal: assists.castTownPortal.mock.calls.length }
     }
     expect(run(1).status).toBe('Dodging')
     expect(run(12)).toMatchObject({ status: 'Taking a beating, heading to town', portal: 1 })
