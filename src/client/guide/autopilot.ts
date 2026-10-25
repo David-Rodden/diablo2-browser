@@ -231,6 +231,7 @@ const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y
 const isElite = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true)
 const WIELD = new Map(Object.values(QUEST_OBJECTS.wield).map((entry) => [entry.object, entry]))
 const TOOLS = new Set(Object.values(QUEST_OBJECTS.wield).map((entry) => entry.item))
+const BOSSES = new Set(LAIRS.bosses.map((name) => MONSTER_PATH_IDS.indexOf(name)))
 const BOONS = new Map(Object.entries(QUEST_OBJECTS.boons).map(([name, code]) => [code, name]))
 const EXIT_OBJECTS: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.exits))
 const LEVERS = new Map(Object.values(QUEST_OBJECTS.levers).map((entry) => [entry.object, entry.lever]))
@@ -991,10 +992,11 @@ export class Autopilot {
     const stocked = healing >= STOCKED_POTIONS
     this.lifeLog = [...this.lifeLog.filter((entry) => nowMs - entry.at <= BURST_MS), { at: nowMs, life }]
     const burst = Math.max(...this.lifeLog.map((entry) => entry.life)) - life
-    const retreatAt = Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0))) + this.caution(nowMs)
+    const boss = world.getUnitsByType(1).some((unit) => !unit.dead && BOSSES.has(unit.classId) && distance(unit, me) <= THREAT.near)
+    const retreatAt = Math.max(boss ? LAIRS.retreatLife : 0, Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0))) + this.caution(nowMs))
     const doomedIn = burst > DOOM_MIN_LOSS ? (life * BURST_MS) / burst : Infinity
     const crowd = world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.assists.isHostile(unit) && distance(unit, me) <= THREAT.near).length
-    const horizon = Math.min(DOOM_MAX_MS, DOOM_MS + Math.max(0, crowd - DOOM_CROWD) * DOOM_PER_FOE_MS)
+    const horizon = Math.min(DOOM_MAX_MS, DOOM_MS + Math.max(0, crowd - DOOM_CROWD) * DOOM_PER_FOE_MS) + (boss ? LAIRS.doomMarginMs : 0)
     this.reading = { life: Math.round(life * 100) / 100, burst: Math.round(burst * 100) / 100, doomedIn: Number.isFinite(doomedIn) ? Math.round(doomedIn) : null, horizon, healing, retreatAt: Math.round(retreatAt * 100) / 100 }
     if (life < retreatAt) return 'Low on life, heading to town'
     if (doomedIn < horizon) return 'Taking a beating, heading to town'

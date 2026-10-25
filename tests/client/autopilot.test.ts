@@ -422,6 +422,18 @@ describe('autopilot', () => {
     expect(new Set(assists.stepTo.mock.calls.map(([x, y]) => `${Math.round(x as number)},${Math.round(y as number)}`)).size).toBe(3)
   })
 
+  it('leaves an act boss fight with more life to spare than an ordinary one', () => {
+    const fight = (classId: number) => {
+      const { world, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+      ;[1, 2, 3, 4, 5, 6, 7, 8].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+      units.push(unit({ id: 80, classId, x: 104, y: 100, name: 'Fallen' }))
+      world.self.life = 44
+      tick()
+      return guide.pilotStatus === 'Low on life, heading to town'
+    }
+    expect([fight(19), fight(211)]).toEqual([false, true])
+  })
+
   it('calls off a retreat once life is back and the belt has potions', () => {
     const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.self.life = 15
