@@ -60,7 +60,7 @@ export function readiness(me: Trainee, questLevel: number, setbacks: number, gea
 
 export function trainingGround(from: number, me: Trainee, waypointLevels: ReadonlySet<number>, skip: ReadonlySet<number>, rateOf: (area: number) => number | undefined = () => undefined, sealed: ReadonlySet<number> = new Set()): number | null {
   const maxAct = actOfLevel(from)
-  const ceiling = me.level - TRAINING.belowGoal
+  const ceiling = Math.max(Math.min(me.level - TRAINING.belowGoal, TRAINING.bareFromLevel), me.level - TRAINING.belowGoal - Math.round(me.bare * TRAINING.barePenalty))
   const links = new Map([...LEVEL_LINKS].filter(([level]) => !sealed.has(level)).map(([level, out]) => [level, out.filter((link) => !sealed.has(link.to))]))
   const hops = (level: number) => shortestRoute(from, level, waypointLevels, links)?.length ?? Infinity
   const candidates = LEVELS_MONLVL_113C.map((_, id) => id).filter((id) => id > 0 && !TOWNS.has(id) && !AVOID.has(id) && !skip.has(id) && actOfLevel(id) <= maxAct && monsterLevel(id, me.difficulty) <= ceiling)

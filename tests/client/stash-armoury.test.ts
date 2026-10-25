@@ -27,4 +27,10 @@ describe('better gear left in the stash', () => {
     expect(care([charm(10), charm(11)], filler(24)).armoury).toHaveLength(1)
     expect(care([charm(10)], filler(26)).armoury).toEqual([])
   })
+
+  it('counts charms below great as spares to sell when money runs short, but never the quest items', () => {
+    const charm = (id: number, value: number) => item({ id, code: 'cm3', invWidth: 1, invHeight: 3, container: 'inventory', stats: life(value) })
+    const bag = care([], [charm(1, 5), charm(2, 45), charm(3, 400), item({ id: 4, code: 'box', container: 'inventory', quality: 2 })])
+    expect(bag.spares.map((spare) => spare.id)).toEqual([1, 2])
+  })
 })

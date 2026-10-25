@@ -115,7 +115,7 @@ export class InventoryCare {
   }
 
   get spares(): ItemData[] {
-    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && appraisal.tier !== 'great' && SPARE_KINDS.has(appraisal.kind))
+    return this.inventoryWhere((appraisal) => (!appraisal.locked || appraisal.kind === 'charm') && appraisal.upgradeSlot === undefined && appraisal.tier !== 'great' && SPARE_KINDS.has(appraisal.kind))
   }
 
   get clutter(): ItemData[] {

@@ -19,6 +19,10 @@
     "Cairn Stones": [17, 18, 19, 20, 21]
   },
   "rotateMs": 1500,
+  "boons": {
+    "Book of Skill": "ass",
+    "Potion of Life": "xyz"
+  },
   "sweep": {
     "Den of Evil": 8
   },

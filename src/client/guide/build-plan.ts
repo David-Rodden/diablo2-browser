@@ -37,8 +37,12 @@ export const buildOf = (charClass: number | null, hard: (skillId: number) => num
 const withPrereqs = (skillId: number, hard: (id: number) => number): readonly number[] => [...(PREREQS.get(skillId) ?? []).filter((id) => hard(id) === 0).flatMap((id) => withPrereqs(id, hard)), skillId]
 
 export function nextSkill(build: Build, hard: (skillId: number) => number, canAllocate: (skillId: number) => boolean): number | null {
-  const goal = build.skills.map(([name, level]) => ({ id: SKILL_IDS.get(name)!, level })).find(({ id, level }) => hard(id) < level)
-  return goal ? (withPrereqs(goal.id, hard).find(canAllocate) ?? null) : null
+  for (const { id } of build.skills.map(([name, level]) => ({ id: SKILL_IDS.get(name)!, level })).filter(({ id, level }) => hard(id) < level)) {
+    const pick = withPrereqs(id, hard).find(canAllocate)
+    if (pick !== undefined) return pick
+    if (hard(id) === 0) return null
+  }
+  return null
 }
 
 export function nextStat(build: Build, base: Readonly<Record<BaseStatKey, number>>): BaseStatKey | null {

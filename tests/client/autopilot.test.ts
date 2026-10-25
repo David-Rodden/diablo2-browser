@@ -23,7 +23,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
   }
   const hudManager = { leftPanel: 'none', worldPanels: { npcMenu: null as unknown, npcSpeech: null, clickNpcMenuOption: vi.fn() }, toasts: { push: vi.fn() }, maxHp: 0, maxMana: 0, belt: { maxRows: 4 } }
-  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), cancelNpcSession: vi.fn(), requestQuestData: vi.fn() }
+  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), cancelNpcSession: vi.fn(), requestQuestData: vi.fn(), useItem: vi.fn() }
   const assists = {
     autoCombatKey: 'E' as string | null,
     pilotKey: 'Y',
@@ -144,6 +144,15 @@ describe('autopilot', () => {
       return (assists.inventoryCare as { hardUp?: boolean }).hardUp
     }
     expect([hardUp(450), hardUp(700)]).toEqual([true, false])
+  })
+
+  it('reads a Book of Skill it carries while in town', () => {
+    const { world, hudModel, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 1000
+    world.containers.inventory.set(9, { id: 9, code: 'ass ', identified: true })
+    tick()
+    expect([guide.pilotStatus, hudModel.useItem.mock.calls]).toEqual(['Using the Book of Skill', [[9]]])
   })
 
   it('asks the server for fresh quest state when the step has not moved for a while', () => {

@@ -27,6 +27,7 @@
   "minLevelPerMinute": 0.01,
   "dressed": ["weapon1", "armor", "helm", "gloves", "belt", "boots"],
   "bareSlots": 3,
+  "barePenalty": 1.5,
   "bareFromLevel": 12,
   "gearMinutes": 20,
   "gearRestMinutes": 60,

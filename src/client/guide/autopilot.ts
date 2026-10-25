@@ -228,6 +228,7 @@ const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y
 const isElite = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true)
 const WIELD = new Map(Object.values(QUEST_OBJECTS.wield).map((entry) => [entry.object, entry]))
 const TOOLS = new Set(Object.values(QUEST_OBJECTS.wield).map((entry) => entry.item))
+const BOONS = new Map(Object.entries(QUEST_OBJECTS.boons).map(([name, code]) => [code, name]))
 const EXIT_OBJECTS: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.exits))
 const LEVERS = new Map(Object.values(QUEST_OBJECTS.levers).map((entry) => [entry.object, entry.lever]))
 const SWEEP: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.sweep))
@@ -1382,6 +1383,7 @@ export class Autopilot {
     const recipe = readyRecipe(world)
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
+      this.boons().length > 0 && ready('boon') && { key: 'boon', reason: `Using the ${BOONS.get(this.boons()[0]!.code.trim())}`, work: () => this.useBoons() },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
       merc === null && world.expansion === true && me.gold >= MERCENARIES.minGold && this.settledIn(nowMs) && ready('hire') && { key: 'hire', reason: 'Hiring a mercenary', npc: 'mercs', action: 'hire', work: () => this.hire() },
       this.mercGear() !== null && ready('mercGear') && { key: 'mercGear', reason: 'Giving your mercenary better gear', work: () => this.dressMerc() },
@@ -1762,6 +1764,19 @@ export class Autopilot {
     const wanted = code === tomeCode || this.scrollsWanted(kind) > 0
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || !wanted) return false
     return hudModel.vendorBuy(ware.id, false) && waitFor(() => world.self.gold < before, 1500)
+  }
+
+  private boons(): ItemData[] {
+    return [...this.host.world.containers.inventory.values()].filter((item) => BOONS.has(item.code.trim()))
+  }
+
+  private async useBoons(): Promise<void> {
+    const { world, hudModel } = this.host
+    for (const item of this.boons()) {
+      if (hudModel === null || !this.active) break
+      hudModel.useItem(item.id)
+      await waitFor(() => !world.containers.inventory.has(item.id), IDENTIFY_MS)
+    }
   }
 
   private unidentified(): ItemData[] {
