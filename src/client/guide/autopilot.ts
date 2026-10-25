@@ -1385,7 +1385,7 @@ export class Autopilot {
       return true
     }
     const step = plan?.step
-    if (step?.kind !== 'portal' || !LAIRS.noExit.includes(step.level) || assists.hasTownPortal()) return false
+    if (step?.kind !== 'portal' || !LAIRS.noExit.includes(step.level) || assists.hasTownPortal() || this.corpse?.level === step.level) return false
     this.retreat(`${PREP} ${levelName(step.level)}: no way out without a Town Portal`, nowMs)
     return true
   }
