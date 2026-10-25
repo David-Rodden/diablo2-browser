@@ -791,6 +791,20 @@ describe('autopilot', () => {
     expect(guide.detour).toBeNull()
   })
 
+  it('stops walking back into the same death after the third time, and says to rejoin', () => {
+    const { pilot, world, hudModel, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    for (const x of [100, 110, 120]) {
+      Object.assign(world.self, { x })
+      world.isDead = true
+      tick(1000)
+      world.isDead = false
+      tick(60_000)
+    }
+    expect(pilot.active).toBe(false)
+    expect(pilot.lastStop?.detail).toContain('rejoin')
+  })
+
   it('respawns after dying and goes back for its body', () => {
     const { pilot, world, guide, hudModel, units, tick } = setup({})
     Object.assign(hudModel, { resurrect: vi.fn() })

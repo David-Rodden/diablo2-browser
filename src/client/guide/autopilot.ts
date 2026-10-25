@@ -89,6 +89,8 @@ const CORPSE_GONE = 10
 const BODY_GONE_MS = 3000
 const REVIVE_MS = 2500
 const DEATH_MEMORY_MS = 20 * 60_000
+const SPIRAL_MS = 15 * 60_000
+const SPIRAL_DEATHS = 3
 const DEATH_CAUTION = 0.08
 const MAX_CAUTION = 0.24
 const HUNT_CAUTION = 0.16
@@ -267,6 +269,7 @@ export class Autopilot {
   private fightWatch: { readonly x: number; readonly y: number; readonly since: number } | null = null
   private disengagedUntil = Number.NEGATIVE_INFINITY
   private harm: { readonly xp: number; at: number; fought: number } | null = null
+  lastStop: { readonly title: string; readonly detail: string } | null = null
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -324,6 +327,7 @@ export class Autopilot {
     Object.assign(assists, { pilotCombat: false, questPickup: false, standDown: false, holdLoot: false })
     guide.pilotStatus = null
     guide.detour = null
+    this.lastStop = { title, detail }
     this.toast(title, detail, color)
   }
 
@@ -346,6 +350,12 @@ export class Autopilot {
       this.corpse = { level: world.areaId, x: world.self.x, y: world.self.y }
       this.deaths = [...this.deaths.filter((death) => nowMs - death.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? world.areaId }]
       Object.assign(this, { trip: null, crossing: null, talk: null, chase: null })
+      const spiral = this.deaths.filter((death) => nowMs - death.at < SPIRAL_MS && death.level === this.deaths.at(-1)!.level).length
+      if (spiral >= SPIRAL_DEATHS) {
+        this.host.assists.journal?.('spiral', { deaths: spiral, level: world.areaId })
+        this.stop('Autopilot needs you', 'red', `Died ${spiral} times in ${levelName(world.areaId)}: rejoin to find the body waiting in town`)
+        return
+      }
       this.toast('You died', 'Going back for your body', 'red')
     }
     this.say('Died, going back for your body')
