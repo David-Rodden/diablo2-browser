@@ -73,6 +73,7 @@ const TRAIL_ROUNDS = 3
 const REACH_SNAP = 3
 const PORTAL_CLASSES = new Set([59, 60, 100, 298, 342, 563])
 const ORIFICE = 152
+const GATE_SNAP = 2
 const WAYPOINT_NEAR = 45
 const LEARN_WAYPOINTS = 'Touch the waypoint so the guide knows yours'
 
@@ -84,29 +85,35 @@ const hintFor = (step: Step | null, goal: Goal, target: GuideTarget | null): str
   return goal.hint ?? (target ? `Find ${target.label}` : `Explore ${levelName(step.level)}`)
 }
 
-const seamGap = (view: LevelView, entrance: LevelView['entrances'][number]): readonly [number, number] | null => {
+const seamGaps = (view: LevelView, entrance: LevelView['entrances'][number]): readonly (readonly [number, number])[] => {
   const [inX, inY] = [Math.sign(entrance.interiorX - entrance.x), Math.sign(entrance.interiorY - entrance.y)]
-  if (!entrance.span || (inX === 0) === (inY === 0)) return null
+  if (!entrance.span || (inX === 0) === (inY === 0)) return []
   const edge = (tile: number, inward: number) => (inward > 0 ? tile * 5 : tile * 5 + 4)
   const along = Array.from({ length: (entrance.span.to - entrance.span.from) * 5 }, (_, i) => entrance.span!.from * 5 + i)
   const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < view.subWidth && y < view.subHeight
   const walkable = (x: number, y: number) => inside(x, y) && view.walkable[y * view.subWidth + x] !== 0
   const opensOut = (x: number, y: number) => Array.from({ length: GAP_DEPTH }, (_, step) => [x - inX * (step + 1), y - inY * (step + 1)] as const).every(([ox, oy]) => !inside(ox, oy) || walkable(ox, oy))
+  const runs = (cells: readonly (readonly [number, number])[]) => cells.reduce<(readonly [number, number])[][]>((all, cell) => {
+    const last = all.at(-1)?.at(-1)
+    if (last && Math.abs(last[0] - cell[0]) + Math.abs(last[1] - cell[1]) === 1) all.at(-1)!.push(cell)
+    else all.push([cell])
+    return all
+  }, [])
   for (const open of [opensOut, () => true])
     for (let depth = 0; depth < GAP_DEPTH; depth++) {
       const cells = along
         .map((a): readonly [number, number] => (inX !== 0 ? [edge(entrance.x, inX) + inX * depth, a] : [a, edge(entrance.y, inY) + inY * depth]))
         .filter(([x, y]) => walkable(x, y) && open(x, y))
-      if (cells.length > 0) return cells[Math.floor(cells.length / 2)]!
+      if (cells.length > 0) return runs(cells).map((run) => run[Math.floor(run.length / 2)]!)
     }
-  return null
+  return []
 }
 
-const entranceTarget = (view: LevelView, level: number): GuideTarget | null => {
+const entranceTargets = (view: LevelView, level: number): GuideTarget[] => {
   const entrance = view.entrances.find((e) => e.toLevelId === level)
-  if (!entrance) return null
-  const [x, y] = entrance.warp ? [entrance.warp.subX, entrance.warp.subY] : (seamGap(view, entrance) ?? [entrance.x * 5 + 2, entrance.y * 5 + 2])
-  return { x: view.originX + x, y: view.originY + y, label: levelName(level) }
+  if (!entrance) return []
+  const spots = entrance.warp ? [[entrance.warp.subX, entrance.warp.subY] as const] : seamGaps(view, entrance)
+  return (spots.length > 0 ? spots : [[entrance.x * 5 + 2, entrance.y * 5 + 2] as const]).map(([x, y]) => ({ x: view.originX + x, y: view.originY + y, label: levelName(level) }))
 }
 
 const landmarkTarget = (view: LevelView): GuideTarget | null => {
@@ -145,14 +152,16 @@ export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldS
   const self = host.self()
   const goal = level > 0 ? (detour ? { ...detour, level: throughTomb(detour.level, level, host.quests()) } : currentGoal(level, host.quests(), mode, host.carries, skipped)) : null
   if (!goal || !view || self.isDead) return null
-  const step = nextStep(level, goal.level, waypoints)
+  const step = nextStep(level, goal.level, waypoints, new Set(view.entrances.map((entrance) => entrance.toLevelId)))
   const objects = host.objects()
   const monsters = host.monsters?.() ?? []
   const find = step?.kind === 'arrived' ? (goal.find ?? []) : step?.kind === 'portal' ? step.find : step?.kind === 'waypoint' ? [[...WAYPOINT_CLASS_IDS_113C]] : []
   const asking = askForWaypoints && step !== null && step.kind !== 'arrived' && step.kind !== 'waypoint'
   const nearWaypoint = asking ? findTargets([[...WAYPOINT_CLASS_IDS_113C]], view, objects, monsters, self).filter((t) => Math.hypot(t.x - self.x, t.y - self.y) <= WAYPOINT_NEAR).slice(0, 1) : []
   const marked = nearWaypoint.length > 0 ? nearWaypoint : findTargets(find, view, objects, monsters, self)
-  const target = marked[0] ?? (step?.kind === 'arrived' && goal.spot ? { ...goal.spot, label: goal.title } : null) ?? (step?.kind === 'exit' ? entranceTarget(view, step.level) : step?.kind === 'arrived' && find.length === 0 && !goal.inTown ? landmarkTarget(view) : null)
+  const gates = step?.kind === 'exit' ? entranceTargets(view, step.level).sort((a, b) => Math.hypot(a.x - self.x, a.y - self.y) - Math.hypot(b.x - self.x, b.y - self.y)) : []
+  const gate = gates.length > 1 ? (gates.find((t) => fieldFor(view, t).pathFrom(self.x, self.y, 1, 1, GATE_SNAP).length > 0) ?? gates[0]) : gates[0]
+  const target = marked[0] ?? (step?.kind === 'arrived' && goal.spot ? { ...goal.spot, label: goal.title } : null) ?? (step?.kind === 'exit' ? (gate ?? null) : step?.kind === 'arrived' && find.length === 0 && !goal.inTown ? landmarkTarget(view) : null)
   const field = target ? fieldFor(view, target) : null
   const path = field?.pathFrom(self.x, self.y, 1) ?? []
   const route = field?.corners(path, self) ?? []

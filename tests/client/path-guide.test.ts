@@ -135,10 +135,17 @@ describe('path guide plan', () => {
   })
 
   it("sends a body run into Duriel's Lair through the true tomb, not the nearest one", () => {
-    const inTombOne = { ...host, areaId: () => 66, quests: () => ({ ...quests({ 1: 1, 2: 1 }, { 4: 1 }), tomb: 4 }) }
+    const tombView = { ...view, entrances: [{ x: 7, y: 1, interiorX: 7, interiorY: 2, toLevelId: 46, side: null, kind: 'preset', warp: { subX: 35, subY: 5, lvlWarpId: 1 } }] } as unknown as LevelView
+    const inTombOne = { ...host, areaId: () => 66, levelView: () => tombView, quests: () => ({ ...quests({ 1: 1, 2: 1 }, { 4: 1 }), tomb: 4 }) }
     const body = { level: 73, title: 'Your body', hint: 'Get your body back', spot: { x: 1010, y: 2010 } }
     expect(planGuide(inTombOne, 'story', undefined, new Set(), false, new Set(), body)!.step).toEqual({ kind: 'exit', level: 46 })
     expect(planGuide({ ...inTombOne, areaId: () => 70 }, 'story', undefined, new Set(), false, new Set(), body)!.step).toMatchObject({ kind: 'portal', level: 73 })
+  })
+
+  it('routes by the exits this map really has, through the Great Marsh when the forest has no jungle border', () => {
+    const forest = { ...view, entrances: [77, 75, 85].map((toLevelId) => ({ x: 7, y: 1, interiorX: 7, interiorY: 2, toLevelId, side: null, kind: 'gate' })) } as unknown as LevelView
+    const plan = planGuide({ ...host, areaId: () => 76, levelView: () => forest }, 'story', undefined, new Set(), false, new Set(), { level: 78, title: 'Training' })!
+    expect(plan.step).toEqual({ kind: 'exit', level: 77 })
   })
 
   it('aims a seam exit at the open gap in the fence, not at the anchor tile', () => {
@@ -153,6 +160,16 @@ describe('path guide plan', () => {
     for (let x = 0; x < size; x++) if (x < 24 || x > 28) fenced[35 * size + x] = fenced[36 * size + x] = 0
     const seam = { ...view, walkable: fenced, entrances: [{ x: 2, y: 6, interiorX: 2, interiorY: 5, toLevelId: 3, side: 'south', kind: 'gate', span: { from: 0, to: 8 } }] } as unknown as LevelView
     expect(planGuide({ ...host, levelView: () => seam }, 'story')!.target).toEqual({ x: 1026, y: 2034, label: 'Cold Plains' })
+  })
+
+  it('picks the gap in a seam that it can actually walk to when the edge has two', () => {
+    const split = new Uint8Array(size * size).fill(1)
+    for (let x = 0; x < size; x++) split[30 * size + x] = 0
+    for (let y = 30; y < size; y++) split[y * size + 20] = 0
+    for (let x = 0; x < size; x++) if (x !== 15 && x !== 35) split[39 * size + x] = 0
+    const seam = { ...view, walkable: split, entrances: [{ x: 2, y: 7, interiorX: 2, interiorY: 6, toLevelId: 3, side: 'south', kind: 'gate', span: { from: 0, to: 8 } }] } as unknown as LevelView
+    const plan = planGuide({ ...host, self: () => ({ x: 1022, y: 2038, isDead: false }), levelView: () => seam }, 'story')!
+    expect(plan.target).toMatchObject({ x: 1035, y: 2039 })
   })
 
   it('takes the walkable gap at an edge padded with solid ground beyond it', () => {

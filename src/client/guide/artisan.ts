@@ -1,4 +1,5 @@
-import { equipSlotsOf, gearScore, slotOf } from '../../common/items/loot-appraisal.ts'
+import KNOWLEDGE from '../../common/items/data/loot-knowledge.json'
+import { equipSlotsOf, gearScore, imbueWorth, slotOf } from '../../common/items/loot-appraisal.ts'
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { freeSpots } from '../input/auto-loot.ts'
@@ -31,7 +32,9 @@ export function artisanPick(world: ClientWorld, kind: ArtisanKind): ItemData | n
   const { equipment, inventory } = world.containers
   const candidates = [...equipment.values(), ...inventory.values()].filter((item) => item.identified && equipSlotsOf(item).length > 0 && qualifies[kind](item))
   const worn = (item: ItemData) => (equipment.has(item.id) ? 1 : 0)
-  return candidates.sort((a, b) => worn(b) - worn(a) || gearScore(b, build) - gearScore(a, build))[0] ?? null
+  const worth = (item: ItemData) => (kind === 'imbue' ? imbueWorth(item, build) : 0)
+  const pick = candidates.sort((a, b) => worth(b) - worth(a) || worn(b) - worn(a) || gearScore(b, build) - gearScore(a, build))[0]
+  return pick && (kind !== 'imbue' || worth(pick) > 0 || build.level >= KNOWLEDGE.imbue.plainFromLevel) ? pick : null
 }
 
 async function intoInventory({ world, hudModel }: ArtisanHost, item: ItemData): Promise<boolean> {

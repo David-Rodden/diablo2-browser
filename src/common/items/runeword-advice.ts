@@ -16,6 +16,7 @@ export interface RunewordPick {
 const LEVEL_HEADROOM = 20
 const MIN_SCORE = 60
 const OWN_PICKS = 8
+const NOW_PICKS = 4
 const MERC_PICKS = 2
 const MERC_TYPES = new Set(PLAY_STYLES.mercWeaponTypes)
 
@@ -40,7 +41,9 @@ export function runewordsFor(build: CharacterBuild): readonly RunewordPick[] {
   const merc = characterBuild({ classIndex: -1, level: build.level, strength: 0, dexterity: 0, skillPoints: new Map() })
   const reachable = ALL.filter((rw) => rw.levelreq <= build.level + LEVEL_HEADROOM)
   const ranked = (picks: readonly RunewordPick[], limit: number) => [...picks].filter((p) => p.score >= MIN_SCORE).sort((a, b) => b.score - a.score).slice(0, limit)
-  const own = ranked(reachable.map(({ stats, ...rw }) => ({ ...rw, score: Math.round(Math.max(...rw.itypes.map((t) => fitScore(stats, build, weaponFit(t, build))))), forMerc: false })), OWN_PICKS)
+  const scored = reachable.map(({ stats, ...rw }) => ({ ...rw, score: Math.round(Math.max(...rw.itypes.map((t) => fitScore(stats, build, weaponFit(t, build))))), forMerc: false }))
+  const now = ranked(scored.filter((rw) => rw.levelreq <= build.level), NOW_PICKS)
+  const own = [...now, ...ranked(scored, OWN_PICKS).filter((rw) => !now.includes(rw))]
   const forMerc = ranked(
     reachable.filter((rw) => rw.itypes.some((t) => MERC_TYPES.has(t)) && !own.some((p) => p.name === rw.name)).map(({ stats, ...rw }) => ({ ...rw, score: Math.round(fitScore(stats, merc, 'full')), forMerc: true })),
     MERC_PICKS,
