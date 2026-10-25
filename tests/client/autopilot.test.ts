@@ -443,6 +443,22 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toContain('no way out without a Town Portal')
   })
 
+  it("leaves Duriel's Lair by portal when its next goal is elsewhere, and does not come back through", () => {
+    const { pilot, world, guide, units, view, tick } = setup({ goal: { level: 45, title: 'Training' }, hint: 'Take the portal to Tal Rasha\'s Tomb 5', step: { kind: 'portal', level: 70, hint: '', find: [] }, target: null })
+    Object.assign(guide, { currentPlan: guide.update() })
+    Object.assign(world, { areaId: 73 })
+    tick()
+    expect(guide.pilotStatus).toBe("Heading to town by portal: no way out of Duriel's Lair on foot")
+    Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+    Object.assign(view, { id: ROGUE_ENCAMPMENT })
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 0
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    tick()
+    tick(5000)
+    expect([guide.pilotStatus, (pilot as unknown as { trip: string | null }).trip]).not.toContain('Back through the portal')
+  })
+
   it('calls off a retreat once life is back and the belt has potions', () => {
     const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.self.life = 15

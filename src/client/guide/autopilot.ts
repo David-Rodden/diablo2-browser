@@ -211,6 +211,7 @@ const RETHINK_GAIN = 10
 const REGROUP = 'Stuck here, regrouping in town'
 const ERRAND = 'Heading to town by portal:'
 const ERRAND_WALK = 50
+const ON_FOOT = 'on foot'
 const planned = (why: string) => why.startsWith(PREP) || why.startsWith(ERRAND) || why === REGROUP
 const ROOM_REACHED = 8
 const ROOM_END = 3
@@ -424,7 +425,7 @@ export class Autopilot {
     const target = plan?.target
     const near = target !== null && target !== undefined && distance(target, world.self) <= LAIRS.range
     const marks = new Set([...(plan?.step?.kind === 'portal' ? plan.step.find.flat() : []), ...(plan?.goal.find ?? []).flat()])
-    const lair = Object.entries(LAIRS.levels).find(([, level]) => level === world.areaId)?.[0]
+    const lair = Object.entries(LAIRS.levels).find(([, level]) => level === world.areaId && plan?.goal.level === level)?.[0]
     const spot = near ? Object.entries(LAIRS.objects).find(([, classId]) => marks.has(classId))?.[0] : undefined
     return lair ?? spot ?? null
   }
@@ -594,7 +595,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.wounded()) this.say('Waiting to heal before heading out')
-    else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(town === null && this.portalFirst(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && !this.retreatWhy.endsWith(ON_FOOT) && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(town === null && this.portalFirst(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private refreshQuests(nowMs: number): void {
@@ -1373,8 +1374,14 @@ export class Autopilot {
   }
 
   private portalFirst(nowMs: number): boolean {
-    const step = this.host.guide.currentPlan?.step
-    if (step?.kind !== 'portal' || !LAIRS.noExit.includes(step.level) || this.host.assists.hasTownPortal()) return false
+    const { world, assists, guide } = this.host
+    const plan = guide.currentPlan
+    if (plan && LAIRS.noExit.includes(world.areaId) && plan.goal.level !== world.areaId && assists.hasTownPortal()) {
+      this.retreat(`${ERRAND} no way out of ${levelName(world.areaId)} ${ON_FOOT}`, nowMs)
+      return true
+    }
+    const step = plan?.step
+    if (step?.kind !== 'portal' || !LAIRS.noExit.includes(step.level) || assists.hasTownPortal()) return false
     this.retreat(`${PREP} ${levelName(step.level)}: no way out without a Town Portal`, nowMs)
     return true
   }
