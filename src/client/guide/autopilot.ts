@@ -17,7 +17,7 @@ import type { ClientWorld } from '../world/client-world.ts'
 import { useArtisan, type ArtisanKind } from './artisan.ts'
 import { freeSpots } from '../input/auto-loot.ts'
 import { vendorPrice113c } from '../ui-model/vendor-price.ts'
-import { getInventoryGoldLimit } from '../../common/items/inventory-model.ts'
+import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
 import { readyRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
@@ -186,6 +186,7 @@ const BARE_RESERVE = 150
 const RESERVE_PER_LEVEL = 25
 const PURSE_LOW = 3000
 const PURSE_GOLD = 10_000
+const BANK_MARGIN = 2000
 const POTION_SHARE = 4
 const BUY_TRIES = 16
 const MERC_ITEM_MS = 1500
@@ -296,6 +297,8 @@ export class Autopilot {
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
   private lastSpend = Number.NEGATIVE_INFINITY
   private corpse: { readonly level: number; readonly x: number; readonly y: number } | null = null
+  private bodyTouch: { readonly id: number; readonly worn: number } | null = null
+  private readonly ghosts = new Set<number>()
   private deaths: readonly { readonly at: number; readonly level: number }[] = []
   private retreats: readonly { readonly at: number; readonly level: number }[] = []
   private forgiven = Number.NEGATIVE_INFINITY
@@ -377,7 +380,7 @@ export class Autopilot {
 
   private ownBody(): ClientUnit | undefined {
     const { world } = this.host
-    return world.getUnitsByType(0).find((unit) => unit.id !== world.selfId && unit.name === world.self.name)
+    return world.getUnitsByType(0).find((unit) => unit.id !== world.selfId && unit.name === world.self.name && !this.ghosts.has(unit.id))
   }
 
   private bodyRun(nowMs: number): ClientUnit | null {
@@ -385,6 +388,12 @@ export class Autopilot {
     const { world } = this.host
     if (corpse?.level !== world.areaId) return null
     const body = this.ownBody()
+    if (body && this.bodyTouch?.id === body.id && world.containers.equipment.size > this.bodyTouch.worn) {
+      this.ghosts.add(body.id)
+      Object.assign(this, { corpse: null, bodyTouch: null })
+      this.toast('Got your body back', '', 'green')
+      return null
+    }
     if (body) {
       this.corpse = { level: corpse.level, x: body.x, y: body.y }
       this.bodySeen = nowMs
@@ -399,6 +408,7 @@ export class Autopilot {
 
   private recover(body: ClientUnit, nowMs: number): void {
     this.say('Picking up your body')
+    if (this.bodyTouch?.id !== body.id) this.bodyTouch = { id: body.id, worn: this.host.world.containers.equipment.size }
     if (distance(body, this.host.world.self) <= REACH) this.touch(body, nowMs)
     else this.walkTowards(body, nowMs)
   }
@@ -1394,6 +1404,7 @@ export class Autopilot {
         : false,
       (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
       me.gold >= gambleReserve(me.level) + GAMBLING_RULES.spare && ready('gamble') && { key: 'gamble', reason: 'Gambling for rings and amulets', npc: 'gamble', action: 'gamble', work: () => this.gamble() },
+      me.gold > this.purseKeep() + BANK_MARGIN && me.stashGold < getStashGoldLimit(me.level) && ready('bank') && { key: 'bank', reason: 'Putting gold in the stash', work: () => this.bank() },
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.armoury.length > 0 && ready('armoury') && { key: 'armoury', reason: 'Taking better gear out of the stash', work: () => this.arm() },
@@ -1482,6 +1493,21 @@ export class Autopilot {
     const old = world.containers.cursor
     const spot = old && freeSpots(world.containers.inventory.values(), old.invWidth, old.invHeight)[0]
     if (old && spot) hudModel.placeCursorItem(old.id, spot.x, spot.y, INVENTORY_BUFFER)
+  }
+
+  private purseKeep(): number {
+    return Math.max(PURSE_GOLD, gambleReserve(this.host.world.self.level) + GAMBLING_RULES.spare)
+  }
+
+  private async bank(): Promise<void> {
+    const { world, hudModel } = this.host
+    const amount = Math.min(world.self.gold - this.purseKeep(), getStashGoldLimit(world.self.level) - world.self.stashGold)
+    const before = world.self.gold
+    if (hudModel === null || amount <= 0) return
+    await this.fromStash('bank', () => {
+      hudModel.depositGold(amount)
+      return waitFor(() => world.self.gold < before, 1500)
+    })
   }
 
   private async fillPurse(): Promise<void> {

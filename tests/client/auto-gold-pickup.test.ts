@@ -38,6 +38,16 @@ describe('auto gold pickup', () => {
     expect(pickups()).toEqual([12, 11])
   })
 
+  it('gives up for a while on a pile the server never hands over', () => {
+    const { world, mapper, pickups } = createSetup()
+    dropOnGround(world, 13, 'gld', 5001, 5000)
+    for (let t = 1000; t < 10_000; t += 700) mapper.assists.pickUpNearbyLoot(t)
+    expect(pickups()).toEqual([13, 13, 13, 13, 13])
+    expect(mapper.assists.hasLootNearby(10_000)).toBe(false)
+    mapper.assists.pickUpNearbyLoot(200_000)
+    expect(pickups()).toHaveLength(6)
+  })
+
   it('ignores gold beyond the radius and items that are not gold', () => {
     const { world, mapper, pickups } = createSetup()
     dropOnGround(world, 21, 'gld', 5030, 5000)
