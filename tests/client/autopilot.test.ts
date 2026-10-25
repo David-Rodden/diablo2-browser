@@ -824,7 +824,7 @@ describe('autopilot', () => {
     Object.assign(guide, { currentPlan: guide.update() })
     Object.assign(world.self, { gold: 0, stashGold: 50_000 })
     ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: bodyLoc, code: 'cap', bodyLoc }))
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 8; i++) {
       Object.assign(world.self, { life: 20 })
       tick(6000)
       Object.assign(world, { areaId: ROGUE_ENCAMPMENT })

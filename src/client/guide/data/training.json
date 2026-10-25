@@ -22,7 +22,7 @@
   "levelsPerSetback": 2,
   "setbacks": 2,
   "goldPerAct": [1500, 3000, 6000, 10000, 15000],
-  "retreatWeight": 0.5,
+  "retreatWeight": 0.25,
   "rateCheckMs": 240000,
   "minLevelPerMinute": 0.01,
   "dressed": ["weapon1", "armor", "helm", "gloves", "belt", "boots"],
