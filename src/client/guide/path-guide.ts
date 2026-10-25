@@ -88,11 +88,13 @@ const seamGap = (view: LevelView, entrance: LevelView['entrances'][number]): rea
   if (!entrance.span || (inX === 0) === (inY === 0)) return null
   const edge = (tile: number, inward: number) => (inward > 0 ? tile * 5 : tile * 5 + 4)
   const along = Array.from({ length: (entrance.span.to - entrance.span.from) * 5 }, (_, i) => entrance.span!.from * 5 + i)
-  const walkable = (x: number, y: number) => x >= 0 && y >= 0 && x < view.subWidth && y < view.subHeight && view.walkable[y * view.subWidth + x] !== 0
+  const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < view.subWidth && y < view.subHeight
+  const walkable = (x: number, y: number) => inside(x, y) && view.walkable[y * view.subWidth + x] !== 0
+  const opensOut = (x: number, y: number) => Array.from({ length: GAP_DEPTH }, (_, step) => [x - inX * (step + 1), y - inY * (step + 1)] as const).every(([ox, oy]) => !inside(ox, oy) || walkable(ox, oy))
   for (let depth = 0; depth < GAP_DEPTH; depth++) {
     const cells = along
       .map((a): readonly [number, number] => (inX !== 0 ? [edge(entrance.x, inX) + inX * depth, a] : [a, edge(entrance.y, inY) + inY * depth]))
-      .filter(([x, y]) => walkable(x, y))
+      .filter(([x, y]) => walkable(x, y) && opensOut(x, y))
     if (cells.length > 0) return cells[Math.floor(cells.length / 2)]!
   }
   return null

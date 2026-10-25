@@ -1072,7 +1072,9 @@ export class Autopilot {
     const { world, guide } = this.host
     const me = world.self
     if (guide.knowsWaypointIn(world.areaId)) return false
-    const waypoint = world.getUnitsByType(2).find((unit) => WAYPOINT_CLASS_IDS_113C.has(unit.classId) && distance(unit, me) <= WAYPOINT_GRAB && (this.uses.get(unit.id)?.tries ?? 0) < USE_TRIES)
+    const view = this.host.levelView()
+    const here = (unit: ClientUnit) => view !== null && unit.x >= view.originX && unit.y >= view.originY && unit.x < view.originX + view.subWidth && unit.y < view.originY + view.subHeight
+    const waypoint = world.getUnitsByType(2).find((unit) => WAYPOINT_CLASS_IDS_113C.has(unit.classId) && here(unit) && distance(unit, me) <= WAYPOINT_GRAB && (this.uses.get(unit.id)?.tries ?? 0) < USE_TRIES)
     if (!waypoint) return false
     this.say('Activating the waypoint')
     if (distance(waypoint, me) <= INTERACT_REACH) this.knock(waypoint, nowMs)
