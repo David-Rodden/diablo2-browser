@@ -188,7 +188,7 @@ function outrankedBy(item: LootItem, score: number, slots: readonly EquipSlotId[
 
 function upgradeAppraisal(item: LootItem, kind: LootKind, ctx: AppraisalContext): Appraisal | null {
   const ui = uiOf(item)
-  if (ui.allowedSlots.length === 0 || !usableBy(ui, ctx.build, SOON_LEVELS)) return null
+  if (ui.allowedSlots.length === 0 || !usableBy(ui, ctx.build, SOON_LEVELS) || (damageOf(ui) !== undefined && weaponFit(baseTypeOf(codeOf(item)), ctx.build) === 'none')) return null
   const gains = slotUpgrades(item, ctx).filter(isGain)
   const upgrade = gains[0]
   if (upgrade === undefined) return null

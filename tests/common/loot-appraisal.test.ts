@@ -46,6 +46,14 @@ describe('keeping only what the character will use', () => {
     expect(appraiseItem(plain('skp'), context(skeleMancer, { equipped: [worn] })).upgradeSlot).toBeUndefined()
   })
 
+  it('never fills an empty weapon hand with a weapon the build cannot use', () => {
+    const javazon = characterBuild({ classIndex: 0, level: 12, strength: 40, dexterity: 40, skillPoints: new Map([[10, 3], [14, 6]]) })
+    const plain = (code: string) => item({ id: 40, code, identified: true } as Partial<ItemData> & { code: string })
+    expect(javazon.weaponKind).toBe('javelin')
+    expect(appraiseItem(plain('lxb'), context(javazon)).upgradeSlot).toBeUndefined()
+    expect(appraiseItem(plain('jav'), context(javazon)).upgradeSlot).toBe('weapon1')
+  })
+
   it('treats only the best carried piece for a slot as the upgrade', () => {
     const [weak, strong] = [helm(10, 20), helm(11, 40)]
     const ctx = context(coldSorc, { carried: [weak, strong], owned: [weak, strong] })

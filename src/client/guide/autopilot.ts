@@ -70,6 +70,8 @@ const REACH = 4
 const ARRIVED = 8
 const FIGHT_ROAM = 20
 const FUTILE_FIGHT_MS = 120_000
+const HARMLESS_MS = 180_000
+const TICK_GAP_MS = 1000
 const DISENGAGE_MS = 25_000
 const SPOT_NEAR = 20
 const INTERACT_REACH = 14
@@ -264,6 +266,7 @@ export class Autopilot {
   private reading: Readonly<Record<string, number | null>> = {}
   private fightWatch: { readonly x: number; readonly y: number; readonly since: number } | null = null
   private disengagedUntil = Number.NEGATIVE_INFINITY
+  private harm: { readonly xp: number; at: number; fought: number } | null = null
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -512,6 +515,7 @@ export class Autopilot {
     this.assess(nowMs)
     this.host.guide.detour = this.corpseGoal() ?? this.trainingGoal()
     const body = town ? null : this.bodyRun(nowMs)
+    if (this.harmless(nowMs)) return
     const disengaged = this.futileFight(nowMs)
     assists.pilotCombat = assists.autoCombatKey !== null && danger === null && !disengaged && (body === null || this.cornered(nowMs))
     assists.standDown = (danger !== null || disengaged) && !this.cornered(nowMs)
@@ -967,6 +971,24 @@ export class Autopilot {
     const me = world.self
     const { dps, trusted } = assists.dangerOf(world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= THREAT.near))
     return trusted && (me.life / Math.max(1e-6, dps)) * 1000 < THREAT.escapeMs
+  }
+
+  private harmless(nowMs: number): boolean {
+    const { world, assists } = this.host
+    const xp = world.self.experience
+    const harm = this.harm
+    if (!harm || xp > harm.xp) {
+      this.harm = { xp, at: nowMs, fought: 0 }
+      return false
+    }
+    const foes = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, world.self) <= HUNT_RADIUS)
+    if (!this.town() && assists.isFighting(nowMs) && foes.length > 0 && !foes.some((unit) => BOSS_CLASSES.has(unit.classId))) harm.fought += Math.min(TICK_GAP_MS, nowMs - harm.at)
+    harm.at = nowMs
+    if (harm.fought < HARMLESS_MS) return false
+    assists.journal?.('harmless', { fought: Math.round(harm.fought / 1000), weapon: this.wielded()?.code.trim() ?? null, gold: world.self.gold })
+    this.harm = null
+    this.stop('Autopilot needs you', 'red', "It isn't hurting anything: check its weapon")
+    return true
   }
 
   private futileFight(nowMs: number): boolean {
