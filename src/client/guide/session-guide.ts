@@ -7,6 +7,7 @@ export const createSessionGuide = (session: OnlineSession, minimap: Minimap): Pa
 const TOMBS = [66, 67, 68, 69, 70, 71, 72]
 const ORIFICE = 152
 const ACT_TWO = 1
+const CANYON = 46
 
 export function sessionGuideHost(session: OnlineSession, minimap: Pick<Minimap, 'visible' | 'lastRenderStats'>): PathGuideHost {
   const world = () => session.world
@@ -17,8 +18,9 @@ export function sessionGuideHost(session: OnlineSession, minimap: Pick<Minimap, 
     if (!map || key === null) return world().questTombOffset
     const search = tombs.get(key) ?? { checked: 0, found: -1 }
     tombs.set(key, search)
-    if (search.found < 0 && search.checked < TOMBS.length && map.peekLevelView(TOMBS[search.checked]!)?.presetUnits.some((unit) => unit.type === 2 && unit.index === ORIFICE)) search.found = search.checked
-    search.checked++
+    const looks = world().areaId === CANYON ? TOMBS.length : 1
+    for (let look = 0; look < looks && search.found < 0 && search.checked < TOMBS.length; look++, search.checked++)
+      if (map.peekLevelView(TOMBS[search.checked]!)?.presetUnits.some((unit) => unit.type === 2 && unit.index === ORIFICE)) search.found = search.checked
     return search.found >= 0 ? search.found : world().questTombOffset
   }
   const carried = () => {
