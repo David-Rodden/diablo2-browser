@@ -118,6 +118,23 @@ describe('autopilot', () => {
     expect([hudModel.closeActiveNpcPanel.mock.calls.length > 0, hudModel.requestQuestData.mock.calls.length > 0]).toEqual([true, true])
   })
 
+  it('opens a portal home for a far town errand, and finishes it in town before going back through', () => {
+    const errand = { goal: { level: 1, title: 'Tools of the Trade', inTown: true as const }, hint: 'Bring the Malus to Charsi', step: { kind: 'exit' as const, level: 27 } }
+    const near = setup({ ...errand, target: { x: 120, y: 100, label: 'Outer Cloister' } })
+    Object.assign(near.guide, { currentPlan: near.guide.update() })
+    near.tick()
+    expect(near.assists.castTownPortal).not.toHaveBeenCalled()
+    const { world, assists, guide, units, view, tick } = setup({ ...errand, target: { x: 300, y: 300, label: 'Outer Cloister' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    tick()
+    expect([assists.castTownPortal.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Heading to town by portal: Bring the Malus to Charsi'])
+    Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+    Object.assign(view, { id: ROGUE_ENCAMPMENT })
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    tick(9000)
+    expect(guide.pilotStatus).not.toBe('Back through the portal')
+  })
+
   it('asks the server for fresh quest state when the step has not moved for a while', () => {
     const { hudModel, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     tick()

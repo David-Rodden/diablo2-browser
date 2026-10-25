@@ -56,4 +56,14 @@ describe('training before a hard goal', () => {
     expect(lockedLevels(words).has(101)).toBe(false)
     expect(lockedLevels(words).has(124)).toBe(true)
   })
+  it('never routes training through a level that is still shut', () => {
+    const words = new Uint16Array(41)
+    words[9] = 0x0001
+    const lut = 40, sealed = lockedLevels(words)
+    const canyon = (area: number) => (area === 46 ? 1 : 0.01)
+    const ground = trainingGround(lut, me(21), new Set([40, 42, 43, 44]), sealed, canyon, sealed)!
+    expect(trainingGround(lut, me(21), new Set([40, 42, 43, 44]), new Set([50, 51, 52, 53, 54]), canyon)).toBe(46)
+    expect([46, 50, 51, 52, 53, 54, 66]).not.toContain(ground)
+    expect(ground).toBeGreaterThan(40)
+  })
 })

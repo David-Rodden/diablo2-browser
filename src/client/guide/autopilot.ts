@@ -205,7 +205,9 @@ const RETHINK_MS = 90_000
 const RETHINK_EXPLORE_MS = 30_000
 const RETHINK_GAIN = 10
 const REGROUP = 'Stuck here, regrouping in town'
-const planned = (why: string) => why.startsWith(PREP) || why === REGROUP
+const ERRAND = 'Heading to town by portal:'
+const ERRAND_WALK = 50
+const planned = (why: string) => why.startsWith(PREP) || why.startsWith(ERRAND) || why === REGROUP
 const ROOM_REACHED = 8
 const ROOM_END = 3
 const STASH_CLASS = 267
@@ -445,7 +447,7 @@ export class Autopilot {
       return
     }
     const need = readiness(me, this.questLevel, this.setbacks(nowMs), nowMs >= this.gearRestUntil)
-    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.offLimits(), this.rateOf())
+    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests))
     if (!need || ground === null) return
     this.training = { ...need, ground, since: nowMs }
     this.toast(need.why, `In ${levelName(ground)}`, 'gold')
@@ -508,7 +510,7 @@ export class Autopilot {
     if (!slow && this.exploreLevel(view, nowMs, `${training.why} in ${levelName(training.ground)}`)) return true
     this.trainedOut.add(training.ground)
     this.explored.delete(training.ground)
-    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.offLimits(), this.rateOf())
+    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests))
     if (next === null) this.trainedOut.clear()
     Object.assign(this, { training: { ...training, ground: next ?? training.ground }, ground: null })
     return true
@@ -574,7 +576,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.wounded()) this.say('Waiting to heal before heading out')
-    else if (!(town && this.trip === 'return' && this.returnThroughPortal(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private refreshQuests(nowMs: number): void {
@@ -1340,6 +1342,17 @@ export class Autopilot {
     else if (stat !== null) hudModel.allocateStat(stat)
     else return
     this.lastSpend = nowMs
+  }
+
+  private portalErrand(nowMs: number): boolean {
+    const { world, assists, guide } = this.host
+    const plan = guide.currentPlan
+    const target = plan?.target
+    if (!plan?.goal.inTown || !assists.hasTownPortal() || this.crossing !== null) return false
+    const close = (spot: SubTilePoint) => distance(spot, world.self) <= ERRAND_WALK
+    if ((target && close(target)) || world.getUnitsByType(2).some((unit) => WAYPOINT_CLASS_IDS_113C.has(unit.classId) && close(unit))) return false
+    this.retreat(`${ERRAND} ${plan.hint}`, nowMs)
+    return true
   }
 
   private returnThroughPortal(nowMs: number): boolean {
