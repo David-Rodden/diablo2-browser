@@ -1,6 +1,26 @@
 {
-  "levels": { "Andariel": 37, "Duriel": 73, "Mephisto": 102, "Diablo": 108, "Baal's minions": 131, "Baal": 132 },
-  "objects": { "the Summoner": 357, "Duriel": 152 },
+  "levels": {
+    "Andariel": 37,
+    "Duriel": 73,
+    "Mephisto": 102,
+    "Diablo": 108,
+    "Baal's minions": 131,
+    "Baal": 132
+  },
+  "objects": {
+    "the Summoner": 357,
+    "Duriel": 152
+  },
   "range": 70,
-  "lingerMs": 600000
+  "lingerMs": 600000,
+  "noExit": [73],
+  "bosses": ["andariel", "duriel", "mephisto", "diablo", "baalcrab"],
+  "doomMarginMs": 2500,
+  "retreatLife": 0.45,
+  "resists": {
+    "Andariel": { "row": 6, "code": "yps", "potion": "antidotes" },
+    "Duriel": { "row": 14, "code": "wms", "potion": "thawing potions" }
+  },
+  "resistCount": 8,
+  "bossPotions": 6
 }

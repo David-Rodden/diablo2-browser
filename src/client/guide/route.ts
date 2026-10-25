@@ -19,6 +19,8 @@ const FIRST_TOMB = 66
 const TOMB_COUNT = 7
 const DURIELS_LAIR = 73
 const RED_PORTAL = 60
+const DURIELS_PORTAL = 100
+const ORIFICE = 152
 const ROMAN = ['I', 'II', 'III', 'IV', 'V']
 const PORTALS: Readonly<Record<string, { readonly hint: string; readonly find: readonly Find[] }>> = {
   '1>40': { hint: 'Talk to Warriv', find: ['warriv1'] },
@@ -29,7 +31,7 @@ const PORTALS: Readonly<Record<string, { readonly hint: string; readonly find: r
   '54>74': { hint: 'Take the portal in the Palace Cellar', find: [298] },
   '74>46': { hint: "Take the Summoner's portal", find: [60, 357] },
   '46>73': { hint: 'Enter the true tomb', find: [] },
-  ...Object.fromEntries([66, 67, 68, 69, 70, 71, 72].map((tomb) => [`${tomb}>73`, { hint: "Enter Duriel's Lair", find: [100] }])),
+  ...Object.fromEntries([66, 67, 68, 69, 70, 71, 72].map((tomb) => [`${tomb}>73`, { hint: "Enter Duriel's Lair", find: [DURIELS_PORTAL, ORIFICE] }])),
   '109>121': { hint: "Take Anya's red portal", find: [60] },
   '111>125': { hint: 'Take the red portal to Abaddon', find: [60] },
   '112>126': { hint: 'Take the red portal to the Pit of Acheron', find: [60] },
@@ -58,17 +60,22 @@ export interface Goal {
   readonly spot?: { readonly x: number; readonly y: number }
 }
 
+const trueTomb = (progress: QuestProgress) => FIRST_TOMB + Math.min(TOMB_COUNT - 1, Math.max(0, progress.tomb ?? 0))
+
+export const throughTomb = (goalLevel: number, level: number, progress: QuestProgress): number => (goalLevel === DURIELS_LAIR && level !== trueTomb(progress) && level !== DURIELS_LAIR ? trueTomb(progress) : goalLevel)
+
 export function currentGoal(level: number, progress: QuestProgress, mode: GuideMode = 'story', carries: (code: string) => boolean = () => false, skipped: ReadonlySet<number> = new Set()): Goal | null {
   const act = actOfLevel(level)
   const town = ACT_TOWNS[act]!
-  const tomb = FIRST_TOMB + Math.min(TOMB_COUNT - 1, Math.max(0, progress.tomb ?? 0))
+  const tomb = trueTomb(progress)
   const goal = OBJECTIVES[act]
     ?.filter((o) => (mode === 'story' || o.required) && !isDone(progress.words[o.row] ?? 0) && !skipped.has(o.row))
     .map((o) => {
       const page = buildQuestLogPage({ row: o.row, playerWords: progress.words, gameWords: progress.gameWords, status: progress.status?.[o.row] ?? 0, den: progress.den ?? 0, barbs: progress.barbs ?? 0 })
       const key = page ? page.text.key : o.start
       const stage = key === undefined ? undefined : STAGES[key]?.find((s) => !s.unless?.some(carries))
-      return stage && { level: stage.level === 'town' ? town : stage.level === 'tomb' ? tomb : stage.level === DURIELS_LAIR && level !== tomb && level !== DURIELS_LAIR ? tomb : stage.level, title: o.name, row: o.row, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}), ...(stage.bring ? { bring: stage.bring } : {}) }
+      if (stage?.after !== undefined && !isDone(progress.words[stage.after] ?? 0)) return undefined
+      return stage && { level: stage.level === 'town' ? town : stage.level === 'tomb' ? tomb : throughTomb(stage.level, level, progress), title: o.name, row: o.row, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}), ...(stage.bring ? { bring: stage.bring } : {}) }
     })
     .find((g) => g !== undefined)
   if (goal) return goal

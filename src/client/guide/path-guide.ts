@@ -11,7 +11,7 @@ import { FlowField } from './flow-field.ts'
 import { ChevronFlow, type Chevron } from './chevron-flow.ts'
 import { fromNearest, rounded } from './ribbon-trail.ts'
 import type { Find, FindKey } from './quest-stages.ts'
-import { currentGoal, levelName, nextStep, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
+import { currentGoal, levelName, nextStep, throughTomb, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
 import { spriteOutlines, type OutlineTint } from './sprite-outline.ts'
 import { WaypointMemory } from './waypoint-memory.ts'
 import { WAYPOINT_LEVELS } from './level-links.ts'
@@ -70,7 +70,9 @@ const GAP_DEPTH = 10
 const CORNER_RADIUS = 18
 const TRAIL_STEPS = 40
 const TRAIL_ROUNDS = 3
-const PORTAL_CLASSES = new Set([59, 60, 298, 342])
+const REACH_SNAP = 3
+const PORTAL_CLASSES = new Set([59, 60, 100, 298, 342, 563])
+const ORIFICE = 152
 const WAYPOINT_NEAR = 45
 const LEARN_WAYPOINTS = 'Touch the waypoint so the guide knows yours'
 
@@ -87,13 +89,16 @@ const seamGap = (view: LevelView, entrance: LevelView['entrances'][number]): rea
   if (!entrance.span || (inX === 0) === (inY === 0)) return null
   const edge = (tile: number, inward: number) => (inward > 0 ? tile * 5 : tile * 5 + 4)
   const along = Array.from({ length: (entrance.span.to - entrance.span.from) * 5 }, (_, i) => entrance.span!.from * 5 + i)
-  const walkable = (x: number, y: number) => x >= 0 && y >= 0 && x < view.subWidth && y < view.subHeight && view.walkable[y * view.subWidth + x] !== 0
-  for (let depth = 0; depth < GAP_DEPTH; depth++) {
-    const cells = along
-      .map((a): readonly [number, number] => (inX !== 0 ? [edge(entrance.x, inX) + inX * depth, a] : [a, edge(entrance.y, inY) + inY * depth]))
-      .filter(([x, y]) => walkable(x, y))
-    if (cells.length > 0) return cells[Math.floor(cells.length / 2)]!
-  }
+  const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < view.subWidth && y < view.subHeight
+  const walkable = (x: number, y: number) => inside(x, y) && view.walkable[y * view.subWidth + x] !== 0
+  const opensOut = (x: number, y: number) => Array.from({ length: GAP_DEPTH }, (_, step) => [x - inX * (step + 1), y - inY * (step + 1)] as const).every(([ox, oy]) => !inside(ox, oy) || walkable(ox, oy))
+  for (const open of [opensOut, () => true])
+    for (let depth = 0; depth < GAP_DEPTH; depth++) {
+      const cells = along
+        .map((a): readonly [number, number] => (inX !== 0 ? [edge(entrance.x, inX) + inX * depth, a] : [a, edge(entrance.y, inY) + inY * depth]))
+        .filter(([x, y]) => walkable(x, y) && open(x, y))
+      if (cells.length > 0) return cells[Math.floor(cells.length / 2)]!
+    }
   return null
 }
 
@@ -109,7 +114,7 @@ const landmarkTarget = (view: LevelView): GuideTarget | null => {
   return landmark ? { x: view.originX + landmark.subX, y: view.originY + landmark.subY, label: landmark.id } : null
 }
 
-const isSpent = (unit: ClientUnit) => !PORTAL_CLASSES.has(unit.classId) && !WAYPOINT_CLASS_IDS_113C.has(unit.classId) && unit.mode !== 0
+const isSpent = (unit: ClientUnit) => !PORTAL_CLASSES.has(unit.classId) && !WAYPOINT_CLASS_IDS_113C.has(unit.classId) && unit.classId !== ORIFICE && unit.mode !== 0
 
 const candidatesFor = (keys: readonly FindKey[], view: LevelView, objects: readonly ClientUnit[], monsters: readonly ClientUnit[]): GuideTarget[] => {
   const ids = (kind: 'object' | 'npc') => new Set(keys.map((key) => (kind === 'object' ? (typeof key === 'number' ? key : -1) : typeof key === 'string' ? MONSTER_PATH_IDS.indexOf(key) : -1)).filter((id) => id >= 0))
@@ -138,7 +143,7 @@ export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldS
   const level = host.areaId()
   const view = host.levelView()
   const self = host.self()
-  const goal = level > 0 ? (detour ?? currentGoal(level, host.quests(), mode, host.carries, skipped)) : null
+  const goal = level > 0 ? (detour ? { ...detour, level: throughTomb(detour.level, level, host.quests()) } : currentGoal(level, host.quests(), mode, host.carries, skipped)) : null
   if (!goal || !view || self.isDead) return null
   const step = nextStep(level, goal.level, waypoints)
   const objects = host.objects()
@@ -313,7 +318,7 @@ export class PathGuide {
   reaches(me: SubTilePoint, plan: GuidePlan | null = this.plan): boolean {
     const field = this.fieldOf(plan)
     if (field === null) return true
-    return field.distanceFrom(me.x, me.y) !== null || field.pathFrom(me.x, me.y, 1, 1).length > 0
+    return field.distanceFrom(me.x, me.y) !== null || field.pathFrom(me.x, me.y, 1, 1, REACH_SNAP).length > 0
   }
 
   private fieldOf(plan: GuidePlan | null): FlowField | null {

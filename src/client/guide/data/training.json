@@ -9,17 +9,28 @@
     "Furnace of Pain": 135,
     "Uber Tristram": 136
   },
+  "locks": {
+    "Palace": { "levels": [50, 51, 52, 53, 54], "quest": 12, "once": "started" },
+    "Canyon of the Magi": { "levels": [46, 66, 67, 68, 69, 70, 71, 72], "quest": 13, "once": "done" },
+    "Durance of Hate": { "levels": [100, 101, 102], "quest": 18, "once": "done" },
+    "Nihlathak's Temple": { "levels": [121, 122, 123, 124], "quest": 37, "once": "done" },
+    "Worldstone Keep": { "levels": [128, 129, 130, 131, 132], "quest": 39, "once": "done" }
+  },
   "belowGoal": 1,
   "safety": 2,
   "spread": 6,
   "levelsPerSetback": 2,
   "setbacks": 2,
   "goldPerAct": [1500, 3000, 6000, 10000, 15000],
-  "retreatWeight": 0.5,
+  "retreatWeight": 0.25,
   "rateCheckMs": 240000,
   "minLevelPerMinute": 0.01,
   "dressed": ["weapon1", "armor", "helm", "gloves", "belt", "boots"],
   "bareSlots": 3,
+  "nakedSlots": 5,
+  "barePenalty": 1.5,
   "bareFromLevel": 12,
-  "gearMinutes": 20
+  "gearMinutes": 20,
+  "gearRestMinutes": 60,
+  "ledger": { "minMs": 30000, "trustMs": 180000, "levelWindow": 3, "keep": 12, "optimism": 1.15 }
 }

@@ -15,12 +15,16 @@ import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
 import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from './town-portal.ts'
 import { appraisalContextOf } from '../../common/items/loot-context.ts'
 import { clientUnitToMonsterTargetInfo } from '../ui-model/hud-item-adapter.ts'
-import { attackSkill, auraSkill, BOSS_CLASSES, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, missingSummons, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
+import { attackSkill, auraSkill, BOSS_CLASSES, hopeless, CLOSE_REACH, CORPSE_EXPLOSION, CURSE_SKILLS, isPriorityClass, missingSummons, RAISE_SKILLS, raiseSkill, supportSkill, TRAP_CLASSES, TRAP_REACH, type CombatSelf, type CombatTarget, type Hand } from './combat-planner.ts'
 import { dodgeSpot, hits, threatOf, type Threat } from './danger-dodge.ts'
+import THREAT from '../../common/skills/data/monster-threat.json'
+import { ThreatSense, type Danger, type Defender, type Foe } from './threat-sense.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
 const PICKUP_RETRY_MS = 600
 const PICKUP_DETOUR_RETRY_MS = 2500
+const PICKUP_TRIES = 5
+const PICKUP_GIVE_UP_MS = 120_000
 const LOOT_STEP_MS = 200
 const LOOT_STEP_AHEAD = 8
 const AUTO_PICKUP_RADIUS_SUBTILES = 20
@@ -43,6 +47,7 @@ const RED_TEXT = 1
 const SUPPORT_MS = 400
 const CORPSE_USED_STATE = 0x8f
 const CORPSE_REACH = 10
+const RAISE_RETRY_MS = 4000
 const RECAST_MS = 6000
 const SWITCH_MS = 700
 const SWITCH_RESEND_MS = 350
@@ -55,6 +60,9 @@ const MELEE_CROWD = 4
 const MELEE_CROWD_LIFE = 0.5
 const CROWD_REACH = 3
 const CROWD_SIZE = 2
+const PET_COVER = 2
+const COVER_WIDTH = 2.5
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
 const BACK_OFF_MS = 2500
 const BACK_OFF_STEP = 7
 const CURSE_RECAST_MS = 20_000
@@ -64,6 +72,8 @@ const BLAST_PACK = 2
 const BLAST_GAP_MS = 700
 const BLAST_RANGE = 20
 const GIVE_UP_MS = 15_000
+const DEAD_ZONE = 6
+const DEAD_ZONE_MS = 60_000
 const IGNORE_MS = 30_000
 const DODGE_GAP_MS = 400
 const BOLT_DODGE_LIFE = 0.5
@@ -132,14 +142,17 @@ export class PlayAssists {
   private pilotFights = false
   questPickup = false
   standDown = false
+  private deadZones: readonly { readonly x: number; readonly y: number; readonly until: number }[] = []
   holdLoot = false
   journal: ((kind: string, detail: Readonly<Record<string, unknown>>) => void) | null = null
   pilot: Pilot | null = null
   pilotKey: string | null = null
   townPortalKey: string | null = null
   readonly inventoryCare: InventoryCare
+  readonly threat = new ThreatSense()
   private readonly autoPotion = new AutoPotionPlanner()
   private readonly pickupRetryAt = new Map<number, number>()
+  private readonly pickupTries = new Map<number, number>()
   private autoCombatKeyValue: string | null = null
   private autoCombatOn = false
   private targetId: number | null = null
@@ -162,6 +175,7 @@ export class PlayAssists {
   private readonly switching: Partial<Record<Hand, { readonly skillId: number; readonly at: number }>> = {}
   private lastBlast = Number.NEGATIVE_INFINITY
   private readonly blasted = new Set<number>()
+  private readonly raiseTried = new Map<number, number>()
   private fight: { readonly id: number; readonly life: number; readonly since: number } | null = null
   private dodge: { readonly to: SubTilePoint; readonly until: number } | null = null
   private lastManual = Number.NEGATIVE_INFINITY
@@ -195,6 +209,7 @@ export class PlayAssists {
     this.drinkPotionsIfLow(nowMs)
     this.refillBelt(nowMs)
     this.inventoryCare.tick()
+    this.senseThreat(nowMs)
     if (!this.avoidDanger(nowMs)) {
       this.pickUpNearbyLoot(nowMs)
       this.runAutoCombat(nowMs)
@@ -288,7 +303,7 @@ export class PlayAssists {
   pickUpNearbyLoot(nowMs: number): void {
     const { world } = this.host
     const { ground } = world.containers
-    ;[...this.pickupRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.pickupRetryAt.delete(id))
+    for (const known of [this.pickupRetryAt, this.pickupTries]) [...known.keys()].filter((id) => !ground.has(id)).forEach((id) => known.delete(id))
     if (world.isDead || this.standDown || this.holdLoot || this.isInWorldInteraction() || this.inventoryCare.busy) return
     const { loot, nearest } = this.lootRoute(nowMs)
     if (nearest === undefined) {
@@ -305,6 +320,14 @@ export class PlayAssists {
     const room = this.roomFor(unit.id)
     if (room !== null && room.kind !== 'fits') this.inventoryCare.makeRoom(room, ground.get(unit.id)!)
     else if (inReach) {
+      const tries = (this.pickupTries.get(unit.id) ?? 0) + 1
+      this.pickupTries.set(unit.id, tries)
+      if (tries > PICKUP_TRIES) {
+        this.pickupRetryAt.set(unit.id, nowMs + PICKUP_GIVE_UP_MS)
+        this.pickupTries.delete(unit.id)
+        this.journal?.('loot-stuck', { id: unit.id, name: unit.name, spot: [Math.round(unit.x), Math.round(unit.y)] })
+        return
+      }
       if (room !== null) this.itemPickup = { id: unit.id, until: nowMs + PICKUP_RETRY_MS }
       this.host.sendCommand({ type: 'ItemPickup', itemId: unit.id, toCursor: false }, nowMs)
     } else if (stepping) this.host.triggerPrimaryWorldAction(path[LOOT_STEP_AHEAD]!.x, path[LOOT_STEP_AHEAD]!.y, null, nowMs)
@@ -420,11 +443,14 @@ export class PlayAssists {
       if (aura !== null) this.holdSkill('right', aura, nowMs)
       return false
     }
-    const { x, y } = use.on === 'self' ? this.host.world.self : target!
+    const corpse = RAISE_SKILLS.has(use.skillId) ? this.nearestCorpse(nowMs) : undefined
+    const aim = corpse ?? (use.on === 'self' ? null : target)
+    const { x, y } = aim ?? this.host.world.self
     if (!this.holdSkill('right', use.skillId, nowMs)) return true
     this.supportCastAt.set(castKey(use.skillId), nowMs)
-    this.logCast(use.on === 'self' ? 'support' : 'curse', use.skillId, use.on === 'self' ? null : target)
-    return this.host.triggerSecondaryWorldAction(x, y, use.on === 'self' ? null : target, nowMs) !== null
+    if (corpse) this.raiseTried.set(corpse.id, nowMs)
+    this.logCast(use.on === 'self' ? 'support' : 'curse', use.skillId, aim)
+    return this.host.triggerSecondaryWorldAction(x, y, aim, nowMs) !== null
   }
 
   get moving(): boolean {
@@ -491,10 +517,20 @@ export class PlayAssists {
     const crowd = around ?? this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= CROWD_REACH)
     if (crowd.length < crowdSize || nowMs - this.lastBackOff < BACK_OFF_MS) return null
     const gap = (spot: SubTilePoint) => Math.min(...crowd.map((unit) => Math.hypot(unit.x - spot.x, unit.y - spot.y)))
+    const { world } = this.host
+    const pets = [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).flatMap((pet) => world.getUnit('monster', pet.unitId) ?? [])
+    const centre = { x: crowd.reduce((sum, unit) => sum + unit.x, 0) / crowd.length, y: crowd.reduce((sum, unit) => sum + unit.y, 0) / crowd.length }
+    const fromCrowd = (spot: SubTilePoint) => Math.hypot(spot.x - centre.x, spot.y - centre.y)
+    const shields = (pet: SubTilePoint, spot: SubTilePoint) => {
+      const [dx, dy] = [centre.x - spot.x, centre.y - spot.y]
+      const along = clamp01(((pet.x - spot.x) * dx + (pet.y - spot.y) * dy) / Math.max(1e-6, dx * dx + dy * dy))
+      return fromCrowd(pet) < fromCrowd(spot) && Math.hypot(spot.x + dx * along - pet.x, spot.y + dy * along - pet.y) <= COVER_WIDTH
+    }
+    const cover = (spot: SubTilePoint) => pets.filter((pet) => shields(pet, spot)).length * PET_COVER
     const threats = this.threats()
     const spot = Array.from({ length: 12 }, (_, i) => ({ x: Math.round(me.x + Math.cos((i * Math.PI) / 6) * BACK_OFF_STEP), y: Math.round(me.y + Math.sin((i * Math.PI) / 6) * BACK_OFF_STEP) }))
       .filter((candidate) => this.clearPath(me, candidate) && !threats.some((threat) => hits(threat, candidate)))
-      .sort((a, b) => gap(b) - gap(a))[0]
+      .sort((a, b) => gap(b) + cover(b) - gap(a) - cover(a))[0]
     if (!spot || gap(spot) <= gap(me) + 1) return null
     this.lastBackOff = nowMs
     this.journal?.('back-off', { crowd: crowd.length, to: [spot.x, spot.y] })
@@ -519,8 +555,14 @@ export class PlayAssists {
     return corpse
   }
 
-  private corpses(): ClientUnit[] {
-    return this.host.world.getUnitsByType(1).filter((unit) => unit.dead && !unit.hidden && !unit.states.has(CORPSE_USED_STATE))
+  private corpses(nowMs = performance.now()): ClientUnit[] {
+    return this.host.world.getUnitsByType(1).filter((unit) => unit.dead && !unit.hidden && !unit.states.has(CORPSE_USED_STATE) && nowMs - (this.raiseTried.get(unit.id) ?? Number.NEGATIVE_INFINITY) >= RAISE_RETRY_MS)
+  }
+
+  private nearestCorpse(nowMs: number): ClientUnit | undefined {
+    const me = this.host.world.self
+    const away = (unit: ClientUnit) => Math.hypot(unit.x - me.x, unit.y - me.y)
+    return this.corpses(nowMs).filter((unit) => !this.blasted.has(unit.id) && away(unit) <= CORPSE_REACH).sort((a, b) => away(a) - away(b))[0]
   }
 
   private hostilesNear(spot: SubTilePoint, reach: number): number {
@@ -545,6 +587,13 @@ export class PlayAssists {
     return false
   }
 
+  private manaFloor(): number | undefined {
+    const thresholds = this.autoPotionThresholds
+    const { inventory, belt } = this.host.world.containers
+    const refill = [...inventory.values(), ...belt.values()].some((item) => /^(mp[1-5]|rvs|rvl)$/.test(item.code.trim()))
+    return thresholds !== null && thresholds.mana > 0 && refill ? thresholds.mana / 100 : undefined
+  }
+
   private combatSelf(): CombatSelf {
     const { world } = this.host
     const { self } = world
@@ -555,8 +604,39 @@ export class PlayAssists {
       petClasses: [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).map((pet) => pet.classId),
       lifeFraction: self.life / Math.max(1, this.host.hudManager.maxHp || self.maxLife),
       manaFraction: self.mana / Math.max(1, this.host.hudManager.maxMana || self.maxMana),
-      corpsesNear: this.corpses().filter((unit) => Math.hypot(unit.x - self.x, unit.y - self.y) <= CORPSE_REACH).length,
+      saveManaBelow: this.manaFloor(),
+      corpsesNear: this.corpses().filter((unit) => !this.blasted.has(unit.id) && Math.hypot(unit.x - self.x, unit.y - self.y) <= CORPSE_REACH).length,
     }
+  }
+
+  private defender(): Defender {
+    const { world, hudManager } = this.host
+    const attrs = hudManager.charSheet.attrs
+    const me = world.self
+    const guards = [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).flatMap((pet) => world.getUnit('monster', pet.unitId) ?? []).filter((pet) => Math.hypot(pet.x - me.x, pet.y - me.y) <= THREAT.near).length
+    return { name: me.name ?? '', level: me.level, defense: attrs.defense ?? 0, resists: { fire: attrs.fireRes ?? 0, cold: attrs.coldRes ?? 0, lightning: attrs.lightRes ?? 0, poison: attrs.poisRes ?? 0 }, difficulty: world.difficulty, areaId: world.areaId, guarded: guards >= THREAT.guards }
+  }
+
+  private foeOf(unit: ClientUnit): Foe {
+    const info = clientUnitToMonsterTargetInfo(unit, this.host.world.difficulty)
+    return { classId: unit.classId, rank: info.rank ?? 'normal', modifiers: info.modifiers ?? [] }
+  }
+
+  dangerOf(units: readonly ClientUnit[]): Danger {
+    return this.threat.danger(this.defender(), units.map((unit) => this.foeOf(unit)))
+  }
+
+  private senseThreat(nowMs: number): void {
+    const { world } = this.host
+    if (world.areaId <= 0 || world.isDead) return
+    const me = world.self
+    const near = () => world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - me.x, unit.y - me.y) <= THREAT.near).map((unit) => this.foeOf(unit))
+    this.threat.observe(this.defender(), me.life, near, nowMs)
+  }
+
+  isHopeless(unit: ClientUnit): boolean {
+    const merc = this.host.world.merc
+    return this.smartSkills && !(merc && !merc.isDead && merc.mercId > 0) && hopeless(this.combatSelf(), this.combatTarget(unit))
   }
 
   private combatTarget(unit: ClientUnit): CombatTarget {
@@ -653,11 +733,17 @@ export class PlayAssists {
   private resolveTarget(nowMs: number): ClientUnit | null {
     this.host.centerCameraOnSelf()
     const current = this.targetId === null ? undefined : this.host.world.getUnit('monster', this.targetId)
-    const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs
+    this.deadZones = this.deadZones.filter((zone) => zone.until > nowMs)
+    const inDeadZone = (unit: ClientUnit) => this.deadZones.some((zone) => Math.hypot(unit.x - zone.x, unit.y - zone.y) <= DEAD_ZONE)
+    const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs && !this.isHopeless(unit) && !inDeadZone(unit)
     const distance = this.host.distanceFromSelf()
-    const urgency = (unit: ClientUnit) => distance(unit) - (isPriorityTarget(unit) ? PRIORITY_BONUS : 0) - (unit.lifePct < FINISH_LIFE_PCT ? FINISH_BONUS : 0)
     const visible = this.visibleHostilesByDistance()
-    const best = [...new Set([...visible.slice(0, TARGET_CANDIDATES), ...visible.filter(isPriorityTarget)])].sort((a, b) => urgency(a) - urgency(b)).find(worthIt)
+    const candidates = [...new Set([...visible.slice(0, TARGET_CANDIDATES), ...visible.filter(isPriorityTarget)])]
+    const me = this.defender()
+    const menace = new Map([...candidates, ...(current ? [current] : [])].map((unit) => [unit.id, this.threat.dpsOf(me, this.foeOf(unit))]))
+    const worst = Math.max(1e-6, ...menace.values())
+    const urgency = (unit: ClientUnit) => distance(unit) - (isPriorityTarget(unit) ? PRIORITY_BONUS : 0) - (unit.lifePct < FINISH_LIFE_PCT ? FINISH_BONUS : 0) - THREAT.focusBonus * ((menace.get(unit.id) ?? 0) / worst)
+    const best = [...candidates].sort((a, b) => urgency(a) - urgency(b)).find(worthIt)
     const keep = current !== undefined && this.isOnScreenHostile(current) && worthIt(current) && (best === undefined || urgency(best) > urgency(current) - SWITCH_MARGIN)
     return keep ? current : (best ?? null)
   }
@@ -670,6 +756,8 @@ export class PlayAssists {
     }
     if (nowMs - fight.since < GIVE_UP_MS) return true
     this.givenUp.set(target.id, nowMs + IGNORE_MS)
+    this.deadZones = [...this.deadZones, { x: target.x, y: target.y, until: nowMs + DEAD_ZONE_MS }]
+    this.journal?.('give-up', { classId: target.classId, spot: [Math.round(target.x), Math.round(target.y)] })
     this.targetId = null
     this.fight = null
     return false

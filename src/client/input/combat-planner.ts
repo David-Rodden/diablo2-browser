@@ -23,6 +23,7 @@ export interface CombatSelf {
   readonly petClasses: readonly number[]
   readonly lifeFraction: number
   readonly manaFraction: number
+  readonly saveManaBelow?: number | undefined
   readonly corpsesNear: number
 }
 
@@ -57,6 +58,7 @@ const BUFFS = Object.entries(COMBAT.buffs).map(([name, state]) => ({ skillId: id
 const CURSES = Object.entries(COMBAT.curses).map(([name, state]) => ({ skillId: idOf(name), stateId: STATE_ID.get(state) ?? -1 }))
 const SUMMONS = Object.entries(COMBAT.summons).map(([name, monsters]) => ({ skillId: idOf(name), classes: new Set(monsterIds(monsters)) }))
 const RAISES = Object.entries(COMBAT.raises).map(([name, monster]) => ({ skillId: idOf(name), classId: monsterIds([monster])[0]! }))
+export const RAISE_SKILLS: ReadonlySet<number> = new Set(RAISES.map(({ skillId }) => skillId))
 const GROUPS = COMBAT.oneOf.map((names) => names.map(idOf))
 const AURAS = { fight: COMBAT.auras.fight.map(idOf), travel: COMBAT.auras.travel.map(idOf), recover: COMBAT.auras.recover.map(idOf) }
 export const TRAP_CLASSES: ReadonlySet<number> = new Set(TRAPS.values())
@@ -77,11 +79,18 @@ const levelOf = (self: CombatSelf, skillId: number) => self.skills.get(skillId) 
 const outranked = (self: CombatSelf, skillId: number) => GROUPS.some((group) => group.includes(skillId) && group.some((other) => other !== skillId && levelOf(self, other) > levelOf(self, skillId)))
 const best = (self: CombatSelf, ids: readonly number[], canCast: CanCast) => ids.filter((id) => levelOf(self, id) > 0 && canCast(id)).sort((a, b) => levelOf(self, b) - levelOf(self, a))[0] ?? null
 
+export function hopeless(self: CombatSelf, target: CombatTarget): boolean {
+  const learned = [...ATTACKS.keys()].filter((skillId) => levelOf(self, skillId) > 0)
+  const spells = learned.filter((skillId) => ATTACKS.get(skillId) !== 'melee')
+  const elements = new Set([...spells.map(elementOf), ...(spells.length === 0 || spells.length < learned.length ? ['physical' as const] : [])])
+  return self.petClasses.length === 0 && [...elements].every((element) => (target.resists[element] ?? 0) >= 100)
+}
+
 export function attackSkill(self: CombatSelf, target: CombatTarget, canCast: CanCast): SkillUse {
   const damage = (skillId: number) => Math.max(0, 1 - (target.resists[elementOf(skillId)] ?? 0) / 100)
   const tier = (skillId: number) => ((SKILLS_BY_ID[skillId]?.delay ?? 0) > 0 ? 0 : (SKILLS_BY_ID[skillId]?.reqlevel ?? 0) / 100)
   const score = (skillId: number) => (levelOf(self, skillId) * (self.mainSkills.includes(skillId) ? MAIN_SKILL_WEIGHT : 1) + tier(skillId)) * damage(skillId)
-  const thrifty = !target.tough && (self.manaFraction < SAVE_MANA_BELOW || (target.lifeFraction < WEAK_LIFE && target.distance <= CLOSE_REACH))
+  const thrifty = !target.tough && (self.manaFraction < (self.saveManaBelow ?? SAVE_MANA_BELOW) || (target.lifeFraction < WEAK_LIFE && target.distance <= CLOSE_REACH))
   const costly = (skillId: number) => thrifty && ATTACKS.get(skillId) !== 'melee' && (SKILLS_BY_ID[skillId]?.mana ?? 0) > 0
   const chosen = [...ATTACKS.keys()].filter((id) => levelOf(self, id) > 0 && score(id) > 0 && !costly(id) && canCast(id)).sort((a, b) => score(b) - score(a))[0]
   return chosen === undefined ? { skillId: BASIC_ATTACK, hand: 'left', reach: 'melee', on: 'target' } : { skillId: chosen, hand: handOf(chosen), reach: ATTACKS.get(chosen)!, on: 'target' }

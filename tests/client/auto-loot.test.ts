@@ -43,6 +43,12 @@ describe('auto loot', () => {
     const twoJunk = packed.map((item) => (item.id === 4 ? { ...item, appraisal: judged('keep') } : item))
     expect(planRoom(twoJunk, 2, 2, judged('great'), true)).toEqual({ kind: 'drop', itemIds: [3, 4] })
   })
+
+  it('gives up good finds, never great ones or other quest items, to fit a quest item like the Horadric Cube', () => {
+    const charms = [...Array(10).keys()].map((x) => at(x, 0, 1, 4, x < 2 ? judged('good', 'charm') : x === 2 ? judged('great', 'quest') : judged('great'), x))
+    expect(planRoom(charms, 2, 2, judged('great'), true)).toBeNull()
+    expect(planRoom(charms, 2, 2, judged('great', 'quest'), true)).toEqual({ kind: 'drop', itemIds: [0, 1] })
+  })
 })
 
 describe('auto loot pickup in play', () => {

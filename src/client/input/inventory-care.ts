@@ -25,6 +25,7 @@ const INVENTORY_CELLS = 40
 const LOOT_ROOM = 12
 const GEAR_KINDS = new Set(['magic', 'rare', 'set', 'unique', 'jewel', 'base', 'normal'])
 const FUTURE_UPGRADE = 'Better'
+const SPARE_KINDS = new Set<Appraisal['kind']>(['charm', 'jewel', 'rune', 'gem', 'magic', 'rare', 'set', 'unique', 'base', 'normal'])
 const STASHED_KINDS = new Set<Appraisal['kind']>(['rune', 'gem', 'jewel', 'unique', 'set', 'rare', 'base'])
 
 const nameOf = (item: ItemData) => onlineItemDataToUiInventoryItem(item).name || item.code.trim()
@@ -33,6 +34,7 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 export class InventoryCare {
   config: InventoryCareConfig | null = null
   readonly discarded = new Set<number>()
+  hardUp = false
   private job: Promise<unknown> | null = null
   private readonly appraisals = new WeakMap<ItemData, { readonly context: AppraisalContext; readonly appraisal: Appraisal }>()
   private visited: 'vendor' | 'stash' | null = null
@@ -101,7 +103,7 @@ export class InventoryCare {
     if (hudModel === null) return
     const goldBefore = world.self.gold
     let sold = 0
-    for (const item of [...this.junk, ...this.clutter]) {
+    for (const item of [...this.junk, ...this.clutter, ...(this.hardUp ? this.spares : [])]) {
       if (hudManager.leftPanel !== 'vendor' || !hudModel.vendorSell(item.id) || !(await waitFor(() => !world.containers.inventory.has(item.id)))) break
       sold++
     }
@@ -110,6 +112,10 @@ export class InventoryCare {
 
   get stashable(): ItemData[] {
     return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && STASHED_KINDS.has(appraisal.kind) && TIER_RANK[appraisal.tier] >= TIER_RANK.good)
+  }
+
+  get spares(): ItemData[] {
+    return this.inventoryWhere((appraisal) => (!appraisal.locked || appraisal.kind === 'charm') && appraisal.upgradeSlot === undefined && appraisal.tier !== 'great' && SPARE_KINDS.has(appraisal.kind))
   }
 
   get clutter(): ItemData[] {

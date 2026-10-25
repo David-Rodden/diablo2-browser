@@ -46,11 +46,27 @@ describe('keeping only what the character will use', () => {
     expect(appraiseItem(plain('skp'), context(skeleMancer, { equipped: [worn] })).upgradeSlot).toBeUndefined()
   })
 
+  it('never fills an empty weapon hand with a weapon the build cannot use', () => {
+    const javazon = characterBuild({ classIndex: 0, level: 12, strength: 40, dexterity: 40, skillPoints: new Map([[10, 3], [14, 6]]) })
+    const plain = (code: string) => item({ id: 40, code, identified: true } as Partial<ItemData> & { code: string })
+    expect(javazon.weaponKind).toBe('javelin')
+    expect(appraiseItem(plain('lxb'), context(javazon)).upgradeSlot).toBeUndefined()
+    expect(appraiseItem(plain('jav'), context(javazon)).upgradeSlot).toBe('weapon1')
+    const barb = characterBuild({ classIndex: 4, level: 17, strength: 60, dexterity: 30, skillPoints: new Map([[126, 5]]) })
+    expect(['wnd', 'sbb', 'hax'].map((code) => appraiseItem(plain(code), context(barb)).upgradeSlot)).toEqual([undefined, undefined, 'weapon1'])
+  })
+
   it('treats only the best carried piece for a slot as the upgrade', () => {
     const [weak, strong] = [helm(10, 20), helm(11, 40)]
     const ctx = context(coldSorc, { carried: [weak, strong], owned: [weak, strong] })
     expect(appraiseItem(strong, ctx).upgradeSlot).toBe('helm')
     expect(appraiseItem(weak, ctx).upgradeSlot).toBeUndefined()
+  })
+
+  it('wears a socketed weapon that suits no runeword when the hand is empty', () => {
+    const barb = characterBuild({ classIndex: 4, level: 22, strength: 60, dexterity: 30, skillPoints: new Map([[126, 10], [139, 5]]) })
+    expect(appraiseItem(item({ code: 'spr', identified: true, totalSockets: 3 }), context(barb))).toMatchObject({ upgradeSlot: 'weapon1' })
+    expect(appraiseItem(item({ code: 'crs', totalSockets: 4 }), context())).toMatchObject({ reason: 'Base for Spirit · 4 sockets' })
   })
 
   it('keeps one runeword base, not every match', () => {

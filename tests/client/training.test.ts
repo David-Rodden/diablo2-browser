@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bareSlots, monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
+import { bareSlots, lockedLevels, monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
 
 const BLOOD_MOOR = 2
 const COLD_PLAINS = 3
@@ -20,6 +20,7 @@ describe('training before a hard goal', () => {
     expect(readiness(me(20, 50_000, 4), ARCANE, 0)).toMatchObject({ level: 20, bare: 2, why: 'Gathering gear before Arcane Sanctuary' })
     expect(readiness(me(20, 50_000, 2), ARCANE, 0)).toBeNull()
     expect(readiness(me(6, 50_000, 6), BLOOD_MOOR, 0)).toBeNull()
+    expect(readiness(me(20, 50_000, 4), ARCANE, 0, false)).toBeNull()
   })
 
   it('picks a nearby area with monsters just below the character', () => {
@@ -30,11 +31,47 @@ describe('training before a hard goal', () => {
     expect(trainingGround(BLOOD_MOOR, me(1), new Set(), new Set())).toBeNull()
   })
 
-  it('counts a retreat as half a death and moves on from areas that give too little experience', () => {
-    expect(readiness(me(20), ARCANE, setbacksOf(1, 2))).toMatchObject({ level: 22 })
-    expect(readiness(me(20), ARCANE, setbacksOf(0, 3))).toBeNull()
+  it('goes where it measured the best experience, and tries unmeasured areas before settling', () => {
+    const nearest = trainingGround(COLD_PLAINS, me(12), new Set([1, 3, 4]), new Set())!
+    const rival = trainingGround(COLD_PLAINS, me(12), new Set([1, 3, 4]), new Set([nearest]))!
+    expect(trainingGround(COLD_PLAINS, me(12), new Set([1, 3, 4]), new Set(), (area) => (area === rival ? 0.05 : area === nearest ? 0.01 : undefined))).not.toBe(nearest)
+    const everything = (area: number) => (area === rival ? 0.05 : 0.01)
+    expect(trainingGround(COLD_PLAINS, me(12), new Set([1, 3, 4]), new Set(), everything)).toBe(rival)
+  })
+
+  it('counts a retreat as a quarter of a death and moves on from areas that give too little experience', () => {
+    expect(readiness(me(20), ARCANE, setbacksOf(1, 4))).toMatchObject({ level: 22 })
+    expect(readiness(me(20), ARCANE, setbacksOf(0, 7))).toBeNull()
     expect(slowGround(20, 500, 5 * 60_000)).toBe(true)
     expect(slowGround(20, 20_000, 5 * 60_000)).toBe(false)
     expect(slowGround(20, 0, 60_000)).toBe(false)
+  })
+
+  it('keeps the palace, the Durance and the late act 5 areas off limits until the quest that opens them', () => {
+    const words = new Uint16Array(48)
+    expect([...lockedLevels(words)]).toEqual(expect.arrayContaining([50, 54, 100, 121, 128]))
+    words[12] = 0x0004
+    words[18] = 0x0001
+    expect(lockedLevels(words).has(52)).toBe(false)
+    expect(lockedLevels(words).has(101)).toBe(false)
+    expect(lockedLevels(words).has(124)).toBe(true)
+  })
+  it('never routes training through a level that is still shut', () => {
+    const words = new Uint16Array(41)
+    words[9] = 0x0001
+    const lut = 40, sealed = lockedLevels(words)
+    const canyon = (area: number) => (area === 46 ? 1 : 0.01)
+    const ground = trainingGround(lut, me(21), new Set([40, 42, 43, 44]), sealed, canyon, sealed)!
+    expect(trainingGround(lut, me(21), new Set([40, 42, 43, 44]), new Set([50, 51, 52, 53, 54]), canyon)).toBe(46)
+    expect([46, 50, 51, 52, 53, 54, 66]).not.toContain(ground)
+    expect(ground).toBeGreaterThan(40)
+  })
+
+  it('trains a character with empty gear slots on easier ground', () => {
+    const waypoints = new Set([40, 42, 43, 44, 46])
+    const dressed = trainingGround(40, me(22), waypoints, new Set())!
+    const naked = trainingGround(40, me(22, 50_000, 6), waypoints, new Set())!
+    expect(monsterLevel(naked, 0)).toBeLessThanOrEqual(22 - 1 - 9)
+    expect(monsterLevel(naked, 0)).toBeLessThan(monsterLevel(dressed, 0))
   })
 })

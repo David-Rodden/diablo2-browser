@@ -7,6 +7,7 @@ export interface Stage {
   readonly find: readonly Find[]
   readonly unless?: readonly string[]
   readonly bring?: string
+  readonly after?: number
 }
 
 export interface Objective {
@@ -18,9 +19,13 @@ export interface Objective {
 
 const at = (level: number | 'town' | 'tomb', hint: string, ...find: Find[]): Stage => ({ level, hint, find })
 const ORIFICE = 152
-const TO_THE_TOMB: Stage = { ...at('tomb', "Take the Staff to Tal Rasha's Tomb", ORIFICE), bring: 'hst' }
+const THE_SUMMONER = 13
+const TO_THE_TOMB: Stage = { ...at('tomb', "Take the Staff to Tal Rasha's Tomb", ORIFICE), bring: 'hst', after: THE_SUMMONER }
 const talk = (name: string, npc: string, hint = `Talk to ${name}`): Stage => at('town', hint, npc)
 const SEALS: Find = [392, 393, 394, 395, 396]
+const COUNCIL: Find = ['councilmember1', 'councilmember2', 'councilmember3']
+const [HEART_CHEST, BRAIN_CHEST, EYE_CHEST] = [405, 406, 407]
+const ANYAS_PLATFORM = 460
 
 export const OBJECTIVES: readonly (readonly Objective[])[] = [
   [
@@ -40,9 +45,9 @@ export const OBJECTIVES: readonly (readonly Objective[])[] = [
     { row: 14, name: 'The Seven Tombs', start: 'qstsa2q61', required: true },
   ],
   [
-    { row: 19, name: 'Blade of the Old Religion', start: 'qstsa3q31' },
+    { row: 19, name: 'Blade of the Old Religion', start: 'qstsa3q31a' },
     { row: 20, name: 'The Golden Bird' },
-    { row: 17, name: "Lam Esen's Tome", start: 'qstsa3q11' },
+    { row: 17, name: "Lam Esen's Tome", start: 'start:a3q1' },
     { row: 18, name: "Khalim's Will", start: 'qstsa3q21a', required: true },
     { row: 21, name: 'The Blackened Temple', start: 'qstsa3q51', required: true },
     { row: 22, name: 'The Guardian', start: 'qstsa3q61', required: true },
@@ -75,6 +80,7 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa1q32: talk('Charsi', 'charsi', 'Bring the Malus to Charsi'),
   qstsa1q32b: talk('Charsi', 'charsi', 'Charsi will imbue an item'),
   'start:a1q4': talk('Akara', 'akara'),
+  'start:a3q1': talk('Alkor', 'alkor', "Ask Alkor about Lam Esen's Tome"),
   qstsa1q41: at(5, 'Click the Tree of Inifuss', 30),
   qstsa1q42: talk('Akara', 'akara', 'Bring the scroll to Akara'),
   qstsa1q43: at(38, "Find Cain's cage in Tristram", 26),
@@ -105,7 +111,7 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa2q43: { ...at('tomb', 'Find the true tomb in the Canyon', ORIFICE), bring: 'hst' },
   qstsa2q51: at(74, 'Find the Summoner', 'summoner'),
   qstsa2q52: at(74, 'Kill the Summoner', 'summoner'),
-  qstsa2q53: at('town', 'Return to town'),
+  qstsa2q53: talk('Drognan', 'drognan', 'Tell Drognan the Summoner is dead'),
   qstsa2q61: at(73, "Find Tal Rasha's true tomb"),
   qstsa2q61a: at(73, "Find Tal Rasha's true tomb"),
   qstsa2q62: at(73, 'Kill Duriel', 'duriel'),
@@ -116,10 +122,10 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa3q11: at(80, 'Search the Kurast temples for the Tome', 193),
   qstsa3q12: talk('Alkor', 'alkor'),
   qstsa3q21a: talk('Cain', 'cain3', "Ask Cain about Khalim's relics"),
-  qstsa3q21: at(85, "Find Khalim's Eye in the Spider Cavern"),
-  qstsa3q22: at(91, "Find Khalim's Brain in the Flayer Dungeon"),
-  qstsa3q23: at(83, "Take Khalim's Flail from the High Council"),
-  qstsa3q24: at(93, "Find Khalim's Heart in the sewers"),
+  qstsa3q21: at(85, "Find Khalim's Eye in the Spider Cavern", EYE_CHEST),
+  qstsa3q22: at(91, "Find Khalim's Brain in the Flayer Dungeon", BRAIN_CHEST),
+  qstsa3q23: at(83, "Take Khalim's Flail from the High Council", COUNCIL),
+  qstsa3q24: at(93, "Find Khalim's Heart in the sewers", HEART_CHEST),
   qstsa3q25: at('town', "Combine Khalim's relics in the Cube"),
   qstsa3q26: at(83, 'Smash the Compelling Orb', 404),
   qstsa3q31a: talk('Ormus', 'ormus', 'Ask around the docks about the Gidbinn'),
@@ -134,8 +140,8 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa3q44: talk('Alkor', 'alkor', 'Give the Golden Bird to Alkor'),
   qstsa3q45: talk('Alkor', 'alkor'),
   qstsa3q51a: talk('Ormus', 'ormus'),
-  qstsa3q51: at(83, 'Find the Blackened Temple'),
-  qstsa3q52: at(83, 'Kill the High Council'),
+  qstsa3q51: at(83, 'Find the Blackened Temple', COUNCIL),
+  qstsa3q52: at(83, 'Kill the High Council', COUNCIL),
   qstsa3q53: talk('Cain', 'cain3'),
   qstsa3q61a: talk('Ormus', 'ormus'),
   qstsa3q61: at(83, 'Smash the Compelling Orb', 404),
@@ -159,10 +165,10 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa5q21a: at(111, 'Free the soldiers', 473),
   qstsa5q22: at(111, 'Free {n} more soldiers', 473),
   qstsa5q23: talk('Qual-Kehk', 'qual-kehk'),
-  qstsa5q31: at(114, 'Find Anya in the Frozen River', 558),
-  qstsa5q31a: at(114, 'Free Anya', 558),
+  qstsa5q31: at(114, 'Find Anya in the Frozen River', 558, ANYAS_PLATFORM),
+  qstsa5q31a: at(114, 'Free Anya', 558, ANYAS_PLATFORM),
   qstsa5q32: talk('Malah', 'malah'),
-  qstsa5q33: at(114, "Thaw Anya with Malah's potion", 558),
+  qstsa5q33: at(114, "Thaw Anya with Malah's potion", 558, ANYAS_PLATFORM),
   qstsa5q34: talk('Malah', 'malah'),
   qstsa5q35: talk('Anya', 'drehya'),
   qstsa5q41: at(121, "Take Anya's portal to Nihlathak"),

@@ -47,9 +47,10 @@ describe('path guide route', () => {
     expect([staff([]), staff(['box']), staff(['box', 'msf']), staff(['box', 'msf', 'vip'])]).toEqual([60, 64, 61, 40])
   })
 
-  it('takes a finished Horadric Staff to the true tomb the quest log marks', () => {
-    const goal = currentGoal(40, { ...quests({ 9: 1 }, { 10: 2 }), tomb: 3 }, 'story', (code) => ['box', 'hst'].includes(code))
+  it('takes a finished Horadric Staff to the true tomb the quest log marks, but only once the Summoner has opened the way', () => {
+    const goal = currentGoal(40, { ...quests({ 9: 1, 13: 1 }, { 10: 2 }), tomb: 3 }, 'story', (code) => ['box', 'hst'].includes(code))
     expect([goal?.level, goal?.bring, goal?.find]).toEqual([69, 'hst', [152]])
+    expect(currentGoal(40, { ...quests({ 9: 1 }, { 10: 2 }), tomb: 3 }, 'story', (code) => ['box', 'hst'].includes(code))?.title).not.toBe('The Horadric Staff')
   })
 
   it('walks level by level, and takes a waypoint you own when it is shorter', () => {
@@ -123,11 +124,42 @@ describe('path guide plan', () => {
     expect(plan.doors).toEqual([9])
   })
 
+  it('keeps heading for the used orifice until the portal to Duriel shows up beside it', () => {
+    const orifice = { id: 70, unitType: 'object', classId: 152, mode: 2, x: 1030, y: 2010, hidden: false, dead: false, name: 'orifice' } as unknown as ClientUnit
+    const tomb = { ...host, areaId: () => 72, quests: () => ({ ...quests({ 1: 1, 2: 1 }, { 4: 1 }), tomb: 6 }), objects: () => [orifice] }
+    const plan = planGuide(tomb, 'story', undefined, new Set(), false, new Set(), { level: 73, title: "Duriel's Lair" })!
+    expect([plan.hint, plan.target?.unit]).toEqual(["Enter Duriel's Lair", { id: 70, kind: 'object' }])
+    const portal = { id: 71, unitType: 'object', classId: 100, mode: 2, x: 1018, y: 2012, hidden: false, dead: false } as unknown as ClientUnit
+    const open = planGuide({ ...tomb, objects: () => [orifice, portal] }, 'story', undefined, new Set(), false, new Set(), { level: 73, title: "Duriel's Lair" })!
+    expect(open.target?.unit).toEqual({ id: 71, kind: 'object' })
+  })
+
+  it("sends a body run into Duriel's Lair through the true tomb, not the nearest one", () => {
+    const inTombOne = { ...host, areaId: () => 66, quests: () => ({ ...quests({ 1: 1, 2: 1 }, { 4: 1 }), tomb: 4 }) }
+    const body = { level: 73, title: 'Your body', hint: 'Get your body back', spot: { x: 1010, y: 2010 } }
+    expect(planGuide(inTombOne, 'story', undefined, new Set(), false, new Set(), body)!.step).toEqual({ kind: 'exit', level: 46 })
+    expect(planGuide({ ...inTombOne, areaId: () => 70 }, 'story', undefined, new Set(), false, new Set(), body)!.step).toMatchObject({ kind: 'portal', level: 73 })
+  })
+
   it('aims a seam exit at the open gap in the fence, not at the anchor tile', () => {
     const fenced = new Uint8Array(size * size).fill(1)
     for (let x = 0; x < size; x++) if (x < 24 || x > 28) fenced[x] = fenced[size + x] = fenced[2 * size + x] = 0
     const seam = { ...view, walkable: fenced, entrances: [{ x: 2, y: 0, interiorX: 2, interiorY: 1, toLevelId: 3, side: 'north', kind: 'gate', span: { from: 0, to: 8 } }] } as unknown as LevelView
     expect(planGuide({ ...host, levelView: () => seam }, 'story')!.target).toEqual({ x: 1026, y: 2000, label: 'Cold Plains' })
+  })
+
+  it('aims past an open edge row at the gap in a fence that runs just beyond the anchor tile', () => {
+    const fenced = new Uint8Array(size * size).fill(1)
+    for (let x = 0; x < size; x++) if (x < 24 || x > 28) fenced[35 * size + x] = fenced[36 * size + x] = 0
+    const seam = { ...view, walkable: fenced, entrances: [{ x: 2, y: 6, interiorX: 2, interiorY: 5, toLevelId: 3, side: 'south', kind: 'gate', span: { from: 0, to: 8 } }] } as unknown as LevelView
+    expect(planGuide({ ...host, levelView: () => seam }, 'story')!.target).toEqual({ x: 1026, y: 2034, label: 'Cold Plains' })
+  })
+
+  it('takes the walkable gap at an edge padded with solid ground beyond it', () => {
+    const padded = new Uint8Array(size * size).fill(1)
+    for (let y = 30; y < size; y++) for (let x = 0; x < size; x++) if (y >= 34 || x < 5 || x > 9) padded[y * size + x] = 0
+    const seam = { ...view, walkable: padded, entrances: [{ x: 2, y: 6, interiorX: 2, interiorY: 5, toLevelId: 3, side: 'south', kind: 'gate', span: { from: 0, to: 8 } }] } as unknown as LevelView
+    expect(planGuide({ ...host, levelView: () => seam }, 'story')!.target).toEqual({ x: 1007, y: 2033, label: 'Cold Plains' })
   })
 
   it('asks you to touch a nearby waypoint before routing when it does not know yours yet', () => {

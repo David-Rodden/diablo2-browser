@@ -1,0 +1,31 @@
+{
+  "wield": {
+    "Compelling Orb": { "object": 404, "item": "qf2", "tool": "Khalim's Will" },
+    "Hellforge": { "object": 376, "item": "hfh", "tool": "the Hellforge Hammer" }
+  },
+  "exits": {
+    "Trap Door": 74,
+    "Stair": 194,
+    "Stair Turned": 195,
+    "Sewer Stairs": 366,
+    "Durance Stairs": 386,
+    "Worldstone Keep Door": 547,
+    "Harrogath Main Gate": 449
+  },
+  "levers": {
+    "Sewer Stairs": { "object": 366, "lever": 367 }
+  },
+  "rotate": {
+    "Cairn Stones": [17, 18, 19, 20, 21]
+  },
+  "rotateMs": 1500,
+  "boons": {
+    "Book of Skill": "ass",
+    "Potion of Life": "xyz"
+  },
+  "sweep": {
+    "Den of Evil": 8
+  },
+  "exitReach": 30,
+  "leverReach": 40
+}

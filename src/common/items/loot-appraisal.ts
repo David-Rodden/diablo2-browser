@@ -141,6 +141,8 @@ export const equipSlotsOf = (item: LootItem): readonly EquipSlotId[] => uiOf(ite
 
 const damageOf = (ui: UiInventoryItem) => ui.twoHanded ? ui.twoHandDamage : ui.oneHandDamage ?? ui.twoHandDamage
 
+export const misfits = (item: LootItem, build: CharacterBuild): boolean => damageOf(uiOf(item)) !== undefined && weaponFit(baseTypeOf(codeOf(item)), build) === 'none'
+
 export function gearScore(item: LootItem, build: CharacterBuild): number {
   const ui = uiOf(item)
   const fit = weaponFit(baseTypeOf(codeOf(item)), build)
@@ -188,7 +190,7 @@ function outrankedBy(item: LootItem, score: number, slots: readonly EquipSlotId[
 
 function upgradeAppraisal(item: LootItem, kind: LootKind, ctx: AppraisalContext): Appraisal | null {
   const ui = uiOf(item)
-  if (ui.allowedSlots.length === 0 || !usableBy(ui, ctx.build, SOON_LEVELS)) return null
+  if (ui.allowedSlots.length === 0 || !usableBy(ui, ctx.build, SOON_LEVELS) || misfits(item, ctx.build)) return null
   const gains = slotUpgrades(item, ctx).filter(isGain)
   const upgrade = gains[0]
   if (upgrade === undefined) return null
@@ -271,5 +273,7 @@ export function appraiseItem(item: LootItem, ctx: AppraisalContext): Appraisal {
     return item.identified ? knownAffixAppraisal(item, kind, ctx) : unknownAffixAppraisal(item, kind, ctx)
   }
   const upgrade = upgradeAppraisal(item, 'normal', ctx)
-  return upgrade && item.totalSockets === 0 ? upgrade : baseAppraisal(item, ctx)
+  if (upgrade && item.totalSockets === 0) return upgrade
+  const base = baseAppraisal(item, ctx)
+  return upgrade?.upgradeSlot !== undefined && (base.tier === 'junk' || base.kind !== 'base') ? upgrade : base
 }

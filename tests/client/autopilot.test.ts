@@ -12,16 +12,18 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
   const world = {
     isDead: false,
     difficulty: 0,
+    npcInteraction: { npcId: null as number | null, window: 'none' },
     waypoints: new Set<number>(),
     areaId: area,
     self,
     merc: null,
-    containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map() },
+    quests: new Uint16Array(48),
+    containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map(), merc: new Map() },
     getUnit: (_: string, id: number) => units.find((unit) => unit.id === id),
     getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
   }
   const hudManager = { leftPanel: 'none', worldPanels: { npcMenu: null as unknown, npcSpeech: null, clickNpcMenuOption: vi.fn() }, toasts: { push: vi.fn() }, maxHp: 0, maxMana: 0, belt: { maxRows: 4 } }
-  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), requestQuestData: vi.fn() }
+  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), cancelNpcSession: vi.fn(), requestQuestData: vi.fn(), useItem: vi.fn() }
   const assists = {
     autoCombatKey: 'E' as string | null,
     pilotKey: 'Y',
@@ -36,7 +38,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     },
     hasLootNearby: () => false,
     dodging: () => false,
-    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], wearUpgrades: vi.fn() },
+    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
     keepUp: () => false,
     canRaise: () => false,
     walkTo: vi.fn(),
@@ -45,6 +47,8 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     canReach: () => true,
     castAt: vi.fn(),
     isHostile: (unit: ClientUnit) => unit.name === 'Fallen',
+    isHopeless: () => false,
+    dangerOf: (_: readonly ClientUnit[]) => ({ dps: 1, trusted: false }),
     castTownPortal: vi.fn(),
     hasTownPortal: () => true,
     standDown: false,
@@ -112,6 +116,58 @@ describe('autopilot', () => {
     expect(hudManager.worldPanels.clickNpcMenuOption).toHaveBeenLastCalledWith('talk_quest:12', undefined)
     tick()
     expect([hudModel.closeActiveNpcPanel.mock.calls.length > 0, hudModel.requestQuestData.mock.calls.length > 0]).toEqual([true, true])
+  })
+
+  it('opens a portal home for a far town errand, and finishes it in town before going back through', () => {
+    const errand = { goal: { level: 1, title: 'Tools of the Trade', inTown: true as const }, hint: 'Bring the Malus to Charsi', step: { kind: 'exit' as const, level: 27 } }
+    const near = setup({ ...errand, target: { x: 120, y: 100, label: 'Outer Cloister' } })
+    Object.assign(near.guide, { currentPlan: near.guide.update() })
+    near.tick()
+    expect(near.assists.castTownPortal).not.toHaveBeenCalled()
+    const { world, assists, guide, units, view, tick } = setup({ ...errand, target: { x: 300, y: 300, label: 'Outer Cloister' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    tick()
+    expect([assists.castTownPortal.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Heading to town by portal: Bring the Malus to Charsi'])
+    Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+    Object.assign(view, { id: ROGUE_ENCAMPMENT })
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    tick(9000)
+    expect(guide.pilotStatus).not.toBe('Back through the portal')
+  })
+
+  it('sells spare finds whenever the purse cannot pay for a full restock', () => {
+    const hardUp = (gold: number) => {
+      const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+      ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+      world.self.gold = gold
+      tick()
+      return (assists.inventoryCare as { hardUp?: boolean }).hardUp
+    }
+    expect([hardUp(450), hardUp(700)]).toEqual([true, false])
+  })
+
+  it('reads a Book of Skill it carries while in town', () => {
+    const { world, hudModel, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 1000
+    world.containers.inventory.set(9, { id: 9, code: 'ass ', identified: true })
+    tick()
+    expect([guide.pilotStatus, hudModel.useItem.mock.calls]).toEqual(['Using the Book of Skill', [[9]]])
+  })
+
+  it('buys thawing potions in town before Duriel and drinks them in his lair', () => {
+    const shop = setup({ goal: { level: 70, title: 'The Seven Tombs', row: 14 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    Object.assign(shop.guide, { currentPlan: shop.guide.update() })
+    ;[1, 2, 3, 4, 5].forEach((id) => shop.world.containers.belt.set(id, { id, code: 'hp2' }))
+    shop.world.containers.inventory.set(8, { id: 8, code: 'tbk', quantity: 20, invWidth: 1, invHeight: 2 })
+    shop.world.containers.inventory.set(9, { id: 9, code: 'ibk', quantity: 20, invWidth: 1, invHeight: 2 })
+    shop.world.self.gold = 1000
+    shop.tick()
+    expect(shop.guide.pilotStatus).toBe('Buying thawing potions for Duriel')
+    const lair = setup({ goal: { level: 73, title: 'The Seven Tombs', row: 14 }, target: { x: 130, y: 100, label: 'Duriel' } }, 73)
+    lair.world.containers.inventory.set(7, { id: 7, code: 'wms', invWidth: 1, invHeight: 1 })
+    lair.tick()
+    expect(lair.hudModel.useItem).toHaveBeenCalledWith(7)
   })
 
   it('asks the server for fresh quest state when the step has not moved for a while', () => {
@@ -217,6 +273,24 @@ describe('autopilot', () => {
     expect(assists.walkTo).toHaveBeenLastCalledWith(145, 100, expect.any(Number))
   })
 
+  it('takes the waypoint home when the portal it came through is gone, instead of pacing between the two', () => {
+    const { world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    world.self.gold = 0
+    const enter = (area: number, x: number) => {
+      world.areaId = area
+      world.self.x = x
+      tick()
+    }
+    enter(ROGUE_ENCAMPMENT, 100)
+    enter(BLOOD_MOOR, 101)
+    enter(3, 300)
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 290, y: 100 }))
+    assists.hasTownPortal = () => false
+    world.self.life = 20
+    for (let i = 0; i < 4; i++) tick(700)
+    expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+  })
+
   it('hands control back when it is in trouble with no portal and no way back', () => {
     const { pilot, world, assists, hudManager, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     assists.hasTownPortal = () => false
@@ -235,6 +309,67 @@ describe('autopilot', () => {
       return assists.stepTo.mock.lastCall?.slice(0, 2)
     })
     expect(steps).toEqual([[112, 100], [112, 112], [112, 88]])
+  })
+
+  it('leaves a pack alone when it would bring the character down within seconds', () => {
+    const { world, assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    const journal = vi.fn()
+    Object.assign(assists, { autoCombatKey: 'E', journal, dangerOf: (pack: readonly ClientUnit[]) => ({ dps: pack.some((foe) => foe.id === 71) ? 50 : 1, trusted: false }) })
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    units.push(unit({ id: 71, x: 112, y: 100, name: 'Fallen' }), unit({ id: 72, x: 125, y: 110, name: 'Fallen' }))
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Hunting Fallen')
+    expect(assists.walkTo.mock.calls.at(-1)?.[1]).toBeGreaterThan(100)
+    expect(journal).toHaveBeenCalledWith('threat', expect.objectContaining({ dps: 50, fall: 2 }))
+  })
+
+  it('heads home before a pack it knows well can finish it off', () => {
+    const { world, assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    units.push(unit({ id: 71, x: 104, y: 100, name: 'Fallen' }))
+    world.self.life = 55
+    Object.assign(assists, { dangerOf: () => ({ dps: 15, trusted: false }) })
+    tick()
+    expect(guide.pilotStatus).not.toBe('Too dangerous here, heading to town')
+    Object.assign(assists, { dangerOf: () => ({ dps: 15, trusted: true }) })
+    tick(4000)
+    expect(guide.pilotStatus).toBe('Too dangerous here, heading to town')
+  })
+
+  it('tries another way, then regroups in town, then asks for help when it makes no headway', () => {
+    const { pilot, assists, guide, tick } = setup({ hint: 'Find the Summoner', target: { x: 300, y: 300, label: 'The Summoner' } })
+    const journal = vi.fn()
+    Object.assign(assists, { journal })
+    const seconds = (count: number) => Array.from({ length: count * 5 }, () => tick())
+    seconds(89)
+    expect(guide.pilotStatus).toBe('Find the Summoner')
+    seconds(2)
+    expect(guide.pilotStatus).toContain('Looking for another way')
+    expect(journal).toHaveBeenCalledWith('rethink', expect.objectContaining({ tries: 1 }))
+    seconds(90)
+    expect(guide.pilotStatus).toBe('Stuck here, regrouping in town')
+    expect(assists.castTownPortal).toHaveBeenCalled()
+    seconds(90)
+    expect(pilot.active).toBe(false)
+  })
+
+  it('does not count a long fight as being stuck', () => {
+    const { assists, guide, tick } = setup({ hint: 'Kill Duriel', target: { x: 300, y: 300, label: 'Duriel' } })
+    assists.fighting = true
+    Array.from({ length: 1000 }, () => tick())
+    assists.fighting = false
+    tick()
+    expect(guide.pilotStatus).toBe('Kill Duriel')
+  })
+
+  it('counts experience as headway', () => {
+    const { world, guide, tick } = setup({ hint: 'Find the Summoner', target: { x: 300, y: 300, label: 'The Summoner' } })
+    const self = Object.assign(world.self, { experience: 0 })
+    for (let second = 0; second < 200; second++) {
+      Array.from({ length: 5 }, () => tick())
+      if (second % 60 === 0) self.experience += 100
+    }
+    expect(guide.pilotStatus).toBe('Find the Summoner')
   })
 
   it('searches the rest of the level once it reaches a spot that does not finish the quest', () => {
@@ -269,6 +404,76 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).not.toBe('Back through the portal')
   })
 
+  it('walks back to where its portal stands after errands took it out of sight of it', () => {
+    const { pilot, world, assists, guide, tick } = setup({ goal: { level: 74, title: 'The Summoner' }, step: { kind: 'waypoint', level: 74 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 0
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    tick()
+    Object.assign(world.self, { x: 300, y: 100 })
+    tick(5000)
+    expect(guide.pilotStatus).toBe('Back through the portal')
+    expect(assists.walkTo.mock.calls.at(-1)![0]).toBeLessThan(300)
+  })
+
+  it('does not step back through its portal with no potions and no gold to buy any', () => {
+    const { pilot, world, units, guide, tick } = setup({ goal: { level: 62, title: 'The Horadric Staff' }, step: { kind: 'waypoint', level: 43 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world.self, { gold: 16, stashGold: 0 })
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    tick()
+    tick(5000)
+    expect(guide.pilotStatus).not.toBe('Back through the portal')
+  })
+
+  it('steps around a portal that will not take it, then takes the waypoint home instead', () => {
+    const { pilot, world, assists, units, tick } = setup({ goal: { level: 74, title: 'The Summoner' }, step: { kind: 'waypoint', level: 74 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 0
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 101, y: 100 }))
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    for (let i = 0; i < 120 && (pilot as unknown as { trip: string | null }).trip !== null; i++) tick(700)
+    expect((pilot as unknown as { trip: string | null }).trip).toBeNull()
+    expect(new Set(assists.stepTo.mock.calls.map(([x, y]) => `${Math.round(x as number)},${Math.round(y as number)}`)).size).toBe(3)
+  })
+
+  it('leaves an act boss fight with more life to spare than an ordinary one', () => {
+    const fight = (classId: number) => {
+      const { world, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+      ;[1, 2, 3, 4, 5, 6, 7, 8].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+      units.push(unit({ id: 80, classId, x: 104, y: 100, name: 'Fallen' }))
+      world.self.life = 44
+      tick()
+      return guide.pilotStatus === 'Low on life, heading to town'
+    }
+    expect([fight(19), fight(211)]).toEqual([false, true])
+  })
+
+  it("will not step into Duriel's Lair without a Town Portal to get back out", () => {
+    const { assists, guide, units, tick } = setup({ goal: { level: 73, title: 'The Seven Tombs' }, hint: "Enter Duriel's Lair", step: { kind: 'portal', level: 73, hint: "Enter Duriel's Lair", find: [100] }, target: { x: 130, y: 100, label: 'Portal' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 160, y: 100 }))
+    assists.hasTownPortal = () => false
+    tick()
+    expect(guide.pilotStatus).toContain('no way out without a Town Portal')
+  })
+
+  it("leaves Duriel's Lair by portal when its next goal is elsewhere, and does not come back through", () => {
+    const { pilot, world, guide, units, view, tick } = setup({ goal: { level: 45, title: 'Training' }, hint: 'Take the portal to Tal Rasha\'s Tomb 5', step: { kind: 'portal', level: 70, hint: '', find: [] }, target: null })
+    Object.assign(guide, { currentPlan: guide.update() })
+    Object.assign(world, { areaId: 73 })
+    tick()
+    expect(guide.pilotStatus).toBe("Heading to town by portal: no way out of Duriel's Lair on foot")
+    Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+    Object.assign(view, { id: ROGUE_ENCAMPMENT })
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 0
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    tick()
+    tick(5000)
+    expect([guide.pilotStatus, (pilot as unknown as { trip: string | null }).trip]).not.toContain('Back through the portal')
+  })
+
   it('calls off a retreat once life is back and the belt has potions', () => {
     const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.self.life = 15
@@ -291,12 +496,13 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toBe('Head to Blood Moor')
   })
 
-  it('backs off and tries a stuck waypoint again, then hands control back instead of skipping goals', () => {
-    const { pilot, assists, hudManager, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+  it('tries a stuck waypoint again from three sides, then hands control back instead of skipping goals', () => {
+    const { pilot, assists, hudManager, hudModel, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
-    for (let i = 0; i < 30; i++) tick(700)
-    expect(assists.stepTo).toHaveBeenCalled()
-    expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(16)
+    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+    expect(new Set(assists.stepTo.mock.calls.map(([x, y]) => `${Math.round(x as number)},${Math.round(y as number)}`)).size).toBe(3)
+    expect(hudModel.cancelNpcSession).toHaveBeenCalled()
+    expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(32)
     expect(guide.skip).not.toHaveBeenCalled()
     expect(pilot.active).toBe(false)
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
@@ -313,6 +519,20 @@ describe('autopilot', () => {
     }
     expect(assists.stepTo).not.toHaveBeenCalled()
     expect(pilot.active).toBe(true)
+  })
+
+  it('puts gold beyond the purse and the gambling stake into the stash', async () => {
+    const { pilot, world, assists, hudManager, hudModel, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.containers.inventory.set(8, { id: 8, code: 'tbk', quantity: 20, invWidth: 1, invHeight: 2 })
+    Object.assign(world.self, { gold: 40_000, stashGold: 0, level: 10 })
+    units.push(unit({ id: 30, unitType: 'object', classId: 267, x: 102, y: 100 }))
+    assists.use.mockImplementation(() => void (hudManager.leftPanel = 'stash'))
+    Object.assign(hudModel, { depositGold: vi.fn((amount: number) => void (world.self.gold -= amount)), closeStash: vi.fn() })
+    for (const key of ['shop', 'gamble', 'potions']) (pilot as unknown as { errandsAt: Map<string, number> }).errandsAt.set(key, 1_000_000)
+    tick()
+    expect(guide.pilotStatus).toBe('Putting gold in the stash')
+    await vi.waitFor(() => expect(world.self.gold).toBe(20_000))
   })
 
   it('takes gold out of the stash when it has none on hand', async () => {
@@ -374,6 +594,31 @@ describe('autopilot', () => {
     expect((assists as unknown as { journal: ReturnType<typeof vi.fn> }).journal).toHaveBeenCalledWith('unstick', expect.objectContaining({ tries: 1 }))
   })
 
+  it('hires a mercenary in town when it has none, but only once an existing one has had time to show up', () => {
+    const { world, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world, { merc: null, expansion: true })
+    world.self.gold = 2000
+    Array.from({ length: 16 }, (_, i) => world.containers.belt.set(i, { id: i, code: 'hp3' }))
+    ;[40, 41].forEach((id) => world.containers.inventory.set(id, { id, code: 'tsc', gridX: id - 40, gridY: 0, invWidth: 1, invHeight: 1 }))
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    tick()
+    expect(guide.pilotStatus).not.toBe('Hiring a mercenary')
+    tick(21_000)
+    expect(guide.pilotStatus).toBe('Hiring a mercenary')
+  })
+
+  it('never hires over a mercenary it already has', () => {
+    const { world, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world, { merc: { mercId: 9, isDead: false, reviveCost: 0 }, expansion: true })
+    world.self.gold = 2000
+    Array.from({ length: 16 }, (_, i) => world.containers.belt.set(i, { id: i, code: 'hp3' }))
+    ;[40, 41].forEach((id) => world.containers.inventory.set(id, { id, code: 'tsc', gridX: id - 40, gridY: 0, invWidth: 1, invHeight: 1 }))
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    tick()
+    tick(21_000)
+    expect(guide.pilotStatus).not.toBe('Hiring a mercenary')
+  })
+
   it('puts on better gear it is carrying while in town', () => {
     const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
     world.self.gold = 0
@@ -421,21 +666,178 @@ describe('autopilot', () => {
     expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Activating the waypoint', units[0]])
   })
 
+  const islands = (view: { walkable: Uint8Array; presetUnits: { type: number; index: number; subX: number; subY: number }[] }, near: number) => {
+    for (let y = 0; y < 400; y++) view.walkable.fill(0, y * 400 + 200, y * 400 + 206)
+    view.presetUnits.push({ type: 2, index: 192, subX: near, subY: 100 }, { type: 2, index: 192, subX: 210, subY: 100 })
+  }
+
   it('takes a teleport pad when the target cannot be walked to', () => {
-    const { assists, guide, units, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
-    Object.assign(guide, { reaches: () => false })
+    const { assists, guide, units, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    islands(view, 106)
     units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 106, y: 100 }))
     tick()
     expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Taking the teleport pad', units[0]])
   })
 
+  it('waits on a pad it pressed instead of walking off and cancelling it', () => {
+    const { assists, guide, units, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    islands(view, 110)
+    units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 110, y: 100 }))
+    tick()
+    const walks = assists.walkTo.mock.calls.length + assists.stepTo.mock.calls.length
+    for (let i = 0; i < 5; i++) tick(200)
+    expect([assists.use.mock.calls.length, assists.walkTo.mock.calls.length + assists.stepTo.mock.calls.length, guide.pilotStatus]).toEqual([1, walks, 'Taking the teleport pad'])
+    tick(600)
+    expect(assists.use.mock.calls.length).toBe(2)
+  })
+
+  it('gives up on a pad that never carries it after a few presses', () => {
+    const { assists, guide, units, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
+    islands(view, 110)
+    units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 110, y: 100 }))
+    for (let i = 0; i < 12; i++) tick(1600)
+    expect([assists.use.mock.calls.length, guide.pilotStatus]).toEqual([5, 'Head to Blood Moor'])
+  })
+
   it('heads for a pad it has not seen yet when the level layout has one', () => {
     const { assists, guide, view, tick } = setup({ target: { x: 300, y: 100, label: 'The Summoner' } })
-    Object.assign(guide, { reaches: () => false })
-    view.presetUnits.push({ type: 2, index: 192, subX: 160, subY: 100 }, { type: 2, index: 192, subX: 40, subY: 100 })
+    islands(view, 160)
     tick()
     expect(guide.pilotStatus).toBe('Taking the teleport pad')
     expect(assists.stepTo.mock.calls[0]?.[0] ?? assists.walkTo.mock.calls[0]?.[0]).toBeGreaterThan(100)
+  })
+
+  it('takes the pad across a gap too narrow to see, but walks when the target is on its own platform', () => {
+    const { assists, guide, units, view, tick } = setup({ target: { x: 208, y: 100, label: 'The Summoner' } })
+    islands(view, 106)
+    units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 106, y: 100 }))
+    tick()
+    expect([guide.pilotStatus, assists.use.mock.calls[0]?.[0]]).toEqual(['Taking the teleport pad', units[0]])
+    const walker = setup({ target: { x: 180, y: 100, label: 'The Summoner' } })
+    islands(walker.view, 106)
+    walker.units.push(unit({ id: 77, unitType: 'object', classId: 192, x: 106, y: 100 }))
+    walker.tick()
+    expect([walker.guide.pilotStatus, walker.assists.use]).toEqual(['Head to Blood Moor', expect.objectContaining({ mock: expect.objectContaining({ calls: [] }) })])
+  })
+
+  it("wields Khalim's Will before smashing the Compelling Orb, and takes its own weapon back afterwards", async () => {
+    const { world, units, hudModel, guide, assists, tick } = setup({ hint: 'Smash the Compelling Orb', target: { x: 104, y: 100, label: 'Compelling Orb', unit: { id: 80, kind: 'object' } } })
+    units.push(unit({ id: 80, unitType: 'object', classId: 404, x: 104, y: 100 }))
+    const sword = { id: 5, code: 'lsd', bodyLoc: 4, invWidth: 1, invHeight: 3 }
+    const will = { id: 6, code: 'qf2', gridX: 0, gridY: 0, invWidth: 2, invHeight: 3 }
+    world.containers.equipment.set(5, sword)
+    world.containers.inventory.set(6, will)
+    const containers = world.containers as unknown as { cursor: unknown }
+    Object.assign(hudModel, {
+      pickupItemToCursor: vi.fn((id: number) => {
+        containers.cursor = world.containers.inventory.get(id)
+        world.containers.inventory.delete(id)
+      }),
+      swapEquipItem: vi.fn(() => {
+        world.containers.equipment.set(6, { ...will, bodyLoc: 4 })
+        world.containers.equipment.delete(5)
+        containers.cursor = sword
+      }),
+      equipItem: vi.fn((id: number) => {
+        world.containers.equipment.set(id, { ...sword, bodyLoc: 4 })
+        containers.cursor = null
+      }),
+      placeCursorItem: vi.fn(() => {
+        world.containers.inventory.set(5, { ...sword, gridX: 4, gridY: 0 })
+        containers.cursor = null
+      }),
+    })
+    tick()
+    expect(guide.pilotStatus).toBe("Wielding Khalim's Will")
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    tick(700)
+    expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
+    world.containers.equipment.delete(6)
+    tick(700)
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect((hudModel as unknown as { equipItem: ReturnType<typeof vi.fn> }).equipItem).toHaveBeenCalledWith(5, 'weapon1')
+  })
+
+  it('goes round the Cairn Stones one at a time instead of clicking one over and over', () => {
+    const { units, assists, tick } = setup({ hint: 'Touch the Cairn Stones, then take the portal', target: { x: 104, y: 100, label: 'Stone', unit: { id: 70, kind: 'object' } }, step: { kind: 'portal', level: 38, hint: 'Touch the Cairn Stones, then take the portal', find: [60, [17, 18, 19, 20, 21]] } })
+    units.push(...[17, 18, 19, 20, 21].map((classId, i) => unit({ id: 70 + i, unitType: 'object', classId, x: 104 + i * 2, y: 100 })))
+    for (let i = 0; i < 6; i++) tick(1600)
+    expect(new Set(assists.use.mock.calls.map(([used]) => (used as ClientUnit).id)).size).toBe(5)
+  })
+
+  it('counts a quest spot it cannot quite stand on as reached and starts exploring', () => {
+    const { world, guide, tick } = setup({ hint: 'Kill every monster in the Den', target: { x: 106, y: 100, label: 'Corpsefire' } })
+    world.self.x = 101.5
+    tick()
+    expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+  })
+
+  it('explores from a quest spot it cannot get any closer to, and keeps exploring from there', () => {
+    const { world, view, guide, assists, tick } = setup({ hint: 'Kill every monster in the Den', target: { x: 130, y: 100, label: 'Corpsefire' } })
+    for (let y = 0; y < 400; y++) view.walkable.fill(0, y * 400 + 114, y * 400 + 140)
+    world.self.x = 112
+    Object.assign(assists, { moving: false })
+    for (let i = 0; i < 8; i++) tick(700)
+    expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+    tick(700)
+    expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+  })
+
+  it('breaks off a fight that has gone nowhere for two minutes, but never walks away from a boss', () => {
+    const { assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(assists, { fighting: true, autoCombatKey: 'E' })
+    units.push(unit({ id: 60, x: 104, y: 100, name: 'Flayer Shaman' }))
+    tick()
+    expect(guide.pilotStatus).toBe('Fighting')
+    for (let i = 0; i < 125; i++) tick(1000)
+    expect([guide.pilotStatus, assists.standDown]).toEqual(['Head to Blood Moor', true])
+    const boss = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(boss.assists, { fighting: true, autoCombatKey: 'E' })
+    boss.units.push(unit({ id: 61, x: 104, y: 100, classId: 156, name: 'Andariel' }))
+    for (let i = 0; i < 125; i++) boss.tick(1000)
+    expect(boss.guide.pilotStatus).toBe('Fighting')
+  })
+
+  it('leaves a crowd that is cutting it down sooner than a lone monster, and stops dodging once it is escaping', () => {
+    const run = (crowd: number) => {
+      const { world, assists, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+      ;[1, 2, 3, 4, 5, 6].forEach((id) => world.containers.belt.set(id, { id, code: 'hp3' }))
+      units.push(...Array.from({ length: crowd }, (_, i) => unit({ id: 60 + i, x: 103 + (i % 4), y: 98 + Math.floor(i / 4), name: 'Fallen' })))
+      Object.assign(assists, { dodging: vi.fn(() => true) })
+      tick(500)
+      world.self.life = 66
+      tick(1000)
+      return { status: guide.pilotStatus, portal: assists.castTownPortal.mock.calls.length }
+    }
+    expect(run(1).status).toBe('Dodging')
+    expect(run(12)).toMatchObject({ status: 'Taking a beating, heading to town', portal: 1 })
+  })
+
+  it('moves on when three minutes of fighting earn nothing, even with town trips in between, and asks for help if it happens again', () => {
+    const { pilot, world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(world.self, { experience: 500 })
+    Object.assign(assists, { fighting: true, autoCombatKey: 'E' })
+    units.push(unit({ id: 60, x: 104, y: 100, name: 'Fallen' }))
+    for (let i = 0; i < 100; i++) tick(1000)
+    expect(pilot.active).toBe(true)
+    world.areaId = ROGUE_ENCAMPMENT
+    tick(1000)
+    world.areaId = BLOOD_MOOR
+    for (let i = 0; i < 90; i++) tick(1000)
+    expect(pilot.active).toBe(true)
+    for (let i = 0; i < 200; i++) tick(1000)
+    expect(pilot.active).toBe(false)
+  })
+
+  it('pulls the sewer lever before taking the stairs it opens', () => {
+    const { units, assists, guide, tick } = setup({ hint: 'Enter Kurast Sewers Level 2', target: { x: 110, y: 100, label: 'Kurast Sewers Level 2' }, step: { kind: 'exit', level: 93 } })
+    units.push(unit({ id: 90, unitType: 'object', classId: 366, x: 110, y: 100, mode: 0 }), unit({ id: 91, unitType: 'object', classId: 367, x: 104, y: 100, mode: 0 }))
+    tick()
+    expect([guide.pilotStatus, assists.use.mock.calls.at(-1)?.[0]]).toEqual(['Pulling the lever', units[1]])
+    Object.assign(units[0]!, { mode: 2 })
+    Object.assign(units[1]!, { mode: 2 })
+    tick(700)
+    expect([guide.pilotStatus, assists.use.mock.calls.at(-1)?.[0]]).toEqual(['Taking the Sewer Stairs', units[0]])
   })
 
   it('picks town on the waypoint it opened while heading home', () => {
@@ -493,6 +895,15 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).not.toBe('Raising an army before the Summoner')
   })
 
+  it('keeps hunting for gear while it wears almost nothing, even after a long hunt', () => {
+    const { pilot, world, guide, tick } = setup({ goal: { level: 50, title: 'Arcane Sanctuary' }, target: { x: 130, y: 100, label: 'Harem' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    Object.assign(world.self, { level: 23, gold: 0, stashGold: 50_000 })
+    Object.assign(pilot as unknown as { gearRestUntil: number }, { gearRestUntil: Number.POSITIVE_INFINITY })
+    tick()
+    expect((guide.detour as { hint?: string } | null)?.hint).toContain('Gathering gear')
+  })
+
   it('goes training first when the next goal is too dangerous for its level', () => {
     const { world, guide, tick } = setup({ goal: { level: 37, title: 'Sisters to the Slaughter' }, target: { x: 130, y: 100, label: 'Catacombs' } })
     Object.assign(guide, { currentPlan: guide.update() })
@@ -506,8 +917,8 @@ describe('autopilot', () => {
     const { world, guide, tick } = setup({ goal: { level: 2, title: 'Den of Evil' }, target: { x: 130, y: 100, label: 'Den of Evil' } })
     Object.assign(guide, { currentPlan: guide.update() })
     Object.assign(world.self, { gold: 0, stashGold: 50_000 })
-    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: bodyLoc, bodyLoc }))
-    for (let i = 0; i < 4; i++) {
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: bodyLoc, code: 'cap', bodyLoc }))
+    for (let i = 0; i < 8; i++) {
       Object.assign(world.self, { life: 20 })
       tick(6000)
       Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
@@ -527,6 +938,20 @@ describe('autopilot', () => {
     expect(guide.detour).toBeNull()
   })
 
+  it('stops walking back into the same death after the third time, and asks for a hand with the body', () => {
+    const { pilot, world, hudModel, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    for (const x of [100, 110, 120]) {
+      Object.assign(world.self, { x })
+      world.isDead = true
+      tick(1000)
+      world.isDead = false
+      tick(60_000)
+    }
+    expect(pilot.active).toBe(false)
+    expect(pilot.lastStop?.detail).toContain('get the body back by hand')
+  })
+
   it('respawns after dying and goes back for its body', () => {
     const { pilot, world, guide, hudModel, units, tick } = setup({})
     Object.assign(hudModel, { resurrect: vi.fn() })
@@ -543,7 +968,15 @@ describe('autopilot', () => {
     expect((guide as unknown as { detour: { level: number; spot: { x: number } } }).detour).toMatchObject({ level: BLOOD_MOOR, spot: { x: 100 } })
     world.self.x = 100
     units.push(unit({ id: 2, unitType: 'player', name: 'Hero', x: 101, y: 100, mode: 17 }))
+    world.self.life = 20
+    units.push(unit({ id: 81, x: 103, y: 100, name: 'Fallen' }))
     tick()
     expect(guide.pilotStatus).toBe('Picking up your body')
+    units.pop()
+    world.self.life = 100
+    ;[1, 3, 4].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    tick(1000)
+    tick(1000)
+    expect([guide.pilotStatus, guide.detour]).toEqual([expect.not.stringContaining('body'), null])
   })
 })

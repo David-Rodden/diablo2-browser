@@ -68,6 +68,15 @@ describe('auto-fight toggle', () => {
     expect(s.attacked()).toEqual([902])
   })
 
+  it('goes for the monster that hits hardest before a weaker one a little closer', () => {
+    const s = createSetup()
+    s.spawn(901, 19, 104, 100)
+    s.spawn(902, 131, 108, 100)
+    s.mapper.handleKeyDown({ key: 'E' })
+    s.fightFor(1000, 1000)
+    expect(s.attacked()).toEqual([902])
+  })
+
   it('sticks with its target until it dies, then moves to the next', () => {
     const s = createSetup()
     s.spawn(901, 19, 104, 100)
@@ -79,6 +88,18 @@ describe('auto-fight toggle', () => {
     s.world.getUnit('monster', 901)!.lifePct = 0
     s.fightFor(1240, 1300)
     expect(s.attacked().at(-1)).toBe(902)
+  })
+
+  it('after giving up on a monster it cannot hurt, leaves the ones huddled with it alone for a while too', () => {
+    const s = createSetup()
+    s.spawn(901, 19, 104, 100)
+    s.spawn(902, 19, 105, 101)
+    s.spawn(903, 19, 96, 108)
+    s.mapper.handleKeyDown({ key: 'E' })
+    s.fightFor(1000, 17_500)
+    const after = s.attacked().length
+    s.fightFor(17_600, 19_000)
+    expect(new Set(s.attacked().slice(after))).toEqual(new Set([903]))
   })
 
   it('goes for a shaman that raises the dead before the fallen around it', () => {
@@ -269,6 +290,37 @@ describe('auto-fight with build-aware skills', () => {
     const selected = s.sent.flatMap((c) => (c.type === 'SelectSkill' ? [`${c.hand}:${c.skill}`] : []))
     expect(selected).toEqual(expect.arrayContaining(['right:40', 'left:47']))
     expect(s.attacked()).toContain(901)
+  })
+
+  it('raises skeletons from a corpse it aims at, not from the spot it stands on', () => {
+    const s = createSetup()
+    const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number }
+    self.skills.set(70, 4)
+    Object.assign(self, { mana: 200, maxMana: 200 })
+    s.mapper.assists.smartSkills = true
+    s.spawn(901, 19, 108, 100)
+    s.spawn(902, 19, 105, 104)
+    Object.assign(s.world.getUnit('monster', 902)!, { lifePct: 0, mode: 12 })
+    s.mapper.handleKeyDown({ key: 'e' })
+    s.fightFor(1000, 3000)
+    const raised = s.sent.flatMap((c) => (c.type === 'SkillOn' && c.hand === 'right' ? [c.target.id] : []))
+    expect(raised).toContain(902)
+  })
+
+  it('steps back behind its own skeletons when a pack crowds it', () => {
+    const s = createSetup()
+    const self = s.world.self as unknown as { skills: Map<number, number>; mana: number; maxMana: number }
+    self.skills.set(67, 5)
+    Object.assign(self, { mana: 200, maxMana: 200 })
+    s.mapper.assists.smartSkills = true
+    s.spawn(901, 19, 100, 98)
+    s.spawn(902, 19, 101, 98)
+    s.spawn(950, 363, 104, 103.5)
+    ;(s.world as unknown as { _pets: Map<number, unknown> })._pets.set(950, { unitId: 950, ownerId: 1, petType: 4, classId: 363, lifePct: 100, isDead: false })
+    s.mapper.handleKeyDown({ key: 'e' })
+    s.fightFor(1000, 1400)
+    const moves = s.sent.flatMap((c) => (c.type === 'Move' && c.to ? [c.to] : []))
+    expect(moves[0]).toEqual(expect.objectContaining({ x: 104, y: 106 }))
   })
 
   it('backs away from a boss that gets close instead of trading blows', () => {

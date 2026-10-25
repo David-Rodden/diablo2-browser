@@ -36,6 +36,7 @@ export interface CharacterSpec {
   readonly belt: readonly ItemSpec[]
   readonly inventory: readonly ItemSpec[]
   readonly stash: readonly ItemSpec[]
+  readonly waypoints?: 'all'
 }
 
 export const TEST_CHARACTERS: Readonly<Record<string, CharacterSpec>> = SPECS as Readonly<Record<string, CharacterSpec>>
@@ -49,6 +50,8 @@ const BELT_COLUMNS = 4
 const QUEST_FLAGS = { completed: QUEST_FLAG_COMPLETED_113C, 'reward pending': QUEST_FLAG_REWARD_PENDING_113C }
 const QUEST_WORDS = 48
 const SKILL_SLOTS = 30
+const WAYPOINT_BLOCK = 24
+const WAYPOINT_BYTES = 5
 
 interface BaseRecord {
   readonly code: string
@@ -142,6 +145,13 @@ function questData(quests: CharacterSpec['quests']): [Uint16Array, Uint16Array, 
   return [normal, new Uint16Array(QUEST_WORDS), new Uint16Array(QUEST_WORDS)]
 }
 
+const allWaypoints = (): Uint8Array => {
+  const block = new Uint8Array(WAYPOINT_BLOCK)
+  block.set([0x02, 0x01])
+  block.fill(0xff, 2, 2 + WAYPOINT_BYTES)
+  return block
+}
+
 export function buildTestCharacter(name: string, spec: CharacterSpec): Uint8Array {
   const classIndex = CHARACTER_CLASS_NAMES.indexOf(spec.class as (typeof CHARACTER_CLASS_NAMES)[number])
   if (classIndex < 0) throw new Error(`unknown class "${spec.class}"`)
@@ -167,6 +177,7 @@ export function buildTestCharacter(name: string, spec: CharacterSpec): Uint8Arra
     hotkeys: [left, right],
     leftRightSkills: [left, right, left, right],
     quests: questData(spec.quests),
+    ...(spec.waypoints === 'all' ? { waypoints: [allWaypoints(), allWaypoints(), allWaypoints()] } : {}),
     attributes: { ...spec.attributes, level: spec.level, experience, gold: spec.gold, goldBank: spec.stashGold, statPts: 0, skillPts: 0, hitpointsFixed: life, maxHpFixed: life, manaFixed: mana, maxManaFixed: mana, staminaFixed: stamina, maxStaminaFixed: stamina },
     skillLevels: skillLevels(classCode, spec.skills),
     items: [...equipped, ...belt, ...packGrid(spec.inventory, GRIDS.inventory, PAGE.inventory), ...packGrid(spec.stash, GRIDS.stash, PAGE.stash)],

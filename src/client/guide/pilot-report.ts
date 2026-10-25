@@ -17,6 +17,8 @@ const bagReport = (world: ClientWorld, assists: PlayAssists) => {
   return [...world.containers.inventory.values()].map((item) => ({ item, appraisal: assists.inventoryCare.appraise(item) })).filter(({ appraisal }) => appraisal.kind !== 'consumable').map(({ item, appraisal }) => `${item.code.trim()} ${appraisal.tier} ${appraisal.kind}: ${appraisal.reason}`)
 }
 
+const threatReport = ({ dps, trusted }: { readonly dps: number; readonly trusted: boolean }) => (dps > 0 ? { dps: Math.round(dps * 10) / 10, trusted } : null)
+
 export function pilotReport(world: ClientWorld, hudManager: HudManager, assists: PlayAssists, pilot: Autopilot, guide: PathGuide): Readonly<Record<string, unknown>> | null {
   const me = world.self
   if (world.areaId <= 0 || world.selfId <= 0) return null
@@ -38,15 +40,19 @@ export function pilotReport(world: ClientWorld, hudManager: HudManager, assists:
     pilot: pilot.report(),
     fight: { auto: assists.pilotCombat, standDown: assists.standDown, target: target && { id: target.id, classId: target.classId, name: target.name, lifePct: target.lifePct, distance: round(Math.hypot(target.x - me.x, target.y - me.y)) } },
     hostiles: monsters.filter((unit) => !unit.dead && assists.isHostile(unit)).length,
+    threat: threatReport(assists.dangerOf(monsters.filter((unit) => !unit.dead && assists.isHostile(unit)))),
     corpses: monsters.filter((unit) => unit.dead).length,
     pets,
     belt: world.containers.belt.size,
+    xp: me.experience,
+    merc: world.merc && { life: world.merc.lifePct, dead: world.merc.isDead },
     gold: me.gold,
     stashGold: me.stashGold,
     cursor: world.containers.cursor?.code.trim() ?? null,
     quest: [...world.containers.inventory.values(), ...world.containers.cube.values(), ...world.containers.stash.values()].filter((item) => QUEST_CODES.has(item.code.trim())).map((item) => `${item.code.trim()}@${world.containers.stash.has(item.id) ? 'stash' : world.containers.cube.has(item.id) ? 'cube' : 'bag'}`),
     bag: bagReport(world, assists),
     panel: hudManager.leftPanel,
+    npc: world.npcInteraction.npcId === null ? null : { id: world.npcInteraction.npcId, window: world.npcInteraction.window },
     menu: Boolean(hudManager.worldPanels.npcMenu),
     speech: Boolean(hudManager.worldPanels.npcSpeech),
   }
