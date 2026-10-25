@@ -23,7 +23,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
   }
   const hudManager = { leftPanel: 'none', worldPanels: { npcMenu: null as unknown, npcSpeech: null, clickNpcMenuOption: vi.fn() }, toasts: { push: vi.fn() }, maxHp: 0, maxMana: 0, belt: { maxRows: 4 } }
-  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), cancelNpcSession: vi.fn(), requestQuestData: vi.fn() }
+  const hudModel = { teleportToLevel: vi.fn(), closeWaypoint: vi.fn(), handleNpcMenuAction: vi.fn(), closeActiveNpcPanel: vi.fn(), cancelNpcSession: vi.fn(), requestQuestData: vi.fn(), useItem: vi.fn() }
   const assists = {
     autoCombatKey: 'E' as string | null,
     pilotKey: 'Y',
@@ -116,6 +116,43 @@ describe('autopilot', () => {
     expect(hudManager.worldPanels.clickNpcMenuOption).toHaveBeenLastCalledWith('talk_quest:12', undefined)
     tick()
     expect([hudModel.closeActiveNpcPanel.mock.calls.length > 0, hudModel.requestQuestData.mock.calls.length > 0]).toEqual([true, true])
+  })
+
+  it('opens a portal home for a far town errand, and finishes it in town before going back through', () => {
+    const errand = { goal: { level: 1, title: 'Tools of the Trade', inTown: true as const }, hint: 'Bring the Malus to Charsi', step: { kind: 'exit' as const, level: 27 } }
+    const near = setup({ ...errand, target: { x: 120, y: 100, label: 'Outer Cloister' } })
+    Object.assign(near.guide, { currentPlan: near.guide.update() })
+    near.tick()
+    expect(near.assists.castTownPortal).not.toHaveBeenCalled()
+    const { world, assists, guide, units, view, tick } = setup({ ...errand, target: { x: 300, y: 300, label: 'Outer Cloister' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    tick()
+    expect([assists.castTownPortal.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Heading to town by portal: Bring the Malus to Charsi'])
+    Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+    Object.assign(view, { id: ROGUE_ENCAMPMENT })
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    tick(9000)
+    expect(guide.pilotStatus).not.toBe('Back through the portal')
+  })
+
+  it('sells spare finds whenever the purse cannot pay for a full restock', () => {
+    const hardUp = (gold: number) => {
+      const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+      ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+      world.self.gold = gold
+      tick()
+      return (assists.inventoryCare as { hardUp?: boolean }).hardUp
+    }
+    expect([hardUp(450), hardUp(700)]).toEqual([true, false])
+  })
+
+  it('reads a Book of Skill it carries while in town', () => {
+    const { world, hudModel, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 1000
+    world.containers.inventory.set(9, { id: 9, code: 'ass ', identified: true })
+    tick()
+    expect([guide.pilotStatus, hudModel.useItem.mock.calls]).toEqual(['Using the Book of Skill', [[9]]])
   })
 
   it('asks the server for fresh quest state when the step has not moved for a while', () => {

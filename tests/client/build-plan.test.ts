@@ -32,6 +32,15 @@ describe('build plans', () => {
     const teleportReady = { 'Fire Bolt': 20, Warmth: 1, 'Frozen Armor': 1, 'Charged Bolt': 1, Telekinesis: 1, 'Static Field': 1, 'Fire Ball': 20 }
     expect(nextSkill(sorc, hard(teleportReady), () => true)).toBe(id('Teleport'))
     expect(nextSkill(sorc, hard(early), (skillId) => skillId !== id('Charged Bolt'))).toBeNull()
+    expect(nextSkill(sorc, hard(early), (skillId) => skillId !== id('Charged Bolt'), 3)).not.toBeNull()
+  })
+
+  it('puts spare points into the next skill once the main one is capped by character level', () => {
+    const sorc = buildOf(1)!
+    const capped = { 'Fire Bolt': 5, Warmth: 1, 'Frozen Armor': 1, 'Charged Bolt': 1 }
+    const hard = (skillId: number) => Object.entries(capped).find(([name]) => id(name) === skillId)?.[1] ?? 0
+    const next = nextSkill(sorc, hard, (skillId) => skillId !== id('Fire Bolt'))
+    expect([next === null, next === id('Fire Bolt')]).toEqual([false, false])
   })
 
   it('spreads stat points by weight until each stat reaches its target', () => {

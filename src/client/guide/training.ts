@@ -3,6 +3,7 @@ import { slotOf } from '../../common/items/loot-appraisal.ts'
 import type { LootItem } from '../../common/items/loot-item.ts'
 import { getExperienceTable } from '../../common/skills/formulas.ts'
 import { getLevelMonsterLevel113c, LEVELS_MONLVL_113C } from '../../common/world/levels-monlvl-113c.ts'
+import { LEVEL_LINKS } from './level-links.ts'
 import { ACT_TOWNS, actOfLevel, levelName, shortestRoute } from './route.ts'
 import TRAINING from './data/training.json'
 
@@ -57,10 +58,11 @@ export function readiness(me: Trainee, questLevel: number, setbacks: number, gea
   return me.gold < gold / 4 ? { level: me.level, gold, bare: DRESSED.length, why: `Gathering gold for supplies` } : null
 }
 
-export function trainingGround(from: number, me: Trainee, waypointLevels: ReadonlySet<number>, skip: ReadonlySet<number>, rateOf: (area: number) => number | undefined = () => undefined): number | null {
+export function trainingGround(from: number, me: Trainee, waypointLevels: ReadonlySet<number>, skip: ReadonlySet<number>, rateOf: (area: number) => number | undefined = () => undefined, sealed: ReadonlySet<number> = new Set()): number | null {
   const maxAct = actOfLevel(from)
-  const ceiling = me.level - TRAINING.belowGoal
-  const hops = (level: number) => shortestRoute(from, level, waypointLevels)?.length ?? Infinity
+  const ceiling = Math.max(Math.min(me.level - TRAINING.belowGoal, TRAINING.bareFromLevel), me.level - TRAINING.belowGoal - Math.round(me.bare * TRAINING.barePenalty))
+  const links = new Map([...LEVEL_LINKS].filter(([level]) => !sealed.has(level)).map(([level, out]) => [level, out.filter((link) => !sealed.has(link.to))]))
+  const hops = (level: number) => shortestRoute(from, level, waypointLevels, links)?.length ?? Infinity
   const candidates = LEVELS_MONLVL_113C.map((_, id) => id).filter((id) => id > 0 && !TOWNS.has(id) && !AVOID.has(id) && !skip.has(id) && actOfLevel(id) <= maxAct && monsterLevel(id, me.difficulty) <= ceiling)
   const scored = candidates.map((id) => ({ id, mon: monsterLevel(id, me.difficulty), hops: hops(id) })).filter((c) => Number.isFinite(c.hops))
   const best = Math.max(...scored.map((c) => c.mon))

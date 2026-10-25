@@ -131,6 +131,20 @@ describe('path guide plan', () => {
     expect(planGuide({ ...host, levelView: () => seam }, 'story')!.target).toEqual({ x: 1026, y: 2000, label: 'Cold Plains' })
   })
 
+  it('aims past an open edge row at the gap in a fence that runs just beyond the anchor tile', () => {
+    const fenced = new Uint8Array(size * size).fill(1)
+    for (let x = 0; x < size; x++) if (x < 24 || x > 28) fenced[35 * size + x] = fenced[36 * size + x] = 0
+    const seam = { ...view, walkable: fenced, entrances: [{ x: 2, y: 6, interiorX: 2, interiorY: 5, toLevelId: 3, side: 'south', kind: 'gate', span: { from: 0, to: 8 } }] } as unknown as LevelView
+    expect(planGuide({ ...host, levelView: () => seam }, 'story')!.target).toEqual({ x: 1026, y: 2034, label: 'Cold Plains' })
+  })
+
+  it('takes the walkable gap at an edge padded with solid ground beyond it', () => {
+    const padded = new Uint8Array(size * size).fill(1)
+    for (let y = 30; y < size; y++) for (let x = 0; x < size; x++) if (y >= 34 || x < 5 || x > 9) padded[y * size + x] = 0
+    const seam = { ...view, walkable: padded, entrances: [{ x: 2, y: 6, interiorX: 2, interiorY: 5, toLevelId: 3, side: 'south', kind: 'gate', span: { from: 0, to: 8 } }] } as unknown as LevelView
+    expect(planGuide({ ...host, levelView: () => seam }, 'story')!.target).toEqual({ x: 1007, y: 2033, label: 'Cold Plains' })
+  })
+
   it('asks you to touch a nearby waypoint before routing when it does not know yours yet', () => {
     const waypointAt = (x: number, y: number) => ({ id: 41, unitType: 'object', classId: 119, mode: 0, x, y, hidden: false, dead: false, name: 'Waypoint' }) as unknown as ClientUnit
     const [near, far] = [waypointAt(1012, 2030), waypointAt(1039, 2000)]
