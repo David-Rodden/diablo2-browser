@@ -1715,55 +1715,23 @@ export function tickMercenaryAi25Hz(
       ? terrainOrTick
       : createOpenTerrain()
 
-  // Ensure default numeric fields required by rawTickMercenaryAi25Hz
   if (merc.id === undefined) merc.id = merc.unitId ?? 1
-  if (merc.damage === undefined) merc.damage = Math.max(10, merc.level * 2)
-  if (merc.reach === undefined) merc.reach = merc.act === 1 || merc.act === 3 ? 140 : 28
-  if (merc.aggroRadius === undefined) merc.aggroRadius = 240
-  if (merc.speed === undefined) merc.speed = 45
-  if (merc.cooldown === undefined) merc.cooldown = 0
-  if (merc.cooldownTicks === undefined) merc.cooldownTicks = 10
   if (merc.hp <= 0) merc.alive = false
 
-  const startX = merc.x
-  const startY = merc.y
-  const distBefore = Math.hypot(startX - resolvedOwner.x, startY - resolvedOwner.y)
-  const hpBefore = new Map<number, number>()
-  for (const m of world.monsters) {
-    hpBefore.set(m.index, m.hp)
-  }
-
-  rawTickMercenaryAi25Hz(
+  const rawOut = rawTickMercenaryAi25Hz(
     world,
     merc as unknown as RawMercenaryUnitState,
     resolvedOwner,
     terrain,
   )
 
-  const teleportedToOwner =
-    merc.alive &&
-    distBefore > 480 &&
-    merc.x === resolvedOwner.x &&
-    merc.y === resolvedOwner.y
-
-  let attackedTargetId: number | undefined
-  for (const m of world.monsters) {
-    const prevHp = hpBefore.get(m.index)
-    if (prevHp !== undefined && m.hp < prevHp) {
-      attackedTargetId = m.index
-      break
-    }
-  }
-
-  if (merc.act === 2 && merc.alive && !merc.activeAura) {
-    merc.activeAura = 'Might'
-  }
-
   return {
-    teleportedToOwner,
-    ...(attackedTargetId !== undefined ? { attackedTargetId } : {}),
-    ...(merc.activeAura !== undefined ? { activeAura: merc.activeAura } : {}),
-    ...(merc.state !== undefined ? { state: merc.state } : {}),
+    teleportedToOwner: rawOut.teleportedToOwner,
+    ...(rawOut.attackedTargetId !== undefined ? { attackedTargetId: rawOut.attackedTargetId } : {}),
+    ...(rawOut.activeAura !== undefined ? { activeAura: rawOut.activeAura } : {}),
+    ...(rawOut.state !== undefined
+      ? { state: rawOut.state as MercenaryTickOutcome['state'] }
+      : {}),
   }
 }
 

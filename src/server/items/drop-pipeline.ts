@@ -9,7 +9,9 @@
 import * as dropTablesModule from '../../common/items/drop-tables.ts'
 import {
   canItemBeRare,
+  computeEtherealMaxDurability113c,
   createDroppedItem,
+  getMaxSockets113c,
   HELLFORGE_FLAWLESS_GEMS,
   HELLFORGE_NORMAL_GEMS,
   HELLFORGE_PERFECT_GEMS,
@@ -18,13 +20,17 @@ import {
   LOW_QUALITY_PREFIXES,
   resolveItemTypeFlags,
   rollHellforgeDrop,
+  rollItemEthereal113c,
   rollItemEtherealAndSockets,
+  rollRandomItemSockets113c,
   shouldSpawnIdentifiedByDefault,
   type DropPipelineOptions,
   type DropTables,
   type EtherealAndSocketsRoll,
   type HellforgeDropResult,
   type ItemTypeFlags,
+  type RollItemEtherealOptions,
+  type RollRandomItemSocketsOptions,
 } from '../../common/items/drop-tables.ts'
 import { getEmbeddedDropTables } from '../../common/items/embedded-drop-tables.ts'
 import type { Item } from '../../common/items/items.ts'
@@ -44,8 +50,10 @@ import type {
 
 export {
   canItemBeRare,
+  computeEtherealMaxDurability113c,
   createDroppedItem,
   getEmbeddedDropTables,
+  getMaxSockets113c,
   HELLFORGE_FLAWLESS_GEMS,
   HELLFORGE_NORMAL_GEMS,
   HELLFORGE_PERFECT_GEMS,
@@ -54,7 +62,9 @@ export {
   LOW_QUALITY_PREFIXES,
   resolveItemTypeFlags,
   rollHellforgeDrop,
+  rollItemEthereal113c,
   rollItemEtherealAndSockets,
+  rollRandomItemSockets113c,
   shouldSpawnIdentifiedByDefault,
   type DropPipelineOptions,
   type DropTables,
@@ -63,6 +73,8 @@ export {
   type ItemTypeFlags,
   type KillerDropContext,
   type PendingMonsterDrop,
+  type RollItemEtherealOptions,
+  type RollRandomItemSocketsOptions,
 }
 
 export * from '../../common/items/affix-generator.ts'
@@ -97,6 +109,8 @@ export interface ResolveMonsterDropOptions {
   readonly playerGf?: number | undefined
   readonly gamePlayers?: number | undefined
   readonly partyPlayers?: number | undefined
+  readonly monsterPlayerCount?: number | undefined
+  readonly spawnedUniqueIds?: Set<number> | undefined
 }
 
 /**
@@ -214,6 +228,10 @@ export function resolveMonsterDropPending113c(
 
   const isBoss = isMinion ? false : Boolean(monsterKind?.boss)
   const isNoRatio = Boolean(monsterKind?.noRatio)
+  const monsterPlayerCount =
+    options.monsterPlayerCount ??
+    monster?.monsterPlayerCount ??
+    monster?.stats?.monsterPlayerCount
 
   return {
     monsterIndex: monster?.index ?? event.monsterIndex ?? -1,
@@ -233,6 +251,7 @@ export function resolveMonsterDropPending113c(
       playerGf,
       gamePlayers,
       partyPlayers,
+      ...(monsterPlayerCount !== undefined ? { monsterPlayerCount } : {}),
     },
   }
 }
@@ -245,6 +264,7 @@ export function executePendingMonsterDrop113c(
   pending: PendingMonsterDrop,
   difficulty: Difficulty = 'normal',
   seed?: number,
+  spawnedUniqueIds?: Set<number>,
 ): Item[] {
   if (pending.items) return [...(pending.items as Item[])]
   const dropSeed = seed ?? pending.seed
@@ -258,11 +278,15 @@ export function executePendingMonsterDrop113c(
     difficulty,
     gamePlayers: pending.killerContext.gamePlayers,
     partyPlayers: pending.killerContext.partyPlayers,
+    ...(pending.killerContext.monsterPlayerCount !== undefined
+      ? { monsterPlayerCount: pending.killerContext.monsterPlayerCount }
+      : {}),
     playerMf: pending.killerContext.playerMf,
     playerGf: pending.killerContext.playerGf,
     isBoss: pending.isBoss,
     isNoRatio: pending.isNoRatio,
     monsterRng: new D2Rng(dropSeed),
+    ...(spawnedUniqueIds !== undefined ? { spawnedUniqueIds } : {}),
   })
 }
 
@@ -285,7 +309,13 @@ export function queueMonsterDeathDrop113c(
   }
   monster.dropRolled = true
   monster.animMode = 'dd'
-  const items = executePendingMonsterDrop113c(options.dropTables, pending, options.difficulty ?? 'normal')
+  const items = executePendingMonsterDrop113c(
+    options.dropTables,
+    pending,
+    options.difficulty ?? 'normal',
+    undefined,
+    options.spawnedUniqueIds,
+  )
   monster.pendingDrop = undefined
   onTriggerDrop?.(monster, items)
   return pending
@@ -300,6 +330,7 @@ export function tickPendingMonsterDrops113c(
   dropTables: DropTables,
   difficulty: Difficulty = 'normal',
   onTriggerDrop?: (monster: Monster, items: Item[]) => void,
+  spawnedUniqueIds?: Set<number>,
 ): Array<{ readonly monster: Monster; readonly items: Item[] }> {
   const triggered: Array<{ readonly monster: Monster; readonly items: Item[] }> = []
   for (const monster of monsters) {
@@ -310,7 +341,13 @@ export function tickPendingMonsterDrops113c(
           const pending = monster.pendingDrop as PendingMonsterDrop
           monster.dropRolled = true
           monster.animMode = 'dd'
-          const items = executePendingMonsterDrop113c(dropTables, pending, difficulty)
+          const items = executePendingMonsterDrop113c(
+            dropTables,
+            pending,
+            difficulty,
+            undefined,
+            spawnedUniqueIds,
+          )
           monster.pendingDrop = undefined
           onTriggerDrop?.(monster, items)
           triggered.push({ monster, items })

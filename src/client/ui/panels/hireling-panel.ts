@@ -843,9 +843,7 @@ export function drawMercenaryPanelImpl(
   let nextExp = Number(m.nextExp ?? m.nextLevelXp ?? getStatVal(30, 'nextExp', undefined, 0)) || 0
   if (nextExp <= 0 && mLevel > 0 && mLevel < 98) {
     const mClassId = Number(m.classId ?? m.hcIdx ?? 271)
-    const rec =
-      HIRELING_RECORDS.find((r) => r.version === 100 && r.classId === mClassId) ??
-      HIRELING_RECORDS.find((r) => r.classId === mClassId)
+    const rec = HIRELING_RECORDS.find((r) => r.version === 100 && r.classId === mClassId)
     if (rec && rec.expPerLvl > 0) {
       nextExp = rec.expPerLvl * (mLevel + 2) * (mLevel + 1) * (mLevel + 1)
     }

@@ -36,6 +36,11 @@ export const QUEST_INFO_BY_ID_113C: ReadonlyMap<string, QuestFlagInfo113c> = (()
 export const QUEST_FLAG_COMPLETED_113C = 0x0001 // reward granted
 export const QUEST_FLAG_REWARD_PENDING_113C = 0x0002 // objective done, NPC reward pending
 export const QUEST_FLAG_STARTED_113C = 0x0004 // quest accepted
+export const QUEST_FLAG_CUSTOM_4_113C = 0x0010 // QFLAG_CUSTOM1 (bit 4): A3Q1 Cain showed Golden Bird ('g34', 0x6fd08c09)
+export const QUEST_FLAG_CUSTOM_5_113C = 0x0020 // QFLAG_CUSTOM2 (bit 5): A2Q1 ('ass') & A3Q1 ('xyz') consumable reward armed
+export const QUEST_FLAG_CUSTOM_6_113C = 0x0040 // QFLAG_CUSTOM3 (bit 6): A3Q1 Jade Figurine ('j34') picked up (0x6fd07734)
+export const QUEST_FLAG_CUSTOM_7_113C = 0x0080 // QFLAG_CUSTOM4 (bit 7): A5Q3 ('tr2') Scroll of Resistance consumed (+10 all resist active)
+export const QUEST_FLAG_CUSTOM_8_113C = 0x0100 // QFLAG_CUSTOM5 (bit 8): A5Q3 ('tr2') Scroll of Resistance granted by Malah
 export const QUEST_FLAG_PRIMARY_GOAL_DONE_113C = 0x1000
 export const QUEST_FLAG_COMPLETED_NOW_113C = 0x2000 // QFLAG_COMPLETEDNOW (bit 13: reward consumed in session)
 
@@ -61,6 +66,20 @@ export function setQuestFlag113c(
   if (idx === undefined) return false
   const next = (quests[idx] ?? 0) | mask
   if (next === quests[idx]) return false
+  quests[idx] = next
+  return true
+}
+
+export function clearQuestFlag113c(
+  quests: Uint16Array,
+  questId: string,
+  mask: number,
+): boolean {
+  const idx = questWordIndex113c(questId)
+  if (idx === undefined) return false
+  const prev = quests[idx] ?? 0
+  const next = prev & ~mask
+  if (next === prev) return false
   quests[idx] = next
   return true
 }
@@ -94,8 +113,6 @@ export const QUEST_OBJECT_TO_QUEST_113C: Readonly<Record<number, string>> = Obje
   108: 'a1q5', // Horadric Malus
   149: 'a2q3', // Tainted Sun Altar
   193: 'a3q4', // Lam Esen's Tome
-  244: 'a3q1', // Rat's Nest (Jade Figurine)
-  246: 'a3q1',
   251: 'a3q2', // Gidbinn Altar
   252: 'a3q2', // Gidbinn
   357: 'a2q4', // Horazon's Journal
@@ -110,3 +127,30 @@ export const QUEST_OBJECT_TO_QUEST_113C: Readonly<Record<number, string>> = Obje
   473: 'a5q2', // Cage (rescue barbarians)
   558: 'a5q3', // Frozen Anya
 })
+
+/**
+ * `D2Game.dll` @ `0x6fd03ce0..0x6fd03df0` (`ACT3Q1_StatusFilter`, questId `0x12`, word 20):
+ * resolves the `S2C 0x52` / `0x5D` quest status byte (`0..5, 11, 13`) for `a3q1` (The Golden Bird).
+ */
+export function computeA3Q1StatusByte113c(
+  quests: ArrayLike<number>,
+  hasJ34: boolean,
+  hasG34: boolean,
+): number {
+  const idx = questWordIndex113c('a3q1') ?? 20
+  const w = (quests[idx] ?? 0) & 0xffff
+  if ((w & QUEST_FLAG_REWARD_PENDING_113C) !== 0) return 5
+  if ((w & QUEST_FLAG_COMPLETED_113C) !== 0) {
+    return (w & QUEST_FLAG_COMPLETED_NOW_113C) !== 0 ? 13 : 11
+  }
+  if (hasG34) {
+    return (w & QUEST_FLAG_CUSTOM_4_113C) !== 0 ? 4 : 3
+  }
+  if (hasJ34) {
+    return (w & QUEST_FLAG_STARTED_113C) !== 0 ? 2 : 1
+  }
+  if ((w & QUEST_FLAG_CUSTOM_4_113C) !== 0) return 4
+  if ((w & QUEST_FLAG_STARTED_113C) !== 0) return 2
+  if ((w & QUEST_FLAG_CUSTOM_6_113C) !== 0) return 1
+  return 0
+}

@@ -1373,10 +1373,9 @@ export function aggregateUnit(input: StatEngineUnitInput): UnitAggregate {
       flat.add(119, 0, fan.attackRatingPct)
       flat.add(68, 0, fan.casterIas)
     })
-    // Barbarian #144 Concentrate (state 15): +100 + 10*(slvl-1) + 10*blvl(Iron Skin #145) % Defense
+    // Barbarian #144 Concentrate (state 15): +100 + 10*(slvl-1) % Defense (Skills.txt aurastatcalc1 = ln34)
     addAuraStateSource(15, 144, (flat, eff) => {
-      const ironSkinHard = Math.max(0, hardLevels.get(145) ?? 0)
-      flat.add(171, 0, 100 + 10 * (eff - 1) + 10 * ironSkinHard)
+      flat.add(171, 0, 100 + 10 * (eff - 1))
     })
     // Barbarian #138 Shout (state 26): +100 + 10*(slvl-1) % Defense
     addAuraStateSource(26, 138, (flat, eff) => {
@@ -1411,12 +1410,12 @@ export function aggregateUnit(input: StatEngineUnitInput): UnitAggregate {
       flat.add(68, 0, iasBonus)
       flat.add(119, 0, 50 + 15 * (eff - 1))
     })
-    // Druid #228 Werebear (state 140): +50% + Lycanthropy % Max HP (76), +50 + 8*(slvl-1)% ED (25), +25 + 6*(slvl-1)% Defense (171)
+    // Druid #228 Werebear (state 140): +75% (par5) + Lycanthropy % Max HP (76), +55 + 8*(slvl-1)% ED (25), +25 + 6*(slvl-1)% Defense (171)
     addAuraStateSource(140, 228, (flat, eff) => {
       const lycanLvl = effectiveSkillLevel(224).effective
       const lycanHpBonus = lycanLvl > 0 ? 20 + 5 * (lycanLvl - 1) : 0
-      flat.add(76, 0, 50 + lycanHpBonus)
-      flat.add(25, 0, 50 + 8 * (eff - 1))
+      flat.add(76, 0, 75 + lycanHpBonus)
+      flat.add(25, 0, 55 + 8 * (eff - 1))
       flat.add(171, 0, 25 + 6 * (eff - 1))
     })
     // Druid #232 Feral Rage (state 120): +FRW (67) and +Life Steal (60)

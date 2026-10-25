@@ -8,8 +8,6 @@
 
 import type { UnitType } from '../../netproto/index.ts'
 
-export const DEFAULT_AOI_RADIUS_SUBTILES = 80
-
 export interface AoiEntityPos {
   readonly unitType: UnitType
   readonly unitId: number
@@ -32,16 +30,17 @@ export class AoiFilter {
   readonly radius: number
   private readonly visibleByViewer = new Map<number, Map<string, AoiEntityPos>>()
 
-  constructor(radius: number = DEFAULT_AOI_RADIUS_SUBTILES) {
-    this.radius = Math.max(1, radius)
+  constructor(radius: number = 0) {
+    this.radius = Math.max(0, radius)
   }
 
   isInRange(
     viewer: { readonly areaId: number; readonly x: number; readonly y: number },
     target: { readonly areaId: number; readonly x: number; readonly y: number },
     radiusOverride?: number,
+    isSeamAdjacent?: boolean,
   ): boolean {
-    if (viewer.areaId !== target.areaId) return false
+    if (viewer.areaId !== target.areaId && !isSeamAdjacent) return false
     const r = radiusOverride ?? this.radius
     return Math.hypot(viewer.x - target.x, viewer.y - target.y) <= r
   }

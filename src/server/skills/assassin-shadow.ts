@@ -49,6 +49,11 @@ import {
   computeDiminishingReturns,
   computeLinearScaling,
 } from '../../common/data/calc-ast.ts'
+import {
+  resolveMonsterEquipment113c,
+  type MonEquipBodyLoc,
+  type MonEquipQuality,
+} from '../../common/data/mon-equip-113c.ts'
 
 // --- Skill IDs ---
 
@@ -312,7 +317,7 @@ export function computeShadowWarriorStats(slvl: number): ShadowMinionStats {
     dexBonus: slvl * 10,
     allResistPct: Math.min(slvl * 4, 75),
     defenseBonusPct: slvl * 12,
-    itemQualityLevel: 18 + (slvl - 1) * 2,
+    itemQualityLevel: Math.min(99, 18 + (slvl - 1) * 2),
   }
 }
 
@@ -335,7 +340,7 @@ export function computeShadowMasterStats(slvl: number): ShadowMinionStats {
     dexBonus: slvl * 10,
     allResistPct: computeDiminishingReturns(5, 90, slvl),
     defenseBonusPct: 0,
-    itemQualityLevel: 24 + (slvl - 1) * 3,
+    itemQualityLevel: Math.min(99, 24 + (slvl - 1) * 3),
   }
 }
 
@@ -733,63 +738,51 @@ export function computeShadowMlvl(clvl: number, slvl: number): number {
 }
 
 export interface ShadowGeneratedItem {
-  readonly slot: 'torso' | 'head' | 'rarm' | 'larm' | 'glov' | 'belt' | 'feet' | 'rrin' | 'lrin' | 'neck'
+  readonly slot: MonEquipBodyLoc
+  readonly locId: number
   readonly itemCode: string
-  readonly quality: 'normal' | 'superior' | 'magic' | 'rare'
+  readonly quality: MonEquipQuality
+  readonly mod: number
   readonly ilvl: number
+  readonly rowLevel: number
 }
 
 export type ShadowEquipmentLoadout = readonly ShadowGeneratedItem[]
 
+export interface GenerateShadowEquipmentOptions {
+  readonly rng?: (() => number) | undefined
+  readonly ownerEquippedBaseCodes?: Readonly<Partial<Record<MonEquipBodyLoc, string>>> | undefined
+}
+
 /**
- * Generates MonEquip.txt equipment for #268 Shadow Warrior and #279 Shadow Master.
- * - Shadow Warrior (#268): ilvl = min(18 + 2*slvl, 50); armor, helm, dual claws (magic at slvl >= 1).
- * - Shadow Master (#279): ilvl = min(24 + 3*slvl, 60); armor, helm, dual claws (magic below slvl 11, rare at slvl >= 11),
- *   plus gloves/belt/boots/rings/amulet at higher slvl thresholds.
+ * Generates `MonEquip.txt` equipment for #268 Shadow Warrior (`shadowwarrior`, `hcIdx = 417`)
+ * and #279 Shadow Master (`shadowmaster`, `hcIdx = 418`) per `SKILLS_SrvDo049_ShadowWarrior_Master`
+ * (`0x6FCB5980`) and `D2GAME_CreateMonsterEquipment` (`0x6FCB2ED0`).
+ *
+ * 1.13c Ground Truth (`D2Game.dll` `0x6FCB5AAE..0x6FCB5AE5`):
+ * - `ilvl` is evaluated via `0x6FC21A90(nSkillId, slvl)` = `Param5 + (slvl - 1) * Param6` and clamped to `[1, 99]`:
+ *   - #268 Shadow Warrior (`Param5 = 18, Param6 = 2`): `ilvl = clamp(18 + 2 * (slvl - 1), 1, 99)`
+ *   - #279 Shadow Master (`Param5 = 24, Param6 = 3`): `ilvl = clamp(24 + 3 * (slvl - 1), 1, 99)`
+ * - `nLevel` passed to `D2GAME_CreateMonsterEquipment` (`eax` at `0x6FCB5ADD`) is `slvl`.
+ * - `MonEquip.txt` rows with `row.level <= slvl` are scanned in table order (descending `level`),
+ *   keeping the highest-`level` row for each body location (`0x6FCB2FB4`).
  */
-export function generateShadowEquipment(skillId: 268 | 279, slvl: number): ShadowGeneratedItem[] {
-  const lvl = Math.max(1, slvl)
-  if (skillId === 268) {
-    const ilvl = Math.min(50, 18 + 2 * (lvl - 1))
-    const quality: 'magic' | 'rare' = lvl >= 13 ? 'rare' : 'magic'
-    const claw1 = lvl >= 9 ? '9cs' : 'ces'
-    const claw2 = lvl >= 9 ? '9lw' : 'btl'
-    const armor = lvl >= 9 ? 'xui' : 'stu'
-    const helm = lvl >= 9 ? 'xkp' : 'skp'
-    return [
-      { slot: 'torso', itemCode: armor, quality, ilvl },
-      { slot: 'head', itemCode: helm, quality, ilvl },
-      { slot: 'rarm', itemCode: claw1, quality, ilvl },
-      { slot: 'larm', itemCode: claw2, quality, ilvl },
-    ]
-  }
-  const ilvl = Math.min(60, 24 + 3 * (lvl - 1))
-  const coreQuality: 'magic' | 'rare' = lvl >= 11 ? 'rare' : 'magic'
-  const claw1 = lvl >= 17 ? '7wb' : lvl >= 9 ? '9wb' : 'wrb'
-  const claw2 = lvl >= 17 ? '7xf' : lvl >= 9 ? '9xf' : 'axf'
-  const armor = lvl >= 17 ? 'utp' : lvl >= 9 ? 'xtp' : 'ltp'
-  const helm = lvl >= 17 ? 'urn' : lvl >= 9 ? 'xrn' : 'crn'
-  const items: ShadowGeneratedItem[] = [
-    { slot: 'torso', itemCode: armor, quality: coreQuality, ilvl },
-    { slot: 'head', itemCode: helm, quality: coreQuality, ilvl },
-    { slot: 'rarm', itemCode: claw1, quality: coreQuality, ilvl },
-    { slot: 'larm', itemCode: claw2, quality: coreQuality, ilvl },
-  ]
-  if (lvl >= 5) {
-    items.push({ slot: 'glov', itemCode: lvl >= 13 ? 'xvg' : 'vgl', quality: lvl >= 13 ? 'rare' : 'magic', ilvl })
-  }
-  if (lvl >= 7) {
-    items.push({ slot: 'belt', itemCode: lvl >= 13 ? 'zvb' : 'vbl', quality: lvl >= 13 ? 'rare' : 'magic', ilvl })
-    items.push({ slot: 'feet', itemCode: lvl >= 13 ? 'xvb' : 'vbt', quality: lvl >= 13 ? 'rare' : 'magic', ilvl })
-  }
-  if (lvl >= 11) {
-    items.push({ slot: 'rrin', itemCode: 'rin', quality: lvl >= 17 ? 'rare' : 'magic', ilvl })
-  }
-  if (lvl >= 13) {
-    items.push({ slot: 'neck', itemCode: 'amu', quality: lvl >= 17 ? 'rare' : 'magic', ilvl })
-  }
-  if (lvl >= 16) {
-    items.push({ slot: 'lrin', itemCode: 'rin', quality: 'rare', ilvl })
-  }
-  return items
+export function generateShadowEquipment(
+  skillId: 268 | 279,
+  slvl: number,
+  options?: GenerateShadowEquipmentOptions | (() => number),
+): ShadowGeneratedItem[] {
+  const lvl = Math.max(1, Math.floor(slvl))
+  const opts: GenerateShadowEquipmentOptions =
+    typeof options === 'function' ? { rng: options } : (options ?? {})
+  const monster = skillId === 268 ? 'shadowwarrior' : 'shadowmaster'
+  const rawIlvl = skillId === 268 ? 18 + 2 * (lvl - 1) : 24 + 3 * (lvl - 1)
+  const ilvl = Math.max(1, Math.min(99, rawIlvl))
+  return resolveMonsterEquipment113c({
+    monster,
+    level: lvl,
+    ilvl,
+    rng: opts.rng,
+    ownerEquippedBaseCodes: opts.ownerEquippedBaseCodes,
+  })
 }

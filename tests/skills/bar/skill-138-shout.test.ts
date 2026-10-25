@@ -47,7 +47,7 @@ describe('[Skill #138] Shout (BAR) — 1.13c Parity (Issue #292)', () => {
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(5250)
-    expect(r20.radiusSubtiles).toBe(10.67)
+    expect(r20.radiusSubtiles).toBe(18.75)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

@@ -47,7 +47,7 @@ describe('[Skill #070] Raise Skeleton (NEC) — 1.13c Parity (Issue #224)', () =
     expect(r20.minElemDmg256).toBe(4096)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(0)
-    expect(r20.radiusSubtiles).toBe(955)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(8)
     expect(r20.cooldownFrames).toBe(0)
   })

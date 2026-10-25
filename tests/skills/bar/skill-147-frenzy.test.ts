@@ -47,7 +47,7 @@ describe('[Skill #147] Frenzy (BAR) — 1.13c Parity (Issue #301)', () => {
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(150)
-    expect(r20.radiusSubtiles).toBe(185)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

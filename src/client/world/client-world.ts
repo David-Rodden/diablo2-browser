@@ -6,6 +6,8 @@
  * units, item containers, revealed rooms, waypoints, quests, party, trade, chat).
  */
 
+import { NEHLITHAK_CONTROL_MISSILE, NIHLATHAK_MONSTER_CLASS, NIHLITHAK1_MISSILE } from './boss-death-cltdo-113c.ts'
+import { isWorldstoneShakeLevel, WORLDSTONE_SHAKE_MISSILE } from './quest-fx-worldstone-113c.ts'
 import {
   unitTypeFromId,
   type ClientCommand,
@@ -76,6 +78,7 @@ import {
   makeUnitKey,
   type ClientUnitOverlay,
 } from './client-unit.ts'
+import { resolveMonsterPaletteIndex113c } from '../../common/units/monster-colormap-113c.ts'
 import { ClientInventoryManager, type ClientItemContainers } from './inventory.ts'
 import { MutableSelfPlayerState, type SelfPlayerState } from './self.ts'
 import { QuestLogState } from './quest-log-state.ts'
@@ -115,6 +118,9 @@ import {
   spawnDenOfEvilLightsInRoomImpl,
   spawnDiabloAppearsControllerImpl,
   spawnHoradricStaffAtOrificeImpl,
+  spawnHellforgeShowAtForgeImpl,
+  spawnTaintedSunShowAtAltarImpl,
+  spawnAnyaRescueShowAtAnyaImpl,
   spawnHoradricStaffChildImpl,
   startScreenShakeImpl,
   triggerMonsterDeathFxImpl,
@@ -137,12 +143,16 @@ import {
   removePaladinAuraStatesAndOverlaysImpl,
   resolveCastActionFrameDelayMsImpl,
   resolveRangedAttackMissileKey113c,
+  resolveSkillTargetUnit113c,
   resolveThrowMissileKeyForCasterImpl,
   spawnMissileByKeyImpl,
+  spawnMartialArtsReleaseTierImpl,
   spawnMissilesForSkillImpl,
   spawnMonsterModeMissileImpl,
   syncSelfRightHandAuraStateImpl,
 } from './world-skill-missiles.ts'
+import { runItemCltEffect113c, runSkillDoTargetTail113c } from './skill-prg-dispatch-113c.ts'
+import { getSkillClientRow113c } from '../../common/skills/skill-client-113c.ts'
 import {
   addLocalSystemMessageImpl,
   expireChatAndOverheadImpl,
@@ -295,6 +305,11 @@ export class ClientWorld {
   private readonly _activeChatStream: ChatLogEntry[] = []
   private _nextChatEntryId = 1
   private _lastWhisperTarget: string | null = null
+  /**
+   * `/nopickup` flag (D2Client.dll `0x6FBCC2F0`, toggled by the chat command at `0x6fb20abc`): while set,
+   * hover selection `0x6fb01e80` skips ground items (`unit type 4`, `0x6fb01ed6` / `0x6fb02011`).
+   */
+  noPickup = false
   private _lang: 'CHI' | 'ENG' | null = null
   private readonly _squelchedPlayerIds = new Set<number>()
   private readonly _ignoredPlayerIds = new Set<number>()
@@ -398,6 +413,8 @@ export class ClientWorld {
     readonly y?: number | undefined
     readonly unitId?: number | undefined
     readonly local?: boolean | undefined
+    readonly unitType?: UnitType | undefined
+    readonly itemOrigin?: boolean | undefined
   }): void {
     emitSkillCastSoundImpl.call(this as unknown as ClientWorldInternal, opts)
   }
@@ -410,6 +427,7 @@ export class ClientWorld {
     readonly unitId?: number | undefined
     readonly local?: boolean | undefined
     readonly weaponSoundId?: number | undefined
+    readonly unitType?: UnitType | undefined
   }): void {
     emitSkillKeyframeSoundImpl.call(this as unknown as ClientWorldInternal, opts)
   }
@@ -451,6 +469,14 @@ export class ClientWorld {
     emitMonsterModeSoundImpl.call(this as unknown as ClientWorldInternal, unit, rawMode, skillId)
   }
 
+  /** MonStats ids queued by S2C 0xA4 (D2Client.dll 0x6fb5d760 -> 0x6fb1a0c0) for asset preloading. */
+  readonly _monsterPreloadRequests: number[] = []
+
+  /** Returns and clears the MonStats ids the server asked the client to preload (S2C 0xA4). */
+  drainMonsterPreloadRequests(): number[] {
+    return this._monsterPreloadRequests.splice(0)
+  }
+
   drainWorldSoundRequests(): WorldSoundRequest[] {
     // Stop the travel sound of every missile that left the world through a path without its own
     // missile-destroy (collision, server removal, area cleanup...); a looping travel sound would never end (#991).
@@ -477,6 +503,10 @@ export class ClientWorld {
   private _nextMissileId = 0x70000000
   private _nextOverlayId = 1
   private _questFxSeed: D2Seed = { lo: 1, hi: LIGHT_SEED_HI }
+  /** 0x6fbcc2ec: special quest event 19 armed the worldstone shake. */
+  private _worldstoneShakeArmed = false
+  /** 0x6fbd3478: the worldstone shake of the current level visit was created. */
+  private _worldstoneShakeSpawned = false
   private _screenShake: ScreenShakeState = {
     active: false,
     startMs: 0,
@@ -1577,6 +1607,11 @@ export class ClientWorld {
     )
   }
 
+  /** One martial-arts release tier (`SkillCltDoFunc` slot of Skills.txt `cltprgfunc[tier - 1]`). */
+  spawnMartialArtsReleaseTier(unit: ClientUnit, skillId: number, tier: number, targetX: number, targetY: number): void {
+    spawnMartialArtsReleaseTierImpl.call(this as unknown as ClientWorldInternal, unit, skillId, tier, targetX, targetY)
+  }
+
   triggerMonsterGetHitFx(unit: ClientUnit): void {
     triggerMonsterGetHitFxImpl.call(this as unknown as ClientWorldInternal, unit)
   }
@@ -1628,6 +1663,69 @@ export class ClientWorld {
 
   spawnCompellingOrbMist(orb: ClientUnit): ClientUnit {
     return spawnCompellingOrbMistImpl.call(this as unknown as ClientWorldInternal, orb)
+  }
+
+  spawnHellforgeShowAtForge(forge: ClientUnit): ClientUnit {
+    return spawnHellforgeShowAtForgeImpl.call(this as unknown as ClientWorldInternal, forge)
+  }
+
+  spawnTaintedSunShowAtAltar(altar: ClientUnit): ClientUnit {
+    return spawnTaintedSunShowAtAltarImpl.call(this as unknown as ClientWorldInternal, altar)
+  }
+
+  spawnAnyaRescueShowAtAnya(anya: ClientUnit): ClientUnit {
+    return spawnAnyaRescueShowAtAnyaImpl.call(this as unknown as ClientWorldInternal, anya)
+  }
+
+  /**
+   * 0x6fb02af0 (special quest event 17) once Nihlathak is found: 0x6fb5ff10 creates 0x25e `nehlithakcontrol` and then
+   * 0x25b `nihlithak1` at his cell from the local player, and his unit+0xc8 gets 0x40000 (not drawn).
+   */
+  startNihlathakShowAt(mon: ClientUnit): void {
+    if (mon.unitType !== 'monster' || mon.classId !== NIHLATHAK_MONSTER_CLASS) {
+      throw new Error(`startNihlathakShowAt: unit ${mon.key} is not MonStats 526 nihlathakboss`)
+    }
+    const x = Math.floor(mon.x)
+    const y = Math.floor(mon.y)
+    const owner = { ownerType: 'player' as const, ownerId: this.selfId || 1 }
+    const ctl = this.spawnMissileByKey('nehlithakcontrol', x, y, x, y, { classId: NEHLITHAK_CONTROL_MISSILE, ...owner })
+    ctl.vx = 0
+    ctl.vy = 0
+    const body = this.spawnMissileByKey('nihlithak1', x, y, x, y, { classId: NIHLITHAK1_MISSILE, ...owner })
+    body.vx = 0
+    body.vy = 0
+    mon.clientNoDraw = true
+  }
+
+  /** Special quest event 19 (0x6fb02410). */
+  armWorldstoneShake(): void {
+    this._worldstoneShakeArmed = true
+  }
+
+  /**
+   * 0x6fb032c0 for the local player's current level: levels 131 / 132 create the worldstone shake once per visit when
+   * armed; any other level re-allows it.
+   */
+  updateWorldstoneShakeTrigger(levelId: number): ClientUnit | undefined {
+    if (!isWorldstoneShakeLevel(levelId)) {
+      this._worldstoneShakeSpawned = false
+      return undefined
+    }
+    if (this._worldstoneShakeSpawned || !this._worldstoneShakeArmed || this.selfId === 0) return undefined
+    const self = this.getUnit('player', this.selfId)
+    if (!self) return undefined
+    this._worldstoneShakeSpawned = true
+    const x = Math.floor(self.x)
+    const y = Math.floor(self.y)
+    const m = this.spawnMissileByKey('worldstone shake', x, y, x, y, {
+      classId: WORLDSTONE_SHAKE_MISSILE,
+      ownerType: 'player',
+      ownerId: this.selfId,
+    })
+    m.vx = 0
+    m.vy = 0
+    m.cltCountdown = 0
+    return m
   }
 
   spawnHoradricStaffAtOrifice(orifice: ClientUnit): ClientUnit {
@@ -1692,15 +1790,59 @@ export class ClientWorld {
     skillLevel = 1,
     isSecondHand = false,
   ): void {
-    spawnMissilesForSkillImpl.call(
-      this as unknown as ClientWorldInternal,
-      caster,
-      skillId,
-      targetX,
-      targetY,
-      skillLevel,
-      isSecondHand,
-    )
+    // 1.13c client Do 0x6FB52DD8..0x6FB52DF4: an item cast with Skills.txt ItemCltEffect > 1 runs
+    // SkillCltDoFunc[ItemCltEffect] instead of cltdofunc.
+    const itemCltEffect =
+      (caster.castState as { itemOrigin?: boolean } | undefined)?.itemOrigin === true
+        ? (getSkillClientRow113c(skillId)?.itemCltEffect ?? 0)
+        : 0
+    if (itemCltEffect > 1) {
+      runItemCltEffect113c(this as unknown as ClientWorldInternal, caster, skillId, itemCltEffect, skillLevel, () =>
+        spawnMissilesForSkillImpl.call(
+          this as unknown as ClientWorldInternal,
+          caster,
+          skillId,
+          targetX,
+          targetY,
+          skillLevel,
+          isSecondHand,
+        ),
+      )
+    } else {
+      spawnMissilesForSkillImpl.call(
+        this as unknown as ClientWorldInternal,
+        caster,
+        skillId,
+        targetX,
+        targetY,
+        skillLevel,
+        isSecondHand,
+      )
+    }
+    if (!isSecondHand) {
+      // 1.13c client Do tail (0x6FB52E7A / 0x6FB52EA4): tgtsound + tgtoverlay on the skill's target unit
+      // (0x6FB55F70 = the caster's current target, corpses included).
+      runSkillDoTargetTail113c(
+        this as unknown as ClientWorldInternal,
+        skillId,
+        this.resolveSkillDoTargetUnit(caster, skillId, targetX, targetY),
+      )
+    }
+  }
+
+  /** The caster's current target unit (`0x6FB55F70`): the explicit target (corpses included), else the skill target search. */
+  private resolveSkillDoTargetUnit(
+    caster: ClientUnit,
+    skillId: number,
+    targetX: number,
+    targetY: number,
+  ): ClientUnit | undefined {
+    const ref = caster.targetUnit
+    if (ref !== undefined) {
+      const explicit = this.getUnit(ref.unitType as UnitType, ref.id) ?? this._monsters.get(ref.id)
+      if (explicit && explicit !== caster && explicit.unitType !== 'missile') return explicit
+    }
+    return resolveSkillTargetUnit113c(this as unknown as ClientWorldInternal, caster, skillId, targetX, targetY)
   }
 
   private applySkillCastToUnit(
@@ -1711,6 +1853,7 @@ export class ClientWorld {
     skillLevel = 1,
     spawnVisuals = true,
     nowMs?: number,
+    itemOrigin = false,
   ): void {
     applySkillCastToUnitImpl.call(
       this as unknown as ClientWorldInternal,
@@ -1721,7 +1864,17 @@ export class ClientWorld {
       skillLevel,
       spawnVisuals,
       nowMs,
+      itemOrigin,
     )
+  }
+
+  /**
+   * Whether the local player's selected skill for `isRight` comes from an item (`nSkillOrigin != -1` in
+   * `SKILLS_ClientStart` 0x6FB51CF0; server casts S2C 0x4C / 0x4D always pass -1, 0x6FB5F21E).
+   */
+  private isSelectedSkillFromItem(isRight: boolean): boolean {
+    const id = isRight ? this._self.rightSkillItemId : this._self.leftSkillItemId
+    return id !== undefined && id !== 0xffffffff
   }
 
   private removePaladinAuraStatesAndOverlays(unit?: ClientUnit, isSelf = false): void {
@@ -1927,20 +2080,40 @@ export class ClientWorld {
     }
     SEED_InitSeed(unit.seed)
     unit.initSeed = 1
-    if (unit.x === 0 && unit.y === 0) return
-    for (const room of this._revealedRoomSeeds.values()) {
-      if (
-        unit.x >= room.subX &&
-        unit.x < room.subX + room.subW &&
-        unit.y >= room.subY &&
-        unit.y < room.subY + room.subH
-      ) {
-        const nextLo = SEED_RollRandomNumber(room.seed) >>> 0
-        unit.initSeed = nextLo
-        SEED_InitLowSeed(unit.seed, nextLo)
-        return
+    if (unit.x !== 0 || unit.y !== 0) {
+      for (const room of this._revealedRoomSeeds.values()) {
+        if (
+          unit.x >= room.subX &&
+          unit.x < room.subX + room.subW &&
+          unit.y >= room.subY &&
+          unit.y < room.subY + room.subH
+        ) {
+          const nextLo = SEED_RollRandomNumber(room.seed) >>> 0
+          unit.initSeed = nextLo
+          SEED_InitLowSeed(unit.seed, nextLo)
+          break
+        }
       }
     }
+    if (unit.unitType === 'monster') this.initMonsterPaletteIndex(unit)
+  }
+
+  /**
+   * 0x6fb57a5a..0x6fb57b5b (still inside the monster create 0x6fb57780, after the room seed): the unit's palette
+   * index (gfx+0x38). A unique re-seeds the unit seed through 0x6fb039e0 (#1516 / #1517).
+   */
+  initMonsterPaletteIndex(unit: ClientUnit): void {
+    unit.paletteIndex = resolveMonsterPaletteIndex113c({
+      classId: unit.classId,
+      flags: unit.flags ?? 0,
+      nameSeed: unit.nameSeed,
+      superUniqueId: unit.superUniqueId,
+      difficulty: this.difficulty,
+      seed: unit.seed,
+      // 0x6fad1b10 → 0x6faffd90(local, owner, 8): roster flag 8 (hostile). PvP hostility is disabled in this port
+      // (issue #909 R3), so any owner is friendly.
+      hasFriendlyOwner: unit.ownerId !== undefined && unit.ownerId !== 0,
+    })
   }
 
   private isSelfUnit(u: ClientUnit): boolean {

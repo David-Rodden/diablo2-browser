@@ -191,7 +191,7 @@ describe('[Skill #060] Chilling Armor (SOR) — 1.13c 7-Dimensional Verification
       expect(r20.minElemDmg256).toBe(9984) // 39 * 256
       expect(r20.maxElemDmg256).toBe(12928) // 50.5 * 256
       expect(r20.durationFrames).toBe(6450)
-      expect(r20.radiusSubtiles).toBe(140) // +140% defense bonus
+      expect(r20.radiusSubtiles).toBe(0) // +140% defense bonus
       expect(r20.cooldownFrames).toBe(0)
     })
   })

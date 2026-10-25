@@ -70,7 +70,7 @@ export function promoteToChampion(pack: MonsterPack, rng: Rng): MonsterPack {
   const leaderBase = pack.members[0]
   if (!leaderBase) return pack
   const count = rng.int(2, 4)
-  const mods = rollEliteModifiers('champion', rng)
+  const mods = rollEliteModifiers('champion', rng, 'normal', leaderBase)
   const members: MonsterStats[] = []
   for (let i = 0; i < count; i += 1) {
     const base = pack.members[i % pack.members.length] ?? leaderBase
@@ -90,7 +90,7 @@ export function promoteToUnique(pack: MonsterPack, rng: Rng): MonsterPack {
   const leaderBase = pack.members[0]
   if (!leaderBase) return pack
   const minionCount = rng.int(3, 6)
-  const mods = rollEliteModifiers('unique', rng)
+  const mods = rollEliteModifiers('unique', rng, 'normal', leaderBase)
   const scaledLeader: MonsterStats = {
     ...leaderBase,
     hp: Math.max(1, Math.round(leaderBase.hp * ELITE_HEALTH_MULTIPLIER.unique)),
@@ -212,7 +212,7 @@ export function rebudgetMonsterPacks(
     scaledRegularPacks = scaledRegularPacks.map((pack, idx) => {
       const normalPack = demoteToNormal(pack)
       const packRng = rng.fork(`all-elite-${idx}`)
-      const isChampion = packRng.next() < (MONUMOD_CONSTANTS.championChance / 100)
+      const isChampion = packRng.int(0, 99) < MONUMOD_CONSTANTS.championChance
       return isChampion ? promoteToChampion(normalPack, packRng) : promoteToUnique(normalPack, packRng)
     })
   } else if (elite !== 1) {
@@ -240,7 +240,7 @@ export function rebudgetMonsterPacks(
         for (let i = 0; i < toPromoteCount; i += 1) {
           const idx = currentNormalIndices[i]!
           const packRng = rng.fork(`promote-${idx}`)
-          const isChampion = packRng.next() < (MONUMOD_CONSTANTS.championChance / 100)
+          const isChampion = packRng.int(0, 99) < MONUMOD_CONSTANTS.championChance
           scaledRegularPacks[idx] = isChampion
             ? promoteToChampion(scaledRegularPacks[idx]!, packRng)
             : promoteToUnique(scaledRegularPacks[idx]!, packRng)
@@ -255,7 +255,7 @@ export function rebudgetMonsterPacks(
       for (let i = 0; i < toPromote; i += 1) {
         const idx = currentNormalIndices[i]!
         const packRng = rng.fork(`promote-zero-${idx}`)
-        const isChampion = packRng.next() < (MONUMOD_CONSTANTS.championChance / 100)
+        const isChampion = packRng.int(0, 99) < MONUMOD_CONSTANTS.championChance
         scaledRegularPacks[idx] = isChampion
           ? promoteToChampion(scaledRegularPacks[idx]!, packRng)
           : promoteToUnique(scaledRegularPacks[idx]!, packRng)

@@ -56,9 +56,11 @@ import { computeGameCompletion113c, type GameCompletion113c } from './game-compl
 import { AudioRuntime113c } from '../audio/audio-runtime-113c.ts'
 import {
   ACTIVE_CHAR_LEASE_HEARTBEAT_MS, DuplicateCharacterLoginError, createMemoryLeaseStorage,
-  findConflictingCharacterLease, formatLobbyGameEnterError, formatMcpCreateGameStatusError,
-  formatMcpJoinGameStatusError, getDefaultBrowserLeaseStorage, parseMcpGameErrorStatus,
-  releaseActiveCharacterLease, writeActiveCharacterLease, type ActiveCharLeaseStorage,
+  findConflictingCharacterLease, formatBnetLoginError, formatCharacterActionError,
+  formatCharacterCreateError, formatLobbyGameEnterError, formatLoginScreenErrorForDisplay,
+  formatMcpCreateGameStatusError, formatMcpJoinGameStatusError, getDefaultBrowserLeaseStorage,
+  isRawTechnicalErrorString, parseMcpGameErrorStatus, releaseActiveCharacterLease,
+  writeActiveCharacterLease, type ActiveCharLeaseStorage,
 } from './active-char-lock.ts'
 import {
   decodeCapturedGameS2cPacket, extractSessionEventsFromReplayRecord, loadSessionD2CapReplay,
@@ -66,12 +68,14 @@ import {
 } from './session-d2cap-replay.ts'
 import {
   applyViewRetention, enforceActiveInteractionRange113c, findObjectNearLocalPlayer,
-  findObjectNearSubTile, findStoneAlphaNearLocalPlayer, getCandidateAreaIds, isLocalPlayerInTown,
+  findObjectNearSubTile, findStoneAlphaNearLocalPlayer, startNihlathakShowIfNear, getCandidateAreaIds, isLocalPlayerInTown,
   isSubTileBlockedInView, isSubTileInTown, isSubTileMissileBlockedInView, isWorldSubTileBlocked,
   isWorldSubTileMissileBlocked, prefetchGateNeighbourLevels, pruneMissingInterpolatorEntities,
   resolveCollisionLevelView, resolveNeighbourLevelViews, resolveSceneAmbient,
   resolveUnitRoomLevelId, runStateSetFunctions, spawnDiabloAppearsIfInChaosSanctuary,
-  spawnHoradricStaffIfOrificeNear, syncActiveAreaFromPlayerPosition, verifyLocalPlayerPosition,
+  spawnHoradricStaffIfOrificeNear, spawnHellforgeShowIfForgeNear,
+  spawnTaintedSunShowIfAltarNear, spawnAnyaRescueShowIfAnyaNear,
+  syncActiveAreaFromPlayerPosition, verifyLocalPlayerPosition,
   type SessionLevelNavigationHost,
 } from './session-level-navigation.ts'
 import {
@@ -93,9 +97,14 @@ export * from './session-render-builder.ts'
 export {
   DuplicateCharacterLoginError,
   createMemoryLeaseStorage,
+  formatBnetLoginError,
+  formatCharacterActionError,
+  formatCharacterCreateError,
   formatLobbyGameEnterError,
+  formatLoginScreenErrorForDisplay,
   formatMcpCreateGameStatusError,
   formatMcpJoinGameStatusError,
+  isRawTechnicalErrorString,
   parseMcpGameErrorStatus,
   type ActiveCharLeaseStorage,
 }
@@ -413,6 +422,24 @@ export class OnlineSession {
       showUniqueSetBeams: currentSettings.showUniqueSetBeams,
       alwaysShowUniqueSetLabels: currentSettings.alwaysShowUniqueSetLabels,
     })
+    if (
+      currentSettings.hudLayoutMode === 'classic' ||
+      currentSettings.hudLayoutMode === 'compact-d2r'
+    ) {
+      this.hudManager.touchControls.applyHudLayoutMode(currentSettings.hudLayoutMode)
+    } else {
+      this.hudManager.touchControls.syncFromEnvironment()
+    }
+    if (currentSettings.skillWheelBankMode !== undefined) {
+      this.hudManager.touchControls.skillWheelBankMode = currentSettings.skillWheelBankMode
+    }
+    if (currentSettings.mobileAutoPickupGoldAndPotions !== undefined) {
+      this.hudManager.touchControls.autoPickupGoldAndPotions =
+        currentSettings.mobileAutoPickupGoldAndPotions
+    }
+    if (currentSettings.mobileHapticsEnabled !== undefined) {
+      this.hudManager.touchControls.hapticsEnabled = currentSettings.mobileHapticsEnabled
+    }
 
     this.mapService = options.mapService ?? null
     this.automapView =
@@ -626,6 +653,27 @@ export class OnlineSession {
       }
       if (next.masterVolume !== prev.masterVolume || next.audioMuted !== prev.audioMuted) {
         this.audioRuntime.applySettings()
+      }
+      if (
+        next.hudLayoutMode !== prev.hudLayoutMode ||
+        next.skillWheelBankMode !== prev.skillWheelBankMode ||
+        next.mobileAutoPickupGoldAndPotions !== prev.mobileAutoPickupGoldAndPotions ||
+        next.mobileHapticsEnabled !== prev.mobileHapticsEnabled
+      ) {
+        if (next.hudLayoutMode !== prev.hudLayoutMode) {
+          this.hudManager.touchControls.applyHudLayoutMode(next.hudLayoutMode ?? 'auto')
+        }
+        if (next.skillWheelBankMode !== undefined) {
+          this.hudManager.touchControls.skillWheelBankMode = next.skillWheelBankMode
+        }
+        if (next.mobileAutoPickupGoldAndPotions !== undefined) {
+          this.hudManager.touchControls.autoPickupGoldAndPotions =
+            next.mobileAutoPickupGoldAndPotions
+        }
+        if (next.mobileHapticsEnabled !== undefined) {
+          this.hudManager.touchControls.hapticsEnabled = next.mobileHapticsEnabled
+        }
+        this.hudManager.syncPublishedState()
       }
     })
   }
@@ -848,11 +896,7 @@ export class OnlineSession {
       // PopUpOkCancel2.dc6 modal displays without a redundant DOM disconnect banner.
       this.pendingFlowClose = this.closeFlowQuietly()
       this.disconnectReasonValue =
-        err instanceof BncsCreateAccountError
-          ? null
-          : err instanceof Error
-            ? err.message
-            : String(err)
+        err instanceof BncsCreateAccountError ? null : formatBnetLoginError(err)
       this.setPhase('disconnected')
       throw err
     }
@@ -1459,9 +1503,13 @@ export class OnlineSession {
   private runStateSetFunctions(ev: Extract<ServerEvent, { type: 'StateSet' }>): void { runStateSetFunctions(this.asNavHost(), ev) }
   private resolveUnitRoomLevelId(ref: { readonly unitType: UnitType; readonly id: number }): number | null { return resolveUnitRoomLevelId(this.asNavHost(), ref) }
   private findStoneAlphaNearLocalPlayer(): { readonly x: number; readonly y: number } | null { return findStoneAlphaNearLocalPlayer(this.asNavHost()) }
+  private startNihlathakShowIfNear(): void { startNihlathakShowIfNear(this.asNavHost()) }
   private findObjectNearLocalPlayer(classId: number): ClientUnit | null { return findObjectNearLocalPlayer(this.asNavHost(), classId) }
   private findObjectNearSubTile(px: number, py: number, classId: number): ClientUnit | null { return findObjectNearSubTile(this.asNavHost(), px, py, classId) }
   private spawnHoradricStaffIfOrificeNear(): void { spawnHoradricStaffIfOrificeNear(this.asNavHost()) }
+  private spawnHellforgeShowIfForgeNear(): void { spawnHellforgeShowIfForgeNear(this.asNavHost()) }
+  private spawnTaintedSunShowIfAltarNear(): void { spawnTaintedSunShowIfAltarNear(this.asNavHost()) }
+  private spawnAnyaRescueShowIfAnyaNear(): void { spawnAnyaRescueShowIfAnyaNear(this.asNavHost()) }
   private spawnDiabloAppearsIfInChaosSanctuary(): void { spawnDiabloAppearsIfInChaosSanctuary(this.asNavHost()) }
   private isLocalPlayerInTown(): boolean | null { return isLocalPlayerInTown(this.asNavHost()) }
   private isSubTileInTown(subX: number, subY: number): boolean { return isSubTileInTown(this.asNavHost(), subX, subY) }

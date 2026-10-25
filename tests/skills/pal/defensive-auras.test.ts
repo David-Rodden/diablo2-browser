@@ -3,7 +3,7 @@
  *
  * Covers:
  * - Architecture Invariants: BATCH1_SKILLS length === 38, ISO_GROUND_ASPECT_RATIO === 0.5
- * - Prayer (99): Periodic heal pulse, continuous mana drain (16/256), auto-deactivation at 0 mana
+ * - Prayer (99): Periodic heal pulse, per-pulse mana cost `(16 + 3 * (slvl - 1)) << 4`, and `nomanaregen` (state 85) toggle only when healing occurs
  * - Resist Fire (100): Active party fire res, passive max fire res (+1% per 2 hard points, capped at 95%)
  * - Defiance (104): Active party %Defense, Holy Shield synergy (+15%/blvl)
  * - Resist Cold (105): Active party cold res, passive max cold res (+1% per 2 hard points, capped at 95%)
@@ -115,14 +115,16 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
       expect(ally.statList.getHp256()).toBe((400 + 11) * FIXED_ONE)
     })
 
-    it('drains mana per tick and auto-deactivates when mana reaches 0', async () => {
+    it('deducts per-pulse mana (mana + lvlmana*(slvl-1)) << manashift and toggles nomanaregen only when healing occurs', async () => {
       const registry = await getSharedDataRegistry()
       const scanner = new AuraScanner(registry)
 
-      // Paladin with exactly 32 units of mana256 (enough for 2 frames)
+      // Paladin with 1500 mana256 and missing 10 HP (1.13c D2Game.dll 0x6FCBAB66..0x6FCBABA7)
       const stats = new UnitStatList(registry, {
+        maxhp: 100 * FIXED_ONE,
+        hitpoints: 98 * FIXED_ONE,
         maxmana: 100 * FIXED_ONE,
-        mana: 32,
+        mana: 1500,
       })
       const bus = new StateBus(stats, registry)
       const paladin: CombatUnitContext = {
@@ -131,23 +133,29 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
         statList: stats,
         stateBus: bus,
         unitType: 'player',
+        x: 0,
+        y: 0,
       }
 
       scanner.setActiveAura(paladin, 99, 1, 0)
-      expect(paladin.statList.getMana256()).toBe(32)
+      expect(paladin.statList.getMana256()).toBe(1500)
 
-      // Frame 1: drains 16 units -> 16 remaining
+      // Non-pulse ticks (frames 1..49) do NOT drain mana
       scanner.tick(1, [paladin], [])
-      expect(paladin.statList.getMana256()).toBe(16)
-
-      // Frame 2: drains 16 units -> 0 remaining
       scanner.tick(2, [paladin], [])
-      expect(paladin.statList.getMana256()).toBe(0)
+      expect(paladin.statList.getMana256()).toBe(1500)
 
-      // Frame 3: curMana < 16 -> auto-deactivates aura and removes state
-      scanner.tick(3, [paladin], [])
-      expect(paladin.statList.getMana256()).toBe(0)
-      expect(paladin.stateBus.hasState('prayer')).toBe(false)
+      // Pulse at frame 50: heals 2 HP (98 -> 100), deducts (16 + 3*0) << 4 = 256 mana256, enables nomanaregen (state 85)
+      scanner.tick(50, [paladin], [])
+      expect(paladin.statList.getHp256()).toBe(100 * FIXED_ONE)
+      expect(paladin.statList.getMana256()).toBe(1500 - 256)
+      expect(paladin.stateBus.hasState('nomanaregen')).toBe(true)
+
+      // Pulse at frame 100: Paladin is now at full HP (100/100) -> 0 units healed, 0 mana deducted, nomanaregen turned off
+      scanner.tick(100, [paladin], [])
+      expect(paladin.statList.getMana256()).toBe(1500 - 256)
+      expect(paladin.stateBus.hasState('nomanaregen')).toBe(false)
+      expect(paladin.stateBus.hasState('prayer')).toBe(true)
     })
   })
 
@@ -199,7 +207,10 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
         x: 0,
         y: 0,
       }
-      const statsAlly = new UnitStatList(registry)
+      const statsAlly = new UnitStatList(registry, {
+        maxhp: 100 * FIXED_ONE,
+        hitpoints: 100 * FIXED_ONE,
+      })
       const ally: CombatUnitContext = {
         id: 'ally',
         name: 'Party Ally',

@@ -28,6 +28,7 @@
 
 import { d2Rand, type D2Seed } from '../../common/drlg/light-grid.ts'
 import type { Traj3dZ } from './quest-fx-horadric-113c.ts'
+import { SEED_RollLimitedRandomNumber, type D2SeedStrc } from '../../common/rng/d2-rng.ts'
 
 /** 0x6fb02320: SetTargetX(brdeathcontrol, 0x32). */
 export const BR_DEATH_CONTROL_INITIAL_COUNTDOWN = 50
@@ -215,4 +216,109 @@ export function cltHit33Bursts(
     out.push({ level, dx, dy })
   }
   return out
+}
+
+/** Missiles.txt 542 `ancient death cloud`, created by MissCltDoFunc[55]. */
+export const ANCIENT_DEATH_CLOUD_MISSILE = 0x21e
+
+/**
+ * MissCltDoFunc[55] `ancient death center` (0x6fb63860), one frame (`elapsed` = #10985 before the CltDo1 tail):
+ * ```
+ * 0x6fb63867  elapsed % 3 != 0 -> CltDo1 only
+ * 0x6fb6387c  ox = RAND(20); oy = RAND(20)                          (missile seed unit+0x20)
+ * 0x6fb638f1  sx = x + (RAND() & 1) - 1;  sy = y + (RAND() & 1) - 1
+ * 0x6fb6396c  create { flags 0x21, owner = 0x6fb560d0(m), start (sx, sy), target (sx + ox - 10, sy + oy - 10),
+ *                      missile 0x21e }                               -> the cloud moves (Vel 3) for its own Range
+ * ```
+ * Returns `null` on frames without a cloud.
+ */
+export function ancientDeathCenterTick(
+  elapsed: number,
+  seed: D2SeedStrc,
+  x: number,
+  y: number,
+): { sx: number; sy: number; tx: number; ty: number } | null {
+  if (elapsed % 3 !== 0) return null
+  const ox = SEED_RollLimitedRandomNumber(seed, 20)
+  const oy = SEED_RollLimitedRandomNumber(seed, 20)
+  const sx = x + SEED_RollLimitedRandomNumber(seed, 2) - 1
+  const sy = y + SEED_RollLimitedRandomNumber(seed, 2) - 1
+  return { sx, sy, tx: sx + ox - 10, ty: sy + oy - 10 }
+}
+/** MonStats 526 `nihlathakboss`, looked up by special quest event 17 (0x6fb02b06). */
+export const NIHLATHAK_MONSTER_CLASS = 0x20e
+/** Missiles.txt 606 `nehlithakcontrol` and 603 `nihlithak1` created by event 17 (0x6fb02b33 / 0x6fb02b45). */
+export const NEHLITHAK_CONTROL_MISSILE = 0x25e
+export const NIHLITHAK1_MISSILE = 0x25b
+/** Missiles.txt 607 `nehlithakswoosh`; 608..611 `nehlithakdebris1..4`; 617 `nehlithakhole`; 285 `brdeathlightningbolt`. */
+export const NEHLITHAK_SWOOSH_MISSILE = 0x25f
+export const NEHLITHAK_DEBRIS1_MISSILE = 0x260
+export const NEHLITHAK_HOLE_MISSILE = 0x269
+export const NEHLITHAK_BOLT_MISSILE = 0x11d
+
+/** 0x6fb63d60 step tables (stack, k = RAND() & 3): dx = {1, 0, -1, 0}, dy = {0, 1, 0, -1}. */
+const NEHLITHAK_DX = [1, 0, -1, 0] as const
+const NEHLITHAK_DY = [0, 1, 0, -1] as const
+
+export interface NehlithakSwooshShot {
+  readonly missile: number
+  readonly sx: number
+  readonly sy: number
+  readonly tx: number
+  readonly ty: number
+  /** traj z >> 11 (0x6fb63f10: z = RAND(125) << 11, no velocity). */
+  readonly altitude: number
+}
+
+/**
+ * 0x6fb63d60 (eax = nehlithakcontrol, arg = its owner): one swoosh / debris piece.
+ * ```
+ * z = RAND(125); k = RAND() & 3; (dx, dy) = tables[k]
+ * r = RAND(30): 0..3 -> 0x260 + r (debris1..4), else 0x25f (swoosh)
+ * create { flags 3 (explicit start, target relative), start (x + dx, y + dy), target start + (dy, -dx) }
+ * traj z = z << 11; #10637(new, x) / #10019(new, y): the piece remembers the controller cell (CltDo63 orbits it)
+ * ```
+ */
+export function nehlithakSwooshShot(seed: D2SeedStrc, x: number, y: number): NehlithakSwooshShot {
+  const altitude = SEED_RollLimitedRandomNumber(seed, 125)
+  const k = SEED_RollLimitedRandomNumber(seed, 4)
+  const dx = NEHLITHAK_DX[k]!
+  const dy = NEHLITHAK_DY[k]!
+  const r = SEED_RollLimitedRandomNumber(seed, 30)
+  const missile = r <= 3 ? NEHLITHAK_DEBRIS1_MISSILE + r : NEHLITHAK_SWOOSH_MISSILE
+  const sx = x + dx
+  const sy = y + dy
+  return { missile, sx, sy, tx: sx + dy, ty: sy - dx, altitude }
+}
+
+/**
+ * 0x6fb63c40 (eax = nehlithakcontrol): one `brdeathlightningbolt` from the controller toward a relative target.
+ * ```
+ * ox = 20 - RAND(40); oy = 20 - RAND(40); if (ox == 0 && oy == 0) ox = RAND(19) + 1
+ * create { flags 2 (target relative), source = controller, missile 0x11d, target (ox, oy) }
+ * #10637(new, ox) / #10019(new, oy); traj (0, 0, z = -0x5000)
+ * ```
+ */
+export function nehlithakBoltShot(seed: D2SeedStrc): { ox: number; oy: number; altitude: number } {
+  let ox = 20 - SEED_RollLimitedRandomNumber(seed, 40)
+  const oy = 20 - SEED_RollLimitedRandomNumber(seed, 40)
+  if (ox === 0 && oy === 0) ox = SEED_RollLimitedRandomNumber(seed, 19) + 1
+  return { ox, oy, altitude: -0x5000 >> 11 }
+}
+
+/**
+ * MissCltDoFunc[62] `nehlithakcontrol` (0x6fb6a4a0), one frame (`elapsed` = #10985 before the CltDo1 tail):
+ * no owner -> nothing; two 0x6fb63d60 pieces; `elapsed > 60 && elapsed % 20 == 0` -> 0x6fb63c40 bolt;
+ * `elapsed == 25` -> 0x6fb5ff10(0x269 `nehlithakhole`, x + 2, y + 2).
+ */
+export function nehlithakControlPlan(elapsed: number): { readonly pieces: 2; readonly bolt: boolean; readonly hole: boolean } {
+  return { pieces: 2, bolt: elapsed > 60 && elapsed % 20 === 0, hole: elapsed === 25 }
+}
+
+/**
+ * MissCltDoFunc[63] (0x6fb61f20) `nehlithakswoosh` / `nehlithakdebris1..4`: each frame the path target becomes
+ * (x + (y - cy), y - (x - cx)) around the remembered controller cell (cx, cy) = (TargetX, TargetY).
+ */
+export function nehlithakOrbitTarget(x: number, y: number, cx: number, cy: number): { tx: number; ty: number } {
+  return { tx: x + (y - cy), ty: y - (x - cx) }
 }

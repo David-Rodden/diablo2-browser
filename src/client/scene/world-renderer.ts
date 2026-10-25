@@ -83,6 +83,7 @@ import type {
 } from '../view/unit-drawables.ts'
 import { sceneEntityCellDepth } from '../view/unit-drawables.ts'
 import type { SceneWeatherPass } from '../weather/weather-render-pass.ts'
+import type { SceneBackdropPass } from './backdrop-pass.ts'
 import { MONSTER_ART_MAP } from '../../common/units/monster-mapping.ts'
 import {
   getNpcDisplayNameByHcIdx,
@@ -589,6 +590,11 @@ export interface SceneSourceRenderContext {
   readonly hudManager?: HudManager | null | undefined
   /** 1.13c weather: updated after the camera is set, drawn after the floors and after the roofs. */
   readonly weather?: SceneWeatherPass | null | undefined
+  /**
+   * 1.13c level backdrops (0x6fb3b110: Arcane Sanctuary starfield 0x6fb3ae00, Arreat Summit sky 0x6fb3a6c0), drawn
+   * unlit right after the camera is set, before any wall or floor (#1537 / #1538).
+   */
+  readonly backdrop?: SceneBackdropPass | null | undefined
   readonly nowMs?: number | undefined
   readonly onFrameSnapshot?: ((snapshot: SceneFrameSnapshot) => void) | undefined
 }
@@ -2384,6 +2390,22 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
     if (renderer !== null) {
       ctx.tileGpuCache?.ensureActPalette(snapshot.actId)
       renderer.begin({ x: renderCamX, y: renderCamY, zoom: 1 }, [0.02, 0.02, 0.03])
+
+      if (ctx.backdrop) {
+        renderer.setLighting(null)
+        ctx.backdrop.draw(renderer, {
+          levelId: snapshot.levelId,
+          actId: snapshot.actId,
+          tick: snapshot.tick,
+          nowMs: ctx.nowMs ?? performance.now(),
+          originX: renderCamX - snapshot.viewportProfile.width / 2,
+          originY: renderCamY - snapshot.viewportProfile.height / 2,
+          width: snapshot.viewportProfile.width,
+          height: snapshot.viewportProfile.height,
+          playerX: snapshot.playerSubTile.x,
+          playerY: snapshot.playerSubTile.y,
+        })
+      }
 
       // The 1.13c light grid of this frame, when the scene is lit (unit sprites take one flat grid light).
       let litGrid: LightGrid | null = null

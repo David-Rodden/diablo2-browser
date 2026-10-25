@@ -49,6 +49,8 @@ export interface CharacterClassStats {
     readonly manaPerEnergy: number      // ManaPerMagic / 4
   }
   readonly blockFactor: number
+  readonly walkVelocity: number     // WalkVelocity = 6 (9.0 sub-tiles/s = 144 px/s)
+  readonly runVelocity: number      // RunVelocity = 9 (13.5 sub-tiles/s = 216 px/s)
   readonly runDrain: number
   readonly toHitFactor: number
   readonly manaRegenSeconds: number // 120 seconds for full pool
@@ -92,6 +94,8 @@ export const CANONICAL_CHARSTATS: Readonly<Record<CharacterClassCode, CharacterC
     perLevel: Object.freeze({ life: 2.0, mana: 1.5, stamina: 1.0, statPoints: 5 }),
     perStatPoint: Object.freeze({ lifePerVitality: 3.0, staminaPerVitality: 1.0, manaPerEnergy: 1.5 }),
     blockFactor: 25,
+    walkVelocity: 6,
+    runVelocity: 9,
     runDrain: 20,
     toHitFactor: 5,
     manaRegenSeconds: 120,
@@ -106,6 +110,8 @@ export const CANONICAL_CHARSTATS: Readonly<Record<CharacterClassCode, CharacterC
     perLevel: Object.freeze({ life: 1.0, mana: 2.0, stamina: 1.0, statPoints: 5 }),
     perStatPoint: Object.freeze({ lifePerVitality: 2.0, staminaPerVitality: 1.0, manaPerEnergy: 2.0 }),
     blockFactor: 20,
+    walkVelocity: 6,
+    runVelocity: 9,
     runDrain: 20,
     toHitFactor: -15,
     manaRegenSeconds: 120,
@@ -121,6 +127,8 @@ export const CANONICAL_CHARSTATS: Readonly<Record<CharacterClassCode, CharacterC
     perLevel: Object.freeze({ life: 1.5, mana: 2.0, stamina: 1.0, statPoints: 5 }),
     perStatPoint: Object.freeze({ lifePerVitality: 2.0, staminaPerVitality: 1.0, manaPerEnergy: 2.0 }),
     blockFactor: 20,
+    walkVelocity: 6,
+    runVelocity: 9,
     runDrain: 20,
     toHitFactor: -10,
     manaRegenSeconds: 120,
@@ -136,6 +144,8 @@ export const CANONICAL_CHARSTATS: Readonly<Record<CharacterClassCode, CharacterC
     perLevel: Object.freeze({ life: 2.0, mana: 1.5, stamina: 1.0, statPoints: 5 }),
     perStatPoint: Object.freeze({ lifePerVitality: 3.0, staminaPerVitality: 1.0, manaPerEnergy: 1.5 }),
     blockFactor: 30,
+    walkVelocity: 6,
+    runVelocity: 9,
     runDrain: 20,
     toHitFactor: 20,
     manaRegenSeconds: 120,
@@ -150,6 +160,8 @@ export const CANONICAL_CHARSTATS: Readonly<Record<CharacterClassCode, CharacterC
     perLevel: Object.freeze({ life: 2.0, mana: 1.0, stamina: 1.0, statPoints: 5 }),
     perStatPoint: Object.freeze({ lifePerVitality: 4.0, staminaPerVitality: 1.0, manaPerEnergy: 1.0 }),
     blockFactor: 25,
+    walkVelocity: 6,
+    runVelocity: 9,
     runDrain: 20,
     toHitFactor: 20,
     manaRegenSeconds: 120,
@@ -164,6 +176,8 @@ export const CANONICAL_CHARSTATS: Readonly<Record<CharacterClassCode, CharacterC
     perLevel: Object.freeze({ life: 1.5, mana: 2.0, stamina: 1.0, statPoints: 5 }),
     perStatPoint: Object.freeze({ lifePerVitality: 2.0, staminaPerVitality: 1.0, manaPerEnergy: 2.0 }),
     blockFactor: 20,
+    walkVelocity: 6,
+    runVelocity: 9,
     runDrain: 20,
     toHitFactor: 5,
     manaRegenSeconds: 120,
@@ -178,6 +192,8 @@ export const CANONICAL_CHARSTATS: Readonly<Record<CharacterClassCode, CharacterC
     perLevel: Object.freeze({ life: 2.0, mana: 1.5, stamina: 1.25, statPoints: 5 }),
     perStatPoint: Object.freeze({ lifePerVitality: 3.0, staminaPerVitality: 1.25, manaPerEnergy: 1.75 }),
     blockFactor: 25,
+    walkVelocity: 6,
+    runVelocity: 9,
     runDrain: 15,
     toHitFactor: 15,
     manaRegenSeconds: 120,
@@ -258,6 +274,12 @@ export function parseCharStatsRow(table: D2Table, row: readonly string[]): Chara
   const blockFactor = cell(table, row, 'BlockFactor') !== ''
     ? Number(cell(table, row, 'BlockFactor'))
     : canonical.blockFactor
+  const walkVelocity = cell(table, row, 'WalkVelocity') !== ''
+    ? Number(cell(table, row, 'WalkVelocity'))
+    : canonical.walkVelocity
+  const runVelocity = cell(table, row, 'RunVelocity') !== ''
+    ? Number(cell(table, row, 'RunVelocity'))
+    : canonical.runVelocity
   const runDrain = cell(table, row, 'RunDrain') !== ''
     ? Number(cell(table, row, 'RunDrain'))
     : canonical.runDrain
@@ -279,6 +301,8 @@ export function parseCharStatsRow(table: D2Table, row: readonly string[]): Chara
     perLevel: { life: lifePerLevel, mana: manaPerLevel, stamina: staminaPerLevel, statPoints },
     perStatPoint: { lifePerVitality, staminaPerVitality, manaPerEnergy },
     blockFactor,
+    walkVelocity,
+    runVelocity,
     runDrain,
     toHitFactor,
     manaRegenSeconds,

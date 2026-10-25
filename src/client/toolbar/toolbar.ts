@@ -14,11 +14,15 @@ import {
 } from '../plugin-host/api.ts'
 import type { ToolbarContributionSpec } from '../plugin-host/plugin-host.ts'
 import {
+  DEFAULT_HUD_LAYOUT_MODE,
+  normalizeHudLayoutMode,
+  VALID_HUD_LAYOUT_MODES,
   VALID_VIEWPORT_RESOLUTIONS,
   validateServerHost,
   type AutomapRevealMode,
   type ClientLightingPreset,
   type ClientSettings,
+  type HudLayoutMode,
   type ServerHostValidationResult,
   type ViewportResolution,
 } from '../settings/client-settings.ts'
@@ -103,6 +107,7 @@ export interface ToolbarCallbacks {
   readonly onLightingChange?: ((preset: ClientLightingPreset) => void) | undefined
   readonly onAutomapRevealChange?: ((mode: AutomapRevealMode) => void) | undefined
   readonly onViewportChange?: ((profile: ViewportProfile) => void) | undefined
+  readonly onHudLayoutModeChange?: ((mode: HudLayoutMode) => void) | undefined
   readonly onPluginsToggle?: (() => void) | undefined
   readonly onClearCache?: (() => void | Promise<void>) | undefined
   /** Fullscreen enter/exit failed (default: `console.error`). */
@@ -282,6 +287,8 @@ export class Toolbar {
   private viewportSelectEl: HTMLSelectElement | null = null
   private fpsLabelEl: HTMLElement | null = null
   private worldFpsSelectEl: HTMLSelectElement | null = null
+  private hudLayoutLabelEl: HTMLElement | null = null
+  private hudLayoutSelectEl: HTMLSelectElement | null = null
   private volumeLabelEl: HTMLElement | null = null
   private muteBtnEl: HTMLButtonElement | null = null
   private muteBtnIconEl: HTMLElement | null = null
@@ -386,6 +393,9 @@ export class Toolbar {
       }
       if (changedKeys.includes('viewport') && next.viewport !== prev.viewport) {
         this.callbacks.onViewportChange?.(getViewportProfile(next.viewport))
+      }
+      if (changedKeys.includes('hudLayoutMode') && next.hudLayoutMode !== prev.hudLayoutMode) {
+        this.callbacks.onHudLayoutModeChange?.(next.hudLayoutMode ?? DEFAULT_HUD_LAYOUT_MODE)
       }
       this.syncDom()
     })
@@ -584,6 +594,13 @@ export class Toolbar {
     const next = !(this.store.get().multiboxAlertSoundEnabled ?? true)
     this.setMultiboxAlertSoundEnabled(next)
     return next
+  }
+
+  setHudLayoutMode(mode: HudLayoutMode): HudLayoutMode {
+    const normalized = normalizeHudLayoutMode(mode)
+    this.store.set({ hudLayoutMode: normalized })
+    this.syncDom()
+    return normalized
   }
 
   getMultiboxSlotElement(): HTMLElement | null {
@@ -1872,6 +1889,29 @@ a.d2-toolbar__btn:active {
     fpsRow.appendChild(fpsLabel)
     fpsRow.appendChild(fpsSelect)
 
+    // Config Row 3b: Touch HUD Layout (#d2-config-hud-layout-row, #d2-toolbar-hud-layout-select)
+    const hudLayoutRow = doc.createElement('div')
+    hudLayoutRow.id = 'd2-config-hud-layout-row'
+    hudLayoutRow.className = 'd2-toolbar-modal__row'
+    const hudLayoutLabel = doc.createElement('label')
+    hudLayoutLabel.id = 'd2-config-hud-layout-label'
+    hudLayoutLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    hudLayoutLabel.htmlFor = 'd2-toolbar-hud-layout-select'
+    const hudLayoutSelect = doc.createElement('select')
+    hudLayoutSelect.id = 'd2-toolbar-hud-layout-select'
+    hudLayoutSelect.className = 'd2-toolbar__select'
+    for (const mode of VALID_HUD_LAYOUT_MODES) {
+      const opt = doc.createElement('option')
+      opt.value = mode
+      hudLayoutSelect.appendChild(opt)
+    }
+    hudLayoutSelect.value = this.store.get().hudLayoutMode ?? DEFAULT_HUD_LAYOUT_MODE
+    hudLayoutSelect.addEventListener('change', () => {
+      this.setHudLayoutMode(hudLayoutSelect.value as HudLayoutMode)
+    })
+    hudLayoutRow.appendChild(hudLayoutLabel)
+    hudLayoutRow.appendChild(hudLayoutSelect)
+
     // Config Row 4: Battle.net Server (#d2-config-server-row, #d2-toolbar-server-input, #d2-toolbar-server-apply-btn)
     const serverRow = doc.createElement('div')
     serverRow.id = 'd2-config-server-row'
@@ -2035,6 +2075,7 @@ a.d2-toolbar__btn:active {
     configBody.appendChild(displayRow)
     configBody.appendChild(viewportRow)
     configBody.appendChild(fpsRow)
+    configBody.appendChild(hudLayoutRow)
     configBody.appendChild(serverRow)
     configBody.appendChild(serverStatus)
     configBody.appendChild(volumeRow)
@@ -2270,6 +2311,8 @@ a.d2-toolbar__btn:active {
     this.viewportSelectEl = viewportSelect
     this.fpsLabelEl = fpsLabel
     this.worldFpsSelectEl = fpsSelect
+    this.hudLayoutLabelEl = hudLayoutLabel
+    this.hudLayoutSelectEl = hudLayoutSelect
     this.volumeLabelEl = volumeLabel
     this.muteBtnEl = muteBtn
     this.muteBtnIconEl = muteBtnIcon
@@ -2462,6 +2505,20 @@ a.d2-toolbar__btn:active {
     }
     if (this.fpsLabelEl) {
       this.fpsLabelEl.textContent = tToolbar('toolbar.config.fps', lang)
+    }
+    if (this.hudLayoutLabelEl) {
+      this.hudLayoutLabelEl.textContent = tToolbar('toolbar.config.hudLayout', lang)
+    }
+    if (this.hudLayoutSelectEl) {
+      const opts = Array.from(this.hudLayoutSelectEl.options)
+      for (let i = 0; i < VALID_HUD_LAYOUT_MODES.length; i += 1) {
+        const mode = VALID_HUD_LAYOUT_MODES[i]!
+        const optEl = opts[i]
+        if (optEl) {
+          optEl.textContent = tToolbar(`toolbar.config.hudLayout.${mode}` as const, lang)
+        }
+      }
+      this.hudLayoutSelectEl.value = snap.settings.hudLayoutMode ?? DEFAULT_HUD_LAYOUT_MODE
     }
     if (this.serverLabelEl) {
       this.serverLabelEl.textContent = tToolbar('toolbar.server.label', lang)

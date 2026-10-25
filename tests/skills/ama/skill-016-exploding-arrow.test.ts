@@ -286,7 +286,7 @@ describe('[Skill #016] Exploding Arrow (AMA) — 1.13c Parity (Issue #170)', () 
     // 3. Weapon & Ammo gates in SkillRegistry + Magic Arrow noAmmo exemption + Crossbow bolts + Strafe clamping
     const casterNoAmmo = {
       ...makeUnit('ama_bow', 500),
-      weaponItemType: 'crossbow',
+      weaponItemType: 'xbow',
       ammoQuantity: 0,
     }
     casterNoAmmo.statList.setMana256(500 * 256)

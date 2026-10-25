@@ -147,12 +147,16 @@ describe('Issue #1292: Amazon Guided Arrow (#22) Homing & Collision Termination'
     expect(arrow.pierceRemaining).toBe(4)
 
     // Step simulation ticks: arrow hits m1, pierces (does not disappear!), switches homing to m2, hits m2, and continues piercing up to 4 pierces (5 hits total)
+    // hitUnitIds is reset whenever the arrow re-targets, so collect every unit it hit over the flight (#1502:
+    // hits now follow the 1.13c Size footprint, so the last hit set alone no longer holds both monsters).
+    const everHit = new Set<number>()
     for (let t = 0; t < 45; t++) {
       ;(world as any).stepDiscreteSimulationTick()
+      for (const id of arrow.hitUnitIds ?? []) everHit.add(id)
       if (getActiveGuidedArrows(world).length === 0) break
     }
-    expect(arrow.hitUnitIds?.has(911)).toBe(true)
-    expect(arrow.hitUnitIds?.has(912)).toBe(true)
+    expect(everHit.has(911)).toBe(true)
+    expect(everHit.has(912)).toBe(true)
     expect(arrow.pierceCount).toBe(5)
     expect(arrow.pierceRemaining).toBe(0)
     expect(getActiveGuidedArrows(world)).toHaveLength(0)

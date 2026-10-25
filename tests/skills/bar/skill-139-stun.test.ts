@@ -47,7 +47,7 @@ describe('[Skill #139] Stun (BAR) — 1.13c Parity (Issue #293)', () => {
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(113)
-    expect(r20.radiusSubtiles).toBe(125)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

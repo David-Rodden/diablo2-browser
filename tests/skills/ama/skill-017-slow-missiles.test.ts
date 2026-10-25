@@ -144,7 +144,7 @@ describe('[Skill #017] Slow Missiles (AMA) — 1.13c Parity (Issue #171)', () =>
       stateNameOrId: 'innersight',
       slvl: 20,
       durationFrames: 2100,
-      stats: { armorclass: -815, item_light: 3 },
+      stats: { armorclass: -815, item_lightradius: 3 },
       curseTypeOverride: 0,
     })
     arena.triggerCast()

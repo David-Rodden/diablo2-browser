@@ -11,6 +11,7 @@ import {
   type UnitTypeName,
 } from '../../netproto/index.ts'
 import { PALADIN_AURA_STATE_BY_SKILL_ID } from '../../common/skills/paladin-auras.ts'
+import { getSkillClientRow113c } from '../../common/skills/skill-client-113c.ts'
 import {
   MONSTER_MODE_MISSILES_113C,
   MONSTER_MODE_MISSILES_BY_ID_113C,
@@ -38,6 +39,12 @@ export interface PartyMemberState {
   partyId?: number | undefined
   relation?: number | undefined
   lifePct?: number | undefined
+  /** S2C 0x65 signed kill count (roster+0x18, D2Client.dll 0x6fb5d890). */
+  killCount?: number | undefined
+  /** S2C 0x5B roster display name (`"%s {%s}"` with the first trailing string, D2Client.dll 0x6fb4d37c). */
+  displayName?: string | undefined
+  nameSuffix?: string | undefined
+  rosterWord44?: number | undefined
   areaId?: number | undefined
   levelId?: number | undefined
   at?: Pt | undefined
@@ -238,7 +245,7 @@ export const LINEAR_SKILL_MISSILES: Readonly<Record<number, { key: string; pierc
     45: { key: 'iceblast' },
     47: { key: 'fireball' },
     49: { key: 'lightningbolt', pierce: true },
-    53: { key: 'chainlightning', pierce: true },
+    53: { key: 'chainlightning' },
     55: { key: 'glacialspike' },
     84: { key: 'bonespear', pierce: true },
     93: { key: 'bonespirit' },
@@ -453,7 +460,7 @@ export const SELF_BUFF_SKILL_STATES: Readonly<Record<number, number>> = Object.f
   60: 20, // Chilling Armor -> state 20 (ChillingArmor)
   68: 14, // Bone Armor -> state 14 (BoneArmor)
   ...PALADIN_AURA_STATE_BY_SKILL_ID,
-  117: 101, // Holy Shield -> state 101 (holyshield, StateSetFunc[11] sh='bsh', Issue #1278)
+  117: 101, // Holy Shield -> state 101 (holyshield, component resolver 0x6FB1E289 sh='hsh', Issue #1278)
   138: 26, // Shout -> state 26
   144: 15, // Concentrate -> state 15
   147: 94, // Frenzy -> state 94
@@ -506,6 +513,26 @@ export interface SpawnMissileOptions {
   readonly velocity?: number | undefined
   /** Missile param flag 0x4000: no CreateLight for this missile (0x6FB6365B). */
   readonly noLight?: boolean | undefined
+  /**
+   * 1.13c D2Client `0x6FB63441` (`dwFlags & 0x08`, `pParam+0x34`): extra SubLoop iterations added to Range
+   * (`range += (subStop - subStart) * subLoopCount` when `row.subLoop !== 0`, Issue #1514).
+   */
+  readonly subLoopCount?: number | undefined
+  /**
+   * 1.13c D2Client `0x6FB6345F` (`pParam+0x24`): percentage range modifier when non-zero and `!== 100`
+   * (`range += Math.trunc((range * rangePct) / 100)`, Issue #1514).
+   */
+  readonly rangePct?: number | undefined
+  /**
+   * 1.13c D2Client `0x6FB6347D` (`dwFlags & 0x200`, `pParam+0x40`): starting frame offset subtracted from
+   * total lifetime (`range -= startFrameOffset`) and applied to initial `unit.frame` (Issue #1514).
+   */
+  readonly startFrameOffset?: number | undefined
+  /**
+   * 1.13c D2Client `0x6FB6348D` (`dwFlags & 0x10`, `pParam+0x38`): explicit `Activate` frame override
+   * (`cltActivateTicks = range - activate`, Issue #1511).
+   */
+  readonly activateOverride?: number | undefined
 }
 
 export class UnitMap extends Map<string, ClientUnit> {
@@ -597,22 +624,12 @@ export function getMonsterOneShotDefaultFrames(mode: number): number {
 export const OVERLAY_INDICES_NOT_REPLACED = new Set<number>([0x8c, 0x8d, 0x8e, 0x9e])
 
 /**
- * 1.13c `Skills.txt` `tgtoverlay` column (`D2SkillsTxt +0x10A`, Issue #1181):
- * Overlay token attached to the skill's target unit.
+ * 1.13c `Skills.txt` `tgtoverlay` column (`D2SkillsTxt +0x108`): overlay the client Do tail (`D2Client.dll`
+ * `0x6FB52EA4`) and the S2C 0xA3 tail (`0x6FB51C77`) attach to the skill's target unit.
  */
-export const SKILL_TGT_OVERLAYS_113C: Readonly<Record<number, string>> = Object.freeze({
-  14: 'lightning', // Power Strike
-  24: 'lightning', // Charged Strike
-  34: 'lightning', // Lightning Strike
-  179: 'receiving', // ZakarumHeal
-  253: 'psychic_hammer_hit', // Psychic Hammer
-  254: 'assassinfootimpact', // Tiger Strike
-  273: 'fist_will_cast', // Mind Blast
-  275: 'dragonflight', // Dragon Flight
-})
-
 export function getSkillTgtOverlay113c(skillId: number): string | undefined {
-  return SKILL_TGT_OVERLAYS_113C[skillId]
+  const name = getSkillClientRow113c(skillId)?.tgtOverlay ?? ''
+  return name === '' ? undefined : name
 }
 
 /**

@@ -4,6 +4,12 @@ import { MountedArchives } from '../src/common/mpq/mount.ts'
 import { MpqArchive } from '../src/common/mpq/archive.ts'
 import { fileSource } from '../src/baker/io/file-source.ts'
 import { parseTable } from '../src/common/world/acts.ts'
+import { getEmbeddedDropTables } from '../src/common/items/embedded-drop-tables.ts'
+import {
+  executeDropPipeline,
+  isItemUber113c,
+  resolveItemTypeFlags,
+} from '../src/common/items/drop-tables.ts'
 import {
   ITEM_RATIO_TABLE_PATH,
   MF_FACTOR_UNIQUE,
@@ -487,6 +493,222 @@ describe('ItemRatio Quality Determination (Issue #102)', () => {
       })
       // Cannot roll unique, set, rare, or magic: falls through to superior or normal!
       expect(['superior', 'normal']).toContain(quality)
+    })
+  })
+
+  describe('6. Base-Driven Uber Row Selection (D2Common #10560 @ 0x6FDC4000 & #10772 @ 0x6FD74D00, Issue #1469)', () => {
+    it('selects the Uber row (Normal=1, NormalDivisor=1) when base is exceptional or elite even if uber flag is omitted', () => {
+      // Shako ('uap', qlvl = 58) at ilvl = 58 (D = 0):
+      // Uber row has Normal = 1, NormalDivisor = 1 -> calculateNormalChance = (1 - 0) * 128 = 128.
+      // Normal roll is rng.rand(128) < 128, which is 100% true (never rolls 'low').
+      const shakoBase = {
+        id: 'uap',
+        name: 'Shako',
+        kind: 'armor' as const,
+        type: 'helm',
+        invWidth: 2,
+        invHeight: 2,
+        maxStack: 1,
+        value: 2400,
+        damage: 0,
+        defense: 141,
+        tags: ['helm'],
+        level: 58,
+        normcode: 'cap',
+        ubercode: 'xap',
+        ultracode: 'uap',
+      }
+      // Force Unique/Set/Rare/Magic/Superior to fail (roll = 200 >= 128), and Normal roll to max possible (chance - 1)
+      const rng: QualityRollRng = {
+        rand: (max: number) => Math.max(0, max - 1),
+      }
+      const shakoQual = rollItemQuality({
+        ilvl: 58,
+        qlvl: 58,
+        base: shakoBase,
+        rng,
+      })
+      expect(shakoQual).toBe('normal')
+
+      // Normal Cap ('cap', qlvl = 1) at ilvl = 1 (D = 0):
+      // Non-Uber row has Normal = 2, NormalDivisor = 2 -> calculateNormalChance = (2 - 0) * 128 = 256.
+      // With rand(256) returning 255 (>= 128), Normal fails and produces 'low'.
+      const capBase = {
+        ...shakoBase,
+        id: 'cap',
+        name: 'Cap',
+        level: 1,
+      }
+      const capQual = rollItemQuality({
+        ilvl: 1,
+        qlvl: 1,
+        base: capBase,
+        rng,
+      })
+      expect(capQual).toBe('low')
+    })
+
+    it('never rolls low quality for direct TC drops of elite or exceptional bases (uap Shako, xap War Hat) while allowing low quality on normal cap', () => {
+      const dropTables = getEmbeddedDropTables()
+      const sampleNode = dropTables.tcTable.get('Act 1 H2H A')!
+      const overrides = new Map<string, any>([
+        [
+          'DirectShakoTC',
+          {
+            ...sampleNode,
+            name: 'DirectShakoTC',
+            group: 0,
+            level: 58,
+            picks: 1,
+            noDrop: 0,
+            unique: 0,
+            set: 0,
+            rare: 0,
+            magic: 0,
+            flags: 0,
+            items: [{ item: 'uap', prob: 1, kind: 'base-item', isDangling: true, isClassic: false }],
+            totalProbClassic: 0,
+            totalProbExpansion: 1,
+            cumulativeProbExpansion: [1],
+          },
+        ],
+        [
+          'DirectWarHatTC',
+          {
+            ...sampleNode,
+            name: 'DirectWarHatTC',
+            group: 0,
+            level: 34,
+            picks: 1,
+            noDrop: 0,
+            unique: 0,
+            set: 0,
+            rare: 0,
+            magic: 0,
+            flags: 0,
+            items: [{ item: 'xap', prob: 1, kind: 'base-item', isDangling: true, isClassic: false }],
+            totalProbClassic: 0,
+            totalProbExpansion: 1,
+            cumulativeProbExpansion: [1],
+          },
+        ],
+        [
+          'DirectCapTC',
+          {
+            ...sampleNode,
+            name: 'DirectCapTC',
+            group: 0,
+            level: 1,
+            picks: 1,
+            noDrop: 0,
+            unique: 0,
+            set: 0,
+            rare: 0,
+            magic: 0,
+            flags: 0,
+            items: [{ item: 'cap', prob: 1, kind: 'base-item', isDangling: true, isClassic: true }],
+            totalProbClassic: 1,
+            totalProbExpansion: 1,
+            cumulativeProbExpansion: [1],
+          },
+        ],
+      ])
+      const customTcTable = {
+        ...dropTables.tcTable,
+        get: (name: string) => overrides.get(name) ?? dropTables.tcTable.get(name),
+      }
+      const customTables = { ...dropTables, tcTable: customTcTable as any }
+
+      // Shako ('uap', qlvl = 58) dropped directly at ilvl = 58 (Normal difficulty -> qf4=0, qf5=0, no upgrade roll):
+      // Must use Uber ItemRatio row (Normal=1, NormalDivisor=1 -> chance=128) and NEVER roll 'low' quality.
+      let shakoNormalCount = 0
+      for (let seed = 1; seed <= 200; seed++) {
+        const drops = executeDropPipeline(customTables, {
+          tcName: 'DirectShakoTC',
+          nLevel: 58,
+          difficulty: 'normal',
+          monsterRng: seed,
+        })
+        expect(drops).toHaveLength(1)
+        expect(drops[0]!.base.id).toBe('uap')
+        expect(drops[0]!.rarity).not.toBe('low')
+        if (drops[0]!.rarity === 'normal') shakoNormalCount++
+      }
+      expect(shakoNormalCount).toBeGreaterThan(50)
+
+      // War Hat ('xap', qlvl = 34) dropped directly at ilvl = 34: never rolls 'low' quality.
+      for (let seed = 1; seed <= 200; seed++) {
+        const drops = executeDropPipeline(customTables, {
+          tcName: 'DirectWarHatTC',
+          nLevel: 34,
+          difficulty: 'normal',
+          monsterRng: seed,
+        })
+        expect(drops).toHaveLength(1)
+        expect(drops[0]!.base.id).toBe('xap')
+        expect(drops[0]!.rarity).not.toBe('low')
+      }
+
+      // Cap ('cap', qlvl = 1) dropped at ilvl = 1: uses non-Uber row (Normal=2, NormalDivisor=2 -> chance=256)
+      // and rolls 'low' quality ~50% of the time when Superior fails.
+      let capLowCount = 0
+      for (let seed = 1; seed <= 100; seed++) {
+        const drops = executeDropPipeline(customTables, {
+          tcName: 'DirectCapTC',
+          nLevel: 1,
+          difficulty: 'normal',
+          monsterRng: seed,
+        })
+        expect(drops).toHaveLength(1)
+        if (drops[0]!.rarity === 'low') capLowCount++
+      }
+      expect(capLowCount).toBeGreaterThan(20)
+    })
+
+    it('matches 1.13c D2Common!0x6FD74D00 (Uber) and 0x6FD74320 (ClassSpecific) across all 659 bases in Weapons.txt, Armor.txt, and Misc.txt', () => {
+      const dropTables = getEmbeddedDropTables()
+      const allBases = [
+        ...dropTables.weapons.all,
+        ...dropTables.armor.all,
+        ...dropTables.misc.all,
+      ]
+      expect(allBases.length).toBe(659)
+
+      let uberCount = 0
+      let classSpecificCount = 0
+
+      for (const base of allBases) {
+        const typeCode = ((base as any).type ?? base.tags?.[0] ?? '').trim().toLowerCase()
+        const code = ((base as any).code ?? base.id ?? '').trim().toLowerCase()
+        const ubercode = ((base as any).ubercode ?? '').trim().toLowerCase()
+        const ultracode = ((base as any).ultracode ?? '').trim().toLowerCase()
+        const quest = Number((base as any).quest) || 0
+
+        // Exact 0x6FD74D00 reference
+        const expectedUber =
+          (dropTables.isA(typeCode, 'armo') || dropTables.isA(typeCode, 'weap')) &&
+          (code === ubercode || code === ultracode) &&
+          typeCode !== 'tpot' &&
+          quest === 0
+
+        // Exact 0x6FD74320 reference: ItemTypes[wType[0]].nClass < 7 (Class column non-empty)
+        const typeDef = dropTables.itemTypes.byCode.get(typeCode)
+        const expectedClassSpecific = Boolean(typeDef && typeDef.class && typeDef.class.trim() !== '')
+
+        const actualUber = isItemUber113c(base, dropTables.isA)
+        const flags = resolveItemTypeFlags(base, dropTables.itemTypes, dropTables.isA)
+
+        expect(actualUber, `isItemUber113c mismatch on ${base.id}`).toBe(expectedUber)
+        expect(flags.isUber, `flags.isUber mismatch on ${base.id}`).toBe(expectedUber)
+        expect(flags.isClassSpecific, `flags.isClassSpecific mismatch on ${base.id}`).toBe(expectedClassSpecific)
+
+        if (actualUber) uberCount++
+        if (flags.isClassSpecific) classSpecificCount++
+      }
+
+      // 328 Exceptional & Elite weapons/armor in 1.13c, 111 Class-Specific bases
+      expect(uberCount).toBe(328)
+      expect(classSpecificCount).toBe(111)
     })
   })
 })

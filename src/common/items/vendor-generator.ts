@@ -1,6 +1,11 @@
 import { D2Rng } from '../rng/d2-rng.ts'
 import type { DropTables } from './drop-tables.ts'
-import { createDroppedItem, rollStaffMods } from './drop-tables.ts'
+import {
+  canItemBeRare,
+  createDroppedItem,
+  rollRandomItemSockets113c,
+  rollStaffMods,
+} from './drop-tables.ts'
 import { rollMagicAffixes, rollRareAffixes, getItemTypeCode } from './affix-generator.ts'
 import { Inventory, ItemFlag, ItemQuality, type Item, type ItemBase, type RolledItemProp, decodeItemFlags, formatItemCode } from './items.ts'
 import type { ItemQualityTier } from './item-ratio.ts'
@@ -340,6 +345,7 @@ export function generateVendorStoreItem(options: {
           tables.magicAffixes,
           tables.isA,
           itemRng,
+          { isExpansion },
         )
       : undefined
 
@@ -348,29 +354,19 @@ export function generateVendorStoreItem(options: {
       ? rollStaffMods(selectedBase, nItemLevel, tables.itemTypes, itemRng)
       : undefined
 
-  // Roll sockets for normal/superior/low weapons and armor (never ethereal in vendor stores)
-  let sockets = 0
-  if (
-    (selectedBase.kind === 'weapon' || selectedBase.kind === 'armor') &&
-    (qualityTier === 'normal' || qualityTier === 'superior' || qualityTier === 'low')
-  ) {
-    const baseMaxSockets = Number((selectedBase as any).gemsockets) || 0
-    if (baseMaxSockets > 0) {
-      const typeCode = getItemTypeCode(selectedBase).trim().toLowerCase()
-      const def = tables.itemTypes.byCode.get(typeCode)
-      const typeMaxSockets = def
-        ? nItemLevel >= 40
-          ? def.maxSock40
-          : nItemLevel >= 25
-            ? def.maxSock25
-            : def.maxSock1
-        : baseMaxSockets
-      const maxAllowed = Math.min(baseMaxSockets, typeMaxSockets)
-      if (maxAllowed > 0 && itemRng.rand(3) === 0) {
-        sockets = itemRng.randRange(1, maxAllowed)
-      }
-    }
-  }
+  // Roll sockets for normal/superior weapons and armor (never ethereal in vendor stores)
+  // per 1.13c D2Game.dll 0x6FC2EC90 (shared with drop pipeline).
+  const sockets = rollRandomItemSockets113c(
+    selectedBase,
+    qualityTier,
+    nItemLevel,
+    itemRng,
+    {
+      itemTypes: tables.itemTypes,
+      difficulty,
+      isExpansion,
+    },
+  )
 
   const created = createDroppedItem(selectedBase, qualityTier, {
     magicAffixes,
@@ -681,6 +677,7 @@ export function resolveGambledItem(options: {
   readonly isExpansion?: boolean | undefined
   readonly tables: DropTables
   readonly rng: D2Rng
+  readonly spawnedUniqueIds?: Set<number> | undefined
 }): Item {
   const { mysteryItem, cLvl, isExpansion = true, tables, rng } = options
 
@@ -729,21 +726,34 @@ export function resolveGambledItem(options: {
       u => u.enabled && u.lvl <= ilvl && (isExpansion || u.version < 100),
     )
     if (candidates && candidates.length > 0) {
-      qualityTier = 'unique'
       // 1.13c UniqueItems.txt `rarity` weighted pick (same as the drop pipeline).
       const total = candidates.reduce((sum, u) => sum + Math.max(1, u.rarity), 0)
       let roll = rng.rand(total)
-      uniqueItem = candidates[candidates.length - 1]!
+      let chosenUnique = candidates[candidates.length - 1]!
       for (const candidate of candidates) {
         roll -= Math.max(1, candidate.rarity)
         if (roll < 0) {
-          uniqueItem = candidate
+          chosenUnique = candidate
           break
         }
       }
+      const isQuestItem = Boolean(selectedBase.quest)
+      const alreadySpawned =
+        !isQuestItem && (options.spawnedUniqueIds?.has(chosenUnique.id) ?? false)
+      if (!alreadySpawned) {
+        if (!chosenUnique.nolimit) {
+          options.spawnedUniqueIds?.add(chosenUnique.id)
+        }
+        qualityTier = 'unique'
+        uniqueItem = chosenUnique
+      } else {
+        // Failed Unique (already spawned in this game) -> rare (or magic if non-rareable) with 3x durability (1.13c).
+        qualityTier = canItemBeRare(selectedBase, tables.itemTypes, tables.isA) ? 'rare' : 'magic'
+        durabilityMultiplier = 3
+      }
     } else {
-      // Failed Unique -> rare with 3x durability (1.13c).
-      qualityTier = 'rare'
+      // Failed Unique -> rare (or magic if non-rareable) with 3x durability (1.13c).
+      qualityTier = canItemBeRare(selectedBase, tables.itemTypes, tables.isA) ? 'rare' : 'magic'
       durabilityMultiplier = 3
     }
   } else if (qRoll < 150) {
@@ -788,6 +798,7 @@ export function resolveGambledItem(options: {
           tables.rareNames,
           tables.isA,
           itemRng,
+          { isExpansion },
         )
       : undefined
 
@@ -799,6 +810,7 @@ export function resolveGambledItem(options: {
           tables.magicAffixes,
           tables.isA,
           itemRng,
+          { isExpansion },
         )
       : undefined
 

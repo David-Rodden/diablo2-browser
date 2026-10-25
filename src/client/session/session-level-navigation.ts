@@ -31,6 +31,12 @@ import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import { SETFUNC_FADE_STATES } from '../world/quest-fx-data-113c.ts'
 import { HORADRIC_ORIFICE_OBJECT_CLASS } from '../world/quest-fx-horadric-113c.ts'
+import { HELLFORGE_OBJECT_CLASS } from '../world/quest-fx-hellforge-113c.ts'
+import {
+  FROZEN_ANYA_OBJECT_CLASS,
+  TAINTED_SUN_ALTAR_OBJECT_CLASS,
+} from '../world/quest-fx-tainted-anya-baal-113c.ts'
+import { NIHLATHAK_MONSTER_CLASS } from '../world/boss-death-cltdo-113c.ts'
 import {
    type QuestFxLight,
   resolveRoomAmbient,
@@ -695,6 +701,17 @@ export function findObjectNearSubTile(
   py: number,
   classId: number,
 ): ClientUnit | null {
+  return findUnitNearSubTile(host, px, py, 'object', classId)
+}
+
+/** D2Common #10754(room, unitType, classId) (0x6fd622b0) for the room containing sub-tile (`px`, `py`). */
+export function findUnitNearSubTile(
+  host: SessionLevelNavigationHost,
+  px: number,
+  py: number,
+  unitType: 'object' | 'monster',
+  classId: number,
+): ClientUnit | null {
   if (!host.mapService) return null
   const levelView =
     host.mapService.findLevelViewAtWorldSubTile?.(px, py, host.getCandidateAreaIds()) ?? null
@@ -710,13 +727,24 @@ export function findObjectNearSubTile(
   const rooms = [unitRoom, ...nearRooms]
   return (
     host.world
-      .getUnitsByType('object')
+      .getUnitsByType(unitType)
       .find(
         (obj) =>
           obj.classId === classId &&
           rooms.some((room) => contains(room, Math.round(obj.x), Math.round(obj.y))),
       ) ?? null
   )
+}
+
+/**
+ * Special quest event 17 (0x6fb02af0): #10754(GetRoom(gpPlayer), UNIT_MONSTER, 0x20e) finds Nihlathak (MonStats 526)
+ * in the local player's room or a near room; then the Nihlathak show starts at it.
+ */
+export function startNihlathakShowIfNear(host: SessionLevelNavigationHost): void {
+  if (!host.mapService || host.world.selfId === 0) return
+  const snap = host.predictor.getSnapshot()
+  const mon = findUnitNearSubTile(host, Math.round(snap.logicalX), Math.round(snap.logicalY), 'monster', NIHLATHAK_MONSTER_CLASS)
+  if (mon !== null) host.world.startNihlathakShowAt(mon)
 }
 
 /** Special quest event 3 (0x6fb03450): the A2Q6 staff show at the orifice when #10754 finds it. */
@@ -726,6 +754,24 @@ export function spawnHoradricStaffIfOrificeNear(host: SessionLevelNavigationHost
     host.world.spawnHoradricStaffAtOrifice(orifice)
     host.audioRuntime.playQuestStinger(4690)
   }
+}
+
+/** Special quest event 14 (0x6fb03220): the Hell Forge show at the forge when #10754 finds Objects.txt 376. */
+export function spawnHellforgeShowIfForgeNear(host: SessionLevelNavigationHost): void {
+  const forge = host.findObjectNearLocalPlayer(HELLFORGE_OBJECT_CLASS)
+  if (forge !== null) host.world.spawnHellforgeShowAtForge(forge)
+}
+
+/** Special quest event 6 (0x6fb02c50): the Tainted Sun show at the altar when #10754 finds Objects.txt 149. */
+export function spawnTaintedSunShowIfAltarNear(host: SessionLevelNavigationHost): void {
+  const altar = host.findObjectNearLocalPlayer(TAINTED_SUN_ALTAR_OBJECT_CLASS)
+  if (altar !== null) host.world.spawnTaintedSunShowAtAltar(altar)
+}
+
+/** Special quest event 16 (0x6fb02b70): the Anya rescue show at Frozen Anya when #10754 finds Objects.txt 460. */
+export function spawnAnyaRescueShowIfAnyaNear(host: SessionLevelNavigationHost): void {
+  const anya = host.findObjectNearLocalPlayer(FROZEN_ANYA_OBJECT_CLASS)
+  if (anya !== null) host.world.spawnAnyaRescueShowAtAnya(anya)
 }
 
 /**

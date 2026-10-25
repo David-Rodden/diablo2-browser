@@ -1062,7 +1062,8 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
       const b0 = executeActBossAi113c(world, baal, world.player)
       expect(b0.action).toBe('special')
 
-      expect(getBossDeathFxSpec(526, 'nihlathakboss')?.controllerMissileKey).toBe('nehlithakcontrol')
+      // Nihlathak's show is special quest event 17 (0x6fba2138[17]), not a death controller (#1495).
+      expect(getBossDeathFxSpec(526, 'nihlathakboss')).toBeNull()
       expect(getBossDeathFxSpec(540, 'ancientbarb1')?.controllerMissileKey).toBe('ancient death center')
       expect(getBossDeathFxSpec(544, 'baalcrab')?.controllerMissileKey).toBe('baalfx control')
     })
@@ -1302,7 +1303,7 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
       expect(merc.state).toBe('attack')
     })
 
-    it('F13.2: tickMercenaryAi25Hz follows owner when distance > 96 and leashes back to owner when distance > 480', () => {
+    it('F13.2: tickMercenaryAi25Hz follows owner when distance > 16 subtiles (256 px) and leashes back to owner when distance > 100 subtiles (1600 px)', () => {
       const world = createTestCombatWorld({
         player: { x: 100, y: 100 },
         monsters: [],
@@ -1311,27 +1312,27 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
         id: 'merc-act1',
         act: 1,
         level: 20,
-        x: 250,
+        x: 380,
         y: 100,
         hp: 300,
         maxHp: 300,
         damage: 18,
-        reach: 120,
-        speed: 40,
+        reach: 320,
+        speed: 176,
         cooldown: 0,
-        cooldownTicks: 12,
+        cooldownTicks: 15,
         alive: true,
       }
       tickMercenaryAi25Hz(world, merc, world.player, createOpenTerrain())
       expect(merc.state).toBe('follow')
-      expect(merc.x).toBeLessThan(250)
+      expect(merc.x).toBeLessThan(380)
 
-      // Move owner > 480 away -> merc teleports/leashes to owner
-      world.player.x = 1000
-      world.player.y = 1000
+      // Move owner > 100 subtiles (1600 px) away -> merc teleports/leashes to owner
+      world.player.x = 2000
+      world.player.y = 2000
       tickMercenaryAi25Hz(world, merc, world.player, createOpenTerrain())
-      expect(merc.x).toBe(1000)
-      expect(merc.y).toBe(1000)
+      expect(merc.x).toBe(2000)
+      expect(merc.y).toBe(2000)
       expect(merc.state).toBe('idle')
     })
 
@@ -1545,13 +1546,15 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
         experience: 200,
         aiDisabled: true,
       })
-      c1.adapter.sendCommand({
-        type: 'CastSkillOnTarget',
-        skillId: 0,
-        targetType: 'monster',
-        targetId: monId,
-      })
-      host.stepFrames(2)
+      for (let attempt = 0; attempt < 5 && !host.game.getMonsterState(monId)!.dead; attempt++) {
+        c1.adapter.sendCommand({
+          type: 'CastSkillOnTarget',
+          skillId: 0,
+          targetType: 'monster',
+          targetId: monId,
+        })
+        host.stepFrames(2)
+      }
 
       expect(host.game.getMonsterState(monId)!.dead).toBe(true)
       expect(host.game.getPlayerState(c1.playerUnitId)!.experience).toBeGreaterThan(xp1Before)

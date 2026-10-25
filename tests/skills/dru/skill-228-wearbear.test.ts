@@ -46,8 +46,8 @@ describe('[Skill #228] Wearbear (DRU) — 1.13c Parity (Issue #321)', () => {
     expect(r20.maxPhysDmg).toBe(0)
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
-    expect(r20.durationFrames).toBe(2000)
-    expect(r20.radiusSubtiles).toBe(207)
+    expect(r20.durationFrames).toBe(1000)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(25)
   })
@@ -105,5 +105,79 @@ describe('[Skill #228] Wearbear (DRU) — 1.13c Parity (Issue #321)', () => {
     expect(dbg.castCount).toBeGreaterThanOrEqual(1)
     expect(dbg.actionFrameTriggered).toBe(true)
     expect(outcome?.executed).toBe(true)
+  })
+
+  it('Issue #1423: applies exact 1.13c Skills.txt aurastat1..6 for Werebear (#228) and Werewolf (#223)', async () => {
+    const registry = await getSharedDataRegistry()
+
+    // 1. Werebear (#228) slvl=1, Lycanthropy (#224) slvl=0:
+    // aurastat1=damagepercent (ln12 = 55), aurastat2=skill_armor_percent (ln34 = 25),
+    // aurastat3=item_maxhp_percent (par5 + skill('Shape Shifting'.ln34) = 75 + 0 = 75)
+    const arenaBear1 = new WorldArena({
+      registry,
+      classCode: 'dru',
+      skillId: 228,
+      slvl: 1,
+    })
+    arenaBear1.player.statList.setBaseSkillLevel(228, 1)
+    arenaBear1.player.statList.setBaseSkillLevel(224, 0)
+    const outBear1 = arenaBear1.triggerCast()
+    expect(outBear1?.executed).toBe(true)
+    const bearState1 = arenaBear1.player.stateBus.getState('bear')
+    expect(bearState1).toBeDefined()
+    expect(bearState1!.stats).toEqual({
+      damagepercent: 55,
+      skill_armor_percent: 25,
+      item_maxhp_percent: 75,
+    })
+    expect(bearState1!.stats['item_armor_percent']).toBeUndefined()
+    expect(bearState1!.durationFrames).toBe(1000)
+
+    // 2. Werebear (#228) slvl=10, Lycanthropy (#224) slvl=5:
+    // damagepercent = 55 + 9*8 = 127, skill_armor_percent = 25 + 9*6 = 79,
+    // item_maxhp_percent = 75 + (20 + 4*5) = 115
+    const arenaBear10 = new WorldArena({
+      registry,
+      classCode: 'dru',
+      skillId: 228,
+      slvl: 10,
+    })
+    arenaBear10.player.statList.setBaseSkillLevel(228, 10)
+    arenaBear10.player.statList.setBaseSkillLevel(224, 5)
+    const outBear10 = arenaBear10.triggerCast()
+    expect(outBear10?.executed).toBe(true)
+    const bearState10 = arenaBear10.player.stateBus.getState('bear')
+    expect(bearState10).toBeDefined()
+    expect(bearState10!.stats).toEqual({
+      damagepercent: 127,
+      skill_armor_percent: 79,
+      item_maxhp_percent: 115,
+    })
+    expect(bearState10!.stats['item_armor_percent']).toBeUndefined()
+    expect(bearState10!.durationFrames).toBe(4000)
+
+    // 3. Werewolf (#223) slvl=5, Lycanthropy (#224) slvl=5:
+    // state stats contains ONLY the 4 stats in Skills.txt (skill_staminapercent, attackrate, item_tohit_percent, item_maxhp_percent)
+    const arenaWolf = new WorldArena({
+      registry,
+      classCode: 'dru',
+      skillId: 223,
+      slvl: 5,
+    })
+    arenaWolf.player.statList.setBaseSkillLevel(223, 5)
+    arenaWolf.player.statList.setBaseSkillLevel(224, 5)
+    const outWolf = arenaWolf.triggerCast()
+    expect(outWolf?.executed).toBe(true)
+    const wolfState = arenaWolf.player.stateBus.getState('wolf')
+    expect(wolfState).toBeDefined()
+    expect(Object.keys(wolfState!.stats).sort()).toEqual([
+      'attackrate',
+      'item_maxhp_percent',
+      'item_tohit_percent',
+      'skill_staminapercent',
+    ])
+    expect(wolfState!.stats['skill_staminapercent']).toBe(25)
+    expect(wolfState!.stats['item_tohit_percent']).toBe(50 + 4 * 15)
+    expect(wolfState!.stats['item_maxhp_percent']).toBe(25 + 40)
   })
 })

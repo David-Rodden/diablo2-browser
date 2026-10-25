@@ -32,7 +32,7 @@ export const SRVDOFUNC_TWISTER_TORNADO_113C = 118
  * 73 Blessed Hammer `0x6FCB94C0`, 74 Double Throw `0x6FC47E30`, 80 Fist of the Heavens `0x6FCB93A0`.
  * `0` = no srvdofunc: the generic `srvmissile` launch.
  */
-export const SRVDOFUNC_SINGLE_MISSILE_113C: ReadonlySet<number> = new Set([0, 10, 14, 26, 28, 73, 74, 80])
+export const SRVDOFUNC_SINGLE_MISSILE_113C: ReadonlySet<number> = new Set([0, 1, 3, 5, 10, 14, 26, 28, 73, 74, 80])
 
 export type PlayerSrvDoMissileMode = 'fan' | 'strafe' | 'volley' | 'single' | 'unmodeled'
 

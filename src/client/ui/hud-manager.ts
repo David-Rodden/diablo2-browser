@@ -21,9 +21,11 @@
 
 import type { PotionShortageKind } from './potion-shortage-badge.ts'
 import { D2FontRenderer } from './font.ts'
+import { matchesKeyBinding } from '../settings/key-bindings.ts'
 import type { GroundItemLabelBox } from '../../common/items/ground-items.ts'
 import { GlobesHud } from './globes.ts'
 import { BeltHud } from './belt.ts'
+import { decideUiOpen113c, UI_113C } from './ui-policy-113c.ts'
 import { SkillHotkeysHud } from './hotkeys.ts'
 import { ControlBarHud, type MiniPanelAction } from './control-bar.ts'
 import { TouchControlsHud } from './touch-controls.ts'
@@ -206,6 +208,39 @@ export type LeftPanelType =
   | 'imbue'
   | 'add_sockets'
   | 'personalize'
+
+/**
+ * Web left-dock panels -> D2Client.dll UI ids (see ui-policy-113c.ts). Panels without a verified UI id
+ * (`hire`, `barkscroll`, `recipescroll`) do not take part in the policy matrix.
+ */
+const LEFT_PANEL_UI_113C: Partial<Record<Exclude<LeftPanelType, 'none'>, number>> = {
+  char: UI_113C.character,
+  quest: UI_113C.questLog,
+  waypoint: UI_113C.waypoint,
+  stash: UI_113C.stash,
+  cube: UI_113C.cube,
+  vendor: UI_113C.npcShop,
+  trade: UI_113C.trade,
+  party: UI_113C.party,
+  msg: UI_113C.messageLog,
+  merc: UI_113C.hireling,
+  imbue: UI_113C.anvil,
+  add_sockets: UI_113C.anvil,
+  personalize: UI_113C.anvil,
+  orifice: UI_113C.anvil,
+}
+
+/** Left windows that carry the inventory grid as their right half. */
+const COMPOSITE_INVENTORY_LEFT_PANELS: ReadonlySet<string> = new Set([
+  'stash',
+  'cube',
+  'vendor',
+  'trade',
+  'imbue',
+  'add_sockets',
+  'personalize',
+  'orifice',
+])
 
 export interface PublishedHudState {
   ready: boolean
@@ -866,6 +901,7 @@ export class HudManager {
     onWaypointTeleport: (act: number, slug: string, levelId?: number) => void
     onToggleAutomapMode?: () => void
     onCycleAutomapFade?: () => void
+    onToggleAutomapParty?: () => void
     onToggleAutomapNames?: () => void
     onResetAutomapPan?: () => void
     onPanAutomap?: (dx: number, dy: number) => boolean
@@ -888,6 +924,7 @@ export class HudManager {
       onWaypointTeleport?: (act: number, slug: string, levelId?: number) => void
       onToggleAutomapMode?: () => void
       onCycleAutomapFade?: () => void
+      onToggleAutomapParty?: () => void
       onToggleAutomapNames?: () => void
       onResetAutomapPan?: () => void
       onPanAutomap?: (dx: number, dy: number) => boolean
@@ -1088,6 +1125,7 @@ export class HudManager {
   }
 
   toggleHelpOverlay(): boolean {
+    if (this.isSelfDeadUiLocked113c()) return this.helpOverlayOpen
     this.helpOverlayOpen = !this.helpOverlayOpen
     this.syncPublishedState()
     return this.helpOverlayOpen
@@ -1310,7 +1348,7 @@ export class HudManager {
     this.worldPanels.npcMenu = null
     this.leftPanel = 'vendor'
     this.charSheet.visible = false
-    if (this.rightPanel !== 'inv') this.toggleRightPanel('inv')
+    if (this.rightPanel !== 'inv') this.setRightPanelRaw('inv')
     this.syncPublishedState()
   }
 
@@ -1319,7 +1357,7 @@ export class HudManager {
     this.leftPanel = 'stash'
     ;(this.worldPanels as any).activePanel = 'stash'
     this.charSheet.visible = false
-    if (this.rightPanel !== 'inv') this.toggleRightPanel('inv')
+    if (this.rightPanel !== 'inv') this.setRightPanelRaw('inv')
     this.syncPublishedState()
   }
 
@@ -1328,7 +1366,7 @@ export class HudManager {
     this.leftPanel = 'cube'
     ;(this.worldPanels as any).activePanel = 'cube'
     this.charSheet.visible = false
-    if (this.rightPanel !== 'inv') this.toggleRightPanel('inv')
+    if (this.rightPanel !== 'inv') this.setRightPanelRaw('inv')
     this.syncPublishedState()
   }
 
@@ -1487,6 +1525,8 @@ export class HudManager {
    * Strictly follows D2Client.dll mutual exclusion on the Left Dock (`0..400`).
    */
   toggleLeftPanel(kind: Exclude<LeftPanelType, 'none'>): void {
+    if (this.isSelfDeadUiLocked113c()) return
+    this.armUiReopenGuard113c()
     const prev = this.leftPanel
     if (prev === kind) {
       this.leftPanel = 'none'
@@ -1498,6 +1538,18 @@ export class HudManager {
     } else {
       if (kind === 'vendor' && !this.worldPanels.activeVendorDescriptor) {
         throw new Error('Cannot open vendor panel without an active vendor session')
+      }
+      // D2Client.dll 0x6FB71A80: UI policy matrix (0x6FB8D538) decides whether `kind` may open and
+      // which open UIs close first. Left-dock UIs being replaced are handled by the replacement below.
+      const newUi = LEFT_PANEL_UI_113C[kind]
+      if (newUi !== undefined) {
+        const decision = decideUiOpen113c(this.getOpenUiIds113c(), newUi)
+        this.applyUiPolicyCloses113c(decision.close, false)
+        if (decision.cancelNpc) this.dismissNpcMenu()
+        if (!decision.allowed) {
+          this.syncPublishedState()
+          return
+        }
       }
       if (
         kind !== 'vendor' &&
@@ -1528,9 +1580,10 @@ export class HudManager {
           kind === 'add_sockets' ||
           kind === 'personalize' ||
           kind === 'orifice') &&
-        this.rightPanel === 'none'
+        this.rightPanel !== 'inv'
       ) {
-        this.toggleRightPanel('inv')
+        // The trade/stash/cube/shop/anvil windows carry their own inventory half.
+        this.setRightPanelRaw('inv')
       }
     }
     this.syncPublishedState()
@@ -1562,20 +1615,136 @@ export class HudManager {
    * Strictly follows D2Client.dll mutual exclusion on the Right Dock (`400..800`).
    */
   toggleRightPanel(kind: 'inv' | 'skill'): void {
-    if (this.rightPanel === kind) {
+    if (this.isSelfDeadUiLocked113c()) return
+    this.armUiReopenGuard113c()
+    // While a composite trade/stash/cube/shop/anvil window is open its inventory half is not the
+    // inventory UI (1): pressing I is an *open* request that the policy matrix refuses.
+    const composite = COMPOSITE_INVENTORY_LEFT_PANELS.has(this.leftPanel)
+    if (this.rightPanel === kind && !composite) {
       this.rightPanel = 'none'
       this.inventory.visible = false
       this.skillTree.visible = false
     } else {
-      if (this.leftPanel === 'msg') {
-        this.leftPanel = 'none'
-        ;(this.worldPanels as any).activePanel = 'none'
+      const newUi = kind === 'inv' ? UI_113C.inventory : UI_113C.skillTree
+      const decision = decideUiOpen113c(this.getOpenUiIds113c(), newUi)
+      this.applyUiPolicyCloses113c(decision.close, true)
+      if (decision.cancelNpc) this.dismissNpcMenu()
+      if (!decision.allowed) {
+        this.syncPublishedState()
+        return
       }
-      this.rightPanel = kind
-      this.inventory.visible = kind === 'inv'
-      this.skillTree.visible = kind === 'skill'
+      this.setRightPanelRaw(kind)
     }
     this.syncPublishedState()
+  }
+
+  /**
+   * Show Belt (command 22, UI 0x1F) through `SetUIState(0x1F, 2)`: opening applies the UI policy
+   * (the belt row/column closes the skill speed bar, skill tree, chat, NPC menu, game menu, shop).
+   */
+  toggleBeltPopup113c(): void {
+    if (this.isSelfDeadUiLocked113c()) return
+    if (this.belt.lockedOpen) {
+      this.belt.lockedOpen = false
+    } else {
+      const decision = decideUiOpen113c(this.getOpenUiIds113c(), UI_113C.belt)
+      this.applyUiPolicyCloses113c(decision.close, true)
+      if (decision.cancelNpc) this.dismissNpcMenu()
+      if (decision.allowed) this.belt.lockedOpen = true
+    }
+    this.syncPublishedState()
+  }
+
+  /** Skill Speed Bar (command 13, UI 3) through `SetUIState(3, 2)` with the UI policy on open. */
+  toggleSkillSpeedBar113c(side: 'left' | 'right' = 'right'): void {
+    if (this.isSelfDeadUiLocked113c()) return
+    if (this.hotkeys.openPopup) {
+      this.hotkeys.openPopup = null
+    } else {
+      const decision = decideUiOpen113c(this.getOpenUiIds113c(), UI_113C.skillSpeedBar)
+      this.applyUiPolicyCloses113c(decision.close, true)
+      if (decision.cancelNpc) this.dismissNpcMenu()
+      if (decision.allowed) this.hotkeys.openPopup = side
+    }
+    this.syncPublishedState()
+  }
+
+  /** Shows a right-dock panel without consulting the UI policy (composite windows, internal flows). */
+  setRightPanelRaw(kind: 'inv' | 'skill'): void {
+    if (this.leftPanel === 'msg') {
+      this.leftPanel = 'none'
+      ;(this.worldPanels as any).activePanel = 'none'
+    }
+    this.rightPanel = kind
+    this.inventory.visible = kind === 'inv'
+    this.skillTree.visible = kind === 'skill'
+  }
+
+  /**
+   * D2Client.dll `SetUIState` 0x6FB72790: opening (state 0, 0x6fb7287b) and toggling (state 2, 0x6fb7281e)
+   * leave `0x6FBAAD80[ui]` untouched while the player unit is dead (`IsUnitDead` 0x6FB55440: player mode
+   * 0 / 0x11 or unit flag 0x10000). Closing (state 1) is unaffected.
+   */
+  /**
+   * D2Client.dll 0x6FB6E2E0: every panel toggle/close handler arms `0x6FBAAD50 = GetTickCount() + 100`;
+   * `0x6FB71AEB` refuses to open the chat box (UI 5) or the game menu (UI 9) until that tick passes.
+   */
+  uiReopenGuardUntilMs = -Infinity
+
+  armUiReopenGuard113c(nowMs: number = performance.now()): void {
+    this.uiReopenGuardUntilMs = nowMs + 100
+  }
+
+  isChatOrMenuOpenBlocked113c(nowMs: number = performance.now()): boolean {
+    return nowMs < this.uiReopenGuardUntilMs
+  }
+
+  isSelfDeadUiLocked113c(): boolean {
+    return Boolean(this.isDead || (this.worldPanels as any).isDead)
+  }
+
+  /** D2Client.dll UI ids (`0x6FBAAD80` flags) of everything currently open in the web HUD. */
+  getOpenUiIds113c(): number[] {
+    const ids: number[] = []
+    const left = this.leftPanel
+    if (left !== 'none') {
+      const id = LEFT_PANEL_UI_113C[left]
+      if (id !== undefined) ids.push(id)
+    }
+    if (this.rightPanel === 'inv' && !COMPOSITE_INVENTORY_LEFT_PANELS.has(left)) ids.push(UI_113C.inventory)
+    if (this.rightPanel === 'skill') ids.push(UI_113C.skillTree)
+    if (this.hotkeys.openPopup) ids.push(UI_113C.skillSpeedBar)
+    if (this.belt.lockedOpen) ids.push(UI_113C.belt)
+    if (this.helpOverlayOpen) ids.push(UI_113C.help)
+    if (this.worldPanels.npcMenu || this.worldPanels.npcSpeech) ids.push(UI_113C.npcMenu)
+    if (this.worldPanels.escapeMenuOpen) ids.push(UI_113C.gameMenu)
+    return ids
+  }
+
+  /**
+   * Policy 1 (`SetUIState(i, 1)`) for every UI the matrix closes. `closeLeft` is false when the caller
+   * is about to replace the left-dock panel itself.
+   */
+  private applyUiPolicyCloses113c(close: readonly number[], closeLeft: boolean): void {
+    for (const id of close) {
+      if (id === UI_113C.inventory || id === UI_113C.skillTree) {
+        this.rightPanel = 'none'
+        this.inventory.visible = false
+        this.skillTree.visible = false
+      } else if (id === UI_113C.skillSpeedBar) {
+        this.hotkeys.openPopup = null
+      } else if (id === UI_113C.belt) {
+        this.belt.lockedOpen = false
+      } else if (id === UI_113C.help) {
+        this.helpOverlayOpen = false
+      } else if (id === UI_113C.npcMenu) {
+        this.dismissNpcMenu()
+      } else if (id === UI_113C.gameMenu) {
+        this.escapeMenuOpen = false
+      } else if (closeLeft && this.leftPanel !== 'none' && LEFT_PANEL_UI_113C[this.leftPanel] === id) {
+        this.setLeftPanel('none')
+      }
+    }
   }
 
   get escapeMenuOpen(): boolean {
@@ -1745,7 +1914,25 @@ export class HudManager {
       return true
     }
     if (deltaY === 0) return false
-    const step: -1 | 1 = deltaY < 0 ? -1 : 1
+    // 0x6fae8c28: commands 39/40 (Select Previous/Next Skill) have dwAllowInModal = 0 in 0x6FBA4F10.
+    if (
+      this.leftPanel === 'vendor' ||
+      this.leftPanel === 'stash' ||
+      this.leftPanel === 'cube' ||
+      this.worldPanels.npcMenu !== null ||
+      this.worldPanels.npcSpeech !== null
+    ) {
+      return false
+    }
+    const wheelKey = deltaY < 0 ? 'WheelUp' : 'WheelDown'
+    const kb = this.getActiveKeyBindings()
+    let step: -1 | 1 | null = null
+    if (matchesKeyBinding(kb, 'selectPreviousSkill', { key: wheelKey, code: wheelKey })) {
+      step = -1
+    } else if (matchesKeyBinding(kb, 'selectNextSkill', { key: wheelKey, code: wheelKey })) {
+      step = 1
+    }
+    if (step === null) return false
     if (this._commandSink?.cycleBoundSkills) {
       return this._commandSink.cycleBoundSkills(step)
     }

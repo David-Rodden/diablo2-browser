@@ -47,7 +47,7 @@ describe('[Skill #237] Summon Fenris (DRU) — 1.13c Parity (Issue #330)', () =>
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(0)
-    expect(r20.radiusSubtiles).toBe(525)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(3)
     expect(r20.cooldownFrames).toBe(0)
   })

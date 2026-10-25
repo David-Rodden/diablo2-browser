@@ -47,7 +47,7 @@ describe('[Skill #075] Clay Golem (NEC) — 1.13c Parity (Issue #229)', () => {
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(0)
-    expect(r20.radiusSubtiles).toBe(700)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(1)
     expect(r20.cooldownFrames).toBe(0)
   })

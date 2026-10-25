@@ -20,6 +20,7 @@ import { getTblLang, requireTbl, type TblLang } from '../i18n/lang.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
 import type { BaseStatKey, CharacterAttributes } from '../../common/units/unit-types.ts'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
+import { SKILL_DESC_BY_SKILL_ID } from '../../common/data/skilldesc-table.ts'
 import { getSkillName, getSkillTableMeta } from '../../common/skills/skills-meta.ts'
 import type { CombatDamageFormulaBreakdown } from '../ui-model/combat-stats.ts'
 import { reportMissingArt } from '../../client/scene/world-renderer.ts'
@@ -29,49 +30,20 @@ export type DamageHandKey = 'left' | 'right'
 export type CharSheetHoveredElement = 'leftAr' | 'rightAr' | 'defense' | 'close' | 'advStats'
 
 /**
- * Skills that always hit or bypass Attack Rating in Diablo II v1.13c (`D2Client.dll 0x6FADE350` & `Skills.txt`):
- * - `#22` Guided Arrow, `#25` Lightning Bolt, `#35` Lightning Fury, `#97` Smite, `#154` War Cry.
- */
-const AUTO_HIT_NO_AR_SKILL_IDS = new Set<number>([22, 25, 35, 97, 154])
-
-/**
- * Physical / weapon / kick skills that roll Attack Rating (`ToHit`) in 1.13c `D2Client.dll 0x6FADE350`.
- */
-const EXPLICIT_AR_ATTACK_SKILL_IDS = new Set<number>([
-  0, 1, 2, 4, 5,
-  6, 7, 9, 10, 11, 12, 14, 15, 16, 19, 20, 21, 24, 26, 27, 30, 31, 34,
-  73,
-  96, 106, 107, 111, 116,
-  126, 133, 139, 140, 143, 144, 147, 151, 152,
-  232, 233, 238, 239, 242, 248,
-  254, 255, 257, 259, 260, 265, 266, 269, 270, 274, 275, 277, 280,
-])
-
-/**
- * Ground Truth (`D2Client.dll 0x6FADE350` & `0x6FB6D3C1..0x6FB6D3DF`):
- * Returns `true` only when `skillId` performs an Attack Rating (`ToHit`) check.
- * Pure spells (Teleport, Fire Ball, Blizzard, Nova, Hammers, Traps, Curses, Warcries, Summons)
- * and auto-hit attacks (Smite `#97`, Guided Arrow `#22`, Lightning Fury `#35`) return `false`.
+ * Ground Truth (`D2Client.dll 0x6FADE350`): the character sheet Attack Rating box is drawn only when the
+ * skill's `SkillDesc.txt` `descatt` column selects a valid entry of the descatt dispatch table
+ * (`mov ax,[skilldesc+0x14]; cmp ax,0x48; jae skip; cmp [eax*4+0x6FBA52A0],0; je skip`). Entries 1..5 are
+ * populated (0x6FADD680, 0x6FAE0DB0, 0x6FADD4D0, 0x6FADF260, 0x6FADC3D0); 0 / empty never shows the box.
  */
 export function doesSkillUseAttackRating(skillId: number | null | undefined): boolean {
-  const id = skillId ?? 0
-  if (id < 0) return false
-  if (AUTO_HIT_NO_AR_SKILL_IDS.has(id)) return false
-  if (EXPLICIT_AR_ATTACK_SKILL_IDS.has(id)) return true
-  const meta = getSkillTableMeta(id)
-  if (meta && (meta.passive === 1 || meta.aura === 1)) return false
-  const def = SKILLS_BY_ID[id] as any
-  if (!def) return false
-  if (
-    (typeof def.toHit === 'number' && def.toHit > 0) ||
-    (typeof def.toHitLev === 'number' && def.toHitLev > 0) ||
-    Boolean(def.toHitCalc)
-  ) {
-    return true
-  }
-  if (typeof def.srcDamage === 'number' && def.srcDamage > 0 && Boolean(meta?.itypea1)) return true
-  return false
+  if (skillId === null || skillId === undefined || skillId < 0) return false
+  const rec = SKILL_DESC_BY_SKILL_ID[skillId]
+  if (!rec) return false
+  return DESCATT_TABLE_POPULATED.has(rec.descatt)
 }
+
+/** Populated slots of the D2Client.dll descatt table at 0x6FBA52A0 (index 0 and 6..17 are null). */
+const DESCATT_TABLE_POPULATED: ReadonlySet<number> = new Set([1, 2, 3, 4, 5])
 
 /**
  * Ground Truth (`D2Common.dll #10428` / `D2Client.dll 0x6FB6C760` & `0x6FB6C8F0`):
@@ -108,7 +80,7 @@ export function computeCharacterBlockChancePct(attrs: CharacterSheetAttributes):
     const clvl = Math.max(1, Math.trunc(attrs.level || 1))
     const dex = Math.max(0, Math.trunc(attrs.dex || 0))
     const extra = Math.trunc(attrs.extraBlockPct || 0)
-    const scaled = Math.floor((attrs.shieldBaseBlock * Math.max(0, dex - 15)) / (clvl * 2)) + extra
+    const scaled = Math.floor(((attrs.shieldBaseBlock + extra) * Math.max(0, dex - 15)) / (clvl * 2))
     return Math.max(0, Math.min(75, scaled))
   }
   if (typeof attrs.weaponBlockChance === 'number' && attrs.weaponBlockChance > 0) {

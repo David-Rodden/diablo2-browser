@@ -153,21 +153,21 @@ describe('Issue #1313 — 1.13c S2C packet decoders (0x73, 0x28, 0x7B, 0x81, 0x7
   })
 
   it('decodes 0x16, 0x17, 0x57, 0x91, 0x93, 0x97, 0x98, and encodes MCP 0x05 with u32 flags', () => {
-    // 0x16 MultipleUnitAssign (3 + 1 * 9 = 12B)
-    const pkt16 = new Uint8Array(12)
+    // 0x16 MultipleUnitAssign (u16 size @1, count @3, 9-byte entries from @4; D2Client.dll 0x6fb5d9d0)
+    const pkt16 = new Uint8Array(13)
     const dv16 = new DataView(pkt16.buffer)
     pkt16[0] = 0x16
-    pkt16[1] = 0
-    pkt16[2] = 1 // count = 1
-    pkt16[3] = 1 // monster
-    dv16.setUint32(4, 500, true) // id
-    dv16.setUint16(8, 5100, true) // x
-    dv16.setUint16(10, 5200, true) // y
+    dv16.setUint16(1, 13, true) // size
+    pkt16[3] = 1 // count = 1
+    pkt16[4] = 1 // monster
+    dv16.setUint32(5, 500, true) // id
+    dv16.setUint16(9, 5100, true) // x
+    dv16.setUint16(11, 5200, true) // y
     const ev16 = decodeRare113cS2cPacket(pkt16)
     expect(ev16).toEqual({
       type: 'ProtocolSync',
       opcode: 0x16,
-      byteLength: 12,
+      byteLength: 13,
       entries: [{ unitType: 1, id: 500, x: 5100, y: 5200 }],
     })
 
@@ -193,13 +193,13 @@ describe('Issue #1313 — 1.13c S2C packet decoders (0x73, 0x28, 0x7B, 0x81, 0x7
       type: 'ProtocolSync',
       opcode: 0x57,
       byteLength: 14,
+      // D2Client.dll 0x6fb5d560 field layout.
       monsterEnchant: {
         monsterId: 300,
-        enchantType: 2,
-        textId: 105,
-        prefix: 3,
-        suffix: 4,
-        field10: 99,
+        unitType: 2,
+        nameSeed: 105,
+        bossMods: [3, 4, 99],
+        champion: false,
       },
     })
 
@@ -218,7 +218,7 @@ describe('Issue #1313 — 1.13c S2C packet decoders (0x73, 0x28, 0x7B, 0x81, 0x7
       type: 'ProtocolSync',
       opcode: 0x93,
       byteLength: 8,
-      npcGossip: { npcId: 42, flag: 1 },
+      playerSkillUpdate: { playerId: 42, value: 0, skillGroup: 0, mode: 1 },
     })
 
     // 0x97 WeaponSwitch (1B)
@@ -231,10 +231,10 @@ describe('Issue #1313 — 1.13c S2C packet decoders (0x73, 0x28, 0x7B, 0x81, 0x7
     dv98.setUint32(1, 1024, true)
     dv98.setUint16(5, 3, true)
     expect(decodeRare113cS2cPacket(pkt98)).toEqual({
-      type: 'UnitMode',
-      unitType: 2,
-      id: 1024,
-      mode: 3,
+      type: 'ProtocolSync',
+      opcode: 0x98,
+      byteLength: 7,
+      evilHut: { monsterId: 1024, value: 3 },
     })
 
     // MCP 0x05 MCP_GAMELIST (u16 requestId, u32 flags, cstring filter)

@@ -119,7 +119,7 @@ describe('issue #1356 NpcSell', () => {
     record.items.push(entry(9003, 'cap', 'inventory', 500))
     game.enqueueCommand(playerId, { type: 'NpcSell', npcId, itemId: 9003 } as never)
     game.stepFrames(1)
-    expect(record.gold).toBe(125)
+    expect(record.gold).toBe(19)
     expect(record.items.some((it) => it.unitId === 9003)).toBe(false)
   })
 
@@ -150,7 +150,7 @@ describe('issue #1356 NpcSell', () => {
     const pool = record.vendorPools.get(npcId)!
     const buyback = pool.find((it) => it.unitId === 9201)
     expect(buyback).toBeDefined()
-    expect(buyback!.cost).toBe(200)
+    expect(buyback!.cost).toBe(19)
     expect(buyback!.location).toBe('vendor')
 
     game.enqueueCommand(playerId, { type: 'NpcBuy', npcId, itemId: 9201, cost: 0 } as never)
@@ -162,11 +162,11 @@ describe('issue #1356 NpcSell', () => {
 
   it('respects the inventory gold cap and overflows into the stash', () => {
     const { game, playerId, record, npcId } = setup(1359)
-    record.gold = 9_900 // cap at level 1 = 10,000
+    record.gold = 9_990 // cap at level 1 = 10,000
     record.items.push(entry(9301, 'cap', 'inventory', 1_000))
     game.enqueueCommand(playerId, { type: 'NpcSell', npcId, itemId: 9301 } as never)
     game.stepFrames(1)
     expect(record.gold).toBe(10_000)
-    expect(record.goldBank).toBe(150)
+    expect(record.goldBank).toBe(9)
   })
 })

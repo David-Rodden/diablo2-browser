@@ -21,11 +21,8 @@ import {
   monsterLight113c,
   skillCastLight113c,
 } from '../../common/units/light-sources-113c.ts'
-import {
-  getBossPaletteRow,
-  getMonsterPaletteRow,
-  resolveMonsterPaletteRow,
-} from '../../common/units/monster-art.ts'
+import { resolveMonsterColormap113c } from '../../common/units/monster-colormap-113c.ts'
+import { colormapPaletteRow } from '../render/colormap-rows.ts'
 import { assertDir64, dir64FromPoints, dir64ToClipDirection, dir64ToDcc } from '../../common/units/direction.ts'
 import { reportMissingArt } from '../../client/scene/missing-art.ts'
 import type { OverlayTxtRow } from '../../common/data/overlay-txt-row-type.ts'
@@ -49,8 +46,6 @@ import {
 import { OVERLAY_TXT_ROWS } from '../render/overlay-txt-rows.ts'
 import { subTileToWorldOrtho } from './viewport-profile.ts'
 import { missileTransToDrawBlend, overlayTransToDrawBlend } from '../../common/gfx/draw-mode.ts'
-
-export { getBossPaletteRow, getMonsterPaletteRow, resolveMonsterPaletteRow }
 
 type MissileTxtEntry = NonNullable<ReturnType<typeof getMissileTxtData>>
 
@@ -221,8 +216,8 @@ export interface RenderableUnitInput {
   readonly noSel?: boolean | undefined
   readonly corpseSel?: boolean | undefined
   readonly paletteRow?: number | undefined
-  readonly transLvl?: number | undefined
-  readonly utrans?: number | undefined
+  /** Monsters: create-time palette index (gfx+0x38, `ClientUnit.paletteIndex`). */
+  readonly paletteIndex?: number | undefined
   readonly sync?: number | boolean | undefined
   readonly isNpc?: boolean | undefined
   readonly wantsInteract?: boolean | undefined
@@ -725,11 +720,11 @@ function readStateStatListValue(unit: RenderableUnitInput, stateId: number, stat
 
 /**
  * Resolves the active overlay token(s) for `stateId` on `unit` per 1.13c `D2Client.dll` state setfuncs:
- * - `setfunc = 16` (`0x6FB22670`, states `117` `maul` / `120` `feralrage`): picks 1 front (`wOverlay[0] + stage - 1`)
+ * - `setfunc = 16` (`0x6FB22E40`, states `117` `maul` / `120` `feralrage`): picks 1 front (`wOverlay[0] + stage - 1`)
  *   and 1 back (`wOverlay[2] + stage - 1`) in `1..5` instead of all 4 `overlay1..4` endpoints simultaneously (#1071, #1072).
- * - `setfunc = 8` (`0x6FB23090`, state `151` `cyclonearmor`): picks 1 of `cyclonearmor1front..3front` by remaining
+ * - `setfunc = 8` (`0x6FB23000`, state `151` `cyclonearmor`): picks 1 of `cyclonearmor1front..3front` by remaining
  *   absorb thirds (`STAT_BONEARMOR` 132 vs `STAT_BONEARMORMAX` 133) instead of all 3 layers (#1071).
- * - `setfunc = 1` (`0x6FB22DD0`, states `122..127` `progressive_*`): picks `pgsvoverlay + charges - 1` (`1..3`) (#1071).
+ * - `setfunc = 1` (`0x6FB23410`, states `122..127` `progressive_*`): picks `pgsvoverlay + charges - 1` (`1..3`) (#1071).
  */
 export function resolveStateOverlayTokens113c(
   unit: RenderableUnitInput,
@@ -737,7 +732,7 @@ export function resolveStateOverlayTokens113c(
 ): readonly string[] {
   const raw = unit as unknown as Record<string, unknown>
 
-  // States 117 (maul) & 120 (feralrage): StateSetFunc[16] 0x6FB22670 (stage 1..5 front + back)
+  // States 117 (maul) & 120 (feralrage): StateSetFunc[16] 0x6FB22E40 (stage 1..5 front + back)
   if (stateId === 117 || stateId === 120) {
     const skillId = stateId === 117 ? 233 : 232
     const specificStage =
@@ -790,7 +785,7 @@ export function resolveStateOverlayTokens113c(
     return [frontName ?? baseTokens[0]!, backName ?? baseTokens[2]!]
   }
 
-  // State 151 (cyclonearmor): StateSetFunc[8] 0x6FB23090 (cumulative back+front layers by remaining absorb thirds)
+  // State 151 (cyclonearmor): StateSetFunc[8] 0x6FB23000 (cumulative back+front layers by remaining absorb thirds)
   if (stateId === 151) {
     const stagePairs: ReadonlyArray<readonly [string, string]> = [
       ['cyclonearmor1back', 'cyclonearmor1front'],
@@ -824,7 +819,7 @@ export function resolveStateOverlayTokens113c(
     return out
   }
 
-  // States 122..127 (progressive_*): StateSetFunc[1] 0x6FB22DD0 (pgsvoverlay + charges - 1)
+  // States 122..127 (progressive_*): StateSetFunc[1] 0x6FB23410 (pgsvoverlay + charges - 1)
   const pgsvBase = STATE_PGSV_OVERLAYS[stateId]
   if (pgsvBase !== undefined) {
     const skillId = PROGRESSIVE_STATE_SKILL_IDS[stateId]
@@ -922,6 +917,8 @@ export function pushOverlayLight(
 function pushCastLight(out: LightEmitterInput[], unit: RenderableUnitInput): void {
   const cast = unit.castState
   if (!cast) return
+  // 0x6FB521E6: no cast light when the SkillCltStFunc failed.
+  if ((cast as { cltStFailed?: boolean }).cltStFailed === true) return
   const [lightRadius, r, g, b] = skillCastLight113c(cast.skillId)
   if (lightRadius <= 0) return
   const { x8, y8 } = unitLightPos8(unit)
@@ -1582,10 +1579,11 @@ export function buildSceneDrawables(
         }
       }
     }
-    if (activePaletteRow === undefined && unit.kind === 'monster') {
-      const resolvedRow = getMonsterPaletteRow(unit)
-      if (resolvedRow > 0) {
-        activePaletteRow = resolvedRow
+    if (activePaletteRow === undefined && unit.kind === 'monster' && unit.paletteIndex !== undefined) {
+      // 0x6fb03a30: the monster's colormap from its create-time palette index (gfx+0x38, #1516 / #1517).
+      const colormap = resolveMonsterColormap113c(unit.classId, unit.paletteIndex)
+      if (colormap !== null) {
+        activePaletteRow = colormapPaletteRow(colormap)
         tintColor = null
       }
     }
@@ -1827,6 +1825,10 @@ export function buildSceneDrawables(
       ...(isFaded ? { isFaded: true } : {}),
     }
     if (isCorpse && Boolean(unit.corpseSuppressed ?? rawAny.corpseSuppressed)) {
+      continue
+    }
+    // D2Client unit+0xc8 & 0x40000 (set by special quest event 17 on Nihlathak, 0x6fb02b51-5d): not drawn.
+    if (rawAny.clientNoDraw === true) {
       continue
     }
     // 1.13c States.txt hide=1 corpse states (#1 freeze, #99 redeemed, #104 corpse_nodraw,

@@ -126,7 +126,7 @@ describe('[Skill #034] Lightning Strike (AMA) — 1.13c Parity (Issue #188 / #97
     expect(dbg.totalDamageDealt).toBeGreaterThan(0)
   })
 
-  it('verifies ClientWorld Layer 4 (Issue #975): #34 Lightning Strike bounces within 20 subtiles for 1 + slvl hits and attaches lightning overlay', async () => {
+  it('verifies ClientWorld Layer 4 (Issue #975): #34 Lightning Strike bounces within 20 subtiles (new missile per bounce, 2 + (slvl - 1) count) and attaches lightning overlay', async () => {
     const { ClientWorld } = await import('../../../src/client/world/client-world.ts')
     const world = new ClientWorld()
     world.apply({ type: 'PlayerAssign', unitId: 1, charClass: 0, name: 'Ama', x: 100, y: 100 })
@@ -145,14 +145,23 @@ describe('[Skill #034] Lightning Strike (AMA) — 1.13c Parity (Issue #188 / #97
       (u) => u.unitType === 'missile' && u.missileKey === 'lightningstrike',
     )!
     expect(ls).toBeDefined()
-    ls.hitUnitIds = new Set([101])
+    // SkillCltDoFunc[22] (0x6fac5660) writes calc2 = ln34 = 2 + (slvl - 1) bounces into missile data +0x28.
+    expect(ls.cltCountdown).toBe(2)
+    // MissCltHitFunc[16] (0x6fb667d0, #1498): the hit segment ends and a NEW lightningstrike flies from the hit unit
+    // to the nearest other hostile within aurarangecalc = 20 sub-tiles, carrying count - 1.
     ;(world as any).triggerMissileImpact(ls, 102, 100, false, world.getUnit('monster', 101)!)
-    // Monster 102 is 18 subtiles away (<= 20), so ls bounces to it
-    expect(ls.pierce).toBe(true)
-    ls.hitUnitIds.add(102)
-    ;(world as any).triggerMissileImpact(ls, 120, 100, false, world.getUnit('monster', 102)!)
-    // At slvl 1, maxHits = 1 + 1 = 2, so pierce is now false
     expect(ls.pierce).toBe(false)
+    const children = Array.from(world.units.values()).filter(
+      (u) => u.unitType === 'missile' && u.missileKey === 'lightningstrike' && u !== ls,
+    )
+    expect(children).toHaveLength(1)
+    expect(children[0]!.cltCountdown).toBe(1)
+    expect(children[0]!.targetX).toBe(120)
+    // count 1: no further bounce
+    ;(world as any).triggerMissileImpact(children[0]!, 120, 100, false, world.getUnit('monster', 102)!)
+    expect(
+      Array.from(world.units.values()).filter((u) => u.unitType === 'missile' && u.missileKey === 'lightningstrike'),
+    ).toHaveLength(2)
   })
 })
 

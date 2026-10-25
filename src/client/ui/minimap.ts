@@ -5,12 +5,12 @@
  * - `AUTOMAP_LoadSprites` (`0x6fb11cc0`) & `AUTOMAP_DrawCell` (`0x6fb0f240`):
  *   8 DC6 sprite sheets (`MaxiMap`, `MaxiMapS`, `Act2Map`, `Act2MapS`, `Act4Map`, `Act4MapS`,
  *   `ExTnMap`, `ExTnMapS`) indexed by `AutomapAtlasSlot` (`0..3`) and `bMinimap` (`false`/`true`).
- * - `AUTOMAP_SetupViewportAndRender` (`0x6fae9e20`) & `AUTOMAP_RenderLayer` (`0x6fb10489`):
+ * - Automap cell renderer (`0x6fb0f9f0`, layer draw `0x6fb10489`):
  *   Isometric projection with `nDivisor = bMinimap ? 20 : 10`, DC6 baseline anchor
  *   `drawLeft = screenX + frame.offsetX - (bMinimap ? 4 : 8)`,
  *   `drawTop = screenY - frame.height + frame.offsetY`,
  *   rendered in strict 4-layer order: `floors -> walls -> objects -> extras`.
- * - Dual Viewport Modes (`0x6fae9e20..0x6fb104d1`):
+ * - Dual Viewport Modes (`0x6fb0f9f0..0x6fb104d1`; `AutoMapMode` `0x6FBCC1B0`, divisor `0x6FBA16B0`):
  *   - Corner Minimap (`bMinimap = true`, `nDivisor = 20`, default on start):
  *     Clipped `279×225` viewport at top-right `(screenWidth - 281, 57)`, shifting to
  *     top-left `(0, 75)` when a right-dock panel (Inventory/Skill Tree) is open.
@@ -47,6 +47,7 @@ import {
 
 export type { AutomapLayerData }
 import { lookupTbl } from '../i18n/lang.ts'
+import { DRLG_GetActNoFromLevelId } from '../../common/drlg/drlg-drlg.ts'
 import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import type { D2ColorCode, D2FontRenderer } from './font.ts'
 
@@ -72,8 +73,46 @@ export const AUTOMAP_REVEAL_DISTANCE_THRESHOLD = 160
 /** Arrow-key pan step in screen pixels when Full Automap (`bMinimap = false`) is open. */
 export const AUTOMAP_PAN_STEP_PX = 8
 
-/** 4-state fade alpha cycle (`F9`: `0 -> 1 -> 2 -> 3 -> 0`). */
-export const AUTOMAP_FADE_ALPHAS = [1.0, 0.75, 0.5, 0.25] as const
+/**
+ * D2gfx draw-mode opacities used by the automap cell renderer (kb/items/d2client-ethereal-item-rendering.md):
+ * `DRAWMODE_TRANS25 = 0` -> 0.25, `TRANS50 = 1` -> 0.5, `TRANS75 = 2` -> 0.75, `NORMAL = 5` -> 1.
+ */
+const AUTOMAP_DRAWMODE_ALPHA = { 0: 0.25, 1: 0.5, 2: 0.75, 5: 1.0 } as const
+
+/**
+ * Uniform (non-distance) opacity of an automap cell for fade state `fade` (`0x6FBCC208`), from the
+ * D2Client.dll cell renderer `0x6FB1032E..0x6FB1038C` (drawmode starts at 5 = opaque):
+ * - fade 0: opaque;
+ * - fade 1: opaque outside the player-centred ring (the ring itself, full automap only, is
+ *   {@link automapDistanceFadeAlpha113c});
+ * - fade 2: `DRAWMODE_TRANS50` everywhere (`0x6fb10384`);
+ * - fade 3: only in Act I / Act III (`[player+0x18]` act byte 0 / 2, `0x6fb10358`) -> `TRANS50` in the
+ *   minimap (`AutoMapMode == 1`) or `TRANS75` in the full automap; opaque in Acts II, IV, V.
+ */
+export function automapUniformFadeAlpha113c(fade: 0 | 1 | 2 | 3, bMinimap: boolean, act0: number): number {
+  if (fade === 2) return AUTOMAP_DRAWMODE_ALPHA[1]
+  if (fade === 3 && (act0 === 0 || act0 === 2)) return bMinimap ? AUTOMAP_DRAWMODE_ALPHA[1] : AUTOMAP_DRAWMODE_ALPHA[2]
+  return AUTOMAP_DRAWMODE_ALPHA[5]
+}
+
+/**
+ * Fade state 1 player ring (`0x6FB10391..0x6FB10454`, full automap only): cells inside the box
+ * `dx in [-0x8C, 0x8C]`, `dy in [-0x96, 0x82]` around the screen centre fade by the octile distance
+ * `d = (max * 2 + min) >> 1`: `d < 50 -> TRANS25`, `d < 100 -> TRANS50`, `d < 150 -> TRANS75`, else opaque.
+ */
+export function automapDistanceFadeAlpha113c(screenX: number, screenY: number, centerX: number, centerY: number): number {
+  const dx = Math.abs(screenX - centerX)
+  const rawDy = screenY - centerY
+  if (dx > 140 || rawDy < -150 || rawDy > 130) return AUTOMAP_DRAWMODE_ALPHA[5]
+  const dy = Math.abs(rawDy)
+  const maxD = dx >= dy ? dx : dy
+  const minD = dx >= dy ? dy : dx
+  const dist = ((maxD << 1) + minD) >> 1
+  if (dist < 50) return AUTOMAP_DRAWMODE_ALPHA[0]
+  if (dist < 100) return AUTOMAP_DRAWMODE_ALPHA[1]
+  if (dist < 150) return AUTOMAP_DRAWMODE_ALPHA[2]
+  return AUTOMAP_DRAWMODE_ALPHA[5]
+}
 
 /**
  * Three canonical Automap display modes (`#1320`):
@@ -82,6 +121,12 @@ export const AUTOMAP_FADE_ALPHAS = [1.0, 0.75, 0.5, 0.25] as const
  * - `'center'`: Centered Full-Screen Automap with semi-transparent player neighborhood (`visible = true, bMinimap = false`)
  */
 export type AutomapDisplayMode = 'off' | 'top-right' | 'center'
+
+/** Persisted "AutoMap Party" flag (0x6FBA16B8, D2Client.dll 0x6fae9df0 writes it to the "Diablo II" registry key). */
+const AUTOMAP_PARTY_STORAGE_KEY = 'd2_automap_party'
+
+/** Persisted "AutoMap Party Names" flag (0x6FBA16BC, D2Client.dll 0x6fae9dc0 writes it to the "Diablo II" registry key). */
+const AUTOMAP_NAMES_STORAGE_KEY = 'd2_automap_party_names'
 
 const AUTOMAP_SPATIAL_BUCKET_SHIFT = 7 // 128 xPixel/yPixel units per spatial bucket
 
@@ -93,12 +138,18 @@ interface SpatialAutomapCellsIndex {
   readonly maxBy: number
 }
 
-const AUTOMAP_FADE_TINTS: readonly (readonly [number, number, number, number])[] = [
-  [1, 1, 1, 1.0],
-  [1, 1, 1, 0.75],
-  [1, 1, 1, 0.5],
-  [1, 1, 1, 0.25],
-]
+const AUTOMAP_FADE_TINTS: Readonly<Record<number, readonly [number, number, number, number]>> = {
+  1.0: [1, 1, 1, 1.0],
+  0.75: [1, 1, 1, 0.75],
+  0.5: [1, 1, 1, 0.5],
+  0.25: [1, 1, 1, 0.25],
+}
+
+function automapFadeTint(alpha: number): readonly [number, number, number, number] {
+  const tint = AUTOMAP_FADE_TINTS[alpha]
+  if (!tint) throw new Error(`[Minimap] no D2 draw mode for automap alpha ${alpha}`)
+  return tint
+}
 
 const COLOR_PLAYER = [0.0, 0.0, 1.0, 1.0] as const
 const COLOR_RED = [1.0, 0.0, 0.0, 1.0] as const
@@ -301,7 +352,7 @@ export interface AutomapViewportMetrics {
 
 /**
  * Computes viewport bounds, divisor, panel shift, and center anchor per
- * `AUTOMAP_SetupViewportAndRender` (`0x6fae9e20..0x6fb104d1`).
+ * the automap cell renderer (`0x6fb0f9f0..0x6fb104d1`). (`0x6fae9e20` is the Fade Automap command.)
  */
 export function computeAutomapViewport(
   screenWidth: number,
@@ -606,6 +657,7 @@ export interface AutomapRenderTelemetry {
   divisor: 10 | 20
   fadeState: 0 | 1 | 2 | 3
   fadeAlpha: number
+  showParty: boolean
   showNames: boolean
   panX: number
   panY: number
@@ -661,10 +713,20 @@ export class Minimap {
    */
   bMinimap = true
 
-  /** 4-state fade index (`0` = 100%, `1` = 75%/distance, `2` = 50%, `3` = 25%), cycled by `F9`. */
+  /**
+   * Fade state (`0x6FBCC208`, registry "AutoMapFade"), cycled by the Fade Automap command (F10):
+   * 0 opaque, 1 player-ring fade (full automap), 2 uniform 50%, 3 Act I/III only (see
+   * {@link automapUniformFadeAlpha113c}).
+   */
   fadeState: 0 | 1 | 2 | 3 = 0
 
-  /** Whether ally/NPC names and labels are displayed (`F10` toggles). */
+  /** 0-based act of the level drawn last (`[player+0x18]` act byte used by fade state 3). */
+  private fadeAct0 = 0
+
+  /** Whether party member & party pet crosshairs/labels are displayed (`0x6FBA16B8`, command 10 / default `F11` toggles). */
+  showParty = true
+
+  /** Whether ally/NPC names and labels are displayed (`0x6FBA16BC`, command 11 / default `F12` toggles). */
   showNames = true
 
   /** Manual pan offset X in screen pixels (active only when `!bMinimap`). */
@@ -716,7 +778,7 @@ export class Minimap {
     atlas: null as unknown as AtlasHandle,
     width: 0,
     height: 0,
-    tint: AUTOMAP_FADE_TINTS[0]!,
+    tint: AUTOMAP_FADE_TINTS[1.0]!,
     blendMode: 'normal',
   }
 
@@ -730,6 +792,7 @@ export class Minimap {
     divisor: 20,
     fadeState: 0,
     fadeAlpha: 1.0,
+    showParty: true,
     showNames: true,
     panX: 0,
     panY: 0,
@@ -752,6 +815,16 @@ export class Minimap {
           if (val >= 0 && val <= 3) {
             this.fadeState = val as 0 | 1 | 2 | 3
           }
+        }
+        // Registry "AutoMap Party" (0x6FBA16B8), written by the Party on Automap command 0x6fae9df0.
+        const savedParty = localStorage.getItem(AUTOMAP_PARTY_STORAGE_KEY)
+        if (savedParty === '0' || savedParty === '1') {
+          this.showParty = savedParty === '1'
+        }
+        // Registry "AutoMap Party Names" (0x6FBA16BC), written by the Names on Automap command 0x6fae9dc0.
+        const savedNames = localStorage.getItem(AUTOMAP_NAMES_STORAGE_KEY)
+        if (savedNames === '0' || savedNames === '1') {
+          this.showNames = savedNames === '1'
         }
       }
     } catch {
@@ -791,9 +864,9 @@ export class Minimap {
     return this.atlases.size
   }
 
-  /** Current sprite alpha multiplier from `fadeState`. */
+  /** Uniform (non-ring) cell opacity for the current fade state, mode and act. */
   get fadeAlpha(): number {
-    return AUTOMAP_FADE_ALPHAS[this.fadeState]
+    return automapUniformFadeAlpha113c(this.fadeState, this.bMinimap, this.fadeAct0)
   }
 
   /** Alias for `fadeState`. */
@@ -879,14 +952,8 @@ export class Minimap {
   }
 
   /**
-   * Distance-based center semi-transparency lookup in Centered Automap mode
-   * (`D2Client.dll 0x6fb10391..0x6fb1045b`, `#1320`):
-   * - In Corner Minimap mode (`bMinimap === true`), returns the uniform fade alpha
-   *   for the current `fadeState` (`1.0 / 0.75 / 0.5 / 0.25`).
-   * - In Centered Full Automap mode (`bMinimap === false`), cells covering the
-   *   player character and surrounding area (`dx <= 140`, `rawDy ∈ [-150, 130]`)
-   *   fade radially by integer octile distance `((max(dx,dy)*2 + min(dx,dy)) >> 1)`:
-   *   `dist < 50 -> 0.25`, `dist < 100 -> 0.50`, `dist < 150 -> 0.75`.
+   * Opacity of one automap cell at screen `(screenX, screenY)` (`0x6FB1032E..0x6FB10454`): the fade
+   * state 1 player ring applies only in the full automap; everything else is the uniform fade alpha.
    */
   getCellFadeAlpha(
     screenX: number,
@@ -895,29 +962,10 @@ export class Minimap {
     centerY: number,
     bMinimap: boolean,
   ): number {
-    if (bMinimap) {
-      return AUTOMAP_FADE_ALPHAS[this.fadeState]
+    if (this.fadeState === 1 && !bMinimap) {
+      return automapDistanceFadeAlpha113c(screenX, screenY, centerX, centerY)
     }
-    if (this.fadeState === 3) return 0.25
-    const outerAlpha = AUTOMAP_FADE_ALPHAS[this.fadeState]
-    const dx = Math.abs(screenX - centerX)
-    const rawDy = screenY - centerY
-    if (dx > 140 || rawDy < -150 || rawDy > 130) {
-      return outerAlpha
-    }
-    const dy = Math.abs(rawDy)
-    const maxD = dx >= dy ? dx : dy
-    const minD = dx >= dy ? dy : dx
-    const dist = ((maxD << 1) + minD) >> 1
-    let centerAlpha: number = outerAlpha
-    if (dist < 50) {
-      centerAlpha = 0.25
-    } else if (dist < 100) {
-      centerAlpha = 0.5
-    } else if (dist < 150) {
-      centerAlpha = 0.75
-    }
-    return centerAlpha < outerAlpha ? centerAlpha : outerAlpha
+    return automapUniformFadeAlpha113c(this.fadeState, bMinimap, this.fadeAct0)
   }
 
   /**
@@ -963,19 +1011,58 @@ export class Minimap {
   }
 
   /**
-   * Cycles automap fade state (`0 -> 1 -> 2 -> 3 -> 0`, `F9` key).
+   * Fade Automap command (cmd 9, default F10, D2Client.dll `0x6FAE9E20` -> `0x6FB0F970`):
+   * `fade = (fade + 1) & 3`, except that the minimap (`AutoMapMode == 1`) has no state 1 -- a state 1
+   * is replaced by `prev ? 0 : 2` (prev = last stored value `0x6FBCC20C`) both before and after the
+   * increment. Full automap: 0 -> 1 -> 2 -> 3 -> 0; minimap: 0 -> 2 -> 3 -> 0.
    */
   cycleFade(): 0 | 1 | 2 | 3 {
-    this.fadeState = ((this.fadeState + 1) % 4) as 0 | 1 | 2 | 3
+    const prev = this.fadeState
+    let fade: number = this.fadeState
+    if (this.bMinimap && fade === 1) fade = prev !== 0 ? 0 : 2
+    fade = (fade + 1) & 3
+    if (this.bMinimap && fade === 1) fade = prev !== 0 ? 0 : 2
+    this.fadeState = fade as 0 | 1 | 2 | 3
     this.persistFadeState()
     return this.fadeState
   }
 
   /**
-   * Toggles party/ally/NPC name display on the automap (`F10` key).
+   * Toggles party member and party pet markers on the automap
+   * (command 10 `Party on Automap`, default `F11`, D2Client.dll `0x6FAE9DF0` -> `0x6FBA16B8`).
+   */
+  toggleShowParty(): boolean {
+    this.showParty = !this.showParty
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(AUTOMAP_PARTY_STORAGE_KEY, this.showParty ? '1' : '0')
+      }
+    } catch {
+      // ignore
+    }
+    return this.showParty
+  }
+
+  /**
+   * Alias for `toggleShowParty()`.
+   */
+  toggleParty(): boolean {
+    return this.toggleShowParty()
+  }
+
+  /**
+   * Toggles party/ally/NPC name display on the automap
+   * (command 11 `Names on Automap`, default `F12`, D2Client.dll `0x6FAE9DC0` -> `0x6FBA16BC`).
    */
   toggleShowNames(): boolean {
     this.showNames = !this.showNames
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(AUTOMAP_NAMES_STORAGE_KEY, this.showNames ? '1' : '0')
+      }
+    } catch {
+      // ignore
+    }
     return this.showNames
   }
 
@@ -983,6 +1070,13 @@ export class Minimap {
    * Alias for `toggleShowNames()`.
    */
   toggleNames(): boolean {
+    return this.toggleShowNames()
+  }
+
+  /**
+   * Alias for `toggleShowNames()` (`CommandMapper` compatibility).
+   */
+  toggleShowPartyNames(): boolean {
     return this.toggleShowNames()
   }
 
@@ -1375,6 +1469,7 @@ export class Minimap {
     this.lastRenderStats.divisor = vp.divisor
     this.lastRenderStats.fadeState = this.fadeState
     this.lastRenderStats.fadeAlpha = this.fadeAlpha
+    this.lastRenderStats.showParty = this.showParty
     this.lastRenderStats.showNames = this.showNames
     this.lastRenderStats.panX = this.panX
     this.lastRenderStats.panY = this.panY
@@ -1445,8 +1540,9 @@ export class Minimap {
       gl.scissor(scissorX, scissorY, scissorW, scissorH)
     }
 
-    const isDistanceFade = !this.bMinimap && this.fadeState !== 3
-    const uniformTint = AUTOMAP_FADE_TINTS[this.fadeState]!
+    this.fadeAct0 = DRLG_GetActNoFromLevelId(options?.levelId ?? level.levelId ?? 0)
+    const isDistanceFade = !this.bMinimap && this.fadeState === 1
+    const uniformTint = automapFadeTint(this.fadeAlpha)
     const divisor = this.bMinimap ? 20 : 10
     const halfAnchorX = this.bMinimap ? 4 : 8
     const vpRight = vp.vpX + vp.vpW
@@ -1500,14 +1596,7 @@ export class Minimap {
           vp.centerY,
           this.bMinimap,
         )
-        tint =
-          alpha === 1.0
-            ? AUTOMAP_FADE_TINTS[0]!
-            : alpha === 0.75
-              ? AUTOMAP_FADE_TINTS[1]!
-              : alpha === 0.5
-                ? AUTOMAP_FADE_TINTS[2]!
-                : AUTOMAP_FADE_TINTS[3]!
+        tint = automapFadeTint(alpha)
       }
 
       drawOptions.atlas = atlasHandle
@@ -1777,6 +1866,10 @@ export class Minimap {
       for (const entity of options.entities) {
         if (entity.kind !== 'corpse' && entity.alive === false) continue
         if (entity.classId === 537 || entity.classId === 538 || entity.classId === 539) continue
+        // 0x6FBA16B8 ("AutoMap Party", toggled by command 10 / 0x6fae9df0):
+        // - 0x6fb116cb: party pet crosshair returns 0 when 0x6FBA16B8 == 0; 0x6fb11bc1 skips its owner name.
+        // - 0x6fb11c8d / 0x6fb11cb9 / 0x6fb124bb: party member crosshair & name are skipped when 0x6FBA16B8 == 0.
+        if (!this.showParty && (entity.kind === 'party' || entity.kind === 'partyPet')) continue
 
         const eClientX = Math.round(entity.x - originX)
         const eClientY = Math.round(entity.y - originY)

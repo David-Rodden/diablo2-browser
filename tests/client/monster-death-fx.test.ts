@@ -639,7 +639,8 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
       // 1.13c Diablo handler 0x6fb02600 creates no missile (#1205).
       expect(getBossDeathFxSpec(243, 'diablo')?.controllerMissile).toBeNull()
       expect(getBossDeathFxSpec(479, 'shenk')?.controllerMissile).toBe('overseercontrol')
-      expect(getBossDeathFxSpec(526, 'nihlathak')?.controllerMissile).toBe('nehlithakcontrol')
+      // 526: no death show; special quest event 17 (0x6fb02af0) creates nehlithakcontrol instead (#1495).
+      expect(getBossDeathFxSpec(526, 'nihlathak')).toBeNull()
       expect(getBossDeathFxSpec(540, 'ancientbarb1')?.controllerMissile).toBe('ancient death center')
       expect(getBossDeathFxSpec(544, 'baalcrab')?.controllerMissile).toBe('baalfx control')
     })

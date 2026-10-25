@@ -77,19 +77,27 @@ export type ServerEvent =
       readonly monsterEnchant?:
         | {
             readonly monsterId: number
-            readonly enchantType: number
-            readonly textId: number
-            readonly prefix: number
-            readonly suffix: number
-            readonly field10: number
+            readonly unitType: number
+            readonly nameSeed: number
+            readonly bossMods: readonly number[]
+            readonly champion: boolean
           }
         | undefined
-      readonly npcGossip?:
+      /** S2C 0x93 (D2Client.dll 0x6fb5d3d0 -> 0x6fb50c40): player id, i8 @5, u8 @6, u8 @7 (skill-list update). */
+      readonly playerSkillUpdate?:
         | {
-            readonly npcId: number
-            readonly flag: number
+            readonly playerId: number
+            readonly value: number
+            readonly skillGroup: number
+            readonly mode: number
           }
         | undefined
+      /** S2C 0x62 / 0x92 target unit (raw wire type). */
+      readonly unit?: { readonly rawUnitType: number; readonly id: number } | undefined
+      /** S2C 0x5F dword @1 written to pPlayerData+0x2C (D2Common #10073). */
+      readonly playerData2C?: number | undefined
+      /** S2C 0x98 (D2Client.dll 0x6fafc3c0): value written to the monster's pMonsterData+0x40. */
+      readonly evilHut?: { readonly monsterId: number; readonly value: number } | undefined
     }
   | {
       readonly type: 'MonsterSpecial'
@@ -304,6 +312,11 @@ export type ServerEvent =
       readonly target: UnitRef | Pt
       readonly at?: Pt | undefined
       readonly owner?: UnitRef | undefined
+      /**
+       * S2C 0x99 / 0x9A triggered skill: D2Client.dll 0x6fb5f0f0 / 0x6fb5f090 run the skill do-function at once
+       * (0x6fb79030) without a unit command, so the caster never enters a cast mode.
+       */
+      readonly triggered?: boolean | undefined
     }
   | {
       /**
@@ -444,6 +457,11 @@ export type ServerEvent =
       readonly itemId: number
       readonly flag: number
       readonly enabled: number
+      /**
+       * 0x40 (D2Client.dll 0x6fb5d340 -> 0x6fb321b0): ITEMS_SetItemFlag(item, flag, enabled) with the raw flag,
+       * unlike 0x7D which only maps IFLAG_BROKEN / IFLAG_REPAIRED.
+       */
+      readonly direct?: boolean | undefined
     }
   | {
       /**
@@ -561,6 +579,15 @@ export type ServerEvent =
       readonly charLevel?: number | undefined
       readonly isPlayer?: boolean | undefined
       readonly inParty?: boolean | undefined
+      /** S2C 0x65 signed kill count (D2Client.dll 0x6fb5d890). */
+      readonly killCount?: number | undefined
+      /** S2C 0x5B u16 @0x20 (roster+0x44, D2Client.dll 0x6fb4d359). */
+      readonly rosterWord44?: number | undefined
+      /** S2C 0x5B strings @0x22 (roster+0x46 / +0x4A). */
+      readonly nameSuffix?: string | undefined
+      readonly nameSuffix2?: string | undefined
+      /** S2C 0x5B roster display name: `"%s {%s}"` when `nameSuffix` is non-empty (0x6fb4d388). */
+      readonly displayName?: string | undefined
       readonly members?:
         | readonly {
             readonly playerUnitId: number

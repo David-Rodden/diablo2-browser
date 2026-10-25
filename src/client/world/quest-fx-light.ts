@@ -115,6 +115,25 @@ export interface SpecialQuestEventContext {
    * the Horadric orifice in it or a near room, starts the staff show at the orifice; otherwise does nothing.
    */
   readonly spawnHoradricStaffIfOrificeNear?: (() => void) | undefined
+  /**
+   * 0x6fb02c50 (event 6): when there is a local player with a room and D2Common #10754(room, UNIT_OBJECT, 0x95) finds
+   * the Tainted Sun Altar (Objects.txt 149) in it or a near room, starts the Tainted Sun show (`taintedsuncontrol`); otherwise nothing.
+   */
+  readonly spawnTaintedSunShowIfAltarNear?: (() => void) | undefined
+  /**
+   * 0x6fb03220 (event 14): when there is a local player with a room and D2Common #10754(room, UNIT_OBJECT, 0x178) finds
+   * the Hellforge in it or a near room, starts the Hell Forge show (quest-fx-hellforge-113c.ts); otherwise nothing.
+   */
+  readonly spawnHellforgeShowIfForgeNear?: (() => void) | undefined
+  /**
+   * 0x6fb02b70 (event 16): when there is a local player with a room and D2Common #10754(room, UNIT_OBJECT, 0x1cc) finds
+   * Frozen Anya (Objects.txt 460) in it or a near room, starts the Anya rescue show (`anya center`); otherwise nothing.
+   */
+  readonly spawnAnyaRescueShowIfAnyaNear?: (() => void) | undefined
+  /** 0x6fb02af0 (event 17): Nihlathak show (nehlithakcontrol + nihlithak1) at MonStats 526 when found. */
+  readonly startNihlathakShowIfNear?: (() => void) | undefined
+  /** 0x6fb02410 (event 19): arms the worldstone shake ([0x6fbcc2ec] = 1, quest-fx-worldstone-113c.ts). */
+  readonly armWorldstoneShake?: (() => void) | undefined
 }
 
 /** One stat of a state's statlist, as the state packets carry it (structural `ItemStat`). */
@@ -254,8 +273,8 @@ export class QuestFxLight {
 
   /**
    * S2C 0x89 SpecialQuestEvent → 0x6fb023b0 (ecx = pkt[1]): FatalAssert for `id >= 0x20` / `id >= 0x14`
-   * (0x6fb023b0-db), then the jump table 0x6fba2138. Events 0, 1, 3, 12 and 13 touch lighting / quest-FX state
-   * (the other non-null entries 6, 14, 16, 17 and 19 are not ported).
+   * (0x6fb023b0-db), then the jump table 0x6fba2138. Events 0, 1, 3, 12, 13 and 14 touch lighting / quest-FX state
+   * (event 14 starts the Hell Forge show; the other non-null entries 6, 16, 17 and 19 are not ported).
    */
   onSpecialQuestEvent(id: number, ctx: SpecialQuestEventContext): void {
     if (!Number.isInteger(id) || id < 0 || id >= SPECIAL_QUEST_EVENT_COUNT) {
@@ -285,6 +304,21 @@ export class QuestFxLight {
         // a near room (#10754); then the staff missile 338 + light_jet overlay (quest-fx-horadric-113c.ts).
         ctx.spawnHoradricStaffIfOrificeNear?.()
         return
+      case 6:
+        // 0x6fb02c50: A2Q3 Tainted Sun Altar smashed. Needs gpPlayer, its room and the altar (objects.txt 149) in that
+        // room or a near room (#10754); then spawns missile 350 `taintedsuncontrol` with TargetX = altar.id (#1493).
+        ctx.spawnTaintedSunShowIfAltarNear?.()
+        return
+      case 14:
+        // 0x6fb03220: Mephisto's Soulstone smashed on the Hellforge: song 0x1251, sound 0x23 and client missile 373
+        // `hfcontrol` at the forge (quest-fx-hellforge-113c.ts).
+        ctx.spawnHellforgeShowIfForgeNear?.()
+        return
+      case 16:
+        // 0x6fb02b70: A5Q3 Frozen Anya rescued. Needs gpPlayer, its room and Frozen Anya (objects.txt 460) in that
+        // room or a near room (#10754); then spawns missile 528 `anya center` with TargetY = 25 (#1494).
+        ctx.spawnAnyaRescueShowIfAnyaNear?.()
+        return
       case 12:
         // 0x6fb033f0: Chaos Sanctuary seals done, Diablo spawns: Act 4 red light on (0x6fb033f9) and
         // client missile 372 (`diablo appears`) when the local player is in level 108 (0x6fb033fe-38).
@@ -294,6 +328,14 @@ export class QuestFxLight {
       case 13:
         // 0x6fb02420: Diablo killed (classic games only): red off at once, flag cleared 30 ticks later (0x6fb0242d).
         this.act4RedCountdown = 0
+        return
+      case 17:
+        // 0x6fb02af0: Nihlathak dies -> nehlithakcontrol (0x25e) + nihlithak1 (0x25b) at him, unit+0xc8 |= 0x40000.
+        ctx.startNihlathakShowIfNear?.()
+        return
+      case 19:
+        // 0x6fb02410: arms the worldstone shake that 0x6fb032c0 starts in levels 131 / 132.
+        ctx.armWorldstoneShake?.()
         return
       default:
         return

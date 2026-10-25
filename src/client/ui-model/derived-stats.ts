@@ -675,7 +675,9 @@ function selectHirelingRecord(
         )
   if (pool.length === 0) {
     const fallbackId = DEFAULT_HIRELING_BY_CLASS[classId]
-    return fallbackId ? (HIRELING_RECORDS.find((r) => r.subTypeId === fallbackId) ?? null) : null
+    return fallbackId
+      ? (HIRELING_RECORDS.find((r) => r.version === 100 && r.subTypeId === fallbackId) ?? null)
+      : null
   }
   let chosen = pool[0]!
   for (const r of pool) {

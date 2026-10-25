@@ -1372,12 +1372,19 @@ export function openPopupModal(
 
 /**
  * Dismiss the active modal popup overlay and restore `returnScreen`.
+ * Also clears residual per-stage error fields (`loginError`, `charCreateError`,
+ * `createGameError`, `lastError`) so the dismissed message does not remain rendered
+ * as inline text behind or after the modal closes.
  */
 export function dismissPopupModal(state: BnetFlowState): BnetFlowState {
   if (state.popupModal) {
     state.stage = state.popupModal.returnScreen
     state.popupModal = null
     state.popup = null
+    state.loginError = null
+    state.charCreateError = null
+    state.createGameError = null
+    state.lastError = null
   }
   return state
 }

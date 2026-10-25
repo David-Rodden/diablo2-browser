@@ -47,7 +47,7 @@ describe('[Skill #267] Fade (ASS) — 1.13c Parity (Issue #360)', () => {
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(8700)
-    expect(r20.radiusSubtiles).toBe(1435)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

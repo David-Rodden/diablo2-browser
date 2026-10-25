@@ -47,7 +47,7 @@ describe('[Skill #259] Fists of Fire (ASS) — 1.13c Parity (Issue #352)', () =>
     expect(r20.minElemDmg256).toBe(51456)
     expect(r20.maxElemDmg256).toBe(56576)
     expect(r20.durationFrames).toBe(375)
-    expect(r20.radiusSubtiles).toBe(80)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

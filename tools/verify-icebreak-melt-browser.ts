@@ -262,23 +262,9 @@ async function main(): Promise<void> {
     const viewports = ['800x600', '1280x720'] as const
     for (const viewport of viewports) {
       await cdp.evaluate(`(() => {
-        const key = 'd2web.settings.v1';
-        const cur = JSON.parse(localStorage.getItem(key) || '{}');
-        cur.viewport = ${JSON.stringify(viewport)};
-        localStorage.setItem(key, JSON.stringify(cur));
+        window.__d2Play.settingsStore.set({ viewport: ${JSON.stringify(viewport)} });
         return true;
       })()`)
-      await cdp.send('Page.reload', {})
-      let ok = false
-      for (let i = 0; i < 160 && !ok; i++) {
-        await sleep(250)
-        try {
-          ok = await cdp.evaluate<boolean>(`Boolean(window.__d2PlayApp && window.__d2PlayApp.ready)`)
-        } catch {
-          // page reloading
-        }
-      }
-      assert(ok, `play.html failed to bootstrap at ${viewport}`)
       const replayed = await cdp.evaluate<number>(`(async () => {
         const app = window.__d2Play;
         await app.assetsReadyPromise;
@@ -288,16 +274,19 @@ async function main(): Promise<void> {
       })()`)
       console.log(`[verify-icebreak-melt] ${viewport}: replayed ${replayed} packets`)
 
+      const baseId = viewport === '800x600' ? 9531 : 9631
       const shatter = await cdp.evaluate<any>(`(async () => {
         const app = window.__d2Play;
         const world = app.session.world;
         const px = Math.round(world.self.x);
         const py = Math.round(world.self.y);
+        const id1 = ${baseId};
+        const id2 = ${baseId + 1};
         const mk = (id, classId, dx, dy) => world.apply({ type: 'UnitAssign', unit: { unitType: 1, id, classId, x: px + dx, y: py + dy, mode: 1, lifePct: 40, states: [1] } });
-        mk(9531, 19, 4, 1);   // fallen-sized
-        mk(9532, 66, -3, 4);  // larger monster
-        world.apply({ type: 'UnitMode', unitType: 1, id: 9531, mode: 12, lifePct: 0 });
-        world.apply({ type: 'UnitMode', unitType: 1, id: 9532, mode: 12, lifePct: 0 });
+        mk(id1, 19, 4, 1);   // fallen-sized
+        mk(id2, 66, -3, 4);  // larger monster
+        world.apply({ type: 'UnitMode', unitType: 1, id: id1, mode: 12, lifePct: 0 });
+        world.apply({ type: 'UnitMode', unitType: 1, id: id2, mode: 12, lifePct: 0 });
         for (let i = 0; i < 6; i++) world.tick(40);
         app.renderFrame(performance.now());
         const keys = world.getUnitsByType('missile').map((m) => m.missileKey);
@@ -306,7 +295,7 @@ async function main(): Promise<void> {
         return {
           keys,
           drawables: scene.missileDrawables.map((d) => d.missileKey),
-          corpses: scene.unitDrawables.filter((d) => d.id === 9531 || d.id === 9532).length,
+          corpses: scene.unitDrawables.filter((d) => d.id === id1 || d.id === id2).length,
         };
       })()`)
       console.log(`[verify-icebreak-melt] ${viewport} shatter:`, shatter)

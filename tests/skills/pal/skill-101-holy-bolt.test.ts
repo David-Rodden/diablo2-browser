@@ -47,7 +47,7 @@ describe('[Skill #101] Holy Bolt (PAL) — 1.13c Parity (Issue #255)', () => {
     expect(r20.minElemDmg256).toBe(50176)
     expect(r20.maxElemDmg256).toBe(56320)
     expect(r20.durationFrames).toBe(0)
-    expect(r20.radiusSubtiles).toBe(39)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

@@ -332,31 +332,33 @@ describe('Gems and Runes Socketing (Issue #106)', () => {
       class: '',
     }
 
-    it('calculates max sockets correctly across ilvl tiers (ilvl 24, 25, 39, 40)', () => {
+    it('calculates max sockets correctly across 1.13c ilvl tiers (ilvl <= 25, 26..40, 41+ per D2Common #11151 0x6FD74610)', () => {
       // Crystal Sword (base gemsockets = 6)
       expect(getMaxSockets(6, swordType, 1)).toBe(3)
       expect(getMaxSockets(6, swordType, 24)).toBe(3)
-      expect(getMaxSockets(6, swordType, 25)).toBe(4)
+      expect(getMaxSockets(6, swordType, 25)).toBe(3)
+      expect(getMaxSockets(6, swordType, 26)).toBe(4)
       expect(getMaxSockets(6, swordType, 39)).toBe(4)
-      expect(getMaxSockets(6, swordType, 40)).toBe(6)
+      expect(getMaxSockets(6, swordType, 40)).toBe(4)
+      expect(getMaxSockets(6, swordType, 41)).toBe(6)
       expect(getMaxSockets(6, swordType, 85)).toBe(6)
 
       // Crown (base gemsockets = 3)
       expect(getMaxSockets(3, helmType, 1)).toBe(2)
-      expect(getMaxSockets(3, helmType, 24)).toBe(2)
       expect(getMaxSockets(3, helmType, 25)).toBe(2)
-      expect(getMaxSockets(3, helmType, 39)).toBe(2)
-      expect(getMaxSockets(3, helmType, 40)).toBe(3)
+      expect(getMaxSockets(3, helmType, 26)).toBe(2)
+      expect(getMaxSockets(3, helmType, 40)).toBe(2)
+      expect(getMaxSockets(3, helmType, 41)).toBe(3)
     })
 
     it('correctly caps allowed sockets by base item gemsockets', () => {
       // Short Sword (base gemsockets = 2)
-      expect(getMaxSockets(2, swordType, 24)).toBe(2)
       expect(getMaxSockets(2, swordType, 25)).toBe(2)
-      expect(getMaxSockets(2, swordType, 40)).toBe(2)
+      expect(getMaxSockets(2, swordType, 26)).toBe(2)
+      expect(getMaxSockets(2, swordType, 41)).toBe(2)
 
       // Cap (base gemsockets = 2, helm maxSock40 = 3)
-      expect(getMaxSockets(2, helmType, 40)).toBe(2)
+      expect(getMaxSockets(2, helmType, 41)).toBe(2)
     })
 
     it('returns 0 for base gemsockets <= 0', () => {
@@ -514,10 +516,10 @@ describe('Gems and Runes Socketing (Issue #106)', () => {
       expect(sworDef.maxSock40).toBe(6)
 
       // Crystal sword (base gemsockets = 6)
-      expect(getMaxSockets(6, sworDef, 24)).toBe(3)
-      expect(getMaxSockets(6, sworDef, 25)).toBe(4)
-      expect(getMaxSockets(6, sworDef, 39)).toBe(4)
-      expect(getMaxSockets(6, sworDef, 40)).toBe(6)
+      expect(getMaxSockets(6, sworDef, 25)).toBe(3)
+      expect(getMaxSockets(6, sworDef, 26)).toBe(4)
+      expect(getMaxSockets(6, sworDef, 40)).toBe(4)
+      expect(getMaxSockets(6, sworDef, 41)).toBe(6)
 
       const helmDef = itemTypes.byCode.get('helm')!
       expect(helmDef).toBeDefined()
@@ -526,10 +528,10 @@ describe('Gems and Runes Socketing (Issue #106)', () => {
       expect(helmDef.maxSock40).toBe(3)
 
       // Crown (base gemsockets = 3)
-      expect(getMaxSockets(3, helmDef, 24)).toBe(2)
       expect(getMaxSockets(3, helmDef, 25)).toBe(2)
-      expect(getMaxSockets(3, helmDef, 39)).toBe(2)
-      expect(getMaxSockets(3, helmDef, 40)).toBe(3)
+      expect(getMaxSockets(3, helmDef, 26)).toBe(2)
+      expect(getMaxSockets(3, helmDef, 40)).toBe(2)
+      expect(getMaxSockets(3, helmDef, 41)).toBe(3)
     })
   })
 })

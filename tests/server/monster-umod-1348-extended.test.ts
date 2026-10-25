@@ -53,7 +53,7 @@ describe('issue #1348 MonUMod follow-up', () => {
       players: Map<number, unknown>
     }
     const ctx = internal.playerCombatContext(internal.players.get(playerId))
-    expect(ctx.statList.getModifierBonus('conviction_pierce')).toBeGreaterThan(0)
+    expect(ctx.statList.getModifierBonus('fireresist')).toBeLessThan(0)
   })
 
   it('teleports a Teleportation unique away when badly hurt', () => {

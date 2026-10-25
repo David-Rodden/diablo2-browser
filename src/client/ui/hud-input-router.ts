@@ -529,7 +529,7 @@ export function handleCompactD2rHudClick(
       hud.drinkBeltSlot(hit.col, false)
       return hit
     case 'beltAutoRefill':
-      hud.belt.togglePopup()
+      hud.toggleBeltPopup113c()
       hud.syncPublishedState()
       return hit
     case 'runToggle':
@@ -832,13 +832,13 @@ export function handleHudKeyDown(
   } else if (matchesKeyBinding(kb, 'skillSpeedBar', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
-    hud.hotkeys.openPopup = hud.hotkeys.openPopup ? null : 'right'
+    hud.toggleSkillSpeedBar113c()
     hud.syncPublishedState()
   } else if (matchesKeyBinding(kb, 'questLog', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.toggleLeftPanel('quest')
-  } else if (key === 'Z') {
+  } else if (matchesKeyBinding(kb, 'showPortraits', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.togglePartyPortraits()
@@ -846,7 +846,7 @@ export function handleHudKeyDown(
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.toggleHelpOverlay()
-  } else if (key === 'N') {
+  } else if (matchesKeyBinding(kb, 'clearMessages', e)) {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     hud.chatOverlayMessages = []
@@ -879,28 +879,6 @@ export function handleHudKeyDown(
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
     ;(hud as any).onToggleAutomapNames?.() ?? callbacks.onToggleAutomapNames?.()
-  } else if (key === 'F9') {
-    e.preventDefault?.()
-    ;(e as any)._d2KeyHandled = true
-    ;(hud as any).onCycleAutomapFade?.() ?? callbacks.onCycleAutomapFade?.()
-  } else if (key === 'F10') {
-    e.preventDefault?.()
-    ;(e as any)._d2KeyHandled = true
-    ;(hud as any).onToggleAutomapNames?.() ?? callbacks.onToggleAutomapNames?.()
-  } else if (key === 'F11') {
-    e.preventDefault?.()
-    ;(e as any)._d2KeyHandled = true
-    ;(hud as any).onToggleAutomapParty?.() ?? callbacks.onToggleAutomapParty?.()
-  } else if (key === 'F12') {
-    e.preventDefault?.()
-    ;(e as any)._d2KeyHandled = true
-    ;(hud as any).onToggleAutomapNames?.() ?? callbacks.onToggleAutomapNames?.()
-  } else if (e.key === 'Home') {
-    e.preventDefault?.()
-    ;(e as any)._d2KeyHandled = true
-    ;(hud as any).onAutomapCenter?.() ??
-      (hud as any).onResetAutomapPan?.() ??
-      callbacks.onResetAutomapPan?.()
   } else if (
     e.key === 'ArrowUp' ||
     e.key === 'ArrowDown' ||
@@ -932,7 +910,7 @@ export function handleHudKeyDown(
   } else if (matchesKeyBinding(kb, 'showBelt', e) || e.key === '`' || e.key === '~') {
     e.preventDefault?.()
     ;(e as any)._d2KeyHandled = true
-    hud.belt.togglePopup()
+    hud.toggleBeltPopup113c()
     hud.syncPublishedState()
   } else if (
     matchesKeyBinding(kb, 'useBeltSlot1', e) ||
@@ -988,6 +966,16 @@ export function handleHudKeyDown(
                     ? 'F8'
                     : key
     hud.hotkeys.triggerFunctionKey(fnKey)
+    hud.syncPublishedState()
+  } else if (matchesKeyBinding(kb, 'selectPreviousSkill', e) || matchesKeyBinding(kb, 'selectNextSkill', e)) {
+    const step: -1 | 1 = matchesKeyBinding(kb, 'selectPreviousSkill', e) ? -1 : 1
+    e.preventDefault?.()
+    ;(e as any)._d2KeyHandled = true
+    if (hud.commandSink?.cycleBoundSkills) {
+      hud.commandSink.cycleBoundSkills(step)
+    } else {
+      hud.hotkeys.cycleBoundSkills(step)
+    }
     hud.syncPublishedState()
   } else if (matchesKeyBinding(kb, 'showItems', e) || e.key === 'Alt') {
     e.preventDefault?.()

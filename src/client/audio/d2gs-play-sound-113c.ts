@@ -48,6 +48,8 @@ export interface WorldSoundRequest {
   readonly charclass?: string | number | undefined
   readonly flag?: number | undefined
   readonly weaponSoundId?: number | undefined
+  /** Skill keyframe: the Do sound already resolved by the world (dosound, or Jab dosound a / b). */
+  readonly doSoundId?: number | undefined
   readonly missileId?: number | string | undefined
   readonly entityId?: number | undefined
   readonly prog?: boolean | undefined

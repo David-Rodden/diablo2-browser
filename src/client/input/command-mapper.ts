@@ -71,6 +71,7 @@ import {
 } from '../ui/touch-controls.ts'
 import { handleEscapeSubmenuKeyDown } from '../ui/world-panels.ts'
 import { matchesKeyBinding } from '../settings/client-settings.ts'
+import { SAY_MESSAGE_PHRASE_113C, type ControlActionId } from '../settings/key-bindings.ts'
 import { isTownLevel } from '../../common/world/scene-population.ts'
 import {
   clickGate113c,
@@ -317,8 +318,9 @@ export class CommandMapper {
 
   private shiftHeld = false
   private altHeld = false
-  private ctrlHeldForRun = false
-  private lastVoiceEmoteAtMs = -Infinity
+  private ctrlHeld = false
+  /** Run command (34) held: D2Client.dll run-held flag `0x6FBCC3E8`. */
+  private runKeyHeld = false
   /** 1.13c D2Client.dll 0x6fad34ba..0x6fad34f6 (`[0x6fbcc4cc]`): 75-tick (3000ms) duplicate error speech cooldown. */
   private lastNeedManaSpeechAtMs = -Infinity
   private leftMouseDown = false
@@ -542,6 +544,27 @@ export class CommandMapper {
     return isTownLevel(world.areaId)
   }
 
+  private isSkillSelectable113c(skillId: number, itemId = 0xffffffff): boolean {
+    if (!Number.isInteger(skillId) || skillId < 0 || skillId === 0xffff || skillId === 0x7fff) {
+      return false
+    }
+    if (skillId === 0) return true
+    const self = this.world?.self
+    const available = (this.hudModel?.hudManager?.hotkeys ?? this.hudManager?.hotkeys)?.availableSkills
+    if (available && available.length > 0 && self?.skillEntries?.has(skillId)) {
+      return available.some((s) => s.skillId === skillId && ((s.level ?? 0) > 0 || (s.charges ?? 0) > 0))
+    }
+    if (self?.skillEntries?.has(skillId)) {
+      const entry = self.skillEntries.get(skillId)!
+      const eff = (entry.baseLevel ?? entry.level ?? 0) + (entry.bonus ?? 0)
+      const charges = self.skillCharges?.get(skillId) ?? 0
+      if (eff <= 0 && charges <= 0 && (itemId === undefined || itemId === 0xffffffff)) {
+        return false
+      }
+    }
+    return true
+  }
+
   private isSkillWeaponUsable(skillId: number, world: ClientWorld = this.world): boolean {
     if (!canUseSkillInMorphState(skillId, world.self?.states)) {
       return false
@@ -636,9 +659,13 @@ export class CommandMapper {
       const cat = SKILLS_BY_ID[skillId]
       manaCost = cat ? calculateManaCost(cat, Math.max(1, effectiveLevel)) : 0
     }
-    // 1.13c 0x6fd9fdc0 (`wStartMana` in `Skills.txt`): initial Inferno (#41) cast requires startmana = 6.
-    if (skillId === 41 && self?.castState?.skillId !== 41) {
-      manaCost = Math.max(manaCost, 6)
+    // 1.13c 0x6fd9fdc0 (`wStartMana` in `Skills.txt`): initial Inferno (#41), Arctic Blast (#230),
+    // and Blade Fury (#266) casts require `startmana` (6) when not already channeling (`STATE_INFERNO` = 12).
+    const startMana =
+      SKILLS_BY_ID[skillId]?.startmana ??
+      (skillId === 41 || skillId === 230 || skillId === 266 ? 6 : 0)
+    if (startMana > 0 && self?.castState?.skillId !== skillId && !self?.states?.has(12)) {
+      manaCost = Math.max(manaCost, startMana)
     }
     if (manaCost <= 0) {
       return true
@@ -788,13 +815,14 @@ export class CommandMapper {
     if (this.isTownOrInteractiveNpc(unit, world)) return false
     if (unit.corpseSuppressed) return false
     // 1.13c D2Common_10633_CheckCorpseCanBeSelected: corpses with udead/hide states
-    // (99 redeemed, 104 corpse_nodraw, 107 shatter, 118 corpse_noselect, 173 corpseexp)
+    // (99 redeemed, 104 corpse_nodraw, 107 shatter, 118 corpse_noselect, 172 restinpeace, 173 corpseexp)
     // cannot be targeted by corpse skills.
     if (
       unit.states?.has(99) ||
       unit.states?.has(104) ||
       unit.states?.has(107) ||
       unit.states?.has(118) ||
+      unit.states?.has(172) ||
       unit.states?.has(173)
     ) {
       return false
@@ -1190,17 +1218,138 @@ export class CommandMapper {
   }
 
   getSkillHotkey(key: string): SkillHotkeyBinding | undefined {
-    return this.skillHotkeys.get(key.toUpperCase())
+    const normalized = key.toUpperCase()
+    const b = this.skillHotkeys.get(normalized)
+    if (b && !this.isSkillSelectable113c(b.skillId, b.itemId)) {
+      this.skillHotkeys.delete(normalized)
+      return undefined
+    }
+    return b
   }
 
-  handleWheel(deltaY: number): boolean {
-    if (typeof (this.hudManager as any).handleWheel === 'function') {
-      return (this.hudManager as any).handleWheel(deltaY)
+  /** Last selected skill hotkey slot `0..15` (`0x6FBC9D70` in `D2Client.dll`). */
+  private lastSelectedHotkeySlot113c = 0
+
+  handleWheel(deltaY: number, nowMs = performance.now()): boolean {
+    if (deltaY === 0) return false
+    const wp = this.hudManager.worldPanels as any
+    if (
+      (wp?.escapeMenuOpen && wp?.escapeMenuScreen === 'controls') ||
+      wp?.npcMenu?.talking ||
+      wp?.npcSpeech != null ||
+      this.hudManager.leftPanel === 'hire' ||
+      wp?.activePanel === 'hire' ||
+      this.hudManager.leftPanel === 'msg'
+    ) {
+      if (typeof (this.hudManager as any).handleWheel === 'function') {
+        return (this.hudManager as any).handleWheel(deltaY)
+      }
     }
-    if (this.hudModel && deltaY !== 0) {
-      return this.hudModel.cycleBoundSkills(deltaY < 0 ? -1 : 1)
+    const wheelKey = deltaY < 0 ? 'WheelUp' : 'WheelDown'
+    const wheelEvent = { key: wheelKey, code: wheelKey }
+    const kb = this.hudManager.getActiveKeyBindings?.()
+    if (kb) {
+      if (matchesKeyBinding(kb, 'selectPreviousSkill', wheelEvent)) {
+        return this.cycleBoundSkills113c(-1, nowMs)
+      }
+      if (matchesKeyBinding(kb, 'selectNextSkill', wheelEvent)) {
+        return this.cycleBoundSkills113c(1, nowMs)
+      }
+      return this.handleKeyDown(wheelEvent, nowMs)
     }
-    return false
+    return this.cycleBoundSkills113c(deltaY < 0 ? -1 : 1, nowMs)
+  }
+
+  /**
+   * 1.13c `SelectPreviousSkill` (`0x6FAEA8E0`, command 39, `step = -1`) /
+   * `SelectNextSkill` (`0x6FAEA8C0`, command 40, `step = 1`) -> `sub_6FAED6D0(step)` (`0x6FAED6D0`).
+   */
+  cycleBoundSkills113c(step: -1 | 1, nowMs = performance.now()): boolean {
+    if (this.isSelfDeadForCommands113c() || this.isModalInputMode113c()) {
+      return false
+    }
+    if (this.hudModel && this.skillHotkeys.size === 0) {
+      return this.hudModel.cycleBoundSkills(step)
+    }
+    const dir = step > 0 ? 1 : -1
+    let count = Math.abs(step) || 1
+    const currentRightSkill =
+      this.world.self?.rightSkill || this.hudManager.hotkeys?.rightSkillId || 0
+
+    const resolveSlot = (
+      slot: number,
+    ): { hand: Hand; skillId: number; itemId: number; key: string } | null => {
+      const key = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
+      const cb = this.skillHotkeys.get(key)
+      const wb = this.world.skillHotkeys?.get(slot)
+      const hb = this.hudManager.hotkeys?.bindings?.get(key)
+      const hand: Hand | undefined = cb?.hand ?? wb?.hand ?? hb?.side
+      const skillId = cb?.skillId ?? wb?.skill ?? hb?.skillId
+      const itemId = cb?.itemId ?? wb?.itemId ?? 0xffffffff
+      if (!hand || skillId === undefined || skillId < 0 || skillId === 0xffff || skillId === 0x7fff) {
+        return null
+      }
+      return { hand, skillId, itemId, key }
+    }
+
+    let startSlot = this.lastSelectedHotkeySlot113c & 0x0f
+    const startEntry = resolveSlot(startSlot)
+    if (!startEntry || startEntry.hand !== 'right' || startEntry.skillId !== currentRightSkill) {
+      for (let s = 0; s < 16; s++) {
+        const e = resolveSlot(s)
+        if (e && e.hand === 'right' && e.skillId === currentRightSkill) {
+          startSlot = s
+          break
+        }
+      }
+    }
+
+    let matchedSlot = -1
+    let matchedEntry: { hand: Hand; skillId: number; itemId: number; key: string } | null = null
+    let edi = startSlot + dir
+    for (let ebx = 0; ebx < 16; ebx++) {
+      if (edi < 0) edi = 15
+      else if (edi >= 16) edi = 0
+      const entry = resolveSlot(edi)
+      if (entry && entry.hand === 'right') {
+        if (!this.isSkillSelectable113c(entry.skillId, entry.itemId)) {
+          this.skillHotkeys.delete(entry.key)
+          this.hudManager.hotkeys?.bindings?.delete(entry.key)
+          this.world.skillHotkeys?.delete(edi)
+        } else {
+          matchedSlot = edi
+          matchedEntry = entry
+          count -= 1
+          if (count === 0) break
+        }
+      }
+      edi += dir
+    }
+
+    if (matchedSlot === -1 || !matchedEntry) return false
+    this.lastSelectedHotkeySlot113c = matchedSlot
+    if (this.hudManager.hotkeys) {
+      this.hudManager.hotkeys.lastSelectedSlot = matchedSlot
+      this.hudManager.hotkeys.rightSkillId = matchedEntry.skillId
+    }
+    this.pendingQuickCastRestoreSkillId = null
+    if (this.hudModel) {
+      this.hudModel.selectSkill('right', matchedEntry.skillId, matchedEntry.itemId)
+    } else {
+      if (this.world.self) {
+        ;(this.world.self as { rightSkill?: number }).rightSkill = matchedEntry.skillId
+      }
+      this.dispatchRateLimited(
+        {
+          type: 'SelectSkill',
+          hand: 'right',
+          skill: matchedEntry.skillId,
+          itemId: matchedEntry.itemId,
+        },
+        nowMs,
+      )
+    }
+    return true
   }
 
   // ─── Coordinate & Hit-Testing Helpers ────────────────────────
@@ -1373,6 +1522,10 @@ export class CommandMapper {
           return false
         }
       } else if (unit.unitType === 'item') {
+        // /nopickup (0x6FBCC2F0): HoverUpdate 0x6fb01e80 never selects ground items while it is set.
+        if (this.world.noPickup) {
+          return false
+        }
         // D2Client.dll 0x6fb32820: airborne items (ITEMMODE_DROPPING === 5) are non-targetable
         // until they land in mode 3 (ITEMMODE_ON_GROUND).
         if (unit.mode === 5) {
@@ -2070,7 +2223,7 @@ export class CommandMapper {
       if (resolvedButton === 0 || resolvedButton === 2) {
         this.hudManager.handleClick(screenX, resolvedY, resolvedButton, {
           shiftKey: this.shiftHeld,
-          ctrlKey: this.ctrlHeldForRun,
+          ctrlKey: this.ctrlHeld,
           altKey: this.altHeld,
         })
         this.syncHoverAfterPanelChange()
@@ -2873,6 +3026,9 @@ export class CommandMapper {
       overrideSkillId ??
       (this.world.self?.rightSkill ||
         (this.hudModel ? this.hudModel.rightSkillId : this.hudManager.hotkeys.rightSkillId))
+    if (rightSkillId > 0 && !this.isSkillSelectable113c(rightSkillId)) {
+      return null
+    }
     if (this.isTownArea() && !isSkillAllowedInTown(rightSkillId)) {
       return null
     }
@@ -3024,6 +3180,7 @@ export class CommandMapper {
   ): boolean {
     if (!Number.isInteger(skillId) || skillId <= 0) return false
     const itemId = options?.itemId ?? 0xffffffff
+    if (!this.isSkillSelectable113c(skillId, itemId)) return false
     if (this.hudManager.goldDialog) return false
     // Pre-gate before the swap so a blocked cast never emits the SelectSkill round-trip.
     if (this.isTownArea() && !isSkillAllowedInTown(skillId)) return false
@@ -3178,24 +3335,34 @@ export class CommandMapper {
       if (event.key === 'Alt' || matchesKeyBinding(kb, 'showItems', event)) return true
     }
 
-    // D2Client.dll 0x6faeae40 / 0x6faeadf0: Control key momentary Run hold -> C2S 0x53
-    if (
-      (event.key === 'Control' || event.code === 'ControlLeft' || event.code === 'ControlRight') &&
-      !event.metaKey &&
-      !event.altKey
-    ) {
-      if (!this.ctrlHeldForRun) {
-        this.ctrlHeldForRun = true
-        const cmd: ClientCommand = { type: 'RunToggle', run: true }
-        this.world.noteOutgoingCommand?.(cmd, nowMs)
-        this.sendCommand(cmd, nowMs)
-      }
+    // Control is not a 1.13c command key (default.key binds nothing to it); D2Client.dll only polls it
+    // for Ctrl+click selling in the NPC shop (`GetAsyncKeyState(VK_CONTROL)` at 0x6fb46cb7), so it is
+    // tracked for HUD clicks and otherwise ignored.
+    if (event.key === 'Control' || event.code === 'ControlLeft' || event.code === 'ControlRight') {
+      this.ctrlHeld = true
       return true
     }
 
-    // Ignore hotkeys if modifier keys (Ctrl/Meta) are pressed
-    if (event.ctrlKey || event.metaKey) {
+    // The 1.13c dispatcher (0x6fae8bb0) does not look at Ctrl/Shift; only browser/OS (Meta) chords are
+    // left to the host page.
+    if (event.metaKey) {
       return false
+    }
+
+    // Run (command 34, unbound in default.key): 0x6faeae40 sets the run-held flag 0x6FBCC3E8 and, only
+    // while the player is walking (mode 2), switches to running and sends C2S 0x53.
+    if (matchesKeyBinding(kb, 'run', event)) {
+      event.preventDefault?.()
+      if (!this.runKeyHeld) {
+        this.runKeyHeld = true
+        const self = this.world.getUnit?.('player', this.world.selfId || 1)
+        if (self && !this.world.isSelfDead && self.moveMode === 'walk') {
+          const cmd: ClientCommand = { type: 'RunToggle', run: true }
+          this.world.noteOutgoingCommand?.(cmd, nowMs)
+          this.sendCommand(cmd, nowMs)
+        }
+      }
+      return true
     }
 
     // Defer digit/Enter/Escape keys to HudManager when the gold drop/transfer dialog is open
@@ -3203,21 +3370,27 @@ export class CommandMapper {
       return false
     }
 
-    // D2Client.dll 0x6fad76a0: Numpad 0..7 voice emotes -> C2S 0x3F Say (phraseId = 25 + digit, 1000ms debounce)
-    if (event.code && /^Numpad[0-7]$/.test(event.code)) {
-      const digit = Number(event.code.slice(6))
+    // D2Client.dll 0x6fae8bb5 (keydown command dispatcher): `test [msg.lParam], 0x40000000; jne skip`
+    // -- an auto-repeated WM_KEYDOWN (previous-key-state bit set) never re-runs a command's fnDown.
+    // The Escape menu keeps its own key handling (arrow navigation), so it is exempt.
+    if (event.repeat && !(this.hudManager.escapeMenuOpen || this.hudModel?.getSnapshot().panels.escapeMenu)) {
       event.preventDefault?.()
-      if (nowMs - this.lastVoiceEmoteAtMs >= 1000) {
-        this.lastVoiceEmoteAtMs = nowMs
-        const phraseId = 25 + digit
-        const cmd: ClientCommand = { type: 'Say', phraseId }
-        this.world.noteOutgoingCommand?.(cmd, nowMs)
-        this.sendCommand(cmd, nowMs)
-      }
       return true
     }
 
-    const keyUpper = event.key.toUpperCase()
+    // Say commands 27..33 / 55 (0x6fae9d60..0x6fae9ca0, 0x6fae9c80): C2S 0x3F with phrase 0x19..0x20,
+    // sent straight to 0x6fac43e0 (its identical-packet window is the only throttle). Default keys
+    // Numpad 0..7 come from default.key and are rebindable.
+    for (const [actionId, phraseId] of Object.entries(SAY_MESSAGE_PHRASE_113C) as [ControlActionId, number][]) {
+      if (matchesKeyBinding(kb, actionId, event)) {
+        event.preventDefault?.()
+        const cmd: ClientCommand = { type: 'Say', phraseId }
+        this.world.noteOutgoingCommand?.(cmd, nowMs)
+        this.sendCommand(cmd, nowMs)
+        return true
+      }
+    }
+
 
     // Escape: when dead -> Resurrect (0x41); otherwise close open HUD panels first, then escape menu
     if (event.key === 'Escape') {
@@ -3269,6 +3442,11 @@ export class CommandMapper {
         return true
       }
 
+      // 0x6fb71aeb: the game menu does not open within 100 ms of a panel toggle/close (0x6FBAAD50).
+      if (this.hudManager.isChatOrMenuOpenBlocked113c?.()) {
+        event.preventDefault?.()
+        return true
+      }
       if (this.onEscapeMenu) {
         this.onEscapeMenu()
         event.preventDefault?.()
@@ -3306,6 +3484,7 @@ export class CommandMapper {
 
     // Enter: confirm active NPC menu/speech (`0x6faed300` action 0x4C) before toggling chat input
     if (event.key === 'Enter' || matchesKeyBinding(kb, 'say', event)) {
+      // The NPC dialog consumes Enter itself (its own message handler, 0x6faed300 action 0x4C).
       if (
         (this.hudManager.worldPanels?.npcMenu || this.hudManager.worldPanels?.npcSpeech) &&
         typeof this.hudManager.worldPanels.handleNpcSpeechKeyDown === 'function' &&
@@ -3315,16 +3494,34 @@ export class CommandMapper {
         this.hudManager.syncPublishedState()
         return true
       }
-      if (this.onToggleChatInput) {
-        this.onToggleChatInput()
-        event.preventDefault?.()
-        return true
+      if (matchesKeyBinding(kb, 'say', event)) {
+        // 0x6fb71aeb: the chat box does not open within 100 ms of a panel toggle/close (0x6FBAAD50).
+        if (this.hudManager.isChatOrMenuOpenBlocked113c?.()) {
+          event.preventDefault?.()
+          return true
+        }
+        if (this.onToggleChatInput) {
+          this.onToggleChatInput()
+          event.preventDefault?.()
+          return true
+        }
+        return false
       }
-      return false
+      // Enter rebound away from Chat: continue with the binding table below.
+    }
+
+    // D2Client.dll 0x6fae8c28: while the input mode 0x6FBCC434 == 2 (set when the NPC shop 0x0C,
+    // stash 0x19 or cube 0x1A opens -- 0x6fb71e06 / 0x6fb71fb8 / 0x6fb72037 -- and by the NPC interaction
+    // 0x6fafad26 / 0x6fafb07d) only commands whose `dwAllowInModal` (0x6FBA4F18) is 1 are dispatched:
+    // chat, show belt, the eight say commands (handled above), clear messages, screenshot, swap weapons
+    // and toggle minimap.
+    if (this.isModalInputMode113c() && !this.isCommandAllowedInModal113c(kb, event)) {
+      event.preventDefault?.()
+      return true
     }
 
     // Space: close open panels (`0x6faee250`) and re-center automap (`0x6faed260` action 0x3D)
-    if (event.key === ' ' || event.code === 'Space' || matchesKeyBinding(kb, 'clearScreen', event)) {
+    if (matchesKeyBinding(kb, 'clearScreen', event)) {
       event.preventDefault?.()
       if (this.hudModel) {
         this.hudModel.closeActiveNpcPanel()
@@ -3340,7 +3537,7 @@ export class CommandMapper {
     }
 
     // Tab: toggle automap overlay
-    if (event.key === 'Tab' || matchesKeyBinding(kb, 'automap', event)) {
+    if (matchesKeyBinding(kb, 'automap', event)) {
       event.preventDefault?.()
       if (this.hudModel) {
         this.hudModel.toggleAutomap()
@@ -3362,6 +3559,11 @@ export class CommandMapper {
               ? 3
               : -1
     if (beltSlotMatch >= 0) {
+      // 0x6faec9a0..0x6faec8e0: belt commands do nothing while the player is dead ([player+0x10] == 0x11).
+      if (this.isSelfDeadForCommands113c()) {
+        event.preventDefault?.()
+        return true
+      }
       const slotIndex = beltSlotMatch
       const shiftToMerc =
         Boolean(event.shiftKey) ||
@@ -3404,8 +3606,11 @@ export class CommandMapper {
                   ? 'F7'
                   : matchesKeyBinding(kb, 'selectSkill8', event)
                     ? 'F8'
-                    : null
-    const effectiveSkillKey = customSkillKey ?? keyUpper
+                    : this.matchSkill9To16Binding(kb, event)
+    // Slot names F1..F8 / SKILL9..16 are reached only through their bindings (0x6FBCA2E0); a non-slot key
+    // that carries its own skill binding (binding-map extension) still executes.
+    const rawKey = event.key.toUpperCase()
+    const effectiveSkillKey = customSkillKey ?? (SKILL_HOTKEY_KEY_RE_113C.test(rawKey) ? '' : rawKey)
     const slotIdx = SkillHotkeysHud.slotIndexFromKey(effectiveSkillKey)
     const worldSkillHotkeyBinding = slotIdx !== null ? this.world.skillHotkeys?.get(slotIdx) : undefined
     const skillHotkeyBinding = this.skillHotkeys.get(effectiveSkillKey)
@@ -3417,6 +3622,11 @@ export class CommandMapper {
       worldSkillHotkeyBinding !== undefined
     ) {
       event.preventDefault?.()
+      // 0x6faeadb0 (skills 1..16): no bind/select while dead (mode 0x11). Slots 9..15 additionally require
+      // 0x6FBC9854 (0x6faea92b), which is set for the expansion game the web client always runs.
+      if (this.isSelfDeadForCommands113c()) {
+        return true
+      }
       // Native bind: skill popup open + hovered skill + bindable key (vanilla gate).
       if (
         SKILL_HOTKEY_KEY_RE_113C.test(effectiveSkillKey) &&
@@ -3453,6 +3663,20 @@ export class CommandMapper {
         worldSkillHotkeyBinding?.itemId ??
         0xffffffff
       if (skillId !== undefined) {
+        if (!this.isSkillSelectable113c(skillId, itemId)) {
+          this.skillHotkeys.delete(effectiveSkillKey)
+          this.hudManager.hotkeys.bindings.delete(effectiveSkillKey)
+          if (slotIdx !== null) {
+            this.world.skillHotkeys?.delete(slotIdx)
+          }
+          return true
+        }
+        if (slotIdx !== null) {
+          this.lastSelectedHotkeySlot113c = slotIdx
+          if (this.hudManager.hotkeys) {
+            this.hudManager.hotkeys.lastSelectedSlot = slotIdx
+          }
+        }
         if (this.quickCastMode) {
           // The 1.13c cast packets carry no skill id, so the cast executes the PD2 sequence
           // SelectSkill -> SkillAt/SkillOn -> SelectSkill restore regardless of which hand
@@ -3494,11 +3718,12 @@ export class CommandMapper {
       return true
     }
     if (matchesKeyBinding(kb, 'skillSpeedBar', event)) {
-      this.hudManager.hotkeys.openPopup = this.hudManager.hotkeys.openPopup ? null : 'right'
-      this.hudManager.syncPublishedState()
+      this.hudManager.toggleSkillSpeedBar113c()
       return true
     }
     if (matchesKeyBinding(kb, 'questLog', event)) {
+      // 0x6faec8c0: the quest log command is ignored while the player is dead.
+      if (this.isSelfDeadForCommands113c()) return true
       this.hudManager.toggleLeftPanel('quest')
       return true
     }
@@ -3542,7 +3767,7 @@ export class CommandMapper {
       return true
     }
     if (matchesKeyBinding(kb, 'showBelt', event)) {
-      this.hudManager.belt?.togglePopup?.()
+      this.hudManager.toggleBeltPopup113c()
       this.hudManager.syncPublishedState?.()
       return true
     }
@@ -3576,172 +3801,127 @@ export class CommandMapper {
       return true
     }
 
-    // Panel & action hotkeys
-    switch (keyUpper) {
-      case 'R': {
-        if (this.hudModel) {
-          this.hudModel.toggleRunWalk()
-        } else {
-          this.hudManager.isRunning = !this.hudManager.isRunning
-          this.hudManager.syncPublishedState()
-        }
-        return true
+    // Automap hotkeys -- 1.13c default.key: F9 Center (cmd 8, 0x6faea690), F10 Fade (cmd 9, 0x6fae9e20),
+    // F11 Party (cmd 10, 0x6fae9df0), F12 Names (cmd 11, 0x6fae9dc0). Dispatched only through the binding table.
+    if (matchesKeyBinding(kb, 'centerAutomap', event)) {
+      event.preventDefault?.()
+      const hudCbs = (this.hudManager as any)?.callbacks
+      if (this.onAutomapCenter) {
+        this.onAutomapCenter()
+      } else if (typeof hudCbs?.onResetAutomapPan === 'function') {
+        hudCbs.onResetAutomapPan()
+      } else if (this.automapView && typeof (this.automapView as any).resetManualPan === 'function') {
+        ;(this.automapView as any).resetManualPan()
       }
-      case 'W': {
-        if (this.hudModel) {
-          this.hudModel.swapWeapons()
-        } else {
-          this.dispatchRateLimited({ type: 'SwapWeapons' }, nowMs)
-        }
-        return true
-      }
-      case 'A':
-      case 'C': {
-        this.hudManager.toggleLeftPanel('char')
-        return true
-      }
-      case 'I':
-      case 'B': {
-        this.hudManager.toggleRightPanel('inv')
-        return true
-      }
-      case 'S': {
-        this.hudManager.hotkeys.openPopup = this.hudManager.hotkeys.openPopup ? null : 'right'
-        this.hudManager.syncPublishedState()
-        return true
-      }
-      case 'T': {
-        this.hudManager.toggleRightPanel('skill')
-        return true
-      }
-      case '`':
-      case '~': {
-        this.hudManager.belt?.togglePopup?.()
-        this.hudManager.syncPublishedState?.()
-        return true
-      }
-      case 'V': {
-        const hudCbs = (this.hudManager as any)?.callbacks
-        if (this.onToggleAutomapMode) {
-          this.onToggleAutomapMode()
-        } else if (typeof hudCbs?.onToggleAutomapMode === 'function') {
-          hudCbs.onToggleAutomapMode()
-        } else if (this.automapView && typeof (this.automapView as any).toggleMiniMap === 'function') {
-          ;(this.automapView as any).toggleMiniMap()
-        }
-        this.hudManager.syncPublishedState?.()
-        return true
-      }
-      case 'Z': {
-        if (typeof (this.hudManager as any).togglePartyPortraits === 'function') {
-          ;(this.hudManager as any).togglePartyPortraits()
-        } else {
-          ;(this.hudManager as any).showPartyPortraits = !((this.hudManager as any).showPartyPortraits ?? true)
-          this.hudManager.syncPublishedState?.()
-        }
-        return true
-      }
-      case 'H': {
-        if (typeof (this.hudManager as any).toggleHelpOverlay === 'function') {
-          ;(this.hudManager as any).toggleHelpOverlay()
-        } else {
-          ;(this.hudManager as any).helpOverlayOpen = !Boolean((this.hudManager as any).helpOverlayOpen)
-          this.hudManager.syncPublishedState?.()
-        }
-        return true
-      }
-      case 'N': {
-        this.world.clearActiveChatOverlay?.()
-        ;(this.hudManager as any).chatOverlayMessages = []
-        this.hudManager.syncPublishedState?.()
-        return true
-      }
-      case 'F9': {
-        event.preventDefault?.()
-        const hudCbs = (this.hudManager as any)?.callbacks
-        if (this.onAutomapFade) {
-          this.onAutomapFade()
-        } else if (typeof hudCbs?.onCycleAutomapFade === 'function') {
-          hudCbs.onCycleAutomapFade()
-        } else if (this.automapView && typeof (this.automapView as any).cycleFadeMode === 'function') {
-          ;(this.automapView as any).cycleFadeMode()
-        }
-        return true
-      }
-      case 'F10':
-      case 'F12': {
-        event.preventDefault?.()
-        const hudCbs = (this.hudManager as any)?.callbacks
-        if (this.onAutomapNames) {
-          this.onAutomapNames()
-        } else if (typeof hudCbs?.onToggleAutomapNames === 'function') {
-          hudCbs.onToggleAutomapNames()
-        } else if (this.automapView && typeof (this.automapView as any).toggleShowPartyNames === 'function') {
-          ;(this.automapView as any).toggleShowPartyNames()
-        }
-        return true
-      }
-      case 'F11': {
-        event.preventDefault?.()
-        const hudCbs = (this.hudManager as any)?.callbacks
-        if (this.onAutomapParty) {
-          this.onAutomapParty()
-        } else if (typeof hudCbs?.onToggleAutomapParty === 'function') {
-          hudCbs.onToggleAutomapParty()
-        } else if (this.automapView && typeof (this.automapView as any).toggleShowParty === 'function') {
-          ;(this.automapView as any).toggleShowParty()
-        }
-        return true
-      }
-      case 'HOME': {
-        event.preventDefault?.()
-        const hudCbs = (this.hudManager as any)?.callbacks
-        if (this.onAutomapCenter) {
-          this.onAutomapCenter()
-        } else if (typeof hudCbs?.onResetAutomapPan === 'function') {
-          hudCbs.onResetAutomapPan()
-        } else if (this.automapView && typeof (this.automapView as any).resetManualPan === 'function') {
-          ;(this.automapView as any).resetManualPan()
-        }
-        return true
-      }
-      case 'Q': {
-        this.hudManager.toggleLeftPanel('quest')
-        return true
-      }
-      case 'P': {
-        if (this.hudModel) {
-          this.hudModel.togglePanel('party')
-        } else {
-          this.hudManager.toggleLeftPanel('party' as any)
-        }
-        return true
-      }
-      case 'M': {
-        if (this.hudModel) {
-          this.hudModel.togglePanel('msg')
-        } else {
-          this.hudManager.toggleLeftPanel('msg' as any)
-        }
-        return true
-      }
-      case 'O': {
-        if (this.world.merc && !this.world.merc.isDead) {
-          if (this.hudModel) {
-            const prevLeft = this.hudManager.leftPanel as string
-            const res = this.hudModel.togglePanel('merc')
-            if (!res && prevLeft !== 'merc' && (this.hudManager.leftPanel as string) !== 'merc') {
-              this.hudManager.toggleLeftPanel('merc' as any)
-            }
-          } else {
-            this.hudManager.toggleLeftPanel('merc' as any)
-          }
-        }
-        return true
-      }
-      default:
-        return false
+      return true
     }
+    if (matchesKeyBinding(kb, 'fadeAutomap', event)) {
+      event.preventDefault?.()
+      const hudCbs = (this.hudManager as any)?.callbacks
+      if (this.onAutomapFade) {
+        this.onAutomapFade()
+      } else if (typeof hudCbs?.onCycleAutomapFade === 'function') {
+        hudCbs.onCycleAutomapFade()
+      } else if (this.automapView && typeof (this.automapView as any).cycleFadeMode === 'function') {
+        ;(this.automapView as any).cycleFadeMode()
+      }
+      return true
+    }
+    if (matchesKeyBinding(kb, 'partyOnAutomap', event)) {
+      event.preventDefault?.()
+      const hudCbs = (this.hudManager as any)?.callbacks
+      if (this.onAutomapParty) {
+        this.onAutomapParty()
+      } else if (typeof hudCbs?.onToggleAutomapParty === 'function') {
+        hudCbs.onToggleAutomapParty()
+      } else if (this.automapView && typeof (this.automapView as any).toggleShowParty === 'function') {
+        ;(this.automapView as any).toggleShowParty()
+      }
+      return true
+    }
+    if (matchesKeyBinding(kb, 'namesOnAutomap', event)) {
+      event.preventDefault?.()
+      const hudCbs = (this.hudManager as any)?.callbacks
+      if (this.onAutomapNames) {
+        this.onAutomapNames()
+      } else if (typeof hudCbs?.onToggleAutomapNames === 'function') {
+        hudCbs.onToggleAutomapNames()
+      } else if (this.automapView && typeof (this.automapView as any).toggleShowPartyNames === 'function') {
+        ;(this.automapView as any).toggleShowPartyNames()
+      }
+      return true
+    }
+
+    // Select Previous Skill (command 39, 0x6faea8e0) / Select Next Skill (command 40, 0x6faea8c0) -> 0x6faed6d0.
+    if (matchesKeyBinding(kb, 'selectPreviousSkill', event)) {
+      event.preventDefault?.()
+      this.cycleBoundSkills113c(-1, nowMs)
+      return true
+    }
+    if (matchesKeyBinding(kb, 'selectNextSkill', event)) {
+      event.preventDefault?.()
+      this.cycleBoundSkills113c(1, nowMs)
+      return true
+    }
+
+    // Clear Messages (command 41, 0x6fae9c30) and Show Portraits (command 43, 0x6fb0c3d0) via the binding table.
+    if (matchesKeyBinding(kb, 'clearMessages', event)) {
+      this.world.clearActiveChatOverlay?.()
+      ;(this.hudManager as any).chatOverlayMessages = []
+      this.hudManager.syncPublishedState?.()
+      return true
+    }
+    if (matchesKeyBinding(kb, 'showPortraits', event)) {
+      if (typeof (this.hudManager as any).togglePartyPortraits === 'function') {
+        ;(this.hudManager as any).togglePartyPortraits()
+      } else {
+        ;(this.hudManager as any).showPartyPortraits = !((this.hudManager as any).showPartyPortraits ?? true)
+        this.hudManager.syncPublishedState?.()
+      }
+      return true
+    }
+
+    // D2Client.dll dispatches commands only through the binding table 0x6FBCA2E0 (0x6fae8bd0..0x6fae8c05):
+    // a key that matched no binding above does nothing.
+    return false
+  }
+
+  /** Player unit dead check used by the command handlers ([player+0x10] == 0x11, PLRMODE_DEAD). */
+  private isSelfDeadForCommands113c(): boolean {
+    return Boolean(this.world.isSelfDead || this.world.isDead)
+  }
+
+  /** Skill 9..16 commands (46..53, 0x6faeabb0..0x6faea9f0) map to the speed-bar slots `SKILL9..SKILL16`. */
+  private matchSkill9To16Binding(
+    kb: ReturnType<HudManager['getActiveKeyBindings']> | undefined,
+    event: { key: string; code?: string | undefined },
+  ): string | null {
+    for (let n = 9; n <= 16; n++) {
+      if (matchesKeyBinding(kb, `selectSkill${n}` as ControlActionId, event)) return `SKILL${n}`
+    }
+    return null
+  }
+
+  /** Input mode 2 of D2Client.dll (`0x6FBCC434`): NPC shop / stash / cube open or an NPC dialog active. */
+  private isModalInputMode113c(): boolean {
+    const left = this.hudManager.leftPanel as string
+    if (left === 'vendor' || left === 'stash' || left === 'cube') return true
+    const wp = this.hudManager.worldPanels as any
+    return Boolean(wp?.npcMenu || wp?.npcSpeech)
+  }
+
+  /** Commands with `dwAllowInModal = 1` in the D2Client.dll command table `0x6FBA4F10`. */
+  private isCommandAllowedInModal113c(
+    kb: ReturnType<HudManager['getActiveKeyBindings']> | undefined,
+    event: { key: string; code?: string | undefined },
+  ): boolean {
+    return (
+      matchesKeyBinding(kb, 'showBelt', event) || // cmd 22
+      matchesKeyBinding(kb, 'swapWeapons', event) || // cmd 44
+      matchesKeyBinding(kb, 'toggleMiniMap', event) || // cmd 45
+      matchesKeyBinding(kb, 'clearMessages', event) || // cmd 41
+      event.code === 'PrintScreen' // cmd 42 Screenshot (default.key PrintScreen; handled by the host OS)
+    )
   }
 
   /**
@@ -3767,10 +3947,16 @@ export class CommandMapper {
       event.code === 'ControlRight' ||
       event.ctrlKey === false
     ) {
-      if (this.ctrlHeldForRun) {
-        this.ctrlHeldForRun = false
-        const runMode = this.hudModel ? this.hudModel.isRunMode : Boolean(this.hudManager.isRunning)
-        const cmd: ClientCommand = { type: 'RunToggle', run: runMode }
+      this.ctrlHeld = false
+    }
+    // Run released (0x6faeadf0): clear 0x6FBCC3E8; only when Always Run (0x6FBCC3EC) is off and the
+    // player is running (mode 3) switch back to walking with C2S 0x54.
+    if (this.runKeyHeld && matchesKeyBinding(kb, 'run', event)) {
+      this.runKeyHeld = false
+      const alwaysRun = this.hudModel ? this.hudModel.isRunMode : Boolean(this.hudManager.isRunning)
+      const self = this.world.getUnit?.('player', this.world.selfId || 1)
+      if (!alwaysRun && self && self.moveMode === 'run') {
+        const cmd: ClientCommand = { type: 'RunToggle', run: false }
         this.world.noteOutgoingCommand?.(cmd, nowMs)
         this.sendCommand(cmd, nowMs)
       }
@@ -3789,7 +3975,8 @@ export class CommandMapper {
     this.assists.reset()
     this.shiftHeld = false
     this.altHeld = false
-    this.ctrlHeldForRun = false
+    this.ctrlHeld = false
+    this.runKeyHeld = false
     this.leftMouseDown = false
     this.dragPickupAttempts.clear()
     this.rightMouseDown = false
@@ -4159,7 +4346,7 @@ export class CommandMapper {
     }
     return (
       (this.hudModel ? this.hudModel.isRunMode : this.hudManager.isRunning) ||
-      this.ctrlHeldForRun
+      this.runKeyHeld
     )
   }
 

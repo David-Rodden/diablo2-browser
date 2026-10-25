@@ -3,19 +3,26 @@ import {
   applyRealmGamesToFlowState,
   confirmCharacterSelect,
   createInitialFlowState,
+  dismissPopupModal,
   formatJoinGameDetailLines,
   getRecentRealmGameNames,
   isRealmGameInfoOpen,
   isRealmGameStatusCompatibleWithCharacter,
   JOIN_GAME_LIST_REFRESH_INTERVAL_MS,
+  openPopupModal,
   recordRecentRealmGameName,
   removeRecentRealmGameName,
   resetLobbyGameFormState,
 } from '../../src/client/frontend/flow-state.ts'
 import {
+  formatBnetLoginError,
+  formatCharacterActionError,
+  formatCharacterCreateError,
   formatLobbyGameEnterError,
+  formatLoginScreenErrorForDisplay,
   formatMcpCreateGameStatusError,
   formatMcpJoinGameStatusError,
+  isRawTechnicalErrorString,
   parseMcpGameErrorStatus,
 } from '../../src/client/session/active-char-lock.ts'
 
@@ -291,5 +298,92 @@ describe('Lobby Join Game list population, selection preservation & refresh inte
     expect(formatMcpCreateGameStatusError(0x1e, 'zh')).toBe('無效的遊戲名稱')
     expect(formatMcpCreateGameStatusError(0x20, 'zh')).toBe('伺服器停機')
     expect(formatMcpCreateGameStatusError(0x99, 'zh')).toBe('開創遊戲錯誤')
+  })
+
+  it('intercepts raw protocol/code error strings across login, character, and lobby screens (#72)', () => {
+    // 1. BNCS SID_LOGONRESPONSE2 (0x3A)
+    const errAcctMissing = new Error(
+      '[ProtocolError bncs#0x3a] BNCS SID_LOGONRESPONSE2 failed for "ghost" with status=0x1',
+    )
+    expect(formatBnetLoginError(errAcctMissing, 'zh')).toContain('這個帳戶並不存在')
+    expect(formatBnetLoginError(errAcctMissing, 'en')).toContain('That account does not exist.')
+
+    const errBadPass = new Error(
+      '[ProtocolError bncs#0x3a] BNCS SID_LOGONRESPONSE2 failed for "hero" with status=0x2',
+    )
+    expect(formatBnetLoginError(errBadPass, 'zh')).toBe('你所輸入的密碼並不正確，請重試一次。')
+    expect(formatBnetLoginError(errBadPass, 'en')).toBe(
+      'The password you have entered is incorrect. Please try again.',
+    )
+
+    // 2. MCP_CHARCREATE (0x02)
+    const errCharTaken = new Error(
+      '[ProtocolError mcp#0x02] MCP_CHARCREATE failed for "Hero" with status=0x14',
+    )
+    expect(formatCharacterCreateError(errCharTaken, 'zh')).toBe(
+      '這個人物的名稱已經有人使用了，請輸入另一個名字。',
+    )
+    expect(formatCharacterCreateError(errCharTaken, 'en')).toBe(
+      'That character name is already taken. Try another.',
+    )
+
+    const errCharIllegal = new Error(
+      '[ProtocolError mcp#0x02] MCP_CHARCREATE failed for "Hero!" with status=0x15',
+    )
+    expect(formatCharacterCreateError(errCharIllegal, 'zh')).toBe(
+      '你的使用者名稱包括了一個或一個以上的非法字元。',
+    )
+
+    // 3. MCP_CHARLOGON (0x07) & MCP_CHARDELETE (0x0A)
+    const errCharNotFound = new Error(
+      '[ProtocolError mcp#0x07] MCP_CHARLOGON failed for "Hero" with status=0x46',
+    )
+    expect(formatCharacterActionError(errCharNotFound, 'logon', 'zh')).toBe('找不到玩者')
+    expect(formatCharacterActionError(errCharNotFound, 'logon', 'en')).toBe('Player Not Found')
+
+    const errCharExpired = new Error(
+      '[ProtocolError mcp#0x07] MCP_CHARLOGON failed for "Hero" with status=0x7b',
+    )
+    expect(formatCharacterActionError(errCharExpired, 'logon', 'zh')).toBe('人物失效')
+    expect(formatCharacterActionError(errCharExpired, 'logon', 'en')).toBe('Character Expired')
+
+    // 4. Raw technical strings & difficulty lock in lobby
+    const errDiffLocked = new Error(
+      'Difficulty "nightmare" is not unlocked for character "Hero" (progression=0)',
+    )
+    expect(formatLobbyGameEnterError(errDiffLocked, 'Hero', 'zh')).toBe(
+      '無法進入遊戲。你的人物必須殺死巴爾才能進入惡夢級的遊戲。',
+    )
+    const errHandshake = new Error(
+      '[ProtocolError d2gs#0x68] D2GS handshake failed (state=waitCharInfo)',
+    )
+    expect(isRawTechnicalErrorString(errHandshake.message)).toBe(true)
+    expect(formatLobbyGameEnterError(errHandshake, 'Hero', 'zh')).toBe('加入失敗')
+    expect(formatLobbyGameEnterError(errHandshake, 'Hero', 'en')).toBe('Join Failed')
+
+    // 5. Session-loss technical suffix stripping on bnet_login
+    expect(
+      formatLoginScreenErrorForDisplay(
+        'Your connection to Battle.net has been lost. (BNCS connection closed)',
+        'zh',
+      ),
+    ).toBe('你和battle.net的連線已經中斷了。')
+    expect(
+      formatLoginScreenErrorForDisplay(
+        'Timed out waiting for response. (BNCS SID_LOGONREALMEX (0x3e) timed out after 10000ms)',
+        'zh',
+      ),
+    ).toBe('等候回應時間超過。')
+
+    // 6. Dismissing popupModal clears residual error fields
+    const st = createInitialFlowState()
+    st.stage = 'bnet_lobby'
+    st.createGameError = '已經有相同名稱的遊戲存在'
+    st.lastError = '已經有相同名稱的遊戲存在'
+    openPopupModal(st, '已經有相同名稱的遊戲存在', 'bnet_lobby')
+    dismissPopupModal(st)
+    expect(st.popupModal).toBeNull()
+    expect(st.createGameError).toBeNull()
+    expect(st.lastError).toBeNull()
   })
 })

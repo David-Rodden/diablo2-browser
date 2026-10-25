@@ -221,10 +221,17 @@ export class ClientUnit {
   monUMods?: readonly (number | string)[] | undefined
   aip1?: number | undefined
   corpseSuppressed?: boolean | undefined
+  /** D2Client unit+0xc8 flag 0x40000: the unit is not drawn (e.g. Nihlathak after special quest event 17). */
+  clientNoDraw?: boolean | undefined
   deathFxTriggered?: boolean | undefined
   diedAtMs?: number | undefined
   tempSummonExpireTick?: number | undefined
   nameSeed?: number | undefined
+  /**
+   * Monsters: palette index D2Client stores at gfx+0x38 when it creates the unit (0x6fb57780), resolved once by
+   * `resolveMonsterPaletteIndex113c` (#1516 / #1517); selects the palshift.dat / RandTransforms.dat colormap.
+   */
+  paletteIndex?: number | undefined
   compVariants?: readonly number[] | undefined
   ownerType?: UnitTypeName | undefined
   ownerId?: number | undefined
@@ -254,6 +261,16 @@ export class ClientUnit {
   subStart?: number | undefined
   subStop?: number | undefined
   subLoops?: number | undefined
+  /** 1.13c D2Client `0x6FB6349F` (`#10837`): `range - activate` remaining-tick threshold when missile collision activates (#1511). */
+  cltActivateTicks?: number | undefined
+  /** 1.13c D2Client `0x6FB63527` (`Missiles.txt` `InitSteps` `+0x134`): initial sub-tile step delay (#1511). */
+  initSteps?: number | undefined
+  /** 1.13c D2Client `0x6FB63537`: `pUnit->dwClientFlags |= 0x40000` set when `InitSteps !== 0` (#1511). */
+  clientInitStepsFlag?: boolean | undefined
+  /** 1.13c `Missiles.txt` `xoffset` / `yoffset` / `zoffset` (`+0xA2..+0xA6`, #1513). */
+  xoffset?: number | undefined
+  yoffset?: number | undefined
+  zoffset?: number | undefined
   numDirections?: number | undefined
   explosionMissile?: string | undefined
   alwaysExplode?: boolean | undefined
@@ -318,6 +335,8 @@ export class ClientUnit {
   blazeUntilTick?: number | undefined
   blazeSkillLevel?: number | undefined
   armageddonUntilTick?: number | undefined
+  /** S2C 0x98 value stored at pMonsterData+0x40 (D2Client.dll 0x6fafc3c0; evilhut only). */
+  monsterData40?: number | undefined
   armageddonSkillLevel?: number | undefined
   hurricaneUntilTick?: number | undefined
   hurricaneSkillLevel?: number | undefined
@@ -358,6 +377,10 @@ export class ClientUnit {
    * (`world/object-light.ts`) writes it; a unit removal drops it with the unit. `null` = no light.
    */
   objectLight: ObjectLight113c | null = null
+  /** Objects: `[unit+0xD4]` timer of the Objects.txt ClientFn handlers (0 for a new unit, object-client-fn-113c.ts). */
+  clientFnTimer = 0
+  /** Objects: `[unit+0xC8]` init flag of the ClientFn handlers. */
+  clientFnInit = 0
   /** Objects: animation frame (unit+0x44, 8.8) and speed (unit+0x4C) as D2Common #10595 sets them. */
   objectAnim?: ObjectAnim113c | undefined
   readonly stats = new StatList()

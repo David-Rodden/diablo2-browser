@@ -196,7 +196,7 @@ function triggerCastStart(
 
 function triggerKeyframe(
   ctrl: SkillAudioRuntimeC,
-  opts: { skillId: number; flag: number; x: number; y: number; local?: boolean; weaponSoundId?: number },
+  opts: { skillId: number; flag: number; x: number; y: number; local?: boolean; weaponSoundId?: number; doSoundId?: number },
 ): void {
   const fn = ctrl.onAnimKeyframe ?? ctrl.playSkillAnimKeyframe
   if (typeof fn !== 'function') {
@@ -316,15 +316,15 @@ describe('M21-P5 #947 — F20 4-stage skill & missile sound lifecycle', () => {
       const doMembers = new Set(oracleGroupMembers(withDo!.dosound))
       expect(records.records().some((r) => doMembers.has(r.id)), `${withDo!.skill} dosound played`).toBe(true)
 
+      // dosound a / b are read only by CltDo16 Jab (D2Client 0x6FAC4F7C / 0x6FAC4F9C, #1611); the world resolves them
+      // into `doSoundId` and the controller plays exactly that sound (no dosound -> dosound a fallback, #1614).
       records.stopAll()
-      triggerKeyframe(ctrl, { skillId: withDoA!.id, flag: 0x02, x: 0, y: 0, local: true })
+      triggerKeyframe(ctrl, { skillId: withDoA!.id, flag: 0x02, x: 0, y: 0, local: true, doSoundId: withDoA!.dosoundA })
       records.update()
       records.endTick()
-      const doAMembers = new Set([
-        ...oracleGroupMembers(withDoA!.dosound),
-        ...oracleGroupMembers(withDoA!.dosoundA),
-      ])
+      const doAMembers = new Set(oracleGroupMembers(withDoA!.dosoundA))
       expect(records.records().some((r) => doAMembers.has(r.id)), `${withDoA!.skill} dosoundA played`).toBe(true)
+      expect(withDoB!.dosoundB).toBeGreaterThan(0)
     })
 
     it('[T1-F20-04] Stage 3 Missile In-Flight (`TravelSound`): spawning a missile with `TravelSound > 0` binds a live emitter whose `SetSoundPos` updates pan/attenuation every `SoundTick` and stops immediately on missile destruction', async () => {
