@@ -855,8 +855,9 @@ export class Autopilot {
     const plan = this.host.guide.currentPlan
     const me = this.host.world.self
     const waypoint = WAYPOINT_CLASS_IDS_113C.has(unit.classId)
+    const portal = unit.classId === TOWN_PORTAL_CLASS
     const rounds = this.stubborn.get(unit.id) ?? 0
-    if (rounds < (waypoint ? WAYPOINT_ROUNDS : 1)) {
+    if (rounds < (waypoint || portal ? WAYPOINT_ROUNDS : 1)) {
       this.stubborn.set(unit.id, rounds + 1)
       this.uses.delete(unit.id)
       this.host.hudModel?.cancelNpcSession()
@@ -864,6 +865,8 @@ export class Autopilot {
       const away = Math.atan2(me.y - unit.y, me.x - unit.x) + (rounds * 2 * Math.PI) / WAYPOINT_ROUNDS
       this.host.assists.stepTo(unit.x + Math.cos(away) * BACK_OFF, unit.y + Math.sin(away) * BACK_OFF, nowMs)
     } else if (waypoint) this.stop('Autopilot needs you', 'gold', "The waypoint wouldn't open")
+    else if (portal && this.town()) Object.assign(this, { trip: null, portalHome: null })
+    else if (portal) this.castPortal(nowMs)
     else if (plan?.target?.unit?.id === unit.id) this.skip(plan, `${unit.name ?? 'It'} wouldn't respond`)
     else this.walkRoute(nowMs)
   }
@@ -1270,7 +1273,7 @@ export class Autopilot {
     const threats = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= KITE_NEAR)
     this.kiteSince = threats.length === 0 ? null : (this.kiteSince ?? nowMs)
     const portal = world.getUnitsByType(2).find((unit) => unit.classId === TOWN_PORTAL_CLASS && distance(unit, me) <= PORTAL_REACH)
-    if (portal) this.touch(portal, nowMs)
+    if (portal) this.useOnce(portal, nowMs)
     else if (threats.length > 0 && threats.length <= KITE_CROWD && nowMs - this.kiteSince! < KITE_MS && this.kite(threats, nowMs)) return
     else if (assists.hasTownPortal()) this.castPortal(nowMs)
     else this.walkHome(nowMs)

@@ -411,6 +411,17 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).not.toBe('Back through the portal')
   })
 
+  it('steps around a portal that will not take it, then takes the waypoint home instead', () => {
+    const { pilot, world, assists, units, tick } = setup({ goal: { level: 74, title: 'The Summoner' }, step: { kind: 'waypoint', level: 74 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 0
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 101, y: 100 }))
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    for (let i = 0; i < 120 && (pilot as unknown as { trip: string | null }).trip !== null; i++) tick(700)
+    expect((pilot as unknown as { trip: string | null }).trip).toBeNull()
+    expect(new Set(assists.stepTo.mock.calls.map(([x, y]) => `${Math.round(x as number)},${Math.round(y as number)}`)).size).toBe(3)
+  })
+
   it('calls off a retreat once life is back and the belt has potions', () => {
     const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.self.life = 15
