@@ -123,6 +123,7 @@ const USE_MS = 600
 const USE_TRIES = 8
 const BACK_OFF = 5
 const WAYPOINT_ROUNDS = 3
+const PORTAL_LOOK_MS = 3000
 const CURSOR_SETTLE_MS = 1000
 const INVENTORY_BUFFER = 0
 const TALK_MS = 700
@@ -299,6 +300,7 @@ export class Autopilot {
   private lastSpend = Number.NEGATIVE_INFINITY
   private corpse: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private bodyTouch: { readonly id: number; readonly worn: number } | null = null
+  private portalHome: { readonly x: number; readonly y: number; readonly at: number } | null = null
   private readonly ghosts = new Set<number>()
   private deaths: readonly { readonly at: number; readonly level: number }[] = []
   private retreats: readonly { readonly at: number; readonly level: number }[] = []
@@ -537,6 +539,7 @@ export class Autopilot {
     this.refreshQuests(nowMs)
     this.rethink(nowMs)
     const town = this.town()
+    if (town && this.trip === 'retreat') this.portalHome = { x: this.host.world.self.x, y: this.host.world.self.y, at: nowMs }
     this.trip = town && this.trip === 'retreat' ? 'return' : !town && this.trip === 'return' ? null : this.trip
     if (this.trip === 'retreat' && !town && this.recovered() && !planned(this.retreatWhy)) this.trip = null
     if (!town && this.trip === null) this.prepareFor(nowMs)
@@ -1372,8 +1375,14 @@ export class Autopilot {
   private returnThroughPortal(nowMs: number): boolean {
     const { world } = this.host
     const portal = world.getUnitsByType(2).filter((unit) => unit.classId === TOWN_PORTAL_CLASS).sort((a, b) => distance(a, world.self) - distance(b, world.self))[0]
+    const home = this.portalHome
+    if (!portal && home && (distance(home, world.self) > REACH || nowMs - home.at < PORTAL_LOOK_MS)) {
+      this.say('Back through the portal')
+      this.walkTowards(home, nowMs)
+      return true
+    }
     if (!portal) {
-      this.trip = null
+      Object.assign(this, { trip: null, portalHome: null })
       return false
     }
     this.say('Back through the portal')

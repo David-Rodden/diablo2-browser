@@ -389,6 +389,18 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).not.toBe('Back through the portal')
   })
 
+  it('walks back to where its portal stands after errands took it out of sight of it', () => {
+    const { pilot, world, assists, guide, tick } = setup({ goal: { level: 74, title: 'The Summoner' }, step: { kind: 'waypoint', level: 74 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 0
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    tick()
+    Object.assign(world.self, { x: 300, y: 100 })
+    tick(5000)
+    expect(guide.pilotStatus).toBe('Back through the portal')
+    expect(assists.walkTo.mock.calls.at(-1)![0]).toBeLessThan(300)
+  })
+
   it('calls off a retreat once life is back and the belt has potions', () => {
     const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.self.life = 15
