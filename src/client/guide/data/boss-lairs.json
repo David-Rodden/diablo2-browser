@@ -21,5 +21,6 @@
     "Andariel": { "row": 6, "code": "yps", "potion": "antidotes" },
     "Duriel": { "row": 14, "code": "wms", "potion": "thawing potions" }
   },
-  "resistCount": 8
+  "resistCount": 8,
+  "bossPotions": 6
 }

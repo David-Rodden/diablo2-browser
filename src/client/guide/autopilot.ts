@@ -1924,7 +1924,8 @@ export class Autopilot {
     }
     const spares = this.isCaster() ? SPARE_POTIONS.caster : SPARE_POTIONS.melee
     const total = (prefix: string) => [...world.containers.belt.values(), ...world.containers.inventory.values()].filter((item) => item.code.startsWith(prefix)).length
-    for (const [prefix, spare] of [['hp', spares[0] + (BELT_ROWS - rows) * healing], ['mp', spares[1]]] as const) {
+    const bossFight = Object.values(LAIRS.resists).some((resist) => resist.row === this.host.guide.currentPlan?.goal.row) ? LAIRS.bossPotions : 0
+    for (const [prefix, spare] of [['hp', spares[0] + (BELT_ROWS - rows) * healing + bossFight], ['mp', spares[1]]] as const) {
       const potion = bestIn(prefix)
       const wanted = belt(prefix) + spare
       for (let tries = 0; potion && tries < BUY_TRIES && total(prefix) < wanted && world.self.gold >= (prefix === 'hp' ? price(potion) : SPARE_GOLD); tries++) {
