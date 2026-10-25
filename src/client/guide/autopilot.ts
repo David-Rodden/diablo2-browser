@@ -18,6 +18,7 @@ import { useArtisan, type ArtisanKind } from './artisan.ts'
 import { freeSpots } from '../input/auto-loot.ts'
 import { vendorPrice113c } from '../ui-model/vendor-price.ts'
 import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
+import { nextSocketMove, type SocketMove } from './socket-plan.ts'
 import { readyRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
@@ -1452,6 +1453,7 @@ export class Autopilot {
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.armoury.length > 0 && ready('armoury') && { key: 'armoury', reason: 'Taking better gear out of the stash', work: () => this.arm() },
+      this.socketMove() !== null && ready('socket') && { key: 'socket', reason: `Socketing ${this.socketMove()!.why}`, work: () => this.socketAll() },
       care.upgrades.length > 0 && ready('gear') && { key: 'gear', reason: 'Putting on better gear', work: () => care.wearUpgrades() },
       this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
@@ -1834,6 +1836,23 @@ export class Autopilot {
     const wanted = code === tomeCode || this.scrollsWanted(kind) > 0
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || !wanted) return false
     return hudModel.vendorBuy(ware.id, false) && waitFor(() => world.self.gold < before, 1500)
+  }
+
+  private socketMove(): SocketMove | null {
+    const { equipment, inventory, sockets } = this.host.world.containers
+    return nextSocketMove({ equipment: equipment.values(), inventory: inventory.values(), sockets }, appraisalContextOf(this.host.world).build)
+  }
+
+  private async socketAll(): Promise<void> {
+    const { world, hudModel } = this.host
+    for (let move = this.socketMove(); move && hudModel !== null && this.active; move = this.socketMove()) {
+      const { filler, target, why } = move
+      hudModel.pickupItemToCursor(filler.id)
+      if (!(await waitFor(() => world.containers.cursor?.id === filler.id, IDENTIFY_MS))) break
+      hudModel.socketItem(filler.id, target.id)
+      if (!(await waitFor(() => world.containers.cursor === null, IDENTIFY_MS))) break
+      this.toast('Socketed an item', why, 'green')
+    }
   }
 
   private carried(code: string): ItemData[] {

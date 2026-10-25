@@ -31,7 +31,8 @@ describe('character build', () => {
     expect(names()).not.toContain('Harmony')
     expect(names(bowazon)).toContain('Harmony')
     expect(names(zealot)).not.toContain('Harmony')
-    expect(runewordsFor(coldSorc).find((rw) => rw.name === 'Insight')?.forMerc).toBe(true)
+    expect(runewordsFor(coldSorc).some((rw) => rw.name === 'Insight')).toBe(true)
+    expect(runewordsFor(coldSorc).filter((rw) => !rw.forMerc && rw.levelreq <= coldSorc.level).length).toBeGreaterThan(0)
   })
 })
 

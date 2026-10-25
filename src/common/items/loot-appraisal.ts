@@ -275,5 +275,6 @@ export function appraiseItem(item: LootItem, ctx: AppraisalContext): Appraisal {
   const upgrade = upgradeAppraisal(item, 'normal', ctx)
   if (upgrade && item.totalSockets === 0) return upgrade
   const base = baseAppraisal(item, ctx)
-  return upgrade?.upgradeSlot !== undefined && (base.tier === 'junk' || base.kind !== 'base') ? upgrade : base
+  const emptySlot = upgrade?.upgradeSlot !== undefined && !ctx.equipped.some((worn) => slotOf(worn) === upgrade.upgradeSlot)
+  return upgrade?.upgradeSlot !== undefined && (emptySlot || base.tier === 'junk' || base.kind !== 'base') ? upgrade : base
 }
