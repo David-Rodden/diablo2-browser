@@ -389,6 +389,28 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).not.toBe('Back through the portal')
   })
 
+  it('walks back to where its portal stands after errands took it out of sight of it', () => {
+    const { pilot, world, assists, guide, tick } = setup({ goal: { level: 74, title: 'The Summoner' }, step: { kind: 'waypoint', level: 74 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 0
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    tick()
+    Object.assign(world.self, { x: 300, y: 100 })
+    tick(5000)
+    expect(guide.pilotStatus).toBe('Back through the portal')
+    expect(assists.walkTo.mock.calls.at(-1)![0]).toBeLessThan(300)
+  })
+
+  it('does not step back through its portal with no potions and no gold to buy any', () => {
+    const { pilot, world, units, guide, tick } = setup({ goal: { level: 62, title: 'The Horadric Staff' }, step: { kind: 'waypoint', level: 43 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world.self, { gold: 16, stashGold: 0 })
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    tick()
+    tick(5000)
+    expect(guide.pilotStatus).not.toBe('Back through the portal')
+  })
+
   it('calls off a retreat once life is back and the belt has potions', () => {
     const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.self.life = 15
@@ -411,13 +433,13 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toBe('Head to Blood Moor')
   })
 
-  it('backs off and tries a stuck waypoint again, then hands control back instead of skipping goals', () => {
+  it('tries a stuck waypoint again from three sides, then hands control back instead of skipping goals', () => {
     const { pilot, assists, hudManager, hudModel, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
-    for (let i = 0; i < 30; i++) tick(700)
-    expect(assists.stepTo).toHaveBeenCalled()
+    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+    expect(new Set(assists.stepTo.mock.calls.map(([x, y]) => `${Math.round(x as number)},${Math.round(y as number)}`)).size).toBe(3)
     expect(hudModel.cancelNpcSession).toHaveBeenCalled()
-    expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(16)
+    expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(32)
     expect(guide.skip).not.toHaveBeenCalled()
     expect(pilot.active).toBe(false)
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
@@ -824,7 +846,7 @@ describe('autopilot', () => {
     Object.assign(guide, { currentPlan: guide.update() })
     Object.assign(world.self, { gold: 0, stashGold: 50_000 })
     ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: bodyLoc, code: 'cap', bodyLoc }))
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 8; i++) {
       Object.assign(world.self, { life: 20 })
       tick(6000)
       Object.assign(world, { areaId: ROGUE_ENCAMPMENT })

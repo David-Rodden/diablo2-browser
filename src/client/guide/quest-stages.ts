@@ -24,6 +24,8 @@ const TO_THE_TOMB: Stage = { ...at('tomb', "Take the Staff to Tal Rasha's Tomb",
 const talk = (name: string, npc: string, hint = `Talk to ${name}`): Stage => at('town', hint, npc)
 const SEALS: Find = [392, 393, 394, 395, 396]
 const COUNCIL: Find = ['councilmember1', 'councilmember2', 'councilmember3']
+const [HEART_CHEST, BRAIN_CHEST, EYE_CHEST] = [405, 406, 407]
+const ANYAS_PLATFORM = 460
 
 export const OBJECTIVES: readonly (readonly Objective[])[] = [
   [
@@ -119,10 +121,10 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa3q11: at(80, 'Search the Kurast temples for the Tome', 193),
   qstsa3q12: talk('Alkor', 'alkor'),
   qstsa3q21a: talk('Cain', 'cain3', "Ask Cain about Khalim's relics"),
-  qstsa3q21: at(85, "Find Khalim's Eye in the Spider Cavern"),
-  qstsa3q22: at(91, "Find Khalim's Brain in the Flayer Dungeon"),
+  qstsa3q21: at(85, "Find Khalim's Eye in the Spider Cavern", EYE_CHEST),
+  qstsa3q22: at(91, "Find Khalim's Brain in the Flayer Dungeon", BRAIN_CHEST),
   qstsa3q23: at(83, "Take Khalim's Flail from the High Council", COUNCIL),
-  qstsa3q24: at(93, "Find Khalim's Heart in the sewers"),
+  qstsa3q24: at(93, "Find Khalim's Heart in the sewers", HEART_CHEST),
   qstsa3q25: at('town', "Combine Khalim's relics in the Cube"),
   qstsa3q26: at(83, 'Smash the Compelling Orb', 404),
   qstsa3q31a: talk('Ormus', 'ormus', 'Ask around the docks about the Gidbinn'),
@@ -162,10 +164,10 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa5q21a: at(111, 'Free the soldiers', 473),
   qstsa5q22: at(111, 'Free {n} more soldiers', 473),
   qstsa5q23: talk('Qual-Kehk', 'qual-kehk'),
-  qstsa5q31: at(114, 'Find Anya in the Frozen River', 558),
-  qstsa5q31a: at(114, 'Free Anya', 558),
+  qstsa5q31: at(114, 'Find Anya in the Frozen River', 558, ANYAS_PLATFORM),
+  qstsa5q31a: at(114, 'Free Anya', 558, ANYAS_PLATFORM),
   qstsa5q32: talk('Malah', 'malah'),
-  qstsa5q33: at(114, "Thaw Anya with Malah's potion", 558),
+  qstsa5q33: at(114, "Thaw Anya with Malah's potion", 558, ANYAS_PLATFORM),
   qstsa5q34: talk('Malah', 'malah'),
   qstsa5q35: talk('Anya', 'drehya'),
   qstsa5q41: at(121, "Take Anya's portal to Nihlathak"),

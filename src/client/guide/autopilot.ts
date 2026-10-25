@@ -122,6 +122,8 @@ const DOOR_ON_ROUTE = 4
 const USE_MS = 600
 const USE_TRIES = 8
 const BACK_OFF = 5
+const WAYPOINT_ROUNDS = 3
+const PORTAL_LOOK_MS = 3000
 const CURSOR_SETTLE_MS = 1000
 const INVENTORY_BUFFER = 0
 const TALK_MS = 700
@@ -249,7 +251,7 @@ export class Autopilot {
   private progress = { ms: 0, x: 0, y: 0 }
   private job: Promise<unknown> | null = null
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
-  private readonly stubborn = new Set<number>()
+  private readonly stubborn = new Map<number, number>()
   private readonly scavenged = new Set<number>()
   private readonly mercTried = new Set<number>()
   private readonly ledger = new XpLedger()
@@ -298,6 +300,7 @@ export class Autopilot {
   private lastSpend = Number.NEGATIVE_INFINITY
   private corpse: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private bodyTouch: { readonly id: number; readonly worn: number } | null = null
+  private portalHome: { readonly x: number; readonly y: number; readonly at: number } | null = null
   private readonly ghosts = new Set<number>()
   private deaths: readonly { readonly at: number; readonly level: number }[] = []
   private retreats: readonly { readonly at: number; readonly level: number }[] = []
@@ -536,6 +539,7 @@ export class Autopilot {
     this.refreshQuests(nowMs)
     this.rethink(nowMs)
     const town = this.town()
+    if (town && this.trip === 'retreat') this.portalHome = { x: this.host.world.self.x, y: this.host.world.self.y, at: nowMs }
     this.trip = town && this.trip === 'retreat' ? 'return' : !town && this.trip === 'return' ? null : this.trip
     if (this.trip === 'retreat' && !town && this.recovered() && !planned(this.retreatWhy)) this.trip = null
     if (!town && this.trip === null) this.prepareFor(nowMs)
@@ -587,7 +591,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.wounded()) this.say('Waiting to heal before heading out')
-    else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private refreshQuests(nowMs: number): void {
@@ -850,14 +854,16 @@ export class Autopilot {
   private giveUpOn(unit: ClientUnit, nowMs: number): void {
     const plan = this.host.guide.currentPlan
     const me = this.host.world.self
-    if (!this.stubborn.has(unit.id)) {
-      this.stubborn.add(unit.id)
+    const waypoint = WAYPOINT_CLASS_IDS_113C.has(unit.classId)
+    const rounds = this.stubborn.get(unit.id) ?? 0
+    if (rounds < (waypoint ? WAYPOINT_ROUNDS : 1)) {
+      this.stubborn.set(unit.id, rounds + 1)
       this.uses.delete(unit.id)
       this.host.hudModel?.cancelNpcSession()
-      this.host.assists.journal?.('stubborn', { classId: unit.classId, npc: this.host.world.npcInteraction.npcId, window: this.host.world.npcInteraction.window })
-      const away = Math.max(1e-6, distance(me, unit))
-      this.host.assists.stepTo(me.x + ((me.x - unit.x) / away) * BACK_OFF, me.y + ((me.y - unit.y) / away) * BACK_OFF, nowMs)
-    } else if (WAYPOINT_CLASS_IDS_113C.has(unit.classId)) this.stop('Autopilot needs you', 'gold', "The waypoint wouldn't open")
+      this.host.assists.journal?.('stubborn', { classId: unit.classId, rounds: rounds + 1, npc: this.host.world.npcInteraction.npcId, window: this.host.world.npcInteraction.window })
+      const away = Math.atan2(me.y - unit.y, me.x - unit.x) + (rounds * 2 * Math.PI) / WAYPOINT_ROUNDS
+      this.host.assists.stepTo(unit.x + Math.cos(away) * BACK_OFF, unit.y + Math.sin(away) * BACK_OFF, nowMs)
+    } else if (waypoint) this.stop('Autopilot needs you', 'gold', "The waypoint wouldn't open")
     else if (plan?.target?.unit?.id === unit.id) this.skip(plan, `${unit.name ?? 'It'} wouldn't respond`)
     else this.walkRoute(nowMs)
   }
@@ -1201,6 +1207,10 @@ export class Autopilot {
     return world.self.life < (hudManager.maxHp || world.self.maxLife) * HEAL_LIFE
   }
 
+  private dryAndBroke(): boolean {
+    return this.healingPotions() === 0 && this.host.world.self.gold + this.host.world.self.stashGold < POTION_GOLD
+  }
+
   private healingPotions(): number {
     const { belt, inventory } = this.host.world.containers
     return [...belt.values(), ...inventory.values()].filter((item) => /^(hp|rv)/.test(item.code)).length
@@ -1369,8 +1379,14 @@ export class Autopilot {
   private returnThroughPortal(nowMs: number): boolean {
     const { world } = this.host
     const portal = world.getUnitsByType(2).filter((unit) => unit.classId === TOWN_PORTAL_CLASS).sort((a, b) => distance(a, world.self) - distance(b, world.self))[0]
+    const home = this.portalHome
+    if (!portal && home && (distance(home, world.self) > REACH || nowMs - home.at < PORTAL_LOOK_MS)) {
+      this.say('Back through the portal')
+      this.walkTowards(home, nowMs)
+      return true
+    }
     if (!portal) {
-      this.trip = null
+      Object.assign(this, { trip: null, portalHome: null })
       return false
     }
     this.say('Back through the portal')

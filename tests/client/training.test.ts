@@ -39,9 +39,9 @@ describe('training before a hard goal', () => {
     expect(trainingGround(COLD_PLAINS, me(12), new Set([1, 3, 4]), new Set(), everything)).toBe(rival)
   })
 
-  it('counts a retreat as half a death and moves on from areas that give too little experience', () => {
-    expect(readiness(me(20), ARCANE, setbacksOf(1, 2))).toMatchObject({ level: 22 })
-    expect(readiness(me(20), ARCANE, setbacksOf(0, 3))).toBeNull()
+  it('counts a retreat as a quarter of a death and moves on from areas that give too little experience', () => {
+    expect(readiness(me(20), ARCANE, setbacksOf(1, 4))).toMatchObject({ level: 22 })
+    expect(readiness(me(20), ARCANE, setbacksOf(0, 7))).toBeNull()
     expect(slowGround(20, 500, 5 * 60_000)).toBe(true)
     expect(slowGround(20, 20_000, 5 * 60_000)).toBe(false)
     expect(slowGround(20, 0, 60_000)).toBe(false)
