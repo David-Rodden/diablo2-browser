@@ -515,7 +515,7 @@ describe('autopilot', () => {
     world.self.gold = 2000
     Array.from({ length: 16 }, (_, i) => world.containers.belt.set(i, { id: i, code: 'hp3' }))
     ;[40, 41].forEach((id) => world.containers.inventory.set(id, { id, code: 'tsc', gridX: id - 40, gridY: 0, invWidth: 1, invHeight: 1 }))
-    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, bodyLoc }))
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
     tick()
     expect(guide.pilotStatus).not.toBe('Hiring a mercenary')
     tick(21_000)
@@ -528,7 +528,7 @@ describe('autopilot', () => {
     world.self.gold = 2000
     Array.from({ length: 16 }, (_, i) => world.containers.belt.set(i, { id: i, code: 'hp3' }))
     ;[40, 41].forEach((id) => world.containers.inventory.set(id, { id, code: 'tsc', gridX: id - 40, gridY: 0, invWidth: 1, invHeight: 1 }))
-    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, bodyLoc }))
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
     tick()
     tick(21_000)
     expect(guide.pilotStatus).not.toBe('Hiring a mercenary')
@@ -823,7 +823,7 @@ describe('autopilot', () => {
     const { world, guide, tick } = setup({ goal: { level: 2, title: 'Den of Evil' }, target: { x: 130, y: 100, label: 'Den of Evil' } })
     Object.assign(guide, { currentPlan: guide.update() })
     Object.assign(world.self, { gold: 0, stashGold: 50_000 })
-    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: bodyLoc, bodyLoc }))
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: bodyLoc, code: 'cap', bodyLoc }))
     for (let i = 0; i < 4; i++) {
       Object.assign(world.self, { life: 20 })
       tick(6000)
@@ -876,7 +876,7 @@ describe('autopilot', () => {
     units.push(unit({ id: 2, unitType: 'player', name: 'Hero', x: 101, y: 100, mode: 17 }))
     tick()
     expect(guide.pilotStatus).toBe('Picking up your body')
-    ;[1, 3, 4].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, bodyLoc }))
+    ;[1, 3, 4].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
     tick(1000)
     tick(1000)
     expect([guide.pilotStatus, guide.detour]).toEqual([expect.not.stringContaining('body'), null])
