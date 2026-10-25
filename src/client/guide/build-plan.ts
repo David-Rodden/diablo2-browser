@@ -16,6 +16,7 @@ export interface Build {
 const STAT_KEYS: Readonly<Record<Attribute, BaseStatKey>> = { strength: 'str', dexterity: 'dex', vitality: 'vit', energy: 'ene' }
 const SKILL_IDS = new Map(SKILLS_CATALOG.map((skill) => [skill.name, skill.id]))
 const PREREQS = new Map(SKILLS_CATALOG.map((skill) => [skill.id, skill.reqskills]))
+const SAVED_POINTS = 3
 
 interface ClassBuilds {
   readonly start: Build['start']
@@ -36,11 +37,11 @@ export const buildOf = (charClass: number | null, hard: (skillId: number) => num
 
 const withPrereqs = (skillId: number, hard: (id: number) => number): readonly number[] => [...(PREREQS.get(skillId) ?? []).filter((id) => hard(id) === 0).flatMap((id) => withPrereqs(id, hard)), skillId]
 
-export function nextSkill(build: Build, hard: (skillId: number) => number, canAllocate: (skillId: number) => boolean): number | null {
+export function nextSkill(build: Build, hard: (skillId: number) => number, canAllocate: (skillId: number) => boolean, banked = 0): number | null {
   for (const { id } of build.skills.map(([name, level]) => ({ id: SKILL_IDS.get(name)!, level })).filter(({ id, level }) => hard(id) < level)) {
     const pick = withPrereqs(id, hard).find(canAllocate)
     if (pick !== undefined) return pick
-    if (hard(id) === 0) return null
+    if (hard(id) === 0 && banked < SAVED_POINTS) return null
   }
   return null
 }

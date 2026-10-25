@@ -1337,7 +1337,7 @@ export class Autopilot {
     const build = buildOf(world.self.charClass, (id) => tree.getHardPoints(id))
     if (build === null) return
     const attrs = hudManager.charSheet.attrs
-    const skill = tree.unspentSkillPoints > 0 ? nextSkill(build, (id) => tree.getHardPoints(id), (id) => tree.canAllocate(id)) : null
+    const skill = tree.unspentSkillPoints > 0 ? nextSkill(build, (id) => tree.getHardPoints(id), (id) => tree.canAllocate(id), tree.unspentSkillPoints) : null
     const stat = attrs.statPoints > 0 ? nextStat(build, { str: attrs.baseStr ?? 0, dex: attrs.baseDex ?? 0, vit: attrs.baseVit ?? 0, ene: attrs.baseEne ?? 0 }) : null
     if (skill !== null) hudModel.allocateSkill(skill)
     else if (stat !== null) hudModel.allocateStat(stat)
