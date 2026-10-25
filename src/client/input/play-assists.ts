@@ -23,6 +23,8 @@ import { ThreatSense, type Danger, type Defender, type Foe } from './threat-sens
 export const ITEM_PICKUP_REACH_SUBTILES = 4
 const PICKUP_RETRY_MS = 600
 const PICKUP_DETOUR_RETRY_MS = 2500
+const PICKUP_TRIES = 5
+const PICKUP_GIVE_UP_MS = 120_000
 const LOOT_STEP_MS = 200
 const LOOT_STEP_AHEAD = 8
 const AUTO_PICKUP_RADIUS_SUBTILES = 20
@@ -150,6 +152,7 @@ export class PlayAssists {
   readonly threat = new ThreatSense()
   private readonly autoPotion = new AutoPotionPlanner()
   private readonly pickupRetryAt = new Map<number, number>()
+  private readonly pickupTries = new Map<number, number>()
   private autoCombatKeyValue: string | null = null
   private autoCombatOn = false
   private targetId: number | null = null
@@ -300,7 +303,7 @@ export class PlayAssists {
   pickUpNearbyLoot(nowMs: number): void {
     const { world } = this.host
     const { ground } = world.containers
-    ;[...this.pickupRetryAt.keys()].filter((id) => !ground.has(id)).forEach((id) => this.pickupRetryAt.delete(id))
+    for (const known of [this.pickupRetryAt, this.pickupTries]) [...known.keys()].filter((id) => !ground.has(id)).forEach((id) => known.delete(id))
     if (world.isDead || this.standDown || this.holdLoot || this.isInWorldInteraction() || this.inventoryCare.busy) return
     const { loot, nearest } = this.lootRoute(nowMs)
     if (nearest === undefined) {
@@ -317,6 +320,14 @@ export class PlayAssists {
     const room = this.roomFor(unit.id)
     if (room !== null && room.kind !== 'fits') this.inventoryCare.makeRoom(room, ground.get(unit.id)!)
     else if (inReach) {
+      const tries = (this.pickupTries.get(unit.id) ?? 0) + 1
+      this.pickupTries.set(unit.id, tries)
+      if (tries > PICKUP_TRIES) {
+        this.pickupRetryAt.set(unit.id, nowMs + PICKUP_GIVE_UP_MS)
+        this.pickupTries.delete(unit.id)
+        this.journal?.('loot-stuck', { id: unit.id, name: unit.name, spot: [Math.round(unit.x), Math.round(unit.y)] })
+        return
+      }
       if (room !== null) this.itemPickup = { id: unit.id, until: nowMs + PICKUP_RETRY_MS }
       this.host.sendCommand({ type: 'ItemPickup', itemId: unit.id, toCursor: false }, nowMs)
     } else if (stepping) this.host.triggerPrimaryWorldAction(path[LOOT_STEP_AHEAD]!.x, path[LOOT_STEP_AHEAD]!.y, null, nowMs)
