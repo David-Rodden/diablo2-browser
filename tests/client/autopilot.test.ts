@@ -135,6 +135,17 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).not.toBe('Back through the portal')
   })
 
+  it('sells spare finds whenever the purse cannot pay for a full restock', () => {
+    const hardUp = (gold: number) => {
+      const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+      ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+      world.self.gold = gold
+      tick()
+      return (assists.inventoryCare as { hardUp?: boolean }).hardUp
+    }
+    expect([hardUp(450), hardUp(700)]).toEqual([true, false])
+  })
+
   it('asks the server for fresh quest state when the step has not moved for a while', () => {
     const { hudModel, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     tick()

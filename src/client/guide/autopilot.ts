@@ -1372,7 +1372,7 @@ export class Autopilot {
     const { world, hudManager, assists } = this.host
     const me = world.self
     const care = assists.inventoryCare
-    care.hardUp = me.gold < BARE_SHOP_GOLD && (this.bare() > 0 || this.healingPotions() === 0)
+    care.hardUp = me.gold < Math.max(BARE_SHOP_GOLD, me.level * RESERVE_PER_LEVEL * 2) || (me.gold < BARE_SHOP_GOLD * 2 && this.healingPotions() === 0)
     const dry = this.healingPotions() === 0
     const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : (key === 'potions' && dry) || key === 'cube' ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
     const ready = (key: string) => nowMs - (this.errandsAt.get(key) ?? Number.NEGATIVE_INFINITY) >= cooldown(key)
