@@ -2,7 +2,6 @@
  * ServerEvent State Machine Dispatcher & Outgoing Command Applier (`src/client/world/world-event-applier.ts`).
  */
 
-import { MONSTATS_HCIDX_COUNT } from '../../netproto/d2gs/s2c/monstats2-comp-bits.ts'
 import {
   ClickButtonId,
   unitTypeFromId,
@@ -15,6 +14,7 @@ import {
   type UnitRef,
   type UnitType,
   type UnitTypeId,
+  MONSTATS_HCIDX_COUNT,
 } from '../../netproto/index.ts'
 import { resolveUnitMonSoundRow113c } from '../../common/audio/mon-sounds-113c.ts'
 import { getSoundIdByName113c } from '../../common/audio/sounds-113c.ts'

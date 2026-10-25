@@ -441,16 +441,14 @@ export function generateD2sMapSeed(previousSeed?: number, rng?: D2Rng): number {
       globalThis.crypto.getRandomValues(buf)
       s = buf[0] >>> 0
     } else {
-      const hi = Math.floor(Math.random() * 0x10000)
-      const lo = Math.floor(Math.random() * 0x10000)
-      s = ((hi << 16) | lo) >>> 0
+      s = Math.imul(prev ^ (attempt + 1), 0x9e3779b1) >>> 0
     }
     if (s !== 0 && s !== prev) {
       return s
     }
   }
 
-  const fallback = ((Date.now() ^ Math.floor(Math.random() * 0x100000000)) >>> 0)
+  const fallback = Math.imul(prev + 0x6d2b79f5, 0x85ebca6b) >>> 0
   return fallback !== prev && fallback !== 0 ? fallback : ((prev + 1) >>> 0) || 1
 }
 
