@@ -13,7 +13,14 @@
   },
   "range": 70,
   "lingerMs": 600000,
+  "noExit": [73],
   "bosses": ["andariel", "duriel", "mephisto", "diablo", "baalcrab"],
   "doomMarginMs": 2500,
-  "retreatLife": 0.45
+  "retreatLife": 0.45,
+  "resists": {
+    "Andariel": { "row": 6, "code": "yps", "potion": "antidotes" },
+    "Duriel": { "row": 14, "code": "wms", "potion": "thawing potions" }
+  },
+  "resistCount": 8,
+  "bossPotions": 6
 }

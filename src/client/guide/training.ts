@@ -47,6 +47,7 @@ export const lockedLevels = (words: ArrayLike<number>): Set<number> =>
 
 export const GEAR_HUNT_MS = TRAINING.gearMinutes * 60_000
 export const GEAR_REST_MS = TRAINING.gearRestMinutes * 60_000
+export const NAKED_SLOTS = TRAINING.nakedSlots
 
 export function readiness(me: Trainee, questLevel: number, setbacks: number, gearHunt = true): Readiness | null {
   const act = actOfLevel(questLevel)

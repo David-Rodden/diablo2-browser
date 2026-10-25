@@ -1,7 +1,7 @@
 {
-  "Rogue Encampment": { "healer": "akara", "potions": "akara", "repair": "charsi", "mercs": "kashya", "gamble": "gheed" },
-  "Lut Gholein": { "healer": "fara", "potions": "drognan", "repair": "fara", "mercs": "greiz", "gamble": "elzix" },
-  "Kurast Docks": { "healer": "ormus", "potions": "ormus", "repair": "hratli", "mercs": "asheara", "gamble": "alkor" },
-  "Pandemonium Fortress": { "healer": "jamella", "potions": "jamella", "repair": "halbu", "mercs": "tyrael2", "gamble": "jamella" },
-  "Harrogath": { "healer": "malah", "potions": "malah", "repair": "larzuk", "mercs": "qual-kehk", "gamble": "drehya" }
+  "Rogue Encampment": { "healer": "akara", "potions": "akara", "repair": "charsi", "mercs": "kashya", "gamble": "gheed", "resists": "akara" },
+  "Lut Gholein": { "healer": "fara", "potions": "drognan", "repair": "fara", "mercs": "greiz", "gamble": "elzix", "resists": "lysander" },
+  "Kurast Docks": { "healer": "ormus", "potions": "ormus", "repair": "hratli", "mercs": "asheara", "gamble": "alkor", "resists": "alkor" },
+  "Pandemonium Fortress": { "healer": "jamella", "potions": "jamella", "repair": "halbu", "mercs": "tyrael2", "gamble": "jamella", "resists": "jamella" },
+  "Harrogath": { "healer": "malah", "potions": "malah", "repair": "larzuk", "mercs": "qual-kehk", "gamble": "drehya", "resists": "malah" }
 }

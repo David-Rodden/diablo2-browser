@@ -155,6 +155,21 @@ describe('autopilot', () => {
     expect([guide.pilotStatus, hudModel.useItem.mock.calls]).toEqual(['Using the Book of Skill', [[9]]])
   })
 
+  it('buys thawing potions in town before Duriel and drinks them in his lair', () => {
+    const shop = setup({ goal: { level: 70, title: 'The Seven Tombs', row: 14 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    Object.assign(shop.guide, { currentPlan: shop.guide.update() })
+    ;[1, 2, 3, 4, 5].forEach((id) => shop.world.containers.belt.set(id, { id, code: 'hp2' }))
+    shop.world.containers.inventory.set(8, { id: 8, code: 'tbk', quantity: 20, invWidth: 1, invHeight: 2 })
+    shop.world.containers.inventory.set(9, { id: 9, code: 'ibk', quantity: 20, invWidth: 1, invHeight: 2 })
+    shop.world.self.gold = 1000
+    shop.tick()
+    expect(shop.guide.pilotStatus).toBe('Buying thawing potions for Duriel')
+    const lair = setup({ goal: { level: 73, title: 'The Seven Tombs', row: 14 }, target: { x: 130, y: 100, label: 'Duriel' } }, 73)
+    lair.world.containers.inventory.set(7, { id: 7, code: 'wms', invWidth: 1, invHeight: 1 })
+    lair.tick()
+    expect(lair.hudModel.useItem).toHaveBeenCalledWith(7)
+  })
+
   it('asks the server for fresh quest state when the step has not moved for a while', () => {
     const { hudModel, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     tick()
@@ -432,6 +447,31 @@ describe('autopilot', () => {
       return guide.pilotStatus === 'Low on life, heading to town'
     }
     expect([fight(19), fight(211)]).toEqual([false, true])
+  })
+
+  it("will not step into Duriel's Lair without a Town Portal to get back out", () => {
+    const { assists, guide, units, tick } = setup({ goal: { level: 73, title: 'The Seven Tombs' }, hint: "Enter Duriel's Lair", step: { kind: 'portal', level: 73, hint: "Enter Duriel's Lair", find: [100] }, target: { x: 130, y: 100, label: 'Portal' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 160, y: 100 }))
+    assists.hasTownPortal = () => false
+    tick()
+    expect(guide.pilotStatus).toContain('no way out without a Town Portal')
+  })
+
+  it("leaves Duriel's Lair by portal when its next goal is elsewhere, and does not come back through", () => {
+    const { pilot, world, guide, units, view, tick } = setup({ goal: { level: 45, title: 'Training' }, hint: 'Take the portal to Tal Rasha\'s Tomb 5', step: { kind: 'portal', level: 70, hint: '', find: [] }, target: null })
+    Object.assign(guide, { currentPlan: guide.update() })
+    Object.assign(world, { areaId: 73 })
+    tick()
+    expect(guide.pilotStatus).toBe("Heading to town by portal: no way out of Duriel's Lair on foot")
+    Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+    Object.assign(view, { id: ROGUE_ENCAMPMENT })
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    world.self.gold = 0
+    units.push(unit({ id: 50, unitType: 'object', classId: 59, x: 103, y: 100 }))
+    tick()
+    tick(5000)
+    expect([guide.pilotStatus, (pilot as unknown as { trip: string | null }).trip]).not.toContain('Back through the portal')
   })
 
   it('calls off a retreat once life is back and the belt has potions', () => {
@@ -853,6 +893,15 @@ describe('autopilot', () => {
     tick(46_000)
     tick()
     expect(guide.pilotStatus).not.toBe('Raising an army before the Summoner')
+  })
+
+  it('keeps hunting for gear while it wears almost nothing, even after a long hunt', () => {
+    const { pilot, world, guide, tick } = setup({ goal: { level: 50, title: 'Arcane Sanctuary' }, target: { x: 130, y: 100, label: 'Harem' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    Object.assign(world.self, { level: 23, gold: 0, stashGold: 50_000 })
+    Object.assign(pilot as unknown as { gearRestUntil: number }, { gearRestUntil: Number.POSITIVE_INFINITY })
+    tick()
+    expect((guide.detour as { hint?: string } | null)?.hint).toContain('Gathering gear')
   })
 
   it('goes training first when the next goal is too dangerous for its level', () => {
