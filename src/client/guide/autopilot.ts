@@ -183,6 +183,7 @@ const BELT_ROWS = 4
 const SHOP_GOLD = 6000
 const BARE_SHOP_GOLD = 300
 const BARE_RESERVE = 150
+const RESERVE_PER_LEVEL = 25
 const PURSE_LOW = 3000
 const PURSE_GOLD = 10_000
 const POTION_SHARE = 4
@@ -1719,7 +1720,7 @@ export class Autopilot {
   private async buyUpgrade(bought = 1): Promise<void> {
     const { world, hudManager, hudModel, assists } = this.host
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || world.npcInteraction.npcId === null) return
-    const budget = world.self.gold - (this.bare() > 0 ? BARE_RESERVE : SPARE_GOLD)
+    const budget = world.self.gold - (this.bare() > 0 ? Math.max(BARE_RESERVE, world.self.level * RESERVE_PER_LEVEL) : SPARE_GOLD)
     const price = this.priceList()
     const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
     const pick = this.store()
