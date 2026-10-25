@@ -124,6 +124,13 @@ describe('path guide plan', () => {
     expect(plan.doors).toEqual([9])
   })
 
+  it('keeps heading for the used orifice until the portal to Duriel shows up beside it', () => {
+    const orifice = { id: 70, unitType: 'object', classId: 152, mode: 2, x: 1030, y: 2010, hidden: false, dead: false, name: 'orifice' } as unknown as ClientUnit
+    const tomb = { ...host, areaId: () => 72, objects: () => [orifice] }
+    const plan = planGuide(tomb, 'story', undefined, new Set(), false, new Set(), { level: 73, title: "Duriel's Lair" })!
+    expect([plan.hint, plan.target?.unit]).toEqual(["Enter Duriel's Lair", { id: 70, kind: 'object' }])
+  })
+
   it('aims a seam exit at the open gap in the fence, not at the anchor tile', () => {
     const fenced = new Uint8Array(size * size).fill(1)
     for (let x = 0; x < size; x++) if (x < 24 || x > 28) fenced[x] = fenced[size + x] = fenced[2 * size + x] = 0
