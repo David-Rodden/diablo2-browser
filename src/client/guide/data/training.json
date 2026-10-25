@@ -9,6 +9,12 @@
     "Furnace of Pain": 135,
     "Uber Tristram": 136
   },
+  "locks": {
+    "Palace": { "levels": [50, 51, 52, 53, 54], "quest": 12, "once": "started" },
+    "Durance of Hate": { "levels": [100, 101, 102], "quest": 18, "once": "done" },
+    "Nihlathak's Temple": { "levels": [121, 122, 123, 124], "quest": 37, "once": "done" },
+    "Worldstone Keep": { "levels": [128, 129, 130, 131, 132], "quest": 39, "once": "done" }
+  },
   "belowGoal": 1,
   "safety": 2,
   "spread": 6,

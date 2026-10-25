@@ -17,6 +17,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     areaId: area,
     self,
     merc: null,
+    quests: new Uint16Array(48),
     containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map(), merc: new Map() },
     getUnit: (_: string, id: number) => units.find((unit) => unit.id === id),
     getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
@@ -644,6 +645,36 @@ describe('autopilot', () => {
     expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
     tick(700)
     expect(guide.pilotStatus).toContain('Kill every monster in the Den (')
+  })
+
+  it('breaks off a fight that has gone nowhere for two minutes, but never walks away from a boss', () => {
+    const { assists, guide, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(assists, { fighting: true, autoCombatKey: 'E' })
+    units.push(unit({ id: 60, x: 104, y: 100, name: 'Flayer Shaman' }))
+    tick()
+    expect(guide.pilotStatus).toBe('Fighting')
+    for (let i = 0; i < 125; i++) tick(1000)
+    expect([guide.pilotStatus, assists.standDown]).toEqual(['Head to Blood Moor', true])
+    const boss = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(boss.assists, { fighting: true, autoCombatKey: 'E' })
+    boss.units.push(unit({ id: 61, x: 104, y: 100, classId: 156, name: 'Andariel' }))
+    for (let i = 0; i < 125; i++) boss.tick(1000)
+    expect(boss.guide.pilotStatus).toBe('Fighting')
+  })
+
+  it('leaves a crowd that is cutting it down sooner than a lone monster, and stops dodging once it is escaping', () => {
+    const run = (crowd: number) => {
+      const { world, assists, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+      ;[1, 2, 3, 4, 5, 6].forEach((id) => world.containers.belt.set(id, { id, code: 'hp3' }))
+      units.push(...Array.from({ length: crowd }, (_, i) => unit({ id: 60 + i, x: 103 + (i % 4), y: 98 + Math.floor(i / 4), name: 'Fallen' })))
+      Object.assign(assists, { dodging: vi.fn(() => true) })
+      tick(500)
+      world.self.life = 66
+      tick(1000)
+      return { status: guide.pilotStatus, portal: assists.castTownPortal.mock.calls.length }
+    }
+    expect(run(1).status).toBe('Dodging')
+    expect(run(12)).toMatchObject({ status: 'Taking a beating, heading to town', portal: 1 })
   })
 
   it('pulls the sewer lever before taking the stairs it opens', () => {

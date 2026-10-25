@@ -3,7 +3,7 @@ import { MONSTER_PATH_IDS } from '../../common/path/monster-path-data.ts'
 import { getLevelMonsterLevel113c } from '../../common/world/levels-monlvl-113c.ts'
 import { CANONICAL_113C_OBJECTS, WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import type { ItemData } from '../../netproto/index.ts'
-import { TELEPORT } from '../input/combat-planner.ts'
+import { BOSS_CLASSES, TELEPORT } from '../input/combat-planner.ts'
 import { scrollsCarried, scrollSource } from '../input/town-portal.ts'
 import { isClosedDoor, type PlayAssists } from '../input/play-assists.ts'
 import type { LevelView } from '../map/level-view.ts'
@@ -32,7 +32,7 @@ import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
 import { WAYPOINT_LEVELS } from './level-links.ts'
-import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
+import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, lockedLevels, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
 import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 import THREAT from '../../common/skills/data/monster-threat.json'
@@ -68,6 +68,9 @@ const TELEPORT_MISSES = 3
 const TELEPORT_OFF_MS = 60_000
 const REACH = 4
 const ARRIVED = 8
+const FIGHT_ROAM = 20
+const FUTILE_FIGHT_MS = 120_000
+const DISENGAGE_MS = 25_000
 const SPOT_NEAR = 20
 const INTERACT_REACH = 14
 const QUEST_FOCUS = 25
@@ -88,6 +91,10 @@ const DEATH_CAUTION = 0.08
 const MAX_CAUTION = 0.24
 const HUNT_CAUTION = 0.16
 const DOOM_MS = 4000
+const KITE_CROWD = 3
+const DOOM_MAX_MS = 7000
+const DOOM_CROWD = 4
+const DOOM_PER_FOE_MS = 250
 const DOOM_MIN_LOSS = 0.15
 const ELITE_PULL = 12
 const PACK_PULL = 3
@@ -254,6 +261,9 @@ export class Autopilot {
   private gearRestUntil = Number.NEGATIVE_INFINITY
   private rotatedAt = Number.NEGATIVE_INFINITY
   private reachedSpot: string | null = null
+  private reading: Readonly<Record<string, number | null>> = {}
+  private fightWatch: { readonly x: number; readonly y: number; readonly since: number } | null = null
+  private disengagedUntil = Number.NEGATIVE_INFINITY
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -419,10 +429,14 @@ export class Autopilot {
       return
     }
     const need = readiness(me, this.questLevel, this.setbacks(nowMs), nowMs >= this.gearRestUntil)
-    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.trainedOut, this.rateOf())
+    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.offLimits(), this.rateOf())
     if (!need || ground === null) return
     this.training = { ...need, ground, since: nowMs }
     this.toast(need.why, `In ${levelName(ground)}`, 'gold')
+  }
+
+  private offLimits(): ReadonlySet<number> {
+    return new Set([...this.trainedOut, ...lockedLevels(this.host.world.quests)])
   }
 
   private setbacks(nowMs: number): number {
@@ -476,7 +490,7 @@ export class Autopilot {
     if (!slow && this.exploreLevel(view, nowMs, `${training.why} in ${levelName(training.ground)}`)) return true
     this.trainedOut.add(training.ground)
     this.explored.delete(training.ground)
-    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.trainedOut, this.rateOf())
+    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.offLimits(), this.rateOf())
     if (next === null) this.trainedOut.clear()
     Object.assign(this, { training: { ...training, ground: next ?? training.ground }, ground: null })
     return true
@@ -498,18 +512,19 @@ export class Autopilot {
     this.assess(nowMs)
     this.host.guide.detour = this.corpseGoal() ?? this.trainingGoal()
     const body = town ? null : this.bodyRun(nowMs)
-    assists.pilotCombat = assists.autoCombatKey !== null && danger === null && (body === null || this.cornered(nowMs))
-    assists.standDown = danger !== null && !this.cornered(nowMs)
+    const disengaged = this.futileFight(nowMs)
+    assists.pilotCombat = assists.autoCombatKey !== null && danger === null && !disengaged && (body === null || this.cornered(nowMs))
+    assists.standDown = (danger !== null || disengaged) && !this.cornered(nowMs)
     assists.holdLoot = this.questInReach()
     if (danger === null) this.spend(nowMs)
     if (this.host.hudManager.leftPanel === 'waypoint' || this.host.hudManager.leftPanel === 'orifice') this.answerPanels(nowMs)
     else if (this.clearCursor(nowMs)) this.say('Putting away the item in hand')
     else if (this.rearm()) this.say('Taking my weapon back')
-    else if (assists.dodging(nowMs)) this.say('Dodging')
+    else if ((danger === null || !assists.hasTownPortal()) && assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (danger !== null) this.retreat(danger, nowMs)
     else if (body !== null && !this.cornered(nowMs)) this.recover(body, nowMs)
-    else if (assists.isFighting(nowMs)) this.say('Fighting')
+    else if (!disengaged && assists.isFighting(nowMs)) this.say('Fighting')
     else if (!this.questInReach() && this.looting(nowMs)) this.say('Picking up loot')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
   }
@@ -937,8 +952,11 @@ export class Autopilot {
     const burst = Math.max(...this.lifeLog.map((entry) => entry.life)) - life
     const retreatAt = Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0))) + this.caution(nowMs)
     const doomedIn = burst > DOOM_MIN_LOSS ? (life * BURST_MS) / burst : Infinity
+    const crowd = world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.assists.isHostile(unit) && distance(unit, me) <= THREAT.near).length
+    const horizon = Math.min(DOOM_MAX_MS, DOOM_MS + Math.max(0, crowd - DOOM_CROWD) * DOOM_PER_FOE_MS)
+    this.reading = { life: Math.round(life * 100) / 100, burst: Math.round(burst * 100) / 100, doomedIn: Number.isFinite(doomedIn) ? Math.round(doomedIn) : null, horizon, healing, retreatAt: Math.round(retreatAt * 100) / 100 }
     if (life < retreatAt) return 'Low on life, heading to town'
-    if (doomedIn < DOOM_MS) return 'Taking a beating, heading to town'
+    if (doomedIn < horizon) return 'Taking a beating, heading to town'
     if (life < THREAT.doomLife && this.outmatched()) return 'Too dangerous here, heading to town'
     if (healing === 0 && life < DRY_LIFE) return 'Out of healing potions, heading to town'
     return (!stocked && burst >= BURST_LOSS && life < DRY_LIFE) || (healing <= 1 && life < LAST_POTION_LIFE) ? 'Taking a beating, heading to town' : null
@@ -949,6 +967,22 @@ export class Autopilot {
     const me = world.self
     const { dps, trusted } = assists.dangerOf(world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= THREAT.near))
     return trusted && (me.life / Math.max(1e-6, dps)) * 1000 < THREAT.escapeMs
+  }
+
+  private futileFight(nowMs: number): boolean {
+    const { world, assists } = this.host
+    const me = world.self
+    if (nowMs < this.disengagedUntil) return true
+    const watch = this.fightWatch
+    if (!assists.isFighting(nowMs) || this.town()) this.fightWatch = null
+    else if (!watch || distance(watch, me) > FIGHT_ROAM) this.fightWatch = { x: me.x, y: me.y, since: nowMs }
+    else if (nowMs - watch.since > FUTILE_FIGHT_MS && !world.getUnitsByType(1).some((unit) => !unit.dead && BOSS_CLASSES.has(unit.classId) && distance(unit, me) <= HUNT_RADIUS)) {
+      this.fightWatch = null
+      this.disengagedUntil = nowMs + DISENGAGE_MS
+      assists.journal?.('disengage', { from: [Math.round(me.x), Math.round(me.y)], seconds: Math.round((nowMs - watch.since) / 1000) })
+      return true
+    }
+    return false
   }
 
   private cornered(nowMs: number): boolean {
@@ -1161,6 +1195,7 @@ export class Autopilot {
   private retreat(why: string, nowMs: number): void {
     const { world, assists } = this.host
     const me = world.self
+    if (this.trip !== 'retreat') this.host.assists.journal?.('retreat', { why, ...this.reading, hostiles: world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= THREAT.near).length })
     if (this.trip !== 'retreat' && !planned(why)) this.retreats = [...this.retreats.filter((entry) => nowMs - entry.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? this.host.world.areaId }]
     Object.assign(this, { trip: 'retreat', retreatWhy: why })
     this.say(why)
@@ -1168,7 +1203,7 @@ export class Autopilot {
     this.kiteSince = threats.length === 0 ? null : (this.kiteSince ?? nowMs)
     const portal = world.getUnitsByType(2).find((unit) => unit.classId === TOWN_PORTAL_CLASS && distance(unit, me) <= PORTAL_REACH)
     if (portal) this.touch(portal, nowMs)
-    else if (threats.length > 0 && nowMs - this.kiteSince! < KITE_MS && this.kite(threats, nowMs)) return
+    else if (threats.length > 0 && threats.length <= KITE_CROWD && nowMs - this.kiteSince! < KITE_MS && this.kite(threats, nowMs)) return
     else if (assists.hasTownPortal()) this.castPortal(nowMs)
     else this.walkHome(nowMs)
   }

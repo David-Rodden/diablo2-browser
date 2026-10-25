@@ -39,6 +39,11 @@ export const setbacksOf = (deaths: number, retreats: number) => deaths + retreat
 
 export const monsterLevel = (level: number, difficulty: 0 | 1 | 2) => getLevelMonsterLevel113c(level, difficulty)
 
+const DONE = 0x0001 | 0x2000
+
+export const lockedLevels = (words: ArrayLike<number>): Set<number> =>
+  new Set(Object.values(TRAINING.locks).flatMap(({ levels, quest, once }) => ((words[quest] ?? 0) & (once === 'done' ? DONE : 0xffff) ? [] : levels)))
+
 export const GEAR_HUNT_MS = TRAINING.gearMinutes * 60_000
 export const GEAR_REST_MS = TRAINING.gearRestMinutes * 60_000
 

@@ -21,6 +21,7 @@ const ORIFICE = 152
 const TO_THE_TOMB: Stage = { ...at('tomb', "Take the Staff to Tal Rasha's Tomb", ORIFICE), bring: 'hst' }
 const talk = (name: string, npc: string, hint = `Talk to ${name}`): Stage => at('town', hint, npc)
 const SEALS: Find = [392, 393, 394, 395, 396]
+const COUNCIL: Find = ['councilmember1', 'councilmember2', 'councilmember3']
 
 export const OBJECTIVES: readonly (readonly Objective[])[] = [
   [
@@ -118,7 +119,7 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa3q21a: talk('Cain', 'cain3', "Ask Cain about Khalim's relics"),
   qstsa3q21: at(85, "Find Khalim's Eye in the Spider Cavern"),
   qstsa3q22: at(91, "Find Khalim's Brain in the Flayer Dungeon"),
-  qstsa3q23: at(83, "Take Khalim's Flail from the High Council"),
+  qstsa3q23: at(83, "Take Khalim's Flail from the High Council", COUNCIL),
   qstsa3q24: at(93, "Find Khalim's Heart in the sewers"),
   qstsa3q25: at('town', "Combine Khalim's relics in the Cube"),
   qstsa3q26: at(83, 'Smash the Compelling Orb', 404),
@@ -134,8 +135,8 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa3q44: talk('Alkor', 'alkor', 'Give the Golden Bird to Alkor'),
   qstsa3q45: talk('Alkor', 'alkor'),
   qstsa3q51a: talk('Ormus', 'ormus'),
-  qstsa3q51: at(83, 'Find the Blackened Temple'),
-  qstsa3q52: at(83, 'Kill the High Council'),
+  qstsa3q51: at(83, 'Find the Blackened Temple', COUNCIL),
+  qstsa3q52: at(83, 'Kill the High Council', COUNCIL),
   qstsa3q53: talk('Cain', 'cain3'),
   qstsa3q61a: talk('Ormus', 'ormus'),
   qstsa3q61: at(83, 'Smash the Compelling Orb', 404),

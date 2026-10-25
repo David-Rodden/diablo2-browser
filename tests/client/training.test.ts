@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bareSlots, monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
+import { bareSlots, lockedLevels, monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
 
 const BLOOD_MOOR = 2
 const COLD_PLAINS = 3
@@ -45,5 +45,15 @@ describe('training before a hard goal', () => {
     expect(slowGround(20, 500, 5 * 60_000)).toBe(true)
     expect(slowGround(20, 20_000, 5 * 60_000)).toBe(false)
     expect(slowGround(20, 0, 60_000)).toBe(false)
+  })
+
+  it('keeps the palace, the Durance and the late act 5 areas off limits until the quest that opens them', () => {
+    const words = new Uint16Array(48)
+    expect([...lockedLevels(words)]).toEqual(expect.arrayContaining([50, 54, 100, 121, 128]))
+    words[12] = 0x0004
+    words[18] = 0x0001
+    expect(lockedLevels(words).has(52)).toBe(false)
+    expect(lockedLevels(words).has(101)).toBe(false)
+    expect(lockedLevels(words).has(124)).toBe(true)
   })
 })
