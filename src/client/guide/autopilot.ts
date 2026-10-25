@@ -296,6 +296,8 @@ export class Autopilot {
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
   private lastSpend = Number.NEGATIVE_INFINITY
   private corpse: { readonly level: number; readonly x: number; readonly y: number } | null = null
+  private bodyTouch: { readonly id: number; readonly worn: number } | null = null
+  private readonly ghosts = new Set<number>()
   private deaths: readonly { readonly at: number; readonly level: number }[] = []
   private retreats: readonly { readonly at: number; readonly level: number }[] = []
   private forgiven = Number.NEGATIVE_INFINITY
@@ -377,7 +379,7 @@ export class Autopilot {
 
   private ownBody(): ClientUnit | undefined {
     const { world } = this.host
-    return world.getUnitsByType(0).find((unit) => unit.id !== world.selfId && unit.name === world.self.name)
+    return world.getUnitsByType(0).find((unit) => unit.id !== world.selfId && unit.name === world.self.name && !this.ghosts.has(unit.id))
   }
 
   private bodyRun(nowMs: number): ClientUnit | null {
@@ -385,6 +387,12 @@ export class Autopilot {
     const { world } = this.host
     if (corpse?.level !== world.areaId) return null
     const body = this.ownBody()
+    if (body && this.bodyTouch?.id === body.id && world.containers.equipment.size > this.bodyTouch.worn) {
+      this.ghosts.add(body.id)
+      Object.assign(this, { corpse: null, bodyTouch: null })
+      this.toast('Got your body back', '', 'green')
+      return null
+    }
     if (body) {
       this.corpse = { level: corpse.level, x: body.x, y: body.y }
       this.bodySeen = nowMs
@@ -399,6 +407,7 @@ export class Autopilot {
 
   private recover(body: ClientUnit, nowMs: number): void {
     this.say('Picking up your body')
+    if (this.bodyTouch?.id !== body.id) this.bodyTouch = { id: body.id, worn: this.host.world.containers.equipment.size }
     if (distance(body, this.host.world.self) <= REACH) this.touch(body, nowMs)
     else this.walkTowards(body, nowMs)
   }
