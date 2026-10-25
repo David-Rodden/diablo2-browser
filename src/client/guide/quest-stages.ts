@@ -110,7 +110,7 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa2q43: { ...at('tomb', 'Find the true tomb in the Canyon', ORIFICE), bring: 'hst' },
   qstsa2q51: at(74, 'Find the Summoner', 'summoner'),
   qstsa2q52: at(74, 'Kill the Summoner', 'summoner'),
-  qstsa2q53: at('town', 'Return to town'),
+  qstsa2q53: talk('Drognan', 'drognan', 'Tell Drognan the Summoner is dead'),
   qstsa2q61: at(73, "Find Tal Rasha's true tomb"),
   qstsa2q61a: at(73, "Find Tal Rasha's true tomb"),
   qstsa2q62: at(73, 'Kill Duriel', 'duriel'),
