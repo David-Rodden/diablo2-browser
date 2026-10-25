@@ -38,7 +38,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     },
     hasLootNearby: () => false,
     dodging: () => false,
-    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
+    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
     keepUp: () => false,
     canRaise: () => false,
     walkTo: vi.fn(),
@@ -677,6 +677,20 @@ describe('autopilot', () => {
     expect(run(12)).toMatchObject({ status: 'Taking a beating, heading to town', portal: 1 })
   })
 
+  it('asks for help when three minutes of fighting have earned nothing, even with town trips in between', () => {
+    const { pilot, world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    Object.assign(world.self, { experience: 500 })
+    Object.assign(assists, { fighting: true, autoCombatKey: 'E' })
+    units.push(unit({ id: 60, x: 104, y: 100, name: 'Fallen' }))
+    for (let i = 0; i < 100; i++) tick(1000)
+    expect(pilot.active).toBe(true)
+    world.areaId = ROGUE_ENCAMPMENT
+    tick(1000)
+    world.areaId = BLOOD_MOOR
+    for (let i = 0; i < 90; i++) tick(1000)
+    expect(pilot.active).toBe(false)
+  })
+
   it('pulls the sewer lever before taking the stairs it opens', () => {
     const { units, assists, guide, tick } = setup({ hint: 'Enter Kurast Sewers Level 2', target: { x: 110, y: 100, label: 'Kurast Sewers Level 2' }, step: { kind: 'exit', level: 93 } })
     units.push(unit({ id: 90, unitType: 'object', classId: 366, x: 110, y: 100, mode: 0 }), unit({ id: 91, unitType: 'object', classId: 367, x: 104, y: 100, mode: 0 }))
@@ -775,6 +789,20 @@ describe('autopilot', () => {
     tick(6000)
     tick(6000)
     expect(guide.detour).toBeNull()
+  })
+
+  it('stops walking back into the same death after the third time, and asks for a hand with the body', () => {
+    const { pilot, world, hudModel, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    for (const x of [100, 110, 120]) {
+      Object.assign(world.self, { x })
+      world.isDead = true
+      tick(1000)
+      world.isDead = false
+      tick(60_000)
+    }
+    expect(pilot.active).toBe(false)
+    expect(pilot.lastStop?.detail).toContain('get the body back by hand')
   })
 
   it('respawns after dying and goes back for its body', () => {

@@ -26,7 +26,7 @@ import { mercUpgrade } from './merc-gear.ts'
 import { XpLedger } from './xp-ledger.ts'
 import { hireIdOf, MERCENARIES, pickMercenary, type HireCandidate } from './mercenary.ts'
 import { gamblePick, gambleReserve, GAMBLING_RULES } from './gambling.ts'
-import { slotOf } from '../../common/items/loot-appraisal.ts'
+import { misfits, slotOf } from '../../common/items/loot-appraisal.ts'
 import type { EquipSlotId } from '../../common/items/inventory-model.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
@@ -37,6 +37,7 @@ import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 import THREAT from '../../common/skills/data/monster-threat.json'
 import QUEST_OBJECTS from './data/quest-objects.json'
+import POTIONS from './data/potions.json'
 
 export interface AutopilotHost {
   readonly world: ClientWorld
@@ -70,6 +71,8 @@ const REACH = 4
 const ARRIVED = 8
 const FIGHT_ROAM = 20
 const FUTILE_FIGHT_MS = 120_000
+const HARMLESS_MS = 180_000
+const TICK_GAP_MS = 1000
 const DISENGAGE_MS = 25_000
 const SPOT_NEAR = 20
 const INTERACT_REACH = 14
@@ -87,6 +90,8 @@ const CORPSE_GONE = 10
 const BODY_GONE_MS = 3000
 const REVIVE_MS = 2500
 const DEATH_MEMORY_MS = 20 * 60_000
+const SPIRAL_MS = 15 * 60_000
+const SPIRAL_DEATHS = 3
 const DEATH_CAUTION = 0.08
 const MAX_CAUTION = 0.24
 const HUNT_CAUTION = 0.16
@@ -264,6 +269,8 @@ export class Autopilot {
   private reading: Readonly<Record<string, number | null>> = {}
   private fightWatch: { readonly x: number; readonly y: number; readonly since: number } | null = null
   private disengagedUntil = Number.NEGATIVE_INFINITY
+  private harm: { readonly xp: number; at: number; fought: number } | null = null
+  lastStop: { readonly title: string; readonly detail: string } | null = null
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
   private questWatch = { hint: '', since: 0, asked: Number.NEGATIVE_INFINITY }
@@ -321,6 +328,7 @@ export class Autopilot {
     Object.assign(assists, { pilotCombat: false, questPickup: false, standDown: false, holdLoot: false })
     guide.pilotStatus = null
     guide.detour = null
+    this.lastStop = { title, detail }
     this.toast(title, detail, color)
   }
 
@@ -343,6 +351,12 @@ export class Autopilot {
       this.corpse = { level: world.areaId, x: world.self.x, y: world.self.y }
       this.deaths = [...this.deaths.filter((death) => nowMs - death.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? world.areaId }]
       Object.assign(this, { trip: null, crossing: null, talk: null, chase: null })
+      const spiral = this.deaths.filter((death) => nowMs - death.at < SPIRAL_MS && death.level === this.deaths.at(-1)!.level).length
+      if (spiral >= SPIRAL_DEATHS) {
+        this.host.assists.journal?.('spiral', { deaths: spiral, level: world.areaId })
+        this.stop('Autopilot needs you', 'red', `Died ${spiral} times in ${levelName(world.areaId)}: get the body back by hand, and don't leave the game before you have it`)
+        return
+      }
       this.toast('You died', 'Going back for your body', 'red')
     }
     this.say('Died, going back for your body')
@@ -468,7 +482,9 @@ export class Autopilot {
   }
 
   private bare(): number {
-    return bareSlots(this.host.world.containers.equipment.values())
+    const { equipment } = this.host.world.containers
+    const build = appraisalContextOf(this.host.world).build
+    return bareSlots(equipment.values()) + [...equipment.values()].filter((item) => Boolean(item.code) && misfits(item, build)).length
   }
 
   private waypointLevels(): ReadonlySet<number> {
@@ -512,6 +528,7 @@ export class Autopilot {
     this.assess(nowMs)
     this.host.guide.detour = this.corpseGoal() ?? this.trainingGoal()
     const body = town ? null : this.bodyRun(nowMs)
+    if (this.harmless(nowMs)) return
     const disengaged = this.futileFight(nowMs)
     assists.pilotCombat = assists.autoCombatKey !== null && danger === null && !disengaged && (body === null || this.cornered(nowMs))
     assists.standDown = (danger !== null || disengaged) && !this.cornered(nowMs)
@@ -969,6 +986,24 @@ export class Autopilot {
     return trusted && (me.life / Math.max(1e-6, dps)) * 1000 < THREAT.escapeMs
   }
 
+  private harmless(nowMs: number): boolean {
+    const { world, assists } = this.host
+    const xp = world.self.experience
+    const harm = this.harm
+    if (!harm || xp > harm.xp) {
+      this.harm = { xp, at: nowMs, fought: 0 }
+      return false
+    }
+    const foes = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, world.self) <= HUNT_RADIUS)
+    if (!this.town() && assists.isFighting(nowMs) && foes.length > 0 && !foes.some((unit) => BOSS_CLASSES.has(unit.classId))) harm.fought += Math.min(TICK_GAP_MS, nowMs - harm.at)
+    harm.at = nowMs
+    if (harm.fought < HARMLESS_MS) return false
+    assists.journal?.('harmless', { fought: Math.round(harm.fought / 1000), weapon: this.wielded()?.code.trim() ?? null, gold: world.self.gold })
+    this.harm = null
+    this.stop('Autopilot needs you', 'red', "It isn't hurting anything: check its weapon")
+    return true
+  }
+
   private futileFight(nowMs: number): boolean {
     const { world, assists } = this.host
     const me = world.self
@@ -1314,6 +1349,7 @@ export class Autopilot {
     const { world, hudManager, assists } = this.host
     const me = world.self
     const care = assists.inventoryCare
+    care.hardUp = me.gold < BARE_SHOP_GOLD && (this.bare() > 0 || this.healingPotions() === 0)
     const dry = this.healingPotions() === 0
     const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : (key === 'potions' && dry) || key === 'cube' ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
     const ready = (key: string) => nowMs - (this.errandsAt.get(key) ?? Number.NEGATIVE_INFINITY) >= cooldown(key)
@@ -1328,7 +1364,7 @@ export class Autopilot {
       this.mercGear() !== null && ready('mercGear') && { key: 'mercGear', reason: 'Giving your mercenary better gear', work: () => this.dressMerc() },
       me.gold < PURSE_LOW && me.stashGold > 0 && ready('purse') && { key: 'purse', reason: 'Taking gold out of the stash', work: () => this.fillPurse() },
       worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repairAndShop() },
-      (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length > 0)
+      (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length + (care.hardUp ? care.spares.length : 0) > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
       (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
@@ -1733,9 +1769,12 @@ export class Autopilot {
     const [healing, mana] = POTION_COLUMNS[this.isCaster() ? 'caster' : 'melee']
     const belt = (prefix: string) => [...world.containers.belt.values()].filter((item) => item.code.startsWith(prefix)).length
     const price = this.priceList()
-    const bestIn = (prefix: string): ItemData | undefined => {
-      const tiers = this.store().filter((item) => item.code.startsWith(prefix)).sort((a, b) => potionTier(b.code) - potionTier(a.code))
-      return tiers.find((item) => price(item) * POTION_SHARE <= world.self.gold) ?? tiers.at(-1)
+    const pool = { hp: hudManager.maxHp || world.self.maxLife, mp: hudManager.maxMana || world.self.maxMana }
+    const restores = POTIONS.restores as Readonly<Record<string, number>>
+    const bestIn = (prefix: 'hp' | 'mp'): ItemData | undefined => {
+      const tiers = this.store().filter((item) => item.code.startsWith(prefix)).sort((a, b) => potionTier(a.code) - potionTier(b.code))
+      const affordable = tiers.filter((item) => price(item) * POTION_SHARE <= world.self.gold)
+      return affordable.find((item) => (restores[item.code.trim()] ?? 0) >= pool[prefix] * POTIONS.enough) ?? affordable.at(-1) ?? tiers[0]
     }
     for (const [prefix, columns] of [['hp', healing], ['mp', mana]] as const) {
       const potion = bestIn(prefix)
