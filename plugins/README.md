@@ -14,14 +14,14 @@
 
 ### 1. 组合根与架构边界规则（`tests/arch/boundaries.test.ts`）
 
-插件系统严格遵循核心零耦合原则，由 [`tests/arch/boundaries.test.ts`](../tests/arch/boundaries.test.ts)（Rules 1–10，零白名单例外）强制守卫：
+插件系统严格遵循核心零耦合原则，由 [`tests/arch/boundaries.test.ts`](../tests/arch/boundaries.test.ts)（Rules 1–11，零白名单例外）强制守卫：
 
 1. **组合根（Composition Root — `play.html`）**：
-   - [`play.html`](../play.html) 是唯一的客户端组合根，通过内联 `<script type="module">` 同时导入 `/src/client/main.ts` 的 `startPlayApp` 与 `/plugins/index.ts` 的 `BUILTIN_PLUGINS`，并调用 `startPlayApp({ plugins: BUILTIN_PLUGINS })`。
-   - **`src/**` 对具体插件 100% 无感知**：`src/**`（含 `src/client/main.ts`）包含 **0 个** 指向 `plugins/` 的导入语句，且包含 **0 个** `'plugins/'` 或具体插件 ID（如 `'kill-stats'`、`'drop-tracker'`）的字符串字面量。
+   - [`play.html`](../play.html) 是游戏客户端组合根，通过内联 `<script type="module">` 同时导入 `/src/client/main.ts` 的 `startPlayApp` 与 `/plugins/index.ts` 的 `BUILTIN_PLUGINS`、`PLUGIN_MENU_LAYOUT`，并调用 `startPlayApp({ plugins: BUILTIN_PLUGINS, menuLayout: PLUGIN_MENU_LAYOUT })`。
+   - **`src/**` 对具体插件 100% 无感知**：`src/**`（含 `src/client/main.ts`）包含 **0 个** 指向 `plugins/` 的导入语句，且包含 **0 个** `'plugins/'` 或具体插件 ID（如 `'kill-stats'`、`'drop-tracker'`、`'trade-hall'`）的字符串字面量。
 2. **Rule 7 — 根 HTML 入口与内联组合根校验**：
-   - 仓库根目录唯一的 HTML 入口文件为 `play.html`。
-   - `play.html` 声明本地 `D2Exocet`（`/ui/fonts/D2Exocet.ttf`）与 `D2Formal436`（`/ui/fonts/D2Formal436.ttf`）字体，且其内联 `<script type="module">` 仅导入 `['/src/client/main.ts', '/plugins/index.ts']`。
+   - 仓库根目录仅包含两个 HTML 入口文件：`index.html`（庇护之地主页门户，提供进入 `/play.html` 与 `/musicbox.html` 的导航）与 `play.html`（游戏客户端组合根）。
+   - `index.html` 与 `play.html` 均声明本地 `D2Exocet`（`/ui/fonts/D2Exocet.ttf`）与 `D2Formal436`（`/ui/fonts/D2Formal436.ttf`）字体，且 `play.html` 的内联 `<script type="module">` 仅导入 `['/src/client/main.ts', '/plugins/index.ts']`。
 3. **Rule 9 — `plugins/` 依赖白名单、物理隔离与核心零耦合**：
    - `plugins/index.ts` 仅允许导入 `./<id>/index.ts` 与 `src/client/plugin-host/api.ts`。
    - `plugins/<id>/**` 仅允许导入：
@@ -65,11 +65,33 @@ plugins/
 ├── extended-viewports/        # 内置插件 4：扩展分辨率视口 (id: 'extended-viewports', Issue #716)
 │   └── index.ts               # 解锁 1024x768 / 1068x600 / 1280x720 扩展视口，禁用时仅开放 1.13c 原版 640x480 / 800x600 并自动收敛至 800x600
 ├── hud-enhancements/          # 内置插件 5：界面增强显示 (id: 'hud-enhancements')
-│   └── index.ts               # 管理属性/技能基础+加成(x+y)、属性悬停增益提示与伤害计算公式，禁用时严格回退 1.13c 原版显示
-├── quick-cast/                # 内置插件 6：快捷施法（PD2/D2R 同款，Issue #952）
-│   └── index.ts               # 纯开关插件：激活时认领 quickCast 能力（CommandMapper.quickCastMode = true），原版绑定方式（按 S 技能弹窗悬停 + 可绑定技能快捷键）完全不变，但按下已绑定的快捷键不再切换技能而是直接在鼠标光标处施放（SelectSkill → SkillAt/SkillOn → SelectSkill 还原）；执行跟随绑定表而非固定键位（键位范围由 SKILL_HOTKEY_KEY_RE_113C 单点定义），禁用时自动释放认领并恢复原版按键行为
-└── next-game/                 # 内置插件 7：快速下一房 (+1) (id: 'next-game')
-    └── index.ts               # 在顶部工具栏提供 "+1" 按钮：点击后底层退出当前 D2GS 房间、将房间号 +1 并创建/进入新房间，同时保持游戏视口不返回大厅、不播放开门动画，视觉上直接从当前场景瞬移回当前幕城镇出生点
+│   └── index.ts               # 管理属性/技能基础+加成(x+y)、属性悬停增益提示、伤害计算公式、高级属性汇总弹窗按钮 (showAdvancedStatsButton) 与符文编号 (showRuneNumbers)，禁用时严格回退 1.13c 原版显示
+├── ground-item-beam/          # 内置插件 6：地面暗金/套装光柱与常驻标签 (id: 'ground-item-beam', Issue #946)
+│   └── index.ts               # 为地面暗金 (quality=7) 与绿色套装 (quality=5) 物品渲染暗黑3风格垂直光柱、地面底座光晕与星芒，并免按 Alt 常驻显示其地面名称标签
+├── quick-cast/                # 内置插件 7：快捷施法（PD2/D2R 同款，Issue #952）
+│   └── index.ts               # 纯开关插件：激活时认领 quickCast 能力（CommandMapper.quickCastMode = true），按下已绑定的技能快捷键直接在鼠标光标处施放（SelectSkill → SkillAt/SkillOn → SelectSkill 还原），禁用时自动释放认领并恢复原版按键行为
+├── next-game/                 # 内置插件 8：快速下一房 (+1) (id: 'next-game')
+│   └── index.ts               # 在顶部工具栏提供 "+1" 按钮：点击后底层退出当前 D2GS 房间、将房间号 +1 并创建/进入新房间，视觉上直接从当前场景瞬移回当前幕城镇出生点
+├── trade-hall/                # 内置插件 9：在线交易大厅与自动交割 (id: 'trade-hall')
+│   ├── index.ts               # tradeHallPlugin 定义、跨标签页自动交割领航（入房自动寻路至 Act 1 储物箱、自动发起 0x13 交易、逐字段核验对方放入物品防止调包诈骗）
+│   ├── index.html             # 独立交易大厅挂单/报价看板入口 (/plugins/trade-hall/index.html)
+│   └── ...                    # 挂单市场 API 客户端、物品快照对比审计与双语词典
+└── [15 个 QoL 增强插件]       # 由 PLUGIN_MENU_LAYOUT 按 combat / loot / map / tracking / interface 五大分组归类：
+    ├── path-guide/            # 任务与寻路指引 (id: 'path-guide')：小地图导航折线、世界地面箭头与自动驾驶 (Autopilot)
+    ├── item-info/             # 地面物品信息与战利品过滤 (id: 'item-info')：孔数/无形徽标、底材等阶、ilvl 与可配置战利品过滤
+    ├── loot-alerts/           # 极品掉落声光提醒 (id: 'loot-alerts')：高号符文、暗金、套装与任务物品掉落横幅与音效
+    ├── upgrade-hints/         # 背包装备提升提示 (id: 'upgrade-hints')：对比当前穿戴装备并在背包格高亮可提升部件
+    ├── monster-resists/       # 怪物抗性条 (id: 'monster-resists')：悬停怪物血条下方显示物/魔/火/电/冰/毒六系抗性徽标
+    ├── experience-bar/        # 经验增强显示 (id: 'experience-bar')：经验百分比、升级所需经验与每小时经验速率
+    ├── run-timer/             # 跑图计时器 (id: 'run-timer')：自动记录单局耗时、历史平均与最快纪录
+    ├── stash-deposit-all/     # 一键存仓 (id: 'stash-deposit-all')：将背包非锁定物品与金币一键转入储物箱
+    ├── drag-interact/         # 拖拽快速交互 (id: 'drag-interact')：拖拽地面物品拾取、拖拽NPC对话、拖拽背包物品穿戴/出售/存仓
+    ├── low-life-warning/      # 低血量红屏警报 (id: 'low-life-warning')：生命低于阈值时渲染暗红呼吸边框预警
+    ├── town-portal-key/       # 一键回城热键 (id: 'town-portal-key')：按自定义热键自动消耗回城书/卷轴开启传送门
+    ├── auto-gold-pickup/      # 自动拾取金币 (id: 'auto-gold-pickup', 默认关闭)：走过地面金币堆时自动拾取
+    ├── auto-potion/           # 自动喝药 (id: 'auto-potion', 默认关闭)：生命/法力低于阈值时自动饮用腰带药水
+    ├── belt-refill/           # 腰带自动补药 (id: 'belt-refill', 默认关闭)：腰带药水耗尽时自动从背包补充同类型药水
+    └── auto-combat/           # 自动战斗辅助 (id: 'auto-combat', 默认关闭)：自动索敌施放主攻技能与召唤物补招
 ```
 
 ---
@@ -271,9 +293,26 @@ export function bootPluginPage(plugin: D2WebPlugin): PluginPageContext
 | [`plugins/drop-tracker/`](./drop-tracker) | `drop-tracker` | 启用 | 装备与符文掉落统计插件与独立看板（`/plugins/drop-tracker/index.html`），实时追踪绿色套装（`quality=5`）、暗金传奇（`quality=7`）与符文（`r01`–`r33`）地面掉落并在顶部工具栏动态更新 `掉落 绿X · 金Y · 符Z` 徽标。 |
 | [`plugins/automap-reveal/`](./automap-reveal) | `automap-reveal` | 启用 | 小地图全图透视增强插件（`off / level / act`），揭示当前关卡或全幕所有非城镇瓦片与预设地标，支持显示附近怪物与神龛类型图标（Issue #881），并在插件管理弹窗内提供环境光照预设（`auto / noon / dusk / night / torch / cold / fullbright`）与天气模式（`off / rain / snow`）下拉框；禁用时强制恢复 1.13c 原版战争迷雾、昼夜光照与关卡自然天气。 |
 | [`plugins/extended-viewports/`](./extended-viewports) | `extended-viewports` | 启用 | 扩展分辨率视口插件，启用时在工具栏分辨率下拉框中解锁 `1024x768`、`1068x600`、`1280x720`；禁用时仅保留 1.13c 原版 `640x480` 与 `800x600` 并自动收敛回 `800x600`。 |
-| [`plugins/hud-enhancements/`](./hud-enhancements) | `hud-enhancements` | 启用 | 界面增强显示插件：支持角色属性与技能点 `基础+加成 (x+y)` 显示、人物属性面板悬停属性显示单点属性增益提示（`+x 生命`、`+y 近战伤害` 等），以及武器与人物面板伤害悬停显示计算公式；禁用时严格回退 1.13c 原版显示。 |
+| [`plugins/hud-enhancements/`](./hud-enhancements) | `hud-enhancements` | 启用 | 界面增强显示插件：支持角色属性与技能点 `基础+加成 (x+y)` 显示、人物属性面板悬停属性显示单点属性增益提示（`+x 生命`、`+y 近战伤害` 等）、武器与人物面板伤害悬停显示计算公式、人物面板打开全身高级属性汇总弹窗按钮 (`showAdvancedStatsButton`) 以及符文图标与名称显示 `#1`–`#33` 编号 (`showRuneNumbers`)；禁用时严格回退 1.13c 原版显示。 |
+| [`plugins/ground-item-beam/`](./ground-item-beam) | `ground-item-beam` | 启用 | 地面暗金与套装光柱插件（Issue #946）：地面掉落暗金（`quality=7`）与绿色套装（`quality=5`）装备时渲染暗黑3风格垂直光柱、地面脉冲光圈与星芒，并免按 `Alt` 常驻显示其地面名称标签。 |
 | [`plugins/quick-cast/`](./quick-cast) | `quick-cast` | 启用 | 快捷施法插件（Issue #952，PD2/D2R 同款）：纯开关、零配置。原版绑定方式（按 S 打开技能弹窗悬停技能 + 可绑定的技能快捷键，当前为原版 F1-F8）**完全不变**；插件开启后，按下已绑定的快捷键不再切换当前技能，而是立即在鼠标光标处施放该技能（内部按原版网络序列 `SelectSkill → 施法 → 还原` 执行），城镇禁技、施法锁定与冷却等原版门控全部保留。支持哪些按键由绑定流程决定（单点定义于 `SKILL_HOTKEY_KEY_RE_113C`），执行跟随绑定表，插件本身不限定键位。禁用插件即恢复原版切换技能行为。 |
 | [`plugins/next-game/`](./next-game) | `next-game` | 启用 | 快速下一房（`+1`）插件：在顶部工具栏提供 `+1` 按钮，点击后底层自动退出当前游戏、将房间名尾号 `+1`（保留前导零与 15 字符上限）并创建/进入新房间，同时保持游戏视口不返回大厅、不播放开门动画，视觉上直接从当前场景瞬移回当前幕的城镇出生点。 |
+| [`plugins/trade-hall/`](./trade-hall) | `trade-hall` | 启用 | 在线交易大厅与自动交割插件：提供独立交易挂单/报价大厅页面（`/plugins/trade-hall/index.html`），买卖双方达成交易后一键进入约定房间，自动寻路至第一幕储物箱旁、自动向交易伙伴发起并接受交易请求、自动将背包中的约定物品放入交易栏，并在逐字段核验对方放入物品与报价快照完全一致（防调包诈骗审计）后自动点击绿勾完成交割。 |
+| [`plugins/path-guide/`](./path-guide) | `path-guide` | 启用 | 任务路线向导与自动驾驶插件：在小地图与世界地面绘制当前幕主线/支线目标导航折线与引导箭头，并支持一键自动驾驶寻路推进。 |
+| [`plugins/item-info/`](./item-info) | `item-info` | 启用 | 地面物品信息与战利品过滤插件：在地面物品标签上显示凹槽圆点、无形标记、底材等阶（普/扩/精）与物品等级（`ilvl`），并支持按品质与底材过滤垃圾掉落。 |
+| [`plugins/loot-alerts/`](./loot-alerts) | `loot-alerts` | 启用 | 极品掉落提醒插件：当高号符文、暗金、套装或任务物品掉落时，在屏幕顶部弹出醒目提示横幅并播放提示音。 |
+| [`plugins/upgrade-hints/`](./upgrade-hints) | `upgrade-hints` | 启用 | 装备提升提示插件：自动评估背包中可穿戴装备与当前角色/佣兵已穿戴装备的属性差异，并以绿色上箭头标记潜在提升装。 |
+| [`plugins/monster-resists/`](./monster-resists) | `monster-resists` | 启用 | 怪物抗性显示插件：在顶部悬停怪物血条下方直观显示物理、魔法、火焰、闪电、冰冷、毒素六系抗性数值与免疫图标。 |
+| [`plugins/experience-bar/`](./experience-bar) | `experience-bar` | 启用 | 经验条增强显示插件：在底栏经验条悬停或常驻显示精确经验百分比、距离升级所需经验与当前每小时获取经验速率。 |
+| [`plugins/run-timer/`](./run-timer) | `run-timer` | 启用 | 跑图计时器插件：在 HUD 角落显示当前房间刷图耗时、单局击杀/经验统计与历史最快纪录。 |
+| [`plugins/stash-deposit-all/`](./stash-deposit-all) | `stash-deposit-all` | 启用 | 一键存仓插件：在储物箱面板提供一键存入按钮，快速将背包内未锁定的战利品与金币转入储物箱。 |
+| [`plugins/drag-interact/`](./drag-interact) | `drag-interact` | 启用 | 拖拽交互插件：支持按住鼠标拖拽地面物品至背包拾取、拖拽装备至人物穿戴或向商人出售。 |
+| [`plugins/low-life-warning/`](./low-life-warning) | `low-life-warning` | 启用 | 低血量预警插件：角色生命值低于安全阈值时在视口四周显示红色脉动警示边框。 |
+| [`plugins/town-portal-key/`](./town-portal-key) | `town-portal-key` | 启用 | 一键回城热键插件：绑定独立热键直接消耗背包中的回城之书或回城卷轴在脚下开启传送门。 |
+| [`plugins/auto-gold-pickup/`](./auto-gold-pickup) | `auto-gold-pickup` | 禁用 | 自动拾金插件：角色移动经过地面金币堆附近时自动发送拾取指令（默认关闭，可在插件菜单开启）。 |
+| [`plugins/auto-potion/`](./auto-potion) | `auto-potion` | 禁用 | 自动喝药插件：当角色生命或法力低于设定百分比时自动饮用腰带中的回复/法力/紫瓶药水（默认关闭）。 |
+| [`plugins/belt-refill/`](./belt-refill) | `belt-refill` | 禁用 | 腰带自动补药插件：腰带槽位药水耗尽时自动从背包补充同类型药水（默认关闭）。 |
+| [`plugins/auto-combat/`](./auto-combat) | `auto-combat` | 禁用 | 自动战斗辅助插件：开启后自动锁定视野内敌人施放主攻技能并维持增益状态（默认关闭）。 |
 
 ---
 ---
@@ -288,14 +327,14 @@ The `plugins/` directory hosts all non-vanilla quality-of-life extensions for th
 
 ### 1. Composition Root & Architectural Boundary Rules (`tests/arch/boundaries.test.ts`)
 
-The plugin system enforces zero core coupling, guarded by [`tests/arch/boundaries.test.ts`](../tests/arch/boundaries.test.ts) (Rules 1–10, zero whitelist exceptions):
+The plugin system enforces zero core coupling, guarded by [`tests/arch/boundaries.test.ts`](../tests/arch/boundaries.test.ts) (Rules 1–11, zero whitelist exceptions):
 
 1. **Composition Root (`play.html`)**:
-   - [`play.html`](../play.html) is the sole client composition root. Its inline `<script type="module">` imports `startPlayApp` from `/src/client/main.ts` and `BUILTIN_PLUGINS` from `/plugins/index.ts`, then invokes `startPlayApp({ plugins: BUILTIN_PLUGINS })`.
-   - **`src/**` is 100% Plugin-Agnostic**: `src/**` (including `src/client/main.ts`) contains **zero** imports pointing to `plugins/` and **zero** string literals referencing `'plugins/'` or any specific plugin ID (such as `'kill-stats'` or `'drop-tracker'`).
+   - [`play.html`](../play.html) is the game client composition root. Its inline `<script type="module">` imports `startPlayApp` from `/src/client/main.ts` and `BUILTIN_PLUGINS`, `PLUGIN_MENU_LAYOUT` from `/plugins/index.ts`, then invokes `startPlayApp({ plugins: BUILTIN_PLUGINS, menuLayout: PLUGIN_MENU_LAYOUT })`.
+   - **`src/**` is 100% Plugin-Agnostic**: `src/**` (including `src/client/main.ts`) contains **zero** imports pointing to `plugins/` and **zero** string literals referencing `'plugins/'` or any specific plugin ID (such as `'kill-stats'`, `'drop-tracker'`, or `'trade-hall'`).
 2. **Rule 7 — Root HTML Entry & Inline Composition Check**:
-   - `play.html` is the only HTML file in the repository root.
-   - `play.html` declares local `D2Exocet` (`/ui/fonts/D2Exocet.ttf`) and `D2Formal436` (`/ui/fonts/D2Formal436.ttf`) fonts, and its inline `<script type="module">` imports exclusively `['/src/client/main.ts', '/plugins/index.ts']`.
+   - The repository root contains only two HTML entry files: `index.html` (Sanctuary homepage portal linking to `/play.html` and `/musicbox.html`) and `play.html` (game client composition root).
+   - Both `index.html` and `play.html` declare local `D2Exocet` (`/ui/fonts/D2Exocet.ttf`) and `D2Formal436` (`/ui/fonts/D2Formal436.ttf`) fonts, and `play.html`'s inline `<script type="module">` imports exclusively `['/src/client/main.ts', '/plugins/index.ts']`.
 3. **Rule 9 — `plugins/` Import Whitelist, Physical Isolation & Core Decoupling**:
    - `plugins/index.ts` may only import `./<id>/index.ts` and `src/client/plugin-host/api.ts`.
    - `plugins/<id>/**` may only import:
@@ -339,11 +378,33 @@ plugins/
 ├── extended-viewports/        # Built-in Plugin 4: Extended Viewport Resolutions (id: 'extended-viewports', Issue #716)
 │   └── index.ts               # Unlocks 1024x768 / 1068x600 / 1280x720 viewports; restricts to native 1.13c 640x480 / 800x600 when disabled
 ├── hud-enhancements/          # Built-in Plugin 5: HUD Display Enhancements (id: 'hud-enhancements')
-│   └── index.ts               # Manages base+bonus (x+y) stats/skills, hover stat gain tooltips & permanent globe HP/MP values; reverts to 1.13c vanilla display when disabled
-├── quick-cast/                # Built-in Plugin 6: Quick Cast — cast bound skills directly on F1-F8 (PD2/D2R parity, Issue #952)
-│   └── index.ts               # Toggle-only plugin: activation claims the quickCast capability (CommandMapper.quickCastMode = true); the native binding flow (S-popup hover + bindable skill hotkeys) is unchanged, but a bound hotkey press casts at the cursor (SelectSkill -> SkillAt/SkillOn -> SelectSkill restore) instead of switching skills; execution follows the binding maps rather than a fixed key range (bindable keys are defined once by SKILL_HOTKEY_KEY_RE_113C); disabling auto-releases the claim and restores vanilla key behavior
-└── next-game/                 # Built-in Plugin 7: Quick Next Game (+1) (id: 'next-game')
-    └── index.ts               # Adds a "+1" button to the top toolbar that exits the current D2GS room, increments the room number by +1, and creates/joins the new room in the background while keeping the in-game viewport active — visually teleporting directly from the current scene back to the current Act town
+│   └── index.ts               # Manages base+bonus (x+y) stats/skills, hover stat gain tooltips, damage formulas, Advanced Stats summary button (showAdvancedStatsButton) & rune numbers (showRuneNumbers); reverts to 1.13c vanilla display when disabled
+├── ground-item-beam/          # Built-in Plugin 6: Ground Item Loot Beam & Permanent Labels (id: 'ground-item-beam', Issue #946)
+│   └── index.ts               # Renders Diablo III-style vertical light beams, ground rings, and stars for ground Unique (quality=7) and Set (quality=5) items and permanently displays their labels without holding Alt
+├── quick-cast/                # Built-in Plugin 7: Quick Cast — cast bound skills directly on F1-F8 (PD2/D2R parity, Issue #952)
+│   └── index.ts               # Toggle-only plugin: activation claims the quickCast capability (CommandMapper.quickCastMode = true); a bound hotkey press casts at the cursor (SelectSkill -> SkillAt/SkillOn -> SelectSkill restore) instead of switching skills; disabling auto-releases the claim and restores vanilla key behavior
+├── next-game/                 # Built-in Plugin 8: Quick Next Game (+1) (id: 'next-game')
+│   └── index.ts               # Adds a "+1" button to the top toolbar that exits the current D2GS room, increments the room number by +1, and creates/joins the new room in the background
+├── trade-hall/                # Built-in Plugin 9: Online Trade Hall & Automated Settlement (id: 'trade-hall')
+│   ├── index.ts               # tradeHallPlugin descriptor & cross-tab automated trade settlement pilot (auto-walks to Act 1 Stash, initiates 0x13 trade, verifies partner's offered items against snapshot to prevent bait-and-switch scams)
+│   ├── index.html             # Standalone Trade Hall listing/offer marketplace entry (/plugins/trade-hall/index.html)
+│   └── ...                    # Marketplace API client, item snapshot diff auditor, and bilingual dictionary
+└── [15 QoL Plugins]           # Organized into 5 categories (combat / loot / map / tracking / interface) in PLUGIN_MENU_LAYOUT:
+    ├── path-guide/            # Quest & Path Guide (id: 'path-guide'): automap route polylines, world directional chevrons & Autopilot
+    ├── item-info/             # Ground Item Info & Loot Filter (id: 'item-info'): socket dots, ethereal tags, base tier, ilvl & loot filter
+    ├── loot-alerts/           # Loot Alerts (id: 'loot-alerts'): visual/audio banners for high runes, uniques, sets & quest items
+    ├── upgrade-hints/         # Upgrade Hints (id: 'upgrade-hints'): highlights inventory gear that upgrades currently equipped items
+    ├── monster-resists/       # Monster Resistances (id: 'monster-resists'): displays 6-element resistance badges under the boss/monster lifebar
+    ├── experience-bar/        # Experience Bar Info (id: 'experience-bar'): displays XP %, XP needed for next level & XP/hour rate
+    ├── run-timer/             # Run Timer (id: 'run-timer'): tracks current run duration, average time, and personal bests
+    ├── stash-deposit-all/     # Stash Deposit All (id: 'stash-deposit-all'): one-click deposit of unlocked inventory items & gold into Stash
+    ├── drag-interact/         # Drag Interact (id: 'drag-interact'): drag-and-drop ground pickup, NPC talk, equip & vendor sell
+    ├── low-life-warning/      # Low Life Warning (id: 'low-life-warning'): pulsing red screen vignette when life drops below threshold
+    ├── town-portal-key/       # Town Portal Hotkey (id: 'town-portal-key'): one-key Town Portal cast from Tome/Scroll in inventory
+    ├── auto-gold-pickup/      # Auto Gold Pickup (id: 'auto-gold-pickup', default off): automatically picks up nearby ground gold piles
+    ├── auto-potion/           # Auto Potion (id: 'auto-potion', default off): automatically drinks belt potions when life/mana drops below threshold
+    ├── belt-refill/           # Belt Auto-Refill (id: 'belt-refill', default off): automatically refills spent belt slots from inventory
+    └── auto-combat/           # Auto Combat (id: 'auto-combat', default off): automated target acquisition, skill casting & buff maintenance
 ```
 
 ---
@@ -393,6 +454,23 @@ plugins/
 | [`plugins/drop-tracker/`](./drop-tracker) | `drop-tracker` | Enabled | Item & Rune drop tracker and standalone dashboard (`/plugins/drop-tracker/index.html`), tracking ground drops of Set items (`quality=5`), Unique items (`quality=7`), and Runes (`r01`–`r33`) in real time with a live `Drops S:X · U:Y · R:Z` toolbar badge. |
 | [`plugins/automap-reveal/`](./automap-reveal) | `automap-reveal` | Enabled | Automap reveal enhancement (`off / level / act`), revealing all non-town tiles and preset landmarks for the current level or entire act, showing MapHack-style nearby monster crosshairs and shrine type icons (Issue #881), and providing environment lighting preset (`auto / noon / dusk / night / torch / cold / fullbright`) and weather mode (`off / rain / snow`) dropdowns inside the PluginMenu modal; reverts to 1.13c vanilla defaults when disabled. |
 | [`plugins/extended-viewports/`](./extended-viewports) | `extended-viewports` | Enabled | Extended viewport resolution plugin unlocking `1024x768`, `1068x600`, and `1280x720` in the toolbar resolution selector; restricts to native 1.13c `640x480` and `800x600` (clamping back to `800x600`) when disabled. |
-| [`plugins/hud-enhancements/`](./hud-enhancements) | `hud-enhancements` | Enabled | HUD display enhancements plugin: displays character attributes and skill points as `base+bonus (x+y)`, shows 1-point attribute gain tooltips (`+x Life`, `+y Melee Damage`, etc.) when hovering over attributes on the Character Sheet, and shows damage calculation formulas; reverts strictly to 1.13c vanilla display when disabled. |
+| [`plugins/hud-enhancements/`](./hud-enhancements) | `hud-enhancements` | Enabled | HUD display enhancements plugin: displays character attributes and skill points as `base+bonus (x+y)`, shows 1-point attribute gain tooltips (`+x Life`, `+y Melee Damage`, etc.) when hovering over attributes on the Character Sheet, shows damage calculation formulas, adds an Advanced Stats summary modal button (`showAdvancedStatsButton`), and appends `#1`–`#33` numbers to rune icons and tooltips (`showRuneNumbers`); reverts strictly to 1.13c vanilla display when disabled. |
+| [`plugins/ground-item-beam/`](./ground-item-beam) | `ground-item-beam` | Enabled | Ground Item Beam plugin (Issue #946): renders Diablo III-style vertical light beams, pulsing ground rings, and stars on ground Unique (`quality=7`) and Set (`quality=5`) items, and permanently shows their ground labels without holding `Alt`. |
 | [`plugins/quick-cast/`](./quick-cast) | `quick-cast` | Enabled | Quick Cast plugin (Issue #952, PD2/D2R parity): a single toggle with zero configuration. The native binding flow (open the skill popup with S, hover a skill, press a bindable skill hotkey — currently the vanilla F1-F8) is completely unchanged; while enabled, pressing a bound hotkey no longer switches the active skill — it casts that skill instantly at the mouse cursor via the vanilla wire sequence `SelectSkill -> cast -> restore`, with all vanilla gates (town restrictions, cast lock, cooldown) enforced. The supported key set follows the binding flow (defined once in `SKILL_HOTKEY_KEY_RE_113C`) and execution follows the binding maps; the plugin itself fixes no key range. Disabling restores vanilla select-on-press behavior. |
 | [`plugins/next-game/`](./next-game) | `next-game` | Enabled | Quick Next Game (`+1`) plugin: adds a `+1` button to the top toolbar that exits the current game, increments the room number by `+1` (preserving zero-padding and the 15-character limit), and creates/joins the new game in the background without entering the lobby or door loading screen — visually teleporting directly from the current scene back to the current Act town. |
+| [`plugins/trade-hall/`](./trade-hall) | `trade-hall` | Enabled | Online Trade Hall & Automated Settlement plugin: provides a standalone marketplace dashboard (`/plugins/trade-hall/index.html`) for posting listings and offers. Once an offer is accepted, launching a trade delivery automatically joins the agreed room, walks to the Act 1 Stash, initiates/accepts the trade window, places the agreed inventory items into the trade grid, and performs a field-by-field anti-scam diff audit of the partner's offered items before clicking Accept. |
+| [`plugins/path-guide/`](./path-guide) | `path-guide` | Enabled | Quest & Path Guide plugin: renders quest objective polylines on the automap, directional chevrons on the ground, and optional one-click Autopilot navigation. |
+| [`plugins/item-info/`](./item-info) | `item-info` | Enabled | Ground Item Info & Loot Filter plugin: annotates ground item labels with socket dots, ethereal tags, base tier (`N`/`X`/`E`), and `ilvl`, with configurable loot filtering. |
+| [`plugins/loot-alerts/`](./loot-alerts) | `loot-alerts` | Enabled | Loot Alerts plugin: triggers visual banners and audio cues when high runes, uniques, sets, or quest items drop on the ground. |
+| [`plugins/upgrade-hints/`](./upgrade-hints) | `upgrade-hints` | Enabled | Upgrade Hints plugin: compares inventory equipment against currently equipped character/mercenary gear and highlights potential upgrades. |
+| [`plugins/monster-resists/`](./monster-resists) | `monster-resists` | Enabled | Monster Resistances plugin: renders Physical, Magic, Fire, Lightning, Cold, and Poison resistance badges and immunity icons beneath the hovered monster lifebar. |
+| [`plugins/experience-bar/`](./experience-bar) | `experience-bar` | Enabled | Experience Bar Info plugin: displays exact XP percentage, XP remaining to next level, and live XP/hour rate on the HUD experience bar. |
+| [`plugins/run-timer/`](./run-timer) | `run-timer` | Enabled | Run Timer plugin: displays live run duration, per-run kill/XP stats, and fastest run records on the HUD. |
+| [`plugins/stash-deposit-all/`](./stash-deposit-all) | `stash-deposit-all` | Enabled | Stash Deposit All plugin: adds a one-click deposit button in the Stash panel to transfer unlocked inventory items and gold into the Stash. |
+| [`plugins/drag-interact/`](./drag-interact) | `drag-interact` | Enabled | Drag Interact plugin: enables dragging ground items to pick up, dragging NPCs to interact, and dragging inventory items to equip or sell. |
+| [`plugins/low-life-warning/`](./low-life-warning) | `low-life-warning` | Enabled | Low Life Warning plugin: renders a pulsing red vignette around the viewport when player life drops below a configurable threshold. |
+| [`plugins/town-portal-key/`](./town-portal-key) | `town-portal-key` | Enabled | Town Portal Hotkey plugin: binds a dedicated hotkey to cast Town Portal directly from a Tome or Scroll in the inventory. |
+| [`plugins/auto-gold-pickup/`](./auto-gold-pickup) | `auto-gold-pickup` | Disabled | Auto Gold Pickup plugin: automatically picks up nearby ground gold piles while walking (disabled by default). |
+| [`plugins/auto-potion/`](./auto-potion) | `auto-potion` | Disabled | Auto Potion plugin: automatically drinks belt healing/mana/rejuvenation potions when life or mana drops below configurable thresholds (disabled by default). |
+| [`plugins/belt-refill/`](./belt-refill) | `belt-refill` | Disabled | Belt Auto-Refill plugin: automatically replenishes spent belt potion slots from matching potions in the inventory (disabled by default). |
+| [`plugins/auto-combat/`](./auto-combat) | `auto-combat` | Disabled | Auto Combat plugin: automatically targets nearby enemies, casts primary attack skills, and maintains buffs (disabled by default). |

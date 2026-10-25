@@ -1445,14 +1445,14 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       (x) => (x.bodyLoc === 4 || x.bodyLoc === 5) && x.baseTable === 'armor',
     )
     if (shieldEq) {
-      const classBlockFactor = CANONICAL_CHARSTATS[resolveClassCode(self.charClass)]?.blockFactor ?? 20
+      const classBlockFactor = CANONICAL_CHARSTATS[resolveClassCode(self.charClass)].blockFactor
       const armorBlock = Number(shieldEq.row.text('block')) || 0
       let holyShieldBlock = 0
       if (self.states.has(101)) {
         const hsLvl = Math.max(1, resolveEffectiveSkillLvl(117) || 1)
         holyShieldBlock = 10 + Math.trunc((30 * Math.trunc((110 * hsLvl) / (hsLvl + 6))) / 100)
       }
-      const totalShieldBlock = Math.min(75, armorBlock + classBlockFactor) + tot(20) + holyShieldBlock
+      const totalShieldBlock = armorBlock + classBlockFactor + tot(20) + holyShieldBlock
       const clvl = Math.max(1, playerAgg.level || 1)
       attrs.shieldBaseBlock = totalShieldBlock
       attrs.blockChance = Math.min(
@@ -1666,11 +1666,30 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       throw new Error(`[hud-model] Missing canonical skills.txt/skilldesc.txt metadata for skillId=${skillId}`)
     }
     const hard = Math.max(0, sl.baseLevel ?? sl.level)
+    const hasDirectSkillGrant =
+      (sl.bonus ?? 0) > 0 ||
+      Boolean(
+        preaggSkillBonuses &&
+          ((classCode &&
+            SKILLS_BY_ID[skillId]?.classCode === classCode &&
+            (preaggSkillBonuses.singleSkills.get(skillId) ?? 0) > 0) ||
+            (preaggSkillBonuses.oskills.get(skillId) ?? 0) > 0),
+      ) ||
+      Boolean(
+        stats &&
+          ((classCode &&
+            SKILLS_BY_ID[skillId]?.classCode === classCode &&
+            stats.get(107, skillId) > 0) ||
+            stats.get(97, skillId) > 0),
+      )
     const equipBonus =
-      classCode && preaggSkillBonuses
+      classCode && preaggSkillBonuses && (hard > 0 || hasDirectSkillGrant || skillId < 6)
         ? resolvePreaggregatedSkillBonus(skillId, classCode, preaggSkillBonuses, stats)
         : 0
-    const bonus = computeTotalSkillBonus(sl.bonus, equipBonus)
+    const bonus =
+      hard > 0 || hasDirectSkillGrant || skillId < 6
+        ? computeTotalSkillBonus(sl.bonus, equipBonus)
+        : 0
     if (hard > 0) hud.skillTree.hardPoints.set(skillId, hard)
     if (bonus > 0) hud.skillTree.bonusLevels.set(skillId, bonus)
     if (isPassiveSkill(skillId) || tableMeta.listRow < 0) continue
@@ -1739,12 +1758,45 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     }
   }
 
+  const availableIds =
+    self.skillEntries.size > 0
+      ? new Set<number>(hud.hotkeys.availableSkills.map((s) => s.skillId))
+      : null
+  if (availableIds && model.world.skillHotkeys.size > 0) {
+    for (const [slot, binding] of model.world.skillHotkeys.entries()) {
+      if (binding.skill > 0 && self.skillEntries.has(binding.skill) && !availableIds.has(binding.skill)) {
+        model.world.skillHotkeys.delete(slot)
+        model.emitCommand?.({
+          type: 'AssignSkillHotkey',
+          slot,
+          hand: binding.hand,
+          skill: 0xffff,
+          itemId: 0xffffffff,
+        })
+      }
+    }
+  }
   if (model.world.skillHotkeys.size > 0 || model.hadWorldSkillHotkeys) {
     model.hadWorldSkillHotkeys = true
     hud.hotkeys.bindings.clear()
     for (const [slot, binding] of model.world.skillHotkeys.entries()) {
       const fKey = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
       hud.hotkeys.bindHotkey(fKey, binding.hand, binding.skill)
+    }
+  }
+  if (availableIds && hud.hotkeys.bindings.size > 0) {
+    for (const [fKey, binding] of Array.from(hud.hotkeys.bindings.entries())) {
+      if (binding.skillId > 0 && self.skillEntries.has(binding.skillId) && !availableIds.has(binding.skillId)) {
+        hud.hotkeys.bindings.delete(fKey)
+      }
+    }
+  }
+  if (availableIds) {
+    if (self.leftSkill > 0 && self.skillEntries.has(self.leftSkill) && !availableIds.has(self.leftSkill)) {
+      self.leftSkill = 0
+    }
+    if (self.rightSkill > 0 && self.skillEntries.has(self.rightSkill) && !availableIds.has(self.rightSkill)) {
+      self.rightSkill = 0
     }
   }
   hud.hotkeys.leftSkillId = self.leftSkill

@@ -102,7 +102,7 @@ describe('issue #1356 sell window validation', () => {
     game.enqueueCommand(playerId, { type: 'NpcSell', npcId, itemId: 9702 } as never)
     game.stepFrames(1)
     expect(player.items.some((it) => it.unitId === 9702)).toBe(false)
-    expect(player.gold).toBe(100)
+    expect(player.gold).toBe(4)
     expect(pool.some((it) => it.unitId === 9702)).toBe(false)
 
     // 3. Broken item (durability 0 / maxDurability > 0) sells for gold but does not enter buyback.
@@ -116,7 +116,7 @@ describe('issue #1356 sell window validation', () => {
     game.enqueueCommand(playerId, { type: 'NpcSell', npcId, itemId: 9703 } as never)
     game.stepFrames(1)
     expect(player.items.some((it) => it.unitId === 9703)).toBe(false)
-    expect(player.gold).toBe(200)
+    expect(player.gold).toBe(23)
     expect(pool.some((it) => it.unitId === 9703)).toBe(false)
 
     // 4. Unidentified damaged stackable weapon ('jav') enters buyback identified with full durability & stack, without overlapping existing items on its page.

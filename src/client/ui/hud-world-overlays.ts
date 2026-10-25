@@ -163,6 +163,7 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
     hud.showFps ? hud.currentFps : -1,
     hud.touchControls.enabled ? 1 : 0,
     hud.touchControls.compactHudActive ? 1 : 0,
+    hud.touchControls.hudLayoutMode,
     hud.touchControls.activeSkillBank,
     hud.touchControls.joystick.active ? 1 : 0,
     Math.round(hud.touchControls.joystick.knobX),

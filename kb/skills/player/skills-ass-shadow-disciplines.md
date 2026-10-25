@@ -215,12 +215,20 @@ Both Shadow summons use **`SKILLS_SrvDo049_ShadowWarrior_Master` (`0x6FCB5980` i
      - Both gain `STAT_TOHIT = +40 * slvl`, `STAT_STRENGTH = +10 * slvl`, `STAT_DEXTERITY = +10 * slvl`.
      - **Shadow Warrior (`#268`)**: `STAT_SKILL_ARMOR_PERCENT = +12 * slvl%`; Elemental Resistances (`Fire/Cold/Light`) = $\min(4 \times \text{slvl}, 75)\%$.
      - **Shadow Master (`#279`)**: Elemental Resistances (`Fire/Cold/Light`) = `dm34` (`Param3 = 5`, `Param4 = 90`: `13%` at slvl 1, `71%` at slvl 20, asymptotic cap `90%`).
-3. **Dynamic Magic/Rare Equipment Generation (`sub_6FCF9580` in `SkillAss.cpp`)**:
-   Called during `D2GAME_SetSummonPassiveStats_6FD0C530` (`EquipLvl = 1` for Shadow Warrior, `EquipLvl = 2` for Shadow Master):
-   - Computes item level:
-     $$\text{ilvl} = \min(99,\; \text{Param5} + \text{Param6} \times \text{slvl}) = \begin{cases} \min(99, 18 + 2 \times \text{slvl}) & \text{Shadow Warrior} \\ \min(99, 24 + 3 \times \text{slvl}) & \text{Shadow Master} \end{cases}$$
-   - **Shadow Warrior (`EquipLvl = 1`)**: Generates **Magic (`ITEMQUAL_MAGIC = 4`)** items in 4 slots: `Head`, `Torso`, `Rarm` (`h2h` claw), and `Larm` (`h2h` claw).
-   - **Shadow Master (`EquipLvl = 2`)**: Generates items across up to **8 slots**, upgrading from **Magic (`ITEMQUAL_MAGIC = 4`)** to **Rare (`ITEMQUAL_RARE = 6`)** at higher skill levels (`slvl >= 11` for Rare weapons/armor, `slvl >= 13` for Rare helm/gloves, and `slvl >= 16–17` for Magic/Rare **Rings and Amulet** in `RingL`, `RingR`, `Neck`!).
+3. **Dynamic Equipment Generation (`D2GAME_CreateMonsterEquipment` @ `0x6FCB2ED0` in 1.13c `D2Game.dll`)**:
+   Called from `SKILLS_SrvDo049_ShadowWarrior_Master` (`0x6FCB5980` @ `0x6FCB5AAE..0x6FCB5AE5`) with `eax = nLevel = slvl` and `bOnInit = 0`:
+   - Evaluates `nIlvl` via `0x6FC21A90(nSkillId, slvl)` (`Param5 + (slvl - 1) * Param6`) and clamps to `[1, DATATBLS_GetMaxLevel(0)]` = `[1, 99]`:
+     $\text{ilvl} = \text{clamp}(\text{Param5} + (\text{slvl} - 1) \times \text{Param6},\; 1,\; 99) = \begin{cases} \text{clamp}(18 + 2 \times (\text{slvl} - 1), 1, 99) & \text{Shadow Warrior (\#268)} \\ \text{clamp}(24 + 3 \times (\text{slvl} - 1), 1, 99) & \text{Shadow Master (\#279)} \end{cases}$
+   - `D2GAME_CreateMonsterEquipment` (`0x6FCB2ED0`) scans `MonEquip.txt` rows for the monster (`hcIdx = 417` `shadowwarrior` or `hcIdx = 418` `shadowmaster`) where `row.level <= slvl` in descending `level` order, keeping the first (highest-`level`) row per body location (`0x6FCB2FB4`):
+     - **Shadow Warrior (`shadowwarrior`, 4 rows at `level = 0`, `mod = 4` Magic)**: `ces` (`rarm`), `btl` (`larm`), empty item `""` (`tors`), empty item `""` (`head`).
+     - **Shadow Master (`shadowmaster`, 19 rows across `level = 0, 5, 6, 9, 11, 13, 17`)**:
+       - `level = 0` (`mod = 3` Superior): `7ar/7xf/7qr` (`rarm`), `7cs/7tw/7qr` (`larm`), `""` (`tors`), `""` (`head`)
+       - `level = 5` (`mod = 3` Superior): `ulg/umg/uhg` (`glov`)
+       - `level = 6` (`mod = 4` Magic): upgrades `rarm`, `larm`, `glov`, `tors`, `head` to Magic (`mod = 4`)
+       - `level = 9` (`mod = 4` Magic): adds `rin` (`rrin`)
+       - `level = 11` (`mod = 6` Rare): upgrades `rarm`, `larm`, `glov`, `rrin`, `tors`, `head` to Rare (`mod = 6`)
+       - `level = 13` (`mod = 6` Rare): adds `rin` (`lrin`)
+       - `level = 17` (`mod = 6` Rare): adds `amu` (`neck`)
 4. **AI Skill Selection (`AiThink.cpp`)**:
    - **Shadow Warrior (`AITHINK_Fn105_ShadowWarrior` @ `0x6FCEA6D0` in 1.10f)**:
      - Every AI tick, reads the Assassin owner's **currently equipped Left and Right active skills** (`UNITS_GetLeftSkill`, `UNITS_GetRightSkill`).

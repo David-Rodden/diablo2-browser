@@ -5,7 +5,7 @@
  * - `States.txt` bonearmor: `nooverlays=1`, `setfunc=6`, `remfunc=3`, overlay1..4 = bonearmor_front (#141),
  *   bonearmor_back (#142), bonearmor_null1 (#143), bonearmor_null2 (#144), castoverlay = bonearmor_cast (#140).
  *   `nooverlays` keeps the generic state-overlay path from drawing them; the set function owns them.
- * - StateSetFunc table `0x6FB9267C`, entry [6] = `0x6FB23230`:
+ * - StateSetFunc table `0x6FB92678` (indexed by the States.txt `setfunc` value), entry [6] = `0x6FB23230`:
  *   1. reads the state's stat list: `cur = STAT bonearmor (132)`, `max = STAT bonearmormax (133)`
  *      (ItemStatCost.txt; both `Send Bits = 32`, sent with S2C 0xA8 / 0xAA) and the previous bone count
  *      `old = STAT shortparam1 (355)`;

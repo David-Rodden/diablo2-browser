@@ -170,8 +170,8 @@ describe('Druid Elemental Skills (#225-#250) — 1.13c 4-Layer Parity (Issue #10
         stateNameOrId: 'cyclonearmor',
         slvl: 1,
         stats: {
-          cyclone_armor_absorb: absorbPool,
-          magicarmor: absorbPool,
+          bonearmor: absorbPool,
+          bonearmormax: absorbPool,
         },
       })
       expect(bus.hasState('cyclonearmor')).toBe(true)

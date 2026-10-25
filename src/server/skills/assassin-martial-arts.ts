@@ -34,6 +34,10 @@
  */
 
 import { compute5BandScaling, compute3BandDuration } from '../../common/data/calc-ast.ts'
+import {
+  CANONICAL_113C_SKILLS,
+  evaluateCanonicalSkillMana113c,
+} from '../../common/data/skills-catalog.ts'
 
 // --- Skill IDs ---
 
@@ -53,6 +57,30 @@ export const ASSASSIN_MARTIAL_SKILL_IDS = {
 export const MAX_CHARGES_PER_SKILL = 3
 export const CHARGE_DURATION_FRAMES = 375 // 15.0 seconds
 
+/**
+ * 1.13c `Skills.txt` `aurastat2 = progressive_tohit` (`ItemStatCost.txt` ID 325) per-charge bonus:
+ * - `#254` Tiger Strike, `#259` Fists of Fire, `#265` Cobra Strike, `#269` Claws of Thunder, `#274` Blades of Ice:
+ *   `aurastatcalc2 = par4` (`Param4 = 50` -> +50% / +100% / +150% Attack Rating at Charge 1 / 2 / 3)
+ * - `#280` Royal Strike (Phoenix Strike):
+ *   `aurastatcalc2 = par7` (`Param7 = 25` -> +25% / +50% / +75% Attack Rating at Charge 1 / 2 / 3)
+ * Verified against `D2Game.dll` `sub_6FCB5370` (`0x6FCB5370..0x6FCB5603`).
+ */
+export const PROGRESSIVE_TOHIT_PER_CHARGE_BY_SKILL_ID: Readonly<Record<number, number>> = {
+  [ASSASSIN_MARTIAL_SKILL_IDS.TIGER_STRIKE]: CANONICAL_113C_SKILLS[254]?.params.par4 ?? 50,
+  [ASSASSIN_MARTIAL_SKILL_IDS.FISTS_OF_FIRE]: CANONICAL_113C_SKILLS[259]?.params.par4 ?? 50,
+  [ASSASSIN_MARTIAL_SKILL_IDS.COBRA_STRIKE]: CANONICAL_113C_SKILLS[265]?.params.par4 ?? 50,
+  [ASSASSIN_MARTIAL_SKILL_IDS.CLAWS_OF_THUNDER]: CANONICAL_113C_SKILLS[269]?.params.par4 ?? 50,
+  [ASSASSIN_MARTIAL_SKILL_IDS.BLADES_OF_ICE]: CANONICAL_113C_SKILLS[274]?.params.par4 ?? 50,
+  [ASSASSIN_MARTIAL_SKILL_IDS.PHOENIX_STRIKE]: CANONICAL_113C_SKILLS[280]?.params.par7 ?? 25,
+}
+
+export function evaluateChargeUpProgressiveToHit(skillId: number, chargeCount: number): number {
+  const clamped = Math.max(0, Math.min(MAX_CHARGES_PER_SKILL, Math.floor(chargeCount)))
+  if (clamped <= 0) return 0
+  const perCharge = PROGRESSIVE_TOHIT_PER_CHARGE_BY_SKILL_ID[skillId] ?? 0
+  return perCharge * clamped
+}
+
 // --- Interfaces ---
 
 export interface ActiveChargeOrb {
@@ -66,23 +94,261 @@ export interface DischargedPayload {
   readonly skillId: number
   readonly chargeLevel: number
   readonly slvl: number
+  /** 1.13c `aurastat2 = progressive_tohit` (+AR% contributed by this charge orb before discharge). */
+  readonly progressiveToHitBonusPct?: number
   // Tiger Strike
   readonly enhancedDamagePct?: number
   // Cobra Strike
   readonly lifeStealPct?: number
   readonly manaStealPct?: number
   // Elemental damages & effects
-  readonly fireDamage?: { min: number; max: number; explosionRadiusPx?: number | undefined; burningGroundFrames?: number | undefined } | undefined
-  readonly ltngDamage?: { min: number; max: number; hasNova?: boolean | undefined; chargedBoltsCount?: number | undefined } | undefined
+  readonly fireDamage?: {
+    min: number
+    max: number
+    explosionRadiusPx?: number | undefined
+    burningGroundFrames?: number | undefined
+    /** Charge 3 fistsoffirefirewall (#557, HitShift=3) per-frame fire damage in 1/256ths */
+    burningGroundMinDmg256?: number | undefined
+    burningGroundMaxDmg256?: number | undefined
+    /** Charge 3 fistsoffirefirewall (#557, HitShift=3) total fire damage over burningGroundFrames */
+    burningGroundTotalMin?: number | undefined
+    burningGroundTotalMax?: number | undefined
+  } | undefined
+  readonly ltngDamage?: {
+    /** Charge 1 melee lightning damage (Skills.txt #269: 1..80 at slvl 1) */
+    min: number
+    max: number
+    /** Charge 2 clawsofthundernova (#559) lightning damage (Missiles.txt #559: 1..30 at slvl 1) */
+    novaMin: number
+    novaMax: number
+    /** Charge 3 clawsofthunderbolt (#558) lightning damage (Missiles.txt #558: 1..40 at slvl 1) */
+    boltMin: number
+    boltMax: number
+    hasNova?: boolean | undefined
+    chargedBoltsCount?: number | undefined
+  } | undefined
   readonly coldDamage?: { min: number; max: number; explosionRadiusPx?: number | undefined; freezeDurationFrames?: number | undefined } | undefined
   // Phoenix Strike
   readonly phoenixPayload?: {
     tier: 1 | 2 | 3
     type: 'meteor' | 'chain_lightning' | 'chaos_ice'
-    meteorDamage?: { min: number; max: number } | undefined
-    chainLightningDamage?: { min: number; max: number; maxTargets: number; boltsCount?: number | undefined } | undefined
+    meteorDamage?: {
+      min: number
+      max: number
+      groundFireFrames: number
+      groundFireMinDmg256: number
+      groundFireMaxDmg256: number
+      groundFireTotalMin: number
+      groundFireTotalMax: number
+    } | undefined
+    chainLightningDamage?: {
+      min: number
+      max: number
+      maxTargets: number
+      jumpRadiusSubtiles?: number | undefined
+      boltsCount?: number | undefined
+    } | undefined
     chaosIceDamage?: { min: number; max: number; boltsCount: number; freezeFrames: number } | undefined
   } | undefined
+}
+
+/**
+ * 1.13c `Missiles.txt` elemental damage row descriptor for Martial Arts charge-up release sub-missiles.
+ * (`MISSILES_CalculateDamageData` @ `0x6FC5D9D0` in `D2Game.dll`).
+ */
+export interface MartialSubMissileSpec113c {
+  readonly missileId: number
+  readonly missileName: string
+  readonly sourceSkillId: number
+  readonly chargeTier: 1 | 2 | 3
+  readonly elemType: 'fire' | 'ltng' | 'cold' | 'frze'
+  readonly hitShift: number
+  readonly rangeFrames: number
+  readonly eMin: number
+  readonly minELev: readonly [number, number, number, number, number]
+  readonly eMax: number
+  readonly maxELev: readonly [number, number, number, number, number]
+  readonly synergySkillId: number | null
+  readonly synergyPctPerBlvl: number
+}
+
+export const MARTIAL_SUB_MISSILE_SPECS_113C = {
+  fistsoffirefirewall: {
+    missileId: 557,
+    missileName: 'fistsoffirefirewall',
+    sourceSkillId: 259,
+    chargeTier: 3,
+    elemType: 'fire',
+    hitShift: 3,
+    rangeFrames: 64,
+    eMin: 6,
+    minELev: [5, 10, 16, 22, 30],
+    eMax: 10,
+    maxELev: [5, 10, 17, 24, 32],
+    synergySkillId: 280,
+    synergyPctPerBlvl: 6,
+  },
+  clawsofthundernova: {
+    missileId: 559,
+    missileName: 'clawsofthundernova',
+    sourceSkillId: 269,
+    chargeTier: 2,
+    elemType: 'ltng',
+    hitShift: 8,
+    rangeFrames: 13,
+    eMin: 1,
+    minELev: [0, 0, 0, 0, 0],
+    eMax: 30,
+    maxELev: [15, 25, 35, 45, 65],
+    synergySkillId: 280,
+    synergyPctPerBlvl: 8,
+  },
+  clawsofthunderbolt: {
+    missileId: 558,
+    missileName: 'clawsofthunderbolt',
+    sourceSkillId: 269,
+    chargeTier: 3,
+    elemType: 'ltng',
+    hitShift: 8,
+    rangeFrames: 98,
+    eMin: 1,
+    minELev: [0, 0, 0, 0, 0],
+    eMax: 40,
+    maxELev: [20, 40, 60, 80, 100],
+    synergySkillId: 280,
+    synergyPctPerBlvl: 8,
+  },
+  bladesoficecubes: {
+    missileId: 561,
+    missileName: 'bladesoficecubes',
+    sourceSkillId: 274,
+    chargeTier: 3,
+    elemType: 'frze',
+    hitShift: 8,
+    rangeFrames: 30,
+    eMin: 1,
+    minELev: [0, 0, 0, 0, 0],
+    eMax: 1,
+    maxELev: [0, 0, 0, 0, 0],
+    synergySkillId: null,
+    synergyPctPerBlvl: 0,
+  },
+  royalstrikemeteor: {
+    missileId: 563,
+    missileName: 'royalstrikemeteor',
+    sourceSkillId: 280,
+    chargeTier: 1,
+    elemType: 'fire',
+    hitShift: 8,
+    rangeFrames: 60,
+    eMin: 20,
+    minELev: [10, 19, 29, 38, 46],
+    eMax: 40,
+    maxELev: [10, 21, 33, 42, 50],
+    synergySkillId: 259,
+    synergyPctPerBlvl: 10,
+  },
+  royalstrikemeteorfire: {
+    missileId: 567,
+    missileName: 'royalstrikemeteorfire',
+    sourceSkillId: 280,
+    chargeTier: 1,
+    elemType: 'fire',
+    hitShift: 3,
+    rangeFrames: 37,
+    eMin: 6,
+    minELev: [5, 10, 16, 22, 30],
+    eMax: 10,
+    maxELev: [5, 10, 17, 24, 32],
+    synergySkillId: 259,
+    synergyPctPerBlvl: 6,
+  },
+  royalstrikechainlightning: {
+    missileId: 568,
+    missileName: 'royalstrikechainlightning',
+    sourceSkillId: 280,
+    chargeTier: 2,
+    elemType: 'ltng',
+    hitShift: 8,
+    rangeFrames: 60,
+    eMin: 1,
+    minELev: [0, 0, 0, 0, 0],
+    eMax: 40,
+    maxELev: [20, 40, 60, 80, 100],
+    synergySkillId: 269,
+    synergyPctPerBlvl: 13,
+  },
+  royalstrikechaosice: {
+    missileId: 569,
+    missileName: 'royalstrikechaosice',
+    sourceSkillId: 280,
+    chargeTier: 3,
+    elemType: 'cold',
+    hitShift: 8,
+    rangeFrames: 40,
+    eMin: 16,
+    minELev: [4, 8, 12, 20, 28],
+    eMax: 32,
+    maxELev: [4, 8, 13, 21, 29],
+    synergySkillId: 274,
+    synergyPctPerBlvl: 10,
+  },
+} as const satisfies Record<string, MartialSubMissileSpec113c>
+
+/**
+ * Evaluates 1.13c `MISSILES_CalculateDamageData` (`0x6FC5D9D0`) for a Martial Arts release sub-missile
+ * using its exact `Missiles.txt` 5-band scaling, `EDmgSymPerCalc` synergy, and `HitShift`.
+ */
+export function evaluateMartialSubMissileDamage(
+  missileKey: keyof typeof MARTIAL_SUB_MISSILE_SPECS_113C,
+  slvl: number,
+  synergyBlvl = 0,
+): {
+  rawMin: number
+  rawMax: number
+  synMin: number
+  synMax: number
+  min256: number
+  max256: number
+  minDamage: number
+  maxDamage: number
+  hitShift: number
+} {
+  const spec = MARTIAL_SUB_MISSILE_SPECS_113C[missileKey]
+  const rawMin = compute5BandScaling(
+    slvl,
+    spec.eMin,
+    spec.minELev[0],
+    spec.minELev[1],
+    spec.minELev[2],
+    spec.minELev[3],
+    spec.minELev[4],
+  )
+  const rawMax = compute5BandScaling(
+    slvl,
+    spec.eMax,
+    spec.maxELev[0],
+    spec.maxELev[1],
+    spec.maxELev[2],
+    spec.maxELev[3],
+    spec.maxELev[4],
+  )
+  const synPct = Math.max(0, Math.floor(synergyBlvl)) * spec.synergyPctPerBlvl
+  const synMin = Math.floor((rawMin * (100 + synPct)) / 100)
+  const synMax = Math.floor((rawMax * (100 + synPct)) / 100)
+  const min256 = synMin * (1 << spec.hitShift)
+  const max256 = synMax * (1 << spec.hitShift)
+  return {
+    rawMin,
+    rawMax,
+    synMin,
+    synMax,
+    min256,
+    max256,
+    minDamage: Math.floor(min256 / 256),
+    maxDamage: Math.floor(max256 / 256),
+    hitShift: spec.hitShift,
+  }
 }
 
 // --- ChargeOrbManager Engine ---
@@ -140,6 +406,14 @@ export class ChargeOrbManager {
     return active
   }
 
+  getTotalProgressiveToHitBonus(currentFrame: number): number {
+    let total = 0
+    for (const orb of this.getActiveCharges(currentFrame)) {
+      total += evaluateChargeUpProgressiveToHit(orb.skillId, orb.count)
+    }
+    return total
+  }
+
   clear(): void {
     this.charges.clear()
   }
@@ -161,6 +435,7 @@ export function resolveFinisherDischarge(
 
   for (const c of charges) {
     if (c.count <= 0) continue
+    const progressiveToHitBonusPct = evaluateChargeUpProgressiveToHit(c.skillId, c.count)
 
     switch (c.skillId) {
       case ASSASSIN_MARTIAL_SKILL_IDS.TIGER_STRIKE: {
@@ -170,6 +445,7 @@ export function resolveFinisherDischarge(
           skillId: c.skillId,
           chargeLevel: c.count,
           slvl: c.slvl,
+          progressiveToHitBonusPct,
           enhancedDamagePct: edMultiplier,
         })
         break
@@ -181,6 +457,7 @@ export function resolveFinisherDischarge(
           skillId: c.skillId,
           chargeLevel: c.count,
           slvl: c.slvl,
+          progressiveToHitBonusPct,
           lifeStealPct: c.count === 3 ? stats.charge3LifeStealPct : stats.charge1LifeStealPct,
           manaStealPct: c.count >= 2 ? (c.count === 3 ? stats.charge3ManaStealPct : stats.charge2ManaStealPct) : 0,
         })
@@ -193,11 +470,16 @@ export function resolveFinisherDischarge(
           skillId: c.skillId,
           chargeLevel: c.count,
           slvl: c.slvl,
+          progressiveToHitBonusPct,
           fireDamage: {
             min: stats.minDamage,
             max: stats.maxDamage,
             explosionRadiusPx: c.count >= 2 ? 64 : undefined,
             burningGroundFrames: c.count >= 3 ? stats.burningGroundFrames : undefined,
+            burningGroundMinDmg256: c.count >= 3 ? stats.firewallMinDamage256 : undefined,
+            burningGroundMaxDmg256: c.count >= 3 ? stats.firewallMaxDamage256 : undefined,
+            burningGroundTotalMin: c.count >= 3 ? stats.firewallTotalMinDamage : undefined,
+            burningGroundTotalMax: c.count >= 3 ? stats.firewallTotalMaxDamage : undefined,
           },
         })
         break
@@ -209,11 +491,16 @@ export function resolveFinisherDischarge(
           skillId: c.skillId,
           chargeLevel: c.count,
           slvl: c.slvl,
+          progressiveToHitBonusPct,
           ltngDamage: {
             min: stats.minDamage,
             max: stats.maxDamage,
+            novaMin: stats.novaMinDamage,
+            novaMax: stats.novaMaxDamage,
+            boltMin: stats.boltMinDamage,
+            boltMax: stats.boltMaxDamage,
             hasNova: c.count >= 2,
-            chargedBoltsCount: c.count >= 3 ? 16 : undefined,
+            chargedBoltsCount: c.count >= 3 ? stats.chargedBoltsCount : undefined,
           },
         })
         break
@@ -225,10 +512,11 @@ export function resolveFinisherDischarge(
           skillId: c.skillId,
           chargeLevel: c.count,
           slvl: c.slvl,
+          progressiveToHitBonusPct,
           coldDamage: {
             min: stats.minDamage,
             max: stats.maxDamage,
-            explosionRadiusPx: c.count >= 2 ? 64 : undefined,
+            explosionRadiusPx: c.count >= 2 ? 96 : undefined,
             freezeDurationFrames: c.count >= 3 ? stats.freezeDurationFrames : undefined,
           },
         })
@@ -246,16 +534,25 @@ export function resolveFinisherDischarge(
           phoenixPayload = {
             tier: 1,
             type: 'meteor',
-            meteorDamage: { min: stats.meteorMinDamage, max: stats.meteorMaxDamage },
+            meteorDamage: {
+              min: stats.meteorMinDamage,
+              max: stats.meteorMaxDamage,
+              groundFireFrames: stats.meteorGroundFireFrames,
+              groundFireMinDmg256: stats.meteorGroundFireMinDamage256,
+              groundFireMaxDmg256: stats.meteorGroundFireMaxDamage256,
+              groundFireTotalMin: stats.meteorGroundFireTotalMinDamage,
+              groundFireTotalMax: stats.meteorGroundFireTotalMaxDamage,
+            },
           }
         } else if (c.count === 2) {
           phoenixPayload = {
             tier: 2,
             type: 'chain_lightning',
             chainLightningDamage: {
-              min: 1,
+              min: stats.chainLightningMinDamage,
               max: stats.chainLightningMaxDamage,
               maxTargets: stats.chainLightningTargets,
+              jumpRadiusSubtiles: stats.chainLightningJumpRadiusSubtiles,
               boltsCount: stats.chainLightningBoltsCount,
             },
           }
@@ -263,7 +560,12 @@ export function resolveFinisherDischarge(
           phoenixPayload = {
             tier: 3,
             type: 'chaos_ice',
-            chaosIceDamage: { min: stats.chaosIceMinDamage, max: stats.chaosIceMaxDamage, boltsCount: 16, freezeFrames: stats.freezeDurationFrames },
+            chaosIceDamage: {
+              min: stats.chaosIceMinDamage,
+              max: stats.chaosIceMaxDamage,
+              boltsCount: stats.chaosIceBoltsCount,
+              freezeFrames: stats.freezeDurationFrames,
+            },
           }
         }
 
@@ -271,6 +573,7 @@ export function resolveFinisherDischarge(
           skillId: c.skillId,
           chargeLevel: c.count,
           slvl: c.slvl,
+          progressiveToHitBonusPct,
           phoenixPayload,
         })
         break
@@ -299,48 +602,74 @@ export function evaluateTigerStrikeStats(slvl: number): {
   attackRatingBonusPct: number
   durationFrames: number
   manaCost: number
+  manaCost256: number
+  delayFrames: number
+  cooldownFrames: number
 } {
-  const baseED = 100 + 20 * (slvl - 1)
-  const attackRatingBonusPct = 15 + 7 * (slvl - 1)
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[254]
+  const par1 = entry?.params.par1 ?? 100
+  const par2 = entry?.params.par2 ?? 20
+  const par3 = entry?.params.par3 ?? CHARGE_DURATION_FRAMES
+  const toHit = entry?.toHit ?? 15
+  const toHitLev = entry?.toHitLev ?? 7
+  const mana = evaluateCanonicalSkillMana113c(254, lvl)
+  const baseED = par1 + par2 * (lvl - 1)
+  const attackRatingBonusPct = toHit + toHitLev * (lvl - 1)
 
   return {
     charge1EDPct: baseED,
     charge2EDPct: baseED * 2,
     charge3EDPct: baseED * 3,
     attackRatingBonusPct,
-    durationFrames: CHARGE_DURATION_FRAMES,
-    manaCost: 1,
+    durationFrames: par3,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
   }
 }
 
 /**
  * Skill #255: Dragon Talon
- * 1.13c Parity:
- * - Kick count: 1 + floor(slvl / 6)
+ * 1.13c Parity (`Skills.txt` row 255):
+ * - Kick count: 1 + floor(slvl / Param1) (`Param1 = 6`)
  * - Attack Rating: 20 + 35 * (slvl - 1)%
- * - Mana cost: 6
+ * - Mana cost: 6 (`manashift = 8, minmana = 1, mana = 6, lvlmana = 0`)
  * - Knockback on each kick
  */
 export function evaluateDragonTalonStats(slvl: number): {
   kickCount: number
   attackRatingBonusPct: number
   manaCost: number
+  manaCost256: number
+  delayFrames: number
+  cooldownFrames: number
 } {
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[255]
+  const par1 = entry?.params.par1 ?? 6
+  const toHit = entry?.toHit ?? 20
+  const toHitLev = entry?.toHitLev ?? 35
+  const mana = evaluateCanonicalSkillMana113c(255, lvl)
   return {
-    kickCount: 1 + Math.floor(slvl / 6),
-    attackRatingBonusPct: 20 + 35 * (slvl - 1),
-    manaCost: 10,
+    kickCount: 1 + Math.floor(lvl / par1),
+    attackRatingBonusPct: toHit + toHitLev * (lvl - 1),
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
   }
 }
 
 /**
  * Skill #259: Fists of Fire
  * 1.13c Parity:
- * - Fire damage: 6-10 base, scales with level
- * - Converts physical to fire: min(100, 3 * slvl)% (Param3 = 3)
- * - Burning ground duration: 64 frames (Missiles.txt fistsoffirefirewall Range = 64)
- * - Attack Rating: 15 + 7 * (slvl - 1)%
- * - Duration: 375 frames
+ * - Charge 1 & 2 Fire damage (`Skills.txt` #259, `HitShift = 8`): `6 [5,10,20,30,40]` to `10 [5,11,22,33,44]`, `+12%` per Royal Strike blvl
+ * - Charge 3 Burning Ground (`Missiles.txt` #557 `fistsoffirefirewall`, `HitShift = 3`, `Range = 64` frames): `6 [5,10,16,22,30]` to `10 [5,10,17,24,32]`, `+6%` per Royal Strike blvl (`<< 3 = /32` per frame)
+ * - Converts physical to fire: `min(100, 3 * slvl)%` (`Param3 = 3`)
+ * - Attack Rating: `15 + 7 * (slvl - 1)%`
+ * - Duration: `375` frames
  */
 export function evaluateFistsOfFireStats(
   slvl: number,
@@ -350,25 +679,50 @@ export function evaluateFistsOfFireStats(
   maxDamage: number
   convertPhysToFirePct: number
   burningGroundFrames: number
+  firewallMinDamage256: number
+  firewallMaxDamage256: number
+  firewallTotalMinDamage: number
+  firewallTotalMaxDamage: number
   attackRatingBonusPct: number
   durationFrames: number
   manaCost: number
+  manaCost256: number
+  delayFrames: number
+  cooldownFrames: number
 } {
-  const baseMin = compute5BandScaling(slvl, 6, 5, 10, 20, 30, 40)
-  const baseMax = compute5BandScaling(slvl, 10, 5, 11, 22, 33, 44)
-  const synBonus = 1 + (royalStrikeBlvl * 12) / 100
-  const minDamage = Math.floor(baseMin * synBonus)
-  const maxDamage = Math.floor(baseMax * synBonus)
-  const convertPhysToFirePct = Math.min(100, slvl * 3)
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[259]
+  const par3 = entry?.params.par3 ?? CHARGE_DURATION_FRAMES
+  const par8 = entry?.params.par8 ?? 12
+  const toHit = entry?.toHit ?? 15
+  const toHitLev = entry?.toHitLev ?? 7
+  const mana = evaluateCanonicalSkillMana113c(259, lvl)
+  const baseMin = compute5BandScaling(lvl, 6, 5, 10, 20, 30, 40)
+  const baseMax = compute5BandScaling(lvl, 10, 5, 11, 22, 33, 44)
+  const synPct = Math.max(0, Math.floor(royalStrikeBlvl)) * par8
+  const minDamage = Math.floor((baseMin * (100 + synPct)) / 100)
+  const maxDamage = Math.floor((baseMax * (100 + synPct)) / 100)
+  const convertPhysToFirePct = Math.min(100, lvl * 3)
+  const burningGroundFrames = MARTIAL_SUB_MISSILE_SPECS_113C.fistsoffirefirewall.rangeFrames
+  const firewall = evaluateMartialSubMissileDamage('fistsoffirefirewall', lvl, royalStrikeBlvl)
+  const firewallTotalMinDamage = Math.floor((firewall.min256 * burningGroundFrames) / 256)
+  const firewallTotalMaxDamage = Math.floor((firewall.max256 * burningGroundFrames) / 256)
 
   return {
     minDamage,
     maxDamage,
     convertPhysToFirePct,
-    burningGroundFrames: 64,
-    attackRatingBonusPct: 15 + 7 * (slvl - 1),
-    durationFrames: CHARGE_DURATION_FRAMES,
-    manaCost: 2,
+    burningGroundFrames,
+    firewallMinDamage256: firewall.min256,
+    firewallMaxDamage256: firewall.max256,
+    firewallTotalMinDamage,
+    firewallTotalMaxDamage,
+    attackRatingBonusPct: toHit + toHitLev * (lvl - 1),
+    durationFrames: par3,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
   }
 }
 
@@ -388,31 +742,46 @@ export function evaluateDragonClawStats(
   attackRatingBonusPct: number
   strikesCount: number
   manaCost: number
+  manaCost256: number
+  delayFrames: number
+  cooldownFrames: number
 } {
-  const enhancedDamagePct = 50 + 5 * (slvl - 1) + clawMasteryBlvl * 4
-  const attackRatingBonusPct = 40 + 25 * (slvl - 1)
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[260]
+  const par1 = entry?.params.par1 ?? 50
+  const par2 = entry?.params.par2 ?? 5
+  const par8 = entry?.params.par8 ?? 4
+  const toHit = entry?.toHit ?? 40
+  const toHitLev = entry?.toHitLev ?? 25
+  const mana = evaluateCanonicalSkillMana113c(260, lvl)
+  const enhancedDamagePct = par1 + par2 * (lvl - 1) + clawMasteryBlvl * par8
+  const attackRatingBonusPct = toHit + toHitLev * (lvl - 1)
 
   return {
     enhancedDamagePct,
     attackRatingBonusPct,
     strikesCount: 2,
-    manaCost: 2,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
   }
 }
 
 /**
  * Skill #265: Cobra Strike
- * 1.13c Parity:
- * - Base Steal%: 40 + 5 * (slvl - 1)%
- * - Charge 1: Life Steal = base%
- * - Charge 2: Life Steal = base%, Mana Steal = base%
- * - Charge 3: Life Steal = 2 * base%, Mana Steal = 2 * base%
- * - Attack Rating: 15 + 7 * (slvl - 1)%
- * - Duration: 375 frames
+ * 1.13c Parity (`D2Game.dll` `0x6FCB1400`, `Skills.txt` row 265 `prgdam = 2`):
+ * - Base Steal%: `ln12 = 40 + 5 * (slvl - 1)%` (`Param1 = 40, Param2 = 5`)
+ * - Charge 1: Life Steal = `base%`, Mana Steal = `0%`
+ * - Charge 2: Life Steal = `base%`, Mana Steal = `base%`
+ * - Charge 3: Life Steal = `2 * base%`, Mana Steal = `2 * base%`
+ * - Attack Rating: `15 + 7 * (slvl - 1)%`
+ * - Duration: `375` frames (`Param3 = 375`)
  */
 export function evaluateCobraStrikeStats(slvl: number): {
   baseStealPct: number
   charge1LifeStealPct: number
+  charge1ManaStealPct: number
   charge2LifeStealPct: number
   charge2ManaStealPct: number
   charge3LifeStealPct: number
@@ -420,42 +789,45 @@ export function evaluateCobraStrikeStats(slvl: number): {
   attackRatingBonusPct: number
   durationFrames: number
   manaCost: number
+  manaCost256: number
+  delayFrames: number
+  cooldownFrames: number
 } {
-  const baseStealPct = 40 + 5 * (slvl - 1)
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[265]
+  const par1 = entry?.params.par1 ?? 40
+  const par2 = entry?.params.par2 ?? 5
+  const par3 = entry?.params.par3 ?? CHARGE_DURATION_FRAMES
+  const toHit = entry?.toHit ?? 15
+  const toHitLev = entry?.toHitLev ?? 7
+  const mana = evaluateCanonicalSkillMana113c(265, lvl)
+  const baseStealPct = par1 + par2 * (lvl - 1)
 
   return {
     baseStealPct,
     charge1LifeStealPct: baseStealPct,
+    charge1ManaStealPct: 0,
     charge2LifeStealPct: baseStealPct,
     charge2ManaStealPct: baseStealPct,
     charge3LifeStealPct: baseStealPct * 2,
     charge3ManaStealPct: baseStealPct * 2,
-    attackRatingBonusPct: 15 + 7 * (slvl - 1),
-    durationFrames: CHARGE_DURATION_FRAMES,
-    manaCost: 2,
+    attackRatingBonusPct: toHit + toHitLev * (lvl - 1),
+    durationFrames: par3,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
   }
-}
-
-/**
- * Computes Cobra Strike (#265) progressive leech bonus percentage for a given charge tier (1..3) and skill level:
- * Charge 1: 40 + 5 * (slvl - 1)%
- * Charge 2: 80 + 10 * (slvl - 1)%
- * Charge 3: 120 + 15 * (slvl - 1)%
- */
-export function getCobraStrikeLeechBonus(chargeCount: number, slvl: number): number {
-  const clamped = Math.max(0, Math.min(MAX_CHARGES_PER_SKILL, Math.floor(chargeCount)))
-  if (clamped <= 0) return 0
-  const lvl = Math.max(1, Math.floor(slvl))
-  return (40 + 5 * (lvl - 1)) * clamped
 }
 
 /**
  * Skill #269: Claws of Thunder
  * 1.13c Parity:
- * - Lightning damage: 1 base min, max scales +8, +16, +24, +32, +40 (1-80 at slvl 1)
- * - Charge 2 adds Nova, Charge 3 adds 4 Charged Bolts
- * - Attack Rating: 15 + 7 * (slvl - 1)%
- * - Duration: 375 frames
+ * - Charge 1 Melee Lightning (`Skills.txt` #269, `HitShift = 8`): `1 [0..0]` to `80 [20,40,60,80,100]`, `+8%` per Royal Strike blvl
+ * - Charge 2 Nova (`Missiles.txt` #559 `clawsofthundernova`, `HitShift = 8`): `1 [0..0]` to `30 [15,25,35,45,65]`, `+8%` per Royal Strike blvl
+ * - Charge 3 Charged Bolts (`Missiles.txt` #558 `clawsofthunderbolt`, `HitShift = 8`, 16 bolts): `1 [0..0]` to `40 [20,40,60,80,100]`, `+8%` per Royal Strike blvl
+ * - Attack Rating: `15 + 7 * (slvl - 1)%`
+ * - Duration: `375` frames
  */
 export function evaluateClawsOfThunderStats(
   slvl: number,
@@ -463,21 +835,46 @@ export function evaluateClawsOfThunderStats(
 ): {
   minDamage: number
   maxDamage: number
+  novaMinDamage: number
+  novaMaxDamage: number
+  boltMinDamage: number
+  boltMaxDamage: number
+  chargedBoltsCount: number
   attackRatingBonusPct: number
   durationFrames: number
   manaCost: number
+  manaCost256: number
+  delayFrames: number
+  cooldownFrames: number
 } {
-  const minDamage = 1
-  const baseMax = compute5BandScaling(slvl, 80, 20, 40, 60, 80, 100)
-  const synBonus = 1 + (royalStrikeBlvl * 8) / 100
-  const maxDamage = Math.floor(baseMax * synBonus)
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[269]
+  const par3 = entry?.params.par3 ?? CHARGE_DURATION_FRAMES
+  const par8 = entry?.params.par8 ?? 8
+  const toHit = entry?.toHit ?? 15
+  const toHitLev = entry?.toHitLev ?? 7
+  const mana = evaluateCanonicalSkillMana113c(269, lvl)
+  const synPct = Math.max(0, Math.floor(royalStrikeBlvl)) * par8
+  const minDamage = Math.max(1, Math.floor((1 * (100 + synPct)) / 100))
+  const baseMax = compute5BandScaling(lvl, 80, 20, 40, 60, 80, 100)
+  const maxDamage = Math.floor((baseMax * (100 + synPct)) / 100)
+  const nova = evaluateMartialSubMissileDamage('clawsofthundernova', lvl, royalStrikeBlvl)
+  const bolt = evaluateMartialSubMissileDamage('clawsofthunderbolt', lvl, royalStrikeBlvl)
 
   return {
     minDamage,
     maxDamage,
-    attackRatingBonusPct: 15 + 7 * (slvl - 1),
-    durationFrames: CHARGE_DURATION_FRAMES,
-    manaCost: 4,
+    novaMinDamage: nova.minDamage,
+    novaMaxDamage: nova.maxDamage,
+    boltMinDamage: bolt.minDamage,
+    boltMaxDamage: bolt.maxDamage,
+    chargedBoltsCount: 16,
+    attackRatingBonusPct: toHit + toHitLev * (lvl - 1),
+    durationFrames: par3,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
   }
 }
 
@@ -494,12 +891,26 @@ export function evaluateDragonTailStats(slvl: number): {
   attackRatingBonusPct: number
   radiusSubtiles: number
   manaCost: number
+  manaCost256: number
+  delayFrames: number
+  cooldownFrames: number
 } {
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[270]
+  const par1 = entry?.params.par1 ?? 50
+  const par2 = entry?.params.par2 ?? 10
+  const par3 = entry?.params.par3 ?? 6
+  const toHit = entry?.toHit ?? 20
+  const toHitLev = entry?.toHitLev ?? 15
+  const mana = evaluateCanonicalSkillMana113c(270, lvl)
   return {
-    fireExplosionPct: 50 + 10 * (slvl - 1),
-    attackRatingBonusPct: 20 + 15 * (slvl - 1),
-    radiusSubtiles: 6,
-    manaCost: 10,
+    fireExplosionPct: par1 + par2 * (lvl - 1),
+    attackRatingBonusPct: toHit + toHitLev * (lvl - 1),
+    radiusSubtiles: par3,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
   }
 }
 
@@ -521,54 +932,85 @@ export function evaluateBladesOfIceStats(
   attackRatingBonusPct: number
   durationFrames: number
   manaCost: number
+  manaCost256: number
+  delayFrames: number
+  cooldownFrames: number
 } {
-  const baseMin = compute5BandScaling(slvl, 15, 8, 10, 20, 30, 40)
-  const baseMax = compute5BandScaling(slvl, 35, 8, 10, 22, 32, 42)
-  const synBonus = 1 + (royalStrikeBlvl * 8) / 100
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[274]
+  const par3 = entry?.params.par3 ?? CHARGE_DURATION_FRAMES
+  const par8 = entry?.params.par8 ?? 8
+  const toHit = entry?.toHit ?? 15
+  const toHitLev = entry?.toHitLev ?? 7
+  const mana = evaluateCanonicalSkillMana113c(274, lvl)
+  const baseMin = compute5BandScaling(lvl, 15, 8, 10, 20, 30, 40)
+  const baseMax = compute5BandScaling(lvl, 35, 8, 10, 22, 32, 42)
+  const synBonus = 1 + (royalStrikeBlvl * par8) / 100
   const minDamage = Math.floor(baseMin * synBonus)
   const maxDamage = Math.floor(baseMax * synBonus)
-  const freezeDurationFrames = 100 + 10 * (slvl - 1)
+  const freezeDurationFrames = 100 + 10 * (lvl - 1)
 
   return {
     minDamage,
     maxDamage,
     freezeDurationFrames,
-    attackRatingBonusPct: 15 + 7 * (slvl - 1),
-    durationFrames: CHARGE_DURATION_FRAMES,
-    manaCost: 3,
+    attackRatingBonusPct: toHit + toHitLev * (lvl - 1),
+    durationFrames: par3,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
   }
 }
 
 /**
  * Skill #275: Dragon Flight
- * 1.13c Parity:
- * - Teleport kick to target unit
- * - Enhanced Damage: 100 + 25 * (slvl - 1)%
- * - Attack Rating: 60 + 25 * (slvl - 1)%
- * - NextDelay: 4 frames
+ * 1.13c Parity (`Skills.txt` row 275):
+ * - Teleport kick to target unit within `aurarangecalc = par7 = 27` sub-tiles
+ * - Enhanced Damage: `ln12 = 100 + 25 * (slvl - 1)%` (`Param1 = 100, Param2 = 25`)
+ * - Attack Rating: `60 + 25 * (slvl - 1)%`
+ * - Casting Delay (`delay`): `25` frames (1.0s)
+ * - Mana cost: `15` (`manashift = 8, minmana = 1, mana = 15, lvlmana = 0`)
  */
 export function evaluateDragonFlightStats(slvl: number): {
   enhancedDamagePct: number
   attackRatingBonusPct: number
+  rangeSubtiles: number
+  delayFrames: number
+  cooldownFrames: number
   nextDelayFrames: number
   manaCost: number
+  manaCost256: number
 } {
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[275]
+  const par1 = entry?.params.par1 ?? 100
+  const par2 = entry?.params.par2 ?? 25
+  const par7 = entry?.params.par7 ?? 27
+  const toHit = entry?.toHit ?? 60
+  const toHitLev = entry?.toHitLev ?? 25
+  const mana = evaluateCanonicalSkillMana113c(275, lvl)
   return {
-    enhancedDamagePct: 100 + 25 * (slvl - 1),
-    attackRatingBonusPct: 60 + 25 * (slvl - 1),
-    nextDelayFrames: 4,
-    manaCost: 15,
+    enhancedDamagePct: par1 + par2 * (lvl - 1),
+    attackRatingBonusPct: toHit + toHitLev * (lvl - 1),
+    rangeSubtiles: par7,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
+    nextDelayFrames: 0,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   }
 }
 
 /**
  * Skill #280: Royal Strike / Phoenix Strike
- * 1.13c Parity:
- * - Tier 1: Meteor (Fire damage)
- * - Tier 2: Chain Lightning (arcs through 10 targets)
- * - Tier 3: Chaos Ice (16 chaos ice bolts piercing & freezing)
- * - Attack Rating: 15 + 7 * (slvl - 1)%
- * - Duration: 375 frames
+ * 1.13c Parity (`Skills.txt` #280 & `Missiles.txt` #563, #567, #568, #569):
+ * - Tier 1: Meteor (`royalstrikemeteor` #563: `20 [10,19,29,38,46]` to `40 [10,21,33,42,50]`, `+10%` per Fists of Fire blvl)
+ *   + Ground Fire (`royalstrikemeteorfire` #567: `HitShift = 3`, `6 [5,10,16,22,30]` to `10 [5,10,17,24,32]`, `+6%` per Fists of Fire blvl, duration `30 + 15 * (slvl - 1)` frames via `0x6FC5E072` `SKILLS_GetParam34Linear`)
+ * - Tier 2: Chain Lightning (`royalstrikechainlightning` #568: `1 [0..0]` to `40 [20,40,60,80,100]`, `+13%` per Claws of Thunder blvl, 7 radial bolts via `Param6 = 10`, `TargetX = Param2 + 1 = 7` targets via `0x6FCB4343`, jump radius `Param1 = 8` sub-tiles via `0x6FC5D0FB`)
+ * - Tier 3: Chaos Ice (`royalstrikechaosice` #569: `16 [4,8,12,20,28]` to `32 [4,8,13,21,29]`, `+10%` per Blades of Ice blvl, 16 bolts via `Param5 = 16`, freeze `100 [10,15,20]` frames)
+ * - Attack Rating: `15 + 7 * (slvl - 1)%`
+ * - Duration: `375` frames
  */
 export function evaluatePhoenixStrikeStats(
   slvl: number,
@@ -580,48 +1022,86 @@ export function evaluatePhoenixStrikeStats(
 ): {
   meteorMinDamage: number
   meteorMaxDamage: number
+  meteorGroundFireFrames: number
+  meteorGroundFireMinDamage256: number
+  meteorGroundFireMaxDamage256: number
+  meteorGroundFireTotalMinDamage: number
+  meteorGroundFireTotalMaxDamage: number
+  chainLightningMinDamage: number
   chainLightningMaxDamage: number
   chainLightningTargets: number
+  chainLightningJumpRadiusSubtiles: number
   chainLightningBoltsCount: number
   chaosIceMinDamage: number
   chaosIceMaxDamage: number
+  chaosIceBoltsCount: number
   freezeDurationFrames: number
   attackRatingBonusPct: number
   durationFrames: number
   manaCost: number
+  manaCost256: number
+  delayFrames: number
+  cooldownFrames: number
 } {
-  const fofSyn = 1 + ((synergies.fistsOfFireBlvl ?? 0) * 10) / 100
-  const cotSyn = 1 + ((synergies.clawsOfThunderBlvl ?? 0) * 13) / 100
-  const boiSyn = 1 + ((synergies.bladesOfIceBlvl ?? 0) * 10) / 100
+  const lvl = Math.max(1, Math.floor(slvl))
+  const entry = CANONICAL_113C_SKILLS[280]
+  const par1 = entry?.params.par1 ?? 8
+  const par2 = entry?.params.par2 ?? 6
+  const par3 = entry?.params.par3 ?? 30
+  const par4 = entry?.params.par4 ?? 15
+  const par5 = entry?.params.par5 ?? 16
+  const par6 = entry?.params.par6 ?? 10
+  const toHit = entry?.toHit ?? 15
+  const toHitLev = entry?.toHitLev ?? 7
+  const mana = evaluateCanonicalSkillMana113c(280, lvl)
+  const fofBlvl = synergies.fistsOfFireBlvl ?? 0
+  const cotBlvl = synergies.clawsOfThunderBlvl ?? 0
+  const boiBlvl = synergies.bladesOfIceBlvl ?? 0
 
-  const baseMeteorMin = compute5BandScaling(slvl, 20, 10, 19, 29, 38, 46)
-  const baseMeteorMax = compute5BandScaling(slvl, 40, 10, 22, 34, 46, 56)
-  const meteorMinDamage = Math.floor(baseMeteorMin * fofSyn)
-  const meteorMaxDamage = Math.floor(baseMeteorMax * fofSyn)
+  const meteor = evaluateMartialSubMissileDamage('royalstrikemeteor', lvl, fofBlvl)
+  const meteorFire = evaluateMartialSubMissileDamage('royalstrikemeteorfire', lvl, fofBlvl)
+  const meteorGroundFireFrames = par3 + par4 * (lvl - 1)
+  const meteorGroundFireTotalMinDamage = Math.floor(
+    (meteorFire.min256 * meteorGroundFireFrames) / 256,
+  )
+  const meteorGroundFireTotalMaxDamage = Math.floor(
+    (meteorFire.max256 * meteorGroundFireFrames) / 256,
+  )
 
-  const baseChainMax = compute5BandScaling(slvl, 40, 20, 40, 60, 80, 100)
-  const chainLightningMaxDamage = Math.floor(baseChainMax * cotSyn)
-  const chainLightningTargets = 5 + slvl
-  const chainLightningBoltsCount = Math.ceil(64 / 10) // 7 radial bolts (Param6 = 10)
+  const chainLtng = evaluateMartialSubMissileDamage('royalstrikechainlightning', lvl, cotBlvl)
+  // 1.13c D2Game.dll sub_6FCB3D60 @ 0x6FCB4314..0x6FCB434C:
+  // MISSILE_SetTargetX(pMissile, SkillsTxt[280].Param2 + 1) -> 6 + 1 = 7 total chain targets (jump radius Param1 = 8 sub-tiles)
+  const chainLightningTargets = par2 + 1
+  const chainLightningJumpRadiusSubtiles = par1
+  const chainLightningBoltsCount = Math.ceil(64 / par6) // 7 radial bolts (Param6 = 10)
 
-  const baseChaosMin = compute5BandScaling(slvl, 16, 4, 8, 12, 16, 20)
-  const baseChaosMax = compute5BandScaling(slvl, 32, 4, 8, 13, 18, 23)
-  const chaosIceMinDamage = Math.floor(baseChaosMin * boiSyn)
-  const chaosIceMaxDamage = Math.floor(baseChaosMax * boiSyn)
-  const freezeDurationFrames = compute3BandDuration(slvl, 100, 10, 15, 20)
+  const chaosIce = evaluateMartialSubMissileDamage('royalstrikechaosice', lvl, boiBlvl)
+  const chaosIceBoltsCount = par5 // Param5 = 16
+  const freezeDurationFrames = compute3BandDuration(lvl, 100, 10, 15, 20)
 
   return {
-    meteorMinDamage,
-    meteorMaxDamage,
-    chainLightningMaxDamage,
+    meteorMinDamage: meteor.minDamage,
+    meteorMaxDamage: meteor.maxDamage,
+    meteorGroundFireFrames,
+    meteorGroundFireMinDamage256: meteorFire.min256,
+    meteorGroundFireMaxDamage256: meteorFire.max256,
+    meteorGroundFireTotalMinDamage,
+    meteorGroundFireTotalMaxDamage,
+    chainLightningMinDamage: chainLtng.minDamage,
+    chainLightningMaxDamage: chainLtng.maxDamage,
     chainLightningTargets,
+    chainLightningJumpRadiusSubtiles,
     chainLightningBoltsCount,
-    chaosIceMinDamage,
-    chaosIceMaxDamage,
+    chaosIceMinDamage: chaosIce.minDamage,
+    chaosIceMaxDamage: chaosIce.maxDamage,
+    chaosIceBoltsCount,
     freezeDurationFrames,
-    attackRatingBonusPct: 15 + 7 * (slvl - 1),
+    attackRatingBonusPct: toHit + toHitLev * (lvl - 1),
     durationFrames: CHARGE_DURATION_FRAMES,
-    manaCost: 4,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownFrames: mana.delayFrames,
   }
 }
 

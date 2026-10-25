@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
 import { MISSILE_METAS } from '../src/client/render/missiles-meta.ts'
 import { ClientUnit } from '../src/client/world/client-unit.ts'
 import { ClientWorld } from '../src/client/world/client-world.ts'
-import { SKILL_TGT_OVERLAYS_113C } from '../src/client/world/world-skill-state-tables.ts'
+import { getSkillTgtOverlay113c } from '../src/client/world/world-skill-state-tables.ts'
 import { getMissileTxtData, getOverlayTxtData } from '../src/common/skills/missiles-data.ts'
 
 function createMonsterCaster(world: ClientWorld, classId = 310, id = 900, x = 100, y = 100): ClientUnit {
@@ -80,7 +80,7 @@ describe('B16-p4 Monster Skill VFX Parity (#1180–#1185)', () => {
       const priest = createMonsterCaster(world, 252, 910, 100, 100)
       const zealot = createMonsterCaster(world, 247, 911, 104, 100)
 
-      expect(SKILL_TGT_OVERLAYS_113C[179]).toBe('receiving')
+      expect(getSkillTgtOverlay113c(179)).toBe('receiving')
       expect(getOverlayTxtData('receiving').id).toBe(27)
 
       ;(world as any).applySkillCastToUnit(priest, 179, 104, 100, 2, true, 1000)

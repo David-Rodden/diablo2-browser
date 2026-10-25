@@ -184,6 +184,9 @@ export interface SkillRecord {
   readonly delay: string
   readonly checkFunc: number
   readonly nocostinstate: boolean
+  readonly noCostInState: boolean
+  readonly useManaOnDo: boolean
+  readonly startMana: number
   readonly decquant: boolean
   readonly manaShift: number
   readonly mana: number
@@ -862,6 +865,9 @@ export class D2DataRegistry {
         delay: textCell(row, 'delay'),
         checkFunc: parseFuncIdCell(row, 'checkfunc', 0),
         nocostinstate: numberCell(row, 'nocostinstate', 0) !== 0,
+        noCostInState: numberCell(row, 'nocostinstate', 0) !== 0,
+        useManaOnDo: numberCell(row, 'usemanaondo', 0) !== 0,
+        startMana: numberCell(row, 'startmana', 0),
         decquant: numberCell(row, 'decquant', 0) !== 0,
         manaShift: numberCell(row, 'manashift', 8),
         mana: numberCell(row, 'mana', 0),
@@ -1236,7 +1242,7 @@ export class D2DataRegistry {
         lifePerVitality: numberCell(row, 'LifePerVitality', 8),
         staminaPerVitality: numberCell(row, 'StaminaPerVitality', 4),
         manaPerMagic: numberCell(row, 'ManaPerMagic', 8),
-        blockFactor: numberCell(row, 'BlockFactor', 20),
+        blockFactor: numberCell(row, 'BlockFactor', 0),
         startSkill: textCell(row, 'StartSkill'),
         baseWClass: textCell(row, 'baseWClass', 'hth'),
         skills,
@@ -1409,9 +1415,10 @@ export class D2DataRegistry {
       const code = textCell(row, 'Code')
       if (code) this.elemTypes.add(code.toLowerCase())
     }
-    for (const row of this.hitClassTable.rows) {
+    for (let idx = 0; idx < this.hitClassTable.rows.length; idx++) {
+      const row = this.hitClassTable.rows[idx]!
       const code = textCell(row, 'Code')
-      const num = numberCell(row, 'Hit Class', 0)
+      const num = numberCell(row, 'Hit Class', idx)
       if (code) this.hitClasses.set(code.toLowerCase(), num)
     }
     for (const row of this.eventsTable.rows) {

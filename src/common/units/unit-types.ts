@@ -251,6 +251,8 @@ export interface MonsterStats {
   readonly align?: 0 | 1 | 2 | number | undefined
   /** Melee sub-tile range (`MeleeRng`). */
   readonly meleeRng?: number | undefined
+  /** Monster spawn player count (`stat 100 = monster_playercount`, `D2Game!0x6FCCF840` / `0x6FCCFF3B`). */
+  readonly monsterPlayerCount?: number | undefined
 }
 
 export interface MonsterCurseState {
@@ -341,6 +343,8 @@ export interface Monster {
   align?: 0 | 1 | 2 | undefined
   /** Optional pack leader monster index for minion morale routing (R2.2). */
   leaderId?: number | undefined
+  /** Monster spawn player count (`stat 100 = monster_playercount`, `D2Game!0x6FCCF840` / `0x6FCCFF3B`). */
+  monsterPlayerCount?: number | undefined
 }
 
 /** The player's combat-relevant state. */
@@ -718,6 +722,7 @@ export interface KillerDropContext {
   readonly playerGf: number
   readonly gamePlayers: number
   readonly partyPlayers: number
+  readonly monsterPlayerCount?: number | undefined
 }
 
 export interface PendingMonsterDrop {

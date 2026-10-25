@@ -71,6 +71,8 @@ export interface SelfPlayerState {
 
 export class MutableSelfPlayerState implements SelfPlayerState {
   unitId = 0
+  /** S2C 0x5F dword stored at pPlayerData+0x2C (D2Client.dll 0x6fb5c050 -> D2Common #10073). */
+  playerData2C = 0
   name = ''
   charClass: CharClassId | null = null
   level = 0
@@ -117,6 +119,9 @@ export class MutableSelfPlayerState implements SelfPlayerState {
   readonly skillCharges = new Map<number, number>()
   leftSkill = 0
   rightSkill = 0
+  /** Owner item GUID of the selected left / right skill (C2S 0x3C), undefined / 0xffffffff = the player's own skill. */
+  leftSkillItemId: number | undefined = undefined
+  rightSkillItemId: number | undefined = undefined
   runMode = true
   moving = false
   mode = 1

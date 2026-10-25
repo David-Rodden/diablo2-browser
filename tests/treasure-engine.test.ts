@@ -25,6 +25,8 @@ import {
   type QualityFactors,
 } from '../src/common/items/treasure-engine.ts'
 import { handleActSceneChatCommand } from '../src/common/world/chat-commands.ts'
+import { executeDropPipeline } from '../src/common/items/drop-tables.ts'
+import { getEmbeddedDropTables } from '../src/common/items/embedded-drop-tables.ts'
 
 const hasD2 = fs.existsSync('samples/d2/d2data.mpq')
 
@@ -54,6 +56,23 @@ describe('TreasureClassEx Expansion Engine (Issue #101)', () => {
       // Boundary clamps
       expect(computeEffectivePlayers(0, 0)).toBe(1)
       expect(computeEffectivePlayers(2, 5)).toBe(2) // p clamped to g
+
+      // D2Game!0x6FC324E9: party count p is clamped to <= 8
+      expect(computeEffectivePlayers(10, 10)).toBe(9) // p=8, g=10 -> 8 + trunc(2/2) = 9
+      expect(computeEffectivePlayers(8, 12)).toBe(8) // p clamped to 8
+
+      // D2Game!0x6FC3250C..0x6FC32529: monster_playercount (stat 100) caps n when drop source is a monster
+      // Monster spawned at g=1 (stat 100 = 1), killed at g=8, p=1 -> uncapped n=4 capped to 1
+      expect(computeEffectivePlayers(8, 1, 1)).toBe(1)
+      expect(computeEffectivePlayers(8, 8, 1)).toBe(1)
+      // Monster spawned at g=8 (stat 100 = 8), killed at g=8, p=1 -> n = min(4, 8) = 4
+      expect(computeEffectivePlayers(8, 1, 8)).toBe(4)
+      // Monster spawned at g=3 (stat 100 = 3), killed at g=8, p=4 (uncapped n=6) -> capped to 3
+      expect(computeEffectivePlayers(8, 4, 3)).toBe(3)
+      // Monster with stat 100 <= 0 is clamped to >= 1 (0x6FC3251B..0x6FC32520)
+      expect(computeEffectivePlayers(8, 8, 0)).toBe(1)
+      // Non-monster drop source (chest/container, monsterPlayerCount === undefined) is uncapped
+      expect(computeEffectivePlayers(8, 1, undefined)).toBe(4)
     })
 
     it('verifies computeScaledNoDrop double precision scaling', () => {
@@ -342,6 +361,156 @@ describe('TreasureClassEx Expansion Engine (Issue #101)', () => {
       expect(drops[0]?.qualityFactors).toEqual([883, 883, 883, 1024])
       expect(drops[1]?.qualityFactors).toEqual([883, 883, 883, 1024])
     })
+
+    it("expands Act 1 (H) Champ A (Picks=-2, TotalProb=4) into exactly 2 sub-TCs across any seed (Issue #1431, D2Game!0x6FC3263F)", () => {
+      // D2Game.dll ITEMS_RollTreasureClass @ 0x6FC323DE..0x6FC326C8:
+      // Act 1 (H) Champ A in Patch_D2.mpq TreasureClassEx.txt has Picks = -2,
+      // Item1 = "Act 1 (H) Citem A" (Prob1 = 1), Item2 = "Act 1 (H) Cpot A" (Prob2 = 3), TotalProb = 4.
+      // Frame count is max(|Picks|, 1) = 2: k=0 selects Citem A (cumProb 1 > 0), k=1 selects Cpot A (cumProb 4 > 1).
+      const champNode = table.get("Act 1 (H) Champ A")!
+      expect(champNode.picks).toBe(-2)
+      expect(champNode.totalProbExpansion).toBe(4)
+
+      // Intercept sub-TCs as leaf markers so we observe the exact sub-TC sequence emitted by Act 1 (H) Champ A
+      const interceptTable: TreasureClassTable = {
+        ...table,
+        get: (name: string) => {
+          if (name === "Act 1 (H) Champ A") return champNode
+          return undefined
+        },
+      }
+
+      for (const seed of [1, 42, 0x12345678, 0xdeadbeef, 0xffffffff]) {
+        const rng = new D2Rng(seed)
+        const initialSeed = rng.getSeed()
+        const drops = rollTreasureClass("Act 1 (H) Champ A", {
+          rng,
+          tcTable: interceptTable,
+        })
+        expect(drops.map(d => d.code)).toEqual([
+          "Act 1 (H) Citem A",
+          "Act 1 (H) Cpot A",
+        ])
+        expect(rng.getSeed()).toEqual(initialSeed)
+      }
+    })
+
+    it("caps negative Picks at TotalProb when |Picks| > TotalProb (Picks=-5, TotalProb=3 -> 3 drops, D2Game!0x6FC3264D)", () => {
+      // D2Game.dll @ 0x6FC3264D: cmp esi, [esp+0x10] (k vs TotalProb); jge 0x6FC32AB0 (terminate frame)
+      const mockTable: TreasureClassTable = {
+        all: [],
+        byName: new Map(),
+        byGroup: new Map(),
+        danglingReferences: new Set(),
+        autoTCDanglingReferences: new Set(),
+        baseItemDanglingReferences: new Set(),
+        get: (name: string) => {
+          if (name === "NegFiveTotalThree") {
+            return {
+              name: "NegFiveTotalThree",
+              level: 1,
+              picks: -5,
+              unique: 0,
+              set: 0,
+              rare: 0,
+              magic: 0,
+              noDrop: 0,
+              items: [
+                { item: "swd", prob: 1, kind: "base-item", isDangling: true, isClassic: true },
+                { item: "axe", prob: 2, kind: "base-item", isDangling: true, isClassic: true },
+              ],
+              totalProbClassic: 3,
+              totalProbExpansion: 3,
+              cumulativeProbExpansion: [1, 3],
+            } as TreasureClassNode
+          }
+          return undefined
+        },
+      }
+
+      const drops = rollTreasureClass("NegFiveTotalThree", {
+        rng: new D2Rng(99),
+        tcTable: mockTable,
+      })
+      expect(drops.map(d => d.code)).toEqual(["swd", "axe", "axe"])
+    })
+
+    it("sweeps all 184 negative-Picks rows in 1.13c TreasureClassEx.txt (including all 30 Champion TCs and Classic Countess) against min(|Picks|, TotalProb)", () => {
+      const negNodes = table.all.filter(n => n.picks < 0)
+      expect(negNodes.length).toBe(184)
+
+      const mismatchExpansion = negNodes.filter(n => n.totalProbExpansion !== -n.picks)
+      expect(mismatchExpansion.length).toBe(30)
+
+      for (const node of negNodes) {
+        const singleLevelTable: TreasureClassTable = {
+          ...table,
+          get: (name: string) => (name === node.name ? node : undefined),
+        }
+
+        // Expansion mode check
+        const expDrops = rollTreasureClass(node.name, {
+          rng: new D2Rng(777),
+          tcTable: singleLevelTable,
+          isExpansion: true,
+          maxDrops: 20,
+        })
+        const expectedExpCount = Math.min(-node.picks, node.totalProbExpansion)
+        expect(expDrops.length, `Expansion negative-Picks TC "${node.name}"`).toBe(expectedExpCount)
+        for (let k = 0; k < expectedExpCount; k++) {
+          const expectedIdx = binarySearchPrefixSum(node.cumulativeProbExpansion, k)
+          expect(expDrops[k]?.code).toBe(node.items[expectedIdx]?.item)
+        }
+
+        // Classic mode check (verifies Countess / Countess (N) / Countess (H) where totalProbClassic=1 < |Picks|=2)
+        const classicDrops = rollTreasureClass(node.name, {
+          rng: new D2Rng(777),
+          tcTable: singleLevelTable,
+          isExpansion: false,
+          maxDrops: 20,
+        })
+        const expectedClassicCount = Math.min(-node.picks, node.totalProbClassic)
+        expect(classicDrops.length, `Classic negative-Picks TC "${node.name}"`).toBe(expectedClassicCount)
+      }
+    })
+
+    it("clamps Picks=0 to max(|Picks|, 1) = 1 per D2Game!0x6FC323F0..0x6FC323F8", () => {
+      const mockTable: TreasureClassTable = {
+        all: [],
+        byName: new Map(),
+        byGroup: new Map(),
+        danglingReferences: new Set(),
+        autoTCDanglingReferences: new Set(),
+        baseItemDanglingReferences: new Set(),
+        get: (name: string) => {
+          if (name === "ZeroPicksTC") {
+            return {
+              name: "ZeroPicksTC",
+              level: 1,
+              picks: 0,
+              unique: 0,
+              set: 0,
+              rare: 0,
+              magic: 0,
+              noDrop: 0,
+              items: [
+                { item: "cap", prob: 1, kind: "base-item", isDangling: true, isClassic: true },
+              ],
+              totalProbClassic: 1,
+              totalProbExpansion: 1,
+              cumulativeProbExpansion: [1],
+            } as TreasureClassNode
+          }
+          return undefined
+        },
+      }
+
+      const drops = rollTreasureClass("ZeroPicksTC", {
+        rng: new D2Rng(123),
+        tcTable: mockTable,
+      })
+      expect(drops.map(d => d.code)).toEqual(["cap"])
+    })
   })
 
   describe('Deterministic Replay & Seed Independence', () => {
@@ -556,10 +725,11 @@ describe('TreasureClassEx Expansion Engine (Issue #101)', () => {
       expect(drops.length).toBe(1)
       expect(drops[0]?.isGold).toBe(true)
       expect(drops[0]?.code).toBe('gld')
-      expect(drops[0]?.goldMultiplier).toBe(1)
+      // D2Common!0x6FDA4614: plain 'gld' has wParam = 0 (no TC multiplier)
+      expect(drops[0]?.goldMultiplier).toBeUndefined()
     })
 
-    it('handles boss gold multiplier drops (gld,mul=N -> N >> 8)', () => {
+    it('handles boss gold multiplier drops (gld,mul=N -> raw WORD wParam = N & 0xffff)', () => {
       const mockTable: TreasureClassTable = {
         ...table,
         get: (name: string) => {
@@ -621,15 +791,96 @@ describe('TreasureClassEx Expansion Engine (Issue #101)', () => {
       })
 
       expect(drops.length).toBe(3)
-      // 1280 >> 8 = 5
+      // D2Common!0x6FDA4614 stores raw 16-bit WORD wParam; D2Game!0x6FC32A43 applies (gold * wParam) >> 8
       expect(drops[0]?.isGold).toBe(true)
-      expect(drops[0]?.goldMultiplier).toBe(5)
-      // 1536 >> 8 = 6
+      expect(drops[0]?.goldMultiplier).toBe(1280)
       expect(drops[1]?.isGold).toBe(true)
-      expect(drops[1]?.goldMultiplier).toBe(6)
-      // 2048 >> 8 = 8
+      expect(drops[1]?.goldMultiplier).toBe(1536)
       expect(drops[2]?.isGold).toBe(true)
-      expect(drops[2]?.goldMultiplier).toBe(8)
+      expect(drops[2]?.goldMultiplier).toBe(2048)
+    })
+
+    it('Issue #1483: rolls gold amount from gold item own seed, scales by (gold*mul)>>8, and clamps negative GF to 0', () => {
+      const dropTables = getEmbeddedDropTables()
+      const customTcTable: TreasureClassTable = {
+        ...dropTables.tcTable,
+        get: (name: string) => {
+          if (name === 'GoldMul300AndRing') {
+            return {
+              name: 'GoldMul300AndRing',
+              level: 1,
+              picks: -2,
+              unique: 0,
+              set: 0,
+              rare: 0,
+              magic: 0,
+              noDrop: 0,
+              items: [
+                { item: 'gld,mul=300', prob: 1, kind: 'gold-multiplier', multiplier: 300, isDangling: true, isClassic: true },
+                { item: 'rin', prob: 1, kind: 'base-item', isDangling: false, isClassic: true },
+              ],
+              totalProbClassic: 2,
+              totalProbExpansion: 2,
+              cumulativeProbExpansion: [1, 2],
+            } as TreasureClassNode
+          }
+          return dropTables.tcTable.get(name)
+        },
+      }
+      const customDropTables = {
+        ...dropTables,
+        tcTable: customTcTable,
+      }
+
+      const ilvl = 20
+      const masterSeed = 0x12345678
+      // Reference RNG trace per D2Game!0x6FC31070 & 0x6FC32A1A:
+      // 1. Gold leaf draws dwInitSeed from master rng (ITEMS_RollItemQuality sees bNormal == 1 and does not touch master rng).
+      const expectedMasterRng = new D2Rng(masterSeed)
+      const expectedGoldInitSeed = expectedMasterRng.rand(0xFFFFFFFF) >>> 0
+      const expectedGoldItemRng = new D2Rng(expectedGoldInitSeed)
+      const expectedBaseGold = Math.max(1, expectedGoldItemRng.rand(5 * ilvl) + ilvl)
+      // D2Game!0x6FC32A43..0x6FC32A49: imul ebx, 300; sar ebx, 8
+      const expectedMul300Gold = Math.max(0, Math.imul(expectedBaseGold, 300) >> 8)
+      // 2. Subsequent 'rin' leaf draws its dwInitSeed from the NEXT master rng call (rin has no base upgrade rolls).
+      const expectedRingInitSeed = expectedMasterRng.rand(0xFFFFFFFF) >>> 0
+
+      const drops = executeDropPipeline({
+        tcName: 'GoldMul300AndRing',
+        nLevel: ilvl,
+        difficulty: 'normal',
+        monsterType: 1,
+        playerMf: 0,
+        playerGf: 0,
+        monsterRng: new D2Rng(masterSeed),
+        dropTables: customDropTables,
+      })
+
+      expect(drops.length).toBe(2)
+      const goldDrop = drops[0]!
+      const ringDrop = drops[1]!
+      expect((goldDrop.code ?? '').trim()).toBe('gld')
+      expect(goldDrop.uniqueId).toBe(expectedGoldInitSeed)
+      expect(goldDrop.stack).toBe(expectedMul300Gold)
+      // Verify fractional fixed-point mul=300 (1.171875x) is not truncated to mul>>8 = 1x
+      expect(expectedMul300Gold).toBeGreaterThan(expectedBaseGold)
+      // Verify subsequent item's dwInitSeed matches 1.13c master RNG stream
+      expect((ringDrop.code ?? '').trim()).toBe('rin')
+      expect(ringDrop.uniqueId).toBe(expectedRingInitSeed)
+
+      // D2Game!0x6FC2F260..0x6FC2F2DD: negative total (100 + GF < 0, e.g. GF = -150) clamps STAT_GOLD to 0
+      const negGfDrops = executeDropPipeline({
+        tcName: 'GoldMul300AndRing',
+        nLevel: ilvl,
+        difficulty: 'normal',
+        monsterType: 1,
+        playerMf: 0,
+        playerGf: -150,
+        monsterRng: new D2Rng(masterSeed),
+        dropTables: customDropTables,
+      })
+      expect(negGfDrops[0]?.stack).toBe(0)
+      expect(negGfDrops[0]?.quantity).toBe(0)
     })
   })
 
@@ -738,7 +989,9 @@ describe('TreasureClassEx Expansion Engine (Issue #101)', () => {
       })
 
       expect(drops.length).toBe(1)
-      expect(drops[0]?.code).toBe('Annihilus')
+      expect(drops[0]?.code).toBe('cm1')
+      expect(drops[0]?.item).toBe('Annihilus')
+      expect(drops[0]?.uniqueIndex).toBe(381)
       expect(drops[0]?.forcedUnique).toBe(true)
       expect(drops[0]?.forcedQuality).toBe('unique')
       expect(drops[0]?.flags & 1).toBe(1)

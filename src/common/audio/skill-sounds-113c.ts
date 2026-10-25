@@ -1947,8 +1947,9 @@ export class SkillSoundController113c {
       ...(resolvedUnit !== undefined ? { unit: resolvedUnit } : {}),
     }
     const rawClass = rec.charclass ?? rec.charClass ?? rec.classCode ?? rec.casterClass
-    const normClass = rawClass !== undefined ? normalizePlayerClassCode113c(rawClass) : row.charclass
-    const useClassSound = row.stsoundclass > 0 && (!row.charclass || !normClass || normClass === row.charclass)
+    // 1.13c 0x6FB52141..0x6FB52158: class sound only for a player of the skill's charclass.
+    const normClass = rawClass !== undefined ? normalizePlayerClassCode113c(rawClass) : undefined
+    const useClassSound = row.stsoundclass > 0 && !!normClass && normClass === row.charclass
     const soundId = useClassSound ? row.stsoundclass : row.stsound
     if (soundId <= 0) return 0
     if (skillId === 151) {
@@ -2054,27 +2055,12 @@ export class SkillSoundController113c {
       unitId,
     }
     let handle = 0
-    if (flag === 1) {
-      if (row.dosound > 0) {
-        handle = this.emitSound(row.dosound, playOpts) || handle
-      } else if (row.dosoundA > 0) {
-        handle = this.emitSound(row.dosoundA, playOpts) || handle
-      }
-      if (rec.variant === 'a' && row.dosoundA > 0 && row.dosound > 0) {
-        handle = this.emitSound(row.dosoundA, playOpts) || handle
-      } else if (rec.variant === 'b' && row.dosoundB > 0) {
-        handle = this.emitSound(row.dosoundB, playOpts) || handle
-      }
-    } else if (flag === 2) {
-      if (row.dosound > 0) {
-        handle = this.emitSound(row.dosound, playOpts) || handle
-      }
-      if (row.dosoundA > 0) {
-        handle = this.emitSound(row.dosoundA, playOpts) || handle
-      }
-      if (row.dosoundB > 0) {
-        handle = this.emitSound(row.dosoundB, playOpts) || handle
-      }
+    // 1.13c client Do tail 0x6FB52E5F plays only Skills.txt dosound (+0x100); dosound a / b are read solely by CltDo16
+    // Jab (0x6FAC4F7C player / 0x6FAC4F9C monster), which the world resolves into `doSoundId`.
+    const explicitDo = toFiniteNumber(rec.doSoundId)
+    const doSound = explicitDo !== undefined ? explicitDo : row.dosound
+    if (doSound > 0) {
+      handle = this.emitSound(doSound, playOpts) || handle
     }
     const weaponSoundId = toFiniteNumber(rec.weaponSoundId ?? rec.weaponSound)
     if (

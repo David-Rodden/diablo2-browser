@@ -16,10 +16,10 @@ import type {
   SkillExecOutcome,
   SkillModule,
 } from '../../types.ts'
-import { getCobraStrikeLeechBonus } from '../../assassin-martial-arts.ts'
+import { evaluateCobraStrikeStats } from '../../assassin-martial-arts.ts'
 import { evaluateSkillCore113c, executeSkillCore113c } from '../../registry.ts'
 
-export { getCobraStrikeLeechBonus }
+export { evaluateCobraStrikeStats }
 
 export const skillModule: SkillModule = {
   skillId: 265,
@@ -35,14 +35,37 @@ export const skillModule: SkillModule = {
   executeDo(ctx: SkillExecContext): SkillExecOutcome {
     const outcome = executeSkillCore113c(ctx)
     const stealState = ctx.caster.stateBus.getState('progressive_steal') ?? ctx.caster.stateBus.getState('cobrastrike')
-    const chargeCount = stealState ? (stealState.stats?.charge ?? stealState.stats?.progressive_charges ?? 1) : 0
+    const chargeCount = stealState
+      ? (stealState.stats?.progressive_steal ??
+          stealState.stats?.progressive_other ??
+          stealState.stats?.progressive_damage ??
+          stealState.stats?.charge ??
+          stealState.stats?.progressive_charges ??
+          0)
+      : 0
     const slvl = ctx.evalResult?.slvl ?? Math.max(1, ctx.caster.statList.getEffectiveSkillLevel(265))
-    const leechBonus = getCobraStrikeLeechBonus(chargeCount, slvl)
+    const stats = evaluateCobraStrikeStats(slvl)
+    const lifeStealPct =
+      chargeCount >= 3
+        ? stats.charge3LifeStealPct
+        : chargeCount === 2
+          ? stats.charge2LifeStealPct
+          : chargeCount === 1
+            ? stats.charge1LifeStealPct
+            : 0
+    const manaStealPct =
+      chargeCount >= 3
+        ? stats.charge3ManaStealPct
+        : chargeCount === 2
+          ? stats.charge2ManaStealPct
+          : 0
     return {
       ...outcome,
       notes: [
         ...outcome.notes,
-        `cobra_leech_bonus:${leechBonus}`,
+        `cobra_leech_bonus:${lifeStealPct}:${manaStealPct}`,
+        `cobra_life_steal:${lifeStealPct}`,
+        `cobra_mana_steal:${manaStealPct}`,
         'skill_module:skill-265-cobra-strike',
       ],
     }

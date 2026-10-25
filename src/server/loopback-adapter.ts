@@ -403,7 +403,55 @@ export interface LocalLobbyProviderOptions {
   readonly initialSaves?: Readonly<Record<string, Uint8Array>> | ReadonlyMap<string, Uint8Array> | undefined
   readonly defaultMapSeed?: number | undefined
   readonly seed?: number | undefined
+  readonly seedGenerator?: ((previousSeed?: number) => number) | undefined
   readonly registry?: unknown
+}
+
+/**
+ * Generates a non-zero 32-bit map seed according to Diablo II v1.13c single-player map reset rules.
+ *
+ * In Diablo II 1.13c:
+ * - Single-player characters persist their mapSeed in the `.d2s` header at offset 0xAB.
+ * - When continuing a game in the same difficulty, the existing mapSeed is preserved, keeping
+ *   the dungeon layouts and shrines identical across game sessions.
+ * - When switching difficulty or when the existing mapSeed is 0, 1.13c resets the map layout
+ *   by drawing a fresh 32-bit random seed using system entropy / PRNG (`Fog.10086`),
+ *   guaranteeing a non-zero seed distinct from the previous seed.
+ * - There is no deterministic hash formula, and no magic constants like 0x9e3779b9 or 0x13579bdf.
+ *
+ * @param previousSeed - Previous seed value to avoid collision with.
+ * @param rng - Optional D2Rng instance (e.g. for deterministic unit testing).
+ * @returns Non-zero 32-bit unsigned integer map seed.
+ */
+export function generateD2sMapSeed(previousSeed?: number, rng?: D2Rng): number {
+  const prev = previousSeed !== undefined ? (previousSeed >>> 0) : 0
+  if (rng) {
+    let s = (rng.nextUint32() >>> 0) || 1
+    let guard = 0
+    while ((s === prev || s === 0) && guard++ < 32) {
+      s = (rng.nextUint32() >>> 0) || 1
+    }
+    return s || 1
+  }
+
+  for (let attempt = 0; attempt < 32; attempt++) {
+    let s = 0
+    if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+      const buf = new Uint32Array(1)
+      globalThis.crypto.getRandomValues(buf)
+      s = buf[0] >>> 0
+    } else {
+      const hi = Math.floor(Math.random() * 0x10000)
+      const lo = Math.floor(Math.random() * 0x10000)
+      s = ((hi << 16) | lo) >>> 0
+    }
+    if (s !== 0 && s !== prev) {
+      return s
+    }
+  }
+
+  const fallback = ((Date.now() ^ Math.floor(Math.random() * 0x100000000)) >>> 0)
+  return fallback !== prev && fallback !== 0 ? fallback : ((prev + 1) >>> 0) || 1
 }
 
 export class LocalLobbyProvider implements LobbyProvider {
@@ -411,7 +459,9 @@ export class LocalLobbyProvider implements LobbyProvider {
   private readonly saves = new Map<string, Uint8Array>()
   private readonly gamesList: GameSummary[] = []
   private readonly chatEmitter = new TypedEmitter<ChatEvent>()
-  private readonly defaultMapSeed: number
+  private readonly defaultMapSeed: number | undefined
+  private readonly seedGenerator: ((previousSeed?: number) => number) | undefined
+  private readonly rng: D2Rng
   private readonly registry: unknown
   private selectedCharName: string | undefined
   private persistedPlayersX: number | undefined = undefined
@@ -429,7 +479,14 @@ export class LocalLobbyProvider implements LobbyProvider {
   }
 
   constructor(options: LocalLobbyProviderOptions = {}) {
-    this.defaultMapSeed = ((options.defaultMapSeed ?? options.seed ?? 0x12345678) >>> 0) || 1
+    const configuredSeed = options.defaultMapSeed ?? options.seed
+    this.defaultMapSeed = configuredSeed !== undefined ? (configuredSeed >>> 0) || 1 : undefined
+    this.seedGenerator = options.seedGenerator
+    this.rng = new D2Rng(
+      this.defaultMapSeed !== undefined
+        ? this.defaultMapSeed
+        : generateD2sMapSeed(0),
+    )
     this.registry = options.registry
     if (options.initialSaves) {
       const entries =
@@ -442,6 +499,13 @@ export class LocalLobbyProvider implements LobbyProvider {
         }
       }
     }
+  }
+
+  private generateNextMapSeed(previousSeed?: number): number {
+    if (this.seedGenerator) {
+      return (this.seedGenerator(previousSeed) >>> 0) || 1
+    }
+    return generateD2sMapSeed(previousSeed, this.rng)
   }
 
   private findCanonicalKey(name: string): string | undefined {
@@ -499,6 +563,8 @@ export class LocalLobbyProvider implements LobbyProvider {
       (spec.hardcore ? 0x04 : 0x00) |
       (spec.ladder ? 0x40 : 0x00)
 
+    const initialMapSeed = this.defaultMapSeed ?? this.generateNextMapSeed(0)
+
     const d2sBytes = writeD2sSave113c(
       {
         name: trimmed,
@@ -514,7 +580,7 @@ export class LocalLobbyProvider implements LobbyProvider {
         altRightSkill: 0,
         activeDifficulty: 0,
         activeAct: 0,
-        mapSeed: this.defaultMapSeed,
+        mapSeed: initialMapSeed,
         questsRaw: createDefaultQuestData(),
         waypointsRaw: createDefaultWaypointData(),
         npcIntro: createDefaultNpcIntroData(),
@@ -689,12 +755,7 @@ export class LocalLobbyProvider implements LobbyProvider {
       (target === undefined || !('mapSeed' in target) || target.mapSeed === undefined) &&
       (requestedDifficulty !== parsed.activeDifficulty || effectiveSeed === 0)
     ) {
-      const baseSeed = ((parsed.mapSeed >>> 0) ^ ((requestedDifficulty + 1) * 0x9e3779b9)) >>> 0
-      const rng = new D2Rng(baseSeed || 1)
-      effectiveSeed = (rng.nextUint32() >>> 0) || 1
-      if (effectiveSeed === (parsed.mapSeed >>> 0)) {
-        effectiveSeed = ((effectiveSeed + 0x13579bdf) >>> 0) || 1
-      }
+      effectiveSeed = this.generateNextMapSeed(parsed.mapSeed)
     }
 
     if (
@@ -773,7 +834,7 @@ export class LocalLobbyProvider implements LobbyProvider {
     return {
       ok: true,
       mode: 'single',
-      gameHash: this.defaultMapSeed,
+      gameHash: this.defaultMapSeed ?? this.generateNextMapSeed(0),
       gameToken: 1,
       gameName: spec.name,
       name: spec.name,
@@ -785,7 +846,7 @@ export class LocalLobbyProvider implements LobbyProvider {
     const name = typeof formOrName === 'string' ? formOrName : formOrName.name
     return {
       mode: 'single',
-      gameHash: this.defaultMapSeed,
+      gameHash: this.defaultMapSeed ?? this.generateNextMapSeed(0),
       gameToken: 1,
       gameName: name,
       name,

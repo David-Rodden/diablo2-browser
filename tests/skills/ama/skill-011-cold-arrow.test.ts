@@ -143,14 +143,14 @@ describe('[Skill #011] Cold Arrow (AMA) — 1.13c Parity (Issue #165)', () => {
     expect(s20.manaCost).toBe(5.875)
     expect(s20.manaCost256).toBe(1504)
 
-    // Synergy test: Ice Arrow +12% damage/blvl, +5% chill length/blvl
+    // Synergy test: Ice Arrow +12% damage/blvl (ELenSymPerCalc is empty in 1.13c Skills.txt #11)
     const s20Syn = calculateColdArrowStats(20, { iceArrow: 20 })
     expect(s20Syn.synergyBonusPct).toBe(240)
     expect(s20Syn.synergyMultiplier).toBe(3.4)
-    expect(s20Syn.lenSynergyMultiplier).toBe(2.0)
+    expect(s20Syn.lenSynergyMultiplier).toBe(1.0)
     expect(s20Syn.minDamage).toBe(Math.floor(53 * 3.4))
     expect(s20Syn.maxDamage).toBe(Math.floor(56 * 3.4))
-    expect(s20Syn.durationFrames).toBe(1340)
+    expect(s20Syn.durationFrames).toBe(670)
 
     // Monotonicity checks
     for (let lvl = 1; lvl < 30; lvl++) {

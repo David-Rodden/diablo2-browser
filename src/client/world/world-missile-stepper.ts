@@ -2,6 +2,7 @@
  * Missile Frame Stepping, Impact Triggers, and 25Hz Discrete Simulation Ticks (`src/client/world/world-missile-stepper.ts`).
  */
 
+import { checkMissileSubtileRayFootprintOverlap113c } from '../../common/skills/missile-size-footprint-113c.ts'
 import { resolveUnitMonSoundRow113c } from '../../common/audio/mon-sounds-113c.ts'
 import { getMissileSoundEntry113c } from '../../common/audio/skill-sounds-113c.ts'
 import { CHAT_LINE_TTL_MS, OVERHEAD_SPEECH_TTL_MS } from '../../common/chat/chat-113c.ts'
@@ -28,11 +29,13 @@ import { getMonsterSizeXByHcIdx } from '../../common/units/monster-mapping.ts'
 import { MONSTATS_113C_ROWS, getMonsterKindByClassId } from '../../common/units/monsters-data.ts'
 import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../common/units/monstats2-flags.ts'
 import { isTownNpcHcIdx } from '../../common/units/npc-table.ts'
-import { getObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
+import { getObjectsTxtRecord113c, type ObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
+import { CANONICAL_113C_OBJECTS } from '../../common/world/objects-meta.ts'
 import { isTownLevel } from '../../common/world/scene-population.ts'
 import { createOverlayFromTxtRow113c } from './bone-armor-overlays-113c.ts'
 import type { ClientUnit, ClientUnitOverlay } from './client-unit.ts'
 import { tickCurseCenter113c } from './curse-center-113c.ts'
+import { tryEmitMonsterNeutralSound113cImpl } from './world-skill-missiles.ts'
 
 /**
  * 1.13c Missiles.txt row #233 (`fistoftheheavensdelay`) + Skills.txt row #121 (`Fist of the Heavens`):
@@ -159,8 +162,9 @@ import {
   CANONICAL_113C_MISSILES,
   MISSILE_CLASS_ID_TO_KEY,
 } from '../../common/skills/missiles-data.ts'
-import { tickObjectAnim } from './object-light.ts'
+import { resetObjectAnim, tickObjectAnim } from './object-light.ts'
 import { updateObjectModeSound113c } from './object-sound-113c.ts'
+import { CLIENTFN_NPCALERT_OVERLAY, runObjectClientFn113c } from './object-client-fn-113c.ts'
 import {
   ORB_MIST_MISSILE_ROWS,
   TOWER_MIST_MISSILE_ROWS,
@@ -168,6 +172,38 @@ import {
   towerChestSpawnerTick,
 } from './quest-fx-compelling-orb-113c.ts'
 import { QUEST_FX_MISSILES_113C } from './quest-fx-data-113c.ts'
+import { NIHLITHAK1_MISSILE } from './boss-death-cltdo-113c.ts'
+import {
+  isWorldstoneShakeLevel,
+  WORLDSTONE_DEBRIS_RANGE,
+  WORLDSTONE_DEBRIS_VZ,
+  WORLDSTONE_DEBRIS_Z,
+  WORLDSTONE_SHAKE,
+  WORLDSTONE_SHAKE_MISSILE,
+  worldstoneDebrisMissile,
+  worldstoneShakeTick,
+} from './quest-fx-worldstone-113c.ts'
+import { cltDo8Decide, cltDo8SubInit, pathEnteredNewSubtile } from './missile-cltdo8-trail-113c.ts'
+import { cltHit16Radius113c } from './chain-lightning-clthit16-113c.ts'
+import {
+  HF_CONTROL_BURST_FRAME,
+  HF_CONTROL_MISSILE,
+  HF_FRAGMENT1_MISSILE,
+  HF_FRAGMENT2_MISSILE,
+  HF_FRAGMENT3_MISSILE,
+  HF_FRAGMENT_DX,
+  HF_FRAGMENT_DY,
+  HF_SHAKE,
+  HF_SPIRIT1_MISSILE,
+  HF_SPIRIT_AZ,
+  HF_SPIRIT_VZ,
+  hfFragment3Tick,
+  hfFragmentDelay,
+  hfFragmentRange,
+  hfSpiritTick,
+} from './quest-fx-hellforge-113c.ts'
+import { missileCltCols113c, missileCltColsByName113c, type MissileCltColsRow113c } from '../../common/skills/missile-clt-cols-113c.ts'
+import { subtileTrailSpawn } from './missile-cltdo-subtile-113c.ts'
 import {
   BR_DEATH_CONTROL_CLT_PARAM1,
   BR_DEATH_CONTROL_CLT_SUBMISSILE1,
@@ -189,6 +225,16 @@ import {
   overseerControlDelay,
   pickOverseerControlBall,
   stepCltCountdown,
+  ancientDeathCenterTick,
+  ANCIENT_DEATH_CLOUD_MISSILE,
+  nehlithakBoltShot,
+  nehlithakControlPlan,
+  nehlithakOrbitTarget,
+  nehlithakSwooshShot,
+  NEHLITHAK_BOLT_MISSILE,
+  NEHLITHAK_DEBRIS1_MISSILE,
+  NEHLITHAK_HOLE_MISSILE,
+  NEHLITHAK_SWOOSH_MISSILE,
 } from './boss-death-cltdo-113c.ts'
 import {
   HORADRIC_SHAKE_AMPLITUDE,
@@ -197,6 +243,21 @@ import {
   horadricStaffTick,
   stepTraj3dZ,
 } from './quest-fx-horadric-113c.ts'
+import {
+  ANYA_ICEMAGIC_MISSILE,
+  ANYA_SHAKE,
+  ANYA_STEAM1_MISSILE,
+  ANYA_STEAMVENT_MISSILE,
+  ANYA_STEAM_MISSILE,
+  TAINTED_SUN_ALTAR_LIGHT,
+  TAINTED_SUN_ALTAR_OVERLAY,
+  TAINTED_SUN_BALL_MISSILE,
+  TAINTED_SUN_FLASH_MISSILE,
+  anyaCenterTick,
+  baalFxControlTick,
+  cltDo45DistractionFogPuffSpawns,
+  taintedSunControlTick,
+} from './quest-fx-tainted-anya-baal-113c.ts'
 import {
   CLTDO25_RING_X_113C,
   CLTDO25_RING_Y_113C,
@@ -227,6 +288,84 @@ import {
   spawnCltDo71ImpInfernoTick113c,
 } from './world-skill-missiles.ts'
 
+export const NEXT_DELAY_STATE_ID_113C = 86
+
+/**
+ * 1.13c `D2Client.dll` `0x6FB61420` (`MISSMODE_ClientHitHandler`, Issue #1512):
+ * Evaluates unit-collision eligibility and post-hit survival/cooldown for a client missile row:
+ * - `Collision` (`+0x184`) and `ClientCol` (`+0x185`): whether unit collision is enabled on the client.
+ * - `Activate` (`+0x136` / `#10837` at `0x6FB6348D`): minimum elapsed frames before unit collision activates.
+ * - `CollideFriend` (`+0x187` at `0x6FB614E3`): whether friendly units can be collided with.
+ * - `NextHit` (`+0x188` at `0x6FB61487` & `0x6FB61556`) + `NextDelay` (`+0x189` at `0x6FB61563`):
+ *   when `nextHit !== 0`, skips targets with active state `86` (`0x56` = NextDelay) and applies state `86`
+ *   for `nextDelay` frames on hit.
+ * - `CollideKill` (`+0x186` at `0x6FB61696`) + `LastCollide` (`dwFlags & 1` at `0x6FB61529`):
+ *   when `collideKill === 0` on a unit hit (`hitUnit != null`), the missile is NOT destroyed (unless pierce counter exhausted).
+ */
+export function evaluateMissileUnitHit113c(
+  row: MissileCltColsRow113c | undefined,
+  opts: {
+    readonly ageTicks: number
+    readonly isFriendlyTarget: boolean
+    readonly targetHasNextDelayState: boolean
+    readonly lastCollideUnitId?: number | undefined
+    readonly targetUnitId: number
+  },
+): {
+  readonly canCollide: boolean
+  readonly applyNextDelayFrames: number
+  readonly recordLastCollide: boolean
+  readonly destroyOnUnitHit: boolean
+} {
+  if (!row) {
+    return {
+      canCollide: !opts.isFriendlyTarget,
+      applyNextDelayFrames: 0,
+      recordLastCollide: false,
+      destroyOnUnitHit: true,
+    }
+  }
+  if (opts.ageTicks < row.activate) {
+    return {
+      canCollide: false,
+      applyNextDelayFrames: 0,
+      recordLastCollide: false,
+      destroyOnUnitHit: false,
+    }
+  }
+  if (opts.isFriendlyTarget && row.collideFriend === 0 && row.pCltHitFunc !== 9) {
+    return {
+      canCollide: false,
+      applyNextDelayFrames: 0,
+      recordLastCollide: false,
+      destroyOnUnitHit: false,
+    }
+  }
+  if (row.nextHit !== 0 && opts.targetHasNextDelayState) {
+    return {
+      canCollide: false,
+      applyNextDelayFrames: 0,
+      recordLastCollide: false,
+      destroyOnUnitHit: false,
+    }
+  }
+  if (row.lastCollide && opts.lastCollideUnitId !== undefined && opts.lastCollideUnitId === opts.targetUnitId) {
+    return {
+      canCollide: false,
+      applyNextDelayFrames: 0,
+      recordLastCollide: true,
+      destroyOnUnitHit: false,
+    }
+  }
+  const applyNextDelayFrames = row.nextHit !== 0 && row.nextDelay > 0 ? row.nextDelay : 0
+  return {
+    canCollide: true,
+    applyNextDelayFrames,
+    recordLastCollide: row.lastCollide,
+    destroyOnUnitHit: row.collideKill !== 0,
+  }
+}
+
 export function triggerMissileImpactImpl(
   this: ClientWorldInternal,
   missile: ClientUnit,
@@ -243,6 +382,20 @@ export function triggerMissileImpactImpl(
   })
   const hitRow = CANONICAL_113C_MISSILES[missile.missileKey ?? '']
   const pCltHitFunc = hitRow?.pCltHitFunc ?? 0
+  const hitCltCols = missileCltColsByName113c(missile.missileKey ?? '')
+
+  // 1.13c D2Client.dll 0x6FB61556..0x6FB615A3 (Issue #1512):
+  // When NextHit (+0x188) != 0 and NextDelay (+0x189) > 0 on a unit hit, apply state 0x56 (86) for NextDelay frames.
+  if (!isWallHit && hitUnit && hitCltCols && hitCltCols.nextHit !== 0 && hitCltCols.nextDelay > 0) {
+    addPredictedTimedState113c(
+      hitUnit,
+      NEXT_DELAY_STATE_ID_113C,
+      this.frameCount + hitCltCols.nextDelay,
+    )
+  }
+  if (!isWallHit && hitUnit && hitCltCols?.lastCollide) {
+    ;(missile as any).lastCollideUnitId = hitUnit.id
+  }
 
   // 1.13c D2Client.dll MISSMODE_CltHit09_HolyBolt (0x6FB66990, Issue #1115):
   // - holybolt (#55) & fistoftheheavensbolt (#234): cHitPar1=1, cHitPar2=1, ProgOverlay='healing', CltHitSubMissile1='teethexplode'.
@@ -284,7 +437,8 @@ export function triggerMissileImpactImpl(
   // 1.13c D2Client.dll MissCltHitFunc[31] (0x6FB605B0, Issue #1453): icebreaksmall (#272) / icebreakmedium (#273) /
   // icebreaklarge (#274) / catapult cold explosion (#417). Returns 0 for a unit hit (edx != 0); otherwise the class
   // switch (bytes 0x6FB606A0, jumps 0x6FB60694) creates icebreaksmallmelt (#344) for 272 and icebreaklargemelt (#345)
-  // for 273 / 274 / 417 at the missile position, copying the missile direction.
+  // for 273 / 274 / 417 at the missile position, copying the missile direction (0x6FB60670..0x6FB60678) and calling
+  // D2Common_10441 / UNITS_SetAnimSpeed(pMelt, 0x80) at 0x6FB6067D (wAnimSpeed = 128 -> animSpeed = 8, half speed).
   if (pCltHitFunc === 31) {
     if (hitUnit) return
     const missileId = hitRow?.id ?? missile.classId
@@ -300,6 +454,7 @@ export function triggerMissileImpactImpl(
     })
     melt.vx = 0
     melt.vy = 0
+    melt.animSpeed = 8
     return
   }
 
@@ -383,6 +538,9 @@ export function triggerMissileImpactImpl(
   // Issue #1090): no client-side rename.
   if (expKey === 'plaguejavcloud') {
     // Handled by dedicated multi-projectile bursts below
+    expKey = ''
+  } else if (hitCltCols?.pCltHitFunc === 51) {
+    // 1.13c MissCltHitFunc[51] (0x6FB6A9A0) returns 0 (suppresses default ExplosionMissile)
     expKey = ''
   } else if (missile.missileKey === 'moltenboulder' && !isWallHit && hitUnit && missile.pierce) {
     // Rolling boulder continues piercing small/medium monsters without shattering until wall/expiry/large target
@@ -826,6 +984,46 @@ export function triggerMissileImpactImpl(
       fire.vx = 0
       fire.vy = 0
     }
+  } else if (hitCltCols?.pCltHitFunc === 51) {
+    // 1.13c D2Client.dll MissCltHitFunc[51] (0x6FB6A9A0, Issue #1507):
+    // `lightingtrailingjavalin` (#431, cHitPar1=10, cHitPar2=0, CltHitSubMissile1='lightjavalinexplosion' #433) and
+    // `advlighttrailingjav` (#438, cHitPar1=18, cHitPar2=1, CltHitSubMissile1='advlightjavexplode' #440):
+    // Spawns `count = cHitPar1` radial `CltHitSubMissile1` bolts around `(hitX, hitY)` using the 64-entry circle table
+    // (`idx = Math.trunc((i * 64) / count)`), with `PATHTYPE_CHARGEDBOLT` (`jitterIndex = i + 1`) when `cHitPar2 !== 0`.
+    const count = hitCltCols.cHitPar[0]
+    const subId = hitCltCols.cltHitSubMissile[0]
+    const subKey = subId >= 0 ? MISSILE_CLASS_ID_TO_KEY[subId] : undefined
+    if (count > 0 && subKey) {
+      const useChargedBoltPath = hitCltCols.cHitPar[1] !== 0
+      for (let i = 0; i < count; i++) {
+        const ringIdx = Math.trunc((i * 64) / count) & 63
+        const dx = CLTDO25_RING_X_113C[ringIdx]!
+        const dy = CLTDO25_RING_Y_113C[ringIdx]!
+        this.spawnMissileByKey(subKey, hitX, hitY, hitX + dx, hitY + dy, {
+          classId: subId,
+          ownerType: missile.ownerType,
+          ownerId: missile.ownerId,
+          sourceSkillId: missile.sourceSkillId,
+          skillLevel: missile.skillLevel,
+          ...(useChargedBoltPath ? { jitterIndex: i + 1 } : {}),
+        })
+      }
+    }
+  } else if (hitCltCols?.pCltHitFunc === 38 && !hitUnit) {
+    // 1.13c D2Client.dll MissCltHitFunc[38] (0x6FB645D0, `taintedsunflash` #351, Issue #1493):
+    // When `taintedsunflash` expires (`!hitUnit`), looks up `taintedsuncontrol` (#350) by `cltCountdown` (`TargetX`)
+    // and spawns `taintedsunball` (#352, `0x160`, `pCltDoFunc=34`, `Vel=12`, `Range=300`) from `(hitX, hitY)`
+    // aimed toward `(ctl.x, ctl.y)` with `cltCountdown = ctl.id`.
+    const ctlId = missile.cltCountdown
+    const ctl = ctlId !== undefined ? this.getUnit('missile', ctlId) : undefined
+    const tx = ctl ? Math.floor(ctl.x) : hitX
+    const ty = ctl ? Math.floor(ctl.y) : hitY
+    const ball = this.spawnMissileByKey('taintedsunball', hitX, hitY, tx, ty, {
+      classId: TAINTED_SUN_BALL_MISSILE,
+      ownerType: missile.ownerType,
+      ownerId: missile.ownerId,
+    })
+    ball.cltCountdown = ctlId
   } else if (missile.missileKey === 'vines trail' || missile.missileKey === 'plague vines trail') {
     // 1.13c Missiles.txt rows #472 ('vines trail') & #475 ('plague vines trail', pCltHitFunc=54 @ 0x6FB60EE0, Issue #1200):
     // Spawns stationary CltHitSubMissile1 ('vines wither' #473 or 'plague vines wither' #476, Range=100).
@@ -1268,41 +1466,51 @@ export function triggerMissileImpactImpl(
     }
   }
 
-  // Chain Lightning (15 subtiles, 5 + slvl) / Lightning Strike (20 subtiles, 1 + slvl) bounce to nearest unhit alive hostile monster (1.13c CltHitFunc=11)
-  if (
-    !isWallHit &&
-    (missile.missileKey === 'chainlightning' || missile.missileKey === 'lightningstrike')
-  ) {
-    const slvl = Math.max(1, missile.skillLevel ?? 1)
-    const maxHits = missile.missileKey === 'lightningstrike' ? 1 + slvl : 5 + slvl
-    const searchRadius = missile.missileKey === 'lightningstrike' ? 20 : 15
-    const hitCount = missile.hitUnitIds?.size ?? 0
-    if (hitCount >= maxHits) {
-      missile.pierce = false
-    } else {
-      let nearest: ClientUnit | null = null
-      let bestDist = searchRadius
-      for (const m of this._monsters.values()) {
-        if (this.isFriendlyOrNonHostileMonster(m)) continue
-        if (missile.hitUnitIds?.has(m.id)) continue
-        const d = Math.hypot(m.x - hitX, m.y - hitY)
-        if (d <= bestDist) {
+  // 1.13c MissCltHitFunc[16] (0x6fb667d0, chain-lightning-clthit16-113c.ts): with a bounce count (data +0x28) > 1,
+  // a NEW missile of the same row flies from the hit unit to the nearest valid target within the radius, carrying
+  // count - 1 and ignoring the unit it starts on. The hit segment itself ends (CollideKill).
+  if (!isWallHit && hitUnit && missileCltColsByName113c(missile.missileKey ?? '')?.pCltHitFunc === 16) {
+    const cnt = missile.cltCountdown ?? 0
+    if (cnt > 1) {
+      const radius = cltHit16Radius113c(missileCltColsByName113c(missile.missileKey ?? '')?.cHitPar[0] ?? 0, missile.sourceSkillId)
+      const ownerIsMonster = missile.ownerType === 'monster'
+      let next: ClientUnit | undefined
+      let bestDist = Infinity
+      const consider = (u: ClientUnit): void => {
+        if (u.id === hitUnit.id && u.unitType === hitUnit.unitType) return
+        const d = Math.hypot(u.x - hitUnit.x, u.y - hitUnit.y)
+        if (d <= radius && d < bestDist) {
           bestDist = d
-          nearest = m
+          next = u
         }
       }
-      if (nearest) {
-        const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0) || 1.5
-        const dx = nearest.x - hitX
-        const dy = nearest.y - hitY
-        const dist = Math.hypot(dx, dy) || 1
-        missile.vx = (dx / dist) * speed
-        missile.vy = (dy / dist) * speed
-        missile.direction = dir64FromPoints(hitX, hitY, nearest.x, nearest.y, missile.direction)
+      if (ownerIsMonster) {
+        for (const u of this._units.values()) {
+          if (u.unitType === 'player' && !u.dead) consider(u)
+        }
       } else {
-        missile.pierce = false
+        for (const m of this._monsters.values()) {
+          if (m.dead || m.mode === 0 || m.mode === 12) continue
+          if (this.isFriendlyOrNonHostileMonster(m)) continue
+          consider(m)
+        }
+      }
+      const target = next as ClientUnit | undefined
+      if (target) {
+        const child = this.spawnMissileByKey(missile.missileKey ?? '', hitUnit.x, hitUnit.y, target.x, target.y, {
+          classId: missile.classId,
+          ownerType: missile.ownerType,
+          ownerId: missile.ownerId,
+          sourceSkillId: missile.sourceSkillId,
+          skillLevel: missile.skillLevel,
+          pierce: false,
+        })
+        child.cltCountdown = cnt - 1
+        child.hitUnitIds = new Set([hitUnit.id])
+        child.piercedTargets = child.hitUnitIds
       }
     }
+    missile.pierce = false
   }
 }
 
@@ -1374,6 +1582,13 @@ export function syncPlayerTownModesImpl(this: ClientWorldInternal): void {
 }
 
 export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit): void {
+  // 1.13c per-frame missile dispatch 0x6fb61af0 (0x6fb61b42..0x6fb61bc9): a missile whose Missiles.txt `Town` flag
+  // (dwFlags bit 10) is clear is removed (0x6fb61720) while its room is a town room (#10057), before its CltDoFunc.
+  const townCheckRow = missileCltColsByName113c(unit.missileKey ?? '')
+  if (townCheckRow !== undefined && !townCheckRow.town && isTownLevel(this.areaId)) {
+    this._units.delete(unit.key)
+    return
+  }
   const prevX = unit.x
   const prevY = unit.y
   const prevAgeTicks = unit.ageTicks ?? 0
@@ -1421,7 +1636,9 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
     unit.missileKey === 'towermist' ||
     unit.missileKey === 'towermisttrail' ||
     unit.missileKey === 'towermistfade' ||
-    unit.missileKey === 'towerchestspawner'
+    unit.missileKey === 'towerchestspawner' ||
+    // Hell Forge show (Missiles.txt 373..377: no CollideType / ClientCol).
+    (unit.classId >= HF_CONTROL_MISSILE && unit.classId <= HF_SPIRIT1_MISSILE)
   const isHurricaneOrbit =
     unit.missileKey === 'hurricaneswoosh' ||
     unit.missileKey === 'hurricanerock' ||
@@ -1977,31 +2194,101 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
         }
       }
     }
-  } else if (unit.missileKey === 'cairnstonesground') {
-    // 1.13c MISSMODE_CltDo08 (0x6fb691c0) for cairnstonesground (290):
-    // spawns CltSubMissile1 = lightninghit (99) at current position with zOffset = rand(16) - 8
-    const row99 = QUEST_FX_MISSILES_113C[99]!
-    const zOff = d2Rand(mSeed, 16) - 8
-    const initFrame = d2Rand(mSeed, row99.animLen)
-    const trail = this.spawnMissileByKey(
-      'lightninghit',
-      unit.x,
-      unit.y,
-      unit.x + (unit.vx ?? 1),
-      unit.y + (unit.vy ?? 0),
-      {
-        classId: row99.id,
-        ownerType: unit.ownerType,
-        ownerId: unit.ownerId,
-        maxTicks: row99.range,
-        altitude: zOff,
-        initialFrame: initFrame,
-        loopAnim: false,
-        expandSubMissiles: false,
-      },
-    )
-    trail.vx = 0
-    trail.vy = 0
+  } else if (unit.classId === HF_CONTROL_MISSILE && unit.missileKey === 'hfcontrol') {
+    // 1.13c MissCltDoFunc[38] (0x6fb6a7e0): the forge is TargetX; frame 10 -> 0x6fb64fb0 burst + screen shake.
+    const forge = unit.cltCountdown !== undefined ? this.getUnit('object', unit.cltCountdown) : undefined
+    if (forge && prevAgeTicks === HF_CONTROL_BURST_FRAME) {
+      const frag1Range = CANONICAL_113C_MISSILES.hffragment1!.range
+      for (let i = 0; i < HF_FRAGMENT_DX.length; i++) {
+        const frag = this.spawnMissileByKey(
+          'hffragment1',
+          unit.x,
+          unit.y,
+          unit.x + HF_FRAGMENT_DX[i]!,
+          unit.y + HF_FRAGMENT_DY[i]!,
+          {
+            classId: HF_FRAGMENT1_MISSILE,
+            ownerType: unit.ownerType,
+            ownerId: unit.ownerId,
+            maxTicks: hfFragmentRange(i, frag1Range),
+          },
+        )
+        frag.cltCountdown = unit.cltCountdown
+        frag.cltCountdownY = hfFragmentDelay(unit.seed)
+      }
+      this.startScreenShake(HF_SHAKE.sustainMs, HF_SHAKE.amplitude, HF_SHAKE.rampUpMs, HF_SHAKE.rampDownMs)
+    }
+  } else if (unit.classId === HF_FRAGMENT1_MISSILE || unit.classId === HF_FRAGMENT2_MISSILE) {
+    // 1.13c MissCltDoFunc[39] (0x6fb62480): with an owner the shard is held on frame 0.
+    const owner = unit.ownerType && unit.ownerId !== undefined ? this.getUnit(unit.ownerType, unit.ownerId) : undefined
+    if (owner) {
+      unit.frame = 0
+      unit.initialFrame = 0
+    }
+  } else if (unit.classId === HF_FRAGMENT3_MISSILE && unit.missileKey === 'hffragment3') {
+    // 1.13c MissCltDoFunc[40] (0x6fb6a880): TargetY countdown; at 0 one hfspirit1 (0x6fb65380), next RAND(35) + 10.
+    const owner = unit.ownerType && unit.ownerId !== undefined ? this.getUnit(unit.ownerType, unit.ownerId) : undefined
+    if (owner) {
+      const tick = hfFragment3Tick(unit.cltCountdownY ?? 0, unit.seed)
+      if (tick.spawn) {
+        const forge = unit.cltCountdown !== undefined ? this.getUnit('object', unit.cltCountdown) : undefined
+        if (forge) {
+          const spirit = this.spawnMissileByKey('hfspirit1', unit.x, unit.y, unit.x, unit.y, {
+            classId: HF_SPIRIT1_MISSILE,
+            ownerType: unit.ownerType,
+            ownerId: unit.ownerId,
+          })
+          spirit.vx = 0
+          spirit.vy = 0
+          spirit.traj3d = { z: 0, vz: HF_SPIRIT_VZ, az: 0, targetZ: Number.MAX_SAFE_INTEGER, rising: true, stopped: false }
+          spirit.altitude = 0
+          spirit.cltCountdown = Math.floor(unit.x) - Math.floor(forge.x)
+          spirit.cltCountdownY = Math.floor(unit.y) - Math.floor(forge.y)
+        }
+      }
+      unit.cltCountdownY = tick.nextTargetY
+    }
+  } else if (unit.classId === HF_SPIRIT1_MISSILE && unit.missileKey === 'hfspirit1') {
+    // 1.13c MissCltDoFunc[41] (0x6fb624a0): frame 8 starts the upward acceleration and halves the anim speed,
+    // frame 35 doubles it again.
+    const t = hfSpiritTick(prevAgeTicks)
+    if (t.accelerate && unit.traj3d) unit.traj3d.az = HF_SPIRIT_AZ
+    if (t.animSpeedFactor !== null) {
+      unit.animSpeed = t.animSpeedFactor < 1 ? (unit.animSpeed ?? 16) >> 1 : (unit.animSpeed ?? 16) << 1
+    }
+  } else if (unit.classId === WORLDSTONE_SHAKE_MISSILE && unit.missileKey === 'worldstone shake') {
+    // 1.13c MissCltDoFunc[66] (0x6fb69ea0): stays on its owner in levels 131 / 132 and never ages there.
+    const owner = unit.ownerType && unit.ownerId !== undefined ? this.getUnit(unit.ownerType, unit.ownerId) : undefined
+    if (!owner || !isWorldstoneShakeLevel(this.areaId)) {
+      this._units.delete(unit.key)
+      return
+    }
+    unit.x = owner.x
+    unit.y = owner.y
+    unit.maxTicks = (unit.ageTicks ?? 0) + 2
+    const t = worldstoneShakeTick(unit.cltCountdown ?? 0, unit.seed)
+    if (t.shake) {
+      this.startScreenShake(WORLDSTONE_SHAKE.sustainMs, WORLDSTONE_SHAKE.amplitude, WORLDSTONE_SHAKE.rampUpMs, WORLDSTONE_SHAKE.rampDownMs)
+      unit.cltCountdown = t.nextTargetX
+    }
+    if (t.debris) {
+      const dxs = Math.floor(unit.x) + t.debris.ox
+      const dys = Math.floor(unit.y) + t.debris.oy
+      if (!this.isSubTileBlocked(dxs, dys)) {
+        const debrisId = worldstoneDebrisMissile(unit.seed)
+        const debris = this.spawnMissileByKey(MISSILE_CLASS_ID_TO_KEY[debrisId]!, dxs, dys, dxs, dys, {
+          classId: debrisId,
+          ownerType: unit.ownerType,
+          ownerId: unit.ownerId,
+          maxTicks: WORLDSTONE_DEBRIS_RANGE,
+        })
+        debris.vx = 0
+        debris.vy = 0
+        debris.traj3d = { z: WORLDSTONE_DEBRIS_Z, vz: WORLDSTONE_DEBRIS_VZ, az: 0, targetZ: 0, rising: false, stopped: false }
+        debris.altitude = WORLDSTONE_DEBRIS_Z >> TRAJ_FIXED_SHIFT
+        debris.animSpeed = (debris.animSpeed ?? 16) >> 1
+      }
+    }
   } else if (unit.missileKey === 'horadricstaff') {
     // 1.13c MISSMODE_CltDo31 (0x6fb64b80); rem = #10737 before the CltDoFunc 1 tail decrements it.
     const staffSeed = unit.missileSeed
@@ -2376,68 +2663,259 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
       ball.alwaysExplode = false
     }
   } else if (unit.missileKey === 'nehlithakcontrol') {
-    if (prevAgeTicks % 4 === 0) {
-      const rx = d2Rand(mSeed, 9) - 4
-      const ry = d2Rand(mSeed, 9) - 4
-      const debIdx = (d2Rand(mSeed, 4) % 4) + 1
-      this.spawnMissileByKey(
-        `nehlithakdebris${debIdx}`,
-        unit.x,
-        unit.y,
-        unit.x + rx,
-        unit.y + ry,
-        {
+    // 1.13c MissCltDoFunc[62] (0x6fb6a4a0): two 0x6fb63d60 swoosh / debris pieces per frame, a 0x6fb63c40
+    // brdeathlightningbolt every 20 frames after frame 60, and `nehlithakhole` at (x + 2, y + 2) on frame 25.
+    const ctlOwner =
+      unit.ownerType && unit.ownerId !== undefined ? this.getUnit(unit.ownerType, unit.ownerId) : undefined
+    if (ctlOwner) {
+      const cx = Math.floor(unit.x)
+      const cy = Math.floor(unit.y)
+      const plan = nehlithakControlPlan(prevAgeTicks)
+      for (let i = 0; i < plan.pieces; i++) {
+        const shot = nehlithakSwooshShot(unit.seed, cx, cy)
+        const piece = this.spawnMissileByKey(missileKeyByIdStrict113c(shot.missile), shot.sx, shot.sy, shot.tx, shot.ty, {
+          classId: shot.missile,
           ownerType: unit.ownerType,
           ownerId: unit.ownerId,
-          maxTicks: 20,
-        },
-      )
-      if (prevAgeTicks % 8 === 0) {
-        const glow = this.spawnMissileByKey('nehlithakglow', unit.x, unit.y, unit.x, unit.y, {
-          ownerType: unit.ownerType,
-          ownerId: unit.ownerId,
-          loopAnim: false,
         })
-        glow.vx = 0
-        glow.vy = 0
+        piece.altitude = shot.altitude
+        piece.cltCountdown = cx
+        piece.cltCountdownY = cy
+      }
+      if (plan.bolt) {
+        const bolt = nehlithakBoltShot(unit.seed)
+        const b = this.spawnMissileByKey(
+          missileKeyByIdStrict113c(NEHLITHAK_BOLT_MISSILE),
+          unit.x,
+          unit.y,
+          unit.x + bolt.ox,
+          unit.y + bolt.oy,
+          { classId: NEHLITHAK_BOLT_MISSILE, ownerType: unit.ownerType, ownerId: unit.ownerId },
+        )
+        b.altitude = bolt.altitude
+        b.cltCountdown = bolt.ox
+        b.cltCountdownY = bolt.oy
+      }
+      if (plan.hole) {
+        const hole = this.spawnMissileByKey(missileKeyByIdStrict113c(NEHLITHAK_HOLE_MISSILE), cx + 2, cy + 2, cx + 2, cy + 2, {
+          classId: NEHLITHAK_HOLE_MISSILE,
+          ownerType: unit.ownerType,
+          ownerId: unit.ownerId,
+        })
+        hole.vx = 0
+        hole.vy = 0
       }
     }
+  } else if (
+    (unit.classId >= NEHLITHAK_SWOOSH_MISSILE && unit.classId <= NEHLITHAK_DEBRIS1_MISSILE + 3) &&
+    unit.cltCountdown !== undefined &&
+    unit.cltCountdownY !== undefined
+  ) {
+    // 1.13c MissCltDoFunc[63] (0x6fb61f20): re-aim the path each frame around the controller cell (TargetX, TargetY).
+    const t = nehlithakOrbitTarget(Math.floor(unit.x), Math.floor(unit.y), unit.cltCountdown, unit.cltCountdownY)
+    const speed = Math.hypot(unit.vx ?? 0, unit.vy ?? 0)
+    const ddx = t.tx - unit.x
+    const ddy = t.ty - unit.y
+    const d = Math.hypot(ddx, ddy)
+    if (speed > 0 && d > 1e-6) {
+      unit.vx = (ddx / d) * speed
+      unit.vy = (ddy / d) * speed
+      unit.targetX = t.tx
+      unit.targetY = t.ty
+    }
   } else if (unit.missileKey === 'ancient death center') {
-    if (prevAgeTicks % 4 === 0) {
-      const rx = d2Rand(mSeed, 7) - 3
-      const ry = d2Rand(mSeed, 7) - 3
-      const cloud = this.spawnMissileByKey(
-        'ancient death cloud',
-        unit.x + rx,
-        unit.y + ry,
-        unit.x + rx,
-        unit.y + ry,
-        {
-          ownerType: unit.ownerType,
-          ownerId: unit.ownerId,
-          maxTicks: 25,
-        },
+    // 1.13c MissCltDoFunc[55] (0x6fb63860): every 3rd frame one moving `ancient death cloud` (#542, Vel 3, own Range).
+    const shot = ancientDeathCenterTick(prevAgeTicks, unit.seed, Math.floor(unit.x), Math.floor(unit.y))
+    if (shot) {
+      this.spawnMissileByKey('ancient death cloud', shot.sx, shot.sy, shot.tx, shot.ty, {
+        classId: ANCIENT_DEATH_CLOUD_MISSILE,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+      })
+    }
+  } else if (unit.missileKey === 'taintedsuncontrol') {
+    // 1.13c MissCltDoFunc[33] (0x6fb64760, `taintedsuncontrol` #350, Issue #1493):
+    // Steps `TAINTED_SUN_TIMELINE_113C` (`0x6fb8364c`) on remaining frames (`remBeforeStep`),
+    // spawns `taintedsunflash` (#351, `0x15f`, `pCltHitFunc=38`, `Range=12`) at `(x + dx * 2, y + dy * 2)`,
+    // updates `cltCountdownY` (`2` for `< 75`, `3` for `< 25`), and on `rem <= 1` attaches overlay `182` (`taintedsun`)
+    // + white light (`radius=60, rgb=255,255,255`) to the altar (`Objects.txt` 149).
+    const cx = Math.floor(unit.x)
+    const cy = Math.floor(unit.y)
+    const tick = taintedSunControlTick(remBeforeStep, cx, cy, unit.seed)
+    for (const f of tick.flashes) {
+      const flash = this.spawnMissileByKey('taintedsunflash', f.tx, f.ty, f.tx, f.ty, {
+        classId: TAINTED_SUN_FLASH_MISSILE,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+      })
+      flash.vx = 0
+      flash.vy = 0
+      flash.alwaysExplode = true
+      flash.cltCountdown = unit.id
+    }
+    if (tick.nextPhase !== null) {
+      unit.cltCountdownY = tick.nextPhase
+    }
+    if (tick.finishAltar && unit.cltCountdown !== undefined) {
+      const altar = this.getUnit('object', unit.cltCountdown)
+      if (altar) {
+        this.attachServerOverlay(altar, TAINTED_SUN_ALTAR_OVERLAY)
+        const r8 = Math.min(TAINTED_SUN_ALTAR_LIGHT.radius, 18) * 8
+        altar.objectLight = {
+          targetR8: r8,
+          currentR8: r8,
+          red: TAINTED_SUN_ALTAR_LIGHT.r,
+          green: TAINTED_SUN_ALTAR_LIGHT.g,
+          blue: TAINTED_SUN_ALTAR_LIGHT.b,
+        }
+      }
+    }
+  } else if (unit.missileKey === 'taintedsunball') {
+    // 1.13c MissCltDoFunc[34] (0x6fb61fc0, `taintedsunball` #352, Issue #1493):
+    // Tracks `taintedsuncontrol` (#350) via `cltCountdown` (`TargetX`):
+    // - When controller `cltCountdownY === 3` (`rem < 25`): halts horizontal motion and ascends (`altitude += 4`).
+    // - When controller `cltCountdownY === 2` (`25 <= rem < 75`): slows horizontal velocity toward controller.
+    // - Otherwise: steers toward controller `(ctl.x, ctl.y)`.
+    const ctl = unit.cltCountdown !== undefined ? this.getUnit('missile', unit.cltCountdown) : undefined
+    if (ctl) {
+      const phase = ctl.cltCountdownY ?? 1
+      if (phase === 3) {
+        unit.vx = 0
+        unit.vy = 0
+        unit.altitude = (unit.altitude ?? 0) + 4
+      } else {
+        const ddx = ctl.x - unit.x
+        const ddy = ctl.y - unit.y
+        const dist = Math.hypot(ddx, ddy)
+        const baseSpeed = Math.hypot(unit.vx ?? 0, unit.vy ?? 0) || (12 * 16) / 256
+        const speed = phase === 2 ? Math.max(0.125, baseSpeed * 0.5) : baseSpeed
+        if (dist > 0.75) {
+          unit.vx = (ddx / dist) * speed
+          unit.vy = (ddy / dist) * speed
+        } else {
+          unit.vx = 0
+          unit.vy = 0
+        }
+      }
+    }
+  } else if (unit.missileKey === 'anya center') {
+    // 1.13c MissCltDoFunc[54] (0x6fb69c10, `anya center` #528, Issue #1494):
+    const cx = Math.floor(unit.x)
+    const cy = Math.floor(unit.y)
+    const tick = anyaCenterTick(prevAgeTicks, cx, cy, unit.seed, (tx, ty) => this.isSubTileBlocked(tx, ty))
+    if (tick.spawnCenterIceMagic) {
+      const ice = this.spawnMissileByKey('anya icemagic', cx, cy, cx, cy, {
+        classId: ANYA_ICEMAGIC_MISSILE,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+      })
+      ice.vx = 0
+      ice.vy = 0
+    }
+    for (const puff of tick.steamPuffs) {
+      const p = this.spawnMissileByKey('anyasteam1', puff.sx, puff.sy, puff.sx, puff.sy, {
+        classId: ANYA_STEAM1_MISSILE,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+      })
+      p.vx = puff.vxFixed / (1 << TRAJ_FIXED_SHIFT)
+      p.vy = puff.vyFixed / (1 << TRAJ_FIXED_SHIFT)
+      p.traj3d = { z: 0, vz: puff.vzFixed, az: 0 }
+    }
+    if (tick.shake) {
+      this.startScreenShake(
+        ANYA_SHAKE.sustainMs,
+        ANYA_SHAKE.amplitude,
+        ANYA_SHAKE.rampUpMs,
+        ANYA_SHAKE.rampDownMs,
       )
-      cloud.vx = 0
-      cloud.vy = 0
+    }
+    if (tick.steamVentOffset) {
+      const vx = cx + tick.steamVentOffset.dx
+      const vy = cy + tick.steamVentOffset.dy
+      const vent = this.spawnMissileByKey('anyasteamvent', vx, vy, vx, vy, {
+        classId: ANYA_STEAMVENT_MISSILE,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+      })
+      vent.vx = 0
+      vent.vy = 0
+      const steam = this.spawnMissileByKey('anyasteam', vx, vy, vx, vy, {
+        classId: ANYA_STEAM_MISSILE,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+      })
+      steam.vx = 0
+      steam.vy = 0
     }
   } else if (unit.missileKey === 'baalfx control') {
-    if (prevAgeTicks % 5 === 0) {
-      const rx = d2Rand(mSeed, 13) - 6
-      const ry = d2Rand(mSeed, 13) - 6
-      const spIdx = (d2Rand(mSeed, 5) % 5) + 1
-      this.spawnMissileByKey(
-        `baalfx spirit ${spIdx}`,
-        unit.x,
-        unit.y,
-        unit.x + rx,
-        unit.y + ry,
+    // 1.13c MissCltDoFunc[64] (0x6fb69ff0, `baalfx control` #625, Issue #1501):
+    // Steps `BAALFX_TIMELINE_113C` (`0x6fb835d4`) on `remBeforeStep`, spawns `baalfx spirit 1` (#626) with
+    // `cltCountdown = unit.id` (`TargetX`) and `cltCountdownY = 0` (`TargetY`), updates controller `cltCountdownY`
+    // (`rem < 210 ? 2 : 1`), and spawns `baalfx baal head appear` / `baalfx baal head 1..3` (#631..634) at
+    // `rem === 450 / 425 / 375 / 325`.
+    const cx = Math.floor(unit.x)
+    const cy = Math.floor(unit.y)
+    const tick = baalFxControlTick(remBeforeStep, cx, cy, unit.seed)
+    unit.cltCountdownY = tick.nextPhaseY
+    if (tick.spirit) {
+      const spKey = MISSILE_CLASS_ID_TO_KEY[tick.spirit.missileId] ?? 'baalfx spirit 1'
+      const sp = this.spawnMissileByKey(spKey, cx, cy, tick.spirit.tx, tick.spirit.ty, {
+        classId: tick.spirit.missileId,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+      })
+      sp.cltCountdown = unit.id
+      sp.cltCountdownY = 0
+    }
+    if (tick.headAppearMissile) {
+      const hKey = MISSILE_CLASS_ID_TO_KEY[tick.headAppearMissile.missileId]!
+      const h = this.spawnMissileByKey(
+        hKey,
+        tick.headAppearMissile.x,
+        tick.headAppearMissile.y,
+        tick.headAppearMissile.x,
+        tick.headAppearMissile.y,
         {
+          classId: tick.headAppearMissile.missileId,
           ownerType: unit.ownerType,
           ownerId: unit.ownerId,
-          maxTicks: 30,
         },
       )
+      h.vx = 0
+      h.vy = 0
+    }
+  } else if (unit.missileKey !== undefined && unit.missileKey.startsWith('baalfx spirit ')) {
+    // 1.13c MissCltDoFunc[65] (0x6fb61d10, `baalfx spirit 1..5` #626..630, Issue #1501):
+    // Tracks `baalfx control` (#625) via `cltCountdown`: orbits during phase 1 (`ctl.cltCountdownY === 1`)
+    // and converges toward the controller during phase 2 (`ctl.cltCountdownY === 2`).
+    const ctl = unit.cltCountdown !== undefined ? this.getUnit('missile', unit.cltCountdown) : undefined
+    if (ctl) {
+      const phase = ctl.cltCountdownY ?? 1
+      const speed = Math.hypot(unit.vx ?? 0, unit.vy ?? 0) || (10 * 16) / 256
+      if (phase === 2) {
+        const ddx = ctl.x - unit.x
+        const ddy = ctl.y - unit.y
+        const dist = Math.hypot(ddx, ddy)
+        if (dist > 0.75) {
+          unit.vx = (ddx / dist) * speed
+          unit.vy = (ddy / dist) * speed
+        } else {
+          this._units.delete(unit.key)
+          return
+        }
+      } else {
+        const t = nehlithakOrbitTarget(Math.floor(unit.x), Math.floor(unit.y), Math.floor(ctl.x), Math.floor(ctl.y))
+        const ddx = t.tx - unit.x
+        const ddy = t.ty - unit.y
+        const d = Math.hypot(ddx, ddy)
+        if (d > 1e-6) {
+          unit.vx = (ddx / d) * speed
+          unit.vy = (ddy / d) * speed
+          unit.targetX = t.tx
+          unit.targetY = t.ty
+        }
+      }
     }
   } else if (unit.missileKey === 'baal taunt control') {
     // 1.13c Missiles.txt row #546 ('baal taunt control', Range=75, pCltDoFunc=56 @ 0x6FB670A0,
@@ -2486,6 +2964,7 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
 
   // Sub-missile emitter logic
   const stepMissileRow = CANONICAL_113C_MISSILES[unit.missileKey ?? '']
+  const cltRow = missileCltColsByName113c(unit.missileKey ?? '')
   if (
     unit.missileKey === 'firewallmaker' ||
     unit.missileKey === 'vampirefirewallmaker' ||
@@ -2530,77 +3009,143 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
       fMed.vx = 0
       fMed.vy = 0
     }
-  } else if (unit.missileKey === 'bonespear') {
-    const trail = this.spawnMissileByKey('bonespeartrail', prevX, prevY, prevX, prevY, {
-      ownerType: unit.ownerType,
-      ownerId: unit.ownerId,
-      sourceSkillId: unit.sourceSkillId,
-      skillLevel: unit.skillLevel,
-      maxTicks: 10,
-      loopAnim: false,
-    })
-    trail.vx = 0
-    trail.vy = 0
-  } else if (stepMissileRow?.pCltDoFunc === 3 && stepMissileRow.cltSubMissile1) {
-    // 1.13c MissCltDoFunc[3] (0x6FB624C0, Missiles.txt #38 poisonjav -> poisonjavcloud, #43 plaguejavelin -> plaguejavcloud, Issue #1121 / #1297):
-    // Spawns CltSubMissile1 at the missile's path position using the sub-missile row's own Range (60).
-    const cloud = this.spawnMissileByKey(stepMissileRow.cltSubMissile1, prevX, prevY, prevX, prevY, {
-      ownerType: unit.ownerType,
-      ownerId: unit.ownerId,
-      sourceSkillId: unit.sourceSkillId,
-      skillLevel: unit.skillLevel,
-      direction: unit.direction,
-    })
-    cloud.vx = 0
-    cloud.vy = 0
-  } else if (
-    isMoving &&
-    ((stepMissileRow?.pCltDoFunc === 8 && stepMissileRow.cltSubMissile1) ||
-      unit.missileKey === 'baal taunt lightning')
-  ) {
-    // 1.13c MissCltDoFunc[8] (0x6FB63460, Missiles.txt #93 chainlightning, #98 lightningbolt, #232 lightningstrike,
-    // #547 baal taunt lightning, Issues #1122, #1201):
-    // Spawns CltParam1 (3) interpolated trailing CltSubMissile1 ('lightninghit') segments per tick,
-    // plus CltSubMissile2 ('baal taunt lightning trail' #548 for 'baal taunt lightning' #547).
-    const segCount = Math.max(1, stepMissileRow?.cltParam1 ?? 3)
-    const sub1Key = stepMissileRow?.cltSubMissile1 || 'lightninghit'
-    for (let s = 1; s <= segCount; s++) {
-      const frac = s / segCount
-      const sx = prevX + (unit.x - prevX) * frac
-      const sy = prevY + (unit.y - prevY) * frac
-      const trail = this.spawnMissileByKey(
-        sub1Key,
-        sx,
-        sy,
-        sx + (unit.vx ?? 0),
-        sy + (unit.vy ?? 0),
-        {
+  } else if (cltRow !== undefined && (cltRow.pCltDoFunc === 3 || cltRow.pCltDoFunc === 18)) {
+    // 1.13c MissCltDoFunc[3] (0x6fb6be60) / [18] (0x6fb68960): one CltSubMissile1 each time the path enters a new
+    // sub-tile (missile-cltdo-subtile-113c.ts), for every row of the function (viper_poisjav, trap poison balls,
+    // viper_bonespear included).
+    const spawn = subtileTrailSpawn(cltRow, prevAgeTicks, pathEnteredNewSubtile(prevX, prevY, unit.x, unit.y))
+    if (spawn) {
+      const trail = this.spawnMissileByKey(spawn.sub.name, unit.x, unit.y, unit.x + (unit.vx ?? 0), unit.y + (unit.vy ?? 0), {
+        classId: spawn.sub.id,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+        sourceSkillId: unit.sourceSkillId,
+        direction: unit.direction,
+        ...(spawn.inheritLevel ? { skillLevel: unit.skillLevel } : { maxTicks: spawn.sub.range }),
+      })
+      trail.vx = 0
+      trail.vy = 0
+      if (spawn.loops !== undefined) trail.subLoops = spawn.loops
+      if (!spawn.inheritLevel) trail.altitude = unit.altitude
+    }
+  } else if (cltRow !== undefined && cltRow.pCltDoFunc === 8) {
+    // 1.13c MissCltDoFunc[8] (0x6fb691c0, every pCltDoFunc = 8 row, missile-cltdo8-trail-113c.ts): one
+    // CltSubMissile1 per new sub-tile once elapsed >= InitSteps, SubLoop count = CltParam1 (>= 1), with the 0x6fb60f40
+    // height jitter / random start frame. The client never spawns CltSubMissile2 here (#547 has none).
+    if (stepCltDo8Trail.call(this, unit, cltRow, prevX, prevY, prevAgeTicks)) return
+  } else if (cltRow !== undefined && cltRow.pCltDoFunc === 46) {
+    // 1.13c MissCltDoFunc[46] (0x6FB67880, `lightingtrailingjavalin` #431 & `advlighttrailingjav` #438, Issue #1507):
+    // On `prevAgeTicks < 2`, stores perpendicular target offsets `perpDx = -(targetY - prevY)`, `perpDy = targetX - prevX`.
+    // Each time the missile enters a new sub-tile, spawns two opposing perpendicular `CltSubMissile1`
+    // (`lightjavalintrail` #432 or `advlighttrailingjav2` #439) with `SubLoop` count = `CltParam1` (`3`).
+    if (prevAgeTicks < 2) {
+      const tx = unit.targetX ?? unit.x + (unit.vx ?? 1) * 10
+      const ty = unit.targetY ?? unit.y + (unit.vy ?? 0) * 10
+      let pdx = -Math.round(ty - prevY)
+      let pdy = Math.round(tx - prevX)
+      if (pdx === 0 && pdy === 0) {
+        pdx = -Math.round((unit.vy ?? 0) * 10)
+        pdy = Math.round((unit.vx ?? 1) * 10) || 10
+      }
+      ;(unit as any).cltDo46PerpDx = pdx
+      ;(unit as any).cltDo46PerpDy = pdy
+    }
+    if (pathEnteredNewSubtile(prevX, prevY, unit.x, unit.y)) {
+      const subId = cltRow.cltSubMissile[0]
+      const subKey = subId >= 0 ? MISSILE_CLASS_ID_TO_KEY[subId] : undefined
+      if (subKey) {
+        const pdx = Number((unit as any).cltDo46PerpDx) || 0
+        const pdy = Number((unit as any).cltDo46PerpDy) || 10
+        const loops = Math.max(1, cltRow.cltParam[0] || 1)
+        for (const sign of [1, -1] as const) {
+          const wing = this.spawnMissileByKey(
+            subKey,
+            prevX,
+            prevY,
+            prevX + pdx * sign,
+            prevY + pdy * sign,
+            {
+              classId: subId,
+              ownerType: unit.ownerType,
+              ownerId: unit.ownerId,
+              sourceSkillId: unit.sourceSkillId,
+              skillLevel: unit.skillLevel,
+            },
+          )
+          wing.subLoops = loops
+        }
+      }
+    }
+  } else if (cltRow !== undefined && cltRow.pCltDoFunc === 43) {
+    // 1.13c MissCltDoFunc[43] (0x6FB62890, Issue #1508):
+    // Anchors the missile to its owner unit's sub-tile while the owner exists and is alive; deletes the missile otherwise.
+    const ownerUnit =
+      unit.ownerType !== undefined && unit.ownerId !== undefined
+        ? this.getUnit(unit.ownerType, unit.ownerId)
+        : undefined
+    if (!ownerUnit || ownerUnit.dead) {
+      this._units.delete(unit.key)
+      return
+    }
+    unit.x = ownerUnit.x
+    unit.y = ownerUnit.y
+    unit.vx = 0
+    unit.vy = 0
+  } else if (cltRow !== undefined && cltRow.pCltDoFunc === 44) {
+    // 1.13c MissCltDoFunc[44] (0x6FB62790, `distraction` #393, Issue #1508):
+    // Checks that owner is alive; whenever the missile enters a new sub-tile, spawns `394` (`distraction fog`)
+    // at `(unit.x, unit.y)` and snaps position to the owner.
+    const ownerUnit =
+      unit.ownerType !== undefined && unit.ownerId !== undefined
+        ? this.getUnit(unit.ownerType, unit.ownerId)
+        : undefined
+    if (!ownerUnit || ownerUnit.dead) {
+      this._units.delete(unit.key)
+      return
+    }
+    const nextX = ownerUnit.x !== unit.x || ownerUnit.y !== unit.y ? ownerUnit.x : unit.x
+    const nextY = ownerUnit.y !== unit.y || ownerUnit.x !== unit.x ? ownerUnit.y : unit.y
+    if (
+      pathEnteredNewSubtile(prevX, prevY, unit.x, unit.y) ||
+      pathEnteredNewSubtile(unit.x, unit.y, nextX, nextY)
+    ) {
+      const fog = this.spawnMissileByKey('distraction fog', nextX, nextY, nextX, nextY, {
+        classId: 394,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+        sourceSkillId: unit.sourceSkillId,
+        skillLevel: unit.skillLevel,
+      })
+      fog.vx = 0
+      fog.vy = 0
+    }
+    unit.x = nextX
+    unit.y = nextY
+  } else if (cltRow !== undefined && cltRow.pCltDoFunc === 45) {
+    // 1.13c MissCltDoFunc[45] (0x6FB6B500 -> 0x6FB69470, `distraction fog` #394, Issue #1508):
+    // Spawns `CltSubMissile1` (`395` `distraction puff`) using `CltParam1=36`, `CltParam2=1`, `CltParam3=6`.
+    const subId = cltRow.cltSubMissile[0]
+    const subKey = subId >= 0 ? MISSILE_CLASS_ID_TO_KEY[subId] : undefined
+    if (subKey) {
+      const puffs = cltDo45DistractionFogPuffSpawns(
+        remBeforeStep,
+        Math.floor(unit.x),
+        Math.floor(unit.y),
+        cltRow.cltParam[0],
+        cltRow.cltParam[1],
+        cltRow.cltParam[2],
+        unit.seed,
+      )
+      for (const puff of puffs) {
+        const p = this.spawnMissileByKey(subKey, puff.x, puff.y, puff.x, puff.y, {
+          classId: subId,
           ownerType: unit.ownerType,
           ownerId: unit.ownerId,
           sourceSkillId: unit.sourceSkillId,
           skillLevel: unit.skillLevel,
-          loopAnim: false,
-        },
-      )
-      trail.vx = 0
-      trail.vy = 0
-      if (unit.missileKey === 'baal taunt lightning') {
-        const subTrail = this.spawnMissileByKey(
-          'baal taunt lightning trail',
-          sx,
-          sy,
-          sx + (unit.vx ?? 0),
-          sy + (unit.vy ?? 0),
-          {
-            ownerType: unit.ownerType,
-            ownerId: unit.ownerId,
-            sourceSkillId: unit.sourceSkillId,
-            skillLevel: unit.skillLevel,
-            loopAnim: false,
-          },
-        )
-        subTrail.vx = 0
-        subTrail.vy = 0
+        })
+        p.vx = 0
+        p.vy = 0
       }
     }
   }
@@ -2976,12 +3521,12 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
         unit.x = sx
         unit.y = sy
         if (
-          unit.missileKey === 'poisonjav' &&
-          stepMissileRow?.pCltDoFunc === 3 &&
-          stepMissileRow.cltSubMissile1 &&
-          (Math.abs(sx - prevX) > 1e-4 || Math.abs(sy - prevY) > 1e-4)
+          cltRow?.pCltDoFunc === 3 &&
+          cltRow.cltSubMissile[0] >= 0 &&
+          pathEnteredNewSubtile(prevX, prevY, sx, sy)
         ) {
-          const hitCloud = this.spawnMissileByKey(stepMissileRow.cltSubMissile1, sx, sy, sx, sy, {
+          // CltDo3 (0x6fb6be60) for the sub-tile the missile entered on the step that ends at the wall.
+          const hitCloud = this.spawnMissileByKey(missileCltCols113c(cltRow.cltSubMissile[0]).name, sx, sy, sx, sy, {
             ownerType: unit.ownerType,
             ownerId: unit.ownerId,
             sourceSkillId: unit.sourceSkillId,
@@ -2999,7 +3544,10 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
   }
 
   // Hostile / friendly unit collision check along the step segment (only for ground-level flying projectiles, excluding Frozen Orb carrier and Fire Wall makers)
+  const activateThresholdTicks = unit.cltActivateTicks ?? stepMissileRow?.activate ?? cltRow?.activate ?? 0
+  const hasNextHitRule = Boolean(stepMissileRow?.nextHit || cltRow?.nextHit)
   if (
+    unit.ageTicks >= activateThresholdTicks &&
     (isMoving || Boolean(stepMissileRow?.progOverlay && stepMissileRow?.nextHit)) &&
     !isMeteor3D &&
     !isQuestFxController &&
@@ -3015,26 +3563,19 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
     unit.missileKey !== 'vampirefirewallmaker' &&
     unit.missileKey !== 'countessfirewallmaker'
   ) {
-    const hitRadius = 1.75
-    const segDx = unit.x - prevX
-    const segDy = unit.y - prevY
-    const segLenSq = segDx * segDx + segDy * segDy
-    const distToSeg = (tx: number, ty: number): number => {
-      if (segLenSq <= 1e-6) return Math.hypot(tx - unit.x, ty - unit.y)
-      const t = Math.max(0, Math.min(1, ((tx - prevX) * segDx + (ty - prevY) * segDy) / segLenSq))
-      return Math.hypot(tx - (prevX + segDx * t), ty - (prevY + segDy * t))
-    }
+    // 1.13c unit collision is the D2Common #10389 footprint (0x6fdcf6a0) of Missiles.txt Size against the target's
+    // sub-tile SizeX at each sub-tile of the step (missile-size-footprint-113c.ts), shared with the server (#1502).
+    const missileSize = missileCltColsByName113c(unit.missileKey ?? '')?.size ?? 0
+    const hitsTarget = (target: ClientUnit): boolean =>
+      checkMissileSubtileRayFootprintOverlap113c(prevX, prevY, unit.x, unit.y, target.x, target.y, missileSize, this.getUnitSizeX(target))
     const consumePierceOrKillOnUnitHit = (hitX?: number, hitY?: number): boolean => {
       const spawnFinalPoisonJavCloud = (): void => {
-        if (
-          unit.missileKey === 'poisonjav' &&
-          stepMissileRow?.pCltDoFunc === 3 &&
-          stepMissileRow.cltSubMissile1
-        ) {
+        if (cltRow?.pCltDoFunc === 3 && cltRow.cltSubMissile[0] >= 0) {
           const cx = hitX ?? unit.x
           const cy = hitY ?? unit.y
-          if (Math.abs(cx - prevX) > 1e-4 || Math.abs(cy - prevY) > 1e-4) {
-            const hitCloud = this.spawnMissileByKey(stepMissileRow.cltSubMissile1, cx, cy, cx, cy, {
+          if (pathEnteredNewSubtile(prevX, prevY, cx, cy)) {
+            // CltDo3 (0x6fb6be60) for the sub-tile the missile entered on the step that ends on the unit.
+            const hitCloud = this.spawnMissileByKey(missileCltCols113c(cltRow.cltSubMissile[0]).name, cx, cy, cx, cy, {
               ownerType: unit.ownerType,
               ownerId: unit.ownerId,
               sourceSkillId: unit.sourceSkillId,
@@ -3074,8 +3615,23 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
         if (target.dead) continue
         if (target.unitType === unit.ownerType && target.id === unit.ownerId) continue
         if (!isFriendlyTargetForMissile113c(this, unit, target)) continue
+        if (stepMissileRow?.pCltHitFunc === 40 || cltRow?.pCltHitFunc === 40) {
+          // 1.13c D2Client.dll MissCltHitFunc[40] (0x6FB60570, `healingbolt` #357, Issue #1509):
+          // Only returns 1 (collide) when pOwner is a player and pHitUnit is a monster owned by pOwner
+          // (`D2CLIENT_GetMonsterOwner(pHitUnit->dwUnitId) == pOwner->dwUnitId`).
+          const isOwnersMerc =
+            unit.ownerType === 'player' &&
+            target.unitType === 'monster' &&
+            ((target.ownerType === 'player' && target.ownerId === unit.ownerId) ||
+              (this._merc !== null &&
+                this._merc !== undefined &&
+                target.id === this._merc.mercId &&
+                (unit.ownerId === undefined || unit.ownerId === this.selfId || this.selfId === 0)))
+          if (!isOwnersMerc) continue
+        }
+        if (hasNextHitRule && target.states.has(NEXT_DELAY_STATE_ID_113C)) continue
         if (unit.hitUnitIds?.has(target.id)) continue
-        if (distToSeg(target.x, target.y) <= hitRadius) {
+        if (hitsTarget(target)) {
           unit.hitUnitIds?.add(target.id)
           this.triggerMissileImpact(unit, target.x, target.y, false, target)
           if (consumePierceOrKillOnUnitHit(target.x, target.y)) {
@@ -3090,8 +3646,9 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
           continue
         }
         if (target.dead) continue
+        if (hasNextHitRule && target.states.has(NEXT_DELAY_STATE_ID_113C)) continue
         if (unit.hitUnitIds?.has(target.id)) continue
-        if (distToSeg(target.x, target.y) <= hitRadius) {
+        if (hitsTarget(target)) {
           unit.hitUnitIds?.add(target.id)
           this.triggerMissileImpact(unit, target.x, target.y, false, target)
           if (consumePierceOrKillOnUnitHit(target.x, target.y)) {
@@ -3099,11 +3656,12 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
           }
         }
       }
-    } else {
+    } else if (stepMissileRow?.pCltHitFunc !== 40 && cltRow?.pCltHitFunc !== 40) {
       const candidates = Array.from(this._monsters.values()).sort(
         (a, b) => Math.hypot(a.x - prevX, a.y - prevY) - Math.hypot(b.x - prevX, b.y - prevY),
       )
       for (const target of candidates) {
+        if (hasNextHitRule && target.states.has(NEXT_DELAY_STATE_ID_113C)) continue
         const isDeadOrCorpse =
           target.dead ||
           target.mode === 0 ||
@@ -3141,8 +3699,7 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
                 : true
           if (!matchesHostile) continue
         }
-        const effectiveHitRadius = unit.missileKey === 'guidedarrow' ? Math.max(hitRadius, 2.25) : hitRadius
-        if (distToSeg(target.x, target.y) <= effectiveHitRadius) {
+        if (hitsTarget(target)) {
           unit.hitUnitIds?.add(target.id)
           if (!unit.piercedTargets) {
             unit.piercedTargets = new Set<number>()
@@ -3325,6 +3882,48 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
           )
         }
       }
+    } else if (unit.classId === HF_FRAGMENT1_MISSILE && unit.missileKey === 'hffragment1') {
+      // 1.13c range end runs MissCltHitFunc[42] (0x6fb65300): hffragment2 at the shard, TargetX copied.
+      const f2 = this.spawnMissileByKey('hffragment2', unit.x, unit.y, unit.x, unit.y, {
+        classId: HF_FRAGMENT2_MISSILE,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+      })
+      f2.vx = 0
+      f2.vy = 0
+      f2.cltCountdown = unit.cltCountdown
+      this.triggerMissileImpact(unit, unit.x, unit.y, false)
+    } else if (unit.classId === HF_FRAGMENT2_MISSILE && unit.missileKey === 'hffragment2') {
+      // 1.13c range end runs MissCltHitFunc[43] (0x6fb651c0): hffragment3 (flags 0x8005: start here, velocity 0,
+      // range = Range of row 373 hfcontrol), TargetX copied, TargetY = RAND(35) + 10.
+      const f3 = this.spawnMissileByKey('hffragment3', unit.x, unit.y, unit.x, unit.y, {
+        classId: HF_FRAGMENT3_MISSILE,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+        maxTicks: CANONICAL_113C_MISSILES.hfcontrol!.range,
+      })
+      f3.vx = 0
+      f3.vy = 0
+      f3.cltCountdown = unit.cltCountdown
+      f3.cltCountdownY = hfFragmentDelay(unit.seed)
+    } else if (unit.classId === NIHLITHAK1_MISSILE && unit.missileKey === 'nihlithak1') {
+      // 1.13c range end runs MissCltHitFunc[60] (0x6fb65770): CltHitSubMissile1 (nihlithak2) and CltHitSubMissile2
+      // (nehlithakbonechips) at the missile, the second with trajectory z = cHitPar1 << 11.
+      const row = missileCltColsByName113c('nihlithak1')!
+      const subs = [row.cltHitSubMissile[0], row.cltHitSubMissile[1]]
+      for (let i = 0; i < subs.length; i++) {
+        const subId = subs[i]!
+        if (subId < 0) continue
+        const sub = this.spawnMissileByKey(MISSILE_CLASS_ID_TO_KEY[subId]!, unit.x, unit.y, unit.x, unit.y, {
+          classId: subId,
+          ownerType: unit.ownerType,
+          ownerId: unit.ownerId,
+        })
+        sub.vx = 0
+        sub.vy = 0
+        if (i === 1) sub.altitude = row.cHitPar[0]
+      }
+      this.triggerMissileImpact(unit, unit.x, unit.y, false)
     } else if (unit.missileKey === 'mephistoflyingrocksbig') {
       // 1.13c range end (0x6fb615c8) runs MissCltHitFunc[33] (0x6fb65dd0): TargetX (RAND(5) from CltDoFunc 26)
       // CltHitSubMissile1 mephistoflyingrockssmall within max(3, cHitPar1), then the row's AlwaysExplode
@@ -3383,7 +3982,10 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
       gwStop.vx = 0
       gwStop.vy = 0
     } else if (
-      (unit.alwaysExplode || unit.missileKey === 'towermisttrail') &&
+      (unit.alwaysExplode ||
+        unit.missileKey === 'towermisttrail' ||
+        unit.missileKey === 'moltenboulderemerge' ||
+        unit.missileKey === 'taintedsunflash') &&
       unit.missileKey !== 'orbmisttrail' &&
       (unit.explosionMissile ||
         (CANONICAL_113C_MISSILES[unit.missileKey ?? '']?.pCltHitFunc ?? 0) > 0 ||
@@ -3495,6 +4097,7 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
             x: unit.x,
             y: unit.y,
             unitId: unit.id,
+            unitType: unit.unitType,
             local: isSelfUnit,
           })
           this.spawnMissilesForSkill(
@@ -3527,6 +4130,7 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
             x: unit.x,
             y: unit.y,
             unitId: unit.id,
+            unitType: unit.unitType,
             local: isSelfUnit,
           })
           this.spawnMissilesForSkill(
@@ -3825,6 +4429,8 @@ export function tickWorldImpl(this: ClientWorldInternal, dtMs = 40, nowMs?: numb
 
 export function stepDiscreteSimulationTickImpl(this: ClientWorldInternal, _tickDtMs = 40, nowMs?: number): void {
   this.frameCount++
+  // 1.13c 0x6fb032c0 (room change of the local player): worldstone shake once per visit of levels 131 / 132.
+  this.updateWorldstoneShakeTrigger(this.areaId)
   for (const unit of this._monsters.values()) {
     if (unit.dead) continue
     const mMode = unit.mode
@@ -3897,6 +4503,8 @@ export function stepDiscreteSimulationTickImpl(this: ClientWorldInternal, _tickD
           ...(snd.delayTicks !== undefined ? { delayTicks: snd.delayTicks } : {}),
         })
       }
+      // 0x6fad5b40 → 0x6fad4680: the object's Objects.txt ClientFn (table 0x6fba54e8), issues #1518..#1522.
+      if (objectRecord.clientFn !== 0 && !runObjectClientFnStep.call(this, unit, objectRecord, objectNowMs)) continue
     }
 
     // 1a'. Locally predicted timed states (War Cry stun 21, Hurricane cold 11) expire on their
@@ -4443,29 +5051,7 @@ export function stepDiscreteSimulationTickImpl(this: ClientWorldInternal, _tickD
           neuPod.alwaysExplode = true
         }
       }
-      if (unit.mode === MONMODE_NEUTRAL && !isTownNpcHcIdx(unit.classId)) {
-        const monRow = resolveUnitMonSoundRow113c(unit)
-        if (monRow && monRow.neutral > 0 && monRow.neuTime > 0) {
-          let nextTick = this._monsterNextNeutralSoundTick.get(unit.id)
-          if (nextTick === undefined) {
-            const jitter = (SEED_RollRandomNumber(unit.seed) >>> 0) % Math.max(1, monRow.neuTime)
-            nextTick = this.frameCount + monRow.neuTime + jitter
-            this._monsterNextNeutralSoundTick.set(unit.id, nextTick)
-          } else if (this.frameCount >= nextTick) {
-            if (this.frameCount - (this._lastGlobalNeutralSoundTick ?? -200) >= 125) {
-              this._lastGlobalNeutralSoundTick = this.frameCount
-              this.pushSoundRequest({
-                soundId: monRow.neutral,
-                unit: { unitType: 'monster', id: unit.id, x: unit.x, y: unit.y },
-                x: unit.x,
-                y: unit.y,
-              })
-            }
-            const jitter = (SEED_RollRandomNumber(unit.seed) >>> 0) % Math.max(1, monRow.neuTime)
-            this._monsterNextNeutralSoundTick.set(unit.id, this.frameCount + monRow.neuTime + jitter)
-          }
-        }
-      }
+      tryEmitMonsterNeutralSound113cImpl.call(this, unit)
       if (isMaggotSmallMonster(unit.classId, unit.name)) {
         let stomped = false
         if ((this._self.x !== 0 || this._self.y !== 0) && !this._isSelfDead) {
@@ -4679,4 +5265,127 @@ export function stepDiscreteSimulationTickImpl(this: ClientWorldInternal, _tickD
       }
     }
   }
+}
+
+/**
+ * 1.13c MissCltDoFunc[8] (0x6fb691c0) for one frame; returns `true` when the missile was removed
+ * (CltSubMissile1 < 0 -> 0x6fb61720). The port steps the path before the CltDoFunc, so #10203 is tested on the step
+ * just taken and the segment starts at the sub-tile it entered.
+ */
+function stepCltDo8Trail(
+  this: ClientWorldInternal,
+  unit: ClientUnit,
+  row: MissileCltColsRow113c,
+  prevX: number,
+  prevY: number,
+  elapsed: number,
+): boolean {
+  const decision = cltDo8Decide(row, elapsed, pathEnteredNewSubtile(prevX, prevY, unit.x, unit.y))
+  if (decision.kind === 'remove') {
+    this._units.delete(unit.key)
+    return true
+  }
+  if (decision.kind === 'skip') return false
+  const seg = this.spawnMissileByKey(
+    decision.sub.name,
+    unit.x,
+    unit.y,
+    unit.x + (unit.vx ?? 0),
+    unit.y + (unit.vy ?? 0),
+    {
+      ownerType: unit.ownerType,
+      ownerId: unit.ownerId,
+      sourceSkillId: unit.sourceSkillId,
+      // Create record level 0: lifetime = Range + LevRange * 0 (0x6fb63417).
+      maxTicks: decision.sub.range,
+      direction: unit.direction,
+    },
+  )
+  seg.subLoops = decision.loops
+  const init = cltDo8SubInit(decision.sub, unit.seed, seg.seed)
+  seg.vx = 0
+  seg.vy = 0
+  seg.altitude = init.altitude
+  seg.frame = init.initialFrame
+  seg.initialFrame = init.initialFrame
+  return false
+}
+
+/** Overlay.txt row names the ClientFn handlers attach (row 72 = `npcalert`). */
+const CLIENTFN_OVERLAY_TOKENS: Readonly<Record<number, string>> = { [CLIENTFN_NPCALERT_OVERLAY]: 'npcalert' }
+
+/**
+ * Run one object's Objects.txt ClientFn (0x6fad4680) for the 25 Hz frame and apply its effects.
+ *
+ * @returns false when the handler removed the unit.
+ */
+function runObjectClientFnStep(
+  this: ClientWorldInternal,
+  unit: ClientUnit,
+  record: ObjectsTxtRecord113c,
+  nowMs: number,
+): boolean {
+  const effects = runObjectClientFn113c(unit, record.clientFn, {
+    nowMs,
+    // D2Common #10522 between the object (Objects.txt SizeX; the generated meta omits a 0) and the local player
+    // (size 2).
+    distanceToLocalPlayer: () =>
+      unitDistance113c(unit.x, unit.y, CANONICAL_113C_OBJECTS[unit.classId]?.sizeX ?? 0, this._self.x, this._self.y, 2),
+  })
+  for (const effect of effects) {
+    switch (effect.kind) {
+      case 'setMode':
+        // The handler already wrote unit.mode; restart the mode's animation (#10595 / #11090).
+        unit.modeStartedAtMs = nowMs
+        unit.animStartedAtMs = nowMs
+        unit.modeElapsedMs = 0
+        unit.modeUntilMs = undefined
+        unit.modeDurationMs = undefined
+        unit.animStepSpeed256 = undefined
+        unit.animEffRate = undefined
+        resetObjectAnim(unit, record)
+        break
+      case 'addOverlay': {
+        const token = CLIENTFN_OVERLAY_TOKENS[effect.overlay]!
+        if (!unit.overlays.some((o) => o.token === token)) this.attachUnitOverlay(unit, token, true)
+        break
+      }
+      case 'removeOverlay': {
+        const token = CLIENTFN_OVERLAY_TOKENS[effect.overlay]!
+        unit.overlays = unit.overlays.filter((o) => o.token !== token)
+        break
+      }
+      case 'removeUnit':
+        this.apply({ type: 'UnitRemove', unitType: 2, id: unit.id })
+        return false
+      case 'playSound':
+        this.pushSoundRequest({
+          soundId: effect.soundId,
+          unit: { unitType: 'object', id: unit.id, x: unit.x, y: unit.y },
+          x: unit.x,
+          y: unit.y,
+        })
+        break
+      case 'modeSound':
+        for (const snd of updateObjectModeSound113c(unit, record)) {
+          this.pushSoundRequest({
+            ...(snd.kind !== undefined ? { kind: snd.kind } : {}),
+            ...(snd.soundId > 0 ? { soundId: snd.soundId } : {}),
+            unit: { unitType: 'object', id: unit.id, x: unit.x, y: unit.y },
+            x: unit.x,
+            y: unit.y,
+            ...(snd.delayTicks !== undefined ? { delayTicks: snd.delayTicks } : {}),
+          })
+        }
+        break
+    }
+  }
+  return true
+}
+
+/** MISSILE_CLASS_ID_TO_KEY lookup that fails loudly for an id that is not a Missiles.txt row. */
+function missileKeyByIdStrict113c(id: number): string {
+  const key = MISSILE_CLASS_ID_TO_KEY[id]
+  if (key === undefined) throw new RangeError(`no Missiles.txt row with Id ${String(id)}`)
+  return key
 }

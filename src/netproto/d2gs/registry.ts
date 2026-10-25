@@ -379,7 +379,7 @@ export const D2GS_S2C_REGISTRY: Readonly<Record<number, D2gsS2cRegistryEntry>> =
   0xa9: { opcode: 0xa9, name: 'EndState', d2ClientHandlerVa: '0x6fb5dd30', decode: decode0xA9EndState },
   0xaa: { opcode: 0xaa, name: 'AddUnitState', d2ClientHandlerVa: '0x6fb5db90', decode: (pkt, ctx) => decode0xAAAddUnitState(pkt, ctx.tables) },
   0xab: { opcode: 0xab, name: 'NPCHeal', d2ClientHandlerVa: '0x6fb5d0b0', decode: decode0xABNpcHeal },
-  0xac: { opcode: 0xac, name: 'AssignNPC', d2ClientHandlerVa: '0x6fb5e420', decode: decode0xACAssignNpc },
+  0xac: { opcode: 0xac, name: 'AssignNPC', d2ClientHandlerVa: '0x6fb5e420', decode: (pkt, ctx) => decode0xACAssignNpc(pkt, ctx.tables) },
   0xae: { opcode: 0xae, name: 'WardenRequest', d2ClientHandlerVa: '0x6fb5d630', decode: decode0xAEWarden },
   0xaf: { opcode: 0xaf, name: 'CompressionInfo', d2ClientHandlerVa: '0x6fb5d450', decode: decodeRare113cS2cPacket },
   0xb0: { opcode: 0xb0, name: 'ConnectionTerminated', d2ClientHandlerVa: '0x6fb5d450', decode: decode0xB0ConnectionTerminated },

@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
+import { PALETTE_ROW_STRIDE } from '../src/client/render/colormap-rows.ts'
 import {
   SpriteRenderer,
   FLOATS_PER_VERTEX,
@@ -423,12 +424,12 @@ describe('Scene Lighting & Environment Integration', () => {
       expect(buf[v1 + 8]! & UNIT_LIGHT_PRELIT).toBe(UNIT_LIGHT_PRELIT)
     }
 
-    // Quad 5 (roof): all 4 vertices encode roofHeight = 80 in a_palette (-1 + 80 * 32 = 2559) and do not set UNIT_LIGHT_PRELIT
+    // Quad 5 (roof): all 4 vertices encode roofHeight = 80 in a_palette (-1 + 80 * PALETTE_ROW_STRIDE) and do not set UNIT_LIGHT_PRELIT
     const roofBase = 5 * 4 * FLOATS_PER_VERTEX
     for (let v = 0; v < 4; v += 1) {
       const at = roofBase + v * FLOATS_PER_VERTEX
       expect(buf[at + 8]! & UNIT_LIGHT_PRELIT).toBe(0)
-      expect(buf[at + 9]).toBe(-1 + 80 * 32)
+      expect(buf[at + 9]).toBe(-1 + 80 * PALETTE_ROW_STRIDE)
     }
 
     renderer.dispose()

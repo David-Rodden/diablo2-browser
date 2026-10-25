@@ -314,6 +314,10 @@ export type ToolbarI18nKey =
   | 'toolbar.config.multiboxOn'
   | 'toolbar.config.multiboxAlertOn'
   | 'toolbar.config.multiboxAlertOff'
+  | 'toolbar.config.hudLayout'
+  | 'toolbar.config.hudLayout.auto'
+  | 'toolbar.config.hudLayout.classic'
+  | 'toolbar.config.hudLayout.compact-d2r'
   | 'toolbar.bug.open'
   | 'toolbar.bug.title'
   | 'toolbar.bug.subtitle'
@@ -388,6 +392,10 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
   'toolbar.config.multiboxOn': { zh: '已开启 (多实例)', en: 'Enabled (Multibox)' },
   'toolbar.config.multiboxAlertOn': { zh: '后台受击音: 开', en: 'Bg Alert: On' },
   'toolbar.config.multiboxAlertOff': { zh: '后台受击音: 关', en: 'Bg Alert: Off' },
+  'toolbar.config.hudLayout': { zh: '触控界面', en: 'Touch HUD' },
+  'toolbar.config.hudLayout.auto': { zh: '自动 (按设备检测)', en: 'Auto (Detect Device)' },
+  'toolbar.config.hudLayout.classic': { zh: '关闭 (经典 PC 界面)', en: 'Off (Classic PC HUD)' },
+  'toolbar.config.hudLayout.compact-d2r': { zh: '紧凑 D2R (强制开启触控)', en: 'Compact D2R (Force Touch)' },
   'toolbar.bug.open': { zh: '汇报 Bug', en: 'Report Bug' },
   'toolbar.bug.title': { zh: '汇报 Bug', en: 'Report a Bug' },
   'toolbar.bug.subtitle': {

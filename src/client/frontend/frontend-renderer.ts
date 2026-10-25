@@ -73,6 +73,11 @@ import {
   ensureAvatarComposite,
   getReadyAvatarComposite,
 } from './avatar-compositor.ts'
+import {
+  formatCharacterActionError,
+  formatCharacterCreateError,
+  formatLoginScreenErrorForDisplay,
+} from '../session/active-char-lock.ts'
 
 export interface PackedAnimFrame {
   readonly x: number
@@ -2144,11 +2149,12 @@ export class FrontendRenderer {
       },
     )
 
-    const loginErr = this.state.loginError || this.state.lastError
+    const loginErr = !this.state.popupModal
+      ? this.state.loginError || this.state.lastError
+      : null
     if (loginErr) {
-      // Session-loss reasons (tbl text + technical detail) can be long: wrap them in the space
-      // between the title and the Account Name label.
-      this.drawWrappedBitmapText(loginErr, headerSpec.instruction.centerX, 244, 700, {
+      const displayErr = formatLoginScreenErrorForDisplay(loginErr)
+      this.drawWrappedBitmapText(displayErr, headerSpec.instruction.centerX, 244, 700, {
         font: 'fontformal11',
         color: 1,
         align: 'center',
@@ -2523,8 +2529,9 @@ export class FrontendRenderer {
       }
     }
 
-    if (this.state.charCreateError || this.state.lastError) {
-      this.drawBitmapText(this.state.charCreateError || this.state.lastError || '', 400, 444, {
+    if (!this.state.popupModal && (this.state.charCreateError || this.state.lastError)) {
+      const rawErr = this.state.charCreateError || this.state.lastError || ''
+      this.drawBitmapText(formatCharacterCreateError(rawErr), 400, 444, {
         font: 'fontformal12',
         color: 1,
         align: 'center',
@@ -2648,8 +2655,8 @@ export class FrontendRenderer {
       })
     }
 
-    if (this.state.lastError) {
-      this.drawBitmapText(this.state.lastError, 300, 56, {
+    if (!this.state.popupModal && this.state.lastError) {
+      this.drawBitmapText(formatCharacterActionError(this.state.lastError), 300, 56, {
         font: 'fontformal11',
         color: 1,
         align: 'center',
@@ -3007,17 +3014,6 @@ export class FrontendRenderer {
         L.hell,
         !hellUnlocked,
       )
-    }
-
-    const lobbyErr = this.state.createGameError || this.state.lastError
-    if (lobbyErr) {
-      this.drawWrappedBitmapText(lobbyErr, 596, isJoinPanel ? 158 : 383, 330, {
-        font: 'fontformal10',
-        color: 1,
-        align: 'center',
-        lineStep: 12,
-        maxLines: 2,
-      })
     }
 
     // Bottom Channel Character Lineup Bar (`y = 500..585` per D2Multi.dll 0x6f9ea0c0 / 0x6f9d2940, #696 & #707)

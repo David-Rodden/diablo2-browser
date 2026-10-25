@@ -112,6 +112,9 @@ import { loadSinglePlayerData } from './session/single-player-data.ts'
 import {
   OnlineSession,
   SessionLostError,
+  formatBnetLoginError,
+  formatCharacterActionError,
+  formatCharacterCreateError,
   formatLobbyGameEnterError,
   parseMcpGameErrorStatus,
 } from './session/online-session.ts'
@@ -131,6 +134,9 @@ import {
   type ViewportProfile,
 } from './view/viewport-profile.ts'
 import { loadWeatherAssetsSafe } from './weather/weather-assets.ts'
+import { loadBackdropAssets } from './scene/backdrop-assets.ts'
+import { BackdropScenePass } from './scene/backdrop-pass.ts'
+import type { BackdropManifestData } from '../common/pack-contract/backdrop-manifest.ts'
 import {
   WeatherScenePass,
   weatherPanelFromSidePanels,
@@ -396,12 +402,28 @@ export async function startPlayApp(options?: {
     true,
   )
 
+  const syncBodyHudLayoutAttr = (mode: string | undefined): void => {
+    const resolved = mode === 'classic' || mode === 'compact-d2r' ? mode : 'auto'
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.setAttribute('data-d2-hud-layout', resolved)
+      if (
+        resolved === 'classic' &&
+        document.body.getAttribute('data-d2-mobile-toolbar') === 'collapsed'
+      ) {
+        document.body.removeAttribute('data-d2-mobile-toolbar')
+      }
+    }
+  }
+  syncBodyHudLayoutAttr(initialSettings.hudLayoutMode)
+
   const syncStageViewportFit = (
     profileOrId?: ViewportProfile | typeof initialSettings.viewport,
   ): ViewportProfile => {
+    const currentHudLayout = settingsStore.get().hudLayoutMode ?? 'auto'
     let effectiveProfileOrId = profileOrId ?? settingsStore.get().viewport
     if (
       profileOrId === undefined &&
+      currentHudLayout !== 'classic' &&
       detectMobileTouchEnvironment(window) &&
       typeof window !== 'undefined' &&
       window.innerWidth > window.innerHeight * 1.38
@@ -435,6 +457,13 @@ export async function startPlayApp(options?: {
       },
       onViewportChange: (profile: ViewportProfile) => {
         syncStageViewportFit(profile)
+      },
+      onHudLayoutModeChange: (mode) => {
+        syncBodyHudLayoutAttr(mode)
+        if (sessionRef) {
+          sessionRef.hudManager.touchControls.applyHudLayoutMode(mode, window)
+          sessionRef.hudManager.syncPublishedState()
+        }
       },
       onAutomapRevealChange: (mode) => {
         sessionRef?.automapView.setMode(mode)
@@ -634,6 +663,9 @@ export async function startPlayApp(options?: {
     onCycleAutomapFade: () => {
       minimap.cycleFade()
     },
+    onToggleAutomapParty: () => {
+      minimap.toggleParty()
+    },
     onToggleAutomapNames: () => {
       minimap.toggleNames()
     },
@@ -660,6 +692,7 @@ export async function startPlayApp(options?: {
   // 25fps idle throttle for the HUD 2D repaint (cursor moves still redraw at
   // full rate); tests construct HudManager directly and keep per-call renders.
   hudManager.enableIdleThrottle = true
+  hudManager.touchControls.applyHudLayoutMode(initialSettings.hudLayoutMode ?? 'auto', window)
 
   const session = new OnlineSession({
     settingsStore,
@@ -725,6 +758,9 @@ export async function startPlayApp(options?: {
 
   // 1.13c FPS counter 0x6fb0a9a0; its value gates the lightning flash (`cmp 0xa` @0x6fb306c2).
   const fpsCounter = new FpsCounter113c()
+  // 1.13c level backdrops (#1537 / #1538): assets arrive with the in-game assets below.
+  let backdropAssets: BackdropManifestData | null = null
+  const backdropPass = new BackdropScenePass(() => backdropAssets)
   const weatherPass = new WeatherScenePass({
     controller: session.weather,
     period: () => session.environment.period,
@@ -995,6 +1031,11 @@ export async function startPlayApp(options?: {
     if (next.automapReveal !== prev.automapReveal) {
       session.automapView.setMode(next.automapReveal)
     }
+    if (next.hudLayoutMode !== prev.hudLayoutMode) {
+      syncBodyHudLayoutAttr(next.hudLayoutMode)
+      session.hudManager.touchControls.applyHudLayoutMode(next.hudLayoutMode ?? 'auto', window)
+      session.hudManager.syncPublishedState()
+    }
   })
 
   const syncVisibility = (): void => {
@@ -1003,7 +1044,12 @@ export async function startPlayApp(options?: {
       frontendImeSink.syncFromActiveInput(null, false)
     }
     if (disconnectBanner) {
-      if (session.disconnectReason) {
+      const showDomBanner =
+        Boolean(session.disconnectReason) &&
+        (session.phase === 'disconnected' || session.phase === 'error') &&
+        !frontendRenderer.ready &&
+        flowState.popupModal === null
+      if (showDomBanner && session.disconnectReason) {
         disconnectBanner.textContent = session.disconnectReason
         disconnectBanner.hidden = false
       } else {
@@ -1350,9 +1396,6 @@ export async function startPlayApp(options?: {
       }
     } catch (err) {
       if (err instanceof SessionLostError) return
-      if (seq === joinListRefreshSeq) {
-        st.lastError = err instanceof Error ? err.message : String(err)
-      }
     } finally {
       if (seq === joinListRefreshSeq) {
         joinListRefreshInFlight = false
@@ -1450,8 +1493,10 @@ export async function startPlayApp(options?: {
           )
         } else if (!(err instanceof SessionLostError)) {
           // A lost session was already routed to the login screen by `onSessionLost`.
-          st.loginError = err instanceof Error ? err.message : String(err)
-          st.lastError = st.loginError
+          const friendlyMsg = formatBnetLoginError(err)
+          st.loginError = friendlyMsg
+          st.lastError = friendlyMsg
+          openPopupModal(st, friendlyMsg, 'bnet_login')
         }
       } finally {
         loginInFlight = false
@@ -1515,8 +1560,10 @@ export async function startPlayApp(options?: {
         preloadSelectedCharacterAssets(st)
       } catch (err) {
         if (err instanceof SessionLostError) return
-        st.charCreateError = err instanceof Error ? err.message : String(err)
-        st.lastError = st.charCreateError
+        const friendlyMsg = formatCharacterCreateError(err)
+        st.charCreateError = friendlyMsg
+        st.lastError = friendlyMsg
+        openPopupModal(st, friendlyMsg, 'char_create')
       }
       frontendRenderer.render(performance.now())
     },
@@ -1539,7 +1586,9 @@ export async function startPlayApp(options?: {
         }
       } catch (err) {
         if (err instanceof SessionLostError) return
-        st.lastError = err instanceof Error ? err.message : String(err)
+        const friendlyMsg = formatCharacterActionError(err, 'delete')
+        st.lastError = friendlyMsg
+        openPopupModal(st, friendlyMsg, 'char_select')
       }
       frontendRenderer.render(performance.now())
     },
@@ -1564,7 +1613,9 @@ export async function startPlayApp(options?: {
         }
       } catch (err) {
         if (err instanceof SessionLostError) return
-        st.lastError = err instanceof Error ? err.message : String(err)
+        const friendlyMsg = formatCharacterActionError(err, 'upgrade')
+        st.lastError = friendlyMsg
+        openPopupModal(st, friendlyMsg, 'char_select')
       }
       frontendRenderer.render(performance.now())
     },
@@ -1593,7 +1644,9 @@ export async function startPlayApp(options?: {
         preloadSelectedCharacterAssets(st)
       } catch (err) {
         if (err instanceof SessionLostError) return
-        st.lastError = err instanceof Error ? err.message : String(err)
+        const friendlyMsg = formatCharacterActionError(err, 'logon')
+        st.lastError = friendlyMsg
+        openPopupModal(st, friendlyMsg, 'char_select')
       }
       frontendRenderer.render(performance.now())
     },
@@ -1692,9 +1745,15 @@ export async function startPlayApp(options?: {
       }
       const selectedChar = st.roster[st.selectedSlotIndex]
       if (selectedChar && !isDifficultyUnlocked(selectedChar, st.difficulty)) {
-        throw new Error(
+        const diffErr = new Error(
           `Difficulty "${st.difficulty}" is not unlocked for character "${selectedChar.name}" (progression=${selectedChar.progression})`,
         )
+        const friendlyMsg = formatLobbyGameEnterError(diffErr, selectedChar.name)
+        st.createGameError = friendlyMsg
+        st.lastError = friendlyMsg
+        openPopupModal(st, friendlyMsg, 'bnet_lobby')
+        frontendRenderer.render(performance.now())
+        return
       }
       const diffNum: 0 | 1 | 2 =
         st.difficulty === 'hell' ? 2 : st.difficulty === 'nightmare' ? 1 : 0
@@ -1834,12 +1893,11 @@ export async function startPlayApp(options?: {
         frontendRenderer.render(performance.now())
       }
     },
-    onSendChat: async (st, text) => {
+    onSendChat: async (_st, text) => {
       try {
         await session.sendLobbyChat(text)
       } catch (err) {
         if (err instanceof SessionLostError) return
-        st.lastError = err instanceof Error ? err.message : String(err)
       }
       frontendRenderer.render(performance.now())
     },
@@ -1915,8 +1973,9 @@ export async function startPlayApp(options?: {
   })()
 
   inGameAssetsPromise = (async (): Promise<void> => {
-    const [weatherAssets] = await Promise.all([
+    const [weatherAssets, loadedBackdrop] = await Promise.all([
       loadWeatherAssetsSafe(),
+      loadBackdropAssets(),
       mapService.ensureLoaded(),
       hudManager.load('/ui'),
       rawAssetsReadyPromise,
@@ -1924,6 +1983,7 @@ export async function startPlayApp(options?: {
     if (weatherAssets !== null) {
       session.weather.setAssets(weatherAssets)
     }
+    backdropAssets = loadedBackdrop
   })()
 
   void inGameAssetsPromise.then(async () => {
@@ -2445,6 +2505,10 @@ export async function startPlayApp(options?: {
 
     motionSmoother.beginFrame(nowMs)
     preloadActiveAreaAssets()
+    // S2C 0xA4 MonsterSpecial (D2Client.dll 0x6fb5d760 -> 0x6fb1a0c0): preload the requested monster art.
+    for (const classId of session.world.drainMonsterPreloadRequests()) {
+      entityArtCache.getMonsterArt(classId)
+    }
     sweepStaleCharacterArt(nowMs)
 
     // World render-rate cap (settings `worldRenderFps`: 60 = uncapped, 30 = ~half
@@ -2499,6 +2563,7 @@ export async function startPlayApp(options?: {
       automapView: session.automapView,
       hudManager: session.hudManager,
       weather: weatherPass,
+      backdrop: backdropPass,
       nowMs,
     })
     // 1.13c FPS counter 0x6fb0a9a0 (called at 0x6faf4392): after the draw and the UI.

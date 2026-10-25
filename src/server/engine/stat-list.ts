@@ -1,5 +1,5 @@
 /**
- * Diablo II: Lord of Destruction v1.13c Unit `StatList` (`D2StatListStrc` Parity).
+ * Diablo II: Lord of Destruction v1.13c Unit `StatList` (`D2StatListStrc` / `D2StatListExStrc` Parity).
  *
  * Enforces:
  * - 256-fixed-point (`<< 8`, `HIT_SHIFT = 8`) integer arithmetic for life (`hitpoints`/`maxhp`),
@@ -7,10 +7,208 @@
  * - Strict separation of base allocated skill points (`STAT_SKILLPTS` -> `getBaseSkillLevel(skillId)`)
  *   from item/buff `+skills` and item charges (`STAT_ITEM_CHARGED_SKILL`), enforcing the 1.13c
  *   Marrowwalk / charge synergy fix (`blvl` never includes `+skills` or charges).
- * - Dynamic `SkillStatModifier` lists with `expireFrame` (`dwExpireFrame`), `stateId`, and `slvl`.
+ * - Data-driven `ItemStatCost.txt` `op 1..13` (`op`, `op param`, `op base`, `op stat1..3`) dispatch
+ *   matching `D2Common.dll` `0x6FD89530` (`EvalStatWithOps`) & jump table `0x6FD89AF0`.
+ * - Layered `baseStats` (`BaseStats`) vs attached item/modifier statlists (`pMyLastList` / `FullStats`),
+ *   separating `item_armor_percent` (ID 16, `op = 13` on item base `armorclass`) from
+ *   `skill_armor_percent` (ID 171, `op = ''`, summed in `UNITS_GetDefense` `0x6FD82890`).
+ * - Strict canonical `ItemStatCost.txt` stat key validation (rejects any fabricated stat name).
  */
-import type { D2DataRegistry } from '../../common/data/data-registry.ts'
-import { calculateLightningMasteryBonusPct, calculateFireMasteryBonus } from './missile-engine.ts'
+import type { D2DataRegistry, SkillRecord } from '../../common/data/data-registry.ts'
+import { evaluateCalc } from '../../common/data/calc-ast.ts'
+import { RAW_ITEM_STAT_COST } from '../../common/data/canonical-vendor-data.ts'
+
+export type UnitStatListOwnerType = 'player' | 'monster' | 'item'
+
+export interface UnitStatListOptions {
+  readonly ownerType?: UnitStatListOwnerType
+  readonly charClass?: string
+  readonly periodOfDay?: number
+  readonly timeInPeriod?: number
+}
+
+export interface CanonicalItemStatCostDef {
+  readonly id: number
+  readonly stat: string
+  readonly valShift: number
+  readonly bMin: boolean
+  readonly minAccr: number
+  readonly op: number
+  readonly opParam: number
+  readonly opBase: string
+  readonly opStats: readonly string[]
+  readonly direct: boolean
+  readonly maxStat: string
+  readonly damageRelated: boolean
+}
+
+export interface ItemStatCostOpRule {
+  readonly sourceStatId: number
+  readonly sourceStat: string
+  readonly op: number
+  readonly opParam: number
+  readonly opBase: string
+  readonly targetStat: string
+}
+
+const PARSED_ITEM_STAT_COST = (() => {
+  const byId = new Map<number, CanonicalItemStatCostDef>()
+  const byName = new Map<string, CanonicalItemStatCostDef>()
+  const opRulesByTarget = new Map<string, ItemStatCostOpRule[]>()
+
+  const lines = RAW_ITEM_STAT_COST.split(/\r?\n/)
+  const header = (lines[0] ?? '').split('\t').map(h => h.trim().toLowerCase())
+  const idxStat = header.indexOf('stat')
+  const idxId = header.indexOf('id')
+  const idxFMin = header.indexOf('fmin')
+  const idxMinAccr = header.indexOf('minaccr')
+  const idxValShift = header.indexOf('valshift')
+  const idxOp = header.indexOf('op')
+  const idxOpParam = header.indexOf('op param')
+  const idxOpBase = header.indexOf('op base')
+  const idxOpStat1 = header.indexOf('op stat1')
+  const idxOpStat2 = header.indexOf('op stat2')
+  const idxOpStat3 = header.indexOf('op stat3')
+  const idxDirect = header.indexOf('direct')
+  const idxMaxStat = header.indexOf('maxstat')
+  const idxDamageRelated = header.indexOf('damagerelated')
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line) continue
+    const cols = line.split('\t')
+    const stat = (cols[idxStat] ?? '').trim().toLowerCase()
+    const idStr = (cols[idxId] ?? '').trim()
+    if (!stat || !idStr) continue
+    const id = Number(idStr)
+    if (!Number.isInteger(id) || id < 0) continue
+
+    const valShift = Number((cols[idxValShift] ?? '').trim() || '0') || 0
+    const bMin = ((cols[idxFMin] ?? '').trim() || '0') !== '0' && (cols[idxFMin] ?? '').trim() !== ''
+    const minAccr = Number((cols[idxMinAccr] ?? '').trim() || '0') || 0
+    const op = Number((cols[idxOp] ?? '').trim() || '0') || 0
+    const opParam = Number((cols[idxOpParam] ?? '').trim() || '0') || 0
+    const opBase = (cols[idxOpBase] ?? '').trim().toLowerCase()
+    const opStat1 = (cols[idxOpStat1] ?? '').trim().toLowerCase()
+    const opStat2 = (cols[idxOpStat2] ?? '').trim().toLowerCase()
+    const opStat3 = (cols[idxOpStat3] ?? '').trim().toLowerCase()
+    const opStats = [opStat1, opStat2, opStat3].filter(Boolean)
+    const direct = ((cols[idxDirect] ?? '').trim() || '0') !== '0' && (cols[idxDirect] ?? '').trim() !== ''
+    const maxStat = (cols[idxMaxStat] ?? '').trim().toLowerCase()
+    const damageRelated =
+      ((cols[idxDamageRelated] ?? '').trim() || '0') !== '0' && (cols[idxDamageRelated] ?? '').trim() !== ''
+
+    const def: CanonicalItemStatCostDef = {
+      id,
+      stat,
+      valShift,
+      bMin,
+      minAccr,
+      op,
+      opParam,
+      opBase,
+      opStats,
+      direct,
+      maxStat,
+      damageRelated,
+    }
+    byId.set(id, def)
+    byName.set(stat, def)
+
+    if (op >= 1 && op <= 13 && opStats.length > 0) {
+      for (const targetStat of opStats) {
+        let list = opRulesByTarget.get(targetStat)
+        if (!list) {
+          list = []
+          opRulesByTarget.set(targetStat, list)
+        }
+        list.push({
+          sourceStatId: id,
+          sourceStat: stat,
+          op,
+          opParam,
+          opBase,
+          targetStat,
+        })
+      }
+    }
+  }
+
+  return { byId, byName, opRulesByTarget }
+})()
+
+export const CANONICAL_ITEM_STAT_COST_BY_ID: ReadonlyMap<number, CanonicalItemStatCostDef> =
+  PARSED_ITEM_STAT_COST.byId
+export const CANONICAL_ITEM_STAT_COST_BY_NAME: ReadonlyMap<string, CanonicalItemStatCostDef> =
+  PARSED_ITEM_STAT_COST.byName
+export const OP_RULES_BY_TARGET: ReadonlyMap<string, readonly ItemStatCostOpRule[]> =
+  PARSED_ITEM_STAT_COST.opRulesByTarget
+
+/**
+ * Canonical 1.13c `CharStats.txt` per-vitality / per-energy scaling factors (in quarter-points;
+ * `D2Common.dll` `0x6FD89947` / `0x6FD899C3` shifts `(diff * factor) << 6` to produce 256-fixed-point).
+ */
+const CHAR_STATS_SCALING_113C: Readonly<
+  Record<
+    string,
+    {
+      readonly lifePerVitality: number
+      readonly staminaPerVitality: number
+      readonly manaPerMagic: number
+      readonly toHitFactor: number
+    }
+  >
+> = {
+  ama: { lifePerVitality: 12, staminaPerVitality: 4, manaPerMagic: 6, toHitFactor: 5 },
+  sor: { lifePerVitality: 8, staminaPerVitality: 4, manaPerMagic: 8, toHitFactor: -15 },
+  nec: { lifePerVitality: 8, staminaPerVitality: 4, manaPerMagic: 8, toHitFactor: -10 },
+  pal: { lifePerVitality: 12, staminaPerVitality: 4, manaPerMagic: 6, toHitFactor: 20 },
+  bar: { lifePerVitality: 16, staminaPerVitality: 5, manaPerMagic: 4, toHitFactor: 20 },
+  dru: { lifePerVitality: 8, staminaPerVitality: 4, manaPerMagic: 8, toHitFactor: 5 },
+  ass: { lifePerVitality: 12, staminaPerVitality: 5, manaPerMagic: 7, toHitFactor: 15 },
+}
+
+/**
+ * Pack a 1.13c `bytime` (`op = 6` / `op = 7`, `Encode = 4`) 22-bit parameter:
+ * - bits `0..1`: `period` (`0` = Day, `1` = Dusk, `2` = Night, `3` = Dawn)
+ * - bits `2..11`: biased `min` (`min + 0x100`, 10-bit unsigned)
+ * - bits `12..21`: biased `max` (`max + 0x100`, 10-bit unsigned)
+ */
+export function encodeByTimeStat113c(period: number, min: number, max: number): number {
+  const p = period & 0x3
+  const minBiased = (Math.trunc(min) + 0x100) & 0x3ff
+  const maxBiased = (Math.trunc(max) + 0x100) & 0x3ff
+  return p | (minBiased << 2) | (maxBiased << 12)
+}
+
+/**
+ * 1.13c `D2Common.dll` `0x6FD96330` (`ITEMS_EvaluateByTime` / `D2Common_10953`):
+ * Unpacks a 22-bit `bytime` stat value and interpolates across the 4 periods of day
+ * (`0` = Day, `1` = Dusk, `2` = Night, `3` = Dawn; each period is `1200` ticks).
+ */
+export function evaluateByTime113c(
+  rawPacked: number,
+  periodOfDay: number = 0,
+  timeInPeriod: number = 0,
+): number {
+  const raw = Math.trunc(rawPacked)
+  if (raw === 0) return 0
+  const targetPeriod = raw & 0x3
+  const minVal = ((raw >> 2) & 0x3ff) - 0x100
+  const maxVal = ((raw >> 12) & 0x3ff) - 0x100
+  const curPeriod = ((Math.trunc(periodOfDay) % 4) + 4) % 4
+  if (curPeriod === targetPeriod) {
+    return maxVal
+  }
+  const oppositePeriod = (targetPeriod + 2) & 0x3
+  if (curPeriod === oppositePeriod) {
+    return minVal
+  }
+  const clampedTime = Math.max(0, Math.min(1200, Math.trunc(timeInPeriod)))
+  const nextPeriod = (curPeriod + 1) & 0x3
+  const fraction = nextPeriod === targetPeriod ? clampedTime : 1200 - clampedTime
+  return minVal + Math.trunc(((maxVal - minVal) * fraction) / 1200)
+}
 
 export const HIT_SHIFT = 8
 export const FIXED_ONE = 1 << HIT_SHIFT // 256
@@ -30,8 +228,266 @@ export interface SkillStatModifier {
   readonly stats: Readonly<Record<string, number>>
 }
 
+interface PassiveSkillTableRow {
+  readonly id: number
+  readonly name: string
+  readonly passiveState: string
+  readonly stateId: number
+  readonly passiveItype?: string
+  readonly blvlOnly?: boolean
+  readonly passiveStat1: string
+  readonly passiveCalc1: string
+  readonly passiveStat2?: string
+  readonly passiveCalc2?: string
+  readonly passiveStat3?: string
+  readonly passiveCalc3?: string
+  readonly passiveStat4?: string
+  readonly passiveCalc4?: string
+  readonly passiveStat5?: string
+  readonly passiveCalc5?: string
+  readonly param1?: number
+  readonly param2?: number
+  readonly param3?: number
+  readonly param4?: number
+  readonly param5?: number
+  readonly param6?: number
+  readonly param7?: number
+  readonly param8?: number
+}
+
+/**
+ * Canonical 1.13c `Skills.txt` rows with `passivestate != ''` (`D2Game.dll` `0x6FCBA1A0` `SKILLS_RefreshPassiveSkills`).
+ * Used directly when `UnitStatList` is instantiated without `D2DataRegistry`, or cross-referenced with `registry.getSkillById(id)`.
+ */
+const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
+  { id: 9, name: 'Critical Strike', passiveState: 'criticalstrike', stateId: 73, passiveStat1: 'passive_critical_strike', passiveCalc1: 'dm12', param1: 5, param2: 80 },
+  { id: 13, name: 'Dodge', passiveState: 'dodge', stateId: 74, passiveStat1: 'passive_dodge', passiveCalc1: 'dm12', param1: 10, param2: 65 },
+  { id: 18, name: 'Avoid', passiveState: 'avoid', stateId: 75, passiveStat1: 'passive_avoid', passiveCalc1: 'dm12', param1: 15, param2: 75 },
+  { id: 23, name: 'Penetrate', passiveState: 'penetrate', stateId: 76, passiveStat1: 'item_tohit_percent', passiveCalc1: 'ln12', param1: 35, param2: 10 },
+  { id: 29, name: 'Evade', passiveState: 'evade', stateId: 77, passiveStat1: 'passive_evade', passiveCalc1: 'dm12', param1: 10, param2: 65 },
+  { id: 33, name: 'Pierce', passiveState: 'pierce', stateId: 82, passiveStat1: 'skill_pierce', passiveCalc1: 'dm12', param1: 10, param2: 100 },
+  { id: 37, name: 'Warmth', passiveState: 'warmth', stateId: 78, passiveStat1: 'manarecoverybonus', passiveCalc1: 'ln12', param1: 30, param2: 12 },
+  { id: 61, name: 'Fire Mastery', passiveState: 'firemastery', stateId: 79, passiveStat1: 'passive_fire_mastery', passiveCalc1: 'ln12', param1: 30, param2: 7 },
+  { id: 63, name: 'Lightning Mastery', passiveState: 'lightningmastery', stateId: 80, passiveStat1: 'passive_ltng_mastery', passiveCalc1: 'ln12', param1: 50, param2: 12 },
+  { id: 65, name: 'Cold Mastery', passiveState: 'coldmastery', stateId: 81, passiveStat1: 'passive_cold_pierce', passiveCalc1: 'ln12', param1: 20, param2: 5 },
+  { id: 89, name: 'Summon Resist', passiveState: 'summonresist', stateId: 83, passiveStat1: 'passive_summon_resist', passiveCalc1: 'dm12', param1: 20, param2: 75 },
+  { id: 100, name: 'Resist Fire', passiveState: 'passive_resistfire', stateId: 160, blvlOnly: true, passiveStat1: 'maxfireresist', passiveCalc1: "skill('Resist Fire'.blvl)/2" },
+  { id: 105, name: 'Resist Cold', passiveState: 'passive_resistcold', stateId: 161, blvlOnly: true, passiveStat1: 'maxcoldresist', passiveCalc1: "skill('Resist Cold'.blvl)/2" },
+  { id: 108, name: 'Blessed Aim', passiveState: 'penetrate', stateId: 76, blvlOnly: true, passiveStat1: 'item_tohit_percent', passiveCalc1: "skill('Blessed Aim'.blvl) * par8", param8: 5 },
+  { id: 110, name: 'Resist Lightning', passiveState: 'passive_resistltng', stateId: 162, blvlOnly: true, passiveStat1: 'maxlightresist', passiveCalc1: "skill('Resist Lightning'.blvl)/2" },
+  {
+    id: 127,
+    name: 'Sword Mastery',
+    passiveState: 'swordmastery',
+    stateId: 64,
+    passiveItype: 'swor',
+    passiveStat1: 'passive_mastery_melee_th',
+    passiveCalc1: 'ln12',
+    passiveStat2: 'passive_mastery_melee_dmg',
+    passiveCalc2: 'ln34',
+    passiveStat3: 'passive_mastery_melee_crit',
+    passiveCalc3: 'dm56',
+    param1: 28,
+    param2: 8,
+    param3: 28,
+    param4: 5,
+    param5: 0,
+    param6: 35,
+  },
+  {
+    id: 128,
+    name: 'Axe Mastery',
+    passiveState: 'axemastery',
+    stateId: 65,
+    passiveItype: 'axe',
+    passiveStat1: 'passive_mastery_melee_th',
+    passiveCalc1: 'ln12',
+    passiveStat2: 'passive_mastery_melee_dmg',
+    passiveCalc2: 'ln34',
+    passiveStat3: 'passive_mastery_melee_crit',
+    passiveCalc3: 'dm56',
+    param1: 28,
+    param2: 8,
+    param3: 28,
+    param4: 5,
+    param5: 0,
+    param6: 35,
+  },
+  {
+    id: 129,
+    name: 'Mace Mastery',
+    passiveState: 'macemastery',
+    stateId: 66,
+    passiveItype: 'blun',
+    passiveStat1: 'passive_mastery_melee_th',
+    passiveCalc1: 'ln12',
+    passiveStat2: 'passive_mastery_melee_dmg',
+    passiveCalc2: 'ln34',
+    passiveStat3: 'passive_mastery_melee_crit',
+    passiveCalc3: 'dm56',
+    param1: 28,
+    param2: 8,
+    param3: 28,
+    param4: 5,
+    param5: 0,
+    param6: 35,
+  },
+  {
+    id: 134,
+    name: 'Pole Arm Mastery',
+    passiveState: 'polearmmastery',
+    stateId: 67,
+    passiveItype: 'pole',
+    passiveStat1: 'passive_mastery_melee_th',
+    passiveCalc1: 'ln12',
+    passiveStat2: 'passive_mastery_melee_dmg',
+    passiveCalc2: 'ln34',
+    passiveStat3: 'passive_mastery_melee_crit',
+    passiveCalc3: 'dm56',
+    param1: 30,
+    param2: 8,
+    param3: 28,
+    param4: 5,
+    param5: 0,
+    param6: 35,
+  },
+  {
+    id: 135,
+    name: 'Throwing Mastery',
+    passiveState: 'throwingmastery',
+    stateId: 68,
+    passiveItype: 'thro',
+    passiveStat1: 'passive_mastery_throw_th',
+    passiveCalc1: 'ln12',
+    passiveStat2: 'passive_mastery_throw_dmg',
+    passiveCalc2: 'ln34',
+    passiveStat3: 'passive_mastery_throw_crit',
+    passiveCalc3: 'dm56',
+    param1: 30,
+    param2: 8,
+    param3: 28,
+    param4: 5,
+    param5: 0,
+    param6: 35,
+  },
+  {
+    id: 136,
+    name: 'Spear Mastery',
+    passiveState: 'spearmastery',
+    stateId: 69,
+    passiveItype: 'spea',
+    passiveStat1: 'passive_mastery_melee_th',
+    passiveCalc1: 'ln12',
+    passiveStat2: 'passive_mastery_melee_dmg',
+    passiveCalc2: 'ln34',
+    passiveStat3: 'passive_mastery_melee_crit',
+    passiveCalc3: 'dm56',
+    param1: 30,
+    param2: 8,
+    param3: 28,
+    param4: 5,
+    param5: 0,
+    param6: 35,
+  },
+  { id: 141, name: 'Increased Stamina', passiveState: 'increasedstamina', stateId: 70, passiveStat1: 'skill_passive_staminapercent', passiveCalc1: 'ln12', param1: 30, param2: 15 },
+  { id: 145, name: 'Iron Skin', passiveState: 'ironskin', stateId: 71, passiveStat1: 'skill_armor_percent', passiveCalc1: 'ln12', param1: 30, param2: 10 },
+  { id: 148, name: 'Increased Speed', passiveState: 'increasedspeed', stateId: 72, passiveStat1: 'velocitypercent', passiveCalc1: 'dm12', param1: 7, param2: 50 },
+  {
+    id: 153,
+    name: 'Natural Resistance',
+    passiveState: 'naturalresistance',
+    stateId: 73,
+    passiveStat1: 'fireresist',
+    passiveCalc1: 'dm12',
+    passiveStat2: 'lightresist',
+    passiveCalc2: 'dm12',
+    passiveStat3: 'coldresist',
+    passiveCalc3: 'dm12',
+    param1: 0,
+    param2: 80,
+  },
+  {
+    id: 252,
+    name: 'Claw Mastery',
+    passiveState: 'clawmastery',
+    stateId: 49,
+    passiveItype: 'h2h',
+    passiveStat1: 'passive_mastery_melee_th',
+    passiveCalc1: 'ln12',
+    passiveStat2: 'passive_mastery_melee_dmg',
+    passiveCalc2: 'ln34',
+    passiveStat3: 'passive_mastery_melee_crit',
+    passiveCalc3: 'dm56',
+    param1: 30,
+    param2: 10,
+    param3: 35,
+    param4: 4,
+    param5: 0,
+    param6: 25,
+  },
+  { id: 263, name: 'Weapon Block', passiveState: 'weaponblock', stateId: 63, passiveItype: 'h2h', passiveStat1: 'passive_weaponblock', passiveCalc1: 'dm12', param1: 20, param2: 65 },
+]
+
+const MELEE_MASTERY_SKILL_IDS = new Set([127, 128, 129, 134, 136, 252])
+
+/**
+ * Stats whose `op = 13` modifies only the item's own base stat (`D2Common.dll` `0x6FD89A87`)
+ * and therefore do not propagate directly from an attached item `UnitStatList` to its wearer.
+ */
+const ITEM_LOCAL_OP13_SOURCE_STATS = new Set<string>([
+  'item_armor_percent',
+  'item_maxdamage_percent',
+  'item_mindamage_percent',
+  'item_maxdurability_percent',
+  'item_levelreqpct',
+])
+
+function toFallbackSkillRecord(row: PassiveSkillTableRow): SkillRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    passiveState: row.passiveState,
+    passiveItype: row.passiveItype ?? '',
+    passiveStat1: row.passiveStat1,
+    passiveCalc1: row.passiveCalc1,
+    passiveStat2: row.passiveStat2 ?? '',
+    passiveCalc2: row.passiveCalc2 ?? '',
+    passiveStat3: row.passiveStat3 ?? '',
+    passiveCalc3: row.passiveCalc3 ?? '',
+    passiveStat4: row.passiveStat4 ?? '',
+    passiveCalc4: row.passiveCalc4 ?? '',
+    passiveStat5: row.passiveStat5 ?? '',
+    passiveCalc5: row.passiveCalc5 ?? '',
+    param1: row.param1 ?? 0,
+    param2: row.param2 ?? 0,
+    param3: row.param3 ?? 0,
+    param4: row.param4 ?? 0,
+    param5: row.param5 ?? 0,
+    param6: row.param6 ?? 0,
+    param7: row.param7 ?? 0,
+    param8: row.param8 ?? 0,
+  } as unknown as SkillRecord
+}
+
+const FALLBACK_PASSIVE_RECORDS_BY_ID = new Map<number, SkillRecord>(
+  PASSIVE_SKILL_TABLE_113C.map(r => [r.id, toFallbackSkillRecord(r)]),
+)
+const FALLBACK_PASSIVE_RECORDS_BY_NAME = new Map<string, SkillRecord>(
+  PASSIVE_SKILL_TABLE_113C.map(r => [r.name.toLowerCase(), toFallbackSkillRecord(r)]),
+)
+const FALLBACK_REGISTRY = {
+  getSkillById: (id: number) => FALLBACK_PASSIVE_RECORDS_BY_ID.get(id),
+  getSkillByName: (name: string) => FALLBACK_PASSIVE_RECORDS_BY_NAME.get(name.trim().toLowerCase()),
+} as unknown as D2DataRegistry
+
 export class UnitStatList {
   readonly registry: D2DataRegistry | undefined
+  private ownerType: UnitStatListOwnerType
+  private charClass: string
+  private periodOfDay: number
+  private timeInPeriod: number
+  private parentStatList: UnitStatList | undefined
+  private readonly attachedStatLists: UnitStatList[] = []
   private readonly baseStats = new Map<string, number>()
   private readonly baseSkillLevels = new Map<number, number>()
   private readonly bonusSkillLevels = new Map<number, number>()
@@ -40,23 +496,20 @@ export class UnitStatList {
   private classSkillsBonus = 0
   private readonly modifiers: SkillStatModifier[] = []
 
-  constructor(registry?: D2DataRegistry, initialStats?: Readonly<Record<string, number>>) {
+  constructor(
+    registry?: D2DataRegistry,
+    initialStats?: Readonly<Record<string, number>>,
+    options?: UnitStatListOptions,
+  ) {
     this.registry = registry
-    // Sensible defaults in 256-fixed-point for HP/Mana/Stamina
-    this.baseStats.set('level', 80)
-    this.baseStats.set('strength', 100)
-    this.baseStats.set('dexterity', 100)
-    this.baseStats.set('vitality', 150)
-    this.baseStats.set('energy', 100)
-    this.baseStats.set('maxhp', 1000 << HIT_SHIFT)
-    this.baseStats.set('hitpoints', 1000 << HIT_SHIFT)
-    this.baseStats.set('maxmana', 1000 << HIT_SHIFT)
-    this.baseStats.set('mana', 1000 << HIT_SHIFT)
-    this.baseStats.set('maxstamina', 500 << HIT_SHIFT)
-    this.baseStats.set('stamina', 500 << HIT_SHIFT)
-    this.baseStats.set('tohit', 2500)
-    this.baseStats.set('armorclass', 500)
-
+    this.ownerType = options?.ownerType ?? 'player'
+    this.charClass = (options?.charClass ?? 'ama').trim().toLowerCase()
+    this.periodOfDay = options?.periodOfDay ?? 0
+    this.timeInPeriod = options?.timeInPeriod ?? 0
+    // 1.13c D2Common_11013 (STATLIST_AllocStatList, 0x6FD88100) /
+    // D2Common_11166 (STATLIST_AllocStatListEx, 0x6FD8AF00):
+    // Newly allocated stat lists zero-initialize all fields (wStatCount = 0);
+    // D2Common_10973 (STATLIST_UnitGetStatValue, 0x6FD88B70) returns 0 for any unset stat.
     if (initialStats) {
       for (const [k, v] of Object.entries(initialStats)) {
         this.setBaseStat(k, v)
@@ -64,25 +517,92 @@ export class UnitStatList {
     }
   }
 
+  getOwnerType(): UnitStatListOwnerType {
+    return this.ownerType
+  }
+
+  setOwnerType(ownerType: UnitStatListOwnerType): void {
+    this.ownerType = ownerType
+  }
+
+  getCharClass(): string {
+    return this.charClass
+  }
+
+  setCharClass(charClass: string): void {
+    this.charClass = charClass.trim().toLowerCase()
+  }
+
+  setEnvironmentTime(periodOfDay: number, timeInPeriod: number = 0): void {
+    this.periodOfDay = ((Math.trunc(periodOfDay) % 4) + 4) % 4
+    this.timeInPeriod = Math.max(0, Math.min(1200, Math.trunc(timeInPeriod)))
+  }
+
+  /**
+   * Attach a child statlist (e.g., an equipped item's `UnitStatList` with `ownerType = 'item'`)
+   * into `D2StatListExStrc.pMyLastList`.
+   */
+  attachStatList(child: UnitStatList): void {
+    if (child === this) return
+    if (!this.attachedStatLists.includes(child)) {
+      child.parentStatList = this
+      this.attachedStatLists.push(child)
+    }
+  }
+
+  detachStatList(child: UnitStatList): boolean {
+    const idx = this.attachedStatLists.indexOf(child)
+    if (idx === -1) return false
+    child.parentStatList = undefined
+    this.attachedStatLists.splice(idx, 1)
+    return true
+  }
+
+  getAttachedStatLists(): readonly UnitStatList[] {
+    return this.attachedStatLists
+  }
+
   private normalizeStatKey(statNameOrId: string | number): string {
     if (typeof statNameOrId === 'number') {
+      if (!Number.isInteger(statNameOrId) || statNameOrId < 0) {
+        throw new Error(`UnitStatList: invalid ItemStatCost statId ${statNameOrId}`)
+      }
       const rec = this.registry?.getStatById(statNameOrId)
-      return rec ? rec.stat.toLowerCase() : String(statNameOrId)
+      if (rec) return rec.stat.toLowerCase()
+      const canonical = CANONICAL_ITEM_STAT_COST_BY_ID.get(statNameOrId)
+      if (canonical !== undefined) return canonical.stat
+      throw new Error(`UnitStatList: unknown ItemStatCost statId ${statNameOrId}`)
     }
-    return statNameOrId.trim().toLowerCase()
+    const key = statNameOrId.trim().toLowerCase()
+    if (CANONICAL_ITEM_STAT_COST_BY_NAME.has(key) || this.registry?.getStatByName(key)) {
+      return key
+    }
+    throw new Error(`UnitStatList: unknown ItemStatCost stat '${statNameOrId}'`)
   }
 
   setBaseStat(statNameOrId: string | number, value: number): void {
     const key = this.normalizeStatKey(statNameOrId)
-    this.baseStats.set(key, Math.trunc(value))
+    const truncVal = Math.trunc(value)
+    if (key === 'item_allskills') {
+      const prev = this.baseStats.get(key) ?? 0
+      this.allSkillsBonus += truncVal - prev
+    }
+    this.baseStats.set(key, truncVal)
+    if (key === 'item_allskills') {
+      this.syncPassiveSkillModifiers()
+    }
   }
 
   addStat(statNameOrId: string | number, delta: number): void {
     const key = this.normalizeStatKey(statNameOrId)
+    const truncDelta = Math.trunc(delta)
     if (key === 'item_allskills') {
-      this.allSkillsBonus += Math.trunc(delta)
+      this.allSkillsBonus += truncDelta
     }
-    this.baseStats.set(key, (this.baseStats.get(key) ?? 0) + Math.trunc(delta))
+    this.baseStats.set(key, (this.baseStats.get(key) ?? 0) + truncDelta)
+    if (key === 'item_allskills') {
+      this.syncPassiveSkillModifiers()
+    }
   }
 
   getBaseStat(statNameOrId: string | number): number {
@@ -95,6 +615,7 @@ export class UnitStatList {
    */
   setBaseSkillLevel(skillId: number, blvl: number): void {
     this.baseSkillLevels.set(skillId, Math.max(0, Math.trunc(blvl)))
+    this.syncPassiveSkillModifiers()
   }
 
   /**
@@ -107,14 +628,17 @@ export class UnitStatList {
 
   setBonusSkillLevel(skillId: number, bonus: number): void {
     this.bonusSkillLevels.set(skillId, Math.trunc(bonus))
+    this.syncPassiveSkillModifiers()
   }
 
   setAllSkillsBonus(bonus: number): void {
     this.allSkillsBonus = Math.trunc(bonus)
+    this.syncPassiveSkillModifiers()
   }
 
   setClassSkillsBonus(bonus: number): void {
     this.classSkillsBonus = Math.trunc(bonus)
+    this.syncPassiveSkillModifiers()
   }
 
   /**
@@ -135,9 +659,126 @@ export class UnitStatList {
   getEffectiveSkillLevel(skillId: number): number {
     const base = this.getBaseSkillLevel(skillId)
     const singleBonus = this.bonusSkillLevels.get(skillId) ?? 0
-    const modAllSkills = this.getModifierBonus('item_allskills') + this.getModifierBonus('allskills')
+    let attachedAllSkills = 0
+    for (const child of this.attachedStatLists) {
+      attachedAllSkills += child.getAccruedStat('item_allskills')
+    }
+    const modAllSkills = this.getModifierBonus('item_allskills') + attachedAllSkills
     const total = base + singleBonus + this.allSkillsBonus + this.classSkillsBonus + modAllSkills
     return Math.max(0, total)
+  }
+
+  /**
+   * 1.13c `SKILLS_RefreshPassiveSkills` (`D2Game.dll` `0x6FCBA1A0..0x6FCBA325`):
+   * Evaluates `passivestat1..5` / `passivecalc1..5` for all active passive skills on the unit
+   * and attaches/updates a `SkillStatModifier` with `stateName = passivestate`.
+   */
+  private syncPassiveSkillModifiers(): void {
+    const reg = this.registry ?? FALLBACK_REGISTRY
+    const hasExternalActiveAura = (auraState: string, auraSkillId: number, autoId: string): boolean =>
+      this.modifiers.some(
+        m =>
+          m.id !== autoId &&
+          (m.stateName.toLowerCase() === auraState || m.sourceSkillId === auraSkillId),
+      )
+
+    for (const def of PASSIVE_SKILL_TABLE_113C) {
+      const autoId = `passive_skill_${def.id}`
+      const blvl = this.getBaseSkillLevel(def.id)
+      const singleBonus = this.bonusSkillLevels.get(def.id) ?? 0
+      const isLearnedOrGranted = def.blvlOnly ? blvl > 0 : blvl > 0 || singleBonus > 0
+
+      // 1.13c `D2Game.dll` `0x6FCBA2EA..0x6FCBA308`:
+      // Active Resist Fire / Resist Cold / Resist Lightning / Blessed Aim aura suppresses the passive statlist.
+      const suppressedByActiveAura =
+        (def.id === 100 && hasExternalActiveAura('resistfire', 100, autoId)) ||
+        (def.id === 105 && hasExternalActiveAura('resistcold', 105, autoId)) ||
+        (def.id === 108 && hasExternalActiveAura('blessedaim', 108, autoId)) ||
+        (def.id === 110 && hasExternalActiveAura('resistlight', 110, autoId))
+
+      const effLvl = isLearnedOrGranted ? this.getEffectiveSkillLevel(def.id) : 0
+      const existingAutoIdx = this.modifiers.findIndex(m => m.id === autoId)
+
+      if (!isLearnedOrGranted || effLvl <= 0 || suppressedByActiveAura) {
+        if (existingAutoIdx !== -1) {
+          this.modifiers.splice(existingAutoIdx, 1)
+        }
+        continue
+      }
+
+      // If an external modifier was explicitly applied for this exact skill ID (`executeSkill113c`),
+      // keep the external modifier instead of duplicating it.
+      const hasExternalForSameSkill = this.modifiers.some(
+        m => m.id !== autoId && m.sourceSkillId === def.id && Object.keys(m.stats).length > 0,
+      )
+      if (hasExternalForSameSkill) {
+        if (existingAutoIdx !== -1) {
+          this.modifiers.splice(existingAutoIdx, 1)
+        }
+        continue
+      }
+
+      const skillRec = this.registry?.getSkillById(def.id) ?? toFallbackSkillRecord(def)
+      const calcCtx = {
+        registry: reg,
+        activeSkill: skillRec,
+        slvl: effLvl,
+        blvl,
+        getBaseSkillLevel: (id: number) => this.getBaseSkillLevel(id),
+        getEffectiveSkillLevel: (id: number) => this.getEffectiveSkillLevel(id),
+      }
+
+      const stats: Record<string, number> = {}
+      const pairs: readonly [string, string][] = [
+        [skillRec.passiveStat1 || def.passiveStat1, skillRec.passiveCalc1 || def.passiveCalc1],
+        [skillRec.passiveStat2 || def.passiveStat2 || '', skillRec.passiveCalc2 || def.passiveCalc2 || ''],
+        [skillRec.passiveStat3 || def.passiveStat3 || '', skillRec.passiveCalc3 || def.passiveCalc3 || ''],
+        [skillRec.passiveStat4 || def.passiveStat4 || '', skillRec.passiveCalc4 || def.passiveCalc4 || ''],
+        [skillRec.passiveStat5 || def.passiveStat5 || '', skillRec.passiveCalc5 || def.passiveCalc5 || ''],
+      ]
+      for (const [st, clc] of pairs) {
+        if (!st || !clc) continue
+        const normSt = this.normalizeStatKey(st)
+        // Issue #1445: Natural Resistance (#153) grants fireresist / lightresist / coldresist only (no poisonresist).
+        if (def.id === 153 && normSt === 'poisonresist') continue
+        // Issue #1445: Weapon Block (#263) dm12(20, 65) uses D2Common_11047 (0x6FD9DC30) two-step integer division:
+        // factor = trunc((110 * slvl) / (slvl + 6)); val = min(65, 20 + trunc((45 * factor) / 100)) -> slvl 1 = 26, slvl 20 = 57.
+        const val =
+          def.id === 263 && clc.trim() === 'dm12'
+            ? Math.min(
+                skillRec.param2,
+                skillRec.param1 +
+                  Math.trunc(
+                    ((skillRec.param2 - skillRec.param1) *
+                      Math.trunc((110 * effLvl) / (effLvl + 6))) /
+                      100,
+                  ),
+              )
+            : evaluateCalc(clc, calcCtx)
+        if (val !== 0) {
+          stats[normSt] = val
+        }
+      }
+
+      const stateName = (skillRec.passiveState || def.passiveState).trim().toLowerCase()
+      const stateId = this.registry?.getStateByName(stateName)?.id ?? def.stateId
+      const mod: SkillStatModifier = {
+        id: autoId,
+        stateName,
+        stateId,
+        sourceUnitId: 'self',
+        sourceSkillId: def.id,
+        slvl: effLvl,
+        expireFrame: 0,
+        stats,
+      }
+
+      if (existingAutoIdx !== -1) {
+        this.modifiers[existingAutoIdx] = mod
+      } else {
+        this.modifiers.push(mod)
+      }
+    }
   }
 
   /**
@@ -147,8 +788,16 @@ export class UnitStatList {
    */
   getModifierBonus(statNameOrId: string | number): number {
     const key = this.normalizeStatKey(statNameOrId)
+    const readModStat = (mod: SkillStatModifier): number => mod.stats[key] ?? 0
+
+    const isMeleeMasteryKey =
+      key === 'passive_mastery_melee_th' ||
+      key === 'passive_mastery_melee_dmg' ||
+      key === 'passive_mastery_melee_crit'
+
     const bestAuraByState = new Map<number, SkillStatModifier>()
     let sum = 0
+    let bestAutoMeleeMastery = 0
 
     for (const mod of this.modifiers) {
       if (mod.isAura && mod.stateId > 0) {
@@ -156,327 +805,343 @@ export class UnitStatList {
         if (!prev || mod.slvl >= prev.slvl) {
           bestAuraByState.set(mod.stateId, mod)
         }
+      } else if (
+        isMeleeMasteryKey &&
+        mod.id.startsWith('passive_skill_') &&
+        MELEE_MASTERY_SKILL_IDS.has(mod.sourceSkillId)
+      ) {
+        bestAutoMeleeMastery = Math.max(bestAutoMeleeMastery, readModStat(mod))
       } else {
-        sum += mod.stats[key] ?? 0
+        sum += readModStat(mod)
       }
     }
 
+    sum += bestAutoMeleeMastery
+
     for (const auraMod of bestAuraByState.values()) {
-      sum += auraMod.stats[key] ?? 0
+      sum += readModStat(auraMod)
     }
 
     return Math.trunc(sum)
   }
 
   /**
-   * Get accrued stat value (`D2Common_GetStatSigned`, `stat('...'.accr)`).
-   * Handles `%` max life/mana (`item_maxhp_percent`, `item_maxmana_percent`, `item_armor_percent`).
+   * Sum attached child `UnitStatList` contributions (`D2StatListExStrc.pMyLastList`) for `key`.
+   * For attached `'item'` statlists, `op = 13` local item percentage stats (`item_armor_percent`, etc.)
+   * are applied to the item's own base stats (`armorclass`, `maxdamage`, `mindamage`, `maxdurability`, `item_levelreq`)
+   * rather than leaking into the wearer's statlist.
+   */
+  private getAttachedStatBonus(key: string): number {
+    if (this.attachedStatLists.length === 0) return 0
+    let sum = 0
+    for (const child of this.attachedStatLists) {
+      if (child.ownerType === 'item' && ITEM_LOCAL_OP13_SOURCE_STATS.has(key)) {
+        continue
+      }
+      if (child.ownerType === 'item' && OP_RULES_BY_TARGET.has(key)) {
+        // Item's local op 4/5/6/7/13 (e.g. armorclass, maxdamage, mindamage, maxdurability, item_levelreq)
+        sum += child.evalItemLocalStat(key)
+      } else {
+        sum += child.getBaseStat(key) + child.getModifierBonus(key) + child.getAttachedStatBonus(key)
+      }
+    }
+    return Math.trunc(sum)
+  }
+
+  /**
+   * Evaluate an item statlist's own stat with item-applicable `op` rules (`op 1, 4, 5, 6, 7, 13`).
+   */
+  private evalItemLocalStat(key: string): number {
+    const base = this.getBaseStat(key)
+    const modBonus = this.getModifierBonus(key)
+    let acc = base + modBonus
+    let prev = acc
+    const rules = OP_RULES_BY_TARGET.get(key)
+    if (rules) {
+      for (const rule of rules) {
+        acc = this.applyOpRule(rule, acc, prev, () => {
+          prev = base
+          return prev
+        })
+      }
+    }
+    return Math.trunc(acc)
+  }
+
+  private resolveOpBaseShifted(opBaseName: string): number {
+    if (!opBaseName) return 0
+    const baseOwner = this.ownerType === 'item' && this.parentStatList ? this.parentStatList : this
+    const rawVal = baseOwner.getAccruedStat(opBaseName)
+    const def = CANONICAL_ITEM_STAT_COST_BY_NAME.get(opBaseName)
+    const shift = def?.valShift ?? 0
+    return shift > 0 ? rawVal >> shift : rawVal
+  }
+
+  private resolveCharScaling(): {
+    readonly lifePerVitality: number
+    readonly staminaPerVitality: number
+    readonly manaPerMagic: number
+    readonly toHitFactor: number
+  } {
+    const rec = this.registry?.getCharStats(this.charClass as 'ama')
+    if (rec) {
+      return {
+        lifePerVitality: rec.lifePerVitality,
+        staminaPerVitality: rec.staminaPerVitality,
+        manaPerMagic: rec.manaPerMagic,
+        toHitFactor: rec.toHitFactor,
+      }
+    }
+    return CHAR_STATS_SCALING_113C[this.charClass] ?? CHAR_STATS_SCALING_113C['ama']!
+  }
+
+  /**
+   * 1.13c `D2Common.dll` `0x6FD89530` (`EvalStatWithOps`) single `op` rule evaluation (`op 1..13`, jump table `0x6FD89AF0`).
+   */
+  private applyOpRule(
+    rule: ItemStatCostOpRule,
+    acc: number,
+    prev: number,
+    useBaseAsPrev: () => number,
+  ): number {
+    const timeOwner = this.ownerType === 'item' && this.parentStatList ? this.parentStatList : this
+    switch (rule.op) {
+      case 1: {
+        // 0x6FD895D0: op = 1 (skill_staminapercent 162, skill_passive_staminapercent 163 -> maxstamina)
+        const baseForPct = this.ownerType === 'item' ? useBaseAsPrev() : prev
+        if (baseForPct === 0) return acc
+        const opVal = this.getAccruedStat(rule.sourceStat)
+        if (opVal === 0) return acc
+        return acc + Math.trunc((baseForPct * opVal) / 100)
+      }
+      case 2: {
+        // 0x6FD8960D: op = 2 (perlevel flat on player/monster: (opVal * (opBase >> valShift)) >> opParam)
+        if (this.ownerType !== 'player' && this.ownerType !== 'monster') return acc
+        const opVal = this.getAccruedStat(rule.sourceStat)
+        if (opVal === 0) return acc
+        const shiftedBase = this.resolveOpBaseShifted(rule.opBase)
+        if (shiftedBase === 0) return acc
+        return acc + ((opVal * shiftedBase) >> rule.opParam)
+      }
+      case 3: {
+        // 0x6FD896AA: op = 3 (perlevel percent on player/monster)
+        if (this.ownerType !== 'player' && this.ownerType !== 'monster') return acc
+        if (prev === 0) return acc
+        const opVal = this.getAccruedStat(rule.sourceStat)
+        if (opVal === 0) return acc
+        const shiftedBase = this.resolveOpBaseShifted(rule.opBase)
+        if (shiftedBase === 0) return acc
+        const pct = (opVal * shiftedBase) >> rule.opParam
+        if (pct === 0) return acc
+        return acc + Math.trunc((prev * pct) / 100)
+      }
+      case 4: {
+        // 0x6FD8974B: op = 4 (item_armor_perlevel 214, item_maxdamage_perlevel 218 -> evaluated on item or wearer)
+        const opVal =
+          this.ownerType === 'item'
+            ? this.getBaseStat(rule.sourceStat) + this.getModifierBonus(rule.sourceStat)
+            : this.getBaseStat(rule.sourceStat) + this.getModifierBonus(rule.sourceStat)
+        if (opVal === 0) return acc
+        const shiftedBase = this.resolveOpBaseShifted(rule.opBase)
+        if (shiftedBase === 0) return acc
+        return acc + ((opVal * shiftedBase) >> rule.opParam)
+      }
+      case 5: {
+        // 0x6FD897DD: op = 5 (item_armorpercent_perlevel 215, item_maxdamage_percent_perlevel 219)
+        if (prev === 0) return acc
+        const opVal =
+          this.ownerType === 'item'
+            ? this.getBaseStat(rule.sourceStat) + this.getModifierBonus(rule.sourceStat)
+            : this.getBaseStat(rule.sourceStat) + this.getModifierBonus(rule.sourceStat)
+        if (opVal === 0) return acc
+        const shiftedBase = this.resolveOpBaseShifted(rule.opBase)
+        if (shiftedBase === 0) return acc
+        const pct = (opVal * shiftedBase) >> rule.opParam
+        if (pct === 0) return acc
+        return acc + Math.trunc((prev * pct) / 100)
+      }
+      case 6: {
+        // 0x6FD89873: op = 6 (*_bytime flat)
+        const rawByTime =
+          this.ownerType === 'item'
+            ? this.getBaseStat(rule.sourceStat) + this.getModifierBonus(rule.sourceStat)
+            : this.getAccruedStat(rule.sourceStat)
+        if (rawByTime === 0) return acc
+        return acc + evaluateByTime113c(rawByTime, timeOwner.periodOfDay, timeOwner.timeInPeriod)
+      }
+      case 7: {
+        // 0x6FD898D2: op = 7 (item_armorpercent_bytime 269, item_maxdamage_percent_bytime 273)
+        if (prev === 0) return acc
+        const rawByTime =
+          this.ownerType === 'item'
+            ? this.getBaseStat(rule.sourceStat) + this.getModifierBonus(rule.sourceStat)
+            : this.getAccruedStat(rule.sourceStat)
+        if (rawByTime === 0) return acc
+        const pct = evaluateByTime113c(rawByTime, timeOwner.periodOfDay, timeOwner.timeInPeriod)
+        if (pct === 0) return acc
+        return acc + Math.trunc((prev * pct) / 100)
+      }
+      case 8: {
+        // 0x6FD89947: op = 8 (energy 1 -> maxmana on player: ((FullStats[energy] - BaseStats[energy]) * ManaPerMagic) << 6)
+        if (this.ownerType !== 'player') return acc
+        const diff = this.getAccruedStat(rule.sourceStat) - this.getBaseStat(rule.sourceStat)
+        if (diff === 0) return acc
+        const { manaPerMagic } = this.resolveCharScaling()
+        return acc + ((diff * manaPerMagic) << 6)
+      }
+      case 9: {
+        // 0x6FD899C3: op = 9 (vitality 3 -> maxhp, maxstamina on player: ((FullStats[vit] - BaseStats[vit]) * factor) << 6)
+        if (this.ownerType !== 'player') return acc
+        const diff = this.getAccruedStat(rule.sourceStat) - this.getBaseStat(rule.sourceStat)
+        if (diff === 0) return acc
+        const { lifePerVitality, staminaPerVitality } = this.resolveCharScaling()
+        const factor = rule.targetStat === 'maxstamina' ? staminaPerVitality : lifePerVitality
+        return acc + ((diff * factor) << 6)
+      }
+      case 10:
+      case 12:
+        // 0x6FD89ACF: no-op in 1.13c
+        return acc
+      case 11: {
+        // 0x6FD89A5C: op = 11 (item_maxhp_percent 76 -> maxhp, item_maxmana_percent 77 -> maxmana)
+        if (this.ownerType !== 'player' && this.ownerType !== 'monster') return acc
+        if (prev === 0) return acc
+        const pct = this.getAccruedStat(rule.sourceStat)
+        if (pct === 0) return acc
+        return acc + Math.trunc((prev * pct) / 100)
+      }
+      case 13: {
+        // 0x6FD89A87: op = 13 (item_armor_percent 16, item_maxdamage_percent 17, item_mindamage_percent 18,
+        // item_maxdurability_percent 75, item_levelreqpct 94): runs ONLY on UNIT_ITEM (dwUnitType == 4)
+        // and scales ONLY BaseStats[targetStat] on the item!
+        if (this.ownerType !== 'item') return acc
+        const baseTarget = useBaseAsPrev()
+        if (baseTarget === 0) return acc
+        const pct = this.getBaseStat(rule.sourceStat) + this.getModifierBonus(rule.sourceStat)
+        if (pct === 0) return acc
+        return acc + Math.trunc((baseTarget * pct) / 100)
+      }
+      default:
+        return acc
+    }
+  }
+
+  /**
+   * Get accrued stat value (`D2Common_10973` / `STATLIST_UnitGetStatValue` `0x6FD88B70` -> `EvalStatWithOps` `0x6FD89530`).
+   * Evaluates `ItemStatCost.txt` `op 1..13` in canonical table order and applies unit defense/attack-rating scaling.
    */
   getAccruedStat(statNameOrId: string | number, baseOnly = false): number {
     const key = this.normalizeStatKey(statNameOrId)
     const base = this.getBaseStat(key)
     if (baseOnly) return base
 
-    const modBonus = this.getModifierBonus(key)
-    let total = base + modBonus
+    if (this.ownerType === 'item') {
+      return this.evalItemLocalStat(key)
+    }
 
-    if (key === 'maxhp') {
-      const pct = this.getModifierBonus('item_maxhp_percent') + this.getModifierBonus('maxhp_percent')
-      if (pct !== 0) {
-        total = Math.trunc((total * (100 + pct)) / 100)
+    const modBonus = this.getModifierBonus(key)
+    const attachedBonus = this.getAttachedStatBonus(key)
+    let acc = base + attachedBonus + modBonus
+    let prev = acc
+
+    const rules = OP_RULES_BY_TARGET.get(key)
+    if (rules) {
+      for (const rule of rules) {
+        acc = this.applyOpRule(rule, acc, prev, () => {
+          prev = base
+          return prev
+        })
       }
-    } else if (key === 'maxmana') {
-      const pct = this.getModifierBonus('item_maxmana_percent') + this.getModifierBonus('maxmana_percent')
-      if (pct !== 0) {
-        total = Math.trunc((total * (100 + pct)) / 100)
+    }
+
+    if (key === 'armorclass') {
+      // 1.13c `UNITS_GetDefense` (`0x6FD82890`): `skill_armor_percent` (ID 171, op = '')
+      // scales unit total defense after item `op = 13` (`item_armor_percent`, ID 16) has scaled item base armor.
+      const overridePct = this.getAccruedStat('armor_override_percent')
+      if (overridePct <= -100) {
+        return 0
       }
-    } else if (key === 'maxstamina') {
-      let incStamPct = 0
-      const base141 = this.getBaseSkillLevel(141)
-      const single141 = this.bonusSkillLevels.get(141) ?? 0
-      if (
-        (base141 > 0 || single141 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 141 || m.stateName === 'increasedstamina')
-      ) {
-        const eff141 = this.getEffectiveSkillLevel(141)
-        if (eff141 > 0) {
-          incStamPct = 30 + 15 * (eff141 - 1)
-        }
-      }
-      const pct =
-        this.getModifierBonus('item_maxstamina_percent') +
-        this.getBaseStat('item_maxstamina_percent') +
-        this.getModifierBonus('staminapercent') +
-        this.getBaseStat('staminapercent') +
-        this.getModifierBonus('skill_staminapercent') +
-        this.getBaseStat('skill_staminapercent') +
-        incStamPct
-      if (pct !== 0) {
-        total = Math.trunc((total * (100 + pct)) / 100)
-      }
-    } else if (key === 'item_maxstamina_percent' || key === 'staminarecoverybonus') {
-      const base141 = this.getBaseSkillLevel(141)
-      const single141 = this.bonusSkillLevels.get(141) ?? 0
-      if (
-        (base141 > 0 || single141 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 141 || m.stateName === 'increasedstamina')
-      ) {
-        const eff141 = this.getEffectiveSkillLevel(141)
-        if (eff141 > 0) {
-          total += 30 + 15 * (eff141 - 1)
-        }
-      }
-    } else if (key === 'armorclass') {
-      let ironSkinPct = 0
-      const base145 = this.getBaseSkillLevel(145)
-      const single145 = this.bonusSkillLevels.get(145) ?? 0
-      if (
-        (base145 > 0 || single145 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 145 || m.stateName === 'ironskin')
-      ) {
-        const eff145 = this.getEffectiveSkillLevel(145)
-        if (eff145 > 0) {
-          ironSkinPct = 30 + 10 * (eff145 - 1)
-        }
-      }
-      const pct =
-        this.getModifierBonus('item_armor_percent') +
-        this.getBaseStat('item_armor_percent') +
-        this.getModifierBonus('skill_armor_percent') +
-        this.getBaseStat('skill_armor_percent') +
-        this.getModifierBonus('armor_percent') +
-        this.getBaseStat('armor_percent') +
-        ironSkinPct
-      if (pct !== 0) {
-        total = Math.trunc((total * (100 + pct)) / 100)
-      }
-    } else if (key === 'skill_armor_percent') {
-      const base145 = this.getBaseSkillLevel(145)
-      const single145 = this.bonusSkillLevels.get(145) ?? 0
-      if (
-        (base145 > 0 || single145 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 145 || m.stateName === 'ironskin')
-      ) {
-        const eff145 = this.getEffectiveSkillLevel(145)
-        if (eff145 > 0) {
-          total += 30 + 10 * (eff145 - 1)
-        }
-      }
-    } else if (key === 'velocitypercent') {
-      const base148 = this.getBaseSkillLevel(148)
-      const single148 = this.bonusSkillLevels.get(148) ?? 0
-      if (
-        (base148 > 0 || single148 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 148 || m.stateName === 'increasedspeed')
-      ) {
-        const eff148 = this.getEffectiveSkillLevel(148)
-        if (eff148 > 0) {
-          total += 7 + Math.trunc((43 * Math.trunc((110 * eff148) / (eff148 + 6))) / 100)
-        }
-      }
-    } else if (
-      key === 'fireresist' ||
-      key === 'coldresist' ||
-      key === 'lightresist' ||
-      key === 'poisonresist'
-    ) {
-      const base153 = this.getBaseSkillLevel(153)
-      const single153 = this.bonusSkillLevels.get(153) ?? 0
-      if (
-        (base153 > 0 || single153 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 153 || m.stateName === 'naturalresistance')
-      ) {
-        const eff153 = this.getEffectiveSkillLevel(153)
-        if (eff153 > 0) {
-          total += Math.trunc((80 * Math.trunc((110 * eff153) / (eff153 + 6))) / 100)
-        }
-      }
-    } else if (
-      key === 'passive_mastery_throw_th' ||
-      key === 'passive_mastery_throw_dmg' ||
-      key === 'passive_mastery_throw_crit'
-    ) {
-      const base135 = this.getBaseSkillLevel(135)
-      const single135 = this.bonusSkillLevels.get(135) ?? 0
-      if (
-        (base135 > 0 || single135 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 135 || m.stateName === 'throwingmastery')
-      ) {
-        const eff135 = this.getEffectiveSkillLevel(135)
-        if (eff135 > 0) {
-          if (key === 'passive_mastery_throw_th') {
-            total += 30 + 8 * (eff135 - 1)
-          } else if (key === 'passive_mastery_throw_dmg') {
-            total += 28 + 5 * (eff135 - 1)
-          } else {
-            total += Math.trunc((35 * Math.trunc((110 * eff135) / (eff135 + 6))) / 100)
-          }
-        }
-      }
-    } else if (key === 'passive_weaponblock' || key === 'weaponblock') {
-      const otherKey = key === 'passive_weaponblock' ? 'weaponblock' : 'passive_weaponblock'
-      total =
-        Math.max(this.getBaseStat(key), this.getBaseStat(otherKey)) +
-        Math.max(this.getModifierBonus(key), this.getModifierBonus(otherKey))
-      const base263 = this.getBaseSkillLevel(263)
-      const single263 = this.bonusSkillLevels.get(263) ?? 0
-      if (
-        total === 0 &&
-        (base263 > 0 || single263 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 263 || m.stateName === 'weaponblock')
-      ) {
-        const eff263 = this.getEffectiveSkillLevel(263)
-        if (eff263 > 0) {
-          total += 10 + Math.trunc((50 * Math.trunc((110 * eff263) / (eff263 + 6))) / 100)
-        }
-      }
-    } else if (key === 'passive_dodge') {
-      const base13 = this.getBaseSkillLevel(13)
-      const single13 = this.bonusSkillLevels.get(13) ?? 0
-      if (
-        total === 0 &&
-        (base13 > 0 || single13 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 13 || m.stateName === 'dodge')
-      ) {
-        const eff13 = this.getEffectiveSkillLevel(13)
-        if (eff13 > 0) {
-          total += 10 + Math.trunc((55 * Math.trunc((110 * eff13) / (eff13 + 6))) / 100)
-        }
-      }
-    } else if (key === 'passive_avoid') {
-      const base18 = this.getBaseSkillLevel(18)
-      const single18 = this.bonusSkillLevels.get(18) ?? 0
-      if (
-        total === 0 &&
-        (base18 > 0 || single18 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 18 || m.stateName === 'avoid')
-      ) {
-        const eff18 = this.getEffectiveSkillLevel(18)
-        if (eff18 > 0) {
-          total += 15 + Math.trunc((60 * Math.trunc((110 * eff18) / (eff18 + 6))) / 100)
-        }
-      }
-    } else if (key === 'passive_evade') {
-      const base29 = this.getBaseSkillLevel(29)
-      const single29 = this.bonusSkillLevels.get(29) ?? 0
-      if (
-        total === 0 &&
-        (base29 > 0 || single29 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 29 || m.stateName === 'evade')
-      ) {
-        const eff29 = this.getEffectiveSkillLevel(29)
-        if (eff29 > 0) {
-          total += 10 + Math.trunc((55 * Math.trunc((110 * eff29) / (eff29 + 6))) / 100)
-        }
-      }
-    } else if (
-      key === 'passive_mastery_melee_th' ||
-      key === 'passive_mastery_melee_dmg' ||
-      key === 'passive_mastery_melee_crit' ||
-      key === 'passive_mastery_crit'
-    ) {
-      if (key === 'passive_mastery_melee_crit' || key === 'passive_mastery_crit') {
-        const otherCritKey =
-          key === 'passive_mastery_melee_crit' ? 'passive_mastery_crit' : 'passive_mastery_melee_crit'
-        total =
-          Math.max(this.getBaseStat(key), this.getBaseStat(otherCritKey)) +
-          Math.max(this.getModifierBonus(key), this.getModifierBonus(otherCritKey))
-      }
-      const base252 = this.getBaseSkillLevel(252)
-      const single252 = this.bonusSkillLevels.get(252) ?? 0
-      if (
-        total === 0 &&
-        (base252 > 0 || single252 > 0) &&
-        !this.modifiers.some(m => m.sourceSkillId === 252 || m.stateName === 'clawmastery')
-      ) {
-        const eff252 = this.getEffectiveSkillLevel(252)
-        if (eff252 > 0) {
-          if (key === 'passive_mastery_melee_th') {
-            total += 30 + 10 * (eff252 - 1)
-          } else if (key === 'passive_mastery_melee_dmg') {
-            total += 35 + 4 * (eff252 - 1)
-          } else {
-            total += Math.trunc((25 * Math.trunc((110 * eff252) / (eff252 + 6))) / 100)
-          }
-        }
-      }
-    } else if (key === 'passive_ltng_mastery' || key === 'passive_lightning_mastery') {
-      const base = this.getBaseSkillLevel(63)
-      const single = this.bonusSkillLevels.get(63) ?? 0
-      if (base > 0 || single > 0) {
-        const effLvl = this.getEffectiveSkillLevel(63)
-        if (effLvl > 0) {
-          total += calculateLightningMasteryBonusPct(effLvl)
-        }
-      }
-    } else if (key === 'passive_fire_mastery') {
-      const base = this.getBaseSkillLevel(61)
-      const single = this.bonusSkillLevels.get(61) ?? 0
-      if (base > 0 || single > 0) {
-        const effLvl = this.getEffectiveSkillLevel(61)
-        if (effLvl > 0) {
-          total += calculateFireMasteryBonus(effLvl)
-        }
-      }
-    } else if (key === 'passive_ar_bonus_pct') {
-      const hasActiveBlessedAim = this.modifiers.some(
-        m => m.sourceSkillId === 108 || m.stateName === 'blessedaim',
-      )
-      if (!hasActiveBlessedAim) {
-        const blvlBlessedAim = this.getBaseSkillLevel(108)
-        total += blvlBlessedAim * 5
+      const skillArmorPct = this.getAccruedStat('skill_armor_percent')
+      if (skillArmorPct !== 0) {
+        acc = Math.trunc((acc * (100 + skillArmorPct)) / 100)
       }
     } else if (key === 'tohit') {
-      const hasActiveBlessedAim = this.modifiers.some(
-        m => m.sourceSkillId === 108 || m.stateName === 'blessedaim',
-      )
-      const blvlBlessedAim = hasActiveBlessedAim ? 0 : this.getBaseSkillLevel(108)
-      const passiveArBonus =
-        blvlBlessedAim * 5 +
-        this.getModifierBonus('passive_ar_bonus_pct') +
-        this.getBaseStat('passive_ar_bonus_pct')
-      const pct =
-        this.getModifierBonus('tohit_percent') +
-        this.getBaseStat('tohit_percent') +
-        this.getModifierBonus('item_tohit_percent') +
-        this.getBaseStat('item_tohit_percent') +
-        passiveArBonus
-      if (pct !== 0) {
-        total = Math.trunc((total * (100 + pct)) / 100)
+      // 1.13c `UNITS_GetAttackRate` (`0x6FD82B10`): `item_tohit_percent` (ID 119) scales unit AR.
+      const tohitPct = this.getAccruedStat('item_tohit_percent')
+      if (tohitPct !== 0) {
+        acc = Math.trunc((acc * (100 + tohitPct)) / 100)
       }
     } else if (key === 'maxfireresist') {
       const blvlResistFire = this.getBaseSkillLevel(100)
       const hasActiveResistFire = this.modifiers.some(
-        m => m.sourceSkillId === 100 || m.stateName === 'resistfire',
+        m => m.id !== 'passive_skill_100' && (m.sourceSkillId === 100 || m.stateName === 'resistfire'),
       )
-      if (!hasActiveResistFire) {
-        total += Math.floor(blvlResistFire / 2)
-      } else if (modBonus === 0 && blvlResistFire > 0) {
-        total += blvlResistFire
+      if (hasActiveResistFire && modBonus === 0 && blvlResistFire > 0) {
+        acc += blvlResistFire
       }
     } else if (key === 'maxcoldresist') {
       const blvlResistCold = this.getBaseSkillLevel(105)
       const hasActiveResistCold = this.modifiers.some(
-        m => m.sourceSkillId === 105 || m.stateName === 'resistcold',
+        m => m.id !== 'passive_skill_105' && (m.sourceSkillId === 105 || m.stateName === 'resistcold'),
       )
-      if (!hasActiveResistCold) {
-        total += Math.floor(blvlResistCold / 2)
-      } else if (modBonus === 0 && blvlResistCold > 0) {
-        total += blvlResistCold
+      if (hasActiveResistCold && modBonus === 0 && blvlResistCold > 0) {
+        acc += blvlResistCold
       }
     } else if (key === 'maxlightresist') {
       const blvlResistLight = this.getBaseSkillLevel(110)
       const hasActiveResistLight = this.modifiers.some(
-        m => m.sourceSkillId === 110 || m.stateName === 'resistlight',
+        m => m.id !== 'passive_skill_110' && (m.sourceSkillId === 110 || m.stateName === 'resistlight'),
       )
-      if (!hasActiveResistLight) {
-        total += Math.floor(blvlResistLight / 2)
-      } else if (modBonus === 0 && blvlResistLight > 0) {
-        total += blvlResistLight
+      if (hasActiveResistLight && modBonus === 0 && blvlResistLight > 0) {
+        acc += blvlResistLight
       }
     }
 
-    return Math.trunc(total)
+    const statDef = CANONICAL_ITEM_STAT_COST_BY_NAME.get(key)
+    if (statDef?.bMin && acc < statDef.minAccr && (acc < 0 || this.baseStats.has(key))) {
+      acc = statDef.minAccr
+    }
+
+    return Math.trunc(acc)
+  }
+
+  /**
+   * 1.13c `D2Common.dll` `0x6FD82890` (`D2Common_10556` / `UNITS_GetDefense`):
+   * - If `armor_override_percent <= -100` (e.g. Berserk), returns `0`.
+   * - Starts from accrued `armorclass` (`STAT_ARMORCLASS`, ID 31) + `Math.floor(dexterity / 4)` (for players/monsters with dexterity).
+   * - Scales by `100 + skill_armor_percent` (clamped at `>= 0`).
+   */
+  getDefense(options?: { isRunningPlayer?: boolean; includeDexterityBonus?: boolean }): number {
+    if (options?.isRunningPlayer) {
+      return 0
+    }
+    const overridePct = this.getAccruedStat('armor_override_percent')
+    if (overridePct <= -100) {
+      return 0
+    }
+    const baseAndItemsArmor =
+      this.getBaseStat('armorclass') +
+      this.getAttachedStatBonus('armorclass') +
+      this.getModifierBonus('armorclass')
+    let armorWithItemOps = baseAndItemsArmor
+    let prev = baseAndItemsArmor
+    const rules = OP_RULES_BY_TARGET.get('armorclass')
+    if (rules) {
+      for (const rule of rules) {
+        armorWithItemOps = this.applyOpRule(rule, armorWithItemOps, prev, () => {
+          prev = this.getBaseStat('armorclass')
+          return prev
+        })
+      }
+    }
+    const dexBonus =
+      options?.includeDexterityBonus
+        ? this.getAccruedStat('dexterity') >> 2
+        : 0
+    const rawDef = armorWithItemOps + dexBonus
+    const skillPct = this.getAccruedStat('skill_armor_percent')
+    const scaled = skillPct !== 0 ? Math.trunc((rawDef * (100 + skillPct)) / 100) : rawDef
+    return Math.max(0, Math.trunc(scaled))
   }
 
   /**
@@ -516,13 +1181,16 @@ export class UnitStatList {
     const existingIdx = this.modifiers.findIndex(
       m =>
         m.id === normalizedMod.id ||
-        (!normalizedMod.isAura && m.stateName.toLowerCase() === normalizedMod.stateName.toLowerCase()),
+        (!normalizedMod.isAura &&
+          !m.id.startsWith('passive_skill_') &&
+          m.stateName.toLowerCase() === normalizedMod.stateName.toLowerCase()),
     )
     if (existingIdx !== -1) {
       this.modifiers[existingIdx] = normalizedMod
     } else {
       this.modifiers.push(normalizedMod)
     }
+    this.syncPassiveSkillModifiers()
   }
 
   removeModifiersByState(stateNameOrId: string | number): SkillStatModifier[] {
@@ -538,6 +1206,7 @@ export class UnitStatList {
         this.modifiers.splice(i, 1)
       }
     }
+    this.syncPassiveSkillModifiers()
     return removed
   }
 
@@ -550,6 +1219,7 @@ export class UnitStatList {
         this.modifiers.splice(i, 1)
       }
     }
+    this.syncPassiveSkillModifiers()
     return removed
   }
 
@@ -584,7 +1254,10 @@ export class UnitStatList {
   }
 
   setHp256(hp256: number): void {
-    const clamped = Math.max(0, Math.min(this.getMaxHp256(), Math.trunc(hp256)))
+    const truncHp = Math.trunc(hp256)
+    const maxHp256 = this.getMaxHp256()
+    const upper = maxHp256 > 0 || this.baseStats.has('maxhp') ? maxHp256 : Math.max(0, truncHp)
+    const clamped = Math.max(0, Math.min(upper, truncHp))
     this.setBaseStat('hitpoints', clamped)
   }
 
@@ -601,7 +1274,10 @@ export class UnitStatList {
   }
 
   setMana256(mana256: number): void {
-    const clamped = Math.max(0, Math.min(this.getMaxMana256(), Math.trunc(mana256)))
+    const truncMana = Math.trunc(mana256)
+    const maxMana256 = this.getMaxMana256()
+    const upper = maxMana256 > 0 || this.baseStats.has('maxmana') ? maxMana256 : Math.max(0, truncMana)
+    const clamped = Math.max(0, Math.min(upper, truncMana))
     this.setBaseStat('mana', clamped)
   }
 
@@ -618,4 +1294,3 @@ export class UnitStatList {
     return 0
   }
 }
-

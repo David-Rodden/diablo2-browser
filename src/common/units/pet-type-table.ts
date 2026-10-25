@@ -220,7 +220,7 @@ export const PET_TYPE_PORTRAIT_TABLE: Readonly<Record<number, PetTypePortraitMet
   13: {
     idx: 13,
     petType: 'totem',
-    group: 2,
+    group: 0,
     drawHp: true,
     iconType: 3,
     baseIcon: 'oaksage',
@@ -236,7 +236,7 @@ export const PET_TYPE_PORTRAIT_TABLE: Readonly<Record<number, PetTypePortraitMet
   14: {
     idx: 14,
     petType: 'vine',
-    group: 3,
+    group: 0,
     drawHp: true,
     iconType: 3,
     baseIcon: 'plaguepoppy',
@@ -264,7 +264,7 @@ export const PET_TYPE_PORTRAIT_TABLE: Readonly<Record<number, PetTypePortraitMet
   16: {
     idx: 16,
     petType: 'shadowwarrior',
-    group: 4,
+    group: 0,
     drawHp: true,
     iconType: 1,
     baseIcon: 'shadowassassin',

@@ -227,7 +227,7 @@ for (let i = 0; i < B64_ALPHABET.length; i += 1) {
   B64_LOOKUP[B64_ALPHABET.charCodeAt(i)] = i
 }
 
-function decodeBase64Bytes(b64: string): Uint8Array {
+export function decodeBase64Bytes(b64: string): Uint8Array {
   const cleanLen = b64.length
   let pad = 0
   if (cleanLen >= 1 && b64.charCodeAt(cleanLen - 1) === 61) pad += 1

@@ -8,7 +8,7 @@
  * Supported targets:
  *   tiles, acts, entities, missiles, overlays, ui, frontend-ui,
  *   animdata, char-layers, characters, cursor, skills, drop-data, tbl,
- *   input-tables, monstats2-flags, monster-path, overlay-rows, weather,
+ *   input-tables, monstats2-flags, monster-path, overlay-rows, weather, backdrop,
  *   sound-tables, sfx, music, manifest, all
  */
 
@@ -55,8 +55,10 @@ const TARGET_SCRIPTS: Readonly<Record<string, string>> = {
   'input-tables': 'src/baker/packers/pack-input-tables-113c.ts',
   'monstats2-flags': 'src/baker/packers/pack-monstats2-flags.ts',
   'monster-path': 'src/baker/packers/pack-monster-path-data.ts',
+  'mon-equip': 'src/baker/packers/pack-mon-equip.ts',
   'overlay-rows': 'src/baker/packers/pack-overlay-rows.ts',
   weather: 'src/baker/packers/pack-weather.ts',
+  backdrop: 'src/baker/packers/pack-backdrop.ts',
   'sound-tables': 'src/baker/packers/pack-sound-tables.ts',
   sfx: 'src/baker/packers/pack-sfx.ts',
   music: 'src/baker/packers/pack-music.ts',
@@ -95,6 +97,7 @@ export const ALL_BAKE_TARGETS: readonly string[] = [
   'drop-data',
   'tbl',
   'weather',
+  'backdrop',
   'sound-tables',
   'sfx',
   'music',

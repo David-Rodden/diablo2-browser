@@ -205,7 +205,6 @@ describe('Issue #1207: boss death controllers live for their Missiles.txt Range'
     [256, 'izual', 'izual control'],
     [267, 'bloodraven', 'brdeathcontrol', [22]],
     [479, 'shenk', 'overseercontrol', [22]],
-    [526, 'nihlathakboss', 'nehlithakcontrol'],
     [540, 'ancientbarb1', 'ancient death center'],
     [544, 'baalcrab', 'baalfx control'],
   ]

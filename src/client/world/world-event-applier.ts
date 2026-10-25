@@ -2,6 +2,7 @@
  * ServerEvent State Machine Dispatcher & Outgoing Command Applier (`src/client/world/world-event-applier.ts`).
  */
 
+import { MONSTATS_HCIDX_COUNT } from '../../netproto/d2gs/s2c/monstats2-comp-bits.ts'
 import {
   ClickButtonId,
   unitTypeFromId,
@@ -72,11 +73,15 @@ import {
   resolveBlockSoundId113c,
   resolveHitClassSoundIds113c,
 } from '../audio/d2gs-play-sound-113c.ts'
+import {
+  computeFootstepVolume113c,
+  resolvePlayerFootstepSoundId113c,
+} from '../audio/footstep-113c.ts'
 import { STATE_OVERLAYS, STATE_PGSV_OVERLAYS } from '../render/overlays-meta.ts'
 import { computeEffectiveMercenaryStats } from '../ui-model/derived-stats.ts'
 import { resolveGroundItemFlippyKey } from '../ui/inventory.ts'
 import type { ClientWorld } from './client-world.ts'
-import { unitSkillEventForcesLightning113c } from '../weather/weather-controller.ts'
+import { applyUnitSkillEvent113c } from './skill-prg-dispatch-113c.ts'
 import {
   STATE_BONEARMOR,
   clearBoneArmorOverlays113c,
@@ -85,6 +90,7 @@ import {
 import { ClientUnit, makeUnitKey } from './client-unit.ts'
 import { objectLitForMode, resetObjectAnim, setObjectLight } from './object-light.ts'
 import { updateObjectModeSound113c } from './object-sound-113c.ts'
+import { SHRINE_PLAYER_LEVEL_STAT, enirhsReverseName113c, resolveShrineOperateFx113c } from './shrine-operate-fx-113c.ts'
 import { HORADRIC_ORIFICE_OBJECT_CLASS } from './quest-fx-horadric-113c.ts'
 import {
   playStateCastOverlay113c,
@@ -93,6 +99,7 @@ import {
 } from './state-cast-overlay-113c.ts'
 import { releasePredictedState113c } from './state-ids-113c.ts'
 import { stateOffSoundRequest113c, stateOnSoundRequest113c } from './state-on-sound-113c.ts'
+import { statePrgSoundStartRequest113c, statePrgSoundStopRequest113c } from './state-prgsound-113c.ts'
 import { isMonsterUndead113c, SANCTUARY_AURA_113C } from './world-missile-stepper.ts'
 import { addLocalSystemMessageImpl } from './world-chat-social.ts'
 import { ensureBladeShieldAttachment113c } from './world-skill-missiles.ts'
@@ -201,6 +208,10 @@ function downgradeSelfRunOnStaminaExhausted(world: ClientWorldInternal): void {
     world._self.mode = walkMode
   }
 }
+
+
+/** ItemStatCost ids whose 0xAC value adds onto the monster's base anim-rate stats (NpcMotion). */
+const ASSIGN_ANIM_RATE_STATS: ReadonlySet<number> = new Set([67, 68, 69, 93, 96, 99, 102, 105])
 
 export function noteOutgoingCommandImpl(
   this: ClientWorldInternal,
@@ -447,11 +458,22 @@ export function noteOutgoingCommandImpl(
       this._waypointUnitId = null
       break
     case 'SelectSkill': {
+      const selSkill = cmd.skill ?? 0
+      if (selSkill > 0 && this._self.skillEntries.has(selSkill)) {
+        const entry = this._self.skillEntries.get(selSkill)!
+        const eff = (entry.baseLevel ?? entry.level ?? 0) + (entry.bonus ?? 0)
+        const charges = this._self.skillCharges.get(selSkill) ?? 0
+        if (eff <= 0 && charges <= 0 && (cmd.itemId === undefined || cmd.itemId === 0xffffffff)) {
+          break
+        }
+      }
       if (cmd.hand === 'left') {
-        this._self.leftSkill = cmd.skill
+        this._self.leftSkill = selSkill
+        this._self.leftSkillItemId = cmd.itemId
       } else {
-        this._self.rightSkill = cmd.skill
-        this.syncSelfRightHandAuraState(cmd.skill)
+        this._self.rightSkill = selSkill
+        this._self.rightSkillItemId = cmd.itemId
+        this.syncSelfRightHandAuraState(selSkill)
       }
       break
     }
@@ -524,7 +546,7 @@ export function noteOutgoingCommandImpl(
         if (!isBusyActiveCast) {
           this._lastLocalCastSkillId = skillId
           this._lastLocalCastAtMs = now
-          this.applySkillCastToUnit(selfUnit, skillId, targetX, targetY, 1, true, nowMs)
+          this.applySkillCastToUnit(selfUnit, skillId, targetX, targetY, 1, true, nowMs, this.isSelectedSkillFromItem(isRight))
         } else if ((skillId === 41 || skillId === 230) && selfUnit.castState) {
           // 1.13c continuous channeling skills (#41 Inferno, #230 Arctic Blast):
           // Sustain the active channel and aim toward the cursor without restarting wind-up frames.
@@ -635,7 +657,7 @@ export function noteOutgoingCommandImpl(
         if (!isBusyActiveCast) {
           this._lastLocalCastSkillId = skillId
           this._lastLocalCastAtMs = now
-          this.applySkillCastToUnit(selfUnit, skillId, targetX, targetY, 1, true, nowMs)
+          this.applySkillCastToUnit(selfUnit, skillId, targetX, targetY, 1, true, nowMs, this.isSelectedSkillFromItem(isRight))
         } else if ((skillId === 41 || skillId === 230) && selfUnit.castState) {
           this._lastLocalCastSkillId = skillId
           this._lastLocalCastAtMs = now
@@ -1238,6 +1260,17 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         unit.updateFromSnapshot(unitPayload)
       }
       this.seedUnitFromActiveRoom(unit, existed)
+      // S2C 0xAC trailing stat list (D2Client.dll 0x6fb5e73c..0x6fb5e85a): each Send-Other stat is added to the
+      // new monster's stat list (#10930 / #10442 / #10188), e.g. velocitypercent / attackrate / alignment / fade.
+      // Anim-rate stats (67/68/69/93/96/99/102/105) are summed onto the base list by the motion layer
+      // (NpcMotion.applyAssignStatList); the others (alignment 172, fade 181, ...) are stored as sent.
+      if (unitPayload.stats) {
+        for (const st of unitPayload.stats) {
+          if (!ASSIGN_ANIM_RATE_STATS.has(st.statId)) {
+            unit.stats.set(st.statId, st.value, st.param)
+          }
+        }
+      }
       if (unitPayload.mode === undefined) {
         if (unit.unitType === 'player') {
           unit.mode = isTownLevel(this.areaId) ? 5 : 1
@@ -1254,6 +1287,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         const objectRecord = getObjectsTxtRecord113c(unit.classId)
         unit.queuedPackets.length = 0
         unit.objectLight = null
+        // The replaced unit starts with zeroed ClientFn fields ([unit+0xD4] / [unit+0xC8], 0x6fb57444).
+        unit.clientFnTimer = 0
+        unit.clientFnInit = 0
         // The replaced unit has no handled sound mode yet (unit +0x70 = 0): 0x6fad37e0 plays no one-shot for it,
         // and replacing an existing object frees its prior sound handles (0x6fb57360 -> 0x6fb56d61 -> 0x6fad3120, #998).
         if (existed && ((unit.objectLoopSoundId ?? 0) > 0 || this._soundLoopObjectIds?.has(unit.id))) {
@@ -1411,6 +1447,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           isDead: unit.dead,
           ...(unit.velocityPercent !== undefined ? { stat67: unit.velocityPercent } : {}),
         })
+        if (unitPayload.stats) {
+          // 0xAC Send-Other stats live in their own stat list (flag 0x40, D2Client.dll 0x6fb5e803..0x6fb5e841) on
+          // top of the base list (stat67 = 75, stat68 = stat69 = 100 at 0x6fafd1ff..0x6fafd21e); unit stat reads
+          // sum both lists, so the motion copies add the sent values.
+          this.npcMotion.applyAssignStatList(unit.id, unitPayload.stats)
+        }
         if (this._merc && unit.id === this._merc.mercId) {
           if (this._merc.classId === 0 && unit.classId > 0) {
             this._merc.classId = unit.classId
@@ -2219,6 +2261,28 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         break
       }
 
+      if (ev.triggered === true) {
+        // S2C 0x99 / 0x9A (D2Client.dll 0x6fb5f0f0 / 0x6fb5f090): both units must exist (0x99) or both
+        // coordinates be non-zero (0x9A); then 0x6fb79030 runs the skill do-function immediately — no unit
+        // command, so no cast mode, castState or facing change on the caster.
+        const caster = this.getUnit(casterType, casterId)
+        if (!caster) break
+        let tx: number
+        let ty: number
+        if (ev.target && typeof ev.target === 'object' && 'x' in ev.target) {
+          if (!ev.target.x || !ev.target.y) break
+          tx = Number(ev.target.x)
+          ty = Number(ev.target.y)
+        } else {
+          const ref = ev.target as UnitRef | undefined
+          const tgt = ref ? this.getUnit(ref.unitType, ref.id) : undefined
+          if (!tgt) break
+          tx = tgt.x
+          ty = tgt.y
+        }
+        this.spawnMissilesForSkill(caster, skillId, tx, ty, level)
+        break
+      }
       let unit = this.getUnit(casterType, casterId)
       if (!unit && unitTypeFromId(casterType) === 'player' && (casterId === this.selfId || this.selfId === 0)) {
         unit = this.ensureUnit('player', casterId || this.selfId || 1)
@@ -2303,9 +2367,82 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       break
     }
 
-    case 'UnloadAct':
-    case 'ProtocolSync':
+    case 'ProtocolSync': {
+      // S2C 0x92 (D2Client.dll 0x6fb5e230 -> 0x6fb34c60): strip the listed unit's equipped (node 3) items. The
+      // port only mirrors other players' worn items, so a remote player's equipment cache is dropped; the trade
+      // window is untouched.
+      if (ev.opcode === 0x92 && ev.unit && ev.unit.rawUnitType === 0 && ev.unit.id !== this.selfId) {
+        if (this.getUnit('player', ev.unit.id)) {
+          this._containers.removePlayerEquipment(ev.unit.id)
+        }
+      }
+      // S2C 0x57 (D2Client.dll 0x6fb5d560): only type-1 units; rewrite nameSeed, bossMods[0..2] and the
+      // unique / champion flags of an existing monster.
+      const me = ev.opcode === 0x57 ? ev.monsterEnchant : undefined
+      if (me && me.unitType === 1) {
+        const unit = this.getUnit('monster', me.monsterId)
+        if (unit) {
+          const mods = [...(unit.bossMods ?? [])]
+          for (let k = 0; k < 3; k++) mods[k] = me.bossMods[k] ?? 0
+          const end = mods.indexOf(0)
+          unit.bossMods = end >= 0 ? mods.slice(0, end) : mods
+          unit.nameSeed = me.nameSeed
+          unit.isUnique = true
+          unit.flags = (unit.flags | 0x08) >>> 0
+          if (me.champion) {
+            unit.isChampion = true
+            unit.flags = (unit.flags | 0x04) >>> 0
+          }
+        }
+      }
+      if (ev.opcode === 0x62 && ev.unit && ev.unit.rawUnitType === 1) {
+        // S2C 0x62 type 1 (D2Client.dll 0x6faf93a2..0x6faf9419): the server ends the NPC interaction.
+        const cur = this._npcInteraction
+        if (cur.npcId !== null) this.npcMotion.setNpcInteractionLock(cur.npcId, false)
+        this._containers.clearShop()
+        this._npcInteraction = {
+          ...cur,
+          npcId: null,
+          infoNpcId: null,
+          window: 'none',
+          activeWindow: 'none',
+          npcInfoRaw: undefined,
+          npcTalkRaw: undefined,
+          messages: undefined,
+          allMessages: undefined,
+          hadWantsInteract: undefined,
+        }
+      } else if (ev.opcode === 0x5f && ev.playerData2C !== undefined) {
+        // S2C 0x5F (D2Client.dll 0x6fb5c050): D2Common #10073 -> pPlayerData+0x2C.
+        this._self.playerData2C = ev.playerData2C
+      }
+      // S2C 0x16 MultipleUnitAssign (D2Client.dll 0x6fb5d9d0): drift check 0x6fada1b0 for each listed unit.
+      if (ev.opcode === 0x16 && ev.entries) {
+        for (const entry of ev.entries) {
+          if (unitTypeFromId(entry.unitType) !== 'monster') continue
+          const npcUnit = this.npcMotion.getUnit(entry.id)
+          if (!npcUnit || !this.getUnit('monster', entry.id)) continue
+          this.npcMotion.runDriftCheck0x6FADA1B0(npcUnit, entry.x, entry.y)
+          this.syncClientUnitFromNpcMotion(npcUnit)
+        }
+      }
+      // S2C 0x98 (D2Client.dll 0x6fafc3c0): monster lookup only, then pMonsterData+0x40 = value.
+      if (ev.opcode === 0x98 && ev.evilHut) {
+        const unit = this.getUnit('monster', ev.evilHut.monsterId)
+        if (unit) unit.monsterData40 = ev.evilHut.value
+      }
+      break
+    }
+
     case 'MonsterSpecial':
+      // S2C 0xA4 (D2Client.dll 0x6fb5d760): `cmp ebx, [MonStats count]; jge` then 0x6fb1a0c0(classId, 0)
+      // preloads the monster's graphics; the port queues the id for the art cache.
+      if (ev.classId >= 0 && ev.classId < MONSTATS_HCIDX_COUNT) {
+        this._monsterPreloadRequests.push(ev.classId)
+      }
+      break
+
+    case 'UnloadAct':
       break
 
     case 'CreateMissile': {
@@ -2340,49 +2477,29 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     }
 
     case 'UnitSkillEvent': {
-      // S2C 0xA3 handler 0x6fb5efb0 -> 0x6fb51b10 -> Skills.txt cltprgfunc1:
-      // For Thunder Storm (skill 57, cltprgfunc1 = 84 -> 0x6fb24350), when both caster and target
-      // are known units, spawn client missile `thunderstorm1` at `(target.x, target.y)` with
-      // initial velocity `(vx, vy, vz) = (0, 280, 0)` and `zDelta = -40` per tick (altitude 280,
-      // verticalDescentPerTick 40, Range = 9 ticks), and attach `prgoverlay` `lightning` (`ShockHitSm`)
-      // on the target unit (`0x6fb1b300`).
+      // S2C 0xA3 handler 0x6fb5efb0: the event needs the caster (0x6fb5efd7); the target lookup is not checked.
+      // Skills.txt `progressive` -> 0x6fb52950, otherwise 0x6fb51b10 (`cltprgfunc1`); both run the SkillCltDoFunc
+      // slot then dosound / tgtsound / tgtoverlay (see skill-prg-dispatch-113c.ts).
       const casterRawType = ev.caster.rawUnitType
       const targetRawType = ev.target.rawUnitType
       const casterUnit =
         Number.isInteger(casterRawType) && casterRawType >= 0 && casterRawType <= 5
           ? this.getUnit(casterRawType as UnitTypeId, ev.caster.id)
           : undefined
+      if (!casterUnit) break
       const targetUnit =
         Number.isInteger(targetRawType) && targetRawType >= 0 && targetRawType <= 5
           ? this.getUnit(targetRawType as UnitTypeId, ev.target.id)
           : undefined
-      if (
-        casterUnit &&
-        targetUnit &&
-        unitSkillEventForcesLightning113c({
-          skill: ev.skill,
-          casterKnown: true,
-          targetKnown: true,
-        })
-      ) {
-        this.spawnMissileByKey(
-          'thunderstorm1',
-          targetUnit.x,
-          targetUnit.y,
-          targetUnit.x,
-          targetUnit.y,
-          {
-            ownerType: casterUnit.unitType,
-            ownerId: casterUnit.id,
-            sourceSkillId: ev.skill,
-            skillLevel: Math.max(1, ev.level),
-            maxTicks: 9,
-            altitude: 280,
-            verticalDescentPerTick: 40,
-          },
-        )
-        this.attachUnitOverlay(targetUnit, 'lightning', false)
-      }
+      applyUnitSkillEvent113c(this, {
+        flag: ev.flag,
+        skill: ev.skill,
+        level: ev.level,
+        caster: casterUnit,
+        target: targetUnit,
+        x: ev.x,
+        y: ev.y,
+      })
       break
     }
 
@@ -2647,6 +2764,41 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             skillLevel: 1,
           })
         }
+        // #1536 STATE_RESTINPEACE (172, StateSetFunc[17] 0x6FB23930):
+        // States.txt row 172 restinpeace: setfunc=17, missile='redemption' (#173), skill=-1, udead=1.
+        // Spawns client missile 'redemption' at the corpse via 0x6FB630F0 (src=dst=unit, level=1).
+        if (entry.state === 172 && unit.unitType === 'monster') {
+          this.spawnMissileByKey('redemption', unit.x, unit.y, unit.x, unit.y, {
+            ownerType: unit.unitType,
+            ownerId: unit.id,
+            sourceSkillId: 0,
+            skillLevel: 1,
+          })
+        }
+        // #1536 STATE_CORPSEEXP (173, StateSetFunc[18] 0x6FB23890):
+        // States.txt row 173 corpseexp: setfunc=18, missile='corpseexplosion' (#59), hide=1, udead=1.
+        if (entry.state === 173 && unit.unitType === 'monster') {
+          ;(unit as any).hidden = true
+          let hasCorpseExp = false
+          for (const u of this._units.values()) {
+            if (
+              u.unitType === 'missile' &&
+              u.name === 'corpseexplosion' &&
+              Math.hypot(u.x - unit.x, u.y - unit.y) < 1
+            ) {
+              hasCorpseExp = true
+              break
+            }
+          }
+          if (!hasCorpseExp) {
+            this.spawnMissileByKey('corpseexplosion', unit.x, unit.y, unit.x, unit.y, {
+              ownerType: unit.unitType,
+              ownerId: unit.id,
+              sourceSkillId: 0,
+              skillLevel: 1,
+            })
+          }
+        }
         // STATE_REVIVE (96): SKILLS_SrvDo058_Revive (D2Game 0x6FC71340) resurrects the SAME unitId in place,
         // so any corpse-consumption marks left on it must not keep the living unit hidden.
         if (entry.state === 96 && unit.unitType === 'monster') {
@@ -2692,6 +2844,17 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         if (entry.state === 158) {
           ensureBladeShieldAttachment113c(this, unit)
         }
+        // States.txt #142 `changeclass` (StateSetFunc[5] @ 0x6FB235B0):
+        // StateSetFunc[7] 0x6FB22C20 (state 144 hurricane): Skills[stat 350].prgsound on the unit, on every complete
+        // 0xA8 / 0xAA stat list (dispatch 0x6fb22530).
+        if (
+          ev.origin === undefined ||
+          (ev.origin === 0xa8 && ev.complete === true) ||
+          (ev.origin === 0xaa && (entry as { complete?: boolean }).complete === true)
+        ) {
+          const prgStart = statePrgSoundStartRequest113c(unit, entry.state, entry.stats)
+          if (prgStart) this.pushSoundRequest(prgStart)
+        }
         // States.txt #142 `changeclass` (StateSetFunc[8] @ 0x6FB235B0):
         // Reads STAT_SHORTPARAM1 (355) from the state stat list and updates the monster's classId
         // (e.g. Baal on Throne #543 `baalthrone` -> #559 `baalcrabstairs`) and resets mode to NU (1).
@@ -2732,6 +2895,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       if (offSnd) {
         this.pushSoundRequest(offSnd)
       }
+      // StateRemFunc[4] 0x6FB22BB0 (state 144 hurricane): stops Skills[stat 350].prgsound on the unit.
+      const prgStop = statePrgSoundStopRequest113c(unit, ev.state, unit.stats.getStateStats(ev.state))
+      if (prgStop) this.pushSoundRequest(prgStop)
       unit.states.remove(ev.state)
       releasePredictedState113c(unit, ev.state)
       unit.stats.removeStateStats(ev.state)
@@ -3069,6 +3235,18 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       //   flag == IFLAG_BROKEN (0x100)   -> ITEMS_SetItemFlag(pItem, 0x100, enabled)
       //   flag == IFLAG_REPAIRED (0x200) -> ITEMS_SetItemFlag(pItem, 0x100, 0)
       //   any other flag                 -> ignored (never IFLAG_IDENTIFIED, #1006)
+      if (ev.direct === true) {
+        // S2C 0x40 (D2Client.dll 0x6fb321b0): ITEMS_SetItemFlag(item, flag, enabled) with the raw flag word.
+        const dItem = this._containers.allById.get(ev.itemId)
+        if (!dItem) break
+        const apply = (word: number): number => (ev.enabled !== 0 ? word | ev.flag : word & ~ev.flag) >>> 0
+        ;(dItem as any).rawFlags = apply(dItem.rawFlags ?? 0)
+        if (typeof dItem.flags === 'number') (dItem as any).flags = apply(dItem.flags)
+        if ((ev.flag & ITEM_FLAG_BROKEN) !== 0) (dItem as any).broken = ev.enabled !== 0
+        this._containers.revision++
+        this._containers.hudRevision++
+        break
+      }
       let broken: boolean
       if (ev.flag === ITEM_FLAG_BROKEN) broken = ev.enabled !== 0
       else if (ev.flag === ITEM_FLAG_REPAIRED) broken = false
@@ -3122,6 +3300,40 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           }
           this._self.skillEntries.set(sk.skillId, merged)
           this._self.skills.set(sk.skillId, baseLevel + bonus)
+          if (sk.skillId > 0 && baseLevel <= 0 && bonus <= 0 && sk.level <= 0) {
+            const hasCharges = (this._self.skillCharges.get(sk.skillId) ?? 0) > 0
+            let hasDirectItemGrant = false
+            for (const eq of this.containers.equipment.values()) {
+              if (
+                eq.stats?.some(
+                  (s: { statId: number; param?: number; value: number }) =>
+                    (s.statId === 97 || s.statId === 107) &&
+                    s.param === sk.skillId &&
+                    s.value > 0,
+                )
+              ) {
+                hasDirectItemGrant = true
+                break
+              }
+            }
+            if (!hasCharges && !hasDirectItemGrant) {
+              for (const [slot, binding] of this.skillHotkeys.entries()) {
+                if (
+                  binding.skill === sk.skillId &&
+                  (binding.itemId === undefined || binding.itemId === 0xffffffff)
+                ) {
+                  this.skillHotkeys.delete(slot)
+                }
+              }
+              if (this._self.leftSkill === sk.skillId) {
+                this._self.leftSkill = 0
+              }
+              if (this._self.rightSkill === sk.skillId) {
+                this._self.rightSkill = 0
+                this.syncSelfRightHandAuraState(0)
+              }
+            }
+          }
         }
       }
       break
@@ -3165,7 +3377,17 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     case 'NpcInfo':
     case 'Npc': {
       const targetId = ev.npcId ?? ev.unitId ?? ev.npcUnitId
-      if (ev.kind === 'heal' && targetId !== undefined) {
+      if (ev.kind === 'heal' && targetId !== undefined && ev.unitType !== undefined && ev.unitType !== 1) {
+        // S2C 0xAB for a non-monster (D2Client.dll 0x6fb5d105..0x6fb5d126): own player ignored (0x6fb5d0d3),
+        // otherwise the roster entry's life percent = life128 * 100 / 128 (truncating).
+        if (ev.unitType === 0 && targetId !== this.selfId) {
+          const member = this._party.get(targetId)
+          const life128 = ev.result ?? 0
+          if (member) {
+            this._party.set(targetId, { ...member, lifePct: Math.trunc((life128 * 100) / 128) })
+          }
+        }
+      } else if (ev.kind === 'heal' && targetId !== undefined) {
         const healPct = ev.result ?? ev.lifePct ?? 128
         const unit = this.getUnit('monster', targetId)
         if (unit) {
@@ -3405,9 +3627,16 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       }
       // D2Client.dll 0x6fafb8a0: updateType === 6 copies directly into the player quest record (0x6fafb8bc);
       // updateType !== 6 looks up the unit (0x6fafb91f) and copies the 96-byte quest buffer when found (0x6fafb996).
+      // `updateType` is the raw unit type: 0x6fafb8cb..0x6fafb8e1 index the client unit table with it directly
+      // (`type << 9` + 0x6fbba608: 0 player, 1 monster, 2 object, 3 missile, 4 item, 5 tile); D2Game.dll sends 1
+      // from MONSTER_Interact (0x6fc6892e `mov cl, 1` -> 0x6fcaad40) and 6 for the player's own record (0x6fc54c41).
       if (ev.updateType !== undefined && ev.updateType !== 6) {
-        const uType = ev.updateType === 4 || ev.updateType === 5 ? 'object' : 'monster'
-        if (ev.unitId === undefined || !this.getUnit(uType, ev.unitId)) {
+        if (
+          ev.updateType < 0 ||
+          ev.updateType > 5 ||
+          ev.unitId === undefined ||
+          !this.getUnit(ev.updateType as UnitTypeId, ev.unitId)
+        ) {
           break
         }
       }
@@ -3438,6 +3667,10 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     }
 
     case 'Party': {
+      // S2C 0x66: the 1.13c client handler (D2Client.dll 0x6fb5c040) is a bare `ret`; the packet changes nothing.
+      if (ev.source === 0x66) {
+        break
+      }
       const rawUnitId = ev.unitId ?? ev.playerId ?? ev.subjectId
       const rawOtherId = ev.otherId ?? ev.objectId
       const rawRel = ev.relation ?? ev.state ?? ev.relations
@@ -3482,8 +3715,13 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           ? rawOtherId
           : (rawUnitId ?? rawOtherId ?? 0)
       if (id !== 0) {
-        // 0x65 PlayerKillCount (D2Client.dll 0x6fb5d890) is kill count, not party relationship (#965).
+        // 0x65 PlayerKillCount (D2Client.dll 0x6fb5d890) is kill count, not party relationship (#965): the
+        // signed count goes to the existing roster entry (roster+0x18); a missing entry is ignored (0x6fb5d89f).
         if (ev.source === 0x65) {
+          const member = this._party.get(rawUnitId ?? 0)
+          if (member && ev.killCount !== undefined) {
+            this._party.set(member.unitId, { ...member, killCount: ev.killCount })
+          }
           break
         }
         if (
@@ -3560,7 +3798,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             lootPermit = false
           }
         } else if ((ev.kind === 'memberState' || ev.kind === 'memberPos') && partyState === 0) {
-          // 0x66, 0x7F (isPlayer !== false), and 0x90 are only sent for members in our party (#965).
+          // 0x7F (isPlayer !== false) and 0x90 are only sent for members in our party (#965).
           partyState = 1
         }
 
@@ -3628,6 +3866,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           ...(nextPartyId !== undefined ? { partyId: nextPartyId } : {}),
           ...(rawRel !== undefined && ev.kind !== 'memberState' ? { relation: rawRel } : {}),
           ...(ev.lifePct !== undefined ? { lifePct: ev.lifePct } : {}),
+          ...(ev.displayName !== undefined ? { displayName: ev.displayName } : {}),
+          ...(ev.nameSuffix !== undefined ? { nameSuffix: ev.nameSuffix } : {}),
+          ...(ev.rosterWord44 !== undefined ? { rosterWord44: ev.rosterWord44 } : {}),
           ...(nextAreaId !== undefined ? { areaId: nextAreaId, levelId: nextAreaId } : {}),
           ...(nextAt !== undefined ? { at: nextAt, x: nextAt.x, y: nextAt.y } : {}),
           partyState,
@@ -3685,11 +3926,6 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         } else {
           this._trade.partnerGold = gold
         }
-        break
-      }
-      // 0x92 ClearDisplay
-      if (action === 0x92 || (action & 0xff00) === 0x9200) {
-        this._containers.clearTrade()
         break
       }
       // 0x78 TradeAccepted (D2Client.dll 0x6fb5bfd0 -> opens trade session with partner name & unitId)
@@ -4303,7 +4539,10 @@ export function applyUnitModeImmediateImpl(
   if (unit.unitType === 'object' && ev.eventCode !== undefined && ev.eventCode !== 3) {
     // S2C 0x0E ObjectEvent 0x6fad5ce0: event 0x15 is the operate fx (0x6fad4b90; no mode change, no light), and
     // any event other than 3 / 0x15 is fatal (0x6fad5ced).
-    if (ev.eventCode === 0x15) return
+    if (ev.eventCode === 0x15) {
+      applyShrineOperateFx.call(this, unit, ev.eventFlag ?? 0)
+      return
+    }
     throw new RangeError(
       `S2C 0x0E: object ${String(uId)} event ${String(ev.eventCode)} is not 3 or 0x15 (fatal at 0x6fad5ced)`,
     )
@@ -4773,11 +5012,18 @@ export function applyUnitModeImmediateImpl(
         y: unit.y,
       })
     } else if (!unit.dead && (ev.mode === 2 || ev.mode === 3 || ev.mode === 6)) {
+      const isLocal = unit.id === this.selfId || this.selfId === 0
+      const lastFsTick = ((unit as any)._lastFootstepTick as number | undefined) ?? -100
+      const elapsedTicks = Math.max(0, this.frameCount - lastFsTick)
+      ;(unit as any)._lastFootstepTick = this.frameCount
+      const fsSoundId = resolvePlayerFootstepSoundId113c(clsIdx, ev.mode, this.areaId)
+      const fsVol = computeFootstepVolume113c(isLocal, elapsedTicks, 4)
       this.pushSoundRequest({
-        soundId: playerSounds.taunt1,
+        soundId: fsSoundId,
         unit: playerUnitRef,
         x: unit.x,
         y: unit.y,
+        volume: fsVol,
       })
     } else if (
       !unit.dead &&
@@ -4788,6 +5034,7 @@ export function applyUnitModeImmediateImpl(
         skillId: unit.mode === 12 ? 1 : unit.mode === 11 ? 2 : 0,
         flag: 1,
         unitId: unit.id,
+        unitType: unit.unitType,
         x: unit.x,
         y: unit.y,
         local: unit.id === this.selfId || this.selfId === 0,
@@ -4866,4 +5113,28 @@ export function executeCharsiImbueImpl(
     activeWindow: 'none',
   }
   return imbued
+}
+
+/**
+ * S2C 0x0E event 0x15 → 0x6fad4b90: the shrine table +4 handler (shrine-operate-fx-113c.ts, #1523 / #1527). The
+ * operating player is `pkt[7]`; a player missing from the table skips the handler (hash miss at 0x6fad4bed).
+ */
+function applyShrineOperateFx(this: ClientWorldInternal, shrine: ClientUnit, playerId: number): void {
+  const player: ClientUnit | undefined = this.getUnit('player', playerId)
+  if (player === undefined) return
+  // The shrine record's code: S2C 0x51 byte 13 (interact type), kept as `flags` for objects.
+  const shrineCode = shrine.interactType ?? shrine.flags
+  const level = player.id === this.selfId ? this._self.level : player.stats.get(SHRINE_PLAYER_LEVEL_STAT)
+  const fx = resolveShrineOperateFx113c(shrineCode, shrine.x, shrine.y, level)
+  for (const m of fx.missiles) {
+    this.spawnMissileByKey(m.missile, m.sourceX, m.sourceY, m.targetX, m.targetY, {
+      ownerType: 'player',
+      ownerId: player.id,
+      skillLevel: m.level,
+    })
+  }
+  if (fx.reverseName && typeof player.name === 'string') {
+    player.name = enirhsReverseName113c(player.name)
+    if (player.id === this.selfId) this._self.name = enirhsReverseName113c(this._self.name)
+  }
 }

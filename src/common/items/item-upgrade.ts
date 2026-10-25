@@ -207,6 +207,63 @@ function isValidUpgradeCode(code: unknown): code is string {
 }
 
 /**
+ * Determines whether an item base is an Exceptional or Elite ("Uber") weapon/armor
+ * for `ItemRatio.txt` row selection per 1.13c `D2Common.dll` `0x6FD74D00` (exported at `#10772`
+ * `0x6FD75BD0`, called by `D2Common #10560` `DATATBLS_GetItemRatioTxtRecord` at `0x6FDC402D`):
+ *
+ * 1. `0x6FD74D06..0x6FD74D1D`: `ITEMS_CheckItemTypeId(dwClassId, 0x32 ['armo']) ||
+ *    ITEMS_CheckItemTypeId(dwClassId, 0x2d ['weap'])` — must be an armor or weapon item type.
+ * 2. `0x6FD74D2B..0x6FD74D3F`: `pItemsTxt->dwCode == pItemsTxt->dwUberCode ||
+ *    pItemsTxt->dwCode == pItemsTxt->dwUltraCode` — the item's own code equals its `ubercode`
+ *    or `ultracode` column in `Weapons.txt` / `Armor.txt` (regardless of whether the base was
+ *    upgraded during the current drop roll or selected directly from an auto-TC like `armo60`).
+ * 3. `0x6FD74D41..0x6FD74D4A`: `ITEMS_GetItemType(dwClassId) != 0x26 ('tpot')` — throwing potions
+ *    (`gps`, `ops`, `gpm`, `opm`, `gpl`, `opl`, which have `normcode = ubercode = ultracode = code`)
+ *    are excluded.
+ * 4. `0x6FD74D4C..0x6FD74D54`: `pItemsTxt->nQuest == 0` (`BYTE PTR [edi+0x12a] == 0`) — quest items
+ *    (such as `qf2` Khalim's Will where `ubercode = ultracode = 'qf2'` and `quest = 23`) are excluded.
+ */
+export function isItemUber113c(
+  base: ItemBase,
+  isAPredicate?: ((type: string, target: string) => boolean) | undefined,
+): boolean {
+  const rawType = (base as { type?: string }).type
+  const typeCode =
+    typeof rawType === 'string' && rawType.trim().length > 0
+      ? rawType.trim().toLowerCase()
+      : Array.isArray(base.tags) && typeof base.tags[0] === 'string'
+        ? base.tags[0].trim().toLowerCase()
+        : ''
+
+  const isWeaponOrArmor =
+    isAPredicate && typeCode.length > 0
+      ? isAPredicate(typeCode, 'armo') || isAPredicate(typeCode, 'weap')
+      : base.kind === 'armor' || base.kind === 'weapon'
+  if (!isWeaponOrArmor) {
+    return false
+  }
+
+  const uBase = base as Partial<UpgradableItemBase>
+  const code = (uBase.code ?? base.id ?? '').trim().toLowerCase()
+  const ubercode = typeof uBase.ubercode === 'string' ? uBase.ubercode.trim().toLowerCase() : ''
+  const ultracode = typeof uBase.ultracode === 'string' ? uBase.ultracode.trim().toLowerCase() : ''
+  if (!code || code === 'xxx' || (code !== ubercode && code !== ultracode)) {
+    return false
+  }
+
+  if (typeCode === 'tpot') {
+    return false
+  }
+
+  const quest = Number((base as { quest?: number }).quest) || 0
+  if (quest !== 0) {
+    return false
+  }
+
+  return true
+}
+
+/**
  * Rolls exceptional / elite base upgrade for an item base.
  *
  * Disassembly reference:
@@ -270,7 +327,12 @@ export function rollBaseUpgrade(
   if (targetCode) {
     const upgraded = lookupBase(targetCode) ?? lookupBase(targetCode.toLowerCase())
     if (canUseUpgraded(upgraded)) {
-      return { base: upgraded, isUber: true }
+      const uTarget = upgraded as Partial<UpgradableItemBase>
+      const effectiveTarget: ItemBase =
+        uTarget.ubercode !== undefined || uTarget.ultracode !== undefined
+          ? upgraded
+          : ({ ...upgraded, ubercode, ultracode } as ItemBase)
+      return { base: upgraded, isUber: isItemUber113c(effectiveTarget) }
     }
     // If elite was selected but lookup failed or qlvl > ilvl, fall back to exceptional if rolled and valid
     if (
@@ -281,12 +343,17 @@ export function rollBaseUpgrade(
     ) {
       const fallbackUber = lookupBase(ubercode) ?? lookupBase(ubercode.toLowerCase())
       if (canUseUpgraded(fallbackUber)) {
-        return { base: fallbackUber, isUber: true }
+        const uFallback = fallbackUber as Partial<UpgradableItemBase>
+        const effectiveFallback: ItemBase =
+          uFallback.ubercode !== undefined || uFallback.ultracode !== undefined
+            ? fallbackUber
+            : ({ ...fallbackUber, ubercode, ultracode } as ItemBase)
+        return { base: fallbackUber, isUber: isItemUber113c(effectiveFallback) }
       }
     }
   }
 
-  return { base, isUber: false }
+  return { base, isUber: isItemUber113c(base) }
 }
 
 /** Alias for rollBaseUpgrade conforming to spec nomenclature. */

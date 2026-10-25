@@ -294,7 +294,7 @@ describe('Assassin Traps (#251-#277) — 1.13c 4-Layer Parity (Issue #1005)', ()
       expect(bsh.radiusSubtiles).toBe(6)
     })
 
-    it('enforces all 5 SummonManager.tickPets sentry trap fixes + #257 non-eviction + sentry owner isolation', async () => {
+    it('enforces all 5 SummonManager.tickPets sentry trap fixes + #257 assassintrap 5-trap FIFO pool + sentry owner isolation', async () => {
       const registry = await getSharedDataRegistry()
       const summonManager = new SummonManager(registry)
       const missileEngine = new MissileEngine(registry)
@@ -336,14 +336,6 @@ describe('Assassin Traps (#251-#277) — 1.13c 4-Layer Parity (Issue #1005)', ()
       expect(s271.shotsRemaining).toBe(10)
       expect(s272.shotsRemaining).toBe(10)
       expect(s276.shotsRemaining).toBe(5 + Math.floor(9 / 3)) // 8 shots
-
-      // Casting #257 Blade Sentinel must NOT evict any of the 5 ground sentries
-      summonManager.createPet({ owner, skillId: 257, slvl: 5, x: 55, y: 50 })
-      const activeTrapIds = summonManager
-        .getActivePets()
-        .filter((p) => p.petType === 'assassintrap')
-        .map((p) => p.sourceSkillId)
-      expect(activeTrapIds).toEqual([261, 262, 271, 272, 276])
 
       // Create a living enemy AND a corpse in range of #276 Death Sentry
       const enemyStats = new UnitStatList(registry, {
@@ -400,6 +392,18 @@ describe('Assassin Traps (#251-#277) — 1.13c 4-Layer Parity (Issue #1005)', ()
         expect(m.owner.statList.getAccruedStat('passive_fire_pierce')).toBe(0)
         expect(m.owner.statList.getAccruedStat('passive_ltng_pierce')).toBe(0)
       }
+
+      // 1.13c SKILLS_SrvDo044_BladeSentinel (0x6FCB6310 -> 0x6FCB5D50, Skills.txt row 257: pettype='assassintrap', petmax=5):
+      // Casting #257 Blade Sentinel shares the 5-trap 'assassintrap' pool and FIFO-evicts the oldest trap (#261)
+      const bsRes = summonManager.createPet({ owner, skillId: 257, slvl: 5, x: 55, y: 50 })
+      expect(bsRes.created).toBe(true)
+      expect(bsRes.pet!.petType).toBe('assassintrap')
+      expect(bsRes.evictedPetUids).toEqual([s261.uid])
+      const activeTrapIds = summonManager
+        .getActivePets()
+        .filter((p) => p.petType === 'assassintrap')
+        .map((p) => p.sourceSkillId)
+      expect(activeTrapIds).toEqual([262, 271, 272, 276, 257])
     })
 
     it('evaluates #257 Blade Sentinel, #256 Shock Web, #266 Blade Fury (Half2HSrc), and #277 Blade Shield (AuraScanner 25f pulse) in registry.ts', async () => {
@@ -630,12 +634,13 @@ describe('Assassin Traps (#251-#277) — 1.13c 4-Layer Parity (Issue #1005)', ()
       expect(engine.projectiles).toHaveLength(9)
       expect(engine.projectiles[0]?.nextDelay).toBe(25)
 
-      // 4. #257 Blade Sentinel: 50-frame cooldown, Range=100 frames, NextDelay=25 frames, patrol metadata, does NOT evict ground sentries
+      // 4. #257 Blade Sentinel: 50-frame cooldown, Range=100 frames, NextDelay=25 frames, patrol metadata, shares 5-trap 'assassintrap' pool (evicts oldest trap)
       engine.world.player.cooldown = 0
       engine.projectiles.length = 0
       expect(castSkill(257, 240, 200, { engine, runtime, hudManager: null, status })).toBe(true)
       expect(engine.world.player.cooldown).toBe(50)
       expect(engine.world.player.summons.filter((s: any) => s.petType === 'assassintrap')).toHaveLength(5)
+      expect(engine.world.player.summons.some((s: any) => s.skillId === 257 && s.petType === 'assassintrap')).toBe(true)
       expect(engine.projectiles).toHaveLength(1)
       expect(engine.projectiles[0]?.ttl).toBe(100)
       expect(engine.projectiles[0]?.nextDelay).toBe(25)

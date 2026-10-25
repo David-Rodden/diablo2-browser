@@ -12,12 +12,61 @@
  * - `Redemption` (`124`) corpse consumption pulse restoring player HP & Mana.
  */
 import type { D2DataRegistry, SkillRecord } from '../../common/data/data-registry.ts'
-import { evaluateCalc, compute5BandScaling, computeDiminishingReturns } from '../../common/data/calc-ast.ts'
+import { evaluateCalc, compute5BandScaling, computeDiminishingReturns, type CalcEvalContext } from '../../common/data/calc-ast.ts'
 import { FIXED_ONE } from './stat-list.ts'
 import { executeSUnitDmg, type CombatUnitContext } from './combat-pipeline.ts'
 import { calculateConvictionStats, calculatePrayerStats, calculateRedemptionStats } from '../skills/skills.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
 import { isWithinAuraRange, passesAuraFilter, type AuraTargetRelation } from '../../common/skills/aura-filter.ts'
+
+/**
+ * 1.13c `D2Game.dll` (`SKILLS_SrvDo065` `0x6FCBA955..0x6FCBA96C`, `SKILLS_GetNextPerDelayFrame`
+ * `0x6FCBE970..0x6FCBE994`, and `EVENTTYPE_PERIODICSKILL` schedulers `0x6FCBF3B0` / `0x6FCC3120`):
+ * Evaluates `Skills.txt` `perdelay` (+0x128) and clamps the periodic pulse interval to `>= 5` frames.
+ * Empty `perdelay` (e.g. Druid spirit auras `#296..#298`) evaluates to `0` and clamps to `5`.
+ */
+export function computeAuraPerDelayFrames(perDelayExpr: string, calcCtx: CalcEvalContext): number {
+  const raw = perDelayExpr ? evaluateCalc(perDelayExpr, calcCtx) : 0
+  return Math.max(5, Math.trunc(raw))
+}
+
+/**
+ * 1.13c `D2Game.dll` (`SKILLS_SrvDo065` `0x6FCBA973..0x6FCBA988`, `SKILLS_SrvDo066` `0x6FCBAF50`,
+ * `SKILLS_SrvDo081` `0x6FCBABC0`, `SKILLS_SrvDo082` `0x6FCBA400` via `0x6FCBE970`):
+ * Aligns aura state duration to the global game frame `F` and pulse period `d = max(5, perdelay)`:
+ *   `duration = d * trunc((F + d - 1) / d) - F + 2`  (`d * ceil(F / d) - F + 2` for `F >= 1`).
+ */
+export function computeAuraStateDurationFrames(currentTick: number, perDelay: number): number {
+  const d = Math.max(5, Math.trunc(perDelay))
+  const f = Math.max(0, Math.trunc(currentTick))
+  return Math.max(1, Math.trunc((f + d - 1) / d)) * d - f + 2
+}
+
+/**
+ * 1.13c `D2Common.dll` ordinal 10090 (`0x6FD9EA00`, imported via `0x6FC2AF58` in `D2Game.dll`):
+ * Computes the per-pulse mana cost in 1/256 fixed-point units from `Skills.txt` columns
+ * `mana` (`wMana` at `+0x18A`), `lvlmana` (`wLvlMana` at `+0x18C`), and `manashift` (`nManaShift` at `+0x188`):
+ *   `manaCost256 = (mana + lvlmana * (slvl - 1)) << manashift`
+ */
+export function computeAuraPulseManaCost256(
+  skill: Pick<SkillRecord, 'mana' | 'lvlMana' | 'manaShift'>,
+  slvl: number,
+): number {
+  const lvl = Math.max(1, Math.trunc(slvl))
+  const raw = skill.mana + skill.lvlMana * (lvl - 1)
+  if (raw <= 0) return 0
+  return raw << skill.manaShift
+}
+
+/**
+ * 1.13c `D2Game.dll` (`SKILLS_SrvDo065` `0x6FCBA9A3`/`0x6FCBAB6E`, `SKILLS_SrvDo066` `0x6FCBB065`/`0x6FCBB27B`):
+ * Only `UNIT_PLAYER` (`dwUnitType == 0`) units check mana, consume mana (`0x6FCBED20`), and toggle
+ * `STATE_NOMANAREGEN` (`85`, `'nomanaregen'`). Monster/mercenary/pet casters (`dwUnitType != 0`) do not.
+ */
+function isPlayerUnit(unit: CombatUnitContext): boolean {
+  if (unit.petType !== undefined) return false
+  return unit.unitType === undefined || unit.unitType === 'player' || unit.unitType === 'party'
+}
 
 export interface ActiveAuraSource {
   readonly sourceUnit: CombatUnitContext
@@ -36,6 +85,8 @@ export interface AuraPulseOutcome {
   readonly corpsesRedeemed: number
   readonly healthRestored?: number
   readonly manaRestored?: number
+  readonly unitsHealed?: number
+  readonly manaSpent256?: number
   readonly unitOverlays?: ReadonlyArray<{
     readonly unitType: 0 | 1
     readonly unitId: number
@@ -66,6 +117,7 @@ export interface AuraPulseOptions {
 export class AuraScanner {
   readonly registry: D2DataRegistry
   private readonly activeAuras = new Map<string, ActiveAuraSource>()
+  private readonly lastTickPulseFrames = new Map<string, number>()
   private readonly rng: D2Rng
 
   constructor(registry: D2DataRegistry, seed = 0x13579bdf) {
@@ -86,12 +138,7 @@ export class AuraScanner {
       getEffectiveSkillLevel: (id: number) => sourceUnit.statList.getEffectiveSkillLevel(id),
     }
 
-    const perDelay =
-      skillId === 277
-        ? 25
-        : skill.perDelay
-          ? Math.max(10, evaluateCalc(skill.perDelay, calcCtx))
-          : 50
+    const perDelay = computeAuraPerDelayFrames(skill.perDelay, calcCtx)
     const source: ActiveAuraSource = {
       sourceUnit,
       skill,
@@ -99,14 +146,20 @@ export class AuraScanner {
       startTick: currentTick,
       pulseIntervalTicks: perDelay,
     }
-    this.activeAuras.set(`${sourceUnit.id}:${String(skillId)}`, source)
+    const key = `${sourceUnit.id}:${String(skillId)}`
+    this.activeAuras.set(key, source)
+    this.lastTickPulseFrames.delete(key)
     return source
   }
 
   clearUnitAuras(sourceUnitId: string): void {
-    for (const key of this.activeAuras.keys()) {
+    for (const [key, aura] of this.activeAuras.entries()) {
       if (key.startsWith(`${sourceUnitId}:`)) {
+        if (isPlayerUnit(aura.sourceUnit)) {
+          aura.sourceUnit.stateBus.removeState('nomanaregen')
+        }
         this.activeAuras.delete(key)
+        this.lastTickPulseFrames.delete(key)
       }
     }
   }
@@ -137,6 +190,15 @@ export class AuraScanner {
       getEffectiveSkillLevel: (id: number) => sourceUnit.statList.getEffectiveSkillLevel(id),
     }
 
+    // 1.13c `SKILLS_SrvDo065` (`0x6FCBA921..0x6FCBA9B0`) & `SKILLS_SrvDo066` (`0x6FCBAFC2..0x6FCBB072`):
+    // Compute per-pulse mana cost `(mana + lvlmana * (slvl - 1)) << manashift` (`D2Common_10090` `0x6FD9EA00`).
+    // If caster is a player (`dwUnitType == 0`) and `curMana256 < manaCost256`, `aurastat1..6` evaluation
+    // (including Prayer `#99` `hitpoints` heal) is skipped (`0x6FCBA9AC: cmp [esp+0x20], edi; jl 0x6FCBAA03`).
+    const manaCost256 = computeAuraPulseManaCost256(skill, slvl)
+    const isPlayerCaster = isPlayerUnit(sourceUnit)
+    const hasEnoughManaForPulse =
+      !isPlayerCaster || manaCost256 <= 0 || sourceUnit.statList.getMana256() >= manaCost256
+
     // Evaluate `aurastat1..6` and `aurastatcalc1..6`
     const stats: Record<string, number> = {}
     const statPairs: [string, string][] = [
@@ -147,24 +209,21 @@ export class AuraScanner {
       [skill.auraStat5, skill.auraStatCalc5],
       [skill.auraStat6, skill.auraStatCalc6],
     ]
-    for (const [statName, statCalc] of statPairs) {
-      if (statName && statCalc) {
-        stats[statName.toLowerCase()] = evaluateCalc(statCalc, calcCtx)
+    if (hasEnoughManaForPulse) {
+      for (const [statName, statCalc] of statPairs) {
+        if (statName && statCalc) {
+          stats[statName.toLowerCase()] = evaluateCalc(statCalc, calcCtx)
+        }
       }
     }
 
-    // Concentration (`113`) also records `concentration_damage_pct` for Blessed Hammer (`50%` efficiency)
-    if (skill.id === 113) {
-      stats['concentration_damage_pct'] = evaluateCalc('ln12', calcCtx)
-    }
-
-    // Fanaticism (`122`): Caster receives full caster %ED (50 + (slvl - 1) * 17)
-    if (skill.id === 122) {
-      stats['damagepercent'] = 50 + (slvl - 1) * 17
+    // Fanaticism (`122`, `samples/d2/excel/Skills.txt`): Caster receives `passivestat1 = damagepercent` (`passivecalc1 = ln56`)
+    if (skill.id === 122 && hasEnoughManaForPulse) {
+      stats['damagepercent'] = evaluateCalc(skill.passiveCalc1 || 'ln56', calcCtx)
     }
 
     const isTown = options?.isTown ?? false
-    const stateDuration = aura.pulseIntervalTicks + 5
+    const stateDuration = computeAuraStateDurationFrames(currentTick, aura.pulseIntervalTicks)
     const selfState = skill.auraState || skill.auraTgtState || skill.name.toLowerCase().replace(/\s+/g, '')
 
     // Caster self-state stats (1.13c `samples/d2/D2Game.dll`):
@@ -187,9 +246,11 @@ export class AuraScanner {
         [skill.passiveStat4, skill.passiveCalc4],
         [skill.passiveStat5, skill.passiveCalc5],
       ]
-      for (const [statName, statCalc] of passivePairs) {
-        if (statName && statCalc) {
-          selfStats[statName.toLowerCase()] = evaluateCalc(statCalc, calcCtx)
+      if (hasEnoughManaForPulse) {
+        for (const [statName, statCalc] of passivePairs) {
+          if (statName && statCalc) {
+            selfStats[statName.toLowerCase()] = evaluateCalc(statCalc, calcCtx)
+          }
         }
       }
     }
@@ -210,6 +271,7 @@ export class AuraScanner {
     let corpsesRedeemed = 0
     let healthRestored = 0
     let manaRestored = 0
+    let unitsHealed = 0
     const unitOverlays: Array<{
       readonly unitType: 0 | 1
       readonly unitId: number
@@ -265,11 +327,9 @@ export class AuraScanner {
         if (!acceptsTarget(ally, 'ally', 'player')) continue
 
         const allyStats = { ...stats }
-        // Fanaticism (122): allies receive strictly HALF of caster %ED and is_ally flag
-        if (skill.id === 122) {
-          const casterEd = stats['damagepercent'] ?? (50 + (slvl - 1) * 17)
-          allyStats['damagepercent'] = Math.trunc(casterEd / 2)
-          allyStats['is_ally'] = 1
+        // Fanaticism (`122`, `samples/d2/excel/Skills.txt`): allies receive `aurastat1 = damagepercent` (`aurastatcalc1 = ln56/2`)
+        if (skill.id === 122 && hasEnoughManaForPulse) {
+          allyStats['damagepercent'] = evaluateCalc(skill.auraStatCalc1 || 'ln56/2', calcCtx)
         }
 
         ally.stateBus.applyState({
@@ -287,14 +347,17 @@ export class AuraScanner {
     }
 
     // Prayer (99), Cleansing (109), and Meditation (120) Heal Pulse & Synergy:
-    // - Prayer (99): heals self and party allies within range by edns HP
+    // - Prayer (99): heals self and party allies within range by edns HP (only when caster has enough mana
+    //   `curMana256 >= manaCost256` per `SKILLS_SrvDo065` `0x6FCBA9AC`).
     // - Cleansing (109) & Meditation (120): if caster has Prayer (blvl > 0),
-    //   emits Prayer heal pulse at Prayer's effective slvl (`skill('Prayer'.edns)`) with 0 mana cost
-    // - Cleansing (109): shortens active curse and poison durations proportionally on self and allies
+    //   emits Prayer heal pulse at Prayer's effective slvl (`skill('Prayer'.edns)`) with 0 mana cost.
+    // - Cleansing (109): shortens active curse and poison durations proportionally on self and allies.
     if (skill.id === 99 || skill.id === 109 || skill.id === 120) {
       let healPts = 0
       if (skill.id === 99) {
-        healPts = calculatePrayerStats(slvl).healAmount
+        if (hasEnoughManaForPulse) {
+          healPts = calculatePrayerStats(slvl).healAmount
+        }
       } else {
         const prayerBlvl = sourceUnit.statList.getBaseSkillLevel(99)
         const prayerEffLvl = prayerBlvl > 0 ? sourceUnit.statList.getEffectiveSkillLevel(99) : 0
@@ -313,9 +376,12 @@ export class AuraScanner {
           const curHp = target.statList.getHp256()
           const maxHp = target.statList.getMaxHp256()
           const newHp = Math.min(maxHp, curHp + healPts256)
+          // 1.13c `SKILLS_AuraCallback_BasicAura` (`0x6FCBA357..0x6FCBA36E`):
+          // Only increments `args.field_40` (`[esp+0x74]`) when `newHp > curHp`.
           if (newHp > curHp) {
             target.statList.setHp256(newHp)
             healthRestored += (newHp - curHp) / FIXED_ONE
+            unitsHealed += 1
           }
         }
       }
@@ -352,7 +418,10 @@ export class AuraScanner {
           durationFrames: stateDuration,
           currentFrame: currentTick,
           stats: {
-            conviction_pierce: pierce,
+            fireresist: -pierce,
+            lightresist: -pierce,
+            coldresist: -pierce,
+            skill_armor_percent: defPenalty,
             item_armor_percent: defPenalty,
           },
           isAuraOverride: true,
@@ -475,13 +544,9 @@ export class AuraScanner {
         }
 
         if (skill.id === 119) {
-          enemy.stateBus.applyState({
-            stateNameOrId: 'knockback',
-            sourceSkillId: 119,
-            slvl,
-            durationFrames: 10,
-          })
-          // 1.13c Skills.txt #119 Sanctuary tgtoverlay='cast_undead' (Overlay.txt row 79, Issue #1277)
+          // 1.13c Skills.txt #119 Sanctuary: ResultFlags = 8 triggers MONMODE_KNOCKBACK (13) via
+          // SUNITDMG_ExecuteEvents (0x6FCFD00E..0x6FCFD120); there is no States.txt 'knockback' state.
+          // tgtoverlay='cast_undead' (Overlay.txt row 79, Issue #1277).
           unitOverlays.push({
             unitType: enemy.unitType === 'monster' ? 1 : 0,
             unitId: Number(String(enemy.id).replace(/\D+/g, '') || 1) >>> 0,
@@ -502,14 +567,6 @@ export class AuraScanner {
         }, rng)
         pulseDamageDealt += out.totalDamage
         enemiesAffected += 1
-      }
-
-      // Sanctuary (119): 1.13c SkillPal.cpp:415-417 consumes 1 mana (`mana = 1`, `manashift = 8` -> 256 fixed-point) when undead targets are pulsed
-      if (skill.id === 119 && enemiesAffected > 0) {
-        const curMana256 = sourceUnit.statList.getMana256()
-        if (curMana256 >= FIXED_ONE) {
-          sourceUnit.statList.setMana256(curMana256 - FIXED_ONE)
-        }
       }
     }
 
@@ -554,6 +611,34 @@ export class AuraScanner {
       }
     }
 
+    // 1.13c `D2Game.dll` (`SKILLS_SrvDo065` `0x6FCBAB66..0x6FCBABA7`, `SKILLS_SrvDo066` `0x6FCBB26F..0x6FCBB2B7`):
+    // For any `aura=1` skill with `manaCost256 > 0` (`#99` Prayer, `#119` Sanctuary) cast by a player unit
+    // (`dwUnitType == UNIT_PLAYER (0)`):
+    // - If `activeUnitsCount > 0` (`unitsHealed > 0` for Prayer `#99`; `enemiesAffected > 0` for Sanctuary `#119`)
+    //   and `curMana256 >= manaCost256`: toggle `STATE_NOMANAREGEN` (`85`, `'nomanaregen'`) ON (`1`) on the caster
+    //   (`0x6FCBAB80`) and deduct `manaCost256` from caster mana (`0x6FCBAB89` -> `0x6FCBED20`).
+    // - Otherwise (`activeUnitsCount === 0` or `curMana256 < manaCost256`): toggle `STATE_NOMANAREGEN` (`85`)
+    //   OFF (`0`) on the caster (`0x6FCBABA2`) and deduct 0 mana.
+    // - Monster/mercenary/pet casters (`dwUnitType != UNIT_PLAYER`) skip mana consumption and `nomanaregen`.
+    let manaSpent256 = 0
+    if (manaCost256 > 0 && isPlayerCaster) {
+      const activeUnitsCount = skill.id === 99 ? unitsHealed : enemiesAffected
+      const curMana256 = sourceUnit.statList.getMana256()
+      if (activeUnitsCount > 0 && curMana256 >= manaCost256) {
+        sourceUnit.stateBus.applyState({
+          stateNameOrId: 'nomanaregen',
+          sourceUnitId: sourceUnit.id,
+          sourceSkillId: skill.id,
+          slvl,
+          currentFrame: currentTick,
+        })
+        sourceUnit.statList.setMana256(curMana256 - manaCost256)
+        manaSpent256 = manaCost256
+      } else {
+        sourceUnit.stateBus.removeState('nomanaregen')
+      }
+    }
+
     return {
       auraSkillId: skill.id,
       auraName: skill.name,
@@ -563,13 +648,14 @@ export class AuraScanner {
       corpsesRedeemed,
       healthRestored,
       manaRestored,
+      unitsHealed,
+      manaSpent256,
       ...(unitOverlays.length > 0 ? { unitOverlays } : {}),
     }
   }
 
   /**
-   * Periodic tick step across all active auras.
-   * Handles continuous per-frame mana drain for Prayer (99) and auto-deactivates at 0 mana.
+   * Periodic tick step across all active auras (`perdelay` cadence).
    */
   tick(
     currentTick: number,
@@ -579,31 +665,41 @@ export class AuraScanner {
     options?: AuraPulseOptions,
   ): AuraPulseOutcome[] {
     const outcomes: AuraPulseOutcome[] = []
-    const aurasToRemove: string[] = []
 
     for (const [key, aura] of this.activeAuras.entries()) {
-      // Prayer (99): continuous mana drain (16 units of mana256 per frame = 1/16 mana/frame)
-      if (aura.skill.id === 99) {
-        const curMana256 = aura.sourceUnit.statList.getMana256()
-        const manaCost256 = 16 // 16 / 256 per frame
-        if (curMana256 < manaCost256) {
-          // Depleted mana -> shut down Prayer
-          aura.sourceUnit.statList.setMana256(0)
-          aura.sourceUnit.stateBus.removeState('prayer')
-          aurasToRemove.push(key)
-          continue
-        } else {
-          aura.sourceUnit.statList.setMana256(curMana256 - manaCost256)
+      if (currentTick % aura.pulseIntervalTicks === 0) {
+        this.lastTickPulseFrames.set(key, currentTick)
+        outcomes.push(this.pulseAura(aura, currentTick, allies, enemies, corpses, options))
+      } else if (this.lastTickPulseFrames.get(key) === currentTick - 1) {
+        // 1.13c `SKILLS_GetNextPerDelayFrame` (0x6FCBE970) schedules the new cycle on `k * d + 1`
+        // where `computeAuraStateDurationFrames(k * d + 1, d) = d + 1` (`expireFrame = (k + 1) * d + 2`).
+        // Refresh states pulsed by `tick(k * d)` (which had `duration = 2`, `expireFrame = k * d + 2`)
+        // so continuous `tick()` loops sustain the aura across the `[k * d + 1, (k + 1) * d]` cycle.
+        const cycleDuration = computeAuraStateDurationFrames(currentTick, aura.pulseIntervalTicks)
+        const nextExpireFrame = currentTick + cycleDuration
+        const units = [aura.sourceUnit, ...allies, ...enemies]
+        for (const u of units) {
+          for (const entry of u.stateBus.getActiveEntries()) {
+            if (
+              entry.sourceUnitId === aura.sourceUnit.id &&
+              entry.sourceSkillId === aura.skill.id &&
+              entry.expireFrame === currentTick + 1
+            ) {
+              entry.expireFrame = nextExpireFrame
+              ;(entry as { durationFrames?: number }).durationFrames = cycleDuration
+            }
+          }
+          for (const mod of u.statList.getActiveModifiers()) {
+            if (
+              mod.sourceUnitId === aura.sourceUnit.id &&
+              mod.sourceSkillId === aura.skill.id &&
+              mod.expireFrame === currentTick + 1
+            ) {
+              mod.expireFrame = nextExpireFrame
+            }
+          }
         }
       }
-
-      if ((currentTick - aura.startTick) % aura.pulseIntervalTicks === 0) {
-        outcomes.push(this.pulseAura(aura, currentTick, allies, enemies, corpses, options))
-      }
-    }
-
-    for (const key of aurasToRemove) {
-      this.activeAuras.delete(key)
     }
 
     return outcomes

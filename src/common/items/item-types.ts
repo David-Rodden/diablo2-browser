@@ -33,11 +33,11 @@ export interface ItemTypeDefinition {
   readonly treasureClass: number
   /** Auto-TC weight multiplier (typically 3, 1, 2, or 0). */
   readonly rarity: number
-  /** Maximum sockets for item level 1-24. */
+  /** Maximum sockets for item level 1-25 (`D2Common.dll #11151` `0x6FD74660`: `ilvl <= 25`). */
   readonly maxSock1: number
-  /** Maximum sockets for item level 25-39. */
+  /** Maximum sockets for item level 26-40 (`D2Common.dll #11151` `0x6FD7466D`: `ilvl <= 40`). */
   readonly maxSock25: number
-  /** Maximum sockets for item level 40+. */
+  /** Maximum sockets for item level 41+ (`D2Common.dll #11151` `0x6FD74670`: `ilvl > 40`). */
   readonly maxSock40: number
   /** Whether items of this type are always magic. */
   readonly magic: boolean
@@ -269,3 +269,180 @@ export function isA(
   cache.set(cacheKey, result)
   return result
 }
+
+/**
+ * Baked 1.13c `ItemTypes.txt` `Code -> { equiv1, equiv2 }` equivalence hierarchy
+ * (`samples/d2/excel/ItemTypes.txt`, 98 valid item type rows).
+ *
+ * Used by `itemTypeIsA` (`D2Common.dll` `0x6FD74430` `ITEMS_CheckItemTypeId`) for
+ * synchronous server/client skill `passiveitype` and `itypea1..3` / `itypeb1..3` / `etypea1..2`
+ * weapon type checks without requiring async MPQ archive mounting.
+ */
+export const ITEM_TYPES_EQUIV_113C: Readonly<
+  Record<string, { readonly equiv1: string; readonly equiv2: string }>
+> = {
+  shie: { equiv1: 'shld', equiv2: '' }, // Shield
+  tors: { equiv1: 'armo', equiv2: '' }, // Armor
+  gold: { equiv1: 'misc', equiv2: '' }, // Gold
+  bowq: { equiv1: 'misl', equiv2: '' }, // Bow Quiver
+  xboq: { equiv1: 'misl', equiv2: '' }, // Crossbow Quiver
+  play: { equiv1: 'misc', equiv2: '' }, // Player Body Part
+  herb: { equiv1: 'misc', equiv2: '' }, // Herb
+  poti: { equiv1: 'misc', equiv2: '' }, // Potion
+  ring: { equiv1: 'misc', equiv2: '' }, // Ring
+  elix: { equiv1: 'misc', equiv2: '' }, // Elixir
+  amul: { equiv1: 'misc', equiv2: '' }, // Amulet
+  char: { equiv1: 'misc', equiv2: '' }, // Charm
+  boot: { equiv1: 'armo', equiv2: '' }, // Boots
+  glov: { equiv1: 'armo', equiv2: '' }, // Gloves
+  book: { equiv1: 'misc', equiv2: '' }, // Book
+  belt: { equiv1: 'armo', equiv2: '' }, // Belt
+  gem: { equiv1: 'sock', equiv2: '' }, // Gem
+  torc: { equiv1: 'misc', equiv2: '' }, // Torch
+  scro: { equiv1: 'misc', equiv2: '' }, // Scroll
+  scep: { equiv1: 'rod', equiv2: '' }, // Scepter
+  wand: { equiv1: 'rod', equiv2: '' }, // Wand
+  staf: { equiv1: 'rod', equiv2: '' }, // Staff
+  bow: { equiv1: 'miss', equiv2: '' }, // Bow
+  axe: { equiv1: 'mele', equiv2: '' }, // Axe
+  club: { equiv1: 'blun', equiv2: '' }, // Club
+  swor: { equiv1: 'mele', equiv2: '' }, // Sword
+  hamm: { equiv1: 'blun', equiv2: '' }, // Hammer
+  knif: { equiv1: 'mele', equiv2: '' }, // Knife
+  spea: { equiv1: 'mele', equiv2: '' }, // Spear
+  pole: { equiv1: 'mele', equiv2: '' }, // Polearm
+  xbow: { equiv1: 'miss', equiv2: '' }, // Crossbow
+  mace: { equiv1: 'blun', equiv2: '' }, // Mace
+  helm: { equiv1: 'armo', equiv2: '' }, // Helm
+  tpot: { equiv1: 'thro', equiv2: '' }, // Missile Potion
+  ques: { equiv1: '', equiv2: '' }, // Quest
+  body: { equiv1: 'misc', equiv2: '' }, // Body Part
+  key: { equiv1: 'misc', equiv2: '' }, // Key
+  tkni: { equiv1: 'comb', equiv2: 'knif' }, // Throwing Knife
+  taxe: { equiv1: 'comb', equiv2: 'axe' }, // Throwing Axe
+  jave: { equiv1: 'comb', equiv2: 'spea' }, // Javelin
+  weap: { equiv1: '', equiv2: '' }, // Weapon
+  mele: { equiv1: 'weap', equiv2: '' }, // Melee Weapon
+  miss: { equiv1: 'weap', equiv2: '' }, // Missile Weapon
+  thro: { equiv1: 'weap', equiv2: '' }, // Thrown Weapon
+  comb: { equiv1: 'mele', equiv2: 'thro' }, // Combo Weapon
+  armo: { equiv1: '', equiv2: '' }, // Any Armor
+  shld: { equiv1: 'armo', equiv2: 'seco' }, // Any Shield
+  misc: { equiv1: '', equiv2: '' }, // Miscellaneous
+  sock: { equiv1: 'misc', equiv2: '' }, // Socket Filler
+  seco: { equiv1: '', equiv2: '' }, // Second Hand
+  rod: { equiv1: 'blun', equiv2: '' }, // Staves And Rods
+  misl: { equiv1: 'misc', equiv2: '' }, // Missile
+  blun: { equiv1: 'mele', equiv2: '' }, // Blunt
+  jewl: { equiv1: 'sock', equiv2: '' }, // Jewel
+  clas: { equiv1: '', equiv2: '' }, // Class Specific
+  amaz: { equiv1: 'clas', equiv2: '' }, // Amazon Item
+  barb: { equiv1: 'clas', equiv2: '' }, // Barbarian Item
+  necr: { equiv1: 'clas', equiv2: '' }, // Necromancer Item
+  pala: { equiv1: 'clas', equiv2: '' }, // Paladin Item
+  sorc: { equiv1: 'clas', equiv2: '' }, // Sorceress Item
+  assn: { equiv1: 'clas', equiv2: '' }, // Assassin Item
+  drui: { equiv1: 'clas', equiv2: '' }, // Druid Item
+  h2h: { equiv1: 'mele', equiv2: 'assn' }, // Hand to Hand
+  orb: { equiv1: 'weap', equiv2: 'sorc' }, // Orb
+  head: { equiv1: 'shld', equiv2: 'necr' }, // Voodoo Heads
+  ashd: { equiv1: 'shld', equiv2: 'pala' }, // Auric Shields
+  phlm: { equiv1: 'helm', equiv2: 'barb' }, // Primal Helm
+  pelt: { equiv1: 'helm', equiv2: 'drui' }, // Pelt
+  cloa: { equiv1: 'tors', equiv2: 'assn' }, // Cloak
+  rune: { equiv1: 'sock', equiv2: '' }, // Rune
+  circ: { equiv1: 'helm', equiv2: '' }, // Circlet
+  hpot: { equiv1: 'poti', equiv2: '' }, // Healing Potion
+  mpot: { equiv1: 'poti', equiv2: '' }, // Mana Potion
+  rpot: { equiv1: 'hpot', equiv2: 'mpot' }, // Rejuv Potion
+  spot: { equiv1: 'poti', equiv2: '' }, // Stamina Potion
+  apot: { equiv1: 'poti', equiv2: '' }, // Antidote Potion
+  wpot: { equiv1: 'poti', equiv2: '' }, // Thawing Potion
+  scha: { equiv1: 'char', equiv2: '' }, // Small Charm
+  mcha: { equiv1: 'char', equiv2: '' }, // Medium Charm
+  lcha: { equiv1: 'char', equiv2: '' }, // Large Charm
+  abow: { equiv1: 'bow', equiv2: 'amaz' }, // Amazon Bow
+  aspe: { equiv1: 'spea', equiv2: 'amaz' }, // Amazon Spear
+  ajav: { equiv1: 'jave', equiv2: 'amaz' }, // Amazon Javelin
+  h2h2: { equiv1: 'h2h', equiv2: '' }, // Hand to Hand 2
+  mboq: { equiv1: 'bowq', equiv2: '' }, // Magic Bow Quiv
+  mxbq: { equiv1: 'xboq', equiv2: '' }, // Magic Xbow Quiv
+  gem0: { equiv1: 'gem', equiv2: '' }, // Chipped Gem
+  gem1: { equiv1: 'gem', equiv2: '' }, // Flawed Gem
+  gem2: { equiv1: 'gem', equiv2: '' }, // Standard Gem
+  gem3: { equiv1: 'gem', equiv2: '' }, // Flawless Gem
+  gem4: { equiv1: 'gem', equiv2: '' }, // Perfect Gem
+  gema: { equiv1: 'gem', equiv2: '' }, // Amethyst
+  gemd: { equiv1: 'gem', equiv2: '' }, // Diamond
+  geme: { equiv1: 'gem', equiv2: '' }, // Emerald
+  gemr: { equiv1: 'gem', equiv2: '' }, // Ruby
+  gems: { equiv1: 'gem', equiv2: '' }, // Sapphire
+  gemt: { equiv1: 'gem', equiv2: '' }, // Topaz
+  gemz: { equiv1: 'gem', equiv2: '' }, // Skull
+}
+
+const canonicalItemTypeIsACache = new Map<string, boolean>()
+
+/**
+ * Checks whether `code` equals or inherits from `target` via BFS traversal of
+ * the canonical 1.13c `ItemTypes.txt` `Equiv1` / `Equiv2` parent chain
+ * (`D2Common.dll` `0x6FD74430` `ITEMS_CheckItemTypeId`).
+ *
+ * - Strictly accepts only `ItemTypes.txt` `Code` identifiers (e.g. `Weapons.txt` `type` / `type2`).
+ * - Rejects item names (`Phase Blade`, `Cryptic Axe`, `staff`) and empty/unknown strings (`false`).
+ */
+export function itemTypeIsA(
+  code: string | null | undefined,
+  target: string | null | undefined,
+): boolean {
+  if (!code || !target) {
+    return false
+  }
+  const normCode = code.trim().toLowerCase()
+  const normTarget = target.trim().toLowerCase()
+  if (!normCode || !normTarget) {
+    return false
+  }
+  if (
+    !Object.prototype.hasOwnProperty.call(ITEM_TYPES_EQUIV_113C, normCode) ||
+    !Object.prototype.hasOwnProperty.call(ITEM_TYPES_EQUIV_113C, normTarget)
+  ) {
+    return false
+  }
+  if (normCode === normTarget) {
+    return true
+  }
+
+  const cacheKey = `${normCode}:${normTarget}`
+  const cached = canonicalItemTypeIsACache.get(cacheKey)
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const visited = new Set<string>([normCode])
+  const queue: string[] = [normCode]
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    if (cur === normTarget) {
+      canonicalItemTypeIsACache.set(cacheKey, true)
+      return true
+    }
+    const entry = ITEM_TYPES_EQUIV_113C[cur]
+    if (!entry) continue
+    for (const parent of [entry.equiv1, entry.equiv2]) {
+      if (!parent) continue
+      if (parent === normTarget) {
+        canonicalItemTypeIsACache.set(cacheKey, true)
+        return true
+      }
+      if (!visited.has(parent) && Object.prototype.hasOwnProperty.call(ITEM_TYPES_EQUIV_113C, parent)) {
+        visited.add(parent)
+        queue.push(parent)
+      }
+    }
+  }
+
+  canonicalItemTypeIsACache.set(cacheKey, false)
+  return false
+}
+

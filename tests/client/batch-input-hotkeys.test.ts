@@ -1,3 +1,4 @@
+import { createDefaultKeyBindings } from '../../src/client/settings/key-bindings.ts'
 import { describe, expect, it, vi } from 'vitest'
 import { CommandMapper } from '../../src/client/input/command-mapper.ts'
 import { LocalMovementPredictor } from '../../src/client/motion/predictor.ts'
@@ -313,6 +314,9 @@ describe('Batch Input & Hotkeys (#1251, #1254, #1255, #1256, #1257, #1258)', () 
       hudManager.handleKeyDown({ key: 'n', preventDefault: () => {} })
       expect(hudManager.chatOverlayMessages).toHaveLength(0)
 
+      // The help screen (UI 0x21) refuses the inventory (D2Client 0x6FB8D538 row 0x21 = 2): close it first.
+      hudManager.handleKeyDown({ key: 'h', preventDefault: () => {} })
+      expect(hudManager.helpOverlayOpen).toBe(false)
       hudManager.toggleRightPanel('inv')
       expect(hudManager.rightPanel).toBe('inv')
       hudManager.handleKeyDown({ key: ' ', code: 'Space', preventDefault: () => {} })
@@ -320,16 +324,25 @@ describe('Batch Input & Hotkeys (#1251, #1254, #1255, #1256, #1257, #1258)', () 
       expect(centerAutomap).toHaveBeenCalledTimes(1)
     })
 
-    it('emits C2S 0x53/0x54 on Control momentary run hold and C2S 0x3F Say (25..32) on Numpad 0..7 with 1000ms debounce', () => {
-      const { hudModel, mapper, sentCommands } = createHarness()
+    it('Control is not a run key (default.key Run is unbound); a bound Run key sends 0x53/0x54; Numpad 0..7 say 0x19..0x20 without debounce', () => {
+      const { hudModel, hudManager, mapper, sentCommands, world } = createHarness() as any
       hudModel.toggleRunWalk() // switch to walk mode (isRunMode = false)
       expect(hudModel.isRunMode).toBe(false)
 
       mapper.handleKeyDown({ key: 'Control', code: 'ControlLeft' }, 1000)
+      mapper.handleKeyUp({ key: 'Control', code: 'ControlLeft' }, 1100)
+      expect(sentCommands).toEqual([])
+
+      const kb = createDefaultKeyBindings()
+      kb.run = { primary: 'KeyX', secondary: null }
+      hudManager.getActiveKeyBindings = () => kb
+      const self = world.getUnit('player', world.selfId || 1)
+      self.moveMode = 'walk'
+      mapper.handleKeyDown({ key: 'x', code: 'KeyX' }, 1200)
       expect(sentCommands).toEqual([{ type: 'RunToggle', run: true }])
       expect(Array.from(encodeC2sRunToggle(true))).toEqual([0x53])
-
-      mapper.handleKeyUp({ key: 'Control', code: 'ControlLeft' }, 1100)
+      self.moveMode = 'run'
+      mapper.handleKeyUp({ key: 'x', code: 'KeyX' }, 1300)
       expect(sentCommands).toEqual([
         { type: 'RunToggle', run: true },
         { type: 'RunToggle', run: false },
@@ -338,11 +351,12 @@ describe('Batch Input & Hotkeys (#1251, #1254, #1255, #1256, #1257, #1258)', () 
 
       sentCommands.length = 0
       mapper.handleKeyDown({ key: '0', code: 'Numpad0', preventDefault: () => {} }, 2000)
-      mapper.handleKeyDown({ key: '1', code: 'Numpad1', preventDefault: () => {} }, 2500) // debounced (<1000ms)
-      mapper.handleKeyDown({ key: '7', code: 'Numpad7', preventDefault: () => {} }, 3100) // allowed (>=1000ms)
+      mapper.handleKeyDown({ key: '1', code: 'Numpad1', preventDefault: () => {} }, 2100)
+      mapper.handleKeyDown({ key: '7', code: 'Numpad7', preventDefault: () => {} }, 2200)
       expect(sentCommands).toEqual([
-        { type: 'Say', phraseId: 25 },
-        { type: 'Say', phraseId: 32 },
+        { type: 'Say', phraseId: 0x19 },
+        { type: 'Say', phraseId: 0x1a },
+        { type: 'Say', phraseId: 0x20 },
       ])
       expect(Array.from(encodeC2sSay(25))).toEqual([0x3f, 25, 0x00])
     })

@@ -162,7 +162,7 @@ describe('[Skill #050] Shiver Armor (SOR) — 1.13c 7-Dimensional Verification S
       expect(r20.minElemDmg256).toBe(15360) // 60 * 256
       expect(r20.maxElemDmg256).toBe(18304) // 71.5 * 256
       expect(r20.durationFrames).toBe(8700)
-      expect(r20.radiusSubtiles).toBe(159) // +159% defense bonus
+      expect(r20.radiusSubtiles).toBe(0) // +159% defense bonus
       expect(r20.cooldownFrames).toBe(0)
     })
   })

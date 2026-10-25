@@ -703,41 +703,88 @@ export class TouchControlsHud {
   private _enabled: boolean = detectMobileTouchEnvironment()
   private _manualOverride: boolean | null = null
   private _lastEnvDetected: boolean = this._enabled
+  private _hudLayoutMode: HudLayoutMode = 'auto'
 
   /** Whether mobile/touch twin-stick overlay is active. */
   get enabled(): boolean {
     return this._enabled
   }
   set enabled(val: boolean) {
-    this._enabled = Boolean(val)
-    this._manualOverride = Boolean(val)
+    const next = Boolean(val)
+    this._enabled = next
+    this._manualOverride = next
+    if (!next) {
+      this.resetTransientState()
+    }
+  }
+
+  /** HUD layout mode (`'auto' | 'classic' | 'compact-d2r'`). */
+  get hudLayoutMode(): HudLayoutMode {
+    return this._hudLayoutMode
+  }
+  set hudLayoutMode(mode: HudLayoutMode) {
+    this.applyHudLayoutMode(mode)
+  }
+
+  /**
+   * Apply a user-selected `HudLayoutMode` (`'auto' | 'classic' | 'compact-d2r'`) and synchronize
+   * touch control activation immediately against `win`.
+   */
+  applyHudLayoutMode(
+    mode: HudLayoutMode,
+    win: Window | undefined = typeof window !== 'undefined' ? window : undefined,
+  ): boolean {
+    const normalized: HudLayoutMode =
+      mode === 'classic' || mode === 'compact-d2r' || mode === 'auto' ? mode : 'auto'
+    this._hudLayoutMode = normalized
+    this._manualOverride = null
+    return this.syncFromEnvironment(win)
+  }
+
+  /**
+   * Reset all transient touch interaction state (active joystick, vector aim, locked targets,
+   * tap-selected item, foot loot queue, and skill wheel bank) when touch HUD is turned off.
+   */
+  resetTransientState(): void {
+    if (this.joystick.active || this.joystick.pointerId !== null || this.joystick.locomotionMode !== 'idle') {
+      this.joystick = createIdleJoystickState()
+    }
+    this.vectorAim = null
+    this.lockedMonster = null
+    this.lockedInteractable = null
+    this.selectedPanelItem = null
+    if (this.footLootQueue.length > 0) {
+      this.footLootQueue = []
+    }
+    this.activeSkillBank = 0
   }
 
   /**
    * Synchronize `enabled` with the browser's mobile/touch environment when `hudLayoutMode === 'auto'`.
-   * Automatically activates virtual controls when entering Chrome DevTools Mobile Emulation
-   * (`iPhone 16 · 852 × 393`, etc.) or real mobile browsers without breaking manual overrides in tests.
+   * Explicit user choices (`'classic'` or `'compact-d2r'`) and explicit `_manualOverride` take strict
+   * priority over environment detection and are never wiped by window resizes.
    */
   syncFromEnvironment(
     win: Window | undefined = typeof window !== 'undefined' ? window : undefined,
   ): boolean {
-    if (this.hudLayoutMode === 'compact-d2r') {
+    if (this._hudLayoutMode === 'compact-d2r') {
       this._enabled = true
       return this._enabled
     }
-    if (this.hudLayoutMode === 'classic') {
+    if (this._hudLayoutMode === 'classic') {
       this._enabled = false
+      this.resetTransientState()
       return this._enabled
     }
     const envDetected = detectMobileTouchEnvironment(win)
-    if (envDetected !== this._lastEnvDetected) {
-      this._lastEnvDetected = envDetected
-      this._manualOverride = null
-    }
+    this._lastEnvDetected = envDetected
     if (this._manualOverride !== null) {
       this._enabled = this._manualOverride
     } else {
       this._enabled = envDetected
+    }
+    if (!this._enabled) {
+      this.resetTransientState()
     }
     return this._enabled
   }
@@ -826,8 +873,6 @@ export class TouchControlsHud {
     }
   }
 
-  /** HUD layout mode (`'auto' | 'classic' | 'compact-d2r'`). */
-  hudLayoutMode: HudLayoutMode = 'auto'
   /** L2 Bank switching behavior (`'toggle'` on tap or `'hold'` while pressed). */
   skillWheelBankMode: SkillWheelBankMode = 'toggle'
   /** Active skill wheel bank: `0` = Bank 1 (`F1–F6`), `1` = Bank 2 (`F7–F12`). */

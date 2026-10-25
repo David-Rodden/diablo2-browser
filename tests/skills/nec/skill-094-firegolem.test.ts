@@ -47,7 +47,7 @@ describe('[Skill #094] FireGolem (NEC) — 1.13c Parity (Issue #248)', () => {
     expect(r20.minElemDmg256).toBe(50432)
     expect(r20.maxElemDmg256).toBe(59648)
     expect(r20.durationFrames).toBe(0)
-    expect(r20.radiusSubtiles).toBe(1925)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(1)
     expect(r20.cooldownFrames).toBe(0)
   })

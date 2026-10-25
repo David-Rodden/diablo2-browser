@@ -59,3 +59,22 @@ Each exactly once. There is no Missiles.txt row `brdeathspirits`. The S1 -> NU -
 The balls' own rows drive the impact: 416 `CltHitFunc 48` (`0x6fb60b70`), 422 `CltHitFunc 50` (`0x6fb6aa70`,
 `cHitPar1` 10 rocks / `cHitPar2` 15 lob velocity, `CltHitSubMissile1/2` = `moltenboulder-flyingrocks` /
 `catapult meteor fire`). These two CltHitFuncs are not implemented in the web client yet.
+
+## MissCltDoFunc[55] `ancient death center` (0x6fb63860, Issue #1500)
+
+Every frame with `#10985 % 3 == 0`: `ox = RAND(20)`, `oy = RAND(20)` (missile seed unit+0x20), then
+`sx = x + (RAND() & 1) - 1`, `sy = y + (RAND() & 1) - 1`; create `{ flags 0x21, owner, start (sx, sy),
+target (sx + ox - 10, sy + oy - 10), missile 0x21e (542 ancient death cloud) }`. The cloud keeps its own row
+(Vel 3, Range 50): it drifts toward the target, it is not stationary. Then the CltDo1 tail.
+## MissCltDoFunc[62] `nehlithakcontrol` (0x6fb6a4a0) and [63] (0x6fb61f20), Issue #1499
+
+`elapsed = #10985`; without an owner only the CltDo1 tail runs. Each frame two pieces from 0x6fb63d60
+(eax = controller): `z = RAND(125)`, `k = RAND() & 3` into the stack tables dx {1, 0, -1, 0} / dy {0, 1, 0, -1},
+`r = RAND(30)` -> `0x260 + r` (nehlithakdebris1..4) for r <= 3 else `0x25f` (nehlithakswoosh); create
+`{ flags 3, owner, start (x + dx, y + dy), target start + (dy, -dx) }`, trajectory z = `z << 11`,
+`#10637(piece, x)` / `#10019(piece, y)` (the controller cell). `elapsed > 60 && elapsed % 20 == 0` -> 0x6fb63c40:
+`ox = 20 - RAND(40)`, `oy = 20 - RAND(40)` (both 0 -> `ox = RAND(19) + 1`), create `{ flags 2, source = controller,
+missile 0x11d brdeathlightningbolt, target (ox, oy) }`, `#10637 / #10019` = (ox, oy), z = -0x5000.
+`elapsed == 25` -> `0x6fb5ff10(0x269 nehlithakhole, x + 2, y + 2)`. `nehlithakglow` (#612) is created elsewhere
+(0x6fb2f780), not by this controller. CltDo63 re-aims each piece every frame at
+`(x + (y - cy), y - (x - cx))` around the remembered cell (cx, cy) = (TargetX, TargetY).

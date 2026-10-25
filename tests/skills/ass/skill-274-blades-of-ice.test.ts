@@ -47,7 +47,7 @@ describe('[Skill #274] Blades of Ice (ASS) — 1.13c Parity (Issue #367)', () =>
     expect(r20.minElemDmg256).toBe(59136)
     expect(r20.maxElemDmg256).toBe(66304)
     expect(r20.durationFrames).toBe(375)
-    expect(r20.radiusSubtiles).toBe(63)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

@@ -200,4 +200,202 @@ describe('Issue #1408 — Akara respec', () => {
     expect(player.strength).toBe(15)
     expect(player.statPts).toBe(5)
   })
+
+  it('Issue #1490 — Akara respec clears bound skill hotkeys (WorldState, HudHotkeys, CommandMapper) and blocks selecting/casting unlearned skills even with +All Skills gear', () => {
+    const { session } = setupAkaraSession()
+    // Simulate Sorceress with +1 All Skills amulet equipped and learned Fire Bolt (36) + Charged Bolt (38)
+    ;(session.world.containers.equipment as Map<number, any>).set(2, {
+      id: 9001,
+      code: 'amu',
+      name: 'Maras',
+      quality: 7,
+      level: 67,
+      identified: true,
+      stats: [{ statId: 127, value: 1 }],
+    })
+    session.handleServerEvent({
+      type: 'SkillList',
+      unitId: 1,
+      skills: [
+        { skillId: 0, level: 1, baseLevel: 1, bonus: 0 },
+        { skillId: 36, level: 2, baseLevel: 2, bonus: 0 },
+        { skillId: 38, level: 1, baseLevel: 1, bonus: 0 },
+      ],
+    })
+    session.handleServerEvent({
+      type: 'ActiveSkill',
+      unitId: 1,
+      hand: 'right',
+      skill: 36,
+      itemId: 0xffffffff,
+    })
+
+    expect(session.hudManager.hotkeys.availableSkills.map((s) => s.skillId)).toContain(36)
+    expect(session.hudManager.hotkeys.availableSkills.map((s) => s.skillId)).toContain(38)
+    expect(session.hudManager.skillTree.bonusLevels.get(36)).toBe(1)
+
+    // Bind F1 -> Fire Bolt (36) via CommandMapper (with speedbar open on right hand) and F2 -> Charged Bolt (38) via HudModel
+    session.hudManager.hotkeys.openPopup = 'right'
+    session.hudManager.hotkeys.hoveredPopupSkill = { side: 'right', skillId: 36 }
+    expect(session.commandMapper.handleKeyDown({ key: 'F1', code: 'F1' })).toBe(true)
+    session.hudManager.hotkeys.openPopup = null
+    session.hudManager.hotkeys.hoveredPopupSkill = null
+    expect(session.commandMapper.getSkillHotkey('F1')).toEqual({
+      skillId: 36,
+      hand: 'right',
+      itemId: 0xffffffff,
+    })
+    expect(session.hudManager.hotkeys.bindings.get('F1')).toEqual({
+      side: 'right',
+      skillId: 36,
+    })
+    expect(session.world.skillHotkeys.get(0)).toEqual({
+      hand: 'right',
+      skill: 36,
+      itemId: 0xffffffff,
+    })
+
+    session.hudModel.assignSkillHotkey(1, 'right', 38)
+    session.hudModel.syncFromWorld()
+    expect(session.hudManager.hotkeys.bindings.get('F2')?.skillId).toBe(38)
+    expect(session.world.skillHotkeys.get(1)?.skill).toBe(38)
+
+    // Now simulate Akara respec packets from server: skills 36 and 38 drop to baseLevel 0, active skills reset to 0
+    const emittedAfterRespec: ClientCommand[] = []
+    session.hudModel.onCommand = (cmd) => emittedAfterRespec.push(cmd)
+
+    session.handleServerEvent({
+      type: 'SkillList',
+      unitId: 1,
+      skills: [
+        { skillId: 36, level: 0, baseLevel: 0, bonus: 0 },
+        { skillId: 38, level: 0, baseLevel: 0, bonus: 0 },
+      ],
+    })
+    session.handleServerEvent({
+      type: 'ActiveSkill',
+      unitId: 1,
+      hand: 'right',
+      skill: 0,
+      itemId: 0xffffffff,
+    })
+    session.hudModel.syncFromWorld()
+
+    // 1. Even with +1 All Skills equipped, 0-hard-point skills must NOT stay in availableSkills or bonusLevels
+    expect(session.hudManager.hotkeys.availableSkills.map((s) => s.skillId)).toEqual([0])
+    expect(session.hudManager.skillTree.bonusLevels.get(36)).toBeUndefined()
+    expect(session.hudManager.skillTree.bonusLevels.get(38)).toBeUndefined()
+
+    // 2. Client must auto-unbind stale hotkeys
+    expect(session.world.skillHotkeys.get(0)).toBeUndefined()
+    expect(session.world.skillHotkeys.get(1)).toBeUndefined()
+    expect(session.hudManager.hotkeys.bindings.has('F1')).toBe(false)
+    expect(session.hudManager.hotkeys.bindings.has('F2')).toBe(false)
+    expect(session.commandMapper.getSkillHotkey('F1')).toBeUndefined()
+
+    // 3. Pressing F1 / F2, cycling wheel, or attempting to select/cast skill 36 must be blocked
+    emittedAfterRespec.length = 0
+    session.commandMapper.handleKeyDown({ key: 'F1', code: 'F1' })
+    expect(session.commandMapper.getSkillHotkey('F1')).toBeUndefined()
+    expect(session.hudModel.activateSkillHotkey(0)).toBe(false)
+    expect(session.hudManager.hotkeys.triggerFunctionKey('F1')).toBeNull()
+    expect(session.hudModel.cycleBoundSkills(1)).toBe(false)
+    expect(session.hudManager.hotkeys.cycleBoundSkills(1)).toBeNull()
+    session.hudModel.selectSkill('right', 36)
+
+    expect(emittedAfterRespec.filter((c) => c.type === 'SelectSkill')).toEqual([])
+    expect(session.world.self?.rightSkill).toBe(0)
+  })
+
+  it('Issue #1490 — Server rejects SelectSkill (0x3C) and AssignSkillHotkey (0x51) for unlearned skills after respec and validates active skills on unequip', () => {
+    const game = new GameInstance({ seed: 54321 })
+    const playerId = game.connectPlayer({
+      name: 'Sorceress',
+      classId: 1,
+      level: 5,
+      areaId: 1,
+      x: 5100,
+      y: 5050,
+    })
+    const akaraId = game.spawnMonster({
+      hcIdx: AKARA_HCIDX,
+      areaId: 1,
+      x: 5101,
+      y: 5050,
+      isNpc: true,
+    })
+    const player = (game as any).players.get(playerId)!
+    player.newSkills = 2
+    ;(game as any).setPlayerQuestFlag(player, 'a1q1', 1)
+
+    // Learn Fire Bolt (36), select it on right hand, and bind slot 0 hotkey
+    game.enqueueCommand(playerId, { type: 'AllocateSkill', skillId: 36 })
+    game.enqueueCommand(playerId, { type: 'SelectSkill', hand: 'right', skill: 36 })
+    game.enqueueCommand(playerId, {
+      type: 'AssignSkillHotkey',
+      slot: 0,
+      skill: 36,
+      hand: 'right',
+      itemId: 0xffffffff,
+    })
+    game.stepFrame()
+    expect(player.rightSkill).toBe(36)
+
+    // Reset at Akara
+    game.enqueueCommand(playerId, { type: 'NpcEntityAction', action: 0, npcId: akaraId, complement: 0 })
+    game.stepFrame()
+    expect(player.rightSkill).toBe(0)
+    expect(player.skills.size).toBe(0)
+
+    // Forged/stale SelectSkill(36) after respec must be rejected by D2Game 0x6fcef480 gate
+    game.enqueueCommand(playerId, { type: 'SelectSkill', hand: 'right', skill: 36 })
+    game.stepFrame()
+    expect(player.rightSkill).toBe(0)
+
+    // Equip an item granting +1 Teleport (oskill 97/54), select it, then unequip -> resets rightSkill to 0 (0x6fcf1ed0)
+    player.items.push({
+      unitId: 8801,
+      code: 'wnd',
+      location: 'equipped',
+      bodyLoc: 4,
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 2,
+      stats: new Map(),
+      socketedItems: [],
+      rawItemData: { stats: [{ statId: 97, param: 54, value: 1 }], runewordStats: [] },
+    })
+    game.enqueueCommand(playerId, { type: 'SelectSkill', hand: 'right', skill: 54 })
+    game.stepFrame()
+    expect(player.rightSkill).toBe(54)
+
+    game.enqueueCommand(playerId, { type: 'ItemUnequip', slot: 4 })
+    game.stepFrame()
+    expect(player.rightSkill).toBe(0)
+
+    // Token of Absolution ('toa', D2Game 0x6fcf9f55): re-allocate skill 36, select it, then consume 'toa'
+    game.enqueueCommand(playerId, { type: 'AllocateSkill', skillId: 36 })
+    game.enqueueCommand(playerId, { type: 'SelectSkill', hand: 'right', skill: 36 })
+    player.items.push({
+      unitId: 8802,
+      code: 'toa',
+      location: 'inventory',
+      bodyLoc: 0,
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      stats: new Map(),
+      socketedItems: [],
+    })
+    game.stepFrame()
+    expect(player.skills.get(36)).toBe(1)
+    expect(player.rightSkill).toBe(36)
+
+    game.enqueueCommand(playerId, { type: 'ItemUse', itemId: 8802, at: { x: 5100, y: 5050 } })
+    game.stepFrame()
+    expect(player.skills.size).toBe(0)
+    expect(player.rightSkill).toBe(0)
+  })
 })

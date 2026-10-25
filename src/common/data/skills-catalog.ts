@@ -16712,7 +16712,6 @@ export const SKILLS_CATALOG: readonly SkillCatalogEntry[] = Object.freeze([
     },
     "synergyFormulas": {
       "damage": "skill('Bash'.blvl)*par8+skill('Battle Orders'.blvl)*par7",
-      "defense": "skill('Iron Skin'.blvl)*par7",
       "magic": "skill('Berserk'.blvl)*1"
     },
     "synergiesReceived": [
@@ -16727,12 +16726,6 @@ export const SKILLS_CATALOG: readonly SkillCatalogEntry[] = Object.freeze([
         "providerId": 149,
         "percentPerLevel": 10,
         "type": "damage"
-      },
-      {
-        "providerName": "Iron Skin",
-        "providerId": 145,
-        "percentPerLevel": 10,
-        "type": "defense"
       },
       {
         "providerName": "Berserk",
@@ -17101,7 +17094,6 @@ export const SKILLS_CATALOG: readonly SkillCatalogEntry[] = Object.freeze([
     },
     "synergyFormulas": {
       "damage": "(skill('Double Swing'.blvl)+skill('Taunt'.blvl))*par8",
-      "duration": "skill('Increased Stamina'.blvl)*10",
       "magic": "skill('Berserk'.blvl)*1"
     },
     "synergiesReceived": [
@@ -17116,12 +17108,6 @@ export const SKILLS_CATALOG: readonly SkillCatalogEntry[] = Object.freeze([
         "providerId": 137,
         "percentPerLevel": 8,
         "type": "damage"
-      },
-      {
-        "providerName": "Increased Stamina",
-        "providerId": 141,
-        "percentPerLevel": 0.4,
-        "type": "duration"
       },
       {
         "providerName": "Berserk",
@@ -19007,8 +18993,8 @@ export const SKILLS_CATALOG: readonly SkillCatalogEntry[] = Object.freeze([
       0
     ],
     "params": {
-      "par5": 50,
-      "par1": 50,
+      "par5": 75,
+      "par1": 55,
       "par2": 8,
       "par3": 25,
       "par4": 6
@@ -22444,7 +22430,7 @@ export const SKILLS_CATALOG: readonly SkillCatalogEntry[] = Object.freeze([
     "dependents": [
       260
     ],
-    "mana": 10,
+    "mana": 6,
     "lvlmana": 0,
     "minmana": 1,
     "manashift": 8,
@@ -24207,10 +24193,10 @@ export const SKILLS_CATALOG: readonly SkillCatalogEntry[] = Object.freeze([
     "dependents": [
       274
     ],
-    "mana": 16,
-    "lvlmana": 1,
+    "mana": 4,
+    "lvlmana": 0,
     "minmana": 1,
-    "manashift": 6,
+    "manashift": 8,
     "delay": 0,
     "descdam": "20",
     "hitshift": 8,
@@ -25815,6 +25801,41 @@ export const SKILLS_BY_ID: Readonly<Record<number, SkillCatalogEntry>> = Object.
     return acc
   }, {})
 )
+
+export const CANONICAL_113C_SKILLS: Readonly<Record<number, SkillCatalogEntry>> = SKILLS_BY_ID
+
+/**
+ * Evaluates 1.13c canonical skill mana cost (24.8 fixed-point `manaCost256` and `manaCost`)
+ * and casting delay (`delayFrames`) directly from `CANONICAL_113C_SKILLS` (`Skills.txt`).
+ * Formula (`D2Common.dll` / `D2Game.dll`):
+ * `manaCost256 = Math.max(minmana << 8, (mana + lvlmana * (slvl - 1)) << manashift)`
+ */
+export function evaluateCanonicalSkillMana113c(
+  skillId: number,
+  slvl: number,
+): {
+  readonly manaCost256: number
+  readonly manaCost: number
+  readonly delayFrames: number
+} {
+  const entry = CANONICAL_113C_SKILLS[skillId]
+  if (!entry) {
+    return { manaCost256: 0, manaCost: 0, delayFrames: 0 }
+  }
+  const lvl = Math.max(1, Math.trunc(slvl))
+  if (entry.mana === 0 && entry.lvlmana === 0) {
+    return { manaCost256: 0, manaCost: 0, delayFrames: entry.delay }
+  }
+  const raw256 = (entry.mana + entry.lvlmana * (lvl - 1)) << entry.manashift
+  const min256 = entry.minmana << 8
+  const manaCost256 = Math.max(0, Math.max(min256, raw256))
+  const manaCost = manaCost256 / 256
+  return {
+    manaCost256,
+    manaCost,
+    delayFrames: entry.delay,
+  }
+}
 
 export const SKILLS_BY_CLASS: Readonly<Record<CharacterClassCode, readonly SkillCatalogEntry[]>> = Object.freeze({
   ama: SKILLS_CATALOG.filter(s => s.classCode === 'ama'),

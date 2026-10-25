@@ -47,7 +47,7 @@ describe('[Skill #111] Vengeance (PAL) — 1.13c Parity (Issue #265)', () => {
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(315)
-    expect(r20.radiusSubtiles).toBe(184)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

@@ -118,10 +118,12 @@ export class VendorSessionManager {
   private isGambleMode = false
   private activeGambleGrid: Inventory | null = null
   private repairCursorActive = false
+  private readonly spawnedUniqueIds: Set<number>
 
-  constructor(tables?: DropTables, seed = 0x1337c0de) {
+  constructor(tables?: DropTables, seed = 0x1337c0de, spawnedUniqueIds?: Set<number>) {
     this.tables = tables ?? getEmbeddedDropTables()
     this.rng = new D2Rng(seed)
+    this.spawnedUniqueIds = spawnedUniqueIds ?? new Set<number>()
   }
 
   setDropTables(tables: DropTables): void {
@@ -328,6 +330,7 @@ export class VendorSessionManager {
       cLvl,
       tables: this.tables,
       rng: this.rng,
+      spawnedUniqueIds: this.spawnedUniqueIds,
     })
     gambleInv.remove(placed.x, placed.y)
     return {
@@ -589,6 +592,7 @@ export class VendorSessionManager {
         cLvl: purse.cLvl,
         tables: this.tables,
         rng: this.rng,
+        spawnedUniqueIds: this.spawnedUniqueIds,
       })
       const addedPos = playerInventory.add(revealed)
       if (!addedPos) {

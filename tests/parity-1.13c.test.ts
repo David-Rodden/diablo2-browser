@@ -430,7 +430,7 @@ describe('Magic & Rare Affix NON_RANDOM_RANGE_CODES Range & Skill Parameter Prot
 
     const magicTooltip = formatItemTooltip(magicItem)
     const magicLines = magicTooltip.lines.map(l => l.text)
-    expect(magicLines).toContain('Adds 1-6 Fire Damage')
+    expect(magicLines).toContain('Adds 1-6 fire damage')
 
     // Rare roll where Fiery is guaranteed to be chosen (3 prefixes, 3 suffixes)
     const rareResult = rollRareAffixes(
@@ -469,11 +469,11 @@ describe('Magic & Rare Affix NON_RANDOM_RANGE_CODES Range & Skill Parameter Prot
 
     const rareTooltip = formatItemTooltip(rareItem)
     const rareLines = rareTooltip.lines.map(l => l.text)
-    expect(rareLines).toContain('Adds 1-6 Fire Damage')
+    expect(rareLines).toContain('Adds 1-6 fire damage')
 
     // Also verify when only rolledProps is present (without rolledMagicAffixes / rolledRareAffixes)
     const rarePropsOnlyItem = { ...rareItem, rolledRareAffixes: undefined } as Item
-    expect(formatItemTooltip(rarePropsOnlyItem).lines.map(l => l.text)).toContain('Adds 1-6 Fire Damage')
+    expect(formatItemTooltip(rarePropsOnlyItem).lines.map(l => l.text)).toContain('Adds 1-6 fire damage')
   })
 
   it('3. preserves hit-skill (param="Amplify Damage"/66, min=5, max=1) and charged (param="Teleport"/54, min=20, max=2) across Magic and Rare generation and tooltip rendering', () => {
@@ -803,7 +803,7 @@ describe('dgrp Exact-Equality Aggregation Rule (Issue #130 / C2)', () => {
     // Strictly equal (+10 to all 4)
     const equalAttrItem = createDroppedItem(amuletBase, 'normal', { ilvl: 80, dwInitSeed: 103 })
     ;(equalAttrItem as any).rolledProps = [{ code: 'all-stats', min: 10, max: 10, value: 10 }]
-    expect(formatItemTooltip(equalAttrItem).lines.map(l => l.text)).toEqual(['+10 to All Attributes'])
+    expect(formatItemTooltip(equalAttrItem).lines.map(l => l.text)).toEqual(['+10 to all Attributes'])
 
     // Stacked (+10 all-stats + +15 str -> str=25, dex=10, vit=10, enr=10)
     const unequalAttrItem = createDroppedItem(amuletBase, 'normal', { ilvl: 80, dwInitSeed: 104 })
@@ -818,7 +818,7 @@ describe('dgrp Exact-Equality Aggregation Rule (Issue #130 / C2)', () => {
       '+10 to Vitality',
       '+10 to Energy',
     ])
-    expect(texts.some(t => t.includes('All Attributes'))).toBe(false)
+    expect(texts.some(t => /all Attributes/i.test(t))).toBe(false)
 
     // Verify aggregateAndSortProperties never puts 'all-res' or 'all-stats' into otherMerged when unequal
     const rawMerged = aggregateAndSortProperties([

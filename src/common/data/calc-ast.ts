@@ -117,18 +117,18 @@ export function compute3BandDuration(
  * `floor((110 * lvl * (b - a)) / (100 * (lvl + 6))) + a`
  */
 export function computeDiminishingReturns(a: number, b: number, lvl: number): number {
-  if (lvl <= 0) return a
+  if (lvl <= 0) return 0
   const num = 110 * lvl * (b - a)
   const den = 100 * (lvl + 6)
   return Math.trunc(num / den) + a
 }
 
 /**
- * Compute `D2Common` linear scaling `ln(a, b, lvl)`:
- * `a + (lvl - 1) * b`
+ * Compute `D2Common` linear scaling `ln(a, b, lvl)` (`0x6FD51670..0x6FD51730`):
+ * Returns `0` when `lvl <= 0`, otherwise `a + (lvl - 1) * b`.
  */
 export function computeLinearScaling(a: number, b: number, lvl: number): number {
-  if (lvl <= 0) return a
+  if (lvl <= 0) return 0
   return a + (lvl - 1) * b
 }
 

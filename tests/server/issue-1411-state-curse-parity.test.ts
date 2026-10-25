@@ -90,7 +90,7 @@ describe('Issue #1411: 1.13c States.txt curse column & sub_6FCC00B0 (0x6FCC00B0)
       slvl: 1,
       durationFrames: 200,
       currentFrame: 20,
-      stats: { amplify_phys_pierce: 100 },
+      stats: { damageresist: -100 },
     })
     expect(amp.applied).toBe(true)
     expect(bus.hasState('cloak_of_shadows')).toBe(true)
@@ -217,7 +217,7 @@ describe('Issue #1411: 1.13c States.txt curse column & sub_6FCC00B0 (0x6FCC00B0)
       slvl: 5,
       durationFrames: 200,
       currentFrame: 100,
-      stats: { amplify_phys_pierce: 100 },
+      stats: { damageresist: -100 },
     })
     expect(first.applied).toBe(true)
     const entryRef = bus.getState('amplifydamage')!
@@ -256,7 +256,7 @@ describe('Issue #1411: 1.13c States.txt curse column & sub_6FCC00B0 (0x6FCC00B0)
       slvl: 8,
       durationFrames: 250,
       currentFrame: 200,
-      stats: { amplify_phys_pierce: 100 },
+      stats: { damageresist: -100 },
     })
     expect(higher.applied).toBe(true)
     expect(higher.activeSlvl).toBe(8)
@@ -373,7 +373,7 @@ describe('Issue #1411: 1.13c States.txt curse column & sub_6FCC00B0 (0x6FCC00B0)
       stateBus: casterBus,
       unitType: 'player',
     }
-    const mobStats = new UnitStatList(registry, { level: 10 })
+    const mobStats = new UnitStatList(registry, { level: 10, maxhp: 100 * FIXED_ONE, hitpoints: 100 * FIXED_ONE })
     const mobBus = new StateBus(mobStats, registry)
     const mob: CombatUnitContext = {
       id: 'mob-1',

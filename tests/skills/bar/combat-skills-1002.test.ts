@@ -35,8 +35,8 @@ describe('Issue #1002: Barbarian Combat Skills (#126-#152) 4-Layer 1.13c Fidelit
       expect(SKILLS_BY_ID[139]?.synergiesReceived?.map(s => s.providerId)).toEqual([126, 144, 154])
       expect(SKILLS_BY_ID[140]?.synergiesReceived?.map(s => s.providerId)).toEqual([133])
       expect(SKILLS_BY_ID[143]?.synergiesReceived?.map(s => s.providerId)).toEqual([132])
-      expect(SKILLS_BY_ID[144]?.synergiesReceived?.map(s => s.providerId)).toEqual([126, 149, 145, 152])
-      expect(SKILLS_BY_ID[147]?.synergiesReceived?.map(s => s.providerId)).toEqual([133, 137, 141, 152])
+      expect(SKILLS_BY_ID[144]?.synergiesReceived?.map(s => s.providerId)).toEqual([126, 149, 152])
+      expect(SKILLS_BY_ID[147]?.synergiesReceived?.map(s => s.providerId)).toEqual([133, 137, 152])
       expect(SKILLS_BY_ID[152]?.synergiesReceived?.map(s => s.providerId)).toEqual([130, 138])
     })
 
@@ -167,6 +167,8 @@ describe('Issue #1002: Barbarian Combat Skills (#126-#152) 4-Layer 1.13c Fidelit
     it('calculates #132 Leap knockback radius and diminishing-returns jump distance', () => {
       const s1 = calculateLeapStats(1)
       const s10 = calculateLeapStats(10)
+      expect(s1.minDistanceYards).toBe(4)
+      expect(s1.maxDistanceYards).toBe(30)
       expect(s1.knockbackRadiusSubtiles).toBe(4)
       expect(s10.knockbackRadiusSubtiles).toBe(13)
       expect(s1.leapDistanceSubtiles).toBeGreaterThanOrEqual(4)
@@ -208,20 +210,23 @@ describe('Issue #1002: Barbarian Combat Skills (#126-#152) 4-Layer 1.13c Fidelit
       expect(check.meleeFallback).toBe(true)
     })
 
-    it('calculates #144 Concentrate with Bash/BO/Berserk synergies', () => {
-      const s = calculateConcentrateStats(5, 10, 8, 5)
+    it('calculates #144 Concentrate with Bash/BO/Berserk synergies and pure ln34 defense (no Iron Skin synergy, Issue #1455)', () => {
+      const s = calculateConcentrateStats(5, 10, 8, 5, 20)
       expect(s.damageBonusPct).toBe(70 + 4 * 5 + 10 * 5 + 8 * 10)
+      expect(s.defenseBonusPct).toBe(100 + 4 * 10) // ln34 = 140%, unaffected by Iron Skin blvl=20 (0x6FC492F0)
       expect(s.magicConversionPct).toBe(5)
       expect(s.isUninterruptible).toBe(true)
     })
 
-    it('calculates #147 Frenzy per-hit stack scaling dm(0,50,nValue) IAS and dm(20,200,nValue) FRW', () => {
-      const s = calculateFrenzyStats(10, 5, 5, 2)
+    it('calculates #147 Frenzy per-hit stack scaling dm(0,50,nValue) IAS, dm(20,200,nValue) FRW, and fixed par7=150 duration (no Increased Stamina synergy, Issue #1455)', () => {
+      const s = calculateFrenzyStats(10, 5, 5, 2, 20)
       expect(s.damageBonusPct).toBe(90 + 9 * 5 + 40 + 40)
       expect(s.magicConversionPct).toBe(2)
-      const st1 = calculateFrenzyStackState(0, 1, 10, 0, 10)
-      const st2 = calculateFrenzyStackState(st1.activeStacks, 1, 10, 10, 20)
+      expect(s.durationFrames).toBe(150) // auralencalc = par7 = 150 frames (6.0s), unaffected by Increased Stamina blvl=20 (0x6FC493C0)
+      const st1 = calculateFrenzyStackState(0, 1, 10, 0, 10, 20)
+      const st2 = calculateFrenzyStackState(st1.activeStacks, 1, 10, 10, 20, 20)
       expect(st1.activeStacks).toBe(1)
+      expect(st1.remainingFrames).toBe(140)
       expect(st2.activeStacks).toBe(2)
       expect(st2.currentAttackSpeedBonusPct).toBeGreaterThan(st1.currentAttackSpeedBonusPct)
       expect(st2.currentRunSpeedBonusPct).toBeGreaterThan(st1.currentRunSpeedBonusPct)
@@ -345,7 +350,7 @@ describe('Issue #1002: Barbarian Combat Skills (#126-#152) 4-Layer 1.13c Fidelit
         registry,
         skill: dtSkill,
         evalResult: dtEval,
-        caster,
+        caster: { ...caster, weaponCode: 'jav', offHandWeaponCode: 'jav' },
         targets: [mon],
         corpses: [],
         targetX: 110,
@@ -353,7 +358,30 @@ describe('Issue #1002: Barbarian Combat Skills (#126-#152) 4-Layer 1.13c Fidelit
       } as any)
       expect(dtOut.missilesSpawned.length).toBe(2)
 
-      // 4. #147 Frenzy: incremental stack counter nValue on each connecting hit
+      // 4. #144 Concentrate & #147 Frenzy (Issue #1455): Iron Skin (#145) does NOT boost Concentrate defense,
+      // and Increased Stamina (#141) does NOT boost Frenzy duration (auralencalc = par7 = 150)
+      casterStats.setBaseSkillLevel(145, 20)
+      casterStats.setBaseSkillLevel(141, 20)
+      const concSkill = registry.getSkillById(144)!
+      const concEval = evaluateSkillCore113c({
+        registry,
+        skill: concSkill,
+        slvl: 5,
+        blvl: 5,
+        statList: casterStats,
+      })
+      executeSkillCore113c({
+        registry,
+        skill: concSkill,
+        evalResult: concEval,
+        caster,
+        targets: [mon],
+        corpses: [],
+        targetX: 102,
+        targetY: 100,
+      } as any)
+      expect(caster.stateBus.getState('concentrate')?.stats?.skill_armor_percent).toBe(140)
+
       const frenzySkill = registry.getSkillById(147)!
       const frenzyEval = evaluateSkillCore113c({
         registry,
@@ -362,6 +390,7 @@ describe('Issue #1002: Barbarian Combat Skills (#126-#152) 4-Layer 1.13c Fidelit
         blvl: 5,
         statList: casterStats,
       })
+      expect(frenzyEval.durationFrames).toBe(150)
       executeSkillCore113c({
         registry,
         skill: frenzySkill,
@@ -371,8 +400,10 @@ describe('Issue #1002: Barbarian Combat Skills (#126-#152) 4-Layer 1.13c Fidelit
         corpses: [],
         targetX: 102,
         targetY: 100,
+        currentTick: 100,
       } as any)
-      expect(caster.stateBus.getState('frenzy')?.stats?.frenzy_stacks).toBeGreaterThanOrEqual(2)
+      expect(caster.stateBus.getState('frenzy')?.stats?.skill_frenzy).toBeGreaterThanOrEqual(2)
+      expect(caster.stateBus.getState('frenzy')?.expireFrame).toBe(250)
 
       // 5. #151 Whirlwind: suppress_ctc + frame-breakpoint hit count
       const wwSkill = registry.getSkillById(151)!

@@ -185,7 +185,7 @@ export function resolvePartyActionCode(
   if (state === 0x06 || state === 0 || state === 'none' || state === 'hostile') {
     return 0x06
   }
-  if (state === 0x07 || state === 1 || state === 'invited' || state === 'invited_by_me') {
+  if (state === 0x07 || state === 4 || state === 1 || state === 'invited' || state === 'invited_by_me') {
     return 0x07
   }
   if (state === 0x08 || state === 2 || state === 'invited_me' || state === 'invited_by') {

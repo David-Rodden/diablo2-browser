@@ -47,7 +47,7 @@ describe('[Skill #227] Summon Spirit Wolf (DRU) — 1.13c Parity (Issue #320)', 
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(0)
-    expect(r20.radiusSubtiles).toBe(525)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(5)
     expect(r20.cooldownFrames).toBe(0)
   })

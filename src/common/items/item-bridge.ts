@@ -12,6 +12,7 @@
 
 import type { Item, ItemBase, RolledItemProp } from './items.ts'
 import { ItemQuality } from './items.ts'
+import { chargedSkillChargesOf, decodeChargedSkillValue, encodeChargedSkillValue } from './charged-skill.ts'
 import {
   type DropTables,
   computeCharsiImbueIlvl,
@@ -1601,8 +1602,10 @@ export function convertOnlineItemStatsToRolledProps(stats: readonly ItemStat[]):
     if (statId === 204) {
       const skillId = param >= 64 ? param >> 6 : param
       const slvl = param >= 64 ? Math.max(1, param & 0x3f) : 1
-      const charges = value > 255 ? (value & 0xff) || ((value >> 8) & 0xff) : Math.max(1, value)
-      props.push({ code: 'charged', param: skillId, min: charges, max: slvl, value: charges })
+      // D2Client.dll 0x6FB056C2: value = (maxCharges << 8) | currentCharges; keep the packed value so the
+      // tooltip can print "(cur/max Charges)".
+      const { current } = decodeChargedSkillValue(value)
+      props.push({ code: 'charged', param: skillId, min: current, max: slvl, value })
       continue
     }
 
@@ -2908,11 +2911,11 @@ export function rolledPropsToItemStats(props: readonly RolledItemProp[] | undefi
     if (code === 'charged') {
       const skillId = rawParam && Number.isFinite(rawParam) ? Math.max(0, Math.trunc(rawParam)) : 0
       const slvl = Math.max(1, Math.trunc(max || 1))
-      const charges = Math.max(1, Math.trunc(min || val || 1))
+      const { current, max: maxCharges } = chargedSkillChargesOf(val, Math.trunc(min || val))
       out.push({
         statId: 204,
         param: (skillId << 6) | (slvl & 0x3f),
-        value: charges,
+        value: encodeChargedSkillValue(current, maxCharges),
       })
       continue
     }

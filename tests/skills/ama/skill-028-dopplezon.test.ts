@@ -52,7 +52,7 @@ describe('[Skill #028] Dopplezon (AMA) — 1.13c Parity (Issue #182)', () => {
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(0)
-    expect(r20.radiusSubtiles).toBe(2625)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(1)
     expect(r20.cooldownFrames).toBe(0)
   })

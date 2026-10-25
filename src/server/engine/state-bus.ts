@@ -9,7 +9,8 @@
  *   apply the highest `slvl` modifier while retaining lower-level pulses until expiration.
  * - Reactive `auraeventfunc` triggers (`1..5`, `22..27` from `Events.txt` & `Skills.txt`).
  */
-import { tryGetSharedDataRegistry, type D2DataRegistry } from '../../common/data/data-registry.ts'
+import { tryGetSharedDataRegistry, type D2DataRegistry, type SkillRecord } from '../../common/data/data-registry.ts'
+import { evaluateCalc } from '../../common/data/calc-ast.ts'
 import { UnitStatList, FIXED_ONE } from './stat-list.ts'
 import {
   calculateBoneArmorCapacity,
@@ -84,6 +85,75 @@ export interface ReactiveEventOutcome {
   readonly defenderOverlaysApplied?: string[]
   readonly unitOverlays?: ReactiveUnitOverlayEvent[]
 }
+
+const REACTIVE_STATE_TO_SKILL_ID_113C: Readonly<Record<string, number>> = {
+  frozenarmor: 40,
+  shiverarmor: 50,
+  energyshield: 58,
+  chillingarmor: 60,
+  chillarmor: 60,
+  bonearmor: 68,
+  claygolem: 75,
+  ironmaiden: 76,
+  lifetap: 82,
+  bloodgolem: 85,
+  irongolem: 90,
+  thorns: 103,
+  cyclonearmor: 235,
+  barbs: 296,
+}
+
+const DEFAULT_STATE_TO_SKILL_ID_113C: Readonly<Record<string, number>> = {
+  amplifydamage: 66,
+  weaken: 72,
+  decrepify: 87,
+  lowerresist: 91,
+  might: 98,
+  concentration: 113,
+  sanctuary: 119,
+  fanaticism: 122,
+  conviction: 123,
+  battlecry: 146,
+}
+
+const REACTIVE_FALLBACK_SKILLS_113C = new Map<number, SkillRecord>([
+  [40, { id: 40, name: 'Frozen Armor', auraState: 'frozenarmor', auraEvent1: 'damagedinmelee', auraEventFunc1: 2, auraStat1: 'skill_armor_percent', auraStatCalc1: 'ln12', param1: 30, param2: 5, param3: 3000, param4: 300, param5: 30, param6: 3, param7: 250, param8: 5 } as unknown as SkillRecord],
+  [50, { id: 50, name: 'Shiver Armor', auraState: 'shiverarmor', auraEvent1: 'attackedinmelee', auraEventFunc1: 3, auraStat1: 'skill_armor_percent', auraStatCalc1: 'ln12', param1: 45, param2: 6, param3: 3000, param4: 300, param5: 100, param6: 0, param7: 250, param8: 9 } as unknown as SkillRecord],
+  [58, { id: 58, name: 'Energy Shield', auraState: 'energyshield', auraEvent1: 'absorbdamage', auraEventFunc1: 19, param1: 3500, param2: 1500, param5: 20, param6: 95, param7: 1 } as unknown as SkillRecord],
+  [60, { id: 60, name: 'Chilling Armor', auraState: 'chillingarmor', auraEvent1: 'hitbymissile', auraEventFunc1: 1, auraStat1: 'skill_armor_percent', auraStatCalc1: 'ln12', param1: 45, param2: 5, param3: 3600, param4: 150, param7: 250, param8: 9 } as unknown as SkillRecord],
+  [68, { id: 68, name: 'Bone Armor', auraState: 'bonearmor', auraEvent1: 'absorbdamage', auraEventFunc1: 22, auraStat1: 'bonearmor', auraStatCalc1: "ln12 + (skill('Bone Wall'.blvl) + skill('Bone Prison'.blvl)) * par8", param1: 20, param2: 10, param8: 15 } as unknown as SkillRecord],
+  [75, { id: 75, name: 'Clay Golem', auraState: 'claygolem', auraEvent1: 'damagedinmelee', auraEventFunc1: 27, auraStat1: 'item_slow', auraStatCalc1: 'dm34', param3: 0, param4: 75 } as unknown as SkillRecord],
+  [76, { id: 76, name: 'Iron Maiden', auraState: 'ironmaiden', auraEvent1: 'domeleedamage', auraEventFunc1: 4, auraStat1: 'thorns_percent', auraStatCalc1: 'ln56', calc1: 'ln56', param5: 200, param6: 25 } as unknown as SkillRecord],
+  [82, { id: 82, name: 'Life Tap', auraState: 'lifetap', auraEvent1: 'damagedinmelee', auraEventFunc1: 5, auraEvent2: 'damagedbymissile', auraEventFunc2: 5, param1: 400, param2: 60, param5: 50 } as unknown as SkillRecord],
+  [85, { id: 85, name: 'BloodGolem', auraState: 'bloodgolem', auraEvent1: 'domeleedamage', auraEventFunc1: 23, auraEvent2: 'damagedinmelee', auraEventFunc2: 26, param1: 70, param2: 30 } as unknown as SkillRecord],
+  [90, { id: 90, name: 'IronGolem', auraState: 'irongolem', auraEvent1: 'damagedinmelee', auraEventFunc1: 4, auraStat1: 'thorns_percent', auraStatCalc1: '(lvl > 1) ? dm34 : 0', param3: 100, param4: 750 } as unknown as SkillRecord],
+  [103, { id: 103, name: 'Thorns', auraState: 'thorns', auraEvent1: 'damagedinmelee', auraEventFunc1: 4, auraStat1: 'thorns_percent', auraStatCalc1: 'ln34', param3: 250, param4: 40 } as unknown as SkillRecord],
+  [235, { id: 235, name: 'Cyclone Armor', auraState: 'cyclonearmor', auraEvent1: 'absorbdamage', auraEventFunc1: 25, auraStat1: 'bonearmor', auraStatCalc1: "(ln12*(100+(skill('Twister'.blvl)+skill('Tornado'.blvl)+skill('Hurricane'.blvl))*par8)/100)*256", param1: 40, param2: 12, param8: 7, param5: 25, param6: 50 } as unknown as SkillRecord],
+  [240, { id: 240, name: 'Twister' } as unknown as SkillRecord],
+  [245, { id: 245, name: 'Tornado' } as unknown as SkillRecord],
+  [250, { id: 250, name: 'Hurricane' } as unknown as SkillRecord],
+  [78, { id: 78, name: 'Bone Wall' } as unknown as SkillRecord],
+  [88, { id: 88, name: 'Bone Prison' } as unknown as SkillRecord],
+  [296, { id: 296, name: 'Barbs Aura', auraState: 'barbs', auraEvent1: 'damagedinmelee', auraEventFunc1: 4, auraStat1: 'thorns_percent', auraStatCalc1: 'ln34', param3: 50, param4: 10 } as unknown as SkillRecord],
+  [66, { id: 66, name: 'Amplify Damage', auraTgtState: 'amplifydamage', auraStat1: 'damageresist', auraStatCalc1: '-par5', param5: 100 } as unknown as SkillRecord],
+  [72, { id: 72, name: 'Weaken', auraTgtState: 'weaken', auraStat1: 'damagepercent', auraStatCalc1: '-par5', param5: 33 } as unknown as SkillRecord],
+  [87, { id: 87, name: 'Decrepify', auraTgtState: 'decrepify', auraStat1: 'velocitypercent', auraStatCalc1: 'par5', auraStat2: 'damagepercent', auraStatCalc2: 'par5', auraStat3: 'damageresist', auraStatCalc3: 'par5', auraStat4: 'attackrate', auraStatCalc4: 'par5', param5: -50 } as unknown as SkillRecord],
+  [91, { id: 91, name: 'Lower Resist', auraTgtState: 'lowerresist', auraStat1: 'fireresist', auraStatCalc1: '-dm56', auraStat2: 'lightresist', auraStatCalc2: '-dm56', auraStat3: 'coldresist', auraStatCalc3: '-dm56', auraStat4: 'poisonresist', auraStatCalc4: '-dm56', param5: 25, param6: 70 } as unknown as SkillRecord],
+  [98, { id: 98, name: 'Might', auraState: 'might', auraTgtState: 'might', auraStat1: 'damagepercent', auraStatCalc1: 'ln34', param3: 40, param4: 10 } as unknown as SkillRecord],
+  [113, { id: 113, name: 'Concentration', auraState: 'concentration', auraTgtState: 'concentration', auraStat1: 'damagepercent', auraStatCalc1: 'ln34', auraStat2: 'skill_concentration', auraStatCalc2: 'par5', param3: 60, param4: 15, param5: 20 } as unknown as SkillRecord],
+  [119, { id: 119, name: 'Sanctuary', auraState: 'sanctuary', auraStat1: 'item_undeaddamage_percent', auraStatCalc1: 'ln34', auraStat2: 'item_undead_tohit', auraStatCalc2: 'ln56', auraStat3: 'skill_bypass_undead', auraStatCalc3: '1', param3: 150, param4: 30, param5: 100, param6: 50 } as unknown as SkillRecord],
+  [122, { id: 122, name: 'Fanaticism', auraState: 'fanaticism', auraTgtState: 'fanaticism', auraStat1: 'attackrate', auraStatCalc1: 'dm34', auraStat2: 'item_tohit_percent', auraStatCalc2: 'toht', auraStat3: 'damagepercent', auraStatCalc3: 'ln56/2', passiveStat1: 'damagepercent', passiveCalc1: 'ln56', param3: 10, param4: 40, param5: 50, param6: 17, toHit: 40, levToHit: 5 } as unknown as SkillRecord],
+  [123, { id: 123, name: 'Conviction', auraState: 'conviction', auraTgtState: 'conviction', auraStat1: 'skill_armor_percent', auraStatCalc1: '-dm56', auraStat2: 'fireresist', auraStatCalc2: '-min(ln34,150)', auraStat3: 'coldresist', auraStatCalc3: '-min(ln34,150)', auraStat4: 'lightresist', auraStatCalc4: '-min(ln34,150)', param3: 30, param4: 5, param5: 40, param6: 100 } as unknown as SkillRecord],
+  [146, { id: 146, name: 'Battle Cry', auraTgtState: 'battlecry', auraStat1: 'skill_armor_percent', auraStatCalc1: 'ln12', auraStat2: 'damagepercent', auraStatCalc2: 'ln34', param1: -50, param2: -6, param3: -25, param4: -3 } as unknown as SkillRecord],
+])
+
+const REACTIVE_FALLBACK_BY_NAME = new Map<string, SkillRecord>(
+  Array.from(REACTIVE_FALLBACK_SKILLS_113C.values()).map(s => [s.name.toLowerCase(), s]),
+)
+const REACTIVE_FALLBACK_REGISTRY = {
+  getSkillById: (id: number) => REACTIVE_FALLBACK_SKILLS_113C.get(id),
+  getSkillByName: (name: string) => REACTIVE_FALLBACK_BY_NAME.get(name.trim().toLowerCase()),
+} as unknown as D2DataRegistry
 
 export class StateBus {
   readonly registry: D2DataRegistry | undefined
@@ -227,8 +297,9 @@ export class StateBus {
           if (slvl === existingCurse.slvl) {
             existingCurse.expireFrame = expireFrame
             ;(existingCurse as { durationFrames?: number }).durationFrames = durationFrames
-            if (params.stats && Object.keys(params.stats).length > 0) {
-              ;(existingCurse as { stats: Readonly<Record<string, number>> }).stats = params.stats
+            const refreshedStats = this.resolveDefaultStateStats113c(stateName, sourceSkillId, slvl, params.stats)
+            if (Object.keys(refreshedStats).length > 0) {
+              ;(existingCurse as { stats: Readonly<Record<string, number>> }).stats = refreshedStats
               this.statList.addOrUpdateModifier({
                 id: `state:${stateName}`,
                 stateName,
@@ -240,7 +311,7 @@ export class StateBus {
                 isAura,
                 isCurse: true,
                 curseType,
-                stats: params.stats,
+                stats: refreshedStats,
               })
             } else {
               for (const mod of this.statList.getActiveModifiers()) {
@@ -332,31 +403,67 @@ export class StateBus {
       }
     }
     if (stateName === 'feralrage' || stateId === 120) {
-      const chg = params.stats?.charge ?? params.stats?.progressive_charges ?? 1
-      const maxChg = Math.max(1, params.stats?.max_charges ?? 3)
+      const chg =
+        params.stats?.skill_frenzy ??
+        params.stats?.progressive_other ??
+        params.stats?.progressive_damage ??
+        1
+      const effLvl = params.stats?.modifierlist_level ?? slvl
+      const maxChg = Math.max(
+        1,
+        params.stats?.progressive_tohit ?? (effLvl > 0 ? Math.floor(effLvl / 2) + 3 : 3),
+      )
       const stage = chg <= 1 ? 1 : chg >= maxChg ? 3 : 2
       const dynOv = `feralrage${stage}front`
       if (!overlays.includes(dynOv)) overlays.push(dynOv)
     } else if (stateName === 'maul' || stateId === 117) {
-      const chg = params.stats?.charge ?? params.stats?.progressive_charges ?? 1
-      const maxChg = Math.max(1, params.stats?.max_charges ?? 3)
+      const chg =
+        params.stats?.skill_frenzy ??
+        params.stats?.progressive_other ??
+        params.stats?.progressive_damage ??
+        1
+      const effLvl = params.stats?.modifierlist_level ?? slvl
+      const maxChg = Math.max(
+        1,
+        params.stats?.progressive_tohit ?? (effLvl > 0 ? Math.floor(effLvl / 2) + 3 : 3),
+      )
       const stage = chg <= 1 ? 1 : chg >= maxChg ? 3 : 2
       const dynOv = `maul${stage}front`
       if (!overlays.includes(dynOv)) overlays.push(dynOv)
     }
 
     // Collect reactive `auraeventfunc` from the source skill if applicable
+    const effectiveSkillId =
+      sourceSkillId > 0 ? sourceSkillId : (REACTIVE_STATE_TO_SKILL_ID_113C[stateName] ?? 0)
     const reactiveEvents: { event: string; funcId: number; skillId: number; slvl: number }[] = []
-    const skillRec = sourceSkillId > 0 ? this.registry?.getSkillById(sourceSkillId) : undefined
-    if (skillRec) {
-      if (skillRec.auraEvent1 && skillRec.auraEventFunc1 > 0) {
-        reactiveEvents.push({ event: skillRec.auraEvent1.toLowerCase(), funcId: skillRec.auraEventFunc1, skillId: sourceSkillId, slvl })
+    const skillRec =
+      effectiveSkillId > 0 ? this.registry?.getSkillById(effectiveSkillId) : undefined
+    const fallbackRec =
+      effectiveSkillId > 0 ? REACTIVE_FALLBACK_SKILLS_113C.get(effectiveSkillId) : undefined
+    if (skillRec || fallbackRec) {
+      const ev1 = skillRec?.auraEvent1 || fallbackRec?.auraEvent1 || ''
+      const fn1 =
+        skillRec?.auraEventFunc1 && skillRec.auraEventFunc1 > 0
+          ? skillRec.auraEventFunc1
+          : (fallbackRec?.auraEventFunc1 ?? 0)
+      const ev2 = skillRec?.auraEvent2 || fallbackRec?.auraEvent2 || ''
+      const fn2 =
+        skillRec?.auraEventFunc2 && skillRec.auraEventFunc2 > 0
+          ? skillRec.auraEventFunc2
+          : (fallbackRec?.auraEventFunc2 ?? 0)
+      const ev3 = skillRec?.auraEvent3 || fallbackRec?.auraEvent3 || ''
+      const fn3 =
+        skillRec?.auraEventFunc3 && skillRec.auraEventFunc3 > 0
+          ? skillRec.auraEventFunc3
+          : (fallbackRec?.auraEventFunc3 ?? 0)
+      if (ev1 && fn1 > 0) {
+        reactiveEvents.push({ event: ev1.toLowerCase(), funcId: fn1, skillId: effectiveSkillId, slvl })
       }
-      if (skillRec.auraEvent2 && skillRec.auraEventFunc2 > 0) {
-        reactiveEvents.push({ event: skillRec.auraEvent2.toLowerCase(), funcId: skillRec.auraEventFunc2, skillId: sourceSkillId, slvl })
+      if (ev2 && fn2 > 0) {
+        reactiveEvents.push({ event: ev2.toLowerCase(), funcId: fn2, skillId: effectiveSkillId, slvl })
       }
-      if (skillRec.auraEvent3 && skillRec.auraEventFunc3 > 0) {
-        reactiveEvents.push({ event: skillRec.auraEvent3.toLowerCase(), funcId: skillRec.auraEventFunc3, skillId: sourceSkillId, slvl })
+      if (ev3 && fn3 > 0) {
+        reactiveEvents.push({ event: ev3.toLowerCase(), funcId: fn3, skillId: effectiveSkillId, slvl })
       }
     }
 
@@ -365,6 +472,7 @@ export class StateBus {
       isAura && !isWarcryBuff
         ? `aura:${stateName}:${sourceUnitId}:${String(slvl)}`
         : `state:${stateName}`
+    const resolvedStats = this.resolveDefaultStateStats113c(stateName, sourceSkillId, slvl, params.stats)
     const newEntry: ActiveStateEntry = {
       stateId,
       stateName,
@@ -377,7 +485,7 @@ export class StateBus {
       expireFrame,
       durationFrames,
       overlays,
-      stats: params.stats ?? {},
+      stats: resolvedStats,
       reactiveEvents,
     }
 
@@ -420,7 +528,7 @@ export class StateBus {
       isAura,
       isCurse: curseType > 0,
       curseType,
-      stats: params.stats ?? {},
+      stats: resolvedStats,
     })
 
     const maxActiveSlvl = Math.max(
@@ -435,6 +543,68 @@ export class StateBus {
       ...(evictedState !== undefined ? { evictedState } : {}),
       activeSlvl: maxActiveSlvl,
     }
+  }
+
+  /**
+   * 1.13c (`samples/d2/D2Game.dll` `0x6FCC00B0` / `0x6FCBA1A0` + `samples/d2/excel/Skills.txt`):
+   * When a curse or aura state is applied without an explicit `stats` map (or for Fanaticism with
+   * only `{ is_ally: 1 }`), evaluate `aurastat1..6` / `aurastatcalc1..6` (or `passivestat1..5` for
+   * Fanaticism caster) from `Skills.txt` at `slvl` so the attached `StatList` modifier carries
+   * the authoritative `Skills.txt` stat deltas (`damageresist`, `fireresist`, `lightresist`,
+   * `coldresist`, `poisonresist`, `damagepercent`, `item_undeaddamage_percent`, `skill_armor_percent`).
+   * Note: if a caller explicitly passes `{}` (e.g. `SKILLS_SrvDo066` caster self-state on Sanctuary/Conviction),
+   * it is preserved untouched.
+   */
+  private resolveDefaultStateStats113c(
+    stateName: string,
+    sourceSkillId: number,
+    slvl: number,
+    explicitStats: Readonly<Record<string, number>> | undefined,
+  ): Readonly<Record<string, number>> {
+    const isFanatPartialAlly =
+      stateName === 'fanaticism' &&
+      explicitStats !== undefined &&
+      Object.keys(explicitStats).length > 0 &&
+      explicitStats.damagepercent === undefined
+    if (explicitStats !== undefined && !isFanatPartialAlly) {
+      return explicitStats
+    }
+    const skillId = sourceSkillId > 0 ? sourceSkillId : (DEFAULT_STATE_TO_SKILL_ID_113C[stateName] ?? 0)
+    if (skillId <= 0 || !(stateName in DEFAULT_STATE_TO_SKILL_ID_113C)) {
+      return explicitStats ?? {}
+    }
+    const registry = this.registry ?? tryGetSharedDataRegistry() ?? REACTIVE_FALLBACK_REGISTRY
+    const skill = registry?.getSkillById(skillId) ?? REACTIVE_FALLBACK_SKILLS_113C.get(skillId)
+    if (!skill) {
+      return explicitStats ?? {}
+    }
+    const calcCtx = {
+      activeSkill: skill,
+      slvl,
+      blvl: slvl,
+      registry,
+    }
+    const resolved: Record<string, number> = explicitStats ? { ...explicitStats } : {}
+    const pairs: [string, string][] = [
+      [skill.auraStat1, skill.auraStatCalc1],
+      [skill.auraStat2, skill.auraStatCalc2],
+      [skill.auraStat3, skill.auraStatCalc3],
+      [skill.auraStat4, skill.auraStatCalc4],
+      [skill.auraStat5, skill.auraStatCalc5],
+      [skill.auraStat6, skill.auraStatCalc6],
+    ]
+    for (const [statName, statCalc] of pairs) {
+      if (statName && statCalc) {
+        resolved[statName.toLowerCase()] = evaluateCalc(statCalc, calcCtx)
+      }
+    }
+    if (skill.id === 122) {
+      const isAlly = resolved.is_ally === 1
+      if (!isAlly && skill.passiveStat1 && skill.passiveCalc1) {
+        resolved[skill.passiveStat1.toLowerCase()] = evaluateCalc(skill.passiveCalc1, calcCtx)
+      }
+    }
+    return resolved
   }
 
   /**
@@ -520,6 +690,11 @@ export class StateBus {
     if (clean === 'chill' || clean === 'cold') {
       return this.entries.some(e => e.stateName === 'chill' || e.stateName === 'cold')
     }
+    if (clean === 'slow' || clean === 'slowed') {
+      return this.entries.some(
+        e => e.stateName === 'slow' || e.stateName === 'slowed' || e.stateId === 29,
+      )
+    }
     if (clean === 'venom' || clean === 'venomclaws') {
       return this.entries.some(
         e => e.stateName === 'venom' || e.stateName === 'venomclaws' || e.stateId === 31,
@@ -539,6 +714,11 @@ export class StateBus {
     const clean = stateNameOrId.trim().toLowerCase().replace(/^state_/, '')
     if (clean === 'chill' || clean === 'cold') {
       return this.entries.find(e => e.stateName === 'chill' || e.stateName === 'cold')
+    }
+    if (clean === 'slow' || clean === 'slowed') {
+      return this.entries.find(
+        e => e.stateName === 'slow' || e.stateName === 'slowed' || e.stateId === 29,
+      )
     }
     if (clean === 'venom' || clean === 'venomclaws') {
       return this.entries.find(
@@ -657,7 +837,7 @@ export class StateBus {
           const eligibleElem256 = isPoison ? 0 : remElem256
           const totalIncoming256 = remPhys256 + eligibleElem256
           if (totalIncoming256 > 0) {
-            const absorbPct = Math.min(95, entry.stats['energyshield_pct'] ?? calculateEnergyShieldAbsorbPct(entry.slvl))
+            const absorbPct = Math.min(95, entry.stats['item_damagetomana'] ?? calculateEnergyShieldAbsorbPct(entry.slvl))
             const tkBlvl = this.statList.getBaseSkillLevel(43) // Telekinesis (skillId = 43) blvl only!
             // 1.13c Telekinesis synergy: base 200% (32/16 = 2.0 mana per HP), -6.25% (1/16) per blvl in Telekinesis, floor 0.75 (12/16)
             const manaRatio16 = 32 - Math.min(20, Math.max(0, tkBlvl))
@@ -720,6 +900,38 @@ export class StateBus {
         }
       }
 
+      const evaluateReactiveFormula = (skillId: number, slvl: number, field: 'auraStatCalc1' | 'calc1'): number => {
+        const reg = this.registry ?? REACTIVE_FALLBACK_REGISTRY
+        const skillRec = this.registry?.getSkillById(skillId) ?? REACTIVE_FALLBACK_SKILLS_113C.get(skillId)
+        const fallbackRec = REACTIVE_FALLBACK_SKILLS_113C.get(skillId)
+        if (!skillRec) return 0
+        const expr =
+          field === 'auraStatCalc1'
+            ? (skillRec.auraStatCalc1 || skillRec.calc1 || fallbackRec?.auraStatCalc1 || fallbackRec?.calc1 || '')
+            : (skillRec.calc1 || skillRec.auraStatCalc1 || fallbackRec?.calc1 || fallbackRec?.auraStatCalc1 || '')
+        return evaluateCalc(expr, {
+          registry: reg,
+          activeSkill: skillRec,
+          slvl,
+          blvl: this.statList.getBaseSkillLevel(skillId),
+          getBaseSkillLevel: (id: number) => this.statList.getBaseSkillLevel(id),
+          getEffectiveSkillLevel: (id: number) => this.statList.getEffectiveSkillLevel(id),
+        })
+      }
+
+      const hasEventTrigger = (skillId: number, expectedEvent: string): boolean => {
+        if (entry.reactiveEvents && entry.reactiveEvents.length > 0) {
+          return entry.reactiveEvents.some(r => r.event === expectedEvent)
+        }
+        const skillRec = this.registry?.getSkillById(skillId)
+        const fallbackRec = REACTIVE_FALLBACK_SKILLS_113C.get(skillId)
+        if (!skillRec && !fallbackRec) return false
+        const ev1 = (skillRec?.auraEvent1 || fallbackRec?.auraEvent1 || '').toLowerCase()
+        const ev2 = (skillRec?.auraEvent2 || fallbackRec?.auraEvent2 || '').toLowerCase()
+        const ev3 = (skillRec?.auraEvent3 || fallbackRec?.auraEvent3 || '').toLowerCase()
+        return ev1 === expectedEvent || ev2 === expectedEvent || ev3 === expectedEvent
+      }
+
       // 2. Bone Armor (`state = bonearmor` or `auraeventfunc = 22`) absorbs physical damage
       if (
         (params.event === 'damagedinmelee' || params.event === 'absorbdamage') &&
@@ -730,7 +942,7 @@ export class StateBus {
           boneWall: this.statList.getBaseSkillLevel(78),
           bonePrison: this.statList.getBaseSkillLevel(88),
         })
-        const shieldPool256 = (entry.stats['damagearmor'] ?? defaultCap) * FIXED_ONE
+        const shieldPool256 = (entry.stats['bonearmor'] ?? defaultCap) * FIXED_ONE
         const absorb = Math.min(remPhys256, shieldPool256)
         absorbedPhys256 += absorb
         remPhys256 -= absorb
@@ -741,7 +953,7 @@ export class StateBus {
           this.applyState({
             stateNameOrId: 'bonearmor',
             slvl: entry.slvl,
-            stats: { ...entry.stats, damagearmor: newPool },
+            stats: { ...entry.stats, bonearmor: newPool },
           })
         }
       }
@@ -749,6 +961,8 @@ export class StateBus {
       // 3. Cyclone Armor (`state = cyclonearmor` or `auraeventfunc = 25`) absorbs elemental damage
       // 1.13c Ground Truth: D2Game SkillDruid.cpp:1182-1222 (D2GAME_EventFunc25_6FD00140)
       // Absorbs Fire, Cold, and Lightning ONLY; strictly ignores Poison, Physical, and Magic damage.
+      // Default shield capacity evaluates Skills.txt #235 `aurastatcalc1` (divided by 256):
+      // `(ln12*(100+(skill('Twister'.blvl)+skill('Tornado'.blvl)+skill('Hurricane'.blvl))*par8)/100)*256`
       const isCycloneArmorEligibleElem =
         !params.isPoison &&
         (params.elemType === 'fire' ||
@@ -756,14 +970,15 @@ export class StateBus {
           params.elemType === 'ltng' ||
           params.elemType === 'lightning')
       if (
-        params.event === 'absorbdamage' &&
         stateName === 'cyclonearmor' &&
+        hasEventTrigger(235, params.event) &&
         isCycloneArmorEligibleElem &&
         remElem256 > 0
       ) {
-        const defaultCap = 40 + (entry.slvl - 1) * 12
-        const currentPool =
-          entry.stats['cyclone_armor_absorb'] ?? entry.stats['magicarmor'] ?? defaultCap
+        const defaultCap = Math.trunc(
+          evaluateReactiveFormula(235, entry.slvl, 'auraStatCalc1') / FIXED_ONE,
+        )
+        const currentPool = entry.stats['bonearmor'] ?? defaultCap
         const shieldPool256 = currentPool * FIXED_ONE
         const absorb = Math.min(remElem256, shieldPool256)
         absorbedElem256 += absorb
@@ -777,15 +992,17 @@ export class StateBus {
             slvl: entry.slvl,
             stats: {
               ...entry.stats,
-              cyclone_armor_absorb: newPool,
-              magicarmor: newPool,
+              bonearmor: newPool,
             },
           })
         }
       }
 
       // 4. Chilling Armor (`state = chillingarmor`, `auraeventfunc = 1`) on `hitbymissile`
-      if (params.event === 'hitbymissile' && (stateName === 'chillingarmor' || stateName === 'chillarmor')) {
+      if (
+        (stateName === 'chillingarmor' || stateName === 'chillarmor') &&
+        hasEventTrigger(60, params.event)
+      ) {
         const returnFire = params.returnFire !== undefined ? Boolean(params.returnFire) : true
         if (returnFire) {
           spawnedMissiles.push('chillingarmorbolt')
@@ -849,7 +1066,7 @@ export class StateBus {
       }
 
       // 6. Shiver Armor (`state = shiverarmor`, `auraeventfunc = 3`) on `attackedinmelee`
-      if (params.event === 'attackedinmelee' && stateName === 'shiverarmor') {
+      if (stateName === 'shiverarmor' && hasEventTrigger(50, params.event)) {
         attackerStatesApplied.push('cold')
         const overlayToken =
           this.registry?.getSkillById(50)?.cltOverlayA.trim().toLowerCase() || 'shiverarmor_hit'
@@ -881,13 +1098,14 @@ export class StateBus {
         })
       }
 
-      // 7. Thorns & Spirit of Barbs (`state = thorns | barbs`, `auraeventfunc = 4`) on `damagedinmelee`
+      // 7. Thorns (#103), Spirit of Barbs (#296), and Iron Golem (#90) (`auraeventfunc = 4`) on `damagedinmelee`
       if (
-        params.event === 'damagedinmelee' &&
-        (stateName === 'thorns' || stateName === 'barbs') &&
+        (stateName === 'thorns' || stateName === 'barbs' || stateName === 'irongolem') &&
+        hasEventTrigger(stateName === 'barbs' ? 296 : stateName === 'irongolem' ? 90 : 103, params.event) &&
         remPhys256 > 0
       ) {
-        const fallbackPct = stateName === 'barbs' ? 50 + (entry.slvl - 1) * 20 : 250 + (entry.slvl - 1) * 40
+        const thornsSkillId = stateName === 'barbs' ? 296 : stateName === 'irongolem' ? 90 : 103
+        const fallbackPct = evaluateReactiveFormula(thornsSkillId, entry.slvl, 'auraStatCalc1')
         const reflectPct = entry.stats['thorns_percent'] ?? fallbackPct
         let rawReflect = Math.trunc((remPhys256 * reflectPct) / 100)
         if (params.isPvP) {
@@ -905,25 +1123,20 @@ export class StateBus {
       }
 
       // 8. Iron Maiden (`state = ironmaiden`, `auraevent1 = domeleedamage`, `auraeventfunc = 4`)
-      if (params.event === 'domeleedamage' && stateName === 'ironmaiden' && remPhys256 > 0) {
+      if (stateName === 'ironmaiden' && hasEventTrigger(76, params.event) && remPhys256 > 0) {
         const basePct =
-          entry.stats['ironmaiden_return_pct'] ??
           entry.stats['thorns_percent'] ??
-          (200 + (entry.slvl - 1) * 25)
+          evaluateReactiveFormula(76, entry.slvl, 'auraStatCalc1')
         const reflectPct = params.isPvP ? Math.floor(basePct / 4) : basePct
         reflectedPhys256 += Math.trunc((remPhys256 * reflectPct) / 100)
       }
 
-      // 8. Life Tap (`state = lifetap`, `auraeventfunc = 5`) on `damagedinmelee` / `damagedbymissile`
-      if (
-        (params.event === 'damagedinmelee' || params.event === 'damagedbymissile') &&
-        stateName === 'lifetap' &&
-        remPhys256 > 0
-      ) {
+      // 9. Life Tap (`state = lifetap`, `auraeventfunc = 5`) on `damagedinmelee` / `damagedbymissile`
+      if (stateName === 'lifetap' && hasEventTrigger(82, params.event) && remPhys256 > 0) {
         attackerHealed256 += Math.trunc(remPhys256 / 2)
       }
 
-      // 9. Blood Golem (`state = bloodgolem`, `auraeventfunc = 23/26`)
+      // 10. Blood Golem (`state = bloodgolem`, `auraeventfunc = 23/26`)
       // CRITICAL 1.13c RULE (`patch.txt` line 124): Blood Golem no longer has negative shared life
       // when taking damage (`damagedinmelee` does NOT drain owner HP!), while positive life steal
       // on `domeleedamage` heals the Necromancer (`30%`).
@@ -935,14 +1148,19 @@ export class StateBus {
         }
       }
 
-      // 10. Clay Golem (`state = claygolem`, `auraeventfunc = 27`) slows enemy on melee contact
-      if (params.event === 'attackedinmelee' && stateName === 'claygolem') {
+      // 11. Clay Golem (`state = claygolem`, `auraevent1 = damagedinmelee`, `auraeventfunc = 27`)
+      // 1.13c Ground Truth (`D2Game.dll` `0x6FC6EF70` `SKILLS_EventFunc27_ClayGolem`):
+      // Triggered ONLY on `damagedinmelee` (not `attackedinmelee`), applies `STATE_SLOWED` (`slow`)
+      // for 750 frames (`0x2EE`) with `item_slow = dm34(0, 75)`.
+      if (stateName === 'claygolem' && hasEventTrigger(75, params.event)) {
+        const slowPct =
+          entry.stats['item_slow'] ?? evaluateReactiveFormula(75, entry.slvl, 'auraStatCalc1')
         attackerStatesApplied.push('slow')
         params.attackerStateBus?.applyState({
           stateNameOrId: 'slow',
           slvl: entry.slvl,
-          durationFrames: 200,
-          stats: { item_slow: Math.min(75, 15 + entry.slvl * 3) },
+          durationFrames: 750,
+          stats: { item_slow: slowPct },
         })
       }
     }

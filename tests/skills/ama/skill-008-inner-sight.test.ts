@@ -147,7 +147,7 @@ describe('[Skill #008] Inner Sight (AMA) — 1.13c Parity (Issue #162)', () => {
       stateNameOrId: 'amplifydamage',
       slvl: 1,
       durationFrames: 500,
-      stats: { amplify_phys_pierce: 100 },
+      stats: { damageresist: -100 },
       curseTypeOverride: 1,
     })
     expect(dummy.stateBus.hasState('amplifydamage')).toBe(true)

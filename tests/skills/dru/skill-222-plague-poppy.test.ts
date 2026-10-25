@@ -55,7 +55,7 @@ describe('[Skill #222] Plague Poppy (DRU) — 1.13c Parity (Issue #315)', () => 
     expect(r20.durationFrames).toBe(100)
     expect(r20.minElemDmg).toBe(84)
     expect(r20.maxElemDmg).toBe(86)
-    expect(r20.radiusSubtiles).toBe(22)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(1)
     expect(r20.cooldownFrames).toBe(0)
   })

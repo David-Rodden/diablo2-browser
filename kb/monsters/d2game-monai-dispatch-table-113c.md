@@ -6,6 +6,8 @@
 
 ## Table location and indexing
 
+> **Correction Note (Issue #1466)**: `0x6FD274A8` is `gpSkillSrvDoFuncTable` (dispatched at `0x6FC4F3D2` by skill `srvdofunc`). The actual `MonAI.txt` 148-entry table (`gpMonsterAiFunctionTable`, 16-byte stride `{ dwAiFlag, pfnAiInit, pfnAiThink, pfnAiExtra }`) is at **`0x6FD2E788`**, indexed by `D2MonStatsTxt.wAI` (`+0x01C`) in `AIGENERAL_SetAiFunction` (`0x6FCC03D0`). See `kb/monsters/d2game-pet-hireable-ai-113c.md` for the exact `pfnAiThink` VAs of all pet and hireling AI rows.
+
 - Table VA: **`0x6FD274A8`**, 148 entries (4 bytes each), index `0..147`
   matching the `MonAi.txt` row order in `MONAI_113C_ROWS`.
 - Dispatch site: `0x6FC4F3D2`:

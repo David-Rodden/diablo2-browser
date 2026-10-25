@@ -2,6 +2,19 @@
  * 1.13c Monster Hit/Death FX, Screen Shake, and Quest Visual Controllers (`src/client/world/world-quest-fx.ts`).
  */
 
+import {
+  HELLFORGE_OBJECT_CLASS,
+  HELLFORGE_SMASH_SOUND,
+  HELLFORGE_SONG_SOUND,
+  HF_CONTROL_MISSILE,
+} from './quest-fx-hellforge-113c.ts'
+import {
+  ANYA_CENTER_MISSILE,
+  ANYA_INITIAL_TARGET_Y,
+  FROZEN_ANYA_OBJECT_CLASS,
+  TAINTED_SUN_ALTAR_OBJECT_CLASS,
+  TAINTED_SUN_CONTROL_MISSILE,
+} from './quest-fx-tainted-anya-baal-113c.ts'
 import { d2Rand, LIGHT_SEED_HI, type D2Seed } from '../../common/drlg/light-grid.ts'
 import { getMissileTxtData } from '../../common/skills/missiles-data.ts'
 import {
@@ -209,15 +222,18 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
   }
   const mlvl = Math.max(1, unit.stats.get(12) || 1)
 
-  // 1. Freeze / Shatter on Death: States.txt shatter=1 (#1 freeze, #107 shatter, #184 uberminion) or MonUMod #35
-  // shatter_on_death. The icebreak shards' MissCltHitFunc[31] leaves the icebreak*melt puddle (#1453).
+  // 1. Freeze / Shatter on Death (`D2Client.dll` 0x6FAFBEC0): States.txt shatter=1 (#1 freeze, #107 shatter,
+  // #184 uberminion) or MonUMod #35 shatter_on_death. Spawns with dwFlags = 0x2020 (0x6FB63570 4-way shard direction),
+  // and MissCltHitFunc[31] leaves the icebreak*melt puddle at matching direction (#1453).
   if (hasShatterState113c(unit.states) || hasMonsterUMod(unit, MON_UMOD.SHATTER_ON_DEATH)) {
     unit.corpseSuppressed = true
+    const shatterDir = (unit.id + Math.round(unit.x) + Math.round(unit.y)) & 3
     const shatterMissiles = getFreezeShatterMissiles(unit.classId, this.getUnitSizeX(unit))
     for (const mKey of shatterMissiles) {
       const shard = this.spawnMissileByKey(mKey, unit.x, unit.y, unit.x, unit.y, {
         ownerType: 'monster',
         ownerId: unit.id,
+        direction: mKey === 'icebreaksmoke' ? 0 : shatterDir,
         loopAnim: false,
       })
       shard.vx = 0
@@ -825,4 +841,74 @@ export function spawnCairnSkyBoltImpl(this: ClientWorldInternal, x: number, y: n
   bolt.vx = 0
   bolt.vy = 0
   return bolt
+}
+
+/**
+ * 0x6fb03220 (special quest event 14) once the forge is found: song override 0x1251, PlaySound(0x23, forge) and
+ * client missile 373 `hfcontrol` at the forge with TargetX = forge id, TargetY = 0.
+ */
+export function spawnHellforgeShowAtForgeImpl(this: ClientWorldInternal, forge: ClientUnit): ClientUnit {
+  if (forge.unitType !== 'object' || forge.classId !== HELLFORGE_OBJECT_CLASS) {
+    throw new Error(`spawnHellforgeShowAtForge: unit ${forge.key} is not objects.txt 376 Hellforge`)
+  }
+  this.pushSoundRequest({ stingerSoundId: HELLFORGE_SONG_SOUND })
+  this.pushSoundRequest({ soundId: HELLFORGE_SMASH_SOUND, unit: { unitType: forge.unitType, id: forge.id, x: forge.x, y: forge.y } })
+  const x = Math.floor(forge.x)
+  const y = Math.floor(forge.y)
+  const ctl = this.spawnMissileByKey('hfcontrol', x, y, x, y, {
+    classId: HF_CONTROL_MISSILE,
+    ownerType: 'player',
+    ownerId: this.selfId || 1,
+  })
+  ctl.vx = 0
+  ctl.vy = 0
+  ctl.cltCountdown = forge.id
+  ctl.cltCountdownY = 0
+  return ctl
+}
+
+/**
+ * 0x6fb02c50 (special quest event 6) once the Tainted Sun altar (`Objects.txt` 149) is found:
+ * spawns client missile 350 (`0x15e` `taintedsuncontrol`) at `(altarX, altarY)` with
+ * `TargetX = altar.id`, `TargetY = 1` (`0x6fb02cae`).
+ */
+export function spawnTaintedSunShowAtAltarImpl(this: ClientWorldInternal, altar: ClientUnit): ClientUnit {
+  if (altar.unitType !== 'object' || altar.classId !== TAINTED_SUN_ALTAR_OBJECT_CLASS) {
+    throw new Error(`spawnTaintedSunShowAtAltar: unit ${altar.key} is not objects.txt 149 taintedsunaltar`)
+  }
+  const x = Math.floor(altar.x)
+  const y = Math.floor(altar.y)
+  const ctl = this.spawnMissileByKey('taintedsuncontrol', x, y, x, y, {
+    classId: TAINTED_SUN_CONTROL_MISSILE,
+    ownerType: 'player',
+    ownerId: this.selfId || 1,
+  })
+  ctl.vx = 0
+  ctl.vy = 0
+  ctl.cltCountdown = altar.id
+  ctl.cltCountdownY = 1
+  return ctl
+}
+
+/**
+ * 0x6fb02b70 (special quest event 16) once Frozen Anya (`Objects.txt` 460) is found:
+ * spawns client missile 528 (`0x210` `anya center`) at `(anyaX, anyaY)` with
+ * `TargetX = anya.id`, `TargetY = 25` (`0x19`, `0x6fb02bcd`).
+ */
+export function spawnAnyaRescueShowAtAnyaImpl(this: ClientWorldInternal, anya: ClientUnit): ClientUnit {
+  if (anya.unitType !== 'object' || anya.classId !== FROZEN_ANYA_OBJECT_CLASS) {
+    throw new Error(`spawnAnyaRescueShowAtAnya: unit ${anya.key} is not objects.txt 460 FrozenAnya`)
+  }
+  const x = Math.floor(anya.x)
+  const y = Math.floor(anya.y)
+  const ctl = this.spawnMissileByKey('anya center', x, y, x, y, {
+    classId: ANYA_CENTER_MISSILE,
+    ownerType: 'player',
+    ownerId: this.selfId || 1,
+  })
+  ctl.vx = 0
+  ctl.vy = 0
+  ctl.cltCountdown = anya.id
+  ctl.cltCountdownY = ANYA_INITIAL_TARGET_Y
+  return ctl
 }

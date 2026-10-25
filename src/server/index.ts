@@ -93,7 +93,6 @@ export {
   applyEnchantBuff,
   canCastEnchantOn,
   castSkill,
-  castSkillDef,
   type SkillCastBackendContext,
   type SkillCastCharacterLike,
   type SkillCastContext,

@@ -173,10 +173,16 @@ export function defaultViewportResolution(mode: 'pd2' | '113c' = 'pd2'): Viewpor
 }
 
 export const VALID_WEATHER_OVERRIDES: readonly WeatherOverrideSetting[] = ['off', 'rain', 'snow'] as const
+export const VALID_HUD_LAYOUT_MODES: readonly HudLayoutMode[] = [
+  'auto',
+  'classic',
+  'compact-d2r',
+] as const
 
 export const DEFAULT_LIGHT_QUALITY: LightQualitySetting = 2
 export const DEFAULT_AUDIO_MUTED = false
 export const DEFAULT_MASTER_VOLUME = 0.8
+export const DEFAULT_HUD_LAYOUT_MODE: HudLayoutMode = 'auto'
 export const DEFAULT_MULTIBOX_ENABLED = false
 export const DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY: MultiboxAudioFocusPolicy = 'focus-only'
 export const DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED = true
@@ -211,6 +217,7 @@ export function createDefaultClientSettings(defaultLang?: GameLang): ClientSetti
     showRuneNumbers: false,
     extraItemContext: true,
     keyBindings: createDefaultKeyBindings(),
+    hudLayoutMode: DEFAULT_HUD_LAYOUT_MODE,
     multiboxEnabled: DEFAULT_MULTIBOX_ENABLED,
     multiboxAudioFocusPolicy: DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY,
     multiboxAlertSoundEnabled: DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED,
@@ -246,6 +253,7 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
   showRuneNumbers: false,
   extraItemContext: true,
   keyBindings: DEFAULT_KEY_BINDINGS,
+  hudLayoutMode: DEFAULT_HUD_LAYOUT_MODE,
   multiboxEnabled: DEFAULT_MULTIBOX_ENABLED,
   multiboxAudioFocusPolicy: DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY,
   multiboxAlertSoundEnabled: DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED,
@@ -495,6 +503,18 @@ export function normalizeLightQuality(value: unknown, fallback: LightQualitySett
   return n === 0 || n === 1 || n === 2 ? n : fallback
 }
 
+export function normalizeHudLayoutMode(
+  value: unknown,
+  fallback: HudLayoutMode = DEFAULT_HUD_LAYOUT_MODE,
+): HudLayoutMode {
+  if (typeof value !== 'string') return fallback
+  const clean = value.trim().toLowerCase()
+  if ((VALID_HUD_LAYOUT_MODES as readonly string[]).includes(clean)) {
+    return clean as HudLayoutMode
+  }
+  return fallback
+}
+
 /**
  * Sanitize an arbitrary input value into a strictly valid `ClientSettings` object.
  * Never throws; strips unknown fields and replaces corrupt fields with defaults.
@@ -626,10 +646,10 @@ export function sanitizeClientSettings(
   const extraItemContext =
     typeof rec.extraItemContext === 'boolean' ? rec.extraItemContext : defaults.extraItemContext
   const keyBindings = sanitizeKeyBindings(rec.keyBindings)
-  const hudLayoutMode: HudLayoutMode | undefined =
-    rec.hudLayoutMode === 'auto' || rec.hudLayoutMode === 'classic' || rec.hudLayoutMode === 'compact-d2r'
-      ? rec.hudLayoutMode
-      : undefined
+  const hudLayoutMode: HudLayoutMode = normalizeHudLayoutMode(
+    rec.hudLayoutMode,
+    defaults.hudLayoutMode ?? DEFAULT_HUD_LAYOUT_MODE,
+  )
   const skillWheelBankMode: SkillWheelBankMode | undefined =
     rec.skillWheelBankMode === 'toggle' || rec.skillWheelBankMode === 'hold'
       ? rec.skillWheelBankMode
@@ -682,10 +702,10 @@ export function sanitizeClientSettings(
     showRuneNumbers,
     extraItemContext,
     keyBindings,
+    hudLayoutMode,
     multiboxEnabled,
     multiboxAudioFocusPolicy,
     multiboxAlertSoundEnabled,
-    ...(hudLayoutMode !== undefined ? { hudLayoutMode } : {}),
     ...(skillWheelBankMode !== undefined ? { skillWheelBankMode } : {}),
     ...(mobileAutoPickupGoldAndPotions !== undefined ? { mobileAutoPickupGoldAndPotions } : {}),
     ...(mobileHapticsEnabled !== undefined ? { mobileHapticsEnabled } : {}),

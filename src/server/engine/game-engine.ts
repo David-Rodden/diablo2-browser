@@ -16,6 +16,7 @@ export * from './world-arena.ts'
 import { tickCombat, createWorld, spawnMonsters, spawnMonsterPacks, damageMonster, rebindPlayer, levelForXp } from '../ai/monster-ai.ts'
 import type { CombatWorld, CombatOptions, MonsterPack, MonsterStats, SafeZone, CombatPlayer, Monster, CombatEvent } from '../ai/monster-ai.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
+import { D2_EXPERIENCE_TABLE_99 } from '../../common/skills/formulas.ts'
 import { Inventory, goldItem, totalStat } from '../../common/items/items.ts'
 import type { Item, ItemBase, Affix, PlacedItem } from '../../common/items/items.ts'
 import { castSkill, tickProjectiles, CANONICAL_113C_MISSILES, ISO_GROUND_ASPECT_RATIO, createActiveOverlay, getSkillCastOverlay, isAuraSkill, getAuraOverlayName, getAuraOverlayNames } from '../skills/skills.ts'
@@ -126,6 +127,7 @@ export interface PendingMonsterDrop {
     readonly playerGf: number
     readonly gamePlayers: number
     readonly partyPlayers: number
+    readonly monsterPlayerCount?: number | undefined
   }
   items?: readonly Item[] | undefined
 }
@@ -347,6 +349,7 @@ export class GameEngine {
 
   tickCount = 0
   nextDelayByTarget: Map<string | number, number> = new Map()
+  public readonly spawnedUniqueIds = new Set<number>()
 
   public terrain: WorldMapProvider
   public opts: GameEngineOptions
@@ -356,15 +359,19 @@ export class GameEngine {
     const terrain: WorldMapProvider = isClassArg
       ? { widthPx: 2000, heightPx: 2000, overlap: () => 0 }
       : terrainOrClass
+    const defaultClassStats =
+      CANONICAL_CHARSTATS[typeof terrainOrClass === 'string' ? terrainOrClass : 'sor'] ??
+      CANONICAL_CHARSTATS.sor
     const opts: GameEngineOptions = rawOpts ?? {
       spawn: { x: 200, y: 200 },
       stats: [],
-      xpTable: [0, 0, 500, 1500, 3750],
+      xpTable: D2_EXPERIENCE_TABLE_99,
       skills: [],
       npcDefs: [],
       questDefs: [],
       combatOptions: {
-        playerSpeed: 170,
+        // 1.13c CharStats.txt WalkVelocity = 6 -> 6 * 3/2 = 9.0 sub-tiles/s = 144 px/s
+        playerSpeed: defaultClassStats.walkVelocity * 24,
         playerReach: 48,
         playerCooldownTicks: 5,
         playerDamage: 10,
@@ -420,6 +427,7 @@ export class GameEngine {
     } else if (count > 0) {
       spawnMonsters(this.world, opts.stats, count, opts.spawn, spread, this.terrain, spawnSeed)
     }
+    this.stampSpawnedMonsterPlayerCounts()
     this.loot = new Rng(opts.lootSeed ?? 0x5eed)
     this.bag = new Inventory(opts.inventoryCols, opts.inventoryRows)
     this.questLog = new QuestLog(opts.questDefs ?? [])
@@ -706,12 +714,18 @@ export class GameEngine {
     const beforeY = player.y
 
     this.streamingManager?.update(player.x, player.y)
+    this.stampSpawnedMonsterPlayerCounts()
 
-    // Authentic 1.13c mana regeneration: full mana pool over 120 seconds (3000 ticks at 25fps)
+    // 1.13c PLAYER_UpdateMana (0x6FC95DF0): full mana pool over CharStats.ManaRegen seconds (25fps),
+    // scaled by (100 + manaregen) / 100.
     if (player.mana < player.maxMana) {
-      const rem = (player.manaRemainder256 ?? 0) + player.maxMana
-      const whole = Math.floor(rem / 3000)
-      player.manaRemainder256 = rem % 3000
+      const cStats = CANONICAL_CHARSTATS[player.classCode ?? 'sor'] ?? CANONICAL_CHARSTATS.sor
+      const itemManaRegenPct = (player as { manaRegenPct?: number }).manaRegenPct ?? 0
+      const denom = 100 * 25 * cStats.manaRegenSeconds
+      const rem =
+        (player.manaRemainder256 ?? 0) + player.maxMana * (100 + Math.max(0, itemManaRegenPct))
+      const whole = Math.floor(rem / denom)
+      player.manaRemainder256 = rem % denom
       if (whole > 0) {
         player.mana = Math.min(player.maxMana, player.mana + whole)
       }
@@ -737,7 +751,6 @@ export class GameEngine {
           projectile: rawWanted.projectile ?? rawWanted.kind === 'projectile',
           baseMinDamage: rawWanted.baseMinDamage ?? rawWanted.damage ?? 1,
           baseMaxDamage: rawWanted.baseMaxDamage ?? rawWanted.damage ?? 1,
-          damagePerLevel: rawWanted.damagePerLevel ?? 0,
           range:
             rawWanted.range ??
             Math.max(16, Math.round(((rawWanted.rangeTicks ?? 20) * (rawWanted.speed ?? 200)) / 25)),
@@ -2017,6 +2030,10 @@ export class GameEngine {
       stats: { id: event.subjectId ?? '', name: event.subjectId ?? '', hp: 0, damage: 0, level: monsterLevel, rank: monsterRank } as any,
     } as Monster)
 
+    const monsterPlayerCount =
+      targetMonster.monsterPlayerCount ??
+      targetMonster.stats.monsterPlayerCount ??
+      ((targetMonster.stats.align ?? 0) !== 0 ? 1 : this.gamePlayers)
     const pending: PendingMonsterDrop = {
       monsterIndex: targetMonster.index,
       subjectId: event.subjectId ?? '',
@@ -2035,6 +2052,7 @@ export class GameEngine {
         playerGf,
         gamePlayers: this.gamePlayers,
         partyPlayers: this.partyPlayers,
+        monsterPlayerCount,
       },
     }
     targetMonster.pendingDrop = pending
@@ -2067,11 +2085,15 @@ export class GameEngine {
       difficulty: this.opts.difficulty ?? 'normal',
       gamePlayers: pending.killerContext.gamePlayers,
       partyPlayers: pending.killerContext.partyPlayers,
+      ...(pending.killerContext.monsterPlayerCount !== undefined
+        ? { monsterPlayerCount: pending.killerContext.monsterPlayerCount }
+        : {}),
       playerMf: pending.killerContext.playerMf,
       playerGf: pending.killerContext.playerGf,
       isBoss: pending.isBoss,
       isNoRatio: pending.isNoRatio,
       monsterRng: new D2Rng(dropSeed),
+      spawnedUniqueIds: this.spawnedUniqueIds,
     })
 
     this.metrics.dropsRolled += 1
@@ -2162,9 +2184,15 @@ export class GameEngine {
         this.world.player.statPoints = (this.world.player.statPoints ?? 0) + levelsGained * 5
         this.world.player.skillPoints = (this.world.player.skillPoints ?? 0) + levelsGained * 1
         const cStats = CANONICAL_CHARSTATS[this.world.player.classCode ?? 'sor'] ?? CANONICAL_CHARSTATS.sor
-        const lifeGain = Math.floor(cStats.perLevel.life * levelsGained)
-        const stamGain = Math.floor(cStats.perLevel.stamina * levelsGained)
-        const manaGain = Math.floor(cStats.perLevel.mana * levelsGained)
+        const lifeGain =
+          Math.floor((newLevel - 1) * cStats.perLevel.life) -
+          Math.floor((oldLevel - 1) * cStats.perLevel.life)
+        const stamGain =
+          Math.floor((newLevel - 1) * cStats.perLevel.stamina) -
+          Math.floor((oldLevel - 1) * cStats.perLevel.stamina)
+        const manaGain =
+          Math.floor((newLevel - 1) * cStats.perLevel.mana) -
+          Math.floor((oldLevel - 1) * cStats.perLevel.mana)
         this.world.player.maxHp += lifeGain
         this.world.player.hp = Math.min(this.world.player.maxHp, this.world.player.hp + lifeGain)
         this.world.player.maxStamina = (this.world.player.maxStamina ?? cStats.baseVitals.stamina) + stamGain
@@ -2535,16 +2563,32 @@ export class GameEngine {
     } else if (normStat === 'dex') {
       player.dex = (player.dex ?? cStats.baseAttributes.dexterity) + 1
     } else if (normStat === 'vit') {
+      const prevVitAdded = Math.max(
+        0,
+        (player.vit ?? cStats.baseAttributes.vitality) - cStats.baseAttributes.vitality,
+      )
       player.vit = (player.vit ?? cStats.baseAttributes.vitality) + 1
-      const lifeGain = Math.floor(cStats.perStatPoint.lifePerVitality)
-      const stamGain = Math.floor(cStats.perStatPoint.staminaPerVitality)
+      const nextVitAdded = prevVitAdded + 1
+      const lifeGain =
+        Math.floor(nextVitAdded * cStats.perStatPoint.lifePerVitality) -
+        Math.floor(prevVitAdded * cStats.perStatPoint.lifePerVitality)
+      const stamGain =
+        Math.floor(nextVitAdded * cStats.perStatPoint.staminaPerVitality) -
+        Math.floor(prevVitAdded * cStats.perStatPoint.staminaPerVitality)
       player.maxHp += lifeGain
       player.hp = Math.min(player.maxHp, player.hp + lifeGain)
       player.maxStamina = (player.maxStamina ?? cStats.baseVitals.stamina) + stamGain
       player.stamina = Math.min(player.maxStamina, (player.stamina ?? player.maxStamina) + stamGain)
     } else if (normStat === 'ene') {
+      const prevEneAdded = Math.max(
+        0,
+        (player.ene ?? cStats.baseAttributes.energy) - cStats.baseAttributes.energy,
+      )
       player.ene = (player.ene ?? cStats.baseAttributes.energy) + 1
-      const manaGain = Math.floor(cStats.perStatPoint.manaPerEnergy)
+      const nextEneAdded = prevEneAdded + 1
+      const manaGain =
+        Math.floor(nextEneAdded * cStats.perStatPoint.manaPerEnergy) -
+        Math.floor(prevEneAdded * cStats.perStatPoint.manaPerEnergy)
       player.maxMana += manaGain
       player.mana = Math.min(player.maxMana, player.mana + manaGain)
     }
@@ -2562,12 +2606,11 @@ export class GameEngine {
     player.xp += gain
     this.world.xp = player.xp
 
-    let newLevel = (this.opts.xpTable && this.opts.xpTable.length > 1)
-      ? levelForXp(player.xp, this.opts.xpTable)
-      : 1
-    if (newLevel <= oldLevel && player.xp >= oldLevel * 100 && (!this.opts.xpTable || this.opts.xpTable.length <= 2)) {
-      newLevel = Math.max(newLevel, Math.floor(player.xp / 100) + 1)
-    }
+    const xpTable =
+      this.opts.xpTable && this.opts.xpTable.length > 1
+        ? this.opts.xpTable
+        : D2_EXPERIENCE_TABLE_99
+    const newLevel = levelForXp(player.xp, xpTable)
 
     const levelsGained = Math.max(0, newLevel - oldLevel)
     if (levelsGained > 0) {
@@ -2576,9 +2619,15 @@ export class GameEngine {
       player.statPoints = (player.statPoints ?? 0) + levelsGained * 5
       player.skillPoints = (player.skillPoints ?? 0) + levelsGained * 1
       const cStats = CANONICAL_CHARSTATS[player.classCode ?? 'sor'] ?? CANONICAL_CHARSTATS.sor
-      const lifeGain = Math.floor(cStats.perLevel.life * levelsGained)
-      const stamGain = Math.floor(cStats.perLevel.stamina * levelsGained)
-      const manaGain = Math.floor(cStats.perLevel.mana * levelsGained)
+      const lifeGain =
+        Math.floor((newLevel - 1) * cStats.perLevel.life) -
+        Math.floor((oldLevel - 1) * cStats.perLevel.life)
+      const stamGain =
+        Math.floor((newLevel - 1) * cStats.perLevel.stamina) -
+        Math.floor((oldLevel - 1) * cStats.perLevel.stamina)
+      const manaGain =
+        Math.floor((newLevel - 1) * cStats.perLevel.mana) -
+        Math.floor((oldLevel - 1) * cStats.perLevel.mana)
       player.maxHp += lifeGain
       player.hp = Math.min(player.maxHp, player.hp + lifeGain)
       player.maxStamina = (player.maxStamina ?? cStats.baseVitals.stamina) + stamGain
@@ -2831,6 +2880,10 @@ export class GameEngine {
       }
     }
     const idx = this.world.monsters.length
+    const monsterPlayerCount =
+      (kind?.align ?? stats.align ?? 0) !== 0
+        ? 1
+        : Math.max(1, Math.trunc(this.gamePlayers))
     const monster: Monster = {
       index: idx,
       stats,
@@ -2843,9 +2896,19 @@ export class GameEngine {
       hitFlash: 0,
       corpseTicks: 0,
       dwInitSeed: (((this.loot.lo ^ Math.imul(idx + 1, 0x9e3779b9)) >>> 0) || 1),
+      monsterPlayerCount,
     }
     this.world.monsters.push(monster)
     return monster
+  }
+
+  private stampSpawnedMonsterPlayerCounts(): void {
+    const g = Math.max(1, Math.trunc(this.gamePlayers))
+    for (const m of this.world.monsters) {
+      if (m.monsterPlayerCount === undefined) {
+        m.monsterPlayerCount = (m.stats.align ?? 0) !== 0 ? 1 : g
+      }
+    }
   }
 
   /**

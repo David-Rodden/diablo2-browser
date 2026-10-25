@@ -27,16 +27,18 @@ import type { CombatTerrain, CombatWorld, MonsterPack } from '../../common/units
 import { Rng } from '../../common/rng/d2-rng.ts'
 import {
   getCanonicalMonsterKinds,
-  monsterBudget,
   planMonsterGroups,
   resolveEliteCandidates,
-  rollEliteGroup,
+  rollPackKind113c,
+  roomMonsterAttempts113c,
   selectLevelTypes,
   type Difficulty,
   type LevelMonsterPlan,
   type MonsterGroup,
   type MonsterKind,
   type MonsterRank,
+  type PackKindRollState113c,
+  type RolledPackKind113c,
 } from '../../common/units/monsters-data.ts'
 import { getLevelMonsterPlan113c } from '../../common/world/level-monster-plans.ts'
 
@@ -51,6 +53,9 @@ export {
   partitionMapIntoRooms,
   spawnMonsterPacksByRooms,
   spawnPacksInRoom,
+  rollPackKind113c,
+  type PackKindRollState113c,
+  type RolledPackKind113c,
   type MonsterStreamingOptions,
   type MonsterStreamingOptions as RoomStreamerOptions,
   type StreamingRoomDef,
@@ -213,17 +218,29 @@ export interface PopulationRoomRect {
   readonly seed: number
 }
 
-/** A level's population plan, resolved once when the level is first streamed. */
+/**
+ * A level's population plan and mutable elite progression state (`D2Game.dll` `pMonsterRegion`),
+ * resolved once when the level is first streamed.
+ *
+ * Mirrors `pMonsterRegion` fields:
+ * - `+0x2c0` (`dword`): `totalRooms` (`dwNumRooms`)
+ * - `+0x2c4` (`dword`): `activatedRooms` (`dwRoomsPopulated`, incremented at `0x6FC66CE5`)
+ * - `+0x2c8` (`dword`): `spawnedElites` (`dwUniquePacksSpawned`, incremented at `0x6FC43260`)
+ */
 export interface LevelPopulationPlan113c {
   readonly levelId: number
   readonly difficulty: Difficulty
   readonly plan: LevelMonsterPlan
   /** `NumMon` types drawn (weighted by `Rarity`) from `mon1..10` / `nmon1..10`. */
   readonly types: readonly MonsterKind[]
-  /** Candidates for champion / unique packs (`umon1..10`). */
+  /** Candidates for champion / unique packs (`umon1..10` on Normal, `types` on NM/Hell per `0x6FCFF4A0`). */
   readonly eliteCandidates: readonly MonsterKind[]
-  /** Elite pack count (rolled in `MonUMin..MonUMax`) distributed over room indices. */
-  readonly elitePacksByRoom: ReadonlyMap<number, readonly number[]>
+  /** `pMonsterRegion + 0x2c0`: total usable DRLG rooms in this level (`dwNumRooms`). */
+  readonly totalRooms: number
+  /** `pMonsterRegion + 0x2c4`: number of DRLG rooms populated so far (`dwRoomsPopulated`). */
+  activatedRooms: number
+  /** `pMonsterRegion + 0x2c8`: number of elite packs spawned in this level so far (`dwUniquePacksSpawned`). */
+  spawnedElites: number
 }
 
 /** One monster to spawn into a room. */
@@ -243,7 +260,8 @@ function difficultyName(difficulty: Difficulty | 0 | 1 | 2): Difficulty {
 }
 
 /**
- * Resolve a level's monster plan (types + elite distribution) for room streaming.
+ * Resolve a level's monster plan (types + elite candidate pool + initial `0x6FCFF080` state)
+ * for room streaming.
  *
  * @param levelId - `Levels.txt` id (1..136).
  * @param difficulty - game difficulty.
@@ -268,25 +286,22 @@ export function planLevelPopulation113c(
   // not depend on how its rooms happen to be sized.
   const types = selectLevelTypes(plan, kinds, new Rng((levelSeed ^ 0x7b10) >>> 0), diff)
   if (types.length === 0) return null
-  const eliteCandidates = resolveEliteCandidates(plan, types, kinds)
-  const eliteRng = new Rng((levelSeed ^ 0x9e37) >>> 0)
-  const elitePacks =
-    plan.eliteMax <= 0 || eliteCandidates.length === 0
-      ? 0
-      : eliteRng.int(Math.min(plan.eliteMin, plan.eliteMax), plan.eliteMax)
-  const elitePacksByRoom = new Map<number, number[]>()
-  for (let i = 0; i < elitePacks; i += 1) {
-    const room = usableRooms[eliteRng.int(0, usableRooms.length - 1)]!
-    const list = elitePacksByRoom.get(room.index)
-    if (list) list.push(i)
-    else elitePacksByRoom.set(room.index, [i])
+  const eliteCandidates = resolveEliteCandidates(plan, types, kinds, diff)
+  return {
+    levelId,
+    difficulty: diff,
+    plan,
+    types,
+    eliteCandidates,
+    totalRooms: usableRooms.length,
+    activatedRooms: 0,
+    spawnedElites: 0,
   }
-  return { levelId, difficulty: diff, plan, types, eliteCandidates, elitePacksByRoom }
 }
 
 const PACK_MEMBER_OFFSETS: readonly (readonly [number, number])[] = (() => {
   const out: [number, number][] = []
-  for (let r = 1; r <= 3; r += 1) {
+  for (let r = 1; r <= 8; r += 1) {
     for (let dy = -r; dy <= r; dy += 1) {
       for (let dx = -r; dx <= r; dx += 1) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) === r) out.push([dx, dy])
@@ -300,13 +315,15 @@ const PACK_MEMBER_OFFSETS: readonly (readonly [number, number])[] = (() => {
 const PACK_ANCHOR_ATTEMPTS = 32
 
 /**
- * Plan the monsters of one DRLG room.
+ * Plan the monsters of one DRLG room per 1.13c `D2Game.dll` `0x6FC67A20`.
  *
- * - Budget: `monsterBudget(roomTiles, MonDen)` (the 1.13c per-room density formula).
- * - Elite packs assigned to this room by {@link planLevelPopulation113c} are rolled
- *   first (`rollEliteGroup`: 20% champions of 2..4, 80% uniques + 3..6 minions with
- *   `MonUMod.txt` affixes) and count against the budget; the remainder becomes
- *   ordinary `MinGrp..MaxGrp` packs of the level's types.
+ * - Attempts: `Math.floor(room.w / 3) * Math.floor(room.h / 3)` (`0x6FC67AF1..0x6FC67B17`).
+ * - Each attempt independently rolls `rng.int(0, 99999) <= Math.min(10000, MonDen)` (`0x6FC67B57..0x6FC67B64`).
+ * - On hit, selects monster kind weighted by `Rarity` (`0x6FCFF4A0`).
+ * - Elite packs assigned to this room replace the current attempt (`0x6FC67B8E`) rather than
+ *   subtracting `group.count` from a normal monster headcount budget.
+ * - Normal packs check `sparsePopulate` (`0x6FC67BD4..0x6FC67C13`: `rng.int(0, 99) <= sparsePopulate`
+ *   when `0 < sparsePopulate < 100`) and roll full `MinGrp..MaxGrp` (`0x6FC67700`) without truncation.
  * - Every monster lands on a walkable sub-tile inside the room; a pack whose anchor
  *   cannot be placed is dropped (and reported via `onDroppedPack`), never moved
  *   onto a blocked cell or outside the room.
@@ -323,27 +340,26 @@ export function planRoomPopulation113c(
   isWalkable: (x: number, y: number) => boolean,
   onDroppedPack?: (kind: MonsterKind, count: number) => void,
 ): RoomSpawn113c[] {
-  if (room.w <= 0 || room.h <= 0) return []
+  // D2Game.dll 0x6FC66CE5: inc DWORD PTR [esi+0x2c4] (dwRoomsPopulated++)
+  level.activatedRooms += 1
+  const attempts = roomMonsterAttempts113c(room.w, room.h)
+  if (attempts <= 0) return []
   const rng = new Rng((room.seed ^ (level.levelId * 0x01000193)) >>> 0)
-  const cells =
-    Math.max(1, Math.floor(room.w / SUBTILES_PER_TILE)) *
-    Math.max(1, Math.floor(room.h / SUBTILES_PER_TILE))
-  const budget = monsterBudget(cells, level.plan.density)
-
-  const groups: MonsterGroup[] = []
-  let used = 0
-  for (const packIndex of level.elitePacksByRoom.get(room.index) ?? []) {
-    const group = rollEliteGroup(level.eliteCandidates, rng, packIndex)
-    groups.push(group)
-    used += group.count
-  }
-  const remaining = budget - used
-  if (remaining > 0) {
-    const kinds = getCanonicalMonsterKinds(level.difficulty)
-    groups.push(
-      ...planMonsterGroups({ ...level.plan, eliteMin: 0, eliteMax: 0 }, level.types, kinds, remaining, rng),
-    )
-  }
+  const kinds = getCanonicalMonsterKinds(level.difficulty)
+  const groups: MonsterGroup[] = planMonsterGroups(
+    level.plan,
+    level.types,
+    kinds,
+    attempts,
+    rng,
+    {
+      attempts,
+      density: level.plan.density,
+      eliteCandidates: level.eliteCandidates,
+      difficulty: level.difficulty,
+      levelEliteState: level,
+    },
+  )
 
   const occupied = new Set<string>()
   const free = (x: number, y: number): boolean =>
@@ -363,6 +379,10 @@ export function planRoomPopulation113c(
       if (free(x, y)) anchor = { x, y }
     }
     if (anchor === null) {
+      if (group.rank !== 'normal' && level.spawnedElites > 0) {
+        // D2Game.dll 0x6FC44ADB: dec DWORD PTR [ebp+0x2c8] when elite leader fails placement
+        level.spawnedElites -= 1
+      }
       onDroppedPack?.(group.kind, group.count)
       return
     }

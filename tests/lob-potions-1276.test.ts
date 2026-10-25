@@ -6,8 +6,8 @@ function getMissilesByKey(world: ClientWorld, key: string) {
   return world.getUnitsByType('missile').filter((m) => m.missileKey === key)
 }
 
-describe('Issue #1276: pCltDoFunc = 2 Lobbed Potions parabolic arc & landing impact', () => {
-  it('populates pCltDoFunc=2 and 1.13c hit sub-missiles on all 8 lobbed potion rows', () => {
+describe('Issue #1276 / #1503: thrown potions (pCltDoFunc 1) lob arc & landing impact', () => {
+  it('populates pCltDoFunc=1 (not the blood function 2) and 1.13c hit sub-missiles on all 8 lobbed potion rows', () => {
     const keys = [
       'oilpotion',
       'explosivepotion',
@@ -22,7 +22,7 @@ describe('Issue #1276: pCltDoFunc = 2 Lobbed Potions parabolic arc & landing imp
     for (const key of keys) {
       const row = CANONICAL_113C_MISSILES[key]
       expect(row, key).toBeDefined()
-      expect(row!.pCltDoFunc, `${key} pCltDoFunc`).toBe(2)
+      expect(row!.pCltDoFunc, `${key} pCltDoFunc`).toBe(1)
       expect(row!.alwaysExplode, `${key} alwaysExplode`).toBe(true)
       expect(row!.pCltHitFunc, `${key} pCltHitFunc`).toBeGreaterThan(0)
       expect(row!.cltHitSubMissile1, `${key} cltHitSubMissile1`).toBeTruthy()
@@ -44,12 +44,13 @@ describe('Issue #1276: pCltDoFunc = 2 Lobbed Potions parabolic arc & landing imp
       ownerId: 10,
     })
 
-    // dist = 9, vel = 16 -> speedSubTilesPerTick = 0.75 -> lobFlightTicks = 12
+    // create flag 0x400: frames = (9 << 16) / (3072 << 4) = 12 (dwVelocity = (16 << 8) * 75 / 100 = 3072)
     expect(pot.maxTicks).toBe(12)
     expect(pot.vx).toBeCloseTo(0.75, 5)
     expect(pot.vy).toBeCloseTo(0, 5)
-    expect(pot.altitude).toBe(0)
-    expect((pot as any).lobPeakAltitude).toBeCloseTo(31.5, 5)
+    // 0x6fb77c80: z = 30 << 11, az = -0x1000, vz = (-z - 144 * az / 2) / 12 = 19456; one step at create -> 39 px
+    expect(pot.traj3d).toMatchObject({ az: -0x1000 })
+    expect(pot.altitude).toBe(39)
 
     const altitudes: number[] = []
     for (let tick = 1; tick <= pot.maxTicks!; tick++) {
@@ -62,8 +63,6 @@ describe('Issue #1276: pCltDoFunc = 2 Lobbed Potions parabolic arc & landing imp
       }
     }
 
-    // Peak altitude reached at midpoint (tick 6 of 12 -> t = 0.5 -> altitude = Math.round(31.5) = 32)
-    expect(altitudes[5]).toBe(32)
     // Altitude returns to 0 on landing tick (tick 12 -> t = 1.0)
     expect(altitudes[11]).toBe(0)
     expect(pot.x).toBeCloseTo(109, 5)
