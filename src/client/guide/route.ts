@@ -60,10 +60,14 @@ export interface Goal {
   readonly spot?: { readonly x: number; readonly y: number }
 }
 
+const trueTomb = (progress: QuestProgress) => FIRST_TOMB + Math.min(TOMB_COUNT - 1, Math.max(0, progress.tomb ?? 0))
+
+export const throughTomb = (goalLevel: number, level: number, progress: QuestProgress): number => (goalLevel === DURIELS_LAIR && level !== trueTomb(progress) && level !== DURIELS_LAIR ? trueTomb(progress) : goalLevel)
+
 export function currentGoal(level: number, progress: QuestProgress, mode: GuideMode = 'story', carries: (code: string) => boolean = () => false, skipped: ReadonlySet<number> = new Set()): Goal | null {
   const act = actOfLevel(level)
   const town = ACT_TOWNS[act]!
-  const tomb = FIRST_TOMB + Math.min(TOMB_COUNT - 1, Math.max(0, progress.tomb ?? 0))
+  const tomb = trueTomb(progress)
   const goal = OBJECTIVES[act]
     ?.filter((o) => (mode === 'story' || o.required) && !isDone(progress.words[o.row] ?? 0) && !skipped.has(o.row))
     .map((o) => {
@@ -71,7 +75,7 @@ export function currentGoal(level: number, progress: QuestProgress, mode: GuideM
       const key = page ? page.text.key : o.start
       const stage = key === undefined ? undefined : STAGES[key]?.find((s) => !s.unless?.some(carries))
       if (stage?.after !== undefined && !isDone(progress.words[stage.after] ?? 0)) return undefined
-      return stage && { level: stage.level === 'town' ? town : stage.level === 'tomb' ? tomb : stage.level === DURIELS_LAIR && level !== tomb && level !== DURIELS_LAIR ? tomb : stage.level, title: o.name, row: o.row, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}), ...(stage.bring ? { bring: stage.bring } : {}) }
+      return stage && { level: stage.level === 'town' ? town : stage.level === 'tomb' ? tomb : throughTomb(stage.level, level, progress), title: o.name, row: o.row, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}), ...(stage.bring ? { bring: stage.bring } : {}) }
     })
     .find((g) => g !== undefined)
   if (goal) return goal

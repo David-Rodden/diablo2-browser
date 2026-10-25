@@ -11,7 +11,7 @@ import { FlowField } from './flow-field.ts'
 import { ChevronFlow, type Chevron } from './chevron-flow.ts'
 import { fromNearest, rounded } from './ribbon-trail.ts'
 import type { Find, FindKey } from './quest-stages.ts'
-import { currentGoal, levelName, nextStep, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
+import { currentGoal, levelName, nextStep, throughTomb, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
 import { spriteOutlines, type OutlineTint } from './sprite-outline.ts'
 import { WaypointMemory } from './waypoint-memory.ts'
 import { WAYPOINT_LEVELS } from './level-links.ts'
@@ -143,7 +143,7 @@ export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldS
   const level = host.areaId()
   const view = host.levelView()
   const self = host.self()
-  const goal = level > 0 ? (detour ?? currentGoal(level, host.quests(), mode, host.carries, skipped)) : null
+  const goal = level > 0 ? (detour ? { ...detour, level: throughTomb(detour.level, level, host.quests()) } : currentGoal(level, host.quests(), mode, host.carries, skipped)) : null
   if (!goal || !view || self.isDead) return null
   const step = nextStep(level, goal.level, waypoints)
   const objects = host.objects()

@@ -126,12 +126,19 @@ describe('path guide plan', () => {
 
   it('keeps heading for the used orifice until the portal to Duriel shows up beside it', () => {
     const orifice = { id: 70, unitType: 'object', classId: 152, mode: 2, x: 1030, y: 2010, hidden: false, dead: false, name: 'orifice' } as unknown as ClientUnit
-    const tomb = { ...host, areaId: () => 72, objects: () => [orifice] }
+    const tomb = { ...host, areaId: () => 72, quests: () => ({ ...quests({ 1: 1, 2: 1 }, { 4: 1 }), tomb: 6 }), objects: () => [orifice] }
     const plan = planGuide(tomb, 'story', undefined, new Set(), false, new Set(), { level: 73, title: "Duriel's Lair" })!
     expect([plan.hint, plan.target?.unit]).toEqual(["Enter Duriel's Lair", { id: 70, kind: 'object' }])
     const portal = { id: 71, unitType: 'object', classId: 100, mode: 2, x: 1018, y: 2012, hidden: false, dead: false } as unknown as ClientUnit
     const open = planGuide({ ...tomb, objects: () => [orifice, portal] }, 'story', undefined, new Set(), false, new Set(), { level: 73, title: "Duriel's Lair" })!
     expect(open.target?.unit).toEqual({ id: 71, kind: 'object' })
+  })
+
+  it("sends a body run into Duriel's Lair through the true tomb, not the nearest one", () => {
+    const inTombOne = { ...host, areaId: () => 66, quests: () => ({ ...quests({ 1: 1, 2: 1 }, { 4: 1 }), tomb: 4 }) }
+    const body = { level: 73, title: 'Your body', hint: 'Get your body back', spot: { x: 1010, y: 2010 } }
+    expect(planGuide(inTombOne, 'story', undefined, new Set(), false, new Set(), body)!.step).toEqual({ kind: 'exit', level: 46 })
+    expect(planGuide({ ...inTombOne, areaId: () => 70 }, 'story', undefined, new Set(), false, new Set(), body)!.step).toMatchObject({ kind: 'portal', level: 73 })
   })
 
   it('aims a seam exit at the open gap in the fence, not at the anchor tile', () => {
