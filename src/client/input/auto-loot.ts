@@ -58,7 +58,8 @@ export function planRoom(items: readonly JudgedItem[], width: number, height: nu
     .find(({ item, spot }) => fitsInInventory([...without([item]), { ...item, gridX: spot.x, gridY: spot.y }], width, height))
   if (move) return { kind: 'move', itemId: move.item.id, x: move.spot.x, y: move.spot.y }
   if (!allowDrops) return null
-  const expendable = items.filter(({ appraisal }) => !appraisal.locked && TIER_RANK[appraisal.tier] <= MAX_DROPPED_RANK && TIER_RANK[appraisal.tier] < TIER_RANK[incoming.tier]).sort((a, b) => rankOf(a) - rankOf(b))
+  const quest = incoming.kind === 'quest'
+  const expendable = items.filter(({ appraisal }) => !appraisal.locked && appraisal.kind !== 'quest' && (quest ? TIER_RANK[appraisal.tier] < TIER_RANK.great : TIER_RANK[appraisal.tier] <= MAX_DROPPED_RANK && TIER_RANK[appraisal.tier] < TIER_RANK[incoming.tier])).sort((a, b) => rankOf(a) - rankOf(b))
   const single = expendable.find((item) => fitsInInventory(without([item]), width, height))
   if (single) return { kind: 'drop', itemIds: [single.id] }
   const greedy = expendable.reduce<JudgedItem[]>((dropped, item) => (fitsInInventory(without(dropped), width, height) ? dropped : [...dropped, item]), [])
