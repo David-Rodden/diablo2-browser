@@ -662,6 +662,21 @@ describe('autopilot', () => {
     expect(boss.guide.pilotStatus).toBe('Fighting')
   })
 
+  it('leaves a crowd that is cutting it down sooner than a lone monster, and stops dodging once it is escaping', () => {
+    const run = (crowd: number) => {
+      const { world, assists, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+      ;[1, 2, 3, 4, 5, 6].forEach((id) => world.containers.belt.set(id, { id, code: 'hp3' }))
+      units.push(...Array.from({ length: crowd }, (_, i) => unit({ id: 60 + i, x: 103 + (i % 4), y: 98 + Math.floor(i / 4), name: 'Fallen' })))
+      Object.assign(assists, { dodging: vi.fn(() => true) })
+      tick(500)
+      world.self.life = 66
+      tick(1000)
+      return { status: guide.pilotStatus, dodges: assists.dodging.mock.calls.length, portal: assists.castTownPortal.mock.calls.length }
+    }
+    expect(run(1).status).toBe('Dodging')
+    expect(run(12)).toMatchObject({ status: 'Taking a beating, heading to town', portal: 1 })
+  })
+
   it('pulls the sewer lever before taking the stairs it opens', () => {
     const { units, assists, guide, tick } = setup({ hint: 'Enter Kurast Sewers Level 2', target: { x: 110, y: 100, label: 'Kurast Sewers Level 2' }, step: { kind: 'exit', level: 93 } })
     units.push(unit({ id: 90, unitType: 'object', classId: 366, x: 110, y: 100, mode: 0 }), unit({ id: 91, unitType: 'object', classId: 367, x: 104, y: 100, mode: 0 }))
