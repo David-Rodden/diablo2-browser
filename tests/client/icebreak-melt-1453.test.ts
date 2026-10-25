@@ -8,6 +8,7 @@ import {
 import { CANONICAL_113C_MISSILES } from '../../src/common/skills/missiles-data.ts'
 import { MISSILE_METAS } from '../../src/client/render/missiles-meta.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
+import { GameInstance } from '../../src/server/engine/game-instance.ts'
 
 function assignMonster(world: ClientWorld, id: number, states: number[]): void {
   world.applyEvent({
@@ -110,5 +111,108 @@ describe('Issue #1453: frozen monster shatter -> icebreak melt (MissCltHitFunc 3
     const cold3 = world3.spawnMissileByKey('catapult cold explosion', 60, 60, 60, 60, {})
     world3.triggerMissileImpact(cold3, 60, 60, false, target)
     expect(missileKeys(world3)).not.toContain('icebreaklargemelt')
+  })
+
+  it('sets animSpeed = 8 (UNITS_SetAnimSpeed 0x80 at 0x6FB6067D) on spawned melt puddles and holds final frame 11', () => {
+    const world = new ClientWorld() as any
+    const shard = world.spawnMissileByKey('icebreaksmall', 40, 40, 40, 40, { loopAnim: false, direction: 3 })
+    shard.vx = 0
+    shard.vy = 0
+    while (world.getUnitsByType('missile').some((m: any) => m.missileKey === 'icebreaksmall')) {
+      world.tick()
+    }
+    const melt = world.getUnitsByType('missile').find((m: any) => m.missileKey === 'icebreaksmallmelt')!
+    expect(melt).toBeDefined()
+    expect(melt.animSpeed).toBe(8)
+    expect(melt.direction).toBe(3)
+    expect(melt.frame).toBe(0)
+    // At animSpeed = 8 (0.5 frames/tick), 10 ticks advance 5 frames
+    for (let i = 0; i < 10; i++) world.tick()
+    expect(melt.frame).toBe(5)
+    // Over 24 total ticks, the 12-frame animation reaches frame 11 and holds there
+    for (let i = 0; i < 40; i++) world.tick()
+    expect(melt.frame).toBe(11)
+    expect(world.getUnitsByType('missile').some((m: any) => m.missileKey === 'icebreaksmallmelt')).toBe(true)
+  })
+
+  it('assigns a 4-way shard direction (dwFlags = 0x2020 at 0x6FAFBEC0) on monster shatter death', () => {
+    const world = new ClientWorld()
+    const dirs = new Set<number>()
+    for (let id = 9400; id < 9404; id++) {
+      assignMonster(world, id, [1])
+      kill(world, id)
+    }
+    const shards = world
+      .getUnitsByType('missile')
+      .filter(m => m.missileKey === 'icebreaksmall' || m.missileKey === 'icebreaklarge')
+    expect(shards.length).toBe(4)
+    for (const s of shards) {
+      expect(s.direction).toBeGreaterThanOrEqual(0)
+      expect(s.direction).toBeLessThan(4)
+      dirs.add(s.direction!)
+    }
+    expect(dirs.size).toBe(4)
+  })
+
+  it('GameInstance broadcasts shatter state before UnitMode(12) when a freezing skill (#45 Ice Blast) kills a monster', () => {
+    const server = new GameInstance({ areaId: 2, seed: 42 }) as any
+    const playerId = server.connectPlayer({
+      charName: 'FrostSorc',
+      classId: 1,
+      level: 30,
+      areaId: 2,
+      x: 100,
+      y: 100,
+      skills: { 45: 10 },
+    })
+    const monsterId = server.spawnMonster({
+      defId: 'zombie1',
+      areaId: 2,
+      x: 102,
+      y: 100,
+      hp: 5,
+      maxHp: 5,
+    })
+    server.drainPlayerEvents(playerId)
+    // Lethal Ice Blast (#45, srvdofunc=18 freezing skill) hit on an unfrozen monster
+    server.finishMonsterDamage(
+      server.players.get(playerId),
+      server.monsters.get(monsterId),
+      50,
+      45,
+      'cold',
+    )
+    const monster = server.monsters.get(monsterId)
+    expect(monster.dead).toBe(true)
+    expect(monster.shattered).toBe(true)
+    expect(monster.states.has(1)).toBe(true)
+
+    const events = server.drainPlayerEvents(playerId)
+    const stateIdx = events.findIndex(
+      (e: any) =>
+        e.type === 'UnitState' &&
+        e.unitType === 'monster' &&
+        (e.unitId === monsterId || e.id === monsterId) &&
+        (e.state === 1 || e.stateId === 1) &&
+        e.active === true,
+    )
+    const modeIdx = events.findIndex(
+      (e: any) =>
+        e.type === 'UnitMode' &&
+        (e.unitType === 'monster' || e.unitType === 1) &&
+        e.id === monsterId &&
+        e.mode === 12,
+    )
+    expect(stateIdx).toBeGreaterThanOrEqual(0)
+    expect(modeIdx).toBeGreaterThan(stateIdx)
+
+    // Replay into ClientWorld: corpse is suppressed and icebreak shard -> melt puddle spawns
+    const world = new ClientWorld()
+    assignMonster(world, monsterId, [])
+    for (const ev of events) world.applyEvent(ev)
+    expect(world.getUnit('monster', monsterId)!.corpseSuppressed).toBe(true)
+    expect(
+      missileKeys(world).some(k => k === 'icebreaksmall' || k === 'icebreaklarge'),
+    ).toBe(true)
   })
 })

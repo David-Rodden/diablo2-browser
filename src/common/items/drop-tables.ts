@@ -62,8 +62,10 @@ import {
   type DifficultyLevelTable,
   loadDifficultyLevels,
   type DifficultyLevelOdds,
+  isItemUber113c,
   upgradeItemBase,
 } from './item-upgrade.ts'
+export { isItemUber113c } from './item-upgrade.ts'
 import {
   type UniqueItemsTable,
   loadUniqueItems,
@@ -89,6 +91,8 @@ import {
   loadItemTypes,
   isA,
 } from './item-types.ts'
+import { getMaxSockets113c } from './gems.ts'
+export { getMaxSockets113c } from './gems.ts'
 import {
   generateAutoTreasureClasses,
   autoTcToTreasureClassNode,
@@ -332,12 +336,32 @@ export interface DropPipelineOptions {
   readonly playerCount?: number | undefined
   /** Nearby party members (for NoDrop scaling). */
   readonly partyPlayers?: number | undefined
+  /**
+   * Monster spawn player count (`stat 100 = monster_playercount`, set at monster initialization
+   * `D2Game!0x6FCCF840` / `0x6FCCFF3B`). When defined (drop source is a monster, `0x6FC3250C`),
+   * caps effective player count `n = min(n, max(1, monsterPlayerCount))` (`0x6FC32511..0x6FC32529`).
+   */
+  readonly monsterPlayerCount?: number | undefined
   /** Whether Expansion items and runes are enabled (default: true). */
   readonly isExpansion?: boolean | undefined
   /** Maximum items emitted per drop roll (default: MAX_DROPPED_ITEMS = 6). */
   readonly maxDrops?: number | undefined
   /** Optional forced item quality tier (`D2GAME_DropTreasureClass` `nQuality` 1..7 or tier name, e.g. Sparkling Chest). */
   readonly forcedQuality?: ItemQualityTier | number | undefined
+  /**
+   * Optional per-game set of already-spawned `UniqueItems.txt` row IDs (`pGame + 0x1b24` 4096-bit
+   * bitmap in `D2Game.dll` `0x6FC2E250` / `0x6FC2EDC0` / `0x6FC2F370`). When provided, non-quest
+   * uniques whose `id` is already in this set fail the unique roll and degrade to 3x-durability
+   * Rare (or 3x-durability Magic if the base cannot be Rare), and newly spawned uniques with
+   * `!nolimit` record their `id` in this set.
+   */
+  readonly spawnedUniqueIds?: Set<number> | undefined
+  /** `pItemDrop->wInitFlags & 0x2` (`0x6FC2EBB0`): forbids Ethereal roll (e.g., Charsi Imbue on non-ethereal item). */
+  readonly forbidEthereal?: boolean | undefined
+  /** Alias for `!forbidEthereal`. */
+  readonly allowEthereal?: boolean | undefined
+  /** `pItemDrop->dwFlags2 & 0x400000` or `pItemDrop->wInitFlags & 0x4` (`0x6FC2EC26..0x6FC2EC3F`): forces Ethereal if eligible. */
+  readonly forceEthereal?: boolean | undefined
   /** Parsed drop tables (defaults to `getEmbeddedDropTables()` when omitted in 1-arg form). */
   readonly dropTables?: DropTables | undefined
   /** Alias for `dropTables` used by 1-arg callers. */
@@ -387,6 +411,7 @@ export interface ItemTypeFlags {
   readonly isAlwaysMagic: boolean
   readonly canBeRare: boolean
   readonly isClassSpecific: boolean
+  readonly isUber: boolean
   readonly itemClass: string
 }
 
@@ -494,11 +519,14 @@ export function resolveItemTypeFlags(
     }
   }
 
+  const isUber = isItemUber113c(base, isAPredicate)
+
   return {
     isNormalOnly,
     isAlwaysMagic,
     canBeRare,
     isClassSpecific,
+    isUber,
     itemClass,
   }
 }
@@ -513,27 +541,120 @@ export interface EtherealAndSocketsRoll {
   readonly sockets: number
 }
 
+export interface RollRandomItemSocketsOptions {
+  readonly itemTypes?: ItemTypeTable | undefined
+  readonly difficulty?: Difficulty | 0 | 1 | 2 | undefined
+  readonly isExpansion?: boolean | undefined
+  readonly forceSocket?: boolean | undefined
+}
+
 /**
- * Rolls Ethereal status (1/20 chance) and Socket count (1/3 chance for normal/superior/low)
- * according to Diablo II 1.13c rules (D2Game!6FC30090).
+ * Rolls random socket count on item creation per 1.13c `D2Game.dll` `0x6FC2EC90`
+ * (`ITEMS_RollRandomSockets`):
+ * - Only Normal (`2`) and Superior (`3`) non-stackable weapons/armor can roll random
+ *   sockets; Low Quality (`quality < 2` at `0x6FC2EC96`) never rolls sockets.
+ * - Base/type ilvl cap from `D2Common.dll #11151` (`0x6FC2ECCB` -> `0x6FD74610`):
+ *   `ilvl <= 25 -> MaxSock1`, `26 <= ilvl <= 40 -> MaxSock25`, `ilvl >= 41 -> MaxSock40`.
+ * - Difficulty cap (`0x6FC2ECD7..0x6FC2ED08`): Normal (`0`) `<= 3`, Nightmare (`1`) `<= 4`,
+ *   Hell (`2`) `<= 6`.
+ * - Socket chance (`0x6FC2ED36..0x6FC2ED5D`): `itemRng.rand(100) < 33` (unless forced by
+ *   `dwFlags2 & 1` / `forceSocket`).
+ * - Socket count:
+ *   - Expansion (`0x6FC2ED6B..0x6FC2ED85`): `1 + itemRng.rand(maxAllowedSockets)`
+ *   - Classic (`0x6FC2ED8E..0x6FC2EDAE`): fixed cap `Math.min(maxAllowedSockets, isHelm ? 2 : 3)`.
  */
-export function rollItemEtherealAndSockets(
+export function rollRandomItemSockets113c(
   base: ItemBase,
   qualityTier: ItemQualityTier,
   ilvl: number,
   itemRng: D2Rng,
-  options?: {
-    readonly uniqueItem?: UniqueItem | undefined
-    readonly itemTypes?: ItemTypeTable | undefined
-    readonly rolledProps?: readonly RolledItemProp[] | undefined
-  },
-): EtherealAndSocketsRoll {
-  let ethereal = false
-  let sockets = 0
-
+  options?: RollRandomItemSocketsOptions,
+): number {
   const isWeaponOrArmor = base.kind === 'weapon' || base.kind === 'armor'
-  const rawDur = Number((base as any).durability) || 0
-  const noDur = Boolean((base as any).nodurability) || Boolean((base as any).indestructible)
+  if (
+    !isWeaponOrArmor ||
+    Boolean((base as any).stackable) ||
+    (qualityTier !== 'normal' && qualityTier !== 'superior')
+  ) {
+    return 0
+  }
+
+  const typeCode = getItemTypeCode(base).trim().toLowerCase()
+  const def = options?.itemTypes?.byCode.get(typeCode)
+  const maxSockets = getMaxSockets113c(base as any, def, ilvl)
+  if (maxSockets <= 0) {
+    return 0
+  }
+
+  const diffCap =
+    options?.difficulty === 0 || options?.difficulty === 'normal'
+      ? 3
+      : options?.difficulty === 1 || options?.difficulty === 'nightmare'
+        ? 4
+        : 6
+  const maxAllowedSockets = Math.min(maxSockets, diffCap)
+  if (maxAllowedSockets <= 0) {
+    return 0
+  }
+
+  if (!options?.forceSocket && itemRng.rand(100) >= 33) {
+    return 0
+  }
+
+  if (options?.isExpansion === false) {
+    const isHelm = options?.itemTypes
+      ? isA(typeCode, 'helm', options.itemTypes)
+      : typeCode === 'helm' || typeCode === 'phlm' || typeCode === 'pelt' || typeCode === 'circ'
+    return Math.min(maxAllowedSockets, isHelm ? 2 : 3)
+  }
+
+  return 1 + itemRng.rand(maxAllowedSockets)
+}
+
+export interface RollItemEtherealOptions {
+  readonly uniqueItem?: UniqueItem | undefined
+  readonly itemTypes?: ItemTypeTable | undefined
+  readonly isA?: ((typeCode: string, targetType: string) => boolean) | undefined
+  readonly rolledProps?: readonly RolledItemProp[] | undefined
+  readonly isExpansion?: boolean | undefined
+  readonly allowEthereal?: boolean | undefined
+  /** `pItemDrop->wInitFlags & 0x2` (`0x6FC2EBB0`): forbids Ethereal roll (e.g., Charsi Imbue on non-ethereal item). */
+  readonly forbidEthereal?: boolean | undefined
+  /** `pItemDrop->dwFlags2 & 0x400000` or `pItemDrop->wInitFlags & 0x4` (`0x6FC2EC26..0x6FC2EC3F`): forces Ethereal if eligible. */
+  readonly forceEthereal?: boolean | undefined
+}
+
+/**
+ * Computes the 1.13c Ethereal maximum durability (`D2Game.dll` `0x6FC2EC5B..0x6FC2EC60`):
+ * `cdq; sub eax, edx; sar eax, 1; inc eax` -> `Math.trunc(rawDurability / 2) + 1`.
+ */
+export function computeEtherealMaxDurability113c(rawDurability: number): number {
+  return Math.trunc(rawDurability / 2) + 1
+}
+
+/**
+ * Rolls Ethereal status (`D2Game.dll` `ITEMS_RollEthereal` @ `0x6FC2EBB0`, called from
+ * `ITEMS_ResolveSpecialQuality` @ `0x6FC30C87` when `wVersion >= 100`):
+ * 1. `0x6FC2EBB0`: If `wInitFlags & 0x2` (`forbidEthereal` / `allowEthereal === false`), returns `false`.
+ * 2. Fixed `ethereal` property (`gpPropertyFuncTable[23]` @ `0x6FD97290` from `UniqueItems.txt`): returns `true`.
+ * 3. `0x6FC30C7C`: Classic items (`isExpansion === false`) do not roll random Ethereal.
+ * 4. `0x6FC2EBBD..0x6FC2EBD3`: Must be `weap` (`0x2d`) or `armo` (`0x32`).
+ * 5. `0x6FC2EBDA`: `D2Common #10865` (`0x6FD76D40`, `ITEMS_HasDurability`):
+ *    `!bNoDurability && nDurability > 0 && STAT_ITEM_INDESTRUCTIBLE (152) <= 0`.
+ * 6. `0x6FC2EBE8..0x6FC2EBF7`: Quality must not be `1` (`'low'`) or `5` (`'set'`).
+ * 7. `0x6FC2EBFE`: `D2Common #10176` (`0x6FD72BC0`, `ITEMS_GetQuestFlag`): `pItemsTxt->nQuest == 0`.
+ * 8. `0x6FC2EC12..0x6FC2EC3F`: Rolls `itemRng.rand(100) < 5` (`5%`), or forced via `forceEthereal`
+ *    (`dwFlags2 & 0x400000` / `wInitFlags & 0x4`).
+ */
+export function rollItemEthereal113c(
+  base: ItemBase,
+  qualityTier: ItemQualityTier,
+  itemRng: D2Rng,
+  options?: RollItemEtherealOptions,
+): boolean {
+  if (options?.forbidEthereal === true || options?.allowEthereal === false) {
+    return false
+  }
 
   const hasFixedIndestruct = Boolean(
     options?.uniqueItem?.props.some(p => p.code.trim().toLowerCase() === 'indestruct') ||
@@ -543,37 +664,68 @@ export function rollItemEtherealAndSockets(
     options?.uniqueItem?.props.some(p => p.code.trim().toLowerCase() === 'ethereal') ||
       options?.rolledProps?.some(p => p.code.trim().toLowerCase() === 'ethereal'),
   )
-
   if (hasFixedEthereal) {
-    ethereal = true
-  } else if (isWeaponOrArmor && rawDur > 0 && !noDur && qualityTier !== 'set' && !hasFixedIndestruct) {
-    if (itemRng.rand(20) === 0) {
-      ethereal = true
-    }
+    return true
   }
 
-  if (
-    isWeaponOrArmor &&
-    (qualityTier === 'normal' || qualityTier === 'superior' || qualityTier === 'low')
-  ) {
-    const baseMaxSockets = Number((base as any).gemsockets) || 0
-    if (baseMaxSockets > 0) {
-      const typeCode = getItemTypeCode(base).trim().toLowerCase()
-      const def = options?.itemTypes?.byCode.get(typeCode)
-      const typeMaxSockets = def
-        ? ilvl >= 40
-          ? def.maxSock40
-          : ilvl >= 25
-            ? def.maxSock25
-            : def.maxSock1
-        : baseMaxSockets
-      const maxAllowedSockets = Math.min(baseMaxSockets, typeMaxSockets)
-      if (maxAllowedSockets > 0 && itemRng.rand(3) === 0) {
-        sockets = itemRng.randRange(1, maxAllowedSockets)
-      }
-    }
+  if (options?.isExpansion === false) {
+    return false
   }
 
+  const isWeaponOrArmor =
+    options?.isA && base.type
+      ? options.isA(base.type, 'weap') || options.isA(base.type, 'armo')
+      : base.kind === 'weapon' || base.kind === 'armor'
+  if (!isWeaponOrArmor) {
+    return false
+  }
+
+  const rawDur = Number((base as any).durability) || 0
+  const noDur = Boolean((base as any).nodurability) || Boolean((base as any).indestructible)
+  if (rawDur <= 0 || noDur || hasFixedIndestruct) {
+    return false
+  }
+
+  if (qualityTier === 'low' || qualityTier === 'set') {
+    return false
+  }
+
+  const isQuestItem = (Number((base as { quest?: number }).quest) || 0) !== 0
+  if (isQuestItem) {
+    return false
+  }
+
+  const rolledEth = itemRng.rand(100) < 5
+  if (rolledEth || options?.forceEthereal === true) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Rolls Ethereal status (`rand(100) < 5`, `D2Game!6FC2EBB0`) and random socket count
+ * (`33/100` chance for normal/superior, `D2Game!6FC2EC90`) per Diablo II 1.13c rules.
+ */
+export function rollItemEtherealAndSockets(
+  base: ItemBase,
+  qualityTier: ItemQualityTier,
+  ilvl: number,
+  itemRng: D2Rng,
+  options?: {
+    readonly uniqueItem?: UniqueItem | undefined
+    readonly itemTypes?: ItemTypeTable | undefined
+    readonly isA?: ((typeCode: string, targetType: string) => boolean) | undefined
+    readonly rolledProps?: readonly RolledItemProp[] | undefined
+    readonly difficulty?: Difficulty | 0 | 1 | 2 | undefined
+    readonly isExpansion?: boolean | undefined
+    readonly allowEthereal?: boolean | undefined
+    readonly forbidEthereal?: boolean | undefined
+    readonly forceEthereal?: boolean | undefined
+    readonly forceSocket?: boolean | undefined
+  },
+): EtherealAndSocketsRoll {
+  const ethereal = rollItemEthereal113c(base, qualityTier, itemRng, options)
+  const sockets = rollRandomItemSockets113c(base, qualityTier, ilvl, itemRng, options)
   return { ethereal, sockets }
 }
 
@@ -833,9 +985,12 @@ export function createDroppedItem(
     }
   }
 
-  const isEthereal = Boolean(
-    options.ethereal || rolledProps.some(p => p.code.trim().toLowerCase() === 'ethereal'),
-  )
+  const isEthereal =
+    qualityTier === 'low' || qualityTier === 'set'
+      ? false
+      : Boolean(
+          options.ethereal || rolledProps.some(p => p.code.trim().toLowerCase() === 'ethereal'),
+        )
   const propSockets = rolledProps.reduce(
     (max, p) => (p.code.trim().toLowerCase() === 'sock' ? Math.max(max, p.value) : max),
     0,
@@ -859,13 +1014,19 @@ export function createDroppedItem(
   }
 
   const rawDurability = (base as any).durability ?? 0
+  const noDur = Boolean((base as any).nodurability) || Boolean((base as any).indestructible)
   const mult = options.durabilityMultiplier ?? 1
   let durability: number | undefined = undefined
   let maxDurability: number | undefined = undefined
 
-  if (typeof rawDurability === 'number' && rawDurability > 0) {
+  if (typeof rawDurability === 'number' && rawDurability > 0 && !noDur) {
     if (qualityTier === 'low') {
       maxDurability = Math.max(1, Math.floor(rawDurability / 3))
+    } else if (isEthereal) {
+      // 1.13c D2Game.dll 0x6FC2EC56..0x6FC2EC7F: maxdur = trunc(maxdur / 2) + 1,
+      // followed by Failed Unique (3x) / Failed Set (2x) durability multiplier (capped at 255).
+      const ethBaseDur = computeEtherealMaxDurability113c(rawDurability)
+      maxDurability = mult > 1 ? Math.min(255, Math.round(ethBaseDur * mult)) : ethBaseDur
     } else {
       maxDurability = Math.round(rawDurability * mult)
     }
@@ -1009,8 +1170,9 @@ export function executeDropPipeline(
     setRuntimePropertyTables(dropTables.properties, dropTables.itemStatCost)
   }
 
-  // A8: Clamp effective ilvl to [1, 99] per 1.13c D2Game!6FC32D60
-  const effectiveIlvl = Math.max(1, Math.min(99, Math.trunc(nLevel)))
+  // 1.13c D2Game!0x6FC32D60 / 0x6FC2E5D0 / 0x6FC315A0:
+  // Only clamp lower bound to >= 1; do not cap at 99 (e.g. diabloclone / Pandemonium Ubers are nLevel = 110).
+  const effectiveIlvl = Math.max(1, Math.trunc(nLevel))
 
   // If monsterType === 4 (Act Boss Quest First-Kill) and caller passed the base boss TC
   // (e.g. 'Mephisto (H)' instead of 'Mephistoq (H)'), resolve to the quest TC (TreasureClass4).
@@ -1062,24 +1224,56 @@ export function executeDropPipeline(
     autoTcTable: dropTables.autoTcTable,
     gamePlayers,
     partyPlayers,
+    ...(options.monsterPlayerCount !== undefined ? { monsterPlayerCount: options.monsterPlayerCount } : {}),
     isExpansion,
     maxDrops,
   })
   if (
     dropLeaves.length === 0 &&
     !dropTables.tcTable.get(effectiveTcName) &&
-    !dropTables.autoTcTable.get(effectiveTcName) &&
-    dropTables.getBase(effectiveTcName)
+    !dropTables.autoTcTable.get(effectiveTcName)
   ) {
-    dropLeaves.push({
-      code: effectiveTcName,
-      item: effectiveTcName,
-      isGold: false,
-      qualityFactors: [0, 0, 0, 0],
-      flags: 0,
-      forcedUnique: false,
-      forcedSet: false,
-    })
+    if (dropTables.getBase(effectiveTcName)) {
+      dropLeaves.push({
+        code: effectiveTcName,
+        item: effectiveTcName,
+        isGold: false,
+        qualityFactors: [0, 0, 0, 0],
+        flags: 0,
+        forcedUnique: false,
+        forcedSet: false,
+      })
+    } else {
+      const directUnique = dropTables.uniques.byIndex.get(effectiveTcName)
+      if (directUnique && directUnique.code) {
+        dropLeaves.push({
+          code: directUnique.code,
+          item: directUnique.index,
+          isGold: false,
+          qualityFactors: [0, 0, 0, 0],
+          flags: 1,
+          forcedQuality: 'unique',
+          forcedUnique: true,
+          forcedSet: false,
+          uniqueIndex: directUnique.id,
+        })
+      } else {
+        const directSet = dropTables.sets.items.getByIndex(effectiveTcName)
+        if (directSet && directSet.item) {
+          dropLeaves.push({
+            code: directSet.item,
+            item: directSet.index,
+            isGold: false,
+            qualityFactors: [0, 0, 0, 0],
+            flags: 2,
+            forcedQuality: 'set',
+            forcedUnique: false,
+            forcedSet: true,
+            setIndex: directSet.id,
+          })
+        }
+      }
+    }
   }
 
   // 4. Resolve difficulty odds for base upgrades
@@ -1100,22 +1294,37 @@ export function executeDropPipeline(
       break
     }
     if (leaf.isGold) {
-      // 1.13c Items.cpp:621: rand(5 * ilvl) + ilvl
+      // D2Game!0x6FC31880 -> 0x6FC31490 -> 0x6FD01D90 -> 0x6FD00110:
+      // Allocate the gold item unit first, seeding its own PRNG (`pItem->pSeed` / `dwInitSeed`) from `rng`.
+      // Note: D2Game!0x6FC2FC40 (`ITEMS_RollItemQuality`) sees `ItemTypes[4].bNormal == 1` (`0x6FC2FC99`)
+      // and returns `ITEMQUAL_NORMAL (2)` without advancing `rng`.
+      const dwInitSeed = (rng.rand(0xFFFFFFFF) >>> 0)
+      const itemRng = new D2Rng(dwInitSeed)
+
+      // D2Game!0x6FC31070..0x6FC310AA (`ITEMS_InitItemStats` for `ITEMTYPE_GOLD = 4`):
+      // Rolls `RAND_RollRange(&pItem->pSeed, 5 * ilvl) + ilvl`, clamping `<= 0` to `1`.
       const clampedLvl = effectiveIlvl
-      const minGold = clampedLvl
-      const maxGoldAdd = 5 * clampedLvl
-      const baseGold = Math.max(1, rng.rand(maxGoldAdd) + minGold)
+      const baseGold = Math.max(1, itemRng.rand(5 * clampedLvl) + clampedLvl)
 
-      // Apply TC multiplier (mul flag)
-      const multiplier = leaf.goldMultiplier ?? 1
-      let goldAmount = Math.max(1, baseGold * multiplier)
+      // D2Game!0x6FC32A1A..0x6FC32A59:
+      // When TC `wParam` (`mul=N`, stored as raw unsigned WORD at `pTcItem+0x0A`) != 0,
+      // scales `STAT_GOLD` via `(baseGold * wParam) >> 8` (`imul ebx, ecx; sar ebx, 8`) and clamps `< 0` to `0`.
+      const rawMul = leaf.goldMultiplier !== undefined ? (leaf.goldMultiplier & 0xffff) : 0
+      let goldAmount = rawMul !== 0 ? Math.max(0, Math.imul(baseGold, rawMul) >> 8) : baseGold
 
-      // Apply Player Gold Find multiplier: floor(gold * (100 + GF) / 100)
+      // D2Game!0x6FC32A9B -> 0x6FC2F260..0x6FC2F2E5 (`ITEMS_ApplyGoldFind`):
+      // Multiplies by `100 + STAT_ITEM_GOLDBONUS (0x4F)` (killer + owner if minion/merc),
+      // divides by 100 via signed truncated division, and if negative (`js`), clamps to `0`.
       if (playerGf !== 0) {
-        goldAmount = Math.max(1, Math.floor((goldAmount * (100 + playerGf)) / 100))
+        goldAmount = Math.max(0, Math.trunc((goldAmount * (100 + playerGf)) / 100))
       }
 
-      drops.push({ ...goldItem(goldAmount), ilvl: effectiveIlvl, itemLevel: effectiveIlvl })
+      drops.push({
+        ...goldItem(goldAmount),
+        uniqueId: dwInitSeed,
+        ilvl: effectiveIlvl,
+        itemLevel: effectiveIlvl,
+      })
       continue
     }
 
@@ -1126,17 +1335,19 @@ export function executeDropPipeline(
       )
     }
 
-    // Base upgrade (D2Game!0x6FC2FB20 enforces candidate.level <= ilvl)
-    const upgradeResult = upgradeItemBase(base, qf4, qf5, rng, dropTables.getBase, effectiveIlvl)
-    const effectiveBase = upgradeResult.base
-    const isUber = upgradeResult.isUber
+    // Base upgrade (D2Game!0x6FC2FB20 enforces candidate.level <= ilvl; named unique/set TC leaves keep their resolved base code)
+    const effectiveBase =
+      leaf.uniqueIndex !== undefined || leaf.setIndex !== undefined
+        ? base
+        : upgradeItemBase(base, qf4, qf5, rng, dropTables.getBase, effectiveIlvl).base
 
     // Initialize item PRNG
     const dwInitSeed = (rng.rand(0xFFFFFFFF) >>> 0)
     const itemRng = new D2Rng(dwInitSeed)
 
-    // Resolve ItemTypes.txt quality & class-specific flags
+    // Resolve ItemTypes.txt quality, uber (D2Common!0x6FD74D00), & class-specific (D2Common!0x6FD74320) flags
     const typeFlags = resolveItemTypeFlags(effectiveBase, dropTables.itemTypes, dropTables.isA)
+    const isUber = typeFlags.isUber
     ;(effectiveBase as any).itemClass = typeFlags.itemClass
 
     // Check if the item can roll magical qualities
@@ -1185,6 +1396,8 @@ export function executeDropPipeline(
         },
         table: dropTables.itemRatio,
         rng: itemRng,
+        base: effectiveBase,
+        isA: dropTables.isA,
         uber: isUber ? 1 : 0,
         classSpecific: typeFlags.isClassSpecific ? 1 : 0,
         allowRare: typeFlags.canBeRare,
@@ -1199,40 +1412,93 @@ export function executeDropPipeline(
     }
 
     let durabilityMultiplier = 1
+    const rolledEthereal = rollItemEthereal113c(effectiveBase, quality, itemRng, {
+      itemTypes: dropTables.itemTypes,
+      isA: dropTables.isA,
+      isExpansion,
+      allowEthereal: options.allowEthereal,
+      forbidEthereal: options.forbidEthereal,
+      forceEthereal: options.forceEthereal,
+    })
 
     // Quality branches & fallbacks (D2 1.13c Ground Truth)
     if (quality === 'unique') {
-      const uniqueCandidates = dropTables.uniques.getEnabledByCode(effectiveBase.id).filter(u => u.lvl <= effectiveIlvl)
-      if (uniqueCandidates.length > 0) {
-        let chosenUnique = uniqueCandidates[0]!
-        if (uniqueCandidates.length > 1) {
-          const totalRarity = uniqueCandidates.reduce((sum, u) => sum + Math.max(1, u.rarity), 0)
-          let roll = itemRng.rand(totalRarity)
-          for (const u of uniqueCandidates) {
-            const weight = Math.max(1, u.rarity)
-            if (roll < weight) {
-              chosenUnique = u
-              break
+      let chosenUnique: UniqueItem | undefined
+      if (leaf.uniqueIndex !== undefined) {
+        // D2Game.dll 0x6FC2F40A..0x6FC2F45A & 0x6FC2F5A5..0x6FC2F623:
+        // Named unique from TC selects the indexed UniqueItems.txt row directly (validating base code match)
+        // without rarity weighting or lvl <= ilvl truncation.
+        const directUnique =
+          dropTables.uniques.getById?.(leaf.uniqueIndex) ??
+          dropTables.uniques.all[leaf.uniqueIndex] ??
+          dropTables.uniques.byIndex.get(leaf.item)
+        if (
+          directUnique &&
+          directUnique.code.trim().toLowerCase() === effectiveBase.id.trim().toLowerCase() &&
+          (isExpansion !== false || directUnique.version < 100)
+        ) {
+          chosenUnique = directUnique
+        }
+      } else {
+        const uniqueCandidates = dropTables.uniques
+          .getEnabledByCode(effectiveBase.id)
+          .filter(u => u.lvl <= effectiveIlvl && (isExpansion !== false || u.version < 100))
+        if (uniqueCandidates.length > 0) {
+          chosenUnique = uniqueCandidates[0]!
+          if (uniqueCandidates.length > 1) {
+            const totalRarity = uniqueCandidates.reduce((sum, u) => sum + Math.max(1, u.rarity), 0)
+            let roll = itemRng.rand(totalRarity)
+            for (const u of uniqueCandidates) {
+              const weight = Math.max(1, u.rarity)
+              if (roll < weight) {
+                chosenUnique = u
+                break
+              }
+              roll -= weight
             }
-            roll -= weight
           }
         }
-        const ethAndSock = rollItemEtherealAndSockets(effectiveBase, 'unique', effectiveIlvl, itemRng, {
-          uniqueItem: chosenUnique,
-          itemTypes: dropTables.itemTypes,
-        })
-        drops.push(createDroppedItem(effectiveBase, 'unique', {
-          uniqueItem: chosenUnique,
-          ethereal: ethAndSock.ethereal,
-          sockets: ethAndSock.sockets,
-          itemTypes: dropTables.itemTypes,
-          ilvl: effectiveIlvl,
-          dwInitSeed,
-          itemRng,
-        }))
-        continue
       }
-      // Unique check failed (no eligible unique exists or ilvl < unique lvl)
+      if (chosenUnique) {
+        // 1.13c D2Game.dll 0x6FC2F370 (0x6FC2F65C..0x6FC2F6B4) + 0x6FC2E250 / 0x6FC2EDC0:
+        // After picking the candidate by rarity weight, non-quest items (ItemsTxt.nQuest == 0)
+        // check the per-game pGame+0x1b24 bitmap. If already spawned in this game, the unique
+        // roll fails (falls through to 3x durability Rare/Magic); otherwise register in bitmap
+        // unless UniqueItems.txt `nolimit` is set.
+        const isQuestItem = Boolean(effectiveBase.quest)
+        const alreadySpawned =
+          !isQuestItem && (options.spawnedUniqueIds?.has(chosenUnique.id) ?? false)
+        if (!alreadySpawned) {
+          if (!chosenUnique.nolimit) {
+            options.spawnedUniqueIds?.add(chosenUnique.id)
+          }
+          const hasFixedEthereal = chosenUnique.props.some(
+            p => p.code.trim().toLowerCase() === 'ethereal',
+          )
+          const hasFixedIndestruct = chosenUnique.props.some(
+            p => p.code.trim().toLowerCase() === 'indestruct',
+          )
+          const uniqueEthereal =
+            options.forbidEthereal === true || options.allowEthereal === false
+              ? false
+              : hasFixedEthereal
+                ? true
+                : hasFixedIndestruct
+                  ? false
+                  : rolledEthereal
+          drops.push(createDroppedItem(effectiveBase, 'unique', {
+            uniqueItem: chosenUnique,
+            ethereal: uniqueEthereal,
+            sockets: 0,
+            itemTypes: dropTables.itemTypes,
+            ilvl: effectiveIlvl,
+            dwInitSeed,
+            itemRng,
+          }))
+          continue
+        }
+      }
+      // Unique check failed (no eligible unique exists, ilvl < unique lvl, or already spawned in this game)
       // D2 1.13c Fallback (D2Game!0x6FC30A20 @ 0x6FC30D64..0x6FC30DF5):
       // Unconditionally triple durability (3x) first, then roll Rare if CanBeRare
       // (0x6FC30730) or fall back to Magic (0x6FC304F0) retaining 3x durability.
@@ -1243,23 +1509,39 @@ export function executeDropPipeline(
     }
 
     if (quality === 'set') {
-      const setCandidates = dropTables.sets.items.entries.filter(
-        s => s.item.toLowerCase() === effectiveBase.id.toLowerCase() && s.lvl <= effectiveIlvl,
-      )
-      if (setCandidates.length > 0) {
-        let chosenSet = setCandidates[0]!
-        if (setCandidates.length > 1) {
-          const totalRarity = setCandidates.reduce((sum, s) => sum + Math.max(1, s.rarity), 0)
-          let roll = itemRng.rand(totalRarity)
-          for (const s of setCandidates) {
-            const weight = Math.max(1, s.rarity)
-            if (roll < weight) {
-              chosenSet = s
-              break
+      let chosenSet: SetItem | undefined
+      if (leaf.setIndex !== undefined) {
+        const directSet =
+          dropTables.sets.items.getById?.(leaf.setIndex) ??
+          dropTables.sets.items.entries[leaf.setIndex] ??
+          dropTables.sets.items.getByIndex(leaf.item)
+        if (
+          directSet &&
+          directSet.item.trim().toLowerCase() === effectiveBase.id.trim().toLowerCase()
+        ) {
+          chosenSet = directSet
+        }
+      } else {
+        const setCandidates = dropTables.sets.items.entries.filter(
+          s => s.item.toLowerCase() === effectiveBase.id.toLowerCase() && s.lvl <= effectiveIlvl,
+        )
+        if (setCandidates.length > 0) {
+          chosenSet = setCandidates[0]!
+          if (setCandidates.length > 1) {
+            const totalRarity = setCandidates.reduce((sum, s) => sum + Math.max(1, s.rarity), 0)
+            let roll = itemRng.rand(totalRarity)
+            for (const s of setCandidates) {
+              const weight = Math.max(1, s.rarity)
+              if (roll < weight) {
+                chosenSet = s
+                break
+              }
+              roll -= weight
             }
-            roll -= weight
           }
         }
+      }
+      if (chosenSet) {
         // 1.13c Ground Truth: Set items NEVER spawn Ethereal
         drops.push(createDroppedItem(effectiveBase, 'set', {
           setItem: chosenSet,
@@ -1309,15 +1591,12 @@ export function executeDropPipeline(
             resolveStaffModsClass(effectiveBase, dropTables.itemTypes) !== undefined
               ? rollStaffMods(effectiveBase, effectiveIlvl, dropTables.itemTypes, itemRng)
               : undefined
-          const ethAndSock = rollItemEtherealAndSockets(effectiveBase, 'rare', effectiveIlvl, itemRng, {
-            itemTypes: dropTables.itemTypes,
-          })
           drops.push(createDroppedItem(effectiveBase, 'rare', {
             rareAffixes,
             autoMagicAffix,
             staffMods,
-            ethereal: ethAndSock.ethereal,
-            sockets: ethAndSock.sockets,
+            ethereal: rolledEthereal,
+            sockets: 0,
             itemTypes: dropTables.itemTypes,
             ilvl: effectiveIlvl,
             dwInitSeed,
@@ -1357,15 +1636,12 @@ export function executeDropPipeline(
         resolveStaffModsClass(effectiveBase, dropTables.itemTypes) !== undefined
           ? rollStaffMods(effectiveBase, effectiveIlvl, dropTables.itemTypes, itemRng)
           : undefined
-      const ethAndSock = rollItemEtherealAndSockets(effectiveBase, 'magic', effectiveIlvl, itemRng, {
-        itemTypes: dropTables.itemTypes,
-      })
       drops.push(createDroppedItem(effectiveBase, 'magic', {
         magicAffixes,
         autoMagicAffix,
         staffMods,
-        ethereal: ethAndSock.ethereal,
-        sockets: ethAndSock.sockets,
+        ethereal: rolledEthereal,
+        sockets: 0,
         itemTypes: dropTables.itemTypes,
         ilvl: effectiveIlvl,
         dwInitSeed,
@@ -1393,14 +1669,16 @@ export function executeDropPipeline(
         : undefined
 
     if (quality === 'superior') {
-      const ethAndSock = rollItemEtherealAndSockets(effectiveBase, 'superior', effectiveIlvl, itemRng, {
+      const sockets = rollRandomItemSockets113c(effectiveBase, 'superior', effectiveIlvl, itemRng, {
         itemTypes: dropTables.itemTypes,
+        difficulty,
+        isExpansion,
       })
       drops.push(createDroppedItem(effectiveBase, 'superior', {
         autoMagicAffix,
         staffMods,
-        ethereal: ethAndSock.ethereal,
-        sockets: ethAndSock.sockets,
+        ethereal: rolledEthereal,
+        sockets,
         itemTypes: dropTables.itemTypes,
         ilvl: effectiveIlvl,
         dwInitSeed,
@@ -1410,14 +1688,16 @@ export function executeDropPipeline(
     }
 
     if (quality === 'low') {
-      const ethAndSock = rollItemEtherealAndSockets(effectiveBase, 'low', effectiveIlvl, itemRng, {
+      const sockets = rollRandomItemSockets113c(effectiveBase, 'low', effectiveIlvl, itemRng, {
         itemTypes: dropTables.itemTypes,
+        difficulty,
+        isExpansion,
       })
       drops.push(createDroppedItem(effectiveBase, 'low', {
         autoMagicAffix,
         staffMods,
-        ethereal: ethAndSock.ethereal,
-        sockets: ethAndSock.sockets,
+        ethereal: false,
+        sockets,
         itemTypes: dropTables.itemTypes,
         ilvl: effectiveIlvl,
         dwInitSeed,
@@ -1427,14 +1707,16 @@ export function executeDropPipeline(
     }
 
     // Default: normal quality
-    const ethAndSock = rollItemEtherealAndSockets(effectiveBase, 'normal', effectiveIlvl, itemRng, {
+    const sockets = rollRandomItemSockets113c(effectiveBase, 'normal', effectiveIlvl, itemRng, {
       itemTypes: dropTables.itemTypes,
+      difficulty,
+      isExpansion,
     })
     drops.push(createDroppedItem(effectiveBase, 'normal', {
       autoMagicAffix,
       staffMods,
-      ethereal: ethAndSock.ethereal,
-      sockets: ethAndSock.sockets,
+      ethereal: rolledEthereal,
+      sockets,
       itemTypes: dropTables.itemTypes,
       ilvl: effectiveIlvl,
       dwInitSeed,

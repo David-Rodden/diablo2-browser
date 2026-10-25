@@ -89,3 +89,11 @@ start} at owner position + (x, y) from `0x6fb83e00` = {-1, 0, 1, 0} / `0x6fb83df
 
 `0x6fab1330`: n <= 0 -> 0 without a seed step; else one `0x6ac690c5` LCG step on the missile seed (unit+0x20),
 `lo & (n-1)` for powers of two, `lo % n` otherwise.
+
+## Nihlathak: special quest event 17 (`0x6fb02af0`, Issue #1495)
+
+`#10754(GetRoom(gpPlayer), 1 /*monster*/, 0x20e)`; when found: `0x6fb5ff10(0x25e nehlithakcontrol, x, y, 0, 1)` and
+`0x6fb5ff10(0x25b nihlithak1, x, y, 0, 1)` from the local player, then `[mon+0xc8] |= 0x40000` (the monster is no
+longer drawn; the same flag hides recycled corpses, CltDo51). nihlithak1 range end runs CltHit60 `0x6fb65770`:
+create CltHitSubMissile1 (`nihlithak2`) and CltHitSubMissile2 (`nehlithakbonechips`, trajectory z = cHitPar1 85 << 11)
+at the missile. The port no longer treats 526 as a MonUMod 22 death show.

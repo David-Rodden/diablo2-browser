@@ -268,7 +268,7 @@ describe('Issue #1201 (B16-40): #161 MagottUp (CltSt32) & #284 Baal Taunt (CltSt
     expect(spawnedA1).toEqual(['dirt pile'])
   })
 
-  it('#284 Baal Taunt spawns baal taunt control (#546) -> baal taunt poison control (#655) -> 16x baal taunt poison (#549) -> poisonpuff (#42) AND baal taunt lightning control (#654) -> baal taunt lightning (#547) -> lightninghit (#99) + baal taunt lightning trail (#548)', () => {
+  it('#284 Baal Taunt spawns baal taunt control (#546) -> baal taunt poison control (#655) -> 16x baal taunt poison (#549) -> poisonpuff (#42) AND baal taunt lightning control (#654) -> baal taunt lightning (#547) -> lightninghit (#99); D2Client never spawns baal taunt lightning trail (#548, #1497)', () => {
     const { world, spawned } = makeWorld()
     const baal = assignMonster(world, 2840, 544, 100, 100)
 
@@ -281,7 +281,8 @@ describe('Issue #1201 (B16-40): #161 MagottUp (CltSt32) & #284 Baal Taunt (CltSt
     expect(spawned).toContain('poisonpuff')
     expect(spawned).toContain('baal taunt lightning control')
     expect(spawned).toContain('baal taunt lightning')
-    expect(spawned).toContain('baal taunt lightning trail')
+    // MissCltDoFunc[8] 0x6fb691c0 only creates CltSubMissile1; #548 is referenced by no D2Client code or txt column.
+    expect(spawned).not.toContain('baal taunt lightning trail')
     expect(spawned).toContain('lightninghit')
   })
 })

@@ -174,8 +174,8 @@ describe('[Skill #065] Cold Mastery (SOR) — 1.13c 7-Dimensional Verification S
 
       // Defender with 0% cold resistance
       const defenderStats = new UnitStatList()
-      defenderStats.addStat('hp', 500 * 256)
-      defenderStats.addStat('res_cold', 0)
+      defenderStats.addStat('hitpoints', 500 * 256)
+      defenderStats.addStat('coldresist', 0)
       const defenderCtx = {
         id: 'fallen',
         statList: defenderStats,
@@ -211,19 +211,19 @@ describe('[Skill #065] Cold Mastery (SOR) — 1.13c 7-Dimensional Verification S
       expect(r1.manaCost).toBe(0)
       expect(r1.minElemDmg256).toBe(0)
       expect(r1.maxElemDmg256).toBe(0)
-      expect(r1.radiusSubtiles).toBe(20) // Param1: 20%
+      expect(r1.radiusSubtiles).toBe(0) // Cold Mastery has empty aurarangecalc
 
       const stats10 = new UnitStatList()
       stats10.setBaseSkillLevel(65, 10)
       const r10 = skillModule.evaluate!({ registry, skill: skillRec, slvl: 10, blvl: 10, statList: stats10 })
       expect(r10.manaCost).toBe(0)
-      expect(r10.radiusSubtiles).toBe(65) // 20 + 9*5 = 65%
+      expect(r10.radiusSubtiles).toBe(0) // Cold Mastery has empty aurarangecalc
 
       const stats20 = new UnitStatList()
       stats20.setBaseSkillLevel(65, 20)
       const r20 = skillModule.evaluate!({ registry, skill: skillRec, slvl: 20, blvl: 20, statList: stats20 })
       expect(r20.manaCost).toBe(0)
-      expect(r20.radiusSubtiles).toBe(115) // 20 + 19*5 = 115%
+      expect(r20.radiusSubtiles).toBe(0) // 20 + 19*5 = 115%
       expect(r20.cooldownFrames).toBe(0)
     })
 

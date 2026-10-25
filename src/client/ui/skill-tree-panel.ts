@@ -25,6 +25,7 @@ import {
   type FormattedTooltipLine,
 } from '../../common/skills/skills-meta.ts'
 import { reportMissingArt } from '../../client/scene/world-renderer.ts'
+import { buildSkillTooltipLines } from '../../common/skills/skill-tooltip-builder.ts'
 import { PanelCloseButton } from './close-button.ts'
 
 export {
@@ -837,213 +838,28 @@ export class SkillTreePanel {
     }
   }
 
+  /**
+   * Skill tree hover text, built exactly like D2Client.dll 0x6FAE3550 / 0x6FAE3B50 (see
+   * `common/skills/skill-tooltip-builder.ts`).
+   */
   static formatSkillTooltipLines(
     vm: TooltipViewModel,
     lang: TblLang = 'CHI',
     showBasePlusBonus = false,
   ): FormattedTooltipLine[] {
-    const lines: FormattedTooltipLine[] = []
-    const isEn = lang === 'ENG'
-    const tbl = SKILL_TBL_STRINGS[lang]
-
-    // 1. Title: Skill Name in Gold (#c8a15a, fontexocet10, center)
-    lines.push({
-      text: isEn ? vm.skill.name : (vm.skill.nameZh || vm.skill.name),
-      color: 'gold',
-      font: 'fontexocet10',
-      align: 'center',
+    const soft = Math.max(0, vm.effectiveLevel - vm.hardPoints)
+    return buildSkillTooltipLines({
+      state: vm.state,
+      skill: vm.skill,
+      baseLevel: vm.hardPoints,
+      effectiveLevel: vm.effectiveLevel,
+      maxLevel: getSkillMaxLevel(vm.skill.id),
+      reqLevel: vm.reqlevel,
+      lang: lang === 'ENG' ? 'en' : 'zh',
+      ...(showBasePlusBonus && vm.effectiveLevel > 0
+        ? { levelText: `${vm.effectiveLevel} (${vm.hardPoints}+${soft})` }
+        : {}),
     })
-
-    // 2. Requirements: Red (#ff4d4d) if player level < reqlevel or unmet prereqs
-    if (!vm.levelMet) {
-      lines.push({
-        text: `${tbl.StrSkill18}${isEn ? ' ' : ''}${vm.reqlevel}`,
-        color: 'red',
-        font: 'font8',
-        align: 'center',
-      })
-    }
-    for (const prereq of vm.prereqs) {
-      if (!prereq.met) {
-        lines.push({
-          text: isEn ? `Required Skill: ${prereq.name}` : `需要前置技能: ${prereq.nameZh}`,
-          color: 'red',
-          font: 'font8',
-          align: 'center',
-        })
-      }
-    }
-
-    // 3. Narrative: Short/Long description in White (#e8e4dc, font8)
-    const desc = isEn
-      ? (vm.skill.shortDesc || vm.shortDesc || vm.skill.longDesc || vm.longDesc)
-      : (vm.skill.shortDescZh || vm.shortDescZh || vm.skill.longDescZh || vm.longDescZh)
-    if (desc) {
-      lines.push({
-        text: desc,
-        color: 'white',
-        font: 'font8',
-        align: 'center',
-      })
-    }
-
-    // 4. Current Level / First Level header (StrSkill2 / StrSkill17)
-    if (vm.isLearned) {
-      const soft = Math.max(0, vm.effectiveLevel - vm.hardPoints)
-      const levelText = showBasePlusBonus
-        ? `${vm.effectiveLevel} (${vm.hardPoints}+${soft})`
-        : String(vm.effectiveLevel)
-      lines.push({
-        text: `${tbl.StrSkill2}${levelText}`,
-        color: soft > 0 ? 'blue' : 'white',
-        font: 'font8',
-        align: 'center',
-      })
-    } else {
-      lines.push({
-        text: tbl.StrSkill17,
-        color: 'white',
-        font: 'font8',
-        align: 'center',
-      })
-    }
-
-    // 5. Current Stats: Mana cost, damage ranges, duration, and effects
-    if (vm.current.manaCost > 0 || vm.skill.mana > 0) {
-      lines.push({
-        text: `${tbl.StrSkill3}${vm.current.manaCost}`,
-        color: 'white',
-        font: 'font8',
-        align: 'center',
-      })
-    }
-    if (vm.current.effects.length === 0 && vm.current.damage.hasDamage) {
-      const d = vm.current.damage
-      lines.push({
-        text: isEn
-          ? `${formatDamageTypeEn(d.type)}: ${d.finalMin} - ${d.finalMax}`
-          : `${d.typeZh || '傷害'}: ${d.finalMin} - ${d.finalMax}`,
-        color: 'blue',
-        font: 'font8',
-        align: 'center',
-      })
-      if (d.durationSeconds !== undefined && d.durationSeconds > 0) {
-        lines.push({
-          text: isEn ? `Duration: ${d.durationSeconds} sec` : `持續時間: ${d.durationSeconds} 秒`,
-          color: 'white',
-          font: 'font8',
-          align: 'center',
-        })
-      }
-      if (d.weaponDamagePercent !== undefined && d.weaponDamagePercent > 0) {
-        lines.push({
-          text: isEn ? `Weapon Damage: ${d.weaponDamagePercent}%` : `武器傷害: ${d.weaponDamagePercent}%`,
-          color: 'white',
-          font: 'font8',
-          align: 'center',
-        })
-      }
-    }
-    for (const eff of vm.current.effects) {
-      const effText = isEn ? eff.textEn : eff.textZh
-      if (effText) {
-        lines.push({
-          text: effText,
-          color: 'blue',
-          font: 'font8',
-          align: 'center',
-        })
-      }
-    }
-
-    // 6. Next Level Preview: Header StrSkill1 ("Next Level" / "下一等級") in Green, omitted if unlearned or maxed
-    const maxLvl = getSkillMaxLevel(vm.skill.id)
-    if (vm.nextLevel && vm.isLearned && vm.hardPoints < maxLvl) {
-      lines.push({
-        text: tbl.StrSkill1,
-        color: 'green',
-        font: 'font8',
-        align: 'center',
-      })
-      if (vm.nextLevel.manaCost !== vm.current.manaCost) {
-        lines.push({
-          text: `${tbl.StrSkill3}${vm.nextLevel.manaCost}`,
-          color: 'green',
-          font: 'font8',
-          align: 'center',
-        })
-      }
-      if (vm.nextLevel.effects.length === 0 && vm.nextLevel.damage.hasDamage) {
-        const nd = vm.nextLevel.damage
-        lines.push({
-          text: isEn
-            ? `${formatDamageTypeEn(nd.type)}: ${nd.finalMin} - ${nd.finalMax}`
-            : `${nd.typeZh || '傷害'}: ${nd.finalMin} - ${nd.finalMax}`,
-          color: 'green',
-          font: 'font8',
-          align: 'center',
-        })
-        if (nd.durationSeconds !== undefined && nd.durationSeconds > 0 && nd.durationSeconds !== vm.current.damage.durationSeconds) {
-          lines.push({
-            text: isEn ? `Duration: ${nd.durationSeconds} sec` : `持續時間: ${nd.durationSeconds} 秒`,
-            color: 'green',
-            font: 'font8',
-            align: 'center',
-          })
-        }
-        if (nd.weaponDamagePercent !== undefined && nd.weaponDamagePercent !== vm.current.damage.weaponDamagePercent) {
-          lines.push({
-            text: isEn ? `Weapon Damage: ${nd.weaponDamagePercent}%` : `武器傷害: ${nd.weaponDamagePercent}%`,
-            color: 'green',
-            font: 'font8',
-            align: 'center',
-          })
-        }
-      }
-      for (const eff of vm.nextLevel.effects) {
-        const effText = isEn ? eff.textEn : eff.textZh
-        if (effText) {
-          lines.push({
-            text: effText,
-            color: 'green',
-            font: 'font8',
-            align: 'center',
-          })
-        }
-      }
-    }
-
-    // 7. Synergies Section: canonical .tbl Sksyn ("%s Receives Bonuses From:" / "額外的對%s")
-    if (vm.synergiesReceived && vm.synergiesReceived.length > 0) {
-      const skillTitle = isEn ? vm.skill.name : (vm.skill.nameZh || vm.skill.name)
-      lines.push({
-        text: tbl.Sksyn.replace('%s', skillTitle),
-        color: 'white',
-        font: 'font8',
-        align: 'center',
-      })
-      for (const syn of vm.synergiesReceived) {
-        const text = isEn
-          ? (syn.labelEn || `${syn.providerName}: +${syn.percentPerLevel}% Damage per Level`)
-          : (syn.labelZh || `${syn.providerNameZh}: +${syn.percentPerLevel}% 每等級傷害`)
-        lines.push({
-          text,
-          color: syn.hardPoints > 0 ? 'blue' : 'gray',
-          font: 'font8',
-          align: 'center',
-        })
-      }
-    }
-    if (vm.masteryInfo && vm.masteryInfo.active) {
-      lines.push({
-        text: isEn ? vm.masteryInfo.descriptionEn : vm.masteryInfo.descriptionZh,
-        color: 'blue',
-        font: 'font8',
-        align: 'center',
-      })
-    }
-
-    return lines
   }
 
   static computeTooltipPlacement(

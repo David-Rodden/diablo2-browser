@@ -887,6 +887,7 @@ export function createNetSimulation(
     'widthPx' in terrain
       ? (terrain as CombatTerrain & { widthPx: number; heightPx: number })
       : { ...terrain, widthPx: 10000, heightPx: 10000 }
+  const spawnedUniqueIds = new Set<number>()
 
   const simulation: LockstepSimulation = {
     advance: (inputs: readonly InputFrame[]) => {
@@ -1002,6 +1003,7 @@ export function createNetSimulation(
           isBoss: isMinion ? false : Boolean(monsterKind?.boss),
           isNoRatio: Boolean(monsterKind?.noRatio),
           monsterRng: new D2Rng(monsterSeed),
+          spawnedUniqueIds,
         })
 
         const burstOccupied: { x: number; y: number }[] = ground.map(g => ({ x: g.x, y: g.y }))

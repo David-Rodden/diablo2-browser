@@ -143,10 +143,17 @@ describe('issue #1353 full quest coverage', () => {
     game.stepFrames(1)
     expect(player.questFlags[questIndex('a5q3')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
 
-    // Rat's Nest only starts a3q1 and drops the Jade Figurine; Alkor completes it.
-    operate(game, playerId, 244)
-    expect(player.questFlags[questIndex('a3q1')]! & QUEST_FLAG_STARTED_113C).toBe(QUEST_FLAG_STARTED_113C)
+    // A3Q1: Jade Figurine ('j34') -> Cain sets STARTED -> Meshif (264) trades 'j34' for Golden Bird ('g34') -> Alkor (254) completes it.
     player.items.push(item(9800, 'j34'))
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: cain } } as never)
+    game.stepFrames(1)
+    expect(player.questFlags[questIndex('a3q1')]! & QUEST_FLAG_STARTED_113C).toBe(QUEST_FLAG_STARTED_113C)
+    const meshif = game.spawnMonster({
+      classId: 264, name: 'Meshif', x: 11, y: 10, areaId: 1, isNpc: true,
+    })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: meshif } } as never)
+    game.stepFrames(1)
+    expect(player.items.some((i) => i.code.trim().toLowerCase() === 'g34')).toBe(true)
     const alkor = game.spawnMonster({
       classId: 254, name: 'Alkor', x: 11, y: 10, areaId: 1, isNpc: true,
     })
@@ -231,13 +238,22 @@ describe('issue #1353 full quest coverage', () => {
     expect(player.items.some((i) => i.code === 'bks')).toBe(false)
     expect(player.items.some((i) => i.code === 'bkd')).toBe(true)
 
-    // A2Q1 (Radament) -> +1 skill point + drops Book of Skill ('ass'); A4Q1 (Izual) -> +2 skill points.
+    // A2Q1 (Radament) drops Book of Skill ('ass') and arms bit 5 (0x0020); using 'ass' grants +1 skill point.
+    // A4Q1 (Izual) directly grants +2 skill points.
     const skills0 = player.newSkills
     const level0 = player.level
     const radament = game.spawnMonster({ defId: 'radament', x: 12, y: 10, areaId: 1, hp: 10, maxHp: 10 })
     game.applyDamageToMonster(radament, 1000, playerId)
+    const droppedAss = [...p.groundItems.entries()].find(([, g]) => g.code.trim().toLowerCase() === 'ass')
+    expect(droppedAss).toBeDefined()
+    expect(player.newSkills - (player.level - level0)).toBe(skills0)
+    game.enqueueCommand(playerId, { type: 'ItemPickup', itemId: droppedAss![0], toCursor: false } as never)
+    game.stepFrames(1)
+    const invAss = player.items.find((i) => i.code.trim().toLowerCase() === 'ass')!
+    expect(invAss).toBeDefined()
+    game.enqueueCommand(playerId, { type: 'BeltUse', itemId: invAss.unitId } as never)
+    game.stepFrames(1)
     expect(player.newSkills - (player.level - level0)).toBe(skills0 + 1)
-    expect([...p.groundItems.values()].some((g) => g.code.trim().toLowerCase() === 'ass')).toBe(true)
 
     const izual = game.spawnMonster({ defId: 'izual', x: 13, y: 10, areaId: 1, hp: 10, maxHp: 10 })
     game.applyDamageToMonster(izual, 1000, playerId)
@@ -251,10 +267,19 @@ describe('issue #1353 full quest coverage', () => {
     game.stepFrames(1)
     expect(player.statPts).toBe(stats0 + 5)
 
-    // A3Q1 (Jade Figurine -> Alkor) -> +20 Max HP.
+    // A3Q1 (Jade Figurine 'j34' -> Meshif 'g34' -> Alkor) mints Potion of Life ('xyz'); using 'xyz' grants +20 Max HP.
     const maxHp0 = player.maxHp
     player.items.push(item(9811, 'j34'))
+    const meshif = game.spawnMonster({ classId: 264, name: 'Meshif', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: meshif } } as never)
+    game.stepFrames(1)
+    expect(player.items.some((i) => i.code.trim().toLowerCase() === 'g34')).toBe(true)
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: alkor } } as never)
+    game.stepFrames(1)
+    expect(player.maxHp).toBe(maxHp0)
+    const xyzItem = player.items.find((i) => i.code.trim().toLowerCase() === 'xyz')!
+    expect(xyzItem).toBeDefined()
+    game.enqueueCommand(playerId, { type: 'BeltUse', itemId: xyzItem.unitId } as never)
     game.stepFrames(1)
     expect(player.maxHp).toBe(maxHp0 + 20)
 
@@ -267,13 +292,18 @@ describe('issue #1353 full quest coverage', () => {
       expect(player.items.some((i) => i.code === rune)).toBe(true)
     }
 
-    // A5Q3 (Malah -> Anya -> Malah) -> +10 all resistances.
+    // A5Q3 (Malah -> Anya -> Malah) mints Scroll of Resistance ('tr2'); using 'tr2' grants +10 all resistances.
     const res0 = p.playerResistPct(player, 'fire')
     const malah = game.spawnMonster({ classId: 513, name: 'Malah', x: 11, y: 10, areaId: 1, isNpc: true })
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
     game.stepFrames(1)
     operate(game, playerId, 558)
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
+    game.stepFrames(1)
+    expect(p.playerResistPct(player, 'fire')).toBe(res0)
+    const tr2Item = player.items.find((i) => i.code.trim().toLowerCase() === 'tr2')!
+    expect(tr2Item).toBeDefined()
+    game.enqueueCommand(playerId, { type: 'BeltUse', itemId: tr2Item.unitId } as never)
     game.stepFrames(1)
     expect(p.playerResistPct(player, 'fire')).toBe(res0 + 10)
     expect(p.playerResistPct(player, 'cold')).toBe(res0 + 10)

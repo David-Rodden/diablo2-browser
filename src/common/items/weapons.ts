@@ -89,6 +89,8 @@ export interface WeaponBase extends ItemBase {
   readonly wclass: string
   /** Weapon animation class for two-handed wielding (e.g. '2hs', '2ht', 'bow'). */
   readonly twoHandedWClass?: string
+  /** `Weapons.txt` `hit class` column (`hth`, `1hss`, `1hsl`, `2hss`, `2hsl`, `1ht`, `2ht`, `club`, `staf`, `bow`, `xbow`, `claw`). */
+  readonly hitClass?: string | undefined
   /** Whether items of this base are stackable (e.g. throwing weapons). */
   readonly stackable: boolean
   /** Minimum stack quantity when spawned. */
@@ -285,6 +287,7 @@ export function parseWeaponsTable(input: D2Table | Uint8Array | string): WeaponT
     const wclass = getCell(row, 'wclass')
     const raw2hWClass = getCell(row, '2handedwclass')
     const twoHandedWClass = raw2hWClass ? raw2hWClass : undefined
+    const hitClass = getCell(row, 'hit class').toLowerCase() || undefined
     const stackable = getCell(row, 'stackable') === '1'
     const minstack = parseOptionalNumber(getCell(row, 'minstack'))
     const maxstack = parseOptionalNumber(getCell(row, 'maxstack'))
@@ -372,6 +375,7 @@ export function parseWeaponsTable(input: D2Table | Uint8Array | string): WeaponT
       ...(type2 !== undefined ? { type2 } : {}),
       wclass,
       ...(twoHandedWClass !== undefined ? { twoHandedWClass } : {}),
+      ...(hitClass !== undefined ? { hitClass } : {}),
       stackable,
       ...(minstack !== undefined ? { minstack } : {}),
       ...(maxstack !== undefined ? { maxstack } : {}),

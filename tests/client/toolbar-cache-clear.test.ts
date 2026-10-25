@@ -805,4 +805,92 @@ describe('Toolbar fullscreen toggle button', () => {
       restore()
     }
   })
+
+  it('provides a Touch HUD Layout mode selector (#d2-toolbar-hud-layout-select: auto / classic / compact-d2r) inside the top-right Config modal (#1491)', () => {
+    const prevDoc = (globalThis as { document?: unknown }).document
+    const head = new FakeElement('head')
+    const body = new FakeElement('body')
+    const container = new FakeElement('div')
+    body.appendChild(container)
+    ;(globalThis as { document?: unknown }).document = {
+      head,
+      body,
+      createElement(tag: string) {
+        return new FakeElement(tag)
+      },
+      getElementById(id: string) {
+        return body.querySelector(`#${id}`) ?? head.querySelector(`#${id}`)
+      },
+    }
+    try {
+      const storage = new MemoryStorage()
+      const store = new SettingsStore({
+        storage,
+        defaultLang: 'zh',
+        pageProtocol: 'https:',
+        syncGlobalLang: false,
+      })
+      const observedModes: string[] = []
+      const toolbar = new Toolbar({
+        store,
+        container: container as unknown as HTMLElement,
+        callbacks: {
+          onHudLayoutModeChange: (mode) => {
+            observedModes.push(mode)
+          },
+        },
+      })
+
+      const root = toolbar.getElement() as unknown as FakeElement
+      const configModal = root.querySelector('#d2-config-modal')!
+      const hudLayoutRow = configModal.querySelector('#d2-config-hud-layout-row')!
+      const hudLayoutLabel = configModal.querySelector('#d2-config-hud-layout-label')!
+      const hudLayoutSelect = configModal.querySelector('#d2-toolbar-hud-layout-select')!
+
+      expect(hudLayoutRow).not.toBeNull()
+      expect(hudLayoutLabel).not.toBeNull()
+      expect(hudLayoutSelect).not.toBeNull()
+      expect(hudLayoutLabel.textContent).toBe('触控界面')
+      expect(hudLayoutSelect.value).toBe('auto')
+      expect(hudLayoutSelect.options.map((o: FakeElement) => o.value)).toEqual([
+        'auto',
+        'classic',
+        'compact-d2r',
+      ])
+      expect(hudLayoutSelect.options.map((o: FakeElement) => o.textContent)).toEqual([
+        '自动 (按设备检测)',
+        '关闭 (经典 PC 界面)',
+        '紧凑 D2R (强制开启触控)',
+      ])
+
+      // Switching to 'classic' via select change event persists to SettingsStore and triggers callback
+      hudLayoutSelect.value = 'classic'
+      hudLayoutSelect.dispatchEvent({ type: 'change' })
+      expect(store.get().hudLayoutMode).toBe('classic')
+      expect(observedModes).toEqual(['classic'])
+
+      // Switching to 'compact-d2r' via toolbar API updates select value and store
+      toolbar.setHudLayoutMode('compact-d2r')
+      expect(store.get().hudLayoutMode).toBe('compact-d2r')
+      expect(hudLayoutSelect.value).toBe('compact-d2r')
+      expect(observedModes).toEqual(['classic', 'compact-d2r'])
+
+      // Language switch updates option labels
+      toolbar.setLanguage('en')
+      expect(hudLayoutLabel.textContent).toBe('Touch HUD')
+      expect(hudLayoutSelect.options.map((o: FakeElement) => o.textContent)).toEqual([
+        'Auto (Detect Device)',
+        'Off (Classic PC HUD)',
+        'Compact D2R (Force Touch)',
+      ])
+
+      const playHtml = readFileSync(resolve(process.cwd(), 'play.html'), 'utf8')
+      expect(playHtml).toContain('id="d2-config-hud-layout-row"')
+      expect(playHtml).toContain('id="d2-toolbar-hud-layout-select"')
+
+      toolbar.destroy()
+    } finally {
+      ;(globalThis as { document?: unknown }).document = prevDoc
+    }
+  })
 })

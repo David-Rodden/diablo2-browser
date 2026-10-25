@@ -593,6 +593,7 @@ export type WeaponOrEquipmentInput =
 export type ThrowMissileKey =
   | 'throwknife'
   | 'throwaxe'
+  | 'electric throwaxe'
   | 'javelin'
   | 'pilum'
   | 'glaive'
@@ -607,16 +608,52 @@ const THROWABLE_ITEM_TYPES = new Set<string>(['tkni', 'taxe', 'jave', 'ajav', 't
 
 let cachedMissileNameById: Map<number, string> | null = null
 
-function resolveMissileNameById113c(id: number): string | null {
+export function resolveMissileNameById113c(id: number): string | null {
   if (!cachedMissileNameById) {
     cachedMissileNameById = new Map<number, string>()
     for (const row of Object.values(CANONICAL_113C_MISSILES)) {
-      if (row.id > 0 && !cachedMissileNameById.has(row.id)) {
+      if (row.id >= 0 && !cachedMissileNameById.has(row.id)) {
         cachedMissileNameById.set(row.id, row.name)
       }
     }
   }
   return cachedMissileNameById.get(id) ?? null
+}
+
+/**
+ * 1.13c `D2Common.#10321` (`ITEMS_GetMissileType` @ `0x6FD72F50`):
+ * Reads `WORD PTR [pItemsTxt + 0xFA]` (`missiletype` column in `Weapons.txt` / `Misc.txt`)
+ * for an item code, returning the `Missiles.txt` Id (`> 0`) or `0` when absent.
+ */
+export function resolveItemMissileTypeId113c(code: string | undefined | null): number {
+  const normalized = (code ?? '').trim().toLowerCase()
+  if (!normalized) return 0
+  const item =
+    getCanonicalWeaponsTable().get(normalized) ??
+    getCanonicalMiscTable().get(normalized)
+  if (!item) return 0
+  const missileTypeId = item.missiletype ?? 0
+  return missileTypeId > 0 ? missileTypeId : 0
+}
+
+/**
+ * Resolve the `Missiles.txt` row name for any item with `missiletype > 0` in 1.13c
+ * `Weapons.txt` / `Misc.txt` (`D2Common.#10321` @ `0x6FD72F50`), including all 42 rows:
+ * `tkf/bkf/9tk/9bk/7tk/7bk` -> 36 (`throwknife`),
+ * `tax/bal/9ta/9b8/7ta/7b8` and `hax/9ha/7ha` -> 35 (`throwaxe`),
+ * `whm/9wh/7wh` -> 178 (`electric throwaxe`),
+ * `jav/ssp/9ja/7ja` -> 1 (`javelin`),
+ * `pil/tsp/am5/ama/amf` -> 371 (`pilum`),
+ * `glv/9pi/9s9/9gl/9ts/7pi/7s7/7gl/7ts` -> 37 (`glaive`),
+ * and throwing potions `opl..gps` -> 44..49.
+ */
+export function resolveItemMissileName113c(
+  code: string | undefined | null,
+): ThrowMissileKey | null {
+  const missileTypeId = resolveItemMissileTypeId113c(code)
+  if (!(missileTypeId > 0)) return null
+  const missileName = resolveMissileNameById113c(missileTypeId)
+  return (missileName as ThrowMissileKey | null) ?? null
 }
 
 /**

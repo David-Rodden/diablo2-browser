@@ -8,6 +8,9 @@
  */
 
 import { resolveSkillInfo, CANONICAL_SKILL_TABS, CANONICAL_REANIMATE_MONSTERS } from '../skills/skills-data.ts'
+import { formatDgrpLine } from '../items/dgrp-line.ts'
+import { formatElementalPair, formatPhysicalRange, formatPoisonPair, physicalPairCombines } from '../items/damage-merge.ts'
+import { chargedSkillChargesOf, formatChargedSkill } from '../items/charged-skill.ts'
 import { CANONICAL_ENG_TBL_DICT, CANONICAL_CHI_TBL_DICT } from '../data/canonical-tbl-strings.ts'
 
 export type TooltipLocale = 'en' | 'zh' | 'bilingual'
@@ -20,6 +23,35 @@ export function getTooltipLocale(): TooltipLocale {
 
 export function setTooltipLocale(locale: TooltipLocale): void {
   currentTooltipLocale = locale
+}
+
+/**
+ * Ground Truth (`D2Client.dll` `0x6FB051A5`, `ItemStatCost.txt` stat 252 `item_replenish_durability` `descfunc=11`):
+ * - `v <= 0`: `sprintf(ModStre9t, 25)` -> `"Repairs 25 durability per second"` / `"每秒修复 25 点耐久度"`
+ * - `v > 0`: `t = trunc(2500 / v)` frames per point:
+ *   - `t <= 30`: `sprintf(ModStre9t, 1)` -> `"Repairs 1 durability per second"` / `"每秒修复 1 点耐久度"`
+ *   - `t > 30`: `sec = trunc((t + 12) / 25)`, `sprintf(ModStre9u, 1, sec)`
+ */
+export function formatReplenishDurability(value: number, locale: TooltipLocale = currentTooltipLocale): string {
+  const isZh = locale === 'zh' || locale === 'bilingual'
+  const dict = isZh ? CANONICAL_CHI_TBL_DICT : CANONICAL_ENG_TBL_DICT
+  const t9t = (dict['ModStre9t'] ?? CANONICAL_ENG_TBL_DICT['ModStre9t'] ?? 'Repairs %d durability per second').trim()
+  const t9u = (dict['ModStre9u'] ?? CANONICAL_ENG_TBL_DICT['ModStre9u'] ?? 'Repairs %d durability in %d seconds').trim()
+  if (value <= 0) {
+    return t9t.replace('%d', '25')
+  }
+  const t = Math.trunc(2500 / value)
+  if (t <= 30) {
+    return t9t.replace('%d', '1')
+  }
+  const sec = Math.trunc((t + 12) / 25)
+  const matches = t9u.match(/%d/g)
+  if (matches && matches.length >= 2) {
+    let i = 0
+    const args = [1, sec]
+    return t9u.replace(/%d/g, () => String(args[i++] ?? 0))
+  }
+  return t9u.replace('%d', String(sec))
 }
 
 /**
@@ -5171,9 +5203,7 @@ function formatPropertyCodeZh(
     }
     case 'charged': {
       const sk = resolveSkillInfoZh(par)
-      const charges = Math.abs(min || effectiveVal || 10)
-      const slvl = Math.abs(max || 1)
-      return `等级 ${slvl} ${sk.name} (${charges}/${charges} 次充能)`
+      return formatChargedSkill(max, sk.name, chargedSkillChargesOf(_value, min), 'zh')
     }
 
     // --- Attributes & Life / Mana / Stamina ---
@@ -5186,7 +5216,7 @@ function formatPropertyCodeZh(
     case 'enr':
       return `${plusVal} 精力`
     case 'all-stats':
-      return `${plusVal} 所有属性`
+      return formatDgrpLine('all-stats', effectiveVal, 'zh')
     case 'hp':
       return `${plusVal} 生命`
     case 'hp%':
@@ -5277,8 +5307,6 @@ function formatPropertyCodeZh(
       return `+${formatPerLevelVal(effectiveVal, charLevel)} 吸收闪电伤害 (依角色等级提升)`
     case 'abs-pois/lvl':
       return `+${formatPerLevelVal(effectiveVal, charLevel)} 吸收毒素伤害 (依角色等级提升)`
-    case 'ac/time':
-      return `${plusVal} 防御 (在夜晚时提升)`
 
     // --- Defense & Damage Modifiers ---
     case 'ac':
@@ -5290,7 +5318,14 @@ function formatPropertyCodeZh(
     case 'ac-hth':
       return `${plusVal} 对近战的防御`
     case 'dmg%':
+    case 'damagepercent':
       return `${plusVal}% 增强伤害`
+    case 'dmg-max%':
+    case 'item_maxdamage_percent':
+      return (CANONICAL_CHI_TBL_DICT['ModStr2j'] ?? '增加傷害上限').trim()
+    case 'dmg-min%':
+    case 'item_mindamage_percent':
+      return (CANONICAL_CHI_TBL_DICT['ModStr2k'] ?? '增加傷害底限').trim()
     case 'dmg':
       return `伤害 ${plusVal}`
     case 'dmg-min':
@@ -5298,7 +5333,7 @@ function formatPropertyCodeZh(
     case 'dmg-max':
       return `${plusVal} 最大伤害`
     case 'dmg-norm':
-      return min > 0 && max > min ? `增加 ${min}-${max} 伤害` : `${plusVal} 最小伤害`
+      return physicalPairCombines(min, max) ? formatPhysicalRange(min, max, 'zh') : `${plusVal} 最小伤害`
     case 'dmg-ac':
       return `每次命中 ${plusVal} 怪物防御`
     case 'reduce-ac':
@@ -5316,7 +5351,7 @@ function formatPropertyCodeZh(
 
     // --- Resistances & Max Resistances ---
     case 'res-all':
-      return `所有抗性 ${plusVal}`
+      return formatDgrpLine('res-all', effectiveVal, 'zh')
     case 'res-all-max':
       return `${plusVal}% 最大所有抗性`
     case 'res-fire':
@@ -5444,11 +5479,11 @@ function formatPropertyCodeZh(
 
     // --- Durability, Sockets, Flags ---
     case 'rep-dur': {
-      const rate = Number(par) || effectiveVal || 1
-      const seconds = Math.floor(100 / rate)
-      return seconds <= 1
-        ? '每秒恢复 1 点耐久度'
-        : `每 ${seconds} 秒恢复 1 点耐久度`
+      const rate =
+        par !== undefined && par !== '' && !Number.isNaN(Number(par)) && Number(par) !== 0
+          ? Number(par)
+          : effectiveVal
+      return formatReplenishDurability(rate, 'zh')
     }
     case 'rep-quant':
       return '自动回复数量'
@@ -5527,13 +5562,13 @@ function formatPropertyCodeZh(
     case 'att%':
       return `${effectiveVal}% 准确率加成`
     case 'dmg-fire':
-      return min > 0 && max > min ? `增加 ${min}-${max} 火焰伤害` : `增加 ${effectiveVal} 火焰伤害`
+      return formatElementalPair('fire', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'zh')
     case 'fire-min':
       return `${plusVal} 最小火焰伤害`
     case 'fire-max':
       return `${plusVal} 最大火焰伤害`
     case 'dmg-cold':
-      return min > 0 && max > min ? `增加 ${min}-${max} 冰冻伤害` : `增加 ${effectiveVal} 冰冻伤害`
+      return formatElementalPair('cold', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'zh')
     case 'cold-min':
       return `${plusVal} 最小冰冻伤害`
     case 'cold-max':
@@ -5541,13 +5576,13 @@ function formatPropertyCodeZh(
     case 'cold-len':
       return `冰冻持续时间: ${Math.max(1, Math.round(effectiveVal / 25))} 秒`
     case 'dmg-ltng':
-      return min > 0 && max > min ? `增加 ${min}-${max} 闪电伤害` : `增加 ${effectiveVal} 闪电伤害`
+      return formatElementalPair('ltng', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'zh')
     case 'ltng-min':
       return `${plusVal} 最小闪电伤害`
     case 'ltng-max':
       return `${plusVal} 最大闪电伤害`
     case 'dmg-pois':
-      return `在 ${Math.round(Number(par || max) / 25) || 3} 秒内造成 ${min || effectiveVal} 点毒素伤害`
+      return formatPoisonPair(min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, Number(par) || 0, 1, 'zh')
     case 'pois-min':
       return `${plusVal} 最小毒素伤害`
     case 'pois-max':
@@ -5555,7 +5590,7 @@ function formatPropertyCodeZh(
     case 'pois-len':
       return `毒素持续时间: ${Math.max(1, Math.round(effectiveVal / 25))} 秒`
     case 'dmg-mag':
-      return min > 0 && max > min ? `增加 ${min}-${max} 魔法伤害` : `增加 ${effectiveVal} 魔法伤害`
+      return formatElementalPair('mag', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'zh')
     case 'dmg-elem':
       return min > 0 && max > min ? `增加 ${min}-${max} 元素伤害` : `增加 ${effectiveVal} 元素伤害`
     default:
@@ -5635,15 +5670,13 @@ function formatPropertyCodeEn(
     }
     case 'charged': {
       const sk = resolveSkillInfo(par)
-      const c = Math.abs(min || effectiveVal || 10)
-      const l = Math.abs(max || 1)
-      return `Level ${l} ${sk.name} (${c}/${c} Charges)`
+      return formatChargedSkill(max, sk.name, chargedSkillChargesOf(_value, min), 'en')
     }
     case 'str': return `${plusVal} to Strength`
     case 'dex': return `${plusVal} to Dexterity`
     case 'vit': return `${plusVal} to Vitality`
     case 'enr': return `${plusVal} to Energy`
-    case 'all-stats': return `${plusVal} to All Attributes`
+    case 'all-stats': return formatDgrpLine('all-stats', effectiveVal, 'en')
     case 'hp': return `${plusVal} to Life`
     case 'hp%': return `Increase Maximum Life ${effectiveVal}%`
     case 'mana': return `${plusVal} to Mana`
@@ -5688,16 +5721,17 @@ function formatPropertyCodeEn(
     case 'abs-fire/lvl': return `+${formatPerLevelVal(effectiveVal, charLevel)} Absorbs Fire Damage (Based on Character Level)`
     case 'abs-ltng/lvl': return `+${formatPerLevelVal(effectiveVal, charLevel)} Absorbs Lightning Damage (Based on Character Level)`
     case 'abs-pois/lvl': return `+${formatPerLevelVal(effectiveVal, charLevel)} Absorbs Poison Damage (Based on Character Level)`
-    case 'ac/time': return `${plusVal} Defense (Increases During Nighttime)`
     case 'ac': return `${plusVal} Defense`
     case 'ac%': return `${plusVal}% Enhanced Defense`
     case 'ac-miss': return `${plusVal} Defense vs. Missile`
     case 'ac-hth': return `${plusVal} Defense vs. Melee`
-    case 'dmg%': return `${plusVal}% Enhanced Damage`
+    case 'dmg%': case 'damagepercent': return `${plusVal}% Enhanced Damage`
+    case 'dmg-max%': case 'item_maxdamage_percent': return (CANONICAL_ENG_TBL_DICT['ModStr2j'] ?? 'Enhanced Maximum Damage').trim()
+    case 'dmg-min%': case 'item_mindamage_percent': return (CANONICAL_ENG_TBL_DICT['ModStr2k'] ?? 'Enhanced Minimum Damage').trim()
     case 'dmg': return `Damage ${plusVal}`
     case 'dmg-min': return `${plusVal} to Minimum Damage`
     case 'dmg-max': return `${plusVal} to Maximum Damage`
-    case 'dmg-norm': return min > 0 && max > min ? `Adds ${min}-${max} Damage` : `${plusVal} to Minimum Damage`
+    case 'dmg-norm': return physicalPairCombines(min, max) ? formatPhysicalRange(min, max, 'en') : `${plusVal} to Minimum Damage`
     case 'dmg-ac': return `${plusVal} to Monster Defense Per Hit`
     case 'reduce-ac': return `-${Math.abs(effectiveVal)}% Target Defense`
     case 'dmg-demon': return `${plusVal}% Damage to Demons`
@@ -5705,7 +5739,7 @@ function formatPropertyCodeEn(
     case 'att-demon': return `${plusVal} to Attack Rating against Demons`
     case 'att-undead': return `${plusVal} to Attack Rating against Undead`
     case 'demon-heal': return `${plusVal} Life after each Demon Kill`
-    case 'res-all': return `All Resistances ${plusVal}`
+    case 'res-all': return formatDgrpLine('res-all', effectiveVal, 'en')
     case 'res-all-max': return `${plusVal}% to Maximum All Resistances`
     case 'res-fire': case 'fireresist': return `Fire Resist ${plusVal}%`
     case 'res-fire-max': return `${plusVal}% to Maximum Fire Resist`
@@ -5754,9 +5788,11 @@ function formatPropertyCodeEn(
     case 'mana-kill': return `${plusVal} to Mana after each Kill`
     case 'heal-kill': case 'hp-kill': return `${plusVal} Life after each Kill`
     case 'rep-dur': {
-      const rate = Number(par) || effectiveVal || 1
-      const seconds = Math.floor(100 / rate)
-      return seconds <= 1 ? 'Repairs 1 durability per second' : `Repairs 1 durability in ${seconds} seconds`
+      const rate =
+        par !== undefined && par !== '' && !Number.isNaN(Number(par)) && Number(par) !== 0
+          ? Number(par)
+          : effectiveVal
+      return formatReplenishDurability(rate, 'en')
     }
     case 'rep-quant': return 'Replenishes quantity'
     case 'ease': return `Requirements ${effectiveVal > 0 ? `+${effectiveVal}` : effectiveVal}%`
@@ -5796,21 +5832,21 @@ function formatPropertyCodeEn(
     case 'state': return String(par).toLowerCase() === 'monsterset' ? 'Transforms into Vampire' : 'Display Aura'
     case 'att': return `${plusVal} to Attack Rating`
     case 'att%': return `${effectiveVal}% Bonus to Attack Rating`
-    case 'dmg-fire': return min > 0 && max > min ? `Adds ${min}-${max} Fire Damage` : `Adds ${effectiveVal} Fire Damage`
+    case 'dmg-fire': return formatElementalPair('fire', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'en')
     case 'fire-min': return `${plusVal} to Minimum Fire Damage`
     case 'fire-max': return `${plusVal} to Maximum Fire Damage`
-    case 'dmg-cold': return min > 0 && max > min ? `Adds ${min}-${max} Cold Damage` : `Adds ${effectiveVal} Cold Damage`
+    case 'dmg-cold': return formatElementalPair('cold', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'en')
     case 'cold-min': return `${plusVal} to Minimum Cold Damage`
     case 'cold-max': return `${plusVal} to Maximum Cold Damage`
     case 'cold-len': return `Cold Duration: ${Math.max(1, Math.round(effectiveVal / 25))} Seconds`
-    case 'dmg-ltng': return min > 0 && max > min ? `Adds ${min}-${max} Lightning Damage` : `Adds ${effectiveVal} Lightning Damage`
+    case 'dmg-ltng': return formatElementalPair('ltng', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'en')
     case 'ltng-min': return `${plusVal} to Minimum Lightning Damage`
     case 'ltng-max': return `${plusVal} to Maximum Lightning Damage`
-    case 'dmg-pois': return `+${min || effectiveVal} Poison Damage Over ${Math.round(Number(par || max) / 25) || 3} Seconds`
+    case 'dmg-pois': return formatPoisonPair(min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, Number(par) || 0, 1, 'en')
     case 'pois-min': return `${plusVal} to Minimum Poison Damage`
     case 'pois-max': return `${plusVal} to Maximum Poison Damage`
     case 'pois-len': return `Poison Duration: ${Math.max(1, Math.round(effectiveVal / 25))} Seconds`
-    case 'dmg-mag': return min > 0 && max > min ? `Adds ${min}-${max} Magic Damage` : `Adds ${effectiveVal} Magic Damage`
+    case 'dmg-mag': return formatElementalPair('mag', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'en')
     case 'dmg-elem': return min > 0 && max > min ? `Adds ${min}-${max} Elemental Damage` : `Adds ${effectiveVal} Elemental Damage`
     default: return `${code}: ${plusVal}${par ? ` (${par})` : ''}`
   }

@@ -808,13 +808,13 @@ describe('ClientWorld authoritative state mirror', () => {
     raw0x73[0] = 0x73
     dv.setUint32(1, 0, true) // unk
     dv.setUint16(5, 62, true) // missileClassId = 62 (fireball)
-    dv.setUint16(7, 5002, true) // x
-    dv.setUint16(9, 5004, true) // y
-    dv.setUint16(11, 5022, true) // targetX
-    dv.setUint16(13, 5004, true) // targetY
-    raw0x73[15] = 5 // level = 5
-    raw0x73[16] = 0 // ownerType = player
-    dv.setUint32(17, 2, true) // ownerId = 2 (remote player)
+    dv.setUint32(7, 5002, true) // x (u32, D2Client.dll 0x6fb5ef10)
+    dv.setUint32(11, 5004, true) // y
+    dv.setUint32(15, 5022, true) // targetX
+    dv.setUint32(19, 5004, true) // targetY
+    raw0x73[25] = 0 // ownerType = player
+    dv.setUint32(26, 2, true) // ownerId = 2 (remote player)
+    raw0x73[30] = 5 // level = 5
     const ev0x73 = decodeD2gsS2cPacket(raw0x73)
     expect(ev0x73.type).toBe('CreateMissile')
     if (ev0x73.type === 'CreateMissile') {
@@ -1124,7 +1124,8 @@ describe('ClientWorld authoritative state mirror', () => {
       level: 1,
       target: { x: 5020, y: 5000 },
     })
-    monWorld.tick(120, Date.now() + 120)
+    // 5 ticks: Ice Blast (Size 1) reaches sub-tile 5002, adjacent to the Fallen (SizeX 2) at 5003 (#1502 footprint).
+    monWorld.tick(200, Date.now() + 200)
     const monMissiles = Array.from(monWorld.units.values()).filter(u => u.unitType === 'missile')
     expect(monMissiles.some(u => u.missileKey === 'iceblast')).toBe(false)
     expect(monMissiles.some(u => u.missileKey === 'freezingarrowexp1')).toBe(true)
@@ -1544,10 +1545,10 @@ describe('ClientWorld authoritative state mirror', () => {
 
       expect(world.resolvePlayerLightRadiusBonus(42)).toBe(2) // 5 - 3 = 2
 
-      // Remote player equips an active weapon (slot 4) with +1 light radius and 0xFF8000 color
+      // Remote player equips a active weapon (slot 4) with +1 light radius and 0xFF8000 color
       world.applyServerEvent({
         type: 'ItemEvent',
-        action: 0x07,
+        action: 0x06,
         item: makeItem({
           id: 1006,
           code: 'crs',

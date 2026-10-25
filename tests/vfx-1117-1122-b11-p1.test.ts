@@ -259,7 +259,7 @@ describe('Diablo II v1.13c Spell VFX Parity — B11-p1 Amazon (#1117..#1122)', (
   })
 
   describe('#1122 (B11-6): CltDoFunc=8 lightninghit trail (Range=12) excluded from lightningjavelin & furylightning (pCltDoFunc=1)', () => {
-    it('lightningjavelin and furylightning in flight spawn 0 lightninghit; lightningbolt spawns 3 lightninghit with maxTicks === 12', () => {
+    it('lightningjavelin and furylightning in flight spawn 0 lightninghit; lightningbolt spawns 1 lightninghit per new sub-tile with maxTicks === 12', () => {
       expect(CANONICAL_113C_MISSILES.lightningjavelin?.pCltDoFunc).toBe(1)
       expect(CANONICAL_113C_MISSILES.lightningjavelin?.cltSubMissile1).toBeUndefined()
       expect(CANONICAL_113C_MISSILES.lightningfury?.pCltDoFunc).toBe(1)
@@ -289,7 +289,8 @@ describe('Diablo II v1.13c Spell VFX Parity — B11-p1 Amazon (#1117..#1122)', (
         expect(hits).toHaveLength(0)
       }
 
-      // 2) lightningbolt in flight -> 3 lightninghit with maxTicks === 12
+      // 2) lightningbolt in flight -> one lightninghit per new sub-tile (MissCltDoFunc[8] 0x6fb691c0, #1497),
+      //    SubLoop count CltParam1 = 3, maxTicks === Range 12
       const worldLb = new ClientWorld()
       const lb = (worldLb as any).spawnMissileByKey('lightningbolt', 100, 100, 130, 100, {
         ownerType: 'player',
@@ -299,8 +300,9 @@ describe('Diablo II v1.13c Spell VFX Parity — B11-p1 Amazon (#1117..#1122)', (
       })
       ;(worldLb as any).stepMissileUnit(lb)
       const lbHits = getActiveMissiles(worldLb).filter((u) => u.missileKey === 'lightninghit')
-      expect(lbHits).toHaveLength(3)
+      expect(lbHits).toHaveLength(1)
       for (const h of lbHits) {
+        expect(h.subLoops).toBe(3)
         expect(h.maxTicks).toBe(12)
       }
     })

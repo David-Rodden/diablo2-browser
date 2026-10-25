@@ -34,37 +34,83 @@ import {
   LocalMovementPredictor,
 } from '../../common/path/movement-predictor.ts'
 import { MONSTER_PATH_DATA, MONSTER_PATH_DATA_STRIDE } from '../../common/path/monster-path-data.ts'
-import { MONMODE_KNOCKBACK, MONMODE_RUN, MONMODE_WALK } from '../../common/path/types.ts'
+import { MONMODE_BLOCK, MONMODE_KNOCKBACK, MONMODE_RUN, MONMODE_WALK } from '../../common/path/types.ts'
 import { getMonsterModeBaseFrameCount113c } from '../../common/path/monster-anim-metrics-113c.ts'
 import { getMonsterModeBaseAnimSpeed256, getMonsterPathRecord } from '../../common/path/units.ts'
-import { resolveArmorSpeed113c } from '../../common/units/char-anim-speed.ts'
+import {
+  computeOneShotTicks,
+  resolveArmorBlock113c,
+  resolveArmorSpeed113c,
+  resolveCharacterAnimSpeedParams,
+  resolveEquippedWeaponClass,
+} from '../../common/units/char-anim-speed.ts'
 import {
   findPathWorld,
   TOWN_ASTAR_OBSTACLE_DISTANCE_SQ,
   type SubTilePoint,
 } from '../../common/path/pathfind.ts'
 import { D2Common_10399_AtSubtiles } from '../../common/path/step.ts'
-import { CANONICAL_113C_OBJECTS, CANONICAL_113C_SHRINES, isObjectInInteractRange113c } from '../../common/world/objects-meta.ts'
-import { classifyObjectOperate113c } from '../../common/world/object-operate-113c.ts'
+import { CANONICAL_113C_OBJECTS, CANONICAL_113C_SHRINES, getShrineMeta113c, isObjectInInteractRange113c } from '../../common/world/objects-meta.ts'
+import {
+  CURABLE_STATE_IDS_113C,
+  WELL_CURABLE_STATE_IDS_113C,
+  WELL_DEFAULT_PARMS_113C,
+  classifyObjectOperate113c,
+  computeShrineResetFrame113c,
+  computeWellHealDeltaFixed113c,
+  computeWellInitialCharges113c,
+  computeWellModeForCharges113c,
+  computeWellRegenFrame113c,
+  getObjectOperatingTicks113c,
+  rollObjectTrapDamage256_113c,
+  rollShrineType113c,
+} from '../../common/world/object-operate-113c.ts'
+import { getLevelMonsterLevel113c } from '../../common/world/levels-monlvl-113c.ts'
 import {
   QUEST_AREA_GATES_113C,
   QUEST_FLAG_COMPLETED_113C,
   QUEST_FLAG_COMPLETED_NOW_113C,
+  QUEST_FLAG_CUSTOM_4_113C,
+  QUEST_FLAG_CUSTOM_5_113C,
+  QUEST_FLAG_CUSTOM_6_113C,
+  QUEST_FLAG_CUSTOM_7_113C,
+  QUEST_FLAG_CUSTOM_8_113C,
   QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
   QUEST_FLAG_REWARD_PENDING_113C,
   QUEST_FLAG_STARTED_113C,
   QUEST_OBJECT_TO_QUEST_113C,
+  clearQuestFlag113c,
+  computeA3Q1StatusByte113c,
   hasQuestFlag113c,
   questWordIndex113c,
   setQuestFlag113c,
 } from './quests-113c.ts'
-import { createDroppedItem, imbueItem113c, isEligibleForCharsiImbue113c, rollHellforgeDrop } from '../../common/items/drop-tables.ts'
+import {
+  createDroppedItem,
+  getMaxSockets113c,
+  imbueItem113c,
+  isEligibleForCharsiImbue113c,
+  rollHellforgeDrop,
+} from '../../common/items/drop-tables.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
+import { PartyManager } from '../net/party.ts'
 import { D2_EXPERIENCE_TABLE_99, PARSED_EXPERIENCE_TABLE } from '../../common/skills/formulas.ts'
 import {
+  applyDeathGoldPenalty113c,
+  calculateDeathExperiencePenalty113c,
+  calculateKillExperienceGain113c,
+  clampMercenaryExpGain113c,
   computeMonsterExpGrant113c,
+  evaluateDeathExperiencePenalty113c,
+  evaluateMercenaryKillExperience113c,
+  hirelingExpThreshold,
+  hirelingLevelFromExp,
+  isWithinPartyExpRange113c,
+  MAX_MERCENARY_LEVEL_113C,
+  PARTY_EXP_MAX_MEMBERS_113C,
   partyExpPool113c,
   partyExpShare113c,
+  type DeathKillerKind113c,
 } from '../../common/progression/experience-113c.ts'
 import {
   calculateConvictionStats,
@@ -83,7 +129,20 @@ import {
   type MonAiProfile113c,
 } from '../../common/units/monai-113c.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
-import { HIRELING_RECORDS, resolveHirelingStatsAtLevel } from '../../common/units/hireling-table.ts'
+import {
+  HIRELING_RECORDS,
+  computeMercHireCost113c,
+  computeMercResurrectCost113c,
+  generateHireCandidates113c,
+  resolveHirelingStatsAtLevel,
+  type HirelingCandidateDesc,
+} from '../../common/units/hireling-table.ts'
+
+export {
+  computeMercHireCost113c,
+  computeMercResurrectCost113c,
+  generateHireCandidates113c,
+}
 import {
   BONE_FETISH_EXPLOSION_RADIUS,
   DURIEL_MAGGOT_HCIDX,
@@ -112,6 +171,8 @@ import {
   getMonsterModeMissile113c,
   getSuperUniqueByIndex,
   resolveMonsterStats,
+  rollEliteModifiers,
+  rollSuperUniqueUModIds113c,
   type MonsterKind,
   type MonsterModeMissiles113c,
   type MonsterRank,
@@ -121,7 +182,7 @@ import { getMissileTxtData, MISSILE_CLASS_ID_TO_KEY } from '../../common/skills/
 import { PET_TYPE_IDX_BY_NAME_113C, PET_TYPE_PORTRAIT_TABLE } from '../../common/units/pet-type-table.ts'
 import { parseTable } from '../../common/world/acts.ts'
 import { getLevelMonsterPlan113c } from '../../common/world/level-monster-plans.ts'
-import { OBJECTS_LOCKABLE_113C, getObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
+import { OBJECTS_LOCKABLE_113C, OBJECTS_TXT_113C, getObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
 import type {
   CharClassId,
   ClientCommand,
@@ -138,6 +199,7 @@ import type {
 import { findStandableNear, resolvePresetObject113c } from '../world/area-bootstrap.ts'
 import {
   BAAL_THRONE_WAVES_113C,
+  HIREABLE_AI_113C,
   tickMercenaryAi25Hz,
   type MercenaryUnitState,
 } from '../ai/monster-ai.ts'
@@ -160,6 +222,7 @@ import {
 } from '../items/server-item-data.ts'
 import {
   SummonManager,
+  resolvePetAiProfile113c,
   type CreatePetOutcome,
   type SummonedPetUnit,
 } from '../ai/summon-manager.ts'
@@ -173,7 +236,21 @@ import {
   createDefaultWaypointData,
   writeD2sSave113c,
 } from '../save/d2s-writer.ts'
-import { executeSUnitDmg, type CombatUnitContext, type SUnitDmgOutcome } from './combat-pipeline.ts'
+import {
+  applyElementalAbsorb113c,
+  calculateCrushingBlow113c,
+  computeKnockbackStep113c,
+  executeSUnitDmg,
+  getPrePierceResistance113c,
+  resolveConvictionPierce113c,
+  resolveHitClassCode113c,
+  resolveLowerResistPierce113c,
+  resolvePhysCursePierce113c,
+  rollItemKnockback113c,
+  shouldEnterGetHit113c,
+  type CombatUnitContext,
+  type SUnitDmgOutcome,
+} from './combat-pipeline.ts'
 import { FIXED_ONE, UnitStatList } from './stat-list.ts'
 import { StateBus } from './state-bus.ts'
 import type { MissileRecord, SkillRecord } from '../../common/data/data-registry.ts'
@@ -190,16 +267,22 @@ import {
 import { resolveOnlineItemReqLevel } from '../../common/items/item-bridge.ts'
 import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
 import { resolveActiveSetBonuses } from '../../common/items/set-items.ts'
-import { getAttackWeaponInfo } from '../../common/skills/weapon-combat-meta.ts'
+import {
+  getAttackWeaponInfo,
+  resolveItemMissileTypeId113c,
+} from '../../common/skills/weapon-combat-meta.ts'
 import { resolveWeaponBase113c } from '../../common/units/char-anim-speed.ts'
 import type { ItemStat } from '../../netproto/index.ts'
 import { AuraScanner, type CorpseContext } from './aura-scanner.ts'
 import { isWithinAuraRange } from '../../common/skills/aura-filter.ts'
-import { evaluateCalc } from '../../common/data/calc-ast.ts'
+import { compute3BandDuration, evaluateCalc } from '../../common/data/calc-ast.ts'
 import { computeCorpseExplosion113c } from './combat-pipeline.ts'
 import {
+  difficultyDeathExpPenalty,
   difficultyLifeStealDivisor,
   difficultyManaStealDivisor,
+  difficultyMonsterColdDivisor,
+  difficultyMonsterFreezeDivisor,
   difficultyResistPenalty,
 } from './difficulty-resist-penalty.ts'
 import { computeMindBlastStunDuration } from '../skills/assassin-shadow.ts'
@@ -341,8 +424,15 @@ export interface ConnectPlayerSpec {
   readonly classId?: CharClassId | CharacterClassCode | number | string | undefined
   readonly charClass?: CharClassId | CharacterClassCode | number | string | undefined
   readonly level?: number | undefined
+  readonly experience?: number | undefined
   readonly hp?: number | undefined
   readonly maxHp?: number | undefined
+  readonly strength?: number | undefined
+  readonly dexterity?: number | undefined
+  readonly vitality?: number | undefined
+  readonly energy?: number | undefined
+  readonly ar?: number | undefined
+  readonly tohit?: number | undefined
   readonly d2s?: Uint8Array | undefined
   readonly d2sBytes?: Uint8Array | undefined
   readonly x?: number | undefined
@@ -429,6 +519,8 @@ export interface SpawnMonsterSpec {
   readonly monType?: string | undefined
   /** `MonStats.txt` resurrection skill id override (181 Resurrect, 327 Resurrect2, 158 SkeletonRaise). */
   readonly resurrectSkillId?: number | undefined
+  /** Optional explicit override for `stat 100 = monster_playercount` recorded at spawn (`D2Game!0x6FCCF840` / `0x6FCCFF3B`). */
+  readonly monsterPlayerCount?: number | undefined
 }
 
 export interface HireMercenarySpec {
@@ -443,6 +535,7 @@ export interface HireMercenarySpec {
   readonly y?: number | undefined
   readonly activeAura?: string | undefined
   readonly dead?: boolean | undefined
+  readonly experience?: number | undefined
 }
 
 export interface ServerMercenaryState {
@@ -463,6 +556,8 @@ export interface ServerMercenaryState {
   readonly activeAura: string | undefined
   readonly state: string
   readonly alive: boolean
+  readonly experience: number
+  readonly expPerLvl: number
 }
 
 export interface SummonPetSpec {
@@ -535,6 +630,8 @@ export interface ServerItemEntry {
   permStore?: boolean | undefined
   /** Item was sold back by this customer; repurchase uses the recorded sell value. */
   buyback?: boolean | undefined
+  /** Optional item PRNG seed (`D2Common #10695` `ITEMS_GetSeed`). */
+  seed?: number | undefined
   rawItemData?: ItemData | undefined
 }
 
@@ -636,6 +733,7 @@ export interface ServerMonsterState {
   readonly corpseSuppressed: boolean
   readonly revivedByShaman: boolean
   readonly states: ReadonlySet<number>
+  readonly monsterPlayerCount: number
 }
 
 const MERC_AURA_TO_STATE_ID: Readonly<Record<string, number>> = {
@@ -751,6 +849,20 @@ const WARP_INTERACT_COOLDOWN_FRAMES = 10
 const NPC_INTERACT_DISTANCE_SUBTILES = 2
 /** Player unit size used by `D2Common #10594` / `#10407` (constant 2 in both binaries). */
 const PLAYER_SIZE_X_113C = 2
+
+/** Canonical 1.13c outdoor continuous seam-adjacent level pairs from Levels.txt. */
+const CANONICAL_OUTDOOR_SEAM_ADJACENT_PAIRS_113C = new Set<string>([
+  // Act 1
+  '1:2', '2:3', '3:4', '3:6', '4:5', '5:7', '7:8', '8:26', '26:27',
+  // Act 2
+  '40:41', '41:42', '42:43', '43:44', '44:45',
+  // Act 3
+  '75:76', '76:77', '76:78', '77:78', '78:79', '79:80', '80:81', '81:82', '82:83',
+  // Act 4
+  '103:104', '104:105', '105:106',
+  // Act 5
+  '109:110', '110:111', '111:112', '118:120',
+])
 
 function areaToAct(areaId: number): 0 | 1 | 2 | 3 | 4 {
   if (areaId >= 109) return 4
@@ -990,6 +1102,8 @@ interface InternalPlayerRecord {
   dexterity: number
   vitality: number
   energy: number
+  ar?: number | undefined
+  tohit?: number | undefined
   statPts: number
   newSkills: number
   leftSkill: number
@@ -1023,7 +1137,15 @@ interface InternalPlayerRecord {
   corpseId: number | undefined
   corpseX: number
   corpseY: number
+  /** `D2Game.dll` `0x6FC57730` (`[pClient + 0x508]`): experience lost on most recent death. */
+  lastDeathExpLoss?: number | undefined
+  /** `D2Game.dll` `0x6FC58180` (`stat 0xAF` / `175`): gold lost on most recent death. */
+  lastDeathGoldLoss?: number | undefined
   activeNpcId: number | undefined
+  /** Cached 1.13c mercenary vendor candidate list (`D2Game.dll` `0x6FCDCED0` / `D2Common.dll` `0x6FD7CCC0`). */
+  mercHireCandidates?: readonly HirelingCandidateDesc[] | undefined
+  /** End frame of the player's `PLRMODE_GETHIT` (`mode = 4`) animation (`D2Game.dll` `0x6FCFD0FC`). */
+  hitRecoveryUntilFrame?: number | undefined
   /** 1.13c interact queue: walk into range, then run the interaction. */
   pendingInteraction?:
     | {
@@ -1122,6 +1244,8 @@ interface InternalMonsterRecord {
   baseMaxHp: number
   level: number
   baseXp: number
+  experience: number
+  unscaledXp: boolean
   minDmg: number
   maxDmg: number
   /** MonStats `A2MinD/A2MaxD` and `S1MinD/S1MaxD` (difficulty scaled). */
@@ -1303,6 +1427,8 @@ interface InternalMonsterRecord {
   vendorPool: ServerItemEntry[]
   /** 1.13c `D2NpcVendorStrc.bItemsGenerated` (`0x6FCDF730`): whether the town store inventory has been generated. */
   vendorStoreGenerated?: boolean
+  /** `stat 100 = monster_playercount` recorded when the monster spawned (`D2Game!0x6FCCF840` / `0x6FCCFF3B`). */
+  monsterPlayerCount: number
 }
 
 interface InternalMercenaryRecord {
@@ -1320,6 +1446,7 @@ interface InternalMercenaryRecord {
   hp: number
   maxHp: number
   damage: number
+  ar?: number | undefined
   /** Hireling.txt defense and all-resist at this level. */
   defense: number
   resist: number
@@ -1331,6 +1458,9 @@ interface InternalMercenaryRecord {
   activeAura: string | undefined
   state: 'idle' | 'follow' | 'chase' | 'attack' | 'dead'
   alive: boolean
+  /** Current mercenary experience points and `Hireling.txt` `Exp/Lvl` factor (`0x6FD7C990`). */
+  experience: number
+  expPerLvl: number
   /** Mercenary gear (helmet / armor / weapon) used for kill MF/GF aggregation. */
   equipment: ServerItemEntry[]
 }
@@ -1351,6 +1481,10 @@ interface InternalObjectRecord {
   isSparkling: boolean
   /** Frame at which a used shrine returns to mode 0 (Shrines.txt ResetTime). */
   shrineResetFrame: number
+  /** Remaining water well charges (`pObjectData->bInteractType`, `InitFn 16` @ `0x6fc4e760`: `Parm2 << 1 = 2`). */
+  wellCharges: number
+  /** Scheduled `Object Event 2` (`0x6fc89ca0`) frame numbers (`currentFrame + Parm0 + 1`). */
+  wellRegenFrames: number[]
   /** Compelling Orb hit counter (1.13c requires two Khalim's Will hits). */
   useCount: number
   /** Invisible MonStats 366 compellingorb monster paired with Objects.txt 404 (InitFn 60 @ 0x6fd084a0). */
@@ -1445,11 +1579,15 @@ interface PlayerSkillCast {
   readonly evalResult: SkillEvalResult
   /** Server `Missiles.txt` row launched by the cast; `undefined` for missile-less skills. */
   readonly missile: MissileRecord | undefined
+  /** Optional off-hand `Missiles.txt` row for dual-throw skills (`Double Throw` #140). */
+  readonly offHandMissile?: MissileRecord | undefined
   /** Equipped item whose `item_charged_skill` (204) charge pays for this cast (no mana cost). */
   readonly chargeItem?: ServerItemEntry | undefined
   /** Caster stat list / hard points used to evaluate the cast's `Skills.txt` `calc1..calc4` cells. */
   readonly statList: UnitStatList
   readonly blvl: number
+  /** `Skills.txt` `nocostinstate = 1`: true when the caster is already in `skill.auraState` (waives mana cost). */
+  readonly isNoCostInState?: boolean | undefined
 }
 
 /** Persistent combat unit: stat list + state bus kept across frames (see `playerCombat`). */
@@ -1471,9 +1609,11 @@ const PLAYER_MISSILE_SPEED_SUBTILES = 2.0
 const PLAYER_MELEE_REACH_SUBTILES = 4
 
 /**
- * Server missile launched by a player skill: `Skills.txt` `srvmissile` / `srvmissilea`; for weapon
- * throws / shots without a server column (`Throw` 2, `Left Hand Throw` 4) the registry evaluation's
- * weapon missile. Client-only columns (`cltmissile*`) never spawn server missiles.
+ * Server missile launched by a player skill: `Skills.txt` `srvmissile` / `srvmissilea`.
+ * Client-only columns (`cltmissile*`) never spawn server missiles; weapon-dependent throws
+ * (`Throw` 2, `Left Hand Throw` 4, `Double Throw` 140) and bow/crossbow attacks (`Attack` 0,
+ * `Left Hand Swing` 5) resolve their missile from the equipped weapon's `Weapons.txt` `missiletype`
+ * (`D2Common #10321` @ `0x6FD72F50`) / `D2Common #10709` (`0x6FDA0D40`) in `resolvePlayerSkillCast`.
  */
 function resolvePlayerServerMissileName(skill: SkillRecord, evalResult: SkillEvalResult): string {
   if (skill.srvMissile !== '') return skill.srvMissile
@@ -1530,10 +1670,13 @@ const STAT_MINDAMAGE = 21
 const STAT_MAXDAMAGE = 22
 const STAT_SECONDARY_MINDAMAGE = 23
 const STAT_SECONDARY_MAXDAMAGE = 24
+const STAT_QUANTITY = 70
 const STAT_ITEM_ADDCLASSSKILLS = 83
 const STAT_ITEM_NONCLASSSKILL = 97
 const STAT_ITEM_SINGLESKILL = 107
 const STAT_ITEM_ALLSKILLS = 127
+const STAT_ITEM_MAGICARROW = 157
+const STAT_ITEM_EXPLOSIVEARROW = 158
 const STAT_ITEM_ADDSKILL_TAB = 188
 const STAT_ITEM_CHARGED_SKILL = 204
 
@@ -1544,7 +1687,6 @@ const BODYLOC_LEFT_ARM = 5
 /** `Skills.txt` rows / `srvdofunc` ids with dedicated server handling (movement skills). */
 const SKILL_UNSUMMON = 3
 const SKILL_TELEPORT = 54
-const SKILL_PRAYER = 99
 /** 1.13c monsters spawn their drop at the death animation's drop frame (~0.4 s at 25 Hz). */
 const MONSTER_DEATH_DROP_DELAY_FRAMES = 10
 /** Room/AOI activation radius: monsters farther than this stop running AI (1.13c room sleep). */
@@ -1553,7 +1695,10 @@ const MONSTER_ACTIVATION_RADIUS_SUBTILES = 80
 const MONSTER_THREAT_FRAMES = 250
 /** Fallback GetHit animation lock (AnimData `GH`) when a monster token has no `GH` record. */
 const MONSTER_HIT_RECOVERY_FRAMES = 6
-/** Server knockback max travel in sub-tiles (`PATHTYPE_KNOCKBACK_SERVER`: 2–3 sub-tiles). */
+/**
+ * 1.13c server knockback step distance (`D2Game.dll` `0x6FC9520A` `nDist = 5` ->
+ * `D2Common.dll` `0x6FDB7390` `stepDist = (nDist >> 1) + 1 = 3` sub-tiles; `6` for `sandmaggot1`).
+ */
 const MONSTER_KNOCKBACK_DISTANCE = 3
 /** `Skills.txt` rows whose hits apply 1.13c knockback (Smite, Bash, Charge, kicks, psi, boulder). */
 const MONSTER_KNOCKBACK_SKILLS: ReadonlySet<number> = new Set([
@@ -1728,7 +1873,6 @@ const QUEST_BOSS_KILL_113C: readonly (readonly [string, string])[] = [
  * - 108 (Horadric Malus Stand, OperateFn 21 @ 0x6FC85D40) -> 'hdm' (Horadric Malus)
  * - 149 (Tainted Sun Altar, OperateFn 24 @ 0x6FCE76B0) -> 'vip' (Amulet of the Viper)
  * - 193 (Lam Esen's Tome Stand, OperateFn 28 @ 0x6FD094C0) -> 'bbb' (Lam Esen's Tome)
- * - 244 / 246 (Rat's Nest, Act 3 Q1) -> 'j34' (Jade Figurine)
  * - 252 (The Gidbinn Decoy, OperateFn 31 @ 0x6FD09C80) -> 'g33' (The Gidbinn)
  * - 354 (Horadric Cube Chest, OperateFn 39 @ 0x6FCEA050) -> 'box' (Horadric Cube)
  * - 355 (Horadric Scroll Chest, OperateFn 40 @ 0x6FCEA290) -> 'tr1' (Horadric Scroll)
@@ -1742,8 +1886,6 @@ const QUEST_OBJECT_DROP_ITEM_CODE_113C: Readonly<Record<number, string>> = Objec
   108: 'hdm',
   149: 'vip',
   193: 'bbb',
-  244: 'j34',
-  246: 'j34',
   252: 'g33',
   354: 'box',
   355: 'tr1',
@@ -1778,6 +1920,7 @@ export class GameInstance {
   readonly difficulty: 0 | 1 | 2
   readonly gameName: string
   readonly registry: D2DataRegistry
+  readonly partyManager: PartyManager
 
   private currentFrame = 0
   private currentMapSeed: number
@@ -1806,6 +1949,12 @@ export class GameInstance {
   private readonly cairnPortalAreas = new Set<number>()
   /** Council member defIds killed per area (a3q5 needs all three). */
   private readonly councilDeaths = new Map<number, Set<string>>()
+  /** 1.13c A3Q1 per-game Jade Figurine (j34) drop gate (`D2Game.dll` @ `0x6fd08010..0x6fd080c6`). */
+  private a3q1JadeFigurineDropped = false
+  /** 1.13c A4Q2 Hellforge (`pQuestDataEx->wForgeMode` @ `0x6fcdae11`: 0 = idle, 2 = soulstone placed, 3 = smashed). */
+  private hellforgeState: 0 | 2 | 3 = 0
+  /** 1.13c A4Q2 Hellforge hammer hit counter (`pQuestDataEx->nHammerHits` @ `[edi+0x0c]`, `0x6fcdb9da`). */
+  private hellforgeHits = 0
   private readonly pendingObjectSpawns: {
     frame: number
     classId: number
@@ -1824,9 +1973,17 @@ export class GameInstance {
   private readonly gambleSourceItems = new Map<number, Item>()
   /** `${MonStats Id}:${difficulty}` of Act bosses already killed in this game (quest TC only on the first kill). */
   private readonly killedActBosses = new Set<string>()
+  /**
+   * 1.13c per-game unique spawn bitmap (`pGame + 0x1b24`, 4096 bits, `D2Game.dll` `0x6FC2E250` /
+   * `0x6FC2EDC0` / `0x6FC2F370`): tracks `UniqueItems.txt` row IDs (`id`) already spawned in this
+   * game so each non-quest, non-`nolimit` unique can spawn at most once per game.
+   */
+  private readonly spawnedUniqueIds = new Set<number>()
   private readonly missiles = new Map<number, InternalMissileRecord>()
   /** Per-player `Skills.txt` `delay` cooldowns: playerUnitId -> (skillId -> first frame the skill is ready). */
   private readonly playerSkillReadyFrame = new Map<number, Map<number, number>>()
+  /** Per-player active channeling skill id (`STATE_INFERNO = 12` for `Inferno` #41, `Arctic Blast` #230, `Blade Fury` #266). */
+  private readonly playerChannelSkillId = new Map<number, number>()
   /**
    * #1417: `Skills.txt` `srvdofunc` ids of missile skills whose `D2Game.dll` volley logic has no
    * GameInstance implementation yet (see `classifyPlayerSrvDoMissile113c`); reported once each.
@@ -1913,6 +2070,10 @@ export class GameInstance {
       Math.min(8, Math.floor(config.playersX ?? this.policy.defaultPlayersX ?? 1)),
     )
     this.onPlayersXChange = config.onPlayersXChange
+    this.partyManager = new PartyManager((unitId, partyId) => {
+      const p = this.players.get(unitId)
+      if (p) p.partyId = partyId
+    })
     if (config.resolveAreaBootstrap) {
       this.setAreaBootstrapResolver(config.resolveAreaBootstrap)
     }
@@ -1978,7 +2139,7 @@ export class GameInstance {
     }
     this.loadedAreas.set(areaId, record)
     for (const obj of bootstrap.objects) {
-      const resolved = resolvePresetObject113c(obj.classId, areaId, obj.x, obj.y)
+      const resolved = resolvePresetObject113c(obj.classId, areaId, (n: number) => this.rng.rand(n))
       if (!resolved) continue
       this.spawnObject({
         classId: resolved.classId,
@@ -2429,6 +2590,9 @@ export class GameInstance {
       const ratio = m.maxHp > 0 ? m.hp / m.maxHp : 1
       m.maxHp = Math.max(1, Math.floor((m.baseMaxHp * multNum) / 2))
       m.hp = Math.max(1, Math.round(m.maxHp * ratio))
+      if (!m.unscaledXp) {
+        m.experience = Math.max(0, Math.floor((m.baseXp * multNum) / 2))
+      }
     }
   }
 
@@ -2494,10 +2658,10 @@ export class GameInstance {
     const spawnY = spec.y ?? entrySpawn?.y ?? 128 + Math.floor(this.players.size / 4) * 2
 
     const attrs = parsedD2s?.attributes
-    const strength = attrs?.strength ?? baseStats.baseAttributes.strength
-    const dexterity = attrs?.dexterity ?? baseStats.baseAttributes.dexterity
-    const vitality = attrs?.vitality ?? baseStats.baseAttributes.vitality
-    const energy = attrs?.energy ?? baseStats.baseAttributes.energy
+    const strength = spec.strength ?? attrs?.strength ?? baseStats.baseAttributes.strength
+    const dexterity = spec.dexterity ?? attrs?.dexterity ?? baseStats.baseAttributes.dexterity
+    const vitality = spec.vitality ?? attrs?.vitality ?? baseStats.baseAttributes.vitality
+    const energy = spec.energy ?? attrs?.energy ?? baseStats.baseAttributes.energy
     const statPts = attrs?.statPts ?? 0
     const newSkills = attrs?.newSkills ?? 0
 
@@ -2541,7 +2705,9 @@ export class GameInstance {
     )
 
     const experience =
-      attrs?.experience ?? experienceForLevel113c(level)
+      spec.experience !== undefined
+        ? Math.max(0, Math.trunc(spec.experience))
+        : (attrs?.experience ?? experienceForLevel113c(level))
     const gold = attrs?.gold ?? 0
     const goldBank = attrs?.goldBank ?? 0
 
@@ -2670,6 +2836,8 @@ export class GameInstance {
       dexterity,
       vitality,
       energy,
+      ar: spec.ar,
+      tohit: spec.tohit,
       statPts,
       newSkills,
       leftSkill: parsedD2s?.leftSkill ?? 0,
@@ -2695,12 +2863,16 @@ export class GameInstance {
       corpseId: undefined,
       corpseX: spawnX,
       corpseY: spawnY,
+      lastDeathExpLoss: 0,
+      lastDeathGoldLoss: 0,
       activeNpcId: undefined,
+      hitRecoveryUntilFrame: 0,
       partyId: 0xffff,
       d2sTemplate: parsedD2s,
     }
 
     this.players.set(unitId, record)
+    this.partyManager.addPlayer(unitId, charName, classId, level, areaId)
     this.outbox.set(unitId, [])
     this.rescaleActiveMonsters()
 
@@ -2823,15 +2995,27 @@ export class GameInstance {
     this.emitAreaSnapshotToPlayer(record)
     if (spec.restoreMercenary && parsedD2s?.merc && parsedD2s.merc.seed !== 0 && parsedD2s.merc.typeId > 0) {
       const hireRec =
-        HIRELING_RECORDS.find((entry) => entry.subTypeId === parsedD2s.merc.typeId) ??
-        HIRELING_RECORDS.find((entry) => entry.id === parsedD2s.merc.typeId)
+        HIRELING_RECORDS.find(
+          (entry) => entry.version === 100 && entry.subTypeId === parsedD2s.merc.typeId,
+        ) ??
+        HIRELING_RECORDS.find(
+          (entry) => entry.version === 100 && entry.id === parsedD2s.merc.typeId,
+        )
       if (hireRec) {
+        // 1.13c `0x6FD0DA40` (`0x6FD0DA99..0x6FD0DACF`): derive hireling level from saved `.d2s`
+        // mercenary experience and `Hireling.txt` `Exp/Lvl`, capped by owner level and 98.
+        const mercExp = Math.max(0, Math.floor(parsedD2s.merc.experience ?? 0))
+        const mercLevel =
+          mercExp > 0
+            ? Math.min(record.level, hirelingLevelFromExp(mercExp, hireRec.expPerLvl))
+            : Math.min(MAX_MERCENARY_LEVEL_113C, record.level)
         const mercId = this.hireMercenary(unitId, {
           act: (hireRec.act === 1 || hireRec.act === 2 || hireRec.act === 3 || hireRec.act === 5
             ? hireRec.act
             : 2) as 1 | 2 | 3 | 5,
           subType: hireRec.subTypeId,
-          level: record.level,
+          level: mercLevel,
+          experience: mercExp,
           difficulty: ((hireRec.difficulty ?? (this.difficulty + 1)) === 3
             ? 3
             : (hireRec.difficulty ?? (this.difficulty + 1)) === 2
@@ -2859,6 +3043,7 @@ export class GameInstance {
     if (!existing) return null
     const savedD2s = this.exportPlayerD2s(playerUnitId)
     const prevArea = existing.areaId
+    const partyEvents = this.partyManager.removePlayer(playerUnitId)
     this.players.delete(playerUnitId)
     this.clearVendorPools(existing, prevArea)
     this.playerSkillReadyFrame.delete(playerUnitId)
@@ -2876,6 +3061,11 @@ export class GameInstance {
         id: playerUnitId,
         unitId: playerUnitId,
       })
+      for (const ev of partyEvents) {
+        if (ev.type === 'Party' && ev.kind === 'roster' && ev.action === 'update') {
+          this.emitToPlayer(other.unitId, ev)
+        }
+      }
       this.emitToPlayer(other.unitId, {
         type: 'Party',
         kind: 'roster',
@@ -3048,6 +3238,7 @@ export class GameInstance {
       curDurability: entry.durability,
       maxDurability: entry.maxDurability,
       quantity: entry.quantity,
+      ...(entry.code.trim() === 'gld' ? { goldAmount: entry.quantity } : {}),
       invWidth: entry.width,
       invHeight: entry.height,
       stats: statsList,
@@ -3231,6 +3422,9 @@ export class GameInstance {
     })
     const stats = new Map<number, number>()
     for (const st of data.stats) stats.set(st.statId, st.value)
+    if (code === 'gld' && (data.quantity ?? 1) > 0) {
+      stats.set(14, data.quantity ?? 1)
+    }
     return {
       unitId,
       code,
@@ -3458,24 +3652,12 @@ export class GameInstance {
     entry: ServerItemEntry,
     type: 0 | 1 | 2 | 3,
   ): number {
-    if (!entry.rawItemData && (type === 0 || type === 1)) {
-      if (type === 1) {
-        const rawSell = Math.max(1, Math.floor(entry.cost / 4))
-        const cap = getCanonicalTransactionCostTables().npcs.get(npcClass)?.maxBuy[this.difficulty]
-        return cap !== undefined && cap > 0 ? Math.min(rawSell, cap) : rawSell
-      }
-      return Math.max(0, entry.cost)
-    }
-    try {
-      const cost = computeTransactionCost113c(
-        this.transactionInputFromEntry(entry),
-        this.transactionCostContext(player, npcClass),
-        type,
-      )
-      return type === 3 ? Math.max(0, cost) : Math.max(1, cost)
-    } catch {
-      return Math.max(1, entry.cost)
-    }
+    const cost = computeTransactionCost113c(
+      this.transactionInputFromEntry(entry),
+      this.transactionCostContext(player, npcClass),
+      type,
+    )
+    return type === 3 ? Math.max(0, cost) : Math.max(1, cost)
   }
 
   /** The player's copy of a bought store item: same rolled `ItemData`, new unit id, placed in the inventory. */
@@ -3960,10 +4142,17 @@ export class GameInstance {
         playerGf: this.sumPlayerItemStat(killer, 79) + mercGf,
         gamePlayers: this.playersX,
         partyPlayers: this.countPartyPlayersInArea(killer, monster.areaId),
+        monsterPlayerCount: monster.monsterPlayerCount,
       },
     )
     if (!pending) return []
-    const items = executePendingMonsterDrop113c(tables, pending, difficulty, this.rng.rand(0x7fffffff) || 1)
+    const items = executePendingMonsterDrop113c(
+      tables,
+      pending,
+      difficulty,
+      this.rng.rand(0x7fffffff) || 1,
+      this.spawnedUniqueIds,
+    )
     if (items.length > 0) {
       monster.pendingDropItems = items
       monster.pendingDropFrame = this.currentFrame + this.monsterDeathDropDelayFrames(monster)
@@ -3996,6 +4185,7 @@ export class GameInstance {
         playerMf: this.sumPlayerItemStat(player, 80),
         playerGf: this.sumPlayerItemStat(player, 79),
         monsterRng: new D2Rng(this.rng.rand(0x7fffffff) || 1),
+        spawnedUniqueIds: this.spawnedUniqueIds,
       }))
     }
     return dropped.length > 0
@@ -4041,6 +4231,7 @@ export class GameInstance {
         playerMf,
         playerGf,
         monsterRng: new D2Rng(this.rng.rand(0x7fffffff) || 1),
+        spawnedUniqueIds: this.spawnedUniqueIds,
         ...(forcedQuality !== undefined ? { forcedQuality } : {}),
       })
     const takeQuality = (quality: number, attempts: number): Item | undefined => {
@@ -4072,15 +4263,18 @@ export class GameInstance {
       const lvl = Math.max(1, ctx.monsterLevel)
       for (let i = 0; i < piles; i++) {
         const seed = this.rng.rand(0x7fffffff) >>> 0
+        const itemRng = new D2Rng(seed || 1)
         const item = createDroppedItem(base, 'normal', {
           itemTypes: tables.itemTypes,
           ilvl: lvl,
           dwInitSeed: seed,
-          itemRng: new D2Rng(seed || 1),
+          itemRng,
         })
-        let amount = Math.max(1, this.rng.rand(5 * lvl) + lvl)
+        // D2Game!0x6FC8F240 / 0x6FC8F3A5 -> 0x6FC8AFA0 -> 0x6FC31490 -> 0x6FC31070:
+        // Gold amount is rolled from the gold item's own seed (`pItem->pSeed`), not the object/game RNG.
+        let amount = Math.max(1, itemRng.rand(5 * lvl) + lvl)
         if (playerGf !== 0) {
-          amount = Math.max(1, Math.floor((amount * (100 + playerGf)) / 100))
+          amount = Math.max(0, Math.trunc((amount * (100 + playerGf)) / 100))
         }
         dropped.push({ ...item, stack: amount })
       }
@@ -4231,6 +4425,10 @@ export class GameInstance {
       spec.maxHp ?? spec.hp ?? resolvedStats?.maxHp ?? resolvedStats?.hp ?? 50,
     )
     const px = this.playersX
+    const monsterPlayerCount =
+      isNpc || (kind?.align !== undefined && kind.align !== 0)
+        ? 1
+        : Math.max(1, Math.trunc(spec.monsterPlayerCount ?? px))
     const scaledMaxHp =
       isNpc || noRatio
         ? baseMaxHp
@@ -4242,10 +4440,18 @@ export class GameInstance {
       1,
       spec.level ?? resolvedStats?.level ?? kind?.level?.[this.difficulty] ?? 1,
     )
-    const baseXp = Math.max(
-      0,
-      spec.experience ?? resolvedStats?.xp ?? level * 45,
-    )
+    const rawBaseXp = spec.experience ?? resolvedStats?.xp
+    if (rawBaseXp === undefined) {
+      throw new Error(
+        `Monster missing experience data for classId=${classId} defId=${defId}`,
+      )
+    }
+    const baseXp = Math.max(0, Math.trunc(rawBaseXp))
+    const unscaledXp =
+      isNpc || noRatio || (kind?.align !== undefined && kind.align !== 0)
+    const experience = unscaledXp
+      ? baseXp
+      : Math.max(0, Math.floor((baseXp * (px + 1)) / 2))
     const specDmgMult =
       (umodIds.includes(MON_UMOD.STRONG) ? 1.5 : 1) *
       (umodIds.includes(MON_UMOD.BERSERK)
@@ -4437,6 +4643,8 @@ export class GameInstance {
       baseMaxHp,
       level,
       baseXp,
+      experience,
+      unscaledXp,
       minDmg,
       maxDmg,
       attack2MinDmg,
@@ -4544,6 +4752,7 @@ export class GameInstance {
       stateTimers: new Map(),
       vendorPool,
       vendorStoreGenerated: false,
+      monsterPlayerCount,
     }
     this.monsters.set(unitId, record)
 
@@ -4576,7 +4785,7 @@ export class GameInstance {
     const areaId = spec.areaId ?? this.defaultAreaId ?? 1
     const resolvedPreset =
       spec.classId >= 574 && spec.classId <= 582
-        ? resolvePresetObject113c(spec.classId, areaId, Math.round(spec.x), Math.round(spec.y))
+        ? resolvePresetObject113c(spec.classId, areaId, (n: number) => this.rng.rand(n))
         : null
     const classId = resolvedPreset?.classId ?? spec.classId
     const a3q3Completed = [...this.players.values()].some((p) =>
@@ -4590,6 +4799,16 @@ export class GameInstance {
       ((classId === 386 || classId === 404) && a3q3Completed ? 2 : 0)
     const destAreaId =
       spec.destAreaId ?? (classId === 386 ? 100 : undefined)
+    const objTxt =
+      classId >= 0 && classId < OBJECTS_TXT_113C.length ? OBJECTS_TXT_113C[classId] : undefined
+    const isShrine = Boolean(
+      spec.isShrine ||
+        (spec.shrineType !== undefined && spec.shrineType > 0) ||
+        CANONICAL_113C_OBJECTS[classId]?.isShrine ||
+        objTxt?.operateFn === 2,
+    )
+    const shrineType =
+      spec.shrineType ?? (isShrine ? rollShrineType113c(classId, areaId, this.rng) : 0)
     const record: InternalObjectRecord = {
       unitId,
       classId,
@@ -4598,10 +4817,8 @@ export class GameInstance {
       y: spec.y,
       mode: initialMode,
       isWaypoint: Boolean(spec.isWaypoint),
-      isShrine: Boolean(spec.isShrine),
-      shrineType:
-        spec.shrineType ??
-        (CANONICAL_113C_OBJECTS[classId]?.isShrine ? 1 + this.rng.rand(22) : 1),
+      isShrine,
+      shrineType,
       destAreaId,
       portalOwnerId: undefined,
       isLocked: Boolean(spec.isLocked),
@@ -4609,8 +4826,13 @@ export class GameInstance {
         spec.isSparkling === true ||
         resolvedPreset?.isSparkling === true ||
         classId === 397 ||
-        getObjectsTxtRecord113c(classId).operateFn === 58,
+        objTxt?.operateFn === 58,
       shrineResetFrame: 0,
+      wellCharges:
+        classifyObjectOperate113c(classId) === 'well'
+          ? computeWellInitialCharges113c(WELL_DEFAULT_PARMS_113C.parm2)
+          : 0,
+      wellRegenFrames: [],
       useCount: 0,
     }
     this.objects.set(unitId, record)
@@ -4656,13 +4878,20 @@ export class GameInstance {
     readonly quality?: number | undefined
     readonly level?: number | undefined
     readonly cost?: number | undefined
+    readonly quantity?: number | undefined
   }): number {
     const unitId = this.allocateUnitId()
     const info = lookupBaseInfo(spec.code)
     const areaId = spec.areaId ?? this.defaultAreaId ?? 1
+    const quantity = Math.max(1, Math.trunc(spec.quantity ?? 1))
+    const code = spec.code.trim()
+    const stats = new Map<number, number>()
+    if (code === 'gld') {
+      stats.set(14, quantity)
+    }
     const entry: ServerItemEntry = {
       unitId,
-      code: spec.code.trim(),
+      code,
       name: info.name,
       quality: spec.quality ?? 2,
       level: spec.level ?? 1,
@@ -4683,8 +4912,8 @@ export class GameInstance {
       totalSockets: 0,
       durability: info.maxDurability,
       maxDurability: info.maxDurability,
-      quantity: 1,
-      stats: new Map(),
+      quantity,
+      stats,
       socketedItems: [],
     }
     this.groundItems.set(unitId, entry)
@@ -4802,11 +5031,19 @@ export class GameInstance {
     const areaId = spec.areaId ?? this.defaultAreaId ?? 1
     const levelPlan = getLevelMonsterPlan113c(areaId, diffName)
     const areaLevel = levelPlan?.monsterLevel
+    // D2Game.dll 0x6FC451F0 (0x6FC45307..0x6FC453B6):
+    // Apply fixed Mod1..Mod3 (stopping at 0, skipping 24 thief) and roll +difficulty (0/1/2) random Unique modifiers.
+    const rolledSuUMods = rollSuperUniqueUModIds113c(
+      su.modifiers,
+      this.rng,
+      this.difficulty,
+      bossKind,
+    )
     // D2Game.dll 0x6FC454FC: Baal Throne wave bosses (SuperUniques 61..65) receive MONUMOD_QUESTCOMPLETE (22).
     const isBaalWaveBoss = spec.superUniqueIndex >= 61 && spec.superUniqueIndex <= 65
     const bossUMods = isBaalWaveBoss
-      ? [...su.modifiers, MON_UMOD.QUESTCOMPLETE]
-      : su.modifiers
+      ? [...rolledSuUMods, MON_UMOD.QUESTCOMPLETE]
+      : rolledSuUMods
     const ids: number[] = []
     ids.push(
       this.spawnMonster({
@@ -4926,7 +5163,7 @@ export class GameInstance {
       }
       const isPlayersChat =
         command.type === 'Chat' &&
-        /^\s*\/players\s*:?\s*\d+\s*$/i.test(command.text)
+        (/^\s*\/players\s*:?\s*\d+\s*$/i.test(command.text) || /^\s*players set to \d+\s*$/i.test(command.text))
       if (this.pausedState && !isPlayersChat) {
         deferredWhilePaused.push(item)
         continue
@@ -4981,11 +5218,27 @@ export class GameInstance {
     // 3. Step missiles & collision
     this.stepMissiles()
 
-    // Shrines return to their idle mode after Shrines.txt ResetTime.
+    // Shrines return to their idle mode after Shrines.txt ResetTime; water wells regenerate charges via Event 2 (0x6fc89ca0).
     for (const obj of this.objects.values()) {
       if (obj.mode === 2 && obj.shrineResetFrame > 0 && this.currentFrame >= obj.shrineResetFrame) {
         obj.shrineResetFrame = 0
         this.setObjectMode(obj, 0)
+      }
+      if (obj.wellRegenFrames.length > 0) {
+        const maxCharges = computeWellInitialCharges113c(WELL_DEFAULT_PARMS_113C.parm2)
+        while (obj.wellRegenFrames.length > 0 && this.currentFrame >= obj.wellRegenFrames[0]!) {
+          obj.wellRegenFrames.shift()
+          if (obj.wellCharges < maxCharges) {
+            obj.wellCharges += 1
+            const nextMode = computeWellModeForCharges113c(
+              obj.wellCharges,
+              WELL_DEFAULT_PARMS_113C.parm2,
+            )
+            if (nextMode !== undefined) {
+              this.setObjectMode(obj, nextMode)
+            }
+          }
+        }
       }
     }
 
@@ -5057,13 +5310,21 @@ export class GameInstance {
     }
   }
 
+  private isPlayerInHitRecovery(player: InternalPlayerRecord): boolean {
+    return (
+      player.hitRecoveryUntilFrame !== undefined &&
+      this.currentFrame < player.hitRecoveryUntilFrame
+    )
+  }
+
   private processPlayerCommand(player: InternalPlayerRecord, cmd: ClientCommand): void {
     switch (cmd.type) {
       case 'Move': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
         const tx = cmd.to?.x ?? cmd.x ?? player.x
         const ty = cmd.to?.y ?? cmd.y ?? player.y
         if (!Number.isFinite(tx) || !Number.isFinite(ty)) return
+        this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
@@ -5074,8 +5335,9 @@ export class GameInstance {
         break
       }
       case 'WalkToLocation': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
         if (!Number.isFinite(cmd.x) || !Number.isFinite(cmd.y)) return
+        this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
@@ -5086,8 +5348,9 @@ export class GameInstance {
         break
       }
       case 'RunToLocation': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
         if (!Number.isFinite(cmd.x) || !Number.isFinite(cmd.y)) return
+        this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
@@ -5100,7 +5363,8 @@ export class GameInstance {
       case 'MoveToUnit':
       case 'WalkToTarget':
       case 'RunToTarget': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
+        this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
@@ -5149,6 +5413,9 @@ export class GameInstance {
       }
       case 'SelectSkill': {
         const skillId = Number(cmd.skill ?? cmd.skillId ?? 0)
+        if (!this.isPlayerSkillSelectable(player, skillId, cmd.hand)) {
+          break
+        }
         if (cmd.hand === 'left') {
           player.leftSkill = skillId
         } else {
@@ -5163,11 +5430,35 @@ export class GameInstance {
         })
         break
       }
+      case 'AssignSkillHotkey': {
+        const slot = Number(cmd.slot ?? -1)
+        if (!Number.isInteger(slot) || slot < 0 || slot >= 16) break
+        const skillId = Number(cmd.skill ?? 0xffff)
+        const isUnbind = skillId === 0xffff || skillId === 0x7fff || skillId < 0
+        if (!isUnbind && !this.isPlayerSkillSelectable(player, skillId, cmd.hand)) {
+          break
+        }
+        if (player.d2sTemplate?.hotkeys) {
+          const mutableHotkeys = player.d2sTemplate.hotkeys as number[]
+          const encoded = isUnbind
+            ? 0xffff
+            : ((cmd.hand === 'left' ? 0x8000 : 0) | (skillId & 0x7fff)) >>> 0
+          if (!isUnbind) {
+            for (let i = 0; i < 16; i++) {
+              if (i !== slot && mutableHotkeys[i] === encoded) {
+                mutableHotkeys[i] = 0xffff
+              }
+            }
+          }
+          mutableHotkeys[slot] = encoded
+        }
+        break
+      }
       case 'CastSkillAtLocation':
       case 'CastLeftSkillOnLocation':
       case 'CastRightSkillOnLocation':
       case 'SkillAt': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
         const hand =
           cmd.type === 'CastLeftSkillOnLocation'
             ? 'left'
@@ -5191,7 +5482,7 @@ export class GameInstance {
       case 'CastLeftSkillOnTarget':
       case 'CastRightSkillOnTarget':
       case 'SkillOn': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
         const hand =
           cmd.type === 'CastLeftSkillOnTarget'
             ? 'left'
@@ -5218,7 +5509,7 @@ export class GameInstance {
       case 'Interact':
       case 'InteractEntity':
       case 'OperateObject': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
         const targetId =
           cmd.type === 'OperateObject'
             ? cmd.objectId
@@ -5238,12 +5529,12 @@ export class GameInstance {
       }
       case 'TakeWarp':
       case 'WarpTo': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
         this.handleWarpTileInteract(player, cmd.warpId)
         break
       }
       case 'WaypointGo': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
         if (cmd.destAreaId === 0 || cmd.destAreaId === player.areaId) {
           player.activeWaypointUnitId = 0
           if (player.pendingInteraction?.kind === 'waypoint') {
@@ -5292,7 +5583,7 @@ export class GameInstance {
         break
       }
       case 'TownPortal': {
-        if (player.dead) return
+        if (player.dead || this.isPlayerInHitRecovery(player)) return
         this.openTownPortal(player)
         break
       }
@@ -5481,6 +5772,10 @@ export class GameInstance {
         this.handlePartyCommand(player, cmd.action, cmd.targetPlayerId)
         break
       }
+      case 'Hostile': {
+        this.handleHostileCommand(player, cmd.targetPlayerId, cmd.hostile, cmd.button)
+        break
+      }
       case 'Chat': {
         this.handleChatCommand(player, cmd.text, cmd.whisperTo)
         break
@@ -5509,6 +5804,10 @@ export class GameInstance {
    */
   private stepPlayerMovement(player: InternalPlayerRecord): void {
     this.ensureAdjacentAreasLoaded(player.areaId)
+    if (this.isPlayerInHitRecovery(player)) {
+      player.mode = 4
+      return
+    }
     const motion = this.getPlayerMotion(player)
     const mover = motion.mover
 
@@ -5608,6 +5907,25 @@ export class GameInstance {
         this.recoverPlayerCorpse(player)
       }
     }
+
+    for (const otherPlayer of this.players.values()) {
+      if (otherPlayer.unitId === player.unitId) continue
+      if (
+        otherPlayer.corpseId !== undefined &&
+        otherPlayer.corpseItems.length > 0 &&
+        otherPlayer.areaId === player.areaId
+      ) {
+        const cDist = Math.hypot(player.x - otherPlayer.corpseX, player.y - otherPlayer.corpseY)
+        if (
+          cDist <= 3 &&
+          this.hasInteractionLineOfSight(player.areaId, player.x, player.y, otherPlayer.corpseX, otherPlayer.corpseY)
+        ) {
+          if (this.partyManager.hasLootPermission(otherPlayer.unitId, player.unitId)) {
+            this.lootOtherPlayerCorpse(player, otherPlayer)
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -5651,6 +5969,15 @@ export class GameInstance {
       dexterity: player.dexterity,
       vitality: player.vitality,
       energy: player.energy,
+      maxhp: player.maxHpFixed,
+      hitpoints: player.hpFixed,
+      maxmana: player.maxManaFixed,
+      mana: player.manaFixed,
+      maxstamina: player.maxStaminaFixed,
+      stamina: player.staminaFixed,
+      tohit: this.computePlayerBaseToHit113c(player),
+      item_tohit_percent: this.computePlayerToHitPctBonus113c(player),
+      armorclass: this.computePlayerBaseDefense(player),
     })
     for (const [id, lvl] of player.skills) {
       statList.setBaseSkillLevel(id, lvl)
@@ -5665,19 +5992,159 @@ export class GameInstance {
       statList,
       difficulty: this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0,
     })
-    if (chargeItem === undefined && player.manaFixed < evalResult.manaCost256) return null
-
-    const missileName = resolvePlayerServerMissileName(skill, evalResult)
-    let missile: MissileRecord | undefined
-    if (missileName !== '') {
-      missile = this.registry.getMissileByName(missileName)
-      if (missile === undefined) {
-        throw new Error(
-          `GameInstance: Skills.txt row ${skillId} (${skill.name}) references unknown Missiles.txt row "${missileName}"`,
-        )
+    // 1.13c `D2Common.dll` `SKILLS_CheckSkillMana` (`0x6FDA0AF0` @ `0x6FDA0BEB`) & `D2Game.dll`
+    // `SKILLS_CheckSkillMana` (`0x6FCBEC80` @ `0x6FCBECEF`) / `SKILLS_SrvDo116_Wearwolf_Wearbear` (`0x6FC66210`):
+    // `nocostinstate = 1` (`Wearwolf` #223 `aurastate = wolf` #139, `Wearbear` #228 `aurastate = bear` #140)
+    // waives mana cost when the player is already in `skill.auraState`.
+    const isNoCostInState =
+      Boolean(skill.noCostInState || skill.nocostinstate) &&
+      skill.auraState !== '' &&
+      (() => {
+        const rec = this.registry.getStateByName(skill.auraState)
+        return rec !== undefined && player.states.has(rec.id)
+      })()
+    // 1.13c `D2Common.dll` `SKILLS_CheckStartMana` (`0x6FD9FDC0`) & `D2Game.dll` `SkillSrvStFunc[11]` (`0x6FC64550`)
+    // / `SkillSrvStFunc[26]` (`0x6FCB5BC0`): `startmana > 0` (`Inferno` #41, `Arctic Blast` #230, `Blade Fury` #266)
+    // requires `manaFixed >= (startMana << 8)` on initial cast when not already channeling (`STATE_INFERNO = 12`).
+    const isChannelingThisSkill =
+      player.states.has(12) &&
+      (this.playerChannelSkillId.get(player.unitId) === undefined ||
+        this.playerChannelSkillId.get(player.unitId) === skill.id)
+    if (chargeItem === undefined && !isNoCostInState) {
+      if (
+        skill.startMana > 0 &&
+        !isChannelingThisSkill &&
+        player.manaFixed < (skill.startMana << 8)
+      ) {
+        return null
+      }
+      if (player.manaFixed < evalResult.manaCost256) {
+        if (player.states.has(12)) {
+          this.clearPlayerChannelState(player)
+        }
+        return null
       }
     }
-    return { skill, slvl, evalResult, missile, chargeItem, statList, blvl }
+
+    const equipped = player.items.filter((i) => i.location === 'equipped')
+    const right = equipped.find((i) => i.bodyLoc === BODYLOC_RIGHT_ARM)
+    const left = equipped.find((i) => i.bodyLoc === BODYLOC_LEFT_ARM)
+
+    // 1.13c `D2Game.dll` `SkillSrvStFunc[4]` (`0x6FC6C4C0` for `Poison Javelin` #15, `Plague Javelin` #25,
+    // `Lightning Fury` #35): requires an equipped javelin with `STAT_QUANTITY > 0` when weapons are equipped.
+    if (skill.srvStFunc === 4 && (right !== undefined || left !== undefined)) {
+      const activeJav = right ?? left
+      if (activeJav === undefined) return null
+      const javBase = resolveWeaponBase113c(activeJav.code)
+      if (
+        javBase !== undefined &&
+        javBase.type !== 'jave' &&
+        javBase.type !== 'ajav' &&
+        javBase.type !== 'spea' &&
+        javBase.type !== 'aspe'
+      ) {
+        return null
+      }
+      const qtyStat = collectItemStats(activeJav).find((s) => s.statId === STAT_QUANTITY)
+      if (qtyStat !== undefined && qtyStat.value <= 0) return null
+    }
+
+    let missile: MissileRecord | undefined
+    let offHandMissile: MissileRecord | undefined
+    if (skillId === 2 || skillId === 4 || skillId === 140) {
+      // D2Game SKILLS_SrvDo003_Throw (0x6FCC2B40), SKILLS_SrvDo005_LeftHandThrow (0x6FCC2A40),
+      // SKILLS_SrvDo074_DoubleThrow (0x6FC47E30) + D2Common #10321 (0x6FD72F50):
+      // Resolve missile from the hand's equipped weapon Weapons.txt / Misc.txt `missiletype`.
+      // When no throwable weapon is equipped (or quantity <= 0), SrvDo003 / SrvDo005 returns 0.
+      const resolveHandThrowMissile = (weapon: ServerItemEntry | undefined): MissileRecord | null => {
+        if (weapon === undefined) return null
+        const missileTypeId = resolveItemMissileTypeId113c(weapon.code)
+        if (missileTypeId <= 0) return null
+        const qtyStat = collectItemStats(weapon).find((s) => s.statId === STAT_QUANTITY)
+        if (qtyStat !== undefined && qtyStat.value <= 0) return null
+        const m = this.registry.getMissileById(missileTypeId)
+        if (m === undefined) {
+          throw new Error(
+            `GameInstance: Weapons.txt item "${weapon.code}" references unknown Missiles.txt Id ${missileTypeId}`,
+          )
+        }
+        return m
+      }
+      if (skillId === 4) {
+        const m = resolveHandThrowMissile(left)
+        if (m === null) return null
+        missile = m
+      } else if (skillId === 2) {
+        const m = resolveHandThrowMissile(right ?? left)
+        if (m === null) return null
+        missile = m
+      } else {
+        // Double Throw (#140): unarmed class-skill sweep is permitted without spawning missiles;
+        // when weapons are equipped, resolve right-hand and left-hand throw missiles independently.
+        if (right !== undefined || left !== undefined) {
+          const rightM = resolveHandThrowMissile(right ?? left)
+          if (rightM === null) return null
+          missile = rightM
+          if (left !== undefined && right !== undefined) {
+            const leftM = resolveHandThrowMissile(left)
+            if (leftM === null) return null
+            offHandMissile = leftM
+          }
+        }
+      }
+    } else if (skillId === 0 || skillId === 5) {
+      // D2Game SKILLS_SrvDo001_Attack_LeftHandSwing (0x6FCC2C40) + D2Common #10889 (0x6FD94350)
+      // + D2Common #10709 (0x6FDA0D40): bow / crossbow basic attack resolves arrow (#0), bolt (#31),
+      // magicarrow (#27), explodingarrow (#41), or quiver missiletype (#10321).
+      const activeWeapon = skillId === 5 ? (left ?? right) : (right ?? left)
+      const offHand = activeWeapon === right ? left : right
+      const weaponBase = activeWeapon ? resolveWeaponBase113c(activeWeapon.code) : undefined
+      if (
+        weaponBase !== undefined &&
+        (weaponBase.type === 'bow' || weaponBase.type === 'abow' || weaponBase.type === 'xbow')
+      ) {
+        const equippedStats = collectEquippedItemStats(player.items)
+        const firesMagic = equippedStats.some((s) => s.statId === STAT_ITEM_MAGICARROW && s.value > 0)
+        const firesExplosive = equippedStats.some((s) => s.statId === STAT_ITEM_EXPLOSIVEARROW && s.value > 0)
+        const offHandMissileId = offHand ? resolveItemMissileTypeId113c(offHand.code) : 0
+        const bowMissileId = firesMagic
+          ? 27
+          : firesExplosive
+            ? 41
+            : offHandMissileId > 0
+              ? offHandMissileId
+              : weaponBase.type === 'xbow'
+                ? 31
+                : 0
+        missile = this.registry.getMissileById(bowMissileId)
+      }
+    } else {
+      const activeWeapon = right ?? left
+      const weaponBase = activeWeapon ? resolveWeaponBase113c(activeWeapon.code) : undefined
+      const missileName =
+        (skillId === 12 || skillId === 26) && weaponBase?.type === 'xbow' && skill.srvMissileB !== ''
+          ? skill.srvMissileB
+          : resolvePlayerServerMissileName(skill, evalResult)
+      if (missileName !== '') {
+        missile = this.registry.getMissileByName(missileName)
+        if (missile === undefined) {
+          throw new Error(
+            `GameInstance: Skills.txt row ${skillId} (${skill.name}) references unknown Missiles.txt row "${missileName}"`,
+          )
+        }
+      }
+    }
+    return {
+      skill,
+      slvl,
+      evalResult,
+      missile,
+      offHandMissile,
+      chargeItem,
+      statList,
+      blvl,
+      isNoCostInState,
+    }
   }
 
   /**
@@ -5712,7 +6179,10 @@ export class GameInstance {
   private resolvePlayerSkillLevel(player: InternalPlayerRecord, skill: SkillRecord): number {
     if (UNIVERSAL_PLAYER_SKILL_IDS.has(skill.id)) return 1
     const tabParam = this.resolveSkillTabParam(skill)
-    let allSkills = 0
+    const combat = this.playerCombatContext(player)
+    let allSkills =
+      Math.trunc(combat.statList.getModifierBonus('item_allskills')) +
+      (player.states.has(134) && !combat.stateBus.hasState(134) ? 2 : 0)
     let classSkills = 0
     let tabSkills = 0
     let singleSkill = 0
@@ -5734,7 +6204,59 @@ export class GameInstance {
     if (skill.charClass === player.classCode && hardPoints > 0) {
       return hardPoints + allSkills + classSkills + tabSkills + singleSkill + oskill
     }
-    return Math.max(0, oskill)
+    if (skill.charClass === player.classCode && singleSkill > 0) {
+      return singleSkill + allSkills + classSkills + tabSkills + oskill
+    }
+    return oskill > 0 ? Math.max(0, oskill + allSkills) : 0
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `C2S 0x3C SelectSkill` (`0x6fcef480` -> `SKILLS_AssignSkill` `0x6fcc2100`):
+   * Validates that `skillId` is a valid, non-passive skill that the player currently knows
+   * (`resolvePlayerSkillLevel > 0`) or has charges for (`findChargedSkill !== undefined`), and is
+   * usable on the requested hand (`hand !== 'left' || !skill.aura`).
+   */
+  private isPlayerSkillSelectable(
+    player: InternalPlayerRecord,
+    skillId: number,
+    hand: 'left' | 'right',
+  ): boolean {
+    if (!Number.isInteger(skillId) || skillId < 0) return false
+    if (skillId === 0) return true
+    const skill = this.registry.getSkillById(skillId)
+    if (skill === undefined || skill.passive || skill.id === 5) return false
+    if (hand === 'left' && skill.aura) return false
+    if (this.resolvePlayerSkillLevel(player, skill) > 0) return true
+    return findChargedSkill(player.items, skill.id) !== undefined
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6fcf1ed0`:
+   * Re-validates the player's currently selected `leftSkill` and `rightSkill` after equipment
+   * changes (`handleItemEquip` / `handleItemUnequip`). Resets any invalidated hand to `0` (`Attack`)
+   * and emits `ActiveSkill` (`S2C 0x23`).
+   */
+  private validatePlayerActiveSkills(player: InternalPlayerRecord): void {
+    if (player.leftSkill !== 0 && !this.isPlayerSkillSelectable(player, player.leftSkill, 'left')) {
+      player.leftSkill = 0
+      this.emitToPlayer(player.unitId, {
+        type: 'ActiveSkill',
+        unitId: player.unitId,
+        hand: 'left',
+        skill: 0,
+        itemId: 0xffffffff,
+      })
+    }
+    if (player.rightSkill !== 0 && !this.isPlayerSkillSelectable(player, player.rightSkill, 'right')) {
+      player.rightSkill = 0
+      this.emitToPlayer(player.unitId, {
+        type: 'ActiveSkill',
+        unitId: player.unitId,
+        hand: 'right',
+        skill: 0,
+        itemId: 0xffffffff,
+      })
+    }
   }
 
   /**
@@ -5849,7 +6371,8 @@ export class GameInstance {
       // Charged casts cost a charge instead of mana.
       consumeSkillCharge(cast.chargeItem, cast.skill.id)
     }
-    const cost256 = cast.chargeItem !== undefined ? 0 : cast.evalResult.manaCost256
+    const cost256 =
+      cast.chargeItem !== undefined || cast.isNoCostInState ? 0 : cast.evalResult.manaCost256
     if (cost256 > 0) {
       player.manaFixed = Math.max(0, player.manaFixed - cost256)
       player.mana = Math.floor(player.manaFixed / FIXED_ONE)
@@ -5952,16 +6475,26 @@ export class GameInstance {
     const speed = stationary ? 0 : PLAYER_MISSILE_SPEED_SUBTILES
     const lifetime = Math.max(1, missileRec.range + missileRec.levRange * (cast.slvl - 1))
     const missileUnitId = this.allocateUnitId()
+    const missileElem = normalizeMissileElement(missileRec.eType || cast.skill.eType)
     const isPoisonSkillMissile =
       damage > 0 &&
-      (normalizeMissileElement(missileRec.eType || cast.skill.eType) === 'pois' ||
-        cast.evalResult.elemType === 'pois') &&
+      (missileElem === 'pois' || cast.evalResult.elemType === 'pois') &&
       cast.evalResult.durationFrames > 0
     const poisonBitrate256 = isPoisonSkillMissile
       ? this.rollInclusive(cast.evalResult.minElemDmg256, cast.evalResult.maxElemDmg256)
       : 0
     const physDamage = isPoisonSkillMissile ? this.rollPlayerSkillPhysDamage(player, cast) : damage
-    const elemDurationFrames = isPoisonSkillMissile ? cast.evalResult.durationFrames : 0
+    const elemDurationFrames = isPoisonSkillMissile
+      ? cast.evalResult.durationFrames
+      : missileElem === 'cold'
+        ? this.resolveSkillColdOrFreezeDuration113c(
+            player,
+            cast.skill.id,
+            'cold',
+            undefined,
+            missileRec,
+          ).rawFrames
+        : 0
     const elemDamage = isPoisonSkillMissile
       ? Math.floor((poisonBitrate256 * elemDurationFrames) / FIXED_ONE)
       : 0
@@ -5990,7 +6523,7 @@ export class GameInstance {
       elemDurationFrames,
       ...(isPoisonSkillMissile ? { poisonBitrate256 } : {}),
       hitCooldowns: new Map(),
-      guaranteedHit: false,
+      guaranteedHit: !missileRec.toHit,
     }
     // Zero-damage missiles (warcry / curse / buff carriers) are visual only: they must never collide
     // and run the `applyDamageToMonster` minimum-1 hit path.
@@ -6217,7 +6750,7 @@ export class GameInstance {
   /**
    * 1.13c per-tick stamina drain/recovery and life/mana regeneration (#1336).
    *
-   * - Running drains `CharStats.RunDrain` (20 for most classes, 15 for Barbarian) in
+   * - Running drains `CharStats.RunDrain` (20 for most classes, 15 for Assassin) in
    *   1/256-point units per frame, scaled by the `stamdrain` item stat.
    * - Walking/idle recovers `maxstamina/256` per frame, scaled by `staminarecoverybonus`.
    * - Mana regenerates over `CharStats.ManaRegen` seconds (120 s full pool), scaled by
@@ -6249,10 +6782,14 @@ export class GameInstance {
         }
       }
       const armorPenalty = 100 + armorSpeed
-      const drainPct = 100 + this.sumEquippedItemStat(player, 162)
-      const shrineStamina = player.states.has(136) ? 0 : 1
+      const combat = this.playerCombatContext(player)
+      const stat162 =
+        this.sumPlayerItemStat(player, 162) +
+        Math.trunc(combat.statList.getAccruedStat('item_staminadrainpct')) +
+        (player.states.has(136) && !combat.stateBus.hasState(136) ? -100 : 0)
+      const drainPct = 100 + stat162
       const drain =
-        shrineStamina === 0
+        drainPct <= 0 || player.states.has(136)
           ? 0
           : Math.max(
               1,
@@ -6295,7 +6832,11 @@ export class GameInstance {
     if (player.staminaExhausted) player.run = false
 
     if (!player.states.has(85)) {
-      const manaRegenPct = this.sumEquippedItemStat(player, 27)
+      const combat = this.playerCombatContext(player)
+      const manaRegenPct =
+        this.sumPlayerItemStat(player, 27) +
+        Math.trunc(combat.statList.getAccruedStat('manarecoverybonus')) +
+        (player.states.has(135) && !combat.stateBus.hasState(135) ? 400 : 0)
       const manaPerFrame = Math.max(
         0,
         Math.round(
@@ -6481,17 +7022,29 @@ export class GameInstance {
       unit = { statList, stateBus: new StateBus(statList, this.registry) }
       this.playerCombat.set(player.unitId, unit)
     }
+    for (const shrineStateId of [128, 129, 130, 131, 132, 133, 134, 135, 136, 137] as const) {
+      if (!player.states.has(shrineStateId) && unit.stateBus.hasState(shrineStateId)) {
+        unit.stateBus.removeState(shrineStateId)
+      }
+    }
     const st = unit.statList
     st.setBaseStat('level', player.level)
     st.setBaseStat('strength', player.strength)
     st.setBaseStat('dexterity', player.dexterity)
     st.setBaseStat('vitality', player.vitality)
     st.setBaseStat('energy', player.energy)
+    st.setBaseStat('tohit', this.computePlayerBaseToHit113c(player))
+    st.setBaseStat('item_tohit_percent', this.computePlayerToHitPctBonus113c(player))
+    st.setBaseStat('armorclass', this.computePlayerBaseDefense(player))
     st.setBaseStat('maxhp', player.maxHpFixed)
     st.setHp256(player.hpFixed)
     st.setBaseStat('maxmana', player.maxManaFixed)
     st.setMana256(player.manaFixed)
-    const anyaResist = hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_COMPLETED_113C)
+    st.setBaseStat('maxstamina', player.maxStaminaFixed)
+    st.setBaseStat('stamina', player.staminaFixed)
+    // D2Game.dll 0x6fc7b0b0: A5Q3 +10 all resistances requires bit 7 (0x0080) of word 37 ('a5q3'),
+    // which is set only when the player consumes Scroll of Resistance ('tr2', 0x6fcf9f28).
+    const anyaResist = hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_CUSTOM_7_113C)
       ? 10
       : 0
     st.setBaseStat('fireresist', anyaResist)
@@ -6502,6 +7055,7 @@ export class GameInstance {
     return {
       id: `player_${player.unitId}`,
       name: player.name,
+      charClass: player.classCode,
       unitType: 'player',
       statList: st,
       stateBus: unit.stateBus,
@@ -6523,7 +7077,9 @@ export class GameInstance {
     }
     const st = unit.statList
     st.setBaseStat('level', monster.level)
+    st.setBaseStat('tohit', monster.ar)
     st.setBaseStat('armorclass', monster.ac)
+    st.setBaseStat('toblock', monster.toBlock)
     st.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
     st.setHp256(monster.hp * FIXED_ONE)
     st.setBaseStat('damageresist', monster.resistances.phys)
@@ -6635,6 +7191,12 @@ export class GameInstance {
           m.convertedUntilFrame = Math.max(m.convertedUntilFrame, expireFrame)
         }
       }
+      // Mirror Conviction (#123, state #28) & Holy Freeze (#114, states #44 holywindcold, #107 shatter) removal when expired
+      for (const auraStateId of [28, 44, 107] as const) {
+        if (m.states.has(auraStateId) && !unit.stateBus.hasState(auraStateId)) {
+          this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId)
+        }
+      }
     }
   }
 
@@ -6686,6 +7248,17 @@ export class GameInstance {
 
       allyRecords.forEach((p, i) => this.syncPlayerVitalsFromCombat(p, allies[i]!))
       enemyRecords.forEach((m, i) => {
+        // Mirror Conviction (#123, state #28) & Holy Freeze (#114, states #44 holywindcold, #107 shatter) before radial damage
+        // so that a monster killed on a 20% shatter pulse already carries state #107 on death.
+        for (const auraStateId of [28, 44, 107] as const) {
+          const entry = enemies[i]!.stateBus.getActiveEntries().find((e) => e.stateId === auraStateId)
+          if (entry !== undefined) {
+            const rem = entry.expireFrame > 0 ? Math.max(1, entry.expireFrame - this.currentFrame) : 25
+            this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId, rem)
+          } else if (m.states.has(auraStateId)) {
+            this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId)
+          }
+        }
         const hpAfter = Math.max(0, Math.ceil(enemies[i]!.statList.getHp256() / FIXED_ONE))
         const dealt = m.hp - hpAfter
         if (dealt > 0) {
@@ -6695,14 +7268,10 @@ export class GameInstance {
       corpseRecords.forEach((m, i) => {
         if (corpses[i]!.consumed) m.shattered = true
       })
-      // Prayer's per-frame mana drain shuts the aura down at 0 mana.
-      if (aura.skillId === SKILL_PRAYER && !ownerCtx.stateBus.hasState('prayer')) {
-        this.stopPlayerAura(owner)
-      }
     }
   }
 
-  /** Write HP / mana changed by an aura pulse back to the player record (+ client stat updates). */
+  /** Write HP / mana / `nomanaregen` (state 85) changed by an aura pulse back to the player record (+ client stat updates). */
   private syncPlayerVitalsFromCombat(player: InternalPlayerRecord, ctx: CombatUnitContext): void {
     const hp256 = Math.min(player.maxHpFixed, Math.max(0, ctx.statList.getHp256()))
     const mana256 = Math.min(player.maxManaFixed, Math.max(0, ctx.statList.getMana256()))
@@ -6719,11 +7288,18 @@ export class GameInstance {
         this.emitToPlayer(player.unitId, { type: 'UnitStatUpdate', unitType: 'player', unitId: player.unitId, statId: 8, value: player.manaFixed })
       }
     }
+    if (ctx.stateBus.hasState('nomanaregen')) {
+      player.states.add(85)
+    } else {
+      player.states.delete(85)
+    }
   }
 
   /** Deselect the player's aura: stop its pulses and remove the caster aura state. */
   private stopPlayerAura(player: InternalPlayerRecord): void {
     this.playerAuraScanners.delete(player.unitId)
+    player.states.delete(85)
+    this.playerCombat.get(player.unitId)?.stateBus.removeState('nomanaregen')
     const stateId = this.playerActiveAuraState.get(player.unitId)
     if (stateId !== undefined) {
       this.playerActiveAuraState.delete(player.unitId)
@@ -6771,18 +7347,64 @@ export class GameInstance {
       if (previous !== undefined && previous !== stateId) {
         this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, previous)
         this.playerCombat.get(player.unitId)?.stateBus.removeState(previous)
+        player.states.delete(85)
+        this.playerCombat.get(player.unitId)?.stateBus.removeState('nomanaregen')
       }
       this.playerActiveAuraState.set(player.unitId, stateId)
       this.applyPersistentUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
-      // The aura's periodic pulse (`perdelay`) runs through `AuraScanner` from the next frames on.
+      // 1.13c `SKILLS_ActivateAura` (0x6FCCDB30): immediately pulse `immediate=1` auras on activation
+      // and schedule periodic `perdelay` pulses through `AuraScanner` on global frame boundaries.
       const ownerCtx = this.playerCombatContext(player)
       const scanner = new AuraScanner(this.registry, (this.currentMapSeed ^ player.unitId) >>> 0)
-      scanner.setActiveAura(ownerCtx, skill.id, cast.slvl, this.currentFrame + 1)
+      const activeSource = scanner.setActiveAura(ownerCtx, skill.id, cast.slvl, this.currentFrame + 1)
       this.playerAuraScanners.set(player.unitId, {
         scanner,
         skillId: skill.id,
         radiusSubtiles: evalResult.radiusSubtiles,
       })
+      if (activeSource) {
+        const inRange = (x: number, y: number) => isWithinAuraRange(x - player.x, y - player.y, evalResult.radiusSubtiles)
+        const allyRecords = [...this.players.values()].filter(
+          (p) => !p.dead && p.areaId === player.areaId && (p === player || inRange(p.x, p.y)),
+        )
+        const enemyRecords = [...this.monsters.values()].filter(
+          (m) => !m.dead && !m.isNpc && m.isKillable && !this.isMonsterConverted(m) && m.areaId === player.areaId && inRange(m.x, m.y),
+        )
+        const corpseRecords = [...this.monsters.values()].filter(
+          (m) => m.dead && !m.shattered && !m.isNpc && m.areaId === player.areaId && inRange(m.x, m.y),
+        )
+        const allies = allyRecords.map((p) => (p === player ? ownerCtx : this.playerCombatContext(p)))
+        const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
+        const corpses: CorpseContext[] = corpseRecords.map((m) => ({ id: String(m.unitId), consumed: false, x: m.x, y: m.y }))
+        scanner.pulseAura(activeSource, this.currentFrame + 1, allies, enemies, corpses, {
+          isTown: TOWN_AREAS.has(player.areaId),
+          hasLineOfSight: (src, tgt) =>
+            src.x === undefined || src.y === undefined || tgt.x === undefined || tgt.y === undefined
+              ? false
+              : this.isMonsterStepWalkable(player.areaId, src.x, src.y, tgt.x, tgt.y, true),
+          rng: this.rng,
+        })
+        allyRecords.forEach((p, i) => this.syncPlayerVitalsFromCombat(p, allies[i]!))
+        enemyRecords.forEach((m, i) => {
+          for (const auraStateId of [28, 44, 107] as const) {
+            const entry = enemies[i]!.stateBus.getActiveEntries().find((e) => e.stateId === auraStateId)
+            if (entry !== undefined) {
+              const rem = entry.expireFrame > 0 ? Math.max(1, entry.expireFrame - this.currentFrame) : 25
+              this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId, rem)
+            } else if (m.states.has(auraStateId)) {
+              this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId)
+            }
+          }
+          const hpAfter = Math.max(0, Math.ceil(enemies[i]!.statList.getHp256() / FIXED_ONE))
+          const dealt = m.hp - hpAfter
+          if (dealt > 0) {
+            this.finishMonsterDamage(player, m, dealt, skill.id, this.resolveSkillDamageChannel(skill.id))
+          }
+        })
+        corpseRecords.forEach((m, i) => {
+          if (corpses[i]!.consumed) m.shattered = true
+        })
+      }
       return
     }
     if (skill.auraTgtState !== '' && evalResult.durationFrames > 0) {
@@ -6809,6 +7431,41 @@ export class GameInstance {
     }
     if (skill.auraState !== '' && skill.srvDoFunc !== SRVDOFUNC_WHIRLWIND) {
       const stateId = stateByName(skill.auraState)
+      if (skill.srvDoFunc === 116) {
+        // 1.13c `D2Game.dll` `SKILLS_SrvDo116_Wearwolf_Wearbear` (`0x6FC66210`) + `sub_6FCBEA30`:
+        // Clears group-3 shapeshift & charge states (`wolf` 139, `bear` 140, `feralrage` 120, `maul` 117)
+        // or `delerium` (177). If the unit was already in `skill.auraState`, toggles off to human form
+        // with 0 mana spent (`nocostinstate = 1`) and clamps HP >= 256 (1 HP survival floor).
+        const wasInTargetState = player.states.has(stateId)
+        const groupStates = stateId === 177 ? [177] : [139, 140, 120, 117]
+        const ctx = this.playerCombatContext(player)
+        for (const sid of groupStates) {
+          if (player.states.has(sid)) {
+            this.clearUnitState(
+              player.states,
+              player.stateTimers,
+              'player',
+              player.unitId,
+              player.areaId,
+              sid,
+            )
+          }
+          ctx.stateBus.removeState(sid)
+        }
+        ctx.stateBus.removeState('wolf')
+        ctx.stateBus.removeState('wearwolf')
+        ctx.stateBus.removeState('bear')
+        ctx.stateBus.removeState('wearbear')
+        ctx.stateBus.removeState('feralrage')
+        ctx.stateBus.removeState('maul')
+        if (wasInTargetState) {
+          if (player.hpFixed > 0) {
+            player.hpFixed = Math.max(FIXED_ONE, Math.min(player.hpFixed, player.maxHpFixed))
+            player.hp = Math.max(1, Math.ceil(player.hpFixed / FIXED_ONE))
+          }
+          return
+        }
+      }
       if (evalResult.durationFrames > 0) {
         this.applyUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId, evalResult.durationFrames)
       } else {
@@ -7055,6 +7712,9 @@ export class GameInstance {
     }
     if (mode === 'unmodeled') this.reportUnmodeledPlayerSrvDoFunc(cast.skill)
     this.launchPlayerSkillMissile(player, cast, missileRec, tx, ty, this.rollPlayerSkillDamage(player, cast))
+    if (cast.offHandMissile !== undefined) {
+      this.launchPlayerSkillMissile(player, cast, cast.offHandMissile, tx, ty, this.rollPlayerSkillDamage(player, cast))
+    }
   }
 
   /**
@@ -7127,6 +7787,62 @@ export class GameInstance {
     return [...this.unmodeledPlayerSrvDoFuncs].sort((a, b) => a - b)
   }
 
+  /**
+   * 1.13c `D2Game.dll` `SkillSrvStFunc[11]` (`0x6FC64550` -> `0x6FC643F0` for `Inferno` #41 / `Arctic Blast` #230)
+   * & `SkillSrvStFunc[26]` (`0x6FCB5BC0` for `Blade Fury` #266):
+   * Maintain `STATE_INFERNO` (state 12) while channeling a `startmana > 0` skill (20f + 6f/tick for #41/#230;
+   * 21f + 7f/tick for #266), or clear `STATE_INFERNO` when casting a non-channeling skill or moving.
+   */
+  private clearPlayerChannelState(player: InternalPlayerRecord): void {
+    this.playerChannelSkillId.delete(player.unitId)
+    if (player.states.has(12)) {
+      this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, 12)
+    }
+    const combat = this.playerCombat.get(player.unitId)
+    if (combat !== undefined) {
+      combat.stateBus.removeState('inferno')
+      combat.stateBus.removeState(12)
+    }
+  }
+
+  private updatePlayerChannelState(player: InternalPlayerRecord, cast: PlayerSkillCast): void {
+    if (cast.skill.startMana > 0) {
+      const inChannel =
+        player.states.has(12) &&
+        (this.playerChannelSkillId.get(player.unitId) === undefined ||
+          this.playerChannelSkillId.get(player.unitId) === cast.skill.id)
+      const prevTimer = inChannel ? (player.stateTimers.get(12) ?? 0) : 0
+      const channelFrames =
+        cast.skill.id === 266
+          ? inChannel
+            ? Math.max(21, prevTimer + 7)
+            : 21
+          : inChannel
+            ? Math.max(20, prevTimer + 6)
+            : 20
+      this.applyUnitState(
+        player.states,
+        player.stateTimers,
+        'player',
+        player.unitId,
+        player.areaId,
+        12,
+        channelFrames,
+      )
+      this.playerChannelSkillId.set(player.unitId, cast.skill.id)
+      this.playerCombatContext(player).stateBus.applyState({
+        stateNameOrId: 12,
+        sourceUnitId: `player_${player.unitId}`,
+        sourceSkillId: cast.skill.id,
+        slvl: cast.slvl,
+        durationFrames: channelFrames,
+        currentFrame: this.currentFrame,
+      })
+    } else if (player.states.has(12)) {
+      this.clearPlayerChannelState(player)
+    }
+  }
+
   private executeSkillAtLocation(
     player: InternalPlayerRecord,
     skillId: number,
@@ -7134,11 +7850,28 @@ export class GameInstance {
     ty: number,
     targetCorpse?: InternalMonsterRecord,
   ): void {
+    if (player.dead || this.isPlayerInHitRecovery(player)) return
     if (!Number.isFinite(tx) || !Number.isFinite(ty)) return
     const cast = this.resolvePlayerSkillCast(player, skillId)
     if (cast === null) return
-    this.commitPlayerSkillCast(player, cast)
+    this.updatePlayerChannelState(player, cast)
+    // 1.13c `D2Game.dll` `SKILLS_DoSkillStart` (`0x6FCBFD00` @ `0x6FCBFE6C`) vs `SKILLS_DoSkillDo` (`0x6FCC19A0`):
+    // When `usemanaondo = 1` (`Plague Javelin` #25, `Blade Fury` #266), mana is checked and deducted in the `do` phase.
+    if (!cast.skill.useManaOnDo) {
+      this.commitPlayerSkillCast(player, cast)
+    }
     this.broadcastPlayerSkillCast(player, cast, { x: Math.round(tx), y: Math.round(ty) })
+    if (cast.skill.useManaOnDo) {
+      if (
+        cast.chargeItem === undefined &&
+        !cast.isNoCostInState &&
+        player.manaFixed < cast.evalResult.manaCost256
+      ) {
+        if (player.states.has(12)) this.clearPlayerChannelState(player)
+        return
+      }
+      this.commitPlayerSkillCast(player, cast)
+    }
 
     const doFunc = cast.skill.srvDoFunc
     if (skillId === SKILL_TELEPORT) {
@@ -7193,6 +7926,7 @@ export class GameInstance {
     skillId: number,
     targetId: number,
   ): void {
+    if (player.dead || this.isPlayerInHitRecovery(player)) return
     const clicked = this.monsters.get(targetId)
     if (clicked && clicked.dead && !clicked.isNpc && clicked.areaId === player.areaId) {
       // A cast on a corpse (Corpse Explosion, Raise Skeleton, Revive, ...) targets that corpse.
@@ -7223,8 +7957,22 @@ export class GameInstance {
       (cast.skill.range === 'h2h' || cast.skill.range === 'both')
     if (isMeleeStrike && dist > PLAYER_MELEE_REACH_SUBTILES) return
 
-    this.commitPlayerSkillCast(player, cast)
+    this.updatePlayerChannelState(player, cast)
+    if (!cast.skill.useManaOnDo) {
+      this.commitPlayerSkillCast(player, cast)
+    }
     this.broadcastPlayerSkillCast(player, cast, { unitType: 1, id: monster.unitId })
+    if (cast.skill.useManaOnDo) {
+      if (
+        cast.chargeItem === undefined &&
+        !cast.isNoCostInState &&
+        player.manaFixed < cast.evalResult.manaCost256
+      ) {
+        if (player.states.has(12)) this.clearPlayerChannelState(player)
+        return
+      }
+      this.commitPlayerSkillCast(player, cast)
+    }
 
     if (skillId === SKILL_TELEPORT) {
       this.relocatePlayerForSkill(player, monster.x, monster.y, true)
@@ -7278,14 +8026,15 @@ export class GameInstance {
     if (isMeleeStrike) {
       if (cast.evalResult.elemType === 'pois' && cast.evalResult.durationFrames > 0) {
         const physDamage = this.rollPlayerSkillPhysDamage(player, cast)
+        let landed = true
         if (physDamage > 0) {
-          this.applyDamageToMonster(player, monster, physDamage, skillId, 'phys')
+          landed = this.applyDamageToMonster(player, monster, physDamage, skillId, 'phys')
         }
         const bitrate256 = this.rollInclusive(
           cast.evalResult.minElemDmg256,
           cast.evalResult.maxElemDmg256,
         )
-        if (bitrate256 > 0 && !monster.dead) {
+        if (landed && bitrate256 > 0 && !monster.dead) {
           this.applyMonsterPoisonDot(
             player,
             monster,
@@ -7468,7 +8217,8 @@ export class GameInstance {
       case 114: // Holy Freeze
       case 230: // Arctic Blast
       case 250: // Hurricane
-      case 280: // Blades of Ice
+      case 274: // Blades of Ice
+      case 280: // Phoenix Strike (charge 3 chaos ice)
         return 'cold'
       // Poison damage skills
       case 15: // Poison Javelin
@@ -7485,7 +8235,7 @@ export class GameInstance {
         const et = sk?.eType?.toLowerCase() ?? ''
         if (et === 'fire') return 'fire'
         if (et === 'ltng') return 'ltng'
-        if (et === 'cold' || et === 'free') return 'cold'
+        if (et === 'cold' || et === 'frze' || et === 'free') return 'cold'
         if (et === 'mag') return 'mag'
         if (et === 'pois') return 'pois'
         return 'phys'
@@ -7493,27 +8243,176 @@ export class GameInstance {
     }
   }
 
+  /**
+   * 1.13c player base Attack Rating (`D2Common.dll` `0x6FD5D960`, `STAT_TOHIT` = 19):
+   * `(Dex - 7) * 5 + CharStats.ToHitFactor` (`dex * 5 - 35 + ToHitFactor`) plus equipped
+   * flat `STAT_TOHIT` (19) and `STAT_ITEM_TOHIT_PERLEVEL` (224, `floor(val * clvl / 8)`).
+   */
+  private computePlayerBaseToHit113c(player: InternalPlayerRecord): number {
+    const baseStats = CANONICAL_CHARSTATS[player.classCode] ?? CANONICAL_CHARSTATS.ama
+    let ar =
+      player.ar !== undefined
+        ? player.ar
+        : player.tohit !== undefined
+          ? player.tohit
+          : player.dexterity * 5 - 35 + baseStats.toHitFactor
+    for (const item of player.items) {
+      if (item.location !== 'equipped') continue
+      ar += item.stats.get(19) ?? 0
+      const perLvl = item.stats.get(224) ?? 0
+      if (perLvl > 0) ar += Math.floor((perLvl * player.level) / 8)
+    }
+    return Math.max(0, ar)
+  }
+
+  /**
+   * 1.13c player `%AR` bonus (`STAT_ITEM_TOHIT_PERCENT` = 119) from equipped items and
+   * `STAT_ITEM_TOHITPERCENT_PERLEVEL` (225, `floor(val * clvl / 8)`).
+   */
+  private computePlayerToHitPctBonus113c(player: InternalPlayerRecord): number {
+    let pct = 0
+    for (const item of player.items) {
+      if (item.location !== 'equipped') continue
+      pct += item.stats.get(119) ?? 0
+      const perLvl = item.stats.get(225) ?? 0
+      if (perLvl > 0) pct += Math.floor((perLvl * player.level) / 8)
+    }
+    return pct
+  }
+
+  /**
+   * 1.13c skill `%AR` bonus (`D2Common_11284_EvalSkillToHit`, `0x6FDAAC60`):
+   * if `Skills.txt` `ToHitCalc` is non-empty, evaluate `ToHitCalc`; else if `ToHit != 0` or
+   * `LevToHit != 0`, return `ToHit + (slvl - 1) * LevToHit`.
+   */
+  private computePlayerSkillToHitBonusPct113c(
+    player: InternalPlayerRecord,
+    skillId: number,
+  ): number {
+    if (skillId <= 0) return 0
+    const skill = this.registry?.getSkillById(skillId)
+    if (skill === undefined) return 0
+    const slvl = Math.max(1, this.resolvePlayerSkillLevel(player, skill))
+    if (skill.toHitCalc !== '') {
+      const calcVal = evaluateCalc(skill.toHitCalc, {
+        registry: this.registry,
+        activeSkill: skill,
+        slvl,
+        blvl: Math.max(1, player.skills.get(skillId) ?? 1),
+        ulvl: player.level,
+        getBaseSkillLevel: (id: number) => player.skills.get(id) ?? 0,
+        getEffectiveSkillLevel: (id: number) => {
+          const s = this.registry?.getSkillById(id)
+          return s ? Math.max(1, this.resolvePlayerSkillLevel(player, s)) : 0
+        },
+        getUnitStat: (statNameOrId: string | number) => {
+          if (statNameOrId === 'level' || statNameOrId === 12) return player.level
+          if (statNameOrId === 'strength' || statNameOrId === 0) return player.strength
+          if (statNameOrId === 'dexterity' || statNameOrId === 2) return player.dexterity
+          if (statNameOrId === 'vitality' || statNameOrId === 3) return player.vitality
+          if (statNameOrId === 'energy' || statNameOrId === 1) return player.energy
+          return 0
+        },
+      })
+      return Math.floor(calcVal)
+    }
+    if (skill.toHit !== 0 || skill.toHitLev !== 0) {
+      return skill.toHit + (slvl - 1) * skill.toHitLev
+    }
+    return 0
+  }
+
+  /**
+   * 1.13c data-driven `attackKind` / `autoHit` / `unblockable` classification from
+   * `Skills.txt` (`srvdofunc`, `range`, `srcdam`, `ToHit`, `LevToHit`, `ToHitCalc`) and
+   * `Missiles.txt` (`toHit`).
+   */
+  private classifyPlayerHitRoll113c(skillId: number): {
+    readonly attackKind: 'melee' | 'missile' | 'spell'
+    readonly autoHit: boolean
+    readonly unblockable: boolean
+  } {
+    if (skillId <= 0 || skillId === 4 || skillId === 5) {
+      return { attackKind: 'melee', autoHit: false, unblockable: false }
+    }
+    if (skillId === 1 || skillId === 2) {
+      return { attackKind: 'missile', autoHit: false, unblockable: false }
+    }
+    const skill = this.registry?.getSkillById(skillId)
+    // Smite (skillId 97, srvdofunc 150) bypasses AR (`autoHit: true`) and cannot be blocked by
+    // regular shield/monster block (`unblockable: true`) per `D2Game.dll` `0x6FD13220`.
+    if (skillId === 97 || skill?.srvDoFunc === 150) {
+      return { attackKind: 'melee', autoHit: true, unblockable: true }
+    }
+    if (skill === undefined) {
+      return { attackKind: 'spell', autoHit: true, unblockable: true }
+    }
+    const mName = skill.srvMissile || skill.srvMissileA || skill.srvMissileB || skill.srvMissileC
+    const mRec = mName ? this.registry?.getMissileByName(mName) : undefined
+    const hasSkillToHit =
+      skill.toHit !== 0 || skill.toHitLev !== 0 || skill.toHitCalc !== ''
+    const range = skill.range.toLowerCase()
+    if (mRec !== undefined && skill.srcDam === 0 && !hasSkillToHit) {
+      return {
+        attackKind: mRec.toHit ? 'missile' : 'spell',
+        autoHit: !mRec.toHit,
+        unblockable: !mRec.toHit,
+      }
+    }
+    if (range === 'h2h' || range === 'both') {
+      return { attackKind: 'melee', autoHit: false, unblockable: false }
+    }
+    if (mRec !== undefined) {
+      return {
+        attackKind: mRec.toHit || skill.srcDam > 0 ? 'missile' : 'spell',
+        autoHit: !mRec.toHit,
+        unblockable: !mRec.toHit && skill.srcDam === 0,
+      }
+    }
+    if (skill.srcDam > 0 || hasSkillToHit) {
+      return {
+        attackKind: range === 'rng' && skillId !== 275 ? 'missile' : 'melee',
+        autoHit: false,
+        unblockable: false,
+      }
+    }
+    return { attackKind: 'spell', autoHit: true, unblockable: true }
+  }
+
   applyDamageToMonster(
     attackerOrMonsterId: InternalPlayerRecord | number,
     monsterOrDamage: InternalMonsterRecord | number,
     damageOrAttackerId?: number,
-    skillIdArg = 0,
+    skillIdArg?: number,
     channelOverride?: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois',
-    source: 'player' | 'merc' = 'player',
-  ): void {
+    source: 'player' | 'merc' | InternalMercenaryRecord | SummonedPetUnit = 'player',
+    hitContext?: {
+      readonly attackKind?: 'melee' | 'missile' | 'spell' | undefined
+      readonly autoHit?: boolean | undefined
+      readonly unblockable?: boolean | undefined
+      readonly elemDurationFrames?: number | undefined
+    },
+  ): boolean {
     let attacker: InternalPlayerRecord | undefined
     let monster: InternalMonsterRecord | undefined
     let damage: number
+    const hasExplicitSkillId = skillIdArg !== undefined
+    const resolvedSkillId = skillIdArg ?? 0
     let skillId: number
+    let mercAttacker: InternalMercenaryRecord | undefined =
+      typeof source === 'object' && source !== null && 'subType' in source ? source : undefined
+    const petAttacker: SummonedPetUnit | undefined =
+      typeof source === 'object' && source !== null && 'petType' in source ? source : undefined
     let effectiveSource: 'player' | 'merc' =
-      source === 'merc' || (channelOverride as string | undefined) === 'merc' ? 'merc' : 'player'
+      source === 'merc' || mercAttacker !== undefined || (channelOverride as string | undefined) === 'merc'
+        ? 'merc'
+        : 'player'
     if (typeof attackerOrMonsterId === 'number') {
       monster = this.monsters.get(attackerOrMonsterId)
       damage = Number(monsterOrDamage)
-      const mercAttacker =
-        typeof damageOrAttackerId === 'number'
-          ? this.mercenaries.get(damageOrAttackerId)
-          : undefined
+      if (mercAttacker === undefined && typeof damageOrAttackerId === 'number') {
+        mercAttacker = this.mercenaries.get(damageOrAttackerId)
+      }
       if (mercAttacker !== undefined) {
         effectiveSource = 'merc'
       }
@@ -7524,14 +8423,22 @@ export class GameInstance {
               ? this.players.get(mercAttacker.ownerPlayerId)
               : undefined))
           : undefined) ?? this.players.values().next().value
-      skillId = skillIdArg
+      skillId = resolvedSkillId
     } else {
       attacker = attackerOrMonsterId
       monster = monsterOrDamage as InternalMonsterRecord
       damage = Number(damageOrAttackerId ?? 0)
-      skillId = skillIdArg
+      skillId = resolvedSkillId
     }
-    if (!monster || monster.dead || monster.isNpc || !monster.isKillable) return
+    if (!monster || monster.dead || monster.isNpc || !monster.isKillable) return false
+    if (effectiveSource === 'merc' && mercAttacker === undefined && attacker !== undefined) {
+      for (const m of this.mercenaries.values()) {
+        if (m.ownerPlayerId === attacker.unitId && m.alive) {
+          mercAttacker = m
+          break
+        }
+      }
+    }
     monster.lastHitByMerc = effectiveSource === 'merc'
     if (!attacker) {
       attacker = {
@@ -7568,6 +8475,7 @@ export class GameInstance {
         dexterity: 50,
         vitality: 50,
         energy: 50,
+        ar: 10000,
         statPts: 0,
         newSkills: 0,
         leftSkill: 0,
@@ -7598,46 +8506,104 @@ export class GameInstance {
         d2sTemplate: undefined,
       }
     }
-    if (attacker === undefined) return
+    if (attacker === undefined) return false
 
     // 1.13c Holy Bolt (skillId 101): undead-only gate (deals 0 damage to non-undead targets)
     if (skillId === 101 && !monster.isUndead) {
-      return
+      return false
     }
 
-    const attackerStats = new UnitStatList()
-    attackerStats.setBaseStat('level', attacker.level)
-    attackerStats.setBaseStat('maxhp', attacker.maxHpFixed)
-    attackerStats.setHp256(attacker.hpFixed)
-    attackerStats.setBaseStat('maxmana', attacker.maxManaFixed)
-    attackerStats.setMana256(attacker.manaFixed)
+    const attackerStats = new UnitStatList(this.registry)
+    if (petAttacker !== undefined) {
+      attackerStats.setBaseStat('level', petAttacker.statList.getAccruedStat('level') || attacker.level)
+      attackerStats.setBaseStat('strength', petAttacker.statList.getAccruedStat('strength'))
+      attackerStats.setBaseStat('dexterity', petAttacker.statList.getAccruedStat('dexterity'))
+      attackerStats.setBaseStat('tohit', petAttacker.statList.getAccruedStat('tohit'))
+      attackerStats.setBaseStat('item_tohit_percent', petAttacker.statList.getAccruedStat('item_tohit_percent'))
+      attackerStats.setBaseStat('armorclass', petAttacker.statList.getAccruedStat('armorclass'))
+      attackerStats.setBaseStat('damagepercent', petAttacker.statList.getAccruedStat('damagepercent'))
+      attackerStats.setBaseStat('mindamage', petAttacker.statList.getAccruedStat('mindamage'))
+      attackerStats.setBaseStat('maxdamage', petAttacker.statList.getAccruedStat('maxdamage'))
+      attackerStats.setBaseStat('item_normaldamage', petAttacker.statList.getAccruedStat('item_normaldamage'))
+      attackerStats.setBaseStat('passive_critical_strike', petAttacker.statList.getAccruedStat('passive_critical_strike'))
+      attackerStats.setBaseStat('maxhp', petAttacker.statList.getAccruedStat('maxhp'))
+      attackerStats.setHp256(petAttacker.statList.getHp256())
+    } else if (effectiveSource === 'merc' && mercAttacker !== undefined) {
+      attackerStats.setBaseStat('level', mercAttacker.level)
+      attackerStats.setBaseStat('tohit', mercAttacker.ar ?? 100 + mercAttacker.level * 20)
+      attackerStats.setBaseStat('armorclass', mercAttacker.defense ?? 0)
+      attackerStats.setBaseStat('maxhp', mercAttacker.maxHp * FIXED_ONE)
+      attackerStats.setHp256(mercAttacker.hp * FIXED_ONE)
+    } else {
+      attackerStats.setBaseStat('level', attacker.level)
+      attackerStats.setBaseStat('strength', attacker.strength)
+      attackerStats.setBaseStat('dexterity', attacker.dexterity)
+      attackerStats.setBaseStat('vitality', attacker.vitality)
+      attackerStats.setBaseStat('energy', attacker.energy)
+      attackerStats.setBaseStat('tohit', this.computePlayerBaseToHit113c(attacker))
+      attackerStats.setBaseStat('item_tohit_percent', this.computePlayerToHitPctBonus113c(attacker))
+      attackerStats.setBaseStat('armorclass', this.computePlayerBaseDefense(attacker))
+      attackerStats.setBaseStat('maxhp', attacker.maxHpFixed)
+      attackerStats.setHp256(attacker.hpFixed)
+      attackerStats.setBaseStat('maxmana', attacker.maxManaFixed)
+      attackerStats.setMana256(attacker.manaFixed)
+      attackerStats.setBaseStat('maxstamina', attacker.maxStaminaFixed)
+      attackerStats.setBaseStat('stamina', attacker.staminaFixed)
+    }
     // Life / mana steal (D2Game 0x6FCFBA40) belongs to the real player that landed the hit; a
     // hireling hit routed through its owner (`source === 'merc'`) never steals for the owner.
     const stealer =
-      effectiveSource === 'player' && this.players.get(attacker.unitId) === attacker ? attacker : undefined
+      effectiveSource === 'player' &&
+      petAttacker === undefined &&
+      this.players.get(attacker.unitId) === attacker
+        ? attacker
+        : undefined
     if (stealer !== undefined) {
       attackerStats.setBaseStat('lifedrainmindam', this.playerStealPct(stealer, 60))
       attackerStats.setBaseStat('manadrainmindam', this.playerStealPct(stealer, 62))
     }
     const attackerStateBus = new StateBus(attackerStats, this.registry)
+    if (petAttacker === undefined && effectiveSource === 'player') {
+      this.mirrorPersistentStates(this.playerCombat.get(attacker.unitId), attackerStateBus)
+    }
     const attackerCtx: CombatUnitContext = {
-      id: `player_${attacker.unitId}`,
-      name: attacker.name,
-      unitType: 'player',
+      id:
+        petAttacker !== undefined
+          ? petAttacker.id
+          : effectiveSource === 'merc' && mercAttacker !== undefined
+            ? `merc_${mercAttacker.unitId}`
+            : `player_${attacker.unitId}`,
+      name:
+        petAttacker !== undefined
+          ? petAttacker.petType
+          : effectiveSource === 'merc' && mercAttacker !== undefined
+            ? mercAttacker.name
+            : attacker.name,
+      unitType: petAttacker !== undefined || effectiveSource === 'merc' ? 'monster' : 'player',
       statList: attackerStats,
       stateBus: attackerStateBus,
-      x: attacker.x,
-      y: attacker.y,
+      x:
+        petAttacker !== undefined
+          ? petAttacker.x
+          : effectiveSource === 'merc' && mercAttacker !== undefined
+            ? mercAttacker.x
+            : attacker.x,
+      y:
+        petAttacker !== undefined
+          ? petAttacker.y
+          : effectiveSource === 'merc' && mercAttacker !== undefined
+            ? mercAttacker.y
+            : attacker.y,
       weaponMinPhys: 0,
       weaponMaxPhys: 0,
       lifeStealDivisor: difficultyLifeStealDivisor(this.difficulty),
       manaStealDivisor: difficultyManaStealDivisor(this.difficulty),
     }
 
-    const defenderStats = new UnitStatList()
+    const defenderStats = new UnitStatList(this.registry)
     defenderStats.setBaseStat('level', monster.level)
     defenderStats.setBaseStat('armorclass', monster.ac)
-    defenderStats.setBaseStat('toblock', 0)
+    defenderStats.setBaseStat('toblock', monster.toBlock)
     defenderStats.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
     defenderStats.setHp256(monster.hp * FIXED_ONE)
     defenderStats.setBaseStat('damageresist', monster.resistances.phys)
@@ -7648,39 +8614,6 @@ export class GameInstance {
     defenderStats.setBaseStat('poisonresist', monster.resistances.poison)
 
     const defenderStateBus = new StateBus(defenderStats, this.registry)
-    if (monster.states.has(9)) {
-      defenderStateBus.applyState({
-        stateNameOrId: 'amplifydamage',
-        sourceSkillId: 66,
-        slvl: 1,
-        durationFrames: 100,
-      })
-    }
-    if (monster.states.has(60)) {
-      defenderStateBus.applyState({
-        stateNameOrId: 'decrepify',
-        sourceSkillId: 87,
-        slvl: 1,
-        durationFrames: 100,
-      })
-    }
-    if (monster.states.has(61)) {
-      defenderStateBus.applyState({
-        stateNameOrId: 'lowerresist',
-        sourceSkillId: 91,
-        slvl: 10,
-        durationFrames: 100,
-      })
-    }
-    if (monster.states.has(28)) {
-      defenderStateBus.applyState({
-        stateNameOrId: 'conviction',
-        sourceSkillId: 123,
-        slvl: 10,
-        durationFrames: 100,
-        stats: { conviction_pierce: 75 },
-      })
-    }
 
     // Curses / aura debuffs (Conviction, Holy Freeze, ...) carried by the monster's persistent bus.
     this.mirrorPersistentStates(this.monsterCombat.get(monster.unitId), defenderStateBus)
@@ -7698,7 +8631,38 @@ export class GameInstance {
       isBoss: monster.isBoss,
       isPrimeEvil: monster.isPrimeEvil,
       drain: monster.drain,
+      monsterColdDivisor: difficultyMonsterColdDivisor(this.difficulty),
+      monsterFreezeDivisor: difficultyMonsterFreezeDivisor(this.difficulty),
     }
+
+    const isDirectTestDamage =
+      typeof attackerOrMonsterId === 'number' &&
+      !hasExplicitSkillId &&
+      effectiveSource === 'player' &&
+      petAttacker === undefined &&
+      hitContext === undefined
+    const defaultHitClass =
+      isDirectTestDamage
+        ? { attackKind: 'spell' as const, autoHit: true, unblockable: true }
+        : petAttacker !== undefined
+          ? petAttacker.isStationary ||
+            petAttacker.kind === 'skeleton_mage' ||
+            petAttacker.petType === 'assassintrap' ||
+            petAttacker.petType === 'hydra' ||
+            petAttacker.petType === 'totem' ||
+            petAttacker.petType === 'vine'
+            ? { attackKind: 'spell' as const, autoHit: true, unblockable: true }
+            : { attackKind: 'melee' as const, autoHit: false, unblockable: false }
+          : effectiveSource === 'merc'
+            ? { attackKind: 'melee' as const, autoHit: false, unblockable: false }
+            : this.classifyPlayerHitRoll113c(skillId)
+    const hitAttackKind = hitContext?.attackKind ?? defaultHitClass.attackKind
+    const hitAutoHit = hitContext?.autoHit ?? defaultHitClass.autoHit
+    const hitUnblockable = hitContext?.unblockable ?? defaultHitClass.unblockable
+    const skillToHitBonusPct =
+      petAttacker === undefined && effectiveSource === 'player'
+        ? this.computePlayerSkillToHitBonusPct113c(attacker, skillId)
+        : 0
 
     const channel = channelOverride ?? this.resolveSkillDamageChannel(skillId)
     const rawDmg = Math.max(1, Math.floor(damage))
@@ -7717,7 +8681,7 @@ export class GameInstance {
         unblockable: true,
       }, this.rng)
       if (dmgOut.immuneToElem || dmgOut.elemDamage256 <= 0) {
-        return
+        return false
       }
       const floorPct =
         this.difficulty === 2 ? 50 : this.difficulty === 1 ? 33 : 0
@@ -7726,31 +8690,52 @@ export class GameInstance {
           ? Math.max(1, Math.floor((monster.maxHp * floorPct) / 100))
           : 1
       if (monster.hp <= minHp) {
-        return
+        return false
       }
       const staticLoss = Math.max(1, Math.floor(dmgOut.elemDamage256 / FIXED_ONE))
       const nextHp = Math.max(minHp, monster.hp - staticLoss)
       dealtDamage = monster.hp - nextHp
       if (dealtDamage <= 0) {
-        return
+        return false
       }
     } else if (channel === 'phys') {
       const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
         skillId,
-        attackKind: 'melee',
+        attackKind: hitAttackKind,
         srcDam: 0,
         flatPhysMin256: rawDmg * FIXED_ONE,
         flatPhysMax256: rawDmg * FIXED_ONE,
-        autoHit: true,
-        unblockable: true,
+        toHitBonusPct: skillToHitBonusPct,
+        autoHit: hitAutoHit,
+        unblockable: hitUnblockable,
       }, this.rng)
+      if (!dmgOut.hit) {
+        if (dmgOut.avoidedReason === 'block') {
+          monster.mode = MONMODE_BLOCK
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: monster.unitId,
+            mode: MONMODE_BLOCK,
+            lifePct:
+              monster.maxHp > 0
+                ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128))
+                : 0,
+          })
+        }
+        return false
+      }
       if (stealer !== undefined) this.applyPlayerStealOutcome(stealer, dmgOut)
       if (dmgOut.immuneToPhys || dmgOut.totalDamage256 <= 0) {
-        return
+        return false
       }
       dealtDamage = Math.max(1, Math.floor(dmgOut.totalDamage256 / FIXED_ONE))
 
-      // 1.13c Crushing Blow (statId 136): 1/4 normal, 1/8 boss/unique/champion, mitigated by positive phys resist
+      // 1.13c Crushing Blow (statId 136, D2Game.dll 0x6FCCCC30..0x6FCCCD93):
+      // Base divisor: 4 for normal/minion/champion (fTypeFlags 0x04), 8 for boss (#10064) or
+      // unique/superunique (fTypeFlags 0x02), 10 for player/hireling (#11104); scaled by
+      // /players N HP bonus (0x6FCCF5F0), doubled for ranged/missile hits (nEvent == 6),
+      // and mitigated only by positive STAT_DAMAGERESIST (stat 36).
       let cbChance = 0
       for (const item of attacker.items) {
         if (item.location === 'equipped') {
@@ -7758,22 +8743,50 @@ export class GameInstance {
         }
       }
       if (cbChance > 0 && (cbChance >= 100 || this.rng.rand(100) < cbChance)) {
-        const isBossOrUnique =
-          monster.isBoss ||
-          monster.isPrimeEvil ||
-          monster.rank === 'unique' ||
-          monster.rank === 'champion'
-        const cbDivisor = isBossOrUnique ? 8 : 4
-        let cbLoss = Math.floor(monster.hp / cbDivisor)
-        const effPhysRes = defenderStats.getAccruedStat('damageresist')
-        if (effPhysRes > 0) {
-          cbLoss = Math.floor(
-            (cbLoss * (100 - Math.min(100, effPhysRes))) / 100,
-          )
-        }
-        dealtDamage += Math.max(0, cbLoss)
+        const cbOut = calculateCrushingBlow113c({
+          defenderHp: monster.hp,
+          unitType: 'monster',
+          isBoss: monster.isBoss,
+          isPrimeEvil: monster.isPrimeEvil,
+          rank: monster.rank,
+          playerCount: this.playersX,
+          isRanged: hitAttackKind === 'missile',
+          physResPct: defenderStats.getAccruedStat('damageresist'),
+        })
+        dealtDamage += cbOut.damage
       }
     } else if (channel === 'pois') {
+      if (!hitAutoHit) {
+        const hitOut = executeSUnitDmg(attackerCtx, defenderCtx, {
+          skillId,
+          attackKind: hitAttackKind,
+          srcDam: 0,
+          flatPhysMin256: 0,
+          flatPhysMax256: 0,
+          elemType: 'pois',
+          elemMin256: rawDmg * FIXED_ONE,
+          elemMax256: rawDmg * FIXED_ONE,
+          toHitBonusPct: skillToHitBonusPct,
+          autoHit: false,
+          unblockable: hitUnblockable,
+        }, this.rng)
+        if (!hitOut.hit) {
+          if (hitOut.avoidedReason === 'block') {
+            monster.mode = MONMODE_BLOCK
+            this.broadcastToArea(monster.areaId, {
+              type: 'UnitMode',
+              unitType: 1,
+              id: monster.unitId,
+              mode: MONMODE_BLOCK,
+              lifePct:
+                monster.maxHp > 0
+                  ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128))
+                  : 0,
+            })
+          }
+          return false
+        }
+      }
       const sk = this.registry?.getSkillById(skillId)
       const dur = sk && sk.eLen > 0 ? sk.eLen : 50
       const rawBitrate256 = Math.max(1, Math.round((rawDmg * FIXED_ONE) / dur))
@@ -7785,25 +8798,63 @@ export class GameInstance {
         skillId,
         effectiveSource,
       )
-      return
+      return true
     } else {
       const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
         skillId,
-        attackKind: 'spell',
+        attackKind: hitAttackKind,
         srcDam: 0,
         elemType: channel,
         elemMin256: rawDmg * FIXED_ONE,
         elemMax256: rawDmg * FIXED_ONE,
-        autoHit: true,
-        unblockable: true,
+        toHitBonusPct: skillToHitBonusPct,
+        autoHit: hitAutoHit,
+        unblockable: hitUnblockable,
       }, this.rng)
+      if (!dmgOut.hit) {
+        if (dmgOut.avoidedReason === 'block') {
+          monster.mode = MONMODE_BLOCK
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: monster.unitId,
+            mode: MONMODE_BLOCK,
+            lifePct:
+              monster.maxHp > 0
+                ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128))
+                : 0,
+          })
+        }
+        return false
+      }
       if (dmgOut.immuneToElem || dmgOut.totalDamage256 <= 0) {
-        return
+        return false
       }
       dealtDamage = Math.max(1, Math.floor(dmgOut.totalDamage256 / FIXED_ONE))
     }
 
-    this.finishMonsterDamage(attacker, monster, dealtDamage, skillId, channel)
+    const hitClass =
+      petAttacker !== undefined
+        ? this.resolveMonsterHitClass113c(
+            { hcIdx: -1 },
+            petAttacker.sourceSkillId || skillId,
+          )
+        : effectiveSource === 'merc' && mercAttacker !== undefined
+          ? this.resolveMonsterHitClass113c(
+              { hcIdx: mercAttacker.classId },
+              skillId,
+            )
+          : this.resolvePlayerWeaponHitClass113c(attacker, skillId)
+    this.finishMonsterDamage(
+      attacker,
+      monster,
+      dealtDamage,
+      skillId,
+      channel,
+      hitClass,
+      hitContext?.elemDurationFrames,
+    )
+    return true
   }
 
   /**
@@ -7822,8 +8873,10 @@ export class GameInstance {
     if (monster.dead || monster.isNpc || !monster.isKillable) return
     if (rawBitrate256 <= 0 || durationFrames <= 0) return
 
-    const attackerStats = new UnitStatList()
+    const attackerStats = new UnitStatList(this.registry)
     attackerStats.setBaseStat('level', attacker.level)
+    attackerStats.setBaseStat('maxhp', attacker.maxHpFixed)
+    attackerStats.setHp256(attacker.hpFixed)
     const attackerStateBus = new StateBus(attackerStats, this.registry)
     const attackerCtx: CombatUnitContext = {
       id: `player_${attacker.unitId}`,
@@ -7835,20 +8888,13 @@ export class GameInstance {
       y: attacker.y,
     }
 
-    const defenderStats = new UnitStatList()
+    const defenderStats = new UnitStatList(this.registry)
     defenderStats.setBaseStat('level', monster.level)
+    defenderStats.setBaseStat('armorclass', monster.ac)
     defenderStats.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
     defenderStats.setHp256(monster.hp * FIXED_ONE)
     defenderStats.setBaseStat('poisonresist', monster.resistances.poison)
     const defenderStateBus = new StateBus(defenderStats, this.registry)
-    if (monster.states.has(61)) {
-      defenderStateBus.applyState({
-        stateNameOrId: 'lowerresist',
-        sourceSkillId: 91,
-        slvl: 10,
-        durationFrames: 100,
-      })
-    }
     this.mirrorPersistentStates(this.monsterCombat.get(monster.unitId), defenderStateBus)
 
     const defenderCtx: CombatUnitContext = {
@@ -7864,6 +8910,8 @@ export class GameInstance {
       isBoss: monster.isBoss,
       isPrimeEvil: monster.isPrimeEvil,
       drain: monster.drain,
+      monsterColdDivisor: difficultyMonsterColdDivisor(this.difficulty),
+      monsterFreezeDivisor: difficultyMonsterFreezeDivisor(this.difficulty),
     }
 
     const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
@@ -7905,6 +8953,141 @@ export class GameInstance {
   }
 
   /**
+   * 1.13c cold (`STATE_COLD` 11, `SUNITDMG_ApplyCold` `0x6FCFC780`) and freeze (`STATE_FREEZE` 1,
+   * `SUNITDMG_ApplyFreeze` `0x6FCFDAC0`) raw frame duration resolver:
+   * - Evaluates `Skills.txt` `ELen + ELevLen1..3` scaled by `ELenSymPerCalc` (`D2Common_11035`),
+   *   or `auraLenCalc` on Glacial Spike (#55), or `calc1` on Frozen Armor (#40), or `Missiles.txt`
+   *   `ELen + ELevLen1..3` (e.g. Phoenix Strike #280 charge 3 `royalstrikechaosice`), or `calc4`
+   *   on Vengeance (#111).
+   * - Adds equipped item `STAT_COLDLENGTH` (`56`, `D2Game.dll` `0x6FCFD8A6`) when the attack
+   *   carries weapon damage (`skillId === 0 || skill.srcDam > 0`).
+   * - Enforces the 50-frame minimum floor (`0x6FCFDA16..0x6FCFDA63`) on cold/freeze conversion or
+   *   aura pulse skills without explicit `ELen`.
+   */
+  private resolveSkillColdOrFreezeDuration113c(
+    attacker: InternalPlayerRecord,
+    skillId: number,
+    channel: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois',
+    explicitDurationFrames?: number | undefined,
+    missileRec?: MissileRecord | undefined,
+  ): { readonly kind: 'freeze' | 'chill' | null; readonly rawFrames: number } {
+    const skill = skillId > 0 ? this.registry?.getSkillById(skillId) : undefined
+    const slvl = skill !== undefined ? Math.max(1, this.resolvePlayerSkillLevel(attacker, skill)) : 0
+    const primaryMissileName =
+      skill !== undefined
+        ? skillId === 280 && channel === 'cold'
+          ? skill.srvMissileC
+          : skill.srvMissile || skill.srvMissileA || skill.srvMissileB || skill.srvMissileC
+        : ''
+    const resolvedMissile =
+      missileRec ??
+      (primaryMissileName ? this.registry?.getMissileByName(primaryMissileName) : undefined)
+    const hitSubMissile =
+      resolvedMissile?.hitSubMissile1
+        ? this.registry?.getMissileByName(resolvedMissile.hitSubMissile1)
+        : undefined
+    const skillEType = (skill?.eType || resolvedMissile?.eType || '').toLowerCase()
+    const missileEType = (resolvedMissile?.eType || hitSubMissile?.eType || '').toLowerCase()
+    const isFreezeSkill =
+      skillEType === 'frze' ||
+      skillEType === 'free' ||
+      missileEType === 'frze' ||
+      missileEType === 'free' ||
+      resolvedMissile?.pSrvDmgFunc === 2 ||
+      resolvedMissile?.pSrvDmgFunc === 4 ||
+      resolvedMissile?.pSrvDmgFunc === 10 ||
+      skillId === 40 ||
+      skillId === 274 ||
+      (skillId === 280 && channel === 'cold')
+    const isColdSkill = skillEType === 'cold' || channel === 'cold'
+    const hasItemFreeze =
+      (skillId === 0 || !skill?.aura) && this.sumPlayerItemStat(attacker, 134) > 0
+
+    let skillElemFrames =
+      explicitDurationFrames !== undefined && explicitDurationFrames > 0
+        ? explicitDurationFrames
+        : 0
+    if (skillElemFrames <= 0 && skill !== undefined && (isFreezeSkill || isColdSkill || skillId === 111)) {
+      const calcCtx = {
+        registry: this.registry,
+        activeSkill: skill,
+        slvl,
+        blvl: Math.max(1, attacker.skills.get(skillId) ?? slvl),
+        ulvl: attacker.level,
+        getBaseSkillLevel: (id: number) => attacker.skills.get(id) ?? 0,
+        getEffectiveSkillLevel: (id: number) => {
+          const s = this.registry?.getSkillById(id)
+          if (!s) return 0
+          return (attacker.skills.get(id) ?? 0) > 0 ? this.resolvePlayerSkillLevel(attacker, s) : 0
+        },
+        getUnitStat: (statNameOrId: string | number) => {
+          if (statNameOrId === 'level' || statNameOrId === 12) return attacker.level
+          if (statNameOrId === 'strength' || statNameOrId === 0) return attacker.strength
+          if (statNameOrId === 'dexterity' || statNameOrId === 2) return attacker.dexterity
+          if (statNameOrId === 'vitality' || statNameOrId === 3) return attacker.vitality
+          if (statNameOrId === 'energy' || statNameOrId === 1) return attacker.energy
+          return 0
+        },
+      }
+      if (skill.eLen > 0 || skill.eLevLen1 > 0 || skill.eLevLen2 > 0 || skill.eLevLen3 > 0) {
+        let dur = compute3BandDuration(
+          slvl,
+          skill.eLen,
+          skill.eLevLen1,
+          skill.eLevLen2,
+          skill.eLevLen3,
+        )
+        if (skill.eLenSymPerCalc) {
+          const synPct = evaluateCalc(skill.eLenSymPerCalc, calcCtx)
+          dur = Math.floor((dur * (100 + synPct)) / 100)
+        }
+        skillElemFrames = dur
+      } else if (skill.id === 55 && skill.auraLenCalc) {
+        skillElemFrames = Math.max(0, evaluateCalc(skill.auraLenCalc, calcCtx))
+      } else if (skill.id === 40 && skill.calc1) {
+        skillElemFrames = Math.max(0, evaluateCalc(skill.calc1, calcCtx))
+      } else if (skill.id === 111 && skill.calc4) {
+        skillElemFrames = Math.max(0, evaluateCalc(skill.calc4, calcCtx))
+      } else {
+        const mRec =
+          missileRec ??
+          this.registry.getMissileByName(
+            skill.srvMissileC || skill.srvMissileB || skill.srvMissileA || skill.srvMissile,
+          )
+        if (
+          mRec !== undefined &&
+          (mRec.eLen > 0 || mRec.eLevLen1 > 0 || mRec.eLevLen2 > 0 || mRec.eLevLen3 > 0)
+        ) {
+          skillElemFrames = compute3BandDuration(
+            slvl,
+            mRec.eLen,
+            mRec.eLevLen1,
+            mRec.eLevLen2,
+            mRec.eLevLen3,
+          )
+        }
+      }
+    }
+
+    const includeItemCold = skillId === 0 || (skill !== undefined && skill.srcDam > 0)
+    const itemColdFrames = includeItemCold ? Math.max(0, this.sumPlayerItemStat(attacker, 56)) : 0
+
+    if (isFreezeSkill || hasItemFreeze) {
+      let rawFrames = skillElemFrames + itemColdFrames
+      if (rawFrames <= 0) rawFrames = 50
+      return { kind: 'freeze', rawFrames }
+    }
+    if (isColdSkill || itemColdFrames > 0 || skillId === 111) {
+      let rawFrames = skillElemFrames + itemColdFrames
+      if (rawFrames <= 0 && isColdSkill) {
+        rawFrames = Number(skill?.perDelay) || 50
+      }
+      return rawFrames > 0 ? { kind: 'chill', rawFrames } : { kind: null, rawFrames: 0 }
+    }
+    return { kind: null, rawFrames: 0 }
+  }
+
+  /**
    * Apply resolved damage to a monster: HP loss, chill from cold skills, the HP update, Lightning
    * Enchanted on-struck bolts, and the death / get-hit mode (shared by hits and aura pulses).
    */
@@ -7914,6 +9097,8 @@ export class GameInstance {
     dealtDamage: number,
     skillId: number,
     channel: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois',
+    hitClass?: number | string | undefined,
+    elemDurationFrames?: number | undefined,
   ): void {
     monster.hp = Math.max(0, monster.hp - dealtDamage)
     if (
@@ -7927,25 +9112,26 @@ export class GameInstance {
     monster.threatPlayerId = attacker.unitId
     monster.threatUntilFrame = this.currentFrame + MONSTER_THREAT_FRAMES
 
-    if (
-      (skillId === 39 ||
-        skillId === 44 ||
-        skillId === 45 ||
-        skillId === 55 ||
-        skillId === 59 ||
-        skillId === 64) &&
-      monster.resistances.cold < 100 &&
-      monster.coldEffect !== 0
-    ) {
-      this.applyUnitState(
-        monster.states,
-        monster.stateTimers,
-        'monster',
-        monster.unitId,
-        monster.areaId,
-        11,
-        50,
+    if (monster.resistances.cold < 100 && monster.coldEffect !== 0) {
+      const coldOrFreeze = this.resolveSkillColdOrFreezeDuration113c(
+        attacker,
+        skillId,
+        channel,
+        elemDurationFrames,
       )
+      if (coldOrFreeze.kind === 'freeze' && coldOrFreeze.rawFrames > 0) {
+        const divisor = Math.max(1, difficultyMonsterFreezeDivisor(this.difficulty))
+        const freezeTicks = Math.trunc(coldOrFreeze.rawFrames / divisor)
+        if (freezeTicks > 0) {
+          this.applyMonsterState(monster.unitId, 1, freezeTicks)
+        }
+      } else if (coldOrFreeze.kind === 'chill' && coldOrFreeze.rawFrames > 0) {
+        const divisor = Math.max(1, difficultyMonsterColdDivisor(this.difficulty))
+        const chillTicks = Math.trunc(coldOrFreeze.rawFrames / divisor)
+        if (chillTicks > 0) {
+          this.applyMonsterState(monster.unitId, 11, chillTicks)
+        }
+      }
     }
 
     this.broadcastToArea(monster.areaId, {
@@ -7992,19 +9178,36 @@ export class GameInstance {
     if (monster.hp <= 0) {
       this.applyMonsterDeath(monster, attacker, channel)
     } else {
-      this.maybeEnterMonsterHitRecovery(monster, dealtDamage)
       const canBeInterrupted = !monster.isBoss && !monster.isPrimeEvil
       if (canBeInterrupted && this.sumPlayerItemStat(attacker, 117) > 0) {
         this.applyMonsterState(monster.unitId, 52, 120_000)
       }
       const isRadialAuraPulse = skillId > 0 && Boolean(this.registry.getSkillById(skillId)?.aura)
-      const itemKnockback = !isRadialAuraPulse && this.sumPlayerItemStat(attacker, 81) > 0
-      if (
-        canBeInterrupted &&
+      const hasItemKnockback = !isRadialAuraPulse && this.sumPlayerItemStat(attacker, 81) > 0
+      // 1.13c D2Game.dll 0x6FCCCE60 (itemeventfunc 7, STAT_ITEM_KNOCKBACK = 81):
+      // Size-based 128-point roll (Small=128/128, Medium=64/128, Large=32/128) applies ONLY to
+      // item_knockback (stat 81). Skills in MONSTER_KNOCKBACK_SKILLS set ResultFlags |= 0x08 directly
+      // (with Telekinesis #43 rolling Param2 = 35% at 0x6FC631C0, and Molten Boulder #229 gating sizeX < 3).
+      const skillKnockback =
+        MONSTER_KNOCKBACK_SKILLS.has(skillId) &&
+        (skillId !== 43 || this.rng.rand(100) < 35) &&
+        (skillId !== 229 || monster.sizeX < 3)
+      const itemKnockbackTriggered =
+        !skillKnockback &&
+        hasItemKnockback &&
+        rollItemKnockback113c(this.rng, { unitType: 'monster', sizeX: monster.sizeX })
+      // 1.13c SUNITDMG_ExecuteEvents (D2Game.dll 0x6FCFD00E..0x6FCFD117): knockback (`HitFlags & 0x08`)
+      // is evaluated first; if knockback is blocked (`mKB == 0`) or does not trigger, `0x04` GetHit runs.
+      const knockedBack =
         attacker.areaId === monster.areaId &&
-        (MONSTER_KNOCKBACK_SKILLS.has(skillId) || itemKnockback)
-      ) {
-        this.knockbackMonster(monster, attacker.x, attacker.y)
+        (skillKnockback || itemKnockbackTriggered)
+          ? this.knockbackMonster(monster, attacker.x, attacker.y)
+          : false
+      if (!knockedBack) {
+        this.maybeEnterMonsterHitRecovery(monster, dealtDamage, {
+          hitClass,
+          isPurePoison: channel === 'pois',
+        })
       }
     }
   }
@@ -8022,12 +9225,32 @@ export class GameInstance {
     if (
       monster.states.has(1) ||
       monster.states.has(29) ||
+      monster.states.has(107) ||
+      monster.states.has(184) ||
+      monster.umodIds.includes(MON_UMOD.SHATTER_ON_DEATH) ||
       monster.states.has(11) ||
       monster.frozenTicks > 0 ||
       monster.chillTicks > 0 ||
       channel === 'cold'
     ) {
       monster.shattered = true
+      if (
+        !monster.states.has(1) &&
+        !monster.states.has(107) &&
+        !monster.states.has(184)
+      ) {
+        const shatterStateId =
+          monster.states.has(29) || monster.frozenTicks > 0 ? 1 : 107
+        this.applyUnitState(
+          monster.states,
+          monster.stateTimers,
+          'monster',
+          monster.unitId,
+          monster.areaId,
+          shatterStateId,
+          50,
+        )
+      }
     }
     monster.dead = true
     monster.mode = 12
@@ -8052,7 +9275,11 @@ export class GameInstance {
     for (const p of this.players.values()) {
       if (p.dead || p.areaId !== monster.areaId) continue
       if (Math.hypot(p.x - monster.x, p.y - monster.y) > pending.radius) continue
-      this.applyPlayerElementalDamage(p, { phys: pending.phys, fire: pending.fire })
+      this.applyPlayerElementalDamage(
+        p,
+        { phys: pending.phys, fire: pending.fire },
+        { killerType: 'monster', killerUnitId: monster.unitId },
+      )
     }
     this.damageMercsAndPetsInRadius(
       monster.areaId,
@@ -8150,38 +9377,179 @@ export class GameInstance {
     return MONSTER_HIT_RECOVERY_FRAMES
   }
 
-  /** 1.13c gethit: tiered max-life threshold (`3/8`, `1/6`, `1/12`), `neverCount` / `mGH` gates, and `AnimData.d2` `GH` lock. */
+  /**
+   * Resolve the 1.13c `HitClass` ID (`0..13`) for a player's attack (`Skills.txt` `HitClass`
+   * override, else active equipped weapon's `Weapons.txt` `hit class` column, else `1` = `hth`).
+   */
+  private resolvePlayerWeaponHitClass113c(
+    player: InternalPlayerRecord,
+    skillId = 0,
+  ): number {
+    if (skillId > 0) {
+      const skHitClass = this.registry?.getSkillById(skillId)?.hitClass ?? 0
+      if (skHitClass > 0) return skHitClass
+    }
+    const equipped = player.items.filter(
+      (item) => item.location === 'equipped' && item.bodyLoc !== 11 && item.bodyLoc !== 12,
+    )
+    const preferredSlots = skillId === 4 || skillId === 5 ? [5, 4] : [4, 5]
+    for (const slot of preferredSlots) {
+      const weapon = equipped.find((item) => item.bodyLoc === slot)
+      if (!weapon) continue
+      const wBase = resolveWeaponBase113c(weapon.code)
+      if (!wBase) continue
+      const hc = resolveHitClassCode113c(wBase.hitClass)
+      if (hc > 0) return hc
+    }
+    return 1 // `hth` (divisor 16)
+  }
+
+  /**
+   * Resolve the 1.13c `HitClass` ID (`0..13`) for a monster's melee/skill/missile hit
+   * (`Missiles.txt` `HitClass`, then `Skills.txt` `HitClass`, then `MonStats2.txt` `HitClass`).
+   */
+  private resolveMonsterHitClass113c(
+    monster: { readonly hcIdx: number },
+    skillId = 0,
+    missileId = 0,
+  ): number {
+    if (missileId > 0) {
+      const mHitClass = this.registry?.getMissileById(missileId)?.hitClass ?? 0
+      if (mHitClass > 0) return mHitClass
+    }
+    if (skillId > 0) {
+      const skHitClass = this.registry?.getSkillById(skillId)?.hitClass ?? 0
+      if (skHitClass > 0) return skHitClass
+    }
+    const monRow = MONSTATS_113C_ROWS[monster.hcIdx]
+    return resolveHitClassCode113c(monRow?.hitClass ?? 0)
+  }
+
+  /**
+   * 1.13c player GetHit (`PLRMODE_GETHIT = 4`) animation duration in 25 Hz frames:
+   * `CharStats.txt` / `AnimData.d2` `{Class}GH{WeaponClass}` frames + `item_fastergethitrate` (stat 99)
+   * `EFHR = floor(120 * FHR / (120 + FHR))` (`D2Common.dll` `#10862` @ `0x6FD821E0`).
+   */
+  private playerHitRecoveryFrames(player: InternalPlayerRecord): number {
+    const equipped = player.items.filter(
+      (item) => item.location === 'equipped' && item.bodyLoc !== 11 && item.bodyLoc !== 12,
+    )
+    const combatStats = this.playerCombat.get(player.unitId)?.statList
+    const statListFhr = combatStats ? Math.trunc(combatStats.getAccruedStat('item_fastergethitrate')) : 0
+    const totalFhr = this.sumPlayerItemStat(player, 99) + statListFhr
+    const weaponClass = resolveEquippedWeaponClass(
+      equipped.map((item) => ({ code: item.code, bodyLoc: item.bodyLoc })),
+    )
+    const params = resolveCharacterAnimSpeedParams(player.classCode, 'gh', {
+      unitStats: {
+        get: (statId: number) => (statId === 99 ? totalFhr : 0),
+      },
+      weaponClass,
+    })
+    return computeOneShotTicks(params.frames, params.stepSpeed256)
+  }
+
+  /**
+   * 1.13c player GetHit (`D2Game.dll` `SUNITDMG_CheckSkipGetHit` @ `0x6FCFB910` + `SUNITDMG_ExecuteEvents`
+   * @ `0x6FCFD0FC`): rolls `1/d`, `2/d`, `4/d` max-HP thresholds (`d = 8/16/32/64` by `HitClass`) and,
+   * when triggered, enters `PLRMODE_GETHIT = 4` (`GH`), halts active movement/casts, and broadcasts `UnitMode`.
+   */
+  private maybeEnterPlayerHitRecovery(
+    player: InternalPlayerRecord,
+    dealtDamage: number,
+    options?: {
+      readonly dmg256?: number | undefined
+      readonly hitClass?: number | string | undefined
+      readonly isPurePoison?: boolean | undefined
+    },
+  ): void {
+    if (player.dead) return
+    const dmg256 = options?.dmg256 ?? dealtDamage * FIXED_ONE
+    const shouldEnter = shouldEnterGetHit113c(
+      {
+        maxHp256: player.maxHpFixed,
+        states: player.states,
+        stateBus: this.playerCombat.get(player.unitId)?.stateBus,
+        isPurePoison: options?.isPurePoison,
+        unitType: 'player',
+        hasModeGH: true,
+      },
+      dmg256,
+      options?.hitClass,
+      this.rng,
+    )
+    if (!shouldEnter) return
+
+    const recoveryFrames = this.playerHitRecoveryFrames(player)
+    player.mode = 4
+    player.hitRecoveryUntilFrame = this.currentFrame + recoveryFrames
+    player.targetX = player.x
+    player.targetY = player.y
+    player.pendingInteraction = undefined
+    player.pendingInteractionSteps = 0
+    player.pendingNpcGamble = undefined
+    const motion = this.playerMotion.get(player.unitId)
+    if (motion !== undefined) {
+      motion.mover.setPosition(player.x, player.y)
+      motion.x = player.x
+      motion.y = player.y
+      motion.moving = false
+      motion.plannedX = Number.NaN
+      motion.plannedY = Number.NaN
+    }
+    const resolvedHitClass = resolveHitClassCode113c(options?.hitClass)
+    this.broadcastToArea(player.areaId, {
+      type: 'UnitMode',
+      unitType: 0,
+      id: player.unitId,
+      mode: 4,
+      at: playerWirePosition(player),
+      lifePct:
+        player.maxHp > 0
+          ? Math.max(0, Math.round((player.hp / player.maxHp) * 128))
+          : 0,
+      ...(resolvedHitClass > 0 ? { hitClass: resolvedHitClass } : {}),
+    })
+  }
+
+  /**
+   * 1.13c monster GetHit (`D2Game.dll` `SUNITDMG_CheckSkipGetHit` @ `0x6FCFB910` + `0x6FC21560` `mGH`):
+   * `1/d`, `2/d`, `4/d` max-HP tiers (`d = 8/16/32/64` by `HitClass`), `neverCount` / `MonStats2.mGH` gates,
+   * `STATE_STUNNED (21)` unconditional GetHit (`0x6FCFD0FC`), and `AnimData.d2` `GH` lock.
+   */
   private maybeEnterMonsterHitRecovery(
     monster: InternalMonsterRecord,
     dealtDamage: number,
+    options?: {
+      readonly dmg256?: number | undefined
+      readonly hitClass?: number | string | undefined
+      readonly isPurePoison?: boolean | undefined
+    },
   ): void {
-    if (monster.dead || monster.isBoss || monster.isPrimeEvil) return
+    if (monster.dead || monster.states.has(25)) return
     const monRow = MONSTATS_113C_ROWS[monster.hcIdx]
-    if (monRow?.neverCount) return
-    if (
+    const hasModeGH =
       monster.hcIdx >= 0 &&
-      monster.hcIdx * MONSTER_PATH_DATA_STRIDE + 12 < MONSTER_PATH_DATA.length &&
-      (MONSTER_PATH_DATA[monster.hcIdx * MONSTER_PATH_DATA_STRIDE + 12]! & 0x08) === 0
-    ) {
-      return
-    }
-    if (
-      monster.frozenTicks > 0 ||
-      monster.states.has(1) ||
-      monster.states.has(29) ||
-      monster.states.has(21) ||
-      monster.states.has(25)
-    ) {
-      return
-    }
-    // 1.13c gethit probability tiers: >= 3/8 max life always, >= 1/6 75%,
-    // >= 1/12 37.5%, below 1/12 never.
-    const ratio = monster.maxHp > 0 ? dealtDamage / monster.maxHp : 0
-    let chancePct = 0
-    if (ratio >= 3 / 8) chancePct = 100
-    else if (ratio >= 1 / 6) chancePct = 75
-    else if (ratio >= 1 / 12) chancePct = 38
-    if (chancePct <= 0 || this.rng.rand(100) >= chancePct) return
+      monster.hcIdx * MONSTER_PATH_DATA_STRIDE + 12 < MONSTER_PATH_DATA.length
+        ? (MONSTER_PATH_DATA[monster.hcIdx * MONSTER_PATH_DATA_STRIDE + 12]! & 0x08) !== 0
+        : true
+    const dmg256 = options?.dmg256 ?? dealtDamage * FIXED_ONE
+    const shouldEnter = shouldEnterGetHit113c(
+      {
+        maxHp256: monster.maxHp * FIXED_ONE,
+        frozenTicks: monster.frozenTicks,
+        states: monster.states,
+        stateBus: this.monsterCombat.get(monster.unitId)?.stateBus,
+        isPurePoison: options?.isPurePoison,
+        unitType: 'monster',
+        hasModeGH,
+        neverCount: Boolean(monRow?.neverCount),
+      },
+      dmg256,
+      options?.hitClass,
+      this.rng,
+    )
+    if (!shouldEnter) return
     monster.pendingAttack = undefined
     monster.pendingAllyAttack = undefined
     monster.pendingResurrection = undefined
@@ -8191,6 +9559,7 @@ export class GameInstance {
     monster.pathTargetX = Number.NaN
     monster.pathTargetY = Number.NaN
     monster.mode = 3
+    const resolvedHitClass = resolveHitClassCode113c(options?.hitClass)
     this.broadcastToArea(monster.areaId, {
       type: 'UnitMode',
       unitType: 1,
@@ -8200,6 +9569,7 @@ export class GameInstance {
         monster.maxHp > 0
           ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128))
           : 0,
+      ...(resolvedHitClass > 0 ? { hitClass: resolvedHitClass } : {}),
     })
   }
 
@@ -8213,9 +9583,10 @@ export class GameInstance {
     target: InternalMonsterRecord,
   ): void {
     if (target.dead || attacker.dead) return
-    const attackerStats = new UnitStatList()
+    const attackerStats = new UnitStatList(this.registry)
     attackerStats.setBaseStat('level', attacker.level)
     attackerStats.setBaseStat('tohit', attacker.ar)
+    attackerStats.setBaseStat('armorclass', attacker.ac)
     attackerStats.setBaseStat('maxhp', attacker.maxHp * FIXED_ONE)
     attackerStats.setHp256(attacker.hp * FIXED_ONE)
     const attackerCtx: CombatUnitContext = {
@@ -8233,8 +9604,9 @@ export class GameInstance {
       coldEffect: attacker.coldEffect,
     }
 
-    const defenderStats = new UnitStatList()
+    const defenderStats = new UnitStatList(this.registry)
     defenderStats.setBaseStat('level', target.level)
+    defenderStats.setBaseStat('tohit', target.ar)
     defenderStats.setBaseStat('armorclass', target.ac)
     defenderStats.setBaseStat('toblock', target.toBlock)
     defenderStats.setBaseStat('maxhp', target.maxHp * FIXED_ONE)
@@ -8311,7 +9683,22 @@ export class GameInstance {
           }
         : {}),
     }, this.rng)
-    if (!dmgOut.hit) return
+    if (!dmgOut.hit) {
+      if (dmgOut.avoidedReason === 'block') {
+        target.mode = MONMODE_BLOCK
+        this.broadcastToArea(target.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: target.unitId,
+          mode: MONMODE_BLOCK,
+          lifePct:
+            target.maxHp > 0
+              ? Math.max(0, Math.round((target.hp / target.maxHp) * 128))
+              : 0,
+        })
+      }
+      return
+    }
     const dealtDamage = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
     if (dealtDamage <= 0) return
 
@@ -8327,7 +9714,9 @@ export class GameInstance {
       const credited = this.creditedPlayerForMonsterKill(attacker, target)
       this.applyMonsterDeath(target, credited, 'phys')
     } else {
-      this.maybeEnterMonsterHitRecovery(target, dealtDamage)
+      this.maybeEnterMonsterHitRecovery(target, dealtDamage, {
+        hitClass: this.resolveMonsterHitClass113c(attacker),
+      })
     }
   }
 
@@ -8378,34 +9767,52 @@ export class GameInstance {
   }
 
   /**
-   * 1.13c knockback: push the target away from the attacker until the terrain blocks the
-   * path (D2Common `PATHTYPE_KNOCKBACK_SERVER`). Clients animate the `kb` path (`cmd 0x14`).
+   * 1.13c knockback (`D2Game.dll` `0x6FCFD00E`, `0x6FC95160..0x6FC9526F`, `0x6FC96A10`, `0x6FC965E0`;
+   * `D2Common.dll` `0x6FDB7390` `PATHTYPE_KNOCKBACK = 8`, `0x6FDB6C20` raycast):
+   * - Requires `MonStats2.mGH` (`0x0008`) and `MonStats2.mKB` (`0x2000`).
+   * - Distance `nDist = (BaseId == 78 'sandmaggot1') ? 10 : 5` -> `stepDist = (nDist >> 1) + 1`
+   *   (`3` sub-tiles standard, `6` sub-tiles `sandmaggot1`), scaled along the Chebyshev vector.
+   * - Transitions monster into `MONMODE_KNOCKBACK` (`13`) using its `GH` animation duration.
    */
   private knockbackMonster(
     monster: InternalMonsterRecord,
     fromX: number,
     fromY: number,
-  ): void {
+  ): boolean {
+    // 1.13c D2Game.dll 0x6FCFD00E & 0x6FC95160 -> 0x6FC21560(pDefender, 3 / 13):
+    // require both MonStats2.mGH (bit 3 = 0x0008) and MonStats2.mKB (bit 13 = 0x2000).
+    if (
+      monster.hcIdx >= 0 &&
+      monster.hcIdx * MONSTER_PATH_DATA_STRIDE + 12 < MONSTER_PATH_DATA.length
+    ) {
+      const modeMask = MONSTER_PATH_DATA[monster.hcIdx * MONSTER_PATH_DATA_STRIDE + 12]!
+      if ((modeMask & 0x2000) === 0 || (modeMask & 0x0008) === 0) {
+        return false
+      }
+    }
+    if (monster.velocity <= 0) return false
+    if (monster.isBoss && monster.isPrimeEvil) return false
     const dx = monster.x - fromX
     const dy = monster.y - fromY
-    const len = Math.hypot(dx, dy)
-    if (!Number.isFinite(len) || len <= 0) return
-    const ux = dx / len
-    const uy = dy / len
-    // Fixed turrets and prime evils cannot be knocked back. 1.13c size
-    // resistance: Small 100%, Medium 50%, Large 25%; travel is 2-3 sub-tiles.
-    if (monster.velocity <= 0) return
-    if (monster.isBoss && monster.isPrimeEvil) return
-    const sizeChance = monster.sizeX <= 1 ? 100 : monster.sizeX === 2 ? 50 : 25
-    if (this.rng.rand(100) >= sizeChance) return
-    const knockDistance = 2 + this.rng.rand(MONSTER_KNOCKBACK_DISTANCE - 1)
+    const maxDelta = Math.max(Math.abs(dx), Math.abs(dy))
+    if (!Number.isFinite(maxDelta) || maxDelta <= 0) return false
+    const monRow = MONSTATS_113C_ROWS[monster.hcIdx]
+    const kbStep = computeKnockbackStep113c({
+      targetX: monster.x,
+      targetY: monster.y,
+      sourceX: fromX,
+      sourceY: fromY,
+      hcIdx: monster.hcIdx,
+      baseId: monRow?.baseId,
+    })
+    const knockDistance = kbStep.stepDist || MONSTER_KNOCKBACK_DISTANCE
     const startX = monster.x
     const startY = monster.y
     let endX = startX
     let endY = startY
     for (let travelled = 1; travelled <= knockDistance; travelled++) {
-      const tx = startX + ux * travelled
-      const ty = startY + uy * travelled
+      const tx = startX + Math.trunc((travelled * dx) / maxDelta)
+      const ty = startY + Math.trunc((travelled * dy) / maxDelta)
       if (!this.isMonsterStepWalkable(monster.areaId, endX, endY, tx, ty, monster.isFlying)) {
         break
       }
@@ -8413,10 +9820,11 @@ export class GameInstance {
       endX = tx
       endY = ty
     }
-    if (endX === startX && endY === startY) return
+    if (endX === startX && endY === startY) return false
     monster.x = endX
     monster.y = endY
     monster.mode = MONMODE_KNOCKBACK
+    monster.hitRecoveryUntilFrame = this.currentFrame + this.monsterHitRecoveryFrames(monster)
     monster.pendingAttack = undefined
     monster.pendingAllyAttack = undefined
     monster.pendingResurrection = undefined
@@ -8437,6 +9845,7 @@ export class GameInstance {
       x: at.x,
       y: at.y,
     })
+    return true
   }
 
   /**
@@ -8487,20 +9896,15 @@ export class GameInstance {
       value += item.stats.get(resStatId) ?? 0
       if (maxStatId !== undefined) maxBonus += item.stats.get(maxStatId) ?? 0
     }
-    const statName =
-      kind === 'phys'
-        ? 'damageresist'
-        : kind === 'fire'
-          ? 'fireresist'
-          : kind === 'cold'
-            ? 'coldresist'
-            : 'lightresist'
     const combat = this.playerCombatContext(player)
-    value += Math.trunc(combat.statList.getAccruedStat(statName))
     if (kind === 'phys') {
+      value += Math.trunc(getPrePierceResistance113c(combat.statList, 'damageresist'))
+      value -= resolvePhysCursePierce113c(combat)
       return value <= 0 ? Math.max(-100, value) : Math.min(value, 50)
     }
-    value -= combat.statList.getModifierBonus('conviction_pierce')
+    const elemStatName = kind === 'fire' ? 'fireresist' : kind === 'cold' ? 'coldresist' : 'lightresist'
+    value += Math.trunc(getPrePierceResistance113c(combat.statList, elemStatName))
+    value -= resolveConvictionPierce113c(combat, elemStatName) + resolveLowerResistPierce113c(combat, elemStatName)
     value += difficultyResistPenalty(this.difficulty)
     const maxStatName = kind === 'fire' ? 'maxfireresist' : kind === 'cold' ? 'maxcoldresist' : 'maxlightresist'
     maxBonus += Math.trunc(combat.statList.getAccruedStat(maxStatName))
@@ -8508,7 +9912,45 @@ export class GameInstance {
     return value <= 0 ? Math.max(-100, value) : Math.min(value, cap)
   }
 
-  /** Apply the 1.13c physical + elemental split with player resistances and damage reduce. */
+  /** Player elemental absorb (% and flat, incl. /lvl) from equipped items + persistent combat stats. */
+  private playerElementalAbsorb(
+    player: InternalPlayerRecord,
+    kind: 'fire' | 'cold' | 'light',
+  ): { readonly pct: number; readonly flat: number } {
+    const pctStatId = kind === 'fire' ? 142 : kind === 'light' ? 144 : 148
+    const flatStatId = kind === 'fire' ? 143 : kind === 'light' ? 145 : 149
+    const perLvlStatId = kind === 'fire' ? 235 : kind === 'light' ? 236 : 234
+    const pctStatName =
+      kind === 'fire'
+        ? 'item_absorbfire_percent'
+        : kind === 'light'
+          ? 'item_absorblight_percent'
+          : 'item_absorbcold_percent'
+    const flatStatName =
+      kind === 'fire'
+        ? 'item_absorbfire'
+        : kind === 'light'
+          ? 'item_absorblight'
+          : 'item_absorbcold'
+    let pct = 0
+    let flat = 0
+    let perLvl = 0
+    for (const item of player.items) {
+      if (item.location !== 'equipped') continue
+      pct += item.stats.get(pctStatId) ?? 0
+      flat += item.stats.get(flatStatId) ?? 0
+      perLvl += item.stats.get(perLvlStatId) ?? 0
+    }
+    const combat = this.playerCombatContext(player)
+    pct += Math.trunc(combat.statList.getAccruedStat(pctStatName))
+    flat += Math.trunc(combat.statList.getAccruedStat(flatStatName))
+    if (perLvl > 0) {
+      flat += Math.trunc((perLvl * player.level) / 8)
+    }
+    return { pct: Math.max(0, pct), flat: Math.max(0, flat) }
+  }
+
+  /** Apply the 1.13c physical + elemental split with player resistances, elemental absorb, and damage reduce. */
   private applyPlayerElementalDamage(
     player: InternalPlayerRecord,
     parts: {
@@ -8517,14 +9959,56 @@ export class GameInstance {
       readonly cold?: number | undefined
       readonly light?: number | undefined
     },
+    options?: {
+      readonly hitClass?: number | string | undefined
+      readonly skipGetHit?: boolean | undefined
+      readonly killerType?: DeathKillerKind113c
+      readonly killerUnitId?: number | undefined
+    },
   ): void {
     let total = 0
+    let absorbHeal256 = 0
     for (const kind of ['phys', 'fire', 'cold', 'light'] as const) {
       const dmg = parts[kind] ?? 0
       if (dmg <= 0) continue
-      total += Math.max(0, Math.round(dmg * (1 - this.playerResistPct(player, kind) / 100)))
+      const postRes = Math.max(0, Math.round(dmg * (1 - this.playerResistPct(player, kind) / 100)))
+      if (kind !== 'phys' && postRes > 0) {
+        const abs = this.playerElementalAbsorb(player, kind)
+        if (abs.pct > 0 || abs.flat > 0) {
+          const absOut = applyElementalAbsorb113c(postRes * FIXED_ONE, abs.pct, abs.flat * FIXED_ONE)
+          total += Math.floor(absOut.remainingDamage256 / FIXED_ONE)
+          absorbHeal256 += absOut.absorbHeal256
+          continue
+        }
+      }
+      total += postRes
     }
-    if (total > 0) this.applyDamageToPlayer(player, total)
+    if (absorbHeal256 > 0 && !player.dead && player.hpFixed > 0 && !player.states.has(92)) {
+      const nextHpFixed = Math.min(player.maxHpFixed, player.hpFixed + absorbHeal256)
+      if (nextHpFixed !== player.hpFixed) {
+        player.hpFixed = nextHpFixed
+        player.hp = Math.max(0, Math.ceil(player.hpFixed / FIXED_ONE))
+        if (total <= 0) {
+          this.emitToPlayer(player.unitId, {
+            type: 'UnitStatUpdate',
+            unitType: 'player',
+            unitId: player.unitId,
+            statId: 6,
+            value: player.hpFixed,
+          })
+          this.emitToPlayer(player.unitId, {
+            type: 'LifeMana',
+            life: player.hp,
+            mana: player.mana,
+            stamina: player.stamina,
+            at: playerWirePosition(player),
+            vx: 0,
+            vy: 0,
+          })
+        }
+      }
+    }
+    if (total > 0) this.applyDamageToPlayer(player, total, options)
   }
 
   /** Broadcast a mercenary/pet HP change and its death removal (UNIT_MONSTER view). */
@@ -8828,8 +10312,10 @@ export class GameInstance {
           slvl: convSlvl,
           durationFrames: 75,
           stats: {
-            conviction_pierce: conv.resistanceReductionPct,
-            defense_pct: -conv.defenseReductionPct,
+            fireresist: -conv.resistanceReductionPct,
+            lightresist: -conv.resistanceReductionPct,
+            coldresist: -conv.resistanceReductionPct,
+            skill_armor_percent: -conv.defenseReductionPct,
           },
         })
       }
@@ -8849,7 +10335,11 @@ export class GameInstance {
       for (const p of this.players.values()) {
         if (p.dead || p.areaId !== monster.areaId) continue
         if (outOfRange(p.x, p.y)) continue
-        this.applyPlayerElementalDamage(p, auraId === 102 ? { fire: dmg } : { light: dmg })
+        this.applyPlayerElementalDamage(
+          p,
+          auraId === 102 ? { fire: dmg } : { light: dmg },
+          { killerType: 'monster', killerUnitId: monster.unitId },
+        )
       }
     }
   }
@@ -8859,16 +10349,88 @@ export class GameInstance {
     monster: InternalMonsterRecord,
   ): void {
     const isSuicide = isSuicideMinionMonster(monster.hcIdx, monster.defId)
-    if (!isSuicide && killer) {
-      const px = this.playersX
-      const baseXp = Math.max(1, Math.floor((monster.baseXp * (px + 1)) / 2))
+    const baseXp = Math.trunc(monster.experience)
+    if (!isSuicide && killer && baseXp > 0) {
+
+      // 1.13c hireling XP (`D2Game.dll` `0x6FCFEA00` -> `0x6FCFC030` -> `0x6FCFB6B0` -> `0x6FCFDCB0`):
+      // runs BEFORE the party player experience loop (`0x6FCFEA61..0x6FCFEB39` before `0x6FCFEB3E..0x6FCFEB92`),
+      // so `merc.level < killer.level` uses the owner's pre-kill level.
+      // - `0x6FCFC030`: level-diff (`0x6FCFAA40`), `ExpRatio` (`0x6FCFA9E0`), signed `stat 85`,
+      //   clamped via `0x6FCFB6B0` (`(Threshold(lvl + 1) - Threshold(lvl)) >> 6`).
+      // - `0x6FCFEB1B..0x6FCFEB2C`: `100%` on merc killing blow (`lastHitByMerc`), or `floor(exp * 86 / 256)` on owner/pet kills.
+      // - `0x6FCFDCB0`: guards `merc.level < killer.level && merc.level < 98`, credits `2 * expGain` to `STAT_EXPERIENCE (13)`,
+      //   levels up against `Hireling.txt` `Exp/Lvl` thresholds, and calls `MERCS_SetStats` (`0x6FC68BA0`).
+      for (const merc of this.mercenaries.values()) {
+        if (merc.ownerPlayerId !== killer.unitId || !merc.alive || merc.areaId !== monster.areaId) {
+          continue
+        }
+        const mercAddExpPct = Math.trunc(this.sumMercItemStat(merc, 85))
+        const mercOut = evaluateMercenaryKillExperience113c({
+          rawExp: baseXp,
+          mercLevel: merc.level,
+          ownerLevel: killer.level,
+          currentExp: merc.experience,
+          expPerLvl: merc.expPerLvl,
+          mlvl: monster.level,
+          addExpPct: mercAddExpPct,
+          lastHitByMerc: monster.lastHitByMerc,
+        })
+        if (mercOut.expAdded > 0) {
+          merc.experience = mercOut.newExp
+          this.broadcastToArea(merc.areaId, {
+            type: 'UnitStatUpdate',
+            unitType: 'monster',
+            unitId: merc.unitId,
+            statId: 13,
+            value: merc.experience,
+          })
+          if (mercOut.leveledUp) {
+            merc.level = mercOut.newLevel
+            const nextStats = resolveHirelingStatsAtLevel(
+              merc.subType,
+              merc.act,
+              merc.difficulty,
+              merc.level,
+              true,
+            )
+            if (nextStats) {
+              merc.expPerLvl = nextStats.record.expPerLvl || merc.expPerLvl
+              merc.maxHp = Math.max(merc.maxHp, nextStats.hp)
+              merc.hp = merc.maxHp
+              merc.damage = Math.max(
+                merc.damage,
+                Math.floor((nextStats.minDmg + nextStats.maxDmg) / 2),
+              )
+              merc.ar = Math.max(merc.ar ?? 0, nextStats.ar)
+              merc.defense = Math.max(merc.defense, nextStats.defense)
+              merc.resist = Math.max(merc.resist, nextStats.resist)
+              const auraSkill = nextStats.skills.find(
+                (s) => s.mode === 1 && s.effectiveLevel > 0,
+              )
+              if (auraSkill?.skillName) {
+                merc.activeAura = auraSkill.skillName
+                this.syncMercenaryOwnerAura(killer, merc.activeAura)
+              }
+            }
+            this.broadcastToArea(merc.areaId, {
+              type: 'UnitStatUpdate',
+              unitType: 'monster',
+              unitId: merc.unitId,
+              statId: 12,
+              value: merc.level,
+            })
+            this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
+          }
+        }
+      }
 
       const recipients: InternalPlayerRecord[] = []
       for (const p of this.players.values()) {
+        if (recipients.length >= PARTY_EXP_MAX_MEMBERS_113C) break
         if (p.dead || p.areaId !== monster.areaId) continue
-        // 1.13c EXP_DivideExperience: only same-party players within two
-        // screens (53.3 sub-tiles) share the kill.
-        if (Math.hypot(p.x - monster.x, p.y - monster.y) > 53.3) continue
+        // 1.13c SUNITDMG_PartyExpCallback (D2Game.dll 0x6FCFAED0 at 0x6FCFAFCA):
+        // only same-party players within dx^2 + dy^2 <= 0x1900 (6400, 80 sub-tiles, max 8) share the kill.
+        if (!isWithinPartyExpRange113c(p.x, p.y, monster.x, monster.y)) continue
         if (
           p.unitId === killer.unitId ||
           (killer.partyId !== 0xffff && p.partyId === killer.partyId)
@@ -8893,6 +10455,39 @@ export class GameInstance {
     // - Hephasto (0x6FCDA810): Hellforge Hammer ('hfh')
     // - Mephisto (0x6FD09C0D): Mephisto's Soulstone ('mss') on first kill
     if (killer) {
+      // A3Q1 Jade Figurine (j34) drop (`D2Game.dll` @ `0x6fc44b32 -> 0x6fc56140 -> 0x6fd08200 -> 0x6fd08010`):
+      // First unique/superunique/boss monster killed in Act 3 (`areaToAct === 2`, excluding `hcIdx === 407`
+      // Fetish Gidbinn boss and town NPCs/pets) drops j34 once per game when the killer has not completed a3q1.
+      const isUniqueOrBossForA3Q1 =
+        monster.rank === 'unique' ||
+        monster.rank === 'boss' ||
+        monster.superUniqueId !== undefined ||
+        monster.isBoss
+      if (
+        !this.a3q1JadeFigurineDropped &&
+        areaToAct(monster.areaId) === 2 &&
+        isUniqueOrBossForA3Q1 &&
+        !monster.isNpc &&
+        monster.isKillable &&
+        !monster.petIgnore &&
+        monster.classId !== 407 &&
+        monster.hcIdx !== 407 &&
+        !hasQuestFlag113c(
+          killer.questFlags,
+          'a3q1',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        ) &&
+        !this.playerOrGroundHasQuestItem(killer, 'j34') &&
+        !this.playerOrGroundHasQuestItem(killer, 'g34') &&
+        !this.playerOrGroundHasQuestItem(killer, 'xyz')
+      ) {
+        const figurine = this.createQuestDropItem('j34', monster.level)
+        if (figurine) {
+          this.spawnDroppedItems([figurine], monster.areaId, monster.x, monster.y)
+          this.a3q1JadeFigurineDropped = true
+        }
+      }
+
       const defId = monster.defId.toLowerCase()
       const suId = (monster.superUniqueId ?? '').toLowerCase()
       const isHephasto =
@@ -8900,7 +10495,11 @@ export class GameInstance {
         suId.includes('hephasto')
       if (
         isHephasto &&
-        !hasQuestFlag113c(killer.questFlags, 'a4q2', QUEST_FLAG_COMPLETED_113C) &&
+        !hasQuestFlag113c(
+          killer.questFlags,
+          'a4q2',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        ) &&
         !this.playerOrGroundHasQuestItem(killer, 'hfh')
       ) {
         const hammer = this.createQuestDropItem('hfh', monster.level)
@@ -8930,7 +10529,9 @@ export class GameInstance {
         const mask =
           quest[1] === 'a5q1' || quest[1] === 'a5q4'
             ? QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C
-            : QUEST_FLAG_COMPLETED_113C
+            : quest[1] === 'a2q1'
+              ? QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C | QUEST_FLAG_CUSTOM_5_113C
+              : QUEST_FLAG_COMPLETED_113C
         this.setPlayerQuestFlag(killer, quest[1], mask)
       }
     }
@@ -9060,7 +10661,11 @@ export class GameInstance {
       for (const p of this.players.values()) {
         if (p.dead || p.areaId !== monster.areaId) continue
         if (Math.hypot(p.x - monster.x, p.y - monster.y) <= 3.5) {
-          this.applyPlayerElementalDamage(p, { phys: dmg })
+          this.applyPlayerElementalDamage(
+            p,
+            { phys: dmg },
+            { killerType: 'monster', killerUnitId: monster.unitId },
+          )
         }
       }
       this.damageMercsAndPetsInRadius(monster.areaId, monster.x, monster.y, 3.5, dmg)
@@ -9134,7 +10739,10 @@ export class GameInstance {
       for (const p of this.players.values()) {
         if (p.dead || p.areaId !== monster.areaId) continue
         if (Math.hypot(p.x - monster.x, p.y - monster.y) <= radius) {
-          this.applyDamageToPlayer(p, explosionDmg)
+          this.applyDamageToPlayer(p, explosionDmg, {
+            killerType: 'monster',
+            killerUnitId: monster.unitId,
+          })
         }
       }
     }
@@ -9176,25 +10784,39 @@ export class GameInstance {
     }
   }
 
+  /**
+   * 1.13c signed `STAT_ITEM_ADDEXPERIENCE` (stat 85) total (`D2Common_10519_GetStatSigned(pUnit, 85, 0)`
+   * at `D2Game.dll` `0x6FCFC099`), combining equipped/charm/set item bonuses (`sumPlayerItemStat(player, 85)`)
+   * with active state modifiers (`statList.getModifierBonus('item_addexperience')`, including
+   * Experience Shrine `state 137` `+50` from `0x6FD1A600` / `0x6FC8ABB0`).
+   */
+  private getPlayerAddExperiencePct(player: InternalPlayerRecord): number {
+    const itemBonus = Math.trunc(this.sumPlayerItemStat(player, 85))
+    const combat = this.playerCombatContext(player)
+    const stateBonus = Math.trunc(combat.statList.getModifierBonus('item_addexperience'))
+    const directShrineBonus =
+      player.states.has(137) && !combat.stateBus.hasState(137) ? 50 : 0
+    return itemBonus + stateBonus + directShrineBonus
+  }
+
   private grantExperience(
     player: InternalPlayerRecord,
     xpGain: number,
     monsterLevel: number = player.level,
   ): void {
-    // 1.13c EXP_ComputeLevelDiffPenalty: clvl<25 table, clvl>=25 clvl/mlvl,
-    // then the table again for a >=6 level advantage.
-    const levelAdjusted = computeMonsterExpGrant113c(xpGain, player.level, monsterLevel)
-    // Experience.txt `ExpRatio` (row for the player's current level, /1024):
-    // 70 -> 976, 80 -> 496, 90 -> 61, 98 -> 6. Below 70 it is 1024 (no penalty).
-    const expRatio = PARSED_EXPERIENCE_TABLE.expRatios[player.level] ?? 1024
-    const shrineXpPct = player.states.has(137) ? 150 : 100
-    // `item_addexperience` (stat 85) is a percentage bonus.
-    const itemXpPct = 100 + Math.max(0, Math.trunc(this.sumEquippedItemStat(player, 85)))
-    const granted = Math.max(
-      1,
-      Math.floor((levelAdjusted * expRatio * shrineXpPct * itemXpPct) / (1024 * 100 * 100)),
-    )
-    // 1.13c: experience never exceeds the level-99 `Experience.txt` threshold.
+    // 1.13c SUNITDMG_CalculateExperienceGain (0x6FCFC030):
+    // 0x7FFFFF input clamp -> clvl >= 99 returns 0 -> 0x6FCFAA40 level diff ->
+    // 0x6FCFA9E0 ExpRatio -> signed stat 85 (including Experience Shrine state 137 +50).
+    const addExpPct = this.getPlayerAddExperiencePct(player)
+    const granted = calculateKillExperienceGain113c({
+      rawExp: xpGain,
+      clvl: player.level,
+      mlvl: monsterLevel,
+      addExpPct,
+      maxLevel: MAX_PLAYER_LEVEL_113C,
+    })
+    if (granted <= 0) return
+    // 1.13c SUNITDMG_AddPlayerExperience (0x6FCFDCF0): experience never exceeds the level-99 threshold.
     player.experience = Math.min(
       experienceForLevel113c(MAX_PLAYER_LEVEL_113C),
       player.experience + granted,
@@ -9273,43 +10895,6 @@ export class GameInstance {
           value,
         })
       }
-      this.syncMercenaryLevelToOwner(player)
-    }
-  }
-
-  /**
-   * 1.13c `D2GAME_MERCS_SetStats_6FC68BA0`: when the owner levels up from monster kills,
-   * scale the living mercenary's level and `Hireling.txt` stats (`HP`, `Dmg`, `Defense`,
-   * `Resist`) up to `owner.level` and broadcast `statId: 12` (`STAT_LEVEL`) + life bar.
-   */
-  private syncMercenaryLevelToOwner(owner: InternalPlayerRecord): void {
-    for (const merc of this.mercenaries.values()) {
-      if (merc.ownerPlayerId !== owner.unitId || !merc.alive || merc.level >= owner.level) {
-        continue
-      }
-      merc.level = owner.level
-      const stats = resolveHirelingStatsAtLevel(
-        merc.subType,
-        merc.act,
-        merc.difficulty,
-        merc.level,
-        true,
-      )
-      if (stats) {
-        merc.maxHp = Math.max(merc.maxHp, stats.hp)
-        merc.hp = merc.maxHp
-        merc.damage = Math.max(merc.damage, Math.floor((stats.minDmg + stats.maxDmg) / 2))
-        merc.defense = Math.max(merc.defense, stats.defense)
-        merc.resist = Math.max(merc.resist, stats.resist)
-      }
-      this.broadcastToArea(merc.areaId, {
-        type: 'UnitStatUpdate',
-        unitType: 'monster',
-        unitId: merc.unitId,
-        statId: 12,
-        value: merc.level,
-      })
-      this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
     }
   }
 
@@ -9342,7 +10927,7 @@ export class GameInstance {
     const stats =
       defender.stats ??
       (() => {
-        const list = new UnitStatList()
+        const list = new UnitStatList(this.registry)
         list.setBaseStat('level', Math.max(1, defender.level))
         list.setBaseStat('maxhp', Math.max(1, defender.maxHp) * FIXED_ONE)
         list.setHp256(Math.max(0, defender.hp) * FIXED_ONE)
@@ -9363,10 +10948,23 @@ export class GameInstance {
         let maxLightRes = 0
         let maxColdRes = 0
         let maxPoisonRes = 0
+        let absorbFirePct = 0
+        let absorbFire = 0
+        let absorbLightPct = 0
+        let absorbLight = 0
+        let absorbMagicPct = 0
+        let absorbMagic = 0
+        let absorbColdPct = 0
+        let absorbCold = 0
+        let absorbColdPerLevel = 0
+        let absorbFirePerLevel = 0
+        let absorbLightPerLevel = 0
+        let absorbMagicPerLevel = 0
         for (const item of defender.equipment ?? []) {
-          if (item.bodyLoc === 5) hasShield = true
+          const armorBlock = resolveArmorBlock113c(item.code)
+          if (item.bodyLoc === 5 || (item.bodyLoc === 4 && armorBlock > 0)) hasShield = true
           defense += item.stats.get(31) ?? 0
-          blockChance += item.stats.get(20) ?? 0
+          blockChance += armorBlock + (item.stats.get(20) ?? 0)
           normalDr += item.stats.get(34) ?? 0
           magicDr += item.stats.get(35) ?? 0
           damageRes += item.stats.get(36) ?? 0
@@ -9380,6 +10978,18 @@ export class GameInstance {
           maxColdRes += item.stats.get(44) ?? 0
           poisonRes += item.stats.get(45) ?? 0
           maxPoisonRes += item.stats.get(46) ?? 0
+          absorbFirePct += item.stats.get(142) ?? 0
+          absorbFire += item.stats.get(143) ?? 0
+          absorbLightPct += item.stats.get(144) ?? 0
+          absorbLight += item.stats.get(145) ?? 0
+          absorbMagicPct += item.stats.get(146) ?? 0
+          absorbMagic += item.stats.get(147) ?? 0
+          absorbColdPct += item.stats.get(148) ?? 0
+          absorbCold += item.stats.get(149) ?? 0
+          absorbColdPerLevel += item.stats.get(234) ?? 0
+          absorbFirePerLevel += item.stats.get(235) ?? 0
+          absorbLightPerLevel += item.stats.get(236) ?? 0
+          absorbMagicPerLevel += item.stats.get(237) ?? 0
         }
         list.setBaseStat('maxmagicresist', maxMagicRes)
         list.setBaseStat('maxfireresist', maxFireRes)
@@ -9387,7 +10997,7 @@ export class GameInstance {
         list.setBaseStat('maxcoldresist', maxColdRes)
         list.setBaseStat('maxpoisonresist', maxPoisonRes)
         list.setBaseStat('armorclass', Math.max(0, defense))
-        list.setBaseStat('toblock', Math.max(0, Math.min(75, blockChance)))
+        list.setBaseStat('toblock', Math.max(0, blockChance))
         list.setBaseStat('fireresist', fireRes)
         list.setBaseStat('lightresist', lightRes)
         list.setBaseStat('coldresist', coldRes)
@@ -9396,6 +11006,18 @@ export class GameInstance {
         list.setBaseStat('damageresist', damageRes)
         list.setBaseStat('normal_damage_reduction', normalDr)
         list.setBaseStat('magic_damage_reduction', magicDr)
+        list.setBaseStat('item_absorbfire_percent', absorbFirePct)
+        list.setBaseStat('item_absorbfire', absorbFire)
+        list.setBaseStat('item_absorblight_percent', absorbLightPct)
+        list.setBaseStat('item_absorblight', absorbLight)
+        list.setBaseStat('item_absorbmagic_percent', absorbMagicPct)
+        list.setBaseStat('item_absorbmagic', absorbMagic)
+        list.setBaseStat('item_absorbcold_percent', absorbColdPct)
+        list.setBaseStat('item_absorbcold', absorbCold)
+        list.setBaseStat('item_absorb_cold_perlevel', absorbColdPerLevel)
+        list.setBaseStat('item_absorb_fire_perlevel', absorbFirePerLevel)
+        list.setBaseStat('item_absorb_ltng_perlevel', absorbLightPerLevel)
+        list.setBaseStat('item_absorb_pois_perlevel', absorbMagicPerLevel)
         return list
       })()
     stats.setHp256(Math.max(0, defender.hp) * FIXED_ONE)
@@ -9555,6 +11177,7 @@ export class GameInstance {
               skillMode: 'A1',
               attackKind: 'missile',
               skillId: missile.skillId,
+              missileId: missile.missileId,
               ...(missile.element !== 'phys'
                 ? {
                     elementType: missile.element,
@@ -9625,7 +11248,10 @@ export class GameInstance {
                   (pet as unknown as { areaId?: number }).areaId ?? owner.areaId
                 if (!this.isAreaSeamAdjacent(missile.areaId, petAreaId)) continue
                 const petHcIdx = (pet as unknown as { hcIdx?: number }).hcIdx ?? -1
-                const petSize = Math.max(1, Math.min(3, getMonsterPathRecord(petHcIdx)?.sizeX ?? 2))
+                const petSize = Math.max(
+                  1,
+                  Math.min(3, (petHcIdx >= 0 ? getMonsterPathRecord(petHcIdx)?.sizeX : undefined) ?? 2),
+                )
                 if (!hitsTargetFootprint(pet.x, pet.y, petSize)) continue
                 if (!canHit(stableUnitKey(pet.uid))) continue
                 const prevHp = pet.hp
@@ -9672,8 +11298,9 @@ export class GameInstance {
             const targetSize = Math.max(1, Math.min(3, getMonsterPathRecord(target.hcIdx)?.sizeX ?? 2))
             if (!hitsTargetFootprint(target.x, target.y, targetSize)) continue
             if (!canHit(target.unitId)) continue
-            const defenderStats = new UnitStatList()
+            const defenderStats = new UnitStatList(this.registry)
             defenderStats.setBaseStat('level', target.level)
+            defenderStats.setBaseStat('tohit', target.ar)
             defenderStats.setBaseStat('armorclass', target.ac)
             defenderStats.setBaseStat('toblock', target.toBlock)
             defenderStats.setBaseStat('maxhp', target.maxHp * FIXED_ONE)
@@ -9742,9 +11369,28 @@ export class GameInstance {
                     missile.element === 'phys' ? 'phys' : missile.element,
                   )
                 } else {
-                  this.maybeEnterMonsterHitRecovery(target, dealtDamage)
+                  this.maybeEnterMonsterHitRecovery(target, dealtDamage, {
+                    hitClass: this.resolveMonsterHitClass113c(
+                      ownerMon,
+                      missile.skillId,
+                      missile.missileId,
+                    ),
+                    isPurePoison: missile.element === 'pois' && missile.physDamage <= 0,
+                  })
                 }
               }
+            } else if (dmgOut.avoidedReason === 'block') {
+              target.mode = MONMODE_BLOCK
+              this.broadcastToArea(target.areaId, {
+                type: 'UnitMode',
+                unitType: 1,
+                id: target.unitId,
+                mode: MONMODE_BLOCK,
+                lifePct:
+                  target.maxHp > 0
+                    ? Math.max(0, Math.round((target.hp / target.maxHp) * 128))
+                    : 0,
+              })
             }
             markHit(target.unitId)
             hit = true
@@ -9766,6 +11412,12 @@ export class GameInstance {
             if (!canHit(monster.unitId)) continue
             const monsterSize = Math.max(1, Math.min(3, getMonsterPathRecord(monster.hcIdx)?.sizeX ?? 2))
             if (hitsTargetFootprint(monster.x, monster.y, monsterSize)) {
+              const missileHitCtx = {
+                attackKind: (missile.guaranteedHit ? 'spell' : 'missile') as 'spell' | 'missile',
+                autoHit: missile.guaranteedHit,
+                unblockable: missile.guaranteedHit,
+                elemDurationFrames: missile.elemDurationFrames,
+              }
               if (
                 missile.element === 'pois' &&
                 missile.elemDurationFrames > 0 &&
@@ -9778,6 +11430,8 @@ export class GameInstance {
                     missile.physDamage,
                     missile.skillId,
                     'phys',
+                    'player',
+                    missileHitCtx,
                   )
                 }
                 if (!monster.dead) {
@@ -9795,6 +11449,9 @@ export class GameInstance {
                   monster,
                   missile.damage,
                   missile.skillId,
+                  undefined,
+                  'player',
+                  missileHitCtx,
                 )
               }
               markHit(monster.unitId)
@@ -10170,7 +11827,7 @@ export class GameInstance {
     monster: InternalMonsterRecord,
     skillMode: 'A1' | 'A2' | 'S1' = 'A1',
   ): CombatUnitContext {
-    const attackerStats = new UnitStatList()
+    const attackerStats = new UnitStatList(this.registry)
     attackerStats.setBaseStat('level', monster.level)
     const modeToHit =
       skillMode === 'S1'
@@ -10179,6 +11836,7 @@ export class GameInstance {
           ? monster.attack2Ar
           : monster.ar
     attackerStats.setBaseStat('tohit', modeToHit)
+    attackerStats.setBaseStat('armorclass', monster.ac)
     attackerStats.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
     attackerStats.setHp256(monster.hp * FIXED_ONE)
     attackerStats.setBaseStat('damageresist', monster.resistances.phys)
@@ -10188,6 +11846,7 @@ export class GameInstance {
     attackerStats.setBaseStat('coldresist', monster.resistances.cold)
     attackerStats.setBaseStat('poisonresist', monster.resistances.poison)
     const attackerStateBus = new StateBus(attackerStats, this.registry)
+    this.mirrorPersistentStates(this.monsterCombat.get(monster.unitId), attackerStateBus)
     return {
       id: `monster_${monster.unitId}`,
       name: monster.name,
@@ -10205,15 +11864,23 @@ export class GameInstance {
     }
   }
 
-  /** 1.13c player armor class including Conviction's `defense_pct` penalty. */
-  private computePlayerDefense(player: InternalPlayerRecord): number {
+  private computePlayerBaseDefense(player: InternalPlayerRecord): number {
     let defense = Math.floor(player.dexterity / 4)
     for (const item of player.items) {
       if (item.location !== 'equipped') continue
       defense += item.rawItemData?.defense ?? 0
       defense += item.stats.get(31) ?? 0
     }
-    const defensePct = this.playerCombatContext(player).statList.getModifierBonus('defense_pct')
+    return defense
+  }
+
+  /** 1.13c player armor class including `skill_armor_percent` (`stat 171`, Conviction / Armor Shrine `state 128`). */
+  private computePlayerDefense(player: InternalPlayerRecord): number {
+    let defense = this.computePlayerBaseDefense(player)
+    const combat = this.playerCombatContext(player)
+    const defensePct =
+      combat.statList.getModifierBonus('skill_armor_percent') +
+      (player.states.has(128) && !combat.stateBus.hasState(128) ? 100 : 0)
     if (defensePct !== 0) {
       defense = Math.max(0, Math.trunc((defense * (100 + defensePct)) / 100))
     }
@@ -10230,6 +11897,7 @@ export class GameInstance {
       /** Missile hits use the projectile block/dodge path; melee uses the melee path. */
       readonly attackKind?: 'melee' | 'missile' | undefined
       readonly skillId?: number | undefined
+      readonly missileId?: number | undefined
       /** Explicit projectile element (Missiles.txt EType) instead of a MonStats El1..3 rider. */
       readonly elementType?: MissileDamageChannel | undefined
       readonly elemMin?: number | undefined
@@ -10243,8 +11911,12 @@ export class GameInstance {
   ): void {
     const attackerCtx = this.buildMonsterAttackerContext(monster, swing?.skillMode ?? 'A1')
 
-    const defenderStats = new UnitStatList()
+    const defenderStats = new UnitStatList(this.registry)
     defenderStats.setBaseStat('level', player.level)
+    defenderStats.setBaseStat('strength', player.strength)
+    defenderStats.setBaseStat('vitality', player.vitality)
+    defenderStats.setBaseStat('energy', player.energy)
+    defenderStats.setBaseStat('tohit', this.computePlayerBaseToHit113c(player))
     // 1.13c defense: dexterity/4 + equipped armor/item defense + active armor
     // skills, then Conviction's `defense_pct`.
     let fireResist = 0
@@ -10262,9 +11934,29 @@ export class GameInstance {
     let maxLightResist = 0
     let maxColdResist = 0
     let maxPoisonResist = 0
+    // ItemStatCost 142..149 (% and flat elemental absorb) & 234..237 (/lvl flat absorb), read by D2Game 0x6FCFAD00.
+    let absorbFirePct = 0
+    let absorbFire = 0
+    let absorbLightPct = 0
+    let absorbLight = 0
+    let absorbMagicPct = 0
+    let absorbMagic = 0
+    let absorbColdPct = 0
+    let absorbCold = 0
+    let absorbColdPerLevel = 0
+    let absorbFirePerLevel = 0
+    let absorbLightPerLevel = 0
+    let absorbMagicPerLevel = 0
+    let equippedDex = 0
+    let hasEquippedShield = false
     for (const item of player.items) {
       if (item.location !== 'equipped') continue
-      blockChance += item.stats.get(20) ?? 0
+      const armorBlock = resolveArmorBlock113c(item.code)
+      if (item.bodyLoc === 5 || (item.bodyLoc === 4 && armorBlock > 0)) {
+        hasEquippedShield = true
+      }
+      equippedDex += item.stats.get(2) ?? 0
+      blockChance += armorBlock + (item.stats.get(20) ?? 0)
       normalDr += item.stats.get(34) ?? 0
       magicDr += item.stats.get(35) ?? 0
       damageResist += item.stats.get(36) ?? 0
@@ -10278,25 +11970,50 @@ export class GameInstance {
       maxColdResist += item.stats.get(44) ?? 0
       poisonResist += item.stats.get(45) ?? 0
       maxPoisonResist += item.stats.get(46) ?? 0
+      absorbFirePct += item.stats.get(142) ?? 0
+      absorbFire += item.stats.get(143) ?? 0
+      absorbLightPct += item.stats.get(144) ?? 0
+      absorbLight += item.stats.get(145) ?? 0
+      absorbMagicPct += item.stats.get(146) ?? 0
+      absorbMagic += item.stats.get(147) ?? 0
+      absorbColdPct += item.stats.get(148) ?? 0
+      absorbCold += item.stats.get(149) ?? 0
+      absorbColdPerLevel += item.stats.get(234) ?? 0
+      absorbFirePerLevel += item.stats.get(235) ?? 0
+      absorbLightPerLevel += item.stats.get(236) ?? 0
+      absorbMagicPerLevel += item.stats.get(237) ?? 0
     }
     const playerDefense = this.computePlayerDefense(player)
     const playerStats = this.playerCombatContext(player).statList
-    blockChance += Math.trunc(playerStats.getAccruedStat('toblock'))
+    defenderStats.setBaseStat('dexterity', player.dexterity + equippedDex)
+    blockChance += Math.trunc(playerStats.getAccruedStat('toblock', true))
     normalDr += Math.trunc(playerStats.getAccruedStat('normal_damage_reduction'))
     magicDr += Math.trunc(playerStats.getAccruedStat('magic_damage_reduction'))
-    damageResist += Math.trunc(playerStats.getAccruedStat('damageresist'))
+    damageResist += Math.trunc(getPrePierceResistance113c(playerStats, 'damageresist'))
     magicResist += Math.trunc(playerStats.getAccruedStat('magicresist'))
-    fireResist += Math.trunc(playerStats.getAccruedStat('fireresist'))
-    lightResist += Math.trunc(playerStats.getAccruedStat('lightresist'))
-    coldResist += Math.trunc(playerStats.getAccruedStat('coldresist'))
-    poisonResist += Math.trunc(playerStats.getAccruedStat('poisonresist'))
+    fireResist += Math.trunc(getPrePierceResistance113c(playerStats, 'fireresist'))
+    lightResist += Math.trunc(getPrePierceResistance113c(playerStats, 'lightresist'))
+    coldResist += Math.trunc(getPrePierceResistance113c(playerStats, 'coldresist'))
+    poisonResist += Math.trunc(getPrePierceResistance113c(playerStats, 'poisonresist'))
     maxMagicResist += Math.trunc(playerStats.getAccruedStat('maxmagicresist'))
     maxFireResist += Math.trunc(playerStats.getAccruedStat('maxfireresist'))
     maxLightResist += Math.trunc(playerStats.getAccruedStat('maxlightresist'))
     maxColdResist += Math.trunc(playerStats.getAccruedStat('maxcoldresist'))
     maxPoisonResist += Math.trunc(playerStats.getAccruedStat('maxpoisonresist'))
+    absorbFirePct += Math.trunc(playerStats.getAccruedStat('item_absorbfire_percent', true))
+    absorbFire += Math.trunc(playerStats.getAccruedStat('item_absorbfire', true))
+    absorbLightPct += Math.trunc(playerStats.getAccruedStat('item_absorblight_percent', true))
+    absorbLight += Math.trunc(playerStats.getAccruedStat('item_absorblight', true))
+    absorbMagicPct += Math.trunc(playerStats.getAccruedStat('item_absorbmagic_percent', true))
+    absorbMagic += Math.trunc(playerStats.getAccruedStat('item_absorbmagic', true))
+    absorbColdPct += Math.trunc(playerStats.getAccruedStat('item_absorbcold_percent', true))
+    absorbCold += Math.trunc(playerStats.getAccruedStat('item_absorbcold', true))
+    absorbColdPerLevel += Math.trunc(playerStats.getAccruedStat('item_absorb_cold_perlevel', true))
+    absorbFirePerLevel += Math.trunc(playerStats.getAccruedStat('item_absorb_fire_perlevel', true))
+    absorbLightPerLevel += Math.trunc(playerStats.getAccruedStat('item_absorb_ltng_perlevel', true))
+    absorbMagicPerLevel += Math.trunc(playerStats.getAccruedStat('item_absorb_pois_perlevel', true))
     defenderStats.setBaseStat('armorclass', playerDefense)
-    defenderStats.setBaseStat('toblock', Math.max(0, Math.min(75, blockChance)))
+    defenderStats.setBaseStat('toblock', Math.max(0, blockChance))
     defenderStats.setBaseStat('normal_damage_reduction', normalDr)
     defenderStats.setBaseStat('magic_damage_reduction', magicDr)
     defenderStats.setBaseStat('damageresist', damageResist)
@@ -10310,6 +12027,18 @@ export class GameInstance {
     defenderStats.setBaseStat('maxlightresist', maxLightResist)
     defenderStats.setBaseStat('maxcoldresist', maxColdResist)
     defenderStats.setBaseStat('maxpoisonresist', maxPoisonResist)
+    defenderStats.setBaseStat('item_absorbfire_percent', absorbFirePct)
+    defenderStats.setBaseStat('item_absorbfire', absorbFire)
+    defenderStats.setBaseStat('item_absorblight_percent', absorbLightPct)
+    defenderStats.setBaseStat('item_absorblight', absorbLight)
+    defenderStats.setBaseStat('item_absorbmagic_percent', absorbMagicPct)
+    defenderStats.setBaseStat('item_absorbmagic', absorbMagic)
+    defenderStats.setBaseStat('item_absorbcold_percent', absorbColdPct)
+    defenderStats.setBaseStat('item_absorbcold', absorbCold)
+    defenderStats.setBaseStat('item_absorb_cold_perlevel', absorbColdPerLevel)
+    defenderStats.setBaseStat('item_absorb_fire_perlevel', absorbFirePerLevel)
+    defenderStats.setBaseStat('item_absorb_ltng_perlevel', absorbLightPerLevel)
+    defenderStats.setBaseStat('item_absorb_pois_perlevel', absorbMagicPerLevel)
     defenderStats.setBaseStat('maxhp', player.maxHpFixed)
     defenderStats.setHp256(player.hpFixed)
     defenderStats.setBaseStat('maxmana', player.maxManaFixed)
@@ -10367,37 +12096,42 @@ export class GameInstance {
         durationFrames: player.stateTimers.get(151) ?? 300,
       })
     }
-    if (player.states.has(9)) {
-      defenderStateBus.applyState({
-        stateNameOrId: 'amplifydamage',
-        sourceSkillId: 66,
-        slvl: 1,
-        durationFrames: player.stateTimers.get(9) ?? 100,
-      })
-    }
-    if (player.states.has(60)) {
-      defenderStateBus.applyState({
-        stateNameOrId: 'decrepify',
-        sourceSkillId: 87,
-        slvl: 1,
-        durationFrames: player.stateTimers.get(60) ?? 100,
-      })
-    }
     // Skill buffs / received auras (armor %, resists, Holy Shield block, ...) on the persistent bus.
     this.mirrorPersistentStates(this.playerCombat.get(player.unitId), defenderStateBus)
+    if (player.states.has(101) && !defenderStateBus.hasState(101)) {
+      const hsLvl = Math.max(1, player.skills.get(117) ?? 1)
+      const hsBlock = 10 + Math.trunc((30 * Math.trunc((110 * hsLvl) / (hsLvl + 6))) / 100)
+      defenderStateBus.applyState({
+        stateNameOrId: 'holyshield',
+        sourceSkillId: 117,
+        slvl: hsLvl,
+        durationFrames: player.stateTimers.get(101) ?? 300,
+        stats: { toblock: hsBlock },
+      })
+    }
+
+    const motionMoving = this.playerMotion.get(player.unitId)?.moving === true
+    const isWalking =
+      player.mode === 2 ||
+      player.mode === 6 ||
+      (motionMoving && !player.run && player.mode !== 3)
+    const isRunning =
+      player.mode === 3 ||
+      (motionMoving && player.run && player.mode !== 2 && player.mode !== 6)
 
     const defenderCtx: CombatUnitContext = {
       id: `player_${player.unitId}`,
       name: player.name,
+      charClass: player.classCode,
       unitType: 'player',
       statList: defenderStats,
       stateBus: defenderStateBus,
       x: player.x,
       y: player.y,
-      hasShield: player.items.some(
-        (item) => item.location === 'equipped' && item.bodyLoc === 5,
-      ),
-      isMoving: this.playerMotion.get(player.unitId)?.moving === true,
+      hasShield: hasEquippedShield,
+      isMoving: motionMoving || isWalking || isRunning,
+      isWalking,
+      isRunning,
       resistPenalty: difficultyResistPenalty(this.difficulty),
     }
 
@@ -10478,13 +12212,27 @@ export class GameInstance {
       // Sync reactive Cold Armor (Frozen Armor / Shiver Armor) states & damage onto attacking monster
       for (const stName of dmgOut.attackerStatesApplied ?? []) {
         if (stName === 'freeze' && monster.resistances.cold < 100 && monster.coldEffect !== 0) {
-          this.applyMonsterState(monster.unitId, 1, 30)
+          const rawFreezeFrames =
+            attackerCtx.stateBus.getState('freeze')?.durationFrames ??
+            this.resolveSkillColdOrFreezeDuration113c(player, 40, 'cold').rawFrames
+          const divisor = Math.max(1, difficultyMonsterFreezeDivisor(this.difficulty))
+          const freezeTicks = Math.trunc(rawFreezeFrames / divisor)
+          if (freezeTicks > 0) {
+            this.applyMonsterState(monster.unitId, 1, freezeTicks)
+          }
         } else if (
           (stName === 'cold' || stName === 'chill') &&
           monster.resistances.cold < 100 &&
           monster.coldEffect !== 0
         ) {
-          this.applyMonsterState(monster.unitId, 11, 100)
+          const rawChillFrames =
+            attackerCtx.stateBus.getState(stName)?.durationFrames ??
+            this.resolveSkillColdOrFreezeDuration113c(player, 50, 'cold').rawFrames
+          const divisor = Math.max(1, difficultyMonsterColdDivisor(this.difficulty))
+          const chillTicks = Math.trunc(rawChillFrames / divisor)
+          if (chillTicks > 0) {
+            this.applyMonsterState(monster.unitId, 11, chillTicks)
+          }
         }
       }
       const reactiveMonsterDmg = Math.floor(
@@ -10506,6 +12254,35 @@ export class GameInstance {
       }
 
       const finalDmg = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
+      // 1.13c `SUNITDMG_ExecuteEvents` (`0x6FCFE237` -> `SUNITDMG_AddLife` `0x6FCFB570`):
+      // Add `dwAbsorbLife` (`dmgOut.absorbHeal256`) to defender life (clamped at `maxhp`) BEFORE
+      // subtracting `dwTotalDamage` (`finalDmg`).
+      const absorbHeal256 = dmgOut.absorbHeal256 ?? 0
+      if (absorbHeal256 > 0 && !player.dead && player.hpFixed > 0 && !player.states.has(92)) {
+        const nextHpFixed = Math.min(player.maxHpFixed, player.hpFixed + absorbHeal256)
+        if (nextHpFixed !== player.hpFixed) {
+          player.hpFixed = nextHpFixed
+          player.hp = Math.max(0, Math.ceil(player.hpFixed / FIXED_ONE))
+          if (finalDmg <= 0) {
+            this.emitToPlayer(player.unitId, {
+              type: 'UnitStatUpdate',
+              unitType: 'player',
+              unitId: player.unitId,
+              statId: 6,
+              value: player.hpFixed,
+            })
+            this.emitToPlayer(player.unitId, {
+              type: 'LifeMana',
+              life: player.hp,
+              mana: player.mana,
+              stamina: player.stamina,
+              at: playerWirePosition(player),
+              vx: 0,
+              vy: 0,
+            })
+          }
+        }
+      }
       if (finalDmg > 0) {
         // Cursed (MonUMod 7): each hit applies Amplify Damage.
         if (monster.umodIds.includes(MON_UMOD.CURSE)) {
@@ -10546,18 +12323,30 @@ export class GameInstance {
             })
           }
         }
+        const monKillerType: DeathKillerKind113c =
+          monster.convertedUntilFrame > this.currentFrame && monster.convertedByPlayerId > 0
+            ? 'player_pet'
+            : 'monster'
         // Spectral Hit (MonUMod 27): 50% split fire/cold/lightning extra damage.
         if (monster.umodIds.includes(MON_UMOD.SPECTRALHIT)) {
           const elem = Math.max(
             1,
             Math.floor((finalDmg * monUmodConstant113c(MON_UMOD.SPECTRALHIT)) / 300),
           )
-          this.applyPlayerElementalDamage(player, { fire: elem, cold: elem, light: elem })
+          this.applyPlayerElementalDamage(
+            player,
+            { fire: elem, cold: elem, light: elem },
+            { skipGetHit: true, killerType: monKillerType, killerUnitId: monster.unitId },
+          )
         }
         // Cold Enchanted (MonUMod 18): half attack damage as cold + chill.
         if (monster.umodIds.includes(MON_UMOD.COLD)) {
           const cold = Math.max(1, Math.floor(finalDmg / 2))
-          this.applyPlayerElementalDamage(player, { cold })
+          this.applyPlayerElementalDamage(
+            player,
+            { cold },
+            { skipGetHit: true, killerType: monKillerType, killerUnitId: monster.unitId },
+          )
           this.applyUnitState(
             player.states,
             player.stateTimers,
@@ -10568,7 +12357,16 @@ export class GameInstance {
             75,
           )
         }
-        this.applyDamageToPlayer(player, finalDmg)
+        this.applyDamageToPlayer(player, finalDmg, {
+          hitClass: this.resolveMonsterHitClass113c(
+            monster,
+            swing?.skillId ?? 0,
+            swing?.missileId ?? 0,
+          ),
+          isPurePoison: elementalType === 'pois' && physMin <= 0 && physMax <= 0,
+          killerType: monKillerType,
+          killerUnitId: monster.unitId,
+        })
         // MonAi innate drain rows (Vampire/BatDemon/BloodLord life, WillOWisp
         // mana, Swarm stamina, Mosquito life). 1.13c returns half the hit.
         const drainKind = monsterProfile113c(monster.ai).drain
@@ -10610,6 +12408,22 @@ export class GameInstance {
           })
         }
       }
+    } else if (
+      dmgOut.avoidedReason === 'block' ||
+      dmgOut.avoidedReason === 'weapon_block'
+    ) {
+      player.mode = 9
+      this.broadcastToArea(player.areaId, {
+        type: 'UnitMode',
+        unitType: 0,
+        id: player.unitId,
+        mode: 9,
+        at: playerWirePosition(player),
+        lifePct:
+          player.maxHp > 0
+            ? Math.max(0, Math.round((player.hp / player.maxHp) * 128))
+            : 0,
+      })
     }
   }
 
@@ -10966,12 +12780,15 @@ export class GameInstance {
    * area and within the room/adjacent-room activation radius. Far units still
    * process state timers and death drops, but skip pathfinding and attacks.
    */
-  private isAreaSeamAdjacent(a: number, b: number): boolean {
+  isAreaSeamAdjacent(a: number, b: number): boolean {
     if (a === b) return true
     const forward = this.loadedAreas.get(a)?.adjacentAreaIds ?? []
     if (forward.includes(b)) return true
     const backward = this.loadedAreas.get(b)?.adjacentAreaIds ?? []
-    return backward.includes(a)
+    if (backward.includes(a)) return true
+    const lo = Math.min(a, b)
+    const hi = Math.max(a, b)
+    return CANONICAL_OUTDOOR_SEAM_ADJACENT_PAIRS_113C.has(`${lo}:${hi}`)
   }
 
   private isMonsterInActiveAoi(monster: InternalMonsterRecord): boolean {
@@ -11119,8 +12936,12 @@ export class GameInstance {
     const missileReach =
       missileRec.vel > 0 ? Math.max(rangeFrames, (missileRec.vel / 16) * rangeFrames) : rangeFrames
     if (distance > Math.min(35, Math.max(4, missileReach))) return false
-    const statList = new UnitStatList()
+    const statList = new UnitStatList(this.registry)
     statList.setBaseStat('level', monster.level)
+    statList.setBaseStat('tohit', monster.ar)
+    statList.setBaseStat('armorclass', monster.ac)
+    statList.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
+    statList.setHp256(monster.hp * FIXED_ONE)
     statList.setBaseStat('strength', 0)
     statList.setBaseStat('dexterity', 0)
     statList.setBaseStat('vitality', 0)
@@ -11809,10 +13630,13 @@ export class GameInstance {
     if (monster.auraSkillId !== undefined) {
       this.applyMonsterAura(monster)
     }
-    // GetHit animation lock: the monster may not start a new action while the
-    // GH animation plays (1.13c AnimData `GH`).
+    // GetHit / Knockback animation lock: the monster may not start a new action while the
+    // GH animation plays (1.13c AnimData `GH`, D2Game.dll 0x6FC95070 / 0x6FC965E0).
     if (this.currentFrame < monster.hitRecoveryUntilFrame) {
       return
+    }
+    if (monster.mode === MONMODE_KNOCKBACK) {
+      monster.mode = 1
     }
     const isConverted = this.isMonsterConverted(monster)
     const aiProfile = monsterProfile113c(monster.ai)
@@ -12643,6 +14467,14 @@ export class GameInstance {
   applyDamageToPlayer(
     playerUnitIdOrRecord: number | InternalPlayerRecord,
     damage: number,
+    options?: {
+      readonly dmg256?: number | undefined
+      readonly hitClass?: number | string | undefined
+      readonly isPurePoison?: boolean | undefined
+      readonly skipGetHit?: boolean | undefined
+      readonly killerType?: DeathKillerKind113c
+      readonly killerUnitId?: number | undefined
+    },
   ): void {
     const player =
       typeof playerUnitIdOrRecord === 'number'
@@ -12672,12 +14504,76 @@ export class GameInstance {
     })
 
     if (player.hp <= 0) {
-      this.killPlayer(player)
+      this.killPlayer(player, options)
+    } else if (!options?.skipGetHit) {
+      this.maybeEnterPlayerHitRecovery(player, dmgInt, options)
     }
   }
 
-  private killPlayer(player: InternalPlayerRecord): void {
+  private resolveKillerTypeForDeathPenalty(options?: {
+    readonly killerType?: DeathKillerKind113c
+    readonly killerUnitId?: number | undefined
+  }): DeathKillerKind113c {
+    if (options?.killerType !== undefined) return options.killerType
+    const killerUnitId = options?.killerUnitId
+    if (killerUnitId === undefined) return 'monster'
+    if (this.players.has(killerUnitId)) return 'player'
+    if (this.mercenaries.has(killerUnitId)) return 'player_pet'
+    for (const petUnitId of this.petUnitIds.values()) {
+      if (petUnitId === killerUnitId) return 'player_pet'
+    }
+    const mon = this.monsters.get(killerUnitId)
+    if (mon && mon.convertedUntilFrame > this.currentFrame && mon.convertedByPlayerId > 0) {
+      return 'player_pet'
+    }
+    if (this.objects.has(killerUnitId)) return 'object'
+    return 'monster'
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6FC57F80` (`PLAYER_DropGoldPile(pGame, pPlayer, nGold)`):
+   * spawns a ground `'gld'` pile at the player's position with `STAT_GOLD (14) = amount`.
+   */
+  private dropPlayerGoldPile(player: InternalPlayerRecord, amount: number): number | undefined {
+    const goldAmount = Math.trunc(amount)
+    if (goldAmount <= 0) return undefined
+    const tables = getEmbeddedDropTables()
+    const base = tables.getBase('gld')
+    if (base !== undefined) {
+      const seed = this.rng.rand(0x7fffffff) >>> 0
+      const item = createDroppedItem(base, 'normal', {
+        itemTypes: tables.itemTypes,
+        ilvl: 1,
+        dwInitSeed: seed,
+        itemRng: new D2Rng(seed || 1),
+      })
+      const ids = this.spawnDroppedItems(
+        [{ ...item, stack: goldAmount, quantity: goldAmount }],
+        player.areaId,
+        player.x,
+        player.y,
+      )
+      return ids[0]
+    }
+    const pos = this.findDropPosition(player.areaId, player.x, player.y, new Set())
+    return this.spawnGroundItem({
+      code: 'gld',
+      x: pos.x,
+      y: pos.y,
+      areaId: player.areaId,
+      quantity: goldAmount,
+    })
+  }
+
+  private killPlayer(
+    player: InternalPlayerRecord,
+    options?: {
+      readonly killerType?: DeathKillerKind113c
+      readonly killerUnitId?: number | undefined
+    },
+  ): void {
     player.dead = true
+    player.hitRecoveryUntilFrame = 0
     player.activeWaypointUnitId = 0
     player.hp = 0
     player.hpFixed = 0
@@ -12697,15 +14593,67 @@ export class GameInstance {
     }
     player.items = remainingItems
 
-    if (player.gold > 0) {
-      const lost = Math.max(1, Math.floor(player.gold * 0.1))
-      player.gold = Math.max(0, player.gold - lost)
+    const killerType = this.resolveKillerTypeForDeathPenalty(options)
+
+    // 1.13c D2Game.dll `0x6FC583A0` -> `0x6FC58180` (`PLAYER_ApplyDeathGoldPenalty`):
+    // `pct = min(clvl, 20)%` of `gold (stat 14) + goldBank (stat 15)`.
+    // On non-PK death, if `loss <= gold` a ground `gld` pile of `gold - loss` is dropped at the
+    // corpse and `goldBank` is untouched; if `loss > gold` the shortfall `loss - gold` is deducted
+    // from `goldBank` and nothing drops on the ground; `gold` (stat 14) is always zeroed.
+    const prevGold = player.gold
+    const prevBank = player.goldBank
+    const goldPenalty = applyDeathGoldPenalty113c(player.level, prevGold, prevBank, {
+      killerType,
+    })
+    player.gold = goldPenalty.newGold
+    player.goldBank = goldPenalty.newBank
+    player.lastDeathGoldLoss = goldPenalty.goldLost
+    if (player.gold !== prevGold) {
       this.emitToPlayer(player.unitId, {
         type: 'UnitStatUpdate',
         unitType: 'player',
         unitId: player.unitId,
         statId: 14,
         value: player.gold,
+      })
+    }
+    if (player.goldBank !== prevBank) {
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 15,
+        value: player.goldBank,
+      })
+    }
+    if (goldPenalty.dropAmount > 0) {
+      this.dropPlayerGoldPile(player, goldPenalty.dropAmount)
+    }
+
+    // 1.13c D2Game.dll `0x6FC583A0` -> `0x6FC57730`: deduct `DeathExpPenalty` (0/5/10% of the
+    // current level's XP span) when not killed by a player or a player-owned pet, clamped at
+    // `Exp(clvl - 1) + 1` so the player never loses a character level on death.
+    const expPenalty = evaluateDeathExperiencePenalty113c({
+      clvl: player.level,
+      currentExp: player.experience,
+      penaltyPct: difficultyDeathExpPenalty(this.difficulty),
+      killerType,
+      charClass: player.classCode,
+    })
+    player.lastDeathExpLoss = expPenalty.expLost
+    if (expPenalty.newExp !== player.experience) {
+      player.experience = expPenalty.newExp
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 13,
+        value: player.experience,
+      })
+      this.emitToPlayer(player.unitId, {
+        type: 'Experience',
+        value: player.experience,
+        isDelta: false,
       })
     }
 
@@ -12728,6 +14676,7 @@ export class GameInstance {
   private handleRespawn(player: InternalPlayerRecord): void {
     if (!player.dead) return
     player.dead = false
+    player.hitRecoveryUntilFrame = 0
     player.hpFixed = player.maxHpFixed
     player.hp = player.maxHp
     player.manaFixed = player.maxManaFixed
@@ -12737,10 +14686,6 @@ export class GameInstance {
     player.stamina = player.maxStamina
 
     const townArea = ACT_TOWN_AREA[player.act] ?? 1
-    player.x = 128
-    player.y = 128
-    player.targetX = 128
-    player.targetY = 128
     player.mode = 5
     this.transitionPlayerArea(player, townArea, { kind: 'respawn' })
     this.emitToPlayer(player.unitId, {
@@ -12802,6 +14747,35 @@ export class GameInstance {
     })
   }
 
+  private lootOtherPlayerCorpse(looter: InternalPlayerRecord, victim: InternalPlayerRecord): void {
+    if (victim.corpseId === undefined || victim.corpseItems.length === 0) return
+    const oldCorpseId = victim.corpseId
+    victim.corpseId = undefined
+    const items = [...victim.corpseItems]
+    victim.corpseItems = []
+    for (const item of items) {
+      item.ownerId = looter.unitId
+      item.location = 'inventory'
+      looter.items.push(item)
+      this.emitToPlayer(looter.unitId, {
+        type: 'ItemEvent',
+        action: 'pickup',
+        itemId: item.unitId,
+        code: item.code,
+        x: item.x,
+        y: item.y,
+        container: 'inventory',
+        item: this.serverEntryToItemData(item),
+      })
+    }
+    this.broadcastToArea(victim.areaId, {
+      type: 'CorpseAssign',
+      assign: 0,
+      ownerId: victim.unitId,
+      corpseId: oldCorpseId,
+    })
+  }
+
   /** Apply a state without a timer (auras, absorb-limited armors): it lasts until cleared. */
   private applyPersistentUnitState(
     states: Set<number>,
@@ -12826,6 +14800,11 @@ export class GameInstance {
   ): void {
     if (!states.delete(stateId)) return
     timers.delete(stateId)
+    if (unitType === 'player') {
+      this.playerCombat.get(unitId)?.stateBus.removeState(stateId)
+    } else {
+      this.monsterCombat.get(unitId)?.stateBus.removeState(stateId)
+    }
     this.broadcastToArea(areaId, {
       type: 'UnitState',
       unitType,
@@ -12922,6 +14901,15 @@ export class GameInstance {
       if (rem <= 1) {
         timers.delete(stateId)
         states.delete(stateId)
+        if (unitType === 'player') {
+          this.playerCombat.get(unitId)?.stateBus.removeState(stateId)
+          if (stateId === 12) {
+            this.playerChannelSkillId.delete(unitId)
+            this.playerCombat.get(unitId)?.stateBus.removeState('inferno')
+          }
+        } else {
+          this.monsterCombat.get(unitId)?.stateBus.removeState(stateId)
+        }
         this.broadcastToArea(areaId, {
           type: 'UnitState',
           unitType,
@@ -12985,28 +14973,6 @@ export class GameInstance {
     return true
   }
 
-  /** Shrines.txt `Duration in frames`; resist/experience last 3600, the rest 2400. */
-  private static readonly SHRINE_DURATION_FRAMES_113C: Readonly<Record<number, number>> = {
-    6: 2400, 7: 2400, 8: 3600, 9: 3600, 10: 3600, 11: 3600,
-    12: 2400, 13: 2400, 14: 2400, 15: 3600,
-  }
-  /** Shrines.txt `ResetTime` (5 minutes at 25 Hz). */
-  private static readonly SHRINE_RESET_FRAMES_113C = 5 * 1200 + 1
-
-  /** 1.13c Shrines.txt `Code` 6..15 -> `States.txt` shrine state id. */
-  private static readonly SHRINE_CODE_TO_STATE_113C: Readonly<Record<number, number>> = {
-    6: 128, // armor
-    7: 129, // combat
-    8: 131, // resist fire
-    9: 132, // resist cold
-    10: 130, // resist lightning
-    11: 133, // resist poison
-    12: 134, // skill
-    13: 135, // mana regen
-    14: 136, // stamina
-    15: 137, // experience
-  }
-
   private emitPlayerVitals(player: InternalPlayerRecord): void {
     this.emitToPlayer(player.unitId, {
       type: 'LifeMana',
@@ -13030,15 +14996,148 @@ export class GameInstance {
     })
   }
 
-  /** 1.13c Shrines.txt effects (Code 0..22), one use per shrine. */
+  /**
+   * D2Game.dll `0x6fc8b070` (`SHRINES_DropItem`): spawns a normal-quality ground item
+   * (chipped gem or throwing potion) at the shrine/player location.
+   */
+  private dropShrineItem(code: string, areaId: number, x: number, y: number): void {
+    const tables = getEmbeddedDropTables()
+    const base = tables.getBase(code)
+    if (base === undefined) return
+    const seed = this.rng.rand(0x7fffffff) >>> 0
+    const item = createDroppedItem(base, 'normal', {
+      itemTypes: tables.itemTypes,
+      ilvl: 1,
+      dwInitSeed: seed,
+      itemRng: new D2Rng(seed || 1),
+    })
+    this.spawnDroppedItems([item], areaId, x, y)
+  }
+
+  /**
+   * D2Game.dll `0x6fc8f930` (`SHRINES_CreateShrineMissile`): launches a server missile from
+   * `(shrineX, shrineY)` toward `(targetX, targetY)` with `slvl = clamp(clvl / 5, 1, 8)`
+   * when `pPlayer` is provided (or `slvl = 1` when `pPlayer == NULL`).
+   */
+  private spawnShrineMissile(
+    player: InternalPlayerRecord,
+    shrineX: number,
+    shrineY: number,
+    areaId: number,
+    missileClassId: number,
+    targetX: number,
+    targetY: number,
+    skillLevel: number,
+  ): number {
+    const meta = this.registry.getMissileById(missileClassId)
+    const resolvedClassId = meta?.id ?? missileClassId
+    const slvl = Math.max(1, Math.min(8, Math.trunc(skillLevel)))
+    const dx = targetX - shrineX
+    const dy = targetY - shrineY
+    const stationary = (dx === 0 && dy === 0) || (meta !== undefined && meta.vel <= 0)
+    const dist = Math.max(0.5, Math.hypot(dx, dy))
+    const speed = stationary ? 0 : meta === undefined ? 1.0 : meta.vel / 16
+    const rangeTicks =
+      meta === undefined ? 25 : Math.max(1, meta.range + meta.levRange * (slvl - 1))
+    const element: MissileDamageChannel =
+      normalizeMissileElement(meta?.eType) ??
+      (resolvedClassId === 48 ? 'pois' : 'fire')
+    const hitShift = meta?.hitShift ?? 8
+    const elemDurationFrames =
+      meta === undefined ? 0 : Math.max(0, meta.eLen + meta.eLevLen1 * (slvl - 1))
+    const eMinRaw = meta === undefined ? 1 : meta.eMin + meta.eMinLev1 * (slvl - 1)
+    const eMaxRaw = meta === undefined ? 2 : Math.max(eMinRaw, meta.eMax + meta.eMaxLev1 * (slvl - 1))
+    const elemDamage = Math.max(1, Math.floor((eMinRaw * (1 << hitShift)) / FIXED_ONE))
+    const poisonBitrate256 =
+      element === 'pois' ? Math.max(1, eMinRaw * (1 << hitShift)) : undefined
+    const missileUnitId = this.allocateUnitId()
+    const missile: InternalMissileRecord = {
+      unitId: missileUnitId,
+      missileId: resolvedClassId,
+      skillId: 0,
+      ownerType: 'player',
+      ownerId: player.unitId,
+      areaId,
+      x: shrineX,
+      y: shrineY,
+      vx: stationary ? 0 : (dx / dist) * speed,
+      vy: stationary ? 0 : (dy / dist) * speed,
+      damage: elemDamage,
+      remainingFrames: rangeTicks,
+      collideType: meta?.collideType ?? 3,
+      size: Math.max(1, meta?.size ?? 1),
+      pierce: meta?.pierce === true,
+      nextHit: meta?.nextHit === true,
+      nextDelay: Math.max(0, meta?.nextDelay ?? 0),
+      element,
+      physDamage: 0,
+      elemDamage:
+        element === 'pois' && poisonBitrate256 !== undefined && elemDurationFrames > 0
+          ? Math.max(1, Math.floor((poisonBitrate256 * elemDurationFrames) / FIXED_ONE))
+          : elemDamage,
+      elemDurationFrames,
+      ...(poisonBitrate256 !== undefined ? { poisonBitrate256 } : {}),
+      hitCooldowns: new Map(),
+      guaranteedHit: !(meta?.toHit ?? false),
+    }
+    this.missiles.set(missileUnitId, missile)
+    this.broadcastToArea(areaId, {
+      type: 'CreateMissile',
+      missileId: missileUnitId,
+      missileClassId: resolvedClassId,
+      at: { x: Math.round(shrineX), y: Math.round(shrineY) },
+      target: { x: Math.round(targetX), y: Math.round(targetY) },
+      x: Math.round(shrineX),
+      y: Math.round(shrineY),
+      targetX: Math.round(targetX),
+      targetY: Math.round(targetY),
+      skillId: 0,
+      level: slvl,
+      ownerType: 0,
+      ownerUnitType: 'player',
+      ownerId: player.unitId,
+      sourceUnitId: player.unitId,
+      areaId,
+    } as ServerEvent)
+    return missileUnitId
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6fc8da00` (`OperateFn 2`) + `0x6fd1a5f8` shrine dispatch table
+   * (`count = 24` at `0x6fd27d4c`) across `Shrines.txt` `Code 0..22`.
+   */
   private applyShrineEffect(
     player: InternalPlayerRecord,
     code: number,
     shrineUnitId = 0,
   ): void {
-    const stateId = GameInstance.SHRINE_CODE_TO_STATE_113C[code]
-    if (stateId !== undefined) {
-      const duration = GameInstance.SHRINE_DURATION_FRAMES_113C[code] ?? 2400
+    // 0x6fc8db1c..0x6fc8db2b: out-of-range or null-fn entry (Code 0) falls back to 0x6fc89c00 (Refilling).
+    const effectiveCode =
+      code >= 1 && code <= 22 && CANONICAL_113C_SHRINES[code] !== undefined ? code : 1
+    const shrineMeta = getShrineMeta113c(effectiveCode)
+    const shrineObj = shrineUnitId > 0 ? this.objects.get(shrineUnitId) : undefined
+    const shrineX = shrineObj?.x ?? player.x
+    const shrineY = shrineObj?.y ?? player.y
+    const areaId = shrineObj?.areaId ?? player.areaId
+
+    if (shrineMeta.stateId > 0) {
+      const stateId = shrineMeta.stateId
+      const duration = shrineMeta.durationFrames
+      // 0x6fc8a960 (SHRINES_AllocClearPreviousShrineStats): clear any existing shrine state 128..137 first.
+      const combatCtx = this.playerCombatContext(player)
+      for (let prevState = 128; prevState <= 137; prevState++) {
+        if (prevState !== stateId && player.states.has(prevState)) {
+          combatCtx.stateBus.removeState(prevState)
+          this.clearUnitState(
+            player.states,
+            player.stateTimers,
+            'player',
+            player.unitId,
+            player.areaId,
+            prevState,
+          )
+        }
+      }
       this.applyUnitState(
         player.states,
         player.stateTimers,
@@ -13048,30 +15147,45 @@ export class GameInstance {
         stateId,
         duration,
       )
+      if (effectiveCode === 14) {
+        // 0x6fc8ac30 (0x6fc8ac6c..0x6fc8ac7c): Stamina Shrine immediately refills STAT_STAMINA (10) to STAT_MAXSTAMINA (11).
+        player.staminaFixed = player.maxStaminaFixed
+        player.stamina = player.maxStamina
+        player.staminaExhausted = false
+        this.emitPlayerVitals(player)
+      }
       const stats =
-        code === 6
-          ? { item_armor_percent: 100 }
-          : code === 7
-            ? { item_tohit_percent: 200, item_damage_percent: 200 }
-            : code === 8
-              ? { fireresist: 75 }
-              : code === 9
-                ? { coldresist: 75 }
-                : code === 10
-                  ? { lightresist: 75 }
-                  : code === 11
-                    ? { poisonresist: 75 }
-                    : code === 12
-                      ? { item_allskills: 2 }
-                      : code === 13
-                        ? { manaregeneration: 400 }
-                        : code === 14
-                          ? { item_staminadrainpct: -100 }
-                          : code === 15
-                            ? { item_addexperience: 50 }
+        effectiveCode === 6
+          ? { skill_armor_percent: shrineMeta.arg0, item_armor_percent: shrineMeta.arg0 }
+          : effectiveCode === 7
+            ? {
+                tohit: shrineMeta.arg0,
+                item_tohit_percent: shrineMeta.arg0,
+                damagepercent: shrineMeta.arg1,
+              }
+            : effectiveCode === 8
+              ? { fireresist: shrineMeta.arg0 }
+              : effectiveCode === 9
+                ? { coldresist: shrineMeta.arg0 }
+                : effectiveCode === 10
+                  ? { lightresist: shrineMeta.arg0 }
+                  : effectiveCode === 11
+                    ? { poisonresist: shrineMeta.arg0 }
+                    : effectiveCode === 12
+                      ? { item_allskills: shrineMeta.arg0 }
+                      : effectiveCode === 13
+                        ? { manarecoverybonus: shrineMeta.arg0 }
+                        : effectiveCode === 14
+                          ? {
+                              skill_staminapercent: shrineMeta.arg0,
+                              staminarecoverybonus: 1000,
+                              item_staminadrainpct: -100,
+                            }
+                          : effectiveCode === 15
+                            ? { item_addexperience: shrineMeta.arg0 }
                             : undefined
       if (stats !== undefined) {
-        this.playerCombatContext(player).stateBus.applyState({
+        combatCtx.stateBus.applyState({
           stateNameOrId: stateId,
           sourceSkillId: 0,
           slvl: 1,
@@ -13081,111 +15195,266 @@ export class GameInstance {
       }
       return
     }
-    switch (code) {
-      case 1: // Refilling Shrine
-      case 16: // Enirhs Shrine
+
+    switch (effectiveCode) {
+      case 1: // 0x6fc89c00 Refilling Shrine (and Code 0 fallback): restores full HP (stat 6) and Mana (stat 8) only
         player.hpFixed = player.maxHpFixed
         player.hp = player.maxHp
         player.manaFixed = player.maxManaFixed
         player.mana = player.maxMana
-        player.staminaFixed = player.maxStaminaFixed
-        player.staminaExhausted = false
-        player.stamina = player.maxStamina
         this.emitPlayerVitals(player)
         break
-      case 2: // Health Shrine: restores half of max life
-        player.hpFixed = Math.min(player.maxHpFixed, player.hpFixed + Math.floor(player.maxHpFixed / 2))
-        player.hp = Math.ceil(player.hpFixed / FIXED_ONE)
+      case 2: // 0x6fc898a0 Health Shrine: adds (maxhp - hp) -> restores 100% full life
+        player.hpFixed = player.maxHpFixed
+        player.hp = player.maxHp
         this.emitPlayerVitals(player)
         break
-      case 3: // Mana Shrine: fully restores mana
+      case 3: // 0x6fc89860 Mana Shrine: adds (maxmana - mana) -> restores 100% full mana
         player.manaFixed = player.maxManaFixed
         player.mana = player.maxMana
         this.emitPlayerVitals(player)
         break
-      case 4: // Health Exchange: swap current life and mana
-      case 5: { // Mana Exchange
-        const hp = player.hpFixed
-        const mana = player.manaFixed
-        player.hpFixed = Math.min(player.maxHpFixed, mana)
-        player.manaFixed = Math.min(player.maxManaFixed, hp)
+      case 4: { // 0x6fc89800 Health Exchange Shrine: takes Arg0% (50%) of current whole HP and adds Arg1% (500% = 5x) to Mana
+        const hpWhole = player.hpFixed >> 8
+        const takeWhole = Math.trunc((hpWhole * shrineMeta.arg0) / 100)
+        const takeFixed = takeWhole << 8
+        player.hpFixed = Math.max(FIXED_ONE, player.hpFixed - takeFixed)
+        const addManaFixed = Math.trunc((takeFixed * shrineMeta.arg1) / 100)
+        player.manaFixed = Math.min(player.maxManaFixed, player.manaFixed + addManaFixed)
         player.hp = Math.ceil(player.hpFixed / FIXED_ONE)
         player.mana = Math.floor(player.manaFixed / FIXED_ONE)
         this.emitPlayerVitals(player)
         break
       }
-      case 17: // Portal Shrine: a public pair, never the player's personal portal
+      case 5: { // 0x6fc897a0 Mana Exchange Shrine: takes Arg0% (50%) of current fixed Mana and adds Arg1% (500% = 5x) to HP
+        const takeFixed = Math.trunc((player.manaFixed * shrineMeta.arg0) / 100)
+        player.manaFixed = Math.max(0, player.manaFixed - takeFixed)
+        const addHpFixed = Math.trunc((takeFixed * shrineMeta.arg1) / 100)
+        player.hpFixed = Math.min(player.maxHpFixed, player.hpFixed + addHpFixed)
+        player.hp = Math.ceil(player.hpFixed / FIXED_ONE)
+        player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+        this.emitPlayerVitals(player)
+        break
+      }
+      case 16: // 0x6fc89770 Enirhs Shrine: _strrev + strncpy(..., 0x10) on player name (does NOT heal HP/Mana/Stamina)
+        player.name = [...player.name].reverse().join('').slice(0, 15)
+        break
+      case 17: // 0x6fc8b9b0 Portal Shrine: opens a public town portal pair
         this.openTownPortal(player, false, -Math.max(1, shrineUnitId), 'Shrine')
         break
-      case 18: { // Gem Shrine: upgrade one carried gem one tier
-        const gem = player.items.find(
-          (item) => item.location === 'inventory' && GEM_INFO[item.code.toLowerCase()] !== undefined,
-        )
-        const info = gem === undefined ? undefined : GEM_INFO[gem.code.toLowerCase()]
-        const next =
-          info === undefined
-            ? undefined
-            : Object.values(GEM_INFO).find(
-                (candidate) =>
-                  candidate.gemType === info.gemType && candidate.tier === info.tier + 1,
-              )
-        if (gem !== undefined && next !== undefined) {
-          gem.code = next.code
-          gem.name = next.nameEn
-          gem.rawItemData = {
-            ...gem.rawItemData,
-            code: next.code,
-            rawCode: next.code,
-          } as typeof gem.rawItemData
+      case 18: { // 0x6fc8b430 Gem Shrine: upgrades first carried gem with Misc.txt BetterGem != 'non ' (tier < 5), else drops random chipped gem
+        let chosenGem: ServerItemEntry | undefined
+        let nextGemInfo: (typeof GEM_INFO)[string] | undefined
+        for (const item of player.items) {
+          if (item.location !== 'inventory') continue
+          const info = GEM_INFO[item.code.toLowerCase()]
+          if (info === undefined || info.tier >= 5) continue
+          const candidateNext = Object.values(GEM_INFO).find(
+            (candidate) =>
+              candidate.gemType === info.gemType && candidate.tier === info.tier + 1,
+          )
+          if (candidateNext !== undefined) {
+            chosenGem = item
+            nextGemInfo = candidateNext
+            break
+          }
+        }
+        if (chosenGem !== undefined && nextGemInfo !== undefined) {
+          chosenGem.code = nextGemInfo.code
+          chosenGem.name = nextGemInfo.nameEn
+          chosenGem.rawItemData = {
+            ...chosenGem.rawItemData,
+            code: nextGemInfo.code,
+            rawCode: nextGemInfo.code,
+          } as typeof chosenGem.rawItemData
           this.emitToPlayer(player.unitId, {
             type: 'ItemEvent',
             action: 'update',
-            itemId: gem.unitId,
-            code: gem.code,
+            itemId: chosenGem.unitId,
+            code: chosenGem.code,
             container: 'inventory',
-            item: this.serverEntryToItemData(gem),
+            item: this.serverEntryToItemData(chosenGem),
           })
         } else {
-          // 1.13c SHRINES_Gem: no upgradeable gem -> drop one random chipped gem.
-          const chipped = ['gcv', 'gcr', 'gcg', 'gcb', 'gcy', 'gcw'][this.rng.rand(6)]!
-          const tables = getEmbeddedDropTables()
-          const base = tables.getBase(chipped)
-          if (base !== undefined) {
-            const seed = this.rng.rand(0x7fffffff) >>> 0
-            const item = createDroppedItem(base, 'normal', {
-              itemTypes: tables.itemTypes,
-              ilvl: 1,
-              dwInitSeed: seed,
-              itemRng: new D2Rng(seed || 1),
-            })
-            this.spawnDroppedItems([item], player.areaId, player.x, player.y)
-          }
+          // 0x6fc8b554: table ['gcw', 'gcr', 'gcg', 'gcb', 'gcy', 'gcv'] indexed by rand(6).
+          const chipped = ['gcw', 'gcr', 'gcg', 'gcb', 'gcy', 'gcv'][this.rng.rand(6)]!
+          this.dropShrineItem(chipped, areaId, shrineX, shrineY)
         }
         break
       }
-      case 19: // Fire Shrine
-      case 21: // Exploding Shrine
-        this.applyDamageToPlayer(player, Math.max(1, Math.floor(player.maxHp * 0.15)))
+      case 19: { // 0x6fc8c900 Fire Shrine: cuts HP of all living units within radius 14 by Arg0% (50%, min 1 HP) + perimeter fireball ring (missileId 62)
+        for (const targetPlayer of this.players.values()) {
+          if (targetPlayer.dead || targetPlayer.areaId !== areaId) continue
+          if (unitsDistanceToCoordinates113c(shrineX, shrineY, targetPlayer.x, targetPlayer.y) > 14) {
+            continue
+          }
+          const hpWhole = targetPlayer.hpFixed >> 8
+          const lossFixed = Math.trunc((hpWhole * shrineMeta.arg0) / 100) << 8
+          targetPlayer.hpFixed = Math.max(FIXED_ONE, targetPlayer.hpFixed - lossFixed)
+          targetPlayer.hp = Math.ceil(targetPlayer.hpFixed / FIXED_ONE)
+          this.emitPlayerVitals(targetPlayer)
+        }
+        for (const monster of this.monsters.values()) {
+          if (monster.dead || monster.isNpc || monster.isVendor || monster.areaId !== areaId) {
+            continue
+          }
+          if (unitsDistanceToCoordinates113c(shrineX, shrineY, monster.x, monster.y) > 14) {
+            continue
+          }
+          const loss = Math.trunc((monster.hp * shrineMeta.arg0) / 100)
+          monster.hp = Math.max(1, monster.hp - loss)
+          this.broadcastToArea(areaId, {
+            type: 'UnitStatUpdate',
+            unitType: 'monster',
+            unitId: monster.unitId,
+            statId: 6,
+            value: monster.hp,
+          })
+        }
+        const slvl = Math.max(1, Math.min(8, Math.trunc(player.level / 5)))
+        for (let offset = -20; offset <= 20; offset += 5) {
+          this.spawnShrineMissile(player, shrineX, shrineY, areaId, 62, shrineX + offset, shrineY - 20, slvl)
+          this.spawnShrineMissile(player, shrineX, shrineY, areaId, 62, shrineX + offset, shrineY + 20, slvl)
+          this.spawnShrineMissile(player, shrineX, shrineY, areaId, 62, shrineX - 20, shrineY + offset, slvl)
+          this.spawnShrineMissile(player, shrineX, shrineY, areaId, 62, shrineX + 20, shrineY + offset, slvl)
+        }
         break
-      case 20: // Monster Shrine
-        this.spawnMonster({
-          defId: 'fallen1',
-          x: player.x + 2,
-          y: player.y,
-          areaId: player.areaId,
-        })
+      }
+      case 20: { // 0x6fc8b8a0 Monster Shrine: finds nearest normal monster (0x6fc8a440) and upgrades it to Champion (20%) or Unique (80%) in place (0x6fc44b70)
+        let nearest: InternalMonsterRecord | undefined
+        let bestDistSq = Number.POSITIVE_INFINITY
+        for (const candidate of this.monsters.values()) {
+          if (
+            candidate.dead ||
+            candidate.areaId !== areaId ||
+            candidate.isNpc ||
+            candidate.isVendor ||
+            candidate.isBoss ||
+            candidate.isPrimeEvil ||
+            candidate.superUniqueId !== undefined ||
+            candidate.rank !== 'normal'
+          ) {
+            continue
+          }
+          const dx = candidate.x - shrineX
+          const dy = candidate.y - shrineY
+          const distSq = dx * dx + dy * dy
+          if (distSq < bestDistSq) {
+            bestDistSq = distSq
+            nearest = candidate
+          }
+        }
+        if (nearest !== undefined) {
+          const diffName =
+            this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
+          const newRank: MonsterRank = this.rng.rand(100) < 20 ? 'champion' : 'unique'
+          const rolledMods = rollEliteModifiers(newRank, this.rng, {
+            difficulty: diffName,
+            monster: {
+              hcIdx: nearest.hcIdx,
+              monType: nearest.monType,
+              isMelee: !nearest.isRanged,
+            },
+          })
+          const umodIds = [...resolveMonsterUModIds(rolledMods)]
+          const kind = getMonsterKindByHcIdx(nearest.hcIdx, diffName)
+          const resolved =
+            kind !== undefined
+              ? resolveMonsterStats(kind, {
+                  difficulty: diffName,
+                  rank: newRank,
+                  modifiers: rolledMods,
+                  playersCount: this.playersX,
+                  areaLevel: nearest.level,
+                })
+              : undefined
+          const resolved1p =
+            kind !== undefined
+              ? resolveMonsterStats(kind, {
+                  difficulty: diffName,
+                  rank: newRank,
+                  modifiers: rolledMods,
+                  playersCount: 1,
+                  areaLevel: nearest.level,
+                })
+              : undefined
+          const hpMult = newRank === 'unique'
+            ? (this.difficulty === 2 ? 2 : this.difficulty === 1 ? 3 : 4)
+            : (this.difficulty === 2 ? 2 : this.difficulty === 1 ? 2.5 : 3)
+          const xpMult = newRank === 'unique' ? 5 : 3
+          nearest.rank = newRank
+          nearest.isBoss = newRank === 'unique'
+          nearest.modifiers = [...rolledMods]
+          nearest.umodIds = umodIds
+          nearest.level = resolved?.level ?? (nearest.level + (newRank === 'unique' ? 3 : 2))
+          nearest.maxHp = Math.max(nearest.maxHp + 1, resolved?.maxHp ?? Math.round(nearest.maxHp * hpMult))
+          nearest.hp = nearest.maxHp
+          nearest.baseXp = Math.max(nearest.baseXp + 1, resolved1p?.xp ?? nearest.baseXp * xpMult)
+          nearest.experience = nearest.unscaledXp
+            ? nearest.baseXp
+            : Math.max(0, Math.floor((nearest.baseXp * (this.playersX + 1)) / 2))
+          if (resolved !== undefined) {
+            nearest.minDmg = Math.max(nearest.minDmg, resolved.attack1?.minDamage ?? resolved.damage ?? nearest.minDmg)
+            nearest.maxDmg = Math.max(nearest.minDmg, resolved.attack1?.maxDamage ?? resolved.damage ?? nearest.maxDmg)
+            nearest.ar = Math.max(nearest.ar, resolved.toHit ?? nearest.ar)
+            nearest.ac = Math.max(nearest.ac, resolved.armor ?? nearest.ac)
+            nearest.resistances = {
+              phys: resolved.resistances?.physical ?? nearest.resistances.phys,
+              magic: resolved.resistances?.magic ?? nearest.resistances.magic,
+              fire: resolved.resistances?.fire ?? nearest.resistances.fire,
+              light: resolved.resistances?.lightning ?? nearest.resistances.light,
+              cold: resolved.resistances?.cold ?? nearest.resistances.cold,
+              poison: resolved.resistances?.poison ?? nearest.resistances.poison,
+            }
+          }
+          if (umodIds.includes(MON_UMOD.AURA)) {
+            nearest.auraSkillId =
+              MONSTER_AURA_SKILL_IDS_113C[
+                (nearest.hcIdx + nearest.areaId) % MONSTER_AURA_SKILL_IDS_113C.length
+              ]
+          }
+          this.broadcastToArea(areaId, {
+            type: 'UnitAssign',
+            unitType: 'monster',
+            unitId: nearest.unitId,
+            classId: nearest.classId,
+            name: nearest.name,
+            x: nearest.x,
+            y: nearest.y,
+            areaId: nearest.areaId,
+            unit: {
+              unitType: 1,
+              id: nearest.unitId,
+              classId: nearest.classId,
+              name: nearest.name,
+              x: nearest.x,
+              y: nearest.y,
+              mode: nearest.mode,
+              lifePct: 128,
+              ...(nearest.umodIds.length > 0 ? { bossMods: [...nearest.umodIds] } : {}),
+            },
+          })
+        }
         break
-      case 22: // Poison Shrine
-        this.applyUnitState(
-          player.states,
-          player.stateTimers,
-          'player',
-          player.unitId,
-          player.areaId,
-          2,
-          100,
-        )
+      }
+      case 21: // 0x6fc8c580 Exploding Shrine: drops 5..9 'opm' potions and launches 6 explosivepotion (45) missiles
+      case 22: { // 0x6fc8c200 Poison Shrine: drops 5..9 'gpm' potions and launches 6 chokinggaspoition (48) missiles
+        const potionCode = effectiveCode === 21 ? 'opm' : 'gpm'
+        const missileClassId = effectiveCode === 21 ? 45 : 48
+        const span = Math.max(0, shrineMeta.arg1 - shrineMeta.arg0)
+        const count = shrineMeta.arg0 + (span > 0 ? this.rng.rand(span) : 0)
+        for (let i = 0; i < count; i++) {
+          this.dropShrineItem(potionCode, areaId, shrineX, shrineY)
+        }
+        const slvl = Math.max(1, Math.min(8, Math.trunc(player.level / 5)))
+        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX - 6, shrineY - 6, slvl)
+        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX, shrineY, 1)
+        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX + 6, shrineY + 6, slvl)
+        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX + 6, shrineY - 6, slvl)
+        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX + 6, shrineY - 6, slvl)
+        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX + 6, shrineY - 6, slvl)
         break
+      }
       default:
         break
     }
@@ -13219,6 +15488,264 @@ export class GameInstance {
       })
     }
     return true
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6fc8cee0` (`OperateFn 22`), `0x6fc8a560` (`OBJECTS_UseWell`),
+   * `0x6fc89de0` (pet/hireling heal + cure), and `0x6fcdc920` (`STATES_ClearCurableStates`):
+   * - Returns immediately when `wellCharges <= 0` (`bInteractType == 0`).
+   * - Restores `(max * Parm1) >> 8` (`50%` of max) to player HP (`Parm3 & 2`), Mana (`Parm3 & 1`),
+   *   and Stamina (unconditional on `Parm3`).
+   * - Cures `STATE_FREEZE (1)`, `STATE_POISON (2)`, and `States.txt` `curable == 1` curses
+   *   (`9, 19, 55, 60, 61, 113, 114`) on the player and pets, and heals alive mercenaries/pets to 100% HP.
+   * - If nothing was healed or cured (`bUsed == 0`), returns without consuming a charge or scheduling `Event 2`.
+   * - Otherwise decrements `wellCharges`, updates mode (`2 -> 0`, `1 -> 1`, `0 -> 2`), and schedules
+   *   `Object Event 2` (`0x6fc89ca0`) at `currentFrame + Parm0 + 1` (`currentFrame + 751`).
+   */
+  private operateWell113c(player: InternalPlayerRecord, obj: InternalObjectRecord): void {
+    if (obj.wellCharges <= 0) return
+    const objTxt =
+      obj.classId >= 0 && obj.classId < OBJECTS_TXT_113C.length
+        ? OBJECTS_TXT_113C[obj.classId]
+        : undefined
+    const parm0 = objTxt && objTxt.parm0 > 0 ? objTxt.parm0 : WELL_DEFAULT_PARMS_113C.parm0
+    const parm1 = WELL_DEFAULT_PARMS_113C.parm1
+    const parm2 = WELL_DEFAULT_PARMS_113C.parm2
+    const parm3 = WELL_DEFAULT_PARMS_113C.parm3
+
+    if (player.hp * FIXED_ONE < player.hpFixed) {
+      player.hpFixed = Math.max(0, player.hp * FIXED_ONE)
+    }
+    if (player.mana * FIXED_ONE < player.manaFixed) {
+      player.manaFixed = Math.max(0, player.mana * FIXED_ONE)
+    }
+    if (player.stamina * FIXED_ONE < player.staminaFixed) {
+      player.staminaFixed = Math.max(0, player.stamina * FIXED_ONE)
+    }
+
+    let bUsed = false
+
+    if ((parm3 & 2) !== 0 && player.hpFixed < player.maxHpFixed) {
+      const deltaHp = computeWellHealDeltaFixed113c(player.maxHpFixed, parm1)
+      player.hpFixed = Math.min(player.maxHpFixed, player.hpFixed + deltaHp)
+      player.hp = Math.min(player.maxHp, Math.ceil(player.hpFixed / FIXED_ONE))
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 6,
+        value: player.hpFixed,
+      })
+      bUsed = true
+    }
+
+    if ((parm3 & 1) !== 0 && player.manaFixed < player.maxManaFixed) {
+      const deltaMana = computeWellHealDeltaFixed113c(player.maxManaFixed, parm1)
+      player.manaFixed = Math.min(player.maxManaFixed, player.manaFixed + deltaMana)
+      player.mana = Math.min(player.maxMana, Math.floor(player.manaFixed / FIXED_ONE))
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 8,
+        value: player.manaFixed,
+      })
+      bUsed = true
+    }
+
+    if (player.staminaFixed < player.maxStaminaFixed) {
+      const deltaStamina = computeWellHealDeltaFixed113c(player.maxStaminaFixed, parm1)
+      player.staminaFixed = Math.min(player.maxStaminaFixed, player.staminaFixed + deltaStamina)
+      player.stamina = Math.min(player.maxStamina, Math.floor(player.staminaFixed / FIXED_ONE))
+      if (player.staminaFixed * 4 >= player.maxStaminaFixed) {
+        player.staminaExhausted = false
+      }
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 10,
+        value: player.staminaFixed,
+      })
+      bUsed = true
+    }
+
+    const combatCtx = this.playerCombat.get(player.unitId)
+    for (const stateId of WELL_CURABLE_STATE_IDS_113C) {
+      const hasState =
+        player.states.has(stateId) || Boolean(combatCtx?.stateBus.hasState(stateId))
+      if (hasState) {
+        this.clearUnitState(
+          player.states,
+          player.stateTimers,
+          'player',
+          player.unitId,
+          player.areaId,
+          stateId,
+        )
+        combatCtx?.stateBus.removeState(stateId)
+        bUsed = true
+      }
+    }
+
+    for (const merc of this.mercenaries.values()) {
+      if (merc.ownerPlayerId === player.unitId && merc.alive) {
+        if (merc.hp < merc.maxHp) {
+          merc.hp = merc.maxHp
+          this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
+          bUsed = true
+        }
+      }
+    }
+
+    const mgr = this.summonManagers.get(player.unitId)
+    if (mgr !== undefined) {
+      for (const pet of mgr.getActivePets()) {
+        if (pet.alive === false || pet.maxHp <= 0) continue
+        if (pet.hp < pet.maxHp) {
+          pet.hp = pet.maxHp
+          const petUnitId = this.petUnitIds.get(pet.uid)
+          if (petUnitId !== undefined) {
+            this.broadcastAllyHp(player.areaId, petUnitId, pet.hp)
+          }
+          bUsed = true
+        }
+        for (const stateId of WELL_CURABLE_STATE_IDS_113C) {
+          if (pet.stateBus.hasState(stateId)) {
+            pet.stateBus.removeState(stateId)
+            bUsed = true
+          }
+        }
+      }
+    }
+
+    if (!bUsed) return
+
+    this.emitPlayerVitals(player)
+    obj.wellCharges = Math.max(0, obj.wellCharges - 1)
+    const nextMode = computeWellModeForCharges113c(obj.wellCharges, parm2)
+    if (nextMode !== undefined) {
+      this.setObjectMode(obj, nextMode)
+    }
+    obj.wellRegenFrames.push(computeWellRegenFrame113c(this.currentFrame, parm0))
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6fc8e0e0` (`OperateFn 30`: `250 a trap`, `454 explodingchest`),
+   * `0x6fd142d0` (`SUNITDMG_ApplyObjectTrapDamage`), and `0x6fc8e150` (`Object Event 9`):
+   * - Applies two sequential `0x6fd142d0` hits to `player`: physical (`nDamageType = 0`) then
+   *   fire (`nDamageType = 1`), each rolling `[hp >> 5, hp >> 3]` scaled by `monLvl / 100`.
+   * - For `454` (`explodingchest`), executes the `0x6fc8b570` chest item drop (`Event 9`).
+   */
+  private operateTrapObject113c(player: InternalPlayerRecord, obj: InternalObjectRecord): void {
+    const monLvl = getLevelMonsterLevel113c(obj.areaId, this.difficulty)
+    if (!player.dead) {
+      const hp256BeforePhys =
+        player.hp * FIXED_ONE < player.hpFixed
+          ? Math.max(0, player.hp * FIXED_ONE)
+          : player.hpFixed
+      const physDmg256 = rollObjectTrapDamage256_113c(hp256BeforePhys, monLvl, this.rng)
+      if (physDmg256 > 0) {
+        this.applyPlayerElementalDamage(
+          player,
+          { phys: Math.max(1, Math.floor(physDmg256 / FIXED_ONE)) },
+          { killerType: 'trap', killerUnitId: obj.unitId },
+        )
+      }
+    }
+    if (!player.dead && player.hpFixed > 0) {
+      const fireDmg256 = rollObjectTrapDamage256_113c(player.hpFixed, monLvl, this.rng)
+      if (fireDmg256 > 0) {
+        this.applyPlayerElementalDamage(
+          player,
+          { fire: Math.max(1, Math.floor(fireDmg256 / FIXED_ONE)) },
+          { killerType: 'trap', killerUnitId: obj.unitId },
+        )
+      }
+    }
+    if (obj.classId === 454) {
+      this.rollContainerDrop(player, obj, 100)
+    }
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6fc8d740` (`OperateFn 7`, `11 BarrelExploding`), `0x6fc8ad60`,
+   * and `0x6fc8ae60`:
+   * - Transitions the exploding barrel through mode `1 -> 2`.
+   * - Deals `0x6fd142d0` physical trap damage (`nDamageType = 0`) to all living players and
+   *   killable monsters within Euclidean subtile distance `<= 3`.
+   * - Chain-detonates any other neutral (`mode === 0`) exploding barrel within distance `<= 2`.
+   */
+  private detonateExplodingBarrel113c(
+    barrel: InternalObjectRecord,
+    operator?: InternalPlayerRecord,
+  ): void {
+    this.setObjectMode(barrel, 1)
+    this.setObjectMode(barrel, 2)
+    const monLvl = getLevelMonsterLevel113c(barrel.areaId, this.difficulty)
+
+    for (const targetPlayer of this.players.values()) {
+      if (targetPlayer.dead || targetPlayer.areaId !== barrel.areaId) continue
+      if (Math.hypot(targetPlayer.x - barrel.x, targetPlayer.y - barrel.y) > 3) continue
+      const hp256 =
+        targetPlayer.hp * FIXED_ONE < targetPlayer.hpFixed
+          ? Math.max(0, targetPlayer.hp * FIXED_ONE)
+          : targetPlayer.hpFixed
+      const physDmg256 = rollObjectTrapDamage256_113c(hp256, monLvl, this.rng)
+      if (physDmg256 > 0) {
+        this.applyPlayerElementalDamage(
+          targetPlayer,
+          { phys: Math.max(1, Math.floor(physDmg256 / FIXED_ONE)) },
+          { killerType: 'trap', killerUnitId: barrel.unitId },
+        )
+      }
+    }
+
+    for (const monster of this.monsters.values()) {
+      if (
+        monster.dead ||
+        monster.isNpc ||
+        monster.isVendor ||
+        !monster.isKillable ||
+        monster.areaId !== barrel.areaId
+      ) {
+        continue
+      }
+      if (Math.hypot(monster.x - barrel.x, monster.y - barrel.y) > 3) continue
+      const physDmg256 = rollObjectTrapDamage256_113c(monster.hp * FIXED_ONE, monLvl, this.rng)
+      const rawPhys = Math.max(1, Math.floor(physDmg256 / FIXED_ONE))
+      const dealt =
+        monster.resistances.phys >= 100
+          ? 0
+          : Math.max(1, Math.round((rawPhys * (100 - monster.resistances.phys)) / 100))
+      if (dealt > 0) {
+        monster.hp = Math.max(0, monster.hp - dealt)
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitStatUpdate',
+          unitType: 'monster',
+          unitId: monster.unitId,
+          statId: 6,
+          value: monster.hp,
+        })
+        if (monster.hp <= 0) {
+          this.applyMonsterDeath(monster, operator, 'phys')
+        }
+      }
+    }
+
+    for (const other of this.objects.values()) {
+      if (
+        other.unitId === barrel.unitId ||
+        other.areaId !== barrel.areaId ||
+        other.mode !== 0 ||
+        getObjectsTxtRecord113c(other.classId).operateFn !== 7
+      ) {
+        continue
+      }
+      if (Math.hypot(other.x - barrel.x, other.y - barrel.y) <= 2) {
+        this.detonateExplodingBarrel113c(other, operator)
+      }
+    }
   }
 
   /** Objects.txt OperateFn dispatch (D2Game 0x6fd27bb8), including one-shot semantics. */
@@ -13271,22 +15798,84 @@ export class GameInstance {
       })
     }
 
-    // Objects.txt 376 Hellforge (OperateFn 49, D2Game 0x6fcdb8d0): requires
-    // the Hellforge Hammer ('hfh ') and three hits, then drops the reward.
+    // Objects.txt 376 Hellforge (OperateFn 49, D2Game 0x6fcdb8d0):
+    // 1. If a4q2 already has bit 0 (0x0001 COMPLETED) or bit 1 (0x0002 REWARD_PENDING) set, no-op (0x6fcdb92d..0x6fcdb952).
+    // 2. Stage 1 (wForgeMode == 0 / obj.mode === 0, 0x6fcdbaf8..0x6fcdbb78): requires Mephisto's Soulstone ('mss '),
+    //    removes 'mss ', sets obj.mode = 1 (0x6fcdbb16) and wForgeMode = 2 (0x6fcdbb4b).
+    // 3. Stage 2 (wForgeMode == 2 / obj.mode === 1 || obj.mode === 2, 0x6fcdb988..0x6fcdbae7): requires equipped
+    //    Hellforge Hammer ('hfh '), increments game-level hit counter (3 hits total; <= 2 returns at 0x6fcdb9e6).
+    //    On 3rd hit (> 2), sets obj.mode = 3 (0x6fcdb9ee), removes 'hfh ' (0x6fcdba03), sets a4q2 to
+    //    QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_NOW_113C (0x2002, bits 1 & 13, 0x6fcdba14..0x6fcdba25),
+    //    triggers specialEventId 14 (0x6fcdbae7), and rolls/spawns the Hellforge rune + 4 gems drop.
     if (obj.classId === 376) {
-      if (obj.mode !== 0) return
-      const hammer = player.items.find(
-        (item) => item.location === 'equipped' && item.code.toLowerCase().trim() === 'hfh',
-      )
-      if (hammer === undefined) return
-      obj.useCount += 1
-      if (obj.useCount <= 2) return
-      this.setPlayerQuestFlag(player, 'a4q2', QUEST_FLAG_COMPLETED_113C)
-      const difficulty =
-        this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
-      const drop = rollHellforgeDrop(difficulty, this.rng, getEmbeddedDropTables())
-      this.spawnDroppedItems(drop.items, obj.areaId, obj.x, obj.y)
-      this.setObjectMode(obj, 2)
+      if (
+        hasQuestFlag113c(
+          player.questFlags,
+          'a4q2',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        )
+      ) {
+        return
+      }
+      if (obj.mode === 0) {
+        const soulstone = player.items.find(
+          (item) => item.code.toLowerCase().trim() === 'mss',
+        )
+        if (soulstone === undefined) return
+        this.removePlayerQuestItem(player, soulstone)
+        this.hellforgeState = 2
+        this.hellforgeHits = 0
+        obj.useCount = 0
+        this.setObjectMode(obj, 1)
+        return
+      }
+      if (obj.mode === 1 || obj.mode === 2 || (this.hellforgeState === 2 && obj.mode !== 3)) {
+        const hammer = player.items.find(
+          (item) => item.location === 'equipped' && item.code.toLowerCase().trim() === 'hfh',
+        )
+        if (hammer === undefined) return
+        const nextHits =
+          (obj.useCount === this.hellforgeHits ? this.hellforgeHits : obj.useCount) + 1
+        this.hellforgeHits = nextHits
+        obj.useCount = nextHits
+        if (this.hellforgeHits <= 2) return
+        this.hellforgeState = 3
+        this.setObjectMode(obj, 3)
+        this.removePlayerQuestItem(player, hammer)
+        for (const candidate of this.players.values()) {
+          if (
+            candidate.unitId !== player.unitId &&
+            candidate.areaId !== obj.areaId
+          ) {
+            continue
+          }
+          if (
+            hasQuestFlag113c(
+              candidate.questFlags,
+              'a4q2',
+              QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+            )
+          ) {
+            continue
+          }
+          this.setPlayerQuestFlag(
+            candidate,
+            'a4q2',
+            QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+          )
+        }
+        this.emitToPlayer(player.unitId, {
+          type: 'QuestState',
+          kind: 'special',
+          source: 0x89,
+          quests: new Uint16Array(player.questFlags),
+          specialEventId: 14,
+        })
+        const difficulty =
+          this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
+        const drop = rollHellforgeDrop(difficulty, this.rng, getEmbeddedDropTables())
+        this.spawnDroppedItems(drop.items, obj.areaId, obj.x, obj.y)
+      }
       return
     }
 
@@ -13333,21 +15922,25 @@ export class GameInstance {
         })
       }
       // Enter OBJMODE_OPERATING (1) so client plays the 29-frame smash animation + sound,
-      // then settle into OBJMODE_OPENED (2) after 29 frames at FrameDelta 128 (58 ticks).
+      // then settle into OBJMODE_OPENED (2) after FrameCnt1 (29) at FrameDelta1 (128) = 58 ticks.
+      const orbOperatingTicks = getObjectOperatingTicks113c(404)
       this.setObjectMode(obj, 1)
       this.pendingObjectModeTransitions.push({
-        frame: this.currentFrame + 58,
+        frame: this.currentFrame + orbOperatingTicks,
         unitId: obj.unitId,
         mode: 2,
       })
       // Server-side orbmist (Missiles.txt 368: Vel = 2 -> 3/32 sub-tiles/tick, Range = 400):
       // when it hits Durance of Hate Stairs (Objects.txt 386), SrvHitFunc 35 (0x6fc5e670)
-      // sets stairs to OBJMODE_OPERATING (1) for its 9-frame (FrameDelta 120 -> 19 ticks)
+      // sets stairs to OBJMODE_OPERATING (1) for its FrameCnt1 (9) / FrameDelta1 (120) = 19 ticks
       // opening animation before settling into OBJMODE_OPENED (2).
+      const orbMistMeta = this.registry.getMissileById(368)
+      const orbMistRange = orbMistMeta?.range ?? 400
+      const stairsOperatingTicks = getObjectOperatingTicks113c(386)
       for (const stairs of this.objects.values()) {
         if (stairs.areaId !== obj.areaId || stairs.classId !== 386 || stairs.mode !== 0) continue
         const dist = Math.hypot(stairs.x - obj.x, stairs.y - obj.y)
-        const mistFrames = Math.max(1, Math.min(400, Math.round(dist / (3 / 32))))
+        const mistFrames = Math.max(1, Math.min(orbMistRange, Math.round(dist / (3 / 32))))
         this.pendingObjectModeTransitions.push(
           {
             frame: this.currentFrame + mistFrames,
@@ -13355,7 +15948,7 @@ export class GameInstance {
             mode: 1,
           },
           {
-            frame: this.currentFrame + mistFrames + 19,
+            frame: this.currentFrame + mistFrames + stairsOperatingTicks,
             unitId: stairs.unitId,
             mode: 2,
           },
@@ -13387,28 +15980,25 @@ export class GameInstance {
     }
     if (kind === 'shrine') {
       if (obj.mode !== 0) return
+      const shrineMeta = CANONICAL_113C_SHRINES[obj.shrineType] ?? getShrineMeta113c(obj.shrineType)
       this.setObjectMode(obj, 1)
       this.applyShrineEffect(player, obj.shrineType, obj.unitId)
       this.setObjectMode(obj, 2)
-      obj.shrineResetFrame = this.currentFrame + GameInstance.SHRINE_RESET_FRAMES_113C
+      obj.shrineResetFrame = computeShrineResetFrame113c(obj.shrineType, this.currentFrame)
       this.emitToPlayer(player.unitId, {
         type: 'Chat',
         kind: 'system',
-        text: `${CANONICAL_113C_SHRINES[obj.shrineType]?.name ?? 'Shrine'} activated`,
+        text: `${shrineMeta.name}: ${shrineMeta.phrase}`,
       })
       return
     }
-    // Stash and well are re-usable in 1.13c; only one-shot containers change mode.
+    // Stash is re-usable in 1.13c.
     if (kind === 'stash') {
       this.emitToPlayer(player.unitId, { type: 'Trade', action: 0x10 })
       return
     }
     if (kind === 'well') {
-      player.hpFixed = player.maxHpFixed
-      player.hp = player.maxHp
-      player.manaFixed = player.maxManaFixed
-      player.mana = player.maxMana
-      this.emitPlayerVitals(player)
+      this.operateWell113c(player, obj)
       return
     }
     if (obj.mode !== 0) return
@@ -13417,14 +16007,46 @@ export class GameInstance {
       this.emitToPlayer(player.unitId, { type: 'Chat', kind: 'system', text: 'Locked' })
       return
     }
+    // Objects.txt 152 Horadric Orifice (OperateFn 25, D2Game 0x6fce6240):
+    // without Horadric Staff ('hst' / 'vip' / 'msf'), emits cant-use (0x6fce6318) and keeps mode 0.
+    if (obj.classId === 152) {
+      const hasStaffPart = player.items.some((item) =>
+        ['hst', 'vip', 'msf'].includes(item.code.toLowerCase().trim()),
+      )
+      if (!hasStaffPart) return
+    }
+    // Objects.txt 558 Frozen Anya (OperateFn 67, D2Game 0x6fc7cd50):
+    // without Malah's Potion ('ice'), starts a5q3 (0x6fc7cdb3) and keeps mode 0 so she can be thawed later.
+    if (obj.classId === 558) {
+      if (
+        hasQuestFlag113c(
+          player.questFlags,
+          'a5q3',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        )
+      ) {
+        return
+      }
+      const hasPotion = player.items.some(
+        (item) => item.code.toLowerCase().trim() === 'ice',
+      )
+      if (!hasPotion) {
+        this.setPlayerQuestFlag(player, 'a5q3', QUEST_FLAG_STARTED_113C)
+        return
+      }
+    }
     this.setObjectMode(obj, 1)
     switch (kind) {
       case 'trap':
-        this.applyDamageToPlayer(player, Math.max(1, Math.floor(player.maxHp * 0.1)))
+        this.operateTrapObject113c(player, obj)
         break
       case 'destructible': {
-        const dropChance = CONTAINER_OPERATE_DROP_CHANCE_113C[record.operateFn] ?? 100
-        this.rollContainerDrop(player, obj, dropChance)
+        if (record.operateFn === 7) {
+          this.detonateExplodingBarrel113c(obj, player)
+        } else {
+          const dropChance = CONTAINER_OPERATE_DROP_CHANCE_113C[record.operateFn] ?? 100
+          this.rollContainerDrop(player, obj, dropChance)
+        }
         break
       }
       case 'container': {
@@ -13454,7 +16076,7 @@ export class GameInstance {
     hst: ['hst', 'msf', 'vip'],
     j34: ['j34', 'g34', 'xyz'],
     g34: ['g34', 'j34', 'xyz'],
-    xyz: ['xyz', 'j34', 'g34'],
+    xyz: ['xyz'],
     g33: ['g33', 'd33'],
     d33: ['d33', 'g33'],
     qey: ['qey', 'qf2'],
@@ -13608,7 +16230,7 @@ export class GameInstance {
     player: InternalPlayerRecord,
     obj: InternalObjectRecord,
   ): void {
-    // 1.13c gpObjectOperateFnTable quest item drops (30, 108, 149, 193, 244, 246, 252, 354, 355, 356, 405, 406, 407).
+    // 1.13c gpObjectOperateFnTable quest item drops (30, 108, 149, 193, 252, 354, 355, 356, 405, 406, 407).
     const questItemCode = QUEST_OBJECT_DROP_ITEM_CODE_113C[obj.classId]
     if (questItemCode !== undefined && !this.playerOrGroundHasQuestItem(player, questItemCode)) {
       const item = this.createQuestDropItem(questItemCode)
@@ -13651,8 +16273,9 @@ export class GameInstance {
       this.setPlayerQuestFlag(player, 'a1q3', QUEST_FLAG_COMPLETED_113C)
     }
 
-    // A2Q6: the Horadric Staff in the orifice deletes hst/vip/msf and spawns
-    // Duriel's Lair (Objects.txt 100) at (x-13, y+3) after 18 ticks.
+    // A2Q6: the Horadric Staff in the orifice (D2Game 0x6fce9dae..0x6fce9dcd) deletes hst/vip/msf
+    // and schedules QUESTS_CreateTimer(..., (Missiles.txt[338].dwRange - 75) / 20 = 18 ticks) to spawn
+    // Duriel's Lair (Objects.txt 100) at (x-13, y+3).
     if (obj.classId === 152) {
       const parts = player.items.filter((item) =>
         ['hst', 'vip', 'msf'].includes(item.code.toLowerCase()),
@@ -13662,8 +16285,13 @@ export class GameInstance {
         this.removePlayerQuestItem(player, part)
       }
       this.setPlayerQuestFlag(player, 'a2q2', QUEST_FLAG_COMPLETED_113C)
+      const horadricStaffMeta = this.registry.getMissileById(338)
+      const orificeDelayTicks = Math.max(
+        1,
+        Math.trunc(((horadricStaffMeta?.range ?? 440) - 75) / 20),
+      )
       this.pendingObjectSpawns.push({
-        frame: this.currentFrame + 18,
+        frame: this.currentFrame + orificeDelayTicks,
         classId: 100,
         x: obj.x - 13,
         y: obj.y + 3,
@@ -13733,7 +16361,7 @@ export class GameInstance {
       return
     }
     // 1.13c objects whose operation itself completes the objective.
-    if ([149, 357, 376, 546].includes(obj.classId)) {
+    if ([149, 357, 546].includes(obj.classId)) {
       this.setPlayerQuestFlag(player, questId, QUEST_FLAG_COMPLETED_113C)
     }
   }
@@ -13768,19 +16396,22 @@ export class GameInstance {
   }
 
   /**
-   * 1.13c permanent character / item rewards granted when a quest transitions
-   * to `QFLAG_REWARDGRANTED` (`0x0001`).
+   * 1.13c direct character / item rewards granted when a non-consumable quest
+   * transitions to `QFLAG_REWARDGRANTED` (`0x0001`).
+   *
+   * Note: Consumable quest items (`'ass'` for `a2q1`, `'xyz'` for `a3q1`, and
+   * `'tr2'` for `a5q3`) do NOT grant stats on boss kill or NPC turn-in; their
+   * stats are granted exclusively when the item is consumed in `handleBeltUse`
+   * (`D2Game.dll` @ `0x6fcf9e73..0x6fcf9f52`).
    */
   private grantQuestCompletionReward113c(
     player: InternalPlayerRecord,
     questId: string,
   ): void {
-    if (questId === 'a1q1' || questId === 'a2q1') {
+    if (questId === 'a1q1') {
       player.newSkills += 1
-      if (questId === 'a1q1') {
-        // D2Game.dll 0x6fc82340 (called from A1Q1 reward 0x6fc82a80): sets Quest 41 (0x29) bits 13 (0x2000) and 1 (0x0002).
-        player.questFlags[41] = (player.questFlags[41] ?? 0) | 0x2002
-      }
+      // D2Game.dll 0x6fc82340 (called from A1Q1 reward 0x6fc82a80): sets Quest 41 (0x29) bits 13 (0x2000) and 1 (0x0002).
+      player.questFlags[41] = (player.questFlags[41] ?? 0) | 0x2002
       this.emitToPlayer(player.unitId, {
         type: 'UnitStatUpdate',
         unitType: 'player',
@@ -13806,46 +16437,52 @@ export class GameInstance {
         statId: 4,
         value: player.statPts,
       })
-    } else if (questId === 'a3q1') {
-      player.maxHpFixed += 20 * FIXED_ONE
-      player.hpFixed += 20 * FIXED_ONE
-      player.maxHp = Math.floor(player.maxHpFixed / FIXED_ONE)
-      player.hp = Math.floor(player.hpFixed / FIXED_ONE)
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitStatUpdate',
-        unitType: 'player',
-        unitId: player.unitId,
-        statId: 7,
-        value: player.maxHpFixed,
-      })
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitStatUpdate',
-        unitType: 'player',
-        unitId: player.unitId,
-        statId: 6,
-        value: player.hpFixed,
-      })
     } else if (questId === 'a5q2') {
       for (const runeCode of ['r08', 'r09', 'r07']) {
         this.givePlayerInventoryQuestItem(player, runeCode)
       }
-    } else if (questId === 'a5q3') {
-      const combat = this.playerCombatContext(player)
-      for (const [statId, statName] of [
-        [39, 'fireresist'],
-        [41, 'lightresist'],
-        [43, 'coldresist'],
-        [45, 'poisonresist'],
-      ] as const) {
-        this.emitToPlayer(player.unitId, {
-          type: 'UnitStatUpdate',
-          unitType: 'player',
-          unitId: player.unitId,
-          statId,
-          value: Math.trunc(combat.statList.getAccruedStat(statName)),
-        })
-      }
     }
+  }
+
+  private emitQuestFlagSync113c(player: InternalPlayerRecord, questId: string): void {
+    const questIndex = questWordIndex113c(questId)
+    this.emitQuestLog(player)
+    // S2C 0x28 QuestInfo: the per-quest update channel.
+    this.emitToPlayer(player.unitId, {
+      type: 'QuestState',
+      kind: 'update',
+      source: 0x28,
+      quests: new Uint16Array(player.questFlags),
+      flags: Array.from(player.questFlags),
+    })
+    // S2C 0x5D QuestStatus for the quest that just changed.
+    if (questIndex !== undefined) {
+      const hasJ34 =
+        questId === 'a3q1' &&
+        player.items.some((item) => item.code.toLowerCase().trim() === 'j34')
+      const hasG34 =
+        questId === 'a3q1' &&
+        player.items.some((item) => item.code.toLowerCase().trim() === 'g34')
+      const filterStatus =
+        questId === 'a3q1'
+          ? computeA3Q1StatusByte113c(player.questFlags, hasJ34, hasG34)
+          : (player.questFlags[questIndex] ?? 0) & QUEST_FLAG_STARTED_113C
+            ? 2
+            : 1
+      this.emitToPlayer(player.unitId, {
+        type: 'QuestState',
+        kind: 'status',
+        source: 0x5d,
+        quests: new Uint16Array([questIndex]),
+        questStatus: {
+          questId: questIndex,
+          alertFlags: 0,
+          filterStatus,
+          extra: 0,
+        },
+      })
+    }
+    this.emitQuestAvailability(player)
   }
 
   private setPlayerQuestFlag(
@@ -13864,31 +16501,7 @@ export class GameInstance {
     if (!wasCompleted && nowCompleted) {
       this.grantQuestCompletionReward113c(player, questId)
     }
-    this.emitQuestLog(player)
-    // S2C 0x28 QuestInfo: the per-quest update channel.
-    this.emitToPlayer(player.unitId, {
-      type: 'QuestState',
-      kind: 'update',
-      source: 0x28,
-      quests: new Uint16Array(player.questFlags),
-      flags: Array.from(player.questFlags),
-    })
-    // S2C 0x5D QuestStatus for the quest that just changed.
-    if (questIndex !== undefined) {
-      this.emitToPlayer(player.unitId, {
-        type: 'QuestState',
-        kind: 'status',
-        source: 0x5d,
-        quests: new Uint16Array([questIndex]),
-        questStatus: {
-          questId: questIndex,
-          alertFlags: 0,
-          filterStatus: (player.questFlags[questIndex] ?? 0) & QUEST_FLAG_STARTED_113C ? 2 : 1,
-          extra: 0,
-        },
-      })
-    }
-    this.emitQuestAvailability(player)
+    this.emitQuestFlagSync113c(player, questId)
     return true
   }
 
@@ -13948,7 +16561,7 @@ export class GameInstance {
   private stepPendingInteractions(): void {
     for (const player of this.players.values()) {
       const pending = player.pendingInteraction
-      if (pending === undefined || player.dead) continue
+      if (pending === undefined || player.dead || this.isPlayerInHitRecovery(player)) continue
       let tx: number
       let ty: number
       let inRangeAndSight = false
@@ -13999,16 +16612,20 @@ export class GameInstance {
           Math.hypot(wp.x - player.x, wp.y - player.y) <= WAYPOINT_INTERACT_DISTANCE_SUBTILES &&
           this.hasInteractionLineOfSight(player.areaId, player.x, player.y, wp.x, wp.y, wp.unitId)
       } else if (pending.kind === 'corpse') {
-        if (player.corpseId === undefined || player.corpseId !== pending.id) {
+        const corpseOwner =
+          player.corpseId === pending.id
+            ? player
+            : Array.from(this.players.values()).find((p) => p.corpseId === pending.id)
+        if (corpseOwner === undefined || corpseOwner.corpseId === undefined) {
           player.pendingInteraction = undefined
           player.pendingInteractionSteps = 0
           continue
         }
-        tx = player.corpseX
-        ty = player.corpseY
+        tx = corpseOwner.corpseX
+        ty = corpseOwner.corpseY
         inRangeAndSight =
-          Math.hypot(player.x - player.corpseX, player.y - player.corpseY) <= 3 &&
-          this.hasInteractionLineOfSight(player.areaId, player.x, player.y, player.corpseX, player.corpseY)
+          Math.hypot(player.x - corpseOwner.corpseX, player.y - corpseOwner.corpseY) <= 3 &&
+          this.hasInteractionLineOfSight(player.areaId, player.x, player.y, corpseOwner.corpseX, corpseOwner.corpseY)
       } else {
         const npc = this.monsters.get(pending.id)
         if (npc === undefined || !npc.isNpc || npc.areaId !== player.areaId) {
@@ -14037,7 +16654,14 @@ export class GameInstance {
             this.transitionPlayerArea(player, pending.destAreaId, { kind: 'waypoint' })
           }
         } else if (pending.kind === 'corpse') {
-          this.recoverPlayerCorpse(player)
+          if (player.corpseId === pending.id) {
+            this.recoverPlayerCorpse(player)
+          } else {
+            const victim = Array.from(this.players.values()).find((p) => p.corpseId === pending.id)
+            if (victim && this.partyManager.hasLootPermission(victim.unitId, player.unitId)) {
+              this.lootOtherPlayerCorpse(player, victim)
+            }
+          }
         } else if (gamble !== undefined) {
           this.handleNpcAction(player, pending.id, gamble)
         } else {
@@ -14102,6 +16726,28 @@ export class GameInstance {
         player.pendingInteractionSteps = 0
       }
       return
+    }
+
+    for (const otherPlayer of this.players.values()) {
+      if (otherPlayer.unitId === player.unitId) continue
+      if (otherPlayer.corpseId === targetId && otherPlayer.areaId === player.areaId) {
+        if (
+          Math.hypot(player.x - otherPlayer.corpseX, player.y - otherPlayer.corpseY) <= 3 &&
+          this.hasInteractionLineOfSight(player.areaId, player.x, player.y, otherPlayer.corpseX, otherPlayer.corpseY)
+        ) {
+          player.pendingInteraction = undefined
+          player.pendingInteractionSteps = 0
+          if (this.partyManager.hasLootPermission(otherPlayer.unitId, player.unitId)) {
+            this.lootOtherPlayerCorpse(player, otherPlayer)
+          }
+          return
+        }
+        if (player.pendingInteraction === undefined) {
+          player.pendingInteraction = { kind: 'corpse', id: targetId }
+          player.pendingInteractionSteps = 0
+        }
+        return
+      }
     }
 
     const obj = this.objects.get(targetId)
@@ -14505,6 +17151,19 @@ export class GameInstance {
         this.notifyAreaTransitionFailure(player, destAreaId)
         return false
       }
+    } else {
+      const loadedArea = this.loadedAreas.get(destAreaId)
+      if (loadedArea) {
+        landing = this.resolveArrivalPosition(loadedArea, arrival)
+      } else if (arrival.kind === 'respawn' && ACT_TOWN_AREAS.includes(destAreaId)) {
+        const townPos = resolveTownPortalSubTile(destAreaId)
+        landing =
+          findStandableNear(
+            (x, y) => this.isWorldWalkableForPlayer(destAreaId, x, y),
+            townPos.x,
+            townPos.y,
+          ) ?? townPos
+      }
     }
 
     if (prevArea !== destAreaId) {
@@ -14595,6 +17254,15 @@ export class GameInstance {
     if (!gItem || gItem.areaId !== player.areaId) return
 
     if (gItem.code === 'gld') {
+      // 1.13c D2Game.dll @ 0x6FCF6C80 (`ITEMS_PickUpGold`):
+      // caps player STAT_GOLD (14) at `D2Common_GetInventoryGoldLimit(pPlayer)` (`clvl * 10000`,
+      // 0x6FD81940 / ordinal #10049), removes the ground pile, and drops any leftover gold back
+      // onto the ground via `0x6FC32B90` (`ITEMS_DropGoldPile`).
+      const maxInventoryGold = getInventoryGoldLimit(player.level)
+      const itemGold = Math.max(0, Math.trunc(gItem.quantity))
+      const room = Math.max(0, maxInventoryGold - player.gold)
+      const pickedGold = Math.min(itemGold, room)
+      const leftoverGold = itemGold - pickedGold
       this.groundItems.delete(itemId)
       this.broadcastToArea(player.areaId, {
         type: 'UnitRemove',
@@ -14602,14 +17270,19 @@ export class GameInstance {
         id: itemId,
         unitId: itemId,
       })
-      player.gold += gItem.quantity
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitStatUpdate',
-        unitType: 'player',
-        unitId: player.unitId,
-        statId: 14,
-        value: player.gold,
-      })
+      if (pickedGold > 0) {
+        player.gold += pickedGold
+        this.emitToPlayer(player.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: player.unitId,
+          statId: 14,
+          value: player.gold,
+        })
+      }
+      if (leftoverGold > 0) {
+        this.dropPlayerGoldPile(player, leftoverGold)
+      }
       return
     }
 
@@ -14753,6 +17426,33 @@ export class GameInstance {
       container: gItem.location,
       item: this.serverEntryToItemData(gItem),
     })
+
+    // D2Game.dll @ 0x6fd07640 (ACT3Q1_Callback03_ItemPickedUp):
+    // - Picking up 'j34' (0x6fd076ee..0x6fd07741): sets bit 6 (0x0040) on first pickup, plays sound 72 (0x48), and syncs a3q1.
+    // - Picking up 'g34' (0x6fd076b9..0x6fd076d1): syncs a3q1 status byte (3 = qstsa3q43, or 4 if bit 4 set).
+    const pickedCode = gItem.code.toLowerCase().trim()
+    if (
+      (pickedCode === 'j34' || pickedCode === 'g34') &&
+      !hasQuestFlag113c(
+        player.questFlags,
+        'a3q1',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+      )
+    ) {
+      if (
+        pickedCode === 'j34' &&
+        !hasQuestFlag113c(player.questFlags, 'a3q1', QUEST_FLAG_CUSTOM_6_113C)
+      ) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 72,
+        })
+        this.setPlayerQuestFlag(player, 'a3q1', QUEST_FLAG_CUSTOM_6_113C)
+      } else {
+        this.emitQuestFlagSync113c(player, 'a3q1')
+      }
+    }
   }
 
   private findPlayerItemIndex(player: InternalPlayerRecord, itemId: number): number {
@@ -14949,6 +17649,7 @@ export class GameInstance {
       container: 'equipment',
       item: this.serverEntryToItemData(item),
     })
+    this.validatePlayerActiveSkills(player)
   }
 
   private handleItemUnequip(player: InternalPlayerRecord, slot: number): void {
@@ -14979,6 +17680,7 @@ export class GameInstance {
       container: 'inventory',
       item: this.serverEntryToItemData(item),
     })
+    this.validatePlayerActiveSkills(player)
   }
 
   private handleBeltPut(
@@ -15008,13 +17710,25 @@ export class GameInstance {
   private handleBeltUse(player: InternalPlayerRecord, itemId: number): void {
     const idx = this.findPlayerItemIndex(player, itemId)
     if (idx === -1) return
-    const [item] = player.items.splice(idx, 1)
-    if (!item) return
+    const candidate = player.items[idx]
+    if (!candidate) return
 
-    const itemCode = item.code.toLowerCase().trim()
-    // 1.13c consumable quest items: Book of Skill ('ass'), Potion of Life ('xyz'),
-    // and Scroll of Resistance ('tr2').
-    if (itemCode === 'ass' || itemCode === 'xyz' || itemCode === 'tr2') {
+    const itemCode = candidate.code.toLowerCase().trim()
+    // 1.13c consumable quest items (`D2Game.dll` @ `0x6fcf9e73..0x6fcf9f52`):
+    // Book of Skill ('ass'), Potion of Life ('xyz'), and Scroll of Resistance ('tr2').
+    // Preconditions are checked BEFORE splicing the item so rejected uses play sound 19
+    // ('impossible1') and leave the item untouched in inventory/belt.
+    if (itemCode === 'ass') {
+      if (!hasQuestFlag113c(player.questFlags, 'a2q1', QUEST_FLAG_CUSTOM_5_113C)) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      const [item] = player.items.splice(idx, 1)
+      if (!item) return
       this.emitToPlayer(player.unitId, {
         type: 'ItemEvent',
         action: 'remove',
@@ -15024,10 +17738,124 @@ export class GameInstance {
         y: item.y,
         container: toItemContainer(item.location),
       })
-      const questId = itemCode === 'ass' ? 'a2q1' : itemCode === 'xyz' ? 'a3q1' : 'a5q3'
-      if (!this.setPlayerQuestFlag(player, questId, QUEST_FLAG_COMPLETED_113C)) {
-        this.grantQuestCompletionReward113c(player, questId)
+      clearQuestFlag113c(player.questFlags, 'a2q1', QUEST_FLAG_CUSTOM_5_113C)
+      setQuestFlag113c(player.questFlags, 'a2q1', QUEST_FLAG_COMPLETED_113C)
+      player.newSkills += 1
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 5,
+        value: player.newSkills,
+      })
+      this.emitQuestFlagSync113c(player, 'a2q1')
+      return
+    }
+    if (itemCode === 'xyz') {
+      if (!hasQuestFlag113c(player.questFlags, 'a3q1', QUEST_FLAG_CUSTOM_5_113C)) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
       }
+      const [item] = player.items.splice(idx, 1)
+      if (!item) return
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 'remove',
+        itemId: item.unitId,
+        code: item.code,
+        x: item.x,
+        y: item.y,
+        container: toItemContainer(item.location),
+      })
+      clearQuestFlag113c(player.questFlags, 'a3q1', QUEST_FLAG_CUSTOM_5_113C)
+      setQuestFlag113c(player.questFlags, 'a3q1', QUEST_FLAG_COMPLETED_113C)
+      player.maxHpFixed += 20 * FIXED_ONE
+      player.hpFixed += 20 * FIXED_ONE
+      player.maxHp = Math.floor(player.maxHpFixed / FIXED_ONE)
+      player.hp = Math.floor(player.hpFixed / FIXED_ONE)
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 7,
+        value: player.maxHpFixed,
+      })
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 6,
+        value: player.hpFixed,
+      })
+      this.emitQuestFlagSync113c(player, 'a3q1')
+      return
+    }
+    if (itemCode === 'tr2') {
+      if (
+        !hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_CUSTOM_8_113C) ||
+        hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_CUSTOM_7_113C)
+      ) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      const [item] = player.items.splice(idx, 1)
+      if (!item) return
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 'remove',
+        itemId: item.unitId,
+        code: item.code,
+        x: item.x,
+        y: item.y,
+        container: toItemContainer(item.location),
+      })
+      setQuestFlag113c(
+        player.questFlags,
+        'a5q3',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_CUSTOM_7_113C,
+      )
+      const combat = this.playerCombatContext(player)
+      for (const [statId, statName] of [
+        [39, 'fireresist'],
+        [41, 'lightresist'],
+        [43, 'coldresist'],
+        [45, 'poisonresist'],
+      ] as const) {
+        this.emitToPlayer(player.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: player.unitId,
+          statId,
+          value: Math.trunc(combat.statList.getAccruedStat(statName)),
+        })
+      }
+      this.emitQuestFlagSync113c(player, 'a5q3')
+      return
+    }
+
+    const [item] = player.items.splice(idx, 1)
+    if (!item) return
+
+    // 1.13c Token of Absolution ('toa', D2Game.dll 0x6fcf9f55): resets stats and skills identically to Akara Respec.
+    if (itemCode === 'toa') {
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 'remove',
+        itemId: item.unitId,
+        code: item.code,
+        x: item.x,
+        y: item.y,
+        container: toItemContainer(item.location),
+      })
+      this.executePlayerRespec113c(player)
       return
     }
 
@@ -15261,37 +18089,21 @@ export class GameInstance {
       })
     } else if (action === 'add_sockets') {
       if (item.socketed || item.totalSockets > 0 || item.rawItemData?.socketed === true) return false
-      // 1.13c ITEMS_GetMaxSockets: min(base.gemsockets, ItemTypes tier cap,
-      // grid area). Non-socketable bases (rings, boots, potions, stackables) reject
-      // without consuming the Larzuk reward.
+      // 1.13c D2Game.dll 0x6FCE0630..0x6FCE06D4 -> D2Common #11151 (0x6FD74610):
+      // min(base.gemsockets, ItemTypes tier cap for ilvl <= 25 / <= 40 / >= 41).
+      // Non-socketable bases (rings, boots, potions, stackables) reject without
+      // consuming the Larzuk reward.
       const tables = getEmbeddedDropTables()
       const base = tables.getBase(item.code) as
         | (Record<string, unknown> & {
             type?: string
             gemsockets?: number
-            invWidth?: number
-            invHeight?: number
             stackable?: boolean
           })
         | undefined
       if (base?.stackable === true) return false
       const typeDef = base?.type !== undefined ? tables.itemTypes.byCode.get(String(base.type)) : undefined
-      const typeCap =
-        typeDef === undefined
-          ? Number(base?.gemsockets ?? 0)
-          : item.level >= 40
-            ? typeDef.maxSock40
-            : item.level >= 25
-              ? typeDef.maxSock25
-              : typeDef.maxSock1
-      const gridArea =
-        Math.max(1, Number(base?.invWidth ?? item.width)) *
-        Math.max(1, Number(base?.invHeight ?? item.height))
-      const maxSockets = Math.min(
-        Number(base?.gemsockets ?? 0),
-        Number(typeCap ?? 0),
-        gridArea,
-      )
+      const maxSockets = getMaxSockets113c(base, typeDef, item.level)
       if (maxSockets <= 0) return false
       const qualityCode = this.normalizeItemQualityCode113c(
         item.rawItemData?.quality ?? item.quality,
@@ -15300,7 +18112,23 @@ export class GameInstance {
       if (qualityCode <= 3) {
         sockets = maxSockets
       } else if (qualityCode === 4) {
-        sockets = Math.min(maxSockets, this.rng.rand(2) === 0 ? 1 : 2)
+        // 1.13c 0x6FCE06AB..0x6FCE06D0: magic items roll 1..min(maxSockets, 2) using ITEMS_GetSeed(pItem)
+        const rawSeed =
+          item.seed ??
+          item.rawItemData?.guid ??
+          (
+            item.rawItemData as
+              | { readonly dwInitSeed?: number; readonly seed?: number }
+              | undefined
+          )?.dwInitSeed ??
+          (
+            item.rawItemData as
+              | { readonly dwInitSeed?: number; readonly seed?: number }
+              | undefined
+          )?.seed ??
+          item.unitId
+        const itemSeedRng = new D2Rng((Number(rawSeed) >>> 0) || 1)
+        sockets = 1 + itemSeedRng.rand(Math.min(maxSockets, 2))
       } else {
         sockets = Math.min(maxSockets, 1)
       }
@@ -15752,27 +18580,36 @@ export class GameInstance {
     if (item) this.identifyItem(player, item)
   }
 
-  /** 0x4F + 0x4E: send the hire list for a mercenary vendor's act. */
+  /** 0x4F + 0x4E: send the 1.13c hire candidate list for a mercenary vendor's act (`D2Game.dll` `0x6FCDCED0` / `0x6FCDD330`). */
   private handleNpcHireList(player: InternalPlayerRecord, npcId: number): void {
     const npc = this.serviceNpcWithCapability(player, npcId, 'canHire')
     if (npc === undefined) return
     const descriptor = getTownNpcDescriptorByHcIdx(npc.hcIdx)
-    const act = (descriptor?.actIndex ?? 0) + 1
-    const difficulty = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+    const act = ((descriptor?.actIndex ?? 0) + 1) as 1 | 2 | 3 | 5
+    const difficulty = (this.difficulty === 2 ? 3 : this.difficulty === 1 ? 2 : 1) as 1 | 2 | 3
+    const listSeed =
+      ((this.currentMapSeed ^ Math.imul(player.unitId, 0x9e3779b9) ^ Math.imul(act, 0x85ebca6b)) >>>
+        0) ||
+      1
+    const candidates = generateHireCandidates113c(listSeed, player.level, act, difficulty, true)
+    player.mercHireCandidates = candidates
     this.emitToPlayer(player.unitId, { type: 'Merc', kind: 'hireList' })
-    for (const record of HIRELING_RECORDS) {
-      if (record.act !== act) continue
-      if (record.difficulty !== undefined && record.difficulty !== difficulty + 1) continue
+    for (const cand of candidates) {
       this.emitToPlayer(player.unitId, {
         type: 'Merc',
         kind: 'hireList',
-        nameId: record.id,
-        value: record.subTypeId,
+        nameId: cand.nameId,
+        value: cand.seed,
       })
     }
   }
 
-  /** HireMerc/MercHire: deduct Hireling.txt hireCost and assign the mercenary. */
+  /**
+   * HireMerc/MercHire (`0x36`, `D2Game.dll` `0x6FCE1510` + `D2Common.dll` `#10458` @ `0x6FD7CCC0`):
+   * - Candidate level `L = max(2, clvl - 5 + rand(5))`
+   * - Hire cost `max(Gold, trunc(Gold * (100 + 15 * (L - baseRow.level)) / 100))`
+   * - Strictly filters `Hireling.txt` by `version === 100`.
+   */
   private handleNpcHire(
     player: InternalPlayerRecord,
     npcId: number,
@@ -15783,24 +18620,67 @@ export class GameInstance {
     if (npc === undefined || !descriptor?.canHire) return
     const act = ((descriptor?.actIndex ?? 0) + 1) as 1 | 2 | 3 | 5
     const difficulty = (this.difficulty + 1) as 1 | 2 | 3
-    const record = HIRELING_RECORDS.find(
-      (entry) =>
-        (entry.id === mercId || entry.subTypeId === mercId) &&
-        entry.act === act &&
-        (entry.difficulty === undefined || entry.difficulty === difficulty),
-    )
-    if (record === undefined) return
-    const cost = record.hireCost ?? 100
+    const listSeed =
+      ((this.currentMapSeed ^ Math.imul(player.unitId, 0x9e3779b9) ^ Math.imul(act, 0x85ebca6b)) >>>
+        0) ||
+      1
+    const candidates =
+      player.mercHireCandidates &&
+      player.mercHireCandidates.length > 0 &&
+      player.mercHireCandidates[0]?.actIndex === act - 1
+        ? player.mercHireCandidates
+        : generateHireCandidates113c(listSeed, player.level, act, difficulty, true)
+    player.mercHireCandidates = candidates
+
+    const matchedCandidate =
+      candidates.find((c) => c.nameId === mercId || c.mercId === mercId) ??
+      candidates.find((c) => c.subTypeId === mercId || c.record?.id === mercId) ??
+      (mercId >= 0 && mercId < candidates.length ? candidates[mercId] : undefined)
+
+    let chosenSubTypeId: number
+    let hireLevel: number
+    let cost: number
+    let chosenName: string | undefined
+
+    if (matchedCandidate !== undefined) {
+      chosenSubTypeId = matchedCandidate.subTypeId
+      hireLevel = matchedCandidate.level
+      cost = matchedCandidate.cost
+      chosenName = matchedCandidate.name
+    } else {
+      const actDiffRows = HIRELING_RECORDS.filter(
+        (entry) =>
+          entry.version === 100 &&
+          entry.act === act &&
+          entry.difficulty === difficulty &&
+          (entry.id === mercId || entry.subTypeId === mercId),
+      )
+      if (actDiffRows.length === 0) return
+      let baseRow = actDiffRows[0]!
+      for (const row of actDiffRows) {
+        if (row.level < baseRow.level) baseRow = row
+      }
+      const effPlayerLevel = Math.max(1, player.level)
+      hireLevel =
+        candidates[0]?.level ?? Math.max(2, effPlayerLevel + ((listSeed >>> 0) % 5) - 5)
+      cost = computeMercHireCost113c(baseRow.hireCost, hireLevel, baseRow.level)
+      chosenSubTypeId = baseRow.subTypeId
+    }
+
     if (!this.spendGold(player, cost)) return
+    if (matchedCandidate !== undefined) {
+      player.mercHireCandidates = candidates.filter((c) => c.nameId !== matchedCandidate.nameId)
+    }
     this.hireMercenary(player.unitId, {
       act,
-      subType: record.subTypeId,
-      level: player.level,
+      subType: chosenSubTypeId,
+      level: hireLevel,
       difficulty,
+      ...(chosenName !== undefined ? { name: chosenName } : {}),
     })
   }
 
-  /** Resurrect the player's dead mercenary at the NPC. */
+  /** Resurrect the player's dead mercenary at the NPC (`D2Game.dll` `0x6FCE0EA1` + `D2Common.dll` `#11097` @ `0x6FD7CC60`). */
   private handleMercResurrect(player: InternalPlayerRecord, npcId: number): void {
     const npc = this.resolveServiceNpc(player, npcId)
     if (npc === undefined) return
@@ -15811,7 +18691,7 @@ export class GameInstance {
       (entry) => entry.ownerPlayerId === player.unitId,
     )
     if (!merc || merc.alive) return
-    const cost = Math.max(1, merc.level * 100)
+    const cost = computeMercResurrectCost113c(merc.level)
     this.emitToPlayer(player.unitId, {
       type: 'Merc',
       kind: 'stat',
@@ -15900,14 +18780,97 @@ export class GameInstance {
         this.setPlayerQuestFlag(player, 'a1q3', QUEST_FLAG_STARTED_113C)
       }
     }
-    // A3Q1: Alkor exchanges the Jade Figurine for the Golden Bird (+20 Max Life).
+    // A3Q1 (`D2Game.dll` @ `0x6fd08b60..0x6fd08ea0`):
+    // 1. Cain (`hcIdx === 245` in Act 3, or any Cain `hcIdx`):
+    //    - Scroll 0x20f (`0x6fd08bb4..0x6fd08bf4`): holding 'j34' sets bit 2 (`0x0004`, `QUEST_FLAG_STARTED_113C`, `qstsa3q42`).
+    //    - Scroll 0x213 (`0x6fd08bf7..0x6fd08c32`): holding 'g34' sets bit 4 (`0x0010`, `QUEST_FLAG_CUSTOM_4_113C`, `qstsa3q44`).
+    if (
+      npc?.hcIdx === 245 ||
+      npc?.hcIdx === 146 ||
+      npc?.hcIdx === 244 ||
+      npc?.hcIdx === 246 ||
+      npc?.hcIdx === 520
+    ) {
+      if (
+        !hasQuestFlag113c(
+          player.questFlags,
+          'a3q1',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        )
+      ) {
+        const hasJ34 = player.items.some((item) => item.code.toLowerCase().trim() === 'j34')
+        const hasG34 = player.items.some((item) => item.code.toLowerCase().trim() === 'g34')
+        if (
+          hasJ34 &&
+          !hasQuestFlag113c(player.questFlags, 'a3q1', QUEST_FLAG_STARTED_113C)
+        ) {
+          this.setPlayerQuestFlag(player, 'a3q1', QUEST_FLAG_STARTED_113C)
+        }
+        if (
+          hasG34 &&
+          !hasQuestFlag113c(player.questFlags, 'a3q1', QUEST_FLAG_CUSTOM_4_113C)
+        ) {
+          this.setPlayerQuestFlag(player, 'a3q1', QUEST_FLAG_CUSTOM_4_113C)
+        }
+      }
+    }
+    // 2. Meshif (`hcIdx === 264` / `0x108` in Act 3, or `210` in Act 2; `0x6fd08e1e..0x6fd08ea0`, scroll 0x211):
+    //    trades Jade Figurine ('j34') -> Golden Bird ('g34').
+    if (npc?.hcIdx === 264 || npc?.hcIdx === 210) {
+      if (
+        !hasQuestFlag113c(
+          player.questFlags,
+          'a3q1',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        )
+      ) {
+        const figurine = player.items.find(
+          (item) => item.code.toLowerCase().trim() === 'j34',
+        )
+        if (figurine !== undefined) {
+          this.removePlayerQuestItem(player, figurine)
+          if (!this.playerOrGroundHasQuestItem(player, 'g34')) {
+            this.givePlayerInventoryQuestItem(player, 'g34', npc)
+          }
+          this.emitQuestFlagSync113c(player, 'a3q1')
+        }
+      }
+    }
+    // 3. Alkor (`hcIdx === 254` / `0xfe`, `0x6fd08c5a..0x6fd08dc0`):
+    //    - Stage 0x216 (`0x6fd08c69..0x6fd08d12`): ONLY accepts Golden Bird ('g34', never 'j34'),
+    //      removes 'g34', and sets bit 1 (`0x0002`, `QUEST_FLAG_REWARD_PENDING_113C`, `qstsa3q45`).
+    //    - Stage 0x21a (`0x6fd08d13..0x6fd08dc0`): when bit 1 (`0x0002`) is set and bit 0 (`0x0001`) is 0,
+    //      clears bit 1, mints Potion of Life ('xyz'), and sets bit 0 (`0x0001`), bit 13 (`0x2000`),
+    //      and bit 5 (`0x0020`) on word 20 ('a3q1').
     if (npc?.hcIdx === 254) {
-      const figurine = player.items.find(
-        (item) => item.code.toLowerCase().trim() === 'j34',
+      const a3q1Idx = questWordIndex113c('a3q1')
+      let a3q1Bits = a3q1Idx === undefined ? 0 : (player.questFlags[a3q1Idx] ?? 0)
+      const goldenBird = player.items.find(
+        (item) => item.code.toLowerCase().trim() === 'g34',
       )
-      if (figurine !== undefined) {
-        this.removePlayerQuestItem(player, figurine)
-        this.setPlayerQuestFlag(player, 'a3q1', QUEST_FLAG_COMPLETED_113C)
+      if (
+        goldenBird !== undefined &&
+        (a3q1Bits & (QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C)) === 0
+      ) {
+        this.removePlayerQuestItem(player, goldenBird)
+        this.setPlayerQuestFlag(player, 'a3q1', QUEST_FLAG_REWARD_PENDING_113C)
+        a3q1Bits = a3q1Idx === undefined ? 0 : (player.questFlags[a3q1Idx] ?? 0)
+      }
+      if (
+        (a3q1Bits & QUEST_FLAG_COMPLETED_113C) === 0 &&
+        (a3q1Bits & QUEST_FLAG_REWARD_PENDING_113C) !== 0
+      ) {
+        if (a3q1Idx !== undefined) {
+          player.questFlags[a3q1Idx] = a3q1Bits & ~QUEST_FLAG_REWARD_PENDING_113C
+        }
+        if (!this.playerOrGroundHasQuestItem(player, 'xyz')) {
+          this.givePlayerInventoryQuestItem(player, 'xyz', npc)
+        }
+        this.setPlayerQuestFlag(
+          player,
+          'a3q1',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C | QUEST_FLAG_CUSTOM_5_113C,
+        )
       }
     }
     // Quest turn-ins handled by the canonical NPC.
@@ -15933,10 +18896,11 @@ export class GameInstance {
         if (!this.playerOrGroundHasQuestItem(player, 'tr2')) {
           this.givePlayerInventoryQuestItem(player, 'tr2', npc)
         }
+        // D2Game.dll 0x6fc7f76f..0x6fc7f78b: sets bit 0 (0x0001), bit 13 (0x2000), and bit 8 (0x0100).
         this.setPlayerQuestFlag(
           player,
           'a5q3',
-          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C | QUEST_FLAG_CUSTOM_8_113C,
         )
       } else if (
         (bits &
@@ -15954,9 +18918,22 @@ export class GameInstance {
           QUEST_FLAG_STARTED_113C | QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
         )
       }
-    } else if (npc?.hcIdx === 254 || npc?.hcIdx === 515 || npc?.hcIdx === 146) {
+    } else if (
+      npc?.hcIdx === 254 ||
+      npc?.hcIdx === 515 ||
+      npc?.hcIdx === 146 ||
+      npc?.hcIdx === 244 ||
+      npc?.hcIdx === 245 ||
+      npc?.hcIdx === 246 ||
+      npc?.hcIdx === 265 ||
+      npc?.hcIdx === 520
+    ) {
       const turnInQuests =
-        npc.hcIdx === 254 ? ['a3q1', 'a3q4'] : npc.hcIdx === 515 ? ['a5q2'] : ['a3q4']
+        npc.hcIdx === 515
+          ? ['a5q2']
+          : npc.hcIdx === 254
+            ? ['a3q4']
+            : ['a3q4', 'a4q2']
       for (const turnInQuest of turnInQuests) {
         const idx = questWordIndex113c(turnInQuest)
         const bits = idx === undefined ? 0 : (player.questFlags[idx] ?? 0)
@@ -15964,6 +18941,13 @@ export class GameInstance {
           (bits & QUEST_FLAG_REWARD_PENDING_113C) !== 0 &&
           (bits & QUEST_FLAG_COMPLETED_113C) === 0
         ) {
+          if (turnInQuest === 'a3q4') {
+            // D2Game.dll 0x6fd090ef: remove Lam Esen's Tome ('bbb') on turn-in if held.
+            const tome = player.items.find((item) => item.code.toLowerCase().trim() === 'bbb')
+            if (tome !== undefined) {
+              this.removePlayerQuestItem(player, tome)
+            }
+          }
           if (idx !== undefined) {
             player.questFlags[idx] = bits & ~QUEST_FLAG_REWARD_PENDING_113C
           }
@@ -15972,6 +18956,17 @@ export class GameInstance {
             turnInQuest,
             QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
           )
+        } else if (
+          turnInQuest === 'a4q2' &&
+          npc.hcIdx === 246 &&
+          player.areaId === 103 &&
+          this.hellforgeState === 0 &&
+          (bits & (QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C)) === 0 &&
+          !this.playerOrGroundHasQuestItem(player, 'mss')
+        ) {
+          // D2Game.dll 0x6fcdaad3..0x6fcdab13: Act 4 Cain mints Mephisto's Soulstone ('mss') if missing before placing on the forge.
+          this.givePlayerInventoryQuestItem(player, 'mss', npc)
+          this.setPlayerQuestFlag(player, 'a4q2', QUEST_FLAG_STARTED_113C)
         }
       }
     }
@@ -15981,23 +18976,25 @@ export class GameInstance {
     if (canHeal) {
       player.hpFixed = player.maxHpFixed
       player.hp = player.maxHp
-      player.manaFixed = player.maxManaFixed
-      player.mana = player.maxMana
-      player.staminaFixed = player.maxStaminaFixed
-      player.stamina = player.maxStamina
-      // 1.13c healers clear negative states only; buffs/auras/forms persist.
-      for (const stateId of [
-        1, 2, 9, 11, 17, 19, 21, 23, 24, 25, 27, 28, 29, 43, 44, 52, 53, 55, 56, 57, 58, 59, 60,
-        61, 62, 84, 85, 87, 89, 112, 113, 114, 115, 156,
-      ]) {
-        this.clearUnitState(
-          player.states,
-          player.stateTimers,
-          'player',
-          player.unitId,
-          player.areaId,
-          stateId,
-        )
+      // 1.13c D2Game.dll 0x6fcdcbe0: Town healers restore health only;
+      // mana (stat 8) and stamina (stat 10) are NOT restored.
+      // 0x6fcdc920 iterates States.txt with D2Common #10590 (curable == 1),
+      // plus state 2 (poison) and state 1 (freeze).
+      const combatCtx = this.playerCombat.get(player.unitId)
+      for (const stateId of CURABLE_STATE_IDS_113C) {
+        const hasState =
+          player.states.has(stateId) || Boolean(combatCtx?.stateBus.hasState(stateId))
+        if (hasState) {
+          this.clearUnitState(
+            player.states,
+            player.stateTimers,
+            'player',
+            player.unitId,
+            player.areaId,
+            stateId,
+          )
+          combatCtx?.stateBus.removeState(stateId)
+        }
       }
       this.emitToPlayer(player.unitId, {
         type: 'UnitStatUpdate',
@@ -16006,21 +19003,8 @@ export class GameInstance {
         statId: 6,
         value: player.hpFixed,
       })
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitStatUpdate',
-        unitType: 'player',
-        unitId: player.unitId,
-        statId: 8,
-        value: player.manaFixed,
-      })
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitStatUpdate',
-        unitType: 'player',
-        unitId: player.unitId,
-        statId: 10,
-        value: player.staminaFixed,
-      })
       this.emitPlayerVitals(player)
+      // sub_6FCB6AF0 applies 0x6fcdcbe0 to player's mercenary and pets as well
       for (const merc of this.mercenaries.values()) {
         if (merc.ownerPlayerId === player.unitId && merc.alive) {
           merc.hp = merc.maxHp
@@ -16035,6 +19019,11 @@ export class GameInstance {
             const petUnitId = this.petUnitIds.get(pet.uid)
             if (petUnitId !== undefined) {
               this.broadcastAllyHp(player.areaId, petUnitId, pet.hp)
+            }
+          }
+          for (const stateId of CURABLE_STATE_IDS_113C) {
+            if (pet.stateBus.hasState(stateId)) {
+              pet.stateBus.removeState(stateId)
             }
           }
         }
@@ -16310,15 +19299,46 @@ export class GameInstance {
     const gambleSource = isGamble ? this.gambleSourceItems.get(itemId) : undefined
     // #1337/#1354: no fallback item — a stale/unknown item id or another player's gamble item rejects the transaction.
     if (isGamble ? !gambleSource || (pool.length > 0 && !vItem) : !vItem) return
-    const code = vItem?.code ?? gambleSource?.base.id ?? 'cap'
-    const info = lookupBaseInfo(code)
+    const code = vItem?.code ?? gambleSource?.base.id
+    if (!code) return
+    const info = getBaseSizeTable().get(code.trim())
+    if (!info) return
     void explicitCost
     // Server-owned price; the client's 0x32 `cost` field is informational only.
-    const cost = vItem
-      ? vItem.buyback === true || vItem.rawItemData === undefined
-        ? vItem.cost
-        : this.serverItemPrice113c(player, npc.hcIdx, vItem, isGamble ? 2 : 0)
-      : info.cost
+    let cost: number
+    if (vItem) {
+      if (vItem.buyback === true) {
+        cost = vItem.cost
+      } else {
+        try {
+          cost = this.serverItemPrice113c(player, npc.hcIdx, vItem, isGamble ? 2 : 0)
+        } catch {
+          return
+        }
+      }
+    } else if (isGamble && gambleSource) {
+      try {
+        cost = computeTransactionCost113c(
+          {
+            code,
+            itemFormat: 1,
+            quality: 2,
+            identified: false,
+            ethereal: false,
+            starterItem: false,
+            isEar: false,
+            stats: [],
+            socketedChildCodes: [],
+          },
+          this.transactionCostContext(player, npc.hcIdx),
+          2,
+        )
+      } catch {
+        return
+      }
+    } else {
+      return
+    }
 
     // 1.13c placement: potions/tomes are independent items; scrolls merge into
     // an unfilled tome; keys/arrows/bolts merge up to their MaxStack.
@@ -16466,6 +19486,7 @@ export class GameInstance {
                 cLvl: player.level,
                 tables: getEmbeddedDropTables(),
                 rng: new D2Rng(this.rng.rand(0x7fffffff) || 1),
+                spawnedUniqueIds: this.spawnedUniqueIds,
               }),
             ),
             {
@@ -16620,18 +19641,10 @@ export class GameInstance {
     const sold = player.items[idx]
     if (!sold) return
     const npc = this.monsters.get(npcId)
-    const isSyntheticSellFixture =
-      npc === undefined &&
-      sold.rawItemData === undefined &&
-      player.activeNpcId === undefined &&
-      player.activeVendorMode === null &&
-      player.vendorPools.size === 0
-    if (!isSyntheticSellFixture) {
-      if (!npc || !npc.isNpc || npc.areaId !== player.areaId) return
-      if (player.activeNpcId !== npcId) return
-      if (!this.playerInNpcRange(player, npc)) return
-      if (player.activeVendorMode !== 'trade') return
-    }
+    if (!npc || !npc.isNpc || npc.areaId !== player.areaId) return
+    if (player.activeNpcId !== npcId) return
+    if (!this.playerInNpcRange(player, npc)) return
+    if (player.activeVendorMode !== 'trade') return
     // 1.13c vendors only buy items carried in the inventory (not equipped, belt,
     // cursor, stash, cube or sockets), and never quest items or player ears
     // (`D2Common.#10705` `0x6FD741D0`).
@@ -16660,9 +19673,12 @@ export class GameInstance {
     }
 
     // D2Common #10107 sell price (client `priceItem113c` type 1).
-    const sellValue = npc
-      ? this.serverItemPrice113c(player, npc.hcIdx, sold, 1)
-      : Math.max(1, Math.floor(sold.cost / 4))
+    let sellValue: number
+    try {
+      sellValue = this.serverItemPrice113c(player, npc.hcIdx, sold, 1)
+    } catch {
+      return
+    }
     const maxInventoryGold = getInventoryGoldLimit(player.level)
     const maxBankGold = getStashGoldLimit(player.level)
     const room = Math.max(0, maxInventoryGold - player.gold)
@@ -16950,6 +19966,27 @@ export class GameInstance {
     }
     if ((q41 & 2) === 0) return false
 
+    this.executePlayerRespec113c(player)
+
+    // 3. Consume Quest 41 (0x29) respec token (D2Game.dll 0x6fc83bb0: set bit 0 = 0x0001, clear bit 1 = 0x0002).
+    player.questFlags[41] = (q41 & ~0x0002) | 0x2001
+    this.emitQuestLog(player)
+    this.emitToPlayer(player.unitId, {
+      type: 'QuestState',
+      kind: 'update',
+      source: 0x28,
+      quests: new Uint16Array(player.questFlags),
+      flags: Array.from(player.questFlags),
+    })
+    return true
+  }
+
+  /**
+   * 1.13c shared player skill & stat reset (`D2Game.dll` `0x6fcc1280` `SKILLS_RespecPlayerSkills` +
+   * `0x6fd0af80` `PLR_RespecPlayerStats`), invoked by both Akara Respec (`0x6fce0575`) and
+   * Token of Absolution (`toa`, `0x6fcf9f55`).
+   */
+  private executePlayerRespec113c(player: InternalPlayerRecord): void {
     // 1. Skill Reset (D2Game.dll 0x6fcc1280): refund all hard skill points to stat 5 (newskills) and zero hard levels.
     const learnedSkillIds = [...player.skills.keys()]
     for (const skillId of learnedSkillIds) {
@@ -16968,7 +20005,18 @@ export class GameInstance {
     if (player.d2sTemplate?.skills) {
       player.d2sTemplate.skills.fill(0)
     }
-    if (player.leftSkill !== 0) {
+    if (player.d2sTemplate?.hotkeys) {
+      const mutableHotkeys = player.d2sTemplate.hotkeys as number[]
+      for (let slot = 0; slot < Math.min(16, mutableHotkeys.length); slot++) {
+        const raw = mutableHotkeys[slot] ?? 0xffff
+        const skillId = raw & 0x7fff
+        const hand: 'left' | 'right' = (raw & 0x8000) !== 0 ? 'left' : 'right'
+        if (skillId !== 0xffff && skillId !== 0x7fff && !this.isPlayerSkillSelectable(player, skillId, hand)) {
+          mutableHotkeys[slot] = 0xffff
+        }
+      }
+    }
+    if (player.leftSkill !== 0 && !this.isPlayerSkillSelectable(player, player.leftSkill, 'left')) {
       player.leftSkill = 0
       this.emitToPlayer(player.unitId, {
         type: 'ActiveSkill',
@@ -16978,7 +20026,7 @@ export class GameInstance {
         itemId: 0xffffffff,
       })
     }
-    if (player.rightSkill !== 0) {
+    if (player.rightSkill !== 0 && !this.isPlayerSkillSelectable(player, player.rightSkill, 'right')) {
       player.rightSkill = 0
       this.emitToPlayer(player.unitId, {
         type: 'ActiveSkill',
@@ -17065,73 +20113,169 @@ export class GameInstance {
       })
     }
     this.emitPlayerVitals(player)
-
-    // 3. Consume Quest 41 (0x29) respec token (D2Game.dll 0x6fc83bb0: set bit 0 = 0x0001, clear bit 1 = 0x0002).
-    player.questFlags[41] = (q41 & ~0x0002) | 0x2001
-    this.emitQuestLog(player)
-    this.emitToPlayer(player.unitId, {
-      type: 'QuestState',
-      kind: 'update',
-      source: 0x28,
-      quests: new Uint16Array(player.questFlags),
-      flags: Array.from(player.questFlags),
-    })
-    return true
   }
 
+  /**
+   * 1.13c C2S `0x5E` Party Button dispatcher (`D2Game.dll` `0x6FD10100` -> `0x6FD1A3B0`):
+   * - `0x06` (`'invite'`, `0x6FD10870`): send party invitation (`player -> target`), emit `S2C 0x8B`
+   *   (`relation: 4` to inviter, `relation: 2` to invitee) without changing `partyId`.
+   * - `0x07` (`'cancel'`, `0x6FD10900`): cancel pending invitation (`player -> target`, `state === 4`),
+   *   emit `S2C 0x8B` (`relation: 0` or `1`) and never remove `player` from their existing party.
+   * - `0x08` (`'accept'` / `'join'`, `0x6FD10D50`): accept pending invitation (`target -> player`),
+   *   join `target`'s party (or allocate a new party ID), broadcast `S2C 0x8D` (`AssignPlayerToParty`),
+   *   and emit `S2C 0x8B` (`relation: 1`) between party members.
+   * - `0x09` (`'leave'`, `0x6FD110F0` -> `0x6FCBC840` -> `0x6FCBC930`): leave current party (`0xFFFF`),
+   *   disband the party if `<= 1` member remains, and broadcast `S2C 0x8D` (`0xFFFF`) + `S2C 0x8B` (`relation: 0`).
+   */
   private handlePartyCommand(
     player: InternalPlayerRecord,
     action: number | string,
     targetPlayerId: number,
   ): void {
-    const target = this.players.get(targetPlayerId)
-    if (!target) return
-    if (
-      action === 0x06 ||
-      action === 0x08 ||
-      action === 'invite' ||
-      action === 'accept' ||
-      action === 'join'
-    ) {
-      const partyId =
-        player.partyId !== 0xffff
-          ? player.partyId
-          : target.partyId !== 0xffff
-            ? target.partyId
-            : Math.min(player.unitId, target.unitId)
-      player.partyId = partyId
-      target.partyId = partyId
-      for (const p of this.players.values()) {
-        this.emitToPlayer(p.unitId, {
+    if (action === 0x09 || action === 'leave') {
+      if (player.partyId === 0xffff) return
+      const formerPartyMembers = Array.from(this.players.values()).filter(
+        (p) => p.partyId === player.partyId && p.unitId !== player.unitId,
+      )
+      const leaveEvents = this.partyManager.leaveParty(player.unitId)
+      for (const ev of leaveEvents) {
+        for (const p of this.players.values()) {
+          this.emitToPlayer(p.unitId, ev)
+        }
+      }
+      for (const former of formerPartyMembers) {
+        this.emitToPlayer(player.unitId, {
           type: 'Party',
-          kind: 'roster',
-          action: 'update',
-          playerId: player.unitId,
-          partyId,
+          kind: 'relation',
+          source: 0x8b,
+          unitId: former.unitId,
+          playerId: former.unitId,
+          relation: 0,
         })
-        this.emitToPlayer(p.unitId, {
+        this.emitToPlayer(former.unitId, {
           type: 'Party',
-          kind: 'roster',
-          action: 'update',
-          playerId: target.unitId,
-          partyId,
+          kind: 'relation',
+          source: 0x8b,
+          unitId: player.unitId,
+          playerId: player.unitId,
+          relation: 0,
         })
       }
-    } else if (
-      action === 0x07 ||
-      action === 0x09 ||
-      action === 'leave' ||
-      action === 'cancel'
-    ) {
-      player.partyId = 0xffff
+      return
+    }
+
+    const target = this.players.get(targetPlayerId)
+    if (!target || target.unitId === player.unitId) return
+
+    if (action === 0x06 || action === 'invite') {
+      if (player.partyId !== 0xffff && player.partyId === target.partyId) return
+      const events = this.partyManager.invite(player.unitId, target.unitId)
+      if (events.length === 0) return
+      this.emitToPlayer(player.unitId, {
+        type: 'Party',
+        kind: 'relation',
+        source: 0x8b,
+        unitId: target.unitId,
+        playerId: target.unitId,
+        relation: 4,
+      })
+      this.emitToPlayer(target.unitId, {
+        type: 'Party',
+        kind: 'relation',
+        source: 0x8b,
+        unitId: player.unitId,
+        playerId: player.unitId,
+        relation: 2,
+      })
+    } else if (action === 0x07 || action === 'cancel') {
+      const events = this.partyManager.cancelInvite(player.unitId, target.unitId)
+      if (events.length === 0) return
+      this.emitToPlayer(player.unitId, {
+        type: 'Party',
+        kind: 'relation',
+        source: 0x8b,
+        unitId: target.unitId,
+        playerId: target.unitId,
+        relation: target.partyId !== 0xffff ? 1 : 0,
+      })
+      this.emitToPlayer(target.unitId, {
+        type: 'Party',
+        kind: 'relation',
+        source: 0x8b,
+        unitId: player.unitId,
+        playerId: player.unitId,
+        relation: player.partyId !== 0xffff ? 1 : 0,
+      })
+    } else if (action === 0x08 || action === 'accept' || action === 'join') {
+      if (!this.partyManager.hasPendingInvite(target.unitId, player.unitId)) return
+      const rosterEvents = this.partyManager.accept(player.unitId, target.unitId)
+      if (rosterEvents.length === 0) return
+      for (const ev of rosterEvents) {
+        for (const p of this.players.values()) {
+          this.emitToPlayer(p.unitId, ev)
+        }
+      }
+      for (const member of this.players.values()) {
+        if (member.partyId === player.partyId && member.unitId !== player.unitId) {
+          this.emitToPlayer(player.unitId, {
+            type: 'Party',
+            kind: 'relation',
+            source: 0x8b,
+            unitId: member.unitId,
+            playerId: member.unitId,
+            relation: 1,
+          })
+          this.emitToPlayer(member.unitId, {
+            type: 'Party',
+            kind: 'relation',
+            source: 0x8b,
+            unitId: player.unitId,
+            playerId: player.unitId,
+            relation: 1,
+          })
+        }
+      }
+    }
+  }
+
+  /**
+   * 1.13c C2S `0x5D` Player Relationship (`D2Game.dll` `0x6FD10AC6` dispatch table `0x6FD1A3B0`):
+   * Button 1 (`0x6FD10F40`): Squelch / Mute toggle (bit 1 `0x01`). Suppresses chat from target.
+   * Button 2 (`0x6FD10EE0`): Allow Loot / Corpse Loot permit (bit 2 `0x02`). Permits looting corpse items.
+   * Button 3 (`0x6FD10E80`): Hostile (bit 4 `0x04`).
+   * Button 4 (`0x6FD11130`): Hostility toggle (bit 8 `0x08`). Gated by `policy.allowPvpHostile`.
+   * Requires both `player.level >= 9` and `target.level >= 9` per `0x6fd11153..0x6fd11177`.
+   * When hostile is enabled, leaves shared party (`0x6FCBC840`) and broadcasts `S2C 0x8C`.
+   */
+  private handleHostileCommand(
+    player: InternalPlayerRecord,
+    targetPlayerId: number,
+    hostile: boolean,
+    button?: number,
+  ): void {
+    const target = this.players.get(targetPlayerId)
+    if (!target || target.unitId === player.unitId) return
+
+    let events: ServerEvent[] = []
+    if (button === 1) {
+      // Squelch / Mute toggle (bit 1)
+      events = this.partyManager.setMuted(player.unitId, target.unitId, hostile)
+    } else if (button === 2) {
+      // Allow Loot permit toggle (bit 2)
+      events = this.partyManager.setLootPermission(player.unitId, target.unitId, hostile)
+    } else {
+      // Button 3 or 4: Hostile declaration (bit 4 or 8)
+      // 1. Policy check: allowPvpHostile
+      if (!this.policy.allowPvpHostile) return
+      // 2. 1.13c Level check: D2Game.dll 0x6fd11153..0x6fd11177 requires both players to be at least level 9
+      if (player.level < 9 || target.level < 9) return
+
+      events = this.partyManager.setHostile(player.unitId, target.unitId, hostile, button ?? 4)
+    }
+
+    for (const ev of events) {
       for (const p of this.players.values()) {
-        this.emitToPlayer(p.unitId, {
-          type: 'Party',
-          kind: 'roster',
-          action: 'update',
-          playerId: player.unitId,
-          partyId: 0xffff,
-        })
+        this.emitToPlayer(p.unitId, ev)
       }
     }
   }
@@ -17144,7 +20288,9 @@ export class GameInstance {
     const trimmed = text.trim()
     if (/^\/?players\b/i.test(trimmed)) {
       if (this.policy.allowPlayersXCommand) {
-        const match = /^\/?players(?:\s+(?:set\s+)?|\s*:\s*)(-?\d+)/i.exec(trimmed)
+        // The 1.13c client sends `/players N` as the chat line "players set to N" (D2Client 0x6fb20aa2).
+        const match =
+          /^players set to (-?\d+)$/i.exec(trimmed) ?? /^\/?players(?:\s+(?:set\s+)?|\s*:\s*)(-?\d+)/i.exec(trimmed)
         if (match) {
           const val = Number(match[1])
           this.setPlayersX(val)
@@ -17173,11 +20319,17 @@ export class GameInstance {
           p.name.toLowerCase() === whisperTo.toLowerCase() ||
           p.unitId === player.unitId
         ) {
+          if (p.unitId !== player.unitId && this.partyManager.isMuted(p.unitId, player.unitId)) {
+            continue
+          }
           this.emitToPlayer(p.unitId, ev)
         }
       }
     } else {
       for (const p of this.players.values()) {
+        if (p.unitId !== player.unitId && this.partyManager.isMuted(p.unitId, player.unitId)) {
+          continue
+        }
         this.emitToPlayer(p.unitId, ev)
       }
     }
@@ -17331,10 +20483,7 @@ export class GameInstance {
       maxDmg: m.maxDmg,
       ar: m.ar,
       ac: m.ac,
-      experience:
-        m.isNpc || m.noRatio
-          ? m.baseXp
-          : Math.max(0, Math.floor((m.baseXp * (this.playersX + 1)) / 2)),
+      experience: m.experience,
       mode: m.mode,
       dead: m.dead,
       alive: !m.dead,
@@ -17362,6 +20511,7 @@ export class GameInstance {
       shattered: m.shattered,
       corpseSuppressed: m.shattered,
       revivedByShaman: m.revivedByShaman,
+      monsterPlayerCount: m.monsterPlayerCount,
     }
   }
 
@@ -17528,6 +20678,26 @@ export class GameInstance {
         durationFrames: dur,
         currentFrame: this.currentFrame,
       })
+    } else if (
+      stateId === 9 ||
+      stateId === 19 ||
+      stateId === 28 ||
+      stateId === 55 ||
+      stateId === 58 ||
+      stateId === 60 ||
+      stateId === 61
+    ) {
+      const combatCtx = this.monsterCombatContext(m)
+      if (!combatCtx.stateBus.hasState(stateId)) {
+        combatCtx.stateBus.applyState({
+          stateNameOrId: stateId,
+          sourceUnitId: extra?.sourcePlayerId !== undefined ? `player_${extra.sourcePlayerId}` : 'self',
+          sourceSkillId: 0,
+          slvl: 1,
+          durationFrames: dur,
+          currentFrame: this.currentFrame,
+        })
+      }
     }
     this.applyUnitState(
       m.states,
@@ -17593,7 +20763,7 @@ export class GameInstance {
     }
 
     const act: 1 | 2 | 3 | 5 = spec.act ?? 2
-    const level = Math.max(1, spec.level ?? owner?.level ?? 1)
+    const level = Math.max(1, Math.min(MAX_MERCENARY_LEVEL_113C, Math.floor(spec.level ?? owner?.level ?? 1)))
     const difficulty: 1 | 2 | 3 =
       spec.difficulty ?? ((this.difficulty + 1) as 1 | 2 | 3)
     const defaultSubType =
@@ -17624,26 +20794,33 @@ export class GameInstance {
     const stats =
       resolveHirelingStatsAtLevel(subType, act, difficulty, level, true) ??
       resolveHirelingStatsAtLevel(defaultSubType, act, difficulty, level, true)
+    if (!stats) {
+      throw new Error(
+        `hireMercenary: missing Hireling.txt record for act=${act}, difficulty=${difficulty}, subType=${subType}`,
+      )
+    }
 
     const unitId = this.allocateUnitId()
-    const maxHp = Math.max(1, spec.maxHp ?? spec.hp ?? stats?.hp ?? 120)
+    const maxHp = Math.max(1, spec.maxHp ?? spec.hp ?? stats.hp)
     const hp = Math.max(1, Math.min(maxHp, spec.hp ?? maxHp))
-    const damage = stats
-      ? Math.max(1, Math.floor((stats.minDmg + stats.maxDmg) / 2))
-      : Math.max(8, level * 3)
-    const auraSkill = stats?.skills.find((s) =>
-      /Prayer|Blessed Aim|Defiance|Thorns|Holy Freeze|Might/i.test(s.skillName),
+    const damage = this.rng.range(stats.minDmg, Math.max(stats.minDmg, stats.maxDmg))
+    const auraSkill = stats.skills.find(
+      (s) => s.mode === 1 && s.effectiveLevel > 0,
     )
-    const activeAura =
-      spec.activeAura ??
-      (act === 2 ? (auraSkill?.skillName ?? 'Might') : undefined)
+    const activeAura = spec.activeAura ?? auraSkill?.skillName
     const areaId = owner?.areaId ?? this.defaultAreaId ?? 1
     const x = spec.x ?? (owner ? owner.x + 1 : 128)
     const y = spec.y ?? (owner ? owner.y + 1 : 128)
-    const name = spec.name ?? stats?.record.hireling ?? `Mercenary_${unitId}`
-    const classId = stats?.classId ?? (act === 1 ? 271 : act === 2 ? 338 : act === 3 ? 359 : 561)
+    const name = spec.name ?? stats.record.hireling ?? `Mercenary_${unitId}`
+    const classId = stats.classId
 
     const isDead = spec.dead === true
+    const expPerLvl = stats?.record.expPerLvl ?? 110
+    const minLevelExp = hirelingExpThreshold(level, expPerLvl)
+    const initialExp =
+      spec.experience !== undefined && spec.experience >= 0
+        ? Math.max(Math.floor(spec.experience), minLevelExp)
+        : minLevelExp
     const record: InternalMercenaryRecord = {
       unitId,
       ownerPlayerId,
@@ -17659,16 +20836,29 @@ export class GameInstance {
       hp: isDead ? 0 : hp,
       maxHp,
       damage,
-      defense: stats?.defense ?? 0,
-      resist: stats?.resist ?? 0,
-      reach: act === 1 || act === 3 ? 14 : 2.8,
-      aggroRadius: 30,
-      speed: 30,
+      ar: stats.ar,
+      defense: stats.defense,
+      resist: stats.resist,
+      reach:
+        act === 1
+          ? HIREABLE_AI_113C.ACT1_RANGED_REACH_SUBTILES
+          : act === 3
+            ? HIREABLE_AI_113C.ACT3_RANGED_REACH_SUBTILES
+            : act === 2
+              ? HIREABLE_AI_113C.ACT2_MELEE_REACH_SUBTILES
+              : HIREABLE_AI_113C.ACT5_MELEE_REACH_SUBTILES,
+      aggroRadius: HIREABLE_AI_113C.AGGRO_SUBTILES,
+      speed:
+        act === 5
+          ? HIREABLE_AI_113C.ACT5_VELOCITY
+          : HIREABLE_AI_113C.ACT123_VELOCITY,
       cooldown: 0,
-      cooldownTicks: 8,
+      cooldownTicks: HIREABLE_AI_113C.AI_DELAY_FRAMES,
       activeAura,
       state: isDead ? 'dead' : 'idle',
       alive: !isDead,
+      experience: initialExp,
+      expPerLvl,
       equipment: [],
     }
     this.mercenaries.set(unitId, record)
@@ -17740,6 +20930,8 @@ export class GameInstance {
           activeAura: m.activeAura,
           state: m.state,
           alive: m.alive,
+          experience: m.experience,
+          expPerLvl: m.expPerLvl,
         }
       }
     }
@@ -17769,6 +20961,8 @@ export class GameInstance {
         activeAura: m.activeAura,
         state: m.state,
         alive: m.alive,
+        experience: m.experience,
+        expPerLvl: m.expPerLvl,
       }
     }
     return this.getMercenaryForOwner(unitIdOrOwnerId)
@@ -17855,7 +21049,7 @@ export class GameInstance {
       this.syncMercenaryOwnerAura(owner, merc.activeAura)
 
       const ownerDist = Math.hypot(owner.x - merc.x, owner.y - merc.y)
-      if (ownerDist > 35) {
+      if (ownerDist > HIREABLE_AI_113C.TELEPORT_SUBTILES) {
         merc.x = owner.x
         merc.y = owner.y
         merc.state = 'idle'
@@ -17897,16 +21091,29 @@ export class GameInstance {
           merc.state = 'attack'
           if (merc.cooldown <= 0) {
             merc.cooldown = merc.cooldownTicks
-            this.applyDamageToMonster(owner, bestTarget, merc.damage, 0, undefined, 'merc')
+            const stats = resolveHirelingStatsAtLevel(
+              merc.subType,
+              merc.act,
+              merc.difficulty,
+              merc.level,
+              true,
+            )
+            const rolledDamage = stats
+              ? this.rng.range(stats.minDmg, Math.max(stats.minDmg, stats.maxDmg))
+              : merc.damage
+            this.applyDamageToMonster(owner, bestTarget, rolledDamage, 0, undefined, merc)
           }
         } else if (this.currentFrame % 2 === 0) {
           merc.state = 'chase'
           const dx = bestTarget.x - merc.x
           const dy = bestTarget.y - merc.y
+          const runVel =
+            merc.act === 5 ? HIREABLE_AI_113C.ACT5_RUN : HIREABLE_AI_113C.ACT123_RUN
+          const stepSubtiles = (runVel * 2) / 25
           const nextX =
-            Math.round((merc.x + (dx / bestDist) * 1.4) * 100) / 100
+            Math.round((merc.x + (dx / bestDist) * stepSubtiles) * 100) / 100
           const nextY =
-            Math.round((merc.y + (dy / bestDist) * 1.4) * 100) / 100
+            Math.round((merc.y + (dy / bestDist) * stepSubtiles) * 100) / 100
           if (
             this.isMonsterStepWalkable(
               merc.areaId,
@@ -17932,14 +21139,24 @@ export class GameInstance {
             })
           }
         }
-      } else if (ownerDist > 4 && this.currentFrame % 2 === 0) {
+      } else if (
+        ownerDist > HIREABLE_AI_113C.FOLLOW_WALK_SUBTILES &&
+        this.currentFrame % 2 === 0
+      ) {
         merc.state = 'follow'
         const dx = owner.x - merc.x
         const dy = owner.y - merc.y
+        const moveVel =
+          ownerDist > HIREABLE_AI_113C.LEASH_RUN_SUBTILES
+            ? merc.act === 5
+              ? HIREABLE_AI_113C.ACT5_RUN
+              : HIREABLE_AI_113C.ACT123_RUN
+            : merc.speed
+        const stepSubtiles = (moveVel * 2) / 25
         const nextX =
-          Math.round((merc.x + (dx / ownerDist) * 1.4) * 100) / 100
+          Math.round((merc.x + (dx / ownerDist) * stepSubtiles) * 100) / 100
         const nextY =
-          Math.round((merc.y + (dy / ownerDist) * 1.4) * 100) / 100
+          Math.round((merc.y + (dy / ownerDist) * stepSubtiles) * 100) / 100
         if (
           this.isMonsterStepWalkable(
             merc.areaId,
@@ -17982,10 +21199,18 @@ export class GameInstance {
   summonPet(ownerPlayerId: number, spec: SummonPetSpec): CreatePetOutcome {
     const owner = this.players.get(ownerPlayerId)
     const mgr = this.getSummonManager(ownerPlayerId)
-    const statList = new UnitStatList()
+    const statList = new UnitStatList(this.registry)
     statList.setBaseStat('level', owner?.level ?? 1)
+    statList.setBaseStat('strength', owner?.strength ?? 0)
+    statList.setBaseStat('dexterity', owner?.dexterity ?? 0)
+    statList.setBaseStat('vitality', owner?.vitality ?? 0)
+    statList.setBaseStat('energy', owner?.energy ?? 0)
+    statList.setBaseStat('tohit', owner ? this.computePlayerBaseToHit113c(owner) : 0)
+    statList.setBaseStat('armorclass', owner ? this.computePlayerDefense(owner) : 0)
     statList.setBaseStat('maxhp', owner?.maxHpFixed ?? 100 * FIXED_ONE)
     statList.setHp256(owner?.hpFixed ?? 100 * FIXED_ONE)
+    statList.setBaseStat('maxmana', owner?.maxManaFixed ?? 0)
+    statList.setMana256(owner?.manaFixed ?? 0)
     if (owner) {
       for (const [skId, lvl] of owner.skills.entries()) {
         statList.setBaseSkillLevel(skId, lvl)
@@ -18279,12 +21504,8 @@ export class GameInstance {
       const pets = mgr.getActivePets()
       for (const pet of pets) {
         if (pet.hp <= 0 || pet.alive === false) continue
-        const isStationary =
-          Boolean(pet.isStationary) ||
-          pet.petType === 'assassintrap' ||
-          pet.petType === 'hydra' ||
-          pet.petType === 'totem' ||
-          pet.petType === 'vine'
+        const aiProfile = resolvePetAiProfile113c(pet, pets.length)
+        const isStationary = aiProfile.isStationary
         const isFlyingPet = pet.petType === 'raven'
         const petUnitId =
           this.petUnitIds.get(pet.uid) ??
@@ -18297,7 +21518,7 @@ export class GameInstance {
         const ownerDist = Math.hypot(owner.x - pet.x, owner.y - pet.y)
         if (
           !isStationary &&
-          (ownerDist > 35 ||
+          ((aiProfile.teleportSubtiles > 0 && ownerDist > aiProfile.teleportSubtiles) ||
             (petMeta.areaId !== undefined && petMeta.areaId !== owner.areaId))
         ) {
           pet.x = owner.x
@@ -18321,9 +21542,10 @@ export class GameInstance {
         petMeta.areaId = owner.areaId
 
         let bestTarget: InternalMonsterRecord | undefined
-        let bestDist = 25
+        let bestDist = aiProfile.aggroSubtiles
         for (const m of this.monsters.values()) {
           if (
+            aiProfile.aggroSubtiles <= 0 ||
             m.dead ||
             m.isNpc ||
             !m.isKillable ||
@@ -18340,7 +21562,10 @@ export class GameInstance {
         }
 
         if (bestTarget) {
-          if (bestDist <= 2.5 || (isStationary && bestDist <= 18)) {
+          if (
+            (aiProfile.canMeleeAttack && bestDist <= aiProfile.meleeReachSubtiles) ||
+            (isStationary && bestDist <= aiProfile.aggroSubtiles)
+          ) {
             if (this.currentFrame % 8 === 0) {
               const dmg = Math.max(
                 2,
@@ -18351,15 +21576,20 @@ export class GameInstance {
                 bestTarget,
                 dmg,
                 pet.sourceSkillId,
+                undefined,
+                pet,
               )
             }
-          } else if (!isStationary && this.currentFrame % 2 === 0) {
+          } else if (aiProfile.canMeleeAttack && !isStationary && this.currentFrame % 2 === 0) {
             const dx = bestTarget.x - pet.x
             const dy = bestTarget.y - pet.y
+            const chaseVel =
+              aiProfile.runVelocity > 0 ? aiProfile.runVelocity : aiProfile.velocity
+            const stepSubtiles = (chaseVel * 2) / 25
             const nextX =
-              Math.round((pet.x + (dx / bestDist) * 1.3) * 100) / 100
+              Math.round((pet.x + (dx / bestDist) * stepSubtiles) * 100) / 100
             const nextY =
-              Math.round((pet.y + (dy / bestDist) * 1.3) * 100) / 100
+              Math.round((pet.y + (dy / bestDist) * stepSubtiles) * 100) / 100
             if (
               this.isMonsterStepWalkable(
                 owner.areaId,
@@ -18387,13 +21617,22 @@ export class GameInstance {
               }
             }
           }
-        } else if (!isStationary && ownerDist > 4) {
+        } else if (
+          !isStationary &&
+          aiProfile.followWalkSubtiles > 0 &&
+          ownerDist > aiProfile.followWalkSubtiles
+        ) {
           const dx = owner.x - pet.x
           const dy = owner.y - pet.y
+          const moveVel =
+            ownerDist > aiProfile.leashRunSubtiles
+              ? aiProfile.runVelocity
+              : aiProfile.velocity
+          const stepSubtiles = moveVel / 25
           const nextX =
-            Math.round((pet.x + (dx / ownerDist) * 0.85) * 100) / 100
+            Math.round((pet.x + (dx / ownerDist) * stepSubtiles) * 100) / 100
           const nextY =
-            Math.round((pet.y + (dy / ownerDist) * 0.85) * 100) / 100
+            Math.round((pet.y + (dy / ownerDist) * stepSubtiles) * 100) / 100
           if (
             this.isMonsterStepWalkable(
               owner.areaId,
@@ -18592,7 +21831,8 @@ export class GameInstance {
           typeId: activeMerc.subType,
           experience: Math.max(
             template?.merc?.experience ?? 0,
-            experienceForLevel113c(activeMerc.level),
+            activeMerc.experience,
+            hirelingExpThreshold(activeMerc.level, activeMerc.expPerLvl),
           ),
         }
       : template?.merc

@@ -500,7 +500,7 @@ describe('Diablo II v1.13c Authoritative Monster, Boss, Mercenary & Pet AI Arche
   })
 
   describe('F10 & F11: Mercenary 25Hz AI & SummonManager Pet AI', () => {
-    it('executes Act 1/2/3/5 Mercenary 25Hz AI: owner leash teleport (> 480 px), aura activation, combat, and follow', () => {
+    it('executes Act 1/2/3/5 Mercenary 25Hz AI: owner leash teleport (> 100 subtiles / 1600 px), aura activation, combat, and follow', () => {
       const owner = makeTestPlayer({ x: 100, y: 100 })
       const targetMonster = makeTestMonster(0, { index: 1, x: 115, y: 100, hp: 200 })
       const world = makeTestWorld(owner, [targetMonster])
@@ -511,14 +511,14 @@ describe('Diablo II v1.13c Authoritative Monster, Boss, Mercenary & Pet AI Arche
         act: 2,
         difficulty: 1,
         level: 30,
-        x: 700,
-        y: 700,
+        x: 1800,
+        y: 1800,
         hp: 400,
         maxHp: 400,
         alive: true,
       }
 
-      // 1. Leash teleport when distance > 480 px
+      // 1. Leash teleport when distance > 100 subtiles (1600 px)
       const leashRes = tickMercenaryAi25Hz(world, merc, owner, OPEN_TERRAIN)
       expect(leashRes.teleportedToOwner).toBe(true)
       expect(merc.x).toBe(owner.x)
@@ -965,13 +965,13 @@ describe('Diablo II v1.13c Authoritative Monster, Boss, Mercenary & Pet AI Arche
       expect(friendly.hp).toBe(1000)
     })
 
-    it('15. tickMercenaryAi25Hz supports (merc, world, { tick, rng }) options 3rd argument for >480 px leash teleport', () => {
+    it('15. tickMercenaryAi25Hz supports (merc, world, { tick, rng }) options 3rd argument for >100 subtile (1600 px) leash teleport', () => {
       const owner = makeTestPlayer({ x: 100, y: 100 })
       const world = makeTestWorld(owner, [])
       const merc: MercenaryUnitState = {
         act: 2,
         level: 30,
-        x: 800,
+        x: 1800,
         y: 100,
         hp: 500,
         maxHp: 500,
@@ -984,7 +984,7 @@ describe('Diablo II v1.13c Authoritative Monster, Boss, Mercenary & Pet AI Arche
       expect(merc.y).toBe(100)
     })
 
-    it('16. SummonManager.tickPets keeps Spirit Wolf (#227) and Shadow Master (#279) at (owner.x, owner.y) on >480 px leash-teleport tick', () => {
+    it('16. SummonManager.tickPets keeps Spirit Wolf (#227) and Shadow Master (#279) at (owner.x, owner.y) on >50 subtile (800 px) leash-teleport tick', () => {
       const registry = getSharedDataRegistry()
       const mgr = new SummonManager(registry)
       const missileEngine = new MissileEngine(registry)
@@ -1011,14 +1011,14 @@ describe('Diablo II v1.13c Authoritative Monster, Boss, Mercenary & Pet AI Arche
         owner: ownerCtx,
         skillId: 227,
         slvl: 10,
-        x: 800,
+        x: 950,
         y: 100,
       }).pet!
       const shadow = mgr.createPet({
         owner: ownerCtx,
         skillId: 279,
         slvl: 10,
-        x: 800,
+        x: 950,
         y: 100,
       }).pet!
       const farEnemy = makeCtx('enemy-far', 900, 100)
@@ -1182,7 +1182,8 @@ describe('Diablo II v1.13c Authoritative Monster, Boss, Mercenary & Pet AI Arche
       const spawnProj = getMissiles().find((m) => m.missileKey === 'baal spawn monsters')
       expect(spawnProj).toBeDefined()
       expect(spawnProj!.alwaysExplode).toBe(true)
-      expect((spawnProj as any).lobPeakAltitude).toBeGreaterThan(0)
+      expect(spawnProj!.traj3d).toBeDefined()
+      expect(spawnProj!.altitude ?? 0).toBeGreaterThan(0)
 
       let sawSpawnExp = false
       for (let t = 0; t < 30; t++) {

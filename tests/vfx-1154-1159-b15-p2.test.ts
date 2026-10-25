@@ -141,6 +141,8 @@ describe('B15-p2 Assassin Spell VFX 1.13c Parity (#1154..#1159)', () => {
     it('attaches dragonflight overlay to the kicked target monster and keeps caster without dragonflight', () => {
       const { cw, selfUnit } = createAssassinWorld()
       const targetMon = addHostileMonster(cw, 101, 60, 60)
+      // CltSt5 (0x6FAF09B0) needs the caster's target unit; without one the start fails (stsuccessonly, #1607).
+      selfUnit.targetUnit = { unitType: 'monster', id: targetMon.id }
 
       ;(cw as any).applySkillCastToUnit(selfUnit, 275, 60, 60, 1)
 
@@ -160,7 +162,9 @@ describe('B15-p2 Assassin Spell VFX 1.13c Parity (#1154..#1159)', () => {
       // Charge #254 Tiger Strike & #265 Cobra Strike
       ;(cw as any).applySkillCastToUnit(selfUnit, 254, 52, 52, 1)
       ;(cw as any).applySkillCastToUnit(selfUnit, 265, 52, 52, 1)
-      // Target gets assassinfootimpact on Tiger Strike hit
+      // Target gets assassinfootimpact (Skills.txt #254 tgtoverlay) from the client Do tail (D2Client 0x6FB52EA4) at the
+      // action frame, i.e. when the Do runs (#1612).
+      ;(cw as any).spawnMissilesForSkill(selfUnit, 254, 52, 52, 1)
       expect(targetMon.overlays.some((o: any) => o.token === 'assassinfootimpact')).toBe(true)
       expect(selfUnit.overlays.some((o: any) => o.token === 'assassinfootimpact')).toBe(false)
 

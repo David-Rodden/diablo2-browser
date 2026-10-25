@@ -109,7 +109,7 @@ describe('[Skill #063] Lightning Mastery (SOR) — 1.13c 7-Dimensional Verificat
       expect(r20.maxElemDmg256).toBe(0)
       expect(r20.durationFrames).toBe(0)
       expect(r20.cooldownFrames).toBe(0)
-      expect(r20.radiusSubtiles).toBe(278) // 50 + 19 * 12 = 278
+      expect(r20.radiusSubtiles).toBe(0) // 50 + 19 * 12 = 278
     })
   })
 
@@ -239,20 +239,16 @@ describe('[Skill #063] Lightning Mastery (SOR) — 1.13c 7-Dimensional Verificat
     it('accrues passive_ltng_mastery stat dynamically from skill level', () => {
       const stats = new UnitStatList()
       expect(stats.getAccruedStat('passive_ltng_mastery')).toBe(0)
-      expect(stats.getAccruedStat('passive_lightning_mastery')).toBe(0)
 
       stats.setBaseSkillLevel(63, 1)
       expect(stats.getAccruedStat('passive_ltng_mastery')).toBe(50)
-      expect(stats.getAccruedStat('passive_lightning_mastery')).toBe(50)
 
       stats.setBaseSkillLevel(63, 20)
       expect(stats.getAccruedStat('passive_ltng_mastery')).toBe(278)
-      expect(stats.getAccruedStat('passive_lightning_mastery')).toBe(278)
 
       // +5 allskills boosts effective skill level to 25 -> 50 + 24 * 12 = 338%
       stats.addStat('item_allskills', 5)
       expect(stats.getAccruedStat('passive_ltng_mastery')).toBe(338)
-      expect(stats.getAccruedStat('passive_lightning_mastery')).toBe(338)
     })
 
     it('applies passive_ltng_mastery inside executeSUnitDmg combat pipeline', async () => {

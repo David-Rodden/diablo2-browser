@@ -200,7 +200,31 @@ export function allocateSkillImpl(model: any, skillId: number): boolean {
   return true
 }
 
+function isClientSkillSelectable(model: any, skillId: number, itemId = 0xffffffff): boolean {
+  if (!Number.isInteger(skillId) || skillId < 0 || skillId === 0xffff || skillId === 0x7fff) {
+    return false
+  }
+  if (skillId === 0) return true
+  const self = model.world?.self
+  const available = model.hudManager?.hotkeys?.availableSkills as
+    | readonly { readonly skillId: number; readonly level?: number; readonly charges?: number }[]
+    | undefined
+  if (available && available.length > 0 && self?.skillEntries?.has(skillId)) {
+    return available.some((s) => s.skillId === skillId && ((s.level ?? 0) > 0 || (s.charges ?? 0) > 0))
+  }
+  if (self?.skillEntries?.has(skillId)) {
+    const entry = self.skillEntries.get(skillId)!
+    const eff = (entry.baseLevel ?? entry.level ?? 0) + (entry.bonus ?? 0)
+    const charges = self.skillCharges?.get(skillId) ?? 0
+    if (eff <= 0 && charges <= 0 && (itemId === undefined || itemId === 0xffffffff)) {
+      return false
+    }
+  }
+  return true
+}
+
 export function selectSkillImpl(model: any, hand: Hand, skillId: number, itemId = 0xffffffff): void {
+  if (!isClientSkillSelectable(model, skillId, itemId)) return
   model.emitCommand({ type: 'SelectSkill', hand, skill: skillId, itemId })
 }
 
@@ -212,11 +236,13 @@ export function assignSkillHotkeyImpl(
   itemId = 0xffffffff,
 ): void {
   if (!Number.isInteger(slot) || slot < 0 || slot > 15) return
+  const isUnbind = skillId === 0xffff || skillId === 0x7fff || skillId < 0
+  if (!isUnbind && !isClientSkillSelectable(model, skillId, itemId)) return
   model.hadWorldSkillHotkeys = true
   model.world.assignSkillHotkey(slot, hand, skillId, itemId)
   if (model.hudManager?.hotkeys) {
     const key = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
-    if (skillId === 0xffff || skillId === 0x7fff || skillId < 0) {
+    if (isUnbind) {
       model.hudManager.hotkeys.bindings.delete(key)
     } else {
       model.hudManager.hotkeys.bindHotkey(key, hand, skillId)
@@ -227,14 +253,28 @@ export function assignSkillHotkeyImpl(
 
 export function activateSkillHotkeyImpl(model: any, slot: number): boolean {
   if (!Number.isInteger(slot) || slot < 0 || slot > 15) return false
+  if (model.world?.isSelfDead || model.world?.isDead) return false
+  const key = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
   const worldBinding = model.world.skillHotkeys.get(slot)
   if (worldBinding && worldBinding.skill >= 0 && worldBinding.skill !== 0xffff) {
+    if (!isClientSkillSelectable(model, worldBinding.skill, worldBinding.itemId ?? 0xffffffff)) {
+      model.world.skillHotkeys.delete(slot)
+      model.hudManager?.hotkeys.bindings.delete(key)
+      return false
+    }
+    model.lastSelectedHotkeySlot = slot
+    if (model.hudManager?.hotkeys) model.hudManager.hotkeys.lastSelectedSlot = slot
     model.selectSkill(worldBinding.hand, worldBinding.skill, worldBinding.itemId ?? 0xffffffff)
     return true
   }
-  const key = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
   const hudBinding = model.hudManager?.hotkeys.bindings.get(key)
   if (hudBinding && hudBinding.skillId >= 0 && hudBinding.skillId !== 0xffff) {
+    if (!isClientSkillSelectable(model, hudBinding.skillId, 0xffffffff)) {
+      model.hudManager?.hotkeys.bindings.delete(key)
+      return false
+    }
+    model.lastSelectedHotkeySlot = slot
+    if (model.hudManager?.hotkeys) model.hudManager.hotkeys.lastSelectedSlot = slot
     model.selectSkill(hudBinding.side, hudBinding.skillId, 0xffffffff)
     return true
   }
@@ -242,45 +282,67 @@ export function activateSkillHotkeyImpl(model: any, slot: number): boolean {
 }
 
 export function cycleBoundSkillsImpl(model: any, step: -1 | 1): boolean {
-  const rightEntries: { slot: number; hand: Hand; skillId: number; itemId?: number }[] = []
-  const allEntries: { slot: number; hand: Hand; skillId: number; itemId?: number }[] = []
-  for (let slot = 0; slot < 16; slot++) {
+  // 0x6faea8e0 / 0x6faea8c0 / 0x6faed6d0: no skill cycling while the player is dead ([player+0x10] == 0x11).
+  if (model.world?.isSelfDead || model.world?.isDead) return false
+  const dir = step > 0 ? 1 : -1
+  let count = Math.abs(step) || 1
+  const currentRightSkill = model.world.self.rightSkill || model.hudManager?.hotkeys.rightSkillId || 0
+
+  const resolveSlotBinding = (
+    slot: number,
+  ): { hand: Hand; skillId: number; itemId: number; key: string } | null => {
     const wb = model.world.skillHotkeys.get(slot)
     const key = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
     const hb = model.hudManager?.hotkeys.bindings.get(key)
     const hand: Hand | undefined = wb?.hand ?? hb?.side
     const skillId = wb?.skill ?? hb?.skillId
     if (!hand || skillId === undefined || skillId < 0 || skillId === 0xffff || skillId === 0x7fff) {
-      continue
+      return null
     }
-    const entry = {
-      slot,
-      hand,
-      skillId,
-      ...(wb?.itemId !== undefined ? { itemId: wb.itemId } : {}),
-    }
-    allEntries.push(entry)
-    if (hand === 'right') {
-      rightEntries.push(entry)
+    return { hand, skillId, itemId: wb?.itemId ?? 0xffffffff, key }
+  }
+
+  let startSlot: number =
+    typeof model.lastSelectedHotkeySlot === 'number'
+      ? model.lastSelectedHotkeySlot & 0x0f
+      : (model.hudManager?.hotkeys?.lastSelectedSlot ?? 0) & 0x0f
+  const startEntry = resolveSlotBinding(startSlot)
+  if (!startEntry || startEntry.hand !== 'right' || startEntry.skillId !== currentRightSkill) {
+    for (let s = 0; s < 16; s++) {
+      const e = resolveSlotBinding(s)
+      if (e && e.hand === 'right' && e.skillId === currentRightSkill) {
+        startSlot = s
+        break
+      }
     }
   }
-  const pool = rightEntries.length > 0 ? rightEntries : allEntries
-  if (pool.length === 0) return false
 
-  const activeHand: Hand = rightEntries.length > 0 ? 'right' : pool[0]!.hand
-  const currentSkillId =
-    activeHand === 'right'
-      ? (model.world.self.rightSkill || model.hudManager?.hotkeys.rightSkillId || 0)
-      : (model.world.self.leftSkill || model.hudManager?.hotkeys.leftSkillId || 0)
-  const currentIdx = pool.findIndex(e => e.hand === activeHand && e.skillId === currentSkillId)
-  const nextIdx =
-    currentIdx < 0
-      ? step > 0
-        ? 0
-        : pool.length - 1
-      : (currentIdx + step + pool.length) % pool.length
-  const chosen = pool[nextIdx]!
-  model.selectSkill(chosen.hand, chosen.skillId, chosen.itemId ?? 0xffffffff)
+  // 0x6FAED6D0: step edi = (startSlot + dir) mod 16 up to 16 times across right-hand slots ([0x6fbc9e20] == 0).
+  let matchedSlot = -1
+  let matchedEntry: { hand: Hand; skillId: number; itemId: number; key: string } | null = null
+  let edi = startSlot + dir
+  for (let ebx = 0; ebx < 16; ebx++) {
+    if (edi < 0) edi = 15
+    else if (edi >= 16) edi = 0
+    const entry = resolveSlotBinding(edi)
+    if (entry && entry.hand === 'right') {
+      if (!isClientSkillSelectable(model, entry.skillId, entry.itemId)) {
+        model.world.skillHotkeys.delete(edi)
+        model.hudManager?.hotkeys.bindings.delete(entry.key)
+      } else {
+        matchedSlot = edi
+        matchedEntry = entry
+        count -= 1
+        if (count === 0) break
+      }
+    }
+    edi += dir
+  }
+
+  if (matchedSlot === -1 || !matchedEntry) return false
+  model.lastSelectedHotkeySlot = matchedSlot
+  if (model.hudManager?.hotkeys) model.hudManager.hotkeys.lastSelectedSlot = matchedSlot
+  model.selectSkill('right', matchedEntry.skillId, matchedEntry.itemId)
   return true
 }
 
@@ -898,7 +960,8 @@ export function openArtisanWindowImpl(
       ;(model.hudManager.worldPanels as any).activeNpcId = resolvedNpcId
     }
     if (model.hudManager.rightPanel !== 'inv') {
-      model.hudManager.toggleRightPanel('inv')
+      // The anvil-style window carries its own inventory half (not the inventory UI 1).
+      model.hudManager.setRightPanelRaw('inv')
     }
     model.hudManager.inventory.visible = true
   }

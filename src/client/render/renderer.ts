@@ -48,6 +48,7 @@ import {
 import { PD2_D2GL_CONFIG, type D2GlGraphicsConfig } from '../../common/ui/pd2-d2gl.ts'
 import type { UiDataMode } from '../../common/ui/pd2-sgd2freeres.ts'
 import { D2GlPostProcessPass, supportsWebGl2PostProcessFbo } from './d2gl-postfx.ts'
+import { PALETTE_ROW_STRIDE, extraColormapTables, onExtraColormapsChanged } from './colormap-rows.ts'
 
 /** Camera state for one frame. */
 export interface Camera {
@@ -277,8 +278,9 @@ void main() {
   v_unit = unitWord & 31;
   v_prelit = (unitWord >> 5) & 1;
   v_additive = (unitWord >> 6) & 1;
-  float liftY = floor((a_palette + 1.5) * (1.0 / 32.0));
-  float rawPalette = a_palette - liftY * 32.0;
+  // a_palette = liftY * ${PALETTE_ROW_STRIDE} + row (rows beyond PALETTE_ROWS hold per-unit colormaps, #1516).
+  float liftY = floor((a_palette + 1.5) * (1.0 / ${PALETTE_ROW_STRIDE}.0));
+  float rawPalette = a_palette - liftY * ${PALETTE_ROW_STRIDE}.0;
   v_palette = int(round(rawPalette));
 
   // Inverse isometric projection to ground-plane sub-tiles (compensating for vertical height liftY):
@@ -434,6 +436,10 @@ export class SpriteRenderer {
   private atlasStorageAllocated = false
   private paletteStorageAllocated = false
   private paletteRowsAllocated = 0
+  /** Inputs of the last {@link setPalette}, replayed when a colormap row is added. */
+  private lastPaletteRgb: Uint8Array | null = null
+  private lastPaletteTransforms: PaletteTransformInput | undefined = undefined
+  private readonly unsubscribeColormaps: () => void
   /** Cached uniform values to eliminate redundant uniform uploads across flushes. */
   private cachedCameraX = Number.NaN
   private cachedCameraY = Number.NaN
@@ -633,6 +639,7 @@ export class SpriteRenderer {
       defaultPal[i * 3 + 2] = i
     }
     this.uploadPaletteInternal(defaultPal, undefined, INITIAL_PALETTE_ROWS)
+    this.unsubscribeColormaps = onExtraColormapsChanged(() => this.reuploadPaletteForColormaps())
     gl.enable(gl.BLEND)
     applyGlBlendFunc(gl, gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA, gl.ONE ?? 1, gl.ONE_MINUS_SRC_ALPHA)
     if (typeof gl.disable === 'function') {
@@ -1105,7 +1112,15 @@ export class SpriteRenderer {
    * @param transforms - optional PL2 object or transform array for authentic 1.13c colormaps.
    */
   setPalette(rgb: Uint8Array, transforms?: PaletteTransformInput): void {
+    this.lastPaletteRgb = rgb
+    this.lastPaletteTransforms = transforms
     this.uploadPaletteInternal(rgb, transforms, PALETTE_ROWS)
+  }
+
+  /** Re-upload the current palette after a new per-unit colormap row was registered (`colormap-rows.ts`). */
+  private reuploadPaletteForColormaps(): void {
+    if (this.disposed || this.lastPaletteRgb === null) return
+    this.uploadPaletteInternal(this.lastPaletteRgb, this.lastPaletteTransforms, PALETTE_ROWS)
   }
 
   private uploadPaletteInternal(
@@ -1188,10 +1203,12 @@ export class SpriteRenderer {
       }
     }
 
-    const totalRows = Math.max(1, Math.min(PALETTE_ROWS, rowCount))
+    const fixedRows = Math.max(1, Math.min(PALETTE_ROWS, rowCount))
+    const extraTables = fixedRows === PALETTE_ROWS ? extraColormapTables() : []
+    const totalRows = fixedRows + extraTables.length
     const rgba = new Uint8Array(256 * totalRows * 4)
     if (preResolvedRows) {
-      for (let row = 0; row < totalRows; row += 1) {
+      for (let row = 0; row < fixedRows; row += 1) {
         const rowRgb = preResolvedRows[row] ?? baseRgb
         for (let i = 1; i < 256; i += 1) {
           const dst = (256 * row + i) * 4
@@ -1215,7 +1232,7 @@ export class SpriteRenderer {
         rgba[r0 + 3] = 255
 
         // Rows 1..totalRows-1: Authentic 1.13c index-to-index remap tables
-        for (let row = 1; row < totalRows; row += 1) {
+        for (let row = 1; row < fixedRows; row += 1) {
           const table = variationTables[row - 1] ?? DEFAULT_INV_COLOR_VARIATIONS_113C[row - 1]!
           const targetIdx = (table[i] ?? i) * 3
           const dst = (256 * row + i) * 4
@@ -1224,6 +1241,20 @@ export class SpriteRenderer {
           rgba[dst + 2] = baseRgb[targetIdx + 2] ?? 0
           rgba[dst + 3] = 255
         }
+      }
+    }
+
+    // Per-unit colormap rows (#1516): index remap through the act palette, index 0 stays transparent.
+    for (let extra = 0; extra < extraTables.length; extra += 1) {
+      const table = extraTables[extra]!
+      const row = fixedRows + extra
+      for (let i = 1; i < 256; i += 1) {
+        const targetIdx = (table[i] ?? i) * 3
+        const dst = (256 * row + i) * 4
+        rgba[dst] = baseRgb[targetIdx] ?? 0
+        rgba[dst + 1] = baseRgb[targetIdx + 1] ?? 0
+        rgba[dst + 2] = baseRgb[targetIdx + 2] ?? 0
+        rgba[dst + 3] = 255
       }
     }
 
@@ -1613,8 +1644,8 @@ export class SpriteRenderer {
 
     const roofLift = options.roofHeight !== undefined && options.roofHeight > 0 ? Math.round(options.roofHeight) : 0
     const elevationY = options.elevationY !== undefined && options.elevationY > 0 ? Math.round(options.elevationY) : 0
-    const bottomPalette = roofLift > 0 ? paletteRow + roofLift * 32 : paletteRow
-    const topPalette = roofLift > 0 ? bottomPalette : (elevationY > 0 ? paletteRow + elevationY * 32 : paletteRow)
+    const bottomPalette = roofLift > 0 ? paletteRow + roofLift * PALETTE_ROW_STRIDE : paletteRow
+    const topPalette = roofLift > 0 ? bottomPalette : (elevationY > 0 ? paletteRow + elevationY * PALETTE_ROW_STRIDE : paletteRow)
     const lit = this.unitLightApplies(blendMode)
     this.quad(
       x, y,
@@ -1679,7 +1710,7 @@ export class SpriteRenderer {
     const flipped = options.flipX === true
     const paletteRow = page.indexed === true ? (options.paletteRow ?? 0) : -1
     const elevationY = options.elevationY !== undefined && options.elevationY > 0 ? Math.round(options.elevationY) : 0
-    const topPalette = elevationY > 0 ? paletteRow + elevationY * 32 : paletteRow
+    const topPalette = elevationY > 0 ? paletteRow + elevationY * PALETTE_ROW_STRIDE : paletteRow
     const lit = this.unitLightApplies(blendMode)
     const additiveFlag = isAdditiveBlendMode(blendMode) ? UNIT_BLEND_ADDITIVE : 0
     this.quad(
@@ -1919,6 +1950,7 @@ export class SpriteRenderer {
    * Destroy all WebGL2 GPU resources (textures, VAO, VBO, program) and detach event listeners.
    */
   dispose(): void {
+    this.unsubscribeColormaps()
     if (this.disposed) return
     this.disposed = true
 

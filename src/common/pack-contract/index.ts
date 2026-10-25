@@ -688,6 +688,7 @@ export const CACHEABLE_PREFIXES = [
   'chars/',
   'anim/',
   'weather/',
+  'backdrop/',
   'tiles/',
   'sound/',
   'cursor-pd2/',

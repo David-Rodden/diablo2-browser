@@ -72,8 +72,10 @@ export interface SkillTableMeta {
   readonly state2?: string
   readonly state3?: string
   readonly itypea1?: string
+  readonly itypea2?: string
   readonly itypeb1?: string
   readonly etypea1?: string
+  readonly passiveitype?: string
   readonly weapsel?: number
   readonly checkfunc?: number
   readonly skillPage: number
@@ -97,7 +99,6 @@ export const SKILL_TBL_STRINGS = {
     StrSkill2: 'Current Skill Level: ',
     StrSkill3: 'Mana Cost: ',
     StrSkill17: 'First Level',
-    StrSkill18: 'Required Level:',
     Sksyn: '%s Receives Bonuses From:',
     skilldesc4: 'Quantity ',
   },
@@ -106,7 +107,6 @@ export const SKILL_TBL_STRINGS = {
     StrSkill2: '目前技能等級：',
     StrSkill3: '法力消耗：',
     StrSkill17: '第一級',
-    StrSkill18: '需要等級：',
     Sksyn: '額外的對%s',
     skilldesc4: '數量 ',
   },
@@ -273,8 +273,10 @@ const CANONICAL_CLASS_SKILL_WEAPON_META: Readonly<
     number,
     {
       readonly itypea1?: string
+      readonly itypea2?: string
       readonly itypeb1?: string
       readonly etypea1?: string
+      readonly passiveitype?: string
       readonly weapsel?: number
       readonly checkfunc?: number
     }
@@ -283,14 +285,17 @@ const CANONICAL_CLASS_SKILL_WEAPON_META: Readonly<
   // Amazon Bow & Crossbow (miss, checkfunc=1)
   6: { itypea1: 'miss', checkfunc: 1 },
   7: { itypea1: 'miss', checkfunc: 1 },
+  9: { itypea1: 'spea', itypea2: 'miss' },
   11: { itypea1: 'miss', checkfunc: 1 },
   12: { itypea1: 'miss', checkfunc: 1 },
   16: { itypea1: 'miss', checkfunc: 1 },
   21: { itypea1: 'miss', checkfunc: 1 },
   22: { itypea1: 'miss', checkfunc: 1 },
+  23: { itypea1: 'spea', itypea2: 'miss' },
   26: { itypea1: 'miss', checkfunc: 1 },
   27: { itypea1: 'miss', checkfunc: 1 },
   31: { itypea1: 'miss', checkfunc: 1 },
+  33: { itypea1: 'miss' },
   // Amazon Spear & Javelin (spea / jave)
   10: { itypea1: 'spea' },
   14: { itypea1: 'spea' },
@@ -315,26 +320,26 @@ const CANONICAL_CLASS_SKILL_WEAPON_META: Readonly<
   123: { itypea1: 'mele' },
   // Barbarian Combat & Masteries
   126: { itypea1: 'mele' },
-  127: { itypea1: 'swor' },
-  128: { itypea1: 'axe' },
-  129: { itypea1: 'blun' },
+  127: { itypea1: 'swor', passiveitype: 'swor' },
+  128: { itypea1: 'axe', passiveitype: 'axe' },
+  129: { itypea1: 'blun', passiveitype: 'blun' },
   133: { itypea1: 'mele', itypeb1: 'mele', weapsel: 3 },
-  134: { itypea1: 'pole' },
-  135: { itypea1: 'thro' },
-  136: { itypea1: 'spea' },
+  134: { itypea1: 'pole', passiveitype: 'pole' },
+  135: { itypea1: 'thro', passiveitype: 'thro' },
+  136: { itypea1: 'spea', passiveitype: 'spea' },
   139: { itypea1: 'mele' },
   140: { itypea1: 'thro', itypeb1: 'thro', weapsel: 3, checkfunc: 5 },
   143: { itypea1: 'mele' },
   144: { itypea1: 'mele' },
   147: { itypea1: 'mele', itypeb1: 'mele', weapsel: 3 },
-  151: { itypea1: 'mele' },
+  151: { itypea1: 'mele', weapsel: 2 },
   152: { itypea1: 'mele' },
   // Assassin Martial Arts & Passives
-  252: { itypea1: 'h2h' },
+  252: { itypea1: 'h2h', passiveitype: 'h2h' },
   254: { itypea1: 'mele' },
   259: { itypea1: 'h2h' },
   260: { itypea1: 'h2h', itypeb1: 'h2h', weapsel: 3 },
-  263: { itypea1: 'h2h', itypeb1: 'h2h', weapsel: 2 },
+  263: { itypea1: 'h2h', itypeb1: 'h2h', passiveitype: 'h2h', weapsel: 2 },
   265: { itypea1: 'mele' },
   269: { itypea1: 'h2h' },
   274: { itypea1: 'h2h' },

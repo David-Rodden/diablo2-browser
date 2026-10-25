@@ -3,7 +3,13 @@
  */
 import { describe, expect, it } from 'vitest'
 import { GameInstance } from '../../src/server/engine/game-instance.ts'
-import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_STARTED_113C, questWordIndex113c } from '../../src/server/engine/quests-113c.ts'
+import {
+  QUEST_FLAG_COMPLETED_113C,
+  QUEST_FLAG_COMPLETED_NOW_113C,
+  QUEST_FLAG_REWARD_PENDING_113C,
+  QUEST_FLAG_STARTED_113C,
+  questWordIndex113c,
+} from '../../src/server/engine/quests-113c.ts'
 
 function setup(seed: number) {
   const game = new GameInstance({ seed, areaId: 1 })
@@ -159,11 +165,19 @@ describe('issue #1353 Compelling Orb', () => {
 })
 
 describe('issue #1353 Hellforge reward', () => {
-  it('requires the Hellforge Hammer and three hits (D2Game 0x6fcdb8d0)', () => {
+  it('places Mephisto Soulstone (mss), requires equipped Hellforge Hammer (hfh) for three hits, consumes hfh, sets 0x2002, and Cain completes 0x0001 (D2Game 0x6fcdb8d0 / 0x6fcdaa50)', () => {
     const game = new GameInstance({ seed: 1364, areaId: 1 })
     const playerId = game.connectPlayer({ charClass: 'pal', name: 'Hero', x: 10, y: 10, areaId: 1 })
     const player = (game as unknown as { players: Map<number, { items: any[]; questFlags: Uint16Array }> })
       .players.get(playerId)!
+    const soulstone = {
+      unitId: 9909, code: 'mss', name: "Mephisto's Soulstone", quality: 2, level: 1,
+      location: 'inventory', x: 0, y: 0, width: 1, height: 1, areaId: 1,
+      ownerId: playerId, bodyLoc: 0, storePage: 1, cost: 0, gamble: false,
+      identified: true, ethereal: false, socketed: false, totalSockets: 0,
+      durability: 0, maxDurability: 0, quantity: 1, stats: new Map(),
+      socketedItems: [],
+    }
     const hammer = {
       unitId: 9910, code: 'hfh', name: 'Hellforge Hammer', quality: 2, level: 1,
       location: 'equipped', x: 0, y: 0, width: 1, height: 1, areaId: 1,
@@ -172,23 +186,41 @@ describe('issue #1353 Hellforge reward', () => {
       durability: 10, maxDurability: 10, quantity: 1, stats: new Map(),
       socketedItems: [],
     }
-    player.items.push(hammer)
+    player.items.push(soulstone, hammer)
     const forge = game.spawnObject({ classId: 376, x: 11, y: 10, areaId: 1 })
     const internal = game as unknown as {
       objects: Map<number, { mode: number }>
       groundItems: Map<number, unknown>
     }
+    // Stage 1: place Mephisto's Soulstone ('mss') -> consumes 'mss', sets forge mode to 1
+    game.enqueueCommand(playerId, { type: 'OperateObject', objectId: forge })
+    game.stepFrames(1)
+    expect(player.items.includes(soulstone)).toBe(false)
+    expect(internal.objects.get(forge)!.mode).toBe(1)
+
+    // Stage 2: three hits with equipped Hellforge Hammer ('hfh')
     for (let hit = 1; hit <= 2; hit++) {
       game.enqueueCommand(playerId, { type: 'OperateObject', objectId: forge })
       game.stepFrames(1)
-      expect(player.questFlags[questWordIndex113c('a4q2')!]! & QUEST_FLAG_COMPLETED_113C).toBe(0)
-      expect(internal.objects.get(forge)!.mode).toBe(0)
+      expect(player.questFlags[questWordIndex113c('a4q2')!]! & (QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C)).toBe(0)
+      expect(internal.objects.get(forge)!.mode).toBe(1)
+      expect(player.items.includes(hammer)).toBe(true)
     }
     game.enqueueCommand(playerId, { type: 'OperateObject', objectId: forge })
     game.stepFrames(1)
-    expect(player.questFlags[questWordIndex113c('a4q2')!]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+    expect(player.items.includes(hammer)).toBe(false)
+    expect(player.questFlags[questWordIndex113c('a4q2')!]).toBe(
+      QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+    )
     expect(internal.groundItems.size).toBeGreaterThanOrEqual(5)
-    expect(internal.objects.get(forge)!.mode).toBe(2)
+    expect(internal.objects.get(forge)!.mode).toBe(3)
+
+    // Stage 3: talk to Cain -> transitions bit 1 (0x0002) to bit 0 (0x0001)
+    const cain = game.spawnMonster({ classId: 246, name: 'Deckard Cain', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: cain } } as never)
+    game.stepFrames(1)
+    expect(player.questFlags[questWordIndex113c('a4q2')!]! & QUEST_FLAG_COMPLETED_113C).toBe(QUEST_FLAG_COMPLETED_113C)
+    expect(player.questFlags[questWordIndex113c('a4q2')!]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(0)
   })
 })
 

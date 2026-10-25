@@ -931,12 +931,12 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       // Set /players 8 in Game 1
       expect(session.submitChatInput('/players 8', 1_000)).toBe(true)
       expect(session.persistedPlayersCount).toBe(8)
-      expect(session.getSentCommands().at(-1)).toEqual({ type: 'Chat', text: '/players 8' })
+      expect(session.getSentCommands().at(-1)).toEqual({ type: 'Chat', text: 'players set to 8' })
 
-      // Invalid /players inputs do not overwrite persistedPlayersCount
-      expect(session.submitChatInput('/players 0', 1_500)).toBe(false)
-      expect(session.submitChatInput('/players 9', 1_600)).toBe(false)
-      expect(session.submitChatInput('/players -3', 1_700)).toBe(false)
+      // D2Client 0x6fb20a83: out-of-range counts are clamped to 1..8, never rejected
+      expect(session.submitChatInput('/players 0', 1_500)).toBe(true)
+      expect(session.persistedPlayersCount).toBe(1)
+      expect(session.submitChatInput('/players 9', 1_600)).toBe(true)
       expect(session.persistedPlayersCount).toBe(8)
 
       // Leave Game 1 and enter Game 2 in the same session
@@ -944,6 +944,9 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       expect(session.persistedPlayersCount).toBe(8)
 
       const cmdsBeforeGame2 = session.getSentCommands().length
+      const shownBeforeGame2 = session.world.activeChatOverlayEntries.filter(
+        (m) => m.kind === 'system' && m.text === 'players set to 8',
+      ).length
       session.handleServerEvent({
         type: 'LoadAct',
         act: 0,
@@ -953,11 +956,11 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       })
       // Game 2 automatically applies /players 8
       expect(session.getSentCommands().slice(cmdsBeforeGame2)).toEqual([
-        { type: 'Chat', text: '/players 8' },
+        { type: 'Chat', text: 'players set to 8' },
       ])
       expect(
-        session.world.activeChatOverlayEntries.filter((m) => m.text === 'players set to 8'),
-      ).toHaveLength(1)
+        session.world.activeChatOverlayEntries.filter((m) => m.kind === 'system' && m.text === 'players set to 8'),
+      ).toHaveLength(shownBeforeGame2) // already shown -> applyPersistedPlayersToCurrentGame does not repeat it
 
       // Subsequent init events in the same Game 2 do not re-send /players 8
       session.handleServerEvent({
@@ -966,11 +969,11 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
         isSelf: true,
       })
       expect(session.getSentCommands().slice(cmdsBeforeGame2)).toEqual([
-        { type: 'Chat', text: '/players 8' },
+        { type: 'Chat', text: 'players set to 8' },
       ])
 
-      // Change to "players 3" in Game 2, then leave and enter Game 3
-      expect(session.submitChatInput('players 3', 2_000)).toBe(true)
+      // Change to "/players 3" in Game 2, then leave and enter Game 3
+      expect(session.submitChatInput('/players 3', 2_000)).toBe(true)
       expect(session.persistedPlayersCount).toBe(3)
       await session.leaveGame()
 
@@ -983,7 +986,7 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
         objectSeed: 0,
       })
       expect(session.getSentCommands().slice(cmdsBeforeGame3)).toEqual([
-        { type: 'Chat', text: '/players 3' },
+        { type: 'Chat', text: 'players set to 3' },
       ])
       expect(
         session.world.activeChatOverlayEntries.some((m) => m.text === 'players set to 3'),
@@ -993,5 +996,56 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       const freshSession = new OnlineSession()
       expect(freshSession.persistedPlayersCount).toBeNull()
     })
+  })
+})
+
+describe('#1567 /players per D2Client 0x6fb20a4b', () => {
+  it('prefix match + atoi + clamp 1..8, bare "players N" is ordinary chat', async () => {
+    const { parseInGameChatInput, playersSetChatText113c } = await import('../src/common/chat/chat-113c.ts')
+    const count = (t: string) => (parseInGameChatInput(t) as { count: number }).count
+    expect(count('/players 5')).toBe(5)
+    expect(count('/players')).toBe(1)
+    expect(count('/players 0')).toBe(1)
+    expect(count('/players 12')).toBe(8)
+    expect(count('/players3')).toBe(3)
+    expect(count('/players set 5')).toBe(1)
+    expect(parseInGameChatInput('players 3')).toEqual({ kind: 'say', text: 'players 3' })
+    expect(playersSetChatText113c(4)).toBe('players set to 4')
+  })
+})
+
+describe('#1568 /nopickup (D2Client 0x6fb20aaa / 0x6FBCC2F0)', () => {
+  it('parses as a local toggle that sends nothing and flips ClientWorld.noPickup', async () => {
+    const { parseInGameChatInput } = await import('../src/common/chat/chat-113c.ts')
+    expect(parseInGameChatInput('/nopickup')).toEqual({ kind: 'local_nopickup' })
+    const { canvas } = createMockCanvas(800, 600)
+    const session = new OnlineSession({ hudManager: new HudManager(canvas) })
+    const before = session.getSentCommands().length
+    expect(session.world.noPickup).toBe(false)
+    expect(session.submitChatInput('/nopickup', 1_000)).toBe(true)
+    expect(session.world.noPickup).toBe(true)
+    expect(session.getSentCommands().length).toBe(before)
+    session.submitChatInput('/nopickup', 2_000)
+    expect(session.world.noPickup).toBe(false)
+  })
+})
+
+describe('#1570 local usage lines (D2Client 0x6fb2059e / 0x6fb20786)', () => {
+  it('whisper commands without name/message print the literal-specific usage line', async () => {
+    const { parseInGameChatInput } = await import('../src/common/chat/chat-113c.ts')
+    expect(parseInGameChatInput('/w bob')).toEqual({
+      kind: 'local_usage',
+      text: '<BattleNet>: Correct usage is: /w (name) (message)',
+    })
+    expect(parseInGameChatInput('/whisper')).toEqual({
+      kind: 'local_usage',
+      text: '<BattleNet>: Correct usage is: /whisper (name) (message)',
+    })
+  })
+
+  it('/help and /? forward without arguments and print usage with arguments', async () => {
+    const { parseInGameChatInput } = await import('../src/common/chat/chat-113c.ts')
+    expect(parseInGameChatInput('/help')).toEqual({ kind: 'bncs_command', command: '/help' })
+    expect(parseInGameChatInput('/? x')).toEqual({ kind: 'local_usage', text: '<BattleNet>: Correct usage is: /?' })
   })
 })

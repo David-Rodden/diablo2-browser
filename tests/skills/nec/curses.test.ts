@@ -461,7 +461,7 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
       const r2 = bus.applyState({
         stateNameOrId: 'amplifydamage',
         slvl: 1,
-        stats: { damageresist: -100, amplify_phys_pierce: 100 },
+        stats: { damageresist: -100 },
         curseTypeOverride: 1,
       })
       expect(r2.applied).toBe(true)
@@ -493,8 +493,8 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
   describe('9. Life Tap 50% Physical Leech Hook', () => {
     it('grants 50% physical life leech to attackers on hit', () => {
       const attackerStats = new UnitStatList()
+      attackerStats.setBaseStat('maxhp', 100 * FIXED_ONE)
       attackerStats.setHp256(50 * FIXED_ONE)
-      attackerStats.addStat('maxhp', 100)
       const attackerBus = new StateBus(attackerStats)
       const attacker: CombatUnitContext = {
         id: 'attacker',
@@ -609,7 +609,6 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
       expect(d.attackrate).toBe(-50)
       expect(d.damagepercent).toBe(-50)
       expect(d.damageresist).toBe(-50)
-      expect(d.amplify_phys_pierce).toBe(50)
       expect(d.item_slow).toBe(50)
     })
   })
@@ -642,7 +641,10 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
       const specLR = calculateCurseEffect(91, 20)
       expect(specLR.skillName).toBe('Lower Resist')
       expect(specLR.stateName).toBe('lowerresist')
-      expect(specLR.debuffStats.lowerresist_pierce).toBe(63)
+      expect(specLR.debuffStats.fireresist).toBe(-63)
+      expect(specLR.debuffStats.lightresist).toBe(-63)
+      expect(specLR.debuffStats.coldresist).toBe(-63)
+      expect(specLR.debuffStats.poisonresist).toBe(-63)
     })
   })
 

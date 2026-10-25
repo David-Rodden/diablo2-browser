@@ -140,6 +140,11 @@ export class WorldArena {
       }
     }
 
+    const isArenaThrowSkill =
+      this.skillId === 2 ||
+      this.skillId === 4 ||
+      this.skillId === 140 ||
+      skillRec.anim === 'TH'
     const playerStateBus = new StateBus(playerStats, this.registry)
     this.player = {
       id: 'player',
@@ -148,6 +153,17 @@ export class WorldArena {
       stateBus: playerStateBus,
       isDualClaw: this.classCode === 'ass',
       hasShield: this.classCode === 'pal',
+      ...(isArenaThrowSkill
+        ? {
+            weaponCode: 'jav',
+            offHandWeaponCode: 'jav',
+            weaponItemType: 'jave',
+            offHandWeaponItemType: 'jave',
+            isThrowing: true,
+            offHandIsThrowing: true,
+            hasDualThrow: true,
+          }
+        : {}),
       weaponMinPhys: 45,
       weaponMaxPhys: 85,
       // The arena player stands at the origin (sub-tile 0,0) for radius scans.
@@ -168,13 +184,15 @@ export class WorldArena {
       stateBus: playerStateBus,
       charToken: this.charToken,
       weaponClass:
-        this.classCode === 'ama'
-          ? 'bow'
-          : this.classCode === 'ass'
-            ? 'h2h'
-            : this.classCode === 'pal' || this.classCode === 'bar'
-              ? '1hs'
-              : 'hth',
+        isArenaThrowSkill
+          ? '1ht'
+          : this.classCode === 'ama'
+            ? 'bow'
+            : this.classCode === 'ass'
+              ? (this.player.isDualClaw ? 'ht2' : 'ht1')
+              : this.classCode === 'pal' || this.classCode === 'bar'
+                ? '1hs'
+                : 'hth',
     })
     this.missileEngine = new MissileEngine(this.registry)
     this.auraScanner = new AuraScanner(this.registry)

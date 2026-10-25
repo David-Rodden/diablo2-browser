@@ -501,6 +501,9 @@ describe('Milestone M5 — HudModel, CommandMapper, and OnlineSession', () => {
       expect(hudModel.rightSkillId).toBe(54)
       expect(hudManager.hotkeys.rightSkillId).toBe(54)
 
+      // The NPC dialog opened above puts the input mode to 2 (D2Client 0x6fafad26): belt / panel commands are
+      // ignored there (0x6fae8c28) and the NPC menu refuses the character screen (0x6FB8D538 row 8) -- leave it.
+      hudManager.dismissNpcMenu()
       // Belt key '1' with an empty server belt emits nothing; once the server puts a potion there, BeltUse
       // carries its real item id
       expect(mapper.handleKeyDown({ key: '1' }, 6000)).toBe(true)
@@ -516,6 +519,8 @@ describe('Milestone M5 — HudModel, CommandMapper, and OnlineSession', () => {
       expect(automapView.consumeVisibilityToggleRequest()).toBe(true)
       expect(automapView.getMode()).toBe('off')
 
+      // An open NPC dialog (UI 8) refuses the character screen (D2Client 0x6FB8D538 row 8 col 2 = 2).
+      hudManager.dismissNpcMenu()
       expect(mapper.handleKeyDown({ key: 'c' }, 6300)).toBe(true)
       expect(hudManager.leftPanel).toBe('char')
       expect(mapper.handleKeyDown({ key: 'Escape' }, 6400)).toBe(true)

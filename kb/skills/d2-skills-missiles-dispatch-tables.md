@@ -5,7 +5,7 @@
 | Binary | ImageBase | Dispatch Table Symbol | Table VA (1.13c) | Table Size / Count Address | `Skills.txt` / `Missiles.txt` Column |
 |---|---|---|---|---|---|
 | `D2Client.dll` | `0x6FAB0000` | `g_apfnSkillCltStFunc` | `0x6FB8E928` | `70` (`0x46` @ `0x6FB8EA40`) | `Skills.txt` `cltstfunc` |
-| `D2Client.dll` | `0x6FAB0000` | `g_apfnSkillCltDoFunc` | `0x6FB8EA48` | `97` (`0x61` @ `0x6FB8EBCC`) | `Skills.txt` `cltdofunc` |
+| `D2Client.dll` | `0x6FAB0000` | `g_apfnSkillCltDoFunc` | `0x6FB8EA48` | `130` (`0x82` @ `0x6FB8EC50`; slots 97..129 are NULL) | `Skills.txt` `cltdofunc` |
 | `D2Client.dll` | `0x6FAB0000` | `g_apfnMissileCltDoFunc` | `0x6FB8D8A0` | `91` (`0x6FB8DA0C` end) | `Missiles.txt` `pCltDoFunc` |
 | `D2Client.dll` | `0x6FAB0000` | `g_apfnMissileCltHitFunc` | `0x6FB8DA10` | `81` (`0..80`) | `Missiles.txt` `pCltHitFunc` |
 | `D2Game.dll` | `0x6FC20000` | `gpSkillSrvStartFnTable` | `0x6FD27338` | `66` (`0..65` active) | `Skills.txt` `srvstfunc` |
@@ -86,13 +86,13 @@
 | 6 | `0x6FB8EA60` | `0x6FAF13A0` | `Blade Fury` (#266) |
 | 7 | `0x6FB8EA64` | `0x6FAF0910` | `Dragon Tail` (#270) |
 | 8 | `0x6FB8EA68` | `0x6FAF1290` | `Mind Blast` (#273) |
-| 9 | `0x6FB8EA6C` | `0x6FAF1780` | *(unreferenced in 1.13c txt)* |
-| 10 | `0x6FB8EA70` | `0x6FAF07C0` | *(unreferenced in 1.13c txt)* |
-| 11 | `0x6FB8EA74` | `0x6FAF1690` | *(unreferenced in 1.13c txt)* |
-| 12 | `0x6FB8EA78` | `0x6FAF0B60` | *(unreferenced in 1.13c txt)* |
-| 13 | `0x6FB8EA7C` | `0x6FAF0A70` | *(unreferenced in 1.13c txt)* |
-| 14 | `0x6FB8EA80` | `0x6FAF0880` | *(unreferenced in 1.13c txt)* |
-| 15 | `0x6FB8EA84` | `0x6FAF14F0` | *(unreferenced in 1.13c txt)* |
+| 9 | `0x6FB8EA6C` | `0x6FAF1780` | `Fists of Fire` (#259) / `Blades of Ice` (#274) via `cltprgfunc2/3` |
+| 10 | `0x6FB8EA70` | `0x6FAF07C0` | `Claws of Thunder` (#269) `cltprgfunc2`; `ItemCltEffect` of `Frost Nova` (#44) / `Nova` (#48) |
+| 11 | `0x6FB8EA74` | `0x6FAF1690` | `Claws of Thunder` (#269) `cltprgfunc3` |
+| 12 | `0x6FB8EA78` | `0x6FAF0B60` | `Tiger Strike` (#254) `cltprgfunc1..3` |
+| 13 | `0x6FB8EA7C` | `0x6FAF0A70` | `Cobra Strike` (#265) `cltprgfunc1..3` |
+| 14 | `0x6FB8EA80` | `0x6FAF0880` | `Royal Strike` (#280) `cltprgfunc1` |
+| 15 | `0x6FB8EA84` | `0x6FAF14F0` | `Royal Strike` (#280) `cltprgfunc3` |
 | 16 | `0x6FB8EA88` | `0x6FAC4F40` | `Jab` (#10) |
 | 17 | `0x6FB8EA8C` | `0x6FAC5DA0` | `Multiple Shot` (#12), `Teeth` (#67), `PrimePoisonball` (#191), `Shock Wave` (#243) |
 | 18 | `0x6FB8EA90` | `0x6FAC5C40` | `Guided Arrow` (#22), `Bone Spirit` (#93), `MonBoneSpirit` (#211) |
@@ -159,8 +159,8 @@
 | 79 | `0x6FB8EB84` | `0x6FB742B0` | `fenris rage` (#314) |
 | 80 | `0x6FB8EB88` | `0x6FB75480` | *(unreferenced in 1.13c txt)* |
 | 81 | `0x6FB8EB8C` | `0x6FB74C10` | `Baal Cold Missiles` (#318) |
-| 82 | `0x6FB8EB90` | `0x6FB745C0` | *(unreferenced in 1.13c txt)* |
-| 83 | `0x6FB8EB94` | `0x6FAF15A0` | *(unreferenced in 1.13c txt)* |
+| 82 | `0x6FB8EB90` | `0x6FB745C0` | *(no `cltdofunc` row; #285 names it as `cltstfunc = 82`, which the St table (70 slots) skips)* |
+| 83 | `0x6FB8EB94` | `0x6FAF15A0` | `Royal Strike` (#280) `cltprgfunc2` |
 | 84 | `0x6FB8EB98` | `0x6FB24350` | `Thunder Storm` (#57) via `cltprgfunc1` (no `cltdofunc` row); the periodic strike, see `kb/skills/player/skills-sor-lightning.md` |
 | 85 | `0x6FB8EB9C` | `0x6FB79000` | *(unreferenced in 1.13c txt)* |
 | 86 | `0x6FB8EBA0` | `0x6FADBB50` | *(unreferenced in 1.13c txt)* |
@@ -168,12 +168,12 @@
 | 88 | `0x6FB8EBA8` | `0x6FB74960` | *(unreferenced in 1.13c txt)* |
 | 89 | `0x6FB8EBAC` | `0x6FB750F0` | *(unreferenced in 1.13c txt)* |
 | 90 | `0x6FB8EBB0` | `0x6FB79BE0` | *(unreferenced in 1.13c txt)* |
-| 91 | `0x6FB8EBB4` | `0x6FB794E0` | *(unreferenced in 1.13c txt)* |
-| 92 | `0x6FB8EBB8` | `0x6FB795F0` | *(unreferenced in 1.13c txt)* |
-| 93 | `0x6FB8EBBC` | `0x6FB75670` | *(unreferenced in 1.13c txt)* |
+| 91 | `0x6FB8EBB4` | `0x6FB794E0` | `Volcano` (#244) `cltprgfunc1` (S2C 0xA3) |
+| 92 | `0x6FB8EBB8` | `0x6FB795F0` | `Armageddon` (#249) / `Diablogeddon` (#349) `cltprgfunc1` (S2C 0xA3) |
+| 93 | `0x6FB8EBBC` | `0x6FB75670` | `CorpseCycler` (#307) / `VineCycler` (#325) `cltprgfunc1` (S2C 0xA3) |
 | 94 | `0x6FB8EBC0` | `0x6FB08990` | `DoomKnightMissile` (#335) |
 | 95 | `0x6FB8EBC4` | `0x6FB088B0` | `NecromageMissile` (#338) |
-| 96 | `0x6FB8EBC8` | `0x6FB24610` | *(unreferenced in 1.13c txt)* |
+| 96 | `0x6FB8EBC8` | `0x6FB24610` | `ItemCltEffect` of `Chain Lightning` (#53) |
 
 ## 4. `D2Client.dll` Missile Client Do Functions (`g_apfnMissileCltDoFunc` @ `0x6FB8D8A0`)
 
@@ -250,6 +250,8 @@
 
 ## 5. `D2Client.dll` Missile Client Hit Functions (`g_apfnMissileCltHitFunc` @ `0x6FB8DA10`)
 
+> **Null / Unbound Slots (`#1515`)**: In `D2Client.dll` `0x6FB8DA10` (`65` slots `0..64`), indices `0, 5, 6, 7, 8, 11, 15, 17, 20, 21, 22, 23, 27, 35, 45, 49, 58, 59` are `0x00000000` (`NULL`). Notably, `Missiles.txt` row `#283` (`desertfireball`) sets `pCltHitFunc = 11` (`0x6FB8DA3C = NULL`), so `0x6FB615F6` skips the callback and falls through to standard `ExplosionMissile` (`fireexplode`, `#29`) creation.
+
 | Index | Slot VA | Function VA | Referencing `Missiles.txt` Rows (`pCltHitFunc`) |
 |---:|---|---|---|
 | 1 | `0x6FB8DA14` | `0x6FB6C1A0` | `explodingarrow` (#41), `fireball` (#62), `vampirefireball` (#129) |
@@ -258,6 +260,7 @@
 | 4 | `0x6FB8DA20` | `0x6FB65F00` | *(unreferenced in 1.13c txt)* |
 | 9 | `0x6FB8DA34` | `0x6FB66990` | `holybolt` (#55), `fistoftheheavensbolt` (#234) |
 | 10 | `0x6FB8DA38` | `0x6FB62570` | `chargedbolt` (#56), `nova` (#90), `lightninghit` (#99), `frostnova` (#119), `monsterlight` (#170), `diablight` (#172), ... (+17 more) |
+| 11 | `0x6FB8DA3C` | `0x00000000` (`NULL`) | `desertfireball` (#283) *(dangling index to NULL slot; falls through to `ExplosionMissile = fireexplode`)* |
 | 12 | `0x6FB8DA40` | `0x6FB6B070` | `immolationarrow` (#85) |
 | 13 | `0x6FB8DA44` | `0x6FB61350` | `guidedarrow` (#86), `bonespirit` (#193), `monbonespirit` (#329) |
 | 14 | `0x6FB8DA48` | `0x6FB60870` | `freezingarrow` (#87), `glacialspike` (#96), `monglacialspike` (#271) |
@@ -741,3 +744,92 @@
 - [`kb/skills/bosses/skills-boss-act1-act2-act3.md`](./bosses/skills-boss-act1-act2-act3.md) — Act 1, Act 2, and Act 3 Bosses (Andariel, Blood Raven, Countess, Griswold, Cow King, Radament, Coldworm, Summoner, Duriel, Council Members, Mephisto)
 - [`kb/skills/bosses/skills-boss-act4-diablo.md`](./bosses/skills-boss-act4-diablo.md) — Act 4 Bosses (Izual, Hephasto, Chaos Sanctuary Seal Bosses, Diablo, Diablo Clone)
 - [`kb/skills/bosses/skills-boss-act5-baal-ubers.md`](./bosses/skills-boss-act5-baal-ubers.md) — Act 5 & Pandemonium Bosses (Shenk & Catapults, Nihlathak, The Ancients, Baal Throne Waves, Baal & Baal Clone, Uber Mephisto, Uber Diablo, Uber Baal, Lilith, Uber Duriel, Uber Izual)
+
+## 11. `missiles.bin` client columns & MissCltDoFunc[8] trail (Issue #1497)
+
+Verified by matching all 684 rows of `missiles.txt` against `missiles.bin` (record `0x1A4`); generated into
+`src/common/skills/missile-clt-cols-113c.ts` by `npm run extract:missile-clt-cols`:
+
+| Offset | Column | Offset | Column |
+|---|---|---|---|
+| `+0x04` bit 0 / 5 / 10 / 11 | LastCollide / ClientSend / Town / SrcTown | `+0x178` | AnimLen |
+| `+0x08` / `+0x0A` (signed, `jle` skip) | pCltDoFunc / pCltHitFunc | `+0x17C` | RandStart |
+| `+0x16` | ExplosionMissile | `+0x180..+0x182` | SubLoop / SubStart / SubStop |
+| `+0x1E..+0x22` | CltSubMissile1..3 | `+0x183` | CollideType |
+| `+0x2C..+0x32` | CltHitSubMissile1..4 | `+0x184` / `+0x185` | Collision / ClientCol |
+| `+0x58..+0x68` | CltParam1..5 | `+0x186` / `+0x187` | CollideKill / CollideFriend |
+| `+0x6C..+0x74` | cHitPar1..3 | `+0x188` / `+0x189` | NextHit / NextDelay |
+| `+0x96` / `+0x98` | Range / LevRange | `+0x18A` | Size |
+| `+0x12C` | CltSrcTown | `+0x18C` / `+0x18D` | AlwaysExplode / Trans |
+| `+0x130` / `+0x131` | Light / Flicker | `+0x1A1` | AnimSpeed |
+| `+0x135` / `+0x136` | InitSteps / Activate | `+0x1A2` | LocalBlood |
+
+Row 568 `royalstrikechainlightning` has the commented-out cell `*16` in pCltHitFunc; the compiled record holds
+`0xFDB8` (-584), which the client skips (`movsx` + `jle`).
+
+**MissCltDoFunc[8] `0x6FB691C0`** (all 16 `pCltDoFunc = 8` rows): `CltSubMissile1 < 0` → remove the missile;
+skip while `#10985 < InitSteps`; otherwise, when the path entered a new sub-tile (`#10203`, path flag 8), create ONE
+`CltSubMissile1` at the missile position with create flags `1`, record level `0` (lifetime = Range) and loops
+`+0x34 = max(1, CltParam1)`, init callback `0x6FB60F40`: height `RAND(parent seed, sub CltParam2) - CltParam2 / 2`
+(`<< 11` into the 3D trajectory), direction copied from the parent path, start frame `RAND(sub seed, sub AnimLen)`.
+CltSubMissile2 is never read here (`baal taunt lightning trail` #548 is not created by D2Client at all).
+
+
+## 5. Notes (client audit)
+- The stride-8 "table" at `0x6FB8D860` reported by automatic scans is the `MissileCltDoFunc` (`0x6FB8D8A0`) and
+  `MissileCltHitFunc` (`0x6FB8DA10`) tables read interleaved; it is not a skill table.
+- `SkillsBar.cpp` (`..\Source\D2Client\SKILLS\SkillsBar.cpp`) is the Barbarian skill source (Leap `0x6FB776C0`,
+  Leap Attack `0x6FB77550`, Whirlwind `0x6FB77370`, `0x6FB75F20`), not the skill-bar UI.
+- Compiled `D2SkillsTxt` (0x23C bytes) client fields: `cltmissile` +0xE8, `cltmissilea..d` +0xEA..+0xF0,
+  `cltstfunc` +0xF2, `cltdofunc` +0xF4, `cltprgfunc1..3` +0xF6..+0xFA, `stsound` +0xFC, `stsoundclass` +0xFE,
+  `dosound` +0x100, `dosound a/b` +0x102/+0x104, `castoverlay` +0x106, `tgtoverlay` +0x108, `tgtsound` +0x10A,
+  `prgoverlay` +0x10C, `prgsound` +0x10E, `cltoverlaya/b` +0x110/+0x112, `cltcalc1..3` +0x114.., `ItemCastSound`
+  +0x122, `ItemCastOverlay` +0x124, `ItemCltEffect` +0x16C. dwFlags: `lob` bit1, `progressive` bit2, `prgstack`
+  bit7, `stsuccessonly` bit12, `stsounddelay` bit13, `weaponsnd` bit14.
+- See also `kb/skills/s2c-0xa3-cltprgfunc-dispatch-113c.md`.
+## 13. CltDo2 and lobbed missiles (Issue #1503)
+
+- **CltDo2 `0x6FB63060`** = blood1/2, bigblood1/2, sand pile, dirt pile (not potions): `#10426(m)` → `[m+0xC4] |= 0x10000`
+  and the path is freed; on screen (`x - viewX ∈ [0, [0x6FBA9E14]]`, `y ∈ [viewY - 8, [0x6FBA9E18] + 0x40]`) →
+  `#10970(m, 0x80)` + CltDo1, else `0x6FB61420(m, 0)` (ended off screen). The thrown potions are pCltDoFunc **1**.
+- **Thrown potions**: SkillCltDoFunc[2] `0x6FB52F60` → for item type 0x26 `0x6FB69A80`: create flags `0x521`, record
+  `+0x24` = lob height (0x1E when the caller passes 0). In the create, flag `0x400` sets range = remaining =
+  `(#10080 distance << 16) / (dwVelocity << 4)` frames; flag `0x100` calls `0x6FB77C80`: trajectory flag 2,
+  `+0x48 = max(1, N)`, z = height `<< 11`, az = `-0x1000` when unset, `vz = (-z - (N*N*az)/2) / N` (truncating), then the
+  create steps it once (`0x6FB77FB0`). Port: `src/client/world/missile-lob-113c.ts`.
+## 12. Per-sub-tile trail CltDoFuncs 3 / 18 / 68 (Issues #1504, #1505, #1506)
+
+- **CltDo3 `0x6FB6BE60`** (poisonjav, plaguejavelin, trap poison ball right/left, viper_poisjav): `#10203` (path entered
+  a new sub-tile) and `CltSubMissile1 >= 0` → `0x6FB69650(CltSubMissile1, #10231(CltCalc1 +0x84))`: create
+  `{ flags 5, start = missile cell, velocity 0, level = missile level }` (`flags |= 8` with loops `2*level-2` only when the
+  CltCalc1 value is > 0; no pCltDoFunc 3 row has a CltCalc1). Not every tick.
+- **CltDo18 `0x6FB68960`** (bonespear, viper_bonespear): `CltSubMissile1 >= 0 && #10985 >= InitSteps && #10203` → create
+  `{ flags 1, start = missile cell, record level 0 (lifetime = Range), loops +0x34 = CltParam1 }`, path direction / speed
+  copied, 3D offset copied (`0x6FB77EC0` → `0x6FB77E30`).
+- **CltDo68 `0x6FB677A0`** (sucfireball): `CltSubMissile1 == 0` → remove; else on `#10203` create flags 9 with
+  CltSubMissile1. sucfireball has none (compiled `-1`), and `0x6FB630F0` returns NULL for `[rec+0x10] < 0`, so the client
+  never draws a trail (`sucfireballtrail` comes only from the server).
+
+## 14. Quest & Skill Client Missile Handlers (`CltDo33/34`, `CltHit38`, `CltHit40`, `CltDo43..46`, `CltHit51`, `CltHit53`, `CltDo54`, `CltDo64/65` — Issues #1493, #1494, #1501, #1507, #1508, #1509)
+
+- **Tainted Sun (`#1493`)**:
+  - Special Quest Event `6` (`0x6FB02C50`): searches radius `25` (`0x19`) for `Objects.txt` `149` (`0x95` `taintedsunaltar`) and spawns `350` (`0x15E` `taintedsuncontrol`, `Range=300`) with `TargetX = altarId`, `TargetY = 1`.
+  - `MissCltDoFunc[33]` (`0x6FB64760`, `taintedsuncontrol` #350): reads 5-row timeline table at `0x6FB8364C..0x6FB8367C` (`[350,10,1], [300,5,1], [200,4,1], [175,3,1], [0,100,0]`). On `rem % interval == 0`, spawns `351` (`0x15F` `taintedsunflash`, `Range=12`, `pCltHitFunc=38`) at `(x + dx * 2, y + dy * 2)`. Sets `TargetY = 2` when `25 <= rem < 75` and `TargetY = 3` when `rem < 25`. On `rem <= 1`, attaches `Overlay.txt` `182` (`0xB6` `taintedsun`) and white light (`radius=60, rgb=255,255,255`) to the altar.
+  - `MissCltHitFunc[38]` (`0x6FB645D0`, `taintedsunflash` #351): when `taintedsunflash` expires (`pHitUnit == NULL`), spawns `352` (`0x160` `taintedsunball`, `pCltDoFunc=34`, `Vel=12`, `Range=300`) toward `taintedsuncontrol` (`TargetX`).
+  - `MissCltDoFunc[34]` (`0x6FB61FC0`, `taintedsunball` #352): tracks `taintedsuncontrol`; slows in phase `2` (`TargetY == 2`) and halts horizontal velocity + ascends vertically in phase `3` (`TargetY == 3`).
+- **Anya Rescue (`#1494`)**:
+  - Special Quest Event `16` (`0x6FB02B70`): searches radius `25` (`0x19`) for `Objects.txt` `460` (`0x1CC` `FrozenAnya`) and spawns `528` (`0x210` `anya center`, `Range=300`) with `TargetX = anyaId`, `TargetY = 25` (`0x19`).
+  - `MissCltDoFunc[54]` (`0x6FB69C10`, `anya center` #528): spawns `532` (`0x214` `anya icemagic`) at `elapsed == 0`, `597` (`0x255` `anyasteam1`) 3D trajectory pieces (`8` for `elapsed < 50`, `5` for `< 80`, `1` for `< 110`), screen shake at `elapsed == 5` (`rampUp=600, sustain=4000, rampDown=3000, amp=3`), and `615` (`0x267` `anyasteamvent`) + `616` (`0x268` `anyasteam`) every 7 frames (`elapsed < 200 && elapsed != 5`).
+- **Baal FX Controller (`#1501`)**:
+  - `MissCltDoFunc[64]` (`0x6FB69FF0`, `baalfx control` #625): reads 5-row timeline table at `0x6FB835D4..0x6FB83604` (`[420,64,0], [435,20,1], [470,8,1], [270,5,1], [0,64,0]`), spawns `626` (`0x272` `baalfx spirit 1`) with `TargetX = controllerId`, sets controller `TargetY = rem < 210 ? 2 : 1`, and spawns `631..634` (`0x277..0x27A` `baalfx baal head appear` / `baalfx baal head 1..3`) at `rem == 450 / 425 / 375 / 325`.
+  - `MissCltDoFunc[65]` (`0x6FB61D10`, `baalfx spirit 1..5` #626..630): orbits in phase `1` (`TargetY == 1`) and converges toward `baalfx control` in phase `2` (`TargetY == 2`).
+- **Lightning Trailing Javelin (`#1507`)**:
+  - `MissCltDoFunc[46]` (`0x6FB67880`, `lightingtrailingjavalin` #431 & `advlighttrailingjav` #438): stores perpendicular vector `perp = (-(ty - sy), tx - sx)` on `elapsed < 2` and spawns two opposing perpendicular `CltSubMissile1` (`lightjavalintrail` #432 / `advlighttrailingjav2` #439, `SubLoop = CltParam1 = 3`) on each new sub-tile (`#10203`).
+  - `MissCltHitFunc[51]` (`0x6FB6A9A0`): spawns `cHitPar1` (`10` or `18`) radial `CltHitSubMissile1` (`lightjavalinexplosion` #433 / `advlightjavexplode` #440) using the 64-entry circle table (`0x6FB857E0`), with `PATHTYPE_CHARGEDBOLT` (`cHitPar2 != 0`).
+- **Distraction & Molten Boulder Emerge (`#1508`)**:
+  - `MissCltDoFunc[43]` (`0x6FB62890`): anchors missile to owner unit while alive.
+  - `MissCltDoFunc[44]` (`0x6FB62790`, `distraction` #393): spawns `394` (`distraction fog`) on each new sub-tile and snaps to owner.
+  - `MissCltDoFunc[45]` (`0x6FB6B500` -> `0x6FB69470`, `distraction fog` #394): spawns `CltSubMissile1` (`395` `distraction puff`) using `CltParam1=36, CltParam2=1, CltParam3=6`.
+  - `MissCltHitFunc[53]` (`0x6FB65A10`, `moltenboulderemerge` #453): chains to `CltHitSubMissile1` (`moltenboulder` #452) on range expiry (`pHitUnit == NULL`).
+- **Healing Bolt (`#1509`)**:
+  - `MissCltHitFunc[40]` (`0x6FB60570`, `healingbolt` #357): on unit collision (`pHitUnit != NULL`), returns `1` (collide/destroy) ONLY when `pOwner->dwUnitType == UNIT_PLAYER (0)` and `pHitUnit->dwUnitType == UNIT_MONSTER (1)` and `D2CLIENT_GetMonsterOwner(pHitUnit->dwUnitId) == pOwner->dwUnitId`.

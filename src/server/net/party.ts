@@ -5,6 +5,7 @@
  * Strictly isomorphic: zero DOM globals, zero Node built-ins, zero `Math.random()` or wall-clock calls.
  */
 
+import { partyExpPool113c, partyExpShare113c } from '../../common/progression/experience-113c.ts'
 import type { ServerEvent } from '../../netproto/index.ts'
 
 export type PartyRelState = 'none' | 'invited' | 'partied' | 'hostile'
@@ -68,9 +69,21 @@ export class PartyManager {
   private readonly members = new Map<number, PartyPlayerEntry>()
   private readonly pendingInvites = new Map<string, { readonly inviterId: number; readonly inviteeId: number }>()
   private readonly hostilePairs = new Set<string>()
+  private readonly mutedPairs = new Set<string>()
+  private readonly lootPermitPairs = new Set<string>()
+  private readonly onPartyIdChanged: ((unitId: number, partyId: number) => void) | undefined
+
+  constructor(onPartyIdChanged?: (unitId: number, partyId: number) => void) {
+    this.onPartyIdChanged = onPartyIdChanged
+  }
 
   private pairKey(a: number, b: number): string {
     return `${a}->${b}`
+  }
+
+  private setMemberPartyId(member: PartyPlayerEntry, partyId: number): void {
+    member.partyId = partyId
+    this.onPartyIdChanged?.(member.unitId, partyId)
   }
 
   registerPlayer(unitId: number, name = `Player${unitId}`, classId = 0, level = 1, areaId = 1): ServerEvent[] {
@@ -78,18 +91,28 @@ export class PartyManager {
   }
 
   addPlayer(unitId: number, name = `Player${unitId}`, classId = 0, level = 1, areaId = 1): ServerEvent[] {
-    this.members.set(unitId, {
+    const entry: PartyPlayerEntry = {
       unitId,
       name,
       classId,
       level,
       areaId,
       partyId: 0xffff,
-    })
+    }
+    this.members.set(unitId, entry)
+    this.onPartyIdChanged?.(unitId, 0xffff)
     return [buildRosterJoinEvent(unitId, name, classId, level, areaId, 0xffff)]
   }
 
+  updatePlayer(unitId: number, patch: { readonly level?: number; readonly areaId?: number }): void {
+    const member = this.members.get(unitId)
+    if (!member) return
+    if (patch.level !== undefined) member.level = patch.level
+    if (patch.areaId !== undefined) member.areaId = patch.areaId
+  }
+
   removePlayer(unitId: number): ServerEvent[] {
+    const leaveEvents = this.leaveParty(unitId)
     this.members.delete(unitId)
     for (const key of Array.from(this.pendingInvites.keys())) {
       if (key.startsWith(`${unitId}->`) || key.endsWith(`->${unitId}`)) {
@@ -101,11 +124,20 @@ export class PartyManager {
         this.hostilePairs.delete(key)
       }
     }
-    return [buildRosterLeaveEvent(unitId)]
+    return [...leaveEvents, buildRosterLeaveEvent(unitId)]
+  }
+
+  hasPendingInvite(inviterId: number, inviteeId: number): boolean {
+    return this.pendingInvites.has(this.pairKey(inviterId, inviteeId))
   }
 
   invite(inviterId: number, inviteeId: number): ServerEvent[] {
-    if (!this.members.has(inviterId) || !this.members.has(inviteeId) || inviterId === inviteeId) {
+    const inviter = this.members.get(inviterId)
+    const invitee = this.members.get(inviteeId)
+    if (!inviter || !invitee || inviterId === inviteeId) {
+      return []
+    }
+    if (inviter.partyId !== 0xffff && inviter.partyId === invitee.partyId) {
       return []
     }
     this.pendingInvites.set(this.pairKey(inviterId, inviteeId), { inviterId, inviteeId })
@@ -113,10 +145,58 @@ export class PartyManager {
       {
         type: 'Party',
         kind: 'relation',
+        source: 0x8b,
+        unitId: inviteeId,
+        playerId: inviteeId,
+        otherId: inviterId,
+        relation: 4,
+      },
+      {
+        type: 'Party',
+        kind: 'relation',
+        source: 0x8b,
         unitId: inviterId,
         playerId: inviterId,
         otherId: inviteeId,
         relation: 2,
+      },
+    ]
+  }
+
+  /**
+   * 1.13c C2S `0x5E` action `0x07` (`D2Game.dll` `0x6FD10900`): cancel a pending invitation
+   * previously sent by `inviterId` (`state === 4`) to `inviteeId` (`state === 2`).
+   * Never removes `inviterId` from an existing party (`partyId` is unchanged).
+   */
+  cancelInvite(inviterId: number, inviteeId: number): ServerEvent[] {
+    const inviter = this.members.get(inviterId)
+    const invitee = this.members.get(inviteeId)
+    if (!inviter || !invitee || inviterId === inviteeId) {
+      return []
+    }
+    const key = this.pairKey(inviterId, inviteeId)
+    if (!this.pendingInvites.has(key)) {
+      return []
+    }
+    this.pendingInvites.delete(key)
+    return [
+      {
+        type: 'Party',
+        kind: 'relation',
+        source: 0x8b,
+        unitId: inviteeId,
+        playerId: inviteeId,
+        otherId: inviterId,
+        relation: invitee.partyId !== 0xffff ? 1 : 0,
+      },
+      {
+        type: 'Party',
+        kind: 'relation',
+        source: 0x8b,
+        unitId: inviterId,
+        playerId: inviterId,
+        otherId: inviteeId,
+        relation: inviter.partyId !== 0xffff ? 1 : 0,
       },
     ]
   }
@@ -136,10 +216,15 @@ export class PartyManager {
     return this.getPartyId(inviteeId)
   }
 
+  /**
+   * 1.13c C2S `0x5E` action `0x08` (`D2Game.dll` `0x6FD10D50`): accept a pending party invitation
+   * from `inviterId` to `inviteeId`. Requires `hasPendingInvite(inviterId, inviteeId)`.
+   */
   accept(inviteeId: number, inviterId: number): ServerEvent[] {
     const inviter = this.members.get(inviterId)
     const invitee = this.members.get(inviteeId)
-    if (!inviter || !invitee) return []
+    if (!inviter || !invitee || inviterId === inviteeId) return []
+    if (!this.hasPendingInvite(inviterId, inviteeId)) return []
 
     this.pendingInvites.delete(this.pairKey(inviterId, inviteeId))
     this.pendingInvites.delete(this.pairKey(inviteeId, inviterId))
@@ -149,9 +234,9 @@ export class PartyManager {
     let partyId = inviter.partyId
     if (partyId === 0xffff) {
       partyId = invitee.partyId !== 0xffff ? invitee.partyId : this.nextPartyId++
-      inviter.partyId = partyId
+      this.setMemberPartyId(inviter, partyId)
     }
-    invitee.partyId = partyId
+    this.setMemberPartyId(invitee, partyId)
 
     return [
       {
@@ -175,11 +260,17 @@ export class PartyManager {
     ]
   }
 
+  /**
+   * 1.13c C2S `0x5E` action `0x09` (`D2Game.dll` `0x6FD110F0` -> `0x6FCBC840` -> `0x6FCBC930`):
+   * remove `unitId` from their party (`0xFFFF`). If the remaining party has `<= 1` member, disband
+   * the party and reset the lone remaining member's `partyId` to `0xFFFF` as well.
+   */
   leaveParty(unitId: number): ServerEvent[] {
     const member = this.members.get(unitId)
-    if (!member) return []
-    member.partyId = 0xffff
-    return [
+    if (!member || member.partyId === 0xffff) return []
+    const oldPartyId = member.partyId
+    this.setMemberPartyId(member, 0xffff)
+    const events: ServerEvent[] = [
       {
         type: 'Party',
         kind: 'roster',
@@ -190,22 +281,95 @@ export class PartyManager {
         partyId: 0xffff,
       },
     ]
+
+    const remaining = Array.from(this.members.values()).filter((m) => m.partyId === oldPartyId)
+    if (remaining.length <= 1) {
+      for (const lone of remaining) {
+        this.setMemberPartyId(lone, 0xffff)
+        events.push({
+          type: 'Party',
+          kind: 'roster',
+          action: 'update',
+          source: 0x8d,
+          unitId: lone.unitId,
+          playerId: lone.unitId,
+          partyId: 0xffff,
+        })
+      }
+    }
+    return events
   }
 
-  setHostile(playerId: number, targetId: number, hostile: boolean): ServerEvent[] {
+  setMuted(listenerId: number, targetId: number, muted: boolean): ServerEvent[] {
+    const key = this.pairKey(listenerId, targetId)
+    if (muted) {
+      this.mutedPairs.add(key)
+    } else {
+      this.mutedPairs.delete(key)
+    }
+    return [
+      {
+        type: 'Party',
+        kind: 'relation',
+        source: 0x8c,
+        unitId: listenerId,
+        playerId: listenerId,
+        otherId: targetId,
+        relation: muted ? 1 : 0,
+      },
+    ]
+  }
+
+  isMuted(listenerId: number, targetId: number): boolean {
+    return this.mutedPairs.has(this.pairKey(listenerId, targetId))
+  }
+
+  setLootPermission(ownerId: number, targetId: number, allow: boolean): ServerEvent[] {
+    const key = this.pairKey(ownerId, targetId)
+    if (allow) {
+      this.lootPermitPairs.add(key)
+    } else {
+      this.lootPermitPairs.delete(key)
+    }
+    return [
+      {
+        type: 'Party',
+        kind: 'relation',
+        source: 0x8c,
+        unitId: ownerId,
+        playerId: ownerId,
+        otherId: targetId,
+        relation: allow ? 2 : 0,
+      },
+    ]
+  }
+
+  hasLootPermission(ownerId: number, targetId: number): boolean {
+    if (ownerId === targetId) return true
+    return this.lootPermitPairs.has(this.pairKey(ownerId, targetId))
+  }
+
+  setHostile(playerId: number, targetId: number, hostile: boolean, button = 4): ServerEvent[] {
     const keyAB = this.pairKey(playerId, targetId)
     const keyBA = this.pairKey(targetId, playerId)
+    const leaveEvents: ServerEvent[] = []
     if (hostile) {
+      const a = this.members.get(playerId)
+      const b = this.members.get(targetId)
+      if (a && b && a.partyId !== 0xffff && a.partyId === b.partyId) {
+        leaveEvents.push(...this.leaveParty(playerId))
+      }
       this.hostilePairs.add(keyAB)
       this.hostilePairs.add(keyBA)
-      if (this.areAllied(playerId, targetId)) {
-        this.leaveParty(playerId)
-      }
+      this.pendingInvites.delete(keyAB)
+      this.pendingInvites.delete(keyBA)
     } else {
       this.hostilePairs.delete(keyAB)
       this.hostilePairs.delete(keyBA)
     }
+    const relationBit = button === 3 ? 4 : 8
     return [
+      ...leaveEvents,
       {
         type: 'Party',
         kind: 'relation',
@@ -213,7 +377,7 @@ export class PartyManager {
         unitId: playerId,
         playerId,
         otherId: targetId,
-        relation: hostile ? 8 : 0,
+        relation: hostile ? relationBit : 0,
       },
     ]
   }
@@ -281,9 +445,10 @@ export class PartyManager {
       return result
     }
 
+    const pool = partyExpPool113c(Math.floor(totalExp), eligible.length)
     const totalLevels = eligible.reduce((sum, c) => sum + Math.max(1, c.level), 0)
     for (const c of eligible) {
-      const share = Math.max(1, Math.floor((totalExp * Math.max(1, c.level)) / totalLevels))
+      const share = Math.max(1, partyExpShare113c(pool, Math.max(1, c.level), totalLevels))
       result.set(c.unitId, share)
     }
     return result

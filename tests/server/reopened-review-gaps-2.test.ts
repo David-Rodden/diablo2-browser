@@ -134,7 +134,7 @@ describe('reopened review pass 2', () => {
       sourceSkillId: 123,
       slvl: 10,
       durationFrames: 75,
-      stats: { defense_pct: -50 },
+      stats: { skill_armor_percent: -50 },
     })
     expect(g.computePlayerDefense(player)).toBeLessThan(before)
 

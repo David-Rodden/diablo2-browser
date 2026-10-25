@@ -45,15 +45,20 @@ export function decode0x79GoldInTrade(pkt: Uint8Array): ServerEvent {
   }
 }
 
-/** 0x92 RemoveObjectTrade (6B, D2Client.dll 0x6fb5e230) */
+/**
+ * 0x92 (6B, D2Client.dll 0x6fb5e230 -> 0x6fb34c60): looks up unit (type @1, id @2) and walks its inventory,
+ * removing items by node (node 3 always, node 1 on a #10970 match; Item.cpp), then refreshes the unit
+ * (0x6fb32fe0). It has nothing to do with the trade window. D2Game.dll 0x6fc90c90 sends `0x92, 0, playerId`.
+ */
 export function decode0x92RemoveObjectTrade(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x92
-  const unitType = r.u8()
-  const partnerId = r.u32LE()
+  const rawUnitType = r.u8()
+  const id = r.u32LE()
   return {
-    type: 'Trade',
-    action: 0x9200 | unitType,
-    partnerId,
+    type: 'ProtocolSync',
+    opcode: 0x92,
+    byteLength: pkt.byteLength,
+    unit: { rawUnitType, id },
   }
 }

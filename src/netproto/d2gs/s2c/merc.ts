@@ -91,12 +91,16 @@ export function decode0x81AssignMerc(pkt: Uint8Array): ServerEvent {
   }
 }
 
-/** 0x9B MercReviveCost (7B, D2Client.dll 0x6fb5e1e0) */
+/**
+ * 0x9B MercReviveCost (7B, D2Client.dll 0x6fb5e1e0): the handler reads only two words,
+ * `mov ax, word [eax+1]` (name id) and `movzx ecx, word [eax+3]` (cost), then jumps to 0x6fafa350;
+ * bytes 5..6 are never read.
+ */
 export function decode0x9BMercReviveCost(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x9B
   const nameId = r.u16LE()
-  const cost = r.u32LE()
+  const cost = r.u16LE()
   return {
     type: 'Merc',
     kind: 'stat',

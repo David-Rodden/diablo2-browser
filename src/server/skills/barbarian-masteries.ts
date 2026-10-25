@@ -22,6 +22,9 @@
  */
 
 import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
+import { itemTypeIsA } from '../../common/items/item-types.ts'
+
+export { itemTypeIsA }
 
 // --- Interfaces for Skill Calculations ---
 
@@ -367,89 +370,40 @@ export function calculateNaturalResistanceStats(slvl: number): NaturalResistance
 // --- Weapon & Crit Evaluation Helpers ---
 
 /**
- * Checks if a given weapon type string matches the target Barbarian Mastery skill.
+ * Canonical 1.13c `Skills.txt` `passiveitype` column for weapon-gated passive skills
+ * (`D2Common.dll` `#10804` @ `0x6FD9F640` `SKILLS_GetWeaponMasteryBonus` -> `0x6FD9F200` -> `0x6FD74430` `ITEMS_CheckItemTypeId`).
  */
-export function isWeaponMatchingMastery(weaponType: string, skillId: number): boolean {
-  const norm = weaponType.toLowerCase().trim()
-  switch (skillId) {
-    case 127: // Sword Mastery (passiveItype = swor)
-      return (
-        norm === 'swor' ||
-        norm.includes('sword') ||
-        norm.includes('blade') ||
-        norm.includes('falchion') ||
-        norm.includes('scimitar') ||
-        norm.includes('saber') ||
-        norm.includes('claymore') ||
-        norm.includes('zweihander')
-      )
-    case 128: // Axe Mastery (passiveItype = axe -> axe, taxe in melee)
-      return (
-        norm === 'axe' ||
-        norm === 'taxe' ||
-        (norm.includes('axe') && !norm.includes('poleaxe') && !norm.includes('cryptic axe')) ||
-        norm.includes('cleaver') ||
-        norm.includes('hatchet')
-      )
-    case 129: // Mace Mastery (passiveItype = blun -> blun, mace, club, hamm, scep, staf, wand)
-      return (
-        norm === 'blun' ||
-        norm === 'mace' ||
-        norm === 'club' ||
-        norm === 'hamm' ||
-        norm === 'scep' ||
-        norm === 'staf' ||
-        norm === 'wand' ||
-        norm.includes('blunt') ||
-        norm.includes('mace') ||
-        norm.includes('club') ||
-        norm.includes('hammer') ||
-        norm.includes('maul') ||
-        norm.includes('flail') ||
-        norm.includes('scepter') ||
-        norm.includes('morning star') ||
-        norm.includes('staff') ||
-        norm.includes('wand')
-      )
-    case 134: // Polearm Mastery (passiveItype = pole)
-      return (
-        norm === 'pole' ||
-        norm.includes('polearm') ||
-        norm.includes('scythe') ||
-        norm.includes('voulge') ||
-        norm.includes('thresher') ||
-        norm.includes('halberd') ||
-        norm.includes('bardiche') ||
-        norm.includes('lochaber') ||
-        norm.includes('bill') ||
-        norm.includes('poleaxe') ||
-        norm.includes('cryptic axe')
-      )
-    case 135: // Throwing Mastery (passiveItype = thro -> tkni, taxe, jave, thro)
-      return (
-        norm === 'thro' ||
-        norm === 'tkni' ||
-        norm === 'taxe' ||
-        norm === 'jave' ||
-        norm.includes('throw') ||
-        norm.includes('javelin') ||
-        norm.includes('dart') ||
-        norm.includes('pilum') ||
-        norm.includes('harpoon')
-      )
-    case 136: // Spear Mastery (passiveItype = spea -> spea, jave in melee)
-      return (
-        norm === 'spea' ||
-        norm === 'jave' ||
-        norm.includes('spear') ||
-        norm.includes('pike') ||
-        norm.includes('lance') ||
-        norm.includes('trident') ||
-        norm.includes('javelin')
-      )
-    default:
-      return false
+export const SKILL_PASSIVE_ITYPE_113C: Readonly<Record<number, string>> = {
+  127: 'swor', // Sword Mastery
+  128: 'axe', // Axe Mastery
+  129: 'blun', // Mace Mastery (blun <- club, hamm, mace, rod <- scep, wand, staf)
+  134: 'pole', // Pole Arm Mastery
+  135: 'thro', // Throwing Mastery (thro <- comb <- tkni, taxe, jave <- ajav; tpot)
+  136: 'spea', // Spear Mastery (spea <- aspe, jave <- ajav)
+  252: 'h2h', // Claw Mastery (h2h <- h2h2)
+  263: 'h2h', // Weapon Block (h2h <- h2h2)
+}
+
+/**
+ * Checks whether a weapon's `ItemTypes.txt` type code (`Weapons.txt` `type` / `type2`)
+ * matches the target passive skill's `passiveitype` via the `ItemTypes.txt` `Equiv1`/`Equiv2`
+ * inheritance chain (`D2Common.dll` `0x6FD74430` `ITEMS_CheckItemTypeId`).
+ *
+ * Strictly accepts `ItemTypes.txt` codes only (`swor`, `staf`, `ajav`, `tkni`, etc.);
+ * returns `false` for empty/missing strings or English item names (`Phase Blade`, `Cryptic Axe`).
+ */
+export function isWeaponMatchingMastery(
+  weaponType: string | null | undefined,
+  skillId: number,
+): boolean {
+  if (!weaponType) {
+    return false
   }
+  const passiveItype = SKILL_PASSIVE_ITYPE_113C[skillId]
+  if (!passiveItype) {
+    return false
+  }
+  return itemTypeIsA(weaponType, passiveItype)
 }
 
 /**

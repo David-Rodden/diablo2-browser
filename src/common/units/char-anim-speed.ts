@@ -26,6 +26,7 @@
  *     `durationMs = ticks * 40`
  */
 
+import { cltStAttackRate113c } from '../skills/clt-st-attackrate-113c.ts'
 import { RAW_ARMOR, RAW_WEAPONS } from '../data/canonical-drop-data.ts'
 import { parseWeaponsTable, type WeaponBase, type WeaponTable } from '../items/weapons.ts'
 import { getMonsterPathRecord } from '../path/units.ts'
@@ -1017,6 +1018,44 @@ export function resolveArmorSpeed113c(code: string | undefined | null): number {
   return getCanonicalArmorSpeeds().get(trimmed.toLowerCase()) ?? 0
 }
 
+let cachedArmorBlocksByCode: Map<string, number> | null = null
+
+/**
+ * Canonical 1.13c `Armor.txt` `block` column by item code (`D2Common.dll` `0x6FD6FF40`
+ * `ArmorTxt + 0x134`, baked into shield items as base `STAT_TOBLOCK` (`statId = 20`) on creation).
+ */
+function getCanonicalArmorBlocks(): Map<string, number> {
+  if (!cachedArmorBlocksByCode) {
+    const map = new Map<string, number>()
+    const lines = RAW_ARMOR.split(/\r?\n/).filter((l) => l.trim() !== '')
+    const header = lines[0]?.split('\t') ?? []
+    const codeIdx = header.indexOf('code')
+    const blockIdx = header.indexOf('block')
+    if (codeIdx >= 0 && blockIdx >= 0) {
+      for (const line of lines.slice(1)) {
+        const cells = line.split('\t')
+        const code = (cells[codeIdx] ?? '').trim()
+        if (!code || code === 'Expansion') continue
+        const raw = (cells[blockIdx] ?? '').trim()
+        const val = raw === '' ? 0 : Number(raw)
+        map.set(code.toLowerCase(), Number.isFinite(val) ? val : 0)
+      }
+    }
+    cachedArmorBlocksByCode = map
+  }
+  return cachedArmorBlocksByCode
+}
+
+/**
+ * Resolves the 1.13c `Armor.txt` `block` value for an item code (0 for non-shield/non-armor codes).
+ */
+export function resolveArmorBlock113c(code: string | undefined | null): number {
+  if (!code) return 0
+  const trimmed = code.trim()
+  if (!trimmed) return 0
+  return getCanonicalArmorBlocks().get(trimmed.toLowerCase()) ?? 0
+}
+
 export interface EquippedItemStatLike {
   readonly statId?: number | undefined
   readonly id?: number | undefined
@@ -1418,8 +1457,9 @@ export interface CharacterAnimSpeedParams {
  *   `UNITS_UpdateAnimRateAndVelocity` (`0x6FD834CD`), if the skill's `seqTrans` is `'SC'` or `'SQ'`
  *   (`#41 Inferno`, `#49 Lightning`, `#53 Chain Lightning`, `#229 Molten Boulder`,
  *   `#230 Arctic Blast`, `#234 Fissure`, `#244 Volcano`), it uses `EFCR`; otherwise (`seqTrans === 'A1'`),
- *   it uses `EIAS` with the `-30` sequence penalty (`0x6FD834CD: sub esi, 0x1E`), plus `#133 Double Swing`'s
- *   intrinsic `+50%` skill EIAS (`D2Client.dll` `0x6FB76290` `SKILLS_CltSt27_DoubleSwing`).
+ *   it uses `EIAS` with the `-30` sequence penalty (`0x6FD834CD: sub esi, 0x1E`).
+ * - Every attack clip and `sq` add the temporary stat 68 a SkillCltStFunc applies (`D2Client.dll` `0x6FB50880`:
+ *   CltSt27 #133 Double Swing `cltcalc1 = par5 = +50`, CltSt9 #270 Dragon Tail `Param4 = -40`).
  * - `a1`, `a2`, `th`, `kk`, `s1`, `s2` (Assassin trap-laying `#261, #262, #271, #272, #276`),
  *   `s3`, `s4` use `EIAS` (`itemIas + skillIas - weaponWsm`).
  * - `gh` (mode 4) and `bl` (mode 9) use `EFHR` / `EFBR` (`fhr` / `fbr`).
@@ -1452,10 +1492,9 @@ export function computeEffectiveAnimRate113c(
     if (seqTrans === 'SC' || seqTrans === 'SQ') {
       return computeEffectiveFcr(stats.fcr ?? 0)
     }
-    const doubleSwingBonus = stats.skillId === 133 ? 50 : 0
     return computeEffectiveIas({
       itemIas: stats.itemIas ?? stats.ias ?? 0,
-      skillIas: (stats.skillIas ?? 0) + doubleSwingBonus - 30,
+      skillIas: (stats.skillIas ?? 0) + cltStAttackRate113c(stats.skillId) - 30,
       weaponWsm: stats.weaponWsm ?? stats.wsm ?? 0,
     })
   }
@@ -1478,7 +1517,7 @@ export function computeEffectiveAnimRate113c(
   ) {
     return computeEffectiveIas({
       itemIas: stats.itemIas ?? stats.ias ?? 0,
-      skillIas: stats.skillIas ?? 0,
+      skillIas: (stats.skillIas ?? 0) + cltStAttackRate113c(stats.skillId),
       weaponWsm: stats.weaponWsm ?? stats.wsm ?? 0,
     })
   }
@@ -1678,6 +1717,7 @@ export function resolveCharacterAnimSpeedParams(
     weaponWsm,
     fhr,
     fbr,
+    skillId: sources.skillId ?? undefined,
   })
 
   // Engine hardcode (D2Common UNITS_GetBaseAnimSpeed) replaces AnimData speeds

@@ -110,31 +110,37 @@ export {
   calculateFistOfTheHeavensDamage,
   calculateFistOfTheHeavensHolyBoltDamage,
 } from './skills.ts'
+import { itemTypeIsA } from '../../common/items/item-types.ts'
 
 /**
  * Validate 1.13c pre-cast equipment constraints for Paladin combat skills with tri-state semantics:
- * - Holy Shield (#117) & Smite (#97): require an equipped shield (`hasShield !== false`)
+ * - Holy Shield (#117) & Smite (#97): require an equipped shield (`hasShield !== false`, `itypea1 = shld`)
  * - Sacrifice (#96), Zeal (#106), Charge (#107), Vengeance (#111), & Conversion (#116):
- *   require a melee weapon (`itypea1 = mele`, fails if `weaponItemType === 'bow'` / `'xbow'` or `isRanged === true` or `hasMeleeWeapon === false`)
+ *   require a melee weapon (`itypea1 = mele` via `ItemTypes.txt` `Equiv` chain)
  * Tri-state semantics: undefined/omitted allows execution for backwards compatibility with legacy test fixtures.
  */
 export function validatePaladinSkillEquipment(
   skillId: number,
   equipment?: {
     hasShield?: boolean | undefined
+    shieldItemType?: string | undefined
     hasMeleeWeapon?: boolean | undefined
     weaponItemType?: string | undefined
     isRanged?: boolean | undefined
   },
 ): { valid: boolean; reason?: 'requires_shield' | 'requires_melee' } {
   if (!equipment) return { valid: true }
-  if ((skillId === 97 || skillId === 117) && equipment.hasShield === false) {
+  const sType = (equipment.shieldItemType ?? '').trim()
+  if (
+    (skillId === 97 || skillId === 117) &&
+    (equipment.hasShield === false || (sType !== '' && !itemTypeIsA(sType, 'shld')))
+  ) {
     return { valid: false, reason: 'requires_shield' }
   }
+  const wType = (equipment.weaponItemType ?? '').trim()
   if (
     (skillId === 96 || skillId === 106 || skillId === 107 || skillId === 111 || skillId === 116) &&
-    (equipment.weaponItemType === 'bow' ||
-      equipment.weaponItemType === 'xbow' ||
+    ((wType !== '' && !itemTypeIsA(wType, 'mele')) ||
       equipment.isRanged === true ||
       equipment.hasMeleeWeapon === false)
   ) {

@@ -2,6 +2,8 @@
  * Client-side Skill Missiles, Overlays, Cast Spawners, and Audio Dispatchers (`src/client/world/world-skill-missiles.ts`).
  */
 
+import { stepTraj3dZ } from './quest-fx-horadric-113c.ts'
+import { lobFrames, lobTraj3d } from './missile-lob-113c.ts'
 import {
   convertMonsterSoundMode113c,
   isUnshippedMonsterSoundId113c,
@@ -73,6 +75,11 @@ import {
   resolveHitClassSoundIds113c,
   type WorldSoundRequest,
 } from '../audio/d2gs-play-sound-113c.ts'
+import {
+  computeFootstepVolume113c,
+  isMonsterNeutralSoundMode113c,
+  resolveFootstepSoundId113c,
+} from '../audio/footstep-113c.ts'
 import { OVERLAY_TXT_ROWS } from '../render/overlay-txt-rows.ts'
 import { STATE_OVERLAYS } from '../render/overlays-meta.ts'
 import { reportMissingArt } from '../../client/scene/missing-art.ts'
@@ -101,6 +108,11 @@ import {
   warCryStunFrames113c,
 } from './state-ids-113c.ts'
 import { calculatePierceStats } from '../../common/skills/amazon-passive.ts'
+import { getSkillClientRow113c } from '../../common/skills/skill-client-113c.ts'
+import { isTownLevel } from '../../common/world/scene-population.ts'
+import { resolvePlayerHitClassIndex113c, stSoundDelayFrames113c } from '../../common/audio/hit-class-sound-113c.ts'
+import { MONSTATS_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
+import type { UnitType } from '../../netproto/index.ts'
 import {
   CLT_RING16_DX_113C,
   CLT_RING16_DY_113C,
@@ -109,6 +121,7 @@ import {
   poisonExplosionCloudOffsets113c,
   ringMissileSpeedSubTilesPerTick113c,
 } from './nec-poison-bone-113c.ts'
+import { chainLightningHits113c, lightningStrikeHits113c } from './chain-lightning-clthit16-113c.ts'
 import {
   ALL_CURSE_TARGET_OVERLAY_SET,
   ALL_PALADIN_AURA_STATES,
@@ -122,10 +135,8 @@ import {
   PALADIN_AURA_SKILL_STATES,
   SELF_BUFF_SKILL_STATES,
   SKILL_CLT_MISSILE_AB_113C,
-  SKILL_TGT_OVERLAYS_113C,
   getCurseRadiusSubtiles113c,
   getMonsterModeMissile113c,
-  getSkillTgtOverlay113c,
   type ClientWorldInternal,
   type SpawnMissileOptions,
 } from './world-skill-state-tables.ts'
@@ -213,6 +224,7 @@ export function pushSoundRequestImpl(this: ClientWorldInternal, req: WorldSoundR
     if (req.y !== undefined) clean.y = req.y
   }
   if (req.delayTicks !== undefined) clean.delayTicks = req.delayTicks
+  if (req.doSoundId !== undefined) clean.doSoundId = req.doSoundId
   if (req.volume !== undefined) clean.volume = req.volume
   if (req.volumeOverride !== undefined) clean.volumeOverride = req.volumeOverride
   const queue: WorldSoundRequest[] = this._soundRequests
@@ -358,17 +370,45 @@ export function emitSkillCastSoundImpl(this: ClientWorldInternal, opts: {
   readonly y?: number | undefined
   readonly unitId?: number | undefined
   readonly local?: boolean | undefined
+  readonly unitType?: UnitType | undefined
+  readonly itemOrigin?: boolean | undefined
 }): void {
   const skillId = Number(opts.skillId ?? 0)
   if (!Number.isFinite(skillId) || skillId <= 0) return
   const entry = getSkillSoundEntry113c(skillId)
   if (!entry) return
-  const cls = normalizePlayerClassCode113c(opts.charclass ?? this._self.charClass)
+  // 1.13c 0x6FB52141..0x6FB52158: stsoundclass only for a player unit (`[unit] == 0`) whose classId equals the
+  // skill's charclass (`byte [skill+0xC]`); callers pass `charclass` only for player casters (no self fallback).
+  const cls = opts.charclass !== undefined ? normalizePlayerClassCode113c(opts.charclass) : undefined
+  // 0x6FB52077..0x6FB52095 / 0x6FB52137: an item cast (nSkillOrigin != -1) replaces stsound with ItemCastSound
+  // (+0x122) when set, and then plays no stsoundclass.
+  const itemCastSound = opts.itemOrigin ? (getSkillClientRow113c(skillId)?.itemCastSound ?? 0) : 0
   const soundId =
-    cls && entry.charclass === cls && entry.stsoundclass > 0
-      ? entry.stsoundclass
-      : entry.stsound
+    itemCastSound > 0
+      ? itemCastSound
+      : cls && entry.charclass === cls && entry.stsoundclass > 0
+        ? entry.stsoundclass
+        : entry.stsound
   if (soundId <= 0) return
+  // 1.13c 0x6FB5209C..0x6FB520CC: Skills.txt `stsounddelay` is a flag; the delay is
+  // max(0, (frames[hitClass] * 256 + 128) / unit->animSpeed - 3) frames (0x6FAD2220, table 0x6FBA5538).
+  let stDelay = 0
+  if (entry.stsounddelay > 0 && opts.unitId !== undefined) {
+    const caster =
+      (opts.unitType !== undefined ? this.getUnit(opts.unitType, Number(opts.unitId)) : undefined) ??
+      this.getUnit('player', Number(opts.unitId))
+    if (caster) {
+      const hitClass =
+        caster.unitType === 'monster'
+          ? (MONSTATS_113C_ROWS[caster.classId]?.hitClass ?? 0)
+          : resolvePlayerHitClassIndex113c(
+              caster.id === this.selfId || this.selfId === 0
+                ? Array.from(this._containers.equipment.values())
+                : Array.from(this.resolvePlayerActiveEquipment(caster.id, false) ?? []),
+            )
+      stDelay = stSoundDelayFrames113c(hitClass, caster.animStepSpeed256 ?? 256)
+    }
+  }
   const isLocal =
     opts.local ??
     (opts.unitId !== undefined
@@ -407,7 +447,7 @@ export function emitSkillCastSoundImpl(this: ClientWorldInternal, opts: {
     ...(numUnitId !== undefined ? { unitId: numUnitId } : {}),
     ...(unitRef !== undefined ? { unit: unitRef } : {}),
     local: isLocal,
-    ...(entry.stsounddelay > 0 ? { delayTicks: entry.stsounddelay } : {}),
+    ...(stDelay > 0 ? { delayTicks: stDelay } : {}),
   })
 }
 
@@ -476,22 +516,30 @@ export function emitSkillKeyframeSoundImpl(this: ClientWorldInternal, opts: {
   readonly unitId?: number | undefined
   readonly local?: boolean | undefined
   readonly weaponSoundId?: number | undefined
+  readonly unitType?: UnitType | undefined
 }): void {
   const skillId = Number(opts.skillId ?? 0)
   if (!Number.isFinite(skillId) || skillId < 0) return
   const entry = getSkillSoundEntry113c(skillId)
   if (!entry) return
   const flag = opts.flag ?? 1
+  // 1.13c client Do tail 0x6FB52E5F: only Skills.txt dosound (+0x100). dosound a / b are read by CltDo16 Jab alone
+  // (0x6FAC4F76..0x6FAC4FB2): player caster -> dosound a, monster caster -> dosound b.
+  const caster =
+    opts.unitId !== undefined
+      ? ((opts.unitType !== undefined ? this.getUnit(opts.unitType, opts.unitId) : undefined) ??
+        this.getUnit('player', opts.unitId) ??
+        this._monsters.get(opts.unitId))
+      : undefined
+  const casterType = opts.unitType ?? caster?.unitType
   const soundId =
-    flag === 2 && entry.dosoundA > 0
-      ? entry.dosoundA
-      : flag === 3 && entry.dosoundB > 0
-        ? entry.dosoundB
-        : entry.dosound > 0
-          ? entry.dosound
-          : entry.dosoundA > 0
-            ? entry.dosoundA
-            : entry.dosoundB
+    getSkillClientRow113c(skillId)?.cltDoFunc === 16
+      ? casterType === 'player'
+        ? entry.dosoundA
+        : casterType === 'monster'
+          ? entry.dosoundB
+          : 0
+      : entry.dosound
   const needsWeaponSound =
     entry.weaponsnd > 0 ||
     skillId === 0 ||
@@ -513,6 +561,7 @@ export function emitSkillKeyframeSoundImpl(this: ClientWorldInternal, opts: {
   this.pushSoundRequest({
     kind: 'skill-keyframe',
     soundId: effSoundId,
+    doSoundId: soundId,
     skillId,
     flag,
     ...(resolvedWeaponSoundId !== undefined && resolvedWeaponSoundId > 0
@@ -658,6 +707,57 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
   }
   const effSkillId = skillId ?? unit.castState?.skillId ?? unit.lastSkillId
   const mode = convertMonsterSoundMode113c(row, rawMode, effSkillId)
+  const emitMonsterFootstepCycle = () => {
+    // D2Client.dll 0x6FAD3C00:
+    // - FsCnt <= 0 -> return without emitting footsteps
+    // - Main footstep (`row.footstep`) ALWAYS plays on each step with terrain material + running (+24 on mode 15)
+    //   and volume 200 (attenuated to 125 after a pause > 1.5 * stepTicks)
+    // - `FsPrb` (0..100) gates ONLY `row.footstepLayer`
+    const fsCnt = row.fsCnt
+    if (fsCnt <= 0) return
+    const npcUnit = this.npcMotion.getUnit(unit.id)
+    const cycleTicks =
+      npcUnit && npcUnit.wFrameCount > 0
+        ? Math.max(1, Math.floor(npcUnit.wFrameCount / Math.max(1, npcUnit.wAnimSpeed || 256)))
+        : Math.max(1, unit.totalFrames || 8)
+    const stepInterval = Math.max(1, Math.floor(cycleTicks / fsCnt))
+    const lastFsTick = ((unit as any)._lastFootstepTick as number | undefined) ?? -100
+    const firstStepElapsed = Math.max(0, this.frameCount - lastFsTick)
+    ;(unit as any)._lastFootstepTick = this.frameCount
+    const isRunning = mode === 15
+    const mainFsId = resolveFootstepSoundId113c(row.footstep, this.areaId, isRunning)
+    for (let step = 0; step < fsCnt; step++) {
+      const stepDelay = row.fsOff + step * stepInterval
+      const stepElapsed = step === 0 ? firstStepElapsed : stepInterval
+      const stepVol = computeFootstepVolume113c(false, stepElapsed, stepInterval)
+      if (mainFsId > 0) {
+        this.pushSoundRequest({
+          soundId: mainFsId,
+          unit: unitRef,
+          x: unit.x,
+          y: unit.y,
+          volume: stepVol,
+          ...(stepDelay > 0 ? { delayTicks: stepDelay } : {}),
+        })
+      }
+      if (row.footstepLayer > 0 && row.fsPrb > 0) {
+        const selfUnit = this.selfId !== 0 ? this.getUnit('player', this.selfId) : undefined
+        const pSeed = selfUnit?.seed ?? unit.seed
+        const playLayer =
+          row.fsPrb >= 100 ||
+          ((SEED_RollLimitedRandomNumber(pSeed, 100) >>> 0) < row.fsPrb)
+        if (playLayer) {
+          this.pushSoundRequest({
+            soundId: row.footstepLayer,
+            unit: unitRef,
+            x: unit.x,
+            y: unit.y,
+            ...(stepDelay > 0 ? { delayTicks: stepDelay } : {}),
+          })
+        }
+      }
+    }
+  }
   switch (mode) {
     case 0: {
       // DT: DeathSound + DeaDelay (deduped per unitId via _deadSoundUnitIds)
@@ -669,6 +769,7 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
       // D2Client.dll 0x6fad36d0..0x6fad36ed: skip monster death vocal when STATE_FREEZE (43) or hitClass 0xA0 is active
       if (unit.states?.has(43) || ((unit.hitClass ?? 0) & 0xf0) === 0xa0) return
       if (row.deathSound > 0) {
+        ;(unit as any)._lastModeSoundTick = this.frameCount
         this.pushSoundRequest({
           kind: 'unit-death',
           soundId: row.deathSound,
@@ -689,6 +790,7 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
       emitHitClassSounds()
       if (unit.states?.has(43) || ((unit.hitClass ?? 0) & 0xf0) === 0xa0) return
       if (row.hitSound > 0) {
+        ;(unit as any)._lastModeSoundTick = this.frameCount
         this.pushSoundRequest({
           soundId: row.hitSound,
           unit: unitRef,
@@ -707,6 +809,7 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
           row.att1Prb >= 100 ||
           ((SEED_RollRandomNumber(unit.seed) >>> 0) % 100) < row.att1Prb
         if (playAtt1) {
+          ;(unit as any)._lastModeSoundTick = this.frameCount
           this.pushSoundRequest({
             soundId: row.attack1,
             unit: unitRef,
@@ -717,6 +820,7 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
         }
       }
       if (row.weapon1 > 0) {
+        ;(unit as any)._lastModeSoundTick = this.frameCount
         this.pushSoundRequest({
           soundId: row.weapon1,
           unit: unitRef,
@@ -736,6 +840,7 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
           row.att2Prb >= 100 ||
           ((SEED_RollRandomNumber(unit.seed) >>> 0) % 100) < row.att2Prb
         if (playAtt2) {
+          ;(unit as any)._lastModeSoundTick = this.frameCount
           this.pushSoundRequest({
             soundId: row.attack2,
             unit: unitRef,
@@ -746,6 +851,7 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
         }
       }
       if (row.weapon2 > 0) {
+        ;(unit as any)._lastModeSoundTick = this.frameCount
         this.pushSoundRequest({
           soundId: row.weapon2,
           unit: unitRef,
@@ -759,6 +865,7 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
     }
     case 8: {
       if (row.skill1 > 0) {
+        ;(unit as any)._lastModeSoundTick = this.frameCount
         this.pushSoundRequest({
           soundId: row.skill1,
           unit: unitRef,
@@ -766,10 +873,15 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
           y: unit.y,
         })
       }
+      // 0x6FAD3C61: classId 110 (vulture1) emits footsteps in mode 8 (S1)
+      if (unit.classId === 110) {
+        emitMonsterFootstepCycle()
+      }
       break
     }
     case 9: {
       if (row.skill2 > 0) {
+        ;(unit as any)._lastModeSoundTick = this.frameCount
         this.pushSoundRequest({
           soundId: row.skill2,
           unit: unitRef,
@@ -781,6 +893,7 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
     }
     case 10: {
       if (row.skill3 > 0) {
+        ;(unit as any)._lastModeSoundTick = this.frameCount
         this.pushSoundRequest({
           soundId: row.skill3,
           unit: unitRef,
@@ -792,6 +905,7 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
     }
     case 11: {
       if (row.skill4 > 0) {
+        ;(unit as any)._lastModeSoundTick = this.frameCount
         this.pushSoundRequest({
           soundId: row.skill4,
           unit: unitRef,
@@ -802,72 +916,69 @@ export function emitMonsterModeSoundImpl(this: ClientWorldInternal, unit: Client
       break
     }
     case 1: {
-      // NU (1): Neutral + NeuTime (0x6fad381c..0x6fad38ae, 125-tick global throttle)
-      if (!isTownNpcHcIdx(unit.classId) && row.neutral > 0 && row.neuTime > 0) {
-        let nextTick = this._monsterNextNeutralSoundTick.get(unit.id)
-        if (nextTick === undefined) {
-          const jitter = (SEED_RollRandomNumber(unit.seed) >>> 0) % Math.max(1, row.neuTime)
-          nextTick = this.frameCount + row.neuTime + jitter
-          this._monsterNextNeutralSoundTick.set(unit.id, nextTick)
-        } else if (this.frameCount >= nextTick) {
-          if (this.frameCount - (this._lastGlobalNeutralSoundTick ?? -200) >= 125) {
-            this._lastGlobalNeutralSoundTick = this.frameCount
-            this.pushSoundRequest({
-              soundId: row.neutral,
-              unit: unitRef,
-              x: unit.x,
-              y: unit.y,
-            })
-          }
-          const jitter = (SEED_RollRandomNumber(unit.seed) >>> 0) % Math.max(1, row.neuTime)
-          this._monsterNextNeutralSoundTick.set(unit.id, this.frameCount + row.neuTime + jitter)
-        }
+      // 0x6FAD3C55: classId 15 (foulcrow1) emits footsteps in mode 1 (NU)
+      if (unit.classId === 15) {
+        emitMonsterFootstepCycle()
       }
+      tryEmitMonsterNeutralSound113cImpl.call(this, unit, row)
       break
     }
     case 2:
     case 15: {
-      // WL (2) / RN (15): Footstep (FsCnt / FsPrb / FsOff) + FootstepLayer (FsCnt / FsOff)
-      // D2Client.dll 0x6fad3a65..0x6fad3b01: schedules FsCnt steps across the walk/run cycle.
-      const fsCnt = Math.max(1, row.fsCnt || 1)
-      const npcUnit = this.npcMotion.getUnit(unit.id)
-      const cycleTicks =
-        npcUnit && npcUnit.wFrameCount > 0
-          ? Math.max(1, Math.floor(npcUnit.wFrameCount / Math.max(1, npcUnit.wAnimSpeed || 256)))
-          : Math.max(1, unit.totalFrames || 8)
-      const stepInterval = Math.max(1, Math.floor(cycleTicks / fsCnt))
-      for (let step = 0; step < fsCnt; step++) {
-        const stepDelay = row.fsOff + step * stepInterval
-        if (row.footstep > 0) {
-          const playFs =
-            row.fsPrb <= 0 ||
-            row.fsPrb >= 100 ||
-            ((SEED_RollRandomNumber(unit.seed) >>> 0) % 100) < row.fsPrb
-          if (playFs) {
-            this.pushSoundRequest({
-              soundId: row.footstep,
-              unit: unitRef,
-              x: unit.x,
-              y: unit.y,
-              ...(stepDelay > 0 ? { delayTicks: stepDelay } : {}),
-            })
-          }
-        }
-        if (row.footstepLayer > 0) {
-          this.pushSoundRequest({
-            soundId: row.footstepLayer,
-            unit: unitRef,
-            x: unit.x,
-            y: unit.y,
-            ...(stepDelay > 0 ? { delayTicks: stepDelay } : {}),
-          })
-        }
-      }
+      emitMonsterFootstepCycle()
       break
     }
     default:
       break
   }
+}
+
+/**
+ * D2Client.dll 0x6FAD3905..0x6FAD3A20: per-frame monster Neutral sound check (`#1534`).
+ * - Modes: `1` (NU), `2` (WL), `15` (RN), plus `classId === 110` (`vulture1`) in mode `8` (S1)
+ *   and `classId === 136` (`batdemon1`) in mode `11` (S4).
+ * - Global cooldown: `frameCount - _lastGlobalNeutralSoundTick >= _globalNeutralSoundDelay`
+ *   (where `_globalNeutralSoundDelay` is set to `30 + rollLocalPlayerRand(61)` on each play).
+ * - Unit cooldown: `frameCount - _lastNeutralSoundTick >= row.neuTime` and `frameCount - _lastModeSoundTick >= row.neuTime`.
+ * - Skips owned minions (`unit.ownerId !== undefined || _pets.has(unit.id)`).
+ * - Rolls `rollLocalPlayerRand(15) === 0` (1/15 chance per eligible tick using local player seed `[0x6FBCBBFC]`).
+ */
+export function tryEmitMonsterNeutralSound113cImpl(
+  this: ClientWorldInternal,
+  unit: ClientUnit,
+  rowArg?: MonSoundRow113c,
+): void {
+  if (unit.unitType !== 'monster' || unit.dead || isTownNpcHcIdx(unit.classId)) return
+  if (!isMonsterNeutralSoundMode113c(unit.classId, unit.mode)) return
+  const row = rowArg ?? resolveUnitMonSoundRow113c(unit)
+  if (!row || row.neutral <= 0 || row.neuTime <= 0) return
+  if ((unit as any).ownerId !== undefined || this._pets.has(unit.id)) return
+  if (this._self.x !== 0 || this._self.y !== 0) {
+    if (Math.hypot(unit.x - this._self.x, unit.y - this._self.y) > 35) return
+  }
+  const globalDelay = (this as any)._globalNeutralSoundDelay ?? 0
+  if (this.frameCount - (this._lastGlobalNeutralSoundTick ?? -200) < globalDelay) return
+  let lastNeuTick = (unit as any)._lastNeutralSoundTick as number | undefined
+  if (lastNeuTick === undefined) {
+    lastNeuTick = this.frameCount
+    ;(unit as any)._lastNeutralSoundTick = lastNeuTick
+    return
+  }
+  if (this.frameCount - lastNeuTick < row.neuTime) return
+  const lastModeTick = ((unit as any)._lastModeSoundTick as number | undefined) ?? -row.neuTime
+  if (this.frameCount - lastModeTick < row.neuTime) return
+  const selfUnit = this.selfId !== 0 ? this.getUnit('player', this.selfId) : undefined
+  const pSeed = selfUnit?.seed ?? unit.seed
+  if ((SEED_RollLimitedRandomNumber(pSeed, 15) >>> 0) !== 0) return
+  this._lastGlobalNeutralSoundTick = this.frameCount
+  ;(this as any)._globalNeutralSoundDelay = 30 + (SEED_RollLimitedRandomNumber(pSeed, 61) >>> 0)
+  ;(unit as any)._lastNeutralSoundTick = this.frameCount
+  this.pushSoundRequest({
+    soundId: row.neutral,
+    unit: { unitType: 'monster', id: unit.id, x: unit.x, y: unit.y },
+    x: unit.x,
+    y: unit.y,
+  })
 }
 
 const OVERLAY_TXT_ROW_BY_NAME: ReadonlyMap<string, (typeof OVERLAY_TXT_ROWS)[number]> = new Map(
@@ -1024,9 +1135,31 @@ export function spawnMissileByKeyImpl(
   const totalFrames = Math.max(1, data.animLen || 1)
   const animSpeed = Math.max(1, data.animSpeed || 16)
   const loopAnim = opts?.loopAnim ?? (data.loopAnim !== 0)
-  // Missiles.txt Range (+LevRange) is the lifetime of every row in 1.13c 0x6FB630F0 (Issues #1091, #1132, #1133, #1134, #1136, #1137).
-  const baseMaxTicks = Math.max(1, data.range + level * (data.levRange ?? 0))
-  const maxTicks = opts?.maxTicks ?? baseMaxTicks
+  const rawRow = CANONICAL_113C_MISSILES[cleanKey]
+  // 1.13c D2Client.dll 0x6FB63408..0x6FB63488 (Issues #1091, #1132, #1514):
+  // - If dwFlags & 0x8000 (opts.maxTicks): range = opts.maxTicks
+  // - Else:
+  //   range = data.range + level * data.levRange
+  //   if (dwFlags & 0x08 && row.subLoop): range += (subStop - subStart) * opts.subLoopCount
+  //   if (opts.rangePct && opts.rangePct !== 100): range += trunc(range * opts.rangePct / 100)
+  // - If dwFlags & 0x200 (opts.startFrameOffset): range -= opts.startFrameOffset
+  let computedRange: number
+  if (opts?.maxTicks !== undefined) {
+    computedRange = opts.maxTicks
+  } else {
+    computedRange = data.range + level * (data.levRange ?? 0)
+    if (opts?.subLoopCount !== undefined && opts.subLoopCount !== 0 && rawRow?.subLoop) {
+      const subSpan = (rawRow.subStop ?? 0) - (rawRow.subStart ?? 0)
+      computedRange += subSpan * opts.subLoopCount
+    }
+    if (opts?.rangePct !== undefined && opts.rangePct !== 0 && opts.rangePct !== 100) {
+      computedRange += Math.trunc((computedRange * opts.rangePct) / 100)
+    }
+  }
+  if (opts?.startFrameOffset !== undefined && opts.startFrameOffset !== 0) {
+    computedRange -= opts.startFrameOffset
+  }
+  const maxTicks = Math.max(1, computedRange)
 
   const unit = new ClientUnit({
     unitType: 'missile',
@@ -1048,15 +1181,30 @@ export function spawnMissileByKeyImpl(
   unit.accel = data.accel ?? 0
   unit.ageTicks = 0
   unit.maxTicks = maxTicks
-  const rawRow = CANONICAL_113C_MISSILES[cleanKey]
+  // 1.13c D2Client.dll 0x6FB6348D..0x6FB634A8 (#10837) & 0x6FB63527..0x6FB6353F (Issue #1511):
+  // Activate is the minimum elapsed frame count before unit collision activates (unit.ageTicks >= cltActivateTicks).
+  const activateVal = opts?.activateOverride ?? rawRow?.activate ?? data.activate ?? 0
+  unit.cltActivateTicks = Math.max(0, activateVal)
+  const initStepsVal = rawRow?.initSteps ?? data.initSteps ?? 0
+  unit.initSteps = initStepsVal
+  if (initStepsVal !== 0) {
+    unit.clientInitStepsFlag = true
+  }
+  if (opts?.subLoopCount !== undefined) {
+    unit.subLoops = opts.subLoopCount
+  }
+  unit.xoffset = rawRow?.xoffset ?? data.xoffset ?? 0
+  unit.yoffset = rawRow?.yoffset ?? data.yoffset ?? 0
+  unit.zoffset = rawRow?.zoffset ?? data.zoffset ?? 0
   const randStart = rawRow?.randStart ?? 0
+  const rawInitFrame = opts?.initialFrame ?? opts?.startFrameOffset
   const initFrame =
-    opts?.initialFrame !== undefined
-      ? ((opts.initialFrame % totalFrames) + totalFrames) % totalFrames
+    rawInitFrame !== undefined
+      ? ((rawInitFrame % totalFrames) + totalFrames) % totalFrames
       : randStart > 0
         ? id % Math.min(totalFrames, randStart)
         : 0
-  unit.initialFrame = opts?.initialFrame !== undefined || randStart > 0 ? initFrame : undefined
+  unit.initialFrame = rawInitFrame !== undefined || randStart > 0 ? initFrame : undefined
   unit.frame = initFrame
   unit.totalFrames = totalFrames
   unit.animSpeed = animSpeed
@@ -1079,34 +1227,29 @@ export function spawnMissileByKeyImpl(
   unit.piercedTargets = unit.hitUnitIds
   unit.altitude = opts?.altitude
   unit.verticalDescentPerTick = opts?.verticalDescentPerTick
-  // 1.13c Lobbed Potions (pCltDoFunc = 2 / rows #44..49 & #238..239, Issue #1276) &
-  // #286 Baal Monster Spawn ('baal spawn monsters' #550, Skills.txt lob = 1):
-  // Calculate parabolic arc duration from distance and velocity so the projectile lands at (targetX, targetY)
-  // with peak altitude > 0 during flight and altitude = 0 on impact.
-  const isLobbedPotion113c =
-    rawRow?.pCltDoFunc === 2 ||
+  // 1.13c lobbed missiles (missile-lob-113c.ts): thrown potions (SkillCltDoFunc[2] 0x6fb52f60 -> 0x6fb69a80, create
+  // flags 0x521) and #286 Baal Monster Spawn ('baal spawn monsters' #550). pCltDoFunc 2 is the blood / sand / dirt
+  // function 0x6fb63060, not a lob (#1503). Flight frames = (d << 16) / (dwVelocity << 4); z follows 0x6fb77c80.
+  const isLobbedMissile113c =
     cleanKey === 'baal spawn monsters' ||
     opts?.sourceSkillId === 286 ||
     cleanKey === 'pantherpotorange' ||
     cleanKey === 'pantherpotgreen' ||
     cleanKey === 'oilpotion' ||
     cleanKey === 'explosivepotion' ||
-    cleanKey === 'explodingpotion' ||
     cleanKey === 'fulminatingpotion' ||
     cleanKey === 'rancidgasepotion' ||
     cleanKey === 'chokinggaspoition' ||
     cleanKey === 'stranglinggaspotion'
-  if (isLobbedPotion113c && opts?.maxTicks === undefined && dist > 0.01) {
-    const lobFlightTicks = Math.max(
-      1,
-      Math.min(maxTicks, Math.round(dist / Math.max(0.1, speedSubTilesPerTick))),
-    )
-    unit.maxTicks = lobFlightTicks
-    unit.vx = (targetX - startX) / lobFlightTicks
-    unit.vy = (targetY - startY) / lobFlightTicks
+  if (isLobbedMissile113c && opts?.maxTicks === undefined && dist > 0.01 && dwVelocity > 0) {
+    const frames = lobFrames(dist, dwVelocity)
+    unit.maxTicks = frames
+    unit.vx = (targetX - startX) / frames
+    unit.vy = (targetY - startY) / frames
     unit.alwaysExplode = true
-    ;(unit as any).lobPeakAltitude = Math.min(80, Math.max(18, dist * 3.5))
-    unit.altitude = 0
+    unit.traj3d = lobTraj3d(frames)
+    // 0x6fb635f5: the create steps the new trajectory once (0x6fb77fb0).
+    unit.altitude = stepTraj3dZ(unit.traj3d)
   }
   unit.missileSeed = opts?.missileSeed ? { lo: opts.missileSeed.lo >>> 0, hi: opts.missileSeed.hi >>> 0 } : undefined
   const defaultLowSeed = (Math.imul(id, 0x9e3779b9) ^ Math.imul(this.frameCount + 1, 0x85ebca6b)) >>> 0
@@ -1209,7 +1352,9 @@ export function spawnMissileByKeyImpl(
     cleanKey === 'lightunique' ||
     cleanKey === 'buglightning' ||
     cleanKey === 'diabwallmaker' ||
-    cleanKey === 'catapultchargedballbolt'
+    cleanKey === 'catapultchargedballbolt' ||
+    ((cleanKey === 'lightjavalinexplosion' || cleanKey === 'advlightjavexplode') &&
+      opts?.jitterIndex !== undefined)
   ) {
     // 1.13c SKILLS_InitChargedBolt (0x6FC61F50), SKILLS_CltInitChargedBolt (0x6FB23B60) & SKILLS_CltInitDiabWallMaker (0x6FB06D00):
     // clamp range to 77 (0x4D) and compute PATHTYPE_CHARGEDBOLT (0x6FDB6AA0) random-walk path.
@@ -2400,15 +2545,8 @@ export function spawnMissilesForSkillImpl(
   }
 
   if (skillId === 179) {
-    // 1.13c Skills.txt #179 ZakarumHeal (SrvDoFunc=94 @ 0x6FC29AF0, cltdofunc=empty, castoverlay='healing', tgtoverlay='receiving', Issue #1181):
-    // Attaches tgtoverlay='receiving' (#99 in Overlay.txt) to the healed target unit and spawns 0 missiles.
-    const tgtOverlayToken = getSkillTgtOverlay113c(skillId)
-    if (tgtOverlayToken !== undefined) {
-      const tgtUnit = resolveSkillTargetUnit113c(this, caster, skillId, targetX, targetY)
-      if (tgtUnit !== undefined) {
-        this.attachUnitOverlay(tgtUnit, tgtOverlayToken, false)
-      }
-    }
+    // 1.13c Skills.txt #179 ZakarumHeal (SrvDoFunc=94 @ 0x6FC29AF0, cltdofunc=empty, castoverlay='healing', tgtoverlay='receiving'):
+    // spawns 0 missiles; tgtoverlay is attached by the client Do tail (0x6FB52EA4, runSkillDoTargetTail113c).
     return
   }
 
@@ -2717,9 +2855,11 @@ export function spawnMissilesForSkillImpl(
         ownerId,
         sourceSkillId: skillId,
         skillLevel,
-        pierce: true,
+        pierce: false,
       },
     )
+    // SkillCltDoFunc[22] (0x6fac577c-0x6fac57f0): #10637(missile, calc2) = bounce count for MissCltHitFunc[16].
+    ls.cltCountdown = lightningStrikeHits113c(skillLevel)
     ls.originX = targetMon.x
     ls.originY = targetMon.y
     ls.hitUnitIds = new Set<number>([targetMon.id])
@@ -2963,6 +3103,10 @@ export function spawnMissilesForSkillImpl(
       skillLevel,
       pierce: linear.pierce,
     })
+    if (skillId === 53) {
+      // SkillCltDoFunc[27] (0x6fb23e80): #10637(missile, calc1) = bounce count read by MissCltHitFunc[16].
+      mUnit.cltCountdown = chainLightningHits113c(skillLevel)
+    }
     if (skillId === 16 || skillId === 342) {
       mUnit.explosionMissile = 'explodingarrowexp'
       mUnit.alwaysExplode = true
@@ -3571,7 +3715,7 @@ export function spawnMissilesForSkillImpl(
   }
 
   if (skillId === 117) {
-    // #117 Holy Shield (Skills.txt row 117: SrvDoFunc 77; state 101 holyshield sets sh='bsh' via StateSetFunc[11], with no Overlay.txt row, Issue #1073 / #1278).
+    // #117 Holy Shield (Skills.txt row 117: SrvDoFunc 77; state 101 holyshield makes the component resolver 0x6FB1E289 draw sh='hsh', with no Overlay.txt row, Issue #1073 / #1278).
     caster.states.add(101)
     if (caster.unitType === 'player' && (caster.id === this.selfId || this.selfId === 0)) {
       this._self.states.add(101)
@@ -4099,7 +4243,7 @@ export function spawnMissilesForSkillImpl(
   }
 
   if (skillId === 235) {
-    // #235 Cyclone Armor (SrvDoFunc=18, state 151): StateSetFunc[8] 0x6FB23090 draws staged cyclonearmor1front..3front via state 151 (#1081)
+    // #235 Cyclone Armor (SrvDoFunc=18, state 151): StateSetFunc[8] 0x6FB23000 draws staged cyclonearmor1front..3front via state 151 (#1081)
     caster.states.add(151)
     if (caster.unitType === 'player' && (caster.id === this.selfId || this.selfId === 0)) {
       this._self.states.add(151)
@@ -4173,7 +4317,7 @@ export function spawnMissilesForSkillImpl(
   }
 
   if (skillId === 240) {
-    // #240 Twister (SrvDoFunc=123 / CltDoFunc=78): 3 wavy piercing wind vortices (Missiles.txt Range=50, StunLen=10)
+    // #240 Twister (SrvDoFunc=123 / CltDoFunc=68): 3 wavy piercing wind vortices (Missiles.txt Range=50, StunLen=10)
     const angles = [-0.3, 0, 0.3]
     const tBaseAngle = dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx)
     for (let i = 0; i < angles.length; i++) {
@@ -4217,7 +4361,7 @@ export function spawnMissilesForSkillImpl(
   }
 
   if (skillId === 244) {
-    // #244 Volcano (SrvDoFunc=124 / CltDoFunc=79): cltmissilea='volcano' (Range=150) + cltmissileb='volcano overlay fire' (Range=150)
+    // #244 Volcano (SrvDoFunc=124 / no cltdofunc, cltprgfunc1=91 via S2C 0xA3): cltmissilea='volcano' (Range=150) + cltmissileb='volcano overlay fire' (Range=150)
     const vBase = this.spawnMissileByKey('volcano', targetX, targetY, targetX, targetY, {
       ownerType,
       ownerId,
@@ -4238,7 +4382,7 @@ export function spawnMissilesForSkillImpl(
   }
 
   if (skillId === 245) {
-    // #245 Tornado (SrvDoFunc=125 / CltDoFunc=80): wavy piercing vortex (Missiles.txt Range=75, Param1=5, NextDelay=25)
+    // #245 Tornado (SrvDoFunc=125 / CltDoFunc=69): wavy piercing vortex (Missiles.txt Range=75, Param1=5, NextDelay=25)
     const destX = dx === 0 && dy === 0 ? caster.x + 12 : targetX
     const destY = dx === 0 && dy === 0 ? caster.y : targetY
     this.spawnMissileByKey('tornado', caster.x, caster.y, destX, destY, {
@@ -4253,7 +4397,7 @@ export function spawnMissilesForSkillImpl(
   }
 
   if (skillId === 249) {
-    // #249 Armageddon (SrvDoFunc=126 / CltDoFunc=82, state 145): 250 + Fissure*50 frame meteor storm around caster
+    // #249 Armageddon (SrvDoFunc=126 / no cltdofunc, cltprgfunc1=92 via S2C 0xA3, state 145): 250 + Fissure*50 frame meteor storm around caster
     caster.states.add(145)
     if (caster.unitType === 'player' && (caster.id === this.selfId || this.selfId === 0)) {
       this._self.states.add(145)
@@ -4335,7 +4479,7 @@ export function spawnMissilesForSkillImpl(
   }
 
   if (skillId === 250) {
-    // #250 Hurricane (SrvDoFunc=126 / CltDoFunc=82, state 144, SkillCltDoFunc[90] @ 0x6FB79BE0):
+    // #250 Hurricane (SrvDoFunc=126 / no cltdofunc, state 144, SkillCltDoFunc[90] @ 0x6FB79BE0):
     // 250 + CycloneArmor*50 frame cold vortex around caster within aurarangecalc = 9 subtiles.
     caster.states.add(144)
     if (caster.unitType === 'player' && (caster.id === this.selfId || this.selfId === 0)) {
@@ -4922,6 +5066,9 @@ export function spawnMissilesForSkillImpl(
       sourceSkillId: 312,
       skillLevel,
     })
+    // CltDo78 0x6FB74BA6: Skills.txt #312 prgsound (necromancer_corpseexp_1) on the cltmissilea it just spawned.
+    const sentryPrg = getSkillClientRow113c(312)?.prgSound ?? 0
+    if (sentryPrg > 0) this.pushSoundRequest({ soundId: sentryPrg, x: ce.x, y: ce.y })
     ce.vx = 0
     ce.vy = 0
     const dse = this.spawnMissileByKey('deathsentryexplode', cx, cy, cx, cy, {
@@ -5243,6 +5390,7 @@ export function applySkillCastToUnitImpl(
   skillLevel = 1,
   spawnVisuals = true,
   nowMs?: number,
+  itemOrigin = false,
 ): void {
   unit.lastSkillId = skillId
   unit.skillLevel = Math.max(1, skillLevel)
@@ -5499,7 +5647,13 @@ export function applySkillCastToUnitImpl(
     this._self.castState = castState
   }
 
-  if (spawnVisuals) {
+  // 1.13c SKILLS_ClientStart 0x6FB52037..0x6FB52071: when the SkillCltStFunc fails and Skills.txt `stsuccessonly`
+  // is set, the start returns before stsound / castoverlay / the cast light (cltSt113cSucceeds).
+  const stOk = cltStSucceeds113c(this, unit, skillId)
+  const stRow = getSkillClientRow113c(skillId)
+  if (!stOk && unit.castState) (unit.castState as any).cltStFailed = true
+  if (itemOrigin && unit.castState) (unit.castState as any).itemOrigin = true
+  if (spawnVisuals && (stOk || !stRow?.stSuccessOnly)) {
     this.emitSkillCastSound({
       skillId,
       ...(unit.unitType === 'player'
@@ -5508,25 +5662,32 @@ export function applySkillCastToUnitImpl(
       x: unit.x,
       y: unit.y,
       unitId: unit.id,
+      unitType: unit.unitType,
       local: isSelf,
+      itemOrigin,
     })
-    if (castOverlayToken) {
+    // 0x6FB521A7: an item cast replaces castoverlay with ItemCastOverlay (+0x124) when that is set.
+    const castOverlayName =
+      itemOrigin && stRow && stRow.itemCastOverlay !== '' ? stRow.itemCastOverlay : castOverlayToken
+    if (castOverlayName) {
       // 1.13c attaches exactly the skill's castoverlay — the extra 'light_cast_3'
       // companion attach was an invented token absent from Overlay.txt (Issue #955).
-      this.attachUnitOverlay(unit, castOverlayToken, false)
+      // 0x6FB521CE -> 0x6FB19130: when the unit already carries that overlay (still playing) it is not attached again.
+      const castTok = castOverlayName.trim().toLowerCase()
+      if (!unit.overlays.some(o => o.token === castTok)) {
+        this.attachUnitOverlay(unit, castOverlayName, false)
+      }
     }
     const skillOverlayRow = getSkillOverlayRow113c(skillId)
     if (skillOverlayRow?.cltStFunc === 15 && skillOverlayRow.prgOverlay !== '') {
       // 1.13c SKILLS_CltSt15 (0x6FB784F0): attaches Skills.txt prgoverlay once when channelling starts (#230 Arctic Blast -> arctic_blast_cast).
       this.attachUnitOverlay(unit, skillOverlayRow.prgOverlay, false)
     }
-    const tgtOverlayToken = getSkillTgtOverlay113c(skillId)
-    if (tgtOverlayToken !== undefined && skillId !== 254) {
-      // 1.13c Skills.txt tgtoverlay (+0x10A, Issue #1181): attach target overlay to the resolved target unit.
-      const tgtUnit = resolveSkillTargetUnit113c(this, unit, skillId, targetX, targetY)
-      if (tgtUnit !== undefined) {
-        this.attachUnitOverlay(tgtUnit, tgtOverlayToken, false)
-      }
+    const cltRow = getSkillClientRow113c(skillId)
+    if (cltRow && (cltRow.cltStFunc === 15 || cltRow.cltStFunc === 46) && cltRow.prgSound > 0) {
+      // 1.13c SKILLS_CltSt15 (0x6FB24164) / CltSt46 Baal Taunt (0x6FB75008): Skills.txt prgsound played with a NULL
+      // unit (`PlaySound(prgsound, 0, 0, 0, 0)`, non-positional): #230 druid_windcast, #284 monster_baal_taunt_1.
+      this.pushSoundRequest({ soundId: cltRow.prgSound, skillId, local: isSelf })
     }
     if (skillId === 52) {
       // #52 Enchant: Skills.txt TargetAlly=1, TargetPet=1, aurastate=enchant (16);
@@ -5618,56 +5779,19 @@ export function applySkillCastToUnitImpl(
       if (skillId === 110) this.attachUnitOverlay(unit, 'cast_resistlight', false)
       if (skillId === 125) this.attachUnitOverlay(unit, 'cast_resistall', false)
     }
-    if (skillId === 223) {
-      // Werewolf: if already in wolf form (state 139), revert to human and play wolf_undo
-      unit.states.remove(120)
-      unit.states.remove(117)
-      if (isSelf) {
-        this._self.states.delete(120)
-        this._self.states.delete(117)
-      }
-      ;(unit as any).feralRageCharges = 0
-      ;(unit as any).maulCharges = 0
-      unit.overlays = unit.overlays.filter(
-        o => !o.token.toLowerCase().startsWith('feralrage') && !o.token.toLowerCase().startsWith('maul'),
-      )
-      if (unit.states.has(139)) {
-        unit.states.remove(139)
-        if (isSelf) this._self.states.delete(139)
-        this.attachUnitOverlay(unit, 'wolf_undo', false)
-      } else {
-        unit.states.remove(140)
-        if (isSelf) this._self.states.delete(140)
-        unit.states.add(139)
-        if (isSelf) this._self.states.add(139)
-        this.attachUnitOverlay(unit, 'wolf_into', false)
-      }
-    } else if (skillId === 228) {
-      // Werebear: if already in bear form (state 140), revert to human and play bear_undo
-      unit.states.remove(120)
-      unit.states.remove(117)
-      if (isSelf) {
-        this._self.states.delete(120)
-        this._self.states.delete(117)
-      }
-      ;(unit as any).feralRageCharges = 0
-      ;(unit as any).maulCharges = 0
-      unit.overlays = unit.overlays.filter(
-        o => !o.token.toLowerCase().startsWith('feralrage') && !o.token.toLowerCase().startsWith('maul'),
-      )
-      if (unit.states.has(140)) {
-        unit.states.remove(140)
-        if (isSelf) this._self.states.delete(140)
-        this.attachUnitOverlay(unit, 'bear_undo', false)
-      } else {
-        unit.states.remove(139)
-        if (isSelf) this._self.states.delete(139)
-        unit.states.add(140)
-        if (isSelf) this._self.states.add(140)
-        this.attachUnitOverlay(unit, 'bear_into', false)
+    const morphRow = getSkillClientRow113c(skillId)
+    if (morphRow?.cltStFunc === 45) {
+      // 1.13c SkillCltStFunc[45] 0x6FB79420 (#223 Werewolf, #228 Werebear, #350 Delerium Change): picks Skills.txt
+      // cltoverlayb (+0x112) when STATES_CheckState(unit, aurastate) (0x6FABC1FC), else cltoverlaya (+0x110), and
+      // attaches it (0x6FB1B300). It returns 0 without an overlay when cltoverlaya is empty (#350) and never writes a
+      // state: the morph state comes from the server (S2C 0xA8 / 0xA9).
+      if (morphRow.cltOverlayA !== '') {
+        const inForm = morphRow.auraState >= 0 && unit.states.has(morphRow.auraState)
+        const tok = inForm && morphRow.cltOverlayB !== '' ? morphRow.cltOverlayB : morphRow.cltOverlayA
+        this.attachUnitOverlay(unit, tok, false)
       }
     } else if (skillId === 235) {
-      // Cyclone Armor (state 151): StateSetFunc[8] 0x6FB23090 draws staged cyclonearmor1front..3front via state 151 (#1081)
+      // Cyclone Armor (state 151): StateSetFunc[8] 0x6FB23000 draws staged cyclonearmor1front..3front via state 151 (#1081)
       unit.states.add(151)
       if (isSelf) this._self.states.add(151)
     } else if (skillId === 249) {
@@ -5798,11 +5922,6 @@ export function applySkillCastToUnitImpl(
         if (skillId === 254) {
           unit.overlays = unit.overlays.filter((o) => !o.token.startsWith('tigerstrike'))
           this.attachUnitOverlay(unit, `tigerstrike${nextCharge}`, true)
-          for (const m of this._monsters.values()) {
-            if (Math.hypot(m.x - targetX, m.y - targetY) <= 3) {
-              this.attachUnitOverlay(m, 'assassinfootimpact', false)
-            }
-          }
         }
         if (skillId === 265) {
           unit.overlays = unit.overlays.filter((o) => !o.token.startsWith('cobrastrike'))
@@ -5842,100 +5961,13 @@ export function applySkillCastToUnitImpl(
       const chargeCounts: Map<number, number> | undefined = (unit as any).chargeCounts
       if (chargeCounts && chargeCounts.size > 0) {
         for (const [cSkill, count] of chargeCounts.entries()) {
-          if (cSkill === 259) {
-            // Fists of Fire discharges (C2: fistsoffireexplode, C3: SrvDo039 / CltDoFunc 9 radius 4 disk scatter of fistsoffirefirewall)
-            if (count >= 2) {
-              this.spawnMissileByKey('fistsoffireexplode', targetX, targetY, targetX, targetY, {
-                ownerType: unit.unitType,
-                ownerId: unit.id,
-                sourceSkillId: cSkill,
-              })
-            }
-            if (count === 3) {
-              for (const pt of computeSrvDo039ScatterPoints113c(targetX, targetY, 4, unit.seed)) {
-                this.spawnMissileByKey('fistsoffirefirewall', pt.x, pt.y, pt.x, pt.y, {
-                  ownerType: unit.unitType,
-                  ownerId: unit.id,
-                  sourceSkillId: cSkill,
-                })
-              }
-            }
-          } else if (cSkill === 269) {
-            // Claws of Thunder discharges (C2: clawsofthundernova, C3: 16x clawsofthunderbolt)
-            if (count >= 2) {
-              // SKILLS_SrvDo036_ClawsOfThunder_ProgressiveFn2 (D2Game 0x6FCF6420): sub_6FD14170 from the target unit,
-              // 64 cltmissileb 'clawsofthundernova' on the radius-30 table, velocity = calc1 (empty for #269) + Vel.
-              const cotLevel = Math.max(1, (isSelf ? this._self.skills.get(cSkill) : undefined) ?? 1)
-              const cotNova = getMissileTxtData('clawsofthundernova')
-              spawnCltDo25Ring113c(this, cotNova.name, targetX, targetY, missileTxtVelocity113c(cotNova, cotLevel), {
-                ownerType: unit.unitType,
-                ownerId: unit.id,
-                sourceSkillId: cSkill,
-                skillLevel: cotLevel,
-              })
-            }
-            if (count === 3) {
-              for (let i = 0; i < 16; i++) {
-                const angle = (i / 16) * Math.PI * 2
-                const tx = targetX + Math.cos(angle) * 16
-                const ty = targetY + Math.sin(angle) * 16
-                this.spawnMissileByKey('clawsofthunderbolt', targetX, targetY, tx, ty, {
-                  ownerType: unit.unitType,
-                  ownerId: unit.id,
-                  sourceSkillId: cSkill,
-                })
-              }
-            }
-          } else if (cSkill === 274) {
-            // Blades of Ice discharges (C2: bladesoficeexplode, C3: SrvDo039 / CltDoFunc 9 radius 3 disk scatter of bladesoficecubes)
-            if (count >= 2) {
-              this.spawnMissileByKey('bladesoficeexplode', targetX, targetY, targetX, targetY, {
-                ownerType: unit.unitType,
-                ownerId: unit.id,
-                sourceSkillId: cSkill,
-              })
-            }
-            if (count === 3) {
-              for (const pt of computeSrvDo039ScatterPoints113c(targetX, targetY, 3, unit.seed)) {
-                this.spawnMissileByKey('bladesoficecubes', pt.x, pt.y, pt.x, pt.y, {
-                  ownerType: unit.unitType,
-                  ownerId: unit.id,
-                  sourceSkillId: cSkill,
-                })
-              }
-            }
-          } else if (cSkill === 280) {
-            // Phoenix Strike discharges (C1: royalstrikemeteorcenter -> spawns royalstrikemeteorfire on impact after 60 ticks,
-            // C2: 7x royalstrikechainlightning, C3: 16x royalstrikechaosice)
-            if (count === 1) {
-              this.spawnMissileByKey('royalstrikemeteorcenter', targetX, targetY, targetX, targetY, {
-                ownerType: unit.unitType,
-                ownerId: unit.id,
-                sourceSkillId: cSkill,
-              })
-            } else if (count === 2) {
-              for (let i = 0; i < 7; i++) {
-                const angle = (i * 10 * Math.PI * 2) / 64
-                const tx = targetX + Math.cos(angle) * 16
-                const ty = targetY + Math.sin(angle) * 16
-                this.spawnMissileByKey('royalstrikechainlightning', targetX, targetY, tx, ty, {
-                  ownerType: unit.unitType,
-                  ownerId: unit.id,
-                  sourceSkillId: cSkill,
-                })
-              }
-            } else if (count === 3) {
-              for (let i = 0; i < 16; i++) {
-                const angle = (i / 16) * Math.PI * 2
-                const tx = targetX + Math.cos(angle) * 16
-                const ty = targetY + Math.sin(angle) * 16
-                this.spawnMissileByKey('royalstrikechaosice', targetX, targetY, tx, ty, {
-                  ownerType: unit.unitType,
-                  ownerId: unit.id,
-                  sourceSkillId: cSkill,
-                })
-              }
-            }
+          // 1.13c progressive release (0x6FB52950 / Skills.txt cltprgfunc1..3): with `prgstack` (0x6FB52A97) every
+          // tier up to the charge count runs, otherwise only the charge count's tier.
+          const cRow = getSkillClientRow113c(cSkill)
+          if (!cRow || count <= 0) continue
+          const tiers = cRow.prgStack ? Array.from({ length: count }, (_, i) => i + 1) : [count]
+          for (const tier of tiers) {
+            spawnMartialArtsReleaseTierImpl.call(this, unit, cSkill, tier, targetX, targetY)
           }
         }
         // Clear all charges and overlays
@@ -6006,6 +6038,7 @@ export function applySkillCastToUnitImpl(
         x: unit.x,
         y: unit.y,
         unitId: unit.id,
+        unitType: unit.unitType,
         local: isSelf,
       })
       this.spawnMissilesForSkill(unit, skillId, targetX, targetY, effectiveLevel)
@@ -6245,4 +6278,101 @@ export function computeSrvDo039ScatterPoints113c(
     }
   }
   return out
+}
+
+/**
+ * One martial-arts release tier (the `SkillCltDoFunc` slot named by Skills.txt `cltprgfunc[tier - 1]`, see
+ * kb/skills/player/skills-ass-martial-arts.md):
+ * - #259 Fists of Fire: tier 2 `fistsoffireexplode`, tier 3 `fistsoffirefirewall` on the SrvDo039 radius-4 disk
+ *   (CltDo9 0x6FAF1780).
+ * - #269 Claws of Thunder: tier 2 CltDo10 (0x6FAF07C0) 64-entry `clawsofthundernova` ring, tier 3 CltDo11
+ *   (0x6FAF1690) 16 `clawsofthunderbolt`.
+ * - #274 Blades of Ice: tier 2 `bladesoficeexplode`, tier 3 `bladesoficecubes` on the radius-3 disk (CltDo9).
+ * - #280 Royal Strike: tier 1 CltDo14 (0x6FAF0880) `royalstrikemeteorcenter`, tier 2 CltDo83 (0x6FAF15A0)
+ *   7 `royalstrikechainlightning`, tier 3 CltDo15 (0x6FAF14F0) 16 `royalstrikechaosice`.
+ */
+export function spawnMartialArtsReleaseTierImpl(
+  this: ClientWorldInternal,
+  unit: ClientUnit,
+  cSkill: number,
+  tier: number,
+  targetX: number,
+  targetY: number,
+): void {
+  const isSelf = unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)
+  const own = { ownerType: unit.unitType, ownerId: unit.id, sourceSkillId: cSkill }
+  if (cSkill === 259) {
+    if (tier === 2) this.spawnMissileByKey('fistsoffireexplode', targetX, targetY, targetX, targetY, own)
+    if (tier === 3) {
+      for (const pt of computeSrvDo039ScatterPoints113c(targetX, targetY, 4, unit.seed)) {
+        this.spawnMissileByKey('fistsoffirefirewall', pt.x, pt.y, pt.x, pt.y, own)
+      }
+    }
+  } else if (cSkill === 269) {
+    if (tier === 2) {
+      // SKILLS_SrvDo036_ClawsOfThunder_ProgressiveFn2 (D2Game 0x6FCF6420): sub_6FD14170 from the target unit,
+      // 64 cltmissileb 'clawsofthundernova' on the radius-30 table, velocity = calc1 (empty for #269) + Vel.
+      const cotLevel = Math.max(1, (isSelf ? this._self.skills.get(cSkill) : undefined) ?? 1)
+      const cotNova = getMissileTxtData('clawsofthundernova')
+      spawnCltDo25Ring113c(this, cotNova.name, targetX, targetY, missileTxtVelocity113c(cotNova, cotLevel), {
+        ...own,
+        skillLevel: cotLevel,
+      })
+    }
+    if (tier === 3) {
+      for (let i = 0; i < 16; i++) {
+        const angle = (i / 16) * Math.PI * 2
+        const tx = targetX + Math.cos(angle) * 16
+        const ty = targetY + Math.sin(angle) * 16
+        this.spawnMissileByKey('clawsofthunderbolt', targetX, targetY, tx, ty, own)
+      }
+    }
+  } else if (cSkill === 274) {
+    if (tier === 2) this.spawnMissileByKey('bladesoficeexplode', targetX, targetY, targetX, targetY, own)
+    if (tier === 3) {
+      for (const pt of computeSrvDo039ScatterPoints113c(targetX, targetY, 3, unit.seed)) {
+        this.spawnMissileByKey('bladesoficecubes', pt.x, pt.y, pt.x, pt.y, own)
+      }
+    }
+  } else if (cSkill === 280) {
+    if (tier === 1) {
+      this.spawnMissileByKey('royalstrikemeteorcenter', targetX, targetY, targetX, targetY, own)
+    } else if (tier === 2) {
+      for (let i = 0; i < 7; i++) {
+        const angle = (i * 10 * Math.PI * 2) / 64
+        const tx = targetX + Math.cos(angle) * 16
+        const ty = targetY + Math.sin(angle) * 16
+        this.spawnMissileByKey('royalstrikechainlightning', targetX, targetY, tx, ty, own)
+      }
+    } else if (tier === 3) {
+      for (let i = 0; i < 16; i++) {
+        const angle = (i / 16) * Math.PI * 2
+        const tx = targetX + Math.cos(angle) * 16
+        const ty = targetY + Math.sin(angle) * 16
+        this.spawnMissileByKey('royalstrikechaosice', targetX, targetY, tx, ty, own)
+      }
+    }
+  }
+}
+
+/**
+ * Outcome of the SkillCltStFuncs whose failure paths are verified (`D2Client.dll`):
+ * - CltSt20 `0x6FB78410` (Raise Skeleton / Mage): `0x6FABC2DA` target unit NULL → 0; `0x6FABC5E0(target)` == 0 → 0.
+ * - CltSt21 `0x6FB78330` (Corpse / Poison Explosion): target unit NULL → 0; for the local player `0x6FABC5F8(target)`
+ *   == 0 → 0.
+ * - CltSt5 `0x6FAF09B0` (Psychic Hammer / Dragon Flight): target unit NULL → 0; caster or target in a town room → 0;
+ *   then the line-of-sight test `0x6FB562A0`.
+ * The target is the caster's current target unit; the corpse checks are modelled as "the target is dead".
+ * Every other start function is treated as succeeding.
+ */
+export function cltStSucceeds113c(world: ClientWorldInternal, caster: ClientUnit, skillId: number): boolean {
+  const row = getSkillClientRow113c(skillId)
+  if (!row) return true
+  const f = row.cltStFunc
+  if (f !== 20 && f !== 21 && f !== 5) return true
+  const ref = caster.targetUnit
+  const target = ref !== undefined ? (world.getUnit(ref.unitType as any, ref.id) ?? world._monsters.get(ref.id)) : undefined
+  if (!target || target === caster) return false
+  if (f === 20 || f === 21) return target.dead === true
+  return !isTownLevel(world.areaId)
 }

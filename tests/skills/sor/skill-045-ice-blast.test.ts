@@ -293,7 +293,7 @@ describe('[Skill #045] Ice Blast (SOR) — 1.13c 7-Dimensional Verification Suit
 
       // 1. Normal monster: receives solid freeze
       const monStats1 = new UnitStatList()
-      monStats1.addStat('hp', 500 * 256)
+      monStats1.addStat('hitpoints', 500 * 256)
       const monCtx1 = {
         id: 'zombie_1',
         statList: monStats1,
@@ -327,7 +327,7 @@ describe('[Skill #045] Ice Blast (SOR) — 1.13c 7-Dimensional Verification Suit
       // 2. Monster with Cannot Be Frozen: takes damage but does NOT freeze
       const engine2 = new MissileEngine(registry)
       const monStats2 = new UnitStatList()
-      monStats2.addStat('hp', 500 * 256)
+      monStats2.addStat('hitpoints', 500 * 256)
       monStats2.addStat('item_cannotbefrozen', 1)
       const monCtx2 = {
         id: 'champion_zombie',

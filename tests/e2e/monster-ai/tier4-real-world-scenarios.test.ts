@@ -841,13 +841,13 @@ describe('Tier 4: Real-World Campaign Combat Scenarios (Scenarios 1–8)', () =>
       }
       const world = createTestCombatWorld({ player: owner, monsters: [] })
 
-      // Owner casts Teleport far away to (1200, 1200)
-      world.player.x = 1200
-      world.player.y = 1200
+      // Owner casts Teleport far away to (1800, 1800) (> 100 subtiles / 1600 px)
+      world.player.x = 1800
+      world.player.y = 1800
 
       const tickRes = tickMercenaryAi25Hz(merc, world)
       expect(tickRes.teleportedToOwner).toBe(true)
-      expect(Math.hypot(merc.x - 1200, merc.y - 1200)).toBeLessThan(60)
+      expect(Math.hypot(merc.x - 1800, merc.y - 1800)).toBeLessThan(60)
     })
   })
 })

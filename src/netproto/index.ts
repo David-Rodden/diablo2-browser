@@ -378,6 +378,16 @@ import {
   encodeD2gsClientCommand,
 } from './d2gs/registry.ts'
 import { encode0xA3AuraSkill } from './d2gs/s2c/misc.ts'
+import {
+  encode0x5BPlayerInGame,
+  encode0x5CPlayerLeftGame,
+  encode0x75PlayerPartyInfo,
+  encode0x7FPartyMemberPulse,
+  encode0x8BPartyInvite,
+  encode0x8CPlayerRelation,
+  encode0x8DAssignPlayerToParty,
+  encode0x90MapPartyPulse,
+} from './d2gs/s2c/party.ts'
 import { encode0x11UnitOverlay } from './d2gs/s2c/units.ts'
 import { encode0x63WaypointMenu } from './d2gs/s2c/waypoint.ts'
 import type { ClientCommand } from './domain/client-command.ts'
@@ -607,6 +617,80 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
           open: e.open as readonly number[],
         }),
       ]
+    }
+
+    case 'Party': {
+      const source = Number(e.source ?? 0)
+      if (source === 0x5b || (e.kind === 'roster' && e.action === 'join')) {
+        return [
+          encode0x5BPlayerInGame({
+            playerId: Number(e.playerId ?? e.unitId ?? 1) >>> 0,
+            charClass: Number(e.charClass ?? 0) & 0xff,
+            charName: String(e.charName ?? e.name ?? 'Hero'),
+            charLevel: Number(e.charLevel ?? e.level ?? 1) & 0xffff,
+            partyId: Number(e.partyId ?? 0xffff) & 0xffff,
+          }),
+        ]
+      }
+      if (source === 0x5c || (e.kind === 'roster' && e.action === 'leave')) {
+        return [encode0x5CPlayerLeftGame(Number(e.playerId ?? e.unitId ?? 1) >>> 0)]
+      }
+      if (source === 0x75) {
+        return [
+          encode0x75PlayerPartyInfo({
+            unitId: Number(e.playerId ?? e.unitId ?? 1) >>> 0,
+            partyId: Number(e.partyId ?? 0xffff) & 0xffff,
+            charLevel: Number(e.charLevel ?? e.level ?? 1) & 0xffff,
+            relationship: Number(e.relationship ?? e.relation ?? 0) & 0xffff,
+            inYourParty: Number(e.inYourParty ?? 0) & 0xffff,
+          }),
+        ]
+      }
+      if (source === 0x8b || (e.kind === 'relation' && e.otherId === undefined)) {
+        return [
+          encode0x8BPartyInvite(
+            Number(e.unitId ?? e.playerId ?? 1) >>> 0,
+            Number(e.relation ?? 0) & 0xff,
+          ),
+        ]
+      }
+      if (source === 0x8c || (e.kind === 'relation' && e.otherId !== undefined)) {
+        return [
+          encode0x8CPlayerRelation(
+            Number(e.playerId ?? e.unitId ?? 1) >>> 0,
+            Number(e.otherId ?? 0) >>> 0,
+            Number(e.relation ?? 0) & 0xffff,
+          ),
+        ]
+      }
+      if (source === 0x8d || (e.kind === 'roster' && e.action === 'update')) {
+        return [
+          encode0x8DAssignPlayerToParty(
+            Number(e.playerId ?? e.unitId ?? 1) >>> 0,
+            Number(e.partyId ?? 0xffff) & 0xffff,
+          ),
+        ]
+      }
+      if (source === 0x7f || e.kind === 'hp_pulse') {
+        return [
+          encode0x7FPartyMemberPulse({
+            isPlayer: Number(e.isPlayer ?? 1) & 0xff,
+            lifePercent: Number(e.lifePct ?? e.lifePercent ?? 100) & 0xffff,
+            unitId: Number(e.unitId ?? e.playerId ?? 1) >>> 0,
+            areaId: Number(e.areaId ?? 1) & 0xffff,
+          }),
+        ]
+      }
+      if (source === 0x90 || e.kind === 'map_pulse') {
+        return [
+          encode0x90MapPartyPulse(
+            Number(e.unitId ?? e.playerId ?? 1) >>> 0,
+            Number(e.x ?? 0),
+            Number(e.y ?? 0),
+          ),
+        ]
+      }
+      return []
     }
 
     default:

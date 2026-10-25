@@ -19,6 +19,9 @@ import {
   type SetItemProp,
 } from './set-items.ts'
 import { inferItemClassFromType } from './affixes.ts'
+import { formatDgrpLine } from './dgrp-line.ts'
+import { elementalPairCombines, formatElementalPair, formatPhysicalRange, formatPoisonPair, physicalPairCombines } from './damage-merge.ts'
+import { chargedSkillChargesOf, formatChargedSkill } from './charged-skill.ts'
 import {
   NON_RANDOM_RANGE_CODES,
   getItemTypeCode,
@@ -44,6 +47,7 @@ import {
   resolveRareNameEn,
   resolveMagicNameEn,
   formatPropertyCodeI18n,
+  formatReplenishDurability,
   RUNE_INFO_ZH,
   type TooltipLocale,
 } from '../i18n/tooltip-i18n.ts'
@@ -200,6 +204,7 @@ export {
   CANONICAL_SKILLS,
   CANONICAL_SKILL_TABS,
   CANONICAL_REANIMATE_MONSTERS,
+  formatReplenishDurability,
   type CanonicalSkillMeta,
 }
 
@@ -230,13 +235,16 @@ export function formatPropertyCode(
   if (locale && locale !== 'en') {
     const i18nOut = formatPropertyCodeI18n(code, valueOrMin, minOrMax, maxOrPar, maybePar, locale, charLevel)
     const normCode = (code || '').trim().toLowerCase().replace(/^\*/, '')
-    if (i18nOut.startsWith(`${code}: `) && CANONICAL_ISC_DESC_TABLE[normCode]?.descStrPos) {
+    const iscEntry =
+      CANONICAL_ISC_DESC_TABLE[normCode] ??
+      (PROP_STAT_ID[normCode] !== undefined ? ISC_BY_ID.get(PROP_STAT_ID[normCode]) : undefined)
+    if (i18nOut.startsWith(`${code}: `) && iscEntry && iscEntry.descFunc >= 1 && iscEntry.descFunc <= 28) {
       return formatStatByIscDescFunc(
         normCode,
         valueOrMin,
         minOrMax ?? valueOrMin,
         typeof maxOrPar === 'number' ? maxOrPar : valueOrMin,
-        maybePar,
+        maybePar ?? (typeof maxOrPar === 'string' ? maxOrPar : undefined),
         locale,
         charLevel,
       )
@@ -372,9 +380,7 @@ export function formatPropertyCode(
     }
     case 'charged': {
       const sk = resolveSkillInfo(par)
-      const charges = Math.abs(min || effectiveVal || 10)
-      const slvl = Math.abs(max || 1)
-      return `Level ${slvl} ${sk.name} (${charges}/${charges} Charges)`
+      return formatChargedSkill(max, sk.name, chargedSkillChargesOf(value, min), 'en')
     }
 
     // --- Attributes & Life / Mana / Stamina ---
@@ -387,7 +393,7 @@ export function formatPropertyCode(
     case 'enr':
       return `${plusVal} to Energy`
     case 'all-stats':
-      return `${plusVal} to All Attributes`
+      return formatDgrpLine('all-stats', effectiveVal, 'en')
     case 'hp':
       return `${plusVal} to Life`
     case 'hp%':
@@ -478,8 +484,6 @@ export function formatPropertyCode(
       return `+${formatPerLevelVal(effectiveVal, charLevel)} Absorbs Lightning Damage (Based on Character Level)`
     case 'abs-pois/lvl':
       return `+${formatPerLevelVal(effectiveVal, charLevel)} Absorbs Poison Damage (Based on Character Level)`
-    case 'ac/time':
-      return `${plusVal} Defense (Increases During Nighttime)`
 
     // --- Defense & Damage Modifiers ---
     case 'ac':
@@ -491,7 +495,14 @@ export function formatPropertyCode(
     case 'ac-hth':
       return `${plusVal} Defense vs. Melee`
     case 'dmg%':
+    case 'damagepercent':
       return `${plusVal}% Enhanced Damage`
+    case 'dmg-max%':
+    case 'item_maxdamage_percent':
+      return formatStatByIscDescFunc('item_maxdamage_percent', effectiveVal, min, max, par, 'en', charLevel)
+    case 'dmg-min%':
+    case 'item_mindamage_percent':
+      return formatStatByIscDescFunc('item_mindamage_percent', effectiveVal, min, max, par, 'en', charLevel)
     case 'dmg':
       return `Damage ${plusVal}`
     case 'dmg-min':
@@ -499,7 +510,7 @@ export function formatPropertyCode(
     case 'dmg-max':
       return `${plusVal} to Maximum Damage`
     case 'dmg-norm':
-      return min > 0 && max > min ? `Adds ${min}-${max} Damage` : `${plusVal} to Minimum Damage`
+      return physicalPairCombines(min, max) ? formatPhysicalRange(min, max, 'en') : `${plusVal} to Minimum Damage`
     case 'dmg-ac':
       return `${plusVal} to Monster Defense Per Hit`
     case 'reduce-ac':
@@ -517,7 +528,7 @@ export function formatPropertyCode(
 
     // --- Resistances, Max Resistances & Elemental Mastery/Pierce ---
     case 'res-all':
-      return `All Resistances ${plusVal}`
+      return formatDgrpLine('res-all', effectiveVal, 'en')
     case 'res-all-max':
       return `${plusVal}% to Maximum All Resistances`
     case 'res-fire':
@@ -645,13 +656,12 @@ export function formatPropertyCode(
 
     // --- Durability, Quantity, Requirements, Sockets & Special Flags ---
     case 'rep-dur': {
-      // D2Client.dll descFunc=11 + expansionstring.tbl ModStre9t / ModStre9u:
-      // Rate v (from par column) is durability repaired per 100 seconds -> seconds = Math.floor(100 / v)
-      const rate = Number(par) || effectiveVal || 1
-      const seconds = Math.floor(100 / rate)
-      return seconds <= 1
-        ? 'Repairs 1 durability per second'
-        : `Repairs 1 durability in ${seconds} seconds`
+      // D2Client.dll 0x6FB051A5 descFunc=11 + expansionstring.tbl ModStre9t / ModStre9u
+      const rate =
+        par !== undefined && par !== '' && !Number.isNaN(Number(par)) && Number(par) !== 0
+          ? Number(par)
+          : effectiveVal
+      return formatReplenishDurability(rate, 'en')
     }
     case 'rep-quant':
       return 'Replenishes quantity'
@@ -730,13 +740,13 @@ export function formatPropertyCode(
     case 'att%':
       return `${effectiveVal}% Bonus to Attack Rating`
     case 'dmg-fire':
-      return min > 0 && max > min ? `Adds ${min}-${max} Fire Damage` : `Adds ${effectiveVal} Fire Damage`
+      return formatElementalPair('fire', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'en')
     case 'fire-min':
       return `${plusVal} to Minimum Fire Damage`
     case 'fire-max':
       return `${plusVal} to Maximum Fire Damage`
     case 'dmg-cold':
-      return min > 0 && max > min ? `Adds ${min}-${max} Cold Damage` : `Adds ${effectiveVal} Cold Damage`
+      return formatElementalPair('cold', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'en')
     case 'cold-min':
       return `${plusVal} to Minimum Cold Damage`
     case 'cold-max':
@@ -744,13 +754,13 @@ export function formatPropertyCode(
     case 'cold-len':
       return `Cold Duration: ${Math.max(1, Math.round(effectiveVal / 25))} Seconds`
     case 'dmg-ltng':
-      return min > 0 && max > min ? `Adds ${min}-${max} Lightning Damage` : `Adds ${effectiveVal} Lightning Damage`
+      return formatElementalPair('ltng', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'en')
     case 'ltng-min':
       return `${plusVal} to Minimum Lightning Damage`
     case 'ltng-max':
       return `${plusVal} to Maximum Lightning Damage`
     case 'dmg-pois':
-      return `+${min || effectiveVal} Poison Damage Over ${Math.round(Number(par || max) / 25) || 3} Seconds`
+      return formatPoisonPair(min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, Number(par) || 0, 1, 'en')
     case 'pois-min':
       return `${plusVal} to Minimum Poison Damage`
     case 'pois-max':
@@ -758,13 +768,15 @@ export function formatPropertyCode(
     case 'pois-len':
       return `Poison Duration: ${Math.max(1, Math.round(effectiveVal / 25))} Seconds`
     case 'dmg-mag':
-      return min > 0 && max > min ? `Adds ${min}-${max} Magic Damage` : `Adds ${effectiveVal} Magic Damage`
+      return formatElementalPair('mag', min > 0 ? min : effectiveVal, max > 0 ? max : effectiveVal, 'en')
     case 'dmg-elem':
       return min > 0 && max > min ? `Adds ${min}-${max} Elemental Damage` : `Adds ${effectiveVal} Elemental Damage`
     default: {
       const normCode = code.trim().toLowerCase().replace(/^\*/, '')
-      const iscEntry = CANONICAL_ISC_DESC_TABLE[normCode]
-      if (iscEntry && iscEntry.descStrPos && iscEntry.descFunc >= 1 && iscEntry.descFunc <= 21 && iscEntry.descFunc !== 11) {
+      const iscEntry =
+        CANONICAL_ISC_DESC_TABLE[normCode] ??
+        (PROP_STAT_ID[normCode] !== undefined ? ISC_BY_ID.get(PROP_STAT_ID[normCode]) : undefined)
+      if (iscEntry && iscEntry.descFunc >= 1 && iscEntry.descFunc <= 28) {
         return formatStatByIscDescFunc(normCode, effectiveVal, min, max, par, 'en', charLevel)
       }
       return `${code}: ${plusVal}${par ? ` (${par})` : ''}`
@@ -823,6 +835,11 @@ const PROP_DESC_PRIORITY: Record<string, number> = {
   pierce: 132,
   magicarrow: 131,
   'dmg%': 129,
+  damagepercent: 129,
+  'dmg-max%': 129,
+  item_maxdamage_percent: 129,
+  'dmg-min%': 128,
+  item_mindamage_percent: 128,
   'dmg%/lvl': 128,
   'dmg-norm': 127,
   'dmg-min': 126,
@@ -1020,6 +1037,11 @@ export const PROP_STAT_ID: Record<string, number> = {
   mana: 9,
   stam: 11,
   'dmg%': 17,
+  damagepercent: 17,
+  'dmg-max%': 17,
+  item_maxdamage_percent: 17,
+  'dmg-min%': 18,
+  item_mindamage_percent: 18,
   att: 19,
   block: 20,
   'dmg-min': 21,
@@ -1221,6 +1243,41 @@ export const PROP_STAT_ID: Record<string, number> = {
   'rep-quant': 253,
   stack: 254,
   'ac/time': 268,
+  'ac%/time': 269,
+  'hp/time': 270,
+  'mana/time': 271,
+  'dmg/time': 272,
+  'dmg%/time': 273,
+  'str/time': 274,
+  'dex/time': 275,
+  'enr/time': 276,
+  'vit/time': 277,
+  'att/time': 278,
+  'att%/time': 279,
+  'dmg-cold/time': 280,
+  'dmg-fire/time': 281,
+  'dmg-ltng/time': 282,
+  'dmg-pois/time': 283,
+  'res-cold/time': 284,
+  'res-fire/time': 285,
+  'res-ltng/time': 286,
+  'res-pois/time': 287,
+  'abs-cold/time': 288,
+  'abs-fire/time': 289,
+  'abs-ltng/time': 290,
+  'abs-pois/time': 291,
+  'gold%/time': 292,
+  'mag%/time': 293,
+  'regen-stam/time': 294,
+  'stam/time': 295,
+  'dmg-dem/time': 296,
+  'dmg-und/time': 297,
+  'att-dem/time': 298,
+  'att-und/time': 299,
+  'crush/time': 300,
+  'wounds/time': 301,
+  'kick/time': 302,
+  'deadly/time': 303,
   'extra-fire': 329,
   'extra-ltng': 330,
   'extra-cold': 331,
@@ -1388,6 +1445,95 @@ const ISC_BY_ID: ReadonlyMap<number, CanonicalIscDescEntry> = (() => {
   return map
 })()
 
+const CLASS_SKILLS_TBL_KEYS: readonly string[] = [
+  'ModStr3a',
+  'ModStr3d',
+  'ModStr3c',
+  'ModStr3b',
+  'ModStr3e',
+  'ModStre8a',
+  'ModStre8b',
+]
+
+const CLASS_ONLY_TBL_KEYS: Readonly<Record<string, string>> = {
+  ama: 'AmaOnly',
+  sor: 'SorOnly',
+  nec: 'NecOnly',
+  pal: 'PalOnly',
+  bar: 'BarOnly',
+  dru: 'DruOnly',
+  ass: 'AssOnly',
+}
+
+const CLASS_CODE_TO_INDEX: Readonly<Record<string, number>> = {
+  ama: 0,
+  amazon: 0,
+  sor: 1,
+  sorceress: 1,
+  nec: 2,
+  necromancer: 2,
+  pal: 3,
+  paladin: 3,
+  bar: 4,
+  barbarian: 4,
+  dru: 5,
+  druid: 5,
+  ass: 6,
+  assassin: 6,
+}
+
+const SKILL_TAB_TBL_KEYS: readonly [string, string][] = [
+  ['StrSklTabItem3', 'AmaOnly'],
+  ['StrSklTabItem2', 'AmaOnly'],
+  ['StrSklTabItem1', 'AmaOnly'],
+  ['StrSklTabItem15', 'SorOnly'],
+  ['StrSklTabItem14', 'SorOnly'],
+  ['StrSklTabItem13', 'SorOnly'],
+  ['StrSklTabItem8', 'NecOnly'],
+  ['StrSklTabItem7', 'NecOnly'],
+  ['StrSklTabItem9', 'NecOnly'],
+  ['StrSklTabItem6', 'PalOnly'],
+  ['StrSklTabItem5', 'PalOnly'],
+  ['StrSklTabItem4', 'PalOnly'],
+  ['StrSklTabItem11', 'BarOnly'],
+  ['StrSklTabItem12', 'BarOnly'],
+  ['StrSklTabItem10', 'BarOnly'],
+  ['StrSklTabItem16', 'DruOnly'],
+  ['StrSklTabItem17', 'DruOnly'],
+  ['StrSklTabItem18', 'DruOnly'],
+  ['StrSklTabItem19', 'AssOnly'],
+  ['StrSklTabItem20', 'AssOnly'],
+  ['StrSklTabItem21', 'AssOnly'],
+]
+
+/**
+ * `D2Client.dll` `0x6FB85E20[0..3]` period string table for `descFunc` 17 & 18 (`encode=4` `bytime` stats):
+ * `0` = Daytime (`ModStre9e`), `1` = Dusk (`ModStre9g`), `2` = Nighttime (`ModStre9d`), `3` = Dawn (`ModStre9f`).
+ */
+const BYTIME_PERIOD_TBL_KEYS: readonly string[] = [
+  'ModStre9e',
+  'ModStre9g',
+  'ModStre9d',
+  'ModStre9f',
+]
+
+/**
+ * `MonType.txt` `strplur` column (`+0x0A`) used by `D2Client.dll` `0x6FB05569` (`descFunc=22`).
+ */
+const MON_TYPE_STRPLUR_BY_ID: Readonly<Record<number, string>> = {
+  1: 'Skeleton',
+  2: 'Demon',
+  3: 'Undead',
+  8: 'Goatman',
+  10: 'Afflicted',
+  12: 'Fallen',
+  13: 'Yeti',
+  24: 'HellSwarm',
+  35: 'Fetish',
+  37: 'Undead Fetish',
+  50: 'Yeti',
+}
+
 /**
  * Formats an `ItemStatCost.txt` stat or `Properties.txt` property code directly from
  * 1.13c `.tbl` (`CANONICAL_ENG_TBL_DICT` / `CANONICAL_CHI_TBL_DICT`) and `CANONICAL_ISC_DESC_TABLE`
@@ -1401,6 +1547,7 @@ export function formatStatByIscDescFunc(
   param?: string | number,
   locale: TooltipLocale = getTooltipLocale(),
   charLevel = 1,
+  viewerClass?: number | string,
 ): string {
   const norm = (statOrCode || '').trim().toLowerCase().replace(/^\*/, '')
   const dict = locale === 'en' ? CANONICAL_ENG_TBL_DICT : CANONICAL_CHI_TBL_DICT
@@ -1480,15 +1627,100 @@ export function formatStatByIscDescFunc(
     case 10:
       return composeWithVal(`${Math.floor((Number(perLvlStr) * 100) / 128)}%`, str1, str2)
     case 11: {
-      const rate = Number(param) || value || 1
-      const seconds = Math.max(1, Math.floor(100 / rate))
-      if (str1.includes('%d')) {
-        return str1.replace('%d', String(seconds))
-      }
-      return formatPropertyCode(statOrCode, value, min, max, param, locale, charLevel)
+      const rate =
+        param !== undefined && param !== '' && !Number.isNaN(Number(param)) && Number(param) !== 0
+          ? Number(param)
+          : value
+      return formatReplenishDurability(rate, locale)
     }
     case 12:
       return composeWithVal(value > 1 ? `+${value}` : '', str1)
+    case 13: {
+      let clsIdx = 0
+      if (typeof param === 'number' && Number.isFinite(param)) {
+        clsIdx = Math.max(0, Math.min(6, Math.trunc(param)))
+      } else if (typeof param === 'string' && param.trim() !== '') {
+        const pNorm = param.trim().toLowerCase()
+        if (!Number.isNaN(Number(pNorm))) {
+          clsIdx = Math.max(0, Math.min(6, Math.trunc(Number(pNorm))))
+        } else if (CLASS_CODE_TO_INDEX[pNorm] !== undefined) {
+          clsIdx = CLASS_CODE_TO_INDEX[pNorm]
+        }
+      } else if (CLASS_CODE_TO_INDEX[norm] !== undefined) {
+        clsIdx = CLASS_CODE_TO_INDEX[norm]
+      }
+      const clsStr = lookupTbl(CLASS_SKILLS_TBL_KEYS[clsIdx] ?? 'ModStr3a')
+      return composeWithVal(signedInt, clsStr)
+    }
+    case 14: {
+      const rawParam = Number(param) || 0
+      const tabIdx =
+        rawParam > 20 && (rawParam & 7) <= 2 && ((rawParam >> 3) & 7) <= 6
+          ? ((rawParam >> 3) & 7) * 3 + (rawParam & 7)
+          : Math.max(0, Math.min(20, Math.trunc(rawParam)))
+      const [tabKey, clsOnlyKey] = SKILL_TAB_TBL_KEYS[tabIdx] ?? SKILL_TAB_TBL_KEYS[0]
+      const tabStr = lookupTbl(tabKey).replace('%d', String(value))
+      const clsOnlyStr = lookupTbl(clsOnlyKey)
+      return `${tabStr} ${clsOnlyStr}`.replace(/\s+/g, ' ').trim()
+    }
+    case 15: {
+      let skillRef: string | number | undefined = param
+      let slvl: number
+      let chance: number
+      if (
+        typeof param === 'number' &&
+        param >= 64 &&
+        min === value &&
+        max === value &&
+        resolveSkillMeta(param) === undefined
+      ) {
+        skillRef = param >> 6
+        slvl = Math.max(1, param & 0x3f)
+        chance = value || 5
+      } else {
+        slvl = max !== value || min !== value ? (max || 1) : 1
+        chance = min || value || 5
+      }
+      const skInfo = resolveSkillInfo(skillRef)
+      const skName =
+        locale === 'en'
+          ? skInfo.name
+          : (lookupTbl(skInfo.name) || skInfo.name)
+      let i = 0
+      const nums = [chance, slvl]
+      return str1
+        .replace(/%%/g, '\x00')
+        .replace(/%d/g, () => String(nums[i++] ?? 0))
+        .replace(/%s/g, skName)
+        .replace(/\x00/g, '%')
+    }
+    case 16: {
+      const skInfo = resolveSkillInfo(param)
+      const skName =
+        locale === 'en'
+          ? skInfo.name
+          : (lookupTbl(skInfo.name) || skInfo.name)
+      return str1.replace('%d', String(value)).replace('%s', skName)
+    }
+    case 17:
+    case 18: {
+      let period = 2
+      let displayVal = value
+      if (param === undefined && value >= (1 << 12)) {
+        period = value & 3
+        const unpackedMin = ((value >>> 2) & 0x3ff) - 0x100
+        const unpackedMax = ((value >>> 12) & 0x3ff) - 0x100
+        displayVal = unpackedMax !== 0 ? unpackedMax : unpackedMin
+      } else if (param !== undefined && param !== '' && !Number.isNaN(Number(param))) {
+        period = Number(param) & 3
+        displayVal = max !== 0 && max !== value ? max : value
+      }
+      const periodStr = lookupTbl(BYTIME_PERIOD_TBL_KEYS[period] ?? 'ModStre9d')
+      const bSigned = displayVal >= 0 ? `+${displayVal}` : `${displayVal}`
+      return descFunc === 17
+        ? composeWithVal(bSigned, str1, periodStr)
+        : composeWithVal(`${displayVal}%`, str1, periodStr)
+    }
     case 19:
       if (str1.includes('%+d')) {
         return str1.replace('%+d', signedInt)
@@ -1501,6 +1733,85 @@ export function formatStatByIscDescFunc(
       return composeWithVal(`-${Math.abs(value)}%`, str1)
     case 21:
       return composeWithVal(`-${Math.abs(value)}`, str1)
+    case 22: {
+      const monTypeId = Number(param)
+      const strplurKey =
+        !Number.isNaN(monTypeId) && MON_TYPE_STRPLUR_BY_ID[monTypeId]
+          ? MON_TYPE_STRPLUR_BY_ID[monTypeId]
+          : String(param ?? 'Monster')
+      const monTypePlur = lookupTbl(strplurKey) || strplurKey
+      return `${composeWithVal(`${signedInt}%`, str1)}: ${monTypePlur}`
+    }
+    case 23: {
+      const monId = Number(param)
+      const monNameEn =
+        !Number.isNaN(monId) && CANONICAL_REANIMATE_MONSTERS[monId]
+          ? CANONICAL_REANIMATE_MONSTERS[monId]
+          : String(param || 'Returned')
+      const monName = locale === 'en' ? monNameEn : lookupTbl(monNameEn) || monNameEn
+      return `${composeWithVal(`${value}%`, str1)} ${monName}`.replace(/\s+/g, ' ').trim()
+    }
+    case 24: {
+      let skillRef: string | number | undefined = param
+      let slvl = max
+      const charges = chargedSkillChargesOf(value, min)
+      if (
+        typeof param === 'number' &&
+        param >= 64 &&
+        max === value &&
+        resolveSkillMeta(param) === undefined
+      ) {
+        skillRef = param >> 6
+        slvl = Math.max(1, param & 0x3f)
+      } else if (slvl <= 0) {
+        slvl = 1
+      }
+      const skInfo = resolveSkillInfo(skillRef)
+      const skName =
+        locale === 'en'
+          ? skInfo.name
+          : (lookupTbl(skInfo.name) || skInfo.name)
+      return formatChargedSkill(slvl, skName, charges, locale === 'en' ? 'en' : 'zh')
+    }
+    case 27: {
+      if (value === 0) return ''
+      const skMeta = resolveSkillMeta(param)
+      const skInfo = resolveSkillInfo(param)
+      if (!skMeta && (param === undefined || param === '')) return ''
+      const skName =
+        locale === 'en'
+          ? skInfo.name
+          : (lookupTbl(skInfo.name) || skInfo.name)
+      const clsCode = skMeta?.classCode?.toLowerCase() ?? ''
+      const clsOnlyKey = CLASS_ONLY_TBL_KEYS[clsCode]
+      const clsOnly = clsOnlyKey ? lookupTbl(clsOnlyKey) : skInfo.classOnly
+      const toWord = lookupTbl('to') || 'to'
+      return `${signedInt} ${toWord} ${skName}${clsOnly ? ` ${clsOnly}` : ''}`.replace(/\s+/g, ' ').trim()
+    }
+    case 28: {
+      if (value === 0) return ''
+      const skMeta = resolveSkillMeta(param)
+      const skInfo = resolveSkillInfo(param)
+      if (!skMeta && (param === undefined || param === '')) return ''
+      let effVal = value
+      if (viewerClass !== undefined && skMeta?.classCode) {
+        const viewerIdx =
+          typeof viewerClass === 'number'
+            ? viewerClass
+            : CLASS_CODE_TO_INDEX[String(viewerClass).trim().toLowerCase()]
+        const skillClsIdx = CLASS_CODE_TO_INDEX[skMeta.classCode.toLowerCase()]
+        if (viewerIdx !== undefined && skillClsIdx !== undefined && viewerIdx === skillClsIdx && effVal > 3) {
+          effVal = 3
+        }
+      }
+      const effSigned = effVal >= 0 ? `+${effVal}` : `${effVal}`
+      const skName =
+        locale === 'en'
+          ? skInfo.name
+          : (lookupTbl(skInfo.name) || skInfo.name)
+      const toWord = lookupTbl('to') || 'to'
+      return `${effSigned} ${toWord} ${skName}`.replace(/\s+/g, ' ').trim()
+    }
     default:
       return formatPropertyCode(statOrCode, value, min, max, param, locale, charLevel)
   }
@@ -1543,8 +1854,9 @@ const ALIAS_CODE_MAP: Record<string, string> = {
  * Aggregates and sorts item properties per Diablo II 1.13c tooltip rules (Issue #125, #130, #133):
  * 1. Combines elemental min/max pairs (`fire-min` + `fire-max` -> `Adds X-Y Fire Damage`, etc.)
  * 2. Combines physical min/max pairs (`dmg-min` + `dmg-max` -> `Adds X-Y Damage`)
- * 3. Merges 4-element resistances (`dgrp=2`) into `All Resistances +X` ONLY when all 4 are positive and strictly equal
- * 4. Merges 4 core attributes (`dgrp=1`) into `+X to All Attributes` ONLY when all 4 are positive and strictly equal
+ * 3. Merges 4-element resistances (`dgrp=2`) into `All Resistances +X` when all 4 displayed values are equal (any sign,
+ *    D2Client.dll 0x6FB04AC0)
+ * 4. Merges 4 core attributes (`dgrp=1`) into `+X to all Attributes` under the same equal-value rule
  * 5. Accumulates identical scalar stats across prefixes, suffixes, and base modifiers
  * 6. Sorts all resulting properties descending by `ItemStatCost.txt` `descpriority`, with secondary ascending `statId` tie-breaker
  */
@@ -1562,8 +1874,11 @@ export function aggregateAndSortProperties(
   let poisMin = 0
   let poisMax = 0
   let poisLen = 0
+  let poisCount = 0
   let physMin = 0
   let physMax = 0
+  let edMinPct = 0
+  let edMaxPct = 0
 
   let fireRes = 0
   let coldRes = 0
@@ -1664,7 +1979,8 @@ export function aggregateAndSortProperties(
     if (code === 'dmg-pois') {
       poisMin += p.min > 0 ? p.min : val
       poisMax += p.max > 0 ? p.max : val
-      poisLen += Number(p.param) || 75
+      poisLen += Number(p.param) || 0
+      poisCount += 1
       continue
     }
     if (code === 'pois-min') {
@@ -1677,6 +1993,11 @@ export function aggregateAndSortProperties(
     }
     if (code === 'pois-len') {
       poisLen += val
+      continue
+    }
+    // ItemStatCost stat 326 `poison_count` (no descfunc): online items carry it explicitly.
+    if (code === 'poison_count') {
+      poisCount += val
       continue
     }
 
@@ -1692,6 +2013,21 @@ export function aggregateAndSortProperties(
     }
     if (code === 'dmg-max') {
       physMax += val
+      continue
+    }
+
+    // 6b. Enhanced Damage min% (stat 18) & max% (stat 17) bucket (D2Client.dll 0x6FB04000 + 0x6FB04594)
+    if (code === 'dmg%' || code === 'damagepercent') {
+      edMinPct += val
+      edMaxPct += val
+      continue
+    }
+    if (code === 'item_mindamage_percent' || code === 'dmg-min%') {
+      edMinPct += val
+      continue
+    }
+    if (code === 'item_maxdamage_percent' || code === 'dmg-max%') {
+      edMaxPct += val
       continue
     }
 
@@ -1775,63 +2111,61 @@ export function aggregateAndSortProperties(
 
   const out: RolledItemProp[] = [...unmergedProcs, ...otherMerged.values()]
 
-  // Emit merged Physical Damage
-  if (physMin > 0 && physMax > 0) {
-    out.push({ code: 'dmg-norm', min: physMin, max: Math.max(physMin, physMax), value: physMin })
-  } else if (physMin > 0) {
-    out.push({ code: 'dmg-min', min: physMin, max: physMin, value: physMin })
-  } else if (physMax > 0) {
-    out.push({ code: 'dmg-max', min: physMax, max: physMax, value: physMax })
+  // Emit merged Enhanced Damage (D2Client.dll 0x6FB04000 + 0x6FB04594): whenever both item_mindamage_percent (stat 18)
+  // and item_maxdamage_percent (stat 17) are > 0, stat 17 is suppressed and stat 18 outputs "+{min%}% Enhanced Damage".
+  // Otherwise a lone stat 17 or stat 18 outputs its own descfunc=3, descval=0 line (ModStr2j / ModStr2k).
+  if ((edMinPct > 0 && edMaxPct > 0) || (edMinPct !== 0 && edMinPct === edMaxPct)) {
+    out.push({ code: 'dmg%', min: edMinPct, max: edMinPct, value: edMinPct })
+  } else {
+    if (edMaxPct !== 0) {
+      out.push({ code: 'item_maxdamage_percent', min: edMaxPct, max: edMaxPct, value: edMaxPct })
+    }
+    if (edMinPct !== 0) {
+      out.push({ code: 'item_mindamage_percent', min: edMinPct, max: edMinPct, value: edMinPct })
+    }
   }
 
-  // Emit merged Fire Damage
-  if (fireMin > 0 && fireMax > 0) {
-    out.push({ code: 'dmg-fire', min: fireMin, max: Math.max(fireMin, fireMax), value: fireMin })
-  } else if (fireMin > 0) {
-    out.push({ code: 'fire-min', min: fireMin, max: fireMin, value: fireMin })
-  } else if (fireMax > 0) {
-    out.push({ code: 'fire-max', min: fireMax, max: fireMax, value: fireMax })
+  // Emit merged Physical Damage (D2Client.dll 0x6FB04000 + 0x6FB0453F): one "Adds %d-%d damage" line only when
+  // both halves are > 0 and min < max; otherwise each half keeps its own descfunc line.
+  if (physicalPairCombines(physMin, physMax)) {
+    out.push({ code: 'dmg-norm', min: physMin, max: physMax, value: physMin })
+  } else {
+    if (physMin !== 0) out.push({ code: 'dmg-min', min: physMin, max: physMin, value: physMin })
+    if (physMax !== 0) out.push({ code: 'dmg-max', min: physMax, max: physMax, value: physMax })
   }
 
-  // Emit merged Lightning Damage
-  if (ltngMin > 0 && ltngMax > 0) {
-    out.push({ code: 'dmg-ltng', min: ltngMin, max: Math.max(ltngMin, ltngMax), value: ltngMin })
-  } else if (ltngMin > 0) {
-    out.push({ code: 'ltng-min', min: ltngMin, max: ltngMin, value: ltngMin })
-  } else if (ltngMax > 0) {
-    out.push({ code: 'ltng-max', min: ltngMax, max: ltngMax, value: ltngMax })
+  // Emit merged Fire / Lightning / Cold Damage (0x6FB04328 / 0x6FB043AC / 0x6FB0436A): combined whenever both
+  // halves are > 0 ("Adds %d-%d" when min < max, otherwise "+%d" with the max value); a lone half keeps its own line.
+  const emitElemental = (pair: string, minCode: string, maxCode: string, min: number, max: number, param?: number) => {
+    if (elementalPairCombines(min, max)) {
+      out.push({ code: pair, ...(param !== undefined ? { param } : {}), min, max, value: min })
+    } else {
+      if (min !== 0) out.push({ code: minCode, min, max: min, value: min })
+      if (max !== 0) out.push({ code: maxCode, min: max, max, value: max })
+    }
   }
+  emitElemental('dmg-fire', 'fire-min', 'fire-max', fireMin, fireMax)
+  emitElemental('dmg-ltng', 'ltng-min', 'ltng-max', ltngMin, ltngMax)
+  emitElemental('dmg-cold', 'cold-min', 'cold-max', coldMin, coldMax, coldLen)
 
-  // Emit merged Cold Damage
-  if (coldMin > 0 && coldMax > 0) {
-    out.push({
-      code: 'dmg-cold',
-      param: coldLen || 50,
-      min: coldMin,
-      max: Math.max(coldMin, coldMax),
-      value: coldMin,
-    })
-  } else if (coldMin > 0) {
-    out.push({ code: 'cold-min', min: coldMin, max: coldMin, value: coldMin })
-  } else if (coldMax > 0) {
-    out.push({ code: 'cold-max', min: coldMax, max: coldMax, value: coldMax })
-  }
-
-  // Emit merged Poison Damage
-  if (poisMin > 0 || poisMax > 0) {
-    const pVal = poisMin > 0 ? poisMin : poisMax
-    const pLen = poisLen || 75
+  // Emit merged Poison Damage (0x6FB0446B): requires both poisonmindam and poisonmaxdam > 0; poisonlength is
+  // divided by poison_count (stat 326, +1 per `dmg-pois` property) before the `(v*len+128)>>8` conversion.
+  if (elementalPairCombines(poisMin, poisMax)) {
     out.push({
       code: 'dmg-pois',
-      param: pLen,
-      min: pVal,
-      max: pLen,
-      value: pVal,
+      param: Math.trunc(poisLen / (poisCount > 0 ? poisCount : 1)),
+      min: poisMin,
+      max: poisMax,
+      value: poisMin,
     })
+  } else {
+    if (poisMin !== 0) out.push({ code: 'pois-min', min: poisMin, max: poisMin, value: poisMin })
+    if (poisMax !== 0) out.push({ code: 'pois-max', min: poisMax, max: poisMax, value: poisMax })
   }
 
-  // Emit merged Attributes (dgrp=1): fold ONLY when all 4 attributes are positive and strictly equal
-  if (strVal > 0 && strVal === dexVal && dexVal === vitVal && vitVal === enrVal) {
+  // Emit merged Attributes (dgrp=1). D2Client.dll 0x6FB04AC0 folds a dgrp group whenever every member's
+  // displayed value is equal — there is no sign check, so equal negative values fold too (dgrpstrneg).
+  if (strVal !== 0 && strVal === dexVal && dexVal === vitVal && vitVal === enrVal) {
     out.push({ code: 'all-stats', min: strVal, max: strVal, value: strVal })
   } else {
     if (strVal !== 0) out.push({ code: 'str', min: strVal, max: strVal, value: strVal })
@@ -1840,8 +2174,8 @@ export function aggregateAndSortProperties(
     if (enrVal !== 0) out.push({ code: 'enr', min: enrVal, max: enrVal, value: enrVal })
   }
 
-  // Emit merged Resistances (dgrp=2): fold ONLY when all 4 resistances are positive and strictly equal
-  if (fireRes > 0 && fireRes === coldRes && coldRes === ltngRes && ltngRes === poisRes) {
+  // Emit merged Resistances (dgrp=2): same 0x6FB04AC0 rule (equal displayed values, any sign).
+  if (fireRes !== 0 && fireRes === coldRes && coldRes === ltngRes && ltngRes === poisRes) {
     out.push({ code: 'res-all', min: fireRes, max: fireRes, value: fireRes })
   } else {
     if (coldRes !== 0) out.push({ code: 'res-cold', min: coldRes, max: coldRes, value: coldRes })
@@ -2794,6 +3128,8 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
 
   // Compute Enhanced Base Stats vs Original Base Stats per Issue #123 & #131
   let totalEdPct = 0
+  let edMinPct = 0
+  let edMaxPct = 0
   let extraMaxEdPct = 0
   let flatMinDmg = 0
   let flatMaxDmg = 0
@@ -2841,8 +3177,16 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
 
   for (const p of [...rawProps, ...activeItemProps]) {
     const c = (p.code || '').trim().toLowerCase()
-    if (c === 'dmg%' || c === 'damagepercent' || c === 'item_maxdamage_percent' || c === 'item_mindamage_percent') {
+    if (c === 'dmg%' || c === 'damagepercent') {
       totalEdPct += p.value
+      edMinPct += p.value
+      edMaxPct += p.value
+    } else if (c === 'item_mindamage_percent' || c === 'dmg-min%') {
+      edMinPct += p.value
+      totalEdPct = edMinPct
+    } else if (c === 'item_maxdamage_percent' || c === 'dmg-max%') {
+      edMaxPct += p.value
+      if (totalEdPct === 0) totalEdPct = edMaxPct
     } else if (c === 'dmg%/lvl' || c === 'item_maxdamage_percent_perlevel') {
       const rate = p.value !== 0 ? p.value : Number(p.param) || 0
       extraMaxEdPct += Math.floor((rate * propCharLevel) / 8)
@@ -2938,18 +3282,19 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
       effMin = Math.floor(effMin * 1.5)
       effMax = Math.floor(effMax * 1.5)
     }
-    let finalMin = Math.floor(effMin * (100 + totalEdPct) / 100) + flatMinDmg
-    let finalMax = Math.floor(effMax * (100 + totalEdPct + extraMaxEdPct) / 100) + flatMaxDmg
-    if (totalEdPct + extraMaxEdPct > 0 && finalMax === effMax) {
+    let finalMin = Math.floor(effMin * (100 + edMinPct) / 100) + flatMinDmg
+    let finalMax = Math.floor(effMax * (100 + edMaxPct + extraMaxEdPct) / 100) + flatMaxDmg
+    if (edMaxPct + extraMaxEdPct > 0 && finalMax === effMax) {
       finalMax = effMax + 1
     }
-    if ((totalEdPct !== 0 || extraMaxEdPct !== 0 || flatMinDmg !== 0 || flatMaxDmg !== 0) && finalMin >= finalMax) {
+    if ((edMinPct !== 0 || edMaxPct !== 0 || extraMaxEdPct !== 0 || flatMinDmg !== 0 || flatMaxDmg !== 0) && finalMin >= finalMax) {
       finalMax = finalMin + 1
     }
     const isEnhanced =
       finalMin !== baseMin ||
       finalMax !== baseMax ||
-      totalEdPct !== 0 ||
+      edMinPct !== 0 ||
+      edMaxPct !== 0 ||
       extraMaxEdPct !== 0 ||
       flatMinDmg !== 0 ||
       flatMaxDmg !== 0 ||
@@ -3028,8 +3373,19 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
   const reqLevel = finalReqLevel > 1 ? finalReqLevel : undefined
   const baseReqLevel = rawBaseReqLevel > 0 && finalReqLevel !== rawBaseReqLevel ? rawBaseReqLevel : undefined
 
-  // 4. Durability
+  // 4. Durability & automatic Indestructible line (D2Client.dll 0x6FB05E58..0x6FB05EF3)
   const rawBaseDur = (base as any).durability > 0 ? (base as any).durability : undefined
+  const explicitMaxDur = item.maxDurability ?? (item.stats as any)?.maxdurability
+  if (
+    rawBaseDur !== undefined &&
+    rawBaseDur > 0 &&
+    !(base as any).nodurability &&
+    explicitMaxDur === 0 &&
+    !lines.some(l => l.text.includes('Indestructible') || l.text.includes('无法破坏') || l.text.includes('無法破壞'))
+  ) {
+    const indText = locale === 'zh' || locale === 'bilingual' ? '无法破坏' : 'Indestructible'
+    lines.push({ text: indText, color: 'blue', isMagic: true })
+  }
   let durability: FormattedItemTooltip['durability'] = undefined
   if (item.durability && item.maxDurability) {
     const finalMaxDur = Math.floor(item.maxDurability * (100 + durPct) / 100) + durBonus

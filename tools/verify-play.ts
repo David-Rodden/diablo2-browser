@@ -1061,7 +1061,7 @@ async function main(): Promise<void> {
       gate9.phase !== 'disconnected' ||
       !gate9.reason?.includes('Test disconnect') ||
       !gate9.overlayVisible ||
-      !gate9.bannerVisible ||
+      gate9.bannerVisible ||
       gate9.stage !== 'bnet_login' ||
       !gate9.loginError?.includes('Test disconnect')
     ) {

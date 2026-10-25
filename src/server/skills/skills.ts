@@ -12,15 +12,14 @@
  * - a **projectile** step that flies at the simulation rate, dies on walls,
  *   expires on its own timer, and reports what it hit.
  *
- * Damage progression is the one place where a simplification is visible in the
- * code: the real table scales damage through five level bands
- * (`MinLevDam1..5`), and this reads a single `PerLevel` slope instead. The band
- * columns are a mapping-layer problem — they carry no new mechanics, only a
- * different interpolation — so the formula is isolated in {@link skillDamageAt}
- * where the bands can replace it.
+ * Skill damage progression is evaluated directly from 1.13c `Skills.txt` five-band
+ * scaling (`MinLevDam1..5`, `MaxLevDam1..5`, `EMinLev1..5`, `EMaxLev1..5`, `HitShift`)
+ * via {@link evaluateSkill113c}.
  */
 import type { Rng } from '../../common/rng/d2-rng.ts'
-import { getSharedDataRegistry } from '../../common/data/data-registry.ts'
+import { getSharedDataRegistry, type SkillRecord } from '../../common/data/data-registry.ts'
+import { UnitStatList } from '../engine/stat-list.ts'
+import { evaluateSkill113c } from './registry.ts'
 import { MISSILE_PIERCE_ROLL_CAP, rollMissilePierceIdx } from '../engine/missile-pierce.ts'
 import type { CharacterClassCode } from '../../common/units/classes.ts'
 import type { CombatPlayer } from '../../common/units/unit-types.ts'
@@ -563,78 +562,95 @@ export {
   getSkillCooldownTicks,
 } from '../../common/skills/missiles-data.ts'
 
-/**
- * Damage of a skill at a level.
- *
- * @param skill - the definition.
- * @param level - skill level, 1-based.
- * @param rng - random source for the roll inside the damage range.
- * @returns the damage.
- */
-function skillDamageAt(skill: SkillDef, level: number, rng: Rng): number {
-  const steps = Math.max(0, level - 1)
-  const min = skill.baseMinDamage + skill.damagePerLevel * steps
-  const max = skill.baseMaxDamage + skill.damagePerLevel * steps
-  return rng.int(Math.round(min), Math.round(Math.max(min, max)))
+const SKILL_DEF_SLUG_TO_ID_113C: Readonly<Record<string, number>> = {
+  attack: 0,
+  firebolt: 36,
+  chargedbolt: 38,
+  icebolt: 39,
+  frostnova: 44,
+  iceblast: 45,
+  fireball: 47,
+  nova: 48,
+  lightning: 49,
+  chainlightning: 53,
+  glacialspike: 55,
+  meteor: 56,
+  blizzard: 59,
+  frozenorb: 64,
+  teeth: 67,
+  bonespear: 84,
+  poisonnova: 92,
+  bonespirit: 93,
 }
 
-/**
- * Cast a skill.
- *
- * Mana and cooldown are checked here rather than by the caller so that every
- * route to casting (a hotkey, an AI, a script) obeys the same rules.
- *
- * @param skill - the definition.
- * @param caster - position and facing.
- * @param level - skill level.
- * @param rng - random source.
- * @param cooldownLeft - ticks of cooldown still owed.
- * @param mana - mana available.
- * @param aim - optional aim point; defaults to straight ahead of the facing.
- * @returns what the cast produced.
- */
-export function castSkillDef(
-  skill: SkillDef,
-  caster: Caster,
-  level: number,
-  rng: Rng,
-  cooldownLeft: number,
-  mana: number,
-  aim?: { readonly x: number; readonly y: number },
-): CastResult {
-  if (cooldownLeft > 0) return { kind: 'cooldown', ticksLeft: cooldownLeft }
-  if (mana < skill.manaCost) return { kind: 'mana', cost: skill.manaCost }
-  const damage = skillDamageAt(skill, level, rng)
-  if (!skill.projectile) return { kind: 'instant', radius: skill.radius, damage }
+function resolveSkillRecord113c(skill: SkillDef): SkillRecord | undefined {
+  const registry = getSharedDataRegistry()
+  const numId = Number(skill.id)
+  if (Number.isInteger(numId) && numId >= 0) {
+    const byId = registry.getSkill(numId)
+    if (byId) return byId
+  }
+  const slugId = SKILL_DEF_SLUG_TO_ID_113C[skill.id.trim().toLowerCase()]
+  if (slugId !== undefined) {
+    const bySlug = registry.getSkill(slugId)
+    if (bySlug) return bySlug
+  }
+  return registry.getSkillByName(skill.id) ?? registry.getSkillByName(skill.name)
+}
 
-  let dx: number
-  let dy: number
-  if (aim !== undefined) {
-    dx = aim.x - caster.x
-    dy = aim.y - caster.y
-  } else {
-    const vector = FACING_VECTORS[caster.facing] ?? FACING_VECTORS[0]!
-    dx = vector[0]
-    dy = vector[1]
+function evaluateSkillDef113c(
+  skill: SkillDef,
+  level: number,
+): { readonly minDmg: number; readonly maxDmg: number; readonly missileType: string | undefined } {
+  const effLevel = Math.max(1, Math.floor(level))
+  const registry = getSharedDataRegistry()
+  const record = resolveSkillRecord113c(skill)
+  let minDmg = skill.baseMinDamage
+  let maxDmg = skill.baseMaxDamage
+  let missileType: string | undefined
+  if (record) {
+    missileType = record.srvMissile || record.srvMissileA || undefined
+    if (record.id > 0) {
+      const statList = new UnitStatList(registry)
+      statList.setBaseSkillLevel(record.id, effLevel)
+      const evalAtLevel = evaluateSkill113c({
+        registry,
+        skill: record,
+        slvl: effLevel,
+        blvl: effLevel,
+        statList,
+        difficulty: 0,
+      })
+      const evalMin = evalAtLevel.minElemDmg + evalAtLevel.minPhysDmg
+      const evalMax = evalAtLevel.maxElemDmg + evalAtLevel.maxPhysDmg
+      if (!missileType && evalAtLevel.missileA) {
+        missileType = evalAtLevel.missileA
+      }
+      if (evalMin > 0 || evalMax > 0) {
+        const statListLv1 = new UnitStatList(registry)
+        statListLv1.setBaseSkillLevel(record.id, 1)
+        const evalLv1 = evaluateSkill113c({
+          registry,
+          skill: record,
+          slvl: 1,
+          blvl: 1,
+          statList: statListLv1,
+          difficulty: 0,
+        })
+        const lv1Min = evalLv1.minElemDmg + evalLv1.minPhysDmg
+        const lv1Max = evalLv1.maxElemDmg + evalLv1.maxPhysDmg
+        const hasSyntheticLv1Override =
+          effLevel === 1 &&
+          record.id !== 36 &&
+          (skill.baseMinDamage !== lv1Min || skill.baseMaxDamage !== lv1Max)
+        if (!hasSyntheticLv1Override) {
+          minDmg = evalMin
+          maxDmg = evalMax
+        }
+      }
+    }
   }
-  const length = Math.hypot(dx, dy)
-  if (length === 0) return { kind: 'instant', radius: skill.radius, damage }
-  const perTick = skill.speed / 25
-  const ttl = Math.max(1, Math.round(skill.range / perTick))
-  return {
-    kind: 'projectile',
-    projectile: {
-      skillId: skill.id,
-      x: caster.x,
-      y: caster.y,
-      vx: (dx / length) * perTick,
-      vy: (dy / length) * perTick,
-      damage,
-      ttl,
-      fromPlayer: true,
-      missileType: skill.id === '36' || skill.id === 'firebolt' ? 'firebolt' : undefined,
-    },
-  }
+  return { minDmg, maxDmg, missileType }
 }
 
 export function castSkill(
@@ -662,15 +678,46 @@ export function castSkill(
   aim?: { readonly x: number; readonly y: number },
 ): boolean | CastResult {
   if (typeof skillOrId === 'object' && skillOrId !== null) {
-    return castSkillDef(
-      skillOrId,
-      arg2 as Caster,
-      arg3,
-      arg4 as Rng,
-      cooldownLeft ?? 0,
-      mana ?? 0,
-      aim,
-    )
+    const skill = skillOrId
+    const caster = arg2 as Caster
+    const level = arg3
+    const rng = arg4 as Rng
+    const cdLeft = cooldownLeft ?? 0
+    const availMana = mana ?? 0
+    if (cdLeft > 0) return { kind: 'cooldown', ticksLeft: cdLeft }
+    if (availMana < skill.manaCost) return { kind: 'mana', cost: skill.manaCost }
+    const { minDmg, maxDmg, missileType } = evaluateSkillDef113c(skill, level)
+    const damage = rng.int(Math.round(minDmg), Math.round(Math.max(minDmg, maxDmg)))
+    if (!skill.projectile) return { kind: 'instant', radius: skill.radius, damage }
+
+    let dx: number
+    let dy: number
+    if (aim !== undefined) {
+      dx = aim.x - caster.x
+      dy = aim.y - caster.y
+    } else {
+      const vector = FACING_VECTORS[caster.facing] ?? FACING_VECTORS[0]!
+      dx = vector[0]
+      dy = vector[1]
+    }
+    const length = Math.hypot(dx, dy)
+    if (length === 0) return { kind: 'instant', radius: skill.radius, damage }
+    const perTick = skill.speed / 25
+    const ttl = Math.max(1, Math.round(skill.range / perTick))
+    return {
+      kind: 'projectile',
+      projectile: {
+        skillId: skill.id,
+        x: caster.x,
+        y: caster.y,
+        vx: (dx / length) * perTick,
+        vy: (dy / length) * perTick,
+        damage,
+        ttl,
+        fromPlayer: true,
+        missileType,
+      },
+    }
   }
   return castSceneSkill113c(
     typeof skillOrId === 'string' ? Number(skillOrId) : skillOrId,
@@ -1026,7 +1073,10 @@ export function tickProjectiles(
             pierce: true,
           })
         }
-      } else if (projectile.missileType === 'meteorcenter') {
+      } else if (projectile.missileType === 'meteorcenter' || projectile.missileType === 'royalstrikemeteorcenter') {
+        const isRoyalStrike = projectile.missileType === 'royalstrikemeteorcenter'
+        const explodeMissile = isRoyalStrike ? 'royalstrikemeteorexplode' : 'meteorexplode'
+        const fireMissile = isRoyalStrike ? 'royalstrikemeteorfire' : 'meteorfire'
         // Authentic D2 1.13c MISSMODE_SrvHit14_MeteorCenter (0x6FC5DEF0) & 0x6FC5CEC0:
         // 1. Primary explosion AOE damage (Radius = 6 subtiles = 120px) in 2:1 isometric ground perspective
         const blastRadius = projectile.aoeRadius ?? 120
@@ -1041,13 +1091,13 @@ export function tickProjectiles(
               x: target.x,
               y: target.y,
               skillId: projectile.skillId,
-              missileType: 'meteorexplode',
+              missileType: explodeMissile,
               aoeRadius: blastRadius,
             })
           }
         }
 
-        // 2. Spawn explosion missile: meteorexplode (ID 103, Range 16)
+        // 2. Spawn explosion missile: meteorexplode / royalstrikemeteorexplode (Range 16)
         spawned.push({
           skillId: projectile.skillId,
           x: projectile.x,
@@ -1057,7 +1107,7 @@ export function tickProjectiles(
           damage: 0,
           ttl: 16,
           fromPlayer: projectile.fromPlayer,
-          missileType: 'meteorexplode',
+          missileType: explodeMissile,
           aoeRadius: blastRadius,
           pierce: true,
         })
@@ -1065,13 +1115,13 @@ export function tickProjectiles(
           x: projectile.x,
           y: projectile.y,
           skillId: projectile.skillId,
-          missileType: 'meteorexplode',
+          missileType: explodeMissile,
           aoeRadius: blastRadius,
         })
 
-        // 3. Spawn 18 meteorfire submissiles using 18-offset table
+        // 3. Spawn 18 meteorfire / royalstrikemeteorfire submissiles using 18-offset table
         const slvl = Math.max(1, projectile.slvl ?? 1)
-        const fireDuration = projectile.fireDuration ?? (90 + (slvl - 1) * 15)
+        const fireDuration = projectile.fireDuration ?? (isRoyalStrike ? 30 + (slvl - 1) * 15 : 90 + (slvl - 1) * 15)
         const residualDmg = projectile.residualDamage ?? calculateMeteorResidualFireDamage(slvl).min
         for (const off of METEOR_FIRE_SUBTILE_OFFSETS) {
           const fx = projectile.x + off.x * 20
@@ -1090,7 +1140,7 @@ export function tickProjectiles(
               damage: residualDmg,
               ttl: fireDuration,
               fromPlayer: projectile.fromPlayer,
-              missileType: 'meteorfire',
+              missileType: fireMissile,
               aoeRadius: 16,
               pierce: true,
               slvl,
@@ -1547,6 +1597,8 @@ export function tickProjectiles(
     }
     if (
       (projectile.missileType === 'meteorfire' && currentAge % 5 === 0) ||
+      (projectile.missileType === 'royalstrikemeteorfire' && currentAge % 5 === 0) ||
+      (projectile.missileType === 'fistsoffirefirewall' && currentAge % 5 === 0) ||
       (projectile.missileType === 'immolationfire' && currentAge % 5 === 0) ||
       (projectile.missileType === 'poisonjavcloud' && currentAge % 5 === 0) ||
       (projectile.missileType === 'plaguejavcloud' && currentAge % 5 === 0) ||
@@ -1857,6 +1909,7 @@ export function tickProjectiles(
       projectile.missileType === 'frozenorb' ||
       projectile.missileType === 'blizzardcenter' ||
       projectile.missileType === 'meteorcenter' ||
+      projectile.missileType === 'royalstrikemeteorcenter' ||
       projectile.missileType === 'meteor' ||
       projectile.missileType === 'meteortail' ||
       projectile.missileType === 'firewallmaker' ||
@@ -1896,6 +1949,8 @@ export function tickProjectiles(
         }
         const isGroundPatch =
           projectile.missileType === 'meteorfire' ||
+          projectile.missileType === 'royalstrikemeteorfire' ||
+          projectile.missileType === 'fistsoffirefirewall' ||
           projectile.missileType === 'immolationfire' ||
           projectile.missileType === 'poisonjavcloud' ||
           projectile.missileType === 'plaguejavcloud' ||
@@ -5267,6 +5322,7 @@ function castSceneSkill113c(
       kind: 'valkyrie',
       extra: {
         equipmentTier: stats.equipmentTier,
+        valkyrieEquipment: stats.equipment,
         equipmentIlvl: stats.equipmentIlvl,
         allResistancesPct: stats.allResistancesPct,
         strength: stats.strength,
@@ -6245,6 +6301,10 @@ function castSceneSkill113c(
                 }
               }
               if (p.chargeLevel >= 3) {
+                const fwMin256 = p.fireDamage.burningGroundMinDmg256 ?? 48
+                const fwMax256 = p.fireDamage.burningGroundMaxDmg256 ?? 80
+                const fwFrames = p.fireDamage.burningGroundFrames ?? 64
+                const fwTickDmg = Math.max(1, Math.round((((fwMin256 + fwMax256) / 2) * 5) / 256))
                 engine.projectiles.push({
                   skillId: '259',
                   slvl: p.slvl,
@@ -6252,10 +6312,13 @@ function castSceneSkill113c(
                   y: hitTarget.y,
                   vx: 0,
                   vy: 0,
-                  damage: fDmg,
-                  ttl: 64,
+                  damage: fwTickDmg,
+                  ttl: fwFrames,
                   fromPlayer: true,
                   missileType: 'fistsoffirefirewall',
+                  aoeRadius: 16,
+                  pierce: true,
+                  fireDuration: fwFrames,
                 })
               }
             }
@@ -6264,6 +6327,14 @@ function castSceneSkill113c(
               damageMonster(engine.world, hitTarget.index, lDmg)
               totalDealt += lDmg
               if (p.ltngDamage.hasNova) {
+                const novaDmg = Math.max(
+                  1,
+                  Math.round(
+                    ((p.ltngDamage.novaMin ?? p.ltngDamage.min) +
+                      (p.ltngDamage.novaMax ?? p.ltngDamage.max)) /
+                      2,
+                  ),
+                )
                 for (let nIdx = 0; nIdx < 16; nIdx += 1) {
                   const ang = (nIdx / 16) * Math.PI * 2
                   engine.projectiles.push({
@@ -6273,7 +6344,7 @@ function castSceneSkill113c(
                     y: hitTarget.y,
                     vx: Math.cos(ang) * 12,
                     vy: Math.sin(ang) * 12 * ISO_GROUND_ASPECT_RATIO,
-                    damage: lDmg,
+                    damage: novaDmg,
                     ttl: 13,
                     fromPlayer: true,
                     missileType: 'clawsofthundernova',
@@ -6284,6 +6355,14 @@ function castSceneSkill113c(
               }
               if (p.ltngDamage.chargedBoltsCount) {
                 const bCount = p.ltngDamage.chargedBoltsCount
+                const boltDmg = Math.max(
+                  1,
+                  Math.round(
+                    ((p.ltngDamage.boltMin ?? p.ltngDamage.min) +
+                      (p.ltngDamage.boltMax ?? p.ltngDamage.max)) /
+                      2,
+                  ),
+                )
                 for (let bIdx = 0; bIdx < bCount; bIdx += 1) {
                   const ang = (bIdx / bCount) * Math.PI * 2
                   engine.projectiles.push({
@@ -6293,8 +6372,8 @@ function castSceneSkill113c(
                     y: hitTarget.y,
                     vx: Math.cos(ang) * 8,
                     vy: Math.sin(ang) * 8 * ISO_GROUND_ASPECT_RATIO,
-                    damage: lDmg,
-                    ttl: 40,
+                    damage: boltDmg,
+                    ttl: 98,
                     fromPlayer: true,
                     missileType: 'clawsofthunderbolt',
                     jitter: true,
@@ -6302,6 +6381,8 @@ function castSceneSkill113c(
                     nextDelay: 4,
                   })
                 }
+                damageMonster(engine.world, hitTarget.index, boltDmg)
+                totalDealt += boltDmg
               }
             }
             if (p.coldDamage) {
@@ -6354,6 +6435,10 @@ function castSceneSkill113c(
                       2,
                   ),
                 )
+                const gfMin256 = p.phoenixPayload.meteorDamage?.groundFireMinDmg256 ?? 48
+                const gfMax256 = p.phoenixPayload.meteorDamage?.groundFireMaxDmg256 ?? 80
+                const gfFrames = p.phoenixPayload.meteorDamage?.groundFireFrames ?? (30 + 15 * (p.slvl - 1))
+                const gfTickDmg = Math.max(1, Math.round((((gfMin256 + gfMax256) / 2) * 5) / 256))
                 engine.projectiles.push({
                   skillId: '280',
                   slvl: p.slvl,
@@ -6362,22 +6447,27 @@ function castSceneSkill113c(
                   vx: 0,
                   vy: 0,
                   damage: mDmg,
-                  ttl: 60,
+                  ttl: 26,
                   fromPlayer: true,
                   missileType: 'royalstrikemeteorcenter',
                   aoeRadius: 96,
                   aoeDamage: mDmg,
-                  fireDuration: 30 + 15 * (p.slvl - 1),
+                  fireDuration: gfFrames,
+                  residualDamage: gfTickDmg,
                 })
                 damageMonster(engine.world, hitTarget.index, mDmg)
                 totalDealt += mDmg
               } else if (p.phoenixPayload.type === 'chain_lightning') {
                 const clDmg = Math.max(
                   1,
-                  Math.round((1 + (p.phoenixPayload.chainLightningDamage?.max ?? 40)) / 2),
+                  Math.round(
+                    ((p.phoenixPayload.chainLightningDamage?.min ?? 1) +
+                      (p.phoenixPayload.chainLightningDamage?.max ?? 40)) /
+                      2,
+                  ),
                 )
                 const clCount = p.phoenixPayload.chainLightningDamage?.boltsCount ?? 7
-                const clBounces = p.phoenixPayload.chainLightningDamage?.maxTargets ?? 5 + p.slvl
+                const clBounces = p.phoenixPayload.chainLightningDamage?.maxTargets ?? 7
                 for (let bIdx = 0; bIdx < clCount; bIdx += 1) {
                   const ang = (bIdx * 10 * Math.PI * 2) / 64
                   engine.projectiles.push({
@@ -6485,10 +6575,7 @@ function castSceneSkill113c(
       }
     }
 
-    player.cooldown = skillId === 275 ? dflightStats.nextDelayFrames * 6 + 1 : 8
-    if (skillId === 275) {
-      player.cooldown = 25 // 1.13c Delay = 25 frames (1.0s)
-    }
+    player.cooldown = skillId === 275 ? dflightStats.cooldownFrames : 8
     engine.metrics.casts += 1
     const finisherNamesZh: Record<number, string> = {
       255: '龙爪踢',
@@ -6612,7 +6699,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'vine',
-        petGroup: 2,
+        petGroup: 0,
         maxPets: 1,
         hp: stats.hp,
         kind: 'poison_creeper',
@@ -6646,7 +6733,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'totem',
-        petGroup: 1,
+        petGroup: 0,
         maxPets: 1,
         hp: stats.hp,
         kind: 'oak_sage',
@@ -6682,7 +6769,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'spiritwolf',
-        petGroup: 3,
+        petGroup: 1,
         maxPets: stats.maxCount,
         hp: stats.hp,
         kind: 'spirit_wolf',
@@ -6717,7 +6804,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'vine',
-        petGroup: 2,
+        petGroup: 0,
         maxPets: 1,
         hp: stats.hp,
         kind: 'carrion_vine',
@@ -6747,7 +6834,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'totem',
-        petGroup: 1,
+        petGroup: 0,
         maxPets: 1,
         hp: stats.hp,
         kind: 'heart_of_wolverine',
@@ -6787,7 +6874,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'fenris',
-        petGroup: 3,
+        petGroup: 1,
         maxPets: stats.maxCount,
         hp: stats.hp,
         kind: 'dire_wolf',
@@ -6824,7 +6911,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'vine',
-        petGroup: 2,
+        petGroup: 0,
         maxPets: 1,
         hp: stats.hp,
         kind: 'solar_creeper',
@@ -6854,7 +6941,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'totem',
-        petGroup: 1,
+        petGroup: 0,
         maxPets: 1,
         hp: stats.hp,
         kind: 'spirit_of_barbs',
@@ -6890,7 +6977,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'grizzly',
-        petGroup: 3,
+        petGroup: 1,
         maxPets: 1,
         hp: stats.hp,
         kind: 'grizzly',
@@ -7155,7 +7242,7 @@ function castSceneSkill113c(
     }
 
     if (skillId === 268 || skillId === 279) {
-      // #268 Shadow Warrior & #279 Shadow Master (petType='shadowwarrior', petGroup=4, maxPets=1)
+      // #268 Shadow Warrior & #279 Shadow Master (petType='shadowwarrior', petGroup=0, maxPets=1)
       const hp = computeShadowMaxLife(slvl)
       const ownerLevel = Number((player as any).level ?? (hudManager as any)?.level ?? 80)
       const mlvl = computeShadowMlvl(ownerLevel, slvl)
@@ -7171,7 +7258,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'shadowwarrior',
-        petGroup: 4,
+        petGroup: 0,
         maxPets: 1,
         hp,
         kind: skillId === 268 ? 'shadow_warrior' : 'shadow_master',
@@ -7275,11 +7362,9 @@ function castSceneSkill113c(
           slvl,
           durationFrames,
           stats: {
-            venom_bitrate_256: vDmg.minBitrate,
-            venom_max_bitrate_256: vDmg.maxBitrate,
-            skill_pois_min: vDmg.minBitrate,
-            skill_pois_max: vDmg.maxBitrate,
-            skill_pois_len: 10,
+            poisonmindam: vDmg.minBitrate,
+            poisonmaxdam: vDmg.maxBitrate,
+            poisonlength: 10,
             skill_poison_override_length: 10,
           },
         })
@@ -7971,7 +8056,7 @@ function castSceneSkill113c(
         x: spawnX,
         y: spawnY,
         petType: 'golem',
-        petGroup: 3,
+        petGroup: 0,
         maxPets: 1,
         hp: igStats.maxHp,
         kind: 'iron_golem',
@@ -8002,7 +8087,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'golem',
-        petGroup: 3,
+        petGroup: 0,
         maxPets: 1,
         hp: cgStats.maxHp,
         kind: 'clay_golem',
@@ -8032,7 +8117,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'golem',
-        petGroup: 3,
+        petGroup: 0,
         maxPets: 1,
         hp: bgStats.maxHp,
         kind: 'blood_golem',
@@ -8067,7 +8152,7 @@ function castSceneSkill113c(
         x: targetX,
         y: targetY,
         petType: 'golem',
-        petGroup: 3,
+        petGroup: 0,
         maxPets: 1,
         hp: fgStats.maxHp,
         kind: 'fire_golem',
@@ -8757,12 +8842,11 @@ function castSceneSkill113c(
     }
 
     if (skillId === 144) {
-      // #144 Concentrate: uninterruptible swing, State #15 concentrate (+100+10*(slvl-1)+10*blvl(145)% Def), +1%/blvl(152) Magic conversion
+      // #144 Concentrate: uninterruptible swing, State #15 concentrate (+100+10*(slvl-1)% Def), +1%/blvl(152) Magic conversion
       const bashBlvl = resolveBaseSkillLevel(126, player, hudManager, engine)
       const boBlvl = resolveBaseSkillLevel(149, player, hudManager, engine)
       const berserkBlvl = resolveBaseSkillLevel(152, player, hudManager, engine)
-      const ironSkinBlvl = resolveBaseSkillLevel(145, player, hudManager, engine)
-      const concStats = calculateConcentrateStats(castSlvl, bashBlvl, boBlvl, berserkBlvl, ironSkinBlvl)
+      const concStats = calculateConcentrateStats(castSlvl, bashBlvl, boBlvl, berserkBlvl)
       ;(player as any).concentrateTicks = 25
       ;(player as any).concentrateDefensePct = concStats.defenseBonusPct
       ;(player as any).uninterruptibleAttack = true
@@ -8787,12 +8871,11 @@ function castSceneSkill113c(
     }
 
     if (skillId === 147) {
-      // #147 Frenzy: 2 dual-wield swings, stacking State #9 frenzy (`nValue = min(slvl, prev + 1)`, dm34 FRW, dm56 IAS, 150 + 10*blvl(141) frames)
+      // #147 Frenzy: 2 dual-wield swings, stacking State #9 frenzy (`nValue = min(slvl, prev + 1)`, dm34 FRW, dm56 IAS, 150 frames)
       const dsBlvl = resolveBaseSkillLevel(133, player, hudManager, engine)
       const tauntBlvl = resolveBaseSkillLevel(137, player, hudManager, engine)
       const berserkBlvl = resolveBaseSkillLevel(152, player, hudManager, engine)
-      const incStamBlvl = resolveBaseSkillLevel(141, player, hudManager, engine)
-      const frzStats = calculateFrenzyStats(castSlvl, dsBlvl, tauntBlvl, berserkBlvl, incStamBlvl)
+      const frzStats = calculateFrenzyStats(castSlvl, dsBlvl, tauntBlvl, berserkBlvl)
       const swingDmg = Math.max(1, Math.floor((baseWepDmg * (100 + frzStats.damageBonusPct)) / 100))
       const candidates = engine.world.monsters
         .filter(m => m.state !== 'dead' && m.hp > 0 && Math.hypot(m.x - player.x, m.y - player.y) <= meleeReach)
@@ -8808,7 +8891,7 @@ function castSceneSkill113c(
           hitsDealt += 1
         }
         const prevStacks = Number((player as any).frenzyTicks ?? 0) > 0 ? Number((player as any).frenzyStacks ?? 0) : 0
-        const stackState = calculateFrenzyStackState(prevStacks, hitsDealt, castSlvl, 0, 0, incStamBlvl)
+        const stackState = calculateFrenzyStackState(prevStacks, hitsDealt, castSlvl, 0, 0)
         ;(player as any).frenzyStacks = stackState.activeStacks
         ;(player as any).frenzyTicks = frzStats.durationFrames
         ;(player as any).frenzyRunSpeedPct = stackState.currentRunSpeedBonusPct
@@ -10315,9 +10398,9 @@ function castSceneSkill113c(
         slvl: castSlvl,
         x: targetX,
         y: targetY,
-        petType: 'bladesentinel',
+        petType: 'assassintrap',
         petGroup: 0,
-        maxPets: Number.POSITIVE_INFINITY,
+        maxPets: 5,
         hp: 100,
         kind: 'blade_sentinel',
         monId: 'bladecreeper',

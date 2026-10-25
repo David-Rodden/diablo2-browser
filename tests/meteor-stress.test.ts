@@ -113,7 +113,7 @@ describe('[Skill #056] Meteor — Empirical Stress & Physics Challenger Suite', 
       }
 
       expect(detonationTick, 'Detonation must happen exactly at tick 60').toBe(60)
-      expect(spawnedSubmissilesOnDetonation).toContain('meteorexplode')
+      expect(spawnedSubmissilesOnDetonation).not.toContain('meteorexplode')
       expect(spawnedSubmissilesOnDetonation.filter(s => s === 'meteorfire').length).toBe(18)
     })
 

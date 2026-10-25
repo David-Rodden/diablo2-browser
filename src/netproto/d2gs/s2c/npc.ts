@@ -161,16 +161,22 @@ export function decode0x91SetNpcTalk(pkt: Uint8Array): ServerEvent & {
 
 export const decode0x91NpcMenu = decode0x91SetNpcTalk
 
-/** 0xAB NPCHeal (7B, D2Client.dll 0x6fb5d0b0) */
+/**
+ * 0xAB UnitLife (7B, D2Client.dll 0x6fb5d0b0). A generic life update for any unit, not an NPC heal:
+ * `[1]` unit type, `[2..5]` id, `[6]` life on the 128 scale. The client ignores its own player and units with
+ * `[unit+0xC4]` bit 9; a monster gets `SetStat(6, life << 8)` (0x6fb5d0fd), any other type updates the roster
+ * entry: `roster+0x14 = (life * 100) / 128` (signed truncating division, 0x6fb5d113..0x6fb5d126).
+ */
 export function decode0xABNpcHeal(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0xAB
-  r.u8() // unitType
+  const unitType = r.u8()
   const npcId = r.u32LE()
   const lifePct = r.u8()
   return {
     type: 'Npc',
     kind: 'heal',
+    unitType,
     npcId,
     result: lifePct,
   }

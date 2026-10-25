@@ -22,6 +22,7 @@ import {
   getBaseQlvl,
   getBaseMagicLvl,
   NON_RANDOM_RANGE_CODES,
+  getAffixWeight,
 } from './affix-generator.ts'
 
 /** One modifier on an AutoMagic entry. */
@@ -644,21 +645,19 @@ export function rollAutoMagic(
 
   let totalWeight = 0
   for (const c of candidates) {
-    totalWeight += Math.max(0, c.frequency)
+    totalWeight += getAffixWeight(c, magicLvl)
+  }
+  if (totalWeight <= 0) {
+    return null
   }
 
+  let roll = rng.rand(totalWeight)
   let picked: AutoMagicEntry = candidates[candidates.length - 1]!
-  if (totalWeight <= 0) {
-    picked = candidates[rng.rand(candidates.length)]!
-  } else {
-    const roll = rng.rand(totalWeight)
-    let acc = 0
-    for (const c of candidates) {
-      acc += Math.max(0, c.frequency)
-      if (roll < acc) {
-        picked = c
-        break
-      }
+  for (const c of candidates) {
+    roll -= getAffixWeight(c, magicLvl)
+    if (roll < 0) {
+      picked = c
+      break
     }
   }
 

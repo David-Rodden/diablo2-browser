@@ -27,8 +27,8 @@ describe('GameEngine', () => {
     prefixAffixes: [],
     suffixAffixes: [],
     skills: [
-      { id: 'attack', name: 'Attack', manaCost: 0, cooldownTicks: 1, range: 48, projectile: false, speed: 0, baseMinDamage: 3, baseMaxDamage: 4, damagePerLevel: 1, radius: 20 },
-      { id: 'nova', name: 'Nova', manaCost: 5, cooldownTicks: 1, range: 200, projectile: false, speed: 200, baseMinDamage: 25, baseMaxDamage: 25, damagePerLevel: 2, radius: 200 }
+      { id: 'attack', name: 'Attack', manaCost: 0, cooldownTicks: 1, range: 48, projectile: false, speed: 0, baseMinDamage: 3, baseMaxDamage: 4, radius: 20 },
+      { id: 'nova', name: 'Nova', manaCost: 5, cooldownTicks: 1, range: 200, projectile: false, speed: 200, baseMinDamage: 25, baseMaxDamage: 25, radius: 200 }
     ],
     npcDefs: [],
     questDefs: [],

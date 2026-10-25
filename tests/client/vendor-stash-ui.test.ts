@@ -1475,6 +1475,8 @@ describe('NPC quest chain & overhead npcalert indicator (1.13c parity)', () => {
     ])
 
     // 2. Stash open: right-clicking non-usable inventory item sends ItemToCursor (0x19) + ItemPlace(0x18, buffer=4)
+    // The NPC shop (UI 0x0C) refuses the stash (D2Client 0x6FB8D538 row 0x0C col 0x19 = 3): leave it first.
+    sVendor.hud.setLeftPanel('none')
     sVendor.hud.setLeftPanel('stash')
     sVendor.commands.length = 0
     mouseDown(sVendor.hud, 419 + capPl.col * 29 + 5, 315 + capPl.row * 29 + 5, { button: 2 })
@@ -1496,6 +1498,8 @@ describe('NPC quest chain & overhead npcalert indicator (1.13c parity)', () => {
     ])
 
     // 4. Cube open: right-clicking non-usable inventory item sends ItemToCursor (0x19) + ItemPlace(0x18, buffer=3)
+    // The stash refuses the cube (row 0x19 col 0x1A = 3): close it first.
+    sVendor.hud.setLeftPanel('none')
     sVendor.hud.setLeftPanel('cube')
     sVendor.commands.length = 0
     mouseDown(

@@ -236,4 +236,73 @@ describe('Mobile Phase 3 (#1383): D2R 524px Compact Center Bar & 6x2 Skill Wheel
     handleCompactD2rHudClick(hud, arc0.cx, arc0.cy)
     expect(hud.hotkeys.rightSkillId).toBe(59)
   })
+
+  it('Issue #1491: hudLayoutMode = classic forces touch HUD off even on mobile/touch environments and resets transient touch state', () => {
+    const mockMobileWin = {
+      innerWidth: 852,
+      innerHeight: 393,
+      matchMedia: (q: string) => ({
+        matches: q === '(pointer: coarse)' || q === '(hover: none)',
+      }),
+    } as unknown as Window
+    const mockDesktopWin = {
+      innerWidth: 1440,
+      innerHeight: 900,
+      matchMedia: () => ({ matches: false }),
+    } as unknown as Window
+
+    const hud = new HudManager(createMockHudCanvas(800, 600))
+    const tc = hud.touchControls
+
+    // 1. Auto mode on mobile window enables touch HUD
+    tc.applyHudLayoutMode('auto', mockMobileWin)
+    expect(tc.enabled).toBe(true)
+    expect(tc.compactHudActive).toBe(true)
+
+    // Populate active transient touch states (joystick, vector aim, locked monster, selected item, skill bank)
+    tc.handlePointerDown(5, 130, 440, 800, 600, false)
+    tc.handlePointerMove(5, 180, 400)
+    tc.beginVectorAim(9, 2, 54, 680, 480, 400, 300)
+    tc.activeSkillBank = 1
+    tc.lockedMonster = {
+      candidate: { unitId: 77, name: '暗黑破坏神', screenX: 420, screenY: 260, hp: 80, maxHp: 100 },
+      score: 100,
+      distancePx: 60,
+      angleDiffRad: 0.1,
+    }
+    expect(tc.joystick.active).toBe(true)
+    expect(tc.vectorAim).not.toBeNull()
+    expect(tc.activeSkillBank).toBe(1)
+    expect(tc.lockedMonster).not.toBeNull()
+
+    // 2. Switching to 'classic' forces touch HUD off even when syncFromEnvironment sees a mobile window,
+    //    and immediately resets all transient touch state.
+    tc.applyHudLayoutMode('classic', mockMobileWin)
+    expect(tc.hudLayoutMode).toBe('classic')
+    expect(tc.enabled).toBe(false)
+    expect(tc.compactHudActive).toBe(false)
+    expect(tc.syncFromEnvironment(mockMobileWin)).toBe(false)
+    expect(tc.joystick.active).toBe(false)
+    expect(tc.vectorAim).toBeNull()
+    expect(tc.lockedMonster).toBeNull()
+    expect(tc.activeSkillBank).toBe(0)
+
+    // Classic bottom control bar hit-testing is restored (left-bottom joystick area outside y>=553 is not intercepted)
+    expect(hud.isPointInterceptedByHud(120, 420)).toBe(false)
+    expect(hud.isPointInterceptedByHud(400, 580)).toBe(true)
+
+    // 3. Switching to 'compact-d2r' forces touch HUD on even on a desktop window
+    tc.applyHudLayoutMode('compact-d2r', mockDesktopWin)
+    expect(tc.hudLayoutMode).toBe('compact-d2r')
+    expect(tc.enabled).toBe(true)
+    expect(tc.compactHudActive).toBe(true)
+    expect(tc.syncFromEnvironment(mockDesktopWin)).toBe(true)
+
+    // 4. Manual override (`tc.enabled = false`) is preserved across environment/window changes in 'auto' mode
+    tc.applyHudLayoutMode('auto', mockMobileWin)
+    expect(tc.enabled).toBe(true)
+    tc.enabled = false
+    expect(tc.syncFromEnvironment(mockDesktopWin)).toBe(false)
+    expect(tc.syncFromEnvironment(mockMobileWin)).toBe(false)
+  })
 })

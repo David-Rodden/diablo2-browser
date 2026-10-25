@@ -1,7 +1,7 @@
 /**
  * D2GS S->C Unit State Packet Decoders (1.13c).
  * Verified against D2Client.dll:
- * - 0xA7 DelayedState (8B in D2Net, 7B in D2Client 0x6fb5deb0)
+ * - 0xA7 DelayedState (7B, D2Net 0x6fbfa900 and D2Client 0x6fb5deb0 tables)
  * - 0xA8 SetState (variable pkt[6], D2Client 0x6fb5dd70)
  * - 0xA9 EndState (7B, D2Client 0x6fb5dd30)
  * - 0xAA AddUnitState (variable pkt[6], D2Client 0x6fb5db90)
@@ -12,7 +12,7 @@ import { ByteReader } from '../../core/byte-reader.ts'
 import { unitTypeToId, type ItemDataTables, type ItemStat } from '../../domain/ids.ts'
 import type { ServerEvent, StateSetEntry } from '../../domain/server-event.ts'
 
-/** 0xA7 DelayedState (8B, D2Client.dll 0x6fb5deb0) */
+/** 0xA7 DelayedState (7B, D2Client.dll 0x6fb5deb0: state @6) */
 export function decode0xA7DelayedState(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0xA7
@@ -34,7 +34,7 @@ export function decode0xA7DelayedState(pkt: Uint8Array): ServerEvent {
  * table lacks or with Send Bits 0 (0x6fb5dde4, 0x6fb5ddf7, 0x6fb5de18) — and when a field runs past the
  * packet (the 1.13c reader zero-fills there; the decoder stops instead).
  */
-function readStateStats(bits: BitReader, tables: ItemDataTables): { stats: ItemStat[]; complete: boolean } {
+export function readStateStats(bits: BitReader, tables: ItemDataTables): { stats: ItemStat[]; complete: boolean } {
   const stats: ItemStat[] = []
   while (bits.remainingBits >= 9) {
     const statId = bits.readBits(9)

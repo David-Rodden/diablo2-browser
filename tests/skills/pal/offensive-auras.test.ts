@@ -275,9 +275,9 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
       const stats = new UnitStatList(registry, { tohit: 1000 })
       expect(stats.getAccruedStat('tohit')).toBe(1000)
 
-      // Invest 5 hard points in Blessed Aim
+      // Invest 5 hard points in Blessed Aim (passive_blessed_aim_ar -> item_tohit_percent = +25% via op=1 on tohit)
       stats.setBaseSkillLevel(108, 5)
-      expect(stats.getAccruedStat('passive_ar_bonus_pct')).toBe(25)
+      expect(stats.getAccruedStat('item_tohit_percent')).toBe(25)
       // +25% on 1000 base AR = 1250 AR
       expect(stats.getAccruedStat('tohit')).toBe(1250)
 
@@ -632,7 +632,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
       // Party Ally (slvl 1 Fanaticism: 25% ED)
       const statsAlly = new UnitStatList(registry, { maxhp: 500 * FIXED_ONE, hitpoints: 500 * FIXED_ONE })
       const busAlly = new StateBus(statsAlly, registry)
-      busAlly.applyState({ stateNameOrId: 'fanaticism', slvl: 1, stats: { is_ally: 1 } })
+      busAlly.applyState({ stateNameOrId: 'fanaticism', slvl: 1 })
       const ally: CombatUnitContext = {
         id: 'party_ally',
         name: 'Party Ally',

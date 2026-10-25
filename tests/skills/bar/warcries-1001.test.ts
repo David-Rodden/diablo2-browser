@@ -28,9 +28,11 @@ import {
   calculateGrimWardStats,
   calculateWarCryStats,
   calculateBattleCommandStats,
+  resolveAiCurseDivisor,
   rollFindPotionDrop113c,
   validateBarbarianCorpseTarget,
 } from '../../../src/server/skills/barbarian-warcries.ts'
+import { difficultyAiCurseDivisor } from '../../../src/server/engine/difficulty-resist-penalty.ts'
 import { executeSkill } from '../../../src/server/skills/skills.ts'
 import { evaluateSkillCore113c, executeSkillCore113c } from '../../../src/server/skills/registry.ts'
 import { castSkill as castSceneSkill } from '../../../src/server/skills/skills.ts'
@@ -163,14 +165,14 @@ describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', ()
     expect(playerStats.getModifierBonus('item_maxhp_percent')).toBe(92)
   })
 
-  it('Layer 2: verifies barbarian-warcries.ts 1.13c formulas, AICurse difficulty scaling, corpse rules, and Find Potion table', () => {
-    // #130 Howl: ln56 (75 + 25*(slvl-1)) with AICurse 1/2/4, ln34 (24 + 5*(slvl-1))
+  it('Layer 2: verifies barbarian-warcries.ts 1.13c formulas, corpse rules, and Find Potion table', () => {
+    // #130 Howl: ln56 (75 + 25*(slvl-1)), not divided by AiCurseDivisor in 1.13c (0x6FC5EAE0), ln34 (24 + 5*(slvl-1))
     const howlNorm = calculateHowlStats(1, 'normal')
     const howlNm = calculateHowlStats(1, 'nightmare')
     const howlHell = calculateHowlStats(1, 'hell')
     expect(howlNorm.fleeDurationFrames).toBe(75)
-    expect(howlNm.fleeDurationFrames).toBe(37)
-    expect(howlHell.fleeDurationFrames).toBe(18)
+    expect(howlNm.fleeDurationFrames).toBe(75)
+    expect(howlHell.fleeDurationFrames).toBe(75)
     expect(howlNorm.fleeRangeSubtiles).toBe(24)
 
     // #131 Find Potion & gdwPotionsTable
@@ -198,11 +200,11 @@ describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', ()
     expect(calculateTauntStats(10).targetAttackRatingReductionPct).toBe(23)
     expect(calculateTauntStats(10).targetDamageReductionPct).toBe(23)
 
-    // #138 Shout, #149 Battle Orders, #155 Battle Command mutual duration synergy (+125 frames / blvl) & 10.67 radius
+    // #138 Shout, #149 Battle Orders, #155 Battle Command mutual duration synergy (+125 frames / blvl) & 18.75 radius (Vel=30, Range=15 -> 450/24)
     const shout = calculateShoutStats(20, 20, 1)
     expect(shout.defenseBonusPct).toBe(290)
     expect(shout.durationFrames).toBe(5250 + 21 * 125)
-    expect(shout.radiusSubtiles).toBe(10.67)
+    expect(shout.radiusSubtiles).toBe(18.75)
     expect(
       (executeSkill(138, { caster: { x: 0, y: 0, mana: 100, cooldown: 0 } as any, target: { x: 0, y: 0 }, skillLevel: 1 }) as any)
         .durationSeconds,
@@ -215,29 +217,29 @@ describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', ()
     const bo = calculateBattleOrdersStats(20, 20, 1)
     expect(bo.maxLifeBonusPct).toBe(92)
     expect(bo.durationFrames).toBe(5500 + 21 * 125)
-    expect(bo.radiusSubtiles).toBe(10.67)
+    expect(bo.radiusSubtiles).toBe(18.75)
 
     const bc = calculateBattleCommandStats(1, 20, 20)
     expect(bc.allSkillsBonus).toBe(1)
     expect(bc.durationFrames).toBe(125 + 40 * 125)
-    expect(bc.radiusSubtiles).toBe(10.67)
+    expect(bc.radiusSubtiles).toBe(18.75)
 
-    // #146 Battle Cry AICurse divisor & 5.33 radius
+    // #146 Battle Cry duration (not divided by AiCurseDivisor in 1.13c 0x6FC5ABD0) & 6 radius (Vel=12, Range=12 -> 144/24)
     expect(calculateBattleCryStats(1, 'normal').durationFrames).toBe(300)
-    expect(calculateBattleCryStats(1, 'nightmare').durationFrames).toBe(150)
-    expect(calculateBattleCryStats(1, 'hell').durationFrames).toBe(75)
-    expect(calculateBattleCryStats(1).radiusSubtiles).toBe(5.33)
+    expect(calculateBattleCryStats(1, 'nightmare').durationFrames).toBe(300)
+    expect(calculateBattleCryStats(1, 'hell').durationFrames).toBe(300)
+    expect(calculateBattleCryStats(1).radiusSubtiles).toBe(6)
 
-    // #150 Grim Ward AICurse divisor & 1000-frame totem life
+    // #150 Grim Ward flee duration (not divided by AiCurseDivisor in calculateGrimWardStats) & 1000-frame totem life
     expect(calculateGrimWardStats(1, 'normal').fleeDurationFrames).toBe(60)
-    expect(calculateGrimWardStats(1, 'nightmare').fleeDurationFrames).toBe(30)
-    expect(calculateGrimWardStats(1, 'hell').fleeDurationFrames).toBe(15)
+    expect(calculateGrimWardStats(1, 'nightmare').fleeDurationFrames).toBe(60)
+    expect(calculateGrimWardStats(1, 'hell').fleeDurationFrames).toBe(60)
     expect(calculateGrimWardStats(1).totemDurationFrames).toBe(1000)
 
-    // #154 War Cry stun cap at 250 frames & 5.33 radius
+    // #154 War Cry stun cap at 250 frames & 8 radius (Vel=12, Range=16 -> 192/24)
     expect(calculateWarCryStats(20, 20, 20, 20).synergyBonusPct).toBe(360)
     expect(calculateWarCryStats(50).stunDurationFrames).toBe(250)
-    expect(calculateWarCryStats(20).radiusSubtiles).toBe(5.33)
+    expect(calculateWarCryStats(20).radiusSubtiles).toBe(8)
 
     // Corpse target validation: #131 & #150 reject non-soft (skeleton) corpses; #142 allows skeleton corpses
     expect(validateBarbarianCorpseTarget(131, { isSoft: false })).toEqual({
@@ -494,5 +496,181 @@ describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', ()
     expect(monsterUnit.states.has(21)).toBe(true)
     expect(monsterUnit.states.has(28)).toBe(false)
     expect(attachedOverlays.some(o => o.target === monsterUnit && o.key === 'stun')).toBe(false)
+  })
+
+  it('[Issue #1454] restricts AiCurseDivisor (1/2/4 from DifficultyLevels.txt) to srvdo30 dimvision/terror and Confuse/Attract', async () => {
+    const registry = await getSharedDataRegistry()
+    const casterStats = new UnitStatList()
+    casterStats.setBaseStat('level', 90)
+    const caster = {
+      id: 'barb-1454',
+      name: 'barb-1454',
+      unitType: 'player' as const,
+      statList: casterStats,
+      stateBus: new StateBus(casterStats, registry),
+    }
+
+    // 1. DifficultyLevels.txt AiCurseDivisor (D2Game.dll 0x6FC6DF60 record +0x1C): 1 / 2 / 4
+    expect(difficultyAiCurseDivisor(0)).toBe(1)
+    expect(difficultyAiCurseDivisor(1)).toBe(2)
+    expect(difficultyAiCurseDivisor(2)).toBe(4)
+    expect(resolveAiCurseDivisor('normal')).toBe(1)
+    expect(resolveAiCurseDivisor('nightmare')).toBe(2)
+    expect(resolveAiCurseDivisor('hell')).toBe(4)
+
+    // 2. Howl (#130, srvdo 22, 0x6FC5EAE0), Battle Cry (#146, srvdo 68, 0x6FC5ABD0), Grim Ward (#150, srvdo 75, 0x6FC47C90)
+    // do NOT divide duration by AiCurseDivisor in Nightmare or Hell
+    const unscaledWarcries: Array<[number, number]> = [
+      [130, 75],
+      [146, 300],
+      [150, 60],
+    ]
+    for (const [skillId, expectedFrames] of unscaledWarcries) {
+      const skill = registry.getSkillById(skillId)!
+      for (const difficulty of ['normal', 'nightmare', 'hell'] as const) {
+        const evalRes = evaluateSkillCore113c({
+          registry,
+          skill,
+          slvl: 1,
+          blvl: 1,
+          statList: casterStats,
+          difficulty,
+        })
+        expect(evalRes.durationFrames).toBe(expectedFrames)
+      }
+    }
+
+    // Verify executeSkillCore113c in Hell keeps Battle Cry slvl 1 at 300 frames and Howl slvl 1 at 75 frames
+    const targetStats = new UnitStatList()
+    targetStats.setBaseStat('hitpoints', 1000 * FIXED_ONE)
+    targetStats.setBaseStat('maxhp', 1000 * FIXED_ONE)
+    targetStats.setBaseStat('level', 10)
+    const targetMon = {
+      id: 'mon-1454',
+      name: 'mon-1454',
+      unitType: 'monster' as const,
+      statList: targetStats,
+      stateBus: new StateBus(targetStats, registry),
+    }
+
+    const bcSkill = registry.getSkillById(146)!
+    const bcEvalHell = evaluateSkillCore113c({
+      registry,
+      skill: bcSkill,
+      slvl: 1,
+      blvl: 1,
+      statList: casterStats,
+      difficulty: 'hell',
+    })
+    executeSkillCore113c({
+      registry,
+      skill: bcSkill,
+      evalResult: bcEvalHell,
+      caster,
+      targets: [targetMon],
+      corpses: [],
+      targetX: 0,
+      targetY: 0,
+      currentTick: 100,
+      difficulty: 'hell',
+    } as any)
+    expect(targetMon.stateBus.getState('battlecry')?.expireFrame).toBe(100 + 300)
+
+    const howlSkill = registry.getSkillById(130)!
+    const howlEvalHell = evaluateSkillCore113c({
+      registry,
+      skill: howlSkill,
+      slvl: 1,
+      blvl: 1,
+      statList: casterStats,
+      difficulty: 'hell',
+    })
+    executeSkillCore113c({
+      registry,
+      skill: howlSkill,
+      evalResult: howlEvalHell,
+      caster,
+      targets: [targetMon],
+      corpses: [],
+      targetX: 0,
+      targetY: 0,
+      currentTick: 200,
+      difficulty: 'hell',
+    } as any)
+    expect(targetMon.stateBus.getState('terror')?.expireFrame).toBe(200 + 75)
+
+    // 3. AI Curses scaled by 1/2/4 (0x6FC705D0 + 0x6FC6DF80 for dimvision/terror; 0x6FC71C60 for Attract; 0x6FC71A90 for Confuse)
+    const scaledAiCurses: Array<[number, [number, number, number]]> = [
+      [71, [175, 87, 43]], // Dim Vision (srvdo 30, auratargetstate='dimvision')
+      [77, [200, 100, 50]], // Terror (srvdo 30, auratargetstate='terror')
+      [81, [250, 125, 62]], // Confuse (srvdo 61)
+      [86, [300, 150, 75]], // Attract (srvdo 59)
+    ]
+    for (const [skillId, [normFrames, nmFrames, hellFrames]] of scaledAiCurses) {
+      const skill = registry.getSkillById(skillId)!
+      expect(
+        evaluateSkillCore113c({ registry, skill, slvl: 1, blvl: 1, statList: casterStats, difficulty: 'normal' }).durationFrames,
+      ).toBe(normFrames)
+      expect(
+        evaluateSkillCore113c({ registry, skill, slvl: 1, blvl: 1, statList: casterStats, difficulty: 'nightmare' }).durationFrames,
+      ).toBe(nmFrames)
+      expect(
+        evaluateSkillCore113c({ registry, skill, slvl: 1, blvl: 1, statList: casterStats, difficulty: 'hell' }).durationFrames,
+      ).toBe(hellFrames)
+    }
+
+    // 4. Non-AI srvdo 30 curses (0x6FC6DF80 returns 0) are NOT divided by AiCurseDivisor in Nightmare/Hell
+    const unscaledSrvDo30Curses: Array<[number, number]> = [
+      [66, 200], // Amplify Damage
+      [72, 350], // Weaken
+      [76, 300], // Iron Maiden
+      [82, 400], // Life Tap
+      [87, 100], // Decrepify
+      [91, 500], // Lower Resist
+      [309, 200], // Defense Curse (Baal / Succubus, auralencalc=ln34, Param3=200)
+      [310, 200], // Blood Mana (Baal / Succubus, auralencalc=ln34, Param3=200)
+    ]
+    for (const [skillId, expectedFrames] of unscaledSrvDo30Curses) {
+      const skill = registry.getSkillById(skillId)!
+      for (const difficulty of ['normal', 'nightmare', 'hell'] as const) {
+        expect(
+          evaluateSkillCore113c({ registry, skill, slvl: 1, blvl: 1, statList: casterStats, difficulty }).durationFrames,
+        ).toBe(expectedFrames)
+      }
+    }
+  })
+
+  it('[Issue #1455] derives warcry ring radiusSubtiles from Missiles.txt (Vel*Range)/24 and never falls back to ln12 when aurarangecalc is empty', async () => {
+    const registry = await getSharedDataRegistry()
+    const statList = new UnitStatList()
+
+    // #130 Howl (SrvDo022 @ 0x6FC63AA0 -> 0x6FCC2800): Missiles.txt howl (#148) Vel=12 + 2*(slvl-1), Range=12 -> 6 + (slvl-1), aurarangecalc=""
+    expect(calculateHowlStats(1).radiusSubtiles).toBe(6)
+    expect(calculateHowlStats(1).aurarangecalcSubtiles).toBe(0)
+    expect(calculateHowlStats(20).radiusSubtiles).toBe(25)
+    expect(calculateHowlStats(20).aurarangecalcSubtiles).toBe(0)
+    const howlSkill = registry.getSkillById(130)!
+    expect(evaluateSkillCore113c({ registry, skill: howlSkill, slvl: 1, blvl: 1, statList }).radiusSubtiles).toBe(6)
+    expect(evaluateSkillCore113c({ registry, skill: howlSkill, slvl: 20, blvl: 20, statList }).radiusSubtiles).toBe(25)
+
+    // #138 Shout, #149 Battle Orders, #155 Battle Command (SrvDo068 @ 0x6FC49720): Vel=30, Range=15 -> 450/24 = 18.75 subtiles
+    for (const id of [138, 149, 155]) {
+      const skill = registry.getSkillById(id)!
+      expect(evaluateSkillCore113c({ registry, skill, slvl: 20, blvl: 20, statList }).radiusSubtiles).toBe(18.75)
+    }
+
+    // #146 Battle Cry: Vel=12, Range=12 -> 144/24 = 6 subtiles; #154 War Cry: Vel=12, Range=16 -> 192/24 = 8 subtiles
+    expect(
+      evaluateSkillCore113c({ registry, skill: registry.getSkillById(146)!, slvl: 20, blvl: 20, statList }).radiusSubtiles,
+    ).toBe(6)
+    expect(
+      evaluateSkillCore113c({ registry, skill: registry.getSkillById(154)!, slvl: 20, blvl: 20, statList }).radiusSubtiles,
+    ).toBe(8)
+
+    // Non-AoE skills with Param1 > 0 && Param2 > 0 and empty aurarangecalc (#126 Bash, #144 Concentrate, #147 Frenzy, #152 Berserk) must have radiusSubtiles = 0
+    for (const id of [126, 144, 147, 152]) {
+      const skill = registry.getSkillById(id)!
+      expect(evaluateSkillCore113c({ registry, skill, slvl: 20, blvl: 20, statList }).radiusSubtiles).toBe(0)
+    }
   })
 })

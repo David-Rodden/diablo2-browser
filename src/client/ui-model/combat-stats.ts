@@ -34,7 +34,7 @@
  * are in the internal per-frame 1/256 unit and are displayed as floor(rate · length / 256).
  */
 
-import type { CharacterClassCode } from '../../common/units/classes.ts'
+import { resolveCharacterClass, type CharacterClassCode } from '../../common/units/classes.ts'
 
 // ─── ItemStatCost.txt row ids (1.13c, repo RAW_ITEM_STAT_COST; D2MOO STAT_* enum) ─────────────────
 
@@ -789,6 +789,7 @@ export function weaponMasteryBonus(
 
 export interface CombatBlockInput {
   readonly charClass?: CharacterClassCode | undefined
+  readonly blockFactor?: number | undefined
   readonly clvl?: number | undefined
   readonly dexterity?: number | undefined
   readonly rightArm?: CombatArmItem | null | undefined
@@ -844,7 +845,7 @@ export function chanceToBlock(
     let wb = (input.passiveWeaponBlock ?? 0) + listWeaponBlock
     if (wb <= 0 && (input.weaponBlockSlvl ?? 0) > 0) {
       const slvl = input.weaponBlockSlvl!
-      wb = Math.min(65, 20 + Math.trunc(Math.trunc((45 * 110 * slvl) / (slvl + 6)) / 100))
+      wb = 20 + Math.trunc(Math.trunc((45 * 110 * slvl) / (slvl + 6)) / 100)
     }
     if (wb <= 0) return 0
     const totalWb = wb + (input.toBlock ?? 0) + listToBlock
@@ -854,7 +855,9 @@ export function chanceToBlock(
   if (!hasShield) return 0
   const shieldArm = isShieldArm(left) ? left : isShieldArm(right) ? right : null
   const shieldBaseBlock = input.shieldBlock ?? (shieldArm ? shieldArm.localRaw(S.TOBLOCK) : 0)
-  const totalBlock = shieldBaseBlock + (input.toBlock ?? 0) + listToBlock
+  const classBlockFactor =
+    input.blockFactor ?? (input.charClass ? resolveCharacterClass(input.charClass).blockFactor : 0)
+  const totalBlock = shieldBaseBlock + classBlockFactor + (input.toBlock ?? 0) + listToBlock
   if (totalBlock <= 0) return 0
   const dex = input.dexterity ?? 15
   const clvl = Math.max(1, input.clvl ?? 1)

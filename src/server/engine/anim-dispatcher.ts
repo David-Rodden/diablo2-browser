@@ -15,6 +15,7 @@ import type { D2DataRegistry, SkillRecord } from '../../common/data/data-registr
 import type { AnimDataRecord } from '../../common/formats/animdata.ts'
 import { evaluateCalc, computeSkillManaCost256 } from '../../common/data/calc-ast.ts'
 import { resolveSkillSequenceFrame } from '../../common/skills/skill-anim-modes.ts'
+import { computeShapeshiftWeaponDelay113c } from '../../common/units/char-anim-speed.ts'
 import { UnitStatList } from './stat-list.ts'
 import { StateBus } from './state-bus.ts'
 
@@ -52,6 +53,7 @@ export interface ActiveAnimationState {
   readonly isSequence?: boolean
   readonly targetX: number
   readonly targetY: number
+  readonly manaDeductedOnStart?: boolean
   frameAcc256: number
   currentFrame: number
   actionTriggered: boolean
@@ -69,7 +71,7 @@ export class AnimDispatcher {
   readonly statList: UnitStatList
   readonly stateBus: StateBus
   readonly charToken: string // 'am' | 'so' | 'ne' | 'pa' | 'bar'->'ba' | 'dz' | 'ai'
-  readonly weaponClass: string // 'hth' | '1hs' | 'bow' | 'jav' | 'h2h' | 'stf'
+  private weaponClass: string // 'hth' | '1hs' | 'bow' | '1ht' | 'ht1' | 'ht2' | 'stf' ...
   private currentAnim: ActiveAnimationState | null = null
   private skillDelayExpireFrame = 0
   private ammoQuantity = 250
@@ -85,7 +87,17 @@ export class AnimDispatcher {
     this.statList = params.statList
     this.stateBus = params.stateBus
     this.charToken = params.charToken.toUpperCase()
-    this.weaponClass = (params.weaponClass ?? 'HTH').toUpperCase()
+    const norm = (params.weaponClass ?? 'HTH').trim().toUpperCase()
+    this.weaponClass = norm === 'H2H' ? 'HT1' : norm
+  }
+
+  getWeaponClass(): string {
+    return this.weaponClass
+  }
+
+  setWeaponClass(wclass: string): void {
+    const norm = (wclass || 'HTH').trim().toUpperCase()
+    this.weaponClass = norm === 'H2H' ? 'HT1' : norm
   }
 
   isSkillDelayActive(currentTick: number): boolean {
@@ -97,11 +109,19 @@ export class AnimDispatcher {
   }
 
   getAmmoQuantity(): number {
+    const statQty = this.statList.getAccruedStat('quantity')
+    if (statQty > 0) {
+      return statQty
+    }
     return this.ammoQuantity
   }
 
   setAmmoQuantity(qty: number): void {
-    this.ammoQuantity = Math.max(0, Math.trunc(qty))
+    const val = Math.max(0, Math.trunc(qty))
+    this.ammoQuantity = val
+    if (this.statList.getAccruedStat('quantity') > 0 || this.statList.getBaseStat('quantity') > 0) {
+      this.statList.setBaseStat('quantity', val)
+    }
   }
 
   /**
@@ -146,6 +166,31 @@ export class AnimDispatcher {
   }
 
   /**
+   * 1.13c `D2Common.dll` `SKILLS_CheckSkillMana` (`0x6FDA0AF0` @ `0x6FDA0BEB`) & `D2Game.dll`
+   * `SKILLS_CheckSkillMana` (`0x6FCBEC80` @ `0x6FCBECEF`) / `SKILLS_SrvDo116_Wearwolf_Wearbear` (`0x6FC66210`):
+   * `nocostinstate = 1` (`Wearwolf` #223 `aurastate = wolf` #139, `Wearbear` #228 `aurastate = bear` #140)
+   * waives mana cost only when the unit is already in the skill's shapeshift state (`auraState`).
+   */
+  private isNoCostInActiveState(skill: SkillRecord): boolean {
+    if (!skill.noCostInState && !skill.nocostinstate) return false
+    if (skill.auraState === 'wolf' || skill.id === 223) {
+      return (
+        this.stateBus.hasState('wolf') ||
+        this.stateBus.hasState('wearwolf') ||
+        this.stateBus.hasState(139)
+      )
+    }
+    if (skill.auraState === 'bear' || skill.id === 228) {
+      return (
+        this.stateBus.hasState('bear') ||
+        this.stateBus.hasState('wearbear') ||
+        this.stateBus.hasState(140)
+      )
+    }
+    return skill.auraState !== '' && this.stateBus.hasState(skill.auraState)
+  }
+
+  /**
    * Initiate a skill animation (`srvstfunc` phase).
    */
   startSkillAnimation(params: {
@@ -181,12 +226,31 @@ export class AnimDispatcher {
       return { allowed: false, reason: restrictCheck.reason ?? 'restrict_shapeshift' }
     }
 
-    // Check mana cost before starting animation
+    // Check `startmana` & `manaCost256` before starting animation
+    // 1.13c `D2Common.dll` `SKILLS_CheckStartMana` (0x6FD9FDC0) & `SKILLS_CheckSkillMana` (0x6FDA0AF0):
+    // - `nocostinstate = 1` skips mana check only when the unit is already in `skill.auraState`.
+    // - `startmana > 0` (`Inferno` #41, `Arctic Blast` #230, `Blade Fury` #266) requires
+    //   `STAT_MANA >= (startMana << 8)` when not already channeling (`STATE_INFERNO = 12`).
+    const isFreeInState = this.isNoCostInActiveState(skill)
     const { manaCost256 } = computeSkillManaCost256(skill, slvl)
-    if (this.statList.getMana256() < manaCost256 && !skill.nocostinstate) {
-      return { allowed: false, reason: 'insufficient_mana' }
+    const inInfernoChannel =
+      this.stateBus.hasState('inferno') || this.stateBus.hasState(12)
+    if (!isFreeInState) {
+      if (
+        skill.startMana > 0 &&
+        !inInfernoChannel &&
+        this.statList.getMana256() < (skill.startMana << 8)
+      ) {
+        return { allowed: false, reason: 'insufficient_mana' }
+      }
+      if (this.statList.getMana256() < manaCost256) {
+        if (skill.startMana > 0 && inInfernoChannel) {
+          this.stateBus.removeState('inferno')
+          this.stateBus.removeState(12)
+        }
+        return { allowed: false, reason: 'insufficient_mana' }
+      }
     }
-
     // Resolve `AnimData.d2` COF record (`<TOKEN><MODE><WCLASS>`), honoring shapeshift morph tokens
     const inWolf = this.stateBus.hasState('wolf') || this.stateBus.hasState('wearwolf')
     const inBear = !inWolf && (this.stateBus.hasState('bear') || this.stateBus.hasState('wearbear'))
@@ -201,67 +265,84 @@ export class AnimDispatcher {
     const mode = isSequence
       ? ((skill.seqTrans && skill.seqTrans.toUpperCase() !== 'SQ' ? skill.seqTrans : 'SC') || 'A1').toUpperCase()
       : rawMode
-    const cofCandidates = [
-      `${activeToken}${mode}${this.weaponClass}`,
-      `${activeToken}${mode}HTH`,
-      `${activeToken}${mode}1HS`,
-      `${activeToken}SCHTH`,
-      `${activeToken}A1HTH`,
-      `${this.charToken}${mode}${this.weaponClass}`,
-      `${this.charToken}${mode}HTH`,
-      `${this.charToken}${mode}1HS`,
-      `${this.charToken}SCHTH`,
-      `${this.charToken}A1HTH`,
-    ]
 
-    let animRecord: AnimDataRecord | undefined
-    let chosenCof = cofCandidates[0]!
-    for (const cand of cofCandidates) {
-      const rec = this.registry.getAnimDataRecord(cand)
-      if (rec && rec.hasSpeed) {
-        animRecord = rec
-        chosenCof = cand
-        break
-      }
+    // In 1.13c, morph forms (Wolf, Bear, Vampire) always use 'HTH' weapon class in AnimData.d2
+    const activeWclass = inWolf || inBear || inVamp ? 'HTH' : this.weaponClass
+    const cofName = `${activeToken}${mode}${activeWclass}`
+    const animRecord = this.registry.getAnimDataRecord(cofName)
+    if (!animRecord || !animRecord.hasSpeed) {
+      return { allowed: false, reason: 'passive_skill' }
     }
 
-    if (!animRecord) {
-      animRecord = {
-        name: chosenCof,
-        framesPerDirection: 14,
-        animationSpeed: 256,
-        hasSpeed: true,
-        events: [{ frame: 6, code: 1 }],
-        block: 0,
-      }
+    if (skill.startMana > 0) {
+      // 1.13c `SkillSrvStFunc[11]` (0x6FC64550) -> `0x6FC643F0` (`Inferno` #41, `Arctic Blast` #230: 20f, +6f)
+      // and `SkillSrvStFunc[26]` (0x6FCB5BC0) (`Blade Fury` #266: 21f, +7f) set `STATE_INFERNO` (12).
+      const channelDuration =
+        skill.id === 266 ? (inInfernoChannel ? 7 : 21) : inInfernoChannel ? 6 : 20
+      this.stateBus.applyState({
+        stateNameOrId: 'inferno',
+        sourceSkillId: skill.id,
+        slvl,
+        durationFrames: channelDuration,
+        currentFrame: currentTick,
+      })
+    }
+    // 1.13c `D2Game.dll` `SKILLS_DoSkillStart` (0x6FCBFD00 @ 0x6FCBFE6C):
+    // When `wSrvStFunc > 0` and `usemanaondo == 0`, mana is consumed at `SrvStFunc` start.
+    // When `wSrvStFunc == 0` or `usemanaondo == 1` (`Plague Javelin` #25, `Blade Fury` #266),
+    // mana is NOT consumed at start; it is checked and consumed in `SKILLS_DoSkillDo` (0x6FCC19A0).
+    let manaDeductedOnStart = false
+    if (!isFreeInState && skill.srvStFunc > 0 && !skill.useManaOnDo) {
+      this.statList.setMana256(this.statList.getMana256() - manaCost256)
+      manaDeductedOnStart = true
     }
 
     const seqTransUpper = (skill.seqTrans || '').toUpperCase()
     const isCastMode = mode === 'SC' || (isSequence && (seqTransUpper === 'SC' || seqTransUpper === 'SQ'))
-    const effRate = isCastMode
-      ? computeEffectiveFcr(this.statList.getAccruedStat('item_fastercastrate'))
-      : computeEffectiveIas({
-          itemIas: this.statList.getAccruedStat('item_fasterattackrate'),
-          skillIas:
-            (this.statList.getModifierBonus('attackrate') || this.statList.getModifierBonus('skill_ias')) -
-            (isSequence ? 30 : 0),
-          weaponWsm: this.statList.getAccruedStat('weapon_wsm'),
-        })
 
-    const stepSpeed256 = Math.max(32, Math.trunc((animRecord.animationSpeed * (100 + effRate)) / 100))
+    let stepSpeed256: number
+    if ((inWolf || inBear) && !isCastMode) {
+      // 1.13c D2Common shapeshift attack speed formula
+      const weaponDelay = computeShapeshiftWeaponDelay113c(
+        this.charToken,
+        this.weaponClass,
+        0,
+        0,
+        this.weaponClass !== 'HTH',
+      )
+      const baseSpeed = Math.max(1, Math.floor((animRecord.framesPerDirection * 256) / weaponDelay))
+      const effIas = computeEffectiveIas({
+        itemIas: this.statList.getAccruedStat('item_fasterattackrate'),
+        skillIas: this.statList.getModifierBonus('attackrate') - (isSequence ? 30 : 0),
+        weaponWsm: 0,
+      })
+      stepSpeed256 = Math.max(32, Math.trunc((baseSpeed * (100 + effIas)) / 100))
+    } else {
+      const effRate = isCastMode
+        ? computeEffectiveFcr(this.statList.getAccruedStat('item_fastercastrate'))
+        : computeEffectiveIas({
+            itemIas: this.statList.getAccruedStat('item_fasterattackrate'),
+            skillIas: this.statList.getModifierBonus('attackrate') - (isSequence ? 30 : 0),
+            weaponWsm: 0,
+          })
+      stepSpeed256 = Math.max(32, Math.trunc((animRecord.animationSpeed * (100 + effRate)) / 100))
+    }
+
     const seq0 = isSequence
       ? resolveSkillSequenceFrame(skill.id, this.weaponClass, 0, stepSpeed256)
       : null
     const framesPerDirection = seq0 ? seq0.totalSequenceFrames : animRecord.framesPerDirection
     const actionEvt = animRecord.events.find(e => (e.code & (0x01 | 0x02)) !== 0)
+    // 1.13c D2Common parity: When no 0x01/0x02 event exists in AnimData.d2 (e.g. 40S1HTH, TGS1HTH, AIS3HT1),
+    // the action triggers on completion (framesPerDirection - 1) rather than synthetic halfway frame.
     const actionFrame = actionEvt
       ? actionEvt.frame
-      : Math.max(1, Math.trunc(framesPerDirection / 2))
+      : Math.max(1, framesPerDirection - 1)
 
     this.currentAnim = {
       skill,
       slvl,
-      cofName: chosenCof,
+      cofName,
       animRecord,
       framesPerDirection,
       stepSpeed256,
@@ -269,6 +350,7 @@ export class AnimDispatcher {
       isSequence,
       targetX: params.targetX ?? 0,
       targetY: params.targetY ?? 0,
+      manaDeductedOnStart,
       frameAcc256: 0,
       currentFrame: 0,
       actionTriggered: false,
@@ -300,18 +382,32 @@ export class AnimDispatcher {
     let actionFired = false
     if (!anim.actionTriggered && anim.currentFrame >= anim.actionFrame) {
       anim.actionTriggered = true
-      actionFired = true
 
-      // Deduct mana cost (`manaCost256`) on the action frame
+      // 1.13c `D2Game.dll` `SKILLS_DoSkillDo` (`0x6FCC19A0` @ `0x6FCC1AE5` & `0x6FCC1C5F..0x6FCC1C8F`):
+      // - When `usemanaondo == 1` (`Plague Javelin` #25, `Blade Fury` #266), verify `STAT_MANA >= manaCost256`
+      //   on the `do` frame before executing `SkillSrvDoFunc`; abort without firing if mana dropped below cost.
+      // - Consume `manaCost256` on the `do` frame when `wSrvStFunc == 0` or `usemanaondo == 1` (i.e. `!manaDeductedOnStart`),
+      //   unless `nocostinstate` waives the cost while already in `skill.auraState`.
+      const isFreeInState = this.isNoCostInActiveState(anim.skill)
       const { manaCost256 } = computeSkillManaCost256(anim.skill, anim.slvl)
-      if (!anim.skill.nocostinstate) {
+      if (!isFreeInState && !anim.manaDeductedOnStart) {
+        if (anim.skill.useManaOnDo && this.statList.getMana256() < manaCost256) {
+          if (anim.skill.startMana > 0) {
+            this.stateBus.removeState('inferno')
+            this.stateBus.removeState(12)
+          }
+          anim.completed = true
+          return { actionFired: false, anim }
+        }
         this.statList.setMana256(this.statList.getMana256() - manaCost256)
       }
 
+      actionFired = true
+
       // Deduct ammo quantity (`decquant`) if applicable
       // D2MOO Parity: SKILLS_SrvSt08_Strafe (skillId 26) explicitly calls sub_6FD118C0 to deduct 1 arrow on cast
-      if ((anim.skill.decquant || anim.skill.id === 26) && this.ammoQuantity > 0) {
-        this.ammoQuantity -= 1
+      if ((anim.skill.decquant || anim.skill.id === 26) && this.getAmmoQuantity() > 0) {
+        this.setAmmoQuantity(this.getAmmoQuantity() - 1)
       }
 
       // Apply `STATE_SKILLDELAY` (`delay` ticks in `Skills.txt`, e.g. Hydra 40f, Frozen Orb 25f)

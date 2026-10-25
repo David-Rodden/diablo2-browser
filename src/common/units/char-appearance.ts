@@ -852,7 +852,8 @@ export function resolveCharacterAppearance(
 
   // Check shield in either hand slot when not wielding a two-handed weapon
   if (!hasTwoHandedWeapon && equipped.hasHolyShield) {
-    // 1.13c States.txt #101 (holyshield) setfunc=11 (StateSetFunc[11] at D2Client.dll 0x6FB1E289..0x6FB1E2AD):
+    // 1.13c States.txt #101 (holyshield) has no setfunc; the D2Client.dll component resolver tests state 0x65 for
+    // COMP_SH at 0x6FB1E289..0x6FB1E2AD (setfunc 11 is vine_beast's no-draw flag):
     // overrides the paperdoll shield component (COMP_SHIELD) to 0x00687368 ('hsh') with no dye shift.
     layers.sh = { variant: 'hsh', transform: 0, color: null }
     shieldTint = null

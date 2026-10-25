@@ -729,6 +729,11 @@
         }
       }
 
+      body[data-d2-hud-layout="classic"] #d2-orientation-guard,
+      body[data-d2-hud-layout="classic"] #d2-mobile-toolbar-pill {
+        display: none !important;
+      }
+
       .d2-orientation-guard__card {
         max-width: 360px;
         width: 100%;
@@ -837,6 +842,14 @@
                 <select id="d2-toolbar-worldfps-select" class="d2-toolbar__select">
                   <option value="60" selected>60 FPS</option>
                   <option value="30">30 FPS</option>
+                </select>
+              </div>
+              <div id="d2-config-hud-layout-row" class="d2-toolbar-modal__row">
+                <label id="d2-config-hud-layout-label" class="d2-toolbar__label d2-toolbar-modal__row-label" for="d2-toolbar-hud-layout-select">触控界面</label>
+                <select id="d2-toolbar-hud-layout-select" class="d2-toolbar__select">
+                  <option value="auto" selected>自动 (按设备检测)</option>
+                  <option value="classic">关闭 (经典 PC 界面)</option>
+                  <option value="compact-d2r">紧凑 D2R (强制开启触控)</option>
                 </select>
               </div>
               <div id="d2-config-server-row" class="d2-toolbar-modal__row">
@@ -967,6 +980,23 @@
         const guardEl = document.getElementById('d2-orientation-guard');
         const syncCompactMobileToolbar = () => {
           try {
+            let storedLayout = document.body.getAttribute('data-d2-hud-layout') || '';
+            if (!storedLayout && window.localStorage) {
+              const raw = window.localStorage.getItem('d2web.settings.v1');
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.hudLayoutMode === 'string') {
+                  storedLayout = parsed.hudLayoutMode;
+                  document.body.setAttribute('data-d2-hud-layout', storedLayout);
+                }
+              }
+            }
+            if (storedLayout === 'classic') {
+              if (document.body.getAttribute('data-d2-mobile-toolbar') === 'collapsed') {
+                document.body.removeAttribute('data-d2-mobile-toolbar');
+              }
+              return;
+            }
             const isMobileLandscape =
               (window.matchMedia &&
                 window.matchMedia('(orientation: landscape) and (max-height: 540px)').matches) ||

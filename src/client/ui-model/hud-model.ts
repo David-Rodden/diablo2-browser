@@ -148,6 +148,7 @@ import {
   syncNpcInteractionImpl,
   syncVitalsFromWorldImpl,
 } from './hud-world-sync.ts'
+import { decideUiOpen113c, UI_113C } from '../ui/ui-policy-113c.ts'
 import { aggregateUnit } from './stat-engine.ts'
 import { depositAllToStash, type StashDepositResult } from './stash-deposit.ts'
 import type { VendorPriceContext, VendorPriceFn, VendorRepairAllFn } from './vendor-price.ts'
@@ -860,6 +861,13 @@ export class HudModel implements HudCommandSink {
    */
   toggleAutomap(): void {
     if (!this.automap) return
+    // D2Client.dll 0x6FAEB8B0 (automap command): opening consults the UI policy column 0x0A of every
+    // open UI (desc[i] + 0x28); policy 2/3 (stash, cube, trade, game menu, help) skips the toggle.
+    // 0x6faeb95a: the automap command does nothing while the player is dead (IsUnitDead 0x6FB55440).
+    if (this.hudManager?.isSelfDeadUiLocked113c()) return
+    if (this.automap.getMode() === 'off' && this.hudManager) {
+      if (!decideUiOpen113c(this.hudManager.getOpenUiIds113c(), UI_113C.automap).allowed) return
+    }
     this.automap.requestVisibilityToggle()
   }
 

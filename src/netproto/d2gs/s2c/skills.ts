@@ -155,13 +155,23 @@ export function decode0x6CNpcAttack(pkt: Uint8Array): ServerEvent {
   }
 }
 
-/** 0x7B AssignSkillHotkey (8B, D2Client.dll 0x6fb5c6d0) */
+/** Skills.txt data rows in 1.13c (`sgptDataTables->nSkillsTxtRecordCount`, ids 0..356). */
+export const SKILLS_TXT_ROW_COUNT_113C = 357
+
+/**
+ * 0x7B AssignSkillHotkey (8B, D2Client.dll 0x6fb5c6d0): `[1]` slot, `[2..3]` u16 skill word, `[4..7]` itemId.
+ * The skill id is `word & 0xFFF` and becomes -1 (unbound) when it exceeds the Skills.txt record count
+ * (`and eax, 0xfff; cmp eax, [+0xBA0]; jle; or eax, -1` — note `jle`: an id equal to the count is kept);
+ * bit 15 (`and edx, 0x8000`) selects the left hand.
+ */
 export function decode0x7BAssignSkillHotkey(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x7B
   const slot = r.u8()
-  const skill = r.u8() | ((r.u8() & 0x7f) << 8)
-  const hand: Hand = (pkt[3]! & 0x80) !== 0 ? 'left' : 'right'
+  const word = r.u16LE()
+  const masked = word & 0xfff
+  const skill = masked > SKILLS_TXT_ROW_COUNT_113C ? -1 : masked
+  const hand: Hand = (word & 0x8000) !== 0 ? 'left' : 'right'
   const itemId = r.u32LE()
   return {
     type: 'ActiveSkill',
@@ -193,16 +203,22 @@ export function decode0x94BaseSkillLevels(pkt: Uint8Array): ServerEvent {
   }
 }
 
-/** 0x99 SkillTriggeredOnTarget (16B, D2Client.dll 0x6fb5f0f0) */
+/**
+ * 0x99 SkillTriggeredOnTarget (16B, D2Client.dll 0x6fb5f0f0). Same wire layout as 0x4C: D2Game.dll
+ * 0x6fcad210 builds both (`sete al; dec al; and al,0x4d; add al,0x4c` -> 0x4C or 0x99):
+ * [1] casterType, [2..5] casterId, [6..7] skill, [8] level, [9] targetType, [10..13] targetId, [14..15] u16.
+ * The client reads skill @6 (`movzx ecx, word [edi+6]`), level @8, target @9/@10 and calls 0x6fb79030.
+ */
 export function decode0x99SkillTriggeredOnTarget(pkt: Uint8Array): ServerEvent {
+  requirePacketLength(pkt, '0x99 SkillTriggeredOnTarget', 16)
   const r = new ByteReader(pkt)
   r.u8() // 0x99
   const casterType = unitTypeToId(r.u8())
   const casterId = r.u32LE()
-  const targetType = unitTypeToId(r.u8())
-  const targetId = r.u32LE()
   const skill = r.u16LE()
   const level = r.u8()
+  const targetType = unitTypeToId(r.u8())
+  const targetId = r.u32LE()
   r.u16LE()
   return {
     type: 'SkillCast',
@@ -210,20 +226,25 @@ export function decode0x99SkillTriggeredOnTarget(pkt: Uint8Array): ServerEvent {
     skill,
     level,
     target: { unitType: targetType, id: targetId },
+    triggered: true,
   }
 }
 
-/** 0x9A SkillTriggeredOnLocation (17B, D2Client.dll 0x6fb5f090) */
+/**
+ * 0x9A SkillTriggeredOnLocation (17B, D2Client.dll 0x6fb5f090). Same wire layout as 0x4D: D2Game.dll
+ * 0x6fc9ae67..0x6fc9aeaf writes [1] casterType, [2..5] casterId, [6..9] skill (dword), [10] level,
+ * [11..12] x, [13..14] y, [15..16] u16. The client skips the packet when x or y is 0 (0x6fb5f0b9 / 0x6fb5f0c1).
+ */
 export function decode0x9ASkillTriggeredOnLocation(pkt: Uint8Array): ServerEvent {
+  requirePacketLength(pkt, '0x9A SkillTriggeredOnLocation', 17)
   const r = new ByteReader(pkt)
   r.u8() // 0x9A
   const casterType = unitTypeToId(r.u8())
   const casterId = r.u32LE()
+  const skill = r.u32LE() & 0xffff
+  const level = r.u8()
   const x = r.u16LE()
   const y = r.u16LE()
-  r.u16LE()
-  const skill = r.u16LE()
-  const level = r.u8()
   r.u16LE()
   return {
     type: 'SkillCast',
@@ -231,5 +252,6 @@ export function decode0x9ASkillTriggeredOnLocation(pkt: Uint8Array): ServerEvent
     skill,
     level,
     target: { x, y },
+    triggered: true,
   }
 }

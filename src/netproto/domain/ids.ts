@@ -258,6 +258,8 @@ export interface UnitSnapshot {
   readonly ownerId?: number | undefined
   readonly states?: readonly number[] | undefined
   readonly hidden?: boolean | undefined
+  /** S2C 0xAC trailing Send-Other stat list (D2Client.dll 0x6fb5e73c..0x6fb5e85a). */
+  readonly stats?: readonly ItemStat[] | undefined
 }
 
 export interface SkillLevel {

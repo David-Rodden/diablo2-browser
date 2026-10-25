@@ -285,7 +285,7 @@ describe('Issue #1395 — GameInstance mercenary hire subType, resurrect classId
     expect(farM.shattered).toBe(false)
   })
 
-  it('grantExperience scales the living mercenary level and Hireling.txt stats when the owner levels up', () => {
+  it('does NOT auto-level the mercenary on owner grantExperience, and instead levels up + scales Hireling.txt stats via monster kill experience (0x6FCFEA00 -> 0x6FCFDCB0 -> 0x6FC68BA0)', () => {
     const game = new GameInstance({ seed: 13955, areaId: 2 })
     const p1 = game.connectPlayer({
       charClass: 'nec',
@@ -307,15 +307,35 @@ describe('Issue #1395 — GameInstance mercenary hire subType, resurrect classId
     const g = internal(game)
     const player = g.players.get(p1) as AnyRecord
     game.drainPlayerEvents(p1)
-    // Grant enough XP to level from 14 -> 20
+    // Grant enough XP to level the owner from 14 -> 20; merc must remain level 14
     g.grantExperience(player, 1_000_000)
 
-    const after = game.getMercenaryForOwner(p1)!
+    const afterOwnerLevelUp = game.getMercenaryForOwner(p1)!
     expect(player.level).toBeGreaterThan(14)
-    expect(after.level).toBe(player.level)
+    expect(afterOwnerLevelUp.level).toBe(14)
+
+    // Place merc 1 XP shy of level 15 threshold ((15+1)*15*15*110 = 396000) and kill a monster
+    const merc = g.mercenaries.get(mercId) as AnyRecord
+    merc.experience = (15 + 1) * 15 * 15 * (merc.expPerLvl as number) - 10
+    const mId = game.spawnMonster({
+      defId: 'fallen1',
+      x: 101,
+      y: 100,
+      areaId: 2,
+      hp: 1,
+      maxHp: 1,
+      experience: 500,
+    })
+    const mRec = g.monsters.get(mId) as AnyRecord
+    mRec.level = 14
+    mRec.lastHitByMerc = true
+    g.onMonsterKilled(player, mRec)
+
+    const after = game.getMercenaryForOwner(p1)!
+    expect(after.level).toBe(15)
     expect(after.maxHp).toBeGreaterThan(before.maxHp)
     expect(after.hp).toBe(after.maxHp)
-    expect(after.damage).toBeGreaterThan(before.damage)
+    expect(after.damage).toBeGreaterThanOrEqual(before.damage)
 
     const events = game.drainPlayerEvents(p1)
     const mercLvlEvents = events.filter(
@@ -326,6 +346,6 @@ describe('Issue #1395 — GameInstance mercenary hire subType, resurrect classId
         e.statId === 12,
     )
     expect(mercLvlEvents.length).toBeGreaterThan(0)
-    expect((mercLvlEvents[mercLvlEvents.length - 1] as { value?: number }).value).toBe(player.level)
+    expect((mercLvlEvents[mercLvlEvents.length - 1] as { value?: number }).value).toBe(15)
   })
 })

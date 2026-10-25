@@ -1,6 +1,7 @@
 import type { CharacterClassCode } from '../units/classes.ts'
 import type { CombatPlayer } from '../units/unit-types.ts'
 import { OVERLAY_TXT_ROWS } from '../data/overlay-txt-rows.ts'
+import { MISSILE_CLT_COLS_113C } from './missile-clt-cols-113c.ts'
 import { SKILL_OVERLAY_ROWS_113C, type SkillOverlayRow113c } from './skill-state-overlays-113c.ts'
 import {
   calculateMagicArrowStats,
@@ -59,8 +60,6 @@ export interface SkillDef {
   readonly baseMinDamage: number
   /** Damage at skill level 1. */
   readonly baseMaxDamage: number
-  /** Damage added per additional skill level. */
-  readonly damagePerLevel: number
   /** Radius of the instant effect, for non-projectile skills. */
   readonly radius: number
   /** Cast overlay identifier from Skills.txt castoverlay column (e.g. 'fire_cast_1'). */
@@ -237,8 +236,13 @@ export interface MissileTxtData {
   readonly pierce?: number | boolean | undefined
   readonly pCltDoFunc?: number | undefined
   readonly pCltHitFunc?: number | undefined
+  readonly pSrvDoFunc?: number | undefined
+  readonly pSrvHitFunc?: number | undefined
   readonly param1?: number | undefined
   readonly param2?: number | undefined
+  readonly param3?: number | undefined
+  readonly param4?: number | undefined
+  readonly param5?: number | undefined
   readonly cltParam1?: number | undefined
   readonly cltParam2?: number | undefined
   readonly cltParam3?: number | undefined
@@ -259,13 +263,25 @@ export interface MissileTxtData {
   readonly collideFriend?: number | boolean | undefined
   readonly holy?: number | undefined
   readonly randStart?: number | undefined
+  readonly lastCollide?: boolean | number | undefined
+  readonly clientSend?: boolean | number | undefined
+  readonly town?: boolean | number | undefined
+  readonly srcTown?: boolean | number | undefined
+  readonly cltSrcTown?: number | undefined
+  readonly initSteps?: number | undefined
+  readonly activate?: number | undefined
+  readonly collideType?: number | undefined
+  readonly collision?: number | boolean | undefined
+  readonly clientCol?: number | boolean | undefined
+  readonly collideKill?: number | boolean | undefined
+  readonly size?: number | undefined
+  readonly localBlood?: number | undefined
+  readonly xoffset?: number | undefined
+  readonly yoffset?: number | undefined
+  readonly zoffset?: number | undefined
 }
 
-/**
- * Canonical 1.13c Missiles.txt rows: exactly the 684 rows of the table, keyed by the lower-case `Missile` name, with
- * the row's own `Id` (Issue #1089: no client aliases / invented rows).
- */
-export const CANONICAL_113C_MISSILES: Readonly<Record<string, MissileTxtData>> = Object.freeze({
+const RAW_CANONICAL_113C_MISSILES: Readonly<Record<string, MissileTxtData>> = {
   arrow: { name: "arrow", id: 0, vel: 24, maxVel: 24, range: 40, levRange: 0, celFile: "Arrow", animLen: 1, animSpeed: 16, loopAnim: 0, numDirections: 32, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 600, distancePx: 960, trans: 0, pierce: true },
   javelin: { name: "javelin", id: 1, vel: 24, maxVel: 24, range: 40, levRange: 0, celFile: "Javelin", animLen: 1, animSpeed: 16, loopAnim: 0, numDirections: 32, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 600, distancePx: 960, trans: 0, pierce: true },
   bighead1: { name: "bighead1", id: 2, vel: 8, maxVel: 8, range: 40, levRange: 0, celFile: "BigheadLightningMissile", animLen: 3, animSpeed: 16, loopAnim: 1, numDirections: 1, explosionMissile: "bigheadexp", light: 5, red: 143, green: 143, blue: 255, speedPxPerSec: 200, distancePx: 320, trans: 1 },
@@ -284,10 +300,10 @@ export const CANONICAL_113C_MISSILES: Readonly<Record<string, MissileTxtData>> =
   cr_arrow3: { name: "cr_arrow3", id: 15, vel: 18, maxVel: 18, range: 40, levRange: 0, celFile: "Arrow", animLen: 1, animSpeed: 16, loopAnim: 1, numDirections: 32, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 450, distancePx: 720, pierce: true },
   cr_arrow4: { name: "cr_arrow4", id: 16, vel: 20, maxVel: 20, range: 40, levRange: 0, celFile: "Arrow", animLen: 1, animSpeed: 16, loopAnim: 1, numDirections: 32, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 500, distancePx: 800, pierce: true },
   cr_arrow5: { name: "cr_arrow5", id: 17, vel: 24, maxVel: 24, range: 40, levRange: 0, celFile: "Arrow", animLen: 1, animSpeed: 16, loopAnim: 1, numDirections: 32, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 600, distancePx: 960, pierce: true },
-  blood1: { name: "blood1", id: 18, vel: 3, maxVel: 3, range: 128, levRange: 0, celFile: "BloodSmall01", animLen: 9, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 75, distancePx: 384 },
-  blood2: { name: "blood2", id: 19, vel: 4, maxVel: 4, range: 128, levRange: 0, celFile: "BloodSmall02", animLen: 9, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 100, distancePx: 512 },
-  bigblood1: { name: "bigblood1", id: 20, vel: 3, maxVel: 3, range: 128, levRange: 0, celFile: "BloodLarge01", animLen: 9, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 75, distancePx: 384 },
-  bigblood2: { name: "bigblood2", id: 21, vel: 4, maxVel: 4, range: 128, levRange: 0, celFile: "BloodLarge02", animLen: 9, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 100, distancePx: 512 },
+  blood1: { name: "blood1", id: 18, vel: 3, maxVel: 3, range: 128, levRange: 0, celFile: "BloodSmall01", animLen: 9, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 75, distancePx: 384, pCltDoFunc: 2 },
+  blood2: { name: "blood2", id: 19, vel: 4, maxVel: 4, range: 128, levRange: 0, celFile: "BloodSmall02", animLen: 9, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 100, distancePx: 512, pCltDoFunc: 2 },
+  bigblood1: { name: "bigblood1", id: 20, vel: 3, maxVel: 3, range: 128, levRange: 0, celFile: "BloodLarge01", animLen: 9, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 75, distancePx: 384, pCltDoFunc: 2 },
+  bigblood2: { name: "bigblood2", id: 21, vel: 4, maxVel: 4, range: 128, levRange: 0, celFile: "BloodLarge02", animLen: 9, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 100, distancePx: 512, pCltDoFunc: 2 },
   shafire1: { name: "shafire1", id: 22, vel: 8, maxVel: 8, range: 40, levRange: 0, celFile: "ShamanFireball", animLen: 3, animSpeed: 16, loopAnim: 1, numDirections: 16, explosionMissile: "shamanexp", light: 5, red: 255, green: 178, blue: 64, speedPxPerSec: 200, distancePx: 320, trans: 1, pierce: true },
   shafire2: { name: "shafire2", id: 23, vel: 10, maxVel: 10, range: 40, levRange: 0, celFile: "ShamanFireball", animLen: 3, animSpeed: 16, loopAnim: 1, numDirections: 16, explosionMissile: "shamanexp", light: 5, red: 255, green: 178, blue: 64, speedPxPerSec: 250, distancePx: 400, trans: 1, pierce: true },
   shafire3: { name: "shafire3", id: 24, vel: 12, maxVel: 12, range: 40, levRange: 0, celFile: "ShamanFireball", animLen: 3, animSpeed: 16, loopAnim: 1, numDirections: 16, explosionMissile: "shamanexp", light: 5, red: 255, green: 178, blue: 64, speedPxPerSec: 300, distancePx: 480, trans: 1, pierce: true },
@@ -310,12 +326,12 @@ export const CANONICAL_113C_MISSILES: Readonly<Record<string, MissileTxtData>> =
   explodingarrow: { name: "explodingarrow", id: 41, vel: 24, maxVel: 24, range: 40, levRange: 0, celFile: "FireArrow", animLen: 8, animSpeed: 16, loopAnim: 1, numDirections: 32, explosionMissile: "explodingarrowexp", light: 5, red: 255, green: 178, blue: 64, speedPxPerSec: 600, distancePx: 960, trans: 1, alwaysExplode: true, pierce: true, pCltHitFunc: 1, cHitPar1: 3, cHitPar2: 1, cltHitSubMissile1: "fireexplosion2" },
   explodingarrowexp: { name: "explodingarrowexp", id: 42, vel: 0, maxVel: 0, range: 16, levRange: 0, celFile: "ExpArrowExplode", animLen: 16, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 15, red: 255, green: 178, blue: 64, speedPxPerSec: 0, distancePx: 0, trans: 1 },
   plaguejavelin: { name: "plaguejavelin", id: 43, vel: 24, maxVel: 24, range: 15, levRange: 0, celFile: "Javelin", animLen: 1, animSpeed: 16, loopAnim: 0, numDirections: 32, explosionMissile: "", light: 4, red: 128, green: 255, blue: 128, speedPxPerSec: 600, distancePx: 360, alwaysExplode: true, pierce: true, pCltDoFunc: 3, cltSubMissile1: "plaguejavcloud", pCltHitFunc: 2, cHitPar1: 1, cHitPar2: 2, cHitPar3: 3, cltHitSubMissile1: "plaguejavcloud" },
-  oilpotion: { name: "oilpotion", id: 44, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslops", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 128, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 2, pCltHitFunc: 3, cltHitSubMissile1: "fireexplode" },
-  explosivepotion: { name: "explosivepotion", id: 45, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslopm", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 128, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 2, pCltHitFunc: 3, cltHitSubMissile1: "explodingarrowexp" },
-  fulminatingpotion: { name: "fulminatingpotion", id: 46, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslopl", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 128, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 2, pCltHitFunc: 3, cltHitSubMissile1: "explosivepotionexp", cltHitSubMissile2: "explosivepotiondebris1", cltHitSubMissile3: "explosivepotiondebris3" },
-  rancidgasepotion: { name: "rancidgasepotion", id: 47, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslgps", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 128, green: 255, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 2, pCltHitFunc: 2, cHitPar1: 0, cHitPar2: 2, cHitPar3: 3, cltHitSubMissile1: "rancidgascloud" },
-  chokinggaspoition: { name: "chokinggaspoition", id: 48, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslgpm", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 128, green: 255, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 2, pCltHitFunc: 2, cHitPar1: 2, cHitPar2: 2, cHitPar3: 3, cltHitSubMissile1: "chokinggascloud" },
-  stranglinggaspotion: { name: "stranglinggaspotion", id: 49, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslgpl", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 128, green: 255, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 2, pCltHitFunc: 2, cHitPar1: 1, cHitPar2: 2, cHitPar3: 3, cltHitSubMissile1: "stranglinggascloud" },
+  oilpotion: { name: "oilpotion", id: 44, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslops", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 128, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 1, pCltHitFunc: 3, cltHitSubMissile1: "fireexplode" },
+  explosivepotion: { name: "explosivepotion", id: 45, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslopm", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 128, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 1, pCltHitFunc: 3, cltHitSubMissile1: "explodingarrowexp" },
+  fulminatingpotion: { name: "fulminatingpotion", id: 46, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslopl", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 128, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 1, pCltHitFunc: 3, cltHitSubMissile1: "explosivepotionexp", cltHitSubMissile2: "explosivepotiondebris1", cltHitSubMissile3: "explosivepotiondebris3" },
+  rancidgasepotion: { name: "rancidgasepotion", id: 47, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslgps", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 128, green: 255, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 1, pCltHitFunc: 2, cHitPar1: 0, cHitPar2: 2, cHitPar3: 3, cltHitSubMissile1: "rancidgascloud" },
+  chokinggaspoition: { name: "chokinggaspoition", id: 48, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslgpm", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 128, green: 255, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 1, pCltHitFunc: 2, cHitPar1: 2, cHitPar2: 2, cHitPar3: 3, cltHitSubMissile1: "chokinggascloud" },
+  stranglinggaspotion: { name: "stranglinggaspotion", id: 49, vel: 16, maxVel: 16, range: 30, levRange: 0, celFile: "mslgpl", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 128, green: 255, blue: 128, speedPxPerSec: 400, distancePx: 480, alwaysExplode: true, pCltDoFunc: 1, pCltHitFunc: 2, cHitPar1: 1, cHitPar2: 2, cHitPar3: 3, cltHitSubMissile1: "stranglinggascloud" },
   notused50: { name: "notused50", id: 50, vel: 0, maxVel: 0, range: 0, levRange: 0, celFile: "null", animLen: 2, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 0, distancePx: 0 },
   explosivepotionexp: { name: "explosivepotionexp", id: 51, vel: 0, maxVel: 0, range: 12, levRange: 0, celFile: "PotionExplode", animLen: 29, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 13, red: 255, green: 178, blue: 64, speedPxPerSec: 0, distancePx: 0, trans: 1 },
   explosivepotiondebris1: { name: "explosivepotiondebris1", id: 52, vel: 0, maxVel: 0, range: 0, levRange: 0, celFile: "PotionExplodeDebris01", animLen: 29, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 0, distancePx: 0 },
@@ -342,7 +358,7 @@ export const CANONICAL_113C_MISSILES: Readonly<Record<string, MissileTxtData>> =
   goospit4: { name: "goospit4", id: 73, vel: 10, maxVel: 10, range: 24, levRange: 0, celFile: "SandMaggotGooSpit", animLen: 24, animSpeed: 16, loopAnim: 0, numDirections: 16, explosionMissile: "goosplat", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 250, distancePx: 240 },
   goospit5: { name: "goospit5", id: 74, vel: 10, maxVel: 10, range: 24, levRange: 0, celFile: "SandMaggotGooSpit", animLen: 24, animSpeed: 16, loopAnim: 0, numDirections: 16, explosionMissile: "goosplat", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 250, distancePx: 240 },
   goosplat: { name: "goosplat", id: 75, vel: 0, maxVel: 0, range: 15, levRange: 0, celFile: "GooHit", animLen: 15, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 0, distancePx: 0 },
-  "sand pile": { name: "sand pile", id: 76, vel: 0, maxVel: 0, range: 128, levRange: 0, celFile: "SandMaggotSandPile", animLen: 1, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 0, distancePx: 0 },
+  "sand pile": { name: "sand pile", id: 76, vel: 0, maxVel: 0, range: 128, levRange: 0, celFile: "SandMaggotSandPile", animLen: 1, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 0, distancePx: 0, pCltDoFunc: 2 },
   unholybolt1: { name: "unholybolt1", id: 77, vel: 12, maxVel: 12, range: 40, levRange: 0, celFile: "UnholyBolt", animLen: 16, animSpeed: 16, loopAnim: 1, numDirections: 1, explosionMissile: "", light: 5, red: 0, green: 0, blue: 0, speedPxPerSec: 300, distancePx: 480, trans: 2 },
   unholybolt2: { name: "unholybolt2", id: 78, vel: 12, maxVel: 12, range: 40, levRange: 0, celFile: "UnholyBolt", animLen: 16, animSpeed: 16, loopAnim: 1, numDirections: 1, explosionMissile: "", light: 5, red: 0, green: 0, blue: 0, speedPxPerSec: 300, distancePx: 480, trans: 2 },
   unholybolt3: { name: "unholybolt3", id: 79, vel: 12, maxVel: 12, range: 40, levRange: 0, celFile: "UnholyBolt", animLen: 16, animSpeed: 16, loopAnim: 1, numDirections: 1, explosionMissile: "", light: 5, red: 0, green: 0, blue: 0, speedPxPerSec: 300, distancePx: 480, trans: 2 },
@@ -504,8 +520,8 @@ export const CANONICAL_113C_MISSILES: Readonly<Record<string, MissileTxtData>> =
   warcry: { name: "warcry", id: 235, vel: 12, maxVel: 12, accel: -600, range: 16, levRange: 0, celFile: "WarcryShockwave", animLen: 16, animSpeed: 16, loopAnim: 0, numDirections: 32, explosionMissile: "", light: 0, red: 192, green: 192, blue: 192, speedPxPerSec: 300, distancePx: 192, nextHit: 1, nextDelay: 4, trans: 1, progOverlay: "doubledamage1", pCltHitFunc: 10 },
   battlecommand: { name: "battlecommand", id: 236, vel: 30, maxVel: 30, accel: -500, range: 15, levRange: 0, celFile: "BAYellShockWave01", animLen: 15, animSpeed: 16, loopAnim: 0, numDirections: 32, explosionMissile: "", light: 0, red: 192, green: 192, blue: 192, speedPxPerSec: 750, distancePx: 450, nextHit: 1, nextDelay: 4, trans: 1 },
   battleorders: { name: "battleorders", id: 237, vel: 30, maxVel: 30, accel: -500, range: 15, levRange: 0, celFile: "BAYellShockWave01", animLen: 15, animSpeed: 16, loopAnim: 0, numDirections: 32, explosionMissile: "", light: 0, red: 192, green: 192, blue: 192, speedPxPerSec: 750, distancePx: 450, nextHit: 1, nextDelay: 4, trans: 1 },
-  pantherpotorange: { name: "pantherpotorange", id: 238, vel: 16, maxVel: 16, range: 128, levRange: 0, celFile: "mslops", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 128, blue: 128, speedPxPerSec: 400, distancePx: 2048, alwaysExplode: true, pCltDoFunc: 2, pCltHitFunc: 3, cltHitSubMissile1: "explodingarrowexp" },
-  pantherpotgreen: { name: "pantherpotgreen", id: 239, vel: 16, maxVel: 16, range: 128, levRange: 0, celFile: "mslgps", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 128, green: 255, blue: 128, speedPxPerSec: 400, distancePx: 2048, alwaysExplode: true, pCltDoFunc: 2, pCltHitFunc: 28, cHitPar1: 1, cltHitSubMissile1: "rancidgascloud" },
+  pantherpotorange: { name: "pantherpotorange", id: 238, vel: 16, maxVel: 16, range: 128, levRange: 0, celFile: "mslops", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 128, blue: 128, speedPxPerSec: 400, distancePx: 2048, alwaysExplode: true, pCltDoFunc: 1, pCltHitFunc: 3, cltHitSubMissile1: "explodingarrowexp" },
+  pantherpotgreen: { name: "pantherpotgreen", id: 239, vel: 16, maxVel: 16, range: 128, levRange: 0, celFile: "mslgps", animLen: 8, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 128, green: 255, blue: 128, speedPxPerSec: 400, distancePx: 2048, alwaysExplode: true, pCltDoFunc: 1, pCltHitFunc: 28, cHitPar1: 1, cltHitSubMissile1: "rancidgascloud" },
   meteorfire: { name: "meteorfire", id: 240, vel: 0, maxVel: 0, range: 90, levRange: 0, celFile: "groundFireMedium", animLen: 37, animSpeed: 16, loopAnim: 1, numDirections: 1, explosionMissile: "", light: 3, red: 255, green: 178, blue: 64, speedPxPerSec: 0, distancePx: 0, trans: 1, subLoop: 1, subStart: 12, subStop: 36 },
   "trap spike right": { name: "trap spike right", id: 241, vel: 9, maxVel: 9, range: 50, levRange: 0, celFile: "SpikeRight", animLen: 12, animSpeed: 16, loopAnim: 1, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 225, distancePx: 450 },
   "trap spike left": { name: "trap spike left", id: 242, vel: 9, maxVel: 9, range: 50, levRange: 0, celFile: "SpikeLeft", animLen: 12, animSpeed: 16, loopAnim: 1, numDirections: 1, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 225, distancePx: 450 },
@@ -588,7 +604,7 @@ export const CANONICAL_113C_MISSILES: Readonly<Record<string, MissileTxtData>> =
   andydebrisexplosion5: { name: "andydebrisexplosion5", id: 319, vel: 0, maxVel: 0, range: 11, levRange: 0, celFile: "CeilingChunkRemain03", animLen: 11, animSpeed: 16, loopAnim: 0, numDirections: 1, explosionMissile: "", light: 0, red: 0, green: 0, blue: 0, speedPxPerSec: 0, distancePx: 0, alwaysExplode: true },
   willowisplightningbolt: { name: "willowisplightningbolt", id: 320, vel: 32, maxVel: 32, range: 40, levRange: 0, celFile: "null", animLen: 2, animSpeed: 16, loopAnim: 2, numDirections: 1, explosionMissile: "", light: 8, red: 178, green: 178, blue: 255, speedPxPerSec: 800, distancePx: 1280, trans: 1 },
   queenpoisoncloud: { name: "queenpoisoncloud", id: 321, vel: 8, maxVel: 64, accel: 400, range: 92, levRange: 0, celFile: "poisonNova", animLen: 30, animSpeed: 16, loopAnim: 0, numDirections: 32, explosionMissile: "", light: 4, red: 64, green: 255, blue: 64, speedPxPerSec: 200, distancePx: 736, trans: 1 },
-  "dirt pile": { name: "dirt pile", id: 322, vel: 0, maxVel: 0, range: 128, levRange: 0, celFile: "SandMaggotDirtPile", animLen: 1, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 0, distancePx: 0 },
+  "dirt pile": { name: "dirt pile", id: 322, vel: 0, maxVel: 0, range: 128, levRange: 0, celFile: "SandMaggotDirtPile", animLen: 1, animSpeed: 16, loopAnim: 0, numDirections: 8, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 0, distancePx: 0, pCltDoFunc: 2 },
   undeadmissile1: { name: "undeadmissile1", id: 323, vel: 20, maxVel: 20, range: 40, levRange: 0, celFile: "SkullPoison", animLen: 12, animSpeed: 16, loopAnim: 1, numDirections: 16, explosionMissile: "", light: 9, red: 255, green: 255, blue: 255, speedPxPerSec: 500, distancePx: 800, trans: 1 },
   undeadmissile2: { name: "undeadmissile2", id: 324, vel: 20, maxVel: 20, range: 40, levRange: 0, celFile: "SkullFire", animLen: 12, animSpeed: 16, loopAnim: 1, numDirections: 8, explosionMissile: "", light: 9, red: 255, green: 255, blue: 255, speedPxPerSec: 500, distancePx: 800, trans: 1 },
   undeadmissile3: { name: "undeadmissile3", id: 325, vel: 20, maxVel: 20, range: 40, levRange: 0, celFile: "SkullIce", animLen: 12, animSpeed: 16, loopAnim: 1, numDirections: 16, explosionMissile: "", light: 9, red: 255, green: 255, blue: 255, speedPxPerSec: 500, distancePx: 800, trans: 1 },
@@ -950,7 +966,132 @@ export const CANONICAL_113C_MISSILES: Readonly<Record<string, MissileTxtData>> =
   vampiremeteorfire: { name: "vampiremeteorfire", id: 681, vel: 0, maxVel: 0, range: 90, levRange: 0, celFile: "groundFireMedium", animLen: 37, animSpeed: 16, loopAnim: 1, numDirections: 1, explosionMissile: "", light: 3, red: 255, green: 178, blue: 64, speedPxPerSec: 0, distancePx: 0, trans: 1, subLoop: 1, subStart: 12, subStop: 36 },
   strafearrow: { name: "strafearrow", id: 682, vel: 24, maxVel: 24, range: 50, levRange: 0, celFile: "Arrow", animLen: 1, animSpeed: 16, loopAnim: 0, numDirections: 32, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 600, distancePx: 1200, nextHit: 1, nextDelay: 4, pierce: true },
   strafebolt: { name: "strafebolt", id: 683, vel: 24, maxVel: 24, range: 50, levRange: 0, celFile: "XBowBolt", animLen: 1, animSpeed: 16, loopAnim: 0, numDirections: 32, explosionMissile: "", light: 0, red: 255, green: 255, blue: 255, speedPxPerSec: 600, distancePx: 1200, nextHit: 1, nextDelay: 4, pierce: true },
-})
+}
+
+/**
+ * Canonical 1.13c Missiles.txt rows: all 684 rows of the compiled `missiles.bin` / `Missiles.txt` table,
+ * keyed by the lower-case `Missile` name, enriched from `MISSILE_CLT_COLS_113C` so every client column
+ * (`pCltDoFunc`, `pCltHitFunc`, `CltSubMissile1..3`, `CltHitSubMissile1..4`, `CltParam1..5`, `cHitPar1..3`,
+ * `Range`, `LevRange`, `AnimLen`, `SubLoop`, `SubStart`, `SubStop`, `RandStart`, `CollideType`, `Collision`,
+ * `ClientCol`, `CollideKill`, `CollideFriend`, `LastCollide`, `NextHit`, `NextDelay`, `ClientSend`, `Town`,
+ * `SrcTown`, `CltSrcTown`, `InitSteps`, `Activate`, `Size`, `LocalBlood`, `xoffset`/`yoffset`/`zoffset`)
+ * matches the 1.13c binary table with 0 discrepancies (Issues #1089, #1511, #1512, #1513, #1618).
+ */
+export const CANONICAL_113C_MISSILES: Readonly<Record<string, MissileTxtData>> = Object.freeze(
+  (() => {
+    const out: Record<string, MissileTxtData> = {}
+    for (const [key, raw] of Object.entries(RAW_CANONICAL_113C_MISSILES)) {
+      const clt = MISSILE_CLT_COLS_113C[raw.id]
+      if (!clt) {
+        out[key] = Object.freeze(raw)
+        continue
+      }
+      const resolveSubName = (subId: number): string | undefined =>
+        subId >= 0 && subId < MISSILE_CLT_COLS_113C.length
+          ? MISSILE_CLT_COLS_113C[subId]!.name
+          : undefined
+      const expName = resolveSubName(clt.explosionMissile) ?? ''
+      const sub1 = resolveSubName(clt.cltSubMissile[0])
+      const sub2 = resolveSubName(clt.cltSubMissile[1])
+      const sub3 = resolveSubName(clt.cltSubMissile[2])
+      const hitSub1 = resolveSubName(clt.cltHitSubMissile[0])
+      const hitSub2 = resolveSubName(clt.cltHitSubMissile[1])
+      const hitSub3 = resolveSubName(clt.cltHitSubMissile[2])
+      const hitSub4 = resolveSubName(clt.cltHitSubMissile[3])
+      const yoffset = raw.id === 664 ? -10 : raw.id === 665 ? -15 : 0
+      const zoffset = raw.id === 193 || raw.id === 329 ? -30 : 0
+      const merged: Record<string, unknown> = {
+        ...raw,
+        range: clt.range,
+        levRange: clt.levRange,
+        animLen: clt.animLen,
+        explosionMissile: expName,
+        distancePx: raw.vel * clt.range,
+        lastCollide: clt.lastCollide,
+        clientSend: clt.clientSend,
+        town: clt.town,
+        srcTown: clt.srcTown,
+        cltSrcTown: clt.cltSrcTown,
+        initSteps: clt.initSteps,
+        activate: clt.activate,
+        collideType: clt.collideType,
+        collision: clt.collision,
+        clientCol: clt.clientCol,
+        collideKill: clt.collideKill,
+        size: clt.size,
+        localBlood: clt.localBlood,
+        xoffset: 0,
+        yoffset,
+        zoffset,
+      }
+      if (clt.pCltDoFunc !== 0) {
+        merged.pCltDoFunc = clt.pCltDoFunc
+      } else {
+        delete merged.pCltDoFunc
+      }
+      if (clt.pCltHitFunc !== 0) {
+        merged.pCltHitFunc = clt.pCltHitFunc
+      } else {
+        delete merged.pCltHitFunc
+      }
+      if (sub1 !== undefined) merged.cltSubMissile1 = sub1
+      else delete merged.cltSubMissile1
+      if (sub2 !== undefined) merged.cltSubMissile2 = sub2
+      else delete merged.cltSubMissile2
+      if (sub3 !== undefined) merged.cltSubMissile3 = sub3
+      else delete merged.cltSubMissile3
+      if (hitSub1 !== undefined) merged.cltHitSubMissile1 = hitSub1
+      else delete merged.cltHitSubMissile1
+      if (hitSub2 !== undefined) merged.cltHitSubMissile2 = hitSub2
+      else delete merged.cltHitSubMissile2
+      if (hitSub3 !== undefined) merged.cltHitSubMissile3 = hitSub3
+      else delete merged.cltHitSubMissile3
+      if (hitSub4 !== undefined) merged.cltHitSubMissile4 = hitSub4
+      else delete merged.cltHitSubMissile4
+      for (let i = 0; i < 5; i++) {
+        const k = `cltParam${i + 1}`
+        const v = clt.cltParam[i]!
+        if (v !== 0 || k in raw) merged[k] = v
+      }
+      for (let i = 0; i < 3; i++) {
+        const k = `cHitPar${i + 1}`
+        const v = clt.cHitPar[i]!
+        if (v !== 0 || k in raw) merged[k] = v
+      }
+      if (clt.subLoop !== 0) {
+        merged.subLoop = clt.subLoop
+        if (clt.subStart !== 0 || 'subStart' in raw) {
+          merged.subStart = clt.subStart
+        } else {
+          delete merged.subStart
+        }
+        merged.subStop = clt.subStop
+      } else {
+        delete merged.subLoop
+        delete merged.subStart
+        delete merged.subStop
+      }
+      if (clt.randStart !== 0) {
+        merged.randStart = clt.randStart
+      } else {
+        delete merged.randStart
+      }
+      if (clt.nextHit !== 0 || 'nextHit' in raw) {
+        merged.nextHit = clt.nextHit
+      }
+      if (clt.nextDelay !== 0 || 'nextDelay' in raw) {
+        merged.nextDelay = clt.nextDelay
+      }
+      if (clt.collideFriend !== 0) {
+        merged.collideFriend = clt.collideFriend
+      } else {
+        delete merged.collideFriend
+      }
+      out[key] = Object.freeze(merged as unknown as MissileTxtData)
+    }
+    return out
+  })(),
+)
 
 /** Alias of CANONICAL_113C_MISSILES for direct Missiles.txt table lookup. */
 export const MISSILE_DATA: Readonly<Record<string, MissileTxtData>> = CANONICAL_113C_MISSILES
@@ -1018,14 +1159,40 @@ export function parseMissilesTxt(content: string): Map<string, MissileTxtData> {
   const progOverlayIdx = col('ProgOverlay')
   const pCltDoFuncIdx = col('pCltDoFunc')
   const pCltHitFuncIdx = col('pCltHitFunc')
+  const cltParam1Idx = col('CltParam1')
+  const cltParam2Idx = col('CltParam2')
+  const cltParam3Idx = col('CltParam3')
+  const cltParam4Idx = col('CltParam4')
+  const cltParam5Idx = col('CltParam5')
   const cHitPar1Idx = col('cHitPar1')
   const cHitPar2Idx = col('cHitPar2')
+  const cHitPar3Idx = col('cHitPar3')
   const cltSubMissile1Idx = col('CltSubMissile1')
   const cltSubMissile2Idx = col('CltSubMissile2')
+  const cltSubMissile3Idx = col('CltSubMissile3')
   const cltHitSubMissile1Idx = col('CltHitSubMissile1')
   const cltHitSubMissile2Idx = col('CltHitSubMissile2')
+  const cltHitSubMissile3Idx = col('CltHitSubMissile3')
+  const cltHitSubMissile4Idx = col('CltHitSubMissile4')
   const collideFriendIdx = col('CollideFriend')
   const holyIdx = col('Holy')
+  const randStartIdx = col('RandStart')
+  const lastCollideIdx = col('LastCollide')
+  const clientSendIdx = col('ClientSend')
+  const townIdx = col('Town')
+  const srcTownIdx = col('SrcTown')
+  const cltSrcTownIdx = col('CltSrcTown')
+  const initStepsIdx = col('InitSteps')
+  const activateIdx = col('Activate')
+  const collideTypeIdx = col('CollideType')
+  const collisionIdx = col('Collision')
+  const clientColIdx = col('ClientCol')
+  const collideKillIdx = col('CollideKill')
+  const sizeIdx = col('Size')
+  const localBloodIdx = col('LocalBlood')
+  const xoffsetIdx = col('xoffset')
+  const yoffsetIdx = col('yoffset')
+  const zoffsetIdx = col('zoffset')
 
   for (let i = 1; i < lines.length; i++) {
     const cells = lines[i]!.split('\t')
@@ -1046,7 +1213,7 @@ export function parseMissilesTxt(content: string): Map<string, MissileTxtData> {
     const subStart = subStartIdx !== -1 ? Number(cells[subStartIdx] ?? 0) || 0 : 0
     const subStop = subStopIdx !== -1 ? Number(cells[subStopIdx] ?? 0) || 0 : 0
     const numDirections = Number(cells[numDirIdx] ?? 0) || 1
-    const explosionMissile = (cells[explIdx] ?? '').trim()
+    const explosionMissile = (cells[explIdx] ?? '').trim().toLowerCase()
     const light = Number(cells[lightIdx] ?? 0) || 0
     const red = parseColorChannel(cells[redIdx])
     const green = parseColorChannel(cells[greenIdx])
@@ -1057,14 +1224,40 @@ export function parseMissilesTxt(content: string): Map<string, MissileTxtData> {
     const progOverlay = progOverlayIdx !== -1 ? (cells[progOverlayIdx] ?? '').trim().toLowerCase() : ''
     const pCltDoFunc = pCltDoFuncIdx !== -1 ? Number(cells[pCltDoFuncIdx] ?? 0) || 0 : 0
     const pCltHitFunc = pCltHitFuncIdx !== -1 ? Number(cells[pCltHitFuncIdx] ?? 0) || 0 : 0
+    const cltParam1 = cltParam1Idx !== -1 ? Number(cells[cltParam1Idx] ?? 0) || 0 : 0
+    const cltParam2 = cltParam2Idx !== -1 ? Number(cells[cltParam2Idx] ?? 0) || 0 : 0
+    const cltParam3 = cltParam3Idx !== -1 ? Number(cells[cltParam3Idx] ?? 0) || 0 : 0
+    const cltParam4 = cltParam4Idx !== -1 ? Number(cells[cltParam4Idx] ?? 0) || 0 : 0
+    const cltParam5 = cltParam5Idx !== -1 ? Number(cells[cltParam5Idx] ?? 0) || 0 : 0
     const cHitPar1 = cHitPar1Idx !== -1 ? Number(cells[cHitPar1Idx] ?? 0) || 0 : 0
     const cHitPar2 = cHitPar2Idx !== -1 ? Number(cells[cHitPar2Idx] ?? 0) || 0 : 0
+    const cHitPar3 = cHitPar3Idx !== -1 ? Number(cells[cHitPar3Idx] ?? 0) || 0 : 0
     const cltSubMissile1 = cltSubMissile1Idx !== -1 ? (cells[cltSubMissile1Idx] ?? '').trim().toLowerCase() : ''
     const cltSubMissile2 = cltSubMissile2Idx !== -1 ? (cells[cltSubMissile2Idx] ?? '').trim().toLowerCase() : ''
+    const cltSubMissile3 = cltSubMissile3Idx !== -1 ? (cells[cltSubMissile3Idx] ?? '').trim().toLowerCase() : ''
     const cltHitSubMissile1 = cltHitSubMissile1Idx !== -1 ? (cells[cltHitSubMissile1Idx] ?? '').trim().toLowerCase() : ''
     const cltHitSubMissile2 = cltHitSubMissile2Idx !== -1 ? (cells[cltHitSubMissile2Idx] ?? '').trim().toLowerCase() : ''
+    const cltHitSubMissile3 = cltHitSubMissile3Idx !== -1 ? (cells[cltHitSubMissile3Idx] ?? '').trim().toLowerCase() : ''
+    const cltHitSubMissile4 = cltHitSubMissile4Idx !== -1 ? (cells[cltHitSubMissile4Idx] ?? '').trim().toLowerCase() : ''
     const collideFriend = collideFriendIdx !== -1 ? Number(cells[collideFriendIdx] ?? 0) || 0 : 0
     const holy = holyIdx !== -1 ? Number(cells[holyIdx] ?? 0) || 0 : 0
+    const randStart = randStartIdx !== -1 ? Number(cells[randStartIdx] ?? 0) || 0 : 0
+    const lastCollide = lastCollideIdx !== -1 ? Number(cells[lastCollideIdx] ?? 0) !== 0 : false
+    const clientSend = clientSendIdx !== -1 ? Number(cells[clientSendIdx] ?? 0) !== 0 : false
+    const town = townIdx !== -1 ? Number(cells[townIdx] ?? 0) !== 0 : false
+    const srcTown = srcTownIdx !== -1 ? Number(cells[srcTownIdx] ?? 0) !== 0 : false
+    const cltSrcTown = cltSrcTownIdx !== -1 ? Number(cells[cltSrcTownIdx] ?? 0) || 0 : 0
+    const initSteps = initStepsIdx !== -1 ? Number(cells[initStepsIdx] ?? 0) || 0 : 0
+    const activate = activateIdx !== -1 ? Number(cells[activateIdx] ?? 0) || 0 : 0
+    const collideType = collideTypeIdx !== -1 ? Number(cells[collideTypeIdx] ?? 0) || 0 : 0
+    const collision = collisionIdx !== -1 ? Number(cells[collisionIdx] ?? 0) || 0 : 0
+    const clientCol = clientColIdx !== -1 ? Number(cells[clientColIdx] ?? 0) || 0 : 0
+    const collideKill = collideKillIdx !== -1 ? Number(cells[collideKillIdx] ?? 0) || 0 : 0
+    const size = sizeIdx !== -1 ? Number(cells[sizeIdx] ?? 0) || 0 : 0
+    const localBlood = localBloodIdx !== -1 ? Number(cells[localBloodIdx] ?? 0) || 0 : 0
+    const xoffset = xoffsetIdx !== -1 ? Number(cells[xoffsetIdx] ?? 0) || 0 : 0
+    const yoffset = yoffsetIdx !== -1 ? Number(cells[yoffsetIdx] ?? 0) || 0 : 0
+    const zoffset = zoffsetIdx !== -1 ? Number(cells[zoffsetIdx] ?? 0) || 0 : 0
 
     const rec: MissileTxtData = {
       name,
@@ -1094,14 +1287,40 @@ export function parseMissilesTxt(content: string): Map<string, MissileTxtData> {
       ...(progOverlay !== '' ? { progOverlay } : {}),
       ...(pCltDoFunc !== 0 ? { pCltDoFunc } : {}),
       ...(pCltHitFunc !== 0 ? { pCltHitFunc } : {}),
+      ...(cltParam1 !== 0 ? { cltParam1 } : {}),
+      ...(cltParam2 !== 0 ? { cltParam2 } : {}),
+      ...(cltParam3 !== 0 ? { cltParam3 } : {}),
+      ...(cltParam4 !== 0 ? { cltParam4 } : {}),
+      ...(cltParam5 !== 0 ? { cltParam5 } : {}),
       ...(cHitPar1 !== 0 ? { cHitPar1 } : {}),
       ...(cHitPar2 !== 0 ? { cHitPar2 } : {}),
+      ...(cHitPar3 !== 0 ? { cHitPar3 } : {}),
       ...(cltSubMissile1 !== '' ? { cltSubMissile1 } : {}),
       ...(cltSubMissile2 !== '' ? { cltSubMissile2 } : {}),
+      ...(cltSubMissile3 !== '' ? { cltSubMissile3 } : {}),
       ...(cltHitSubMissile1 !== '' ? { cltHitSubMissile1 } : {}),
       ...(cltHitSubMissile2 !== '' ? { cltHitSubMissile2 } : {}),
+      ...(cltHitSubMissile3 !== '' ? { cltHitSubMissile3 } : {}),
+      ...(cltHitSubMissile4 !== '' ? { cltHitSubMissile4 } : {}),
       ...(collideFriend !== 0 ? { collideFriend } : {}),
       ...(holy !== 0 ? { holy } : {}),
+      ...(randStart !== 0 ? { randStart } : {}),
+      lastCollide,
+      clientSend,
+      town,
+      srcTown,
+      cltSrcTown,
+      initSteps,
+      activate,
+      collideType,
+      collision,
+      clientCol,
+      collideKill,
+      size,
+      localBlood,
+      xoffset,
+      yoffset,
+      zoffset,
       speedPxPerSec: vel * 25,
       distancePx: vel * range,
     }
@@ -2162,7 +2381,7 @@ export function getSkillManaCost(skillId: number, effectiveLevel: number): numbe
     return 1
   }
   if (skillId === 255) {
-    return 10
+    return 6
   }
   if (skillId === 259) {
     return 2
@@ -2174,8 +2393,7 @@ export function getSkillManaCost(skillId: number, effectiveLevel: number): numbe
     return 2
   }
   if (skillId === 269) {
-    const lvl = Number.isFinite(effectiveLevel) ? Math.max(1, Math.floor(effectiveLevel)) : 1
-    return 4 + 0.25 * (lvl - 1)
+    return 4
   }
   if (skillId === 270) {
     return 10

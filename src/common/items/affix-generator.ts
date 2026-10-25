@@ -73,30 +73,32 @@ export interface GeneratedRareAffixes extends GeneratedAffixes {
 export type IsAFunction = (type: string, target: string) => boolean
 
 /**
- * Computes affix level (alvl) according to the 1.13c Diablo II algorithm.
+ * Computes affix level (alvl) according to the 1.13c Diablo II algorithm (`D2Game.dll` @ `0x6FC34604..0x6FC34657`).
  *
  * Formula:
- * - if (magicLvl > 0) alvl = ilvl + magicLvl
- * - else if (qlvl > Math.trunc(ilvl / 2)) alvl = ilvl - Math.trunc(qlvl / 2)
- * - else alvl = ilvl
- * - alvl = Math.min(alvl, 99)
+ * - `i = Math.max(ilvl, qlvl)`
+ * - `if (magicLvl > 0) alvl = i + magicLvl`
+ * - `else if (i < 99 - Math.trunc(qlvl / 2)) alvl = i - Math.trunc(qlvl / 2)`
+ * - `else alvl = 2 * i - 99`
+ * - `alvl = Math.max(1, Math.min(alvl, 99))`
  *
  * @param ilvl - Item drop level (from monster mlvl or area alvl).
  * @param qlvl - Base item quality level.
- * @param magicLvl - Optional magic level bonus on base item (e.g. circlets, wands, staves).
- * @returns Calculated affix level (alvl, capped at 99).
+ * @param magicLvl - Optional magic level bonus on base item (e.g. circlets, wands, staves, orbs).
+ * @returns Calculated affix level (alvl, clamped to [1, 99]).
  */
 export function calculateAlvl(ilvl: number, qlvl: number, magicLvl = 0): number {
+  const i = Math.max(ilvl, qlvl)
+  const halfQlvl = Math.trunc(qlvl / 2)
   let alvl: number
   if (magicLvl > 0) {
-    alvl = ilvl + magicLvl
-  } else if (qlvl > Math.trunc(ilvl / 2)) {
-    alvl = ilvl - Math.trunc(qlvl / 2)
+    alvl = i + magicLvl
+  } else if (i < 99 - halfQlvl) {
+    alvl = i - halfQlvl
   } else {
-    alvl = ilvl
+    alvl = 2 * i - 99
   }
-  alvl = Math.max(1, Math.min(alvl, 99))
-  return alvl
+  return Math.max(1, Math.min(alvl, 99))
 }
 
 /**
@@ -167,34 +169,77 @@ function getEligibleCandidates(
 }
 
 /**
- * Selects an affix from candidate list weighted by `affix.frequency`.
- *
- * If all frequencies are 0 (or total weight <= 0), chooses uniformly at random.
+ * Computes the candidate weight for an affix per `D2Game.dll` @ `0x6FC3478B..0x6FC347B0`:
+ * - When `magicLvl > 0` (`magic lvl` base such as wand, staff, orb, circlet): `frequency * level`
+ * - Otherwise: `frequency`
  */
-function pickWeightedAffix(candidates: readonly MagicAffix[], rng: D2Rng): MagicAffix | null {
+export function getAffixWeight(
+  affix: { readonly frequency: number; readonly level: number },
+  magicLvl = 0,
+): number {
+  const freq = Math.max(0, affix.frequency)
+  if (magicLvl > 0) {
+    return freq * Math.max(0, affix.level)
+  }
+  return freq
+}
+
+/**
+ * Selects an affix from candidate list per `D2Game.dll` @ `0x6FC3478B..0x6FC34889`:
+ * - Candidate weight is `magicLvl > 0 ? frequency * level : frequency`.
+ * - If `totalWeight <= 0`, returns `null` (no uniform fallback).
+ * - Rolls `rng.rand(totalWeight + 1)` and subtracts candidate weights until `< 0`.
+ * - If `roll === totalWeight` (all weights subtracted and `roll >= 0`), returns `null`.
+ */
+export function pickWeightedAffix<T extends { readonly frequency: number; readonly level: number }>(
+  candidates: readonly T[],
+  rng: D2Rng,
+  magicLvl = 0,
+): T | null {
   if (candidates.length === 0) {
     return null
   }
   let totalWeight = 0
   for (const cand of candidates) {
-    totalWeight += Math.max(0, cand.frequency)
+    totalWeight += getAffixWeight(cand, magicLvl)
   }
 
   if (totalWeight <= 0) {
-    const index = rng.rand(candidates.length)
-    return candidates[index] ?? null
+    return null
   }
 
-  const roll = rng.rand(totalWeight)
-  let acc = 0
+  let roll = rng.rand(totalWeight + 1)
   for (const cand of candidates) {
-    acc += Math.max(0, cand.frequency)
-    if (roll < acc) {
+    roll -= getAffixWeight(cand, magicLvl)
+    if (roll < 0) {
       return cand
     }
   }
 
-  return candidates[candidates.length - 1] ?? null
+  return null
+}
+
+/**
+ * Picks an affix for a Magic/Rare slot using `pickWeightedAffix`, falling through
+ * to the last positive-weight candidate when `roll === totalWeight` per
+ * `D2Game.dll` `0x6FC34851..0x6FC34855` (`jl 0x6FC3481E` falls through to `mov ebx, [edi]`).
+ */
+function pickCandidateAffix(
+  candidates: readonly MagicAffix[],
+  rng: D2Rng,
+  magicLvl = 0,
+): MagicAffix | null {
+  const picked = pickWeightedAffix(candidates, rng, magicLvl)
+  if (picked) {
+    return picked
+  }
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const cand = candidates[i]!
+    if (getAffixWeight(cand, magicLvl) > 0) {
+      return cand
+    }
+  }
+  return null
 }
 
 /**
@@ -288,10 +333,55 @@ function getEligibleRareNames(
 }
 
 /**
- * Rolls magic affixes for an item:
+ * 1.13c Expansion rare item affix count lookup table (`D2Game.dll` `.rdata` @ `0x6FD1D058`,
+ * indexed by `rng.rand(8)` at `0x6FC352E5..0x6FC35302`):
+ * - 3 affixes: 1/8 (12.5%)
+ * - 4 affixes: 2/8 (25.0%)
+ * - 5 affixes: 3/8 (37.5%)
+ * - 6 affixes: 2/8 (25.0%)
+ */
+export const RARE_AFFIX_COUNT_TABLE = [3, 4, 4, 5, 5, 5, 6, 6] as const
+
+/**
+ * Checks whether an `ItemBase` is a Jewel (`ItemTypes.txt` row 58 `'jewl'`, `Misc.txt` code `'jew'`)
+ * per `D2Game.dll` `0x6FC352C4..0x6FC352D1` (`D2Common_GetItemType(pItem) == 58`).
+ */
+export function isJewelItemBase(
+  base: ItemBase,
+  itemTypeCode = getItemTypeCode(base),
+  isA?: IsAFunction,
+): boolean {
+  const typeLower = itemTypeCode.trim().toLowerCase()
+  if (typeLower === 'jewl' || typeLower === 'jew') {
+    return true
+  }
+  const idLower = (base.id ?? '').trim().toLowerCase()
+  if (idLower === 'jew' || idLower === 'jewl') {
+    return true
+  }
+  if (base.tags?.some(t => {
+    const tagLower = t.trim().toLowerCase()
+    return tagLower === 'jewl' || tagLower === 'jew'
+  })) {
+    return true
+  }
+  if (isA && isA(itemTypeCode, 'jewl')) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Rolls magic affixes for an item (`D2Game.dll` `0x6FC303C0` + `0x6FC344D0`):
  * - 1 prefix slot + 1 suffix slot.
- * - Randomly choose: {prefix only}, {suffix only}, or {prefix + suffix}.
- * - Weighted selection by `frequency`.
+ * - Prefix slot rolls `rng.rand(2)` (`0x6FC3458A..0x6FC345C8`, `bForce = 0`): 50% chance to attempt prefix.
+ * - Suffix slot is forced (`bForce = 1` at `0x6FC30432..0x6FC30481`) if prefix was skipped or failed to roll;
+ *   otherwise rolls `rng.rand(2)` (50% chance to also roll suffix).
+ * - Resulting distribution when both pools are non-empty:
+ *   - Prefix only: 1/4 (25%)
+ *   - Suffix only: 1/2 (50%)
+ *   - Prefix + Suffix: 1/4 (25%)
+ * - Weighted selection by `frequency` (or `frequency * level` when `magicLvl > 0`).
  * - Group mutex: when an affix with `group > 0` is chosen, that group is excluded from subsequent rolls.
  * - Formats name as `[Prefix] [BaseName] [Suffix]`.
  *
@@ -300,7 +390,7 @@ function getEligibleRareNames(
  * @param affixes - Tables containing prefix and suffix tables.
  * @param isA - Item type inheritance predicate.
  * @param rng - Unit PRNG instance (D2Rng).
- * @param options - Optional eligibility overrides (e.g. itemClass).
+ * @param options - Optional eligibility overrides (e.g. itemClass, isExpansion).
  * @returns Generated magic item affixes and metadata.
  */
 export function rollMagicAffixes(
@@ -309,7 +399,7 @@ export function rollMagicAffixes(
   affixes: { prefixes: AffixTable; suffixes: AffixTable },
   isA: Function,
   rng: D2Rng,
-  options?: { readonly itemClass?: string | undefined },
+  options?: { readonly itemClass?: string | undefined; readonly isExpansion?: boolean | undefined },
 ): GeneratedAffixes {
   const predicate = isA as IsAFunction
   const initialSeed = rng.lo
@@ -322,21 +412,19 @@ export function rollMagicAffixes(
   const eligibilityOpts: AffixEligibilityOptions = {
     alvl,
     isRare: false,
+    ...(options?.isExpansion !== undefined ? { isExpansion: options.isExpansion } : {}),
     ...(itemClass !== undefined ? { itemClass } : {}),
   }
 
   const usedGroups = new Set<number>()
   const usedAffixes = new Set<MagicAffix>()
 
-  // Randomly choose {prefix only}, {suffix only}, or {prefix + suffix}
-  // 0 = prefix only, 1 = suffix only, 2 = prefix + suffix
-  const slotChoice = rng.rand(3)
-  const wantsPrefix = slotChoice === 0 || slotChoice === 2
-  const wantsSuffix = slotChoice === 1 || slotChoice === 2
-
   let rolledPrefix: RolledAffix | null = null
   let rolledSuffix: RolledAffix | null = null
 
+  // Per D2Game.dll 0x6FC30408 -> 0x6FC344D0 (bForce = 0, 0x6FC3458A..0x6FC345C8):
+  // Roll rand(2) (50% chance) to attempt a magic prefix.
+  const wantsPrefix = rng.rand(2) !== 0
   if (wantsPrefix) {
     const candidates = getEligibleCandidates(
       affixes.prefixes,
@@ -346,7 +434,7 @@ export function rollMagicAffixes(
       usedGroups,
       usedAffixes,
     )
-    const picked = pickWeightedAffix(candidates, rng)
+    const picked = pickCandidateAffix(candidates, rng, magicLvl)
     if (picked) {
       usedAffixes.add(picked)
       if (picked.group > 0) {
@@ -356,6 +444,10 @@ export function rollMagicAffixes(
     }
   }
 
+  // Per D2Game.dll 0x6FC30432..0x6FC30481 -> 0x6FC344D0:
+  // If no prefix was rolled (either wantsPrefix == false or prefix pool had no match),
+  // bForce = 1 forces suffix without consuming rand(2); otherwise roll rand(2) for suffix.
+  const wantsSuffix = !rolledPrefix || rng.rand(2) !== 0
   if (wantsSuffix) {
     const candidates = getEligibleCandidates(
       affixes.suffixes,
@@ -365,7 +457,7 @@ export function rollMagicAffixes(
       usedGroups,
       usedAffixes,
     )
-    const picked = pickWeightedAffix(candidates, rng)
+    const picked = pickCandidateAffix(candidates, rng, magicLvl)
     if (picked) {
       usedAffixes.add(picked)
       if (picked.group > 0) {
@@ -405,9 +497,17 @@ export function rollMagicAffixes(
 }
 
 /**
- * Rolls rare affixes for an item:
+ * Rolls rare affixes for an item (`D2Game.dll` `0x6FC35240` Expansion / `0x6FC34F20` Classic):
  * - Up to 3 prefix + up to 3 suffix slots.
- * - Total affixes: 3 to 6 (at least 1 prefix and 1 suffix, max 3 each).
+ * - Total affixes:
+ *   - Rare Jewels (`ItemType == 58` `'jewl'`): `3 + rng.rand(2)` (`3..4`, 50% each).
+ *   - Classic non-jewels (`isExpansion === false`, `0x6FC34FC0..0x6FC34FDC`): `4 + rng.rand(3)` (`4..6` uniform).
+ *   - Expansion non-jewels (`.rdata 0x6FD1D058` at `0x6FC352E5..0x6FC35302`):
+ *     `RARE_AFFIX_COUNT_TABLE[rng.rand(8)]` (`[3, 4, 4, 5, 5, 5, 6, 6]`).
+ * - Side selection (`0x6FC35330..0x6FC35430`):
+ *   - Tracks `prefixFull` and `suffixFull` flags (marked true when a side reaches 3 affixes or fails to roll).
+ *   - When a side fails to roll an eligible affix, marks that side full and decrements `slot` (`slot--`)
+ *     so the current slot is retried on the opposite side without losing an affix count.
  * - Rare name: pick 1 eligible RarePrefix + 1 eligible RareSuffix.
  * - Mod values rolled using `itemRng.randRange(min, max)`.
  *
@@ -417,7 +517,7 @@ export function rollMagicAffixes(
  * @param rareNames - Tables containing rare prefix and suffix name tables.
  * @param isA - Item type inheritance predicate.
  * @param rng - Unit PRNG instance (D2Rng).
- * @param options - Optional eligibility overrides (e.g. itemClass).
+ * @param options - Optional eligibility overrides (e.g. itemClass, isExpansion).
  * @returns Generated rare item affixes and metadata.
  */
 export function rollRareAffixes(
@@ -427,7 +527,7 @@ export function rollRareAffixes(
   rareNames: { prefixes: RareNameTable; suffixes: RareNameTable },
   isA: Function,
   rng: D2Rng,
-  options?: { readonly itemClass?: string | undefined },
+  options?: { readonly itemClass?: string | undefined; readonly isExpansion?: boolean | undefined },
 ): GeneratedRareAffixes {
   const predicate = isA as IsAFunction
   const initialSeed = rng.lo
@@ -440,6 +540,7 @@ export function rollRareAffixes(
   const eligibilityOpts: AffixEligibilityOptions = {
     alvl,
     isRare: true,
+    ...(options?.isExpansion !== undefined ? { isExpansion: options.isExpansion } : {}),
     ...(itemClass !== undefined ? { itemClass } : {}),
   }
 
@@ -478,9 +579,18 @@ export function rollRareAffixes(
   )
   const name = rareNameParts.length > 0 ? rareNameParts.join(' ') : base.name
 
-  // 2. Determine slot distribution (1.13c D2Game!6FC31350):
-  // Total affixes: 3 to 6, rolled slot-by-slot with rng.rand(2) and max 3 prefixes / 3 suffixes
-  const totalAffixes = rng.randRange(3, 6)
+  // 2. Determine total affix count per 1.13c D2Game.dll 0x6FC35240 (Expansion) / 0x6FC34F20 (Classic):
+  // - Rare Jewels (ItemType == 58 'jewl'): 3 + rng.rand(2) (3..4 affixes, 50% each)
+  // - Classic non-jewels (0x6FC34FC0..0x6FC34FDC): 4 + rng.rand(3) (4..6 affixes)
+  // - Expansion non-jewels (.rdata 0x6FD1D058): RARE_AFFIX_COUNT_TABLE[rng.rand(8)] ([3, 4, 4, 5, 5, 5, 6, 6])
+  let totalAffixes: number
+  if (isJewelItemBase(base, itemTypeCode, predicate)) {
+    totalAffixes = 3 + rng.rand(2)
+  } else if (options?.isExpansion === false) {
+    totalAffixes = 4 + rng.rand(3)
+  } else {
+    totalAffixes = RARE_AFFIX_COUNT_TABLE[rng.rand(8)]!
+  }
 
   const usedGroups = new Set<number>()
   const usedAffixes = new Set<MagicAffix>()
@@ -498,7 +608,7 @@ export function rollRareAffixes(
         usedGroups,
         usedAffixes,
       )
-      const picked = pickWeightedAffix(candidates, rng)
+      const picked = pickCandidateAffix(candidates, rng, magicLvl)
       if (!picked) return false
       usedAffixes.add(picked)
       if (picked.group > 0) {
@@ -516,7 +626,7 @@ export function rollRareAffixes(
         usedGroups,
         usedAffixes,
       )
-      const picked = pickWeightedAffix(candidates, rng)
+      const picked = pickCandidateAffix(candidates, rng, magicLvl)
       if (!picked) return false
       usedAffixes.add(picked)
       if (picked.group > 0) {
@@ -527,18 +637,41 @@ export function rollRareAffixes(
     }
   }
 
+  // Side selection & failure retry loop per D2Game.dll 0x6FC35330..0x6FC35430:
+  let prefixFull = false
+  let suffixFull = false
+
   for (let slot = 0; slot < totalAffixes; slot++) {
     let pickPrefix: boolean
-    if (rolledPrefixes.length >= 3) {
+    if (prefixFull) {
+      if (suffixFull) {
+        break
+      }
       pickPrefix = false
-    } else if (rolledSuffixes.length >= 3) {
+    } else if (suffixFull) {
       pickPrefix = true
     } else {
       pickPrefix = rng.rand(2) === 0
     }
 
-    if (!tryRollSide(pickPrefix)) {
-      tryRollSide(!pickPrefix)
+    if (pickPrefix) {
+      if (tryRollSide(true)) {
+        if (rolledPrefixes.length >= 3) {
+          prefixFull = true
+        }
+      } else {
+        prefixFull = true
+        slot--
+      }
+    } else {
+      if (tryRollSide(false)) {
+        if (rolledSuffixes.length >= 3) {
+          suffixFull = true
+        }
+      } else {
+        suffixFull = true
+        slot--
+      }
     }
   }
 
