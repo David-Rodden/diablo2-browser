@@ -415,7 +415,11 @@ export class Autopilot {
   private recover(body: ClientUnit, nowMs: number): void {
     this.say('Picking up your body')
     if (this.bodyTouch?.id !== body.id) this.bodyTouch = { id: body.id, worn: this.host.world.containers.equipment.size }
+    const target = this.host.guide.update(nowMs)?.target
+    const routed = target !== null && target !== undefined && distance(target, body) <= REACH * 2
     if (distance(body, this.host.world.self) <= REACH) this.touch(body, nowMs)
+    else if (routed && this.takePad(target, nowMs)) return
+    else if (routed) this.walkRoute(nowMs)
     else this.walkTowards(body, nowMs)
   }
 
