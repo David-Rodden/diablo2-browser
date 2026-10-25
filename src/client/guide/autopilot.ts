@@ -563,6 +563,7 @@ export class Autopilot {
     if (this.host.hudManager.leftPanel === 'waypoint' || this.host.hudManager.leftPanel === 'orifice') this.answerPanels(nowMs)
     else if (this.clearCursor(nowMs)) this.say('Putting away the item in hand')
     else if (this.rearm()) this.say('Taking my weapon back')
+    else if (!town && this.drinkResists(nowMs)) this.say('Drinking resist potions before the boss')
     else if ((danger === null || !assists.hasTownPortal()) && assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (body !== null && distance(body, this.host.world.self) <= BODY_GRAB) this.recover(body, nowMs)
@@ -1432,8 +1433,10 @@ export class Autopilot {
     const merc = world.merc
     const worn = [...world.containers.equipment.values()].some((item) => (item.maxDurability ?? 0) > 0 && (item.curDurability ?? item.durability ?? 0) < (item.maxDurability ?? 0) * REPAIR_BELOW)
     const recipe = readyRecipe(world)
+    const resist = this.resistWanted()
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
+      resist !== null && me.gold >= POTION_GOLD && ready('resist') && { key: 'resist', reason: `Buying ${resist.potion} for ${resist.boss}`, npc: 'resists', action: 'trade', work: () => this.buyResists(resist.code) },
       this.boons().length > 0 && ready('boon') && { key: 'boon', reason: `Using the ${BOONS.get(this.boons()[0]!.code.trim())}`, work: () => this.useBoons() },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
       merc === null && world.expansion === true && me.gold >= MERCENARIES.minGold && this.settledIn(nowMs) && ready('hire') && { key: 'hire', reason: 'Hiring a mercenary', npc: 'mercs', action: 'hire', work: () => this.hire() },
@@ -1831,6 +1834,37 @@ export class Autopilot {
     const wanted = code === tomeCode || this.scrollsWanted(kind) > 0
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || !wanted) return false
     return hudModel.vendorBuy(ware.id, false) && waitFor(() => world.self.gold < before, 1500)
+  }
+
+  private carried(code: string): ItemData[] {
+    return [...this.host.world.containers.inventory.values()].filter((item) => item.code.trim() === code)
+  }
+
+  private resistWanted(): { readonly boss: string; readonly code: string; readonly potion: string } | null {
+    const row = this.host.guide.currentPlan?.goal.row
+    const found = Object.entries(LAIRS.resists).find(([, resist]) => resist.row === row)
+    return found && this.carried(found[1].code).length < LAIRS.resistCount ? { boss: found[0], ...found[1] } : null
+  }
+
+  private async buyResists(code: string): Promise<void> {
+    const { hudManager, hudModel } = this.host
+    for (const ware of this.store().filter((item) => item.code.trim() === code)) {
+      const before = this.carried(code).length
+      if (hudModel === null || hudManager.leftPanel !== 'vendor' || before >= LAIRS.resistCount || !hudModel.vendorBuy(ware.id, false) || !(await waitFor(() => this.carried(code).length > before, 1500))) break
+    }
+  }
+
+  private drinkResists(nowMs: number): boolean {
+    const { world, hudModel } = this.host
+    const boss = Object.entries(LAIRS.levels).find(([, level]) => level === world.areaId)?.[0]
+    const resist = boss === undefined ? undefined : (LAIRS.resists as Readonly<Record<string, { readonly code: string }>>)[boss]
+    const potion = resist && this.carried(resist.code)[0]
+    if (!potion || hudModel === null) return false
+    if (nowMs - (this.errandsAt.get('drink') ?? Number.NEGATIVE_INFINITY) >= USE_MS) {
+      this.errandsAt.set('drink', nowMs)
+      hudModel.useItem(potion.id)
+    }
+    return true
   }
 
   private boons(): ItemData[] {

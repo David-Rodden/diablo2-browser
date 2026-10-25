@@ -155,6 +155,21 @@ describe('autopilot', () => {
     expect([guide.pilotStatus, hudModel.useItem.mock.calls]).toEqual(['Using the Book of Skill', [[9]]])
   })
 
+  it('buys thawing potions in town before Duriel and drinks them in his lair', () => {
+    const shop = setup({ goal: { level: 70, title: 'The Seven Tombs', row: 14 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
+    Object.assign(shop.guide, { currentPlan: shop.guide.update() })
+    ;[1, 2, 3, 4, 5].forEach((id) => shop.world.containers.belt.set(id, { id, code: 'hp2' }))
+    shop.world.containers.inventory.set(8, { id: 8, code: 'tbk', quantity: 20, invWidth: 1, invHeight: 2 })
+    shop.world.containers.inventory.set(9, { id: 9, code: 'ibk', quantity: 20, invWidth: 1, invHeight: 2 })
+    shop.world.self.gold = 1000
+    shop.tick()
+    expect(shop.guide.pilotStatus).toBe('Buying thawing potions for Duriel')
+    const lair = setup({ goal: { level: 73, title: 'The Seven Tombs', row: 14 }, target: { x: 130, y: 100, label: 'Duriel' } }, 73)
+    lair.world.containers.inventory.set(7, { id: 7, code: 'wms', invWidth: 1, invHeight: 1 })
+    lair.tick()
+    expect(lair.hudModel.useItem).toHaveBeenCalledWith(7)
+  })
+
   it('asks the server for fresh quest state when the step has not moved for a while', () => {
     const { hudModel, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     tick()

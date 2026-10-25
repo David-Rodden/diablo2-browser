@@ -13,5 +13,6 @@ describe('town supply vendors', () => {
   it('sell town portal scrolls and healing potions in every act', () => {
     expect(Object.entries(TOWNS).filter(([, town]) => !['tsc', 'isc', 'hp1', 'mp1'].every((code) => stocks(town.potions, code))).map(([name]) => name)).toEqual([])
     expect(stocks('lysander', 'tsc')).toBe(false)
+    expect(Object.entries(TOWNS).filter(([, town]) => !['yps', 'wms'].every((code) => stocks(town.resists, code))).map(([name]) => name)).toEqual([])
   })
 })
