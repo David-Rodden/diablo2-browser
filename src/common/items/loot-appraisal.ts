@@ -273,5 +273,7 @@ export function appraiseItem(item: LootItem, ctx: AppraisalContext): Appraisal {
     return item.identified ? knownAffixAppraisal(item, kind, ctx) : unknownAffixAppraisal(item, kind, ctx)
   }
   const upgrade = upgradeAppraisal(item, 'normal', ctx)
-  return upgrade && item.totalSockets === 0 ? upgrade : baseAppraisal(item, ctx)
+  if (upgrade && item.totalSockets === 0) return upgrade
+  const base = baseAppraisal(item, ctx)
+  return upgrade?.upgradeSlot !== undefined && (base.tier === 'junk' || base.kind !== 'base') ? upgrade : base
 }

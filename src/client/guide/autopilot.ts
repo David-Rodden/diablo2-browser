@@ -124,6 +124,7 @@ const USE_TRIES = 8
 const BACK_OFF = 5
 const WAYPOINT_ROUNDS = 3
 const PORTAL_LOOK_MS = 3000
+const BODY_GRAB = 12
 const CURSOR_SETTLE_MS = 1000
 const INVENTORY_BUFFER = 0
 const TALK_MS = 700
@@ -231,6 +232,7 @@ const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y
 const isElite = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true)
 const WIELD = new Map(Object.values(QUEST_OBJECTS.wield).map((entry) => [entry.object, entry]))
 const TOOLS = new Set(Object.values(QUEST_OBJECTS.wield).map((entry) => entry.item))
+const BOSSES = new Set(LAIRS.bosses.map((name) => MONSTER_PATH_IDS.indexOf(name)))
 const BOONS = new Map(Object.entries(QUEST_OBJECTS.boons).map(([name, code]) => [code, name]))
 const EXIT_OBJECTS: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.exits))
 const LEVERS = new Map(Object.values(QUEST_OBJECTS.levers).map((entry) => [entry.object, entry.lever]))
@@ -558,6 +560,7 @@ export class Autopilot {
     else if (this.rearm()) this.say('Taking my weapon back')
     else if ((danger === null || !assists.hasTownPortal()) && assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
+    else if (body !== null && distance(body, this.host.world.self) <= BODY_GRAB) this.recover(body, nowMs)
     else if (danger !== null) this.retreat(danger, nowMs)
     else if (body !== null && !this.cornered(nowMs)) this.recover(body, nowMs)
     else if (!disengaged && assists.isFighting(nowMs)) this.say('Fighting')
@@ -855,8 +858,9 @@ export class Autopilot {
     const plan = this.host.guide.currentPlan
     const me = this.host.world.self
     const waypoint = WAYPOINT_CLASS_IDS_113C.has(unit.classId)
+    const portal = unit.classId === TOWN_PORTAL_CLASS
     const rounds = this.stubborn.get(unit.id) ?? 0
-    if (rounds < (waypoint ? WAYPOINT_ROUNDS : 1)) {
+    if (rounds < (waypoint || portal ? WAYPOINT_ROUNDS : 1)) {
       this.stubborn.set(unit.id, rounds + 1)
       this.uses.delete(unit.id)
       this.host.hudModel?.cancelNpcSession()
@@ -864,6 +868,8 @@ export class Autopilot {
       const away = Math.atan2(me.y - unit.y, me.x - unit.x) + (rounds * 2 * Math.PI) / WAYPOINT_ROUNDS
       this.host.assists.stepTo(unit.x + Math.cos(away) * BACK_OFF, unit.y + Math.sin(away) * BACK_OFF, nowMs)
     } else if (waypoint) this.stop('Autopilot needs you', 'gold', "The waypoint wouldn't open")
+    else if (portal && this.town()) Object.assign(this, { trip: null, portalHome: null })
+    else if (portal) this.castPortal(nowMs)
     else if (plan?.target?.unit?.id === unit.id) this.skip(plan, `${unit.name ?? 'It'} wouldn't respond`)
     else this.walkRoute(nowMs)
   }
@@ -988,10 +994,11 @@ export class Autopilot {
     const stocked = healing >= STOCKED_POTIONS
     this.lifeLog = [...this.lifeLog.filter((entry) => nowMs - entry.at <= BURST_MS), { at: nowMs, life }]
     const burst = Math.max(...this.lifeLog.map((entry) => entry.life)) - life
-    const retreatAt = Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0))) + this.caution(nowMs)
+    const boss = world.getUnitsByType(1).some((unit) => !unit.dead && BOSSES.has(unit.classId) && distance(unit, me) <= THREAT.near)
+    const retreatAt = Math.max(boss ? LAIRS.retreatLife : 0, Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0))) + this.caution(nowMs))
     const doomedIn = burst > DOOM_MIN_LOSS ? (life * BURST_MS) / burst : Infinity
     const crowd = world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.assists.isHostile(unit) && distance(unit, me) <= THREAT.near).length
-    const horizon = Math.min(DOOM_MAX_MS, DOOM_MS + Math.max(0, crowd - DOOM_CROWD) * DOOM_PER_FOE_MS)
+    const horizon = Math.min(DOOM_MAX_MS, DOOM_MS + Math.max(0, crowd - DOOM_CROWD) * DOOM_PER_FOE_MS) + (boss ? LAIRS.doomMarginMs : 0)
     this.reading = { life: Math.round(life * 100) / 100, burst: Math.round(burst * 100) / 100, doomedIn: Number.isFinite(doomedIn) ? Math.round(doomedIn) : null, horizon, healing, retreatAt: Math.round(retreatAt * 100) / 100 }
     if (life < retreatAt) return 'Low on life, heading to town'
     if (doomedIn < horizon) return 'Taking a beating, heading to town'
@@ -1270,7 +1277,7 @@ export class Autopilot {
     const threats = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= KITE_NEAR)
     this.kiteSince = threats.length === 0 ? null : (this.kiteSince ?? nowMs)
     const portal = world.getUnitsByType(2).find((unit) => unit.classId === TOWN_PORTAL_CLASS && distance(unit, me) <= PORTAL_REACH)
-    if (portal) this.touch(portal, nowMs)
+    if (portal) this.useOnce(portal, nowMs)
     else if (threats.length > 0 && threats.length <= KITE_CROWD && nowMs - this.kiteSince! < KITE_MS && this.kite(threats, nowMs)) return
     else if (assists.hasTownPortal()) this.castPortal(nowMs)
     else this.walkHome(nowMs)
