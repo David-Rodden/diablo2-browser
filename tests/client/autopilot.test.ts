@@ -38,7 +38,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     },
     hasLootNearby: () => false,
     dodging: () => false,
-    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
+    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
     keepUp: () => false,
     canRaise: () => false,
     walkTo: vi.fn(),
@@ -791,7 +791,7 @@ describe('autopilot', () => {
     expect(guide.detour).toBeNull()
   })
 
-  it('stops walking back into the same death after the third time, and says to rejoin', () => {
+  it('stops walking back into the same death after the third time, and asks for a hand with the body', () => {
     const { pilot, world, hudModel, tick } = setup({})
     Object.assign(hudModel, { resurrect: vi.fn() })
     for (const x of [100, 110, 120]) {
@@ -802,7 +802,7 @@ describe('autopilot', () => {
       tick(60_000)
     }
     expect(pilot.active).toBe(false)
-    expect(pilot.lastStop?.detail).toContain('rejoin')
+    expect(pilot.lastStop?.detail).toContain('get the body back by hand')
   })
 
   it('respawns after dying and goes back for its body', () => {

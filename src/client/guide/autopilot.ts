@@ -354,7 +354,7 @@ export class Autopilot {
       const spiral = this.deaths.filter((death) => nowMs - death.at < SPIRAL_MS && death.level === this.deaths.at(-1)!.level).length
       if (spiral >= SPIRAL_DEATHS) {
         this.host.assists.journal?.('spiral', { deaths: spiral, level: world.areaId })
-        this.stop('Autopilot needs you', 'red', `Died ${spiral} times in ${levelName(world.areaId)}: rejoin to find the body waiting in town`)
+        this.stop('Autopilot needs you', 'red', `Died ${spiral} times in ${levelName(world.areaId)}: get the body back by hand, and don't leave the game before you have it`)
         return
       }
       this.toast('You died', 'Going back for your body', 'red')
@@ -1349,6 +1349,7 @@ export class Autopilot {
     const { world, hudManager, assists } = this.host
     const me = world.self
     const care = assists.inventoryCare
+    care.hardUp = me.gold < BARE_SHOP_GOLD && (this.bare() > 0 || this.healingPotions() === 0)
     const dry = this.healingPotions() === 0
     const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : (key === 'potions' && dry) || key === 'cube' ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
     const ready = (key: string) => nowMs - (this.errandsAt.get(key) ?? Number.NEGATIVE_INFINITY) >= cooldown(key)
@@ -1363,7 +1364,7 @@ export class Autopilot {
       this.mercGear() !== null && ready('mercGear') && { key: 'mercGear', reason: 'Giving your mercenary better gear', work: () => this.dressMerc() },
       me.gold < PURSE_LOW && me.stashGold > 0 && ready('purse') && { key: 'purse', reason: 'Taking gold out of the stash', work: () => this.fillPurse() },
       worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repairAndShop() },
-      (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length > 0)
+      (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length + (care.hardUp ? care.spares.length : 0) > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
       (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
