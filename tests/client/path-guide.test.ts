@@ -129,6 +129,9 @@ describe('path guide plan', () => {
     const tomb = { ...host, areaId: () => 72, objects: () => [orifice] }
     const plan = planGuide(tomb, 'story', undefined, new Set(), false, new Set(), { level: 73, title: "Duriel's Lair" })!
     expect([plan.hint, plan.target?.unit]).toEqual(["Enter Duriel's Lair", { id: 70, kind: 'object' }])
+    const portal = { id: 71, unitType: 'object', classId: 100, mode: 2, x: 1018, y: 2012, hidden: false, dead: false } as unknown as ClientUnit
+    const open = planGuide({ ...tomb, objects: () => [orifice, portal] }, 'story', undefined, new Set(), false, new Set(), { level: 73, title: "Duriel's Lair" })!
+    expect(open.target?.unit).toEqual({ id: 71, kind: 'object' })
   })
 
   it('aims a seam exit at the open gap in the fence, not at the anchor tile', () => {
