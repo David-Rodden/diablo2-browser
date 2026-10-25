@@ -162,6 +162,16 @@ describe('path guide plan', () => {
     expect(planGuide({ ...host, levelView: () => seam }, 'story')!.target).toEqual({ x: 1026, y: 2034, label: 'Cold Plains' })
   })
 
+  it('picks the gap in a seam that it can actually walk to when the edge has two', () => {
+    const split = new Uint8Array(size * size).fill(1)
+    for (let x = 0; x < size; x++) split[30 * size + x] = 0
+    for (let y = 30; y < size; y++) split[y * size + 20] = 0
+    for (let x = 0; x < size; x++) if (x !== 15 && x !== 35) split[39 * size + x] = 0
+    const seam = { ...view, walkable: split, entrances: [{ x: 2, y: 7, interiorX: 2, interiorY: 6, toLevelId: 3, side: 'south', kind: 'gate', span: { from: 0, to: 8 } }] } as unknown as LevelView
+    const plan = planGuide({ ...host, self: () => ({ x: 1022, y: 2038, isDead: false }), levelView: () => seam }, 'story')!
+    expect(plan.target).toMatchObject({ x: 1035, y: 2039 })
+  })
+
   it('takes the walkable gap at an edge padded with solid ground beyond it', () => {
     const padded = new Uint8Array(size * size).fill(1)
     for (let y = 30; y < size; y++) for (let x = 0; x < size; x++) if (y >= 34 || x < 5 || x > 9) padded[y * size + x] = 0
