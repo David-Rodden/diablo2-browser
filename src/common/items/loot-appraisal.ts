@@ -62,13 +62,18 @@ const BASE_HEADROOM = 6
 
 const IMBUE_TYPES = KNOWLEDGE.imbue.alwaysWorthTypes
 
-const isImbueBase = (item: LootItem, build: CharacterBuild): boolean => {
+const ownClassItem = (ui: UiInventoryItem, build: CharacterBuild) => ui.reqClass !== undefined && ui.reqClass === CHARACTER_CLASS_CODES[build.classIndex]
+
+export const imbueWorth = (item: LootItem, build: CharacterBuild): number => {
   const { getBase, isA } = getEmbeddedDropTables()
   const base = getBase(codeOf(item))
   const type = base?.type ?? ''
+  if (!isEligibleForCharsiImbue113c(item) || weaponFit(type, build) === 'none') return 0
   const upperTier = base?.normcode !== undefined && base.normcode !== base.id
-  return isEligibleForCharsiImbue113c(item) && (IMBUE_TYPES.some((t) => isA(type, t)) || upperTier) && weaponFit(type, build) !== 'none'
+  return ownClassItem(uiOf(item), build) ? 3 : IMBUE_TYPES.some((t) => isA(type, t)) ? 2 : upperTier ? 1 : 0
 }
+
+const isImbueBase = (item: LootItem, build: CharacterBuild): boolean => imbueWorth(item, build) > 0
 
 const codeOf = (item: Pick<LootItem, 'code'>) => item.code.trim().toLowerCase()
 const isRune = (code: string) => RUNE_INFO[code] !== undefined
@@ -218,7 +223,6 @@ function namedAppraisal(item: LootItem, kind: 'unique' | 'set', ctx: AppraisalCo
   return result(tier, kind, score, tier === 'junk' ? 'Outgrown' : `Worth ${Math.round(score)} to your build`)
 }
 
-const ownClassItem = (ui: UiInventoryItem, build: CharacterBuild) => ui.reqClass !== undefined && ui.reqClass === CHARACTER_CLASS_CODES[build.classIndex]
 
 function unknownAffixAppraisal(item: LootItem, kind: 'rare' | 'magic', ctx: AppraisalContext): Appraisal {
   const ui = uiOf(item)
