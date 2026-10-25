@@ -7,6 +7,7 @@ export interface Stage {
   readonly find: readonly Find[]
   readonly unless?: readonly string[]
   readonly bring?: string
+  readonly after?: number
 }
 
 export interface Objective {
@@ -18,7 +19,8 @@ export interface Objective {
 
 const at = (level: number | 'town' | 'tomb', hint: string, ...find: Find[]): Stage => ({ level, hint, find })
 const ORIFICE = 152
-const TO_THE_TOMB: Stage = { ...at('tomb', "Take the Staff to Tal Rasha's Tomb", ORIFICE), bring: 'hst' }
+const THE_SUMMONER = 13
+const TO_THE_TOMB: Stage = { ...at('tomb', "Take the Staff to Tal Rasha's Tomb", ORIFICE), bring: 'hst', after: THE_SUMMONER }
 const talk = (name: string, npc: string, hint = `Talk to ${name}`): Stage => at('town', hint, npc)
 const SEALS: Find = [392, 393, 394, 395, 396]
 const COUNCIL: Find = ['councilmember1', 'councilmember2', 'councilmember3']
