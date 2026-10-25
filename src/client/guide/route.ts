@@ -19,6 +19,8 @@ const FIRST_TOMB = 66
 const TOMB_COUNT = 7
 const DURIELS_LAIR = 73
 const RED_PORTAL = 60
+const DURIELS_PORTAL = 100
+const ORIFICE = 152
 const ROMAN = ['I', 'II', 'III', 'IV', 'V']
 const PORTALS: Readonly<Record<string, { readonly hint: string; readonly find: readonly Find[] }>> = {
   '1>40': { hint: 'Talk to Warriv', find: ['warriv1'] },
@@ -29,7 +31,7 @@ const PORTALS: Readonly<Record<string, { readonly hint: string; readonly find: r
   '54>74': { hint: 'Take the portal in the Palace Cellar', find: [298] },
   '74>46': { hint: "Take the Summoner's portal", find: [60, 357] },
   '46>73': { hint: 'Enter the true tomb', find: [] },
-  ...Object.fromEntries([66, 67, 68, 69, 70, 71, 72].map((tomb) => [`${tomb}>73`, { hint: "Enter Duriel's Lair", find: [100] }])),
+  ...Object.fromEntries([66, 67, 68, 69, 70, 71, 72].map((tomb) => [`${tomb}>73`, { hint: "Enter Duriel's Lair", find: [DURIELS_PORTAL, ORIFICE] }])),
   '109>121': { hint: "Take Anya's red portal", find: [60] },
   '111>125': { hint: 'Take the red portal to Abaddon', find: [60] },
   '112>126': { hint: 'Take the red portal to the Pit of Acheron', find: [60] },
