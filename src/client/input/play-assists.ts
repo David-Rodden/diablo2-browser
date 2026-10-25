@@ -70,6 +70,8 @@ const BLAST_PACK = 2
 const BLAST_GAP_MS = 700
 const BLAST_RANGE = 20
 const GIVE_UP_MS = 15_000
+const DEAD_ZONE = 6
+const DEAD_ZONE_MS = 60_000
 const IGNORE_MS = 30_000
 const DODGE_GAP_MS = 400
 const BOLT_DODGE_LIFE = 0.5
@@ -138,6 +140,7 @@ export class PlayAssists {
   private pilotFights = false
   questPickup = false
   standDown = false
+  private deadZones: readonly { readonly x: number; readonly y: number; readonly until: number }[] = []
   holdLoot = false
   journal: ((kind: string, detail: Readonly<Record<string, unknown>>) => void) | null = null
   pilot: Pilot | null = null
@@ -719,7 +722,9 @@ export class PlayAssists {
   private resolveTarget(nowMs: number): ClientUnit | null {
     this.host.centerCameraOnSelf()
     const current = this.targetId === null ? undefined : this.host.world.getUnit('monster', this.targetId)
-    const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs && !this.isHopeless(unit)
+    this.deadZones = this.deadZones.filter((zone) => zone.until > nowMs)
+    const inDeadZone = (unit: ClientUnit) => this.deadZones.some((zone) => Math.hypot(unit.x - zone.x, unit.y - zone.y) <= DEAD_ZONE)
+    const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs && !this.isHopeless(unit) && !inDeadZone(unit)
     const distance = this.host.distanceFromSelf()
     const visible = this.visibleHostilesByDistance()
     const candidates = [...new Set([...visible.slice(0, TARGET_CANDIDATES), ...visible.filter(isPriorityTarget)])]
@@ -740,6 +745,8 @@ export class PlayAssists {
     }
     if (nowMs - fight.since < GIVE_UP_MS) return true
     this.givenUp.set(target.id, nowMs + IGNORE_MS)
+    this.deadZones = [...this.deadZones, { x: target.x, y: target.y, until: nowMs + DEAD_ZONE_MS }]
+    this.journal?.('give-up', { classId: target.classId, spot: [Math.round(target.x), Math.round(target.y)] })
     this.targetId = null
     this.fight = null
     return false

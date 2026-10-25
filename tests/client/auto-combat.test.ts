@@ -90,6 +90,18 @@ describe('auto-fight toggle', () => {
     expect(s.attacked().at(-1)).toBe(902)
   })
 
+  it('after giving up on a monster it cannot hurt, leaves the ones huddled with it alone for a while too', () => {
+    const s = createSetup()
+    s.spawn(901, 19, 104, 100)
+    s.spawn(902, 19, 105, 101)
+    s.spawn(903, 19, 96, 108)
+    s.mapper.handleKeyDown({ key: 'E' })
+    s.fightFor(1000, 17_500)
+    const after = s.attacked().length
+    s.fightFor(17_600, 19_000)
+    expect(new Set(s.attacked().slice(after))).toEqual(new Set([903]))
+  })
+
   it('goes for a shaman that raises the dead before the fallen around it', () => {
     const s = createSetup()
     s.spawn(901, 19, 102, 100)

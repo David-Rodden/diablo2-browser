@@ -677,7 +677,7 @@ describe('autopilot', () => {
     expect(run(12)).toMatchObject({ status: 'Taking a beating, heading to town', portal: 1 })
   })
 
-  it('asks for help when three minutes of fighting have earned nothing, even with town trips in between', () => {
+  it('moves on when three minutes of fighting earn nothing, even with town trips in between, and asks for help if it happens again', () => {
     const { pilot, world, assists, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     Object.assign(world.self, { experience: 500 })
     Object.assign(assists, { fighting: true, autoCombatKey: 'E' })
@@ -688,6 +688,8 @@ describe('autopilot', () => {
     tick(1000)
     world.areaId = BLOOD_MOOR
     for (let i = 0; i < 90; i++) tick(1000)
+    expect(pilot.active).toBe(true)
+    for (let i = 0; i < 200; i++) tick(1000)
     expect(pilot.active).toBe(false)
   })
 

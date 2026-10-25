@@ -72,6 +72,7 @@ const ARRIVED = 8
 const FIGHT_ROAM = 20
 const FUTILE_FIGHT_MS = 120_000
 const HARMLESS_MS = 180_000
+const HARMLESS_BREAK_MS = 90_000
 const TICK_GAP_MS = 1000
 const DISENGAGE_MS = 25_000
 const SPOT_NEAR = 20
@@ -182,6 +183,7 @@ const BELT_ROWS = 4
 const SHOP_GOLD = 6000
 const BARE_SHOP_GOLD = 300
 const BARE_RESERVE = 150
+const RESERVE_PER_LEVEL = 25
 const PURSE_LOW = 3000
 const PURSE_GOLD = 10_000
 const POTION_SHARE = 4
@@ -269,7 +271,7 @@ export class Autopilot {
   private reading: Readonly<Record<string, number | null>> = {}
   private fightWatch: { readonly x: number; readonly y: number; readonly since: number } | null = null
   private disengagedUntil = Number.NEGATIVE_INFINITY
-  private harm: { readonly xp: number; at: number; fought: number } | null = null
+  private harm: { readonly xp: number; at: number; fought: number; warned: boolean } | null = null
   lastStop: { readonly title: string; readonly detail: string } | null = null
   private lastSpot: { readonly level: number; readonly x: number; readonly y: number } | null = null
   private kiteSince: number | null = null
@@ -991,14 +993,20 @@ export class Autopilot {
     const xp = world.self.experience
     const harm = this.harm
     if (!harm || xp > harm.xp) {
-      this.harm = { xp, at: nowMs, fought: 0 }
+      this.harm = { xp, at: nowMs, fought: 0, warned: false }
       return false
     }
     const foes = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, world.self) <= HUNT_RADIUS)
     if (!this.town() && assists.isFighting(nowMs) && foes.length > 0 && !foes.some((unit) => BOSS_CLASSES.has(unit.classId))) harm.fought += Math.min(TICK_GAP_MS, nowMs - harm.at)
     harm.at = nowMs
     if (harm.fought < HARMLESS_MS) return false
-    assists.journal?.('harmless', { fought: Math.round(harm.fought / 1000), weapon: this.wielded()?.code.trim() ?? null, gold: world.self.gold })
+    assists.journal?.('harmless', { fought: Math.round(harm.fought / 1000), weapon: this.wielded()?.code.trim() ?? null, gold: world.self.gold, warned: harm.warned })
+    if (!harm.warned) {
+      Object.assign(harm, { fought: 0, warned: true })
+      this.disengagedUntil = nowMs + HARMLESS_BREAK_MS
+      this.toast('Not hurting anything here', 'Moving on for a while', 'gold')
+      return false
+    }
     this.harm = null
     this.stop('Autopilot needs you', 'red', "It isn't hurting anything: check its weapon")
     return true
@@ -1712,7 +1720,7 @@ export class Autopilot {
   private async buyUpgrade(bought = 1): Promise<void> {
     const { world, hudManager, hudModel, assists } = this.host
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || world.npcInteraction.npcId === null) return
-    const budget = world.self.gold - (this.bare() > 0 ? BARE_RESERVE : SPARE_GOLD)
+    const budget = world.self.gold - (this.bare() > 0 ? Math.max(BARE_RESERVE, world.self.level * RESERVE_PER_LEVEL) : SPARE_GOLD)
     const price = this.priceList()
     const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
     const pick = this.store()
