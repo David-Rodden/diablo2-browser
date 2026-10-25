@@ -434,6 +434,15 @@ describe('autopilot', () => {
     expect([fight(19), fight(211)]).toEqual([false, true])
   })
 
+  it("will not step into Duriel's Lair without a Town Portal to get back out", () => {
+    const { assists, guide, units, tick } = setup({ goal: { level: 73, title: 'The Seven Tombs' }, hint: "Enter Duriel's Lair", step: { kind: 'portal', level: 73, hint: "Enter Duriel's Lair", find: [100] }, target: { x: 130, y: 100, label: 'Portal' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 160, y: 100 }))
+    assists.hasTownPortal = () => false
+    tick()
+    expect(guide.pilotStatus).toContain('no way out without a Town Portal')
+  })
+
   it('calls off a retreat once life is back and the belt has potions', () => {
     const { world, assists, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.self.life = 15

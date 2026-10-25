@@ -594,7 +594,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.wounded()) this.say('Waiting to heal before heading out')
-    else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
+    else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(town === null && this.portalFirst(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
   private refreshQuests(nowMs: number): void {
@@ -1370,6 +1370,13 @@ export class Autopilot {
     else if (stat !== null) hudModel.allocateStat(stat)
     else return
     this.lastSpend = nowMs
+  }
+
+  private portalFirst(nowMs: number): boolean {
+    const step = this.host.guide.currentPlan?.step
+    if (step?.kind !== 'portal' || !LAIRS.noExit.includes(step.level) || this.host.assists.hasTownPortal()) return false
+    this.retreat(`${PREP} ${levelName(step.level)}: no way out without a Town Portal`, nowMs)
+    return true
   }
 
   private portalErrand(nowMs: number): boolean {

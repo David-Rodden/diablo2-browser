@@ -13,6 +13,7 @@
   },
   "range": 70,
   "lingerMs": 600000,
+  "noExit": [73],
   "bosses": ["andariel", "duriel", "mephisto", "diablo", "baalcrab"],
   "doomMarginMs": 2500,
   "retreatLife": 0.45
