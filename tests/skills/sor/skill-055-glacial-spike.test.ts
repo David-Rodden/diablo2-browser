@@ -250,7 +250,7 @@ describe('[Skill #055] Glacial Spike (SOR) — 1.13c 7-Dimensional Verification 
 
       // Target 1: direct hit at (20, 0)
       const monStats1 = new UnitStatList()
-      monStats1.addStat('hp', 500 * 256)
+      monStats1.addStat('hitpoints', 500 * 256)
       const monCtx1 = {
         id: 'direct_zombie',
         statList: monStats1,
@@ -259,7 +259,7 @@ describe('[Skill #055] Glacial Spike (SOR) — 1.13c 7-Dimensional Verification 
 
       // Target 2: nearby monster at (35, 20) -> distance = hypot(15, 20) = 25 px <= 64 px
       const monStats2 = new UnitStatList()
-      monStats2.addStat('hp', 500 * 256)
+      monStats2.addStat('hitpoints', 500 * 256)
       const monCtx2 = {
         id: 'splash_zombie',
         statList: monStats2,
@@ -268,7 +268,7 @@ describe('[Skill #055] Glacial Spike (SOR) — 1.13c 7-Dimensional Verification 
 
       // Target 3: far monster at (200, 0) -> distance = 180 px > 64 px
       const monStats3 = new UnitStatList()
-      monStats3.addStat('hp', 500 * 256)
+      monStats3.addStat('hitpoints', 500 * 256)
       const monCtx3 = {
         id: 'far_zombie',
         statList: monStats3,
@@ -327,7 +327,7 @@ describe('[Skill #055] Glacial Spike (SOR) — 1.13c 7-Dimensional Verification 
 
       // Monster standing next to the wall at (25, 10)
       const monStats = new UnitStatList()
-      monStats.addStat('hp', 500 * 256)
+      monStats.addStat('hitpoints', 500 * 256)
       const monCtx = {
         id: 'near_wall_zombie',
         statList: monStats,

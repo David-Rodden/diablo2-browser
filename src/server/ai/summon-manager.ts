@@ -12,9 +12,8 @@
  *   and `Revive` (`95`).
  * - Execution of all 17 summoned pet & trap AI sub-skills (`IDs 281..338`).
  */
-import { PET_SUB_SKILL_IDS, type D2DataRegistry, type SkillRecord } from '../../common/data/data-registry.ts'
+import type { D2DataRegistry } from '../../common/data/data-registry.ts'
 import { evaluateCalc } from '../../common/data/calc-ast.ts'
-import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { MONSTATS2FLAG_REVIVE, getMonsterPathRecord } from '../../common/path/units.ts'
 import { getCanonicalMonsterKinds, getMonsterKindByHcIdx } from '../../common/units/monsters-data.ts'
 import { FIXED_ONE, UnitStatList } from '../engine/stat-list.ts'
@@ -54,6 +53,7 @@ import {
   calculatePenetrateStats,
   type ValkyrieEquipmentTier,
 } from '../../common/skills/amazon-passive.ts'
+import type { MonsterEquippedItem113c } from '../../common/data/mon-equip-113c.ts'
 import {
   calculateRavenStats,
   calculatePoisonCreeperStats,
@@ -154,6 +154,7 @@ export interface SummonedPetUnit {
   ironGolemItem?: IronGolemItemProps | undefined
   isStationary?: boolean | undefined
   equipmentTier?: ValkyrieEquipmentTier | undefined
+  valkyrieEquipment?: readonly MonsterEquippedItem113c[] | undefined
   shadowEquipment?: ShadowEquipmentLoadout | undefined
   shadowSkills?: ReadonlyMap<number, number> | undefined
   targetId?: string | number | undefined
@@ -167,41 +168,6 @@ export interface CreatePetOutcome {
   readonly activeCountForType: number
 }
 
-const FALLBACK_SUMMON_SKILL_META: Readonly<
-  Record<number, { readonly name: string; readonly petType: string; readonly summon: string; readonly petMax: string }>
-> = {
-  28: { name: 'Dopplezon', petType: 'dopplezon', summon: 'dopplezon', petMax: '1' },
-  32: { name: 'Valkyrie', petType: 'valkyrie', summon: 'valkyrie', petMax: '1' },
-  62: { name: 'Hydra', petType: 'hydra', summon: 'hydra1', petMax: '' },
-  70: { name: 'Raise Skeleton', petType: 'skeleton', summon: 'necromancerskeleton', petMax: '(lvl < 4) ? lvl : ((lvl / 3) + 2)' },
-  75: { name: 'Clay Golem', petType: 'golem', summon: 'claygolem', petMax: '1' },
-  78: { name: 'Bone Wall', petType: 'bonewall', summon: 'bonewall', petMax: '' },
-  80: { name: 'Raise Skeletal Mage', petType: 'skeletonmage', summon: 'necromage', petMax: '(lvl < 4) ? lvl : ((lvl / 3) + 2)' },
-  85: { name: 'BloodGolem', petType: 'golem', summon: 'bloodgolem', petMax: '1' },
-  88: { name: 'Bone Prison', petType: 'bonewall', summon: 'bonewall', petMax: '' },
-  90: { name: 'IronGolem', petType: 'golem', summon: 'irongolem', petMax: '1' },
-  94: { name: 'FireGolem', petType: 'golem', summon: 'firegolem', petMax: '1' },
-  95: { name: 'Revive', petType: 'revive', summon: '', petMax: 'lvl' },
-  221: { name: 'Raven', petType: 'raven', summon: 'druidhawk', petMax: 'min(lvl, 5)' },
-  222: { name: 'Plague Poppy', petType: 'vine', summon: 'plaguepoppy', petMax: '1' },
-  226: { name: 'Oak Sage', petType: 'spirit', summon: 'oaksage', petMax: '1' },
-  227: { name: 'Summon Spirit Wolf', petType: 'fenris', summon: 'spiritwolf', petMax: 'min(lvl, 5)' },
-  231: { name: 'Cycle of Life', petType: 'vine', summon: 'cycleoflife', petMax: '1' },
-  236: { name: 'Heart of Wolverine', petType: 'spirit', summon: 'heartofwolverine', petMax: '1' },
-  237: { name: 'Summon Fenris', petType: 'fenris', summon: 'fenris', petMax: 'min(lvl, 3)' },
-  241: { name: 'Vines', petType: 'vine', summon: 'vines', petMax: '1' },
-  246: { name: 'Spirit of Barbs', petType: 'spirit', summon: 'spiritofbarbs', petMax: '1' },
-  247: { name: 'Summon Grizzly', petType: 'grizzly', summon: 'druidbear', petMax: '1' },
-  257: { name: 'Blade Sentinel', petType: 'bladesentinel', summon: 'bladesentinel', petMax: '' },
-  261: { name: 'Charged Bolt Sentry', petType: 'assassintrap', summon: 'Wake Of Destruction', petMax: '5' },
-  262: { name: 'Wake of Fire Sentry', petType: 'assassintrap', summon: 'Charts', petMax: '5' },
-  268: { name: 'Shadow Warrior', petType: 'shadowwarrior', summon: 'shadowwarrior', petMax: '1' },
-  271: { name: 'Lightning Sentry', petType: 'assassintrap', summon: 'Lightning Sentry', petMax: '5' },
-  272: { name: 'Inferno Sentry', petType: 'assassintrap', summon: 'Inferno Sentry', petMax: '5' },
-  276: { name: 'Death Sentry', petType: 'assassintrap', summon: 'Death Sentry', petMax: '5' },
-  279: { name: 'Shadow Master', petType: 'shadowwarrior', summon: 'shadowmaster', petMax: '1' },
-}
-
 export class SummonManager {
   readonly registry: D2DataRegistry
   private readonly pets: SummonedPetUnit[] = []
@@ -210,188 +176,6 @@ export class SummonManager {
 
   constructor(registry: D2DataRegistry) {
     this.registry = registry
-  }
-
-  private resolveSkillRecordFallback(skillId: number): SkillRecord | undefined {
-    const regSkill = this.registry?.getSkillById(skillId)
-    if (regSkill) return regSkill
-    const cat = SKILLS_BY_ID[skillId]
-    const meta = FALLBACK_SUMMON_SKILL_META[skillId]
-    const isSubSkill = (PET_SUB_SKILL_IDS as readonly number[]).includes(skillId)
-    if (!cat && !meta && !isSubSkill) return undefined
-    const name = meta?.name ?? cat?.name ?? `Skill_${skillId}`
-    return {
-      id: skillId,
-      name,
-      skill: name,
-      charClass: cat?.classCode ?? '',
-      skillDesc: '',
-      srvStFunc: 0,
-      srvDoFunc: 0,
-      srvPrgFunc1: 0,
-      srvPrgFunc2: 0,
-      srvPrgFunc3: 0,
-      prgCalc1: '',
-      prgCalc2: '',
-      prgCalc3: '',
-      prgDam: 0,
-      srvMissile: '',
-      srvMissileA: '',
-      srvMissileB: '',
-      srvMissileC: '',
-      cltStFunc: 0,
-      cltDoFunc: 0,
-      cltMissile: '',
-      cltMissileA: '',
-      cltMissileB: '',
-      cltMissileC: '',
-      cltMissileD: '',
-      passive: false,
-      passiveState: '',
-      passiveStat1: '',
-      passiveCalc1: '',
-      passiveStat2: '',
-      passiveCalc2: '',
-      passiveStat3: '',
-      passiveCalc3: '',
-      passiveStat4: '',
-      passiveCalc4: '',
-      passiveStat5: '',
-      passiveCalc5: '',
-      aura: false,
-      auraFilter: 0,
-      auraState: '',
-      auraTgtState: '',
-      auraLenCalc: cat?.auraLenCalc ?? '',
-      auraRangeCalc: '',
-      auraStat1: '',
-      auraStatCalc1: '',
-      auraStat2: '',
-      auraStatCalc2: '',
-      auraStat3: '',
-      auraStatCalc3: '',
-      auraStat4: '',
-      auraStatCalc4: '',
-      auraStat5: '',
-      auraStatCalc5: '',
-      auraStat6: '',
-      auraStatCalc6: '',
-      auraEvent1: '',
-      auraEventFunc1: 0,
-      auraEvent2: '',
-      auraEventFunc2: 0,
-      auraEvent3: '',
-      auraEventFunc3: 0,
-      summon: meta?.summon ?? '',
-      petType: meta?.petType ?? '',
-      petMax: meta?.petMax ?? '',
-      sumMode: '',
-      sumSkill1: '',
-      sumSk1Calc: '',
-      sumSkill2: '',
-      sumSk2Calc: '',
-      sumSkill3: '',
-      sumSk3Calc: '',
-      sumSkill4: '',
-      sumSk4Calc: '',
-      sumSkill5: '',
-      sumSk5Calc: '',
-      sumUMod: 0,
-      sumOverlay: '',
-      anim: '',
-      seqTrans: '',
-      monAnim: '',
-      seqNum: 0,
-      seqInput: 0,
-      range: '',
-      selectProc: 0,
-      reqLevel: cat?.reqlevel ?? 1,
-      reqStr: 0,
-      reqDex: 0,
-      reqInt: 0,
-      reqVit: 0,
-      reqSkill1: cat?.reqskills?.[0] !== undefined ? String(cat.reqskills[0]) : '',
-      reqSkill2: cat?.reqskills?.[1] !== undefined ? String(cat.reqskills[1]) : '',
-      reqSkill3: cat?.reqskills?.[2] !== undefined ? String(cat.reqskills[2]) : '',
-      restrict: 0,
-      state1: '',
-      state2: '',
-      state3: '',
-      delay: String(cat?.delay ?? 0),
-      checkFunc: 0,
-      nocostinstate: false,
-      decquant: false,
-      manaShift: cat?.manashift ?? 8,
-      mana: cat?.mana ?? 0,
-      lvlMana: cat?.lvlmana ?? 0,
-      minMana: cat?.minmana ?? 0,
-      interrupt: true,
-      inTown: true,
-      periodic: false,
-      perDelay: '',
-      finishing: false,
-      progressive: false,
-      calc1: '',
-      calc2: '',
-      calc3: '',
-      calc4: '',
-      param1: cat?.params?.par1 ?? 0,
-      param2: cat?.params?.par2 ?? 0,
-      param3: cat?.params?.par3 ?? 0,
-      param4: cat?.params?.par4 ?? 0,
-      param5: cat?.params?.par5 ?? 0,
-      param6: cat?.params?.par6 ?? 0,
-      param7: cat?.params?.par7 ?? 0,
-      param8: cat?.params?.par8 ?? 0,
-      toHit: cat?.toHit ?? 0,
-      toHitLev: cat?.toHitLev ?? 0,
-      toHitCalc: cat?.toHitCalc ?? '',
-      resultFlags: 0,
-      hitFlags: 0,
-      hitClass: 0,
-      kick: false,
-      hitShift: cat?.hitshift ?? 8,
-      srcDam: cat?.srcDamage ?? 0,
-      minDam: cat?.minDam ?? 0,
-      minLevDam1: cat?.minLevDam?.[0] ?? 0,
-      minLevDam2: cat?.minLevDam?.[1] ?? 0,
-      minLevDam3: cat?.minLevDam?.[2] ?? 0,
-      minLevDam4: cat?.minLevDam?.[3] ?? 0,
-      minLevDam5: cat?.minLevDam?.[4] ?? 0,
-      maxDam: cat?.maxDam ?? 0,
-      maxLevDam1: cat?.maxLevDam?.[0] ?? 0,
-      maxLevDam2: cat?.maxLevDam?.[1] ?? 0,
-      maxLevDam3: cat?.maxLevDam?.[2] ?? 0,
-      maxLevDam4: cat?.maxLevDam?.[3] ?? 0,
-      maxLevDam5: cat?.maxLevDam?.[4] ?? 0,
-      dmgSymPerCalc: cat?.synergyFormulas?.physical ?? '',
-      eType: cat?.eType ?? '',
-      eMin: cat?.eMin ?? 0,
-      eMinLev1: cat?.eMinLev?.[0] ?? 0,
-      eMinLev2: cat?.eMinLev?.[1] ?? 0,
-      eMinLev3: cat?.eMinLev?.[2] ?? 0,
-      eMinLev4: cat?.eMinLev?.[3] ?? 0,
-      eMinLev5: cat?.eMinLev?.[4] ?? 0,
-      eMax: cat?.eMax ?? 0,
-      eMaxLev1: cat?.eMaxLev?.[0] ?? 0,
-      eMaxLev2: cat?.eMaxLev?.[1] ?? 0,
-      eMaxLev3: cat?.eMaxLev?.[2] ?? 0,
-      eMaxLev4: cat?.eMaxLev?.[3] ?? 0,
-      eMaxLev5: cat?.eMaxLev?.[4] ?? 0,
-      eDmgSymPerCalc: cat?.synergyFormulas?.elemental ?? '',
-      eLen: cat?.eLen ?? 0,
-      eLevLen1: cat?.eLevLen?.[0] ?? 0,
-      eLevLen2: cat?.eLevLen?.[1] ?? 0,
-      eLevLen3: cat?.eLevLen?.[2] ?? 0,
-      eLenSymPerCalc: cat?.synergyFormulas?.duration ?? '',
-      aiType: 0,
-      aiBonus: 0,
-      castOverlay: '',
-      cltOverlayA: '',
-      cltOverlayB: '',
-      prgOverlay: '',
-      raw: {},
-    }
   }
 
   private resolveMonStatsFallback(
@@ -477,7 +261,12 @@ export class SummonManager {
     ironGolemItem?: IronGolemItemProps | undefined
     groundItems?: (IronGolemItemProps & { id: string; consumed?: boolean | undefined })[] | undefined
   }): CreatePetOutcome {
-    const skill = this.resolveSkillRecordFallback(params.skillId)
+    if (!this.registry || this.registry.skillsById.size === 0 || this.registry.petTypesByName.size === 0) {
+      throw new Error(
+        'SummonManager.createPet requires a loaded D2DataRegistry with Skills.txt and PetType.txt records',
+      )
+    }
+    const skill = this.registry.getSkillById(params.skillId)
     if (!skill) {
       return { created: false, reason: 'invalid_skill', evictedPetUids: [], activeCountForType: 0 }
     }
@@ -541,34 +330,16 @@ export class SummonManager {
       consumedCorpse = availCorpse
     }
 
-    const petTypeName = (
-      params.skillId === 257
-        ? 'bladesentinel'
-        : skill.petType ||
-          (params.skillId === 261 || params.skillId === 262 || params.skillId === 271 || params.skillId === 272 || params.skillId === 276
-            ? 'assassintrap'
-            : params.skillId === 62
-              ? 'hydra'
-              : params.skillId === 78 || params.skillId === 88
-                ? 'bonewall'
-                : 'summon')
-    ).toLowerCase()
-
-    const petTypeRec = this.registry?.getPetType(petTypeName)
-    const isGolemSkill = [75, 85, 90, 94].includes(params.skillId)
-    const petGroup =
-      isGolemSkill
-        ? 3 // Golem Group 3 exclusivity
-        : (petTypeRec?.group ??
-          ([226, 236, 246].includes(params.skillId)
-            ? 1 // Druid Oak Sage / Wolverine / Barbs totem group
-            : [222, 231, 241].includes(params.skillId)
-              ? 2 // Druid Vine group
-              : [227, 237, 247].includes(params.skillId)
-                ? 3 // Druid Spirit Wolf / Dire Wolf / Grizzly group
-                : [268, 279].includes(params.skillId)
-                  ? 4 // Assassin Shadow Warrior / Master group
-                  : 0))
+    // 1.13c D2GAME_CreateSummon_6FCBDDC0 & SKILLS_SrvDo044/045 -> 0x6FCB5D50:
+    // Derive petTypeName and petGroup directly from Skills.txt (pettype) and PetType.txt (group).
+    const petTypeName = (skill.petType || 'none').trim().toLowerCase()
+    const petTypeRec = this.registry.getPetType(petTypeName)
+    if (!petTypeRec) {
+      throw new Error(
+        `SummonManager.createPet: unknown PetType "${petTypeName}" for skill #${params.skillId} (${skill.name})`,
+      )
+    }
+    const petGroup = petTypeRec.group
 
     const evictedPetUids: string[] = []
 
@@ -582,18 +353,13 @@ export class SummonManager {
       }
     }
 
-    // 1. Evict any existing pets in the same `petGroup` (`group > 0`) that have a different `petType`
-    // (e.g. summoning Grizzly evicts Spirit Wolves / Dire Wolves; summoning Shadow Master evicts Shadow Warrior)
-    // For Golems (Group 3): Any new Golem evicts any existing Golem!
+    // 1. Evict any existing pets in the same `petGroup` (`PetType.txt` `group > 0`) that have a different `petType`
+    // (In 1.13c PetType.txt, only spiritwolf idx=11, fenris idx=12, and grizzly idx=15 have group=1;
+    // Golems, Totems, Vines, and Shadows each share a single petType with petmax=1 and group=0).
     if (petGroup > 0) {
       for (let i = this.pets.length - 1; i >= 0; i -= 1) {
         const p = this.pets[i]!
-        const pIsGolem = [75, 85, 90, 94].includes(p.sourceSkillId)
-        if (
-          p.petGroup === petGroup &&
-          pIsGolem === isGolemSkill &&
-          (p.petType !== petTypeName || isGolemSkill)
-        ) {
+        if (p.petGroup === petGroup && p.petType !== petTypeName) {
           this.clearTotemAurasForPet(p, params.owner)
           evictedPetUids.push(p.uid)
           this.pets.splice(i, 1)
@@ -601,7 +367,7 @@ export class SummonManager {
       }
     }
 
-    // 2. Determine max cap (`petmax` calc from `Skills.txt`, or `PetType.txt` `basemax`, or `5` for Assassin traps)
+    // 2. Determine max cap (`petmax` calc from `Skills.txt`, or `PetType.txt` `basemax`)
     const calcCtx = {
       registry: this.registry,
       activeSkill: skill,
@@ -611,34 +377,28 @@ export class SummonManager {
       getEffectiveSkillLevel: (id: number) => params.owner.statList.getEffectiveSkillLevel(id),
     }
 
-    let maxPets = 1
-    if (petTypeName === 'assassintrap') {
-      maxPets = 5 // 1.13c Assassin trap cap = 5 active traps
-    } else if (petTypeName === 'bladesentinel' || params.skillId === 257) {
+    let maxPets: number
+    if (petTypeName === 'none') {
       maxPets = Number.POSITIVE_INFINITY
-    } else if (petTypeName === 'bonewall' || params.skillId === 78 || params.skillId === 88) {
-      maxPets = Number.POSITIVE_INFINITY // 1.13c Bone Wall & Bone Prison spawn bonewall (#344) monsters with no summon cap
-    } else if (isGolemSkill) {
-      maxPets = 1 // Golems: exactly 1 active golem
-    } else if (params.skillId === 70 || params.skillId === 80) {
-      maxPets = params.slvl < 4 ? params.slvl : 2 + Math.floor(params.slvl / 3)
-    } else if (params.skillId === 95) {
-      maxPets = Math.max(1, params.slvl)
     } else if (skill.petMax) {
       maxPets = Math.max(1, evaluateCalc(skill.petMax, calcCtx))
-    } else if (petTypeRec && petTypeRec.baseMax > 0) {
+    } else if (petTypeRec.baseMax > 0) {
       maxPets = petTypeRec.baseMax
+    } else {
+      maxPets = Number.POSITIVE_INFINITY
     }
 
-    // 3. Enforce FIFO eviction when `activeCount >= maxPets`
-    const existingOfType = this.pets.filter(p => p.petType === petTypeName)
-    while (existingOfType.length >= maxPets) {
-      const oldest = existingOfType.shift()!
-      const idx = this.pets.findIndex(p => p.uid === oldest.uid)
-      if (idx !== -1) {
-        this.clearTotemAurasForPet(oldest, params.owner)
-        evictedPetUids.push(oldest.uid)
-        this.pets.splice(idx, 1)
+    // 3. Enforce FIFO eviction when `activeCount >= maxPets` (skip uncounted `petType === 'none'`)
+    if (petTypeName !== 'none' && Number.isFinite(maxPets)) {
+      const existingOfType = this.pets.filter(p => p.petType === petTypeName)
+      while (existingOfType.length >= maxPets) {
+        const oldest = existingOfType.shift()!
+        const idx = this.pets.findIndex(p => p.uid === oldest.uid)
+        if (idx !== -1) {
+          this.clearTotemAurasForPet(oldest, params.owner)
+          evictedPetUids.push(oldest.uid)
+          this.pets.splice(idx, 1)
+        }
       }
     }
 
@@ -853,6 +613,7 @@ export class SummonManager {
     let valkStats: ReturnType<typeof calculateValkyrieStats> | undefined
     let isStationary = false
     let equipmentTier: ValkyrieEquipmentTier | undefined
+    let valkyrieEquipment: readonly MonsterEquippedItem113c[] | undefined
 
     if (params.skillId === 78) {
       kind = 'bonewall'
@@ -919,6 +680,7 @@ export class SummonManager {
       baseHp = valkStats.finalHp
       valkRes = valkStats.allResistancesPct
       equipmentTier = valkStats.equipmentTier
+      valkyrieEquipment = valkStats.equipment
     }
 
     const ownerLevel = params.owner.statList.getAccruedStat('level')
@@ -1118,24 +880,46 @@ export class SummonManager {
       ...(golemFireMinDam ? { firemindam: golemFireMinDam, firemaxdam: golemFireMaxDam } : {}),
       ...(golemFade ? { fade: golemFade } : {}),
       ...(druidPetArPct ? { item_tohit_percent: druidPetArPct } : {}),
-      ...(druidPetDefPct ? { item_armor_percent: druidPetDefPct } : {}),
+      ...(druidPetDefPct ? { item_armor_percent: druidPetDefPct, skill_armor_percent: druidPetDefPct } : {}),
       ...(druidPetDmgPct ? { damagepercent: druidPetDmgPct } : {}),
       ...(params.skillId === 32 && valkStats ? {
         strength: valkStats.strength,
         dexterity: valkStats.dexterity,
         item_armor_percent: valkStats.defenseBonusPct,
+        skill_armor_percent: valkStats.defenseBonusPct,
         tohit: valkStats.attackRatingBonus,
         passive_critical_strike: valkStats.inheritedCriticalStrikeLvl > 0 ? calculateCriticalStrikeStats(valkStats.inheritedCriticalStrikeLvl).chancePct : 0,
         passive_dodge: valkStats.inheritedDodgeLvl > 0 ? calculateDodgeStats(valkStats.inheritedDodgeLvl).chancePct : 0,
         passive_avoid: valkStats.inheritedAvoidLvl > 0 ? calculateAvoidStats(valkStats.inheritedAvoidLvl).chancePct : 0,
         passive_evade: valkStats.inheritedEvadeLvl > 0 ? calculateEvadeStats(valkStats.inheritedEvadeLvl).chancePct : 0,
       } : {}),
-      ...(slowPct ? { clay_golem_slow: slowPct } : {}),
+      ...(slowPct ? { item_slow: slowPct } : {}),
       ...(thornsReturnPct ? { thorns_percent: thornsReturnPct } : {}),
-      ...(fireAbsorbPct ? { fire_golem_absorb: fireAbsorbPct, item_absorbfire_percent: fireAbsorbPct } : {}),
-      ...(bloodGolemDamageShare ? { blood_golem_damage_share: bloodGolemDamageShare } : {}),
+      ...(fireAbsorbPct ? { item_absorbfire_percent: fireAbsorbPct } : {}),
     })
     const petStateBus = new StateBus(petStatList, this.registry)
+
+    if (params.skillId === 75 && slowPct) {
+      petStateBus.applyState({
+        stateNameOrId: 'claygolem',
+        slvl: params.slvl,
+        durationFrames: 999999,
+        stats: { item_slow: slowPct },
+      })
+    } else if (params.skillId === 85 && bloodGolemDamageShare) {
+      petStateBus.applyState({
+        stateNameOrId: 'bloodgolem',
+        slvl: params.slvl,
+        durationFrames: 999999,
+      })
+    } else if (params.skillId === 94 && fireAbsorbPct) {
+      petStateBus.applyState({
+        stateNameOrId: 'firegolem',
+        slvl: params.slvl,
+        durationFrames: 999999,
+        stats: { item_absorbfire_percent: fireAbsorbPct },
+      })
+    }
 
     // 1.13c SKILLS_SrvDo058_Revive (0x6FC71340): apply Skills.txt state1 = 'revive' (States.txt row #96)
     if (params.skillId === 95) {
@@ -1225,12 +1009,7 @@ export class SummonManager {
       petGroup,
       sourceSkillId: params.skillId,
       slvl: params.slvl,
-      unsummonable:
-        params.skillId === 78 || params.skillId === 88 || petTypeName === 'bonewall'
-          ? false
-          : petTypeRec
-            ? Boolean(petTypeRec.unsummon)
-            : petTypeName !== 'raven' && params.skillId !== 221,
+      unsummonable: Boolean(petTypeRec.unsummon),
       subSkillIds,
       statList: petStatList,
       stateBus: petStateBus,
@@ -1265,6 +1044,7 @@ export class SummonManager {
       ironGolemItem: resolvedIronGolemItem,
       isStationary,
       ...(equipmentTier ? { equipmentTier } : {}),
+      ...(valkyrieEquipment ? { valkyrieEquipment } : {}),
       ...(shadowEquipment ? { shadowEquipment } : {}),
       ...(shadowSkills.size > 0 ? { shadowSkills } : {}),
     }
@@ -1458,40 +1238,45 @@ export class SummonManager {
         }
       }
 
-      const isStationary =
-        Boolean(pet.isStationary) ||
-        stationaryKinds.has(pet.kind ?? '') ||
-        pet.petType === 'assassintrap' ||
-        pet.petType === 'hydra' ||
-        pet.petType === 'totem' ||
-        pet.petType === 'vine'
+      const aiProfile = resolvePetAiProfile113c(pet, this.pets.length)
+      const isStationary = aiProfile.isStationary
+      const teleportPx = aiProfile.teleportSubtiles * SUBTILE_PIXELS_113C
+      const leashRunPx = aiProfile.leashRunSubtiles * SUBTILE_PIXELS_113C
+      const followWalkPx = aiProfile.followWalkSubtiles * SUBTILE_PIXELS_113C
+      const aggroPx = aiProfile.aggroSubtiles * SUBTILE_PIXELS_113C
+      const meleeReachPx = aiProfile.meleeReachSubtiles * SUBTILE_PIXELS_113C
 
       let leashTeleported = false
-      if (!isStationary && params.owner.x !== undefined && params.owner.y !== undefined) {
+      if (!isStationary && teleportPx > 0 && params.owner.x !== undefined && params.owner.y !== undefined) {
         const ownerDx = params.owner.x - pet.x
         const ownerDy = params.owner.y - pet.y
         const ownerDist = Math.hypot(ownerDx, ownerDy)
-        if (ownerDist > 480) {
+        if (ownerDist > teleportPx) {
           pet.x = params.owner.x
           pet.y = params.owner.y
           leashTeleported = true
-        } else if (targetableEnemies.length === 0 && ownerDist > 96) {
-          const step = Math.min(8, ownerDist - 64)
+        } else if (targetableEnemies.length === 0 && followWalkPx > 0 && ownerDist > followWalkPx) {
+          const moveVel = ownerDist > leashRunPx ? aiProfile.runVelocity : aiProfile.velocity
+          const speedPxPerTick = (moveVel * SUBTILE_PIXELS_113C) / 25
+          const step = Math.min(speedPxPerTick, ownerDist - followWalkPx)
           pet.x += (ownerDx / ownerDist) * step
           pet.y += (ownerDy / ownerDist) * step
         }
       }
 
       let primaryTarget: CombatUnitContext | undefined
-      let primaryPos = { x: 0, y: 120 }
-      let bestEnemyDist = Infinity
+      let primaryPos = { x: pet.x, y: pet.y }
+      let bestEnemyDist = aggroPx > 0 ? aggroPx : 0
       for (const enemy of targetableEnemies) {
-        const pos = params.enemyPositions.get(enemy.id) ?? {
-          x: enemy.x ?? 0,
-          y: enemy.y ?? 120,
-        }
+        if (aggroPx <= 0) break
+        const explicitPos = params.enemyPositions.get(enemy.id)
+        const pos =
+          explicitPos ??
+          (enemy.x !== undefined || enemy.y !== undefined
+            ? { x: enemy.x ?? pet.x, y: enemy.y ?? pet.y }
+            : { x: pet.x, y: pet.y })
         const d = Math.hypot(pos.x - pet.x, pos.y - pet.y)
-        if (d < bestEnemyDist) {
+        if (d <= bestEnemyDist && (primaryTarget === undefined || d < bestEnemyDist)) {
           bestEnemyDist = d
           primaryTarget = enemy
           primaryPos = pos
@@ -1533,7 +1318,7 @@ export class SummonManager {
 
       // Execute pet's AI sub-skills (`IDs 281..338`)
       for (const subId of pet.subSkillIds) {
-        const subSkill = this.resolveSkillRecordFallback(subId)
+        const subSkill = this.registry.getSkillById(subId)
         if (!subSkill) continue
 
         // Totem Auras (`296` Oak Sage Aura, `297` Wolverine Aura, `298` Barbs Aura)
@@ -1643,7 +1428,7 @@ export class SummonManager {
             durationFrames: pcStats.poisonLengthFrames,
             currentFrame: params.currentTick,
             stats: {
-              poison_bitrate_256: rollDamageRange256(pcStats.poisonMinRate256, pcStats.poisonMaxRate256, this.rng),
+              poisonmindam: rollDamageRange256(pcStats.poisonMinRate256, pcStats.poisonMaxRate256, this.rng),
             },
           })
           damageDealt += out.totalDamage
@@ -1898,12 +1683,14 @@ export class SummonManager {
         }
       }
 
-      if (!leashTeleported && !isStationary && pet.kind !== 'skeleton_mage' && primaryTarget) {
+      if (!leashTeleported && aiProfile.canMeleeAttack && primaryTarget) {
         const curDx = primaryPos.x - pet.x
         const curDy = primaryPos.y - pet.y
         const curDist = Math.hypot(curDx, curDy)
-        if (curDist > 36) {
-          const step = Math.min(8, curDist - 24)
+        if (curDist > meleeReachPx) {
+          const chaseVel = aiProfile.runVelocity > 0 ? aiProfile.runVelocity : aiProfile.velocity
+          const speedPxPerTick = (chaseVel * SUBTILE_PIXELS_113C) / 25
+          const step = Math.min(speedPxPerTick, curDist - meleeReachPx)
           pet.x += (curDx / curDist) * step
           pet.y += (curDy / curDist) * step
         }
@@ -1913,7 +1700,7 @@ export class SummonManager {
       // Stationary Decoy (dopplezon), Totems (`totem`), and Vines (`vine`) cannot execute standard melee attacks
       if (
         primaryTarget &&
-        !isStationary &&
+        aiProfile.canMeleeAttack &&
         (params.currentTick % 10 === 0 ||
           ((pet.kind === 'shadow_warrior' || pet.kind === 'shadow_master') && params.currentTick % 5 === 0))
       ) {
@@ -1991,8 +1778,12 @@ export class SummonManager {
           const totalEdPct = pet.statList.getAccruedStat('damagepercent')
           physMin256 = Math.floor((gzBase.baseMinDamage * (100 + totalEdPct)) / 100) * FIXED_ONE
           physMax256 = Math.floor((gzBase.baseMaxDamage * (100 + totalEdPct)) / 100) * FIXED_ONE
-          if (pet.subSkillIds.includes(326)) {
+          // 1.13c MonStats.txt druidbear (#428) aip3 = 50 (AITHINK_Fn112_DruidBear):
+          // 50% chance to select Skill1 = BearSmite (#326, ResultFlags = 8 knockback + stun + ln12 %ED)
+          if (pet.subSkillIds.includes(326) && this.rng.rand(100) < 50) {
             const bearSmite = calculateBearSmiteStats(pet.slvl)
+            physMin256 = Math.floor((gzBase.baseMinDamage * (100 + totalEdPct + bearSmite.damageBonusPct)) / 100) * FIXED_ONE
+            physMax256 = Math.floor((gzBase.baseMaxDamage * (100 + totalEdPct + bearSmite.damageBonusPct)) / 100) * FIXED_ONE
             stunDurationFrames = bearSmite.stunLengthFrames
             knockback = true
             subSkillsExecuted.push(326)
@@ -2027,7 +1818,7 @@ export class SummonManager {
           physMax256 = basePetPhys
         }
 
-        const out = executeSUnitDmg(params.owner, primaryTarget, {
+        const out = executeSUnitDmg(pet, primaryTarget, {
           skillId: pet.sourceSkillId,
           attackKind: 'melee',
           srcDam: 0,
@@ -2038,11 +1829,10 @@ export class SummonManager {
             : {}),
           ...(stunDurationFrames !== undefined ? { stunDurationFrames } : {}),
           ...(knockback ? { knockback: true } : {}),
-          autoHit: true,
         }, this.rng)
         damageDealt += out.totalDamage
         petAttacks += 1
-        if (stunDurationFrames !== undefined && stunDurationFrames > 0 && !primaryTarget.isBoss) {
+        if (out.hit && stunDurationFrames !== undefined && stunDurationFrames > 0 && !primaryTarget.isBoss) {
           primaryTarget.stateBus.applyState({
             stateNameOrId: 'stun',
             sourceUnitId: pet.id,
@@ -2052,7 +1842,7 @@ export class SummonManager {
             currentFrame: params.currentTick,
           })
         }
-        if (knockback && !primaryTarget.isBoss) {
+        if (out.hit && knockback && !primaryTarget.isBoss) {
           const targetPos = params.enemyPositions.get(primaryTarget.id) as { x: number; y: number } | undefined
           if (targetPos) {
             const kdx = targetPos.x - pet.x
@@ -2073,9 +1863,9 @@ export class SummonManager {
             (primaryTarget as any).isChampion ||
             (primaryTarget as any).isSuperUnique,
           )
-          if (!isSpecialTarget) {
-            const ownerLvl = params.owner.statList.getAccruedStat('level') || 80
-            const targetLvl = primaryTarget.statList.getAccruedStat('level') || 80
+          if (out.hit && !isSpecialTarget) {
+            const ownerLvl = params.owner.statList.getAccruedStat('level')
+            const targetLvl = primaryTarget.statList.getAccruedStat('level')
             const rBlind = calculateRavenStats(pet.slvl, ownerLvl, targetLvl)
             const blindRoll = (primaryTarget as any).blindRoll100 ?? ((params.currentTick * 13 + 7) % 100)
             if (blindRoll < rBlind.blindChancePct) {
@@ -2092,7 +1882,7 @@ export class SummonManager {
         }
 
         // Clay Golem Slow-on-hit effect against defender (750 frames / 30s per EventFunc27_SlowTarget)
-        if (pet.kind === 'clay_golem' && pet.slowPct) {
+        if (out.hit && pet.kind === 'clay_golem' && pet.slowPct) {
           primaryTarget.stateBus.applyState({
             stateNameOrId: 'slowed',
             slvl: pet.slvl,
@@ -2202,6 +1992,315 @@ export class SummonManager {
     hitRadius = UNSUMMON_PICK_RADIUS,
   ): SummonedPetUnit | null {
     return unsummonOwnPetAt({ pets: this.pets }, ownerId ?? '', targetX, targetY, hitRadius) as SummonedPetUnit | null
+  }
+}
+
+/**
+ * 1.13c combat world pixel-per-subtile scale (`1 subtile = 16 px`).
+ */
+export const SUBTILE_PIXELS_113C = 16
+
+/**
+ * 1.13c `D2Game.dll` + `MonStats.txt` AI profile for a summoned pet unit.
+ * See `kb/monsters/d2game-pet-hireable-ai-113c.md` for exact VAs and disassembly.
+ */
+export interface PetAiProfile113c {
+  readonly aiName:
+    | 'NecroPet'
+    | 'DruidWolf'
+    | 'DruidBear'
+    | 'Raven'
+    | 'Totem'
+    | 'Vines'
+    | 'CycleOfLife'
+    | 'ShadowWarrior'
+    | 'ShadowMaster'
+    | 'AssassinSentry'
+    | 'DeathSentry'
+    | 'Hydra'
+    | 'Idle'
+  readonly teleportSubtiles: number
+  readonly leashRunSubtiles: number
+  readonly followWalkSubtiles: number
+  readonly aggroSubtiles: number
+  readonly ownerAggroSubtiles: number
+  readonly meleeReachSubtiles: number
+  readonly velocity: number
+  readonly runVelocity: number
+  readonly aiDelayFrames: number
+  readonly isStationary: boolean
+  readonly canMeleeAttack: boolean
+}
+
+/**
+ * Resolves the 1.13c `D2Game.dll` AI profile and `MonStats.txt` parameters for a summoned pet.
+ *
+ * - `NecroPet` (`0x6FC9CBE0`): teleport `> 50`, run leash `> 25`, walk follow `> 13/15/20` (by pet count), aggro `15`, melee reach `2`
+ * - `DruidWolf` (`0x6FC3CA00`): teleport `> 50`, run leash `> 21`, walk follow `> 13`, aggro `20`, melee reach `2`, vel `11`, run `15`, aidel `13`
+ * - `DruidBear` (`0x6FC3CB90`): teleport `> 50`, run leash `> 21`, walk follow `> 13`, aggro `20`, melee reach `2`, vel `9`, run `9`, aidel `14`
+ * - `Raven` (`0x6FC3DA60`): teleport `> 50`, walk follow `> 12`, aggro `25`, melee reach `1`, vel `13`, aidel `15`
+ * - `Totem` (`0x6FC3DC10`): teleport `> 30`, walk follow `> 12`, aggro `0` (aura sub-skill), vel `9`, aidel `15`
+ * - `Vines` (`0x6FC3D140`): teleport `> 35`, walk follow `> 13`, aggro `15`, vel `8`, aidel `15`
+ * - `CycleOfLife` (`0x6FC3D3A0`): teleport `> 35`, walk follow `> 13`, corpse scan `10`, vel `8`, aidel `15`
+ * - `ShadowWarrior` (`0x6FC8A150`): teleport `> 50`, run leash `> 25`, walk follow `> 20`, aggro `20`, melee reach `2`, vel `9`, run `13`, aidel `10`
+ * - `ShadowMaster` (`0x6FC89ED0`): teleport `> 50`, run leash `> 25`, walk follow `> 20`, aggro `20`, melee reach `2`, vel `9`, run `13`, aidel `5`
+ * - `AssassinSentry` (`0x6FC898C0`) / `DeathSentry` (`0x6FC89C40`): stationary, aggro `25`, aidel `15`
+ * - `Hydra` (`0x6FC5E220`): stationary, aggro `15`, aidel `15`
+ * - `Idle` (`0x6FC5C150`, `dopplezon` `#356`, `bonewall` `#355`): stationary, velocity `0`
+ */
+export function resolvePetAiProfile113c(
+  pet: {
+    readonly kind?: string | undefined
+    readonly petType?: string | undefined
+    readonly sourceSkillId?: number | undefined
+    readonly isStationary?: boolean | undefined
+  },
+  totalOwnerPets = 1,
+): PetAiProfile113c {
+  const kind = (pet.kind ?? '').toLowerCase()
+  const petType = (pet.petType ?? '').toLowerCase()
+  const skillId = pet.sourceSkillId ?? 0
+
+  if (
+    pet.isStationary === true ||
+    kind === 'dopplezon' ||
+    kind === 'decoy' ||
+    kind === 'bonewall' ||
+    skillId === 28 ||
+    skillId === 78 ||
+    skillId === 88
+  ) {
+    return {
+      aiName: 'Idle',
+      teleportSubtiles: 0,
+      leashRunSubtiles: 0,
+      followWalkSubtiles: 0,
+      aggroSubtiles: 0,
+      ownerAggroSubtiles: 0,
+      meleeReachSubtiles: 0,
+      velocity: 0,
+      runVelocity: 0,
+      aiDelayFrames: 15,
+      isStationary: true,
+      canMeleeAttack: false,
+    }
+  }
+
+  if (kind === 'hydra' || petType === 'hydra' || skillId === 62) {
+    return {
+      aiName: 'Hydra',
+      teleportSubtiles: 0,
+      leashRunSubtiles: 0,
+      followWalkSubtiles: 0,
+      aggroSubtiles: 15,
+      ownerAggroSubtiles: 0,
+      meleeReachSubtiles: 0,
+      velocity: 0,
+      runVelocity: 0,
+      aiDelayFrames: 15,
+      isStationary: true,
+      canMeleeAttack: false,
+    }
+  }
+
+  if (
+    petType === 'assassintrap' ||
+    kind === 'blade_sentinel' ||
+    kind === 'wake_of_fire' ||
+    kind === 'wake_of_inferno' ||
+    kind === 'lightning_sentry' ||
+    kind === 'chargedboltsentry' ||
+    kind === 'death_sentry' ||
+    skillId === 261 ||
+    skillId === 262 ||
+    skillId === 271 ||
+    skillId === 272 ||
+    skillId === 276
+  ) {
+    const isDeathSentry = kind === 'death_sentry' || skillId === 276
+    return {
+      aiName: isDeathSentry ? 'DeathSentry' : 'AssassinSentry',
+      teleportSubtiles: 0,
+      leashRunSubtiles: 0,
+      followWalkSubtiles: 0,
+      aggroSubtiles: 25,
+      ownerAggroSubtiles: 0,
+      meleeReachSubtiles: 0,
+      velocity: 0,
+      runVelocity: 0,
+      aiDelayFrames: 15,
+      isStationary: true,
+      canMeleeAttack: false,
+    }
+  }
+
+  if (
+    petType === 'totem' ||
+    kind === 'oak_sage' ||
+    kind === 'heart_of_wolverine' ||
+    kind === 'spirit_of_barbs' ||
+    skillId === 226 ||
+    skillId === 236 ||
+    skillId === 246
+  ) {
+    return {
+      aiName: 'Totem',
+      teleportSubtiles: 30,
+      leashRunSubtiles: 12,
+      followWalkSubtiles: 12,
+      aggroSubtiles: 0,
+      ownerAggroSubtiles: 0,
+      meleeReachSubtiles: 0,
+      velocity: 9,
+      runVelocity: 9,
+      aiDelayFrames: 15,
+      isStationary: false,
+      canMeleeAttack: false,
+    }
+  }
+
+  if (
+    petType === 'vine' ||
+    kind === 'poison_creeper' ||
+    kind === 'carrion_vine' ||
+    kind === 'solar_creeper' ||
+    skillId === 222 ||
+    skillId === 231 ||
+    skillId === 241
+  ) {
+    const isPoisonCreeper = kind === 'poison_creeper' || skillId === 222
+    return {
+      aiName: isPoisonCreeper ? 'Vines' : 'CycleOfLife',
+      teleportSubtiles: 35,
+      leashRunSubtiles: 13,
+      followWalkSubtiles: 13,
+      aggroSubtiles: isPoisonCreeper ? 15 : 10,
+      ownerAggroSubtiles: isPoisonCreeper ? 15 : 0,
+      meleeReachSubtiles: 0,
+      velocity: 8,
+      runVelocity: 8,
+      aiDelayFrames: 15,
+      isStationary: false,
+      canMeleeAttack: false,
+    }
+  }
+
+  if (kind === 'raven' || petType === 'raven' || skillId === 221) {
+    return {
+      aiName: 'Raven',
+      teleportSubtiles: 50,
+      leashRunSubtiles: 12,
+      followWalkSubtiles: 12,
+      aggroSubtiles: 25,
+      ownerAggroSubtiles: 25,
+      meleeReachSubtiles: 1,
+      velocity: 13,
+      runVelocity: 13,
+      aiDelayFrames: 15,
+      isStationary: false,
+      canMeleeAttack: true,
+    }
+  }
+
+  if (
+    kind === 'spirit_wolf' ||
+    kind === 'dire_wolf' ||
+    petType === 'spiritwolf' ||
+    petType === 'fenris' ||
+    skillId === 227 ||
+    skillId === 237
+  ) {
+    return {
+      aiName: 'DruidWolf',
+      teleportSubtiles: 50,
+      leashRunSubtiles: 21,
+      followWalkSubtiles: 13,
+      aggroSubtiles: 20,
+      ownerAggroSubtiles: 20,
+      meleeReachSubtiles: 2,
+      velocity: 11,
+      runVelocity: 15,
+      aiDelayFrames: 13,
+      isStationary: false,
+      canMeleeAttack: true,
+    }
+  }
+
+  if (kind === 'grizzly' || petType === 'grizzly' || skillId === 247) {
+    return {
+      aiName: 'DruidBear',
+      teleportSubtiles: 50,
+      leashRunSubtiles: 21,
+      followWalkSubtiles: 13,
+      aggroSubtiles: 20,
+      ownerAggroSubtiles: 20,
+      meleeReachSubtiles: 2,
+      velocity: 9,
+      runVelocity: 9,
+      aiDelayFrames: 14,
+      isStationary: false,
+      canMeleeAttack: true,
+    }
+  }
+
+  if (kind === 'shadow_warrior' || skillId === 268) {
+    return {
+      aiName: 'ShadowWarrior',
+      teleportSubtiles: 50,
+      leashRunSubtiles: 25,
+      followWalkSubtiles: 20,
+      aggroSubtiles: 20,
+      ownerAggroSubtiles: 20,
+      meleeReachSubtiles: 2,
+      velocity: 9,
+      runVelocity: 13,
+      aiDelayFrames: 10,
+      isStationary: false,
+      canMeleeAttack: true,
+    }
+  }
+
+  if (kind === 'shadow_master' || petType === 'shadowwarrior' || skillId === 279) {
+    return {
+      aiName: 'ShadowMaster',
+      teleportSubtiles: 50,
+      leashRunSubtiles: 25,
+      followWalkSubtiles: 20,
+      aggroSubtiles: 20,
+      ownerAggroSubtiles: 20,
+      meleeReachSubtiles: 2,
+      velocity: 9,
+      runVelocity: 13,
+      aiDelayFrames: 5,
+      isStationary: false,
+      canMeleeAttack: true,
+    }
+  }
+
+  // Default: NecroPet (0x6FC9CBE0) — Valkyrie (#357), Clay/Blood/Iron/Fire Golem (#289..#292),
+  // NecroSkeleton (#363), NecroMage (#364), Revive
+  const isMage = kind === 'skeleton_mage' || petType === 'necromage' || skillId === 80
+  const isGolem =
+    kind === 'clay_golem' ||
+    kind === 'blood_golem' ||
+    kind === 'iron_golem' ||
+    kind === 'fire_golem' ||
+    petType === 'golem'
+  const followWalkSubtiles = totalOwnerPets <= 3 ? 13 : totalOwnerPets <= 9 ? 15 : 20
+  const velocity = isMage || isGolem ? 9 : 11
+  return {
+    aiName: 'NecroPet',
+    teleportSubtiles: 50,
+    leashRunSubtiles: 25,
+    followWalkSubtiles,
+    aggroSubtiles: 15,
+    ownerAggroSubtiles: 15,
+    meleeReachSubtiles: isMage ? 0 : 2,
+    velocity,
+    runVelocity: velocity,
+    aiDelayFrames: isMage ? 10 : 15,
+    isStationary: false,
+    canMeleeAttack: !isMage,
   }
 }
 

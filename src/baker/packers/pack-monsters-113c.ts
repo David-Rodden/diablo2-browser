@@ -1477,8 +1477,8 @@ export function resolveHirelingStatsAtLevel(
   const dex = Math.max(10, selected.dex + Math.trunc((deltaLvl * selected.dexPerLvl) / 8))
   const ar = Math.max(0, selected.ar + deltaLvl * selected.arPerLvl)
   const dmgBonus = Math.trunc((deltaLvl * selected.dmgPerLvl) / 8)
-  const minDmg = selected.dmgMin + dmgBonus
-  const maxDmg = selected.dmgMax + dmgBonus
+  const minDmg = Math.max(0, selected.dmgMin + dmgBonus)
+  const maxDmg = Math.max(1, selected.dmgMax + dmgBonus)
   const resist = Math.max(0, selected.resist + Math.trunc((deltaLvl * selected.resistPerLvl) / 4))
 
   let auraSkillId: number | undefined
@@ -1767,10 +1767,10 @@ export function resolveHirelingCandidate(
   }
 
   if (matchingRows.length === 0) {
-    matchingRows = HIRELING_RECORDS.filter((r) => r.act === targetAct)
+    matchingRows = HIRELING_RECORDS.filter((r) => r.version === version && r.act === targetAct)
   }
   if (matchingRows.length === 0) {
-    matchingRows = [HIRELING_RECORDS[0]!]
+    matchingRows = HIRELING_RECORDS.filter((r) => r.version === version)
   }
 
   // 2. D2Common 64-bit LCG simulation (0x6fd7cd20..0x6fd7cd95)
@@ -1856,6 +1856,97 @@ export function resolveHirelingCandidates(
 ): readonly HirelingCandidateDesc[] {
   return candidates.map((c) =>
     resolveHirelingCandidate(c, playerLevel, difficulty, actIndex, expansion, lang),
+  )
+}
+
+/**
+ * Computes the 1.13c mercenary hire cost at a given mercenary level relative to the
+ * initial Hireling.txt row's base level and gold cost per D2Common.dll ordinal 10458
+ * (0x6fd7ccc0, 0x6fd7ce43..0x6fd7ce6f):
+ * cost = max(Gold, trunc(Gold * (100 + 15 * (mercLevel - baseRowLevel)) / 100)).
+ */
+export function computeMercHireCost113c(
+  baseGold: number,
+  mercLevel: number,
+  baseRowLevel: number,
+): number {
+  const delta = mercLevel - baseRowLevel
+  return Math.max(baseGold, Math.trunc((baseGold * (100 + 15 * delta)) / 100))
+}
+
+/**
+ * Computes the 1.13c mercenary resurrection cost from mercenary level per
+ * D2Common.dll ordinal 11097 (0x6fd7cc60):
+ * cost = min(50000, trunc(L * L / 2) * 15).
+ */
+export function computeMercResurrectCost113c(mercLevel: number): number {
+  const lvl = Math.max(0, Math.trunc(mercLevel))
+  if (lvl <= 0) return 0
+  return Math.min(50000, Math.trunc((lvl * lvl) / 2) * 15)
+}
+
+/**
+ * Generates the authentic 1.13c vendor hire candidate list per D2Game.dll 0x6fcdced0
+ * and D2Common.dll ordinal 10458 (0x6fd7ccc0):
+ * - Filters Hireling.txt strictly by version (100 for Expansion, 0 for Classic), act, and difficulty
+ *   initial bracket rows (lowest Level row per subtype, 0x6fda3050).
+ * - Samples up to 10 candidate names from [wNameFirstId..wNameLastId] (0x6fda30f0) with a 64-bit LCG.
+ * - Evaluates each candidate's level L = max(2, clvl - 5 + rand(5)) and scaled cost/stats.
+ */
+export function generateHireCandidates113c(
+  seed: number,
+  clvl: number,
+  act: number,
+  diff: number,
+  expansion = true,
+  lang: 'ENG' | 'CHI' = 'CHI',
+): readonly HirelingCandidateDesc[] {
+  const version = expansion ? 100 : 0
+  const targetAct = act <= 0 ? 1 : act
+  const targetDiff = diff <= 0 ? 1 : diff
+  const actRows = HIRELING_RECORDS.filter(
+    (r) => r.version === version && r.act === targetAct && r.difficulty === targetDiff,
+  )
+  const firstRow =
+    actRows[0] ??
+    HIRELING_RECORDS.find((r) => r.version === version && r.act === targetAct) ??
+    HIRELING_RECORDS.find((r) => r.version === version)
+  if (!firstRow) return []
+
+  const firstNameId = firstRow.wNameFirstId
+  const lastNameId = Math.max(firstNameId, firstRow.wNameLastId)
+  const totalNames = lastNameId - firstNameId + 1
+  const count = Math.min(10, totalNames)
+
+  let lcgLo = seed >>> 0
+  let lcgHi = 0x29a
+  const nextLcg = (): number => {
+    const step = BigInt(lcgLo) * 0x6ac690c5n + BigInt(lcgHi)
+    lcgLo = Number(step & 0xffffffffn) >>> 0
+    lcgHi = Number((step >> 32n) & 0xffffffffn) >>> 0
+    return lcgLo
+  }
+
+  const usedNameIds = new Set<number>()
+  const rawCandidates: { nameId: number; seed: number }[] = []
+  for (let i = 0; i < count; i++) {
+    const rName = nextLcg()
+    let nameId = firstNameId + (rName % totalNames)
+    while (usedNameIds.has(nameId)) {
+      nameId = firstNameId + ((nameId - firstNameId + 1) % totalNames)
+    }
+    usedNameIds.add(nameId)
+    const candSeed = nextLcg()
+    rawCandidates.push({ nameId, seed: candSeed })
+  }
+
+  return resolveHirelingCandidates(
+    rawCandidates,
+    clvl,
+    targetDiff - 1,
+    targetAct - 1,
+    expansion,
+    lang,
   )
 }
 `

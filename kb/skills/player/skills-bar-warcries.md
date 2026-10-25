@@ -64,14 +64,14 @@
 
 ### 2.2 `Missiles.txt` Suite for Warcries & Grim Ward
 
-| ID | Missile | `SrvDoFunc` | `SrvHitFunc` | `SrvDmgFunc` | `CltDoFunc` | `CltHitFunc` | `Vel` (`MaxVel`) | `Range` (`LevRange`) | `CelFile` (`AnimLen`) | `CollideType` | `CollideFriend` | `NextHit` (`NextDelay`) |
+| ID | Missile | `SrvDoFunc` | `SrvHitFunc` | `SrvDmgFunc` | `CltDoFunc` | `CltHitFunc` | `Vel` (`MaxVel`, `Accel`) | `Range` (`LevRange`) | `CelFile` (`AnimLen`) | `CollideType` | `CollideFriend` | `NextHit` (`NextDelay`) |
 |---:|---|---:|---:|---:|---:|---:|---|---:|---|---:|---:|---|
-| 148 | `howl` | 1 | 17 | — | 1 | — | `12` (`24`) | `12` (`+1`) | `BattleOrders` (`5`) | 3 | 0 | `1` (`4`) |
-| 149 | `shout` | 1 | 18 | — | 1 | — | `16` (`16`) | `16` (`0`) | `DoubleDamage1` (`5`) | 3 | 1 | `1` (`4`) |
-| 219 | `battlecry` | 1 | 21 | — | 1 | — | `16` (`16`) | `8` (`0`) | `BattleCry` (`5`) | 3 | 0 | `1` (`4`) |
-| 235 | `warcry` | 1 | — | 7 | 1 | 10 | `16` (`16`) | `8` (`0`) | `WarCry` (`5`) | 3 | 0 | `1` (`4`) |
-| 236 | `battlecommand` | 1 | 18 | — | 1 | — | `16` (`16`) | `16` (`0`) | `Shout` (`5`) | 3 | 1 | `1` (`4`) |
-| 237 | `battleorders` | 1 | 18 | — | 1 | — | `16` (`16`) | `16` (`0`) | `FastAttack1` (`5`) | 3 | 1 | `1` (`4`) |
+| 148 | `howl` | 1 | 17 | — | 1 | — | `12` (`12`, `-1000`) | `12` (`0`) | `BattleOrders` (`5`) | 3 | 0 | `1` (`4`) |
+| 149 | `shout` | 1 | 18 | — | 1 | — | `30` (`30`, `-500`) | `15` (`0`) | `DoubleDamage1` (`5`) | 3 | 1 | `1` (`4`) |
+| 219 | `battlecry` | 1 | 21 | — | 1 | — | `12` (`12`, `-1000`) | `12` (`0`) | `BattleCry` (`5`) | 3 | 0 | `1` (`4`) |
+| 235 | `warcry` | 1 | — | 7 | 1 | 10 | `12` (`12`, `-600`) | `16` (`0`) | `WarCry` (`5`) | 3 | 0 | `1` (`4`) |
+| 236 | `battlecommand` | 1 | 18 | — | 1 | — | `30` (`30`, `-500`) | `15` (`0`) | `Shout` (`5`) | 3 | 1 | `1` (`4`) |
+| 237 | `battleorders` | 1 | 18 | — | 1 | — | `30` (`30`, `-500`) | `15` (`0`) | `FastAttack1` (`5`) | 3 | 1 | `1` (`4`) |
 | 249 | `grimwardsmallstart` | 1 | 26 | — | 1 | 29 | `0` (`0`) | `5` (`0`) | `Totem1Start` (`5`) | 0 | 0 | `0` (`0`) |
 | 250 | `grimwardsmall` | 14 | 27 | — | 1 | 29 | `0` (`0`) | `100` (`0`) | `Totem1` (`1`) | 0 | 0 | `0` (`0`) |
 | 251 | `grimwardsmallstop` | 1 | — | — | 11 | — | `0` (`0`) | `16` (`0`) | `Totem1End` (`4`) | 0 | 0 | `0` (`0`) |
@@ -89,13 +89,13 @@
 ### 3.1 Ring Spawning (`CltDo25` @ `0x6FB23CB0`, `SrvDo022` @ `0x6FC63AA0`, `SrvDo068` @ `0x6FC49720`)
 - All 6 expanding-ring Warcries spawn a **64-missile circular ring** centered on the Barbarian's coordinates:
   - **Client (`SKILLS_CltDo25` @ `0x6FB23CB0`)**: Reads `cltmissilea` (`wCltMissileA` at `SkillsTxt + 0x48`), evaluates `cltcalc1` (`+0x60`) as velocity delta, and calls `0x6FB22C90(pUnit, nMissileId, nSkillId, nSkillLevel, nVelDelta)` to spawn 64 radial missiles around the 64-entry direction circle (`lutTanToDirection` / `FOG_10083_Cos_LUT`).
-  - **Server (`sub_6FD14170` in `D2Game/src/SKILLS/Skills.cpp:1765`)**: Loops `i = 0..63` over the 64-entry radial offset tables `dword_6FD29C18[i]` and `dword_6FD29D18[i]`, spawning 64 instances of `srvmissile` (`MISSILE_CreateMissileFromParams`) aimed outward at `(unitX + offsetX[i], unitY + offsetY[i])` with `nVelocity = MissilesTxt.nVel + calc1` (`nVel << 8`).
+  - **Server (`sub_6FCC2800` @ `0x6FCC2800`)**: Loops `i = 0..63` over the 64-entry radial offset tables `dword_6FD29C18[i]` and `dword_6FD29D18[i]`, spawning 64 instances of `srvmissilea` via `MISSILE_Create` (`0x6FC8F930`) aimed outward at `(unitX + offsetX[i], unitY + offsetY[i])` with `nVelocity = MissilesTxt.nVel + (MissilesTxt.nVelLev * slvl) / 8 + nVelDelta` (where `nVelDelta = calc1` for `SrvDo022` with flag bit `0x04` and `0` for `SrvDo068`), and `nRange = MissilesTxt.wRange + slvl * MissilesTxt.wLevRange`. Using `D2Common.#11219` (`(nVelocity << 8) / 24` fixed-point speed per tick), the unaccelerated radial travel distance is `(Vel * Range) / 24` sub-tiles (`18.75` for `shout`/`battleorders`/`battlecommand`, `6` for `battlecry`, `8` for `warcry`, and `6 + (slvl - 1)` for `howl`; `aurarangecalc` is empty `""` for all 6 in `Skills.txt`).
   - All 64 ring missiles set `Pierce = 1`, `LastCollide = 0` (passes through units), and `NextHit = 1` with `NextDelay = 4` (`4` frames of `UNIT_NEXTHIT` immunity so a single shout's overlapping 64 ring segments only hit each unit **once**!).
 
 ### 3.2 Party Buff Warcries (`Shout` #138, `Battle Orders` #149, `Battle Command` #155)
 1. **Self-Application (`SrvDo068` @ `0x6FC49720`) & Ally-Application (`MISSMODE_SrvHit18` @ `0x6FC5EA60`)**:
    - In `SKILLS_SrvDo068_BasicShout`, the Barbarian first spawns the 64 ring missiles (`sub_6FD14170`) and then immediately calls `SKILLS_ApplyWarcryStats(pGame, pUnit, pUnit, nSkillId, nSkillLevel)` on **himself** (because the expanding missiles ignore the caster).
-   - As the 64 missiles (`shout` #149, `battleorders` #237, `battlecommand` #236, all having `CollideFriend = 1`, `Vel = 16`, `Range = 16` ticks $\approx 10$ sub-tiles radius) collide with units (`MISSMODE_SrvHit18_Shout_BattleCommand_BattleOrders`), the handler checks:
+   - As the 64 missiles (`shout` #149, `battleorders` #237, `battlecommand` #236, all having `CollideFriend = 1`, `Vel = 30`, `Range = 15` ticks -> `450/24 = 18.75` sub-tiles unaccelerated travel) collide with units (`MISSMODE_SrvHit18_Shout_BattleCommand_BattleOrders`), the handler checks:
      - `pTarget && pOwner && SUNIT_AreUnitsAligned(pGame, pOwner, pTarget)` (caster's own minions, party members, and party members' minions).
      - Calls `SKILLS_ApplyWarcryStats(pGame, pOwner, pTarget, nSkillId, nSkillLevel)`.
 2. **State & Stat Overwrite Rules (`SKILLS_ApplyWarcryStats` @ `SkillBar.cpp:1441`)**:
@@ -120,7 +120,7 @@
 
 #### **Howl (Skill #130)**
 - **Missile Trajectory (`SrvDo022_NovaAttack` @ `0x6FC63AA0`)**:
-  - Spawns 64 `howl` (#148) missiles with `Vel = min(12 + calc1, MaxVel=24)` where `calc1 = (slvl - 1)*2` (`par1 = 2`), and `Range = 12 + (slvl - 1)*1` frames.
+  - Spawns 64 `howl` (#148) missiles via `sub_6FCC2800(..., flag=4)` with `Vel = 12 + calc1` where `calc1 = (slvl - 1)*2` (`par1 = 2`, no `MaxVel` clamp), and `Range = 12` frames (`LevRange` is empty), giving `(12 + 2*(slvl-1)) * 12 / 24 = 6 + (slvl - 1)` sub-tiles travel radius.
 - **Monster Level Check & Terror AI (`MISSMODE_SrvHit17_Howl` @ `0x6FC5EAE0`)**:
   - Evaluates `aurafilter = 0x8583` (`34179`: targets hostile monsters, **excludes bosses (`0x4000`? Wait: `sub_6FD0FA00` checks `if (!(nFilter & 0x4000) && MONSTERS_IsBoss(0, pTarget)) return 0`! Because `0x8583 & 0x4000 == 0`, Howl cannot affect Bosses, Champions, or Uniques**).
   - Performs the **Monster Level Gate** (`MissMode.cpp:1702`):
@@ -128,22 +128,22 @@
     If `slvl + 1 + clvl <= mlvl`, Howl has **no effect**!
   - If passed, calls `AIUTIL_ApplyTerrorCurseState(pGame, pOwner, pTarget, SKILL_HOWL, nVelocity, nDuration)`:
     - `nVelocity` (flee distance/speed parameter): `ln34` = `24 + (slvl - 1)*5`.
-    - `nDuration`: `ln56` = `75 + (slvl - 1)*25` frames (`3.0s + 1.0s*(slvl - 1)`), divided by difficulty `dwAiCurseDiv` (`2` in Nightmare, `4` in Hell).
+    - `nDuration`: `ln56` = `75 + (slvl - 1)*25` frames (`3.0s + 1.0s*(slvl - 1)`), passed directly to `0x6FCD2120` -> `0x6FCC00B0` without dividing by `AiCurseDivisor` (`0x6FC6DF60`).
     - Applies `auratargetstate = terror` (State #56, `curse = 1` — overwrites other Necromancer curses!).
 
 #### **Battle Cry (Skill #146)**
 - **Missile Trajectory (`SrvDo068` @ `0x6FC49720`)**:
-  - Spawns 64 `battlecry` (#219) missiles (`Vel = 16`, `Range = 8` ticks $\approx 5$ sub-tiles radius). Because `aurastate` is empty (`-1`), `SKILLS_ApplyWarcryStats` on self is a no-op.
+  - Spawns 64 `battlecry` (#219) missiles (`Vel = 12`, `Range = 12` ticks -> `144/24 = 6` sub-tiles unaccelerated travel). Because `aurastate` is empty (`-1`), `SKILLS_ApplyWarcryStats` on self is a no-op.
 - **Boss-Legal Enemy Debuff (`MISSMODE_SrvHit21_BattleCry` @ `0x6FC5ABD0` -> `sub_6FCFB280`)**:
   - Uses `aurafilter = 42883` (`0xA783`). Unlike Howl (`0x8583`), `0xA783` sets bit `0x2000` and does **not** exclude bosses/champions/Prime Evils — **Battle Cry works on Act Bosses, SuperUniques, and Uber Bosses**!
   - Applies `auratargetstate = battlecry` (State #89, `curse = 1`, `overlay1 = battlecry` #196):
     - `aurastat1 = skill_armor_percent` (`ln34` = `-50% + (slvl - 1)*(-2)%` enemy Defense; `-50%` at slvl 1, `-88%` at slvl 20).
     - `aurastat2 = damagepercent` (`ln56` = `-25% + (slvl - 1)*(-1)%` enemy Physical Damage; `-25%` at slvl 1, `-44%` at slvl 20).
-    - Duration (`auralencalc`): `ln12` = `300 + (slvl - 1)*60` frames (`12.0s + 2.4s*(slvl - 1)`), divided by difficulty `dwAiCurseDiv` on monsters.
+    - Duration (`auralencalc`): `ln12` = `300 + (slvl - 1)*60` frames (`12.0s + 2.4s*(slvl - 1)`), passed directly to `0x6FCC00B0` without dividing by `AiCurseDivisor` (`0x6FC6DF60`).
 
 #### **War Cry (Skill #154)**
 - **Missile Trajectory & Physical Damage (`SrvDo068` @ `0x6FC49720`)**:
-  - Spawns 64 `warcry` (#235) missiles (`Vel = 16`, `Range = 8` ticks $\approx 5$ sub-tiles radius).
+  - Spawns 64 `warcry` (#235) missiles (`Vel = 12`, `Range = 16` ticks -> `192/24 = 8` sub-tiles unaccelerated travel).
   - In `Missiles.txt`, `warcry` sets `Skill = War Cry` (#154) and `SrcDamage = 0`, so it inherits physical damage directly from `Skills.txt` row #154:
     - Base physical damage (`HitShift = 8`): `MinDam = 20` (`+5`, `+6`, `+7`, `+8`, `+10`), `MaxDam = 30` (`+5`, `+6`, `+7`, `+8`, `+10`).
     - Synergy (`DmgSymPerCalc`): `(blvl(Howl) + blvl(Taunt) + blvl(Battle Cry)) * 6%` physical damage (`par8 = 6`).

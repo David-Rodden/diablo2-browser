@@ -23,6 +23,12 @@
  * - Berserk 100% physical to magic damage conversion & defense zeroing
  */
 
+import {
+  CANONICAL_113C_SKILLS,
+  evaluateCanonicalSkillMana113c,
+} from '../../common/data/skills-catalog.ts'
+import { itemTypeIsA } from '../../common/items/item-types.ts'
+
 // --- Interfaces for Skill Calculations ---
 
 export interface BashStats {
@@ -157,6 +163,7 @@ export function calculateBashStats(
   const flatPhysicalMin = 1 + (lvl - 1) * 1
   const flatPhysicalMax = 1 + (lvl - 1) * 1
   const toHitBonusPct = 20 + (lvl - 1) * 5 + concentratePts * 5
+  const mana = evaluateCanonicalSkillMana113c(126, lvl)
 
   return {
     damageBonusPct,
@@ -164,8 +171,8 @@ export function calculateBashStats(
     flatPhysicalMax,
     knockbackChancePct: 100,
     toHitBonusPct,
-    manaCost: 2,
-    manaCost256: 512,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   }
 }
 
@@ -178,18 +185,22 @@ export function calculateBashStats(
  */
 export function calculateLeapStats(slvl: number, _leapAttackBlvl = 0): LeapStats {
   const lvl = Math.max(1, slvl)
-  const leapDistanceSubtiles = dm(4, 30, lvl)
+  const entry = CANONICAL_113C_SKILLS[132]
+  const minDist = entry?.params.par1 ?? 4
+  const maxDist = entry?.params.par2 ?? 30
+  const leapDistanceSubtiles = dm(minDist, maxDist, lvl)
   const leapDistanceYards = +(leapDistanceSubtiles * (2 / 3)).toFixed(2)
-  const knockbackRadiusSubtiles = 4 + (lvl - 1) * 1
+  const knockbackRadiusSubtiles = (entry?.params.par3 ?? 4) + (lvl - 1) * (entry?.params.par4 ?? 1)
+  const mana = evaluateCanonicalSkillMana113c(132, lvl)
 
   return {
-    minDistanceYards: 4,
-    maxDistanceYards: 20,
+    minDistanceYards: minDist,
+    maxDistanceYards: maxDist,
     leapDistanceSubtiles,
     leapDistanceYards,
     knockbackRadiusSubtiles,
-    manaCost: 2,
-    manaCost256: 512,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   }
 }
 
@@ -208,7 +219,8 @@ export function calculateDoubleSwingStats(slvl: number, bashBlvl = 0): DoubleSwi
   const toHitBonusPct = 15 + (lvl - 1) * 5
 
   // 1.13c mana calculation: mana = 8, lvlmana = -1, manashift = 5 (each unit = 32/256 = 0.125 mana)
-  const rawManaCost256 = Math.max(0, (8 - (lvl - 1)) * 32)
+  const mana = evaluateCanonicalSkillMana113c(133, lvl)
+  const rawManaCost256 = mana.manaCost256
   const manaCost = Math.max(0, Math.floor(rawManaCost256 / 256))
 
   return {
@@ -254,14 +266,15 @@ export function calculateStunStats(
   )
   const damageBonusPct = bashPts * 8
   const toHitBonusPct = 15 + (lvl - 1) * 5 + concentratePts * 5
+  const mana = evaluateCanonicalSkillMana113c(139, lvl)
 
   return {
     stunDurationFrames,
     baseDurationFrames,
     damageBonusPct,
     toHitBonusPct,
-    manaCost: 2,
-    manaCost256: 512,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
     overlayName: 'stun',
   }
 }
@@ -279,12 +292,13 @@ export function calculateDoubleThrowStats(slvl: number, doubleSwingBlvl = 0): Do
 
   const damageBonusPct = dsPts * 8
   const toHitBonusPct = 20 + (lvl - 1) * 10
+  const mana = evaluateCanonicalSkillMana113c(140, lvl)
 
   return {
     damageBonusPct,
     toHitBonusPct,
-    manaCost: 1,
-    manaCost256: 256,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
     requiresDualThrowing: true,
   }
 }
@@ -304,6 +318,7 @@ export function calculateLeapAttackStats(slvl: number, leapBlvl = 0): LeapAttack
   const damageBonusPct = 100 + (lvl - 1) * 30 + leapPts * 10
   const knockbackRadiusSubtiles = 4 + (lvl - 1) * 2
   const toHitBonusPct = 50 + (lvl - 1) * 15
+  const mana = evaluateCanonicalSkillMana113c(143, lvl)
 
   return {
     damageBonusPct,
@@ -311,17 +326,17 @@ export function calculateLeapAttackStats(slvl: number, leapBlvl = 0): LeapAttack
     toHitBonusPct,
     minDistanceYards: 4,
     maxDistanceYards: 30,
-    manaCost: 9,
-    manaCost256: 2304,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   }
 }
 
 /**
  * Skill 144: Concentrate
- * Ground Truth:
+ * Ground Truth (D2Game.dll 0x6FC492F0 & Skills.txt #144):
  * - calc1: ln12 + skill('Bash'.blvl)*par8 + skill('Battle Orders'.blvl)*par7
  *   (p1=70, p2=5, par8=5, par7=10)
- * - defense bonus: ln34 + skill('Iron Skin'.blvl)*par8 (p3=100, p4=10, par8=10) -> 100 + (lvl - 1) * 10 + ironSkinBlvl * 10%
+ * - defense bonus (aurastatcalc1 = ln34): p3=100, p4=10 -> 100 + (lvl - 1) * 10% (no Iron Skin synergy)
  * - toHit: 60, LevToHit: 10 -> 60 + (lvl - 1) * 10
  * - calc4: skill('Berserk'.blvl) -> 1% magic conversion per point
  * - Mana: 2 (constant)
@@ -331,18 +346,18 @@ export function calculateConcentrateStats(
   bashBlvl = 0,
   battleOrdersBlvl = 0,
   berserkBlvl = 0,
-  ironSkinBlvl = 0,
+  _ironSkinBlvl = 0,
 ): ConcentrateStats {
   const lvl = Math.max(1, slvl)
   const bashPts = Math.max(0, bashBlvl)
   const boPts = Math.max(0, battleOrdersBlvl)
   const berserkPts = Math.max(0, berserkBlvl)
-  const ironSkinPts = Math.max(0, ironSkinBlvl)
 
   const damageBonusPct = 70 + (lvl - 1) * 5 + bashPts * 5 + boPts * 10
-  const defenseBonusPct = 100 + (lvl - 1) * 10 + ironSkinPts * 10
+  const defenseBonusPct = 100 + (lvl - 1) * 10
   const toHitBonusPct = 60 + (lvl - 1) * 10
   const magicConversionPct = Math.min(100, berserkPts * 1)
+  const mana = evaluateCanonicalSkillMana113c(144, lvl)
 
   return {
     damageBonusPct,
@@ -350,19 +365,19 @@ export function calculateConcentrateStats(
     toHitBonusPct,
     magicConversionPct,
     isUninterruptible: true,
-    manaCost: 2,
-    manaCost256: 512,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   }
 }
 
 /**
  * Skill 147: Frenzy
- * Ground Truth:
+ * Ground Truth (D2Game.dll 0x6FC493C0 & Skills.txt #147):
  * - calc1: ln12 + (skill('Double Swing'.blvl) + skill('Taunt'.blvl))*par8
  *   (p1=90, p2=5, par8=8)
  * - run speed (aurastatcalc1 = dm34): p3=20, p4=200 (47% at stack 1, up to dm(20, 200, slvl))
  * - attack speed (aurastatcalc2 = dm56): p5=0, p6=50 (7% at stack 1, up to dm(0, 50, slvl))
- * - duration: par7 + skill('Increased Stamina'.blvl)*10 -> 150 + increasedStaminaBlvl * 10 frames (6s + 0.4s/blvl)
+ * - duration (auralencalc = par7): Param7 = 150 frames (6.0s fixed; no Increased Stamina synergy in 1.13c)
  * - toHit: 100, LevToHit: 7 -> 100 + (lvl - 1) * 7
  * - calc4: skill('Berserk'.blvl) -> 1% magic conversion per point
  * - Mana: 1.5 (mana=3, manashift=7 -> 384 in 256ths)
@@ -373,13 +388,12 @@ export function calculateFrenzyStats(
   doubleSwingBlvl = 0,
   tauntBlvl = 0,
   berserkBlvl = 0,
-  increasedStaminaBlvl = 0,
+  _increasedStaminaBlvl = 0,
 ): FrenzyStats {
   const lvl = Math.max(1, slvl)
   const dsPts = Math.max(0, doubleSwingBlvl)
   const tauntPts = Math.max(0, tauntBlvl)
   const berserkPts = Math.max(0, berserkBlvl)
-  const incStaminaPts = Math.max(0, increasedStaminaBlvl)
 
   const damageBonusPct = 90 + (lvl - 1) * 5 + (dsPts + tauntPts) * 8
   const toHitBonusPct = 100 + (lvl - 1) * 7
@@ -388,6 +402,7 @@ export function calculateFrenzyStats(
   const minAttackSpeedPct = dm(0, 50, 1)
   const maxAttackSpeedPct = dm(0, 50, lvl)
   const magicConversionPct = Math.min(100, berserkPts * 1)
+  const mana = evaluateCanonicalSkillMana113c(147, lvl)
 
   return {
     damageBonusPct,
@@ -396,10 +411,10 @@ export function calculateFrenzyStats(
     maxRunSpeedPct,
     minAttackSpeedPct,
     maxAttackSpeedPct,
-    durationFrames: 150 + incStaminaPts * 10,
+    durationFrames: 150,
     magicConversionPct,
-    manaCost: 1,
-    manaCost256: 384,
+    manaCost: Math.floor(mana.manaCost256 / 256),
+    manaCost256: mana.manaCost256,
     overlayName: 'frenzy1',
     requiresDualWield: true,
   }
@@ -418,7 +433,8 @@ export function calculateWhirlwindStats(slvl: number): WhirlwindStats {
 
   const damageBonusPct = -50 + (lvl - 1) * 8
   const toHitBonusPct = 0 + (lvl - 1) * 5
-  const manaCost256 = (25 + (lvl - 1)) * 128
+  const mana = evaluateCanonicalSkillMana113c(151, lvl)
+  const manaCost256 = mana.manaCost256
   const manaCost = Math.floor(manaCost256 / 256)
 
   return {
@@ -461,14 +477,15 @@ export function calculateBerserkStats(
   const range = par4 - par3 // 50
   const reduction = Math.min(range, Math.floor(((110 * lvl) / (lvl + 6)) * (range / 100)))
   const zeroDefenseDurationFrames = par4 - reduction
+  const mana = evaluateCanonicalSkillMana113c(152, lvl)
 
   return {
     damageBonusPct,
     toHitBonusPct,
     magicConversionPct: 100,
     zeroDefenseDurationFrames,
-    manaCost: 4,
-    manaCost256: 1024,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
     overlayName: 'berserkfront',
   }
 }
@@ -487,6 +504,7 @@ export function validateBarbarianSkillEquipment(
   skillId: number,
   equipment?: {
     weaponItemType?: string | undefined
+    offHandWeaponItemType?: string | undefined
     isRanged?: boolean | undefined
     hasDualWield?: boolean | undefined
     isDualWielding?: boolean | undefined
@@ -495,23 +513,37 @@ export function validateBarbarianSkillEquipment(
 ): { valid: boolean; reason?: 'requires_melee' | 'requires_dual_wield' | 'requires_dual_throw' } {
   if (!equipment) return { valid: true }
 
+  const wType = (equipment.weaponItemType ?? '').trim()
+  const offWType = (equipment.offHandWeaponItemType ?? '').trim()
+
   if (
     [126, 133, 139, 143, 144, 147, 151, 152].includes(skillId) &&
-    (equipment.weaponItemType === 'bow' ||
-      equipment.weaponItemType === 'crossbow' ||
-      equipment.isRanged === true)
+    ((wType !== '' && !itemTypeIsA(wType, 'mele')) || equipment.isRanged === true)
   ) {
     return { valid: false, reason: 'requires_melee' }
   }
 
   if (
     (skillId === 133 || skillId === 147) &&
-    (equipment.hasDualWield === false || equipment.isDualWielding === false)
+    (equipment.hasDualWield === false ||
+      equipment.isDualWielding === false ||
+      (offWType !== '' && !itemTypeIsA(offWType, 'mele')))
   ) {
-    return { valid: false, reason: 'requires_dual_wield' }
+    return {
+      valid: false,
+      reason:
+        equipment.hasDualWield === false || equipment.isDualWielding === false
+          ? 'requires_dual_wield'
+          : 'requires_melee',
+    }
   }
 
-  if (skillId === 140 && equipment.hasDualThrow === false) {
+  if (
+    skillId === 140 &&
+    (equipment.hasDualThrow === false ||
+      (wType !== '' && !itemTypeIsA(wType, 'thro')) ||
+      (offWType !== '' && !itemTypeIsA(offWType, 'thro')))
+  ) {
     return { valid: false, reason: 'requires_dual_throw' }
   }
 
@@ -610,11 +642,11 @@ export function calculateWhirlwindHitFrames(
 }
 
 /**
- * Authentic 1.13c Frenzy Momentum Stacking Kinematics (`D2Game.dll` srvdofunc=9):
+ * Authentic 1.13c Frenzy Momentum Stacking Kinematics (`D2Game.dll` srvdofunc=9, 0x6FC493C0):
  * - Each successful hit increments the internal Frenzy counter `nValue` by +1, capped at `slvl`.
  * - Run/Walk velocity bonus (`stat 67`) = `dm(20, 200, nValue)` (47% at nValue=1, up to dm(20, 200, slvl))
  * - Attack rate bonus (`stat 68`) = `dm(0, 50, nValue)` (7% at nValue=1, up to dm(0, 50, slvl))
- * - Buff duration is `150 + 10 * blvl(Increased Stamina)` frames (6.0s + 0.4s/pt), refreshed on hit.
+ * - Buff duration is `auralencalc = par7 = 150` frames (6.0s), refreshed on hit.
  */
 export function calculateFrenzyStackState(
   currentStacks: number,
@@ -622,7 +654,7 @@ export function calculateFrenzyStackState(
   slvl: number,
   lastHitFrame: number,
   currentFrame: number,
-  increasedStaminaBlvl = 0,
+  _increasedStaminaBlvl = 0,
 ): {
   activeStacks: number
   isExpired: boolean
@@ -631,7 +663,7 @@ export function calculateFrenzyStackState(
   currentAttackSpeedBonusPct: number
 } {
   const lvl = Math.max(1, Math.trunc(slvl))
-  const stats = calculateFrenzyStats(lvl, 0, 0, 0, increasedStaminaBlvl)
+  const stats = calculateFrenzyStats(lvl, 0, 0, 0)
   const elapsed = currentFrame - lastHitFrame
   if (elapsed >= stats.durationFrames) {
     return {

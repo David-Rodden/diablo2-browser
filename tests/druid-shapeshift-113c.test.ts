@@ -72,11 +72,11 @@ describe('Issue #1018: Druid Shape Shifting (#223-#248) 4-Layer 1.13c Fidelity',
       expect(lycLines.some(l => l.includes('+120 seconds'))).toBe(true)
       expect(lycLines.some(l => l.includes('40%'))).toBe(true)
 
-      // Werebear (#228): par1=50 (+50% + 8%/lvl = +82% damage), par5=50 (+50% base + 40% Lycanthropy = +90% life)
+      // Werebear (#228): par1=55 (+55% + 8%/lvl = +87% damage), par5=75 (+75% base + 40% Lycanthropy = +115% life)
       const bearVm = buildTooltipViewModel(state, 228)!
       const bearLines = bearVm.current.effects.map(e => e.textEn)
-      expect(bearLines.some(l => l.includes('90%'))).toBe(true)
-      expect(bearLines.some(l => l.includes('82%'))).toBe(true)
+      expect(bearLines.some(l => l.includes('115%'))).toBe(true)
+      expect(bearLines.some(l => l.includes('87%'))).toBe(true)
       expect(bearLines.some(l => l.includes('49%'))).toBe(true)
     })
 
@@ -209,10 +209,10 @@ describe('Issue #1018: Druid Shape Shifting (#223-#248) 4-Layer 1.13c Fidelity',
       expect(ww.durationFrames).toBe(1000 + (1000 + 4 * 500)) // 4000 frames (160s)
       expect(ww.toHitBonusPct).toBe(50 + 4 * 15) // 110%
 
-      // Werebear
+      // Werebear (1.13c Skills.txt: Param1=55, Param2=8, Param3=25, Param4=6, Param5=75)
       const wb = calculateWerebearStats(5, 5)
-      expect(wb.maxHpBonusPct).toBe(50 + 40) // 50% base + 40% Lycanthropy
-      expect(wb.damageBonusPct).toBe(50 + 4 * 8) // +82%
+      expect(wb.maxHpBonusPct).toBe(75 + 40) // 75% base + 40% Lycanthropy
+      expect(wb.damageBonusPct).toBe(55 + 4 * 8) // +87%
       expect(wb.defenseBonusPct).toBe(25 + 4 * 6) // +49%
 
       // Feral Rage progressive charges: maxCharges = floor(slvl/2) + 3
@@ -355,7 +355,7 @@ describe('Issue #1018: Druid Shape Shifting (#223-#248) 4-Layer 1.13c Fidelity',
         stateNameOrId: 'feralrage',
         durationFrames: 500,
         slvl: 5,
-        stats: { item_normaldamage_percent: 50, nCharge: 2 },
+        stats: { damagepercent: 50, progressive_other: 2 },
       })
       expect(stateBus.hasState('wolf')).toBe(true)
       expect(stateBus.hasState('feralrage')).toBe(true)
@@ -484,27 +484,31 @@ describe('Issue #1018: Druid Shape Shifting (#223-#248) 4-Layer 1.13c Fidelity',
       expect(getMissileTxtData('rabiesplague')?.alwaysExplode).toBeUndefined()
     })
 
-    it('manages Werewolf/Werebear morph states and clears Feral Rage / Maul charge orbs on form change', () => {
+    it('CltSt45 (0x6FB79420) picks cltoverlaya / cltoverlayb from the server-driven morph state and writes no state (#1613)', () => {
       const world = new ClientWorld()
       world.apply({ type: 'PlayerAssign', unitId: 1, charClass: 5, name: 'Druid', x: 100, y: 100 })
       const selfUnit = world.getUnit('player', 1)!
       expect(selfUnit).toBeDefined()
+      const tokens = () => selfUnit.overlays.map((o: any) => o.token)
 
-      // Cast Werewolf (#223) -> adds state 139
+      // Not in wolf form: Werewolf (#223) attaches cltoverlaya wolf_into, no local state 139
       ;(world as any).applySkillCastToUnit(selfUnit, 223, 100, 100, 5)
+      expect(tokens()).toContain('wolf_into')
+      expect(selfUnit.states.has(139)).toBe(false)
+
+      // The server sets state 139 (S2C 0xA8); casting Werewolf again picks cltoverlayb wolf_undo
+      world.apply({ type: 'StateSet', unit: { unitType: 0, id: 1 }, state: 139, stats: [] } as any)
+      selfUnit.overlays = []
+      ;(world as any).applySkillCastToUnit(selfUnit, 223, 100, 100, 5)
+      expect(tokens()).toContain('wolf_undo')
       expect(selfUnit.states.has(139)).toBe(true)
 
-      // Cast Feral Rage (#232) -> adds state 120 and increments feralRageCharges (drawn via state setfunc 16 as feralrage1/feralrage1back)
-      ;(world as any).spawnMissilesForSkill(selfUnit, 232, selfUnit.x + 1, selfUnit.y, 5)
-      expect(selfUnit.states.has(120)).toBe(true)
-      expect((selfUnit as any).feralRageCharges).toBe(1)
-
-      // Switch to Werebear (#228) -> removes state 139 and state 120 + resets feralRageCharges, adds state 140
+      // Werebear (#228) while in wolf form: aurastate bear (140) not set -> bear_into; states untouched
+      selfUnit.overlays = []
       ;(world as any).applySkillCastToUnit(selfUnit, 228, 100, 100, 5)
-      expect(selfUnit.states.has(139)).toBe(false)
-      expect(selfUnit.states.has(120)).toBe(false)
-      expect((selfUnit as any).feralRageCharges ?? 0).toBe(0)
-      expect(selfUnit.states.has(140)).toBe(true)
+      expect(tokens()).toContain('bear_into')
+      expect(selfUnit.states.has(139)).toBe(true)
+      expect(selfUnit.states.has(140)).toBe(false)
     })
   })
 })

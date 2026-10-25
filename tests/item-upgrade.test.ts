@@ -15,6 +15,7 @@ import {
   ITEM_UPGRADE_FLAG_ELITE,
   DifficultyLevelsTable,
   parseDifficultyLevelsTable,
+  isItemUber113c,
   loadDifficultyLevels,
   rollBaseUpgrade,
   type UpgradableItemBase,
@@ -433,6 +434,71 @@ describe('Item Base Upgrade System (Issue #103)', () => {
       const res = rollBaseUpgrade(base, roll1, roll2 + 1, testRng, lookup)
       expect(res.base.id).toBe('utst')
       expect(res.isUber).toBe(true)
+    })
+
+    it('determines isUber from the item base ubercode/ultracode per D2Common!0x6FD74D00 (#10772) even without an upgrade roll (Issue #1469)', () => {
+      const capNormal: UpgradableItemBase = {
+        id: 'cap',
+        name: 'Cap',
+        kind: 'armor',
+        invWidth: 2,
+        invHeight: 2,
+        maxStack: 1,
+        value: 12,
+        damage: 0,
+        defense: 5,
+        tags: ['helm'],
+        level: 1,
+        normcode: 'cap',
+        ubercode: 'xap',
+        ultracode: 'uap',
+      }
+      const warHatExceptional: UpgradableItemBase = {
+        ...capNormal,
+        id: 'xap',
+        name: 'War Hat',
+        level: 34,
+      }
+      const shakoElite: UpgradableItemBase = {
+        ...capNormal,
+        id: 'uap',
+        name: 'Shako',
+        level: 58,
+      }
+
+      expect(isItemUber113c(capNormal)).toBe(false)
+      expect(isItemUber113c(warHatExceptional)).toBe(true)
+      expect(isItemUber113c(shakoElite)).toBe(true)
+
+      // When TC directly outputs an exceptional or elite base (e.g. armo60 -> 'uap') with 0 upgrade odds,
+      // rollBaseUpgrade must still report isUber = true.
+      const rng = new D2Rng(12345)
+      expect(rollBaseUpgrade(capNormal, 0, 0, rng, () => undefined).isUber).toBe(false)
+      expect(rollBaseUpgrade(warHatExceptional, 0, 0, rng, () => undefined).isUber).toBe(true)
+      expect(rollBaseUpgrade(shakoElite, 0, 0, rng, () => undefined).isUber).toBe(true)
+
+      // Throwing potions ('tpot' = 0x26) and quest items (nQuest != 0) are excluded by 0x6FD74D00
+      const throwingPotion: UpgradableItemBase = {
+        ...capNormal,
+        id: 'gps',
+        kind: 'weapon',
+        tags: ['tpot'],
+        normcode: 'gps',
+        ubercode: 'gps',
+        ultracode: 'gps',
+      }
+      const questFlail: UpgradableItemBase & { quest: number } = {
+        ...capNormal,
+        id: 'qf2',
+        kind: 'weapon',
+        tags: ['mace'],
+        normcode: 'qf1',
+        ubercode: 'qf2',
+        ultracode: 'qf2',
+        quest: 23,
+      }
+      expect(isItemUber113c(throwingPotion)).toBe(false)
+      expect(isItemUber113c(questFlail)).toBe(false)
     })
   })
 })

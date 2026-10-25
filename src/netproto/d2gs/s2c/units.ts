@@ -8,10 +8,11 @@
 import { BitReader } from '../../core/bit-reader.ts'
 import { ByteReader } from '../../core/byte-reader.ts'
 import { ByteWriter } from '../../core/byte-writer.ts'
-import { unitTypeToId } from '../../domain/ids.ts'
+import { unitTypeToId, type ItemDataTables, type ItemStat } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
 import { getMonsterAnimCompBitWidths } from './monstats2-comp-bits.ts'
 import { requirePacketLength } from './packet-length.ts'
+import { readStateStats } from './states.ts'
 
 /** 0x09 AssignWarp (11B, D2Client.dll 0x6fb5df70) */
 export function decode0x09AssignWarp(pkt: Uint8Array): ServerEvent {
@@ -379,9 +380,16 @@ export function decode0x76HoverTextClear(pkt: Uint8Array): ServerEvent {
  *     - If `superunique`: 16-bit `superUniqueId` (`0x6fb5e549`)
  *     - Up to 9 `uint8` `bossMods` terminated by `0` (`0x6fb5e565..0x6fb5e585`)
  *     - 16-bit `nameSeed` (`0x6fb5e594`)
- * - 1 bit: `hasOwner` (`0x6fb5e5ae`), followed by 32-bit `ownerId` (`0x6fb5e5c4`) when `1`.
+ *     - 1 bit: `hasOwner` (`0x6fb5e5da`), followed by 32-bit `ownerId` (`0x6fb5e5ea`) when `1`.
+ *   - If `hasMonsterFlags === 0` there is NO owner bit: the client jumps straight to 0x6fb5e5f1
+ *     (`je 0x6fb5e5f1` at 0x6fb5e503) and D2Game.dll writes only the single 0 bit (0x6fcacbb3 -> 0x6fcacdb8).
+ * - 1 bit + 31-bit player owner GUID (`0x6fb5e717..0x6fb5e730` -> D2Common #10069 SetOwner(unit, 0, id);
+ *   D2Game.dll 0x6fcacdbd..0x6fcace05 writes `[unit+0x98] & 0x8fffffff`).
+ * - 1 bit `hasStats` (`0x6fb5e73c`), then 9-bit stat ids until 0x1FF read with ItemStatCost
+ *   `Send Param Bits` / `Send Bits` / `Signed` exactly like 0xA8 (`0x6fb5e752..0x6fb5e85a`; D2Game.dll
+ *   0x6fcace0a..0x6fcacf3f only sends `Send Other` stats). A stat the table lacks ends the list.
  */
-export function decode0xACAssignNpc(pkt: Uint8Array): ServerEvent {
+export function decode0xACAssignNpc(pkt: Uint8Array, tables?: ItemDataTables): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0xAC
   const id = r.u32LE()
@@ -401,6 +409,8 @@ export function decode0xACAssignNpc(pkt: Uint8Array): ServerEvent {
   let nameSeed: number | undefined
   let compVariants: number[] | undefined
   let ownerId: number | undefined
+  let playerOwnerId: number | undefined
+  let stats: ItemStat[] | undefined
 
   if (packetLen > 13 && pkt.byteLength >= 13) {
     const bitReader = new BitReader(pkt.subarray(13, Math.min(pkt.byteLength, packetLen)))
@@ -427,58 +437,82 @@ export function decode0xACAssignNpc(pkt: Uint8Array): ServerEvent {
 
         if (canReadFlags && bitReader.remainingBits >= 1) {
           const hasMonsterFlags = bitReader.readBit()
-          let canReadOwner = hasMonsterFlags === 0
-          if (hasMonsterFlags === 1 && bitReader.remainingBits >= 5) {
-            if (bitReader.readBit()) {
-              flags |= 0x04 // champion
-              isChampion = true
-            }
-            if (bitReader.readBit()) {
-              flags |= 0x08 // unique
-              isUnique = true
-            }
-            if (bitReader.readBit()) {
-              flags |= 0x02 // superunique
-              isSuperUnique = true
-            }
-            if (bitReader.readBit()) flags |= 0x10 // minion
-            if (bitReader.readBit()) flags |= 0x40 // ghostly
-
-            let flagsComplete = true
-            if (isSuperUnique) {
-              if (bitReader.remainingBits >= 16) {
-                superUniqueId = bitReader.readBits(16)
+          let flagsComplete = true
+          if (hasMonsterFlags === 1) {
+            if (bitReader.remainingBits < 5) {
+              flagsComplete = false
+            } else {
+              if (bitReader.readBit()) {
+                flags |= 0x04 // champion
+                isChampion = true
+              }
+              if (bitReader.readBit()) {
+                flags |= 0x08 // unique
+                isUnique = true
+              }
+              if (bitReader.readBit()) {
+                flags |= 0x02 // superunique
+                isSuperUnique = true
+              }
+              if (bitReader.readBit()) flags |= 0x10 // minion
+              if (bitReader.readBit()) flags |= 0x40 // ghostly
+              if (isSuperUnique) {
+                if (bitReader.remainingBits >= 16) {
+                  superUniqueId = bitReader.readBits(16)
+                } else {
+                  flagsComplete = false
+                }
+              }
+              if (flagsComplete) {
+                const mods: number[] = []
+                for (let i = 0; i < 9; i++) {
+                  if (bitReader.remainingBits < 8) {
+                    flagsComplete = false
+                    break
+                  }
+                  const mod = bitReader.readBits(8)
+                  if (mod === 0) break
+                  mods.push(mod)
+                }
+                if (mods.length > 0) {
+                  bossMods = mods
+                }
+              }
+              if (flagsComplete && bitReader.remainingBits >= 16) {
+                nameSeed = bitReader.readBits(16)
+              } else {
+                flagsComplete = false
+              }
+              // Owner bit exists only inside the flags block (0x6fb5e5da / 0x6fb5e5ea).
+              if (flagsComplete && bitReader.remainingBits >= 1) {
+                if (bitReader.readBit() === 1) {
+                  if (bitReader.remainingBits >= 32) {
+                    ownerId = bitReader.readBits(32) >>> 0
+                  } else {
+                    flagsComplete = false
+                  }
+                }
               } else {
                 flagsComplete = false
               }
             }
-
-            if (flagsComplete) {
-              const mods: number[] = []
-              for (let i = 0; i < 9; i++) {
-                if (bitReader.remainingBits < 8) {
-                  flagsComplete = false
-                  break
-                }
-                const mod = bitReader.readBits(8)
-                if (mod === 0) break
-                mods.push(mod)
-              }
-              if (mods.length > 0) {
-                bossMods = mods
-              }
-            }
-
-            if (flagsComplete && bitReader.remainingBits >= 16) {
-              nameSeed = bitReader.readBits(16)
-              canReadOwner = true
-            }
           }
 
-          if (canReadOwner && bitReader.remainingBits >= 1) {
-            const hasOwner = bitReader.readBit()
-            if (hasOwner === 1 && bitReader.remainingBits >= 32) {
-              ownerId = bitReader.readBits(32) >>> 0
+          // 1 bit + 31-bit player owner (0x6fb5e717 -> #10069 SetOwner(unit, UNIT_PLAYER, id)).
+          if (flagsComplete && bitReader.remainingBits >= 1) {
+            if (bitReader.readBit() === 1) {
+              if (bitReader.remainingBits >= 31) {
+                playerOwnerId = bitReader.readBits(31) >>> 0
+              } else {
+                flagsComplete = false
+              }
+            }
+            // 1 bit hasStats + Send-Other stat list (0x6fb5e73c..0x6fb5e85a).
+            if (flagsComplete && tables && bitReader.remainingBits >= 1 && bitReader.readBit() === 1) {
+              const read = readStateStats(bitReader, tables)
+              if (read.stats.length > 0) {
+                stats = read.stats
+              }
             }
           }
         }
@@ -518,7 +552,12 @@ export function decode0xACAssignNpc(pkt: Uint8Array): ServerEvent {
       ...(bossMods !== undefined ? { bossMods } : {}),
       ...(nameSeed !== undefined ? { nameSeed } : {}),
       ...(compVariants !== undefined ? { compVariants } : {}),
-      ...(ownerId !== undefined ? { ownerId } : {}),
+      ...(ownerId !== undefined
+        ? { ownerId }
+        : playerOwnerId !== undefined
+          ? { ownerType: 0 as const, ownerId: playerOwnerId }
+          : {}),
+      ...(stats !== undefined ? { stats } : {}),
     },
   }
 }

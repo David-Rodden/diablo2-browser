@@ -76,8 +76,9 @@ const PRESET_CHEST_POOL_ACT3: readonly number[] = [181, 183]
 export function resolvePresetObject113c(
   presetIndex: number,
   areaId: number,
-  subX: number = 0,
-  subY: number = 0,
+  subXOrRng?: number | ((max: number) => number) | undefined,
+  subY?: number,
+  rng?: ((max: number) => number) | undefined,
 ): { readonly classId: number; readonly isSparkling?: boolean | undefined } | null {
   if (presetIndex < 0 || presetIndex === OBJECT_SKIPPED_PRESET || presetIndex > 582) {
     return null
@@ -91,27 +92,50 @@ export function resolvePresetObject113c(
   if (presetIndex === 582) {
     return { classId: 307 }
   }
-  // 580 (Super Chest) or 581 (Preset Chest)
-  const h = ((Math.imul(areaId, 73856093) ^ Math.imul(subX, 19349663) ^ Math.imul(subY, 83492791)) >>> 0)
+  // 1.13c D2Game.dll 0x6fc522b0 & 0x6fc531b0:
+  // Random chest class and sparkling status are rolled via game seed / RNG.
+  const roll: (n: number) => number =
+    typeof subXOrRng === 'function'
+      ? subXOrRng
+      : typeof rng === 'function'
+        ? rng
+        : (n: number) => {
+            const sx = typeof subXOrRng === 'number' ? subXOrRng : 0
+            const sy = typeof subY === 'number' ? subY : 0
+            const h =
+              (Math.imul(areaId, 73856093) ^
+                Math.imul(sx, 19349663) ^
+                Math.imul(sy, 83492791)) >>>
+              0
+            return h % n
+          }
+
   let classId: number
   if (presetIndex === 580 && areaId === 25) {
     classId = 371
   } else {
-    const pool =
-      areaId === 74
-        ? PRESET_CHEST_POOL_ARCANE
-        : areaId >= 40 && areaId < 75
-          ? PRESET_CHEST_POOL_ACT2
-          : areaId === 83
-            ? PRESET_CHEST_POOL_TRAVINCAL
-            : areaId >= 75 && areaId < 103
-              ? PRESET_CHEST_POOL_ACT3
-              : PRESET_CHEST_POOL_ACT1_4_5
-    classId = pool[h % pool.length]!
+    let pool: readonly number[]
+    if (areaId === 74) {
+      pool = PRESET_CHEST_POOL_ARCANE
+    } else if (areaId >= 40 && areaId < 75) {
+      pool = PRESET_CHEST_POOL_ACT2
+    } else if (areaId === 83) {
+      pool = PRESET_CHEST_POOL_TRAVINCAL
+    } else if (areaId >= 75 && areaId < 103) {
+      pool = PRESET_CHEST_POOL_ACT3
+    } else {
+      pool = PRESET_CHEST_POOL_ACT1_4_5
+    }
+    const idx = roll(pool.length)
+    classId = pool[idx]!
   }
   if (presetIndex === 580) {
-    // 0x6fc531b0: Maggot Lair (areas 62..64) has a 50% chance to mark as super chest; 100% elsewhere.
-    const isSuper = areaId >= 62 && areaId <= 64 ? (h & 1) === 0 : true
+    // 1.13c D2Game.dll 0x6fc531b0: Maggot Lair (areas 62..64) rolls rand(100) <= 50 (51% chance, 51 values out of 100)
+    // to mark as super chest; 100% elsewhere.
+    const isSuper =
+      areaId >= 62 && areaId <= 64
+        ? roll(100) <= 50
+        : true
     return isSuper ? { classId, isSparkling: true } : { classId }
   }
   return { classId }
@@ -179,7 +203,10 @@ export function findStandableNear(
 }
 
 /** Turns one level's DRLG geometry into the units, warps, rooms and spawn the game server needs. */
-export function buildAreaBootstrap(level: AreaLevelGeometry): LocalAreaBootstrap {
+export function buildAreaBootstrap(
+  level: AreaLevelGeometry,
+  rng?: ((max: number) => number) | undefined,
+): LocalAreaBootstrap {
   const areaId = level.areaId
   const isTown = TOWN_AREA_IDS_113C.has(areaId)
   const walkable = (x: number, y: number): boolean => isLevelSubTileWalkable(level, x, y)
@@ -193,7 +220,7 @@ export function buildAreaBootstrap(level: AreaLevelGeometry): LocalAreaBootstrap
     const x = level.originX + u.subX
     const y = level.originY + u.subY
     if (u.type === 2) {
-      const resolved = resolvePresetObject113c(u.index, areaId, u.subX, u.subY)
+      const resolved = resolvePresetObject113c(u.index, areaId, u.subX, u.subY, rng)
       if (resolved === null) continue
       if (resolved.classId === OBJECT_ROGUE_BONFIRE && bonfire === null) bonfire = { x, y }
       const isWaypoint = WAYPOINT_CLASS_IDS_113C.has(resolved.classId)
@@ -220,9 +247,12 @@ export function buildAreaBootstrap(level: AreaLevelGeometry): LocalAreaBootstrap
       if (u.index === MONSTER_WARRIV1 && warriv === null) warriv = { x, y }
       const townNpc = getTownNpcDescriptorByHcIdx(u.index)
       const isVendor = townNpc !== undefined && townNpc.vendorId !== null
-      const isNpc = isTown || townNpc !== undefined
       const row = MONSTATS_113C_ROWS[u.index]
-      const isKillable = !isNpc && (row?.killable ?? true)
+      if (!row) {
+        throw new Error(`area bootstrap: missing MonStats entry for hcIdx ${u.index}`)
+      }
+      const isNpc = row.npc || townNpc !== undefined
+      const isKillable = !isNpc && row.killable
       monsters.push({
         classId: u.index,
         x,
@@ -245,9 +275,9 @@ export function buildAreaBootstrap(level: AreaLevelGeometry): LocalAreaBootstrap
 
   const candidate =
     bonfire !== null
-      ? { x: bonfire.x + 3, y: bonfire.y + 3 }
+      ? { x: bonfire.x, y: bonfire.y }
       : warriv !== null
-        ? { x: warriv.x + 2, y: warriv.y + 2 }
+        ? { x: warriv.x, y: warriv.y }
         : {
             x: level.originX + level.spawnTileX * SUB_TILES_PER_TILE + 2,
             y: level.originY + level.spawnTileY * SUB_TILES_PER_TILE + 2,
@@ -279,7 +309,10 @@ export function buildAreaBootstrap(level: AreaLevelGeometry): LocalAreaBootstrap
 }
 
 /** The resolver injected into `GameInstance`: builds the level through `source`, then `buildAreaBootstrap`. */
-export function createAreaBootstrapResolver(source: AreaLevelSource): LocalAreaBootstrapResolver {
+export function createAreaBootstrapResolver(
+  source: AreaLevelSource,
+  rng?: ((max: number) => number) | undefined,
+): LocalAreaBootstrapResolver {
   return (request) => {
     const level = source(request)
     if (level === null) return null
@@ -293,6 +326,6 @@ export function createAreaBootstrapResolver(source: AreaLevelSource): LocalAreaB
         `area bootstrap: level ${level.areaId} collision grid has ${level.blocked.length} cells, expected ${level.subWidth}x${level.subHeight}`,
       )
     }
-    return buildAreaBootstrap(level)
+    return buildAreaBootstrap(level, rng)
   }
 }

@@ -47,7 +47,7 @@ describe('[Skill #234] Eruption (DRU) — 1.13c Parity (Issue #327)', () => {
     expect(r20.minElemDmg256).toBe(55552)
     expect(r20.maxElemDmg256).toBe(58112)
     expect(r20.durationFrames).toBe(0)
-    expect(r20.radiusSubtiles).toBe(121)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(50)
   })

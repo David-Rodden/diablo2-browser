@@ -751,7 +751,7 @@ describe('Tier 2: Boundary, Corner & Negative Tests (F1–F14)', () => {
     })
 
     it('F10.B3: mercenary with zero hostile monsters in range follows owner instead of attacking', () => {
-      const owner = createTestCombatPlayer({ x: 200, y: 100 })
+      const owner = createTestCombatPlayer({ x: 400, y: 100 })
       const merc: MercenaryUnitState = {
         unitId: 503,
         subType: 1,

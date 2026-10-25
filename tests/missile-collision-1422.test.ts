@@ -35,9 +35,6 @@ function makeUnit(
   statList.setBaseStat('level', 20)
   statList.setBaseStat('maxhp', maxHp * FIXED_ONE)
   statList.setHp256(hp * FIXED_ONE)
-  if (opts?.hcIdx !== undefined) {
-    statList.setBaseStat('hcIdx', opts.hcIdx)
-  }
   const stateBus = new StateBus(statList, registry)
     return {
     id,

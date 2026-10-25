@@ -8,6 +8,7 @@ import { ByteReader } from '../../core/byte-reader.ts'
 import { ByteWriter } from '../../core/byte-writer.ts'
 import { unitTypeToId } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
+import { requirePacketLength } from './packet-length.ts'
 
 /** 0x2C PlaySound (8B, D2Client.dll 0x6fb5d740) */
 export function decode0x2CPlaySound(pkt: Uint8Array): ServerEvent {
@@ -66,8 +67,7 @@ export function decode0x53EnvironmentSync(pkt: Uint8Array): ServerEvent {
 }
 
 /**
- * 0x73 CreateMissile (32B, D2Client.dll 0x6fb5eee0):
- * Canonical 1.13c wire layout:
+ * 0x73 CreateMissile (32B, D2Client.dll 0x6fb5eee0). The client knows a single wire layout:
  * - [0]      = 0x73
  * - [1..4]   = u32LE unk
  * - [5..6]   = u16LE missileClassId
@@ -79,71 +79,40 @@ export function decode0x53EnvironmentSync(pkt: Uint8Array): ServerEvent {
  * - [25]     = u8 ownerType
  * - [26..29] = u32LE ownerId
  * - [30]     = u8 level
- * - [31]     = u8 pierceIdx (range)
+ * - [31]     = u8 pierceIdx (stat 0x148 when non-zero)
+ * The target is used only when targetX AND targetY are both non-zero (`test edx, edx; je` /
+ * `test ebx, ebx; je` before flag 0x40000021 at 0x6fb5ef3a..0x6fb5ef4c); otherwise the missile has no target.
  */
 export function decode0x73CreateMissile(pkt: Uint8Array): ServerEvent {
+  requirePacketLength(pkt, '0x73 CreateMissile', 32)
   const r = new ByteReader(pkt)
   r.u8() // 0x73
   const unk = r.u32LE()
   const missileClassId = r.u16LE()
-  // Canonical 1.13c 32B packet has u32LE coordinates at +7, +11, +15, +19 (high 16 bits at +9..10, +13..14, +17..18, +21..22 are 0)
-  const isCanonical113cDwordCoords =
-    pkt.byteLength >= 32 &&
-    pkt[9] === 0 &&
-    pkt[10] === 0 &&
-    pkt[13] === 0 &&
-    pkt[14] === 0 &&
-    pkt[17] === 0 &&
-    pkt[18] === 0 &&
-    pkt[21] === 0 &&
-    pkt[22] === 0
-  if (isCanonical113cDwordCoords) {
-    const x = r.u32LE()
-    const y = r.u32LE()
-    const targetX = r.u32LE()
-    const targetY = r.u32LE()
-    const cltDoFuncArg = r.u16LE()
-    const ownerType = unitTypeToId(r.u8())
-    const ownerId = r.u32LE()
-    const level = r.u8()
-    const pierceIdx = r.u8()
-    return {
-      type: 'CreateMissile',
-      missileClassId,
-      at: { x, y },
-      target: { x: targetX || x, y: targetY || y },
-      level: level || 1,
-      owner: { unitType: ownerType, id: ownerId },
-      ownerType,
-      ownerId,
-      unk,
-      velocity: cltDoFuncArg,
-      cltDoFuncArg,
-      range: pierceIdx,
-      pierceIdx,
-    }
-  }
-  const x = r.u16LE()
-  const y = r.u16LE()
-  const targetX = r.u16LE()
-  const targetY = r.u16LE()
-  const level = r.remaining >= 1 ? r.u8() : 1
-  const ownerType = r.remaining >= 1 ? unitTypeToId(r.u8()) : 0
-  const ownerId = r.remaining >= 4 ? r.u32LE() : 0
-  const velocity = r.remaining >= 2 ? r.u16LE() : undefined
-  const range = r.remaining >= 2 ? r.u16LE() : undefined
+  const x = r.u32LE()
+  const y = r.u32LE()
+  const targetX = r.u32LE()
+  const targetY = r.u32LE()
+  const cltDoFuncArg = r.u16LE()
+  const ownerType = unitTypeToId(r.u8())
+  const ownerId = r.u32LE()
+  const level = r.u8()
+  const pierceIdx = r.u8()
+  const hasTarget = targetX !== 0 && targetY !== 0
   return {
     type: 'CreateMissile',
     missileClassId,
     at: { x, y },
-    target: { x: targetX || x, y: targetY || y },
+    target: hasTarget ? { x: targetX, y: targetY } : { x, y },
     level: level || 1,
     owner: { unitType: ownerType, id: ownerId },
     ownerType,
     ownerId,
     unk,
-    ...(velocity !== undefined ? { velocity } : {}),
-    ...(range !== undefined ? { range } : {}),
+    velocity: cltDoFuncArg,
+    cltDoFuncArg,
+    range: pierceIdx,
+    pierceIdx,
   }
 }
 
@@ -241,30 +210,26 @@ export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
   switch (op) {
     case 0x12: // UnloadAct (1B, D2Client.dll 0x6fb5c370 / 0x6fb5d6a0)
       return { type: 'UnloadAct' }
-    case 0x16: { // MultipleUnitAssign (variable 3 + 9 * pkt[2], D2Client.dll 0x6fb5d9d0)
-      const count = pkt[2] ?? 0
-      if (count > 0 && pkt.byteLength >= 3 + count * 9) {
-        const r = new ByteReader(pkt.subarray(3))
-        const entries: Array<{ unitType: ReturnType<typeof unitTypeToId>; id: number; x: number; y: number }> = []
-        for (let i = 0; i < count && r.remaining >= 9; i++) {
-          entries.push({
-            unitType: unitTypeToId(r.u8()),
-            id: r.u32LE(),
-            x: r.u16LE(),
-            y: r.u16LE(),
-          })
-        }
-        return {
-          type: 'ProtocolSync',
-          opcode: op,
-          byteLength: pkt.byteLength,
-          entries,
-        }
+    case 0x16: {
+      // MultipleUnitAssign (variable, D2Net u16 size @1; D2Client.dll 0x6fb5d9d0): count @3 (`mov al,[ecx+3]`,
+      // 0 asserts), entries from @4 (`lea edi,[ecx+4]`), 9 bytes each {u8 type, u32 id, u16 x, u16 y}; every
+      // entry whose unit exists with the same type gets the 0x6fada1b0 position drift check.
+      const count = pkt[3] ?? 0
+      const r = new ByteReader(pkt.subarray(4))
+      const entries: Array<{ unitType: ReturnType<typeof unitTypeToId>; id: number; x: number; y: number }> = []
+      for (let i = 0; i < count && r.remaining >= 9; i++) {
+        entries.push({
+          unitType: unitTypeToId(r.u8()),
+          id: r.u32LE(),
+          x: r.u16LE(),
+          y: r.u16LE(),
+        })
       }
       return {
         type: 'ProtocolSync',
         opcode: op,
         byteLength: pkt.byteLength,
+        entries,
       }
     }
     case 0x17: { // RemoveUnit17 (7B in D2Client.dll 0x6fb5f240: u8 0x17, u8 unitType, u8 pad, u32 id @+3; or 6B u32 id @+2)
@@ -283,47 +248,64 @@ export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
         id,
       }
     }
-    case 0x57: { // MonsterEnchant (14B, D2Client.dll 0x6fb5d560 -> 0x6fad1e90)
-      if (pkt.byteLength >= 14) {
-        const r = new ByteReader(pkt.subarray(1, 14))
-        return {
-          type: 'ProtocolSync',
-          opcode: op,
-          byteLength: pkt.byteLength,
-          monsterEnchant: {
-            monsterId: r.u32LE(),
-            enchantType: r.u8(),
-            textId: r.u16LE(),
-            prefix: r.u8(),
-            suffix: r.u8(),
-            field10: r.u32LE(),
-          },
-        }
-      }
+    case 0x57: {
+      // MonsterEnchant (14B, D2Client.dll 0x6fb5d560): u32 id @1; `cmp byte [ecx+5], 1` (monster only);
+      // nameSeed u16 @6 -> pMonsterData+0x14; bossMods[0..2] = bytes @8, @9, @10 -> pMonsterData+0x1C..0x1E;
+      // u16 @12 non-zero sets the champion flag (0x04), the unique flag (0x08) is always set; then 0x6fad0f20.
+      // (The 1.13c D2Game sender 0x6fcaab50 has no callers.)
+      const r = new ByteReader(pkt.subarray(1, 14))
+      const monsterId = r.u32LE()
+      const unitType = r.u8()
+      const nameSeed = r.u16LE()
+      const bossMods = [r.u8(), r.u8(), r.u8()]
+      r.u8() // @11 unused
+      const championFlag = r.u16LE()
       return {
         type: 'ProtocolSync',
         opcode: op,
         byteLength: pkt.byteLength,
+        monsterEnchant: { monsterId, unitType, nameSeed, bossMods, champion: championFlag !== 0 },
       }
     }
-    case 0x93: { // Unknown0x93 / NPCGossipFlag (8B, D2Client.dll 0x6fb5d3d0)
-      if (pkt.byteLength >= 8) {
-        const r = new ByteReader(pkt.subarray(1, 8))
-        const npcId = r.u32LE()
-        r.u16LE()
-        const flag = r.u8()
-        return {
-          type: 'ProtocolSync',
-          opcode: op,
-          byteLength: pkt.byteLength,
-          npcGossip: { npcId, flag },
-        }
-      }
+    case 0x93: {
+      // 0x93 (8B, D2Client.dll 0x6fb5d3d0): player id @1 (player table, type checked), i8 @5 (`cmp esi, 0x80`
+      // sign fix), u8 @6, u8 @7 -> 0x6fb50c40 (walks the player's skill list; Skills.cpp).
+      const r = new ByteReader(pkt.subarray(1, 8))
+      const playerId = r.u32LE()
+      const b5 = r.u8()
+      const skillGroup = r.u8()
+      const mode = r.u8()
       return {
         type: 'ProtocolSync',
         opcode: op,
         byteLength: pkt.byteLength,
+        playerSkillUpdate: { playerId, value: b5 > 0x80 ? b5 - 0x100 : b5, skillGroup, mode },
       }
+    }
+    case 0x40: {
+      // 0x40 (13B, D2Client.dll 0x6fb5d340 -> 0x6fb321b0): item id @1 (item table, type 4 asserted),
+      // ITEMS_SetItemFlag(item, dword @5, dword @9).
+      const r = new ByteReader(pkt.subarray(1, 13))
+      const itemId = r.u32LE()
+      const flag = r.u32LE()
+      const enabled = r.u32LE()
+      return { type: 'ItemFlagUpdate', ownerType: 4, ownerId: 0, itemId, flag, enabled, direct: true }
+    }
+    case 0x62: {
+      // 0x62 (7B, D2Client.dll 0x6fb5dfd0 -> 0x6faf9370): unit type @1, id @2. Type 1 ends the current NPC
+      // interaction (unit flag 2, NPC dialog state reset, 0x6faf67c0 frees the menu); types 2/4/6 close the
+      // panels via 0x6fb6e350(1, 0); types 3/5 do nothing.
+      const r = new ByteReader(pkt.subarray(1, 6))
+      const rawUnitType = r.u8()
+      const id = r.u32LE()
+      return { type: 'ProtocolSync', opcode: op, byteLength: pkt.byteLength, unit: { rawUnitType, id } }
+    }
+    // 0xA6 (variable, D2Client.dll 0x6fb5bf20): when pkt[1] == 0, D2Common #10005(u16 @4, pkt + 6) rebuilds a
+    // D2Common item table (ItemTbls.cpp); the port has no client-side D2Common table to update.
+    case 0x5f: {
+      // 0x5F (5B, D2Client.dll 0x6fb5c050): D2Common #10073 on the local player: pPlayerData+0x2C = dword @1.
+      const r = new ByteReader(pkt.subarray(1, 5))
+      return { type: 'ProtocolSync', opcode: op, byteLength: pkt.byteLength, playerData2C: r.u32LE() >>> 0 }
     }
     case 0x97:
       // WeaponSwitch (1B, D2Client.dll 0x6fb5bf50). Header only (D2MOO D2Game `SCmd.cpp:2361-2369`);
@@ -335,7 +317,9 @@ export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
       return { type: 'GameLoading' }
     case 0x58: // OpenUiBox (7B, D2Client.dll 0x6fb5f980)
       return decode0x58OpenUi(pkt)
-    case 0x7e: // CMNCof (5B, D2Client.dll 0x6fb5d240)
+    // 0x7E (5B, D2Client.dll 0x6fb5d240): reloads an engine data file `DATA\\GLOBAL\\<name>` picked from the
+    // player's class table (0x6fba9eb4) into 0x6fbc44c8 via 0x6fb19240 — no web-port state to mirror.
+    case 0x7e:
     case 0x80: // Noop4B (4B, D2Client.dll 0x6fb5c520)
       return {
         type: 'ProtocolSync',
@@ -354,21 +338,18 @@ export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
         unitId: npcId,
       }
     }
-    case 0x98: { // EvilHut / Shrine (7B, D2Client.dll 0x6fb5d4f0: u8 0x98 | u32 unitId @+1 | u16 value @+5)
-      if (pkt.byteLength >= 7 && ((pkt[1] ?? 0) > 5 || (pkt[3] === 0 && pkt[4] === 0 && pkt[6] === 0 && (pkt[5] ?? 0) > 0))) {
-        const r = new ByteReader(pkt.subarray(1, 7))
-        return {
-          type: 'UnitMode',
-          unitType: 2,
-          id: r.u32LE(),
-          mode: r.u16LE(),
-        }
-      }
+    case 0x98: {
+      // 0x98 (7B, D2Client.dll 0x6fb5d4f0 -> 0x6fafc3c0): u32 monster id @1, u16 value @5 (0xFFFF -> -1),
+      // stored at pMonsterData+0x40; no mode change. D2Game.dll 0x6fcaa6c0 sends it only for MonStats 528
+      // (evilhut, caller 0x6fc9b26e `cmp [ebp+4], 0x210`).
+      const r = new ByteReader(pkt.subarray(1, 7))
+      const monsterId = r.u32LE()
+      const raw = r.u16LE()
       return {
-        type: 'UnitMode',
-        unitType: unitTypeToId(pkt[1] ?? 1),
-        id: pkt.byteLength >= 6 ? new ByteReader(pkt.subarray(2, 6)).u32LE() : 0,
-        mode: pkt[6] ?? 1,
+        type: 'ProtocolSync',
+        opcode: op,
+        byteLength: pkt.byteLength,
+        evilHut: { monsterId, value: raw === 0xffff ? -1 : raw },
       }
     }
     default:

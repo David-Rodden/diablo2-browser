@@ -243,6 +243,7 @@ describe('readMonsterKinds', () => {
       minions: ['fallen1'],
       setBoss: true,
       sparsePopulate: 100,
+      toBlock: 0,
     })
   })
 
@@ -425,14 +426,15 @@ describe('monsterBudget', () => {
     expect(monsterBudget(plan, 1)).toBe(1)
   })
 
-  it('uses the authentic 1.13c room density formula', () => {
+  it('uses the authentic 1.13c room density formula without ×3 headcount inflation', () => {
     const plan = readLevelMonsterPlan(LEVELS, 2)!
+    // D2Game.dll 0x6FC67A20:
     // 9000 cells, density 520:
     // attempts = Math.floor((9000 * 25) / 9) = 25000
     // expectedPacks = 25000 * (520 / 100000) = 130
-    // monsterBudget = Math.max(1, Math.round(130 * 3)) = 390
-    expect(monsterBudget(plan, 9000)).toBe(390)
-    expect(monsterBudget(9000, 520)).toBe(390)
+    // monsterBudget = Math.max(1, Math.round(130)) = 130
+    expect(monsterBudget(plan, 9000)).toBe(130)
+    expect(monsterBudget(9000, 520)).toBe(130)
   })
 })
 
@@ -471,6 +473,51 @@ describe('selectLevelTypes', () => {
   it('returns nothing for a town', () => {
     expect(selectLevelTypes(readLevelMonsterPlan(LEVELS, 1)!, kinds, new Rng(1))).toEqual([])
   })
+
+  it('#1463 draws uniformly without Rarity weighting (D2Game.dll 0x6FCEA80C: div ebp)', () => {
+    const base = kinds.get('fallen1')!
+    const poolKinds = new Map<string, MonsterKind>([
+      ['a', { ...base, id: 'a', rarity: 1 }],
+      ['b', { ...base, id: 'b', rarity: 10 }],
+    ])
+    const plan = {
+      ...readLevelMonsterPlan(LEVELS, 2)!,
+      typeCount: 1,
+      pool: ['a', 'b'],
+      rangedSpawn: false,
+    }
+    const rng = new Rng(0x1463)
+    let countA = 0
+    let countB = 0
+    for (let i = 0; i < 10_000; i += 1) {
+      const picked = selectLevelTypes(plan, poolKinds, rng)
+      expect(picked).toHaveLength(1)
+      if (picked[0]!.id === 'a') countA += 1
+      else countB += 1
+    }
+    expect(countA + countB).toBe(10_000)
+    expect(countA).toBeGreaterThan(4800)
+    expect(countA).toBeLessThan(5200)
+    expect(countB).toBeGreaterThan(4800)
+    expect(countB).toBeLessThan(5200)
+  })
+
+  it('#1463 caps NumMon at 13 even when typeCount and pool are 20 (D2Game.dll 0x6FCEA76F: cmp edx, 0xd)', () => {
+    const base = kinds.get('fallen1')!
+    const poolIds = Array.from({ length: 20 }, (_, i) => `m${String(i + 1)}`)
+    const poolKinds = new Map<string, MonsterKind>(
+      poolIds.map(id => [id, { ...base, id, rarity: 1 }]),
+    )
+    const plan = {
+      ...readLevelMonsterPlan(LEVELS, 2)!,
+      typeCount: 20,
+      pool: poolIds,
+      rangedSpawn: false,
+    }
+    const chosen = selectLevelTypes(plan, poolKinds, new Rng(0x1463))
+    expect(chosen).toHaveLength(13)
+    expect(new Set(chosen.map(k => k.id)).size).toBe(13)
+  })
 })
 
 describe('planMonsterGroups', () => {
@@ -478,10 +525,18 @@ describe('planMonsterGroups', () => {
   const plan = readLevelMonsterPlan(LEVELS, 3)!
   const types = selectLevelTypes(plan, kinds, new Rng(4))
 
-  it('spends the whole budget', () => {
-    for (const budget of [1, 5, 20, 57]) {
-      const groups = planMonsterGroups(plan, types, kinds, budget, new Rng(5))
-      expect(groups.reduce((sum, group) => sum + group.count, 0)).toBe(budget)
+  it('rolls full MinGrp..MaxGrp normal packs per attempt without truncating by remaining budget (D2Game.dll 0x6FC67700)', () => {
+    const normalOnlyPlan = { ...plan, eliteMin: 0, eliteMax: 0 }
+    for (const packBudget of [1, 5, 20, 57]) {
+      const groups = planMonsterGroups(normalOnlyPlan, types, kinds, packBudget, new Rng(5))
+      expect(groups).toHaveLength(packBudget)
+      expect(
+        groups.every(
+          group =>
+            group.count >= Math.max(1, group.kind.minGroup) &&
+            group.count <= Math.max(1, group.kind.maxGroup),
+        ),
+      ).toBe(true)
     }
   })
 

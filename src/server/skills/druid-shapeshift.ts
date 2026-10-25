@@ -270,11 +270,11 @@ export function calculateLycanthropyStats(slvl: number): LycanthropyStats {
 
 /**
  * Skill 228: Werebear (Wearbear)
- * Ground Truth:
- * - Enhanced Damage: 50 + (slvl - 1) * 8 %
- * - Armor / Defense: 25 + (slvl - 1) * 6 %
- * - Max HP: 50% base + Lycanthropy.ln34 (20 + (lycBlvl - 1) * 5)%
- * - Duration: 1000 frames (40s) + Lycanthropy.ln12 (1000 + (lycBlvl - 1) * 500 frames)
+ * Ground Truth (`samples/d2/excel/Skills.txt` row 228 & `D2Game.dll` `0x6FC66210` -> `0x6FC648E0`):
+ * - `aurastat1 = damagepercent`, `aurastatcalc1 = ln12` (`Param1 = 55, Param2 = 8`) -> `55 + (slvl - 1) * 8` %
+ * - `aurastat2 = skill_armor_percent`, `aurastatcalc2 = ln34` (`Param3 = 25, Param4 = 6`) -> `25 + (slvl - 1) * 6` %
+ * - `aurastat3 = item_maxhp_percent`, `aurastatcalc3 = par5 + skill('Shape Shifting'.ln34)` (`Param5 = 75`) -> `75% base + Lycanthropy.ln34`
+ * - Duration (`auralencalc`): `1000 + skill('Shape Shifting'.ln12)` (`1000 + (lycSlvl > 0 ? 1000 + (lycSlvl - 1) * 500 : 0)` frames)
  * - Mana: 15, Cooldown: 25 frames (1.0s)
  */
 export function calculateWerebearStats(
@@ -284,11 +284,11 @@ export function calculateWerebearStats(
   const lvl = Math.max(1, slvl)
   const lycPts = Math.max(0, lycanthropyBlvl)
 
-  const damageBonusPct = 50 + (lvl - 1) * 8
+  const damageBonusPct = 55 + (lvl - 1) * 8
   const defenseBonusPct = 25 + (lvl - 1) * 6
 
   const lycHpBonus = lycPts > 0 ? 20 + (lycPts - 1) * 5 : 0
-  const maxHpBonusPct = 50 + lycHpBonus
+  const maxHpBonusPct = 75 + lycHpBonus
 
   const lycDurationBonus = lycPts > 0 ? 1000 + (lycPts - 1) * 500 : 0
   const durationFrames = 1000 + lycDurationBonus

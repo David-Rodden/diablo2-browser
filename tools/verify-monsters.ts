@@ -414,7 +414,7 @@ if (bloodMoor === null) {
   /** A wilderness level is roughly 50×50 cells. */
   const CELLS = 50 * 50
   const budget = monsterBudget(bloodMoor, CELLS)
-  check(budget === 108, `budget for a ${String(CELLS)}-cell level is ${String(budget)}, matching 1.13c MonsterRegion.cpp formula (36.1 packs × 3 = 108)`)
+  check(budget === 36, `budget for a ${String(CELLS)}-cell level is ${String(budget)} expected pack attempts, matching 1.13c D2Game.dll 0x6FC67A20 (36.1 packs → 36)`)
 
   const town = readLevelMonsterPlan(tables.levels, 1)
   check(town !== null && monsterBudget(town, CELLS) === 0, 'a town has a budget of zero')
@@ -426,7 +426,7 @@ if (bloodMoor === null) {
 
   const groups = planMonsterGroups(bloodMoor, types, kinds, budget, new Rng(3))
   const placed = groups.reduce((sum, group) => sum + group.count, 0)
-  check(placed === budget, `packs account for the whole budget (${String(placed)} of ${String(budget)})`)
+  check(groups.length <= budget && placed >= groups.length, `packs roll full MinGrp..MaxGrp groups without truncation (${String(groups.length)} packs, ${String(placed)} monsters)`)
   check(groups.every(group => group.count >= 1), 'no empty packs')
   check(
     groups.every(group => group.count <= Math.max(1, group.kind.maxGroup)),

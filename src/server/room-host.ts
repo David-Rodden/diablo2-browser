@@ -22,7 +22,7 @@ import {
   type GameModePolicy,
 } from './engine/game-instance.ts'
 import { MAX_CATCHUP_FRAMES, SERVER_FRAME_MS } from './loopback-adapter.ts'
-import { AoiFilter, DEFAULT_AOI_RADIUS_SUBTILES } from './net/aoi.ts'
+import { AoiFilter } from './net/aoi.ts'
 import { PartyManager } from './net/party.ts'
 import { RoomClientSession, type RoomWireProtocol } from './net/session.ts'
 
@@ -52,7 +52,7 @@ export interface ConnectClientSpec extends ConnectPlayerSpec {
 export class MultiClientRoomHost {
   readonly gameInstance: GameInstance
   readonly aoiFilter: AoiFilter
-  readonly partyManager: PartyManager
+  readonly hasExplicitAoi: boolean
 
   private readonly sessionsByPlayerId = new Map<number, RoomClientSession>()
   private readonly sessionsById = new Map<number, RoomClientSession>()
@@ -90,9 +90,13 @@ export class MultiClientRoomHost {
           maxPlayers,
         },
       })
-    this.aoiFilter = new AoiFilter(config.aoiRadius ?? DEFAULT_AOI_RADIUS_SUBTILES)
-    this.partyManager = new PartyManager()
+    this.hasExplicitAoi = config.aoiRadius !== undefined && config.aoiRadius > 0
+    this.aoiFilter = new AoiFilter(config.aoiRadius ?? 0)
     this.onPlayerSave = config.onPlayerSave
+  }
+
+  get partyManager(): PartyManager {
+    return this.gameInstance.partyManager
   }
 
   get game(): GameInstance {
@@ -148,14 +152,6 @@ export class MultiClientRoomHost {
     const playerUnitId = this.gameInstance.connectPlayer(spec)
     const pState = this.gameInstance.getPlayerState(playerUnitId)!
     const sessionId = this.nextSessionId++
-
-    this.partyManager.addPlayer(
-      playerUnitId,
-      pState.name,
-      pState.classId,
-      pState.level,
-      pState.areaId,
-    )
 
     const session = new RoomClientSession({
       sessionId,
@@ -213,15 +209,6 @@ export class MultiClientRoomHost {
       })
       return
     }
-    if (cmd.type === 'Party' || cmd.type === 'PartyAction') {
-      if (cmd.action === 0x06) {
-        this.partyManager.invite(session.playerUnitId, cmd.targetPlayerId)
-      } else if (cmd.action === 0x08) {
-        this.partyManager.accept(session.playerUnitId, cmd.targetPlayerId)
-      } else if (cmd.action === 0x07 || cmd.action === 0x09) {
-        this.partyManager.leaveParty(session.playerUnitId)
-      }
-    }
     this.gameInstance.enqueueCommand(session.playerUnitId, cmd)
   }
 
@@ -231,7 +218,6 @@ export class MultiClientRoomHost {
     const pid = session.playerUnitId
     this.sessionsByPlayerId.delete(pid)
     this.sessionsById.delete(session.sessionId)
-    this.partyManager.removePlayer(pid)
     this.aoiFilter.removeViewer(pid)
     this.aoiFilter.removeEntity('player', pid)
 
@@ -300,7 +286,11 @@ export class MultiClientRoomHost {
       if (!viewer) continue
 
       for (const ev of events) {
-        this.deliverEventWithAoi(session, viewer, ev)
+        if (this.hasExplicitAoi) {
+          this.deliverEventWithAoi(session, viewer, ev)
+        } else {
+          session.sendEvent(ev)
+        }
       }
     }
   }
@@ -315,7 +305,7 @@ export class MultiClientRoomHost {
     },
     ev: ServerEvent,
   ): void {
-    const spatial = this.extractSpatialTarget(ev)
+    const spatial = this.extractSpatialTarget(ev, viewer.areaId)
     if (
       !spatial ||
       (spatial.unitType === 'player' && spatial.unitId === viewer.unitId)
@@ -324,7 +314,10 @@ export class MultiClientRoomHost {
       return
     }
 
-    const inRange = this.aoiFilter.isInRange(viewer, spatial)
+    const isSeam =
+      spatial.areaId > 0 &&
+      this.gameInstance.isAreaSeamAdjacent(viewer.areaId, spatial.areaId)
+    const inRange = this.aoiFilter.isInRange(viewer, spatial, undefined, isSeam)
     const wasVisible = this.aoiFilter.isVisible(
       viewer.unitId,
       spatial.unitType,
@@ -379,6 +372,7 @@ export class MultiClientRoomHost {
 
   private extractSpatialTarget(
     ev: ServerEvent,
+    viewerAreaId?: number,
   ):
     | {
         readonly unitType: UnitType
@@ -399,7 +393,9 @@ export class MultiClientRoomHost {
         const unitId = Number(ev.unit?.id ?? ev.unitId ?? 0)
         const x = Number(ev.unit?.x ?? ev.x ?? 0)
         const y = Number(ev.unit?.y ?? ev.y ?? 0)
-        const areaId = Number(ev.areaId ?? this.lookupUnitArea(unitType, unitId))
+        const areaId = Number(
+          ev.areaId ?? this.lookupUnitArea(unitType, unitId) ?? viewerAreaId ?? 0,
+        )
         return { unitType, rawUnitType, unitId, areaId, x, y }
       }
       case 'UnitMove': {
@@ -410,7 +406,9 @@ export class MultiClientRoomHost {
         const unitId = Number(ev.id ?? ev.unitId ?? 0)
         const x = Number(ev.x ?? ev.from?.x ?? ev.to?.x ?? 0)
         const y = Number(ev.y ?? ev.from?.y ?? ev.to?.y ?? 0)
-        const areaId = Number(ev.areaId ?? this.lookupUnitArea(unitType, unitId))
+        const areaId = Number(
+          ev.areaId ?? this.lookupUnitArea(unitType, unitId) ?? viewerAreaId ?? 0,
+        )
         return { unitType, rawUnitType, unitId, areaId, x, y }
       }
       case 'UnitReassign': {
@@ -421,7 +419,9 @@ export class MultiClientRoomHost {
         const unitId = Number(ev.id ?? ev.unitId ?? 0)
         const x = Number(ev.at?.x ?? ev.x ?? 0)
         const y = Number(ev.at?.y ?? ev.y ?? 0)
-        const areaId = Number(ev.areaId ?? this.lookupUnitArea(unitType, unitId))
+        const areaId = Number(
+          ev.areaId ?? this.lookupUnitArea(unitType, unitId) ?? viewerAreaId ?? 0,
+        )
         return { unitType, rawUnitType, unitId, areaId, x, y }
       }
       default:
@@ -429,18 +429,17 @@ export class MultiClientRoomHost {
     }
   }
 
-  private lookupUnitArea(unitType: UnitType, unitId: number): number {
+  private lookupUnitArea(unitType: UnitType, unitId: number): number | undefined {
     if (unitType === 'player' || unitType === 0) {
-      return this.gameInstance.getPlayerState(unitId)?.areaId ?? 1
+      return this.gameInstance.getPlayerState(unitId)?.areaId
     }
     if (unitType === 'monster' || unitType === 1) {
       return (
         this.gameInstance.getMonsterState(unitId)?.areaId ??
-        this.gameInstance.getMercenaryOrPetArea(unitId) ??
-        1
+        this.gameInstance.getMercenaryOrPetArea(unitId)
       )
     }
-    return 1
+    return undefined
   }
 
   exportPlayerD2s(playerUnitIdOrCharName: number | string): Uint8Array {

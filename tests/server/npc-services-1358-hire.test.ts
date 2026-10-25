@@ -45,8 +45,9 @@ describe('issue #1358 hire list and revive cost', () => {
     const cost = game.drainEvents(playerId).find(
       (e) => e.type === 'Merc' && (e as { kind?: string }).kind === 'stat',
     ) as { value?: number } | undefined
-    expect(cost?.value).toBe(1000)
+    // D2Common.dll 0x6FD7CC60 (#11097): min(50000, trunc(10*10 / 2) * 15) = 50 * 15 = 750
+    expect(cost?.value).toBe(750)
     expect(merc.alive).toBe(true)
-    expect(player.gold).toBe(99_000)
+    expect(player.gold).toBe(99_250)
   })
 })

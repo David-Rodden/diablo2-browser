@@ -64,7 +64,6 @@ describe('Milestone M11.5 (Issue #408) — Monster Drop End-to-End Integration S
           speed: 0,
           baseMinDamage: 50,
           baseMaxDamage: 50,
-          damagePerLevel: 0,
           radius: 20,
         },
         {
@@ -77,7 +76,6 @@ describe('Milestone M11.5 (Issue #408) — Monster Drop End-to-End Integration S
           speed: 300,
           baseMinDamage: 50,
           baseMaxDamage: 50,
-          damagePerLevel: 0,
           radius: 20,
         },
         {
@@ -90,7 +88,6 @@ describe('Milestone M11.5 (Issue #408) — Monster Drop End-to-End Integration S
           speed: 0,
           baseMinDamage: 50,
           baseMaxDamage: 50,
-          damagePerLevel: 0,
           radius: 150,
         },
       ],

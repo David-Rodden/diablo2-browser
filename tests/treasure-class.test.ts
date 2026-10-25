@@ -156,6 +156,8 @@ describe('TreasureClassEx Loader & Indexer (Issue #99)', () => {
             allUniqueItems.add(it.item)
             expect(it.isDangling).toBe(true)
             expect(it.item).toBe('Annihilus')
+            expect(it.uniqueIndex).toBe(381)
+            expect(it.baseCode).toBe('cm1')
             break
           case 'base-item':
             allBaseItems.add(it.item)

@@ -262,8 +262,8 @@ export function calculateFireArrowStats(
  * 5-band cold damage (Skills.txt: eMin=6, eMax=8 with hitShift=7 factor 0.5):
  *   Min: (6, 4, 5, 8, 16, 42) * 0.5
  *   Max: (8, 4, 5, 9, 17, 44) * 0.5
- * Chill duration `100 + 30*(slvl-1)` frames (ELen=100, ELevLen1..3=30),
- * Ice Arrow synergies (+12% damage/blvl, +5% chill duration/blvl),
+ * Chill duration `100 + 30*(slvl-1)` frames (ELen=100, ELevLen1..3=30, ELenSymPerCalc=""),
+ * Ice Arrow synergy (+12% cold damage/blvl; no chill duration synergy in Skills.txt #11),
  * AR bonus `+10 + 9*(slvl-1)%`,
  * mana `3.5 + 0.125*(slvl-1)` (`Mana=28, lvlmana=1, manashift=5`).
  */
@@ -276,7 +276,7 @@ export function calculateColdArrowStats(
   const baseMax = compute5BandScaling(lvl, 8, 4, 5, 9, 17, 44) * 0.5
   let synergyMultiplier = 1.0
   let synergyBonusPct = 0
-  let lenSynergyMultiplier = 1.0
+  const lenSynergyMultiplier = 1.0
   if (typeof synergies === 'number' && Number.isFinite(synergies) && synergies > 0) {
     synergyMultiplier = synergies
     synergyBonusPct = Math.round((synergyMultiplier - 1.0) * 100)
@@ -284,12 +284,11 @@ export function calculateColdArrowStats(
     const synBlvl = Math.max(0, Math.floor(synergies?.iceArrow ?? (synergies as any)?.['Ice Arrow'] ?? 0))
     synergyBonusPct = synBlvl * 12
     synergyMultiplier = 1 + synergyBonusPct / 100
-    lenSynergyMultiplier = 1 + (synBlvl * 5) / 100
   }
   const minDamage = Math.floor(baseMin * synergyMultiplier)
   const maxDamage = Math.floor(baseMax * synergyMultiplier)
   const baseDurationFrames = 100 + 30 * (lvl - 1)
-  const durationFrames = Math.floor(baseDurationFrames * lenSynergyMultiplier)
+  const durationFrames = baseDurationFrames
   const physToElemPct = Math.min(100, 3 + 2 * (lvl - 1))
   const toHitBonusPct = 10 + 9 * (lvl - 1)
   const manaCost = 3.5 + 0.125 * (lvl - 1)

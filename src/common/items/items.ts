@@ -123,6 +123,10 @@ export interface ItemBase {
   readonly twoHanded?: boolean | undefined
   /** Whether a Barbarian can wield this two-handed weapon in one hand (from Weapons.txt 1or2handed column). */
   readonly oneOrTwoHanded?: boolean | undefined
+  /** Optional magic level bonus from 'magic lvl' column (e.g. wands/staves/orbs: 1, circlets: 3/8/13/18). */
+  readonly magicLvl?: number | undefined
+  /** Optional innate AutoMagic group from 'auto prefix' column (e.g. 300..305). */
+  readonly autoPrefix?: number | undefined
 }
 
 /** One affix, read from a prefix or suffix row. */
@@ -491,6 +495,8 @@ export interface Item {
   readonly isGambleMystery?: boolean | undefined
   /** Whether this item is identified. */
   identified?: boolean | undefined
+  /** Whether this item is ethereal (cannot be repaired). */
+  readonly ethereal?: boolean | undefined
 
   // --- Ear Item Data ---
   /** Player ear details if IsEar flag is set. */
@@ -537,6 +543,10 @@ export function itemBaseFromRow(
     .filter(tag => tag !== '')
   const dropsound = textCell(row, 'dropsound', textCell(row, 'DropSound', '')) || undefined
   const dropsfxframe = numberCell(row, 'dropsfxframe', numberCell(row, 'DropSfxFrame', 0)) || undefined
+  const rawMagicLvl = numberCell(row, 'magic lvl', numberCell(row, 'magicLvl', 0))
+  const magicLvl = rawMagicLvl > 0 ? rawMagicLvl : undefined
+  const rawAutoPrefix = numberCell(row, 'auto prefix', numberCell(row, 'autoPrefix', 0))
+  const autoPrefix = rawAutoPrefix > 0 ? rawAutoPrefix : undefined
   return {
     id,
     name: textCell(row, 'Name', textCell(row, 'name', id)),
@@ -549,6 +559,8 @@ export function itemBaseFromRow(
     defense: Math.max(0, numberCell(row, 'Defense', numberCell(row, 'minac', 0))),
     tags,
     level: Math.max(0, numberCell(row, 'Level', numberCell(row, 'level', 1))),
+    ...(magicLvl !== undefined ? { magicLvl } : {}),
+    ...(autoPrefix !== undefined ? { autoPrefix } : {}),
     ...(dropsound ? { dropsound } : {}),
     ...(dropsfxframe !== undefined ? { dropsfxframe } : {}),
   }
@@ -1021,7 +1033,8 @@ export const GOLD_BASE: ItemBase = {
  * @returns the item.
  */
 export function goldItem(amount: number): Item {
-  const stack = Math.max(1, Math.floor(amount))
+  // D2Game!0x6FC32A51..0x6FC32A59 & 0x6FC2F2D1..0x6FC2F2DD clamp negative STAT_GOLD (0x0E) to 0.
+  const stack = Math.max(0, Math.trunc(amount))
   const rawFlags = ItemFlag.IDENTIFIED | ItemFlag.SIMPLE
   return {
     base: GOLD_BASE,

@@ -181,9 +181,15 @@ All 6 remaining Druid summons — **Oak Sage (#226)**, **Summon Spirit Wolf (#22
    - Evaluates `nMaxPets = petmax` (`min(L, 5)` for Spirit Wolf, `min(L, 3)` for Dire Wolf, `1` for Totems and Grizzly).
    - Evaluates `mlvl = calc2 = ulvl` (matches the Druid's character level).
    - Calls `D2GAME_SummonPet_6FD14430` to spawn the monster in `summode` (`NU` for Totems, `S1` for Wolves/Grizzly) and enforce `PetType.txt` caps and `group = 1` mutual exclusivity.
-2. **Base HP, Base Damage & Cross-Synergies (`D2GAME_SKILLS_SetSummonBaseStats_6FD0CB10`)**:
-   - Evaluates `nHPBonusPct = calc1` and scales the monster's base HP (`MonStats.txt` `MinHP`..`MaxHP` at `mlvl = ulvl`) by $(100 + \text{calc1})\%$.
-   - Evaluates `Skills.txt` `MinDam`..`MaxDam` and `ToHit` at the cast skill level `L` and writes them to the summon's `STAT_MINDAMAGE`, `STAT_MAXDAMAGE`, and `STAT_TOHIT`.
+2. **Base HP, Base Damage (`MonStatsTxt.wSkillDamage` @ `+0xA8`) & Cross-Synergies**:
+   - In `SKILLS_SrvDo119_DruidSummon` (`0x6FC66560`), `calc1` evaluates the HP bonus percentage and scales the monster's base HP (`MonStats.txt` `MinHP`..`MaxHP` at `mlvl = ulvl`) by $(100 + \text{calc1})\%$ (`0x6FC666AC`).
+   - During monster creation (`MONSTER_InitializeStats` @ `0x6FC97240`), `0x6FC9728C` calls `0x6FCBF2B0(pMonster, &skillDmgBonus)`:
+     - `0x6FCBF2B0` resolves the pet's owner `pOwner` (`0x6FD003A0`), reads `pMonStatsTxt->wSkillDamage` (`+0xA8`, bound to `MonStats.txt` column `"SkillDamage"` at `D2Common.dll` `0x6FDABCFD`), and invokes `0x6FCBE330(pOwner, wSkillDamage, &skillDmgBonus)`.
+     - `0x6FCBE330` looks up the owner's skill `wSkillDamage`, obtains `slvl = SKILLS_GetSkillLevel(pOwner, pSkill, 1)` (`D2Common#11052`), and evaluates:
+       - `skillDmgBonus.minDmg = SKILLS_GetMinPhysDamage(pOwner, wSkillDamage, slvl, 1) >> 8` (`D2Common#10870`)
+       - `skillDmgBonus.maxDmg = SKILLS_GetMaxPhysDamage(pOwner, wSkillDamage, slvl, 1) >> 8` (`D2Common#10871`)
+       - `skillDmgBonus.toHit  = SKILLS_GetToHitFactor(pOwner, wSkillDamage, slvl)` (`D2Common#10865`)
+     - `MONSTER_InitializeStats` adds `skillDmgBonus.{minDmg, maxDmg, toHit}` to `MonStats.txt` `A1MinD/A1MaxD/A1TH` (`0/0/50` for `spiritwolf`, `0/0/150` for `fenris`, `0/0/300` for `druidbear`, all with `noRatio = 1`) and writes `STAT_MINDAMAGE` (`21`), `STAT_MAXDAMAGE` (`22`), and `STAT_TOHIT` (`19`) onto the pet (`0x6FC974B6..0x6FC974D7`).
 3. **Passive & Aura Stats (`D2GAME_SetSummonPassiveStats_6FD0C530` & `sub_6FCFE0E0`)**:
    - Applies `passivestat1..3` (`passivecalc1..3`) and `aurastat1..4` (`aurastatcalc1..4`) directly onto the summoned pet's stat list!
 4. **Sub-Skill Assignment**:
@@ -227,6 +233,14 @@ Unlike standard 1.10+ synergies (which use `.blvl` so only hard skill points cou
 | **Defense% (`item_armor_percent`)** | $7 L_{\text{Spirit}} + 50 + 10(L_{\text{Spirit}}-1)\%$ | $4 L_{\text{Dire}} + \text{Spirit Wolf.ln56}$ ($50 + 10(L_{\text{Spirit}}-1)\%$) | `Summon Spirit Wolf.ln56` ($50 + 10(L_{\text{Spirit}}-1)\%$) |
 | **Enhanced Damage% (`damagepercent`)** | `Summon Grizzly.ln12` ($25 + 10(L_{\text{Griz}}-1)\%$, or $0\%$ if $L_{\text{Griz}}=0$) | `Summon Grizzly.ln12` ($25 + 10(L_{\text{Griz}}-1)\%$, or $0\%$ if $L_{\text{Griz}}=0$) | `ln12` ($25 + 10(L_{\text{Griz}}-1)\%$) |
 | **All Resistances (`aurastat1..4`)** | $\min(5(L_{\text{Spirit}}-1), 85)\%$ | $\min(5(L_{\text{Dire}}-1), 85)\%$ | $\min(5(L_{\text{Griz}}-1), 85)\%$ |
+
+#### `Skills.txt` 5-Band Base Physical Damage (`MinDam` / `MaxDam`, `HitShift = 8`)
+
+| Skill ID & Name | `MonStats.txt` `SkillDamage` | `MinDam` | `MinLevDam1..5` (Lvls 2–8, 9–16, 17–22, 23–28, 29+) | `MaxDam` | `MaxLevDam1..5` (Lvls 2–8, 9–16, 17–22, 23–28, 29+) | `damagepercent` Formula |
+|---|---|---|---|---|---|---|
+| **#227 Summon Spirit Wolf** | `Summon Spirit Wolf` (`#420 spiritwolf`) | `2` | `+1, +2, +4, +5, +8` | `6` | `+1, +2, +4, +5, +8` | `passivecalc3 = skill('Summon Grizzly'.ln12)` $\implies 25 + 10(L_{\text{Griz}}-1)\%$ ($0\%$ if $L_{\text{Griz}}=0$) |
+| **#237 Summon Fenris** | `Summon Fenris` (`#421 fenris`) | `7` | `+2, +3, +6, +8, +11` | `12` | `+2, +3, +6, +9, +13` | `passivecalc3 = skill('Summon Grizzly'.ln12)` $\implies 25 + 10(L_{\text{Griz}}-1)\%$ ($0\%$ if $L_{\text{Griz}}=0$) |
+| **#247 Summon Grizzly** | `Summon Grizzly` (`#428 druidbear`) | `30` | `+10, +15, +20, +26, +30` | `60` | `+10, +15, +20, +26, +30` | `passivecalc1 = ln12` (`Param1=25, Param2=10`) $\implies 25 + 10(L_{\text{Griz}}-1)\%$ |
 
 #### Spirit Wolf & Dire Wolf AI (`AITHINK_Fn108_DruidWolf`) & Sub-Skills
 - **`Teleport 2` (#292, `SKILLS_SrvDo098_MonTeleport` @ `0x6FCD46B0`)**:

@@ -72,6 +72,7 @@
  */
 import type { D2Table } from '../world/acts.ts'
 import { cell, parseTable } from '../world/acts.ts'
+import { CANONICAL_CHARSTATS } from './classes.ts'
 import type {
   MonsterDifficultyStats,
   MonsterElementalAttack,
@@ -394,6 +395,12 @@ export interface MonsterKind {
   readonly pixHeight?: number | undefined
   readonly baseW?: string | undefined
   readonly hitClass?: number | undefined
+  /** `noMultishot` — prevents rolling `29` `multishot` (`fPick == 2` at `0x6FC4314F`). */
+  readonly noMultishot?: boolean | undefined
+  /** `mA1` (`MonStats2.txt` bit `0x04`) — has Attack 1 animation mode (`fPick == 1` for `26` `teleport`). */
+  readonly m1m?: boolean | undefined
+  /** `mWL` (`MonStats2.txt` bit `0x08`) — has Walk animation mode (`fPick == 3` for `6` `fast`). */
+  readonly m2c?: boolean | undefined
 }
 
 /**
@@ -552,6 +559,7 @@ export function readMonsterKinds(table: D2Table, difficulty: Difficulty = 'norma
         cold: num(table, row, `ResCo${d}`),
         poison: num(table, row, `ResPo${d}`),
       },
+      toBlock: num(table, row, `ToBlock${d}`, num(table, row, 'ToBlock')),
       treasureClasses: ['TreasureClass1', 'TreasureClass2', 'TreasureClass3', 'TreasureClass4']
         .map(name => cell(table, row, `${name}${d}`).trim())
         .filter(value => value !== ''),
@@ -852,6 +860,8 @@ export interface LevelMonsterPlan {
   readonly monsterLevel: number
   /** `MonWndr` — whether wandering monsters are allowed. */
   readonly wander: boolean
+  /** `rangedspawn` — whether slot 0 prefers a `rangedtype` monster (`D2Game.dll` `0x6FCEA829..0x6FCEAA85`). */
+  readonly rangedSpawn?: boolean | undefined
 }
 
 /**
@@ -893,7 +903,7 @@ export function readLevelMonsterPlan(
   const d = difficultySuffix(difficulty)
   const tier = difficulty === 'normal' ? 1 : difficulty === 'nightmare' ? 2 : 3
   const levelColumn = `MonLvl${String(tier)}${expansion ? 'Ex' : ''}`
-  return {
+  const plan: LevelMonsterPlan = {
     levelId,
     levelName: cell(table, row, 'Name').trim(),
     density: num(table, row, `MonDen${d}`),
@@ -905,7 +915,15 @@ export function readLevelMonsterPlan(
     elitePool: monsterColumns(table, row, 'umon'),
     monsterLevel: num(table, row, levelColumn, num(table, row, `MonLvl${String(tier)}`)),
     wander: flag(table, row, 'MonWndr'),
+    rangedSpawn: flag(table, row, 'rangedspawn'),
   }
+  Object.defineProperty(plan, 'difficulty', {
+    value: difficulty,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  })
+  return plan
 }
 
 /** One row of `SuperUniques.txt` — a named boss with a fixed spawn. */
@@ -1218,8 +1236,10 @@ export const CANONICAL_ELITE_MODIFIERS: readonly {
  */
 export function formatEliteAffixLabel(modNameOrLabel: string, lang: TblLang = getTblLang()): string {
   const lower = modNameOrLabel.trim().toLowerCase()
+  const resolvedUmodId = MON_UMOD_TABLE[lower]?.umodId
   const champEntry = CANONICAL_CHAMPION_MODIFIERS.find(
     m =>
+      m.id === resolvedUmodId ||
       String(m.id) === lower ||
       m.name.toLowerCase() === lower ||
       m.tblKey.toLowerCase() === lower ||
@@ -1230,7 +1250,13 @@ export function formatEliteAffixLabel(modNameOrLabel: string, lang: TblLang = ge
     return lang === 'ENG' ? champEntry.label : champEntry.labelZh
   }
   const entry = CANONICAL_ELITE_MODIFIERS.find(
-    m => m.name.toLowerCase() === lower || m.label.toLowerCase() === lower || m.labelZh === modNameOrLabel.trim(),
+    m =>
+      m.id === resolvedUmodId ||
+      String(m.id) === lower ||
+      m.name.toLowerCase() === lower ||
+      m.tblKey.toLowerCase() === lower ||
+      m.label.toLowerCase() === lower ||
+      m.labelZh === modNameOrLabel.trim(),
   )
   if (entry) {
     return lang === 'ENG' ? entry.label : entry.labelZh
@@ -1336,27 +1362,595 @@ export function monsterDisplayName(
 }
 
 /**
- * Roll elite modifiers (`MonUMod.txt`) for a champion or unique pack.
- * - Champion (`D2Game.dll` `0x6fc43ae0`): rolls 1 subtype from `MonUMod.txt` rows with `champion == 1` (`16, 36..39`, `cpick == 1`).
- * - Unique: rolls 1..2 modifiers from `CANONICAL_ELITE_MODIFIERS`.
+ * Canonical 1.13c `MonType.txt` parent equivalence hierarchy (`equiv1..equiv3`),
+ * consumed by `D2Game.dll` `0x6FC22790` (`MONSTER_DoesMonsterMatchMonType`) during
+ * `MonUMod.txt` `exclude1` / `exclude2` checks (`0x6FC43100`).
+ */
+export const MON_TYPE_EQUIV_113C: Readonly<Record<string, readonly string[]>> = {
+  lowundead: ['undead'],
+  highundead: ['undead'],
+  skeleton: ['lowundead'],
+  zombie: ['lowundead'],
+  bighead: ['demon'],
+  fallen: ['demon'],
+  wraith: ['undead'],
+  corruptrogue: ['demon'],
+  goatman: ['demon'],
+  clawviper: ['demon'],
+  swarm: ['insect'],
+  scarab: ['insect'],
+  mummy: ['lowundead'],
+  unraveler: ['highundead'],
+  mosquito: ['insect'],
+  arach: ['insect'],
+  vampire: ['highundead'],
+  fetish: ['demon'],
+  blunderbore: ['demon'],
+  undeadfetish: ['lowundead', 'demon'],
+  fingermage: ['lowundead'],
+  golem: ['construct'],
+  vilekind: ['demon'],
+  regurgitator: ['demon'],
+  doomknight: ['lowundead'],
+  councilmember: ['demon'],
+  megademon: ['demon'],
+  succubus: ['demon'],
+  overseer: ['demon'],
+  imp: ['demon'],
+  bloodlord: ['demon'],
+  putriddefiler: ['demon'],
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FC22790` (`MONSTER_DoesMonsterMatchMonType`):
+ * Recursively traverses `MonType.txt` (`equiv1..equiv3`) starting from `monsterMonType`
+ * to check if it matches `targetMonType` (used for `MonUMod.txt` `exclude1` / `exclude2`).
+ */
+export function doesMonsterMatchMonType113c(
+  monsterMonType: string | undefined,
+  targetMonType: string | undefined,
+): boolean {
+  const start = monsterMonType?.trim().toLowerCase() ?? ''
+  const target = targetMonType?.trim().toLowerCase() ?? ''
+  if (!start || !target) return false
+  if (start === target) return true
+  const visited = new Set<string>([start])
+  const queue: string[] = [start]
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    const parents = MON_TYPE_EQUIV_113C[cur]
+    if (!parents) continue
+    for (const parent of parents) {
+      if (parent === target) return true
+      if (!visited.has(parent)) {
+        visited.add(parent)
+        queue.push(parent)
+      }
+    }
+  }
+  return false
+}
+
+export interface MonsterUModProfile113c {
+  readonly monType: string
+  readonly isMelee: boolean
+  readonly noMultishot: boolean
+  readonly mA1: boolean
+  readonly mWL: boolean
+}
+
+export type MonsterUModInput113c =
+  | MonsterKind
+  | MonStats113cRow
+  | MonsterStats
+  | {
+      readonly id?: string | undefined
+      readonly hcIdx?: number | undefined
+      readonly baseId?: string | undefined
+      readonly monType?: string | undefined
+      readonly isMelee?: boolean | undefined
+      readonly ranged?: boolean | undefined
+      readonly isRanged?: boolean | undefined
+      readonly noMultishot?: boolean | undefined
+      readonly m1m?: boolean | undefined
+      readonly mA1?: boolean | undefined
+      readonly m2c?: boolean | undefined
+      readonly mWL?: boolean | undefined
+    }
+  | string
+  | number
+  | undefined
+
+/**
+ * Canonical 1.13c `MonStats.txt` rows with `nomultishot = 1` (`+0x0e` bit 5 in `monstats.bin`),
+ * excluded from rolling `29` `multishot` (`fPick == 2` at `D2Game.dll` `0x6FC4314F`).
+ */
+export const MONSTATS_113C_NO_MULTISHOT_IDS: ReadonlySet<string> = new Set([
+  'vampire1',
+  'vampire2',
+  'vampire3',
+  'vampire4',
+  'vampire5',
+  'slinger5',
+  'slinger6',
+  'vampire6',
+  'vampire7',
+  'vampire8',
+  'vampire9',
+])
+
+let cachedMonStats113cByKey: Map<string, MonStats113cRow> | undefined
+
+function lookupMonStatsRow113cByKey(key: string): MonStats113cRow | undefined {
+  if (!cachedMonStats113cByKey) {
+    cachedMonStats113cByKey = new Map<string, MonStats113cRow>()
+    for (const row of MONSTATS_113C_ROWS) {
+      const idLower = row.id.toLowerCase()
+      const existing = cachedMonStats113cByKey.get(idLower)
+      if (!existing || (!existing.enabled && row.enabled)) {
+        cachedMonStats113cByKey.set(idLower, row)
+      }
+      const baseLower = row.baseId.toLowerCase()
+      if (baseLower && !cachedMonStats113cByKey.has(baseLower)) {
+        cachedMonStats113cByKey.set(baseLower, row)
+      }
+      const prefix = idLower.replace(/\d+$/, '')
+      if (prefix && !cachedMonStats113cByKey.has(prefix)) {
+        cachedMonStats113cByKey.set(prefix, row)
+      }
+    }
+  }
+  const clean = key.trim().toLowerCase()
+  return (
+    cachedMonStats113cByKey.get(clean) ??
+    cachedMonStats113cByKey.get(`${clean}1`)
+  )
+}
+
+/**
+ * Resolve the 1.13c `MonStats.txt` / `MonStats2.txt` fields inspected by
+ * `D2Game.dll` `0x6FC43100` (`MONSTER_CanApplyMonUMod`):
+ * - `monType` (`MonStats.txt` `+0x0a`)
+ * - `isMelee` (`MonStats.txt` `+0x0d` bit 6)
+ * - `noMultishot` (`MonStats.txt` `+0x0e` bit 5)
+ * - `mA1` (`MonStats2.txt` `+0x0c` bit 2 -> `m1m`)
+ * - `mWL` (`MonStats2.txt` `+0x0c` bit 3 -> `m2c`)
+ */
+export function resolveMonsterUModProfile113c(
+  monster: MonsterUModInput113c,
+): MonsterUModProfile113c {
+  if (monster === undefined || monster === null) {
+    return {
+      monType: '',
+      isMelee: false,
+      noMultishot: false,
+      mA1: true,
+      mWL: true,
+    }
+  }
+  if (typeof monster === 'number') {
+    const row =
+      Number.isInteger(monster) && monster >= 0 && monster < MONSTATS_113C_ROWS.length
+        ? MONSTATS_113C_ROWS[monster]
+        : undefined
+    return {
+      monType: row?.monType.toLowerCase() ?? '',
+      isMelee: row?.isMelee ?? false,
+      noMultishot: row ? MONSTATS_113C_NO_MULTISHOT_IDS.has(row.id.toLowerCase()) : false,
+      mA1: row?.m1m ?? true,
+      mWL: row?.m2c ?? true,
+    }
+  }
+  if (typeof monster === 'string') {
+    const clean = monster.trim().toLowerCase()
+    const row = lookupMonStatsRow113cByKey(clean)
+    return {
+      monType: (row?.monType ?? clean.replace(/\d+$/, '')).toLowerCase(),
+      isMelee: row?.isMelee ?? false,
+      noMultishot: row ? MONSTATS_113C_NO_MULTISHOT_IDS.has(row.id.toLowerCase()) : MONSTATS_113C_NO_MULTISHOT_IDS.has(clean),
+      mA1: row?.m1m ?? true,
+      mWL: row?.m2c ?? true,
+    }
+  }
+
+  const obj = monster as {
+    readonly id?: string | undefined
+    readonly hcIdx?: number | undefined
+    readonly baseId?: string | undefined
+    readonly monType?: string | undefined
+    readonly isMelee?: boolean | undefined
+    readonly ranged?: boolean | undefined
+    readonly isRanged?: boolean | undefined
+    readonly noMultishot?: boolean | undefined
+    readonly m1m?: boolean | undefined
+    readonly mA1?: boolean | undefined
+    readonly m2c?: boolean | undefined
+    readonly mWL?: boolean | undefined
+  }
+  const baseRow =
+    typeof obj.hcIdx === 'number' && obj.hcIdx >= 0 && obj.hcIdx < MONSTATS_113C_ROWS.length
+      ? MONSTATS_113C_ROWS[obj.hcIdx]
+      : typeof obj.id === 'string' && obj.id.length > 0
+        ? lookupMonStatsRow113cByKey(obj.id)
+        : typeof obj.baseId === 'string' && obj.baseId.length > 0
+          ? lookupMonStatsRow113cByKey(obj.baseId)
+          : undefined
+
+  const monType = (
+    obj.monType ??
+    baseRow?.monType ??
+    (typeof obj.id === 'string' ? obj.id.replace(/\d+$/, '') : '')
+  )
+    .trim()
+    .toLowerCase()
+
+  const isMelee =
+    obj.isMelee !== undefined
+      ? Boolean(obj.isMelee)
+      : obj.ranged !== undefined
+        ? !Boolean(obj.ranged)
+        : obj.isRanged !== undefined
+          ? !Boolean(obj.isRanged)
+          : (baseRow?.isMelee ?? false)
+
+  const noMultishot =
+    obj.noMultishot !== undefined
+      ? Boolean(obj.noMultishot)
+      : baseRow
+        ? MONSTATS_113C_NO_MULTISHOT_IDS.has(baseRow.id.toLowerCase())
+        : false
+
+  const mA1 =
+    obj.mA1 !== undefined
+      ? Boolean(obj.mA1)
+      : obj.m1m !== undefined
+        ? Boolean(obj.m1m)
+        : (baseRow?.m1m ?? true)
+
+  const mWL =
+    obj.mWL !== undefined
+      ? Boolean(obj.mWL)
+      : obj.m2c !== undefined
+        ? Boolean(obj.m2c)
+        : (baseRow?.m2c ?? true)
+
+  return {
+    monType,
+    isMelee,
+    noMultishot,
+    mA1,
+    mWL,
+  }
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FC43100` (`MONSTER_CanApplyMonUMod`):
+ * Checks whether a `MonUMod.txt` row can be rolled on `monster`:
+ * 1. `enabled` (`+0x06 != 0`) and `version < 100 || expansion` (`+0x04`).
+ * 2. `exclude1` / `exclude2` (`+0x0a`, `+0x0c`) against monster's `MonType.txt` hierarchy (`0x6FC22790`).
+ * 3. `fPick` (`+0x09`, `0x6FC4314F..0x6FC43210`):
+ *    - `0`: always eligible
+ *    - `1` (`26` `teleport`): requires `mA1` (`m1m` in `MonStats2.txt`)
+ *    - `2` (`29` `multishot`): requires `!isMelee && !noMultishot`
+ *    - `3` (`6` `fast`): requires `mWL` (`m2c` in `MonStats2.txt`)
+ */
+export function isMonUModEligible113c(
+  row: MonUMod113cRow,
+  monster?: MonsterUModInput113c,
+  expansion = true,
+): boolean {
+  if (!row.enabled) return false
+  if (!expansion && row.version >= 100) return false
+  const profile = resolveMonsterUModProfile113c(monster)
+  if (profile.monType) {
+    if (row.exclude1 && doesMonsterMatchMonType113c(profile.monType, row.exclude1)) {
+      return false
+    }
+    if (row.exclude2 && doesMonsterMatchMonType113c(profile.monType, row.exclude2)) {
+      return false
+    }
+  }
+  switch (row.fPick) {
+    case 0:
+      return true
+    case 1:
+      return profile.mA1
+    case 2:
+      return !profile.isMelee && !profile.noMultishot
+    case 3:
+      return profile.mWL
+    default:
+      return false
+  }
+}
+
+/**
+ * Resolve any modifier identifier (`MonUMod.txt` numeric ID, `uniquemod` string, or legacy alias)
+ * to its canonical 1.13c `MonUMod.txt` row index (`0..42`).
+ */
+export function resolveMonUModId113c(mod: string | number): number | undefined {
+  if (typeof mod === 'number') {
+    return Number.isInteger(mod) && mod >= 0 && mod < MONUMOD_113C_ROWS.length ? mod : undefined
+  }
+  const clean = mod.trim().toLowerCase().replace(/[\s_-]+/g, '')
+  if (!clean) return undefined
+  if (/^\d+$/.test(clean)) {
+    const id = Number(clean)
+    return id >= 0 && id < MONUMOD_113C_ROWS.length ? id : undefined
+  }
+  const fromTable = MON_UMOD_TABLE[clean]
+  if (fromTable) return fromTable.umodId
+  for (const row of MONUMOD_113C_ROWS) {
+    if (row.id.toLowerCase().replace(/[\s_-]+/g, '') === clean) {
+      return row.umodId
+    }
+  }
+  return undefined
+}
+
+function difficultyToIndex113c(difficulty: Difficulty | number = 'normal'): 0 | 1 | 2 {
+  if (typeof difficulty === 'number') {
+    return difficulty >= 2 ? 2 : difficulty === 1 ? 1 : 0
+  }
+  return difficulty === 'hell' ? 2 : difficulty === 'nightmare' ? 1 : 0
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FC43980` (`MONSTER_RollRandomUniqueUMod`):
+ * Selects one random Unique modifier from `MonUMod.txt` (`MONUMOD_113C_ROWS`) where:
+ * - `champion === false` (`+0x08 == 0`)
+ * - `upick[difficulty] > 0` (`+0x12 + difficulty * 2`)
+ * - `!usedUModIds.has(row.umodId)`
+ * - `isMonUModEligible113c(row, monster, expansion)` (`0x6FC43100`)
+ * Weighted by `upick[difficulty]`.
+ */
+export function rollSingleUniqueUMod113c(
+  rng: Rng,
+  difficulty: Difficulty | number = 'normal',
+  monster?: MonsterUModInput113c,
+  usedUModIds?: ReadonlySet<number>,
+  expansion = true,
+): MonUMod113cRow | undefined {
+  const diffIdx = difficultyToIndex113c(difficulty)
+  const eligible: { readonly row: MonUMod113cRow; readonly weight: number }[] = []
+  let totalWeight = 0
+  for (const row of MONUMOD_113C_ROWS) {
+    if (row.champion) continue
+    const weight = row.upick[diffIdx] ?? 0
+    if (weight <= 0) continue
+    if (usedUModIds?.has(row.umodId)) continue
+    if (!isMonUModEligible113c(row, monster, expansion)) continue
+    eligible.push({ row, weight })
+    totalWeight += weight
+  }
+  if (totalWeight <= 0 || eligible.length === 0) return undefined
+  let pick = rng.int(0, totalWeight - 1)
+  for (const item of eligible) {
+    pick -= item.weight
+    if (pick < 0) return item.row
+  }
+  return eligible[eligible.length - 1]?.row
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FC43AE0` (`MONSTER_RollChampionUMod`):
+ * Selects one Champion subtype from `MonUMod.txt` (`MONUMOD_113C_ROWS`) where:
+ * - `champion === true` (`+0x08 != 0`)
+ * - `cpick[difficulty] > 0` (`+0x0c + difficulty * 2`)
+ * - `isMonUModEligible113c(row, monster, expansion)` (`0x6FC43100`)
+ * Weighted by `cpick[difficulty]`.
+ */
+export function rollSingleChampionUMod113c(
+  rng: Rng,
+  difficulty: Difficulty | number = 'normal',
+  monster?: MonsterUModInput113c,
+  expansion = true,
+): MonUMod113cRow | undefined {
+  const diffIdx = difficultyToIndex113c(difficulty)
+  const eligible: { readonly row: MonUMod113cRow; readonly weight: number }[] = []
+  let totalWeight = 0
+  for (const row of MONUMOD_113C_ROWS) {
+    if (!row.champion) continue
+    const weight = row.cpick[diffIdx] ?? 0
+    if (weight <= 0) continue
+    if (!isMonUModEligible113c(row, monster, expansion)) continue
+    eligible.push({ row, weight })
+    totalWeight += weight
+  }
+  if (totalWeight <= 0 || eligible.length === 0) return undefined
+  let pick = rng.int(0, totalWeight - 1)
+  for (const item of eligible) {
+    pick -= item.weight
+    if (pick < 0) return item.row
+  }
+  return eligible[eligible.length - 1]?.row
+}
+
+export interface RollEliteModifiersOptions113c {
+  readonly difficulty?: Difficulty | number | undefined
+  readonly monster?: MonsterUModInput113c | undefined
+  readonly existingModifiers?: readonly (string | number)[] | undefined
+  readonly expansion?: boolean | undefined
+}
+
+function isDifficultyArg113c(val: unknown): val is Difficulty | 0 | 1 | 2 {
+  return (
+    val === 'normal' ||
+    val === 'nightmare' ||
+    val === 'hell' ||
+    val === 0 ||
+    val === 1 ||
+    val === 2
+  )
+}
+
+function isRollEliteOptionsObject113c(val: unknown): val is RollEliteModifiersOptions113c {
+  if (typeof val !== 'object' || val === null || Array.isArray(val)) return false
+  return (
+    ('difficulty' in val || 'monster' in val || 'existingModifiers' in val || 'expansion' in val) &&
+    !('minHp' in val) &&
+    !('maxHp' in val) &&
+    !('hp' in val) &&
+    !('hcIdx' in val) &&
+    !('monType' in val) &&
+    !('isMelee' in val) &&
+    !('m1m' in val) &&
+    !('mA1' in val) &&
+    !('m2c' in val) &&
+    !('mWL' in val) &&
+    !('noMultishot' in val)
+  )
+}
+
+/**
+ * Roll elite modifiers (`MonUMod.txt` / `MONUMOD_113C_ROWS`) for a Champion or Unique pack
+ * per 1.13c `D2Game.dll` `0x6FC43CA0`, `0x6FC43980`, `0x6FC43AE0`, `0x6FC43100`, and `0x6FC448A0`:
+ * - **Champion** (`0x6FC43AE0`): rolls 1 subtype from `MONUMOD_113C_ROWS` where `champion === true`
+ *   (`16` `champion`, `36` `ghostly`, `37` `fanatic`, `38` `possessed`, `39` `berserk`), weighted by
+ *   `cpick[difficulty]` and filtered by `0x6FC43100`.
+ * - **Unique** (`0x6FC43CA0` at `0x6FC43DD9..0x6FC43E29`):
+ *   - Count = `1 + difficulty` (`1` in Normal, `2` in Nightmare, `3` in Hell), clamped so total slots
+ *     (including the 4 fixed base slots `[1, 2, 3, 4]` and any `existingModifiers`) never exceed `9` (`0x6FC448A0`).
+ *   - Each slot calls `rollSingleUniqueUMod113c` (`0x6FC43980`): draws from `MONUMOD_113C_ROWS`
+ *     where `champion === false`, weighted by `upick[difficulty]` (`resist` has `upick = [0, 6, 6]`,
+ *     so Normal difficulty never rolls `resist`), filtered by `isMonUModEligible113c` (`exclude1/2`
+ *     via `MonType.txt` e.g. `sandleaper` never rolls `lightning`, and `fPick` 1/2/3 checks) and
+ *     without duplicate modifiers.
  */
 export function rollEliteModifiers(
   rank: Exclude<MonsterRank, 'minion'>,
   rng: Rng,
+  difficultyOrMonsterOrOpts?: Difficulty | number | MonsterUModInput113c | RollEliteModifiersOptions113c,
+  monsterOrExisting?: MonsterUModInput113c | readonly (string | number)[],
+  existingModifiersArg?: readonly (string | number)[],
 ): readonly string[] {
   if (rank === 'normal' || rank === 'boss') return []
+
+  let difficulty: Difficulty | number = 'normal'
+  let monster: MonsterUModInput113c = undefined
+  let existingModifiers: readonly (string | number)[] | undefined = existingModifiersArg
+  let expansion = true
+
+  if (isRollEliteOptionsObject113c(difficultyOrMonsterOrOpts)) {
+    difficulty = difficultyOrMonsterOrOpts.difficulty ?? 'normal'
+    monster = difficultyOrMonsterOrOpts.monster
+    existingModifiers = difficultyOrMonsterOrOpts.existingModifiers ?? existingModifiersArg
+    expansion = difficultyOrMonsterOrOpts.expansion ?? true
+  } else if (isDifficultyArg113c(difficultyOrMonsterOrOpts)) {
+    difficulty = difficultyOrMonsterOrOpts
+    if (Array.isArray(monsterOrExisting)) {
+      existingModifiers = monsterOrExisting
+    } else {
+      monster = monsterOrExisting as MonsterUModInput113c
+    }
+  } else if (difficultyOrMonsterOrOpts !== undefined) {
+    monster = difficultyOrMonsterOrOpts as MonsterUModInput113c
+    if (
+      typeof difficultyOrMonsterOrOpts === 'object' &&
+      difficultyOrMonsterOrOpts !== null &&
+      'difficulty' in difficultyOrMonsterOrOpts &&
+      isDifficultyArg113c((difficultyOrMonsterOrOpts as { difficulty?: unknown }).difficulty)
+    ) {
+      difficulty = (difficultyOrMonsterOrOpts as { difficulty: Difficulty | 0 | 1 | 2 }).difficulty
+    }
+    if (Array.isArray(monsterOrExisting)) {
+      existingModifiers = monsterOrExisting
+    }
+  }
+
   if (rank === 'champion') {
+    const picked = rollSingleChampionUMod113c(rng, difficulty, monster, expansion)
+    if (picked) return [picked.id]
     return [CANONICAL_CHAMPION_MODIFIERS[rng.int(0, CANONICAL_CHAMPION_MODIFIERS.length - 1)]!.name]
   }
-  const count = rng.int(1, 2)
+
+  const diffIdx = difficultyToIndex113c(difficulty)
+  const usedUModIds = new Set<number>([1, 2, 3, 4])
+  let occupiedSlots = 4
+  if (existingModifiers && existingModifiers.length > 0) {
+    let nonFixedCount = 0
+    for (const mod of existingModifiers) {
+      const id = resolveMonUModId113c(mod)
+      if (id !== undefined && id > 0) {
+        usedUModIds.add(id)
+        if (id > 4) nonFixedCount += 1
+      } else {
+        nonFixedCount += 1
+      }
+    }
+    occupiedSlots = Math.max(4 + nonFixedCount, existingModifiers.length)
+  }
+
+  const maxNewMods = Math.max(0, 9 - occupiedSlots)
+  const targetCount = Math.min(1 + diffIdx, maxNewMods)
   const chosen: string[] = []
-  const pool = [...CANONICAL_ELITE_MODIFIERS]
-  while (chosen.length < count && pool.length > 0) {
-    const idx = rng.int(0, pool.length - 1)
-    chosen.push(pool[idx]!.name)
-    pool.splice(idx, 1)
+  for (let i = 0; i < targetCount; i += 1) {
+    const picked = rollSingleUniqueUMod113c(rng, diffIdx, monster, usedUModIds, expansion)
+    if (!picked) break
+    usedUModIds.add(picked.umodId)
+    chosen.push(picked.id)
   }
   return chosen
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FC451F0` (`0x6FC45307..0x6FC453B6`) SuperUnique modifier assignment:
+ * 1. Starts with the 4 base Unique slots (`1, 2, 3, 4`) marked in `used[]`.
+ * 2. Copies `Mod1..Mod3` from `SuperUniques.txt`:
+ *    - Stops at the first `<= 0` entry (`0x6FC45317: test eax, eax; jle 0x6FC4534B`).
+ *    - Skips `24` (`thief`, `0x6FC4531B: cmp eax, 0x18; je 0x6FC45342`).
+ *    - Marks each applied `umodId` in `used[]` and appends via `0x6FC448A0` (max 9 total slots).
+ * 3. Rolls `diffIdx` (`0` in Normal, `1` in Nightmare, `2` in Hell) additional random Unique
+ *    modifiers via `0x6FC43980` (`rollSingleUniqueUMod113c`).
+ *
+ * Returns the specific `MonUMod.txt` numeric IDs (excluding the 4 fixed `[1, 2, 3, 4]` base slots).
+ */
+export function rollSuperUniqueUModIds113c(
+  fixedMods: readonly (number | string)[],
+  rng: Rng,
+  difficulty: Difficulty | number = 'normal',
+  monster?: MonsterUModInput113c,
+  expansion = true,
+): number[] {
+  const diffIdx = difficultyToIndex113c(difficulty)
+  const usedUModIds = new Set<number>([1, 2, 3, 4])
+  const resultIds: number[] = []
+
+  for (let i = 0; i < 3 && i < fixedMods.length; i += 1) {
+    const raw = fixedMods[i]!
+    const id = typeof raw === 'number' ? raw : (resolveMonUModId113c(raw) ?? 0)
+    if (id <= 0) break
+    if (id === 24) continue
+    if (!usedUModIds.has(id) && 4 + resultIds.length < 9) {
+      usedUModIds.add(id)
+      resultIds.push(id)
+    }
+  }
+
+  for (let i = 0; i < diffIdx && 4 + resultIds.length < 9; i += 1) {
+    const picked = rollSingleUniqueUMod113c(rng, diffIdx, monster, usedUModIds, expansion)
+    if (!picked) break
+    usedUModIds.add(picked.umodId)
+    resultIds.push(picked.umodId)
+  }
+
+  return resultIds
+}
+
+/**
+ * Same as {@link rollSuperUniqueUModIds113c}, returning canonical `MonUMod.txt` `uniquemod` string IDs.
+ */
+export function rollSuperUniqueModifiers113c(
+  fixedMods: readonly (number | string)[],
+  rng: Rng,
+  difficulty: Difficulty | number = 'normal',
+  monster?: MonsterUModInput113c,
+  expansion = true,
+): string[] {
+  const ids = rollSuperUniqueUModIds113c(fixedMods, rng, difficulty, monster, expansion)
+  return ids
+    .map((id) => MONUMOD_113C_ROWS[id]?.id)
+    .filter((name): name is string => Boolean(name))
 }
 
 /**
@@ -1580,16 +2174,16 @@ export function applyEliteModifiers(
     hp = Math.round(hp * 2)
     armor = Math.max(1, Math.round(armor * 2))
   }
-  if (normMods.has('cursed') || normMods.has('7')) {
+  if (normMods.has('curse') || normMods.has('cursed') || normMods.has('7')) {
     damage = Math.round(damage * 1.2)
   }
-  if (normMods.has('coldenchant') || normMods.has('coldenchanted') || normMods.has('18')) {
+  if (normMods.has('cold') || normMods.has('coldenchant') || normMods.has('coldenchanted') || normMods.has('18')) {
     damage = Math.round(damage * 1.2)
   }
-  if (normMods.has('fireenchant') || normMods.has('fireenchanted') || normMods.has('9')) {
+  if (normMods.has('fire') || normMods.has('fireenchant') || normMods.has('fireenchanted') || normMods.has('9')) {
     damage = Math.round(damage * 1.2)
   }
-  if (normMods.has('lightenchant') || normMods.has('lightningenchanted') || normMods.has('17')) {
+  if (normMods.has('lightning') || normMods.has('lightenchant') || normMods.has('lightningenchanted') || normMods.has('17')) {
     damage = Math.round(damage * 1.2)
   }
   if (normMods.has('spectralhit') || normMods.has('27')) {
@@ -1598,7 +2192,7 @@ export function applyEliteModifiers(
   if (normMods.has('teleport') || normMods.has('teleportation') || normMods.has('26')) {
     speed = Math.round(speed * 1.2 * 100) / 100
   }
-  if (normMods.has('magicresistant') || normMods.has('magicresistance') || normMods.has('8')) {
+  if (normMods.has('resist') || normMods.has('magicresistant') || normMods.has('magicresistance') || normMods.has('8')) {
     hp = Math.round(hp * 1.2)
   }
   if (normMods.has('aura') || normMods.has('auraenchanted') || normMods.has('30')) {
@@ -1622,19 +2216,19 @@ export function applyEliteModifiers(
   if (normMods.has('manahit') || normMods.has('manaburn') || normMods.has('25')) {
     magicRes += 20
   }
-  if (normMods.has('fireenchant') || normMods.has('fireenchanted') || normMods.has('9')) {
+  if (normMods.has('fire') || normMods.has('fireenchant') || normMods.has('fireenchanted') || normMods.has('9')) {
     fireRes += 75
   }
-  if (normMods.has('coldenchant') || normMods.has('coldenchanted') || normMods.has('18')) {
+  if (normMods.has('cold') || normMods.has('coldenchant') || normMods.has('coldenchanted') || normMods.has('18')) {
     coldRes += 75
   }
-  if (normMods.has('lightenchant') || normMods.has('lightningenchanted') || normMods.has('17')) {
+  if (normMods.has('lightning') || normMods.has('lightenchant') || normMods.has('lightningenchanted') || normMods.has('17')) {
     lightningRes += 75
   }
   if (normMods.has('poisonenchant') || normMods.has('poisonenchanted')) {
     poisonRes += 75
   }
-  if (normMods.has('magicresistant') || normMods.has('magicresistance') || normMods.has('8')) {
+  if (normMods.has('resist') || normMods.has('magicresistant') || normMods.has('magicresistance') || normMods.has('8')) {
     fireRes += 40
     coldRes += 40
     lightningRes += 20
@@ -1755,11 +2349,89 @@ export function filterCandidateKinds(
       kind !== undefined &&
       kind.enabled &&
       kind.isSpawn &&
-      (kind.sparsePopulate === undefined || kind.sparsePopulate === 0 || kind.sparsePopulate > 0) &&
       (!kind.boss || allowBosses),
   )
 }
 
+/**
+ * 1.13c `D2Game.dll` `0x6FC67BD4..0x6FC67C13` `sparsePopulate` gate:
+ * - In `MonStats.bin` (`0x6FDAADEE`), blank `sparsePopulate` compiles to `0` (`test cl, cl; je 0x6FC67C19`),
+ *   meaning unconstrained (100% pass, 0 RNG calls). In baked `MonStats.txt` rows, blank `sparsePopulate`
+ *   defaults to `100` (also unconstrained).
+ * - When `0 < sparsePopulate < 100` (e.g. `evilhut` `sparsePopulate = 40`), `D2Game.dll` rolls
+ *   `rand() % 100 <= sparsePopulate` (`0..99 <= sparsePopulate`), giving pass rate `(sparsePopulate + 1) / 100`.
+ */
+export function passesSparsePopulate113c(kind: MonsterKind, rng: Rng): boolean {
+  const sp = kind.sparsePopulate
+  if (sp === undefined || sp <= 0 || sp >= 100) return true
+  return rng.int(0, 99) <= sp
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FC67BC6..0x6FC67BD0` & `0x6FC67700`:
+ * Rolls a full normal monster group size in `[MinGrp, MaxGrp]` without budget truncation.
+ */
+export function rollNormalGroupSize113c(kind: MonsterKind, rng: Rng): number {
+  const minGrp = Math.max(1, kind.minGroup)
+  const maxGrp = Math.max(minGrp, kind.maxGroup)
+  return rng.int(minGrp, maxGrp)
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FC67AF1..0x6FC67B17`:
+ * Given room dimensions in sub-tiles (`wSub`, `hSub`), computes the number of
+ * 3x3 sub-tile monster spawn attempts: `Math.floor(wSub / 3) * Math.floor(hSub / 3)`.
+ */
+export function roomMonsterAttempts113c(wSub: number, hSub: number): number {
+  if (wSub <= 0 || hSub <= 0) return 0
+  return Math.floor(wSub / 3) * Math.floor(hSub / 3)
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FC67A67` & `0x6FC67B57..0x6FC67B64`:
+ * Caps `MonDen` at `10000` (`0x2710`) and rolls `rand() % 100000 <= cappedDensity`
+ * (`rng.int(0, 99999) <= Math.min(10000, density)` when `density > 0`).
+ */
+export function rollMonsterAttempt113c(density: number, rng: Rng): boolean {
+  if (density <= 0) return false
+  const cappedDensity = Math.min(10000, density)
+  return rng.int(0, 99999) <= cappedDensity
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FCFF4A0` (`0x6FCFF51D..0x6FCFF565` normal branch):
+ * Selects one monster kind from the active level pool weighted by `Rarity` (`1..totalRarity`).
+ */
+export function pickWeightedKind113c(types: readonly MonsterKind[], rng: Rng): MonsterKind {
+  let totalRarity = 0
+  for (const kind of types) {
+    totalRarity += Math.max(0, kind.rarity)
+  }
+  if (totalRarity <= 0) {
+    return types[rng.int(0, types.length - 1)]!
+  }
+  let roll = rng.int(1, totalRarity)
+  for (const kind of types) {
+    const w = Math.max(0, kind.rarity)
+    if (w <= 0) continue
+    roll -= w
+    if (roll <= 0) return kind
+  }
+  return types[types.length - 1]!
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FCEA760` (`REGIONS_SelectLevelMonsterTypes`):
+ * - Caps `NumMon` (`pLevelsTxt +0x32`) at `13` (`0x0d`, `0x6FCEA76F..0x6FCEA780`), then clamps to pool size (`0x6FCEA78F`).
+ * - Normal difficulty uses `mon1..25` (`+0x36`, count `+0x33`); Nightmare/Hell uses `nmon1..25` (`+0x68`, count `+0x34`).
+ * - Each slot draws uniformly `idx = rand() % remaining.length` (`0x6FCEA80C: div ebp`), NOT weighted by `Rarity`.
+ * - On slot 0 (`chosen.length === 0`) when `Levels.txt` `rangedspawn != 0` (`pLevelsTxt +0x31`),
+ *   checks `pMonStatsTxt +0x0f` bit 4 (`gdwBitMasks[4] = 0x10`, bit 28 of `+0x0c` = `rangedtype`).
+ *   `jne 0x6fceaa87` (`0x6FCEA873`) accepts immediately if `ranged === true`; otherwise re-rolls
+ *   up to 20 times (5x-unrolled loop body `0x6FCEA840..0x6FCEAA79`, 4 iterations `add ecx, 5; cmp ecx, 0x14; jl`).
+ * - Removes the drawn entry via `memmove` (`0x6FCEAA87..0x6FCEAAA4`) and gates inclusion by `isSpawn`
+ *   (`pMonStatsTxt +0x0c` bit 0, `0x6FCEAAD1..0x6FCEAAD6`).
+ */
 export function selectLevelTypes(
   plan: LevelMonsterPlan,
   kinds: ReadonlyMap<string, MonsterKind>,
@@ -1767,17 +2439,16 @@ export function selectLevelTypes(
   difficulty: Difficulty = 'normal',
 ): MonsterKind[] {
   const names = difficulty === 'normal' ? plan.pool : (plan.nightmarePool.length > 0 ? plan.nightmarePool : plan.pool)
-  const candidates = filterCandidateKinds(names.map(name => kinds.get(name)), false)
-  const wanted = Math.min(plan.typeCount, candidates.length)
+  const candidates = filterCandidateKinds(names.map(name => kinds.get(name)), true)
+  const wanted = Math.min(plan.typeCount, 13, candidates.length)
   const chosen: MonsterKind[] = []
   const remaining = [...candidates]
   while (chosen.length < wanted && remaining.length > 0) {
-    const total = remaining.reduce((sum, kind) => sum + Math.max(1, kind.rarity), 0)
-    let ticket = rng.next() * total
-    let index = remaining.length - 1
-    for (let i = 0; i < remaining.length; i += 1) {
-      ticket -= Math.max(1, remaining[i]!.rarity)
-      if (ticket <= 0) { index = i; break }
+    let index = rng.int(0, remaining.length - 1)
+    if (chosen.length === 0 && plan.rangedSpawn) {
+      for (let retry = 0; retry < 20 && !remaining[index]!.ranged; retry += 1) {
+        index = rng.int(0, remaining.length - 1)
+      }
     }
     chosen.push(remaining[index]!)
     remaining.splice(index, 1)
@@ -1812,36 +2483,116 @@ export function monsterBudget(planOrCells: LevelMonsterPlan | number, cellsOrDen
   if (density <= 0 || cells <= 0) return 0
   const attempts = Math.floor((cells * 25) / 9)
   const expectedPacks = attempts * (Math.min(10000, density) / 100000)
-  return Math.max(1, Math.round(expectedPacks * 3))
+  return Math.max(1, Math.round(expectedPacks))
 }
 
 /**
- * The kinds an elite (champion / unique) pack may be drawn from on one level.
+ * State input for 1.13c `D2Game.dll` `0x6FCFF080` per-attempt pack kind roll.
  *
- * `umon1`…`umon10` first; a level that leaves them blank falls back to the
- * types the level drew (or, failing those, its `mon` pool), which is what
- * {@link planMonsterGroups} has always done.
+ * Mirrors `pMonsterRegion` fields:
+ * - `+0x2bc` (`byte`): `eliteMin` (`MonUMin` / `MonUMin(N)` / `MonUMin(H)`)
+ * - `+0x2bd` (`byte`): `eliteMax` (`MonUMax` / `MonUMax(N)` / `MonUMax(H)`)
+ * - `+0x2c0` (`dword`): `totalRooms` (`dwNumRooms`)
+ * - `+0x2c4` (`dword`): `activatedRooms` (`dwRoomsPopulated`, incremented at `0x6FC66CE5`)
+ * - `+0x2c8` (`dword`): `spawnedElites` (`dwUniquePacksSpawned`, incremented at `0x6FC43260`)
+ */
+export interface PackKindRollState113c {
+  readonly eliteMin: number
+  readonly eliteMax: number
+  readonly totalRooms: number
+  readonly activatedRooms: number
+  readonly spawnedElites: number
+}
+
+export type RolledPackKind113c = 'normal' | 'elite'
+
+/**
+ * 1.13c `D2Game.dll` `0x6FCFF080` per-attempt elite vs. normal pack roll:
+ *
+ * 1. If `eliteMax < eliteMin` (`0x6FCFF08F..0x6FCFF09B`), jumps to `L_normal` (`'normal'`).
+ * 2. Step A (`0x6FCFF09D..0x6FCFF0D8`): when `spawnedElites < eliteMin` and `totalRooms > 0`,
+ *    rolls `r = rng.int(0, 99)` (`rand() % 100`). If `r < Math.trunc((activatedRooms * 100) / totalRooms)`,
+ *    returns `'elite'`; otherwise falls through to Step B (`jge L_max`).
+ * 3. Step B (`0x6FCFF0DA..0x6FCFF102`, `L_max`): when `spawnedElites < eliteMax`,
+ *    rolls `r = rng.int(0, 99)` (`rand() % 100`). If `r <= 5` (6% chance), returns `'elite'`.
+ * 4. Step C (`0x6FCFF104..0x6FCFF123`, `L_normal`): returns `'normal'` (caller `0x6FC67B93`
+ *    merges return values `1` and `2` into the normal pack branch).
+ */
+export function rollPackKind113c(
+  state: PackKindRollState113c,
+  rng: Rng,
+): RolledPackKind113c {
+  if (state.eliteMax < state.eliteMin) {
+    return 'normal'
+  }
+  if (state.spawnedElites < state.eliteMin) {
+    if (state.totalRooms > 0) {
+      const r = rng.int(0, 99)
+      const threshold = Math.trunc((state.activatedRooms * 100) / state.totalRooms)
+      if (r < threshold) {
+        return 'elite'
+      }
+    }
+  }
+  if (state.spawnedElites < state.eliteMax) {
+    const r = rng.int(0, 99)
+    if (r <= 5) {
+      return 'elite'
+    }
+  }
+  return 'normal'
+}
+
+/**
+ * The kinds an elite (champion / unique) pack may be drawn from on one level
+ * per 1.13c `D2Game.dll` `0x6FCFF4A0`.
+ *
+ * - Normal difficulty (`0x6FCFF4BF: cmp BYTE PTR [ecx+0x6d], 0`): draws solely from
+ *   `Levels.txt` `umon1..umon10` (`plan.elitePool`). If `umon` is empty (`nNumUMon == 0`
+ *   at `0x6FCFF4D5`), returns `[]` (`0x6FCFF52A` sets `*ppMonStatsTxt = NULL`, and
+ *   `0x6FC679B0 -> 0x6FC43CA0` aborts without fallback to `types` or `plan.pool`).
+ * - Nightmare & Hell (`0x6FCFF4C4: jne 0x6FCFF523`): jumps to `normal_pick` (`0x6FCFF523`),
+ *   drawing from the level's chosen monster types (`types`, rolled from `nmon1..nmon10`).
  *
  * @param plan - the level's columns.
  * @param types - the types {@link selectLevelTypes} chose.
  * @param kinds - every known monster.
+ * @param difficulty - game difficulty (defaults to `plan` or `types` difficulty, or `'normal'`).
  * @returns the candidate kinds, possibly empty.
  */
 export function resolveEliteCandidates(
   plan: LevelMonsterPlan,
   types: readonly MonsterKind[],
   kinds: ReadonlyMap<string, MonsterKind>,
+  difficulty?: Difficulty | 0 | 1 | 2,
 ): MonsterKind[] {
-  const eliteCandidates = filterCandidateKinds(plan.elitePool.map(name => kinds.get(name)), true)
-  if (eliteCandidates.length > 0) return eliteCandidates
-  return types.length > 0
-    ? [...types]
-    : filterCandidateKinds(plan.pool.map(name => kinds.get(name)), true)
+  const rawDiff =
+    difficulty ??
+    (plan as { readonly difficulty?: Difficulty }).difficulty ??
+    types[0]?.difficulty ??
+    'normal'
+  const diff: Difficulty =
+    typeof rawDiff === 'number'
+      ? rawDiff === 2
+        ? 'hell'
+        : rawDiff === 1
+          ? 'nightmare'
+          : 'normal'
+      : rawDiff
+  if (diff !== 'normal') {
+    return [...types]
+  }
+  return filterCandidateKinds(plan.elitePool.map(name => kinds.get(name)), true)
 }
 
 /**
  * Roll one elite pack: its kind, champion-or-unique rank, size and `MonUMod.txt` affixes.
  *
+ * - Kind selection (`D2Game.dll` `0x6FCFF4A0`):
+ *   - Normal difficulty (`0x6FCFF4D5..0x6FCFF518`): uniform random index `rand() % nNumUMon`
+ *     from `umon1..umon10`.
+ *   - Nightmare & Hell (`0x6FCFF4C4 -> 0x6FCFF523..0x6FCFF565`): weighted by `Rarity` from
+ *     the level's chosen `types`.
  * - 1.13c `MonUMod.txt`: 20% Champions, 80% Uniques + Minions.
  * - Champions spawn in groups of 2 to 4 (`2 + rand() % 3`).
  * - Uniques spawn with 1 boss + 3 to 6 minions (`1 + (3 + rand() % 4)`).
@@ -1849,48 +2600,64 @@ export function resolveEliteCandidates(
  * @param eliteCandidates - from {@link resolveEliteCandidates}; must be non-empty.
  * @param rng - the pack stream.
  * @param packIndex - 0-based index of this elite pack, seeds the affix roll.
- * @param cap - most monsters the pack may contain.
+ * @param difficulty - game difficulty (`'normal'` uses uniform `umon` draw; `'nightmare'`/`'hell'` uses `Rarity`-weighted draw).
  * @returns the pack.
  */
 export function rollEliteGroup(
   eliteCandidates: readonly MonsterKind[],
   rng: Rng,
   packIndex: number,
-  cap: number = Number.POSITIVE_INFINITY,
+  difficulty?: Difficulty | 0 | 1 | 2,
 ): MonsterGroup {
   if (eliteCandidates.length === 0) {
     throw new Error('rollEliteGroup: no elite candidates')
   }
-  const kind = eliteCandidates[rng.int(0, eliteCandidates.length - 1)]!
-  const isChampion = rng.next() < (MONUMOD_CONSTANTS.championChance / 100)
+  const rawDiff = difficulty ?? eliteCandidates[0]?.difficulty ?? 'normal'
+  const diff: Difficulty =
+    typeof rawDiff === 'number'
+      ? rawDiff === 2
+        ? 'hell'
+        : rawDiff === 1
+          ? 'nightmare'
+          : 'normal'
+      : rawDiff
+  const kind =
+    diff === 'normal'
+      ? eliteCandidates[rng.int(0, eliteCandidates.length - 1)]!
+      : pickWeightedKind113c(eliteCandidates, rng)
+  const isChampion = rng.int(0, 99) < MONUMOD_CONSTANTS.championChance
   const rank: Exclude<MonsterRank, 'minion'> = isChampion ? 'champion' : 'unique'
   const count = rank === 'champion'
-    ? Math.min(cap, rng.int(2, 4))
-    : Math.min(cap, 1 + rng.int(3, 6))
+    ? rng.int(2, 4)
+    : 1 + rng.int(3, 6)
   const modSeed = ((packIndex + 1) * 0x9e3779b9) ^ (count * 0x85ebca6b) ^ (rank === 'champion' ? 1 : 2)
-  const modifiers = rollEliteModifiers(rank, new Rng(modSeed))
+  const modifiers = rollEliteModifiers(rank, new Rng(modSeed), diff, kind)
   return { kind, count, rank, modifiers }
 }
 
+export interface PlanMonsterGroupsOptions {
+  readonly eliteMultiplier?: number | 'all' | undefined
+  readonly attempts?: number | undefined
+  readonly density?: number | undefined
+  readonly eliteCandidates?: readonly MonsterKind[] | undefined
+  readonly difficulty?: Difficulty | 0 | 1 | 2 | undefined
+  /**
+   * Mutable level-wide elite progression state (`D2Game.dll` `pMonsterRegion` `+0x2c0`, `+0x2c4`, `+0x2c8`).
+   * When provided (e.g. from `planRoomPopulation113c`), each successful density attempt calls
+   * `rollPackKind113c` against the live level state and increments `spawnedElites` on `0x6FC43260`.
+   */
+  readonly levelEliteState?: {
+    readonly totalRooms: number
+    readonly activatedRooms: number
+    spawnedElites: number
+  } | undefined
+}
+
 /**
- * Break a level's budget into packs.
+ * Break a level's or room's attempts into monster packs per 1.13c `D2Game.dll` `0x6FC67A20` & `0x6FCFF080`.
  *
- * Monsters in D2 come in groups, not as evenly scattered individuals:
- * `MinGrp`/`MaxGrp` say a Fallen comes 2–3 at a time and a Hell Bovine 5–10.
- * Spreading the budget over single monsters — which is what a round-robin over
- * the type list does — produces a field of loners that behaves nothing like the
- * game.
- *
- * Elite packs are drawn first, from `umon`, up to `MonUMax`; whatever budget is
- * left goes to ordinary packs.
- *
- * @param plan - the level's columns.
- * @param types - the types {@link selectLevelTypes} chose.
- * @param kinds - every known monster, for the `umon` lookup.
- * @param budget - how many monsters in total.
- * @param rng - seeded from the level.
- * @param options - optional elite chance multiplier for debugging or overrides.
- * @returns the packs to place.
+ * Each successful attempt calls {@link rollPackKind113c} (`0x6FCFF080`) rather than pre-rolling a
+ * static `rng.int(MonUMin, MonUMax)` quota ahead of time.
  */
 export function planMonsterGroups(
   plan: LevelMonsterPlan,
@@ -1898,15 +2665,22 @@ export function planMonsterGroups(
   kinds: ReadonlyMap<string, MonsterKind>,
   budget: number,
   rng: Rng,
-  options?: {
-    readonly eliteMultiplier?: number | 'all' | undefined
-  },
+  options?: PlanMonsterGroupsOptions,
 ): MonsterGroup[] {
-  if (types.length === 0 || budget <= 0) return []
-  const groups: MonsterGroup[] = []
-  let remaining = budget
-
-  const eliteCandidates = resolveEliteCandidates(plan, types, kinds)
+  const rawDiff =
+    options?.difficulty ??
+    (plan as { readonly difficulty?: Difficulty }).difficulty ??
+    types[0]?.difficulty ??
+    'normal'
+  const diff: Difficulty =
+    typeof rawDiff === 'number'
+      ? rawDiff === 2
+        ? 'hell'
+        : rawDiff === 1
+          ? 'nightmare'
+          : 'normal'
+      : rawDiff
+  const eliteCandidates = options?.eliteCandidates ?? resolveEliteCandidates(plan, types, kinds, diff)
 
   let minElites = plan.eliteMin
   let maxElites = plan.eliteMax
@@ -1920,29 +2694,113 @@ export function planMonsterGroups(
     }
   }
 
-  const elitePacks = maxElites <= 0 ? 0 : rng.int(minElites, maxElites)
-  for (let i = 0; i < elitePacks && remaining > 0 && eliteCandidates.length > 0; i += 1) {
-    const group = rollEliteGroup(eliteCandidates, rng, i, remaining)
-    groups.push(group)
-    remaining -= group.count
+  const groups: MonsterGroup[] = []
+
+  if (options?.attempts !== undefined) {
+    const attempts = Math.max(0, Math.floor(options.attempts))
+    const density = options.density ?? plan.density
+    if (attempts <= 0 || density <= 0 || (types.length === 0 && eliteCandidates.length === 0)) {
+      return []
+    }
+
+    const externalState = options.levelEliteState
+    const fallbackTotalRooms = Math.max(1, Math.ceil(attempts / 169))
+    let localSpawnedElites = 0
+    let allEliteIndex = 0
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (!rollMonsterAttempt113c(density, rng)) continue
+      const kind = types.length > 0 ? pickWeightedKind113c(types, rng) : undefined
+      if (options.eliteMultiplier === 'all' && eliteCandidates.length > 0) {
+        groups.push(rollEliteGroup(eliteCandidates, rng, allEliteIndex, diff))
+        allEliteIndex += 1
+        continue
+      }
+
+      const rollState: PackKindRollState113c = externalState !== undefined
+        ? {
+            eliteMin: minElites,
+            eliteMax: maxElites,
+            totalRooms: externalState.totalRooms,
+            activatedRooms: externalState.activatedRooms,
+            spawnedElites: externalState.spawnedElites,
+          }
+        : {
+            eliteMin: minElites,
+            eliteMax: maxElites,
+            totalRooms: fallbackTotalRooms,
+            activatedRooms: Math.min(
+              fallbackTotalRooms,
+              Math.floor(((attempt + 1) * fallbackTotalRooms) / attempts) + 1,
+            ),
+            spawnedElites: localSpawnedElites,
+          }
+
+      const packKind = rollPackKind113c(rollState, rng)
+      if (packKind === 'elite') {
+        // D2Game.dll 0x6FC67C89 -> 0x6FCFF4A0(eax=1) -> 0x6FC679B0 -> 0x6FC43CA0:
+        // When eliteCandidates is empty (e.g. Normal difficulty with empty umon),
+        // 0x6FCFF4A0 sets *ppMonStatsTxt = NULL and 0x6FC43CA0 aborts without spawning
+        // any monster and without calling 0x6FC43260 (inc spawnedElites).
+        if (eliteCandidates.length > 0) {
+          const packIndex = externalState !== undefined ? externalState.spawnedElites : localSpawnedElites
+          groups.push(rollEliteGroup(eliteCandidates, rng, packIndex, diff))
+          if (externalState !== undefined) {
+            externalState.spawnedElites += 1
+          } else {
+            localSpawnedElites += 1
+          }
+        }
+        continue
+      }
+
+      if (!kind) continue
+      if (!passesSparsePopulate113c(kind, rng)) continue
+      const count = rollNormalGroupSize113c(kind, rng)
+      groups.push({ kind, count, rank: 'normal' })
+    }
+
+    return groups
   }
 
-  const totalRarity = types.reduce((sum, kind) => sum + Math.max(1, kind.rarity), 0)
-  while (remaining > 0) {
-    let ticket = rng.next() * totalRarity
-    let kind = types[types.length - 1]!
-    for (let j = 0; j < types.length; j += 1) {
-      ticket -= Math.max(1, types[j]!.rarity)
-      if (ticket <= 0) {
-        kind = types[j]!
-        break
-      }
+  if (types.length === 0 || budget <= 0) return []
+
+  if (options?.eliteMultiplier === 'all' && eliteCandidates.length > 0) {
+    for (let i = 0; i < budget; i += 1) {
+      groups.push(rollEliteGroup(eliteCandidates, rng, i, diff))
     }
-    const minGrp = Math.max(1, kind.minGroup)
-    const maxGrp = Math.max(minGrp, kind.maxGroup)
-    const count = Math.min(remaining, rng.int(minGrp, maxGrp))
+    return groups
+  }
+
+  const totalRooms = Math.max(1, budget)
+  let spawnedElites = 0
+  for (let p = 0; p < budget; p += 1) {
+    const remainingAttempts = budget - p
+    const activatedRooms =
+      remainingAttempts <= minElites - spawnedElites
+        ? totalRooms
+        : Math.min(totalRooms, p + 1)
+    const packKind = rollPackKind113c(
+      {
+        eliteMin: minElites,
+        eliteMax: maxElites,
+        totalRooms,
+        activatedRooms,
+        spawnedElites,
+      },
+      rng,
+    )
+    if (packKind === 'elite') {
+      if (eliteCandidates.length > 0) {
+        groups.push(rollEliteGroup(eliteCandidates, rng, spawnedElites, diff))
+        spawnedElites += 1
+      }
+      continue
+    }
+    const kind = pickWeightedKind113c(types, rng)
+    if (!passesSparsePopulate113c(kind, rng)) continue
+    const count = rollNormalGroupSize113c(kind, rng)
     groups.push({ kind, count, rank: 'normal' })
-    remaining -= count
   }
   return groups
 }
@@ -2119,6 +2977,8 @@ export function monsterStatsOf(
     let xp = Math.max(0, scaleFloor(diffKind.experience, lXp))
 
     const playerCount = Math.max(1, Math.min(8, Math.floor(opts.playerCount ?? opts.playersCount ?? 1)))
+    const monsterPlayerCount =
+      diffKind.align !== undefined && diffKind.align !== 0 ? 1 : playerCount
     const bonusDmgAr = (val: number): number =>
       playerCount > 1 ? val + Math.floor((val * (playerCount - 1)) / 16) : val
     if (playerCount > 1) {
@@ -2214,6 +3074,7 @@ export function monsterStatsOf(
       ...(typeof diffKind.toBlock === 'number' ? { toBlock: diffKind.toBlock } : {}),
       ...(typeof diffKind.crit === 'number' ? { crit: diffKind.crit } : {}),
       ...(typeof diffKind.align === 'number' ? { align: diffKind.align } : {}),
+      monsterPlayerCount,
       ...(diffKind.noRatio !== undefined ? { noRatio: diffKind.noRatio } : {}),
       ...(typeof meleeRng === 'number' ? { meleeRng } : {}),
       ...(diffKind.neverCount !== undefined ? { neverCount: diffKind.neverCount } : {}),
@@ -2631,13 +3492,19 @@ export function planLevelMonsters(
     ? Math.round(plan.density * options.densityMultiplier)
     : plan.density
   const budget = monsterBudget(cells, density)
+  const attempts = Math.floor((cells * 25) / 9)
   const groups = planMonsterGroups(
     plan,
     types,
     kinds,
     budget,
     new Rng(seed ^ 0x9e37),
-    options?.eliteMultiplier !== undefined ? { eliteMultiplier: options.eliteMultiplier } : undefined,
+    {
+      ...(options?.eliteMultiplier !== undefined ? { eliteMultiplier: options.eliteMultiplier } : {}),
+      attempts,
+      density,
+      difficulty,
+    },
   )
   const rollRng = new Rng(seed ^ 0x2545)
 
@@ -2691,7 +3558,16 @@ export function planLevelMonsters(
         nameKey: suSpec.name,
         hp: Math.max(1, Math.round(bossBase.hp * ELITE_HEALTH_MULTIPLIER.unique)),
       }
-      const bossStats = applyEliteModifiers(bossScaled, 'unique', suSpec.modifiers, suSpec.id)
+      const suMods =
+        difficulty === 'normal'
+          ? suSpec.modifiers
+          : rollSuperUniqueModifiers113c(
+              suSpec.modifiers,
+              new Rng(seed ^ 0x77cc ^ (suIdx * 0x3c6ef35f)),
+              difficulty,
+              bossKind,
+            )
+      const bossStats = applyEliteModifiers(bossScaled, 'unique', suMods, suSpec.id)
       const minionCount = suRng.int(suSpec.minMinions, suSpec.maxMinions)
       const suMembers: MonsterStats[] = [bossStats]
       const minionArt = artMap?.get(minionKind.id)
@@ -3045,6 +3921,9 @@ function hydrateMonsterKindFrom113cRow(rec: MonStats113cRow, difficulty: Difficu
     pixHeight: rec.pixHeight,
     baseW: rec.baseW,
     hitClass: rec.hitClass,
+    noMultishot: MONSTATS_113C_NO_MULTISHOT_IDS.has(rec.id.toLowerCase()),
+    m1m: rec.m1m,
+    m2c: rec.m2c,
   }
 
   const getTc = (diff: Difficulty = difficulty, mType = 1): string => {
@@ -3543,7 +4422,8 @@ export function scaleMonsterStatsForDifficulty(
   },
 ): MonsterStats {
   const diff = normalizeDifficulty(difficulty)
-  return monsterStatsOf(kind, diff, 170, options?.roll ?? 0.5, {
+  const canonicalPlayerWalkPxPerSec = CANONICAL_CHARSTATS.sor.walkVelocity * 24
+  return monsterStatsOf(kind, diff, canonicalPlayerWalkPxPerSec, options?.roll ?? 0.5, {
     difficulty: diff,
     level: options?.level,
     rank: options?.rank,
@@ -3652,7 +4532,13 @@ export function resolveMonsterStats(
   })
 
   const applyPlayersScaling = (st: MonsterStats): MonsterStats => {
-    if (playerCount <= 1 || kind.noRatio) return st
+    const monsterPlayerCount = kind.align !== undefined && kind.align !== 0 ? 1 : playerCount
+    if (monsterPlayerCount <= 1 || kind.noRatio) {
+      return {
+        ...st,
+        monsterPlayerCount,
+      }
+    }
     const scaledHp = Math.max(1, Math.floor((st.hp * (playerCount + 1)) / 2))
     const scaledXp = Math.max(0, Math.floor((st.xp * (playerCount + 1)) / 2))
     const bonusDmgAr = (val: number): number =>
@@ -3666,6 +4552,7 @@ export function resolveMonsterStats(
       xp: scaledXp,
       damage: scaledDamage,
       toHit: scaledToHit,
+      monsterPlayerCount,
     }
   }
 
@@ -3856,15 +4743,15 @@ export function applyMonsterUModResistances(
 
   for (const rawMod of bossMods) {
     const key = String(rawMod).trim().toLowerCase().replace(/[\s_-]+/g, '')
-    if (key === '8' || key === 'magicresistant') {
+    if (key === '8' || key === 'resist' || key === 'magicresistant') {
       if (countImmunities() < 2) fire += 40
       if (countImmunities() < 2) lightning += 40
       if (countImmunities() < 2) cold += 40
-    } else if (key === '9' || key === 'fireenchant' || key === 'fireenchanted') {
+    } else if (key === '9' || key === 'fire' || key === 'fireenchant' || key === 'fireenchanted') {
       if (countImmunities() < 2 || fire >= 100) fire += 75
-    } else if (key === '17' || key === 'lightenchant' || key === 'lightningenchanted') {
+    } else if (key === '17' || key === 'lightning' || key === 'lightenchant' || key === 'lightningenchanted') {
       if (countImmunities() < 2 || lightning >= 100) lightning += 75
-    } else if (key === '18' || key === 'coldenchant' || key === 'coldenchanted') {
+    } else if (key === '18' || key === 'cold' || key === 'coldenchant' || key === 'coldenchanted') {
       if (countImmunities() < 2 || cold >= 100) cold += 75
     } else if (key === '25' || key === 'manahit' || key === 'manaburn') {
       magic += 20

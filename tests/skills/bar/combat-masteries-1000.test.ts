@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { getSharedDataRegistry } from '../../../src/baker/mpq-archive-source.ts'
+import { itemTypeIsA } from '../../../src/common/items/item-types.ts'
 import {
   calculateSwordMasteryStats,
   calculateAxeMasteryStats,
@@ -153,8 +154,9 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
     expect(isWeaponMatchingMastery('taxe', 128)).toBe(true)
     expect(isWeaponMatchingMastery('pole', 128)).toBe(false)
 
-    // #129 Mace Mastery (`blun` -> mace, club, hamm, scep, staf, wand)
-    for (const bluntType of ['blun', 'mace', 'club', 'hamm', 'scep', 'staf', 'wand', 'staff']) {
+    // #129 Mace Mastery (`blun` -> rod -> staf, wand, scep; plus mace, club, hamm)
+    for (const bluntType of ['blun', 'rod', 'mace', 'club', 'hamm', 'scep', 'staf', 'wand']) {
+      expect(itemTypeIsA(bluntType, 'blun')).toBe(true)
       expect(isWeaponMatchingMastery(bluntType, 129)).toBe(true)
     }
     expect(isWeaponMatchingMastery('swor', 129)).toBe(false)
@@ -164,16 +166,38 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
     expect(isWeaponMatchingMastery('pole', 134)).toBe(true)
     expect(isWeaponMatchingMastery('spea', 134)).toBe(false)
 
-    // #135 Throwing Mastery (`thro` -> tkni, taxe, jave)
-    for (const throwType of ['thro', 'tkni', 'taxe', 'jave']) {
+    // #135 Throwing Mastery (`thro` -> tkni, taxe, jave, ajav, tpot)
+    for (const throwType of ['thro', 'tkni', 'taxe', 'jave', 'ajav']) {
+      expect(itemTypeIsA(throwType, 'thro')).toBe(true)
       expect(isWeaponMatchingMastery(throwType, 135)).toBe(true)
     }
     expect(isWeaponMatchingMastery('spea', 135)).toBe(false)
+    expect(isWeaponMatchingMastery('aspe', 135)).toBe(false)
+    // `tkni` (Throwing Knife: Equiv1=thro, Equiv2=knif) matches #135 Throwing Mastery ONLY, no melee mastery
+    for (const meleeMasteryId of [127, 128, 129, 134, 136, 252]) {
+      expect(isWeaponMatchingMastery('tkni', meleeMasteryId)).toBe(false)
+    }
 
-    // #136 Spear Mastery (`spea` -> spea, jave in melee)
-    expect(isWeaponMatchingMastery('spea', 136)).toBe(true)
-    expect(isWeaponMatchingMastery('jave', 136)).toBe(true)
+    // #136 Spear Mastery (`spea` -> spea, aspe, jave, ajav in melee)
+    for (const spearType of ['spea', 'aspe', 'jave', 'ajav']) {
+      expect(itemTypeIsA(spearType, 'spea')).toBe(true)
+      expect(isWeaponMatchingMastery(spearType, 136)).toBe(true)
+    }
     expect(isWeaponMatchingMastery('pole', 136)).toBe(false)
+
+    // #252 Claw Mastery & #263 Weapon Block (`h2h` -> h2h, h2h2)
+    for (const clawType of ['h2h', 'h2h2']) {
+      expect(itemTypeIsA(clawType, 'h2h')).toBe(true)
+      expect(isWeaponMatchingMastery(clawType, 252)).toBe(true)
+      expect(isWeaponMatchingMastery(clawType, 263)).toBe(true)
+    }
+
+    // English item names / non-ItemTypes.txt strings must NEVER match by substring (`Cryptic Axe` != `axe`, `Phase Blade` != `swor`)
+    for (const nonCode of ['Phase Blade', 'Cryptic Axe', 'staff', 'sword', 'dagger', '']) {
+      for (const masteryId of [127, 128, 129, 134, 135, 136, 252, 263]) {
+        expect(isWeaponMatchingMastery(nonCode, masteryId)).toBe(false)
+      }
+    }
   })
 
   it('3. accrues Barbarian passives (#141, #145, #148, #153) in UnitStatList and gates on hard points > 0', () => {
@@ -194,20 +218,20 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
     expect(stats.getAccruedStat('fireresist')).toBe(10)
 
     // Invest 1 hard point in each passive -> effective slvl = 1 + 5 = 6
-    stats.setBaseSkillLevel(141, 1) // slvl 6 -> +105% maxstamina & +105% staminarecoverybonus
+    stats.setBaseSkillLevel(141, 1) // slvl 6 -> +105% maxstamina (skill_passive_staminapercent); does NOT modify staminarecoverybonus (#1445)
     stats.setBaseSkillLevel(145, 1) // slvl 6 -> +80% armorclass
     stats.setBaseSkillLevel(148, 1) // slvl 6 -> dm(7,50,6) = +30% velocitypercent
-    stats.setBaseSkillLevel(153, 1) // slvl 6 -> dm(0,80,6) = +44% all resists
+    stats.setBaseSkillLevel(153, 1) // slvl 6 -> dm(0,80,6) = +44% fire/cold/lightning resists (no poisonresist per #1445)
 
-    expect(stats.getAccruedStat('item_maxstamina_percent')).toBe(105)
-    expect(stats.getAccruedStat('staminarecoverybonus')).toBe(105)
+    expect(stats.getAccruedStat('skill_passive_staminapercent')).toBe(105)
+    expect(stats.getAccruedStat('staminarecoverybonus')).toBe(0)
     expect(stats.getAccruedStat('maxstamina')).toBe(Math.trunc((100 * FIXED_ONE * 205) / 100))
     expect(stats.getAccruedStat('armorclass')).toBe(Math.trunc((200 * 180) / 100))
     expect(stats.getAccruedStat('velocitypercent')).toBe(30)
     expect(stats.getAccruedStat('fireresist')).toBe(54)
     expect(stats.getAccruedStat('coldresist')).toBe(54)
     expect(stats.getAccruedStat('lightresist')).toBe(54)
-    expect(stats.getAccruedStat('poisonresist')).toBe(54)
+    expect(stats.getAccruedStat('poisonresist')).toBe(10)
   })
 
   it('4. gates Weapon Mastery (%AR, %ED, Crit) by equipped weapon type and enforces CS + DS mutual exclusion in executeSUnitDmg', () => {
@@ -343,18 +367,18 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
     expect(outDoubleThrow.missilesSpawned.length).toBe(2)
   })
 
-  it('6. wires cross-tab synergies: #145 Iron Skin -> #144 Concentrate (+10% Def/blvl) and #141 Increased Stamina -> #147 Frenzy (+0.4s/blvl)', async () => {
+  it('6. enforces 1.13c Skills.txt: #145 Iron Skin does NOT synergize #144 Concentrate defense (ln34 only) and #141 Increased Stamina does NOT synergize #147 Frenzy duration (par7=150)', async () => {
     // Pure calculators
-    const concNoSyn = calculateConcentrateStats(10, 0, 0, 0, 0)
+    const concNoSyn = calculateConcentrateStats(10, 0, 0, 0)
     const concWithIronSkin = calculateConcentrateStats(10, 0, 0, 0, 15)
     expect(concNoSyn.defenseBonusPct).toBe(190)
-    expect(concWithIronSkin.defenseBonusPct).toBe(340) // +150% from 15 hard points in #145 Iron Skin
+    expect(concWithIronSkin.defenseBonusPct).toBe(190) // Skills.txt #144 aurastatcalc1 = ln34 only
 
-    const frenzyNoSyn = calculateFrenzyStats(10, 0, 0, 0, 0)
+    const frenzyNoSyn = calculateFrenzyStats(10, 0, 0, 0)
     const frenzyWithStamina = calculateFrenzyStats(10, 0, 0, 0, 12)
     expect(frenzyNoSyn.durationFrames).toBe(150)
-    expect(frenzyWithStamina.durationFrames).toBe(270) // 150 + 12 * 10 frames (10.8s)
-    expect(calculateFrenzyStackState(2, 1, 10, 0, 50, 12).remainingFrames).toBe(220) // 270 - 50
+    expect(frenzyWithStamina.durationFrames).toBe(150) // Skills.txt #147 auralencalc = par7 = 150 frames
+    expect(calculateFrenzyStackState(2, 1, 10, 0, 50, 12).remainingFrames).toBe(100) // 150 - 50
 
     // Runtime execution via executeSkill113c
     const registry = await getSharedDataRegistry()
@@ -372,7 +396,7 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       targets: [target],
     } as any)
     expect(concOut.statesApplied).toContain('concentrate')
-    expect(caster.stateBus.getState('concentrate')?.stats['skill_armor_percent']).toBe(340)
+    expect(caster.stateBus.getState('concentrate')?.stats['skill_armor_percent']).toBe(190)
 
     const frenzyOut = executeSkill113c({
       registry,
@@ -381,7 +405,7 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       targets: [target],
     } as any)
     expect(frenzyOut.statesApplied).toContain('frenzy')
-    expect(caster.stateBus.getState('frenzy')?.durationFrames).toBe(270)
+    expect(caster.stateBus.getState('frenzy')?.durationFrames).toBe(150)
   })
 
   it('7. aligns Layer 1 stat-engine (`aggregateUnit`, `computeCombatStats`) and Layer 4 (`computeMoveVelocityPercent113c` stat 67)', () => {
@@ -420,7 +444,7 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       hardSkillLevels: new Map<number, number>([
         [141, 5], // Increased Stamina hard=5, eff=10 -> +165% maxstamina & +165% staminarecoverybonus (stat 28)
         [144, 5], // Concentrate hard=5, eff=10
-        [145, 5], // Iron Skin hard=5, eff=10 -> +120% passive def + +50% synergy to Concentrate
+        [145, 5], // Iron Skin hard=5, eff=10 -> +120% passive def (no Concentrate defense synergy in 1.13c)
         [148, 5], // Increased Speed hard=5, eff=10 -> +36% velocitypercent (stat 67)
         [153, 5], // Natural Resistance hard=5, eff=10 -> +55% all resists
       ]),
@@ -432,7 +456,7 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
     expect(aggLearned.total(11)).toBeGreaterThan(aggUnlearned.total(11))
     expect(aggLearned.total(67)).toBe(36) // velocitypercent = dm(7,50,10)
     expect(aggLearned.total(39)).toBe(aggUnlearned.total(39) + 55) // fireresist
-    expect(aggLearned.total(171)).toBe(120 + (100 + 10 * 9 + 10 * 5)) // 120 (Iron Skin) + 240 (Concentrate + Iron Skin syn) = 360
+    expect(aggLearned.total(171)).toBe(120 + (100 + 10 * 9)) // 120 (Iron Skin) + 190 (Concentrate ln34) = 310
 
     // Layer 1: computeCombatStats with Sword Mastery (#127 -> stat 342=%AR, 343=%ED)
     const swordArm = {
@@ -589,5 +613,49 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
     expect(casted).toBe(true)
     expect(engine.projectiles.length).toBe(2)
     expect(engine.projectiles[0].damage).toBeGreaterThan(100)
+  })
+
+  it('9. Issue #1462: skips weapon mastery (0 bonus + observable warning) when weaponItemType is empty/missing instead of silently taking max across learned masteries', () => {
+    // Barbarian with all 6 weapon masteries at slvl 20, but no weaponItemType provided
+    const barNoType = createUnit({
+      weaponMinPhys: 100,
+      weaponMaxPhys: 100,
+    })
+    for (const id of [127, 128, 129, 134, 135, 136]) {
+      barNoType.statList.setBaseSkillLevel(id, 20)
+    }
+    const defender = createUnit({ id: 'def-notype', unitType: 'monster' })
+    const hitBarNoType = executeSUnitDmg(barNoType, defender, {
+      skillId: 0,
+      attackKind: 'melee',
+      srcDam: 128,
+      roll100: 0,
+      masteryCritRoll100: 0,
+      rng: { rand: () => 0 },
+    })
+    expect(hitBarNoType.hit).toBe(true)
+    expect(hitBarNoType.totalDamage).toBe(100) // 0% mastery ED, 0% mastery Crit
+    expect(hitBarNoType.warnings).toContain('mastery_skipped_missing_weapon_type')
+
+    // Assassin with #252 Claw Mastery at slvl 20, but no weaponItemType provided
+    const assNoType = createUnit({
+      charClass: 'ass',
+      weaponItemType: '',
+      weaponMinPhys: 100,
+      weaponMaxPhys: 100,
+    })
+    assNoType.statList.setBaseSkillLevel(252, 20)
+    defender.statList.setHp256(2000 * FIXED_ONE)
+    const hitAssNoType = executeSUnitDmg(assNoType, defender, {
+      skillId: 0,
+      attackKind: 'melee',
+      srcDam: 128,
+      roll100: 0,
+      masteryCritRoll100: 0,
+      rng: { rand: () => 0 },
+    })
+    expect(hitAssNoType.hit).toBe(true)
+    expect(hitAssNoType.totalDamage).toBe(100) // 0% Claw Mastery ED, 0% Claw Mastery Crit
+    expect(hitAssNoType.warnings).toContain('mastery_skipped_missing_weapon_type')
   })
 })

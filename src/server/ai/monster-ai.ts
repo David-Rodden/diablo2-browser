@@ -820,11 +820,33 @@ function tickPlayer(
     player.poisonResistBonusTicks -= 1
   }
 
-  if (player.stamina !== undefined && player.maxStamina !== undefined && player.stamina <= 0) {
-    player.isRunning = false
+  const cStats = CANONICAL_CHARSTATS[player.classCode ?? 'sor'] ?? CANONICAL_CHARSTATS.sor
+  const pAny = player as {
+    staminaExhausted?: boolean
+    staminaRecoveryBonusPct?: number
+    blazeSlvl?: number
   }
-  const frwMultiplier = player.blazeTicks && player.blazeTicks > 0 ? 1.3 : 1.0
-  const speed = (options.playerSpeed / 25) * frwMultiplier
+  if (player.stamina !== undefined && player.maxStamina !== undefined) {
+    if (player.stamina <= 0) {
+      pAny.staminaExhausted = true
+      player.isRunning = false
+    } else if (pAny.staminaExhausted && player.stamina >= player.maxStamina / 4) {
+      pAny.staminaExhausted = false
+    }
+    if (pAny.staminaExhausted) {
+      player.isRunning = false
+    }
+  }
+  const baseWalkSpeedPxPerSec =
+    options.playerSpeed > 0 ? options.playerSpeed : cStats.walkVelocity * 24
+  const blazeSlvl = Math.max(1, pAny.blazeSlvl ?? 1)
+  // 1.13c Skills.txt #46 Blaze: aurastat1=velocitypercent, calc=dm12 (par1=18, par2=70)
+  const blazeVelPct =
+    player.blazeTicks && player.blazeTicks > 0
+      ? Math.floor(((70 - 18) * blazeSlvl) / (blazeSlvl + 6)) + 18
+      : 0
+  const frwMultiplier = 1 + blazeVelPct / 100
+  const speed = (baseWalkSpeedPxPerSec / 25) * frwMultiplier
   const mx = Number.isFinite(input.movement.x) ? input.movement.x : 0
   const my = Number.isFinite(input.movement.y) ? input.movement.y : 0
   const moved = moveWithCollision(player, mx * speed, my * speed, terrain)
@@ -837,12 +859,22 @@ function tickPlayer(
   }
   if (player.stamina !== undefined && player.maxStamina !== undefined) {
     if (isMoving && player.isRunning) {
-      player.stamina = Math.max(0, player.stamina - 0.2)
+      // 1.13c PLAYER_UpdateStamina (0x6FC95DC0): CharStats.RunDrain (20 or 15 for Assassin) in 1/256-point units/frame
+      const drainPerFrame = cStats.runDrain / 256
+      player.stamina = Math.max(0, player.stamina - drainPerFrame)
       if (player.stamina <= 0) {
+        pAny.staminaExhausted = true
         player.isRunning = false
       }
-    } else {
-      player.stamina = Math.min(player.maxStamina, player.stamina + (isMoving ? 0.15 : 0.4))
+    } else if (!isMoving) {
+      // 1.13c 0x6FC95E90: standing still recovers maxStamina / 256 per frame (scaled by staminarecoverybonus);
+      // walking outdoors does not recover stamina.
+      const recoveryPct = pAny.staminaRecoveryBonusPct ?? 0
+      const recoverPerFrame = (player.maxStamina * (100 + recoveryPct)) / (100 * 256)
+      player.stamina = Math.min(player.maxStamina, player.stamina + recoverPerFrame)
+      if (pAny.staminaExhausted && player.stamina >= player.maxStamina / 4) {
+        pAny.staminaExhausted = false
+      }
     }
   }
 
@@ -940,11 +972,17 @@ function tickPlayer(
     player.level + 1 < xpTable.length &&
     player.xp >= (xpTable[player.level + 1] ?? Number.POSITIVE_INFINITY)
   ) {
+    const prevLevel = player.level
     player.level += 1
-    const cStats = CANONICAL_CHARSTATS[player.classCode ?? 'sor']
-    const hpGain = Math.floor(cStats.perLevel.life)
-    const manaGain = Math.floor(cStats.perLevel.mana)
-    const staminaGain = Math.floor(cStats.perLevel.stamina)
+    const hpGain =
+      Math.floor((player.level - 1) * cStats.perLevel.life) -
+      Math.floor((prevLevel - 1) * cStats.perLevel.life)
+    const manaGain =
+      Math.floor((player.level - 1) * cStats.perLevel.mana) -
+      Math.floor((prevLevel - 1) * cStats.perLevel.mana)
+    const staminaGain =
+      Math.floor((player.level - 1) * cStats.perLevel.stamina) -
+      Math.floor((prevLevel - 1) * cStats.perLevel.stamina)
     const statPtsGain = cStats.perLevel.statPoints
     player.maxHp += hpGain
     player.maxMana += manaGain
@@ -3445,12 +3483,142 @@ export interface MercenaryAiTickOptions113c {
 }
 
 /**
- * Server-authoritative 25Hz mercenary AI step (`Hireling.txt` Act 1/2/3/5):
+ * 1.13c `D2Game.dll` `AITHINK_Fn057_Hireable` (`0x6FC3DD40`) and `MonStats.txt` (`#271`, `#338`, `#359`, `#560`, `#561`)
+ * authoritative constants for Act 1/2/3/5 mercenaries.
+ * See `kb/monsters/d2game-pet-hireable-ai-113c.md` for disassembly and VAs.
+ */
+export const HIREABLE_AI_113C = Object.freeze({
+  SUBTILE_PIXELS: 16,
+  /** `cmp eax, 0x64` (`100` subtiles = `1600` px) at `0x6FC3DEA9` -> `AI_PetTeleportNearTarget` (`0x6FC43130`). */
+  TELEPORT_SUBTILES: 100,
+  /** `cmp eax, 0x18` (`24` subtiles = `384` px) at `0x6FC3DE8C` -> run toward owner (`AITACTICS_RunToTargetCoords`). */
+  LEASH_RUN_SUBTILES: 24,
+  /** `cmp eax, 0x10` (`16` subtiles = `256` px) at `0x6FC3DE91` -> walk toward owner (`AITACTICS_WalkToTargetUnitWithSteps`). */
+  FOLLOW_WALK_SUBTILES: 16,
+  /** `cmp eax, 5` (`5` subtiles = `80` px) at `0x6FC3DF2B` -> idle near owner (`AITACTICS_IdleInNeutral`). */
+  IDLE_STOP_SUBTILES: 5,
+  /** `cmp ecx, 0x19` (`< 25` -> `<= 24` subtiles = `384` px) at `0x6FC3E043` -> target acquisition radius. */
+  AGGRO_SUBTILES: 24,
+  /** `cmp dword ptr [esp+0x10], 6` (`< 6` subtiles = `96` px) at `0x6FC3DE51` -> immediate self-defense radius. */
+  SELF_DEFENSE_SUBTILES: 6,
+  /** Act 1 Rogue Scout (`#271` `roguehire`) `aip2 = 20` subtiles (`320` px). */
+  ACT1_RANGED_REACH_SUBTILES: 20,
+  /** Act 2 Desert Mercenary (`#338` `act2hire`) `MeleeRng = 2` -> `1 + 2 = 3` subtiles (`48` px). */
+  ACT2_MELEE_REACH_SUBTILES: 3,
+  /** Act 3 Iron Wolf (`#359` `ironwolf`) ranged spell engagement `20` subtiles (`320` px). */
+  ACT3_RANGED_REACH_SUBTILES: 20,
+  /** Act 5 Barbarian (`#560/#561` `act5hire1/2`) `MeleeRng = 0` -> `2` subtiles (`32` px). */
+  ACT5_MELEE_REACH_SUBTILES: 2,
+  /** `MonStats.txt` `Velocity = 11`, `Run = 16` for `#271`, `#338`, `#359`. */
+  ACT123_VELOCITY: 11,
+  ACT123_RUN: 16,
+  /** `MonStats.txt` `Velocity = 14`, `Run = 19` for `#560`, `#561`. */
+  ACT5_VELOCITY: 14,
+  ACT5_RUN: 19,
+  /** `MonStats.txt` `aidel = 15` across all three difficulties for `#271`, `#338`, `#359`, `#560`, `#561`. */
+  AI_DELAY_FRAMES: 15,
+})
+
+function sampleMercUniform01(
+  effectiveTick: number,
+  salt: number,
+  rng?: unknown,
+): number {
+  if (typeof rng === 'function') {
+    const v = (rng as (bound?: number) => number)(1)
+    if (Number.isFinite(v) && v >= 0 && v < 1) return v
+  } else if (rng && typeof rng === 'object') {
+    const obj = rng as {
+      next?: () => number
+      random?: () => number
+      rand?: (bound: number) => number
+      nextInt?: (bound: number) => number
+    }
+    if (typeof obj.next === 'function') {
+      const v = obj.next()
+      if (Number.isFinite(v)) {
+        return v >= 0 && v < 1 ? v : ((v >>> 0) % 1000000) / 1000000
+      }
+    }
+    if (typeof obj.random === 'function') {
+      const v = obj.random()
+      if (Number.isFinite(v) && v >= 0 && v < 1) return v
+    }
+    if (typeof obj.rand === 'function') {
+      return ((obj.rand(1000000) >>> 0) % 1000000) / 1000000
+    }
+    if (typeof obj.nextInt === 'function') {
+      return ((obj.nextInt(1000000) >>> 0) % 1000000) / 1000000
+    }
+  }
+  const u32 =
+    (Math.imul(effectiveTick >>> 0, 2654435761) +
+      Math.imul(salt >>> 0, 2246822519) +
+      0xa6666666) >>>
+    0
+  return u32 / 0x100000000
+}
+
+/**
+ * 1.13c `AIMERC_ChooseSkill_6FC3C4E0` (`0x6FC3C4E0` in `D2Game.dll`):
+ * Selects a mercenary action (`'Attack'` or one of `Skill1..Skill6`) using weighted probability
+ * over `DefaultChance` and each unlocked skill's level-scaled weight:
+ *   `weight_i = Chance_i + floor((mlvl - Lvl_i) * ChancePerLvl_i / 4)`
+ * Active aura skills (`Mode == 1` when already active on the mercenary) have weight `0` (`0x6FC3C635`).
+ */
+export function selectMercenarySkill113c(
+  hirelingStats: NonNullable<ReturnType<typeof resolveHirelingStatsAtLevel>>,
+  effectiveTick = 0,
+  opts?: {
+    readonly activeAura?: string | undefined
+    readonly rng?: unknown
+    readonly salt?: number | undefined
+  },
+): string {
+  const candidates: { skillName: string; weight: number }[] = []
+  let skillWeightSum = 0
+  for (const s of hirelingStats.skills) {
+    if (s.effectiveLevel <= 0) continue
+    if (
+      s.mode === 1 &&
+      opts?.activeAura !== undefined &&
+      opts.activeAura.toLowerCase() === s.skillName.toLowerCase()
+    ) {
+      continue
+    }
+    const w = Math.max(0, Math.trunc(s.chance))
+    if (w <= 0) continue
+    candidates.push({ skillName: s.skillName, weight: w })
+    skillWeightSum += w
+  }
+  const defaultWeight = Math.max(0, Math.trunc(hirelingStats.defaultChance))
+  const totalWeight = defaultWeight + skillWeightSum
+  if (totalWeight <= 0 || candidates.length === 0) {
+    return 'Attack'
+  }
+  const u01 = sampleMercUniform01(effectiveTick, opts?.salt ?? 0, opts?.rng)
+  let roll = Math.min(totalWeight - 1, Math.max(0, Math.floor(u01 * totalWeight)))
+  if (roll < defaultWeight) {
+    return 'Attack'
+  }
+  roll -= defaultWeight
+  for (const c of candidates) {
+    if (roll < c.weight) {
+      return c.skillName
+    }
+    roll -= c.weight
+  }
+  return candidates[candidates.length - 1]!.skillName
+}
+
+/**
+ * Server-authoritative 25Hz mercenary AI step (`Hireling.txt` Act 1/2/3/5, `AITHINK_Fn057_Hireable` `0x6FC3DD40`):
  * - Supports `(world, merc, ownerOrOpts)`, `(merc, world, ownerOrOpts)`, and `(merc, owner, monstersArray, tick)` argument orders
- * - Leashes to owner when distance > 480 px (`teleportedToOwner: true, teleported: true`)
- * - Activates Act 2 Desert Mercenary Paladin aura (`Prayer`, `Blessed Aim`, `Defiance`, `Thorns`, `Holy Freeze`, `Might`)
- * - Acquires and attacks/chases nearest living hostile monster within `aggroRadius` using Hireling.txt skills
- * - Follows owner when idle and distance > 96 px
+ * - Leashes to owner when distance > 100 subtiles (`1600` px) (`teleportedToOwner: true, teleported: true`)
+ * - Activates Act 2 Desert Mercenary Paladin aura from `Hireling.txt` (`Mode == 1`) with zero `'Might'` fallback
+ * - Acquires and attacks/chases nearest living hostile monster within `aggroRadius` (`24` subtiles = `384` px)
+ *   using `AIMERC_ChooseSkill_6FC3C4E0` weighted skill selection and `[minDmg, maxDmg]` damage roll
+ * - Follows owner when idle and distance > 16 subtiles (`256` px; runs when > 24 subtiles = `384` px)
  */
 export function tickMercenaryAi25Hz(
   worldOrMerc: CombatWorld | MercenaryUnitState,
@@ -3520,8 +3688,11 @@ export function tickMercenaryAi25Hz(
   }
   merc.alive = true
 
-  // Hydrate default Hireling.txt stats (version = 100 Expansion canonical subType IDs per Act & Difficulty)
+  // Hydrate 1.13c Hireling.txt stats (version = 100 Expansion canonical subType IDs per Act & Difficulty)
   const act = merc.act ?? 2
+  if (act !== 1 && act !== 2 && act !== 3 && act !== 5) {
+    throw new Error(`tickMercenaryAi25Hz: invalid mercenary act=${String(act)} (must be 1, 2, 3, or 5)`)
+  }
   const lvl = Math.max(1, merc.level ?? 1)
   const diff = (
     merc.difficulty === 1 || merc.difficulty === 2 || merc.difficulty === 3 ? merc.difficulty : 1
@@ -3550,45 +3721,63 @@ export function tickMercenaryAi25Hz(
             : diff === 2
               ? 26
               : 28
-  const requestedSubType = merc.subType ?? defaultSubTypeForAct
-  let hirelingStats = resolveHirelingStatsAtLevel(requestedSubType, act, diff, lvl, true)
+  const hasExplicitSubType =
+    merc.subType !== undefined && (merc.subType !== 0 || act === 1)
+  const requestedSubType = hasExplicitSubType ? merc.subType! : defaultSubTypeForAct
+  const hirelingStats = resolveHirelingStatsAtLevel(requestedSubType, act, diff, lvl, true)
   if (!hirelingStats || hirelingStats.act !== act) {
-    hirelingStats = resolveHirelingStatsAtLevel(defaultSubTypeForAct, act, diff, lvl, true)
+    throw new Error(
+      `tickMercenaryAi25Hz: missing Hireling.txt record for act=${act}, difficulty=${diff}, subType=${requestedSubType}`,
+    )
   }
 
-  if (merc.damage === undefined) {
-    merc.damage = hirelingStats
-      ? Math.max(1, Math.floor((hirelingStats.minDmg + hirelingStats.maxDmg) / 2))
-      : Math.max(10, lvl * 2)
-  }
+  const pxPerSubtile = HIREABLE_AI_113C.SUBTILE_PIXELS
+  const defaultReachSubtiles =
+    act === 1
+      ? HIREABLE_AI_113C.ACT1_RANGED_REACH_SUBTILES
+      : act === 3
+        ? HIREABLE_AI_113C.ACT3_RANGED_REACH_SUBTILES
+        : act === 2
+          ? HIREABLE_AI_113C.ACT2_MELEE_REACH_SUBTILES
+          : HIREABLE_AI_113C.ACT5_MELEE_REACH_SUBTILES
   if (merc.reach === undefined) {
-    merc.reach = act === 1 || act === 3 ? 140 : 28
+    merc.reach = defaultReachSubtiles * pxPerSubtile
   }
   if (merc.aggroRadius === undefined) {
-    merc.aggroRadius = 240
+    merc.aggroRadius = HIREABLE_AI_113C.AGGRO_SUBTILES * pxPerSubtile
   }
+  const walkSpeedPx =
+    (act === 5 ? HIREABLE_AI_113C.ACT5_VELOCITY : HIREABLE_AI_113C.ACT123_VELOCITY) * pxPerSubtile
+  const runSpeedPx =
+    (act === 5 ? HIREABLE_AI_113C.ACT5_RUN : HIREABLE_AI_113C.ACT123_RUN) * pxPerSubtile
   if (merc.speed === undefined) {
-    merc.speed = 45
+    merc.speed = walkSpeedPx
   }
   if (merc.cooldown === undefined) {
     merc.cooldown = 0
   }
   if (merc.cooldownTicks === undefined) {
-    merc.cooldownTicks = 10
+    merc.cooldownTicks = HIREABLE_AI_113C.AI_DELAY_FRAMES
   }
 
-  // Act 2 Desert Mercenary aura resolution from Hireling.txt skills
-  if (act === 2 && !merc.activeAura) {
-    const auraSkill = hirelingStats?.skills.find((s) =>
-      /Prayer|Blessed Aim|Defiance|Thorns|Holy Freeze|Might/i.test(s.skillName),
+  // Act 2 Desert Mercenary aura resolution strictly from Hireling.txt Mode=1 skill (no 'Might' fallback)
+  if (!merc.activeAura) {
+    const auraSkill = hirelingStats.skills.find(
+      (s) => s.mode === 1 && s.effectiveLevel > 0,
     )
-    merc.activeAura = auraSkill?.skillName ?? 'Might'
+    if (auraSkill) {
+      merc.activeAura = auraSkill.skillName
+    }
   }
 
   if (merc.cooldown > 0) merc.cooldown -= 1
 
+  const teleportPx = HIREABLE_AI_113C.TELEPORT_SUBTILES * pxPerSubtile
+  const leashRunPx = HIREABLE_AI_113C.LEASH_RUN_SUBTILES * pxPerSubtile
+  const followWalkPx = HIREABLE_AI_113C.FOLLOW_WALK_SUBTILES * pxPerSubtile
+
   const ownerDist = Math.hypot(resolvedOwner.x - merc.x, resolvedOwner.y - merc.y)
-  if (ownerDist > 480) {
+  if (ownerDist > teleportPx) {
     merc.x = resolvedOwner.x
     merc.y = resolvedOwner.y
     merc.state = 'idle'
@@ -3629,6 +3818,7 @@ export function tickMercenaryAi25Hz(
     }
   }
 
+  const effectiveRng = opts?.rng ?? _rng
   if (bestMonster !== null) {
     const dx = bestMonster.x - merc.x
     const dy = bestMonster.y - merc.y
@@ -3640,22 +3830,29 @@ export function tickMercenaryAi25Hz(
       let skillUsed: string | undefined
       if (merc.cooldown === 0) {
         merc.cooldown = Math.max(1, merc.cooldownTicks)
-        const nonAuraSkills = hirelingStats?.skills.filter(
-          (s) => !/Prayer|Blessed Aim|Defiance|Thorns|Holy Freeze|Might/i.test(s.skillName),
-        )
-        const offensiveSkills =
-          nonAuraSkills && nonAuraSkills.some((s) => !/Frozen Armor/i.test(s.skillName))
-            ? nonAuraSkills.filter((s) => !/Frozen Armor/i.test(s.skillName))
-            : nonAuraSkills
-        skillUsed =
-          offensiveSkills && offensiveSkills.length > 0
-            ? offensiveSkills[(effectiveTick >>> 0) % offensiveSkills.length]!.skillName
-            : 'Attack'
+        skillUsed = selectMercenarySkill113c(hirelingStats, effectiveTick, {
+          activeAura: merc.activeAura,
+          rng: effectiveRng,
+        })
+        const dmgRange = Math.max(0, hirelingStats.maxDmg - hirelingStats.minDmg)
+        const rolledDmg =
+          merc.damage !== undefined
+            ? merc.damage
+            : hirelingStats.minDmg +
+              (dmgRange > 0
+                ? Math.floor(
+                    sampleMercUniform01(effectiveTick, 1, effectiveRng) * (dmgRange + 1),
+                  )
+                : 0)
         const enchantBonus =
           (merc.enchantTicks ?? 0) > 0 && merc.enchantDamage
-            ? Math.floor((merc.enchantDamage.min + merc.enchantDamage.max) / 2)
+            ? merc.enchantDamage.min +
+              Math.floor(
+                sampleMercUniform01(effectiveTick, 2, effectiveRng) *
+                  Math.max(1, merc.enchantDamage.max - merc.enchantDamage.min + 1),
+              )
             : 0
-        damageMonster(world, bestMonster.index, merc.damage + enchantBonus, resolvedOwner)
+        damageMonster(world, bestMonster.index, Math.max(1, rolledDmg + enchantBonus), resolvedOwner)
         attackedTargetId = bestMonster.index
       }
       return {
@@ -3668,7 +3865,8 @@ export function tickMercenaryAi25Hz(
       }
     }
     merc.state = 'chase'
-    const step = merc.speed / 25
+    const chaseSpeed = merc.speed === walkSpeedPx ? runSpeedPx : merc.speed
+    const step = chaseSpeed / 25
     const moved = moveWithCollision(merc, (dx / dist) * step, (dy / dist) * step, resolvedTerrain)
     merc.x = moved.x
     merc.y = moved.y
@@ -3680,13 +3878,15 @@ export function tickMercenaryAi25Hz(
     }
   }
 
-  if (ownerDist > 96) {
+  if (ownerDist > followWalkPx) {
     const dx = resolvedOwner.x - merc.x
     const dy = resolvedOwner.y - merc.y
     const dist = Math.hypot(dx, dy) || 1
     merc.facing = facingOf(dx, dy)
     merc.state = 'follow'
-    const step = merc.speed / 25
+    const followSpeed =
+      ownerDist > leashRunPx && merc.speed === walkSpeedPx ? runSpeedPx : merc.speed
+    const step = followSpeed / 25
     const moved = moveWithCollision(merc, (dx / dist) * step, (dy / dist) * step, resolvedTerrain)
     merc.x = moved.x
     merc.y = moved.y

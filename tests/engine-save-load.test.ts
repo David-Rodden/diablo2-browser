@@ -53,7 +53,7 @@ function optionsWith(store: SnapshotStore | undefined): GameEngineOptions {
     prefixAffixes: [],
     suffixAffixes: [],
     skills: [
-      { id: 'attack', name: 'Attack', manaCost: 0, cooldownTicks: 1, range: 48, projectile: false, speed: 0, baseMinDamage: 3, baseMaxDamage: 4, damagePerLevel: 1, radius: 20 },
+      { id: 'attack', name: 'Attack', manaCost: 0, cooldownTicks: 1, range: 48, projectile: false, speed: 0, baseMinDamage: 3, baseMaxDamage: 4, radius: 20 },
     ],
     npcDefs: [],
     questDefs: [],

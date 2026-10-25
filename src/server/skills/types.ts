@@ -20,6 +20,13 @@ export interface SkillEvalResult {
   /** Human-readable mana cost (and `manaCost256` in 256-fixed-point). */
   readonly manaCost: number
   readonly manaCost256: number
+  /** `Skills.txt` `startmana` minimum mana required to begin channeling (`startMana << 8` in 256-fixed-point). */
+  readonly startMana?: number | undefined
+  readonly startMana256?: number | undefined
+  /** `Skills.txt` `usemanaondo` (`1` = defer mana check/deduction to `SrvDoFunc` frame). */
+  readonly useManaOnDo?: boolean | undefined
+  /** `Skills.txt` `nocostinstate` (`1` = 0 mana cost when caster is already in `auraState`). */
+  readonly noCostInState?: boolean | undefined
   readonly toHitBonusPct: number
   readonly physDamagePct: number
   /** 128 = 100% weapon damage. */

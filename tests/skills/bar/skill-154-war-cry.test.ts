@@ -47,7 +47,7 @@ describe('[Skill #154] War Cry (BAR) — 1.13c Parity (Issue #308)', () => {
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(120)
-    expect(r20.radiusSubtiles).toBe(5.33)
+    expect(r20.radiusSubtiles).toBe(8)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

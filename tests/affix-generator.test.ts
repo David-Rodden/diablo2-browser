@@ -7,6 +7,10 @@ import {
   getItemTypeCode,
   getBaseQlvl,
   getBaseMagicLvl,
+  getAffixWeight,
+  pickWeightedAffix,
+  RARE_AFFIX_COUNT_TABLE,
+  isJewelItemBase,
 } from '../src/common/items/affix-generator.ts'
 import type { ItemBase } from '../src/common/items/items.ts'
 import type { MagicAffix, AffixTable } from '../src/common/items/affixes.ts'
@@ -20,51 +24,122 @@ import { MountedArchives } from '../src/common/mpq/mount.ts'
 import { fileSource } from '../src/baker/io/file-source.ts'
 import { loadItemTypes, isA as realIsA } from '../src/common/items/item-types.ts'
 
-describe('Affix Generator - alvl calculation (Issue #104)', () => {
-  it('calculates alvl with magicLvl bonus', () => {
-    // if (magicLvl > 0) alvl = ilvl + magicLvl
-    expect(calculateAlvl(10, 20, 5)).toBe(15)
+describe('Affix Generator - alvl calculation (D2Game.dll 0x6FC34604..0x6FC34657, Issue #1429)', () => {
+  it('matches 1.13c D2Game.dll 0x6FC34604..0x6FC34657 acceptance test vectors', () => {
+    // i = max(ilvl, qlvl)
+    // if (magicLvl > 0) alvl = i + magicLvl
+    // else if (i < 99 - trunc(qlvl / 2)) alvl = i - trunc(qlvl / 2)
+    // else alvl = 2 * i - 99
+    // clamped to [1, 99]
+    expect(calculateAlvl(85, 30, 0)).toBe(71) // i=85 >= 99-15=84 -> 2*85 - 99 = 71
+    expect(calculateAlvl(40, 30, 0)).toBe(25) // i=40 < 84 -> 40 - 15 = 25
+    expect(calculateAlvl(10, 30, 0)).toBe(15) // i=max(10,30)=30 < 84 -> 30 - 15 = 15
+    expect(calculateAlvl(50, 3, 18)).toBe(68) // i=50, magicLvl=18 -> 50 + 18 = 68
+    expect(calculateAlvl(99, 1, 0)).toBe(99)  // i=99 >= 99-0=99 -> 2*99 - 99 = 99
+  })
+
+  it('calculates alvl with magicLvl bonus using i = max(ilvl, qlvl)', () => {
+    // ilvl=10, qlvl=20 -> i=20; 20 + 5 = 25
+    expect(calculateAlvl(10, 20, 5)).toBe(25)
+    // ilvl=20, qlvl=15 -> i=20; 20 + 3 = 23
     expect(calculateAlvl(20, 15, 3)).toBe(23)
-    // Diadem (magicLvl = 18) capped at 99
+    // Diadem (qlvl=85, magicLvl=18) at any ilvl -> i=85, 85+18=103 -> clamped to 99
+    expect(calculateAlvl(1, 85, 18)).toBe(99)
     expect(calculateAlvl(85, 85, 18)).toBe(99)
     // Capped at 99
     expect(calculateAlvl(95, 80, 10)).toBe(99)
   })
 
-  it('calculates alvl when qlvl > Math.trunc(ilvl / 2) without magicLvl', () => {
-    // else if (qlvl > Math.trunc(ilvl / 2)) alvl = ilvl - Math.trunc(qlvl / 2)
-    // ilvl = 30, qlvl = 40 -> trunc(30/2)=15, 40 > 15 -> 30 - 20 = 10
-    expect(calculateAlvl(30, 40)).toBe(10)
-    expect(calculateAlvl(30, 40, 0)).toBe(10)
+  it('calculates alvl in low/mid branch (i < 99 - trunc(qlvl / 2)) without magicLvl', () => {
+    // ilvl=30, qlvl=40 -> i=40 < 99-20=79 -> 40 - 20 = 20
+    expect(calculateAlvl(30, 40)).toBe(20)
+    expect(calculateAlvl(30, 40, 0)).toBe(20)
 
-    // ilvl = 20, qlvl = 16 -> trunc(20/2)=10, 16 > 10 -> 20 - 8 = 12
+    // ilvl=20, qlvl=16 -> i=20 < 99-8=91 -> 20 - 8 = 12
     expect(calculateAlvl(20, 16)).toBe(12)
 
-    // ilvl = 50, qlvl = 26 -> trunc(50/2)=25, 26 > 25 -> 50 - 13 = 37
+    // ilvl=50, qlvl=26 -> i=50 < 99-13=86 -> 50 - 13 = 37
     expect(calculateAlvl(50, 26)).toBe(37)
 
-    // ilvl = 15, qlvl = 10 -> trunc(15/2)=7, 10 > 7 -> 15 - 5 = 10
-    expect(calculateAlvl(15, 10)).toBe(10)
+    // ilvl=50, qlvl=20 -> i=50 < 99-10=89 -> 50 - 10 = 40
+    expect(calculateAlvl(50, 20)).toBe(40)
   })
 
-  it('calculates alvl when qlvl <= Math.trunc(ilvl / 2) without magicLvl', () => {
-    // else alvl = ilvl
-    // ilvl = 50, qlvl = 20 -> trunc(50/2)=25, 20 <= 25 -> 50
-    expect(calculateAlvl(50, 20)).toBe(50)
-
-    // Exact boundary: ilvl = 50, qlvl = 25 -> trunc(50/2)=25, 25 <= 25 -> 50
-    expect(calculateAlvl(50, 25)).toBe(50)
-
-    // ilvl = 80, qlvl = 30 -> trunc(80/2)=40, 30 <= 40 -> 80
-    expect(calculateAlvl(80, 30)).toBe(80)
-
-    // ilvl = 105, qlvl = 20 -> 105 capped at 99
-    expect(calculateAlvl(105, 20)).toBe(99)
+  it('calculates alvl in high branch (i >= 99 - trunc(qlvl / 2)) as 2*i - 99', () => {
+    // Exact boundary: ilvl=84, qlvl=30 -> halfQlvl=15, 99-15=84; i=84 >= 84 -> 2*84 - 99 = 69
+    expect(calculateAlvl(84, 30, 0)).toBe(69)
+    // Just below boundary: ilvl=83, qlvl=30 -> i=83 < 84 -> 83 - 15 = 68
+    expect(calculateAlvl(83, 30, 0)).toBe(68)
+    // ilvl=90, qlvl=60 -> i=90 >= 99-30=69 -> 2*90 - 99 = 81
+    expect(calculateAlvl(90, 60, 0)).toBe(81)
+    // Clamped to [1, 99]
+    expect(calculateAlvl(105, 20, 0)).toBe(99)
+    expect(calculateAlvl(1, 2, 0)).toBe(1)
   })
 
   it('defaults magicLvl to 0 when omitted', () => {
     expect(calculateAlvl(40, 50)).toBe(calculateAlvl(40, 50, 0))
     expect(calculateAlvl(60, 20)).toBe(calculateAlvl(60, 20, 0))
+  })
+})
+
+describe('Affix Generator - magicLvl weighting & rand(total+1) roll (D2Game.dll 0x6FC3478B..0x6FC34889, Issue #1429)', () => {
+  it('weights candidates by frequency * level when magicLvl > 0 (e.g. circlet/wand/staff/orb)', () => {
+    const lowLevelAffix = { name: 'LowLvl', frequency: 4, level: 2 }
+    const highLevelAffix = { name: 'HighLvl', frequency: 4, level: 25 }
+
+    // magicLvl === 0 -> weight = frequency
+    expect(getAffixWeight(lowLevelAffix, 0)).toBe(4)
+    expect(getAffixWeight(highLevelAffix, 0)).toBe(4)
+
+    // magicLvl > 0 (e.g. ci3=18, wand/staf/orb=1) -> weight = frequency * level
+    expect(getAffixWeight(lowLevelAffix, 18)).toBe(8)
+    expect(getAffixWeight(highLevelAffix, 18)).toBe(100)
+    expect(getAffixWeight(lowLevelAffix, 1)).toBe(8)
+    expect(getAffixWeight(highLevelAffix, 1)).toBe(100)
+
+    const candidates = [lowLevelAffix, highLevelAffix]
+    let highCountNormal = 0
+    let highCountMagicLvl = 0
+    for (let seed = 1; seed <= 300; seed++) {
+      const pickedNormal = pickWeightedAffix(candidates, new D2Rng(seed), 0)
+      if (pickedNormal?.name === 'HighLvl') highCountNormal++
+
+      const pickedMagicLvl = pickWeightedAffix(candidates, new D2Rng(seed), 18)
+      if (pickedMagicLvl?.name === 'HighLvl') highCountMagicLvl++
+    }
+    // With magicLvl=18, HighLvl has weight 100 vs LowLvl weight 8 (>90% of hits)
+    expect(highCountMagicLvl).toBeGreaterThan(highCountNormal + 80)
+  })
+
+  it('returns null when rand(totalWeight + 1) hits totalWeight (0x6FC347FC..0x6FC34889)', () => {
+    const candidates = [
+      { name: 'A', frequency: 2, level: 1 },
+      { name: 'B', frequency: 3, level: 1 },
+    ]
+    // totalWeight = 5, so rng.rand(6) is called.
+    // Find a deterministic seed where new D2Rng(seed).rand(6) === 5
+    let hitNullSeed = -1
+    for (let seed = 1; seed <= 500; seed++) {
+      const probe = new D2Rng(seed)
+      if (probe.rand(6) === 5) {
+        hitNullSeed = seed
+        break
+      }
+    }
+    expect(hitNullSeed).toBeGreaterThan(0)
+
+    const rng = new D2Rng(hitNullSeed)
+    expect(pickWeightedAffix(candidates, rng, 0)).toBeNull()
+  })
+
+  it('returns null without uniform fallback when totalWeight <= 0', () => {
+    const zeroFreqCandidates = [
+      { name: 'Zero1', frequency: 0, level: 10 },
+      { name: 'Zero2', frequency: 0, level: 20 },
+    ]
+    expect(pickWeightedAffix(zeroFreqCandidates, new D2Rng(42), 0)).toBeNull()
+    expect(pickWeightedAffix(zeroFreqCandidates, new D2Rng(42), 18)).toBeNull()
   })
 })
 
@@ -673,7 +748,7 @@ describe('Affix Generator - Real MPQ Data Integration (when samples/d2 exists)',
     const rngMagic = new D2Rng(99999)
     const magicSword = rollMagicAffixes(crystalSword, 50, affixes, isAPredicate, rngMagic)
 
-    expect(magicSword.alvl).toBe(50) // qlvl=11 <= trunc(50/2)=25 -> alvl=50
+    expect(magicSword.alvl).toBe(45) // i=50 < 99-trunc(11/2)=94 -> 50 - 5 = 45
     expect(magicSword.affixes.length).toBeGreaterThanOrEqual(1)
     expect(magicSword.affixes.length).toBeLessThanOrEqual(2)
     expect(magicSword.name).toContain('Crystal Sword')
@@ -682,7 +757,7 @@ describe('Affix Generator - Real MPQ Data Integration (when samples/d2 exists)',
     const rngRare = new D2Rng(88888)
     const rareSword = rollRareAffixes(crystalSword, 80, affixes, rareNames, isAPredicate, rngRare)
 
-    expect(rareSword.alvl).toBe(80)
+    expect(rareSword.alvl).toBe(75) // i=80 < 99-5=94 -> 80 - 5 = 75
     expect(rareSword.affixes.length).toBeGreaterThanOrEqual(3)
     expect(rareSword.affixes.length).toBeLessThanOrEqual(6)
     expect(rareSword.prefixes.length).toBeGreaterThanOrEqual(0)
@@ -700,6 +775,209 @@ describe('Affix Generator - Real MPQ Data Integration (when samples/d2 exists)',
         expect(seenGroups.has(affix.group)).toBe(false)
         seenGroups.add(affix.group)
       }
+    }
+  })
+})
+
+
+describe('Affix Generator - 1.13c Magic & Rare Affix Count / Slot Distributions (Issue #1430)', () => {
+  const mockIsA = (type: string, target: string): boolean => {
+    if (type === target) return true
+    if (type === 'swor' && target === 'weap') return true
+    if (type === 'jewl' && target === 'misc') return true
+    return false
+  }
+
+  const swordBase: ItemBase = {
+    id: 'crs',
+    name: 'Crystal Sword',
+    kind: 'weapon',
+    invWidth: 2,
+    invHeight: 3,
+    maxStack: 1,
+    value: 100,
+    damage: 15,
+    defense: 0,
+    tags: ['weap', 'swor'],
+    level: 11,
+  }
+
+  const jewelBase: ItemBase = {
+    id: 'jew',
+    name: 'Jewel',
+    kind: 'misc',
+    invWidth: 1,
+    invHeight: 1,
+    maxStack: 1,
+    value: 100,
+    damage: 0,
+    defense: 0,
+    tags: ['misc', 'jewl'],
+    level: 1,
+  }
+
+  function createAffixPool(isPrefix: boolean, count: number, itype = 'swor'): MagicAffix[] {
+    const out: MagicAffix[] = []
+    for (let i = 1; i <= count; i++) {
+      out.push({
+        name: isPrefix ? `Pre${i}` : `of Suf${i}`,
+        isPrefix,
+        version: 1,
+        spawnable: true,
+        rare: true,
+        level: 1,
+        maxlevel: 0,
+        levelreq: 1,
+        frequency: 100,
+        group: (isPrefix ? 100 : 200) + i,
+        mods: [{ code: 'hp', min: 10, max: 10 }],
+        transform: false,
+        itypes: [itype],
+        etypes: [],
+      })
+    }
+    return out
+  }
+
+  const swordAffixes = {
+    prefixes: { all: createAffixPool(true, 10, 'swor') } as unknown as AffixTable,
+    suffixes: { all: createAffixPool(false, 10, 'swor') } as unknown as AffixTable,
+  }
+
+  const jewelAffixes = {
+    prefixes: { all: createAffixPool(true, 10, 'jewl') } as unknown as AffixTable,
+    suffixes: { all: createAffixPool(false, 10, 'jewl') } as unknown as AffixTable,
+  }
+
+  const mockRareNames = {
+    prefixes: {
+      getEligible: () => [{ index: 0, name: 'Raven', itypes: [], etypes: [] }],
+    } as unknown as RareNameTable,
+    suffixes: {
+      getEligible: () => [{ index: 0, name: 'Song', itypes: [], etypes: [] }],
+    } as unknown as RareNameTable,
+  }
+
+  it('exports RARE_AFFIX_COUNT_TABLE matching D2Game.dll .rdata 0x6FD1D058 ([3, 4, 4, 5, 5, 5, 6, 6])', () => {
+    expect(RARE_AFFIX_COUNT_TABLE).toEqual([3, 4, 4, 5, 5, 5, 6, 6])
+    expect(isJewelItemBase(jewelBase)).toBe(true)
+    expect(isJewelItemBase(swordBase)).toBe(false)
+  })
+
+  it('Magic affix distribution over 100,000 rolls matches 1.13c D2Game.dll 0x6FC303C0 (25% prefix-only, 50% suffix-only, 25% both)', () => {
+    const rng = new D2Rng(0x1337c0de)
+    const total = 100_000
+    let prefixOnly = 0
+    let suffixOnly = 0
+    let both = 0
+
+    for (let i = 0; i < total; i++) {
+      const res = rollMagicAffixes(swordBase, 50, swordAffixes, mockIsA, rng)
+      if (res.prefix && !res.suffix) prefixOnly++
+      else if (!res.prefix && res.suffix) suffixOnly++
+      else if (res.prefix && res.suffix) both++
+    }
+
+    const prefixOnlyRatio = prefixOnly / total
+    const suffixOnlyRatio = suffixOnly / total
+    const bothRatio = both / total
+
+    // Theoretical: 0.25, 0.50, 0.25 (with high totalWeight=1000, null pick is 1/1001 < 0.001)
+    expect(prefixOnlyRatio).toBeGreaterThan(0.24)
+    expect(prefixOnlyRatio).toBeLessThan(0.26)
+    expect(suffixOnlyRatio).toBeGreaterThan(0.49)
+    expect(suffixOnlyRatio).toBeLessThan(0.51)
+    expect(bothRatio).toBeGreaterThan(0.24)
+    expect(bothRatio).toBeLessThan(0.26)
+  })
+
+  it('Expansion Rare affix count distribution over 100,000 rolls matches D2Game.dll 0x6FC35240 (12.5% / 25% / 37.5% / 25%)', () => {
+    const rng = new D2Rng(0xdeadbeef)
+    const total = 100_000
+    const counts: Record<number, number> = { 3: 0, 4: 0, 5: 0, 6: 0 }
+
+    for (let i = 0; i < total; i++) {
+      const res = rollRareAffixes(swordBase, 50, swordAffixes, mockRareNames, mockIsA, rng)
+      const n = res.affixes.length
+      expect(n).toBeGreaterThanOrEqual(3)
+      expect(n).toBeLessThanOrEqual(6)
+      counts[n] = (counts[n] ?? 0) + 1
+    }
+
+    const r3 = counts[3]! / total
+    const r4 = counts[4]! / total
+    const r5 = counts[5]! / total
+    const r6 = counts[6]! / total
+
+    // Theoretical: 1/8 = 0.125, 2/8 = 0.25, 3/8 = 0.375, 2/8 = 0.25
+    expect(r3).toBeGreaterThan(0.118)
+    expect(r3).toBeLessThan(0.132)
+    expect(r4).toBeGreaterThan(0.242)
+    expect(r4).toBeLessThan(0.258)
+    expect(r5).toBeGreaterThan(0.367)
+    expect(r5).toBeLessThan(0.383)
+    expect(r6).toBeGreaterThan(0.242)
+    expect(r6).toBeLessThan(0.258)
+  })
+
+  it('Rare Jewel affix count is strictly 3 or 4 (~50% each) per D2Game.dll 0x6FC352C4..0x6FC352DF', () => {
+    const rng = new D2Rng(0x42424242)
+    const total = 10_000
+    let count3 = 0
+    let count4 = 0
+
+    for (let i = 0; i < total; i++) {
+      const res = rollRareAffixes(jewelBase, 50, jewelAffixes, mockRareNames, mockIsA, rng)
+      const n = res.affixes.length
+      expect(n === 3 || n === 4).toBe(true)
+      expect(res.prefixes.length).toBeLessThanOrEqual(3)
+      expect(res.suffixes.length).toBeLessThanOrEqual(3)
+      if (n === 3) count3++
+      if (n === 4) count4++
+    }
+
+    expect(count3 / total).toBeGreaterThan(0.48)
+    expect(count3 / total).toBeLessThan(0.52)
+    expect(count4 / total).toBeGreaterThan(0.48)
+    expect(count4 / total).toBeLessThan(0.52)
+  })
+
+  it('Classic Rare non-jewel affix count is 4..6 uniform per D2Game.dll 0x6FC34FC0..0x6FC34FDC', () => {
+    const rng = new D2Rng(0xabcdef01)
+    const total = 15_000
+    const counts: Record<number, number> = { 4: 0, 5: 0, 6: 0 }
+
+    for (let i = 0; i < total; i++) {
+      const res = rollRareAffixes(swordBase, 50, swordAffixes, mockRareNames, mockIsA, rng, {
+        isExpansion: false,
+      })
+      const n = res.affixes.length
+      expect(n).toBeGreaterThanOrEqual(4)
+      expect(n).toBeLessThanOrEqual(6)
+      counts[n] = (counts[n] ?? 0) + 1
+    }
+
+    expect(counts[4]! / total).toBeGreaterThan(0.31)
+    expect(counts[4]! / total).toBeLessThan(0.35)
+    expect(counts[5]! / total).toBeGreaterThan(0.31)
+    expect(counts[5]! / total).toBeLessThan(0.35)
+    expect(counts[6]! / total).toBeGreaterThan(0.31)
+    expect(counts[6]! / total).toBeLessThan(0.35)
+  })
+
+  it('retries current slot on opposite side without losing slot when one side runs out of candidates (0x6FC35330..0x6FC35430)', () => {
+    // Only 1 prefix available, 3 suffixes available -> any 4-affix roll must still produce 4 affixes (1 prefix + 3 suffixes)
+    const onePreThreeSuf = {
+      prefixes: { all: createAffixPool(true, 1, 'swor') } as unknown as AffixTable,
+      suffixes: { all: createAffixPool(false, 3, 'swor') } as unknown as AffixTable,
+    }
+    const rng = new D2Rng(0x99887766)
+    for (let i = 0; i < 200; i++) {
+      const res = rollRareAffixes(swordBase, 50, onePreThreeSuf, mockRareNames, mockIsA, rng)
+      expect(res.affixes.length).toBeGreaterThanOrEqual(3)
+      expect(res.affixes.length).toBeLessThanOrEqual(4)
+      expect(res.prefixes.length).toBeLessThanOrEqual(1)
+      expect(res.suffixes.length).toBeLessThanOrEqual(3)
     }
   })
 })

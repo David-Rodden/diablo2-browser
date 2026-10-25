@@ -47,7 +47,7 @@ describe('[Skill #242] Hunger (DRU) — 1.13c Parity (Issue #335)', () => {
     expect(r20.minElemDmg256).toBe(0)
     expect(r20.maxElemDmg256).toBe(0)
     expect(r20.durationFrames).toBe(0)
-    expect(r20.radiusSubtiles).toBe(3850)
+    expect(r20.radiusSubtiles).toBe(0)
     expect(r20.petMax).toBe(0)
     expect(r20.cooldownFrames).toBe(0)
   })

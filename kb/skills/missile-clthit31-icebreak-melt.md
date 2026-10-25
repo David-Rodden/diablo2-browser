@@ -32,6 +32,7 @@ Code: `SHATTER_STATES_113C` / `hasShatterState113c` in `src/common/units/monster
 6fb605e8  mov  ebp,0x159   ; icebreaklargemelt (#345)
 6fb60658  call 0x6fb560d0 / 0x6fb5ff10                      ; create at missile x/y
 6fb60670  0x6fabc2d4 -> 0x6fabc3c4                           ; copy the missile direction
+6fb6067d  push 0x80 ; push edi ; call 0x6fabc2fe            ; D2Common_10441 UNITS_SetAnimSpeed(pMelt, 0x80 -> animSpeed=8)
 ```
 
 Byte table 0x6FB606A0: `[0]=0 (272)`, `[1]=1 (273)`, `[2]=1 (274)`, `[0x91]=1 (417)`, all others `2` (no missile).

@@ -222,6 +222,12 @@ export function decodeD2gsC2sPacketToCommand(pkt: Uint8Array): ClientCommand | n
       const destAreaId = r.u32LE()
       return { type: 'WaypointGo', waypointId, destAreaId }
     }
+    case 0x5d: {
+      const button = r.u8()
+      const state = r.u8()
+      const targetPlayerId = r.u32LE()
+      return { type: 'Hostile', targetPlayerId, hostile: state !== 0, button }
+    }
     case 0x5e: {
       const action = r.u8()
       const targetPlayerId = r.u32LE()

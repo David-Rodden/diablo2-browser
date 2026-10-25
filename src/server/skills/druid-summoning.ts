@@ -24,6 +24,7 @@
  */
 
 import { compute5BandScaling, computeDiminishingReturns } from '../../common/data/calc-ast.ts'
+import { evaluateCanonicalSkillMana113c } from '../../common/data/skills-catalog.ts'
 
 export const DRUID_SUMMONING_SKILL_IDS = {
   RAVEN: 221,
@@ -52,9 +53,9 @@ export const DRUID_PET_SUB_SKILL_IDS = {
 
 export const DRUID_PET_GROUPS = {
   RAVEN: 0,
-  TOTEM: 1,
-  VINE: 2,
-  BEAST: 3,
+  TOTEM: 0,
+  VINE: 0,
+  BEAST: 1,
 } as const
 
 export interface DruidBeastSynergyLevels {
@@ -126,7 +127,7 @@ export interface PoisonCreeperStats {
   readonly manaCost: 8
   readonly manaCost256: 2048
   readonly petType: 'vine'
-  readonly petGroup: 2
+  readonly petGroup: 0
   readonly monId: 'plaguepoppy'
   readonly classId: 425
   readonly stateId: 150
@@ -169,7 +170,7 @@ export interface OakSageStats extends DruidTotemResistances {
   readonly manaCost: number
   readonly manaCost256: number
   readonly petType: 'totem'
-  readonly petGroup: 1
+  readonly petGroup: 0
   readonly monId: 'oaksage'
   readonly classId: 424
   readonly subSkillIds: readonly [298]
@@ -203,7 +204,7 @@ export interface HeartOfWolverineStats extends DruidTotemResistances {
   readonly manaCost: number
   readonly manaCost256: number
   readonly petType: 'totem'
-  readonly petGroup: 1
+  readonly petGroup: 0
   readonly monId: 'heartofwolverine'
   readonly classId: 423
   readonly subSkillIds: readonly [297]
@@ -236,7 +237,7 @@ export interface SpiritOfBarbsStats extends DruidTotemResistances {
   readonly manaCost: number
   readonly manaCost256: number
   readonly petType: 'totem'
-  readonly petGroup: 1
+  readonly petGroup: 0
   readonly monId: 'spiritofbarbs'
   readonly classId: 422
   readonly subSkillIds: readonly [296]
@@ -261,7 +262,7 @@ export interface CarrionVineStats {
   readonly manaCost: 10
   readonly manaCost256: 2560
   readonly petType: 'vine'
-  readonly petGroup: 2
+  readonly petGroup: 0
   readonly monId: 'cycleoflife'
   readonly classId: 426
   readonly stateId: 150
@@ -284,10 +285,10 @@ export interface SolarCreeperStats {
   readonly manaRecoverMaxPct: number
   readonly manaRecoverPct: number
   readonly petLevel: number
-  readonly manaCost: 14
-  readonly manaCost256: 3584
+  readonly manaCost: number
+  readonly manaCost256: number
   readonly petType: 'vine'
-  readonly petGroup: 2
+  readonly petGroup: 0
   readonly monId: 'vinecreature'
   readonly classId: 427
   readonly stateId: 150
@@ -324,8 +325,8 @@ export interface SummonSpiritWolfStats {
   readonly petLevel: number
   readonly manaCost: 15
   readonly manaCost256: 3840
-  readonly petType: 'wolf'
-  readonly petGroup: 3
+  readonly petType: 'spiritwolf'
+  readonly petGroup: 1
   readonly monId: 'spiritwolf'
   readonly classId: 420
   readonly subSkillIds: readonly [292]
@@ -370,7 +371,7 @@ export interface SummonDireWolfStats {
   readonly manaCost: 20
   readonly manaCost256: 5120
   readonly petType: 'fenris'
-  readonly petGroup: 3
+  readonly petGroup: 1
   readonly monId: 'fenris'
   readonly classId: 421
   readonly subSkillIds: readonly [314, 292]
@@ -393,11 +394,9 @@ export interface SummonGrizzlyStats {
   readonly synergyArPct: number
   readonly defenseBonusPct: number
   readonly synergyDefensePct: number
-  /** Actual 1.13c passivecalc3 = ln34 = 15 + 10*(slvl-1)% */
+  /** 1.13c Skills.txt row 247 passivecalc1 = ln12 = 25 + 10*(slvl-1)% (Param1=25, Param2=10) */
   readonly damageBonusPct: number
   readonly selfDamageBonusPct: number
-  /** Tooltip descLine 4 calca = ln56 = 25 + 10*(slvl-1)% */
-  readonly tooltipDamageBonusPct: number
   readonly bearSmiteDamageBonusPct: number
   readonly bearSmiteStunFrames: number
   readonly baseMinDamage: number
@@ -414,7 +413,7 @@ export interface SummonGrizzlyStats {
   readonly manaCost: 40
   readonly manaCost256: 10240
   readonly petType: 'grizzly'
-  readonly petGroup: 3
+  readonly petGroup: 1
   readonly monId: 'druidbear'
   readonly classId: 428
   readonly subSkillIds: readonly [326]
@@ -617,7 +616,7 @@ export function calculatePoisonCreeperStats(
     manaCost: 8,
     manaCost256: 2048,
     petType: 'vine',
-    petGroup: 2,
+    petGroup: 0,
     monId: 'plaguepoppy',
     classId: 425,
     stateId: 150,
@@ -676,7 +675,7 @@ export function calculateOakSageStats(
     manaCost,
     manaCost256: manaCost * 256,
     petType: 'totem',
-    petGroup: 1,
+    petGroup: 0,
     monId: 'oaksage',
     classId: 424,
     subSkillIds: [298],
@@ -738,7 +737,7 @@ export function calculateHeartOfWolverineStats(
     manaCost,
     manaCost256: manaCost * 256,
     petType: 'totem',
-    petGroup: 1,
+    petGroup: 0,
     monId: 'heartofwolverine',
     classId: 423,
     subSkillIds: [297],
@@ -799,7 +798,7 @@ export function calculateSpiritOfBarbsStats(
     manaCost,
     manaCost256: manaCost * 256,
     petType: 'totem',
-    petGroup: 1,
+    petGroup: 0,
     monId: 'spiritofbarbs',
     classId: 422,
     subSkillIds: [296],
@@ -846,7 +845,7 @@ export function calculateCarrionVineStats(
     manaCost: 10,
     manaCost256: 2560,
     petType: 'vine',
-    petGroup: 2,
+    petGroup: 0,
     monId: 'cycleoflife',
     classId: 426,
     stateId: 150,
@@ -874,6 +873,7 @@ export function calculateSolarCreeperStats(
   const maxHpRoll = Math.floor((baseHpMax * (100 + hpScalingPct)) / 100)
   const restoreManaPct = computeDiminishingReturns(1, 8, s)
   const petLevel = Math.floor((3 * clvl) / 4) + s
+  const mana = evaluateCanonicalSkillMana113c(241, s)
 
   return {
     skillId: 241,
@@ -890,10 +890,10 @@ export function calculateSolarCreeperStats(
     manaRecoverMaxPct: restoreManaPct,
     manaRecoverPct: restoreManaPct,
     petLevel,
-    manaCost: 14,
-    manaCost256: 3584,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
     petType: 'vine',
-    petGroup: 2,
+    petGroup: 0,
     monId: 'vinecreature',
     classId: 427,
     stateId: 150,
@@ -940,10 +940,10 @@ export function calculateSummonSpiritWolfStats(
   const attackRatingBonusPct = 50 + 25 * (s - 1)
   const selfDefenseBonusPct = 50 + 10 * (s - 1) + 7 * s
   const defenseBonusPct = selfDefenseBonusPct
-  const damageBonusPct = grizSlvl > 0 ? 15 + 10 * (grizSlvl - 1) : 0
+  const damageBonusPct = grizSlvl > 0 ? 25 + 10 * (grizSlvl - 1) : 0
 
-  const baseMinDamage = compute5BandScaling(s, 2, 1, 2, 3, 5, 7)
-  const baseMaxDamage = compute5BandScaling(s, 6, 1, 2, 3, 5, 7)
+  const baseMinDamage = compute5BandScaling(s, 2, 1, 2, 4, 5, 8)
+  const baseMaxDamage = compute5BandScaling(s, 6, 1, 2, 4, 5, 8)
   const minPhysDamage = Math.floor((baseMinDamage * (100 + damageBonusPct)) / 100)
   const maxPhysDamage = Math.floor((baseMaxDamage * (100 + damageBonusPct)) / 100)
   const allResistancesPct = Math.min(85, 5 * (s - 1))
@@ -977,8 +977,8 @@ export function calculateSummonSpiritWolfStats(
     petLevel: clvl,
     manaCost: 15,
     manaCost256: 3840,
-    petType: 'wolf',
-    petGroup: 3,
+    petType: 'spiritwolf',
+    petGroup: 1,
     monId: 'spiritwolf',
     classId: 420,
     subSkillIds: [292],
@@ -1035,12 +1035,12 @@ export function calculateSummonDireWolfStats(
   const spiritWolfDefenseBonusPct = swSlvl > 0 ? 50 + 10 * (swSlvl - 1) : 0
   const defenseBonusPct = selfDefenseBonusPct + spiritWolfDefenseBonusPct
 
-  const grizzlyDamageBonusPct = grizSlvl > 0 ? 15 + 10 * (grizSlvl - 1) : 0
+  const grizzlyDamageBonusPct = grizSlvl > 0 ? 25 + 10 * (grizSlvl - 1) : 0
   const rageDamageBonusPct = 100 + 4 * (s - 1)
   const damageBonusPct = grizzlyDamageBonusPct + (isEnraged ? rageDamageBonusPct : 0)
 
-  const baseMinDamage = compute5BandScaling(s, 7, 2, 3, 5, 7, 9)
-  const baseMaxDamage = compute5BandScaling(s, 12, 2, 4, 6, 8, 10)
+  const baseMinDamage = compute5BandScaling(s, 7, 2, 3, 6, 8, 11)
+  const baseMaxDamage = compute5BandScaling(s, 12, 2, 3, 6, 9, 13)
   const minPhysDamage = Math.floor((baseMinDamage * (100 + damageBonusPct)) / 100)
   const maxPhysDamage = Math.floor((baseMaxDamage * (100 + damageBonusPct)) / 100)
   const allResistancesPct = Math.min(85, 5 * (s - 1))
@@ -1084,7 +1084,7 @@ export function calculateSummonDireWolfStats(
     manaCost: 20,
     manaCost256: 5120,
     petType: 'fenris',
-    petGroup: 3,
+    petGroup: 1,
     monId: 'fenris',
     classId: 421,
     subSkillIds: [314, 292],
@@ -1129,13 +1129,12 @@ export function calculateSummonGrizzlyStats(
 
   const attackRatingBonusPct = swSlvl > 0 ? 50 + 25 * (swSlvl - 1) : 0
   const defenseBonusPct = swSlvl > 0 ? 50 + 10 * (swSlvl - 1) : 0
-  const damageBonusPct = 15 + 10 * (s - 1)
-  const tooltipDamageBonusPct = 25 + 10 * (s - 1)
+  const damageBonusPct = 25 + 10 * (s - 1)
   const bearSmiteDamageBonusPct = 35 + 10 * (s - 1)
   const bearSmiteStunFrames = Math.min(250, 15 + 5 * (s - 1))
 
-  const baseMinDamage = compute5BandScaling(s, 30, 8, 12, 16, 20, 24)
-  const baseMaxDamage = compute5BandScaling(s, 60, 8, 12, 16, 20, 24)
+  const baseMinDamage = compute5BandScaling(s, 30, 10, 15, 20, 26, 30)
+  const baseMaxDamage = compute5BandScaling(s, 60, 10, 15, 20, 26, 30)
   const minPhysDamage = Math.floor((baseMinDamage * (100 + damageBonusPct)) / 100)
   const maxPhysDamage = Math.floor((baseMaxDamage * (100 + damageBonusPct)) / 100)
   const smiteTotalEd = damageBonusPct + bearSmiteDamageBonusPct
@@ -1162,7 +1161,6 @@ export function calculateSummonGrizzlyStats(
     synergyDefensePct: defenseBonusPct,
     damageBonusPct,
     selfDamageBonusPct: damageBonusPct,
-    tooltipDamageBonusPct,
     bearSmiteDamageBonusPct,
     bearSmiteStunFrames,
     baseMinDamage,
@@ -1179,7 +1177,7 @@ export function calculateSummonGrizzlyStats(
     manaCost: 40,
     manaCost256: 10240,
     petType: 'grizzly',
-    petGroup: 3,
+    petGroup: 1,
     monId: 'druidbear',
     classId: 428,
     subSkillIds: [326],

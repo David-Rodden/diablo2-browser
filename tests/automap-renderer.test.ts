@@ -9,7 +9,6 @@ import type { AtlasHandle, SpriteRenderer } from '../src/client/render/renderer.
 import type { D2ColorCode, D2FontRenderer } from '../src/client/ui/font.ts'
 import {
   AUTOMAP_CROSSHAIR_COLORS,
-  AUTOMAP_FADE_ALPHAS,
   AUTOMAP_PAN_STEP_PX,
   AUTOMAP_REVEAL_DISTANCE_THRESHOLD,
   Minimap,
@@ -484,15 +483,13 @@ describe('R3 Authentic 1.13c Isometric Sprite Automap & Minimap UI', () => {
       expect(minimap.panX).toBe(0)
       expect(minimap.panY).toBe(0)
 
-      // F9 fade mode cycles 0 -> 1 -> 2 -> 3 -> 0
+      // Fade Automap (0x6fae9e20): corner minimap has no state 1 -> 0 -> 2 -> 3 -> 0
+      expect(minimap.bMinimap).toBe(true)
       expect(minimap.fadeMode).toBe(0)
-      expect(minimap.fadeAlpha).toBe(AUTOMAP_FADE_ALPHAS[0])
-      expect(minimap.cycleFade()).toBe(1)
-      expect(minimap.fadeAlpha).toBe(AUTOMAP_FADE_ALPHAS[1])
+      expect(minimap.fadeAlpha).toBe(1.0)
       expect(minimap.cycleFade()).toBe(2)
-      expect(minimap.fadeAlpha).toBe(AUTOMAP_FADE_ALPHAS[2])
+      expect(minimap.fadeAlpha).toBe(0.5)
       expect(minimap.cycleFade()).toBe(3)
-      expect(minimap.fadeAlpha).toBe(AUTOMAP_FADE_ALPHAS[3])
       expect(minimap.cycleFade()).toBe(0)
 
       // F10 name toggle

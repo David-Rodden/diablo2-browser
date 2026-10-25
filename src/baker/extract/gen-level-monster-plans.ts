@@ -26,7 +26,7 @@ const FIRST_LEVEL_ID = 1
 const LAST_LEVEL_ID = 136
 const DIFFICULTIES: readonly Difficulty[] = ['normal', 'nightmare', 'hell']
 const REQUIRED_COLUMNS = [
-  'Id', 'Name', 'NumMon', 'MonWndr',
+  'Id', 'Name', 'NumMon', 'rangedspawn', 'MonWndr',
   'MonDen', 'MonDen(N)', 'MonDen(H)',
   'MonUMin', 'MonUMin(N)', 'MonUMin(H)',
   'MonUMax', 'MonUMax(N)', 'MonUMax(H)',
@@ -38,6 +38,7 @@ export interface LevelMonsterPlanRow {
   readonly id: number
   readonly name: string
   readonly typeCount: number
+  readonly rangedSpawn: boolean
   readonly wander: boolean
   readonly density: readonly [number, number, number]
   readonly eliteMin: readonly [number, number, number]
@@ -72,6 +73,7 @@ export function readLevelMonsterPlanRows(table: D2Table): LevelMonsterPlanRow[] 
       id,
       name: n.levelName,
       typeCount: n.typeCount,
+      rangedSpawn: Boolean(n.rangedSpawn),
       wander: n.wander,
       density: [n.density, nm.density, h.density],
       eliteMin: [n.eliteMin, nm.eliteMin, h.eliteMin],
@@ -114,6 +116,8 @@ export function renderLevelMonsterPlans(rows: readonly LevelMonsterPlanRow[]): s
     '  readonly name: string',
     '  /** NumMon: how many distinct types are drawn from the pool */',
     '  readonly typeCount: number',
+    '  /** rangedspawn */',
+    '  readonly rangedSpawn: boolean',
     '  /** MonWndr */',
     '  readonly wander: boolean',
     '  /** MonDen / MonDen(N) / MonDen(H) */',
@@ -140,6 +144,7 @@ export function renderLevelMonsterPlans(rows: readonly LevelMonsterPlanRow[]): s
       `    id: ${row.id},`,
       `    name: ${quote(row.name)},`,
       `    typeCount: ${row.typeCount},`,
+      `    rangedSpawn: ${String(row.rangedSpawn)},`,
       `    wander: ${String(row.wander)},`,
       `    density: ${triple(row.density)},`,
       `    eliteMin: ${triple(row.eliteMin)},`,
@@ -162,7 +167,7 @@ export function renderLevelMonsterPlans(rows: readonly LevelMonsterPlanRow[]): s
     '  const rec = CANONICAL_LEVEL_MONSTER_PLANS[levelId]',
     '  if (rec === undefined) return null',
     "  const tier = difficulty === 'hell' ? 2 : difficulty === 'nightmare' ? 1 : 0",
-    '  return {',
+    '  const plan: LevelMonsterPlan = {',
     '    levelId: rec.id,',
     '    levelName: rec.name,',
     '    density: rec.density[tier],',
@@ -174,7 +179,15 @@ export function renderLevelMonsterPlans(rows: readonly LevelMonsterPlanRow[]): s
     '    elitePool: rec.elitePool,',
     '    monsterLevel: rec.monsterLevel[tier],',
     '    wander: rec.wander,',
+    '    rangedSpawn: rec.rangedSpawn,',
     '  }',
+    "  Object.defineProperty(plan, 'difficulty', {",
+    '    value: difficulty,',
+    '    enumerable: false,',
+    '    configurable: true,',
+    '    writable: true,',
+    '  })',
+    '  return plan',
     '}',
     '',
   )

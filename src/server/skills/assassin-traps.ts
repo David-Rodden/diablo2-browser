@@ -5,6 +5,8 @@
  * Strictly aligned with Skills.txt, Missiles.txt, MonStats.txt, and D2Game.dll.
  */
 
+import { evaluateCanonicalSkillMana113c } from '../../common/data/skills-catalog.ts';
+
 export const ASSASSIN_TRAP_SKILL_IDS = [
   251, // Fire Blast (Fire Trauma)
   256, // Shock Web
@@ -168,13 +170,16 @@ export function calcFireBlast113c(slvl: number, synergies: AssassinTrapSynergyBl
   const synPct = totalBlvl * 9;
   const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
+  const mana = evaluateCanonicalSkillMana113c(251, slvl);
   return {
     minDmg,
     maxDmg,
     synPct,
     explosionRadiusSubtiles: 3,
-    manaCost: 3 + 0.125 * Math.max(0, slvl - 1),
-    cooldownTicks: 0,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
+    delayFrames: mana.delayFrames,
+    cooldownTicks: mana.delayFrames,
   };
 }
 
@@ -198,6 +203,7 @@ export function calcShockWeb113c(slvl: number, synergies: AssassinTrapSynergyBlv
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const spikeCount =
     6 + Math.floor(Math.max(1, slvl) / 4) + Math.floor((synergies.fireBlastBlvl ?? 0) / 3);
+  const mana = evaluateCanonicalSkillMana113c(256, slvl);
   return {
     minDmg,
     maxDmg,
@@ -205,8 +211,10 @@ export function calcShockWeb113c(slvl: number, synergies: AssassinTrapSynergyBlv
     spikeCount,
     durationFrames: 90,
     nextDelayFrames: 25,
-    cooldownTicks: 15,
-    manaCost: 6,
+    delayFrames: mana.delayFrames,
+    cooldownTicks: mana.delayFrames,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   };
 }
 
@@ -230,6 +238,7 @@ export function calcBladeSentinel113c(
   const scaledFlatMax = Math.floor((rawFlatMax * effectiveSrcDam) / 128);
   const totalMin = Math.floor(((weaponPhysMin + rawFlatMin) * effectiveSrcDam) / 128);
   const totalMax = Math.floor(((weaponPhysMax + rawFlatMax) * effectiveSrcDam) / 128);
+  const mana = evaluateCanonicalSkillMana113c(257, slvl);
   return {
     rawFlatMin,
     rawFlatMax,
@@ -240,8 +249,10 @@ export function calcBladeSentinel113c(
     effectiveSrcDam,
     rangeFrames: 100,
     nextDelayFrames: 25,
-    cooldownTicks: 50,
-    manaCost: 7,
+    delayFrames: mana.delayFrames,
+    cooldownTicks: mana.delayFrames,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
     missileName: 'blade creeper' as const,
     missileId: 392,
     hcIdx: 413,
@@ -269,6 +280,7 @@ export function calcChargedBoltSentry113c(slvl: number, synergies: AssassinTrapS
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const boltsPerShot = 5 + Math.floor((synergies.shockWebBlvl ?? 0) / 3);
   const totalShots = 5 + Math.floor((synergies.lightningSentryBlvl ?? 0) / 4);
+  const mana = evaluateCanonicalSkillMana113c(261, slvl);
   return {
     minDmg,
     maxDmg,
@@ -277,7 +289,9 @@ export function calcChargedBoltSentry113c(slvl: number, synergies: AssassinTrapS
     totalShots,
     missileName: 'sentrychargedbolt' as const,
     hcIdx: 411,
-    manaCost: 13,
+    delayFrames: mana.delayFrames,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   };
 }
 
@@ -297,6 +311,7 @@ export function calcWakeOfFire113c(slvl: number, synergies: AssassinTrapSynergyB
   const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const totalShots = 5 + Math.floor((synergies.fireBlastBlvl ?? 0) / 3);
+  const mana = evaluateCanonicalSkillMana113c(262, slvl);
   return {
     minDmg,
     maxDmg,
@@ -306,7 +321,9 @@ export function calcWakeOfFire113c(slvl: number, synergies: AssassinTrapSynergyB
     missileName: 'wake of destruction' as const,
     makerMissileName: 'wake of destruction maker' as const,
     hcIdx: 410,
-    manaCost: 13,
+    delayFrames: mana.delayFrames,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   };
 }
 
@@ -331,6 +348,7 @@ export function calcBladeFury113c(
   const weaponScaledMax = Math.floor((weaponPhysMax * effectiveSrcDam) / 128);
   const totalMin = weaponScaledMin + flatMin;
   const totalMax = weaponScaledMax + flatMax;
+  const mana = evaluateCanonicalSkillMana113c(266, slvl);
   return {
     flatMin,
     flatMax,
@@ -340,7 +358,9 @@ export function calcBladeFury113c(
     totalMax,
     effectiveSrcDam,
     firePeriodFrames: 6,
-    manaCost: 1 + 0.125 * Math.max(0, slvl - 1),
+    delayFrames: mana.delayFrames,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   };
 }
 
@@ -362,6 +382,7 @@ export function calcLightningSentry113c(slvl: number, synergies: AssassinTrapSyn
   const synPct = totalBlvl * 12;
   const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
+  const mana = evaluateCanonicalSkillMana113c(271, slvl);
   return {
     minDmg,
     maxDmg,
@@ -371,7 +392,9 @@ export function calcLightningSentry113c(slvl: number, synergies: AssassinTrapSyn
     nextDelayFrames: 4,
     missileName: 'sentrylightningbolt' as const,
     hcIdx: 412,
-    manaCost: 20,
+    delayFrames: mana.delayFrames,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   };
 }
 
@@ -391,6 +414,7 @@ export function calcWakeOfInferno113c(slvl: number, synergies: AssassinTrapSyner
     (synergies.wakeOfFireBlvl ?? 0) * 7;
   const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
+  const mana = evaluateCanonicalSkillMana113c(272, slvl);
   return {
     minDmg,
     maxDmg,
@@ -398,7 +422,9 @@ export function calcWakeOfInferno113c(slvl: number, synergies: AssassinTrapSyner
     totalShots: 10,
     missileName: 'inferno sentry 1' as const,
     hcIdx: 415,
-    manaCost: 20,
+    delayFrames: mana.delayFrames,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   };
 }
 
@@ -419,6 +445,7 @@ export function calcDeathSentry113c(slvl: number, synergies: AssassinTrapSynergy
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const totalShots = 5 + Math.floor((synergies.fireBlastBlvl ?? 0) / 3);
   const corpseExplosionRadiusSubtiles = Math.floor((8 + Math.max(1, slvl) - 1) / 2);
+  const mana = evaluateCanonicalSkillMana113c(276, slvl);
   return {
     minDmg,
     maxDmg,
@@ -431,7 +458,9 @@ export function calcDeathSentry113c(slvl: number, synergies: AssassinTrapSynergy
     nextDelayFrames: 4,
     missileName: 'sentrylightningbolt' as const,
     hcIdx: 416,
-    manaCost: 20,
+    delayFrames: mana.delayFrames,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   };
 }
 
@@ -457,6 +486,7 @@ export function calcBladeShield113c(
   const scaledFlatMax = Math.floor((rawFlatMax * effectiveSrcDam) / 128);
   const totalMin = Math.floor(((weaponPhysMin + rawFlatMin) * effectiveSrcDam) / 128);
   const totalMax = Math.floor(((weaponPhysMax + rawFlatMax) * effectiveSrcDam) / 128);
+  const mana = evaluateCanonicalSkillMana113c(277, slvl);
   return {
     rawFlatMin,
     rawFlatMax,
@@ -468,7 +498,9 @@ export function calcBladeShield113c(
     durationFrames: 500 + 125 * Math.max(0, slvl - 1),
     perDelayFrames: 25,
     radiusSubtiles: 6,
-    manaCost: 27 + 2 * Math.max(0, slvl - 1),
+    delayFrames: mana.delayFrames,
+    manaCost: mana.manaCost,
+    manaCost256: mana.manaCost256,
   };
 }
 

@@ -19,6 +19,7 @@ import {
 import {
   extractPlayersCommandCount,
   parseInGameChatInput,
+  playersSetChatText113c,
   resolveChatTblIndex,
 } from '../../common/chat/chat-113c.ts'
 import { Environment } from '../../common/world/environment.ts'
@@ -110,6 +111,10 @@ export interface SessionEventProcessorHost {
   runStateSetFunctions(ev: Extract<ServerEvent, { type: 'StateSet' }>): void
   findStoneAlphaNearLocalPlayer(): { readonly x: number; readonly y: number } | null
   spawnHoradricStaffIfOrificeNear(): void
+  spawnHellforgeShowIfForgeNear(): void
+  spawnTaintedSunShowIfAltarNear(): void
+  spawnAnyaRescueShowIfAnyaNear(): void
+  startNihlathakShowIfNear(): void
   spawnDiabloAppearsIfInChaosSanctuary(): void
   isSubTileInTown(subX: number, subY: number): boolean
   syncAudioSkillPacks(): void
@@ -262,6 +267,13 @@ export function submitSessionChatInput(
       host.world.clearActiveScreenMessages()
       host.hudModel.syncFromWorld()
       return true
+    case 'local_usage':
+      host.world.addSystemChatMessage(parsed.text, 1, nowMs)
+      host.hudModel.syncFromWorld()
+      return false
+    case 'local_nopickup':
+      host.world.noPickup = !host.world.noPickup
+      return true
     case 'local_fps':
       host.hudManager.showFps = !host.hudManager.showFps
       return true
@@ -269,8 +281,8 @@ export function submitSessionChatInput(
       if (parsed.valid && parsed.count !== null) {
         host.persistedPlayersCount = parsed.count
         host.appliedPersistedPlayersForGame = true
-        host.world.addSystemChatMessage(`players set to ${parsed.count}`, 0, nowMs)
-        host.dispatchCommand({ type: 'Chat', text: `/players ${parsed.count}` }, nowMs)
+        host.world.addSystemChatMessage(playersSetChatText113c(parsed.count), 0, nowMs)
+        host.dispatchCommand({ type: 'Chat', text: playersSetChatText113c(parsed.count) }, nowMs)
         host.hudModel.syncFromWorld()
         return true
       }
@@ -309,7 +321,7 @@ export function applyPersistedPlayersToCurrentGame(
   if (!alreadyShown) {
     host.world.addSystemChatMessage(msgText, 0, nowMs)
   }
-  host.dispatchCommand({ type: 'Chat', text: `/players ${count}` }, nowMs)
+  host.dispatchCommand({ type: 'Chat', text: playersSetChatText113c(count) }, nowMs)
   host.hudModel.syncFromWorld()
   return true
 }
@@ -1163,6 +1175,9 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
 
     case 'SkillCast': {
       const raw = ev as any
+      // Triggered skills (S2C 0x99 / 0x9A, D2Client.dll 0x6fb79030) issue no unit command: movement and
+      // facing of the caster continue untouched.
+      if (raw.triggered === true) break
       const actorType: UnitType =
         raw.caster?.unitType ??
         raw.actor?.unitType ??
@@ -1315,27 +1330,70 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
           spawnHoradricStaffIfOrificeNear: () => {
             host.spawnHoradricStaffIfOrificeNear()
           },
+          spawnHellforgeShowIfForgeNear: () => {
+            host.spawnHellforgeShowIfForgeNear()
+          },
+          spawnTaintedSunShowIfAltarNear: () => {
+            host.spawnTaintedSunShowIfAltarNear()
+          },
+          spawnAnyaRescueShowIfAnyaNear: () => {
+            host.spawnAnyaRescueShowIfAnyaNear()
+          },
+          startNihlathakShowIfNear: () => {
+            host.startNihlathakShowIfNear()
+          },
+          armWorldstoneShake: () => {
+            host.world.armWorldstoneShake()
+          },
         })
       } else if (
         ev.source === 0x28 &&
-        ev.updateType === 0 &&
+        ev.updateType !== undefined &&
+        ev.updateType >= 0 &&
+        ev.updateType <= 5 &&
         ev.unitId !== undefined &&
-        ev.unitId > 0 &&
-        host.world.npcInteraction.npcId === ev.unitId &&
-        host.gameAdapter &&
-        host.gameAdapter.state !== 'closed'
+        ev.unitId > 0
       ) {
-        // D2Client.dll 0x6fafb8a0 (at 0x6fafb9aa): S2C 0x28 UpdateQuestInfo with updateType === 0
-        // sends C2S 0x2F NpcInit(1, unitId) after the server's MONSTER_Interact (0x6fc687a0) has set
-        // pPlayer->bInteracting = 1 on frame + 1.
-        try {
-          host.gameAdapter.send({
-            type: 'NpcInit',
-            target: { unitType: 1, id: ev.unitId },
-          })
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          host.handleUnexpectedDisconnect(`Failed to send NpcInit on 0x28: ${msg}`, 'error', true)
+        // D2Client.dll 0x6fafb8a0 (0x6fafb91f..0x6fafb9b7): S2C 0x28 UpdateQuestInfo with
+        // 0 <= updateType <= 5 looks up the unit (updateType, unitId) in the client unit table:
+        // - If found (0x6fafb955..0x6fafb9b7): starts NPC dialog and sends C2S 0x2F NpcInit(updateType, unitId).
+        // - If not found (0x6fafb923..0x6fafb93f): clears NPC interaction and sends C2S 0x30 NpcCancel(updateType, unitId).
+        const uType = (
+          ev.updateType === 0 &&
+          !host.world.getUnit(0, ev.unitId) &&
+          host.world.getUnit(1, ev.unitId)
+            ? 1
+            : ev.updateType
+        ) as 0 | 1 | 2 | 3 | 4 | 5
+        const target = { unitType: uType, id: ev.unitId }
+        const foundUnit = host.world.getUnit(uType, ev.unitId)
+        if (foundUnit) {
+          host.world.noteOutgoingCommand({ type: 'NpcInit', target })
+          if (host.gameAdapter && host.gameAdapter.state !== 'closed') {
+            try {
+              host.gameAdapter.send({
+                type: 'NpcInit',
+                target,
+              })
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err)
+              host.handleUnexpectedDisconnect(`Failed to send NpcInit on 0x28: ${msg}`, 'error', true)
+            }
+          }
+        } else {
+          host.world.noteOutgoingCommand({ type: 'NpcCancel', target, npcId: ev.unitId })
+          if (host.gameAdapter && host.gameAdapter.state !== 'closed') {
+            try {
+              host.gameAdapter.send({
+                type: 'NpcCancel',
+                target,
+                npcId: ev.unitId,
+              })
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err)
+              host.handleUnexpectedDisconnect(`Failed to send NpcCancel on 0x28: ${msg}`, 'error', true)
+            }
+          }
         }
       }
       break
@@ -1496,6 +1554,7 @@ export function drainWorldSoundRequests(
       runtime?.onAnimKeyframe({
         skillId: req.skillId,
         flag: req.flag ?? 1,
+        ...(req.doSoundId !== undefined ? { doSoundId: req.doSoundId } : {}),
         ...(req.weaponSoundId !== undefined ? { weaponSoundId: req.weaponSoundId } : {}),
         ...(req.x !== undefined ? { worldX: req.x } : {}),
         ...(req.y !== undefined ? { worldY: req.y } : {}),

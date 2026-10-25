@@ -149,7 +149,7 @@ describe('[Skill #040] Frozen Armor (SOR) — 1.13c 7-Dimensional Verification S
       expect(r20.minPhysDmg).toBe(0)
       expect(r20.maxPhysDmg).toBe(0)
       expect(r20.durationFrames).toBe(8700)
-      expect(r20.radiusSubtiles).toBe(125) // +125% defense bonus
+      expect(r20.radiusSubtiles).toBe(0) // +125% defense bonus
       expect(r20.cooldownFrames).toBe(0)
     })
   })

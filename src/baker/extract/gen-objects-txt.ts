@@ -5,7 +5,8 @@
  * One record per compiled Objects.txt record (D2Common loader 0x6fd8f0c0, record size 0x1C0, 573 records)
  * with the columns the client object light and animation paths read (#827):
  *   Name, Lit0..7, Red, Green, Blue, FrameCnt0..7, FrameDelta0..7, CycleAnim0..7, Start0..7, Sync, IsDoor,
- *   EnvEffect, ClientFn, plus OperateFn for the server object operate dispatch (D2Game table 0x6fd27bb8, #1326).
+ *   EnvEffect, ClientFn, plus OperateFn and Parm0 for the server object init/operate dispatch
+ *   (D2Game InitFn 1 @ 0x6fc4ef90, OperateFn table @ 0x6fd27bb8, #1326 / #1437).
  *
  * The record index is the row index after Fog 0x6ff628c8 drops the row whose first field is `Expansion`.
  * The Id column is NOT the index (it is wrong for records 410, 411 and 412), so it only appears in comments.
@@ -33,9 +34,11 @@ const MODES = 8
 const U8_MAX = 0xff
 const U16_MAX = 0xffff
 const U32_MAX = 0xffffffff
+const I32_MIN = -0x80000000
+const I32_MAX = 0x7fffffff
 
 const PER_MODE_COLUMNS = ['Lit', 'FrameCnt', 'FrameDelta', 'CycleAnim', 'Start'] as const
-const SCALAR_COLUMNS = ['Name', 'Id', 'Red', 'Green', 'Blue', 'Sync', 'IsDoor', 'Lockable', 'EnvEffect', 'ClientFn', 'OperateFn'] as const
+const SCALAR_COLUMNS = ['Name', 'Id', 'Red', 'Green', 'Blue', 'Sync', 'IsDoor', 'Lockable', 'EnvEffect', 'ClientFn', 'OperateFn', 'Parm0'] as const
 
 /** One compiled record, as the generated module stores it. */
 export interface ObjectsTxtRow {
@@ -58,6 +61,7 @@ export interface ObjectsTxtRow {
   readonly envEffect: number
   readonly clientFn: number
   readonly operateFn: number
+  readonly parm0: number
 }
 
 function requiredColumns(): string[] {
@@ -74,6 +78,17 @@ function intCell(table: D2Table, row: readonly string[], column: string, where: 
   if (!/^\d+$/.test(raw)) throw new Error(`objects.txt ${where}: column ${column} is not an unsigned integer: '${raw}'`)
   const value = Number(raw)
   if (value > max) throw new Error(`objects.txt ${where}: column ${column} = ${raw} exceeds ${String(max)}`)
+  return value
+}
+
+function signedIntCell(table: D2Table, row: readonly string[], column: string, where: string, min: number, max: number): number {
+  const raw = cell(table, row, column).trim()
+  if (raw === '') return 0
+  if (!/^-?\d+$/.test(raw)) throw new Error(`objects.txt ${where}: column ${column} is not a signed integer: '${raw}'`)
+  const value = Number(raw)
+  if (value < min || value > max) {
+    throw new Error(`objects.txt ${where}: column ${column} = ${raw} outside [${String(min)}, ${String(max)}]`)
+  }
   return value
 }
 
@@ -129,6 +144,7 @@ export function readObjectsTxtRows(table: D2Table): ObjectsTxtRow[] {
       envEffect: intCell(table, row, 'EnvEffect', where, U8_MAX),
       clientFn: intCell(table, row, 'ClientFn', where, U8_MAX),
       operateFn: intCell(table, row, 'OperateFn', where, U8_MAX),
+      parm0: signedIntCell(table, row, 'Parm0', where, I32_MIN, I32_MAX),
     })
   }
   if (rows.length !== RECORD_COUNT) throw new Error(`objects.txt: ${String(rows.length)} records, 1.13c has ${String(RECORD_COUNT)}`)
@@ -183,12 +199,14 @@ export function renderObjectsTxt(rows: readonly ObjectsTxtRow[]): string {
     '  readonly clientFn: number',
     '  /** OperateFn: server operate function index into the D2Game.dll table at 0x6fd27bb8 (#1326) */',
     '  readonly operateFn: number',
+    '  /** Parm0 (record +0x178, i32): dwParm[0], read by D2Game Shrine InitFn 1 at 0x6fc4ef90 (#1437) */',
+    '  readonly parm0: number',
     '}',
     '',
     '/**',
     ' * One record, positional so the 573 rows stay one line each:',
     ' * name, Lit0..7, [Red, Green, Blue], FrameCnt0..7, FrameDelta0..7, CycleAnim0..7, Start0..7,',
-    ' * Sync, IsDoor, EnvEffect, ClientFn, OperateFn.',
+    ' * Sync, IsDoor, EnvEffect, ClientFn, OperateFn, Parm0.',
     ' */',
     'function rec(',
     '  name: string,',
@@ -203,6 +221,7 @@ export function renderObjectsTxt(rows: readonly ObjectsTxtRow[]): string {
     '  envEffect: number,',
     '  clientFn: number,',
     '  operateFn: number,',
+    '  parm0: number,',
     '): ObjectsTxtRecord113c {',
     '  return Object.freeze({',
     '    name,',
@@ -219,6 +238,7 @@ export function renderObjectsTxt(rows: readonly ObjectsTxtRow[]): string {
     '    envEffect,',
     '    clientFn,',
     '    operateFn,',
+    '    parm0,',
     '  })',
     '}',
     '',
@@ -230,7 +250,7 @@ export function renderObjectsTxt(rows: readonly ObjectsTxtRow[]): string {
     lines.push(
       `  rec(${quote(row.name)}, ${list(row.lit)}, [${String(row.red)}, ${String(row.green)}, ${String(row.blue)}], ` +
         `${list(row.frameCnt)}, ${list(row.frameDelta)}, ${list(row.cycleAnim)}, ${list(row.start)}, ` +
-        `${String(row.sync)}, ${String(row.isDoor)}, ${String(row.envEffect)}, ${String(row.clientFn)}, ${String(row.operateFn)}), // ${comment}`,
+        `${String(row.sync)}, ${String(row.isDoor)}, ${String(row.envEffect)}, ${String(row.clientFn)}, ${String(row.operateFn)}, ${String(row.parm0)}), // ${comment}`,
     )
   }
   lines.push(

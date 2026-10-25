@@ -76,3 +76,13 @@ Candidate units in the missile's room/adjacent rooms are tested with `D2Common.#
   - `(1, 3)` / `(3, 1)` (cases 2, 6): `dx <= 1 && dy <= 1`
   - `(2, 3)` / `(3, 2)` (cases 5, 7): `(dx <= 2 && dy <= 1) || (dy <= 2 && dx <= 1)`
   - `(3, 3)` (case 8): `dx <= 2 && dy <= 2`
+
+### 4.1 Port notes (Issue #1502)
+
+- `dx` / `dy` are integer sub-tile differences: unit positions are 16.16 fixed-point and `#10389` compares the
+  integer parts, so a client in sub-tile coordinates floors both positions first.
+- `Size = 0` (and any value outside `1..3`) falls to the default case and never collides with a unit; every
+  missiles.bin row has `Size` in `0..3`.
+- The shared implementation lives in `src/common/skills/missile-size-footprint-113c.ts` (`#10389` table, the
+  `#10229` sub-tile ray halving, and the server's pixel-space segment test); the client stepper uses the
+  sub-tile-grid form instead of the former fixed 1.75 (guided arrow 2.25) sub-tile hit radius.

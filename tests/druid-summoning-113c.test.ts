@@ -652,6 +652,187 @@ describe('Issue #1019: Druid Summoning (#221-#247) 4-Layer 1.13c Fidelity', () =
     })
   })
 
+  describe('Issue #1426: 1.13c Skills.txt MinDam/MaxDam 5-Band Scaling & Grizzly ln12=25+10*(slvl-1) Synergy (D2Game.dll 0x6FC97240 -> 0x6FCBF2B0 -> 0x6FCBE330)', () => {
+    it('calculates Spirit Wolf (#227) 5-band MinDam (2,+1,+2,+4,+5,+8) / MaxDam (6,+1,+2,+4,+5,+8) and Grizzly ln12 synergy', () => {
+      // 1.13c Skills.txt row 227: MinDam=2, MinLevDam1..5=1,2,4,5,8; MaxDam=6, MaxLevDam1..5=1,2,4,5,8
+      expect(calculateSpiritWolfStats(1, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 2,
+        baseMaxDamage: 6,
+        damageBonusPct: 0,
+        minPhysDamage: 2,
+        maxPhysDamage: 6,
+      })
+      expect(calculateSpiritWolfStats(8, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 9,
+        baseMaxDamage: 13,
+      })
+      expect(calculateSpiritWolfStats(10, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 13,
+        baseMaxDamage: 17,
+      })
+      expect(calculateSpiritWolfStats(16, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 25,
+        baseMaxDamage: 29,
+      })
+      expect(calculateSpiritWolfStats(20, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 41,
+        baseMaxDamage: 45,
+      })
+      expect(calculateSpiritWolfStats(25, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 64,
+        baseMaxDamage: 68,
+      })
+      expect(calculateSpiritWolfStats(30, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 95,
+        baseMaxDamage: 99,
+      })
+
+      // Grizzly synergy: passivecalc3 = skill('Summon Grizzly'.ln12) = 25 + 10*(grizSlvl - 1)
+      const swGriz1 = calculateSpiritWolfStats(10, 0, 1, 30)
+      expect(swGriz1.damageBonusPct).toBe(25)
+      expect(swGriz1.synergyDamagePct).toBe(25)
+
+      const swGriz5 = calculateSpiritWolfStats(10, 0, 5, 30)
+      expect(swGriz5.damageBonusPct).toBe(65)
+      expect(swGriz5.minPhysDamage).toBe(Math.floor((13 * 165) / 100))
+      expect(swGriz5.maxPhysDamage).toBe(Math.floor((17 * 165) / 100))
+    })
+
+    it('calculates Dire Wolf (#237) 5-band MinDam (7,+2,+3,+6,+8,+11) / MaxDam (12,+2,+3,+6,+9,+13) and Grizzly ln12 synergy', () => {
+      // 1.13c Skills.txt row 237: MinDam=7, MinLevDam1..5=2,3,6,8,11; MaxDam=12, MaxLevDam1..5=2,3,6,9,13
+      expect(calculateDireWolfStats(1, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 7,
+        baseMaxDamage: 12,
+        grizzlyDamageBonusPct: 0,
+        damageBonusPct: 0,
+      })
+      expect(calculateDireWolfStats(8, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 21,
+        baseMaxDamage: 26,
+      })
+      expect(calculateDireWolfStats(10, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 27,
+        baseMaxDamage: 32,
+      })
+      expect(calculateDireWolfStats(16, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 45,
+        baseMaxDamage: 50,
+      })
+      expect(calculateDireWolfStats(20, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 69,
+        baseMaxDamage: 74,
+      })
+      expect(calculateDireWolfStats(25, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 105,
+        baseMaxDamage: 113,
+      })
+      expect(calculateDireWolfStats(30, 0, 0, 30)).toMatchObject({
+        baseMinDamage: 151,
+        baseMaxDamage: 166,
+      })
+
+      // Grizzly synergy: passivecalc3 = skill('Summon Grizzly'.ln12) = 25 + 10*(grizSlvl - 1)
+      const dwGriz5 = calculateDireWolfStats(10, 0, 5, 30)
+      expect(dwGriz5.grizzlyDamageBonusPct).toBe(65)
+      expect(dwGriz5.synergyDamagePct).toBe(65)
+      expect(dwGriz5.damageBonusPct).toBe(65)
+      expect(dwGriz5.minPhysDamage).toBe(Math.floor((27 * 165) / 100))
+      expect(dwGriz5.maxPhysDamage).toBe(Math.floor((32 * 165) / 100))
+    })
+
+    it('calculates Grizzly (#247) 5-band MinDam (30,+10,+15,+20,+26,+30) / MaxDam (60,+10,+15,+20,+26,+30), damagepercent = 25+10*(slvl-1), and removes fake tooltipDamageBonusPct', () => {
+      // 1.13c Skills.txt row 247: MinDam=30, MinLevDam1..5=10,15,20,26,30; MaxDam=60, MaxLevDam1..5=10,15,20,26,30; Param1=25, Param2=10, passivecalc1=ln12
+      const gz1 = calculateGrizzlyStats(1, 0, 0, 30)
+      expect(gz1.baseMinDamage).toBe(30)
+      expect(gz1.baseMaxDamage).toBe(60)
+      expect(gz1.damageBonusPct).toBe(25)
+      expect(gz1.selfDamageBonusPct).toBe(25)
+      expect(gz1.minPhysDamage).toBe(37) // floor(30 * 125 / 100) = 37
+      expect(gz1.maxPhysDamage).toBe(75) // floor(60 * 125 / 100) = 75
+      expect('tooltipDamageBonusPct' in gz1).toBe(false)
+
+      const gz5 = calculateGrizzlyStats(5, 0, 0, 30)
+      expect(gz5.baseMinDamage).toBe(70)
+      expect(gz5.baseMaxDamage).toBe(100)
+      expect(gz5.damageBonusPct).toBe(65)
+
+      const gz10 = calculateGrizzlyStats(10, 0, 0, 30)
+      expect(gz10.baseMinDamage).toBe(130)
+      expect(gz10.baseMaxDamage).toBe(160)
+      expect(gz10.damageBonusPct).toBe(115)
+
+      const gz16 = calculateGrizzlyStats(16, 0, 0, 30)
+      expect(gz16.baseMinDamage).toBe(220)
+      expect(gz16.baseMaxDamage).toBe(250)
+      expect(gz16.damageBonusPct).toBe(175)
+
+      const gz20 = calculateGrizzlyStats(20, 0, 0, 30)
+      expect(gz20.baseMinDamage).toBe(300)
+      expect(gz20.baseMaxDamage).toBe(330)
+      expect(gz20.damageBonusPct).toBe(215)
+
+      const gz25 = calculateGrizzlyStats(25, 0, 0, 30)
+      expect(gz25.baseMinDamage).toBe(418)
+      expect(gz25.baseMaxDamage).toBe(448)
+
+      const gz30 = calculateGrizzlyStats(30, 0, 0, 30)
+      expect(gz30.baseMinDamage).toBe(556)
+      expect(gz30.baseMaxDamage).toBe(586)
+    })
+
+    it('applies Grizzly ln12=65% damagepercent synergy and updated 1.13c base damage to summoned Spirit Wolf, Dire Wolf, and Grizzly pets in SummonManager', async () => {
+      const registry = await getSharedDataRegistry()
+      const summonManager = new SummonManager(registry)
+
+      const ownerStats = new UnitStatList(registry, { level: 30 })
+      ownerStats.setBaseSkillLevel(227, 10)
+      ownerStats.setBaseSkillLevel(237, 10)
+      ownerStats.setBaseSkillLevel(247, 5)
+      const owner: CombatUnitContext = {
+        id: 'dru-1426',
+        name: 'Druid',
+        statList: ownerStats,
+        stateBus: new StateBus(ownerStats, registry),
+      }
+
+      const swPet = summonManager.createPet({
+        owner,
+        skillId: 227,
+        slvl: 10,
+        x: 100,
+        y: 100,
+        difficulty: 'normal',
+      }).pet!
+      expect(swPet.statList.getAccruedStat('damagepercent')).toBe(65)
+      expect(swPet.statList.getAccruedStat('mindamage')).toBe(21) // floor(13 * 165 / 100) = 21
+      expect(swPet.statList.getAccruedStat('maxdamage')).toBe(28) // floor(17 * 165 / 100) = 28
+
+      const dwPet = summonManager.createPet({
+        owner,
+        skillId: 237,
+        slvl: 10,
+        x: 100,
+        y: 100,
+        difficulty: 'normal',
+      }).pet!
+      expect(dwPet.statList.getAccruedStat('damagepercent')).toBe(65)
+      expect(dwPet.statList.getAccruedStat('mindamage')).toBe(44) // floor(27 * 165 / 100) = 44
+      expect(dwPet.statList.getAccruedStat('maxdamage')).toBe(52) // floor(32 * 165 / 100) = 52
+
+      const gzPet = summonManager.createPet({
+        owner,
+        skillId: 247,
+        slvl: 5,
+        x: 100,
+        y: 100,
+        difficulty: 'normal',
+      }).pet!
+      expect(gzPet.statList.getAccruedStat('damagepercent')).toBe(65)
+      expect(gzPet.statList.getAccruedStat('mindamage')).toBe(115) // floor(70 * 165 / 100) = 115
+      expect(gzPet.statList.getAccruedStat('maxdamage')).toBe(165) // floor(100 * 165 / 100) = 165
+    })
+  })
+
   describe('Layer 3: WorldArena Runtime Execution across all 10 Druid Summoning Skills (#221-#247)', () => {
     it('executes all 10 Druid Summoning skills in WorldArena', async () => {
       const registry = await getSharedDataRegistry()

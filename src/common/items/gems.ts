@@ -892,37 +892,61 @@ export function socketItemIntoHost(
   return updatedHost
 }
 
+export interface SocketableBaseLike {
+  readonly gemsockets?: number | undefined
+  readonly gemSockets?: number | undefined
+  readonly stackable?: boolean | undefined
+}
+
 /**
- * Calculates maximum allowed sockets for an item based on base gemsockets,
- * item type socket tier limits, and item level (ilvl).
+ * Calculates maximum allowed sockets for an item based on base `gemsockets`,
+ * `ItemTypes.txt` socket tier limits, and item level (`ilvl`) per 1.13c
+ * `D2Common.dll #11151` (`ITEMS_GetMaxSockets` @ `0x6FD74610`).
  *
- * Tier thresholds from `ItemTypes.txt`:
- * - `ilvl 1..24`: `maxSock1`
- * - `ilvl 25..39`: `maxSock25`
- * - `ilvl 40+`: `maxSock40`
+ * Tier thresholds (`0x6FD74660..0x6FD74676`):
+ * - `ilvl <= 25`: `maxSock1` (`cmp eax, 0x19; jg`)
+ * - `26 <= ilvl <= 40`: `maxSock25` (`cmp eax, 0x28; jg`)
+ * - `ilvl >= 41`: `maxSock40`
  * - Allowed sockets = `Math.min(base.gemsockets, itemType.maxSockN)`.
  *
- * @param baseGemsockets - Max sockets supported by base item definition (`base.gemsockets`).
+ * @param baseOrGemsockets - Base item record (`{ gemsockets, stackable }`) or numeric `gemsockets`.
  * @param itemType - Item type definition containing `maxSock1`, `maxSock25`, `maxSock40`.
  * @param ilvl - Item level (monster level / drop level).
  * @returns Allowed maximum socket count for the given ilvl tier.
  */
-export function getMaxSockets(
-  baseGemsockets: number,
-  itemType: ItemTypeDefinition,
+export function getMaxSockets113c(
+  baseOrGemsockets: number | SocketableBaseLike | undefined,
+  itemType: ItemTypeDefinition | undefined,
   ilvl: number,
 ): number {
+  if (baseOrGemsockets === undefined) return 0
+  if (typeof baseOrGemsockets === 'object' && baseOrGemsockets.stackable === true) {
+    return 0
+  }
+  const baseGemsockets =
+    typeof baseOrGemsockets === 'number'
+      ? baseOrGemsockets
+      : Number(baseOrGemsockets.gemsockets ?? baseOrGemsockets.gemSockets ?? 0)
   if (baseGemsockets <= 0) return 0
+  if (!itemType) return baseGemsockets
 
   let typeMax: number
-  if (ilvl <= 24) {
+  if (ilvl <= 25) {
     typeMax = itemType.maxSock1 ?? 0
-  } else if (ilvl <= 39) {
+  } else if (ilvl <= 40) {
     typeMax = itemType.maxSock25 ?? 0
   } else {
     typeMax = itemType.maxSock40 ?? 0
   }
 
   return Math.max(0, Math.min(baseGemsockets, typeMax))
+}
+
+export function getMaxSockets(
+  baseGemsockets: number | SocketableBaseLike | undefined,
+  itemType: ItemTypeDefinition | undefined,
+  ilvl: number,
+): number {
+  return getMaxSockets113c(baseGemsockets, itemType, ilvl)
 }
 

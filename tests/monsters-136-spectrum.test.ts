@@ -25,6 +25,8 @@ import { cell, loadActTables, type D2Table } from '../src/common/world/acts.ts'
 import {
   monsterBudget,
   planMonsterGroups,
+  resolveEliteCandidates,
+  rollPackKind113c,
   readLevelMonsterPlan,
   readMonsterKinds,
   selectLevelTypes,
@@ -120,7 +122,7 @@ describe('136-Level Monster Spectrum & Density Ground Truth (Levels.txt / 1.13c)
 
           const attempts = Math.floor((TEST_CELLS * 25) / 9)
           const expectedPacks = attempts * (Math.min(10000, plan.density) / 100000)
-          const expectedBudget = Math.max(1, Math.round(expectedPacks * 3))
+          const expectedBudget = Math.max(1, Math.round(expectedPacks))
 
           const actualBudget = monsterBudget(plan, TEST_CELLS)
           expect(actualBudget).toBe(expectedBudget)
@@ -358,6 +360,85 @@ describe('136-Level Monster Spectrum & Density Ground Truth (Levels.txt / 1.13c)
 
       expect(filterCandidateKinds(testList, false).map(k => k.id)).toEqual(['valid'])
       expect(filterCandidateKinds(testList, true).map(k => k.id)).toEqual(['bossMonster', 'valid'])
+    })
+  })
+
+  describe('#1427 136-Level Monte Carlo & Analytical Parity vs 1.13c D2Game.dll 0x6FC67A20', () => {
+    it('matches 1.13c per-subtile MonDen + Rarity + sparsePopulate + MinGrp..MaxGrp expectation within <5% on all populated levels', () => {
+      // 48x48 tiles = 240x240 subtiles -> (240/3)*(240/3) = 6400 attempts per trial
+      const ATTEMPTS = 80 * 80
+      const SEEDS = 150
+      let verifiedLevels = 0
+
+      for (let id = 1; id <= 136; id++) {
+        const plan = readLevelMonsterPlan(tables.levels, id, 'normal')
+        if (!plan || plan.density <= 0) continue
+        const types = selectLevelTypes(plan, kinds, new Rng(id * 0x9e37), 'normal')
+        if (types.length === 0) continue
+        verifiedLevels += 1
+
+        let simMonsters = 0
+        for (let s = 1; s <= SEEDS; s++) {
+          const groups = planMonsterGroups(
+            { ...plan, eliteMin: 0, eliteMax: 0 },
+            types,
+            kinds,
+            ATTEMPTS,
+            new Rng((id * 100000 + s) >>> 0),
+            { attempts: ATTEMPTS, density: plan.density },
+          )
+          for (const g of groups) simMonsters += g.count
+        }
+        const simAvg = simMonsters / SEEDS
+
+        const pHit = (Math.min(10000, plan.density) + 1) / 100000
+        const totalRarity = types.reduce((acc, t) => acc + Math.max(0, t.rarity), 0)
+        let meanMonstersPerHit = 0
+        for (const t of types) {
+          const w = totalRarity > 0 ? Math.max(0, t.rarity) / totalRarity : 1 / types.length
+          const pSparse =
+            t.sparsePopulate !== undefined && t.sparsePopulate > 0 && t.sparsePopulate < 100
+              ? (t.sparsePopulate + 1) / 100
+              : 1
+          const minG = Math.max(1, t.minGroup)
+          const maxG = Math.max(minG, t.maxGroup)
+          meanMonstersPerHit += w * pSparse * ((minG + maxG) / 2)
+        }
+        const expectedAvg = ATTEMPTS * pHit * meanMonstersPerHit
+        const relErr = Math.abs(simAvg - expectedAvg) / expectedAvg
+        expect(relErr, `level ${id} (${plan.levelName}) relErr=${(relErr * 100).toFixed(2)}%`).toBeLessThan(0.05)
+      }
+
+      expect(verifiedLevels).toBe(124)
+    })
+  })
+
+  describe('#1428 136-Level Elite Candidate Pool & Empty umon Audit (D2Game.dll 0x6FCFF4A0 & 0x6FCFF080)', () => {
+    it('audits all 136 levels across Normal/NM/Hell: Normal uses umon without fallback; NM/Hell use nmon types', () => {
+      const emptyUmonLevels: number[] = []
+      for (let id = 1; id <= 136; id++) {
+        const planNorm = readLevelMonsterPlan(tables.levels, id, 'normal')!
+        const typesNorm = selectLevelTypes(planNorm, kinds, new Rng(id * 0x111), 'normal')
+        const candsNorm = resolveEliteCandidates(planNorm, typesNorm, kinds, 'normal')
+        if (planNorm.elitePool.length === 0) {
+          emptyUmonLevels.push(id)
+          expect(candsNorm).toEqual([])
+        } else {
+          const expectedNorm = filterCandidateKinds(planNorm.elitePool.map((name) => kinds.get(name)), true)
+          expect(candsNorm.map((k) => k.id)).toEqual(expectedNorm.map((k) => k.id))
+          expect(candsNorm.every((k) => planNorm.elitePool.includes(k.id))).toBe(true)
+        }
+
+        for (const diff of ['nightmare', 'hell'] as const) {
+          const planHard = readLevelMonsterPlan(tables.levels, id, diff)!
+          const kindsHard = readMonsterKinds(tables.monstats, diff)
+          const typesHard = selectLevelTypes(planHard, kindsHard, new Rng(id * 0x222), diff)
+          const candsHard = resolveEliteCandidates(planHard, typesHard, kindsHard, diff)
+          expect(candsHard.map((k) => k.id)).toEqual(typesHard.map((k) => k.id))
+        }
+      }
+      // Exactly 11 levels in 1.13c Levels.txt have empty umon (5 towns + 5 zero-MonDen rooms + Level 110 Bloody Foothills):
+      expect(emptyUmonLevels).toEqual([1, 20, 40, 50, 75, 103, 109, 110, 121, 132, 136])
     })
   })
 })

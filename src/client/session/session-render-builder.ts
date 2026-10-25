@@ -1065,6 +1065,7 @@ export function buildRenderableUnits(
       ...(u.superUniqueId !== undefined ? { superUniqueId: u.superUniqueId } : {}),
       ...(u.unitType === 'monster' && u.bossMods !== undefined ? { bossMods: u.bossMods } : {}),
       ...(u.unitType === 'monster' && u.compVariants !== undefined ? { compVariants: u.compVariants } : {}),
+      ...(u.unitType === 'monster' && u.paletteIndex !== undefined ? { paletteIndex: u.paletteIndex } : {}),
       ...(u.isNpc ? { isNpc: true } : {}),
       ...(u.wantsInteract ? { wantsInteract: true } : {}),
       ...(u.flags !== undefined ? { flags: u.flags } : {}),

@@ -100,6 +100,9 @@ export const DIFFICULTY_LEVELS_DROP_COLUMNS = [
   'UberCodeOddsGood',
   'UltraCodeOddsNormal',
   'UltraCodeOddsGood',
+  'MonsterFreezeDivisor',
+  'MonsterColdDivisor',
+  'AiCurseDivisor',
   'LifeStealDivisor',
   'ManaStealDivisor',
 ] as const

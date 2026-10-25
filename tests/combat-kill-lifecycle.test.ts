@@ -101,7 +101,6 @@ describe('Combat Kill Event Lifecycle & Single-Drop Gate (Issue #404)', () => {
           speed: 0,
           baseMinDamage: 10,
           baseMaxDamage: 20,
-          damagePerLevel: 2,
           radius: 48,
         },
       ],
@@ -177,7 +176,6 @@ describe('Combat Kill Event Lifecycle & Single-Drop Gate (Issue #404)', () => {
       speed: 0,
       baseMinDamage: 50,
       baseMaxDamage: 50,
-      damagePerLevel: 0,
       radius: 80,
     }
     engine.opts = {

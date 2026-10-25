@@ -287,9 +287,258 @@ export function formatMcpCreateGameStatusError(
       return isEn ? 'A Game Already Exists With That Name' : '已經有相同名稱的遊戲存在'
     case 0x20: // strId 5139 (0x1413)
       return isEn ? 'Server Down' : '伺服器停機'
+    case 0x6e: // strId 5304 (0x14B8)
+      return isEn
+        ? 'You cannot create or join games with a dead hardcore character.'
+        : '你無法利用死亡的專家級人物，創造或是加入其他遊戲之中。'
+    case 0x73: // strId 21794 (0x5522)
+      return isEn
+        ? 'Unable to enter game. Your character must kill Baal to play in a Nightmare game.'
+        : '無法進入遊戲。你的人物必須殺死巴爾才能進入惡夢級的遊戲。'
+    case 0x74: // strId 21793 (0x5521)
+      return isEn
+        ? 'Unable to enter game. Your character must kill Baal in Nightmare difficulty to play in a Hell game.'
+        : '無法進入遊戲。你的人物必須殺死惡夢級的巴爾才能進入地獄級的遊戲。'
     default: // strId 5140 (0x1414)
       return isEn ? 'Error Creating Game' : '開創遊戲錯誤'
   }
+}
+
+/**
+ * Detect whether a string contains raw protocol/developer diagnostics (`[ProtocolError ...]`,
+ * `status=0x...`, `state=...`, `packet=0x...`, `progression=`, `d2gs`, `mcp_`, `bncs`, etc.)
+ * that must never be rendered directly to players.
+ */
+export function isRawTechnicalErrorString(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  return (
+    /\[ProtocolError/i.test(trimmed) ||
+    /\b(?:status|reason|packet|opcode|code)=0x[0-9a-f]+\b/i.test(trimmed) ||
+    /\b(?:state|progression|classId|conn)=[A-Za-z0-9_-]+\b/i.test(trimmed) ||
+    /\b(?:SID_[A-Z0-9_]+|MCP_[A-Z0-9_]+|D2GS|BNCS|WebSocket)\b/.test(trimmed) ||
+    /\btimed out(?:\s+after\s+\d+ms)?\b/i.test(trimmed) ||
+    /\bconnection (?:closed|reset|refused)\b/i.test(trimmed) ||
+    /\bnot connected for\b/i.test(trimmed) ||
+    /\b(?:TypeError|ReferenceError|SyntaxError|RangeError):/i.test(trimmed)
+  )
+}
+
+/**
+ * Format Battle.net login / authentication errors (`SID_LOGONRESPONSE2 0x3A`, `SID_AUTH_CHECK 0x51`,
+ * `SID_LOGONREALMEX 0x3E`, `MCP_STARTUP 0x01`, or socket/timeout errors) into authentic 1.13c
+ * `D2Launch.dll` (`0x6FA4E510..0x6FA4ED40`) `.tbl` localized messages.
+ */
+export function formatBnetLoginError(
+  err: unknown,
+  lang: 'zh' | 'en' = getGameLang(),
+): string {
+  const isEn = lang === 'en'
+  const raw = err instanceof Error ? err.message : String(err)
+  const stripped = raw.replace(/^\[ProtocolError[^\]]*\]\s*/i, '').trim()
+
+  const logonMatch = /SID_LOGONRESPONSE2\b[^\n]*?\bstatus=0x([0-9a-f]+)/i.exec(raw)
+  if (logonMatch?.[1]) {
+    const status = Number.parseInt(logonMatch[1], 16) >>> 0
+    switch (status) {
+      case 0x01: // strId 5208 (0x1458)
+        return isEn
+          ? "That account does not exist. If you have not been on Battle.net for 90 days with this account, please select 'Create New Account' to choose a new name and password."
+          : '這個帳戶並不存在，如果你離開Battle.Net已經有90天以上的時間，也沒有使用這個帳戶登錄，請選擇「創造新帳戶」，並另選一個新的名稱和密碼。'
+      case 0x02: // strId 5207 (0x1457)
+        return isEn
+          ? 'The password you have entered is incorrect. Please try again.'
+          : '你所輸入的密碼並不正確，請重試一次。'
+      case 0x06: // strId 5356 (0x14EC)
+        return isEn
+          ? 'You are banned from battle.net. Reconnect later.'
+          : '你被battle.net排除，請稍後再試。'
+      default: // strId 5244 (0x147C)
+        return isEn ? 'Login Error' : '登錄錯誤'
+    }
+  }
+
+  const authCheckMatch = /SID_AUTH_CHECK\b[^\n]*?\bresult=0x([0-9a-f]+)/i.exec(raw)
+  if (authCheckMatch?.[1]) {
+    const result = Number.parseInt(authCheckMatch[1], 16) >>> 0
+    if (result === 0x100 || result === 0x101) {
+      return isEn
+        ? 'Versions do not match. Please log onto battle.net or go to http://www.blizzard.com/support/Diablo2 to get a patch'
+        : '版本不合。請登錄到battle.net或是前往http://www.blizzard.com/support/Diablo2，把你的版本加以更新'
+    }
+    if (result === 0x201) {
+      return isEn
+        ? 'Only one registered instance of this application can use your CD key at a time. If your connection to Battle.net was just interrupted, please wait five minutes before trying to connect again.'
+        : '這套軟體一次不容許二個使用相同CD序號的人士同時登錄。如果你連到Battle.net已經被切斷，請靜候五分鐘再嚐試一次。'
+    }
+    if (result === 0x202) {
+      return isEn
+        ? 'The CD Key that you installed with has been disabled. Please contact Blizzard Entertainment Technical Support for further assistance.'
+        : '你安裝時輸入的CD序號已經被取消了。請和Blizzard Entertainment技術支援部門連繫，以尋求進一步的協助。'
+    }
+  }
+
+  if (
+    /no realms available|SID_LOGONREALMEX|SID_QUERYREALMS2|MCP_STARTUP|realm server/i.test(raw)
+  ) {
+    // strId 5290 (0x14AA)
+    return isEn
+      ? 'No Realms are available right now, please try again later.'
+      : '目前沒有可以選擇的國度，請等一下再重試。'
+  }
+
+  if (/timed out|timeout/i.test(raw)) {
+    // strId 5349 (0x14E5)
+    return isEn ? 'Timed out waiting for response.' : '等候回應時間超過。'
+  }
+
+  if (
+    /unable to connect|connect_failed|websocket|connection closed|connection reset|bncs/i.test(raw)
+  ) {
+    // strId 5189 (0x1445)
+    return isEn ? 'Unable to connect to Battle.net.' : '無法連上Battle.net。'
+  }
+
+  if (isRawTechnicalErrorString(raw)) {
+    return isEn ? 'Login Error' : '登錄錯誤'
+  }
+  return stripped || (isEn ? 'Login Error' : '登錄錯誤')
+}
+
+/**
+ * Format `MCP_CHARCREATE (0x02)` errors into authentic 1.13c `D2Launch.dll` (`0x6FA4EB87`)
+ * `.tbl` localized messages.
+ */
+export function formatCharacterCreateError(
+  err: unknown,
+  lang: 'zh' | 'en' = getGameLang(),
+): string {
+  const isEn = lang === 'en'
+  const raw = err instanceof Error ? err.message : String(err)
+  const stripped = raw.replace(/^\[ProtocolError[^\]]*\]\s*/i, '').trim()
+
+  const match = /MCP_CHARCREATE\b[^\n]*?\bstatus=0x([0-9a-f]+)/i.exec(raw)
+  if (match?.[1]) {
+    const status = Number.parseInt(match[1], 16) >>> 0
+    switch (status) {
+      case 0x14: // strId 5165 (0x142D)
+        return isEn
+          ? 'That character name is already taken. Try another.'
+          : '這個人物的名稱已經有人使用了，請輸入另一個名字。'
+      case 0x15: // strId 5232 (0x1470)
+        return isEn
+          ? 'Your user name contained one or more illegal characters.'
+          : '你的使用者名稱包括了一個或一個以上的非法字元。'
+      default: // strId 5240 (0x1478)
+        return isEn ? 'You have entered an invalid ID.' : '你輸入了一個無法使用的名字。'
+    }
+  }
+
+  if (/timed out|timeout/i.test(raw)) {
+    return isEn ? 'Timed out waiting for response.' : '等候回應時間超過。'
+  }
+
+  if (isRawTechnicalErrorString(raw)) {
+    return isEn ? 'You have entered an invalid ID.' : '你輸入了一個無法使用的名字。'
+  }
+  return stripped || (isEn ? 'You have entered an invalid ID.' : '你輸入了一個無法使用的名字。')
+}
+
+/**
+ * Format `MCP_CHARLOGON (0x07)`, `MCP_CHARDELETE (0x0A)`, and `MCP_CHARUPGRADE (0x18)` errors
+ * into authentic 1.13c `D2Launch.dll` (`0x6FA4D627` / `0x6FA4DCFA`) `.tbl` localized messages.
+ */
+export function formatCharacterActionError(
+  err: unknown,
+  action: 'logon' | 'delete' | 'upgrade' = 'logon',
+  lang: 'zh' | 'en' = getGameLang(),
+): string {
+  const isEn = lang === 'en'
+  const raw = err instanceof Error ? err.message : String(err)
+  const stripped = raw.replace(/^\[ProtocolError[^\]]*\]\s*/i, '').trim()
+
+  const logonMatch = /MCP_CHARLOGON\b[^\n]*?\bstatus=0x([0-9a-f]+)/i.exec(raw)
+  if (logonMatch?.[1]) {
+    const status = Number.parseInt(logonMatch[1], 16) >>> 0
+    switch (status) {
+      case 0x46: // strId 5133 (0x140D)
+        return isEn ? 'Player Not Found' : '找不到玩者'
+      case 0x7b: // strId 11134 (0x2B7E)
+        return isEn ? 'Character Expired' : '人物失效'
+      default: // strId 5244 (0x147C)
+        return isEn ? 'Login Error' : '登錄錯誤'
+    }
+  }
+
+  const delOrUpgMatch = /MCP_CHAR(?:DELETE|UPGRADE)\b[^\n]*?\bstatus=0x([0-9a-f]+)/i.exec(raw)
+  if (delOrUpgMatch?.[1]) {
+    const status = Number.parseInt(delOrUpgMatch[1], 16) >>> 0
+    if (status === 0x46) {
+      return isEn ? 'Player Not Found' : '找不到玩者'
+    }
+    return isEn ? 'Cannot Connect to Server' : '無法連上伺服器'
+  }
+
+  if (/timed out|timeout/i.test(raw)) {
+    return isEn ? 'Timed out waiting for response.' : '等候回應時間超過。'
+  }
+
+  if (isRawTechnicalErrorString(raw)) {
+    if (action === 'logon') {
+      return isEn ? 'Login Error' : '登錄錯誤'
+    }
+    return isEn ? 'Cannot Connect to Server' : '無法連上伺服器'
+  }
+  return stripped || (isEn ? 'Login Error' : '登錄錯誤')
+}
+
+/**
+ * Format a `bnet_login` error or session-loss reason for canvas display, stripping any technical
+ * parenthetical suffix (e.g. `(BNCS connection closed)`) and localizing standard 1.13c `.tbl`
+ * session-loss strings to the active language (`zh` or `en`).
+ */
+export function formatLoginScreenErrorForDisplay(
+  rawReason: string,
+  lang: 'zh' | 'en' = getGameLang(),
+): string {
+  const isEn = lang === 'en'
+  const trimmed = rawReason.trim()
+  if (!trimmed) return ''
+
+  // Strip trailing ` (<technical>)` appended by `formatSessionLostReason`
+  const withoutTech = trimmed.replace(/\s*\([^()]*\)\s*$/, '').trim()
+
+  if (withoutTech.startsWith('Your connection to Battle.net has been lost.')) {
+    return isEn
+      ? 'Your connection to Battle.net has been lost.'
+      : '你和battle.net的連線已經中斷了。'
+  }
+  if (withoutTech.startsWith('Your connection has been interrupted')) {
+    return isEn ? 'Your connection has been interrupted' : '你的連線被中斷了'
+  }
+  if (withoutTech.startsWith('Timed out waiting for response.')) {
+    return isEn ? 'Timed out waiting for response.' : '等候回應時間超過。'
+  }
+  if (withoutTech.startsWith('Battle.net is not responding.')) {
+    return isEn
+      ? 'Battle.net is not responding. Please try connecting again in a few minutes.'
+      : 'Battle.net沒有回應，請稍候數分鐘之後再重試。'
+  }
+  if (withoutTech.startsWith('Diablo II was unable to connect to the realm server.')) {
+    return isEn
+      ? 'No Realms are available right now, please try again later.'
+      : '目前沒有可以選擇的國度，請等一下再重試。'
+  }
+  if (withoutTech.startsWith('Lost Connection to battle.net.')) {
+    return isEn ? 'Lost Connection to battle.net.' : '與battle.net失去連線。'
+  }
+  if (/^Saved and exited the game/i.test(trimmed)) {
+    return isEn
+      ? 'Your connection to Battle.net has been lost.'
+      : '你和battle.net的連線已經中斷了。'
+  }
+
+  return formatBnetLoginError(trimmed, lang)
 }
 
 /**
@@ -301,6 +550,7 @@ export function formatLobbyGameEnterError(
   charName?: string | null,
   lang: 'zh' | 'en' = getGameLang(),
 ): string {
+  const isEn = lang === 'en'
   if (err instanceof DuplicateCharacterLoginError) {
     return formatDuplicateCharacterLoginMessage(err.charName || charName, lang)
   }
@@ -325,5 +575,23 @@ export function formatLobbyGameEnterError(
   ) {
     return formatDuplicateCharacterLoginMessage(charName, lang)
   }
-  return stripped || raw
+  if (/difficulty\s+"?nightmare"?\s+is not unlocked/i.test(stripped)) {
+    return formatMcpJoinGameStatusError(0x73, lang)
+  }
+  if (/difficulty\s+"?hell"?\s+is not unlocked/i.test(stripped)) {
+    return formatMcpJoinGameStatusError(0x74, lang)
+  }
+  if (/MCP_CHARLOGON\b/i.test(raw)) {
+    return formatCharacterActionError(err, 'logon', lang)
+  }
+  if (/timed out|timeout/i.test(stripped)) {
+    return isEn ? 'Timed out waiting for response.' : '等候回應時間超過。'
+  }
+  if (/MCP_CREATEGAME\b/i.test(raw)) {
+    return isEn ? 'Error Creating Game' : '開創遊戲錯誤'
+  }
+  if (isRawTechnicalErrorString(raw)) {
+    return isEn ? 'Join Failed' : '加入失敗'
+  }
+  return stripped || (isEn ? 'Join Failed' : '加入失敗')
 }

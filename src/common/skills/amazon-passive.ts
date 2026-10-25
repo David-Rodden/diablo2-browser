@@ -35,6 +35,7 @@
  */
 
 import { compute5BandScaling, computeDiminishingReturns } from '../data/calc-ast.ts'
+import { resolveMonsterEquipment113c, type MonsterEquippedItem113c } from '../data/mon-equip-113c.ts'
 
 // --- Interfaces for Skill Calculations ---
 
@@ -133,6 +134,7 @@ export interface ValkyrieStats {
   readonly cooldownFrames: number
   readonly cooldownSeconds: number
   readonly equipmentTier: ValkyrieEquipmentTier
+  readonly equipment: readonly MonsterEquippedItem113c[]
   readonly inheritedCriticalStrikeLvl: number
   readonly inheritedDodgeLvl: number
   readonly inheritedAvoidLvl: number
@@ -365,13 +367,15 @@ export function calculateEvadeStats(slvl: number): EvadeStats {
  * - `attackRatingBonus = 40 * slvl + 40 * penetrateBlvl` (`tohit = par3 * lvl + skill('Penetrate'.blvl) * par3`, `Param3=40`)
  * - `strength = 25 * slvl` (`ln56`, `Param5=25, Param6=25`)
  * - `dexterity = 12 * slvl` (`ln78`, `Param7=12, Param8=12`)
- * - `equipmentIlvl = 25 + 3 * (slvl - 1)` (`Param7=25, Param8=3` in `D2GAME_SummonSetPassiveStats`)
- * Equipment Generation Tiers:
- * - slvl 1: Spear, Full Plate Mail
- * - slvl 7: Adds Heavy Boots
- * - slvl 11: Adds Gloves
- * - slvl 17: Spear upgraded to Rare War Pike
- * - slvl 27+: Magical/Rare Crusader Gauntlets, Tiara, Sacred Armor
+ * - `equipmentIlvl = 25 + 3 * (slvl - 1)` (`calc2 = ln56`, `Param5=25, Param6=3` in `SKILLS_SrvDo016_Valkyrie` @ `0x6FC6D83A`)
+ * Equipment Generation (`D2GAME_CreateMonsterEquipment` @ `0x6FCB2ED0`, `MonEquip.txt` `valkyrie` rows with `row.level <= slvl`):
+ * - level 0: `spr` (`rarm`, rare) + `ful` (`tors`, rare)
+ * - level 2: `hgl` (`glov`, magic), level 4: `hbt` (`feet`, magic), level 5: `hbl` (`belt`, magic)
+ * - level 7: `xul` (`tors`, rare), level 8: `9p9` (`rarm`, rare)
+ * - level 10: `xhg` (`glov`, magic), level 11: `xhb` (`feet`, magic), level 12: `zhb` (`belt`, magic)
+ * - level 13: `amu` (`neck`, magic), level 14: `ci0` (`head`, magic)
+ * - level 16: `uar` (`tors`, rare), level 17: `7p7` (`rarm`, rare), level 19: `utg` (`glov`, rare)
+ * - level 21: `uhb` (`feet`, rare), level 23: `uhc` (`belt`, rare), level 25: `amu` (`neck`, rare), level 27: `ci2` (`head`, rare)
  * Passive Inheritance: Inherits CS, Dodge, Avoid, Evade at Amazon's blvl
  */
 export function calculateValkyrieStats(
@@ -414,6 +418,8 @@ export function calculateValkyrieStats(
     equipmentTier = 'tier2_boots'
   }
 
+  const equipment = generateValkyrieEquipment(lvl)
+
   return {
     baseHp,
     finalHp,
@@ -427,6 +433,7 @@ export function calculateValkyrieStats(
     cooldownFrames,
     cooldownSeconds,
     equipmentTier,
+    equipment,
     inheritedCriticalStrikeLvl: synergies?.csLvl ?? 0,
     inheritedDodgeLvl: synergies?.dodgeLvl ?? 0,
     inheritedAvoidLvl: synergies?.avoidLvl ?? 0,
@@ -456,4 +463,25 @@ export function calculatePierceStats(slvl: number, skillId?: number): PierceStat
     manaCost: 0,
     manaCost256: 0,
   }
+}
+
+/**
+ * Generates `MonEquip.txt` equipment for #32 Valkyrie (`valkyrie`, `hcIdx = 357`)
+ * per `SKILLS_SrvDo016_Valkyrie` (`0x6FC6D710`), `D2GAME_SetSummonPassiveStats` (`0x6FC6F970`),
+ * and `D2GAME_CreateMonsterEquipment` (`0x6FCB2ED0`).
+ * - `nLevel = slvl` (`0x6FC7004C`)
+ * - `nIlvl = clamp(25 + 3 * (slvl - 1), 1, 99)` (`calc2 = ln56`, `Param5 = 25, Param6 = 3` @ `0x6FC6D83A`)
+ */
+export function generateValkyrieEquipment(
+  slvl: number,
+  rng?: () => number,
+): MonsterEquippedItem113c[] {
+  const lvl = Number.isFinite(slvl) ? Math.max(1, Math.floor(slvl)) : 1
+  const ilvl = Math.max(1, Math.min(99, 25 + 3 * (lvl - 1)))
+  return resolveMonsterEquipment113c({
+    monster: 'valkyrie',
+    level: lvl,
+    ilvl,
+    rng,
+  })
 }

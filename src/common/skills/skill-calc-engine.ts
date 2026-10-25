@@ -433,12 +433,15 @@ export function evaluateLevelBand(base: number, bands: readonly number[], lvl: n
  * Calculates 1.13c mana cost with 24.8 fixed point shift and minmana clamping.
  */
 export function calculateManaCost(skill: SkillCatalogEntry, lvl: number): number {
-  if (skill.mana === 0 && skill.lvlmana === 0) return 0
-  const shift = skill.manashift ?? 8
-  const shiftFactor = 2 ** (shift - 8)
-  const raw = (skill.mana + skill.lvlmana * (lvl - 1)) * shiftFactor
-  const cost = Math.max(skill.minmana ?? 0, raw)
-  return Math.round(cost * 10) / 10
+  // D2Client.dll 0x6FAE14D0: 256ths, truncated one-decimal display (see formatSkillManaCost).
+  const shown = formatSkillManaCost({
+    lvl,
+    mana: skill.mana,
+    lvlMana: skill.lvlmana,
+    minMana: skill.minmana ?? 0,
+    manaShift: skill.manashift ?? 8,
+  })
+  return shown === null ? 0 : Number(shown)
 }
 
 export interface DetailedDamageResult {
@@ -575,11 +578,14 @@ export function calculateDetailedDamage(
     withSynergyMax = Math.floor((maxRateSyn256 * durationFrames) / 256)
   } else if ((skill.descdam === '8' || skill.descdam === '9') && (skill.hitshift ?? 8) < 8) {
     // 1.13c Per-Second Stream Display (SkillDesc.txt descdam=8 for Arctic Blast/Inferno/Wake of Inferno, descdam=9 for Firestorm):
-    // descdam=8 scales per-frame 256ths bitrate by 25 frames/sec (divided by ddam calc2=3 for #272 Wake of Inferno -> 25/768);
-    // descdam=9 scales by 3 trails * 25 = 75 frames/sec.
+    // descdam=8 (0x6FAE07B0) scales per-frame 256ths bitrate by 25 * max(1, ddamCalc1) / (256 * max(1, ddamCalc2));
+    // descdam=9 (0x6FAE5070) scales by 3 trails * 25 = 75 frames/sec.
     const hitShift = skill.hitshift ?? 8
-    const framesFactor = skill.descdam === '9' ? 75 : 25
-    const denom = skill.id === 272 ? 768 : 256
+    const descRec = SKILL_DESC_BY_SKILL_ID[skill.id]
+    const c1 = skill.descdam === '8' && descRec?.ddamCalc1 ? Math.max(1, Number(descRec.ddamCalc1) || 1) : 1
+    const c2 = skill.descdam === '8' && descRec?.ddamCalc2 ? Math.max(1, Number(descRec.ddamCalc2) || 1) : 1
+    const framesFactor = skill.descdam === '9' ? 75 : 25 * c1
+    const denom = 256 * c2
     const minRate256 = rawBaseMin * (2 ** hitShift)
     const maxRate256 = rawBaseMax * (2 ** hitShift)
     baseMin = Math.floor((minRate256 * framesFactor) / denom)
@@ -684,8 +690,14 @@ export interface SkillFormulaContext {
   readonly len: number
   readonly edmn: number
   readonly edmx: number
+  readonly enma?: number | undefined
+  readonly exma?: number | undefined
   readonly edns?: number | undefined
   readonly edxs?: number | undefined
+  readonly clc1?: number | undefined
+  readonly clc2?: number | undefined
+  readonly clc3?: number | undefined
+  readonly clc4?: number | undefined
   readonly m1en?: number | undefined
   readonly m1ex?: number | undefined
   readonly m1eo?: number | undefined
@@ -701,6 +713,8 @@ export interface SkillFormulaContext {
 }
 
 import { CANONICAL_SKILLS } from './skills-data.ts'
+import { AI_CURSE_DIVISOR, SKILL_DESC_BY_SKILL_ID, SKILL_DESC_FIXED_TBL } from '../data/skilldesc-table.ts'
+import { SKILLDESC_SECTION, formatSkillDescLine, formatSkillManaCost } from './skilldesc-lines.ts'
 
 const SKILLS_BY_LOWER_NAME = new Map<string, SkillCatalogEntry>()
 for (const entry of SKILLS_CATALOG) {
@@ -746,8 +760,15 @@ const FORMULA_TOKEN_REPLACEMENTS: Readonly<Record<string, string>> = {
   edln: '_len',
   edmn: '_edmn',
   edmx: '_edmx',
+  enma: '_enma',
+  exma: '_exma',
   edns: '_edns',
   edxs: '_edxs',
+  clc1: '_clc1',
+  clc2: '_clc2',
+  clc3: '_clc3',
+  clc4: '_clc4',
+  macr: '_dm34',
   m1en: '_m1en',
   m1ex: '_m1ex',
   m1eo: '_m1eo',
@@ -761,7 +782,7 @@ const FORMULA_TOKEN_REPLACEMENTS: Readonly<Record<string, string>> = {
 }
 
 const FORMULA_TOKEN_REGEX =
-  /\b(?:lvl|par[1-8]|ln(?:12|34|56|78)|dm(?:12|34|56|78)|toht|len|edln|edmn|edmx|edns|edxs|m1en|m1ex|m1eo|m1ey|m2en|m2ex|m3en|m3ex|mps|usmc)\b/g
+  /\b(?:lvl|par[1-8]|ln(?:12|34|56|78)|dm(?:12|34|56|78)|toht|len|edln|edmn|edmx|enma|exma|edns|edxs|clc[1-4]|macr|m1en|m1ex|m1eo|m1ey|m2en|m2ex|m3en|m3ex|mps|usmc)\b/g
 
 const COMPILED_FORMULA_CACHE = new Map<string, (ctx: SkillFormulaContext) => number>()
 
@@ -946,8 +967,14 @@ const CONTEXT_VAR_READERS: Readonly<Record<string, (ctx: SkillFormulaContext) =>
   _len: ctx => ctx.len,
   _edmn: ctx => ctx.edmn,
   _edmx: ctx => ctx.edmx,
+  _enma: ctx => ctx.enma ?? ctx.edmn,
+  _exma: ctx => ctx.exma ?? ctx.edmx,
   _edns: ctx => ctx.edns ?? ctx.edmn * 256,
   _edxs: ctx => ctx.edxs ?? ctx.edmx * 256,
+  _clc1: ctx => ctx.clc1 ?? 0,
+  _clc2: ctx => ctx.clc2 ?? 0,
+  _clc3: ctx => ctx.clc3 ?? 0,
+  _clc4: ctx => ctx.clc4 ?? 0,
   _m1en: ctx => ctx.m1en ?? 0,
   _m1ex: ctx => ctx.m1ex ?? 0,
   _m1eo: ctx => ctx.m1eo ?? (ctx.m1en ?? 0) * 256,
@@ -1213,11 +1240,15 @@ function createLazyEffLevels(
   })
 }
 
-export function evaluateSkillEffects(
+/**
+ * Builds the SkillCalc formula context (`ln12`, `dm34`, `edmn`, `toht`, …) for a skill at `lvl`, plus the raw
+ * 3-band elemental length (Skills.txt ELen/ELevLen1..3) before any legacy per-skill overrides.
+ */
+export function buildSkillFormulaContext(
   state: SkillCalcState,
   skill: SkillCatalogEntry,
   lvl: number
-): readonly FormattedDescLine[] {
+): { readonly ctx: SkillFormulaContext; readonly elemLengthFrames: number; readonly durationFrames: number } {
   const effLevels = createLazyEffLevels(state, skill.id, lvl)
 
   const p = skill.params || {}
@@ -1234,6 +1265,7 @@ export function evaluateSkillEffects(
     skill.eLevLen?.[1] ?? 0,
     skill.eLevLen?.[2] ?? 0,
   )
+  const elemLengthFrames = durationFrames
   if (durationFrames === 0) {
     if (
       skill.id === 138 ||
@@ -1270,6 +1302,15 @@ export function evaluateSkillEffects(
   const rawElemMax = evaluateLevelBand(skill.eMax, skill.eMaxLev, lvl)
   const ednsVal = Math.floor((rawElemMin * hitShift256 * (100 + elemSynPct)) / 100)
   const edxsVal = Math.floor((rawElemMax * hitShift256 * (100 + elemSynPct)) / 100)
+  const edmnSyn = Math.floor(ednsVal / 256)
+  const edmxSyn = Math.floor(edxsVal / 256)
+  const masteryEval = evaluateMasteries(state, skill)
+  const elemMasteryPct =
+    masteryEval && masteryEval.active && (masteryEval.masteryId === 61 || masteryEval.masteryId === 63)
+      ? masteryEval.bonusPercent
+      : 0
+  const enmaVal = Math.floor((edmnSyn * (100 + elemMasteryPct)) / 100)
+  const exmaVal = Math.floor((edmxSyn * (100 + elemMasteryPct)) / 100)
 
   let m1en = 0
   let m1ex = 0
@@ -1328,6 +1369,8 @@ export function evaluateSkillEffects(
     len: durationFrames,
     edmn: Math.round(rawElemMin * shiftMultiplier),
     edmx: Math.round(rawElemMax * shiftMultiplier),
+    enma: enmaVal,
+    exma: exmaVal,
     edns: ednsVal,
     edxs: edxsVal,
     m1en,
@@ -1344,6 +1387,12 @@ export function evaluateSkillEffects(
     effLevels,
   }
 
+  const descRec = SKILL_DESC_BY_SKILL_ID[skill.id]
+  const clc1 = descRec?.calc1 ? evalSkillDescFormula(descRec.calc1, baseCtx) : 0
+  const clc2 = descRec?.calc2 ? evalSkillDescFormula(descRec.calc2, baseCtx) : 0
+  const clc3 = descRec?.calc3 ? evalSkillDescFormula(descRec.calc3, baseCtx) : 0
+  const clc4 = descRec?.calc4 ? evalSkillDescFormula(descRec.calc4, baseCtx) : 0
+
   const toht = skill.toHitCalc
     ? evalSkillDescFormula(skill.toHitCalc, baseCtx)
     : (skill.toHit ?? 0) + (lvl - 1) * (skill.toHitLev ?? 0)
@@ -1351,13 +1400,49 @@ export function evaluateSkillEffects(
   const ctx: SkillFormulaContext = {
     ...baseCtx,
     toht,
+    clc1,
+    clc2,
+    clc3,
+    clc4,
   }
+  return { ctx, elemLengthFrames, durationFrames }
+}
 
+export function evaluateSkillEffects(
+  state: SkillCalcState,
+  skill: SkillCatalogEntry,
+  lvl: number
+): readonly FormattedDescLine[] {
+  const built = buildSkillFormulaContext(state, skill, lvl)
+  const ctx = built.ctx
+  const durationFrames = built.durationFrames
   const results: FormattedDescLine[] = []
   const lines = [...(skill.descLines || []), ...(skill.dsc2Lines || [])]
   for (const line of lines) {
     const valA = evalSkillDescFormula(line.calca, ctx)
     const valB = evalSkillDescFormula(line.calcb, ctx)
+    const formatted = formatLegacyDescLine(state, skill, lvl, ctx, durationFrames, line, valA, valB)
+    if (formatted) results.push(formatted)
+  }
+  return results
+}
+
+/**
+ * Legacy formatter for SkillDesc line functions whose D2Client.dll helpers drive D2Common damage routines that
+ * `skilldesc-lines.ts` does not reproduce yet (descline 9/10/14/22/24/26/27/34/35/37/39/41/43/47/48/49/50/59 …).
+ */
+function formatLegacyDescLine(
+  state: SkillCalcState,
+  skill: SkillCatalogEntry,
+  lvl: number,
+  ctx: SkillFormulaContext,
+  durationFrames: number,
+  line: DescLineDefinition,
+  valA: number,
+  valB: number,
+): FormattedDescLine | null {
+  const shiftMultiplier = 2 ** ((skill.hitshift ?? 8) - 8)
+  {
     const lt = line.lineType
 
     let zh = ''
@@ -1426,10 +1511,13 @@ export function evaluateSkillEffects(
     } else if (lt === 9) {
       if (skill.descdam && skill.descdam !== '') {
         const dmg = calculateDetailedDamage(state, skill, lvl)
-        const pMin = dmg.physMin ?? dmg.finalMin
-        const pMax = dmg.physMax ?? dmg.finalMax
-        zh = `傷害：${pMin} - ${pMax}`
-        en = `Damage: ${pMin}-${pMax}`
+        // D2Client.dll 0x6FADD000 prints the physical (non-elemental) damage only; 0-0 prints nothing.
+        const pMin = dmg.physMin ?? (dmg.type === 'physical' ? dmg.finalMin : 0)
+        const pMax = dmg.physMax ?? (dmg.type === 'physical' ? dmg.finalMax : 0)
+        if (pMin !== 0 || pMax !== 0) {
+          zh = `傷害：${pMin} - ${pMax}`
+          en = `Damage: ${pMin}-${pMax}`
+        }
       } else if (skill.minDam > 0 || skill.maxDam > 0) {
         const bMin = evaluateLevelBand(skill.minDam, skill.minLevDam, lvl)
         const bMax = evaluateLevelBand(skill.maxDam, skill.maxLevDam, lvl)
@@ -1664,10 +1752,10 @@ export function evaluateSkillEffects(
     }
 
     if (zh.trim() && en.trim()) {
-      results.push({ lineType: lt, textZh: zh.trim(), textEn: en.trim(), value: valA })
+      return { lineType: lt, textZh: zh.trim(), textEn: en.trim(), value: valA }
     }
   }
-  return results
+  return null
 }
 
 // ============================================================================
@@ -1675,6 +1763,7 @@ export function evaluateSkillEffects(
 // ============================================================================
 
 export interface TooltipViewModel {
+  readonly state: SkillCalcState
   readonly skill: SkillCatalogEntry
   readonly hardPoints: number
   readonly effectiveLevel: number
@@ -1776,6 +1865,7 @@ export function buildTooltipViewModel(
   const masteryInfo = evaluateMasteries(state, skill)
 
   return {
+    state,
     skill,
     hardPoints: hard,
     effectiveLevel: eff,
@@ -1876,5 +1966,194 @@ export function deserializeBuildFromHash(hash: string): SkillCalcState | null {
     }
   } catch {
     return null
+  }
+}
+
+// ============================================================================
+// SkillDesc line evaluator (D2Client.dll 0x6FAE16C0 dispatcher + 0x6FAE3550 / 0x6FAE3B50 tooltip builders)
+// ============================================================================
+
+export type SkillDescSection = keyof typeof SKILLDESC_SECTION
+
+/** A SkillDesc line rendered for the skill tree tooltip. */
+export interface SkillDescFormattedLine extends FormattedDescLine {
+  /** SkillDesc slot (0..5 descline, 6..9 dsc2line, 10..16 dsc3line). */
+  readonly slot: number
+  /** D2 colour index (`ÿc<n>`) set by the line itself (descline 18 / 25 / 40 calcA), if any. */
+  readonly color?: number | undefined
+}
+
+function skillDescFixedTbl(lang: 'en' | 'zh'): (key: string) => string {
+  return (key: string) => {
+    const e = SKILL_DESC_FIXED_TBL[key]
+    if (!e) throw new Error(`SKILL_DESC_FIXED_TBL is missing '${key}' (re-run pack-skilldesc)`)
+    return e[lang]
+  }
+}
+
+/**
+ * Evaluates the SkillDesc lines of one tooltip section exactly like D2Client.dll:
+ *  - `desc` = descline1..6 (per level; 0x6FAE36C0 loop idx 0..5),
+ *  - `dsc2` = dsc2line1..4 (shown once, at the current level; 0x6FAE37CD loop idx 6..9),
+ *  - `dsc3` = dsc3line1..7 (synergy / footnote block; 0x6FAE3647 loop idx 16..10).
+ * The original appends lines bottom-up, so the returned array is already in on-screen (top-to-bottom) order:
+ * descline6 → descline1, dsc2line4 → dsc2line1, dsc3line1 → dsc3line7.
+ */
+export function evaluateSkillDescLines(
+  state: SkillCalcState,
+  skill: SkillCatalogEntry,
+  lvl: number,
+  section: SkillDescSection,
+  difficulty = 0,
+): readonly SkillDescFormattedLine[] {
+  const rec = SKILL_DESC_BY_SKILL_ID[skill.id]
+  if (!rec) return []
+  const [lo, hi] = SKILLDESC_SECTION[section]
+  const { ctx, elemLengthFrames, durationFrames } = buildSkillFormulaContext(state, skill, lvl)
+  const shift = skill.manashift ?? 8
+  const rawMana = Math.max(
+    (skill.minmana ?? 0) * 256,
+    shift >= 0 ? (skill.mana + skill.lvlmana * (lvl - 1)) * 2 ** shift : Math.trunc((skill.mana + skill.lvlmana * (lvl - 1)) / 2 ** -shift),
+  )
+  const divisor = AI_CURSE_DIVISOR[difficulty]
+  if (divisor === undefined) throw new Error(`evaluateSkillDescLines: invalid difficulty ${difficulty}`)
+  const out: SkillDescFormattedLine[] = []
+  for (const line of rec.lines) {
+    if (line.slot < lo || line.slot > hi) continue
+    // `usmc` (used skill mana cost) is the raw 256ths value for the 60/61 fraction helpers (0x6FADF870).
+    const lineCtx = line.func === 60 || line.func === 61 ? { ...ctx, mana: rawMana } : ctx
+    const calcA = evalSkillDescFormula(line.calcA, lineCtx)
+    const calcB = evalSkillDescFormula(line.calcB, lineCtx)
+    const fmtLine = line.func === 1 ? { ...line, textA: rec.strMana } : line
+    const base = {
+      lvl,
+      calcA,
+      calcB,
+      missile1: rec.descMissiles[0],
+      eType: skill.eType,
+      elemLengthFrames,
+      toHitPercent: ctx.toht,
+      aiCurseDivisor: divisor,
+      mana: skill.mana,
+      lvlMana: skill.lvlmana,
+      minMana: skill.minmana ?? 0,
+      manaShift: shift,
+      summonBaseHp: rec.summonBaseHp?.[difficulty],
+      elemMin: ctx.enma ?? ctx.edmn,
+      elemMax: ctx.exma ?? ctx.edmx,
+    }
+    const en = formatSkillDescLine(fmtLine, { ...base, tbl: skillDescFixedTbl('en') }, 'en')
+    if (en === undefined) {
+      const legacy = formatLegacyDescLine(state, skill, lvl, ctx, durationFrames, {
+        lineType: line.func,
+        textaKey: line.textA?.key,
+        textbKey: line.textB?.key,
+        textaEn: line.textA?.en,
+        textaZh: line.textA?.zh,
+        textbEn: line.textB?.en,
+        textbZh: line.textB?.zh,
+        calca: line.calcA,
+        calcb: line.calcB,
+      }, calcA, calcB)
+      if (legacy) out.push({ ...legacy, slot: line.slot })
+      continue
+    }
+    const zh = formatSkillDescLine(fmtLine, { ...base, tbl: skillDescFixedTbl('zh') }, 'zh')
+    if (en === null || !zh) continue
+    out.push({ lineType: line.func, slot: line.slot, textEn: en.text, textZh: zh.text, value: calcA, color: en.color })
+  }
+  return section === 'dsc3' ? out : out.reverse()
+}
+
+// ============================================================================
+// Character-Sheet SkillDesc descdam Evaluator (D2Client.dll 0x6FADFD30 -> 0x6FBA5210[descdam])
+// ============================================================================
+
+export interface SkillDescDamEvaluation {
+  readonly descdam: number
+  readonly ddamCalc1: number
+  readonly ddamCalc2: number
+  readonly physDamagePercent: number
+  readonly flatPhysBonus: number
+  readonly pdm: readonly { readonly elem: string; readonly min: number; readonly max: number }[]
+  readonly activeChargeElem?: { readonly elem: string; readonly min: number; readonly max: number } | undefined
+}
+
+/**
+ * Evaluates SkillDesc.txt `descdam` (`1..24`), `ddam calc1`, `ddam calc2`, and `p1..p3dmelem/min/max`
+ * (`0x6FADFD30` -> `0x6FBA5210[descdam]`) for character-sheet attack damage display.
+ */
+export function evaluateSkillDescDam(
+  state: SkillCalcState,
+  skill: SkillCatalogEntry,
+  evalLevel: number,
+  chargeTier: 1 | 2 | 3 = 1,
+): SkillDescDamEvaluation {
+  const lvl = Math.max(1, evalLevel)
+  const rec = SKILL_DESC_BY_SKILL_ID[skill.id]
+  if (!rec || !rec.descdam) {
+    return {
+      descdam: 0,
+      ddamCalc1: 0,
+      ddamCalc2: 0,
+      physDamagePercent: 0,
+      flatPhysBonus: 0,
+      pdm: [],
+    }
+  }
+  const { ctx } = buildSkillFormulaContext(state, skill, lvl)
+  const ddamCalc1 = rec.ddamCalc1 ? evalSkillDescFormula(rec.ddamCalc1, ctx) : 0
+  const ddamCalc2 = rec.ddamCalc2 ? evalSkillDescFormula(rec.ddamCalc2, ctx) : 0
+  const pdm = rec.pdm
+    .filter(p => p.min !== '' || p.max !== '')
+    .map(p => ({
+      elem: p.elem,
+      min: evalSkillDescFormula(p.min, ctx),
+      max: evalSkillDescFormula(p.max, ctx),
+    }))
+
+  let physDamagePercent = 0
+  let flatPhysBonus = 0
+  let activeChargeElem: { readonly elem: string; readonly min: number; readonly max: number } | undefined
+
+  switch (rec.descdam) {
+    case 1: // 0x6FAE5470: standard attack + ddamCalc1 %ED (Whirlwind #151, Maul #233)
+    case 7: // 0x6FAE4C00: weapon attack + ddamCalc1 %ED + ddamCalc2 flat phys (Jab, Impale, Guided, Strafe, Fend, Sacrifice, Zeal, Charge, Bash, Stun, Leap Attack, Concentrate, Berserk, Feral Rage, Fury)
+    case 19: // 0x6FAE4AB0: dual-wield attack + ddamCalc1 %ED (Double Swing #133, Frenzy #147, Dragon Claw #260)
+      physDamagePercent = ddamCalc1
+      flatPhysBonus = ddamCalc2
+      break
+    case 13: // 0x6FAE42D0: Double Throw (#140: Skills.txt calc1 %ED)
+      physDamagePercent = ctx.clc1 ?? 0
+      break
+    case 14: // 0x6FAE2E20: Hunger (#242: Skills.txt calc1 = par1 = -75% ED)
+      physDamagePercent = skill.params.par1 ?? -75
+      break
+    case 15: // 0x6FAE0340: Kick (Dragon Talon #255, Dragon Flight #275: ln12 %ED)
+      physDamagePercent = ctx.ln12
+      break
+    case 16: // 0x6FAE2BF0: Dragon Tail (#270: ln12 fire explosion % of kick damage)
+      physDamagePercent = ctx.ln12
+      break
+    case 18: // 0x6FAE4E00: Royal Strike / Phoenix Strike (#280: p1..p3dmmin/max per charge tier)
+    case 20: { // 0x6FAE53A0: Elemental Martial Arts charge-ups (#259 Fists of Fire, #269 Claws of Thunder, #274 Blades of Ice)
+      physDamagePercent = ddamCalc1
+      flatPhysBonus = ddamCalc2
+      const idx = Math.max(0, Math.min(pdm.length - 1, chargeTier - 1))
+      activeChargeElem = pdm[idx]
+      break
+    }
+    default:
+      break
+  }
+
+  return {
+    descdam: rec.descdam,
+    ddamCalc1,
+    ddamCalc2,
+    physDamagePercent,
+    flatPhysBonus,
+    pdm,
+    activeChargeElem,
   }
 }

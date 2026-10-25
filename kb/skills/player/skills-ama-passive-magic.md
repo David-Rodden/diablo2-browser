@@ -170,24 +170,27 @@ When a missile with `Pierce = 1` in `Missiles.txt` successfully hits a unit (`DA
      $$\text{AllRes} = \min\!\left(85,\; 2 \cdot (\text{slvl} + \text{blvl}_{\text{Decoy}})\right)$$
      *(Plus any resistances rolled on her generated magic/rare equipment, easily exceeding 85% effective immunity to elemental damage at high levels.)*
    - **Inherited Amazon Passives (`sumskill1..4`)**: Grants the Valkyrie her own skill levels in **Dodge**, **Avoid**, **Evade**, and **Critical Strike** equal to the Amazon's **base levels (`blvl`)** in those 4 skills!
-3. **Procedural Equipment Generation (`sub_6FCF9580` @ `0x6FCF9580` via `MonEquip.txt`)**:
-   - Evaluates `ilvl = calc2 = ln56 = 25 + 3 * (slvl - 1)` (`Param5 = 25, Param6 = 3`).
-   - `sub_6FCF9580` scans `MonEquip.txt` rows for `valkyrie` where `row.level <= ilvl` and generates real Magic (`mod=4`, blue) and Rare (`mod=6`, yellow) items equipped into her `pInventory`:
+3. **Procedural Equipment Generation (`D2GAME_CreateMonsterEquipment` @ `0x6FCB2ED0` via `MonEquip.txt`)**:
+   - `SKILLS_SrvDo016_Valkyrie` (`0x6FC6D710` @ `0x6FC6D83A`) evaluates `nIlvl = calc2 = ln56 = 25 + 3 * (slvl - 1)` (`Param5 = 25, Param6 = 3`) and passes `nLevel = slvl` (`0x6FC7004C`) and `nIlvl` to `D2GAME_CreateMonsterEquipment` (`0x6FCB2ED0`).
+   - `0x6FCB2ED0` scans the 19 `MonEquip.txt` rows for `valkyrie` (`hcIdx = 357`) where `row.level <= slvl` in descending `level` order, equipping the highest-`level` match per body slot (`mod = 4` Magic, `mod = 6` Rare):
 
-| Min `slvl` | `ilvl` (`25 + 3*(slvl-1)`) | Body Slot (`loc`) | Generated Item (`item` + Quality `mod`) |
+| Min `slvl` (`row.level`) | `ilvl` (`clamp(25 + 3*(slvl-1), 1, 99)`) | Body Slot (`loc`) | Generated Item (`item` + Quality `mod`) |
 |---:|---:|---|---|
-| **1** | 25 | `tors` (Torso) / `rarm` (Weapon) | Rare Full Plate Mail (`ful`, Rare) + Magic Spear (`spr`, Magic) |
-| **2** | 28 | `glov` (Gloves) | Magic Heavy Gloves (`vgl`, Magic) |
-| **4** | 34 | `feet` (Boots) | Magic Heavy Boots (`vbt`, Magic) |
-| **5** | 37 | `belt` (Belt) | Magic Heavy Belt (`vbl`, Magic) |
-| **7** | 43 | `tors` (Torso) / `rarm` (Weapon) | Upgrades to Rare Chaos Armor (`xul`, Rare) + Magic Lance (`9p9`, Magic) |
-| **8** | 46 | `glov` (Gloves) | Upgrades to Magic War Gauntlets (`xhg`, Magic) |
-| **10** | 52 | `feet` (Boots) | Upgrades to Magic War Boots (`xhb`, Magic) |
-| **11** | 55 | `belt` (Belt) | Upgrades to Magic War Belt (`zhb`, Magic) |
-| **12** | 58 | `neck` (Amulet) | Magic Amulet (`amu`, Magic) |
-| **13** | 61 | `tors` (Torso) | Upgrades to Rare Sacred Armor (`uar`, Rare) |
-| **14** | 64 | `glov` (Gloves) | Upgrades to Rare Crusader Gauntlets (`utg`, Rare) |
-| **16** | 70 | `feet` (Boots) / `head` (Helm) | Rare Mirrored Boots (`utb`, Rare) + Magic Circlet (`ci0`, Magic) |
-| **17** | 73 | `rarm` (Weapon) / `belt` (Belt) | **Rare War Pike (`7p7`, Rare)** + Rare Colossus Girdle (`uhc`, Rare) |
-| **21** | 85 | `neck` (Amulet) | Upgrades to Rare Amulet (`amu`, Rare) |
-| **27** | 103 (capped at 99) | `head` (Helm) | Upgrades to Rare Tiara (`ci2`, Rare) |
+| **0** (slvl 1) | 25 | `rarm` / `tors` | Rare Spear (`spr`, `mod=6`) + Rare Full Plate Mail (`ful`, `mod=6`) |
+| **2** | 28 | `glov` | Magic Heavy Gloves (`hgl`, `mod=4`) |
+| **4** | 34 | `feet` | Magic Heavy Boots (`hbt`, `mod=4`) |
+| **5** | 37 | `belt` | Magic Heavy Belt (`hbl`, `mod=4`) |
+| **7** | 43 | `tors` | Upgrades to Rare Chaos Armor (`xul`, `mod=6`) |
+| **8** | 46 | `rarm` | Upgrades to Rare Lance (`9p9`, `mod=6`) |
+| **10** | 52 | `glov` | Upgrades to Magic War Gauntlets (`xhg`, `mod=4`) |
+| **11** | 55 | `feet` | Upgrades to Magic War Boots (`xhb`, `mod=4`) |
+| **12** | 58 | `belt` | Upgrades to Magic War Belt (`zhb`, `mod=4`) |
+| **13** | 61 | `neck` | Magic Amulet (`amu`, `mod=4`) |
+| **14** | 64 | `head` | Magic Circlet (`ci0`, `mod=4`) |
+| **16** | 70 | `tors` | Upgrades to Rare Sacred Armor (`uar`, `mod=6`) |
+| **17** | 73 | `rarm` | Upgrades to Rare War Pike (`7p7`, `mod=6`) |
+| **19** | 79 | `glov` | Upgrades to Rare Ogre Gauntlets (`utg`, `mod=6`) |
+| **21** | 85 | `feet` | Upgrades to Rare Myrmidon Greaves (`uhb`, `mod=6`) |
+| **23** | 91 | `belt` | Upgrades to Rare Colossus Girdle (`uhc`, `mod=6`) |
+| **25** | 97 | `neck` | Upgrades to Rare Amulet (`amu`, `mod=6`) |
+| **27** | 99 | `head` | Upgrades to Rare Tiara (`ci2`, `mod=6`) |

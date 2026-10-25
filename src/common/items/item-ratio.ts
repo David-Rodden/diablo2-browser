@@ -25,7 +25,8 @@ import type { D2Table } from '../world/acts.ts'
 import { cell, parseTable } from '../world/acts.ts'
 import type { MountedArchives } from '../mpq/mount.ts'
 import { D2Rng } from '../rng/d2-rng.ts'
-import { ItemQuality } from './items.ts'
+import { ItemQuality, type ItemBase } from './items.ts'
+import { isItemUber113c } from './item-upgrade.ts'
 
 /** File path of `ItemRatio.txt` inside MPQ archives. */
 export const ITEM_RATIO_TABLE_PATH = 'data\\global\\excel\\ItemRatio.txt'
@@ -156,10 +157,14 @@ export interface QualityRollContext {
 
   /** Game version: 0 = Classic, 1 = Expansion (LoD). Defaults to 1. */
   readonly version?: number | boolean | undefined
-  /** Whether the item is exceptional or elite. Defaults to 0/false. */
+  /** Whether the item is exceptional or elite (`D2Common!0x6FD74D00`). Inferred from `base` when omitted. */
   readonly uber?: number | boolean | undefined
-  /** Whether the item is class-specific. Defaults to 0/false. */
+  /** Whether the item is class-specific (`D2Common!0x6FD74320`). Defaults to 0/false. */
   readonly classSpecific?: number | boolean | undefined
+  /** Optional item base used to derive `uber` via `isItemUber113c` (`0x6FD74D00`) when `uber` is omitted. */
+  readonly base?: ItemBase | undefined
+  /** Optional `ItemTypes.txt` hierarchy predicate passed to `isItemUber113c`. */
+  readonly isA?: ((type: string, target: string) => boolean) | undefined
 
   /** TreasureClass quality modifiers (fractions of 1024). */
   readonly tcFactors?: QualityRatioFactors | undefined
@@ -349,9 +354,15 @@ export function rollItemQuality(context: QualityRollContext): ItemQualityTier {
   let row = context.row
   if (!row) {
     const table = context.table ?? DEFAULT_ITEM_RATIO_TABLE
+    const effectiveUber =
+      context.uber !== undefined
+        ? context.uber
+        : context.base
+          ? isItemUber113c(context.base, context.isA)
+          : 0
     row = table.getRow(
       context.version ?? 1,
-      context.uber ?? 0,
+      effectiveUber,
       context.classSpecific ?? 0,
     )
   }

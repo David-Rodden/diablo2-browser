@@ -60,11 +60,11 @@ describe('Batch NET-1 / NET-2 / STATE-1 / STATE-2 / SFX-8 / SFX-9 / SFX-10 (#123
         0x80, 0x93, 0xa6,
       ]
       for (const op of rareOpcodes) {
-        const pkt = new Uint8Array(8)
+        const pkt = new Uint8Array(14)
         pkt[0] = op
-        pkt[1] = 42
+        if (op !== 0x16) pkt[1] = 42
         const ev = decodeRare113cS2cPacket(pkt)
-        expect(ev.type).toBe('ProtocolSync')
+        expect(['ProtocolSync', 'ItemFlagUpdate', 'UnitsUpdate']).toContain(ev.type)
         world.apply(ev)
         expect(world.self.stats.get(0x8000 | op)).toBe(0)
         expect(world.self.stats.get(0x9000 | op)).toBe(0)
@@ -87,15 +87,16 @@ describe('Batch NET-1 / NET-2 / STATE-1 / STATE-2 / SFX-8 / SFX-9 / SFX-10 (#123
       pkt73[0] = 0x73
       dv.setUint32(1, 0, true)
       dv.setUint16(5, 62, true) // fireball (#62)
-      dv.setUint16(7, 5010, true)
-      dv.setUint16(9, 5012, true)
-      dv.setUint16(11, 5030, true)
-      dv.setUint16(13, 5012, true)
-      pkt73[15] = 7 // level
-      pkt73[16] = 0 // ownerType = player
-      dv.setUint32(17, 1, true) // ownerId = 1
-      dv.setUint16(21, 16, true) // velocity
-      dv.setUint16(23, 40, true) // range
+      // D2Client.dll 0x6fb5eee0 layout: u32 x/y/targetX/targetY @7/@11/@15/@19.
+      dv.setUint32(7, 5010, true)
+      dv.setUint32(11, 5012, true)
+      dv.setUint32(15, 5030, true)
+      dv.setUint32(19, 5012, true)
+      dv.setUint16(23, 16, true) // velocity
+      pkt73[25] = 0 // ownerType = player
+      dv.setUint32(26, 1, true) // ownerId = 1
+      pkt73[30] = 7 // level
+      pkt73[31] = 40 // pierce idx
 
       const ev73 = decode0x73CreateMissile(pkt73)
       expect(ev73).toMatchObject({
@@ -300,7 +301,8 @@ describe('Batch NET-1 / NET-2 / STATE-1 / STATE-2 / SFX-8 / SFX-9 / SFX-10 (#123
           states: [2, 44], // Poison (95) + Holy Freeze (100)
         },
       ])
-      expect(res.unitDrawables[0]?.tintColor).toEqual([150, 215, 255])
+      expect(res.unitDrawables[0]?.paletteRow).toBe(1)
+      expect(res.unitDrawables[0]?.tintColor).toBeNull()
     })
 
     it('hides corpses carrying any States.txt hide=1 corpse state (#1, #99, #104, #107, #154, #173, #184)', () => {

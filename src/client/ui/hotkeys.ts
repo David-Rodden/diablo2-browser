@@ -306,9 +306,13 @@ export class SkillHotkeysHud {
       const cat = SKILLS_BY_ID[skillId]
       manaCost = cat ? calculateManaCost(cat, 1) : 0
     }
-    // 1.13c D2Common.#10787 -> 0x6fd9fdc0 (`wStartMana` in `Skills.txt`): Inferno (#41) requires startmana = 6.
-    if (skillId === 41) {
-      manaCost = Math.max(manaCost, 6)
+    // 1.13c D2Common.#10787 -> 0x6fd9fdc0 (`wStartMana` in `Skills.txt`): Inferno (#41), Arctic Blast (#230),
+    // and Blade Fury (#266) require `startmana` (6) when not already channeling (`STATE_INFERNO` = 12).
+    const startMana =
+      SKILLS_BY_ID[skillId]?.startmana ??
+      (skillId === 41 || skillId === 230 || skillId === 266 ? 6 : 0)
+    if (startMana > 0 && !this.activeMorphStates.has(12)) {
+      manaCost = Math.max(manaCost, startMana)
     }
     if (manaCost <= 0) return true
     return this.currentMana >= manaCost
@@ -601,12 +605,24 @@ export class SkillHotkeysHud {
     return getAvailableSkillsForSide(side, this.availableSkills, this.weaponEquipState)
   }
 
+  isSkillAvailable(skillId: number): boolean {
+    if (skillId === 0) return true
+    if (skillId < 0 || skillId === 0xffff || skillId === 0x7fff) return false
+    if (this.availableSkills.length === 0) return true
+    return this.availableSkills.some(
+      (s) => s.skillId === skillId && ((s.level ?? 0) > 0 || (s.charges ?? 0) > 0),
+    )
+  }
+
+  /** Last selected hotkey slot index `0..15` (`0x6FBC9D70`, updated by `0x6FAED5B0`). */
+  lastSelectedSlot = 0
+
   triggerFunctionKey(fKey: string): { side: 'left' | 'right'; skillId: number } | null {
     const key = fKey.trim().toUpperCase()
+    const slotIndex = SkillHotkeysHud.slotIndexFromKey(key)
     if (this.openPopup !== null && this.hoveredPopupSkill !== null) {
       const hovered = this.hoveredPopupSkill
       this.bindHotkey(key, hovered.side, hovered.skillId)
-      const slotIndex = SkillHotkeysHud.slotIndexFromKey(key)
       if (slotIndex !== null) {
         this.onAssignHotkey?.(slotIndex, hovered.side, hovered.skillId)
       }
@@ -614,43 +630,65 @@ export class SkillHotkeysHud {
     }
     const bound = this.bindings.get(key)
     if (!bound) return null
+    if (!this.isSkillAvailable(bound.skillId)) {
+      this.bindings.delete(key)
+      return null
+    }
+    if (slotIndex !== null) {
+      this.lastSelectedSlot = slotIndex
+    }
     this.requestSelect(bound.side, bound.skillId)
     return bound
   }
 
   /**
-   * 1.13c `SelectPreviousSkill` (`0x6faed740`, `step = -1`) / `SelectNextSkill` (`0x6faed750`, `step = 1`)
+   * 1.13c `SelectPreviousSkill` (`0x6faea8e0`, `step = -1`) / `SelectNextSkill` (`0x6faea8c0`, `step = 1`)
    * -> `sub_6FAED6D0(step)` (`0x6faed6d0`):
-   * Cycles through bound skill hotkeys across slots `0..15` in slot order and selects the target skill.
+   * Steps `edi = (lastSelectedSlot + dir) mod 16` up to 16 times across right-hand bound slots
+   * (`[edi*4 + 0x6fbc9e20] == 0`), calling `0x6faed5b0` on the matched slot.
    */
   cycleBoundSkills(step: -1 | 1): { side: 'left' | 'right'; skillId: number; slot: number } | null {
-    const rightEntries: { slot: number; side: 'left' | 'right'; skillId: number }[] = []
-    const allEntries: { slot: number; side: 'left' | 'right'; skillId: number }[] = []
-    for (let slot = 0; slot < 16; slot++) {
-      const key = SkillHotkeysHud.keyFromSlotIndex(slot)
-      const b = key ? this.bindings.get(key) : undefined
-      if (!b || b.skillId < 0 || b.skillId === 0xffff) continue
-      const entry = { slot, side: b.side, skillId: b.skillId }
-      allEntries.push(entry)
-      if (b.side === 'right') {
-        rightEntries.push(entry)
+    const dir = step > 0 ? 1 : -1
+    let count = Math.abs(step) || 1
+    let startSlot = this.lastSelectedSlot & 0x0f
+    const startKey = SkillHotkeysHud.keyFromSlotIndex(startSlot)
+    const startBinding = startKey ? this.bindings.get(startKey) : undefined
+    if (!startBinding || startBinding.side !== 'right' || startBinding.skillId !== this.rightSkillId) {
+      for (let s = 0; s < 16; s++) {
+        const k = SkillHotkeysHud.keyFromSlotIndex(s)
+        const b = k ? this.bindings.get(k) : undefined
+        if (b && b.side === 'right' && b.skillId === this.rightSkillId) {
+          startSlot = s
+          break
+        }
       }
     }
-    const pool = rightEntries.length > 0 ? rightEntries : allEntries
-    if (pool.length === 0) return null
 
-    const activeSide = rightEntries.length > 0 ? 'right' : pool[0]!.side
-    const currentSkillId = activeSide === 'right' ? this.rightSkillId : this.leftSkillId
-    const currentIdx = pool.findIndex(e => e.side === activeSide && e.skillId === currentSkillId)
-    let nextIdx: number
-    if (currentIdx < 0) {
-      nextIdx = step > 0 ? 0 : pool.length - 1
-    } else {
-      nextIdx = (currentIdx + step + pool.length) % pool.length
+    let matchedSlot = -1
+    let matchedSkillId = -1
+    let edi = startSlot + dir
+    for (let ebx = 0; ebx < 16; ebx++) {
+      if (edi < 0) edi = 15
+      else if (edi >= 16) edi = 0
+      const key = SkillHotkeysHud.keyFromSlotIndex(edi)
+      const b = key ? this.bindings.get(key) : undefined
+      if (b && b.skillId >= 0 && b.skillId !== 0xffff && b.side === 'right') {
+        if (!this.isSkillAvailable(b.skillId)) {
+          if (key) this.bindings.delete(key)
+        } else {
+          matchedSlot = edi
+          matchedSkillId = b.skillId
+          count -= 1
+          if (count === 0) break
+        }
+      }
+      edi += dir
     }
-    const chosen = pool[nextIdx]!
-    this.requestSelect(chosen.side, chosen.skillId)
-    return chosen
+
+    if (matchedSlot === -1) return null
+    this.lastSelectedSlot = matchedSlot
+    this.requestSelect('right', matchedSkillId)
+    return { slot: matchedSlot, side: 'right', skillId: matchedSkillId }
   }
 
   getPopupCells(side: 'left' | 'right'): {

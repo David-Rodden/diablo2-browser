@@ -24,15 +24,31 @@
  */
 
 import { compute5BandScaling, computeDiminishingReturns } from '../../common/data/calc-ast.ts'
+import { CANONICAL_113C_MISSILES } from '../../common/skills/missiles-data.ts'
+import { difficultyAiCurseDivisor } from '../engine/difficulty-resist-penalty.ts'
+
+function computeWarcryRingRadiusSubtiles(missileKey: string, velBonus = 0): number {
+  const msl = CANONICAL_113C_MISSILES[missileKey]
+  if (!msl) return 0
+  return Math.round((((msl.vel + velBonus) * msl.range) / 24) * 100) / 100
+}
 
 // --- Interfaces for Skill Calculations ---
 
 export type WarcryDifficulty = 0 | 1 | 2 | 'normal' | 'nightmare' | 'hell'
 
-export function resolveAiCurseDivisor(difficulty: WarcryDifficulty = 0): 1 | 2 | 4 {
-  if (difficulty === 2 || difficulty === 'hell') return 4
-  if (difficulty === 1 || difficulty === 'nightmare') return 2
-  return 1
+/**
+ * 1.13c `D2Game.dll` `0x6FC6DF60` reads `DifficultyLevels.txt` `AiCurseDivisor` (`+0x1C`,
+ * `1 / 2 / 4` across Normal / Nightmare / Hell).
+ */
+export function resolveAiCurseDivisor(difficulty: WarcryDifficulty = 0): number {
+  const diffIdx =
+    difficulty === 2 || difficulty === 'hell'
+      ? 2
+      : difficulty === 1 || difficulty === 'nightmare'
+        ? 1
+        : 0
+  return difficultyAiCurseDivisor(diffIdx)
 }
 
 export interface HowlStats {
@@ -149,7 +165,7 @@ export interface BattleCommandStats {
  * - Missile (#148 howl): Range = 12 (LevRange empty), Vel = 12 + calc1 = 12 + 2 * (slvl - 1) (no MaxVel clamp)
  * - Mana: 4 (1024 in 24.8)
  */
-export function calculateHowlStats(slvl: number, difficulty: WarcryDifficulty = 0): HowlStats {
+export function calculateHowlStats(slvl: number, _difficulty: WarcryDifficulty = 0): HowlStats {
   const lvl = Math.max(0, Math.floor(slvl))
   if (lvl === 0) {
     return {
@@ -165,14 +181,16 @@ export function calculateHowlStats(slvl: number, difficulty: WarcryDifficulty = 
     }
   }
 
-  const aiCurseDiv = resolveAiCurseDivisor(difficulty)
-  const durationFrames = Math.floor((75 + 25 * (lvl - 1)) / aiCurseDiv)
+  // 1.13c D2Game.dll MISSMODE_SrvHit17_Howl (0x6FC5EAE0): evaluates calc2 = ln56 (75 + 25*(slvl-1))
+  // via 0x6FC21A90 and passes it directly to AIUTIL_ApplyTerrorCurseState (0x6FCD2120) without
+  // dividing by AiCurseDivisor (0x6FC6DF60).
+  const durationFrames = 75 + 25 * (lvl - 1)
   const fleeRangeSubtiles = 24 + 5 * (lvl - 1)
   // Missiles.txt howl: Range 12 (LevRange empty) -> lifetime does not grow; SrvDo022 / CltDo25 pass
   // velocity = Vel 12 + calc1 'par1 * (lvl-1)' (Param1 = 2), with no MaxVel clamp (sub_6FD14170 flag 4).
-  const missileRangeFrames = 12
-  const missileVel = 12 + 2 * (lvl - 1)
-  const radiusSubtiles = Math.round(((missileRangeFrames * missileVel) / 24) * 100) / 100
+  const missileRangeFrames = CANONICAL_113C_MISSILES.howl?.range ?? 12
+  const missileVel = (CANONICAL_113C_MISSILES.howl?.vel ?? 12) + 2 * (lvl - 1)
+  const radiusSubtiles = computeWarcryRingRadiusSubtiles('howl', 2 * (lvl - 1))
   return {
     fleeDurationFrames: durationFrames,
     fleeDurationSeconds: Math.round((durationFrames / 25) * 10) / 10,
@@ -180,7 +198,7 @@ export function calculateHowlStats(slvl: number, difficulty: WarcryDifficulty = 
     missileRangeFrames,
     missileVel,
     radiusSubtiles,
-    aurarangecalcSubtiles: 2 + (lvl - 1),
+    aurarangecalcSubtiles: 0,
     manaCost: 4,
     manaCost256: 1024,
   }
@@ -315,7 +333,7 @@ export function calculateTauntStats(slvl: number): TauntStats {
  * Skill 138: Shout
  * Defense %: 100 + 10 * (slvl - 1)%
  * Duration: 500 + 250 * (slvl - 1) + 125 * (battleOrdersBlvl + battleCommandBlvl) frames
- * Radius: Missiles.txt #149 shout Vel=16, Range=16 -> 256/24 = 10.67 subtiles
+ * Radius: Missiles.txt #149 shout Vel=30, Range=15 -> 450/24 = 18.75 subtiles
  * Mana: 6
  */
 export function calculateShoutStats(
@@ -342,7 +360,7 @@ export function calculateShoutStats(
     defenseBonusPct: 100 + 10 * (lvl - 1),
     durationFrames: totalFrames,
     durationSeconds: Math.round((totalFrames / 25) * 10) / 10,
-    radiusSubtiles: 10.67,
+    radiusSubtiles: computeWarcryRingRadiusSubtiles('shout'),
     manaCost: 6,
     manaCost256: 1536,
   }
@@ -378,15 +396,15 @@ export function calculateFindItemStats(slvl: number): FindItemStats {
 
 /**
  * Skill 146: Battle Cry
- * Duration: (300 + 60 * (slvl - 1)) / aiCurseDiv frames
+ * Duration: 300 + 60 * (slvl - 1) frames (not divided by AiCurseDivisor in 1.13c 0x6FC5ABD0)
  * Target Defense reduction: -(50 + 2 * (slvl - 1))%
  * Target Damage reduction: -(25 + 1 * (slvl - 1))%
- * Radius: Missiles.txt #219 battlecry Vel=16, Range=8 -> 128/24 = 5.33 subtiles
+ * Radius: Missiles.txt #219 battlecry Vel=12, Range=12 -> 144/24 = 6 subtiles
  * Mana: 5
  */
 export function calculateBattleCryStats(
   slvl: number,
-  difficulty: WarcryDifficulty = 0
+  _difficulty: WarcryDifficulty = 0
 ): BattleCryStats {
   const lvl = Math.max(0, Math.floor(slvl))
   if (lvl === 0) {
@@ -401,14 +419,13 @@ export function calculateBattleCryStats(
     }
   }
 
-  const aiCurseDiv = resolveAiCurseDivisor(difficulty)
-  const durationFrames = Math.floor((300 + 60 * (lvl - 1)) / aiCurseDiv)
+  const durationFrames = 300 + 60 * (lvl - 1)
   return {
     durationFrames,
     durationSeconds: Math.round((durationFrames / 25) * 10) / 10,
     targetDefenseReductionPct: 50 + 2 * (lvl - 1),
     targetDamageReductionPct: 25 + 1 * (lvl - 1),
-    radiusSubtiles: 5.33,
+    radiusSubtiles: computeWarcryRingRadiusSubtiles('battlecry'),
     manaCost: 5,
     manaCost256: 1280,
   }
@@ -418,7 +435,7 @@ export function calculateBattleCryStats(
  * Skill 149: Battle Orders
  * Life / Mana / Stamina %: 35 + 3 * (slvl - 1)%
  * Duration: 750 + 250 * (slvl - 1) + 125 * (shoutBlvl + battleCommandBlvl) frames
- * Radius: Missiles.txt #237 battleorders Vel=16, Range=16 -> 256/24 = 10.67 subtiles
+ * Radius: Missiles.txt #237 battleorders Vel=30, Range=15 -> 450/24 = 18.75 subtiles
  * Mana: 7
  */
 export function calculateBattleOrdersStats(
@@ -450,7 +467,7 @@ export function calculateBattleOrdersStats(
     maxStaminaBonusPct: bonusPct,
     durationFrames: totalFrames,
     durationSeconds: Math.round((totalFrames / 25) * 10) / 10,
-    radiusSubtiles: 10.67,
+    radiusSubtiles: computeWarcryRingRadiusSubtiles('battleorders'),
     manaCost: 7,
     manaCost256: 1792,
   }
@@ -460,12 +477,12 @@ export function calculateBattleOrdersStats(
  * Skill 150: Grim Ward
  * Totem life: 1000 frames (40s)
  * Flee radius: 3 + 1 * (slvl - 1) subtiles
- * Flee duration: 60 / aiCurseDiv frames (2.4s / 1.2s / 0.6s)
+ * Flee duration: 60 frames (2.4s, base par6 in Skills.txt #150)
  * Mana: 4
  */
 export function calculateGrimWardStats(
   slvl: number,
-  difficulty: WarcryDifficulty = 0
+  _difficulty: WarcryDifficulty = 0
 ): GrimWardStats {
   const lvl = Math.max(0, Math.floor(slvl))
   if (lvl === 0) {
@@ -483,8 +500,7 @@ export function calculateGrimWardStats(
     }
   }
 
-  const aiCurseDiv = resolveAiCurseDivisor(difficulty)
-  const fleeDurationFrames = Math.floor(60 / aiCurseDiv)
+  const fleeDurationFrames = 60
   const fleeRadiusSubtiles = 3 + 1 * (lvl - 1)
   return {
     totemDurationFrames: 1000,
@@ -505,7 +521,7 @@ export function calculateGrimWardStats(
  * 5-band physical damage: (20..30 base, +6 / +7 / +8 / +9 / +10)
  * Synergy: +6% damage per blvl in Howl, Taunt, Battle Cry
  * Stun duration: min(250, 25 + 5 * (slvl - 1)) frames
- * Radius: Missiles.txt #235 warcry Vel=16, Range=8 -> 128/24 = 5.33 subtiles
+ * Radius: Missiles.txt #235 warcry Vel=12, Range=16 -> 192/24 = 8 subtiles
  * Mana: 10 + (slvl - 1)
  */
 export function calculateWarCryStats(
@@ -548,7 +564,7 @@ export function calculateWarCryStats(
     synergyBonusPct,
     stunDurationFrames: stunFrames,
     stunDurationSeconds: Math.round((stunFrames / 25) * 10) / 10,
-    radiusSubtiles: 5.33,
+    radiusSubtiles: computeWarcryRingRadiusSubtiles('warcry'),
     nextDelayFrames: 4,
     manaCost: mana,
     manaCost256: mana << 8,
@@ -559,7 +575,7 @@ export function calculateWarCryStats(
  * Skill 155: Battle Command
  * +1 to All Skills (fixed)
  * Duration: 125 + 250 * (slvl - 1) + 125 * (shoutBlvl + battleOrdersBlvl) frames
- * Radius: Missiles.txt #236 battlecommand Vel=16, Range=16 -> 256/24 = 10.67 subtiles
+ * Radius: Missiles.txt #236 battlecommand Vel=30, Range=15 -> 450/24 = 18.75 subtiles
  * Mana: 11
  */
 export function calculateBattleCommandStats(
@@ -586,7 +602,7 @@ export function calculateBattleCommandStats(
     allSkillsBonus: 1,
     durationFrames: totalFrames,
     durationSeconds: Math.round((totalFrames / 25) * 10) / 10,
-    radiusSubtiles: 10.67,
+    radiusSubtiles: computeWarcryRingRadiusSubtiles('battlecommand'),
     manaCost: 11,
     manaCost256: 2816,
   }

@@ -1091,20 +1091,8 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (numId === 526 || clean === 'nihlathakboss' || clean === 'nihlathak') {
-    // nehlithakcontrol (#606, Range 224).
-    return buildBossDeathSpec({
-      bossKey: 'nihlathak',
-      controllerMissileKey: 'nehlithakcontrol',
-      controllerClassId: 606,
-      screenShake: {
-        sustainMs: 120 * 40,
-        amplitude: 6,
-        rampUpMs: 120,
-        rampDownMs: 400,
-      },
-    })
-  }
+  // 526 nihlathakboss has no MonUMod 22 death show: special quest event 17 (D2Client 0x6fb02af0) creates
+  // nehlithakcontrol + nihlithak1 instead (kb/monsters/d2client-boss-death-shows-113c.md).
   if (
     (numId >= 540 && numId <= 542) ||
     clean.startsWith('ancientbarb') ||

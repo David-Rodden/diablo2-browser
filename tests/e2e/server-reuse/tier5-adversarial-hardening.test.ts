@@ -215,7 +215,8 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     const deadSnap = game.getPlayerState(p1)!
     expect(deadSnap.hp).toBe(0)
     expect(deadSnap.dead).toBe(true)
-    expect(deadSnap.gold).toBe(900) // 10% of 1000 lost
+    expect(deadSnap.gold).toBe(0) // 1.13c 0x6FC58180: clvl 15 loses 15% of (1000 + 50000) = 7650 -> stat 14 = 0, stat 15 = 43350
+    expect(deadSnap.goldBank).toBe(43350)
     expect(deadSnap.corpseId).not.toBeNull()
     expect(deadSnap.items.some((it) => it.unitId === invItem.unitId)).toBe(true)
     expect(deadSnap.items.some((it) => it.unitId === helmItem.unitId)).toBe(false)
@@ -239,7 +240,8 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     expect(respawnedSnap.dead).toBe(false)
     expect(Server.readD2s(game.exportPlayerD2s(p1)).corpseItems.length).toBe(1)
 
-    // Interacting with corpseId recovers equipped items and emits CorpseAssign(assign=0)
+    // Interacting with corpseId after returning to the corpse recovers equipped items and emits CorpseAssign(assign=0)
+    game.movePlayer(p1, deadSnap.x, deadSnap.y)
     game.enqueueCommand(p1, { type: 'InteractEntity', targetType: 'player', targetId: corpseId })
     game.stepFrame()
     const recoveredSnap = game.getPlayerState(p1)!
@@ -266,8 +268,10 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     const p2 = game.addPlayer({ charName: 'PartyMate', classId: 2, level: 1, x: 102, y: 100 })
     const p3 = game.addPlayer({ charName: 'SoloOutsider', classId: 3, level: 1, x: 104, y: 100 })
 
-    // Put p1 and p2 in Party 1 (action 0x06 = invite/join, 0x08 = accept), leave p3 unpartied
+    // Put p1 and p2 in Party 1 (action 0x06 = invite, 0x08 = accept), leave p3 unpartied
     game.enqueueCommand(p1, { type: 'PartyAction', action: 0x06, targetPlayerId: p2 })
+    game.stepFrame()
+    game.enqueueCommand(p2, { type: 'PartyAction', action: 0x08, targetPlayerId: p1 })
     game.stepFrame()
     expect(game.getPlayerState(p1)!.partyId).toBe(p1)
     expect(game.getPlayerState(p2)!.partyId).toBe(p1)
@@ -1219,13 +1223,12 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     expect(hashOriginalOrder).toBe(hashPermutedOrder)
     expect(hashOriginalOrder).not.toBe(hashMutatedSeed)
 
-    // Verify castSkill 7-arg (castSkillDef) branches: cooldown, insufficient mana, zero-distance instant fallback, and projectile launch
+    // Verify castSkill 7-arg (SkillDef) branches: cooldown, insufficient mana, zero-distance instant fallback, and projectile launch
     const projSkill: Server.SkillDef = {
       id: 'firebolt',
       name: 'Fire Bolt',
-      baseMinDamage: 8,
-      baseMaxDamage: 16,
-      damagePerLevel: 4,
+      baseMinDamage: 3,
+      baseMaxDamage: 6,
       manaCost: 7,
       cooldownTicks: 10,
       projectile: true,
@@ -1765,10 +1768,13 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
       { unitId: p2.playerUnitId, areaId: 1, level: 60 },
       { unitId: p3.playerUnitId, areaId: 1, level: 40 },
     ]
+    // 1.13c party XP pool (`D2Game.dll` @ 0x6fc9e067..0x6fc9e0ae):
+    // pool = 1000 + floor(1000 * 89 * (2 - 1) / 256) = 1347
+    // p1 share = floor(1347 * (20 / 80)) = 336, p2 share = floor(1347 * (60 / 80)) = 1010
     const shares = room.partyManager.splitExperience(p1.playerUnitId, 1000, candidatesSameArea)
     expect(shares.size).toBe(2)
-    expect(shares.get(p1.playerUnitId)).toBe(250)
-    expect(shares.get(p2.playerUnitId)).toBe(750)
+    expect(shares.get(p1.playerUnitId)).toBe(336)
+    expect(shares.get(p2.playerUnitId)).toBe(1010)
     expect(shares.has(p3.playerUnitId)).toBe(false)
 
     const candidatesDiffArea = [

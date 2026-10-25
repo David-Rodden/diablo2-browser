@@ -135,8 +135,8 @@ struct D2NpcRecordStrc {          // sizeof = 0x44 (68 bytes)
 - **底材升级 (`0x6FCDEECE..0x6FCDF090`)**：仅当 `nDifficulty > 0 && cLvl > 25` 时触发：
   - **噩梦 (`nDifficulty == 1`)**：掷 `rand(100000) < (ilvl << 6) + 4000` (`64 * ilvl + 4000`) 升级为扩展级 (`ubercode`)；若未命中则应用 `NightmareUpgrade` 列重映射。
   - **地狱 (`nDifficulty == 2`)**：资料片模式下先掷 `rand(100000) < (ilvl << 4) + 1000` (`16 * ilvl + 1000`) 升级为精华级 (`ultracode`)；未命中再掷 `rand(100000) < (ilvl << 7) + 5000` (`128 * ilvl + 5000`) 升级为扩展级 (`ubercode`)；仍未命中则应用 `HellUpgrade` 列重映射。
-- **凹槽与 Staffmods (`0x6FC4EC10` `D2GAME_CreateItemEx`)**：
-  - 非魔法装备 (`quality <= 3`) 且底材 `gemsockets > 0` 时，按 `ItemTypes.txt` 的 `MaxSock1` (`ilvl < 25`)、`MaxSock25` (`25 <= ilvl < 40`)、`MaxSock40` (`ilvl >= 40`) 与 `base.maxSockets` 取下界掷凹槽数；魔法装备 (`quality == 4`) 仅由带打孔属性的魔法词缀 (`Mechanic's` / `Artisan's` / `Jeweler's`) 赋予凹槽。
+- **凹槽与 Staffmods (`0x6FC4EC10` `D2GAME_CreateItemEx` -> `0x6FC2EC90` `ITEMS_RollRandomSockets`)**：
+  - 仅普通 (`NORMAL = 2`) 与超强 (`SUPERIOR = 3`) 品质装备（低品质 `quality < 2` 不打孔）且底材 `gemsockets > 0` 时，按 `D2Common #11151` (`0x6FD74610`) 比较 `ItemTypes.txt` 的 `MaxSock1` (`ilvl <= 25`)、`MaxSock25` (`26 <= ilvl <= 40`)、`MaxSock40` (`ilvl >= 41`) 与 `base.maxSockets` 取下界，再按难度上限 (`Normal: 3 / Nightmare: 4 / Hell: 6`) 截断后以 `rand(100) < 33` 机率掷凹槽数；魔法装备 (`quality == 4`) 仅由带打孔属性的魔法词缀 (`Mechanic's` / `Artisan's` / `Jeweler's`) 赋予凹槽。
   - 职业专属底材 (`wand`, `staf`, `orb`, `scep`, `head`, `pelt`, `phlm`, `h2h`, `h2h2`) 通过 `0x6FC4E520` (`ITEMS_RollStaffMods`) 生成最多 3 条 +1..+3 职业技能修正。
 
 ---

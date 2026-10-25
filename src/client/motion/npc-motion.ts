@@ -843,6 +843,28 @@ export class NpcMotion {
    * - Sets initial direction instantaneously (`#10706` `PATH_SetDirection`, `0x6FAFD59C`).
    * - Runs `#10595` (`UNITS_SetAnimStartFrame`) -> `#10819` (`UNITS_UpdateAnimRateAndVelocity`).
    */
+  /**
+   * S2C 0xAC Send-Other stat list (D2Client.dll 0x6fb5e73c..0x6fb5e85a): the values go into an extra stat list
+   * that is summed with the base list, so they add to the motion copies of the anim-rate stats.
+   */
+  applyAssignStatList(id: number, stats: readonly { readonly statId: number; readonly value: number }[]): void {
+    const unit = this.units.get(id)
+    if (!unit) return
+    for (const st of stats) {
+      switch (st.statId) {
+        case 67: unit.stat67 = (unit.stat67 + st.value) | 0; break
+        case 68: unit.stat68 = (unit.stat68 + st.value) | 0; break
+        case 69: unit.stat69 = (unit.stat69 + st.value) | 0; break
+        case 93: unit.stat93 = (unit.stat93 + st.value) | 0; break
+        case 96: unit.stat96 = (unit.stat96 + st.value) | 0; break
+        case 99: unit.stat99 = (unit.stat99 + st.value) | 0; break
+        case 102: unit.stat102 = (unit.stat102 + st.value) | 0; break
+        case 105: unit.stat105 = (unit.stat105 + st.value) | 0; break
+        default: break
+      }
+    }
+  }
+
   spawnMonster(params: {
     readonly unitId: number
     readonly classId: number

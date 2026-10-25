@@ -148,7 +148,7 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
       slvl: 10,
       durationFrames: 200,
       currentFrame: 10,
-      stats: { amplify_phys_pierce: 100 },
+      stats: { damageresist: -100 },
     })
     expect(amp.applied).toBe(true)
     expect(monsterStateBus.hasState('amplifydamage')).toBe(true)
@@ -160,7 +160,7 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
       slvl: 5,
       durationFrames: 150,
       currentFrame: 20,
-      stats: { amplify_phys_pierce: 50 },
+      stats: { damageresist: -50 },
     })
     expect(dec.applied).toBe(true)
     expect(dec.evictedState).toBe('amplifydamage')
@@ -219,7 +219,7 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
       slvl: 20,
       durationFrames: 55,
       currentFrame: 0,
-      stats: { damagepercent: 373, skill_ias: 35 },
+      stats: { damagepercent: 373, attackrate: 35 },
       isAuraOverride: true,
     })
 
@@ -242,7 +242,7 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
       stateNameOrId: 'energyshield',
       sourceSkillId: 58,
       slvl: 20,
-      stats: { energyshield_pct: 75 },
+      stats: { item_damagetomana: 75 },
     })
     const esOut = sorcBus.triggerReactiveEvents({
       event: 'absorbdamage',
@@ -299,12 +299,18 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
 
     // 2. 1.13c Blessed Hammer (`skillId = 112`): does NOT ignore Magic Resistance of Undead or Demons!
     const palStats = new UnitStatList(registry)
-    palStats.setBaseStat('concentration_damage_pct', 300)
+    const palStateBus = new StateBus(palStats, registry)
+    palStateBus.applyState({
+      stateNameOrId: 'concentration',
+      sourceSkillId: 113,
+      slvl: 17,
+      stats: { damagepercent: 300 },
+    })
     const pal: CombatUnitContext = {
       id: 'pal',
       name: 'Paladin',
       statList: palStats,
-      stateBus: new StateBus(palStats, registry),
+      stateBus: palStateBus,
     }
 
     const magicImmuneUndeadStats = new UnitStatList(registry, {
@@ -387,7 +393,7 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
     expect(computeEffectiveIas({ itemIas: 60, skillIas: 35, weaponWsm: -20 })).toBe(75) // capped at +75
 
     // 2. AnimDispatcher STATE_SKILLDELAY on Hydra (`skillId = 62`, `delay = 40` frames in 1.13c)
-    const sorcStats = new UnitStatList(registry)
+    const sorcStats = new UnitStatList(registry, { mana: 1000 * FIXED_ONE, maxmana: 1000 * FIXED_ONE })
     const sorcBus = new StateBus(sorcStats, registry)
     const dispatcher = new AnimDispatcher({
       registry,

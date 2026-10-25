@@ -47,98 +47,326 @@ export interface LocalizedObjectName {
   readonly nameZh: string
 }
 
-export const CANONICAL_113C_SHRINES: Readonly<Record<number, LocalizedObjectName>> = Object.freeze({
+export interface CanonicalShrineMeta extends LocalizedObjectName {
+  /** Shrines.txt `effectclass` (0..4, +0x02 in D2ShrinesTxt, grouped in D2Game 0x6fc2b9a0). */
+  readonly effectclass: number
+  /** Shrines.txt `LevelMin` (+0x10C in D2ShrinesTxt, checked in D2Game 0x6fc4ef90 / 0x6fc4ed70). */
+  readonly levelMin: number
+  /** Shrines.txt `Arg0` (+0x04 in D2ShrinesTxt, read in D2Game 0x6fc8abfa / 0x6fc8aca4 / 0x6fc8ad2f). */
+  readonly arg0: number
+  /** Shrines.txt `Arg1` (+0x08 in D2ShrinesTxt, read in D2Game 0x6fc8982e / 0x6fc8ad39). */
+  readonly arg1: number
+  /** Shrines.txt `Duration in frames` (+0x0C in D2ShrinesTxt, read in D2Game 0x6fc8ab63 / 0x6fc8ac14 / 0x6fc8aca9 / 0x6fc8ad2a). */
+  readonly durationFrames: number
+  /** Shrines.txt `reset time in minutes` (+0x10 in D2ShrinesTxt, read in D2Game 0x6fc8db60). */
+  readonly resetTimeMinutes: number
+  /** Shrines.txt `String Phrase` (+0x11 in D2ShrinesTxt). */
+  readonly phrase: string
+  /** D2Game.dll `0x6fd1a5f8` shrine dispatch table `statId` (+0x04, `-1` when not a single-stat booster). */
+  readonly statId: number
+  /** D2Game.dll `0x6fd1a5f8` shrine dispatch table `stateId` (+0x08, `0` when no shrine state). */
+  readonly stateId: number
+}
+
+export const CANONICAL_113C_SHRINES: Readonly<Record<number, CanonicalShrineMeta>> = Object.freeze({
   "0": {
     "name": "Shrine",
-    "nameZh": "神殿"
+    "nameZh": "神殿",
+    "effectclass": 0,
+    "levelMin": 0,
+    "arg0": 100,
+    "arg1": 100,
+    "durationFrames": 0,
+    "resetTimeMinutes": 2,
+    "phrase": "Null",
+    "statId": -1,
+    "stateId": 0
   },
   "1": {
     "name": "Refilling Shrine",
-    "nameZh": "回復神殿"
+    "nameZh": "回復神殿",
+    "effectclass": 4,
+    "levelMin": 1,
+    "arg0": 100,
+    "arg1": 100,
+    "durationFrames": 0,
+    "resetTimeMinutes": 2,
+    "phrase": "All Stats refilled",
+    "statId": -1,
+    "stateId": 0
   },
   "2": {
     "name": "Health Shrine",
-    "nameZh": "生命神殿"
+    "nameZh": "生命神殿",
+    "effectclass": 2,
+    "levelMin": 1,
+    "arg0": 200,
+    "arg1": 400,
+    "durationFrames": 0,
+    "resetTimeMinutes": 5,
+    "phrase": "All your wounds are healed",
+    "statId": -1,
+    "stateId": 0
   },
   "3": {
     "name": "Mana Shrine",
-    "nameZh": "法力神殿"
+    "nameZh": "法力神殿",
+    "effectclass": 3,
+    "levelMin": 1,
+    "arg0": 200,
+    "arg1": 400,
+    "durationFrames": 0,
+    "resetTimeMinutes": 5,
+    "phrase": "Your magic is replenished",
+    "statId": -1,
+    "stateId": 0
   },
   "4": {
     "name": "Health Exchange Shrine",
-    "nameZh": "生命交換神殿"
+    "nameZh": "生命交換神殿",
+    "effectclass": 2,
+    "levelMin": 2,
+    "arg0": 50,
+    "arg1": 500,
+    "durationFrames": 0,
+    "resetTimeMinutes": 0,
+    "phrase": "Life into Mana",
+    "statId": -1,
+    "stateId": 0
   },
   "5": {
     "name": "Mana Exchange Shrine",
-    "nameZh": "法力交換神殿"
+    "nameZh": "法力交換神殿",
+    "effectclass": 3,
+    "levelMin": 2,
+    "arg0": 50,
+    "arg1": 500,
+    "durationFrames": 0,
+    "resetTimeMinutes": 0,
+    "phrase": "Mana into Life",
+    "statId": -1,
+    "stateId": 0
   },
   "6": {
     "name": "Armor Shrine",
-    "nameZh": "裝甲神殿"
+    "nameZh": "裝甲神殿",
+    "effectclass": 4,
+    "levelMin": 5,
+    "arg0": 100,
+    "arg1": 1,
+    "durationFrames": 2400,
+    "resetTimeMinutes": 5,
+    "phrase": "Protected by the Spirits",
+    "statId": 171,
+    "stateId": 128
   },
   "7": {
     "name": "Combat Shrine",
-    "nameZh": "作戰神殿"
+    "nameZh": "作戰神殿",
+    "effectclass": 4,
+    "levelMin": 8,
+    "arg0": 200,
+    "arg1": 200,
+    "durationFrames": 2400,
+    "resetTimeMinutes": 5,
+    "phrase": "Guided by the Spirits",
+    "statId": -1,
+    "stateId": 129
   },
   "8": {
     "name": "Resist Fire Shrine",
-    "nameZh": "抗火焰神殿"
+    "nameZh": "抗火焰神殿",
+    "effectclass": 4,
+    "levelMin": 5,
+    "arg0": 75,
+    "arg1": 0,
+    "durationFrames": 3600,
+    "resetTimeMinutes": 5,
+    "phrase": "Fire cannot harm you",
+    "statId": 39,
+    "stateId": 131
   },
   "9": {
     "name": "Resist Cold Shrine",
-    "nameZh": "抗冰凍神殿"
+    "nameZh": "抗冰凍神殿",
+    "effectclass": 4,
+    "levelMin": 26,
+    "arg0": 75,
+    "arg1": 0,
+    "durationFrames": 3600,
+    "resetTimeMinutes": 5,
+    "phrase": "Cold cannot harm you",
+    "statId": 43,
+    "stateId": 132
   },
   "10": {
     "name": "Resist Lightning Shrine",
-    "nameZh": "抗閃電神殿"
+    "nameZh": "抗閃電神殿",
+    "effectclass": 4,
+    "levelMin": 32,
+    "arg0": 75,
+    "arg1": 0,
+    "durationFrames": 3600,
+    "resetTimeMinutes": 5,
+    "phrase": "Lightning cannot harm you",
+    "statId": 41,
+    "stateId": 130
   },
   "11": {
     "name": "Resist Poison Shrine",
-    "nameZh": "抗毒素神殿"
+    "nameZh": "抗毒素神殿",
+    "effectclass": 4,
+    "levelMin": 21,
+    "arg0": 75,
+    "arg1": 0,
+    "durationFrames": 3600,
+    "resetTimeMinutes": 5,
+    "phrase": "Poison cannot harm you",
+    "statId": 45,
+    "stateId": 133
   },
   "12": {
     "name": "Skill Shrine",
-    "nameZh": "技能神殿"
+    "nameZh": "技能神殿",
+    "effectclass": 4,
+    "levelMin": 1,
+    "arg0": 2,
+    "arg1": 0,
+    "durationFrames": 2400,
+    "resetTimeMinutes": 5,
+    "phrase": "More skillful than before",
+    "statId": 127,
+    "stateId": 134
   },
   "13": {
     "name": "Mana Recharge Shrine",
-    "nameZh": "法力補充神殿"
+    "nameZh": "法力補充神殿",
+    "effectclass": 4,
+    "levelMin": 1,
+    "arg0": 400,
+    "arg1": 0,
+    "durationFrames": 2400,
+    "resetTimeMinutes": 5,
+    "phrase": "Power courses through you",
+    "statId": 27,
+    "stateId": 135
   },
   "14": {
     "name": "Stamina Shrine",
-    "nameZh": "耐力神殿"
+    "nameZh": "耐力神殿",
+    "effectclass": 4,
+    "levelMin": 1,
+    "arg0": 200,
+    "arg1": 0,
+    "durationFrames": 4800,
+    "resetTimeMinutes": 5,
+    "phrase": "Run like the wind",
+    "statId": 162,
+    "stateId": 136
   },
   "15": {
     "name": "Experience Shrine",
-    "nameZh": "經驗神殿"
+    "nameZh": "經驗神殿",
+    "effectclass": 4,
+    "levelMin": 1,
+    "arg0": 50,
+    "arg1": 50,
+    "durationFrames": 3600,
+    "resetTimeMinutes": 0,
+    "phrase": "Wisdom is its own reward",
+    "statId": 85,
+    "stateId": 137
   },
   "16": {
     "name": "Enirhs Shrine",
-    "nameZh": "辨視神殿"
+    "nameZh": "辨視神殿",
+    "effectclass": 1,
+    "levelMin": 1,
+    "arg0": 0,
+    "arg1": 0,
+    "durationFrames": 0,
+    "resetTimeMinutes": 0,
+    "phrase": "You feel strange",
+    "statId": -1,
+    "stateId": 0
   },
   "17": {
     "name": "Portal Shrine",
-    "nameZh": "傳送神殿"
+    "nameZh": "傳送神殿",
+    "effectclass": 1,
+    "levelMin": 3,
+    "arg0": 0,
+    "arg1": 0,
+    "durationFrames": 0,
+    "resetTimeMinutes": 0,
+    "phrase": "Home is where the heart is",
+    "statId": -1,
+    "stateId": 0
   },
   "18": {
     "name": "Gem Shrine",
-    "nameZh": "寶石神殿"
+    "nameZh": "寶石神殿",
+    "effectclass": 1,
+    "levelMin": 4,
+    "arg0": 0,
+    "arg1": 0,
+    "durationFrames": 0,
+    "resetTimeMinutes": 0,
+    "phrase": "Rich beyond your dreams",
+    "statId": -1,
+    "stateId": 0
   },
   "19": {
     "name": "Fire Shrine",
-    "nameZh": "火焰神殿"
+    "nameZh": "火焰神殿",
+    "effectclass": 1,
+    "levelMin": 1,
+    "arg0": 50,
+    "arg1": 2000,
+    "durationFrames": 0,
+    "resetTimeMinutes": 0,
+    "phrase": "Burned by the Spirits",
+    "statId": -1,
+    "stateId": 0
   },
   "20": {
     "name": "Monster Shrine",
-    "nameZh": "怪物神殿"
+    "nameZh": "怪物神殿",
+    "effectclass": 1,
+    "levelMin": 3,
+    "arg0": 0,
+    "arg1": 0,
+    "durationFrames": 0,
+    "resetTimeMinutes": 0,
+    "phrase": "The Spirits are restless",
+    "statId": -1,
+    "stateId": 0
   },
   "21": {
     "name": "Exploding Shrine",
-    "nameZh": "爆裂神殿"
+    "nameZh": "爆裂神殿",
+    "effectclass": 1,
+    "levelMin": 1,
+    "arg0": 5,
+    "arg1": 10,
+    "durationFrames": 0,
+    "resetTimeMinutes": 0,
+    "phrase": "Boom",
+    "statId": -1,
+    "stateId": 0
   },
   "22": {
     "name": "Poison Shrine",
-    "nameZh": "毒素神殿"
+    "nameZh": "毒素神殿",
+    "effectclass": 1,
+    "levelMin": 1,
+    "arg0": 5,
+    "arg1": 10,
+    "durationFrames": 0,
+    "resetTimeMinutes": 0,
+    "phrase": "Choking fumes",
+    "statId": -1,
+    "stateId": 0
   }
 })
 
@@ -860,6 +1088,7 @@ const RAW_CANONICAL_113C_OBJECTS: Record<number, CanonicalObjectMeta> = {
     "selectableMask": 3,
     "nameEn": "an evil force",
     "nameZh": "一股邪惡力量",
+    "parm0": 3,
     "token": "SG",
     "xOffset": 0,
     "yOffset": 0
@@ -1146,6 +1375,7 @@ const RAW_CANONICAL_113C_OBJECTS: Record<number, CanonicalObjectMeta> = {
     "selectableMask": 1,
     "nameEn": "an evil force",
     "nameZh": "一股邪惡力量",
+    "parm0": 1,
     "token": "DJ",
     "xOffset": 0,
     "yOffset": 0
@@ -2692,6 +2922,7 @@ const RAW_CANONICAL_113C_OBJECTS: Record<number, CanonicalObjectMeta> = {
     "selectableMask": 1,
     "nameEn": "an evil force",
     "nameZh": "一股邪惡力量",
+    "parm0": 1,
     "token": "QF",
     "xOffset": 0,
     "yOffset": 0
@@ -2840,6 +3071,7 @@ const RAW_CANONICAL_113C_OBJECTS: Record<number, CanonicalObjectMeta> = {
     "selectableMask": 1,
     "nameEn": "an evil force",
     "nameZh": "一股邪惡力量",
+    "parm0": 1,
     "token": "AX",
     "xOffset": 0,
     "yOffset": 0
@@ -6031,4 +6263,16 @@ export const NPC_PLACEHOLDER_OBJECTS: Readonly<Record<number, number>> = Object.
 export function getNpcPlaceholderHcIdx(objectClassId: number): number | undefined {
   return NPC_PLACEHOLDER_OBJECTS[objectClassId]
 }
+
+/**
+ * Resolves a 1.13c `Shrines.txt` record by shrine `Code` (`0..22`).
+ * Per `D2Game.dll` `0x6fc8da00` (`0x6fc8db06..0x6fc8db2b`), out-of-range codes or
+ * null-handler entries (`Code 0`) fall back to `Code 1` (`Refilling Shrine`).
+ */
+export function getShrineMeta113c(code: number): CanonicalShrineMeta {
+  return code >= 1 && code <= 22 && CANONICAL_113C_SHRINES[code] !== undefined
+    ? CANONICAL_113C_SHRINES[code]!
+    : CANONICAL_113C_SHRINES[1]!
+}
+
 

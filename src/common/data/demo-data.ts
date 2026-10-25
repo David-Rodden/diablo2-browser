@@ -1,3 +1,5 @@
+import { computeSkillManaCost256 } from './calc-ast.ts'
+import { getSharedDataRegistry } from './data-registry.ts'
 import type { SkillDef } from '../skills/missiles-data.ts'
 import type { NpcDef, QuestDef } from '../world/quests'
 
@@ -10,10 +12,47 @@ import type { NpcDef, QuestDef } from '../world/quests'
 /** Fallback experience thresholds, index 1 = level 1. */
 export const DEMO_EXPERIENCE: readonly number[] = [0, 0, 20, 60, 140, 280]
 
-/** Fallback skills, used when an archive ships no skill table. */
+function buildSkillDefFrom113c(id: string, skillId: number, fallbackRangePx: number): SkillDef {
+  const registry = getSharedDataRegistry()
+  const skill = registry.getSkill(skillId)
+  if (!skill) {
+    throw new Error(`Missing canonical 1.13c Skills.txt row #${String(skillId)}`)
+  }
+  const missileName = skill.srvMissile || skill.srvMissileA
+  const missile = missileName ? registry.getMissileByName(missileName) : undefined
+  const manaCost = computeSkillManaCost256(skill, 1).manaCost256 / 256
+  const speed = missile ? missile.vel * 25 : 0
+  const range =
+    missile && missile.vel > 0 && missile.range > 0
+      ? missile.vel * missile.range
+      : fallbackRangePx
+  const baseMinDamage =
+    skill.eMin > 0 || skill.minDam > 0
+      ? ((skill.eMin + skill.minDam) * (1 << skill.hitShift)) / 256
+      : 1
+  const baseMaxDamage =
+    skill.eMax > 0 || skill.maxDam > 0
+      ? ((skill.eMax + skill.maxDam) * (1 << skill.hitShift)) / 256
+      : 2
+  return {
+    id,
+    name: skill.skill,
+    manaCost,
+    cooldownTicks: Number(skill.delay) || 0,
+    range,
+    projectile: Boolean(missile),
+    speed,
+    baseMinDamage,
+    baseMaxDamage,
+    radius: 20,
+    ...(skill.castOverlay ? { castOverlay: skill.castOverlay } : {}),
+  }
+}
+
+/** Canonical 1.13c starter skills derived directly from `Skills.txt` + `Missiles.txt` (#0 Attack, #36 Fire Bolt). */
 export const DEMO_SKILLS: readonly SkillDef[] = [
-  { id: 'attack', name: 'Attack', manaCost: 0, cooldownTicks: 10, range: 48, projectile: false, speed: 0, baseMinDamage: 4, baseMaxDamage: 6, damagePerLevel: 1, radius: 20 },
-  { id: 'firebolt', name: 'Fire Bolt', manaCost: 6, cooldownTicks: 20, range: 1000, projectile: true, speed: 500, baseMinDamage: 7, baseMaxDamage: 10, damagePerLevel: 3, radius: 20, castOverlay: 'fire_cast_1' },
+  buildSkillDefFrom113c('attack', 0, 48),
+  buildSkillDefFrom113c('firebolt', 36, 800),
 ]
 
 /** Fallback NPC, used when an archive ships no NPC table. */

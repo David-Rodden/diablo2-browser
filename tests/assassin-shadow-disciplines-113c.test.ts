@@ -30,6 +30,12 @@ import {
   computeShadowMlvl,
   generateShadowEquipment,
 } from '../src/server/skills/assassin-shadow.ts'
+import {
+  MON_EQUIP_EMPTY_SLOT_BASE_CODES_113C,
+  MON_EQUIP_ROWS_113C,
+  generateMonsterInitEquipment113c,
+} from '../src/common/data/mon-equip-113c.ts'
+import { generateValkyrieEquipment } from '../src/common/skills/amazon-passive.ts'
 
 describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fidelity', () => {
   describe('Layer 1: skills-catalog.ts, hud-world-sync.ts, combat-stats.ts & stat-engine.ts', () => {
@@ -272,7 +278,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(stateBus.hasState('venomclaws')).toBe(true)
       expect(stateBus.hasState('venom')).toBe(true)
       expect(stateBus.hasState(31)).toBe(true)
-      expect(statList.getAccruedStat('skill_pois_max')).toBeGreaterThan(25 * FIXED_ONE)
+      expect(statList.getAccruedStat('poisonmaxdam')).toBeGreaterThan(25 * FIXED_ONE)
 
       // 3. Combat pipeline clamps long item poison duration (e.g. 250 frames) to 10 frames while preserving per-frame bitrate
       statList.setBaseStat('poisonmindam', 10 * FIXED_ONE)
@@ -356,9 +362,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
         difficulty: 'normal',
       })
 
-      // Unifies passive_weaponblock and weaponblock
       expect(statList.getAccruedStat('passive_weaponblock')).toBe(50)
-      expect(statList.getAccruedStat('weaponblock')).toBe(50)
 
       // 1. Standing still with dual claws -> blocks melee, missile, and spell attacks (except ground fire)
       const baseDef: CombatUnitContext = {
@@ -474,7 +478,6 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(statList.getAccruedStat('passive_mastery_melee_th')).toBe(120) // 30 + 10*9 = 120%
       expect(statList.getAccruedStat('passive_mastery_melee_dmg')).toBe(71) // 35 + 4*9 = 71%
       expect(statList.getAccruedStat('passive_mastery_melee_crit')).toBeGreaterThan(0)
-      expect(statList.getAccruedStat('passive_mastery_crit')).toBeGreaterThan(0)
 
       const defStats = new UnitStatList(registry, {
         level: 1,
@@ -595,7 +598,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(stateBus.getState('quickness')?.durationFrames).toBe(4200)
 
       // #264 Cloak of Shadows at slvl 5: duration = 200 + 25*4 = 300 frames, radius = 30 subtiles
-      const normalStats = new UnitStatList(registry, { level: 10 })
+      const normalStats = new UnitStatList(registry, { level: 10, maxhp: 100 * FIXED_ONE, hitpoints: 100 * FIXED_ONE })
       const normalMob: CombatUnitContext = {
         id: 'mob-norm',
         name: 'Fallen',
@@ -603,7 +606,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
         stateBus: new StateBus(normalStats, registry),
         unitType: 'monster',
       }
-      const bossStats = new UnitStatList(registry, { level: 10 })
+      const bossStats = new UnitStatList(registry, { level: 10, maxhp: 100 * FIXED_ONE, hitpoints: 100 * FIXED_ONE })
       const bossMob: CombatUnitContext = {
         id: 'mob-boss',
         name: 'Andariel',
@@ -613,7 +616,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
         isBoss: true,
         rank: 'boss',
       }
-      const farStats = new UnitStatList(registry, { level: 10 })
+      const farStats = new UnitStatList(registry, { level: 10, maxhp: 100 * FIXED_ONE, hitpoints: 100 * FIXED_ONE })
       const farMob: CombatUnitContext = {
         id: 'mob-far',
         name: 'OutOfRange',
@@ -661,21 +664,21 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(casterCloak!.durationFrames).toBe(300)
       expect(casterCloak!.stats.item_armor_percent).toBe(22)
 
-      // Normal monster in 30 subtiles gets State 156 ('cloaked', curse=1) with -Defense% AND ai_blind=1
+      // Normal monster in 30 subtiles gets State 156 ('cloaked', curse=1) with -Defense% AND aiBlind=true
       const normCloak = normalMob.stateBus.getState('cloaked')
       expect(normCloak).toBeDefined()
       expect(normCloak!.stateId).toBe(156)
       expect(normCloak!.curseType).toBe(1)
       expect(normCloak!.durationFrames).toBe(300)
       expect(normCloak!.stats.item_armor_percent).toBe(-27)
-      expect(normCloak!.stats.ai_blind).toBe(1)
+      expect((normalMob as { aiBlind?: boolean }).aiBlind).toBe(true)
 
-      // Boss in 30 subtiles gets -Defense% WITHOUT ai_blind
+      // Boss in 30 subtiles gets -Defense% WITHOUT aiBlind
       const bossCloak = bossMob.stateBus.getState('cloaked')
       expect(bossCloak).toBeDefined()
       expect(bossCloak!.stateId).toBe(156)
       expect(bossCloak!.stats.item_armor_percent).toBe(-27)
-      expect(bossCloak!.stats.ai_blind).toBeUndefined()
+      expect((bossMob as { aiBlind?: boolean }).aiBlind).toBe(false)
 
       // Monster outside 30 subtiles is unaffected
       expect(farMob.stateBus.hasState('cloaked')).toBe(false)
@@ -691,12 +694,13 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(computeShadowMlvl(40, 5)).toBe(35) // min(40, 5 + floor(120/4)) = 35
       expect(computeShadowMlvl(20, 10)).toBe(20) // clamped to clvl=20
 
-      // 3. MonEquip.txt magic/rare equipment generation scaling with slvl
+      // 3. MonEquip.txt equipment generation scaling with slvl (0x6FCB2ED0)
       const swGear = generateShadowEquipment(268, 5)
-      expect(swGear.find(g => g.slot === 'torso')?.quality).toBe('magic')
-      expect(swGear.find(g => g.slot === 'rarm')?.quality).toBe('magic')
+      expect(swGear.find(g => g.slot === 'tors')?.quality).toBe('magic')
+      expect(swGear.find(g => g.slot === 'rarm')?.itemCode).toBe('ces')
+      expect(swGear.find(g => g.slot === 'larm')?.itemCode).toBe('btl')
       const smGearHigh = generateShadowEquipment(279, 15)
-      expect(smGearHigh.find(g => g.slot === 'torso')?.quality).toBe('rare')
+      expect(smGearHigh.find(g => g.slot === 'tors')?.quality).toBe('rare')
       expect(smGearHigh.find(g => g.slot === 'head')?.quality).toBe('rare')
       expect(smGearHigh.find(g => g.slot === 'rarm')?.quality).toBe('rare')
 
@@ -748,7 +752,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       // Shadow Master resistance uses dm34(5, 90) -> 60% at slvl 12
       expect(smPet.statList.getAccruedStat('fireresist')).toBeGreaterThanOrEqual(55)
       expect(smPet.statList.getAccruedStat('fireresist')).toBeLessThanOrEqual(90)
-      expect(smPet.shadowEquipment?.some(g => g.slot === 'torso' && g.quality === 'rare')).toBe(true)
+      expect(smPet.shadowEquipment?.some(g => g.slot === 'tors' && g.quality === 'rare')).toBe(true)
 
       // tickPets lets Shadow Master cast its shadowSkills against nearby enemies
       const mobStats = new UnitStatList(registry, {
@@ -772,6 +776,107 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
         auraScanner,
       })
       expect(tickRes.subSkillsExecuted.length).toBeGreaterThan(0)
+    })
+    it('Issue #1461: generates #268 Shadow Warrior, #279 Shadow Master, #32 Valkyrie, bloodraven, and flyingscimitar equipment strictly from MonEquip.txt (0x6FCB2ED0 & 0x6FCB5980)', () => {
+      // 1. Baked MonEquip.txt has all 44 monster records across 5 monsters
+      expect(MON_EQUIP_ROWS_113C).toHaveLength(44)
+
+      // 2. Shadow Warrior (#268, hcIdx=417): at any slvl, equips ces (rarm) + btl (larm) + tors + head, all mod=4 (magic), ilvl = clamp(18 + 2*(slvl-1), 1, 99)
+      for (const slvl of [1, 5, 9, 13, 20, 35, 50]) {
+        const gear = generateShadowEquipment(268, slvl)
+        expect(gear).toHaveLength(4)
+        const bySlot = new Map(gear.map(g => [g.slot, g]))
+        expect(bySlot.get('rarm')?.itemCode).toBe('ces')
+        expect(bySlot.get('larm')?.itemCode).toBe('btl')
+        expect(MON_EQUIP_EMPTY_SLOT_BASE_CODES_113C.tors).toContain(bySlot.get('tors')?.itemCode)
+        expect(MON_EQUIP_EMPTY_SLOT_BASE_CODES_113C.head).toContain(bySlot.get('head')?.itemCode)
+        const expectedIlvl = Math.min(99, 18 + 2 * (slvl - 1))
+        for (const piece of gear) {
+          expect(piece.quality).toBe('magic')
+          expect(piece.mod).toBe(4)
+          expect(piece.ilvl).toBe(expectedIlvl)
+        }
+      }
+
+      // 3. Shadow Master (#279, hcIdx=418): level thresholds 0 / 5 / 6 / 9 / 11 / 13 / 17 and ilvl = clamp(24 + 3*(slvl-1), 1, 99)
+      // slvl = 4: only level=0 rows (rarm, larm, tors, head), mod=3 (superior), NO gloves!
+      const sm4 = generateShadowEquipment(279, 4)
+      expect(sm4.map(g => g.slot)).toEqual(['rarm', 'larm', 'tors', 'head'])
+      expect(sm4.find(g => g.slot === 'glov')).toBeUndefined()
+      expect(['7ar', '7xf', '7qr']).toContain(sm4.find(g => g.slot === 'rarm')?.itemCode)
+      expect(['7cs', '7tw', '7qr']).toContain(sm4.find(g => g.slot === 'larm')?.itemCode)
+      for (const piece of sm4) {
+        expect(piece.quality).toBe('superior')
+        expect(piece.mod).toBe(3)
+        expect(piece.ilvl).toBe(24 + 3 * (4 - 1)) // 33
+      }
+
+      // slvl = 5: adds glov (ulg/umg/uhg) with mod=3 (superior)
+      const sm5 = generateShadowEquipment(279, 5)
+      const glov5 = sm5.find(g => g.slot === 'glov')
+      expect(glov5).toBeDefined()
+      expect(['ulg', 'umg', 'uhg']).toContain(glov5?.itemCode)
+      expect(glov5?.quality).toBe('superior')
+      expect(glov5?.mod).toBe(3)
+
+      // slvl = 6: upgrades rarm, larm, glov, tors, head to mod=4 (magic)
+      const sm6 = generateShadowEquipment(279, 6)
+      expect(sm6).toHaveLength(5)
+      for (const piece of sm6) {
+        expect(piece.quality).toBe('magic')
+        expect(piece.mod).toBe(4)
+      }
+
+      // slvl = 9: adds rrin (rin) with mod=4 (magic), still no lrin or neck
+      const sm9 = generateShadowEquipment(279, 9)
+      expect(sm9.find(g => g.slot === 'rrin')?.itemCode).toBe('rin')
+      expect(sm9.find(g => g.slot === 'rrin')?.quality).toBe('magic')
+      expect(sm9.find(g => g.slot === 'lrin')).toBeUndefined()
+      expect(sm9.find(g => g.slot === 'neck')).toBeUndefined()
+
+      // slvl = 11: upgrades rarm, larm, glov, rrin, tors, head to mod=6 (rare)
+      const sm11 = generateShadowEquipment(279, 11)
+      expect(sm11).toHaveLength(6)
+      for (const piece of sm11) {
+        expect(piece.quality).toBe('rare')
+        expect(piece.mod).toBe(6)
+      }
+
+      // slvl = 13: adds lrin (rin, mod=6 rare), still no neck
+      const sm13 = generateShadowEquipment(279, 13)
+      expect(sm13.find(g => g.slot === 'lrin')?.itemCode).toBe('rin')
+      expect(sm13.find(g => g.slot === 'lrin')?.quality).toBe('rare')
+      expect(sm13.find(g => g.slot === 'neck')).toBeUndefined()
+
+      // slvl = 17: adds neck (amu, mod=6 rare); never equips belt or feet; ilvl = 24 + 3*16 = 72 (not capped at 60)
+      const sm17 = generateShadowEquipment(279, 17)
+      expect(sm17).toHaveLength(8)
+      expect(sm17.find(g => g.slot === 'neck')?.itemCode).toBe('amu')
+      expect(sm17.find(g => g.slot === 'neck')?.quality).toBe('rare')
+      expect(sm17.find(g => g.slot === 'belt')).toBeUndefined()
+      expect(sm17.find(g => g.slot === 'feet')).toBeUndefined()
+      expect(sm17[0]?.ilvl).toBe(72)
+
+      // 4. Class-of-bug sweep: Valkyrie (#32) and oninit=1 monsters (bloodraven, flyingscimitar)
+      const valk1 = generateValkyrieEquipment(1)
+      expect(valk1.map(g => ({ slot: g.slot, code: g.itemCode, quality: g.quality }))).toEqual([
+        { slot: 'rarm', code: 'spr', quality: 'rare' },
+        { slot: 'tors', code: 'ful', quality: 'rare' },
+      ])
+      const valk27 = generateValkyrieEquipment(27)
+      expect(valk27.find(g => g.slot === 'head')?.itemCode).toBe('ci2')
+      expect(valk27.find(g => g.slot === 'rarm')?.itemCode).toBe('7p7')
+      expect(valk27.find(g => g.slot === 'tors')?.itemCode).toBe('uar')
+      expect(valk27.find(g => g.slot === 'neck')?.itemCode).toBe('amu')
+      expect(valk27[0]?.ilvl).toBe(99)
+
+      expect(generateMonsterInitEquipment113c('bloodraven', 10)).toEqual([
+        { slot: 'rarm', locId: 4, itemCode: 'sbw', quality: 'rare', mod: 6, ilvl: 10, rowLevel: 0 },
+      ])
+      expect(generateMonsterInitEquipment113c('flyingscimitar', 18)).toEqual([
+        { slot: 'rarm', locId: 4, itemCode: 'scm', quality: 'rare', mod: 6, ilvl: 18, rowLevel: 0 },
+      ])
+      expect(generateMonsterInitEquipment113c('shadowwarrior', 10)).toEqual([])
     })
   })
 

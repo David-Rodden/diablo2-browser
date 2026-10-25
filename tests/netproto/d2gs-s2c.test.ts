@@ -51,7 +51,7 @@ describe('D2GS S->C 1.13c packet decoders (M1)', () => {
     wab.u32LE(44)
     wab.u8(120)
     const evab = decodeD2gsS2cPacket(wab.toUint8Array())
-    expect(evab).toEqual({ type: 'Npc', kind: 'heal', npcId: 44, result: 120 })
+    expect(evab).toEqual({ type: 'Npc', kind: 'heal', unitType: 1, npcId: 44, result: 120 })
   })
 
   it('decodes 0x4E MercForHire, 0x4F StartMercList, 0x81 MercAssign, and 0x9B MercReviveCost', () => {
@@ -140,9 +140,10 @@ describe('D2GS S->C 1.13c packet decoders (M1)', () => {
     w92.u8(0)
     w92.u32LE(7)
     expect(decodeD2gsS2cPacket(w92.toUint8Array())).toEqual({
-      type: 'Trade',
-      action: 0x9200,
-      partnerId: 7,
+      type: 'ProtocolSync',
+      opcode: 0x92,
+      byteLength: 6,
+      unit: { rawUnitType: 0, id: 7 },
     })
   })
 

@@ -612,6 +612,8 @@ export type ParsedChatInput =
       readonly isAnnounce?: boolean | undefined
     }
   | { readonly kind: 'local_clear' }
+  | { readonly kind: 'local_nopickup' }
+  | { readonly kind: 'local_usage'; readonly text: string }
   | { readonly kind: 'local_fps' }
   | {
       readonly kind: 'local_players'
@@ -633,7 +635,7 @@ export type ParsedChatInput =
  * - `/r <msg>`, `/reply <msg>` -> whispers `lastWhisperTarget`
  * - `/clear` -> `{ kind: 'local_clear' }`
  * - `/fps`, `/framerate` -> `{ kind: 'local_fps' }`
- * - `/players [N]` or `players N` -> `{ kind: 'local_players', ... }`
+ * - `/players<anything>` -> `{ kind: 'local_players', count: clamp(atoi(rest), 1, 8) }`
  * - `/ann <msg>`, `/announce <msg>`, and other `/` Battle.net slash commands (`0x6fb2084d` `w_flag = 3`
  *   -> `0x6fb20c27` `pBnetCallbacks->vtable[+0x14]` -> `Bnclient.dll` `0x6ff2c400` `SID_CHATCOMMAND 0x0E`)
  *   -> `{ kind: 'bncs_command', command }`
@@ -681,17 +683,15 @@ export function parseInGameChatInput(
       return { kind: 'local_fps' }
     }
 
-    // /players [N], /players set N, or /players:N
-    const playersMatch = trimmed.match(/^\/players(?:\s+(?:set\s+)?|\s*:\s*)(-?\d+)$|^\/players$/i)
-    if (playersMatch) {
-      if (playersMatch[1] === undefined) {
-        return { kind: 'local_players', count: null, valid: true }
-      }
-      const n = parseInt(playersMatch[1], 10)
-      if (n >= 1 && n <= 8) {
-        return { kind: 'local_players', count: n, valid: true }
-      }
-      return { kind: 'local_players', count: null, valid: false, rawCount: n }
+    // /players (`0x6fb20a4b`): `strncmp(s, "/players", 8)` then `atoi(s + 8)` clamped to 1..8
+    // (`<= 1 -> 1`, `>= 8 -> 8`); the input is rewritten to "players set to %d" and sent as a normal chat line.
+    if (/^\/players/i.test(trimmed)) {
+      return { kind: 'local_players', count: clampPlayersCount113c(atoiC(trimmed.slice(8))), valid: true }
+    }
+
+    // /nopickup (`0x6fb20aaa`): toggles the local no-pickup flag 0x6FBCC2F0, nothing is sent.
+    if (/^\/nopickup$/i.test(trimmed)) {
+      return { kind: 'local_nopickup' }
     }
 
     // /r <msg> or /reply <msg>
@@ -708,14 +708,25 @@ export function parseInGameChatInput(
     }
 
     // /w <target> <msg>, /whisper <target> <msg>, /msg <target> <msg>, /m <target> <msg> (`0x6fb20500`)
-    const whisperCmdMatch = trimmed.match(/^\/(?:w|whisper|msg|m)(?:\s+(\S+)(?:\s+([\s\S]*))?)?$/i)
+    const whisperCmdMatch = trimmed.match(/^(\/(?:whisper|msg|w|m))(?:\s+(\S+)(?:\s+([\s\S]*))?)?$/i)
     if (whisperCmdMatch) {
-      const target = (whisperCmdMatch[1] ?? '').trim()
-      const msg = (whisperCmdMatch[2] ?? '').trim().slice(0, CHAT_INPUT_MAX_CHARS)
+      const target = (whisperCmdMatch[2] ?? '').trim()
+      const msg = (whisperCmdMatch[3] ?? '').trim().slice(0, CHAT_INPUT_MAX_CHARS)
       if (!target || !msg) {
-        return { kind: 'local_error', errorKey: 'whisperUsage' }
+        // 0x6fb2059e: sprintf("<BattleNet>: Correct usage is: %s (name) (message)", command literal)
+        return { kind: 'local_usage', text: whisperUsageText113c(whisperCmdMatch[1]!.toLowerCase()) }
       }
       return { kind: 'whisper', target, text: msg }
+    }
+
+    // /help, /? (0x6fb20700): forwarded only without arguments; any argument prints the local usage line
+    // "<BattleNet>: Correct usage is: %s" (0x6fb20786) and nothing is sent.
+    const helpMatch = trimmed.match(/^(\/help|\/\?)(\s[\s\S]*)?$/i)
+    if (helpMatch) {
+      if ((helpMatch[2] ?? '').trim()) {
+        return { kind: 'local_usage', text: `<BattleNet>: Correct usage is: ${helpMatch[1]!.toLowerCase()}` }
+      }
+      return { kind: 'bncs_command', command: helpMatch[1]! }
     }
 
     // /ann <msg> or /announce <msg> (BNCS / PvPGN server-wide global announcement via SID_CHATCOMMAND 0x0E)
@@ -740,17 +751,28 @@ export function parseInGameChatInput(
     }
   }
 
-  // Also support bare "players N" (1.13c single-player parity)
-  const barePlayersMatch = trimmed.match(/^players(?:\s+(?:set\s+)?|\s*:\s*)(-?\d+)$/i)
-  if (barePlayersMatch && barePlayersMatch[1] !== undefined) {
-    const n = parseInt(barePlayersMatch[1], 10)
-    if (n >= 1 && n <= 8) {
-      return { kind: 'local_players', count: n, valid: true }
-    }
-    return { kind: 'local_players', count: null, valid: false, rawCount: n }
-  }
-
   return { kind: 'say', text: trimmed.slice(0, CHAT_INPUT_MAX_CHARS) }
+}
+
+/** D2Client.dll 0x6fb2059e whisper usage line; `command` is the matched literal (/msg, /m, /whisper, /w). */
+export function whisperUsageText113c(command: string): string {
+  return `<BattleNet>: Correct usage is: ${command} (name) (message)`
+}
+
+/** C runtime `atoi`: optional leading whitespace and sign, then decimal digits; anything else -> 0. */
+function atoiC(text: string): number {
+  const m = /^[\t\n\v\f\r ]*([+-]?\d+)/.exec(text)
+  return m ? parseInt(m[1]!, 10) : 0
+}
+
+/** `0x6fb20a83..0x6fb20ad9`: `n <= 1 -> 1`, `n >= 8 -> 8`. */
+export function clampPlayersCount113c(n: number): number {
+  return n <= 1 ? 1 : n >= 8 ? 8 : n
+}
+
+/** Chat line the 1.13c client sends for `/players N` (`0x6fb20aa2` sprintf "players set to %d"). */
+export function playersSetChatText113c(count: number): string {
+  return `players set to ${count}`
 }
 
 /**
