@@ -26,7 +26,7 @@ import { ENVIRONMENT, worthUsing } from './environment.ts'
 import { mercUpgrade } from './merc-gear.ts'
 import { XpLedger } from './xp-ledger.ts'
 import { hireIdOf, MERCENARIES, pickMercenary, type HireCandidate } from './mercenary.ts'
-import { gamblePick, gambleReserve, GAMBLING_RULES } from './gambling.ts'
+import { gamblePick, gambleReserve, gambleTreat, GAMBLING_RULES } from './gambling.ts'
 import { misfits, slotOf } from '../../common/items/loot-appraisal.ts'
 import type { EquipSlotId } from '../../common/items/inventory-model.ts'
 import { FlowField } from './flow-field.ts'
@@ -1903,7 +1903,8 @@ export class Autopilot {
     const bare = new Set(EQUIP_SLOTS.filter((slot) => !worn.has(slot)))
     const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
     const offered = this.store().filter((item) => assists.inventoryCare.appraise(item).tier !== 'junk')
-    const pick = gamblePick(offered, bare, Math.min(world.self.gold, world.self.gold + world.self.stashGold - gambleReserve(world.self.level)), this.priceList(GAMBLE), fits)
+    const fund = world.self.gold + world.self.stashGold - gambleReserve(world.self.level)
+    const pick = gamblePick(offered, bare, Math.min(world.self.gold, fund), this.priceList(GAMBLE), fits, { fillFirst: this.bare() > 0, treat: gambleTreat(fund) })
     const before = world.self.gold
     if (!pick || hudManager.leftPanel !== 'vendor' || !hudModel.vendorBuy(pick.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
     this.toast('Gambled', `${pick.code.trim()} for ${(before - world.self.gold).toLocaleString('en-US')} gold`, 'gold')
