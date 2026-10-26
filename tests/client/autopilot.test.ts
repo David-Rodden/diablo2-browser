@@ -38,7 +38,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     },
     hasLootNearby: () => false,
     dodging: () => false,
-    inventoryCare: { busy: false, hold: false, config: null, junk: [], clutter: [], surplus: [] as unknown[], excessCharms: [] as unknown[], untidy: [] as unknown[], runeCube: null, upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
+    inventoryCare: { busy: false, hold: false, config: null, junk: [], clutter: [], surplus: [] as unknown[], excessCharms: [] as unknown[], sellable: [] as unknown[], untidy: [] as unknown[], runeCube: null, upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(async () => 0), appraise: () => ({ tier: 'keep' }) },
     keepUp: () => false,
     canRaise: () => false,
     walkTo: vi.fn(),
@@ -683,6 +683,13 @@ describe('autopilot', () => {
     expect([assists.inventoryCare.wearUpgrades.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Putting on better gear'])
   })
 
+  it('puts on better gear it picked up without waiting for town', () => {
+    const { assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    assists.inventoryCare.upgrades = [{ id: 9 }]
+    tick()
+    expect([assists.inventoryCare.wearUpgrades.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Putting on better gear'])
+  })
+
   it('opens the quest chest before going back to the loot around it', () => {
     const { assists, units, guide, tick } = setup({ hint: 'Open the chest', target: { x: 110, y: 100, label: 'Chest', unit: { id: 80, kind: 'object' } } })
     Object.assign(guide, { currentPlan: { goal: { level: 2, title: 'Chest' }, target: { x: 110, y: 100, unit: { id: 80, kind: 'object' } } } })
@@ -1060,10 +1067,10 @@ describe('autopilot', () => {
 
   it('heads to town to sell and stash once the bags are full', () => {
     const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
-    for (let i = 0; i < 40; i++) world.containers.inventory.set(i + 1, { id: i + 1, code: 'jew', gridX: i % 10, gridY: Math.floor(i / 10), invWidth: 1, invHeight: 1 })
+    for (let i = 0; i < 40; i++) world.containers.inventory.set(i + 1, { id: i + 1, code: 'jew', identified: true, gridX: i % 10, gridY: Math.floor(i / 10), invWidth: 1, invHeight: 1 })
     tick()
     expect(assists.castTownPortal).not.toHaveBeenCalled()
-    Object.assign(assists.inventoryCare, { surplus: [world.containers.inventory.get(1), world.containers.inventory.get(2)] })
+    Object.assign(assists.inventoryCare, { sellable: [world.containers.inventory.get(1), world.containers.inventory.get(2)] })
     tick()
     expect(guide.pilotStatus).toBe('Heading to town by portal: bags are full')
   })

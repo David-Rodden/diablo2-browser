@@ -57,6 +57,12 @@ describe('keeping only what the character will use', () => {
     expect(['wnd', 'sbb', 'hax'].map((code) => appraiseItem(plain(code), context(barb)).upgradeSlot)).toEqual([undefined, undefined, 'weapon1'])
   })
 
+  it('puts a better shield or head in the shield hand, never in place of the weapon', () => {
+    const worn = [item({ id: 50, code: 'wnd', identified: true, bodyLoc: 4 }), item({ id: 51, code: 'buc', identified: true, bodyLoc: 5, defense: 4 } as Partial<ItemData> & { code: string })]
+    const head = item({ id: 52, code: 'ne1', quality: 4, identified: true, defense: 8, stats: [{ statId: 7, param: 0, value: 20 << 8 }] } as Partial<ItemData> & { code: string })
+    expect(appraiseItem(head, context(skeleMancer, { equipped: worn })).upgradeSlot).toBe('weapon2')
+  })
+
   it('treats only the best carried piece for a slot as the upgrade', () => {
     const [weak, strong] = [helm(10, 20), helm(11, 40)]
     const ctx = context(coldSorc, { carried: [weak, strong], owned: [weak, strong] })
@@ -127,7 +133,7 @@ describe('loot appraisal', () => {
 
   it('reads life and mana in the fixed point they arrive in, so a small charm is no treasure', () => {
     const grand = (stats: ItemData['stats']) => appraiseItem(item({ code: 'cm3', identified: true, invHeight: 3, stats }), context(zealot))
-    expect(grand([{ statId: 7, param: 0, value: 8 << 8 }])).toMatchObject({ tier: 'keep', locked: false })
+    expect(grand([{ statId: 7, param: 0, value: 8 << 8 }])).toMatchObject({ tier: 'junk', locked: false })
     expect(grand([{ statId: 19, param: 0, value: 0 }]).tier).toBe('junk')
     expect(grand([{ statId: 7, param: 0, value: 40 << 8 }]).tier).toBe('good')
     expect(grand([{ statId: 7, param: 0, value: 12 << 8 }])).toMatchObject({ tier: 'keep', locked: false })

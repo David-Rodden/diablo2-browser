@@ -64,3 +64,21 @@ describe('charms in the bags', () => {
     expect(bag.stashable.map((out) => out.id)).toEqual([])
   })
 })
+
+describe('putting on better gear', () => {
+  it('gives up on a piece the server will not let it wear and sells it instead', async () => {
+    const helm = item({ id: 7, code: 'cap', container: 'inventory', stats: life(40) })
+    const bag = care([], [helm])
+    const { containers } = (bag as unknown as { host: { world: { containers: { cursor: ItemData | null; inventory: Map<number, ItemData> } } } }).host.world
+    containers.cursor = null
+    const hudModel = {
+      pickupItemToCursor: (id: number) => ((containers.cursor = containers.inventory.get(id) ?? null), containers.inventory.delete(id)),
+      equipItem: () => true,
+      placeCursorItem: (id: number) => (containers.inventory.set(id, containers.cursor!), (containers.cursor = null)),
+    }
+    Object.assign((bag as unknown as { host: object }).host, { hudModel })
+    expect(bag.upgrades.map((up) => up.id)).toEqual([7])
+    expect(await bag.wearUpgrades()).toBe(0)
+    expect([bag.upgrades, bag.sellable.map((sold) => sold.id), containers.cursor]).toEqual([[], [7], null])
+  }, 20_000)
+})
