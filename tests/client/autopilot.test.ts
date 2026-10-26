@@ -170,6 +170,30 @@ describe('autopilot', () => {
     expect(lair.hudModel.useItem).toHaveBeenCalledWith(7)
   })
 
+  it('opens the shop again when the server resets the NPC before the goods arrive', async () => {
+    const { world, assists, hudManager, hudModel, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    units.push(unit({ id: 7, classId: 148, x: 101, y: 100, name: 'Akara' }))
+    world.self.gold = 1000
+    const menu = { npcId: 7, submenu: 'main', options: [{ id: 'trade' }] }
+    assists.use.mockImplementation(() => void (hudManager.worldPanels.npcMenu = menu))
+    const potion = { id: 60, code: 'hp1', invWidth: 1, invHeight: 1 }
+    let opened = 0
+    hudModel.handleNpcMenuAction.mockImplementation(() => {
+      hudManager.leftPanel = 'vendor'
+      hudManager.worldPanels.npcMenu = null
+      if (opened++ > 0) return
+      setTimeout(() => {
+        hudManager.leftPanel = 'none'
+        hudManager.worldPanels.npcMenu = menu
+        world.containers.shop.set(60, potion)
+      }, 50)
+    })
+    Object.assign(hudModel, { vendorBuy: vi.fn(() => true) })
+    tick()
+    await vi.waitFor(() => expect(hudModel.handleNpcMenuAction).toHaveBeenCalledTimes(2), { timeout: 5000 })
+    await vi.waitFor(() => expect((hudModel as unknown as { vendorBuy: ReturnType<typeof vi.fn> }).vendorBuy).toHaveBeenCalledWith(60, false), { timeout: 5000 })
+  })
+
   it('asks the server for fresh quest state when the step has not moved for a while', () => {
     const { hudModel, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     tick()

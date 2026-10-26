@@ -93,6 +93,9 @@ const BODY_GONE_MS = 3000
 const PILE_NEAR = 6
 const UNLOAD_MS = 600_000
 const SHOP_FILL_MS = 3000
+const SHOP_SETTLE_MS = 600
+const SHOP_TRIES = 3
+const VENDOR_ACTIONS = new Set(['trade', 'trade_repair', 'gamble'])
 const LAST_STAND_MS = 20_000
 const LAST_STAND_KITE = 0.35
 const UNLOAD_ITEMS = 2
@@ -1769,9 +1772,11 @@ export class Autopilot {
       if (!(await waitFor(() => Boolean(hudManager.worldPanels.npcMenu) || Boolean(hudManager.worldPanels.npcSpeech), 6000))) return
       if (hudManager.worldPanels.npcSpeech) hudManager.worldPanels.closeNpcSpeech()
       if (errand.action) {
-        hudModel.handleNpcMenuAction(errand.action, unit.id)
-        await waitFor(() => hudManager.leftPanel === 'vendor' || !hudManager.worldPanels.npcMenu, 5000)
-        if (hudManager.leftPanel === 'vendor') await waitFor(() => this.store().length > 0, SHOP_FILL_MS)
+        if (VENDOR_ACTIONS.has(errand.action)) await this.openShop(errand.action, unit.id)
+        else {
+          hudModel.handleNpcMenuAction(errand.action, unit.id)
+          await waitFor(() => hudManager.leftPanel === 'vendor' || !hudManager.worldPanels.npcMenu, 5000)
+        }
         await waitFor(() => this.host.assists.inventoryCare.busy, CARE_START_MS)
         await waitFor(() => !this.host.assists.inventoryCare.busy, 20000)
         await errand.work?.()
@@ -1780,6 +1785,17 @@ export class Autopilot {
       hudModel.closeActiveNpcPanel()
       hudModel.cancelNpcSession(unit.id)
     }
+  }
+
+  private async openShop(action: string, npcId: number): Promise<boolean> {
+    const { hudManager, hudModel } = this.host
+    for (let tries = 0; tries < SHOP_TRIES && hudModel !== null; tries++) {
+      hudModel.handleNpcMenuAction(action, npcId)
+      const open = await waitFor(() => hudManager.leftPanel === 'vendor' && this.store().length > 0, SHOP_FILL_MS)
+      if (open && !(await waitFor(() => hudManager.leftPanel !== 'vendor', SHOP_SETTLE_MS))) return true
+      if (!(await waitFor(() => Boolean(hudManager.worldPanels.npcMenu), SHOP_FILL_MS))) return false
+    }
+    return false
   }
 
   private async reach(find: () => ClientUnit | undefined, errand: Errand): Promise<ClientUnit | null> {
