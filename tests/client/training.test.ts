@@ -31,6 +31,7 @@ describe('training before a hard goal', () => {
   })
 
   it('never trains in the Durance from the Pandemonium Fortress without its waypoint, since no portal leads back', () => {
+    expect(trainingGround(107, me(30), new Set([103, 107]), new Set())).not.toBe(108)
     expect(shortestRoute(103, 102, new Set([103, 107]))).toBeNull()
     expect(shortestRoute(103, 102, new Set([103, 101]))?.length).toBeGreaterThan(0)
   })
