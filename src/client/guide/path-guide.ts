@@ -10,9 +10,10 @@ import type { ClientUnit } from '../world/client-unit.ts'
 import { FlowField } from './flow-field.ts'
 import { ChevronFlow, type Chevron } from './chevron-flow.ts'
 import { fromNearest, rounded } from './ribbon-trail.ts'
-import type { Find, FindKey } from './quest-stages.ts'
+import { OPTIONAL_ROWS, type Find, type FindKey } from './quest-stages.ts'
 import { currentGoal, levelName, nextStep, throughTomb, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
 import { spriteOutlines, type OutlineTint } from './sprite-outline.ts'
+import { SkipMemory } from './skip-memory.ts'
 import { WaypointMemory } from './waypoint-memory.ts'
 import { WAYPOINT_LEVELS } from './level-links.ts'
 
@@ -225,6 +226,7 @@ export class PathGuide {
   private plannedAt = { ms: Number.NEGATIVE_INFINITY, x: 0, y: 0, level: 0 }
   private field: { readonly view: LevelView; readonly field: FlowField } | null = null
   private readonly memory = new WaypointMemory()
+  private readonly skipMemory = new SkipMemory()
   private readonly flow = new ChevronFlow()
   private readonly fieldFor: FieldSource = (view, target) => {
     const cached = this.field
@@ -267,6 +269,7 @@ export class PathGuide {
 
   skip(row: number): void {
     this.skipped.add(row)
+    if (OPTIONAL_ROWS.has(row)) this.skipMemory.add(this.host.character?.() ?? '', row)
     this.plannedAt = { ...this.plannedAt, ms: Number.NEGATIVE_INFINITY }
   }
 
@@ -278,6 +281,7 @@ export class PathGuide {
     const moved = Math.hypot(x - this.plannedAt.x, y - this.plannedAt.y) >= REPLAN_MOVE
     if (since >= REPLAN_IDLE_MS || level !== this.plannedAt.level || (since >= REPLAN_MS && moved)) {
       const character = this.host.character?.() ?? ''
+      this.skipMemory.rows(character).forEach((row) => this.skipped.add(row))
       const fromMenu = this.host.waypoints()
       const waypoints = this.memory.known(character, level, fromMenu)
       this.knownWaypoints = waypoints

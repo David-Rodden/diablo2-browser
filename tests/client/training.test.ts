@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { shortestRoute } from '../../src/client/guide/route.ts'
+import { SkipMemory } from '../../src/client/guide/skip-memory.ts'
 import { TrainingFloor } from '../../src/client/guide/training-floor.ts'
 import { bareSlots, lockedLevels, monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
 
@@ -94,5 +95,15 @@ describe('training before a hard goal', () => {
     const naked = trainingGround(40, me(22, 50_000, 6), waypoints, new Set())!
     expect(monsterLevel(naked, 0)).toBeLessThanOrEqual(22 - 1 - 9)
     expect(monsterLevel(naked, 0)).toBeLessThan(monsterLevel(dressed, 0))
+  })
+})
+
+describe('skipped side quests', () => {
+  it('are remembered per character and difficulty', () => {
+    const saved = new Map<string, string>()
+    const store = { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => void saved.set(key, value) }
+    new SkipMemory(store).add('AutoPalA:0', 17)
+    new SkipMemory(store).add('AutoPalA:0', 17)
+    expect([new SkipMemory(store).rows('AutoPalA:0'), new SkipMemory(store).rows('AutoPalA:1')]).toEqual([[17], []])
   })
 })
