@@ -6,6 +6,7 @@ import type { HudModel } from '../ui-model/hud-model.ts'
 import { depositItemsToStash, waitFor } from '../ui-model/stash-deposit.ts'
 import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientWorld } from '../world/client-world.ts'
+import { runeCube, surplus, type Holding, type RuneCube } from '../../common/items/stash-tidy.ts'
 import { freeSpots, planRoom, type JudgedItem, type RoomPlan } from './auto-loot.ts'
 
 export interface InventoryCareConfig {
@@ -34,7 +35,10 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 export class InventoryCare {
   config: InventoryCareConfig | null = null
   readonly discarded = new Set<number>()
+  private readonly unsold = new Set<number>()
   hardUp = false
+  hold = false
+  identifiable = false
   private job: Promise<unknown> | null = null
   private readonly appraisals = new WeakMap<ItemData, { readonly context: AppraisalContext; readonly appraisal: Appraisal }>()
   private visited: 'vendor' | 'stash' | null = null
@@ -79,7 +83,7 @@ export class InventoryCare {
     const panel = this.host.hudManager.leftPanel
     const visit = panel === 'vendor' || panel === 'stash' ? panel : null
     if (visit === null) this.visited = null
-    if (visit === null || visit === this.visited || this.busy || this.config === null || this.host.world.containers.cursor !== null) return
+    if (visit === null || visit === this.visited || this.busy || this.hold || this.config === null || this.host.world.containers.cursor !== null) return
     this.visited = visit
     if (visit === 'vendor' && this.config.sellJunk) this.run(() => this.sellJunk())
     if (visit === 'stash' && this.config.stashValuables) this.run(() => this.stashValuables())
@@ -103,15 +107,49 @@ export class InventoryCare {
     if (hudModel === null) return
     const goldBefore = world.self.gold
     let sold = 0
-    for (const item of [...this.junk, ...this.clutter, ...(this.hardUp ? this.spares : [])]) {
-      if (hudManager.leftPanel !== 'vendor' || !hudModel.vendorSell(item.id) || !(await waitFor(() => !world.containers.inventory.has(item.id)))) break
+    for (const item of new Set([...this.junk, ...this.clutter, ...this.surplus, ...(this.hardUp ? this.spares : [])])) {
+      if (hudManager.leftPanel !== 'vendor') break
+      if (!hudModel.vendorSell(item.id) || !(await waitFor(() => !world.containers.inventory.has(item.id)))) {
+        this.unsold.add(item.id)
+        break
+      }
       sold++
     }
     if (sold > 0) this.toast(`Sold ${plural(sold, 'junk item')}`, `+${Math.max(0, world.self.gold - goldBefore).toLocaleString('en-US')} gold`, 'gold')
   }
 
   get stashable(): ItemData[] {
-    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && STASHED_KINDS.has(appraisal.kind) && TIER_RANK[appraisal.tier] >= TIER_RANK.good)
+    const spare = this.spareIds()
+    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && STASHED_KINDS.has(appraisal.kind) && TIER_RANK[appraisal.tier] >= TIER_RANK.good).filter(
+      (item) => !spare.has(item.id) && (item.identified || !this.identifiable),
+    )
+  }
+
+  private holdings(): Holding[] {
+    const { inventory, stash, cube } = this.host.world.containers
+    return [...inventory.values(), ...stash.values(), ...cube.values()].map((item) => ({ item, appraisal: this.appraise(item) }))
+  }
+
+  private spareIds(): ReadonlySet<number> {
+    return surplus(this.holdings())
+  }
+
+  get surplus(): ItemData[] {
+    const spare = this.spareIds()
+    return [...this.host.world.containers.inventory.values()].filter((item) => spare.has(item.id) && !this.unsold.has(item.id))
+  }
+
+  get untidy(): ItemData[] {
+    const spare = this.spareIds()
+    const { stash, inventory } = this.host.world.containers
+    const free = INVENTORY_CELLS - [...inventory.values()].reduce((cells, item) => cells + item.invWidth * item.invHeight, 0)
+    return [...stash.values()]
+      .filter((item) => spare.has(item.id) || (this.identifiable && !item.identified))
+      .reduce<ItemData[]>((taken, item) => (free - [...taken, item].reduce((cells, out) => cells + out.invWidth * out.invHeight, 0) >= LOOT_ROOM ? [...taken, item] : taken), [])
+  }
+
+  get runeCube(): RuneCube | null {
+    return runeCube(this.holdings(), appraisalContextOf(this.host.world).build)
   }
 
   get spares(): ItemData[] {

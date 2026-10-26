@@ -1,3 +1,4 @@
+import { RUNE_INFO } from '../../common/items/gems-data.ts'
 import { slotOf } from '../../common/items/loot-appraisal.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { freeSpots } from '../input/auto-loot.ts'
@@ -6,6 +7,7 @@ import { waitFor } from '../ui-model/stash-deposit.ts'
 import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import RECIPES from './data/cube-recipes.json'
+import type { RuneCube } from '../../common/items/stash-tidy.ts'
 
 const CUBE = 'box'
 const CUBE_BUFFER = 3
@@ -40,7 +42,25 @@ export function readyRecipe(world: ClientWorld): ReadyRecipe | null {
   return found ? { name: found[0], recipe: found[1], inStash: [CUBE, ...found[1].inputs].filter((code) => !onHand.has(code) && stored.has(code)) } : null
 }
 
-export const withdraw = (host: CubeHost, codes: readonly string[]) => withdrawItems(host, [...host.world.containers.stash.values()].filter((stored) => codes.includes(codeOf(stored))))
+export function runeRecipe(world: ClientWorld, cube: RuneCube | null): ReadyRecipe | null {
+  if (cube === null || !owned(world).some((item) => codeOf(item) === CUBE)) return null
+  const onHand = carried(world).filter((item) => codeOf(item) === cube.rune).length
+  const box = carried(world).some((item) => codeOf(item) === CUBE) ? [] : [CUBE]
+  const name = (code: string) => RUNE_INFO[code]?.letter ?? code
+  return {
+    name: `${cube.count} ${name(cube.rune)} into ${name(cube.makes)}`,
+    recipe: { inputs: Array<string>(cube.count).fill(cube.rune), makes: cube.makes },
+    inStash: [...box, ...Array<string>(Math.max(0, cube.count - onHand)).fill(cube.rune)],
+  }
+}
+
+const pickStored = (world: ClientWorld, codes: readonly string[]) =>
+  codes.reduce<ItemData[]>((picked, code) => {
+    const item = [...world.containers.stash.values()].find((stored) => codeOf(stored) === code && !picked.includes(stored))
+    return item ? [...picked, item] : picked
+  }, [])
+
+export const withdraw = (host: CubeHost, codes: readonly string[]) => withdrawItems(host, pickStored(host.world, codes))
 
 export async function withdrawItems(host: CubeHost, items: readonly ItemData[]): Promise<boolean> {
   for (const item of items) if (!(await move(host, item, INVENTORY_BUFFER, host.world.containers.inventory))) return false
