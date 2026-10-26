@@ -9,7 +9,7 @@ import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import { CANONICAL_113C_OBJECTS } from '../../common/world/objects-meta.ts'
-import { AutoPotionPlanner, bottomBeltPotions, inventoryPotions, potionShortage, wantedPotionPickup, type AutoPotionThresholds, type PotionDrink } from './auto-potion.ts'
+import { AutoPotionPlanner, STATE_HEALTHPOT, bottomBeltPotions, inventoryPotions, potionShortage, wantedPotionPickup, type AutoPotionThresholds, type PotionDrink } from './auto-potion.ts'
 import { beltColumnKinds, beltRefillPick, type BeltColumnKinds } from './belt-refill.ts'
 import type { CameraLike, DispatchedCommandRecord } from './command-mapper.ts'
 import { townPortalRefusalText, townPortalSource, type TownPortalRefusal } from './town-portal.ts'
@@ -33,7 +33,6 @@ const CASH_KINDS = new Set(['magic', 'rare', 'set', 'unique'])
 const AUTO_COMBAT_REPEAT_MS = 40
 const HIT_CONFIRM_SLACK_MS = 120
 const DEFAULT_PING_MS = 200
-const STATE_HEALTHPOT = 100
 const STATE_MANAPOT = 106
 const REACH_CACHE_MS = 400
 const REACH_MAX_NODES = 4000
