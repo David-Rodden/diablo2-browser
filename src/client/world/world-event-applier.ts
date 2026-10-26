@@ -4892,7 +4892,7 @@ export function applyUnitModeImmediateImpl(
       // Doors take DoorSetMode 0x6fad5040, which never touches a light. UnitMode without an event code
       // (S2C 0x98, 0x76, the port's own remaps) never touches the light either.
       const objectRecord = getObjectsTxtRecord113c(unit.classId)
-      if (objectRecord.isDoor === 0) {
+      if (objectRecord.isDoor === 0 && resolvedMode < objectRecord.lit.length) {
         if (prevObjectMode !== resolvedMode) {
           resetObjectAnim(unit, objectRecord)
         }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { shortestRoute } from '../../src/client/guide/route.ts'
 import { TrainingFloor } from '../../src/client/guide/training-floor.ts'
 import { bareSlots, lockedLevels, monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
 
@@ -27,6 +28,11 @@ describe('training before a hard goal', () => {
     const store = { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => void saved.set(key, value) }
     new TrainingFloor(store).set('AutoSinA:0', 108, 31)
     expect([new TrainingFloor(store).of('AutoSinA:0', 108), new TrainingFloor(store).of('AutoSinA:0', 102), new TrainingFloor(store).of('AutoPalA:0', 108)]).toEqual([31, 0, 0])
+  })
+
+  it('never trains in the Durance from the Pandemonium Fortress without its waypoint, since no portal leads back', () => {
+    expect(shortestRoute(103, 102, new Set([103, 107]))).toBeNull()
+    expect(shortestRoute(103, 102, new Set([103, 101]))?.length).toBeGreaterThan(0)
   })
 
   it('goes gathering gear first when most of the gear slots are empty', () => {
