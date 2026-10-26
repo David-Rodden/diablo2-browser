@@ -414,6 +414,15 @@ describe('autopilot', () => {
     expect(pilot.active).toBe(false)
   })
 
+  it('trains somewhere else instead of asking for help when the training ground is out of reach', () => {
+    const { pilot, hudManager, guide, tick } = setup({ hint: 'Training in Cold Plains', target: { x: 300, y: 300, label: 'Cold Plains' } })
+    Object.assign(pilot, { questLevel: 5, assessedAt: Number.POSITIVE_INFINITY, training: { level: 12, gold: 0, bare: 0, why: 'Training', ground: 3, since: 0 } })
+    Array.from({ length: 1400 }, () => tick())
+    expect([pilot.active, hudManager.toasts.push.mock.calls.some(([toast]) => toast.title === 'Training somewhere else')]).toEqual([true, true])
+    expect(guide.detour).toMatchObject({ title: 'Training' })
+    expect(guide.detour).not.toMatchObject({ level: 3 })
+  })
+
   it('does not count a long fight as being stuck', () => {
     const { assists, guide, tick } = setup({ hint: 'Kill Duriel', target: { x: 300, y: 300, label: 'Duriel' } })
     assists.fighting = true
@@ -705,6 +714,25 @@ describe('autopilot', () => {
     assists.inventoryCare.upgrades = [{ id: 9 }]
     tick()
     expect([assists.inventoryCare.wearUpgrades.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Putting on better gear'])
+  })
+
+  it("walks to Mephisto's platform and waits for the bridge before taking the red portal", () => {
+    const target = { x: 17601, y: 8070, label: 'Objective', unit: { id: 80, kind: 'object' as const } }
+    const { world, assists, units, guide, tick } = setup({ hint: 'Take the red portal', target }, 102)
+    Object.assign(guide, { currentPlan: { goal: { level: 102, title: 'Pandemonium Fortress' }, hint: 'Take the red portal', target } })
+    Object.assign(world.self, { x: 17616, y: 8070 })
+    Array.from({ length: 16 }, (_, id) => world.containers.belt.set(id, { id, code: id % 4 < 2 ? 'hp3' : 'mp3' }))
+    units.push(unit({ id: 80, unitType: 'object', classId: 342, x: 17601, y: 8070 }))
+    tick()
+    expect([assists.use.mock.calls.length, assists.stepTo.mock.calls.length]).toEqual([0, 0])
+    Object.assign(world.self, { x: 17590, y: 8068 })
+    tick()
+    expect(guide.pilotStatus).toBe('Waiting for the bridge')
+    tick(1600)
+    expect(assists.stepTo).toHaveBeenLastCalledWith(17601, 8070, expect.any(Number))
+    Object.assign(world.self, { x: 17600, y: 8070 })
+    tick(1000)
+    expect(assists.use.mock.calls[0]?.[0]).toBe(units[0])
   })
 
   it('opens the quest chest before going back to the loot around it', () => {
