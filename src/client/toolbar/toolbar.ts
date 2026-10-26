@@ -109,6 +109,7 @@ export interface ToolbarCallbacks {
   readonly onViewportChange?: ((profile: ViewportProfile) => void) | undefined
   readonly onHudLayoutModeChange?: ((mode: HudLayoutMode) => void) | undefined
   readonly onPluginsToggle?: (() => void) | undefined
+  readonly onRefreshDisplay?: (() => void) | undefined
   readonly onClearCache?: (() => void | Promise<void>) | undefined
   /** Fullscreen enter/exit failed (default: `console.error`). */
   readonly onFullscreenError?: ((message: string) => void) | undefined
@@ -162,14 +163,22 @@ const DROP_BADGE_PATTERN =
 
 /**
  * Persistent 32px Top DOM Toolbar (`#d2-toolbar`) with primary controls:
- * - Far Left: Plugins modal button (`#d2-toolbar-plugins-btn`) + Dynamic Plugin Contribution Slot (`#d2-toolbar-plugin-slot`)
+ * - Far Left: QQ Group info & click-to-copy button (`#d2-toolbar-qq-btn`) + Plugins modal button (`#d2-toolbar-plugins-btn`) + Dynamic Plugin Contribution Slot (`#d2-toolbar-plugin-slot`)
  * - Far Right (`#d2-toolbar-right`): Connection Status + RTT (`ms`) | Language Switch Icon Button (`#d2-toolbar-lang-btn`) + Config Modal Icon Button (`#d2-toolbar-config-btn`) + Bug Report Icon Button (`#d2-toolbar-bug-btn`)
  * - Modals:
  *   - Config Modal (`#d2-config-modal-overlay`, `[data-d2-modal-overlay="config"]`): Fullscreen/Windowed, Resolution (`#d2-toolbar-viewport-select`), FPS (`#d2-toolbar-worldfps-select`), Master Volume (`#d2-toolbar-mute-btn` + `#d2-toolbar-volume-slider`), Clear Asset Cache (`#d2-toolbar-cache-clear-btn`)
  *   - Bug Report Modal (`#d2-bug-modal-overlay`, `[data-d2-modal-overlay="bug-report"]`): Submits structured bug reports to `POST /api/bugs`
  */
+export const TOOLBAR_QQ_GROUP = '754468203'
+
+export const TOOLBAR_QQ_ICON_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M2.5 4.5A2 2 0 0 1 4.5 2.5h7A2 2 0 0 1 13.5 4.5v5A2 2 0 0 1 11.5 11.5H6.5l-3 2.5V4.5Z"/><path d="M5.5 6.5h5M5.5 9h3"/></svg>'
+
 export const TOOLBAR_PLUGINS_ICON_SVG =
   '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" focusable="false" aria-hidden="true"><path d="M4 5h1.5v-.5a1.5 1.5 0 0 1 3 0V5H10a1 1 0 0 1 1 1v1.5h.5a1.5 1.5 0 0 1 0 3H11V12a1 1 0 0 1-1 1H8.5v-.4a1.5 1.5 0 0 0-3 0V13H4a1 1 0 0 1-1-1v-1.5h.4a1.5 1.5 0 0 0 0-3H3V6a1 1 0 0 1 1-1Z"/></svg>'
+
+export const TOOLBAR_REFRESH_ICON_SVG =
+  '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89L2.5 10.5"/><path d="M2.5 13.5v-3h3"/><path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5"/><path d="M13.5 2.5v3h-3"/></svg>'
 
 export const TOOLBAR_LANG_ICON_SVG =
   '<svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2a9.5 9.5 0 0 1 2.6 6A9.5 9.5 0 0 1 8 14a9.5 9.5 0 0 1-2.6-6A9.5 9.5 0 0 1 8 2Z"/></svg>'
@@ -269,6 +278,9 @@ export class Toolbar {
   private statusDotEl: HTMLElement | null = null
   private statusTextEl: HTMLElement | null = null
   private rttTextEl: HTMLElement | null = null
+  private refreshBtnEl: HTMLButtonElement | null = null
+  private refreshBtnIconEl: HTMLElement | null = null
+  private refreshSpinTimer: ReturnType<typeof setTimeout> | null = null
   private langBtnEl: HTMLButtonElement | null = null
   private langBtnIconEl: HTMLElement | null = null
   private langBtnBadgeEl: HTMLElement | null = null
@@ -327,6 +339,11 @@ export class Toolbar {
   private bugStatusMsgEl: HTMLElement | null = null
   private bugCancelBtnEl: HTMLButtonElement | null = null
   private bugSubmitBtnEl: HTMLButtonElement | null = null
+
+  private qqBtnEl: HTMLButtonElement | null = null
+  private qqBtnIconEl: HTMLElement | null = null
+  private qqBtnLabelEl: HTMLElement | null = null
+  private qqCopiedTimeoutId: ReturnType<typeof setTimeout> | null = null
 
   private pluginsBtnEl: HTMLButtonElement | null = null
   private pluginsBtnIconEl: HTMLElement | null = null
@@ -695,6 +712,96 @@ export class Toolbar {
     }
     if (this.bugModalOpen) {
       this.closeBugModal()
+    }
+  }
+
+  triggerRefresh(): void {
+    this.closeModals()
+    if (this.refreshBtnEl) {
+      this.refreshBtnEl.className = 'd2-toolbar__btn d2-toolbar__btn--icon is-refreshing'
+      if (this.refreshSpinTimer !== null) {
+        clearTimeout(this.refreshSpinTimer)
+      }
+      this.refreshSpinTimer = setTimeout(() => {
+        this.refreshSpinTimer = null
+        if (this.refreshBtnEl) {
+          this.refreshBtnEl.className = 'd2-toolbar__btn d2-toolbar__btn--icon'
+        }
+      }, 450)
+    }
+    this.callbacks.onRefreshDisplay?.()
+  }
+
+  async copyQqGroup(): Promise<boolean> {
+    const text = TOOLBAR_QQ_GROUP
+    let copied = false
+    try {
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === 'function'
+      ) {
+        await navigator.clipboard.writeText(text)
+        copied = true
+      }
+    } catch {
+      copied = false
+    }
+    if (!copied) {
+      copied = this.fallbackCopyText(text)
+    }
+    if (copied) {
+      this.showQqCopiedFeedback()
+    }
+    return copied
+  }
+
+  private fallbackCopyText(text: string): boolean {
+    if (typeof document === 'undefined') return false
+    try {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.left = '-9999px'
+      textarea.style.top = '0'
+      textarea.style.opacity = '0'
+      document.body?.appendChild(textarea)
+      if (typeof textarea.select === 'function') {
+        textarea.select()
+      }
+      if (typeof textarea.setSelectionRange === 'function') {
+        textarea.setSelectionRange(0, text.length)
+      }
+      const ok = typeof document.execCommand === 'function' ? document.execCommand('copy') : true
+      textarea.remove()
+      return Boolean(ok)
+    } catch {
+      return false
+    }
+  }
+
+  private showQqCopiedFeedback(): void {
+    if (this.qqCopiedTimeoutId !== null) {
+      clearTimeout(this.qqCopiedTimeoutId)
+      this.qqCopiedTimeoutId = null
+    }
+    const lang = this.store.get().lang || getGameLang()
+    const copiedText = tToolbar('toolbar.qq.copied', lang)
+    if (this.qqBtnLabelEl) {
+      this.qqBtnLabelEl.textContent = copiedText
+    }
+    if (this.qqBtnEl) {
+      this.qqBtnEl.className = 'd2-toolbar__btn d2-toolbar__qq-btn d2-toolbar__btn--active'
+    }
+    if (typeof setTimeout === 'function') {
+      this.qqCopiedTimeoutId = setTimeout(() => {
+        this.qqCopiedTimeoutId = null
+        if (this.qqBtnEl) {
+          this.qqBtnEl.className = 'd2-toolbar__btn d2-toolbar__qq-btn'
+        }
+        this.syncDom()
+      }, 1500)
     }
   }
 
@@ -1074,6 +1181,14 @@ export class Toolbar {
   }
 
   destroy(): void {
+    if (this.refreshSpinTimer !== null) {
+      clearTimeout(this.refreshSpinTimer)
+      this.refreshSpinTimer = null
+    }
+    if (this.qqCopiedTimeoutId !== null) {
+      clearTimeout(this.qqCopiedTimeoutId)
+      this.qqCopiedTimeoutId = null
+    }
     this.unsubscribeStore?.()
     this.unsubscribeStore = null
     this.unsubscribeLang?.()
@@ -1257,6 +1372,15 @@ a.d2-toolbar__btn {
   padding: 0 7px;
   min-width: 26px;
 }
+.d2-toolbar__qq-btn {
+  font-family: "JetBrains Mono", "Consolas", var(--font-body, serif);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.d2-toolbar__qq-btn:hover:not(:disabled) {
+  border-color: #d4bc7c;
+  color: #fff4ce;
+}
 .d2-toolbar__btn--primary {
   background: linear-gradient(180deg, #5e4923 0%, #332711 100%);
   border-color: #c7a456;
@@ -1280,6 +1404,17 @@ a.d2-toolbar__btn:active {
   width: 12px;
   height: 12px;
   display: block;
+}
+@keyframes d2-toolbar-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+#d2-toolbar-refresh-btn.is-refreshing .d2-toolbar__btn-icon svg {
+  animation: d2-toolbar-refresh-spin 420ms ease-out;
 }
 .d2-toolbar__btn-label {
   display: inline-flex;
@@ -1664,6 +1799,25 @@ a.d2-toolbar__btn:active {
     root.id = 'd2-toolbar'
     root.className = 'd2-toolbar'
 
+    // Far Left 0: QQ Group info & click-to-copy button (#d2-toolbar-qq-btn)
+    const qqBtn = doc.createElement('button')
+    qqBtn.type = 'button'
+    qqBtn.id = 'd2-toolbar-qq-btn'
+    qqBtn.className = 'd2-toolbar__btn d2-toolbar__qq-btn'
+    qqBtn.setAttribute('data-copy', TOOLBAR_QQ_GROUP)
+    const qqBtnIcon = doc.createElement('span')
+    qqBtnIcon.className = 'd2-toolbar__btn-icon'
+    qqBtnIcon.setAttribute('aria-hidden', 'true')
+    qqBtnIcon.innerHTML = TOOLBAR_QQ_ICON_SVG
+    const qqBtnLabel = doc.createElement('span')
+    qqBtnLabel.id = 'd2-toolbar-qq-label'
+    qqBtnLabel.className = 'd2-toolbar__btn-label'
+    qqBtn.appendChild(qqBtnIcon)
+    qqBtn.appendChild(qqBtnLabel)
+    qqBtn.addEventListener('click', () => {
+      void this.copyQqGroup()
+    })
+
     // Far Left: Plugins management button ([🧩 插件]) + Plugin Contribution Slot
     const pluginsBtn = doc.createElement('button')
     pluginsBtn.type = 'button'
@@ -1720,6 +1874,21 @@ a.d2-toolbar__btn:active {
     actionsGroup.id = 'd2-toolbar-actions'
     actionsGroup.className = 'd2-toolbar__group d2-toolbar__actions'
 
+    // Icon Button 0: Refresh Display & Resync Position (#d2-toolbar-refresh-btn)
+    const refreshBtn = doc.createElement('button')
+    refreshBtn.type = 'button'
+    refreshBtn.id = 'd2-toolbar-refresh-btn'
+    refreshBtn.className = 'd2-toolbar__btn d2-toolbar__btn--icon'
+    refreshBtn.setAttribute('data-d2-toolbar-action', 'refresh')
+    const refreshBtnIcon = doc.createElement('span')
+    refreshBtnIcon.className = 'd2-toolbar__btn-icon'
+    refreshBtnIcon.setAttribute('aria-hidden', 'true')
+    refreshBtnIcon.innerHTML = TOOLBAR_REFRESH_ICON_SVG
+    refreshBtn.appendChild(refreshBtnIcon)
+    refreshBtn.addEventListener('click', () => {
+      this.triggerRefresh()
+    })
+
     // Icon Button 1: Language Toggle (#d2-toolbar-lang-btn)
     const langBtn = doc.createElement('button')
     langBtn.type = 'button'
@@ -1770,6 +1939,7 @@ a.d2-toolbar__btn:active {
       this.toggleBugModal()
     })
 
+    actionsGroup.appendChild(refreshBtn)
     actionsGroup.appendChild(langBtn)
     actionsGroup.appendChild(configBtn)
     actionsGroup.appendChild(bugBtn)
@@ -2217,6 +2387,7 @@ a.d2-toolbar__btn:active {
     diagBanner.className = 'd2-toolbar__diag'
     diagBanner.hidden = true
 
+    root.appendChild(qqBtn)
     root.appendChild(pluginsBtn)
     root.appendChild(pluginSlot)
     root.appendChild(rightContainer)
@@ -2294,6 +2465,8 @@ a.d2-toolbar__btn:active {
     this.statusDotEl = dot
     this.statusTextEl = statusText
     this.rttTextEl = rttText
+    this.refreshBtnEl = refreshBtn
+    this.refreshBtnIconEl = refreshBtnIcon
     this.langBtnEl = langBtn
     this.langBtnIconEl = langBtnIcon
     this.langBtnBadgeEl = langBtnBadge
@@ -2350,6 +2523,10 @@ a.d2-toolbar__btn:active {
     this.bugCancelBtnEl = bugCancelBtn
     this.bugSubmitBtnEl = bugSubmitBtn
 
+    this.qqBtnEl = qqBtn
+    this.qqBtnIconEl = qqBtnIcon
+    this.qqBtnLabelEl = qqBtnLabel
+
     this.pluginsBtnEl = pluginsBtn
     this.pluginsBtnIconEl = pluginsBtnIcon
     this.pluginsBtnLabelEl = pluginsBtnLabel
@@ -2373,6 +2550,17 @@ a.d2-toolbar__btn:active {
     if (this.rttTextEl) {
       this.rttTextEl.textContent = snap.rttLabel
       this.rttTextEl.hidden = snap.rttLabel === ''
+    }
+    if (this.qqBtnEl) {
+      const qqTitle = tToolbar('toolbar.qq.title', lang)
+      this.qqBtnEl.title = qqTitle
+      this.qqBtnEl.setAttribute('aria-label', qqTitle)
+      if (this.qqBtnIconEl) {
+        this.qqBtnIconEl.innerHTML = TOOLBAR_QQ_ICON_SVG
+      }
+      if (this.qqBtnLabelEl && this.qqCopiedTimeoutId === null) {
+        this.qqBtnLabelEl.textContent = tToolbar('toolbar.qq.label', lang)
+      }
     }
     if (this.pluginsBtnEl) {
       const baseLabel = tToolbar('toolbar.plugins.open', lang)
@@ -2445,7 +2633,15 @@ a.d2-toolbar__btn:active {
       }
     }
 
-    // Right Icon Buttons: Language, Config, Bug Report
+    // Right Icon Buttons: Refresh, Language, Config, Bug Report
+    if (this.refreshBtnEl) {
+      const refreshTitle = tToolbar('toolbar.refresh.title', lang)
+      if (this.refreshBtnIconEl) {
+        this.refreshBtnIconEl.innerHTML = TOOLBAR_REFRESH_ICON_SVG
+      }
+      this.refreshBtnEl.title = refreshTitle
+      this.refreshBtnEl.setAttribute('aria-label', refreshTitle)
+    }
     if (this.langBtnEl) {
       const langTitle = tToolbar('toolbar.lang.toggle', lang)
       const badgeText = lang === 'en' ? tToolbar('toolbar.lang.en', lang) : tToolbar('toolbar.lang.zh', lang)

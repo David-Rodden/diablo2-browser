@@ -168,7 +168,9 @@ export const CANONICAL_MON_PRESET_HCIDX_BY_ACT: Readonly<Record<number, Readonly
   "3": {
     "6": 254
   },
-  "4": {},
+  "4": {
+    "13": 256
+  },
   "5": {}
 }
 
@@ -180,6 +182,10 @@ export const CANONICAL_MONSTER_AUTOMAP_BY_HCIDX: Readonly<Record<number, { reado
   "254": {
     "automapCel": 0,
     "noMap": false
+  },
+  "256": {
+    "automapCel": 0,
+    "noMap": true
   },
   "265": {
     "automapCel": 0,
@@ -204,6 +210,10 @@ export const CANONICAL_MONSTER_AUTOMAP_BY_HCIDX: Readonly<Record<number, { reado
   "540": {
     "automapCel": 0,
     "noMap": false
+  },
+  "745": {
+    "automapCel": 0,
+    "noMap": true
   }
 }
 

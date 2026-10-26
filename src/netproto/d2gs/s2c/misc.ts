@@ -6,15 +6,18 @@
 
 import { ByteReader } from '../../core/byte-reader.ts'
 import { ByteWriter } from '../../core/byte-writer.ts'
-import { unitTypeToId } from '../../domain/ids.ts'
+import { unitTypeToId, wireUnitTypeId } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
-import { requirePacketLength } from './packet-length.ts'
+import { S2C_PACKET_SIZES } from '../tables/s2c-sizes.ts'
+import { requirePacketLength, unitLookupMiss } from './packet-length.ts'
 
 /** 0x2C PlaySound (8B, D2Client.dll 0x6fb5d740) */
 export function decode0x2CPlaySound(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x2C
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const sound = r.u16LE()
   return {
@@ -67,19 +70,25 @@ export function decode0x53EnvironmentSync(pkt: Uint8Array): ServerEvent {
 }
 
 /**
- * 0x73 CreateMissile (32B, D2Client.dll 0x6fb5eee0). The client knows a single wire layout:
+ * 0x73 CreateMissile (32B, D2Client.dll 0x6fb5eee0; built by D2Game 0x6fc8f740). The client knows a single
+ * wire layout:
  * - [0]      = 0x73
- * - [1..4]   = u32LE unk
+ * - [1..4]   = u32LE unk (always 0 from D2Game)
  * - [5..6]   = u16LE missileClassId
  * - [7..10]  = u32LE x
  * - [11..14] = u32LE y
  * - [15..18] = u32LE targetX
  * - [19..22] = u32LE targetY
- * - [23..24] = u16LE cltDoFuncArg (velocity)
+ * - [23..24] = u16LE remaining frames: D2Game reads missile data `i16 +0x10` with D2Common #10737; D2Client
+ *              pushes it zero-extended (`movzx ecx, word` at 0x6fb5ef83) to D2Common #10970 (0x6FDBA6D0), which
+ *              clamps to `[-0x8000, 0x7FFF]` before storing it back to `+0x10`. `+0x10` is the frame countdown:
+ *              D2Game sets `+0x0E` (range) and `+0x10` to the same value at creation (e.g. 0x6fc8fccf/0x6fc8fcd6),
+ *              decrements `+0x10` each tick (0x6fc5f39e..0x6fc5f3a8, missile ends when it reaches 0), and
+ *              D2Common 0x6FDBA240 returns the elapsed frames as `+0x0E - +0x10` (#1655, #1664).
  * - [25]     = u8 ownerType
  * - [26..29] = u32LE ownerId
- * - [30]     = u8 level
- * - [31]     = u8 pierceIdx (stat 0x148 when non-zero)
+ * - [30]     = u8 level (D2Common #11029, missile data `+0x0C`; passed unchanged into the create struct, 0 allowed)
+ * - [31]     = u8 pierceIdx: when non-zero D2Client sets stat 0x148 (`pierce_idx`) on the missile (0x6fb5ef6b..0x6fb5ef7e)
  * The target is used only when targetX AND targetY are both non-zero (`test edx, edx; je` /
  * `test ebx, ebx; je` before flag 0x40000021 at 0x6fb5ef3a..0x6fb5ef4c); otherwise the missile has no target.
  */
@@ -93,8 +102,10 @@ export function decode0x73CreateMissile(pkt: Uint8Array): ServerEvent {
   const y = r.u32LE()
   const targetX = r.u32LE()
   const targetY = r.u32LE()
-  const cltDoFuncArg = r.u16LE()
-  const ownerType = unitTypeToId(r.u8())
+  const remainingFrames = Math.min(r.u16LE(), 0x7fff)
+  // D2Client 0x6fb5ef5f..0x6fb5ef66 stores owner type @0x19 / id @0x1A on the missile unchecked; a type outside
+  // 0..5 never resolves to an owner unit, so the event carries no owner (#1656).
+  const ownerType = wireUnitTypeId(r.u8())
   const ownerId = r.u32LE()
   const level = r.u8()
   const pierceIdx = r.u8()
@@ -104,14 +115,10 @@ export function decode0x73CreateMissile(pkt: Uint8Array): ServerEvent {
     missileClassId,
     at: { x, y },
     target: hasTarget ? { x: targetX, y: targetY } : { x, y },
-    level: level || 1,
-    owner: { unitType: ownerType, id: ownerId },
-    ownerType,
-    ownerId,
+    level,
+    ...(ownerType !== undefined ? { owner: { unitType: ownerType, id: ownerId }, ownerType, ownerId } : {}),
     unk,
-    velocity: cltDoFuncArg,
-    cltDoFuncArg,
-    range: pierceIdx,
+    remainingFrames,
     pierceIdx,
   }
 }
@@ -189,7 +196,9 @@ export function decode0xA4MonsterSpecial(pkt: Uint8Array): ServerEvent {
 export function decode0xA5StateSkillEffect(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0xA5
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const skillId = r.u16LE()
   return {
@@ -201,12 +210,17 @@ export function decode0xA5StateSkillEffect(pkt: Uint8Array): ServerEvent {
 
 /**
  * Fallback decoder for remaining rare 1.13c S->C opcodes in D2Net.dll size table
- * (e.g. 0x12..0x14, 0x16, 0x17, 0x40, 0x45, 0x54, 0x57, 0x58, 0x5F, 0x61, 0x62,
- * 0x6E..0x72, 0x7E, 0x80, 0x8A, 0x93, 0x97, 0x98, 0xA6, 0xAF) so that every
+ * (e.g. 0x12..0x14, 0x16, 0x40, 0x45, 0x54, 0x57, 0x58, 0x5F, 0x61, 0x62,
+ * 0x6E..0x72, 0x7E, 0x8A, 0x93, 0x97, 0x98, 0xA6, 0xAF) so that every
  * valid 1.13c S->C packet produces a typed domain event (never Opaque or phantom StatSet).
+ * Opcodes whose D2Net S->C size is 0 (e.g. 0x17 and 0x80, which only D2Client's own table lists) are never
+ * framed by D2NET_10033, so they are rejected instead of decoded with a guessed layout (#1663).
  */
 export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
   const op = pkt[0]!
+  if (op >= S2C_PACKET_SIZES.length || S2C_PACKET_SIZES[op] === 0) {
+    throw new RangeError(`S2C 0x${op.toString(16).padStart(2, '0')} has D2Net size 0 and is never framed`)
+  }
   switch (op) {
     case 0x12: // UnloadAct (1B, D2Client.dll 0x6fb5c370 / 0x6fb5d6a0)
       return { type: 'UnloadAct' }
@@ -218,34 +232,18 @@ export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
       const r = new ByteReader(pkt.subarray(4))
       const entries: Array<{ unitType: ReturnType<typeof unitTypeToId>; id: number; x: number; y: number }> = []
       for (let i = 0; i < count && r.remaining >= 9; i++) {
-        entries.push({
-          unitType: unitTypeToId(r.u8()),
-          id: r.u32LE(),
-          x: r.u16LE(),
-          y: r.u16LE(),
-        })
+        const unitType = wireUnitTypeId(r.u8())
+        const id = r.u32LE()
+        const x = r.u16LE()
+        const y = r.u16LE()
+        // An entry whose type is outside 0..5 never finds a unit, so it gets no drift check (#1656).
+        if (unitType !== undefined) entries.push({ unitType, id, x, y })
       }
       return {
         type: 'ProtocolSync',
         opcode: op,
         byteLength: pkt.byteLength,
         entries,
-      }
-    }
-    case 0x17: { // RemoveUnit17 (7B in D2Client.dll 0x6fb5f240: u8 0x17, u8 unitType, u8 pad, u32 id @+3; or 6B u32 id @+2)
-      const useOffset3 =
-        pkt.byteLength >= 7 &&
-        pkt[2] === 0 &&
-        ((pkt[3] ?? 0) | (pkt[4] ?? 0) | (pkt[5] ?? 0) | (pkt[6] ?? 0)) !== 0
-      const id = useOffset3
-        ? new ByteReader(pkt.subarray(3, 7)).u32LE()
-        : pkt.byteLength >= 6
-          ? new ByteReader(pkt.subarray(2, 6)).u32LE()
-          : 0
-      return {
-        type: 'UnitRemove',
-        unitType: unitTypeToId(pkt[1] ?? 1),
-        id,
       }
     }
     case 0x57: {
@@ -320,7 +318,6 @@ export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
     // 0x7E (5B, D2Client.dll 0x6fb5d240): reloads an engine data file `DATA\\GLOBAL\\<name>` picked from the
     // player's class table (0x6fba9eb4) into 0x6fbc44c8 via 0x6fb19240 — no web-port state to mirror.
     case 0x7e:
-    case 0x80: // Noop4B (4B, D2Client.dll 0x6fb5c520)
       return {
         type: 'ProtocolSync',
         opcode: op,
@@ -362,40 +359,28 @@ export function decodeRare113cS2cPacket(pkt: Uint8Array): ServerEvent {
 }
 
 /**
- * 0x58 OpenUi (7B, D2Client.dll 0x6fb50250 / D2PacketDef.h D2GSPacketSrv58):
- * Canonical 1.13c layout: u8 0x58 | u32 unitId (pkt[1..5]) | u8 uiAction (pkt[5]) | u8 extra (pkt[6]).
- * - uiAction 0: Open Horadric Orifice UI (unitId = orifice object GUID)
- * - uiAction 1: Close Horadric Orifice / Artisan UI
- * - uiAction 4: Clear "Please Wait..." modal & reset state to 2
- * - uiAction 5: Complete item consumption, play sound (extra != 0 ? 5 : 3), and close UI
- * - uiAction 6: Open Artisan UI (unitId = NPC GUID)
- * - uiAction 7: Close Artisan UI and end NPC interaction
- * Note: Also preserves backward compatibility with legacy synthetic tests passing u8 unitType | u32 unitId | u8 uiId (6|7|8) when pkt[5] === 0.
+ * 0x58 OpenUi (7B, D2Client.dll 0x6fb5f980 copies 7 bytes to 0x6fb50250):
+ * u8 0x58 | u32 unitId (pkt[1..4]) | u8 uiAction (pkt[5]) | u8 extra (pkt[6]). No unit type is carried.
+ * 0x6fb50250 switches on pkt[5] through the jump table at 0x6fb50300:
+ * - 0 (0x6fb50264): open the Horadric Orifice UI (unitId = orifice object id, mode 0)
+ * - 1 (0x6fb502cf): close the UI (0x6fb4f9e0)
+ * - 4 (0x6fb5027b): clear the "please wait" state (state 2)
+ * - 5 (0x6fb5029e): item consumed: sound (extra != 0 ? 5 : 3), then close
+ * - 6, 7 (0x6fb502d4): close the UI (0x6fb4f9e0) and end the NPC interaction (0x6faf8150)
+ * - 2, 3 and anything above 7 are fatal (0x6fb502de), so they are rejected here (#1659).
  */
 export function decode0x58OpenUi(pkt: Uint8Array): ServerEvent {
-  const b5 = pkt[5] ?? 0
-  const b6 = pkt[6] ?? 0
-  // Legacy synthetic test layout: pkt[1]=unitType(1), pkt[2..6]=unitId(<=0xffff), pkt[6]=uiId(6|7|8)
-  if (b5 === 0 && (b6 === 6 || b6 === 7 || b6 === 8) && (pkt[1] === 1 || pkt[1] === 2) && (pkt[4] ?? 0) === 0) {
-    const unitType = pkt[1] ?? 1
-    const unitId = pkt.byteLength >= 6 ? new ByteReader(pkt.subarray(2, 6)).u32LE() : 0
-    return {
-      type: 'OpenUi',
-      unitType,
-      unitId,
-      uiId: b6,
-      extra: 0,
-    }
+  requirePacketLength(pkt, '0x58 OpenUi', 7)
+  const unitId = new ByteReader(pkt.subarray(1, 5)).u32LE()
+  const uiId = pkt[5]!
+  if (uiId === 2 || uiId === 3 || uiId > 7) {
+    throw new RangeError(`0x58 OpenUi: action ${String(uiId)} is fatal in D2Client 0x6fb502de`)
   }
-  const unitId = pkt.byteLength >= 5 ? new ByteReader(pkt.subarray(1, 5)).u32LE() : 0
-  const uiId = b5
-  const unitType = uiId === 0 ? 2 : (uiId === 6 || uiId === 8) && unitId > 0 ? 1 : 0
   return {
     type: 'OpenUi',
-    unitType,
     unitId,
     uiId,
-    extra: b6,
+    extra: pkt[6]!,
   }
 }
 

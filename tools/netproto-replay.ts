@@ -25,7 +25,7 @@ import {
   defaultTextCodec,
   hexToBytes,
   parseD2CapJsonl,
-  resolveS2cPacketSize,
+  resolveFramedS2cPacketSize,
   validateC2sPacket,
   type D2CapHeader,
   type ServerEvent,
@@ -97,7 +97,7 @@ export function replayD2CapText(
     try {
       // Greeting packet [0xAF, 0x01] is 2 bytes
       if (op !== 0xaf) {
-        const expectedLen = resolveS2cPacketSize(pkt, 0)
+        const expectedLen = resolveFramedS2cPacketSize(pkt)
         if (expectedLen !== pkt.length) {
           throw new ProtocolError(
             `D2GS S->C 0x${op.toString(16).padStart(2, '0')} size mismatch: expected ${expectedLen ?? 'null'}, got ${pkt.length}`,

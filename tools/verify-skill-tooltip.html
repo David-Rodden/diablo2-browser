@@ -13,6 +13,8 @@ const cases = [
   { cls: 'sor', skill: 36, pts: 5, lang: 'ENG' },
   { cls: 'sor', skill: 47, pts: 0, lang: 'ENG' },
   { cls: 'nec', skill: 70, pts: 3, lang: 'CHI' },
+  // Extra cases (tools/verify-skill-tooltip-browser.ts SKILL_TOOLTIP_CASES): { cls, skill, pts, lang, extra: [[id, pts]] }
+  ...JSON.parse(params.get('cases') || '[]'),
 ]
 const results = []
 for (const c of cases) {
@@ -23,7 +25,7 @@ for (const c of cases) {
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h)
   const panel = new SkillTreePanel(c.cls)
   panel.lang = c.lang
-  panel.loadProfile(c.cls, new Map(c.pts ? [[c.skill, c.pts]] : []), 0)
+  panel.loadProfile(c.cls, new Map([...(c.pts ? [[c.skill, c.pts]] : []), ...(c.extra || [])]), 0)
   const node = panel.getSkillTree().find(n => n.skillId === c.skill)
   panel.hoveredSkill = node
   panel.drawSkillTooltip(ctx, font)

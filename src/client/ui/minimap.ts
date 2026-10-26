@@ -136,6 +136,8 @@ interface SpatialAutomapCellsIndex {
   readonly maxBx: number
   readonly minBy: number
   readonly maxBy: number
+  readonly waypointCells307Or618: readonly AutomapCell[]
+  readonly waypointCells307: readonly AutomapCell[]
 }
 
 const AUTOMAP_FADE_TINTS: Readonly<Record<number, readonly [number, number, number, number]>> = {
@@ -512,7 +514,7 @@ export interface MinimapMarker {
   /** Optional source level ID for reciprocal boundary filtering (Issue #1368). */
   readonly fromLevelId?: number
   /** Optional explicit reveal override for stitched multi-level markers. */
-  readonly preRevealed?: boolean
+  readonly preRevealed?: boolean | undefined
 }
 
 /** Dynamic entity marker drawn on the automap (`0x6fb11490` & `0x6fabd390`). */
@@ -1558,18 +1560,31 @@ export class Minimap {
     const maxVisBx = maxVisXPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
     const minVisBy = minVisYPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
     const maxVisBy = maxVisYPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
+    const worldSet =
+      level.layerKey !== undefined ? this.exploredWorldTilesByLayer.get(level.layerKey) : undefined
+    const sheetMetasBySlot: readonly (AutomapSpriteAtlasMeta | undefined)[] = [
+      AUTOMAP_UI_MANIFEST.atlases[resolveAutomapSheetName(0, this.bMinimap)],
+      AUTOMAP_UI_MANIFEST.atlases[resolveAutomapSheetName(1, this.bMinimap)],
+      AUTOMAP_UI_MANIFEST.atlases[resolveAutomapSheetName(2, this.bMinimap)],
+      AUTOMAP_UI_MANIFEST.atlases[resolveAutomapSheetName(3, this.bMinimap)],
+    ]
+    const atlasHandlesBySlot: readonly (AtlasHandle | null)[] = [
+      this.resolveAtlasHandle(renderer, resolveAutomapSheetName(0, this.bMinimap), sheetMetasBySlot[0]),
+      this.resolveAtlasHandle(renderer, resolveAutomapSheetName(1, this.bMinimap), sheetMetasBySlot[1]),
+      this.resolveAtlasHandle(renderer, resolveAutomapSheetName(2, this.bMinimap), sheetMetasBySlot[2]),
+      this.resolveAtlasHandle(renderer, resolveAutomapSheetName(3, this.bMinimap), sheetMetasBySlot[3]),
+    ]
 
     const drawSingleCell = (
       cell: AutomapCell,
       layerKey: 'floors' | 'walls' | 'objects' | 'extras',
       ignoreFogOfWar: boolean,
     ): void => {
-      const sheetName = resolveAutomapSheetName(cell.fSaved ?? 0, this.bMinimap)
-      const sheetMeta = AUTOMAP_UI_MANIFEST.atlases[sheetName]
-      const atlasHandle = this.resolveAtlasHandle(renderer, sheetName, sheetMeta)
+      const slot = Math.max(0, Math.min(3, Math.trunc(cell.fSaved ?? 0)))
+      const sheetMeta = sheetMetasBySlot[slot]
+      const atlasHandle = atlasHandlesBySlot[slot]
       if (!sheetMeta || !atlasHandle) return
       if (cell.cellNo < 0 || cell.cellNo >= sheetMeta.frames.length) return
-      if ((!ignoreFogOfWar || cell.preRevealed === false) && !this.isAutomapCellRevealed(level, seen, cell)) return
       const frame = sheetMeta.frames[cell.cellNo]
       if (!frame || frame.width <= 0 || frame.height <= 0) return
 
@@ -1577,13 +1592,16 @@ export class Minimap {
       const screenY = Math.trunc((cell.yPixel * 10) / divisor) - offsetY
       const drawLeft = screenX + frame.offsetX - halfAnchorX
       const drawTop = screenY - frame.height + frame.offsetY
-      // Frustum cull against active viewport `[vpX, vpY, vpX + vpW, vpY + vpH]`
+      // Frustum cull against active viewport `[vpX, vpY, vpX + vpW, vpY + vpH]` before reveal lookup
       if (
         drawLeft + frame.width < vp.vpX ||
         drawLeft > vpRight ||
         drawTop + frame.height < vp.vpY ||
         drawTop > vpBottom
       ) {
+        return
+      }
+      if ((!ignoreFogOfWar || cell.preRevealed === false) && !this.isAutomapCellRevealed(level, seen, cell, worldSet)) {
         return
       }
 
@@ -1762,16 +1780,16 @@ export class Minimap {
           this.lastRenderStats.spritesDrawn.total += 1
         }
 
-        for (const cell of automapLayer.floors) {
-          if ((cell.fSaved ?? 0) !== 0) continue
-          if (cell.cellNo !== 307 && cell.cellNo !== 618) continue
-          if (!this.isAutomapCellRevealed(level, seen, cell)) continue
+        const floorsWaypointCells = this.getOrBuildSpatialIndex(automapLayer.floors).waypointCells307Or618
+        for (let i = 0; i < floorsWaypointCells.length; i += 1) {
+          const cell = floorsWaypointCells[i]!
+          if (!this.isAutomapCellRevealed(level, seen, cell, worldSet)) continue
           drawHighlightedWaypointAt(cell.xPixel, cell.yPixel)
         }
-        for (const cell of automapLayer.objects) {
-          if ((cell.fSaved ?? 0) !== 0) continue
-          if (cell.cellNo !== 307) continue
-          if (!this.isAutomapCellRevealed(level, seen, cell)) continue
+        const objectsWaypointCells = this.getOrBuildSpatialIndex(automapLayer.objects).waypointCells307
+        for (let i = 0; i < objectsWaypointCells.length; i += 1) {
+          const cell = objectsWaypointCells[i]!
+          if (!this.isAutomapCellRevealed(level, seen, cell, worldSet)) continue
           drawHighlightedWaypointAt(cell.xPixel, cell.yPixel)
         }
         for (const marker of level.markers) {
@@ -2206,6 +2224,7 @@ export class Minimap {
     level: MinimapLevel,
     seen: Uint8Array,
     cell: AutomapCell,
+    worldSetOverride?: Set<number>,
   ): boolean {
     if (level.cellsX <= 0 || level.cellsY <= 0) return false
     if (cell.preRevealed === true) return true
@@ -2217,19 +2236,31 @@ export class Minimap {
       const isoY = (cell.yPixel * 10) / 8
       cellX = Math.floor(Math.round((isoX + isoY) / 2) / 5)
       cellY = Math.floor(Math.round((isoY - isoX) / 2) / 5)
+      ;(cell as { cellX?: number; cellY?: number }).cellX = cellX
+      ;(cell as { cellY?: number }).cellY = cellY
     }
     if (cellX >= 0 && cellX < level.cellsX && cellY >= 0 && cellY < level.cellsY) {
       if (seen[cellY * level.cellsX + cellX] !== 0) return true
     }
-    if (level.layerKey !== undefined) {
-      const worldSet = this.exploredWorldTilesByLayer.get(level.layerKey)
-      if (worldSet !== undefined && worldSet.size > 0) {
-        const tileOriginX = level.tileOriginX ?? 0
-        const tileOriginY = level.tileOriginY ?? 0
-        return worldSet.has(this.packWorldCell(tileOriginX + cellX, tileOriginY + cellY))
-      }
+    const worldSet =
+      worldSetOverride !== undefined
+        ? worldSetOverride
+        : level.layerKey !== undefined
+          ? this.exploredWorldTilesByLayer.get(level.layerKey)
+          : undefined
+    if (worldSet !== undefined && worldSet.size > 0) {
+      const tileOriginX = level.tileOriginX ?? 0
+      const tileOriginY = level.tileOriginY ?? 0
+      return worldSet.has(this.packWorldCell(tileOriginX + cellX, tileOriginY + cellY))
     }
     return false
+  }
+
+  /**
+   * Invalidates the cached spatial index for a mutated `AutomapCell[]` layer array.
+   */
+  invalidateSpatialIndex(cells: readonly AutomapCell[]): void {
+    this.spatialIndexByLayerArray.delete(cells)
   }
 
   /**
@@ -2242,12 +2273,28 @@ export class Minimap {
       return cached
     }
     const buckets = new Map<number, AutomapCell[]>()
+    const waypointCells307Or618: AutomapCell[] = []
+    const waypointCells307: AutomapCell[] = []
     let minBx = 0x7fffffff
     let maxBx = -0x80000000
     let minBy = 0x7fffffff
     let maxBy = -0x80000000
     for (let i = 0; i < cells.length; i += 1) {
       const cell = cells[i]!
+      if (typeof cell.cellX !== 'number' || !Number.isFinite(cell.cellX) || typeof cell.cellY !== 'number' || !Number.isFinite(cell.cellY)) {
+        const isoX = (cell.xPixel * 10) / 16
+        const isoY = (cell.yPixel * 10) / 8
+        ;(cell as { cellX?: number; cellY?: number }).cellX = Math.floor(Math.round((isoX + isoY) / 2) / 5)
+        ;(cell as { cellY?: number }).cellY = Math.floor(Math.round((isoY - isoX) / 2) / 5)
+      }
+      if ((cell.fSaved ?? 0) === 0) {
+        if (cell.cellNo === 307) {
+          waypointCells307.push(cell)
+          waypointCells307Or618.push(cell)
+        } else if (cell.cellNo === 618) {
+          waypointCells307Or618.push(cell)
+        }
+      }
       const bx = cell.xPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
       const by = cell.yPixel >> AUTOMAP_SPATIAL_BUCKET_SHIFT
       if (bx < minBx) minBx = bx
@@ -2275,6 +2322,8 @@ export class Minimap {
       maxBx,
       minBy,
       maxBy,
+      waypointCells307Or618,
+      waypointCells307,
     }
     this.spatialIndexByLayerArray.set(cells, index)
     return index

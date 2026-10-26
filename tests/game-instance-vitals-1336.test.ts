@@ -54,7 +54,34 @@ function makeRunner(): { game: GameInstance; id: number; record: MutablePlayer }
 
 describe('issue #1336: server player vitals', () => {
   it('drains stamina while running and regenerates life/mana every tick', () => {
-    const { game, id } = makeRunner()
+    const { game, id, record } = makeRunner()
+    record.items.push({
+      unitId: 9000,
+      code: 'rin',
+      name: 'rin',
+      quality: 0,
+      level: 1,
+      location: 'equipped',
+      bodyLoc: 6,
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      areaId: 1,
+      ownerId: id,
+      storePage: 0,
+      cost: 0,
+      gamble: false,
+      identified: true,
+      ethereal: false,
+      socketed: false,
+      totalSockets: 0,
+      durability: 10,
+      maxDurability: 10,
+      quantity: 1,
+      stats: new Map([[74, 10]]),
+      socketedItems: [],
+    })
     game.enqueueCommand(id, { type: 'Move', to: { x: 300, y: 100 }, run: true })
     game.stepFrames(100)
 
@@ -114,7 +141,7 @@ describe('issue #1336: server player vitals', () => {
     expect(runWith('plt')).toBeLessThan(runWith())
   })
 
-  it('recovers only while standing outdoors, and town standing is double', () => {
+  it('recovers at full rate (S=8) while standing in town or outdoors, and half rate (S=9) while walking (#1632)', () => {
     const standingGain = (areaId: number): number => {
       const game = new GameInstance({ seed: 1336, difficulty: 0, areaId })
       const id = game.connectPlayer({ charClass: 'bar', name: 'Stand', x: 100, y: 100, areaId })
@@ -126,11 +153,11 @@ describe('issue #1336: server player vitals', () => {
       game.stepFrames(10)
       return record.staminaFixed - 100 * 256
     }
-    expect(standingGain(1)).toBeGreaterThan(standingGain(2))
-    expect(standingGain(2)).toBeGreaterThan(0)
+    expect(standingGain(1)).toBe(standingGain(2))
+    expect(standingGain(2)).toBe(10 * ((200 * 256) >> 8))
   })
 
-  it('does not recover stamina while walking outdoors', () => {
+  it('recovers stamina at half rate (S=9) while walking outdoors above 1 stamina, and 0 when exhausted (#1632)', () => {
     const game = new GameInstance({ seed: 1336, difficulty: 0, areaId: 2 })
     const id = game.connectPlayer({ charClass: 'bar', name: 'Walk', x: 100, y: 100, areaId: 2 })
     const record = playerRecord(game, id)
@@ -139,8 +166,15 @@ describe('issue #1336: server player vitals', () => {
     record.stamina = 100
     record.maxStamina = 200
     game.enqueueCommand(id, { type: 'Move', to: { x: 140, y: 100 }, run: false })
-    game.stepFrames(20)
-    expect(record.staminaFixed).toBe(100 * 256)
+    game.stepFrames(10)
+    expect(record.staminaFixed).toBe(100 * 256 + 10 * ((200 * 256) >> 9))
+
+    // When staminaFixed < 256 and exhausted outdoors, walking does not recover stamina.
+    record.staminaFixed = 128
+    record.staminaExhausted = true
+    game.enqueueCommand(id, { type: 'Move', to: { x: 180, y: 100 }, run: false })
+    game.stepFrames(10)
+    expect(record.staminaFixed).toBe(128)
   })
 
   it('locks running until stamina recovers to the 25% threshold', () => {
@@ -153,7 +187,7 @@ describe('issue #1336: server player vitals', () => {
     expect(record.staminaExhausted).toBe(true)
     expect(record.run).toBe(false)
     expect(record.stamina).toBe(0)
-    game.stepFrames(40)
+    game.stepFrames(65)
     expect(record.staminaExhausted).toBe(false)
     expect(record.stamina).toBeGreaterThanOrEqual(50)
   })

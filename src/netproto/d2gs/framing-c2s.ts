@@ -20,44 +20,47 @@ export function resolveC2sPacketSize(buf: Uint8Array, offset = 0): number | null
   if (tableEntry === 0) {
     throw new ProtocolError(`Unused D2GS C->S opcode 0x${opcode.toString(16).padStart(2, '0')}`, opcode, offset)
   }
-  if (opcode === 0x39) {
-    return remaining >= 9 ? 9 : remaining >= 5 ? 5 : null
-  }
   if (tableEntry > 0) {
     return remaining >= tableEntry ? tableEntry : null
   }
 
-  // Variable-length C->S packets in D2NET_10006 (0x6fbf65d0): 0x14, 0x15, 0x66, 0x6C
+  // Variable-length C->S packets in D2NET_10006 (0x6fbf65d0), index table 0x6fbf66f0 / jump table 0x6fbf66e0.
   switch (opcode) {
-    case 0x14: {
-      // Overhead Chat: u8 0x14 | u16 0 | string msg\0 | u8 0 | u16 0
-      if (remaining < 6) return null
-      const msgEnd = findZeroByte(buf, offset + 3, offset + remaining)
-      if (msgEnd < 0) return null
-      const size = msgEnd - offset + 1 + 2
-      return remaining >= size ? size : null
-    }
+    case 0x14:
     case 0x15: {
-      // Chat Message: u8 0x15 | u8 type | u8 0 | string msg\0 | string target\0 | u8 0
-      if (remaining < 6) return null
-      const msgEnd = findZeroByte(buf, offset + 3, offset + remaining)
-      if (msgEnd < 0) return null
-      const targetEnd = findZeroByte(buf, msgEnd + 1, offset + remaining)
-      if (targetEnd < 0) return null
-      const size = targetEnd - offset + 2
+      // Case 0x6fbf663a (shared): needs >= 3 bytes, then s1 = C string @3, s2 = C string after s1, b = the byte right
+      // after s2's NUL; size = 3 + (strlen(s1)+1) + (strlen(s2)+1) + 1 + (int8)b (#1657). Each step waits for
+      // more data while the buffer is shorter than what it has measured so far.
+      if (remaining < 3) return null
+      const end = offset + remaining
+      const s1End = findZeroByte(buf, offset + 3, end)
+      if (s1End < 0) return null
+      const s2End = findZeroByte(buf, s1End + 1, end)
+      if (s2End < 0) return null
+      const bPos = s2End + 1
+      if (bPos >= end) return null
+      const b = (buf[bPos]! << 24) >> 24
+      const size = bPos - offset + 1 + b
+      if (size < 1) {
+        throw new ProtocolError(
+          `D2GS C->S packet 0x${opcode.toString(16).padStart(2, '0')} has a negative trailing length byte`,
+          opcode,
+          offset,
+        )
+      }
       return remaining >= size ? size : null
     }
     case 0x66: {
-      // Warden Response: u8 0x66 | u16 payloadLen | payload
+      // Case 0x6fbf6688: needs >= 3 bytes; size = (u16 @1 <= 0x1FD ? u16 @1 : 0) + 3 (#1657).
       if (remaining < 3) return null
       const payloadLen = buf[offset + 1]! | (buf[offset + 2]! << 8)
-      const size = payloadLen + 3
+      const size = (payloadLen <= 0x1fd ? payloadLen : 0) + 3
       return remaining >= size ? size : null
     }
     case 0x6c: {
-      // Save Data Chunk: u8 0x6C | u8 chunkLen | ...
-      if (remaining < 2) return null
-      const size = buf[offset + 1]! + 6
+      // Case 0x6fbf66ab: needs >= 6 bytes; size = u8 @1 + 7 (#1657).
+      if (remaining < 6) return null
+      const size = buf[offset + 1]! + 7
       return remaining >= size ? size : null
     }
     default:
@@ -66,8 +69,18 @@ export function resolveC2sPacketSize(buf: Uint8Array, offset = 0): number | null
 }
 
 /**
+ * C->S opcodes whose 1.13c D2Game handler (dispatch table `0x6FD1A078`, 8-byte rows) is a bare
+ * `mov eax,3; ret 8`, i.e. the server rejects them unconditionally (the same result as a size mismatch):
+ * `0x2C` (`0x6FCEB1E0`), `0x2D` (`0x6FCEBDA0`), `0x39` (`0x6FCEB560`), `0x45` (`0x6FCEB550`), `0x52` (`0x6FCEB490`).
+ * D2Net frames them with their fixed table size (`0x2C` has size 0 and is never framed at all); the client
+ * must never emit them.
+ */
+export const D2GAME_REJECTED_C2S_OPCODES: ReadonlySet<number> = new Set([0x2c, 0x2d, 0x39, 0x45, 0x52])
+
+/**
  * Validates that a serialized C->S packet matches `C2S_PACKET_SIZES` (`D2Net.dll` `0x6fbfabd8`).
- * Throws `ProtocolError` if the opcode is invalid or the byte length does not match.
+ * Throws `ProtocolError` if the opcode is invalid, always rejected by D2Game
+ * (`D2GAME_REJECTED_C2S_OPCODES`), or the byte length does not match.
  */
 export function validateC2sPacket(
   bytes: Uint8Array,
@@ -76,6 +89,13 @@ export function validateC2sPacket(
     throw new ProtocolError('Empty D2GS C->S packet')
   }
   const opcode = bytes[0]!
+  if (D2GAME_REJECTED_C2S_OPCODES.has(opcode)) {
+    throw new ProtocolError(
+      `D2GS C->S packet 0x${opcode.toString(16).padStart(2, '0')} is always rejected by the 1.13c D2Game handler`,
+      opcode,
+      0,
+    )
+  }
   const expected = resolveC2sPacketSize(bytes, 0)
   if (expected === null || expected !== bytes.length) {
     const tableSize = opcode < C2S_PACKET_SIZES.length ? C2S_PACKET_SIZES[opcode] : 0

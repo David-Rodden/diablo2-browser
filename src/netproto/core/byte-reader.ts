@@ -172,6 +172,18 @@ export class ByteReader {
     return this.cstring(codecOrEncoding)
   }
 
+  /**
+   * Reads a whole NUL-terminated string (the cursor moves past its NUL) but keeps at most `bufSize - 1` bytes,
+   * like Storm #501 SStrCopy(dest, src, bufSize) (`lea ebp,[dest+max-1]`) copying it into a `bufSize` buffer.
+   */
+  cStringBounded(bufSize: number, codecOrEncoding: TextCodec | SupportedTextEncoding = defaultTextCodec): string {
+    const codec = resolveTextCodec(codecOrEncoding)
+    const start = this.pos
+    this.cstring(codec)
+    const len = this.pos - 1 - start
+    return codec.decode(this.buf.subarray(start, start + Math.min(len, bufSize - 1)))
+  }
+
   fixedString(
     len: number,
     codecOrEncoding: TextCodec | SupportedTextEncoding = defaultTextCodec,

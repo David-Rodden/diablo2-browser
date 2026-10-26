@@ -60,7 +60,24 @@ function level(
     roomRects: [],
     presetUnits: extra.presetUnits ?? [],
     warps: extra.warps ?? [],
+    // #1698: the town carries the DUNGEON_FindActSpawnLocationEx capture; its style-33 marker
+    // (index 11) at tile (3, 9) puts the town-portal mouth at sub-tile (18, 48).
+    ...(areaId === 1 ? { actSpawn: TOWN_ACT_SPAWN } : {}),
   }
+}
+
+const TOWN_ACT_SPAWN: NonNullable<LocalAreaLevelGeometry['actSpawn']> = {
+  level: {
+    position: 1,
+    tileInfo: [{ x: 3, y: 9, index: 11 }],
+    rooms: [{ x: 0, y: 0, w: 12, h: 12 }],
+    waypointRoom: -1,
+    waypointTile: null,
+    warpRoom: -1,
+    centreX: 4,
+    centreY: 4,
+  },
+  seed: [1325, 1],
 }
 
 /** Rogue Encampment (1) ↔ Blood Moor (2) via a warp pair, Cold Plains (3) with a waypoint. */
@@ -147,7 +164,8 @@ describe('Issue #1325 — server-side area bootstrap resolver', () => {
     expect(() => resolver({ act: 0, areaId: 4, mapSeed: 1, difficulty: 0 })).toThrow(/level 5/)
     const solid = { ...level(4, 0, 0), blocked: new Uint8Array(60 * 60).fill(1) }
     expect(() => createAreaBootstrapResolver(() => solid)({ act: 0, areaId: 4, mapSeed: 1, difficulty: 0 })).toThrow(
-      /no standable floor/,
+      // #1693: #10816 asserts when COLLISION_GetFreeCoordinates finds nothing (0x6FD8CE86).
+      /no free cell/,
     )
     expect(findStandableNear(() => false, 0, 0)).toBeNull()
   })
@@ -264,8 +282,8 @@ describe('Issue #1325 — GameInstance loads target areas on demand', () => {
     // Town Portal to Act 1 stays in the same act: no LoadAct reload.
     expect(tp.some((e) => e.type === 'LoadAct')).toBe(false)
     const landing = tp.find((e) => e.type === 'UnitReassign') as { x: number; y: number }
-    const entry = buildAreaBootstrap(worldSourceLevel(1))
-    expect({ x: landing.x, y: landing.y }).toEqual({ x: entry.spawnX, y: entry.spawnY })
+    // Lands on the paired town mouth: #10816(town, 11, size 3) = origin (1000, 1000) + (18, 48).
+    expect(Math.hypot(landing.x - 1018, landing.y - 1048)).toBeLessThanOrEqual(3)
   })
 
   it('a transition into an area the resolver cannot build rolls back and notifies the client', () => {

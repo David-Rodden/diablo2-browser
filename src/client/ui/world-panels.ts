@@ -336,17 +336,9 @@ export class WorldPanelsHud {
   }
   /** Server stat 15 (`goldbank`), written by `HudModel` only; 0 until received (absent stat = 0). */
   stashGold = 0
+  /** Flat 2,500,000 (`D2Common.dll` #11060 @ `0x6FD7E9C0`); the level argument is ignored (issue #1668). */
   getStashMaxGold(level?: number): number {
-    const resolvedLevel =
-      level ??
-      (this.localPlayerLevel > 1
-        ? this.localPlayerLevel
-        : (this.activePlayerInventory?.playerLevel ??
-          this.activePlayerInventory?.playerContext?.level ??
-          this.vendorCharLevel ??
-          this.localPlayerLevel ??
-          1))
-    return getStashGoldLimit(resolvedLevel)
+    return getStashGoldLimit(level)
   }
   stashDepositAllEnabled = false
   showItemLevel = false

@@ -26,6 +26,8 @@ import {
   type IsoDraw,
 } from '../../common/world/d2map.ts'
 import { DRLG_GetActNoFromLevelId } from '../../common/drlg/drlg-drlg.ts'
+import type { DrlgActSpawnCapture } from '../../common/drlg/drlg-act-spawn.ts'
+import { ACT_SPAWN_TILE_ENTRY, findActSpawnLocationTile } from '../../common/world/act-spawn-location.ts'
 import {
   buildDrlgLevelMap,
   drlgLevelInputFromSession,
@@ -128,6 +130,11 @@ export interface LevelView {
    * cell coordinates for 1.13c `DRLGPRESET_UpdatePops` (`0x6fd5a6a0`) and `DRLGPRESET_TogglePopsVisibility` (`0x6fd5a180`).
    */
   readonly pops?: readonly DrlgPopBox[] | undefined
+  /**
+   * `DUNGEON_FindActSpawnLocationEx` inputs captured from the DRLG level (`DrlgLevelInput.actSpawn`),
+   * in level-local tiles; the server resolves entry / town-portal positions from it.
+   */
+  readonly actSpawn?: DrlgActSpawnCapture | undefined
   /** DS1 canvas width in cells (`coord.width + 1`). */
   readonly cellsX: number
   /** DS1 canvas height in cells (`coord.height + 1`). */
@@ -136,9 +143,12 @@ export interface LevelView {
   readonly gridWidth: number
   /** Alias for `height` (`cellsY * 5`) for `IsoMapScene` / `LinkGrid` compatibility. */
   readonly gridHeight: number
-  /** Grounded walkable spawn tile X in level-local tile coordinates (`0 .. cellsX - 1`). */
+  /**
+   * Start tile in level-local tile coordinates: the 1.13c `DUNGEON_FindActSpawnLocationEx` core
+   * (`0x6FD6A130`, entry index 0, first roll of the captured level seed) when the input carries the
+   * DRLG capture (#1693); dump-built inputs without a capture use the grounded entrance heuristic.
+   */
   readonly spawnX: number
-  /** Grounded walkable spawn tile Y in level-local tile coordinates (`0 .. cellsY - 1`). */
   readonly spawnY: number
   /** Isometric pixel X shift (`scene.originX`). */
   readonly isoOriginX: number
@@ -463,6 +473,18 @@ function resolveGroundedSpawnTile(
 }
 
 /**
+ * #1693: `DUNGEON_FindActSpawnLocationEx` core with entry index 0 on a copy of the captured level seed
+ * (the roll the server's first arrival makes). Level-local tiles.
+ */
+function actSpawnEntryTile(capture: DrlgActSpawnCapture): { readonly spawnX: number; readonly spawnY: number } {
+  const tile = findActSpawnLocationTile(capture.level, ACT_SPAWN_TILE_ENTRY, {
+    lo: capture.seed[0] >>> 0,
+    hi: capture.seed[1] >>> 0,
+  })
+  return { spawnX: tile.x, spawnY: tile.y }
+}
+
+/**
  * Build a complete {@link LevelView} from a {@link DrlgLevelInput} and {@link DrlgMapContext}.
  */
 export function buildLevelView(options: BuildLevelViewOptions): LevelView {
@@ -552,14 +574,17 @@ export function buildLevelView(options: BuildLevelViewOptions): LevelView {
     }
   }
 
-  const { spawnX, spawnY } = resolveGroundedSpawnTile(
-    scene.cellsX,
-    scene.cellsY,
-    scene.gridWidth,
-    scene.gridHeight,
-    walkable,
-    map.entrances,
-  )
+  const { spawnX, spawnY } =
+    rawInput.actSpawn !== undefined
+      ? actSpawnEntryTile(rawInput.actSpawn)
+      : resolveGroundedSpawnTile(
+          scene.cellsX,
+          scene.cellsY,
+          scene.gridWidth,
+          scene.gridHeight,
+          walkable,
+          map.entrances,
+        )
 
   const roomViews: LevelRoomView[] = rooms.map(r => ({
     index: r.index,
@@ -606,6 +631,7 @@ export function buildLevelView(options: BuildLevelViewOptions): LevelView {
     tileHeight: map.coord.height,
     ...(map.logicalIndex !== undefined ? { logicalIndex: map.logicalIndex } : {}),
     ...(map.pops !== undefined ? { pops: map.pops } : {}),
+    ...(rawInput.actSpawn !== undefined ? { actSpawn: rawInput.actSpawn } : {}),
     cellsX: scene.cellsX,
     cellsY: scene.cellsY,
     gridWidth: subWidth,

@@ -26,6 +26,8 @@ import {
   computeCursorItemGridPlacement,
   INV_GRID_ORIGIN,
   EQUIP_SLOTS_LAYOUT,
+  EQUIP_SLOTS_ENTRIES,
+  EQUIP_SLOTS_KEYS,
   WEAPON_SWAP_TABS_BOUNDS,
   isUsableRightClickItem,
   isSocketableUiItem,
@@ -2116,10 +2118,7 @@ export function handleVendorInventoryClick(
         (p) => col >= p.col && col < p.col + p.item.invWidth && row >= p.row && row < p.row + p.item.invHeight,
       )?.item ?? null
   } else if (state === 'repair') {
-    for (const [slot, rect] of Object.entries(EQUIP_SLOTS_LAYOUT) as [
-      EquipSlotId,
-      (typeof EQUIP_SLOTS_LAYOUT)[EquipSlotId],
-    ][]) {
+    for (const [slot, rect] of EQUIP_SLOTS_ENTRIES) {
       if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) {
         target = hud.inventory.equipped[slot] ?? null
         break
@@ -2221,7 +2220,7 @@ export function forwardInventoryPanelClick(
     ;(hud as any).forwardGridClick(0, col, row, hit?.item ?? null, isRightClick, isShiftClick)
     return true
   }
-  for (const slot of Object.keys(EQUIP_SLOTS_LAYOUT) as EquipSlotId[]) {
+  for (const slot of EQUIP_SLOTS_KEYS) {
     const r = EQUIP_SLOTS_LAYOUT[slot]
     if (x < r.x || x >= r.x + r.w || y < r.y || y >= r.y + r.h) continue
     const equipped = hud.inventory.equipped[slot]

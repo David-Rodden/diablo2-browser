@@ -55,22 +55,135 @@ interface PackedSpriteMetaBase {
   readonly groups: readonly (readonly MissileFrameTuple[])[]
 }
 
+export interface LoadSpriteArtMapOptions {
+  /**
+   * When true, only `preloadStems` are fetched eagerly at boot; all remaining
+   * missile/overlay atlases are fetched on demand on first `get()` / `has()` access.
+   * Defaults to `false` for backward compatibility with eager callers/tests.
+   */
+  readonly lazy?: boolean | undefined
+  readonly preloadStems?: readonly string[] | undefined
+}
+
+const DEFAULT_LAZY_PRELOAD_MISSILES: readonly string[] = [
+  'arrow',
+  'javelin',
+  'firebolt',
+  'fireball',
+  'icebolt',
+  'chargedbolt',
+  'townportal',
+]
+
+const DEFAULT_LAZY_PRELOAD_OVERLAYS: readonly string[] = [
+  'town_portal_op_tr',
+  'town_portal_op_hd',
+  'town_portal_on_tr',
+  'town_portal_on_hd',
+  'shrine_shimmer00',
+  'objsb',
+  'levelup',
+]
+
+/**
+ * `Map` subclass that supports on-demand background loading of packed sprite atlases
+ * when an unloaded key (`name` or normalised `celFileArtKey`) is queried via `get()` or `has()`.
+ */
+export class LazySpriteArtMap<V> extends Map<string, V> {
+  private readonly lazyLoaders = new Map<string, () => Promise<V | undefined>>()
+  private readonly inflight = new Map<string, Promise<V | undefined>>()
+
+  registerLazyKey(key: string, loader: () => Promise<V | undefined>, overwrite = true): void {
+    if (!key) return
+    if (overwrite || !this.lazyLoaders.has(key)) {
+      this.lazyLoaders.set(key, loader)
+    }
+    const lower = key.toLowerCase()
+    if (overwrite || !this.lazyLoaders.has(lower)) {
+      this.lazyLoaders.set(lower, loader)
+    }
+  }
+
+  hasRegisteredLazyKey(key: string): boolean {
+    return this.lazyLoaders.has(key) || this.lazyLoaders.has(key.toLowerCase())
+  }
+
+  ensureKeyLoaded(key: string): Promise<V | undefined> {
+    const existing = super.get(key) ?? super.get(key.toLowerCase())
+    if (existing !== undefined) return Promise.resolve(existing)
+    const normKey = key.toLowerCase()
+    const active = this.inflight.get(normKey)
+    if (active !== undefined) return active
+    const loader = this.lazyLoaders.get(key) ?? this.lazyLoaders.get(normKey)
+    if (loader === undefined) return Promise.resolve(undefined)
+    const promise = loader()
+      .finally(() => {
+        this.inflight.delete(normKey)
+      })
+    this.inflight.set(normKey, promise)
+    return promise
+  }
+
+  async waitForInflight(): Promise<void> {
+    while (this.inflight.size > 0) {
+      await Promise.allSettled(Array.from(this.inflight.values()))
+    }
+  }
+
+  override get(key: string): V | undefined {
+    const hit = super.get(key)
+    if (hit !== undefined) return hit
+    const lowerHit = super.get(key.toLowerCase())
+    if (lowerHit !== undefined) return lowerHit
+    if (this.lazyLoaders.has(key) || this.lazyLoaders.has(key.toLowerCase())) {
+      void this.ensureKeyLoaded(key)
+    }
+    return undefined
+  }
+
+  override has(key: string): boolean {
+    if (super.has(key) || super.has(key.toLowerCase())) return true
+    if (this.lazyLoaders.has(key) || this.lazyLoaders.has(key.toLowerCase())) {
+      void this.ensureKeyLoaded(key)
+    }
+    return false
+  }
+}
+
+function hasBundledSpriteMeta<M extends PackedSpriteMetaBase>(
+  metaHint: M | undefined,
+  name: string,
+  stem: string,
+): metaHint is M {
+  if (metaHint === undefined) return false
+  if (metaHint.width <= 0 || metaHint.height <= 0) return false
+  if (!Array.isArray(metaHint.groups) || metaHint.groups.length === 0) return false
+  const lowerStem = stem.toLowerCase()
+  return (
+    lowerStem === name.toLowerCase() ||
+    (metaHint.celFile !== undefined && lowerStem === metaHint.celFile.toLowerCase())
+  )
+}
+
 async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
   readonly label: string
   readonly subdir: 'missiles' | 'overlays'
   readonly metas: Readonly<Record<string, M>>
   readonly renderer: SpriteRenderer
   readonly packBase?: string | undefined
+  readonly lazy?: boolean | undefined
+  readonly preloadStems?: readonly string[] | undefined
   readonly filterTarget?: ((meta: M) => boolean) | undefined
   readonly extraStems?: ((name: string, metaHint: M | undefined) => readonly string[]) | undefined
   readonly overrideNameOnStemMismatch?: boolean | undefined
   readonly fallbackAliasKey?: ((meta: M, map: ReadonlyMap<string, { readonly meta: M; readonly handle: AtlasHandle; readonly frames: AtlasFrame[][] }>) => { readonly meta: M; readonly handle: AtlasHandle; readonly frames: AtlasFrame[][] } | undefined) | undefined
-}): Promise<Map<string, { readonly meta: M; readonly handle: AtlasHandle; readonly frames: AtlasFrame[][] }>> {
+}): Promise<LazySpriteArtMap<{ readonly meta: M; readonly handle: AtlasHandle; readonly frames: AtlasFrame[][] }>> {
   type ArtEntry = { readonly meta: M; readonly handle: AtlasHandle; readonly frames: AtlasFrame[][] }
-  const map = new Map<string, ArtEntry>()
+  const map = new LazySpriteArtMap<ArtEntry>()
   if (typeof fetch === 'undefined' || typeof createImageBitmap === 'undefined') return map
   const allMetas = Object.values(options.metas)
   const filteredMetas = options.filterTarget ? allMetas.filter(options.filterTarget) : allMetas
+  const metaByName = new Map(filteredMetas.map(m => [m.name.toLowerCase(), m]))
   const targets = Array.from(new Set(filteredMetas.map(m => m.name.toLowerCase())))
   const cleanBase = options.packBase ? options.packBase.replace(/\/+$/, '') : ''
   const baseCandidates = [
@@ -78,13 +191,24 @@ async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
     cleanBase ? `${cleanBase}/${options.subdir}` : '',
   ].filter(Boolean)
 
-  const failures: string[] = []
+  const aliasesByTarget = new Map<string, { alias: string; meta: M }[]>()
+  for (const [alias, meta] of Object.entries(options.metas)) {
+    const tName = meta.name.toLowerCase()
+    const list = aliasesByTarget.get(tName) ?? []
+    list.push({ alias, meta })
+    aliasesByTarget.set(tName, list)
+  }
 
-  await Promise.all(
-    targets.map(async name => {
-      let loaded = false
+  const failures: string[] = []
+  const targetLoaderCache = new Map<string, Promise<ArtEntry | undefined>>()
+
+  const loadSingleTarget = (name: string, recordFailure: boolean): Promise<ArtEntry | undefined> => {
+    const cached = targetLoaderCache.get(name)
+    if (cached !== undefined) return cached
+
+    const promise = (async (): Promise<ArtEntry | undefined> => {
       let lastReason = ''
-      const metaHint = options.metas[name]
+      const metaHint = options.metas[name] ?? metaByName.get(name)
       const extra = options.extraStems ? options.extraStems(name, metaHint) : []
       const candidateStems = Array.from(
         new Set(
@@ -96,12 +220,15 @@ async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
       for (const base of baseCandidates) {
         for (const stem of candidateStems) {
           try {
+            const useBundledMeta = hasBundledSpriteMeta(metaHint, name, stem)
             const [jsonResp, pngResp] = await Promise.all([
-              fetch(`${base}/${stem}.json`),
+              useBundledMeta ? Promise.resolve(undefined) : fetch(`${base}/${stem}.json`),
               fetch(`${base}/${stem}.png`),
             ])
-            if (jsonResp.ok && pngResp.ok) {
-              const rawMeta = (await jsonResp.json()) as M
+            if ((useBundledMeta || jsonResp?.ok) && pngResp.ok) {
+              const rawMeta: M = useBundledMeta
+                ? metaHint
+                : ((await jsonResp!.json()) as M)
               const meta: M =
                 options.overrideNameOnStemMismatch && metaHint && stem !== name
                   ? { ...rawMeta, name }
@@ -133,23 +260,86 @@ async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
               }
               if (meta.celFile) {
                 // Missiles.txt / Overlay.txt name the DCC with '\' (Issue #1043): one normalised key for both sides.
-                map.set(celFileArtKey(meta.celFile), art)
+                const celKey = celFileArtKey(meta.celFile)
+                if (superGetOrUndefined(map, celKey) === undefined || name === meta.celFile.toLowerCase()) {
+                  map.set(celKey, art)
+                }
+                if (superGetOrUndefined(map, meta.celFile) === undefined) {
+                  map.set(meta.celFile, art)
+                }
+                if (superGetOrUndefined(map, meta.celFile.toLowerCase()) === undefined) {
+                  map.set(meta.celFile.toLowerCase(), art)
+                }
               }
-              loaded = true
-              break
+              for (const { alias, meta: aliasMeta } of aliasesByTarget.get(name) ?? []) {
+                map.set(alias, art)
+                map.set(alias.toLowerCase(), art)
+                if (aliasMeta.celFile) {
+                  const aliasCelKey = celFileArtKey(aliasMeta.celFile)
+                  if (superGetOrUndefined(map, aliasCelKey) === undefined) {
+                    map.set(aliasCelKey, art)
+                  }
+                  if (superGetOrUndefined(map, aliasMeta.celFile) === undefined) {
+                    map.set(aliasMeta.celFile, art)
+                  }
+                  if (superGetOrUndefined(map, aliasMeta.celFile.toLowerCase()) === undefined) {
+                    map.set(aliasMeta.celFile.toLowerCase(), art)
+                  }
+                }
+              }
+              return art
             }
-            lastReason = `${base}/${stem}.json (HTTP ${jsonResp.status}), ${base}/${stem}.png (HTTP ${pngResp.status})`
+            lastReason = useBundledMeta
+              ? `${base}/${stem}.png (HTTP ${pngResp.status})`
+              : `${base}/${stem}.json (HTTP ${jsonResp?.status ?? 0}), ${base}/${stem}.png (HTTP ${pngResp.status})`
           } catch (err) {
             lastReason = `${base}/${stem}: ${err instanceof Error ? err.message : String(err)}`
           }
         }
-        if (loaded) break
       }
-      if (!loaded) {
+      if (recordFailure) {
         failures.push(`${name} [${lastReason || `tried: ${baseCandidates.join(', ')}`}]`)
       }
-    }),
-  )
+      return undefined
+    })()
+
+    targetLoaderCache.set(name, promise)
+    return promise
+  }
+
+  if (options.lazy) {
+    const preloadSet = new Set(
+      (options.preloadStems ?? []).map(s => s.toLowerCase()),
+    )
+    const eagerTargets: string[] = []
+    for (const name of targets) {
+      const metaHint = options.metas[name] ?? metaByName.get(name)
+      const extra = options.extraStems ? options.extraStems(name, metaHint) : []
+      const loader = (): Promise<ArtEntry | undefined> => loadSingleTarget(name, false)
+      map.registerLazyKey(name, loader, true)
+      for (const stem of extra) {
+        map.registerLazyKey(stem, loader, false)
+      }
+      if (metaHint?.celFile && metaHint.celFile.toLowerCase() !== 'null') {
+        const isCanonicalCelOwner = name === metaHint.celFile.toLowerCase()
+        map.registerLazyKey(celFileArtKey(metaHint.celFile), loader, isCanonicalCelOwner)
+        map.registerLazyKey(metaHint.celFile, loader, false)
+      }
+      for (const { alias, meta: aliasMeta } of aliasesByTarget.get(name) ?? []) {
+        map.registerLazyKey(alias, loader, false)
+        if (aliasMeta.celFile && aliasMeta.celFile.toLowerCase() !== 'null') {
+          map.registerLazyKey(celFileArtKey(aliasMeta.celFile), loader, false)
+          map.registerLazyKey(aliasMeta.celFile, loader, false)
+        }
+      }
+      if (preloadSet.has(name)) {
+        eagerTargets.push(name)
+      }
+    }
+    await Promise.all(eagerTargets.map(name => loadSingleTarget(name, true)))
+  } else {
+    await Promise.all(targets.map(name => loadSingleTarget(name, true)))
+  }
 
   if (failures.length > 0) {
     console.error(
@@ -159,9 +349,9 @@ async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
 
   for (const [alias, meta] of Object.entries(options.metas)) {
     const art =
-      (meta.celFile ? map.get(celFileArtKey(meta.celFile)) : undefined) ??
-      map.get(meta.name) ??
-      map.get(meta.name.toLowerCase()) ??
+      (meta.celFile ? superGetOrUndefined(map, celFileArtKey(meta.celFile)) : undefined) ??
+      superGetOrUndefined(map, meta.name) ??
+      superGetOrUndefined(map, meta.name.toLowerCase()) ??
       options.fallbackAliasKey?.(meta, map)
     if (art) {
       map.set(alias, art)
@@ -171,14 +361,18 @@ async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
 
   for (const meta of Object.values(options.metas)) {
     if (!meta.celFile) continue
-    const art = map.get(celFileArtKey(meta.celFile))
+    const art = superGetOrUndefined(map, celFileArtKey(meta.celFile))
     if (art) {
-      if (!map.has(meta.celFile)) map.set(meta.celFile, art)
-      if (!map.has(meta.celFile.toLowerCase())) map.set(meta.celFile.toLowerCase(), art)
+      if (superGetOrUndefined(map, meta.celFile) === undefined) map.set(meta.celFile, art)
+      if (superGetOrUndefined(map, meta.celFile.toLowerCase()) === undefined) map.set(meta.celFile.toLowerCase(), art)
     }
   }
 
   return map
+}
+
+function superGetOrUndefined<V>(map: Map<string, V>, key: string): V | undefined {
+  return Map.prototype.get.call(map, key) as V | undefined
 }
 
 /**
@@ -187,13 +381,16 @@ async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
 export async function loadMissileArtMap(
   renderer: SpriteRenderer,
   packBase?: string,
-): Promise<Map<string, LoadedMissileArt>> {
+  options?: LoadSpriteArtMapOptions,
+): Promise<LazySpriteArtMap<LoadedMissileArt>> {
   return loadPackedSpriteArtMap<MissileMeta>({
     label: 'loadMissileArtMap',
     subdir: 'missiles',
     metas: MISSILE_METAS,
     renderer,
     packBase,
+    lazy: options?.lazy,
+    preloadStems: options?.preloadStems ?? DEFAULT_LAZY_PRELOAD_MISSILES,
     overrideNameOnStemMismatch: true,
   })
 }
@@ -204,18 +401,21 @@ export async function loadMissileArtMap(
 export async function loadOverlayArtMap(
   renderer: SpriteRenderer,
   packBase?: string,
-): Promise<Map<string, LoadedOverlayArt>> {
+  options?: LoadSpriteArtMapOptions,
+): Promise<LazySpriteArtMap<LoadedOverlayArt>> {
   return loadPackedSpriteArtMap<OverlayMeta>({
     label: 'loadOverlayArtMap',
     subdir: 'overlays',
     metas: OVERLAY_METAS,
     renderer,
     packBase,
+    lazy: options?.lazy,
+    preloadStems: options?.preloadStems ?? DEFAULT_LAZY_PRELOAD_OVERLAYS,
     overrideNameOnStemMismatch: true,
     filterTarget: m => m.celFile?.toLowerCase() !== 'null',
     extraStems: name => (name.toLowerCase() === 'cursecast' ? ['curse_hit'] : []),
     fallbackAliasKey: (meta, map) =>
-      meta.name.toLowerCase() === 'cursecast' ? map.get('curse_hit') : undefined,
+      meta.name.toLowerCase() === 'cursecast' ? superGetOrUndefined(map as Map<string, LoadedOverlayArt>, 'curse_hit') : undefined,
   })
 }
 

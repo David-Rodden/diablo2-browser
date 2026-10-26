@@ -462,7 +462,8 @@ export function calculateHolyShockStats(
   // hitShift = 8
   const rawMin256 = baseMin << 8
   const rawMax256 = baseMax << 8
-  const pulseMin256 = Math.trunc((rawMin256 * (100 + synergyBonusPct)) / 100)
+  // Flat 1-point min (EMin=1, HitShift=8, EMinLev1=0): D2Common #10121 0x6FDA04C7 skips the synergy (#1681).
+  const pulseMin256 = rawMin256
   const pulseMax256 = Math.trunc((rawMax256 * (100 + synergyBonusPct)) / 100)
   const pulseMin = pulseMin256 >> 8
   const pulseMax = pulseMax256 >> 8

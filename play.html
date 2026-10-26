@@ -285,6 +285,17 @@
         min-width: 26px;
       }
 
+      .d2-toolbar__qq-btn {
+        font-family: "JetBrains Mono", "Consolas", var(--font-body, serif);
+        font-variant-numeric: tabular-nums;
+        cursor: pointer;
+      }
+
+      .d2-toolbar__qq-btn:hover:not(:disabled) {
+        border-color: #d4bc7c;
+        color: #fff4ce;
+      }
+
       .d2-toolbar__btn--primary {
         background: linear-gradient(180deg, #5e4923 0%, #332711 100%);
         border-color: #c7a456;
@@ -311,6 +322,19 @@
         width: 12px;
         height: 12px;
         display: block;
+      }
+
+      @keyframes d2-toolbar-refresh-spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      #d2-toolbar-refresh-btn.is-refreshing .d2-toolbar__btn-icon svg {
+        animation: d2-toolbar-refresh-spin 420ms ease-out;
       }
 
       .d2-toolbar__btn-label {
@@ -799,6 +823,7 @@
   <body>
     <div id="d2-toolbar-container">
       <header id="d2-toolbar" class="d2-toolbar">
+        <button id="d2-toolbar-qq-btn" type="button" class="d2-toolbar__btn d2-toolbar__qq-btn" data-copy="754468203" title="点击复制 QQ 群号 (754468203)" aria-label="点击复制 QQ 群号 (754468203)"><span class="d2-toolbar__btn-icon" aria-hidden="true"><svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M2.5 4.5A2 2 0 0 1 4.5 2.5h7A2 2 0 0 1 13.5 4.5v5A2 2 0 0 1 11.5 11.5H6.5l-3 2.5V4.5Z"/><path d="M5.5 6.5h5M5.5 9h3"/></svg></span><span id="d2-toolbar-qq-label" class="d2-toolbar__btn-label">QQ群: 754468203</span></button>
         <button id="d2-toolbar-plugins-btn" type="button" class="d2-toolbar__btn" disabled><span class="d2-toolbar__btn-icon" aria-hidden="true"><svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" focusable="false" aria-hidden="true"><path d="M4 5h1.5v-.5a1.5 1.5 0 0 1 3 0V5H10a1 1 0 0 1 1 1v1.5h.5a1.5 1.5 0 0 1 0 3H11V12a1 1 0 0 1-1 1H8.5v-.4a1.5 1.5 0 0 0-3 0V13H4a1 1 0 0 1-1-1v-1.5h.4a1.5 1.5 0 0 0 0-3H3V6a1 1 0 0 1 1-1Z"/></svg></span><span class="d2-toolbar__btn-label">Plugins</span></button>
         <div id="d2-toolbar-plugin-slot" class="d2-toolbar__group"></div>
         <div id="d2-toolbar-right" class="d2-toolbar__right">
@@ -812,6 +837,7 @@
           </div>
           <div class="d2-toolbar__divider" role="separator"></div>
           <div id="d2-toolbar-actions" class="d2-toolbar__group d2-toolbar__actions">
+            <button id="d2-toolbar-refresh-btn" type="button" class="d2-toolbar__btn d2-toolbar__btn--icon" data-d2-toolbar-action="refresh" title="刷新前端显示与同步位置" aria-label="刷新前端显示与同步位置"><span class="d2-toolbar__btn-icon" aria-hidden="true"><svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 0 1-9.39 3.89L2.5 10.5"/><path d="M2.5 13.5v-3h3"/><path d="M2.5 8a5.5 5.5 0 0 1 9.39-3.89L13.5 5.5"/><path d="M13.5 2.5v3h-3"/></svg></span></button>
             <button id="d2-toolbar-lang-btn" type="button" class="d2-toolbar__btn d2-toolbar__btn--icon" data-lang="zh" title="Language"><span class="d2-toolbar__btn-icon" aria-hidden="true"><svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2a9.5 9.5 0 0 1 2.6 6A9.5 9.5 0 0 1 8 14a9.5 9.5 0 0 1-2.6-6A9.5 9.5 0 0 1 8 2Z"/></svg></span><span id="d2-toolbar-lang-badge" class="d2-toolbar__lang-badge">EN</span></button>
             <button id="d2-toolbar-config-btn" type="button" class="d2-toolbar__btn d2-toolbar__btn--icon" aria-haspopup="dialog" aria-expanded="false" title="Settings (display / audio / cache)"><span class="d2-toolbar__btn-icon" aria-hidden="true"><svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg></span></button>
             <button id="d2-toolbar-bug-btn" type="button" class="d2-toolbar__btn d2-toolbar__btn--icon" aria-haspopup="dialog" aria-expanded="false" title="Report a Bug"><span class="d2-toolbar__btn-icon" aria-hidden="true"><svg class="d2-toolbar__icon-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><rect x="5" y="5" width="6" height="7.5" rx="3"/><path d="M6.2 5V3.8a1.8 1.8 0 0 1 3.6 0V5M2.5 6.5L5 7.2M13.5 6.5L11 7.2M2 9.2h3M11 9.2h3M2.5 12l2.5-.8M13.5 12L11 11.2"/></svg></span></button>
@@ -1038,6 +1064,42 @@
           dismissBtn.addEventListener('click', () => {
             guardEl.setAttribute('data-d2-guard-dismissed', 'true');
             guardEl.removeAttribute('data-d2-guard-state');
+          });
+        }
+        const qqBtn = document.getElementById('d2-toolbar-qq-btn');
+        if (qqBtn) {
+          qqBtn.addEventListener('click', async () => {
+            const text = qqBtn.getAttribute('data-copy') || '754468203';
+            let copied = false;
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                copied = true;
+              }
+            } catch {}
+            if (!copied) {
+              try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                copied = Boolean(document.execCommand && document.execCommand('copy'));
+                ta.remove();
+              } catch {}
+            }
+            if (copied) {
+              const label = document.getElementById('d2-toolbar-qq-label');
+              const prev = label ? label.textContent : '';
+              if (label) label.textContent = '已复制群号';
+              qqBtn.className = 'd2-toolbar__btn d2-toolbar__qq-btn d2-toolbar__btn--active';
+              setTimeout(() => {
+                if (label && prev) label.textContent = prev;
+                qqBtn.className = 'd2-toolbar__btn d2-toolbar__qq-btn';
+              }, 1500);
+            }
           });
         }
       })();

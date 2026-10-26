@@ -149,8 +149,6 @@ export const COLLIDE_BLANK = 0x0020
 export const COLLIDE_MISSILE = 0x0040
 /** Occupied by a player unit. */
 export const COLLIDE_PLAYER = 0x0080
-/** Water / river terrain flag. */
-export const COLLIDE_WATER = 0x00c0
 /** Occupied by a monster unit. */
 export const COLLIDE_MONSTER = 0x0100
 /** Occupied by a ground item. */
@@ -874,7 +872,10 @@ export function buildLevelAutomap(
       const cellY = Math.trunc(object.y / SUB_TILES_PER_TILE)
 
       if (object.type === 2 && !resolved.entry?.baseIsMonsters) {
-        const objectClassId = resolved.entry?.objectsTxtId ?? resolved.row?.id ?? -1
+        const objectClassId =
+          resolved.entry && resolved.entry.objectsTxtId >= 0
+            ? resolved.entry.objectsTxtId
+            : (resolved.row?.id ?? (object.id >= 150 ? object.id - 150 : -1))
         if (objectClassId < 0) continue
         const autoMapCol = resolved.row?.autoMap ?? 0
         const mode = resolved.mode === 'ON' || resolved.mode === 'OP' ? 2 : 0
@@ -1113,6 +1114,23 @@ export function buildIsoMapScene(
   let looseRefs = 0
   let cornerPairs = 0
   let missingCornerPairs = 0
+  /**
+   * 1.13c `0x6FD9CA90` second half (#1702): OR the tile's `dwFlags` mask (`Ds1Floor.collisionFlags`:
+   * 0x02 -> 0x10, 0x40 -> 0x01, 0x80 -> 0x04) over all 25 sub-tiles via `0x6FD9B560`.
+   */
+  const stampTileFlags = (cellX: number, cellY: number, mask: number | undefined): void => {
+    if (mask === undefined || mask === 0) return
+    for (let subY = 0; subY < SUB_TILES_PER_TILE; subY += 1) {
+      for (let subX = 0; subX < SUB_TILES_PER_TILE; subX += 1) {
+        const gx = cellX * SUB_TILES_PER_TILE + subX
+        const gy = cellY * SUB_TILES_PER_TILE + subY
+        if (gx < 0 || gx >= gridWidth || gy < 0 || gy >= gridHeight) continue
+        const idx = gy * gridWidth + gx
+        collisionMasks[idx] = (collisionMasks[idx] ?? 0) | mask
+        if ((mask & COLLIDE_MASK_PLAYER_PATH) !== 0) blocked[idx] = 1
+      }
+    }
+  }
   const stamp = (cellX: number, cellY: number, tile: Dt1Tile, isDoorWall = false): void => {
     for (let subY = 0; subY < SUB_TILES_PER_TILE; subY += 1) {
       for (let subX = 0; subX < SUB_TILES_PER_TILE; subX += 1) {
@@ -1147,16 +1165,12 @@ export function buildIsoMapScene(
         && cell.floors[0].style === 20
         && (cell.floors[0].unknown1 & 8) !== 0
         && cell.floors.slice(1).every(f => f.hidden || f.prop1 === 0)
-      const hasArcaneBlankFloor =
-        cell !== undefined
-        && cell.floors.some(f => f.prop1 !== 0 && f.style === 30 && f.sequence === 1)
-      const hasUnwalkableVisibleFloor =
-        cell !== undefined
-        && (isLavaOnlyFloor || cell.floors.some(f => !f.hidden && f.prop1 !== 0 && f.unwalkable === true))
+      // #1702: a MAPTILE_UNWALKABLE (0x40) floor is a real floor in 1.13c: its 0x01 tile-flag mask is
+      // stamped by `stampTileFlags` like every other tile (0x6FD9CB2C), so it no longer counts as void.
       const hasNoValidFloor =
         cell === undefined
         || cell.floors.length === 0
-        || cell.floors.every(f => f.hidden || f.prop1 === 0 || f.unwalkable === true)
+        || cell.floors.every(f => f.hidden || f.prop1 === 0)
         || isLavaOnlyFloor
       let hasHiddenCollisionFloor = false
 
@@ -1185,16 +1199,15 @@ export function buildIsoMapScene(
           }
           const tile = libraries[found.library]!.tiles[found.tile]!
           if (floor.hidden) {
-            // 1.13c D2Common.dll sub_6FD413E0 (0x6FD413E0): MAPTILE_HIDDEN (dwFlags & 0x08) only
-            // suppresses visual floor rendering; hidden collision floor tiles (e.g. tomb.dt1 /
-            // maggot/floor.dt1 style=50 seq=0..2 chasm borders, Blank.dt1 style=30 seq=0..1,
-            // InvisWal.dt1 style=49) still stamp their DT1 5x5 nSubtileFlags into pCollisionMask.
-            if (tile.subTileFlags.some(f => f.raw !== 0)) {
-              stamp(cellX, cellY, tile)
-              if (!hasArcaneBlankFloor) {
-                hasHiddenCollisionFloor = true
-              }
-            }
+            // 1.13c room collision fill (D2Common 0x6FD9CA90, #1702): MAPTILE_HIDDEN (0x08) only
+            // suppresses rendering; there is no hidden test in the fill, so hidden floors (tomb.dt1 /
+            // maggot/floor.dt1 style=50 chasm borders, Blank.dt1 30/0 = 0x05 and 30/1 = 0x01,
+            // InvisWal.dt1 style=49) stamp their raw DT1 5x5 bytes and their dwFlags mask exactly
+            // like visible tiles, and nothing else.
+            const hasDt1Collision = tile.subTileFlags.some(f => f.raw !== 0)
+            if (hasDt1Collision) stamp(cellX, cellY, tile)
+            stampTileFlags(cellX, cellY, floor.collisionFlags)
+            if (hasDt1Collision || (floor.collisionFlags ?? 0) !== 0) hasHiddenCollisionFloor = true
             continue
           }
           const animatedFrames = picked.animatedTiles?.map(t => frameFor(t.library, t.tile))
@@ -1206,16 +1219,17 @@ export function buildIsoMapScene(
             cellX, cellY, library: found.library, tile: found.tile,
           })
           stamp(cellX, cellY, tile)
+          stampTileFlags(cellX, cellY, floor.collisionFlags)
         }
       }
 
-      if (hasNoValidFloor) {
-        const invalidMask =
-          hasArcaneBlankFloor || hasUnwalkableVisibleFloor
-            ? COLLIDE_WALL | COLLIDE_BLANK
-            : hasHiddenCollisionFloor
-              ? COLLIDE_WALL
-              : COLLIDE_MASK_INVALID
+      // Cells covered only by hidden collision floors keep exactly what those tiles stamped (#1702:
+      // 1.13c adds no fill). A cell with no collision-bearing floor at all is void: 1.13c reads 0x27
+      // (COLLIDE_MASK_INVALID) outside every room (0x6FD9CA12 / 0x6FD9B413 query fallback) and the
+      // project keeps every void cell blocked with that value. The lava-only rule applies to raw
+      // (non-DRLG) DS1 cells and is kept as before; it is not part of the 1.13c room fill.
+      if (hasNoValidFloor && (!hasHiddenCollisionFloor || isLavaOnlyFloor)) {
+        const invalidMask = isLavaOnlyFloor ? COLLIDE_WALL | COLLIDE_BLANK : COLLIDE_MASK_INVALID
         for (let subY = 0; subY < SUB_TILES_PER_TILE; subY += 1) {
           for (let subX = 0; subX < SUB_TILES_PER_TILE; subX += 1) {
             const gx = cellX * SUB_TILES_PER_TILE + subX
@@ -1264,6 +1278,7 @@ export function buildIsoMapScene(
           if (blocked[idx] === 0) shadowBlocked += 1
           blocked[idx] = 1
         }
+        stampTileFlags(cellX, cellY, shadow.collisionFlags)
       }
 
       for (const wall of cell.walls) {
@@ -1322,6 +1337,7 @@ export function buildIsoMapScene(
         // (such as 0x200 bRevealHidden cutaway interior wall caps) do not stamp collision.
         if (!wall.hidden) {
           stamp(cellX, cellY, tile, isDoorWall)
+          stampTileFlags(cellX, cellY, wall.collisionFlags)
         }
 
         // A top-corner-right wall drags its left half along (see
@@ -1630,11 +1646,24 @@ export function collisionResetMask(
 }
 
 /**
- * Blizzard D2 1.13c `COLLISION_RayTrace` (D2Common.dll Ordinal 11263).
+ * Exact port of Blizzard D2 1.13c `COLLISION_RayTrace` (D2Common.dll `0x6FD9AD20`, stdcall
+ * `(pRoom, pBegin, pInOutEnd, nMask)`; exported wrappers `#10864` `0x6FD9E750`, `#10479` `0x6FD9F160`,
+ * `#10374` `0x6FD806D0`). See `kb/world/d2common-act-spawn-location-raytrace-113c.md` §5.
  *
- * Performs a Bresenham sub-tile line trace from `(startSubX, startSubY)` to `(endSubX, endSubY)`,
- * testing each sub-tile against `mask` (e.g. `COLLIDE_MASK_MISSILE` or `COLLIDE_MASK_LOS`).
- * If any visited sub-tile matches `mask`, terminates early and reports the hit coordinate.
+ * - The **begin sub-tile is tested first** (`0x6FD9AE1C` for a zero-length ray, the loop bodies at
+ *   `0x6FD9B0A1` / `0x6FD9B1C1` test the current cell before stepping). A unit standing on a blocking
+ *   sub-tile therefore reports a hit.
+ * - Single-major-axis Bresenham: the major axis steps by one every iteration, the minor delta is added
+ *   to an accumulator that starts at **0** (`mov [esp+0x28],0` at `0x6FD9B02A`) and the minor axis
+ *   steps (together with the major one — no corner cell) when `acc >= majorDelta` (`acc -= majorDelta`).
+ *   `|dx| >= |dy|` selects the X-major loop (`cmp edx,ecx; jl` at `0x6FD9B028`). The axis-aligned
+ *   fast paths (`0x6FD9AE4E`, `0x6FD9AF46`) visit the same `|d|+1` cells.
+ * - The end cell is included: the loop ends when the major coordinate reaches `end + step`.
+ * - A sub-tile that lies in no reachable room (`DUNGEON_GetRoomAtPosition` `0x6FD51330` returns NULL)
+ *   is a hit regardless of `mask`; in this grid model that is any sub-tile outside the collision grid.
+ * - On a hit the hit sub-tile is written back to `*pInOutEnd` (`0x6FD9B263`) and 1 is returned.
+ *
+ * `steps` is the number of cells advanced along the major axis before the trace stopped.
  */
 export function collisionRayTrace(
   scene: CollisionGrid,
@@ -1652,43 +1681,45 @@ export function collisionRayTrace(
   ) {
     return { hit: true, hitSubX: 0, hitSubY: 0, hitX: scene.originX, hitY: scene.originY, steps: 0 }
   }
-  let x0 = Math.floor(startSubX)
-  let y0 = Math.floor(startSubY)
+  let x = Math.floor(startSubX)
+  let y = Math.floor(startSubY)
   const x1 = Math.floor(endSubX)
   const y1 = Math.floor(endSubY)
 
-  const dx = Math.abs(x1 - x0)
-  const dy = Math.abs(y1 - y0)
-  const sx = x0 < x1 ? 1 : -1
-  const sy = y0 < y1 ? 1 : -1
-  let err = dx - dy
-  let steps = 0
-  const maxSteps = dx + dy + 1
+  const dx = Math.abs(x1 - x)
+  const dy = Math.abs(y1 - y)
+  const sx = x1 - x < 0 ? -1 : 1
+  const sy = y1 - y < 0 ? -1 : 1
+  const gridHeight = scene.cellsY * SUB_TILES_PER_TILE
+  const xMajor = dx >= dy
+  const majorDelta = xMajor ? dx : dy
+  const minorDelta = xMajor ? dy : dx
 
-  while (steps <= maxSteps) {
-    // Check collision on current sub-tile (skipping the shooter's exact starting sub-tile at step 0
-    // so a unit standing at the edge of an obstacle can still fire outward, unless start === end).
-    if ((steps > 0 || (x0 === x1 && y0 === y1)) && collisionCheckMask(scene, x0, y0, mask)) {
-      const pt = subTileCentre(scene, x0, y0)
-      return { hit: true, hitSubX: x0, hitSubY: y0, hitX: pt.x, hitY: pt.y, steps }
+  let acc = 0
+  for (let steps = 0; steps <= majorDelta; steps += 1) {
+    const outsideRooms = x < 0 || y < 0 || x >= scene.gridWidth || y >= gridHeight
+    if (outsideRooms || collisionCheckMask(scene, x, y, mask)) {
+      const pt = subTileCentre(scene, x, y)
+      return { hit: true, hitSubX: x, hitSubY: y, hitX: pt.x, hitY: pt.y, steps }
     }
-    if (x0 === x1 && y0 === y1) {
-      break
+    acc += minorDelta
+    if (xMajor) {
+      x += sx
+      if (acc >= majorDelta) {
+        acc -= majorDelta
+        y += sy
+      }
+    } else {
+      y += sy
+      if (acc >= majorDelta) {
+        acc -= majorDelta
+        x += sx
+      }
     }
-    const e2 = 2 * err
-    if (e2 > -dy) {
-      err -= dy
-      x0 += sx
-    }
-    if (e2 < dx) {
-      err += dx
-      y0 += sy
-    }
-    steps += 1
   }
 
   const pt = subTileCentre(scene, x1, y1)
-  return { hit: false, hitSubX: x1, hitSubY: y1, hitX: pt.x, hitY: pt.y, steps }
+  return { hit: false, hitSubX: x1, hitSubY: y1, hitX: pt.x, hitY: pt.y, steps: majorDelta }
 }
 
 /**

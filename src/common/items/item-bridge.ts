@@ -1328,6 +1328,7 @@ const STAT_ID_TO_PROP_CODE: Readonly<Record<number, string>> = {
   59: 'pois-len',
   60: 'lifesteal',
   62: 'manasteal',
+  73: 'dur',
   74: 'regen',
   75: 'dur%',
   76: 'hp%',
@@ -1336,11 +1337,15 @@ const STAT_ID_TO_PROP_CODE: Readonly<Record<number, string>> = {
   79: 'gold%',
   80: 'mag%',
   81: 'knock',
+  82: 'time',
   85: 'addxp',
   86: 'heal-kill',
   87: 'cheap',
+  88: 'herb',
   89: 'light',
+  90: 'color',
   91: 'ease',
+  92: 'levelreq',
   93: 'ias',
   96: 'frw',
   97: 'oskill',
@@ -1448,6 +1453,41 @@ const STAT_ID_TO_PROP_CODE: Readonly<Record<number, string>> = {
   253: 'rep-quant',
   254: 'stack',
   268: 'ac/time',
+  269: 'ac%/time',
+  270: 'hp/time',
+  271: 'mana/time',
+  272: 'dmg/time',
+  273: 'dmg%/time',
+  274: 'str/time',
+  275: 'dex/time',
+  276: 'enr/time',
+  277: 'vit/time',
+  278: 'att/time',
+  279: 'att%/time',
+  280: 'dmg-cold/time',
+  281: 'dmg-fire/time',
+  282: 'dmg-ltng/time',
+  283: 'dmg-pois/time',
+  284: 'res-cold/time',
+  285: 'res-fire/time',
+  286: 'res-ltng/time',
+  287: 'res-pois/time',
+  288: 'abs-cold/time',
+  289: 'abs-fire/time',
+  290: 'abs-ltng/time',
+  291: 'abs-pois/time',
+  292: 'gold%/time',
+  293: 'mag%/time',
+  294: 'regen-stam/time',
+  295: 'stam/time',
+  296: 'dmg-dem/time',
+  297: 'dmg-und/time',
+  298: 'att-dem/time',
+  299: 'att-und/time',
+  300: 'crush/time',
+  301: 'wounds/time',
+  302: 'kick/time',
+  303: 'deadly/time',
   329: 'extra-fire',
   330: 'extra-ltng',
   331: 'extra-cold',
@@ -1494,7 +1534,10 @@ export function convertOnlineItemStatsToRolledProps(stats: readonly ItemStat[]):
     const st = stats[i]!
     const statId = getStatId(st)
     const param = Number(st.param ?? 0)
-    const value = Number(st.value ?? 0)
+    // ItemStat values are internal (`<< ValShift`, D2Common 0x6fd79d90 decode at 0x6fd79e8f); display units
+    // are `>> ValShift` (stats 6..11, 216, 217 carry ValShift 8) (#1639).
+    const valShift = itemStatValShift(statId)
+    const value = valShift > 0 ? Number(st.value ?? 0) >> valShift : Number(st.value ?? 0)
 
     if (statId === 72) {
       curDurStat = value
@@ -1557,15 +1600,13 @@ export function convertOnlineItemStatsToRolledProps(stats: readonly ItemStat[]):
 
     if (statId === 6 || statId === 7 || statId === 8 || statId === 9 || statId === 10 || statId === 11) {
       const poolCode = statId <= 7 ? 'hp' : statId <= 9 ? 'mana' : 'stam'
-      const normVal = Math.abs(value) >= 256 && (value & 0xff) === 0 ? value >> 8 : value
-      props.push({ code: poolCode, min: normVal, max: normVal, value: normVal })
+      props.push({ code: poolCode, min: value, max: value, value })
       continue
     }
 
     if (statId === 216 || statId === 217) {
       const poolPerLvlCode = statId === 216 ? 'hp/lvl' : 'mana/lvl'
-      const normVal = Math.abs(value) >= 256 && (value & 0xff) === 0 ? value >> 8 : value
-      props.push({ code: poolPerLvlCode, min: normVal, max: normVal, value: normVal })
+      props.push({ code: poolPerLvlCode, min: value, max: value, value })
       continue
     }
 
@@ -1793,7 +1834,10 @@ export function onlineItemDataToUiInventoryItem(
   else if (rawQ === 5 || rawQ === 'set') qualityStr = 'set'
   else if (rawQ === 6 || rawQ === 'rare') qualityStr = 'rare'
   else if (rawQ === 7 || rawQ === 'unique') qualityStr = 'unique'
-  else if (rawQ === 8 || rawQ === 9 || rawQ === 'crafted' || rawQ === 'craft') qualityStr = 'craft'
+  else if (rawQ === 8 || rawQ === 'crafted' || rawQ === 'craft') qualityStr = 'craft'
+  // ITEMS_GetRequiredLevel 0x6fd76190 jump table 0x6fd766c0 covers qualities 4..8 only (add eax,-4; cmp eax,4;
+  // ja 0x6fd764e2): tempered (9) is not crafted and carries no affix requirement (#1649).
+  else if (rawQ === 9 || rawQ === 'tempered') qualityStr = 'tempered'
 
   const rawCombinedStats: (ItemStat | Record<string, any>)[] = [
     ...(Array.isArray(item.stats) ? item.stats : []),
@@ -1933,10 +1977,9 @@ export function onlineItemDataToUiInventoryItem(
         const affClass = String(aff.class ?? '').trim().toLowerCase()
         const affClassLevelReq = aff.classlevelreq
         if (
-          effectiveItemClass &&
           affClass &&
-          affClass === effectiveItemClass &&
-          (!rawPlayerClass || rawPlayerClass === affClass) &&
+          rawPlayerClass &&
+          rawPlayerClass === affClass &&
           typeof affClassLevelReq === 'number' &&
           affClassLevelReq > 0
         ) {
@@ -1990,10 +2033,9 @@ export function onlineItemDataToUiInventoryItem(
         const affClass = String(aff.class ?? '').trim().toLowerCase()
         const affClassLevelReq = aff.classlevelreq
         if (
-          effectiveItemClass &&
           affClass &&
-          affClass === effectiveItemClass &&
-          (!rawPlayerClass || rawPlayerClass === affClass) &&
+          rawPlayerClass &&
+          rawPlayerClass === affClass &&
           typeof affClassLevelReq === 'number' &&
           affClassLevelReq > 0
         ) {
@@ -2043,7 +2085,7 @@ export function onlineItemDataToUiInventoryItem(
           }
         }
       }
-      if ((qualityStr === 'rare' || qualityStr === 'craft') && typeof item.autoAffixId === 'number' && item.autoAffixId > 0) {
+      if (qualityStr === 'rare' && typeof item.autoAffixId === 'number' && item.autoAffixId > 0) {
         const autoTable = tables.autoMagic ?? CANONICAL_AUTOMAGIC_TABLE
         const autoEntry =
           autoTable.entries[item.autoAffixId - 1] ??
@@ -2054,10 +2096,10 @@ export function onlineItemDataToUiInventoryItem(
         }
       }
       if (qualityStr === 'craft') {
-        // D2Common.dll ITEMS_GetRequiredLevel (0x6fd7637f..0x6fd76478):
-        // Crafted items add +10 + 3 * numAffixes to max(baseLevelReq, maxAffixLevelReq), capped at 98.
-        const baseReqLvl = baseRow?.levelreq ?? baseRow?.reqLevel ?? 0
-        extraReqLevel = Math.min(98, Math.max(baseReqLvl, extraReqLevel) + 10 + 3 * craftAffixCount)
+        // D2Common.dll ITEMS_GetRequiredLevel (0x6fd7637f..0x6fd76538):
+        // Crafted items add +10 + 3 * numAffixes to maxAffixLevelReq (capped at 98);
+        // base levelreq is applied afterwards via max(baseLevelReq, extraReqLevel).
+        extraReqLevel = Math.min(98, extraReqLevel + 10 + 3 * craftAffixCount)
       }
       const rawRareName = [preWord, sufWord].filter(Boolean).join(' ') || baseNameEn
       const resolvedEn = preWord || sufWord ? resolveRareNameEn(rawRareName, preWord, sufWord) : baseNameEn
@@ -2429,7 +2471,9 @@ export function onlineItemDataToUiInventoryItem(
                     ? ItemQuality.UNIQUE
                     : qualityStr === 'craft'
                       ? ItemQuality.CRAFTED
-                      : ItemQuality.NORMAL,
+                      : qualityStr === 'tempered'
+                        ? ItemQuality.TEMPERED
+                        : ItemQuality.NORMAL,
     rarity: isGambleMystery ? 'normal' : isRuneword && !isUnidentified ? 'runeword' : qualityStr,
     level: item.ilvl ?? baseObj.level ?? 1,
     ilvl: item.ilvl ?? baseObj.level ?? 1,
@@ -2617,7 +2661,10 @@ export function resolveOnlineItemReqLevel(
   else if (rawQ === 5 || rawQ === 'set') qualityStr = 'set'
   else if (rawQ === 6 || rawQ === 'rare') qualityStr = 'rare'
   else if (rawQ === 7 || rawQ === 'unique') qualityStr = 'unique'
-  else if (rawQ === 8 || rawQ === 9 || rawQ === 'crafted' || rawQ === 'craft') qualityStr = 'craft'
+  else if (rawQ === 8 || rawQ === 'crafted' || rawQ === 'craft') qualityStr = 'craft'
+  // ITEMS_GetRequiredLevel 0x6fd76190 jump table 0x6fd766c0 covers qualities 4..8 only (add eax,-4; cmp eax,4;
+  // ja 0x6fd764e2): tempered (9) is not crafted and carries no affix requirement (#1649).
+  else if (rawQ === 9 || rawQ === 'tempered') qualityStr = 'tempered'
 
   const rawItemType = String(baseRow?.type ?? '').trim().toLowerCase()
   const effectiveItemClass = rawItemType ? inferItemClassFromType(rawItemType, tables.isA) : undefined
@@ -2630,10 +2677,9 @@ export function resolveOnlineItemReqLevel(
     const affClass = String(aff.class ?? '').trim().toLowerCase()
     const affClassLevelReq = aff.classlevelreq
     if (
-      effectiveItemClass &&
       affClass &&
-      affClass === effectiveItemClass &&
-      (!rawPlayerClass || rawPlayerClass === affClass) &&
+      rawPlayerClass &&
+      rawPlayerClass === affClass &&
       typeof affClassLevelReq === 'number' &&
       affClassLevelReq > 0
     ) {
@@ -2696,12 +2742,14 @@ export function resolveOnlineItemReqLevel(
       }
     }
     if (Array.isArray((item as any).rolledRareAffixes?.affixes)) {
-      for (const aff of (item as any).rolledRareAffixes.affixes) {
+      const rolledList = (item as any).rolledRareAffixes.affixes
+      if (craftAffixCount === 0) craftAffixCount = rolledList.length
+      for (const aff of rolledList) {
         const effReq = getAffixReqLevel(aff?.affix ?? aff)
         if (effReq > 0) extraReqLevel = Math.max(extraReqLevel, effReq)
       }
     }
-    if (typeof item.autoAffixId === 'number' && item.autoAffixId > 0) {
+    if (qualityStr === 'rare' && typeof item.autoAffixId === 'number' && item.autoAffixId > 0) {
       const autoTable = tables.autoMagic ?? CANONICAL_AUTOMAGIC_TABLE
       const autoEntry =
         autoTable.entries[item.autoAffixId - 1] ??
@@ -2710,8 +2758,10 @@ export function resolveOnlineItemReqLevel(
       if (autoReq > 0) extraReqLevel = Math.max(extraReqLevel, autoReq)
     }
     if (qualityStr === 'craft') {
-      extraReqLevel = Math.min(98, Math.max(baseReqLevel, extraReqLevel) + 10 + 3 * craftAffixCount)
+      extraReqLevel = Math.min(98, extraReqLevel + 10 + 3 * craftAffixCount)
     }
+  } else if (qualityStr === 'tempered') {
+    // Default case of the 0x6fd766c0 jump table: base levelreq, skills and stat 92 only (no automagic).
   } else if (hasOnlineMagicAffixes(item, qualityStr, code, baseRow)) {
     const preId =
       item.magicPrefixId ??
@@ -2809,13 +2859,18 @@ const PROP_CODE_TO_STAT_ID: ReadonlyMap<string, number> = (() => {
       m.set(key, sid)
     }
   }
-  m.set('hp', 6)
-  m.set('mana', 8)
-  m.set('stam', 10)
+  m.set('hp', 7)
+  m.set('mana', 9)
+  m.set('stam', 11)
   m.set('dmg%', 17)
   m.set('dmg-min', 21)
   m.set('dmg-max', 22)
   m.set('dmg-mag', 52)
+  m.set('dur', 73)
+  m.set('time', 82)
+  m.set('herb', 88)
+  m.set('color', 90)
+  m.set('levelreq', 92)
   m.set('swing1', 93)
   m.set('swing2', 93)
   m.set('swing3', 93)
@@ -2845,12 +2900,69 @@ const CLASS_SKILL_PROP_INDEX: Readonly<Record<string, number>> = {
   ass: 6,
 }
 
+export interface RolledPropsToItemStatsOptions {
+  readonly baseCode?: string | undefined
+  readonly isWeapon?: boolean | undefined
+  readonly has1H?: boolean | undefined
+  readonly has2H?: boolean | undefined
+  readonly isThrowable?: boolean | undefined
+}
+
+function resolveDamageSpreadFlags(options?: RolledPropsToItemStatsOptions): {
+  readonly has1H: boolean
+  readonly has2H: boolean
+  readonly hasThrow: boolean
+} {
+  if (options?.baseCode) {
+    const dt = getEmbeddedDropTables()
+    const trimmed = options.baseCode.trim()
+    const weapon = (dt.weapons?.get?.(trimmed) ?? (dt.weapons as any)?.byCode?.get?.(trimmed)) as any
+    if (weapon) {
+      const minDam = Number(weapon.minDam ?? weapon.mindam ?? 0)
+      const twoHandMinDam = Number(
+        weapon.twoHandedMindam ?? weapon.twoHandMinDam ?? weapon.twohandmindam ?? 0,
+      )
+      const wType = String(weapon.type ?? '').trim()
+      const throwable = Boolean(
+        weapon.throwable ||
+          Number(weapon.minMisDam ?? 0) > 0 ||
+          Number(weapon.maxMisDam ?? 0) > 0 ||
+          (wType && dt.itemTypes && isA(wType, 'thro', dt.itemTypes)),
+      )
+      return {
+        has1H: minDam !== 0 || twoHandMinDam === 0,
+        has2H: twoHandMinDam !== 0 || minDam === 0,
+        hasThrow: throwable,
+      }
+    }
+    return { has1H: true, has2H: true, hasThrow: true }
+  }
+  if (options?.isWeapon === true) {
+    return {
+      has1H: options.has1H ?? true,
+      has2H: options.has2H ?? true,
+      hasThrow: options.isThrowable ?? false,
+    }
+  }
+  // D2Common 0x6fd987c0 / 0x6fd98630: non-weapon items (`!ITEMS_CheckItemTypeId(pItem, 0x2d)`)
+  // write all three damage stats (21/23/159 for dmg-min; 22/24/160 for dmg-max).
+  return {
+    has1H: options?.has1H ?? true,
+    has2H: options?.has2H ?? true,
+    hasThrow: options?.isThrowable ?? true,
+  }
+}
+
 /**
  * Converts `RolledItemProp[]` into canonical `ItemStat[]` entries (`statId`, `param`, `value`)
  * so that online `ItemData` and `onlineItemDataToUiInventoryItem` preserve all rolled Rare stats.
  */
-export function rolledPropsToItemStats(props: readonly RolledItemProp[] | undefined): ItemStat[] {
+export function rolledPropsToItemStats(
+  props: readonly RolledItemProp[] | undefined,
+  options?: RolledPropsToItemStatsOptions,
+): ItemStat[] {
   if (!props || props.length === 0) return []
+  const spread = resolveDamageSpreadFlags(options)
   const out: ItemStat[] = []
   for (const p of props) {
     if (!p || !p.code) continue
@@ -2860,6 +2972,13 @@ export function rolledPropsToItemStats(props: readonly RolledItemProp[] | undefi
     const max = Number(p.max ?? val)
     const rawParam = p.param !== undefined ? Number(p.param) : undefined
 
+    if (code === 'all-stats') {
+      out.push({ statId: 0, value: val })
+      out.push({ statId: 1, value: val })
+      out.push({ statId: 2, value: val })
+      out.push({ statId: 3, value: val })
+      continue
+    }
     if (code === 'res-all') {
       out.push({ statId: 39, value: val })
       out.push({ statId: 41, value: val })
@@ -2867,8 +2986,85 @@ export function rolledPropsToItemStats(props: readonly RolledItemProp[] | undefi
       out.push({ statId: 45, value: val })
       continue
     }
+    if (code === 'res-all-max') {
+      out.push({ statId: 40, value: val })
+      out.push({ statId: 42, value: val })
+      out.push({ statId: 44, value: val })
+      out.push({ statId: 46, value: val })
+      continue
+    }
+    if (code === 'dmg%') {
+      out.push({ statId: 17, value: val })
+      out.push({ statId: 18, value: val })
+      continue
+    }
+    if (code === 'dmg-min') {
+      if (spread.has1H) out.push({ statId: 21, value: val })
+      if (spread.has2H) out.push({ statId: 23, value: val })
+      if (spread.hasThrow) out.push({ statId: 159, value: val })
+      continue
+    }
+    if (code === 'dmg-max') {
+      if (spread.has1H) out.push({ statId: 22, value: val })
+      if (spread.has2H) out.push({ statId: 24, value: val })
+      if (spread.hasThrow) out.push({ statId: 160, value: val })
+      continue
+    }
+    if (code === 'dmg-throw') {
+      out.push({ statId: 159, value: min })
+      out.push({ statId: 160, value: Math.max(min, max) })
+      continue
+    }
+    if (code === 'dmg-elem') {
+      out.push({ statId: 48, value: min })
+      out.push({ statId: 49, value: Math.max(min, max) })
+      out.push({ statId: 50, value: min })
+      out.push({ statId: 51, value: Math.max(min, max) })
+      out.push({ statId: 54, value: min })
+      out.push({ statId: 55, value: Math.max(min, max) })
+      out.push({ statId: 56, value: rawParam && Number.isFinite(rawParam) ? rawParam : 25 })
+      continue
+    }
+    if (code === 'dmg-elem-min') {
+      out.push({ statId: 48, value: val })
+      out.push({ statId: 50, value: val })
+      out.push({ statId: 54, value: val })
+      continue
+    }
+    if (code === 'dmg-elem-max') {
+      out.push({ statId: 49, value: val })
+      out.push({ statId: 51, value: val })
+      out.push({ statId: 55, value: val })
+      out.push({ statId: 56, value: rawParam && Number.isFinite(rawParam) ? rawParam : 25 })
+      continue
+    }
+    if (code === 'randclassskill') {
+      const cls =
+        rawParam !== undefined && Number.isFinite(rawParam)
+          ? Math.max(0, Math.min(6, Math.trunc(rawParam)))
+          : 0
+      out.push({ statId: 83, param: cls, value: val || 3 })
+      continue
+    }
+    if (code === 'skill-rand') {
+      const skillId = Math.max(0, Math.trunc(min || val || 0))
+      const slvl =
+        rawParam !== undefined && Number.isFinite(rawParam) && rawParam > 0
+          ? Math.trunc(rawParam)
+          : Math.max(1, Math.trunc(val || 1))
+      out.push({ statId: 107, param: skillId, value: slvl })
+      continue
+    }
     if (code in CLASS_SKILL_PROP_INDEX) {
       out.push({ statId: 83, param: CLASS_SKILL_PROP_INDEX[code]!, value: val })
+      continue
+    }
+    if (code === 'fireskill') {
+      out.push({
+        statId: 126,
+        param: rawParam !== undefined && Number.isFinite(rawParam) && rawParam > 0 ? Math.trunc(rawParam) : 1,
+        value: val,
+      })
       continue
     }
     if (code === 'skilltab') {
@@ -2953,7 +3149,25 @@ export function rolledPropsToItemStats(props: readonly RolledItemProp[] | undefi
       })
     }
   }
-  return out
+  // ItemStat values are internal units: ITEMMODS_AddPropertyToItemStatList (D2Common 0x6fd975e0) stores
+  // `value << ISC.ValShift` (0x6fd97653 mov cl,[esi+0x18]; 0x6fd97664 shl eax,cl) and the bitstream encoder
+  // 0x6fd7835b `sar`s it back before writing, so rolled display values must be shifted here (#1639).
+  return out.map((s) => {
+    const shift = itemStatValShift(s.statId as number)
+    return shift > 0 ? { ...s, value: s.value << shift } : s
+  })
+}
+
+/**
+ * ItemStatCost.txt `ValShift` of `statId` (ISC record byte +0x18). Throws for an id outside the table so
+ * an unknown stat never silently passes through unshifted.
+ */
+export function itemStatValShift(statId: number): number {
+  const isc = getEmbeddedDropTables().itemStatCost
+  if (!isc) throw new Error('itemStatValShift: embedded ItemStatCost table is missing')
+  const rec = isc.getById(statId)
+  if (!rec) throw new Error(`itemStatValShift: stat ${statId} is not in ItemStatCost.txt`)
+  return rec.valShift
 }
 
 /**
@@ -2968,7 +3182,9 @@ export function imbueItemData113c<T extends ItemData = ItemData>(
   const options: CharsiImbueOptions | undefined =
     typeof optionsOrSeed === 'number' ? { seed: optionsOrSeed } : optionsOrSeed
   const rolled = imbueItem113c(itemData, playerLevel, options)
-  const itemStats = rolledPropsToItemStats(rolled.rolledProps)
+  const itemStats = rolledPropsToItemStats(rolled.rolledProps, {
+    baseCode: (rolled.code ?? itemData.code).trim(),
+  })
   const wasEthereal = Boolean(
     itemData.ethereal ||
       (itemData as any).flags?.ethereal ||

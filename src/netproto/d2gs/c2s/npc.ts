@@ -206,7 +206,11 @@ export const encodeC2sNpcMercResurrect = encodeC2sNpcResurrectMerc
 
 /**
  * 0x4D PlayNpcMessage (3B): u8 0x4D | u16LE classId (MonStats hcIdx).
- * 0x39 PlayNpcMessage (9B): u8 0x39 | u32LE npcId | u32LE messageId (per D2Client 0x6fb54b80).
+ *
+ * This is the only C->S NPC-message packet the client may send. C->S `0x39` is a fixed 5-byte entry in
+ * the D2Net C->S size table (`0x6FBFABD8 + 0x39*4` = 5, no special case in `D2NET_10006` `0x6FBF65D0`)
+ * and its 1.13c D2Game handler `0x6FCEB560` is `mov eax,3; ret 8` (always rejected), so it is never
+ * encoded (#1653).
  */
 export function encodeC2sPlayNpcMessage(
   classIdOrCmd:
@@ -215,28 +219,15 @@ export function encodeC2sPlayNpcMessage(
         readonly classId?: number | undefined
         readonly npcClassId?: number | undefined
         readonly hcIdx?: number | undefined
-        readonly messageId?: number | undefined
-        readonly npcId?: number | undefined
-        readonly unitId?: number | undefined
       },
 ): Uint8Array {
-  if (
-    typeof classIdOrCmd === 'object' &&
-    classIdOrCmd !== null &&
-    'messageId' in classIdOrCmd &&
-    typeof classIdOrCmd.messageId === 'number'
-  ) {
-    const npcId = classIdOrCmd.npcId ?? classIdOrCmd.unitId ?? 0
-    const w = new ByteWriter(9)
-    w.u8(0x39)
-    w.u32LE(npcId >>> 0)
-    w.u32LE(classIdOrCmd.messageId >>> 0)
-    return validateC2sPacket(w.toUint8Array())
-  }
   const rawClassId =
     typeof classIdOrCmd === 'number'
       ? classIdOrCmd
-      : (classIdOrCmd.classId ?? classIdOrCmd.npcClassId ?? classIdOrCmd.hcIdx ?? 0)
+      : (classIdOrCmd.classId ?? classIdOrCmd.npcClassId ?? classIdOrCmd.hcIdx)
+  if (rawClassId === undefined) {
+    throw new RangeError('PlayNpcMessage requires a MonStats classId (hcIdx)')
+  }
   const w = new ByteWriter(3)
   w.u8(0x4d)
   w.u16LE(requireU16('PlayNpcMessage.classId', rawClassId))
@@ -244,5 +235,3 @@ export function encodeC2sPlayNpcMessage(
 }
 
 export const encode0x4DPlayNpcMessage = encodeC2sPlayNpcMessage
-export const encode0x39PlayNpcMessage = (npcId: number, messageId: number) =>
-  encodeC2sPlayNpcMessage({ npcId, messageId })

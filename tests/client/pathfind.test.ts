@@ -129,15 +129,17 @@ describe('PATHTYPE_STRAIGHT Pathfinding (Issue #588)', () => {
     }
   })
 
-  it('prevents diagonal corner cutting through pinch walls', () => {
+  it('prevents diagonal corner cutting through pinch walls for unitSize=2 while allowing unitSize=1 per 0x6FDCB3C0 (#1696)', () => {
     // Diagonal pinch: wall at (1, 0) and (0, 1)
-    // Transition (0, 0) to (1, 1) should be blocked
+    // Transition (0, 0) to (1, 1) is blocked for unitSize=2 (5-cell "+" cross includes (1,0) and (0,1)),
+    // while unitSize=1 checks only the destination cell (1, 1) in 0x6FDCB3C0.
     const grid = createGrid(5, 5, (x, y) => (x === 1 && y === 0) || (x === 0 && y === 1))
 
     expect(hasLineOfSightLocal(grid, 0, 0, 1, 1)).toBe(false)
-    const res = findPathLocal(grid, 0, 0, 1, 1)
-    // Because (1,0) and (0,1) are blocked, unit cannot cut corner to (1,1)
-    expect(res.reachedGoal).toBe(false)
+    const resSize2 = findPathLocal(grid, 0, 0, 1, 1, { unitSize: 2 })
+    expect(resSize2.reachedGoal).toBe(false)
+    const resSize1 = findPathLocal(grid, 0, 0, 1, 1, { unitSize: 1 })
+    expect(resSize1.reachedGoal).toBe(true)
   })
 
   it('caps path length at MAXPATHLEN (78)', () => {

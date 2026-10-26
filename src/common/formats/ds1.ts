@@ -74,6 +74,11 @@ export interface Ds1Wall {
   /** DRLG walls only: `dwFlags & MAPTILE_TREES (0x4)`, which exempts the wall from the occlusion fade. */
   readonly noFade?: boolean
   /**
+   * DRLG tiles only: the 5x5 collision mask 1.13c ORs from the tile's `dwFlags` in the room collision
+   * fill (D2Common `0x6FD9CA90`: `0x02 -> 0x10`, `0x40 -> 0x01`, `0x80 -> 0x04`, #1702). Absent = 0.
+   */
+  readonly collisionFlags?: number
+  /**
    * DRLG walls only: `dwFlags & MAPTILE_UNK_0x200 (0x200)` (`bRevealHidden`), cutaway interior wall cap that
    * starts hidden (`MAPTILE_HIDDEN`, no collision) and is revealed while an enclosing POPS box is active
    * (`DRLGPRESET_TogglePopsVisibility` `0x6fd5a180`, hidden again 500 ms after exit in `0x6fb4ef9f`).
@@ -106,6 +111,11 @@ export interface Ds1Floor {
   readonly dt1Tile?: number
   /** Whether DRLG marked this floor tile MAPTILE_UNWALKABLE. */
   readonly unwalkable?: boolean
+  /**
+   * DRLG tiles only: the 5x5 collision mask 1.13c ORs from the tile's `dwFlags` in the room collision
+   * fill (D2Common `0x6FD9CA90`: `0x02 -> 0x10`, `0x40 -> 0x01`, `0x80 -> 0x04`, #1702). Absent = 0.
+   */
+  readonly collisionFlags?: number
 }
 
 /** One substitution cell (raw value; its meaning is map-specific). */

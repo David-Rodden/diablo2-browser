@@ -110,9 +110,9 @@ describe('[Skill #033] Pierce (AMA) — 1.13c Parity (Issue #187)', () => {
   })
 
   it('validates 1.13c calculatePierceStats pure calculations, caps, and Guided Arrow (#1306) pierce scaling', () => {
-    // slvl 1: dm(10, 100, 1) = floor(110*1*90 / (100*7)) + 10 = floor(9900/700) + 10 = 14 + 10 = 24%
+    // slvl 1: dm(10, 100, 1) = trunc(trunc(110/7) * 90 / 100) + 10 = trunc(15*90/100) + 10 = 23% (0x6FD9DC30, #1678)
     const stats1 = calculatePierceStats(1)
-    expect(stats1.chancePct).toBe(24)
+    expect(stats1.chancePct).toBe(23)
     expect(stats1.maxPierceCount).toBe(4)
     expect(stats1.maxHitsPerMissile).toBe(5)
     expect(stats1.isGuidedArrow).toBe(false)
@@ -123,18 +123,18 @@ describe('[Skill #033] Pierce (AMA) — 1.13c Parity (Issue #187)', () => {
     const stats10 = calculatePierceStats(10)
     expect(stats10.chancePct).toBe(71)
 
-    // slvl 20: dm(10, 100, 20) = floor(110*20*90 / (100*26)) + 10 = floor(198000/2600) + 10 = 76 + 10 = 86%
+    // slvl 20: dm(10, 100, 20) = trunc(trunc(2200/26) * 90 / 100) + 10 = trunc(84*90/100) + 10 = 85%
     const stats20 = calculatePierceStats(20)
-    expect(stats20.chancePct).toBe(86)
+    expect(stats20.chancePct).toBe(85)
 
     // Guided Arrow (skillId === 22) calculates pierce chance using the same dm(10, 100, slvl) curve (#1306):
     const gaPierceLvl1 = calculatePierceStats(1, 22)
     expect(gaPierceLvl1.isGuidedArrow).toBe(true)
-    expect(gaPierceLvl1.chancePct).toBe(24)
+    expect(gaPierceLvl1.chancePct).toBe(23)
 
     const gaPierceLvl20 = calculatePierceStats(20, 22)
     expect(gaPierceLvl20.isGuidedArrow).toBe(true)
-    expect(gaPierceLvl20.chancePct).toBe(86)
+    expect(gaPierceLvl20.chancePct).toBe(85)
   })
 
   it('rolls the 1.13c pierce_idx once at creation from Skills.txt dm12 skill_pierce + item_pierce (Issue #1420)', async () => {
@@ -145,18 +145,18 @@ describe('[Skill #033] Pierce (AMA) — 1.13c Parity (Issue #187)', () => {
       skillId: 6, // Magic Arrow
       slvl: 1,
     })
-    arena.player.statList.setBaseSkillLevel(33, 20) // slvl 20 Pierce = 86%
-    arena.player.statList.addStat('item_pierce', 9) // +9% -> 95%
+    arena.player.statList.setBaseSkillLevel(33, 20) // slvl 20 Pierce = 85%
+    arena.player.statList.addStat('item_pierce', 9) // +9% -> 94%
     arena.triggerCast()
     const missiles = arena.missileEngine.getActiveMissiles()
     expect(missiles.length).toBeGreaterThanOrEqual(1)
-    // Skills.txt Pierce (#33) passivecalc1 = dm12 (10, 100): slvl 20 -> 86, + 9 item_pierce = 95.
-    expect(resolveUnitPierceTotal(arena.player, registry)).toBe(95)
+    // Skills.txt Pierce (#33) passivecalc1 = dm12 (10, 100): slvl 20 -> 85, + 9 item_pierce = 94.
+    expect(resolveUnitPierceTotal(arena.player, registry)).toBe(94)
     // The cast advanced the caster's base pierce_idx attack counter (`0x6FCEE520`), which seeds the roll (`0x6FC8F660`).
     const seed = arena.player.statList.getBaseStat('pierce_idx')
     expect(seed).toBeGreaterThan(0)
     // Remaining + already consumed pierces (the arena may already have stepped the missile into a target).
-    expect(missiles[0]!.pierceIdx + missiles[0]!.pierceCount).toBe(rollMissilePierceIdx(95, seed))
+    expect(missiles[0]!.pierceIdx + missiles[0]!.pierceCount).toBe(rollMissilePierceIdx(94, seed))
     expect(missiles[0]!.pierceIdx).toBeLessThanOrEqual(4)
   })
 })

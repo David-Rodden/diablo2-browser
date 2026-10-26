@@ -295,6 +295,35 @@ export interface ActiveExplosion {
   readonly radius?: number | undefined
 }
 
+export function computePlayerVitalTotals113c(
+  cStats: (typeof CANONICAL_CHARSTATS)[keyof typeof CANONICAL_CHARSTATS],
+  level: number,
+  vitAdded: number,
+  eneAdded: number,
+): { maxHp: number; maxStamina: number; maxMana: number } {
+  const lvlGain = Math.max(0, level - 1)
+  const life256 =
+    (cStats.baseVitals.life << 8) +
+    Math.round(
+      (lvlGain * cStats.perLevel.life + Math.max(0, vitAdded) * cStats.perStatPoint.lifePerVitality) * 256,
+    )
+  const stam256 =
+    (cStats.baseVitals.stamina << 8) +
+    Math.round(
+      (lvlGain * cStats.perLevel.stamina + Math.max(0, vitAdded) * cStats.perStatPoint.staminaPerVitality) * 256,
+    )
+  const mana256 =
+    (cStats.baseVitals.mana << 8) +
+    Math.round(
+      (lvlGain * cStats.perLevel.mana + Math.max(0, eneAdded) * cStats.perStatPoint.manaPerEnergy) * 256,
+    )
+  return {
+    maxHp: Math.floor(life256 / 256),
+    maxStamina: Math.floor(stam256 / 256),
+    maxMana: Math.floor(mana256 / 256),
+  }
+}
+
 /**
  * Legacy single-player simulation harness kept for existing unit tests.
  *
@@ -2184,21 +2213,27 @@ export class GameEngine {
         this.world.player.statPoints = (this.world.player.statPoints ?? 0) + levelsGained * 5
         this.world.player.skillPoints = (this.world.player.skillPoints ?? 0) + levelsGained * 1
         const cStats = CANONICAL_CHARSTATS[this.world.player.classCode ?? 'sor'] ?? CANONICAL_CHARSTATS.sor
-        const lifeGain =
-          Math.floor((newLevel - 1) * cStats.perLevel.life) -
-          Math.floor((oldLevel - 1) * cStats.perLevel.life)
-        const stamGain =
-          Math.floor((newLevel - 1) * cStats.perLevel.stamina) -
-          Math.floor((oldLevel - 1) * cStats.perLevel.stamina)
-        const manaGain =
-          Math.floor((newLevel - 1) * cStats.perLevel.mana) -
-          Math.floor((oldLevel - 1) * cStats.perLevel.mana)
+        const vitAdded = Math.max(
+          0,
+          (this.world.player.vit ?? cStats.baseAttributes.vitality) - cStats.baseAttributes.vitality,
+        )
+        const eneAdded = Math.max(
+          0,
+          (this.world.player.ene ?? cStats.baseAttributes.energy) - cStats.baseAttributes.energy,
+        )
+        const prevTotals = computePlayerVitalTotals113c(cStats, oldLevel, vitAdded, eneAdded)
+        const nextTotals = computePlayerVitalTotals113c(cStats, newLevel, vitAdded, eneAdded)
+        const lifeGain = nextTotals.maxHp - prevTotals.maxHp
+        const stamGain = nextTotals.maxStamina - prevTotals.maxStamina
+        const manaGain = nextTotals.maxMana - prevTotals.maxMana
         this.world.player.maxHp += lifeGain
-        this.world.player.hp = Math.min(this.world.player.maxHp, this.world.player.hp + lifeGain)
+        if (this.world.player.hp > 0 && this.world.player.alive !== false) {
+          this.world.player.hp = this.world.player.maxHp
+        }
         this.world.player.maxStamina = (this.world.player.maxStamina ?? cStats.baseVitals.stamina) + stamGain
-        this.world.player.stamina = Math.min(this.world.player.maxStamina, (this.world.player.stamina ?? this.world.player.maxStamina) + stamGain)
+        this.world.player.stamina = this.world.player.maxStamina
         this.world.player.maxMana += manaGain
-        this.world.player.mana = Math.min(this.world.player.maxMana, this.world.player.mana + manaGain)
+        this.world.player.mana = this.world.player.maxMana
       }
       const monster = this.world.monsters[index]
       if (
@@ -2540,7 +2575,8 @@ export class GameEngine {
 
   /**
    * Allocate 1 stat point into str, dex, vit, or ene using canonical 1.13c per-class CharStats.txt gains.
-   * Incremental gain only (never full-heals current HP/Mana).
+   * Incremental gain only (never full-heals current HP/Mana), sharing the 1/256 fixed-point accumulator
+   * with per-level gains (`D2Game.dll` `0x6FD0B090` / `0x6FC97340`, #1673).
    */
   allocateStat(stat: 'str' | 'dex' | 'vit' | 'ene' | 'strength' | 'dexterity' | 'vitality' | 'energy'): boolean {
     const player = this.world.player
@@ -2557,6 +2593,7 @@ export class GameEngine {
     if (normStat !== 'str' && normStat !== 'dex' && normStat !== 'vit' && normStat !== 'ene') {
       return false
     }
+    const level = Math.max(1, player.level ?? this.world.level ?? 1)
     player.statPoints = pts - 1
     if (normStat === 'str') {
       player.str = (player.str ?? cStats.baseAttributes.strength) + 1
@@ -2567,28 +2604,34 @@ export class GameEngine {
         0,
         (player.vit ?? cStats.baseAttributes.vitality) - cStats.baseAttributes.vitality,
       )
+      const eneAdded = Math.max(
+        0,
+        (player.ene ?? cStats.baseAttributes.energy) - cStats.baseAttributes.energy,
+      )
       player.vit = (player.vit ?? cStats.baseAttributes.vitality) + 1
       const nextVitAdded = prevVitAdded + 1
-      const lifeGain =
-        Math.floor(nextVitAdded * cStats.perStatPoint.lifePerVitality) -
-        Math.floor(prevVitAdded * cStats.perStatPoint.lifePerVitality)
-      const stamGain =
-        Math.floor(nextVitAdded * cStats.perStatPoint.staminaPerVitality) -
-        Math.floor(prevVitAdded * cStats.perStatPoint.staminaPerVitality)
+      const prevTotals = computePlayerVitalTotals113c(cStats, level, prevVitAdded, eneAdded)
+      const nextTotals = computePlayerVitalTotals113c(cStats, level, nextVitAdded, eneAdded)
+      const lifeGain = nextTotals.maxHp - prevTotals.maxHp
+      const stamGain = nextTotals.maxStamina - prevTotals.maxStamina
       player.maxHp += lifeGain
       player.hp = Math.min(player.maxHp, player.hp + lifeGain)
       player.maxStamina = (player.maxStamina ?? cStats.baseVitals.stamina) + stamGain
       player.stamina = Math.min(player.maxStamina, (player.stamina ?? player.maxStamina) + stamGain)
     } else if (normStat === 'ene') {
+      const vitAdded = Math.max(
+        0,
+        (player.vit ?? cStats.baseAttributes.vitality) - cStats.baseAttributes.vitality,
+      )
       const prevEneAdded = Math.max(
         0,
         (player.ene ?? cStats.baseAttributes.energy) - cStats.baseAttributes.energy,
       )
       player.ene = (player.ene ?? cStats.baseAttributes.energy) + 1
       const nextEneAdded = prevEneAdded + 1
-      const manaGain =
-        Math.floor(nextEneAdded * cStats.perStatPoint.manaPerEnergy) -
-        Math.floor(prevEneAdded * cStats.perStatPoint.manaPerEnergy)
+      const prevTotals = computePlayerVitalTotals113c(cStats, level, vitAdded, prevEneAdded)
+      const nextTotals = computePlayerVitalTotals113c(cStats, level, vitAdded, nextEneAdded)
+      const manaGain = nextTotals.maxMana - prevTotals.maxMana
       player.maxMana += manaGain
       player.mana = Math.min(player.maxMana, player.mana + manaGain)
     }
@@ -2619,21 +2662,27 @@ export class GameEngine {
       player.statPoints = (player.statPoints ?? 0) + levelsGained * 5
       player.skillPoints = (player.skillPoints ?? 0) + levelsGained * 1
       const cStats = CANONICAL_CHARSTATS[player.classCode ?? 'sor'] ?? CANONICAL_CHARSTATS.sor
-      const lifeGain =
-        Math.floor((newLevel - 1) * cStats.perLevel.life) -
-        Math.floor((oldLevel - 1) * cStats.perLevel.life)
-      const stamGain =
-        Math.floor((newLevel - 1) * cStats.perLevel.stamina) -
-        Math.floor((oldLevel - 1) * cStats.perLevel.stamina)
-      const manaGain =
-        Math.floor((newLevel - 1) * cStats.perLevel.mana) -
-        Math.floor((oldLevel - 1) * cStats.perLevel.mana)
+      const vitAdded = Math.max(
+        0,
+        (player.vit ?? cStats.baseAttributes.vitality) - cStats.baseAttributes.vitality,
+      )
+      const eneAdded = Math.max(
+        0,
+        (player.ene ?? cStats.baseAttributes.energy) - cStats.baseAttributes.energy,
+      )
+      const prevTotals = computePlayerVitalTotals113c(cStats, oldLevel, vitAdded, eneAdded)
+      const nextTotals = computePlayerVitalTotals113c(cStats, newLevel, vitAdded, eneAdded)
+      const lifeGain = nextTotals.maxHp - prevTotals.maxHp
+      const stamGain = nextTotals.maxStamina - prevTotals.maxStamina
+      const manaGain = nextTotals.maxMana - prevTotals.maxMana
       player.maxHp += lifeGain
-      player.hp = Math.min(player.maxHp, player.hp + lifeGain)
+      if (player.hp > 0 && player.alive !== false) {
+        player.hp = player.maxHp
+      }
       player.maxStamina = (player.maxStamina ?? cStats.baseVitals.stamina) + stamGain
-      player.stamina = Math.min(player.maxStamina, (player.stamina ?? player.maxStamina) + stamGain)
+      player.stamina = player.maxStamina
       player.maxMana += manaGain
-      player.mana = Math.min(player.maxMana, player.mana + manaGain)
+      player.mana = player.maxMana
     }
     this.notifyStateChange()
     return { leveledUp: levelsGained > 0, levelsGained, oldLevel, newLevel }

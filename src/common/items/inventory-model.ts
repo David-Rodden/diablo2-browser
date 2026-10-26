@@ -31,16 +31,15 @@ export function getInventoryGoldLimit(level: number): number {
 }
 
 /**
- * Authentic Diablo II 1.13c Stash Gold Limit (`D2Common.dll` ordinal #10439 `UNITS_GetStashGoldLimit`).
- * - `clvl < 30`: `(floor(clvl / 10) + 1) * 50,000` (50k at 1..9, 100k at 10..19, 150k at 20..29)
- * - `clvl >= 30`: `min(2,500,000, (floor(clvl / 2) + 1) * 50,000)` (800k at 30..31 up to 2,500,000)
+ * Diablo II 1.13c stash gold limit (`D2Common.dll` ordinal #11060 @ `0x6FD7E9C0`:
+ * `mov eax, 0x2625A0; ret 4`): a flat 2,500,000 that ignores its unit argument, so it does not
+ * depend on character level. D2Game clamps stat 15 `goldbank` with it (`0x6FC21063`, `0x6FD0CD08`)
+ * and D2Client imports it for the deposit keypad. The pre-1.13 level-scaled table
+ * (`(clvl / 10 + 1) * 50,000` ...) is not 1.13c behavior (issue #1668). `_level` is accepted only
+ * to mirror the native unit argument.
  */
-export function getStashGoldLimit(level: number): number {
-  const clvl = Math.max(1, Math.min(99, Math.floor(Number.isFinite(level) ? level : 1)))
-  if (clvl < 30) {
-    return (Math.floor(clvl / 10) + 1) * 50_000
-  }
-  return Math.min(STASH_GOLD_CAP, (Math.floor(clvl / 2) + 1) * 50_000)
+export function getStashGoldLimit(_level?: number): number {
+  return STASH_GOLD_CAP
 }
 
 export type EquipSlotId =
