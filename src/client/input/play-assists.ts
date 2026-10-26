@@ -29,6 +29,7 @@ const LOOT_STEP_MS = 200
 const LOOT_STEP_AHEAD = 8
 const AUTO_PICKUP_RADIUS_SUBTILES = 20
 const CARRIED_GOLD_PER_LEVEL = 10_000
+const CASH_KINDS = new Set(['magic', 'rare', 'set', 'unique'])
 const AUTO_COMBAT_REPEAT_MS = 40
 const HIT_CONFIRM_SLACK_MS = 120
 const DEFAULT_PING_MS = 200
@@ -682,7 +683,8 @@ export class PlayAssists {
     const care = this.inventoryCare
     const wantsLoot = (item: ItemData) => rules !== null && !care.discarded.has(item.id) && isWantedLoot(rules, item, care.appraise(item)) && care.roomFor(item) !== null
     const wantsQuest = (item: ItemData) => this.questPickup && care.appraise(item).kind === 'quest' && care.roomFor(item) !== null
-    return (item) => (wantsGold && item.code.trim() === 'gld') || wantsPotion(item.code.trim()) || wantsLoot(item) || wantsQuest(item)
+    const wantsCash = (item: ItemData) => rules !== null && care.hardUp && !care.discarded.has(item.id) && CASH_KINDS.has(care.appraise(item).kind) && care.roomFor(item)?.kind === 'fits'
+    return (item) => (wantsGold && item.code.trim() === 'gld') || wantsPotion(item.code.trim()) || wantsLoot(item) || wantsQuest(item) || wantsCash(item)
   }
 
   private isFreeForLootDetour(nowMs: number, walkingToLoot: boolean): boolean {

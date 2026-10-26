@@ -107,6 +107,24 @@ describe('auto gold pickup', () => {
   })
 })
 
+describe('picking up loot to sell when money is short', () => {
+  it('takes plain magic finds only while the purse cannot pay for supplies', () => {
+    const { world, mapper, pickups } = createSetup(false, 20)
+    mapper.assists.autoLootRules = { mode: 'smart', minTier: 'good' }
+    world.apply({
+      type: 'ItemEvent',
+      action: 0,
+      container: 'ground',
+      item: { id: 41, itemId: 41, code: 'lsd', rawCode: 'lsd ', quality: 4, invWidth: 1, invHeight: 3, container: 'ground', action: 0, flags: 0x00200000, rawFlags: 0x00200000, worldX: 5001, worldY: 5000, x: 5001, y: 5000 },
+    })
+    mapper.assists.pickUpNearbyLoot(1000)
+    expect(pickups()).toEqual([])
+    mapper.assists.inventoryCare.hardUp = true
+    mapper.assists.pickUpNearbyLoot(2000)
+    expect(pickups()).toEqual([41])
+  })
+})
+
 describe('auto gold pickup and walls', () => {
   const firstMove = (sent: readonly ClientCommand[]) => sent.find((c) => c.type !== 'ItemPickup')
 
