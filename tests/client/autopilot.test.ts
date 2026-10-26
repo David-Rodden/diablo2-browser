@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Autopilot, type AutopilotHost } from '../../src/client/guide/autopilot.ts'
 import type { GuidePlan } from '../../src/client/guide/path-guide.ts'
 import type { ClientUnit } from '../../src/client/world/client-unit.ts'
+import { MONSTER_PATH_IDS } from '../../src/common/path/monster-path-data.ts'
 
 const BLOOD_MOOR = 2
 const ROGUE_ENCAMPMENT = 1
@@ -132,6 +133,23 @@ describe('autopilot', () => {
     expect(hudManager.worldPanels.clickNpcMenuOption).toHaveBeenLastCalledWith('talk_quest:12', undefined)
     tick()
     expect([hudModel.closeActiveNpcPanel.mock.calls.length > 0, hudModel.requestQuestData.mock.calls.length > 0]).toEqual([true, true])
+  })
+
+  it('talks to Jerhyn first when Meshif will not sail yet', async () => {
+    const { world, assists, hudManager, units, guide, tick } = setup({ goal: { level: 75, title: 'Kurast Docks' }, hint: 'Talk to Meshif', target: { x: 101, y: 100, label: 'Meshif', unit: { id: 7, kind: 'npc' } } }, 40)
+    const [meshif, jerhyn] = [MONSTER_PATH_IDS.indexOf('meshif1'), MONSTER_PATH_IDS.indexOf('jerhyn')]
+    units.push(unit({ id: 7, classId: meshif, x: 101, y: 100, name: 'Meshif' }), unit({ id: 8, classId: jerhyn, x: 102, y: 100, name: 'Jerhyn' }))
+    world.self.gold = 0
+    tick()
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'main', options: [{ id: 'talk' }, { id: 'cancel' }] }
+    tick()
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'talk', options: [{ id: 'talk_intro' }, { id: 'cancel' }] }
+    tick()
+    hudManager.worldPanels.npcMenu = null
+    tick(21_000)
+    tick()
+    expect(guide.pilotStatus).toBe('Talking to Jerhyn first')
+    await vi.waitFor(() => expect(assists.use).toHaveBeenLastCalledWith(units[1], expect.any(Number)))
   })
 
   it('opens a portal home for a far town errand, and finishes it in town before going back through', () => {
