@@ -24,7 +24,7 @@ export interface InventoryCareHost {
 const INVENTORY_BUFFER = 0
 const INVENTORY_CELLS = 40
 const LOOT_ROOM = 12
-const GEAR_KINDS = new Set(['magic', 'rare', 'set', 'unique', 'jewel', 'base', 'normal'])
+const GEAR_KINDS = new Set(['charm', 'magic', 'rare', 'set', 'unique', 'jewel', 'base', 'normal'])
 const FUTURE_UPGRADE = 'Better'
 const SPARE_KINDS = new Set<Appraisal['kind']>(['charm', 'jewel', 'rune', 'gem', 'magic', 'rare', 'set', 'unique', 'base', 'normal'])
 const STASHED_KINDS = new Set<Appraisal['kind']>(['rune', 'gem', 'jewel', 'unique', 'set', 'rare', 'base'])

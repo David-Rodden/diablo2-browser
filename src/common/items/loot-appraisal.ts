@@ -126,7 +126,7 @@ function charmAppraisal(item: LootItem, size: CharmSize, { build }: AppraisalCon
   const skiller = skillerReason(item, build)
   const score = scoreStats(itemStats(item), build)
   const tier: LootTier = skiller || score >= great ? 'great' : score >= good ? 'good' : score >= good / 3 ? 'keep' : 'junk'
-  return result(tier, 'charm', score, skiller ?? `Worth ${Math.round(score)} to your build`, { locked: tier !== 'junk' })
+  return result(tier, 'charm', score, skiller ?? `Worth ${Math.round(score)} to your build`, { locked: TIER_RANK[tier] >= TIER_RANK.good })
 }
 
 function jewelAppraisal(item: LootItem, { build }: AppraisalContext): Appraisal {

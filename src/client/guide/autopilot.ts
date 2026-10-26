@@ -1991,6 +1991,7 @@ export class Autopilot {
 
   private async identifyAll(): Promise<void> {
     const { world, hudManager, hudModel } = this.host
+    if (hudManager.rightPanel !== 'inv') hudManager.toggleRightPanel('inv')
     for (const item of this.unidentified()) {
       const source = scrollSource(world.containers.inventory.values(), 'ibk', 'isc')
       if (!source || hudModel === null || !this.active) break
