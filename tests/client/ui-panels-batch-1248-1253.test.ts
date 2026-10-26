@@ -110,30 +110,27 @@ describe('UI Panels Batch (#1248, #1249, #1250, #1252, #1253)', () => {
     })
   })
 
-  describe('Issue #1250: Stash Gold Limit by clvl (0x6FD5D960) & Gold Dialog Remaining Capacity Clamping', () => {
-    it('computes 1.13c stash gold cap by character level (10-level tiers <30, 2-level tiers >=30, max 2.5M)', () => {
-      expect(getStashGoldLimit(1)).toBe(50_000)
-      expect(getStashGoldLimit(9)).toBe(50_000)
-      expect(getStashGoldLimit(10)).toBe(100_000)
-      expect(getStashGoldLimit(19)).toBe(100_000)
-      expect(getStashGoldLimit(20)).toBe(150_000)
-      expect(getStashGoldLimit(29)).toBe(150_000)
-      expect(getStashGoldLimit(30)).toBe(800_000)
-      expect(getStashGoldLimit(31)).toBe(800_000)
-      expect(getStashGoldLimit(32)).toBe(850_000)
-      expect(getStashGoldLimit(98)).toBe(STASH_GOLD_CAP)
-      expect(getStashGoldLimit(99)).toBe(STASH_GOLD_CAP)
+  describe('Issue #1250 / #1668: flat 2,500,000 stash gold limit (D2Common #11060 @ 0x6FD7E9C0) & Gold Dialog Remaining Capacity Clamping', () => {
+    it('stash gold cap is a flat 2,500,000 independent of character level (#11060: mov eax,0x2625A0; ret 4)', () => {
+      for (const lvl of [1, 9, 10, 29, 30, 32, 98, 99]) {
+        expect(getStashGoldLimit(lvl)).toBe(STASH_GOLD_CAP)
+      }
+      expect(STASH_GOLD_CAP).toBe(2_500_000)
 
       const wp = new WorldPanelsHud()
-      expect(wp.getStashMaxGold(1)).toBe(50_000)
-      expect(wp.getStashMaxGold(30)).toBe(800_000)
+      expect(wp.getStashMaxGold(1)).toBe(2_500_000)
+      expect(wp.getStashMaxGold(30)).toBe(2_500_000)
     })
 
-    it('caps vendor gold overflow into stash by getStashGoldLimit(cLvl) instead of flat 2,500,000', () => {
+    it('caps vendor gold overflow into stash by the flat 2,500,000 limit even at clvl 1', () => {
       const purse = { inventoryGold: 10_000, stashGold: 45_000, cLvl: 1 }
       addGoldToPurse(purse, 20_000)
       expect(purse.inventoryGold).toBe(getInventoryGoldLimit(1))
-      expect(purse.stashGold).toBe(50_000)
+      expect(purse.stashGold).toBe(65_000)
+
+      const full = { inventoryGold: 10_000, stashGold: 2_499_000, cLvl: 1 }
+      addGoldToPurse(full, 5_000)
+      expect(full.stashGold).toBe(2_500_000)
     })
 
     it('clamps Deposit and Withdraw gold dialog max balance to remaining target container capacity and no-ops when 0', () => {
@@ -142,19 +139,23 @@ describe('UI Panels Batch (#1248, #1249, #1250, #1252, #1253)', () => {
         rightPanel: 'inv',
         charSheet: { attrs: { level: 1 } },
         inventory: { playerLevel: 1, playerContext: { level: 1 }, gold: 10_000 },
-        worldPanels: { localPlayerLevel: 1, stashGold: 48_000 },
+        worldPanels: { localPlayerLevel: 1, stashGold: 2_498_000 },
         goldDialog: null,
         syncPublishedState: vi.fn(),
       }
-      // Level 1 stash cap is 50,000; with 48,000 in stash, max deposit is 2,000
+      // Stash cap is 2,500,000 at any level; with 2,498,000 in stash, max deposit is 2,000
       expect(goldDialogBalance(mockHud, 3)).toBe(2_000)
       openGoldDialog(mockHud, 3)
       expect(mockHud.goldDialog).not.toBeNull()
       expect(mockHud.goldDialog.amount).toBe(2_000)
 
-      // When stash is already at 50,000 capacity, Deposit (mode 3) max transfer is 0 and openGoldDialog no-ops
+      // A clvl 1 character with 48,000 stashed can deposit its whole inventory (no 50k level tier)
       mockHud.goldDialog = null
-      mockHud.worldPanels.stashGold = 50_000
+      mockHud.worldPanels.stashGold = 48_000
+      expect(goldDialogBalance(mockHud, 3)).toBe(10_000)
+
+      // When stash is already at 2,500,000, Deposit (mode 3) max transfer is 0 and openGoldDialog no-ops
+      mockHud.worldPanels.stashGold = 2_500_000
       expect(goldDialogBalance(mockHud, 3)).toBe(0)
       openGoldDialog(mockHud, 3)
       expect(mockHud.goldDialog).toBeNull()

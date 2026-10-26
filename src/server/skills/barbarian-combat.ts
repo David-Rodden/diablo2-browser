@@ -28,6 +28,7 @@ import {
   evaluateCanonicalSkillMana113c,
 } from '../../common/data/skills-catalog.ts'
 import { itemTypeIsA } from '../../common/items/item-types.ts'
+import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 
 // --- Interfaces for Skill Calculations ---
 
@@ -134,11 +135,9 @@ export interface BerserkStats {
 
 // --- Pure Calculation Functions ---
 
+/** SkillCalc `dmXY` → shared D2Common `0x6FD9DC30` port (issue #1678); levels below 1 are clamped to 1. */
 function dm(minVal: number, maxVal: number, slvl: number): number {
-  const lvl = Math.max(1, Math.trunc(slvl))
-  const factor = Math.min(100, Math.trunc((110 * lvl) / (lvl + 6)))
-  const span = maxVal - minVal
-  return minVal + Math.trunc((span * factor) / 100)
+  return computeDiminishingReturns(minVal, maxVal, Math.max(1, Math.trunc(slvl)))
 }
 
 /**
@@ -475,7 +474,8 @@ export function calculateBerserkStats(
   const par4 = 75
   const par3 = 25
   const range = par4 - par3 // 50
-  const reduction = Math.min(range, Math.floor(((110 * lvl) / (lvl + 6)) * (range / 100)))
+  // Calc integer semantics: (110*lvl)/(lvl+6) truncates before the multiply, then *(range)/100 truncates.
+  const reduction = Math.min(range, Math.trunc((Math.trunc((110 * lvl) / (lvl + 6)) * range) / 100))
   const zeroDefenseDurationFrames = par4 - reduction
   const mana = evaluateCanonicalSkillMana113c(152, lvl)
 

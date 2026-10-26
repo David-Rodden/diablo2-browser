@@ -60,7 +60,7 @@ export function deductGoldFromPurse(purse: GoldPurseState, amount: number): bool
 
 /**
  * Adds `amount` of gold to `inventoryGold` up to `10000 * cLvl`, overflowing any excess into `stashGold`
- * capped at `getStashGoldLimit(cLvl)` (`D2Common.dll #10439`).
+ * capped at the flat 2,500,000 stash limit (`D2Common.dll #11060` @ `0x6FD7E9C0`, level-independent).
  */
 export function addGoldToPurse(purse: GoldPurseState, amount: number): void {
   if (amount <= 0) return

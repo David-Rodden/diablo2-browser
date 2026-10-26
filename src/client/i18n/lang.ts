@@ -292,6 +292,7 @@ export type ToolbarI18nKey =
   | 'toolbar.lang.toggle'
   | 'toolbar.lang.zh'
   | 'toolbar.lang.en'
+  | 'toolbar.refresh.title'
   | 'toolbar.lighting.label'
   | 'toolbar.automap.label'
   | 'toolbar.automap.off'
@@ -347,6 +348,9 @@ export type ToolbarI18nKey =
   | 'toolbar.diag.quotaExceeded'
   | 'toolbar.diag.tlsError'
   | 'toolbar.diag.bareIpHttps'
+  | 'toolbar.qq.label'
+  | 'toolbar.qq.copied'
+  | 'toolbar.qq.title'
 
 export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string; readonly en: string }>> = {
   'toolbar.status.disconnected': { zh: '未连接', en: 'Offline' },
@@ -367,6 +371,10 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
   'toolbar.lang.toggle': { zh: '切换语言 (中 / EN)', en: 'Switch Language (ZH / EN)' },
   'toolbar.lang.zh': { zh: '中', en: '中' },
   'toolbar.lang.en': { zh: 'EN', en: 'EN' },
+  'toolbar.refresh.title': {
+    zh: '刷新前端显示与同步位置',
+    en: 'Refresh Display & Resync Position',
+  },
   'toolbar.lighting.label': { zh: '光照', en: 'Light' },
   'toolbar.automap.label': { zh: '全图', en: 'Map' },
   'toolbar.automap.off': { zh: '关闭', en: 'Off' },
@@ -452,6 +460,9 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
     zh: 'HTTPS 页面下无法对裸 IP 发起安全 WSS 连接，请使用域名（如 www.laiseek.xyz）。',
     en: 'Cannot open WSS to a bare IP address from an HTTPS page. Use a TLS hostname (e.g. www.laiseek.xyz).',
   },
+  'toolbar.qq.label': { zh: 'QQ群: 754468203', en: 'QQ Group: 754468203' },
+  'toolbar.qq.copied': { zh: '已复制群号', en: 'Copied!' },
+  'toolbar.qq.title': { zh: '点击复制 QQ 群号 (754468203)', en: 'Click to copy QQ group (754468203)' },
 }
 
 export function tToolbar(key: ToolbarI18nKey, lang: GameLang = getGameLang()): string {

@@ -14,7 +14,7 @@ import {
 } from '../../src/netproto/index.ts'
 
 describe('Issue #1313 — 1.13c S2C packet decoders (0x73, 0x28, 0x7B, 0x81, 0x75, 0x21/0x22, 0x16/0x17/0x57/0x91/0x93/0x97/0x98) & MCP 0x05', () => {
-  it('decodes canonical 32-byte 0x73 CreateMissile (D2Client.dll 0x6fb5eee0) with u32 coordinates and owner/velocity/level/pierceIdx', () => {
+  it('decodes canonical 32-byte 0x73 CreateMissile (D2Client.dll 0x6fb5eee0) with u32 coordinates and owner/remainingFrames/level/pierceIdx', () => {
     const pkt = new Uint8Array(32)
     const dv = new DataView(pkt.buffer)
     pkt[0] = 0x73
@@ -24,7 +24,7 @@ describe('Issue #1313 — 1.13c S2C packet decoders (0x73, 0x28, 0x7B, 0x81, 0x7
     dv.setUint32(11, 5012, true) // y (u32LE)
     dv.setUint32(15, 5030, true) // targetX (u32LE)
     dv.setUint32(19, 5040, true) // targetY (u32LE)
-    dv.setUint16(23, 24, true) // cltDoFuncArg / velocity (u16LE)
+    dv.setUint16(23, 24, true) // remaining frames (missile data +0x10, #1655)
     pkt[25] = 1 // ownerType = 1 (monster)
     dv.setUint32(26, 9001, true) // ownerId (u32LE)
     pkt[30] = 9 // level (u8)
@@ -41,9 +41,7 @@ describe('Issue #1313 — 1.13c S2C packet decoders (0x73, 0x28, 0x7B, 0x81, 0x7
       ownerType: 1,
       ownerId: 9001,
       unk: 0x12345678,
-      velocity: 24,
-      cltDoFuncArg: 24,
-      range: 3,
+      remainingFrames: 24,
       pierceIdx: 3,
     })
   })
@@ -147,12 +145,14 @@ describe('Issue #1313 — 1.13c S2C packet decoders (0x73, 0x28, 0x7B, 0x81, 0x7
       type: 'SkillList',
       unitId: 10,
       unitType: 0,
-      flag: 1,
+      playerBodySkip: false,
       skills: [{ skillId: 220, level: 5 }],
     })
+    // @0xA is uninitialized server stack (D2Game 0x6FCAD570 never writes it) and is not a flag (#1654).
+    expect((ev22 as { flag?: number }).flag).toBeUndefined()
   })
 
-  it('decodes 0x16, 0x17, 0x57, 0x91, 0x93, 0x97, 0x98, and encodes MCP 0x05 with u32 flags', () => {
+  it('decodes 0x16, rejects 0x17, decodes 0x57, 0x91, 0x93, 0x97, 0x98, and encodes MCP 0x05 with u32 flags', () => {
     // 0x16 MultipleUnitAssign (u16 size @1, count @3, 9-byte entries from @4; D2Client.dll 0x6fb5d9d0)
     const pkt16 = new Uint8Array(13)
     const dv16 = new DataView(pkt16.buffer)
@@ -171,13 +171,8 @@ describe('Issue #1313 — 1.13c S2C packet decoders (0x73, 0x28, 0x7B, 0x81, 0x7
       entries: [{ unitType: 1, id: 500, x: 5100, y: 5200 }],
     })
 
-    // 0x17 RemoveUnit17 (7B canonical with u32 id at +3..+6)
-    const pkt17 = new Uint8Array([0x17, 0x01, 0x00, 0xef, 0xbe, 0xad, 0xde])
-    expect(decodeRare113cS2cPacket(pkt17)).toEqual({
-      type: 'UnitRemove',
-      unitType: 1,
-      id: 0xdeadbeef,
-    })
+    // 0x17 has D2Net S->C size 0 (never framed by D2NET_10033), so there is no layout to decode (#1663)
+    expect(() => decodeRare113cS2cPacket(new Uint8Array([0x17, 0x01, 0x00, 0xef, 0xbe, 0xad, 0xde]))).toThrow(RangeError)
 
     // 0x57 MonsterEnchant (14B)
     const pkt57 = new Uint8Array(14)

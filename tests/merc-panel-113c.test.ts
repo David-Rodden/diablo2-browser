@@ -1356,6 +1356,160 @@ describe('Diablo II v1.13c Mercenary Screen (UI_DrawMercScreen @ 0x6fb4ae80)', (
     expect(effStatsWith3Pieces!.defense - effStatsWith1Piece!.defense).toBeGreaterThanOrEqual(300 + 370)
     expect(mercAgg.total(31)).toBeGreaterThanOrEqual(228 + 370 + 300)
   })
+
+  it('preserves mercenary level (stat 12) and experience (stat 13) when 0x9E..0xA0 MercAttribute arrives before 0x81 AssignMerc, across 0x03 LoadAct / 0x0A RemoveGroundUnit / 0xAC AssignNPC area transitions, and on 0xA1..0xA2 MercGainExp delta kills', () => {
+    const world = new ClientWorld()
+    const hud = new HudManager()
+    const model = new HudModel({
+      world,
+      hudManager: hud,
+      onCommand: () => {},
+    })
+
+    // 1. Simulate authentic D2GS game-join sequence:
+    //    (a) 0x03 LoadAct + 0x59 PlayerAssign
+    //    (b) 0xAC AssignNPC (mercId = 1, classId = 338)
+    //    (c) 0x9E/0x9F/0xA0 MercAttribute packets BEFORE 0x81 AssignMerc
+    //    (d) 0x81 AssignMerc 24ms later
+    world.apply({
+      type: 'LoadAct',
+      act: 1,
+      mapSeed: 0x11223344,
+      areaId: 40,
+      objectSeed: 0x55667788,
+    })
+    world.apply({
+      type: 'PlayerAssign',
+      unitId: 1,
+      charClass: 1,
+      name: 'Sorceress',
+      x: 5100,
+      y: 5100,
+    })
+    world.apply({
+      type: 'MonsterSpawn',
+      unitId: 1,
+      classId: 338,
+      x: 5104,
+      y: 5104,
+      lifePct: 128,
+    } as any)
+
+    // Pre-0x81 baseline stats sent by D2GS (stat 13 = 78445830, stat 12 = 89, stat 0 = 197, stat 2 = 160, etc.)
+    world.apply({ type: 'Merc', kind: 'stat', mercId: 1, stat: 13, value: 78445830 })
+    world.apply({ type: 'Merc', kind: 'stat', mercId: 1, stat: 12, value: 89 })
+    world.apply({ type: 'Merc', kind: 'stat', mercId: 1, stat: 0, value: 197 })
+    world.apply({ type: 'Merc', kind: 'stat', mercId: 1, stat: 2, value: 160 })
+    world.apply({ type: 'Merc', kind: 'stat', mercId: 1, stat: 7, value: 509440 })
+    world.apply({ type: 'Merc', kind: 'stat', mercId: 1, stat: 6, value: 509440 })
+    world.apply({ type: 'Merc', kind: 'stat', mercId: 1, stat: 30, value: 81080999 })
+
+    // 0x81 AssignMerc arrives after 0x9E..0xA0
+    world.apply({
+      type: 'Merc',
+      kind: 'assign',
+      ownerId: 1,
+      mercId: 1,
+      classId: 338,
+      nameId: 7,
+      seed: 0x12345678,
+    } as any)
+
+    // Verify world.merc.stats captured the pre-0x81 stats from mUnit.stats
+    expect(world.merc?.stats.get(12)).toBe(89)
+    expect(world.merc?.stats.get(13)).toBe(78445830)
+    expect(world.merc?.exp).toBe(78445830)
+
+    // 2. Player takes a waypoint/portal: 0x03 LoadAct prunes all non-self units from world._units,
+    //    then 0xAC AssignNPC respawns monster unit 1 in the new area without re-sending 0x9E..0xA0.
+    world.apply({
+      type: 'LoadAct',
+      act: 1,
+      mapSeed: 0x11223344,
+      areaId: 48,
+      objectSeed: 0x55667788,
+    })
+    world.apply({
+      type: 'MonsterSpawn',
+      unitId: 1,
+      classId: 338,
+      x: 5200,
+      y: 5200,
+      lifePct: 128,
+    } as any)
+
+    // 3. First monster kill in the new area sends 0xA1/0xA2 MercGainExp delta (+500 XP).
+    //    Must add onto 78,445,830 (= 78,446,330) and remain Level 89, NEVER resetting to 500 XP / Level 1!
+    world.apply({
+      type: 'Merc',
+      kind: 'exp',
+      mercId: 1,
+      stat: 13,
+      value: 500,
+    })
+
+    model.syncFromWorld()
+    const effAfterKill = computeEffectiveMercenaryStats(world)
+    expect(effAfterKill?.level).toBe(89)
+    expect(effAfterKill?.experience).toBe(78446330)
+    expect(hud.merc?.level).toBe(89)
+    expect(hud.merc?.experience).toBe(78446330)
+    expect(hud.worldPanels.merc?.level).toBe(89)
+    expect(hud.worldPanels.merc?.experience).toBe(78446330)
+
+    // 4. Act transition where D2GS assigns a new mercId (e.g. mercId = 2) for the SAME living mercenary
+    //    (same classId = 338, nameId = 7, seed = 0x12345678): must preserve stats and equipment!
+    world.containers.applyItemEvent(
+      0x06,
+      {
+        id: 6004,
+        code: '9vo',
+        name: 'Bill',
+        container: 'merc',
+        ownerType: 1,
+        ownerId: 1,
+        bodyLoc: 4,
+        equippedSlot: 4,
+        width: 2,
+        height: 4,
+        quality: 2,
+        identified: true,
+        stats: [],
+      } as any,
+      'merc',
+      1,
+    )
+    world.apply({
+      type: 'Merc',
+      kind: 'assign',
+      ownerId: 1,
+      mercId: 2,
+      classId: 338,
+      nameId: 7,
+      seed: 0x12345678,
+    } as any)
+    world.apply({
+      type: 'MonsterSpawn',
+      unitId: 2,
+      classId: 338,
+      x: 5300,
+      y: 5300,
+      lifePct: 128,
+    } as any)
+    world.apply({
+      type: 'Merc',
+      kind: 'exp',
+      mercId: 2,
+      stat: 13,
+      value: 1000,
+    })
+
+    model.syncFromWorld()
+    expect(world.containers.merc.size).toBe(1)
+    expect(hud.merc?.level).toBe(89)
+    expect(hud.merc?.experience).toBe(78447330)
+  })
 })
+
 
 

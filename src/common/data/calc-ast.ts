@@ -113,14 +113,66 @@ export function compute3BandDuration(
 }
 
 /**
- * Compute `D2Common` diminishing-returns formula `dm(a, b, lvl)`:
- * `floor((110 * lvl * (b - a)) / (100 * (lvl + 6))) + a`
+ * D2Common #10121 skill elemental min damage (`0x6FDA0460`): `EDmgSymPerCalc` is applied to the min value only
+ * when `min256 > 256 || EMinLev1 != 0` (`0x6FDA04C7..0x6FDA04D3`), so a flat 1-point minimum (EMin=1, HitShift=8,
+ * no per-level growth — Lightning, Chain Lightning, Charged Strike, ...) is never synergised (issue #1681).
+ * The max side (#11091 `0x6FDA0360`) and the missile path (`0x6FDBB3F4`) have no such gate.
+ */
+export function skillMinSynergyApplies113c(min256: number, eMinLev1: number): boolean {
+  return min256 > 256 || eMinLev1 !== 0
+}
+
+/**
+ * Fog `#10253` calc op 19 `/` (`0x6FF6A177`): 32-bit `idiv`; a zero divisor pushes 0 for that
+ * sub-expression only (`0x6FF6A19F -> 0x6FF6A008`), the rest of the formula keeps evaluating (issue #1690).
+ */
+export function calcDiv(num: number, den: number): number {
+  if (den === 0) return 0
+  return Math.trunc(num / den)
+}
+
+/**
+ * Fog `#10253` calc op 20 `^` (`0x6FF6A234`): exponent `<= 0` -> 1 (`0x6FF6A25C..0x6FF6A270`), otherwise
+ * `base` multiplied `exp - 1` times with 32-bit `imul` (wraps like the binary; issue #1690).
+ */
+export function calcPow(base: number, exp: number): number {
+  if (exp <= 0) return 1
+  let result = 1
+  let b = base | 0
+  let e = Math.trunc(exp)
+  // Square-and-multiply with 32-bit wrap == the binary's repeated imul (mod 2^32).
+  while (e > 0) {
+    if (e & 1) result = Math.imul(result, b)
+    b = Math.imul(b, b)
+    e = Math.floor(e / 2)
+  }
+  return result
+}
+
+/**
+ * Raw 1.13c `D2Common` diminishing-returns helper `0x6FD9DC30(lvl, a, b)` (issue #1678):
+ * ```
+ * x = (lvl * 110) / (lvl + 6)      // idiv, truncated FIRST
+ * r = (x * (b - a)) / 100 + a       // idiv (magic 0x51EB851F, sar 5)
+ * if (r > b) r = b                  // cap at b
+ * ```
+ * Called without a level guard by SkillCalc `dm78` (`0x6FDA1148`) and MissCalc
+ * `sd12/sd34/cd12/cd34/shd1/chd1/dd12` (`0x6FDBA964..0x6FDBAA54`).
+ */
+export function computeDiminishingReturnsRaw(a: number, b: number, lvl: number): number {
+  const x = Math.trunc((lvl * 110) / (lvl + 6))
+  const r = Math.trunc((x * (b - a)) / 100) + a
+  return r > b ? b : r
+}
+
+/**
+ * 1.13c `D2Common` diminishing-returns formula `dmXY` (issue #1678). SkillCalc `dm12/dm34/dm56`
+ * (`0x6FD9E680/0x6FD9E630/0x6FD9E5E0`) return 0 for `lvl <= 0`, otherwise call `0x6FD9DC30`
+ * ({@link computeDiminishingReturnsRaw}): `min(b, trunc(trunc(110 * lvl / (lvl + 6)) * (b - a) / 100) + a)`.
  */
 export function computeDiminishingReturns(a: number, b: number, lvl: number): number {
   if (lvl <= 0) return 0
-  const num = 110 * lvl * (b - a)
-  const den = 100 * (lvl + 6)
-  return Math.trunc(num / den) + a
+  return computeDiminishingReturnsRaw(a, b, lvl)
 }
 
 /**
@@ -133,18 +185,41 @@ export function computeLinearScaling(a: number, b: number, lvl: number): number 
 }
 
 /**
- * Compute mana cost in 256-fixed-point (`usmc`) and integer mana (`manaCost`) for a skill at `slvl`.
- * Formula from `D2Common` `SKILLS_GetManaCost`:
- * `usmc = max(minmana << 8, (mana + lvlmana * (slvl - 1)) << manashift)`
+ * SkillCalc `mps` (`0x6FDA1298`):
+ * `lvl <= 0 ? 0 : ((((lvl - 1) * lvlmana + mana) * 25) / 2 << manashift) >> 8` (32-bit signed integer division).
  */
-export function computeSkillManaCost256(skill: SkillRecord, slvl: number): { manaCost256: number; manaCost: number } {
-  const effLvl = Math.max(1, slvl)
+export function computeSkillMps113c(mana: number, lvlMana: number, manaShift: number, lvl: number): number {
+  if (lvl <= 0) return 0
+  const halfPerSec = Math.trunc((((lvl - 1) * lvlMana + mana) * 25) / 2)
+  const shifted = manaShift >= 0 ? halfPerSec << manaShift : halfPerSec >> -manaShift
+  return shifted >> 8
+}
+
+/**
+ * Compute mana cost in 256-fixed-point (`usmc`), raw unclamped mana cost (`SKILLS_CheckSkillMana`
+ * `0x6FDA0AF0`), and integer mana (`manaCost`) for a skill at `slvl`.
+ *
+ * Ground truth:
+ * - `D2Game.dll` `SKILLS_ConsumeMana` (`0x6FCBF850`): if `mana == 0 && lvlmana == 0`, returns 0
+ *   (`0x6FCBF8D7..0x6FCBF8F2`); otherwise `max(minmana << 8, (mana + lvlmana * max(lvl - 1, 0)) << manashift)`.
+ * - `D2Common.dll` `SKILLS_CheckSkillMana` (`0x6FDA0AF0`): checks against raw cost
+ *   `((mana + lvlmana * (clamp(lvl, 0, 99) - 1)) << manashift)` without `minmana`.
+ */
+export function computeSkillManaCost256(
+  skill: SkillRecord,
+  slvl: number,
+): { manaCost256: number; manaCost: number; rawManaCost256: number } {
+  if (skill.mana === 0 && skill.lvlMana === 0) {
+    return { manaCost256: 0, manaCost: 0, rawManaCost256: 0 }
+  }
+  const effLvl = Math.min(99, Math.max(1, slvl))
   const raw = (skill.mana + skill.lvlMana * (effLvl - 1)) << skill.manaShift
   const min256 = skill.minMana << 8
   const manaCost256 = Math.max(min256, raw)
   return {
     manaCost256,
     manaCost: manaCost256 >> 8,
+    rawManaCost256: Math.max(0, raw),
   }
 }
 
@@ -316,9 +391,9 @@ function resolveMissileProperty(
   switch (p) {
     case 'range':
     case 'rng':
-      return missile.range + (lvl - 1) * missile.levRange
+      return missile.range + lvl * missile.levRange
     case 'vel':
-      return missile.vel + (lvl - 1) * missile.velLev
+      return missile.vel + Math.trunc((lvl * missile.velLev) / 8)
     case 'par1':
       return missile.param1
     case 'par2':
@@ -361,6 +436,17 @@ function resolveMissileProperty(
     default:
       return 0
   }
+}
+
+/**
+ * D2Common `0x6FD9F870` (unit, EType): elemental mastery stat used by the bMastery=1 SkillCalc codes — fire -> 329
+ * `passive_fire_mastery`, ltng -> 330 `passive_ltng_mastery`, cold -> 331 `passive_cold_mastery`, pois -> 332
+ * `passive_pois_mastery`; other ETypes -> 0. Without a caster unit (`getUnitStat`) the binary adds nothing.
+ */
+function resolveCasterElementalMasteryPct113c(eType: string, ctx: CalcEvalContext): number {
+  if (!ctx.getUnitStat) return 0
+  const statId = eType === 'fire' ? 329 : eType === 'ltng' ? 330 : eType === 'cold' ? 331 : eType === 'pois' ? 332 : 0
+  return statId === 0 ? 0 : ctx.getUnitStat(statId)
 }
 
 /**
@@ -445,26 +531,30 @@ function resolveBuiltInIdentifier(ident: string, ctx: CalcEvalContext): number {
       return computeLinearScaling(missile?.dParam1 ?? 0, missile?.dParam2 ?? 0, lvl)
 
     case 'dm12':
-    case 'sd12':
       return computeDiminishingReturns(par1, par2, lvl)
+    case 'sd12':
+      return computeDiminishingReturnsRaw(par1, par2, lvl)
     case 'dm34':
-    case 'sd34':
       return computeDiminishingReturns(par3, par4, lvl)
+    case 'sd34':
+      return computeDiminishingReturnsRaw(par3, par4, lvl)
     case 'dm56':
       return computeDiminishingReturns(par5, par6, lvl)
     case 'dm78':
-      return computeDiminishingReturns(par7, par8, lvl)
+      return computeDiminishingReturnsRaw(par7, par8, lvl)
     case 'dd12':
-      return computeDiminishingReturns(missile?.dParam1 ?? 0, missile?.dParam2 ?? 0, lvl)
+      return computeDiminishingReturnsRaw(missile?.dParam1 ?? 0, missile?.dParam2 ?? 0, lvl)
   }
 
   if (!skill) return 0
 
-  if (key === 'usmc' || key === 'mana' || key === 'mps') {
+  if (key === 'mps') {
+    return computeSkillMps113c(skill.mana, skill.lvlMana, skill.manaShift, lvl)
+  }
+  if (key === 'usmc' || key === 'mana') {
     const { manaCost256, manaCost } = computeSkillManaCost256(skill, lvl)
     if (key === 'usmc') return manaCost256
-    if (key === 'mana') return manaCost
-    return (manaCost256 * 25) >> 8
+    return manaCost
   }
 
   if (key === 'toht') {
@@ -491,6 +581,28 @@ function resolveBuiltInIdentifier(ident: string, ctx: CalcEvalContext): number {
   }
   if (key === 'rng' && (ctx.depth ?? 0) < 8) {
     return evaluateCalc(skill.auraRangeCalc, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
+  }
+
+  // SkillCalc math / madm / macr -> D2Common 0x6FD9E7A0(unit, skill, lvl, mode 0/1/2): scan passivestat1..5 for
+  // the first entry equal to stat 342/345 (th), 343/346 (dmg) or 344/347 (crit) and evaluate the paired
+  // passivecalcN; 0 when none matches (#1683).
+  if ((key === 'math' || key === 'madm' || key === 'macr') && (ctx.depth ?? 0) < 8) {
+    if (lvl <= 0) return 0
+    const suffix = key === 'math' ? 'th' : key === 'madm' ? 'dmg' : 'crit'
+    const wanted = [`passive_mastery_melee_${suffix}`, `passive_mastery_throw_${suffix}`]
+    const pairs: readonly (readonly [string, string])[] = [
+      [skill.passiveStat1, skill.passiveCalc1],
+      [skill.passiveStat2, skill.passiveCalc2],
+      [skill.passiveStat3, skill.passiveCalc3],
+      [skill.passiveStat4, skill.passiveCalc4],
+      [skill.passiveStat5, skill.passiveCalc5],
+    ]
+    for (const [stat, calc] of pairs) {
+      if (wanted.includes(stat.trim().toLowerCase())) {
+        return evaluateCalc(calc, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
+      }
+    }
+    return 0
   }
 
   if (
@@ -535,31 +647,39 @@ function resolveBuiltInIdentifier(ident: string, ctx: CalcEvalContext): number {
         ? evaluateCalc(skill.eLenSymPerCalc, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
         : 0
 
-    const synMin256 = Math.trunc((min256 * (100 + eSynPct)) / 100)
+    const synMin256 = skillMinSynergyApplies113c(min256, skill.eMinLev1)
+      ? Math.trunc((min256 * (100 + eSynPct)) / 100)
+      : min256
     const synMax256 = Math.trunc((max256 * (100 + eSynPct)) / 100)
-    const synLen = Math.trunc((baseLen * (100 + lenSynPct)) / 100)
+    // #10510 (0x6FD9E900): v += v * ELenSymPerCalc / 100 (0x6FD511E0), no mastery flag.
+    const synLen = baseLen + Math.trunc((baseLen * lenSynPct) / 100)
+    // bMastery=1 codes add the caster's elemental mastery: v += v * stat / 100 (0x6FD9F870).
+    const masteryPct = resolveCasterElementalMasteryPct113c(skill.eType, ctx)
+    const mastered = (v: number): number => v + Math.trunc((v * masteryPct) / 100)
 
+    // Issue #1682: edmn/edmx/edns/edxs (0x6FDA11F4/0x6FDA1212/0x6FDA1471/0x6FDA148C, bMastery=0) are the
+    // synergised #10121/#11091 values; enma/exma/enms/exms (0x6FDA15E6..0x6FDA1658, bMastery=1) also add the
+    // caster mastery; edln/edma (0x6FDA1230/0x6FDA1622) both return the synergised length.
     switch (key) {
       case 'edns':
-        return min256
-      case 'edxs':
-        return max256
-      case 'edmn':
-        return min256 >> 8
-      case 'edmx':
-        return max256 >> 8
-      case 'edln':
-        return baseLen
-      case 'enms':
         return synMin256
-      case 'exms':
+      case 'edxs':
         return synMax256
-      case 'enma':
+      case 'edmn':
         return synMin256 >> 8
-      case 'exma':
+      case 'edmx':
         return synMax256 >> 8
+      case 'edln':
       case 'edma':
         return synLen
+      case 'enms':
+        return mastered(synMin256)
+      case 'exms':
+        return mastered(synMax256)
+      case 'enma':
+        return mastered(synMin256) >> 8
+      case 'exma':
+        return mastered(synMax256) >> 8
     }
   }
 
@@ -646,8 +766,7 @@ export function evaluateCalc(expr: string | undefined | null, ctx: CalcEvalConte
         if (op === '*') {
           left = Math.trunc(left * right)
         } else {
-          // D2Common division by zero evaluates to 0
-          left = right === 0 ? 0 : Math.trunc(left / right)
+          left = calcDiv(left, right)
         }
       } else {
         break
@@ -661,7 +780,7 @@ export function evaluateCalc(expr: string | undefined | null, ctx: CalcEvalConte
     while (peek()?.kind === 'op' && (peek() as { kind: 'op'; op: string }).op === '^') {
       consume()
       const right = parseUnary()
-      left = right < 0 ? 0 : Math.trunc(Math.pow(left, right))
+      left = calcPow(left, right)
     }
     return left
   }
@@ -774,9 +893,9 @@ export function evaluateCalc(expr: string | undefined | null, ctx: CalcEvalConte
         if (fnName === 'min') return Math.min(a, b)
         if (fnName === 'max') return Math.max(a, b)
         if (fnName === 'rand') {
-          const lo = Math.min(a, b)
-          const hi = Math.max(a, b)
-          return ctx.randFn ? ctx.randFn(lo, hi) : Math.trunc((lo + hi) / 2)
+          // 1.13c D2Common 0x6FDA0CB0 -> 0x6FD51180: a >= b ? a : a + seed % (b - a + 1)
+          if (a >= b) return a
+          return ctx.randFn ? ctx.randFn(a, b) : Math.trunc((a + b) / 2)
         }
         return a
       }

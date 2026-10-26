@@ -9,14 +9,17 @@
 
 import { BitReader } from '../../core/bit-reader.ts'
 import { ByteReader } from '../../core/byte-reader.ts'
-import { unitTypeToId, type ItemDataTables, type ItemStat } from '../../domain/ids.ts'
+import { wireUnitTypeId, type ItemDataTables, type ItemStat } from '../../domain/ids.ts'
 import type { ServerEvent, StateSetEntry } from '../../domain/server-event.ts'
+import { unitLookupMiss } from './packet-length.ts'
 
 /** 0xA7 DelayedState (7B, D2Client.dll 0x6fb5deb0: state @6) */
 export function decode0xA7DelayedState(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0xA7
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const state = r.u8()
   return {
@@ -62,7 +65,9 @@ export function readStateStats(bits: BitReader, tables: ItemDataTables): { stats
 export function decode0xA8SetState(pkt: Uint8Array, tables?: ItemDataTables): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0xA8
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const packetLen = r.u8()
   const state = r.u8()
@@ -86,7 +91,9 @@ export function decode0xA8SetState(pkt: Uint8Array, tables?: ItemDataTables): Se
 export function decode0xA9EndState(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0xA9
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const state = r.u8()
   return {
@@ -105,7 +112,9 @@ export function decode0xA9EndState(pkt: Uint8Array): ServerEvent {
 export function decode0xAAAddUnitState(pkt: Uint8Array, tables: ItemDataTables): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0xAA
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const packetLen = r.u8()
   const states: StateSetEntry[] = []

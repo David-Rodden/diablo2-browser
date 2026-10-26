@@ -2681,7 +2681,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
             isTownLevel(snapshot.levelId) ||
             mode === 'level' ||
             mode === 'act'
-          let effectiveAutomap = baseMinimapLevel.automap
+          const effectiveAutomap = baseMinimapLevel.automap
           for (const u of snapshot.entities.unitDrawables) {
             if (u.unitKind === 'object' && u.classId === 366 && u.mode === 2) {
               const xClient = u.worldX - effectiveOriginX
@@ -2692,13 +2692,20 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
                 (c) => c.cellNo === 223 && c.xPixel === xPixel && c.yPixel === yPixel,
               )
               if (!alreadyPresent) {
-                effectiveAutomap = {
-                  ...effectiveAutomap,
-                  objects: [
-                    ...effectiveAutomap.objects,
-                    { cellNo: 223, cellX: u.worldX, cellY: u.worldY, xPixel, yPixel },
-                  ],
-                }
+                ;(effectiveAutomap.objects as {
+                  cellNo: number
+                  cellX?: number
+                  cellY?: number
+                  xPixel: number
+                  yPixel: number
+                }[]).push({
+                  cellNo: 223,
+                  cellX: u.worldX,
+                  cellY: u.worldY,
+                  xPixel,
+                  yPixel,
+                })
+                ctx.minimap.invalidateSpatialIndex(effectiveAutomap.objects)
               }
             }
           }

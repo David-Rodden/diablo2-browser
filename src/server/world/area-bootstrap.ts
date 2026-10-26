@@ -14,7 +14,9 @@
  *   town NPC table (`getTownNpcDescriptorByHcIdx`, NPC.txt vendor ids); an index past the MonStats.txt
  *   rows is a SuperUniques.txt row (`index - monStatsCount`, D2Common MonPreset), never spawned in towns;
  * - warps (`UNIT_TILE = 5`): the level's LvlWarp.txt tiles with their destination level;
- * - spawn: the level's DRLG start cell (Act I town: bonfire, else Warriv), snapped onto standable floor.
+ * - spawn: 1.13c `DUNGEON_FindActSpawnLocationEx(pAct, level, 0, &x, &y, 2)` (D2Common `#10816`, #1693):
+ *   the seeded style-30 entry marker (or the waypoint / warp-room / centre-room fall-backs of
+ *   `Position = 0` levels), then the `0x1C09` free-coordinate search for the player's unit size 2.
  */
 
 import type {
@@ -37,14 +39,20 @@ import {
 import { getTownNpcDescriptorByHcIdx } from '../../common/units/npc-table.ts'
 import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import { OBJECTS_TXT_113C } from '../../common/world/objects-txt-113c.ts'
+import {
+  ACT_SPAWN_TILE_ENTRY,
+  collisionGetFreeCoordinates,
+  findActSpawnLocationSubTile,
+  isBlockedWithUnitSize,
+} from '../../common/world/act-spawn-location.ts'
 
 /** Levels.txt ids of the five towns (Rogue Encampment, Lut Gholein, Kurast Docks, Pandemonium Fortress, Harrogath). */
 export const TOWN_AREA_IDS_113C: ReadonlySet<number> = new Set([1, 40, 75, 103, 109])
 
 /** Sub-tiles per DRLG tile. */
 const SUB_TILES_PER_TILE = 5
-/** Objects.txt 39 `fire` — the Rogue Encampment bonfire, the Act I town start. */
-const OBJECT_ROGUE_BONFIRE = 39
+/** `UNITS_GetUnitSizeX` (`#10589` `0x6FD80F80`) of a player: 2 (jump-table case `UNIT_PLAYER`). */
+const PLAYER_UNIT_SIZE = 2
 /** Objects.txt 573 — never spawned from DRLG presets (`D2Game.dll` `0x6fd012f1`). */
 const OBJECT_SKIPPED_PRESET = 573
 /**
@@ -140,8 +148,6 @@ export function resolvePresetObject113c(
   }
   return { classId }
 }
-/** MonStats.txt 155 `warriv1`. */
-const MONSTER_WARRIV1 = 155
 /** Spiral radius (sub-tiles) searched for standable floor around a landmark landing (waypoint, warp). */
 export const LANDING_SEARCH_RADIUS = 25
 
@@ -213,8 +219,6 @@ export function buildAreaBootstrap(
 
   const objects: LocalAreaPresetObject[] = []
   const monsters: LocalAreaPresetMonster[] = []
-  let bonfire: { readonly x: number; readonly y: number } | null = null
-  let warriv: { readonly x: number; readonly y: number } | null = null
 
   for (const u of level.presetUnits) {
     const x = level.originX + u.subX
@@ -222,7 +226,6 @@ export function buildAreaBootstrap(
     if (u.type === 2) {
       const resolved = resolvePresetObject113c(u.index, areaId, u.subX, u.subY, rng)
       if (resolved === null) continue
-      if (resolved.classId === OBJECT_ROGUE_BONFIRE && bonfire === null) bonfire = { x, y }
       const isWaypoint = WAYPOINT_CLASS_IDS_113C.has(resolved.classId)
       objects.push({
         classId: resolved.classId,
@@ -244,7 +247,6 @@ export function buildAreaBootstrap(
         monsters.push({ classId: suKind.hcIdx, x, y, areaId, superUniqueIndex })
         continue
       }
-      if (u.index === MONSTER_WARRIV1 && warriv === null) warriv = { x, y }
       const townNpc = getTownNpcDescriptorByHcIdx(u.index)
       const isVendor = townNpc !== undefined && townNpc.vendorId !== null
       const row = MONSTATS_113C_ROWS[u.index]
@@ -273,26 +275,16 @@ export function buildAreaBootstrap(
     destAreaId: w.toLevelId,
   }))
 
-  const candidate =
-    bonfire !== null
-      ? { x: bonfire.x, y: bonfire.y }
-      : warriv !== null
-        ? { x: warriv.x, y: warriv.y }
-        : {
-            x: level.originX + level.spawnTileX * SUB_TILES_PER_TILE + 2,
-            y: level.originY + level.spawnTileY * SUB_TILES_PER_TILE + 2,
-          }
-  // The DRLG start cell is not always on floor (Tristram 38 / Uber Tristram 136 start on the edge of
-  // the preset); the whole level grid is searched so the spawn is still the nearest standable floor.
-  const spawn = findStandableNear(
-    walkable,
-    candidate.x,
-    candidate.y,
-    Math.max(level.subWidth, level.subHeight),
-  )
-  if (spawn === null) {
-    throw new Error(`area bootstrap: level ${areaId} has no standable floor at all`)
-  }
+  // #1693: game join / respawn / act change land on DUNGEON_FindActSpawnLocationEx(.., 0, .., 2). The
+  // locator owns the area's copy of the level seed; the game server calls it once per arrival so every
+  // arrival rolls like 1.13c. `spawnX/Y` is the result the next call would give (a peek on a copy of
+  // the seed). Geometry without the DRLG capture (synthetic test levels) carries the core's tile
+  // directly in spawnTileX/Y; #10816 then applies the same *5+3 + free-coordinate search.
+  const locate = level.actSpawn !== undefined ? createActSpawnLocator(level) : undefined
+  const spawn =
+    level.actSpawn !== undefined
+      ? createActSpawnLocator(level)(ACT_SPAWN_TILE_ENTRY, PLAYER_UNIT_SIZE)
+      : spawnFromGeometryTile(level)
 
   return {
     areaId,
@@ -305,6 +297,48 @@ export function buildAreaBootstrap(
     monsters,
     warps,
     isWalkable: (checkAreaId, x, y) => checkAreaId === areaId && isLevelSubTileWalkable(level, x, y),
+    ...(locate !== undefined ? { findActSpawnLocation: locate } : {}),
+  }
+}
+
+/**
+ * `#10816` tail on a precomputed core tile (`spawnTileX/Y`): tile `*5+3`, then
+ * `COLLISION_GetFreeCoordinates` (mask `0x1C09`, radius 50, step 1) for the player's unit size.
+ */
+function spawnFromGeometryTile(level: AreaLevelGeometry): { x: number; y: number } {
+  const isCellBlocked = (x: number, y: number): boolean =>
+    !isLevelSubTileWalkable(level, level.originX + x, level.originY + y)
+  const free = collisionGetFreeCoordinates(
+    (x, y) => !isBlockedWithUnitSize(isCellBlocked, x, y, PLAYER_UNIT_SIZE),
+    level.spawnTileX * SUB_TILES_PER_TILE + 3,
+    level.spawnTileY * SUB_TILES_PER_TILE + 3,
+  )
+  if (free === null) {
+    throw new Error(`area bootstrap: level ${String(level.areaId)} has no free cell near its start tile`)
+  }
+  return { x: level.originX + free.x, y: level.originY + free.y }
+}
+
+/**
+ * 1.13c `DUNGEON_FindActSpawnLocationEx` (D2Common `#10816` `0x6FD8CDF0`) bound to one area: the level
+ * seed is copied once from the DRLG capture and advanced by every call (`sub_6FD69B60` always rolls when a
+ * record matches), like `pLevel->pSeed` in the original server. Returns world sub-tiles.
+ */
+export function createActSpawnLocator(
+  level: AreaLevelGeometry,
+): (nTileIndex: number, nUnitSize: number) => { x: number; y: number } {
+  const capture = level.actSpawn
+  if (capture === undefined) {
+    throw new Error(`area bootstrap: level ${String(level.areaId)} has no DUNGEON_FindActSpawnLocationEx capture`)
+  }
+  const seed = { lo: capture.seed[0] >>> 0, hi: capture.seed[1] >>> 0 }
+  // COLLISION_CheckCollisionMask(room, x, y, 0x1C09): the geometry's `blocked` grid is exactly
+  // `mask & 0x1C09` (COLLIDE_MASK_PLAYER_PATH); cells outside every room read as blocked.
+  const isCellBlocked = (x: number, y: number): boolean =>
+    !isLevelSubTileWalkable(level, level.originX + x, level.originY + y)
+  return (nTileIndex, nUnitSize) => {
+    const local = findActSpawnLocationSubTile(capture.level, nTileIndex, seed, nUnitSize, isCellBlocked)
+    return { x: level.originX + local.x, y: level.originY + local.y }
   }
 }
 

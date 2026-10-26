@@ -17,6 +17,9 @@ import {
   TOOLBAR_KILL_STATS_ICON_SVG,
   TOOLBAR_LANG_ICON_SVG,
   TOOLBAR_PLUGINS_ICON_SVG,
+  TOOLBAR_QQ_GROUP,
+  TOOLBAR_QQ_ICON_SVG,
+  TOOLBAR_REFRESH_ICON_SVG,
   TOOLBAR_VOLUME_MUTE_ICON_SVG,
   TOOLBAR_VOLUME_ON_ICON_SVG,
   Toolbar,
@@ -201,6 +204,7 @@ describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Pers
       expect(root).not.toBeNull()
 
       const children = Array.from(root.children)
+      const qqBtn = root.querySelector('#d2-toolbar-qq-btn')!
       const pluginsBtn = root.querySelector('#d2-toolbar-plugins-btn')!
       const pluginSlot = root.querySelector('#d2-toolbar-plugin-slot')!
       const rightContainer = root.querySelector('#d2-toolbar-right')!
@@ -208,6 +212,7 @@ describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Pers
       const bugOverlay = root.querySelector('#d2-bug-modal-overlay')!
       const diagBanner = root.querySelector('#d2-toolbar-diag-banner')!
 
+      expect(qqBtn).not.toBeNull()
       expect(pluginsBtn).not.toBeNull()
       expect(pluginSlot).not.toBeNull()
       expect(rightContainer).not.toBeNull()
@@ -218,13 +223,19 @@ describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Pers
       expect(bugOverlay.hidden).toBe(true)
       expect(diagBanner.hidden).toBe(true)
 
-      // Far-left order: pluginsBtn (0), pluginSlot (1), rightContainer (2), modals (3, 4), diagBanner (5)
-      expect(children.indexOf(pluginsBtn)).toBe(0)
-      expect(children.indexOf(pluginSlot)).toBe(1)
-      expect(children.indexOf(rightContainer)).toBe(2)
-      expect(children.indexOf(configOverlay)).toBe(3)
-      expect(children.indexOf(bugOverlay)).toBe(4)
-      expect(children.indexOf(diagBanner)).toBe(5)
+      // Far-left order: qqBtn (0), pluginsBtn (1), pluginSlot (2), rightContainer (3), modals (4, 5), diagBanner (6)
+      expect(children.indexOf(qqBtn)).toBe(0)
+      expect(children.indexOf(pluginsBtn)).toBe(1)
+      expect(children.indexOf(pluginSlot)).toBe(2)
+      expect(children.indexOf(rightContainer)).toBe(3)
+      expect(children.indexOf(configOverlay)).toBe(4)
+      expect(children.indexOf(bugOverlay)).toBe(5)
+      expect(children.indexOf(diagBanner)).toBe(6)
+
+      expect(qqBtn.getAttribute('data-copy')).toBe(TOOLBAR_QQ_GROUP)
+      expect(qqBtn.title).toBe('点击复制 QQ 群号 (754468203)')
+      expect(qqBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(TOOLBAR_QQ_ICON_SVG)
+      expect(qqBtn.querySelector('#d2-toolbar-qq-label')!.textContent).toBe('QQ群: 754468203')
 
       // Right container has status badge, divider, and 3 icon buttons in order: lang, config, bug
       const statusBadge = rightContainer.querySelector('#d2-toolbar-status')!
@@ -234,13 +245,18 @@ describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Pers
       expect(divider).not.toBeNull()
       expect(actionsGroup).not.toBeNull()
 
+      const refreshBtn = actionsGroup.querySelector('#d2-toolbar-refresh-btn')!
       const langBtn = actionsGroup.querySelector('#d2-toolbar-lang-btn')!
       const configBtn = actionsGroup.querySelector('#d2-toolbar-config-btn')!
       const bugBtn = actionsGroup.querySelector('#d2-toolbar-bug-btn')!
-      expect(actionsGroup.children.indexOf(langBtn)).toBe(0)
-      expect(actionsGroup.children.indexOf(configBtn)).toBe(1)
-      expect(actionsGroup.children.indexOf(bugBtn)).toBe(2)
+      expect(actionsGroup.children.indexOf(refreshBtn)).toBe(0)
+      expect(actionsGroup.children.indexOf(langBtn)).toBe(1)
+      expect(actionsGroup.children.indexOf(configBtn)).toBe(2)
+      expect(actionsGroup.children.indexOf(bugBtn)).toBe(3)
 
+      expect(refreshBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(
+        TOOLBAR_REFRESH_ICON_SVG,
+      )
       expect(langBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(TOOLBAR_LANG_ICON_SVG)
       expect(langBtn.querySelector('#d2-toolbar-lang-badge')!.textContent).toBe('中')
       expect(configBtn.querySelector('.d2-toolbar__btn-icon')!.innerHTML).toBe(
@@ -257,10 +273,12 @@ describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Pers
       expect(pluginsLabel.textContent).toBe('插件')
       expect(pluginsBtn.textContent).toBe('插件')
 
-      // Clicking #d2-toolbar-lang-btn toggles zh <-> en and preserves icons
+      // Clicking #d2-toolbar-lang-btn toggles zh <-> en and preserves icons & updates QQ button
       langBtn.click()
       expect(store.get().lang).toBe('en')
       expect(langBtn.querySelector('#d2-toolbar-lang-badge')!.textContent).toBe('EN')
+      expect(qqBtn.title).toBe('Click to copy QQ group (754468203)')
+      expect(qqBtn.querySelector('#d2-toolbar-qq-label')!.textContent).toBe('QQ Group: 754468203')
       expect(pluginsBtn.querySelector('.d2-toolbar__btn-icon')).toBe(pluginsIcon)
       expect(pluginsIcon.innerHTML).toBe(TOOLBAR_PLUGINS_ICON_SVG)
       expect(pluginsBtn.textContent).toBe('Plugins')
@@ -272,6 +290,8 @@ describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Pers
       langBtn.click()
       expect(store.get().lang).toBe('zh')
       expect(langBtn.querySelector('#d2-toolbar-lang-badge')!.textContent).toBe('中')
+      expect(qqBtn.title).toBe('点击复制 QQ 群号 (754468203)')
+      expect(qqBtn.querySelector('#d2-toolbar-qq-label')!.textContent).toBe('QQ群: 754468203')
       toolbar.setPluginsButtonState({ ready: true, hasWarning: false, open: false })
       expect(pluginsBtn.textContent).toBe('插件')
 
@@ -306,6 +326,7 @@ describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Pers
     const rightPos = playHtml.indexOf('id="d2-toolbar-right"')
     const statusPos = playHtml.indexOf('id="d2-toolbar-status"')
     const dividerPos = playHtml.indexOf('class="d2-toolbar__divider"')
+    const refreshBtnPos = playHtml.indexOf('id="d2-toolbar-refresh-btn"')
     const langBtnPos = playHtml.indexOf('id="d2-toolbar-lang-btn"')
     const configBtnPos = playHtml.indexOf('id="d2-toolbar-config-btn"')
     const bugBtnPos = playHtml.indexOf('id="d2-toolbar-bug-btn"')
@@ -315,11 +336,13 @@ describe('Top Toolbar Layout, Right Icon Buttons, Config Modal & Bug Report Pers
     expect(rightPos).toBeGreaterThan(pluginSlotPos)
     expect(statusPos).toBeGreaterThan(rightPos)
     expect(dividerPos).toBeGreaterThan(statusPos)
-    expect(langBtnPos).toBeGreaterThan(dividerPos)
+    expect(refreshBtnPos).toBeGreaterThan(dividerPos)
+    expect(langBtnPos).toBeGreaterThan(refreshBtnPos)
     expect(configBtnPos).toBeGreaterThan(langBtnPos)
     expect(bugBtnPos).toBeGreaterThan(configBtnPos)
 
     expect(playHtml).toContain(TOOLBAR_PLUGINS_ICON_SVG)
+    expect(playHtml).toContain(TOOLBAR_REFRESH_ICON_SVG)
     expect(playHtml).toContain(TOOLBAR_LANG_ICON_SVG)
     expect(playHtml).toContain(TOOLBAR_CONFIG_ICON_SVG)
     expect(playHtml).toContain(TOOLBAR_BUG_ICON_SVG)
@@ -890,6 +913,74 @@ describe('Toolbar fullscreen toggle button', () => {
 
       toolbar.destroy()
     } finally {
+      ;(globalThis as { document?: unknown }).document = prevDoc
+    }
+  })
+
+  it('copies QQ group number 754468203 on click, displays feedback, and play.html contains the button at the far left', async () => {
+    vi.useFakeTimers()
+    const prevDoc = (globalThis as { document?: unknown }).document
+    const head = new FakeElement('head')
+    const body = new FakeElement('body')
+    const container = new FakeElement('div')
+    body.appendChild(container)
+    ;(globalThis as { document?: unknown }).document = {
+      head,
+      body,
+      createElement(tag: string) {
+        return new FakeElement(tag)
+      },
+      getElementById(id: string) {
+        return body.querySelector(`#${id}`) ?? head.querySelector(`#${id}`)
+      },
+    }
+
+    try {
+      const store = new SettingsStore({
+        storage: new MemoryStorage(),
+        defaultLang: 'zh',
+        syncGlobalLang: false,
+      })
+      const toolbar = new Toolbar({
+        container: container as unknown as HTMLElement,
+        store,
+      })
+      const root = container.querySelector('#d2-toolbar')!
+      const qqBtn = root.querySelector('#d2-toolbar-qq-btn')!
+      const qqLabel = root.querySelector('#d2-toolbar-qq-label')!
+
+      expect(qqBtn).not.toBeNull()
+      expect(qqLabel.textContent).toBe('QQ群: 754468203')
+
+      await toolbar.copyQqGroup()
+      expect(qqLabel.textContent).toBe('已复制群号')
+      expect(qqBtn.className).toContain('d2-toolbar__btn--active')
+
+      vi.advanceTimersByTime(1600)
+      expect(qqLabel.textContent).toBe('QQ群: 754468203')
+      expect(qqBtn.className).toBe('d2-toolbar__btn d2-toolbar__qq-btn')
+
+      // Bilingual en check
+      toolbar.setLanguage('en')
+      expect(qqLabel.textContent).toBe('QQ Group: 754468203')
+      await toolbar.copyQqGroup()
+      expect(qqLabel.textContent).toBe('Copied!')
+      vi.advanceTimersByTime(1600)
+      expect(qqLabel.textContent).toBe('QQ Group: 754468203')
+
+      // play.html markup verification
+      const playHtml = readFileSync(resolve(process.cwd(), 'play.html'), 'utf8')
+      expect(playHtml).toContain('id="d2-toolbar-qq-btn"')
+      expect(playHtml).toContain('id="d2-toolbar-qq-label"')
+      expect(playHtml).toContain('data-copy="754468203"')
+      const qqPos = playHtml.indexOf('id="d2-toolbar-qq-btn"')
+      const pluginsPos = playHtml.indexOf('id="d2-toolbar-plugins-btn"')
+      expect(qqPos).toBeGreaterThan(0)
+      expect(pluginsPos).toBeGreaterThan(qqPos)
+
+      toolbar.destroy()
+    } finally {
+      vi.useRealTimers()
       ;(globalThis as { document?: unknown }).document = prevDoc
     }
   })

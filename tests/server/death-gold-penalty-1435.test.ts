@@ -19,7 +19,6 @@
 
 import { describe, expect, it } from 'vitest'
 import { applyDeathGoldPenalty113c } from '../../src/common/progression/experience-113c.ts'
-import { DEFAULT_TOWN_PORTAL_SUBTILES_BY_LEVEL } from '../../src/common/world/portal.ts'
 import { GameInstance } from '../../src/server/engine/game-instance.ts'
 import { writeD2s } from '../../src/server/index.ts'
 import { createSampleD2sCharacterData } from '../e2e/server-reuse/helpers.ts'
@@ -235,6 +234,7 @@ describe('Issue #1435: 1.13c player death gold penalty (D2Game.dll 0x6FC58180) &
     const after = g.getPlayerState(pid)!
     expect(after.dead).toBe(false)
     expect(after.areaId).toBe(1)
-    expect({ x: after.x, y: after.y }).toEqual(DEFAULT_TOWN_PORTAL_SUBTILES_BY_LEVEL[1])
+    // Resolver-less synthetic test grid (#1698): no DRLG town exists, so the legacy grid spawn is used.
+    expect({ x: after.x, y: after.y }).toEqual({ x: 128, y: 128 })
   })
 })

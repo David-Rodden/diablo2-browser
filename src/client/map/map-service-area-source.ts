@@ -54,6 +54,7 @@ export function levelViewToAreaGeometry(
         ? [{ lvlWarpId: e.warp.lvlWarpId, subX: e.warp.subX, subY: e.warp.subY, toLevelId: e.toLevelId }]
         : [],
     ),
+    ...(view.actSpawn !== undefined ? { actSpawn: view.actSpawn } : {}),
   }
 }
 

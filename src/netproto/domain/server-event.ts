@@ -118,10 +118,13 @@ export type ServerEvent =
       readonly owner?: UnitRef | undefined
       readonly ownerType?: UnitType | undefined
       readonly ownerId?: number | undefined
-      readonly velocity?: number | undefined
-      readonly range?: number | undefined
       readonly unk?: number | undefined
-      readonly cltDoFuncArg?: number | undefined
+      /**
+       * S2C 0x73 `@0x17`: missile data `+0x10` frame countdown (D2Common #10737 / #10970); elapsed frames are
+       * `range - remainingFrames` (D2Common 0x6FDBA240). Absent for locally simulated missiles (#1655, #1664).
+       */
+      readonly remainingFrames?: number | undefined
+      /** S2C 0x73 `@0x1F`: stat 0x148 `pierce_idx`, applied by D2Client only when non-zero (0x6fb5ef6b). */
       readonly pierceIdx?: number | undefined
       readonly areaId?: number | undefined
     }
@@ -131,6 +134,8 @@ export type ServerEvent =
       readonly hardcore: boolean
       readonly expansion: boolean
       readonly ladder: boolean
+      /** S2C 0x01 `@2`: D2Game arena flags (create flags & 0x3179C7); 0x800 = hardcore game. */
+      readonly arenaFlags?: number | undefined
     }
   | {
       readonly type: 'LoadAct'
@@ -161,7 +166,11 @@ export type ServerEvent =
     }
   | {
       readonly type: 'OpenUi'
-      readonly unitType: number
+      /**
+       * Set only by the offline server's own UI events. S2C 0x58 carries no unit type (D2Client 0x6fb50250
+       * reads only the id, action and extra), so wire-decoded events leave it undefined (#1659).
+       */
+      readonly unitType?: number | undefined
       readonly unitId: number
       readonly uiId: number
       readonly extra?: number | undefined
@@ -481,6 +490,8 @@ export type ServerEvent =
       readonly unitType?: UnitType | undefined
       readonly flag?: number | undefined
       readonly skills: readonly SkillLevel[]
+      /** S2C 0x22 `@0xB != 0` (state 7 `playerbody`): D2Client 0x6fb5c800 ignores the packet (#1654). */
+      readonly playerBodySkip?: boolean | undefined
     }
   | {
       readonly type: 'ActiveSkill'

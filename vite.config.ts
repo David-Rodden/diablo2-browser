@@ -9,6 +9,7 @@ import {
   createHomeFallbackHttpMiddleware,
   createServerStatusHttpMiddleware,
 } from './src/baker/io/server-status-probe.ts'
+import { createSidecarAssetHttpMiddleware } from './src/baker/io/sidecar-compression.ts'
 import type { AssetManifest } from './src/common/pack-contract/index.ts'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
@@ -33,6 +34,19 @@ function discoverPluginHtmlEntries(rootDir: string): Record<string, string> {
  */
 export default defineConfig({
   plugins: [
+    {
+      name: 'd2-sidecar-asset-compression',
+      configureServer(server) {
+        server.middlewares.use(
+          createSidecarAssetHttpMiddleware({ publicDir: resolve(__dirname, 'public') }),
+        )
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(
+          createSidecarAssetHttpMiddleware({ publicDir: resolve(__dirname, 'public') }),
+        )
+      },
+    },
     {
       name: 'd2-bug-report-api',
       configureServer(server) {

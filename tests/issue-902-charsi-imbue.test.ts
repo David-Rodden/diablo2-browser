@@ -368,13 +368,12 @@ describe('Issue #902: Charsi Imbue UI, 1.13c Eligibility, and End-to-End Protoco
   })
 
   describe('R3: Client-Server End-to-End Protocol Loop (C2S 0x38 / S2C 0x58 / Quest Bit 0x0002 -> 0x0001)', () => {
-    it('decodes S2C 0x58 OpenUi(uiId=6) with unitType=1 when unitId > 0 and unitType=0 when unitId === 0', () => {
+    it('decodes S2C 0x58 OpenUi(uiId=6) without a unit type (D2Client 0x6fb50250 reads id/action/extra only, #1659)', () => {
       const openPacket = new Uint8Array([0x58, 0x2a, 0x00, 0x00, 0x00, 0x06, 0x00])
       const decodedOpen = decode0x58OpenUi(openPacket)
       expect(decodedOpen).toEqual({
         type: 'OpenUi',
         uiId: 6,
-        unitType: 1,
         unitId: 0x2a,
         extra: 0,
       })
@@ -384,7 +383,6 @@ describe('Issue #902: Charsi Imbue UI, 1.13c Eligibility, and End-to-End Protoco
       expect(decodedClose).toEqual({
         type: 'OpenUi',
         uiId: 6,
-        unitType: 0,
         unitId: 0,
         extra: 0,
       })

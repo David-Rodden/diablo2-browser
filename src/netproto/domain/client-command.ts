@@ -29,6 +29,8 @@ export type ClientCommand =
   | { readonly type: 'WalkToTarget'; readonly unitKind: UnitType; readonly unitId: number }
   | { readonly type: 'RunToTarget'; readonly unitKind: UnitType; readonly unitId: number }
   | { readonly type: 'UpdatePlayerPos'; readonly x: number; readonly y: number }
+  /** 0x4B RequestEntityUpdate (9B): request server S2C 0x15 position/mode resync for unit. */
+  | { readonly type: 'RequestEntityUpdate'; readonly unitType: number; readonly unitId: number }
   /**
    * Skill on location, 1.13c D2Client 0x6faca060 SendSkillPacket(bOnUnit=0):
    * L 0x05 / L hold 0x08, R 0x0C / R hold 0x0F. Location packets have no shift variant.
@@ -161,17 +163,15 @@ export type ClientCommand =
       readonly npcId?: number | undefined
     }
   | { readonly type: 'QuestMessage'; readonly npcId: number; readonly messageId: number }
-  /** 0x4D PlayNpcMessage (3B): u8 0x4D | u16 classId (MonStats hcIdx); 0x39 PlayNpcMessage (9B). */
+  /**
+   * 0x4D PlayNpcMessage (3B): u8 0x4D | u16 classId (MonStats hcIdx). C->S 0x39 is always rejected by
+   * 1.13c D2Game (handler `0x6FCEB560`), so there is no npcId/messageId variant (#1653).
+   */
   | {
       readonly type: 'PlayNpcMessage'
       readonly classId?: number | undefined
       readonly npcClassId?: number | undefined
       readonly hcIdx?: number | undefined
-      readonly target?: UnitRef | undefined
-      readonly unitType?: number | undefined
-      readonly unitId?: number | undefined
-      readonly npcId?: number | undefined
-      readonly messageId?: number | undefined
     }
   /** 0x38 action 1: open the vendor trade window (server fills the shop with 0x9C AddToShop). */
   | { readonly type: 'NpcOpenTrade'; readonly npcId: number }

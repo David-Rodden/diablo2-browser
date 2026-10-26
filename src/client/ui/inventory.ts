@@ -396,6 +396,20 @@ export const EQUIP_SLOTS_LAYOUT: Readonly<
   },
 }
 
+export const EQUIP_SLOTS_ENTRIES = Object.entries(EQUIP_SLOTS_LAYOUT) as [
+  EquipSlotId,
+  (typeof EQUIP_SLOTS_LAYOUT)[EquipSlotId],
+][]
+
+export const EQUIP_SLOTS_KEYS = Object.keys(EQUIP_SLOTS_LAYOUT) as EquipSlotId[]
+
+export function hasAnyOwnKey(obj: Record<string, unknown>): boolean {
+  for (const k in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, k)) return true
+  }
+  return false
+}
+
 /**
  * Ground Truth (`Panel\invchar6Tab.dc6` frames 0 & 1, 62x22 px each, drawn at `ox + 15, oy + 23` and `ox + 245, oy + 23`):
  * Each 62x22 weapon swap tab strip has two 31x22 sub-tabs:
@@ -1769,7 +1783,7 @@ function applyStatDeltaToTargetBase(
       if (minDmgMatch) addMinDmg += Number(minDmgMatch[1])
       const maxDmgMatch = /^\+(\d+)\s*to Maximum Damage$/i.exec(t)
       if (maxDmgMatch) addMaxDmg += Number(maxDmgMatch[1])
-      const reqMatch = /^Requirements\s*(-\d+)%/i.exec(t)
+      const reqMatch = /^Requirements\s*([+-]\d+)%/i.exec(t)
       if (reqMatch) reqPct += Number(reqMatch[1])
     }
   }
@@ -1790,10 +1804,11 @@ function applyStatDeltaToTargetBase(
     const nextCumReq = ((mutable._cumReqPct as number | undefined) ?? 0) + reqPct
     mutable._cumReqPct = nextCumReq
     if (typeof mutable._baseReqStr === 'number') {
-      mutable.reqStr = Math.max(0, Math.floor((mutable._baseReqStr * (100 + nextCumReq)) / 100))
+      // D2Common #10244 0x6fd76db0: base + MulDiv(item_req_percent, base, 100), truncated toward zero (#1645).
+      mutable.reqStr = Math.max(0, mutable._baseReqStr + Math.trunc((mutable._baseReqStr * nextCumReq) / 100))
     }
     if (typeof mutable._baseReqDex === 'number') {
-      mutable.reqDex = Math.max(0, Math.floor((mutable._baseReqDex * (100 + nextCumReq)) / 100))
+      mutable.reqDex = Math.max(0, mutable._baseReqDex + Math.trunc((mutable._baseReqDex * nextCumReq) / 100))
     }
   }
 
@@ -3060,7 +3075,7 @@ export class InventoryPanel {
     }
 
     // Check equipment slots (including 2H weapon in opposite hand slot per 0x6FB47BE0)
-    for (const [slotId, rect] of Object.entries(EQUIP_SLOTS_LAYOUT) as [EquipSlotId, typeof EQUIP_SLOTS_LAYOUT[EquipSlotId]][]) {
+    for (const [slotId, rect] of EQUIP_SLOTS_ENTRIES) {
       if (logicalX >= rect.x && logicalX <= rect.x + rect.w && logicalY >= rect.y && logicalY <= rect.y + rect.h) {
         const eq = this.equipped[slotId] ?? this.getOppositeHandTwoHandedWeapon(slotId)
         if (eq) {
@@ -3142,7 +3157,7 @@ export class InventoryPanel {
       }
 
       // Left-Click on equipment slot in Identify Mode
-      for (const [slotId, rect] of Object.entries(EQUIP_SLOTS_LAYOUT) as [EquipSlotId, typeof EQUIP_SLOTS_LAYOUT[EquipSlotId]][]) {
+      for (const [slotId, rect] of EQUIP_SLOTS_ENTRIES) {
         if (logicalX >= rect.x && logicalX <= rect.x + rect.w && logicalY >= rect.y && logicalY <= rect.y + rect.h) {
           const eq = this.equipped[slotId]
           if (eq && isUiItemUnidentified(eq)) {
@@ -3221,7 +3236,7 @@ export class InventoryPanel {
     }
 
     // 3. Equipment slots
-    for (const [slotId, rect] of Object.entries(EQUIP_SLOTS_LAYOUT) as [EquipSlotId, typeof EQUIP_SLOTS_LAYOUT[EquipSlotId]][]) {
+    for (const [slotId, rect] of EQUIP_SLOTS_ENTRIES) {
       if (logicalX >= rect.x && logicalX <= rect.x + rect.w && logicalY >= rect.y && logicalY <= rect.y + rect.h) {
         this.clickEquipSlot(slotId)
         return true
@@ -3322,7 +3337,8 @@ export class InventoryPanel {
     }
 
     // 4. Draw Equipped Items in Paperdoll Slots (no background fill for usable items; red only when unusable, green when hovered with cursor item)
-    for (const [slotId, rect] of Object.entries(EQUIP_SLOTS_LAYOUT) as [EquipSlotId, typeof EQUIP_SLOTS_LAYOUT[EquipSlotId]][]) {
+    const effectiveRects = hasAnyOwnKey(assets.itemRects) ? assets.itemRects : BAKED_UI_MANIFEST.itemRects
+    for (const [slotId, rect] of EQUIP_SLOTS_ENTRIES) {
       const eq = this.equipped[slotId]
       if (!eq) {
         const ghost2H = this.getOppositeHandTwoHandedWeapon(slotId)
@@ -3334,7 +3350,7 @@ export class InventoryPanel {
           ctx.save?.()
           ctx.globalAlpha = 0.38
           try {
-            this.drawItemSprite(ctx, ghost2H, rect.x, rect.y, rect.w, rect.h, assets, false)
+            this.drawItemSprite(ctx, ghost2H, rect.x, rect.y, rect.w, rect.h, assets, false, effectiveRects)
           } finally {
             ctx.globalAlpha = prevAlpha
             ctx.restore?.()
@@ -3351,7 +3367,7 @@ export class InventoryPanel {
         ctx.fillStyle = slotFill
         ctx.fillRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2)
       }
-      this.drawItemSprite(ctx, eq, rect.x, rect.y, rect.w, rect.h, assets, isHovered)
+      this.drawItemSprite(ctx, eq, rect.x, rect.y, rect.w, rect.h, assets, isHovered, effectiveRects)
     }
 
     // 5. Draw 10x4 Bag Grid Items (D2Client.dll 0x6fb459f7: blue for usable, red for unusable/unidentified, green when hovered with cursor item)
@@ -3367,7 +3383,7 @@ export class InventoryPanel {
         hasCursorItem: this.cursorItem !== null,
       })
       ctx.fillRect(gx + 1, gy + 1, gw - 2, gh - 2)
-      this.drawItemSprite(ctx, placed.item, gx, gy, gw, gh, assets, isHovered)
+      this.drawItemSprite(ctx, placed.item, gx, gy, gw, gh, assets, isHovered, effectiveRects)
     }
 
     // 6. Gold Coin Button (`Panel\goldcoinbtn.dc6` frame 0 at x=484, y=451, 20x18) & Gold Amount Readout
@@ -3443,9 +3459,10 @@ export class InventoryPanel {
       itemRects: Record<string, { x: number; y: number; w: number; h: number }>
     },
     isHovered = false,
+    resolvedRects?: Record<string, { x: number; y: number; w: number; h: number }>,
   ): void {
     const effectiveRects =
-      Object.keys(assets.itemRects).length > 0 ? assets.itemRects : BAKED_UI_MANIFEST.itemRects
+      resolvedRects ?? (hasAnyOwnKey(assets.itemRects) ? assets.itemRects : BAKED_UI_MANIFEST.itemRects)
     const sr = resolveItemSpriteRect(item, effectiveRects)
     if (!sr) {
       throw new Error(

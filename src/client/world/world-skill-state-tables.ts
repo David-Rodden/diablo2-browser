@@ -737,6 +737,7 @@ export function getMissileCollideType113c(missileKey?: string): number {
 export type ClientWorldInternal = Record<string, any> & {
   _units: UnitMap
   _monsters: Map<number, ClientUnit>
+  _pendingMercStats: Map<number, Map<number, number>>
   _containers: ClientInventoryManager
   ensureUnit(unitType: UnitType, id: number): ClientUnit
   ensureWorldOrGroundUnit(unitType: UnitType, id: number): ClientUnit | undefined

@@ -25,7 +25,6 @@ describe('Act 2 Quests Audit Fixes (1.13c Ground Truth)', () => {
       const ev0 = decode0x58OpenUi(openOrificePkt)
       expect(ev0).toEqual({
         type: 'OpenUi',
-        unitType: 2,
         unitId: 0x12345678,
         uiId: 0,
         extra: 0,
@@ -35,7 +34,6 @@ describe('Act 2 Quests Audit Fixes (1.13c Ground Truth)', () => {
       const ev5 = decode0x58OpenUi(completeOrificePkt)
       expect(ev5).toEqual({
         type: 'OpenUi',
-        unitType: 0,
         unitId: 0x12345678,
         uiId: 5,
         extra: 1,

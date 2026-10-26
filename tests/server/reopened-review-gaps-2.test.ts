@@ -93,6 +93,7 @@ describe('reopened review pass 2', () => {
       x: 10,
       y: 10,
       areaId: 2,
+      level: 30,
       hp: 5000,
       maxHp: 5000,
       minDmg: 1,

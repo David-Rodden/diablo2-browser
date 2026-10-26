@@ -12,7 +12,15 @@
  */
 
 import type { CharacterClassCode } from '../units/classes.ts'
-import { compute3BandDuration } from '../data/calc-ast.ts'
+import {
+  calcDiv,
+  calcPow,
+  compute3BandDuration,
+  computeDiminishingReturns,
+  computeDiminishingReturnsRaw,
+  computeSkillMps113c,
+  skillMinSynergyApplies113c,
+} from '../data/calc-ast.ts'
 import {
   SKILLS_CATALOG,
   SKILLS_BY_ID,
@@ -277,6 +285,21 @@ export function evaluateSynergies(state: SkillCalcState, skill: SkillCatalogEntr
   }
 }
 
+/**
+ * Caster elemental mastery % for SkillCalc enma/exma/enms/exms (D2Common 0x6FD9F870, by EType): fire -> stat 329
+ * passive_fire_mastery, ltng -> 330 passive_ltng_mastery, cold -> 331, pois -> 332. The only Skills.txt rows granting
+ * these stats are Fire Mastery #61 and Lightning Mastery #63 (passivecalc1 = ln12); cold/poison mastery only comes
+ * from items, which this skill-tree calculator does not model (#1682).
+ */
+export function casterElementalMasteryPct113c(state: SkillCalcState, eType: string): number {
+  const masteryId = eType === 'fire' ? 61 : eType === 'ltng' ? 63 : 0
+  if (masteryId === 0) return 0
+  const lvl = getEffectiveLevel(state, masteryId)
+  const mastery = SKILLS_BY_ID[masteryId]
+  if (lvl <= 0 || !mastery) return 0
+  return (mastery.params.par1 ?? 0) + (lvl - 1) * (mastery.params.par2 ?? 0)
+}
+
 export interface MasteryCalculationResult {
   readonly active: boolean
   readonly masteryId: number
@@ -378,11 +401,11 @@ export function evaluateMasteries(state: SkillCalcState, skill: SkillCatalogEntr
     }
   }
 
-  // Check Assassin Claw Mastery (id 252)
+  // Check Assassin Claw Mastery (id 252: Param3=35 base %ED, Param4=4 %ED/lvl)
   if (skill.classCode === 'ass' && skill.masteries.includes(252)) {
     const slvl = getEffectiveLevel(state, 252)
     if (slvl > 0) {
-      const pct = 30 + 4 * (slvl - 1)
+      const pct = 35 + 4 * (slvl - 1)
       return {
         active: true,
         masteryId: 252,
@@ -549,8 +572,16 @@ export function calculateDetailedDamage(
 
   const syn = evaluateSynergies(state, skill)
   const mastery = evaluateMasteries(state, skill)
-  const masteryMult = mastery && mastery.active ? mastery.multiplier : 1.0
-  const masteryPct = mastery && mastery.active ? mastery.bonusPercent : 0
+  // D2Common.#10121 (SKILLS_GetMinElemDamage @ 0x6FDA0460 -> 0x6FD9F870):
+  // Only passive elemental masteries (61 Fire Mastery for 'fire', 63 Lightning Mastery for 'ltng')
+  // multiply direct skill elemental damage. Concentration (#113) is an active aura checked separately
+  // by descdam=12 (#10037), and Claw Mastery (#252) only scales physical claw weapon damage.
+  const isDirectElemMastery =
+    mastery !== null &&
+    mastery.active &&
+    ((mastery.masteryId === 61 && type === 'fire') || (mastery.masteryId === 63 && type === 'ltng'))
+  const masteryMult = isDirectElemMastery ? mastery.multiplier : 1.0
+  const masteryPct = isDirectElemMastery ? mastery.bonusPercent : 0
 
   // For dual-channel skills (e.g., #229 Molten Boulder, #244 Volcano, #249 Armageddon),
   // elemental damage is scaled strictly by elemental synergies (EDmgSymPerCalc) while
@@ -562,6 +593,14 @@ export function calculateDetailedDamage(
   let baseMax = 0
   let withSynergyMin = 0
   let withSynergyMax = 0
+  // D2Common #10121 (0x6FDA04C7..0x6FDA04D3): the skill's elemental min is synergised only when
+  // `min256 > 256 || EMinLev1 != 0` — the flat 1-point lightning minimum stays 1 (#1681).
+  const minSynPct =
+    hasElemChannel &&
+    !(skill.id === 234 && skill.eMin === 0 && skill.eMax === 0) &&
+    !skillMinSynergyApplies113c(rawBaseMin * 2 ** (skill.hitshift ?? 8), skill.eMinLev[0] ?? 0)
+      ? 0
+      : primarySynPct
 
   if (skill.eType === 'pois' && durationFrames > 0) {
     // 1.13c Poison Bitrate Formula (SkillDesc.txt descline=14):
@@ -572,7 +611,7 @@ export function calculateDetailedDamage(
     const maxRate256 = rawBaseMax * (2 ** hitShift)
     baseMin = Math.floor((minRate256 * durationFrames) / 256)
     baseMax = Math.floor((maxRate256 * durationFrames) / 256)
-    const minRateSyn256 = Math.trunc((minRate256 * (100 + primarySynPct)) / 100)
+    const minRateSyn256 = Math.trunc((minRate256 * (100 + minSynPct)) / 100)
     const maxRateSyn256 = Math.trunc((maxRate256 * (100 + primarySynPct)) / 100)
     withSynergyMin = Math.floor((minRateSyn256 * durationFrames) / 256)
     withSynergyMax = Math.floor((maxRateSyn256 * durationFrames) / 256)
@@ -590,7 +629,7 @@ export function calculateDetailedDamage(
     const maxRate256 = rawBaseMax * (2 ** hitShift)
     baseMin = Math.floor((minRate256 * framesFactor) / denom)
     baseMax = Math.floor((maxRate256 * framesFactor) / denom)
-    const minRateSyn256 = Math.trunc((minRate256 * (100 + primarySynPct)) / 100)
+    const minRateSyn256 = Math.trunc((minRate256 * (100 + minSynPct)) / 100)
     const maxRateSyn256 = Math.trunc((maxRate256 * (100 + primarySynPct)) / 100)
     withSynergyMin = Math.floor((minRateSyn256 * framesFactor) / denom)
     withSynergyMax = Math.floor((maxRateSyn256 * framesFactor) / denom)
@@ -598,7 +637,7 @@ export function calculateDetailedDamage(
     const shiftMultiplier = 2 ** ((skill.hitshift ?? 8) - 8)
     baseMin = Math.round(rawBaseMin * shiftMultiplier)
     baseMax = Math.round(rawBaseMax * shiftMultiplier)
-    withSynergyMin = Math.floor(baseMin * primarySynMult)
+    withSynergyMin = minSynPct === primarySynPct ? Math.floor(baseMin * primarySynMult) : baseMin
     withSynergyMax = Math.floor(baseMax * primarySynMult)
   }
 
@@ -670,11 +709,6 @@ export interface FormattedDescLine {
   readonly value?: number | string | undefined
 }
 
-export function evalDiminishing(a: number, b: number, lvl: number): number {
-  if (b === a) return a
-  return Math.floor(((110 * lvl) * (b - a)) / (100 * (lvl + 6))) + a
-}
-
 export interface SkillFormulaContext {
   readonly lvl: number
   readonly params: Readonly<Record<string, number | undefined>>
@@ -690,6 +724,14 @@ export interface SkillFormulaContext {
   readonly len: number
   readonly edmn: number
   readonly edmx: number
+  /** SkillCalc edln/edma: synergised elemental length (0x6FD9E900). */
+  readonly edln?: number | undefined
+  /** SkillCalc math/madm/macr (0x6FD9E7A0 modes 0/1/2): the skill's own mastery passivecalc (#1683). */
+  readonly math?: number | undefined
+  readonly madm?: number | undefined
+  readonly macr?: number | undefined
+  readonly enms?: number | undefined
+  readonly exms?: number | undefined
   readonly enma?: number | undefined
   readonly exma?: number | undefined
   readonly edns?: number | undefined
@@ -757,7 +799,10 @@ const FORMULA_TOKEN_REPLACEMENTS: Readonly<Record<string, string>> = {
   dm78: '_dm78',
   toht: '_toht',
   len: '_len',
-  edln: '_len',
+  edln: '_edln',
+  edma: '_edln',
+  enms: '_enms',
+  exms: '_exms',
   edmn: '_edmn',
   edmx: '_edmx',
   enma: '_enma',
@@ -768,7 +813,9 @@ const FORMULA_TOKEN_REPLACEMENTS: Readonly<Record<string, string>> = {
   clc2: '_clc2',
   clc3: '_clc3',
   clc4: '_clc4',
-  macr: '_dm34',
+  math: '_math',
+  madm: '_madm',
+  macr: '_macr',
   m1en: '_m1en',
   m1ex: '_m1ex',
   m1eo: '_m1eo',
@@ -782,9 +829,45 @@ const FORMULA_TOKEN_REPLACEMENTS: Readonly<Record<string, string>> = {
 }
 
 const FORMULA_TOKEN_REGEX =
-  /\b(?:lvl|par[1-8]|ln(?:12|34|56|78)|dm(?:12|34|56|78)|toht|len|edln|edmn|edmx|enma|exma|edns|edxs|clc[1-4]|macr|m1en|m1ex|m1eo|m1ey|m2en|m2ex|m3en|m3ex|mps|usmc)\b/g
+  /\b(?:lvl|par[1-8]|ln(?:12|34|56|78)|dm(?:12|34|56|78)|toht|len|edln|edma|edmn|edmx|enma|exma|enms|exms|edns|edxs|clc[1-4]|math|madm|macr|m1en|m1ex|m1eo|m1ey|m2en|m2ex|m3en|m3ex|mps|usmc)\b/g
 
 const COMPILED_FORMULA_CACHE = new Map<string, (ctx: SkillFormulaContext) => number>()
+
+/**
+ * Skills.txt passivecalcN paired with passivestatN = passive_mastery_{melee,throw}_th / _dmg / _crit (stats 342..347),
+ * the pairs D2Common 0x6FD9E7A0 resolves for SkillCalc math / madm / macr. The skill catalog carries no passivestat
+ * columns, so the rows are listed here; tests/skills/mastery-calc-1683.test.ts re-derives them from Skills.txt.
+ */
+export const WEAPON_MASTERY_PASSIVE_CALCS_113C: Readonly<Record<number, { readonly th: string; readonly dmg: string; readonly crit: string }>> = {
+  127: { th: 'ln12', dmg: 'ln34', crit: 'dm56' }, // Sword Mastery
+  128: { th: 'ln12', dmg: 'ln34', crit: 'dm56' }, // Axe Mastery
+  129: { th: 'ln12', dmg: 'ln34', crit: 'dm56' }, // Mace Mastery
+  134: { th: 'ln12', dmg: 'ln34', crit: 'dm56' }, // Pole Arm Mastery
+  135: { th: 'ln12', dmg: 'ln34', crit: 'dm56' }, // Throwing Mastery (passive_mastery_throw_*)
+  136: { th: 'ln12', dmg: 'ln34', crit: 'dm56' }, // Spear Mastery
+  252: { th: 'ln12', dmg: 'ln34', crit: 'dm56' }, // Claw Mastery
+}
+
+/**
+ * SkillCalc edns/edxs of `target` at `lvl` (256ths) as D2Common #10121/#11091 compute it with bMastery=0:
+ * band5(EMin/EMax) << HitShift, plus EDmgSymPerCalc (min side gated by 0x6FDA04C7, #1681) evaluated against the
+ * caller's hard points (#1682).
+ */
+function skillElemDamage256(
+  target: SkillCatalogEntry,
+  lvl: number,
+  ctx: SkillFormulaContext,
+  side: 'min' | 'max',
+): number {
+  if (lvl <= 0) return 0
+  const raw = side === 'min' ? evaluateLevelBand(target.eMin, target.eMinLev, lvl) : evaluateLevelBand(target.eMax, target.eMaxLev, lvl)
+  const v256 = Math.trunc(raw * 2 ** (target.hitshift ?? 8))
+  const formula = target.synergyFormulas?.elemental
+  if (!formula) return v256
+  if (side === 'min' && !skillMinSynergyApplies113c(v256, target.eMinLev[0] ?? 0)) return v256
+  const synPct = evalSkillDescFormula(formula, { ...ctx, lvl, params: target.params })
+  return v256 + Math.trunc((v256 * synPct) / 100)
+}
 
 export function compileSkillDescFormula(rawFormula: string): (ctx: SkillFormulaContext) => number {
   let s = rawFormula.trim()
@@ -797,7 +880,7 @@ export function compileSkillDescFormula(rawFormula: string): (ctx: SkillFormulaC
   const skillResolvers: ((ctx: SkillFormulaContext) => number)[] = []
 
   // Cross-skill properties: skill('Skill Name'.prop)
-  s = s.replace(/skill\(['"]([^'"]+)['"]\.(blvl|lvl|par\d+|ln\d+)\)/g, (_match, skillName: string, prop: string) => {
+  s = s.replace(/skill\(['"]([^'"]+)['"]\.(blvl|lvl|par\d+|ln\d+|edmn|edmx)\)/g, (_match, skillName: string, prop: string) => {
     const target = SKILLS_BY_LOWER_NAME.get(skillName.toLowerCase())
     if (!target) return '0'
     if (prop.startsWith('par')) return String(target.params[prop] ?? 0)
@@ -829,6 +912,10 @@ export function compileSkillDescFormula(rawFormula: string): (ctx: SkillFormulaC
         const eff = ctx.effLevels?.[targetId] ?? 0
         return eff <= 0 ? 0 : p5 + (eff - 1) * p6
       })
+    } else if (prop === 'edmn' || prop === 'edmx') {
+      // skill('X'.edmn) (calc fn `skill` 0x6FDA1AF0) evaluates X's SkillCalc edmn/edmx at X's level (#1682).
+      const side = prop === 'edmn' ? 'min' : 'max'
+      skillResolvers.push(ctx => skillElemDamage256(target, ctx.effLevels?.[targetId] ?? 0, ctx, side) >> 8)
     } else {
       return '0'
     }
@@ -852,17 +939,11 @@ export function compileSkillDescFormula(rawFormula: string): (ctx: SkillFormulaC
         if (lvlProp === 'ln56') return ctx.ln56
         return ctx.lvl
       }
-      const shiftFactor = 2 ** ((target.hitshift ?? 8) - 8)
+      // sklvl (0x6FDA1AB0) evaluates the target's SkillCalc edmn/edmx (synergy included, #1682) at the given level.
       if (valProp === 'edmn') {
-        skillResolvers.push(ctx => {
-          const subLvl = Math.max(1, resolveSubLvl(ctx))
-          return Math.floor(evaluateLevelBand(target.eMin, target.eMinLev, subLvl) * shiftFactor)
-        })
+        skillResolvers.push(ctx => skillElemDamage256(target, Math.max(1, resolveSubLvl(ctx)), ctx, 'min') >> 8)
       } else if (valProp === 'edmx') {
-        skillResolvers.push(ctx => {
-          const subLvl = Math.max(1, resolveSubLvl(ctx))
-          return Math.floor(evaluateLevelBand(target.eMax, target.eMaxLev, subLvl) * shiftFactor)
-        })
+        skillResolvers.push(ctx => skillElemDamage256(target, Math.max(1, resolveSubLvl(ctx)), ctx, 'max') >> 8)
       } else {
         return '0'
       }
@@ -936,12 +1017,11 @@ export function compileSkillDescFormula(rawFormula: string): (ctx: SkillFormulaC
 
   // In Diablo II 1.13c, all formula arithmetic in D2Common.dll (0x6FD55000) uses 32-bit integer idiv,
   // evaluated left-to-right in compileSafeMathAst's parseTerm (Math.trunc(num / denom)).
-  const isMpsOnly = s === '_mps'
   const astRoot = compileSafeMathAst(s, skillResolvers)
   return (ctx: SkillFormulaContext): number => {
     const res = astRoot(ctx)
     if (!Number.isFinite(res)) return 0
-    return isMpsOnly ? Math.round(res * 10) / 10 : Math.round(res)
+    return Math.round(res)
   }
 }
 
@@ -967,6 +1047,12 @@ const CONTEXT_VAR_READERS: Readonly<Record<string, (ctx: SkillFormulaContext) =>
   _len: ctx => ctx.len,
   _edmn: ctx => ctx.edmn,
   _edmx: ctx => ctx.edmx,
+  _edln: ctx => ctx.edln ?? ctx.len,
+  _math: ctx => ctx.math ?? 0,
+  _madm: ctx => ctx.madm ?? 0,
+  _macr: ctx => ctx.macr ?? 0,
+  _enms: ctx => ctx.enms ?? 0,
+  _exms: ctx => ctx.exms ?? 0,
   _enma: ctx => ctx.enma ?? ctx.edmn,
   _exma: ctx => ctx.exma ?? ctx.edmx,
   _edns: ctx => ctx.edns ?? ctx.edmn * 256,
@@ -1073,28 +1159,48 @@ function compileSafeMathAst(
     return left
   }
 
+  // Arithmetic shares the Fog #10253 semantics with calc-ast (issue #1690): `/` by 0 yields 0 for that
+  // quotient only (0x6FF6A19F -> 0x6FF6A008), `^` with exponent <= 0 yields 1 (0x6FF6A25C..0x6FF6A270).
   const parseTerm = (): ((ctx: SkillFormulaContext) => number) => {
-    let left = parseFactor()
+    let left = parsePower()
     while (true) {
       skipWs()
       const ch = input[pos]
       if (ch === '*') {
         pos++
         const prev = left
-        const right = parseFactor()
+        const right = parsePower()
         left = ctx => prev(ctx) * right(ctx)
       } else if (ch === '/') {
         pos++
         const prev = left
-        const right = parseFactor()
+        const right = parsePower()
         left = ctx => {
           const denom = right(ctx)
-          if (denom === 0 || !Number.isFinite(denom)) return NaN
           const num = prev(ctx)
-          return Number.isFinite(num) ? Math.trunc(num / denom) : NaN
+          if (!Number.isFinite(denom) || !Number.isFinite(num)) return NaN
+          return calcDiv(num, denom)
         }
       } else {
         break
+      }
+    }
+    return left
+  }
+
+  const parsePower = (): ((ctx: SkillFormulaContext) => number) => {
+    let left = parseFactor()
+    while (true) {
+      skipWs()
+      if (input[pos] !== '^') break
+      pos++
+      const prev = left
+      const right = parseFactor()
+      left = ctx => {
+        const base = prev(ctx)
+        const exp = right(ctx)
+        if (!Number.isFinite(base) || !Number.isFinite(exp)) return NaN
+        return calcPow(base, exp)
       }
     }
     return left
@@ -1252,10 +1358,10 @@ export function buildSkillFormulaContext(
   const effLevels = createLazyEffLevels(state, skill.id, lvl)
 
   const p = skill.params || {}
-  const dm12 = evalDiminishing(p.par1 ?? 0, p.par2 ?? 0, lvl)
-  const dm34 = evalDiminishing(p.par3 ?? 0, p.par4 ?? 0, lvl)
-  const dm56 = evalDiminishing(p.par5 ?? 0, p.par6 ?? 0, lvl)
-  const dm78 = evalDiminishing(p.par7 ?? 0, p.par8 ?? 0, lvl)
+  const dm12 = computeDiminishingReturns(p.par1 ?? 0, p.par2 ?? 0, lvl)
+  const dm34 = computeDiminishingReturns(p.par3 ?? 0, p.par4 ?? 0, lvl)
+  const dm56 = computeDiminishingReturns(p.par5 ?? 0, p.par6 ?? 0, lvl)
+  const dm78 = computeDiminishingReturnsRaw(p.par7 ?? 0, p.par8 ?? 0, lvl)
 
   // Determine duration len using authentic 1.13c 3-band duration scaling
   let durationFrames = compute3BandDuration(
@@ -1294,23 +1400,34 @@ export function buildSkillFormulaContext(
 
   const shiftMultiplier = 2 ** ((skill.hitshift ?? 8) - 8)
   const hitShift256 = 2 ** (skill.hitshift ?? 8)
-  const manaShiftFactor = 2 ** ((skill.manashift ?? 8) - 8)
-  const rawMps = (skill.mana + skill.lvlmana * (lvl - 1)) * manaShiftFactor * 25
   const synEval = evaluateSynergies(state, skill)
   const elemSynPct = synEval.elementalPercent || synEval.totalPercent
   const rawElemMin = evaluateLevelBand(skill.eMin, skill.eMinLev, lvl)
   const rawElemMax = evaluateLevelBand(skill.eMax, skill.eMaxLev, lvl)
-  const ednsVal = Math.floor((rawElemMin * hitShift256 * (100 + elemSynPct)) / 100)
+  // D2Common #10121 0x6FDA04C7: the min side is synergised only when min256 > 256 || EMinLev1 != 0 (#1681).
+  const ednsVal = skillMinSynergyApplies113c(rawElemMin * hitShift256, skill.eMinLev[0] ?? 0)
+    ? Math.floor((rawElemMin * hitShift256 * (100 + elemSynPct)) / 100)
+    : rawElemMin * hitShift256
   const edxsVal = Math.floor((rawElemMax * hitShift256 * (100 + elemSynPct)) / 100)
   const edmnSyn = Math.floor(ednsVal / 256)
   const edmxSyn = Math.floor(edxsVal / 256)
-  const masteryEval = evaluateMasteries(state, skill)
-  const elemMasteryPct =
-    masteryEval && masteryEval.active && (masteryEval.masteryId === 61 || masteryEval.masteryId === 63)
-      ? masteryEval.bonusPercent
-      : 0
-  const enmaVal = Math.floor((edmnSyn * (100 + elemMasteryPct)) / 100)
-  const exmaVal = Math.floor((edmxSyn * (100 + elemMasteryPct)) / 100)
+  // SkillCalc enma/exma/enms/exms (0x6FDA15E6..0x6FDA1658) pass bMastery=1 to #10121/#11091: the synergised
+  // 256ths value additionally gets `v * stat / 100` of the caster's elemental mastery (0x6FD9F870, by EType)
+  // for every skill of that element, not only skills listing the mastery (#1682).
+  const casterMasteryPct = casterElementalMasteryPct113c(state, skill.eType)
+  const enmsVal = ednsVal + Math.trunc((ednsVal * casterMasteryPct) / 100)
+  const exmsVal = edxsVal + Math.trunc((edxsVal * casterMasteryPct) / 100)
+  const enmaVal = enmsVal >> 8
+  const exmaVal = exmsVal >> 8
+  // SkillCalc edln/edma -> #10510 (0x6FD9E900): 3-band ELen plus ELenSymPerCalc, always (#1682).
+  const lenSynPct = skill.synergyFormulas?.duration
+    ? evalSkillDescFormula(skill.synergyFormulas.duration, {
+        lvl, params: skill.params, ln12: 0, ln34: 0, ln56: 0, ln78: 0, dm12, dm34, dm56, dm78, toht: 0, len: 0,
+        edmn: 0, edmx: 0, edln: 0, math: 0, madm: 0, macr: 0, enms: 0, exms: 0, mana: 0, mps: 0,
+        hardPoints: state.hardPoints, effLevels,
+      })
+    : 0
+  const edlnVal = elemLengthFrames + Math.trunc((elemLengthFrames * lenSynPct) / 100)
 
   let m1en = 0
   let m1ex = 0
@@ -1367,10 +1484,17 @@ export function buildSkillFormulaContext(
     dm78,
     toht: 0,
     len: durationFrames,
-    edmn: Math.round(rawElemMin * shiftMultiplier),
-    edmx: Math.round(rawElemMax * shiftMultiplier),
+    // SkillCalc edmn/edmx (0x6FDA11F4/0x6FDA1212) call #10121/#11091 with bMastery=0: synergy included (#1682).
+    edmn: edmnSyn,
+    edmx: edmxSyn,
+    edln: edlnVal,
+    math: 0,
+    madm: 0,
+    macr: 0,
     enma: enmaVal,
     exma: exmaVal,
+    enms: enmsVal,
+    exms: exmsVal,
     edns: ednsVal,
     edxs: edxsVal,
     m1en,
@@ -1382,7 +1506,7 @@ export function buildSkillFormulaContext(
     m3en,
     m3ex,
     mana: calculateManaCost(skill, lvl),
-    mps: Math.round(rawMps * 10) / 10,
+    mps: computeSkillMps113c(skill.mana, skill.lvlmana, skill.manashift ?? 8, lvl),
     hardPoints: state.hardPoints,
     effLevels,
   }
@@ -1397,6 +1521,9 @@ export function buildSkillFormulaContext(
     ? evalSkillDescFormula(skill.toHitCalc, baseCtx)
     : (skill.toHit ?? 0) + (lvl - 1) * (skill.toHitLev ?? 0)
 
+  // SkillCalc math/madm/macr -> 0x6FD9E7A0(unit, skill, lvl, 0/1/2): the first passivestatN equal to
+  // passive_mastery_{melee,throw}_{th,dmg,crit} (342/345, 343/346, 344/347) selects passivecalcN (#1683).
+  const masteryCalcs = WEAPON_MASTERY_PASSIVE_CALCS_113C[skill.id]
   const ctx: SkillFormulaContext = {
     ...baseCtx,
     toht,
@@ -1404,6 +1531,9 @@ export function buildSkillFormulaContext(
     clc2,
     clc3,
     clc4,
+    math: masteryCalcs ? evalSkillDescFormula(masteryCalcs.th, baseCtx) : 0,
+    madm: masteryCalcs ? evalSkillDescFormula(masteryCalcs.dmg, baseCtx) : 0,
+    macr: masteryCalcs ? evalSkillDescFormula(masteryCalcs.crit, baseCtx) : 0,
   }
   return { ctx, elemLengthFrames, durationFrames }
 }
@@ -1526,7 +1656,7 @@ function formatLegacyDescLine(
         zh = `傷害：${pMin} - ${pMax}`
         en = `Damage: ${pMin}-${pMax}`
       }
-    } else if (lt === 10) {
+    } else if (lt === 10 || lt === 48) {
       const dmg = calculateDetailedDamage(state, skill, lvl)
       if (dmg.hasDamage && dmg.type !== 'physical') {
         const labelZh =
@@ -1703,6 +1833,9 @@ function formatLegacyDescLine(
     } else if (lt === 45) {
       zh = `反彈物理傷害：${valA}%`
       en = `Damage Returned: ${valA}%`
+    } else if (lt === 47) {
+      zh = `${textaZh}${valA} - ${valB}${line.textbZh ? ` ${line.textbZh}` : ''}`
+      en = `${line.textaEn || ''} ${valA}-${valB}${line.textbEn ? ` ${line.textbEn}` : ''}`.trim()
     } else if (lt === 49) {
       const sMin =
         ctx.edmn > 0 || ctx.edmx > 0

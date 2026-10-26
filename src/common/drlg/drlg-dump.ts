@@ -48,7 +48,8 @@ import { DRLG_AllocDrlg, DRLG_GetActNoFromLevelId, DRLG_GetLevel, DRLG_InitLevel
 import { setLevelGridHook } from './drlg-hooks.ts'
 import { DRLGPRESET_SpawnHardcodedPresetUnits } from './drlg-preset.ts'
 import { sub_6FD77BB0 } from './drlg-room.ts'
-import { DRLGROOMTILE_AddRoomMapTiles, DRLGROOMTILE_InitRoomGrids, DRLGROOMTILE_LoadDT1FilesForRoom } from './drlg-roomtile.ts'
+import {
+  mapTileCollisionFlags113c, DRLGROOMTILE_AddRoomMapTiles, DRLGROOMTILE_InitRoomGrids, DRLGROOMTILE_LoadDT1FilesForRoom } from './drlg-roomtile.ts'
 import { DATATBLS_GetLvlPrestTxtRecord } from './drlg-tables.ts'
 
 const u32 = (v: number): number => v >>> 0
@@ -926,10 +927,12 @@ export function dumpAct1(env: DrlgEnv, nSeed: number, levels: readonly number[],
 // ---- Runtime DRLG Room Collision & Act Session (Milestone M3 / Phase N4) ----
 
 const COLLIDE_WALL_BIT = 0x0001
-const COLLIDE_DOOR_BIT = 0x0008
 const COLLIDE_PLAYER_WALK_BIT = 0x0008
-/** Combined D2MOO (0x1c09) and d2map (0x0027) invalid/void collision mask. */
-export const DRLG_COLLIDE_MASK_INVALID = 0x1c2f
+/**
+ * Void-cell value: 1.13c `COLLISION_*` queries return 0x27 for positions in no room (`mov ax,0x27`,
+ * 0x6FD9B54A); the previous 0x1C2F does not occur in D2Common (#1702).
+ */
+export const DRLG_COLLIDE_MASK_INVALID = 0x0027
 
 export interface DrlgRoomCollisionGrid {
   readonly tileX: number
@@ -986,83 +989,60 @@ export function extractRoomCollisionGrid(pRoom: D2DrlgRoomStrc): DrlgRoomCollisi
     pushOwn(pTileGrid.pTiles.pWallTiles, pTileGrid.nWalls)
   }
 
-  const hasWalkBlockedOnlyFloor = new Uint8Array(tileW * tileH)
+  // #1702: 1.13c room collision fill (D2Common 0x6FD9CA90). A visible floor (with or without
+  // MAPTILE_UNWALKABLE) or a hidden floor whose DT1 bytes / dwFlags mask are non-zero defines the
+  // cell; such cells get exactly what their tiles stamp below and nothing else.
   const hasHiddenCollisionFloor = new Uint8Array(tileW * tileH)
   for (const item of allRoomTiles) {
     if (item.cx < 0 || item.cx >= tileW || item.cy < 0 || item.cy >= tileH) continue
     const td = item.data
-    if (isMissingFallback(td)) continue
-    if (td.nTileType === 0 && td.pTile?.nStyle === 30 && td.pTile?.nSequence === 1) {
-      hasWalkBlockedOnlyFloor[item.cy * tileW + item.cx] = 1
-      continue
-    }
+    if (isMissingFallback(td) || td.nTileType !== 0) continue
     if ((td.dwFlags & 0x8) !== 0) {
-      if (td.nTileType === 0 && td.pTile?.nSubtileFlags.some(f => f !== 0)) {
+      if (td.pTile?.nSubtileFlags.some(f => f !== 0) || mapTileCollisionFlags113c(td.dwFlags) !== 0) {
         hasHiddenCollisionFloor[item.cy * tileW + item.cx] = 1
       }
       continue
     }
-    if (td.nTileType === 0) {
-      if ((td.dwFlags & 0x40) === 0) {
-        hasWalkableFloor[item.cy * tileW + item.cx] = 1
-      } else {
-        hasWalkBlockedOnlyFloor[item.cy * tileW + item.cx] = (td.dwFlags & 0x80) !== 0 ? 2 : 1
-      }
-    }
+    hasWalkableFloor[item.cy * tileW + item.cx] = 1
   }
 
-  // Mark void cells (cells with no active walkable floor) with COLLIDE_MASK_INVALID,
-  // COLLIDE_WALL | COLLIDE_BLANK for Arcane Sanctuary Blank.dt1 (style=30, seq=1) / MAPTILE_UNWALKABLE floors,
-  // or COLLIDE_WALL for hidden collision floor tiles (e.g. tomb.dt1 / maggot/floor.dt1 style=50, Blank.dt1 style=30 seq=0)
-  // whose exact DT1 nSubtileFlags are stamped below per 1.13c sub_6FD413E0 (0x6FD413E0).
+  // Cells without any collision-bearing floor are void. 1.13c reads 0x27 for positions outside every
+  // room (query fallback 0x6FD9CA12 / 0x6FD9B413); the project keeps every void cell blocked with it.
   for (let cy = 0; cy < tileH; cy += 1) {
     for (let cx = 0; cx < tileW; cx += 1) {
       const cellIdx = cy * tileW + cx
-      if (hasWalkableFloor[cellIdx] !== 0) continue
-      const walkOnlyKind = hasWalkBlockedOnlyFloor[cellIdx] ?? 0
-      const fillMask =
-        walkOnlyKind === 1
-          ? COLLIDE_WALL_BIT | 0x0020
-          : walkOnlyKind === 2
-            ? COLLIDE_WALL_BIT | 0x0020 | 0x0004
-            : hasHiddenCollisionFloor[cellIdx] !== 0
-              ? COLLIDE_WALL_BIT
-              : DRLG_COLLIDE_MASK_INVALID
+      if (hasWalkableFloor[cellIdx] !== 0 || hasHiddenCollisionFloor[cellIdx] !== 0) continue
       for (let sy = 0; sy < 5; sy += 1) {
         const rowBase = (cy * 5 + sy) * width + cx * 5
         for (let sx = 0; sx < 5; sx += 1) {
           const idx = rowBase + sx
           blocked[idx] = 1
-          collision[idx] = (collision[idx] ?? 0) | fillMask
+          collision[idx] = (collision[idx] ?? 0) | DRLG_COLLIDE_MASK_INVALID
         }
       }
     }
   }
 
-  // Stamp DT1 5x5 sub-tile block flags (stored bottom-to-top in DT1 header bytes 40..64).
-  // Per 1.13c D2Common.dll sub_6FD413E0 (0x6FD413E0), hidden floor tiles (MAPTILE_HIDDEN, dwFlags & 0x08)
-  // still stamp their non-zero DT1 nSubtileFlags into pCollisionMask.
+  // Stamp the raw DT1 5x5 sub-tile bytes (stored bottom-to-top, 0x6FD9B780: `grid |= pTile+0x28[(4-r)*5+c]`)
+  // and the dwFlags mask over the whole cell (0x6FD9B560), per 1.13c 0x6FD9CA90 (#1702). Hidden floors
+  // stamp like visible ones; hidden non-floor tiles are left out as in d2map (orientation 8..11 paths
+  // of 0x6FDB9820 are not ported).
   for (const item of allRoomTiles) {
     if (item.cx < 0 || item.cx >= tileW || item.cy < 0 || item.cy >= tileH) continue
     const td = item.data
     if (isMissingFallback(td) || !td.pTile) continue
     if ((td.dwFlags & 0x8) !== 0 && td.nTileType !== 0) continue
     const blockFlags = td.pTile.nSubtileFlags
-    const isDoor = td.nTileType === 8 || td.nTileType === 9
+    const tileMask = mapTileCollisionFlags113c(td.dwFlags)
     for (let sy = 0; sy < 5; sy += 1) {
       const rowBase = (item.cy * 5 + sy) * width + item.cx * 5
       const fileRow = (4 - sy) * 5
       for (let sx = 0; sx < 5; sx += 1) {
-        const raw = blockFlags[fileRow + sx] ?? 0
-        if (raw === 0) continue
+        const mask = ((blockFlags[fileRow + sx] ?? 0) & 0xffff) | tileMask
+        if (mask === 0) continue
         const idx = rowBase + sx
-        let mask = raw & 0xffff
-        const walkBlocked = (raw & (COLLIDE_WALL_BIT | COLLIDE_PLAYER_WALK_BIT)) !== 0
-        if (isDoor && walkBlocked) {
-          mask |= COLLIDE_DOOR_BIT
-        }
         collision[idx] = (collision[idx] ?? 0) | mask
-        if (walkBlocked) {
+        if ((mask & (COLLIDE_WALL_BIT | COLLIDE_PLAYER_WALK_BIT)) !== 0) {
           blocked[idx] = 1
         }
       }
