@@ -1873,7 +1873,7 @@ export class Autopilot {
   private async hearOut(): Promise<void> {
     const panels = this.host.hudManager.worldPanels
     const menu = await waitFor(() => Boolean(panels.npcMenu), BRIEFING_MS).then(() => panels.npcMenu)
-    const topic = menu?.options.map((option) => option.id).find((id) => id.startsWith('talk_quest'))
+    const topic = (menu?.options ?? []).map((option) => option.id).find((id) => id.startsWith('talk_quest'))
     if (!menu || topic === undefined) return
     panels.clickNpcMenuOption(topic, menu.context)
     if (await waitFor(() => Boolean(panels.npcSpeech), BRIEFING_MS)) panels.closeNpcSpeech()
