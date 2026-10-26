@@ -125,7 +125,7 @@ function charmAppraisal(item: LootItem, size: CharmSize, { build }: AppraisalCon
   if (!item.identified) return result(unidentified as LootTier, 'charm', good, `Unidentified ${size} charm`, { locked: true })
   const skiller = skillerReason(item, build)
   const score = scoreStats(itemStats(item), build)
-  const tier: LootTier = skiller || score >= great ? 'great' : score >= good ? 'good' : score >= good / 3 ? 'keep' : 'junk'
+  const tier: LootTier = skiller || score >= great ? 'great' : score >= good ? 'good' : score > 0 ? 'keep' : 'junk'
   return result(tier, 'charm', score, skiller ?? `Worth ${Math.round(score)} to your build`, { locked: TIER_RANK[tier] >= TIER_RANK.good })
 }
 

@@ -127,7 +127,8 @@ describe('loot appraisal', () => {
 
   it('reads life and mana in the fixed point they arrive in, so a small charm is no treasure', () => {
     const grand = (stats: ItemData['stats']) => appraiseItem(item({ code: 'cm3', identified: true, invHeight: 3, stats }), context(zealot))
-    expect(grand([{ statId: 7, param: 0, value: 8 << 8 }])).toMatchObject({ tier: 'junk', locked: false })
+    expect(grand([{ statId: 7, param: 0, value: 8 << 8 }])).toMatchObject({ tier: 'keep', locked: false })
+    expect(grand([{ statId: 19, param: 0, value: 0 }]).tier).toBe('junk')
     expect(grand([{ statId: 7, param: 0, value: 40 << 8 }]).tier).toBe('good')
     expect(grand([{ statId: 7, param: 0, value: 12 << 8 }])).toMatchObject({ tier: 'keep', locked: false })
   })

@@ -38,7 +38,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     },
     hasLootNearby: () => false,
     dodging: () => false,
-    inventoryCare: { busy: false, hold: false, config: null, junk: [], clutter: [], surplus: [] as unknown[], untidy: [] as unknown[], runeCube: null, upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
+    inventoryCare: { busy: false, hold: false, config: null, junk: [], clutter: [], surplus: [] as unknown[], excessCharms: [] as unknown[], untidy: [] as unknown[], runeCube: null, upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
     keepUp: () => false,
     canRaise: () => false,
     walkTo: vi.fn(),

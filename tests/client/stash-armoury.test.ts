@@ -54,3 +54,13 @@ describe('clearing out the stash', () => {
     expect([bag.untidy.map((out) => out.id), bag.stashable.length]).toEqual([[1], 0])
   })
 })
+
+describe('charms in the bags', () => {
+  it('keeps the best charms per cell and lets the rest go, stashing only the great ones', () => {
+    const charm = (id: number, code: string, height: number, value: number) => item({ id, code, invWidth: 1, invHeight: height, container: 'inventory', identified: true, stats: life(value) })
+    const grands = [100, 90, 80, 70, 60, 50, 40, 35, 30, 28].map((value, i) => charm(10 + i, 'cm3', 3, value))
+    const bag = care([], [...grands, charm(1, 'cm1', 1, 40)])
+    expect(bag.excessCharms.map((out) => out.id)).toEqual([19])
+    expect(bag.stashable.map((out) => out.id)).toEqual([])
+  })
+})
