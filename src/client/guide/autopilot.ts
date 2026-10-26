@@ -224,6 +224,7 @@ const SCROLL_KINDS = {
 } as const
 const SCROLL_GOLD = 100
 const IDENTIFY_MS = 1500
+const IDENTIFY_TRIES = 3
 const QUEST_STALE_MS = 30_000
 const RETHINK_MS = 90_000
 const RETHINK_EXPLORE_MS = 30_000
@@ -492,7 +493,7 @@ export class Autopilot {
     const { world, assists } = this.host
     const care = assists.inventoryCare
     if (this.corpse !== null || nowMs - this.unloadedAt < UNLOAD_MS || !assists.hasTownPortal()) return
-    if (new Set([...care.junk, ...care.clutter, ...care.surplus, ...care.stashable]).size < UNLOAD_ITEMS || freeSpots(world.containers.inventory.values(), 2, 2).length > 0) return
+    if (new Set([...care.sellable, ...care.stashable, ...care.upgrades, ...this.unidentified()]).size < UNLOAD_ITEMS || freeSpots(world.containers.inventory.values(), 2, 2).length > 0) return
     this.unloadedAt = nowMs
     Object.assign(this, { trip: 'retreat', retreatWhy: `${ERRAND} bags are full` })
   }
@@ -632,7 +633,21 @@ export class Autopilot {
     else if (body !== null && !this.cornered(nowMs)) this.recover(body, nowMs)
     else if (!disengaged && assists.isFighting(nowMs)) this.say('Fighting')
     else if (!this.questInReach() && this.looting(nowMs)) this.say('Picking up loot')
+    else if (!town && this.gearUp(nowMs)) this.say('Putting on better gear')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
+  }
+
+  private gearUp(nowMs: number): boolean {
+    const care = this.host.assists.inventoryCare
+    if (care.busy || care.upgrades.length === 0 || nowMs - (this.errandsAt.get('fieldGear') ?? Number.NEGATIVE_INFINITY) < ERRAND_COOLDOWN_MS) return false
+    this.errandsAt.set('fieldGear', nowMs)
+    this.job = care
+      .wearUpgrades()
+      .catch(() => 0)
+      .finally(() => {
+        this.job = null
+      })
+    return true
   }
 
   private clearCursor(nowMs: number): boolean {
@@ -1528,17 +1543,19 @@ export class Autopilot {
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       resist !== null && me.gold >= POTION_GOLD && ready('resist') && { key: 'resist', reason: `Buying ${resist.potion} for ${resist.boss}`, npc: 'resists', action: 'trade', work: () => this.buyResists(resist.code) },
+      this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
       this.boons().length > 0 && ready('boon') && { key: 'boon', reason: `Using the ${BOONS.get(this.boons()[0]!.code.trim())}`, work: () => this.useBoons() },
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
       merc === null && world.expansion === true && me.gold >= MERCENARIES.minGold && this.settledIn(nowMs) && ready('hire') && { key: 'hire', reason: 'Hiring a mercenary', npc: 'mercs', action: 'hire', work: () => this.hire() },
       this.mercGear() !== null && ready('mercGear') && { key: 'mercGear', reason: 'Giving your mercenary better gear', work: () => this.dressMerc() },
       me.gold < (spend > 0 ? purse * WITHDRAW_SHORT : Math.min(PURSE_LOW, purse / 2)) && me.stashGold > 0 && ready('purse') && { key: 'purse', reason: 'Taking gold out of the stash', work: () => this.fillPurse(purse) },
       worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repairAndShop() },
-      (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length + care.surplus.length + care.excessCharms.filter((charm) => care.appraise(charm).tier !== 'great').length + (care.hardUp ? care.spares.length : 0) > 0)
+      (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.sellable.length > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
       (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
       gambleFund >= GAMBLING_RULES.spare && me.gold >= GAMBLING_RULES.spare && ready('gamble') && { key: 'gamble', reason: 'Gambling for rings and amulets', npc: 'gamble', action: 'gamble', work: () => this.gamble() },
+      care.config?.sellJunk === true && care.sellable.length > 0 && ready('sell') && { key: 'sell', reason: 'Selling junk', npc: 'potions', action: 'trade' },
       spend === 0 && me.gold > this.purseKeep() + BANK_MARGIN && me.stashGold < getStashGoldLimit(me.level) && ready('bank') && { key: 'bank', reason: 'Putting gold in the stash', work: () => this.bank() },
       untidy && ready('tidy') && { key: 'tidy', reason: 'Clearing out the stash', work: () => this.tidy() },
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
@@ -1546,7 +1563,6 @@ export class Autopilot {
       care.armoury.length > 0 && ready('armoury') && { key: 'armoury', reason: 'Taking better gear out of the stash', work: () => this.arm() },
       this.socketMove() !== null && ready('socket') && { key: 'socket', reason: `Socketing ${this.socketMove()!.why}`, work: () => this.socketAll() },
       care.upgrades.length > 0 && ready('gear') && { key: 'gear', reason: 'Putting on better gear', work: () => care.wearUpgrades() },
-      this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
     ]
     const errand = errands.find((e): e is Errand => e !== false) ?? null
@@ -1857,6 +1873,10 @@ export class Autopilot {
     this.walkRoute(nowMs, path.length > 0 ? [me, ...field.corners(path, me)] : [me, goal])
   }
 
+  private fits(item: ItemData): boolean {
+    return freeSpots(this.host.world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
+  }
+
   private freeCells(): number {
     return INVENTORY_CELLS - [...this.host.world.containers.inventory.values()].reduce((cells, item) => cells + item.invWidth * item.invHeight, 0)
   }
@@ -1912,10 +1932,9 @@ export class Autopilot {
     if (hudModel === null || world.npcInteraction.window !== 'gamble' || !(await waitFor(() => this.store().length > 0, HIRE_LIST_MS))) return
     const worn = new Set([...world.containers.equipment.values()].map(slotOf))
     const bare = new Set(EQUIP_SLOTS.filter((slot) => !worn.has(slot)))
-    const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
     const offered = this.store().filter((item) => assists.inventoryCare.appraise(item).tier !== 'junk')
     const fund = world.self.gold + world.self.stashGold - gambleReserve(world.self.level)
-    const pick = gamblePick(offered, bare, Math.min(world.self.gold, fund), this.priceList(GAMBLE), fits, { fillFirst: this.bare() > 0, treat: gambleTreat(fund) })
+    const pick = gamblePick(offered, bare, Math.min(world.self.gold, fund), this.priceList(GAMBLE), (item) => this.fits(item), { fillFirst: this.bare() > 0, treat: gambleTreat(fund) })
     const before = world.self.gold
     if (!pick || hudManager.leftPanel !== 'vendor' || !hudModel.vendorBuy(pick.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
     this.toast('Gambled', `${pick.code.trim()} for ${(before - world.self.gold).toLocaleString('en-US')} gold`, 'gold')
@@ -1927,10 +1946,9 @@ export class Autopilot {
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || world.npcInteraction.npcId === null) return
     const budget = world.self.gold - (this.bare() > 0 ? Math.max(BARE_RESERVE, world.self.level * RESERVE_PER_LEVEL) : SPARE_GOLD)
     const price = this.priceList()
-    const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
     const pick = this.store()
       .map((item) => ({ item, appraisal: assists.inventoryCare.appraise(item), cost: price(item) }))
-      .filter(({ item, appraisal, cost }) => appraisal.upgradeSlot !== undefined && !filled.has(appraisal.upgradeSlot) && cost <= budget && fits(item))
+      .filter(({ item, appraisal, cost }) => appraisal.upgradeSlot !== undefined && !filled.has(appraisal.upgradeSlot) && cost <= budget && this.fits(item))
       .sort((a, b) => b.appraisal.score / Math.max(1, b.cost) - a.appraisal.score / Math.max(1, a.cost))[0]
     const before = world.self.gold
     if (!pick || !hudModel.vendorBuy(pick.item.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
@@ -1950,7 +1968,7 @@ export class Autopilot {
     const ware = this.store().find((item) => item.code.trim() === code)
     const before = world.self.gold
     const wanted = code === tomeCode || this.scrollsWanted(kind) > 0
-    if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || !wanted) return false
+    if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || !wanted || (!(code === scroll && tome) && !this.fits(ware))) return false
     return hudModel.vendorBuy(ware.id, false) && waitFor(() => world.self.gold < before, 1500)
   }
 
@@ -1985,7 +2003,7 @@ export class Autopilot {
     const { hudManager, hudModel } = this.host
     for (const ware of this.store().filter((item) => item.code.trim() === code)) {
       const before = this.carried(code).length
-      if (hudModel === null || hudManager.leftPanel !== 'vendor' || before >= LAIRS.resistCount || !hudModel.vendorBuy(ware.id, false) || !(await waitFor(() => this.carried(code).length > before, 1500))) break
+      if (hudModel === null || hudManager.leftPanel !== 'vendor' || before >= LAIRS.resistCount || !this.fits(ware) || !hudModel.vendorBuy(ware.id, false) || !(await waitFor(() => this.carried(code).length > before, 1500))) break
     }
   }
 
@@ -2025,12 +2043,18 @@ export class Autopilot {
     for (const item of this.unidentified()) {
       const source = scrollSource(world.containers.inventory.values(), 'ibk', 'isc')
       if (!source || hudModel === null || !this.active) break
-      hudModel.useItem(source.id)
-      if (!(await waitFor(() => hudManager.pendingIdentifyScrollId !== null, IDENTIFY_MS))) break
+      if (!(await this.armIdentify(source.id, IDENTIFY_TRIES))) break
       hudModel.identifyItem(item.id, source.id)
       await waitFor(() => world.containers.inventory.get(item.id)?.identified !== false, IDENTIFY_MS)
     }
     if (hudManager.rightPanel === 'inv') hudManager.toggleRightPanel('inv')
+  }
+
+  private async armIdentify(sourceId: number, tries: number): Promise<boolean> {
+    const { hudManager, hudModel } = this.host
+    if (tries <= 0 || hudModel === null) return false
+    hudModel.useItem(sourceId)
+    return (await waitFor(() => hudManager.pendingIdentifyScrollId !== null, IDENTIFY_MS)) || this.armIdentify(sourceId, tries - 1)
   }
 
   private isCaster(): boolean {

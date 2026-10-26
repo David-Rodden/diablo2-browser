@@ -36,6 +36,7 @@ export class InventoryCare {
   config: InventoryCareConfig | null = null
   readonly discarded = new Set<number>()
   private readonly unsold = new Set<number>()
+  private readonly refused = new Set<number>()
   hardUp = false
   hold = false
   identifiable = false
@@ -107,7 +108,7 @@ export class InventoryCare {
     if (hudModel === null) return
     const goldBefore = world.self.gold
     let sold = 0
-    for (const item of new Set([...this.junk, ...this.clutter, ...this.surplus, ...this.excessCharms.filter((charm) => this.appraise(charm).tier !== 'great'), ...(this.hardUp ? this.spares : [])])) {
+    for (const item of this.sellable) {
       if (hudManager.leftPanel !== 'vendor') break
       if (!hudModel.vendorSell(item.id) || !(await waitFor(() => !world.containers.inventory.has(item.id)))) {
         this.unsold.add(item.id)
@@ -116,6 +117,11 @@ export class InventoryCare {
       sold++
     }
     if (sold > 0) this.toast(`Sold ${plural(sold, 'junk item')}`, `+${Math.max(0, world.self.gold - goldBefore).toLocaleString('en-US')} gold`, 'gold')
+  }
+
+  get sellable(): ItemData[] {
+    const refused = this.inventoryWhere(() => true).filter((item) => this.refused.has(item.id))
+    return [...new Set([...this.junk, ...this.clutter, ...this.surplus, ...this.excessCharms.filter((charm) => this.appraise(charm).tier !== 'great'), ...refused, ...(this.hardUp ? this.spares : [])])].filter((item) => !this.unsold.has(item.id))
   }
 
   get stashable(): ItemData[] {
@@ -181,7 +187,7 @@ export class InventoryCare {
   }
 
   get upgrades(): ItemData[] {
-    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot !== undefined).filter((item) => item.identified)
+    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot !== undefined).filter((item) => item.identified && !this.refused.has(item.id))
   }
 
   private async freeOffhand(item: ItemData): Promise<boolean> {
@@ -207,16 +213,23 @@ export class InventoryCare {
       if (!(await waitFor(() => world.containers.cursor?.id === item.id))) break
       if (current) hudModel.swapEquipItem(item.id, slot)
       else hudModel.equipItem(item.id, slot)
-      if (!(await waitFor(() => world.containers.cursor?.id !== item.id))) break
-      const old = world.containers.cursor
-      const spot = old && freeSpots(world.containers.inventory.values(), old.invWidth, old.invHeight)[0]
-      if (old && spot) hudModel.placeCursorItem(old.id, spot.x, spot.y, INVENTORY_BUFFER)
-      else if (old) hudModel.dropItem(old.id)
-      if (!(await waitFor(() => world.containers.cursor === null))) break
-      worn++
+      const swapped = await waitFor(() => world.containers.cursor?.id !== item.id)
+      if (!swapped) this.refused.add(item.id)
+      if (!(await this.stowCursor())) break
+      if (swapped) worn++
     }
     if (worn > 0) this.toast(`Equipped ${plural(worn, 'upgrade')}`, '', 'green')
     return worn
+  }
+
+  private async stowCursor(): Promise<boolean> {
+    const { world, hudModel } = this.host
+    const held = world.containers.cursor
+    if (held === null || hudModel === null) return held === null
+    const spot = freeSpots(world.containers.inventory.values(), held.invWidth, held.invHeight)[0]
+    if (spot) hudModel.placeCursorItem(held.id, spot.x, spot.y, INVENTORY_BUFFER)
+    else hudModel.dropItem(held.id)
+    return waitFor(() => world.containers.cursor === null)
   }
 
   get junk(): ItemData[] {

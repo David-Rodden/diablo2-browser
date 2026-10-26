@@ -121,11 +121,11 @@ function skillerReason(item: LootItem, build: CharacterBuild): string | null {
 }
 
 function charmAppraisal(item: LootItem, size: CharmSize, { build }: AppraisalContext): Appraisal {
-  const { good, great, unidentified } = KNOWLEDGE.charmScore[size]
+  const { keep, good, great, unidentified } = KNOWLEDGE.charmScore[size]
   if (!item.identified) return result(unidentified as LootTier, 'charm', good, `Unidentified ${size} charm`, { locked: true })
   const skiller = skillerReason(item, build)
   const score = scoreStats(itemStats(item), build)
-  const tier: LootTier = skiller || score >= great ? 'great' : score >= good ? 'good' : score > 0 ? 'keep' : 'junk'
+  const tier: LootTier = skiller || score >= great ? 'great' : score >= good ? 'good' : score >= keep ? 'keep' : 'junk'
   return result(tier, 'charm', score, skiller ?? `Worth ${Math.round(score)} to your build`, { locked: TIER_RANK[tier] >= TIER_RANK.good })
 }
 
@@ -175,7 +175,7 @@ function slotUpgrades(item: LootItem, { build, equipped }: AppraisalContext): Up
   const wornScore = (slot: EquipSlotId) => (worn.get(slot) ? gearScore(worn.get(slot)!, build) : 0)
   return ui.allowedSlots
     .map((slot) => ({ slot, score: worn.get(slot) === undefined ? BARE_SLOT + score : score, current: wornScore(slot) + (ui.twoHanded && slot === 'weapon1' ? wornScore('weapon2') : 0) }))
-    .filter((u) => !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding || (damageOf(ui) !== undefined && !DUAL_WIELDERS.has(build.classIndex)))) && worn.get(u.slot)?.id !== item.id)
+    .filter((u) => !(u.slot === 'weapon1' && damageOf(ui) === undefined) && !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding || (damageOf(ui) !== undefined && !DUAL_WIELDERS.has(build.classIndex)))) && worn.get(u.slot)?.id !== item.id)
     .sort((a, b) => a.current - b.current || handOrder(ui, a.slot) - handOrder(ui, b.slot))
 }
 
