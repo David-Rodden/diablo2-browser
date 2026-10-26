@@ -125,6 +125,13 @@ describe('loot appraisal', () => {
     expect(appraiseItem(item({ code: 'crs' }), context(coldSorc, geared)).tier).toBe('junk')
   })
 
+  it('reads life and mana in the fixed point they arrive in, so a small charm is no treasure', () => {
+    const grand = (stats: ItemData['stats']) => appraiseItem(item({ code: 'cm3', identified: true, invHeight: 3, stats }), context(zealot))
+    expect(grand([{ statId: 7, param: 0, value: 8 << 8 }])).toMatchObject({ tier: 'junk', locked: false })
+    expect(grand([{ statId: 7, param: 0, value: 40 << 8 }]).tier).toBe('good')
+    expect(grand([{ statId: 7, param: 0, value: 12 << 8 }])).toMatchObject({ tier: 'keep', locked: false })
+  })
+
   it('never offers supplies, quest items or gold up for clearing out', () => {
     expect(['hp5', 'tbk', 'key', 'gld', 'bks'].map((code) => appraiseItem(item({ code }), context()).locked)).toEqual([true, true, true, true, true])
   })

@@ -134,8 +134,19 @@ export const setRecord = (item: Pick<StatSource, 'quality' | 'setItemId'>): (Nam
   return item.quality === SET && item.setItemId !== undefined ? items.get(item.setItemId) : undefined
 }
 
+const VAL_SHIFT: ReadonlyMap<number, number> = new Map(
+  ((getEmbeddedDropTables().itemStatCost as unknown as { readonly records?: readonly { readonly id: number; readonly valShift?: number }[] } | undefined)?.records ?? []).flatMap((record) =>
+    record.valShift ? [[record.id, record.valShift] as const] : [],
+  ),
+)
+
+const unshifted = (stat: LootStat): LootStat => {
+  const shift = VAL_SHIFT.get(stat.statId) ?? 0
+  return shift > 0 && Math.abs(stat.value) >= 1 << shift ? { ...stat, value: Math.trunc(stat.value / (1 << shift)) } : stat
+}
+
 export function itemStats(item: StatSource): LootStat[] {
-  if (item.identified) return [...item.stats, ...item.runewordStats, ...(item.socketedItems ?? []).flatMap((child) => child.stats)]
+  if (item.identified) return [...item.stats, ...item.runewordStats, ...(item.socketedItems ?? []).flatMap((child) => child.stats)].map(unshifted)
   return propStats(uniqueRecord(item)?.props ?? setRecord(item)?.props ?? [])
 }
 

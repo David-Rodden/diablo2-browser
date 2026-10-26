@@ -5,7 +5,7 @@ import type { ItemData } from '../../src/netproto/index.ts'
 const item = (fields: Partial<ItemData> & { readonly id: number; readonly code: string }): ItemData =>
   ({ itemId: fields.id, rawCode: fields.code, quality: 4, identified: true, stats: [], runewordStats: [], setBonusStats: [], totalSockets: 0, usedSockets: 0, socketedChildCount: 0, runeword: false, invWidth: 1, invHeight: 1, bodyLoc: 0, equippedSlot: 0, flags: 0, rawFlags: 0, container: 'stash', ...fields }) as ItemData
 
-const life = (value: number) => [{ statId: 7, param: 0, value }]
+const life = (value: number) => [{ statId: 7, param: 0, value: value << 8 }]
 const byId = (...items: ItemData[]) => new Map(items.map((owned) => [owned.id, owned]))
 
 function care(stash: ItemData[], inventory: ItemData[] = []) {

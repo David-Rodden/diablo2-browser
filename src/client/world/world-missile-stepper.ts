@@ -4489,7 +4489,7 @@ export function stepDiscreteSimulationTickImpl(this: ClientWorldInternal, _tickD
     if (unit.unitType === 'object') {
       objectNowMs ??= this.resolveEventNowMs(nowMs)
       const objectRecord = getObjectsTxtRecord113c(unit.classId)
-      if (tickObjectAnim(unit, objectRecord, objectNowMs)) {
+      if (unit.mode < objectRecord.lit.length && tickObjectAnim(unit, objectRecord, objectNowMs)) {
         this.updateObjectCollisionFootprint(unit)
       }
       // 0x6fad5b60: the per-object update then runs the object mode sound handler 0x6fad37e0 (#991 / #998).
