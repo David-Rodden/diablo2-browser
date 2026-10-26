@@ -19,7 +19,7 @@ import { freeSpots } from '../input/auto-loot.ts'
 import { vendorPrice113c } from '../ui-model/vendor-price.ts'
 import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
 import { nextSocketMove, type SocketMove } from './socket-plan.ts'
-import { readyRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRecipe } from './cube-recipes.ts'
+import { readyRecipe, runeRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
 import { ENVIRONMENT, worthUsing } from './environment.ts'
@@ -90,6 +90,13 @@ const RALLY_MS = 45_000
 const PREP = 'Stocking up before'
 const CORPSE_GONE = 10
 const BODY_GONE_MS = 3000
+const PILE_NEAR = 6
+const UNLOAD_MS = 600_000
+const SHOP_FILL_MS = 3000
+const LAST_STAND_MS = 20_000
+const LAST_STAND_KITE = 0.35
+const UNLOAD_ITEMS = 2
+const GOLD = 'gld'
 const REVIVE_MS = 2500
 const DEATH_MEMORY_MS = 20 * 60_000
 const SPIRAL_MS = 15 * 60_000
@@ -189,7 +196,9 @@ const BARE_SHOP_GOLD = 300
 const BARE_RESERVE = 150
 const RESERVE_PER_LEVEL = 25
 const PURSE_LOW = 3000
-const PURSE_GOLD = 10_000
+const PURSE_PER_LEVEL = 200
+const SHOP_PURSE_PER_LEVEL = 1000
+const WITHDRAW_SHORT = 0.9
 const BANK_MARGIN = 2000
 const POTION_SHARE = 4
 const BUY_TRIES = 16
@@ -307,7 +316,8 @@ export class Autopilot {
   private portalHome: { readonly x: number; readonly y: number; readonly at: number } | null = null
   private readonly ghosts = new Set<number>()
   private deaths: readonly { readonly at: number; readonly level: number }[] = []
-  private retreats: readonly { readonly at: number; readonly level: number }[] = []
+  private retreats: readonly { readonly at: number; readonly level: number; readonly boss: boolean }[] = []
+  private lastStand = Number.NEGATIVE_INFINITY
   private forgiven = Number.NEGATIVE_INFINITY
   private ground: { readonly level: number; readonly at: number; readonly experience: number; readonly charLevel: number } | null = null
   private training: (Readiness & { readonly ground: number; readonly since: number }) | null = null
@@ -316,6 +326,8 @@ export class Autopilot {
   private assessedAt = Number.NEGATIVE_INFINITY
   private lastRevive = Number.NEGATIVE_INFINITY
   private bodySeen = Number.NEGATIVE_INFINITY
+  private unloadedAt = Number.NEGATIVE_INFINITY
+  private pile: { readonly level: number; readonly x: number; readonly y: number; readonly selfId: number } | null = null
   private readonly prepared = new Map<string, number>()
   private rallying: { readonly boss: string; readonly since: number } | null = null
   spendPoints = false
@@ -381,8 +393,25 @@ export class Autopilot {
   }
 
   private corpseGoal(): Goal | null {
-    const corpse = this.corpse
-    return corpse && { level: corpse.level, title: 'Your body', hint: 'Get your body back', spot: { x: corpse.x, y: corpse.y } }
+    const { corpse, pile } = this
+    if (corpse) return { level: corpse.level, title: 'Your body', hint: 'Get your body back', spot: { x: corpse.x, y: corpse.y } }
+    return pile && pile.selfId === this.host.world.selfId ? { level: pile.level, title: 'Your gold', hint: 'Pick up the gold you dropped', spot: { x: pile.x, y: pile.y } } : null
+  }
+
+  private dropped(corpse: { readonly level: number; readonly x: number; readonly y: number }): void {
+    this.pile = { ...corpse, selfId: this.host.world.selfId }
+  }
+
+  private goldPile(): ClientUnit | null {
+    const { world } = this.host
+    const pile = this.pile
+    if (pile?.level !== world.areaId || pile.selfId !== world.selfId) return null
+    const unit = [...world.containers.ground.values()]
+      .filter((item) => codeOf(item) === GOLD && distance(item, pile) <= PILE_NEAR)
+      .map((item) => world.getUnit('item', item.id))
+      .find((found) => found !== undefined)
+    if (unit === undefined && distance(pile, world.self) <= CORPSE_GONE) this.pile = null
+    return unit ?? null
   }
 
   private ownBody(): ClientUnit | undefined {
@@ -397,6 +426,7 @@ export class Autopilot {
     const body = this.ownBody()
     if (body && this.bodyTouch?.id === body.id && world.containers.equipment.size > this.bodyTouch.worn) {
       this.ghosts.add(body.id)
+      this.dropped(corpse)
       Object.assign(this, { corpse: null, bodyTouch: null })
       this.toast('Got your body back', '', 'green')
       return null
@@ -407,6 +437,7 @@ export class Autopilot {
       return body
     }
     if (distance(corpse, world.self) <= CORPSE_GONE && nowMs - this.bodySeen > BODY_GONE_MS) {
+      this.dropped(corpse)
       this.corpse = null
       this.toast('Got your body back', '', 'green')
     }
@@ -414,7 +445,7 @@ export class Autopilot {
   }
 
   private recover(body: ClientUnit, nowMs: number): void {
-    this.say('Picking up your body')
+    this.say(body.unitType === 'item' ? 'Picking up the gold you dropped' : 'Picking up your body')
     if (this.bodyTouch?.id !== body.id) this.bodyTouch = { id: body.id, worn: this.host.world.containers.equipment.size }
     const target = this.host.guide.update(nowMs)?.target
     const routed = target !== null && target !== undefined && distance(target, body) <= REACH * 2
@@ -442,6 +473,15 @@ export class Autopilot {
     if (this.potionsWanted() === 0 && world.self.life >= (hudManager.maxHp || world.self.maxLife) * RECOVERED_LIFE) return
     this.prepared.set(boss, nowMs)
     Object.assign(this, { trip: 'retreat', retreatWhy: `${PREP} ${boss}, heading to town` })
+  }
+
+  private unload(nowMs: number): void {
+    const { world, assists } = this.host
+    const care = assists.inventoryCare
+    if (this.corpse !== null || nowMs - this.unloadedAt < UNLOAD_MS || !assists.hasTownPortal()) return
+    if (new Set([...care.junk, ...care.clutter, ...care.surplus, ...care.stashable]).size < UNLOAD_ITEMS || freeSpots(world.containers.inventory.values(), 2, 2).length > 0) return
+    this.unloadedAt = nowMs
+    Object.assign(this, { trip: 'retreat', retreatWhy: `${ERRAND} bags are full` })
   }
 
   private rally(nowMs: number): boolean {
@@ -481,7 +521,7 @@ export class Autopilot {
 
   private setbacks(nowMs: number): number {
     const counts = (log: readonly { readonly at: number; readonly level: number }[]) => log.filter((entry) => entry.level === this.questLevel && entry.at > this.forgiven && nowMs - entry.at < DEATH_MEMORY_MS).length
-    return setbacksOf(counts(this.deaths), counts(this.retreats))
+    return setbacksOf(counts(this.deaths) + counts(this.retreats.filter((entry) => entry.boss)), counts(this.retreats.filter((entry) => !entry.boss)))
   }
 
   private passingThrough(): boolean {
@@ -551,10 +591,12 @@ export class Autopilot {
     this.trip = town && this.trip === 'retreat' ? 'return' : !town && this.trip === 'return' ? null : this.trip
     if (this.trip === 'retreat' && !town && this.recovered() && !planned(this.retreatWhy)) this.trip = null
     if (!town && this.trip === null) this.prepareFor(nowMs)
-    const danger = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
+    if (!town && this.trip === null) this.unload(nowMs)
+    const peril = town ? null : this.trip === 'retreat' ? this.retreatWhy : this.danger(nowMs)
+    const danger = nowMs < this.lastStand ? null : peril
     this.assess(nowMs)
     this.host.guide.detour = this.corpseGoal() ?? this.trainingGoal()
-    const body = town ? null : this.bodyRun(nowMs)
+    const body = town ? null : (this.bodyRun(nowMs) ?? this.goldPile())
     if (this.harmless(nowMs)) return
     const disengaged = this.futileFight(nowMs)
     assists.pilotCombat = assists.autoCombatKey !== null && danger === null && !disengaged && (body === null || this.cornered(nowMs))
@@ -568,6 +610,7 @@ export class Autopilot {
     else if ((danger === null || !assists.hasTownPortal()) && assists.dodging(nowMs)) this.say('Dodging')
     else if (this.keepCrossing(nowMs)) this.say(danger ?? 'Crossing over')
     else if (body !== null && distance(body, this.host.world.self) <= BODY_GRAB) this.recover(body, nowMs)
+    else if (peril !== null && danger === null && this.backOff(nowMs)) this.say('Nowhere to run, backing off')
     else if (danger !== null) this.retreat(danger, nowMs)
     else if (body !== null && !this.cornered(nowMs)) this.recover(body, nowMs)
     else if (!disengaged && assists.isFighting(nowMs)) this.say('Fighting')
@@ -1278,7 +1321,8 @@ export class Autopilot {
     const { world, assists } = this.host
     const me = world.self
     if (this.trip !== 'retreat') this.host.assists.journal?.('retreat', { why, ...this.reading, hostiles: world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= THREAT.near).length })
-    if (this.trip !== 'retreat' && !planned(why)) this.retreats = [...this.retreats.filter((entry) => nowMs - entry.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? this.host.world.areaId }]
+    const fromBoss = world.getUnitsByType(1).some((unit) => !unit.dead && BOSSES.has(unit.classId) && distance(unit, me) <= THREAT.near)
+    if (this.trip !== 'retreat' && !planned(why)) this.retreats = [...this.retreats.filter((entry) => nowMs - entry.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? this.host.world.areaId, boss: fromBoss }]
     Object.assign(this, { trip: 'retreat', retreatWhy: why })
     this.say(why)
     const threats = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= KITE_NEAR)
@@ -1323,6 +1367,13 @@ export class Autopilot {
     return true
   }
 
+  private backOff(nowMs: number): boolean {
+    const { world, assists, hudManager } = this.host
+    const me = world.self
+    const threats = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= KITE_NEAR)
+    return me.life < (hudManager.maxHp || me.maxLife) * LAST_STAND_KITE && threats.length > 0 && this.kite(threats, nowMs)
+  }
+
   private walkHome(nowMs: number): void {
     const me = this.host.world.self
     const here = this.trail.at(-1)
@@ -1360,7 +1411,11 @@ export class Autopilot {
     else if (view && preset) this.walkTowards({ x: view.originX + preset.subX, y: view.originY + preset.subY }, nowMs)
     else {
       this.trip = null
-      this.stop('Autopilot needs you', 'red', 'Low on life with no town portal or way back')
+      if (nowMs >= this.lastStand) {
+        this.host.assists.journal?.('last-stand', { level: world.areaId, ...this.reading })
+        this.toast('Nowhere to run', 'No town portal or way back, fighting on', 'red')
+      }
+      this.lastStand = nowMs + LAST_STAND_MS
     }
   }
 
@@ -1428,13 +1483,20 @@ export class Autopilot {
     const care = assists.inventoryCare
     care.hardUp = me.gold < Math.max(BARE_SHOP_GOLD, me.level * RESERVE_PER_LEVEL * 2) || (me.gold < BARE_SHOP_GOLD * 2 && this.healingPotions() === 0)
     const dry = this.healingPotions() === 0
-    const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : (key === 'potions' && dry) || key === 'cube' ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
+    care.identifiable = scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null
+    const selling = care.surplus.length > 0
+    const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : (key === 'potions' && (dry || selling || !this.host.assists.hasTownPortal())) || key === 'cube' ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
     const ready = (key: string) => nowMs - (this.errandsAt.get(key) ?? Number.NEGATIVE_INFINITY) >= cooldown(key)
     const wounded = me.life < (hudManager.maxHp || me.maxLife) * HEAL_LIFE || me.mana < (hudManager.maxMana || me.maxMana) * HEAL_MANA
     const merc = world.merc
     const worn = [...world.containers.equipment.values()].some((item) => (item.maxDurability ?? 0) > 0 && (item.curDurability ?? item.durability ?? 0) < (item.maxDurability ?? 0) * REPAIR_BELOW)
-    const recipe = readyRecipe(world)
+    const recipe = readyRecipe(world) ?? runeRecipe(world, care.runeCube)
     const resist = this.resistWanted()
+    const wealth = me.gold + me.stashGold
+    const gambleFund = wealth - gambleReserve(me.level)
+    const spend = gambleFund >= GAMBLING_RULES.spare && ready('gamble') ? gambleFund : wealth >= SHOP_GOLD && ready('shop') ? Math.min(wealth - SPARE_GOLD, me.level * SHOP_PURSE_PER_LEVEL) : 0
+    const purse = Math.min(getInventoryGoldLimit(me.level), Math.max(spend, this.purseKeep()))
+    const untidy = care.untidy.length > 0
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       resist !== null && me.gold >= POTION_GOLD && ready('resist') && { key: 'resist', reason: `Buying ${resist.potion} for ${resist.boss}`, npc: 'resists', action: 'trade', work: () => this.buyResists(resist.code) },
@@ -1442,14 +1504,15 @@ export class Autopilot {
       Boolean(merc?.isDead) && (merc?.reviveCost ?? Infinity) <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
       merc === null && world.expansion === true && me.gold >= MERCENARIES.minGold && this.settledIn(nowMs) && ready('hire') && { key: 'hire', reason: 'Hiring a mercenary', npc: 'mercs', action: 'hire', work: () => this.hire() },
       this.mercGear() !== null && ready('mercGear') && { key: 'mercGear', reason: 'Giving your mercenary better gear', work: () => this.dressMerc() },
-      me.gold < PURSE_LOW && me.stashGold > 0 && ready('purse') && { key: 'purse', reason: 'Taking gold out of the stash', work: () => this.fillPurse() },
+      me.gold < (spend > 0 ? purse * WITHDRAW_SHORT : Math.min(PURSE_LOW, purse / 2)) && me.stashGold > 0 && ready('purse') && { key: 'purse', reason: 'Taking gold out of the stash', work: () => this.fillPurse(purse) },
       worn && ready('repair') && { key: 'repair', reason: 'Repairing gear', npc: 'repair', action: 'trade_repair', work: () => this.repairAndShop() },
-      (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length + (care.hardUp ? care.spares.length : 0) > 0)
+      (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.junk.length + care.clutter.length + care.surplus.length + (care.hardUp ? care.spares.length : 0) > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
       (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
-      me.gold >= gambleReserve(me.level) + GAMBLING_RULES.spare && ready('gamble') && { key: 'gamble', reason: 'Gambling for rings and amulets', npc: 'gamble', action: 'gamble', work: () => this.gamble() },
-      me.gold > this.purseKeep() + BANK_MARGIN && me.stashGold < getStashGoldLimit(me.level) && ready('bank') && { key: 'bank', reason: 'Putting gold in the stash', work: () => this.bank() },
+      gambleFund >= GAMBLING_RULES.spare && me.gold >= GAMBLING_RULES.spare && ready('gamble') && { key: 'gamble', reason: 'Gambling for rings and amulets', npc: 'gamble', action: 'gamble', work: () => this.gamble() },
+      spend === 0 && me.gold > this.purseKeep() + BANK_MARGIN && me.stashGold < getStashGoldLimit(me.level) && ready('bank') && { key: 'bank', reason: 'Putting gold in the stash', work: () => this.bank() },
+      untidy && ready('tidy') && { key: 'tidy', reason: 'Clearing out the stash', work: () => this.tidy() },
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.armoury.length > 0 && ready('armoury') && { key: 'armoury', reason: 'Taking better gear out of the stash', work: () => this.arm() },
@@ -1493,11 +1556,17 @@ export class Autopilot {
     const { world, hudManager, hudModel } = this.host
     const stash = await this.reach(() => world.getUnitsByType(2).find((unit) => unit.classId === STASH_CLASS), { key, reason: '', stash: true })
     if (!stash || hudModel === null) return false
-    this.host.assists.use(stash, performance.now())
-    if (!(await waitFor(() => hudManager.leftPanel === 'stash', STASH_OPEN_MS))) return false
-    const taken = await take()
-    hudModel.closeStash()
-    return taken
+    const care = this.host.assists.inventoryCare
+    care.hold = true
+    try {
+      this.host.assists.use(stash, performance.now())
+      if (!(await waitFor(() => hudManager.leftPanel === 'stash', STASH_OPEN_MS))) return false
+      const taken = await take()
+      hudModel.closeStash()
+      return taken
+    } finally {
+      care.hold = false
+    }
   }
 
   private settledIn(nowMs: number): boolean {
@@ -1542,7 +1611,7 @@ export class Autopilot {
   }
 
   private purseKeep(): number {
-    return Math.max(PURSE_GOLD, gambleReserve(this.host.world.self.level) + GAMBLING_RULES.spare)
+    return Math.max(PURSE_LOW, this.host.world.self.level * PURSE_PER_LEVEL)
   }
 
   private async bank(): Promise<void> {
@@ -1556,9 +1625,17 @@ export class Autopilot {
     })
   }
 
-  private async fillPurse(): Promise<void> {
+  private async tidy(): Promise<void> {
+    const { world, hudManager, hudModel, assists } = this.host
+    const care = assists.inventoryCare
+    const untidy = care.untidy
+    if (hudModel === null || !(await this.fromStash('tidy', () => withdrawItems({ world, hudManager, hudModel }, untidy)))) return
+    this.toast('Cleared out the stash', `${untidy.length} item${untidy.length === 1 ? '' : 's'} to sell or identify`, 'gold')
+  }
+
+  private async fillPurse(purse: number): Promise<void> {
     const { world, hudModel } = this.host
-    const amount = Math.min(world.self.stashGold, Math.min(PURSE_GOLD, getInventoryGoldLimit(world.self.level)) - world.self.gold)
+    const amount = Math.min(world.self.stashGold, purse - world.self.gold)
     const before = world.self.gold
     if (hudModel === null || amount <= 0) return
     await this.fromStash('purse', () => {
@@ -1648,15 +1725,7 @@ export class Autopilot {
     if (hudModel === null) return
     const host = { world, hudManager, hudModel }
     this.host.assists.journal?.('cube', { makes: recipe.makes, inStash })
-    if (inStash.length > 0) {
-      const stash = await this.reach(() => world.getUnitsByType(2).find((unit) => unit.classId === STASH_CLASS), { key: 'cube', reason: '', stash: true })
-      if (!stash) return
-      this.host.assists.use(stash, performance.now())
-      if (!(await waitFor(() => hudManager.leftPanel === 'stash', 6000))) return
-      const taken = await withdraw(host, inStash)
-      hudModel.closeStash()
-      if (!taken) return
-    }
+    if (inStash.length > 0 && !(await this.fromStash('cube', () => withdraw(host, inStash)))) return
     const made = await transmute(host, recipe)
     this.toast(made ? 'Transmuted in the Horadric Cube' : "Couldn't use the Horadric Cube", made ? recipe.makes : 'Try it by hand', made ? 'green' : 'gold')
     hudModel.requestQuestData()
@@ -1702,6 +1771,7 @@ export class Autopilot {
       if (errand.action) {
         hudModel.handleNpcMenuAction(errand.action, unit.id)
         await waitFor(() => hudManager.leftPanel === 'vendor' || !hudManager.worldPanels.npcMenu, 5000)
+        if (hudManager.leftPanel === 'vendor') await waitFor(() => this.store().length > 0, SHOP_FILL_MS)
         await waitFor(() => this.host.assists.inventoryCare.busy, CARE_START_MS)
         await waitFor(() => !this.host.assists.inventoryCare.busy, 20000)
         await errand.work?.()
@@ -1799,7 +1869,7 @@ export class Autopilot {
     const bare = new Set(EQUIP_SLOTS.filter((slot) => !worn.has(slot)))
     const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
     const offered = this.store().filter((item) => assists.inventoryCare.appraise(item).tier !== 'junk')
-    const pick = gamblePick(offered, bare, world.self.gold - gambleReserve(world.self.level), this.priceList(GAMBLE), fits)
+    const pick = gamblePick(offered, bare, Math.min(world.self.gold, world.self.gold + world.self.stashGold - gambleReserve(world.self.level)), this.priceList(GAMBLE), fits)
     const before = world.self.gold
     if (!pick || hudManager.leftPanel !== 'vendor' || !hudModel.vendorBuy(pick.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
     this.toast('Gambled', `${pick.code.trim()} for ${(before - world.self.gold).toLocaleString('en-US')} gold`, 'gold')

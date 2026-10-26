@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readyRecipe, transmute, type CubeHost } from '../../src/client/guide/cube-recipes.ts'
+import { readyRecipe, runeRecipe, transmute, type CubeHost } from '../../src/client/guide/cube-recipes.ts'
 import { freeSpots } from '../../src/client/input/auto-loot.ts'
 import type { ClientWorld } from '../../src/client/world/client-world.ts'
 
@@ -51,5 +51,14 @@ describe('Horadric Cube quest recipes', () => {
 
   it('finds room in the 3 by 4 cube grid', () => {
     expect(freeSpots([{ id: 1, gridX: 0, gridY: 0, invWidth: 1, invHeight: 4 }], 2, 4, 3, 4)).toEqual([{ x: 1, y: 0 }])
+  })
+})
+
+describe('Horadric Cube rune upgrades', () => {
+  it('fetches only the missing runes from the stash', () => {
+    const recipe = runeRecipe(holding(['box', 'r04'], [], ['r04', 'r04', 'r04']), { rune: 'r04', makes: 'r05', count: 3 })
+    expect(recipe).toEqual({ name: '3 Nef into Eth', recipe: { inputs: ['r04', 'r04', 'r04'], makes: 'r05' }, inStash: ['r04', 'r04'] })
+    expect(runeRecipe(holding(['r04', 'r04', 'r04']), { rune: 'r04', makes: 'r05', count: 3 })).toBeNull()
+    expect(runeRecipe(holding([], [], ['box', 'r04', 'r04', 'r04']), { rune: 'r04', makes: 'r05', count: 3 })?.inStash).toEqual(['box', 'r04', 'r04', 'r04'])
   })
 })

@@ -34,3 +34,23 @@ describe('better gear left in the stash', () => {
     expect(bag.spares.map((spare) => spare.id)).toEqual([1, 2])
   })
 })
+
+describe('clearing out the stash', () => {
+  const jewel = (id: number, value: number, container: ItemData['container'] = 'stash') => item({ id, code: 'jew', container, stats: life(value) })
+
+  it('brings surplus jewels out to sell and keeps them out of the stash', () => {
+    const stored = [60, 50, 40, 35, 30, 25].map((value, i) => jewel(10 + i, value))
+    const bag = care(stored, [jewel(1, 28, 'inventory')])
+    expect(bag.untidy.map((out) => out.id).sort()).toEqual([14, 15])
+    expect(bag.surplus.map((out) => out.id)).toEqual([1])
+    expect(bag.stashable).toEqual([])
+  })
+
+  it('takes unidentified finds out once it can identify them, and stops stashing them', () => {
+    const ring = (id: number, container: ItemData['container']) => item({ id, code: 'rin', quality: 6, identified: false, container })
+    const bag = care([ring(1, 'stash')], [ring(2, 'inventory')])
+    expect([bag.untidy.length, bag.stashable.length]).toEqual([0, 1])
+    bag.identifiable = true
+    expect([bag.untidy.map((out) => out.id), bag.stashable.length]).toEqual([[1], 0])
+  })
+})

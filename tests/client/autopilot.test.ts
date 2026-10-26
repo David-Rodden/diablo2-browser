@@ -18,7 +18,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     self,
     merc: null,
     quests: new Uint16Array(48),
-    containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map(), merc: new Map() },
+    containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map(), merc: new Map(), ground: new Map() },
     getUnit: (_: string, id: number) => units.find((unit) => unit.id === id),
     getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
   }
@@ -38,7 +38,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     },
     hasLootNearby: () => false,
     dodging: () => false,
-    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
+    inventoryCare: { busy: false, hold: false, config: null, junk: [], clutter: [], surplus: [] as unknown[], untidy: [] as unknown[], runeCube: null, upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
     keepUp: () => false,
     canRaise: () => false,
     walkTo: vi.fn(),
@@ -291,13 +291,17 @@ describe('autopilot', () => {
     expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
   })
 
-  it('hands control back when it is in trouble with no portal and no way back', () => {
-    const { pilot, world, assists, hudManager, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+  it('fights on, and backs away from foes when nearly dead, with no portal and no way back', () => {
+    const { pilot, world, units, assists, hudManager, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     assists.hasTownPortal = () => false
+    world.self.life = 50
+    units.push(unit({ id: 81, x: 104, y: 100, name: 'Fallen' }))
+    for (let i = 0; i < 5; i++) tick(1000)
+    expect([pilot.active, assists.standDown, assists.pilotCombat]).toEqual([true, false, true])
+    expect(hudManager.toasts.push).toHaveBeenCalledWith(expect.objectContaining({ title: 'Nowhere to run', color: 'red' }), expect.any(Number))
     world.self.life = 20
-    tick(2000)
-    expect(pilot.active).toBe(false)
-    expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you', color: 'red' }), expect.any(Number))
+    tick()
+    expect(guide.pilotStatus).toBe('Nowhere to run, backing off')
   })
 
   it('feels along a fence for the gap when it is stuck on the edge of a level', () => {
@@ -521,7 +525,7 @@ describe('autopilot', () => {
     expect(pilot.active).toBe(true)
   })
 
-  it('puts gold beyond the purse and the gambling stake into the stash', async () => {
+  it('keeps only a small purse and puts the rest of its gold in the stash', async () => {
     const { pilot, world, assists, hudManager, hudModel, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
     ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
     world.containers.inventory.set(8, { id: 8, code: 'tbk', quantity: 20, invWidth: 1, invHeight: 2 })
@@ -532,7 +536,7 @@ describe('autopilot', () => {
     for (const key of ['shop', 'gamble', 'potions']) (pilot as unknown as { errandsAt: Map<string, number> }).errandsAt.set(key, 1_000_000)
     tick()
     expect(guide.pilotStatus).toBe('Putting gold in the stash')
-    await vi.waitFor(() => expect(world.self.gold).toBe(20_000))
+    await vi.waitFor(() => expect(world.self.gold).toBe(3000))
   })
 
   it('takes gold out of the stash when it has none on hand', async () => {
@@ -543,8 +547,20 @@ describe('autopilot', () => {
     Object.assign(hudModel, { withdrawGold: vi.fn((amount: number) => void (world.self.gold += amount)), closeStash: vi.fn() })
     tick()
     expect(guide.pilotStatus).toBe('Taking gold out of the stash')
-    await vi.waitFor(() => expect((hudModel as unknown as { withdrawGold: ReturnType<typeof vi.fn> }).withdrawGold).toHaveBeenCalledWith(5000))
-    expect(world.self.gold).toBe(5000)
+    await vi.waitFor(() => expect((hudModel as unknown as { withdrawGold: ReturnType<typeof vi.fn> }).withdrawGold).toHaveBeenCalledWith(3000))
+    expect(world.self.gold).toBe(3000)
+  })
+
+  it('takes its gambling money out of the stash only when it is about to gamble', async () => {
+    const { pilot, world, assists, hudManager, hudModel, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world.self, { gold: 3000, stashGold: 60_000, level: 10 })
+    units.push(unit({ id: 30, unitType: 'object', classId: 267, x: 102, y: 100 }))
+    assists.use.mockImplementation(() => void (hudManager.leftPanel = 'stash'))
+    Object.assign(hudModel, { withdrawGold: vi.fn((amount: number) => void (world.self.gold += amount)), closeStash: vi.fn() })
+    for (const key of ['shop', 'potions']) (pilot as unknown as { errandsAt: Map<string, number> }).errandsAt.set(key, 1_000_000)
+    tick()
+    expect(guide.pilotStatus).toBe('Taking gold out of the stash')
+    await vi.waitFor(() => expect(world.self.gold).toBe(53_000))
   })
 
   it('puts an item left on the cursor back in the bag instead of walking around holding it', () => {
@@ -978,5 +994,39 @@ describe('autopilot', () => {
     tick(1000)
     tick(1000)
     expect([guide.pilotStatus, guide.detour]).toEqual([expect.not.stringContaining('body'), null])
+  })
+
+  it('heads to town to sell and stash once the bags are full', () => {
+    const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    for (let i = 0; i < 40; i++) world.containers.inventory.set(i + 1, { id: i + 1, code: 'jew', gridX: i % 10, gridY: Math.floor(i / 10), invWidth: 1, invHeight: 1 })
+    tick()
+    expect(assists.castTownPortal).not.toHaveBeenCalled()
+    Object.assign(assists.inventoryCare, { surplus: [world.containers.inventory.get(1), world.containers.inventory.get(2)] })
+    tick()
+    expect(guide.pilotStatus).toBe('Heading to town by portal: bags are full')
+  })
+
+  it('picks up the gold it dropped after getting its body back', () => {
+    const { world, guide, assists, hudModel, units, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    Object.assign(world, { selfId: 1 })
+    Object.assign(world.self, { name: 'Hero' })
+    world.isDead = true
+    tick()
+    world.isDead = false
+    units.push(unit({ id: 2, unitType: 'player', name: 'Hero', x: 101, y: 100, mode: 17 }))
+    tick()
+    ;[1, 3, 4].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    const pile = unit({ id: 90, unitType: 'item', x: 103, y: 101 })
+    units.push(pile)
+    world.containers.ground.set(90, { id: 90, code: 'gld ', x: 103, y: 101 })
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Picking up the gold you dropped')
+    tick(1000)
+    expect(assists.use).toHaveBeenCalledWith(pile, expect.any(Number))
+    world.containers.ground.clear()
+    tick(1000)
+    tick(1000)
+    expect([guide.pilotStatus, guide.detour]).toEqual([expect.not.stringContaining('gold'), null])
   })
 })

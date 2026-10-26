@@ -1,0 +1,9 @@
+{
+  "cubeRunesUpTo": 9,
+  "runesPerCube": 3,
+  "jewels": 4,
+  "gems": 6,
+  "jewellery": 2,
+  "jewelleryCodes": ["rin", "amu"],
+  "keptReasons": ["Better", "Base for", "Good base", "Sought-after"]
+}
