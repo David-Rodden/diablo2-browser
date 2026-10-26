@@ -479,6 +479,7 @@ function DRLGOUTROOM_LinkLevelsByLevelDef(d: D2DrlgLevelLinkDataStrc): boolean {
   return true
 }
 
+// 1.13c: D2Common.0x6FDE380C (1.10f: 0x6FD84010)
 const pOffsetCoords_6FD84010: readonly (readonly [number, number])[] = [
   [0, -160],
   [-96, -64],
@@ -486,7 +487,7 @@ const pOffsetCoords_6FD84010: readonly (readonly [number, number])[] = [
   [-160, 0],
 ]
 
-//D2Common.0x6FD84010 (DrlgOutRoom.cpp)
+// 1.13c: D2Common.0x6FD90E10 (1.10f: 0x6FD84010, DrlgOutRoom.cpp)
 function DRLGOUTROOM_LinkLevelsByOffsetCoords(d: D2DrlgLevelLinkDataStrc): boolean {
   const it = d.nIteration
 
@@ -518,7 +519,7 @@ function DRLGOUTROOM_LinkLevelsByOffsetCoords(d: D2DrlgLevelLinkDataStrc): boole
   return true
 }
 
-//D2Common.0x6FDCFE40
+// 1.13c: D2Common.0x6FDDCBE8 (1.10f: 0x6FDCFE40)
 const gAct1WildernessDrlgLink = linkTable([
   { pfLinker: sub_6FD81330, nLevel: LEVEL_STONYFIELD, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: sub_6FD81380, nLevel: LEVEL_COLDPLAINS, nLevelLink: 0, nLevelLinkEx: -1 },
@@ -528,7 +529,7 @@ const gAct1WildernessDrlgLink = linkTable([
   { pfLinker: null, nLevel: 0, nLevelLink: -1, nLevelLinkEx: -1 },
 ])
 
-//D2Common.0x6FDCFF30
+// 1.13c: D2Common.0x6FDDCCD8 (1.10f: 0x6FDCFF30)
 const gAct1MonasteryDrlgLink = linkTable([
   { pfLinker: sub_6FD81330, nLevel: LEVEL_MOOMOOFARM, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: sub_6FD81330, nLevel: LEVEL_MONASTERYGATE, nLevelLink: -1, nLevelLinkEx: -1 },
@@ -538,7 +539,7 @@ const gAct1MonasteryDrlgLink = linkTable([
   { pfLinker: null, nLevel: 0, nLevelLink: -1, nLevelLinkEx: -1 },
 ])
 
-//D2Common.0x6FDD0020
+// 1.13c: D2Common.0x6FDDCDC8 (1.10f: 0x6FDD0020)
 const gAct2OutdoorDrlgLink = linkTable([
   { pfLinker: sub_6FD81330, nLevel: LEVEL_LUTGHOLEIN, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: sub_6FD81B30, nLevel: LEVEL_ROCKYWASTE, nLevelLink: 0, nLevelLinkEx: -1 },
@@ -549,20 +550,20 @@ const gAct2OutdoorDrlgLink = linkTable([
   { pfLinker: null, nLevel: 0, nLevelLink: -1, nLevelLinkEx: -1 },
 ])
 
-//D2Common.0x6FDD0110
+// 1.13c: D2Common.0x6FDDCFB8 (1.10f: 0x6FDD0110)
 const gAct2CanyonDrlgLink = linkTable([
   { pfLinker: sub_6FD81330, nLevel: LEVEL_CANYONOFTHEMAGI, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: null, nLevel: 0, nLevelLink: -1, nLevelLinkEx: -1 },
 ])
 
-//1.11 : D2Common.0x6FDDC0B8
+// 1.11+ / 1.13c: D2Common.0x6FDDC0B8
 const gAct5UbersDrlgLink = linkTable([
   { pfLinker: sub_6FD81330, nLevel: LEVEL_PANDEMONIUMRUN2, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: sub_6FD81330, nLevel: LEVEL_PANDEMONIUMFINALE, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: null, nLevel: 0, nLevelLink: -1, nLevelLinkEx: -1 },
 ])
 
-//D2Common.0x6FDD0200
+// 1.13c: D2Common.0x6FDDD098 (1.10f: 0x6FDD0200)
 const gAct4OutdoorDrlgLink = linkTable([
   { pfLinker: sub_6FD81330, nLevel: LEVEL_THEPANDEMONIUMFORTRESS, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: sub_6FD81CA0, nLevel: LEVEL_OUTERSTEPPES, nLevelLink: 0, nLevelLinkEx: -1 },
@@ -571,13 +572,13 @@ const gAct4OutdoorDrlgLink = linkTable([
   { pfLinker: null, nLevel: 0, nLevelLink: -1, nLevelLinkEx: -1 },
 ])
 
-//D2Common.0x6FDD02F0
+// 1.13c: D2Common.0x6FDDD188 (1.10f: 0x6FDD02F0)
 const gAct4ChaosSanctumDrlgLink = linkTable([
   { pfLinker: sub_6FD81330, nLevel: LEVEL_CHAOSSANCTUM, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: null, nLevel: 0, nLevelLink: -1, nLevelLinkEx: -1 },
 ])
 
-//1.10f: D2Common.0x6FDD03E0
+// 1.13c: D2Common.0x6FDDD278 (1.10f: 0x6FDD03E0)
 const gAct5OutdoorDrlgLink = linkTable([
   { pfLinker: sub_6FD81330, nLevel: LEVEL_HARROGATH, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: sub_6FD81330, nLevel: LEVEL_BLOODYFOOTHILLS, nLevelLink: 0, nLevelLinkEx: -1 },
@@ -586,7 +587,7 @@ const gAct5OutdoorDrlgLink = linkTable([
   { pfLinker: null, nLevel: 0, nLevelLink: -1, nLevelLinkEx: -1 },
 ])
 
-//1.10f: D2Common.0x6FDD04D0
+// 1.13c: D2Common.0x6FDDD368 (1.10f: 0x6FDD04D0)
 const gAct5TundraDrlgLink = linkTable([
   { pfLinker: DRLGOUTROOM_LinkLevelsByLevelDef, nLevel: LEVEL_TUNDRAWASTELANDS, nLevelLink: -1, nLevelLinkEx: -1 },
   { pfLinker: null, nLevel: 0, nLevelLink: -1, nLevelLinkEx: -1 },

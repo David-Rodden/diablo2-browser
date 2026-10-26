@@ -679,7 +679,11 @@ export class LocalLobbyProvider implements LobbyProvider {
       throw new Error(`LocalLobbyProvider.writeCharacterProgression: unknown character "${name}"`)
     }
     const parsed = readD2sSave113c(this.saves.get(key)!)
-    const bytes = writeD2sSave113c({ ...parsed, progression }, getServerItemDataTables())
+    const nextProgression = Math.max(parsed.progression ?? 0, progression)
+    const bytes = writeD2sSave113c(
+      { ...parsed, progression: nextProgression },
+      getServerItemDataTables(),
+    )
     this.saves.set(key, new Uint8Array(bytes))
     return this.toLobbyCharSummary(bytes, key)
   }

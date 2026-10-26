@@ -263,8 +263,15 @@ describe('Automap Waypoint Parity (Issue #867 — Diablo II v1.13c Ground Truth)
         const objs318 = automap.objects.filter((c: any) => c.cellNo === 318)
         const fl617 = automap.floors.filter((c: any) => c.cellNo >= 617 && c.cellNo <= 619)
 
-        // Never any 318 (glittery quest chest) on waypoint objects
-        expect(objs318, `Level ${levelId} must not have cell 318`).toHaveLength(0)
+        // Never any 318 (glittery quest chest) on waypoint objects (in Level 79 Lower Kurast, 318 is BH.dll object 580 superchest)
+        if (levelId !== 79) {
+          expect(objs318, `Level ${levelId} must not have cell 318`).toHaveLength(0)
+        } else if (floors307[0]) {
+          expect(
+            objs318.some((c: any) => c.xPixel === floors307[0].xPixel && c.yPixel === floors307[0].yPixel),
+            'Level 79 superchest 318 must not overlap waypoint 307',
+          ).toBe(false)
+        }
 
         // Never duplicate 307 across floors and objects
         if (floors307.length > 0) {
@@ -324,7 +331,18 @@ describe('Automap Waypoint Parity (Issue #867 — Diablo II v1.13c Ground Truth)
         const objs318 = automap.objects.filter(c => c.cellNo === 318)
         const fl617 = automap.floors.filter(c => c.cellNo >= 617 && c.cellNo <= 619)
 
-        expect(objs318, `Runtime Level ${levelId} must not have cell 318`).toHaveLength(0)
+        const u580Count = (view.presetUnits ?? []).filter(u => u.type === 2 && u.index === 580).length
+        if (levelId === 79 && u580Count > 0) {
+          expect(objs318, 'Runtime Level 79 (Lower Kurast) BH.dll superchest 318 icons').toHaveLength(u580Count)
+          if (floors307[0]) {
+            expect(
+              objs318.some(c => c.xPixel === floors307[0]!.xPixel && c.yPixel === floors307[0]!.yPixel),
+              'Runtime Level 79 superchest 318 must not overlap waypoint 307',
+            ).toBe(false)
+          }
+        } else {
+          expect(objs318, `Runtime Level ${levelId} must not have cell 318`).toHaveLength(0)
+        }
         if (levelId === 74 || levelId >= 111) {
           expect(objs307, `Runtime Level ${levelId} must have 1 object 307`).toHaveLength(1)
           expect(floors307, `Runtime Level ${levelId} must have 0 floor 307`).toHaveLength(0)
@@ -448,6 +466,51 @@ describe('Automap Waypoint Parity (Issue #867 — Diablo II v1.13c Ground Truth)
       expect(moorPlan!.neighborMonsterHcIndices).toEqual(
         expect.arrayContaining([28, 43, 58, 159, 165]),
       )
+    }, 30000)
+  })
+
+  describe('6. BH.dll 0x101a94e0 (Maphack::RevealRoomPresetUnits) Quest/Special Preset Automap Icons (Issue #1621)', () => {
+    it('emits Horadric Orifice (152 -> 300), Hellforge (376 -> 376), Frozen Anya (460 -> 1468), and Izual (256 -> 300) in runtime LevelView', async () => {
+      const packedDir = path.resolve(process.cwd(), 'public/act-packs/tiles')
+      if (!fs.existsSync(path.join(packedDir, 'drlg-bundle.json'))) return
+
+      await import('../tools/lib/node-map-loader.ts')
+      const { MapService } = await import('../src/client/map/map-service.ts')
+      const svc = await MapService.fromPackedDir('public/act-packs/tiles')
+
+      // Act 2 Tal Rasha's Tombs (Levels 66..72): exactly 1 True Tomb (dwStaffTombLevel) has Horadric Orifice (Objects.txt ID 152) -> cellNo 300
+      svc.loadAct({ act: 1, seed: 0x12345678, difficulty: 0, areaId: 66, revealMode: 'all' })
+      let trueTombCount = 0
+      for (let tombLevelId = 66; tombLevelId <= 72; tombLevelId++) {
+        const tombView = svc.getLevelView(tombLevelId, 'all')
+        const orificePresets = (tombView.presetUnits ?? []).filter(u => u.type === 2 && u.index === 152)
+        const tombCells300 = tombView.automap.objects.filter(c => c.cellNo === 300)
+        if (orificePresets.length > 0) {
+          trueTombCount++
+          expect(tombCells300.length).toBeGreaterThanOrEqual(1)
+          for (const op of orificePresets) {
+            const expected = computeAutomapObjectPixelCoords(op.subX, op.subY)
+            expect(tombCells300.some(c => c.xPixel === expected.xPixel && c.yPixel === expected.yPixel)).toBe(true)
+          }
+        } else {
+          expect(tombCells300).toHaveLength(0)
+        }
+      }
+      expect(trueTombCount).toBe(1)
+
+      // Act 4 Plains of Despair (Level 105): Izual (MonPreset[13] -> hcIdx 256) -> cellNo 300
+      // Act 4 River of Flame (Level 107): Hellforge (Objects.txt ID 376) -> cellNo 376
+      svc.loadAct({ act: 3, seed: 0x12345678, difficulty: 0, areaId: 105, revealMode: 'all' })
+      const plainsView = svc.getLevelView(105, 'all')
+      expect(plainsView.automap.objects.some(c => c.cellNo === 300)).toBe(true)
+
+      const riverView = svc.getLevelView(107, 'all')
+      expect(riverView.automap.objects.some(c => c.cellNo === 376)).toBe(true)
+
+      // Act 5 Frozen River (Level 114): Frozen Anya (Objects.txt ID 460) -> cellNo 1468
+      svc.loadAct({ act: 4, seed: 0x12345678, difficulty: 0, areaId: 114, revealMode: 'all' })
+      const frozenRiverView = svc.getLevelView(114, 'all')
+      expect(frozenRiverView.automap.objects.some(c => c.cellNo === 1468)).toBe(true)
     }, 30000)
   })
 })

@@ -9,7 +9,6 @@ import {
   COLLIDE_BLANK,
   COLLIDE_MASK_INVALID,
   COLLIDE_DOOR,
-  COLLIDE_WATER,
   ORTHO_CELL_WIDTH,
   ORTHO_CELL_HEIGHT,
   type CollisionGrid,
@@ -173,7 +172,7 @@ describe('Issue #422: Grid Quadrant Spiral Drop Coordinates (1.13c Parity)', () 
       // Moat water from x = 15 to 30
       for (let y = 0; y < height; y++) {
         for (let x = 15; x < width; x++) {
-          masks[y * width + x] = COLLIDE_WALL | COLLIDE_WATER
+          masks[y * width + x] = COLLIDE_WALL
         }
       }
       const grid = { width, height, collisionMasks: masks }

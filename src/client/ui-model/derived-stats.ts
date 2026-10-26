@@ -21,6 +21,7 @@ import { parseArmorTable, type ArmorTable, type ArmorBase } from '../../common/i
 import { parseTable } from '../../common/world/acts.ts'
 import { D2_EXPERIENCE_TABLE_99 } from '../../common/skills/formulas.ts'
 import {
+  computeHirelingLevelStats113c,
   HIRELING_RECORDS,
   resolveHirelingName,
   type HirelingRecord,
@@ -117,12 +118,14 @@ function gemModToItemStats(mod: GemModifier): ItemStat[] {
       return [{ statId: 2, param: 0, value: val }]
     case 'vit':
       return [{ statId: 3, param: 0, value: val }]
+    // maxhp/maxmana/maxstamina carry ItemStatCost ValShift 8: item stat lists hold `value << 8`
+    // (D2Common 0x6fd975e0 shl at 0x6fd97664, #1639).
     case 'hp':
-      return [{ statId: 7, param: 0, value: val }]
+      return [{ statId: 7, param: 0, value: val << 8 }]
     case 'mana':
-      return [{ statId: 9, param: 0, value: val }]
+      return [{ statId: 9, param: 0, value: val << 8 }]
     case 'stam':
-      return [{ statId: 11, param: 0, value: val }]
+      return [{ statId: 11, param: 0, value: val << 8 }]
     case 'hp%':
       return [{ statId: 76, param: 0, value: val }]
     case 'mana%':
@@ -210,7 +213,8 @@ function gemModToItemStats(mod: GemModifier): ItemStat[] {
 }
 
 /**
- * Normalizes a stat 6..11 pool value from an item or state stat list:
+ * Normalizes a stat 6..11 pool value read from a unit stat snapshot (not an item stat list, which is always
+ * ValShift-8 internal, #1639):
  * if encoded in 8.8 fixed point (`Math.abs(val) >= 256 && (val & 0xff) === 0`), shifts right by 8.
  */
 function normalizeItemPoolStat(val: number): number {
@@ -793,15 +797,18 @@ export function computeEffectiveMercenaryStats(
       ? finalRec.expPerLvl * (mlvl + 2) * (mlvl + 1) * (mlvl + 1)
       : 0
 
+  // D2Game.dll MERCS_SetStats (0x6FC68BA0): HP/Def/AR gain the full per-level value, resists
+  // trunc(perLvl*d/4), str/dex/dmg trunc(perLvl*d/8) — shared with the server (issue #1670).
   const deltaLvl = finalRec ? Math.max(0, mlvl - finalRec.level) : 0
-  const tableBaseHp = finalRec ? finalRec.hp + Math.floor((deltaLvl * finalRec.hpPerLvl) / 8) : 100
-  const tableBaseStr = finalRec ? finalRec.str + Math.floor((deltaLvl * finalRec.strPerLvl) / 8) : 0
-  const tableBaseDex = finalRec ? finalRec.dex + Math.floor((deltaLvl * finalRec.dexPerLvl) / 8) : 0
-  const tableBaseDef = finalRec ? finalRec.defense + Math.floor((deltaLvl * finalRec.defPerLvl) / 8) : 0
-  const tableBaseAr = finalRec ? finalRec.ar + Math.floor((deltaLvl * finalRec.arPerLvl) / 8) : 0
-  const tableBaseMinDmg = finalRec ? finalRec.dmgMin + Math.floor((deltaLvl * finalRec.dmgPerLvl) / 8) : 1
-  const tableBaseMaxDmg = finalRec ? finalRec.dmgMax + Math.floor((deltaLvl * finalRec.dmgPerLvl) / 8) : 2
-  const tableBaseResist = finalRec ? finalRec.resist + Math.floor((deltaLvl * finalRec.resistPerLvl) / 8) : 0
+  const tableStats = finalRec ? computeHirelingLevelStats113c(finalRec, mlvl) : undefined
+  const tableBaseHp = tableStats ? tableStats.hp : 100
+  const tableBaseStr = tableStats ? tableStats.str : 0
+  const tableBaseDex = tableStats ? tableStats.dex : 0
+  const tableBaseDef = tableStats ? tableStats.defense : 0
+  const tableBaseAr = tableStats ? tableStats.ar : 0
+  const tableBaseMinDmg = tableStats ? tableStats.minDmg : 1
+  const tableBaseMaxDmg = tableStats ? tableStats.maxDmg : 2
+  const tableBaseResist = tableStats ? tableStats.resist : 0
 
   const rawMaxHpStat = readRawStat(7, 'maxLife') ?? readRawStat(7, 'maxHp')
   const normServerMaxHp =
@@ -892,13 +899,15 @@ export function computeEffectiveMercenaryStats(
           addVit += Math.floor((st.value * mlvl) / 8)
           break
         case 7:
-          flatHp += normalizeItemPoolStat(st.value)
+          // Item/state stat lists always hold maxhp in ValShift-8 internal units (#1639).
+          flatHp += st.value >> 8
           break
         case 76:
           maxHpPct += st.value
           break
         case 216:
-          flatHp += Math.floor((st.value * mlvl) / 8)
+          // op 2, op param 3 on the ValShift-8 stat: maxhp += (value * clvl) >> 3, displayed >> 8 (#1639).
+          flatHp += ((st.value * mlvl) >> 3) >> 8
           break
         case 16:
         case 171:

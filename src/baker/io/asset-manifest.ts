@@ -61,7 +61,7 @@ export function validatePublicAssetRoots(
 
   const entries = readdirSync(publicDir).sort()
   for (const name of entries) {
-    if (name.startsWith('.') || name.endsWith('.br') || name.endsWith('.gz')) continue
+    if (name.startsWith('.') || name.endsWith('.br') || name.endsWith('.gz') || name.endsWith('.webp')) continue
     const fullPath = join(publicDir, name)
     let st
     try {
@@ -99,7 +99,7 @@ function walkDirectoryFiles(baseDir: string, currentDir: string = baseDir, out: 
   if (!existsSync(currentDir)) return out
   const entries = readdirSync(currentDir).sort()
   for (const name of entries) {
-    if (name.startsWith('.')) continue
+    if (name.startsWith('.') || name.endsWith('.br') || name.endsWith('.gz') || name.endsWith('.webp')) continue
     const fullPath = join(currentDir, name)
     let st
     try {

@@ -306,7 +306,8 @@ export function calculateLightningDamage(
         : 0
   const masteryBonus = masteryLvl > 0 ? calculateLightningMasteryBonusPct(masteryLvl) : 0
 
-  min = Math.floor(min * synMult * (1 + masteryBonus / 100))
+  // The flat 1-point min (EMin=1, EMinLev1=0) is not synergised: D2Common #10121 0x6FDA04C7 (#1681)
+  min = Math.floor(min * (1 + masteryBonus / 100))
   max = Math.floor(max * synMult * (1 + masteryBonus / 100))
   return { min, max }
 }
@@ -397,7 +398,8 @@ export function calculateChainLightningDamage(
         : 0
   const masteryBonus = masteryLvl > 0 ? calculateLightningMasteryBonusPct(masteryLvl) : 0
 
-  min = Math.floor(min * synMult * (1 + masteryBonus / 100))
+  // The flat 1-point min (EMin=1, EMinLev1=0) is not synergised: D2Common #10121 0x6FDA04C7 (#1681)
+  min = Math.floor(min * (1 + masteryBonus / 100))
   max = Math.floor(max * synMult * (1 + masteryBonus / 100))
   return { min, max }
 }
@@ -1298,7 +1300,7 @@ export class MissileEngine {
 
     // 1.13c D2Game.dll 0x6FC8FC75..0x6FC8FCC8:
     // range = Range + slvl * LevRange (+ (SubStop - SubStart) * nLoops when SubLoop != 0 and nLoops > 0)
-    const baseRange = effectiveRec.range !== undefined && effectiveRec.range > 0 ? effectiveRec.range : 35
+    const baseRange = effectiveRec.range ?? 0
     let calculatedRange = baseRange + slvlInt * (effectiveRec.levRange || 0)
     const loopsInt = params.loops !== undefined ? Math.trunc(params.loops) : 0
     if (effectiveRec.subLoop && loopsInt > 0) {
@@ -1638,8 +1640,11 @@ export class MissileEngine {
       activeSkill: skill,
       activeMissile: m.record,
       slvl: m.slvl,
-      blvl: m.slvl,
+      blvl: m.owner.statList.getBaseSkillLevel(m.sourceSkillId),
       getBaseSkillLevel: (id) => m.owner.statList.getBaseSkillLevel(id),
+      getEffectiveSkillLevel: (id) => m.owner.statList.getEffectiveSkillLevel(id),
+      getUnitStat: (statNameOrId, baseOnly) => m.owner.statList.getAccruedStat(statNameOrId, baseOnly),
+      randFn: (lo, hi) => (lo >= hi ? lo : lo + this.rng.rand(hi - lo + 1)),
     })
   }
 
@@ -5753,12 +5758,12 @@ export function calculateInfernoDamage(
 
 /**
  * Authentic 1.13c Blaze (Skill 46) buff duration in frames:
- * Formula (dm12): Math.floor((110 * slvl * 450) / (100 * (slvl + 6))) + 50.
- * Level 1 -> 120 frames (4.80s), Level 10 -> 359 frames (14.36s), Level 20 -> 430 frames (17.20s).
+ * Formula: auralencalc = dm12 (Param1=50, Param2=500) → D2Common 0x6FD9DC30 (issue #1678).
+ * Level 1 -> 117 frames, Level 10 -> 356 frames, Level 20 -> 428 frames.
  */
 export function calculateBlazeDuration(slvl: number): number {
   const lvl = Number.isFinite(slvl) ? Math.max(1, Math.floor(slvl)) : 1
-  return Math.floor((110 * lvl * 450) / (100 * (lvl + 6))) + 50
+  return computeDiminishingReturns(50, 500, lvl)
 }
 
 /**
@@ -7139,10 +7144,7 @@ export function calculateGolemMasteryStats(slvl: number): GolemMasteryStats {
  */
 export function calculateSummonResistPct(slvl: number): number {
   if (!Number.isFinite(slvl) || slvl <= 0) return 0
-  const lvl = Math.floor(slvl)
-  const num = 110 * lvl * (75 - 20)
-  const den = 100 * (lvl + 6)
-  return Math.min(75, Math.trunc(num / den) + 20)
+  return computeDiminishingReturns(20, 75, Math.floor(slvl))
 }
 
 /**

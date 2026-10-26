@@ -1561,46 +1561,76 @@ export function drawLeftDockPanelImpl(
       }
     }
   } else if (kind === 'barkscroll') {
-    // D2Client.dll `0x6fb2cc60` (`BARKSCROLL_Draw`):
+    // D2Client.dll `0x6fb2c380` (`BARKSCROLL_DrawBackground`) & `0x6fb2cc60` (`BARKSCROLL_Draw`):
     // 1. 4-frame stitched `scroin.dc6` background at `(ox, oy)` (`320x432`).
     const scroinBgImg =
       assets.scroinBgImg !== undefined ? assets.scroinBgImg : this.getScroinBgImage()
     if (scroinBgImg) {
       ctx.drawImage(scroinBgImg, ox, oy)
     }
-    // 2. 5 rune numbers (`scroin2.dc6` frames 0..4, 40x25 strip) at `BARKSCROLL_RUNE_POS[0..4]`.
-    const scroinRunesImg =
-      assets.scroinRunesImg !== undefined ? assets.scroinRunesImg : this.getScroinRunesImage()
-    if (scroinRunesImg) {
-      for (let i = 0; i < 5; i++) {
-        const pos = BARKSCROLL_RUNE_POS[i]!
-        ctx.drawImage(scroinRunesImg, i * 40, 0, 40, 25, ox + pos.x, oy + pos.y - 25, 40, 25)
-      }
-    }
-    // 3. If deciphered (`bkd`), advance 25fps animation (`0x6fbd15ac`) and draw glowing Cairn Stone order (`scroin3.dc6`).
+    // 2. D2Client.dll `0x6fb2cd3a` (`test ebp, ebp; je 0x6fb2ceaf`):
+    //    When undeciphered (`bks`), neither `scroin2.dc6` nor `scroin3.dc6` is drawn.
+    //    When deciphered (`bkd`), advance 20fps (50ms) animation (`0x6fbc3b07`) and reveal
+    //    the 5 Cairn Stone rune numbers (`scroin2.dc6` frames 0..4) and starburst glows
+    //    (`scroin3.dc6` frames 1..20 with `eDrawMode = 3` screen blend) in `cairnStoneOrder`.
     if (this.barkscrollDeciphered) {
       const now = assets.nowMs ?? (typeof performance !== 'undefined' ? performance.now() : Date.now())
       if (this.barkscrollLastTickMs === null) {
         this.barkscrollLastTickMs = now
-      } else if (now - this.barkscrollLastTickMs >= 40) {
-        const steps = Math.min(10, Math.floor((now - this.barkscrollLastTickMs) / 40))
-        this.barkscrollLastTickMs += steps * 40
-        this.barkscrollAnimFrame += steps
-        if (this.barkscrollAnimFrame > 118) {
-          this.barkscrollAnimFrame = 0
+        if (this.barkscrollAnimFrame === 0) {
+          this.barkscrollAnimFrame = 1
         }
+      } else if (now - this.barkscrollLastTickMs >= 50) {
+        const steps = Math.min(10, Math.floor((now - this.barkscrollLastTickMs) / 50))
+        this.barkscrollLastTickMs += steps * 50
+        this.barkscrollAnimFrame += steps
       }
+      const scroinRunesImg =
+        assets.scroinRunesImg !== undefined ? assets.scroinRunesImg : this.getScroinRunesImage()
       const scroinGlowImg =
         assets.scroinGlowImg !== undefined ? assets.scroinGlowImg : this.getScroinGlowImage()
       const order = this.cairnStoneOrder ?? [0, 1, 2, 3, 4]
-      if (scroinGlowImg) {
-        for (let stepIdx = 0; stepIdx < 5; stepIdx++) {
-          const threshold = BARKSCROLL_STEP_THRESHOLDS[stepIdx]!
-          if (this.barkscrollAnimFrame > threshold) {
-            const stoneIdx = Math.max(0, Math.min(4, order[stepIdx] ?? stepIdx))
+      for (let stepIdx = 0; stepIdx < 5; stepIdx++) {
+        const threshold = BARKSCROLL_STEP_THRESHOLDS[stepIdx]!
+        if (this.barkscrollAnimFrame > threshold) {
+          const delta = this.barkscrollAnimFrame - threshold
+          const stoneIdx = Math.max(0, Math.min(4, order[stepIdx] ?? stepIdx))
+          if (scroinRunesImg) {
+            const runePos = BARKSCROLL_RUNE_POS[stoneIdx]!
+            const alpha = delta < 5 ? 0.25 : delta < 10 ? 0.5 : delta < 15 ? 0.75 : 1
+            if (alpha < 1) {
+              ctx.save()
+              ctx.globalAlpha = alpha
+              ctx.drawImage(
+                scroinRunesImg,
+                stepIdx * 40,
+                0,
+                40,
+                25,
+                ox + runePos.x,
+                oy + runePos.y - 25,
+                40,
+                25,
+              )
+              ctx.restore()
+            } else {
+              ctx.drawImage(
+                scroinRunesImg,
+                stepIdx * 40,
+                0,
+                40,
+                25,
+                ox + runePos.x,
+                oy + runePos.y - 25,
+                40,
+                25,
+              )
+            }
+          }
+          if (scroinGlowImg && delta <= 20) {
             const glowPos = BARKSCROLL_GLOW_POS[stoneIdx]!
-            let delta = this.barkscrollAnimFrame - threshold
-            if (delta > 20) delta = 20
+            ctx.save()
+            ctx.globalCompositeOperation = 'screen'
             ctx.drawImage(
               scroinGlowImg,
               (delta - 1) * 120,
@@ -1612,11 +1642,12 @@ export function drawLeftDockPanelImpl(
               120,
               160,
             )
+            ctx.restore()
           }
         }
       }
     }
-    // 4. Close button (`buysellbtn.dc6` frame 10 at `ox + 277, oy + 387`, per `0x6fb2cdc4`;
+    // 3. Close button (`buysellbtn.dc6` frame 10 at `ox + 277, oy + 387`, per `0x6fb2c3dc`;
     //    frame 11 depressed while held down, 1.13c mouse driver semantics).
     if (assets.buySellBtnImg) {
       const closeFrame = this.pressedCloseKind === 'barkscroll' ? 11 : 10

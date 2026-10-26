@@ -16,7 +16,21 @@ import { findChromeBinary } from './find-chrome.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = resolve(__dirname, '..')
-const OUT_DIR = resolve(ROOT_DIR, 'scratch/verify-skill-tooltip')
+const OUT_DIR = resolve(process.env['SKILL_TOOLTIP_OUT'] || resolve(ROOT_DIR, 'scratch/verify-skill-tooltip'))
+
+/**
+ * Optional extra cases: `SKILL_TOOLTIP_CASES='[{"cls":"ama","skill":33,"pts":1,"lang":"ENG","expect":["..."]}]'`.
+ * Each `expect` string must appear verbatim as a tooltip line.
+ */
+interface ExtraCase {
+  readonly cls: string
+  readonly skill: number
+  readonly pts: number
+  readonly lang: string
+  readonly extra?: readonly (readonly [number, number])[]
+  readonly expect?: readonly string[]
+}
+const EXTRA_CASES: readonly ExtraCase[] = JSON.parse(process.env['SKILL_TOOLTIP_CASES'] || '[]') as ExtraCase[]
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
@@ -221,8 +235,10 @@ async function main(): Promise<void> {
     cdp = await CdpSession.connect(pageWsUrl)
     const shots: string[] = []
     for (const [w, h] of [[800, 600], [1280, 720]] as const) {
-      await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h * 3, deviceScaleFactor: 1, mobile: false })
-      await cdp.send('Page.navigate', { url: `${pageUrl}?w=${String(w)}&h=${String(h)}` })
+      const caseCount = 3 + EXTRA_CASES.length
+      const casesParam = encodeURIComponent(JSON.stringify(EXTRA_CASES.map(({ expect: _e, ...c }) => c)))
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h * caseCount, deviceScaleFactor: 1, mobile: false })
+      await cdp.send('Page.navigate', { url: `${pageUrl}?w=${String(w)}&h=${String(h)}&cases=${casesParam}` })
       let ready = false
       for (let i = 0; i < 160 && !ready; i++) {
         await sleep(250)
@@ -239,6 +255,12 @@ async function main(): Promise<void> {
       assert(fball.lines[0]?.text === 'You have not learned this skill yet', 'unlearned notice on top')
       assert(fball.lines.some(l => l.text === 'Required Level : 12'), 'skilldesc3 required level')
       for (const r of results) assert(!r.lines.some(l => /Required Skill|需要前置技能/.test(l.text)), 'no invented prerequisite lines')
+      EXTRA_CASES.forEach((c, i) => {
+        const r = results[3 + i]!
+        for (const want of c.expect ?? []) {
+          assert(r.lines.some(l => l.text === want), `skill ${String(c.skill)}: expected line "${want}" in ${JSON.stringify(r.lines.map(l => l.text))}`)
+        }
+      })
       const shot = join(OUT_DIR, `skill-tooltip-${String(w)}x${String(h)}.png`)
       const bytes = await cdp.captureScreenshot(shot)
       console.log(`[verify-skill-tooltip] Captured ${shot} (${bytes} bytes)`)

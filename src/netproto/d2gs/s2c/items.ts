@@ -4,10 +4,11 @@
  */
 
 import { ByteReader } from '../../core/byte-reader.ts'
-import type { ItemDataTables } from '../../domain/ids.ts'
+import { wireUnitTypeId, type ItemDataTables } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
 import { decodeD2gsItemPacket } from '../items/item-bitstream.ts'
 import { resolveItemContainer } from '../items/item-types.ts'
+import { unitLookupMiss } from './packet-length.ts'
 
 /** 0x9C ItemActionWorld & 0x9D ItemActionOwned */
 export function decode0x9C0x9DItemAction(pkt: Uint8Array, tables: ItemDataTables): ServerEvent {
@@ -48,7 +49,9 @@ export function decode0x3FUseStackableItem(pkt: Uint8Array): ServerEvent {
 export function decode0x42ClearCursor(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x42
-  const unitType = (r.u8() & 0x07) as 0 | 1 | 2 | 3 | 4 | 5
+  // D2Client 0x6fb32f50 looks the unit up with the raw type byte (no mask); outside 0..5 it fails (#1656).
+  const unitType = wireUnitTypeId(r.u8())
+  if (unitType === undefined) return unitLookupMiss(pkt)
   const id = r.u32LE()
   return {
     type: 'CursorClear',
@@ -87,7 +90,9 @@ export function decode0x48Relator2(pkt: Uint8Array): ServerEvent {
 export function decode0x7CUseSpecialItem(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x7C
-  const unitType = (r.u8() & 0x07) as 0 | 1 | 2 | 3 | 4 | 5
+  // D2Client 0x6fb5d2b9..0x6fb5d2cc looks the unit up with the raw type byte (no mask); outside 0..5 it fails (#1656).
+  const unitType = wireUnitTypeId(r.u8())
+  if (unitType === undefined) return unitLookupMiss(pkt)
   const id = r.u32LE()
   return {
     type: 'UseSpecialItem',

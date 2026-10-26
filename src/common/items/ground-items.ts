@@ -15,7 +15,6 @@ import type { Item } from './items.ts'
 import {
   COLLIDE_WALL,
   COLLIDE_BLANK,
-  COLLIDE_WATER,
   COLLIDE_NO_PATH,
   COLLIDE_MASK_INVALID,
   COLLIDE_MASK_PLAYER_PATH,
@@ -46,14 +45,17 @@ import { getEmbeddedDropTables } from './embedded-drop-tables.ts'
 /**
  * Composite collision mask for ground item & gold drops.
  * Combines D2Common.dll `COLLISION_GetFreeCoordinatesImpl` (`COLLIDE_MASK_SPAWN = 0x3E01`)
- * with player walkability masks (`COLLIDE_MASK_PLAYER_PATH`, `COLLIDE_BLANK`, `COLLIDE_WATER`,
+ * with player walkability masks (`COLLIDE_MASK_PLAYER_PATH`, `COLLIDE_BLANK`,
  * `COLLIDE_MASK_INVALID`, `COLLIDE_NO_PATH`) so items never land on tiles a player cannot walk onto.
+ *
+ * Unit-occupancy bits `0x0040` (missile) and `0x0080` (player) are deliberately absent: 1.13c has no
+ * separate water bit (water tiles are stamped as plain terrain walls) and none of the D2Common placement
+ * masks (`0x1C09` spawn, `0x3E01` free coordinates) contain `0x00C0` (#1700).
  */
 export const COLLIDE_MASK_DROP_BLOCK =
   COLLIDE_MASK_SPAWN |
   COLLIDE_MASK_PLAYER_PATH |
   COLLIDE_BLANK |
-  COLLIDE_WATER |
   COLLIDE_MASK_INVALID |
   COLLIDE_NO_PATH
 

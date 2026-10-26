@@ -135,11 +135,14 @@ describe('1.13c character animation speed & one-shot lifecycle (#552, #936)', ()
     expect(computeDiminishingRate113c(105)).toBe(56)
     expect(computeDiminishingRate113c(120)).toBe(60)
     expect(computeDiminishingRate113c(200)).toBe(75)
-    expect(computeDiminishingRate113c(-30)).toBe(-30)
+    expect(computeDiminishingRate113c(-30)).toBe(-40)
 
     expect(computeEffectiveFcr(0)).toBe(0)
+    expect(computeEffectiveFcr(-30)).toBe(-40)
+    expect(computeEffectiveFcr(-100)).toBe(-600)
     expect(computeEffectiveFcr(105)).toBe(56)
     expect(computeEffectiveFcr(500)).toBe(75)
+    expect(computeStepSpeed256(208, -85)).toBe(31)
 
     // Phase Blade (WSM -30) + 40% item IAS (diminished = 30) + 20% Fanaticism -> min(75, 30 + 20 - (-30)) = 75
     expect(computeEffectiveIas(40, 20, -30)).toBe(75)

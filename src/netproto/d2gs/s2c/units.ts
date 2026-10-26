@@ -8,17 +8,19 @@
 import { BitReader } from '../../core/bit-reader.ts'
 import { ByteReader } from '../../core/byte-reader.ts'
 import { ByteWriter } from '../../core/byte-writer.ts'
-import { unitTypeToId, type ItemDataTables, type ItemStat } from '../../domain/ids.ts'
+import { wireUnitTypeId, type ItemDataTables, type ItemStat } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
 import { getMonsterAnimCompBitWidths } from './monstats2-comp-bits.ts'
-import { requirePacketLength } from './packet-length.ts'
+import { requirePacketLength, unitLookupMiss } from './packet-length.ts'
 import { readStateStats } from './states.ts'
 
 /** 0x09 AssignWarp (11B, D2Client.dll 0x6fb5df70) */
 export function decode0x09AssignWarp(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x09
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const warpId = r.u8()
   const x = r.u16LE()
@@ -41,7 +43,9 @@ export function decode0x09AssignWarp(pkt: Uint8Array): ServerEvent {
 export function decode0x0ARemoveUnit(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x0A
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   return {
     type: 'UnitRemove',
@@ -54,7 +58,9 @@ export function decode0x0ARemoveUnit(pkt: Uint8Array): ServerEvent {
 export function decode0x0CNpcGetHit(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x0C
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   r.u8() // unk0x06 (19)
   const hitClass = r.u8()
@@ -81,7 +87,9 @@ export function decode0x0CNpcGetHit(pkt: Uint8Array): ServerEvent {
 export function decode0x0ESetObjectState(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x0E
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const eventCode = r.u8()
   const eventFlag = r.u8()
@@ -148,7 +156,9 @@ export function encode0x11UnitOverlay(params: {
 export function decode0x51AssignObject(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x51
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const classId = r.u16LE()
   const x = r.u16LE()

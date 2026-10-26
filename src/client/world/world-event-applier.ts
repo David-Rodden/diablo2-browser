@@ -1103,6 +1103,8 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       } else if (ev.uiId === 6) {
         const curWin = this._npcInteraction.activeWindow ?? this._npcInteraction.window
         const isCompletion =
+          // S2C 0x58 has no unit type: wire actions 6/7 always close (D2Client 0x6fb502d4, #1659).
+          ev.unitType === undefined ||
           ev.unitType === 0 ||
           ev.unitId === 0 ||
           curWin === 'orifice' ||
@@ -1133,6 +1135,8 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         const refusal = refusedBy === undefined ? undefined : ARTISAN_REFUSALS[refusedBy]
         if (refusal !== undefined) addLocalSystemMessageImpl.call(this, refusal, RED_TEXT)
         const isCompletion =
+          // S2C 0x58 has no unit type: wire actions 6/7 always close (D2Client 0x6fb502d4, #1659).
+          ev.unitType === undefined ||
           ev.unitType === 0 ||
           ev.unitId === 0 ||
           curWin === 'orifice' ||
@@ -1448,6 +1452,14 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           // sum both lists, so the motion copies add the sent values.
           this.npcMotion.applyAssignStatList(unit.id, unitPayload.stats)
         }
+        const pendingMercStats = this._pendingMercStats.get(unit.id)
+        if (pendingMercStats) {
+          for (const [statId, val] of pendingMercStats) {
+            if (!unit.stats.has(statId)) {
+              unit.stats.set(statId, val)
+            }
+          }
+        }
         if (this._merc && unit.id === this._merc.mercId) {
           if (this._merc.classId === 0 && unit.classId > 0) {
             this._merc.classId = unit.classId
@@ -1455,6 +1467,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           for (const [statId, val] of this._merc.stats) {
             if (!unit.stats.has(statId)) {
               unit.stats.set(statId, val)
+            }
+          }
+          for (const st of unit.stats.entries()) {
+            this._merc.stats.set(st.statId, st.value)
+            if (st.statId === 13) {
+              this._merc.exp = st.value
             }
           }
           this._merc.lifePct = unit.lifePct
@@ -1599,6 +1617,21 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             messages: undefined,
             allMessages: undefined,
             hadWantsInteract: undefined,
+          }
+        }
+        if (removedUnit) {
+          if (this._merc && this._merc.mercId === uId) {
+            for (const st of removedUnit.stats.entries()) {
+              this._merc.stats.set(st.statId, st.value)
+              if (st.statId === 13) {
+                this._merc.exp = st.value
+              }
+            }
+          } else if (this._pendingMercStats.has(uId)) {
+            const pendingMap = this._pendingMercStats.get(uId)!
+            for (const st of removedUnit.stats.entries()) {
+              pendingMap.set(st.statId, st.value)
+            }
           }
         }
         this._monsters.delete(uId)
@@ -2461,13 +2494,24 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       const startY = ev.at ? Number(ev.at.y) : (ownerUnit?.y ?? this._self.y)
       const targetX = ev.target ? Number(ev.target.x ?? startX) : startX
       const targetY = ev.target ? Number(ev.target.y ?? startY) : startY
-      const level = Math.max(1, Number(ev.level ?? 1))
-      this.spawnMissileByKey(missileKey, startX, startY, targetX, targetY, {
+      // S2C 0x73 @0x1E is passed unchanged into the create struct (D2Client 0x6fb5ef1e); level 0 is valid (#1655).
+      const level = Number(ev.level ?? 1)
+      const pierceIdx = ev.pierceIdx ?? 0
+      const missile = this.spawnMissileByKey(missileKey, startX, startY, targetX, targetY, {
         classId: missileClassId,
         ownerType,
         ownerId,
         skillLevel: level,
+        // D2Client 0x6fb5ef6b..0x6fb5ef7e: stat 0x148 (pierce_idx) is set only when @0x1F != 0.
+        ...(pierceIdx !== 0 ? { pierceRemaining: pierceIdx } : {}),
       })
+      // D2Client 0x6fb5ef83..0x6fb5ef8a: D2Common #10970 stores @0x17 into missile data +0x10 (frame countdown).
+      // The client range (+0x0E) is kept, so elapsed = range - remaining (D2Common 0x6FDBA240).
+      if (ev.remainingFrames !== undefined) {
+        const range = missile.maxTicks
+        if (range === undefined) throw new Error(`CreateMissile ${missileKey}: spawned missile has no range`)
+        missile.ageTicks = range - ev.remainingFrames
+      }
       break
     }
 
@@ -2586,6 +2630,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         targetUnit.stats.set(ev.stat, ev.value, ev.param ?? 0)
         if (this._merc && targetUnit.unitType === 'monster' && targetUnit.id === this._merc.mercId) {
           this._merc.stats.set(ev.stat, ev.value)
+          if (ev.stat === 13) {
+            this._merc.exp = ev.value
+          }
         }
         if (targetUnit.unitType === 'monster' && (ev.stat === 6 || ev.stat === 7)) {
           const rawHp = normalizeMonsterHpStatValue(
@@ -3268,6 +3315,8 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       break
 
     case 'SkillList': {
+      // S2C 0x22 with @0xB != 0 (unit in state 7 `playerbody`): D2Client 0x6fb5c800 returns before any lookup (#1654).
+      if (ev.playerBodySkip === true) break
       if (this.selfId === 0 && ev.unitId !== 0) {
         this.selfId = ev.unitId
         this._self.unitId = ev.unitId
@@ -4280,7 +4329,25 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                     ? ev.value
                     : undefined
               // Issue #994: Detect when S2C 0x81 AssignMerc replaces an existing mercenary
-              // (vs resurrecting the same dead mercenary or re-syncing on area transition).
+              // (vs resurrecting the same dead mercenary or re-syncing on area/Act transition).
+              const hasMatchingIdentity =
+                prevMerc !== null &&
+                (ev.classId === undefined ||
+                  ev.classId === 0 ||
+                  prevMerc.classId === 0 ||
+                  ev.classId === prevMerc.classId) &&
+                ((ev.nameId !== undefined &&
+                  prevMerc.nameId !== undefined &&
+                  ev.nameId === prevMerc.nameId) ||
+                  (evSeed !== undefined &&
+                    prevMerc.seed !== undefined &&
+                    evSeed === prevMerc.seed)) &&
+                (ev.nameId === undefined ||
+                  prevMerc.nameId === undefined ||
+                  ev.nameId === prevMerc.nameId) &&
+                (evSeed === undefined ||
+                  prevMerc.seed === undefined ||
+                  evSeed === prevMerc.seed)
               const isReplacingMerc =
                 !isSummonAction &&
                 ev.mercId !== 0 &&
@@ -4296,6 +4363,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                     prevMerc.seed !== undefined &&
                     evSeed !== prevMerc.seed) ||
                   (!prevMerc.isDead &&
+                    !hasMatchingIdentity &&
                     prevMerc.mercId !== 0 &&
                     ev.mercId !== prevMerc.mercId))
               if (ev.mercId === 0 || isReplacingMerc) {
@@ -4304,6 +4372,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               if (prevMerc && prevMerc.mercId !== 0 && prevMerc.mercId !== ev.mercId) {
                 this._pets.delete(prevMerc.mercId)
                 if (isReplacingMerc) {
+                  this._pendingMercStats.delete(prevMerc.mercId)
                   this._monsters.delete(prevMerc.mercId)
                   this.npcMotion.removeMonster(prevMerc.mercId)
                   this._units.delete(makeUnitKey(1, prevMerc.mercId))
@@ -4344,6 +4413,39 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                   : !isReplacingMerc
                     ? prevMerc?.nameZh
                     : undefined
+              const mergedStats = new Map<number, number>()
+              if (!isReplacingMerc && prevMerc?.stats) {
+                for (const [statId, val] of prevMerc.stats) {
+                  mergedStats.set(statId, val)
+                }
+              }
+              if (ev.mercId !== 0) {
+                const pendingStats = this._pendingMercStats.get(ev.mercId)
+                if (pendingStats) {
+                  for (const [statId, val] of pendingStats) {
+                    mergedStats.set(statId, val)
+                  }
+                  this._pendingMercStats.delete(ev.mercId)
+                }
+                if (mercUnit && (!isReplacingMerc || prevMerc?.mercId !== ev.mercId)) {
+                  for (const st of mercUnit.stats.entries()) {
+                    mergedStats.set(st.statId, st.value)
+                  }
+                }
+                if (mercUnit) {
+                  for (const [statId, val] of mergedStats) {
+                    mercUnit.stats.set(statId, val)
+                  }
+                }
+              }
+              const resolvedExp =
+                mergedStats.get(13) ?? (isReplacingMerc ? undefined : prevMerc?.exp)
+              if (resolvedExp !== undefined && !mergedStats.has(13)) {
+                mergedStats.set(13, resolvedExp)
+                if (mercUnit) {
+                  mercUnit.stats.set(13, resolvedExp)
+                }
+              }
               this._merc =
                 ev.mercId === 0
                   ? null
@@ -4355,14 +4457,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
                       ...(resolvedSeed !== undefined ? { seed: resolvedSeed } : {}),
                       ...(resolvedName !== undefined ? { name: resolvedName } : {}),
                       ...(resolvedNameZh !== undefined ? { nameZh: resolvedNameZh } : {}),
-                      exp: isReplacingMerc ? undefined : prevMerc?.exp,
+                      exp: resolvedExp,
                       lifePct: mercUnit?.lifePct && mercUnit.lifePct > 0 ? mercUnit.lifePct : 128,
                       lifePctScale: 128,
                       isDead: false,
                       reviveCost: 0,
-                      stats: isReplacingMerc
-                        ? new Map<number, number>()
-                        : (prevMerc?.stats ?? new Map<number, number>()),
+                      stats: mergedStats,
                       hireList: this._mercHireList,
                     }
               if (ev.mercId !== 0) {
@@ -4399,17 +4499,35 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         // without allocating a unit at (0, 0) when absent.
         const statId = ev.stat ?? ev.statId ?? 13
         const mUnit = ev.mercId !== undefined ? this.getUnit('monster', ev.mercId) : undefined
+        const isCurrentMerc = Boolean(
+          this._merc && ev.mercId !== undefined && this._merc.mercId === ev.mercId,
+        )
+        const pendingMap =
+          ev.mercId !== undefined ? this._pendingMercStats.get(ev.mercId) : undefined
+        const baseVal =
+          mUnit && mUnit.stats.has(statId)
+            ? mUnit.stats.get(statId)
+            : isCurrentMerc && this._merc!.stats.has(statId)
+              ? this._merc!.stats.get(statId)!
+              : isCurrentMerc && statId === 13 && this._merc!.exp !== undefined
+                ? this._merc!.exp
+                : (pendingMap?.get(statId) ?? 0)
+        const v = (baseVal + ev.value) >>> 0
         if (mUnit) {
-          const v = mUnit.stats.get(statId) + ev.value
           mUnit.stats.set(statId, v)
-          if (this._merc && this._merc.mercId === ev.mercId) {
-            this._merc.stats.set(statId, v)
+        }
+        if (isCurrentMerc && this._merc) {
+          this._merc.stats.set(statId, v)
+          if (statId === 13) {
             this._merc.exp = v
           }
-        } else if (this._merc && this._merc.mercId === ev.mercId) {
-          const v = (this._merc.stats.get(statId) ?? 0) + ev.value
-          this._merc.stats.set(statId, v)
-          this._merc.exp = v
+        } else if (ev.mercId !== undefined && ev.mercId !== 0) {
+          let map = this._pendingMercStats.get(ev.mercId)
+          if (!map) {
+            map = new Map<number, number>()
+            this._pendingMercStats.set(ev.mercId, map)
+          }
+          map.set(statId, v)
         }
       } else if (ev.kind === 'stat' || ev.kind === 'attr' || ev.kind === 'reviveCost') {
         const statId = ev.stat ?? ev.statId
@@ -4425,6 +4543,16 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           }
           if (this._merc && this._merc.mercId === ev.mercId) {
             this._merc.stats.set(statId, ev.value)
+            if (statId === 13) {
+              this._merc.exp = ev.value
+            }
+          } else if (ev.mercId !== 0) {
+            let map = this._pendingMercStats.get(ev.mercId)
+            if (!map) {
+              map = new Map<number, number>()
+              this._pendingMercStats.set(ev.mercId, map)
+            }
+            map.set(statId, ev.value)
           }
         } else if (ev.mercId === undefined && revNameId !== undefined && revCost !== undefined) {
           // 0x9B MercReviveCost
@@ -4848,7 +4976,8 @@ export function applyUnitModeImmediateImpl(
         unit.unitType === 'player' &&
         (resolvedMode === 4 || (resolvedMode >= 7 && resolvedMode <= 16) || resolvedMode === 18 || resolvedMode === 19)
       ) {
-        const speedInfo = this.resolvePlayerAnimSpeed(resolvedMode === 19 ? 4 : resolvedMode, unit.id)
+        // Mode 19 (knockback) resolves the GH clip with the GetBaseAnimSpeed step (0x6FD832C9).
+        const speedInfo = this.resolvePlayerAnimSpeed(resolvedMode, unit.id)
         unit.modeDurationMs = speedInfo.durationMs
         unit.modeUntilMs = now + speedInfo.durationMs
         unit.animStepSpeed256 = speedInfo.stepSpeed256

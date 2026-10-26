@@ -17,6 +17,16 @@
 import type { D2DataRegistry, SkillRecord } from '../../common/data/data-registry.ts'
 import { evaluateCalc } from '../../common/data/calc-ast.ts'
 import { RAW_ITEM_STAT_COST } from '../../common/data/canonical-vendor-data.ts'
+import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
+
+const ELEM_TYPE_BY_PARAM_113C: Readonly<Record<number, string>> = {
+  0: 'fire',
+  1: 'fire',
+  2: 'ltng',
+  3: 'mag',
+  4: 'cold',
+  5: 'pois',
+} as const
 
 export type UnitStatListOwnerType = 'player' | 'monster' | 'item'
 
@@ -148,7 +158,7 @@ export const OP_RULES_BY_TARGET: ReadonlyMap<string, readonly ItemStatCostOpRule
  * Canonical 1.13c `CharStats.txt` per-vitality / per-energy scaling factors (in quarter-points;
  * `D2Common.dll` `0x6FD89947` / `0x6FD899C3` shifts `(diff * factor) << 6` to produce 256-fixed-point).
  */
-const CHAR_STATS_SCALING_113C: Readonly<
+export const CHAR_STATS_SCALING_113C: Readonly<
   Record<
     string,
     {
@@ -163,7 +173,7 @@ const CHAR_STATS_SCALING_113C: Readonly<
   sor: { lifePerVitality: 8, staminaPerVitality: 4, manaPerMagic: 8, toHitFactor: -15 },
   nec: { lifePerVitality: 8, staminaPerVitality: 4, manaPerMagic: 8, toHitFactor: -10 },
   pal: { lifePerVitality: 12, staminaPerVitality: 4, manaPerMagic: 6, toHitFactor: 20 },
-  bar: { lifePerVitality: 16, staminaPerVitality: 5, manaPerMagic: 4, toHitFactor: 20 },
+  bar: { lifePerVitality: 16, staminaPerVitality: 4, manaPerMagic: 4, toHitFactor: 20 },
   dru: { lifePerVitality: 8, staminaPerVitality: 4, manaPerMagic: 8, toHitFactor: 5 },
   ass: { lifePerVitality: 12, staminaPerVitality: 5, manaPerMagic: 7, toHitFactor: 15 },
 }
@@ -492,6 +502,7 @@ export class UnitStatList {
   private readonly baseSkillLevels = new Map<number, number>()
   private readonly bonusSkillLevels = new Map<number, number>()
   private readonly chargedSkillLevels = new Map<number, number>()
+  private readonly elemSkillBonuses = new Map<string, number>()
   private allSkillsBonus = 0
   private classSkillsBonus = 0
   private readonly modifiers: SkillStatModifier[] = []
@@ -623,7 +634,7 @@ export class UnitStatList {
    * Never includes `bonusSkillLevels`, `allSkillsBonus`, or `chargedSkillLevels` (`Marrowwalk` fix).
    */
   getBaseSkillLevel(skillId: number): number {
-    return this.baseSkillLevels.get(skillId) ?? 0
+    return Math.min(99, Math.max(0, this.baseSkillLevels.get(skillId) ?? 0))
   }
 
   setBonusSkillLevel(skillId: number, bonus: number): void {
@@ -642,6 +653,29 @@ export class UnitStatList {
   }
 
   /**
+   * 1.13c `D2Common.dll` `0x6FD9FCB0` (`0x6FD9FD85..0x6FD9FDA0`):
+   * Set `+N to <Element> Skills` (`stat 126 item_elemskill`, `param`: 1=fire, 2=ltng, 3=mag, 4=cold, 5=pois).
+   */
+  setElemSkillsBonus(eTypeOrParam: string | number, bonus: number): void {
+    const key =
+      typeof eTypeOrParam === 'number'
+        ? (ELEM_TYPE_BY_PARAM_113C[eTypeOrParam] ?? '')
+        : eTypeOrParam.trim().toLowerCase()
+    if (!key) return
+    this.elemSkillBonuses.set(key, Math.trunc(bonus))
+    this.syncPassiveSkillModifiers()
+  }
+
+  getElemSkillsBonus(eTypeOrParam: string | number): number {
+    const key =
+      typeof eTypeOrParam === 'number'
+        ? (ELEM_TYPE_BY_PARAM_113C[eTypeOrParam] ?? '')
+        : eTypeOrParam.trim().toLowerCase()
+    if (!key) return 0
+    return this.elemSkillBonuses.get(key) ?? 0
+  }
+
+  /**
    * Set item skill charges (`STAT_ITEM_CHARGED_SKILL`, e.g. Level 33 Bone Prison on Marrowwalk boots).
    * Stored in `chargedSkillLevels` and strictly excluded from `getBaseSkillLevel(skillId)` in 1.13c!
    */
@@ -654,7 +688,8 @@ export class UnitStatList {
   }
 
   /**
-   * Effective skill level (`lvl = blvl + bonusSkill + allSkills + classSkills + modAllSkills`).
+   * Effective skill level (`lvl = clamp(blvl + bonusSkill + allSkills + classSkills + elemSkills + modAllSkills, 0, 99)`).
+   * Matches `D2Common.dll` `SKILLS_GetSkillLevel` (`0x6FDA05D0`) & `0x6FD9FCB0` (#1679, #1688).
    */
   getEffectiveSkillLevel(skillId: number): number {
     const base = this.getBaseSkillLevel(skillId)
@@ -664,8 +699,25 @@ export class UnitStatList {
       attachedAllSkills += child.getAccruedStat('item_allskills')
     }
     const modAllSkills = this.getModifierBonus('item_allskills') + attachedAllSkills
-    const total = base + singleBonus + this.allSkillsBonus + this.classSkillsBonus + modAllSkills
-    return Math.max(0, total)
+    const skillRec =
+      (this.registry ?? FALLBACK_REGISTRY).getSkillById?.(skillId) ?? SKILLS_BY_ID[skillId]
+    const eType = (skillRec?.eType ?? '').trim().toLowerCase()
+    let elemBonus = 0
+    if (eType !== '') {
+      elemBonus += this.getElemSkillsBonus(eType)
+      for (const child of this.attachedStatLists) {
+        elemBonus += child.getElemSkillsBonus(eType)
+        if (eType === 'fire') {
+          elemBonus += child.getAccruedStat('item_elemskill')
+        }
+      }
+      if (eType === 'fire') {
+        elemBonus += (this.baseStats.get('item_elemskill') ?? 0) + this.getModifierBonus('item_elemskill')
+      }
+    }
+    const total =
+      base + singleBonus + this.allSkillsBonus + this.classSkillsBonus + modAllSkills + elemBonus
+    return Math.min(99, Math.max(0, total))
   }
 
   /**
@@ -741,20 +793,9 @@ export class UnitStatList {
         const normSt = this.normalizeStatKey(st)
         // Issue #1445: Natural Resistance (#153) grants fireresist / lightresist / coldresist only (no poisonresist).
         if (def.id === 153 && normSt === 'poisonresist') continue
-        // Issue #1445: Weapon Block (#263) dm12(20, 65) uses D2Common_11047 (0x6FD9DC30) two-step integer division:
-        // factor = trunc((110 * slvl) / (slvl + 6)); val = min(65, 20 + trunc((45 * factor) / 100)) -> slvl 1 = 26, slvl 20 = 57.
-        const val =
-          def.id === 263 && clc.trim() === 'dm12'
-            ? Math.min(
-                skillRec.param2,
-                skillRec.param1 +
-                  Math.trunc(
-                    ((skillRec.param2 - skillRec.param1) *
-                      Math.trunc((110 * effLvl) / (effLvl + 6))) /
-                      100,
-                  ),
-              )
-            : evaluateCalc(clc, calcCtx)
+        // Issues #1445/#1678: every dmXY (e.g. Weapon Block #263 dm12 20..65: slvl 1 = 26, slvl 20 = 57) goes through
+        // the shared D2Common 0x6FD9DC30 port inside evaluateCalc (two-step integer division, capped at Param[Y]).
+        const val = evaluateCalc(clc, calcCtx)
         if (val !== 0) {
           stats[normSt] = val
         }
@@ -1055,18 +1096,34 @@ export class UnitStatList {
     }
 
     if (key === 'armorclass') {
-      // 1.13c `UNITS_GetDefense` (`0x6FD82890`): `skill_armor_percent` (ID 171, op = '')
-      // scales unit total defense after item `op = 13` (`item_armor_percent`, ID 16) has scaled item base armor.
+      // 1.13c `UNITS_GetDefense` (`0x6FD82890` / `0x6FD82A14..0x6FD82AE9`):
+      // 1) `armor_override_percent` (ID 182): if <= -100 (e.g. Berserk), defense is 0; if > -100 and != 0, `acc += trunc(acc * overridePct / 100)`.
+      // 2) Unit-level `item_armor_percent` (ID 16) + `skill_armor_percent` (ID 171) + Holy Shield (`state 101` / `350`/`351`) scale defense in one additive pool.
       const overridePct = this.getAccruedStat('armor_override_percent')
       if (overridePct <= -100) {
         return 0
       }
+      if (overridePct !== 0) {
+        acc += Math.trunc((acc * overridePct) / 100)
+      }
+      const unitItemArmorPct = this.getBaseStat('item_armor_percent') + this.getModifierBonus('item_armor_percent')
       const skillArmorPct = this.getAccruedStat('skill_armor_percent')
-      if (skillArmorPct !== 0) {
-        acc = Math.trunc((acc * (100 + skillArmorPct)) / 100)
+      const hsMod = this.modifiers.find(m => m.stateId === 101 || m.stateName === 'holyshield')
+      const hsPct =
+        this.getBaseStat('item_skillonhit') +
+        this.getBaseStat('item_skillongethit') +
+        (hsMod ? (hsMod.stats['item_skillonhit'] ?? hsMod.stats['item_skillongethit'] ?? 0) : 0)
+      const totalArmorPct = unitItemArmorPct + skillArmorPct + hsPct
+      if (totalArmorPct !== 0) {
+        acc += Math.trunc((acc * totalArmorPct) / 100)
+      }
+      if (acc < 0) {
+        acc = 0
       }
     } else if (key === 'tohit') {
-      // 1.13c `UNITS_GetAttackRate` (`0x6FD82B10`): `item_tohit_percent` (ID 119) scales unit AR.
+      // Standalone callers reading `getAccruedStat('tohit')` include `item_tohit_percent` (119);
+      // `executeSUnitDmg` (`0x6FCFDE90`) calls `getRawToHit113c()` and folds `item_tohit_percent` into
+      // the single additive `%AR` pool (#1625).
       const tohitPct = this.getAccruedStat('item_tohit_percent')
       if (tohitPct !== 0) {
         acc = Math.trunc((acc * (100 + tohitPct)) / 100)
@@ -1106,15 +1163,40 @@ export class UnitStatList {
   }
 
   /**
-   * 1.13c `D2Common.dll` `0x6FD82890` (`D2Common_10556` / `UNITS_GetDefense`):
-   * - If `armor_override_percent <= -100` (e.g. Berserk), returns `0`.
+   * 1.13c `D2Common.dll #10621` (`0x6FD81EA0`):
+   * Returns accrued flat `tohit` (`STAT_TOHIT`, ID 19, including `op = 6` `item_tohit_perlevel` 224)
+   * WITHOUT multiplying by `item_tohit_percent` (`119`), so `executeSUnitDmg` (`0x6FCFDE90`) can combine
+   * `item_tohit_percent` into a single additive `%AR` pool with skill/mastery/charge-up `%AR` (#1625).
+   */
+  getRawToHit113c(): number {
+    if (this.ownerType === 'item') {
+      return this.evalItemLocalStat('tohit')
+    }
+    const base = this.getBaseStat('tohit')
+    const modBonus = this.getModifierBonus('tohit')
+    const attachedBonus = this.getAttachedStatBonus('tohit')
+    let acc = base + attachedBonus + modBonus
+    let prev = acc
+    const rules = OP_RULES_BY_TARGET.get('tohit')
+    if (rules) {
+      for (const rule of rules) {
+        acc = this.applyOpRule(rule, acc, prev, () => {
+          prev = base
+          return prev
+        })
+      }
+    }
+    return Math.trunc(acc)
+  }
+
+  /**
+   * 1.13c `D2Common.dll` `0x6FD82890` (`D2Common_10672` / `UNITS_GetDefense`):
+   * - Never zeroes defense for `PLRMODE_RUN` (`0x6FD82890` does not inspect unit mode; running bypasses `RollToHit` at `0x6FCFE006`, #1634).
+   * - If `armor_override_percent <= -100` (e.g. Berserk), returns `0`; if `> -100 && != 0`, applies `d += trunc(d * overridePct / 100)`.
    * - Starts from accrued `armorclass` (`STAT_ARMORCLASS`, ID 31) + `Math.floor(dexterity / 4)` (for players/monsters with dexterity).
-   * - Scales by `100 + skill_armor_percent` (clamped at `>= 0`).
+   * - Scales by `100 + item_armor_percent + skill_armor_percent + holyShieldPct` (clamped at `>= 0`).
    */
   getDefense(options?: { isRunningPlayer?: boolean; includeDexterityBonus?: boolean }): number {
-    if (options?.isRunningPlayer) {
-      return 0
-    }
     const overridePct = this.getAccruedStat('armor_override_percent')
     if (overridePct <= -100) {
       return 0
@@ -1138,9 +1220,19 @@ export class UnitStatList {
       options?.includeDexterityBonus
         ? this.getAccruedStat('dexterity') >> 2
         : 0
-    const rawDef = armorWithItemOps + dexBonus
+    let rawDef = armorWithItemOps + dexBonus
+    if (overridePct !== 0) {
+      rawDef += Math.trunc((rawDef * overridePct) / 100)
+    }
+    const unitItemArmorPct = this.getBaseStat('item_armor_percent') + this.getModifierBonus('item_armor_percent')
     const skillPct = this.getAccruedStat('skill_armor_percent')
-    const scaled = skillPct !== 0 ? Math.trunc((rawDef * (100 + skillPct)) / 100) : rawDef
+    const hsMod = this.modifiers.find(m => m.stateId === 101 || m.stateName === 'holyshield')
+    const hsPct =
+      this.getBaseStat('item_skillonhit') +
+      this.getBaseStat('item_skillongethit') +
+      (hsMod ? (hsMod.stats['item_skillonhit'] ?? hsMod.stats['item_skillongethit'] ?? 0) : 0)
+    const totalArmorPct = unitItemArmorPct + skillPct + hsPct
+    const scaled = totalArmorPct !== 0 ? rawDef + Math.trunc((rawDef * totalArmorPct) / 100) : rawDef
     return Math.max(0, Math.trunc(scaled))
   }
 

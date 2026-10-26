@@ -4,6 +4,7 @@ import {
   computeSetBonusStats,
 } from './set-bonuses.ts'
 import { resolveOnlineItemReqLevel } from '../../common/items/item-bridge.ts'
+import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 import {
   calculateBlessedAimStats,
   calculateConcentrationStats,
@@ -719,13 +720,9 @@ function calcLinear(params: readonly number[], x: number, y: number, lvl: number
   return paramAt(params, x) + (lvl - 1) * paramAt(params, y)
 }
 
-/** `dmXY`: D2Common_11033 — Param[X] + (Param[Y] − Param[X]) · 110 · lvl / (lvl + 6) / 100, capped at Param[Y]. */
+/** `dmXY`: SkillCalc dm12/34/56 → D2Common `0x6FD9DC30` (shared port, issue #1678), 0 when lvl ≤ 0. */
 function calcDiminishing(params: readonly number[], x: number, y: number, lvl: number): number {
-  if (lvl <= 0) return 0
-  const min = paramAt(params, x)
-  const max = paramAt(params, y)
-  const value = min + Math.trunc(Math.trunc(((max - min) * 110 * lvl) / (lvl + 6)) / 100)
-  return value > max ? max : value
+  return computeDiminishingReturns(paramAt(params, x), paramAt(params, y), lvl)
 }
 
 function paramAt(params: readonly number[], oneBased: number): number {
@@ -1404,7 +1401,7 @@ export function aggregateUnit(input: StatEngineUnitInput): UnitAggregate {
     addAuraStateSource(139, 223, (flat, eff) => {
       const lycanLvl = effectiveSkillLevel(224).effective
       const lycanHpBonus = lycanLvl > 0 ? 20 + 5 * (lycanLvl - 1) : 0
-      const iasBonus = Math.floor((110 * eff * 70) / (100 * (eff + 6))) + 10
+      const iasBonus = computeDiminishingReturns(10, 80, eff)
       flat.add(76, 0, 25 + lycanHpBonus)
       flat.add(163, 0, 25)
       flat.add(68, 0, iasBonus)
@@ -1420,7 +1417,7 @@ export function aggregateUnit(input: StatEngineUnitInput): UnitAggregate {
     })
     // Druid #232 Feral Rage (state 120): +FRW (67) and +Life Steal (60)
     addAuraStateSource(120, 232, (flat, eff) => {
-      const frw = Math.floor((110 * eff * 60) / (100 * (eff + 6))) + 10
+      const frw = computeDiminishingReturns(10, 70, eff)
       flat.add(67, 0, frw)
       flat.add(60, 0, 4 * eff)
     })

@@ -1533,6 +1533,52 @@ export class OnlineSession {
   /** Recent in-game chat input lines for `ArrowUp` / `ArrowDown` recall (max 32). */
   readonly chatInputHistory: string[] = []
   chatInputHistoryIndex = 0
+  private lastResyncNetworkAtMs = -Infinity
+
+  /**
+   * Refresh frontend input/HUD display state, snap local movement predictor & camera to the
+   * latest known server position, and (when in-game, throttled to 1000ms) request authoritative
+   * server position resync via C2S `0x4B RequestEntityUpdate` (D2Game `Rcv0x4B_RequestEntityUpdate`
+   * `0x6FCEC6E0` -> S2C `0x15 ReassignPlayer`).
+   */
+  refreshDisplayAndResync(nowMs: number = performance.now()): {
+    readonly sentNetworkResync: boolean
+  } {
+    this.commandMapper.resetInputState()
+    if (this.world.self.x > 0 && this.world.self.y > 0) {
+      this.predictor.setPosition(this.world.self.x, this.world.self.y)
+      this.camera.snapTo(this.world.self.x, this.world.self.y)
+      this.syncActiveAreaFromPlayerPosition({ emitHudSync: true })
+    }
+    this.hudModel.syncFromWorld()
+    this.hudManager.refreshDisplayState(nowMs)
+
+    let sentNetworkResync = false
+    if (
+      this.phaseValue === 'ingame' &&
+      this.gameAdapter !== null &&
+      nowMs - this.lastResyncNetworkAtMs >= 1000
+    ) {
+      this.lastResyncNetworkAtMs = nowMs
+      const selfUnitId = this.world.self.unitId || this.world.selfId || 0
+      if (selfUnitId > 0) {
+        this.dispatchCommand(
+          { type: 'RequestEntityUpdate', unitType: 0, unitId: selfUnitId },
+          nowMs,
+        )
+        sentNetworkResync = true
+      }
+      const mercUnitId = this.world.merc?.mercId || this.world.self.mercId || 0
+      if (mercUnitId > 0 && !this.world.merc?.isDead) {
+        this.dispatchCommand(
+          { type: 'RequestEntityUpdate', unitType: 1, unitId: mercUnitId },
+          nowMs,
+        )
+      }
+    }
+
+    return { sentNetworkResync }
+  }
   /**
    * In-memory `/players N` (`1..8`) setting persisted across games within the current session
    * (`null` when the player has not set `/players N` in this session; resets to default on page reload).

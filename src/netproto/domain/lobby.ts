@@ -208,6 +208,13 @@ export interface LocalAreaBootstrap {
   /** Seamless outdoor neighbours (`dwVis` / gate entrances) loaded on demand at borders (#1335). */
   readonly adjacentAreaIds?: readonly number[] | undefined
   readonly isWalkable: (areaId: number, x: number, y: number, isFlying?: boolean) => boolean
+  /**
+   * 1.13c `DUNGEON_FindActSpawnLocationEx` (D2Common `#10816`) for this area: world sub-tiles of the
+   * special tile `nTileIndex` (0 = entry markers, 11 = town-portal mouth) after the `0x1C09`
+   * free-coordinate search for `nUnitSize`. Each call advances the area's level seed like 1.13c.
+   * Absent when the level geometry carried no spawn capture.
+   */
+  readonly findActSpawnLocation?: ((nTileIndex: number, nUnitSize: number) => { x: number; y: number }) | undefined
 }
 
 export type LocalAreaBootstrapResolver = (params: {
@@ -236,6 +243,25 @@ export interface LocalAreaLevelWarp {
 }
 
 /**
+ * `DUNGEON_FindActSpawnLocationEx` inputs captured from the DRLG level (level-local tiles); mirrors
+ * `ActSpawnLevelData` + seed in `src/common/world/act-spawn-location.ts`.
+ */
+export interface LocalAreaActSpawn {
+  readonly level: {
+    readonly position: number
+    readonly tileInfo: readonly { readonly x: number; readonly y: number; readonly index: number }[]
+    readonly rooms: readonly { readonly x: number; readonly y: number; readonly w: number; readonly h: number }[]
+    readonly waypointRoom: number
+    readonly waypointTile: { readonly x: number; readonly y: number } | null
+    readonly warpRoom: number
+    readonly centreX: number
+    readonly centreY: number
+  }
+  /** `pLevel->pSeed` (`+0x1C4/+0x1C8`) when the level was captured. */
+  readonly seed: readonly [number, number]
+}
+
+/**
  * Raw DRLG build result of one level, produced by the process's DRLG host (the browser `MapService`)
  * and turned into game units by the server-side area bootstrap resolver.
  */
@@ -259,6 +285,8 @@ export interface LocalAreaLevelGeometry {
   readonly adjacentAreaIds?: readonly number[] | undefined
   readonly presetUnits: readonly LocalAreaLevelPresetUnit[]
   readonly warps: readonly LocalAreaLevelWarp[]
+  /** `DUNGEON_FindActSpawnLocationEx` inputs (special tiles, rooms, level seed). */
+  readonly actSpawn?: LocalAreaActSpawn | undefined
 }
 
 export interface LocalAreaLevelRequest {

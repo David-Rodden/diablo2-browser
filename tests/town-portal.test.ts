@@ -7,9 +7,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   TownPortalSlot,
-  resolveTownPortalSubTile,
-  TOWN_PORTAL_SUBTILES_BY_VARIANT,
-  DEFAULT_TOWN_PORTAL_SUBTILES_BY_LEVEL,
 } from '../src/common/world/portal.ts'
 import { InventoryPanel, INV_GRID_ORIGIN, getTomeQuantity, withTomeQuantity } from '../src/client/ui/inventory.ts'
 import { createStarterBagForClass } from '../src/common/units/class-starter-profiles.ts'
@@ -28,66 +25,6 @@ import { createDemoInventory } from './fixtures/hud-demo-state.ts'
 import { DEMO_BAG_ITEMS } from './fixtures/demo-profile-data.ts'
 
 describe('Issue #394: Diablo II v1.13c Town Portal & Tome/Scroll of Town Portal', () => {
-  it('resolves exact 1.13c DS1 Type-2 Object #33 (Objects.txt ID 59) sub-tiles for all 9 town presets across Acts 1..5', () => {
-    // Act 1 Rogue Encampment variants (TownN1, TownE1, TownS1, TownW1)
-    expect(resolveTownPortalSubTile(1, '1-act-1-town-townn1')).toEqual({ x: 153, y: 73 })
-    expect(resolveTownPortalSubTile(1, '1-act-1-town-towne1')).toEqual({ x: 173, y: 103 })
-    expect(resolveTownPortalSubTile(1, '1-act-1-town-towns1')).toEqual({ x: 153, y: 158 })
-    expect(resolveTownPortalSubTile(1, '1-act-1-town-townw1')).toEqual({ x: 83, y: 128 })
-    // Default Act 1 town (TownS1 south exit to Blood Moor)
-    expect(resolveTownPortalSubTile(1)).toEqual({ x: 153, y: 158 })
-
-    // Act 2 Lut Gholein (LutN, LutW)
-    expect(resolveTownPortalSubTile(40, '40-act-2-town-lutn')).toEqual({ x: 178, y: 53 })
-    expect(resolveTownPortalSubTile(40, '40-act-2-town-lutw')).toEqual({ x: 178, y: 53 })
-    expect(resolveTownPortalSubTile(40)).toEqual({ x: 178, y: 53 })
-
-    // Act 3 Kurast Docks (DockTown3)
-    expect(resolveTownPortalSubTile(75, '75-act-3-town-docktown3')).toEqual({ x: 158, y: 68 })
-    expect(resolveTownPortalSubTile(75)).toEqual({ x: 158, y: 68 })
-
-    // Act 4 The Pandemonium Fortress (Fortress)
-    expect(resolveTownPortalSubTile(103, '103-act-4-town-fortress')).toEqual({ x: 48, y: 43 })
-    expect(resolveTownPortalSubTile(103)).toEqual({ x: 48, y: 43 })
-
-    // Act 5 Harrogath (townWest)
-    expect(resolveTownPortalSubTile(109, '109-act-5-town-townwest')).toEqual({ x: 98, y: 23 })
-    expect(resolveTownPortalSubTile(109)).toEqual({ x: 98, y: 23 })
-
-    // Fail-fast on non-town level ID
-    expect(() => resolveTownPortalSubTile(2)).toThrow(/invalid town levelId/)
-    expect(Object.keys(TOWN_PORTAL_SUBTILES_BY_VARIANT)).toHaveLength(9)
-    expect(Object.keys(DEFAULT_TOWN_PORTAL_SUBTILES_BY_LEVEL)).toHaveLength(5)
-  })
-
-  it('verifies all 9 town portal sub-tiles land inside valid bounds of baked town preset scenes', () => {
-    const variantPaths: Array<{ act: number; variant: string; expected: { x: number; y: number } }> = [
-      { act: 1, variant: '1-act-1-town-townn1', expected: { x: 153, y: 73 } },
-      { act: 1, variant: '1-act-1-town-towne1', expected: { x: 173, y: 103 } },
-      { act: 1, variant: '1-act-1-town-towns1', expected: { x: 153, y: 158 } },
-      { act: 1, variant: '1-act-1-town-townw1', expected: { x: 83, y: 128 } },
-      { act: 2, variant: '40-act-2-town-lutn', expected: { x: 178, y: 53 } },
-      { act: 2, variant: '40-act-2-town-lutw', expected: { x: 178, y: 53 } },
-      { act: 3, variant: '75-act-3-town-docktown3', expected: { x: 158, y: 68 } },
-      { act: 4, variant: '103-act-4-town-fortress', expected: { x: 48, y: 43 } },
-      { act: 5, variant: '109-act-5-town-townwest', expected: { x: 98, y: 23 } },
-    ]
-
-    for (const { act, variant, expected } of variantPaths) {
-      const scenePath = join(process.cwd(), 'public', 'packs', `act${act}`, variant, 'scene.json')
-      if (!existsSync(scenePath)) continue
-      const scene = JSON.parse(readFileSync(scenePath, 'utf8')) as {
-        cellsX: number
-        cellsY: number
-      }
-      const gridW = scene.cellsX * 5
-      const gridH = scene.cellsY * 5
-      expect(expected.x).toBeGreaterThanOrEqual(0)
-      expect(expected.x).toBeLessThan(gridW)
-      expect(expected.y).toBeGreaterThanOrEqual(0)
-      expect(expected.y).toBeLessThan(gridH)
-    }
-  })
 
   it('manages TownPortalSlot two-way lifecycle (wilderness -> town keeps portal open; town -> wilderness closes portal per ObjMode.cpp:3245)', () => {
     const slot = new TownPortalSlot()

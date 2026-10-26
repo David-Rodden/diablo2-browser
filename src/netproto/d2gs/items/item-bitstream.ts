@@ -269,6 +269,8 @@ function decodeItemFromReader(
     const stats: ItemStat[] = []
 
     if (isEar) {
+      // Ear path 0x6fd7c1f5..0x6fd7c246 ends with `jmp 0x6fd7c2d7`: the quest-difficulty and realm-data
+      // tail below is shared with every other compact item (#1644).
       code = 'ear '
       earClass = reader.readBits(3)
       earLevel = reader.readBits(7)
@@ -280,25 +282,26 @@ function decodeItemFromReader(
         goldAmount = reader.readBits(isBigPile ? 32 : 12)
         stats.push({ statId: 14, param: 0, value: goldAmount })
       }
-      // D2Common.dll @ 0x6fd7c2d7: if version > 0x5c and item has quest && questDiffCheck
-      if (version > 0x5c) {
-        const baseItem = lookupBaseItem(code, tables)
-        if (baseItem?.quest && baseItem?.questDiffCheck) {
-          const stat356 = getStatField(tables, 356)
-          if (stat356.saveBits > 0 && reader.remainingBits >= stat356.saveBits) {
-            const rawDiff = reader.readBits(stat356.saveBits)
-            const val = (rawDiff - stat356.saveAdd) << stat356.valShift
-            stats.push({ statId: 356, param: 0, value: val })
-          }
+    }
+    // D2Common.dll @ 0x6fd7c2d7: if version > 0x5c and item has quest && questDiffCheck
+    if (version > 0x5c) {
+      const baseItem = lookupBaseItem(code, tables)
+      if (baseItem?.quest && baseItem?.questDiffCheck) {
+        const stat356 = getStatField(tables, 356)
+        if (stat356.saveBits > 0 && reader.remainingBits >= stat356.saveBits) {
+          const rawDiff = reader.readBits(stat356.saveBits)
+          const val = (rawDiff - stat356.saveAdd) << stat356.valShift
+          stats.push({ statId: 356, param: 0, value: val })
         }
       }
-      if (saveFormat && version > 0x56 && reader.remainingBits >= 1) {
-        const hasRealmData = reader.readBit()
-        if (hasRealmData) {
-          reader.readBits(32)
-          reader.readBits(32)
-          if (version > 0x5d) reader.readBits(32)
-        }
+    }
+    // D2Common.dll @ 0x6fd7c3e3..0x6fd7c42c: realm-data bit when (bSave && version > 0x56), ears included.
+    if (saveFormat && version > 0x56 && reader.remainingBits >= 1) {
+      const hasRealmData = reader.readBit()
+      if (hasRealmData) {
+        reader.readBits(32)
+        reader.readBits(32)
+        if (version > 0x5d) reader.readBits(32)
       }
     }
 
@@ -823,18 +826,19 @@ export function encodeItemBitstream(
         bw.writeBit(isBig ? 1 : 0)
         bw.writeBits(amt >>> 0, isBig ? 32 : 12)
       }
-      if (version > 0x5c) {
-        const baseItem = lookupBaseItem(code, tables)
-        if (baseItem?.quest && baseItem?.questDiffCheck) {
-          const stat356 = getStatField(tables, 356)
-          const st = (item.stats ?? []).find((s) => s.statId === 356)
-          const rawVal = ((st?.value ?? 0) >> stat356.valShift) + stat356.saveAdd
-          bw.writeBits(rawVal, stat356.saveBits)
-        }
+    }
+    // Shared compact tail (0x6fd7c2d7 / 0x6fd7c3e3), written for ears too (#1644).
+    if (version > 0x5c) {
+      const baseItem = lookupBaseItem(code, tables)
+      if (baseItem?.quest && baseItem?.questDiffCheck) {
+        const stat356 = getStatField(tables, 356)
+        const st = (item.stats ?? []).find((s) => s.statId === 356)
+        const rawVal = ((st?.value ?? 0) >> stat356.valShift) + stat356.saveAdd
+        bw.writeBits(rawVal, stat356.saveBits)
       }
-      if (saveFormat && version > 0x56) {
-        bw.writeBit(0)
-      }
+    }
+    if (saveFormat && version > 0x56) {
+      bw.writeBit(0)
     }
   } else {
     if (!isEar) {
@@ -1144,56 +1148,66 @@ function readSingleStat(
   return { statId, param, value }
 }
 
+const CHAIN_FOLLOWERS_BY_LEADER: Readonly<Record<number, readonly number[]>> = {
+  17: [18],
+  48: [49],
+  50: [51],
+  52: [53],
+  54: [55, 56],
+  57: [58, 59],
+}
+
+const LEADER_BY_FOLLOWER: Readonly<Record<number, number>> = {
+  18: 17,
+  49: 48,
+  51: 50,
+  53: 52,
+  55: 54,
+  56: 54,
+  58: 57,
+  59: 57,
+}
+
 function writeStatList(bw: BitWriter, tables: ItemDataTables, stats: readonly ItemStat[]): void {
-  let i = 0
-  while (i < stats.length) {
+  const activeLeaders = new Set<number>()
+  const statById = new Map<number, ItemStat>()
+  for (const st of stats) {
+    const field = getStatField(tables, st.statId)
+    if (field.saveBits === 0) continue
+    if ((st.value >> field.valShift) === 0) continue
+    statById.set(st.statId, st)
+    if (st.statId in CHAIN_FOLLOWERS_BY_LEADER) {
+      activeLeaders.add(st.statId)
+    }
+  }
+
+  const writtenFollowers = new Set<number>()
+  for (let i = 0; i < stats.length; i++) {
     const st = stats[i]!
+    const field = getStatField(tables, st.statId)
+    // D2Common 0x6fd78345: skip stats with Save Bits == 0.
+    if (field.saveBits === 0) continue
+    // D2Common 0x6fd78362: skip stats whose shifted value == 0.
+    if ((st.value >> field.valShift) === 0) continue
+    // D2Common 0x6fd78368: skip chained followers consumed by their chain leader.
+    const leaderId = LEADER_BY_FOLLOWER[st.statId]
+    if (leaderId !== undefined && (activeLeaders.has(leaderId) || writtenFollowers.has(st.statId))) {
+      continue
+    }
+
     bw.writeBits(st.statId & 0x1ff, 9)
     writeSingleStatValue(bw, tables, st)
-    // If st.statId is one of the chained stats (17, 48, 50, 52, 54, 57), write the chained followers without a 9-bit statId
-    if (st.statId === 17 && i + 1 < stats.length && stats[i + 1]!.statId === 18) {
-      writeSingleStatValue(bw, tables, stats[i + 1]!)
-      i += 2
-      continue
+
+    // D2Common 0x6fd783a4..0x6fd78760: for any chain leader (17, 48, 50, 52, 54, 57), always write
+    // its follower values (looked up by statId, 0 if absent) without a 9-bit statId.
+    const followers = CHAIN_FOLLOWERS_BY_LEADER[st.statId]
+    if (followers) {
+      for (const fid of followers) {
+        writtenFollowers.add(fid)
+        const fst = statById.get(fid) ?? { statId: fid, param: 0, value: 0 }
+        writeSingleStatValue(bw, tables, fst)
+      }
     }
-    if (st.statId === 48 && i + 1 < stats.length && stats[i + 1]!.statId === 49) {
-      writeSingleStatValue(bw, tables, stats[i + 1]!)
-      i += 2
-      continue
-    }
-    if (st.statId === 50 && i + 1 < stats.length && stats[i + 1]!.statId === 51) {
-      writeSingleStatValue(bw, tables, stats[i + 1]!)
-      i += 2
-      continue
-    }
-    if (st.statId === 52 && i + 1 < stats.length && stats[i + 1]!.statId === 53) {
-      writeSingleStatValue(bw, tables, stats[i + 1]!)
-      i += 2
-      continue
-    }
-    if (
-      st.statId === 54 &&
-      i + 2 < stats.length &&
-      stats[i + 1]!.statId === 55 &&
-      stats[i + 2]!.statId === 56
-    ) {
-      writeSingleStatValue(bw, tables, stats[i + 1]!)
-      writeSingleStatValue(bw, tables, stats[i + 2]!)
-      i += 3
-      continue
-    }
-    if (
-      st.statId === 57 &&
-      i + 2 < stats.length &&
-      stats[i + 1]!.statId === 58 &&
-      stats[i + 2]!.statId === 59
-    ) {
-      writeSingleStatValue(bw, tables, stats[i + 1]!)
-      writeSingleStatValue(bw, tables, stats[i + 2]!)
-      i += 3
-      continue
-    }
-    i++
   }
   bw.writeBits(0x1ff, 9)
 }
@@ -1204,8 +1218,10 @@ function writeSingleStatValue(bw: BitWriter, tables: ItemDataTables, st: ItemSta
     bw.writeBits(st.param >>> 0, field.saveParamBits)
   }
   if (field.saveBits > 0) {
-    const raw = ((st.value >> field.valShift) + field.saveAdd) >>> 0
-    bw.writeBits(raw, field.saveBits)
+    // D2Common 0x6fd785f3..0x6fd78617: clamp `(value >> valShift) + saveAdd` to `[0, (1 << saveBits) - 1]`.
+    const maxRaw = field.saveBits >= 31 ? 0x7fffffff : (1 << field.saveBits) - 1
+    const raw = Math.max(0, Math.min(maxRaw, (st.value >> field.valShift) + field.saveAdd))
+    bw.writeBits(raw >>> 0, field.saveBits)
   }
 }
 

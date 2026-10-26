@@ -27,3 +27,21 @@ export function encodeC2sUpdatePlayerPos(x: number, y: number): Uint8Array {
   w.u16LE(y)
   return validateC2sPacket(w.toUint8Array())
 }
+
+/**
+ * 0x4B RequestEntityUpdate (9B): `u8 0x4B | u32 unitType | u32 unitId`.
+ *
+ * D2Game 0x6FCEC6E0 (`Rcv0x4B_RequestEntityUpdate`, dispatch table `0x6FD1A2D0`) looks up the
+ * target unit (`SUNIT_GetServerUnit`), verifies `D2Common.#10394(pPlayer, pUnit)`, calls
+ * `D2Common.#10424(pUnit)`, and sets `pUnit->dwFlagEx |= 0x10000` (`0x6FCEC732`), which causes
+ * the next server tick (`0x6FC98936..0x6FC98961`) to invoke `0x6FCEBB10`
+ * (`D2GAME_SendPacket0x15_ReassignPlayer(pUnit, pClient, bRefresh=1)`) and send S2C `0x15`
+ * (`ReassignPlayer`, 11B) with the authoritative server coordinates regardless of distance.
+ */
+export function encodeC2sRequestEntityUpdate(unitType: number, unitId: number): Uint8Array {
+  const w = new ByteWriter(9)
+  w.u8(0x4b)
+  w.u32LE(unitType >>> 0)
+  w.u32LE(unitId >>> 0)
+  return validateC2sPacket(w.toUint8Array())
+}

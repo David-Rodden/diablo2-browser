@@ -19,6 +19,7 @@ import {
   resolveNpcIntroTblKey113c,
 } from '../../common/audio/npc-speech-113c.ts'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
+import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 import {
   calculateDetailedDamage,
   calculateManaCost,
@@ -1158,6 +1159,16 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
             const h = getHardLvl(id)
             if (h > 0) calcState.hardPoints[id] = h
           }
+          if (def.classCode === 'sor') {
+            for (const mId of [61, 63]) {
+              const effM = resolveEffectiveSkillLvl(mId)
+              if (effM > 0) {
+                const h = getHardLvl(mId)
+                calcState.hardPoints[mId] = h
+                calcState.specificSoftPoints[mId] = Math.max(0, effM - h)
+              }
+            }
+          }
           const dmg = calculateDetailedDamage(calcState, def, lvl)
           if (dmg.hasDamage && dmg.finalMax > 0) {
             const masteryBonusPct = dmg.masteryMultiplier > 1 ? dmg.masteryBonusPct : 0
@@ -1214,10 +1225,11 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
           }
           if (def.classCode === 'sor') {
             for (const mId of [61, 63]) {
-              const h = getHardLvl(mId)
-              if (h > 0) {
+              const effM = resolveEffectiveSkillLvl(mId)
+              if (effM > 0) {
+                const h = getHardLvl(mId)
                 calcState.hardPoints[mId] = h
-                calcState.specificSoftPoints[mId] = Math.max(0, resolveEffectiveSkillLvl(mId) - h)
+                calcState.specificSoftPoints[mId] = Math.max(0, effM - h)
               }
             }
           }
@@ -1342,10 +1354,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       })
       if (m.critStatId !== undefined && m.critMax !== undefined) {
         const cMin = m.critMin ?? 0
-        const cVal = Math.min(
-          m.critMax,
-          cMin + Math.trunc(Math.trunc(((m.critMax - cMin) * 110 * mLvl) / (mLvl + 6)) / 100),
-        )
+        const cVal = computeDiminishingReturns(cMin, m.critMax, mLvl)
         masteries.push({
           statId: m.critStatId,
           itemType: m.itemType,
@@ -1451,7 +1460,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       let holyShieldBlock = 0
       if (self.states.has(101)) {
         const hsLvl = Math.max(1, resolveEffectiveSkillLvl(117) || 1)
-        holyShieldBlock = 10 + Math.trunc((30 * Math.trunc((110 * hsLvl) / (hsLvl + 6))) / 100)
+        holyShieldBlock = computeDiminishingReturns(10, 40, hsLvl)
       }
       const totalShieldBlock = armorBlock + classBlockFactor + tot(20) + holyShieldBlock
       const clvl = Math.max(1, playerAgg.level || 1)
@@ -1469,7 +1478,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
         Boolean(lWep && (lWep.isType('h2h') || lWep.isType('h2h2')))
       const wbLvl = isDualClaw && (hardSkillLevels.get(263) ?? 0) > 0 ? resolveEffectiveSkillLvl(263) : 0
       if (wbLvl > 0) {
-        const wbPct = Math.min(75, 20 + Math.trunc((45 * Math.trunc((110 * wbLvl) / (wbLvl + 6))) / 100))
+        const wbPct = Math.min(75, computeDiminishingReturns(20, 65, wbLvl))
         attrs.weaponBlockChance = wbPct
         attrs.blockChance = wbPct
       } else {
@@ -1545,7 +1554,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
 
     const csLvl = (hardSkillLevels.get(9) ?? 0) > 0 ? resolveEffectiveSkillLvl(9) : 0
     const amaCrit =
-      csLvl > 0 ? Math.min(80, 5 + Math.trunc((75 * Math.trunc((110 * csLvl) / (csLvl + 6))) / 100)) : 0
+      csLvl > 0 ? computeDiminishingReturns(5, 80, csLvl) : 0
     let masteryCrit = 0
     if (activeWeaponEq) {
       for (const m of masteries) {
@@ -1558,11 +1567,9 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
 
     attrs.lifeLeech = tot(60)
     attrs.manaLeech = tot(62)
-    const pierceLvl = (hardSkillLevels.get(23) ?? 0) > 0 ? resolveEffectiveSkillLvl(23) : 0
-    const amaPierce =
-      pierceLvl > 0
-        ? Math.min(100, 10 + Math.trunc((90 * Math.trunc((110 * pierceLvl) / (pierceLvl + 6))) / 100))
-        : 0
+    // Pierce is Skills.txt #33 (dm12 10..100); #23 is Penetrate.
+    const pierceLvl = (hardSkillLevels.get(33) ?? 0) > 0 ? resolveEffectiveSkillLvl(33) : 0
+    const amaPierce = pierceLvl > 0 ? computeDiminishingReturns(10, 100, pierceLvl) : 0
     attrs.projectilePierce = tot(156) + amaPierce
     attrs.lifeAfterKill = tot(86)
     attrs.manaAfterKill = tot(138)
@@ -2686,7 +2693,14 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   if (fallbackSelectAct !== null && hud.worldPanels.selectedActTab - 1 === fallbackSelectAct) {
     hud.worldPanels.selectedQuestIdx = model.firstActiveQuestIndex(fallbackSelectAct)
   }
-  hud.worldPanels.cairnStoneOrder = model.world.questLog.cairnStoneOrder
+  if (
+    model.world.questLog.cairnStoneOrder !== null &&
+    hud.worldPanels.cairnStoneOrder !== model.world.questLog.cairnStoneOrder
+  ) {
+    hud.worldPanels.cairnStoneOrder = model.world.questLog.cairnStoneOrder
+    hud.worldPanels.barkscrollAnimFrame = 0
+    hud.worldPanels.barkscrollLastTickMs = null
+  }
 
   // 7. Target monster plaque
   model.syncHoveredMonsterTarget()

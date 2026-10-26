@@ -6,6 +6,7 @@
  */
 
 import { evaluateCanonicalSkillMana113c } from '../../common/data/skills-catalog.ts';
+import { skillMinSynergyApplies113c } from '../../common/data/calc-ast.ts';
 
 export const ASSASSIN_TRAP_SKILL_IDS = [
   251, // Fire Blast (Fire Trauma)
@@ -52,6 +53,17 @@ export function evaluateTrapBand113c(
   if (lvl > 28) raw += (lvl - 28) * b5;
   const scale = hitShift >= 8 ? (1 << (hitShift - 8)) : 1 / (1 << (8 - hitShift));
   return Math.floor(raw * scale);
+}
+
+/**
+ * Synergised min damage. D2Common #10121 (0x6FDA04C7..0x6FDA04D3) applies EDmgSymPerCalc to the min side only
+ * when `min256 > 256 || EMinLev1 != 0`, so the flat minimum of Shock Web / Charged Bolt Sentry (EMin=2, HitShift=7)
+ * and Lightning / Death Sentry (EMin=1, HitShift=8) is never synergised (#1681).
+ */
+function trapMinWithSynergy113c(c: TrapBandCurve113c, slvl: number, baseMin: number, synPct: number): number {
+  const min256 = evaluateTrapBand113c(c.eMin, c.eMinLev, slvl, c.hitShift + 8);
+  if (!skillMinSynergyApplies113c(min256, c.eMinLev[0])) return baseMin;
+  return Math.floor((baseMin * (100 + synPct)) / 100);
 }
 
 /**
@@ -168,7 +180,7 @@ export function calcFireBlast113c(slvl: number, synergies: AssassinTrapSynergyBl
     (synergies.wakeOfInfernoBlvl ?? 0) +
     (synergies.deathSentryBlvl ?? 0);
   const synPct = totalBlvl * 9;
-  const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
+  const minDmg = Math.max(1, trapMinWithSynergy113c(c, slvl, baseMin, synPct));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const mana = evaluateCanonicalSkillMana113c(251, slvl);
   return {
@@ -199,7 +211,7 @@ export function calcShockWeb113c(slvl: number, synergies: AssassinTrapSynergyBlv
     (synergies.lightningSentryBlvl ?? 0) +
     (synergies.deathSentryBlvl ?? 0);
   const synPct = totalBlvl * 11;
-  const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
+  const minDmg = Math.max(1, trapMinWithSynergy113c(c, slvl, baseMin, synPct));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const spikeCount =
     6 + Math.floor(Math.max(1, slvl) / 4) + Math.floor((synergies.fireBlastBlvl ?? 0) / 3);
@@ -276,7 +288,7 @@ export function calcChargedBoltSentry113c(slvl: number, synergies: AssassinTrapS
     (synergies.lightningSentryBlvl ?? 0) +
     (synergies.deathSentryBlvl ?? 0);
   const synPct = totalBlvl * 6;
-  const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
+  const minDmg = Math.max(1, trapMinWithSynergy113c(c, slvl, baseMin, synPct));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const boltsPerShot = 5 + Math.floor((synergies.shockWebBlvl ?? 0) / 3);
   const totalShots = 5 + Math.floor((synergies.lightningSentryBlvl ?? 0) / 4);
@@ -308,7 +320,7 @@ export function calcWakeOfFire113c(slvl: number, synergies: AssassinTrapSynergyB
   const baseMax = evaluateTrapBand113c(c.eMax, c.eMaxLev, slvl, c.hitShift);
   const totalBlvl = (synergies.fireBlastBlvl ?? 0) + (synergies.wakeOfInfernoBlvl ?? 0);
   const synPct = totalBlvl * 8;
-  const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
+  const minDmg = Math.max(1, trapMinWithSynergy113c(c, slvl, baseMin, synPct));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const totalShots = 5 + Math.floor((synergies.fireBlastBlvl ?? 0) / 3);
   const mana = evaluateCanonicalSkillMana113c(262, slvl);
@@ -380,7 +392,7 @@ export function calcLightningSentry113c(slvl: number, synergies: AssassinTrapSyn
     (synergies.chargedBoltSentryBlvl ?? 0) +
     (synergies.deathSentryBlvl ?? 0);
   const synPct = totalBlvl * 12;
-  const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
+  const minDmg = Math.max(1, trapMinWithSynergy113c(c, slvl, baseMin, synPct));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const mana = evaluateCanonicalSkillMana113c(271, slvl);
   return {
@@ -412,7 +424,7 @@ export function calcWakeOfInferno113c(slvl: number, synergies: AssassinTrapSyner
   const synPct =
     ((synergies.fireBlastBlvl ?? 0) + (synergies.deathSentryBlvl ?? 0)) * 10 +
     (synergies.wakeOfFireBlvl ?? 0) * 7;
-  const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
+  const minDmg = Math.max(1, trapMinWithSynergy113c(c, slvl, baseMin, synPct));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const mana = evaluateCanonicalSkillMana113c(272, slvl);
   return {
@@ -441,7 +453,7 @@ export function calcDeathSentry113c(slvl: number, synergies: AssassinTrapSynergy
   const baseMin = evaluateTrapBand113c(c.eMin, c.eMinLev, slvl, c.hitShift);
   const baseMax = evaluateTrapBand113c(c.eMax, c.eMaxLev, slvl, c.hitShift);
   const synPct = (synergies.lightningSentryBlvl ?? 0) * 12;
-  const minDmg = Math.max(1, Math.floor((baseMin * (100 + synPct)) / 100));
+  const minDmg = Math.max(1, trapMinWithSynergy113c(c, slvl, baseMin, synPct));
   const maxDmg = Math.max(minDmg, Math.floor((baseMax * (100 + synPct)) / 100));
   const totalShots = 5 + Math.floor((synergies.fireBlastBlvl ?? 0) / 3);
   const corpseExplosionRadiusSubtiles = Math.floor((8 + Math.max(1, slvl) - 1) / 2);

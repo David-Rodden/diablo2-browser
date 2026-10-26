@@ -301,7 +301,8 @@ export function calculatePowerStrikeStats(
     synergyMultiplier = 1.0 + synergyBonusPct / 100
   }
 
-  const minDamage = Math.floor(baseMin * synergyMultiplier)
+  // Flat 1-point min (EMin=1, HitShift=8, EMinLev1=0) is never synergised: D2Common 0x6FDA04C7 (#1681)
+  const minDamage = baseMin
   const maxDamage = Math.floor(baseMax * synergyMultiplier)
   const ar = 20 + 12 * (lvl - 1)
   const manaCost = 2.0 + 0.25 * (lvl - 1)
@@ -439,7 +440,8 @@ export function calculateLightningBoltStats(
     synergyMultiplier = 1.0 + synergyBonusPct / 100
   }
 
-  const minDamage = Math.floor(tableMin * synergyMultiplier)
+  // Flat 1-point min (EMin=1, HitShift=8, EMinLev1=0) is never synergised: D2Common 0x6FDA04C7 (#1681)
+  const minDamage = tableMin
   const maxDamage = Math.floor(tableMax * synergyMultiplier)
   const manaCost256 = (24 + (lvl - 1)) * 64
   const manaCost = manaCost256 / 256
@@ -496,7 +498,8 @@ export function calculateChargedStrikeStats(
     synergyMultiplier = 1.0 + synergyBonusPct / 100
   }
 
-  const minDamage = Math.floor(baseMin * synergyMultiplier)
+  // Flat 1-point min (EMin=1, HitShift=8, EMinLev1=0) is never synergised: D2Common 0x6FDA04C7 (#1681)
+  const minDamage = baseMin
   const maxDamage = Math.floor(baseMax * synergyMultiplier)
   const manaCost = 4.0 + 0.25 * (lvl - 1)
   const manaCost256 = (16 + (lvl - 1)) * 64
@@ -646,7 +649,8 @@ export function calculateLightningStrikeStats(
     synergyMultiplier = 1.0 + synergyBonusPct / 100
   }
 
-  const minDamage = Math.floor(baseMin * synergyMultiplier)
+  // Flat 1-point min (EMin=1, HitShift=8, EMinLev1=0) is never synergised: D2Common 0x6FDA04C7 (#1681)
+  const minDamage = baseMin
   const maxDamage = Math.floor(baseMax * synergyMultiplier)
 
   return {
@@ -700,7 +704,8 @@ export function calculateLightningFuryStats(
     synergyMultiplier = 1.0 + synergyBonusPct / 100
   }
 
-  const minDamage = Math.floor(baseMin * synergyMultiplier)
+  // Flat 1-point min (EMin=1, HitShift=8, EMinLev1=0) is never synergised: D2Common 0x6FDA04C7 (#1681)
+  const minDamage = baseMin
   const maxDamage = Math.floor(baseMax * synergyMultiplier)
   const manaCost = 10.0 + 0.5 * (lvl - 1)
   const manaCost256 = (20 + (lvl - 1)) * 128

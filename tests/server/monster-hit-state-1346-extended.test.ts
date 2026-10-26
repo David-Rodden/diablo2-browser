@@ -81,7 +81,8 @@ describe('issue #1346 hit recovery follow-up', () => {
   it('uses AnimData.d2 GH duration per monster token and skips neverCount / mGH=0 traps', () => {
     const game = new GameInstance({ seed: 1346, areaId: 1 })
     const playerId = connect(game)
-    // zombie1 (ZM) has ZMGHHTH: 8 frames @ speed 256 -> 8 frames (distinct from fallen1's 6 frames)
+    // zombie1 (ZM) has ZMGHHTH: 5 frames @ speed 152; monster GH rate is 50 + EFHR (issue #1627,
+    // D2Common 0x6FD83298..0x6FD832C7) -> step 76 -> ceil(5*256/76) - 1 = 16 ticks
     const zombieId = game.spawnMonster({
       defId: 'zombie1',
       x: 12,
@@ -108,7 +109,7 @@ describe('issue #1346 hit recovery follow-up', () => {
     game.applyDamageToMonster(zombieId, 500, playerId)
     const zombieRec = internal.monsters.get(zombieId)!
     expect(zombieRec.mode).toBe(3)
-    expect(zombieRec.hitRecoveryUntilFrame - frameBefore).toBe(8)
+    expect(zombieRec.hitRecoveryUntilFrame - frameBefore).toBe(16)
 
     game.applyDamageToMonster(trapId, 500, playerId)
     const trapRec = internal.monsters.get(trapId)!

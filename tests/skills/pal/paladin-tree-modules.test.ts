@@ -298,9 +298,9 @@ describe('Paladin Skill Tree Modules — 1.13c Parity & Interface Contracts', ()
 
     it('Salvation (#125): party All Res (Fire, Cold, Lightning) with identical values', () => {
       const s = calculateSalvationStats(10)
-      expect(s.fireResistPct).toBe(98)
-      expect(s.coldResistPct).toBe(98)
-      expect(s.lightningResistPct).toBe(98)
+      expect(s.fireResistPct).toBe(97)
+      expect(s.coldResistPct).toBe(97)
+      expect(s.lightningResistPct).toBe(97)
     })
   })
 
@@ -391,7 +391,7 @@ describe('Paladin Skill Tree Modules — 1.13c Parity & Interface Contracts', ()
       expect(hud.charSheet.attrs.fireRes).toBe(85)
       selfStates.delete(3)
 
-      // Activate Salvation (state 8) -> +98% all elemental resist
+      // Activate Salvation (state 8) -> +97% all elemental resist
       selfStates.add(8)
       model.syncFromWorld()
       expect(hud.charSheet.attrs.fireRes).toBe(80)

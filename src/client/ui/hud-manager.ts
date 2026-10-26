@@ -1991,6 +1991,44 @@ export class HudManager {
     return anyOpen
   }
 
+  /**
+   * Refresh HUD display, input focus, cursor, and pointer-event interception state without dropping
+   * any item currently held on the cursor (`inventory.cursorItem`).
+   */
+  refreshDisplayState(nowMs: number = performance.now()): void {
+    this.invalidateCanvasRectCache()
+    this.setInputFocused(true)
+    this.handleHudMouseUp(-1, -1, 0)
+    this.worldPanels.releaseMomentaryVendorButton()
+    this.hotkeys.openPopup = null
+    this.belt.lockedOpen = false
+    this.helpOverlayOpen = false
+    this.goldDialog = null
+    this.showGroundLabels = false
+    this.escapeMenuOpen = false
+    if (this.inventory.cursorItem === null) {
+      this.pendingIdentifyScrollId = null
+      this.inventory.cancelIdentifyMode()
+      this.worldPanels.vendorTradeState = 'idle'
+    }
+    this.cursor.resetIdle(nowMs)
+    this.syncCursorMode(nowMs)
+    const intercept =
+      this.isPointInterceptedByHud(this.mouseX, this.mouseY) ||
+      this.inventory.cursorItem !== null ||
+      this.worldPanels.vendorTradeState !== 'idle' ||
+      this.inventory.isIdentifyMode() ||
+      this.pendingIdentifyScrollId !== null
+    if (this.hudCanvas?.style) {
+      this.hudCanvas.style.pointerEvents = intercept ? 'auto' : 'none'
+    }
+    this.hudRevision += 1
+    this.lastIdleRepaintSignature = null
+    this.lastFullHudRepaintMs = -Infinity
+    this.lastCursorLayerSignature = null
+    this.syncPublishedState()
+  }
+
   viewportProfile: ViewportProfile = VIEWPORT_800x600
   private cachedCanvasRect: DOMRect | null = null
   private cachedCanvasRectKey = ''
@@ -2232,14 +2270,29 @@ export class HudManager {
   syncPlayerContext(): void {
     // Not ready until the server assigns the class; requirement checks keep their neutral context.
     if (this.currentClass === null) return
-    const playerCtx = {
-      level: this.charSheet.attrs.level,
-      str: this.charSheet.attrs.str,
-      dex: this.charSheet.attrs.dex,
-      classCode: this.currentClass,
+    const level = Math.max(1, this.charSheet.attrs.level)
+    const str = Math.max(0, this.charSheet.attrs.str)
+    const dex = Math.max(0, this.charSheet.attrs.dex)
+    const classCode = this.currentClass
+    const invCtx = this.inventory.playerContext
+    if (
+      invCtx.level !== level ||
+      invCtx.str !== str ||
+      invCtx.dex !== dex ||
+      invCtx.classCode !== classCode
+    ) {
+      this.inventory.setPlayerContext({ level, str, dex, classCode })
     }
-    this.inventory.setPlayerContext(playerCtx)
-    this.worldPanels.setPlayerContext(playerCtx)
+    const wpCtx = this.worldPanels.vendorPlayerStats
+    if (
+      this.worldPanels.vendorCharLevel !== level ||
+      wpCtx.level !== level ||
+      wpCtx.str !== str ||
+      wpCtx.dex !== dex ||
+      wpCtx.classCode !== classCode
+    ) {
+      this.worldPanels.setPlayerContext({ level, str, dex, classCode })
+    }
   }
 
   syncPublishedState(): void {

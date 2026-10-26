@@ -81,9 +81,10 @@ describe('#1045 Blaze state 13 (not 12 inferno)', () => {
     const p1 = t.param(46, 'Param1')
     const p2 = t.param(46, 'Param2')
     for (const lvl of [1, 10, 20]) {
-      expect(blazeStateDurationFrames113c(lvl)).toBe(Math.trunc((110 * lvl * (p2 - p1)) / (100 * (lvl + 6))) + p1)
+      // D2Common 0x6FD9DC30: trunc(110*lvl/(lvl+6)) first, then *(p2-p1)/100 (#1678)
+      expect(blazeStateDurationFrames113c(lvl)).toBe(Math.min(p2, Math.trunc((Math.trunc((110 * lvl) / (lvl + 6)) * (p2 - p1)) / 100) + p1))
     }
-    expect(blazeStateDurationFrames113c(1)).toBe(120)
+    expect(blazeStateDurationFrames113c(1)).toBe(117)
   })
 
   it('has no states.add(12) in the Blaze cast path', () => {

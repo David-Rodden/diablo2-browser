@@ -3990,6 +3990,22 @@ export class CommandMapper {
     }
   }
 
+  /**
+   * Reset all transient modifier/mouse latches AND clear deferred arrival interactions
+   * and queued movement commands (used by toolbar Refresh Display & Resync Position).
+   */
+  resetInputState(): void {
+    this.resetModifiers()
+    this.hoveredUnit = null
+    this.pendingItemPickupId = null
+    this.pendingNpcInteractId = null
+    this.pendingObjectInteractId = null
+    this.pendingWarpInteractId = null
+    this.lastMeleeChaseTargetPos = null
+    this.pendingQuickCastRestoreSkillId = null
+    this.rateLimiter.clearPendingMove()
+  }
+
   // ─── Frame Tick & Rate-Limiter Coalescing ────────────────────
 
   /**

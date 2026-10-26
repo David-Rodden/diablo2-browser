@@ -281,11 +281,14 @@ export type S2cSizeResolution =
  * @param buf - Buffer containing decompressed S->C packet stream.
  * @param offset - Start index of the packet in `buf`.
  * @param availableLen - Number of readable bytes starting at `offset`.
+ * @param applyD2NetMinimums - Stream framing (default): wait until D2NET_10033's per-case minimum is buffered
+ *   (0x16: 13, 0x5B: 34, 0x94: 9, 0xB3: 8; #1658). Pass `false` to size an already-framed single packet.
  */
 export function resolveS2cPacketSize(
   buf: Uint8Array,
   offset = 0,
   availableLen = buf.length - offset,
+  applyD2NetMinimums = true,
 ): S2cSizeResolution {
   if (availableLen <= 0) {
     return { status: 'incomplete' }
@@ -309,7 +312,8 @@ export function resolveS2cPacketSize(
   let size = 0
   switch (opcode) {
     case 0x16: {
-      // VA 0x6fbf67a4: u16 LE at +1 (min 3 bytes for header; D2Net checks >= 13)
+      // VA 0x6fbf67a4: cmp esi,0xd -> waits for 13 buffered bytes, then u16 LE size at +1 (#1658)
+      if (availableLen < 13 && applyD2NetMinimums) return { status: 'incomplete' }
       if (availableLen < 3) return { status: 'incomplete' }
       size = buf[offset + 1]! | (buf[offset + 2]! << 8)
       break
@@ -335,13 +339,15 @@ export function resolveS2cPacketSize(
       break
     }
     case 0x5b: {
-      // VA 0x6fbf67f4: u16 LE size at +1 (PlayerInGame, min 34 bytes in D2Net)
+      // VA 0x6fbf67f4: cmp esi,0x22 -> waits for 34 buffered bytes, then u16 LE size at +1 (PlayerInGame, #1658)
+      if (availableLen < 34 && applyD2NetMinimums) return { status: 'incomplete' }
       if (availableLen < 3) return { status: 'incomplete' }
       size = buf[offset + 1]! | (buf[offset + 2]! << 8)
       break
     }
     case 0x94: {
-      // VA 0x6fbf6808: BaseSkillLevels, (buf[1] + 2) * 3 = 6 + 3 * count
+      // VA 0x6fbf6808: cmp esi,0x9 -> waits for 9 buffered bytes; BaseSkillLevels, (buf[1] + 2) * 3 (#1658)
+      if (availableLen < 9 && applyD2NetMinimums) return { status: 'incomplete' }
       if (availableLen < 2) return { status: 'incomplete' }
       size = (buf[offset + 1]! + 2) * 3
       break
@@ -396,7 +402,8 @@ export function resolveS2cPacketSize(
       break
     }
     case 0xb3: {
-      // VA 0x6fbf6907: SaveDataChunk, buf[1] + 7
+      // VA 0x6fbf6907: cmp esi,0x8 -> waits for 8 buffered bytes; SaveDataChunk, buf[1] + 7 (#1658)
+      if (availableLen < 8 && applyD2NetMinimums) return { status: 'incomplete' }
       if (availableLen < 2) return { status: 'incomplete' }
       size = buf[offset + 1]! + 7
       break

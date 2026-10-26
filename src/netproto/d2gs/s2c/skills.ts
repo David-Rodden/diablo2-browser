@@ -14,54 +14,64 @@
  */
 
 import { ByteReader } from '../../core/byte-reader.ts'
-import { type Hand, type SkillLevel, unitTypeToId } from '../../domain/ids.ts'
+import { type Hand, type SkillLevel, wireUnitTypeId } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
-import { requirePacketLength } from './packet-length.ts'
+import { requirePacketLength, unitLookupMiss } from './packet-length.ts'
 import { resolveMonsterCmdMode } from './units.ts'
 
 /**
  * 0x21 UpdateSkill (12B, D2Client.dll 0x6fb5c910):
  * [0x21, u8 unitType, u8 flag, u32LE unitId, u16LE skillId, u8 baseLevel, u8 pad10, u8 pad11].
- * Bytes 10..11 are uninitialized server stack padding and must be ignored.
+ * D2Client passes only `@2` as the flag argument to `0x6FABC550`; bytes 10..11 are uninitialized server
+ * stack padding and are never read (#1654).
  */
 export function decode0x21UpdateSkill(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x21
-  const unitType = unitTypeToId(r.u8()) // unitType
-  const flag = r.u8() // flag
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails // unitType
+  const flag = r.u8() // flag @2
   const unitId = r.u32LE()
   const skill = r.u16LE()
   const baseLevel = r.u8()
-  const pad10 = r.u8()
-  const flag11 = r.u8()
   return {
     type: 'SkillList',
     unitId,
     unitType,
-    flag: flag || flag11 || pad10,
+    flag,
     skills: [{ skillId: skill, level: baseLevel, baseLevel, bonus: 0 }],
   }
 }
 
-/** 0x22 UpdateSkillStatus (12B, D2Client.dll 0x6fb5c800) */
+/**
+ * 0x22 UpdateSkillStatus (12B, D2Client.dll 0x6fb5c800):
+ * [0x22, u8 unitType, u8 ?, u32LE unitId, u16LE skillId, u8 quantity, u8 ?, u8 playerBodySkip].
+ * D2Game builder `0x6FCAD570` sets `@0xB = 1` when the unit has state 7 (`playerbody`, D2Common #10494)
+ * and never writes `@2` / `@0xA` (uninitialized stack bytes). D2Client starts with
+ * `mov al,[esi+0xb]; test al,al; jne return`, so the whole packet is ignored when `@0xB != 0`; otherwise it
+ * sets the skill quantity (`@9`) on the player looked up by `@3` (#1654).
+ */
 export function decode0x22UpdateSkillStatus(pkt: Uint8Array): ServerEvent {
+  requirePacketLength(pkt, '0x22 UpdateSkillStatus', 12)
   const r = new ByteReader(pkt)
   r.u8() // 0x22
-  const unitType = unitTypeToId(r.u8())
-  const flag2 = r.u8()
+  r.u8() // @1: never read; D2Client looks the unit up in the player table only (0x6fb5c816, #1656)
+  const unitType = 0 as const
+  r.u8() // @2: never written by D2Game, never read by D2Client
   const unitId = r.u32LE()
   const skill = r.u16LE()
   const quantity = r.u8()
-  const flag10 = r.u8()
-  r.u8()
+  r.u8() // @0xA: never written by D2Game, never read by D2Client
+  const playerBodySkip = r.u8() !== 0
   return {
     type: 'SkillList',
     unitId,
     unitType,
-    flag: flag10 || flag2,
-    skills: [{ skillId: skill, level: quantity, quantity } as any],
+    skills: playerBodySkip ? [] : [{ skillId: skill, level: quantity, quantity } as any],
     quantity,
     isSkillStatus: true,
+    playerBodySkip,
   } as ServerEvent
 }
 
@@ -88,11 +98,16 @@ export function decode0x23AssignSkill(pkt: Uint8Array): ServerEvent {
 export function decode0x4CSkillOnTarget(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x4C
-  const casterType = unitTypeToId(r.u8())
+  const casterTypeRaw = r.u8()
+  const casterType = wireUnitTypeId(casterTypeRaw)
+  if (casterType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const casterId = r.u32LE()
   const skill = r.u16LE()
   const level = r.u8()
-  const targetType = unitTypeToId(r.u8())
+  // D2Client 0x6fb5f1d0 copies target type @9 / id @10 into unit command 0x16 unchecked; a type outside 0..5 can
+  // never resolve and `SkillCast` has no unresolvable-unit target, so the packet is dropped (#1656).
+  const targetType = wireUnitTypeId(r.u8())
+  if (targetType === undefined) return unitLookupMiss(pkt)
   const targetId = r.u32LE()
   r.u16LE()
   return {
@@ -108,7 +123,9 @@ export function decode0x4CSkillOnTarget(pkt: Uint8Array): ServerEvent {
 export function decode0x4DSkillOnLocation(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x4D
-  const casterType = unitTypeToId(r.u8())
+  const casterTypeRaw = r.u8()
+  const casterType = wireUnitTypeId(casterTypeRaw)
+  if (casterType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const casterId = r.u32LE()
   const skill = r.u32LE() & 0xffff
   const level = r.u8()
@@ -213,11 +230,14 @@ export function decode0x99SkillTriggeredOnTarget(pkt: Uint8Array): ServerEvent {
   requirePacketLength(pkt, '0x99 SkillTriggeredOnTarget', 16)
   const r = new ByteReader(pkt)
   r.u8() // 0x99
-  const casterType = unitTypeToId(r.u8())
+  const casterTypeRaw = r.u8()
+  const casterType = wireUnitTypeId(casterTypeRaw)
+  if (casterType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const casterId = r.u32LE()
   const skill = r.u16LE()
   const level = r.u8()
-  const targetType = unitTypeToId(r.u8())
+  const targetType = wireUnitTypeId(r.u8())
+  if (targetType === undefined) return unitLookupMiss(pkt) // #1656: target lookup 0x6fb5f12b fails -> return
   const targetId = r.u32LE()
   r.u16LE()
   return {
@@ -239,7 +259,9 @@ export function decode0x9ASkillTriggeredOnLocation(pkt: Uint8Array): ServerEvent
   requirePacketLength(pkt, '0x9A SkillTriggeredOnLocation', 17)
   const r = new ByteReader(pkt)
   r.u8() // 0x9A
-  const casterType = unitTypeToId(r.u8())
+  const casterTypeRaw = r.u8()
+  const casterType = wireUnitTypeId(casterTypeRaw)
+  if (casterType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const casterId = r.u32LE()
   const skill = r.u32LE() & 0xffff
   const level = r.u8()

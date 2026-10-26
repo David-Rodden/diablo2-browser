@@ -114,37 +114,6 @@ export function cell(table: D2Table, row: readonly string[], column: string): st
 }
 
 /**
-  * Canonical set of outdoor levels that contain a Waypoint across Acts 1..5.
-  * Used as a fast fallback when the complete `Levels.txt` table is not loaded.
-  */
-export const OUTDOOR_WAYPOINT_LEVELS = new Set([
-  3, 4, 5, 6, 27, // Act 1: Cold Plains, Stony Field, Dark Wood, Black Marsh, Outer Cloister
-  42, 43, 44, 46, 48, // Act 2: Dry Hills, Far Oasis, Lost City, Canyon of the Magi, Arcane Sanctuary
-  76, 77, 78, 79, 80, 81, 83, // Act 3: Spider Forest, Great Marsh, Flayer Jungle, Lower Kurast, Kurast Bazaar, Upper Kurast, Travincal
-  106, 107, // Act 4: City of the Damned, River of Flame
-  111, 112, 113, 115, 117, // Act 5: Frigid Highlands, Arreat Plateau, Crystalline Passage, Glacial Trail, Ancients' Way
-])
-
-/**
- * Determines whether an outdoor level carries a Waypoint.
- * Reads `Levels.txt Waypoint != 255` when levels table is provided, with cached fallback matching canonical levels.
- */
-export function hasOutdoorWaypoint(levelId: number, levelsTable?: D2Table): boolean {
-  if (levelsTable) {
-    const row = levelsTable.rows.find(candidate => Number(cell(levelsTable, candidate, 'Id')) === levelId)
-    if (row) {
-      const wp = cell(levelsTable, row, 'Waypoint')
-      const wpNum = wp === '' ? 255 : Number(wp)
-      const drlgType = cell(levelsTable, row, 'DrlgType')
-      const isTown = [1, 40, 75, 103, 109].includes(levelId)
-      const isOutdoor = drlgType === '3' || (!isTown && OUTDOOR_WAYPOINT_LEVELS.has(levelId))
-      return isOutdoor && wpNum !== 255 && !isNaN(wpNum)
-    }
-  }
-  return OUTDOOR_WAYPOINT_LEVELS.has(levelId)
-}
-
-/**
  * Resolves the numeric Act (1..5) for a given levelId, levelTypeName, and/or levels table.
  * Reads `Levels.txt Act` column when table is provided, with fallback to levelId / levelTypeName / fallbackAct.
  */
