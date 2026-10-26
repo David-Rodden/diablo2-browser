@@ -34,6 +34,7 @@ import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
 import { WAYPOINT_LEVELS } from './level-links.ts'
 import { TrainingFloor } from './training-floor.ts'
+import { OPTIONAL_ROWS } from './quest-stages.ts'
 import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, lockedLevels, NAKED_SLOTS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
 import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
@@ -103,6 +104,7 @@ const UNLOAD_ITEMS = 2
 const GOLD = 'gld'
 const REVIVE_MS = 2500
 const DEATH_MEMORY_MS = 20 * 60_000
+const SIDE_QUEST_MS = 30 * 60_000
 const SPIRAL_MS = 15 * 60_000
 const SPIRAL_DEATHS = 3
 const DEATH_CAUTION = 0.08
@@ -325,6 +327,7 @@ export class Autopilot {
   private forgiven = Number.NEGATIVE_INFINITY
   private ground: { readonly level: number; readonly at: number; readonly experience: number; readonly charLevel: number } | null = null
   private readonly floor = new TrainingFloor()
+  private sideQuest: { readonly row: number; readonly word: number; readonly at: number } | null = null
   private training: (Readiness & { readonly ground: number; readonly since: number }) | null = null
   private readonly trainedOut = new Set<number>()
   private questLevel: number | null = null
@@ -372,6 +375,7 @@ export class Autopilot {
     if (world.areaId > 0) this.noteArea()
     if (world.areaId > 0 && !world.isDead) this.noteExperience(nowMs)
     this.noteArrival(nowMs)
+    this.sideQuestCheck(nowMs)
     if (world.isDead) this.mourn(nowMs)
     else if (nowMs < this.pausedUntil) this.say('Paused while you play')
     else if (world.areaId > 0 && !this.job) this.decide(nowMs)
@@ -939,6 +943,16 @@ export class Autopilot {
       this.talk = same ? Object.assign(same, { at: nowMs, opened: false }) : { npcId: npc.id, hint: plan.hint, since: nowMs, at: nowMs, spoke: false, opened: false, heard: new Set<string>() }
       this.host.assists.use(npc, nowMs)
     }
+  }
+
+  private sideQuestCheck(nowMs: number): void {
+    const { guide } = this.host
+    const plan = guide.currentPlan
+    const row = plan?.goal.row
+    if (!plan || guide.detour !== null || row === undefined || !OPTIONAL_ROWS.has(row)) return
+    const word = this.host.world.quests[row] ?? 0
+    if (this.sideQuest?.row !== row || this.sideQuest.word !== word) this.sideQuest = { row, word, at: nowMs }
+    else if (nowMs - this.sideQuest.at > SIDE_QUEST_MS) this.skip(plan, 'It was taking too long')
   }
 
   private skip(plan: GuidePlan, why: string): void {

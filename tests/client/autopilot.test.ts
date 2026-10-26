@@ -92,6 +92,22 @@ describe('autopilot', () => {
     expect(assists.walkTo).toHaveBeenCalled()
   })
 
+  it('gives up on a side quest that has not moved in half an hour, but never on a required one', () => {
+    const side = setup({ goal: { level: 94, title: "Lam Esen's Tome", row: 17 }, target: { x: 130, y: 100, label: 'Ruined Temple' } })
+    side.world.quests[17] = 4
+    side.world.self.level = 40
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => side.world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    Object.assign(side.guide, { currentPlan: side.guide.update() })
+    side.tick()
+    side.tick(31 * 60_000)
+    expect(side.guide.skip).toHaveBeenCalledWith(17)
+    const main = setup({ goal: { level: 102, title: 'The Guardian', row: 22 }, target: { x: 130, y: 100, label: 'Durance' } })
+    Object.assign(main.guide, { currentPlan: main.guide.update() })
+    main.tick()
+    main.tick(31 * 60_000)
+    expect(main.guide.skip).not.toHaveBeenCalled()
+  })
+
   it('touches the waypoint and picks the level the guide wants', () => {
     const { assists, hudManager, hudModel, units, tick } = setup({ step: { kind: 'waypoint', level: 5 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))

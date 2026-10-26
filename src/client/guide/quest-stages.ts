@@ -23,6 +23,7 @@ const ORIFICE = 152
 const THE_SUMMONER = 13
 const KHALIMS_WILL = 18
 const DURANCE_3 = 102
+const RUINED_TEMPLE = 94
 const TO_THE_TOMB: Stage = { ...at('tomb', "Take the Staff to Tal Rasha's Tomb", ORIFICE), bring: 'hst', after: THE_SUMMONER }
 const talk = (name: string, npc: string, hint = `Talk to ${name}`): Stage => at('town', hint, npc)
 const SEALS: Find = [392, 393, 394, 395, 396]
@@ -69,6 +70,8 @@ export const OBJECTIVES: readonly (readonly Objective[])[] = [
     { row: 40, name: 'Eve of Destruction', start: 'qstsa5q61a', required: true },
   ],
 ]
+
+export const OPTIONAL_ROWS: ReadonlySet<number> = new Set(OBJECTIVES.flat().filter((objective) => !objective.required).map((objective) => objective.row))
 
 const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa1q11: at(8, 'Find the Den of Evil'),
@@ -122,7 +125,7 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa2q63a: talk('Jerhyn', 'jerhyn'),
   qstsa2q64: talk('Jerhyn', 'jerhyn'),
   qstsa2q65: at(75, 'Talk to Meshif to sail east'),
-  qstsa3q11: at(80, 'Search the Kurast temples for the Tome', 193),
+  qstsa3q11: at(RUINED_TEMPLE, 'Find the Tome in the Ruined Temple', 193),
   qstsa3q12: talk('Alkor', 'alkor'),
   qstsa3q21a: talk('Cain', 'cain3', "Ask Cain about Khalim's relics"),
   qstsa3q21: at(85, "Find Khalim's Eye in the Spider Cavern", EYE_CHEST),
