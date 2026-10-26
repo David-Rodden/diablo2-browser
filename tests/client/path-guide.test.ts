@@ -42,6 +42,11 @@ describe('path guide route', () => {
     expect(nextStep(4, 38)).toMatchObject({ kind: 'portal', hint: 'Touch the Cairn Stones, then take the portal' })
   })
 
+  it("heads into the Durance once the Compelling Orb is smashed, even though the Guardian's log still mentions it", () => {
+    expect(goalOf(83, quests({ 18: 0x85, 21: 9, 22: 0x80 }), 'required')).toEqual([102, 'The Guardian', 'Find Mephisto in the Durance of Hate'])
+    expect(shortestRoute(83, 102, new Set())?.map((hop) => hop.to)).toEqual([100, 101, 102])
+  })
+
   it('sends you for the Horadric Staff parts you do not have yet', () => {
     const staff = (carried: readonly string[]) => goalOf(40, quests({ 9: 1 }, { 10: 2 }), 'story', (code) => carried.includes(code))?.[0]
     expect([staff([]), staff(['box']), staff(['box', 'msf']), staff(['box', 'msf', 'vip'])]).toEqual([60, 64, 61, 40])
