@@ -41,6 +41,7 @@ export type {
   ItemStatCostField,
   ItemStatCostMeta,
   Pt,
+  SetBonusStatList,
   SkillLevel,
   SubTile,
   UnitId,

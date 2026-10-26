@@ -30,7 +30,7 @@ import {
   type ItemQuality as WireItemQuality,
   type ItemStat,
 } from '../../netproto/index.ts'
-import type { SetBonusStatList } from '../../netproto/domain/ids.ts'
+import type { SetBonusStatList } from '../../netproto/index.ts'
 import type { SetItem } from '../../common/items/set-items.ts'
 
 /** The `Item` fields the canonical generators attach beyond the declared interface. */
