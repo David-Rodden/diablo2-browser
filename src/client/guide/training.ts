@@ -66,7 +66,7 @@ export function trainingGround(from: number, me: Trainee, waypointLevels: Readon
   const ceiling = Math.max(Math.min(me.level - TRAINING.belowGoal, TRAINING.bareFromLevel), me.level - TRAINING.belowGoal - Math.round(me.bare * TRAINING.barePenalty))
   const links = new Map([...LEVEL_LINKS].filter(([level]) => !sealed.has(level)).map(([level, out]) => [level, out.filter((link) => !sealed.has(link.to))]))
   const hops = (level: number) => shortestRoute(from, level, waypointLevels, links)?.length ?? Infinity
-  const candidates = LEVELS_MONLVL_113C.map((_, id) => id).filter((id) => id > 0 && !TOWNS.has(id) && !AVOID.has(id) && !skip.has(id) && actOfLevel(id) <= maxAct && monsterLevel(id, me.difficulty) <= ceiling)
+  const candidates = LEVELS_MONLVL_113C.map((_, id) => id).filter((id) => id > 0 && !TOWNS.has(id) && !AVOID.has(id) && !skip.has(id) && actOfLevel(id) <= maxAct && monsterLevel(id, me.difficulty) + (HARDER.get(id) ?? 0) <= ceiling)
   const scored = candidates.map((id) => ({ id, mon: monsterLevel(id, me.difficulty), hops: hops(id) })).filter((c) => Number.isFinite(c.hops))
   const best = Math.max(...scored.map((c) => c.mon))
   const fit = scored.filter((c) => c.mon >= Math.max(1, best - TRAINING.spread / 3))
