@@ -197,6 +197,8 @@ const POTION_GOLD = 100
 const SPARE_POTIONS = { melee: [4, 1], caster: [3, 3] } as const
 const SPARE_GOLD = 2000
 const BELT_ROWS = 4
+const GEAR_ROOM = 8
+const INVENTORY_CELLS = 40
 const SHOP_GOLD = 6000
 const BARE_SHOP_GOLD = 300
 const BARE_RESERVE = 150
@@ -1851,6 +1853,10 @@ export class Autopilot {
     this.walkRoute(nowMs, path.length > 0 ? [me, ...field.corners(path, me)] : [me, goal])
   }
 
+  private freeCells(): number {
+    return INVENTORY_CELLS - [...this.host.world.containers.inventory.values()].reduce((cells, item) => cells + item.invWidth * item.invHeight, 0)
+  }
+
   private potionsWanted(): number {
     const { world, hudManager } = this.host
     const rows = hudManager.belt.maxRows
@@ -1912,7 +1918,7 @@ export class Autopilot {
     if (gambled < GAMBLING_RULES.buys) await this.gamble(gambled + 1)
   }
 
-  private async buyUpgrade(bought = 1): Promise<void> {
+  private async buyUpgrade(bought = 1, filled: ReadonlySet<string> = new Set()): Promise<void> {
     const { world, hudManager, hudModel, assists } = this.host
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || world.npcInteraction.npcId === null) return
     const budget = world.self.gold - (this.bare() > 0 ? Math.max(BARE_RESERVE, world.self.level * RESERVE_PER_LEVEL) : SPARE_GOLD)
@@ -1920,12 +1926,12 @@ export class Autopilot {
     const fits = (item: ItemData) => freeSpots(world.containers.inventory.values(), item.invWidth, item.invHeight).length > 0
     const pick = this.store()
       .map((item) => ({ item, appraisal: assists.inventoryCare.appraise(item), cost: price(item) }))
-      .filter(({ item, appraisal, cost }) => appraisal.upgradeSlot !== undefined && cost <= budget && fits(item))
+      .filter(({ item, appraisal, cost }) => appraisal.upgradeSlot !== undefined && !filled.has(appraisal.upgradeSlot) && cost <= budget && fits(item))
       .sort((a, b) => b.appraisal.score / Math.max(1, b.cost) - a.appraisal.score / Math.max(1, a.cost))[0]
     const before = world.self.gold
     if (!pick || !hudModel.vendorBuy(pick.item.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
     this.toast('Bought better gear', pick.appraisal.reason, 'green')
-    if (bought < GEAR_BUYS) await this.buyUpgrade(bought + 1)
+    if (bought < GEAR_BUYS) await this.buyUpgrade(bought + 1, new Set([...filled, pick.appraisal.upgradeSlot!]))
   }
 
   private async topUp(kind: keyof typeof SCROLL_KINDS, tries: number): Promise<void> {
@@ -2053,7 +2059,7 @@ export class Autopilot {
     const bossFight = Object.values(LAIRS.resists).some((resist) => resist.row === this.host.guide.currentPlan?.goal.row) ? LAIRS.bossPotions : 0
     for (const [prefix, spare] of [['hp', spares[0] + (BELT_ROWS - rows) * healing + bossFight], ['mp', spares[1]]] as const) {
       const potion = bestIn(prefix)
-      const wanted = belt(prefix) + spare
+      const wanted = Math.min(belt(prefix) + spare, total(prefix) + this.freeCells() - GEAR_ROOM)
       for (let tries = 0; potion && tries < BUY_TRIES && total(prefix) < wanted && world.self.gold >= (prefix === 'hp' ? price(potion) : SPARE_GOLD); tries++) {
         const before = total(prefix)
         if (!hudModel.vendorBuy(potion.id, false) || !(await waitFor(() => total(prefix) > before, 1500))) break
