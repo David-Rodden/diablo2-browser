@@ -994,6 +994,28 @@ describe('autopilot', () => {
     expect(guide.detour).toBeNull()
   })
 
+  it('tries the goal again after 45 minutes of training that setbacks asked for', async () => {
+    const { world, guide, tick } = setup({ goal: { level: 2, title: 'Den of Evil' }, target: { x: 130, y: 100, label: 'Den of Evil' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    Object.assign(world.self, { gold: 0, stashGold: 50_000, name: 'Patient' })
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: bodyLoc, code: 'cap', bodyLoc }))
+    for (let i = 0; i < 8; i++) {
+      Object.assign(world.self, { life: 20 })
+      tick(6000)
+      Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+      world.self.life = 100
+      tick()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      Object.assign(world, { areaId: BLOOD_MOOR })
+      tick()
+    }
+    tick(6000)
+    expect(guide.detour).toMatchObject({ title: 'Training' })
+    tick(46 * 60_000)
+    tick(6000)
+    expect(guide.detour).toBeNull()
+  })
+
   it('stops walking back into the same death after the third time, and asks for a hand with the body', () => {
     const { pilot, world, hudModel, tick } = setup({})
     Object.assign(hudModel, { resurrect: vi.fn() })

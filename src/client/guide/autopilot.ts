@@ -105,6 +105,8 @@ const GOLD = 'gld'
 const REVIVE_MS = 2500
 const DEATH_MEMORY_MS = 20 * 60_000
 const SIDE_QUEST_MS = 30 * 60_000
+const TRAINING_PATIENCE_MS = 45 * 60_000
+const HUMBLED = 'Too strong'
 const SPIRAL_MS = 15 * 60_000
 const SPIRAL_DEATHS = 3
 const DEATH_CAUTION = 0.08
@@ -512,14 +514,16 @@ export class Autopilot {
     this.assessedAt = nowMs
     const me = this.trainee()
     const training = this.training
+    const character = `${world.self.name}:${world.difficulty}`
     if (training) {
-      if (me.level >= training.level && me.gold >= training.gold && (me.bare <= training.bare || (nowMs - training.since > GEAR_HUNT_MS && me.bare < NAKED_SLOTS))) {
+      const restless = training.why.startsWith(HUMBLED) && nowMs - training.since > TRAINING_PATIENCE_MS
+      if (restless || (me.level >= training.level && me.gold >= training.gold && (me.bare <= training.bare || (nowMs - training.since > GEAR_HUNT_MS && me.bare < NAKED_SLOTS)))) {
         Object.assign(this, { training: null, ground: null, forgiven: nowMs, gearRestUntil: me.bare > training.bare ? nowMs + GEAR_REST_MS : this.gearRestUntil })
-        this.toast('Ready to carry on', `Heading back to ${levelName(this.questLevel)}`, 'green')
+        if (restless) this.floor.set(character, this.questLevel, 0)
+        this.toast(restless ? 'Trying again' : 'Ready to carry on', `Heading back to ${levelName(this.questLevel)}`, 'green')
       }
       return
     }
-    const character = `${world.self.name}:${world.difficulty}`
     const need = readiness(me, this.questLevel, this.setbacks(nowMs), nowMs >= this.gearRestUntil || me.bare >= NAKED_SLOTS, this.floor.of(character, this.questLevel))
     const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests))
     if (!need || ground === null) return
