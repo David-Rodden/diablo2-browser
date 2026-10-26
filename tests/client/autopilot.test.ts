@@ -504,6 +504,21 @@ describe('autopilot', () => {
     expect(assists.walkTo.mock.calls.at(-1)![0]).toBeLessThan(300)
   })
 
+  it('restocks again on a quick trip back while the potions are low, not only when they run out', () => {
+    const run = (potions: number) => {
+      const { pilot, world, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+      Array.from({ length: potions }, (_, id) => world.containers.belt.set(id, { id, code: 'hp2', gridX: id }))
+      ;[40, 41].forEach((id) => world.containers.inventory.set(id, { id, code: 'tsc', identified: true, gridX: id - 40, gridY: 0, invWidth: 1, invHeight: 1 }))
+      ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+      units.push(unit({ id: 7, classId: 148, x: 120, y: 100, name: 'Akara' }))
+      Object.assign(world.self, { gold: 900 })
+      ;(pilot as unknown as { errandsAt: Map<string, number> }).errandsAt.set('potions', 1000)
+      tick(60_000)
+      return guide.pilotStatus
+    }
+    expect([run(2), run(8)]).toEqual(['Buying potions and portals', 'Head to Blood Moor'])
+  })
+
   it('does not step back through its portal with no potions and no gold to buy any', () => {
     const { pilot, world, units, guide, tick } = setup({ goal: { level: 62, title: 'The Horadric Staff' }, step: { kind: 'waypoint', level: 43 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
     Object.assign(world.self, { gold: 16, stashGold: 0 })
