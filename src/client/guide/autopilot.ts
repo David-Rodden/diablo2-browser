@@ -262,6 +262,7 @@ const EXIT_OBJECTS: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.ex
 const LEVERS = new Map(Object.values(QUEST_OBJECTS.levers).map((entry) => [entry.object, entry.lever]))
 const SWEEP: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.sweep))
 const ROTATE: ReadonlySet<number> = new Set(Object.values(QUEST_OBJECTS.rotate).flat())
+const BRIDGES = new Map(Object.values(QUEST_OBJECTS.bridges).map((entry) => [entry.object, entry]))
 const selectable = (unit: ClientUnit) => (((CANONICAL_113C_OBJECTS[unit.classId]?.selectableMask ?? 1) >> unit.mode) & 1) === 1
 const codeOf = (item: ItemData) => item.code.trim()
 type PadSpot = Pad & { readonly unit?: ClientUnit; readonly partner?: SubTilePoint | undefined }
@@ -276,6 +277,7 @@ export class Autopilot {
   private pausedUntil = Number.NEGATIVE_INFINITY
   private progress = { ms: 0, x: 0, y: 0 }
   private job: Promise<unknown> | null = null
+  private bridge: { readonly id: number; at: number | null } | null = null
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
   private readonly stubborn = new Map<number, number>()
   private readonly scavenged = new Set<number>()
@@ -582,6 +584,17 @@ export class Autopilot {
     return training && { level: training.ground, title: 'Training', hint: `${training.why} in ${levelName(training.ground)}` }
   }
 
+  private trainElsewhere(): boolean {
+    const training = this.training
+    if (training === null || this.host.guide.detour === null) return false
+    this.trainedOut.add(training.ground)
+    const next = trainingGround(this.host.world.areaId, this.trainee(), this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests))
+    if (next === null) return false
+    this.training = { ...training, ground: next }
+    this.toast('Training somewhere else', `No way into ${levelName(training.ground)}, going to ${levelName(next)}`, 'tan')
+    return true
+  }
+
   private train(nowMs: number): boolean {
     const training = this.training
     const view = this.host.levelView()
@@ -740,6 +753,7 @@ export class Autopilot {
       this.toast('Trying another way', hint, 'tan')
     } else if (last.tries === 2 && this.host.assists.hasTownPortal()) this.retreat(REGROUP, nowMs)
     else if (plan && OPTIONAL_ROWS.has(plan.goal.row ?? -1) && !this.host.guide.skipped.has(plan.goal.row!)) this.skip(plan, 'No headway')
+    else if (this.trainElsewhere()) last.tries = 0
     else this.stop('Autopilot needs you', 'gold', `No headway on ${hint}`)
   }
 
@@ -763,10 +777,25 @@ export class Autopilot {
       this.reachThen(target, nowMs, () => this.useOnce(unit, nowMs))
     } else if (unit && target.unit.kind === 'npc' && !assists.isHostile(unit)) this.reachThen(target, nowMs, () => this.speakTo(unit, plan, nowMs))
     else if (unit && ROTATE.has(unit.classId)) this.rotate(unit, nowMs)
+    else if (unit && BRIDGES.has(unit.classId) && distance(unit, world.self) <= QUEST_OBJECTS.bridgeReach) this.crossBridge(unit, BRIDGES.get(unit.classId)!, nowMs)
     else if (unit && target.unit.kind === 'object') this.reachThen(target, nowMs, () => this.wieldFor(unit) || this.useOnce(unit, nowMs))
     else if (step?.kind === 'exit') this.exitThrough(target, nowMs)
     else if (this.arrivedAt(target)) this.explore(nowMs, plan.hint)
     else this.walkRoute(nowMs)
+  }
+
+  private crossBridge(unit: ClientUnit, { approach: [ax, ay], stand: [sx, sy] }: { readonly approach: readonly number[]; readonly stand: readonly number[] }, nowMs: number): void {
+    const me = this.host.world.self
+    const [approach, stand] = [{ x: ax!, y: ay! }, { x: sx!, y: sy! }]
+    if (this.bridge?.id !== unit.id) this.bridge = { id: unit.id, at: null }
+    const bridge = this.bridge
+    if (bridge.at === null && distance(approach, me) <= REACH) bridge.at = nowMs
+    if (bridge.at === null) this.walkTowards(approach, nowMs)
+    else if (nowMs - bridge.at < QUEST_OBJECTS.bridgeSettleMs) this.say('Waiting for the bridge')
+    else if (distance(stand, me) > REACH && nowMs - this.lastWalk >= WALK_MS) {
+      this.host.assists.stepTo(stand.x, stand.y, nowMs)
+      this.lastWalk = nowMs
+    } else if (distance(stand, me) <= REACH) this.useOnce(unit, nowMs)
   }
 
   private rotate(unit: ClientUnit, nowMs: number): void {
