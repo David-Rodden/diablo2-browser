@@ -23,6 +23,9 @@
     "Hellgate": { "object": 342, "approach": [17590, 8068], "stand": [17601, 8070] }
   },
   "bridgeReach": 60,
+  "briefings": {
+    "meshif1": "jerhyn"
+  },
   "bridgeSettleMs": 1500,
   "boons": {
     "Book of Skill": "ass",

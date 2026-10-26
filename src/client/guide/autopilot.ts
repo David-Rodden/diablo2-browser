@@ -58,6 +58,7 @@ interface Errand {
   readonly key: string
   readonly reason: string
   readonly npc?: Service
+  readonly who?: string
   readonly stash?: true
   readonly action?: string
   readonly work?: () => Promise<unknown>
@@ -147,6 +148,7 @@ const CURSOR_SETTLE_MS = 1000
 const INVENTORY_BUFFER = 0
 const TALK_MS = 700
 const SPEECH_SKIP_MS = 80
+const BRIEFING_MS = 3000
 const CARE_START_MS = 350
 const REPAIR_MS = 300
 const STUCK_TALK_MS = 20_000
@@ -278,6 +280,7 @@ export class Autopilot {
   private progress = { ms: 0, x: 0, y: 0 }
   private job: Promise<unknown> | null = null
   private bridge: { readonly id: number; at: number | null } | null = null
+  private readonly briefed = new Set<string>()
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
   private readonly stubborn = new Map<number, number>()
   private readonly scavenged = new Set<number>()
@@ -991,7 +994,12 @@ export class Autopilot {
   private speakTo(npc: ClientUnit, plan: GuidePlan, nowMs: number): void {
     const talk = this.talk
     const same = talk?.npcId === npc.id && talk.hint === plan.hint ? talk : null
-    if (same?.spoke && nowMs - same.since > STUCK_TALK_MS) this.skip(plan, `Talking to ${npc.name ?? 'them'} didn't move it on`)
+    const briefing = (QUEST_OBJECTS.briefings as Readonly<Record<string, string>>)[MONSTER_PATH_IDS[npc.classId] ?? '']
+    if (same?.spoke && nowMs - same.since > STUCK_TALK_MS && briefing !== undefined && !this.briefed.has(briefing)) {
+      this.briefed.add(briefing)
+      this.talk = null
+      this.run({ key: 'briefing', reason: `Talking to ${briefing.charAt(0).toUpperCase()}${briefing.slice(1)} first`, who: briefing }, nowMs)
+    } else if (same?.spoke && nowMs - same.since > STUCK_TALK_MS) this.skip(plan, `Talking to ${npc.name ?? 'them'} didn't move it on`)
     else if (!same || (nowMs - same.at >= TALK_MS && !this.host.hudManager.worldPanels.npcMenu)) {
       this.talk = same ? Object.assign(same, { at: nowMs, opened: false }) : { npcId: npc.id, hint: plan.hint, since: nowMs, at: nowMs, spoke: false, opened: false, heard: new Set<string>() }
       this.host.assists.use(npc, nowMs)
@@ -1827,11 +1835,11 @@ export class Autopilot {
     const { world, hudManager, hudModel } = this.host
     const town = this.town()
     if (!town || hudModel === null) return
-    if (!errand.npc && !errand.stash) {
+    if (!errand.npc && !errand.who && !errand.stash) {
       await errand.work?.()
       return
     }
-    const find = errand.stash ? () => world.getUnitsByType(2).find((unit) => unit.classId === STASH_CLASS) : () => world.getUnitsByType(1).find((unit) => unit.classId === MONSTER_PATH_IDS.indexOf(town[errand.npc!]))
+    const find = errand.stash ? () => world.getUnitsByType(2).find((unit) => unit.classId === STASH_CLASS) : () => world.getUnitsByType(1).find((unit) => unit.classId === MONSTER_PATH_IDS.indexOf(errand.who ?? town[errand.npc!]))
     const unit = await this.reach(find, errand)
     if (!unit || !this.active) return
     this.host.assists.use(unit, performance.now())
@@ -1845,6 +1853,7 @@ export class Autopilot {
     try {
       if (!(await waitFor(() => Boolean(hudManager.worldPanels.npcMenu) || Boolean(hudManager.worldPanels.npcSpeech), 6000))) return
       if (hudManager.worldPanels.npcSpeech) hudManager.worldPanels.closeNpcSpeech()
+      if (errand.who) await this.hearOut()
       if (errand.action) {
         if (VENDOR_ACTIONS.has(errand.action)) await this.openShop(errand.action, unit.id)
         else {
@@ -1859,6 +1868,15 @@ export class Autopilot {
       hudModel.closeActiveNpcPanel()
       hudModel.cancelNpcSession(unit.id)
     }
+  }
+
+  private async hearOut(): Promise<void> {
+    const panels = this.host.hudManager.worldPanels
+    const menu = await waitFor(() => Boolean(panels.npcMenu), BRIEFING_MS).then(() => panels.npcMenu)
+    const topic = menu?.options.map((option) => option.id).find((id) => id.startsWith('talk_quest'))
+    if (!menu || topic === undefined) return
+    panels.clickNpcMenuOption(topic, menu.context)
+    if (await waitFor(() => Boolean(panels.npcSpeech), BRIEFING_MS)) panels.closeNpcSpeech()
   }
 
   private async openShop(action: string, npcId: number): Promise<boolean> {
@@ -1890,7 +1908,7 @@ export class Autopilot {
     const view = this.host.levelView()
     const town = this.town()
     if (!view || !town) return null
-    const preset = view.presetUnits.find((u) => (errand.stash ? u.type === 2 && u.index === STASH_CLASS : u.type === 1 && u.index === MONSTER_PATH_IDS.indexOf(town[errand.npc!])))
+    const preset = view.presetUnits.find((u) => (errand.stash ? u.type === 2 && u.index === STASH_CLASS : u.type === 1 && u.index === MONSTER_PATH_IDS.indexOf(errand.who ?? town[errand.npc!])))
     return preset ? { x: view.originX + preset.subX, y: view.originY + preset.subY } : null
   }
 
