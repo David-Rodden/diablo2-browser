@@ -244,6 +244,23 @@ describe('autopilot', () => {
     expect(assists.castTownPortal).toHaveBeenCalled()
   })
 
+  it('counts on its potions before running from a steady beating', () => {
+    const run = (potions: number) => {
+      const { world, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+      Object.assign(world.self, { life: 245, maxLife: 351 })
+      Array.from({ length: potions }, (_, id) => world.containers.belt.set(id, { id, code: 'hp3' }))
+      units.push(...Array.from({ length: 16 }, (_, i) => unit({ id: 60 + i, x: 103 + (i % 4), y: 98 + Math.floor(i / 4), name: 'Fallen' })))
+      tick(500)
+      for (let i = 0; i < 6; i++) {
+        world.self.life -= 13
+        tick(500)
+      }
+      return guide.pilotStatus
+    }
+    expect(run(0)).toMatch(/heading to town/)
+    expect(run(6)).not.toMatch(/heading to town/)
+  })
+
   it('heads home when life drops fast, even with potions left', () => {
     const { world, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.containers.belt.set(1, { id: 1, code: 'hp1' })
@@ -864,11 +881,11 @@ describe('autopilot', () => {
   it('leaves a crowd that is cutting it down sooner than a lone monster, and stops dodging once it is escaping', () => {
     const run = (crowd: number) => {
       const { world, assists, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
-      ;[1, 2, 3, 4, 5, 6].forEach((id) => world.containers.belt.set(id, { id, code: 'hp3' }))
+      ;[1, 2, 3, 4, 5, 6].forEach((id) => world.containers.belt.set(id, { id, code: 'hp1' }))
       units.push(...Array.from({ length: crowd }, (_, i) => unit({ id: 60 + i, x: 103 + (i % 4), y: 98 + Math.floor(i / 4), name: 'Fallen' })))
       Object.assign(assists, { dodging: vi.fn(() => true) })
       tick(500)
-      world.self.life = 66
+      world.self.life = 60
       tick(1000)
       return { status: guide.pilotStatus, portal: assists.castTownPortal.mock.calls.length }
     }

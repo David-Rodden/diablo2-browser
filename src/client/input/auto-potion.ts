@@ -4,6 +4,7 @@ const BELT_COLUMNS = 4
 const FRAME_MS = 40
 const DRINK_GAP_MS = 1_000
 const LOW_STOCK = 4
+export const STATE_HEALTHPOT = 100
 
 export interface AutoPotionThresholds {
   readonly life: number
@@ -111,4 +112,19 @@ export class AutoPotionPlanner {
     this.confirmed[drink.kind] = false
     this.effectUntil[drink.kind] = nowMs + (spec(drink.code)?.durationTicks ?? 0) * FRAME_MS
   }
+}
+
+export interface PotionCushion {
+  readonly lifePerMs: number
+  readonly instant: number
+}
+
+export const potionCushion = (potions: readonly Potion[], maxLife: number, charClass: number | null | undefined, horizonMs: number): PotionCushion => {
+  if (maxLife <= 0) return { lifePerMs: 0, instant: 0 }
+  const healFactor = classFactor(HEALING_POTION_PCT_BY_CLASS, charClass)
+  const rateOf = (p: Potion) => (hpAmount(p) * healFactor) / maxLife / Math.max(FRAME_MS, (spec(p.code)?.durationTicks ?? 0) * FRAME_MS)
+  const lifePerMs = Math.max(0, ...potions.filter(isHealing).map(rateOf))
+  const drinks = Math.max(1, Math.floor(horizonMs / DRINK_GAP_MS))
+  const instant = potions.filter(isRejuv).map((p) => hpAmount(p) / 100).sort((a, b) => b - a).slice(0, drinks).reduce((sum, amount) => sum + amount, 0)
+  return { lifePerMs, instant }
 }

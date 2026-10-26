@@ -16,6 +16,7 @@ import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import { useArtisan, type ArtisanKind } from './artisan.ts'
 import { freeSpots } from '../input/auto-loot.ts'
+import { inventoryPotions, potionCushion, STATE_HEALTHPOT } from '../input/auto-potion.ts'
 import { vendorPrice113c } from '../ui-model/vendor-price.ts'
 import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
 import { nextSocketMove, type SocketMove } from './socket-plan.ts'
@@ -118,6 +119,7 @@ const DOOM_MAX_MS = 7000
 const DOOM_CROWD = 4
 const DOOM_PER_FOE_MS = 250
 const DOOM_MIN_LOSS = 0.15
+const POTION_TRUST = 0.5
 const ELITE_PULL = 12
 const PACK_PULL = 3
 const PACK_RADIUS = 6
@@ -1089,9 +1091,11 @@ export class Autopilot {
     const burst = Math.max(...this.lifeLog.map((entry) => entry.life)) - life
     const boss = world.getUnitsByType(1).some((unit) => !unit.dead && BOSSES.has(unit.classId) && distance(unit, me) <= THREAT.near)
     const retreatAt = Math.max(boss ? LAIRS.retreatLife : 0, Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0))) + this.caution(nowMs))
-    const doomedIn = burst > DOOM_MIN_LOSS ? (life * BURST_MS) / burst : Infinity
     const crowd = world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.assists.isHostile(unit) && distance(unit, me) <= THREAT.near).length
     const horizon = Math.min(DOOM_MAX_MS, DOOM_MS + Math.max(0, crowd - DOOM_CROWD) * DOOM_PER_FOE_MS) + (boss ? LAIRS.doomMarginMs : 0)
+    const cushion = potionCushion(inventoryPotions([...world.containers.belt.values(), ...world.containers.inventory.values()].filter((item) => /^(hp|rv)/.test(item.code))), hudManager.maxHp || me.maxLife, me.charClass, horizon)
+    const drain = burst / BURST_MS - (me.states.has(STATE_HEALTHPOT) ? 0 : cushion.lifePerMs * POTION_TRUST)
+    const doomedIn = burst > DOOM_MIN_LOSS && drain > 0 ? (life + cushion.instant * POTION_TRUST) / drain : Infinity
     this.reading = { life: Math.round(life * 100) / 100, burst: Math.round(burst * 100) / 100, doomedIn: Number.isFinite(doomedIn) ? Math.round(doomedIn) : null, horizon, healing, retreatAt: Math.round(retreatAt * 100) / 100 }
     if (life < retreatAt) return 'Low on life, heading to town'
     if (doomedIn < horizon) return 'Taking a beating, heading to town'
