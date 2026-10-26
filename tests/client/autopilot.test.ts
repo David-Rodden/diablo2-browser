@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Autopilot, type AutopilotHost } from '../../src/client/guide/autopilot.ts'
 import type { GuidePlan } from '../../src/client/guide/path-guide.ts'
 import type { ClientUnit } from '../../src/client/world/client-unit.ts'
+import { MONSTER_PATH_IDS } from '../../src/common/path/monster-path-data.ts'
 
 const BLOOD_MOOR = 2
 const ROGUE_ENCAMPMENT = 1
@@ -18,7 +19,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     self,
     merc: null,
     quests: new Uint16Array(48),
-    containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map(), merc: new Map() },
+    containers: { belt: new Map(), inventory: new Map(), equipment: new Map(), shop: new Map(), stash: new Map(), cube: new Map(), merc: new Map(), ground: new Map() },
     getUnit: (_: string, id: number) => units.find((unit) => unit.id === id),
     getUnitsByType: (type: number) => units.filter((unit) => ({ 0: 'player', 1: 'monster', 2: 'object', 5: 'tile' })[type] === unit.unitType),
   }
@@ -38,7 +39,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
     },
     hasLootNearby: () => false,
     dodging: () => false,
-    inventoryCare: { busy: false, config: null, junk: [], clutter: [], upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(), appraise: () => ({ tier: 'keep' }) },
+    inventoryCare: { busy: false, hold: false, config: null, junk: [], clutter: [], surplus: [] as unknown[], excessCharms: [] as unknown[], sellable: [] as unknown[], untidy: [] as unknown[], runeCube: null, upgrades: [] as unknown[], armoury: [] as unknown[], stashable: [], spares: [], wearUpgrades: vi.fn(async () => 0), appraise: () => ({ tier: 'keep' }) },
     keepUp: () => false,
     canRaise: () => false,
     walkTo: vi.fn(),
@@ -92,6 +93,22 @@ describe('autopilot', () => {
     expect(assists.walkTo).toHaveBeenCalled()
   })
 
+  it('gives up on a side quest that has not moved in half an hour, but never on a required one', () => {
+    const side = setup({ goal: { level: 94, title: "Lam Esen's Tome", row: 17 }, target: { x: 130, y: 100, label: 'Ruined Temple' } })
+    side.world.quests[17] = 4
+    side.world.self.level = 40
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => side.world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    Object.assign(side.guide, { currentPlan: side.guide.update() })
+    side.tick()
+    side.tick(31 * 60_000)
+    expect(side.guide.skip).toHaveBeenCalledWith(17)
+    const main = setup({ goal: { level: 102, title: 'The Guardian', row: 22 }, target: { x: 130, y: 100, label: 'Durance' } })
+    Object.assign(main.guide, { currentPlan: main.guide.update() })
+    main.tick()
+    main.tick(31 * 60_000)
+    expect(main.guide.skip).not.toHaveBeenCalled()
+  })
+
   it('touches the waypoint and picks the level the guide wants', () => {
     const { assists, hudManager, hudModel, units, tick } = setup({ step: { kind: 'waypoint', level: 5 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
@@ -116,6 +133,23 @@ describe('autopilot', () => {
     expect(hudManager.worldPanels.clickNpcMenuOption).toHaveBeenLastCalledWith('talk_quest:12', undefined)
     tick()
     expect([hudModel.closeActiveNpcPanel.mock.calls.length > 0, hudModel.requestQuestData.mock.calls.length > 0]).toEqual([true, true])
+  })
+
+  it('talks to Jerhyn first when Meshif will not sail yet', async () => {
+    const { world, assists, hudManager, units, guide, tick } = setup({ goal: { level: 75, title: 'Kurast Docks' }, hint: 'Talk to Meshif', target: { x: 101, y: 100, label: 'Meshif', unit: { id: 7, kind: 'npc' } } }, 40)
+    const [meshif, jerhyn] = [MONSTER_PATH_IDS.indexOf('meshif1'), MONSTER_PATH_IDS.indexOf('jerhyn')]
+    units.push(unit({ id: 7, classId: meshif, x: 101, y: 100, name: 'Meshif' }), unit({ id: 8, classId: jerhyn, x: 102, y: 100, name: 'Jerhyn' }))
+    world.self.gold = 0
+    tick()
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'main', options: [{ id: 'talk' }, { id: 'cancel' }] }
+    tick()
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'talk', options: [{ id: 'talk_intro' }, { id: 'cancel' }] }
+    tick()
+    hudManager.worldPanels.npcMenu = null
+    tick(21_000)
+    tick()
+    expect(guide.pilotStatus).toBe('Talking to Jerhyn first')
+    await vi.waitFor(() => expect(assists.use).toHaveBeenLastCalledWith(units[1], expect.any(Number)))
   })
 
   it('opens a portal home for a far town errand, and finishes it in town before going back through', () => {
@@ -170,6 +204,30 @@ describe('autopilot', () => {
     expect(lair.hudModel.useItem).toHaveBeenCalledWith(7)
   })
 
+  it('opens the shop again when the server resets the NPC before the goods arrive', async () => {
+    const { world, assists, hudManager, hudModel, units, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    units.push(unit({ id: 7, classId: 148, x: 101, y: 100, name: 'Akara' }))
+    world.self.gold = 1000
+    const menu = { npcId: 7, submenu: 'main', options: [{ id: 'trade' }] }
+    assists.use.mockImplementation(() => void (hudManager.worldPanels.npcMenu = menu))
+    const potion = { id: 60, code: 'hp1', invWidth: 1, invHeight: 1 }
+    let opened = 0
+    hudModel.handleNpcMenuAction.mockImplementation(() => {
+      hudManager.leftPanel = 'vendor'
+      hudManager.worldPanels.npcMenu = null
+      if (opened++ > 0) return
+      setTimeout(() => {
+        hudManager.leftPanel = 'none'
+        hudManager.worldPanels.npcMenu = menu
+        world.containers.shop.set(60, potion)
+      }, 50)
+    })
+    Object.assign(hudModel, { vendorBuy: vi.fn(() => true) })
+    tick()
+    await vi.waitFor(() => expect(hudModel.handleNpcMenuAction).toHaveBeenCalledTimes(2), { timeout: 5000 })
+    await vi.waitFor(() => expect((hudModel as unknown as { vendorBuy: ReturnType<typeof vi.fn> }).vendorBuy).toHaveBeenCalledWith(60, false), { timeout: 5000 })
+  })
+
   it('asks the server for fresh quest state when the step has not moved for a while', () => {
     const { hudModel, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     tick()
@@ -202,6 +260,23 @@ describe('autopilot', () => {
     tick(2000)
     expect([assists.standDown, assists.pilotCombat, guide.pilotStatus]).toEqual([true, false, 'Out of healing potions, heading to town'])
     expect(assists.castTownPortal).toHaveBeenCalled()
+  })
+
+  it('counts on its potions before running from a steady beating', () => {
+    const run = (potions: number) => {
+      const { world, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+      Object.assign(world.self, { life: 245, maxLife: 351 })
+      Array.from({ length: potions }, (_, id) => world.containers.belt.set(id, { id, code: 'hp3' }))
+      units.push(...Array.from({ length: 16 }, (_, i) => unit({ id: 60 + i, x: 103 + (i % 4), y: 98 + Math.floor(i / 4), name: 'Fallen' })))
+      tick(500)
+      for (let i = 0; i < 6; i++) {
+        world.self.life -= 13
+        tick(500)
+      }
+      return guide.pilotStatus
+    }
+    expect(run(0)).toMatch(/heading to town/)
+    expect(run(6)).not.toMatch(/heading to town/)
   })
 
   it('heads home when life drops fast, even with potions left', () => {
@@ -291,13 +366,17 @@ describe('autopilot', () => {
     expect(assists.use).toHaveBeenCalledWith(units[0], expect.any(Number))
   })
 
-  it('hands control back when it is in trouble with no portal and no way back', () => {
-    const { pilot, world, assists, hudManager, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+  it('fights on, and backs away from foes when nearly dead, with no portal and no way back', () => {
+    const { pilot, world, units, assists, hudManager, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     assists.hasTownPortal = () => false
+    world.self.life = 50
+    units.push(unit({ id: 81, x: 104, y: 100, name: 'Fallen' }))
+    for (let i = 0; i < 5; i++) tick(1000)
+    expect([pilot.active, assists.standDown, assists.pilotCombat]).toEqual([true, false, true])
+    expect(hudManager.toasts.push).toHaveBeenCalledWith(expect.objectContaining({ title: 'Nowhere to run', color: 'red' }), expect.any(Number))
     world.self.life = 20
-    tick(2000)
-    expect(pilot.active).toBe(false)
-    expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you', color: 'red' }), expect.any(Number))
+    tick()
+    expect(guide.pilotStatus).toBe('Nowhere to run, backing off')
   })
 
   it('feels along a fence for the gap when it is stuck on the edge of a level', () => {
@@ -351,6 +430,15 @@ describe('autopilot', () => {
     expect(assists.castTownPortal).toHaveBeenCalled()
     seconds(90)
     expect(pilot.active).toBe(false)
+  })
+
+  it('trains somewhere else instead of asking for help when the training ground is out of reach', () => {
+    const { pilot, hudManager, guide, tick } = setup({ hint: 'Training in Cold Plains', target: { x: 300, y: 300, label: 'Cold Plains' } })
+    Object.assign(pilot, { questLevel: 5, assessedAt: Number.POSITIVE_INFINITY, training: { level: 12, gold: 0, bare: 0, why: 'Training', ground: 3, since: 0 } })
+    Array.from({ length: 1400 }, () => tick())
+    expect([pilot.active, hudManager.toasts.push.mock.calls.some(([toast]) => toast.title === 'Training somewhere else')]).toEqual([true, true])
+    expect(guide.detour).toMatchObject({ title: 'Training' })
+    expect(guide.detour).not.toMatchObject({ level: 3 })
   })
 
   it('does not count a long fight as being stuck', () => {
@@ -414,6 +502,21 @@ describe('autopilot', () => {
     tick(5000)
     expect(guide.pilotStatus).toBe('Back through the portal')
     expect(assists.walkTo.mock.calls.at(-1)![0]).toBeLessThan(300)
+  })
+
+  it('restocks again on a quick trip back while the potions are low, not only when they run out', () => {
+    const run = (potions: number) => {
+      const { pilot, world, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+      Array.from({ length: potions }, (_, id) => world.containers.belt.set(id, { id, code: 'hp2', gridX: id }))
+      ;[40, 41].forEach((id) => world.containers.inventory.set(id, { id, code: 'tsc', identified: true, gridX: id - 40, gridY: 0, invWidth: 1, invHeight: 1 }))
+      ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+      units.push(unit({ id: 7, classId: 148, x: 120, y: 100, name: 'Akara' }))
+      Object.assign(world.self, { gold: 900 })
+      ;(pilot as unknown as { errandsAt: Map<string, number> }).errandsAt.set('potions', 1000)
+      tick(60_000)
+      return guide.pilotStatus
+    }
+    expect([run(2), run(8)]).toEqual(['Buying potions and portals', 'Head to Blood Moor'])
   })
 
   it('does not step back through its portal with no potions and no gold to buy any', () => {
@@ -521,7 +624,7 @@ describe('autopilot', () => {
     expect(pilot.active).toBe(true)
   })
 
-  it('puts gold beyond the purse and the gambling stake into the stash', async () => {
+  it('keeps only a small purse and puts the rest of its gold in the stash', async () => {
     const { pilot, world, assists, hudManager, hudModel, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
     ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
     world.containers.inventory.set(8, { id: 8, code: 'tbk', quantity: 20, invWidth: 1, invHeight: 2 })
@@ -532,7 +635,7 @@ describe('autopilot', () => {
     for (const key of ['shop', 'gamble', 'potions']) (pilot as unknown as { errandsAt: Map<string, number> }).errandsAt.set(key, 1_000_000)
     tick()
     expect(guide.pilotStatus).toBe('Putting gold in the stash')
-    await vi.waitFor(() => expect(world.self.gold).toBe(20_000))
+    await vi.waitFor(() => expect(world.self.gold).toBe(3000))
   })
 
   it('takes gold out of the stash when it has none on hand', async () => {
@@ -543,8 +646,20 @@ describe('autopilot', () => {
     Object.assign(hudModel, { withdrawGold: vi.fn((amount: number) => void (world.self.gold += amount)), closeStash: vi.fn() })
     tick()
     expect(guide.pilotStatus).toBe('Taking gold out of the stash')
-    await vi.waitFor(() => expect((hudModel as unknown as { withdrawGold: ReturnType<typeof vi.fn> }).withdrawGold).toHaveBeenCalledWith(5000))
-    expect(world.self.gold).toBe(5000)
+    await vi.waitFor(() => expect((hudModel as unknown as { withdrawGold: ReturnType<typeof vi.fn> }).withdrawGold).toHaveBeenCalledWith(3000))
+    expect(world.self.gold).toBe(3000)
+  })
+
+  it('takes its gambling money out of the stash only when it is about to gamble', async () => {
+    const { pilot, world, assists, hudManager, hudModel, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    Object.assign(world.self, { gold: 3000, stashGold: 60_000, level: 10 })
+    units.push(unit({ id: 30, unitType: 'object', classId: 267, x: 102, y: 100 }))
+    assists.use.mockImplementation(() => void (hudManager.leftPanel = 'stash'))
+    Object.assign(hudModel, { withdrawGold: vi.fn((amount: number) => void (world.self.gold += amount)), closeStash: vi.fn() })
+    for (const key of ['shop', 'potions']) (pilot as unknown as { errandsAt: Map<string, number> }).errandsAt.set(key, 1_000_000)
+    tick()
+    expect(guide.pilotStatus).toBe('Taking gold out of the stash')
+    await vi.waitFor(() => expect(world.self.gold).toBe(53_000))
   })
 
   it('puts an item left on the cursor back in the bag instead of walking around holding it', () => {
@@ -625,6 +740,32 @@ describe('autopilot', () => {
     assists.inventoryCare.upgrades = [{ id: 9 }]
     tick()
     expect([assists.inventoryCare.wearUpgrades.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Putting on better gear'])
+  })
+
+  it('puts on better gear it picked up without waiting for town', () => {
+    const { assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    assists.inventoryCare.upgrades = [{ id: 9 }]
+    tick()
+    expect([assists.inventoryCare.wearUpgrades.mock.calls.length, guide.pilotStatus]).toEqual([1, 'Putting on better gear'])
+  })
+
+  it("walks to Mephisto's platform and waits for the bridge before taking the red portal", () => {
+    const target = { x: 17601, y: 8070, label: 'Objective', unit: { id: 80, kind: 'object' as const } }
+    const { world, assists, units, guide, tick } = setup({ hint: 'Take the red portal', target }, 102)
+    Object.assign(guide, { currentPlan: { goal: { level: 102, title: 'Pandemonium Fortress' }, hint: 'Take the red portal', target } })
+    Object.assign(world.self, { x: 17616, y: 8070 })
+    Array.from({ length: 16 }, (_, id) => world.containers.belt.set(id, { id, code: id % 4 < 2 ? 'hp3' : 'mp3' }))
+    units.push(unit({ id: 80, unitType: 'object', classId: 342, x: 17601, y: 8070 }))
+    tick()
+    expect([assists.use.mock.calls.length, assists.stepTo.mock.calls.length]).toEqual([0, 0])
+    Object.assign(world.self, { x: 17590, y: 8068 })
+    tick()
+    expect(guide.pilotStatus).toBe('Waiting for the bridge')
+    tick(1600)
+    expect(assists.stepTo).toHaveBeenLastCalledWith(17601, 8070, expect.any(Number))
+    Object.assign(world.self, { x: 17600, y: 8070 })
+    tick(1000)
+    expect(assists.use.mock.calls[0]?.[0]).toBe(units[0])
   })
 
   it('opens the quest chest before going back to the loot around it', () => {
@@ -801,11 +942,11 @@ describe('autopilot', () => {
   it('leaves a crowd that is cutting it down sooner than a lone monster, and stops dodging once it is escaping', () => {
     const run = (crowd: number) => {
       const { world, assists, units, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
-      ;[1, 2, 3, 4, 5, 6].forEach((id) => world.containers.belt.set(id, { id, code: 'hp3' }))
+      ;[1, 2, 3, 4, 5, 6].forEach((id) => world.containers.belt.set(id, { id, code: 'hp1' }))
       units.push(...Array.from({ length: crowd }, (_, i) => unit({ id: 60 + i, x: 103 + (i % 4), y: 98 + Math.floor(i / 4), name: 'Fallen' })))
       Object.assign(assists, { dodging: vi.fn(() => true) })
       tick(500)
-      world.self.life = 66
+      world.self.life = 60
       tick(1000)
       return { status: guide.pilotStatus, portal: assists.castTownPortal.mock.calls.length }
     }
@@ -938,6 +1079,28 @@ describe('autopilot', () => {
     expect(guide.detour).toBeNull()
   })
 
+  it('tries the goal again after 45 minutes of training that setbacks asked for', async () => {
+    const { world, guide, tick } = setup({ goal: { level: 2, title: 'Den of Evil' }, target: { x: 130, y: 100, label: 'Den of Evil' } })
+    Object.assign(guide, { currentPlan: guide.update() })
+    Object.assign(world.self, { gold: 0, stashGold: 50_000, name: 'Patient' })
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: bodyLoc, code: 'cap', bodyLoc }))
+    for (let i = 0; i < 8; i++) {
+      Object.assign(world.self, { life: 20 })
+      tick(6000)
+      Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+      world.self.life = 100
+      tick()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      Object.assign(world, { areaId: BLOOD_MOOR })
+      tick()
+    }
+    tick(6000)
+    expect(guide.detour).toMatchObject({ title: 'Training' })
+    tick(46 * 60_000)
+    tick(6000)
+    expect(guide.detour).toBeNull()
+  })
+
   it('stops walking back into the same death after the third time, and asks for a hand with the body', () => {
     const { pilot, world, hudModel, tick } = setup({})
     Object.assign(hudModel, { resurrect: vi.fn() })
@@ -978,5 +1141,39 @@ describe('autopilot', () => {
     tick(1000)
     tick(1000)
     expect([guide.pilotStatus, guide.detour]).toEqual([expect.not.stringContaining('body'), null])
+  })
+
+  it('heads to town to sell and stash once the bags are full', () => {
+    const { world, assists, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    for (let i = 0; i < 40; i++) world.containers.inventory.set(i + 1, { id: i + 1, code: 'jew', identified: true, gridX: i % 10, gridY: Math.floor(i / 10), invWidth: 1, invHeight: 1 })
+    tick()
+    expect(assists.castTownPortal).not.toHaveBeenCalled()
+    Object.assign(assists.inventoryCare, { sellable: [world.containers.inventory.get(1), world.containers.inventory.get(2)] })
+    tick()
+    expect(guide.pilotStatus).toBe('Heading to town by portal: bags are full')
+  })
+
+  it('picks up the gold it dropped after getting its body back', () => {
+    const { world, guide, assists, hudModel, units, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    Object.assign(world, { selfId: 1 })
+    Object.assign(world.self, { name: 'Hero' })
+    world.isDead = true
+    tick()
+    world.isDead = false
+    units.push(unit({ id: 2, unitType: 'player', name: 'Hero', x: 101, y: 100, mode: 17 }))
+    tick()
+    ;[1, 3, 4].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    const pile = unit({ id: 90, unitType: 'item', x: 103, y: 101 })
+    units.push(pile)
+    world.containers.ground.set(90, { id: 90, code: 'gld ', x: 103, y: 101 })
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Picking up the gold you dropped')
+    tick(1000)
+    expect(assists.use).toHaveBeenCalledWith(pile, expect.any(Number))
+    world.containers.ground.clear()
+    tick(1000)
+    tick(1000)
+    expect([guide.pilotStatus, guide.detour]).toEqual([expect.not.stringContaining('gold'), null])
   })
 })

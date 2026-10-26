@@ -32,7 +32,7 @@ describe('loot alerts', () => {
   })
 
   it('by default announces what helps the character and says why', () => {
-    expect(lootAlert(0, dropped({ id: 1, code: 'r07' }), 'smart', BLOOD_MOOR, coldSorc)).toEqual({ title: 'Tal Rune', detail: 'For Spirit · 1/4 runes · Blood Moor', color: 'orange' })
+    expect(lootAlert(0, dropped({ id: 1, code: 'r07' }), 'smart', BLOOD_MOOR, coldSorc)).toEqual({ title: 'Tal Rune', detail: "For Ancient's Pledge · 1/3 runes · Blood Moor", color: 'orange' })
     expect(lootAlert(0, dropped({ id: 2, code: 'gpw' }), 'smart', BLOOD_MOOR, coldSorc)).toMatchObject({ detail: 'In your shield: All Resistances +19 · Blood Moor', color: 'white' })
     expect(lootAlert(0, dropped({ id: 3, code: 'ne1', quality: 4 }), 'smart', BLOOD_MOOR, coldSorc)).toBeNull()
     expect(lootAlert(0, dropped({ id: 4, code: 'hp5' }), 'smart', BLOOD_MOOR, coldSorc)).toBeNull()

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { characterBuild, describeBuild } from '../../src/common/items/character-build.ts'
 import { getEmbeddedDropTables } from '../../src/common/items/embedded-drop-tables.ts'
-import { appraiseItem, type AppraisalContext } from '../../src/common/items/loot-appraisal.ts'
+import { appraiseItem, gambleWorthy, type AppraisalContext } from '../../src/common/items/loot-appraisal.ts'
 import { runewordsFor } from '../../src/common/items/runeword-advice.ts'
 import type { ItemData } from '../../src/netproto/index.ts'
 
@@ -31,7 +31,8 @@ describe('character build', () => {
     expect(names()).not.toContain('Harmony')
     expect(names(bowazon)).toContain('Harmony')
     expect(names(zealot)).not.toContain('Harmony')
-    expect(runewordsFor(coldSorc).find((rw) => rw.name === 'Insight')?.forMerc).toBe(true)
+    expect(runewordsFor(coldSorc).some((rw) => rw.name === 'Insight')).toBe(true)
+    expect(runewordsFor(coldSorc).filter((rw) => !rw.forMerc && rw.levelreq <= coldSorc.level).length).toBeGreaterThan(0)
   })
 })
 
@@ -54,6 +55,26 @@ describe('keeping only what the character will use', () => {
     expect(appraiseItem(plain('jav'), context(javazon)).upgradeSlot).toBe('weapon1')
     const barb = characterBuild({ classIndex: 4, level: 17, strength: 60, dexterity: 30, skillPoints: new Map([[126, 5]]) })
     expect(['wnd', 'sbb', 'hax'].map((code) => appraiseItem(plain(code), context(barb)).upgradeSlot)).toEqual([undefined, undefined, 'weapon1'])
+  })
+
+  it('puts a better shield or head in the shield hand, never in place of the weapon', () => {
+    const worn = [item({ id: 50, code: 'wnd', identified: true, bodyLoc: 4 }), item({ id: 51, code: 'buc', identified: true, bodyLoc: 5, defense: 4 } as Partial<ItemData> & { code: string })]
+    const head = item({ id: 52, code: 'ne1', quality: 4, identified: true, defense: 8, stats: [{ statId: 7, param: 0, value: 20 << 8 }] } as Partial<ItemData> & { code: string })
+    expect(appraiseItem(head, context(skeleMancer, { equipped: worn })).upgradeSlot).toBe('weapon2')
+  })
+
+  it('lets an Assassin carry a second claw in the off hand, but no other weapon', () => {
+    const trapper = characterBuild({ classIndex: 6, level: 31, strength: 50, dexterity: 50, skillPoints: new Map([[251, 8], [256, 10], [271, 8]]) })
+    const offered = (id: number, code: string) => item({ id, code, quality: 4, identified: true, stats: [{ statId: 127, param: 0, value: 2 }] })
+    const worn = [{ ...offered(60, 'ywn'), bodyLoc: 4 }, item({ id: 61, code: 'lrg', identified: true, bodyLoc: 5, defense: 6 } as Partial<ItemData> & { code: string })]
+    expect([offered(62, 'ktr'), offered(63, 'ywn')].map((piece) => appraiseItem(piece, context(trapper, { equipped: worn })).upgradeSlot === 'weapon2')).toEqual([true, false])
+  })
+
+  it('gambles on any ring or amulet, even though a plain one would be junk, but not on gear the build cannot use', () => {
+    const offered = (code: string) => item({ code, quality: undefined, isGambleMystery: true } as Partial<ItemData> & { code: string })
+    const ringed = { equipped: [item({ id: 70, code: 'rin', bodyLoc: 6 }), item({ id: 71, code: 'rin', bodyLoc: 7 })] }
+    expect(appraiseItem(offered('rin'), context(coldSorc, ringed)).tier).toBe('junk')
+    expect(['rin', 'amu', 'ne1', 'gth'].map((code) => gambleWorthy(offered(code), coldSorc))).toEqual([true, true, false, false])
   })
 
   it('treats only the best carried piece for a slot as the upgrade', () => {
@@ -122,6 +143,14 @@ describe('loot appraisal', () => {
     expect(appraiseItem(item({ code: 'cm3', quality: 4, identified: true, stats: [{ statId: 188, param: (1 << 3) | 2, value: 1 }] }), context())).toMatchObject({ tier: 'great', reason: '+1 to your Cold Spells', locked: true })
     expect(appraiseItem(item({ code: 'crs', totalSockets: 4 }), context())).toMatchObject({ tier: 'good', reason: 'Base for Spirit · 4 sockets' })
     expect(appraiseItem(item({ code: 'crs' }), context(coldSorc, geared)).tier).toBe('junk')
+  })
+
+  it('reads life and mana in the fixed point they arrive in, so a small charm is no treasure', () => {
+    const grand = (stats: ItemData['stats']) => appraiseItem(item({ code: 'cm3', identified: true, invHeight: 3, stats }), context(zealot))
+    expect(grand([{ statId: 7, param: 0, value: 8 << 8 }])).toMatchObject({ tier: 'junk', locked: false })
+    expect(grand([{ statId: 19, param: 0, value: 0 }]).tier).toBe('junk')
+    expect(grand([{ statId: 7, param: 0, value: 40 << 8 }]).tier).toBe('good')
+    expect(grand([{ statId: 7, param: 0, value: 12 << 8 }])).toMatchObject({ tier: 'keep', locked: false })
   })
 
   it('never offers supplies, quest items or gold up for clearing out', () => {

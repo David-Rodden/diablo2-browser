@@ -3,5 +3,6 @@
   "circlets": ["ci0", "ci1"],
   "reserve": { "base": 5000, "perLevel": 500 },
   "spare": 10000,
+  "treatShare": 0.34,
   "buys": 6
 }

@@ -56,19 +56,24 @@ const MUCH_BETTER = 1.4
 const BETTER = 1.1
 const MIN_GAIN = 5
 const BARE_SLOT = MIN_GAIN + 1
-const DUAL_WIELDERS = new Set([4, 6])
+const [BARBARIAN, ASSASSIN] = [4, 6]
 const SOON_LEVELS = 3
 const BASE_HEADROOM = 6
 
 const IMBUE_TYPES = KNOWLEDGE.imbue.alwaysWorthTypes
 
-const isImbueBase = (item: LootItem, build: CharacterBuild): boolean => {
+const ownClassItem = (ui: UiInventoryItem, build: CharacterBuild) => ui.reqClass !== undefined && ui.reqClass === CHARACTER_CLASS_CODES[build.classIndex]
+
+export const imbueWorth = (item: LootItem, build: CharacterBuild): number => {
   const { getBase, isA } = getEmbeddedDropTables()
   const base = getBase(codeOf(item))
   const type = base?.type ?? ''
+  if (!isEligibleForCharsiImbue113c(item) || weaponFit(type, build) === 'none') return 0
   const upperTier = base?.normcode !== undefined && base.normcode !== base.id
-  return isEligibleForCharsiImbue113c(item) && (IMBUE_TYPES.some((t) => isA(type, t)) || upperTier) && weaponFit(type, build) !== 'none'
+  return ownClassItem(uiOf(item), build) ? 3 : IMBUE_TYPES.some((t) => isA(type, t)) ? 2 : upperTier ? 1 : 0
 }
+
+const isImbueBase = (item: LootItem, build: CharacterBuild): boolean => imbueWorth(item, build) > 0
 
 const codeOf = (item: Pick<LootItem, 'code'>) => item.code.trim().toLowerCase()
 const isRune = (code: string) => RUNE_INFO[code] !== undefined
@@ -116,12 +121,12 @@ function skillerReason(item: LootItem, build: CharacterBuild): string | null {
 }
 
 function charmAppraisal(item: LootItem, size: CharmSize, { build }: AppraisalContext): Appraisal {
-  const { good, great, unidentified } = KNOWLEDGE.charmScore[size]
+  const { keep, good, great, unidentified } = KNOWLEDGE.charmScore[size]
   if (!item.identified) return result(unidentified as LootTier, 'charm', good, `Unidentified ${size} charm`, { locked: true })
   const skiller = skillerReason(item, build)
   const score = scoreStats(itemStats(item), build)
-  const tier: LootTier = skiller || score >= great ? 'great' : score >= good ? 'good' : score >= good / 3 ? 'keep' : 'junk'
-  return result(tier, 'charm', score, skiller ?? `Worth ${Math.round(score)} to your build`, { locked: tier !== 'junk' })
+  const tier: LootTier = skiller || score >= great ? 'great' : score >= good ? 'good' : score >= keep ? 'keep' : 'junk'
+  return result(tier, 'charm', score, skiller ?? `Worth ${Math.round(score)} to your build`, { locked: TIER_RANK[tier] >= TIER_RANK.good })
 }
 
 function jewelAppraisal(item: LootItem, { build }: AppraisalContext): Appraisal {
@@ -160,6 +165,8 @@ interface Upgrade {
   readonly current: number
 }
 
+const offhandWeapon = (item: LootItem, build: CharacterBuild) => build.classIndex === BARBARIAN || (build.classIndex === ASSASSIN && getEmbeddedDropTables().isA(baseTypeOf(codeOf(item)), 'h2h'))
+
 const handOrder = (ui: UiInventoryItem, slot: EquipSlotId) => (slot === (damageOf(ui) ? 'weapon2' : 'weapon1') ? 1 : 0)
 
 function slotUpgrades(item: LootItem, { build, equipped }: AppraisalContext): Upgrade[] {
@@ -170,13 +177,15 @@ function slotUpgrades(item: LootItem, { build, equipped }: AppraisalContext): Up
   const wornScore = (slot: EquipSlotId) => (worn.get(slot) ? gearScore(worn.get(slot)!, build) : 0)
   return ui.allowedSlots
     .map((slot) => ({ slot, score: worn.get(slot) === undefined ? BARE_SLOT + score : score, current: wornScore(slot) + (ui.twoHanded && slot === 'weapon1' ? wornScore('weapon2') : 0) }))
-    .filter((u) => !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding || (damageOf(ui) !== undefined && !DUAL_WIELDERS.has(build.classIndex)))) && worn.get(u.slot)?.id !== item.id)
+    .filter((u) => !(u.slot === 'weapon1' && damageOf(ui) === undefined) && !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding || (damageOf(ui) !== undefined && !offhandWeapon(item, build)))) && worn.get(u.slot)?.id !== item.id)
     .sort((a, b) => a.current - b.current || handOrder(ui, a.slot) - handOrder(ui, b.slot))
 }
 
 const gainOf = ({ score, current }: Upgrade) => (current <= 0 ? (score > MIN_GAIN ? Infinity : 0) : score / current)
 
 const isGain = (upgrade: Upgrade) => upgrade.score - upgrade.current >= MIN_GAIN && gainOf(upgrade) >= BETTER
+
+export const gambleWorthy = (item: LootItem, build: CharacterBuild): boolean => usableBy(uiOf(item), build, SOON_LEVELS) && !misfits(item, build)
 
 const wearableBy = (item: LootItem, build: CharacterBuild, levels: number) => usableBy(uiOf(item), build, levels) && requiredLevel(item, uiOf(item)) <= build.level + levels
 
@@ -218,7 +227,6 @@ function namedAppraisal(item: LootItem, kind: 'unique' | 'set', ctx: AppraisalCo
   return result(tier, kind, score, tier === 'junk' ? 'Outgrown' : `Worth ${Math.round(score)} to your build`)
 }
 
-const ownClassItem = (ui: UiInventoryItem, build: CharacterBuild) => ui.reqClass !== undefined && ui.reqClass === CHARACTER_CLASS_CODES[build.classIndex]
 
 function unknownAffixAppraisal(item: LootItem, kind: 'rare' | 'magic', ctx: AppraisalContext): Appraisal {
   const ui = uiOf(item)
@@ -275,5 +283,6 @@ export function appraiseItem(item: LootItem, ctx: AppraisalContext): Appraisal {
   const upgrade = upgradeAppraisal(item, 'normal', ctx)
   if (upgrade && item.totalSockets === 0) return upgrade
   const base = baseAppraisal(item, ctx)
-  return upgrade?.upgradeSlot !== undefined && (base.tier === 'junk' || base.kind !== 'base') ? upgrade : base
+  const emptySlot = upgrade?.upgradeSlot !== undefined && !ctx.equipped.some((worn) => slotOf(worn) === upgrade.upgradeSlot)
+  return upgrade?.upgradeSlot !== undefined && (emptySlot || base.tier === 'junk' || base.kind !== 'base') ? upgrade : base
 }

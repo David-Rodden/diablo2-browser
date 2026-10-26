@@ -106,6 +106,7 @@ import { decorateLoadingScreen } from './ui/loading-screen.ts'
 import { startPageTitle } from './ui/page-title.ts'
 import type { PathGuide } from './guide/path-guide.ts'
 import { createSessionGuide } from './guide/session-guide.ts'
+import { mountPilotBanner } from './guide/pilot-banner.ts'
 import { Autopilot } from './guide/autopilot.ts'
 import { pilotReport } from './guide/pilot-report.ts'
 import { PlayLog } from './session/play-log.ts'
@@ -787,6 +788,7 @@ export async function startPlayApp(options?: {
     levelView: () => session.mapService?.getLoadedLevelView(session.world.areaId) ?? null,
   })
   assists().pilot = pilot
+  if (stageEl) mountPilotBanner(stageEl, () => ({ shown: pilot.active && (hudManager.leftPanel !== 'none' || hudManager.rightPanel !== 'none' || hudManager.worldPanels.npcMenu !== null), status: guide.pilotStatus, hint: guide.currentPlan?.hint ?? null }))
   if ((import.meta as { readonly env?: { readonly DEV?: boolean } }).env?.DEV === true) {
     const playLog = new PlayLog((body) => void fetch('/api/play-log', { method: 'POST', body, keepalive: true }).catch(() => undefined), () => pilotReport(session.world, hudManager, assists(), pilot, guide))
     assists().journal = (kind, detail) => playLog.note(kind, detail)

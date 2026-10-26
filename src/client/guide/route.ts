@@ -73,7 +73,7 @@ export function currentGoal(level: number, progress: QuestProgress, mode: GuideM
     .map((o) => {
       const page = buildQuestLogPage({ row: o.row, playerWords: progress.words, gameWords: progress.gameWords, status: progress.status?.[o.row] ?? 0, den: progress.den ?? 0, barbs: progress.barbs ?? 0 })
       const key = page ? page.text.key : o.start
-      const stage = key === undefined ? undefined : STAGES[key]?.find((s) => !s.unless?.some(carries))
+      const stage = key === undefined ? undefined : STAGES[key]?.find((s) => !s.unless?.some(carries) && (s.until === undefined || !isDone(progress.words[s.until] ?? 0)))
       if (stage?.after !== undefined && !isDone(progress.words[stage.after] ?? 0)) return undefined
       return stage && { level: stage.level === 'town' ? town : stage.level === 'tomb' ? tomb : throughTomb(stage.level, level, progress), title: o.name, row: o.row, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}), ...(stage.bring ? { bring: stage.bring } : {}) }
     })
@@ -119,10 +119,11 @@ export function shortestRoute(from: number, to: number, waypointLevels: Readonly
   return null
 }
 
-export function nextStep(from: number, to: number, waypoints: ReadonlySet<number> = new Set()): Step | null {
+export function nextStep(from: number, to: number, waypoints: ReadonlySet<number> = new Set(), exits: ReadonlySet<number> = new Set()): Step | null {
   if (from === to) return { kind: 'arrived', level: to }
   const levels = new Set([...waypoints].map((id) => WAYPOINT_LEVELS.get(id)).filter((level): level is number => level !== undefined))
-  const hop = shortestRoute(from, to, levels)?.[0]
+  const here = (LEVEL_LINKS.get(from) ?? []).filter((link) => link.kind !== 'walk' || exits.size === 0 || exits.has(link.to))
+  const hop = shortestRoute(from, to, levels, new Map([...LEVEL_LINKS, [from, here], [DURIELS_LAIR, []]]))?.[0]
   if (!hop) return null
   if (hop.kind === 'waypoint') return { kind: 'waypoint', level: hop.to }
   const portal = PORTALS[`${from}>${hop.to}`]

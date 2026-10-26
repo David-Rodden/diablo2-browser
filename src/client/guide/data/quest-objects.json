@@ -19,6 +19,14 @@
     "Cairn Stones": [17, 18, 19, 20, 21]
   },
   "rotateMs": 1500,
+  "bridges": {
+    "Hellgate": { "object": 342, "approach": [17590, 8068], "stand": [17601, 8070] }
+  },
+  "bridgeReach": 60,
+  "briefings": {
+    "meshif1": "jerhyn"
+  },
+  "bridgeSettleMs": 1500,
   "boons": {
     "Book of Skill": "ass",
     "Potion of Life": "xyz"

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { shortestRoute } from '../../src/client/guide/route.ts'
+import { SkipMemory } from '../../src/client/guide/skip-memory.ts'
+import { TrainingFloor } from '../../src/client/guide/training-floor.ts'
 import { bareSlots, lockedLevels, monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
 
 const BLOOD_MOOR = 2
@@ -13,6 +16,25 @@ describe('training before a hard goal', () => {
     expect(readiness(me(20), ARCANE, 0)).toBeNull()
     expect(readiness(me(20), ARCANE, 2)).toMatchObject({ level: 22, why: 'Too strong for now, training to level 22' })
     expect(readiness(me(20, 100), ARCANE, 0)).toMatchObject({ why: 'Gathering gold for supplies' })
+  })
+
+  it('keeps a training level it set earlier, and gives the Chaos Sanctuary a wider margin', () => {
+    expect(readiness(me(29), ARCANE, 0, true, 31)).toMatchObject({ level: 31, why: 'Too strong for now, training to level 31' })
+    expect(readiness(me(31), ARCANE, 0, true, 31)).toBeNull()
+    expect(readiness(me(29), 108, 0)).toMatchObject({ level: monsterLevel(108, 0) + 3 })
+  })
+
+  it('remembers the training level across games for the same goal only', () => {
+    const saved = new Map<string, string>()
+    const store = { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => void saved.set(key, value) }
+    new TrainingFloor(store).set('AutoSinA:0', 108, 31)
+    expect([new TrainingFloor(store).of('AutoSinA:0', 108), new TrainingFloor(store).of('AutoSinA:0', 102), new TrainingFloor(store).of('AutoPalA:0', 108)]).toEqual([31, 0, 0])
+  })
+
+  it('never trains in the Durance from the Pandemonium Fortress without its waypoint, since no portal leads back', () => {
+    expect(trainingGround(107, me(30), new Set([103, 107]), new Set())).not.toBe(108)
+    expect(shortestRoute(103, 102, new Set([103, 107]))).toBeNull()
+    expect(shortestRoute(103, 102, new Set([103, 101]))?.length).toBeGreaterThan(0)
   })
 
   it('goes gathering gear first when most of the gear slots are empty', () => {
@@ -73,5 +95,15 @@ describe('training before a hard goal', () => {
     const naked = trainingGround(40, me(22, 50_000, 6), waypoints, new Set())!
     expect(monsterLevel(naked, 0)).toBeLessThanOrEqual(22 - 1 - 9)
     expect(monsterLevel(naked, 0)).toBeLessThan(monsterLevel(dressed, 0))
+  })
+})
+
+describe('skipped side quests', () => {
+  it('are remembered per character and difficulty', () => {
+    const saved = new Map<string, string>()
+    const store = { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => void saved.set(key, value) }
+    new SkipMemory(store).add('AutoPalA:0', 17)
+    new SkipMemory(store).add('AutoPalA:0', 17)
+    expect([new SkipMemory(store).rows('AutoPalA:0'), new SkipMemory(store).rows('AutoPalA:1')]).toEqual([[17], []])
   })
 })

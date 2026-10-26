@@ -22,6 +22,7 @@ export interface Trainee {
 }
 
 const AVOID = new Set(Object.values(TRAINING.avoid))
+const HARDER = new Map(Object.values(TRAINING.harder).map(({ level, levels }) => [level, levels]))
 const TOWNS = new Set<number>(ACT_TOWNS)
 
 const EXPERIENCE = getExperienceTable()
@@ -49,12 +50,13 @@ export const GEAR_HUNT_MS = TRAINING.gearMinutes * 60_000
 export const GEAR_REST_MS = TRAINING.gearRestMinutes * 60_000
 export const NAKED_SLOTS = TRAINING.nakedSlots
 
-export function readiness(me: Trainee, questLevel: number, setbacks: number, gearHunt = true): Readiness | null {
+export function readiness(me: Trainee, questLevel: number, setbacks: number, gearHunt = true, floor = 0): Readiness | null {
   const act = actOfLevel(questLevel)
-  const fightable = TOWNS.has(questLevel) ? 0 : monsterLevel(questLevel, me.difficulty) - TRAINING.safety
-  const level = Math.max(fightable, setbacks >= TRAINING.setbacks ? me.level + TRAINING.levelsPerSetback * Math.floor(setbacks / TRAINING.setbacks) : 0)
+  const fightable = TOWNS.has(questLevel) ? 0 : monsterLevel(questLevel, me.difficulty) - TRAINING.safety + (HARDER.get(questLevel) ?? 0)
+  const humbled = Math.max(floor, setbacks >= TRAINING.setbacks ? me.level + TRAINING.levelsPerSetback * Math.floor(setbacks / TRAINING.setbacks) : 0)
+  const level = Math.max(fightable, humbled)
   const gold = TRAINING.goldPerAct[act] ?? 0
-  if (me.level < level) return { level, gold: 0, bare: DRESSED.length, why: setbacks >= TRAINING.setbacks ? `Too strong for now, training to level ${level}` : `Training to level ${level} for ${levelName(questLevel)}` }
+  if (me.level < level) return { level, gold: 0, bare: DRESSED.length, why: humbled > fightable ? `Too strong for now, training to level ${level}` : `Training to level ${level} for ${levelName(questLevel)}` }
   if (gearHunt && me.level >= TRAINING.bareFromLevel && me.bare >= TRAINING.bareSlots) return { level: me.level, gold: 0, bare: TRAINING.bareSlots - 1, why: `Gathering gear before ${levelName(questLevel)}` }
   return me.gold < gold / 4 ? { level: me.level, gold, bare: DRESSED.length, why: `Gathering gold for supplies` } : null
 }
@@ -64,7 +66,7 @@ export function trainingGround(from: number, me: Trainee, waypointLevels: Readon
   const ceiling = Math.max(Math.min(me.level - TRAINING.belowGoal, TRAINING.bareFromLevel), me.level - TRAINING.belowGoal - Math.round(me.bare * TRAINING.barePenalty))
   const links = new Map([...LEVEL_LINKS].filter(([level]) => !sealed.has(level)).map(([level, out]) => [level, out.filter((link) => !sealed.has(link.to))]))
   const hops = (level: number) => shortestRoute(from, level, waypointLevels, links)?.length ?? Infinity
-  const candidates = LEVELS_MONLVL_113C.map((_, id) => id).filter((id) => id > 0 && !TOWNS.has(id) && !AVOID.has(id) && !skip.has(id) && actOfLevel(id) <= maxAct && monsterLevel(id, me.difficulty) <= ceiling)
+  const candidates = LEVELS_MONLVL_113C.map((_, id) => id).filter((id) => id > 0 && !TOWNS.has(id) && !AVOID.has(id) && !skip.has(id) && actOfLevel(id) <= maxAct && monsterLevel(id, me.difficulty) + (HARDER.get(id) ?? 0) <= ceiling)
   const scored = candidates.map((id) => ({ id, mon: monsterLevel(id, me.difficulty), hops: hops(id) })).filter((c) => Number.isFinite(c.hops))
   const best = Math.max(...scored.map((c) => c.mon))
   const fit = scored.filter((c) => c.mon >= Math.max(1, best - TRAINING.spread / 3))

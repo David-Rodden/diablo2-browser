@@ -19,9 +19,9 @@
   "jewelry": ["rin", "amu", "ci0", "ci1", "ci2", "ci3"],
   "charms": { "cm1": "small", "cm2": "large", "cm3": "grand" },
   "charmScore": {
-    "small": { "good": 12, "great": 30, "unidentified": "good" },
-    "large": { "good": 18, "great": 40, "unidentified": "keep" },
-    "grand": { "good": 25, "great": 50, "unidentified": "good" }
+    "small": { "keep": 3, "good": 12, "great": 30, "unidentified": "good" },
+    "large": { "keep": 5, "good": 18, "great": 40, "unidentified": "keep" },
+    "grand": { "keep": 8, "good": 25, "great": 50, "unidentified": "good" }
   },
   "slotsByBodyLocation": { "1": "helm", "2": "amulet", "3": "armor", "4": "weapon1", "5": "weapon2", "6": "ring1", "7": "ring2", "8": "belt", "9": "boots", "10": "gloves" },
   "slotNames": { "helm": "helm", "amulet": "amulet", "armor": "armor", "weapon1": "weapon", "weapon2": "shield", "gloves": "gloves", "ring1": "ring", "ring2": "ring", "belt": "belt", "boots": "boots" },
@@ -30,5 +30,5 @@
     { "slot": "helm or armor", "mods": "helmMods", "text": "helmsEn" },
     { "slot": "shield", "mods": "shieldMods", "text": "shieldsEn" }
   ],
-  "imbue": { "questWord": 3, "rewardPending": 2, "alwaysWorthTypes": ["circ"] }
+  "imbue": { "questWord": 3, "rewardPending": 2, "alwaysWorthTypes": ["circ"], "plainFromLevel": 25 }
 }

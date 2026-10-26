@@ -17,6 +17,14 @@ describe('gambling', () => {
     expect(gamblePick(offered, new Set(), 50_000, price, (item) => item.invWidth === 1 && item.code !== 'rin')?.id).toBe(1)
   })
 
+  it('only gambles for the empty slots while the body is bare, and never sinks most of the fund into one ring', () => {
+    const offered = [offer(1, 'amu'), offer(2, 'rin'), offer(4, 'lbl', 2, 1)]
+    expect(gamblePick(offered, new Set(['belt']), 50_000, price, always, { fillFirst: true })?.id).toBe(4)
+    expect(gamblePick(offered, new Set(['armor']), 50_000, price, always, { fillFirst: true })).toBeNull()
+    expect(gamblePick(offered, new Set(), 50_000, price, always, { treat: 8000 })).toBeNull()
+    expect(gamblePick(offered, new Set(), 50_000, price, always, { treat: 10_000 })?.id).toBe(2)
+  })
+
   it('keeps a reserve that grows with level', () => {
     expect(gambleReserve(20)).toBeLessThan(gambleReserve(40))
   })
