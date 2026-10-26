@@ -56,7 +56,7 @@ const MUCH_BETTER = 1.4
 const BETTER = 1.1
 const MIN_GAIN = 5
 const BARE_SLOT = MIN_GAIN + 1
-const DUAL_WIELDERS = new Set([4, 6])
+const [BARBARIAN, ASSASSIN] = [4, 6]
 const SOON_LEVELS = 3
 const BASE_HEADROOM = 6
 
@@ -165,6 +165,8 @@ interface Upgrade {
   readonly current: number
 }
 
+const offhandWeapon = (item: LootItem, build: CharacterBuild) => build.classIndex === BARBARIAN || (build.classIndex === ASSASSIN && getEmbeddedDropTables().isA(baseTypeOf(codeOf(item)), 'h2h'))
+
 const handOrder = (ui: UiInventoryItem, slot: EquipSlotId) => (slot === (damageOf(ui) ? 'weapon2' : 'weapon1') ? 1 : 0)
 
 function slotUpgrades(item: LootItem, { build, equipped }: AppraisalContext): Upgrade[] {
@@ -175,7 +177,7 @@ function slotUpgrades(item: LootItem, { build, equipped }: AppraisalContext): Up
   const wornScore = (slot: EquipSlotId) => (worn.get(slot) ? gearScore(worn.get(slot)!, build) : 0)
   return ui.allowedSlots
     .map((slot) => ({ slot, score: worn.get(slot) === undefined ? BARE_SLOT + score : score, current: wornScore(slot) + (ui.twoHanded && slot === 'weapon1' ? wornScore('weapon2') : 0) }))
-    .filter((u) => !(u.slot === 'weapon1' && damageOf(ui) === undefined) && !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding || (damageOf(ui) !== undefined && !DUAL_WIELDERS.has(build.classIndex)))) && worn.get(u.slot)?.id !== item.id)
+    .filter((u) => !(u.slot === 'weapon1' && damageOf(ui) === undefined) && !(u.slot === 'weapon2' && (ui.twoHanded === true || twoHanding || (damageOf(ui) !== undefined && !offhandWeapon(item, build)))) && worn.get(u.slot)?.id !== item.id)
     .sort((a, b) => a.current - b.current || handOrder(ui, a.slot) - handOrder(ui, b.slot))
 }
 
