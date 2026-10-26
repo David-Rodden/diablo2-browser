@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { characterBuild, describeBuild } from '../../src/common/items/character-build.ts'
 import { getEmbeddedDropTables } from '../../src/common/items/embedded-drop-tables.ts'
-import { appraiseItem, type AppraisalContext } from '../../src/common/items/loot-appraisal.ts'
+import { appraiseItem, gambleWorthy, type AppraisalContext } from '../../src/common/items/loot-appraisal.ts'
 import { runewordsFor } from '../../src/common/items/runeword-advice.ts'
 import type { ItemData } from '../../src/netproto/index.ts'
 
@@ -68,6 +68,13 @@ describe('keeping only what the character will use', () => {
     const offered = (id: number, code: string) => item({ id, code, quality: 4, identified: true, stats: [{ statId: 127, param: 0, value: 2 }] })
     const worn = [{ ...offered(60, 'ywn'), bodyLoc: 4 }, item({ id: 61, code: 'lrg', identified: true, bodyLoc: 5, defense: 6 } as Partial<ItemData> & { code: string })]
     expect([offered(62, 'ktr'), offered(63, 'ywn')].map((piece) => appraiseItem(piece, context(trapper, { equipped: worn })).upgradeSlot === 'weapon2')).toEqual([true, false])
+  })
+
+  it('gambles on any ring or amulet, even though a plain one would be junk, but not on gear the build cannot use', () => {
+    const offered = (code: string) => item({ code, quality: undefined, isGambleMystery: true } as Partial<ItemData> & { code: string })
+    const ringed = { equipped: [item({ id: 70, code: 'rin', bodyLoc: 6 }), item({ id: 71, code: 'rin', bodyLoc: 7 })] }
+    expect(appraiseItem(offered('rin'), context(coldSorc, ringed)).tier).toBe('junk')
+    expect(['rin', 'amu', 'ne1', 'gth'].map((code) => gambleWorthy(offered(code), coldSorc))).toEqual([true, true, false, false])
   })
 
   it('treats only the best carried piece for a slot as the upgrade', () => {
