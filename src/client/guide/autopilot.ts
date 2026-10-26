@@ -716,6 +716,7 @@ export class Autopilot {
       Object.assign(this, { padsUsed: [], blocked: [], headway: null, rethinkUntil: nowMs + RETHINK_EXPLORE_MS })
       this.toast('Trying another way', hint, 'tan')
     } else if (last.tries === 2 && this.host.assists.hasTownPortal()) this.retreat(REGROUP, nowMs)
+    else if (plan && OPTIONAL_ROWS.has(plan.goal.row ?? -1) && !this.host.guide.skipped.has(plan.goal.row!)) this.skip(plan, 'No headway')
     else this.stop('Autopilot needs you', 'gold', `No headway on ${hint}`)
   }
 
