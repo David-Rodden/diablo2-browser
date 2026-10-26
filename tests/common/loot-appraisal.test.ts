@@ -63,6 +63,13 @@ describe('keeping only what the character will use', () => {
     expect(appraiseItem(head, context(skeleMancer, { equipped: worn })).upgradeSlot).toBe('weapon2')
   })
 
+  it('lets an Assassin carry a second claw in the off hand, but no other weapon', () => {
+    const trapper = characterBuild({ classIndex: 6, level: 31, strength: 50, dexterity: 50, skillPoints: new Map([[251, 8], [256, 10], [271, 8]]) })
+    const offered = (id: number, code: string) => item({ id, code, quality: 4, identified: true, stats: [{ statId: 127, param: 0, value: 2 }] })
+    const worn = [{ ...offered(60, 'ywn'), bodyLoc: 4 }, item({ id: 61, code: 'lrg', identified: true, bodyLoc: 5, defense: 6 } as Partial<ItemData> & { code: string })]
+    expect([offered(62, 'ktr'), offered(63, 'ywn')].map((piece) => appraiseItem(piece, context(trapper, { equipped: worn })).upgradeSlot === 'weapon2')).toEqual([true, false])
+  })
+
   it('treats only the best carried piece for a slot as the upgrade', () => {
     const [weak, strong] = [helm(10, 20), helm(11, 40)]
     const ctx = context(coldSorc, { carried: [weak, strong], owned: [weak, strong] })
