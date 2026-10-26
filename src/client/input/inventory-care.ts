@@ -24,7 +24,7 @@ export interface InventoryCareHost {
 const INVENTORY_BUFFER = 0
 const INVENTORY_CELLS = 40
 const LOOT_ROOM = 12
-const GEAR_KINDS = new Set(['charm', 'magic', 'rare', 'set', 'unique', 'jewel', 'base', 'normal'])
+const GEAR_KINDS = new Set(['magic', 'rare', 'set', 'unique', 'jewel', 'base', 'normal'])
 const FUTURE_UPGRADE = 'Better'
 const SPARE_KINDS = new Set<Appraisal['kind']>(['charm', 'jewel', 'rune', 'gem', 'magic', 'rare', 'set', 'unique', 'base', 'normal'])
 const STASHED_KINDS = new Set<Appraisal['kind']>(['rune', 'gem', 'jewel', 'unique', 'set', 'rare', 'base'])
@@ -107,7 +107,7 @@ export class InventoryCare {
     if (hudModel === null) return
     const goldBefore = world.self.gold
     let sold = 0
-    for (const item of new Set([...this.junk, ...this.clutter, ...this.surplus, ...(this.hardUp ? this.spares : [])])) {
+    for (const item of new Set([...this.junk, ...this.clutter, ...this.surplus, ...this.excessCharms.filter((charm) => this.appraise(charm).tier !== 'great'), ...(this.hardUp ? this.spares : [])])) {
       if (hudManager.leftPanel !== 'vendor') break
       if (!hudModel.vendorSell(item.id) || !(await waitFor(() => !world.containers.inventory.has(item.id)))) {
         this.unsold.add(item.id)
@@ -120,9 +120,19 @@ export class InventoryCare {
 
   get stashable(): ItemData[] {
     const spare = this.spareIds()
-    return this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && STASHED_KINDS.has(appraisal.kind) && TIER_RANK[appraisal.tier] >= TIER_RANK.good).filter(
+    const stored = this.inventoryWhere((appraisal) => !appraisal.locked && appraisal.upgradeSlot === undefined && STASHED_KINDS.has(appraisal.kind) && TIER_RANK[appraisal.tier] >= TIER_RANK.good).filter(
       (item) => !spare.has(item.id) && (item.identified || !this.identifiable),
     )
+    return [...stored, ...this.excessCharms.filter((charm) => this.appraise(charm).tier === 'great')]
+  }
+
+  get excessCharms(): ItemData[] {
+    const carried = [...this.host.world.containers.inventory.values()].map((item) => ({ item, appraisal: this.appraise(item) }))
+    const isCharm = ({ appraisal }: { readonly appraisal: Appraisal }) => appraisal.kind === 'charm'
+    const cellsOf = (item: ItemData) => item.invWidth * item.invHeight
+    const budget = INVENTORY_CELLS - LOOT_ROOM - carried.filter((entry) => !isCharm(entry) && entry.appraisal.locked).reduce((cells, { item }) => cells + cellsOf(item), 0)
+    const charms = carried.filter((entry) => isCharm(entry) && entry.item.identified).sort((a, b) => b.appraisal.score / cellsOf(b.item) - a.appraisal.score / cellsOf(a.item))
+    return charms.reduce<{ readonly used: number; readonly out: ItemData[] }>(({ used, out }, { item }) => (used + cellsOf(item) <= budget ? { used: used + cellsOf(item), out } : { used, out: [...out, item] }), { used: 0, out: [] }).out
   }
 
   private holdings(): Holding[] {

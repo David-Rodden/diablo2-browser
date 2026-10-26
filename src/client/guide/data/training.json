@@ -18,6 +18,7 @@
   },
   "belowGoal": 1,
   "safety": 2,
+  "harder": { "Chaos Sanctuary": { "level": 108, "levels": 5 }, "Durance of Hate Level 3": { "level": 102, "levels": 1 }, "Throne of Destruction": { "level": 131, "levels": 2 } },
   "spread": 6,
   "levelsPerSetback": 2,
   "setbacks": 2,
