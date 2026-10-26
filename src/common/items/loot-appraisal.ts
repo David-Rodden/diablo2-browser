@@ -185,6 +185,8 @@ const gainOf = ({ score, current }: Upgrade) => (current <= 0 ? (score > MIN_GAI
 
 const isGain = (upgrade: Upgrade) => upgrade.score - upgrade.current >= MIN_GAIN && gainOf(upgrade) >= BETTER
 
+export const gambleWorthy = (item: LootItem, build: CharacterBuild): boolean => usableBy(uiOf(item), build, SOON_LEVELS) && !misfits(item, build)
+
 const wearableBy = (item: LootItem, build: CharacterBuild, levels: number) => usableBy(uiOf(item), build, levels) && requiredLevel(item, uiOf(item)) <= build.level + levels
 
 function outrankedBy(item: LootItem, score: number, slots: readonly EquipSlotId[], { build, carried = [] }: AppraisalContext, levels: number): number {

@@ -28,7 +28,7 @@ import { mercUpgrade } from './merc-gear.ts'
 import { XpLedger } from './xp-ledger.ts'
 import { hireIdOf, MERCENARIES, pickMercenary, type HireCandidate } from './mercenary.ts'
 import { gamblePick, gambleReserve, gambleTreat, GAMBLING_RULES } from './gambling.ts'
-import { misfits, slotOf } from '../../common/items/loot-appraisal.ts'
+import { gambleWorthy, misfits, slotOf } from '../../common/items/loot-appraisal.ts'
 import type { EquipSlotId } from '../../common/items/inventory-model.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
@@ -1979,11 +1979,12 @@ export class Autopilot {
   }
 
   private async gamble(gambled = 1): Promise<void> {
-    const { world, hudManager, hudModel, assists } = this.host
+    const { world, hudManager, hudModel } = this.host
     if (hudModel === null || world.npcInteraction.window !== 'gamble' || !(await waitFor(() => this.store().length > 0, HIRE_LIST_MS))) return
     const worn = new Set([...world.containers.equipment.values()].map(slotOf))
     const bare = new Set(EQUIP_SLOTS.filter((slot) => !worn.has(slot)))
-    const offered = this.store().filter((item) => assists.inventoryCare.appraise(item).tier !== 'junk')
+    const build = appraisalContextOf(world).build
+    const offered = this.store().filter((item) => gambleWorthy(item, build))
     const fund = world.self.gold + world.self.stashGold - gambleReserve(world.self.level)
     const pick = gamblePick(offered, bare, Math.min(world.self.gold, fund), this.priceList(GAMBLE), (item) => this.fits(item), { fillFirst: this.bare() > 0, treat: gambleTreat(fund) })
     const before = world.self.gold
