@@ -8,6 +8,7 @@ export interface Stage {
   readonly unless?: readonly string[]
   readonly bring?: string
   readonly after?: number
+  readonly until?: number
 }
 
 export interface Objective {
@@ -20,6 +21,8 @@ export interface Objective {
 const at = (level: number | 'town' | 'tomb', hint: string, ...find: Find[]): Stage => ({ level, hint, find })
 const ORIFICE = 152
 const THE_SUMMONER = 13
+const KHALIMS_WILL = 18
+const DURANCE_3 = 102
 const TO_THE_TOMB: Stage = { ...at('tomb', "Take the Staff to Tal Rasha's Tomb", ORIFICE), bring: 'hst', after: THE_SUMMONER }
 const talk = (name: string, npc: string, hint = `Talk to ${name}`): Stage => at('town', hint, npc)
 const SEALS: Find = [392, 393, 394, 395, 396]
@@ -144,7 +147,6 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa3q52: at(83, 'Kill the High Council', COUNCIL),
   qstsa3q53: talk('Cain', 'cain3'),
   qstsa3q61a: talk('Ormus', 'ormus'),
-  qstsa3q61: at(83, 'Smash the Compelling Orb', 404),
   qstsa3q62: at(102, 'Find Mephisto', 'mephisto'),
   qstsa3q63: at(102, 'Kill Mephisto', 'mephisto'),
   qstsa4q11: at(105, 'Find Izual', 'izual'),
@@ -195,5 +197,6 @@ export const STAGES: Readonly<Record<string, readonly Stage[]>> = {
     { ...at('town', 'Combine the Staff and Amulet in the Cube'), unless: ['hst'] },
     TO_THE_TOMB,
   ],
+  qstsa3q61: [{ ...at(83, 'Smash the Compelling Orb', 404), until: KHALIMS_WILL }, at(DURANCE_3, 'Find Mephisto in the Durance of Hate', 'mephisto')],
   qstsa2q23: [{ ...at('town', 'Combine the Staff and Amulet in the Cube'), unless: ['hst'] }, TO_THE_TOMB],
 }
