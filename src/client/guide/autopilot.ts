@@ -19,7 +19,7 @@ import { freeSpots } from '../input/auto-loot.ts'
 import { inventoryPotions, potionCushion, STATE_HEALTHPOT } from '../input/auto-potion.ts'
 import { vendorPrice113c } from '../ui-model/vendor-price.ts'
 import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
-import { nextSocketMove, type SocketMove } from './socket-plan.ts'
+import { baseFor, nextSocketMove, runewordKit, type RunewordKit, type SocketMove } from './socket-plan.ts'
 import { readyRecipe, runeRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
@@ -1602,6 +1602,7 @@ export class Autopilot {
     const spend = gambleFund >= GAMBLING_RULES.spare && ready('gamble') ? gambleFund : wealth >= SHOP_GOLD && ready('shop') ? Math.min(wealth - SPARE_GOLD, me.level * SHOP_PURSE_PER_LEVEL) : 0
     const purse = Math.min(getInventoryGoldLimit(me.level), Math.max(spend, this.purseKeep()))
     const untidy = care.untidy.length > 0
+    const kit = this.runewordKit()
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       resist !== null && me.gold >= POTION_GOLD && ready('resist') && { key: 'resist', reason: `Buying ${resist.potion} for ${resist.boss}`, npc: 'resists', action: 'trade', work: () => this.buyResists(resist.code) },
@@ -1623,6 +1624,8 @@ export class Autopilot {
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.armoury.length > 0 && ready('armoury') && { key: 'armoury', reason: 'Taking better gear out of the stash', work: () => this.arm() },
+      kit !== null && kit.base !== null && this.stashedParts(kit).length > 0 && ready('runeword') && { key: 'runeword', reason: `Taking the ${kit.name} runes out of the stash`, work: () => this.takeKit(kit) },
+      kit !== null && kit.base === null && me.gold >= SPARE_GOLD && ready('base') && { key: 'base', reason: `Looking for a base for ${kit.name}`, npc: 'repair', action: 'trade_repair', work: () => this.buyBase(kit) },
       this.socketMove() !== null && ready('socket') && { key: 'socket', reason: `Socketing ${this.socketMove()!.why}`, work: () => this.socketAll() },
       care.upgrades.length > 0 && ready('gear') && { key: 'gear', reason: 'Putting on better gear', work: () => care.wearUpgrades() },
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
@@ -2042,6 +2045,31 @@ export class Autopilot {
     const wanted = code === tomeCode || this.scrollsWanted(kind) > 0
     if (hudModel === null || hudManager.leftPanel !== 'vendor' || !ware || !wanted || (!(code === scroll && tome) && !this.fits(ware))) return false
     return hudModel.vendorBuy(ware.id, false) && waitFor(() => world.self.gold < before, 1500)
+  }
+
+  private runewordKit(): RunewordKit | null {
+    const { equipment, inventory, stash, sockets } = this.host.world.containers
+    return runewordKit([...equipment.values(), ...inventory.values(), ...stash.values()], sockets, appraisalContextOf(this.host.world).build)
+  }
+
+  private stashedParts(kit: RunewordKit): ItemData[] {
+    return [...(kit.base ? [kit.base] : []), ...kit.runes].filter((item) => this.host.world.containers.stash.has(item.id))
+  }
+
+  private async takeKit(kit: RunewordKit): Promise<void> {
+    const { world, hudManager, hudModel } = this.host
+    if (hudModel !== null) await this.fromStash('runeword', () => withdrawItems({ world, hudManager, hudModel }, this.stashedParts(kit)))
+  }
+
+  private async buyBase(kit: RunewordKit): Promise<void> {
+    const { world, hudManager, hudModel } = this.host
+    if (hudModel === null || hudManager.leftPanel !== 'vendor') return
+    const price = this.priceList()
+    const affordable = this.store().filter((item) => price(item) <= world.self.gold - SPARE_GOLD / 2 && this.fits(item))
+    const base = baseFor(kit, affordable, world.containers.sockets, appraisalContextOf(world).build)
+    const before = world.self.gold
+    if (!base || !hudModel.vendorBuy(base.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
+    this.toast(`Bought a base for ${kit.name}`, `${base.totalSockets} sockets for ${(before - world.self.gold).toLocaleString('en-US')} gold`, 'green')
   }
 
   private socketMove(): SocketMove | null {
