@@ -109,6 +109,7 @@ import type { PathGuide } from './guide/path-guide.ts'
 import { createSessionGuide } from './guide/session-guide.ts'
 import { mountPilotBanner } from './guide/pilot-banner.ts'
 import { Autopilot } from './guide/autopilot.ts'
+import { freshGame } from './guide/fresh-game.ts'
 import { pilotReport } from './guide/pilot-report.ts'
 import { PlayLog } from './session/play-log.ts'
 import { loadSinglePlayerData } from './session/single-player-data.ts'
@@ -791,6 +792,7 @@ export async function startPlayApp(options?: {
     hudManager,
     guide,
     levelView: () => session.mapService?.getLoadedLevelView(session.world.areaId) ?? null,
+    freshGame: () => freshGame({ phase: () => session.phase, difficulty: () => session.world.difficulty, inWorld: () => session.world.selfId > 0 && session.world.areaId > 0, leave: () => session.leaveGame(), flow: flowState, create: frontendRenderer.asyncHandlers?.onCreateGame }),
   })
   assists().pilot = pilot
   if (stageEl) mountPilotBanner(stageEl, () => ({ shown: pilot.active && (hudManager.leftPanel !== 'none' || hudManager.rightPanel !== 'none' || hudManager.worldPanels.npcMenu !== null), status: guide.pilotStatus, hint: guide.currentPlan?.hint ?? null }))

@@ -65,7 +65,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
   pilot.start()
   let now = 1000
   const tick = (ms = 200) => pilot.tick((now += ms))
-  return { pilot, world, units, hudManager, hudModel, assists, guide, view, tick }
+  return { pilot, host, world, units, hudManager, hudModel, assists, guide, view, tick }
 }
 
 const unit = (fields: Partial<ClientUnit>) => ({ unitType: 'monster', classId: 0, mode: 0, hidden: false, dead: false, lifePct: 128, ...fields }) as ClientUnit
@@ -473,6 +473,20 @@ describe('autopilot', () => {
     expect(guide.detour).not.toMatchObject({ level: 3 })
   })
 
+  it('trains somewhere else when the red portal to its training ground will not take it', () => {
+    const { pilot, host, hudManager, units, guide, tick } = setup({ hint: 'Take the red portal to the Pit of Acheron', step: { kind: 'portal', level: 126, hint: 'Take the red portal to the Pit of Acheron', find: [60] }, target: { x: 102, y: 101, label: 'Portal', unit: { id: 61, kind: 'object' } } })
+    const freshGame = vi.fn(() => Promise.resolve(true))
+    Object.assign(host, { freshGame })
+    Object.assign(pilot, { questLevel: 5, assessedAt: Number.POSITIVE_INFINITY, training: { level: 12, gold: 0, bare: 0, why: 'Training', ground: 126, since: 0 } })
+    units.push(unit({ id: 61, unitType: 'object', classId: 60, x: 102, y: 101 }))
+    Object.defineProperty(guide, 'currentPlan', { get: () => guide.update() })
+    const moved = () => hudManager.toasts.push.mock.calls.some(([toast]) => toast.title === 'Training somewhere else')
+    for (let i = 0; i < 300 && !moved(); i++) tick(700)
+    expect([pilot.active, freshGame.mock.calls.length, moved()]).toEqual([true, 0, true])
+    tick(700)
+    expect(guide.detour).not.toMatchObject({ level: 126 })
+  })
+
   it('does not count a long fight as being stuck', () => {
     const { assists, guide, tick } = setup({ hint: 'Kill Duriel', target: { x: 300, y: 300, label: 'Duriel' } })
     assists.fighting = true
@@ -656,6 +670,28 @@ describe('autopilot', () => {
     expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(32)
     expect(guide.skip).not.toHaveBeenCalled()
     expect(pilot.active).toBe(false)
+    expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
+  })
+
+  it('starts a fresh game by itself when stuck, and hands control back only once that runs out', async () => {
+    const { pilot, host, hudManager, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    const freshGame = vi.fn(() => Promise.resolve(true))
+    Object.assign(host, { freshGame })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
+    guide.skipped.add(5)
+    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+    expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Starting a fresh game', detail: "The waypoint wouldn't open" }), expect.any(Number))
+    expect(pilot.rejoining).toBe(true)
+    pilot.start()
+    expect(pilot.active).toBe(false)
+    await vi.waitFor(() => expect(pilot.active).toBe(true))
+    expect([freshGame.mock.calls.length, guide.skipped.size]).toEqual([1, 0])
+    for (let round = 0; round < 5; round++) {
+      for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+      await vi.waitFor(() => expect(pilot.active).toBe(true))
+    }
+    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+    expect([freshGame.mock.calls.length, pilot.active]).toEqual([6, false])
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
   })
 
@@ -1223,5 +1259,27 @@ describe('autopilot', () => {
     tick(1000)
     tick(1000)
     expect([guide.pilotStatus, guide.detour]).toEqual([expect.not.stringContaining('gold'), null])
+  })
+
+  it('fights off what is on it before going for the gold it dropped', () => {
+    const { world, guide, assists, hudModel, units, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    Object.assign(world, { selfId: 1 })
+    Object.assign(world.self, { name: 'Hero' })
+    world.isDead = true
+    tick()
+    world.isDead = false
+    units.push(unit({ id: 2, unitType: 'player', name: 'Hero', x: 101, y: 100, mode: 17 }))
+    tick()
+    ;[1, 3, 4].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    units.push(unit({ id: 90, unitType: 'item', x: 103, y: 101 }))
+    world.containers.ground.set(90, { id: 90, code: 'gld ', x: 103, y: 101 })
+    tick(1000)
+    assists.fighting = true
+    tick(1000)
+    expect([guide.pilotStatus, assists.pilotCombat]).toEqual(['Fighting', true])
+    assists.fighting = false
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Picking up the gold you dropped')
   })
 })
