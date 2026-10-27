@@ -88,7 +88,7 @@ export function runewordKit(owned: readonly ItemData[], sockets: SocketStock['so
         if (rune) taken.add(rune.id)
         return rune
       })
-      return runes.every((rune) => rune !== undefined) ? [{ name: rw.name, runes: runes as ItemData[], base: owned.find((item) => fitsRuneword(item, rw, sockets, build)) ?? null }] : []
+      return runes.every((rune) => rune !== undefined) ? [{ name: rw.name, runes, base: owned.find((item) => fitsRuneword(item, rw, sockets, build)) ?? null }] : []
     })
   return kits.find((kit) => kit.base !== null) ?? kits[0] ?? null
 }
