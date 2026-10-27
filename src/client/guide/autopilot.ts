@@ -833,7 +833,7 @@ export class Autopilot {
     else if (unit && ROTATE.has(unit.classId)) this.rotate(unit, nowMs)
     else if (unit && BRIDGES.has(unit.classId) && distance(unit, world.self) <= QUEST_OBJECTS.bridgeReach) this.crossBridge(unit, BRIDGES.get(unit.classId)!, nowMs)
     else if (unit && target.unit.kind === 'object') this.reachThen(target, nowMs, () => this.wieldFor(unit) || this.useOnce(unit, nowMs))
-    else if (step?.kind === 'exit') this.exitThrough(target, nowMs)
+    else if (step?.kind === 'exit' || step?.kind === 'portal') this.exitThrough(target, nowMs)
     else if (this.arrivedAt(target)) this.explore(nowMs, plan.hint)
     else this.walkRoute(nowMs)
   }
