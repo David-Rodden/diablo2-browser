@@ -79,16 +79,18 @@ export const fitsRuneword = (item: ItemData, rw: RunewordPick, sockets: SocketSt
 
 export function runewordKit(owned: readonly ItemData[], sockets: SocketStock['sockets'], build: CharacterBuild): RunewordKit | null {
   const loose = owned.filter((item) => isRune(codeOf(item)))
-  for (const rw of runewordsFor(build).filter((pick) => !pick.forMerc && pick.levelreq <= build.level)) {
-    const taken = new Set<number>()
-    const runes = rw.runes.map((code) => {
-      const rune = loose.find((item) => codeOf(item) === code && !taken.has(item.id))
-      if (rune) taken.add(rune.id)
-      return rune
+  const kits = runewordsFor(build)
+    .filter((pick) => !pick.forMerc && pick.levelreq <= build.level)
+    .flatMap((rw): RunewordKit[] => {
+      const taken = new Set<number>()
+      const runes = rw.runes.map((code) => {
+        const rune = loose.find((item) => codeOf(item) === code && !taken.has(item.id))
+        if (rune) taken.add(rune.id)
+        return rune
+      })
+      return runes.every((rune) => rune !== undefined) ? [{ name: rw.name, runes: runes as ItemData[], base: owned.find((item) => fitsRuneword(item, rw, sockets, build)) ?? null }] : []
     })
-    if (runes.every((rune) => rune !== undefined)) return { name: rw.name, runes: runes as ItemData[], base: owned.find((item) => fitsRuneword(item, rw, sockets, build)) ?? null }
-  }
-  return null
+  return kits.find((kit) => kit.base !== null) ?? kits[0] ?? null
 }
 
 export const baseFor = (kit: RunewordKit, offered: readonly ItemData[], sockets: SocketStock['sockets'], build: CharacterBuild): ItemData | null => {

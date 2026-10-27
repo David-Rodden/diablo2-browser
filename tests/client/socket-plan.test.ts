@@ -38,5 +38,9 @@ describe('socketing', () => {
     const [crystal, tooFew, magic, giant] = [item({ id: 40, code: 'crs', totalSockets: 4 }), item({ id: 41, code: 'crs', totalSockets: 3 }), item({ id: 42, code: 'crs', totalSockets: 4, quality: 4 }), item({ id: 43, code: 'gis', totalSockets: 4 })]
     expect(baseFor(kit!, [tooFew, magic, giant, crystal], new Map(), paladin)?.id).toBe(40)
     expect(runewordKit([...runes, crystal], new Map(), paladin)?.base?.id).toBe(40)
+    const lesser = runewordsFor(paladin).find((rw) => rw.name !== 'Spirit' && !rw.forMerc && rw.levelreq <= paladin.level && rw.itypes.includes('shld') && !rw.runes.some((code) => code === 'r13'))!
+    const lesserRunes = lesser.runes.map((code, i) => item({ id: 50 + i, code, container: 'stash' }))
+    const shield = item({ id: 60, code: 'kit', totalSockets: lesser.runes.length })
+    expect(runewordKit([...runes, ...lesserRunes, shield], new Map(), paladin)).toMatchObject({ name: lesser.name, base: { id: 60 } })
   })
 })
