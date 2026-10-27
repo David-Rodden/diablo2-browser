@@ -292,6 +292,7 @@ export class Autopilot {
   private readonly briefed = new Set<string>()
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
   private readonly stubborn = new Map<number, number>()
+  private lastNpc: number | null = null
   private readonly scavenged = new Set<number>()
   private readonly mercTried = new Set<number>()
   private readonly ledger = new XpLedger()
@@ -427,6 +428,7 @@ export class Autopilot {
     this.lastTick = nowMs
     const { world, assists } = this.host
     if (assists.playerSteering) this.pausedUntil = nowMs + MANUAL_PAUSE_MS
+    this.lastNpc = world.npcInteraction.npcId ?? this.lastNpc
     if (world.areaId > 0) this.noteArea()
     if (world.areaId > 0 && !world.isDead) this.noteExperience(nowMs)
     this.noteArrival(nowMs)
@@ -1059,7 +1061,7 @@ export class Autopilot {
     if (rounds < (waypoint || portal ? WAYPOINT_ROUNDS : 1)) {
       this.stubborn.set(unit.id, rounds + 1)
       this.uses.delete(unit.id)
-      this.host.hudModel?.cancelNpcSession()
+      this.host.hudModel?.cancelNpcSession(this.host.world.npcInteraction.npcId ?? this.lastNpc ?? undefined)
       this.host.assists.journal?.('stubborn', { classId: unit.classId, rounds: rounds + 1, npc: this.host.world.npcInteraction.npcId, window: this.host.world.npcInteraction.window })
       const away = Math.atan2(me.y - unit.y, me.x - unit.x) + (rounds * 2 * Math.PI) / WAYPOINT_ROUNDS
       this.host.assists.stepTo(unit.x + Math.cos(away) * BACK_OFF, unit.y + Math.sin(away) * BACK_OFF, nowMs)

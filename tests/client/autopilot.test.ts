@@ -682,6 +682,16 @@ describe('autopilot', () => {
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
   })
 
+  it('tells the last merchant it is done when a waypoint will not open after a trade', () => {
+    const { world, hudModel, units, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
+    Object.assign(world.npcInteraction, { npcId: 29, window: 'trade' })
+    tick()
+    Object.assign(world.npcInteraction, { npcId: null, window: 'none' })
+    for (let i = 0; i < 100 && hudModel.cancelNpcSession.mock.calls.length === 0; i++) tick(700)
+    expect(hudModel.cancelNpcSession).toHaveBeenCalledWith(29)
+  })
+
   it('starts a fresh game by itself when stuck, and hands control back only once that runs out', async () => {
     const { pilot, host, hudManager, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     const freshGame = vi.fn(() => Promise.resolve(true))
