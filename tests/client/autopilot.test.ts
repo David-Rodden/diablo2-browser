@@ -661,7 +661,7 @@ describe('autopilot', () => {
 
   it('starts a fresh game by itself when stuck, and hands control back only once that runs out', async () => {
     const { pilot, host, hudManager, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
-    const freshGame = vi.fn(async () => true)
+    const freshGame = vi.fn(() => Promise.resolve(true))
     Object.assign(host, { freshGame })
     units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
     guide.skipped.add(5)

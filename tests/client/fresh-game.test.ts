@@ -6,7 +6,7 @@ const lobby = (playMode: 'bnet' | 'single' = 'bnet') => {
   let phase = 'ingame'
   const flow = { playMode, stage: 'in_game', roster: [{ name: 'AutoNecA' }], selectedSlotIndex: 0, gameName: '', gamePassword: '', difficulty: 'normal', lobbySubPanel: 'join' } as unknown as BnetFlowState
   const create = vi.fn(() => void (phase = 'ingame'))
-  const host = { phase: () => phase, difficulty: () => 1 as const, inWorld: () => true, leave: vi.fn(async () => void Object.assign(flow, { stage: 'bnet_lobby' }, (phase = 'lobby'))), flow, create }
+  const host = { phase: () => phase, difficulty: () => 1 as const, inWorld: () => true, leave: vi.fn(() => Promise.resolve(void Object.assign(flow, { stage: 'bnet_lobby' }, (phase = 'lobby')))), flow, create }
   return { host, flow, create }
 }
 
@@ -15,7 +15,8 @@ describe('fresh game', () => {
     const { host, flow, create } = lobby()
     expect(await freshGame(host)).toBe(true)
     expect(create).toHaveBeenCalledWith(flow)
-    expect(flow).toMatchObject({ lobbySubPanel: 'create', difficulty: 'nightmare', gameName: expect.stringMatching(/^autone\d+$/), gamePassword: expect.stringMatching(/^q\d+$/) })
+    expect(flow).toMatchObject({ lobbySubPanel: 'create', difficulty: 'nightmare' })
+    expect([flow.gameName, flow.gamePassword].map((text) => /^(autone|q)\d+$/.test(text))).toEqual([true, true])
   })
 
   it('does nothing in single player', async () => {
