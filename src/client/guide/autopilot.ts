@@ -256,6 +256,7 @@ const GAP_TRIES = 6
 
 const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y - b.y)
 const isElite = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true)
+const TOWN_SPOTS = new Map(Object.entries(QUEST_OBJECTS.townSpots))
 const WIELD = new Map(Object.values(QUEST_OBJECTS.wield).map((entry) => [entry.object, entry]))
 const TOOLS = new Set(Object.values(QUEST_OBJECTS.wield).map((entry) => entry.item))
 const BOSSES = new Set(LAIRS.bosses.map((name) => MONSTER_PATH_IDS.indexOf(name)))
@@ -1934,7 +1935,9 @@ export class Autopilot {
     const town = this.town()
     if (!view || !town) return null
     const preset = view.presetUnits.find((u) => (errand.stash ? u.type === 2 && u.index === STASH_CLASS : u.type === 1 && u.index === MONSTER_PATH_IDS.indexOf(errand.who ?? town[errand.npc!])))
-    return preset ? { x: view.originX + preset.subX, y: view.originY + preset.subY } : null
+    const spot = TOWN_SPOTS.get(errand.who ?? '')
+    if (preset) return { x: view.originX + preset.subX, y: view.originY + preset.subY }
+    return spot?.area === this.host.world.areaId ? { x: spot.at[0], y: spot.at[1] } : null
   }
 
   private walkTowards(goal: SubTilePoint, nowMs: number): void {
