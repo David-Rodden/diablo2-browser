@@ -154,6 +154,14 @@ describe('path guide plan', () => {
     expect(chaos(2).target?.unit).toEqual({ id: 80, kind: 'object' })
   })
 
+  it('walks into the Worldstone Keep once its door has opened', () => {
+    const door = (mode: number) => ({ id: 81, unitType: 'object', classId: 547, mode, x: 1030, y: 2010, hidden: false, dead: false }) as unknown as ClientUnit
+    const summit = { ...view, entrances: [{ x: 3, y: 1, interiorX: 3, interiorY: 1, toLevelId: 128, side: null, kind: 'preset', warp: { subX: 30, subY: 9, lvlWarpId: 80 } }] } as unknown as LevelView
+    const plan = (mode: number) => planGuide({ ...host, areaId: () => 120, levelView: () => summit, objects: () => [door(mode)] }, 'story', undefined, new Set(), false, new Set(), { level: 128, title: 'Worldstone Keep' })!
+    expect(plan(0).target?.unit).toEqual({ id: 81, kind: 'object' })
+    expect([plan(2).step?.kind, plan(2).target?.label]).toEqual(['portal', 'Worldstone Keep Level 1'])
+  })
+
   it('heads for the seals still closed and remembers the opened ones out of sight', () => {
     const seals = { ...view, presetUnits: [{ type: 2, index: 392, subX: 30, subY: 10 }, { type: 2, index: 393, subX: 30, subY: 30 }] } as unknown as LevelView
     const opened = { id: 90, unitType: 'object', classId: 392, mode: 2, x: 1031, y: 2010, hidden: false, dead: false } as unknown as ClientUnit

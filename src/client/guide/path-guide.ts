@@ -163,9 +163,10 @@ export function planGuide(host: PathGuideHost, mode: GuideMode, fieldFor: FieldS
   const asking = askForWaypoints && step !== null && step.kind !== 'arrived' && step.kind !== 'waypoint'
   const nearWaypoint = asking ? findTargets([[...WAYPOINT_CLASS_IDS_113C]], view, objects, monsters, self).filter((t) => Math.hypot(t.x - self.x, t.y - self.y) <= WAYPOINT_NEAR).slice(0, 1) : []
   const marked = nearWaypoint.length > 0 ? nearWaypoint : findTargets(find, view, objects, monsters, self)
-  const gates = step?.kind === 'exit' ? entranceTargets(view, step.level).sort((a, b) => Math.hypot(a.x - self.x, a.y - self.y) - Math.hypot(b.x - self.x, b.y - self.y)) : []
+  const passage = step?.kind === 'exit' || (step?.kind === 'portal' && marked.length === 0)
+  const gates = passage ? entranceTargets(view, step.level).sort((a, b) => Math.hypot(a.x - self.x, a.y - self.y) - Math.hypot(b.x - self.x, b.y - self.y)) : []
   const gate = gates.length > 1 ? (gates.find((t) => fieldFor(view, t).pathFrom(self.x, self.y, 1, 1, GATE_SNAP).length > 0) ?? gates[0]) : gates[0]
-  const target = marked[0] ?? (step?.kind === 'arrived' && goal.spot ? { ...goal.spot, label: goal.title } : null) ?? (step?.kind === 'exit' ? (gate ?? null) : step?.kind === 'arrived' && find.length === 0 && !goal.inTown ? landmarkTarget(view) : null)
+  const target = marked[0] ?? (step?.kind === 'arrived' && goal.spot ? { ...goal.spot, label: goal.title } : null) ?? (passage ? (gate ?? null) : step?.kind === 'arrived' && find.length === 0 && !goal.inTown ? landmarkTarget(view) : null)
   const field = target ? fieldFor(view, target) : null
   const path = field?.pathFrom(self.x, self.y, 1) ?? []
   const route = field?.corners(path, self) ?? []
