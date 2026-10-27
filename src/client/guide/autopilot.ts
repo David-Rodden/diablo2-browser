@@ -560,7 +560,8 @@ export class Autopilot {
     const { world } = this.host
     const me = world.self
     const stint = this.stint
-    if (stint && stint.area === world.areaId && stint.level === me.level) return
+    const roundTrip = this.trip !== null && this.town() && stint !== null && !(ACT_TOWNS as readonly number[]).includes(stint.area)
+    if (stint && (stint.area === world.areaId || roundTrip) && stint.level === me.level) return
     if (stint && !(ACT_TOWNS as readonly number[]).includes(stint.area)) this.ledger.add(me.name, stint.area, stint.level, me.experience - stint.xp, nowMs - stint.at)
     this.stint = { area: world.areaId, level: me.level, at: nowMs, xp: me.experience }
   }
