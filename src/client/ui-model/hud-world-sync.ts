@@ -738,6 +738,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     // (D2Common #10578 GetMaxStaminaFromUnit): bottom globes and runtime vitals read the same
     // StatOpEngine unit-aggregated maximums as the Character Sheet (never unequipped base stats).
     hud.maxHp = hpBase
+    hud.healableHp = baseRawHp > 0 ? Math.max(1, Math.floor(wost(7) / 256)) : hpBase
     hud.hp = Math.max(0, Math.min(hpBase, self.life))
     hud.maxMana = manaBase
     hud.mana = Math.max(0, Math.min(manaBase, self.mana))
