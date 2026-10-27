@@ -1,4 +1,10 @@
 {
+  "resistNeed": {
+    "stats": { "fireresist": "fire", "lightresist": "light", "coldresist": "cold", "poisonresist": "poison" },
+    "steps": [[0, 2.5], [35, 1.8], [60, 1.2], [75, 1]],
+    "capped": 0.25,
+    "difficultyPenalty": [0, -40, -100]
+  },
   "styleWeights": {
     "base": {
       "strength": 0.6, "dexterity": 0.6, "vitality": 1.6, "maxhp": 0.8, "maxmana": 0.1,

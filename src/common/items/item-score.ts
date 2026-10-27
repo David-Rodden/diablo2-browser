@@ -46,6 +46,7 @@ const PIERCE = byStatId(VALUATION.elementPierce as Readonly<Record<string, Eleme
 const ELEMENT_SKILL_PARAM = VALUATION.elementSkillParams as Readonly<Record<string, Element>>
 const AURA_VALUE = new Map(Object.entries(VALUATION.auras).map(([name, value]) => [skillId(name), value]))
 const PRIZED_SKILLS = new Map(Object.entries(VALUATION.prizedSkills).map(([name, value]) => [skillId(name), value]))
+const RESISTS = byStatId(VALUATION.resistNeed.stats)
 const SPELL_STATS = new Set(VALUATION.spellStats.map(statId))
 const FIGHTER_STYLES = new Set<string>(VALUATION.fighterStyles)
 const PER_LEVEL_DIVISOR = 8
@@ -111,8 +112,15 @@ export function statValue({ statId: id, param, value }: LootStat, build: Charact
   }
   const element = MASTERY.get(id) ?? PIERCE.get(id)
   if (element !== undefined) return build.style === 'caster' && build.elements.has(element) ? value * (PIERCE.has(id) ? VALUATION.pierceWeight : VALUATION.masteryWeight) : 0
-  return value * (STYLE_WEIGHTS[build.style].get(id) ?? 0)
+  return value * (STYLE_WEIGHTS[build.style].get(id) ?? 0) * resistNeed(RESISTS.get(id), build)
 }
+
+const resistNeed = (element: string | undefined, { resists }: CharacterBuild): number => {
+  const have = element === undefined ? undefined : resists?.[element]
+  return have === undefined ? 1 : (VALUATION.resistNeed.steps.find(([below]) => have < below!)?.[1] ?? VALUATION.resistNeed.capped)
+}
+
+export const resistsOf = (difficulty: number): Readonly<Record<string, number>> => Object.fromEntries([...RESISTS.values()].map((element) => [element, VALUATION.resistNeed.difficultyPenalty[difficulty] ?? 0]))
 
 export const scoreStats = (stats: readonly LootStat[], build: CharacterBuild): number => stats.reduce((sum, stat) => sum + statValue(stat, build), 0)
 

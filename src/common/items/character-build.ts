@@ -13,6 +13,7 @@ export interface CharacterSheet {
   readonly strength: number
   readonly dexterity: number
   readonly skillPoints: ReadonlyMap<number, number>
+  readonly resists?: Readonly<Record<string, number>>
 }
 
 export interface CharacterBuild extends CharacterSheet {

@@ -1,5 +1,6 @@
 import type { LootItem } from './loot-item.ts'
 import { characterBuild } from './character-build.ts'
+import { resistsOf } from './item-score.ts'
 import type { AppraisalContext } from './loot-appraisal.ts'
 import KNOWLEDGE from './data/loot-knowledge.json'
 
@@ -20,6 +21,7 @@ export interface CharacterView {
     readonly revision?: number | undefined
   }
   readonly quests?: ArrayLike<number> | undefined
+  readonly difficulty?: number | undefined
 }
 
 const NEUTRAL: AppraisalContext = { build: characterBuild({ classIndex: -1, level: 1, strength: 0, dexterity: 0, skillPoints: new Map() }), equipped: [], owned: [] }
@@ -30,7 +32,8 @@ export function appraisalContextOf(view: Partial<CharacterView> | null | undefin
   if (!view?.self || !view.containers) return NEUTRAL
   const { self, containers } = view
   const skillPoints = new Map([...self.skillEntries.values()].map((skill) => [skill.skillId, skill.baseLevel ?? skill.level]))
-  const sheet = { classIndex: self.charClass ?? -1, level: Math.max(1, self.level), strength: self.stats.get(STRENGTH), dexterity: self.stats.get(DEXTERITY), skillPoints }
+  const resists = resistsOf(view.difficulty ?? 0)
+  const sheet = { classIndex: self.charClass ?? -1, level: Math.max(1, self.level), strength: self.stats.get(STRENGTH), dexterity: self.stats.get(DEXTERITY), skillPoints, resists }
   const imbueReady = ((view.quests?.[KNOWLEDGE.imbue.questWord] ?? 0) & KNOWLEDGE.imbue.rewardPending) !== 0
   const key = `${containers.revision ?? -1}|${imbueReady}|${JSON.stringify({ ...sheet, skillPoints: [...skillPoints] })}`
   const hit = cache.get(view)
