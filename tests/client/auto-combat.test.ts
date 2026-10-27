@@ -102,6 +102,17 @@ describe('auto-fight toggle', () => {
     expect(new Set(s.attacked().slice(after))).toEqual(new Set([903]))
   })
 
+  it('still fights Baal where it gave up on one of his clones', () => {
+    const s = createSetup()
+    s.spawn(901, 570, 104, 100)
+    s.mapper.handleKeyDown({ key: 'E' })
+    s.fightFor(1000, 17_500)
+    s.spawn(902, 544, 105, 101)
+    const after = s.attacked().length
+    s.fightFor(17_600, 19_000)
+    expect(s.attacked().slice(after)).toContain(902)
+  })
+
   it('goes for a shaman that raises the dead before the fallen around it', () => {
     const s = createSetup()
     s.spawn(901, 19, 102, 100)

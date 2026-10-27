@@ -187,7 +187,7 @@ const SINGLE: Readonly<Record<string, Stage>> = {
   qstsa5q53: at(120, 'Defeat the three Ancients'),
   qstsa5q61a: at(131, "Find Baal's Throne Room"),
   qstsa5q62b: { ...at(131, "Kill Baal's minions", 'baalthrone'), wait: true },
-  qstsa5q62: at(132, 'Kill Baal'),
+  qstsa5q62: at(132, 'Kill Baal', 'baalcrab'),
   qstsa5q63: at(132, 'Talk to Tyrael', 'tyrael3'),
   qstsa5q64: at(132, "Take Tyrael's portal to safety"),
 }
