@@ -1324,7 +1324,7 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
     expect(() => hugeLenFramer.push(new Uint8Array([1, 0, 0x20, 0]))).toThrow(Netproto.ProtocolError)
   })
 
-  it('T5.B2: F7 D2gsC2sFramer frames variable-length opcodes (0x14, 0x15, 0x39 dual-size, 0x66, 0x6C), compacts/grows its ring buffer past 4096 bytes, and throws ProtocolError on invalid opcodes', () => {
+  it('T5.B2: F7 D2gsC2sFramer frames variable-length opcodes (0x14, 0x15, 0x39 fixed 5, 0x66, 0x6C), compacts/grows its ring buffer past 4096 bytes, and throws ProtocolError on invalid opcodes', () => {
     const framer = new Netproto.D2gsC2sFramer()
 
     // 1. 0x14 OverheadChat: [0x14, 0x00, 0x00, ...msg\0, 0x00, 0x00]
@@ -1346,20 +1346,20 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
     wardenPkt.set(wardenPayload, 3)
     expect(Netproto.resolveC2sPacketSize(wardenPkt, 0)).toBe(7)
 
-    // 4. 0x6C SaveChunk: [0x6C, sizeByte, ...chunk] -> total size = sizeByte + 6
-    const saveChunkPkt = new Uint8Array(10 + 6)
+    // 4. 0x6C SaveChunk: [0x6C, sizeByte, ...chunk] -> total size = sizeByte + 7 (D2NET_10006 0x6FBF66AB, #1657)
+    const saveChunkPkt = new Uint8Array(10 + 7)
     saveChunkPkt[0] = 0x6c
     saveChunkPkt[1] = 10
-    expect(Netproto.resolveC2sPacketSize(saveChunkPkt, 0)).toBe(16)
+    expect(Netproto.resolveC2sPacketSize(saveChunkPkt, 0)).toBe(17)
 
-    // 5. 0x39 dual-length packet: 5 bytes when standalone (remaining < 9), 9 bytes in a stream when remaining >= 9
+    // 5. 0x39 is a fixed 5-byte D2Net entry (0x6FBFABD8 + 0x39*4; #1653), even when more bytes are buffered
     const pkt39Five = new Uint8Array([0x39, 0x01, 0x02, 0x03, 0x04])
     expect(Netproto.resolveC2sPacketSize(pkt39Five, 0)).toBe(5)
     expect(framer.push(pkt39Five)).toEqual([pkt39Five])
     expect(framer.bufferedBytes).toBe(0)
 
-    const pkt39Nine = new Uint8Array([0x39, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
-    expect(Netproto.resolveC2sPacketSize(pkt39Nine, 0)).toBe(9)
+    const pkt39Buffered = new Uint8Array([0x39, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
+    expect(Netproto.resolveC2sPacketSize(pkt39Buffered, 0)).toBe(5)
 
     // Feed partial chunks & force ring-buffer growth beyond initial 4096-byte capacity
     const runPkt = new Uint8Array(
@@ -1371,7 +1371,7 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
       new Uint8Array(chatPkt),
       wardenPkt,
       saveChunkPkt,
-      pkt39Nine,
+      pkt39Five,
     ]
     for (let i = 0; i < 900; i++) {
       manyPackets.push(runPkt)
@@ -1398,7 +1398,7 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
     expect(decoded[1]).toEqual(new Uint8Array(chatPkt))
     expect(decoded[2]).toEqual(wardenPkt)
     expect(decoded[3]).toEqual(saveChunkPkt)
-    expect(decoded[4]).toEqual(pkt39Nine)
+    expect(decoded[4]).toEqual(pkt39Five)
     expect(framer.bufferedBytes).toBe(0)
 
     // Verify ProtocolError on unused/invalid C2S opcodes (0x00 and 0xFE)

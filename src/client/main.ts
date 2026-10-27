@@ -20,6 +20,7 @@ import {
   applyRealmGamesToFlowState,
   CAMPFIRE_CLASS_SPECS,
   createInitialFlowState,
+  getCharacterMaxDifficulty,
   getRecentRealmGameNames,
   isDifficultyUnlocked,
   isRealmGameInfoOpen,
@@ -356,6 +357,7 @@ export async function startPlayApp(options?: {
 
   let sessionRef: OnlineSession | null = null
   let pluginMenuRef: ModMenu | null = null
+  let refreshDisplayFn: (() => void) | null = null
   let gestureReceivedBeforeSession = false
 
   const unlockAndWarmUiAudio = (): void => {
@@ -466,6 +468,9 @@ export async function startPlayApp(options?: {
       },
       onPluginsToggle: () => {
         pluginMenuRef?.toggle()
+      },
+      onRefreshDisplay: () => {
+        refreshDisplayFn?.()
       },
       onModalOpen: () => {
         pluginMenuRef?.close()
@@ -1169,8 +1174,10 @@ export async function startPlayApp(options?: {
 
   const returnToLobby = (): void => {
     // Normally reached after the session already left the game (phase `idle`/`lobby`); a Single Player
-    // game still attached is left at the end, once the frontend no longer shows the game.
+    // game still attached must finish `leaveGame()` (which writes the updated `.d2s` save) before
+    // `persistSinglePlayerSavesToStorage()` and `lobby.listCharacters()` reload `flowState.roster`.
     const leaveLocalGame = flowState.playMode === 'single' && session.phase === 'ingame'
+    const selectedName = flowState.roster[flowState.selectedSlotIndex]?.name
     inGameView = false
     ownHeroArtKicked = false
     clearPendingNeighborPreload()
@@ -1180,15 +1187,21 @@ export async function startPlayApp(options?: {
       flowState.lastError = null
       flowState.popupModal = null
       const lobby = getLocalLobbyProvider()
-      if (lobby) {
-        void (async () => {
-          await persistSinglePlayerSavesToStorage()
+      void (async () => {
+        if (leaveLocalGame) {
+          await session.leaveGame()
+        }
+        await persistSinglePlayerSavesToStorage()
+        if (lobby) {
           const chars = await lobby.listCharacters()
-          applyOnlineCharactersToFlowState(flowState, chars, { stayOnCharSelect: true })
+          applyOnlineCharactersToFlowState(flowState, chars, {
+            stayOnCharSelect: true,
+            preserveSelectedName: selectedName,
+          })
           flowState.onlineConnected = false
           frontendRenderer.render(performance.now())
-        })()
-      }
+        }
+      })()
       flowState.stage = 'char_select'
       flowState.activeInput = null
       toolbar.setConnectionState({ phase: 'disconnected', rttMs: null })
@@ -1211,13 +1224,24 @@ export async function startPlayApp(options?: {
     session.audioRuntime.playTitleMusic()
     syncVisibility()
     frontendRenderer.render(performance.now())
-    if (leaveLocalGame) {
-      void session.leaveGame()
-    }
   }
 
   /** D2Client victory screen `0x6faf3a70` after S2C `0x61 07`; dismissing it continues to the lobby. */
   const showVictoryScreen = (completion: GameCompletion113c): void => {
+    const selectedChar = flowState.roster[flowState.selectedSlotIndex]
+    if (selectedChar) {
+      const actsPerDiff = selectedChar.isExpansion ? 5 : 4
+      const completedProg = Math.max(
+        selectedChar.progression ?? 0,
+        completion.newProgression,
+        (session.world.difficulty + 1) * actsPerDiff,
+      )
+      selectedChar.progression = completedProg
+      selectedChar.maxDifficulty = getCharacterMaxDifficulty({
+        isExpansion: selectedChar.isExpansion,
+        progression: completedProg,
+      })
+    }
     inGameView = false
     ownHeroArtKicked = false
     clearPendingNeighborPreload()
@@ -1950,14 +1974,14 @@ export async function startPlayApp(options?: {
         .catch((err) => {
           reportMissingArt('entity-index', 'index.json', String(err))
         }),
-      loadMissileArtMap(renderer)
+      loadMissileArtMap(renderer, undefined, { lazy: true })
         .then((map) => {
           missileArtMap = map
         })
         .catch((err) => {
           reportMissingArt('missile', 'missiles-manifest.json', String(err))
         }),
-      loadOverlayArtMap(renderer)
+      loadOverlayArtMap(renderer, undefined, { lazy: true })
         .then((map) => {
           overlayArtMap = map
         })
@@ -2095,6 +2119,27 @@ export async function startPlayApp(options?: {
       inGameView || (session.phase !== 'disconnected' && session.phase !== 'error'),
   })
   bootDisposers.push(() => gestureGuard.dispose())
+
+  refreshDisplayFn = (): void => {
+    const nowMs = performance.now()
+    gestureGuard.exitPointerLock()
+    if (!chatInputEl.hidden) {
+      chatInputEl.value = ''
+      chatInputEl.hidden = true
+      syncChatInputToHud()
+      chatInputEl.blur()
+    }
+    instanceFocused = true
+    motionSmoother.reset()
+    frontendRenderer.cursor.resetIdle(nowMs)
+    syncStageViewportFit()
+    session.refreshDisplayAndResync(nowMs)
+    if (!inGameView) {
+      frontendRenderer.render(nowMs)
+    } else {
+      renderFrame(nowMs)
+    }
+  }
 
   // Bind mouse & keyboard input
   const rawToStageCoords = (e: MouseEvent): { readonly x: number; readonly y: number } => {

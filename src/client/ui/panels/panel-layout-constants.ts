@@ -27,22 +27,22 @@ export type LeftDockPanelKind =
 export type WorldPanelType = LeftDockPanelKind
 
 /**
- * D2Client.dll `0x6fb2cc60` (`BARKSCROLL_Draw`, `.data:0x6fbb6558..0x6fbb65a4`):
+ * D2Client.dll `0x6fb2cc60` (`BARKSCROLL_Draw`, `.rdata:0x6fb91c40..0x6fb91ca0`):
  * Cairn Stone rune (`scroin2.dc6`) and glow (`scroin3.dc6`) positions relative to panel origin `(ox, oy) = (80, 60)`.
  */
 export const BARKSCROLL_RUNE_POS: readonly { readonly x: number; readonly y: number }[] = [
-  { x: 141, y: 120 },
-  { x: 215, y: 158 },
-  { x: 207, y: 268 },
-  { x: 87, y: 263 },
-  { x: 77, y: 170 },
+  { x: 242, y: 104 },
+  { x: 255, y: 222 },
+  { x: 148, y: 310 },
+  { x: 47, y: 222 },
+  { x: 75, y: 104 },
 ]
 export const BARKSCROLL_GLOW_POS: readonly { readonly x: number; readonly y: number }[] = [
-  { x: 161, y: 109 },
-  { x: 235, y: 148 },
-  { x: 227, y: 256 },
-  { x: 107, y: 251 },
-  { x: 96, y: 160 },
+  { x: 303, y: 161 },
+  { x: 322, y: 242 },
+  { x: 254, y: 290 },
+  { x: 190, y: 238 },
+  { x: 211, y: 162 },
 ]
 export const BARKSCROLL_STEP_THRESHOLDS: readonly [number, number, number, number, number] = [0, 12, 24, 36, 48]
 

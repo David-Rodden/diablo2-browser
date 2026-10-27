@@ -11,6 +11,7 @@
 
 import { ByteReader } from '../../core/byte-reader.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
+import { requirePacketLength } from './packet-length.ts'
 
 /** 0x4E MercForHire (7B, D2Client.dll 0x6fb5c0b0) */
 export function decode0x4EMercForHire(pkt: Uint8Array): ServerEvent {
@@ -60,25 +61,27 @@ export function decode0x7ASummonAction(pkt: Uint8Array): ServerEvent {
 /**
  * 0x81 AssignMerc (20B, D2Client.dll 0x6fb5eba0 -> 0x6fad1d60):
  * - [0]      = 0x81
- * - [1]      = u8 unk
+ * - [1]      = u8 kind (7 = hireling: 0x6fad1d6c / 0x6fad1db6)
  * - [2..3]   = u16LE classId
  * - [4..7]   = u32LE ownerId
  * - [8..11]  = u32LE mercId
  * - [12..15] = u32LE seed
- * - [16..17] = u16LE nameId
- * - [18..19] = u16LE pad
+ * - [16..19] = u32LE name dword
+ * The handler copies `{u32 @0xC, u32 @0x10, 0}` into the owner's pet record (+0x24/+0x28/+0x2C, 0x6fad1dc2..
+ * 0x6fad1dd0); for kind 7 it passes `{u32 @0xC, u16 (@0x10 & 0xFFFF)}` to the merc name setter 0x6fafef50
+ * (0x6fad1dd5..0x6fad1e33). There is no fallback between the two fields (#1661).
  */
 export function decode0x81AssignMerc(pkt: Uint8Array): ServerEvent {
+  requirePacketLength(pkt, '0x81 AssignMerc', 20)
   const r = new ByteReader(pkt)
   r.u8() // 0x81
-  r.u8() // unk
+  r.u8() // kind
   const classId = r.u16LE()
   const ownerId = r.u32LE()
   const mercId = r.u32LE()
-  const seed12 = r.u32LE() // offset 12..15 (canonical 1.13c u32 seed)
-  const nameId = r.u16LE() // offset 16..17
-  const seed18 = r.remaining >= 4 ? r.u32LE() : r.remaining >= 2 ? r.u16LE() : 0 // offset 18+
-  const seed = seed12 !== 0 ? seed12 : seed18
+  const seed = r.u32LE() // @0xC
+  const nameDword = r.u32LE() // @0x10
+  const nameId = nameDword & 0xffff
   return {
     type: 'Merc',
     kind: 'assign',

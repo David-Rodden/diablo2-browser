@@ -30,6 +30,8 @@ import {
   type ItemQuality as WireItemQuality,
   type ItemStat,
 } from '../../netproto/index.ts'
+import type { SetBonusStatList } from '../../netproto/index.ts'
+import type { SetItem } from '../../common/items/set-items.ts'
 
 /** The `Item` fields the canonical generators attach beyond the declared interface. */
 interface GeneratedItemExtras {
@@ -40,6 +42,12 @@ interface GeneratedItemExtras {
   readonly isGambleMystery?: boolean | undefined
   readonly personalized?: boolean | undefined
   readonly personalizedName?: string | undefined
+  readonly rolledSetBonusProps?: readonly { readonly index: number; readonly props: readonly RolledItemProp[] }[] | undefined
+  readonly setBonusStats?: readonly SetBonusStatList[] | undefined
+  readonly runeword?: boolean | undefined
+  readonly runewordId?: number | undefined
+  readonly runewordStats?: readonly ItemStat[] | undefined
+  readonly rolledRunewordProps?: readonly RolledItemProp[] | undefined
 }
 
 function normalizeWireItemQuality(raw: unknown): WireItemQuality {
@@ -82,11 +90,48 @@ function affixPacketId(rolled: RolledAffix, what: string): number {
   return id
 }
 
-function toWireStats(props: readonly RolledItemProp[] | undefined): ItemStat[] {
-  return rolledPropsToItemStats(props).map((s) => {
+function toWireStats(props: readonly RolledItemProp[] | undefined, baseCode?: string): ItemStat[] {
+  return rolledPropsToItemStats(props, baseCode ? { baseCode } : undefined).map((s) => {
     if (typeof s.statId !== 'number') throw new Error('domainItemToItemData113c: rolled property without an ItemStatCost id')
     return { statId: s.statId, param: s.param ?? 0, value: s.value }
   })
+}
+
+function buildSetBonusStatLists113c(
+  item: Item & GeneratedItemExtras,
+  setItemDef: SetItem | undefined,
+  baseCode: string,
+): SetBonusStatList[] {
+  if (Array.isArray(item.setBonusStats) && item.setBonusStats.length > 0) {
+    return [...item.setBonusStats]
+  }
+  if (Array.isArray(item.rolledSetBonusProps) && item.rolledSetBonusProps.length > 0) {
+    return item.rolledSetBonusProps.map(({ index, props }) => ({
+      index,
+      stats: toWireStats(props, baseCode),
+    }))
+  }
+  if (!setItemDef?.aprops || setItemDef.aprops.length === 0) return []
+  const rng = new D2Rng(((item.uniqueId ?? 1) ^ 0x5e7b0000) >>> 0 || 1)
+  const byIndex = new Map<number, RolledItemProp[]>()
+  for (const ap of setItemDef.aprops) {
+    if (!ap.code) continue
+    const idx = ap.threshold - 1
+    if (idx < 0 || idx > 4) continue
+    const val = ap.min === ap.max ? ap.min : rng.randRange(ap.min, ap.max)
+    const list = byIndex.get(idx) ?? []
+    list.push({
+      code: ap.code,
+      param: ap.par,
+      min: ap.min,
+      max: ap.max,
+      value: val,
+    })
+    byIndex.set(idx, list)
+  }
+  return [...byIndex.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([index, props]) => ({ index, stats: toWireStats(props, baseCode) }))
 }
 
 /**
@@ -165,11 +210,30 @@ export function domainItemToItemData113c(
     defense = item.defense
   }
 
+  const isRuneword = Boolean(extras.runeword ?? item.flags?.runeword)
+  const setDef =
+    quality === ItemQuality.SET
+      ? ((item.setItemDef as SetItem | undefined) ??
+        (setItemId !== undefined ? tables.sets.items.getById(setItemId) : undefined))
+      : undefined
+  const setBonusStats: SetBonusStatList[] =
+    isGambleMystery || quality !== ItemQuality.SET
+      ? []
+      : buildSetBonusStatLists113c(extras, setDef, code)
+  const runewordStats: ItemStat[] = isGambleMystery
+    ? []
+    : Array.isArray(extras.runewordStats)
+      ? [...extras.runewordStats]
+      : extras.rolledRunewordProps
+        ? toWireStats(extras.rolledRunewordProps, code)
+        : []
+
   const rawFlags =
     (identified ? ITEM_FLAG_IDENTIFIED : 0) |
     (totalSockets > 0 ? ITEM_FLAG_SOCKETED : 0) |
     (ethereal ? ITEM_FLAG_ETHEREAL : 0) |
     (personalized ? 0x01000000 : 0) |
+    (isRuneword ? 0x04000000 : 0) |
     (simple ? ITEM_FLAG_COMPACT : 0) |
     (isGambleMystery ? ITEM_FLAG_SIMPLE_EXTENDED : 0)
 
@@ -204,7 +268,8 @@ export function domainItemToItemData113c(
     identified,
     socketed: totalSockets > 0,
     ethereal,
-    runeword: false,
+    runeword: isRuneword,
+    ...(extras.runewordId !== undefined ? { runewordId: extras.runewordId } : {}),
     personalized,
     ...(personalizedName !== undefined ? { personalizedName, earOrPersonalizedName: personalizedName } : {}),
     isEar: false,
@@ -236,9 +301,9 @@ export function domainItemToItemData113c(
     ...(isGold ? { goldAmount: item.stack } : {}),
     invWidth: item.invWidth,
     invHeight: item.invHeight,
-    stats: isGambleMystery ? [] : toWireStats(item.rolledProps),
-    setBonusStats: [],
-    runewordStats: [],
+    stats: isGambleMystery ? [] : toWireStats(item.rolledProps, code),
+    setBonusStats,
+    runewordStats,
   }
 }
 

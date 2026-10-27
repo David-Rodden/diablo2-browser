@@ -354,10 +354,10 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
   // 6. Elemental Immunity Breaking with Lower Resist
   // =========================================================================
   describe('6. Elemental Immunity Breaking with Lower Resist', () => {
-    it('evaluates exact dm56 curve: slvl 1: -32%, slvl 10: -55%, slvl 20: -63%', () => {
-      expect(calculateLowerResistReduction(1)).toBe(32)
+    it('evaluates exact dm56 curve: slvl 1: -31%, slvl 10: -55%, slvl 20: -62% (D2Common 0x6FD9DC30, #1678)', () => {
+      expect(calculateLowerResistReduction(1)).toBe(31)
       expect(calculateLowerResistReduction(10)).toBe(55)
-      expect(calculateLowerResistReduction(20)).toBe(63)
+      expect(calculateLowerResistReduction(20)).toBe(62)
     })
 
     it('breaks elemental immunities at 1/5th penalty', () => {
@@ -641,10 +641,10 @@ describe('Milestone M3: Necromancer Curses Tree (1.13c Ground Truth)', () => {
       const specLR = calculateCurseEffect(91, 20)
       expect(specLR.skillName).toBe('Lower Resist')
       expect(specLR.stateName).toBe('lowerresist')
-      expect(specLR.debuffStats.fireresist).toBe(-63)
-      expect(specLR.debuffStats.lightresist).toBe(-63)
-      expect(specLR.debuffStats.coldresist).toBe(-63)
-      expect(specLR.debuffStats.poisonresist).toBe(-63)
+      expect(specLR.debuffStats.fireresist).toBe(-62)
+      expect(specLR.debuffStats.lightresist).toBe(-62)
+      expect(specLR.debuffStats.coldresist).toBe(-62)
+      expect(specLR.debuffStats.poisonresist).toBe(-62)
     })
   })
 

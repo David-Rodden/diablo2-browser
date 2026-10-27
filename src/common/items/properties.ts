@@ -546,6 +546,10 @@ export interface PropertyResolutionContext {
   readonly properties?: PropertiesTable | undefined
   readonly stats?: ItemStatCostTable | undefined
   readonly value?: number | undefined
+  readonly isWeapon?: boolean | undefined
+  readonly has1H?: boolean | undefined
+  readonly has2H?: boolean | undefined
+  readonly isThrowable?: boolean | undefined
 }
 
 /**
@@ -581,6 +585,10 @@ export function resolveProperty(
   let propTable: PropertiesTable | undefined
   let statTable: ItemStatCostTable | undefined
   let customValue: number | undefined
+  let isWeapon = false
+  let has1H = true
+  let has2H = true
+  let isThrowable = false
 
   if (context) {
     if ('byCode' in context) {
@@ -589,6 +597,10 @@ export function resolveProperty(
       propTable = context.properties
       statTable = context.stats
       customValue = context.value
+      if (context.isWeapon !== undefined) isWeapon = context.isWeapon
+      if (context.has1H !== undefined) has1H = context.has1H
+      if (context.has2H !== undefined) has2H = context.has2H
+      if (context.isThrowable !== undefined) isThrowable = context.isThrowable
     }
   }
 
@@ -764,37 +776,53 @@ export function resolveProperty(
         break
     }
 
-    // Lookup stat metadata from ItemStatCostTable
-    let statId = -1
-    let saveBits = 0
-    let saveAdd = 0
-    let saveParamBits = 0
-
-    if (statTable && statName) {
-      const statRecord = statTable.getByStat(statName)
-      if (statRecord) {
-        statId = statRecord.id
-        saveBits = statRecord.saveBits
-        saveAdd = statRecord.saveAdd
-        saveParamBits = statRecord.saveParamBits
+    const pushStatByName = (targetStatName: string) => {
+      let statId = -1
+      let saveBits = 0
+      let saveAdd = 0
+      let saveParamBits = 0
+      if (statTable && targetStatName) {
+        const statRecord = statTable.getByStat(targetStatName)
+        if (statRecord) {
+          statId = statRecord.id
+          saveBits = statRecord.saveBits
+          saveAdd = statRecord.saveAdd
+          saveParamBits = statRecord.saveParamBits
+        }
       }
+      results.push({
+        stat: targetStatName,
+        statId,
+        id: statId,
+        func,
+        min: resolvedMin,
+        max: resolvedMax,
+        value: resolvedVal,
+        param: resolvedParam,
+        saveBits,
+        saveAdd,
+        saveParamBits,
+      })
     }
 
-    const resolved: ResolvedStat = {
-      stat: statName,
-      statId,
-      id: statId,
-      func,
-      min: resolvedMin,
-      max: resolvedMax,
-      value: resolvedVal,
-      param: resolvedParam,
-      saveBits,
-      saveAdd,
-      saveParamBits,
+    if (func === 5) {
+      // D2Common 0x6fd987c0 (func 5 dmg-min): non-weapon sets 21, 23, 159; weapon gates by 1H/2H/throwable.
+      if (!isWeapon || has1H) pushStatByName('mindamage')
+      if (!isWeapon || has2H) pushStatByName('secondary_mindamage')
+      if (!isWeapon || isThrowable) pushStatByName('item_throw_mindamage')
+    } else if (func === 6) {
+      // D2Common 0x6fd98630 (func 6 dmg-max): non-weapon sets 22, 24, 160; weapon gates by 1H/2H/throwable.
+      if (!isWeapon || has1H) pushStatByName('maxdamage')
+      if (!isWeapon || has2H) pushStatByName('secondary_maxdamage')
+      if (!isWeapon || isThrowable) pushStatByName('item_throw_maxdamage')
+    } else if (func === 7) {
+      // D2Common 0x6fd99340 (func 7 dmg%): sets both item_maxdamage_percent (17) and item_mindamage_percent (18).
+      pushStatByName('item_maxdamage_percent')
+      pushStatByName('item_mindamage_percent')
+    } else {
+      pushStatByName(statName)
     }
 
-    results.push(resolved)
     previousResolved = {
       min: resolvedMin,
       max: resolvedMax,

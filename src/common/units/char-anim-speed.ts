@@ -12,8 +12,12 @@
  * - Weapon attacks (`A1` / `A2`, modes 7 / 8):
  *     `EIAS = clamp(diminished(itemIas) + skillIas - weaponWsm, -85, 75)`
  *   where `weaponWsm` is the equipped weapon's `speed` column from 1.13c `Weapons.txt`.
- * - Get Hit recovery (`GH`, mode 4):
- *     `EFHR = clamp(diminished(fhr), -85, 75)`
+ * - Get Hit recovery (`GH`, player mode 4 / monster mode 3, `UNITS_UpdateAnimRateAndVelocity`
+ *   `0x6FD83298..0x6FD832C7`): rate `50 + diminished(fhr)` (no clamp) — `effRate = EFHR - 50`.
+ * - Block (`BL`, player mode 9 / monster mode 6, `0x6FD831FE..0x6FD83283`): rate `50 + diminished(fbr)`,
+ *   `100 + diminished(fbr)` while state 101 `holyshield` is set — `effRate = EFBR - 50` (or `EFBR`).
+ * - Knockback (player mode 19 / monster mode 13, `0x6FD832C9..0x6FD83318`): step speed is
+ *   `UNITS_GetBaseAnimSpeed` (`0x6FD7FB10`, 213 for players), no rate stat.
  * - Effective 8.8 fixed-point step speed:
  *     `stepSpeed256 = max(32, floor(baseSpeed * (100 + effRate) / 100))`
  * - Locomotion exception (wl/tw/rn, `UNITS_UpdateRunWalkAnimRateAndVelocity` 0x6FD83331):
@@ -699,20 +703,23 @@ export function getCharAnimClip113c(
 }
 
 /**
- * 1.13c diminishing returns formula (`D2Common.dll`):
- * `floor(120 * rate / (120 + rate))` for `rate > 0`.
+ * 1.13c diminishing returns formula (`D2Common.dll` `0x6FD823E0`):
+ * `trunc(120 * rate / (120 + rate))` for any non-zero `rate` (positive or negative).
  */
 export function computeDiminishingRate113c(rate: number): number {
   if (!Number.isFinite(rate)) return 0
-  if (rate <= 0) return Math.max(-85, Math.trunc(rate))
-  return Math.trunc((120 * rate) / (120 + rate))
+  const v = Math.trunc(rate)
+  if (v === 0) return 0
+  if (120 + v <= 0) return -100
+  return Math.trunc((120 * v) / (120 + v))
 }
 
 /**
- * Effective Faster Cast Rate (`EFCR = clamp(diminished(fcr), -85, 75)`).
+ * Effective Faster Cast Rate (`EFCR = min(75, diminished(fcr))`, `D2Common.dll` `0x6FD8319E`:
+ * cast rate `100 + dFCR` is clamped only at `<= 175`).
  */
 export function computeEffectiveFcr(fcr: number): number {
-  return Math.max(-85, Math.min(75, computeDiminishingRate113c(fcr)))
+  return Math.min(75, computeDiminishingRate113c(fcr))
 }
 
 /**
@@ -740,20 +747,55 @@ export function computeEffectiveIas(
 }
 
 /**
- * Effective Faster Hit Recovery (`EFHR = clamp(diminished(fhr), -85, 75)`).
+ * Effective Faster Hit Recovery (`EFHR = diminished(fhr)`, base 120 at `0x6FDE4608` row 1).
+ * `UNITS_UpdateAnimRateAndVelocity` (`0x6FD832AB..0x6FD832B6`) adds it to 50 with no clamp.
  */
 export function computeEffectiveFhr(fhr: number): number {
-  return Math.max(-85, Math.min(75, computeDiminishingRate113c(fhr)))
+  return computeDiminishingRate113c(fhr)
 }
 
 /**
- * Effective 8.8 fixed-point animation step speed:
- * `stepSpeed256 = max(32, floor(baseSpeed * (100 + effRate) / 100))`.
+ * Effective Faster Block Rate (`EFBR = diminished(fbr)`, base 120 at `0x6FDE4608` row 3).
+ * Added to 50 (100 with state 101 `holyshield`) at `0x6FD83215..0x6FD8325A`, no clamp.
+ */
+export function computeEffectiveFbr(fbr: number): number {
+  return computeDiminishingRate113c(fbr)
+}
+
+/** GetHit rate base (`0x6FD832B6: add ecx, 0x32`), player mode 4 / monster mode 3. */
+export const GETHIT_ANIM_RATE_BASE_113C = 50
+/** Block rate base (`0x6FD83220: mov ebx, 0x32`), player mode 9 / monster mode 6. */
+export const BLOCK_ANIM_RATE_BASE_113C = 50
+/** Block rate base while state 101 `holyshield` is set (`0x6FD83251: mov ebx, 0x64`). */
+export const BLOCK_ANIM_RATE_BASE_HOLY_SHIELD_113C = 100
+/** `States.txt` row 101 `holyshield`. */
+export const STATE_HOLYSHIELD = 101
+
+/**
+ * `effRate` (rate − 100, consumed by {@link computeStepSpeed256}) for GetHit:
+ * `rate = 50 + EFHR` (`0x6FD83298..0x6FD832C7`).
+ */
+export function computeGetHitEffRate113c(fhr: number): number {
+  return GETHIT_ANIM_RATE_BASE_113C + computeEffectiveFhr(fhr) - 100
+}
+
+/**
+ * `effRate` (rate − 100) for Block: `rate = 50 + EFBR`, or `100 + EFBR` with state 101
+ * `holyshield` (`0x6FD831FE..0x6FD83283`).
+ */
+export function computeBlockEffRate113c(fbr: number, holyShield = false): number {
+  const base = holyShield ? BLOCK_ANIM_RATE_BASE_HOLY_SHIELD_113C : BLOCK_ANIM_RATE_BASE_113C
+  return base + computeEffectiveFbr(fbr) - 100
+}
+
+/**
+ * Effective 8.8 fixed-point animation step speed (`D2Common.dll` `0x6FD83526`):
+ * `stepSpeed256 = max(1, floor(baseSpeed * (100 + effRate) / 100))` (no 32 floor).
  */
 export function computeStepSpeed256(baseSpeed: number, effRate = 0): number {
   const safeBase = Number.isFinite(baseSpeed) && baseSpeed > 0 ? baseSpeed : 256
   const safeRate = Number.isFinite(effRate) ? effRate : 0
-  return Math.max(32, Math.floor((safeBase * (100 + safeRate)) / 100))
+  return Math.max(1, Math.floor((safeBase * (100 + safeRate)) / 100))
 }
 
 /** 1.13c `STAT_VELOCITYPERCENT` (ItemStatCost.txt id 67): total move velocity percent (base 100). */
@@ -899,7 +941,7 @@ export function computeLocomotionStepSpeed256(baseSpeed: number, velocityPercent
  */
 export function computeOneShotTicks(frames: number, stepSpeed256: number): number {
   const safeFrames = Math.max(1, Math.trunc(Number.isFinite(frames) ? frames : 1))
-  const safeSpeed = Math.max(32, Math.trunc(Number.isFinite(stepSpeed256) ? stepSpeed256 : 256))
+  const safeSpeed = Math.max(1, Math.trunc(Number.isFinite(stepSpeed256) ? stepSpeed256 : 256))
   if (safeFrames <= 1) return 1
   return Math.max(1, Math.ceil((safeFrames * 256) / safeSpeed) - 1)
 }
@@ -922,7 +964,7 @@ export function computeSequenceTicks(totalSequenceFrames: number, stepSpeed256: 
     1,
     Math.trunc(Number.isFinite(totalSequenceFrames) ? totalSequenceFrames : 1),
   )
-  const safeSpeed = Math.max(32, Math.trunc(Number.isFinite(stepSpeed256) ? stepSpeed256 : 256))
+  const safeSpeed = Math.max(1, Math.trunc(Number.isFinite(stepSpeed256) ? stepSpeed256 : 256))
   return Math.max(1, Math.ceil((safeFrames * 256) / safeSpeed))
 }
 
@@ -1278,7 +1320,7 @@ export function computeRollbackSkillTiming113c(params: {
     1,
     Math.min(frames - 1, Math.trunc(params.actionFrame || Math.floor(frames / 2))),
   )
-  const stepSpeed256 = Math.max(32, Math.trunc(params.stepSpeed256 || 256))
+  const stepSpeed256 = Math.max(1, Math.trunc(params.stepSpeed256 || 256))
   const rollbackFrame = Math.max(
     0,
     Math.min(actionFrame - 1, Math.floor((actionFrame * (100 - rollbackPct)) / 100)),
@@ -1451,7 +1493,8 @@ export interface CharacterAnimSpeedParams {
 }
 
 /**
- * Effective animation rate modifier (`[-85, 75]`) for a given player mode / clip key in 1.13c:
+ * Effective animation rate modifier `effRate` (= anim rate percent − 100, consumed by
+ * {@link computeStepSpeed256}) for a given player mode / clip key in 1.13c:
  * - `sc` (mode 10) uses `EFCR` (`fcr`).
  * - `sq` (mode 18): per `D2Common.dll` `UNITS_IsCastAnimMode` (`0x6FD80B80`) and
  *   `UNITS_UpdateAnimRateAndVelocity` (`0x6FD834CD`), if the skill's `seqTrans` is `'SC'` or `'SQ'`
@@ -1462,7 +1505,10 @@ export interface CharacterAnimSpeedParams {
  *   CltSt27 #133 Double Swing `cltcalc1 = par5 = +50`, CltSt9 #270 Dragon Tail `Param4 = -40`).
  * - `a1`, `a2`, `th`, `kk`, `s1`, `s2` (Assassin trap-laying `#261, #262, #271, #272, #276`),
  *   `s3`, `s4` use `EIAS` (`itemIas + skillIas - weaponWsm`).
- * - `gh` (mode 4) and `bl` (mode 9) use `EFHR` / `EFBR` (`fhr` / `fbr`).
+ * - `gh` (mode 4): rate `50 + EFHR` (`0x6FD83298..0x6FD832C7`), i.e. `effRate = EFHR - 50`.
+ * - `bl` (mode 9): rate `50 + EFBR` (`100 + EFBR` with state 101 `holyshield`,
+ *   `0x6FD831FE..0x6FD83283`), i.e. `effRate = EFBR - 50` (or `EFBR`).
+ * - Knockback (numeric mode 19) has no rate stat (`0x6FD832C9`): returns 0.
  */
 export function computeEffectiveAnimRate113c(
   modeOrClipKey: number | string,
@@ -1477,8 +1523,11 @@ export function computeEffectiveAnimRate113c(
     readonly fbr?: number | undefined
     readonly skillId?: number | undefined
     readonly seqTrans?: string | undefined
+    /** State 101 `holyshield` active (block rate base 100 instead of 50, `0x6FD83251`). */
+    readonly holyShield?: boolean | undefined
   } = {},
 ): number {
+  if (modeOrClipKey === 19) return 0
   const isSequenceMode =
     modeOrClipKey === 18 ||
     (typeof modeOrClipKey === 'string' && modeOrClipKey.trim().toLowerCase() === 'sq')
@@ -1522,10 +1571,10 @@ export function computeEffectiveAnimRate113c(
     })
   }
   if (clipKey === 'gh') {
-    return computeEffectiveFhr(stats.fhr ?? 0)
+    return computeGetHitEffRate113c(stats.fhr ?? 0)
   }
   if (clipKey === 'bl') {
-    return computeEffectiveFhr(stats.fbr ?? stats.fhr ?? 0)
+    return computeBlockEffRate113c(stats.fbr ?? 0, stats.holyShield === true)
   }
   return 0
 }
@@ -1624,6 +1673,11 @@ export function resolveCharacterAnimSpeedParams(
      * Werebear state 140 → 431, Vampire state 176 → 135, Bone Fetish state 177 → 212).
      */
     readonly morphMonsterClassId?: number | null | undefined
+    /**
+     * State 101 `holyshield` active on the unit: block (mode 9) rate base 100 instead of 50
+     * (`UNITS_UpdateAnimRateAndVelocity` `0x6FD83231..0x6FD83251`).
+     */
+    readonly holyShield?: boolean | null | undefined
   } = {},
 ): CharacterAnimSpeedParams {
   const equipmentList = sources.equipment ? Array.from(sources.equipment) : undefined
@@ -1718,6 +1772,7 @@ export function resolveCharacterAnimSpeedParams(
     fhr,
     fbr,
     skillId: sources.skillId ?? undefined,
+    holyShield: sources.holyShield === true,
   })
 
   // Engine hardcode (D2Common UNITS_GetBaseAnimSpeed) replaces AnimData speeds
@@ -1810,6 +1865,33 @@ export function resolveCharacterAnimSpeedParams(
       stepSpeed256,
       durationMs: computeOneShotDurationMs(clip.frames, stepSpeed256),
       velocityPercent,
+      fcr,
+      itemIas,
+      skillIas,
+      weaponWsm,
+      fhr,
+    }
+  }
+
+  // Knockback (PLRMODE_KNOCKBACK 19, token GH): `UNITS_UpdateAnimRateAndVelocity`
+  // 0x6FD832C9..0x6FD83318 writes `clamp(UNITS_GetBaseAnimSpeed, 0, 0x7FFF)` directly — 213 for
+  // players (0x6FD7FB50), MonStats `WalkAnimSpeed` for the shapeshift monster class — with no
+  // FHR rate and no AnimData speed.
+  if (modeOrClipKey === 19) {
+    const morphRec =
+      sources.morphMonsterClassId !== undefined && sources.morphMonsterClassId !== null
+        ? getMonsterPathRecord(sources.morphMonsterClassId)
+        : null
+    const kbBase = morphRec ? morphRec.walkAnimSpeed : PLAYER_WALK_BASE_ANIM_SPEED_113C
+    const kbStep = Math.max(0, Math.min(0x7fff, Math.trunc(kbBase)))
+    return {
+      clipKey,
+      frames: clip.frames,
+      baseSpeed: kbBase,
+      loop: false,
+      effRate: 0,
+      stepSpeed256: kbStep,
+      durationMs: computeOneShotDurationMs(clip.frames, Math.max(1, kbStep)),
       fcr,
       itemIas,
       skillIas,

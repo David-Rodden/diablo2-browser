@@ -119,9 +119,9 @@ describe('[Skill #018] Avoid (AMA) — 1.13c Parity (Issue #172)', () => {
     expect(stats1.manaCost).toBe(0)
     expect(stats1.manaCost256).toBe(0)
 
-    // slvl 10: dm(15, 75, 10) = floor(110*10*60 / (100*16)) + 15 = floor(66000/1600) + 15 = 41 + 15 = 56%
+    // slvl 10: dm(15, 75, 10) = trunc(trunc(1100/16) * 60 / 100) + 15 = trunc(68*60/100) + 15 = 55% (0x6FD9DC30, #1678)
     const stats10 = calculateAvoidStats(10)
-    expect(stats10.chancePct).toBe(56)
+    expect(stats10.chancePct).toBe(55)
 
     // slvl 20: dm(15, 75, 20) = floor(110*20*60 / (100*26)) + 15 = floor(132000/2600) + 15 = 50 + 15 = 65%
     const stats20 = calculateAvoidStats(20)

@@ -46,7 +46,7 @@ export interface AutomapCell {
   readonly cellY: number
   readonly fSaved?: AutomapAtlasSlot
   readonly weight?: number
-  readonly preRevealed?: boolean
+  readonly preRevealed?: boolean | undefined
 }
 
 export interface AutomapLayerData {
@@ -636,13 +636,19 @@ export function resolveTileAutomapCellId(
 }
 
 /**
- * Resolves the automap cell ID for an object instance per D2Client.dll 0x6fb11d00 & 0x6fb10c40:
+ * Resolves the automap cell ID for an object instance per D2Client.dll 0x6fb11d00 & 0x6fb10c40
+ * and BH.dll 0x101a94e0 (Maphack::RevealRoomPresetUnits):
  * - Stash (267) -> 319
  * - Cain Gibbet (26) -> 267
  * - Blue Portal (59) -> 306
  * - Red Portal (60) -> in Level 4 (Stony Field), mode === 0 ? -1 : 300; otherwise 306
+ * - Horadric Orifice (152) -> 300 (BH.dll 0x101a9589)
  * - Wirt's Body (268) -> 309
+ * - LargeChestR (371) -> 301 (BH.dll 0x101a9577)
+ * - Hellforge (376) -> 376 (BH.dll 0x101a95d3)
  * - Khalim Chests (405..407) -> 319
+ * - Frozen Anya (460, "Drehya Start Outside Town") -> 1468 (BH.dll 0x101a959b)
+ * - Lower Kurast Superchest (580) in Level 79 (Lower Kurast) -> 318 (BH.dll 0x101a954e)
  * - Sewer Stairs (366) -> mode === undefined || mode === 2 ? (autoMapCol > 0 ? autoMapCol : 308) : -1
  * - Arcane Waypoint (402) -> levelId === 74 ? (autoMapCol > 0 ? autoMapCol : 307) : -1
  * - Otherwise -> autoMapCol > 0 ? autoMapCol : -1
@@ -673,8 +679,13 @@ export function resolveObjectAutomapCellId(params: {
     }
     return 306
   }
+  if (objectClassId === 152) return 300
   if (objectClassId === 268) return 309
+  if (objectClassId === 371) return 301
+  if (objectClassId === 376) return 376
   if (objectClassId >= 405 && objectClassId <= 407) return 319
+  if (objectClassId === 460) return 1468
+  if (objectClassId === 580 && levelId === 79) return 318
   if (objectClassId === 366) {
     if (mode === undefined || mode === 2) {
       return autoMapCol > 0 ? autoMapCol : 308
@@ -693,9 +704,12 @@ export function resolveObjectAutomapCellId(params: {
 const CAIN_MONSTER_CLASS_IDS = new Set<number>([146, 254, 265, 266, 473, 532, 540])
 
 /**
- * Resolves the automap cell ID for a monster/NPC per D2Client.dll 0x6fb11dfd & 0x6fb10ef0:
+ * Resolves the automap cell ID for a monster/NPC per D2Client.dll 0x6fb11dfd & 0x6fb10ef0
+ * and BH.dll 0x101a94e0 (Maphack::RevealRoomPresetUnits):
  * - Dead monsters (isAlive === false) -> -1
  * - Deckard Cain monster IDs {146, 254, 265, 266, 473, 532, 540} -> 267
+ * - Izual (256) -> 300 (BH.dll 0x101a9517)
+ * - Willowisp Totem / Gargoyle Trap (745) -> 745 (BH.dll 0x101a9529)
  * - MonStats2.txt noMap === true -> -1
  * - Otherwise -> automapCel > 0 ? automapCel : -1
  */
@@ -718,12 +732,21 @@ export function resolveMonsterAutomapCellId(params: {
 
   if (!isAlive) return -1
   if (CAIN_MONSTER_CLASS_IDS.has(monsterClassId)) return 267
+  if (monsterClassId === 256) return 300
+  if (monsterClassId === 745) return 745
   if (noMap) return -1
   return automapCel > 0 ? automapCel : -1
 }
 
 function isSpecialOverrideIcon(cellNo: number): boolean {
-  return (cellNo >= 300 && cellNo <= 319) || cellNo === 405
+  return (
+    (cellNo >= 300 && cellNo <= 319) ||
+    cellNo === 376 ||
+    cellNo === 405 ||
+    cellNo === 745 ||
+    cellNo === 1258 ||
+    cellNo === 1468
+  )
 }
 
 /**

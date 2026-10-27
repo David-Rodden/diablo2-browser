@@ -751,13 +751,13 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       } else if (ev.uiId === 5) {
         host.hudModel.completeOrificeUi(ev.extra ?? 0)
       } else if (ev.uiId === 6) {
-        if (preOpenUiArtisanNpcId !== null || ev.unitType === 0 || ev.unitId === 0) {
+        if (preOpenUiArtisanNpcId !== null || ev.unitType === undefined || ev.unitType === 0 || ev.unitId === 0) {
           host.hudModel.completeArtisanUi(6, preOpenUiArtisanNpcId || ev.unitId)
         } else {
           host.hudModel.openArtisanWindow('imbue', ev.unitId)
         }
       } else if (ev.uiId === 7) {
-        if (preOpenUiArtisanNpcId !== null || ev.unitType === 0 || ev.unitId === 0) {
+        if (preOpenUiArtisanNpcId !== null || ev.unitType === undefined || ev.unitType === 0 || ev.unitId === 0) {
           host.hudModel.completeArtisanUi(7, preOpenUiArtisanNpcId || ev.unitId)
         } else {
           host.hudModel.openArtisanWindow('add_sockets', ev.unitId)

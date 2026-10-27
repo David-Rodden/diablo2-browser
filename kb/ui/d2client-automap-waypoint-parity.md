@@ -53,3 +53,30 @@ All these objects resolve to cell `307` (Waypoint). **They never resolve to `318
 
 3. **Dual Viewport Parity**:
    - Verified that all 39 waypoint levels render a single, crisp waypoint diamond in both Corner Minimap (`bMinimap = true`, `MaxiMapS.dc6`, `nDivisor = 20`) and Full-Screen Automap (`bMinimap = false`, `MaxiMap.dc6`, `nDivisor = 10`).
+
+---
+
+## 3. `BH.dll` `0x101a94e0` (`Maphack::RevealRoomPresetUnits`) Preset Quest/Special Unit Automap Icons
+
+In `BH.dll` maphack (`Maphack::RevealRoom` at `0x101a9370` -> `Maphack::RevealRoomPresetUnits` at `0x101a94e0`), room preset units (`pRoom2->pPreset`) with `AutoMap == 0` in `Objects.txt` or `MonStats2.txt` are assigned explicit `MaxiMap.dc6` automap icons in `pLayer->pObjects`:
+
+### 3.1 Preset Objects (`pPreset->dwType == 2` at `0x101a9545..0x101a9613`)
+- **`objectClassId == 152` (`0x98`, `orifice`, `"Where you place the Horadric staff"`)** in Act 2 Tal Rasha's Tomb (`TombWTalrasha.ds1`, `TombETalrasha.ds1`, `TombSTalrasha.ds1`, `TombNTalrasha.ds1`, levels `66..72`, DS1 `ObjPreset[126]`):
+  - `Objects.txt` has `AutoMap = 0`.
+  - `BH.dll` `0x101a9589..0x101a9599` (`cmp eax, 0x98; jnz ...; mov dword ptr [ebp-4], 0x12c`) assigns `cellNo = 300` (`0x12c`, bright red `X` quest marker in `MaxiMap.dc6`).
+  - Note: Although both `Act2/Outdoors/KingWarp.ds1` (Canyon of the Magi waypoint, `LevelType = 16` `"2 Desert"`) and `Act2/Tomb/Tomb*Talrasha.ds1` (`LevelType = 17` `"2 Tomb"`) use the 4×4 sandstone platform (`fl style=10 seq=20..35`), `AutoMap.txt` rows 1280–1282 (`617..619`) apply only to `2 Desert` (`LevelType = 16`) for the Canyon of the Magi floor waypoint; in `2 Tomb`, the Horadric Orifice is marked via object `152 -> cellNo 300`.
+- **`objectClassId == 371` (`0x173`, `LargeChestR`)**:
+  - `BH.dll` `0x101a9577..0x101a9587` (`cmp eax, 0x173; jnz ...; mov dword ptr [ebp-4], 0x12d`) assigns `cellNo = 301` (`0x12d`, red iron cross chest marker in `MaxiMap.dc6`).
+- **`objectClassId == 376` (`0x178`, `Hellforge`, `"Forge hell"` in Act 4 River of Flame)**:
+  - `BH.dll` `0x101a95d3..0x101a95e1` (`cmp eax, 0x178; jnz ...; mov [ebp-4], eax`) assigns `cellNo = 376` (`0x178`, multicolored diamond forge marker in `MaxiMap.dc6`).
+- **`objectClassId == 460` (`0x1cc`, `"Drehya Start Outside Town"` — Frozen Anya in Act 5 Frozen River)**:
+  - `BH.dll` `0x101a959b..0x101a95a9` (`cmp eax, 0x1cc; jnz ...; mov dword ptr [ebp-4], 0x5bc`) assigns `cellNo = 1468` (`0x5bc`, Frozen Anya marker in `MaxiMap.dc6`).
+- **`objectClassId == 580` (`0x244`, Lower Kurast Superchest) when `levelId == 79` (`0x4f`, Lower Kurast)**:
+  - `BH.dll` `0x101a954e..0x101a9575` checks `pRoom2->pLevel->dwLevelNo == 0x4f` (`79`) and assigns `cellNo = 318` (`0x13e`, sparkling golden chest marker in `MaxiMap.dc6`); in other levels (`80`, `81`), `objectClassId == 580` is skipped (`-1`).
+
+### 3.2 Preset Monsters (`pPreset->dwType == 1` at `0x101a9511..0x101a9543`)
+- **`monsterClassId == 256` (`0x100`, `izual` in Act 4 Plains of Despair, placed via Act 4 `MonPreset[13]` in `Izual.ds1`)**:
+  - `BH.dll` `0x101a9517..0x101a9527` (`cmp eax, 0x100; jnz ...; mov dword ptr [ebp-4], 0x12c`) assigns `cellNo = 300` (`0x12c`, bright red `X` quest marker in `MaxiMap.dc6`), bypassing `MonStats2.txt` `noMap = 1`.
+- **`monsterClassId == 745` (`0x2e9`, `willowisptotem` / `gargoyletrap`)**:
+  - `BH.dll` `0x101a9529..0x101a9541` (`cmp eax, 0x2e9; jnz ...; mov dword ptr [ebp-4], 0x2e9`) assigns `cellNo = 745` (`0x2e9`, pillar/totem marker in `MaxiMap.dc6`).
+

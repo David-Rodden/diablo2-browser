@@ -328,7 +328,7 @@ export class HudModel implements HudCommandSink {
       if (
         ev.type === 'OpenUi' &&
         (ev.uiId === 6 || ev.uiId === 7) &&
-        (this.pendingArtisanConfirmNpcId !== null || ev.unitType === 0 || ev.unitId === 0)
+        (this.pendingArtisanConfirmNpcId !== null || ev.unitType === undefined || ev.unitType === 0 || ev.unitId === 0)
       ) {
         this.completeArtisanUi(ev.uiId, this.pendingArtisanConfirmNpcId ?? ev.unitId)
         return

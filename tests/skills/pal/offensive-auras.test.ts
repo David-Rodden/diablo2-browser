@@ -363,7 +363,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
       expect(s1.weaponColdMax).toBe(15)
 
       const s10 = calculateHolyFreezeStats(10)
-      expect(s10.slowPct).toBe(49) // dm(25, 60, 10) = 49%
+      expect(s10.slowPct).toBe(48) // dm(25, 60, 10) = 48% (0x6FD9DC30, #1678)
       expect(s10.pulseMin256).toBe(3328)
       expect(s10.pulseMax256).toBe(3584)
 
@@ -416,9 +416,9 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
       expect(enemy.stateBus.hasState('shatter')).toBe(true)
       // 1.13c SrvDo081 (D2Game 0x6FCBABC0): targets get only Skills.txt aurastat1..3 = -dm34; no item_slow.
       expect(enemy.statList.getModifierBonus('item_slow')).toBe(0)
-      expect(enemy.statList.getModifierBonus('velocitypercent')).toBe(-49)
-      expect(enemy.statList.getModifierBonus('attackrate')).toBe(-49)
-      expect(enemy.statList.getModifierBonus('other_animrate')).toBe(-49)
+      expect(enemy.statList.getModifierBonus('velocitypercent')).toBe(-48)
+      expect(enemy.statList.getModifierBonus('attackrate')).toBe(-48)
+      expect(enemy.statList.getModifierBonus('other_animrate')).toBe(-48)
 
       // Caster's `holywind` carries passivestat1/2 (coldmindam/coldmaxdam = enms*par5/256), never aurastat.
       expect(paladin.statList.getModifierBonus('velocitypercent')).toBe(0)
@@ -671,7 +671,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
       expect(s1.immunityBreakingReductionPct).toBe(6) // 30 / 5 = 6
 
       const s10 = calculateConvictionStats(10)
-      expect(s10.defenseReductionPct).toBe(81) // dm(40, 100, 10) = 81%
+      expect(s10.defenseReductionPct).toBe(80) // dm(40, 100, 10) = 80% (0x6FD9DC30, #1678)
       expect(s10.resistanceReductionPct).toBe(75)
       expect(s10.immunityBreakingReductionPct).toBe(15)
 
@@ -681,7 +681,7 @@ describe('Paladin Offensive Auras — Milestone M8 Architecture & Formula Invari
       expect(s20.immunityBreakingReductionPct).toBe(25)
 
       const s25 = calculateConvictionStats(25)
-      expect(s25.defenseReductionPct).toBe(93) // dm(40, 100, 25) = 93%
+      expect(s25.defenseReductionPct).toBe(92) // dm(40, 100, 25) = 92%
       expect(s25.resistanceReductionPct).toBe(150) // Capped at 150%
       expect(s25.immunityBreakingReductionPct).toBe(30)
     })

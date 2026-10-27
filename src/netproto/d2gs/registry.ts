@@ -78,8 +78,8 @@ import {
   encodeC2sSkillOnUnit,
 } from './c2s/skills.ts'
 import { encodeC2sTrade } from './c2s/trade.ts'
-import { encodeC2sUpdatePlayerPos } from './c2s/position.ts'
-import { D2GS_S2C_PACKET_SIZES, resolveS2cPacketSize } from './framing-s2c.ts'
+import { encodeC2sRequestEntityUpdate, encodeC2sUpdatePlayerPos } from './c2s/position.ts'
+import { D2GS_S2C_PACKET_SIZES, resolveFramedS2cPacketSize } from './framing-s2c.ts'
 import { decode0x26ChatMessage, decode0x5AEventMessage } from './s2c/chat.ts'
 import {
   decode0x3FUseStackableItem,
@@ -264,7 +264,6 @@ export const D2GS_S2C_REGISTRY: Readonly<Record<number, D2gsS2cRegistryEntry>> =
   0x14: { opcode: 0x14, name: 'UnitStateReset14', d2ClientHandlerVa: '0x6fb5c350', decode: decodeRare113cS2cPacket },
   0x15: { opcode: 0x15, name: 'ReassignPlayer', d2ClientHandlerVa: '0x6fb5f640', decode: decode0x15ReassignPlayer },
   0x16: { opcode: 0x16, name: 'MultipleUnitAssign', d2ClientHandlerVa: '0x6fb5d9d0', decode: decodeRare113cS2cPacket },
-  0x17: { opcode: 0x17, name: 'RemoveUnit17', d2ClientHandlerVa: '0x6fb5f240', decode: decodeRare113cS2cPacket },
   0x18: { opcode: 0x18, name: 'HPMPUpdate', d2ClientHandlerVa: '0x6fb5eca0', decode: decode0x18LifeManaRegen },
   0x19: { opcode: 0x19, name: 'GoldToInvByte', d2ClientHandlerVa: '0x6fb5edf0', decode: decode0x19GoldByte },
   0x1a: { opcode: 0x1a, name: 'AddExpByte', d2ClientHandlerVa: '0x6fb5edf0', decode: decode0x1AExpByte },
@@ -341,7 +340,6 @@ export const D2GS_S2C_REGISTRY: Readonly<Record<number, D2gsS2cRegistryEntry>> =
   0x7d: { opcode: 0x7d, name: 'SetItemState', d2ClientHandlerVa: '0x6fb5e1f0', decode: decode0x7DSetItemState },
   0x7e: { opcode: 0x7e, name: 'CMNCof', d2ClientHandlerVa: '0x6fb5d240', decode: decodeRare113cS2cPacket },
   0x7f: { opcode: 0x7f, name: 'PartyMemberState', d2ClientHandlerVa: '0x6fb5d820', decode: decode0x7FPartyMemberState },
-  0x80: { opcode: 0x80, name: 'Noop80', d2ClientHandlerVa: '0x6fb5c520', decode: decodeRare113cS2cPacket },
   0x81: { opcode: 0x81, name: 'AssignMerc', d2ClientHandlerVa: '0x6fb5eba0', decode: decode0x81AssignMerc },
   0x82: { opcode: 0x82, name: 'PortalOwnership', d2ClientHandlerVa: '0x6fb5d160', decode: decode0x82PortalOwnership },
   0x89: { opcode: 0x89, name: 'SpecialQuestEvent', d2ClientHandlerVa: '0x6fb5bfa0', decode: decode0x89SpecialQuestEvent },
@@ -410,7 +408,7 @@ export function decodeD2gsS2cPacket(
   if (pkt.byteLength === 0) {
     throw new ProtocolError('Empty D2GS S2C packet', { proto: 'd2gs', packetId: -1 })
   }
-  const expectedLen = resolveS2cPacketSize(pkt, 0)
+  const expectedLen = resolveFramedS2cPacketSize(pkt)
   if (expectedLen === null || expectedLen < 0 || expectedLen !== pkt.byteLength) {
     throw new ProtocolError(
       `D2GS S2C packet 0x${pkt[0]!.toString(16)} length mismatch: expected ${expectedLen ?? 'null'}, got ${pkt.byteLength}`,
@@ -465,6 +463,8 @@ export function encodeD2gsClientCommand(
       return [encodeC2sMoveToUnit(true, { unitType: cmd.unitKind, id: cmd.unitId })]
     case 'UpdatePlayerPos':
       return [encodeC2sUpdatePlayerPos(cmd.x, cmd.y)]
+    case 'RequestEntityUpdate':
+      return [encodeC2sRequestEntityUpdate(cmd.unitType, cmd.unitId)]
     case 'SkillAt':
       // 1.13c D2Client 0x6faca060: location opcode = f(hand, hold) — 0x05/0x08/0x0C/0x0F, no shift variant.
       return [encodeC2sSkillAt(cmd.hand, cmd.at, cmd.hold)]

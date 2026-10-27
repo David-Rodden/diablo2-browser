@@ -12,6 +12,7 @@
  */
 
 import { getTblLang, hasExplicitLangContext, lookupTbl, requireTbl } from '../i18n/lang.ts'
+import { characterTitle113c } from '../session/game-completion-113c.ts'
 import {
   AVATAR_COMPONENT_NAMES,
   D2WIN_COMPONENT_TABLE,
@@ -2506,6 +2507,21 @@ export const CAMPFIRE_TO_CHAR_CLASS_ID: Readonly<Record<CampfireClassId, 0 | 1 |
   as: 6,
 } as const
 
+/**
+ * Resolve the 1.13c character title prefix (`D2Win.dll` `#10205` @ `0x6f8ebd00` -> `0x6f8ebb50`)
+ * for a character selection slot (`D2Launch.dll` @ `0x6fa4af00`) or Battle.net lobby banner
+ * (`D2Multi.dll` @ `0x6f9db42a`). Returns `""` when the character has not yet earned a title,
+ * or the canonical English title with a trailing space (e.g. `"Patriarch "`, `"Matriarch "`).
+ */
+export function getRosterCharacterTitle(
+  char: Pick<RosterCharacter, 'classId' | 'progression' | 'isHardcore' | 'isExpansion'>,
+): string {
+  const charClass = CAMPFIRE_TO_CHAR_CLASS_ID[char.classId]
+  if (charClass === undefined) return ''
+  const progression = (char.progression ?? 0) & 0x1f
+  return characterTitle113c(charClass, progression, char.isHardcore, char.isExpansion)
+}
+
 const CLASS_CODE_TO_CAMPFIRE: Readonly<Record<string, CampfireClassId>> = {
   ama: 'am',
   sor: 'so',
@@ -2626,13 +2642,21 @@ export function applyOnlineCharactersToFlowState(
     readonly equipmentGraphics?: Uint8Array | undefined
     readonly rawStatString?: Uint8Array | undefined
   }[],
-  options?: { readonly stayOnCharSelect?: boolean | undefined },
+  options?: {
+    readonly stayOnCharSelect?: boolean | undefined
+    readonly preserveSelectedName?: string | undefined
+  },
 ): void {
   state.onlineConnected = true
   state.popupModal = null
   state.popup = null
   state.roster = characters.slice(0, 8).map((ch) => charSummaryToRosterCharacter(ch))
-  state.selectedSlotIndex = 0
+  const preservedIdx = options?.preserveSelectedName
+    ? state.roster.findIndex(
+        (c) => c.name.toLowerCase() === options.preserveSelectedName!.toLowerCase(),
+      )
+    : -1
+  state.selectedSlotIndex = preservedIdx >= 0 ? preservedIdx : 0
   if (state.roster.length === 0 && !options?.stayOnCharSelect) {
     enterCharCreate(state)
   } else {

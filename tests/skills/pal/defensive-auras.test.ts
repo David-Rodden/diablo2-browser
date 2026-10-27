@@ -165,14 +165,14 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
   describe('Skill #100: Resist Fire', () => {
     it('scales active party fire resistance at slvl 1, 10, and 20', () => {
       const s1 = calculateResistFireStats(1)
-      expect(s1.fireResistPct).toBe(53)
+      expect(s1.fireResistPct).toBe(52)
       expect(s1.radiusSubtiles).toBe(16)
 
       const s10 = calculateResistFireStats(10)
-      expect(s10.fireResistPct).toBe(114)
+      expect(s10.fireResistPct).toBe(113)
 
       const s20 = calculateResistFireStats(20)
-      expect(s20.fireResistPct).toBe(132)
+      expect(s20.fireResistPct).toBe(131)
     })
 
     it('grants passive +1% Max Fire Resistance per 2 hard points, active even when aura is inactive', async () => {
@@ -261,10 +261,10 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
   describe('Skill #105: Resist Cold', () => {
     it('scales active party cold resistance at slvl 1, 10, and 20', () => {
       const s1 = calculateResistColdStats(1)
-      expect(s1.coldResistPct).toBe(53)
+      expect(s1.coldResistPct).toBe(52)
       const s10 = calculateResistColdStats(10)
-      expect(s10.coldResistPct).toBe(114)
-      expect(calculateResistColdStats(20).coldResistPct).toBe(132)
+      expect(s10.coldResistPct).toBe(113)
+      expect(calculateResistColdStats(20).coldResistPct).toBe(131)
     })
 
     it('grants passive +1% Max Cold Resistance per 2 hard points', async () => {
@@ -288,7 +288,7 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
       expect(s1.poisonLengthReductionPct).toBe(39)
 
       const s10 = calculateCleansingStats(10)
-      expect(s10.curseReductionPct).toBe(71)
+      expect(s10.curseReductionPct).toBe(70)
 
       const s20 = calculateCleansingStats(20)
       expect(s20.curseReductionPct).toBe(80)
@@ -347,12 +347,12 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
 
       expect(bus.getState('amplifydamage')?.expireFrame).toBe(100)
 
-      // Pulse Cleansing slvl 10 (71% reduction) at tick 0
+      // Pulse Cleansing slvl 10 (70% reduction, dm34 via 0x6FD9DC30, #1678) at tick 0
       const aura = scanner.setActiveAura(paladin, 109, 10, 0)!
       scanner.pulseAura(aura, 0, [paladin], [])
 
-      // Remaining 100 frames reduced by 71% -> 100 * 0.29 = 29 frames remaining
-      expect(bus.getState('amplifydamage')?.expireFrame).toBe(29)
+      // Remaining 100 frames reduced by 70% -> 100 * 0.30 = 30 frames remaining
+      expect(bus.getState('amplifydamage')?.expireFrame).toBe(30)
     })
   })
 
@@ -362,9 +362,9 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
   describe('Skill #110: Resist Lightning', () => {
     it('scales active party lightning resistance at slvl 1, 10, and 20', () => {
       const s1 = calculateResistLightningStats(1)
-      expect(s1.lightningResistPct).toBe(53)
-      expect(calculateResistLightningStats(10).lightningResistPct).toBe(114)
-      expect(calculateResistLightningStats(20).lightningResistPct).toBe(132)
+      expect(s1.lightningResistPct).toBe(52)
+      expect(calculateResistLightningStats(10).lightningResistPct).toBe(113)
+      expect(calculateResistLightningStats(20).lightningResistPct).toBe(131)
     })
 
     it('grants passive +1% Max Lightning Resistance per 2 hard points', async () => {
@@ -469,7 +469,7 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
   describe('Skill #124: Redemption', () => {
     it('scales redemption chance and recovery amounts at slvl 1, 10, and 20', () => {
       const s1 = calculateRedemptionStats(1)
-      expect(s1.redemptionChancePct).toBe(24)
+      expect(s1.redemptionChancePct).toBe(23)
       expect(s1.lifeRecoverPts).toBe(25)
       expect(s1.manaRecoverPts).toBe(25)
       expect(s1.radiusSubtiles).toBe(16)
@@ -480,7 +480,7 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
       expect(s10.manaRecoverPts).toBe(70)
 
       const s20 = calculateRedemptionStats(20)
-      expect(s20.redemptionChancePct).toBe(86)
+      expect(s20.redemptionChancePct).toBe(85)
       expect(s20.lifeRecoverPts).toBe(120)
       expect(s20.manaRecoverPts).toBe(120)
     })
@@ -537,20 +537,20 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
   describe('Skill #125: Salvation', () => {
     it('scales active Fire, Cold, Lightning resistances at slvl 1, 10, and 20', () => {
       const s1 = calculateSalvationStats(1)
-      expect(s1.fireResistPct).toBe(61)
-      expect(s1.coldResistPct).toBe(61)
-      expect(s1.lightningResistPct).toBe(61)
+      expect(s1.fireResistPct).toBe(60)
+      expect(s1.coldResistPct).toBe(60)
+      expect(s1.lightningResistPct).toBe(60)
       expect(s1.radiusSubtiles).toBe(16)
 
       const s10 = calculateSalvationStats(10)
-      expect(s10.fireResistPct).toBe(98)
-      expect(s10.coldResistPct).toBe(98)
-      expect(s10.lightningResistPct).toBe(98)
+      expect(s10.fireResistPct).toBe(97)
+      expect(s10.coldResistPct).toBe(97)
+      expect(s10.lightningResistPct).toBe(97)
 
       const s20 = calculateSalvationStats(20)
-      expect(s20.fireResistPct).toBe(109)
-      expect(s20.coldResistPct).toBe(109)
-      expect(s20.lightningResistPct).toBe(109)
+      expect(s20.fireResistPct).toBe(108)
+      expect(s20.coldResistPct).toBe(108)
+      expect(s20.lightningResistPct).toBe(108)
     })
 
     it('strictly provides zero resistance bonus to Poison or Magic', async () => {
@@ -569,9 +569,9 @@ describe('Paladin Defensive Auras — Milestone M9 Architecture & Formula Invari
         },
       })
 
-      expect(stats.getAccruedStat('fireresist')).toBe(98)
-      expect(stats.getAccruedStat('coldresist')).toBe(98)
-      expect(stats.getAccruedStat('lightresist')).toBe(98)
+      expect(stats.getAccruedStat('fireresist')).toBe(97)
+      expect(stats.getAccruedStat('coldresist')).toBe(97)
+      expect(stats.getAccruedStat('lightresist')).toBe(97)
       // Strictly zero to poison or magic!
       expect(stats.getAccruedStat('poisonresist')).toBe(0)
       expect(stats.getAccruedStat('magicresist')).toBe(0)

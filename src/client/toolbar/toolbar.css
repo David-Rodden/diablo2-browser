@@ -248,6 +248,17 @@ a.d2-toolbar__btn {
   min-width: 26px;
 }
 
+.d2-toolbar__qq-btn {
+  font-family: "JetBrains Mono", "Consolas", var(--font-body, serif);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.d2-toolbar__qq-btn:hover:not(:disabled) {
+  border-color: #d4bc7c;
+  color: #fff4ce;
+}
+
 .d2-toolbar__btn--primary {
   background: linear-gradient(180deg, #5e4923 0%, #332711 100%);
   border-color: #c7a456;
@@ -274,6 +285,19 @@ a.d2-toolbar__btn:active {
   width: 12px;
   height: 12px;
   display: block;
+}
+
+@keyframes d2-toolbar-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#d2-toolbar-refresh-btn.is-refreshing .d2-toolbar__btn-icon svg {
+  animation: d2-toolbar-refresh-spin 420ms ease-out;
 }
 
 .d2-toolbar__btn-label {

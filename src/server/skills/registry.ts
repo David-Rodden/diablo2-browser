@@ -24,6 +24,7 @@ import {
   computeDiminishingReturns,
   computeSkillManaCost256,
   evaluateCalc,
+  skillMinSynergyApplies113c,
 } from '../../common/data/calc-ast.ts'
 import { FIXED_ONE } from '../engine/stat-list.ts'
 import { canMonsterTargetBeCursed113c } from '../../common/units/monstats2-flags.ts'
@@ -304,9 +305,9 @@ export function evaluateSkill113c(ctx: SkillEvalContext): SkillEvalResult {
 }
 
 export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
-  const { registry, skill, slvl, blvl, statList } = ctx
-  const effLvl = Math.max(1, slvl)
-  const calcCtx = {
+  const { registry, skill, slvl, blvl, statList, randFn } = ctx
+  const effLvl = Math.min(99, Math.max(1, slvl))
+  const calcCtx: CalcEvalContext = {
     registry,
     activeSkill: skill,
     slvl: effLvl,
@@ -316,10 +317,11 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
     getEffectiveSkillLevel: (id: number) => statList.getEffectiveSkillLevel(id),
     getUnitStat: (statNameOrId: string | number, baseOnly?: boolean) =>
       statList.getAccruedStat(statNameOrId, baseOnly),
+    ...(randFn !== undefined ? { randFn } : {}),
   }
 
   // 1. Mana cost (`usmc` in 256-fixed-point and integer `manaCost`)
-  const { manaCost256, manaCost } = computeSkillManaCost256(skill, effLvl)
+  const { manaCost256, manaCost, rawManaCost256 } = computeSkillManaCost256(skill, effLvl)
 
   // 2. Attack Rating bonus (`toht`)
   const toHitBonusPct = skill.toHitCalc
@@ -409,6 +411,7 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
   )
   let elemHitShift = skill.hitShift
   let elemType = skill.eType
+  let elemFromMissile = false
 
   const primaryMissileName = skill.srvMissile || skill.srvMissileA || ''
   if (baseEMin === 0 && baseEMax === 0 && primaryMissileName) {
@@ -434,12 +437,18 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
       )
       elemHitShift = msl.hitShift
       if (!elemType) elemType = msl.eType
+      elemFromMissile = true
     }
   }
 
   const rawMin256 = baseEMin << elemHitShift
   const rawMax256 = baseEMax << elemHitShift
-  const minElemDmg256 = Math.trunc((rawMin256 * (100 + eSynPct)) / 100)
+  // D2Common #10121 (0x6FDA0460) applies EDmgSymPerCalc to the skill min damage only when
+  // `min256 > 256 || EMinLev1 != 0` (0x6FDA04C7..0x6FDA04D3): the flat 1-point minimum of the lightning
+  // skills stays un-synergised (#1681). The max side (#11091 0x6FDA0360) and the missile path
+  // (0x6FDBB3F4) apply it unconditionally.
+  const minSynergyApplies = elemFromMissile || skillMinSynergyApplies113c(rawMin256, skill.eMinLev1)
+  const minElemDmg256 = minSynergyApplies ? Math.trunc((rawMin256 * (100 + eSynPct)) / 100) : rawMin256
   const maxElemDmg256 = Math.trunc((rawMax256 * (100 + eSynPct)) / 100)
 
   // 6. Duration (`auralencalc` or `ELen`..`ELevLen3` or 1.13c Assassin combo charge 375 frames)
@@ -547,6 +556,7 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
     blvl,
     manaCost,
     manaCost256,
+    rawManaCost256,
     startMana: skill.startMana ?? 0,
     startMana256: (skill.startMana ?? 0) << 8,
     useManaOnDo: Boolean(skill.useManaOnDo),

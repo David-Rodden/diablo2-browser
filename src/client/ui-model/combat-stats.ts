@@ -9,7 +9,7 @@
  * CharStats.txt, ItemStatCost.txt, States.txt) arrives through `CombatInput`; this file only encodes
  * the D2 code paths. D2MOO (the 1.10f decompilation, `D2MOO/source/...`) is the code-path stand-in
  * for 1.13c. Code paths used:
- *  - AR:            D2Common `UNITS_GetAttackRate` (Units.cpp:2394-2418) and the attacker side of the
+ *  - AR:            D2Common `UNITS_GetAttackRate` (1.13c #10621 @ `0x6FD81EA0`, Units.cpp:2394-2418) and the attacker side of the
  *                   D2Game hit check (SUnitDmg.cpp:2495-2541).
  *  - Physical:      D2Game `SUNITDMG_ApplyDamageBonuses` (SUnitDmg.cpp:146-246).
  *  - Element adds:  D2Game `SUNITDMG_FillDamageValues` (SUnitDmg.cpp:249-629).
@@ -35,6 +35,7 @@
  */
 
 import { resolveCharacterClass, type CharacterClassCode } from '../../common/units/classes.ts'
+import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 
 // ─── ItemStatCost.txt row ids (1.13c, repo RAW_ITEM_STAT_COST; D2MOO STAT_* enum) ─────────────────
 
@@ -845,7 +846,8 @@ export function chanceToBlock(
     let wb = (input.passiveWeaponBlock ?? 0) + listWeaponBlock
     if (wb <= 0 && (input.weaponBlockSlvl ?? 0) > 0) {
       const slvl = input.weaponBlockSlvl!
-      wb = 20 + Math.trunc(Math.trunc((45 * 110 * slvl) / (slvl + 6)) / 100)
+      // Weapon Block #263 passivecalc1 = dm12 (Param1=20, Param2=65) → D2Common 0x6FD9DC30 (issue #1678).
+      wb = computeDiminishingReturns(20, 65, slvl)
     }
     if (wb <= 0) return 0
     const totalWb = wb + (input.toBlock ?? 0) + listToBlock
@@ -874,7 +876,7 @@ function attackRatingFor(
   unit: StatReader,
   dexterity: number,
 ): number {
-  // UNITS_GetAttackRate (Units.cpp:2394-2418).
+  // UNITS_GetAttackRate (1.13c D2Common #10621 @ 0x6FD81EA0, Units.cpp:2394-2418).
   const base = unit(S.TOHIT) + 5 * (dexterity - 7) + input.toHitFactor
   // SUnitDmg.cpp:2507-2516: mastery (selected weapon) + skill ToHit + item_tohit_percent.
   const item = selected === null ? null : arm(input, selected)

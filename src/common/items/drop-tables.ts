@@ -802,6 +802,7 @@ export function createDroppedItem(
     }
   }
 
+  let rolledSetBonusProps: { readonly index: number; readonly props: readonly RolledItemProp[] }[] | undefined
   if (qualityTier === 'unique' && options.uniqueItem) {
     name = options.uniqueItem.index
     if (!options.rolledProps || options.rolledProps.length === 0) {
@@ -834,6 +835,29 @@ export function createDroppedItem(
           })
           stats[prop.code] = (stats[prop.code] ?? 0) + val
         }
+      }
+    }
+    if (options.setItem.aprops && options.setItem.aprops.length > 0) {
+      const byIndex = new Map<number, RolledItemProp[]>()
+      for (const ap of options.setItem.aprops) {
+        if (!ap.code) continue
+        const idx = ap.threshold - 1
+        if (idx < 0 || idx > 4) continue
+        const val = resolveItemPropValue(ap)
+        const list = byIndex.get(idx) ?? []
+        list.push({
+          code: ap.code,
+          param: ap.par,
+          min: ap.min,
+          max: ap.max,
+          value: val,
+        })
+        byIndex.set(idx, list)
+      }
+      if (byIndex.size > 0) {
+        rolledSetBonusProps = [...byIndex.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([index, props]) => ({ index, props }))
       }
     }
   } else if (qualityTier === 'rare' && options.rareAffixes) {
@@ -995,15 +1019,39 @@ export function createDroppedItem(
     (max, p) => (p.code.trim().toLowerCase() === 'sock' ? Math.max(max, p.value) : max),
     0,
   )
+  // D2Common func 14 (0x6fd96830) & ITEMS_GetMaxSockets (#11151, 0x6fd74610):
+  // Clamp sockets by `min(6, invWidth * invHeight)` and `getMaxSockets113c(base, itemType, ilvl)`.
+  const itemTypesTable = options.itemTypes ?? getEmbeddedDropTables().itemTypes
+  const baseTypeCode = getItemTypeCode(base)
+  const itemTypeDef = baseTypeCode
+    ? (itemTypesTable?.byCode?.get(baseTypeCode) ?? (itemTypesTable as any)?.get?.(baseTypeCode))
+    : undefined
+  const invSizeCap =
+    base.invWidth > 0 && base.invHeight > 0 ? Math.min(6, base.invWidth * base.invHeight) : 6
   const maxBaseSockets = (base as any).gemsockets ?? (base as any).gemSockets
-  const unclampedSockets = Math.max(
-    options.sockets !== undefined && options.sockets > 0 ? options.sockets : 0,
-    propSockets,
-  )
-  const socketCount =
+  const maxSocketsByIlvl =
     typeof maxBaseSockets === 'number' && maxBaseSockets > 0
-      ? Math.min(unclampedSockets, maxBaseSockets)
-      : unclampedSockets
+      ? getMaxSockets113c(base as any, itemTypeDef, options.ilvl)
+      : invSizeCap
+  const propSocketCap = Math.min(invSizeCap, maxSocketsByIlvl)
+  const clampedPropSockets =
+    propSockets > 0 ? (propSocketCap > 0 ? Math.max(1, Math.min(propSockets, propSocketCap)) : 0) : 0
+  if (propSockets > 0 && clampedPropSockets !== propSockets) {
+    for (let i = 0; i < rolledProps.length; i++) {
+      const p = rolledProps[i]!
+      if (p.code.trim().toLowerCase() === 'sock' && p.value > clampedPropSockets) {
+        rolledProps[i] = { ...p, value: clampedPropSockets }
+      }
+    }
+    stats.sock = clampedPropSockets
+  }
+  const clampedOptSockets =
+    options.sockets !== undefined && options.sockets > 0
+      ? typeof maxBaseSockets === 'number' && maxBaseSockets > 0
+        ? Math.min(options.sockets, propSocketCap)
+        : Math.min(options.sockets, invSizeCap)
+      : 0
+  const socketCount = Math.max(clampedOptSockets, clampedPropSockets)
 
   if (isEthereal) {
     rawFlags |= ItemFlag.ETHEREAL
@@ -1116,6 +1164,7 @@ export function createDroppedItem(
     ...(socketCount > 0 ? { sockets: socketCount, totalSockets: socketCount } : {}),
     ...(options.uniqueItem ? { uniqueId: options.dwInitSeed, uniqueItemDef: options.uniqueItem } : {}),
     ...(options.setItem ? { setId: options.setItem.id, setItemDef: options.setItem } : {}),
+    ...(rolledSetBonusProps ? { rolledSetBonusProps } : {}),
     ...(options.rareAffixes ? { rolledRareAffixes: options.rareAffixes } : {}),
     ...(options.magicAffixes ? { rolledMagicAffixes: options.magicAffixes } : {}),
     ...(effectiveAutoMagic ? { rolledAutoMagic: effectiveAutoMagic } : {}),

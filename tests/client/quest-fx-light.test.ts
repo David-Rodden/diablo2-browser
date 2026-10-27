@@ -150,7 +150,7 @@ describe('evaluateAuraLenCalc (#10786 on Skills.txt auralencalc)', () => {
     expect(evaluateAuraLenCalc(264, 20)).toBe(675)
     expect(evaluateAuraLenCalc(173, 5)).toBe(300) // SpiderLay '300'
     expect(evaluateAuraLenCalc(147, 5)).toBe(150) // Frenzy 'par7'
-    expect(evaluateAuraLenCalc(46, 1)).toBe(120) // Blaze dm12: 50 + trunc(110 * 1 * 450 / 700)
+    expect(evaluateAuraLenCalc(46, 1)).toBe(117) // Blaze dm12: 50 + trunc(trunc(110 * 1 / 7) * 450 / 100) (0x6FD9DC30, #1678)
   })
 
   it('gives 0 without an auralencalc (UNVERIFIED #10786 calc -1) and throws on formulas it cannot port', () => {

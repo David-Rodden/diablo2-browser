@@ -6,9 +6,9 @@
 
 import { BitReader } from '../../core/bit-reader.ts'
 import { ByteReader } from '../../core/byte-reader.ts'
-import { unitTypeToId } from '../../domain/ids.ts'
+import { wireUnitTypeId } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
-import { requirePacketLength } from './packet-length.ts'
+import { requirePacketLength, unitLookupMiss } from './packet-length.ts'
 
 function resolveMoveMode(rawMoveType: number): 'walk' | 'run' | 'knockback' | 'stop' {
   // In D2Client.dll 0x6fac9830 (player) & 0x6fb82e68 (monster):
@@ -86,7 +86,9 @@ export function map0x0DCodeToPlrMode(rawCode: number, inTown = false): number {
 export function decode0x0DPlayerStop(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x0D
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const rawCode = r.u8()
   const x = r.u16LE()
@@ -109,7 +111,9 @@ export function decode0x0DPlayerStop(pkt: Uint8Array): ServerEvent {
 export function decode0x0FPlayerMove(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x0F
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const moveType = r.u8()
   const targetX = r.u16LE()
@@ -131,10 +135,14 @@ export function decode0x0FPlayerMove(pkt: Uint8Array): ServerEvent {
 export function decode0x10PlayerMoveToTarget(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x10
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const moveType = r.u8()
-  const targetType = unitTypeToId(r.u8())
+  // D2Client 0x6fb5f4c0 copies the target type @7 / id @8 into the unit command (0x6fada750) unchecked; a type
+  // outside 0..5 can never resolve to a unit, so the move carries no target unit (#1656).
+  const targetType = wireUnitTypeId(r.u8())
   const targetId = r.u32LE()
   const currentX = r.u16LE()
   const currentY = r.u16LE()
@@ -145,7 +153,7 @@ export function decode0x10PlayerMoveToTarget(pkt: Uint8Array): ServerEvent {
     mode: resolveMoveMode(moveType),
     from: { x: currentX, y: currentY },
     to: { x: currentX, y: currentY },
-    target: { unitType: targetType, id: targetId },
+    ...(targetType !== undefined ? { target: { unitType: targetType, id: targetId } } : {}),
   }
 }
 
@@ -153,7 +161,9 @@ export function decode0x10PlayerMoveToTarget(pkt: Uint8Array): ServerEvent {
 export function decode0x15ReassignPlayer(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x15
-  const unitType = unitTypeToId(r.u8())
+  const unitTypeRaw = r.u8()
+  const unitType = wireUnitTypeId(unitTypeRaw)
+  if (unitType === undefined) return unitLookupMiss(pkt) // #1656: D2Client unit lookup fails
   const id = r.u32LE()
   const x = r.u16LE()
   const y = r.u16LE()
@@ -225,7 +235,10 @@ export function decode0x68NpcMoveToTarget(pkt: Uint8Array): ServerEvent {
     mode: resolveMoveMode(cmd),
     from: { x, y },
     to: { x, y },
-    target: { unitType: unitTypeToId(rawTargetType), id: targetId },
+    // Target type @0A is copied unchecked into the command struct; outside 0..5 it never resolves (#1656).
+    ...(wireUnitTypeId(rawTargetType) !== undefined
+      ? { target: { unitType: wireUnitTypeId(rawTargetType)!, id: targetId } }
+      : {}),
     pathType,
     velocityPercent,
     npc: {

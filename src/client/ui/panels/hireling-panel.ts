@@ -838,7 +838,7 @@ export function drawMercenaryPanelImpl(
     m.life ?? m.hp,
     Math.round((rawLifePct / lifePctScale) * maxLife),
   )
-  const exp = Number(m.experience ?? m.exp ?? getStatVal(13, 'experience', undefined, 0)) || 0
+  const exp = Number(m.experience || m.exp || getStatVal(13, 'experience', undefined, 0)) || 0
 
   let nextExp = Number(m.nextExp ?? m.nextLevelXp ?? getStatVal(30, 'nextExp', undefined, 0)) || 0
   if (nextExp <= 0 && mLevel > 0 && mLevel < 98) {

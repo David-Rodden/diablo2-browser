@@ -1089,7 +1089,9 @@ export function spawnMissileByKeyImpl(
   const canonical = CANONICAL_113C_MISSILES[cleanKey]
   const classId = opts?.classId ?? canonical?.id ?? data.id ?? 0
   const id = opts?.id ?? this._nextMissileId++
-  const level = Math.max(1, opts?.skillLevel ?? 1)
+  // D2Client 0x6fb63417..0x6fb63429 uses the create-struct level (`pParam+0x30`) as-is in
+  // `Range + LevRange * level`; level 0 (e.g. S2C 0x73 @0x1E = 0) is not raised to 1 (#1655).
+  const level = opts?.skillLevel ?? 1
 
   const dx = targetX - startX
   const dy = targetY - startY

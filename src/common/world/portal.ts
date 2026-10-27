@@ -160,65 +160,6 @@ export interface OpenPortal {
   readonly createdAtMs?: number
 }
 
-/**
- * Authentic Diablo II v1.13c Town Portal DS1 special tile coordinates (`subTile = tile * 5 + 3`).
- *
- * Extracted from `D2GAME_CreateLinkPortal_6FD13B20` (`Skills.cpp:3006`) ->
- * `DUNGEON_FindActSpawnLocationEx(pAct, nDestLevel, 11, &nX, &nY, 3)` (`D2Dungeon.cpp:391`) ->
- * `DrlgPreset.cpp:1406–1438` (`style = 33, seq = 0` -> `nTileIndex = 11`) and
- * `sub_6FD788D0` (`DrlgDrlgWarp.cpp:153–174` fallback to `pTileInfo[0]` for Harrogath `townWest.ds1`).
- */
-export const TOWN_PORTAL_SUBTILES_BY_VARIANT: Readonly<Record<string, { readonly x: number; readonly y: number }>> = {
-  '1-act-1-town-townn1': { x: 153, y: 73 }, // TownN1.ds1 tile (30, 14)
-  '1-act-1-town-towne1': { x: 173, y: 103 }, // TownE1.ds1 tile (34, 20)
-  '1-act-1-town-towns1': { x: 153, y: 158 }, // TownS1.ds1 tile (30, 31)
-  '1-act-1-town-townw1': { x: 83, y: 128 }, // TownW1.ds1 tile (16, 25)
-  '40-act-2-town-lutw': { x: 178, y: 53 }, // LutW.ds1 tile (35, 10)
-  '40-act-2-town-lutn': { x: 178, y: 53 }, // LutN.ds1 tile (35, 10)
-  '75-act-3-town-docktown3': { x: 158, y: 68 }, // DockTown3.ds1 tile (31, 13)
-  '103-act-4-town-fortress': { x: 48, y: 43 }, // Fortress.ds1 tile (9, 8)
-  '109-act-5-town-townwest': { x: 98, y: 23 }, // townWest.ds1 tile (19, 4) via pTileInfo[0]
-}
-
-export const DEFAULT_TOWN_PORTAL_SUBTILES_BY_LEVEL: Readonly<Record<number, { readonly x: number; readonly y: number }>> = {
-  1: { x: 153, y: 158 }, // Default Act 1 town variant is TownS1 (south gate to Blood Moor)
-  40: { x: 178, y: 53 },
-  75: { x: 158, y: 68 },
-  103: { x: 48, y: 43 },
-  109: { x: 98, y: 23 },
-}
-
-/**
- * Resolve the authentic 1.13c Town Portal sub-tile position in a town level.
- *
- * @param townLevelId - Town `Levels.txt` ID (`1, 40, 75, 103, 109`).
- * @param townVariantLabel - Optional town preset variant label or DS1 name.
- * @returns Sub-tile `{ x, y }` for the town portal mouth in town.
- */
-export function resolveTownPortalSubTile(
-  townLevelId: number,
-  townVariantLabel?: string,
-): { x: number; y: number } {
-  if (townVariantLabel) {
-    const key = townVariantLabel.trim().toLowerCase()
-    const direct = TOWN_PORTAL_SUBTILES_BY_VARIANT[key]
-    if (direct !== undefined) {
-      return { x: direct.x, y: direct.y }
-    }
-    if (townLevelId === 1) {
-      if (key.includes('townn')) return { x: 153, y: 73 }
-      if (key.includes('towne') || key === '1-act-1-town-var1') return { x: 173, y: 103 }
-      if (key.includes('towns')) return { x: 153, y: 158 }
-      if (key.includes('townw')) return { x: 83, y: 128 }
-    }
-  }
-  const byLevel = DEFAULT_TOWN_PORTAL_SUBTILES_BY_LEVEL[townLevelId]
-  if (byLevel !== undefined) {
-    return { x: byLevel.x, y: byLevel.y }
-  }
-  throw new Error(`resolveTownPortalSubTile: invalid town levelId ${String(townLevelId)}`)
-}
-
 /** Description of the portal mouth visible in a given level. */
 export interface PortalMouthInLevel {
   /** Sub-tile X of the portal mouth in this level. */

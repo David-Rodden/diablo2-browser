@@ -211,14 +211,11 @@ export {
 /**
  * Ground Truth (`D2Client.dll` `0x6FB046E0` + `0x6FB04E10` `descFunc` 6..10 & `ItemStatCost.txt` `op` 2..5):
  * Per-level properties (`op` 2..5, `op param = 3`) compute `(clvl * rawEighths) >> 3` as an integer
- * for the current character level (`clvl >= 1`). Stats 216 (`hp/lvl`) and 217 (`mana/lvl`) have
- * `ValShift = 8` on the wire (`<< 8`), which is normalized before shifting by `op param = 3`.
+ * for the current character level (`clvl >= 1`). `eighths` is a display-unit property value: stats 216
+ * (`hp/lvl`) and 217 (`mana/lvl`) carry `ValShift = 8` internally, which `convertOnlineItemStatsToRolledProps`
+ * always removes (`>> ValShift`) before a property reaches the tooltip (#1639).
  */
-function formatPerLevelVal(rawEighths: number, charLevel = 1, isValShift8 = false): string {
-  const eighths =
-    isValShift8 && Math.abs(rawEighths) >= 256 && (rawEighths & 0xff) === 0
-      ? rawEighths >> 8
-      : rawEighths
+function formatPerLevelVal(eighths: number, charLevel = 1): string {
   const clvl = charLevel > 0 && Number.isFinite(charLevel) ? Math.max(1, Math.trunc(charLevel)) : 1
   return `${Math.floor((eighths * clvl) / 8)}`
 }
@@ -411,9 +408,9 @@ export function formatPropertyCode(
 
     // --- Per-Level Scaling Properties (func=17, descFunc 6..9) ---
     case 'hp/lvl':
-      return `+${formatPerLevelVal(effectiveVal, charLevel, true)} to Life (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Life (Based on Character Level)`
     case 'mana/lvl':
-      return `+${formatPerLevelVal(effectiveVal, charLevel, true)} to Mana (Based on Character Level)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} to Mana (Based on Character Level)`
     case 'stam/lvl':
       return `+${formatPerLevelVal(effectiveVal, charLevel)} Maximum Stamina (Based on Character Level)`
     case 'regen-stam/lvl':
@@ -1600,8 +1597,7 @@ export function formatStatByIscDescFunc(
     return result.replace(/\s+/g, ' ').trim()
   }
 
-  const isValShift8 = entry.id === 216 || entry.id === 217
-  const perLvlStr = formatPerLevelVal(value, charLevel, isValShift8)
+  const perLvlStr = formatPerLevelVal(value, charLevel)
   const signedInt = value >= 0 ? `+${value}` : `${value}`
   const signedPerLvl = value >= 0 ? `+${perLvlStr}` : `${perLvlStr}`
 
@@ -2383,7 +2379,7 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
   let affixReqLevel = 0
 
   const autoMagicDef = (item as any).rolledAutoMagic as { entry?: any; levelreq?: number; mods?: readonly RolledMod[] } | undefined
-  if (quality === 'magic' || quality === 'rare' || quality === 'craft') {
+  if (quality === 'magic' || quality === 'rare') {
     if (autoMagicDef) {
       const autoEffReq = getAffixEffectiveLevelReq((autoMagicDef.entry ?? autoMagicDef) as any, itemClass)
       if (autoEffReq > 0) {
@@ -2405,8 +2401,8 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
         }
       }
     }
-  } else if (autoMagicDef?.levelreq && autoMagicDef.levelreq > 0) {
-    // Preserve explicit rolledAutoMagic.levelreq when present on domain item
+  } else if (quality !== 'craft' && autoMagicDef?.levelreq && autoMagicDef.levelreq > 0) {
+    // Preserve explicit rolledAutoMagic.levelreq when present on non-crafted domain item
     affixReqLevel = Math.max(affixReqLevel, autoMagicDef.levelreq)
   }
 
@@ -2516,8 +2512,7 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
         if (effReq > 0) affixReqLevel = Math.max(affixReqLevel, effReq)
       }
       if (quality === 'craft') {
-        const rawBaseReqLvl = (base as any).levelreq > 0 ? (base as any).levelreq : 0
-        affixReqLevel = Math.min(98, Math.max(rawBaseReqLvl, affixReqLevel) + 10 + 3 * rareDef.affixes.length)
+        affixReqLevel = Math.min(98, affixReqLevel + 10 + 3 * rareDef.affixes.length)
       }
     }
     if (item.rolledProps && item.rolledProps.length > 0) {
@@ -3339,14 +3334,17 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
       : undefined
 
   // 3. Requirements (Required Strength, Required Dexterity, Required Level)
-  const easeSigned = totalEase > 0 ? -totalEase : totalEase
+  // D2Common #10244 (0x6fd76db0): delta = MulDiv(item_req_percent, reqstr|reqdex, 100) via 0x6fd511e0 (signed
+  // imul/idiv, truncates toward zero), required = base + delta - (ethereal ? 10 : 0) (0x6fd76e7f..0x6fd76ec9).
+  // item_req_percent keeps its sign (The Humongous: ease +20 raises requirements) (#1645).
+  const reqWithEase = (base: number): number => base + Math.trunc((base * totalEase) / 100) - (isEthereal ? 10 : 0)
   const rawBaseReqStr = (base as any).reqstr > 0 ? (base as any).reqstr : 0
   let reqStr: number | undefined = undefined
   let baseReqStr: number | undefined = undefined
   if (rawBaseReqStr > 0) {
     const finalReqStr = Math.max(
       0,
-      Math.floor(rawBaseReqStr * (100 + easeSigned) / 100) - (isEthereal ? 10 : 0),
+      reqWithEase(rawBaseReqStr),
     )
     reqStr = finalReqStr
     if (finalReqStr !== rawBaseReqStr) {
@@ -3360,7 +3358,7 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
   if (rawBaseReqDex > 0) {
     const finalReqDex = Math.max(
       0,
-      Math.floor(rawBaseReqDex * (100 + easeSigned) / 100) - (isEthereal ? 10 : 0),
+      reqWithEase(rawBaseReqDex),
     )
     reqDex = finalReqDex
     if (finalReqDex !== rawBaseReqDex) {

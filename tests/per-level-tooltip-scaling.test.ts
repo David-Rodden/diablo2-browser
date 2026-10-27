@@ -57,11 +57,13 @@ describe('Per-Level Item Property Tooltip Scaling (1.13c D2Client.dll 0x6FB046E0
       { code: 'mana/lvl', min: 12, max: 12, value: 12 },
     ])
 
-    // Even if a shifted value (3072) is passed directly to formatPropertyCode / formatStatByIscDescFunc
-    expect(formatPropertyCode('hp/lvl', 12 << 8, 12 << 8, 12 << 8, undefined, 'zh', 80)).toBe(
-      '+120 生命 (依角色等级提升)',
-    )
-    expect(formatStatByIscDescFunc('item_hp_perlevel', 12 << 8, 12 << 8, 12 << 8, undefined, 'en', 80)).toBe(
+    // Issue #1639: the tooltip takes display units only; the wire shift is always removed by
+    // convertOnlineItemStatsToRolledProps (no `low byte == 0` guess), so an internal value with a non-zero
+    // low byte (13 << 8 | 0x80) still displays as `>> 8`.
+    expect(
+      convertOnlineItemStatsToRolledProps([{ statId: 216, param: 0, value: (13 << 8) | 0x80 }]).props,
+    ).toEqual([{ code: 'hp/lvl', min: 13, max: 13, value: 13 }])
+    expect(formatStatByIscDescFunc('item_hp_perlevel', 12, 12, 12, undefined, 'en', 80)).toBe(
       '+120 to Life (Based on Character Level)',
     )
   })
