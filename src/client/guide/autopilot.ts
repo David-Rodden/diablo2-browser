@@ -114,6 +114,8 @@ const TRAINING_PATIENCE_MS = 45 * 60_000
 const HUMBLED = 'Too strong'
 const SPIRAL_MS = 15 * 60_000
 const SPIRAL_DEATHS = 3
+const SPIRAL_RESTS = 2
+const SPIRAL_REST_MS = 10 * 60_000
 const DEATH_CAUTION = 0.08
 const MAX_CAUTION = 0.24
 const HUNT_CAUTION = 0.16
@@ -341,6 +343,8 @@ export class Autopilot {
   private portalHome: { readonly x: number; readonly y: number; readonly at: number } | null = null
   private readonly ghosts = new Set<number>()
   private deaths: readonly { readonly at: number; readonly level: number }[] = []
+  private rests = 0
+  private restUntil = 0
   private retreats: readonly { readonly at: number; readonly level: number; readonly boss: boolean }[] = []
   private lastStand = Number.NEGATIVE_INFINITY
   private forgiven = Number.NEGATIVE_INFINITY
@@ -437,11 +441,15 @@ export class Autopilot {
       Object.assign(this, { trip: null, crossing: null, talk: null, chase: null })
       const spiral = this.deaths.filter((death) => nowMs - death.at < SPIRAL_MS && death.level === this.deaths.at(-1)!.level).length
       if (spiral >= SPIRAL_DEATHS) {
-        this.host.assists.journal?.('spiral', { deaths: spiral, level: world.areaId })
-        this.stop('Autopilot needs you', 'red', `Died ${spiral} times in ${levelName(world.areaId)}: get the body back by hand, and don't leave the game before you have it`)
-        return
-      }
-      this.toast('You died', 'Going back for your body', 'red')
+        this.host.assists.journal?.('spiral', { deaths: spiral, level: world.areaId, rests: this.rests })
+        if (this.rests >= SPIRAL_RESTS) {
+          this.stop('Autopilot needs you', 'red', `Died ${spiral} times in ${levelName(world.areaId)}: get the body back by hand, and don't leave the game before you have it`)
+          return
+        }
+        const level = this.deaths.at(-1)!.level
+        Object.assign(this, { rests: this.rests + 1, restUntil: nowMs + SPIRAL_REST_MS, deaths: this.deaths.filter((death) => death.level !== level) })
+        this.toast('Regrouping before another try', `Died ${spiral} times in ${levelName(world.areaId)}: resting in town for ${SPIRAL_REST_MS / 60_000} minutes`, 'red')
+      } else this.toast('You died', 'Going back for your body', 'red')
     }
     this.say('Died, going back for your body')
     if (nowMs - this.lastRevive < REVIVE_MS) return
@@ -485,6 +493,7 @@ export class Autopilot {
       this.ghosts.add(body.id)
       this.dropped(corpse)
       Object.assign(this, { corpse: null, bodyTouch: null })
+      this.rests = 0
       this.toast('Got your body back', '', 'green')
       return null
     }
@@ -496,6 +505,7 @@ export class Autopilot {
     if (distance(corpse, world.self) <= CORPSE_GONE && nowMs - this.bodySeen > BODY_GONE_MS) {
       this.dropped(corpse)
       this.corpse = null
+      this.rests = 0
       this.toast('Got your body back', '', 'green')
     }
     return null
@@ -745,6 +755,7 @@ export class Autopilot {
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
     else if (town && this.healing(nowMs)) this.say('Waiting to heal before heading out')
+    else if (town && nowMs < this.restUntil) this.say('Resting before going back for your body')
     else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && !this.retreatWhy.endsWith(ON_FOOT) && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(town === null && this.portalFirst(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 

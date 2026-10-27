@@ -1185,16 +1185,20 @@ describe('autopilot', () => {
     expect(guide.detour).toBeNull()
   })
 
-  it('stops walking back into the same death after the third time, and asks for a hand with the body', () => {
-    const { pilot, world, hudModel, tick } = setup({})
+  it('rests in town after the third death in one place, and asks for a hand with the body only once resting twice has not helped', () => {
+    const { pilot, world, hudModel, hudManager, tick } = setup({})
     Object.assign(hudModel, { resurrect: vi.fn() })
-    for (const x of [100, 110, 120]) {
+    const die = (x: number) => {
       Object.assign(world.self, { x })
       world.isDead = true
       tick(1000)
       world.isDead = false
-      tick(60_000)
+      Object.assign(world.self, { x: 1000 })
+      tick(5000)
     }
+    ;[100, 110, 120].forEach(die)
+    expect([pilot.active, hudManager.toasts.push.mock.calls.some(([toast]) => toast.title === 'Regrouping before another try')]).toEqual([true, true])
+    ;[130, 140, 150, 160, 170, 180].forEach(die)
     expect(pilot.active).toBe(false)
     expect(pilot.lastStop?.detail).toContain('get the body back by hand')
   })
