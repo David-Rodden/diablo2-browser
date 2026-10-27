@@ -50,6 +50,7 @@ export interface AutopilotHost {
   readonly assists: PlayAssists
   readonly guide: PathGuide
   readonly levelView: () => LevelView | null
+  readonly freshGame?: () => Promise<boolean>
 }
 
 type Service = keyof (typeof TOWNS)['Rogue Encampment']
@@ -65,6 +66,8 @@ interface Errand {
 }
 
 const TICK_MS = 60
+const REJOINS = 3
+const REJOIN_WINDOW_MS = 3_600_000
 const WALK_MS = 200
 const LOOKAHEAD = 15
 const TELEPORT_AHEAD = 24
@@ -289,6 +292,8 @@ export class Autopilot {
   private readonly ledger = new XpLedger()
   private stint: { readonly area: number; readonly level: number; readonly at: number; readonly xp: number } | null = null
   private game: { readonly selfId: number; readonly at: number } | null = null
+  private rejoins: number[] = []
+  private freshening = false
   private headway: { readonly goal: SubTilePoint; best: number; from: SubTilePoint; at: number; tries: number } | null = null
   private blocked: SubTilePoint[] = []
   private held: { readonly id: number; readonly since: number; at: number; tries: number } | null = null
@@ -362,6 +367,7 @@ export class Autopilot {
   }
 
   start(): void {
+    if (this.freshening) return
     const { assists, guide } = this.host
     Object.assign(this, { active: true, pausedUntil: Number.NEGATIVE_INFINITY, talk: null, waypointTo: null, trip: null })
     this.uses.clear()
@@ -379,6 +385,34 @@ export class Autopilot {
     guide.detour = null
     this.lastStop = { title, detail }
     this.toast(title, detail, color)
+  }
+
+  get rejoining(): boolean {
+    return this.freshening
+  }
+
+  private stuck(why: string): void {
+    if (!this.rejoin(why)) this.stop('Autopilot needs you', 'gold', why)
+  }
+
+  private rejoin(why: string): boolean {
+    const { freshGame, world, guide } = this.host
+    const nowMs = performance.now()
+    this.rejoins = this.rejoins.filter((at) => nowMs - at < REJOIN_WINDOW_MS)
+    if (freshGame === undefined || this.freshening || this.corpse !== null || world.isDead || this.rejoins.length >= REJOINS) return false
+    this.rejoins.push(nowMs)
+    this.stop('Starting a fresh game', 'gold', why)
+    this.freshening = true
+    void freshGame()
+      .catch(() => false)
+      .then((entered) => {
+        this.freshening = false
+        this.briefed.clear()
+        guide.skipped.clear()
+        if (entered) this.start()
+        else this.stop('Autopilot needs you', 'gold', why)
+      })
+    return true
   }
 
   tick(nowMs: number): void {
@@ -774,7 +808,7 @@ export class Autopilot {
     } else if (last.tries === 2 && this.host.assists.hasTownPortal()) this.retreat(REGROUP, nowMs)
     else if (plan && OPTIONAL_ROWS.has(plan.goal.row ?? -1) && !this.host.guide.skipped.has(plan.goal.row!)) this.skip(plan, 'No headway')
     else if (this.trainElsewhere()) last.tries = 0
-    else this.stop('Autopilot needs you', 'gold', `No headway on ${hint}`)
+    else this.stuck(`No headway on ${hint}`)
   }
 
   private follow(plan: GuidePlan | null, nowMs: number): void {
@@ -1001,7 +1035,7 @@ export class Autopilot {
       this.host.assists.journal?.('stubborn', { classId: unit.classId, rounds: rounds + 1, npc: this.host.world.npcInteraction.npcId, window: this.host.world.npcInteraction.window })
       const away = Math.atan2(me.y - unit.y, me.x - unit.x) + (rounds * 2 * Math.PI) / WAYPOINT_ROUNDS
       this.host.assists.stepTo(unit.x + Math.cos(away) * BACK_OFF, unit.y + Math.sin(away) * BACK_OFF, nowMs)
-    } else if (waypoint) this.stop('Autopilot needs you', 'gold', "The waypoint wouldn't open")
+    } else if (waypoint) this.stuck("The waypoint wouldn't open")
     else if (portal && this.town()) Object.assign(this, { trip: null, portalHome: null })
     else if (portal) this.castPortal(nowMs)
     else if (plan?.target?.unit?.id === unit.id) this.skip(plan, `${unit.name ?? 'It'} wouldn't respond`)
@@ -1035,7 +1069,7 @@ export class Autopilot {
 
   private skip(plan: GuidePlan, why: string): void {
     this.talk = null
-    if (plan.goal.row === undefined || this.host.guide.skipped.has(plan.goal.row)) this.stop('Autopilot needs you', 'gold', `${plan.hint}: ${why}`)
+    if (plan.goal.row === undefined || this.host.guide.skipped.has(plan.goal.row)) this.stuck(`${plan.hint}: ${why}`)
     else {
       this.host.guide.skip(plan.goal.row)
       this.toast(`Skipping ${plan.goal.title} for now`, why, 'gold')
