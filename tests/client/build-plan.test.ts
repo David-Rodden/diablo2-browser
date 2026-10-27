@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SKILLS_CATALOG } from '../../src/common/data/skills-catalog.ts'
 import { buildOf, CLASS_NAMES, nextSkill, nextStat } from '../../src/client/guide/build-plan.ts'
-import BUILDS from '../../src/client/guide/data/builds.json'
+import BUILDS from '../../src/common/items/data/builds.json'
 
 const CLASS_CODES = ['ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass']
 const id = (name: string) => SKILLS_CATALOG.find((skill) => skill.name === name)!.id

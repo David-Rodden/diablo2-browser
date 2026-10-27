@@ -1,5 +1,6 @@
 import { SKILLS_BY_ID, type SkillCatalogEntry } from '../data/skills-catalog.ts'
 import { CHARACTER_CLASS_CODES, CHARACTER_CLASS_NAMES } from '../units/classes.ts'
+import BUILDS from './data/builds.json'
 import PLAY_STYLES from './data/play-styles.json'
 
 export type PlayStyle = 'caster' | 'melee' | 'ranged' | 'summoner'
@@ -20,6 +21,12 @@ export interface CharacterBuild extends CharacterSheet {
   readonly investedTabs: ReadonlySet<number>
   readonly mainSkills: readonly number[]
   readonly weaponKind: WeaponKind
+  readonly reach: { readonly strength: number; readonly dexterity: number }
+}
+
+interface StatPlan {
+  readonly stats: Readonly<Partial<Record<'strength' | 'dexterity', { readonly upTo?: number }>>>
+  readonly skills: readonly (readonly [string, number])[]
 }
 
 const DEFAULT_STYLE = PLAY_STYLES.defaultStyle as Readonly<Record<string, PlayStyle>>
@@ -27,6 +34,16 @@ const RANGED_TABS = new Set(PLAY_STYLES.rangedTabs)
 const ELEMENTS = new Set(Object.keys(PLAY_STYLES.elementNames))
 
 export const className = (classIndex: number): string => CHARACTER_CLASS_NAMES[classIndex] ?? 'Character'
+
+const PLANS = BUILDS as unknown as Readonly<Record<string, { readonly builds: readonly StatPlan[] }>>
+const SKILL_IDS = new Map(Object.values(SKILLS_BY_ID).map((skill) => [skill.name, skill.id]))
+
+const planOf = ({ classIndex, skillPoints }: CharacterSheet): StatPlan | undefined => {
+  const invested = (plan: StatPlan) => [...new Set(plan.skills.map(([name]) => SKILL_IDS.get(name)))].reduce((sum, id) => sum + (id === undefined ? 0 : skillPoints.get(id) ?? 0), 0)
+  return PLANS[className(classIndex)]?.builds.reduce<StatPlan | undefined>((best, plan) => (best === undefined || invested(plan) > invested(best) ? plan : best), undefined)
+}
+
+const reachOf = (plan: StatPlan | undefined, attribute: 'strength' | 'dexterity', now: number) => (plan?.stats[attribute] ? Math.max(now, plan.stats[attribute]!.upTo ?? Infinity) : now)
 
 const isElement = (eType: string): eType is Element => ELEMENTS.has(eType)
 const isSummon = (skill: SkillCatalogEntry) => skill.tabName.startsWith(PLAY_STYLES.summonTabPrefix) && (skill.minionStats !== undefined || skill.classCode === 'nec')
@@ -56,6 +73,7 @@ export function characterBuild(sheet: CharacterSheet): CharacterBuild {
     investedTabs: new Set(invested.map(({ skill }) => skill.tabIndex)),
     mainSkills: mainSkills.map(({ skill }) => skill.id),
     weaponKind: style === 'ranged' ? (topTab === PLAY_STYLES.javelinTab ? 'javelin' : 'bow') : style === 'melee' ? 'melee' : 'spell',
+    reach: { strength: reachOf(planOf(sheet), 'strength', sheet.strength), dexterity: reachOf(planOf(sheet), 'dexterity', sheet.dexterity) },
   }
 }
 
