@@ -114,6 +114,7 @@ const TRAINING_PATIENCE_MS = 45 * 60_000
 const HUMBLED = 'Too strong'
 const SPIRAL_MS = 15 * 60_000
 const SPIRAL_DEATHS = 3
+const DEATH_GAP_MS = 5000
 const SPIRAL_RESTS = 2
 const SPIRAL_REST_MS = 10 * 60_000
 const DEATH_CAUTION = 0.08
@@ -436,8 +437,9 @@ export class Autopilot {
 
   private mourn(nowMs: number): void {
     const { world, hudModel } = this.host
-    if (this.corpse?.level !== world.areaId || distance(this.corpse, world.self) > CORPSE_SAME) {
-      this.corpse = { level: world.areaId, x: world.self.x, y: world.self.y }
+    const moved = this.corpse?.level !== world.areaId || distance(this.corpse, world.self) > CORPSE_SAME
+    if (moved) this.corpse = { level: world.areaId, x: world.self.x, y: world.self.y }
+    if (moved && nowMs - (this.deaths.at(-1)?.at ?? Number.NEGATIVE_INFINITY) >= DEATH_GAP_MS) {
       this.deaths = [...this.deaths.filter((death) => nowMs - death.at < DEATH_MEMORY_MS), { at: nowMs, level: this.questLevel ?? world.areaId }]
       Object.assign(this, { trip: null, crossing: null, talk: null, chase: null })
       const spiral = this.deaths.filter((death) => nowMs - death.at < SPIRAL_MS && death.level === this.deaths.at(-1)!.level).length

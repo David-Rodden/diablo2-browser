@@ -1212,6 +1212,16 @@ describe('autopilot', () => {
     expect(pilot.lastStop?.detail).toContain('get the body back by hand')
   })
 
+  it('counts a body that slides while it falls as one death', () => {
+    const { world, hudModel, hudManager, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    world.isDead = true
+    tick(100)
+    Object.assign(world.self, { x: 120 })
+    tick(100)
+    expect(hudManager.toasts.push.mock.calls.filter(([toast]) => toast.title === 'You died')).toHaveLength(1)
+  })
+
   it('respawns after dying and goes back for its body', () => {
     const { pilot, world, guide, hudModel, units, tick } = setup({})
     Object.assign(hudModel, { resurrect: vi.fn() })
