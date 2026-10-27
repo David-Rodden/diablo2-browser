@@ -11,7 +11,7 @@ import { FlowField } from './flow-field.ts'
 import { ChevronFlow, type Chevron } from './chevron-flow.ts'
 import { fromNearest, rounded } from './ribbon-trail.ts'
 import { OPTIONAL_ROWS, type Find, type FindKey } from './quest-stages.ts'
-import { currentGoal, levelName, nextStep, throughTomb, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
+import { currentGoal, HARROGATH_PORTAL, levelName, nextStep, throughTomb, type Goal, type GuideMode, type QuestProgress, type Step } from './route.ts'
 import { spriteOutlines, type OutlineTint } from './sprite-outline.ts'
 import { SkipMemory } from './skip-memory.ts'
 import { WaypointMemory } from './waypoint-memory.ts'
@@ -73,6 +73,7 @@ const TRAIL_STEPS = 40
 const TRAIL_ROUNDS = 3
 const REACH_SNAP = 3
 const PORTAL_CLASSES = new Set([59, 60, 100, 298, 342, 563])
+const OPENED = 2
 const ORIFICE = 152
 const GATE_SNAP = 2
 const WAYPOINT_NEAR = 45
@@ -122,7 +123,7 @@ const landmarkTarget = (view: LevelView): GuideTarget | null => {
   return landmark ? { x: view.originX + landmark.subX, y: view.originY + landmark.subY, label: landmark.id } : null
 }
 
-const isSpent = (unit: ClientUnit) => !PORTAL_CLASSES.has(unit.classId) && !WAYPOINT_CLASS_IDS_113C.has(unit.classId) && unit.classId !== ORIFICE && unit.mode !== 0
+const isSpent = (unit: ClientUnit) => (unit.classId === HARROGATH_PORTAL ? unit.mode !== OPENED : !PORTAL_CLASSES.has(unit.classId) && !WAYPOINT_CLASS_IDS_113C.has(unit.classId) && unit.classId !== ORIFICE && unit.mode !== 0)
 
 const candidatesFor = (keys: readonly FindKey[], view: LevelView, objects: readonly ClientUnit[], monsters: readonly ClientUnit[]): GuideTarget[] => {
   const ids = (kind: 'object' | 'npc') => new Set(keys.map((key) => (kind === 'object' ? (typeof key === 'number' ? key : -1) : typeof key === 'string' ? MONSTER_PATH_IDS.indexOf(key) : -1)).filter((id) => id >= 0))

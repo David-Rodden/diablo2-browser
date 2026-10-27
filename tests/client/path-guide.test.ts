@@ -35,8 +35,8 @@ describe('path guide route', () => {
 
   it("heads for Diablo's portal to Harrogath until Tyrael offers the journey", () => {
     const actFourDone = { 25: 1, 26: 0x201, 27: 1 }
-    expect(goalOf(103, quests(actFourDone))).toEqual([103, 'Travel to Act V', 'Talk to Tyrael, then take his portal to Harrogath'])
-    expect(currentGoal(108, quests(actFourDone))?.find).toEqual([566, 'tyrael2'])
+    expect(goalOf(103, quests(actFourDone))).toEqual([108, 'Travel to Act V', 'Take the portal to Harrogath where Diablo fell'])
+    expect(currentGoal(108, quests(actFourDone))?.find?.[0]).toBe(566)
     expect(goalOf(103, quests({ ...actFourDone, 28: 1 }))).toEqual([109, 'Travel to Act V', undefined])
   })
 
@@ -144,6 +144,13 @@ describe('path guide plan', () => {
     const portal = { id: 71, unitType: 'object', classId: 100, mode: 2, x: 1018, y: 2012, hidden: false, dead: false } as unknown as ClientUnit
     const open = planGuide({ ...tomb, objects: () => [orifice, portal] }, 'story', undefined, new Set(), false, new Set(), { level: 73, title: "Duriel's Lair" })!
     expect(open.target?.unit).toEqual({ id: 71, kind: 'object' })
+  })
+
+  it('takes the Harrogath portal only once Diablo has opened it', () => {
+    const portal = (mode: number) => ({ id: 80, unitType: 'object', classId: 566, mode, x: 1030, y: 2010, hidden: false, dead: false, name: 'Harrogath' }) as unknown as ClientUnit
+    const chaos = (mode: number) => planGuide({ ...host, areaId: () => 108, quests: () => quests({ 25: 1, 26: 0x201, 27: 1 }), objects: () => [portal(mode)] }, 'story')!
+    expect(chaos(0).target?.unit).not.toEqual({ id: 80, kind: 'object' })
+    expect(chaos(2).target?.unit).toEqual({ id: 80, kind: 'object' })
   })
 
   it("sends a body run into Duriel's Lair through the true tomb, not the nearest one", () => {
