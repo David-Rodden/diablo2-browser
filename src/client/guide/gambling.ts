@@ -1,5 +1,6 @@
 import type { EquipSlotId } from '../../common/items/inventory-model.ts'
-import { equipSlotsOf } from '../../common/items/loot-appraisal.ts'
+import { equipSlotsOf, isTwoHanded, slotOf } from '../../common/items/loot-appraisal.ts'
+import type { LootItem } from '../../common/items/loot-item.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import GAMBLING from './data/gambling.json'
 
@@ -7,6 +8,14 @@ export const GAMBLING_RULES = GAMBLING
 
 const JEWELLERY = new Set(GAMBLING.jewellery)
 const CIRCLETS = new Set(GAMBLING.circlets)
+
+const SLOTS: readonly EquipSlotId[] = ['helm', 'amulet', 'weapon1', 'armor', 'weapon2', 'gloves', 'ring1', 'belt', 'ring2', 'boots']
+
+export const bareSlotsOf = (equipped: Iterable<LootItem>): ReadonlySet<EquipSlotId> => {
+  const worn = [...equipped]
+  const taken = new Set([...worn.map(slotOf), ...(worn.some((item) => slotOf(item) === 'weapon1' && isTwoHanded(item)) ? ['weapon2' as const] : [])])
+  return new Set(SLOTS.filter((slot) => !taken.has(slot)))
+}
 
 export const gambleTreat = (fund: number) => Math.max(GAMBLING.spare, fund * GAMBLING.treatShare)
 
