@@ -9,7 +9,7 @@
  *    `-min(150, ln56)` with `Param5=30, Param6=5` -> `-125%`) on a monster with `fireresist = 50`
  *    yields effective fire resist `50 - 125 = -75%` (subject to `-100%` floor).
  * 3. `Lower Resist` (`Skills.txt` #91: `aurastat2..5 = -dm56` with `Param5=25, Param6=70`) at
- *    `slvl 1 / 10 / 20` yields `32 / 55 / 63` in both `executeSUnitDmg` and `GameInstance`.
+ *    `slvl 1 / 10 / 20` yields `31 / 55 / 62 (D2Common 0x6FD9DC30, #1678)` in both `executeSUnitDmg` and `GameInstance`.
  * 4. `Amplify Damage` (`-100%`) and `Decrepify` (`-50%` phys res, `-50%` damage) read their
  *    evaluated `aurastat` values from `StateBus` without double-counting or bypassing `1/5`
  *    immunity breaking when `baseRes >= 100`.
@@ -105,11 +105,11 @@ describe('Issue #1450 — Combat curse & aura StateBus aurastat parity', async (
     expect(outFloor.elemDamage256).toBe(200 * FIXED_ONE)
   })
 
-  it('2. Lower Resist at slvl 1 / 10 / 20 yields dm56(25, 70) values 32 / 55 / 63 in executeSUnitDmg and GameInstance', () => {
+  it('2. Lower Resist at slvl 1 / 10 / 20 yields dm56(25, 70) values 31 / 55 / 62 (D2Common 0x6FD9DC30, #1678) in executeSUnitDmg and GameInstance', () => {
     const expectedBySlvl: ReadonlyArray<readonly [number, number]> = [
-      [1, 32],
+      [1, 31],
       [10, 55],
-      [20, 63],
+      [20, 62],
     ]
 
     for (const [slvl, expectedPierce] of expectedBySlvl) {

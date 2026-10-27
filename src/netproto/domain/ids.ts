@@ -41,11 +41,32 @@ export function unitTypeFromId(id: number | UnitType): UnitTypeName {
   return UNIT_TYPE_FROM_ID[id] ?? 'object'
 }
 
+/**
+ * Domain unit type -> numeric id. Out-of-range numbers and unknown names throw instead of being folded to a
+ * valid type (#1656): D2Client never folds a wire type, it indexes the per-type unit table directly.
+ */
 export function unitTypeToId(type: UnitType | number): UnitTypeId {
   if (typeof type === 'number') {
-    return (type >= 0 && type <= 5 ? type : 0) as UnitTypeId
+    const id = wireUnitTypeId(type)
+    if (id === undefined) throw new RangeError(`unit type ${String(type)} is outside 0..5`)
+    return id
   }
-  return UNIT_TYPE_TO_ID[type] ?? 1
+  const id = UNIT_TYPE_TO_ID[type]
+  if (id === undefined) throw new RangeError(`unknown unit type name ${String(type)}`)
+  return id
+}
+
+/**
+ * Raw S->C wire unit type byte -> `UnitTypeId`, or `undefined` when it is outside `0..5`.
+ *
+ * Every 1.13c D2Client unit lookup indexes the per-type hash table with the raw byte
+ * (`shl edx,9; add edx,0x6FBBA608` -> 0x6FB54E20, e.g. 0x6FB5C928, 0x6FB5D6F3, 0x6FB5F808) and the generic
+ * unit-packet dispatcher does the same before calling a unit handler (0x6FB5CF0B..0x6FB5CF2A, NULL -> skip).
+ * Types are never folded; D2Game uses type 6 / id 0xFFFFFFFF for "no unit", so the lookup fails and the
+ * packet has no effect (#1656).
+ */
+export function wireUnitTypeId(raw: number): UnitTypeId | undefined {
+  return Number.isInteger(raw) && raw >= 0 && raw <= 5 ? (raw as UnitTypeId) : undefined
 }
 
 export interface UnitRef {

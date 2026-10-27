@@ -241,11 +241,11 @@ describe('Issue #1018: Druid Shape Shifting (#223-#248) 4-Layer 1.13c Fidelity',
       expect(fc0.minFireDamage).toBe(15)
       expect(fc10.minFireDamage).toBe(Math.trunc((15 * (100 + 220)) / 100))
 
-      // Hunger: -75% damage, dm(50, 200, slvl) leech (73% at slvl 1)
+      // Hunger: -75% damage, dm(50, 200, slvl) leech (72% at slvl 1, D2Common 0x6FD9DC30, #1678)
       const hg = calculateHungerStats(1)
       expect(hg.damagePenaltyPct).toBe(-75)
-      expect(hg.lifeLeechPct).toBe(73)
-      expect(hg.manaLeechPct).toBe(73)
+      expect(hg.lifeLeechPct).toBe(72)
+      expect(hg.manaLeechPct).toBe(72)
 
       // Shock Wave: stun capped at 250 frames (10s)
       const sw20 = calculateShockWaveStats(20, 10)

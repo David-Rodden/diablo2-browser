@@ -44,6 +44,8 @@ import type {
   DumpTileRef,
 } from './drlg-dump.ts'
 import { DRLGLOGIC_ROOMINFO_HAS_COORD_LIST } from './drlg-logic.ts'
+import { DRLG_CaptureActSpawnLevel, type DrlgActSpawnCapture } from './drlg-act-spawn.ts'
+import { mapTileCollisionFlags113c } from './drlg-roomtile.ts'
 
 export {
   DRLG_COLLIDE_MASK_INVALID,
@@ -246,6 +248,12 @@ export interface DrlgLevelInput {
   readonly logicalIndex?: DrlgLogicalIndexGrid
   /** POPS visibility regions of preset maps in this level (see {@link DrlgPopBox}). */
   readonly pops?: readonly DrlgPopBox[]
+  /**
+   * `DUNGEON_FindActSpawnLocationEx` inputs (special-tile records, room rects, waypoint / warp rooms,
+   * level seed) captured from the live `pLevel` (only for session-built inputs, see
+   * {@link drlgLevelInputFromSession}).
+   */
+  readonly actSpawn?: DrlgActSpawnCapture
 }
 
 /** Tables the mapping needs besides the DRLG output. */
@@ -541,13 +549,15 @@ export function buildDrlgLevelMap(input: DrlgLevelInput, ctx: DrlgMapContext): D
     cell.mask |= 1 << library
     const layer = (p.t.flags >>> MAPTILE_LAYER_SHIFT) & MAPTILE_LAYER_MASK
     const unwalkable = (p.t.flags & MAPTILE_UNWALKABLE) !== 0
+    const collisionFlags = mapTileCollisionFlags113c(p.t.flags)
+    const withCollision = collisionFlags !== 0 ? { collisionFlags } : {}
     // prop1 only marks the slot as used for the renderer; hidden tiles (warp lit tiles, etc.) are kept
     // hidden exactly as D2 adds them.
     if (p.t.kind === 'floor') {
-      cell.floors.push({ layer, order: order++, floor: { prop1: 1, sequence: p.sequence, style: p.style, unknown1: 0, unknown2: 0, hidden: p.hidden, dt1Library: library, dt1Tile: tileIndex, ...(unwalkable ? { unwalkable: true } : {}) } })
+      cell.floors.push({ layer, order: order++, floor: { prop1: 1, sequence: p.sequence, style: p.style, unknown1: 0, unknown2: 0, hidden: p.hidden, dt1Library: library, dt1Tile: tileIndex, ...(unwalkable ? { unwalkable: true } : {}), ...withCollision } })
       floors += 1
     } else if (p.t.kind === 'shadow') {
-      cell.shadows.push({ prop1: 1, sequence: p.sequence, style: p.style, unknown1: 0, unknown2: 0, hidden: p.hidden, dt1Library: library, dt1Tile: tileIndex })
+      cell.shadows.push({ prop1: 1, sequence: p.sequence, style: p.style, unknown1: 0, unknown2: 0, hidden: p.hidden, dt1Library: library, dt1Tile: tileIndex, ...withCollision })
       shadows += 1
     } else {
       let companionDt1Library: number | undefined
@@ -580,6 +590,7 @@ export function buildDrlgLevelMap(input: DrlgLevelInput, ctx: DrlgMapContext): D
           ...((p.t.flags & MAPTILE_TREES) !== 0 ? { noFade: true } : {}),
           ...((p.t.flags & MAPTILE_UNK_0x200) !== 0 ? { revealHidden: true } : {}),
           ...((p.t.flags & MAPTILE_FLOOR_LINKER_PATH) !== 0 ? { popLinkage: true } : {}),
+          ...withCollision,
         },
       })
       walls += 1
@@ -1355,8 +1366,9 @@ export function drlgLevelInputFromSession(
   levelId: number,
   tables: DrlgTables = session.env.tables,
 ): DrlgLevelInput {
-  session.ensureLevelActivated(levelId)
+  const { pLevel } = session.ensureLevelActivated(levelId)
   const act = DRLG_GetActNoFromLevelId(levelId)
   const dump = session.getDump(act)
-  return drlgLevelInputFromDump(dump, levelId, tables)
+  const input = drlgLevelInputFromDump(dump, levelId, tables)
+  return { ...input, actSpawn: DRLG_CaptureActSpawnLevel(pLevel, tables, input.coord.x, input.coord.y) }
 }

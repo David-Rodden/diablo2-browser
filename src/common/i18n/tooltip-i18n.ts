@@ -5070,14 +5070,11 @@ export function formatPropertyCodeI18n(
 /**
  * Ground Truth (`D2Client.dll` `0x6FB046E0` + `0x6FB04E10` `descFunc` 6..10 & `ItemStatCost.txt` `op` 2..5):
  * Per-level properties (`op` 2..5, `op param = 3`) compute `(clvl * rawEighths) >> 3` as an integer
- * for the current character level (`clvl >= 1`). Stats 216 (`hp/lvl`) and 217 (`mana/lvl`) have
- * `ValShift = 8` on the wire (`<< 8`), which is normalized before shifting by `op param = 3`.
+ * for the current character level (`clvl >= 1`). `eighths` is a display-unit property value: stats 216
+ * (`hp/lvl`) and 217 (`mana/lvl`) carry `ValShift = 8` internally, which `convertOnlineItemStatsToRolledProps`
+ * always removes (`>> ValShift`) before a property reaches the tooltip (#1639).
  */
-function formatPerLevelVal(rawEighths: number, charLevel = 1, isValShift8 = false): string {
-  const eighths =
-    isValShift8 && Math.abs(rawEighths) >= 256 && (rawEighths & 0xff) === 0
-      ? rawEighths >> 8
-      : rawEighths
+function formatPerLevelVal(eighths: number, charLevel = 1): string {
   const clvl = charLevel > 0 && Number.isFinite(charLevel) ? Math.max(1, Math.trunc(charLevel)) : 1
   return `${Math.floor((eighths * clvl) / 8)}`
 }
@@ -5234,9 +5231,9 @@ function formatPropertyCodeZh(
 
     // --- Per Level Scaling ---
     case 'hp/lvl':
-      return `+${formatPerLevelVal(effectiveVal, charLevel, true)} 生命 (依角色等级提升)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} 生命 (依角色等级提升)`
     case 'mana/lvl':
-      return `+${formatPerLevelVal(effectiveVal, charLevel, true)} 法力 (依角色等级提升)`
+      return `+${formatPerLevelVal(effectiveVal, charLevel)} 法力 (依角色等级提升)`
     case 'stam/lvl':
       return `+${formatPerLevelVal(effectiveVal, charLevel)} 体力上限 (依角色等级提升)`
     case 'regen-stam/lvl':
@@ -5684,8 +5681,8 @@ function formatPropertyCodeEn(
     case 'stam': return `${plusVal} Maximum Stamina`
     case 'regen-stam': return `Heal Stamina Plus ${effectiveVal}%`
     case 'stamdrain': return `${effectiveVal}% Slower Stamina Drain`
-    case 'hp/lvl': return `+${formatPerLevelVal(effectiveVal, charLevel, true)} to Life (Based on Character Level)`
-    case 'mana/lvl': return `+${formatPerLevelVal(effectiveVal, charLevel, true)} to Mana (Based on Character Level)`
+    case 'hp/lvl': return `+${formatPerLevelVal(effectiveVal, charLevel)} to Life (Based on Character Level)`
+    case 'mana/lvl': return `+${formatPerLevelVal(effectiveVal, charLevel)} to Mana (Based on Character Level)`
     case 'stam/lvl': return `+${formatPerLevelVal(effectiveVal, charLevel)} Maximum Stamina (Based on Character Level)`
     case 'regen-stam/lvl': return `Heal Stamina Plus +${formatPerLevelVal(effectiveVal, charLevel)}% (Based on Character Level)`
     case 'str/lvl': return `+${formatPerLevelVal(effectiveVal, charLevel)} to Strength (Based on Character Level)`

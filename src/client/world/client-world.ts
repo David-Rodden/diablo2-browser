@@ -8,6 +8,7 @@
 
 import { NEHLITHAK_CONTROL_MISSILE, NIHLATHAK_MONSTER_CLASS, NIHLITHAK1_MISSILE } from './boss-death-cltdo-113c.ts'
 import { isWorldstoneShakeLevel, WORLDSTONE_SHAKE_MISSILE } from './quest-fx-worldstone-113c.ts'
+import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 import {
   unitTypeFromId,
   type ClientCommand,
@@ -42,6 +43,7 @@ import {
   resolveCharacterAnimSpeedParams,
   resolveCharacterStatTotal,
   resolveEquippedWeaponClass,
+  STATE_HOLYSHIELD,
   resolveEquippedWeaponWsm,
   resolveWeaponWsm,
   STAT_FASTERATTACKRATE,
@@ -300,6 +302,7 @@ export class ClientWorld {
   }
   private _merc: MercenaryState | null = null
   private readonly _mercHireList: MercHireEntry[] = []
+  private readonly _pendingMercStats = new Map<number, Map<number, number>>()
   private readonly _pets = new Map<number, RosterPetState>()
   private readonly _chatLog: ChatLogEntry[] = []
   private readonly _activeChatStream: ChatLogEntry[] = []
@@ -1133,8 +1136,8 @@ export class ClientWorld {
             )
           : 0
       if (eff148 > 0) {
-        skillVelocityPercent +=
-          7 + Math.trunc((43 * Math.trunc((110 * eff148) / (eff148 + 6))) / 100)
+        // Increased Speed #148 passivecalc1 = dm12 (7, 50) → D2Common 0x6FD9DC30 (issue #1678).
+        skillVelocityPercent += computeDiminishingReturns(7, 50, eff148)
       }
     }
     return resolveCharacterAnimSpeedParams(classId, modeOrClipKey, {
@@ -1147,6 +1150,10 @@ export class ClientWorld {
       skillVelocityPercent,
       morphMonsterClassId,
       skillId,
+      // State 101 holyshield: block rate base 100 instead of 50 (0x6FD83231..0x6FD83251).
+      holyShield:
+        Boolean(unit?.states.has(STATE_HOLYSHIELD)) ||
+        (isSelf && this._self.states.has(STATE_HOLYSHIELD)),
     })
   }
 
@@ -2183,6 +2190,19 @@ export class ClientWorld {
       this._containers.removePlayerEquipment(u.id)
       this._playerPathUnits.delete(u.id)
     } else if (u.unitType === 'monster') {
+      if (this._merc && this._merc.mercId === u.id) {
+        for (const st of u.stats.entries()) {
+          this._merc.stats.set(st.statId, st.value)
+          if (st.statId === 13) {
+            this._merc.exp = st.value
+          }
+        }
+      } else if (this._pendingMercStats.has(u.id)) {
+        const pendingMap = this._pendingMercStats.get(u.id)!
+        for (const st of u.stats.entries()) {
+          pendingMap.set(st.statId, st.value)
+        }
+      }
       this._monsters.delete(u.id)
       this.npcMotion.removeMonster(u.id)
     } else if (u.unitType === 'object') {
@@ -2681,9 +2701,18 @@ export class ClientWorld {
           unit.ownerType = 'player'
           unit.ownerId = pet.ownerId || this.selfId
         }
+        const pendingMercStats = this._pendingMercStats.get(id)
+        if (pendingMercStats) {
+          for (const [statId, val] of pendingMercStats) {
+            unit.stats.set(statId, val)
+          }
+        }
         if (this._merc && this._merc.mercId === id) {
           for (const [statId, val] of this._merc.stats) {
             unit.stats.set(statId, val)
+          }
+          if (this._merc.exp !== undefined && !unit.stats.has(13)) {
+            unit.stats.set(13, this._merc.exp)
           }
         }
       }
@@ -2703,8 +2732,17 @@ export class ClientWorld {
           })
         }
       }
-    } else if (typeName === 'monster' && unit.classId === 0 && knownMonsterClassId > 0) {
-      unit.classId = knownMonsterClassId
+    } else if (typeName === 'monster') {
+      if (unit.classId === 0 && knownMonsterClassId > 0) {
+        unit.classId = knownMonsterClassId
+      }
+      if (this._merc && this._merc.mercId === id) {
+        for (const [statId, val] of this._merc.stats) {
+          if (!unit.stats.has(statId)) {
+            unit.stats.set(statId, val)
+          }
+        }
+      }
     }
     return unit
   }
@@ -2758,6 +2796,7 @@ export class ClientWorld {
     this._self.reset()
     this._merc = null
     this._mercHireList.length = 0
+    this._pendingMercStats.clear()
     this._pets.clear()
     this._units.clear()
     this._monsters.clear()

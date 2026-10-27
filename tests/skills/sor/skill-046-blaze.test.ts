@@ -91,10 +91,10 @@ describe('[Skill #046] Blaze (SOR) — 1.13c Parity (Issue #200)', () => {
   // Dimension 3: Kinematics & Buff / Footstep Duration Formulas
   // ==========================================================================
   it('Dimension 3: calculates exact 1.13c buff duration, patch duration, and movement dynamics', () => {
-    // Buff duration: floor((110 * slvl * 450) / (100 * (slvl + 6))) + 50
-    expect(calculateBlazeDuration(1)).toBe(120) // floor(49500 / 700) + 50 = 70 + 50
-    expect(calculateBlazeDuration(10)).toBe(359) // floor(495000 / 1600) + 50 = 309 + 50
-    expect(calculateBlazeDuration(20)).toBe(430) // floor(990000 / 2600) + 50 = 380 + 50
+    // Buff duration: dm12(50, 500) via D2Common 0x6FD9DC30 = trunc(trunc(110*slvl/(slvl+6)) * 450 / 100) + 50 (#1678)
+    expect(calculateBlazeDuration(1)).toBe(117) // trunc(15 * 450 / 100) + 50 = 67 + 50
+    expect(calculateBlazeDuration(10)).toBe(356) // trunc(68 * 450 / 100) + 50 = 306 + 50
+    expect(calculateBlazeDuration(20)).toBe(428) // trunc(84 * 450 / 100) + 50 = 378 + 50
 
     // Patch duration: 90 + slvl * 25
     expect(calculateBlazePatchDuration(1)).toBe(115)

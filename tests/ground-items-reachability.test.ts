@@ -16,7 +16,6 @@ import {
   COLLIDE_NOPLAYER,
   COLLIDE_OBJECT,
   COLLIDE_WALL,
-  COLLIDE_WATER,
   ORTHO_CELL_HEIGHT,
   ORTHO_CELL_WIDTH,
   ORTHO_SUB_TILE_HEIGHT,
@@ -49,7 +48,7 @@ function setSubTileMask(grid: CollisionGrid, subX: number, subY: number, mask: n
   if (grid.collisionMasks) {
     grid.collisionMasks[idx] = mask
   }
-  grid.blocked[idx] = (mask & (COLLIDE_WALL | COLLIDE_BLANK | COLLIDE_NOPLAYER | COLLIDE_WATER | COLLIDE_DOOR | COLLIDE_OBJECT)) !== 0 ? 1 : 0
+  grid.blocked[idx] = (mask & (COLLIDE_WALL | COLLIDE_BLANK | COLLIDE_NOPLAYER | COLLIDE_DOOR | COLLIDE_OBJECT)) !== 0 ? 1 : 0
 }
 
 describe('Issue #492: Prevent Ground Items & Gold from Dropping into Unreachable Locations', () => {
@@ -77,7 +76,7 @@ describe('Issue #492: Prevent Ground Items & Gold from Dropping into Unreachable
       // Block sub-tiles [15..45, 15..45] (radius 15 > default maxRings=10 around (30, 30))
       for (let sy = 15; sy <= 45; sy += 1) {
         for (let sx = 15; sx <= 45; sx += 1) {
-          setSubTileMask(grid, sx, sy, COLLIDE_WATER)
+          setSubTileMask(grid, sx, sy, COLLIDE_WALL)
         }
       }
 
@@ -96,7 +95,7 @@ describe('Issue #492: Prevent Ground Items & Gold from Dropping into Unreachable
       // Create a full north-south river at subX = 24..27 across the entire map height
       for (let sy = 0; sy < 60; sy += 1) {
         for (let sx = 24; sx <= 27; sx += 1) {
-          setSubTileMask(grid, sx, sy, COLLIDE_WATER | COLLIDE_WALL)
+          setSubTileMask(grid, sx, sy, COLLIDE_WALL)
         }
       }
 
@@ -200,9 +199,13 @@ describe('Issue #492: Prevent Ground Items & Gold from Dropping into Unreachable
   })
 
   describe('4. Full Collision Mask & CountingTerrain Player Footprint Clearance', () => {
-    it('rejects COLLIDE_WATER, COLLIDE_NOPLAYER, COLLIDE_BLANK, COLLIDE_NO_PATH, and COLLIDE_MASK_INVALID', () => {
+    it('#1700: drop mask never includes the 1.13c unit-occupancy bits 0x40 (missile) / 0x80 (player)', () => {
+      // D2Common 1.13c placement masks: 0x1C09 (#10816 spawn) and 0x3E01 (free coordinates) — neither has 0xC0.
+      expect(COLLIDE_MASK_DROP_BLOCK & 0x00c0).toBe(0)
+    })
+
+    it('rejects COLLIDE_NOPLAYER, COLLIDE_BLANK, COLLIDE_NO_PATH, and COLLIDE_MASK_INVALID', () => {
       const forbiddenMasks = [
-        COLLIDE_WATER,
         COLLIDE_NOPLAYER,
         COLLIDE_BLANK,
         COLLIDE_NO_PATH,

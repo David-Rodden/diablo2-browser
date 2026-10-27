@@ -4,20 +4,35 @@
  */
 
 import { ByteReader } from '../../core/byte-reader.ts'
-import type { UnitType } from '../../domain/ids.ts'
+import { wireUnitTypeId } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
+import { requirePacketLength, unitLookupMiss } from './packet-length.ts'
 
 /** 0x00 GameLoading (1B, D2Client.dll 0x6fb5c520) */
 export function decode0x00GameLoading(_pkt: Uint8Array): ServerEvent {
   return { type: 'GameLoading' }
 }
 
-/** 0x01 GameFlags / GameLogonReceipt (8B, D2Client.dll 0x6fb5fa90) */
+/**
+ * 0x01 GameFlags / GameLogonReceipt (8B, D2Client.dll 0x6fb5fa90; built by D2Game 0x6fcac420, called with
+ * `mov cl,0x1` from 0x6fc4ac64): `@1` difficulty = pGame+0x6D, `@2` dword = the game's arena flags
+ * (pGame+0x1D28 -> +8, i.e. the create flags & 0x3179C7 stored at 0x6fcd258c..0x6fcd2598), `@6` = expansion
+ * (pGame+0x70 != 0), `@7` = ladder (pGame+0x74 != 0).
+ *
+ * D2Client stores `@1` without clamping (0x6fbcc390), so an out-of-range difficulty is a protocol error here
+ * instead of being folded to Normal (#1660). Arena flag 0x800 is the hardcore game flag: D2Game refuses a
+ * hardcore character in a game without it and a softcore character in a game with it (character status 0x04
+ * vs `test ah,0x8` at 0x6fc6bdc2 / 0x6fc6bde1 and 0x6fd0bb9d / 0x6fd0bbdb, #1665).
+ */
 export function decode0x01GameFlags(pkt: Uint8Array): ServerEvent {
+  requirePacketLength(pkt, '0x01 GameFlags', 8)
   const r = new ByteReader(pkt)
   r.u8() // 0x01
   const difficultyRaw = r.u8()
-  const difficulty = (difficultyRaw <= 2 ? difficultyRaw : 0) as 0 | 1 | 2
+  if (difficultyRaw > 2) {
+    throw new RangeError(`0x01 GameFlags: difficulty ${String(difficultyRaw)} is outside 0..2`)
+  }
+  const difficulty = difficultyRaw as 0 | 1 | 2
   const arenaFlags = r.u32LE()
   const expansionByte = r.u8()
   const ladderByte = r.u8()
@@ -27,6 +42,7 @@ export function decode0x01GameFlags(pkt: Uint8Array): ServerEvent {
     hardcore: (arenaFlags & 0x0800) !== 0,
     expansion: expansionByte !== 0,
     ladder: ladderByte !== 0,
+    arenaFlags,
   }
 }
 
@@ -101,7 +117,9 @@ export function decode0x08RoomHide(pkt: Uint8Array): ServerEvent {
 export function decode0x0BGameHandshake(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0x0B
-  const unitType = (r.u8() & 0x07) as UnitType
+  // D2Client 0x6fb5d6e0 looks the unit up with the raw type byte (no mask); outside 0..5 it fails (#1656).
+  const unitType = wireUnitTypeId(r.u8())
+  if (unitType === undefined) return unitLookupMiss(pkt)
   const id = r.u32LE()
   return {
     type: 'UnitAssign',

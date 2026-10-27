@@ -57,14 +57,15 @@ function fireActionFrame(world: ClientWorld, unitKey: string): void {
 describe('Sorceress Spell VFX Parity B12-p1 (#1124..#1129)', () => {
   describe('#1124 Blaze (#46): Missiles.txt Range+LevRange patch lifetime & dm12 state duration', () => {
     it('derives blaze patch maxTicks = 90 + 25*slvl and state 13 duration = dm12(50, 500, slvl)', () => {
-      expect(blazeStateDurationFrames113c(1)).toBe(120)
-      expect(blazeStateDurationFrames113c(10)).toBe(359)
-      expect(blazeStateDurationFrames113c(20)).toBe(430)
+      // D2Common 0x6FD9DC30 two-step dm12 (#1678)
+      expect(blazeStateDurationFrames113c(1)).toBe(117)
+      expect(blazeStateDurationFrames113c(10)).toBe(356)
+      expect(blazeStateDurationFrames113c(20)).toBe(428)
 
       for (const [slvl, expectedPatchTicks, expectedStateFrames] of [
-        [1, 115, 120],
+        [1, 115, 117],
         [5, 215, 275],
-        [20, 590, 430],
+        [20, 590, 428],
       ] as const) {
         const world = new ClientWorld()
         world.apply({

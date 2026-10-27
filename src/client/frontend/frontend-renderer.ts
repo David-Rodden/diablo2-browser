@@ -43,6 +43,7 @@ import {
   formatJoinGameDetailLines,
   getAnimImageLoopFrame,
   getCampfireSlotHitBox,
+  getRosterCharacterTitle,
   hoverCampfireClass,
   isChiFrontendActive,
   isDifficultyUnlocked,
@@ -2683,31 +2684,44 @@ export class FrontendRenderer {
       const avatarFrame = this.state.avatarAnims[char.heroToken]?.frameIndex ?? 0
       this.drawCharacterAvatar(char, avatarFrame, slotX + 36, slotY + 82)
 
-      // Right side metadata per D2Launch.dll (0x6fa4b040..0x6fa4b302):
+      // Right side metadata per D2Launch.dll (0x6fa4af00..0x6fa4b302):
+      // D2Win.#10094(pTextBox, -1, -2) sets 14px line spacing when up to 5 lines are present:
+      // optional Title from D2Win.#10205 (0x6fa4b08e..0x6fa4b0cd, gold=4 or red=1 if Hardcore),
       // Name (gold=4 or red=1 if Hardcore), localized Level & Class (#707),
       // EXPANSION CHARACTER (#22731, green=2), LADDER CHARACTER (#10927, gold=4), dynamic Expiration (#698)
+      const rawTitle = getRosterCharacterTitle(char)
+      const titleText = rawTitle.trim()
       const textX = slotX + 78
-      let lineY = slotY + 6
+      const lineStep = titleText.length > 0 ? 14 : 16
+      let lineY = titleText.length > 0 ? slotY + 4 : slotY + 6
+      if (titleText.length > 0) {
+        this.drawBitmapText(titleText, textX, lineY, {
+          font: 'font16',
+          color: char.isHardcore ? 1 : 4,
+          align: 'left',
+        })
+        lineY += lineStep
+      }
       this.drawBitmapText(char.name, textX, lineY, {
         font: 'font16',
         color: char.isHardcore ? 1 : 4,
         align: 'left',
       })
-      lineY += 16
+      lineY += lineStep
       const levelAndClassText = formatCharacterLevelAndClass(char.level, char.classId, sRecord)
       this.drawBitmapText(levelAndClassText, textX, lineY, {
         font: 'font16',
         color: 0,
         align: 'left',
       })
-      lineY += 16
+      lineY += lineStep
       if (char.isExpansion) {
         this.drawBitmapText(this.requireStr(22731, 'expansionCharacter'), textX, lineY, {
           font: 'font16',
           color: 2, // Bright Green (0x6fa4b241: push 2)
           align: 'left',
         })
-        lineY += 16
+        lineY += lineStep
       }
       if (char.isLadder) {
         this.drawBitmapText(this.requireStr(10927, 'ladderCharacter'), textX, lineY, {
@@ -2715,7 +2729,7 @@ export class FrontendRenderer {
           color: 4, // Gold (0x6fa4b269: push 4)
           align: 'left',
         })
-        lineY += 16
+        lineY += lineStep
       }
 
       const expDays = char.expirationDays ?? computeCharacterExpirationDays(char.expiresAt)
@@ -3016,12 +3030,13 @@ export class FrontendRenderer {
       )
     }
 
-    // Bottom Channel Character Lineup Bar (`y = 500..585` per D2Multi.dll 0x6f9ea0c0 / 0x6f9d2940, #696 & #707)
+    // Bottom Channel Character Lineup Bar (`y = 500..585` per D2Multi.dll 0x6f9ea0c0 / 0x6f9d2940 / 0x6f9db42a, #696 & #707)
     const selectedChar = this.state.roster[this.state.selectedSlotIndex]
     if (selectedChar) {
       const avatarFrame = this.state.avatarAnims[selectedChar.heroToken]?.frameIndex ?? 0
       this.drawCharacterAvatar(selectedChar, avatarFrame, 64, 578)
-      this.drawBitmapText(selectedChar.name, 134, 528, {
+      const rawTitle = getRosterCharacterTitle(selectedChar)
+      this.drawBitmapText(`${rawTitle}${selectedChar.name}`, 134, 528, {
         font: 'font16',
         color: selectedChar.isHardcore ? 1 : 4,
         align: 'left',

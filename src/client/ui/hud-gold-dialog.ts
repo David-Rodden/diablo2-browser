@@ -62,7 +62,7 @@ export function resolveHudPlayerLevel(hud: HudManager): number {
 
 /**
  * Maximum gold transferable in `mode` (`D2Client.dll` gold keypad dialog):
- * - Deposit (`3`): `min(inventory.gold, max(0, getStashGoldLimit(clvl) - stashGold))`
+ * - Deposit (`3`): `min(inventory.gold, max(0, 2,500,000 - stashGold))` (`D2Common.dll #11060`, flat)
  * - Withdraw (`4`): `min(stashGold, max(0, getInventoryGoldLimit(clvl) - inventory.gold))`
  * - Drop (`0`) / Trade (`2`): `inventory.gold`
  */

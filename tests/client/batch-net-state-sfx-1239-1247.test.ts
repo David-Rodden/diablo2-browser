@@ -92,7 +92,7 @@ describe('Batch NET-1 / NET-2 / STATE-1 / STATE-2 / SFX-8 / SFX-9 / SFX-10 (#123
       dv.setUint32(11, 5012, true)
       dv.setUint32(15, 5030, true)
       dv.setUint32(19, 5012, true)
-      dv.setUint16(23, 16, true) // velocity
+      dv.setUint16(23, 16, true) // remaining frames (missile data +0x10, #1655)
       pkt73[25] = 0 // ownerType = player
       dv.setUint32(26, 1, true) // ownerId = 1
       pkt73[30] = 7 // level
@@ -108,8 +108,8 @@ describe('Batch NET-1 / NET-2 / STATE-1 / STATE-2 / SFX-8 / SFX-9 / SFX-10 (#123
         owner: { unitType: 0, id: 1 },
         ownerType: 0,
         ownerId: 1,
-        velocity: 16,
-        range: 40,
+        remainingFrames: 16,
+        pierceIdx: 40,
       })
       expect(decodeD2gsS2cPacket(pkt73).type).toBe('CreateMissile')
 

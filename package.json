@@ -36,6 +36,7 @@
     "d2:replay": "tsx tools/netproto-replay.ts",
     "pack": "tsx src/baker/cli.ts acts",
     "pack:manifest": "tsx src/baker/io/asset-manifest.ts",
+    "pack:compress": "tsx src/baker/io/sidecar-compression.ts",
     "pack:tiles": "tsx src/baker/packers/pack-tiles.ts",
     "d2s:unlock": "tsx tools/d2s-unlock.ts",
     "verify:play": "tsx tools/verify-play.ts",

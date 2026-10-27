@@ -3363,7 +3363,7 @@ export function executeSkill(
       if (skillId === 223) {
         buffEffect.werewolfLifePct = 25 // 1.13c Werewolf par3 = 25% Max HP
         buffEffect.staminaPct = 25 // par4 = 25% Max Stamina
-        buffEffect.attackSpeedPct = Math.floor((110 * skillLevel) / (skillLevel + 6) * (80 - 10) / 100) + 10 // dm(10, 80, slvl)
+        buffEffect.attackSpeedPct = computeDiminishingReturns(10, 80, skillLevel) // aurastatcalc2 = dm34 (10, 80)
         buffEffect.toHitPct = 50 + 15 * (skillLevel - 1)
       }
       return {
@@ -3693,7 +3693,7 @@ export function calculateBlessedHammerDamage(
 
 /**
  * 9. Conversion (116)
- * - Chance %: dm34 -> computeDiminishingReturns(0, 50, slvl) = floor((110 * slvl * 50) / (100 * (slvl + 6)))
+ * - Chance %: dm34 -> computeDiminishingReturns(0, 50, slvl) (D2Common 0x6FD9DC30)
  * - Duration: 400 frames (16.0s)
  */
 export function calculateConversionStats(slvl: number): {
@@ -3714,7 +3714,7 @@ export function calculateConversionStats(slvl: number): {
  * 10. Holy Shield (117)
  * - Duration: 750 + (slvl - 1) * 625 frames (30s + 25s/lvl)
  * - Defense %: 25 + (slvl - 1) * 15% + Defiance (+15%/blvl)
- * - Blocking %: 10 + Math.floor((slvl * 40) / (slvl + 10))% (dm56)
+ * - Blocking %: dm56 (Param5=10, Param6=40) via D2Common 0x6FD9DC30
  * - Flat Smite Damage: 3 + (slvl - 1) * 4 min / 6 + (slvl - 1) * 4 max (per 1.13c compute5BandScaling on Holy Shield min/maxDam)
  */
 export function calculateHolyShieldStats(
@@ -3877,16 +3877,6 @@ function computeBand5(
   return total
 }
 
-/**
- * Compute `D2Common` diminishing-returns formula `dm(a, b, lvl)`:
- * `floor((110 * lvl * (b - a)) / (100 * (lvl + 6))) + a`
- */
-function computeDiminishingReturns(a: number, b: number, lvl: number): number {
-  if (lvl <= 0) return a
-  const num = 110 * lvl * (b - a)
-  const den = 100 * (lvl + 6)
-  return Math.trunc(num / den) + a
-}
 
 
 // ============================================================================
@@ -3945,7 +3935,7 @@ import { isPetTypeUnsummonable113c } from "../../common/units/pet-type-table.ts"
 import { isMetalItemCode113c } from "../../common/items/metal-items-113c.ts"
 import type { TownPortalSlot } from "../../common/world/portal.ts"
 import { calculateConcentrationStats } from "../../common/skills/paladin-auras.ts"
-import { compute5BandScaling } from "../../common/data/calc-ast.ts"
+import { compute5BandScaling, computeDiminishingReturns } from "../../common/data/calc-ast.ts"
 import { SKILLS_BY_ID } from "../../common/data/skills-catalog.ts"
 import { getTblLang } from "../../common/i18n/lang.ts"
 import { getInventoryGoldLimit } from "../../common/items/inventory-model.ts"

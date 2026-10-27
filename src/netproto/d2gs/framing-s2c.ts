@@ -23,6 +23,20 @@ export function resolveS2cPacketSize(buf: Uint8Array, offset = 0): number | null
   return res.size
 }
 
+/**
+ * Byte length of an already-framed single S->C packet: same formulas as `resolveS2cPacketSize` but without
+ * D2NET_10033's stream minimums (0x16: 13, 0x5B: 34, 0x94: 9, 0xB3: 8), which only decide how long the stream
+ * framer waits for more data (#1658). Returns `null` if the packet is truncated.
+ */
+export function resolveFramedS2cPacketSize(pkt: Uint8Array): number | null {
+  const res = resolveS2cSizeStruct(pkt, 0, pkt.length, false)
+  if (res.status === 'incomplete') return null
+  if (res.status === 'invalid') {
+    throw new ProtocolError(`Invalid D2GS S->C packet: ${res.reason}`, res.opcode, 0)
+  }
+  return res.size
+}
+
 export interface D2gsFramedS2cPacket {
   readonly packetId: number
   readonly bytes: Uint8Array

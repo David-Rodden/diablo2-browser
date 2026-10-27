@@ -19,6 +19,8 @@ import {
 } from '../../common/units/pet-type-table.ts'
 import {
   type UiInventoryItem,
+  EQUIP_SLOTS_KEYS,
+  hasAnyOwnKey,
   resolveItemSpriteRect,
   isUiItemEthereal,
 } from './inventory.ts'
@@ -124,7 +126,10 @@ export function groundLabelHexToD2Color(hex: string | undefined): D2ColorCode {
 export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
   if (hud.tradeHallMode) return false
   const internal = hud as unknown as HudRenderInternal
-  if (hud.leftPanel !== 'none' || hud.rightPanel !== 'none') return false
+  if (hud.leftPanel !== 'none' && hud.leftPanel !== 'char') return false
+  if (hud.rightPanel !== 'none' && hud.rightPanel !== 'inv' && hud.rightPanel !== 'skill') return false
+  if (hud.worldPanels.npcMenu !== null || hud.worldPanels.npcSpeech !== null || hud.goldDialog !== null) return false
+  if (hud.inventory.isIdentifyMode() || hud.pendingIdentifyScrollId !== null) return false
   if (hud.worldPanels.escapeMenuOpen) return false
   if (hud.chatInputOpen || hud.chatOverlayMessages.length > 0 || hud.overheadSpeechBubbles.length > 0) return false
   if (hud.showGroundLabels && hud.groundItemLabelBoxes.length > 0) return false
@@ -133,11 +138,56 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
   const entryLevelId = hud.resolveLevelEntryLevelId()
   if (entryLevelId !== null && entryLevelId > 0 && entryLevelId !== hud.levelEntryTitle.lastLevel) return false
   const cursorInfo = hud.cursor.getCurrentFrame(nowMs)
+  const needsMouseCoordsInSignature =
+    internal.cursorCanvas === null ||
+    (hud.showXpBar && hud.leftPanel === 'none' && hud.rightPanel === 'none' && hud.mouseY <= 36)
   const signature = [
     internal.hudCanvas.width,
     internal.hudCanvas.height,
-    hud.mouseX,
-    hud.mouseY,
+    needsMouseCoordsInSignature ? `${hud.mouseX},${hud.mouseY}` : '',
+    hud.leftPanel,
+    hud.rightPanel,
+    hud.lang,
+    hud.isRunning ? 1 : 0,
+    hud.leftPanel === 'char'
+      ? `${hud.charSheet.attrs.level}:${hud.charSheet.attrs.statPoints}:${hud.charSheet.attrs.str}:${hud.charSheet.attrs.dex}:${hud.charSheet.attrs.vit}:${hud.charSheet.attrs.ene}:${hud.charSheet.hoveredStat ?? ''}:${hud.charSheet.hoveredDamageHand ?? ''}:${hud.charSheet.hoveredElement ?? ''}:${hud.charSheet.closeButton.frame()}:${hud.charSheet.pressedStatKey ?? ''}:${hud.charSheet.advancedStatsOpen ? 1 : 0}`
+      : '',
+    hud.rightPanel === 'inv'
+      ? `${hud.inventory.weaponSwapSet}:${Math.floor(hud.inventory.gold)}:${hud.inventory.closeButton.frame()}:${hud.inventory.hoveredButton ?? ''}:${hud.inventory.hoveredItem ? `${hud.inventory.hoveredItem.item.id}@${hud.inventory.hoveredItem.x},${hud.inventory.hoveredItem.y}` : ''}:${hud.inventory.cursorItem?.id ?? ''}:${hud.inventory.playerContextSeq}:${hud.inventory.gridItems.length}:${EQUIP_SLOTS_KEYS.map((k) => hud.inventory.equipped[k]?.id ?? '').join(',')}`
+      : '',
+    hud.rightPanel === 'skill'
+      ? `${hud.skillTree.activeTab}:${hud.skillTree.unspentSkillPoints}:${hud.skillTree.hoveredSkill?.skillId ?? -1}:${hud.skillTree.closeButton.frame()}`
+      : '',
+    hud.controlBar.hoveredElement ?? '',
+    hud.controlBar.miniPanelOpen ? 1 : 0,
+    hud.controlBar.pressedRun ? 1 : 0,
+    hud.controlBar.pressedMenuToggle ? 1 : 0,
+    hud.controlBar.pressedAction ?? '',
+    hud.controlBar.pressedPlus ?? '',
+    hud.globes.lifeHovered ? 1 : 0,
+    hud.globes.manaHovered ? 1 : 0,
+    hud.globes.lifeTextPinned ? 1 : 0,
+    hud.globes.manaTextPinned ? 1 : 0,
+    hud.belt.isExpanded ? 1 : 0,
+    hud.belt.hoveredSlot ? `${hud.belt.hoveredSlot.row},${hud.belt.hoveredSlot.col}` : '',
+    hud.belt.countTotalPotions(),
+    hud.hotkeys.leftSkillId,
+    hud.hotkeys.rightSkillId,
+    hud.hotkeys.openPopup ?? '',
+    hud.hotkeys.hoveredSlot ?? '',
+    hud.hotkeys.hoverSkillId ?? -1,
+    hud.hotkeys.hoverSpeedbarSkillId ?? -1,
+    hud.hotkeys.hoveredPopupSkill ? `${hud.hotkeys.hoveredPopupSkill.side}:${hud.hotkeys.hoveredPopupSkill.skillId}` : '',
+    hud.hoveredNpcLabel
+      ? `${hud.hoveredNpcLabel.text}@${Math.round(hud.hoveredNpcLabel.screenX)},${Math.round(hud.hoveredNpcLabel.screenY)}`
+      : '',
+    hud.targetMonster
+      ? `${hud.targetMonster.unitId ?? ''}:${hud.targetMonster.name}:${hud.targetMonster.hp}:${hud.targetMonster.maxHp}:${hud.targetMonster.rank ?? ''}`
+      : '',
+    hud.groundItemLabelBoxes.length > 0
+      ? hud.groundItemLabelBoxes.map((b) => `${b.id}:${b.isHovered ? 1 : 0}`).join(',')
+      : '',
+    hud.questAlert?.alertPressed === true && hud.hitTestQuestAlert(hud.mouseX, hud.mouseY) ? 1 : 0,
     hud.autoCombatBadge?.on ?? -1,
     hud.potionShortage ?? '',
     // On the dedicated cursor layer the animation cell no longer touches the
@@ -289,6 +339,18 @@ export function renderHudFrame(
     internal.hudCanvas.height = targetH
   }
 
+  // Enable pointer events on HUD canvas only when hovering HUD/Panels, holding cursorItem, or in active trade/identify cursor mode.
+  // Evaluated before `hudRepaintUnchanged` so pointerEvents stays responsive when cursor moves over/off HUD while pixels are unchanged.
+  const intercept =
+    hud.isPointInterceptedByHud(hud.mouseX, hud.mouseY) ||
+    hud.inventory.cursorItem !== null ||
+    hud.worldPanels.vendorTradeState !== 'idle' ||
+    hud.inventory.isIdentifyMode() ||
+    hud.pendingIdentifyScrollId !== null
+  if (internal.hudCanvas.style) {
+    internal.hudCanvas.style.pointerEvents = intercept ? 'auto' : 'none'
+  }
+
   // #940 R2 conservative repaint skip: when nothing any drawer reads has
   // changed since the last full paint (mouse, values, container revision,
   // cursor animation cell) and no timed overlay is active, the canvas
@@ -308,17 +370,6 @@ export function renderHudFrame(
   const panelOffsetY = docking.panelOffsetY ?? profile.panelOffsetY
   const barOffsetX = docking.barOffsetX ?? profile.barOffsetX
   const barOffsetY = docking.barOffsetY ?? profile.barOffsetY
-
-  // Enable pointer events on HUD canvas only when hovering HUD/Panels, holding cursorItem, or in active trade/identify cursor mode
-  const intercept =
-    hud.isPointInterceptedByHud(hud.mouseX, hud.mouseY) ||
-    hud.inventory.cursorItem !== null ||
-    hud.worldPanels.vendorTradeState !== 'idle' ||
-    hud.inventory.isIdentifyMode() ||
-    hud.pendingIdentifyScrollId !== null
-  if (internal.hudCanvas.style) {
-    internal.hudCanvas.style.pointerEvents = intercept ? 'auto' : 'none'
-  }
 
   const rawCtx = hud.ctx ?? internal.hudCanvas.getContext('2d')
   if (!rawCtx) {
@@ -1750,12 +1801,14 @@ export function renderCursor(
   const internal = hud as unknown as HudRenderInternal
   hud.syncCursorMode(nowMs)
   const cursorAtlas = internal.images.get('cursorAtlas') ?? internal.images.get('cursorHand') ?? null
-  const effectiveRects =
-    Object.keys(internal.itemRects).length > 0 ? internal.itemRects : BAKED_UI_MANIFEST.itemRects
   const heldItem = hud.inventory.cursorItem
     ? {
         atlas: internal.images.get('itemsAtlas') ?? null,
-        rect: resolveItemSpriteRect(hud.inventory.cursorItem, effectiveRects) ?? null,
+        rect:
+          resolveItemSpriteRect(
+            hud.inventory.cursorItem,
+            hasAnyOwnKey(internal.itemRects) ? internal.itemRects : BAKED_UI_MANIFEST.itemRects,
+          ) ?? null,
         ethereal: isUiItemEthereal(hud.inventory.cursorItem),
       }
     : null

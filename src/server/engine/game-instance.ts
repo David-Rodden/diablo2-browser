@@ -20,7 +20,7 @@ import {
   areBeltPotionsCompatible,
 } from '../../common/items/belt-model.ts'
 import { getEmbeddedDropTables } from '../../common/items/embedded-drop-tables.ts'
-import { resolveTownPortalSubTile } from '../../common/world/portal.ts'
+import { ACT_SPAWN_TILE_ENTRY, ACT_SPAWN_TILE_TOWN_PORTAL } from '../../common/world/act-spawn-location.ts'
 import type { Item } from '../../common/items/items.ts'
 import {
   generateGambleInventory,
@@ -38,7 +38,9 @@ import { MONMODE_BLOCK, MONMODE_KNOCKBACK, MONMODE_RUN, MONMODE_WALK } from '../
 import { getMonsterModeBaseFrameCount113c } from '../../common/path/monster-anim-metrics-113c.ts'
 import { getMonsterModeBaseAnimSpeed256, getMonsterPathRecord } from '../../common/path/units.ts'
 import {
+  computeGetHitEffRate113c,
   computeOneShotTicks,
+  computeStepSpeed256,
   resolveArmorBlock113c,
   resolveArmorSpeed113c,
   resolveCharacterAnimSpeedParams,
@@ -46,7 +48,6 @@ import {
 } from '../../common/units/char-anim-speed.ts'
 import {
   findPathWorld,
-  TOWN_ASTAR_OBSTACLE_DISTANCE_SQ,
   type SubTilePoint,
 } from '../../common/path/pathfind.ts'
 import { D2Common_10399_AtSubtiles } from '../../common/path/step.ts'
@@ -275,7 +276,7 @@ import { resolveWeaponBase113c } from '../../common/units/char-anim-speed.ts'
 import type { ItemStat } from '../../netproto/index.ts'
 import { AuraScanner, type CorpseContext } from './aura-scanner.ts'
 import { isWithinAuraRange } from '../../common/skills/aura-filter.ts'
-import { compute3BandDuration, evaluateCalc } from '../../common/data/calc-ast.ts'
+import { compute3BandDuration, computeDiminishingReturns, evaluateCalc } from '../../common/data/calc-ast.ts'
 import { computeCorpseExplosion113c } from './combat-pipeline.ts'
 import {
   difficultyDeathExpPenalty,
@@ -427,10 +428,18 @@ export interface ConnectPlayerSpec {
   readonly experience?: number | undefined
   readonly hp?: number | undefined
   readonly maxHp?: number | undefined
+  readonly mana?: number | undefined
+  readonly maxMana?: number | undefined
+  readonly stamina?: number | undefined
+  readonly maxStamina?: number | undefined
   readonly strength?: number | undefined
   readonly dexterity?: number | undefined
   readonly vitality?: number | undefined
   readonly energy?: number | undefined
+  readonly statPts?: number | undefined
+  readonly newSkills?: number | undefined
+  readonly gold?: number | undefined
+  readonly goldBank?: number | undefined
   readonly ar?: number | undefined
   readonly tohit?: number | undefined
   readonly d2s?: Uint8Array | undefined
@@ -850,18 +859,18 @@ const NPC_INTERACT_DISTANCE_SUBTILES = 2
 /** Player unit size used by `D2Common #10594` / `#10407` (constant 2 in both binaries). */
 const PLAYER_SIZE_X_113C = 2
 
-/** Canonical 1.13c outdoor continuous seam-adjacent level pairs from Levels.txt. */
+/** Canonical 1.13c continuous seam-adjacent level pairs (`Levels.txt` `Vis/Warp` with `Warp = -1` + outdoor act link tables, #1697). */
 const CANONICAL_OUTDOOR_SEAM_ADJACENT_PAIRS_113C = new Set<string>([
   // Act 1
-  '1:2', '2:3', '3:4', '3:6', '4:5', '5:7', '7:8', '8:26', '26:27',
+  '1:2', '2:3', '3:4', '3:6', '4:5', '5:7', '7:8', '7:26', '8:26', '26:27', '27:28', '32:33',
   // Act 2
   '40:41', '41:42', '42:43', '43:44', '44:45',
   // Act 3
   '75:76', '76:77', '76:78', '77:78', '78:79', '79:80', '80:81', '81:82', '82:83',
   // Act 4
-  '103:104', '104:105', '105:106',
+  '103:104', '104:105', '105:106', '107:108',
   // Act 5
-  '109:110', '110:111', '111:112', '118:120',
+  '109:110', '110:111', '111:112',
 ])
 
 function areaToAct(areaId: number): 0 | 1 | 2 | 3 | 4 {
@@ -1188,7 +1197,6 @@ interface PlayerMotionState {
  * local A* detour radius (`MAX_ASTAR_OBSTACLE_DISTANCE_SQ` = 18²) plus the size-2 `+` footprint.
  */
 const PLAYER_PATH_WINDOW_MARGIN = 20
-const PLAYER_TOWN_PATH_WINDOW_MARGIN = 36
 
 /**
  * D2Game `D2GAME_PACKETCALLBACK_Rcv0x5F_UpdatePlayerPos` (0x6FC88530, D2MOO `PlrMsg.cpp`)
@@ -1463,6 +1471,8 @@ interface InternalMercenaryRecord {
   expPerLvl: number
   /** Mercenary gear (helmet / armor / weapon) used for kill MF/GF aggregation. */
   equipment: ServerItemEntry[]
+  /** 1/256 fixed-point HP regeneration carry (`MERCS_SetStats` `0x6FC68EE6..0x6FC68F0D`, #1671). */
+  regenCarry256?: number | undefined
 }
 
 interface InternalObjectRecord {
@@ -1503,6 +1513,14 @@ interface InternalWarpTileRecord {
 }
 
 /** An area brought online through the area bootstrap resolver. */
+/**
+ * Spawn of the synthetic legacy test grid used when the GameInstance has no area bootstrap resolver
+ * (unit tests without DRLG geometry). Not a 1.13c position: real games always resolve areas.
+ */
+const LEGACY_TEST_GRID_SPAWN = 128
+/** `UNITS_GetUnitSizeX` (`#10589` `0x6FD80F80`) of a player. */
+const PLAYER_UNIT_SIZE = 2
+
 interface LoadedAreaRecord {
   readonly areaId: number
   readonly spawnX: number
@@ -1511,6 +1529,7 @@ interface LoadedAreaRecord {
   readonly roomRects: LocalAreaBootstrap['roomRects']
   readonly adjacentAreaIds: readonly number[]
   readonly isWalkable: LocalAreaBootstrap['isWalkable']
+  readonly findActSpawnLocation?: LocalAreaBootstrap['findActSpawnLocation']
 }
 
 /** How a player enters an area (decides the landing spot, D2Game `LEVEL_WarpUnit` callers). */
@@ -1594,6 +1613,7 @@ interface PlayerSkillCast {
 interface PersistentCombatUnit {
   readonly statList: UnitStatList
   readonly stateBus: StateBus
+  readonly itemStatList?: UnitStatList | undefined
 }
 
 /** The selected aura of a player: its `AuraScanner` and evaluated pulse radius in sub-tiles. */
@@ -1778,7 +1798,10 @@ function collectItemStats(item: ServerItemEntry): ItemStat[] {
 function collectEquippedItemStats(items: readonly ServerItemEntry[]): ItemStat[] {
   const out: ItemStat[] = []
   for (const item of items) {
-    if (item.location === 'equipped') out.push(...collectItemStats(item))
+    // 1.13c: inactive weapon-swap slots (bodyLoc 11 = rarm2, 12 = larm2) never contribute stats (#1629).
+    if (item.location === 'equipped' && item.bodyLoc !== 11 && item.bodyLoc !== 12) {
+      out.push(...collectItemStats(item))
+    }
   }
   return out
 }
@@ -2136,6 +2159,9 @@ export class GameInstance {
       roomRects: bootstrap.roomRects,
       adjacentAreaIds: bootstrap.adjacentAreaIds ?? [],
       isWalkable: bootstrap.isWalkable,
+      ...(bootstrap.findActSpawnLocation !== undefined
+        ? { findActSpawnLocation: bootstrap.findActSpawnLocation }
+        : {}),
     }
     this.loadedAreas.set(areaId, record)
     for (const obj of bootstrap.objects) {
@@ -2424,6 +2450,11 @@ export class GameInstance {
       }
     } else if (arrival.kind === 'townPortal' && arrival.x !== undefined && arrival.y !== undefined) {
       anchor = { x: arrival.x, y: arrival.y }
+    } else if (area.findActSpawnLocation !== undefined) {
+      // #1693: game join, act change and respawn call D2Common #10816 with nTileIndex 0 and the player's
+      // unit size 2 (D2Game 0x6FC6B571 / 0x6FC6B6FE / 0x6FC8BC22 / 0x6FC8D362). Every call rolls the
+      // level seed, and the result already passed COLLISION_GetFreeCoordinates (0x1C09): no re-snap.
+      return area.findActSpawnLocation(ACT_SPAWN_TILE_ENTRY, PLAYER_UNIT_SIZE)
     } else {
       anchor = { x: area.spawnX, y: area.spawnY }
     }
@@ -2654,45 +2685,82 @@ export class GameInstance {
         throw new Error(`GameInstance.connectPlayer: area ${areaId} has no standable entry floor`)
       }
     }
-    const spawnX = spec.x ?? entrySpawn?.x ?? 128 + (this.players.size % 4) * 2
-    const spawnY = spec.y ?? entrySpawn?.y ?? 128 + Math.floor(this.players.size / 4) * 2
+    const spawnX = spec.x ?? entrySpawn?.x ?? LEGACY_TEST_GRID_SPAWN + (this.players.size % 4) * 2
+    const spawnY = spec.y ?? entrySpawn?.y ?? LEGACY_TEST_GRID_SPAWN + Math.floor(this.players.size / 4) * 2
 
     const attrs = parsedD2s?.attributes
     const strength = spec.strength ?? attrs?.strength ?? baseStats.baseAttributes.strength
     const dexterity = spec.dexterity ?? attrs?.dexterity ?? baseStats.baseAttributes.dexterity
     const vitality = spec.vitality ?? attrs?.vitality ?? baseStats.baseAttributes.vitality
     const energy = spec.energy ?? attrs?.energy ?? baseStats.baseAttributes.energy
-    const statPts = attrs?.statPts ?? 0
-    const newSkills = attrs?.newSkills ?? 0
+    const statPts =
+      spec.statPts ??
+      attrs?.statPts ??
+      (parsedD2s === undefined ? Math.max(0, (level - 1) * 5) : 0)
+    const newSkills =
+      spec.newSkills ??
+      attrs?.newSkills ??
+      (parsedD2s === undefined ? Math.max(0, level - 1) : 0)
+
+    const lvlGain = Math.max(0, level - 1)
+    const vitAdded = Math.max(0, vitality - baseStats.baseAttributes.vitality)
+    const eneAdded = Math.max(0, energy - baseStats.baseAttributes.energy)
+    const defaultMaxHpFixed =
+      baseStats.baseVitals.life * FIXED_ONE +
+      Math.round(
+        (lvlGain * baseStats.perLevel.life + vitAdded * baseStats.perStatPoint.lifePerVitality) *
+          FIXED_ONE,
+      )
+    const defaultMaxManaFixed =
+      baseStats.baseVitals.mana * FIXED_ONE +
+      Math.round(
+        (lvlGain * baseStats.perLevel.mana + eneAdded * baseStats.perStatPoint.manaPerEnergy) *
+          FIXED_ONE,
+      )
+    const defaultMaxStaminaFixed =
+      baseStats.baseVitals.stamina * FIXED_ONE +
+      Math.round(
+        (lvlGain * baseStats.perLevel.stamina +
+          vitAdded * baseStats.perStatPoint.staminaPerVitality) *
+          FIXED_ONE,
+      )
 
     const maxHpFixed =
       spec.maxHp !== undefined && spec.maxHp > 0
         ? spec.maxHp * FIXED_ONE
         : attrs && attrs.maxHpFixed > 0
           ? attrs.maxHpFixed
-          : baseStats.baseVitals.life * FIXED_ONE
+          : defaultMaxHpFixed
     const hpFixed =
       spec.hp !== undefined && spec.hp > 0
         ? Math.min(maxHpFixed, spec.hp * FIXED_ONE)
         : attrs && attrs.hitpointsFixed > 0
-          ? Math.min(maxHpFixed, attrs.hitpointsFixed)
+          ? attrs.hitpointsFixed
           : maxHpFixed
     const maxManaFixed =
-      attrs && attrs.maxManaFixed > 0
-        ? attrs.maxManaFixed
-        : baseStats.baseVitals.mana * FIXED_ONE
+      spec.maxMana !== undefined && spec.maxMana >= 0
+        ? spec.maxMana * FIXED_ONE
+        : attrs && attrs.maxManaFixed > 0
+          ? attrs.maxManaFixed
+          : defaultMaxManaFixed
     const manaFixed =
-      attrs !== undefined
-        ? Math.min(maxManaFixed, attrs.manaFixed)
-        : maxManaFixed
+      spec.mana !== undefined && spec.mana >= 0
+        ? Math.min(maxManaFixed, spec.mana * FIXED_ONE)
+        : attrs !== undefined
+          ? attrs.manaFixed
+          : maxManaFixed
     const maxStaminaFixed =
-      attrs && attrs.maxStaminaFixed > 0
-        ? attrs.maxStaminaFixed
-        : baseStats.baseVitals.stamina * FIXED_ONE
+      spec.maxStamina !== undefined && spec.maxStamina > 0
+        ? spec.maxStamina * FIXED_ONE
+        : attrs && attrs.maxStaminaFixed > 0
+          ? attrs.maxStaminaFixed
+          : defaultMaxStaminaFixed
     const staminaFixed =
-      attrs && attrs.staminaFixed > 0
-        ? Math.min(maxStaminaFixed, attrs.staminaFixed)
-        : maxStaminaFixed
+      spec.stamina !== undefined && spec.stamina >= 0
+        ? Math.min(maxStaminaFixed, spec.stamina * FIXED_ONE)
+        : attrs && attrs.staminaFixed > 0
+          ? attrs.staminaFixed
+          : maxStaminaFixed
 
     const maxHp = Math.max(1, Math.floor(maxHpFixed / FIXED_ONE))
     const hp = Math.max(1, Math.min(maxHp, Math.floor(hpFixed / FIXED_ONE)))
@@ -2708,8 +2776,9 @@ export class GameInstance {
       spec.experience !== undefined
         ? Math.max(0, Math.trunc(spec.experience))
         : (attrs?.experience ?? experienceForLevel113c(level))
-    const gold = attrs?.gold ?? 0
-    const goldBank = attrs?.goldBank ?? 0
+    const gold = spec.gold !== undefined ? Math.max(0, Math.trunc(spec.gold)) : (attrs?.gold ?? 0)
+    const goldBank =
+      spec.goldBank !== undefined ? Math.max(0, Math.trunc(spec.goldBank)) : (attrs?.goldBank ?? 0)
 
     const skills = new Map<number, number>()
     const skillOffset = CLASS_SKILL_OFFSET[classId] ?? 6
@@ -2872,6 +2941,17 @@ export class GameInstance {
     }
 
     this.players.set(unitId, record)
+    this.refreshPlayerAccruedMaxPools(record, {
+      fillHpIfAtBaseMax:
+        spec.hp === undefined &&
+        (attrs === undefined || attrs.hitpointsFixed >= maxHpFixed),
+      fillManaIfAtBaseMax:
+        spec.mana === undefined &&
+        (attrs === undefined || attrs.manaFixed >= maxManaFixed),
+      fillStaminaIfAtBaseMax:
+        spec.stamina === undefined &&
+        (attrs === undefined || attrs.staminaFixed >= maxStaminaFixed),
+    })
     this.partyManager.addPlayer(unitId, charName, classId, level, areaId)
     this.outbox.set(unitId, [])
     this.rescaleActiveMonsters()
@@ -3829,13 +3909,9 @@ export class GameInstance {
     return firstWalkable ?? { x: ox, y: oy }
   }
 
-  /** Full item stat (statId) a player carries on equipped items, e.g. 80 item_magicbonus / 79 item_goldbonus. */
+  /** Full item stat (statId) a player carries on active equipped items, sockets, charms, set bonuses, and per-level stats (#1629). */
   private sumEquippedItemStat(player: InternalPlayerRecord, statId: number): number {
-    let total = 0
-    for (const item of player.items) {
-      if (item.location === 'equipped') total += item.stats.get(statId) ?? 0
-    }
-    return total
+    return this.sumPlayerItemStat(player, statId)
   }
 
   /**
@@ -3897,6 +3973,7 @@ export class GameInstance {
     mephisto: 'a3q6',
     diablo: 'a4q3',
     baal: 'a5q6',
+    baalcrab: 'a5q6',
   }
 
   /** Distinct worn SetItems per set (duplicate rings count once). */
@@ -3915,14 +3992,69 @@ export class GameInstance {
     return counts
   }
 
-  /** Resolve set-bonus MF/GF across active worn equipment (`ITEMS_UpdateSetBonuses` 0x6FD96A40). */
+  /**
+   * 1.13c `ItemStatCost.txt` per-level stat mapping (`op 2/3/4/5/6/7`, `D2Common.dll` `0x6FD89530`):
+   * - `opParam = 1` (`>> 1`, i.e. `/ 2`): `224 item_tohit_perlevel`, `225 item_tohitpercent_perlevel`,
+   *   `245 item_tohit_demon_perlevel`, `246 item_tohit_undead_perlevel` (#1630).
+   * - `opParam = 3` (`>> 3`, i.e. `/ 8`): all other per-level stats (`214..223`, `229..244`, `247..250`).
+   */
+  private static readonly PER_LEVEL_STAT_MAP_113C: Readonly<
+    Record<number, { readonly perLevelStatId: number; readonly shift: number }>
+  > = {
+    0: { perLevelStatId: 220, shift: 3 },
+    1: { perLevelStatId: 222, shift: 3 },
+    2: { perLevelStatId: 221, shift: 3 },
+    3: { perLevelStatId: 223, shift: 3 },
+    7: { perLevelStatId: 216, shift: 3 },
+    9: { perLevelStatId: 217, shift: 3 },
+    11: { perLevelStatId: 242, shift: 3 },
+    16: { perLevelStatId: 215, shift: 3 },
+    17: { perLevelStatId: 219, shift: 3 },
+    19: { perLevelStatId: 224, shift: 1 },
+    22: { perLevelStatId: 218, shift: 3 },
+    31: { perLevelStatId: 214, shift: 3 },
+    39: { perLevelStatId: 229, shift: 3 },
+    41: { perLevelStatId: 230, shift: 3 },
+    43: { perLevelStatId: 231, shift: 3 },
+    45: { perLevelStatId: 232, shift: 3 },
+    78: { perLevelStatId: 238, shift: 3 },
+    79: { perLevelStatId: 239, shift: 3 },
+    80: { perLevelStatId: 240, shift: 3 },
+    119: { perLevelStatId: 225, shift: 1 },
+    121: { perLevelStatId: 243, shift: 3 },
+    122: { perLevelStatId: 244, shift: 3 },
+    123: { perLevelStatId: 245, shift: 1 },
+    124: { perLevelStatId: 246, shift: 1 },
+    135: { perLevelStatId: 248, shift: 3 },
+    136: { perLevelStatId: 247, shift: 3 },
+    141: { perLevelStatId: 250, shift: 3 },
+    143: { perLevelStatId: 235, shift: 3 },
+    145: { perLevelStatId: 236, shift: 3 },
+    147: { perLevelStatId: 237, shift: 3 },
+    149: { perLevelStatId: 234, shift: 3 },
+  }
+
+  /** Resolve set-bonus stats across active worn equipment (`ITEMS_UpdateSetBonuses` 0x6FD96A40, #1629, #1630). */
   private sumEquippedSetBonusStat(
     worn: readonly ServerItemEntry[],
     statId: number,
     level: number,
   ): number {
-    if (statId !== 80 && statId !== 79) return 0
-    const perLevelStatId = statId === 80 ? 240 : statId === 79 ? 239 : undefined
+    if (
+      worn.length === 0 ||
+      !worn.some(
+        (it) =>
+          it.quality === 5 ||
+          (it.rawItemData?.setItemId !== undefined &&
+            it.rawItemData.setItemId >= 0 &&
+            it.rawItemData.setItemId !== 0xfff),
+      )
+    ) {
+      return 0
+    }
+    const perLvlRule = GameInstance.PER_LEVEL_STAT_MAP_113C[statId]
+    const perLevelStatId = perLvlRule?.perLevelStatId
+    const perLevelShift = perLvlRule?.shift ?? 3
     const tables = getEmbeddedDropTables()
     if (!tables.properties || !tables.itemStatCost) return 0
     // Worn piece count uses distinct SetItems.txt ids; duplicate set rings count once toward set count.
@@ -3942,7 +4074,7 @@ export class GameInstance {
           if (resolved.statId === statId) {
             total += midVal
           } else if (perLevelStatId !== undefined && resolved.statId === perLevelStatId) {
-            total += Math.floor((midVal * level) / 8)
+            total += (midVal * level) >> perLevelShift
           }
         }
       }
@@ -3965,7 +4097,28 @@ export class GameInstance {
       if (!hasOwnStat) addProps(bonuses.props)
       // Green item-specific set bonuses (`aprop1a..aprop5b`) apply on EACH worn set item
       // (so wearing 2x Angelic Halo rings with 3 Angelic pieces grants +50% MF from each ring).
-      addProps(bonuses.aprops)
+      // Use the item's rolled `setBonusStats` lists when present (#1651 / #1652).
+      const storedLists = item.rawItemData?.setBonusStats
+      if (Array.isArray(storedLists) && storedLists.length > 0) {
+        for (const list of storedLists) {
+          const enabled =
+            setItem.addFunc === 2
+              ? list.index <= wornCount - 2
+              : setItem.addFunc === 1
+                ? wornCount >= 2 && list.index < wornCount - 1
+                : false
+          if (!enabled) continue
+          for (const st of list.stats) {
+            if (st.statId === statId) {
+              total += st.value
+            } else if (perLevelStatId !== undefined && st.statId === perLevelStatId) {
+              total += (st.value * level) >> perLevelShift
+            }
+          }
+        }
+      } else {
+        addProps(bonuses.aprops)
+      }
       if (!seenSets.has(setItem.set)) {
         seenSets.add(setItem.set)
         // Gold partial/full-set bonuses (`PCode2a..FCode8`) apply once per set, never per piece.
@@ -3976,22 +4129,108 @@ export class GameInstance {
     return total
   }
 
-  /** Full MF/GF: active weapon set, inventory charms, sockets and set bonuses. */
-  private sumPlayerItemStat(player: InternalPlayerRecord, statId: number): number {
-    const perLevelStatId = statId === 80 ? 240 : statId === 79 ? 239 : undefined
-    const addStats = (stats: ReadonlyMap<number, number> | undefined, level: number): number => {
-      if (!stats) return 0
-      let value = stats.get(statId) ?? 0
-      if (perLevelStatId !== undefined) {
-        value += Math.floor(((stats.get(perLevelStatId) ?? 0) * level) / 8)
+  /** Full player item stat: active weapon set (excluding swap 11/12), inventory charms, sockets, set bonuses, and per-level stats (#1629, #1630). */
+  private sumPlayerItemStat(
+    player: InternalPlayerRecord,
+    statId: number,
+    options?: { readonly excludeWeaponHands?: boolean },
+  ): number {
+    const perLvlRule = GameInstance.PER_LEVEL_STAT_MAP_113C[statId]
+    const perLevelStatId = perLvlRule?.perLevelStatId
+    const perLevelShift = perLvlRule?.shift ?? 3
+    const addEntryStats = (entry: ServerItemEntry, level: number): number => {
+      const stats = entry.stats
+      if (stats && stats.size > 0) {
+        let value = stats.get(statId) ?? 0
+        if (perLevelStatId !== undefined) {
+          value += ((stats.get(perLevelStatId) ?? 0) * level) >> perLevelShift
+        }
+        return value
       }
-      return value
+      if (entry.rawItemData) {
+        let value = 0
+        const lists = [entry.rawItemData.stats, entry.rawItemData.runewordStats ?? []]
+        for (const list of lists) {
+          for (const st of list) {
+            if (st.statId === statId) value += st.value
+            else if (perLevelStatId !== undefined && st.statId === perLevelStatId) {
+              value += (st.value * level) >> perLevelShift
+            }
+          }
+        }
+        return value
+      }
+      return 0
     }
     let total = 0
     const seenUniqueCharms = new Set<number>()
     const worn: ServerItemEntry[] = []
     for (const item of player.items) {
       // Inactive weapon-swap slots (bodyLoc 11 = rarm2, 12 = larm2) never contribute stats or set bonuses.
+      if (item.location === 'equipped') {
+        if (item.bodyLoc === 11 || item.bodyLoc === 12) continue
+        worn.push(item)
+        if (
+          options?.excludeWeaponHands &&
+          (item.bodyLoc === BODYLOC_RIGHT_ARM || item.bodyLoc === BODYLOC_LEFT_ARM) &&
+          resolveWeaponBase113c(item.code) !== undefined
+        ) {
+          continue
+        }
+      } else if (item.location === 'inventory') {
+        const code = (item.code ?? '').toLowerCase()
+        if (code !== 'cm1' && code !== 'cm2' && code !== 'cm3') continue
+        const uniqueId = item.rawItemData?.uniqueItemId
+        if (uniqueId !== undefined && uniqueId >= 0 && uniqueId !== 0xfff) {
+          if (seenUniqueCharms.has(uniqueId)) continue
+          seenUniqueCharms.add(uniqueId)
+        }
+      } else {
+        continue
+      }
+      total += addEntryStats(item, player.level)
+      if (Array.isArray(item.socketedItems)) {
+        for (const socketed of item.socketedItems) total += addEntryStats(socketed, player.level)
+      }
+    }
+    total += this.sumEquippedSetBonusStat(worn, statId, player.level)
+    return total
+  }
+
+  private normalizePoolStat256(val: number): number {
+    if (val === 0) return 0
+    return Math.abs(val) < FIXED_ONE || (val & 0xff) !== 0 ? val * FIXED_ONE : val
+  }
+
+  /**
+   * Sum a 1/256 fixed-point item pool stat (`7 maxhp`, `9 maxmana`, `11 maxstamina`,
+   * `216 item_hp_perlevel`, `217 item_mana_perlevel`, `242 item_stamina_perlevel`) across active
+   * equipment (excluding swap 11/12), charms, sockets, and set bonuses without pre-folding
+   * per-level stats into flat pool stats (so `EvalStatWithOps` `op 11` `%maxhp`/`%maxmana` scales
+   * flat pool stats before `op 2` `+pool/lvl` is added, per `D2Common.dll` `0x6FD89530`, #1667).
+   */
+  private sumPlayerItemPoolStat256(player: InternalPlayerRecord, statId: number): number {
+    const readEntryStat256 = (entry: ServerItemEntry): number => {
+      const stats = entry.stats
+      if (stats && stats.size > 0) {
+        return this.normalizePoolStat256(stats.get(statId) ?? 0)
+      }
+      if (entry.rawItemData) {
+        let value = 0
+        const lists = [entry.rawItemData.stats, entry.rawItemData.runewordStats ?? []]
+        for (const list of lists) {
+          for (const st of list) {
+            if (st.statId === statId) value += this.normalizePoolStat256(st.value)
+          }
+        }
+        return value
+      }
+      return 0
+    }
+    let total = 0
+    const seenUniqueCharms = new Set<number>()
+    const worn: ServerItemEntry[] = []
+    for (const item of player.items) {
       if (item.location === 'equipped') {
         if (item.bodyLoc === 11 || item.bodyLoc === 12) continue
         worn.push(item)
@@ -4006,23 +4245,92 @@ export class GameInstance {
       } else {
         continue
       }
-      total += addStats(item.stats, player.level)
+      total += readEntryStat256(item)
       if (Array.isArray(item.socketedItems)) {
-        for (const socketed of item.socketedItems) total += addStats(socketed.stats, player.level)
+        for (const socketed of item.socketedItems) total += readEntryStat256(socketed)
       }
     }
-    total += this.sumEquippedSetBonusStat(worn, statId, player.level)
+    if (
+      worn.length > 0 &&
+      worn.some(
+        (it) =>
+          it.quality === 5 ||
+          (it.rawItemData?.setItemId !== undefined &&
+            it.rawItemData.setItemId >= 0 &&
+            it.rawItemData.setItemId !== 0xfff),
+      )
+    ) {
+      const tables = getEmbeddedDropTables()
+      if (tables.properties && tables.itemStatCost) {
+        const counts = this.wornSetPieceCounts(worn)
+        const addProps = (
+          props: readonly { code: string; par?: unknown; min: number; max: number }[],
+        ): void => {
+          for (const prop of props) {
+            const param = typeof prop.par === 'number' ? prop.par : Number(prop.par ?? 0) || 0
+            for (const resolved of tables.properties!.resolveProperty(
+              prop.code,
+              param,
+              prop.min,
+              prop.max,
+              tables.itemStatCost!,
+            )) {
+              if (resolved.statId === statId) {
+                const midVal = Math.floor((resolved.min + resolved.max) / 2)
+                total += this.normalizePoolStat256(midVal)
+              }
+            }
+          }
+        }
+        const seenSets = new Set<string>()
+        for (const item of worn) {
+          const setId = item.rawItemData?.setItemId
+          if (setId === undefined || setId < 0 || setId === 0xfff) continue
+          const setItem = tables.sets.items.getById(setId)
+          if (setItem === undefined) continue
+          const setDef = tables.sets.sets.get(setItem.set)
+          if (setDef === undefined) continue
+          const wornCount = counts.get(setItem.set) ?? 1
+          const bonuses = resolveActiveSetBonuses(setItem, setDef, wornCount)
+          if (item.stats?.has(statId) !== true) addProps(bonuses.props)
+          const storedLists = item.rawItemData?.setBonusStats
+          if (Array.isArray(storedLists) && storedLists.length > 0) {
+            for (const list of storedLists) {
+              const enabled =
+                setItem.addFunc === 2
+                  ? list.index <= wornCount - 2
+                  : setItem.addFunc === 1
+                    ? wornCount >= 2 && list.index < wornCount - 1
+                    : false
+              if (!enabled) continue
+              for (const st of list.stats) {
+                if (st.statId === statId) total += this.normalizePoolStat256(st.value)
+              }
+            }
+          } else {
+            addProps(bonuses.aprops)
+          }
+          if (!seenSets.has(setItem.set)) {
+            seenSets.add(setItem.set)
+            addProps(bonuses.pCodes)
+            addProps(bonuses.fCodes)
+          }
+        }
+      }
+    }
     return total
   }
 
-  /** Mercenary gear MF/GF (helmet / armor / weapon + sockets + set bonuses), including per-level stats. */
+  /** Mercenary gear stat (helmet / armor / weapon + sockets + set bonuses), including per-level stats (#1629, #1630). */
   private sumMercItemStat(merc: InternalMercenaryRecord, statId: number): number {
-    const perLevelStatId = statId === 80 ? 240 : statId === 79 ? 239 : undefined
+    const perLvlRule = GameInstance.PER_LEVEL_STAT_MAP_113C[statId]
+    const perLevelStatId = perLvlRule?.perLevelStatId
+    const perLevelShift = perLvlRule?.shift ?? 3
     const addStats = (stats: ReadonlyMap<number, number> | undefined): number => {
       if (!stats) return 0
       let value = stats.get(statId) ?? 0
       if (perLevelStatId !== undefined) {
-        value += Math.floor(((stats.get(perLevelStatId) ?? 0) * merc.level) / 8)
+        value += ((stats.get(perLevelStatId) ?? 0) * merc.level) >> perLevelShift
       }
       return value
     }
@@ -4037,12 +4345,14 @@ export class GameInstance {
     return total
   }
 
-  private actBossQuestId(defId: string): string | undefined {
+  private actBossQuestId(defId: string, hcIdx?: number): string | undefined {
+    if (hcIdx === 156) return 'a1q6'
+    if (hcIdx === 211) return 'a2q6'
+    if (hcIdx === 242) return 'a3q6'
+    if (hcIdx === 243) return 'a4q3'
+    if (hcIdx === 544) return 'a5q6'
     const id = defId.trim().toLowerCase()
-    for (const [boss, quest] of Object.entries(GameInstance.ACT_BOSS_QUEST_113C)) {
-      if (id.startsWith(boss) || id.includes(boss)) return quest
-    }
-    return undefined
+    return GameInstance.ACT_BOSS_QUEST_113C[id]
   }
 
   /** Death animation action/completion frame (`{code}DTHTH`), falling back to compiled 1.13c AnimData DT metrics. */
@@ -4104,7 +4414,7 @@ export class GameInstance {
   private rollMonsterDeathDrop(killer: InternalPlayerRecord, monster: InternalMonsterRecord): number[] {
     const tables = getEmbeddedDropTables()
     const difficulty = this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
-    const questId = this.actBossQuestId(monster.defId)
+    const questId = this.actBossQuestId(monster.defId, monster.hcIdx)
     const firstKill =
       questId !== undefined
         ? !hasQuestFlag113c(killer.questFlags, questId, QUEST_FLAG_COMPLETED_113C)
@@ -4135,7 +4445,11 @@ export class GameInstance {
         onMarkBossFirstKill: (subjectId, diff) => {
           this.killedActBosses.add(`${subjectId}:${diff}`)
           if (questId !== undefined) {
-            this.setPlayerQuestFlag(killer, questId, QUEST_FLAG_COMPLETED_113C)
+            this.setPlayerQuestFlag(
+              killer,
+              questId,
+              QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+            )
           }
         },
         playerMf: this.sumPlayerItemStat(killer, 80) + mercMf,
@@ -5762,6 +6076,16 @@ export class GameInstance {
         this.handleAllocateSkill(player, cmd.skillId)
         break
       }
+      case 'ClickButton': {
+        const amount =
+          cmd.amount !== undefined
+            ? cmd.amount
+            : cmd.complement !== undefined
+              ? ((((cmd.complement & 0xffff) << 16) | ((cmd.complement >>> 16) & 0xffff)) >>> 0)
+              : 0
+        this.handleClickButton(player, cmd.buttonId ?? cmd.button ?? 0, amount)
+        break
+      }
       case 'Resurrect':
       case 'Respawn': {
         this.handleRespawn(player)
@@ -5782,6 +6106,10 @@ export class GameInstance {
       }
       case 'UpdatePlayerPos': {
         this.handleUpdatePlayerPos(player, cmd.x, cmd.y)
+        break
+      }
+      case 'RequestEntityUpdate': {
+        this.handleRequestEntityUpdate(player, cmd.unitType, cmd.unitId)
         break
       }
       default:
@@ -5963,22 +6291,26 @@ export class GameInstance {
       slvl = charged.slvl
       chargeItem = charged.item
     }
-    const statList = new UnitStatList(this.registry, {
-      level: player.level,
-      strength: player.strength,
-      dexterity: player.dexterity,
-      vitality: player.vitality,
-      energy: player.energy,
-      maxhp: player.maxHpFixed,
-      hitpoints: player.hpFixed,
-      maxmana: player.maxManaFixed,
-      mana: player.manaFixed,
-      maxstamina: player.maxStaminaFixed,
-      stamina: player.staminaFixed,
-      tohit: this.computePlayerBaseToHit113c(player),
-      item_tohit_percent: this.computePlayerToHitPctBonus113c(player),
-      armorclass: this.computePlayerBaseDefense(player),
-    })
+    const statList = new UnitStatList(
+      this.registry,
+      {
+        level: player.level,
+        strength: player.strength,
+        dexterity: player.dexterity,
+        vitality: player.vitality,
+        energy: player.energy,
+        maxhp: this.getPlayerAccruedMaxHpFixed(player),
+        hitpoints: player.hpFixed,
+        maxmana: this.getPlayerAccruedMaxManaFixed(player),
+        mana: player.manaFixed,
+        maxstamina: this.getPlayerAccruedMaxStaminaFixed(player),
+        stamina: player.staminaFixed,
+        tohit: this.computePlayerBaseToHit113c(player),
+        item_tohit_percent: this.computePlayerToHitPctBonus113c(player),
+        armorclass: this.computePlayerBaseDefense(player),
+      },
+      { ownerType: 'player', charClass: player.classCode },
+    )
     for (const [id, lvl] of player.skills) {
       statList.setBaseSkillLevel(id, lvl)
     }
@@ -5991,6 +6323,7 @@ export class GameInstance {
       blvl,
       statList,
       difficulty: this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0,
+      randFn: (lo: number, hi: number) => (lo >= hi ? lo : lo + this.rng.rand(hi - lo + 1)),
     })
     // 1.13c `D2Common.dll` `SKILLS_CheckSkillMana` (`0x6FDA0AF0` @ `0x6FDA0BEB`) & `D2Game.dll`
     // `SKILLS_CheckSkillMana` (`0x6FCBEC80` @ `0x6FCBECEF`) / `SKILLS_SrvDo116_Wearwolf_Wearbear` (`0x6FC66210`):
@@ -6018,7 +6351,8 @@ export class GameInstance {
       ) {
         return null
       }
-      if (player.manaFixed < evalResult.manaCost256) {
+      const requiredMana256 = evalResult.rawManaCost256 ?? evalResult.manaCost256
+      if (player.manaFixed < requiredMana256) {
         if (player.states.has(12)) {
           this.clearPlayerChannelState(player)
         }
@@ -6163,18 +6497,21 @@ export class GameInstance {
       getBaseSkillLevel: (id: number) => statList.getBaseSkillLevel(id),
       getEffectiveSkillLevel: (id: number) => statList.getEffectiveSkillLevel(id),
       getUnitStat: (statNameOrId: string | number, baseOnly?: boolean) => statList.getAccruedStat(statNameOrId, baseOnly),
+      randFn: (lo: number, hi: number) => (lo >= hi ? lo : lo + this.rng.rand(hi - lo + 1)),
     })
   }
 
   /**
-   * Effective level of `skill` in the player's skill list (0 = not castable):
+   * Effective level of `skill` in the player's skill list (0 = not castable), clamped to `[0, 99]`
+   * (`D2Common.dll` `SKILLS_GetSkillLevel` `0x6FDA05D0` & `0x6FD9FCB0`, #1679, #1680, #1688):
    * - universal default skills (Attack, Kick, Throw, Unsummon, Left Hand Throw/Swing, scroll/book
    *   Identify & Town Portal) are always level 1;
-   * - own-class skills need hard points (`player.skills`), then add `item_allskills` (127),
+   * - own-class skills with `hardPoints > 0`, `singleSkill > 0`, or `oskill > 0` add `item_allskills` (127),
    *   `item_addclassskills` (83, param = class), `item_addskill_tab` (188, param =
-   *   `SkillDesc.SkillPage - 1 + 8 * class`, `skillTabStatParam`), `item_singleskill` (107, param =
-   *   skill) and `item_nonclassskill` (97, param = skill); without hard points only an oskill grants it;
-   * - other-class / monster rows are only castable through `item_nonclassskill` oskills.
+   *   `SkillDesc.SkillPage - 1 + 8 * class`, `skillTabStatParam`), `item_elemskill` (126, param = EType),
+   *   `item_singleskill` (107, param = skill) and `min(item_nonclassskill, 3)` (97, param = skill);
+   * - other-class / monster rows are only castable through `item_nonclassskill` oskills (uncapped +
+   *   `allSkills` + `elemSkills`).
    */
   private resolvePlayerSkillLevel(player: InternalPlayerRecord, skill: SkillRecord): number {
     if (UNIVERSAL_PLAYER_SKILL_IDS.has(skill.id)) return 1
@@ -6185,8 +6522,18 @@ export class GameInstance {
       (player.states.has(134) && !combat.stateBus.hasState(134) ? 2 : 0)
     let classSkills = 0
     let tabSkills = 0
+    let elemSkills = 0
     let singleSkill = 0
     let oskill = 0
+    const skillEType = (skill.eType ?? '').trim().toLowerCase()
+    const elemParamToType: Readonly<Record<number, string>> = {
+      0: 'fire',
+      1: 'fire',
+      2: 'ltng',
+      3: 'mag',
+      4: 'cold',
+      5: 'pois',
+    }
     for (const stat of collectEquippedItemStats(player.items)) {
       if (stat.statId === STAT_ITEM_ALLSKILLS) allSkills += stat.value
       else if (stat.statId === STAT_ITEM_ADDCLASSSKILLS && stat.param === player.classId) classSkills += stat.value
@@ -6197,17 +6544,24 @@ export class GameInstance {
         stat.param === tabParam
       ) {
         tabSkills += stat.value
+      } else if (
+        stat.statId === 126 &&
+        skillEType !== '' &&
+        elemParamToType[stat.param ?? 1] === skillEType
+      ) {
+        elemSkills += stat.value
       } else if (stat.statId === STAT_ITEM_SINGLESKILL && stat.param === skill.id) singleSkill += stat.value
       else if (stat.statId === STAT_ITEM_NONCLASSSKILL && stat.param === skill.id) oskill += stat.value
     }
     const hardPoints = player.skills.get(skill.id) ?? 0
-    if (skill.charClass === player.classCode && hardPoints > 0) {
-      return hardPoints + allSkills + classSkills + tabSkills + singleSkill + oskill
+    if (skill.charClass === player.classCode && (hardPoints > 0 || singleSkill > 0 || oskill > 0)) {
+      const cappedOskill = Math.min(oskill, 3)
+      return Math.min(
+        99,
+        Math.max(0, hardPoints + allSkills + classSkills + tabSkills + elemSkills + singleSkill + cappedOskill),
+      )
     }
-    if (skill.charClass === player.classCode && singleSkill > 0) {
-      return singleSkill + allSkills + classSkills + tabSkills + oskill
-    }
-    return oskill > 0 ? Math.max(0, oskill + allSkills) : 0
+    return oskill > 0 ? Math.min(99, Math.max(0, oskill + allSkills + elemSkills)) : 0
   }
 
   /**
@@ -6299,13 +6653,20 @@ export class GameInstance {
   }
 
   /**
-   * Physical damage range of the equipped weapon (`Weapons.txt` via `resolveWeaponBase113c`):
-   * one- or two-handed `MinDam/MaxDam`, on-weapon `item_maxdamage_percent` (17) and flat
-   * `item_mindamage` / `item_maxdamage` (21 / 22), scaled by the `StrBonus` / `DexBonus` stat
-   * bonus (`calculatePhysicalWeaponDamage`). Unarmed players hit for 1-2 (`getAttackWeaponInfo`).
+   * Physical damage range of the equipped weapon (`Weapons.txt` via `resolveWeaponBase113c`,
+   * `D2Game.dll` `0x6FCFC530..0x6FCFC71F`, #1628, #1629):
+   * - Excludes inactive swap slots (`bodyLoc 11/12`).
+   * - Includes on-weapon `item_maxdamage_percent` (17) + per-level (219), weapon flat `+min`/`+max`/`+normaldamage` (21/22/23/24/111/218),
+   *   AND off-weapon flat `+min`/`+max`/`+normaldamage` (21/22/111/218) from armor, jewelry, sockets, charms, and set bonuses.
+   * - Combines `skillEdPct + offWeaponEdPercent + statBonusPercent` into a SINGLE additive `%ED` pool clamped at `>= -90%`.
    */
-  private resolvePlayerWeaponDamage(player: InternalPlayerRecord): { min: number; max: number } {
-    const equipped = player.items.filter((i) => i.location === 'equipped')
+  private resolvePlayerWeaponDamage(
+    player: InternalPlayerRecord,
+    skillEdPct = 0,
+  ): { min: number; max: number } {
+    const equipped = player.items.filter(
+      (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
+    )
     const handItem = (loc: number) => equipped.find((i) => i.bodyLoc === loc)
     const right = handItem(BODYLOC_RIGHT_ARM)
     const left = handItem(BODYLOC_LEFT_ARM)
@@ -6313,18 +6674,36 @@ export class GameInstance {
     const leftBase = left ? resolveWeaponBase113c(left.code) : undefined
     const weapon = rightBase ? right : leftBase ? left : undefined
     const base = rightBase ?? leftBase
-    // Off-weapon %ED from skill buffs / auras (Might, Fanaticism, Battle Orders' party, ...) carried
-    // by the persistent combat bus; a player that never received a state has none.
     const combat = this.playerCombat.get(player.unitId)
-    const offWeaponEdPercent = combat === undefined ? 0 : combat.statList.getModifierBonus('damagepercent')
+    const offWeaponItemEd =
+      this.sumPlayerItemStat(player, 17, { excludeWeaponHands: true }) +
+      this.sumPlayerItemStat(player, 25, { excludeWeaponHands: true })
+    const offWeaponEdPercent =
+      (combat === undefined ? 0 : combat.statList.getModifierBonus('damagepercent')) +
+      offWeaponItemEd +
+      skillEdPct
+    const offWeapFlatMin =
+      this.sumPlayerItemStat(player, STAT_MINDAMAGE, { excludeWeaponHands: true }) +
+      this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
+    const offWeapFlatMax =
+      this.sumPlayerItemStat(player, STAT_MAXDAMAGE, { excludeWeaponHands: true }) +
+      this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
+    const totalStr =
+      player.strength +
+      this.sumPlayerItemStat(player, 0) +
+      (combat === undefined ? 0 : combat.statList.getModifierBonus('strength'))
+    const totalDex =
+      player.dexterity +
+      this.sumPlayerItemStat(player, 2) +
+      (combat === undefined ? 0 : combat.statList.getModifierBonus('dexterity'))
     if (weapon === undefined || base === undefined) {
       const unarmed = getAttackWeaponInfo(null)
-      const range = calculatePhysicalWeaponDamage({
-        weaponBaseMin: unarmed.damageMin,
-        weaponBaseMax: unarmed.damageMax,
-        offWeaponEdPercent,
-      })
-      return { min: range.finalMinDamage, max: Math.max(range.finalMinDamage, range.finalMaxDamage) }
+      const baseMin = unarmed.damageMin + offWeapFlatMin
+      const baseMax = Math.max(baseMin, unarmed.damageMax + offWeapFlatMax)
+      const clampedEd = Math.max(-90, offWeaponEdPercent + totalStr)
+      const min = Math.max(1, baseMin + Math.trunc((baseMin * clampedEd) / 100))
+      const max = Math.max(min, baseMax + Math.trunc((baseMax * clampedEd) / 100))
+      return { min, max }
     }
     const otherHand = weapon === right ? left : right
     const useTwoHand =
@@ -6335,34 +6714,31 @@ export class GameInstance {
     const weaponMin = useTwoHand ? base.twoHandedMindam! : base.mindam
     const weaponMax = useTwoHand ? base.twoHandedMaxdam! : base.maxdam
     let onWeaponEd = 0
-    let flatMin = 0
-    let flatMax = 0
+    let flatMin = offWeapFlatMin
+    let flatMax = offWeapFlatMax
     for (const stat of collectItemStats(weapon)) {
       if (stat.statId === STAT_ITEM_MAXDAMAGE_PERCENT) onWeaponEd += stat.value
-      else if (stat.statId === (useTwoHand ? STAT_SECONDARY_MINDAMAGE : STAT_MINDAMAGE)) flatMin += stat.value
-      else if (stat.statId === (useTwoHand ? STAT_SECONDARY_MAXDAMAGE : STAT_MAXDAMAGE)) flatMax += stat.value
+      else if (stat.statId === 219) onWeaponEd += (stat.value * player.level) >> 3
+      else if (stat.statId === (useTwoHand ? STAT_SECONDARY_MINDAMAGE : STAT_MINDAMAGE) || stat.statId === 111) {
+        flatMin += stat.value
+      } else if (stat.statId === (useTwoHand ? STAT_SECONDARY_MAXDAMAGE : STAT_MAXDAMAGE) || stat.statId === 111) {
+        flatMax += stat.value
+      } else if (stat.statId === 218) {
+        flatMax += (stat.value * player.level) >> 3
+      }
     }
     const statBonusPercent =
-      Math.floor((player.strength * base.strBonus) / 100) +
-      Math.floor((player.dexterity * base.dexBonus) / 100)
-    const minRange = calculatePhysicalWeaponDamage({
-      weaponBaseMin: weaponMin,
-      weaponBaseMax: weaponMin,
-      onWeaponEdPercent: onWeaponEd,
-      flatDamage: flatMin,
-      offWeaponEdPercent,
-      statBonusPercent,
-    })
-    const maxRange = calculatePhysicalWeaponDamage({
-      weaponBaseMin: weaponMax,
-      weaponBaseMax: weaponMax,
-      onWeaponEdPercent: onWeaponEd,
-      flatDamage: flatMax,
-      offWeaponEdPercent,
-      statBonusPercent,
-    })
-    const min = Math.max(1, minRange.finalMinDamage)
-    return { min, max: Math.max(min, maxRange.finalMaxDamage) }
+      Math.trunc((totalStr * base.strBonus) / 100) +
+      Math.trunc((totalDex * base.dexBonus) / 100)
+    const afterOnWeapMin = Math.trunc((weaponMin * (100 + onWeaponEd)) / 100) + flatMin
+    const afterOnWeapMax = Math.max(
+      afterOnWeapMin,
+      Math.trunc((weaponMax * (100 + onWeaponEd)) / 100) + flatMax,
+    )
+    const combinedEdPct = Math.max(-90, offWeaponEdPercent + statBonusPercent)
+    const min = Math.max(1, afterOnWeapMin + Math.trunc((afterOnWeapMin * combinedEdPct) / 100))
+    const max = Math.max(min, afterOnWeapMax + Math.trunc((afterOnWeapMax * combinedEdPct) / 100))
+    return { min, max }
   }
 
   /** Spend the `Skills.txt` mana cost (256-fixed) and arm the `delay` cooldown of an accepted cast. */
@@ -6374,15 +6750,29 @@ export class GameInstance {
     const cost256 =
       cast.chargeItem !== undefined || cast.isNoCostInState ? 0 : cast.evalResult.manaCost256
     if (cost256 > 0) {
-      player.manaFixed = Math.max(0, player.manaFixed - cost256)
-      player.mana = Math.floor(player.manaFixed / FIXED_ONE)
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitStatUpdate',
-        unitType: 'player',
-        unitId: player.unitId,
-        statId: 8,
-        value: player.manaFixed,
-      })
+      if (player.states.has(114)) {
+        // 1.13c D2Game.dll SKILLS_ConsumeMana (0x6FCBF92B..0x6FCBF93E, #1687):
+        // When state 114 (blood_mana) is active on the caster, mana cost is paid from life (stat 6).
+        player.hpFixed = Math.max(256, player.hpFixed - cost256)
+        player.hp = Math.floor(player.hpFixed / FIXED_ONE)
+        this.emitToPlayer(player.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: player.unitId,
+          statId: 6,
+          value: player.hpFixed,
+        })
+      } else {
+        player.manaFixed = Math.max(0, player.manaFixed - cost256)
+        player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+        this.emitToPlayer(player.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: player.unitId,
+          statId: 8,
+          value: player.manaFixed,
+        })
+      }
     }
     if (cast.evalResult.cooldownFrames > 0) {
       let ready = this.playerSkillReadyFrame.get(player.unitId)
@@ -6408,10 +6798,12 @@ export class GameInstance {
     const ev = cast.evalResult
     let total = 0
     if (ev.srcDam > 0) {
-      const weapon = this.resolvePlayerWeaponDamage(player)
-      const weaponHit = Math.trunc((this.rollInclusive(weapon.min, weapon.max) * ev.srcDam) / 128)
       const edPct = physDamagePctOverride ?? ev.physDamagePct
-      total += Math.trunc((weaponHit * (100 + edPct)) / 100)
+      // 1.13c `D2Game.dll` `0x6FCFC530..0x6FCFC71F`: fold skill `%ED` into the single additive `%ED` pool
+      // alongside attribute `%ED` and off-weapon `%ED` (#1628).
+      const weapon = this.resolvePlayerWeaponDamage(player, edPct)
+      const weaponHit = Math.trunc((this.rollInclusive(weapon.min, weapon.max) * ev.srcDam) / 128)
+      total += weaponHit
     }
     total += this.rollInclusive(ev.minPhysDmg, ev.maxPhysDmg)
     return total
@@ -6472,8 +6864,9 @@ export class GameInstance {
     const dx = tx - player.x
     const dy = ty - player.y
     const dist = Math.max(1, Math.hypot(dx, dy))
-    const speed = stationary ? 0 : PLAYER_MISSILE_SPEED_SUBTILES
-    const lifetime = Math.max(1, missileRec.range + missileRec.levRange * (cast.slvl - 1))
+    const rawVel = missileRec.vel + Math.trunc((missileRec.velLev * cast.slvl) / 8)
+    const speed = stationary ? 0 : rawVel > 0 ? rawVel / 16 : PLAYER_MISSILE_SPEED_SUBTILES
+    const lifetime = Math.max(1, missileRec.range + missileRec.levRange * cast.slvl)
     const missileUnitId = this.allocateUnitId()
     const missileElem = normalizeMissileElement(missileRec.eType || cast.skill.eType)
     const isPoisonSkillMissile =
@@ -6679,8 +7072,7 @@ export class GameInstance {
   ): readonly SubTilePoint[] {
     const check = this.terrainWalkableCheck
     if (!check) return [{ x: toX, y: toY }]
-    const isTown = TOWN_AREAS.has(areaId)
-    const margin = isTown ? PLAYER_TOWN_PATH_WINDOW_MARGIN : PLAYER_PATH_WINDOW_MARGIN
+    const margin = PLAYER_PATH_WINDOW_MARGIN
     const minX = Math.max(0, Math.floor(Math.min(fromX, toX)) - margin)
     const minY = Math.max(0, Math.floor(Math.min(fromY, toY)) - margin)
     const maxX = Math.floor(Math.max(fromX, toX)) + margin
@@ -6699,9 +7091,7 @@ export class GameInstance {
       fromY,
       toX,
       toY,
-      isTown
-        ? { unitSize: 2, maxAstarObstacleDistanceSq: TOWN_ASTAR_OBSTACLE_DISTANCE_SQ }
-        : { unitSize: 2 },
+      { unitSize: 2 },
     ).path
   }
 
@@ -6766,6 +7156,12 @@ export class GameInstance {
     const beforeHp = player.hp
     const beforeMana = player.mana
     const beforeStamina = player.stamina
+    const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+    const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
+    const accruedMaxStaminaFixed = this.getPlayerAccruedMaxStaminaFixed(player)
+    player.maxHp = Math.max(1, Math.floor(accruedMaxHpFixed / FIXED_ONE))
+    player.maxMana = Math.max(0, Math.floor(accruedMaxManaFixed / FIXED_ONE))
+    player.maxStamina = Math.max(1, Math.floor(accruedMaxStaminaFixed / FIXED_ONE))
 
     if (running) {
       // 1.13c PLAYER_UpdateStamina 0x6FC95DC0: chest (bodyLoc 3) and shield
@@ -6775,6 +7171,8 @@ export class GameInstance {
       for (const item of player.items) {
         if (
           item.location === 'equipped' &&
+          item.bodyLoc !== 11 &&
+          item.bodyLoc !== 12 &&
           item.durability > 0 &&
           (item.bodyLoc === 3 || item.bodyLoc === 4 || item.bodyLoc === 5)
         ) {
@@ -6788,14 +7186,15 @@ export class GameInstance {
         Math.trunc(combat.statList.getAccruedStat('item_staminadrainpct')) +
         (player.states.has(136) && !combat.stateBus.hasState(136) ? -100 : 0)
       const drainPct = 100 + stat162
+      // 1.13c `D2Game.dll` `0x6FC97A50`: `base = CharStats.RunDrain * 2`, scaled by `100 + armorSpeed` and `100 + stat162` (#1632).
+      const baseRunDrain = charStats.runDrain * 2
+      const afterArmor = baseRunDrain + Math.trunc((baseRunDrain * armorSpeed) / 100)
       const drain =
         drainPct <= 0 || player.states.has(136)
           ? 0
           : Math.max(
               1,
-              Math.floor(
-                (charStats.runDrain * armorPenalty * Math.max(0, drainPct)) / 10_000,
-              ),
+              afterArmor + Math.trunc((afterArmor * stat162) / 100),
             )
       player.staminaFixed = Math.max(0, player.staminaFixed - drain)
       if (player.staminaFixed <= 0) {
@@ -6804,20 +7203,28 @@ export class GameInstance {
         if (motion.moving) player.mode = 2
       }
     } else {
-      // 1.13c 0x6FC95E90: standing still recovers, town walking recovers, and
-      // town standing recovers at 2x. Outdoor walking does not recover stamina.
+      // 1.13c `D2Game.dll` `0x6FC97A50` (`PLAYER_UpdateStamina`, #1632):
+      // - Standing (`PLRMODE_NEUTRAL` / `PLRMODE_TOWNNEUTRAL`): shift `S = 8` (`maxStaminaFixed >> 8`), in town or outdoors.
+      // - Walking (`PLRMODE_WALK` / `PLRMODE_TOWNWALK`):
+      //   - Town walking (`inTown`) OR outdoor walking while `staminaFixed >= 256 && !staminaExhausted`: shift `S = 9` (`maxStaminaFixed >> 9`, half rate).
+      //   - Outdoor walking while exhausted (`staminaFixed < 256 || staminaExhausted`): `0` recovery.
       const inTown = TOWN_AREAS.has(player.areaId)
       const standing = !motion.moving
-      if (standing || inTown) {
+      let baseStamRate = 0
+      if (standing) {
+        baseStamRate = accruedMaxStaminaFixed >> 8
+      } else if (inTown || (player.staminaFixed >= 256 && !player.staminaExhausted)) {
+        baseStamRate = accruedMaxStaminaFixed >> 9
+      }
+      if (baseStamRate > 0) {
         const recoveryPct =
-          this.sumEquippedItemStat(player, 28) +
+          this.sumPlayerItemStat(player, 28) +
           Math.trunc(this.playerCombatContext(player).statList.getAccruedStat('staminarecoverybonus'))
-        let recover = Math.max(
+        const recover = Math.max(
           0,
-          Math.floor((player.maxStaminaFixed * (100 + recoveryPct)) / (100 * 256)),
+          baseStamRate + (recoveryPct !== 0 ? Math.trunc((baseStamRate * recoveryPct) / 100) : 0),
         )
-        if (inTown && standing) recover *= 2
-        player.staminaFixed = Math.min(player.maxStaminaFixed, player.staminaFixed + recover)
+        player.staminaFixed = Math.min(accruedMaxStaminaFixed, player.staminaFixed + recover)
       }
     }
 
@@ -6825,36 +7232,45 @@ export class GameInstance {
     // above a quarter of the maximum (or a potion/shrine refills it).
     if (
       player.staminaExhausted &&
-      player.staminaFixed >= Math.floor(player.maxStaminaFixed / 4)
+      player.staminaFixed >= Math.floor(accruedMaxStaminaFixed / 4)
     ) {
       player.staminaExhausted = false
     }
     if (player.staminaExhausted) player.run = false
 
+    // 1.13c `D2Game.dll` `0x6FC97950` (`PLAYER_UpdateManaRegen`, #1633):
+    // `baseRate = max(1, trunc(maxManaFixed / 3000))`, scaled by `100 + stat27` (`manarecoverybonus`), plus flat `stat26` (`manarecovery`).
     if (!player.states.has(85)) {
       const combat = this.playerCombatContext(player)
       const manaRegenPct =
         this.sumPlayerItemStat(player, 27) +
         Math.trunc(combat.statList.getAccruedStat('manarecoverybonus')) +
         (player.states.has(135) && !combat.stateBus.hasState(135) ? 400 : 0)
+      const flatManaRegen =
+        this.sumPlayerItemStat(player, 26) +
+        Math.trunc(combat.statList.getAccruedStat('manarecovery'))
+      const baseManaRate = Math.max(
+        1,
+        Math.trunc(accruedMaxManaFixed / (25 * (charStats.manaRegenSeconds || 120))),
+      )
       const manaPerFrame = Math.max(
         0,
-        Math.round(
-          (player.maxManaFixed * (100 + manaRegenPct)) /
-            (100 * 25 * (charStats.manaRegenSeconds || 120)),
-        ),
+        baseManaRate + Math.trunc((baseManaRate * manaRegenPct) / 100) + flatManaRegen,
       )
-      player.manaFixed = Math.min(player.maxManaFixed, player.manaFixed + manaPerFrame)
+      player.manaFixed = Math.min(accruedMaxManaFixed, player.manaFixed + manaPerFrame)
     }
 
+    // 1.13c `D2Game.dll` `0x6FC97CB0` (`PLAYER_UpdateHpRegen`, #1633):
+    // Players have NO natural `maxhp / 65536` life regen (`MONSTER_Regen` is monsters only);
+    // only `stat 74 hpregen` (`item_replenish_life` / Prayer) modifies HP per frame, and negative `hpregen` clamps at `256` (`1 HP`).
     const hpRegen =
-      this.sumEquippedItemStat(player, 74) +
+      this.sumPlayerItemStat(player, 74) +
       Math.trunc(this.playerCombatContext(player).statList.getAccruedStat('hpregen'))
-    const lifePerFrame = Math.max(
-      0,
-      Math.round(player.maxHpFixed / 65536 + (hpRegen * FIXED_ONE) / 256),
-    )
-    player.hpFixed = Math.min(player.maxHpFixed, player.hpFixed + lifePerFrame)
+    if (hpRegen > 0) {
+      player.hpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + hpRegen)
+    } else if (hpRegen < 0 && player.hpFixed > 256) {
+      player.hpFixed = Math.max(256, player.hpFixed + hpRegen)
+    }
 
     player.hp = Math.floor(player.hpFixed / FIXED_ONE)
     player.mana = Math.floor(player.manaFixed / FIXED_ONE)
@@ -6916,6 +7332,53 @@ export class GameInstance {
       vx: 0,
       vy: 0,
     })
+  }
+
+  /**
+   * C2S `0x4B RequestEntityUpdate` (D2Game `Rcv0x4B_RequestEntityUpdate`, `0x6FCEC6E0` ->
+   * `0x6FCEBB10` `D2GAME_SendPacket0x15_ReassignPlayer(pUnit, pClient, bRefresh=1)`).
+   * Sends S2C `0x15 UnitReassign` with `revalidate: true` (`snap: false`) for the requested unit.
+   */
+  private handleRequestEntityUpdate(
+    player: InternalPlayerRecord,
+    unitType: number,
+    unitId: number,
+  ): void {
+    if (player.dead) return
+    if (unitType === 0) {
+      const targetPlayer =
+        unitId === player.unitId ? player : this.players.get(unitId)
+      if (!targetPlayer || targetPlayer.areaId !== player.areaId) return
+      const sx = Math.round(targetPlayer.x)
+      const sy = Math.round(targetPlayer.y)
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitReassign',
+        unitType: 0,
+        id: targetPlayer.unitId,
+        unitId: targetPlayer.unitId,
+        at: { x: sx, y: sy },
+        x: sx,
+        y: sy,
+        snap: false,
+      })
+      return
+    }
+    if (unitType === 1) {
+      const mon = this.monsters.get(unitId)
+      if (!mon || mon.dead || mon.areaId !== player.areaId) return
+      const sx = Math.round(mon.x)
+      const sy = Math.round(mon.y)
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitReassign',
+        unitType: 1,
+        id: mon.unitId,
+        unitId: mon.unitId,
+        at: { x: sx, y: sy },
+        x: sx,
+        y: sy,
+        snap: false,
+      })
+    }
   }
 
   /**
@@ -7018,8 +7481,24 @@ export class GameInstance {
   private playerCombatContext(player: InternalPlayerRecord): CombatUnitContext {
     let unit = this.playerCombat.get(player.unitId)
     if (unit === undefined) {
-      const statList = new UnitStatList(this.registry)
-      unit = { statList, stateBus: new StateBus(statList, this.registry) }
+      const statList = new UnitStatList(this.registry, undefined, {
+        ownerType: 'player',
+        charClass: player.classCode,
+      })
+      const itemStatList = new UnitStatList(this.registry, undefined, {
+        ownerType: 'item',
+        charClass: player.classCode,
+      })
+      statList.attachStatList(itemStatList)
+      unit = { statList, stateBus: new StateBus(statList, this.registry), itemStatList }
+      this.playerCombat.set(player.unitId, unit)
+    } else if (unit.itemStatList === undefined) {
+      const itemStatList = new UnitStatList(this.registry, undefined, {
+        ownerType: 'item',
+        charClass: player.classCode,
+      })
+      unit.statList.attachStatList(itemStatList)
+      unit = { ...unit, itemStatList }
       this.playerCombat.set(player.unitId, unit)
     }
     for (const shrineStateId of [128, 129, 130, 131, 132, 133, 134, 135, 136, 137] as const) {
@@ -7028,14 +7507,40 @@ export class GameInstance {
       }
     }
     const st = unit.statList
+    st.setOwnerType('player')
+    st.setCharClass(player.classCode)
     st.setBaseStat('level', player.level)
     st.setBaseStat('strength', player.strength)
     st.setBaseStat('dexterity', player.dexterity)
     st.setBaseStat('vitality', player.vitality)
     st.setBaseStat('energy', player.energy)
+    const itemSt = unit.itemStatList!
+    itemSt.setOwnerType('item')
+    itemSt.setCharClass(player.classCode)
+    itemSt.setBaseStat('strength', this.sumPlayerItemStat(player, 0))
+    itemSt.setBaseStat('energy', this.sumPlayerItemStat(player, 1))
+    itemSt.setBaseStat('dexterity', this.sumPlayerItemStat(player, 2))
+    itemSt.setBaseStat('vitality', this.sumPlayerItemStat(player, 3))
+    itemSt.setBaseStat('maxhp', this.sumPlayerItemPoolStat256(player, 7))
+    itemSt.setBaseStat('maxmana', this.sumPlayerItemPoolStat256(player, 9))
+    itemSt.setBaseStat('maxstamina', this.sumPlayerItemPoolStat256(player, 11))
+    itemSt.setBaseStat('item_maxhp_percent', this.sumPlayerItemStat(player, 76))
+    itemSt.setBaseStat('item_maxmana_percent', this.sumPlayerItemStat(player, 77))
+    itemSt.setBaseStat('item_hp_perlevel', this.sumPlayerItemPoolStat256(player, 216))
+    itemSt.setBaseStat('item_mana_perlevel', this.sumPlayerItemPoolStat256(player, 217))
+    itemSt.setBaseStat('item_stamina_perlevel', this.sumPlayerItemPoolStat256(player, 242))
     st.setBaseStat('tohit', this.computePlayerBaseToHit113c(player))
     st.setBaseStat('item_tohit_percent', this.computePlayerToHitPctBonus113c(player))
     st.setBaseStat('armorclass', this.computePlayerBaseDefense(player))
+    st.setBaseStat('armorclass_vs_missile', this.sumPlayerItemStat(player, 32))
+    st.setBaseStat('armorclass_vs_hth', this.sumPlayerItemStat(player, 33))
+    st.setBaseStat('item_ignoretargetac', this.sumPlayerItemStat(player, 115))
+    st.setBaseStat('item_fractionaltargetac', this.sumPlayerItemStat(player, 116))
+    st.setBaseStat('item_demondamage_percent', this.sumPlayerItemStat(player, 121))
+    st.setBaseStat('item_undeaddamage_percent', this.sumPlayerItemStat(player, 122))
+    st.setBaseStat('item_demon_tohit', this.sumPlayerItemStat(player, 123))
+    st.setBaseStat('item_undead_tohit', this.sumPlayerItemStat(player, 124))
+    st.setBaseStat('item_deadlystrike', this.sumPlayerItemStat(player, 141))
     st.setBaseStat('maxhp', player.maxHpFixed)
     st.setHp256(player.hpFixed)
     st.setBaseStat('maxmana', player.maxManaFixed)
@@ -7051,6 +7556,20 @@ export class GameInstance {
     st.setBaseStat('lightresist', anyaResist)
     st.setBaseStat('coldresist', anyaResist)
     st.setBaseStat('poisonresist', anyaResist)
+    const elemBonuses = new Map<number, number>([
+      [1, 0],
+      [2, 0],
+      [3, 0],
+      [4, 0],
+      [5, 0],
+    ])
+    for (const stat of collectEquippedItemStats(player.items)) {
+      if (stat.statId === 126) {
+        const p = stat.param === undefined || stat.param === 0 ? 1 : stat.param
+        elemBonuses.set(p, (elemBonuses.get(p) ?? 0) + stat.value)
+      }
+    }
+    for (const [param, bonus] of elemBonuses) st.setElemSkillsBonus(param, bonus)
     for (const [id, lvl] of player.skills) st.setBaseSkillLevel(id, lvl)
     return {
       id: `player_${player.unitId}`,
@@ -7067,15 +7586,77 @@ export class GameInstance {
     }
   }
 
+  private getPlayerAccruedMaxHpFixed(player: InternalPlayerRecord): number {
+    return Math.max(
+      FIXED_ONE,
+      Math.trunc(this.playerCombatContext(player).statList.getAccruedStat('maxhp')),
+    )
+  }
+
+  private getPlayerAccruedMaxManaFixed(player: InternalPlayerRecord): number {
+    return Math.max(
+      0,
+      Math.trunc(this.playerCombatContext(player).statList.getAccruedStat('maxmana')),
+    )
+  }
+
+  private getPlayerAccruedMaxStaminaFixed(player: InternalPlayerRecord): number {
+    return Math.max(
+      FIXED_ONE,
+      Math.trunc(this.playerCombatContext(player).statList.getAccruedStat('maxstamina')),
+    )
+  }
+
+  private refreshPlayerAccruedMaxPools(
+    player: InternalPlayerRecord,
+    opts?: {
+      readonly fillHpIfAtBaseMax?: boolean | undefined
+      readonly fillManaIfAtBaseMax?: boolean | undefined
+      readonly fillStaminaIfAtBaseMax?: boolean | undefined
+    },
+  ): void {
+    const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+    const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
+    const accruedMaxStaminaFixed = this.getPlayerAccruedMaxStaminaFixed(player)
+
+    if (opts?.fillHpIfAtBaseMax) {
+      player.hpFixed = accruedMaxHpFixed
+    } else if (player.hpFixed > accruedMaxHpFixed) {
+      player.hpFixed = accruedMaxHpFixed
+    }
+    if (opts?.fillManaIfAtBaseMax) {
+      player.manaFixed = accruedMaxManaFixed
+    } else if (player.manaFixed > accruedMaxManaFixed) {
+      player.manaFixed = accruedMaxManaFixed
+    }
+    if (opts?.fillStaminaIfAtBaseMax) {
+      player.staminaFixed = accruedMaxStaminaFixed
+    } else if (player.staminaFixed > accruedMaxStaminaFixed) {
+      player.staminaFixed = accruedMaxStaminaFixed
+    }
+
+    player.maxHp = Math.max(1, Math.floor(accruedMaxHpFixed / FIXED_ONE))
+    player.hp = player.dead
+      ? 0
+      : Math.max(1, Math.min(player.maxHp, Math.floor(player.hpFixed / FIXED_ONE)))
+    player.maxMana = Math.max(0, Math.floor(accruedMaxManaFixed / FIXED_ONE))
+    player.mana = Math.max(0, Math.min(player.maxMana, Math.floor(player.manaFixed / FIXED_ONE)))
+    player.maxStamina = Math.max(1, Math.floor(accruedMaxStaminaFixed / FIXED_ONE))
+    player.stamina = player.staminaExhausted
+      ? 0
+      : Math.max(0, Math.min(player.maxStamina, Math.floor(player.staminaFixed / FIXED_ONE)))
+  }
+
   /** Persistent combat context of a monster, re-synced from the authoritative record. */
   private monsterCombatContext(monster: InternalMonsterRecord): CombatUnitContext {
     let unit = this.monsterCombat.get(monster.unitId)
     if (unit === undefined) {
-      const statList = new UnitStatList(this.registry)
+      const statList = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
       unit = { statList, stateBus: new StateBus(statList, this.registry) }
       this.monsterCombat.set(monster.unitId, unit)
     }
     const st = unit.statList
+    st.setOwnerType('monster')
     st.setBaseStat('level', monster.level)
     st.setBaseStat('tohit', monster.ar)
     st.setBaseStat('armorclass', monster.ac)
@@ -7273,8 +7854,10 @@ export class GameInstance {
 
   /** Write HP / mana / `nomanaregen` (state 85) changed by an aura pulse back to the player record (+ client stat updates). */
   private syncPlayerVitalsFromCombat(player: InternalPlayerRecord, ctx: CombatUnitContext): void {
-    const hp256 = Math.min(player.maxHpFixed, Math.max(0, ctx.statList.getHp256()))
-    const mana256 = Math.min(player.maxManaFixed, Math.max(0, ctx.statList.getMana256()))
+    const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+    const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
+    const hp256 = Math.min(accruedMaxHpFixed, Math.max(0, ctx.statList.getHp256()))
+    const mana256 = Math.min(accruedMaxManaFixed, Math.max(0, ctx.statList.getMana256()))
     if (hp256 !== player.hpFixed) {
       player.hpFixed = hp256
       player.hp = Math.max(0, Math.ceil(hp256 / FIXED_ONE))
@@ -7459,8 +8042,12 @@ export class GameInstance {
         ctx.stateBus.removeState('feralrage')
         ctx.stateBus.removeState('maul')
         if (wasInTargetState) {
+          this.refreshPlayerAccruedMaxPools(player)
           if (player.hpFixed > 0) {
-            player.hpFixed = Math.max(FIXED_ONE, Math.min(player.hpFixed, player.maxHpFixed))
+            player.hpFixed = Math.max(
+              FIXED_ONE,
+              Math.min(player.hpFixed, this.getPlayerAccruedMaxHpFixed(player)),
+            )
             player.hp = Math.max(1, Math.ceil(player.hpFixed / FIXED_ONE))
           }
           return
@@ -7481,6 +8068,7 @@ export class GameInstance {
         currentFrame: this.currentFrame,
         stats: this.evaluateSkillStateStats(skill, cast.slvl, ctx.statList),
       })
+      this.refreshPlayerAccruedMaxPools(player)
     }
   }
 
@@ -8083,9 +8671,10 @@ export class GameInstance {
     const meta = options.missile ?? this.registry.getMissileById(missileClassId)
     const resolvedClassId = meta?.id ?? missileClassId
     const skillLevel = Math.max(1, options.skillLevel ?? monster.level)
-    const speed = meta === undefined ? 1.8 : meta.vel > 0 ? meta.vel / 16 : 0
+    const rawVel = meta === undefined ? 0 : meta.vel + Math.trunc((meta.velLev * skillLevel) / 8)
+    const speed = meta === undefined ? 1.8 : rawVel > 0 ? rawVel / 16 : 0
     const rangeTicks =
-      meta === undefined ? 45 : Math.max(2, meta.range + meta.levRange * (skillLevel - 1))
+      meta === undefined ? 45 : Math.max(2, meta.range + meta.levRange * skillLevel)
     const element =
       options.element ??
       normalizeMissileElement(meta?.eType) ??
@@ -8244,40 +8833,31 @@ export class GameInstance {
   }
 
   /**
-   * 1.13c player base Attack Rating (`D2Common.dll` `0x6FD5D960`, `STAT_TOHIT` = 19):
-   * `(Dex - 7) * 5 + CharStats.ToHitFactor` (`dex * 5 - 35 + ToHitFactor`) plus equipped
-   * flat `STAT_TOHIT` (19) and `STAT_ITEM_TOHIT_PERLEVEL` (224, `floor(val * clvl / 8)`).
+   * 1.13c player base Attack Rating (`D2Common.dll` `0x6FD81EA0`, `STAT_TOHIT` = 19):
+   * `(Dex - 7) * 5 + CharStats.ToHitFactor` (`dex * 5 - 35 + ToHitFactor`) plus active
+   * flat `STAT_TOHIT` (19) and `STAT_ITEM_TOHIT_PERLEVEL` (224, `(val * clvl) >> 1` = `/ 2`)
+   * across equipped items (excluding swap 11/12), sockets, charms, and set bonuses (#1629, #1630).
    */
   private computePlayerBaseToHit113c(player: InternalPlayerRecord): number {
     const baseStats = CANONICAL_CHARSTATS[player.classCode] ?? CANONICAL_CHARSTATS.ama
+    const totalDex = player.dexterity + this.sumPlayerItemStat(player, 2)
     let ar =
       player.ar !== undefined
         ? player.ar
         : player.tohit !== undefined
           ? player.tohit
-          : player.dexterity * 5 - 35 + baseStats.toHitFactor
-    for (const item of player.items) {
-      if (item.location !== 'equipped') continue
-      ar += item.stats.get(19) ?? 0
-      const perLvl = item.stats.get(224) ?? 0
-      if (perLvl > 0) ar += Math.floor((perLvl * player.level) / 8)
-    }
+          : totalDex * 5 - 35 + baseStats.toHitFactor
+    ar += this.sumPlayerItemStat(player, 19)
     return Math.max(0, ar)
   }
 
   /**
-   * 1.13c player `%AR` bonus (`STAT_ITEM_TOHIT_PERCENT` = 119) from equipped items and
-   * `STAT_ITEM_TOHITPERCENT_PERLEVEL` (225, `floor(val * clvl / 8)`).
+   * 1.13c player `%AR` bonus (`STAT_ITEM_TOHIT_PERCENT` = 119) and
+   * `STAT_ITEM_TOHITPERCENT_PERLEVEL` (225, `(val * clvl) >> 1` = `/ 2`) across equipped items,
+   * sockets, charms, and set bonuses (#1629, #1630).
    */
   private computePlayerToHitPctBonus113c(player: InternalPlayerRecord): number {
-    let pct = 0
-    for (const item of player.items) {
-      if (item.location !== 'equipped') continue
-      pct += item.stats.get(119) ?? 0
-      const perLvl = item.stats.get(225) ?? 0
-      if (perLvl > 0) pct += Math.floor((perLvl * player.level) / 8)
-    }
-    return pct
+    return this.sumPlayerItemStat(player, 119)
   }
 
   /**
@@ -8513,7 +9093,10 @@ export class GameInstance {
       return false
     }
 
-    const attackerStats = new UnitStatList(this.registry)
+    const attackerStats = new UnitStatList(this.registry, undefined, {
+      ownerType: petAttacker !== undefined || effectiveSource === 'merc' ? 'monster' : 'player',
+      charClass: attacker.classCode,
+    })
     if (petAttacker !== undefined) {
       attackerStats.setBaseStat('level', petAttacker.statList.getAccruedStat('level') || attacker.level)
       attackerStats.setBaseStat('strength', petAttacker.statList.getAccruedStat('strength'))
@@ -8536,18 +9119,25 @@ export class GameInstance {
       attackerStats.setHp256(mercAttacker.hp * FIXED_ONE)
     } else {
       attackerStats.setBaseStat('level', attacker.level)
-      attackerStats.setBaseStat('strength', attacker.strength)
-      attackerStats.setBaseStat('dexterity', attacker.dexterity)
-      attackerStats.setBaseStat('vitality', attacker.vitality)
-      attackerStats.setBaseStat('energy', attacker.energy)
+      attackerStats.setBaseStat('strength', attacker.strength + this.sumPlayerItemStat(attacker, 0))
+      attackerStats.setBaseStat('dexterity', attacker.dexterity + this.sumPlayerItemStat(attacker, 2))
+      attackerStats.setBaseStat('vitality', attacker.vitality + this.sumPlayerItemStat(attacker, 3))
+      attackerStats.setBaseStat('energy', attacker.energy + this.sumPlayerItemStat(attacker, 1))
       attackerStats.setBaseStat('tohit', this.computePlayerBaseToHit113c(attacker))
       attackerStats.setBaseStat('item_tohit_percent', this.computePlayerToHitPctBonus113c(attacker))
       attackerStats.setBaseStat('armorclass', this.computePlayerBaseDefense(attacker))
-      attackerStats.setBaseStat('maxhp', attacker.maxHpFixed)
+      attackerStats.setBaseStat('item_ignoretargetac', this.sumPlayerItemStat(attacker, 115))
+      attackerStats.setBaseStat('item_fractionaltargetac', this.sumPlayerItemStat(attacker, 116))
+      attackerStats.setBaseStat('item_demondamage_percent', this.sumPlayerItemStat(attacker, 121))
+      attackerStats.setBaseStat('item_undeaddamage_percent', this.sumPlayerItemStat(attacker, 122))
+      attackerStats.setBaseStat('item_demon_tohit', this.sumPlayerItemStat(attacker, 123))
+      attackerStats.setBaseStat('item_undead_tohit', this.sumPlayerItemStat(attacker, 124))
+      attackerStats.setBaseStat('item_deadlystrike', this.sumPlayerItemStat(attacker, 141))
+      attackerStats.setBaseStat('maxhp', this.getPlayerAccruedMaxHpFixed(attacker))
       attackerStats.setHp256(attacker.hpFixed)
-      attackerStats.setBaseStat('maxmana', attacker.maxManaFixed)
+      attackerStats.setBaseStat('maxmana', this.getPlayerAccruedMaxManaFixed(attacker))
       attackerStats.setMana256(attacker.manaFixed)
-      attackerStats.setBaseStat('maxstamina', attacker.maxStaminaFixed)
+      attackerStats.setBaseStat('maxstamina', this.getPlayerAccruedMaxStaminaFixed(attacker))
       attackerStats.setBaseStat('stamina', attacker.staminaFixed)
     }
     // Life / mana steal (D2Game 0x6FCFBA40) belongs to the real player that landed the hit; a
@@ -8600,7 +9190,7 @@ export class GameInstance {
       manaStealDivisor: difficultyManaStealDivisor(this.difficulty),
     }
 
-    const defenderStats = new UnitStatList(this.registry)
+    const defenderStats = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
     defenderStats.setBaseStat('level', monster.level)
     defenderStats.setBaseStat('armorclass', monster.ac)
     defenderStats.setBaseStat('toblock', monster.toBlock)
@@ -8731,17 +9321,8 @@ export class GameInstance {
       }
       dealtDamage = Math.max(1, Math.floor(dmgOut.totalDamage256 / FIXED_ONE))
 
-      // 1.13c Crushing Blow (statId 136, D2Game.dll 0x6FCCCC30..0x6FCCCD93):
-      // Base divisor: 4 for normal/minion/champion (fTypeFlags 0x04), 8 for boss (#10064) or
-      // unique/superunique (fTypeFlags 0x02), 10 for player/hireling (#11104); scaled by
-      // /players N HP bonus (0x6FCCF5F0), doubled for ranged/missile hits (nEvent == 6),
-      // and mitigated only by positive STAT_DAMAGERESIST (stat 36).
-      let cbChance = 0
-      for (const item of attacker.items) {
-        if (item.location === 'equipped') {
-          cbChance += item.stats.get(136) ?? 0
-        }
-      }
+      // 1.13c Crushing Blow (statId 136 + per-level 247, D2Game.dll 0x6FCCCC30..0x6FCCCD93):
+      const cbChance = this.sumPlayerItemStat(attacker, 136)
       if (cbChance > 0 && (cbChance >= 100 || this.rng.rand(100) < cbChance)) {
         const cbOut = calculateCrushingBlow113c({
           defenderHp: monster.hp,
@@ -8873,7 +9454,10 @@ export class GameInstance {
     if (monster.dead || monster.isNpc || !monster.isKillable) return
     if (rawBitrate256 <= 0 || durationFrames <= 0) return
 
-    const attackerStats = new UnitStatList(this.registry)
+    const attackerStats = new UnitStatList(this.registry, undefined, {
+      ownerType: 'player',
+      charClass: attacker.classCode,
+    })
     attackerStats.setBaseStat('level', attacker.level)
     attackerStats.setBaseStat('maxhp', attacker.maxHpFixed)
     attackerStats.setHp256(attacker.hpFixed)
@@ -8888,7 +9472,7 @@ export class GameInstance {
       y: attacker.y,
     }
 
-    const defenderStats = new UnitStatList(this.registry)
+    const defenderStats = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
     defenderStats.setBaseStat('level', monster.level)
     defenderStats.setBaseStat('armorclass', monster.ac)
     defenderStats.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
@@ -9360,7 +9944,12 @@ export class GameInstance {
     }
   }
 
-  /** AnimData `{code}GH{baseW}` / `{code}GHHTH` full animation duration in 25 Hz frames. */
+  /**
+   * AnimData `{code}GH{baseW}` / `{code}GHHTH` animation duration in 25 Hz frames. Monster GH
+   * (`MONMODE_GETHIT` 3) plays at `AnimData.speed × (50 + EFHR) / 100`
+   * (`D2Common.dll` `UNITS_UpdateAnimRateAndVelocity` `0x6FD83298..0x6FD832C7`; monsters carry
+   * no FHR stat, so the rate is 50) and ends on `UNITS_IsAtEndOfFrameCycle` (`0x6FD7EF6D`).
+   */
   private monsterHitRecoveryFrames(monster: InternalMonsterRecord): number {
     const monRow = MONSTATS_113C_ROWS[monster.hcIdx]
     const code = monRow?.code?.trim().toUpperCase()
@@ -9370,8 +9959,8 @@ export class GameInstance {
         this.registry.getAnimDataRecord(`${code}GH${baseW}`) ??
         (baseW !== 'HTH' ? this.registry.getAnimDataRecord(`${code}GHHTH`) : undefined)
       if (record !== undefined && record.framesPerDirection > 0 && record.hasSpeed) {
-        const speed = Math.max(1, record.animationSpeed)
-        return Math.max(1, Math.floor((record.framesPerDirection * 256) / speed))
+        const stepSpeed256 = computeStepSpeed256(record.animationSpeed, computeGetHitEffRate113c(0))
+        return computeOneShotTicks(record.framesPerDirection, stepSpeed256)
       }
     }
     return MONSTER_HIT_RECOVERY_FRAMES
@@ -9428,7 +10017,8 @@ export class GameInstance {
   /**
    * 1.13c player GetHit (`PLRMODE_GETHIT = 4`) animation duration in 25 Hz frames:
    * `CharStats.txt` / `AnimData.d2` `{Class}GH{WeaponClass}` frames + `item_fastergethitrate` (stat 99)
-   * `EFHR = floor(120 * FHR / (120 + FHR))` (`D2Common.dll` `#10862` @ `0x6FD821E0`).
+   * at rate `50 + EFHR`, `EFHR = trunc(120 * FHR / (120 + FHR))` (`D2Common.dll`
+   * `UNITS_UpdateAnimRateAndVelocity` `0x6FD83298..0x6FD832C7`, diminishing `0x6FD823E0`).
    */
   private playerHitRecoveryFrames(player: InternalPlayerRecord): number {
     const equipped = player.items.filter(
@@ -9604,7 +10194,7 @@ export class GameInstance {
       coldEffect: attacker.coldEffect,
     }
 
-    const defenderStats = new UnitStatList(this.registry)
+    const defenderStats = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
     defenderStats.setBaseStat('level', target.level)
     defenderStats.setBaseStat('tohit', target.ar)
     defenderStats.setBaseStat('armorclass', target.ac)
@@ -10536,6 +11126,72 @@ export class GameInstance {
       }
     }
 
+    // 1.13c Act Boss death completion (`D2Game.dll` A1Q6..A5Q6):
+    // - Marks `QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C` (`0x2001`) for players in the boss area.
+    // - A5Q6 (`baalcrab` #544, `0x6fc7daf0`): spawns `tyrael3` (MonStats #521) at `(x - 5, y - 5)` (`0x6fc7c1f0`)
+    //   and `"Destruction's End"` `LastPortal` (Objects.txt #565, OperateFn 72) in `OBJMODE_OPENED (2)` at `(x, y - 5)` (`0x6fc7d760`).
+    // - A4Q3 (`diablo` #243, `0x6fcdb550`): spawns/opens `Harrogath` portal (Objects.txt #566, OperateFn 73) in `OBJMODE_OPENED (2)`.
+    const actBossQuest = this.actBossQuestId(monster.defId, monster.hcIdx)
+    if (actBossQuest !== undefined) {
+      for (const p of this.players.values()) {
+        if (p.dead) continue
+        if (p.unitId !== killer?.unitId && p.areaId !== monster.areaId) continue
+        this.setPlayerQuestFlag(
+          p,
+          actBossQuest,
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+        )
+      }
+      if (actBossQuest === 'a5q6') {
+        const hasTyrael3 = [...this.monsters.values()].some(
+          (m) => m.areaId === monster.areaId && m.hcIdx === 521 && !m.dead,
+        )
+        const tyraelX = monster.x - 5
+        const tyraelY = monster.y - 5
+        if (!hasTyrael3) {
+          this.spawnMonster({
+            classId: 521,
+            defId: 'tyrael3',
+            name: 'Tyrael',
+            x: tyraelX,
+            y: tyraelY,
+            areaId: monster.areaId,
+            isNpc: true,
+            experience: 0,
+          })
+        }
+        const existingLastPortal = [...this.objects.values()].find(
+          (o) => o.areaId === monster.areaId && o.classId === 565,
+        )
+        if (existingLastPortal !== undefined) {
+          this.setObjectMode(existingLastPortal, 2)
+        } else {
+          this.spawnObject({
+            classId: 565,
+            x: tyraelX + 5,
+            y: tyraelY,
+            areaId: monster.areaId,
+            mode: 2,
+          })
+        }
+      } else if (actBossQuest === 'a4q3') {
+        const existingHarrogathPortal = [...this.objects.values()].find(
+          (o) => o.areaId === monster.areaId && o.classId === 566,
+        )
+        if (existingHarrogathPortal !== undefined) {
+          this.setObjectMode(existingHarrogathPortal, 2)
+        } else {
+          this.spawnObject({
+            classId: 566,
+            x: monster.x + 5,
+            y: monster.y,
+            areaId: monster.areaId,
+            mode: 2,
+          })
+        }
+      }
+    }
+
     // Chaos Sanctuary: once the three seal bosses die and all five seals are
     // open, spawn Diablo in the middle of the seal ring.
     if (
@@ -10842,37 +11498,42 @@ export class GameInstance {
       player.statPts += 5
       player.newSkills += 1
       const base = CANONICAL_CHARSTATS[player.classCode]
-      const lifeAddFixed = Math.max(
-        FIXED_ONE,
-        Math.round(base.perLevel.life * FIXED_ONE),
-      )
-      const manaAddFixed = Math.max(
-        FIXED_ONE,
-        Math.round(base.perLevel.mana * FIXED_ONE),
-      )
-      const stamAddFixed = Math.max(
-        FIXED_ONE,
-        Math.round(base.perLevel.stamina * FIXED_ONE),
-      )
+      const lifeAddFixed = Math.round(base.perLevel.life * FIXED_ONE)
+      const manaAddFixed = Math.round(base.perLevel.mana * FIXED_ONE)
+      const stamAddFixed = Math.round(base.perLevel.stamina * FIXED_ONE)
 
       player.maxHpFixed += lifeAddFixed
-      player.hpFixed = player.maxHpFixed
-      player.maxHp = Math.floor(player.maxHpFixed / FIXED_ONE)
-      player.hp = player.maxHp
-
       player.maxManaFixed += manaAddFixed
-      player.manaFixed = player.maxManaFixed
-      player.maxMana = Math.floor(player.maxManaFixed / FIXED_ONE)
+      player.maxStaminaFixed += stamAddFixed
+
+      const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+      const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
+      const accruedMaxStaminaFixed = this.getPlayerAccruedMaxStaminaFixed(player)
+
+      player.maxHp = Math.max(1, Math.floor(accruedMaxHpFixed / FIXED_ONE))
+      // 1.13c `D2Game.dll` `0x6FD0B090` (`0x6FD0B141..0x6FD0B163`, #1672): only refill life if `hitpoints > 0`.
+      if (player.hpFixed > 0 && !player.dead) {
+        player.hpFixed = accruedMaxHpFixed
+        player.hp = player.maxHp
+      }
+
+      player.maxMana = Math.max(0, Math.floor(accruedMaxManaFixed / FIXED_ONE))
+      player.manaFixed = accruedMaxManaFixed
       player.mana = player.maxMana
 
-      player.maxStaminaFixed += stamAddFixed
-      player.staminaFixed = player.maxStaminaFixed
+      player.maxStamina = Math.max(1, Math.floor(accruedMaxStaminaFixed / FIXED_ONE))
+      player.staminaFixed = accruedMaxStaminaFixed
       player.staminaExhausted = false
-      player.maxStamina = Math.floor(player.maxStaminaFixed / FIXED_ONE)
       player.stamina = player.maxStamina
+
+      const nextExp =
+        player.level < MAX_PLAYER_LEVEL_113C
+          ? experienceForLevel113c(player.level + 1)
+          : experienceForLevel113c(MAX_PLAYER_LEVEL_113C)
 
       for (const [statId, value] of [
         [12, player.level],
+        [30, nextExp],
         [4, player.statPts],
         [5, player.newSkills],
         [6, player.hpFixed],
@@ -10927,7 +11588,7 @@ export class GameInstance {
     const stats =
       defender.stats ??
       (() => {
-        const list = new UnitStatList(this.registry)
+        const list = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
         list.setBaseStat('level', Math.max(1, defender.level))
         list.setBaseStat('maxhp', Math.max(1, defender.maxHp) * FIXED_ONE)
         list.setHp256(Math.max(0, defender.hp) * FIXED_ONE)
@@ -11298,7 +11959,9 @@ export class GameInstance {
             const targetSize = Math.max(1, Math.min(3, getMonsterPathRecord(target.hcIdx)?.sizeX ?? 2))
             if (!hitsTargetFootprint(target.x, target.y, targetSize)) continue
             if (!canHit(target.unitId)) continue
-            const defenderStats = new UnitStatList(this.registry)
+            const defenderStats = new UnitStatList(this.registry, undefined, {
+              ownerType: 'monster',
+            })
             defenderStats.setBaseStat('level', target.level)
             defenderStats.setBaseStat('tohit', target.ar)
             defenderStats.setBaseStat('armorclass', target.ac)
@@ -11827,7 +12490,7 @@ export class GameInstance {
     monster: InternalMonsterRecord,
     skillMode: 'A1' | 'A2' | 'S1' = 'A1',
   ): CombatUnitContext {
-    const attackerStats = new UnitStatList(this.registry)
+    const attackerStats = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
     attackerStats.setBaseStat('level', monster.level)
     const modeToHit =
       skillMode === 'S1'
@@ -11865,26 +12528,46 @@ export class GameInstance {
   }
 
   private computePlayerBaseDefense(player: InternalPlayerRecord): number {
-    let defense = Math.floor(player.dexterity / 4)
+    const totalDex = player.dexterity + this.sumPlayerItemStat(player, 2)
+    let defense = Math.floor(totalDex / 4)
     for (const item of player.items) {
-      if (item.location !== 'equipped') continue
+      if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
       defense += item.rawItemData?.defense ?? 0
-      defense += item.stats.get(31) ?? 0
     }
+    defense += this.sumPlayerItemStat(player, 31)
     return defense
   }
 
-  /** 1.13c player armor class including `skill_armor_percent` (`stat 171`, Conviction / Armor Shrine `state 128`). */
+  /**
+   * 1.13c player armor class (`D2Common_10672` / `UNITS_GetDefense` @ `0x6FD82890`, #1634):
+   * - Includes `214 item_armor_perlevel` (`/ 8`), `215 item_armorpercent_perlevel` (`/ 8`),
+   *   `16 item_armor_percent` (off-armor/set/aura), `171 skill_armor_percent` (Shout / Defiance / Iron Skin / Chilling Armor / Conviction),
+   *   Holy Shield (`state 101`), `182 armor_override_percent`, and Armor Shrine (`state 128`).
+   */
   private computePlayerDefense(player: InternalPlayerRecord): number {
     let defense = this.computePlayerBaseDefense(player)
     const combat = this.playerCombatContext(player)
+    const overridePct = combat.statList.getAccruedStat('armor_override_percent')
+    if (overridePct <= -100) {
+      return 0
+    }
+    if (overridePct !== 0) {
+      defense += Math.trunc((defense * overridePct) / 100)
+    }
+    const hsMod = combat.statList
+      .getActiveModifiers()
+      .find((m) => m.stateId === 101 || m.stateName === 'holyshield')
+    const hsPct = hsMod ? (hsMod.stats['item_skillonhit'] ?? hsMod.stats['item_skillongethit'] ?? 0) : 0
     const defensePct =
       combat.statList.getModifierBonus('skill_armor_percent') +
+      combat.statList.getModifierBonus('item_armor_percent') +
+      this.sumPlayerItemStat(player, 215) +
+      hsPct +
       (player.states.has(128) && !combat.stateBus.hasState(128) ? 100 : 0)
     if (defensePct !== 0) {
-      defense = Math.max(0, Math.trunc((defense * (100 + defensePct)) / 100))
+      defense = Math.max(0, defense + Math.trunc((defense * defensePct) / 100))
     }
-    return defense
+    return Math.max(0, defense)
   }
 
   private resolveMonsterAttackOnPlayer(
@@ -11911,79 +12594,49 @@ export class GameInstance {
   ): void {
     const attackerCtx = this.buildMonsterAttackerContext(monster, swing?.skillMode ?? 'A1')
 
-    const defenderStats = new UnitStatList(this.registry)
+    const defenderStats = new UnitStatList(this.registry, undefined, {
+      ownerType: 'player',
+      charClass: player.classCode,
+    })
     defenderStats.setBaseStat('level', player.level)
-    defenderStats.setBaseStat('strength', player.strength)
-    defenderStats.setBaseStat('vitality', player.vitality)
-    defenderStats.setBaseStat('energy', player.energy)
+    defenderStats.setBaseStat('strength', player.strength + this.sumPlayerItemStat(player, 0))
+    defenderStats.setBaseStat('vitality', player.vitality + this.sumPlayerItemStat(player, 3))
+    defenderStats.setBaseStat('energy', player.energy + this.sumPlayerItemStat(player, 1))
     defenderStats.setBaseStat('tohit', this.computePlayerBaseToHit113c(player))
-    // 1.13c defense: dexterity/4 + equipped armor/item defense + active armor
-    // skills, then Conviction's `defense_pct`.
-    let fireResist = 0
-    let lightResist = 0
-    let coldResist = 0
-    let poisonResist = 0
-    let magicResist = 0
-    let damageResist = 0
-    let normalDr = 0
-    let magicDr = 0
-    let blockChance = 0
-    // ItemStatCost 38/40/42/44/46: +max resist, read by D2Game 0x6FCFB45E for the cap.
-    let maxMagicResist = 0
-    let maxFireResist = 0
-    let maxLightResist = 0
-    let maxColdResist = 0
-    let maxPoisonResist = 0
-    // ItemStatCost 142..149 (% and flat elemental absorb) & 234..237 (/lvl flat absorb), read by D2Game 0x6FCFAD00.
-    let absorbFirePct = 0
-    let absorbFire = 0
-    let absorbLightPct = 0
-    let absorbLight = 0
-    let absorbMagicPct = 0
-    let absorbMagic = 0
-    let absorbColdPct = 0
-    let absorbCold = 0
-    let absorbColdPerLevel = 0
-    let absorbFirePerLevel = 0
-    let absorbLightPerLevel = 0
-    let absorbMagicPerLevel = 0
-    let equippedDex = 0
+    // 1.13c defense & mitigation from active worn items (excluding swap 11/12), sockets, charms, set bonuses, and per-level stats (#1629, #1634).
+    let blockChance = this.sumPlayerItemStat(player, 20)
     let hasEquippedShield = false
     for (const item of player.items) {
-      if (item.location !== 'equipped') continue
+      if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
       const armorBlock = resolveArmorBlock113c(item.code)
       if (item.bodyLoc === 5 || (item.bodyLoc === 4 && armorBlock > 0)) {
         hasEquippedShield = true
       }
-      equippedDex += item.stats.get(2) ?? 0
-      blockChance += armorBlock + (item.stats.get(20) ?? 0)
-      normalDr += item.stats.get(34) ?? 0
-      magicDr += item.stats.get(35) ?? 0
-      damageResist += item.stats.get(36) ?? 0
-      magicResist += item.stats.get(37) ?? 0
-      maxMagicResist += item.stats.get(38) ?? 0
-      fireResist += item.stats.get(39) ?? 0
-      maxFireResist += item.stats.get(40) ?? 0
-      lightResist += item.stats.get(41) ?? 0
-      maxLightResist += item.stats.get(42) ?? 0
-      coldResist += item.stats.get(43) ?? 0
-      maxColdResist += item.stats.get(44) ?? 0
-      poisonResist += item.stats.get(45) ?? 0
-      maxPoisonResist += item.stats.get(46) ?? 0
-      absorbFirePct += item.stats.get(142) ?? 0
-      absorbFire += item.stats.get(143) ?? 0
-      absorbLightPct += item.stats.get(144) ?? 0
-      absorbLight += item.stats.get(145) ?? 0
-      absorbMagicPct += item.stats.get(146) ?? 0
-      absorbMagic += item.stats.get(147) ?? 0
-      absorbColdPct += item.stats.get(148) ?? 0
-      absorbCold += item.stats.get(149) ?? 0
-      absorbColdPerLevel += item.stats.get(234) ?? 0
-      absorbFirePerLevel += item.stats.get(235) ?? 0
-      absorbLightPerLevel += item.stats.get(236) ?? 0
-      absorbMagicPerLevel += item.stats.get(237) ?? 0
+      blockChance += armorBlock
     }
-    const playerDefense = this.computePlayerDefense(player)
+    const equippedDex = this.sumPlayerItemStat(player, 2)
+    let normalDr = this.sumPlayerItemStat(player, 34)
+    let magicDr = this.sumPlayerItemStat(player, 35)
+    let damageResist = this.sumPlayerItemStat(player, 36)
+    let magicResist = this.sumPlayerItemStat(player, 37)
+    let maxMagicResist = this.sumPlayerItemStat(player, 38)
+    let fireResist = this.sumPlayerItemStat(player, 39)
+    let maxFireResist = this.sumPlayerItemStat(player, 40)
+    let lightResist = this.sumPlayerItemStat(player, 41)
+    let maxLightResist = this.sumPlayerItemStat(player, 42)
+    let coldResist = this.sumPlayerItemStat(player, 43)
+    let maxColdResist = this.sumPlayerItemStat(player, 44)
+    let poisonResist = this.sumPlayerItemStat(player, 45)
+    let maxPoisonResist = this.sumPlayerItemStat(player, 46)
+    let absorbFirePct = this.sumPlayerItemStat(player, 142)
+    let absorbFire = this.sumPlayerItemStat(player, 143)
+    let absorbLightPct = this.sumPlayerItemStat(player, 144)
+    let absorbLight = this.sumPlayerItemStat(player, 145)
+    let absorbMagicPct = this.sumPlayerItemStat(player, 146)
+    let absorbMagic = this.sumPlayerItemStat(player, 147)
+    let absorbColdPct = this.sumPlayerItemStat(player, 148)
+    let absorbCold = this.sumPlayerItemStat(player, 149)
+    const playerBaseDefense = this.computePlayerBaseDefense(player)
     const playerStats = this.playerCombatContext(player).statList
     defenderStats.setBaseStat('dexterity', player.dexterity + equippedDex)
     blockChance += Math.trunc(playerStats.getAccruedStat('toblock', true))
@@ -12008,11 +12661,16 @@ export class GameInstance {
     absorbMagic += Math.trunc(playerStats.getAccruedStat('item_absorbmagic', true))
     absorbColdPct += Math.trunc(playerStats.getAccruedStat('item_absorbcold_percent', true))
     absorbCold += Math.trunc(playerStats.getAccruedStat('item_absorbcold', true))
-    absorbColdPerLevel += Math.trunc(playerStats.getAccruedStat('item_absorb_cold_perlevel', true))
-    absorbFirePerLevel += Math.trunc(playerStats.getAccruedStat('item_absorb_fire_perlevel', true))
-    absorbLightPerLevel += Math.trunc(playerStats.getAccruedStat('item_absorb_ltng_perlevel', true))
-    absorbMagicPerLevel += Math.trunc(playerStats.getAccruedStat('item_absorb_pois_perlevel', true))
-    defenderStats.setBaseStat('armorclass', playerDefense)
+    // Set base defense before skill/aura percentage scaling (`defenderStateBus` mirrors active states/auras,
+    // so `defenderStats.getAccruedStat('armorclass')` applies `skill_armor_percent` once without double-scaling #1634).
+    const armorShrineBonusPct =
+      player.states.has(128) && !this.playerCombatContext(player).stateBus.hasState(128) ? 100 : 0
+    const baseDefWithPerLvlPct =
+      playerBaseDefense +
+      Math.trunc((playerBaseDefense * (this.sumPlayerItemStat(player, 215) + armorShrineBonusPct)) / 100)
+    defenderStats.setBaseStat('armorclass', Math.max(0, baseDefWithPerLvlPct))
+    defenderStats.setBaseStat('armorclass_vs_missile', this.sumPlayerItemStat(player, 32))
+    defenderStats.setBaseStat('armorclass_vs_hth', this.sumPlayerItemStat(player, 33))
     defenderStats.setBaseStat('toblock', Math.max(0, blockChance))
     defenderStats.setBaseStat('normal_damage_reduction', normalDr)
     defenderStats.setBaseStat('magic_damage_reduction', magicDr)
@@ -12035,10 +12693,6 @@ export class GameInstance {
     defenderStats.setBaseStat('item_absorbmagic', absorbMagic)
     defenderStats.setBaseStat('item_absorbcold_percent', absorbColdPct)
     defenderStats.setBaseStat('item_absorbcold', absorbCold)
-    defenderStats.setBaseStat('item_absorb_cold_perlevel', absorbColdPerLevel)
-    defenderStats.setBaseStat('item_absorb_fire_perlevel', absorbFirePerLevel)
-    defenderStats.setBaseStat('item_absorb_ltng_perlevel', absorbLightPerLevel)
-    defenderStats.setBaseStat('item_absorb_pois_perlevel', absorbMagicPerLevel)
     defenderStats.setBaseStat('maxhp', player.maxHpFixed)
     defenderStats.setHp256(player.hpFixed)
     defenderStats.setBaseStat('maxmana', player.maxManaFixed)
@@ -12100,7 +12754,8 @@ export class GameInstance {
     this.mirrorPersistentStates(this.playerCombat.get(player.unitId), defenderStateBus)
     if (player.states.has(101) && !defenderStateBus.hasState(101)) {
       const hsLvl = Math.max(1, player.skills.get(117) ?? 1)
-      const hsBlock = 10 + Math.trunc((30 * Math.trunc((110 * hsLvl) / (hsLvl + 6))) / 100)
+      // Holy Shield #117 aurastatcalc1 = dm56 (10, 40) → D2Common 0x6FD9DC30 (issue #1678).
+      const hsBlock = computeDiminishingReturns(10, 40, hsLvl)
       defenderStateBus.applyState({
         stateNameOrId: 'holyshield',
         sourceSkillId: 117,
@@ -12932,7 +13587,7 @@ export class GameInstance {
     const { entry, skill, missileRec } = chosen
     monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, candidates.length)
     const skillLevel = Math.max(1, entry.level)
-    const rangeFrames = Math.max(2, missileRec.range + missileRec.levRange * (skillLevel - 1))
+    const rangeFrames = Math.max(2, missileRec.range + missileRec.levRange * skillLevel)
     const missileReach =
       missileRec.vel > 0 ? Math.max(rangeFrames, (missileRec.vel / 16) * rangeFrames) : rangeFrames
     if (distance > Math.min(35, Math.max(4, missileReach))) return false
@@ -14384,12 +15039,14 @@ export class GameInstance {
             ? [-0.22, 0, 0.22]
             : [0]
           const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+          const monLvl = Math.max(0, monster.level)
           const rangeFrames = Math.max(
             2,
-            missileRec.range + missileRec.levRange * Math.max(0, monster.level - 1),
+            missileRec.range + missileRec.levRange * monLvl,
           )
+          const rawVel = missileRec.vel + Math.trunc((missileRec.velLev * monLvl) / 8)
           const missileSpan =
-            missileRec.vel > 0 ? (missileRec.vel / 16) * rangeFrames : bestDist
+            rawVel > 0 ? (rawVel / 16) * rangeFrames : bestDist
           const aimDist = Math.max(bestDist, missileSpan)
           for (const offset of offsets) {
             const tx =
@@ -15036,15 +15693,18 @@ export class GameInstance {
     const dy = targetY - shrineY
     const stationary = (dx === 0 && dy === 0) || (meta !== undefined && meta.vel <= 0)
     const dist = Math.max(0.5, Math.hypot(dx, dy))
-    const speed = stationary ? 0 : meta === undefined ? 1.0 : meta.vel / 16
+    const rawVel = meta === undefined ? 0 : meta.vel + Math.trunc((meta.velLev * slvl) / 8)
+    const speed = stationary ? 0 : meta === undefined ? 1.0 : rawVel / 16
     const rangeTicks =
-      meta === undefined ? 25 : Math.max(1, meta.range + meta.levRange * (slvl - 1))
+      meta === undefined ? 25 : Math.max(1, meta.range + meta.levRange * slvl)
     const element: MissileDamageChannel =
       normalizeMissileElement(meta?.eType) ??
       (resolvedClassId === 48 ? 'pois' : 'fire')
     const hitShift = meta?.hitShift ?? 8
     const elemDurationFrames =
-      meta === undefined ? 0 : Math.max(0, meta.eLen + meta.eLevLen1 * (slvl - 1))
+      meta === undefined
+        ? 0
+        : Math.max(0, compute3BandDuration(slvl, meta.eLen, meta.eLevLen1, meta.eLevLen2, meta.eLevLen3))
     const eMinRaw = meta === undefined ? 1 : meta.eMin + meta.eMinLev1 * (slvl - 1)
     const eMaxRaw = meta === undefined ? 2 : Math.max(eMinRaw, meta.eMax + meta.eMaxLev1 * (slvl - 1))
     const elemDamage = Math.max(1, Math.floor((eMinRaw * (1 << hitShift)) / FIXED_ONE))
@@ -15972,6 +16632,55 @@ export class GameInstance {
       }
       return
     }
+    // Objects.txt 565 LastPortal ("Destruction's End", D2Game OperateFn 72 @ 0x6fc7fd00):
+    // Requires mode === 2 (OBJMODE_OPENED) and A5Q6 completion (bit 0 or bit 13); otherwise
+    // attaches reject sound 19 (0x13) and returns. On success: warps player to Harrogath (109),
+    // sets bit 10 (0x0400) on a5q6, and sends S2C 0x61 07 (CanGoToAct { act: 7 }).
+    if (obj.classId === 565) {
+      if (obj.mode !== 2) return
+      if (
+        !hasQuestFlag113c(
+          player.questFlags,
+          'a5q6',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+        )
+      ) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      this.transitionPlayerArea(player, 109, { kind: 'townPortal' })
+      this.setPlayerQuestFlag(player, 'a5q6', 0x0400)
+      this.emitToPlayer(player.unitId, { type: 'CanGoToAct', act: 7 })
+      return
+    }
+    // Objects.txt 566 Harrogath portal (D2Game OperateFn 73 @ 0x6fcdb550):
+    // Requires mode === 2 (OBJMODE_OPENED) and A4Q3 completion (bit 0 or bit 13); otherwise
+    // attaches reject sound 19 (0x13) and returns. On success: sends S2C 0x61 05 (CanGoToAct { act: 5 })
+    // and warps player to Harrogath (109).
+    if (obj.classId === 566) {
+      if (obj.mode !== 2) return
+      if (
+        !hasQuestFlag113c(
+          player.questFlags,
+          'a4q3',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+        )
+      ) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      this.emitToPlayer(player.unitId, { type: 'CanGoToAct', act: 5 })
+      this.transitionPlayerArea(player, 109, { kind: 'townPortal' })
+      return
+    }
     const record = getObjectsTxtRecord113c(obj.classId)
     const kind = classifyObjectOperate113c(obj.classId)
     if (kind === 'door') {
@@ -16759,7 +17468,7 @@ export class GameInstance {
     ) {
       player.pendingInteraction = undefined
       player.pendingInteractionSteps = 0
-      if (obj.destAreaId !== undefined) {
+      if (obj.destAreaId !== undefined && obj.classId !== 565 && obj.classId !== 566) {
         // D2Game OperateFn 50 (0x6fc8f4f0): Durance of Hate Stairs (Objects.txt 386)
         // cannot be entered until the Compelling Orb mist has opened them (mode === 2).
         if (obj.classId === 386 && obj.mode !== 2) return
@@ -16967,6 +17676,24 @@ export class GameInstance {
     return true
   }
 
+  /**
+   * Town mouth of a town portal (#1698): D2Game `0x6FCC2318` / `0x6FCC23C8` call D2Common `#10816`
+   * with `nTileIndex = 11` (the style-33 DS1 marker picked by `sub_6FD69B60`) and unit size 3, then
+   * `COLLISION_GetFreeCoordinates` (mask `0x1C09`, radius 50). `null` when the town cannot be built.
+   * A resolver-less GameInstance is the synthetic legacy test grid (no DRLG level exists): its town
+   * mouth is the legacy grid spawn used by `connectPlayer`.
+   */
+  private resolveTownPortalMouth(townArea: number): { readonly x: number; readonly y: number } | null {
+    const area = this.loadArea(townArea)
+    if (area === null) {
+      return this.areaBootstrapResolver ? null : { x: LEGACY_TEST_GRID_SPAWN, y: LEGACY_TEST_GRID_SPAWN }
+    }
+    if (area.findActSpawnLocation === undefined) {
+      throw new Error(`GameInstance: town ${String(townArea)} has no DUNGEON_FindActSpawnLocationEx data`)
+    }
+    return area.findActSpawnLocation(ACT_SPAWN_TILE_TOWN_PORTAL, 3)
+  }
+
   private openTownPortal(
     player: InternalPlayerRecord,
     consumeScroll = true,
@@ -16994,10 +17721,10 @@ export class GameInstance {
 
     const townArea = ACT_TOWN_AREA[player.act] ?? 1
     const fromArea = player.areaId
-    // 1.13c creates both mouths: the caster's position in the wilderness and the fixed
-    // town portal tile (D2GAME_CreateLinkPortal_6FD13B20 -> AddTownPortal).
-    this.ensureAreaLoaded(townArea)
-    const townPos = resolveTownPortalSubTile(townArea)
+    // 1.13c creates both mouths: the caster's position in the wilderness and the town mouth from
+    // DUNGEON_FindActSpawnLocationEx(pAct, town, 11, &x, &y, 3) (D2Game 0x6FCC2318 / 0x6FCC23C8, #1698).
+    const townPos = this.resolveTownPortalMouth(townArea)
+    if (townPos === null) return 0
     const portalId = this.spawnObject({
       classId: 59,
       x: Math.round(player.x) + 1,
@@ -17156,13 +17883,13 @@ export class GameInstance {
       if (loadedArea) {
         landing = this.resolveArrivalPosition(loadedArea, arrival)
       } else if (arrival.kind === 'respawn' && ACT_TOWN_AREAS.includes(destAreaId)) {
-        const townPos = resolveTownPortalSubTile(destAreaId)
+        // Resolver-less synthetic test grid: no DRLG town exists, respawn on the legacy grid spawn.
         landing =
           findStandableNear(
             (x, y) => this.isWorldWalkableForPlayer(destAreaId, x, y),
-            townPos.x,
-            townPos.y,
-          ) ?? townPos
+            LEGACY_TEST_GRID_SPAWN,
+            LEGACY_TEST_GRID_SPAWN,
+          ) ?? { x: LEGACY_TEST_GRID_SPAWN, y: LEGACY_TEST_GRID_SPAWN }
       }
     }
 
@@ -17415,6 +18142,9 @@ export class GameInstance {
       gItem.storePage = 1
     }
     player.items.push(gItem)
+    if (!toCursor) {
+      this.refreshPlayerAccruedMaxPools(player)
+    }
 
     this.emitToPlayer(player.unitId, {
       type: 'ItemEvent',
@@ -17467,6 +18197,7 @@ export class GameInstance {
     if (idx === -1) return
     const [item] = player.items.splice(idx, 1)
     if (!item) return
+    const prevLocation = item.location
 
     const pos = this.findDropPosition(player.areaId, player.x, player.y, new Set())
     item.location = 'ground'
@@ -17475,6 +18206,9 @@ export class GameInstance {
     item.x = pos.x
     item.y = pos.y
     this.groundItems.set(item.unitId, item)
+    if (prevLocation === 'inventory' || prevLocation === 'equipped') {
+      this.refreshPlayerAccruedMaxPools(player)
+    }
 
     const itemData = this.serverEntryToItemData(item)
     this.broadcastToArea(player.areaId, {
@@ -17565,10 +18299,14 @@ export class GameInstance {
       return
     }
 
+    const prevLocation = item.location
     item.location = container
     item.x = x
     item.y = y
     item.storePage = container === 'stash' ? 4 : container === 'cube' ? 3 : 1
+    if (prevLocation === 'inventory' || container === 'inventory') {
+      this.refreshPlayerAccruedMaxPools(player)
+    }
     this.emitToPlayer(player.unitId, {
       type: 'ItemEvent',
       action: 'move',
@@ -17650,6 +18388,7 @@ export class GameInstance {
       item: this.serverEntryToItemData(item),
     })
     this.validatePlayerActiveSkills(player)
+    this.refreshPlayerAccruedMaxPools(player)
   }
 
   private handleItemUnequip(player: InternalPlayerRecord, slot: number): void {
@@ -17681,6 +18420,7 @@ export class GameInstance {
       item: this.serverEntryToItemData(item),
     })
     this.validatePlayerActiveSkills(player)
+    this.refreshPlayerAccruedMaxPools(player)
   }
 
   private handleBeltPut(
@@ -17931,9 +18671,13 @@ export class GameInstance {
         (candidate.location === 'inventory' || candidate.location === 'stash' || candidate.location === 'cube'),
     )
     if (!item || player.items.some((candidate) => candidate.location === 'cursor')) return
+    const prevLocation = item.location
     item.location = 'cursor'
     item.x = 0
     item.y = 0
+    if (prevLocation === 'inventory') {
+      this.refreshPlayerAccruedMaxPools(player)
+    }
     this.emitToPlayer(player.unitId, {
       type: 'ItemEvent',
       action: 0x05,
@@ -18739,6 +19483,13 @@ export class GameInstance {
       statId: 12,
       value: Math.max(1, Math.floor(merc.level)),
     })
+    this.broadcastToArea(merc.areaId, {
+      type: 'UnitStatUpdate',
+      unitType: 'monster',
+      unitId: merc.unitId,
+      statId: 13,
+      value: Math.max(0, Math.floor(merc.experience)),
+    })
     this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
     this.syncMercenaryOwnerAura(player, merc.activeAura)
   }
@@ -18968,6 +19719,56 @@ export class GameInstance {
           this.givePlayerInventoryQuestItem(player, 'mss', npc)
           this.setPlayerQuestFlag(player, 'a4q2', QUEST_FLAG_STARTED_113C)
         }
+      }
+    }
+    // D2Game.dll 0x6fc7d920 (`ACT5Q6_Callback02_NpcActivate`): talking to `tyrael3` (#521) in Worldstone Chamber (132)
+    // spawns `"Destruction's End"` (`LastPortal` #565) in `OBJMODE_OPENED (2)` at `(npc.x + 5, npc.y)`.
+    if (
+      npc?.hcIdx === 521 &&
+      hasQuestFlag113c(
+        player.questFlags,
+        'a5q6',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+      )
+    ) {
+      const existingLastPortal = [...this.objects.values()].find(
+        (o) => o.areaId === player.areaId && o.classId === 565,
+      )
+      if (existingLastPortal !== undefined) {
+        this.setObjectMode(existingLastPortal, 2)
+      } else {
+        this.spawnObject({
+          classId: 565,
+          x: npc.x + 5,
+          y: npc.y,
+          areaId: player.areaId,
+          mode: 2,
+        })
+      }
+    }
+    // D2Game.dll `ACT4Q2_NpcActivate`: talking to `tyrael2` (#367) after `a4q3` (Diablo) completion
+    // spawns/opens the `Harrogath` portal (#566) in `OBJMODE_OPENED (2)`.
+    if (
+      npc?.hcIdx === 367 &&
+      hasQuestFlag113c(
+        player.questFlags,
+        'a4q3',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+      )
+    ) {
+      const existingHarrogathPortal = [...this.objects.values()].find(
+        (o) => o.areaId === player.areaId && o.classId === 566,
+      )
+      if (existingHarrogathPortal !== undefined) {
+        this.setObjectMode(existingHarrogathPortal, 2)
+      } else {
+        this.spawnObject({
+          classId: 566,
+          x: npc.x + 4,
+          y: npc.y,
+          areaId: player.areaId,
+          mode: 2,
+        })
       }
     }
     const canHeal =
@@ -19806,6 +20607,55 @@ export class GameInstance {
     })
   }
 
+  /**
+   * 1.13c C2S `0x4F` `ClickButton` (`D2Game.dll` `0x6FC917E0`, #1669):
+   * - `0x13` (`WithdrawGold`, stash -> inventory): rejects if `amount <= 0`, `amount > goldBank`,
+   *   or `gold + amount > getInventoryGoldLimit(level)`.
+   * - `0x14` (`DepositGold`, inventory -> stash): rejects if `amount <= 0` or `amount > gold`;
+   *   deposits `min(amount, getStashGoldLimit(level) - goldBank)`.
+   */
+  private handleClickButton(
+    player: InternalPlayerRecord,
+    buttonId: number,
+    rawAmount: number,
+  ): void {
+    if (player.dead) return
+    const amount = Math.max(0, Math.floor(rawAmount))
+    if (buttonId === 0x13) {
+      if (amount <= 0 || amount > player.goldBank) return
+      const invCap = getInventoryGoldLimit(player.level)
+      if (player.gold + amount > invCap) return
+      player.goldBank -= amount
+      player.gold += amount
+    } else if (buttonId === 0x14) {
+      if (amount <= 0 || amount > player.gold) return
+      const stashCap = getStashGoldLimit(player.level)
+      const deposit = Math.min(amount, Math.max(0, stashCap - player.goldBank))
+      if (deposit <= 0) return
+      player.gold -= deposit
+      player.goldBank += deposit
+    } else {
+      return
+    }
+    for (const [statId, value] of [
+      [14, player.gold],
+      [15, player.goldBank],
+    ] as const) {
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId,
+        value,
+      })
+      this.emitToPlayer(player.unitId, {
+        type: 'StatSet',
+        stat: statId,
+        value,
+      })
+    }
+  }
+
   private handleAllocateStat(
     player: InternalPlayerRecord,
     statId: number,
@@ -19817,40 +20667,39 @@ export class GameInstance {
     player.statPts -= spend
     const base = CANONICAL_CHARSTATS[player.classCode]
 
+    // 1.13c `D2Game.dll` `0x6FC97340` (`PACKET_AddStatPoint`, #1666):
+    // Allocating Vitality (`statId === 3`) or Energy (`statId === 1`) adds the exact 1/256 fixed-point
+    // increment to BOTH the max pool and the current pool (`STATLIST_AddUnitStat`), never full-refilling
+    // missing HP, Mana, or Stamina and never clearing `staminaExhausted`.
     if (statId === 0) {
       player.strength += spend
     } else if (statId === 1) {
       player.energy += spend
-      const manaAddFixed = Math.max(
-        FIXED_ONE,
-        Math.round(base.perStatPoint.manaPerEnergy * spend * FIXED_ONE),
-      )
+      const manaAddFixed = Math.round(base.perStatPoint.manaPerEnergy * spend * FIXED_ONE)
       player.maxManaFixed += manaAddFixed
-      player.manaFixed = player.maxManaFixed
-      player.maxMana = Math.floor(player.maxManaFixed / FIXED_ONE)
-      player.mana = player.maxMana
+      const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
+      player.manaFixed = Math.min(accruedMaxManaFixed, player.manaFixed + manaAddFixed)
+      player.maxMana = Math.max(0, Math.floor(accruedMaxManaFixed / FIXED_ONE))
+      player.mana = Math.max(0, Math.floor(player.manaFixed / FIXED_ONE))
     } else if (statId === 2) {
       player.dexterity += spend
     } else if (statId === 3) {
       player.vitality += spend
-      const lifeAddFixed = Math.max(
-        FIXED_ONE,
-        Math.round(base.perStatPoint.lifePerVitality * spend * FIXED_ONE),
-      )
-      const stamAddFixed = Math.max(
-        FIXED_ONE,
-        Math.round(base.perStatPoint.staminaPerVitality * spend * FIXED_ONE),
-      )
+      const lifeAddFixed = Math.round(base.perStatPoint.lifePerVitality * spend * FIXED_ONE)
+      const stamAddFixed = Math.round(base.perStatPoint.staminaPerVitality * spend * FIXED_ONE)
       player.maxHpFixed += lifeAddFixed
-      player.hpFixed = player.maxHpFixed
-      player.maxHp = Math.floor(player.maxHpFixed / FIXED_ONE)
-      player.hp = player.maxHp
-
       player.maxStaminaFixed += stamAddFixed
-      player.staminaFixed = player.maxStaminaFixed
-      player.staminaExhausted = false
-      player.maxStamina = Math.floor(player.maxStaminaFixed / FIXED_ONE)
-      player.stamina = player.maxStamina
+      const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+      const accruedMaxStaminaFixed = this.getPlayerAccruedMaxStaminaFixed(player)
+      player.hpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + lifeAddFixed)
+      player.maxHp = Math.max(1, Math.floor(accruedMaxHpFixed / FIXED_ONE))
+      player.hp = Math.max(0, Math.floor(player.hpFixed / FIXED_ONE))
+
+      player.staminaFixed = Math.min(accruedMaxStaminaFixed, player.staminaFixed + stamAddFixed)
+      player.maxStamina = Math.max(1, Math.floor(accruedMaxStaminaFixed / FIXED_ONE))
+      player.stamina = player.staminaExhausted
+        ? 0
+        : Math.max(0, Math.floor(player.staminaFixed / FIXED_ONE))
     }
 
     const updatedVal =
@@ -20900,6 +21749,13 @@ export class GameInstance {
       statId: 12,
       value: Math.max(1, Math.floor(level)),
     })
+    this.broadcastToArea(areaId, {
+      type: 'UnitStatUpdate',
+      unitType: 'monster',
+      unitId,
+      statId: 13,
+      value: Math.max(0, Math.floor(initialExp)),
+    })
     this.broadcastAllyHp(areaId, unitId, hp)
     if (owner) {
       this.syncMercenaryOwnerAura(owner, activeAura)
@@ -20995,6 +21851,29 @@ export class GameInstance {
       if (!merc.alive || merc.hp <= 0) continue
       const owner = this.players.get(merc.ownerPlayerId)
       if (!owner || owner.dead) continue
+
+      // 1.13c `MERCS_SetStats` (`D2Game.dll` `0x6FC68EE6..0x6FC68F0D`, #1671):
+      // Mercenaries have natural `stat 74 hpregen = maxhp_256 / 2000` (`>= 0`, `~1000` frames = 40s full heal),
+      // plus any equipped `item_replenish_life` (`stat 74`), ticked each 25 Hz frame via 1/256 fixed-point carry.
+      if (merc.hp < merc.maxHp) {
+        const baseRegen256 = Math.max(0, Math.floor((merc.maxHp * FIXED_ONE) / 2000))
+        const itemRegen256 = Math.trunc(this.sumMercItemStat(merc, 74))
+        const totalRegen256 = baseRegen256 + itemRegen256
+        if (totalRegen256 > 0) {
+          merc.regenCarry256 = (merc.regenCarry256 ?? 0) + totalRegen256
+          if (merc.regenCarry256 >= FIXED_ONE) {
+            const healWhole = Math.floor(merc.regenCarry256 / FIXED_ONE)
+            merc.regenCarry256 -= healWhole * FIXED_ONE
+            const nextHp = Math.min(merc.maxHp, merc.hp + healWhole)
+            if (nextHp !== merc.hp) {
+              merc.hp = nextHp
+              this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
+            }
+          }
+        }
+      } else {
+        merc.regenCarry256 = 0
+      }
 
       if (merc.areaId !== owner.areaId) {
         merc.areaId = owner.areaId
@@ -21199,7 +22078,10 @@ export class GameInstance {
   summonPet(ownerPlayerId: number, spec: SummonPetSpec): CreatePetOutcome {
     const owner = this.players.get(ownerPlayerId)
     const mgr = this.getSummonManager(ownerPlayerId)
-    const statList = new UnitStatList(this.registry)
+    const statList = new UnitStatList(this.registry, undefined, {
+      ownerType: 'player',
+      charClass: owner?.classCode ?? 'nec',
+    })
     statList.setBaseStat('level', owner?.level ?? 1)
     statList.setBaseStat('strength', owner?.strength ?? 0)
     statList.setBaseStat('dexterity', owner?.dexterity ?? 0)

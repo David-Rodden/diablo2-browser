@@ -106,6 +106,20 @@ export const MAPTILE_UNK_0x200 = 0x000200
 export const MAPTILE_PITCH_BLACK = 0x000400
 export const MAPTILE_OBJECT_WALL = 0x000800
 export const MAPTILE_UNK_0x001000 = 0x001000
+
+/**
+ * 1.13c room collision fill (D2Common `0x6FD9CA90`, #1702): besides the DT1 sub-tile bytes, every tile
+ * ORs a mask built from its `dwFlags` over all 25 sub-tiles: `if (f & 0x02) m = 0x10` (`0x6FD9CB22`),
+ * `if (f & 0x40) m |= 0x01` (`0x6FD9CB2C`), `if (f & 0x80) m |= 0x04` (`0x6FD9CB34`), applied by
+ * `0x6FD9B560`. No hidden / layer test is made.
+ */
+export function mapTileCollisionFlags113c(dwFlags: number): number {
+  let m = 0
+  if ((dwFlags & MAPTILE_WALL_EXIT) !== 0) m = 0x10
+  if ((dwFlags & MAPTILE_UNWALKABLE) !== 0) m |= 0x01
+  if ((dwFlags & MAPTILE_FILL_LOS) !== 0) m |= 0x04
+  return m
+}
 export const MAPTILE_LOS = 0x002000
 export const MAPTILE_WALL_LAYER_BIT = 14
 export const MAPTILE_WALL_LAYER_MASK = 0b111 << MAPTILE_WALL_LAYER_BIT

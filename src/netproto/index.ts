@@ -41,6 +41,7 @@ export type {
   ItemStatCostField,
   ItemStatCostMeta,
   Pt,
+  SetBonusStatList,
   SkillLevel,
   SubTile,
   UnitId,
@@ -73,6 +74,7 @@ export type {
   LobbyGameListItem,
   LobbyGameMode,
   LobbyProvider,
+  LocalAreaActSpawn,
   LocalAreaBootstrap,
   LocalAreaBootstrapResolver,
   LocalAreaLevelGeometry,
@@ -284,6 +286,7 @@ export {
   encodeC2sSkillOnUnit,
 } from './d2gs/c2s/skills.ts'
 export { encodeC2sTrade } from './d2gs/c2s/trade.ts'
+export { encodeC2sRequestEntityUpdate, encodeC2sUpdatePlayerPos } from './d2gs/c2s/position.ts'
 export {
   decode0x58OpenUi,
   decode0x61CanGoToAct,
@@ -314,6 +317,7 @@ export {
 } from './d2gs/registry.ts'
 export {
   D2gsS2cFramer,
+  resolveFramedS2cPacketSize,
   resolveS2cPacketSize,
 } from './d2gs/framing-s2c.ts'
 
@@ -371,7 +375,7 @@ export { TsClientAdapter, TsServerAdapter } from './ts/adapter.ts'
 export { TsFramer, encodeTsFrame, tsJsonReplacer, tsJsonReviver } from './ts/framing.ts'
 
 import { ByteWriter } from './core/byte-writer.ts'
-import { resolveS2cPacketSize } from './d2gs/framing-s2c.ts'
+import { resolveFramedS2cPacketSize } from './d2gs/framing-s2c.ts'
 import {
   D2GS_S2C_REGISTRY,
   decodeD2gsS2cPacket,
@@ -724,7 +728,7 @@ export function decodePacket(
       return { ok: false, error: `Unregistered S2C opcode 0x${opcode.toString(16).padStart(2, '0')}` }
     }
     try {
-      const expectedSize = resolveS2cPacketSize(raw, 0)
+      const expectedSize = resolveFramedS2cPacketSize(raw)
       if (expectedSize === null || raw.byteLength < expectedSize) {
         return { ok: false, error: `Truncated S2C packet 0x${opcode.toString(16).padStart(2, '0')}` }
       }

@@ -855,7 +855,8 @@ export function evaluateClawsOfThunderStats(
   const toHitLev = entry?.toHitLev ?? 7
   const mana = evaluateCanonicalSkillMana113c(269, lvl)
   const synPct = Math.max(0, Math.floor(royalStrikeBlvl)) * par8
-  const minDamage = Math.max(1, Math.floor((1 * (100 + synPct)) / 100))
+  // Claws of Thunder EMin=1, HitShift=8, EMinLev1=0: D2Common #10121 0x6FDA04C7 leaves the min un-synergised (#1681).
+  const minDamage = 1
   const baseMax = compute5BandScaling(lvl, 80, 20, 40, 60, 80, 100)
   const maxDamage = Math.floor((baseMax * (100 + synPct)) / 100)
   const nova = evaluateMartialSubMissileDamage('clawsofthundernova', lvl, royalStrikeBlvl)

@@ -8043,6 +8043,46 @@ export function getHirelingRecordsById(id: number, expansion = true): readonly H
   return HIRELING_RECORDS.filter((r) => r.version === version && (r.id === id || r.subTypeId === id))
 }
 
+/** Per-level base stats of a `Hireling.txt` row at a mercenary level (`MERCS_SetStats` `0x6FC68BA0`). */
+export interface HirelingLevelStats113c {
+  readonly hp: number
+  readonly defense: number
+  readonly str: number
+  readonly dex: number
+  readonly ar: number
+  readonly minDmg: number
+  readonly maxDmg: number
+  readonly resist: number
+}
+
+/**
+ * `D2Game.dll` `MERCS_SetStats` (`0x6FC68BA0`) per-level scaling of a `Hireling.txt` row, with
+ * `d = max(0, mercLevel - row.level)`:
+ * - `maxhp/hitpoints = max(0x2800, (HP + HP/Lvl*d) << 8)` (`0x6FC68DEC..0x6FC68E1B`, i.e. min 40 HP)
+ * - `armorclass = max(0, Def + Def/Lvl*d)` (`0x6FC68E20`); `tohit = max(0, AR + AR/Lvl*d)` (`0x6FC68E86`)
+ * - `mindamage = max(0, Dmg-Min + trunc(Dmg/Lvl*d/8))`, `maxdamage = max(1, Dmg-Max + trunc(Dmg/Lvl*d/8))`
+ *   (`0x6FC68E3A..0x6FC68E81`)
+ * - resists 39/41/43/45 `= max(0, Resist + trunc(Resist/Lvl*d/4))` (`0x6FC68EA0..0x6FC68EE1`)
+ * - str/dex `= max(10, base + trunc(perLvl*d/8))`.
+ */
+export function computeHirelingLevelStats113c(
+  row: HirelingRecord,
+  mercLevel: number,
+): HirelingLevelStats113c {
+  const deltaLvl = Math.max(0, Math.trunc(mercLevel) - row.level)
+  const dmgBonus = Math.trunc((deltaLvl * row.dmgPerLvl) / 8)
+  return {
+    hp: Math.max(40, row.hp + deltaLvl * row.hpPerLvl),
+    defense: Math.max(0, row.defense + deltaLvl * row.defPerLvl),
+    str: Math.max(10, row.str + Math.trunc((deltaLvl * row.strPerLvl) / 8)),
+    dex: Math.max(10, row.dex + Math.trunc((deltaLvl * row.dexPerLvl) / 8)),
+    ar: Math.max(0, row.ar + deltaLvl * row.arPerLvl),
+    minDmg: Math.max(0, row.dmgMin + dmgBonus),
+    maxDmg: Math.max(1, row.dmgMax + dmgBonus),
+    resist: Math.max(0, row.resist + Math.trunc((deltaLvl * row.resistPerLvl) / 4)),
+  }
+}
+
 /**
  * Resolves a hireling's stats and skill levels at a target mercenary level
  * per D2Common.dll #11156 (0x6fda32c0) bracket selection and
@@ -8131,15 +8171,10 @@ export function resolveHirelingStatsAtLevel(
   const deltaLvl = Math.max(0, mercLevel - selected.level)
 
   // D2Game.dll 0x6fc68ba0 fixed-point scaling
-  const hp = Math.max(40, selected.hp + deltaLvl * selected.hpPerLvl)
-  const defense = Math.max(0, selected.defense + deltaLvl * selected.defPerLvl)
-  const str = Math.max(10, selected.str + Math.trunc((deltaLvl * selected.strPerLvl) / 8))
-  const dex = Math.max(10, selected.dex + Math.trunc((deltaLvl * selected.dexPerLvl) / 8))
-  const ar = Math.max(0, selected.ar + deltaLvl * selected.arPerLvl)
-  const dmgBonus = Math.trunc((deltaLvl * selected.dmgPerLvl) / 8)
-  const minDmg = Math.max(0, selected.dmgMin + dmgBonus)
-  const maxDmg = Math.max(1, selected.dmgMax + dmgBonus)
-  const resist = Math.max(0, selected.resist + Math.trunc((deltaLvl * selected.resistPerLvl) / 4))
+  const { hp, defense, str, dex, ar, minDmg, maxDmg, resist } = computeHirelingLevelStats113c(
+    selected,
+    mercLevel,
+  )
 
   let auraSkillId: number | undefined
   let auraSkillLevel: number | undefined

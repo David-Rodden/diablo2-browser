@@ -83,14 +83,32 @@ Hardcoded English strings with a trailing space:
 | --- | --- | --- | --- | --- |
 | 1 | Slayer | Slayer | Sir | Dame |
 | 2 | Champion | Champion | Lord | Lady |
-| 3 | Patriarch | Matriarch | Baron | Baroness |
+| 3 | Patriarch | Patriarch | Baron | Baroness |
 | 4 | Destroyer | Destroyer | Count | Countess |
 | 5 | Conqueror | Conqueror | Duke | Duchess |
 | 6 | Guardian | Guardian | King | Queen |
 
+*(Note: Tier 3 Expansion female is `Matriarch `.)*
+
+## Server: Baal death & Tyrael / LastPortal spawn (`D2Game.dll` `0x6fc7c1f0`, `0x6fc7d760`, `0x6fc7d920`, `0x6fc7daf0`)
+
+- `ACT5Q6_Callback08_MonsterKilled` (`0x6fc7daf0`): when `baalcrab` (`MonStats.txt` `#544`) dies in Worldstone Chamber (`132`), marks `QFLAG_REWARDGRANTED (0)` and `QFLAG_COMPLETEDNOW (13)` (`0x2001`) on `A5Q6` (`questId = 40`), spawns `tyrael3` (`MonStats.txt` `#521`) at `(x - 5, y - 5)` via `ACT5Q6_SpawnTyrael3` (`0x6fc7c1f0`), and spawns/opens `"Destruction's End"` (`LastPortal`, `Objects.txt` `#565`, `OperateFn = 72`) in `OBJMODE_OPENED (2)` at `(tyrael.x + 5, tyrael.y)` via `ACT5Q6_SpawnLastPortal` (`0x6fc7d760`).
+- `ACT5Q6_Callback02_NpcActivate` (`0x6fc7d920`): interacting with `tyrael3` (`#521`) in Worldstone Chamber (`132`) ensures `LastPortal` (`#565`) is spawned and in `OBJMODE_OPENED (2)` at `(npc.x + 5, npc.y)`.
+- `OBJECTS_OperateFunction73_HarrogathPortal` (`0x6fcdb550`, `Objects.txt` `#566`, `OperateFn = 73`): checks `mode == 2` and `A4Q3` completion (`bit 0` or `bit 13`, else attaches reject sound `19`), sends `S2C 0x61 05` (`CanGoToAct { act: 5 }`), and warps the player to Harrogath (`109`).
+
+## Client: Character Selection & Battle.net Lobby Title Rendering (`D2Launch.dll` `0x6fa4af00`, `D2Multi.dll` `0x6f9db42a`)
+
+- `D2Launch.dll` `0x6fa4af00` (`0x6fa4af58..0x6fa4b28a`):
+  - Calls `D2Win.#10094(pTextBox, -1, -2)` (`14px` vertical line pitch when a title line is present so up to 5 lines fit inside the 84px slot height).
+  - Calls `D2Win.#10205(nCharClass, nProgression, bHardcore, bExpansion)` (`0x6fa4b099`); when non-empty, strips the trailing space (`0x6fa4b0a5..0x6fa4b0b6`) and appends the title line above the character name in `font16` with `color = bHardcore ? 1 (red) : 4 (gold)` (`0x6fa4b0be..0x6fa4b0cd`).
+- `D2Multi.dll` `0x6f9db42a..0x6f9db4ce`:
+  - Calls `D2Win.#10205` and concatenates `${title}${charName}` (keeping the trailing space from `#10205`) on the top line `(134, 528)` of the bottom character lineup bar in `font16` (`color = bHardcore ? 1 : 4`), with Level & Class below at `(134, 548)` in `fontformal10`.
+
 ## Port
 
 - `src/client/session/game-completion-113c.ts`, `OnlineSession` `CanGoToAct` handler / `completeGame`.
+- `src/client/frontend/flow-state.ts` (`getRosterCharacterTitle`) & `src/client/frontend/frontend-renderer.ts` (`renderCharacterSelect`, `renderBnetLobby`).
+- `src/server/engine/game-instance.ts` (`onMonsterKilled`, `handleNpcInteract`, `operateObject` for `#565` & `#566`).
 - Frontend stage `end_game` (`FrontendRenderer.renderEndGame`), assets baked by
   `src/baker/packers/pack-frontend-ui.ts` into `public/ui/frontend/endgame/`.
 - The Bink videos are not played (no web form of the BIK assets).

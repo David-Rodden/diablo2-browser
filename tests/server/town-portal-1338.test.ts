@@ -22,6 +22,25 @@ function level(areaId: number, ox: number, oy: number, size: number): LocalAreaL
     adjacentAreaIds: [],
     presetUnits: [],
     warps: [],
+    // #1698: the town carries the DUNGEON_FindActSpawnLocationEx capture; its style-33 marker
+    // (tile index 11) sits at level-local tile (10, 11) -> sub-tile (10*5+3, 11*5+3) = (53, 58).
+    ...(areaId === 1
+      ? {
+          actSpawn: {
+            level: {
+              position: 1,
+              tileInfo: [{ x: 4, y: 4, index: 0 }, { x: 10, y: 11, index: 11 }],
+              rooms: [{ x: 0, y: 0, w: size / 5, h: size / 5 }],
+              waypointRoom: -1,
+              waypointTile: null,
+              warpRoom: -1,
+              centreX: size / 10 - 2,
+              centreY: size / 10 - 2,
+            },
+            seed: [1338, 666] as const,
+          },
+        }
+      : {}),
   }
 }
 
@@ -82,7 +101,7 @@ describe('issue #1338: two-ended town portal', () => {
     expect(wildMouth).toBeDefined()
     expect(townMouth.destAreaId).toBe(2)
     expect(wildMouth.destAreaId).toBe(1)
-    // Authentic Act 1 town portal tile (TownS1: sub-tile 153,158).
+    // Town mouth = origin (100, 100) + style-33 marker tile (10, 11) * 5 + 3 (#1698).
     expect({ x: townMouth.x, y: townMouth.y }).toEqual({ x: 153, y: 158 })
 
     game.enqueueCommand(playerId, { type: 'Interact', target: { unitType: 2, id: wildMouth.unitId } })

@@ -163,8 +163,13 @@ function canStepDiagonalLocal(
   cy: number,
   stepX: number,
   stepY: number,
-  _unitSize: 1 | 2,
+  unitSize: 1 | 2,
 ): boolean {
+  // 1.13c `astarExploreChildren` (`0x6FDCB3C0`) checks `COLLISION_CheckMaskWithPattern` (`0x6FD9CE90`)
+  // at the destination cell only: for `unitSize === 1` (`nCollisionPattern = 0`), no orthogonal corner
+  // cells are checked; for `unitSize === 2` (`nCollisionPattern = 1`), the 5-cell "+" cross at
+  // `(cx + stepX, cy + stepY)` includes both `(cx + stepX, cy)` and `(cx, cy + stepY)` (#1696).
+  if (unitSize === 1) return true
   return (
     isCellWalkableLocal(grid, cx + stepX, cy) &&
     isCellWalkableLocal(grid, cx, cy + stepY)
@@ -210,7 +215,10 @@ export function hasLineOfSightLocal(
 
     if (moveX && moveY) {
       // Diagonal transition: prevent corner clipping
-      if (!canStepDiagonalLocal(grid, cx, cy, stepX, stepY, unitSize)) {
+      if (
+        !isCellWalkableLocal(grid, cx + stepX, cy) ||
+        !isCellWalkableLocal(grid, cx, cy + stepY)
+      ) {
         return false
       }
       cx += stepX

@@ -222,6 +222,11 @@ export function decodeD2gsC2sPacketToCommand(pkt: Uint8Array): ClientCommand | n
       const destAreaId = r.u32LE()
       return { type: 'WaypointGo', waypointId, destAreaId }
     }
+    case 0x4b: {
+      const unitType = r.u32LE()
+      const unitId = r.u32LE()
+      return { type: 'RequestEntityUpdate', unitType, unitId }
+    }
     case 0x5d: {
       const button = r.u8()
       const state = r.u8()

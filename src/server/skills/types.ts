@@ -20,6 +20,8 @@ export interface SkillEvalResult {
   /** Human-readable mana cost (and `manaCost256` in 256-fixed-point). */
   readonly manaCost: number
   readonly manaCost256: number
+  /** Raw unclamped 256-fixed-point mana cost used by `SKILLS_CheckSkillMana` (`0x6FDA0AF0`). */
+  readonly rawManaCost256?: number | undefined
   /** `Skills.txt` `startmana` minimum mana required to begin channeling (`startMana << 8` in 256-fixed-point). */
   readonly startMana?: number | undefined
   readonly startMana256?: number | undefined
@@ -58,6 +60,7 @@ export interface SkillEvalContext {
   readonly statList: UnitStatList
   readonly stateBus?: StateBus
   readonly difficulty?: 'normal' | 'nightmare' | 'hell' | 0 | 1 | 2 | undefined
+  readonly randFn?: ((min: number, max: number) => number) | undefined
 }
 
 export type SkillTargetUnit = CombatUnitContext

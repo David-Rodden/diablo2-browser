@@ -18,6 +18,7 @@
  *      while summing their per-frame poison bitrates (`<< 8`) with Venom's bitrate.
  */
 import { FIXED_ONE, UnitStatList } from './stat-list.ts'
+import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 import { StateBus, type ReactiveUnitOverlayEvent } from './state-bus.ts'
 import { calculateIronMaidenReturnPct } from './missile-engine.ts'
 import {
@@ -96,6 +97,8 @@ export interface CombatUnitContext {
   readonly weaponHitClass?: number | string | undefined
   readonly weaponMinPhys?: number
   readonly weaponMaxPhys?: number
+  readonly weaponStrBonus?: number | undefined
+  readonly weaponDexBonus?: number | undefined
   readonly weaponPoisonBitrate256?: number
   readonly weaponPoisonFrames?: number
   readonly unitType?: 'player' | 'mercenary' | 'party' | 'party_mercenary' | 'minion' | 'monster'
@@ -381,7 +384,13 @@ export function computeEffectiveResistance(params: {
 
 
 /**
- * Compute 1.13c `RollToHit` chance (`[5, 95]`, or `100` for `autohit` skills such as Smite / Guided Arrow / Spells).
+ * Compute 1.13c `RollToHit` chance (`D2Game.dll` `0x6FCFDE90`, clamped to `[5, 95]`, or `100` for `autohit`).
+ *
+ * Implements:
+ * - Single additive `%AR` pool (`item_tohit_percent` 119 + skill `%AR` + weapon mastery `%AR` + `progressive_tohit` 325 + `attack_vs_montype` 179) (#1625).
+ * - Flat AR vs Demon (`123 item_demon_tohit`) and Undead (`124 item_undead_tohit`) (#1626).
+ * - Defender `32 armorclass_vs_missile` / `33 armorclass_vs_hth`, `115 item_ignoretargetac` (vs normal monsters),
+ *   `116 item_fractionaltargetac` (halved vs players/bosses/mercs, capped at 100), and negative defense/AR adjustment (#1626).
  */
 export function computeToHitChance(params: {
   attackerAr: number
@@ -389,14 +398,62 @@ export function computeToHitChance(params: {
   attackerLvl: number
   defenderLvl: number
   skillArBonusPct?: number
-  targetDefPctMod?: number // e.g. -50% from Battle Cry / Cloak of Shadows / Inner Sight
+  itemArBonusPct?: number
+  demonToHit?: number
+  undeadToHit?: number
+  isTargetDemon?: boolean
+  isTargetUndead?: boolean
+  ignoreTargetAc?: boolean
+  fractionalTargetAc?: number
+  isTargetPlayerOrBossOrMerc?: boolean
+  defenderAcVsMissile?: number
+  defenderAcVsHth?: number
+  attackKind?: 'melee' | 'missile' | 'spell'
+  targetDefPctMod?: number // e.g. -50% from Battle Cry / Cloak of Shadows
   autoHit?: boolean
 }): number {
   if (params.autoHit) return 100
-  const arBonusPct = params.skillArBonusPct ?? 0
-  const effAr = Math.max(1, Math.trunc((params.attackerAr * (100 + arBonusPct)) / 100))
-  const defMod = params.targetDefPctMod ?? 0
-  const effDef = Math.max(0, Math.trunc((params.defenderDef * Math.max(0, 100 + defMod)) / 100))
+  const baseAr =
+    Math.trunc(params.attackerAr) +
+    (params.isTargetDemon ? Math.trunc(params.demonToHit ?? 0) : 0) +
+    (params.isTargetUndead ? Math.trunc(params.undeadToHit ?? 0) : 0)
+  const arBonusPct = Math.trunc(params.skillArBonusPct ?? 0) + Math.trunc(params.itemArBonusPct ?? 0)
+  let effAr = baseAr + Math.trunc((baseAr * arBonusPct) / 100)
+
+  let effDef = 0
+  if (!(params.ignoreTargetAc && !params.isTargetPlayerOrBossOrMerc)) {
+    effDef = Math.trunc(params.defenderDef)
+    const rawFrac = Math.trunc(params.fractionalTargetAc ?? 0)
+    if (rawFrac > 0) {
+      const frac = Math.min(
+        100,
+        Math.max(0, params.isTargetPlayerOrBossOrMerc ? Math.trunc(rawFrac / 2) : rawFrac),
+      )
+      if (frac > 0) {
+        effDef -= Math.trunc((effDef * frac) / 100)
+      }
+    }
+    const defMod = params.targetDefPctMod ?? 0
+    if (defMod !== 0) {
+      effDef = Math.trunc((effDef * Math.max(0, 100 + defMod)) / 100)
+    }
+    if (params.attackKind === 'missile' && params.defenderAcVsMissile) {
+      effDef += Math.trunc(params.defenderAcVsMissile)
+    } else if (params.attackKind === 'melee' && params.defenderAcVsHth) {
+      effDef += Math.trunc(params.defenderAcVsHth)
+    }
+  }
+
+  // 1.13c `D2Game.dll` `0x6FCFDFD6..0x6FCFDFF2`: negative defense adds to AR; negative AR adds to defense.
+  if (effDef < 0) {
+    effAr -= effDef
+    effDef = 0
+  }
+  if (effAr < 0) {
+    effDef -= effAr
+    effAr = 0
+  }
+
   const alvl = Math.max(1, params.attackerLvl)
   const dlvl = Math.max(1, params.defenderLvl)
 
@@ -404,6 +461,33 @@ export function computeToHitChance(params: {
   const toHitFactor = divisor > 0 ? Math.trunc((100 * effAr) / divisor) : 100
   const raw = Math.trunc((2 * alvl * toHitFactor) / (alvl + dlvl))
   return Math.max(5, Math.min(95, raw))
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FCFAC10` (`SUNITDMG_GetDamagePercentModifier`, table @ `0x6FD28140`):
+ * - Player (`unitType === 'player' | 'party'`) or player-owned Mercenary/Minion vs Player defender: `17%` (`1/6`).
+ * - Mercenary (`unitType === 'mercenary' | 'party_mercenary'`) vs Mercenary: `25%` (`1/4`).
+ * - Note: Boss vs Player-Summoned Minion `400%` (`offset +0x0C`) is gated out in 1.13c because
+ *   `0x6FD28154` sets `offset +0x04 = 100` and `0x6FCFAC89` jumps to `100` whenever `offset +0x04 == 100`.
+ */
+export function damagePercentModifier113c(
+  attacker: Pick<CombatUnitContext, 'unitType' | 'ownerUnitId' | 'ownerRef' | 'petOwnerId'>,
+  defender: Pick<CombatUnitContext, 'unitType' | 'ownerUnitId' | 'ownerRef' | 'petOwnerId'>,
+): number {
+  const atkIsPlayer = attacker.unitType === 'player' || attacker.unitType === 'party'
+  const defIsPlayer = defender.unitType === 'player' || defender.unitType === 'party'
+  const atkIsMerc = attacker.unitType === 'mercenary' || attacker.unitType === 'party_mercenary'
+  const defIsMerc = defender.unitType === 'mercenary' || defender.unitType === 'party_mercenary'
+  const atkIsPlayerMinion =
+    attacker.unitType === 'minion' ||
+    Boolean(attacker.ownerUnitId || attacker.ownerRef || attacker.petOwnerId)
+  if (defIsPlayer && (atkIsPlayer || atkIsMerc || atkIsPlayerMinion)) {
+    return 17
+  }
+  if (atkIsMerc && defIsMerc) {
+    return 25
+  }
+  return 100
 }
 
 /**
@@ -748,6 +832,7 @@ export interface SUnitDmgPacket {
   readonly toHitBonusPct?: number | undefined
   readonly bypassUndeadMagicRes?: boolean | undefined
   readonly concentrationAlreadyApplied?: boolean | undefined
+  readonly preScaledPhysEd?: boolean | undefined
   readonly hitClass?: number | string | undefined
   readonly rng?: CombatRng | undefined
 }
@@ -1384,7 +1469,8 @@ export function executeSUnitDmg(
         if (slvl252 > 0 && isWeaponMatchingMastery(wType, 252)) {
           const cmAr = 30 + (slvl252 - 1) * 10
           const cmEd = 35 + (slvl252 - 1) * 4
-          const cmCrit = Math.floor((25 * Math.floor((110 * slvl252) / (slvl252 + 6))) / 100)
+          // Claw Mastery #252 passivecalc3 = dm56 (0, 25) → D2Common 0x6FD9DC30 (issue #1678).
+          const cmCrit = computeDiminishingReturns(0, 25, slvl252)
           barMasteryArBonusPct = Math.max(barMasteryArBonusPct, cmAr)
           barMasteryEdBonusPct = Math.max(barMasteryEdBonusPct, cmEd)
           barMasteryCritPct = Math.max(barMasteryCritPct ?? 0, cmCrit)
@@ -1393,25 +1479,59 @@ export function executeSUnitDmg(
     }
   }
 
-  // 1. RollToHit check for weapon attacks (unless autoHit, e.g. Smite 97 / Guided Arrow 22 / Spells)
+  // 1. RollToHit check for weapon attacks (unless autoHit, e.g. Smite 97 / Guided Arrow 22 / Spells,
+  // or when defender is a running player: `D2Game.dll` `0x6FCFE006` skips `RollToHit` on `PLRMODE_RUN` #1634).
   // D2Game.dll 0x6FCFE011: draws an independent rng.rand(100) against clamped toHitChance [5..95].
-  const isAutoHit = packet.autoHit ?? (packet.skillId === 97 || packet.skillId === 22 || attackKind === 'spell')
+  const defAnyForRun = defender as unknown as Record<string, unknown>
+  const isDefenderRunningPlayer =
+    (defender.unitType === 'player' || defender.unitType === 'party') &&
+    (defender.isRunning === true ||
+      defAnyForRun['isRunning'] === true ||
+      (defender.isMoving === true &&
+        defender.isWalking !== true &&
+        defAnyForRun['isWalking'] !== true))
+  const isAutoHit =
+    packet.autoHit ??
+    (packet.skillId === 97 || packet.skillId === 22 || attackKind === 'spell' || isDefenderRunningPlayer)
   if (!isAutoHit) {
-    // 1.13c D2Game.dll (0x6FCB29D4 Dragon Tail, 0x6FCB2ABF Dragon Claw, 0x6FCB2BCB Dragon Talon,
+    // 1.13c D2Game.dll (0x6FCFDE90, 0x6FCB29D4 Dragon Tail, 0x6FCB2ABF Dragon Claw, 0x6FCB2BCB Dragon Talon,
     // 0x6FCB37B7 Dragon Flight, 0x6FCC2D26 Attack/Left Hand Swing):
-    // STAT_PROGRESSIVE_TOHIT (0x145 = 325) from active Assassin charge-up states adds to melee %AR bonus.
+    // Single additive `%AR` pool = `item_tohit_percent` (119) + `packet.toHitBonusPct` + `barMasteryArBonusPct`
+    // + `progressive_tohit` (325) + `attack_vs_montype` (179) (#1625, #1626).
     const progressiveToHitBonusPct =
       attackKind === 'melee' ? attacker.statList.getAccruedStat('progressive_tohit') : 0
+    const itemToHitPct = attacker.statList.getAccruedStat('item_tohit_percent')
+    const monTypeArPct = attacker.statList.getAccruedStat('attack_vs_montype')
     const effectiveToHitBonusPct =
-      (packet.toHitBonusPct ?? 0) + barMasteryArBonusPct + progressiveToHitBonusPct
+      (packet.toHitBonusPct ?? 0) + barMasteryArBonusPct + progressiveToHitBonusPct + monTypeArPct
+    const isTargetPlayerOrBossOrMerc =
+      defender.unitType === 'player' ||
+      defender.unitType === 'party' ||
+      defender.unitType === 'mercenary' ||
+      defender.unitType === 'party_mercenary' ||
+      Boolean(
+        defender.isBoss ||
+          defender.isPrimeEvil ||
+          defender.rank === 'boss' ||
+          defender.rank === 'unique',
+      )
     const toHitChance = computeToHitChance({
-      attackerAr: attacker.statList.getAccruedStat('tohit'),
+      attackerAr: attacker.statList.getRawToHit113c(),
       defenderDef: defender.statList.getAccruedStat('armorclass'),
       attackerLvl: attacker.statList.getAccruedStat('level'),
       defenderLvl: defender.statList.getAccruedStat('level'),
-      ...(effectiveToHitBonusPct !== 0 || packet.toHitBonusPct !== undefined
-        ? { skillArBonusPct: effectiveToHitBonusPct }
-        : {}),
+      skillArBonusPct: effectiveToHitBonusPct,
+      itemArBonusPct: itemToHitPct,
+      demonToHit: attacker.statList.getAccruedStat('item_demon_tohit'),
+      undeadToHit: attacker.statList.getAccruedStat('item_undead_tohit'),
+      isTargetDemon: Boolean(defender.isDemon),
+      isTargetUndead: Boolean(defender.isUndead),
+      ignoreTargetAc: attacker.statList.getAccruedStat('item_ignoretargetac') > 0,
+      fractionalTargetAc: attacker.statList.getAccruedStat('item_fractionaltargetac'),
+      isTargetPlayerOrBossOrMerc,
+      defenderAcVsMissile: defender.statList.getAccruedStat('armorclass_vs_missile'),
+      defenderAcVsHth: defender.statList.getAccruedStat('armorclass_vs_hth'),
+      attackKind,
     })
     const hitRoll = packet.roll100 ?? resolvedRng.rand(100)
     if (hitRoll >= toHitChance) {
@@ -1519,13 +1639,32 @@ export function executeSUnitDmg(
       const fanatModEd = fanatState.stats['damagepercent'] ?? 0
       dmgPctBonus -= fanatModEd - Math.trunc(fanatModEd / 2)
     }
-    const edPct =
-      (packet.physDamagePct ?? 0) +
-      barMasteryEdBonusPct +
-      dmgPctBonus +
-      (defender.isUndead ? attacker.statList.getAccruedStat('item_undeaddamage_percent') : 0)
-
-    rawPhys256 = Math.max(0, Math.trunc((baseWeapPhys256 * (100 + edPct)) / 100))
+    const targetTypeEdPct =
+      (defender.isUndead ? attacker.statList.getAccruedStat('item_undeaddamage_percent') : 0) +
+      (defender.isDemon ? attacker.statList.getAccruedStat('item_demondamage_percent') : 0) +
+      attacker.statList.getAccruedStat('damage_vs_montype')
+    if (packet.preScaledPhysEd) {
+      rawPhys256 =
+        targetTypeEdPct !== 0
+          ? Math.max(0, Math.trunc((baseWeapPhys256 * Math.max(10, 100 + targetTypeEdPct)) / 100))
+          : baseWeapPhys256
+    } else {
+      const strFactor = attacker.weaponStrBonus ?? 0
+      const dexFactor = attacker.weaponDexBonus ?? 0
+      const attrEdBonus =
+        (strFactor > 0 ? Math.trunc((attacker.statList.getAccruedStat('strength') * strFactor) / 100) : 0) +
+        (dexFactor > 0 ? Math.trunc((attacker.statList.getAccruedStat('dexterity') * dexFactor) / 100) : 0)
+      // 1.13c `D2Game.dll` `0x6FCFC530..0x6FCFC71F`: single additive `%ED` pool clamped at `>= -90` (#1628).
+      const edPct = Math.max(
+        -90,
+        (packet.physDamagePct ?? 0) +
+          barMasteryEdBonusPct +
+          dmgPctBonus +
+          attrEdBonus +
+          targetTypeEdPct,
+      )
+      rawPhys256 = Math.max(0, Math.trunc((baseWeapPhys256 * (100 + edPct)) / 100))
+    }
 
     // 1.13c SKILLS_CalculateKickDamage (0x6FC9AE10): Kick skills (#1, #255, #270, #275)
     // use Strength + Dexterity + Boot Min/Max damage (never weapon base damage or on-weapon ED)
@@ -1996,6 +2135,8 @@ export function executeSUnitDmg(
       if (fireMasteryPct > 0) {
         rawFire256 = Math.trunc((rawFire256 * (100 + fireMasteryPct)) / 100)
       }
+      // 1.13c `D2Game.dll` `0x6FCFB190` -> `0x6FCFB2B0`: flat `magic_damage_reduction` applies independently to each elemental channel (#1635).
+      rawFire256 = Math.max(0, rawFire256 - flatMagicDr256)
       const fireRes = computeEffectiveResistance({
         baseRes: defender.statList.getAccruedStat('fireresist'),
         convictionPierce,
@@ -2021,6 +2162,7 @@ export function executeSUnitDmg(
       if (coldMasteryPct > 0) {
         rawCold256 = Math.trunc((rawCold256 * (100 + coldMasteryPct)) / 100)
       }
+      rawCold256 = Math.max(0, rawCold256 - flatMagicDr256)
       const coldRes = computeEffectiveResistance({
         baseRes: defender.statList.getAccruedStat('coldresist'),
         convictionPierce,
@@ -2060,6 +2202,7 @@ export function executeSUnitDmg(
       if (ltngMasteryPct > 0) {
         rawLtng256 = Math.trunc((rawLtng256 * (100 + ltngMasteryPct)) / 100)
       }
+      rawLtng256 = Math.max(0, rawLtng256 - flatMagicDr256)
       const ltngRes = computeEffectiveResistance({
         baseRes: defender.statList.getAccruedStat('lightresist'),
         convictionPierce,
@@ -2109,6 +2252,16 @@ export function executeSUnitDmg(
     const curAttackerHp256 = attacker.statList.getHp256()
     const newAttackerHp256 = Math.max(0, curAttackerHp256 - selfDamageTaken256)
     attacker.statList.setHp256(newAttackerHp256)
+  }
+
+  // 1.13c `D2Game.dll` `0x6FCFAC10` (`SUNITDMG_GetDamagePercentModifier`, #1631):
+  // Scales damage by `17%` for Player/Merc/Minion vs Player and `25%` for Merc vs Merc.
+  // Keep `prePvpFinalPhys256` for `damagedinmelee` Thorns reflection (which applies its own `1/4` PvP divisor).
+  const prePvpFinalPhys256 = finalPhys256
+  const pvpDmgModPct = damagePercentModifier113c(attacker, defender)
+  if (pvpDmgModPct !== 100) {
+    finalPhys256 = Math.trunc((finalPhys256 * pvpDmgModPct) / 100)
+    finalElem256 = Math.trunc((finalElem256 * pvpDmgModPct) / 100)
   }
 
   const totalDamage256 = finalPhys256 + finalElem256
@@ -2195,7 +2348,7 @@ export function executeSUnitDmg(
 
     const reactiveDamage = defender.stateBus.triggerReactiveEvents({
       event: 'damagedinmelee',
-      incomingPhys256: finalPhys256,
+      incomingPhys256: prePvpFinalPhys256,
       incomingElem256: finalElem256,
       elemType,
       attackerStateBus: attacker.stateBus,

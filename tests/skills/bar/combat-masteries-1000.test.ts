@@ -85,7 +85,7 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       const s10 = fn(10)
       expect(s10.attackRatingBonusPct).toBe(100)
       expect(s10.damageBonusPct).toBe(73)
-      expect(s10.criticalStrikeChancePct).toBe(24)
+      expect(s10.criticalStrikeChancePct).toBe(23)
 
       const s20 = fn(20)
       expect(s20.attackRatingBonusPct).toBe(180)
@@ -103,7 +103,7 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
       const s10 = fn(10)
       expect(s10.attackRatingBonusPct).toBe(102)
       expect(s10.damageBonusPct).toBe(73)
-      expect(s10.criticalStrikeChancePct).toBe(24)
+      expect(s10.criticalStrikeChancePct).toBe(23)
 
       const s20 = fn(20)
       expect(s20.attackRatingBonusPct).toBe(182)
@@ -140,7 +140,7 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
     expect(nr1.coldResistPct).toBe(12)
     expect(nr1.lightningResistPct).toBe(12)
     expect(nr1.poisonResistPct).toBe(12)
-    expect(calculateNaturalResistanceStats(10).resistAllPct).toBe(55)
+    expect(calculateNaturalResistanceStats(10).resistAllPct).toBe(54)
     expect(calculateNaturalResistanceStats(20).resistAllPct).toBe(67)
   })
 
@@ -446,7 +446,7 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
         [144, 5], // Concentrate hard=5, eff=10
         [145, 5], // Iron Skin hard=5, eff=10 -> +120% passive def (no Concentrate defense synergy in 1.13c)
         [148, 5], // Increased Speed hard=5, eff=10 -> +36% velocitypercent (stat 67)
-        [153, 5], // Natural Resistance hard=5, eff=10 -> +55% all resists
+        [153, 5], // Natural Resistance hard=5, eff=10 -> +54% all resists
       ]),
       containers: emptyContainers,
     })
@@ -455,7 +455,7 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
     expect(aggLearned.total(28)).toBe(165) // staminarecoverybonus = 30 + 15*9
     expect(aggLearned.total(11)).toBeGreaterThan(aggUnlearned.total(11))
     expect(aggLearned.total(67)).toBe(36) // velocitypercent = dm(7,50,10)
-    expect(aggLearned.total(39)).toBe(aggUnlearned.total(39) + 55) // fireresist
+    expect(aggLearned.total(39)).toBe(aggUnlearned.total(39) + 54) // fireresist = dm12(0,80,10) via 0x6FD9DC30 (#1678)
     expect(aggLearned.total(171)).toBe(120 + (100 + 10 * 9)) // 120 (Iron Skin) + 190 (Concentrate ln34) = 310
 
     // Layer 1: computeCombatStats with Sword Mastery (#127 -> stat 342=%AR, 343=%ED)

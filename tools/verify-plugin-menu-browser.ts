@@ -314,7 +314,7 @@ async function run(): Promise<void> {
       const rightChildrenIds = right
         ? Array.from(
             right.querySelectorAll(
-              '#d2-toolbar-status, #d2-toolbar-lang-btn, #d2-toolbar-config-btn, #d2-toolbar-bug-btn',
+              '#d2-toolbar-status, #d2-toolbar-refresh-btn, #d2-toolbar-lang-btn, #d2-toolbar-config-btn, #d2-toolbar-bug-btn',
             ),
           ).map((el) => el.id)
         : [];
@@ -408,11 +408,12 @@ async function run(): Promise<void> {
       JSON.stringify(toolbarLayoutAndModals.rightChildrenIds) ===
         JSON.stringify([
           'd2-toolbar-status',
+          'd2-toolbar-refresh-btn',
           'd2-toolbar-lang-btn',
           'd2-toolbar-config-btn',
           'd2-toolbar-bug-btn',
         ]),
-      `Expected right toolbar items ['d2-toolbar-status','d2-toolbar-lang-btn','d2-toolbar-config-btn','d2-toolbar-bug-btn'], got ${JSON.stringify(toolbarLayoutAndModals.rightChildrenIds)}`,
+      `Expected right toolbar items ['d2-toolbar-status','d2-toolbar-refresh-btn','d2-toolbar-lang-btn','d2-toolbar-config-btn','d2-toolbar-bug-btn'], got ${JSON.stringify(toolbarLayoutAndModals.rightChildrenIds)}`,
     )
     assert(
       toolbarLayoutAndModals.rightBoxX > toolbarLayoutAndModals.leftPluginsX,

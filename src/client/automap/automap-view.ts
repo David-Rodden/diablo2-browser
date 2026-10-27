@@ -980,10 +980,10 @@ export class AutomapView {
     if (this.cachedStitchedTopology && this.cachedStitchedTopology.key === topologyKey) {
       const cachedLevel = this.cachedStitchedTopology.level
       const automapLayer = cachedLevel.automap
-      const levelMarkers = cachedLevel.markers as (MinimapMarker & { preRevealed?: boolean })[] | undefined
+      const levelMarkers = cachedLevel.markers as (MinimapMarker & { preRevealed?: boolean | undefined })[] | undefined
       if (automapLayer) {
         const updateSlicePreRevealed = (
-          cells: readonly { cellX?: number; cellY?: number; preRevealed?: boolean }[],
+          cells: readonly { cellX?: number; cellY?: number; preRevealed?: boolean | undefined }[],
           start: number,
           end: number,
           dCellX: number,
@@ -1004,13 +1004,14 @@ export class AutomapView {
             ) {
               c.preRevealed = true
             } else if (isPrimary) {
-              delete c.preRevealed
+              c.preRevealed = undefined
             } else {
               c.preRevealed = false
             }
           }
         }
         for (const seg of this.cachedStitchedTopology.areaSegments) {
+          if (seg.alwaysPreRevealed) continue
           const hasServerRev =
             !seg.alwaysPreRevealed && this.hasServerRevealedRoomsForArea(seg.areaId)
           const predicate = hasServerRev
@@ -1067,7 +1068,7 @@ export class AutomapView {
               ) {
                 m.preRevealed = true
               } else if (seg.isPrimary) {
-                delete m.preRevealed
+                m.preRevealed = undefined
               } else {
                 m.preRevealed = false
               }
@@ -1188,14 +1189,15 @@ export class AutomapView {
     if (needsStitchedOrRevealedClone) {
       const mapPrimaryCell = (c: (typeof view.automap.floors)[number]) => {
         if (
-          isPrimaryCellRevealed !== null &&
-          typeof c.cellX === 'number' &&
-          typeof c.cellY === 'number' &&
-          isPrimaryCellRevealed(c.cellX, c.cellY)
+          preRevealTown ||
+          (isPrimaryCellRevealed !== null &&
+            typeof c.cellX === 'number' &&
+            typeof c.cellY === 'number' &&
+            isPrimaryCellRevealed(c.cellX, c.cellY))
         ) {
-          return { ...c, preRevealed: true }
+          return { ...c, preRevealed: true as boolean | undefined }
         }
-        return { ...c }
+        return { ...c, preRevealed: undefined as boolean | undefined }
       }
       const mergedFloors = view.automap.floors.map(mapPrimaryCell)
       const mergedWalls = view.automap.walls.map(mapPrimaryCell)
@@ -1242,7 +1244,7 @@ export class AutomapView {
           ? this.createServerRevealedCellPredicate(otherAreaId, otherView)
           : null
 
-        const remapCell = (c: (typeof mergedFloors)[number]) => {
+        const remapCell = (c: (typeof view.automap.floors)[number]): (typeof mergedFloors)[number] => {
           const preRevealed = otherAlwaysPreRevealed
             ? true
             : isOtherCellRevealed !== null &&

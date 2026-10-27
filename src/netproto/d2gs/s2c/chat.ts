@@ -7,7 +7,7 @@
 
 import { ByteReader } from '../../core/byte-reader.ts'
 import type { TextEncoding } from '../../core/text-codec.ts'
-import { unitTypeToId } from '../../domain/ids.ts'
+import { wireUnitTypeId } from '../../domain/ids.ts'
 import type { ServerEvent } from '../../domain/server-event.ts'
 
 /**
@@ -20,12 +20,14 @@ export function decode0x26ChatMessage(pkt: Uint8Array, encoding: TextEncoding = 
   const chatType = r.u8()
   r.u8() // locale
   const rawUnitType = r.u8()
-  const unitType = unitTypeToId(rawUnitType)
+  const unitType = wireUnitTypeId(rawUnitType) // outside 0..5: no unit can be found (#1656)
   const unitId = r.u32LE()
   const color = r.u8()
   const subType = r.u8()
-  const from = r.cString(encoding)
-  const text = r.cString(encoding)
+  // D2Client 0x6fb5f9f0 copies the name into a 16-byte buffer (`push 0x10` -> Storm #501 SStrCopy) and the
+  // message, found after the name's full length, into a 256-byte buffer (`push 0x100`) (#1662).
+  const from = r.cStringBounded(0x10, encoding)
+  const text = r.cStringBounded(0x100, encoding)
 
   let kind: 'say' | 'whisper' | 'overhead' | 'system' = 'say'
   if (chatType === 0x05) kind = 'overhead'
@@ -36,7 +38,7 @@ export function decode0x26ChatMessage(pkt: Uint8Array, encoding: TextEncoding = 
     type: 'Chat',
     kind,
     from: from.length > 0 ? from : undefined,
-    unit: unitId !== 0 ? { unitType, id: unitId } : undefined,
+    unit: unitId !== 0 && unitType !== undefined ? { unitType, id: unitId } : undefined,
     text,
     color,
     eventType: chatType,
