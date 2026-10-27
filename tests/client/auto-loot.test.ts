@@ -3,7 +3,7 @@ import { CommandMapper } from '../../src/client/input/command-mapper.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
 import type { ClientCommand } from '../../src/netproto/index.ts'
-import { fitsInInventory, isWantedLoot, planRoom, type AutoLootRules, type JudgedItem } from '../../src/client/input/auto-loot.ts'
+import { fitsInInventory, isWantedLoot, movesTo, planRoom, tidyMoves, type AutoLootRules, type JudgedItem, type Placed } from '../../src/client/input/auto-loot.ts'
 import type { Appraisal, LootTier } from '../../src/common/items/loot-appraisal.ts'
 
 const NOTABLE: AutoLootRules = { mode: 'categories', runes: true, uniques: true, sets: true, charms: true, jewels: true, gems: false, rares: false }
@@ -32,9 +32,36 @@ describe('auto loot', () => {
     expect(fitsInInventory([], 2, 4)).toBe(true)
   })
 
+  it('repacks the bags over several moves when no single move frees a big enough space', () => {
+    const speckled = [0, 2, 4, 6, 8].flatMap((x) => [at(x, 0, 1, 1, judged('keep')), at(x + 1, 2, 1, 1, judged('keep'))])
+    const after = (moves: readonly { itemId: number; x: number; y: number }[]) => moves.reduce<Placed[]>((items, { itemId, x, y }) => items.map((item) => (item.id === itemId ? { ...item, gridX: x, gridY: y } : item)), speckled)
+    expect(fitsInInventory(speckled, 2, 3)).toBe(false)
+    const plan = planRoom(speckled, 2, 4, judged('good'), false)
+    expect(plan?.kind).toBe('move')
+    const moves = plan?.kind === 'move' ? plan.moves : []
+    expect(moves.length).toBeGreaterThan(1)
+    expect(fitsInInventory(after(moves), 2, 4)).toBe(true)
+    expect(tidyMoves(speckled)).not.toBeNull()
+    expect(tidyMoves(after(tidyMoves(speckled)!))).toBeNull()
+  })
+
+  it('moves every item only into cells that are free at that moment', () => {
+    const items = [at(0, 0, 2, 2, judged('keep'), 1), at(2, 0, 2, 2, judged('keep'), 2)]
+    const swapped = [{ ...items[0]!, gridX: 2 }, { ...items[1]!, gridX: 0 }]
+    const moves = movesTo(items, swapped)!
+    const replay = moves.reduce<Placed[]>((placed, { itemId, x, y }) => {
+      const item = placed.find((other) => other.id === itemId)!
+      expect(fitsInInventory(placed.filter((other) => other.id !== itemId), 1, 1)).toBe(true)
+      const moved = { ...item, gridX: x, gridY: y }
+      expect(placed.filter((other) => other.id !== itemId).some((other) => other.gridX < x + 2 && x < other.gridX + other.invWidth && other.gridY < y + 2 && y < other.gridY + other.invHeight)).toBe(false)
+      return placed.map((other) => (other.id === itemId ? moved : other))
+    }, items)
+    expect(replay.map(({ id, gridX }) => [id, gridX])).toEqual([[1, 2], [2, 0]])
+  })
+
   it('makes room by moving one item first, then by dropping the least valuable unlocked items', () => {
     const scattered = [...[...Array(9).keys()].map((x) => at(x, 0, 1, 4, judged('keep'))), at(9, 1, 1, 1, judged('keep'))]
-    expect(planRoom(scattered, 1, 3, judged('great'), true)).toEqual({ kind: 'move', itemId: 19, x: 9, y: 0 })
+    expect(planRoom(scattered, 1, 3, judged('great'), true)).toEqual({ kind: 'move', moves: [{ itemId: 19, x: 9, y: 0 }] })
     const packed = [...Array(10).keys()].map((x) => at(x, 0, 1, 4, x === 3 ? judged('junk') : x === 5 ? judged('junk', 'charm', true) : judged('good'), x))
     expect(planRoom(packed, 1, 2, judged('great'), true)).toEqual({ kind: 'drop', itemIds: [3] })
     expect(planRoom(packed, 1, 2, judged('great'), false)).toBeNull()

@@ -652,6 +652,7 @@ export class Autopilot {
     else if (!disengaged && assists.isFighting(nowMs)) this.say('Fighting')
     else if (!this.questInReach() && this.looting(nowMs)) this.say('Picking up loot')
     else if (!town && this.gearUp(nowMs)) this.say('Putting on better gear')
+    else if (this.repack(nowMs)) this.say('Tidying the bags')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
   }
 
@@ -662,6 +663,19 @@ export class Autopilot {
     this.job = care
       .wearUpgrades()
       .catch(() => 0)
+      .finally(() => {
+        this.job = null
+      })
+    return true
+  }
+
+  private repack(nowMs: number): boolean {
+    const care = this.host.assists.inventoryCare
+    if (care.busy || nowMs - (this.errandsAt.get('repack') ?? Number.NEGATIVE_INFINITY) < ERRAND_COOLDOWN_MS || !care.repacking) return false
+    this.errandsAt.set('repack', nowMs)
+    this.job = care
+      .repack()
+      .catch(() => false)
       .finally(() => {
         this.job = null
       })
