@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FlowField } from '../../src/client/guide/flow-field.ts'
-import { planGuide, type PathGuideHost } from '../../src/client/guide/path-guide.ts'
+import { PathGuide, planGuide, type PathGuideHost } from '../../src/client/guide/path-guide.ts'
 import { actOfLevel, currentGoal, nextStep, shortestRoute } from '../../src/client/guide/route.ts'
 import { ChevronFlow } from '../../src/client/guide/chevron-flow.ts'
 import { fromNearest, rounded } from '../../src/client/guide/ribbon-trail.ts'
@@ -152,6 +152,21 @@ describe('path guide plan', () => {
     const chaos = (mode: number) => planGuide({ ...host, areaId: () => 108, quests: () => quests({ 25: 1, 26: 0x201, 27: 1 }), objects: () => [portal(mode)] }, 'story')!
     expect(chaos(0).target?.unit).not.toEqual({ id: 80, kind: 'object' })
     expect(chaos(2).target?.unit).toEqual({ id: 80, kind: 'object' })
+  })
+
+  it('heads for the seals still closed and remembers the opened ones out of sight', () => {
+    const seals = { ...view, presetUnits: [{ type: 2, index: 392, subX: 30, subY: 10 }, { type: 2, index: 393, subX: 30, subY: 30 }] } as unknown as LevelView
+    const opened = { id: 90, unitType: 'object', classId: 392, mode: 2, x: 1031, y: 2010, hidden: false, dead: false } as unknown as ClientUnit
+    const goal = { level: 2, title: 'Seals', find: [[392, 393]] }
+    let objects: ClientUnit[] = [opened]
+    const chaos = { ...host, levelView: () => seals, objects: () => objects }
+    expect(planGuide(chaos, 'story', undefined, new Set(), false, new Set(), goal)!.target).toMatchObject({ x: 1030, y: 2030 })
+    const guide = new PathGuide(chaos)
+    guide.enabled = true
+    guide.detour = goal
+    guide.update(0)
+    objects = []
+    expect(guide.update(60_000)!.target).toMatchObject({ x: 1030, y: 2030 })
   })
 
   it("sends a body run into Duriel's Lair through the true tomb, not the nearest one", () => {
