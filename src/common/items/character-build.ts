@@ -39,8 +39,8 @@ const PLANS = BUILDS as unknown as Readonly<Record<string, { readonly builds: re
 const SKILL_IDS = new Map(Object.values(SKILLS_BY_ID).map((skill) => [skill.name, skill.id]))
 
 const planOf = ({ classIndex, skillPoints }: CharacterSheet): StatPlan | undefined => {
-  const invested = (plan: StatPlan) => [...new Set(plan.skills.map(([name]) => SKILL_IDS.get(name)))].reduce((sum, id) => sum + (id === undefined ? 0 : skillPoints.get(id) ?? 0), 0)
-  return PLANS[className(classIndex)]?.builds.reduce<StatPlan | undefined>((best, plan) => (best === undefined || invested(plan) > invested(best) ? plan : best), undefined)
+  const invested = (plan: StatPlan) => [...new Set(plan.skills.flatMap(([name]) => SKILL_IDS.get(name) ?? []))].reduce<number>((sum, id) => sum + (skillPoints.get(id) ?? 0), 0)
+  return [...(PLANS[className(classIndex)]?.builds ?? [])].sort((a, b) => invested(b) - invested(a))[0]
 }
 
 const reachOf = (plan: StatPlan | undefined, attribute: 'strength' | 'dexterity', now: number) => (plan?.stats[attribute] ? Math.max(now, plan.stats[attribute]!.upTo ?? Infinity) : now)
