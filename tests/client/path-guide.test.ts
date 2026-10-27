@@ -33,6 +33,13 @@ describe('path guide route', () => {
     expect(skippedGoal({ 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 }, [1])).toBe('Travel to Act II')
   })
 
+  it("heads for Diablo's portal to Harrogath until Tyrael offers the journey", () => {
+    const actFourDone = { 25: 1, 26: 0x201, 27: 1 }
+    expect(goalOf(103, quests(actFourDone))).toEqual([108, 'Travel to Act V', 'Take the portal to Harrogath where Diablo fell'])
+    expect(currentGoal(108, quests(actFourDone))?.find?.[0]).toBe(566)
+    expect(goalOf(103, quests({ ...actFourDone, 28: 1 }))).toEqual([109, 'Travel to Act V', undefined])
+  })
+
   it('walks the Search for Cain one quest-log stage at a time', () => {
     const cain = (status: number) => goalOf(4, quests({ 1: 1, 2: 1 }, { 4: status }))
     expect(cain(0)).toEqual([1, 'The Search for Cain', 'Talk to Akara'])
