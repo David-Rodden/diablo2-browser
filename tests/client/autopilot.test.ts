@@ -279,6 +279,22 @@ describe('autopilot', () => {
     expect(run(6)).not.toMatch(/heading to town/)
   })
 
+  it('charges the time a retreat spends in town to the ground it fled', () => {
+    const { pilot, world, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    const add = vi.spyOn((pilot as unknown as { ledger: { add: (...args: unknown[]) => void } }).ledger, 'add').mockImplementation(() => undefined)
+    Object.assign(world.self, { name: 'Tester', experience: 1000 })
+    tick(1000)
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    world.areaId = ROGUE_ENCAMPMENT
+    tick(60_000)
+    world.areaId = BLOOD_MOOR
+    tick(10_000)
+    world.areaId = 3
+    tick(1000)
+    expect(add.mock.calls.filter(([, area]) => area === ROGUE_ENCAMPMENT)).toEqual([])
+    expect(add.mock.calls.find(([, area]) => area === BLOOD_MOOR)?.[4]).toBeGreaterThanOrEqual(70_000)
+  })
+
   it('heads home when life drops fast, even with potions left', () => {
     const { world, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
     world.containers.belt.set(1, { id: 1, code: 'hp1' })
