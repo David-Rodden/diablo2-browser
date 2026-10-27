@@ -118,6 +118,7 @@ export class AuraScanner {
   readonly registry: D2DataRegistry
   private readonly activeAuras = new Map<string, ActiveAuraSource>()
   private readonly lastTickPulseFrames = new Map<string, number>()
+  private readonly lastPulseTargets = new Map<string, CombatUnitContext[]>()
   private readonly rng: D2Rng
 
   constructor(registry: D2DataRegistry, seed = 0x13579bdf) {
@@ -149,6 +150,7 @@ export class AuraScanner {
     const key = `${sourceUnit.id}:${String(skillId)}`
     this.activeAuras.set(key, source)
     this.lastTickPulseFrames.delete(key)
+    this.lastPulseTargets.delete(key)
     return source
   }
 
@@ -160,6 +162,7 @@ export class AuraScanner {
         }
         this.activeAuras.delete(key)
         this.lastTickPulseFrames.delete(key)
+        this.lastPulseTargets.delete(key)
       }
     }
   }
@@ -669,6 +672,7 @@ export class AuraScanner {
     for (const [key, aura] of this.activeAuras.entries()) {
       if (currentTick % aura.pulseIntervalTicks === 0) {
         this.lastTickPulseFrames.set(key, currentTick)
+        this.lastPulseTargets.set(key, [aura.sourceUnit, ...allies, ...enemies])
         outcomes.push(this.pulseAura(aura, currentTick, allies, enemies, corpses, options))
       } else if (this.lastTickPulseFrames.get(key) === currentTick - 1) {
         // 1.13c `SKILLS_GetNextPerDelayFrame` (0x6FCBE970) schedules the new cycle on `k * d + 1`
@@ -677,7 +681,15 @@ export class AuraScanner {
         // so continuous `tick()` loops sustain the aura across the `[k * d + 1, (k + 1) * d]` cycle.
         const cycleDuration = computeAuraStateDurationFrames(currentTick, aura.pulseIntervalTicks)
         const nextExpireFrame = currentTick + cycleDuration
-        const units = [aura.sourceUnit, ...allies, ...enemies]
+        const prevTargets = this.lastPulseTargets.get(key) ?? []
+        const seen = new Set<CombatUnitContext>()
+        const units: CombatUnitContext[] = []
+        for (const u of [aura.sourceUnit, ...allies, ...enemies, ...prevTargets]) {
+          if (!seen.has(u)) {
+            seen.add(u)
+            units.push(u)
+          }
+        }
         for (const u of units) {
           for (const entry of u.stateBus.getActiveEntries()) {
             if (
