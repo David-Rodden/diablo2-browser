@@ -19,6 +19,7 @@ import { attackSkill, auraSkill, BOSS_CLASSES, hopeless, CLOSE_REACH, CORPSE_EXP
 import { dodgeSpot, hits, threatOf, type Threat } from './danger-dodge.ts'
 import THREAT from '../../common/skills/data/monster-threat.json'
 import { ThreatSense, type Danger, type Defender, type Foe } from './threat-sense.ts'
+import { lifeCap, lifeShare } from './life-cap.ts'
 
 export const ITEM_PICKUP_REACH_SUBTILES = 4
 const PICKUP_RETRY_MS = 600
@@ -341,7 +342,7 @@ export class PlayAssists {
     const { inventory, belt } = world.containers
     const potions = active ? [...inventoryPotions(inventory.values()), ...bottomBeltPotions(belt.values())] : []
     const { self } = world
-    const maxLife = hudManager.maxHp || self.maxLife
+    const maxLife = lifeCap(hudManager, self.maxLife)
     const maxMana = hudManager.maxMana || self.maxMana
     const vitals = {
       life: Math.min(self.life, maxLife),
@@ -392,7 +393,7 @@ export class PlayAssists {
     if (nowMs - this.lastDodge < DODGE_GAP_MS) return false
     const me = world.self
     const threats = this.threats()
-    const shaken = me.life < (this.host.hudManager.maxHp || me.maxLife) * BOLT_DODGE_LIFE
+    const shaken = me.life < lifeCap(this.host.hudManager, me.maxLife) * BOLT_DODGE_LIFE
     const incoming = threats.filter((threat) => (shaken || !threat.bolt) && hits(threat, me))
     if (incoming.length === 0) return false
     const target = this.targetId === null ? undefined : world.getUnit('monster', this.targetId)
@@ -602,7 +603,7 @@ export class PlayAssists {
       mainSkills: appraisalContextOf(world).build.mainSkills,
       states: self.states,
       petClasses: [...world.pets.values()].filter((pet) => pet.ownerId === world.selfId && !pet.isDead).map((pet) => pet.classId),
-      lifeFraction: self.life / Math.max(1, this.host.hudManager.maxHp || self.maxLife),
+      lifeFraction: lifeShare(this.host.hudManager, self),
       manaFraction: self.mana / Math.max(1, this.host.hudManager.maxMana || self.maxMana),
       saveManaBelow: this.manaFloor(),
       corpsesNear: this.corpses().filter((unit) => !this.blasted.has(unit.id) && Math.hypot(unit.x - self.x, unit.y - self.y) <= CORPSE_REACH).length,

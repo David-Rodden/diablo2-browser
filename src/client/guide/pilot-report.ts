@@ -4,6 +4,7 @@ import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import type { Autopilot } from './autopilot.ts'
 import type { PathGuide } from './path-guide.ts'
+import { lifeCap } from '../input/life-cap.ts'
 
 const NEAR = 15
 const QUEST_CODES = new Set(['box', 'msf', 'vip', 'hst', 'qf1', 'qf2', 'qey', 'qbr', 'qhr', 'leg', 'hdm', 'tr1', 'ass', 'bks', 'bkd', 'j34', 'g34', 'bbb', 'xyz', 'g33', 'd33', 'mss', 'ice'])
@@ -30,7 +31,7 @@ export function pilotReport(world: ClientWorld, hudManager: HudManager, assists:
     area: world.areaId,
     xy: [round(me.x), round(me.y)],
     level: me.level,
-    life: [round(me.life), hudManager.maxHp || me.maxLife],
+    life: [round(me.life), lifeCap(hudManager, me.maxLife)],
     mana: [round(me.mana), hudManager.maxMana || me.maxMana],
     skills: [me.leftSkill, me.rightSkill],
     mode: me.mode,
