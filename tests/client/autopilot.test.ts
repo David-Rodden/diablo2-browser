@@ -65,7 +65,7 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
   pilot.start()
   let now = 1000
   const tick = (ms = 200) => pilot.tick((now += ms))
-  return { pilot, world, units, hudManager, hudModel, assists, guide, view, tick }
+  return { pilot, host, world, units, hudManager, hudModel, assists, guide, view, tick }
 }
 
 const unit = (fields: Partial<ClientUnit>) => ({ unitType: 'monster', classId: 0, mode: 0, hidden: false, dead: false, lifePct: 128, ...fields }) as ClientUnit
@@ -656,6 +656,28 @@ describe('autopilot', () => {
     expect(assists.use.mock.calls.filter(([used]) => used === units[0]).length).toBe(32)
     expect(guide.skip).not.toHaveBeenCalled()
     expect(pilot.active).toBe(false)
+    expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
+  })
+
+  it('starts a fresh game by itself when stuck, and hands control back only once that runs out', async () => {
+    const { pilot, host, hudManager, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    const freshGame = vi.fn(async () => true)
+    Object.assign(host, { freshGame })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
+    guide.skipped.add(5)
+    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+    expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Starting a fresh game', detail: "The waypoint wouldn't open" }), expect.any(Number))
+    expect(pilot.rejoining).toBe(true)
+    pilot.start()
+    expect(pilot.active).toBe(false)
+    await vi.waitFor(() => expect(pilot.active).toBe(true))
+    expect([freshGame.mock.calls.length, guide.skipped.size]).toEqual([1, 0])
+    for (let round = 0; round < 2; round++) {
+      for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+      await vi.waitFor(() => expect(pilot.active).toBe(true))
+    }
+    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+    expect([freshGame.mock.calls.length, pilot.active]).toEqual([3, false])
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
   })
 
