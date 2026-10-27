@@ -3770,6 +3770,36 @@ export function tickMercenaryAi25Hz(
     }
   }
 
+  // 1.13c Holy Freeze (#114, `SKILLS_SrvDo081`): chill surrounding hostile monsters in range
+  if (merc.activeAura !== undefined && /holy\s*freeze/i.test(merc.activeAura)) {
+    const hfSlvl = Math.max(1, hirelingStats?.auraSkillLevel ?? Math.min(20, Math.floor(lvl / 3)))
+    const hfRadiusPx = (6 + (hfSlvl - 1)) * 16
+    for (const m of world.monsters) {
+      const mExt = m as {
+        readonly inTown?: boolean | undefined
+        readonly killable?: boolean | undefined
+        readonly isPrimeEvil?: boolean | undefined
+        readonly coldEffect?: number | undefined
+      }
+      if (
+        m.state === 'dead' ||
+        m.hp <= 0 ||
+        m.stats?.inTown === true ||
+        mExt.inTown === true ||
+        m.stats?.killable === false ||
+        mExt.killable === false ||
+        mExt.isPrimeEvil === true ||
+        mExt.coldEffect === 0 ||
+        (m.align ?? m.stats?.align ?? 0) !== 0
+      ) {
+        continue
+      }
+      if (Math.hypot(m.x - merc.x, m.y - merc.y) <= hfRadiusPx) {
+        m.chillTicks = Math.max(m.chillTicks ?? 0, 50)
+      }
+    }
+  }
+
   if (merc.cooldown > 0) merc.cooldown -= 1
 
   const teleportPx = HIREABLE_AI_113C.TELEPORT_SUBTILES * pxPerSubtile

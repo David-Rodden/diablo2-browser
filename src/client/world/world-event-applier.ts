@@ -717,6 +717,56 @@ export function noteOutgoingCommandImpl(
   }
 }
 
+/**
+ * 1.13c `D2Client.dll` (`0x6FB5C560` / `0x6FB5CE00` / `0x6FB22530` -> `D2Common #10819`):
+ * Synchronizes active monster states (`STATE_FREEZE = 1`, `STATE_COLD = 11`, `STATE_HOLYWINDCOLD = 44`,
+ * `STATE_DECREPIFY = 60`, ...) and state-list speed stats (`stat 67` `velocitypercent`, `stat 68`
+ * `attackrate`, `stat 69` `other_animrate`, `stat 93/96/99/102/105`) onto `NpcMotionUnit` and
+ * recalculates `wAnimSpeed` and `dwVelocity` via `#10819`.
+ */
+function syncMonsterNpcMotionState113c(world: ClientWorldInternal, unit: ClientUnit): void {
+  if (unit.unitType !== 'monster') return
+  const npcUnit = world.npcMotion.getUnit(unit.id)
+  if (!npcUnit) return
+  npcUnit.states.clear()
+  for (const st of unit.states.values()) {
+    npcUnit.states.add(st)
+  }
+  const base67 = unit.stats.has(67) ? unit.stats.getBase(67) : (unit.velocityPercent ?? 75)
+  const base68 = unit.stats.has(68) ? unit.stats.getBase(68) : 100
+  const base69 = unit.stats.has(69) ? unit.stats.getBase(69) : 100
+  let delta67 = unit.stats.get(67) - unit.stats.getBase(67)
+  let delta68 = unit.stats.get(68) - unit.stats.getBase(68)
+  let delta69 = unit.stats.get(69) - unit.stats.getBase(69)
+  if (unit.states.has(11) && unit.stats.getStateStats(11) === undefined) {
+    delta67 -= 50
+    delta68 -= 50
+    delta69 -= 50
+  }
+  if (unit.states.has(44) && unit.stats.getStateStats(44) === undefined) {
+    delta67 -= 35
+    delta68 -= 35
+    delta69 -= 35
+  }
+  if (unit.states.has(60) && unit.stats.getStateStats(60) === undefined) {
+    delta67 -= 50
+    delta68 -= 50
+    delta69 -= 50
+  }
+  npcUnit.stat67 = base67 + delta67
+  npcUnit.stat68 = base68 + delta68
+  npcUnit.stat69 = base69 + delta69
+  npcUnit.stat93 = unit.stats.get(93)
+  npcUnit.stat96 = unit.stats.get(96)
+  npcUnit.stat99 = unit.stats.get(99)
+  npcUnit.stat102 = unit.stats.get(102)
+  npcUnit.stat105 = unit.stats.get(105)
+  world.npcMotion.updateAnimRateAndVelocity10819(npcUnit)
+  if (npcUnit.wAnimSpeed > 0) {
+    unit.animStepSpeed256 = npcUnit.wAnimSpeed
+  }
+}
+
 export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEvent | Record<string, any>, nowMs?: number): void {
   if (!rawEv || typeof rawEv !== 'object') return
   if (nowMs !== undefined && Number.isFinite(nowMs)) {
@@ -904,6 +954,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         type: 'StateSet',
         unit: uRef,
         state: Number(ev.stateId ?? ev.state ?? 0),
+        ...(Array.isArray(ev.stats) ? { stats: ev.stats } : {}),
       }
     }
   } else if (ev.type === 'SkillUpdate') {
@@ -2922,6 +2973,8 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         if (isSelf) {
           this._selfLocomotionAnimSpeed256 = speedInfo.stepSpeed256
         }
+      } else if (unit.unitType === 'monster') {
+        syncMonsterNpcMotionState113c(this, unit)
       }
       break
     }
@@ -3014,6 +3067,8 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         if (isSelf) {
           this._selfLocomotionAnimSpeed256 = speedInfo.stepSpeed256
         }
+      } else if (unit.unitType === 'monster') {
+        syncMonsterNpcMotionState113c(this, unit)
       }
       break
     }
