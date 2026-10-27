@@ -42,6 +42,8 @@ const PORTALS: Readonly<Record<string, { readonly hint: string; readonly find: r
 const HARROGATH_TRAVEL_ROW = 28
 export const HARROGATH_PORTAL = 566
 const CHAOS_SANCTUARY = 108
+const DIABLO_ROW = 26
+const SLAIN_THIS_GAME = 0x8000
 const REWARD_GRANTED = 0x0001
 const COMPLETED_NOW = 0x2000
 const WALK_COST = 2
@@ -67,6 +69,11 @@ const trueTomb = (progress: QuestProgress) => FIRST_TOMB + Math.min(TOMB_COUNT -
 
 export const throughTomb = (goalLevel: number, level: number, progress: QuestProgress): number => (goalLevel === DURIELS_LAIR && level !== trueTomb(progress) && level !== DURIELS_LAIR ? trueTomb(progress) : goalLevel)
 
+const harrogathGoal = (slain: boolean): Goal =>
+  slain
+    ? { level: ACT_TOWNS[3], title: `Travel to Act ${ROMAN[4]}`, hint: 'Talk to Tyrael, he opens the portal to Harrogath', find: [HARROGATH_PORTAL, 'tyrael2'], inTown: true }
+    : { level: CHAOS_SANCTUARY, title: `Travel to Act ${ROMAN[4]}`, hint: 'Kill Diablo, then Tyrael opens the portal to Harrogath', find: [HARROGATH_PORTAL, ...STAGES.qstsa4q22![0]!.find] }
+
 export function currentGoal(level: number, progress: QuestProgress, mode: GuideMode = 'story', carries: (code: string) => boolean = () => false, skipped: ReadonlySet<number> = new Set()): Goal | null {
   const act = actOfLevel(level)
   const town = ACT_TOWNS[act]!
@@ -83,7 +90,7 @@ export function currentGoal(level: number, progress: QuestProgress, mode: GuideM
     .find((g) => g !== undefined)
   if (goal) return goal
   if (skipped.size > 0) return currentGoal(level, progress, 'required', carries)
-  if (act === 3 && ((progress.words[HARROGATH_TRAVEL_ROW] ?? 0) & REWARD_GRANTED) === 0) return { level: CHAOS_SANCTUARY, title: `Travel to Act ${ROMAN[4]}`, hint: 'Take the portal to Harrogath where Diablo fell', find: [HARROGATH_PORTAL, ...STAGES.qstsa4q22![0]!.find] }
+  if (act === 3 && ((progress.words[HARROGATH_TRAVEL_ROW] ?? 0) & REWARD_GRANTED) === 0) return harrogathGoal(((progress.gameWords?.[DIABLO_ROW] ?? 0) & SLAIN_THIS_GAME) !== 0)
   return act < 4 ? { level: ACT_TOWNS[act + 1]!, title: `Travel to Act ${ROMAN[act + 1]}` } : null
 }
 

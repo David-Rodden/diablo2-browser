@@ -35,7 +35,8 @@ describe('path guide route', () => {
 
   it("heads for Diablo's portal to Harrogath until Tyrael offers the journey", () => {
     const actFourDone = { 25: 1, 26: 0x201, 27: 1 }
-    expect(goalOf(103, quests(actFourDone))).toEqual([108, 'Travel to Act V', 'Take the portal to Harrogath where Diablo fell'])
+    expect(goalOf(103, quests(actFourDone))).toEqual([108, 'Travel to Act V', 'Kill Diablo, then Tyrael opens the portal to Harrogath'])
+    expect(goalOf(108, { ...quests(actFourDone), gameWords: Object.assign(new Array(41).fill(0), { 26: 0x8000 }) })).toEqual([103, 'Travel to Act V', 'Talk to Tyrael, he opens the portal to Harrogath'])
     expect(currentGoal(108, quests(actFourDone))?.find?.[0]).toBe(566)
     expect(goalOf(103, quests({ ...actFourDone, 28: 1 }))).toEqual([109, 'Travel to Act V', undefined])
   })
