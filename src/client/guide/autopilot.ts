@@ -214,6 +214,7 @@ const GEAR_ROOM = 8
 const INVENTORY_CELLS = 40
 const SHOP_GOLD = 6000
 const BARE_SHOP_GOLD = 300
+const UNARMED_SHOP_GOLD = 40
 const BARE_RESERVE = 150
 const RESERVE_PER_LEVEL = 25
 const PURSE_LOW = 3000
@@ -620,6 +621,10 @@ export class Autopilot {
   private trainee(): Trainee {
     const { world } = this.host
     return { level: world.self.level, gold: world.self.gold + world.self.stashGold, bare: this.bare(), difficulty: world.difficulty }
+  }
+
+  private unarmed(): boolean {
+    return ![...this.host.world.containers.equipment.values()].some((item) => slotOf(item) === 'weapon1')
   }
 
   private bare(): number {
@@ -1676,7 +1681,7 @@ export class Autopilot {
       (this.scrollsWanted('portal') > 0 && me.gold >= SCROLL_GOLD) || (this.potionsWanted() > 0 && me.gold >= POTION_GOLD) || (care.config?.sellJunk === true && care.sellable.length > 0)
         ? ready('potions') && { key: 'potions', reason: 'Buying potions and portals', npc: 'potions', action: 'trade', work: () => this.restock() }
         : false,
-      (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
+      (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD) || (this.unarmed() && me.gold >= UNARMED_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
       gambleFund >= GAMBLING_RULES.spare && me.gold >= GAMBLING_RULES.spare && ready('gamble') && { key: 'gamble', reason: 'Gambling for rings and amulets', npc: 'gamble', action: 'gamble', work: () => this.gamble() },
       care.config?.sellJunk === true && care.sellable.length > 0 && ready('sell') && { key: 'sell', reason: 'Selling junk', npc: 'potions', action: 'trade' },
       spend === 0 && me.gold > this.purseKeep() + BANK_MARGIN && me.stashGold < getStashGoldLimit(me.level) && ready('bank') && { key: 'bank', reason: 'Putting gold in the stash', work: () => this.bank() },
@@ -2085,7 +2090,7 @@ export class Autopilot {
     const price = this.priceList()
     const pick = this.store()
       .map((item) => ({ item, appraisal: assists.inventoryCare.appraise(item), cost: price(item) }))
-      .filter(({ item, appraisal, cost }) => appraisal.upgradeSlot !== undefined && !filled.has(appraisal.upgradeSlot) && cost <= budget && this.fits(item))
+      .filter(({ item, appraisal, cost }) => appraisal.upgradeSlot !== undefined && !filled.has(appraisal.upgradeSlot) && cost <= (appraisal.upgradeSlot === 'weapon1' && this.unarmed() ? world.self.gold : budget) && this.fits(item))
       .sort((a, b) => b.appraisal.score / Math.max(1, b.cost) - a.appraisal.score / Math.max(1, a.cost))[0]
     const before = world.self.gold
     if (!pick || !hudModel.vendorBuy(pick.item.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
