@@ -1,6 +1,6 @@
 import { SKILLS_CATALOG } from '../../common/data/skills-catalog.ts'
 import type { BaseStatKey } from '../../common/units/unit-types.ts'
-import BUILDS from './data/builds.json'
+import BUILDS from '../../common/items/data/builds.json'
 
 export const CLASS_NAMES = ['Amazon', 'Sorceress', 'Necromancer', 'Paladin', 'Barbarian', 'Druid', 'Assassin'] as const
 
