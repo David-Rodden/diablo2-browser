@@ -41,7 +41,6 @@ const PORTALS: Readonly<Record<string, { readonly hint: string; readonly find: r
 }
 const HARROGATH_TRAVEL_ROW = 28
 const HARROGATH_PORTAL = 566
-const CHAOS_SANCTUARY = 108
 const REWARD_GRANTED = 0x0001
 const COMPLETED_NOW = 0x2000
 const WALK_COST = 2
@@ -83,7 +82,7 @@ export function currentGoal(level: number, progress: QuestProgress, mode: GuideM
     .find((g) => g !== undefined)
   if (goal) return goal
   if (skipped.size > 0) return currentGoal(level, progress, 'required', carries)
-  if (act === 3 && ((progress.words[HARROGATH_TRAVEL_ROW] ?? 0) & REWARD_GRANTED) === 0) return { level: CHAOS_SANCTUARY, title: `Travel to Act ${ROMAN[4]}`, hint: 'Take the portal to Harrogath where Diablo fell', find: [HARROGATH_PORTAL, ...STAGES.qstsa4q22![0]!.find] }
+  if (act === 3 && ((progress.words[HARROGATH_TRAVEL_ROW] ?? 0) & REWARD_GRANTED) === 0) return { level: ACT_TOWNS[3], title: `Travel to Act ${ROMAN[4]}`, hint: 'Talk to Tyrael, then take his portal to Harrogath', find: [HARROGATH_PORTAL, 'tyrael2'], inTown: true }
   return act < 4 ? { level: ACT_TOWNS[act + 1]!, title: `Travel to Act ${ROMAN[act + 1]}` } : null
 }
 
