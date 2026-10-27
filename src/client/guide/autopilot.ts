@@ -669,7 +669,7 @@ export class Autopilot {
     const danger = nowMs < this.lastStand ? null : peril
     this.assess(nowMs)
     this.host.guide.detour = this.corpseGoal() ?? this.trainingGoal()
-    const body = town ? null : (this.bodyRun(nowMs) ?? this.goldPile())
+    const body = town ? null : (this.bodyRun(nowMs) ?? (danger === null && !assists.isFighting(nowMs) ? this.goldPile() : null))
     if (this.harmless(nowMs)) return
     const disengaged = this.futileFight(nowMs)
     assists.pilotCombat = assists.autoCombatKey !== null && danger === null && !disengaged && (body === null || this.cornered(nowMs))
