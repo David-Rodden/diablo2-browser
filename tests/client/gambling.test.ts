@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { gamblePick, gambleReserve } from '../../src/client/guide/gambling.ts'
+import { bareSlotsOf, gamblePick, gambleReserve } from '../../src/client/guide/gambling.ts'
 import type { ItemData } from '../../src/netproto/index.ts'
 
 const offer = (id: number, code: string, invWidth = 1, invHeight = 1) => ({ id, code, invWidth, invHeight }) as ItemData
@@ -15,6 +15,13 @@ describe('gambling', () => {
     expect(gamblePick(offered, new Set(), 8000, price, always)?.id).toBe(3)
     expect(gamblePick(offered, new Set(), 5000, price, always)).toBeNull()
     expect(gamblePick(offered, new Set(), 50_000, price, (item) => item.invWidth === 1 && item.code !== 'rin')?.id).toBe(1)
+  })
+
+  it('counts the off hand as filled behind a two-handed weapon', () => {
+    const worn = (code: string, bodyLoc: number) => ({ id: bodyLoc, code, bodyLoc, invWidth: 2, invHeight: 4 }) as ItemData
+    expect(bareSlotsOf([worn('lsd', 4)]).has('weapon2')).toBe(true)
+    expect(bareSlotsOf([worn('gsd', 4)]).has('weapon2')).toBe(false)
+    expect(bareSlotsOf([worn('gsd', 4)]).has('helm')).toBe(true)
   })
 
   it('only gambles for the empty slots while the body is bare, and never sinks most of the fund into one ring', () => {

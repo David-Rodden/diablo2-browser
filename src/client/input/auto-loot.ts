@@ -42,7 +42,71 @@ export function freeSpots(items: Iterable<Placed>, width: number, height: number
 
 export const fitsInInventory = (items: Iterable<Placed>, width: number, height: number): boolean => freeSpots(items, width, height).length > 0
 
-export type RoomPlan = { readonly kind: 'fits' } | { readonly kind: 'move'; readonly itemId: number; readonly x: number; readonly y: number } | { readonly kind: 'drop'; readonly itemIds: readonly number[] }
+export interface Move {
+  readonly itemId: number
+  readonly x: number
+  readonly y: number
+}
+
+export type RoomPlan = { readonly kind: 'fits' } | { readonly kind: 'move'; readonly moves: readonly Move[] } | { readonly kind: 'drop'; readonly itemIds: readonly number[] }
+
+const SHAPES = [[2, 4], [2, 3], [2, 2], [1, 3], [1, 2], [1, 1]] as const
+const MAX_MOVES = 12
+
+const placedAt = <T extends Placed>(item: T, spot: { readonly x: number; readonly y: number }): T => ({ ...item, gridX: spot.x, gridY: spot.y })
+const columnFirst = (spots: readonly { readonly x: number; readonly y: number }[]) => [...spots].sort((a, b) => a.x - b.x || a.y - b.y)
+const cellsTaken = (items: readonly Placed[]) => new Set(items.flatMap((item) => cellsOf(item)))
+
+export function packed<T extends Placed>(items: readonly T[]): T[] | null {
+  return [...items]
+    .sort((a, b) => b.invWidth * b.invHeight - a.invWidth * a.invHeight || b.invHeight - a.invHeight || a.id - b.id)
+    .reduce<T[] | null>((placed, item) => {
+      const spot = placed && columnFirst(freeSpots(placed, item.invWidth, item.invHeight))[0]
+      return placed && spot ? [...placed, placedAt(item, spot)] : null
+    }, [])
+}
+
+export function movesTo(items: readonly Placed[], target: readonly Placed[]): Move[] | null {
+  const goals = new Map(target.map((item) => [item.id, item]))
+  let current = [...items]
+  const moves: Move[] = []
+  const shift = (item: Placed, spot: { readonly x: number; readonly y: number }) => {
+    current = current.map((other) => (other.id === item.id ? placedAt(other, spot) : other))
+    moves.push({ itemId: item.id, x: spot.x, y: spot.y })
+  }
+  while (moves.length <= items.length * 2) {
+    const pending = current.filter((item) => goals.get(item.id)?.gridX !== item.gridX || goals.get(item.id)?.gridY !== item.gridY)
+    if (pending.length === 0) return moves
+    const others = (item: Placed) => current.filter((other) => other.id !== item.id)
+    const ready = pending.find((item) => { const goal = goals.get(item.id)!; return freeSpots(others(item), item.invWidth, item.invHeight).some(({ x, y }) => x === goal.gridX && y === goal.gridY) })
+    if (ready) {
+      shift(ready, { x: goals.get(ready.id)!.gridX, y: goals.get(ready.id)!.gridY })
+      continue
+    }
+    const reserved = cellsTaken(pending.map((item) => goals.get(item.id)!))
+    const parking = pending.flatMap((item) => freeSpots(others(item), item.invWidth, item.invHeight).filter((spot) => !cellsOf(placedAt(item, spot)).some((cell) => reserved.has(cell)) && (spot.x !== item.gridX || spot.y !== item.gridY)).map((spot) => ({ item, spot })))[0]
+    if (!parking) return null
+    shift(parking.item, parking.spot)
+  }
+  return null
+}
+
+export const roomShape = (items: readonly Placed[]): number => {
+  const index = SHAPES.findIndex(([width, height]) => fitsInInventory(items, width, height))
+  return index < 0 ? SHAPES.length : index
+}
+
+export function tidyMoves(items: readonly Placed[]): Move[] | null {
+  const target = packed(items)
+  const moves = target && roomShape(target) < roomShape(items) ? movesTo(items, target) : null
+  return moves && moves.length <= MAX_MOVES ? moves : null
+}
+
+function repacked(items: readonly Placed[], width: number, height: number): Move[] | null {
+  const target = packed(items)
+  const moves = target && fitsInInventory(target, width, height) ? movesTo(items, target) : null
+  return moves && moves.length <= MAX_MOVES ? moves : null
+}
 
 export interface JudgedItem extends Placed {
   readonly appraisal: Appraisal
@@ -56,7 +120,9 @@ export function planRoom(items: readonly JudgedItem[], width: number, height: nu
   const move = items
     .flatMap((item) => freeSpots(without([item]), item.invWidth, item.invHeight).filter(({ x, y }) => x !== item.gridX || y !== item.gridY).map((spot) => ({ item, spot })))
     .find(({ item, spot }) => fitsInInventory([...without([item]), { ...item, gridX: spot.x, gridY: spot.y }], width, height))
-  if (move) return { kind: 'move', itemId: move.item.id, x: move.spot.x, y: move.spot.y }
+  if (move) return { kind: 'move', moves: [{ itemId: move.item.id, x: move.spot.x, y: move.spot.y }] }
+  const moves = repacked(items, width, height)
+  if (moves) return { kind: 'move', moves }
   if (!allowDrops) return null
   const quest = incoming.kind === 'quest'
   const expendable = items.filter(({ appraisal }) => !appraisal.locked && appraisal.kind !== 'quest' && (quest ? TIER_RANK[appraisal.tier] < TIER_RANK.great : TIER_RANK[appraisal.tier] <= MAX_DROPPED_RANK && TIER_RANK[appraisal.tier] < TIER_RANK[incoming.tier])).sort((a, b) => rankOf(a) - rankOf(b))

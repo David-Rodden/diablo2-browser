@@ -59,6 +59,9 @@ const BARE_SLOT = MIN_GAIN + 1
 const [BARBARIAN, ASSASSIN] = [4, 6]
 const SOON_LEVELS = 3
 const BASE_HEADROOM = 6
+const OUT_OF_REACH_LEVELS = 20
+
+const OUT_OF_REACH = 'Needs more than this build will ever have'
 
 const IMBUE_TYPES = KNOWLEDGE.imbue.alwaysWorthTypes
 
@@ -156,8 +159,14 @@ export function gearScore(item: LootItem, build: CharacterBuild): number {
 
 const requiredLevel = (item: LootItem, ui: UiInventoryItem) => Math.max(ui.reqLevel ?? 0, uniqueRecord(item)?.levelreq ?? 0, setRecord(item)?.levelreq ?? 0)
 
+const reachable = (need: number, have: number, reach: number, levelSlack: number) => need <= have || need <= Math.min(have + levelSlack * 5, reach)
+
 const usableBy = (ui: UiInventoryItem, build: CharacterBuild, levelSlack = 0) =>
-  (ui.reqClass === undefined || ui.reqClass === CHARACTER_CLASS_CODES[build.classIndex]) && (ui.reqStr ?? 0) <= build.strength + levelSlack * 5 && (ui.reqDex ?? 0) <= build.dexterity + levelSlack * 5
+  (ui.reqClass === undefined || ui.reqClass === CHARACTER_CLASS_CODES[build.classIndex]) &&
+  reachable(ui.reqStr ?? 0, build.strength, build.reach.strength, levelSlack) &&
+  reachable(ui.reqDex ?? 0, build.dexterity, build.reach.dexterity, levelSlack)
+
+const outOfReach = (ui: UiInventoryItem, build: CharacterBuild) => !usableBy(ui, build, OUT_OF_REACH_LEVELS)
 
 interface Upgrade {
   readonly slot: EquipSlotId
@@ -220,6 +229,7 @@ function namedAppraisal(item: LootItem, kind: 'unique' | 'set', ctx: AppraisalCo
   if (upgrade?.tier === 'great') return upgrade
   if ((unique && SOUGHT_UNIQUES.has(unique.index)) || (setItem && SOUGHT_SETS.has(setItem.set))) return result('great', kind, 200, 'Sought-after find')
   if (upgrade) return upgrade
+  if (uiOf(item).allowedSlots.length > 0 && outOfReach(uiOf(item), ctx.build)) return result('junk', kind, 0, OUT_OF_REACH)
   const score = gearScore(item, ctx.build)
   const levelreq = unique?.levelreq ?? setItem?.levelreq ?? 0
   const outgrown = ctx.build.level >= 30 && levelreq < ctx.build.level - 25
@@ -235,6 +245,7 @@ function unknownAffixAppraisal(item: LootItem, kind: 'rare' | 'magic', ctx: Appr
   const classItem = ownClassItem(ui, ctx.build)
   const foreign = ui.reqClass !== undefined && !classItem
   if (foreign) return result('junk', kind, 0, 'Made for another class')
+  if (!jewelry && !classItem && ui.allowedSlots.length > 0 && outOfReach(ui, ctx.build)) return result('junk', kind, 0, OUT_OF_REACH)
   if (kind === 'rare') return result(jewelry || classItem ? 'good' : 'keep', kind, jewelry || classItem ? 25 : 8, jewelry ? 'Unidentified rare jewelry' : classItem ? `Unidentified ${className(ctx.build.classIndex)} item` : 'Unidentified rare')
   return result(jewelry || classItem ? 'keep' : 'junk', kind, jewelry || classItem ? 10 : 1, classItem ? `Could roll ${className(ctx.build.classIndex)} skills` : jewelry ? 'Unidentified magic jewelry' : 'Plain magic item')
 }
@@ -244,6 +255,7 @@ function knownAffixAppraisal(item: LootItem, kind: LootKind, ctx: AppraisalConte
   if (upgrade) return upgrade
   const skiller = skillerReason(item, ctx.build)
   const score = gearScore(item, ctx.build)
+  if (!skiller && uiOf(item).allowedSlots.length > 0 && outOfReach(uiOf(item), ctx.build)) return result('junk', kind, score, OUT_OF_REACH)
   if (skiller) return result('good', kind, score, skiller)
   return result(score >= 80 ? 'keep' : 'junk', kind, score, score >= 80 ? `Worth ${Math.round(score)} to your build` : 'Not an upgrade')
 }

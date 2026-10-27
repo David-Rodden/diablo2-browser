@@ -77,6 +77,16 @@ describe('keeping only what the character will use', () => {
     expect(['rin', 'amu', 'ne1', 'gth'].map((code) => gambleWorthy(offered(code), coldSorc))).toEqual([true, true, false, false])
   })
 
+  it('passes on gear whose strength the build will never reach, but keeps it for a build that is heading there', () => {
+    const plate = (code: string) => item({ code, quality: 6, identified: true, stats: [{ statId: 7, param: 0, value: 40 << 8 }] })
+    const barb = characterBuild({ classIndex: 4, level: 24, strength: 55, dexterity: 30, skillPoints: new Map([[126, 10], [139, 5]]) })
+    expect([skeleMancer.reach.strength, barb.reach.strength]).toEqual([45, 120])
+    expect(appraiseItem(plate('plt'), context(skeleMancer))).toMatchObject({ tier: 'junk', reason: 'Needs more than this build will ever have' })
+    expect(appraiseItem(item({ code: 'plt', quality: 7 }), context(skeleMancer)).tier).toBe('junk')
+    expect(appraiseItem(plate('ltp'), context(skeleMancer)).tier).not.toBe('junk')
+    expect(appraiseItem(plate('plt'), context(barb)).tier).not.toBe('junk')
+  })
+
   it('treats only the best carried piece for a slot as the upgrade', () => {
     const [weak, strong] = [helm(10, 20), helm(11, 40)]
     const ctx = context(coldSorc, { carried: [weak, strong], owned: [weak, strong] })

@@ -27,9 +27,8 @@ import { ENVIRONMENT, worthUsing } from './environment.ts'
 import { mercUpgrade } from './merc-gear.ts'
 import { XpLedger } from './xp-ledger.ts'
 import { hireIdOf, MERCENARIES, pickMercenary, type HireCandidate } from './mercenary.ts'
-import { gamblePick, gambleReserve, gambleTreat, GAMBLING_RULES } from './gambling.ts'
+import { bareSlotsOf, gamblePick, gambleReserve, gambleTreat, GAMBLING_RULES } from './gambling.ts'
 import { gambleWorthy, misfits, slotOf } from '../../common/items/loot-appraisal.ts'
-import type { EquipSlotId } from '../../common/items/inventory-model.ts'
 import { FlowField } from './flow-field.ts'
 import type { GuidePlan, GuideTarget, PathGuide } from './path-guide.ts'
 import LAIRS from './data/boss-lairs.json'
@@ -220,7 +219,6 @@ const MERC_ITEM_MS = 1500
 const HIRE_LIST_MS = 3000
 const BUY = 0 as const
 const GAMBLE = 2 as const
-const EQUIP_SLOTS: readonly EquipSlotId[] = ['helm', 'amulet', 'weapon1', 'armor', 'weapon2', 'gloves', 'ring1', 'belt', 'ring2', 'boots']
 const GEAR_BUYS = 6
 const SCROLL_KINDS = {
   portal: { tome: 'tbk', scroll: 'tsc', tomeGold: 500, keep: 10, spare: 2 },
@@ -652,6 +650,7 @@ export class Autopilot {
     else if (!disengaged && assists.isFighting(nowMs)) this.say('Fighting')
     else if (!this.questInReach() && this.looting(nowMs)) this.say('Picking up loot')
     else if (!town && this.gearUp(nowMs)) this.say('Putting on better gear')
+    else if (this.repack(nowMs)) this.say('Tidying the bags')
     else if (!this.answerPanels(nowMs)) this.carryOn(town, nowMs)
   }
 
@@ -662,6 +661,19 @@ export class Autopilot {
     this.job = care
       .wearUpgrades()
       .catch(() => 0)
+      .finally(() => {
+        this.job = null
+      })
+    return true
+  }
+
+  private repack(nowMs: number): boolean {
+    const care = this.host.assists.inventoryCare
+    if (care.busy || nowMs - (this.errandsAt.get('repack') ?? Number.NEGATIVE_INFINITY) < ERRAND_COOLDOWN_MS || !care.repacking) return false
+    this.errandsAt.set('repack', nowMs)
+    this.job = care
+      .repack()
+      .catch(() => false)
       .finally(() => {
         this.job = null
       })
@@ -1980,8 +1992,7 @@ export class Autopilot {
   private async gamble(gambled = 1): Promise<void> {
     const { world, hudManager, hudModel } = this.host
     if (hudModel === null || world.npcInteraction.window !== 'gamble' || !(await waitFor(() => this.store().length > 0, HIRE_LIST_MS))) return
-    const worn = new Set([...world.containers.equipment.values()].map(slotOf))
-    const bare = new Set(EQUIP_SLOTS.filter((slot) => !worn.has(slot)))
+    const bare = bareSlotsOf(world.containers.equipment.values())
     const build = appraisalContextOf(world).build
     const offered = this.store().filter((item) => gambleWorthy(item, build))
     const fund = world.self.gold + world.self.stashGold - gambleReserve(world.self.level)

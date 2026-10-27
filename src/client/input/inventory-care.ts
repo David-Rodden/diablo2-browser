@@ -7,7 +7,7 @@ import { depositItemsToStash, waitFor } from '../ui-model/stash-deposit.ts'
 import type { HudManager } from '../ui/hud-manager.ts'
 import type { ClientWorld } from '../world/client-world.ts'
 import { runeCube, surplus, type Holding, type RuneCube } from '../../common/items/stash-tidy.ts'
-import { freeSpots, planRoom, type JudgedItem, type RoomPlan } from './auto-loot.ts'
+import { freeSpots, planRoom, tidyMoves, type JudgedItem, type Move, type RoomPlan } from './auto-loot.ts'
 
 export interface InventoryCareConfig {
   readonly makeRoom: boolean
@@ -68,7 +68,7 @@ export class InventoryCare {
   makeRoom(plan: RoomPlan, incoming: ItemData): void {
     if (plan.kind === 'fits' || this.config?.makeRoom !== true) return
     this.run(async () => {
-      if (plan.kind === 'move') return this.moveItem(plan.itemId, plan.x, plan.y)
+      if (plan.kind === 'move') return this.moveAll(plan.moves)
       const dropped: string[] = []
       for (const itemId of plan.itemIds) {
         const item = this.host.world.containers.inventory.get(itemId)
@@ -242,6 +242,27 @@ export class InventoryCare {
     const valuables = this.stashable
     const moved = await depositItemsToStash(hudModel, valuables, () => hudManager.leftPanel === 'stash')
     if (moved > 0) this.toast(`Stashed ${plural(moved, 'valuable')}`, valuables.slice(0, moved).map(nameOf).join(', '), 'green')
+  }
+
+  private async moveAll(moves: readonly Move[]): Promise<boolean> {
+    for (const { itemId, x, y } of moves) if (!(await this.moveItem(itemId, x, y))) return false
+    return true
+  }
+
+  get repacking(): readonly Move[] | null {
+    return tidyMoves([...this.host.world.containers.inventory.values()])
+  }
+
+  async repack(): Promise<boolean> {
+    const moves = this.repacking
+    if (moves === null || this.busy || this.host.world.containers.cursor !== null) return false
+    let tidied = false
+    this.run(async () => {
+      tidied = await this.moveAll(moves)
+      if (tidied) this.toast('Tidied the bags', `Moved ${plural(moves.length, 'item')} to make room`, 'tan')
+    })
+    await this.job
+    return tidied
   }
 
   private async moveItem(itemId: number, x: number, y: number): Promise<boolean> {
