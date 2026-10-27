@@ -74,6 +74,7 @@ const TRAIL_ROUNDS = 3
 const REACH_SNAP = 3
 const PORTAL_CLASSES = new Set([59, 60, 100, 298, 342, 563])
 const OPENED = 2
+const SPENT_NEAR = 8
 const ORIFICE = 152
 const GATE_SNAP = 2
 const WAYPOINT_NEAR = 45
@@ -133,8 +134,9 @@ const candidatesFor = (keys: readonly FindKey[], view: LevelView, objects: reado
     ...monsters.filter((m) => npcIds.has(m.classId) && !m.dead).map((m) => ({ x: m.x, y: m.y, label: m.name ?? 'Objective', unit: { id: m.id, kind: 'npc' as const } })),
   ]
   const known = (type: number, index: number) => (type === 2 && objectIds.has(index)) || (type === 1 && npcIds.has(index))
-  const anySpent = objects.some((o) => objectIds.has(o.classId) && isSpent(o))
-  return live.length > 0 || anySpent ? live : view.presetUnits.filter((u) => known(u.type, u.index)).map((u) => ({ x: view.originX + u.subX, y: view.originY + u.subY, label: 'Objective' }))
+  const spent = objects.filter((o) => objectIds.has(o.classId) && isSpent(o))
+  const used = (u: { readonly type: number; readonly index: number; readonly subX: number; readonly subY: number }) => u.type === 2 && spent.some((o) => o.classId === u.index && Math.hypot(o.x - view.originX - u.subX, o.y - view.originY - u.subY) <= SPENT_NEAR)
+  return live.length > 0 ? live : view.presetUnits.filter((u) => known(u.type, u.index) && !used(u)).map((u) => ({ x: view.originX + u.subX, y: view.originY + u.subY, label: 'Objective' }))
 }
 
 const findTargets = (find: readonly Find[], view: LevelView, objects: readonly ClientUnit[], monsters: readonly ClientUnit[], from: SubTilePoint): GuideTarget[] => {
@@ -229,6 +231,7 @@ export class PathGuide {
   private readonly memory = new WaypointMemory()
   private readonly skipMemory = new SkipMemory()
   private readonly flow = new ChevronFlow()
+  private spent: { readonly view: LevelView | null; readonly units: Map<number, ClientUnit> } = { view: null, units: new Map() }
   private readonly fieldFor: FieldSource = (view, target) => {
     const cached = this.field
     if (cached?.view === view && cached.field.targetX === target.x && cached.field.targetY === target.y) return cached.field
@@ -286,10 +289,19 @@ export class PathGuide {
       const fromMenu = this.host.waypoints()
       const waypoints = this.memory.known(character, level, fromMenu)
       this.knownWaypoints = waypoints
-      this.publish(planGuide(this.host, this.mode, this.fieldFor, waypoints, fromMenu.size === 0 && !this.memory.hasMenu(character), this.skipped, this.detourGoal))
+      this.publish(planGuide({ ...this.host, objects: () => this.remembered() }, this.mode, this.fieldFor, waypoints, fromMenu.size === 0 && !this.memory.hasMenu(character), this.skipped, this.detourGoal))
       this.plannedAt = { ms: nowMs, x, y, level }
     }
     return this.plan
+  }
+
+  private remembered(): readonly ClientUnit[] {
+    const live = this.host.objects()
+    const view = this.host.levelView()
+    if (this.spent.view !== view) this.spent = { view, units: new Map() }
+    live.filter(isSpent).forEach((unit) => this.spent.units.set(unit.id, unit))
+    const seen = new Set(live.map((unit) => unit.id))
+    return [...live, ...[...this.spent.units.values()].filter((unit) => !seen.has(unit.id))]
   }
 
   draw(ctx: CanvasRenderingContext2D, font: D2FontRenderer, nowMs: number, drawAutomapText: () => AutomapHudFootprint | null, width: number): AutomapHudFootprint | null {
