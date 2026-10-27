@@ -194,6 +194,7 @@ const KITE_MS = 2500
 const SEAM_JUMP = 20
 const SPEND_MS = 1500
 const HEAL_LIFE = 0.7
+const HEAL_PATIENCE_MS = 15_000
 const RECOVERED_LIFE = 0.85
 const HEAL_MANA = 0.4
 const REPAIR_BELOW = 0.3
@@ -323,6 +324,7 @@ export class Autopilot {
   private regions: { readonly level: number; readonly regions: Regions } | null = null
   private readonly landings = new Map<string, SubTilePoint>()
   private padCache: { readonly key: string; readonly at: number; readonly field: FlowField } | null = null
+  private healWait: { readonly life: number; readonly since: number } | null = null
   private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
   private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
@@ -706,7 +708,7 @@ export class Autopilot {
     const { assists, guide } = this.host
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
-    else if (town && this.wounded()) this.say('Waiting to heal before heading out')
+    else if (town && this.healing(nowMs)) this.say('Waiting to heal before heading out')
     else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && !this.retreatWhy.endsWith(ON_FOOT) && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(town === null && this.portalFirst(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
@@ -1354,6 +1356,13 @@ export class Autopilot {
   private recovered(): boolean {
     const { world, hudManager } = this.host
     return world.self.life >= (hudManager.maxHp || world.self.maxLife) * RECOVERED_LIFE && this.healingPotions() >= HUNT_POTIONS
+  }
+
+  private healing(nowMs: number): boolean {
+    const life = this.host.world.self.life
+    if (!this.wounded()) this.healWait = null
+    else if (this.healWait === null || life > this.healWait.life) this.healWait = { life, since: nowMs }
+    return this.healWait !== null && nowMs - this.healWait.since < HEAL_PATIENCE_MS
   }
 
   private wounded(): boolean {
