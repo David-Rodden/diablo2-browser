@@ -112,8 +112,8 @@ interface MutableRemoteEntityMotion {
   turnState: UnitTurnState
 }
 
-function entityKey(unitType: number, unitId: number): string {
-  return `${String(unitType)}:${String(unitId >>> 0)}`
+function entityKey(unitType: number, unitId: number): number {
+  return (unitType & 0x7) * 0x1_0000_0000 + (unitId >>> 0)
 }
 
 function toState(state: MutableRemoteEntityMotion): RemoteEntityMotionState {
@@ -339,7 +339,7 @@ export function resolveRemoteMoveSpeed(options: {
 }
 
 export class RemoteEntityInterpolator {
-  private readonly entities = new Map<string, MutableRemoteEntityMotion>()
+  private readonly entities = new Map<number, MutableRemoteEntityMotion>()
   private readonly snapThreshold: number
   private readonly customSnapThreshold: number | undefined
   private collisionChecker: RemoteCollisionChecker | undefined
@@ -721,6 +721,10 @@ export class RemoteEntityInterpolator {
 
   clear(): void {
     this.entities.clear()
+  }
+
+  get size(): number {
+    return this.entities.size
   }
 
   /**

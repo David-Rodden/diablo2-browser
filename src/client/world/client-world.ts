@@ -20,6 +20,7 @@ import {
 } from '../../netproto/index.ts'
 import { type CharsiImbueOptions } from '../../common/items/item-bridge.ts'
 import { computeSetBonusStats, resolveSetItemIdByCodeOrName } from '../ui-model/set-bonuses.ts'
+import { shouldFreezeMonsterSequenceAtEnd113c } from '../../common/units/monai-113c.ts'
 import {
   isInMeleeRange113c,
   isMeleeSkill113c,
@@ -80,8 +81,10 @@ import {
   ClientUnit,
   makeUnitKey,
   type ClientUnitOverlay,
+  type QueuedUnitPacket113c,
 } from './client-unit.ts'
 import { resolveMonsterPaletteIndex113c } from '../../common/units/monster-colormap-113c.ts'
+import { resolveStateLightColor113c } from '../view/unit-drawables.ts'
 import { ClientInventoryManager, type ClientItemContainers } from './inventory.ts'
 import { MutableSelfPlayerState, type SelfPlayerState } from './self.ts'
 import { QuestLogState } from './quest-log-state.ts'
@@ -179,6 +182,7 @@ import {
   executeCharsiImbueImpl,
   noteOutgoingCommandImpl,
 } from './world-event-applier.ts'
+import { clearClientMonsterDeadModeOverlays113c } from './monster-overlays-113c.ts'
 
 export * from './world-skill-state-tables.ts'
 export { findHostileMeleeTargetMonster113c, resolveRangedAttackMissileKey113c }
@@ -247,6 +251,13 @@ export class ClientWorld {
   skipSelfTurnStep = false
   /** When true, `tick()` skips stepping remote unit positions (driven authoritatively by `OnlineSession.interpolator`). */
   skipRemoteUnitStep = false
+  /**
+   * When true, unit-queued S2C packets (`0x0C..0x10`, `0x4C..0x4D`, `0x67..0x6D` -> `UnitMode`, `UnitMove`,
+   * `SkillCast`) are appended to `unit.queuedPackets` (`unit+0xD8`, `D2Client.dll 0x6FB5CE20 -> 0x6FB5C630`)
+   * and drained in FIFO order at the end of the unit's 25 Hz tick (`0x6FADB1E0 -> 0x6FB5BC20`, #1708).
+   */
+  deferUnitPackets113c = false
+  _drainingQueuedUnitPacket = false
 
   private readonly _self = new MutableSelfPlayerState()
   private _isSelfDead = false
@@ -279,6 +290,7 @@ export class ClientWorld {
   private _questItemState = new Uint16Array(7)
   private _questHistory = new Uint8Array(41)
   private _gameQuestAvailability = new Uint8Array(37)
+  private _hasGameQuestAvailability = false
   private _questStatus: {
     readonly questId: number
     readonly alertFlags: number
@@ -721,6 +733,9 @@ export class ClientWorld {
           this.clearUnitCastState(unit)
         }
       }
+      if (npcUnit.dwAnimMode === MONMODE_DEAD) {
+        clearClientMonsterDeadModeOverlays113c(unit)
+      }
     }
     if (npcUnit.pDynamicPath && npcUnit.moving) {
       unit.targetX = npcUnit.pDynamicPath.tTargetCoord.X
@@ -843,6 +858,7 @@ export class ClientWorld {
       rangeAdder,
       isTargetMoving,
       collisionFn,
+      targetUnit.unitType === 'monster' ? targetUnit.classId : undefined,
     )
   }
 
@@ -1261,7 +1277,10 @@ export class ClientWorld {
     const unit = unitId !== 0 ? this.getUnit('player', unitId) : undefined
     const unitRev = unit ? unit.stats.revision : -1
     if (isSelf) {
-      return `s${this._containers.equipment.size},${this._containers.sockets.size},${this._self.stats.revision},${unitRev}`
+      const stateLight = resolveStateLightColor113c(
+        (stateId) => Boolean(unit?.states.has(stateId)) || this._self.states.has(stateId),
+      )
+      return `s${this._containers.equipment.size},${this._containers.sockets.size},${this._self.stats.revision},${unitRev},${stateLight ?? -1}`
     }
     const remote = this._containers.remoteEquipmentByPlayerId.get(unitId)
     return `r${remote ? remote.size : 0},${unitRev}`
@@ -1295,6 +1314,14 @@ export class ClientWorld {
   private computePlayerLightColor(unitId: number): number {
     const unit = unitId !== 0 ? this.getUnit('player', unitId) : undefined
     const isSelf = unitId === this.selfId || this.selfId === 0
+    if (isSelf) {
+      const stateLightColor = resolveStateLightColor113c(
+        (stateId) => Boolean(unit?.states.has(stateId)) || this._self.states.has(stateId),
+      )
+      if (stateLightColor !== undefined) {
+        return stateLightColor
+      }
+    }
     return resolveCharacterStatTotal(STAT_LIGHTCOLOR, {
       unitStats: unit?.stats,
       selfStats: isSelf ? this._self.stats : undefined,
@@ -1323,12 +1350,21 @@ export class ClientWorld {
   clearUnitCastState(unit: ClientUnit): void {
     const prevCastMode = unit.castState?.mode
     const prevCastSkillId = unit.castState?.skillId
+    const prevCastStartedAtMs = unit.castState?.startedAtMs
+    const freezeMonsterSequence =
+      unit.unitType === 'monster' &&
+      unit.mode === 14 &&
+      shouldFreezeMonsterSequenceAtEnd113c(unit.classId, prevCastSkillId ?? unit.lastSkillId)
     unit.castState = undefined
     unit.altitude = 0
     unit.modeUntilMs = undefined
     unit.modeDurationMs = undefined
     unit.modeElapsedMs = undefined
-    unit.animStepSpeed256 = undefined
+    if (!freezeMonsterSequence) {
+      unit.animStepSpeed256 = undefined
+    } else if (unit.animStartedAtMs === undefined && prevCastStartedAtMs !== undefined) {
+      unit.animStartedAtMs = prevCastStartedAtMs
+    }
     unit.animEffRate = undefined
     if (
       prevCastSkillId === 107 ||
@@ -1366,6 +1402,7 @@ export class ClientWorld {
     }
     if (
       !unit.dead &&
+      !freezeMonsterSequence &&
       (unit.mode === prevCastMode ||
         (unit.unitType === 'player' &&
           (unit.mode === 4 || (unit.mode >= 7 && unit.mode <= 16) || unit.mode === 18)) ||
@@ -2374,6 +2411,10 @@ export class ClientWorld {
     return this._gameQuestAvailability
   }
 
+  get hasGameQuestAvailability(): boolean {
+    return this._hasGameQuestAvailability
+  }
+
   canGoToAct(act: number): boolean {
     return this._canGoToAct.has(act) || this._canGoToAct.has(act + 1)
   }
@@ -2751,12 +2792,28 @@ export class ClientWorld {
 
   /**
    * Resolves a world unit for generic unit-targeted events (`UnitMode`, `StateSet`, `StateEnd`, etc.).
-   * Container-owned items (`!this._containers.ground.has(id)`) reside exclusively in `this._containers`
-   * and must never be instantiated as phantom world units at `(0, 0)` in `this._units`.
+   * - Container-owned items (`!this._containers.ground.has(id)`) reside exclusively in `this._containers`
+   *   and must never be instantiated as phantom world units at `(0, 0)` in `this._units`.
+   * - Unknown monsters (`!this._units.has('monster:' + id)`) must NEVER be fabricated with `classId = 0`
+   *   (`skeleton1`) per 1.13c `D2Client.dll` (`D2CLIENT_FindServerSideUnit` `0x6FB54E20` -> `NULL` drops
+   *   non-spawn monster S2C packets), except when the monster ID belongs to the local player's active
+   *   mercenary or summoned pet whose `hcIdx > 0` was already registered via `0x81` / `0x7A`.
    */
   private ensureWorldOrGroundUnit(unitType: UnitType, id: number): ClientUnit | undefined {
-    if (unitTypeFromId(unitType) === 'item' && !this._containers.ground.has(id)) {
+    const typeName = unitTypeFromId(unitType)
+    if (typeName === 'item' && !this._containers.ground.has(id)) {
       return this.getUnit(unitType, id)
+    }
+    if (typeName === 'monster') {
+      const existing = this.getUnit(unitType, id)
+      if (existing) return existing
+      if (
+        (this.isOwnMercUnitId(id) || this.isOwnPetUnitId(id)) &&
+        this.resolveKnownMonsterClassId(id) > 0
+      ) {
+        return this.ensureUnit(unitType, id)
+      }
+      return undefined
     }
     return this.ensureUnit(unitType, id)
   }
@@ -2781,6 +2838,18 @@ export class ClientWorld {
     applyUnitModeImmediateImpl.call(this as unknown as ClientWorldInternal, unit, ev, nowMs)
   }
 
+  /**
+   * Enqueues a unit-scoped S2C packet (`0x0C..0x10`, `0x4C..0x4D`, `0x67..0x6D`) onto `unit.queuedPackets`
+   * (`unit+0xD8`) per `D2Client.dll 0x6FB5CE20 -> 0x6FB5BC60 / 0x6FB5BC40 -> 0x6FB59600 -> 0x6FB5C630` (#1708).
+   * If the target unit does not exist in `g_pClientUnitTable`, the packet is dropped and `false` is returned.
+   */
+  enqueueUnitPacket113c(unitType: UnitType, unitId: number, ev: QueuedUnitPacket113c): boolean {
+    const unit = this.getUnit(unitType, unitId)
+    if (!unit) return false
+    unit.queuedPackets.push(ev)
+    return true
+  }
+
   reset(): void {
     this.act = 0
     this.mapSeed = 0
@@ -2795,6 +2864,7 @@ export class ClientWorld {
     this.frameCount = 0
     this.lastRttMs = null
     this._isSelfDead = false
+    this._drainingQueuedUnitPacket = false
     this._self.reset()
     this._merc = null
     this._mercHireList.length = 0
@@ -2819,6 +2889,7 @@ export class ClientWorld {
     this._questItemState = new Uint16Array(7)
     this._questHistory = new Uint8Array(41)
     this._gameQuestAvailability = new Uint8Array(37)
+    this._hasGameQuestAvailability = false
     this._questStatus = null
     this._specialQuestEvent = 0
     this._gameQuests = new Uint16Array(48)

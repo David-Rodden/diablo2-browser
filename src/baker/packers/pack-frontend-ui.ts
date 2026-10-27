@@ -13,7 +13,8 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { MpqArchive } from '../../common/mpq/archive.ts'
 import { fileSource } from '../io/file-source.ts'
 import { MountedArchives } from '../../common/mpq/mount.ts'
@@ -51,6 +52,112 @@ export interface PackedAnimStripMeta {
   readonly drawMode?: number
   readonly frames: readonly PackedStripFrameMeta[]
 }
+
+export interface ClassCampfireSpec {
+  readonly id: string
+  readonly dir: string
+  readonly prefix: string
+  readonly states: readonly {
+    readonly key: string
+    readonly base: string
+    readonly rate: number
+    readonly overlay?: string
+    readonly overlayDrawMode?: 3 | 5
+  }[]
+}
+
+/**
+ * Per D2Launch.dll 0x6fa68df8, 0x6fa60c08 (Amazon records at 0x6fa60ca8..0x6fa60d07),
+ * 0x6fa51400..0x6fa514f7, 0x6fa65d9c, 0x6fa65db0 & 0x6fa5d780:
+ * DrawMode: 5 = DRAWMODE_NORMAL, 3 = DRAWMODE_MODULATE (screen).
+ * Amazon loads only amnu1/amnu2/amfw/amnu3/ambw with overlay = 0 on all 5 records (Issue #1739).
+ */
+export const CAMPFIRE_SPECS: readonly ClassCampfireSpec[] = [
+  {
+    id: 'am',
+    dir: 'amazon',
+    prefix: 'am',
+    states: [
+      { key: 'nu1', base: 'amnu1.dc6', rate: 3 },
+      { key: 'nu2', base: 'amnu2.dc6', rate: 3 },
+      { key: 'nu3', base: 'amnu3.dc6', rate: 2 },
+      { key: 'fw', base: 'amfw.dc6', rate: 1 },
+      { key: 'bw', base: 'ambw.dc6', rate: 1 },
+    ],
+  },
+  {
+    id: 'as',
+    dir: 'assassin',
+    prefix: 'as',
+    states: [
+      { key: 'nu1', base: 'asnu1.dc6', rate: 3 },
+      { key: 'nu2', base: 'asnu2.dc6', rate: 3 },
+      { key: 'nu3', base: 'asnu3.dc6', rate: 2 },
+      { key: 'fw', base: 'asfw.dc6', rate: 1 },
+      { key: 'bw', base: 'asbw.dc6', rate: 1 },
+    ],
+  },
+  {
+    id: 'ne',
+    dir: 'necromancer',
+    prefix: 'ne',
+    states: [
+      { key: 'nu1', base: 'nenu1.dc6', rate: 3 },
+      { key: 'nu2', base: 'nenu2.dc6', rate: 3 },
+      { key: 'nu3', base: 'nenu3.dc6', rate: 2, overlay: 'nenu3s.dc6', overlayDrawMode: 3 },
+      { key: 'fw', base: 'nefw.dc6', rate: 1, overlay: 'nefws.dc6', overlayDrawMode: 3 },
+      { key: 'bw', base: 'nebw.dc6', rate: 1, overlay: 'nebws.dc6', overlayDrawMode: 3 },
+    ],
+  },
+  {
+    id: 'ba',
+    dir: 'barbarian',
+    prefix: 'ba',
+    states: [
+      { key: 'nu1', base: 'banu1.dc6', rate: 2 },
+      { key: 'nu2', base: 'banu2.dc6', rate: 2 },
+      { key: 'nu3', base: 'banu3.dc6', rate: 1 },
+      { key: 'fw', base: 'bafw.dc6', rate: 1, overlay: 'bafws.dc6', overlayDrawMode: 5 },
+      { key: 'bw', base: 'babw.dc6', rate: 1 },
+    ],
+  },
+  {
+    id: 'pa',
+    dir: 'paladin',
+    prefix: 'pa',
+    states: [
+      { key: 'nu1', base: 'panu1.dc6', rate: 2 },
+      { key: 'nu2', base: 'panu2.dc6', rate: 2 },
+      { key: 'nu3', base: 'panu3.dc6', rate: 2 },
+      { key: 'fw', base: 'pafw.dc6', rate: 1, overlay: 'pafws.dc6', overlayDrawMode: 5 },
+      { key: 'bw', base: 'pabw.dc6', rate: 1 },
+    ],
+  },
+  {
+    id: 'so',
+    dir: 'sorceress',
+    prefix: 'so',
+    states: [
+      { key: 'nu1', base: 'sonu1.dc6', rate: 2 },
+      { key: 'nu2', base: 'sonu2.dc6', rate: 2 },
+      { key: 'nu3', base: 'sonu3.dc6', rate: 1, overlay: 'sonu3s.dc6', overlayDrawMode: 3 },
+      { key: 'fw', base: 'sofw.dc6', rate: 1, overlay: 'sofws.dc6', overlayDrawMode: 3 },
+      { key: 'bw', base: 'sobw.dc6', rate: 1, overlay: 'sobws.dc6', overlayDrawMode: 3 },
+    ],
+  },
+  {
+    id: 'dz',
+    dir: 'druid',
+    prefix: 'dz',
+    states: [
+      { key: 'nu1', base: 'dznu1.dc6', rate: 2 },
+      { key: 'nu2', base: 'dznu2.dc6', rate: 2 },
+      { key: 'nu3', base: 'dznu3.dc6', rate: 2 },
+      { key: 'fw', base: 'dzfw.dc6', rate: 1 },
+      { key: 'bw', base: 'dzbw.dc6', rate: 1 },
+    ],
+  },
+]
 
 /**
  * Create an indexed pixel buffer and blit multiple DC6 frames onto it.
@@ -659,110 +766,6 @@ async function main(): Promise<void> {
   // 5. 7-Class Campfire Multi-State Animations (fechar/pal.pl2)
   // ============================================================================
   console.log('Packing 7-class campfire multi-state animations...')
-  // Per D2Launch.dll 0x6fa68df8, 0x6fa60c08, 0x6fa65d9c, 0x6fa65db0 & 0x6fa5d780:
-  // Note: ptAnimTable != NULL does NOT subtract frame0.offset!
-  // DrawMode: 5 = DRAWMODE_NORMAL, 3 = DRAWMODE_MODULATE (screen)
-  interface ClassCampfireSpec {
-    readonly id: string
-    readonly dir: string
-    readonly prefix: string
-    readonly states: readonly {
-      readonly key: string
-      readonly base: string
-      readonly rate: number
-      readonly overlay?: string
-      readonly overlayDrawMode?: 3 | 5
-      readonly compositeOverlay?: boolean
-    }[]
-  }
-
-  const CAMPFIRE_SPECS: readonly ClassCampfireSpec[] = [
-    {
-      id: 'am',
-      dir: 'amazon',
-      prefix: 'am',
-      states: [
-        { key: 'nu1', base: 'amnu1.dc6', rate: 3 },
-        { key: 'nu2', base: 'amnu2.dc6', rate: 3 },
-        { key: 'nu3', base: 'amnu3.dc6', rate: 2 },
-        { key: 'fw', base: 'amfw.dc6', rate: 1, overlay: 'amfws.dc6', compositeOverlay: true },
-        { key: 'bw', base: 'ambw.dc6', rate: 1 },
-      ],
-    },
-    {
-      id: 'as',
-      dir: 'assassin',
-      prefix: 'as',
-      states: [
-        { key: 'nu1', base: 'asnu1.dc6', rate: 3 },
-        { key: 'nu2', base: 'asnu2.dc6', rate: 3 },
-        { key: 'nu3', base: 'asnu3.dc6', rate: 2 },
-        { key: 'fw', base: 'asfw.dc6', rate: 1 },
-        { key: 'bw', base: 'asbw.dc6', rate: 1 },
-      ],
-    },
-    {
-      id: 'ne',
-      dir: 'necromancer',
-      prefix: 'ne',
-      states: [
-        { key: 'nu1', base: 'nenu1.dc6', rate: 3 },
-        { key: 'nu2', base: 'nenu2.dc6', rate: 3 },
-        { key: 'nu3', base: 'nenu3.dc6', rate: 2, overlay: 'nenu3s.dc6', overlayDrawMode: 3 },
-        { key: 'fw', base: 'nefw.dc6', rate: 1, overlay: 'nefws.dc6', overlayDrawMode: 3 },
-        { key: 'bw', base: 'nebw.dc6', rate: 1, overlay: 'nebws.dc6', overlayDrawMode: 3 },
-      ],
-    },
-    {
-      id: 'ba',
-      dir: 'barbarian',
-      prefix: 'ba',
-      states: [
-        { key: 'nu1', base: 'banu1.dc6', rate: 2 },
-        { key: 'nu2', base: 'banu2.dc6', rate: 2 },
-        { key: 'nu3', base: 'banu3.dc6', rate: 1 },
-        { key: 'fw', base: 'bafw.dc6', rate: 1, overlay: 'bafws.dc6', overlayDrawMode: 5 },
-        { key: 'bw', base: 'babw.dc6', rate: 1 },
-      ],
-    },
-    {
-      id: 'pa',
-      dir: 'paladin',
-      prefix: 'pa',
-      states: [
-        { key: 'nu1', base: 'panu1.dc6', rate: 2 },
-        { key: 'nu2', base: 'panu2.dc6', rate: 2 },
-        { key: 'nu3', base: 'panu3.dc6', rate: 2 },
-        { key: 'fw', base: 'pafw.dc6', rate: 1, overlay: 'pafws.dc6', overlayDrawMode: 5 },
-        { key: 'bw', base: 'pabw.dc6', rate: 1 },
-      ],
-    },
-    {
-      id: 'so',
-      dir: 'sorceress',
-      prefix: 'so',
-      states: [
-        { key: 'nu1', base: 'sonu1.dc6', rate: 2 },
-        { key: 'nu2', base: 'sonu2.dc6', rate: 2 },
-        { key: 'nu3', base: 'sonu3.dc6', rate: 1, overlay: 'sonu3s.dc6', overlayDrawMode: 3 },
-        { key: 'fw', base: 'sofw.dc6', rate: 1, overlay: 'sofws.dc6', overlayDrawMode: 3 },
-        { key: 'bw', base: 'sobw.dc6', rate: 1, overlay: 'sobws.dc6', overlayDrawMode: 3 },
-      ],
-    },
-    {
-      id: 'dz',
-      dir: 'druid',
-      prefix: 'dz',
-      states: [
-        { key: 'nu1', base: 'dznu1.dc6', rate: 2 },
-        { key: 'nu2', base: 'dznu2.dc6', rate: 2 },
-        { key: 'nu3', base: 'dznu3.dc6', rate: 2 },
-        { key: 'fw', base: 'dzfw.dc6', rate: 1 },
-        { key: 'bw', base: 'dzbw.dc6', rate: 1 },
-      ],
-    },
-  ]
-
   const campfireClasses: Record<string, Record<string, PackedAnimStripMeta>> = {}
   for (const cls of CAMPFIRE_SPECS) {
     campfireClasses[cls.id] = {}
@@ -773,40 +776,32 @@ async function main(): Promise<void> {
         ? await decodeUiDc6(`data\\global\\ui\\FrontEnd\\${cls.dir}\\${st.overlay}`)
         : null
 
-      if (ovDc6 && st.compositeOverlay) {
-        const composited = compositeOverlayFrames(baseDc6.groups[0]!.frames, ovDc6.groups[0]!.frames)
-        const relFile = `campfire/${cls.id}-${st.key}.png`
-        const packed = packFramesToGrid(relFile, composited, 2048, { rate: st.rate, drawMode: 5 })
-        savePng(relFile, packed.meta.width, packed.meta.height, packed.pixels, fecharPl2.rgb, true)
-        campfireClasses[cls.id]![st.key] = packed.meta
-      } else {
-        const relFile = `campfire/${cls.id}-${st.key}.png`
-        const packed = packFramesToGrid(relFile, baseDc6.groups[0]!.frames, 2048, {
-          rate: st.rate,
-          drawMode: 5,
-        })
-        savePng(relFile, packed.meta.width, packed.meta.height, packed.pixels, fecharPl2.rgb, true)
-        campfireClasses[cls.id]![st.key] = packed.meta
+      const relFile = `campfire/${cls.id}-${st.key}.png`
+      const packed = packFramesToGrid(relFile, baseDc6.groups[0]!.frames, 2048, {
+        rate: st.rate,
+        drawMode: 5,
+      })
+      savePng(relFile, packed.meta.width, packed.meta.height, packed.pixels, fecharPl2.rgb, true)
+      campfireClasses[cls.id]![st.key] = packed.meta
 
-        if (ovDc6 && st.overlayDrawMode !== undefined) {
-          const ovRelFile = `campfire/${cls.id}-${st.key}-ov.png`
-          const ovPacked = packFramesToGrid(ovRelFile, ovDc6.groups[0]!.frames, 2048, {
-            rate: st.rate,
-            drawMode: st.overlayDrawMode,
-          })
-          savePng(ovRelFile, ovPacked.meta.width, ovPacked.meta.height, ovPacked.pixels, fecharPl2.rgb, true)
-          // Also write nested subdir path (`campfire/<id>/<phase>_ov.png`) for path compatibility
-          mkdirSync(join(outDir, 'campfire', cls.id), { recursive: true })
-          savePng(
-            `campfire/${cls.id}/${st.key}_ov.png`,
-            ovPacked.meta.width,
-            ovPacked.meta.height,
-            ovPacked.pixels,
-            fecharPl2.rgb,
-            true,
-          )
-          campfireClasses[cls.id]![`${st.key}_ov`] = ovPacked.meta
-        }
+      if (ovDc6 && st.overlayDrawMode !== undefined) {
+        const ovRelFile = `campfire/${cls.id}-${st.key}-ov.png`
+        const ovPacked = packFramesToGrid(ovRelFile, ovDc6.groups[0]!.frames, 2048, {
+          rate: st.rate,
+          drawMode: st.overlayDrawMode,
+        })
+        savePng(ovRelFile, ovPacked.meta.width, ovPacked.meta.height, ovPacked.pixels, fecharPl2.rgb, true)
+        // Also write nested subdir path (`campfire/<id>/<phase>_ov.png`) for path compatibility
+        mkdirSync(join(outDir, 'campfire', cls.id), { recursive: true })
+        savePng(
+          `campfire/${cls.id}/${st.key}_ov.png`,
+          ovPacked.meta.width,
+          ovPacked.meta.height,
+          ovPacked.pixels,
+          fecharPl2.rgb,
+          true,
+        )
+        campfireClasses[cls.id]![`${st.key}_ov`] = ovPacked.meta
       }
     }
   }
@@ -1301,8 +1296,10 @@ async function main(): Promise<void> {
   )
 }
 
-main().catch(err => {
-  console.error('pack-frontend-ui failed:', err)
-  process.exit(1)
-})
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch(err => {
+    console.error('pack-frontend-ui failed:', err)
+    process.exit(1)
+  })
+}
 

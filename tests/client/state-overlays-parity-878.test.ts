@@ -347,4 +347,65 @@ describe('Issue #878: STATE_OVERLAYS States.txt / states.bin Parity & overlay.bi
     pushOverlayLight(out, dummyUnit, 'test', 'staminafront')
     expect(out).toEqual([])
   })
+
+  it('5. selects Overlay.txt dwHeight[h] via D2Common.#10172 (0x6FD80830) and sums Yoffset + Height[h] (#1716)', () => {
+    const ampRow = OVERLAY_TXT_ROWS.find((r) => r.name === 'curseamplifydamage')!
+    expect(ampRow.yOffset).toBe(0)
+    expect(ampRow.height).toEqual([14, 0, -14, -60])
+
+    // Player (UNIT_PLAYER = 0): h = 1 (2height = 0)
+    const playerScene = buildSceneDrawables([
+      { kind: 'player', id: 1, classId: 0, x: 10, y: 10, states: [9] } as any,
+    ])
+    const playerBaseY = playerScene.unitDrawables[0]!.worldY
+    const playerOv = playerScene.overlayDrawables.find((o) => o.token === 'curseamplifydamage')!
+    expect(playerOv.worldY - playerBaseY).toBe(0)
+
+    // Fallen (hcIdx 19, OverlayHeight = 1 -> h = 0, 1height = +14)
+    const fallenScene = buildSceneDrawables([
+      { kind: 'monster', id: 2, classId: 19, x: 10, y: 10, states: [9] } as any,
+    ])
+    const fallenBaseY = fallenScene.unitDrawables[0]!.worldY
+    const fallenOv = fallenScene.overlayDrawables.find((o) => o.token === 'curseamplifydamage')!
+    expect(fallenOv.worldY - fallenBaseY).toBe(14)
+
+    // Skeleton (hcIdx 0, OverlayHeight = 2 -> h = 1, 2height = 0)
+    const skelScene = buildSceneDrawables([
+      { kind: 'monster', id: 3, classId: 0, x: 10, y: 10, states: [9] } as any,
+    ])
+    const skelBaseY = skelScene.unitDrawables[0]!.worldY
+    const skelOv = skelScene.overlayDrawables.find((o) => o.token === 'curseamplifydamage')!
+    expect(skelOv.worldY - skelBaseY).toBe(0)
+
+    // Bighead (hcIdx 10, OverlayHeight = 3 -> h = 2, 3height = -14)
+    const bigheadScene = buildSceneDrawables([
+      { kind: 'monster', id: 4, classId: 10, x: 10, y: 10, states: [9] } as any,
+    ])
+    const bigheadBaseY = bigheadScene.unitDrawables[0]!.worldY
+    const bigheadOv = bigheadScene.overlayDrawables.find((o) => o.token === 'curseamplifydamage')!
+    expect(bigheadOv.worldY - bigheadBaseY).toBe(-14)
+
+    // Andariel (hcIdx 156, OverlayHeight = 4 -> h = 3, 4height = -60)
+    const andyScene = buildSceneDrawables([
+      { kind: 'monster', id: 5, classId: 156, x: 10, y: 10, states: [9] } as any,
+    ])
+    const andyBaseY = andyScene.unitDrawables[0]!.worldY
+    const andyOv = andyScene.overlayDrawables.find((o) => o.token === 'curseamplifydamage')!
+    expect(andyOv.worldY - andyBaseY).toBe(-60)
+
+    // Bonewall (hcIdx 344, OverlayHeight = 0 -> h = -1 < 0 -> +75 fallback at 0x6FB1B475)
+    const bonewallScene = buildSceneDrawables([
+      {
+        kind: 'monster',
+        id: 6,
+        classId: 344,
+        x: 10,
+        y: 10,
+        overlays: [{ overlayId: 128, token: 'curseamplifydamage' }],
+      } as any,
+    ])
+    const bonewallBaseY = bonewallScene.unitDrawables[0]!.worldY
+    const bonewallOv = bonewallScene.overlayDrawables.find((o) => o.token === 'curseamplifydamage')!
+    expect(bonewallOv.worldY - bonewallBaseY).toBe(75)
+  })
 })

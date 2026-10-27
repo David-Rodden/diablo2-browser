@@ -74,12 +74,12 @@ export class BeltHud extends BeltModel {
     const baseX = this.is640 ? BELT_BASE_X_640 : BELT_BASE_X
     const baseY = this.is640 ? BELT_BASE_Y_640 : BELT_BASE_Y
 
-    // Draw expanded rows 1..maxRows-1 background (`ctrlpnl_popbelt.dc6`)
+    // Draw expanded rows 1..maxRows-1 background (`ctrlpnl_popbelt.dc6`, D2Client.dll 0x6FAD8EE5: x = W/2 + 21, top = H - 73 - 32 * (row - 1))
     if (visibleRows > 1) {
       for (let row = 1; row < visibleRows; row++) {
-        const sy = baseY - row * BELT_PITCH_Y - 2
+        const sy = baseY - 35 - (row - 1) * BELT_PITCH_Y
         if (assets.popbeltImg) {
-          ctx.drawImage(assets.popbeltImg, baseX - 1, sy)
+          ctx.drawImage(assets.popbeltImg, baseX - 2, sy)
         } else {
           reportMissingArt('ui-belt', 'ctrlpnl_popbelt', 'Missing popbelt background art')
         }

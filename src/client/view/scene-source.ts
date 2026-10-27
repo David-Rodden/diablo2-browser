@@ -19,6 +19,7 @@ import {
 import type { PackedTilePlacement, TileAtlas } from '../map/tile-atlas.ts'
 import {
   buildSceneDrawables,
+  resolveStateLightColor113c,
   type BuildSceneDrawablesResult,
   type RenderableUnitInput,
   type SceneUnitDrawable,
@@ -1243,6 +1244,22 @@ export class ClientWorldSceneSource implements SceneSource {
     }
   }
 
+  private resolveLocalPlayerLightColor(st: ClientSceneWorldAdapter): number {
+    for (const u of st.units) {
+      if (u.kind !== 'player' || u.isLocalPlayer === false) continue
+      if (u.isLocalPlayer === true || (st.playerUnitId !== undefined && u.id === st.playerUnitId)) {
+        const states = u.states ?? u.activeStates
+        if (states !== undefined) {
+          const stateSet = states instanceof Set ? states : new Set(states)
+          const stateLight = resolveStateLightColor113c((id) => stateSet.has(id))
+          if (stateLight !== undefined) return stateLight
+        }
+        break
+      }
+    }
+    return st.playerLightColor ?? 0
+  }
+
   buildLightingInputs(preset: LightingPreset): LightingInputs {
     if (
       this.inFrame &&
@@ -1265,7 +1282,7 @@ export class ClientWorldSceneSource implements SceneSource {
         lightEmitters: entities.lightEmitters,
         tick: st.tick ?? 0,
         playerLightRadiusBonus: st.playerLightRadiusBonus ?? 0,
-        playerLightColor: st.playerLightColor ?? 0,
+        playerLightColor: this.resolveLocalPlayerLightColor(st),
         ambient: toLocalAmbient(st.ambient, shiftX, shiftY),
       }
     }
@@ -1296,7 +1313,7 @@ export class ClientWorldSceneSource implements SceneSource {
       lightEmitters: entities.lightEmitters,
       tick: st.tick ?? 0,
       playerLightRadiusBonus: st.playerLightRadiusBonus ?? 0,
-      playerLightColor: st.playerLightColor ?? 0,
+      playerLightColor: this.resolveLocalPlayerLightColor(st),
       ambient: toLocalAmbient(st.ambient, shiftX, shiftY),
     }
   }

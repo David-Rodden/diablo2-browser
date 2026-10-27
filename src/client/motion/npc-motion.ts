@@ -15,6 +15,10 @@
  */
 
 import {
+  isSubmergeCapableMonsterHcIdx113c,
+  shouldFreezeMonsterSequenceAtEnd113c,
+} from '../../common/units/monai-113c.ts'
+import {
   type DynamicPath,
   type PathRoom,
   type PathUnit,
@@ -343,6 +347,9 @@ export class NpcMotionUnit implements PathUnit {
 
   /** `unit+0xB0`: last hit class byte (`s[6]`). */
   hitClass = 0
+
+  /** Last monster skill ID cast on this unit (used to distinguish `#162 MagottDown` vs `#161 MagottUp` in `MONMODE_SEQUENCE`). */
+  lastSkillId = 0
 
   /** Latest life byte / percentage (`0..128`) from server packets. */
   lifeByte = 128
@@ -916,6 +923,10 @@ export class NpcMotion {
     }
 
     this.initAnimStartFrame10595(unit)
+    if (unit.dwAnimMode === MONMODE_SEQUENCE && isSubmergeCapableMonsterHcIdx113c(unit.dwClassId)) {
+      unit.wFrame = Math.max(0, unit.wFrameCount - 0x100)
+      unit.lastAnimRestarted = false
+    }
     this.units.set(id, unit)
     this.callbacks.onUnitUpdated?.(unit, unit.dwAnimMode)
     return unit
@@ -1871,6 +1882,10 @@ export class NpcMotion {
    */
   private handleModeEnd0x6FAFDA60(unit: NpcMotionUnit): void {
     const mode = unit.dwAnimMode
+    if (mode === MONMODE_SEQUENCE && shouldFreezeMonsterSequenceAtEnd113c(unit.dwClassId, unit.lastSkillId)) {
+      unit.wFrame = Math.max(0, unit.wFrameCount - 0x100)
+      return
+    }
     if (unit.dwClassId >= 0 && unit.dwClassId < MONSTATS_TXT_RECORD_COUNT) {
       const rec = getMonsterPathRecord(unit.dwClassId)
       if (rec.splClientEnd !== 0) {

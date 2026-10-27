@@ -78,8 +78,8 @@ export interface CombatUnitContext {
   readonly charClass?: string | undefined
   readonly statList: UnitStatList
   readonly stateBus: StateBus
-  readonly x?: number
-  readonly y?: number
+  x?: number
+  y?: number
   readonly ownerUnitId?: string
   readonly ownerRef?: CombatUnitContext | undefined
   readonly isUndead?: boolean

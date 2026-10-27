@@ -74,6 +74,8 @@ export interface GameCreateSpec {
   readonly difficulty?: 0 | 1 | 2 | undefined
   readonly maxPlayers?: number | undefined
   readonly levelDiff?: number | undefined
+  /** Persisted `/players N` (`1..8`) override inherited when creating a new game in the same session. */
+  readonly playersX?: number | undefined
 }
 
 export type CreateGameForm = GameCreateSpec
@@ -275,6 +277,8 @@ export interface LocalAreaLevelGeometry {
   readonly subHeight: number
   /** `subWidth * subHeight` walkability (`0` = walkable floor, anything else blocked/void). */
   readonly blocked: Uint8Array
+  /** Optional 16-bit sub-tile collision masks (`subWidth * subHeight`, `0x0804` = missile/flying barrier + door). */
+  readonly collision?: Uint16Array | undefined
   /** DRLG start cell (level-local tiles). */
   readonly spawnTileX: number
   readonly spawnTileY: number
@@ -311,6 +315,7 @@ export interface LobbyEnterGameTarget {
   readonly spec?: GameCreateSpec | undefined
   readonly difficulty?: GameDifficulty | undefined
   readonly mapSeed?: number | undefined
+  readonly playersX?: number | undefined
   readonly wsUrl?: string | undefined
   readonly gameToken?: number | undefined
   readonly gameHash?: number | undefined
@@ -352,6 +357,9 @@ export interface LobbyProvider {
   importCharacterD2s?(bytes: Uint8Array): Promise<CharacterManageResult | readonly CharSummary[]>
   /** Single Player only: persist a game-completion progression into the local `.d2s` (synchronous). */
   writeCharacterProgression?(name: string, progression: number): CharSummary
+  /** Session-scoped `/players N` (`1..8`) override persisted across consecutive games (`D2Game.dll` `0x6FD31C1C`). */
+  getPersistedPlayersX?(): number | undefined
+  setPersistedPlayersX?(value: number | undefined): void
 }
 
 export interface LocalServerOptions {
@@ -364,6 +372,7 @@ export interface LocalServerOptions {
   readonly actNumber?: 1 | 2 | 3 | 4 | 5 | undefined
   readonly levelId?: number | undefined
   readonly mapSeed?: number | undefined
+  readonly playersX?: number | undefined
   readonly d2sBytes?: Uint8Array | undefined
   readonly allowPause?: boolean | undefined
   readonly persistIntervalTicks?: number | undefined

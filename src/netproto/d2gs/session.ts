@@ -72,6 +72,9 @@ export class D2gsSession {
   private stopPingTimer: (() => void) | undefined
   private lastPingSentMs = 0
   private rttMsValue = 0
+  private lastRttMsValue = 0
+  private avgPingMsValue = 0
+  private pingSampleCountValue = 0
   private bytesInValue = 0
   private bytesOutValue = 0
   private packetsInValue = 0
@@ -123,6 +126,18 @@ export class D2gsSession {
     return this.rttMsValue
   }
 
+  get avgPingMs(): number {
+    return this.avgPingMsValue
+  }
+
+  get lastRttMs(): number {
+    return this.lastRttMsValue
+  }
+
+  get pingSampleCount(): number {
+    return this.pingSampleCountValue
+  }
+
   get stats(): {
     readonly rttMs: number
     readonly bytesIn: number
@@ -172,7 +187,8 @@ export class D2gsSession {
   sendPing(): void {
     const now = Math.floor(this.clock.now())
     this.lastPingSentMs = now
-    this.sendRawPacket(encodeC2sPing(now >>> 0, 0))
+    // Per D2Client.dll 0x6fac4bdb..0x6fac4bf0: @5 = [0x6fbc9830] >>> 1 (avgPing >>> 1).
+    this.sendRawPacket(encodeC2sPing(now >>> 0, this.avgPingMsValue >>> 1))
   }
 
   leaveAndClose(): void {
@@ -233,7 +249,17 @@ export class D2gsSession {
       return
     } else if (op === 0x8f) {
       if (this.lastPingSentMs > 0) {
-        this.rttMsValue = Math.max(0, Math.floor(this.clock.now()) - this.lastPingSentMs)
+        const ping = Math.max(0, Math.floor(this.clock.now()) - this.lastPingSentMs) >>> 0
+        this.lastRttMsValue = ping
+        // Per D2Client.dll 0x6faf2338..0x6faf2367:
+        // for the first 10 pong samples (0x6fbc982c < 10), update running average:
+        // avg = Math.floor((avg * n + ping) / (n + 1)) -> 0x6fbc9830.
+        if (this.pingSampleCountValue < 10) {
+          const n = this.pingSampleCountValue
+          this.avgPingMsValue = Math.floor((this.avgPingMsValue * n + ping) / (n + 1)) >>> 0
+          this.pingSampleCountValue = n + 1
+        }
+        this.rttMsValue = this.avgPingMsValue
       }
     }
     this.packetEmitter.emit(pkt)

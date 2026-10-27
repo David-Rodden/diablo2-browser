@@ -11,6 +11,7 @@ import {
   isNpcIntroMessageId,
   resolveNpcIntroMsgIdByTblKey,
 } from '../../common/data/canonical-npc-dialog-table.ts'
+import { doesNpcOwnIntroStringId113c } from '../../common/audio/npc-speech-113c.ts'
 import {
   getTownNpcDescriptorByHcIdx,
   NPC_CANONICAL_INTRO_KEYS,
@@ -201,6 +202,32 @@ export function allocateSkillImpl(model: any, skillId: number): boolean {
   return true
 }
 
+function resolveChargedItemIdForSkill(model: any, skillId: number, itemId = 0xffffffff): number {
+  if (itemId !== undefined && itemId !== 0xffffffff) return itemId >>> 0
+  const available = model.hudManager?.hotkeys?.availableSkills as
+    | readonly {
+        readonly skillId: number
+        readonly isItemSkill?: boolean
+        readonly itemId?: number
+        readonly charges?: number
+      }[]
+    | undefined
+  if (available) {
+    const itemEntry = available.find(
+      (s) =>
+        s.skillId === skillId &&
+        s.isItemSkill &&
+        (s.charges ?? 0) > 0 &&
+        s.itemId !== undefined &&
+        s.itemId !== 0xffffffff,
+    )
+    if (itemEntry?.itemId !== undefined) {
+      return itemEntry.itemId >>> 0
+    }
+  }
+  return 0xffffffff
+}
+
 function isClientSkillSelectable(model: any, skillId: number, itemId = 0xffffffff): boolean {
   if (!Number.isInteger(skillId) || skillId < 0 || skillId === 0xffff || skillId === 0x7fff) {
     return false
@@ -208,10 +235,34 @@ function isClientSkillSelectable(model: any, skillId: number, itemId = 0xfffffff
   if (skillId === 0) return true
   const self = model.world?.self
   const available = model.hudManager?.hotkeys?.availableSkills as
-    | readonly { readonly skillId: number; readonly level?: number; readonly charges?: number }[]
+    | readonly {
+        readonly skillId: number
+        readonly level?: number
+        readonly charges?: number
+        readonly isItemSkill?: boolean
+      }[]
     | undefined
-  if (available && available.length > 0 && self?.skillEntries?.has(skillId)) {
-    return available.some((s) => s.skillId === skillId && ((s.level ?? 0) > 0 || (s.charges ?? 0) > 0))
+  if (available && available.length > 0) {
+    const match = available.find(
+      (s) =>
+        s.skillId === skillId &&
+        (s.charges !== undefined ? s.charges > 0 : (s.level ?? 0) > 0),
+    )
+    if (match) return true
+    if (
+      self?.skillEntries?.has(skillId) ||
+      self?.skillCharges?.has(skillId) ||
+      model.lastEquipmentChargedSkills?.has(skillId)
+    ) {
+      return false
+    }
+  }
+  if (self?.skillCharges?.has(skillId)) {
+    const ch = self.skillCharges.get(skillId) ?? 0
+    if (ch > 0) return true
+    const entry = self?.skillEntries?.get(skillId)
+    const eff = entry ? (entry.baseLevel ?? entry.level ?? 0) + (entry.bonus ?? 0) : 0
+    if (eff <= 0) return false
   }
   if (self?.skillEntries?.has(skillId)) {
     const entry = self.skillEntries.get(skillId)!
@@ -225,8 +276,9 @@ function isClientSkillSelectable(model: any, skillId: number, itemId = 0xfffffff
 }
 
 export function selectSkillImpl(model: any, hand: Hand, skillId: number, itemId = 0xffffffff): void {
-  if (!isClientSkillSelectable(model, skillId, itemId)) return
-  model.emitCommand({ type: 'SelectSkill', hand, skill: skillId, itemId })
+  const resolvedItemId = resolveChargedItemIdForSkill(model, skillId, itemId)
+  if (!isClientSkillSelectable(model, skillId, resolvedItemId)) return
+  model.emitCommand({ type: 'SelectSkill', hand, skill: skillId, itemId: resolvedItemId })
 }
 
 export function assignSkillHotkeyImpl(
@@ -238,18 +290,19 @@ export function assignSkillHotkeyImpl(
 ): void {
   if (!Number.isInteger(slot) || slot < 0 || slot > 15) return
   const isUnbind = skillId === 0xffff || skillId === 0x7fff || skillId < 0
-  if (!isUnbind && !isClientSkillSelectable(model, skillId, itemId)) return
+  const resolvedItemId = isUnbind ? 0xffffffff : resolveChargedItemIdForSkill(model, skillId, itemId)
+  if (!isUnbind && !isClientSkillSelectable(model, skillId, resolvedItemId)) return
   model.hadWorldSkillHotkeys = true
-  model.world.assignSkillHotkey(slot, hand, skillId, itemId)
+  model.world.assignSkillHotkey(slot, hand, skillId, resolvedItemId)
   if (model.hudManager?.hotkeys) {
     const key = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
     if (isUnbind) {
       model.hudManager.hotkeys.bindings.delete(key)
     } else {
-      model.hudManager.hotkeys.bindHotkey(key, hand, skillId)
+      model.hudManager.hotkeys.bindHotkey(key, hand, skillId, resolvedItemId)
     }
   }
-  model.emitCommand({ type: 'AssignSkillHotkey', slot, hand, skill: skillId, itemId })
+  model.emitCommand({ type: 'AssignSkillHotkey', slot, hand, skill: skillId, itemId: resolvedItemId })
 }
 
 export function activateSkillHotkeyImpl(model: any, slot: number): boolean {
@@ -270,13 +323,14 @@ export function activateSkillHotkeyImpl(model: any, slot: number): boolean {
   }
   const hudBinding = model.hudManager?.hotkeys.bindings.get(key)
   if (hudBinding && hudBinding.skillId >= 0 && hudBinding.skillId !== 0xffff) {
-    if (!isClientSkillSelectable(model, hudBinding.skillId, 0xffffffff)) {
+    const resolvedItemId = hudBinding.itemId ?? 0xffffffff
+    if (!isClientSkillSelectable(model, hudBinding.skillId, resolvedItemId)) {
       model.hudManager?.hotkeys.bindings.delete(key)
       return false
     }
     model.lastSelectedHotkeySlot = slot
     if (model.hudManager?.hotkeys) model.hudManager.hotkeys.lastSelectedSlot = slot
-    model.selectSkill(hudBinding.side, hudBinding.skillId, 0xffffffff)
+    model.selectSkill(hudBinding.side, hudBinding.skillId, resolvedItemId)
     return true
   }
   return false
@@ -1085,7 +1139,12 @@ export function handleNpcMenuActionImpl(
         const npcMessages =
           (resolvedNpcId > 0 ? model.world.getNpcMessages(resolvedNpcId) : undefined) ??
           model.world.npcInteraction.messages
-        const introMsg = npcMessages?.find((m: any) => m.stringId > 0 && isNpcIntroMessageId(m.stringId))
+        const introMsg = npcMessages?.find(
+          (m: any) =>
+            m.stringId > 0 &&
+            isNpcIntroMessageId(m.stringId) &&
+            doesNpcOwnIntroStringId113c(resolvedDesc.hcIdx, m.stringId, model.world.act),
+        )
         if (introMsg && resolvedNpcId > 0) {
           model.questMessage(resolvedNpcId, introMsg.stringId)
         } else {

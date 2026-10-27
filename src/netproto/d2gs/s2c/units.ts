@@ -6,6 +6,7 @@
  */
 
 import { BitReader } from '../../core/bit-reader.ts'
+import { BitWriter } from '../../core/bit-writer.ts'
 import { ByteReader } from '../../core/byte-reader.ts'
 import { ByteWriter } from '../../core/byte-writer.ts'
 import { wireUnitTypeId, type ItemDataTables, type ItemStat } from '../../domain/ids.ts'
@@ -570,4 +571,93 @@ export function decode0xACAssignNpc(pkt: Uint8Array, tables?: ItemDataTables): S
       ...(stats !== undefined ? { stats } : {}),
     },
   }
+}
+
+/**
+ * Encode S2C `0xAC AssignNPC` (D2Game.dll `0x6fcaca40` -> D2Client.dll `0x6fb5e420`).
+ * Round-trips exact monster `classId`, `(x, y)`, `lifePct`, `mode`, rank flags (`champion`,
+ * `unique`, `superunique` + `superUniqueId`, `minion`), `bossMods`, `nameSeed`, and `playerOwnerId`.
+ */
+export function encode0xACAssignNpc(params: {
+  readonly id: number
+  readonly classId: number
+  readonly x: number
+  readonly y: number
+  readonly lifePct?: number | undefined
+  readonly mode?: number | undefined
+  readonly flags?: number | undefined
+  readonly isChampion?: boolean | undefined
+  readonly isUnique?: boolean | undefined
+  readonly isSuperUnique?: boolean | undefined
+  readonly isMinion?: boolean | undefined
+  readonly superUniqueId?: number | undefined
+  readonly bossMods?: readonly number[] | undefined
+  readonly nameSeed?: number | undefined
+  readonly playerOwnerId?: number | undefined
+}): Uint8Array {
+  const lifePct = Math.max(0, Math.min(128, Math.round(params.lifePct ?? 128)))
+  const rawMode =
+    lifePct <= 0
+      ? params.mode === 0 || params.mode === 12
+        ? params.mode
+        : 12
+      : params.mode === 1 || params.mode === 2 || params.mode === 14 || params.mode === 15
+        ? params.mode
+        : 1
+
+  const flags = params.flags ?? 0
+  const isChampion = Boolean(params.isChampion || (flags & 0x04) !== 0)
+  const isUnique = Boolean(params.isUnique || (flags & 0x08) !== 0)
+  const isSuperUnique = Boolean(params.isSuperUnique || (flags & 0x02) !== 0)
+  const isMinion = Boolean(params.isMinion || (flags & 0x10) !== 0)
+  const isGhostly = (flags & 0x40) !== 0
+  const mods = (params.bossMods ?? []).filter((m) => Number.isInteger(m) && m > 0 && m <= 255).slice(0, 9)
+  const hasMonsterFlags =
+    isChampion || isUnique || isSuperUnique || isMinion || isGhostly || mods.length > 0
+
+  const bw = new BitWriter()
+  bw.writeBits(rawMode & 0x0f, 4)
+  bw.writeBit(0) // hasAnimComp = 0
+  if (hasMonsterFlags) {
+    bw.writeBit(1)
+    bw.writeBit(isChampion ? 1 : 0)
+    bw.writeBit(isUnique ? 1 : 0)
+    bw.writeBit(isSuperUnique ? 1 : 0)
+    bw.writeBit(isMinion ? 1 : 0)
+    bw.writeBit(isGhostly ? 1 : 0)
+    if (isSuperUnique) {
+      bw.writeBits((params.superUniqueId ?? 0) & 0xffff, 16)
+    }
+    for (const mod of mods) {
+      bw.writeBits(mod & 0xff, 8)
+    }
+    if (mods.length < 9) {
+      bw.writeBits(0, 8)
+    }
+    bw.writeBits((params.nameSeed ?? 0) & 0xffff, 16)
+    bw.writeBit(0) // monster owner GUID absent
+  } else {
+    bw.writeBit(0)
+  }
+  if (params.playerOwnerId !== undefined && params.playerOwnerId > 0) {
+    bw.writeBit(1)
+    bw.writeBits(params.playerOwnerId & 0x7fffffff, 31)
+  } else {
+    bw.writeBit(0)
+  }
+  bw.writeBit(0) // hasStats = 0
+  bw.alignToByte()
+
+  const tail = bw.toUint8Array()
+  const totalLen = 13 + tail.byteLength
+  const w = new ByteWriter(totalLen)
+  w.u8(0xac)
+  w.u32LE(params.id >>> 0)
+  w.u16LE(params.classId & 0xffff)
+  w.u16LE(params.x & 0xffff)
+  w.u16LE(params.y & 0xffff)
+  w.u8(lifePct & 0xff)
+  w.u8(totalLen & 0xff)
+  w.bytes(tail)
+  return w.toUint8Array()
 }

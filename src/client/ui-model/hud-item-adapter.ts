@@ -190,6 +190,25 @@ export function computeEquippedDigestForWorld(world: ClientWorld): number {
     mix(eq.maxDurability ?? -1)
     mix(eq.rawFlags ?? 0)
     mix(eq.stats?.length ?? 0)
+    if (eq.stats) {
+      for (let i = 0; i < eq.stats.length; i++) {
+        const s = eq.stats[i]!
+        mix(s.statId ?? (s as any).id ?? 0)
+        mix(s.param ?? 0)
+        mix(s.value ?? 0)
+      }
+    }
+    if (Array.isArray((eq as any).rolledProps)) {
+      mix((eq as any).rolledProps.length)
+      for (let i = 0; i < (eq as any).rolledProps.length; i++) {
+        const p = (eq as any).rolledProps[i]
+        if (p) {
+          mix(Number(p.min) || 0)
+          mix(Number(p.max) || 0)
+          mix(Number(p.value) || 0)
+        }
+      }
+    }
   }
   return h
 }
@@ -253,10 +272,24 @@ export function computeHudContainersDigestForWorld(world: ClientWorld): number {
     mix(Number(item.totalSockets ?? (item as any).sockets ?? 0))
     mix(item.personalized ? 1 : 0)
     mix(item.stats?.length ?? 0)
-    const firstStat = item.stats?.[0]
-    if (firstStat) {
-      mix(firstStat.statId ?? 0)
-      mix(firstStat.value ?? 0)
+    if (item.stats) {
+      for (let i = 0; i < item.stats.length; i++) {
+        const st = item.stats[i]!
+        mix(st.statId ?? (st as any).id ?? 0)
+        mix(st.param ?? 0)
+        mix(st.value ?? 0)
+      }
+    }
+    if (Array.isArray((item as any).rolledProps)) {
+      mix((item as any).rolledProps.length)
+      for (let i = 0; i < (item as any).rolledProps.length; i++) {
+        const p = (item as any).rolledProps[i]
+        if (p) {
+          mix(Number(p.min) || 0)
+          mix(Number(p.max) || 0)
+          mix(Number(p.value) || 0)
+        }
+      }
     }
   }
   const c = world.containers
@@ -517,17 +550,26 @@ export function clientUnitToMonsterTargetInfo(
   }
 
   const explicitName = unit.name && unit.name.trim().length > 0 ? unit.name.trim() : undefined
-  const nameKey = su?.nameKey ?? explicitName ?? kind?.nameKey
+  const hasCustomLiteralName = Boolean(
+    explicitName &&
+      explicitName !== su?.nameKey &&
+      explicitName !== su?.id &&
+      explicitName !== kind?.nameKey &&
+      explicitName !== kind?.id &&
+      lookupMonsterTblString(explicitName, 'en') === undefined,
+  )
+  const nameKey = su?.nameKey ?? (hasCustomLiteralName ? undefined : explicitName) ?? kind?.nameKey
 
-  let resolvedName =
-    explicitName ??
-    (nameKey
+  let resolvedName = hasCustomLiteralName
+    ? explicitName!
+    : nameKey
       ? (lookupMonsterTblString(nameKey, 'en') ??
         monsterDisplayName(nameKey, 'ENG') ??
+        explicitName ??
         nameKey)
-      : `Monster #${unit.classId}`)
+      : (explicitName ?? `Monster #${unit.classId}`)
 
-  if (!explicitName && isChampion) {
+  if (!hasCustomLiteralName && isChampion) {
     // D2Client.dll 0x6fad0758..0x6fad07c7: Champion subtype lookup (.rdata:0x6fb86d64) + ChampFormatX (0x2b40)
     const champSubtype = CANONICAL_CHAMPION_MODIFIERS.find((c) => rawModIds.includes(c.id))
     const champTblKey = champSubtype?.tblKey ?? 'Champion'
@@ -536,7 +578,7 @@ export function clientUnitToMonsterTargetInfo(
       resolvedName = `${prefix} ${resolvedName}`
     }
   } else if (
-    !explicitName &&
+    !hasCustomLiteralName &&
     isUnique &&
     unit.nameSeed !== undefined &&
     !FIXED_UNIQUE_BOSS_HCIDX_SET.has(unit.classId)

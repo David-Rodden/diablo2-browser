@@ -424,7 +424,8 @@ describe('Paladin Skill Tree Modules — 1.13c Parity & Interface Contracts', ()
       expect(STATE_COLOR_SHIFTS[44]).toEqual({
         stateId: 44,
         priority: 100,
-        tintColor: [150, 215, 255],
+        colorShift: 108,
+        lightRgb: [150, 215, 255],
         paletteRow: 1,
       })
 

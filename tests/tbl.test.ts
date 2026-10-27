@@ -1,7 +1,20 @@
 import { describe, test, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { decodeTbl, TblError, tblHash, lookupTblFast } from '../src/common/formats/tbl.ts'
+import {
+  D2LANG_NO_EXPANSION_FALLBACK_INDEX,
+  D2LANG_NOT_XLATED_SUFFIX,
+  D2LANG_OUT_OF_RANGE_FALLBACK_INDEX,
+  decodeTbl,
+  lookupTbl113c,
+  lookupTblByIndex113c,
+  lookupTblFast,
+  TblError,
+  tblHash,
+  tblLookup,
+} from '../src/common/formats/tbl.ts'
+import { requireTbl } from '../src/client/i18n/lang.ts'
+import { resolveTblKey } from '../src/common/data/canonical-tbl-strings.ts'
 import { encodeTbl } from '../src/baker/io/tbl-writer.ts'
 import type { TblEntry } from '../src/baker/io/tbl-writer.ts'
 import {
@@ -151,6 +164,92 @@ describe('TBL Decoder', () => {
     
     expect(() => decodeTbl(buf)).toThrowError(TblError)
     expect(() => decodeTbl(buf)).toThrowError(/keyOffset/)
+  })
+
+  test('tblHash sign-extends bytes >= 0x80 and lookupTblFast skips inactive slots without checking stored hash (Issue #1744, D2Lang.dll 0x6FC08FE0 & 0x6FC09360)', () => {
+    // 1. D2Lang.dll 0x6FC08FF0: movsx ecx, cl on byte 0x80 (-128):
+    // Step 0: h = ((0 << 4) + (-128)) >>> 0 = 0xFFFFFF80; high = 0xF0000000 (high >>> 24 = 0xF0) -> (0xFFFFFF80 ^ 0xF0) & 0x0FFFFFFF = 0x0FFFFF70 (vs unsigned 0x80 -> 128)
+    const highByteKey = new Uint8Array([0x80])
+    expect(tblHash(highByteKey, 1000)).toBe(0x0fffff70 % 1000)
+
+    // 2. D2Lang.dll 0x6FC09360: probe loop skips unused slots (isActive !== 1) and compares key by strcmp without checking stored nodeHash
+    const encoded = encodeTbl([
+      { key: 'AlphaKey', value: 'First' },
+      { key: 'BetaKey', value: 'Second' },
+    ])
+    const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
+    const numElements = view.getUint16(2, true)
+    const hashTableSize = view.getUint32(4, true)
+    const nodesStart = 21 + numElements * 2
+
+    // Locate the active node for 'BetaKey', move it 1 slot forward past an inactive (0) slot, and overwrite its stored nodeHash
+    const betaHash = tblHash(new TextEncoder().encode('BetaKey'), hashTableSize)
+    const origBase = nodesStart + betaHash * 17
+    const nextBucket = (betaHash + 1) % hashTableSize
+    const nextBase = nodesStart + nextBucket * 17
+    // Ensure maxTries >= 2 so probing reaches nextBucket
+    view.setUint32(13, Math.max(2, view.getUint32(13, true)), true)
+    encoded.copyWithin(nextBase, origBase, origBase + 17)
+    encoded.fill(0, origBase, origBase + 17) // origBucket is now inactive (isActive = 0)
+    view.setUint32(nextBase + 3, 0xdeadbeef, true) // corrupt stored nodeHash at +3
+
+    expect(lookupTblFast(encoded, 'BetaKey', 'utf-8')).toBe('Second')
+  })
+
+  test('out-of-range string indices fall back to entry 500 and missing expansion rewrites >=20000 to 11078 (Issue #1742, D2Lang.dll 0x6FC09050 & 0x6FC09450)', () => {
+    const decoded = decodeTbl(fixtureData)
+    const lookup = tblLookup(decoded)
+    expect(D2LANG_OUT_OF_RANGE_FALLBACK_INDEX).toBe(500)
+    expect(D2LANG_NO_EXPANSION_FALLBACK_INDEX).toBe(11078)
+    expect(decoded[500]).toBe(' ')
+    expect(lookup.get(9999)).toBe(decoded[500])
+
+    const strTable = new Array<string | undefined>(600)
+    strTable[10] = 'Base10'
+    strTable[500] = 'AshearaGossip9'
+    const patchTable = decoded
+    const expTable = new Array<string | undefined>(600)
+    expTable[500] = 'Ith'
+
+    expect(lookupTblByIndex113c(9999, { string: strTable, patch: patchTable, expansion: expTable })).toBe(
+      'AshearaGossip9',
+    )
+    expect(lookupTblByIndex113c(19999, { string: strTable, patch: patchTable, expansion: expTable })).toBe(
+      patchTable[500],
+    )
+    expect(lookupTblByIndex113c(29999, { string: strTable, patch: patchTable, expansion: expTable })).toBe('Ith')
+    expect(lookupTblByIndex113c(22747, { string: strTable, patch: patchTable, expansion: null })).toBe(
+      patchTable[1078],
+    )
+
+    expect(resolveTblKey('expansionstring#500', 'ENG')).toBe('Ith')
+    expect(resolveTblKey('expansionstring#99999', 'ENG')).toBe('Ith')
+    expect(resolveTblKey('string#99999', 'ENG')).toBe(resolveTblKey('string#500', 'ENG'))
+    expect(resolveTblKey('patchstring#9999', 'ENG')).toBe(resolveTblKey('patchstring#500', 'ENG'))
+  })
+
+  test('exact key matching without trimming, whitespace-only CHI preservation, and "-not xlated call ken w" fallback (Issue #1743, D2Lang.dll 0x6FC0A7B0 & 0x6FC09FB0)', () => {
+    expect(D2LANG_NOT_XLATED_SUFFIX).toBe(' -not xlated call ken w')
+    // 1. Empty key returns ""
+    expect(resolveTblKey('', 'ENG')).toBe('')
+    expect(resolveTblKey('', 'CHI')).toBe('')
+    expect(lookupTbl113c('', 'ENG')).toBe('')
+    expect(requireTbl('', 'ENG')).toBe('')
+
+    // 2. Keys with stray leading/trailing whitespace are NOT trimmed (exact strcmp per 0x6FC09360)
+    expect(resolveTblKey('strClose', 'ENG')).toBeDefined()
+    expect(resolveTblKey(' strClose ', 'ENG')).toBeUndefined()
+    expect(lookupTbl113c(' strClose ', 'ENG')).toBe(' strClose  -not xlated call ken w')
+
+    // 3. Whitespace-only CHI strings (e.g. patchstring#500 = " ") are preserved verbatim rather than substituted with ENG
+    expect(resolveTblKey('patchstring#500', 'CHI')).toBe(' ')
+    expect(lookupTbl113c('patchstring#500', 'CHI')).toBe(' ')
+
+    // 4. Missing key returns "<key> -not xlated call ken w" in lookupTbl113c and requireTbl({ fallback113c: true })
+    expect(lookupTbl113c('missingKey113c', 'ENG')).toBe('missingKey113c -not xlated call ken w')
+    expect(requireTbl('missingKey113c', 'ENG', { fallback113c: true })).toBe(
+      'missingKey113c -not xlated call ken w',
+    )
   })
 })
 

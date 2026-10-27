@@ -322,3 +322,28 @@ export function nehlithakControlPlan(elapsed: number): { readonly pieces: 2; rea
 export function nehlithakOrbitTarget(x: number, y: number, cx: number, cy: number): { tx: number; ty: number } {
   return { tx: x + (y - cy), ty: y - (x - cx) }
 }
+
+/**
+ * 1.13c `D2Client.dll` `0x6FB83610` phase cadence table for `MissCltDoFunc[36]` (`durieldeathcontrol`, `0x6FB641F0`, Issue #1719):
+ * 5 rows of `{ threshold, a, b }` (`int32[3]`). Selects the first row with `rem > threshold` (`0x6FB64246..0x6FB6425D`),
+ * falling back to the 5th row `{ 0, 100, 5 }` when `rem <= 175`.
+ * - If `rem % a === 0`: spawns missile `42` (`explodingarrowexp`) at `(x + RAND(40) - 20, y + RAND(40) - 20)`.
+ * - If `rem % b === 0`: spawns missile `364` (`durieldeathrock`) at `(x + RAND(40) - 20, y + RAND(40) - 20)` with
+ *   `z = 0x4B000` (150 px), `vz = -0x5000` (-10 px/tick), `range = 15`, `animSpeed = 0x80` (half speed = 8 in 16ths).
+ */
+export const DURIEL_DEATH_PHASES_113C = [
+  { threshold: 350, a: 3, b: 5 },
+  { threshold: 300, a: 2, b: 3 },
+  { threshold: 200, a: 3, b: 2 },
+  { threshold: 175, a: 5, b: 1 },
+  { threshold: 0, a: 100, b: 5 },
+] as const
+
+export function durielDeathPhase113c(rem: number): { readonly threshold: number; readonly a: number; readonly b: number } {
+  for (let i = 0; i < 4; i++) {
+    if (rem > DURIEL_DEATH_PHASES_113C[i]!.threshold) {
+      return DURIEL_DEATH_PHASES_113C[i]!
+    }
+  }
+  return DURIEL_DEATH_PHASES_113C[4]!
+}

@@ -24,6 +24,7 @@ import {
   getIcebreakMeltMissile113c,
   isMaggotSmallMonster,
 } from '../../common/units/monster-death-fx.ts'
+import { shouldFreezeMonsterSequenceAtEnd113c } from '../../common/units/monai-113c.ts'
 import { isInMeleeRange113c } from '../../common/skills/weapon-combat-meta.ts'
 import { getMonsterSizeXByHcIdx } from '../../common/units/monster-mapping.ts'
 import { MONSTATS_113C_ROWS, getMonsterKindByClassId } from '../../common/units/monsters-data.ts'
@@ -35,6 +36,7 @@ import { isTownLevel } from '../../common/world/scene-population.ts'
 import { createOverlayFromTxtRow113c } from './bone-armor-overlays-113c.ts'
 import type { ClientUnit, ClientUnitOverlay } from './client-unit.ts'
 import { tickCurseCenter113c } from './curse-center-113c.ts'
+import { computeOverlayLoopFrame113c } from '../view/unit-drawables.ts'
 import { tryEmitMonsterNeutralSound113cImpl } from './world-skill-missiles.ts'
 
 /**
@@ -235,6 +237,7 @@ import {
   NEHLITHAK_DEBRIS1_MISSILE,
   NEHLITHAK_HOLE_MISSILE,
   NEHLITHAK_SWOOSH_MISSILE,
+  durielDeathPhase113c,
 } from './boss-death-cltdo-113c.ts'
 import {
   HORADRIC_SHAKE_AMPLITUDE,
@@ -2424,8 +2427,13 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
       debris.explosionMissile = `andydebrisexplosion${debrisIdx}`
       debris.alwaysExplode = true
     }
-    if (prevAgeTicks === 10 || prevAgeTicks === 90) {
-      this.startScreenShake(3200, 16, 0, 0)
+    // 1.13c CltDo 29 andycontrol0 (0x6FB6C210): at elapsed == 90 (0x6FB6C2DC -> 0x6FB6C328),
+    // StartScreenShake(sustain=(n-2*trunc(n/3))*1000, amp=8, rampUp=rampDown=trunc(n/3)*1000) with n = CltParam2 (7) -> 2000/3000/2000 ms, amp 8 (#1718).
+    if (prevAgeTicks === 90) {
+      const n = 7 // Missiles.txt andycontrol0 (#307) CltParam2 = 7
+      const thirdMs = Math.trunc(n / 3) * 1000
+      const sustainMs = (n - 2 * Math.trunc(n / 3)) * 1000
+      this.startScreenShake(sustainMs, 8, thirdMs, thirdMs)
     }
   } else if (unit.missileKey === 'andycolumnfirebase') {
     if (prevAgeTicks % 3 === 0) {
@@ -2465,9 +2473,37 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
       fw.vy = 0
     }
   } else if (unit.missileKey === 'durieldeathcontrol') {
-    if (prevAgeTicks % 4 === 0) {
-      const rx = d2Rand(mSeed, 17) - 8
-      const ry = d2Rand(mSeed, 17) - 8
+    const rem = (unit.maxTicks ?? 400) - prevAgeTicks
+    // 1.13c CltDo 36 durieldeathcontrol (0x6FB641F0): at rem == 325 (0x6FB64207..0x6FB6421B),
+    // shake 0 / 6000 / 0 ms with amp 20 (#1718).
+    if (rem === 325) {
+      this.startScreenShake(6000, 20, 0, 0)
+    }
+    // 1.13c phase cadence table at 0x6FB83610 (#1719):
+    // Selects first row with rem > threshold, spawning explodingarrowexp (#42) when rem % a === 0
+    // and durieldeathrock (#364) when rem % b === 0 at (x + RAND(40) - 20, y + RAND(40) - 20).
+    const { a, b } = durielDeathPhase113c(rem)
+    if (rem % a === 0) {
+      const ex = d2Rand(mSeed, 40) - 20
+      const ey = d2Rand(mSeed, 40) - 20
+      const exp = this.spawnMissileByKey(
+        'explodingarrowexp',
+        unit.x + ex,
+        unit.y + ey,
+        unit.x + ex,
+        unit.y + ey,
+        {
+          ownerType: unit.ownerType,
+          ownerId: unit.ownerId,
+          loopAnim: false,
+        },
+      )
+      exp.vx = 0
+      exp.vy = 0
+    }
+    if (rem % b === 0) {
+      const rx = d2Rand(mSeed, 40) - 20
+      const ry = d2Rand(mSeed, 40) - 20
       const rock = this.spawnMissileByKey(
         'durieldeathrock',
         unit.x + rx,
@@ -2477,13 +2513,16 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
         {
           ownerType: unit.ownerType,
           ownerId: unit.ownerId,
-          maxTicks: 22,
-          altitude: 220,
+          maxTicks: 15,
+          altitude: 150,
           verticalDescentPerTick: 10,
         },
       )
       rock.vx = 0
       rock.vy = 0
+      // 0x6FB64469..0x6FB6447F: #10558(rock, 15), #10970(rock, 15), #10154(rock, 0x80 -> animSpeed = 8).
+      rock.totalFrames = 15
+      rock.animSpeed = 8
       rock.explosionMissile = 'durieldeathsmoke'
       rock.alwaysExplode = true
     }
@@ -3940,6 +3979,19 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
         )
       }
       this.triggerMissileImpact(unit, unit.x, unit.y, false)
+    } else if (unit.missileKey === 'mephistodonotdraw') {
+      // 1.13c range end (0x6FB615C8, Range = 70) runs MissCltHitFunc[34] (0x6FB607E0):
+      // resolves the missile owner via 0x6FB560D0 and sets `pOwner->dwFlagsEx |= 0x40000` (UNITFLAG_DONOTDRAW),
+      // hiding both Mephisto's corpse and his swirling white mist overlay (`MephistoOverlay` #122).
+      const owner =
+        unit.ownerId !== undefined
+          ? unit.ownerType !== undefined
+            ? this.getUnit(unit.ownerType, unit.ownerId)
+            : this._monsters.get(unit.ownerId)
+          : undefined
+      if (owner) {
+        owner.clientNoDraw = true
+      }
     } else if (
       unit.missileKey === 'grimwardsmallstart' ||
       unit.missileKey === 'grimwardmediumstart' ||
@@ -4157,6 +4209,11 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
 
       if ((expiredByClock || expiredByElapsed) && !strafeVolleyActive) {
         const castMode = unit.castState.mode
+        const castSkillId = unit.castState.skillId
+        const freezeMonsterSequence =
+          unit.unitType === 'monster' &&
+          unit.mode === 14 &&
+          shouldFreezeMonsterSequenceAtEnd113c(unit.classId, castSkillId ?? unit.lastSkillId)
         unit.states.remove(18)
         unit.states.remove(174)
         if (unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)) {
@@ -4166,6 +4223,7 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
         this.clearUnitCastState(unit)
         if (
           !unit.dead &&
+          !freezeMonsterSequence &&
           (unit.mode === castMode ||
               (unit.unitType === 'player' &&
                 ((unit.mode >= 7 && unit.mode <= 16) || unit.mode === 18)) ||
@@ -4205,10 +4263,16 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
       const expiredByElapsed = (unit.modeElapsedMs ?? 0) >= durationMs
 
       if (expiredByClock || expiredByElapsed) {
+        const freezeMonsterMode =
+          unit.unitType === 'monster' &&
+          unit.mode === 14 &&
+          shouldFreezeMonsterSequenceAtEnd113c(unit.classId, unit.lastSkillId)
         unit.modeUntilMs = undefined
         unit.modeDurationMs = undefined
         unit.modeElapsedMs = undefined
-        unit.animStepSpeed256 = undefined
+        if (!freezeMonsterMode) {
+          unit.animStepSpeed256 = undefined
+        }
         unit.animEffRate = undefined
         if (unit.unitType === 'object' && unit.mode === 1) {
           unit.mode = 2
@@ -4224,6 +4288,7 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
           unit.animStartedAtMs = undefined
         } else if (
           !unit.dead &&
+          !freezeMonsterMode &&
           ((unit.unitType === 'player' &&
             (unit.mode === 4 || (unit.mode >= 7 && unit.mode <= 16) || unit.mode === 18)) ||
             (unit.unitType === 'monster' &&
@@ -4313,7 +4378,7 @@ export function tickWorldImpl(this: ClientWorldInternal, dtMs = 40, nowMs?: numb
   this.updateScreenShake()
 
   for (const unit of this._units.values()) {
-    if (unit.dead) continue
+    if (unit.dead || unit.unitType === 'item' || unit.unitType === 'tile') continue
     if (unit.unitType === 'monster' && this.npcMotion.getUnit(unit.id) !== undefined) {
       continue
     }
@@ -4344,7 +4409,10 @@ export function tickWorldImpl(this: ClientWorldInternal, dtMs = 40, nowMs?: numb
         unit.dead ||
         unit.castState ||
         unit.unitType === 'missile' ||
-        unit.unitType === 'monster'
+        unit.unitType === 'monster' ||
+        unit.unitType === 'item' ||
+        unit.unitType === 'object' ||
+        unit.unitType === 'tile'
       ) {
         continue
       }
@@ -4474,7 +4542,17 @@ export function stepDiscreteSimulationTickImpl(this: ClientWorldInternal, _tickD
   this.npcMotion.tick()
 
   let objectNowMs: number | undefined
-  const unitsSnapshot = Array.from(this._units.values())
+  const unitsSnapshot: ClientUnit[] = []
+  for (const u of this._units.values()) {
+    if (
+      (u.unitType === 'item' || u.unitType === 'tile') &&
+      u.overlays.length === 0 &&
+      u.queuedPackets.length === 0
+    ) {
+      continue
+    }
+    unitsSnapshot.push(u)
+  }
   for (const unit of unitsSnapshot) {
     if (!this._units.has(unit.key)) continue
 
@@ -4576,6 +4654,7 @@ export function stepDiscreteSimulationTickImpl(this: ClientWorldInternal, _tickD
                   rangeAdder,
                   false, // rangeBonus = 0 in CltDo37 / SrvDo67
                   collisionFn,
+                  targetUnit.unitType === 'monster' ? targetUnit.classId : undefined,
                 )
                 if (inMelee) {
                   // Reached target within melee range: terminate dash, clear state 18, and trigger Attack1
@@ -5239,7 +5318,23 @@ export function stepDiscreteSimulationTickImpl(this: ClientWorldInternal, _tickD
         ov.ageTicks += 1
         const rawFrame = Math.floor((ov.ageTicks * ov.animRate) / 16)
         if (ov.loop) {
-          ov.frame = rawFrame % Math.max(1, ov.totalFrames)
+          if ((ov.loopWaitTime ?? 0) > 0) {
+            const nextFrame = computeOverlayLoopFrame113c(
+              ov.ageTicks,
+              Math.max(1, ov.totalFrames),
+              ov.animRate,
+              ov.loopWaitTime,
+            )
+            if (nextFrame === null) {
+              ov.loopWaiting = true
+            } else {
+              ov.loopWaiting = false
+              ov.frame = nextFrame
+            }
+          } else {
+            ov.loopWaiting = false
+            ov.frame = rawFrame % Math.max(1, ov.totalFrames)
+          }
           remainingOverlays.push(ov)
         } else if (ov.ageTicks < ov.maxTicks) {
           ov.frame = Math.min(Math.max(0, ov.totalFrames - 1), rawFrame)
@@ -5256,12 +5351,22 @@ export function stepDiscreteSimulationTickImpl(this: ClientWorldInternal, _tickD
       unit.overlays = remainingOverlays
     }
 
-    // 4. Drain per-unit queued packets (unit+0xd8, 0x6fadb290 -> 0x6fb5bc20 -> 0x6fb5f560 -> 0x6fada750 -> 0x6fad5ce0 -> 0x6fad59f0)
+    // 4. Drain per-unit queued packets (unit+0xd8, 0x6fadb290 -> 0x6fb5bc20, #1708)
     if (this._units.has(unit.key) && unit.queuedPackets.length > 0) {
       objectNowMs ??= this.resolveEventNowMs(nowMs)
-      while (unit.queuedPackets.length > 0 && this._units.has(unit.key)) {
-        const pkt = unit.queuedPackets.shift()!
-        this.applyUnitModeImmediate(unit, pkt, objectNowMs)
+      const prevDraining = this._drainingQueuedUnitPacket
+      this._drainingQueuedUnitPacket = true
+      try {
+        while (unit.queuedPackets.length > 0 && this._units.has(unit.key)) {
+          const pkt = unit.queuedPackets.shift()!
+          if (pkt.type === 'UnitMode') {
+            this.applyUnitModeImmediate(unit, pkt, objectNowMs)
+          } else {
+            this.apply(pkt, objectNowMs)
+          }
+        }
+      } finally {
+        this._drainingQueuedUnitPacket = prevDraining
       }
     }
   }

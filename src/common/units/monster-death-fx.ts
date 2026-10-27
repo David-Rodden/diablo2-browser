@@ -755,6 +755,9 @@ export function getInnateMonsterDeathOverlays(
   if ((classId >= 247 && classId <= 249) || clean.startsWith('frogdemon')) {
     return ['frogdemon_death']
   }
+  if ((classId >= 258 && classId <= 263) || clean.startsWith('tentacle')) {
+    return ['tentacleheadbloodripple']
+  }
   if ((classId >= 304 && classId <= 306) || classId === 692 || classId === 693 || clean.startsWith('fingermage')) {
     return ['fingermagespiderexplode']
   }
@@ -955,17 +958,11 @@ export function getBossDeathFxSpec(
     })
   }
   if (numId === 156 || clean === 'andariel') {
-    // 0x6fad0fb0 -> 0x6fb02230: andycontrol0 (#307, Range 350).
+    // 0x6fad0fb0 -> 0x6fb02230: andycontrol0 (#307, Range 350). No death-handler shake; CltDo 29 shakes at elapsed 90 (#1718).
     return buildBossDeathSpec({
       bossKey: 'andariel',
       controllerMissileKey: 'andycontrol0',
       controllerClassId: 307,
-      screenShake: {
-        sustainMs: 350 * 40,
-        amplitude: 8,
-        rampUpMs: 200,
-        rampDownMs: 800,
-      },
       minionPurge: {
         radiusSubTiles: 35,
         minDelayFrames: 1,
@@ -974,17 +971,11 @@ export function getBossDeathFxSpec(
     })
   }
   if (numId === 211 || clean === 'duriel') {
-    // 0x6fad0fb0 -> 0x6fb02620: durieldeathcontrol (#363, Range 400).
+    // 0x6fad0fb0 -> 0x6fb02620: durieldeathcontrol (#363, Range 400). No death-handler shake; CltDo 36 shakes at rem 325 (#1718).
     return buildBossDeathSpec({
       bossKey: 'duriel',
       controllerMissileKey: 'durieldeathcontrol',
       controllerClassId: 363,
-      screenShake: {
-        sustainMs: 160 * 40,
-        amplitude: 6,
-        rampUpMs: 120,
-        rampDownMs: 600,
-      },
       spawnMaggots: DURIEL_MAGGOT_OFFSETS,
     })
   }
@@ -1025,17 +1016,11 @@ export function getBossDeathFxSpec(
   }
   if (numId === 242 || clean === 'mephisto') {
     // 0x6fad0fb0 -> 0x6fb02270: mephistodeathcontrol (#299, Range 275) + TargetX/Y 75, mephistoholedelay (#358),
-    // mephistodonotdraw (#306); see boss-death-cltdo-113c.ts (#1208).
+    // mephistodonotdraw (#306); see boss-death-cltdo-113c.ts (#1208). No shake (#1718).
     return buildBossDeathSpec({
       bossKey: 'mephisto',
       controllerMissileKey: 'mephistodeathcontrol',
       controllerClassId: 299,
-      screenShake: {
-        sustainMs: 100 * 40,
-        amplitude: 5,
-        rampUpMs: 120,
-        rampDownMs: 400,
-      },
     })
   }
   if (numId === 256 || clean === 'izual') {
@@ -1052,17 +1037,11 @@ export function getBossDeathFxSpec(
     })
   }
   if (numId === 243 || clean === 'diablo') {
-    // 0x6fad0fb0 -> 0x6fb02600 creates no missile (#1205): no diabwallmaker ring, no controller.
+    // 0x6fad0fb0 -> 0x6fb02600 creates no missile (#1205) and no shake (#1718).
     return buildBossDeathSpec({
       bossKey: 'diablo',
       controllerMissileKey: null,
       controllerClassId: null,
-      screenShake: {
-        sustainMs: 120 * 40,
-        amplitude: 8,
-        rampUpMs: 160,
-        rampDownMs: 600,
-      },
       minionPurge: {
         radiusSubTiles: 45,
         minDelayFrames: 1,
@@ -1072,18 +1051,12 @@ export function getBossDeathFxSpec(
   }
   if (numId === 479 || numId === 706 || clean === 'overseer1' || clean === 'shenk' || clean === 'shenktheoverseer') {
     // 0x6fad0fb0 (umod 22, mode 0) -> 0x6fb02bd0; Missiles.txt overseercontrol (#602) Range = 500. Only Shenk (a
-    // SuperUnique, so umod 22) has the show; a plain overseer1 dies without it (Issue #1042).
+    // SuperUnique, so umod 22) has the show; a plain overseer1 dies without it (Issue #1042). No shake (#1718).
     return buildBossDeathSpec({
       bossKey: 'shenk',
       controllerMissileKey: 'overseercontrol',
       controllerClassId: 602,
       requiresQuestCompleteUMod: true,
-      screenShake: {
-        sustainMs: 240 * 40,
-        amplitude: 5,
-        rampUpMs: 200,
-        rampDownMs: 800,
-      },
       minionPurge: {
         radiusSubTiles: 35,
         minDelayFrames: 25,
@@ -1109,17 +1082,11 @@ export function getBossDeathFxSpec(
     })
   }
   if (numId === 544 || clean === 'baalcrab' || clean === 'baal') {
-    // 0x6fad0fb0 -> 0x6fb02570: baalfx control (#625, Range 650).
+    // 0x6fad0fb0 -> 0x6fb02570: baalfx control (#625, Range 650). No shake (#1718).
     return buildBossDeathSpec({
       bossKey: 'baal',
       controllerMissileKey: 'baalfx control',
       controllerClassId: 625,
-      screenShake: {
-        sustainMs: 139 * 40,
-        amplitude: 7,
-        rampUpMs: 160,
-        rampDownMs: 600,
-      },
     })
   }
   return null

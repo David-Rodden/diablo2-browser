@@ -15,10 +15,16 @@ import {
   resolveQuestTitleKeyForMsgId,
 } from '../../common/data/canonical-npc-dialog-table.ts'
 import {
+  doesNpcOwnIntroStringId113c,
+  isForeignNpcTalkStringId113c,
   resolveNpcIntroStringId113c,
   resolveNpcIntroTblKey113c,
 } from '../../common/audio/npc-speech-113c.ts'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
+import {
+  extractItemChargedSkills113c,
+  type DecodedChargedSkillEntry,
+} from '../../common/items/charged-skill.ts'
 import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 import {
   calculateDetailedDamage,
@@ -139,6 +145,7 @@ function hashPlayerSkillsAndStates(self: any, skillHotkeys: ReadonlyMap<number, 
       h = Math.imul(h ^ (slot | 0), 16777619) >>> 0
       h = Math.imul(h ^ (b.hand === 'left' ? 1 : 2), 16777619) >>> 0
       h = Math.imul(h ^ (b.skill | 0), 16777619) >>> 0
+      h = Math.imul(h ^ ((b.itemId ?? -1) | 0), 16777619) >>> 0
     }
   }
   return h >>> 0
@@ -286,6 +293,7 @@ export function isFastPathMonsterEventImpl(
     type === 'EnvironmentSync' ||
     type === 'GameLoading' ||
     type === 'GameFlags' ||
+    type === 'GameLogonAck' ||
     type === 'UseSpecialItem'
   ) {
     return true
@@ -635,7 +643,8 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     hud.hotkeys.rightSkillId !== self.rightSkill ||
     hud.skillTree.characterLevel !== self.level ||
     hud.skillTree.unspentSkillPoints !== stats.get(D2StatId.NewSkills) ||
-    (self.skillEntries.size > 0 && hud.hotkeys.availableSkills.length === 0)
+    ((self.skillEntries.size > 0 || model.world.containers.equipment.size > 0) &&
+      hud.hotkeys.availableSkills.length === 0)
 
   if (!combatSkillsDirty) {
     if (self.charClass !== null) {
@@ -1658,7 +1667,10 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   hud.hotkeys.setActiveStates?.(self.states)
   hud.hotkeys.clearWeaponUsability?.()
   const preaggSkillBonuses =
-    classCode && self.skillEntries.size > 0
+    classCode &&
+    (self.skillEntries.size > 0 ||
+      model.world.containers.equipment.size > 0 ||
+      model.world.containers.inventory.size > 0)
       ? preaggregateEquipmentSkillBonuses(
           model.world.containers,
           stats,
@@ -1667,7 +1679,91 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
           classCode,
         )
       : null
+
+  // 1.13c Equipment Charged Skills (`stat 204` / `Properties.txt` `charged`, `D2Client.dll` `0x6FAC8D31` / `0x6FAEE7F0`):
+  // Player stat-giving body locations are 1..10 (`ItemMode.cpp:1981, 1996`); 11/12 (inactive weapon-swap set) never grant charged skills.
+  const activeChargedBySkill = new Map<number, DecodedChargedSkillEntry>()
+  const depletedChargedSkillIds = new Set<number>()
+  const collectChargedFromItem = (item: ItemData): void => {
+    for (const cs of extractItemChargedSkills113c(item)) {
+      if (cs.charges <= 0) {
+        if (!activeChargedBySkill.has(cs.skillId)) {
+          depletedChargedSkillIds.add(cs.skillId)
+        }
+        continue
+      }
+      depletedChargedSkillIds.delete(cs.skillId)
+      const prev = activeChargedBySkill.get(cs.skillId)
+      if (!prev || cs.level > prev.level || (cs.level === prev.level && cs.charges > prev.charges)) {
+        activeChargedBySkill.set(cs.skillId, cs)
+      }
+    }
+  }
+  for (const item of model.world.containers.equipment.values()) {
+    if (item.identified === false || item.broken === true) continue
+    const bodyLoc = item.bodyLoc || item.equippedSlot || 0
+    if (bodyLoc === 11 || bodyLoc === 12) continue
+    collectChargedFromItem(item)
+    const socketChildren = model.world.containers.sockets?.get(item.id)
+    if (socketChildren) {
+      for (const child of socketChildren) {
+        if (child.identified === false || child.broken === true) continue
+        collectChargedFromItem(child)
+      }
+    }
+  }
+
+  const prevEquipmentChargedSkills: Set<number> =
+    model.lastEquipmentChargedSkills instanceof Set
+      ? new Set(model.lastEquipmentChargedSkills)
+      : new Set<number>()
+  for (const oldSkillId of prevEquipmentChargedSkills) {
+    if (!activeChargedBySkill.has(oldSkillId)) {
+      if (self.skillCharges instanceof Map) {
+        self.skillCharges.delete(oldSkillId)
+      }
+      hud.hotkeys.deleteSkillCharges?.(oldSkillId)
+    }
+  }
+  for (const depSkillId of depletedChargedSkillIds) {
+    if (!activeChargedBySkill.has(depSkillId)) {
+      if (self.skillCharges instanceof Map) {
+        self.skillCharges.delete(depSkillId)
+      }
+      hud.hotkeys.deleteSkillCharges?.(depSkillId)
+    }
+  }
+  const nextEquipmentChargedSkills = new Set<number>()
+  for (const [chgSkillId, cs] of activeChargedBySkill.entries()) {
+    nextEquipmentChargedSkills.add(chgSkillId)
+    if (self.skillCharges instanceof Map) {
+      self.skillCharges.set(chgSkillId, cs.charges)
+    }
+  }
+  model.lastEquipmentChargedSkills = nextEquipmentChargedSkills
+
+  const mergedSkillEntries = new Map<number, { level: number; baseLevel?: number; bonus?: number }>()
   for (const [skillId, sl] of self.skillEntries.entries()) {
+    mergedSkillEntries.set(skillId, sl)
+  }
+  if (preaggSkillBonuses && classCode) {
+    for (const [oskillId, val] of preaggSkillBonuses.oskills.entries()) {
+      if (val > 0 && !mergedSkillEntries.has(oskillId) && SKILLS_BY_ID[oskillId]) {
+        mergedSkillEntries.set(oskillId, { level: 0, baseLevel: 0, bonus: 0 })
+      }
+    }
+    for (const [singleId, val] of preaggSkillBonuses.singleSkills.entries()) {
+      if (
+        val > 0 &&
+        !mergedSkillEntries.has(singleId) &&
+        SKILLS_BY_ID[singleId]?.classCode === classCode
+      ) {
+        mergedSkillEntries.set(singleId, { level: 0, baseLevel: 0, bonus: 0 })
+      }
+    }
+  }
+
+  for (const [skillId, sl] of mergedSkillEntries.entries()) {
     const tableMeta = getSkillTableMeta(skillId)
     if (!tableMeta || !tableMeta.skilldesc) {
       throw new Error(`[hud-model] Missing canonical skills.txt/skilldesc.txt metadata for skillId=${skillId}`)
@@ -1705,8 +1801,9 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     hud.hotkeys.setSkillWeaponUsable?.(skillId, weaponUsable)
     if ((skillId === 2 || skillId === 4) && !weaponOnlyUsable) continue
     const effSkillLevel = hard + bonus
+    if (effSkillLevel <= 0 && activeChargedBySkill.has(skillId)) continue
     const charges = self.skillCharges?.get(skillId) ?? scrollCounts.get(skillId)
-    if (effSkillLevel <= 0 && charges === undefined) continue
+    if (effSkillLevel <= 0 && (charges === undefined || charges <= 0)) continue
     const genericEntry = createCanonicalGenericSkillEntry(skillId, charges)
     if (genericEntry) {
       hud.hotkeys.addOrUpdateSkill(genericEntry)
@@ -1717,17 +1814,19 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     }
     const catalogEntry = SKILLS_BY_ID[skillId]
     if (!catalogEntry) continue
+    const isStandaloneCharged = effSkillLevel <= 0 && charges !== undefined && charges > 0
     hud.hotkeys.addOrUpdateSkill({
       skillId,
       name: getSkillName(skillId, 'ENG'),
       nameZh: getSkillName(skillId, 'CHI'),
-      level: effSkillLevel,
+      level: effSkillLevel > 0 ? effSkillLevel : 1,
       manaCost: effSkillLevel > 0 ? calculateManaCost(catalogEntry, effSkillLevel) : 0,
       leftUsable: isLeftUsableSkill(skillId),
       rightUsable: true,
       isAura: isAuraSkill(skillId),
-      listRow: tableMeta.listRow,
+      listRow: isStandaloneCharged ? 4 : tableMeta.listRow,
       reqlevel: catalogEntry.reqlevel,
+      ...(isStandaloneCharged ? { isItemSkill: true } : {}),
       ...(charges !== undefined ? { charges } : {}),
     })
     if (charges !== undefined) {
@@ -1735,10 +1834,54 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     }
   }
 
+  for (const cs of activeChargedBySkill.values()) {
+    if (cs.charges <= 0 || isPassiveSkill(cs.skillId)) continue
+    const tableMeta = getSkillTableMeta(cs.skillId)
+    if (tableMeta && tableMeta.listRow < 0) continue
+    const weaponUsable = canUseSkillWithWeapon(cs.skillId, weaponState, self.states)
+    hud.hotkeys.setSkillWeaponUsable?.(cs.skillId, weaponUsable)
+    hud.hotkeys.setSkillCharges(cs.skillId, cs.charges, cs.maxCharges)
+    const existingNative = hud.hotkeys.availableSkills.find(
+      (s) => s.skillId === cs.skillId && !s.isItemSkill && (s.level ?? 0) > 0,
+    )
+    if (existingNative) {
+      hud.hotkeys.addOrUpdateSkill({
+        ...existingNative,
+        charges: cs.charges,
+        maxCharges: cs.maxCharges,
+        itemId: cs.itemId,
+      })
+      continue
+    }
+    const catalogEntry = SKILLS_BY_ID[cs.skillId]
+    if (!catalogEntry) continue
+    hud.hotkeys.addOrUpdateSkill({
+      skillId: cs.skillId,
+      name: getSkillName(cs.skillId, 'ENG'),
+      nameZh: getSkillName(cs.skillId, 'CHI'),
+      level: cs.level,
+      manaCost: 0,
+      leftUsable: isLeftUsableSkill(cs.skillId),
+      rightUsable: true,
+      isAura: isAuraSkill(cs.skillId),
+      charges: cs.charges,
+      maxCharges: cs.maxCharges,
+      listRow: 4,
+      reqlevel: catalogEntry.reqlevel,
+      isItemSkill: true,
+      itemId: cs.itemId,
+    })
+  }
+
   const hasEquippedThrowing =
     Boolean(weaponState.rightHandCode || weaponState.leftHandCode) &&
     canUseSkillWithWeapon(2, weaponState)
-  if (self.skillEntries.size > 0 || scrollCounts.size > 0 || hasEquippedThrowing) {
+  if (
+    mergedSkillEntries.size > 0 ||
+    activeChargedBySkill.size > 0 ||
+    scrollCounts.size > 0 ||
+    hasEquippedThrowing
+  ) {
     if (!hud.hotkeys.availableSkills.some((s) => s.skillId === 0)) {
       const atkEntry = createCanonicalGenericSkillEntry(0)
       if (atkEntry) hud.hotkeys.addOrUpdateSkill(atkEntry)
@@ -1765,13 +1908,26 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     }
   }
 
-  const availableIds =
-    self.skillEntries.size > 0
-      ? new Set<number>(hud.hotkeys.availableSkills.map((s) => s.skillId))
-      : null
+  const isTrackedSkillForAvailability = (skillId: number): boolean =>
+    mergedSkillEntries.has(skillId) ||
+    prevEquipmentChargedSkills.has(skillId) ||
+    depletedChargedSkillIds.has(skillId) ||
+    activeChargedBySkill.has(skillId)
+  const hasTrackedSkills =
+    mergedSkillEntries.size > 0 ||
+    prevEquipmentChargedSkills.size > 0 ||
+    depletedChargedSkillIds.size > 0 ||
+    activeChargedBySkill.size > 0
+  const availableIds = hasTrackedSkills
+    ? new Set<number>(hud.hotkeys.availableSkills.map((s) => s.skillId))
+    : null
   if (availableIds && model.world.skillHotkeys.size > 0) {
     for (const [slot, binding] of model.world.skillHotkeys.entries()) {
-      if (binding.skill > 0 && self.skillEntries.has(binding.skill) && !availableIds.has(binding.skill)) {
+      if (
+        binding.skill > 0 &&
+        isTrackedSkillForAvailability(binding.skill) &&
+        !availableIds.has(binding.skill)
+      ) {
         model.world.skillHotkeys.delete(slot)
         model.emitCommand?.({
           type: 'AssignSkillHotkey',
@@ -1788,22 +1944,36 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     hud.hotkeys.bindings.clear()
     for (const [slot, binding] of model.world.skillHotkeys.entries()) {
       const fKey = slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
-      hud.hotkeys.bindHotkey(fKey, binding.hand, binding.skill)
+      hud.hotkeys.bindHotkey(fKey, binding.hand, binding.skill, binding.itemId)
     }
   }
   if (availableIds && hud.hotkeys.bindings.size > 0) {
     for (const [fKey, binding] of Array.from(hud.hotkeys.bindings.entries())) {
-      if (binding.skillId > 0 && self.skillEntries.has(binding.skillId) && !availableIds.has(binding.skillId)) {
+      if (
+        binding.skillId > 0 &&
+        isTrackedSkillForAvailability(binding.skillId) &&
+        !availableIds.has(binding.skillId)
+      ) {
         hud.hotkeys.bindings.delete(fKey)
       }
     }
   }
   if (availableIds) {
-    if (self.leftSkill > 0 && self.skillEntries.has(self.leftSkill) && !availableIds.has(self.leftSkill)) {
+    if (
+      self.leftSkill > 0 &&
+      isTrackedSkillForAvailability(self.leftSkill) &&
+      !availableIds.has(self.leftSkill)
+    ) {
       self.leftSkill = 0
+      self.leftSkillItemId = undefined
     }
-    if (self.rightSkill > 0 && self.skillEntries.has(self.rightSkill) && !availableIds.has(self.rightSkill)) {
+    if (
+      self.rightSkill > 0 &&
+      isTrackedSkillForAvailability(self.rightSkill) &&
+      !availableIds.has(self.rightSkill)
+    ) {
       self.rightSkill = 0
+      self.rightSkillItemId = undefined
     }
   }
   hud.hotkeys.leftSkillId = self.leftSkill
@@ -2944,7 +3114,10 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
             m &&
             m.menu === 0 &&
             m.stringId > 0 &&
-            ((isNpcIntroMessageId(m.stringId) && !introPlayed) ||
+            !isForeignNpcTalkStringId113c(desc.hcIdx, m.stringId, model.world.act) &&
+            ((isNpcIntroMessageId(m.stringId) &&
+              doesNpcOwnIntroStringId113c(desc.hcIdx, m.stringId, model.world.act) &&
+              !introPlayed) ||
               (!isNpcIntroMessageId(m.stringId) &&
                 resolveQuestTitleKeyForMsgId(m.stringId) !== undefined)) &&
             !model.playedAutoQuestStringIds.has(m.stringId),
@@ -3001,24 +3174,34 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
 
   // D2Client.dll 0x6fafba20 -> 0x6faf5ff0 / 0x6fafb230:
   // Auto-pop speech on menu === 0 from S2C 0x27 and dispatch C2S 0x31 (+ 0x40 for quest topics).
-  const isAutoQuestMessage = (m: { readonly menu: number; readonly stringId: number }): boolean =>
+  const isAutoQuestMessage = (
+    m: { readonly menu: number; readonly stringId: number },
+    desc?: TownNpcServiceDescriptor,
+  ): boolean =>
     m.menu === 0 &&
     m.stringId > 0 &&
+    (desc === undefined || !isForeignNpcTalkStringId113c(desc.hcIdx, m.stringId, model.world.act)) &&
     !isNpcIntroMessageId(m.stringId) &&
     resolveQuestTitleKeyForMsgId(m.stringId) !== undefined
-  const isAutoIntroMessage = (m: { readonly menu: number; readonly stringId: number }): boolean =>
-    m.menu === 0 && m.stringId > 0 && isNpcIntroMessageId(m.stringId)
+  const isAutoIntroMessage = (
+    m: { readonly menu: number; readonly stringId: number },
+    desc?: TownNpcServiceDescriptor,
+  ): boolean =>
+    m.menu === 0 &&
+    m.stringId > 0 &&
+    isNpcIntroMessageId(m.stringId) &&
+    (desc === undefined || doesNpcOwnIntroStringId113c(desc.hcIdx, m.stringId, model.world.act))
   const playNextAutoNpcSpeech = (npcUnitId: number, desc: TownNpcServiceDescriptor): void => {
     const currentMsgs = model.world.getNpcMessages(npcUnitId) ?? model.world.npcInteraction.messages
     const introPlayed = model.world.hasNpcIntroPlayed(model.world.act, desc.hcIdx)
     const nextMsg =
       !introPlayed
         ? currentMsgs?.find(
-            (m: any) => isAutoIntroMessage(m) && !model.playedAutoQuestStringIds.has(m.stringId),
+            (m: any) => isAutoIntroMessage(m, desc) && !model.playedAutoQuestStringIds.has(m.stringId),
           )
         : undefined
     const nextQuestMsg = currentMsgs?.find(
-      (m: any) => isAutoQuestMessage(m) && !model.playedAutoQuestStringIds.has(m.stringId),
+      (m: any) => isAutoQuestMessage(m, desc) && !model.playedAutoQuestStringIds.has(m.stringId),
     )
     const chainClose = (): void => {
       if (model.world.npcInteraction.npcId === npcUnitId) {
@@ -3062,7 +3245,7 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
     const hasPendingAutoNpcMessage =
       npcMessages?.some(
         (m: any) =>
-          ((isAutoIntroMessage(m) && !introPlayed) || isAutoQuestMessage(m)) &&
+          ((isAutoIntroMessage(m, desc) && !introPlayed) || isAutoQuestMessage(m, desc)) &&
           !model.playedAutoQuestStringIds.has(m.stringId),
       ) === true
     if (desc && hasPendingAutoNpcMessage) {
@@ -3117,6 +3300,7 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
           stringId,
           onClose: () => {
             model.world.clearObjectNpcInteraction(objId)
+            model.playedAutoQuestStringIds.delete(stringId)
             if (stringId > 0) {
               // D2Client.dll 0x6fb212c0 (ScrollSpeech_Close) & 0x6faf4f20 (Send0x31_QuestMessage):
               // Closing an object scroll speech sends C2S 0x31 QuestMessage(0xffffffff, stringId).

@@ -274,8 +274,54 @@ export function isGroundSourceUnidentified(item: any): boolean {
   return false
 }
 
+const GROUND_ITEM_META_WEAK_CACHE = new WeakMap<object, GroundItemMetadata>()
+const GROUND_ITEM_META_SCALAR_CACHE = new Map<string, GroundItemMetadata>()
+const GROUND_ITEM_META_SCALAR_MAX = 2048
+
+function isCacheableScalarGroundSource(item: any): boolean {
+  if (!item || typeof item !== 'object') return false
+  let keyCount = 0
+  for (const k in item) {
+    if (!Object.prototype.hasOwnProperty.call(item, k)) continue
+    keyCount += 1
+    if (keyCount > 5) return false
+    if (k !== 'code' && k !== 'quality' && k !== 'goldAmount' && k !== 'name' && k !== 'nameZh') {
+      return false
+    }
+    const v = item[k]
+    const t = typeof v
+    if (v !== undefined && t !== 'string' && t !== 'number') return false
+  }
+  return keyCount > 0
+}
+
 /** Extract ground item metadata from any item source. */
 export function resolveGroundItemMetadata(item: any, specifiedAmount?: number): GroundItemMetadata {
+  if (specifiedAmount === undefined && item && typeof item === 'object') {
+    const weakHit = GROUND_ITEM_META_WEAK_CACHE.get(item)
+    if (weakHit !== undefined) return weakHit
+  }
+  let scalarKey: string | null = null
+  if (isCacheableScalarGroundSource(item)) {
+    scalarKey = `${String(item.code ?? '')}|${String(item.quality ?? '')}|${String(specifiedAmount ?? item.goldAmount ?? '')}|${String(item.name ?? '')}`
+    const scalarHit = GROUND_ITEM_META_SCALAR_CACHE.get(scalarKey)
+    if (scalarHit !== undefined) return scalarHit
+  }
+
+  const meta = resolveGroundItemMetadataUncached(item, specifiedAmount)
+  if (scalarKey !== null) {
+    if (GROUND_ITEM_META_SCALAR_CACHE.size >= GROUND_ITEM_META_SCALAR_MAX) {
+      const oldest = GROUND_ITEM_META_SCALAR_CACHE.keys().next().value
+      if (oldest !== undefined) GROUND_ITEM_META_SCALAR_CACHE.delete(oldest)
+    }
+    GROUND_ITEM_META_SCALAR_CACHE.set(scalarKey, meta)
+  } else if (specifiedAmount === undefined && item && typeof item === 'object') {
+    GROUND_ITEM_META_WEAK_CACHE.set(item, meta)
+  }
+  return meta
+}
+
+function resolveGroundItemMetadataUncached(item: any, specifiedAmount?: number): GroundItemMetadata {
   const isGold = isGoldItem(item)
 
   if (isGold) {
@@ -1682,23 +1728,33 @@ export function layoutGroundItemLabels(
   viewportH = 600,
 ): readonly GroundItemLabelBox[] {
   const placed: GroundItemLabelBox[] = []
+  const xOverlaps: GroundItemLabelBox[] = []
   for (const item of labels) {
     const txt = item.text ?? item.label ?? ''
     const w = item.width ?? Math.max(40, txt.length * 7 + 12)
     const h = item.height ?? 18
     const x = Math.max(0, Math.min(Math.max(0, viewportW - w), Math.round(item.screenX - w / 2)))
     let y = Math.max(0, Math.min(Math.max(0, viewportH - h), Math.round(item.screenY - h)))
+    xOverlaps.length = 0
+    const xRight = x + w
+    for (let i = 0; i < placed.length; i += 1) {
+      const b = placed[i]!
+      if (x < b.x + b.width && xRight > b.x) {
+        xOverlaps.push(b)
+      }
+    }
     let safety = 0
-    while (
-      safety < 100 &&
-      placed.some(
-        (b) =>
-          x < b.x + b.width &&
-          x + w > b.x &&
-          y < b.y + b.height &&
-          y + h > b.y,
-      )
-    ) {
+    while (safety < 100) {
+      let collided = false
+      const yBottom = y + h
+      for (let i = 0; i < xOverlaps.length; i += 1) {
+        const b = xOverlaps[i]!
+        if (y < b.y + b.height && yBottom > b.y) {
+          collided = true
+          break
+        }
+      }
+      if (!collided) break
       if (y - (h + 2) >= 0) {
         y -= h + 2
       } else {

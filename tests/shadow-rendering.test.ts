@@ -32,8 +32,10 @@ import {
   computeUnitShadowQuad,
   drawUnitPerspectiveShadow,
   drawSceneUnitDrawable,
+  shouldDrawUnitShadow113c,
   type SceneSourceRenderContext,
 } from '../src/client/scene/world-renderer.ts'
+import { resolveMonsterClassId113c } from '../src/common/units/monstats2-flags.ts'
 
 type SpriteRenderer = Parameters<typeof drawSceneUnitDrawable>[0]
 type SceneUnitDrawable = Parameters<typeof drawSceneUnitDrawable>[1]
@@ -632,6 +634,76 @@ describe('Shadow Layer (DT1 Type 13) Rendering & Parity', () => {
       drawUnitPerspectiveShadow(mDegen.renderer, { ...sampleFrame, width: 64, height: 0 }, 100, 100, sampleAtlas)
       drawUnitPerspectiveShadow(mDegen.renderer, { ...sampleFrame, width: 1, height: 1 }, 100, 100, sampleAtlas)
       expect(mDegen.drawQuadCalls).toHaveLength(0)
+    })
+
+    it('gates monster and unit shadows by MonStats2 Shadow flag (bit 14) and state 146 invis (D2Client 0x6FAFE942 / 0x6FB1AA30 / 0x6FB1BA90, #1722)', () => {
+      const ctx = makeMockCtx()
+      const baseArt = (ctx.monsterArtMap as Map<string, any>).get('hcidx:0')!
+      const artMap = new Map(ctx.monsterArtMap)
+
+      const shadowYesAdditive = [
+        [resolveMonsterClassId113c('fingermage1')!, 'FR'],
+        [resolveMonsterClassId113c('izualghost')!, '17'],
+        [resolveMonsterClassId113c('painworm1')!, '46'],
+        [resolveMonsterClassId113c('familiar')!, 'FI'],
+      ] as const
+      const shadowNoMonsters = [
+        [resolveMonsterClassId113c('baboon6')!, 'BB', 'normal'],
+        [resolveMonsterClassId113c('snake')!, 'CO', 'normal'],
+        [resolveMonsterClassId113c('willowisp1')!, 'WW', 'additive'],
+        [resolveMonsterClassId113c('wraith1')!, 'WR', 'additive'],
+      ] as const
+
+      for (const [classId, token] of shadowYesAdditive) {
+        artMap.set(`hcidx:${classId}`, { ...baseArt, token, blendMode: 'additive' })
+      }
+      for (const [classId, token, blendMode] of shadowNoMonsters) {
+        artMap.set(`hcidx:${classId}`, { ...baseArt, token, blendMode })
+      }
+      const extCtx: SceneSourceRenderContext = { ...ctx, monsterArtMap: artMap }
+
+      // Additive-token monsters that have MonStats2 Shadow=1 MUST draw a shadow
+      for (const [classId, token] of shadowYesAdditive) {
+        const m = makeMockRenderer()
+        const u = makeBaseUnit({ unitKind: 'monster', classId, token, mode: 1 })
+        expect(shouldDrawUnitShadow113c(u)).toBe(true)
+        drawSceneUnitDrawable(m.renderer, u, extCtx, 0, 1)
+        expect(m.callOrder).toEqual(['drawQuad', 'draw'])
+      }
+
+      // Monsters with MonStats2 Shadow=0 (baboon6, snake, willowisp1, wraith1) MUST NOT draw a shadow
+      for (const [classId, token] of shadowNoMonsters) {
+        const m = makeMockRenderer()
+        const u = makeBaseUnit({ unitKind: 'monster', classId, token, mode: 1 })
+        expect(shouldDrawUnitShadow113c(u)).toBe(false)
+        drawSceneUnitDrawable(m.renderer, u, extCtx, 0, 1)
+        expect(m.callOrder).toEqual(['draw'])
+      }
+
+      // Units with state 146 (0x92 STATE_INVIS) MUST NOT draw a shadow
+      const mInvisMonster = makeMockRenderer()
+      const invisMonster = makeBaseUnit({
+        unitKind: 'monster',
+        classId: 0,
+        token: 'SK',
+        mode: 1,
+        states: new Set([146]),
+      })
+      expect(shouldDrawUnitShadow113c(invisMonster)).toBe(false)
+      drawSceneUnitDrawable(mInvisMonster.renderer, invisMonster, extCtx, 0, 1)
+      expect(mInvisMonster.callOrder).toEqual(['draw'])
+
+      const mInvisPlayer = makeMockRenderer()
+      const invisPlayer = makeBaseUnit({
+        unitKind: 'player',
+        classId: 1,
+        token: 'so',
+        mode: 1,
+        hasInvisState: true,
+      })
+      expect(shouldDrawUnitShadow113c(invisPlayer)).toBe(false)
+      drawSceneUnitDrawable(mInvisPlayer.renderer, invisPlayer, extCtx, 0, 1)
+      expect(mInvisPlayer.callOrder).toEqual(['draw'])
     })
   })
 })

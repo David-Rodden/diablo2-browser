@@ -29,6 +29,7 @@ import {
   OVERLAY_METAS,
 } from '../../src/client/render/overlays-meta.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
+import { durielDeathPhase113c } from '../../src/client/world/boss-death-cltdo-113c.ts'
 import { buildSceneDrawables as buildUnitDrawables } from '../../src/client/view/unit-drawables.ts'
 import { createWorld, damageMonster } from '../../src/server/ai/monster-ai.ts'
 
@@ -523,12 +524,12 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
       // Controller missile andycontrol0 is spawned
       expect(world.getUnitsByType('missile').some(m => m.missileKey === 'andycontrol0')).toBe(true)
 
-      // Advance 65 ticks and verify screen shake, sub-missiles, and surrounding monster purge
+      // Advance 105 ticks and verify screen shake (starts at elapsed=90), sub-missiles, and surrounding monster purge
       let sawNonZeroShake = false
       let sawFireBase = false
       let sawFirewallMaker = false
       let sawDebris = false
-      for (let i = 0; i < 65; i++) {
+      for (let i = 0; i < 105; i++) {
         world.tick()
         const shake = world.screenShake
         if (shake.active && (shake.offsetX !== 0 || shake.offsetY !== 0)) {
@@ -623,6 +624,56 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
       expect(firstMaggot.dead).toBe(true)
       expect(firstMaggot.mode).toBe(12)
     })
+
+    it('follows 1.13c 0x6FB83610 phase cadence table in durieldeathcontrol (CltDo 36) for explodingarrowexp (#42) and durieldeathrock (#364)', () => {
+      expect(durielDeathPhase113c(400)).toEqual({ threshold: 350, a: 3, b: 5 })
+      expect(durielDeathPhase113c(350)).toEqual({ threshold: 300, a: 2, b: 3 })
+      expect(durielDeathPhase113c(300)).toEqual({ threshold: 200, a: 3, b: 2 })
+      expect(durielDeathPhase113c(200)).toEqual({ threshold: 175, a: 5, b: 1 })
+      expect(durielDeathPhase113c(175)).toEqual({ threshold: 0, a: 100, b: 5 })
+      expect(durielDeathPhase113c(50)).toEqual({ threshold: 0, a: 100, b: 5 })
+
+      const world = new ClientWorld()
+      world.applyEvent({
+        type: 'UnitAssign',
+        unit: { unitType: 'monster', id: 7010, classId: 211, x: 100, y: 100, mode: 1, lifePct: 100 },
+      })
+      world.applyEvent({
+        type: 'UnitMode',
+        unitType: 'monster',
+        id: 7010,
+        mode: 0,
+        lifePct: 0,
+      })
+
+      // Tick 1: prevAgeTicks = 0 -> rem = 400 (phase >350: a=3, b=5).
+      // 400 % 3 !== 0 (no explodingarrowexp), 400 % 5 === 0 (spawns 1 durieldeathrock).
+      world.tick()
+      const missilesTick1 = world.getUnitsByType('missile')
+      expect(missilesTick1.filter(m => m.missileKey === 'explodingarrowexp').length).toBe(0)
+      const rocksTick1 = missilesTick1.filter(m => m.missileKey === 'durieldeathrock')
+      expect(rocksTick1.length).toBe(1)
+      const rock = rocksTick1[0]!
+      expect(rock.maxTicks).toBe(15)
+      expect(rock.totalFrames).toBe(15)
+      expect(rock.animSpeed).toBe(8)
+      expect(rock.verticalDescentPerTick).toBe(10)
+      expect(rock.altitude).toBe(150)
+      expect(rock.x).toBeGreaterThanOrEqual(80)
+      expect(rock.x).toBeLessThan(120)
+      expect(rock.y).toBeGreaterThanOrEqual(80)
+      expect(rock.y).toBeLessThan(120)
+
+      // Tick 2: prevAgeTicks = 1 -> rem = 399. 399 % 3 === 0 -> spawns 1 explodingarrowexp.
+      world.tick()
+      expect(rock.altitude).toBe(140)
+      const expTick2 = world.getUnitsByType('missile').filter(m => m.missileKey === 'explodingarrowexp')
+      expect(expTick2.length).toBe(1)
+      expect(expTick2[0]!.x).toBeGreaterThanOrEqual(80)
+      expect(expTick2[0]!.x).toBeLessThan(120)
+      expect(expTick2[0]!.y).toBeGreaterThanOrEqual(80)
+      expect(expTick2[0]!.y).toBeLessThan(120)
+    })
   })
 
   describe('8. Act/Quest Boss Death Specs & Temporary Summon tempsummon (#21)', () => {
@@ -643,6 +694,62 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
       expect(getBossDeathFxSpec(526, 'nihlathak')).toBeNull()
       expect(getBossDeathFxSpec(540, 'ancientbarb1')?.controllerMissile).toBe('ancient death center')
       expect(getBossDeathFxSpec(544, 'baalcrab')?.controllerMissile).toBe('baalfx control')
+
+      // 1.13c 0x6FB025B0..0x6FB026A0: no boss death handler starts screen shake directly.
+      expect(getBossDeathFxSpec(156, 'andariel')?.screenShake).toBeUndefined()
+      expect(getBossDeathFxSpec(211, 'duriel')?.screenShake).toBeUndefined()
+      expect(getBossDeathFxSpec(242, 'mephisto')?.screenShake).toBeUndefined()
+      expect(getBossDeathFxSpec(243, 'diablo')?.screenShake).toBeUndefined()
+      expect(getBossDeathFxSpec(479, 'shenk')?.screenShake).toBeUndefined()
+      expect(getBossDeathFxSpec(544, 'baalcrab')?.screenShake).toBeUndefined()
+    })
+
+    it('triggers screen shake from CltDo 29 (andycontrol0 at elapsed=90) and CltDo 36 (durieldeathcontrol at rem=325) per 1.13c', () => {
+      const worldAndy = new ClientWorld()
+      worldAndy.applyEvent({
+        type: 'UnitAssign',
+        unit: { unitType: 'monster', id: 8100, classId: 156, x: 100, y: 100, mode: 1, lifePct: 100 },
+      })
+      worldAndy.applyEvent({
+        type: 'UnitMode',
+        unitType: 'monster',
+        id: 8100,
+        mode: 0,
+        lifePct: 0,
+      })
+      expect(worldAndy.screenShake.active).toBe(false)
+      for (let i = 0; i < 90; i++) worldAndy.tick()
+      expect(worldAndy.screenShake.active).toBe(false)
+      // On tick 91, prevAgeTicks === 90 -> startScreenShake(3000, 8, 2000, 2000)
+      worldAndy.tick()
+      expect(worldAndy.screenShake.active).toBe(true)
+      expect(worldAndy.screenShake.rampUpMs).toBe(2000)
+      expect(worldAndy.screenShake.sustainMs).toBe(3000)
+      expect(worldAndy.screenShake.rampDownMs).toBe(2000)
+      expect(worldAndy.screenShake.amplitude).toBe(8)
+
+      const worldDuriel = new ClientWorld()
+      worldDuriel.applyEvent({
+        type: 'UnitAssign',
+        unit: { unitType: 'monster', id: 8101, classId: 211, x: 100, y: 100, mode: 1, lifePct: 100 },
+      })
+      worldDuriel.applyEvent({
+        type: 'UnitMode',
+        unitType: 'monster',
+        id: 8101,
+        mode: 0,
+        lifePct: 0,
+      })
+      expect(worldDuriel.screenShake.active).toBe(false)
+      for (let i = 0; i < 75; i++) worldDuriel.tick()
+      expect(worldDuriel.screenShake.active).toBe(false)
+      // On tick 76, prevAgeTicks === 75 -> rem === 325 -> startScreenShake(6000, 20, 0, 0)
+      worldDuriel.tick()
+      expect(worldDuriel.screenShake.active).toBe(true)
+      expect(worldDuriel.screenShake.rampUpMs).toBe(0)
+      expect(worldDuriel.screenShake.sustainMs).toBe(6000)
+      expect(worldDuriel.screenShake.rampDownMs).toBe(0)
+      expect(worldDuriel.screenShake.amplitude).toBe(20)
     })
 
     it('expires temporary summons with tempsummon (MonUMod #21) and attaches spawnedminion (#202) overlay', () => {

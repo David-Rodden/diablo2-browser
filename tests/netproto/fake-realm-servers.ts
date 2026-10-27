@@ -26,6 +26,8 @@ import type { MemoryStream } from '../../src/netproto/transport/memory-stream.ts
 
 export interface FakeConnection {
   readonly role: EndpointRole
+  readonly host: string
+  readonly port: number
   readonly client: MemoryStream
   readonly server: MemoryStream
 }
@@ -41,6 +43,14 @@ export interface FakeRealmOptions {
   readonly createAccountStatus?: number | undefined
   /** Suggestion string returned for SID_CREATEACCOUNT2 (default ''). */
   readonly createAccountSuggestion?: string | undefined
+  /** Status code returned for MCP_CHARDELETE (0x0A, default 0). */
+  readonly deleteCharStatus?: number | undefined
+  /** Status code returned for MCP_CHARUPGRADE (0x18, default 0). */
+  readonly upgradeCharStatus?: number | undefined
+  /** Status code returned for MCP_JOINGAME (0x04, default 0). */
+  readonly joinGameStatus?: number | undefined
+  /** D2GS IPv4 octets returned for MCP_JOINGAME (0x04, default [127, 0, 0, 1]). */
+  readonly joinGameD2gsIp?: readonly [number, number, number, number] | undefined
   /** How D2GS responds to C2S 0x68 GameLogon (default 'ok'). */
   readonly d2gsLogonMode?: 'ok' | 'charlocked_0xb4' | 'silent_logon' | undefined
   /**
@@ -159,6 +169,10 @@ function wireMcp(
   silent: ReadonlySet<number>,
   characters: number,
   strictD2csState = false,
+  deleteCharStatus = 0,
+  upgradeCharStatus = 0,
+  joinGameStatus = 0,
+  joinGameD2gsIp: readonly [number, number, number, number] = [127, 0, 0, 1],
 ): void {
   const framer = new McpFramer()
   let initSeen = false
@@ -208,6 +222,16 @@ function wireMcp(
       } else if (pkt.id === McpOpcode.MCP_CHARLOGON) {
         d2csState = 'charloggedin'
         server.write(encodeMcpFrame(McpOpcode.MCP_CHARLOGON, new Uint8Array([0, 0, 0, 0])))
+      } else if (pkt.id === McpOpcode.MCP_CHARDELETE) {
+        const reqId = new ByteReader(pkt.payload).u16LE()
+        const w = new ByteWriter(6)
+        w.u16LE(reqId)
+        w.u32LE(deleteCharStatus >>> 0)
+        server.write(encodeMcpFrame(McpOpcode.MCP_CHARDELETE, w.toUint8Array()))
+      } else if (pkt.id === McpOpcode.MCP_CHARUPGRADE) {
+        const w = new ByteWriter(4)
+        w.u32LE(upgradeCharStatus >>> 0)
+        server.write(encodeMcpFrame(McpOpcode.MCP_CHARUPGRADE, w.toUint8Array()))
       } else if (pkt.id === McpOpcode.MCP_GAMELIST) {
         const reqId = new ByteReader(pkt.payload).u16LE()
         const entry = new ByteWriter()
@@ -240,9 +264,9 @@ function wireMcp(
         w.u16LE(reqId)
         w.u16LE(0x0042)
         w.u16LE(0)
-        w.bytes(new Uint8Array([127, 0, 0, 1]))
+        w.bytes(new Uint8Array(joinGameD2gsIp))
         w.u32LE(0xdeadbeef)
-        w.u32LE(0)
+        w.u32LE(joinGameStatus >>> 0)
         server.write(encodeMcpFrame(McpOpcode.MCP_JOINGAME, w.toUint8Array()))
       }
     }
@@ -285,9 +309,9 @@ export function createFakeRealm(options: FakeRealmOptions = {}): FakeRealm {
   let nullCount = 0
 
   const resolver: EndpointResolver = {
-    open: async (role: EndpointRole): Promise<ByteStream> => {
+    open: async (role: EndpointRole, host: string, port: number): Promise<ByteStream> => {
       const [client, server] = createMemoryStreamPair(role)
-      connections.push({ role, client, server })
+      connections.push({ role, host, port, client, server })
       if (role === 'bnet') {
         wireBncs(
           server,
@@ -299,7 +323,16 @@ export function createFakeRealm(options: FakeRealmOptions = {}): FakeRealm {
           options.createAccountSuggestion ?? '',
         )
       } else if (role === 'realm') {
-        wireMcp(server, silentMcp, characters, Boolean(options.strictD2csState))
+        wireMcp(
+          server,
+          silentMcp,
+          characters,
+          Boolean(options.strictD2csState),
+          options.deleteCharStatus ?? 0,
+          options.upgradeCharStatus ?? 0,
+          options.joinGameStatus ?? 0,
+          options.joinGameD2gsIp ?? [127, 0, 0, 1],
+        )
       } else {
         wireGame(server, d2gsLogonMode)
         setTimeout(() => {

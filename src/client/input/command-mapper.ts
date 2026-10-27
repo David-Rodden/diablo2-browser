@@ -46,6 +46,7 @@ import {
 } from '../view/viewport-profile.ts'
 import type { ClientUnit } from '../world/client-unit.ts'
 import type { ClientWorld } from '../world/client-world.ts'
+import { isMonsterSubmergedMode113c } from '../../common/units/monai-113c.ts'
 import { MONSTATS_113C_ROWS, getMonsterKindByHcIdx } from '../../common/units/monsters-data.ts'
 import { getTownNpcDescriptorByHcIdx, isTownNpcHcIdx } from '../../common/units/npc-table.ts'
 import {
@@ -75,15 +76,18 @@ import { SAY_MESSAGE_PHRASE_113C, type ControlActionId } from '../settings/key-b
 import { isTownLevel } from '../../common/world/scene-population.ts'
 import {
   clickGate113c,
+  HOLD_WALK_FRAME_WINDOW_113C,
   isNpcInInteractRange113c,
   isWarpInInteractRange113c,
   monsterHasInteractFlag113c,
   skillHasTargetItem113c,
   TARGET_CORPSE_SKILL_IDS_113C,
   TARGET_PET_OR_ALLY_SKILL_IDS_113C,
+  walkAdjust113c,
   WARP_CLICK_COOLDOWN_MS_113C,
   type NpcInteractPhase113c,
   type PressKind113c,
+  type WalkAdjustResult113c,
 } from './click-rules-113c.ts'
 import { MONSTATS2FLAG_REVIVE, getMonsterPathRecord } from '../../common/path/units.ts'
 import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../common/units/monstats2-flags.ts'
@@ -323,6 +327,7 @@ export class CommandMapper {
   private runKeyHeld = false
   /** 1.13c D2Client.dll 0x6fad34ba..0x6fad34f6 (`[0x6fbcc4cc]`): 75-tick (3000ms) duplicate error speech cooldown. */
   private lastNeedManaSpeechAtMs = -Infinity
+  private lastImpossibleSpeechAtMs = -Infinity
   private leftMouseDown = false
   private rightMouseDown = false
   private hasPointerMoved = false
@@ -348,11 +353,17 @@ export class CommandMapper {
   private pendingWarpInteractId: number | null = null
   /** 1.13c D2Client `[0x6fbc9828]` (`0x6facaed0..0x6facaedc` / `0x6fadb11f`): 500ms warp click cooldown timestamp. */
   private nextWarpClickAllowedMs = -Infinity
+  /** 1.13c D2Client `unit[+0xD4]` (`0x6fadadbc..0x6fadadda`): per-monster 200ms (`0xC8`) `C2S 0x13` (`Interact`) throttle. */
+  private readonly lastMonsterInteractAtMsByUnitId = new Map<number, number>()
   private lastMeleeChaseTargetPos: { unitType: number | string; id: number; x: number; y: number } | null =
     null
   private pendingQuickCastRestoreSkillId: number | null = null
   private lastPath: readonly SubTilePoint[] = []
   private lastHoldDispatchMs = 0
+  /** 1.13c D2Client `[0x6fbd34c4]` (`0x6fac86a0`): frame of the last accepted walk/run click. */
+  private lastWalkFrame = -HOLD_WALK_FRAME_WINDOW_113C
+  private lastWalkWorldFrame = -HOLD_WALK_FRAME_WINDOW_113C
+  private lastWalkTimeFrame = -HOLD_WALK_FRAME_WINDOW_113C
 
   /**
    * NOT 1.13c: Quick Cast mode (Issue #952, PD2/D2R parity; toggled by the `quick-cast`
@@ -512,7 +523,16 @@ export class CommandMapper {
         (!this.isTownArea() || isSkillAllowedInTown(skillId)) && this.isSkillWeaponUsable(skillId) && this.hasEnoughManaForSkill(skillId, this.world) && !this.world.isSkillOnCooldown?.(skillId, nowMs),
       sendCommand: (command, nowMs) => this.sendCommand(command, nowMs),
       stepToward: (x, y, nowMs) => this.stepToward(x, y, nowMs),
-      isHostile: (unit) => unit.unitType === 'monster' && !this.isTownOrInteractiveNpc(unit) && !this.isFriendlySummonOrPet(unit) && !this.isMonsterDead(unit),
+      isHostile: (unit) =>
+        unit.unitType === 'monster' &&
+        !this.isTownOrInteractiveNpc(unit) &&
+        !this.isFriendlySummonOrPet(unit) &&
+        !this.isMonsterDead(unit) &&
+        !isMonsterSubmergedMode113c(
+          unit.classId,
+          unit.mode,
+          unit.castState?.skillId ?? unit.lastSkillId,
+        ),
       isPointIntercepted: (x, y) => this.isPointIntercepted(x, y),
       isPlayerBusyCasting: (nowMs) => this.isPlayerBusyCasting(nowMs),
       isTownArea: () => this.isTownArea(),
@@ -551,8 +571,23 @@ export class CommandMapper {
     if (skillId === 0) return true
     const self = this.world?.self
     const available = (this.hudModel?.hudManager?.hotkeys ?? this.hudManager?.hotkeys)?.availableSkills
-    if (available && available.length > 0 && self?.skillEntries?.has(skillId)) {
-      return available.some((s) => s.skillId === skillId && ((s.level ?? 0) > 0 || (s.charges ?? 0) > 0))
+    if (available && available.length > 0) {
+      const match = available.find(
+        (s) =>
+          s.skillId === skillId &&
+          (s.charges !== undefined ? s.charges > 0 : (s.level ?? 0) > 0),
+      )
+      if (match) return true
+      if (self?.skillEntries?.has(skillId) || self?.skillCharges?.has(skillId)) {
+        return false
+      }
+    }
+    if (self?.skillCharges?.has(skillId)) {
+      const ch = self.skillCharges.get(skillId) ?? 0
+      if (ch > 0) return true
+      const entry = self?.skillEntries?.get(skillId)
+      const eff = entry ? (entry.baseLevel ?? entry.level ?? 0) + (entry.bonus ?? 0) : 0
+      if (eff <= 0) return false
     }
     if (self?.skillEntries?.has(skillId)) {
       const entry = self.skillEntries.get(skillId)!
@@ -673,22 +708,7 @@ export class CommandMapper {
     return currentMana >= manaCost
   }
 
-  /**
-   * 1.13c `D2Client.dll` `0x6fac8f90` -> `0x6fac8f40(1, pPlayer)` -> `0x6fad3200(pPlayer, 21)`:
-   * Plays the local player's class `<class>_needmana_1` speech (`eventCode = 21` / `0x15` in
-   * `PLAYER_SOUND_TABLE_0x6FBA7694`) with the 75-tick (`3000ms`) duplicate suppression cooldown
-   * (`0x6fad34ba..0x6fad34f6`).
-   */
-  private triggerNeedManaSpeech(
-    nowMs = performance.now(),
-    skillId = 0,
-    world: ClientWorld = this.world,
-  ): void {
-    const resolvedNow = Number.isFinite(nowMs) ? nowMs : 0
-    if (resolvedNow - this.lastNeedManaSpeechAtMs < 3000) {
-      return
-    }
-    this.lastNeedManaSpeechAtMs = resolvedNow
+  private resolveSelfClassId(skillId = 0, world: ClientWorld = this.world): number {
     const codeToClassId: Readonly<Record<string, number>> = {
       ama: 0,
       amazon: 0,
@@ -723,7 +743,27 @@ export class CommandMapper {
         }
       }
     }
-    const entry = PLAYER_SOUND_TABLE_0x6FBA7694[classId ?? 1] ?? PLAYER_SOUND_TABLE_0x6FBA7694[1]!
+    return classId ?? 1
+  }
+
+  /**
+   * 1.13c `D2Client.dll` `0x6fac8f90` -> `0x6fac8f40(1, pPlayer)` -> `0x6fad3200(pPlayer, 21)`:
+   * Plays the local player's class `<class>_needmana_1` speech (`eventCode = 21` / `0x15` in
+   * `PLAYER_SOUND_TABLE_0x6FBA7694`) with the 75-tick (`3000ms`) duplicate suppression cooldown
+   * (`0x6fad34ba..0x6fad34f6`).
+   */
+  private triggerNeedManaSpeech(
+    nowMs = performance.now(),
+    skillId = 0,
+    world: ClientWorld = this.world,
+  ): void {
+    const resolvedNow = Number.isFinite(nowMs) ? nowMs : 0
+    if (resolvedNow - this.lastNeedManaSpeechAtMs < 3000) {
+      return
+    }
+    this.lastNeedManaSpeechAtMs = resolvedNow
+    const classId = this.resolveSelfClassId(skillId, world)
+    const entry = PLAYER_SOUND_TABLE_0x6FBA7694[classId] ?? PLAYER_SOUND_TABLE_0x6FBA7694[1]!
     const soundId = entry.needMana1
     world?.pushSoundRequest?.({
       soundId,
@@ -734,6 +774,132 @@ export class CommandMapper {
     if (!this.hudModel) {
       this.hudManager?.onPlayUiSound?.(soundId)
     }
+  }
+
+  /**
+   * 1.13c `D2Client.dll` `0x6fadadac` -> `0x6fad3200(pPlayer, 19)`:
+   * Plays the local player's class `<class>_impossible_1` speech (`eventCode = 19` / `0x13` in
+   * `PLAYER_SOUND_TABLE_0x6FBA7694`) with the 75-tick (`3000ms`) duplicate suppression cooldown
+   * (`0x6fad34ba..0x6fad34f6`, Issue #1707).
+   */
+  private triggerImpossibleSpeech(
+    nowMs = performance.now(),
+    world: ClientWorld = this.world,
+  ): void {
+    const resolvedNow = Number.isFinite(nowMs) ? nowMs : 0
+    if (resolvedNow - this.lastImpossibleSpeechAtMs < 3000) {
+      return
+    }
+    this.lastImpossibleSpeechAtMs = resolvedNow
+    const classId = this.resolveSelfClassId(0, world)
+    const entry = PLAYER_SOUND_TABLE_0x6FBA7694[classId] ?? PLAYER_SOUND_TABLE_0x6FBA7694[1]!
+    const soundId = entry.impossible1
+    world?.pushSoundRequest?.({
+      soundId,
+      speechSoundId: soundId,
+      eventCode: 19,
+      local: true,
+    })
+    if (!this.hudModel) {
+      this.hudManager?.onPlayUiSound?.(soundId)
+    }
+  }
+
+  /**
+   * 1.13c `D2Common.#10061` (`INVENTORY_GetLeftHandWeapon`) + `D2Common.#10802` (`ITEMS_GetItemCode`):
+   * Checks whether the local player's active wielded weapon (slot 4 / 5) matches `requiredCode`.
+   */
+  private hasEquippedPrimaryWeaponCode113c(
+    requiredCode: string,
+    world: ClientWorld = this.world,
+  ): boolean {
+    const target = requiredCode.trim().toLowerCase()
+    const matchCode = (code: unknown): boolean =>
+      typeof code === 'string' && code.trim().toLowerCase() === target
+
+    const bySlot = world?.containers?.equipmentBySlot
+    if (bySlot) {
+      if (matchCode(bySlot.get(4)?.code) || matchCode(bySlot.get(5)?.code)) {
+        return true
+      }
+    }
+    const eqMap = world?.containers?.equipment
+    if (eqMap) {
+      for (const item of eqMap.values()) {
+        const rec = item as {
+          bodyLoc?: number
+          slot?: number
+          equippedSlot?: number
+          equipSlot?: number
+        }
+        const slot = rec.bodyLoc ?? rec.slot ?? rec.equippedSlot ?? rec.equipSlot
+        if (slot === undefined || slot === 0 || slot === 4 || slot === 5) {
+          if (matchCode(item.code)) {
+            return true
+          }
+        }
+      }
+    }
+    const hudEquipped = this.hudManager?.inventory?.equipped
+    if (hudEquipped) {
+      if (
+        matchCode(hudEquipped.get('rarm')?.code) ||
+        matchCode(hudEquipped.get('larm')?.code) ||
+        matchCode(hudEquipped.get('weapon')?.code) ||
+        matchCode(hudEquipped.get('weapon1')?.code)
+      ) {
+        return true
+      }
+    }
+    const selfAny = world?.self as
+      | { weaponCode?: string | undefined; equippedWeaponCode?: string | undefined }
+      | undefined
+    if (matchCode(selfAny?.weaponCode) || matchCode(selfAny?.equippedWeaponCode)) {
+      return true
+    }
+    return false
+  }
+
+  /**
+   * 1.13c `D2Client.dll` `0x6fadacc9..0x6fadadbb` (Issue #1707):
+   * Object class gates before sending `C2S 0x13` (`Interact`):
+   * - `classId === 404` (`0x194`, `compellingorb`) in `mode === 0`: requires wielded `'qf2'` (`Khalim's Will`),
+   *   otherwise plays character speech `19` (`impossible1`) and suppresses `0x13`.
+   * - `classId === 376` (`0x178`, `Hellforge`) in `mode === 2`: requires wielded `'hfh'` (`Hellforge Hammer`),
+   *   otherwise plays character speech `19` (`impossible1`) and suppresses `0x13`.
+   */
+  private canOperateObject113c(
+    obj: ClientUnit,
+    nowMs: number,
+    world: ClientWorld = this.world,
+  ): boolean {
+    const mode = obj.mode ?? 0
+    if (obj.classId === 404 && mode === 0) {
+      if (!this.hasEquippedPrimaryWeaponCode113c('qf2', world)) {
+        this.triggerImpossibleSpeech(nowMs, world)
+        return false
+      }
+    } else if (obj.classId === 376 && mode === 2) {
+      if (!this.hasEquippedPrimaryWeaponCode113c('hfh', world)) {
+        this.triggerImpossibleSpeech(nowMs, world)
+        return false
+      }
+    }
+    return true
+  }
+
+  /**
+   * 1.13c `D2Client.dll` `0x6fadadbc..0x6fadadda` (Issue #1711):
+   * Per-monster `unit[+0xD4]` 200ms (`0xC8`) throttle on sending `C2S 0x13` (`Interact`).
+   */
+  private canSendMonsterInteract113c(monsterId: number, nowMs: number): boolean {
+    const resolvedNow = Number.isFinite(nowMs) ? nowMs : 0
+    const lastAt = this.lastMonsterInteractAtMsByUnitId.get(monsterId)
+    if (lastAt !== undefined && resolvedNow - lastAt < 200) {
+      return false
+    }
+    this.lastMonsterInteractAtMsByUnitId.set(monsterId, resolvedNow)
+    return true
   }
 
   isFriendlySummonOrPet(unit: ClientUnit, world: ClientWorld = this.world): boolean {
@@ -813,7 +979,7 @@ export class CommandMapper {
   isMonsterCorpse(unit: ClientUnit, world: ClientWorld = this.world): boolean {
     if (unit.unitType !== 'monster') return false
     if (this.isTownOrInteractiveNpc(unit, world)) return false
-    if (unit.corpseSuppressed) return false
+    if (unit.corpseSuppressed || unit.clientNoDraw) return false
     // 1.13c D2Common_10633_CheckCorpseCanBeSelected: corpses with udead/hide states
     // (99 redeemed, 104 corpse_nodraw, 107 shatter, 118 corpse_noselect, 172 restinpeace, 173 corpseexp)
     // cannot be targeted by corpse skills.
@@ -916,6 +1082,15 @@ export class CommandMapper {
         return true
       }
       if (this.isMonsterDead(unit, world)) return false
+      if (
+        isMonsterSubmergedMode113c(
+          unit.classId,
+          unit.mode,
+          unit.castState?.skillId ?? unit.lastSkillId,
+        )
+      ) {
+        return false
+      }
       // Live monster: 1.13c TargetCorpse=1 skills (70/74/80/83/95/131/142/150) cannot target live monsters.
       if (TARGET_CORPSE_SKILL_IDS_113C.has(skillId)) return false
       const monKind = getMonsterKindByHcIdx(unit.classId, world.difficulty)
@@ -953,7 +1128,7 @@ export class CommandMapper {
     let bestCorpse: ClientUnit | null = null
     let bestDistSq = maxDistSq
     for (const unit of world.getUnitsByType(1)) {
-      if (unit.hidden || unit.states?.has(0x8f)) continue
+      if (unit.hidden || unit.clientNoDraw || unit.states?.has(0x8f)) continue
       if (!this.isValidSkillTargetUnit(unit, skillId, world)) continue
       const dx = unit.x - subtileX
       const dy = unit.y - subtileY
@@ -984,7 +1159,7 @@ export class CommandMapper {
     let bestTarget: ClientUnit | null = null
     let bestDistSq = maxDistSq
     for (const unit of world.getUnitsByType(1)) {
-      if (unit.hidden || unit.states?.has(0x8f)) continue
+      if (unit.hidden || unit.clientNoDraw || unit.states?.has(0x8f)) continue
       if (unit.x === 0 && unit.y === 0) continue
       if (this.isMonsterDead(unit, world)) continue
       if (!this.isValidSkillTargetUnit(unit, skillId, world)) continue
@@ -1016,7 +1191,7 @@ export class CommandMapper {
     let bestMon: ClientUnit | null = null
     let bestDistSq = maxDistSq
     for (const unit of world.getUnitsByType(1)) {
-      if (unit.hidden || unit.states?.has(0x8f)) continue
+      if (unit.hidden || unit.clientNoDraw || unit.states?.has(0x8f)) continue
       if (!this.isValidSkillTargetUnit(unit, skillId, world)) continue
       const dx = unit.x - subtileX
       const dy = unit.y - subtileY
@@ -1502,7 +1677,7 @@ export class CommandMapper {
       ALLY_OR_PET_TARGET_SKILL_IDS.has(rightSkill)
 
     const isSelectableCandidate = (unit: ClientUnit): boolean => {
-      if (unit.hidden) {
+      if (unit.hidden || unit.clientNoDraw) {
         return false
       }
       if (unit.unitType === 'player') {
@@ -1539,6 +1714,14 @@ export class CommandMapper {
         if (unit.states?.has(0x8f)) {
           return false
         }
+        // 1.13c Submerge (#176 cltstfunc 53 `0x6FB069C0`: `dwFlags &= ~0x0E`) & MagottDown (#162):
+        // submerged TE/TN/FD and burrowed SandMaggot in MONMODE_SEQUENCE (14) are non-targetable.
+        if (
+          !this.isMonsterCorpse(unit) &&
+          isMonsterSubmergedMode113c(unit.classId, unit.mode, unit.castState?.skillId ?? unit.lastSkillId)
+        ) {
+          return false
+        }
         // 1.13c MonStats2.txt `noSel` (bit 5) and `isSel` (bit 3): non-selectable ambient town actors
         // (e.g. `act2guard1` cid=203 at the Palace gate, `camel` cid=185, `act2male` cid=195) have `isSel = 0`.
         if (!unit.isNpc && !isTownNpcHcIdx(unit.classId)) {
@@ -1572,9 +1755,9 @@ export class CommandMapper {
       const pos = this.cameraSubtileToScreen(unit.x, unit.y, panelShiftX)
       return (
         screenX >= pos.x + hb.left &&
-        screenX <= pos.x + hb.left + hb.width &&
+        screenX < pos.x + hb.left + hb.width &&
         screenY >= pos.y + hb.top &&
-        screenY <= pos.y + hb.top + hb.height
+        screenY < pos.y + hb.top + hb.height
       )
     }
 
@@ -1620,7 +1803,7 @@ export class CommandMapper {
    * Convert screen coordinates `(screenX, screenY)` (in canvas pixels, supporting
    * any registered `ViewportProfile`) to world subtile coordinates and hit-test units.
    */
-  resolvePointerTarget(screenX: number, screenY: number, hitRadiusSubtiles = 2.5): PointerWorldTarget {
+  resolvePointerTarget(screenX: number, screenY: number, _hitRadiusSubtiles = 2.5): PointerWorldTarget {
     const panelShiftX = this.syncCameraState()
     const subtile = this.cameraScreenToSubtile(screenX, screenY, panelShiftX)
 
@@ -1647,29 +1830,12 @@ export class CommandMapper {
       }
     }
 
-    // 2. Hit-test world units using screen-space bounding box
+    // 2. Hit-test world units using screen-space bounding box (1.13c HoverUpdate 0x6fb01e80 -> HitTest 0x6fb568e0)
     const screenUnit = this.findUnitAtScreenPoint(screenX, screenY)
-    if (screenUnit) {
-      return {
-        subtileX: subtile.x,
-        subtileY: subtile.y,
-        hoveredUnit: screenUnit,
-      }
-    }
-
-    // 3. Fall back to radial subtile distance
-    const renderAlignedSubtile = this.cameraScreenToSubtile(screenX, screenY - 16, panelShiftX)
-    const unit = this.pickUnitAtSubtile(
-      subtile.x,
-      subtile.y,
-      hitRadiusSubtiles,
-      renderAlignedSubtile.x,
-      renderAlignedSubtile.y,
-    )
     return {
       subtileX: subtile.x,
       subtileY: subtile.y,
-      hoveredUnit: unit,
+      hoveredUnit: screenUnit,
     }
   }
 
@@ -1707,7 +1873,7 @@ export class CommandMapper {
     const candidateTypes = [1, 0, 5, 4, 2] as const
     for (const unitType of candidateTypes) {
       for (const unit of this.world.getUnitsByType(unitType)) {
-        if (unit.hidden) {
+        if (unit.hidden || unit.clientNoDraw) {
           continue
         }
         if (unitType === 0) {
@@ -2007,6 +2173,44 @@ export class CommandMapper {
   }
 
   /**
+   * 1.13c D2Client `0x6fac86a0` walk-click adjust + 7-frame hold-walk gate.
+   */
+  private applyWalkAdjust113c(
+    selfX: number,
+    selfY: number,
+    clickX: number,
+    clickY: number,
+    run: boolean,
+    phase: 'down' | 'hold',
+    nowMs: number,
+  ): WalkAdjustResult113c {
+    const worldFrame = Math.trunc(this.world.frameCount ?? 0)
+    const timeFrame = Math.floor((Number.isFinite(nowMs) ? nowMs : 0) / 40)
+    const useWorldFrame = worldFrame !== this.lastWalkWorldFrame && worldFrame > 0
+    const frame = useWorldFrame ? worldFrame : timeFrame
+    const prevFrame = useWorldFrame ? this.lastWalkWorldFrame : this.lastWalkTimeFrame
+    const selfMode = this.getSelfPlayerMode() ?? this.world.self?.mode ?? 1
+    const result = walkAdjust113c({
+      phase,
+      run,
+      playerX: Math.round(selfX),
+      playerY: Math.round(selfY),
+      clickX: Math.round(clickX),
+      clickY: Math.round(clickY),
+      selfIsPlayer: true,
+      selfMode,
+      frame,
+      lastWalkFrame: prevFrame,
+    })
+    if (result.accepted) {
+      this.lastWalkFrame = result.lastWalkFrame
+      this.lastWalkWorldFrame = worldFrame
+      this.lastWalkTimeFrame = timeFrame
+    }
+    return result
+  }
+
+  /**
    * Returns the live world sub-tile coordinates under `(screenX, screenY)`.
    */
   private resolveLiveCursorSubtile(screenX: number, screenY: number): { readonly x: number; readonly y: number } {
@@ -2045,7 +2249,6 @@ export class CommandMapper {
     const tc = (this.hudManager as { touchControls?: TouchControlsHud } | undefined)?.touchControls
     if (tc?.enabled && tc.joystick.active) {
       if (tc.joystick.magnitude > 0 && resolvedNowMs - this.lastHoldDispatchMs >= 40) {
-        this.lastHoldDispatchMs = resolvedNowMs
         const predSnap = this.predictor?.getSnapshot()
         const selfX =
           predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.x : (this.world.self?.x ?? 0)
@@ -2059,16 +2262,28 @@ export class CommandMapper {
           6,
         )
         const isRunning = tc.joystick.locomotionMode === 'run' || this.isCurrentlyRunning()
-        const path = this.startLocalPathPrediction(joyTarget.x, joyTarget.y, isRunning)
-        this.dispatchRateLimited(
-          {
-            type: 'Move',
-            run: isRunning,
-            to: { x: joyTarget.x, y: joyTarget.y },
-          },
+        const walkAdj = this.applyWalkAdjust113c(
+          selfX,
+          selfY,
+          joyTarget.x,
+          joyTarget.y,
+          isRunning,
+          'hold',
           resolvedNowMs,
-          path,
         )
+        if (walkAdj.accepted) {
+          this.lastHoldDispatchMs = resolvedNowMs
+          const path = this.startLocalPathPrediction(walkAdj.x, walkAdj.y, isRunning)
+          this.dispatchRateLimited(
+            {
+              type: 'Move',
+              run: isRunning,
+              to: { x: walkAdj.x, y: walkAdj.y },
+            },
+            resolvedNowMs,
+            path,
+          )
+        }
       }
       return
     }
@@ -2813,6 +3028,9 @@ export class CommandMapper {
         if (isOrificeAlreadyOpenForUnit) {
           return null
         }
+        if (!this.canOperateObject113c(hoveredUnit, nowMs, this.world)) {
+          return null
+        }
         return this.dispatchRateLimited(
           {
             type: 'Interact',
@@ -2941,13 +3159,15 @@ export class CommandMapper {
               nowMs,
             )
           }
-          this.sendCommand(
-            {
-              type: 'Interact',
-              target: ref,
-            },
-            nowMs,
-          )
+          if (this.canSendMonsterInteract113c(hoveredUnit.id, nowMs)) {
+            this.sendCommand(
+              {
+                type: 'Interact',
+                target: ref,
+              },
+              nowMs,
+            )
+          }
           return this.dispatchRateLimited(
             {
               type: 'NpcInit',
@@ -2991,6 +3211,18 @@ export class CommandMapper {
     if (this.isPlayerBusyCasting(nowMs)) {
       return null
     }
+    const walkAdj = this.applyWalkAdjust113c(
+      selfX,
+      selfY,
+      subtileX,
+      subtileY,
+      isRunning,
+      isHold ? 'hold' : 'down',
+      nowMs,
+    )
+    if (!walkAdj.accepted) {
+      return null
+    }
     this.cancelActiveNpcOrStashForWorldAction(null, selfX, selfY, nowMs)
     this.pendingItemPickupId = null
     this.pendingNpcInteractId = null
@@ -2998,12 +3230,12 @@ export class CommandMapper {
     this.pendingWarpInteractId = null
     this.world.cancelPendingMeleeAttack()
     this.flushPendingQuickCastRestore(nowMs)
-    const path = this.startLocalPathPrediction(subtileX, subtileY, isRunning)
+    const path = this.startLocalPathPrediction(walkAdj.x, walkAdj.y, isRunning)
     return this.dispatchRateLimited(
       {
         type: 'Move',
         run: isRunning,
-        to: { x: subtileX, y: subtileY },
+        to: { x: walkAdj.x, y: walkAdj.y },
       },
       nowMs,
       path,
@@ -3109,15 +3341,27 @@ export class CommandMapper {
       if (nearbyTarget) {
         hoveredUnit = nearbyTarget
       } else {
+        const isRunning = this.isCurrentlyRunning()
+        const walkAdj = this.applyWalkAdjust113c(
+          selfX,
+          selfY,
+          subtileX,
+          subtileY,
+          isRunning,
+          isHold ? 'hold' : 'down',
+          nowMs,
+        )
+        if (!walkAdj.accepted) {
+          return null
+        }
         this.world.cancelPendingMeleeAttack()
         this.flushPendingQuickCastRestore(nowMs)
-        const isRunning = this.isCurrentlyRunning()
-        const path = this.startLocalPathPrediction(subtileX, subtileY, isRunning)
+        const path = this.startLocalPathPrediction(walkAdj.x, walkAdj.y, isRunning)
         return this.dispatchRateLimited(
           {
             type: 'Move',
             run: isRunning,
-            to: { x: subtileX, y: subtileY },
+            to: { x: walkAdj.x, y: walkAdj.y },
           },
           nowMs,
           path,
@@ -3634,17 +3878,28 @@ export class CommandMapper {
         this.hudManager.hotkeys.hoveredPopupSkill !== null
       ) {
         const hovered = this.hudManager.hotkeys.hoveredPopupSkill
-        this.hudManager.hotkeys.bindHotkey(effectiveSkillKey, hovered.side, hovered.skillId)
+        const hoveredItemId = hovered.itemId ?? 0xffffffff
+        this.hudManager.hotkeys.bindHotkey(
+          effectiveSkillKey,
+          hovered.side,
+          hovered.skillId,
+          hoveredItemId,
+        )
         this.bindSkillHotkey(effectiveSkillKey, {
           skillId: hovered.skillId,
           hand: hovered.side,
-          itemId: 0xffffffff,
+          itemId: hoveredItemId,
         })
         if (slotIdx !== null) {
           if (this.hudManager.hotkeys.onAssignHotkey) {
-            this.hudManager.hotkeys.onAssignHotkey(slotIdx, hovered.side, hovered.skillId, 0xffffffff)
+            this.hudManager.hotkeys.onAssignHotkey(
+              slotIdx,
+              hovered.side,
+              hovered.skillId,
+              hoveredItemId,
+            )
           } else if (this.hudModel) {
-            this.hudModel.assignSkillHotkey(slotIdx, hovered.side, hovered.skillId, 0xffffffff)
+            this.hudModel.assignSkillHotkey(slotIdx, hovered.side, hovered.skillId, hoveredItemId)
           }
         }
         return true
@@ -3660,6 +3915,7 @@ export class CommandMapper {
         worldSkillHotkeyBinding?.skill
       const itemId =
         skillHotkeyBinding?.itemId ??
+        hudSkillHotkeyBinding?.itemId ??
         worldSkillHotkeyBinding?.itemId ??
         0xffffffff
       if (skillId !== undefined) {
@@ -4003,6 +4259,9 @@ export class CommandMapper {
     this.pendingWarpInteractId = null
     this.lastMeleeChaseTargetPos = null
     this.pendingQuickCastRestoreSkillId = null
+    this.lastWalkFrame = -HOLD_WALK_FRAME_WINDOW_113C
+    this.lastWalkWorldFrame = -HOLD_WALK_FRAME_WINDOW_113C
+    this.lastWalkTimeFrame = -HOLD_WALK_FRAME_WINDOW_113C
     this.rateLimiter.clearPendingMove()
   }
 
@@ -4088,7 +4347,9 @@ export class CommandMapper {
           const ref = unitToRef(pendingNpc)
           this.rateLimiter.clearPendingMove()
           this.predictor?.stop()
-          this.sendCommand({ type: 'Interact', target: ref }, nowMs)
+          if (this.canSendMonsterInteract113c(pendingNpc.id, nowMs)) {
+            this.sendCommand({ type: 'Interact', target: ref }, nowMs)
+          }
           const initRecord = this.dispatchRateLimited({ type: 'NpcInit', target: ref }, nowMs)
           if (initRecord.rateLimit.allowed) {
             this.pendingNpcInteractId = null
@@ -4132,6 +4393,11 @@ export class CommandMapper {
             (pendingObj.classId === 152 ||
               (activeOrificeId !== null && pendingObj.id === activeOrificeId))
           if (isOrificeAlreadyOpenForUnit) {
+            this.pendingObjectInteractId = null
+            this.predictor?.stop()
+            return null
+          }
+          if (!this.canOperateObject113c(pendingObj, nowMs, this.world)) {
             this.pendingObjectInteractId = null
             this.predictor?.stop()
             return null

@@ -31,5 +31,11 @@ export interface GameServerAdapter {
    * client's `LogicClock` step. Driven exclusively by `OnlineSession.tick`; remote adapters omit it.
    */
   readonly tick?: ((dtMs?: number) => void) | undefined
+  /**
+   * In-process game servers only (`LocalLoopbackAdapter`): query or update the active `/players N`
+   * (`1..8`) override on the authoritative `GameInstance`.
+   */
+  readonly getPlayersX?: (() => number) | undefined
+  readonly setPlayersX?: ((value: number) => number) | undefined
   readonly stats: GameServerStats
 }

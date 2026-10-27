@@ -15,57 +15,44 @@ export interface D2NpcMessageEntry {
   readonly stringId: number
 }
 
-/** 0x27 NPCInfo (40B, D2Client.dll 0x6fb5d680): [0x27, unitType(u8), npcId(u32LE), D2MessageStrc[8] (24B at +6..+29), 10B tail] */
+/**
+ * 0x27 NPCInfo (40B, D2Client.dll 0x6fb5d680 -> 0x6fb2de50 / D2Common.#10619 0x6fd8d060 & #10485 0x6fd8d380):
+ * - `[0]` = `0x27`
+ * - `[1]` = `unitType` (`1` = monster/NPC, `2` = object)
+ * - `[2..5]` = `dwUnitId` (`u32LE`)
+ * - `[6]` = `count` (`u8`, clamped to `0..8` by `D2Common.#10485`)
+ * - `[7]` = struct alignment padding (never read; uninitialized stack in `D2Game.dll 0x6fc54b80`, `0x6fc68cd1`, `0x6fd118b0`)
+ * - `[8..39]` = 8 × 4-byte `D2MessageStrc` wire slots (`off = 8 + i * 4`):
+ *   - `pkt[off]` = `nMenu` (`u8`: `0` = auto-open speech, `1` = talk quest topic, `2` = talk intro/gossip, `3` = unused / overhead speech)
+ *   - `pkt[off + 1]` = struct alignment padding (never read; uninitialized stack in `0x6fc54b80`, `0x6fc68cd1`, `0x6fd118b0`)
+ *   - `pkt[off + 2 .. off + 3]` = `wStringId` (`u16LE` `.tbl` string index)
+ *
+ * `D2Common.#10485` loops strictly `i = 0 .. count - 1`; slots `i >= count` contain uninitialized D2GS stack memory
+ * in `QUESTS_NPCMessage` (`0x6fc54b80`, e.g. Frozen Anya `OperateFn 67` at `0x6fc7cdae` where `0x0200 = 512` `drehya`
+ * sits on the stack) and must never be added to `messages`.
+ */
 export function decode0x27NpcInfo(pkt: Uint8Array): ServerEvent {
   if (pkt.length < 40) throw new RangeError(`0x27 NPCInfo: expected at least 40 bytes, got ${pkt.length}`)
   const r = new ByteReader(pkt)
   r.u8() // 0x27
-  const unitType = r.u8() // unitType (1)
+  const unitType = r.u8()
   const npcId = r.u32LE()
 
-  // D2Common.dll #10485 (0x6fd8d380) & #10778/#10167/#10720 (0x6fd8d0f0..0x6fd8d1af):
-  // pkt[6] = count (0..8), pkt[7] = 0, followed by 8x 4-byte slots at off = 8 + i * 4:
-  //   slot[0..1] = nMenu (u8 menu at +0, 0 at +1; values 0..3)
-  //   slot[2..3] = wStringId (u16LE .tbl string index)
-  const is4Byte = pkt[6]! <= 8 && pkt[7] === 0
-  if (is4Byte) {
-    const count = pkt[6]!
-    const allMessages: Array<{ menu: number; stringId: number; msgId: number; menuIndex: number }> = []
-    const messages: Array<{ menu: number; stringId: number; msgId: number; menuIndex: number }> = []
-    for (let i = 0; i < 8; i++) {
-      const off = 8 + i * 4
-      const word0 = pkt[off]! | (pkt[off + 1]! << 8)
-      const word1 = pkt[off + 2]! | (pkt[off + 3]! << 8)
-      const isSwappedSynthetic = word0 > 3 && word1 <= 3
-      const menuIndex = isSwappedSynthetic ? word1 : word0
-      const msgId = isSwappedSynthetic ? word0 : word1
-      const entry = { menu: menuIndex, stringId: msgId, msgId, menuIndex }
-      allMessages.push(entry)
-      if (msgId > 0) {
-        messages.push(entry)
-      }
-    }
-    return {
-      type: 'Npc',
-      kind: 'info',
-      unitType,
-      npcId,
-      unitId: npcId,
-      count,
-      messages,
-      allMessages,
-      raw: pkt.slice(6),
-    }
-  }
-
-  const allMessages: D2NpcMessageEntry[] = []
-  const messages: D2NpcMessageEntry[] = []
-  for (let i = 0; i < 8 && r.remaining >= 3; i++) {
-    const menu = r.u8()
-    const stringId = r.u16LE()
-    const entry: D2NpcMessageEntry = { menu, stringId }
+  const rawCount = pkt[6]!
+  const count = Math.min(rawCount, 8)
+  const allMessages: Array<{ menu: number; stringId: number; msgId: number; menuIndex: number }> = []
+  const messages: Array<{ menu: number; stringId: number; msgId: number; menuIndex: number }> = []
+  for (let i = 0; i < 8; i++) {
+    const off = 8 + i * 4
+    const menuIndex = pkt[off]!
+    const msgId = pkt[off + 2]! | (pkt[off + 3]! << 8)
+    const entry = { menu: menuIndex, stringId: msgId, msgId, menuIndex }
     allMessages.push(entry)
-    if (stringId > 0) {
+    if (
+      i < count &&
+      msgId > 0 &&
+      (menuIndex <= 2 || (count === 1 && menuIndex === 3))
+    ) {
       messages.push(entry)
     }
   }
@@ -75,6 +62,7 @@ export function decode0x27NpcInfo(pkt: Uint8Array): ServerEvent {
     unitType,
     npcId,
     unitId: npcId,
+    count,
     messages,
     allMessages,
     raw: pkt.slice(6),

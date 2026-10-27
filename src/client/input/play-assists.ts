@@ -513,11 +513,11 @@ export class PlayAssists {
   }
 
   private corpses(): ClientUnit[] {
-    return this.host.world.getUnitsByType(1).filter((unit) => unit.dead && !unit.hidden && !unit.states.has(CORPSE_USED_STATE))
+    return this.host.world.getUnitsByType(1).filter((unit) => unit.dead && !unit.hidden && !unit.clientNoDraw && !unit.corpseSuppressed && !unit.states.has(CORPSE_USED_STATE))
   }
 
   private hostilesNear(spot: SubTilePoint, reach: number): number {
-    return this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.isHostile(unit) && Math.hypot(unit.x - spot.x, unit.y - spot.y) <= reach).length
+    return this.host.world.getUnitsByType(1).filter((unit) => !unit.dead && !unit.hidden && !unit.clientNoDraw && this.host.isHostile(unit) && Math.hypot(unit.x - spot.x, unit.y - spot.y) <= reach).length
   }
 
   get currentTargetId(): number | null {
@@ -636,7 +636,7 @@ export class PlayAssists {
   }
 
   private isOnScreenHostile(unit: ClientUnit): boolean {
-    if (!this.host.isHostile(unit)) return false
+    if (unit.hidden || unit.clientNoDraw || !this.host.isHostile(unit)) return false
     const { camera } = this.host
     const screen = camera.subtileToScreen(unit.x, unit.y)
     const { width, height } = camera.viewportProfile

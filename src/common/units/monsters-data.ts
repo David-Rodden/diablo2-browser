@@ -4700,6 +4700,18 @@ export function getSuperUniqueByIndex(index: number): SuperUnique | undefined {
 }
 
 /**
+ * Resolve a canonical `SuperUniques.txt` `Superunique` key (e.g. `'Ancient Barbarian 1'`)
+ * to its 0-based `superuniques.bin` `wIdx` (`0..65`).
+ */
+export function getSuperUniqueIndexById(superUniqueId: string): number | undefined {
+  const list = getCanonicalSuperUniques()
+  for (let i = 0; i < list.length; i++) {
+    if (list[i]!.id === superUniqueId) return i
+  }
+  return undefined
+}
+
+/**
  * Apply 1.13c `MonUMod` resistance bonuses (`D2Game.dll` `0x6fccf610`) to a monster's base difficulty resistances.
  *
  * Canonical 1.13c rules:

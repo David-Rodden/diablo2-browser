@@ -124,3 +124,31 @@ The function dispatches on quality (jump table `0x6fd766c0`, quality 4..8 only):
   (+6 if the skill's class is not the player's class).
 * Last, it adds stat 92 `item_levelreq` and clamps the result at 0 or above.
 * Quality 9 (tempered) has no affix step.
+
+## 6. `charged` property (`func 19` → `gpPropertyFuncTable[18]`, `0x6fd97420`, stat 204 `item_charged_skill`)
+
+`Properties.txt` maps `charged` to `func1 = 19` (`stat1 = item_charged_skill`, ID `204`, `Encode = 3`).
+`ITEMMODS_PropertyFunc19_ChargedSkill` (`0x6fd97420`) computes `(slvl, maxCharges)` from the modifier's `(param, min, max)` and the item's `ilvl`:
+
+1. **Skill resolution (`0x6fd97428..0x6fd97474`)**:
+   * Looks up `param` (`skillId`) in `sgptDataTables->pSkillsTxt` (`0 <= skillId < nSkillsTxtRecordCount`).
+   * Reads `reqLvl = max(0, (int16)pSkillsTxt->wReqLevel)` (`+0x1AC`) and `maxSkillLvl = (int16)pSkillsTxt->wMaxLvl` (`+0x1AE`, default `20`).
+2. **Skill level `slvl` (`0x6fd97476..0x6fd974ba`)**:
+   * If `max == 0`: `slvl = min(max(1, (ilvl - reqLvl) / 4 + 1), maxSkillLvl)` (signed integer division `idiv`).
+   * If `max < 0`:
+     * `span = max(1, 99 - reqLvl)`
+     * `step = max(1, span / (-max))`
+     * `slvl = max(1, (ilvl - reqLvl) / step)`
+     * Example: `MagicSuffix.txt` `of Teleportation` (`lvl = 24`, `mod1code = charged`, `mod1param = 54` (`Teleport`, `reqLvl = 18`), `mod1min = -30`, `mod1max = -6`): `span = 81`, `step = 81 / 6 = 13`, so `ilvl = 31` yields `slvl = 1`, `ilvl = 44` yields `slvl = 2`, `ilvl = 99` yields `slvl = 6`.
+   * If `max > 0`: `slvl = max`.
+3. **Max & initial charges (`0x6fd974bc..0x6fd974ef`)**:
+   * If `min < 0`: `maxCharges = clamp((-min * slvl) / 8 - (-min), 1, 255)` (in `0x6fd974c2..0x6fd974dd`, `eax = -min; edx = -min * slvl / 8 + eax = (-min) * (8 + slvl) / 8`, e.g. for `min = -30, slvl = 1`: `30 * 9 / 8 = 33` charges; for `min = -30, slvl = 2`: `30 * 10 / 8 = 37` charges).
+   * If `min > 0`: `maxCharges = clamp(min, 1, 255)`.
+   * Initial charges on newly generated / vendor items equal `maxCharges` (or `1 + Rnd(maxCharges - minCharges)` when `fUseRandom == 0` on world drops).
+4. **Stat 204 packing (`0x6fd974f1..0x6fd9751d`)**:
+   * `dwStatParam = (skillId << nSkillIdShift) | (slvl & dwSkillLevelMask)` (`shift = 6, mask = 0x3F`).
+   * `dwStatValue = ((maxCharges & 0xFF) << 8) | (curCharges & 0xFF)`.
+5. **Equipment stat merge filter (`D2Common.#10731` `0x6fd98360`)**:
+   * Skips items without `ITEMFLAG_IDENTIFIED` (`0x10`, `0x6fd98395`) or with `ITEMFLAG_BROKEN` (`0x100`, `0x6fd983ac`).
+   * Skips `STAT_ITEM_CHARGED_SKILL` (`204`, `0x6fd983ed`) when merging passive stat lists into the player's aggregate stat list, because charged skills are added to `pPlayer->pInfo` as discrete `D2SkillStrc` nodes (`dwOwnerGUID = pItem->dwUnitId`) rather than passive stat sums.
+

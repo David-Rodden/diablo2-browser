@@ -29,6 +29,7 @@ export function levelViewToAreaGeometry(
     subWidth: view.subWidth,
     subHeight: view.subHeight,
     blocked: view.blocked,
+    collision: view.collision,
     spawnTileX: view.spawnX,
     spawnTileY: view.spawnY,
     rooms: view.rooms.map((r) => ({ areaId: r.areaId, tileX: r.tileX, tileY: r.tileY })),

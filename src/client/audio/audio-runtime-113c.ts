@@ -45,10 +45,16 @@ import {
 } from './sound-records-113c.ts'
 import { WebAudioSoundVoices, type ResolvedVoiceBuffer113c, type WebAudioOutputBus113c } from './sound-voices-webaudio.ts'
 import { SpeechStreamer } from './speech-streamer.ts'
+import {
+  AreaEntrySpeechController113c,
+  type AreaEntrySpeechContext113c,
+} from './d2gs-play-sound-113c.ts'
 
 export interface AudioRuntimeSettingsSource113c {
   masterVolume(): number
   muted(): boolean
+  threeDSound?(): boolean
+  soundMode?(): 0 | 1 | 2
 }
 
 export interface AudioRuntime113cOptions {
@@ -60,6 +66,9 @@ export interface AudioRuntime113cOptions {
   readonly records?: SoundRecords113c | undefined
   readonly voices?: SoundVoiceBackend | undefined
   readonly sampleFacts?: ((id: number) => SoundSampleFacts113c | undefined) | undefined
+  readonly areaSpeechContext?: (() => AreaEntrySpeechContext113c) | undefined
+  readonly soundMode?: (() => 0 | 1 | 2) | (0 | 1 | 2) | undefined
+  readonly threeDSound?: (() => boolean) | boolean | undefined
 }
 
 export interface AudioRuntimePlayOptions113c extends PlaySoundOptions {
@@ -154,6 +163,7 @@ export class AudioRuntime113c {
   readonly soundEnviron: SoundEnviron113c
   readonly skillSounds: SkillSoundController113c
   readonly monsterSounds: MonsterSoundController113c
+  readonly areaSpeech: AreaEntrySpeechController113c
   private readonly voices: WebAudioSoundVoices
   private readonly settings: AudioRuntimeSettingsSource113c
 
@@ -249,6 +259,8 @@ export class AudioRuntime113c {
       musicStreamer: this.musicStreamer,
       getMasterVolume: () => this.settings.masterVolume(),
       isMuted: () => this.isEffectiveMuted(),
+      listenerPos: options.listenerPos,
+      rng,
     })
     this.soundEnviron = new SoundEnviron113c({
       records: this.records,
@@ -268,6 +280,59 @@ export class AudioRuntime113c {
       records: this.records,
       rng,
     })
+    this.areaSpeech = new AreaEntrySpeechController113c({
+      getContext: options.areaSpeechContext,
+      isSpeechPlaying: () => this.isSpeechPlaying(),
+      onPlaySpeech: (resolved) => {
+        this.drainWorldRequests([resolved])
+      },
+    })
+    if (options.soundMode !== undefined) {
+      const m = typeof options.soundMode === 'function' ? options.soundMode() : options.soundMode
+      this.setSoundMode(m)
+    } else if (options.threeDSound !== undefined) {
+      const en = typeof options.threeDSound === 'function' ? options.threeDSound() : options.threeDSound
+      this.set3DSound(en)
+    } else if (typeof this.settings.soundMode === 'function') {
+      this.setSoundMode(this.settings.soundMode())
+    } else if (typeof this.settings.threeDSound === 'function') {
+      this.set3DSound(this.settings.threeDSound())
+    }
+  }
+
+  getVoiceBackend(): WebAudioSoundVoices {
+    return this.voices
+  }
+
+  getSoundMode(): 0 | 1 | 2 {
+    return this.soundEnviron.soundMode
+  }
+
+  setSoundMode(mode: 0 | 1 | 2): void {
+    const normalized: 0 | 1 | 2 = mode === 2 ? 2 : mode === 1 ? 1 : 0
+    this.voices.set3DSoundEnabled(normalized === 2)
+    this.records.setSoundMode(normalized)
+    this.soundEnviron.setSoundMode(normalized)
+  }
+
+  is3DSound(): boolean {
+    return this.getSoundMode() === 2
+  }
+
+  set3DSound(enabled: boolean): void {
+    this.setSoundMode(enabled ? 2 : 0)
+  }
+
+  get areaEntrySpeech(): AreaEntrySpeechController113c {
+    return this.areaSpeech
+  }
+
+  setAreaSpeechContextProvider(provider: (() => AreaEntrySpeechContext113c) | undefined): void {
+    this.areaSpeech.setContextProvider(provider)
+  }
+
+  isSpeechPlaying(): boolean {
+    return this.records.isSpeechPlaying() || this.speechStreamer.isPlaying()
   }
 
   get music(): MusicStreamer {
@@ -344,6 +409,11 @@ export class AudioRuntime113c {
     if (this.masterGain !== null) {
       this.masterGain.gain.value = this.isEffectiveMuted() ? 0 : 1
     }
+    if (typeof this.settings.soundMode === 'function') {
+      this.setSoundMode(this.settings.soundMode())
+    } else if (typeof this.settings.threeDSound === 'function') {
+      this.set3DSound(this.settings.threeDSound())
+    }
     this.musicStreamer.applySettings()
     this.speechStreamer.applySettings()
   }
@@ -404,7 +474,9 @@ export class AudioRuntime113c {
     this.speechStreamer.stop()
     this.skillSounds.stopAll()
     this.soundEnviron.reset()
+    this.areaSpeech.reset(0)
     this.voices.stopAll()
+    this.voices.setEaxPreset(null, 0)
     this.records.gameInit()
   }
 
@@ -418,8 +490,10 @@ export class AudioRuntime113c {
     this.speechStreamer.stop()
     this.skillSounds.stopAll()
     this.soundEnviron.stopAll()
+    this.areaSpeech.reset(0)
     this.records.stopAll()
     this.voices.stopAll()
+    this.voices.setEaxPreset(null, 0)
   }
 
   /**
@@ -440,6 +514,7 @@ export class AudioRuntime113c {
       }
       this.records.update()
       this.records.endTick()
+      this.speechStreamer.tick(1)
       this.musicStreamer.soundTick()
     }
   }
@@ -469,7 +544,9 @@ export class AudioRuntime113c {
     this.soundEnviron.tick(gameTick)
     this.records.update()
     this.records.endTick()
+    this.speechStreamer.tick(1)
     this.musicStreamer.soundTick(gameTick)
+    this.areaSpeech.tick(gameTick)
     return true
   }
 
@@ -491,6 +568,7 @@ export class AudioRuntime113c {
       this.preloadMonsterPacksForAct(act)
     }
     this.soundEnviron.enterLevel(levelId, tod)
+    this.areaSpeech.enterLevel(levelId, this.lastGameTick ?? 0)
     return this.musicStreamer.onEnterArea(levelId)
   }
 
@@ -504,6 +582,7 @@ export class AudioRuntime113c {
       this.preloadMonsterPacksForAct(act)
     }
     this.soundEnviron.enterLevel(levelId, tod)
+    this.areaSpeech.enterLevel(levelId, this.lastGameTick ?? 0)
   }
 
   setTimeOfDay(tod: number): void {
@@ -518,12 +597,12 @@ export class AudioRuntime113c {
     this.soundEnviron.setWeather(state, targetVolume)
   }
 
-  triggerThunder(): number {
-    return this.soundEnviron.triggerThunder()
+  triggerThunder(rngOverride?: D2Rng): number {
+    return this.soundEnviron.triggerThunder(rngOverride)
   }
 
-  playThunder(): number {
-    return this.soundEnviron.playThunder()
+  playThunder(rngOverride?: D2Rng): number {
+    return this.soundEnviron.playThunder(rngOverride)
   }
 
   preloadAmbientAct(act: number): void {
@@ -567,8 +646,21 @@ export class AudioRuntime113c {
     })
   }
 
-  playSpeech(idOrName: number | string): boolean {
-    return this.speechStreamer.play(idOrName)
+  playSpeech(idOrName: number | string, options?: AudioRuntimePlayOptions113c): boolean {
+    const resolvedUnit = normalizeUnitRef(options)
+    return this.speechStreamer.play(idOrName, {
+      ...(resolvedUnit !== undefined ? { unit: resolvedUnit } : {}),
+      ...(options?.x !== undefined ? { x: options.x } : {}),
+      ...(options?.y !== undefined ? { y: options.y } : {}),
+      ...(options?.local !== undefined
+        ? { local: options.local }
+        : options?.isLocalPlayer !== undefined
+          ? { local: options.isLocalPlayer, isLocalPlayer: options.isLocalPlayer }
+          : {}),
+      ...(options?.volume !== undefined ? { volume: options.volume } : {}),
+      ...(options?.delayTicks !== undefined ? { delayTicks: options.delayTicks } : {}),
+      ...(options?.a2 !== undefined ? { a2: options.a2 } : {}),
+    })
   }
 
   stopSpeech(): void {
@@ -676,7 +768,7 @@ export class AudioRuntime113c {
       return 0
     }
     if (row.stream && soundId >= 2934 && soundId <= 4656) {
-      return this.playSpeech(soundId) ? 1 : 0
+      return this.playSpeech(soundId, options) ? 1 : 0
     }
 
     const groupSize = Math.max(1, row.groupSize)
@@ -866,7 +958,36 @@ export class AudioRuntime113c {
         if (stingerId !== undefined) {
           this.playQuestStinger(stingerId)
         }
-        const ok = this.playSpeech(req.speechSoundId)
+        const resolvedSpeechUnit: SoundUnitRef113c | undefined =
+          req.unit ??
+          (req.unitId !== undefined
+            ? {
+                unitType: (req.unitType as SoundUnitRef113c['unitType']) ?? 'player',
+                id: req.unitId,
+                ...(req.x !== undefined ? { x: Math.round(req.x) } : {}),
+                ...(req.y !== undefined ? { y: Math.round(req.y) } : {}),
+                ...(req.local !== undefined
+                  ? { isLocalPlayer: req.local }
+                  : req.isLocalPlayer !== undefined
+                    ? { isLocalPlayer: req.isLocalPlayer }
+                    : {}),
+              }
+            : undefined)
+        const ok = this.playSpeech(req.speechSoundId, {
+          ...(resolvedSpeechUnit !== undefined ? { unit: resolvedSpeechUnit } : {}),
+          ...(req.x !== undefined ? { x: req.x } : {}),
+          ...(req.y !== undefined ? { y: req.y } : {}),
+          ...(req.local !== undefined
+            ? { local: req.local, isLocalPlayer: req.local }
+            : req.isLocalPlayer !== undefined
+              ? { local: req.isLocalPlayer, isLocalPlayer: req.isLocalPlayer }
+              : {}),
+          ...(req.volumeOverride !== undefined || req.volume !== undefined
+            ? { volume: req.volumeOverride ?? req.volume }
+            : {}),
+          ...(req.delayTicks !== undefined ? { delayTicks: req.delayTicks } : {}),
+          ...(req.a2 !== undefined ? { a2: req.a2 } : {}),
+        })
         if (ok) handles.push(1)
         continue
       }

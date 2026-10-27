@@ -28,10 +28,14 @@ import { isPointInHireMercDialogImpl, handleHireMercMoveImpl, handleHireWheelImp
 import { type HoveredPartyControl, resolvePartyActionCode, getPendingTradeModalLayoutImpl, handlePendingTradeModalClickImpl, handleActiveLeftPanelClickImpl, isMemberInLocalPartyImpl, isMemberInAnyPartyImpl, isLocalPlayerInPartyImpl, getOrderedPartyRosterImpl, hitTestPartyControlImpl, resolvePartyHoverTooltipLinesImpl, handlePartyPanelClickImpl, drawPartyPanelImpl, drawPendingTradeModalImpl, drawTradePanelImpl } from './panels/party-trade-panel.ts'
 import { type EscapeMenuRowIndex, type MonsterTargetHudInfo, drawMonsterTargetBarImpl, drawItemTooltipImpl, drawEscapeMenuImpl } from './panels/escape-monster-tooltip.ts'
 import {
+  type AutomapFadeMode,
+  type AutomapOptionsRowId,
+  type AutomapSizeMode,
   type ControlsButtonId,
   type EscapeMenuScreen,
   type EscapeMenuSettingsPatch,
   type EscapeMenuSettingsSnapshot,
+  type NpcSpeechMode,
 } from './panels/escape-options-menu.ts'
 import {
   createDefaultKeyBindings,
@@ -350,6 +354,7 @@ export class WorldPanelsHud {
   escapeMenuScreen: EscapeMenuScreen = 'main'
   optionsSubmenuSelectedIndex = 0
   soundDraggingSlider = false
+  soundDraggingRowId: 'soundVolume' | 'musicVolume' | 'gamma' | 'contrast' = 'soundVolume'
   controlsScrollOffset = 0
   controlsSelectedRow = 0
   controlsSelectedCol: 'primary' | 'secondary' = 'primary'
@@ -359,15 +364,31 @@ export class WorldPanelsHud {
   mediumButtonBlankMeta?: { frameW: number; frameH: number; frames: number } | undefined
   escapeMenuFallbackSettings: {
     masterVolume: number
+    musicVolume?: number | undefined
+    npcSpeech?: NpcSpeechMode | undefined
     audioMuted: boolean
+    automapSize?: AutomapSizeMode | undefined
+    automapFade?: AutomapFadeMode | undefined
+    automapCenter?: boolean | undefined
+    automapParty?: boolean | undefined
+    automapNames?: boolean | undefined
     viewport: ViewportResolution
     worldRenderFps: 30 | 60
+    gamma?: number | undefined
+    contrast?: number | undefined
     keyBindings: KeyBindingsConfig
     fullscreenActive: boolean
     fullscreenSupported: boolean
   } = {
     masterVolume: DEFAULT_MASTER_VOLUME,
+    musicVolume: DEFAULT_MASTER_VOLUME,
+    npcSpeech: 'audioAndText',
     audioMuted: DEFAULT_AUDIO_MUTED,
+    automapSize: 'full',
+    automapFade: 'no',
+    automapCenter: true,
+    automapParty: true,
+    automapNames: true,
     viewport: DEFAULT_VIEWPORT_RESOLUTION,
     worldRenderFps: 60,
     keyBindings: createDefaultKeyBindings(),
@@ -377,6 +398,7 @@ export class WorldPanelsHud {
   getEscapeMenuSettings: (() => Partial<EscapeMenuSettingsSnapshot>) | null = null
   onUpdateEscapeMenuSettings: ((patch: EscapeMenuSettingsPatch) => void) | null = null
   onToggleEscapeMenuFullscreen: (() => void) | null = null
+  onAutomapOptionChanged: ((rowId: AutomapOptionsRowId) => void) | null = null
   lastTooltipRect: { bx: number; by: number; boxW: number; boxH: number } | null = null
 
   activeVendorDescriptor: TownNpcServiceDescriptor | null = null

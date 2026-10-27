@@ -31,6 +31,14 @@ import {
   type PackedDrlgBundleManifest,
   type PackedTileCatalogIndex,
 } from '../../common/pack-contract/index.ts'
+import {
+  SUPERUNIQUE_MONSTER_HCINDICES_113C,
+  expandMonsterPreloadClosure113c,
+  getPortalNeighborAreasForLevel113c,
+  getScriptedMonstersForLevel113c,
+  isMonsterArtNull113c,
+} from '../../common/drlg/level-scripted-monsters-113c.ts'
+import { resolveMonPlacePreset113c } from '../../common/units/monai-113c.ts'
 import { buildLevelViewFromSession, type LevelRoomView, type LevelView } from './level-view.ts'
 import { TileAtlas } from './tile-atlas.ts'
 
@@ -52,6 +60,10 @@ export type MapWorkerRequest =
       readonly manifest: PackedDrlgBundleManifest
       readonly bundleBytes: Uint8Array
       readonly catalogIndex: PackedTileCatalogIndex
+    }
+  | {
+      readonly id: number
+      readonly type: 'resetSession'
     }
   | {
       readonly id: number
@@ -92,6 +104,11 @@ export type MapWorkerResponse =
       readonly id: number
       readonly ok: true
       readonly type: 'initFromBundle'
+    }
+  | {
+      readonly id: number
+      readonly ok: true
+      readonly type: 'resetSession'
     }
   | {
       readonly id: number
@@ -217,6 +234,16 @@ export class MapWorkerEngine {
 
   getTileAtlas(): TileAtlas | null {
     return this.tileAtlas
+  }
+
+  /**
+   * Drop the active game's `DrlgActSession` and built `LevelView` cache while keeping
+   * the shared DRLG tables, DS1/DT1 headers, and `TileAtlas` warm for the next game.
+   */
+  resetSession(): void {
+    this.session = null
+    this.activeAct = null
+    this.viewCache.clear()
   }
 
   getSession(): DrlgActSession | null {
@@ -424,8 +451,14 @@ export class MapWorkerEngine {
     const addMonsterHcIdx = (rawId: number, targetSet: Set<number>, targetOut: number[]): void => {
       if (rawId < 0 || rawId >= tables.nMonStatsTxtRecordCount) return
       const rels = tables.monStatsRelatedHcIdx?.[rawId] ?? [rawId]
-      for (const r of rels) {
-        if (r >= 0 && r < tables.nMonStatsTxtRecordCount && !targetSet.has(r)) {
+      const expanded = expandMonsterPreloadClosure113c(rels)
+      for (const r of expanded) {
+        if (
+          r >= 0 &&
+          r < tables.nMonStatsTxtRecordCount &&
+          !isMonsterArtNull113c(r) &&
+          !targetSet.has(r)
+        ) {
           targetSet.add(r)
           targetOut.push(r)
         }
@@ -438,11 +471,15 @@ export class MapWorkerEngine {
       targetOut: number[],
     ): void => {
       const pool = tables.levelMonsters?.[targetAreaId]
-      if (!pool) return
-      const mainList = difficulty > 0 ? pool.nightmareHellMonsters : pool.normalMonsters
-      for (const id of mainList) addMonsterHcIdx(id, targetSet, targetOut)
-      for (const id of pool.uniqueMonsters) addMonsterHcIdx(id, targetSet, targetOut)
-      for (const id of pool.critterMonsters) addMonsterHcIdx(id, targetSet, targetOut)
+      if (pool) {
+        const mainList = difficulty > 0 ? pool.nightmareHellMonsters : pool.normalMonsters
+        for (const id of mainList) addMonsterHcIdx(id, targetSet, targetOut)
+        for (const id of pool.uniqueMonsters) addMonsterHcIdx(id, targetSet, targetOut)
+        for (const id of pool.critterMonsters) addMonsterHcIdx(id, targetSet, targetOut)
+      }
+      for (const scriptedId of getScriptedMonstersForLevel113c(targetAreaId)) {
+        addMonsterHcIdx(scriptedId, targetSet, targetOut)
+      }
     }
 
     const addPresetUnits = (
@@ -460,8 +497,26 @@ export class MapWorkerEngine {
             u.index >= tables.nMonStatsTxtRecordCount &&
             u.index < tables.nMonStatsTxtRecordCount + tables.nSuperUniquesTxtRecordCount
           ) {
-            const suClassId = tables.superUniqueClassIds?.[u.index - tables.nMonStatsTxtRecordCount] ?? -1
+            const suIndex = u.index - tables.nMonStatsTxtRecordCount
+            const suClassId = tables.superUniqueClassIds?.[suIndex] ?? -1
             addMonsterHcIdx(suClassId, monsterSet, monsterOut)
+            const suMinions = SUPERUNIQUE_MONSTER_HCINDICES_113C[suIndex]
+            if (suMinions) {
+              for (const mId of suMinions) addMonsterHcIdx(mId, monsterSet, monsterOut)
+            }
+          } else if (
+            u.index >= tables.nMonStatsTxtRecordCount + tables.nSuperUniquesTxtRecordCount
+          ) {
+            const monPlace = resolveMonPlacePreset113c(
+              u.index - tables.nMonStatsTxtRecordCount - tables.nSuperUniquesTxtRecordCount,
+              view.levelId,
+            )
+            if (monPlace !== null) {
+              addMonsterHcIdx(monPlace.classId, monsterSet, monsterOut)
+              if (monPlace.companionClassId !== undefined) {
+                addMonsterHcIdx(monPlace.companionClassId, monsterSet, monsterOut)
+              }
+            }
           }
         } else if (u.type === 2 && u.index >= 0 && objectSet && objectOut) {
           if (!objectSet.has(u.index)) {
@@ -526,6 +581,11 @@ export class MapWorkerEngine {
       }
       addLevelMonsterPool(neighborId, neighborMonsterSet, neighborMonsterHcIndices)
     }
+    for (const portalNeighborId of getPortalNeighborAreasForLevel113c(areaId)) {
+      if (portalNeighborId > 0 && portalNeighborId < tables.nLevelsTxtRecordCount) {
+        addLevelMonsterPool(portalNeighborId, neighborMonsterSet, neighborMonsterHcIndices)
+      }
+    }
 
     const neighborTilePages = this.tileAtlas
       .getPagesForLibraries(neighborLibs)
@@ -549,6 +609,10 @@ export class MapWorkerEngine {
         case 'initFromBundle': {
           this.initFromBundle(req.manifest, req.bundleBytes, req.catalogIndex)
           return { id: req.id, ok: true, type: 'initFromBundle' }
+        }
+        case 'resetSession': {
+          this.resetSession()
+          return { id: req.id, ok: true, type: 'resetSession' }
         }
         case 'loadAct': {
           const view = this.loadAct({

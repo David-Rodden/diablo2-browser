@@ -39,10 +39,10 @@ export type RateLimitAcquireResult = RateLimitDecision
 export type RateLimiterConfig = OutboundRateLimiterConfig
 
 /**
- * Production defaults: 120ms movement coalescing cooldown (`0x01`..`0x04`) so hold movement
- * commands within the debounce window are coalesced into `pendingMove` and flushed
- * on `tick()`, while non-movement commands (skills, interactions, chat) have 0ms interval throttle
- * (#575). Byte-identical wire packet suppression lives in `c2s-identical-dedupe-113c.ts`.
+ * Production defaults = 1.13c parity: no interval throttles in the rate limiter (the token bucket
+ * is sized so it never empties in normal play). Hold-walk 7-frame throttling (`0x01`/`0x03`) lives
+ * in `walkAdjust113c` (`D2Client.dll 0x6fac86a0`), while non-movement commands have 0ms interval
+ * throttle (#575) and byte-identical wire packet suppression lives in `c2s-identical-dedupe-113c.ts`.
  */
 export const DEFAULT_RATE_LIMITS: Readonly<{
   moveMinIntervalMs: number
@@ -52,7 +52,7 @@ export const DEFAULT_RATE_LIMITS: Readonly<{
   burstCapacity: number
   refillPerSec: number
 }> = Object.freeze({
-  moveMinIntervalMs: 120,
+  moveMinIntervalMs: 0,
   skillMinIntervalMs: 0,
   chatMinIntervalMs: 0,
   interactionMinIntervalMs: 0,

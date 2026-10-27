@@ -30,9 +30,19 @@ export interface MultiboxSlotInfo {
   readonly hp: number
   readonly maxHp: number
   readonly hpRatio: number
+  readonly poisoned: boolean
   readonly effectiveMuted: boolean
   readonly audioOverride: SlotAudioOverride
   readonly alertState: SlotAlertState
+}
+
+interface TabDomRefs {
+  readonly tab: HTMLElement
+  readonly labelSpan: HTMLElement
+  readonly hpWrap: HTMLElement
+  readonly hpFill: HTMLElement
+  readonly speakerBtn: HTMLButtonElement
+  readonly closeBtn: HTMLButtonElement
 }
 
 export interface MultiInstanceManagerOptions {
@@ -69,6 +79,9 @@ export class MultiInstanceManager {
   private creatingSlot = false
   private monitorTimer: ReturnType<typeof setInterval> | null = null
   private lastRenderedBarSignature = ''
+  private lastRenderedStructureKey = ''
+  private readonly tabDomRefs = new Map<number, TabDomRefs>()
+  private addBtnEl: HTMLButtonElement | null = null
   private readonly disposers: (() => void)[] = []
 
   constructor(options: MultiInstanceManagerOptions) {
@@ -184,6 +197,7 @@ export class MultiInstanceManager {
         hp: vital.hp,
         maxHp: vital.maxHp,
         hpRatio,
+        poisoned: vital.poisoned,
         effectiveMuted: entry.controller.session.audioRuntime.isFocusMuted(),
         audioOverride: this.audioFocus.getSlotOverride(slotId),
         alertState: this.audioFocus.getSlotAlertState(slotId),
@@ -370,21 +384,39 @@ export class MultiInstanceManager {
     readonly inGame: boolean
     readonly hp: number
     readonly maxHp: number
+    readonly poisoned: boolean
   } {
     const inGame =
       typeof controller.isInGameView === 'function'
         ? controller.isInGameView()
         : controller.flowState?.stage === 'in_game'
     if (!inGame) {
-      return { inGame: false, hp: 0, maxHp: 0 }
+      return { inGame: false, hp: 0, maxHp: 0, poisoned: false }
     }
+    const isDead = Boolean(
+      controller.hudManager?.isDead ||
+        controller.session?.world?.isDead ||
+        controller.session?.world?.self?.isDead,
+    )
+    const poisoned =
+      !isDead &&
+      Boolean(
+        controller.hudManager?.poisoned ||
+          controller.session?.world?.self?.states?.has(2 /* STATE_POISON */),
+      )
     const hudHp = controller.hudManager?.hp ?? 0
     const hudMaxHp = controller.hudManager?.maxHp ?? 0
     const worldHp = controller.session?.world?.self?.life ?? 0
     const worldMaxHp = controller.session?.world?.self?.maxLife ?? 0
     const maxHp = hudMaxHp > 0 ? hudMaxHp : worldMaxHp
-    const hp = hudMaxHp > 0 ? hudHp : worldHp
-    return { inGame: true, hp, maxHp }
+    const rawHp =
+      hudMaxHp > 0
+        ? hudHp > 0 || isDead || worldHp <= 0
+          ? hudHp
+          : Math.min(maxHp, worldHp)
+        : worldHp
+    const hp = isDead ? 0 : Math.max(0, Math.min(maxHp > 0 ? maxHp : rawHp, rawHp))
+    return { inGame: true, hp, maxHp, poisoned }
   }
 
   private formatSlotLabel(
@@ -471,7 +503,10 @@ export class MultiInstanceManager {
         id: i.slotId,
         label: i.label,
         inGame: i.inGame,
-        hpPct: Math.round(i.hpRatio * 20),
+        hp: Math.round(i.hp),
+        maxHp: Math.round(i.maxHp),
+        hpPct: Math.round(i.hpRatio * 100),
+        poisoned: i.poisoned,
         muted: i.effectiveMuted,
         ov: i.audioOverride,
         alert: i.alertState,
@@ -480,10 +515,95 @@ export class MultiInstanceManager {
     if (!force && sig === this.lastRenderedBarSignature) return
     this.lastRenderedBarSignature = sig
 
-    container.innerHTML = ''
+    const showAddBtn = infos.length < MAX_MULTIBOX_SLOTS
+    const structureKey = `${infos.map((i) => i.slotId).join(',')}|add:${showAddBtn ? 1 : 0}`
+    const needsStructureRebuild =
+      structureKey !== this.lastRenderedStructureKey ||
+      this.tabDomRefs.size !== infos.length ||
+      infos.some((info) => {
+        const refs = this.tabDomRefs.get(info.slotId)
+        return !refs || refs.tab.parentElement !== container
+      }) ||
+      (showAddBtn && (!this.addBtnEl || this.addBtnEl.parentElement !== container))
+
+    if (needsStructureRebuild) {
+      container.innerHTML = ''
+      this.tabDomRefs.clear()
+      this.addBtnEl = null
+
+      for (const info of infos) {
+        const slotId = info.slotId
+        const tab = document.createElement('div')
+        tab.id = `d2-multibox-tab-${slotId}`
+        tab.setAttribute('data-slot-id', String(slotId))
+        tab.addEventListener('click', () => {
+          this.focusSlot(slotId)
+        })
+
+        const labelSpan = document.createElement('span')
+        labelSpan.className = 'd2-multibox-tab__label'
+        tab.appendChild(labelSpan)
+
+        const hpWrap = document.createElement('span')
+        hpWrap.className = 'd2-multibox-tab__hp'
+        hpWrap.setAttribute('role', 'progressbar')
+        hpWrap.setAttribute('aria-valuemin', '0')
+        const hpFill = document.createElement('span')
+        hpFill.className = 'd2-multibox-tab__hp-fill'
+        hpWrap.appendChild(hpFill)
+        tab.appendChild(hpWrap)
+
+        const speakerBtn = document.createElement('button')
+        speakerBtn.type = 'button'
+        speakerBtn.className = 'd2-multibox-tab__speaker'
+        speakerBtn.setAttribute('data-slot-speaker', String(slotId))
+        speakerBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation()
+          this.toggleSlotSpeaker(slotId)
+        })
+        tab.appendChild(speakerBtn)
+
+        const closeBtn = document.createElement('button')
+        closeBtn.type = 'button'
+        closeBtn.className = 'd2-multibox-tab__close'
+        closeBtn.setAttribute('data-slot-close', String(slotId))
+        closeBtn.textContent = '×'
+        closeBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation()
+          void this.closeSlot(slotId)
+        })
+        tab.appendChild(closeBtn)
+
+        container.appendChild(tab)
+        this.tabDomRefs.set(slotId, {
+          tab,
+          labelSpan,
+          hpWrap,
+          hpFill,
+          speakerBtn,
+          closeBtn,
+        })
+      }
+
+      if (showAddBtn) {
+        const addBtn = document.createElement('button')
+        addBtn.type = 'button'
+        addBtn.id = 'd2-multibox-add-btn'
+        addBtn.className = 'd2-toolbar__btn d2-multibox-add-btn'
+        addBtn.addEventListener('click', () => {
+          void this.createSlot()
+        })
+        container.appendChild(addBtn)
+        this.addBtnEl = addBtn
+      }
+
+      this.lastRenderedStructureKey = structureKey
+    }
+
     for (const info of infos) {
-      const tab = document.createElement('div')
-      tab.id = `d2-multibox-tab-${info.slotId}`
+      const refs = this.tabDomRefs.get(info.slotId)
+      if (!refs) continue
+
       const classes = ['d2-multibox-tab']
       if (info.slotId === this.activeSlotId) {
         classes.push('d2-multibox-tab--active')
@@ -491,37 +611,40 @@ export class MultiInstanceManager {
       if (info.alertState !== 'none') {
         classes.push(`d2-multibox-tab--alert-${info.alertState}`)
       }
-      tab.className = classes.join(' ')
-      tab.setAttribute('data-slot-id', String(info.slotId))
-      tab.title =
+      refs.tab.className = classes.join(' ')
+
+      const showHp = info.inGame && info.maxHp > 0
+      const hpSuffix = showHp ? ` · HP ${Math.round(info.hp)}/${Math.round(info.maxHp)}` : ''
+      refs.tab.title =
         lang === 'en'
-          ? `Slot ${info.slotId} (Alt+${info.slotId})`
-          : `实例 ${info.slotId} (快捷键 Alt+${info.slotId})`
-      tab.addEventListener('click', () => {
-        this.focusSlot(info.slotId)
-      })
+          ? `Slot ${info.slotId} (Alt+${info.slotId})${hpSuffix}`
+          : `实例 ${info.slotId} (快捷键 Alt+${info.slotId})${hpSuffix}`
 
-      const labelSpan = document.createElement('span')
-      labelSpan.className = 'd2-multibox-tab__label'
-      labelSpan.textContent = info.label
-      tab.appendChild(labelSpan)
+      refs.labelSpan.textContent = info.label
 
-      if (info.inGame && info.maxHp > 0) {
-        const hpWrap = document.createElement('span')
-        hpWrap.className = 'd2-multibox-tab__hp'
-        const hpFill = document.createElement('span')
-        hpFill.className = 'd2-multibox-tab__hp-fill'
-        hpFill.style.width = `${Math.round(info.hpRatio * 100)}%`
-        hpWrap.appendChild(hpFill)
-        tab.appendChild(hpWrap)
+      refs.hpWrap.hidden = !showHp
+      if (showHp) {
+        const rawPct = Math.round(info.hpRatio * 100)
+        const fillPct = info.hp <= 0 ? 0 : Math.max(4, Math.min(100, rawPct))
+        const fillClasses = ['d2-multibox-tab__hp-fill']
+        if (info.poisoned) {
+          fillClasses.push('d2-multibox-tab__hp-fill--poison')
+        } else if (info.hpRatio > 0 && info.hpRatio < 0.35) {
+          fillClasses.push('d2-multibox-tab__hp-fill--low')
+        }
+        refs.hpFill.className = fillClasses.join(' ')
+        refs.hpFill.style.width = `${fillPct}%`
+        refs.hpWrap.title = `HP: ${Math.round(info.hp)} / ${Math.round(info.maxHp)} (${rawPct}%)`
+        refs.hpWrap.setAttribute('aria-valuemax', String(Math.round(info.maxHp)))
+        refs.hpWrap.setAttribute('aria-valuenow', String(Math.round(info.hp)))
+      } else {
+        refs.hpFill.className = 'd2-multibox-tab__hp-fill'
+        refs.hpFill.style.width = '0%'
+        refs.hpWrap.title = ''
       }
 
-      const speakerBtn = document.createElement('button')
-      speakerBtn.type = 'button'
-      speakerBtn.className = 'd2-multibox-tab__speaker'
-      speakerBtn.setAttribute('data-slot-speaker', String(info.slotId))
-      speakerBtn.textContent = info.effectiveMuted ? '🔇' : '🔊'
-      speakerBtn.title =
+      refs.speakerBtn.textContent = info.effectiveMuted ? '🔇' : '🔊'
+      refs.speakerBtn.title =
         lang === 'en'
           ? info.effectiveMuted
             ? 'Unmute this instance'
@@ -529,36 +652,15 @@ export class MultiInstanceManager {
           : info.effectiveMuted
             ? '取消静音此实例'
             : '静音此实例'
-      speakerBtn.addEventListener('click', (ev) => {
-        ev.stopPropagation()
-        this.toggleSlotSpeaker(info.slotId)
-      })
-      tab.appendChild(speakerBtn)
 
-      if (infos.length > 1) {
-        const closeBtn = document.createElement('button')
-        closeBtn.type = 'button'
-        closeBtn.className = 'd2-multibox-tab__close'
-        closeBtn.setAttribute('data-slot-close', String(info.slotId))
-        closeBtn.textContent = '×'
-        closeBtn.title = lang === 'en' ? `Close Slot ${info.slotId}` : `关闭实例 ${info.slotId}`
-        closeBtn.addEventListener('click', (ev) => {
-          ev.stopPropagation()
-          void this.closeSlot(info.slotId)
-        })
-        tab.appendChild(closeBtn)
-      }
-
-      container.appendChild(tab)
+      refs.closeBtn.hidden = infos.length <= 1
+      refs.closeBtn.title =
+        lang === 'en' ? `Close Slot ${info.slotId}` : `关闭实例 ${info.slotId}`
     }
 
-    if (infos.length < MAX_MULTIBOX_SLOTS) {
-      const addBtn = document.createElement('button')
-      addBtn.type = 'button'
-      addBtn.id = 'd2-multibox-add-btn'
-      addBtn.className = 'd2-toolbar__btn d2-multibox-add-btn'
-      addBtn.disabled = this.creatingSlot
-      addBtn.textContent =
+    if (this.addBtnEl) {
+      this.addBtnEl.disabled = this.creatingSlot
+      this.addBtnEl.textContent =
         lang === 'en'
           ? this.creatingSlot
             ? '...'
@@ -566,14 +668,10 @@ export class MultiInstanceManager {
           : this.creatingSlot
             ? '创建中...'
             : '+ 新开实例'
-      addBtn.title =
+      this.addBtnEl.title =
         lang === 'en'
           ? 'Open a new Diablo II instance in this tab'
           : '在当前标签页新开一个暗黑2实例'
-      addBtn.addEventListener('click', () => {
-        void this.createSlot()
-      })
-      container.appendChild(addBtn)
     }
   }
 }

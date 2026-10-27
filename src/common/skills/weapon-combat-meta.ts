@@ -992,9 +992,13 @@ export function hasMeleeLineOfSight113c(
 }
 
 /**
- * Canonical 1.13c `UNITS_IsInMeleeRange` (`D2Common/src/Units/Units.cpp:2951-2985`):
- * Returns true iff `computeUnitSizeAdjustedDistance(x1, y1, size1, x2, y2, size2) <= weaponRangeAdder + 1 + (isTargetMoving ? 1 : 0)`
- * and `UNITS_TestCollision` (`hasMeleeLineOfSight113c`) passes.
+ * Canonical 1.13c `UNITS_IsInMeleeRange` (`D2Common.dll` `#10396` @ `0x6FD826C0`):
+ * - For `Tentacle` (`baseId 258`, `hcIdx 258..260`) and `TentacleHead` (`baseId 261`, `hcIdx 261..263`),
+ *   `0x6FD826FE..0x6FD82728` returns `dist < weaponRangeAdder + 8` directly without testing sub-tile
+ *   collision so melee attackers on shore can hit surfaced water-pool tentacles.
+ * - For all other targets, returns true iff
+ *   `computeUnitSizeAdjustedDistance(x1, y1, size1, x2, y2, size2) <= weaponRangeAdder + 1 + (isTargetMoving ? 1 : 0)`
+ *   and `UNITS_TestCollision` (`0x0804`, `hasMeleeLineOfSight113c`) passes.
  */
 export function isInMeleeRange113c(
   attackerX: number,
@@ -1006,14 +1010,13 @@ export function isInMeleeRange113c(
   weaponRangeAdder = 0,
   isTargetMoving = false,
   isSubTileBlocked?: ((x: number, y: number) => boolean) | null,
+  targetMonsterClassId?: number,
 ): boolean {
   if (!Number.isInteger(weaponRangeAdder) || weaponRangeAdder < 0) {
     throw new RangeError(
       `isInMeleeRange113c: weaponRangeAdder must be a non-negative integer, got ${String(weaponRangeAdder)}`,
     )
   }
-  const rangeBonus = isTargetMoving ? 1 : 0
-  const maxDist = weaponRangeAdder + 1 + rangeBonus
   const dist = computeUnitSizeAdjustedDistance(
     attackerX,
     attackerY,
@@ -1022,6 +1025,15 @@ export function isInMeleeRange113c(
     targetY,
     targetSizeX,
   )
+  if (
+    targetMonsterClassId !== undefined &&
+    targetMonsterClassId >= 258 &&
+    targetMonsterClassId <= 263
+  ) {
+    return dist < weaponRangeAdder + 8
+  }
+  const rangeBonus = isTargetMoving ? 1 : 0
+  const maxDist = weaponRangeAdder + 1 + rangeBonus
   if (dist > maxDist) {
     return false
   }

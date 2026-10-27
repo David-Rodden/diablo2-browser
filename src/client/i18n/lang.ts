@@ -5,6 +5,8 @@
 
 import { resolveTblKey } from '../../common/data/canonical-tbl-strings.ts'
 import {
+  D2LANG_NOT_XLATED_SUFFIX,
+  lookupTbl113c,
   setDefaultTblLang,
   setDefaultTblLangProvider,
   toGameLang,
@@ -13,16 +15,28 @@ import {
   type TblLang,
 } from '../../common/formats/tbl.ts'
 
-export { toGameLang, toTblLang, type GameLang, type TblLang }
+export { D2LANG_NOT_XLATED_SUFFIX, lookupTbl113c, toGameLang, toTblLang, type GameLang, type TblLang }
 
 export function lookupTbl(key: string, lang: TblLang = getTblLang()): string | undefined {
   return resolveTblKey(key, lang)
 }
 
-/** Packed tbl string for `key`; throws when the key is not in the packed canonical dictionary. */
-export function requireTbl(key: string, lang: TblLang): string {
+/**
+ * Packed tbl string for `key`; throws when the key is not in the packed canonical dictionary,
+ * or returns `"<key> -not xlated call ken w"` (`D2Lang.dll` `#10010` `0x6FC0A7B0` / `0x6FC09FB0`)
+ * when `options.fallback113c` is enabled.
+ */
+export function requireTbl(
+  key: string,
+  lang: TblLang,
+  options?: { readonly fallback113c?: boolean },
+): string {
+  if (key === '') return ''
   const v = resolveTblKey(key, lang)
-  if (v === undefined) throw new Error(`tbl key "${key}" is not packed (src/baker/packers/pack-canonical-tbl.ts)`)
+  if (v === undefined) {
+    if (options?.fallback113c) return `${key}${D2LANG_NOT_XLATED_SUFFIX}`
+    throw new Error(`tbl key "${key}" is not packed (src/baker/packers/pack-canonical-tbl.ts)`)
+  }
   return v
 }
 

@@ -756,4 +756,96 @@ describe('golden vectors through OnlineSession (spec §10)', () => {
       ]).pointLights,
     ).toEqual([])
   })
+
+  it('Issue #1708: per-unit S2C packet queue (unit+0xD8, D2Client.dll 0x6FB5CE20 -> 0x6FB5C630 -> 0x6FB5BC20) defers UnitMove, UnitMode, and SkillCast to end-of-tick in FIFO order and drops missing/removed units', () => {
+    const world = new ClientWorld()
+    world.deferUnitPackets113c = true
+    world.apply({ type: 'LoadAct', act: 0, mapSeed: 1, areaId: 2, objectSeed: 1 }, 1000)
+
+    // Packet targeting a non-existent unit is dropped (D2CLIENT_FindServerSideUnit 0x6FB59600 returns NULL).
+    world.apply(
+      {
+        type: 'UnitMove',
+        unitType: 'player',
+        id: 77,
+        mode: 'run',
+        from: { x: 100, y: 100 },
+        to: { x: 112, y: 100 },
+      },
+      1000,
+    )
+    expect(world.getUnit('player', 77)).toBeUndefined()
+
+    // Assign player 77 in Neutral (mode 1).
+    world.apply(
+      {
+        type: 'UnitAssign',
+        classId: 1,
+        isSelf: false,
+        unit: { unitType: 'player', id: 77, classId: 1, name: 'Sorc', x: 100, y: 100, mode: 1, lifePct: 128 },
+      },
+      1000,
+    )
+    const unit = world.getUnit('player', 77)!
+    expect(unit.mode).toBe(1)
+
+    // Queue UnitMove (0x0F), UnitMode (0x0D stop), and SkillCast (0x4D Fire Bolt #36) in the same frame:
+    // none of them mutate unit state before the unit's 25 Hz tick drains unit+0xD8 (0x6FB5BC20).
+    world.apply(
+      {
+        type: 'UnitMove',
+        unitType: 'player',
+        id: 77,
+        mode: 'run',
+        from: { x: 100, y: 100 },
+        to: { x: 108, y: 100 },
+      },
+      1000,
+    )
+    world.apply(
+      {
+        type: 'UnitMode',
+        unitType: 'player',
+        id: 77,
+        mode: 1,
+        at: { x: 104, y: 100 },
+        lifePct: 128,
+      },
+      1000,
+    )
+    world.apply(
+      {
+        type: 'SkillCast',
+        caster: { unitType: 'player', id: 77 },
+        skill: 36,
+        level: 1,
+        target: { x: 120, y: 100 },
+      },
+      1000,
+    )
+    expect(unit.queuedPackets).toHaveLength(3)
+    expect(unit.mode).toBe(1)
+    expect(unit.castState).toBeUndefined()
+
+    // Draining on the next 25 Hz tick executes all 3 packets in FIFO order, ending in SkillCast (mode 10).
+    world.tick(40, 1040)
+    expect(unit.queuedPackets).toHaveLength(0)
+    expect(unit.mode).toBe(10)
+    expect(unit.castState?.skillId).toBe(36)
+
+    // Removing the unit (0x0A, 0x6FB5CA40 -> 0x6FB5AF30) frees any queued packets in unit+0xD8.
+    world.apply(
+      {
+        type: 'UnitMode',
+        unitType: 'player',
+        id: 77,
+        mode: 4,
+        lifePct: 100,
+      },
+      1040,
+    )
+    expect(unit.queuedPackets).toHaveLength(1)
+    world.apply({ type: 'UnitRemove', unitType: 'player', id: 77 }, 1040)
+    expect(unit.queuedPackets).toHaveLength(0)
+  })
 })

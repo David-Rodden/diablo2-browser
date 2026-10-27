@@ -8,6 +8,8 @@ import {
   CONTROL_ACTION_DEFINITIONS,
   createDefaultKeyBindings,
   DEFAULT_AUDIO_MUTED,
+  DEFAULT_CONTRAST_113C,
+  DEFAULT_GAMMA_113C,
   DEFAULT_KEY_BINDINGS,
   DEFAULT_MASTER_VOLUME,
   DEFAULT_VIEWPORT_RESOLUTION,
@@ -19,6 +21,14 @@ import {
   type ViewportResolution,
 } from '../../settings/client-settings.ts'
 import {
+  contrastFromSliderStep113c,
+  gammaFromSliderStep113c,
+  normalizeContrast113c,
+  normalizeGamma113c,
+  sliderStepFromContrast113c,
+  sliderStepFromGamma113c,
+} from '../../../common/gfx/gamma-contrast-113c.ts'
+import {
   ESCAPE_MENU_PENTSPIN_FRAMES,
   ESCAPE_MENU_PENTSPIN_INTERVAL_MS,
   ESCAPE_MENU_PENTSPIN_MAX_WIDTH,
@@ -27,29 +37,78 @@ import {
 import { drawStoneBoxFrame } from './npc-dialog-menu.ts'
 import { STONE_BOX_BG_FILL } from './panel-layout-constants.ts'
 
-export type EscapeMenuScreen = 'main' | 'options' | 'sound' | 'video' | 'controls'
+export type EscapeMenuScreen = 'main' | 'options' | 'sound' | 'video' | 'automap' | 'controls'
 
-export type OptionsMainRowId = 'soundOptions' | 'videoOptions' | 'configureControls' | 'previousMenu'
-export type SoundOptionsRowId = 'soundVolume' | 'muteSound' | 'previousMenu'
-export type VideoOptionsRowId = 'displayMode' | 'resolution' | 'frameRate' | 'previousMenu'
+export type OptionsMainRowId =
+  | 'soundOptions'
+  | 'videoOptions'
+  | 'automapOptions'
+  | 'configureControls'
+  | 'previousMenu'
+export type SoundOptionsRowId =
+  | 'soundVolume'
+  | 'musicVolume'
+  | 'npcSpeech'
+  | 'muteSound'
+  | 'previousMenu'
+export type VideoOptionsRowId =
+  | 'displayMode'
+  | 'resolution'
+  | 'frameRate'
+  | 'gamma'
+  | 'contrast'
+  | 'previousMenu'
+export type AutomapOptionsRowId =
+  | 'automapSize'
+  | 'automapFade'
+  | 'automapCenter'
+  | 'automapParty'
+  | 'automapNames'
+  | 'previousMenu'
+export type NpcSpeechMode = 'audioAndText' | 'audioOnly' | 'textOnly'
+export type AutomapSizeMode = 'full' | 'mini'
+export type AutomapFadeMode = 'no' | 'center' | 'yes'
 export type ControlsButtonId = 'default' | 'accept' | 'cancel'
+
+export const DEFAULT_MUSIC_VOLUME = 0.8
+export const DEFAULT_NPC_SPEECH_MODE: NpcSpeechMode = 'audioAndText'
+export const DEFAULT_AUTOMAP_SIZE_MODE: AutomapSizeMode = 'full'
+export const DEFAULT_AUTOMAP_FADE_MODE: AutomapFadeMode = 'yes'
 
 export interface EscapeMenuSettingsSnapshot {
   readonly masterVolume: number
+  readonly musicVolume?: number
+  readonly npcSpeech?: NpcSpeechMode
   readonly audioMuted: boolean
   readonly viewport: ViewportResolution
   readonly worldRenderFps: 30 | 60
+  readonly gamma?: number | undefined
+  readonly contrast?: number | undefined
   readonly keyBindings: KeyBindingsConfig
   readonly fullscreenActive: boolean
   readonly fullscreenSupported: boolean
+  readonly automapSize?: AutomapSizeMode
+  readonly automapFade?: AutomapFadeMode
+  readonly automapCenter?: boolean
+  readonly automapParty?: boolean
+  readonly automapNames?: boolean
 }
 
 export interface EscapeMenuSettingsPatch {
   readonly masterVolume?: number
+  readonly musicVolume?: number
+  readonly npcSpeech?: NpcSpeechMode
   readonly audioMuted?: boolean
   readonly viewport?: ViewportResolution
   readonly worldRenderFps?: 30 | 60
+  readonly gamma?: number
+  readonly contrast?: number
   readonly keyBindings?: KeyBindingsConfig
+  readonly automapSize?: AutomapSizeMode
+  readonly automapFade?: AutomapFadeMode
+  readonly automapCenter?: boolean
+  readonly automapParty?: boolean
+  readonly automapNames?: boolean
 }
 
 export interface OptionsSubmenuRowLayout {
@@ -75,7 +134,7 @@ export interface OptionsSubmenuRowLayout {
 }
 
 export interface OptionsSubmenuLayout {
-  readonly screen: 'options' | 'sound' | 'video'
+  readonly screen: 'options' | 'sound' | 'video' | 'automap'
   readonly titleText?: string | undefined
   readonly titleY?: number | undefined
   readonly centerX: number
@@ -195,10 +254,17 @@ export function resolveEscapeMenuSettings(hud: WorldPanelsHud): EscapeMenuSettin
       typeof external.masterVolume === 'number' && Number.isFinite(external.masterVolume)
         ? Math.max(0, Math.min(1, external.masterVolume))
         : fallback.masterVolume,
+    musicVolume:
+      typeof external.musicVolume === 'number' && Number.isFinite(external.musicVolume)
+        ? Math.max(0, Math.min(1, external.musicVolume))
+        : (fallback.musicVolume ?? DEFAULT_MUSIC_VOLUME),
+    npcSpeech: external.npcSpeech ?? fallback.npcSpeech ?? DEFAULT_NPC_SPEECH_MODE,
     audioMuted:
       typeof external.audioMuted === 'boolean' ? external.audioMuted : fallback.audioMuted,
     viewport: external.viewport ?? fallback.viewport,
     worldRenderFps: external.worldRenderFps === 30 ? 30 : external.worldRenderFps === 60 ? 60 : fallback.worldRenderFps,
+    gamma: normalizeGamma113c(external.gamma ?? fallback.gamma ?? DEFAULT_GAMMA_113C),
+    contrast: normalizeContrast113c(external.contrast ?? fallback.contrast ?? DEFAULT_CONTRAST_113C),
     keyBindings: external.keyBindings ?? fallback.keyBindings,
     fullscreenActive:
       typeof external.fullscreenActive === 'boolean'
@@ -208,6 +274,20 @@ export function resolveEscapeMenuSettings(hud: WorldPanelsHud): EscapeMenuSettin
       typeof external.fullscreenSupported === 'boolean'
         ? external.fullscreenSupported
         : fallback.fullscreenSupported,
+    automapSize: external.automapSize ?? fallback.automapSize ?? DEFAULT_AUTOMAP_SIZE_MODE,
+    automapFade: external.automapFade ?? fallback.automapFade ?? DEFAULT_AUTOMAP_FADE_MODE,
+    automapCenter:
+      typeof external.automapCenter === 'boolean'
+        ? external.automapCenter
+        : (fallback.automapCenter ?? true),
+    automapParty:
+      typeof external.automapParty === 'boolean'
+        ? external.automapParty
+        : (fallback.automapParty ?? true),
+    automapNames:
+      typeof external.automapNames === 'boolean'
+        ? external.automapNames
+        : (fallback.automapNames ?? true),
   }
 }
 
@@ -218,6 +298,12 @@ export function applyEscapeMenuSettingsPatch(
   if (patch.masterVolume !== undefined) {
     hud.escapeMenuFallbackSettings.masterVolume = Math.max(0, Math.min(1, patch.masterVolume))
   }
+  if (patch.musicVolume !== undefined) {
+    hud.escapeMenuFallbackSettings.musicVolume = Math.max(0, Math.min(1, patch.musicVolume))
+  }
+  if (patch.npcSpeech !== undefined) {
+    hud.escapeMenuFallbackSettings.npcSpeech = patch.npcSpeech
+  }
   if (patch.audioMuted !== undefined) {
     hud.escapeMenuFallbackSettings.audioMuted = patch.audioMuted
   }
@@ -227,14 +313,40 @@ export function applyEscapeMenuSettingsPatch(
   if (patch.worldRenderFps !== undefined) {
     hud.escapeMenuFallbackSettings.worldRenderFps = patch.worldRenderFps
   }
+  if (patch.gamma !== undefined) {
+    hud.escapeMenuFallbackSettings.gamma = normalizeGamma113c(patch.gamma)
+  }
+  if (patch.contrast !== undefined) {
+    hud.escapeMenuFallbackSettings.contrast = normalizeContrast113c(patch.contrast)
+  }
   if (patch.keyBindings !== undefined) {
     hud.escapeMenuFallbackSettings.keyBindings = cloneKeyBindings(patch.keyBindings)
+  }
+  if (patch.automapSize !== undefined) {
+    hud.escapeMenuFallbackSettings.automapSize = patch.automapSize
+    hud.onAutomapOptionChanged?.('automapSize')
+  }
+  if (patch.automapFade !== undefined) {
+    hud.escapeMenuFallbackSettings.automapFade = patch.automapFade
+    hud.onAutomapOptionChanged?.('automapFade')
+  }
+  if (patch.automapCenter !== undefined) {
+    hud.escapeMenuFallbackSettings.automapCenter = patch.automapCenter
+    hud.onAutomapOptionChanged?.('automapCenter')
+  }
+  if (patch.automapParty !== undefined) {
+    hud.escapeMenuFallbackSettings.automapParty = patch.automapParty
+    hud.onAutomapOptionChanged?.('automapParty')
+  }
+  if (patch.automapNames !== undefined) {
+    hud.escapeMenuFallbackSettings.automapNames = patch.automapNames
+    hud.onAutomapOptionChanged?.('automapNames')
   }
   hud.onUpdateEscapeMenuSettings?.(patch)
 }
 
 export function computeOptionsSubmenuLayout(
-  screen: 'options' | 'sound' | 'video',
+  screen: 'options' | 'sound' | 'video' | 'automap',
   hudWidth = 800,
   hudHeight = 600,
   selectedIndex = 0,
@@ -246,18 +358,26 @@ export function computeOptionsSubmenuLayout(
   const centerX = Math.trunc(hudWidth / 2)
   const snap: EscapeMenuSettingsSnapshot = settings ?? {
     masterVolume: DEFAULT_MASTER_VOLUME,
+    musicVolume: DEFAULT_MUSIC_VOLUME,
+    npcSpeech: DEFAULT_NPC_SPEECH_MODE,
     audioMuted: DEFAULT_AUDIO_MUTED,
     viewport: DEFAULT_VIEWPORT_RESOLUTION,
     worldRenderFps: 60,
     keyBindings: DEFAULT_KEY_BINDINGS,
     fullscreenActive: false,
     fullscreenSupported: true,
+    automapSize: DEFAULT_AUTOMAP_SIZE_MODE,
+    automapFade: DEFAULT_AUTOMAP_FADE_MODE,
+    automapCenter: true,
+    automapParty: true,
+    automapNames: true,
   }
 
   if (screen === 'options') {
     const rowDefs: readonly { id: OptionsMainRowId; label: string }[] = [
       { id: 'soundOptions', label: isEn ? 'SOUND OPTIONS' : '音效選項' },
       { id: 'videoOptions', label: isEn ? 'VIDEO OPTIONS' : '影像選項' },
+      { id: 'automapOptions', label: isEn ? 'AUTOMAP OPTIONS' : '自動地圖選項' },
       { id: 'configureControls', label: isEn ? 'CONFIGURE CONTROLS' : '設定控制項' },
       { id: 'previousMenu', label: isEn ? 'PREVIOUS MENU' : '上一個選單' },
     ]
@@ -300,12 +420,28 @@ export function computeOptionsSubmenuLayout(
 
   if (screen === 'sound') {
     const rowStepY = 44
-    const rowCount = 3
+    const rowCount = 5
     const totalHeight = rowCount * rowStepY
     const topY = Math.trunc((hudHeight - 80) / 2) - Math.trunc(totalHeight / 2) + 12
     const clampedSel = Math.max(0, Math.min(rowCount - 1, selectedIndex))
     const stepIndex = Math.round(Math.max(0, Math.min(1, snap.masterVolume)) * 20)
     const pct = Math.round(Math.max(0, Math.min(1, snap.masterVolume)) * 100)
+    const musicVol = snap.musicVolume ?? DEFAULT_MUSIC_VOLUME
+    const musicStepIndex = Math.round(Math.max(0, Math.min(1, musicVol)) * 20)
+    const musicPct = Math.round(Math.max(0, Math.min(1, musicVol)) * 100)
+    const npcSpeech = snap.npcSpeech ?? DEFAULT_NPC_SPEECH_MODE
+    const npcSpeechText =
+      npcSpeech === 'audioOnly'
+        ? isEn
+          ? 'AUDIO ONLY'
+          : '僅語音'
+        : npcSpeech === 'textOnly'
+          ? isEn
+            ? 'TEXT ONLY'
+            : '僅文字'
+          : isEn
+            ? 'AUDIO AND TEXT'
+            : '語音與文字'
     const sliderLeft = centerX - 59
     const sliderWidth = 288
     const sliderRight = sliderLeft + sliderWidth
@@ -334,9 +470,9 @@ export function computeOptionsSubmenuLayout(
       },
       {
         index: 1,
-        id: 'muteSound',
-        label: isEn ? 'MUTE SOUND' : '靜音',
-        valueText: snap.audioMuted ? (isEn ? 'ON' : '開') : (isEn ? 'OFF' : '關'),
+        id: 'musicVolume',
+        label: isEn ? 'MUSIC' : '音樂音量',
+        valueText: `${musicPct}%`,
         centered: false,
         rowY: topY + rowStepY,
         rowHeight: rowStepY,
@@ -344,18 +480,52 @@ export function computeOptionsSubmenuLayout(
         hitMaxX: centerX + 260,
         hitMinY: topY + rowStepY,
         hitMaxY: topY + 2 * rowStepY,
+        sliderBounds: {
+          left: sliderLeft,
+          right: sliderRight,
+          top: topY + rowStepY + 6,
+          bottom: topY + 2 * rowStepY - 6,
+          width: sliderWidth,
+          stepIndex: musicStepIndex,
+        },
       },
       {
         index: 2,
-        id: 'previousMenu',
-        label: isEn ? 'PREVIOUS MENU' : '上一個選單',
-        centered: true,
+        id: 'npcSpeech',
+        label: isEn ? 'NPC SPEECH' : 'NPC 語音',
+        valueText: npcSpeechText,
+        centered: false,
         rowY: topY + 2 * rowStepY,
         rowHeight: rowStepY,
         hitMinX: centerX - 260,
         hitMaxX: centerX + 260,
         hitMinY: topY + 2 * rowStepY,
         hitMaxY: topY + 3 * rowStepY,
+      },
+      {
+        index: 3,
+        id: 'muteSound',
+        label: isEn ? 'MUTE SOUND' : '靜音',
+        valueText: snap.audioMuted ? (isEn ? 'ON' : '開') : (isEn ? 'OFF' : '關'),
+        centered: false,
+        rowY: topY + 3 * rowStepY,
+        rowHeight: rowStepY,
+        hitMinX: centerX - 260,
+        hitMaxX: centerX + 260,
+        hitMinY: topY + 3 * rowStepY,
+        hitMaxY: topY + 4 * rowStepY,
+      },
+      {
+        index: 4,
+        id: 'previousMenu',
+        label: isEn ? 'PREVIOUS MENU' : '上一個選單',
+        centered: true,
+        rowY: topY + 4 * rowStepY,
+        rowHeight: rowStepY,
+        hitMinX: centerX - 260,
+        hitMaxX: centerX + 260,
+        hitMinY: topY + 4 * rowStepY,
+        hitMaxY: topY + 5 * rowStepY,
       },
     ]
 
@@ -377,12 +547,141 @@ export function computeOptionsSubmenuLayout(
     }
   }
 
+  if (screen === 'automap') {
+    const rowStepY = 42
+    const rowCount = 6
+    const totalHeight = rowCount * rowStepY
+    const topY = Math.trunc((hudHeight - 80) / 2) - Math.trunc(totalHeight / 2) + 12
+    const clampedSel = Math.max(0, Math.min(rowCount - 1, selectedIndex))
+    const amSize = snap.automapSize ?? DEFAULT_AUTOMAP_SIZE_MODE
+    const amFade = snap.automapFade ?? DEFAULT_AUTOMAP_FADE_MODE
+    const amCenter = snap.automapCenter ?? true
+    const amParty = snap.automapParty ?? true
+    const amNames = snap.automapNames ?? true
+    const fadeText =
+      amFade === 'no'
+        ? isEn
+          ? 'NO'
+          : '否'
+        : amFade === 'center'
+          ? isEn
+            ? 'CENTER'
+            : '置中'
+          : isEn
+            ? 'YES'
+            : '是'
+
+    const rows: OptionsSubmenuRowLayout[] = [
+      {
+        index: 0,
+        id: 'automapSize',
+        label: isEn ? 'AUTOMAP SIZE' : '自動地圖大小',
+        valueText: amSize === 'mini' ? (isEn ? 'MINI MAP' : '迷你地圖') : (isEn ? 'FULL SCREEN' : '全螢幕'),
+        centered: false,
+        rowY: topY,
+        rowHeight: rowStepY,
+        hitMinX: centerX - 260,
+        hitMaxX: centerX + 260,
+        hitMinY: topY,
+        hitMaxY: topY + rowStepY,
+      },
+      {
+        index: 1,
+        id: 'automapFade',
+        label: isEn ? 'FADE' : '淡化',
+        valueText: fadeText,
+        centered: false,
+        rowY: topY + rowStepY,
+        rowHeight: rowStepY,
+        hitMinX: centerX - 260,
+        hitMaxX: centerX + 260,
+        hitMinY: topY + rowStepY,
+        hitMaxY: topY + 2 * rowStepY,
+      },
+      {
+        index: 2,
+        id: 'automapCenter',
+        label: isEn ? 'CENTER WHEN CLEARED' : '清除時置中',
+        valueText: amCenter ? (isEn ? 'YES' : '是') : (isEn ? 'NO' : '否'),
+        centered: false,
+        rowY: topY + 2 * rowStepY,
+        rowHeight: rowStepY,
+        hitMinX: centerX - 260,
+        hitMaxX: centerX + 260,
+        hitMinY: topY + 2 * rowStepY,
+        hitMaxY: topY + 3 * rowStepY,
+      },
+      {
+        index: 3,
+        id: 'automapParty',
+        label: isEn ? 'SHOW PARTY' : '顯示隊伍',
+        valueText: amParty ? (isEn ? 'YES' : '是') : (isEn ? 'NO' : '否'),
+        centered: false,
+        rowY: topY + 3 * rowStepY,
+        rowHeight: rowStepY,
+        hitMinX: centerX - 260,
+        hitMaxX: centerX + 260,
+        hitMinY: topY + 3 * rowStepY,
+        hitMaxY: topY + 4 * rowStepY,
+      },
+      {
+        index: 4,
+        id: 'automapNames',
+        label: isEn ? 'SHOW NAMES' : '顯示名稱',
+        valueText: amNames ? (isEn ? 'YES' : '是') : (isEn ? 'NO' : '否'),
+        centered: false,
+        rowY: topY + 4 * rowStepY,
+        rowHeight: rowStepY,
+        hitMinX: centerX - 260,
+        hitMaxX: centerX + 260,
+        hitMinY: topY + 4 * rowStepY,
+        hitMaxY: topY + 5 * rowStepY,
+      },
+      {
+        index: 5,
+        id: 'previousMenu',
+        label: isEn ? 'PREVIOUS MENU' : '上一個選單',
+        centered: true,
+        rowY: topY + 5 * rowStepY,
+        rowHeight: rowStepY,
+        hitMinX: centerX - 260,
+        hitMaxX: centerX + 260,
+        hitMinY: topY + 5 * rowStepY,
+        hitMaxY: topY + 6 * rowStepY,
+      },
+    ]
+
+    const pentBaselineY = topY + clampedSel * rowStepY + 46
+    const { leftPent, rightPent } = computePentPlacements(centerX, pentBaselineY, nowMs, 249)
+
+    return {
+      screen,
+      titleText: isEn ? 'AUTOMAP OPTIONS' : '自動地圖選項',
+      titleY: topY - 54,
+      centerX,
+      topY,
+      rowStepY,
+      totalHeight,
+      selectedIndex: clampedSel,
+      rows,
+      leftPent,
+      rightPent,
+    }
+  }
+
   // screen === 'video'
   const rowStepY = 44
-  const rowCount = 4
+  const rowCount = 6
   const totalHeight = rowCount * rowStepY
   const topY = Math.trunc((hudHeight - 80) / 2) - Math.trunc(totalHeight / 2) + 12
   const clampedSel = Math.max(0, Math.min(rowCount - 1, selectedIndex))
+  const gammaVal = normalizeGamma113c(snap.gamma ?? DEFAULT_GAMMA_113C)
+  const gammaStep = sliderStepFromGamma113c(gammaVal)
+  const contrastVal = normalizeContrast113c(snap.contrast ?? DEFAULT_CONTRAST_113C)
+  const contrastStep = sliderStepFromContrast113c(contrastVal)
+  const videoSliderLeft = centerX - 59
+  const videoSliderWidth = 288
+  const videoSliderRight = videoSliderLeft + videoSliderWidth
 
   const rows: OptionsSubmenuRowLayout[] = [
     {
@@ -432,15 +731,57 @@ export function computeOptionsSubmenuLayout(
     },
     {
       index: 3,
-      id: 'previousMenu',
-      label: isEn ? 'PREVIOUS MENU' : '上一個選單',
-      centered: true,
+      id: 'gamma',
+      label: isEn ? 'GAMMA' : '亮度',
+      valueText: String(gammaVal),
+      centered: false,
       rowY: topY + 3 * rowStepY,
       rowHeight: rowStepY,
       hitMinX: centerX - 260,
       hitMaxX: centerX + 260,
       hitMinY: topY + 3 * rowStepY,
       hitMaxY: topY + 4 * rowStepY,
+      sliderBounds: {
+        left: videoSliderLeft,
+        right: videoSliderRight,
+        top: topY + 3 * rowStepY + 6,
+        bottom: topY + 4 * rowStepY - 6,
+        width: videoSliderWidth,
+        stepIndex: gammaStep,
+      },
+    },
+    {
+      index: 4,
+      id: 'contrast',
+      label: isEn ? 'CONTRAST' : '對比度',
+      valueText: `${contrastVal}%`,
+      centered: false,
+      rowY: topY + 4 * rowStepY,
+      rowHeight: rowStepY,
+      hitMinX: centerX - 260,
+      hitMaxX: centerX + 260,
+      hitMinY: topY + 4 * rowStepY,
+      hitMaxY: topY + 5 * rowStepY,
+      sliderBounds: {
+        left: videoSliderLeft,
+        right: videoSliderRight,
+        top: topY + 4 * rowStepY + 6,
+        bottom: topY + 5 * rowStepY - 6,
+        width: videoSliderWidth,
+        stepIndex: contrastStep,
+      },
+    },
+    {
+      index: 5,
+      id: 'previousMenu',
+      label: isEn ? 'PREVIOUS MENU' : '上一個選單',
+      centered: true,
+      rowY: topY + 5 * rowStepY,
+      rowHeight: rowStepY,
+      hitMinX: centerX - 260,
+      hitMaxX: centerX + 260,
+      hitMinY: topY + 5 * rowStepY,
+      hitMaxY: topY + 6 * rowStepY,
     },
   ]
 
@@ -597,7 +938,14 @@ export function drawOptionsSubmenu(
   },
 ): void {
   const screen = hud.escapeMenuScreen
-  if (screen !== 'options' && screen !== 'sound' && screen !== 'video') return
+  if (
+    screen !== 'options' &&
+    screen !== 'sound' &&
+    screen !== 'automap' &&
+    screen !== 'video'
+  ) {
+    return
+  }
   const locale = getLang()
   const settings = resolveEscapeMenuSettings(hud)
   const layout = computeOptionsSubmenuLayout(
@@ -663,9 +1011,10 @@ export function drawOptionsSubmenu(
       ctx.strokeStyle = 'rgba(140, 120, 75, 0.7)'
       ctx.strokeRect(sb.left + 0.5, row.rowY + 14.5, sb.width - 1, 15)
 
+      const sliderDisabled = screen === 'sound' && settings.audioMuted
       for (let t = 0; t < ticks; t++) {
         const tx = sb.left + 4 + t * tickSpacing
-        const active = t <= sb.stepIndex && !settings.audioMuted
+        const active = t <= sb.stepIndex && !sliderDisabled
         ctx.fillStyle = active ? '#c7b377' : '#4a4436'
         ctx.fillRect(tx, row.rowY + 17, 4, 10)
       }
@@ -681,7 +1030,7 @@ export function drawOptionsSubmenu(
       if (row.valueText) {
         font.drawText(ctx, row.valueText, sb.left - 12, row.rowY + 27, {
           font: 'font16',
-          color: settings.audioMuted ? 'gray' : 'white',
+          color: sliderDisabled ? 'gray' : 'white',
           align: 'right',
         })
       }
@@ -968,6 +1317,38 @@ export function cycleViewportResolution(
   return VALID_VIEWPORT_RESOLUTIONS[nextIdx]!
 }
 
+const VALID_NPC_SPEECH_MODES: readonly NpcSpeechMode[] = [
+  'audioAndText',
+  'audioOnly',
+  'textOnly',
+]
+
+export function cycleNpcSpeechMode(
+  current: NpcSpeechMode,
+  direction: 1 | -1,
+): NpcSpeechMode {
+  const idx = VALID_NPC_SPEECH_MODES.indexOf(current)
+  const baseIdx = idx >= 0 ? idx : 0
+  const nextIdx =
+    (baseIdx + direction + VALID_NPC_SPEECH_MODES.length) %
+    VALID_NPC_SPEECH_MODES.length
+  return VALID_NPC_SPEECH_MODES[nextIdx]!
+}
+
+const VALID_AUTOMAP_FADE_MODES: readonly AutomapFadeMode[] = ['no', 'center', 'yes']
+
+export function cycleAutomapFadeMode(
+  current: AutomapFadeMode,
+  direction: 1 | -1,
+): AutomapFadeMode {
+  const idx = VALID_AUTOMAP_FADE_MODES.indexOf(current)
+  const baseIdx = idx >= 0 ? idx : 0
+  const nextIdx =
+    (baseIdx + direction + VALID_AUTOMAP_FADE_MODES.length) %
+    VALID_AUTOMAP_FADE_MODES.length
+  return VALID_AUTOMAP_FADE_MODES[nextIdx]!
+}
+
 export function enterEscapeMenuScreen(
   hud: WorldPanelsHud,
   screen: EscapeMenuScreen,
@@ -999,7 +1380,7 @@ export function navigateEscapeMenuBack(hud: WorldPanelsHud): boolean {
       return true
     }
     hud.controlsDraftBindings = null
-    enterEscapeMenuScreen(hud, 'options', 2)
+    enterEscapeMenuScreen(hud, 'options', 3)
     return true
   }
   if (hud.escapeMenuScreen === 'sound') {
@@ -1008,6 +1389,10 @@ export function navigateEscapeMenuBack(hud: WorldPanelsHud): boolean {
   }
   if (hud.escapeMenuScreen === 'video') {
     enterEscapeMenuScreen(hud, 'options', 1)
+    return true
+  }
+  if (hud.escapeMenuScreen === 'automap') {
+    enterEscapeMenuScreen(hud, 'options', 2)
     return true
   }
   if (hud.escapeMenuScreen === 'options') {
@@ -1025,11 +1410,13 @@ export function getEscapeSubmenuRowCount(screen: EscapeMenuScreen): number {
     case 'main':
       return 3
     case 'options':
-      return 4
+      return 5
     case 'sound':
-      return 3
+      return 5
+    case 'automap':
+      return 6
     case 'video':
-      return 4
+      return 6
     case 'controls':
       return CONTROL_ACTION_DEFINITIONS.length
   }
@@ -1062,7 +1449,7 @@ export function adjustEscapeSubmenuHorizontal(hud: WorldPanelsHud, direction: -1
   if (screen === 'sound') {
     const idx = hud.optionsSubmenuSelectedIndex
     if (idx === 0) {
-      // 21-step (5% per step) volume slider
+      // 21-step (5% per step) sound volume slider
       const currentStep = Math.round(snap.masterVolume * 20)
       const nextStep = Math.max(0, Math.min(20, currentStep + direction))
       const nextVolume = Number((nextStep / 20).toFixed(2))
@@ -1074,7 +1461,55 @@ export function adjustEscapeSubmenuHorizontal(hud: WorldPanelsHud, direction: -1
       return true
     }
     if (idx === 1) {
+      // 21-step (5% per step) music volume slider
+      const currentStep = Math.round((snap.musicVolume ?? snap.masterVolume) * 20)
+      const nextStep = Math.max(0, Math.min(20, currentStep + direction))
+      const nextVolume = Number((nextStep / 20).toFixed(2))
+      applyEscapeMenuSettingsPatch(hud, { musicVolume: nextVolume })
+      return true
+    }
+    if (idx === 2) {
+      applyEscapeMenuSettingsPatch(hud, {
+        npcSpeech: cycleNpcSpeechMode(snap.npcSpeech ?? 'audioAndText', direction),
+      })
+      return true
+    }
+    if (idx === 3) {
       applyEscapeMenuSettingsPatch(hud, { audioMuted: !snap.audioMuted })
+      return true
+    }
+    return false
+  }
+
+  if (screen === 'automap') {
+    const idx = hud.optionsSubmenuSelectedIndex
+    if (idx === 0) {
+      applyEscapeMenuSettingsPatch(hud, {
+        automapSize: (snap.automapSize ?? 'full') === 'mini' ? 'full' : 'mini',
+      })
+      hud.onAutomapOptionChanged?.('automapSize')
+      return true
+    }
+    if (idx === 1) {
+      applyEscapeMenuSettingsPatch(hud, {
+        automapFade: cycleAutomapFadeMode(snap.automapFade ?? 'no', direction),
+      })
+      hud.onAutomapOptionChanged?.('automapFade')
+      return true
+    }
+    if (idx === 2) {
+      applyEscapeMenuSettingsPatch(hud, { automapCenter: !(snap.automapCenter ?? true) })
+      hud.onAutomapOptionChanged?.('automapCenter')
+      return true
+    }
+    if (idx === 3) {
+      applyEscapeMenuSettingsPatch(hud, { automapParty: !(snap.automapParty ?? true) })
+      hud.onAutomapOptionChanged?.('automapParty')
+      return true
+    }
+    if (idx === 4) {
+      applyEscapeMenuSettingsPatch(hud, { automapNames: !(snap.automapNames ?? true) })
+      hud.onAutomapOptionChanged?.('automapNames')
       return true
     }
     return false
@@ -1095,6 +1530,20 @@ export function adjustEscapeSubmenuHorizontal(hud: WorldPanelsHud, direction: -1
     if (idx === 2) {
       const nextFps: 30 | 60 = snap.worldRenderFps === 60 ? 30 : 60
       applyEscapeMenuSettingsPatch(hud, { worldRenderFps: nextFps })
+      return true
+    }
+    if (idx === 3) {
+      // D2Client.dll 0x6FB14150: 21-step Gamma slider (55..255, step 10, default 155 -> step 10)
+      const currentStep = sliderStepFromGamma113c(snap.gamma ?? DEFAULT_GAMMA_113C)
+      const nextStep = Math.max(0, Math.min(20, currentStep + direction))
+      applyEscapeMenuSettingsPatch(hud, { gamma: gammaFromSliderStep113c(nextStep) })
+      return true
+    }
+    if (idx === 4) {
+      // D2Client.dll 0x6FB14110: 21-step Contrast slider (0..100, step 5, default 100 -> step 20)
+      const currentStep = sliderStepFromContrast113c(snap.contrast ?? DEFAULT_CONTRAST_113C)
+      const nextStep = Math.max(0, Math.min(20, currentStep + direction))
+      applyEscapeMenuSettingsPatch(hud, { contrast: contrastFromSliderStep113c(nextStep) })
       return true
     }
     return false
@@ -1127,10 +1576,14 @@ export function activateEscapeSubmenuRow(
       return 'videoOptions'
     }
     if (rowIndex === 2) {
+      enterEscapeMenuScreen(hud, 'automap', 0)
+      return 'automapOptions'
+    }
+    if (rowIndex === 3) {
       enterEscapeMenuScreen(hud, 'controls', 0)
       return 'configureControls'
     }
-    if (rowIndex === 3) {
+    if (rowIndex === 4) {
       enterEscapeMenuScreen(hud, 'main', 0)
       hud.escapeMenuSelectedIndex = 0
       return 'previousMenu'
@@ -1144,11 +1597,58 @@ export function activateEscapeSubmenuRow(
       return 'soundVolume'
     }
     if (rowIndex === 1) {
+      return 'musicVolume'
+    }
+    if (rowIndex === 2) {
+      applyEscapeMenuSettingsPatch(hud, {
+        npcSpeech: cycleNpcSpeechMode(snap.npcSpeech ?? 'audioAndText', 1),
+      })
+      return 'npcSpeech'
+    }
+    if (rowIndex === 3) {
       applyEscapeMenuSettingsPatch(hud, { audioMuted: !snap.audioMuted })
       return 'muteSound'
     }
-    if (rowIndex === 2) {
+    if (rowIndex === 4) {
       enterEscapeMenuScreen(hud, 'options', 0)
+      return 'previousMenu'
+    }
+    return null
+  }
+
+  if (screen === 'automap') {
+    hud.optionsSubmenuSelectedIndex = rowIndex
+    if (rowIndex === 0) {
+      applyEscapeMenuSettingsPatch(hud, {
+        automapSize: (snap.automapSize ?? 'full') === 'mini' ? 'full' : 'mini',
+      })
+      hud.onAutomapOptionChanged?.('automapSize')
+      return 'automapSize'
+    }
+    if (rowIndex === 1) {
+      applyEscapeMenuSettingsPatch(hud, {
+        automapFade: cycleAutomapFadeMode(snap.automapFade ?? 'no', 1),
+      })
+      hud.onAutomapOptionChanged?.('automapFade')
+      return 'automapFade'
+    }
+    if (rowIndex === 2) {
+      applyEscapeMenuSettingsPatch(hud, { automapCenter: !(snap.automapCenter ?? true) })
+      hud.onAutomapOptionChanged?.('automapCenter')
+      return 'automapCenter'
+    }
+    if (rowIndex === 3) {
+      applyEscapeMenuSettingsPatch(hud, { automapParty: !(snap.automapParty ?? true) })
+      hud.onAutomapOptionChanged?.('automapParty')
+      return 'automapParty'
+    }
+    if (rowIndex === 4) {
+      applyEscapeMenuSettingsPatch(hud, { automapNames: !(snap.automapNames ?? true) })
+      hud.onAutomapOptionChanged?.('automapNames')
+      return 'automapNames'
+    }
+    if (rowIndex === 5) {
+      enterEscapeMenuScreen(hud, 'options', 2)
       return 'previousMenu'
     }
     return null
@@ -1172,6 +1672,12 @@ export function activateEscapeSubmenuRow(
       return 'frameRate'
     }
     if (rowIndex === 3) {
+      return 'gamma'
+    }
+    if (rowIndex === 4) {
+      return 'contrast'
+    }
+    if (rowIndex === 5) {
       enterEscapeMenuScreen(hud, 'options', 1)
       return 'previousMenu'
     }
@@ -1191,10 +1697,23 @@ function updateSoundVolumeFromSliderX(
   logicalX: number,
   sliderLeft: number,
   sliderWidth: number,
+  rowId: 'soundVolume' | 'musicVolume' | 'gamma' | 'contrast' = 'soundVolume',
 ): void {
   const ratio = Math.max(0, Math.min(1, (logicalX - sliderLeft) / Math.max(1, sliderWidth)))
   const step = Math.round(ratio * 20)
+  if (rowId === 'gamma') {
+    applyEscapeMenuSettingsPatch(hud, { gamma: gammaFromSliderStep113c(step) })
+    return
+  }
+  if (rowId === 'contrast') {
+    applyEscapeMenuSettingsPatch(hud, { contrast: contrastFromSliderStep113c(step) })
+    return
+  }
   const nextVolume = Number((step / 20).toFixed(2))
+  if (rowId === 'musicVolume') {
+    applyEscapeMenuSettingsPatch(hud, { musicVolume: nextVolume })
+    return
+  }
   const snap = resolveEscapeMenuSettings(hud)
   const patch: EscapeMenuSettingsPatch =
     nextVolume > 0 && snap.audioMuted
@@ -1211,23 +1730,35 @@ export function handleEscapeSubmenuMouseMove(
   hudHeight = 600,
 ): boolean {
   const screen = hud.escapeMenuScreen
-  if (screen === 'sound' && hud.soundDraggingSlider) {
+  if ((screen === 'sound' || screen === 'video') && hud.soundDraggingSlider) {
     const layout = computeOptionsSubmenuLayout(
-      'sound',
+      screen,
       hudWidth,
       hudHeight,
       hud.optionsSubmenuSelectedIndex,
       0,
       resolveEscapeMenuSettings(hud),
     )
-    const row0 = layout.rows[0]
-    if (row0?.sliderBounds) {
-      updateSoundVolumeFromSliderX(hud, logicalX, row0.sliderBounds.left, row0.sliderBounds.width)
+    const dragRowId = hud.soundDraggingRowId ?? 'soundVolume'
+    const sliderRow = layout.rows.find((r) => r.id === dragRowId) ?? layout.rows[0]
+    if (sliderRow?.sliderBounds) {
+      updateSoundVolumeFromSliderX(
+        hud,
+        logicalX,
+        sliderRow.sliderBounds.left,
+        sliderRow.sliderBounds.width,
+        dragRowId,
+      )
       return true
     }
   }
 
-  if (screen === 'options' || screen === 'sound' || screen === 'video') {
+  if (
+    screen === 'options' ||
+    screen === 'sound' ||
+    screen === 'automap' ||
+    screen === 'video'
+  ) {
     const layout = computeOptionsSubmenuLayout(
       screen,
       hudWidth,
@@ -1285,7 +1816,12 @@ export function handleEscapeSubmenuMouseDown(
   hudHeight = 600,
 ): string | null {
   const screen = hud.escapeMenuScreen
-  if (screen === 'options' || screen === 'sound' || screen === 'video') {
+  if (
+    screen === 'options' ||
+    screen === 'sound' ||
+    screen === 'automap' ||
+    screen === 'video'
+  ) {
     const settings = resolveEscapeMenuSettings(hud)
     const layout = computeOptionsSubmenuLayout(
       screen,
@@ -1303,12 +1839,23 @@ export function handleEscapeSubmenuMouseDown(
         logicalY < row.hitMaxY
       ) {
         hud.optionsSubmenuSelectedIndex = row.index
-        if (screen === 'sound' && row.index === 0 && row.sliderBounds) {
+        if (
+          ((screen === 'sound' && (row.id === 'soundVolume' || row.id === 'musicVolume')) ||
+            (screen === 'video' && (row.id === 'gamma' || row.id === 'contrast'))) &&
+          row.sliderBounds
+        ) {
           const sb = row.sliderBounds
           if (logicalX >= sb.left - 12 && logicalX <= sb.right + 12) {
             hud.soundDraggingSlider = true
-            updateSoundVolumeFromSliderX(hud, logicalX, sb.left, sb.width)
-            return 'soundVolume'
+            hud.soundDraggingRowId = row.id as 'soundVolume' | 'musicVolume' | 'gamma' | 'contrast'
+            updateSoundVolumeFromSliderX(
+              hud,
+              logicalX,
+              sb.left,
+              sb.width,
+              row.id as 'soundVolume' | 'musicVolume' | 'gamma' | 'contrast',
+            )
+            return row.id
           }
         }
         return activateEscapeSubmenuRow(hud, row.index)
@@ -1442,12 +1989,12 @@ export function executeControlsButtonAction(
       applyEscapeMenuSettingsPatch(hud, { keyBindings: hud.controlsDraftBindings })
     }
     hud.controlsDraftBindings = null
-    enterEscapeMenuScreen(hud, 'options', 2)
+    enterEscapeMenuScreen(hud, 'options', 3)
     return 'accept'
   }
   // cancel
   hud.controlsDraftBindings = null
-  enterEscapeMenuScreen(hud, 'options', 2)
+  enterEscapeMenuScreen(hud, 'options', 3)
   return 'cancel'
 }
 

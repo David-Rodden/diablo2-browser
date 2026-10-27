@@ -179,6 +179,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
   let selectedCharName = ''
   let selectedCharClass = 0
   let selectedCharHardcore = false
+  let selectedCharExpansion = true
   let lastRealmTitle = ''
   let knownChars: readonly CharSummary[] = []
   let lost: D2OnlineSessionLost | null = null
@@ -548,6 +549,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
       selectedCharName = spec.name
       selectedCharClass = spec.classId
       selectedCharHardcore = Boolean(spec.hardcore)
+      selectedCharExpansion = spec.expansion ?? true
       knownChars = await exchange('mcp', () => m.listChars(8))
     },
 
@@ -571,7 +573,13 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
 
     async deleteCharacter(name: string): Promise<void> {
       const m = await ensureRealmReadyForCharSelect('deleteCharacter')
-      await exchange('mcp', () => m.deleteChar(name))
+      const status = await exchange('mcp', () => m.deleteChar(name))
+      if (status !== 0) {
+        throw new ProtocolError(
+          `MCP_CHARDELETE failed for "${name}" with status=0x${status.toString(16)}`,
+          { proto: 'mcp', packetId: 0x0a },
+        )
+      }
       knownChars = await exchange('mcp', () => m.listChars(8))
     },
 
@@ -581,7 +589,16 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
 
     async upgradeCharacter(name: string): Promise<void> {
       const m = await ensureRealmReadyForCharSelect('upgradeCharacter')
-      await exchange('mcp', () => m.upgradeChar(name))
+      const status = await exchange('mcp', () => m.upgradeChar(name))
+      if (status !== 0) {
+        throw new ProtocolError(
+          `MCP_CHARUPGRADE failed for "${name}" with status=0x${status.toString(16)}`,
+          { proto: 'mcp', packetId: 0x18 },
+        )
+      }
+      if (selectedCharName.toLowerCase() === name.toLowerCase()) {
+        selectedCharExpansion = true
+      }
       knownChars = await exchange('mcp', () => m.listChars(8))
     },
 
@@ -598,6 +615,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
           if (foundSame) {
             selectedCharClass = foundSame.charClass
             selectedCharHardcore = foundSame.hardcore
+            selectedCharExpansion = foundSame.expansion
           }
           return
         }
@@ -616,6 +634,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
       if (found) {
         selectedCharClass = found.charClass
         selectedCharHardcore = found.hardcore
+        selectedCharExpansion = found.expansion
       }
     },
 
@@ -665,18 +684,22 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
       }
       const m = await ensureCharLoggedInForLobby('joinGame')
       const ticket = await exchange('mcp', () => m.joinGame(name, password))
-      if (ticket.status !== 0) {
+      // D2MCPClient.dll 0x6FA264D0: join succeeds only when d2gsIpRaw (+7) != 0 and status (+0xF) == 0;
+      // when d2gsIpRaw == 0 and status == 0, 1.13c synthesizes status 0x28 (Join Failed).
+      if (ticket.status !== 0 || ticket.d2gsIpRaw === 0) {
+        const errStatus = ticket.status !== 0 ? ticket.status : 0x28
         throw new ProtocolError(
-          `MCP_JOINGAME failed for "${name}" with status=0x${ticket.status.toString(16)}`,
+          `MCP_JOINGAME failed for "${name}" with status=0x${errStatus.toString(16)}`,
           { proto: 'mcp', packetId: 0x04 },
         )
       }
       setState('connecting_game')
 
+      const gameHost = config.useTicketD2gsIp && ticket.d2gsIp ? ticket.d2gsIp : bnetHost
       const startEpoch = epoch
       let gameStream
       try {
-        gameStream = await config.resolver.open('game', bnetHost, gamePort)
+        gameStream = await config.resolver.open('game', gameHost, gamePort)
       } catch (err) {
         if (startEpoch === epoch && !lost) setState(mcp ? 'realm_ready' : 'idle')
         throw err
@@ -692,6 +715,7 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
           gameToken: ticket.gameToken,
           charClass: selectedCharClass,
           charName: selectedCharName,
+          expansion: selectedCharExpansion,
         },
         clock,
         tap: config.tap,

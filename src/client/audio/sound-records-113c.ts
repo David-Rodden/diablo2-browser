@@ -64,6 +64,7 @@ import {
   isUnshippedSoundId113c,
 } from '../../common/audio/speech-index-113c.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
+import type { SoundEnvironEaxPreset113c } from './sound-environ-113c.ts'
 
 export {
   D9_UNSHIPPED_MONSTER_SOUND_IDS_113C,
@@ -91,11 +92,11 @@ export const LOCAL_SPEECH_SOUND_RANGE_113C: readonly [number, number] = [2934, 4
 export const LOCAL_PLAYER_PRIORITY_BOOST_113C = 80
 
 /** SoundUpdate / UpdateChannel maxDist per Falloff (jump tables 0x6fb39590 / 0x6fb0dcc4; Falloff > 4 → 700). */
-const FALLOFF_MAX_DIST = [400, 700, 1000, 1500, 2000] as const
-const FALLOFF_MAX_DIST_DEFAULT = 700
+export const FALLOFF_MAX_DIST = [400, 700, 1000, 1500, 2000] as const
+export const FALLOFF_MAX_DIST_DEFAULT = 700
 /** UpdateChannel minDist per Falloff (0x6fb0dce0, jump table 0x6fb0dd30; Falloff > 4 → 60). */
-const FALLOFF_MIN_DIST = [60, 60, 200, 400, 2000] as const
-const FALLOFF_MIN_DIST_DEFAULT = 60
+export const FALLOFF_MIN_DIST = [60, 60, 200, 400, 2000] as const
+export const FALLOFF_MIN_DIST_DEFAULT = 60
 /** SetPos 0x6fb38350 clamps x / y to ±2000 (0x6fb87574 / 0x6fb87548) for dist². */
 const DIST_CLAMP = 2000
 /** SetSoundPos 0x6fb38ba0 adds 640.0f (0x6fb87584) to z; 0x6fb37f30 stores z = 640.0f (0x44200000). */
@@ -128,6 +129,17 @@ export interface SoundVoiceBackend {
   setGains(voice: number, left: number, right: number): void
   /** The channel stops (StopChannel, end of buffer, StopAll). */
   stop(voice: number): void
+  /**
+   * D2Client.dll 0x6fb0d8fb..0x6fb0d921 -> D2sound.#10052 (`0x6fabd33c`):
+   * Sets the per-channel EAX wet reverb send mix (`1.0f` when `Sounds.txt` `Reverb != 0`, `0.0f` when `Reverb == 0`)
+   * on non-stereo EAX channels (`soundMode == 2 && !Stereo`, channel flag `0x4`).
+   */
+  setReverbMix?(voice: number, mix: number): void
+  /**
+   * D2Client.dll 0x6fb0cf90 -> D2sound.#10058 (`0x6fabd306`):
+   * Applies the active `SoundEnviron.txt` EAX preset (scaled by `0.001f`) to the wet reverb convolver bus.
+   */
+  setEaxPreset?(preset: SoundEnvironEaxPreset113c | null, envIdx?: number): void
 }
 
 /** No output (tests, or before a backend exists). */
@@ -220,6 +232,7 @@ interface NormalizedSoundRow113c {
   readonly stopInst: boolean
   readonly duration: number
   readonly compound: number
+  readonly reverb: boolean
   readonly falloff: number
   readonly asyncOnly: boolean
   readonly priority: number
@@ -247,6 +260,7 @@ function normalizeRow(row: SoundRecordRowInput113c): NormalizedSoundRow113c {
     stopInst: Boolean(row.stopInst),
     duration: row.duration,
     compound: row.compound ?? 0,
+    reverb: Boolean(row.reverb),
     falloff: row.falloff,
     asyncOnly: Boolean(row.asyncOnly),
     priority: row.priority,
@@ -505,6 +519,8 @@ export interface SoundRecordsOptions {
   readonly sampleState?: ((soundId: number) => 'ready' | 'loading') | undefined
   /** Called for every start that fails because the sample is unavailable (counts are always kept). */
   readonly onUnavailable?: ((soundId: number, reason: SoundSampleUnavailable113c) => void) | undefined
+  /** D2sound.#10059 sound mode (`0` = 2D default, `1` = 3D DirectSound3D, `2` = 3D EAX). */
+  readonly soundMode?: (() => 0 | 1 | 2) | (0 | 1 | 2) | undefined
 }
 
 /** Read-only view of a record, for tests and tools. */
@@ -610,6 +626,11 @@ export class SoundRecords113c {
   private nextVoice = 1
   private readonly eagerStartOnPlay: boolean
   private externalSoloActive = false
+  private soundModeValue: 0 | 1 | 2 = 0
+  private readonly soundModeOf: (() => 0 | 1 | 2) | undefined
+  private eaxPresetValue: SoundEnvironEaxPreset113c | null = null
+  private eaxEnvIdxValue = 0
+  private readonly voiceReverbMix = new Map<number, number>()
 
   constructor(options?: SoundRecordsOptions) {
     this.rng = options?.rng
@@ -625,6 +646,11 @@ export class SoundRecords113c {
       (options?.rows === undefined ? defaultBakedSampleFacts113c : undefined)
     this.sampleStateOf = options?.sampleState
     this.onUnavailable = options?.onUnavailable
+    if (typeof options?.soundMode === 'function') {
+      this.soundModeOf = options.soundMode
+    } else if (options?.soundMode === 1 || options?.soundMode === 2) {
+      this.soundModeValue = options.soundMode
+    }
   }
 
   /** Creates a `SoundRecords113c` instance over all 4,699 rows of `SOUNDS_113C`. */
@@ -635,6 +661,13 @@ export class SoundRecords113c {
   /** Sets the explicit listener world position `(x, y)` for coordinate-based playback and `setSoundPos`. */
   setListenerPosition(x: number, y: number): void {
     this.explicitListener = { x: Math.trunc(x), y: Math.trunc(y) }
+  }
+
+  /** Returns the current listener world position `(x, y)`. */
+  getListenerPosition(): { x: number; y: number } {
+    if (this.explicitListener !== null) return this.explicitListener
+    if (this.listenerPosOf !== undefined) return this.listenerPosOf()
+    return { x: 0, y: 0 }
   }
 
   /** Sound clock (`now` of PlaySound / Fade / SoundUpdate). */
@@ -648,6 +681,11 @@ export class SoundRecords113c {
 
   get soloDuck(): number {
     return this.soloDuckValue
+  }
+
+  /** Sets the external Solo=1 state (`[0x6fb91378]` ramp target) so `update()` steps `soloDuck` by ±2/tick (`0x6fb39449..0x6fb3957e`). */
+  setExternalSoloActive(active: boolean): void {
+    this.externalSoloActive = Boolean(active)
   }
 
   /** Immediately activates or clears external Solo=1 ducking (70% floor) and updates active channels. */
@@ -697,6 +735,54 @@ export class SoundRecords113c {
   /** Replaces the output backend (stops nothing; call between games or before the first). */
   setVoices(voices: SoundVoiceBackend): void {
     this.voicesValue = voices
+  }
+
+  /** D2sound.#10059 (`0x6fabd324`): returns current sound mode (`0` = 2D, `1` = 3D DirectSound3D, `2` = 3D EAX). */
+  getSoundMode(): 0 | 1 | 2 {
+    if (this.soundModeOf !== undefined) return this.soundModeOf()
+    return this.soundModeValue
+  }
+
+  /** Sets `D2sound.#10059` sound mode (`0` = 2D, `1` = 3D DirectSound3D, `2` = 3D EAX). */
+  setSoundMode(mode: 0 | 1 | 2): void {
+    this.soundModeValue = mode === 2 ? 2 : mode === 1 ? 1 : 0
+  }
+
+  /** Convenience toggle for 3D/EAX sound mode (`true` -> mode `2`, `false` -> mode `0`). */
+  set3DSound(enabled: boolean): void {
+    this.setSoundMode(enabled ? 2 : 0)
+  }
+
+  /** Returns `true` when 3D/EAX sound mode (`D2sound.#10059 == 2`) is active. */
+  is3DSound(): boolean {
+    return this.getSoundMode() === 2
+  }
+
+  /** D2Client.dll 0x6fb0cf90 -> D2sound.#10058: applies the active `SoundEnviron.txt` EAX preset. */
+  setEaxPreset(preset: SoundEnvironEaxPreset113c | null, envIdx = 0): void {
+    this.eaxPresetValue = preset
+    this.eaxEnvIdxValue = envIdx
+    this.voicesValue.setEaxPreset?.(preset, envIdx)
+  }
+
+  /** Returns the currently active `SoundEnviron.txt` EAX preset (or `null` when none / 2D mode). */
+  getEaxPreset(): SoundEnvironEaxPreset113c | null {
+    return this.eaxPresetValue
+  }
+
+  /** Returns the `SoundEnv` index (`0..49`) of the currently active EAX preset. */
+  getEaxEnvIndex(): number {
+    return this.eaxEnvIdxValue
+  }
+
+  /** Returns `true` when `Sounds.txt` row `soundId` has `Reverb = 1` (`+0x4b`). */
+  isReverbRow(soundId: number): boolean {
+    return this.rows.get(soundId)?.reverb === true
+  }
+
+  /** Returns the EAX wet reverb send mix (`1.0` or `0.0`) assigned to `voice` at `StartSound` (`0x6fb0d903..0x6fb0d921`). */
+  getVoiceReverbMix(voice: number): number {
+    return this.voiceReverbMix.get(voice) ?? 0
   }
 
   /** Records in active-list order (sorted by the last update; records played since are at the front). */
@@ -980,6 +1066,46 @@ export class SoundRecords113c {
     if (r === undefined) return
     r.stop = true
     r.fading = false
+  }
+
+  /**
+   * 0x6fb38810: stops via `StopWithFade` (0x6fb38550) every active ambience record in `52..71` (`0x34..0x47`)
+   * whose `groupBase` is neither `groupBase(keepId1)` nor `groupBase(keepId2)`.
+   */
+  stopAmbienceExcept113c(keepId1: number, keepId2: number): void {
+    const keepGroup1 = keepId1 > 0 && keepId1 < this.rowCount ? this.row(keepId1).groupBase : -1
+    const keepGroup2 = keepId2 > 0 && keepId2 < this.rowCount ? this.row(keepId2).groupBase : -1
+    for (const r of this.active) {
+      if (r.id < 52 || r.id > 71) continue
+      const grp = this.row(r.id).groupBase
+      if (grp === keepGroup1 || grp === keepGroup2) continue
+      this.stopWithFade(r)
+    }
+  }
+
+  /**
+   * 0x6fb38770: stops via `StopWithFade` (0x6fb38550) every active environment event record in `72..201`
+   * (`0x48..0xc9`) whose `groupBase` is not `groupBase(keepId)`.
+   */
+  stopEventsExcept113c(keepId: number): void {
+    const keepGroup = keepId > 0 && keepId < this.rowCount ? this.row(keepId).groupBase : -1
+    for (const r of this.active) {
+      if (r.id < 72 || r.id > 201) continue
+      if (this.row(r.id).groupBase === keepGroup) continue
+      this.stopWithFade(r)
+    }
+  }
+
+  /**
+   * 0x6fb37b30: returns true when any active record with `state !== 2` has `id` in `2934..4656` (`0xb76..0x1230`).
+   */
+  isSpeechPlaying(): boolean {
+    const [lo, hi] = LOCAL_SPEECH_SOUND_RANGE_113C
+    for (const r of this.active) {
+      if (r.state === 2) continue
+      if (r.id >= lo && r.id <= hi) return true
+    }
+    return false
   }
 
   /**
@@ -1426,6 +1552,14 @@ export class SoundRecords113c {
     r.playOffset = row.stream ? r.a3 : 0
     // nBlocks == 1: the buffer loops from Block 1 (#10050(handle, Block1 << 1), a byte offset of 16-bit PCM).
     const loopStartFrames = row.nBlocks === 1 ? Math.floor((row.block1 * 2) / (2 * facts.channels)) : 0
+    if (this.getSoundMode() === 2 && row.stereo === 0) {
+      // 0x6fb0d8fb..0x6fb0d921: EAX channel (bl & 4) -> D2sound.#10052(channel, row.reverb ? 1.0f : 0.0f)
+      const reverbMix = row.reverb ? 1 : 0
+      this.voiceReverbMix.set(r.voice, reverbMix)
+      this.voicesValue.setReverbMix?.(r.voice, reverbMix)
+    } else {
+      this.voiceReverbMix.set(r.voice, 0)
+    }
     this.voicesValue.start(r.voice, r.id, row.loop, r.playOffset, loopStartFrames)
     return true
   }

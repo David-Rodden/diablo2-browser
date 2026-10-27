@@ -40,6 +40,7 @@ import {
 import { FrontendImeSink } from './frontend/frontend-ime-sink.ts'
 import { FrontendRenderer } from './frontend/frontend-renderer.ts'
 import {
+  allowAllAvatarComposites,
   buildAvatarSpecFromStatstring,
   releaseUnselectedAvatarComposites,
 } from './frontend/avatar-compositor.ts'
@@ -74,6 +75,7 @@ import {
   type LoadedOverlayArt,
 } from './scene/missile-overlay-renderer.ts'
 import {
+  clearWorldRendererTransientState,
   getPlayerPaperdollGpuCache,
   TileAtlasGpuCache,
   renderSceneSourceFrame,
@@ -718,6 +720,8 @@ export async function startPlayApp(options?: {
         audioMuted: s.audioMuted,
         viewport: s.viewport,
         worldRenderFps: s.worldRenderFps,
+        gamma: s.gamma,
+        contrast: s.contrast,
         keyBindings: s.keyBindings,
         fullscreenActive: toolbar.isFullscreenActive(),
         fullscreenSupported: toolbar.isFullscreenSupported(),
@@ -735,6 +739,14 @@ export async function startPlayApp(options?: {
       }
       if (patch.worldRenderFps !== undefined) {
         toolbar.setWorldRenderFps(patch.worldRenderFps)
+      }
+      if (patch.gamma !== undefined || patch.contrast !== undefined) {
+        settingsStore.set({
+          ...(patch.gamma !== undefined ? { gamma: patch.gamma } : {}),
+          ...(patch.contrast !== undefined ? { contrast: patch.contrast } : {}),
+        })
+        const updated = settingsStore.get()
+        renderer.setGammaContrast(updated.gamma ?? 155, updated.contrast ?? 100)
       }
       if (patch.keyBindings !== undefined) {
         settingsStore.set({ keyBindings: patch.keyBindings })
@@ -912,6 +924,7 @@ export async function startPlayApp(options?: {
   let ownHeroClassToken: string | undefined
   /** Deduplication key for lobby character asset preloading (`#1024`). */
   let lastPreloadedLobbyHeroSig: string | null = null
+  let lastReleasedLobbyAvatarToken: string | null = null
   /** Deduplication key for topological 1-hop level-graph asset preloading (`#1025`). */
   let lastPreloadedAreaSig: string | null = null
   let neighborPreloadTimer: ReturnType<typeof setTimeout> | null = null
@@ -924,6 +937,16 @@ export async function startPlayApp(options?: {
       clearTimeout(neighborPreloadTimer)
       neighborPreloadTimer = null
     }
+  }
+
+  const releaseInGameSceneCaches = (): void => {
+    clearPendingNeighborPreload()
+    lastRenderSnapshot = null
+    motionSmoother.reset()
+    clearWorldRendererTransientState()
+    entityArtCache.clear()
+    tileGpuCache.retainPages([])
+    mapService.resetSession()
   }
 
   /**
@@ -948,10 +971,26 @@ export async function startPlayApp(options?: {
     tileGpuCache.retainPages([...plan.currentTilePages, ...plan.neighborTilePages])
     tileGpuCache.ensureActPalette(plan.actId)
     tileGpuCache.preloadPages(plan.currentTilePages)
+
+    const liveMonsterIds: number[] = []
+    const liveObjectIds: number[] = []
+    for (const u of session.world.units.values()) {
+      if (u.kind === 'monster' && u.classId >= 0) liveMonsterIds.push(u.classId)
+      else if (u.kind === 'object' && u.classId >= 0) liveObjectIds.push(u.classId)
+    }
+    if (liveMonsterIds.length > 0 || liveObjectIds.length > 0) {
+      entityArtCache.preloadEntities({
+        monsterClassIds: liveMonsterIds,
+        objectClassIds: liveObjectIds,
+        act: plan.actId,
+        priority: 'urgent',
+      })
+    }
     entityArtCache.preloadEntities({
       monsterClassIds: plan.currentMonsterHcIndices,
       objectClassIds: plan.currentObjectClassIds,
       act: plan.actId,
+      priority: 'current',
     })
 
     if (neighborPreloadTimer !== null) {
@@ -966,6 +1005,7 @@ export async function startPlayApp(options?: {
         entityArtCache.preloadEntities({
           monsterClassIds: plan.neighborMonsterHcIndices,
           act: plan.actId,
+          priority: 'neighbor',
         })
       }, 120)
     }
@@ -987,11 +1027,17 @@ export async function startPlayApp(options?: {
     const classKey = selectedChar?.classId ?? st.selectedClass ?? selectedChar?.heroToken
     const heroToken = selectedChar?.heroToken ?? campfireSpec?.heroToken
     if (!classKey && !heroToken) return
-    // #1317: this runs even when the asset-preload signature is unchanged, so
-    // the six unselected char-select classes are released as soon as the
-    // player commits to a hero (the in-game block is skipped because
-    // `ownHeroArtKicked` is already set here).
-    if (heroToken) releaseUnselectedAvatarComposites(heroToken)
+    // #1317: keep all 7 roster classes compositable while browsing `char_select`,
+    // and evict the 6 unselected classes once after committing into `bnet_lobby`.
+    if (st.stage === 'char_select') {
+      if (lastReleasedLobbyAvatarToken !== null) {
+        lastReleasedLobbyAvatarToken = null
+        allowAllAvatarComposites()
+      }
+    } else if (heroToken && heroToken !== lastReleasedLobbyAvatarToken) {
+      lastReleasedLobbyAvatarToken = heroToken
+      releaseUnselectedAvatarComposites(heroToken)
+    }
     const sig = `${classKey ?? ''}:${heroToken ?? ''}:${selectedChar?.id ?? ''}:${selectedChar?.avatarDesc?.cofSignature ?? ''}`
     if (sig === lastPreloadedLobbyHeroSig) return
     lastPreloadedLobbyHeroSig = sig
@@ -1045,6 +1091,12 @@ export async function startPlayApp(options?: {
 
   const syncVisibility = (): void => {
     bnetShell.style.display = inGameView ? 'none' : 'flex'
+    if (viewCanvas.style) {
+      viewCanvas.style.visibility = inGameView ? 'visible' : 'hidden'
+    }
+    if (hudCanvas.style) {
+      hudCanvas.style.visibility = inGameView ? 'visible' : 'hidden'
+    }
     if (inGameView) {
       frontendImeSink.syncFromActiveInput(null, false)
     }
@@ -1144,6 +1196,9 @@ export async function startPlayApp(options?: {
       }
       // Same in-game lifecycle as Battle.net: the session owns the game-init reset, the 25 Hz adapter
       // tick (`OnlineSession.tick`), game completion and the intentional leave.
+      if (!st.gameName.trim()) {
+        st.gameName = `${selected.name}1`
+      }
       session.attachGameServer(adapter, {
         localCharacter: {
           characters,
@@ -1185,7 +1240,7 @@ export async function startPlayApp(options?: {
     const selectedName = flowState.roster[flowState.selectedSlotIndex]?.name
     inGameView = false
     ownHeroArtKicked = false
-    clearPendingNeighborPreload()
+    releaseInGameSceneCaches()
     flowState.sceneReady = false
     session.hudManager.setCursorLayerActive(false)
     if (flowState.playMode === 'single') {
@@ -1249,7 +1304,7 @@ export async function startPlayApp(options?: {
     }
     inGameView = false
     ownHeroArtKicked = false
-    clearPendingNeighborPreload()
+    releaseInGameSceneCaches()
     flowState.sceneReady = false
     session.hudManager.setCursorLayerActive(false)
     flowState.stage = 'end_game'
@@ -2100,7 +2155,7 @@ export async function startPlayApp(options?: {
     // connections; show the login screen with the reason (no automatic reconnect).
     inGameView = false
     ownHeroArtKicked = false
-    clearPendingNeighborPreload()
+    releaseInGameSceneCaches()
     session.hudManager.setCursorLayerActive(false)
     session.audioRuntime.playTitleMusic()
     returnToLoginAfterSessionLoss(flowState, ev.reason)

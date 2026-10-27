@@ -1,5 +1,5 @@
 import type { WorldPanelsHud } from '../world-panels.ts'
-import { D2FontRenderer, type D2ColorCode } from '../font.ts'
+import { D2FontRenderer, type D2ColorCode, type D2FontName } from '../font.ts'
 import { canSocketUiItem, classifyHandSlotItem, computeCursorItemGridPlacement, drawImageWithEtherealAlpha, drawItemSocketOverlay, getInventoryLayout, isScrollForTome, isUiItemEthereal, isUiItemUnidentified, isUsableRightClickItem, resolveGridItemBackgroundFill, resolveItemSpriteRect, type InventoryPanel, type UiInventoryItem } from '../inventory.ts'
 import { lookupTbl, requireTbl } from '../../i18n/lang.ts'
 import { BAKED_UI_MANIFEST } from '../../../common/items/baked-ui-meta.ts'
@@ -1153,13 +1153,14 @@ export function drawLeftDockPanelImpl(
           ctx.restore()
         }
       }
+      // D2Client.dll 0x6FACF5E8: SetFont(8) = FontFormal11 for both quest title (0x6FACF65F..0x6FACF6A2) and description body (0x6FACF6C4..0x6FACF73A)
       const qInfo = this.getQuestDisplayText(activeQ)
       font.drawText(ctx, qInfo.title, ox + 160, oy + 282, {
-        font: 'fontexocet10',
+        font: 'fontformal11',
         color: qInfo.status === 'completed' ? 'gold' : 'white',
         align: 'center',
       })
-      this.drawWrappedText(ctx, font, qInfo.body, ox + 26, oy + 300, 268, 14, 6, 'fontformal12')
+      this.drawWrappedText(ctx, font, qInfo.body, ox + 26, oy + 300, 268, 14, 6, 'fontformal11')
     }
 
     if (questLastImg) {
@@ -1171,20 +1172,21 @@ export function drawLeftDockPanelImpl(
       ctx.drawImage(assets.buySellBtnImg, closeFrame * 32, 0, 32, 32, ox + 278, oy + 386, 32, 32)
     }
 
+    // D2Client.dll 0x6FACF7EC (close button hover 0x1030) & 0x6FACF89C (speech button hover 0xE88): SetFont(9) = FontExocet10
     if (this.hoveredQuestButton === 'speech' || this.hoveredQuestButton === 'close') {
       const hoverText =
         this.hoveredQuestButton === 'speech'
           ? this.resolveCanonicalQuestStateText('strplaylast')
           : this.resolveCanonicalQuestStateText('strClose')
       const padX = BUTTON_HOVER_BOX_PAD_X
-      const boxW = Math.max(BUTTON_HOVER_BOX_MIN_W, font.measureText(hoverText, 'font16') + padX * 2)
+      const boxW = Math.max(BUTTON_HOVER_BOX_MIN_W, font.measureText(hoverText, 'fontexocet10') + padX * 2)
       const boxH = BUTTON_HOVER_BOX_H
       const boxX = this.hoveredQuestButton === 'speech' ? ox + 226 : ox + 278
       const boxY = oy + 386 - boxH
       ctx.fillStyle = STONE_BOX_BG_FILL
       ctx.fillRect(boxX, boxY, boxW, boxH)
       font.drawText(ctx, hoverText, boxX + padX, boxY + BUTTON_HOVER_TEXT_OFFSET_Y, {
-        font: 'font16',
+        font: 'fontexocet10',
         color: 'white',
         align: 'left',
       })
@@ -1663,7 +1665,7 @@ export function drawLeftDockPanelImpl(
     if (recipeScrollBgImg) {
       ctx.drawImage(recipeScrollBgImg, ox, oy)
     }
-    // 2. Scroll text (`a2q2scroll`, string ID 3396) in fontformal12 at (ox + 64, oy + 120)
+    // 2. Scroll text (`a2q2scroll`, string ID 3396) in fontformal10 (D2Client.dll 0x6FB3E894 SetFont(4)) at (ox + 64, oy + 120)
     const scrollText = (
       this.recipeScrollText ||
       this.lookupQuestString('a2q2scroll', this.lang) ||
@@ -1671,7 +1673,7 @@ export function drawLeftDockPanelImpl(
     )
       .replace(/^\d+\r?\n/, '')
       .trim()
-    this.drawWrappedText(ctx, font, scrollText, ox + 64, oy + 120, 192, 16, 10, 'fontformal12')
+    this.drawWrappedText(ctx, font, scrollText, ox + 64, oy + 120, 192, 16, 10, 'fontformal10')
     // 3. Close button (`buysellbtn.dc6` frame 10 at `ox + 148, oy + 368` per `0x6fb3e846`;
     //    frame 11 depressed while held down, 1.13c mouse driver semantics)
     if (assets.buySellBtnImg) {
@@ -1802,7 +1804,7 @@ export function drawWrappedTextImpl(
   maxW: number,
   lineH: number,
   maxLines = 10,
-  fontName: 'fontformal12' | 'font8' = 'fontformal12',
+  fontName: D2FontName = 'fontformal12',
 ): void {
   const paragraphs = text.split(/\r?\n/)
   let curY = y
@@ -2063,7 +2065,7 @@ export function renderActiveLeftPanelImpl(
     ) => {
       if (font && typeof font.drawText === 'function') {
         font.drawText(ctx, text, x, y, {
-          font: 'font16',
+          font: 'fontingamechat',
           color: colorCode,
           align,
           lang: isEn ? 'ENG' : 'CHI',
@@ -2078,7 +2080,7 @@ export function renderActiveLeftPanelImpl(
 
     const maxWrapW = Math.max(160, boxW - 50)
     const measureFn = (s: string) =>
-      font && typeof font.measureText === 'function' ? font.measureText(s, 'font16') : s.length * 8
+      font && typeof font.measureText === 'function' ? font.measureText(s, 'fontingamechat') : s.length * 8
     const allLines: WrappedChatLine113c[] = []
     for (const entry of this.messageLogEntries) {
       const wrapped = wrapChatText113c(entry.text, measureFn, maxWrapW, entry.color ?? 0)

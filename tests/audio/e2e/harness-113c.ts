@@ -18,13 +18,14 @@
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { MpqArchive } from '../../../src/common/mpq/archive.ts'
 import { MountedArchives } from '../../../src/common/mpq/mount.ts'
 import { syncNodeFileSource } from '../../../src/baker/mpq-archive-source.ts'
+import { copyPrivate } from './private-copy.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // Paths
@@ -812,12 +813,24 @@ export function readRepoBytes(rel: string, feature: string): Uint8Array {
  * else is a symlink. `tamper(root)` then edits the private copies. A missing `copies` path throws
  * (the artifact under test does not exist). The caller removes the mirror.
  */
+function resolveSiblingLinkTarget(srcEntry: string): string | null {
+  const lst = lstatSync(srcEntry, { throwIfNoEntry: false })
+  if (!lst) return null
+  if (!lst.isSymbolicLink()) return srcEntry
+  try {
+    return realpathSync(srcEntry)
+  } catch {
+    return null
+  }
+}
+
 export function mirrorRepoWithCopies(copies: readonly string[], tamper: (root: string) => void): string {
-  const wanted = copies.map((c) => c.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+  const wanted = [...new Set(copies.map((c) => c.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')))]
   for (const c of wanted) {
     if (c === '' || c.split('/').includes('..')) throw new Error(`mirrorRepoWithCopies: bad path '${c}'`)
     if (!existsSync(join(REPO_ROOT, c))) throw new Error(`mirrorRepoWithCopies: '${c}' does not exist in ${REPO_ROOT}`)
   }
+  const wantedSet = new Set(wanted)
   const ancestors = new Set<string>()
   for (const c of wanted) {
     const parts = c.split('/')
@@ -825,19 +838,31 @@ export function mirrorRepoWithCopies(copies: readonly string[], tamper: (root: s
   }
   const root = mkdtempSync(join(tmpdir(), 'm21-mirror-'))
   const build = (rel: string): void => {
-    const src = rel === '' ? REPO_ROOT : join(REPO_ROOT, rel)
+    const src = rel === '' ? REPO_ROOT : realpathSync(join(REPO_ROOT, rel))
     const dst = rel === '' ? root : join(root, rel)
     if (rel !== '') mkdirSync(dst)
     for (const name of readdirSync(src)) {
+      if (rel === '' && (name === '.git' || name === '.worktrees' || name.startsWith('.tmp-'))) continue
       const childRel = rel === '' ? name : `${rel}/${name}`
-      if (wanted.includes(childRel)) cpSync(join(src, name), join(dst, name), { recursive: true, dereference: true })
+      const childSrc = join(src, name)
+      const childDst = join(dst, name)
+      // copyPrivate: nested symlinks are materialized so a tamper never writes through to shared files (#1619).
+      if (wantedSet.has(childRel)) copyPrivate(childSrc, childDst)
       else if (ancestors.has(childRel)) build(childRel)
-      else symlinkSync(join(src, name), join(dst, name))
+      else {
+        const target = resolveSiblingLinkTarget(childSrc)
+        if (target !== null) symlinkSync(target, childDst)
+      }
     }
   }
-  build('')
-  tamper(root)
-  return root
+  try {
+    build('')
+    tamper(root)
+    return root
+  } catch (err) {
+    rmSync(root, { recursive: true, force: true })
+    throw err
+  }
 }
 
 export interface CommandResult {

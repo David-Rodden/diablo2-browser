@@ -19,11 +19,82 @@
  * and releasing cancels it (`LevelPlusButton` in `level-button.ts`).
  */
 
-import type { D2FontRenderer } from './font.ts'
+import type { D2ColorCode, D2FontRenderer } from './font.ts'
 import type { TblLang } from '../i18n/lang.ts'
 import { resolveTblKey } from '../../common/data/canonical-tbl-strings.ts'
 import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import { LevelPlusButton, LEVEL_BTN_CELL_SIZE } from './level-button.ts'
+import { VitalStatSmoother113c } from './globes.ts'
+
+/**
+ * D2Client.dll `0x6FAD78DD..0x6FAD7918`: Stamina bar palette RGB targets resolved via `D2Gfx_FindBestColor` (`#10035`)
+ * and `0x6FAD794E..0x6FAD797D` low-stamina width threshold (`w < 25` -> red) & translucent rect mode (`transMode = 2`).
+ */
+export const STAMINA_BAR_COLOR_RED = '#ff0000'
+export const STAMINA_BAR_COLOR_YELLOW = '#f4c04c'
+export const STAMINA_BAR_COLOR_BLUE = '#0000ff'
+export const STAMINA_BAR_LOW_WIDTH_THRESHOLD = 25
+export const STAMINA_BAR_TRANS_ALPHA = 0.75
+
+export function computeStaminaBarVisual113c(
+  stamina: number,
+  maxStamina: number,
+  isStaminaBlue = false,
+  barWidth = 102,
+  displayStamina = stamina,
+): { width: number; color: string; tooltipCur: number; tooltipMax: number; tooltipColor: D2ColorCode } {
+  const isBlueDraw = Boolean(isStaminaBlue) || displayStamina > maxStamina + 5
+  const effectiveMax = isBlueDraw ? displayStamina : maxStamina
+  let width = 0
+  if (effectiveMax > 0) {
+    width = Math.min(barWidth, Math.max(0, Math.trunc((displayStamina * barWidth) / effectiveMax)))
+  }
+  let color = isBlueDraw ? STAMINA_BAR_COLOR_BLUE : STAMINA_BAR_COLOR_YELLOW
+  if (!isBlueDraw && (effectiveMax <= 0 || width < STAMINA_BAR_LOW_WIDTH_THRESHOLD)) {
+    color = STAMINA_BAR_COLOR_RED
+  }
+  const curInt = Math.floor(stamina)
+  const maxInt = Math.floor(maxStamina)
+  const isBlueTip = Boolean(isStaminaBlue) || curInt > maxInt
+  return {
+    width,
+    color,
+    tooltipCur: isBlueTip ? maxInt : curInt,
+    tooltipMax: maxInt,
+    tooltipColor: isBlueTip ? 'blue' : 'white',
+  }
+}
+
+export const EXP_BAR_COLOR = '#ffffff'
+export const EXP_BAR_MAX_LEVEL = 99
+export const EXP_BAR_SHIFT_THRESHOLD = 0x226b902
+
+/**
+ * D2Client.dll `0x6FAD6970..0x6FAD6B13` (`sub_6FAD6970`): Experience bar fill width (`0..119`).
+ * Shifts `into` and `span` right by 7 when `into >= 0x226B902` (`36,092,162`), clamps `fill > 119 -> 0`,
+ * and suppresses drawing when `level >= maxLevel` (`99`) or `fill <= 0`.
+ */
+export function computeExpBarFill113c(
+  xp: number,
+  currentLevelXp: number,
+  nextLevelXp: number,
+  level: number,
+  maxLevel = EXP_BAR_MAX_LEVEL,
+  barWidth = 119,
+): number {
+  if (level >= maxLevel) return 0
+  let span = nextLevelXp > currentLevelXp ? Math.trunc(nextLevelXp - currentLevelXp) : 0
+  if (span <= 0) return 0
+  let into = xp > currentLevelXp ? Math.trunc(xp - currentLevelXp) : 0
+  if (into >= EXP_BAR_SHIFT_THRESHOLD) {
+    into = into >>> 7
+    span = span >>> 7
+  }
+  if (span <= 0) return 0
+  const fill = Math.trunc((into * barWidth) / span)
+  if (fill <= 0 || fill > barWidth) return 0
+  return fill
+}
 
 export type MiniPanelAction =
   | 'char'
@@ -46,28 +117,33 @@ export interface ControlBarState {
   readonly unspentStatPoints: number
   readonly unspentSkillPoints: number
   readonly isStaminaBlue?: boolean
+  readonly frame?: number
 }
 
-export const EXP_BAR_BOUNDS = { x: 256, y: 560, width: 120, height: 4 } as const
-export const EXP_BAR_HOVER_BOUNDS = { x: 256, y: 558, width: 120, height: 8 } as const
+export type MiniPanelPlacementMode = 0 | 1 | 2 | 3
+
+export const MINIPANEL_BUTTON_PITCH = 21
+export const MINIPANEL_BUTTON_SIZE = 20
+export const EXP_BAR_BOUNDS = { x: 256, y: 562, width: 119, height: 2 } as const
+export const EXP_BAR_HOVER_BOUNDS = { x: 254, y: 557, width: 123, height: 9 } as const
 export const STAMINA_BAR_BOUNDS = { x: 273, y: 573, width: 102, height: 18 } as const
-export const RUN_BTN_BOUNDS = { x: 255, y: 572, width: 16, height: 20 } as const
-export const MENU_TOGGLE_BOUNDS = { x: 393, y: 562, width: 15, height: 24 } as const
-export const MINIPANEL_BOUNDS = { x: 312, y: 522, width: 176, height: 26 } as const
-export const MINIPANEL_SINGLE_BOUNDS = { x: 322, y: 522, width: 156, height: 26 } as const
+export const RUN_BTN_BOUNDS = { x: 255, y: 570, width: 16, height: 20 } as const
+export const MENU_TOGGLE_BOUNDS = { x: 392, y: 560, width: 15, height: 24 } as const
+export const MINIPANEL_BOUNDS = { x: 313, y: 527, width: 173, height: 26 } as const
+export const MINIPANEL_SINGLE_BOUNDS = { x: 323, y: 527, width: 152, height: 26 } as const
 // `Level.dc6` button positions sit exactly on the 30x30 inner recess of the socket
 // squares baked into `800CtrlPnl7.dc6` (socket outer gold border x 205..236 / 562..593,
 // y 65..96 panel space, panel drawn at y=496).
 export const STAT_PLUS_BTN_BOUNDS = { x: 206, y: 562, width: 30, height: 30 } as const
 export const SKILL_PLUS_BTN_BOUNDS = { x: 563, y: 562, width: 30, height: 30 } as const
 
-export const EXP_BAR_BOUNDS_640 = { x: 192, y: 431, width: 120, height: 4 } as const
-export const EXP_BAR_HOVER_BOUNDS_640 = { x: 192, y: 429, width: 120, height: 8 } as const
+export const EXP_BAR_BOUNDS_640 = { x: 176, y: 442, width: 119, height: 2 } as const
+export const EXP_BAR_HOVER_BOUNDS_640 = { x: 174, y: 437, width: 123, height: 9 } as const
 export const STAMINA_BAR_BOUNDS_640 = { x: 193, y: 453, width: 102, height: 18 } as const
 export const RUN_BTN_BOUNDS_640 = { x: 175, y: 450, width: 16, height: 20 } as const
-export const MENU_TOGGLE_BOUNDS_640 = { x: 312, y: 441, width: 15, height: 24 } as const
-export const MINIPANEL_BOUNDS_640 = { x: 236, y: 411, width: 176, height: 26 } as const
-export const MINIPANEL_SINGLE_BOUNDS_640 = { x: 246, y: 411, width: 156, height: 26 } as const
+export const MENU_TOGGLE_BOUNDS_640 = { x: 312, y: 440, width: 15, height: 24 } as const
+export const MINIPANEL_BOUNDS_640 = { x: 233, y: 407, width: 173, height: 26 } as const
+export const MINIPANEL_SINGLE_BOUNDS_640 = { x: 243, y: 407, width: 152, height: 26 } as const
 export const STAT_PLUS_BTN_BOUNDS_640 = { x: 126, y: 442, width: 30, height: 30 } as const
 export const SKILL_PLUS_BTN_BOUNDS_640 = { x: 483, y: 442, width: 30, height: 30 } as const
 
@@ -118,6 +194,8 @@ export { levelButtonFrame } from './level-button.ts'
 
 export class ControlBarHud {
   miniPanelOpen = true
+  leftPanelOpen = false
+  rightPanelOpen = false
   lang: TblLang = 'CHI'
   isMultiplayer = true
   is640 = false
@@ -129,6 +207,7 @@ export class ControlBarHud {
   hoveredElement: 'exp' | 'stamina' | 'run' | 'menuToggle' | 'statPlus' | 'skillPlus' | MiniPanelAction | null = null
   readonly statPlusButton = new LevelPlusButton('stat', () => this.statPlusBtnBounds)
   readonly skillPlusButton = new LevelPlusButton('skill', () => this.skillPlusBtnBounds)
+  smoother = new VitalStatSmoother113c()
 
   get pressedPlus(): 'stat' | 'skill' | null {
     if (this.statPlusButton.isPressed) return 'stat'
@@ -164,23 +243,57 @@ export class ControlBarHud {
     return this.is640 ? SKILL_PLUS_BTN_BOUNDS_640 : SKILL_PLUS_BTN_BOUNDS
   }
 
+  /**
+   * D2Client.dll 0x6FB14990 placement mode from 0x6FB13880 (left panel) & 0x6FB137B0 (right panel):
+   * - 0: both side panels open -> hidden (`0x6FBCC090 = 1`)
+   * - 1: right panel only -> shifted left
+   * - 2: neither open -> centered
+   * - 3: left panel only -> shifted right
+   */
+  get miniPanelPlacementMode(): MiniPanelPlacementMode {
+    if (this.leftPanelOpen && this.rightPanelOpen) return 0
+    if (this.rightPanelOpen) return 1
+    if (this.leftPanelOpen) return 3
+    return 2
+  }
+
+  get isMiniPanelVisible(): boolean {
+    return this.miniPanelOpen && this.miniPanelPlacementMode !== 0
+  }
+
   get currentMiniPanelItems(): readonly MiniPanelItemDef[] {
     return this.isMultiplayer ? MULTIPLAYER_MINIPANEL_ITEMS : SINGLEPLAYER_MINIPANEL_ITEMS
   }
 
   get currentMiniPanelBounds(): { x: number; y: number; width: number; height: number } {
-    if (this.is640) {
-      return this.isMultiplayer ? MINIPANEL_BOUNDS_640 : MINIPANEL_SINGLE_BOUNDS_640
+    const halfW = this.is640 ? 320 : 400
+    const screenH = this.is640 ? 480 : 600
+    const width = this.isMultiplayer ? 173 : 152
+    const height = 26
+    const y = screenH - 73
+    const mode = this.miniPanelPlacementMode
+    let x: number
+    if (mode === 1) {
+      x = halfW - 205
+    } else if (mode === 3) {
+      x = this.isMultiplayer ? halfW + 33 : halfW + 54
+    } else {
+      x = this.isMultiplayer ? halfW - 87 : halfW - 77
     }
-    return this.isMultiplayer ? MINIPANEL_BOUNDS : MINIPANEL_SINGLE_BOUNDS
+    return { x, y, width, height }
   }
 
   get currentButtonStartX(): number {
-    return this.currentMiniPanelBounds.x + 8
+    const halfW = this.is640 ? 320 : 400
+    const mode = this.miniPanelPlacementMode
+    if (mode === 1) return halfW - 202
+    if (mode === 3) return this.isMultiplayer ? halfW + 35 : halfW + 57
+    return this.isMultiplayer ? halfW - 84 : halfW - 74
   }
 
   get currentButtonStartY(): number {
-    return this.currentMiniPanelBounds.y + 3
+    const screenH = this.is640 ? 480 : 600
+    return screenH - 70
   }
 
   handleMouseMove(
@@ -190,19 +303,10 @@ export class ControlBarHud {
   ): void {
     this.hoveredElement = null
 
-    if (this.miniPanelOpen) {
-      const items = this.currentMiniPanelItems
-      const startX = this.currentButtonStartX
-      const startY = this.currentButtonStartY
-      const relX = logicalX - startX
-      const relY = logicalY - startY
-      if (relY >= 0 && relY < 20 && relX >= 0) {
-        const idx = Math.floor(relX / 20)
-        if (idx >= 0 && idx < items.length) {
-          this.hoveredElement = items[idx]!.action
-          return
-        }
-      }
+    const mpAction = this.miniPanelActionAt(logicalX, logicalY)
+    if (mpAction !== null) {
+      this.hoveredElement = mpAction
+      return
     }
     if (this.inRect(logicalX, logicalY, this.expBarHoverBounds)) {
       this.hoveredElement = 'exp'
@@ -227,7 +331,7 @@ export class ControlBarHud {
   ): void {
     // 1.13c button semantics: mouse-down only latches the pressed cell; the action
     // fires in handleMouseUp and only when the release lands back on the button.
-    this.pressedAction = this.miniPanelOpen ? this.miniPanelActionAt(logicalX, logicalY) : null
+    this.pressedAction = this.isMiniPanelVisible ? this.miniPanelActionAt(logicalX, logicalY) : null
     this.pressedRun = this.inRect(logicalX, logicalY, this.runBtnBounds)
     this.pressedMenuToggle = this.inRect(logicalX, logicalY, this.menuToggleBounds)
     this.statPlusButton.press(logicalX, logicalY, !points || points.unspentStatPoints > 0)
@@ -269,15 +373,22 @@ export class ControlBarHud {
     return fired
   }
 
-  /** Mini-panel cell under the point, or `null` when the popup is closed / the point misses it. */
+  /**
+   * Mini-panel cell under the point per D2Client.dll 0x6FB13000 (21-px pitch, top H-70)
+   * and 0x6FB14550 (20-px button width, H-70 <= y < H-47), or `null` when hidden/missed.
+   */
   private miniPanelActionAt(logicalX: number, logicalY: number): MiniPanelAction | null {
-    if (!this.miniPanelOpen) return null
+    if (!this.isMiniPanelVisible) return null
     const items = this.currentMiniPanelItems
+    const screenH = this.is640 ? 480 : 600
+    const startY = this.currentButtonStartY
+    if (logicalY < startY || logicalY >= screenH - 47) return null
     const relX = logicalX - this.currentButtonStartX
-    const relY = logicalY - this.currentButtonStartY
-    if (relY >= 0 && relY < 20 && relX >= 0) {
-      const idx = Math.floor(relX / 20)
-      if (idx >= 0 && idx < items.length) return items[idx]!.action
+    if (relX < 0) return null
+    const idx = Math.floor(relX / MINIPANEL_BUTTON_PITCH)
+    const offsetInSlot = relX - idx * MINIPANEL_BUTTON_PITCH
+    if (idx >= 0 && idx < items.length && offsetInSlot < MINIPANEL_BUTTON_SIZE) {
+      return items[idx]!.action
     }
     return null
   }
@@ -330,31 +441,40 @@ export class ControlBarHud {
       reportMissingArt('ui-control-bar', this.is640 ? 'CtrlPnl7' : '800CtrlPnl7', 'Missing control panel art')
     }
 
-    // 2. Experience Bar
-    const xpSpan = Math.max(1, state.nextLevelXp - state.currentLevelXp)
-    const xpRatio = Math.max(0, Math.min(1, (state.xp - state.currentLevelXp) / xpSpan))
-    ctx.fillStyle = '#070605'
-    ctx.fillRect(expBounds.x, expBounds.y, expBounds.width, expBounds.height)
-    ctx.fillStyle = '#d8d0a8'
-    ctx.fillRect(expBounds.x, expBounds.y, Math.round(expBounds.width * xpRatio), expBounds.height)
-
-    // Tick notches (10 segments, 12px each)
-    ctx.fillStyle = '#1e1812'
-    for (let i = 1; i < 10; i++) {
-      ctx.fillRect(expBounds.x + i * 12, expBounds.y, 1, expBounds.height)
+    // 2. Experience Bar (`D2Client.dll 0x6FAD6970`: two 1-px white lines at y = H - 38..H - 37, hidden at max level)
+    const expFill = computeExpBarFill113c(
+      state.xp,
+      state.currentLevelXp,
+      state.nextLevelXp,
+      state.level,
+      EXP_BAR_MAX_LEVEL,
+      expBounds.width,
+    )
+    if (expFill > 0) {
+      ctx.fillStyle = EXP_BAR_COLOR
+      ctx.fillRect(expBounds.x, expBounds.y, expFill, 1)
+      ctx.fillRect(expBounds.x, expBounds.y + 1, expFill, 1)
     }
 
-    // 3. Stamina Bar
-    const stamRatio = Math.max(0, Math.min(1, state.stamina / Math.max(1, state.maxStamina)))
-    ctx.fillStyle = '#090705'
-    ctx.fillRect(stamBounds.x, stamBounds.y, stamBounds.width, stamBounds.height)
-    ctx.fillStyle = state.isStaminaBlue ? '#2858d8' : '#c88414'
-    ctx.fillRect(
-      stamBounds.x,
-      stamBounds.y,
-      Math.round(stamBounds.width * stamRatio),
-      stamBounds.height,
+    // 3. Stamina Bar (`D2Client.dll 0x6FAD78B0`: translucent fill over recessed panel art, red when w < 25)
+    const displayStamina =
+      state.frame !== undefined
+        ? this.smoother.sample(10, state.stamina, state.maxStamina, state.frame)
+        : state.stamina
+    const stamVisual = computeStaminaBarVisual113c(
+      state.stamina,
+      state.maxStamina,
+      Boolean(state.isStaminaBlue),
+      stamBounds.width,
+      displayStamina,
     )
+    if (stamVisual.width > 0) {
+      const prevAlpha = ctx.globalAlpha
+      ctx.globalAlpha = STAMINA_BAR_TRANS_ALPHA
+      ctx.fillStyle = stamVisual.color
+      ctx.fillRect(stamBounds.x, stamBounds.y, stamVisual.width, stamBounds.height)
+      ctx.globalAlpha = prevAlpha
+    }
 
     // 4. Run / Walk Toggle Button (`runbutton.dc6`, 4 frames of 16x20: 0=walk, 2=run)
     if (assets.runBtnImg) {
@@ -368,8 +488,8 @@ export class ControlBarHud {
       ctx.drawImage(assets.menuBtnImg, frameIdx * 15, 0, 15, 24, menuBounds.x, menuBounds.y, 15, 24)
     }
 
-    // 6. Central Mini-panel Popup (`minipanel.dc6` 176x26 / `minipanel_s.dc6` 156x26 + `minipanelbtn.dc6` 20x20 icons)
-    if (this.miniPanelOpen) {
+    // 6. Central Mini-panel Popup (`minipanel.dc6` 173x26 / `minipanel_s.dc6` 152x26 + `minipanelbtn.dc6` 20x20 icons at 21px pitch)
+    if (this.isMiniPanelVisible) {
       const bounds = this.currentMiniPanelBounds
       const items = this.currentMiniPanelItems
       const startX = this.currentButtonStartX
@@ -381,7 +501,7 @@ export class ControlBarHud {
         reportMissingArt('ui-control-bar', 'minipanel', 'Missing mini panel background art')
       }
       for (let i = 0; i < items.length; i++) {
-        const bx = startX + i * 20
+        const bx = startX + i * MINIPANEL_BUTTON_PITCH
         const item = items[i]!
         const isPressed = this.pressedAction === item.action
         if (assets.miniPanelBtnsImg) {
@@ -427,7 +547,8 @@ export class ControlBarHud {
     const isEn = this.lang === 'ENG'
     const tipY = this.is640 ? 398 : 518
     const miniTipY = this.is640 ? 382 : 502
-    const miniTipCx = this.is640 ? 320 : 400
+    const miniBounds = this.currentMiniPanelBounds
+    const miniTipCx = miniBounds.x + Math.round(miniBounds.width / 2)
     if (this.hoveredElement === 'exp') {
       const tmpl = resolveTblKey('panelexp', this.lang) ?? (isEn ? 'Experience: %u / %u' : '經驗： %u / %u')
       const text = tmpl
@@ -437,9 +558,9 @@ export class ControlBarHud {
     } else if (this.hoveredElement === 'stamina') {
       const tmpl = resolveTblKey('panelstamina', this.lang) ?? (isEn ? 'Stamina: %d / %d' : '耐力： %d / %d')
       const text = tmpl
-        .replace(/%[du]/, String(Math.round(state.stamina)))
-        .replace(/%[du]/, String(Math.round(state.maxStamina)))
-      this.drawMiniTooltip(ctx, font, text, stamBounds.x + 51, tipY)
+        .replace(/%[du]/, String(stamVisual.tooltipCur))
+        .replace(/%[du]/, String(stamVisual.tooltipMax))
+      this.drawMiniTooltip(ctx, font, text, stamBounds.x + 51, tipY, stamVisual.tooltipColor)
     } else if (this.hoveredElement === 'run') {
       const text = state.isRunning
         ? (resolveTblKey('RunOn', this.lang) ?? (isEn ? 'Run' : '跑步'))
@@ -466,7 +587,14 @@ export class ControlBarHud {
     }
   }
 
-  private drawMiniTooltip(ctx: CanvasRenderingContext2D, font: D2FontRenderer, text: string, cx: number, y: number): void {
+  private drawMiniTooltip(
+    ctx: CanvasRenderingContext2D,
+    font: D2FontRenderer,
+    text: string,
+    cx: number,
+    y: number,
+    color: D2ColorCode = 'gold',
+  ): void {
     const maxW = this.is640 ? 640 : 800
     const w = Math.max(120, font.measureText(text, 'fontexocet10') + 20)
     const x = Math.max(8, Math.min(maxW - w - 8, Math.round(cx - w / 2)))
@@ -476,7 +604,7 @@ export class ControlBarHud {
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 23)
     font.drawText(ctx, text, x + Math.round(w / 2), y + 17, {
       font: 'fontexocet10',
-      color: 'gold',
+      color,
       align: 'center',
     })
   }

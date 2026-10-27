@@ -12,7 +12,14 @@
 
 import type { Item, ItemBase, RolledItemProp } from './items.ts'
 import { ItemQuality } from './items.ts'
-import { chargedSkillChargesOf, decodeChargedSkillValue, encodeChargedSkillValue } from './charged-skill.ts'
+import {
+  chargedSkillChargesOf,
+  decodeChargedSkillValue,
+  decodeStat204ChargedSkill113c,
+  encodeChargedSkillValue,
+  resolveChargedSkillId113c,
+  resolveChargedSkillRoll113c,
+} from './charged-skill.ts'
 import {
   type DropTables,
   computeCharsiImbueIlvl,
@@ -1641,11 +1648,12 @@ export function convertOnlineItemStatsToRolledProps(stats: readonly ItemStat[]):
     }
 
     if (statId === 204) {
-      const skillId = param >= 64 ? param >> 6 : param
-      const slvl = param >= 64 ? Math.max(1, param & 0x3f) : 1
+      const decoded = decodeStat204ChargedSkill113c({ statId: 204, param, value })
+      const skillId = decoded?.skillId ?? (param >= 64 ? param >> 6 : param)
+      const slvl = decoded?.level ?? (param >= 64 ? Math.max(1, param & 0x3f) : 1)
       // D2Client.dll 0x6FB056C2: value = (maxCharges << 8) | currentCharges; keep the packed value so the
       // tooltip can print "(cur/max Charges)".
-      const { current } = decodeChargedSkillValue(value)
+      const current = decoded?.charges ?? decodeChargedSkillValue(value).current
       props.push({ code: 'charged', param: skillId, min: current, max: slvl, value })
       continue
     }
@@ -3105,9 +3113,13 @@ export function rolledPropsToItemStats(
       continue
     }
     if (code === 'charged') {
-      const skillId = rawParam && Number.isFinite(rawParam) ? Math.max(0, Math.trunc(rawParam)) : 0
-      const slvl = Math.max(1, Math.trunc(max || 1))
-      const { current, max: maxCharges } = chargedSkillChargesOf(val, Math.trunc(min || val))
+      const skillId =
+        rawParam !== undefined && Number.isFinite(rawParam)
+          ? Math.max(0, Math.trunc(rawParam))
+          : Math.max(0, resolveChargedSkillId113c(p.param))
+      const rolled = resolveChargedSkillRoll113c(min, max, { skillId })
+      const slvl = max > 0 ? Math.max(1, Math.trunc(max)) : rolled.slvl
+      const { current, max: maxCharges } = chargedSkillChargesOf(val, Math.trunc(min || val), slvl)
       out.push({
         statId: 204,
         param: (skillId << 6) | (slvl & 0x3f),
@@ -3124,7 +3136,10 @@ export function rolledPropsToItemStats(
       code === 'gethit-skill'
     ) {
       const sid = PROP_CODE_TO_STAT_ID.get(code)!
-      const skillId = rawParam && Number.isFinite(rawParam) ? Math.max(0, Math.trunc(rawParam)) : 0
+      const skillId =
+        rawParam !== undefined && Number.isFinite(rawParam)
+          ? Math.max(0, Math.trunc(rawParam))
+          : Math.max(0, resolveChargedSkillId113c(p.param))
       const slvl = Math.max(1, Math.trunc(max || 1))
       const chance = Math.max(1, Math.trunc(min || val || 5))
       out.push({
@@ -3142,9 +3157,15 @@ export function rolledPropsToItemStats(
         isPerLvlStat && val === 0 && rawParam !== undefined && Number.isFinite(rawParam)
           ? rawParam
           : val
+      let effParam: number | undefined =
+        !isPerLvlStat && rawParam !== undefined && Number.isFinite(rawParam) ? rawParam : undefined
+      if (effParam === undefined && !isPerLvlStat && p.param !== undefined && (sid === 97 || sid === 107 || sid === 151)) {
+        const resolvedSid = resolveChargedSkillId113c(p.param)
+        if (resolvedSid >= 0) effParam = resolvedSid
+      }
       out.push({
         statId: sid,
-        ...(!isPerLvlStat && rawParam !== undefined && Number.isFinite(rawParam) ? { param: rawParam } : {}),
+        ...(effParam !== undefined ? { param: effParam } : {}),
         value: effVal,
       })
     }

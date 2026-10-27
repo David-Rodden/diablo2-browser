@@ -167,6 +167,14 @@ export class AuraScanner {
     }
   }
 
+  /** Keep every active aura's `sourceUnit` coordinates aligned as the caster moves. */
+  syncCasterPosition(x: number, y: number): void {
+    for (const aura of this.activeAuras.values()) {
+      aura.sourceUnit.x = x
+      aura.sourceUnit.y = y
+    }
+  }
+
   /**
    * Execute an immediate or periodic aura pulse across `allies`, `enemies`, and `corpses`.
    * Targets are selected like the 1.13c radial scan 0x6FCC0C70: sub-tile `dx² + dy² <= r²` with
@@ -275,6 +283,7 @@ export class AuraScanner {
     let healthRestored = 0
     let manaRestored = 0
     let unitsHealed = 0
+    const pulsedTargets: CombatUnitContext[] = [sourceUnit]
     const unitOverlays: Array<{
       readonly unitType: 0 | 1
       readonly unitId: number
@@ -345,6 +354,7 @@ export class AuraScanner {
           stats: allyStats,
           isAuraOverride: true,
         })
+        pulsedTargets.push(ally)
         alliesBuffed += 1
       }
     }
@@ -429,6 +439,7 @@ export class AuraScanner {
           },
           isAuraOverride: true,
         })
+        pulsedTargets.push(enemy)
         enemiesAffected += 1
       }
     }
@@ -529,6 +540,7 @@ export class AuraScanner {
             stats: { ...stats },
             isAuraOverride: true,
           })
+          pulsedTargets.push(enemy)
           // 1.13c SkillPal.cpp:327 — 20% chance per pulse to toggle `STATE_SHATTER` (#107) on Holy Freeze targets
           if (skill.id === 114) {
             if (rollChance(20)) {
@@ -642,6 +654,11 @@ export class AuraScanner {
       }
     }
 
+    const key = `${sourceUnit.id}:${String(skill.id)}`
+    if (this.activeAuras.get(key) === aura) {
+      this.lastPulseTargets.set(key, pulsedTargets)
+    }
+
     return {
       auraSkillId: skill.id,
       auraName: skill.name,
@@ -672,19 +689,18 @@ export class AuraScanner {
     for (const [key, aura] of this.activeAuras.entries()) {
       if (currentTick % aura.pulseIntervalTicks === 0) {
         this.lastTickPulseFrames.set(key, currentTick)
-        this.lastPulseTargets.set(key, [aura.sourceUnit, ...allies, ...enemies])
         outcomes.push(this.pulseAura(aura, currentTick, allies, enemies, corpses, options))
       } else if (this.lastTickPulseFrames.get(key) === currentTick - 1) {
         // 1.13c `SKILLS_GetNextPerDelayFrame` (0x6FCBE970) schedules the new cycle on `k * d + 1`
         // where `computeAuraStateDurationFrames(k * d + 1, d) = d + 1` (`expireFrame = (k + 1) * d + 2`).
-        // Refresh states pulsed by `tick(k * d)` (which had `duration = 2`, `expireFrame = k * d + 2`)
-        // so continuous `tick()` loops sustain the aura across the `[k * d + 1, (k + 1) * d]` cycle.
+        // Refresh ONLY states that were actually pulsed by `tick(k * d)` (stored in `lastPulseTargets`),
+        // so units that walked out of range or entered town (`aurafilter 0x2000` / `0x100`) expire cleanly!
         const cycleDuration = computeAuraStateDurationFrames(currentTick, aura.pulseIntervalTicks)
         const nextExpireFrame = currentTick + cycleDuration
         const prevTargets = this.lastPulseTargets.get(key) ?? []
         const seen = new Set<CombatUnitContext>()
         const units: CombatUnitContext[] = []
-        for (const u of [aura.sourceUnit, ...allies, ...enemies, ...prevTargets]) {
+        for (const u of prevTargets) {
           if (!seen.has(u)) {
             seen.add(u)
             units.push(u)

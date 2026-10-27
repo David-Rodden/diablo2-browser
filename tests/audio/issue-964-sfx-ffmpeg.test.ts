@@ -8,13 +8,14 @@
  * - `README.md` and `src/baker/README.md` documentation coverage for `ffmpeg`, `libopus`, `FFMPEG_PATH`,
  *   `pack:sfx`, and `pack:music`
  */
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { runAudioAudit } from '../../src/baker/audit/verify-audio-113c.ts'
 import { ALL_BAKE_TARGETS, runBakerCli } from '../../src/baker/cli.ts'
 import { generateAssetManifest } from '../../src/baker/io/asset-manifest.ts'
+import { copyPrivate } from '../../src/baker/io/private-copy.ts'
 import { DEFAULT_NODE_MPQ_DIR } from '../../src/baker/mpq-archive-source.ts'
 import {
   CORE_SFX_PACK_SPECS_113C,
@@ -121,9 +122,9 @@ describe('Issue #964 — verify-audio-113c sfx-core duration mismatch diagnostic
     mkdirSync(join(fakeRoot, 'public', 'sound', 'packs'), { recursive: true })
 
     for (const spec of CORE_SFX_PACK_SPECS_113C) {
-      copyFileSync(join(REPO_ROOT, 'public', spec.relPath), join(fakeRoot, 'public', spec.relPath))
+      copyPrivate(join(REPO_ROOT, 'public', spec.relPath), join(fakeRoot, 'public', spec.relPath))
     }
-    copyFileSync(join(REPO_ROOT, 'public', 'asset-manifest.json'), join(fakeRoot, 'public', 'asset-manifest.json'))
+    copyPrivate(join(REPO_ROOT, 'public', 'asset-manifest.json'), join(fakeRoot, 'public', 'asset-manifest.json'))
 
     // Tamper the first chunk in sfx-core.bin by replacing its bytes with a valid 48 kHz Ogg Opus stream
     // whose duration is longer than the original WAV (simulating legacy 2018 ffmpeg N-47683 +3.3ms resampling drift).

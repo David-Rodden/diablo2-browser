@@ -13,6 +13,7 @@ import type { MagicAffix, AffixTable, AffixEligibilityOptions } from './affixes.
 import { isAffixEligible } from './affixes.ts'
 import type { RareNameEntry, RareNameTable } from './rare-names.ts'
 import { isRareNameEligible } from './rare-names.ts'
+import { resolveChargedSkillRoll113c } from './charged-skill.ts'
 import type { D2Rng } from '../rng/d2-rng.ts'
 
 /**
@@ -268,9 +269,22 @@ export const NON_RANDOM_RANGE_CODES: ReadonlySet<string> = new Set([
 /**
  * Rolls concrete values for all modifiers of a chosen affix using `rng.randRange(min, max)`.
  */
-function rollAffixMods(affix: MagicAffix, rng: D2Rng): RolledMod[] {
+function rollAffixMods(affix: MagicAffix, rng: D2Rng, ilvl?: number): RolledMod[] {
   return affix.mods.map(mod => {
     const codeLower = mod.code.toLowerCase()
+    if (codeLower === 'charged') {
+      const { slvl, maxCharges } = resolveChargedSkillRoll113c(mod.min, mod.max, {
+        ilvl,
+        skillId: mod.param,
+      })
+      return {
+        code: mod.code,
+        ...(mod.param !== undefined ? { param: mod.param } : {}),
+        min: maxCharges,
+        max: slvl,
+        value: maxCharges,
+      }
+    }
     if (NON_RANDOM_RANGE_CODES.has(codeLower)) {
       return {
         code: mod.code,
@@ -298,8 +312,8 @@ function rollAffixMods(affix: MagicAffix, rng: D2Rng): RolledMod[] {
 /**
  * Creates a RolledAffix from a selected MagicAffix and rolled mods.
  */
-function createRolledAffix(affix: MagicAffix, rng: D2Rng): RolledAffix {
-  const mods = rollAffixMods(affix, rng)
+export function createRolledAffix(affix: MagicAffix, rng: D2Rng, ilvl?: number): RolledAffix {
+  const mods = rollAffixMods(affix, rng, ilvl)
   return {
     affix,
     name: affix.name,
@@ -440,7 +454,7 @@ export function rollMagicAffixes(
       if (picked.group > 0) {
         usedGroups.add(picked.group)
       }
-      rolledPrefix = createRolledAffix(picked, rng)
+      rolledPrefix = createRolledAffix(picked, rng, ilvl)
     }
   }
 
@@ -463,7 +477,7 @@ export function rollMagicAffixes(
       if (picked.group > 0) {
         usedGroups.add(picked.group)
       }
-      rolledSuffix = createRolledAffix(picked, rng)
+      rolledSuffix = createRolledAffix(picked, rng, ilvl)
     }
   }
 
@@ -614,7 +628,7 @@ export function rollRareAffixes(
       if (picked.group > 0) {
         usedGroups.add(picked.group)
       }
-      rolledPrefixes.push(createRolledAffix(picked, rng))
+      rolledPrefixes.push(createRolledAffix(picked, rng, ilvl))
       return true
     } else {
       if (rolledSuffixes.length >= 3) return false
@@ -632,7 +646,7 @@ export function rollRareAffixes(
       if (picked.group > 0) {
         usedGroups.add(picked.group)
       }
-      rolledSuffixes.push(createRolledAffix(picked, rng))
+      rolledSuffixes.push(createRolledAffix(picked, rng, ilvl))
       return true
     }
   }

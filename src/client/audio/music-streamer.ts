@@ -17,13 +17,19 @@ import {
   getMusicTrack113c,
   type MusicTrackMeta113c,
 } from '../../common/audio/music-tracks-113c.ts'
-import { getSoundEnvironForLevel113c } from '../../common/audio/sound-environ-113c.ts'
+import {
+  SOUND_ENVIRON_113C,
+  getSoundEnvironForLevel113c,
+} from '../../common/audio/sound-environ-113c.ts'
 
 export const MUSIC_OPTIONS_SOUND_ID_113C = 4668
 export const MUSIC_TITLE_SOUND_ID_113C = 4699
 export const MUSIC_ACT5_INTRO_SOUND_ID_113C = 4684
+export const MUSIC_BGM_RANGE_113C: readonly [number, number] = [4657, 4684]
 export const MUSIC_QUEST_STINGER_RANGE_113C: readonly [number, number] = [4685, 4698]
-export const DEFAULT_CROSSFADE_TICKS_113C = 35
+export const MUSIC_ROOM_DEBOUNCE_TICKS_113C = 75
+export const MUSIC_RESUME_SCAN_TICKS_113C = 125
+export const DEFAULT_CROSSFADE_TICKS_113C = 0
 
 export interface MusicAudioElementLike {
   src: string
@@ -175,9 +181,16 @@ export class MusicStreamer {
   private pendingResumeDeck: MusicDeckSlot | null = null
   private savedBgmState: {
     readonly soundId: number
-    readonly resumeTimeSec: number
   } | null = null
   private stingerOnEnded: (() => void) | null = null
+  /** 28-entry per-song resume block marker table (`[0x6fbc75b8 + (song - 4657) * 4]`, #1755). */
+  private readonly resumeBlockFrames = new Int32Array(28)
+  private currentTick = 0
+  private roomStampTick = 0
+  private inGameSongId = 0
+  private pendingRoomSongId: number | null = null
+  private pendingRoomOpts: PlayTrackOptions | undefined = undefined
+  private ticksSinceResumeScan = 0
 
   private musicVolume = 1
   private sfxVolume = 1
@@ -366,6 +379,52 @@ export class MusicStreamer {
     }
   }
 
+  private isMusicEnabled(): boolean {
+    this.refreshVolumesFromOptions()
+    return !this.muted && this.musicVolume > 0 && this.masterVolume > 0
+  }
+
+  private isQuestStingerId(soundId: number): boolean {
+    return (
+      soundId >= MUSIC_QUEST_STINGER_RANGE_113C[0] &&
+      soundId <= MUSIC_QUEST_STINGER_RANGE_113C[1]
+    )
+  }
+
+  private isInGameBgmId(soundId: number): boolean {
+    return soundId >= MUSIC_BGM_RANGE_113C[0] && soundId <= MUSIC_BGM_RANGE_113C[1]
+  }
+
+  /**
+   * Computes the next `Block 1..3` frame offset (`0x6faf5917–0x6faf5940`) strictly greater than
+   * `currentTimeSec * sampleRate`, or `0` if none is greater (#1755).
+   */
+  computeNextBlockFrames(soundId: number, currentTimeSec: number): number {
+    if (!this.isInGameBgmId(soundId)) return 0
+    const track = getMusicTrack113c(soundId)
+    if (track === undefined) return 0
+    const posFrames = Math.floor(
+      Math.max(0, Number.isFinite(currentTimeSec) ? currentTimeSec : 0) * track.sampleRate,
+    )
+    for (const b of [track.block1, track.block2, track.block3]) {
+      if (b > 0 && b < track.frames && b > posFrames) {
+        return b
+      }
+    }
+    return 0
+  }
+
+  getResumeBlockFrames(soundId: number): number {
+    if (!this.isInGameBgmId(soundId)) return 0
+    return this.resumeBlockFrames[soundId - MUSIC_BGM_RANGE_113C[0]] ?? 0
+  }
+
+  private updateResumeMarkerForDeck(slot: MusicDeckSlot): void {
+    if (!this.isInGameBgmId(slot.trackId)) return
+    const nextBlock = this.computeNextBlockFrames(slot.trackId, slot.element.currentTime)
+    this.resumeBlockFrames[slot.trackId - MUSIC_BGM_RANGE_113C[0]] = nextBlock
+  }
+
   private resolveSeekSeconds(track: MusicTrackMeta113c, opts?: PlayTrackOptions): number {
     const validBlocks = [track.block1, track.block2, track.block3].filter(
       (b) => b >= 0 && b < track.frames,
@@ -385,6 +444,12 @@ export class MusicStreamer {
         return validBlocks[pick - 1]! / track.sampleRate
       }
     }
+    if (this.isInGameBgmId(track.id)) {
+      const resumeFrames = this.resumeBlockFrames[track.id - MUSIC_BGM_RANGE_113C[0]] ?? 0
+      if (resumeFrames > 0 && resumeFrames < track.frames) {
+        return resumeFrames / track.sampleRate
+      }
+    }
     return 0
   }
 
@@ -401,23 +466,65 @@ export class MusicStreamer {
       return
     }
     slot.element.pause()
-    if (slot !== this.activeDeck) return
-
-    const cb = this.stingerOnEnded
-    this.stingerOnEnded = null
-    if (cb !== null) {
-      cb()
+    if (this.isQuestStingerId(slot.trackId)) {
+      const cb = this.stingerOnEnded
+      this.stingerOnEnded = null
+      if (cb !== null) {
+        cb()
+      }
+      if (slot !== this.activeDeck) return
+      if (this.savedBgmState !== null) {
+        const saved = this.savedBgmState
+        this.savedBgmState = null
+        this.playTrack(saved.soundId)
+      }
+      return
     }
-    if (this.savedBgmState !== null) {
-      const saved = this.savedBgmState
-      this.savedBgmState = null
-      this.playTrack(saved.soundId)
-      if (this.activeDeck !== null && saved.resumeTimeSec > 0) {
-        try {
-          this.activeDeck.element.currentTime = saved.resumeTimeSec
-        } catch {
-          /* ignore out-of-range resume offset */
+    if (slot !== this.activeDeck) return
+  }
+
+  /**
+   * `0x6fb388b0` (`#1756`, `#1757`): Fades out all active looping BGM records (`4657..4684`).
+   * Never touches quest stingers (`4685..4698`), and uses `Fade Out == 0` -> immediate stop without
+   * an invented 35-tick fallback.
+   */
+  fadeOutBgm(immediate = false): void {
+    this.pendingResumeDeck = null
+    if (this.activeDeck !== null && !this.isQuestStingerId(this.activeDeck.trackId)) {
+      this.activeTrackId = 0
+      this.activeDeck = null
+    }
+    if (this.deckA === null || this.deckB === null) return
+    for (const slot of [this.deckA, this.deckB]) {
+      if (this.isQuestStingerId(slot.trackId)) continue
+      if (slot.trackId <= 0) continue
+      const wasPlaying = !slot.element.paused
+      if (wasPlaying && slot.element.currentTime > 0) {
+        this.updateResumeMarkerForDeck(slot)
+      }
+      const track = getMusicTrack113c(slot.trackId)
+      const fadeOutTicks = track !== undefined && track.fadeOut > 0 ? track.fadeOut : 0
+      if (!immediate && wasPlaying && fadeOutTicks > 0) {
+        const fromGain =
+          slot.fade !== null
+            ? slot.gainValue
+            : slot.gainValue > 0
+              ? slot.gainValue
+              : track !== undefined
+                ? this.computeTrackTargetGain(track)
+                : 0
+        slot.fade = {
+          fromGain,
+          toGain: 0,
+          elapsedTicks: 0,
+          durationTicks: fadeOutTicks,
+          pauseOnComplete: true,
         }
+      } else {
+        slot.fade = null
+        slot.gainValue = 0
+        this.syncDeckGain(slot)
+        slot.element.pause()
       }
     }
   }
@@ -454,29 +561,40 @@ export class MusicStreamer {
 
     if (prevDeck !== null && prevDeck !== incomingDeck) {
       if (wasPlaying) {
+        if (prevDeck.element.currentTime > 0 && !this.isQuestStingerId(soundId)) {
+          this.updateResumeMarkerForDeck(prevDeck)
+        }
         if (opts?.immediate === true) {
           prevDeck.fade = null
           prevDeck.gainValue = 0
           this.syncDeckGain(prevDeck)
           prevDeck.element.pause()
+        } else if (this.isQuestStingerId(prevDeck.trackId)) {
+          // 0x6fb388b0 (#1757): quest stingers (4685..4698) are never faded by BGM selection
+          prevDeck.fade = null
         } else {
           const prevTrack = getMusicTrack113c(prevDeck.trackId)
           const fadeOutTicks =
-            prevTrack !== undefined && prevTrack.fadeOut > 0
-              ? prevTrack.fadeOut
-              : DEFAULT_CROSSFADE_TICKS_113C
-          const fromGain =
-            prevDeck.fade !== null
-              ? prevDeck.gainValue
-              : prevDeck.gainValue > 0
+            prevTrack !== undefined && prevTrack.fadeOut > 0 ? prevTrack.fadeOut : 0
+          if (fadeOutTicks > 0) {
+            const fromGain =
+              prevDeck.fade !== null
                 ? prevDeck.gainValue
-                : this.computeTrackTargetGain(prevTrack ?? track)
-          prevDeck.fade = {
-            fromGain,
-            toGain: 0,
-            elapsedTicks: 0,
-            durationTicks: fadeOutTicks,
-            pauseOnComplete: true,
+                : prevDeck.gainValue > 0
+                  ? prevDeck.gainValue
+                  : this.computeTrackTargetGain(prevTrack ?? track)
+            prevDeck.fade = {
+              fromGain,
+              toGain: 0,
+              elapsedTicks: 0,
+              durationTicks: fadeOutTicks,
+              pauseOnComplete: true,
+            }
+          } else {
+            prevDeck.fade = null
+            prevDeck.gainValue = 0
+            this.syncDeckGain(prevDeck)
+            prevDeck.element.pause()
           }
         }
       } else {
@@ -499,7 +617,12 @@ export class MusicStreamer {
       /* ignore browser InvalidStateError when seeking before metadata is loaded */
     }
 
-    if (opts?.immediate === true || !wasPlaying || track.fadeIn <= 0) {
+    const usedResumeMarker =
+      opts?.blockIndex === undefined &&
+      opts?.randomBlock !== true &&
+      this.isInGameBgmId(soundId) &&
+      seekSec > 0
+    if (opts?.immediate === true || (!wasPlaying && !usedResumeMarker) || track.fadeIn <= 0) {
       incomingDeck.gainValue = targetGain
       this.syncDeckGain(incomingDeck)
     } else {
@@ -517,6 +640,9 @@ export class MusicStreamer {
 
     this.activeDeck = incomingDeck
     this.activeTrackId = soundId
+    if (this.isInGameBgmId(soundId)) {
+      this.ticksSinceResumeScan = 0
+    }
     if (opts?.onEnded !== undefined) {
       this.stingerOnEnded = opts.onEnded
     }
@@ -545,6 +671,9 @@ export class MusicStreamer {
   }
 
   playOptionsMusic(): boolean {
+    this.inGameSongId = 0
+    this.pendingRoomSongId = null
+    this.pendingRoomOpts = undefined
     this.savedBgmState = null
     this.stingerOnEnded = null
     return this.playTrack(MUSIC_OPTIONS_SOUND_ID_113C)
@@ -555,12 +684,18 @@ export class MusicStreamer {
   }
 
   playTitleMusic(): boolean {
+    this.inGameSongId = 0
+    this.pendingRoomSongId = null
+    this.pendingRoomOpts = undefined
     this.savedBgmState = null
     this.stingerOnEnded = null
     return this.playTrack(MUSIC_TITLE_SOUND_ID_113C)
   }
 
   playActIntroMusic(act: number): boolean {
+    this.inGameSongId = 0
+    this.pendingRoomSongId = null
+    this.pendingRoomOpts = undefined
     this.savedBgmState = null
     this.stingerOnEnded = null
     const targetId = act === 4 || act === 5 ? MUSIC_ACT5_INTRO_SOUND_ID_113C : MUSIC_OPTIONS_SOUND_ID_113C
@@ -571,18 +706,51 @@ export class MusicStreamer {
     return this.playActIntroMusic(act)
   }
 
-  onEnterArea(levelId: number, opts?: PlayTrackOptions): boolean {
-    const env = getSoundEnvironForLevel113c(levelId)
-    if (env.song <= 0) {
+  private applyRoomSongSelection(rawSong: number, opts?: PlayTrackOptions): boolean {
+    const song = this.isInGameBgmId(rawSong) ? rawSong : 0
+    this.roomStampTick = this.currentTick
+    this.pendingRoomSongId = song
+    this.pendingRoomOpts = opts
+
+    const musicEnabled = this.isMusicEnabled()
+    const allowImmediate =
+      this.inGameSongId === 0 ||
+      !musicEnabled ||
+      opts?.immediate === true ||
+      opts?.blockIndex !== undefined ||
+      song === this.inGameSongId
+
+    if (!allowImmediate) {
+      return true
+    }
+
+    this.pendingRoomSongId = null
+    this.pendingRoomOpts = undefined
+    this.inGameSongId = song
+    this.ticksSinceResumeScan = 0
+
+    if (song === 0 || !musicEnabled) {
+      this.fadeOutBgm(opts?.immediate === true)
       return false
     }
+
     this.savedBgmState = null
     this.stingerOnEnded = null
     const effectiveOpts =
       this.activeTrackId === MUSIC_TITLE_SOUND_ID_113C && opts?.immediate === undefined
         ? { ...opts, immediate: true }
         : opts
-    return this.playTrack(env.song, effectiveOpts)
+    return this.playTrack(song, effectiveOpts)
+  }
+
+  onEnterSoundEnviron(envIdx: number, opts?: PlayTrackOptions): boolean {
+    const env = SOUND_ENVIRON_113C[envIdx] ?? SOUND_ENVIRON_113C[0]!
+    return this.applyRoomSongSelection(env.song, opts)
+  }
+
+  onEnterArea(levelId: number, opts?: PlayTrackOptions): boolean {
+    const env = getSoundEnvironForLevel113c(levelId)
+    return this.applyRoomSongSelection(env.song, opts)
   }
 
   enterArea(levelId: number, opts?: PlayTrackOptions): boolean {
@@ -601,8 +769,7 @@ export class MusicStreamer {
     if (
       typeof soundId !== 'number' ||
       !Number.isInteger(soundId) ||
-      soundId < MUSIC_QUEST_STINGER_RANGE_113C[0] ||
-      soundId > MUSIC_QUEST_STINGER_RANGE_113C[1]
+      !this.isQuestStingerId(soundId)
     ) {
       return false
     }
@@ -611,13 +778,14 @@ export class MusicStreamer {
 
     if (
       this.activeDeck !== null &&
-      this.activeTrackId >= 4657 &&
-      this.activeTrackId <= 4684
+      this.isInGameBgmId(this.activeTrackId)
     ) {
+      // 0x6faf5570 (#1755): save the interrupted BGM's next Block 1..3 marker in [0x6fbc75b8]
+      this.updateResumeMarkerForDeck(this.activeDeck)
       this.savedBgmState = {
         soundId: this.activeTrackId,
-        resumeTimeSec: this.activeDeck.element.currentTime,
       }
+      this.ticksSinceResumeScan = 0
     }
     return this.playTrack(soundId, {
       loop: false,
@@ -626,6 +794,35 @@ export class MusicStreamer {
   }
 
   private stepOneTick(): void {
+    this.currentTick += 1
+
+    if (this.pendingRoomSongId !== null) {
+      const musicEnabled = this.isMusicEnabled()
+      if (
+        this.inGameSongId === 0 ||
+        !musicEnabled ||
+        this.currentTick - this.roomStampTick >= MUSIC_ROOM_DEBOUNCE_TICKS_113C
+      ) {
+        const nextSong = this.pendingRoomSongId
+        const nextOpts = this.pendingRoomOpts
+        this.pendingRoomSongId = null
+        this.pendingRoomOpts = undefined
+        this.inGameSongId = nextSong
+        this.ticksSinceResumeScan = 0
+        if (nextSong === 0 || !musicEnabled) {
+          this.fadeOutBgm(false)
+        } else {
+          this.savedBgmState = null
+          this.stingerOnEnded = null
+          const effectiveOpts =
+            this.activeTrackId === MUSIC_TITLE_SOUND_ID_113C && nextOpts?.immediate === undefined
+              ? { ...nextOpts, immediate: true }
+              : nextOpts
+          this.playTrack(nextSong, effectiveOpts)
+        }
+      }
+    }
+
     if (this.deckA === null || this.deckB === null) return
     for (const slot of [this.deckA, this.deckB]) {
       if (!slot.element.paused && typeof slot.element.advance === 'function') {
@@ -646,6 +843,19 @@ export class MusicStreamer {
           slot.gainValue = slot.fade.fromGain + (slot.fade.toGain - slot.fade.fromGain) * alpha
           this.syncDeckGain(slot)
         }
+      }
+    }
+
+    // 0x6faf58e2–0x6faf5958 (#1755): every 125 ticks update the playing song's next Block 1..3 marker
+    if (
+      this.activeDeck !== null &&
+      !this.activeDeck.element.paused &&
+      this.isInGameBgmId(this.activeTrackId)
+    ) {
+      this.ticksSinceResumeScan += 1
+      if (this.ticksSinceResumeScan >= MUSIC_RESUME_SCAN_TICKS_113C) {
+        this.ticksSinceResumeScan = 0
+        this.updateResumeMarkerForDeck(this.activeDeck)
       }
     }
   }
@@ -724,6 +934,10 @@ export class MusicStreamer {
   }
 
   stop(): void {
+    this.inGameSongId = 0
+    this.pendingRoomSongId = null
+    this.pendingRoomOpts = undefined
+    this.ticksSinceResumeScan = 0
     this.savedBgmState = null
     this.stingerOnEnded = null
     this.pendingResumeDeck = null

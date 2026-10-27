@@ -309,9 +309,8 @@ describe('Toolbar Refresh Display & Server Position Resync (#d2-toolbar-refresh-
     expect(session.camera.subX).toBe(5100)
     expect(session.camera.subY).toBe(5200)
 
-    // Sent 0x4B RequestEntityUpdate for self (101) and merc (202)
+    // Sent 0x4B RequestEntityUpdate for non-local merc (202), NEVER for local player (101) (D2Client 0x6FADB1EC, Issue #1712)
     expect(dispatched).toEqual([
-      { type: 'RequestEntityUpdate', unitType: 0, unitId: 101 },
       { type: 'RequestEntityUpdate', unitType: 1, unitId: 202 },
     ])
 
@@ -320,11 +319,29 @@ describe('Toolbar Refresh Display & Server Position Resync (#d2-toolbar-refresh-
     const res2 = session.refreshDisplayAndResync(5500)
     expect(res2.sentNetworkResync).toBe(false)
     expect(mapper.leftMouseDown).toBe(false)
-    expect(dispatched.length).toBe(2)
+    expect(dispatched.length).toBe(1)
+
+    // Non-local unit with unit+0xC4 bit 23 (0x00800000) and unit+0xC8 bit 5 (0x20) triggers 0x4B and clears both bits (0x6FADB20E..0x6FADB240)
+    session.world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 1, id: 303, classId: 5, x: 5110, y: 5210, mode: 1 } as any,
+    })
+    const remoteMonster = session.world.getUnit('monster', 303) as unknown as {
+      flags: number
+      flagsEx?: number
+    }
+    remoteMonster.flags = 0x00800000
+    remoteMonster.flagsEx = 0x00000020
 
     // Calling after 1000ms sends network packets again
     const res3 = session.refreshDisplayAndResync(6100)
     expect(res3.sentNetworkResync).toBe(true)
-    expect(dispatched.length).toBe(4)
+    expect(dispatched).toEqual([
+      { type: 'RequestEntityUpdate', unitType: 1, unitId: 202 },
+      { type: 'RequestEntityUpdate', unitType: 1, unitId: 202 },
+      { type: 'RequestEntityUpdate', unitType: 1, unitId: 303 },
+    ])
+    expect(remoteMonster.flags & 0x00800000).toBe(0)
+    expect((remoteMonster.flagsEx ?? 0) & 0x00000020).toBe(0)
   })
 })

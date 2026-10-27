@@ -49,6 +49,14 @@ import { PD2_D2GL_CONFIG, type D2GlGraphicsConfig } from '../../common/ui/pd2-d2
 import type { UiDataMode } from '../../common/ui/pd2-sgd2freeres.ts'
 import { D2GlPostProcessPass, supportsWebGl2PostProcessFbo } from './d2gl-postfx.ts'
 import { PALETTE_ROW_STRIDE, extraColormapTables, onExtraColormapsChanged } from './colormap-rows.ts'
+import {
+  CONTRAST_DEFAULT_113C,
+  GAMMA_DEFAULT_113C,
+  GAMMA_NEUTRAL_113C,
+  buildFogGammaRamp113c,
+  normalizeContrast113c,
+  normalizeGamma113c,
+} from '../../common/gfx/gamma-contrast-113c.ts'
 
 /** Camera state for one frame. */
 export interface Camera {
@@ -439,6 +447,8 @@ export class SpriteRenderer {
   /** Inputs of the last {@link setPalette}, replayed when a colormap row is added. */
   private lastPaletteRgb: Uint8Array | null = null
   private lastPaletteTransforms: PaletteTransformInput | undefined = undefined
+  private gamma113c: number | null = null
+  private contrast113c: number = CONTRAST_DEFAULT_113C
   private readonly unsubscribeColormaps: () => void
   /** Cached uniform values to eliminate redundant uniform uploads across flushes. */
   private cachedCameraX = Number.NaN
@@ -1117,6 +1127,31 @@ export class SpriteRenderer {
     this.uploadPaletteInternal(rgb, transforms, PALETTE_ROWS)
   }
 
+  /**
+   * Configure the 1.13c Gamma (`55..255`, default `155`, neutral `100`) and Contrast (`0..100`, default `100`)
+   * ramp (`Fog.dll #10198` @ `0x6FF712C0` / `D2DDraw.dll` @ `0x6F8C80C0`). Pass `null` for `gamma` to disable
+   * palette ramp remapping.
+   */
+  setGammaContrast(gamma: number | null, contrast: number = this.contrast113c): void {
+    const nextGamma = gamma === null ? null : normalizeGamma113c(gamma)
+    const nextContrast = normalizeContrast113c(contrast)
+    if (this.gamma113c === nextGamma && this.contrast113c === nextContrast) return
+    this.gamma113c = nextGamma
+    this.contrast113c = nextContrast
+    if (!this.disposed && this.lastPaletteRgb !== null) {
+      this.uploadPaletteInternal(this.lastPaletteRgb, this.lastPaletteTransforms, PALETTE_ROWS)
+    }
+  }
+
+  /** Current 1.13c Gamma and Contrast settings on this renderer. */
+  getGammaContrast(): { readonly gamma: number; readonly contrast: number; readonly active: boolean } {
+    return {
+      gamma: this.gamma113c ?? GAMMA_DEFAULT_113C,
+      contrast: this.contrast113c,
+      active: this.gamma113c !== null,
+    }
+  }
+
   /** Re-upload the current palette after a new per-unit colormap row was registered (`colormap-rows.ts`). */
   private reuploadPaletteForColormaps(): void {
     if (this.disposed || this.lastPaletteRgb === null) return
@@ -1170,10 +1205,10 @@ export class SpriteRenderer {
         }
       } else if ('blueTones' in transforms && 'greenTones' in transforms) {
         const pl2 = transforms as Pl2
-        variationTables[0] = pl2.blueTones ?? pl2.hueVariations?.[107] ?? DEFAULT_COLD_TRANSFORM_113C
-        variationTables[1] = pl2.greenTones ?? pl2.hueVariations?.[103] ?? DEFAULT_POISON_TRANSFORM_113C
-        variationTables[2] = pl2.hueVariations?.[2] ?? pl2.selectedUnitShift ?? DEFAULT_UNIQUE_TRANSFORM_113C
-        variationTables[3] = pl2.hueVariations?.[4] ?? pl2.blueTones ?? DEFAULT_CHAMPION_TRANSFORM_113C
+        variationTables[0] = pl2.hueVariations?.[107] ?? pl2.blueTones ?? DEFAULT_COLD_TRANSFORM_113C
+        variationTables[1] = pl2.hueVariations?.[103] ?? pl2.greenTones ?? DEFAULT_POISON_TRANSFORM_113C
+        variationTables[2] = DEFAULT_UNIQUE_TRANSFORM_113C
+        variationTables[3] = DEFAULT_CHAMPION_TRANSFORM_113C
       } else {
         const tObj = transforms as {
           cold?: Pl2Transform
@@ -1255,6 +1290,18 @@ export class SpriteRenderer {
         rgba[dst + 1] = baseRgb[targetIdx + 1] ?? 0
         rgba[dst + 2] = baseRgb[targetIdx + 2] ?? 0
         rgba[dst + 3] = 255
+      }
+    }
+
+    if (this.gamma113c !== null && this.gamma113c !== GAMMA_NEUTRAL_113C) {
+      const ramp = buildFogGammaRamp113c(this.gamma113c, this.contrast113c, 256, 255)
+      for (let row = 0; row < totalRows; row += 1) {
+        for (let i = 1; i < 256; i += 1) {
+          const dst = (256 * row + i) * 4
+          rgba[dst] = ramp[rgba[dst] ?? 0] ?? 0
+          rgba[dst + 1] = ramp[rgba[dst + 1] ?? 0] ?? 0
+          rgba[dst + 2] = ramp[rgba[dst + 2] ?? 0] ?? 0
+        }
       }
     }
 
