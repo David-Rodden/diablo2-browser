@@ -274,7 +274,7 @@ import {
 } from '../../common/skills/weapon-combat-meta.ts'
 import { resolveWeaponBase113c } from '../../common/units/char-anim-speed.ts'
 import type { ItemStat } from '../../netproto/index.ts'
-import { AuraScanner, type CorpseContext } from './aura-scanner.ts'
+import { AuraScanner, type ActiveAuraSource, type CorpseContext } from './aura-scanner.ts'
 import { isWithinAuraRange } from '../../common/skills/aura-filter.ts'
 import { compute3BandDuration, computeDiminishingReturns, evaluateCalc } from '../../common/data/calc-ast.ts'
 import { computeCorpseExplosion113c } from './combat-pipeline.ts'
@@ -567,6 +567,7 @@ export interface ServerMercenaryState {
   readonly alive: boolean
   readonly experience: number
   readonly expPerLvl: number
+  readonly states?: ReadonlySet<number> | undefined
 }
 
 export interface SummonPetSpec {
@@ -762,6 +763,26 @@ const MERC_AURA_TO_STATE_ID: Readonly<Record<string, number>> = {
   'holy freeze': 43,
   HolyFreeze: 43,
   holyfreeze: 43,
+}
+
+/** 1.13c Hireling.txt Act 2 aura skill name -> `Skills.txt` skill ID. */
+const MERC_AURA_TO_SKILL_ID: Readonly<Record<string, number>> = {
+  Might: 98,
+  might: 98,
+  Prayer: 99,
+  prayer: 99,
+  Thorns: 103,
+  thorns: 103,
+  Defiance: 104,
+  defiance: 104,
+  'Blessed Aim': 108,
+  'blessed aim': 108,
+  BlessedAim: 108,
+  blessedaim: 108,
+  'Holy Freeze': 114,
+  'holy freeze': 114,
+  HolyFreeze: 114,
+  holyfreeze: 114,
 }
 
 export interface ServerUnitSummary {
@@ -1473,6 +1494,8 @@ interface InternalMercenaryRecord {
   equipment: ServerItemEntry[]
   /** 1/256 fixed-point HP regeneration carry (`MERCS_SetStats` `0x6FC68EE6..0x6FC68F0D`, #1671). */
   regenCarry256?: number | undefined
+  states: Set<number>
+  stateTimers: Map<number, number>
 }
 
 interface InternalObjectRecord {
@@ -1621,6 +1644,25 @@ interface PlayerAuraRuntime {
   readonly scanner: AuraScanner
   readonly skillId: number
   readonly radiusSubtiles: number
+  readonly source: ActiveAuraSource | undefined
+  readonly targetStateId: number | undefined
+}
+
+interface MercAuraSourceEntry {
+  readonly skillId: number
+  readonly slvl: number
+  readonly isItemAura: boolean
+  readonly radiusSubtiles: number
+  readonly casterStateId: number | undefined
+  readonly targetStateId: number | undefined
+  readonly source: ActiveAuraSource
+}
+
+interface MercAuraRuntime {
+  readonly scanner: AuraScanner
+  readonly signature: string
+  readonly sources: readonly MercAuraSourceEntry[]
+  needsInitialPulse: boolean
 }
 
 /** Player missile flight speed in subtiles per 25 Hz frame (GameInstance linear missile model). */
@@ -2028,8 +2070,11 @@ export class GameInstance {
    */
   private readonly playerCombat = new Map<number, PersistentCombatUnit>()
   private readonly monsterCombat = new Map<number, PersistentCombatUnit>()
+  private readonly mercCombat = new Map<number, PersistentCombatUnit>()
   /** Per-player `AuraScanner` running the selected aura's periodic pulse (`perdelay`). */
   private readonly playerAuraScanners = new Map<number, PlayerAuraRuntime>()
+  /** Per-mercenary `AuraScanner` running the hireling's innate + item-granted (`STAT_ITEM_AURA`) aura pulses. */
+  private readonly mercAuraScanners = new Map<number, MercAuraRuntime>()
   private readonly commandQueue: QueuedPlayerCommand[] = []
   private readonly outbox = new Map<number, ServerEvent[]>()
   private readonly playerMotion = new Map<number, PlayerMotionState>()
@@ -3108,6 +3153,9 @@ export class GameInstance {
           for (const mi of parsedD2s.mercItems) {
             mercRecord.equipment.push(this.itemDataToServerEntry(mi, mercRecord.unitId, areaId))
           }
+          if (mercRecord.alive) {
+            this.syncMercenaryOwnerAura(record, mercRecord.activeAura, mercRecord, true)
+          }
         }
       }
     }
@@ -3130,6 +3178,12 @@ export class GameInstance {
     this.playerActiveAuraState.delete(playerUnitId)
     this.playerCombat.delete(playerUnitId)
     this.playerAuraScanners.delete(playerUnitId)
+    for (const [mercId, merc] of this.mercenaries.entries()) {
+      if (merc.ownerPlayerId === playerUnitId) {
+        this.stopMercenaryAura(merc)
+        this.mercCombat.delete(mercId)
+      }
+    }
     this.playerMotion.delete(playerUnitId)
     this.outbox.delete(playerUnitId)
     this.rescaleActiveMonsters()
@@ -5528,6 +5582,7 @@ export class GameInstance {
     // 2b. Persistent combat states (skill buffs / curses / auras) and aura pulses
     this.stepPersistentCombatStates()
     this.stepPlayerAuras()
+    this.stepMercenaryAuras()
 
     // 3. Step missiles & collision
     this.stepMissiles()
@@ -5584,9 +5639,10 @@ export class GameInstance {
             : 0
       }
       if (monster.chillTicks > 0) {
-        monster.chillTicks = monster.states.has(11)
-          ? Math.max(0, monster.chillTicks - 1)
-          : 0
+        monster.chillTicks =
+          monster.states.has(11) || monster.states.has(44)
+            ? Math.max(0, monster.chillTicks - 1)
+            : 0
       }
       if (!monster.isNpc) {
         this.stepMonsterPoison(monster)
@@ -7686,6 +7742,35 @@ export class GameInstance {
     }
   }
 
+  /** Persistent combat context of a mercenary, re-synced from the authoritative hireling record. */
+  private mercCombatContext(merc: InternalMercenaryRecord): CombatUnitContext {
+    let unit = this.mercCombat.get(merc.unitId)
+    if (unit === undefined) {
+      const statList = new UnitStatList(this.registry)
+      unit = { statList, stateBus: new StateBus(statList, this.registry) }
+      this.mercCombat.set(merc.unitId, unit)
+    }
+    const st = unit.statList
+    st.setBaseStat('level', merc.level)
+    st.setBaseStat('armorclass', merc.defense)
+    st.setBaseStat('maxhp', merc.maxHp * FIXED_ONE)
+    st.setHp256(merc.hp * FIXED_ONE)
+    st.setBaseStat('fireresist', merc.resist)
+    st.setBaseStat('lightresist', merc.resist)
+    st.setBaseStat('coldresist', merc.resist)
+    st.setBaseStat('poisonresist', merc.resist)
+    return {
+      id: `merc_${merc.unitId}`,
+      name: merc.name,
+      unitType: 'mercenary',
+      statList: st,
+      stateBus: unit.stateBus,
+      x: merc.x,
+      y: merc.y,
+      resistPenalty: difficultyResistPenalty(this.difficulty),
+    }
+  }
+
   /**
    * Copy the persistent states (with their `aurastat` modifiers) of a unit onto a per-hit
    * `StateBus`, skipping states the hit already models, so buffs / curses / auras reach
@@ -7740,6 +7825,15 @@ export class GameInstance {
       if (!this.players.has(id)) this.playerCombat.delete(id)
       else unit.stateBus.tick(this.currentFrame)
     }
+    for (const [id, unit] of this.mercCombat) {
+      const merc = this.mercenaries.get(id)
+      if (merc === undefined || !merc.alive || merc.hp <= 0) {
+        this.mercCombat.delete(id)
+        this.mercAuraScanners.delete(id)
+        continue
+      }
+      unit.stateBus.tick(this.currentFrame)
+    }
     for (const [id, unit] of this.monsterCombat) {
       const m = this.monsters.get(id)
       if (m === undefined || m.dead) {
@@ -7772,8 +7866,8 @@ export class GameInstance {
           m.convertedUntilFrame = Math.max(m.convertedUntilFrame, expireFrame)
         }
       }
-      // Mirror Conviction (#123, state #28) & Holy Freeze (#114, states #44 holywindcold, #107 shatter) removal when expired
-      for (const auraStateId of [28, 44, 107] as const) {
+      // Mirror enemy aura stateBus states (#44 holywindcold, #107 shatter, #28 conviction) removal when expired
+      for (const auraStateId of [44, 107, 28] as const) {
         if (m.states.has(auraStateId) && !unit.stateBus.hasState(auraStateId)) {
           this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId)
         }
@@ -7784,6 +7878,61 @@ export class GameInstance {
   /** Whether a monster is currently converted (state 53) and fights for a player. */
   private isMonsterConverted(monster: InternalMonsterRecord): boolean {
     return monster.convertedUntilFrame > this.currentFrame
+  }
+
+  /**
+   * Mirror enemy aura target states (#44 `holywindcold`, #107 `shatter`, #28 `conviction`) from
+   * `enemyCtx.stateBus` onto the authoritative monster record (`m.states`, `m.stateTimers`, `m.chillTicks`),
+   * broadcasting `UnitState` / `StateSet` only when newly applied or refreshed by a pulse.
+   */
+  private syncAuraEnemyStates113c(m: InternalMonsterRecord, enemyCtx: CombatUnitContext): void {
+    for (const auraStateId of [44, 107, 28] as const) {
+      const entry = enemyCtx.stateBus.getActiveEntries().find((e) => e.stateId === auraStateId)
+      if (entry !== undefined) {
+        const rem = entry.expireFrame > 0 ? Math.max(1, entry.expireFrame - this.currentFrame) : 25
+        if (auraStateId === 44) {
+          m.chillTicks = Math.max(m.chillTicks, rem)
+        }
+        const prevRem = m.stateTimers.get(auraStateId) ?? 0
+        if (!m.states.has(auraStateId) || rem > prevRem) {
+          this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId, rem)
+        } else {
+          m.stateTimers.set(auraStateId, rem)
+        }
+      } else if (m.states.has(auraStateId)) {
+        this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId)
+      }
+    }
+  }
+
+  /**
+   * Mirror friendly party aura target states (`Might` 33, `Prayer` 34, `Thorns` 36, `Defiance` 37,
+   * `Blessed Aim` 40, `Resist Fire/Cold/Lightning` 35/38/39, `Stamina` 41, `Salvation` 42,
+   * `Cleansing` 45, `Meditation` 46, `Fanaticism` 47, `Redemption` 49) from `allyCtx.stateBus`
+   * onto a player or mercenary unit's `states` / `stateTimers`.
+   */
+  private syncAuraAllyStates113c(
+    states: Set<number>,
+    timers: Map<number, number>,
+    unitType: 'player' | 'monster',
+    unitId: number,
+    areaId: number,
+    allyCtx: CombatUnitContext,
+    casterStateIdsToSkip?: ReadonlySet<number>,
+  ): void {
+    for (const auraStateId of [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 45, 46, 47, 49] as const) {
+      if (casterStateIdsToSkip?.has(auraStateId)) continue
+      const entry = allyCtx.stateBus.getActiveEntries().find((e) => e.stateId === auraStateId && e.isAura)
+      if (entry !== undefined && entry.expireFrame > 0) {
+        const rem = Math.max(1, entry.expireFrame - this.currentFrame)
+        const prevRem = timers.get(auraStateId) ?? 0
+        if (!states.has(auraStateId) || rem > prevRem) {
+          this.applyUnitState(states, timers, unitType, unitId, areaId, auraStateId, rem)
+        } else {
+          timers.set(auraStateId, rem)
+        }
+      }
+    }
   }
 
   /**
@@ -7817,29 +7966,35 @@ export class GameInstance {
       const allies = allyRecords.map((p) => (p === owner ? ownerCtx : this.playerCombatContext(p)))
       const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
       const corpses: CorpseContext[] = corpseRecords.map((m) => ({ id: String(m.unitId), consumed: false, x: m.x, y: m.y }))
-      aura.scanner.tick(this.currentFrame, allies, enemies, corpses, {
+      const auraEnv = {
         isTown: TOWN_AREAS.has(owner.areaId),
         // aurafilter `0x200` (D2Common ord 11076, collision mask 4): wall/door ray like a flying walker.
-        hasLineOfSight: (src, tgt) =>
+        hasLineOfSight: (src: CombatUnitContext, tgt: { x?: number; y?: number }) =>
           src.x === undefined || src.y === undefined || tgt.x === undefined || tgt.y === undefined
             ? false
             : this.isMonsterStepWalkable(owner.areaId, src.x, src.y, tgt.x, tgt.y, true),
         rng: this.rng,
-      })
+      }
+      aura.scanner.tick(this.currentFrame, allies, enemies, corpses, auraEnv)
+      // If a hostile monster newly entered range of an enemy-debuff aura (Holy Freeze #114 / Conviction #123)
+      // between `perdelay` ticks, pulse that unpulsed target immediately so it does not wait up to 49 frames.
+      if (aura.source !== undefined && (aura.skillId === 114 || aura.skillId === 123) && aura.targetStateId !== undefined) {
+        const tgtState = aura.targetStateId
+        const unpulsedEnemies = enemies.filter((e, idx) => {
+          const m = enemyRecords[idx]!
+          if (m.isPrimeEvil || (aura.skillId === 114 && m.coldEffect === 0)) return false
+          return !e.stateBus.hasState(tgtState)
+        })
+        if (unpulsedEnemies.length > 0) {
+          aura.scanner.pulseAura(aura.source, Math.max(1, this.currentFrame), [], unpulsedEnemies, [], auraEnv)
+        }
+      }
 
       allyRecords.forEach((p, i) => this.syncPlayerVitalsFromCombat(p, allies[i]!))
       enemyRecords.forEach((m, i) => {
-        // Mirror Conviction (#123, state #28) & Holy Freeze (#114, states #44 holywindcold, #107 shatter) before radial damage
+        // Mirror Holy Freeze (#114) / Conviction (#123) stateBus states before radial damage
         // so that a monster killed on a 20% shatter pulse already carries state #107 on death.
-        for (const auraStateId of [28, 44, 107] as const) {
-          const entry = enemies[i]!.stateBus.getActiveEntries().find((e) => e.stateId === auraStateId)
-          if (entry !== undefined) {
-            const rem = entry.expireFrame > 0 ? Math.max(1, entry.expireFrame - this.currentFrame) : 25
-            this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId, rem)
-          } else if (m.states.has(auraStateId)) {
-            this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId)
-          }
-        }
+        this.syncAuraEnemyStates113c(m, enemies[i]!)
         const hpAfter = Math.max(0, Math.ceil(enemies[i]!.statList.getHp256() / FIXED_ONE))
         const dealt = m.hp - hpAfter
         if (dealt > 0) {
@@ -7854,10 +8009,12 @@ export class GameInstance {
 
   /** Write HP / mana / `nomanaregen` (state 85) changed by an aura pulse back to the player record (+ client stat updates). */
   private syncPlayerVitalsFromCombat(player: InternalPlayerRecord, ctx: CombatUnitContext): void {
-    const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
-    const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
-    const hp256 = Math.min(accruedMaxHpFixed, Math.max(0, ctx.statList.getHp256()))
-    const mana256 = Math.min(accruedMaxManaFixed, Math.max(0, ctx.statList.getMana256()))
+    const rawHp256 = ctx.statList.getHp256()
+    const rawMana256 = ctx.statList.getMana256()
+    const accruedMaxHpFixed = Math.max(FIXED_ONE, Math.trunc(ctx.statList.getAccruedStat('maxhp')))
+    const accruedMaxManaFixed = Math.max(0, Math.trunc(ctx.statList.getAccruedStat('maxmana')))
+    const hp256 = Math.min(accruedMaxHpFixed, Math.max(0, rawHp256))
+    const mana256 = Math.min(accruedMaxManaFixed, Math.max(0, rawMana256))
     if (hp256 !== player.hpFixed) {
       player.hpFixed = hp256
       player.hp = Math.max(0, Math.ceil(hp256 / FIXED_ONE))
@@ -7940,10 +8097,13 @@ export class GameInstance {
       const ownerCtx = this.playerCombatContext(player)
       const scanner = new AuraScanner(this.registry, (this.currentMapSeed ^ player.unitId) >>> 0)
       const activeSource = scanner.setActiveAura(ownerCtx, skill.id, cast.slvl, this.currentFrame + 1)
+      const targetStateId = skill.auraTgtState ? this.registry.getStateByName(skill.auraTgtState)?.id : undefined
       this.playerAuraScanners.set(player.unitId, {
         scanner,
         skillId: skill.id,
         radiusSubtiles: evalResult.radiusSubtiles,
+        source: activeSource ?? undefined,
+        targetStateId,
       })
       if (activeSource) {
         const inRange = (x: number, y: number) => isWithinAuraRange(x - player.x, y - player.y, evalResult.radiusSubtiles)
@@ -7969,15 +8129,7 @@ export class GameInstance {
         })
         allyRecords.forEach((p, i) => this.syncPlayerVitalsFromCombat(p, allies[i]!))
         enemyRecords.forEach((m, i) => {
-          for (const auraStateId of [28, 44, 107] as const) {
-            const entry = enemies[i]!.stateBus.getActiveEntries().find((e) => e.stateId === auraStateId)
-            if (entry !== undefined) {
-              const rem = entry.expireFrame > 0 ? Math.max(1, entry.expireFrame - this.currentFrame) : 25
-              this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId, rem)
-            } else if (m.states.has(auraStateId)) {
-              this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId)
-            }
-          }
+          this.syncAuraEnemyStates113c(m, enemies[i]!)
           const hpAfter = Math.max(0, Math.ceil(enemies[i]!.statList.getHp256() / FIXED_ONE))
           const dealt = m.hp - hpAfter
           if (dealt > 0) {
@@ -9155,6 +9307,8 @@ export class GameInstance {
     const attackerStateBus = new StateBus(attackerStats, this.registry)
     if (petAttacker === undefined && effectiveSource === 'player') {
       this.mirrorPersistentStates(this.playerCombat.get(attacker.unitId), attackerStateBus)
+    } else if (petAttacker === undefined && effectiveSource === 'merc' && mercAttacker !== undefined) {
+      this.mirrorPersistentStates(this.mercCombat.get(mercAttacker.unitId), attackerStateBus)
     }
     const attackerCtx: CombatUnitContext = {
       id:
@@ -9683,8 +9837,12 @@ export class GameInstance {
     channel: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois',
     hitClass?: number | string | undefined,
     elemDurationFrames?: number | undefined,
+    fromMerc = false,
   ): void {
     monster.hp = Math.max(0, monster.hp - dealtDamage)
+    if (fromMerc) {
+      monster.lastHitByMerc = true
+    }
     if (
       monster.umodIds.includes(26) &&
       monster.hp > 0 &&
@@ -9696,7 +9854,7 @@ export class GameInstance {
     monster.threatPlayerId = attacker.unitId
     monster.threatUntilFrame = this.currentFrame + MONSTER_THREAT_FRAMES
 
-    if (monster.resistances.cold < 100 && monster.coldEffect !== 0) {
+    if (skillId !== 114 && monster.resistances.cold < 100 && monster.coldEffect !== 0) {
       const coldOrFreeze = this.resolveSkillColdOrFreezeDuration113c(
         attacker,
         skillId,
@@ -10724,6 +10882,7 @@ export class GameInstance {
       merc.hp = 0
       merc.alive = false
       merc.state = 'dead'
+      this.stopMercenaryAura(merc)
       this.broadcastAllyRemoved(areaId, merc.unitId)
     }
   }
@@ -10876,13 +11035,46 @@ export class GameInstance {
     const outOfRange = (x: number, y: number): boolean => !isWithinAuraRange(x - monster.x, y - monster.y, radius)
 
     if (auraId === 114) {
-      // Holy Freeze: chill nearby players. `aurafilter = 0x4A283` carries `0x8000` (enemy only,
+      // Holy Freeze: chill nearby players & mercenaries. `aurafilter = 0x4A283` carries `0x8000` (enemy only,
       // 0x6FD00A60), so the monster's own allies are never chilled.
       if (this.currentFrame % 25 !== 0) return
+      const hfSkill = this.registry.getSkillById(114)
       for (const p of this.players.values()) {
         if (p.dead || p.areaId !== monster.areaId) continue
         if (outOfRange(p.x, p.y)) continue
+        const pCtx = this.playerCombatContext(p)
+        if (hfSkill !== undefined) {
+          pCtx.stateBus.applyState({
+            stateNameOrId: 44,
+            sourceUnitId: `monster_${monster.unitId}`,
+            sourceSkillId: 114,
+            slvl: lvl,
+            durationFrames: 75,
+            currentFrame: this.currentFrame,
+            stats: this.evaluateSkillStateStats(hfSkill, lvl, pCtx.statList),
+            isAuraOverride: true,
+          })
+        }
         this.applyUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, 11, 75)
+        this.applyUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, 44, 75)
+      }
+      for (const merc of this.mercenaries.values()) {
+        if (!merc.alive || merc.hp <= 0 || merc.areaId !== monster.areaId) continue
+        if (outOfRange(merc.x, merc.y)) continue
+        const mCtx = this.mercCombatContext(merc)
+        if (hfSkill !== undefined) {
+          mCtx.stateBus.applyState({
+            stateNameOrId: 44,
+            sourceUnitId: `monster_${monster.unitId}`,
+            sourceSkillId: 114,
+            slvl: lvl,
+            durationFrames: 75,
+            currentFrame: this.currentFrame,
+            stats: this.evaluateSkillStateStats(hfSkill, lvl, mCtx.statList),
+            isAuraOverride: true,
+          })
+        }
+        this.applyUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, 44, 75)
       }
       return
     }
@@ -10999,7 +11191,7 @@ export class GameInstance {
               )
               if (auraSkill?.skillName) {
                 merc.activeAura = auraSkill.skillName
-                this.syncMercenaryOwnerAura(killer, merc.activeAura)
+                this.syncMercenaryOwnerAura(killer, merc.activeAura, merc, false)
               }
             }
             this.broadcastToArea(merc.areaId, {
@@ -11682,12 +11874,19 @@ export class GameInstance {
         return list
       })()
     stats.setHp256(Math.max(0, defender.hp) * FIXED_ONE)
+    const defenderStateBus = defender.stateBus ?? new StateBus(stats, this.registry)
+    if (defender.unitType === 'mercenary' && defender.stateBus === undefined) {
+      const mercId = Number.parseInt(defender.id.replace(/^merc_/, ''), 10)
+      if (Number.isFinite(mercId)) {
+        this.mirrorPersistentStates(this.mercCombat.get(mercId), defenderStateBus)
+      }
+    }
     const ctx: CombatUnitContext = {
       id: defender.id,
       name: defender.name,
       unitType: defender.unitType,
       statList: stats,
-      stateBus: defender.stateBus ?? new StateBus(stats, this.registry),
+      stateBus: defenderStateBus,
       x: defender.x ?? monster.x,
       y: defender.y ?? monster.y,
       hasShield,
@@ -11713,6 +11912,32 @@ export class GameInstance {
       ...(missile.guaranteedHit === true ? { autoHit: true } : {}),
     }, this.rng)
     if (dmgOut.hit) {
+      const reactiveMonsterDmg = Math.floor(
+        ((dmgOut.attackerColdDamage256 ?? 0) + (dmgOut.reflectedPhys256 ?? 0)) /
+          FIXED_ONE,
+      )
+      if (reactiveMonsterDmg > 0 && !monster.dead && monster.isKillable) {
+        monster.hp = Math.max(0, monster.hp - reactiveMonsterDmg)
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitStatUpdate',
+          unitType: 'monster',
+          unitId: monster.unitId,
+          statId: 6,
+          value: monster.hp,
+        })
+        if (monster.hp <= 0) {
+          const mercId =
+            defender.unitType === 'mercenary'
+              ? Number.parseInt(defender.id.replace(/^merc_/, ''), 10)
+              : NaN
+          const mercRecord = Number.isFinite(mercId) ? this.mercenaries.get(mercId) : undefined
+          const ownerPlayer = mercRecord ? this.players.get(mercRecord.ownerPlayerId) : undefined
+          if (mercRecord !== undefined) {
+            monster.lastHitByMerc = true
+          }
+          this.applyMonsterDeath(monster, ownerPlayer, 'phys')
+        }
+      }
       const finalDmg = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
       if (finalDmg > 0 && monsterProfile113c(monster.ai).drain === 'life' && !monster.dead) {
         const drainAmount = Math.max(1, Math.floor(finalDmg / 2))
@@ -13113,7 +13338,7 @@ export class GameInstance {
    */
   private monsterSlowPercent(monster: InternalMonsterRecord): number {
     let slowPct = 0
-    if (monster.states.has(11) || monster.chillTicks > 0) {
+    if (monster.states.has(11) || (monster.chillTicks > 0 && !monster.states.has(44))) {
       slowPct += Math.min(100, Math.abs(monster.coldEffect))
     }
     const bus = this.monsterCombat.get(monster.unitId)?.stateBus
@@ -15531,6 +15756,22 @@ export class GameInstance {
         m.pendingResurrection = undefined
       }
     }
+    const combatUnit =
+      unitType === 'player'
+        ? this.playerCombat.get(unitId)
+        : this.monsterCombat.get(unitId) ?? this.mercCombat.get(unitId)
+    const stateEntry = combatUnit?.stateBus.getActiveEntries().find((e) => e.stateId === stateId)
+    let packetStats: { statId: number; param: number; value: number }[] | undefined
+    if (stateEntry?.stats) {
+      const list: { statId: number; param: number; value: number }[] = []
+      for (const [statName, val] of Object.entries(stateEntry.stats)) {
+        const rec = this.registry.getStatByName(statName)
+        if (rec && Number.isFinite(val)) {
+          list.push({ statId: rec.id, param: 0, value: Math.trunc(val) })
+        }
+      }
+      if (list.length > 0) packetStats = list
+    }
     this.broadcastToArea(areaId, {
       type: 'UnitState',
       unitType,
@@ -15538,12 +15779,14 @@ export class GameInstance {
       state: stateId,
       active: true,
       areaId,
+      ...(packetStats !== undefined ? { stats: packetStats } : {}),
     })
     this.broadcastToArea(areaId, {
       type: 'StateSet',
       unit: { unitType: unitType === 'player' ? 0 : 1, id: unitId },
       state: stateId,
       complete: true,
+      ...(packetStats !== undefined ? { stats: packetStats } : {}),
     })
   }
 
@@ -19491,7 +19734,7 @@ export class GameInstance {
       value: Math.max(0, Math.floor(merc.experience)),
     })
     this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
-    this.syncMercenaryOwnerAura(player, merc.activeAura)
+    this.syncMercenaryOwnerAura(player, merc.activeAura, merc, true)
   }
 
   private handleNpcInteract(
@@ -21578,29 +21821,397 @@ export class GameInstance {
     )
   }
 
+  /**
+   * Resolve all 1.13c aura sources active on a mercenary:
+   * 1. Innate Act 2 aura (`activeAura` -> `MERC_AURA_TO_SKILL_ID`, `slvl` from `Hireling.txt` + `+allskills`).
+   * 2. Item-granted auras (`STAT_ITEM_AURA` = 151 on `merc.equipment`, stacking `slvl` across items).
+   */
+  private resolveMercenaryAuraSources113c(
+    merc: InternalMercenaryRecord,
+    activeAuraOverride?: string | undefined,
+  ): {
+    readonly skillId: number
+    readonly slvl: number
+    readonly isItemAura: boolean
+    readonly radiusSubtiles: number
+    readonly casterStateId: number | undefined
+    readonly targetStateId: number | undefined
+  }[] {
+    const out: {
+      readonly skillId: number
+      readonly slvl: number
+      readonly isItemAura: boolean
+      readonly radiusSubtiles: number
+      readonly casterStateId: number | undefined
+      readonly targetStateId: number | undefined
+    }[] = []
+    let allSkillsBonus = 0
+    const itemAurasBySkill = new Map<number, number>()
+    for (const item of merc.equipment) {
+      for (const stat of collectItemStats(item)) {
+        if (stat.statId === 127 && stat.value > 0) {
+          allSkillsBonus += stat.value
+        } else if (stat.statId === 151 && stat.param > 0 && stat.value > 0) {
+          itemAurasBySkill.set(stat.param, (itemAurasBySkill.get(stat.param) ?? 0) + stat.value)
+        }
+      }
+    }
+
+    const auraName = activeAuraOverride ?? merc.activeAura
+    if (auraName) {
+      const auraKey = auraName.trim().toLowerCase()
+      const skillId = MERC_AURA_TO_SKILL_ID[auraKey]
+      if (skillId !== undefined) {
+        const hireStats = resolveHirelingStatsAtLevel(
+          merc.subType,
+          merc.act,
+          merc.difficulty,
+          merc.level,
+          true,
+        )
+        const matchingSkill = hireStats?.skills.find(
+          (s) =>
+            s.skillId === skillId ||
+            MERC_AURA_TO_SKILL_ID[s.skillName.trim().toLowerCase()] === skillId,
+        )
+        const baseSlvl = matchingSkill?.effectiveLevel ?? Math.max(1, Math.min(20, Math.floor(merc.level / 3)))
+        const slvl = Math.max(1, baseSlvl + allSkillsBonus)
+        const skill = this.registry.getSkillById(skillId)
+        const casterStateId = skill?.auraState
+          ? this.registry.getStateByName(skill.auraState)?.id
+          : MERC_AURA_TO_STATE_ID[auraKey]
+        const targetStateId = skill?.auraTgtState
+          ? this.registry.getStateByName(skill.auraTgtState)?.id
+          : undefined
+        out.push({
+          skillId,
+          slvl,
+          isItemAura: false,
+          radiusSubtiles: this.auraRangeSubtiles(skillId, slvl),
+          casterStateId,
+          targetStateId,
+        })
+      }
+    }
+
+    for (const [skillId, slvl] of itemAurasBySkill) {
+      const skill = this.registry.getSkillById(skillId)
+      if (!skill || !skill.aura) continue
+      const casterStateId = skill.auraState
+        ? this.registry.getStateByName(skill.auraState)?.id
+        : undefined
+      const targetStateId = skill.auraTgtState
+        ? this.registry.getStateByName(skill.auraTgtState)?.id
+        : undefined
+      out.push({
+        skillId,
+        slvl: Math.max(1, slvl),
+        isItemAura: true,
+        radiusSubtiles: this.auraRangeSubtiles(skillId, Math.max(1, slvl)),
+        casterStateId,
+        targetStateId,
+      })
+    }
+    return out
+  }
+
+  /** Stop a mercenary's active / item auras and clear its caster aura states. */
+  private stopMercenaryAura(merc: InternalMercenaryRecord): void {
+    const runtime = this.mercAuraScanners.get(merc.unitId)
+    this.mercAuraScanners.delete(merc.unitId)
+    const mercCombat = this.mercCombat.get(merc.unitId)
+    if (runtime !== undefined) {
+      for (const entry of runtime.sources) {
+        if (entry.casterStateId !== undefined) {
+          this.clearUnitState(
+            merc.states,
+            merc.stateTimers,
+            'monster',
+            merc.unitId,
+            merc.areaId,
+            entry.casterStateId,
+          )
+          mercCombat?.stateBus.removeState(entry.casterStateId)
+        }
+      }
+    }
+    for (const stateId of [33, 34, 36, 37, 40, 43] as const) {
+      if (merc.states.has(stateId)) {
+        this.clearUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, stateId)
+      }
+      mercCombat?.stateBus.removeState(stateId)
+    }
+  }
+
   private syncMercenaryOwnerAura(
     owner: InternalPlayerRecord,
     activeAura: string | undefined,
+    mercOverride?: InternalMercenaryRecord | undefined,
+    forcePulse = false,
   ): void {
-    if (!activeAura) return
-    const auraKey = activeAura.trim().toLowerCase()
-    const stateId = MERC_AURA_TO_STATE_ID[auraKey]
-    if (stateId === undefined) return
-    this.applyUnitState(
-      owner.states,
-      owner.stateTimers,
-      'player',
-      owner.unitId,
-      owner.areaId,
-      stateId,
-      100,
+    const merc =
+      mercOverride ??
+      [...this.mercenaries.values()].find((m) => m.ownerPlayerId === owner.unitId && m.alive)
+    if (merc === undefined || !merc.alive || merc.hp <= 0) {
+      if (!activeAura) return
+      const auraKey = activeAura.trim().toLowerCase()
+      const stateId = MERC_AURA_TO_STATE_ID[auraKey]
+      if (stateId === undefined || stateId === 43) return
+      this.applyUnitState(
+        owner.states,
+        owner.stateTimers,
+        'player',
+        owner.unitId,
+        owner.areaId,
+        stateId,
+        100,
+      )
+      return
+    }
+
+    const desiredSpecs = this.resolveMercenaryAuraSources113c(merc, activeAura)
+    if (desiredSpecs.length === 0) {
+      if (this.mercAuraScanners.has(merc.unitId)) {
+        this.stopMercenaryAura(merc)
+      }
+      return
+    }
+
+    const signature = desiredSpecs
+      .map((s) => `${s.skillId}:${s.slvl}:${s.isItemAura ? 1 : 0}`)
+      .join(',')
+    let runtime = this.mercAuraScanners.get(merc.unitId)
+    if (runtime === undefined || runtime.signature !== signature) {
+      const nextCasterIds = new Set<number>()
+      for (const spec of desiredSpecs) {
+        if (spec.casterStateId !== undefined) nextCasterIds.add(spec.casterStateId)
+      }
+      if (runtime !== undefined) {
+        for (const prev of runtime.sources) {
+          if (prev.casterStateId !== undefined && !nextCasterIds.has(prev.casterStateId)) {
+            this.clearUnitState(
+              merc.states,
+              merc.stateTimers,
+              'monster',
+              merc.unitId,
+              merc.areaId,
+              prev.casterStateId,
+            )
+            this.mercCombat.get(merc.unitId)?.stateBus.removeState(prev.casterStateId)
+          }
+        }
+      }
+      const scanner = new AuraScanner(this.registry, (this.currentMapSeed ^ merc.unitId) >>> 0)
+      const mercCtx = this.mercCombatContext(merc)
+      const sources: MercAuraSourceEntry[] = []
+      const pulseTick = Math.max(1, this.currentFrame)
+      for (const spec of desiredSpecs) {
+        const source = scanner.setActiveAura(mercCtx, spec.skillId, spec.slvl, pulseTick)
+        if (source === null) continue
+        if (spec.casterStateId !== undefined) {
+          this.applyPersistentUnitState(
+            merc.states,
+            merc.stateTimers,
+            'monster',
+            merc.unitId,
+            merc.areaId,
+            spec.casterStateId,
+          )
+        }
+        sources.push({
+          ...spec,
+          source,
+        })
+      }
+      runtime = {
+        scanner,
+        signature,
+        sources,
+        needsInitialPulse: true,
+      }
+      this.mercAuraScanners.set(merc.unitId, runtime)
+    } else {
+      for (const entry of runtime.sources) {
+        if (entry.casterStateId !== undefined && !merc.states.has(entry.casterStateId)) {
+          this.applyPersistentUnitState(
+            merc.states,
+            merc.stateTimers,
+            'monster',
+            merc.unitId,
+            merc.areaId,
+            entry.casterStateId,
+          )
+        }
+      }
+    }
+
+    if (forcePulse) {
+      runtime.needsInitialPulse = true
+      this.pulseMercenaryAuraRuntime113c(merc, owner, runtime)
+    }
+  }
+
+  /** Execute one mercenary's `AuraScanner` tick (plus immediate entry pulses for newly-in-range units). */
+  private pulseMercenaryAuraRuntime113c(
+    merc: InternalMercenaryRecord,
+    owner: InternalPlayerRecord,
+    runtime: MercAuraRuntime,
+  ): void {
+    if (runtime.sources.length === 0) return
+    const maxRadius = runtime.sources.reduce((acc, s) => Math.max(acc, s.radiusSubtiles), 0)
+    const inRange = (x: number, y: number) => isWithinAuraRange(x - merc.x, y - merc.y, maxRadius)
+    const allyPlayerRecords = [...this.players.values()].filter(
+      (p) => !p.dead && p.areaId === merc.areaId && inRange(p.x, p.y),
     )
+    const allyMercRecords = [...this.mercenaries.values()].filter(
+      (m) => m.alive && m.hp > 0 && m.areaId === merc.areaId && (m === merc || inRange(m.x, m.y)),
+    )
+    const enemyRecords = [...this.monsters.values()].filter(
+      (m) =>
+        !m.dead &&
+        !m.isNpc &&
+        m.isKillable &&
+        !this.isMonsterConverted(m) &&
+        m.areaId === merc.areaId &&
+        inRange(m.x, m.y),
+    )
+    const corpseRecords = [...this.monsters.values()].filter(
+      (m) => m.dead && !m.shattered && !m.isNpc && m.areaId === merc.areaId && inRange(m.x, m.y),
+    )
+    const mercAllies = allyMercRecords.map((m) => this.mercCombatContext(m))
+    const playerAllies = allyPlayerRecords.map((p) => this.playerCombatContext(p))
+    const allies: CombatUnitContext[] = [...mercAllies, ...playerAllies]
+    const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
+    const corpses: CorpseContext[] = corpseRecords.map((m) => ({
+      id: String(m.unitId),
+      consumed: false,
+      x: m.x,
+      y: m.y,
+    }))
+    const auraEnv = {
+      isTown: TOWN_AREAS.has(merc.areaId),
+      hasLineOfSight: (src: CombatUnitContext, tgt: { x?: number; y?: number }) =>
+        src.x === undefined || src.y === undefined || tgt.x === undefined || tgt.y === undefined
+          ? false
+          : this.isMonsterStepWalkable(merc.areaId, src.x, src.y, tgt.x, tgt.y, true),
+      rng: this.rng,
+    }
+    const pulseTick = Math.max(1, this.currentFrame)
+    if (runtime.needsInitialPulse) {
+      runtime.needsInitialPulse = false
+      for (const entry of runtime.sources) {
+        runtime.scanner.pulseAura(entry.source, pulseTick, allies, enemies, corpses, auraEnv)
+      }
+    } else {
+      runtime.scanner.tick(this.currentFrame, allies, enemies, corpses, auraEnv)
+      for (const entry of runtime.sources) {
+        if (entry.targetStateId === undefined) continue
+        const tgtState = entry.targetStateId
+        if (entry.skillId === 114 || entry.skillId === 123) {
+          const unpulsedEnemies = enemies.filter((e, idx) => {
+            const m = enemyRecords[idx]!
+            if (!isWithinAuraRange(m.x - merc.x, m.y - merc.y, entry.radiusSubtiles)) return false
+            if (m.isPrimeEvil || (entry.skillId === 114 && m.coldEffect === 0)) return false
+            return !e.stateBus.hasState(tgtState)
+          })
+          if (unpulsedEnemies.length > 0) {
+            runtime.scanner.pulseAura(entry.source, pulseTick, [], unpulsedEnemies, [], auraEnv)
+          }
+        } else {
+          const unpulsedAllies = allies.filter(
+            (a) =>
+              a.x !== undefined &&
+              a.y !== undefined &&
+              isWithinAuraRange(a.x - merc.x, a.y - merc.y, entry.radiusSubtiles) &&
+              !a.stateBus.hasState(tgtState),
+          )
+          if (unpulsedAllies.length > 0) {
+            runtime.scanner.pulseAura(entry.source, pulseTick, unpulsedAllies, [], [], auraEnv)
+          }
+        }
+      }
+    }
+
+    const casterStateIds = new Set<number>()
+    for (const entry of runtime.sources) {
+      if (entry.casterStateId !== undefined) casterStateIds.add(entry.casterStateId)
+    }
+    allyPlayerRecords.forEach((p, i) => {
+      const pCtx = playerAllies[i]!
+      this.syncPlayerVitalsFromCombat(p, pCtx)
+      this.syncAuraAllyStates113c(p.states, p.stateTimers, 'player', p.unitId, p.areaId, pCtx)
+    })
+    allyMercRecords.forEach((m, i) => {
+      const mCtx = mercAllies[i]!
+      const hpAfter = Math.min(m.maxHp, Math.max(0, Math.ceil(mCtx.statList.getHp256() / FIXED_ONE)))
+      if (hpAfter !== m.hp && m.alive) {
+        m.hp = hpAfter
+        this.broadcastAllyHp(m.areaId, m.unitId, m.hp)
+      }
+      this.syncAuraAllyStates113c(
+        m.states,
+        m.stateTimers,
+        'monster',
+        m.unitId,
+        m.areaId,
+        mCtx,
+        m === merc ? casterStateIds : undefined,
+      )
+    })
+    enemyRecords.forEach((m, i) => {
+      const enemyCtx = enemies[i]!
+      this.syncAuraEnemyStates113c(m, enemyCtx)
+      const hpAfter = Math.max(0, Math.ceil(enemyCtx.statList.getHp256() / FIXED_ONE))
+      const dealt = m.hp - hpAfter
+      if (dealt > 0) {
+        const dmgSkillId =
+          runtime.sources.find(
+            (s) => s.skillId === 114 || s.skillId === 102 || s.skillId === 118 || s.skillId === 119,
+          )?.skillId ??
+          runtime.sources[0]?.skillId ??
+          0
+        this.finishMonsterDamage(
+          owner,
+          m,
+          dealt,
+          dmgSkillId,
+          this.resolveSkillDamageChannel(dmgSkillId),
+          undefined,
+          undefined,
+          true,
+        )
+      }
+    })
+    corpseRecords.forEach((m, i) => {
+      if (corpses[i]!.consumed) m.shattered = true
+    })
+  }
+
+  /** Step every alive mercenary's innate + item-granted (`STAT_ITEM_AURA`) `AuraScanner` pulses. */
+  private stepMercenaryAuras(): void {
+    for (const merc of this.mercenaries.values()) {
+      if (!merc.alive || merc.hp <= 0) {
+        if (this.mercAuraScanners.has(merc.unitId)) {
+          this.stopMercenaryAura(merc)
+        }
+        continue
+      }
+      const owner = this.players.get(merc.ownerPlayerId)
+      if (!owner || owner.dead) continue
+      this.syncMercenaryOwnerAura(owner, merc.activeAura, merc, false)
+      const runtime = this.mercAuraScanners.get(merc.unitId)
+      if (runtime !== undefined) {
+        this.pulseMercenaryAuraRuntime113c(merc, owner, runtime)
+      }
+    }
   }
 
   hireMercenary(ownerPlayerId: number, spec: HireMercenarySpec = {}): number {
     const owner = this.players.get(ownerPlayerId)
     for (const [mId, existing] of this.mercenaries.entries()) {
       if (existing.ownerPlayerId === ownerPlayerId) {
+        this.stopMercenaryAura(existing)
+        this.mercCombat.delete(mId)
         this.broadcastToArea(existing.areaId, {
           type: 'UnitRemove',
           unitType: 'monster',
@@ -21709,6 +22320,8 @@ export class GameInstance {
       experience: initialExp,
       expPerLvl,
       equipment: [],
+      states: new Set<number>(),
+      stateTimers: new Map<number, number>(),
     }
     this.mercenaries.set(unitId, record)
     if (isDead) {
@@ -21758,7 +22371,7 @@ export class GameInstance {
     })
     this.broadcastAllyHp(areaId, unitId, hp)
     if (owner) {
-      this.syncMercenaryOwnerAura(owner, activeAura)
+      this.syncMercenaryOwnerAura(owner, activeAura, record, true)
     }
     return unitId
   }
@@ -21788,6 +22401,7 @@ export class GameInstance {
           alive: m.alive,
           experience: m.experience,
           expPerLvl: m.expPerLvl,
+          states: m.states,
         }
       }
     }
@@ -21819,6 +22433,7 @@ export class GameInstance {
         alive: m.alive,
         experience: m.experience,
         expPerLvl: m.expPerLvl,
+        states: m.states,
       }
     }
     return this.getMercenaryForOwner(unitIdOrOwnerId)
@@ -21848,7 +22463,19 @@ export class GameInstance {
 
   private stepMercenaries(): void {
     for (const merc of this.mercenaries.values()) {
-      if (!merc.alive || merc.hp <= 0) continue
+      if (!merc.alive || merc.hp <= 0) {
+        if (this.mercAuraScanners.has(merc.unitId)) {
+          this.stopMercenaryAura(merc)
+        }
+        continue
+      }
+      this.stepUnitStates(
+        merc.states,
+        merc.stateTimers,
+        'monster',
+        merc.unitId,
+        merc.areaId,
+      )
       const owner = this.players.get(merc.ownerPlayerId)
       if (!owner || owner.dead) continue
 
@@ -21925,7 +22552,7 @@ export class GameInstance {
       if (outcome.activeAura) {
         merc.activeAura = outcome.activeAura
       }
-      this.syncMercenaryOwnerAura(owner, merc.activeAura)
+      this.syncMercenaryOwnerAura(owner, merc.activeAura, merc)
 
       const ownerDist = Math.hypot(owner.x - merc.x, owner.y - merc.y)
       if (ownerDist > HIREABLE_AI_113C.TELEPORT_SUBTILES) {
