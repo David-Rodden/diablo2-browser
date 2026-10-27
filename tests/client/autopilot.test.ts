@@ -473,6 +473,20 @@ describe('autopilot', () => {
     expect(guide.detour).not.toMatchObject({ level: 3 })
   })
 
+  it('trains somewhere else when the red portal to its training ground will not take it', () => {
+    const { pilot, host, hudManager, units, guide, tick } = setup({ hint: 'Take the red portal to the Pit of Acheron', step: { kind: 'portal', level: 126, hint: 'Take the red portal to the Pit of Acheron', find: [60] }, target: { x: 102, y: 101, label: 'Portal', unit: { id: 61, kind: 'object' } } })
+    const freshGame = vi.fn(() => Promise.resolve(true))
+    Object.assign(host, { freshGame })
+    Object.assign(pilot, { questLevel: 5, assessedAt: Number.POSITIVE_INFINITY, training: { level: 12, gold: 0, bare: 0, why: 'Training', ground: 126, since: 0 } })
+    units.push(unit({ id: 61, unitType: 'object', classId: 60, x: 102, y: 101 }))
+    Object.defineProperty(guide, 'currentPlan', { get: () => guide.update() })
+    const moved = () => hudManager.toasts.push.mock.calls.some(([toast]) => toast.title === 'Training somewhere else')
+    for (let i = 0; i < 300 && !moved(); i++) tick(700)
+    expect([pilot.active, freshGame.mock.calls.length, moved()]).toEqual([true, 0, true])
+    tick(700)
+    expect(guide.detour).not.toMatchObject({ level: 126 })
+  })
+
   it('does not count a long fight as being stuck', () => {
     const { assists, guide, tick } = setup({ hint: 'Kill Duriel', target: { x: 300, y: 300, label: 'Duriel' } })
     assists.fighting = true
@@ -672,12 +686,12 @@ describe('autopilot', () => {
     expect(pilot.active).toBe(false)
     await vi.waitFor(() => expect(pilot.active).toBe(true))
     expect([freshGame.mock.calls.length, guide.skipped.size]).toEqual([1, 0])
-    for (let round = 0; round < 2; round++) {
+    for (let round = 0; round < 5; round++) {
       for (let i = 0; i < 100 && pilot.active; i++) tick(700)
       await vi.waitFor(() => expect(pilot.active).toBe(true))
     }
     for (let i = 0; i < 100 && pilot.active; i++) tick(700)
-    expect([freshGame.mock.calls.length, pilot.active]).toEqual([3, false])
+    expect([freshGame.mock.calls.length, pilot.active]).toEqual([6, false])
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
   })
 
