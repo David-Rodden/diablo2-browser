@@ -487,6 +487,15 @@ describe('autopilot', () => {
     expect(guide.detour).not.toMatchObject({ level: 126 })
   })
 
+  it("waits in front of Baal's throne for the next wave instead of wandering off", () => {
+    const { assists, hudManager, guide, tick } = setup({ goal: { level: 2, title: 'Eve of Destruction', wait: true, find: ['baalthrone'] }, hint: "Kill Baal's minions", step: { kind: 'arrived', level: 2 }, target: { x: 98, y: 66, label: 'Baal' } })
+    Object.defineProperty(guide, 'currentPlan', { get: () => guide.update() })
+    Array.from({ length: 1000 }, () => tick())
+    expect(guide.pilotStatus).toBe('Waiting for the next wave')
+    expect(hudManager.toasts.push.mock.calls.some(([toast]) => toast.title === 'Trying another way')).toBe(false)
+    expect(assists.walkTo).not.toHaveBeenCalled()
+  })
+
   it('does not count a long fight as being stuck', () => {
     const { assists, guide, tick } = setup({ hint: 'Kill Duriel', target: { x: 300, y: 300, label: 'Duriel' } })
     assists.fighting = true

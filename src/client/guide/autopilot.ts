@@ -262,6 +262,7 @@ const GAP_TRIES = 6
 const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y - b.y)
 const isElite = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true)
 const TOWN_SPOTS = new Map(Object.entries(QUEST_OBJECTS.townSpots))
+const WAIT_SPOTS = new Map(Object.entries(QUEST_OBJECTS.waitSpots))
 const WIELD = new Map(Object.values(QUEST_OBJECTS.wield).map((entry) => [entry.object, entry]))
 const TOOLS = new Set(Object.values(QUEST_OBJECTS.wield).map((entry) => entry.item))
 const BOSSES = new Set(LAIRS.bosses.map((name) => MONSTER_PATH_IDS.indexOf(name)))
@@ -795,7 +796,8 @@ export class Autopilot {
     const hint = plan?.hint ?? ''
     const left = plan?.target ? distance(plan.target, me) : Number.POSITIVE_INFINITY
     const last = this.lastHeadway
-    if (this.town() || nowMs < this.pausedUntil || this.host.assists.isFighting(nowMs)) {
+    const post = plan && this.waitSpot(plan)
+    if (this.town() || nowMs < this.pausedUntil || this.host.assists.isFighting(nowMs) || (post && distance(post, me) <= REACH * 2)) {
       if (last) Object.assign(last, { at: nowMs })
       return
     }
@@ -833,6 +835,9 @@ export class Autopilot {
     const { target, step } = plan
     const door = plan.doors.map((id) => world.getUnit('object', id)).find((unit): unit is ClientUnit => unit !== undefined && isClosedDoor(unit) && distance(unit, world.self) <= REACH + 1)
     if (!door && target && this.takePad(target, nowMs)) return
+    const post = this.waitSpot(plan)
+    if (post && distance(post, world.self) <= REACH) return this.say('Waiting for the next wave')
+    if (post) return this.walkTowards(post, nowMs)
     this.say(plan.hint)
     const unit = target?.unit && world.getUnit(target.unit.kind === 'object' ? 'object' : 'monster', target.unit.id)
     if (door) this.useOnce(door, nowMs)
@@ -847,6 +852,11 @@ export class Autopilot {
     else if (step?.kind === 'exit' || step?.kind === 'portal') this.exitThrough(target, nowMs)
     else if (this.arrivedAt(target)) this.explore(nowMs, plan.hint)
     else this.walkRoute(nowMs)
+  }
+
+  private waitSpot({ goal, step, target }: GuidePlan): SubTilePoint | null {
+    const offset = goal.wait && step?.kind === 'arrived' && target ? WAIT_SPOTS.get(String(goal.find?.flat()[0])) : undefined
+    return offset && target ? { x: target.x + offset[0]!, y: target.y + offset[1]! } : null
   }
 
   private crossBridge(unit: ClientUnit, { approach: [ax, ay], stand: [sx, sy] }: { readonly approach: readonly number[]; readonly stand: readonly number[] }, nowMs: number): void {
