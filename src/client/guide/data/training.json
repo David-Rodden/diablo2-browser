@@ -21,6 +21,7 @@
   "harder": { "Chaos Sanctuary": { "level": 108, "levels": 5 }, "Durance of Hate Level 3": { "level": 102, "levels": 1 }, "Throne of Destruction": { "level": 131, "levels": 2 } },
   "spread": 6,
   "levelsPerSetback": 2,
+  "penaltyFree": 5,
   "setbacks": 2,
   "goldPerAct": [1500, 3000, 6000, 10000, 15000],
   "retreatWeight": 0.25,

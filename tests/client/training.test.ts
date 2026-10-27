@@ -8,6 +8,7 @@ const BLOOD_MOOR = 2
 const COLD_PLAINS = 3
 const CATACOMBS_4 = 37
 const ARCANE = 74
+const RIVER_OF_FLAME = 107
 const me = (level: number, gold = 50_000, bare = 0) => ({ level, gold, bare, difficulty: 0 as const })
 
 describe('training before a hard goal', () => {
@@ -19,9 +20,15 @@ describe('training before a hard goal', () => {
   })
 
   it('keeps a training level it set earlier, and gives the Chaos Sanctuary a wider margin', () => {
-    expect(readiness(me(29), ARCANE, 0, true, 31)).toMatchObject({ level: 31, why: 'Too strong for now, training to level 31' })
-    expect(readiness(me(31), ARCANE, 0, true, 31)).toBeNull()
+    expect(readiness(me(29), RIVER_OF_FLAME, 0, true, 31)).toMatchObject({ level: 31, why: 'Too strong for now, training to level 31' })
+    expect(readiness(me(31), RIVER_OF_FLAME, 0, true, 31)).toBeNull()
     expect(readiness(me(29), 108, 0)).toMatchObject({ level: monsterLevel(108, 0) + 3 })
+  })
+
+  it('stops training once the act has nothing left that pays full experience', () => {
+    expect(readiness(me(20), ARCANE, 6)).toMatchObject({ level: 23, why: 'Too strong for now, training to level 23' })
+    expect(readiness(me(28), ARCANE, 4, true, 30)).toBeNull()
+    expect(readiness(me(34), RIVER_OF_FLAME, 4)).toBeNull()
   })
 
   it('remembers the training level across games for the same goal only', () => {
