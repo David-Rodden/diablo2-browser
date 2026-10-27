@@ -1246,4 +1246,26 @@ describe('autopilot', () => {
     tick(1000)
     expect([guide.pilotStatus, guide.detour]).toEqual([expect.not.stringContaining('gold'), null])
   })
+
+  it('fights off what is on it before going for the gold it dropped', () => {
+    const { world, guide, assists, hudModel, units, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    Object.assign(world, { selfId: 1 })
+    Object.assign(world.self, { name: 'Hero' })
+    world.isDead = true
+    tick()
+    world.isDead = false
+    units.push(unit({ id: 2, unitType: 'player', name: 'Hero', x: 101, y: 100, mode: 17 }))
+    tick()
+    ;[1, 3, 4].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    units.push(unit({ id: 90, unitType: 'item', x: 103, y: 101 }))
+    world.containers.ground.set(90, { id: 90, code: 'gld ', x: 103, y: 101 })
+    tick(1000)
+    assists.fighting = true
+    tick(1000)
+    expect([guide.pilotStatus, assists.pilotCombat]).toEqual(['Fighting', true])
+    assists.fighting = false
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Picking up the gold you dropped')
+  })
 })
