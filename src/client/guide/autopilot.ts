@@ -66,7 +66,7 @@ interface Errand {
 }
 
 const TICK_MS = 60
-const REJOINS = 3
+const REJOINS = 6
 const REJOIN_WINDOW_MS = 3_600_000
 const WALK_MS = 200
 const LOOKAHEAD = 15
@@ -626,7 +626,7 @@ export class Autopilot {
 
   private trainElsewhere(): boolean {
     const training = this.training
-    if (training === null || this.host.guide.detour === null) return false
+    if (training === null || this.host.guide.detour?.title !== 'Training') return false
     this.trainedOut.add(training.ground)
     const next = trainingGround(this.host.world.areaId, this.trainee(), this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests))
     if (next === null) return false
@@ -1069,6 +1069,7 @@ export class Autopilot {
 
   private skip(plan: GuidePlan, why: string): void {
     this.talk = null
+    if (plan.goal.row === undefined && this.trainElsewhere()) return
     if (plan.goal.row === undefined || this.host.guide.skipped.has(plan.goal.row)) this.stuck(`${plan.hint}: ${why}`)
     else {
       this.host.guide.skip(plan.goal.row)
