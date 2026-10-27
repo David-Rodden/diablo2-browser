@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { characterBuild } from '../../src/common/items/character-build.ts'
 import { runewordsFor } from '../../src/common/items/runeword-advice.ts'
-import { nextSocketMove } from '../../src/client/guide/socket-plan.ts'
+import { baseFor, nextSocketMove, runewordKit } from '../../src/client/guide/socket-plan.ts'
 import type { ItemData } from '../../src/netproto/index.ts'
 
 const item = (fields: Partial<ItemData> & { readonly id: number; readonly code: string }): ItemData =>
@@ -25,5 +25,18 @@ describe('socketing', () => {
     expect(nextSocketMove(stock([armor], [...runes].reverse()), barb)).toMatchObject({ filler: { code: pick.runes[0] }, target: { id: 2 } })
     expect(nextSocketMove(stock([armor], [runes[1]!]), barb)).toBeNull()
     expect(nextSocketMove(stock([armor], [runes[1]!], new Map([[2, [runes[0]!]]])), barb)).toMatchObject({ filler: { id: 21 } })
+  })
+
+  it('gathers a runeword it holds every rune for, and knows when it still needs a base', () => {
+    const paladin = characterBuild({ classIndex: 3, level: 34, strength: 60, dexterity: 40, skillPoints: new Map([[112, 15], [113, 10]]) })
+    const spirit = runewordsFor(paladin).find((rw) => rw.name === 'Spirit')!
+    const runes = spirit.runes.map((code, i) => item({ id: 30 + i, code, container: 'stash' }))
+    const kit = runewordKit(runes, new Map(), paladin)
+    expect(kit).toMatchObject({ name: 'Spirit', base: null })
+    expect(kit!.runes.map((rune) => rune.id)).toEqual([30, 31, 32, 33])
+    expect(runewordKit(runes.slice(1), new Map(), paladin)).toBeNull()
+    const [crystal, tooFew, magic, giant] = [item({ id: 40, code: 'crs', totalSockets: 4 }), item({ id: 41, code: 'crs', totalSockets: 3 }), item({ id: 42, code: 'crs', totalSockets: 4, quality: 4 }), item({ id: 43, code: 'gis', totalSockets: 4 })]
+    expect(baseFor(kit!, [tooFew, magic, giant, crystal], new Map(), paladin)?.id).toBe(40)
+    expect(runewordKit([...runes, crystal], new Map(), paladin)?.base?.id).toBe(40)
   })
 })

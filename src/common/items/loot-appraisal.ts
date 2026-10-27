@@ -194,7 +194,9 @@ const gainOf = ({ score, current }: Upgrade) => (current <= 0 ? (score > MIN_GAI
 
 const isGain = (upgrade: Upgrade) => upgrade.score - upgrade.current >= MIN_GAIN && gainOf(upgrade) >= BETTER
 
-export const gambleWorthy = (item: LootItem, build: CharacterBuild): boolean => usableBy(uiOf(item), build, SOON_LEVELS) && !misfits(item, build)
+export const wieldable = (item: LootItem, build: CharacterBuild): boolean => usableBy(uiOf(item), build, SOON_LEVELS) && !misfits(item, build)
+
+export const gambleWorthy = wieldable
 
 const wearableBy = (item: LootItem, build: CharacterBuild, levels: number) => usableBy(uiOf(item), build, levels) && requiredLevel(item, uiOf(item)) <= build.level + levels
 
