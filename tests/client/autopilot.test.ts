@@ -152,6 +152,22 @@ describe('autopilot', () => {
     await vi.waitFor(() => expect(assists.use).toHaveBeenLastCalledWith(units[1], expect.any(Number)))
   })
 
+  it("walks to Jerhyn's usual spot when he is out of sight", async () => {
+    const { world, assists, hudManager, units, guide, tick } = setup({ goal: { level: 75, title: 'Kurast Docks' }, hint: 'Talk to Meshif', target: { x: 101, y: 100, label: 'Meshif', unit: { id: 7, kind: 'npc' } } }, 40)
+    units.push(unit({ id: 7, classId: MONSTER_PATH_IDS.indexOf('meshif1'), x: 101, y: 100, name: 'Meshif' }))
+    world.self.gold = 0
+    tick()
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'main', options: [{ id: 'talk' }, { id: 'cancel' }] }
+    tick()
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'talk', options: [{ id: 'talk_intro' }, { id: 'cancel' }] }
+    tick()
+    hudManager.worldPanels.npcMenu = null
+    tick(21_000)
+    tick()
+    expect(guide.pilotStatus).toBe('Talking to Jerhyn first')
+    await vi.waitFor(() => expect(guide.focus).toHaveBeenCalledWith({ x: 5083, y: 5148 }, expect.any(Number)))
+  })
+
   it('opens a portal home for a far town errand, and finishes it in town before going back through', () => {
     const errand = { goal: { level: 1, title: 'Tools of the Trade', inTown: true as const }, hint: 'Bring the Malus to Charsi', step: { kind: 'exit' as const, level: 27 } }
     const near = setup({ ...errand, target: { x: 120, y: 100, label: 'Outer Cloister' } })
@@ -277,6 +293,22 @@ describe('autopilot', () => {
     }
     expect(run(0)).toMatch(/heading to town/)
     expect(run(6)).not.toMatch(/heading to town/)
+  })
+
+  it('charges the time a retreat spends in town to the ground it fled', () => {
+    const { pilot, world, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    const add = vi.spyOn((pilot as unknown as { ledger: { add: (...args: unknown[]) => void } }).ledger, 'add').mockImplementation(() => undefined)
+    Object.assign(world.self, { name: 'Tester', experience: 1000 })
+    tick(1000)
+    Object.assign(pilot as unknown as { trip: string }, { trip: 'retreat' })
+    world.areaId = ROGUE_ENCAMPMENT
+    tick(60_000)
+    world.areaId = BLOOD_MOOR
+    tick(10_000)
+    world.areaId = 3
+    tick(1000)
+    expect(add.mock.calls.filter(([, area]) => area === ROGUE_ENCAMPMENT)).toEqual([])
+    expect(add.mock.calls.find(([, area]) => area === BLOOD_MOOR)?.[4]).toBeGreaterThanOrEqual(70_000)
   })
 
   it('heads home when life drops fast, even with potions left', () => {
@@ -490,6 +522,22 @@ describe('autopilot', () => {
     tick(200)
     expect(assists.use).not.toHaveBeenCalledWith(units[0], expect.any(Number))
     expect(guide.pilotStatus).not.toBe('Back through the portal')
+  })
+
+  it('stops waiting to heal once its life has not risen for a while', () => {
+    const { pilot, world, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    ;(pilot as unknown as { errandsAt: Map<string, number> }).errandsAt.set('heal', Number.POSITIVE_INFINITY)
+    world.self.gold = 0
+    world.self.life = 30
+    tick(1000)
+    expect(guide.pilotStatus).toBe('Waiting to heal before heading out')
+    tick(9000)
+    world.self.life = 40
+    tick(9000)
+    expect(guide.pilotStatus).toBe('Waiting to heal before heading out')
+    tick(9000)
+    tick(7000)
+    expect(guide.pilotStatus).not.toBe('Waiting to heal before heading out')
   })
 
   it('walks back to where its portal stands after errands took it out of sight of it', () => {

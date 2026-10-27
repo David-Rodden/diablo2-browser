@@ -50,10 +50,13 @@ export const GEAR_HUNT_MS = TRAINING.gearMinutes * 60_000
 export const GEAR_REST_MS = TRAINING.gearRestMinutes * 60_000
 export const NAKED_SLOTS = TRAINING.nakedSlots
 
+const ripeLevel = (act: number, difficulty: 0 | 1 | 2) =>
+  Math.max(...LEVELS_MONLVL_113C.map((_, id) => id).filter((id) => id > 0 && !TOWNS.has(id) && !AVOID.has(id) && actOfLevel(id) <= act).map((id) => monsterLevel(id, difficulty))) + TRAINING.penaltyFree
+
 export function readiness(me: Trainee, questLevel: number, setbacks: number, gearHunt = true, floor = 0): Readiness | null {
   const act = actOfLevel(questLevel)
   const fightable = TOWNS.has(questLevel) ? 0 : monsterLevel(questLevel, me.difficulty) - TRAINING.safety + (HARDER.get(questLevel) ?? 0)
-  const humbled = Math.max(floor, setbacks >= TRAINING.setbacks ? me.level + TRAINING.levelsPerSetback * Math.floor(setbacks / TRAINING.setbacks) : 0)
+  const humbled = Math.min(ripeLevel(act, me.difficulty), Math.max(floor, setbacks >= TRAINING.setbacks ? me.level + TRAINING.levelsPerSetback * Math.floor(setbacks / TRAINING.setbacks) : 0))
   const level = Math.max(fightable, humbled)
   const gold = TRAINING.goldPerAct[act] ?? 0
   if (me.level < level) return { level, gold: 0, bare: DRESSED.length, why: humbled > fightable ? `Too strong for now, training to level ${level}` : `Training to level ${level} for ${levelName(questLevel)}` }

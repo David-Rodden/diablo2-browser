@@ -472,6 +472,7 @@ export class HudManager {
   isStaminaBlue = false
   hp = 0
   maxHp = 0
+  healableHp = 0
   mana = 0
   maxMana = 0
   poisoned = false

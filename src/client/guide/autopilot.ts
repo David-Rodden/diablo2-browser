@@ -17,9 +17,10 @@ import type { ClientWorld } from '../world/client-world.ts'
 import { useArtisan, type ArtisanKind } from './artisan.ts'
 import { freeSpots } from '../input/auto-loot.ts'
 import { inventoryPotions, potionCushion, STATE_HEALTHPOT } from '../input/auto-potion.ts'
+import { lifeCap, lifeShare } from '../input/life-cap.ts'
 import { vendorPrice113c } from '../ui-model/vendor-price.ts'
 import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
-import { nextSocketMove, type SocketMove } from './socket-plan.ts'
+import { baseFor, nextSocketMove, runewordKit, type RunewordKit, type SocketMove } from './socket-plan.ts'
 import { readyRecipe, runeRecipe, takeOut, transmute, withdraw, withdrawItems, type ReadyRecipe } from './cube-recipes.ts'
 import { buildOf, nextSkill, nextStat } from './build-plan.ts'
 import { alongLine } from './chevron-flow.ts'
@@ -194,6 +195,7 @@ const KITE_MS = 2500
 const SEAM_JUMP = 20
 const SPEND_MS = 1500
 const HEAL_LIFE = 0.7
+const HEAL_PATIENCE_MS = 15_000
 const RECOVERED_LIFE = 0.85
 const HEAL_MANA = 0.4
 const REPAIR_BELOW = 0.3
@@ -254,6 +256,7 @@ const GAP_TRIES = 6
 
 const distance = (a: SubTilePoint, b: SubTilePoint) => Math.hypot(a.x - b.x, a.y - b.y)
 const isElite = (unit: ClientUnit) => [unit.isChampion, unit.isUnique, unit.isSuperUnique].includes(true)
+const TOWN_SPOTS = new Map(Object.entries(QUEST_OBJECTS.townSpots))
 const WIELD = new Map(Object.values(QUEST_OBJECTS.wield).map((entry) => [entry.object, entry]))
 const TOOLS = new Set(Object.values(QUEST_OBJECTS.wield).map((entry) => entry.item))
 const BOSSES = new Set(LAIRS.bosses.map((name) => MONSTER_PATH_IDS.indexOf(name)))
@@ -323,6 +326,7 @@ export class Autopilot {
   private regions: { readonly level: number; readonly regions: Regions } | null = null
   private readonly landings = new Map<string, SubTilePoint>()
   private padCache: { readonly key: string; readonly at: number; readonly field: FlowField } | null = null
+  private healWait: { readonly life: number; readonly since: number } | null = null
   private lifeLog: readonly { readonly at: number; readonly life: number }[] = []
   private crossing: { readonly to: SubTilePoint; readonly until: number } | null = null
   private gapSearch: { readonly since: number; readonly from: SubTilePoint } | null = null
@@ -489,7 +493,7 @@ export class Autopilot {
     const { world, hudManager, assists } = this.host
     const boss = this.bossAhead()
     if (boss === null || nowMs - (this.prepared.get(boss) ?? Number.NEGATIVE_INFINITY) < LAIRS.lingerMs || !assists.hasTownPortal()) return
-    if (this.potionsWanted() === 0 && world.self.life >= (hudManager.maxHp || world.self.maxLife) * RECOVERED_LIFE) return
+    if (this.potionsWanted() === 0 && world.self.life >= lifeCap(hudManager, world.self.maxLife) * RECOVERED_LIFE) return
     this.prepared.set(boss, nowMs)
     Object.assign(this, { trip: 'retreat', retreatWhy: `${PREP} ${boss}, heading to town` })
   }
@@ -560,7 +564,8 @@ export class Autopilot {
     const { world } = this.host
     const me = world.self
     const stint = this.stint
-    if (stint && stint.area === world.areaId && stint.level === me.level) return
+    const roundTrip = this.trip !== null && this.town() && stint !== null && !(ACT_TOWNS as readonly number[]).includes(stint.area)
+    if (stint && (stint.area === world.areaId || roundTrip) && stint.level === me.level) return
     if (stint && !(ACT_TOWNS as readonly number[]).includes(stint.area)) this.ledger.add(me.name, stint.area, stint.level, me.experience - stint.xp, nowMs - stint.at)
     this.stint = { area: world.areaId, level: me.level, at: nowMs, xp: me.experience }
   }
@@ -705,7 +710,7 @@ export class Autopilot {
     const { assists, guide } = this.host
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
-    else if (town && this.wounded()) this.say('Waiting to heal before heading out')
+    else if (town && this.healing(nowMs)) this.say('Waiting to heal before heading out')
     else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && !this.retreatWhy.endsWith(ON_FOOT) && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(town === null && this.portalFirst(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
   }
 
@@ -1133,7 +1138,7 @@ export class Autopilot {
   private danger(nowMs: number): string | null {
     const { world, hudManager } = this.host
     const me = world.self
-    const life = me.life / (hudManager.maxHp || me.maxLife)
+    const life = lifeShare(hudManager, me)
     const healing = this.healingPotions()
     const stocked = healing >= STOCKED_POTIONS
     this.lifeLog = [...this.lifeLog.filter((entry) => nowMs - entry.at <= BURST_MS), { at: nowMs, life }]
@@ -1142,7 +1147,7 @@ export class Autopilot {
     const retreatAt = Math.max(boss ? LAIRS.retreatLife : 0, Math.min(MAX_RETREAT_LIFE, Math.max(MIN_RETREAT_LIFE, RETREAT_LIFE + this.levelGap() * GAP_CAUTION - (stocked ? STOCKED_NERVE : 0))) + this.caution(nowMs))
     const crowd = world.getUnitsByType(1).filter((unit) => !unit.dead && this.host.assists.isHostile(unit) && distance(unit, me) <= THREAT.near).length
     const horizon = Math.min(DOOM_MAX_MS, DOOM_MS + Math.max(0, crowd - DOOM_CROWD) * DOOM_PER_FOE_MS) + (boss ? LAIRS.doomMarginMs : 0)
-    const cushion = potionCushion(inventoryPotions([...world.containers.belt.values(), ...world.containers.inventory.values()].filter((item) => /^(hp|rv)/.test(item.code))), hudManager.maxHp || me.maxLife, me.charClass, horizon)
+    const cushion = potionCushion(inventoryPotions([...world.containers.belt.values(), ...world.containers.inventory.values()].filter((item) => /^(hp|rv)/.test(item.code))), lifeCap(hudManager, me.maxLife), me.charClass, horizon)
     const drain = burst / BURST_MS - (me.states.has(STATE_HEALTHPOT) ? 0 : cushion.lifePerMs * POTION_TRUST)
     const doomedIn = burst > DOOM_MIN_LOSS && drain > 0 ? (life + cushion.instant * POTION_TRUST) / drain : Infinity
     this.reading = { life: Math.round(life * 100) / 100, burst: Math.round(burst * 100) / 100, doomedIn: Number.isFinite(doomedIn) ? Math.round(doomedIn) : null, horizon, healing, retreatAt: Math.round(retreatAt * 100) / 100 }
@@ -1217,7 +1222,7 @@ export class Autopilot {
     const { world, assists, hudManager } = this.host
     const me = world.self
     const bearing = {
-      life: me.life / (hudManager.maxHp || me.maxLife),
+      life: lifeShare(hudManager, me),
       mana: me.mana / (hudManager.maxMana || me.maxMana),
       states: me.states,
       looting: this.corpse === null && (assists.autoGoldPickup || assists.autoLootRules !== null) && freeSpots(world.containers.inventory.values(), 2, 2).length > 0,
@@ -1352,12 +1357,19 @@ export class Autopilot {
 
   private recovered(): boolean {
     const { world, hudManager } = this.host
-    return world.self.life >= (hudManager.maxHp || world.self.maxLife) * RECOVERED_LIFE && this.healingPotions() >= HUNT_POTIONS
+    return world.self.life >= lifeCap(hudManager, world.self.maxLife) * RECOVERED_LIFE && this.healingPotions() >= HUNT_POTIONS
+  }
+
+  private healing(nowMs: number): boolean {
+    const life = this.host.world.self.life
+    if (!this.wounded()) this.healWait = null
+    else if (this.healWait === null || life > this.healWait.life) this.healWait = { life, since: nowMs }
+    return this.healWait !== null && nowMs - this.healWait.since < HEAL_PATIENCE_MS
   }
 
   private wounded(): boolean {
     const { world, hudManager } = this.host
-    return world.self.life < (hudManager.maxHp || world.self.maxLife) * HEAL_LIFE
+    return world.self.life < lifeCap(hudManager, world.self.maxLife) * HEAL_LIFE
   }
 
   private dryAndBroke(): boolean {
@@ -1382,7 +1394,7 @@ export class Autopilot {
   private hunt(nowMs: number): boolean {
     const { world, hudManager, assists } = this.host
     const me = world.self
-    const bold = me.life >= (hudManager.maxHp || me.maxLife) * HUNT_LIFE && this.healingPotions() >= HUNT_POTIONS && this.levelGap() <= HUNT_GAP && this.caution(nowMs) < HUNT_CAUTION && this.corpse === null && !this.passingThrough()
+    const bold = me.life >= lifeCap(hudManager, me.maxLife) * HUNT_LIFE && this.healingPotions() >= HUNT_POTIONS && this.levelGap() <= HUNT_GAP && this.caution(nowMs) < HUNT_CAUTION && this.corpse === null && !this.passingThrough()
     const chased = this.chase && world.getUnit('monster', this.chase.id)
     const huntable = (unit: ClientUnit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= HUNT_RADIUS && (this.ignored.get(unit.id) ?? 0) <= nowMs && !assists.isHopeless(unit)
     const hostiles = world.getUnitsByType(1).filter(huntable)
@@ -1467,7 +1479,7 @@ export class Autopilot {
     const { world, assists, hudManager } = this.host
     const me = world.self
     const threats = world.getUnitsByType(1).filter((unit) => !unit.dead && assists.isHostile(unit) && distance(unit, me) <= KITE_NEAR)
-    return me.life < (hudManager.maxHp || me.maxLife) * LAST_STAND_KITE && threats.length > 0 && this.kite(threats, nowMs)
+    return me.life < lifeCap(hudManager, me.maxLife) * LAST_STAND_KITE && threats.length > 0 && this.kite(threats, nowMs)
   }
 
   private walkHome(nowMs: number): void {
@@ -1582,7 +1594,7 @@ export class Autopilot {
     const selling = care.sellable.length > 0
     const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : (key === 'potions' && (this.healingPotions() < STOCKED_POTIONS || selling || !this.host.assists.hasTownPortal())) || key === 'cube' ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
     const ready = (key: string) => nowMs - (this.errandsAt.get(key) ?? Number.NEGATIVE_INFINITY) >= cooldown(key)
-    const wounded = me.life < (hudManager.maxHp || me.maxLife) * HEAL_LIFE || me.mana < (hudManager.maxMana || me.maxMana) * HEAL_MANA
+    const wounded = me.life < lifeCap(hudManager, me.maxLife) * HEAL_LIFE || me.mana < (hudManager.maxMana || me.maxMana) * HEAL_MANA
     const merc = world.merc
     const worn = [...world.containers.equipment.values()].some((item) => (item.maxDurability ?? 0) > 0 && (item.curDurability ?? item.durability ?? 0) < (item.maxDurability ?? 0) * REPAIR_BELOW)
     const recipe = readyRecipe(world) ?? runeRecipe(world, care.runeCube)
@@ -1592,6 +1604,7 @@ export class Autopilot {
     const spend = gambleFund >= GAMBLING_RULES.spare && ready('gamble') ? gambleFund : wealth >= SHOP_GOLD && ready('shop') ? Math.min(wealth - SPARE_GOLD, me.level * SHOP_PURSE_PER_LEVEL) : 0
     const purse = Math.min(getInventoryGoldLimit(me.level), Math.max(spend, this.purseKeep()))
     const untidy = care.untidy.length > 0
+    const kit = this.runewordKit()
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       resist !== null && me.gold >= POTION_GOLD && ready('resist') && { key: 'resist', reason: `Buying ${resist.potion} for ${resist.boss}`, npc: 'resists', action: 'trade', work: () => this.buyResists(resist.code) },
@@ -1613,6 +1626,8 @@ export class Autopilot {
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.armoury.length > 0 && ready('armoury') && { key: 'armoury', reason: 'Taking better gear out of the stash', work: () => this.arm() },
+      kit !== null && kit.base !== null && this.stashedParts(kit).length > 0 && ready('runeword') && { key: 'runeword', reason: `Taking the ${kit.name} runes out of the stash`, work: () => this.takeKit(kit) },
+      kit !== null && kit.base === null && me.gold >= SPARE_GOLD && ready('base') && { key: 'base', reason: `Looking for a base for ${kit.name}`, npc: 'repair', action: 'trade_repair', work: () => this.buyBase(kit) },
       this.socketMove() !== null && ready('socket') && { key: 'socket', reason: `Socketing ${this.socketMove()!.why}`, work: () => this.socketAll() },
       care.upgrades.length > 0 && ready('gear') && { key: 'gear', reason: 'Putting on better gear', work: () => care.wearUpgrades() },
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
@@ -1920,7 +1935,9 @@ export class Autopilot {
     const town = this.town()
     if (!view || !town) return null
     const preset = view.presetUnits.find((u) => (errand.stash ? u.type === 2 && u.index === STASH_CLASS : u.type === 1 && u.index === MONSTER_PATH_IDS.indexOf(errand.who ?? town[errand.npc!])))
-    return preset ? { x: view.originX + preset.subX, y: view.originY + preset.subY } : null
+    const spot = TOWN_SPOTS.get(errand.who ?? '')
+    if (preset) return { x: view.originX + preset.subX, y: view.originY + preset.subY }
+    return spot?.area === this.host.world.areaId ? { x: spot.at[0], y: spot.at[1] } : null
   }
 
   private walkTowards(goal: SubTilePoint, nowMs: number): void {
@@ -2034,6 +2051,31 @@ export class Autopilot {
     return hudModel.vendorBuy(ware.id, false) && waitFor(() => world.self.gold < before, 1500)
   }
 
+  private runewordKit(): RunewordKit | null {
+    const { equipment, inventory, stash, sockets } = this.host.world.containers
+    return runewordKit([...equipment.values(), ...inventory.values(), ...stash.values()], sockets, appraisalContextOf(this.host.world).build)
+  }
+
+  private stashedParts(kit: RunewordKit): ItemData[] {
+    return [...(kit.base ? [kit.base] : []), ...kit.runes].filter((item) => this.host.world.containers.stash.has(item.id))
+  }
+
+  private async takeKit(kit: RunewordKit): Promise<void> {
+    const { world, hudManager, hudModel } = this.host
+    if (hudModel !== null) await this.fromStash('runeword', () => withdrawItems({ world, hudManager, hudModel }, this.stashedParts(kit)))
+  }
+
+  private async buyBase(kit: RunewordKit): Promise<void> {
+    const { world, hudManager, hudModel } = this.host
+    if (hudModel === null || hudManager.leftPanel !== 'vendor') return
+    const price = this.priceList()
+    const affordable = this.store().filter((item) => price(item) <= world.self.gold - SPARE_GOLD / 2 && this.fits(item))
+    const base = baseFor(kit, affordable, world.containers.sockets, appraisalContextOf(world).build)
+    const before = world.self.gold
+    if (!base || !hudModel.vendorBuy(base.id, false) || !(await waitFor(() => world.self.gold < before, 1500))) return
+    this.toast(`Bought a base for ${kit.name}`, `${base.totalSockets} sockets for ${(before - world.self.gold).toLocaleString('en-US')} gold`, 'green')
+  }
+
   private socketMove(): SocketMove | null {
     const { equipment, inventory, sockets } = this.host.world.containers
     return nextSocketMove({ equipment: equipment.values(), inventory: inventory.values(), sockets }, appraisalContextOf(this.host.world).build)
@@ -2130,7 +2172,7 @@ export class Autopilot {
     const [healing, mana] = POTION_COLUMNS[this.isCaster() ? 'caster' : 'melee']
     const belt = (prefix: string) => [...world.containers.belt.values()].filter((item) => item.code.startsWith(prefix)).length
     const price = this.priceList()
-    const pool = { hp: hudManager.maxHp || world.self.maxLife, mp: hudManager.maxMana || world.self.maxMana }
+    const pool = { hp: lifeCap(hudManager, world.self.maxLife), mp: hudManager.maxMana || world.self.maxMana }
     const restores = POTIONS.restores as Readonly<Record<string, number>>
     const bestIn = (prefix: 'hp' | 'mp'): ItemData | undefined => {
       const tiers = this.store().filter((item) => item.code.startsWith(prefix)).sort((a, b) => potionTier(a.code) - potionTier(b.code))

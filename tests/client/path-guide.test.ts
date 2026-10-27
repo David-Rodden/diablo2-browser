@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FlowField } from '../../src/client/guide/flow-field.ts'
-import { planGuide, type PathGuideHost } from '../../src/client/guide/path-guide.ts'
+import { PathGuide, planGuide, type PathGuideHost } from '../../src/client/guide/path-guide.ts'
 import { actOfLevel, currentGoal, nextStep, shortestRoute } from '../../src/client/guide/route.ts'
 import { ChevronFlow } from '../../src/client/guide/chevron-flow.ts'
 import { fromNearest, rounded } from '../../src/client/guide/ribbon-trail.ts'
@@ -35,7 +35,8 @@ describe('path guide route', () => {
 
   it("heads for Diablo's portal to Harrogath until Tyrael offers the journey", () => {
     const actFourDone = { 25: 1, 26: 0x201, 27: 1 }
-    expect(goalOf(103, quests(actFourDone))).toEqual([108, 'Travel to Act V', 'Take the portal to Harrogath where Diablo fell'])
+    expect(goalOf(103, quests(actFourDone))).toEqual([108, 'Travel to Act V', 'Kill Diablo, then Tyrael opens the portal to Harrogath'])
+    expect(currentGoal(108, { ...quests(actFourDone), gameWords: Object.assign(new Array(41).fill(0), { 26: 0x8000 }) })).toMatchObject({ level: 103, hint: 'Talk to Tyrael, he opens the portal to Harrogath', find: [566, 'tyrael2'] })
     expect(currentGoal(108, quests(actFourDone))?.find?.[0]).toBe(566)
     expect(goalOf(103, quests({ ...actFourDone, 28: 1 }))).toEqual([109, 'Travel to Act V', undefined])
   })
@@ -144,6 +145,28 @@ describe('path guide plan', () => {
     const portal = { id: 71, unitType: 'object', classId: 100, mode: 2, x: 1018, y: 2012, hidden: false, dead: false } as unknown as ClientUnit
     const open = planGuide({ ...tomb, objects: () => [orifice, portal] }, 'story', undefined, new Set(), false, new Set(), { level: 73, title: "Duriel's Lair" })!
     expect(open.target?.unit).toEqual({ id: 71, kind: 'object' })
+  })
+
+  it('takes the Harrogath portal only once Diablo has opened it', () => {
+    const portal = (mode: number) => ({ id: 80, unitType: 'object', classId: 566, mode, x: 1030, y: 2010, hidden: false, dead: false, name: 'Harrogath' }) as unknown as ClientUnit
+    const chaos = (mode: number) => planGuide({ ...host, areaId: () => 108, quests: () => quests({ 25: 1, 26: 0x201, 27: 1 }), objects: () => [portal(mode)] }, 'story')!
+    expect(chaos(0).target?.unit).not.toEqual({ id: 80, kind: 'object' })
+    expect(chaos(2).target?.unit).toEqual({ id: 80, kind: 'object' })
+  })
+
+  it('heads for the seals still closed and remembers the opened ones out of sight', () => {
+    const seals = { ...view, presetUnits: [{ type: 2, index: 392, subX: 30, subY: 10 }, { type: 2, index: 393, subX: 30, subY: 30 }] } as unknown as LevelView
+    const opened = { id: 90, unitType: 'object', classId: 392, mode: 2, x: 1031, y: 2010, hidden: false, dead: false } as unknown as ClientUnit
+    const goal = { level: 2, title: 'Seals', find: [[392, 393]] }
+    let objects: ClientUnit[] = [opened]
+    const chaos = { ...host, levelView: () => seals, objects: () => objects }
+    expect(planGuide(chaos, 'story', undefined, new Set(), false, new Set(), goal)!.target).toMatchObject({ x: 1030, y: 2030 })
+    const guide = new PathGuide(chaos)
+    guide.enabled = true
+    guide.detour = goal
+    guide.update(0)
+    objects = []
+    expect(guide.update(60_000)!.target).toMatchObject({ x: 1030, y: 2030 })
   })
 
   it("sends a body run into Duriel's Lair through the true tomb, not the nearest one", () => {

@@ -26,6 +26,9 @@
   "briefings": {
     "meshif1": "jerhyn"
   },
+  "townSpots": {
+    "jerhyn": { "area": 40, "at": [5083, 5148] }
+  },
   "bridgeSettleMs": 1500,
   "boons": {
     "Book of Skill": "ass",
