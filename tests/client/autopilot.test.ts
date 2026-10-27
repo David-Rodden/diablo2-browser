@@ -152,6 +152,22 @@ describe('autopilot', () => {
     await vi.waitFor(() => expect(assists.use).toHaveBeenLastCalledWith(units[1], expect.any(Number)))
   })
 
+  it("walks to Jerhyn's usual spot when he is out of sight", async () => {
+    const { world, assists, hudManager, units, guide, tick } = setup({ goal: { level: 75, title: 'Kurast Docks' }, hint: 'Talk to Meshif', target: { x: 101, y: 100, label: 'Meshif', unit: { id: 7, kind: 'npc' } } }, 40)
+    units.push(unit({ id: 7, classId: MONSTER_PATH_IDS.indexOf('meshif1'), x: 101, y: 100, name: 'Meshif' }))
+    world.self.gold = 0
+    tick()
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'main', options: [{ id: 'talk' }, { id: 'cancel' }] }
+    tick()
+    hudManager.worldPanels.npcMenu = { npcId: 7, submenu: 'talk', options: [{ id: 'talk_intro' }, { id: 'cancel' }] }
+    tick()
+    hudManager.worldPanels.npcMenu = null
+    tick(21_000)
+    tick()
+    expect(guide.pilotStatus).toBe('Talking to Jerhyn first')
+    await vi.waitFor(() => expect(guide.focus).toHaveBeenCalledWith({ x: 5083, y: 5148 }, expect.any(Number)))
+  })
+
   it('opens a portal home for a far town errand, and finishes it in town before going back through', () => {
     const errand = { goal: { level: 1, title: 'Tools of the Trade', inTown: true as const }, hint: 'Bring the Malus to Charsi', step: { kind: 'exit' as const, level: 27 } }
     const near = setup({ ...errand, target: { x: 120, y: 100, label: 'Outer Cloister' } })
