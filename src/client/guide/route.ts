@@ -43,6 +43,7 @@ const HARROGATH_TRAVEL_ROW = 28
 export const HARROGATH_PORTAL = 566
 const CHAOS_SANCTUARY = 108
 const DIABLO_ROW = 26
+const EVE_ROW = 40
 const SLAIN_THIS_GAME = 0x8000
 const REWARD_GRANTED = 0x0001
 const COMPLETED_NOW = 0x2000
@@ -52,6 +53,7 @@ const WAYPOINT_COST = 3
 export const levelName = (level: number): string => getLevelNames(level).nameEn
 export const actOfLevel = (level: number): number => ACT_TOWNS.filter((town) => level >= town).length - 1
 const isDone = (word: number) => (word & (REWARD_GRANTED | COMPLETED_NOW)) !== 0
+export const campaignDone = (words: ArrayLike<number>): boolean => isDone(words[EVE_ROW] ?? 0)
 const withCount = (hint: string, page: QuestLogPage | null) => hint.replace('{n}', String(page && page.text.kind !== 'tbl' ? page.text.count : ''))
 
 export interface Goal {

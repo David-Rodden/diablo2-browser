@@ -37,7 +37,7 @@ import { WAYPOINT_LEVELS } from './level-links.ts'
 import { TrainingFloor } from './training-floor.ts'
 import { OPTIONAL_ROWS } from './quest-stages.ts'
 import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, lockedLevels, NAKED_SLOTS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
-import { ACT_TOWNS, actOfLevel, levelName, type Goal } from './route.ts'
+import { ACT_TOWNS, actOfLevel, campaignDone, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 import THREAT from '../../common/skills/data/monster-threat.json'
 import QUEST_OBJECTS from './data/quest-objects.json'
@@ -50,7 +50,7 @@ export interface AutopilotHost {
   readonly assists: PlayAssists
   readonly guide: PathGuide
   readonly levelView: () => LevelView | null
-  readonly freshGame?: () => Promise<boolean>
+  readonly freshGame?: (difficulty?: 0 | 1 | 2) => Promise<boolean>
 }
 
 type Service = keyof (typeof TOWNS)['Rogue Encampment']
@@ -253,6 +253,7 @@ const STAFF_CODE = 'hst'
 const TOWN_PORTAL_CLASS = 59
 const PORTAL_REACH = 12
 const TRAVEL_OPTIONS = ['travel_east', 'travel_west', 'travel_harrogath']
+const DIFFICULTY_NAMES = ['Normal', 'Nightmare', 'Hell'] as const
 const ARTISANS: readonly ArtisanKind[] = ['imbue', 'add_sockets']
 const WARP_NEAR = 7
 const SEAM_STEP = 20
@@ -404,7 +405,7 @@ export class Autopilot {
     if (!this.rejoin(why)) this.stop('Autopilot needs you', 'gold', why)
   }
 
-  private rejoin(why: string): boolean {
+  private rejoin(why: string, difficulty?: 0 | 1 | 2): boolean {
     const { freshGame, world, guide } = this.host
     const nowMs = performance.now()
     this.rejoins = this.rejoins.filter((at) => nowMs - at < REJOIN_WINDOW_MS)
@@ -412,7 +413,7 @@ export class Autopilot {
     this.rejoins.push(nowMs)
     this.stop('Starting a fresh game', 'gold', why)
     this.freshening = true
-    void freshGame()
+    void freshGame(difficulty)
       .catch(() => false)
       .then((entered) => {
         this.freshening = false
@@ -838,7 +839,12 @@ export class Autopilot {
   private follow(plan: GuidePlan | null, nowMs: number): void {
     if (plan && nowMs < this.rethinkUntil) this.explore(nowMs, 'Looking for another way')
     else if (plan) this.pursue(plan, nowMs)
-    else this.explore(nowMs, 'No route from here, exploring')
+    else if (!this.moveUp()) this.explore(nowMs, 'No route from here, exploring')
+  }
+
+  private moveUp(): boolean {
+    const { difficulty, quests } = this.host.world
+    return difficulty < 2 && campaignDone(quests) && this.rejoin(`${DIFFICULTY_NAMES[difficulty]} is done, on to ${DIFFICULTY_NAMES[difficulty + 1]}`, (difficulty + 1) as 1 | 2)
   }
 
   private pursue(plan: GuidePlan, nowMs: number): void {

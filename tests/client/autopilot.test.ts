@@ -732,6 +732,21 @@ describe('autopilot', () => {
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
   })
 
+  it('moves up a difficulty once Baal is dead, and stays put after Hell', () => {
+    const run = (difficulty: number) => {
+      const { host, world, tick } = setup(null, 109)
+      const freshGame = vi.fn(() => Promise.resolve(true))
+      Object.assign(host, { freshGame })
+      ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+      Object.assign(world, { difficulty })
+      Object.assign(world.self, { gold: 0 })
+      world.quests[40] = 1
+      for (let i = 0; i < 20; i++) tick(700)
+      return freshGame.mock.calls.map((call) => (call as unknown[])[0])
+    }
+    expect([run(0), run(1), run(2)]).toEqual([[1], [2], []])
+  })
+
   it('walks to a spot again when it comes back to a level where it reached that spot before', () => {
     const { world, assists, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, hint: 'Take the waypoint', target: { x: 130, y: 100, label: 'Objective' } }, ROGUE_ENCAMPMENT)
     ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
