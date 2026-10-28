@@ -732,6 +732,21 @@ describe('autopilot', () => {
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
   })
 
+  it('starts a fresh game when the server stops answering, even with its body out there', () => {
+    const { pilot, host, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    const freshGame = vi.fn(() => Promise.resolve(true))
+    let quiet = 0
+    Object.assign(host, { freshGame, serverQuietMs: () => quiet })
+    Object.assign(pilot as unknown as { corpse: unknown }, { corpse: { level: 3, x: 50, y: 50 } })
+    tick(700)
+    quiet = 59_000
+    tick(700)
+    const before = freshGame.mock.calls.length
+    quiet = 61_000
+    tick(700)
+    expect([before, freshGame.mock.calls.length]).toEqual([0, 1])
+  })
+
   it('moves up a difficulty once Baal is dead, and stays put after Hell', () => {
     const run = (difficulty: number) => {
       const { host, world, tick } = setup(null, 109)

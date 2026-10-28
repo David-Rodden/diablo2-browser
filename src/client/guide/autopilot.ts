@@ -51,6 +51,7 @@ export interface AutopilotHost {
   readonly guide: PathGuide
   readonly levelView: () => LevelView | null
   readonly freshGame?: (difficulty?: 0 | 1 | 2) => Promise<boolean>
+  readonly serverQuietMs?: () => number
 }
 
 type Service = keyof (typeof TOWNS)['Rogue Encampment']
@@ -254,6 +255,7 @@ const TOWN_PORTAL_CLASS = 59
 const PORTAL_REACH = 12
 const TRAVEL_OPTIONS = ['travel_east', 'travel_west', 'travel_harrogath']
 const DIFFICULTY_NAMES = ['Normal', 'Nightmare', 'Hell'] as const
+const SERVER_GONE_MS = 60_000
 const ARTISANS: readonly ArtisanKind[] = ['imbue', 'add_sockets']
 const WARP_NEAR = 7
 const SEAM_STEP = 20
@@ -428,6 +430,7 @@ export class Autopilot {
   tick(nowMs: number): void {
     if (!this.active || nowMs - this.lastTick < TICK_MS) return
     this.lastTick = nowMs
+    if (this.serverGone()) return
     const { world, assists } = this.host
     if (assists.playerSteering) this.pausedUntil = nowMs + MANUAL_PAUSE_MS
     this.lastNpc = world.npcInteraction.npcId ?? this.lastNpc
@@ -438,6 +441,13 @@ export class Autopilot {
     if (world.isDead) this.mourn(nowMs)
     else if (nowMs < this.pausedUntil) this.say('Paused while you play')
     else if (world.areaId > 0 && !this.job) this.decide(nowMs)
+  }
+
+  private serverGone(): boolean {
+    if ((this.host.serverQuietMs?.() ?? 0) < SERVER_GONE_MS || this.freshening) return false
+    this.corpse = null
+    this.stuck('The server stopped answering')
+    return true
   }
 
   private mourn(nowMs: number): void {
