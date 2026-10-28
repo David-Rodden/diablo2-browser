@@ -221,6 +221,12 @@ const COLD_TRANSFORM_108_B64 =
 const POISON_TRANSFORM_104_B64 =
   'AHFxdXV1eXl5eXmBh4GFD3F1dXV5eXl5eXl5gYGFhaIgrK1xcXFxcXFxcXF1dXV1dXV1dXV5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXmBeYF5eYGBgYGBgYGBgYWBhYWFhYWFhYWFoYWFhYWhhYWih6RxdXV1dXl5eXl5eXl5eYGBgYGFhYWhonF5dXV5eXl5eYGBgYWFhYWFhYeFoqKigYWFoamkhaGioaSppKytcXFxcXV1dXV1eXl5eXl5eXl5eXl5eXl5eXl5eYF5gYGBgYGBhYWFhYWFhYWFh6GipKSkhXFxcXF1dXV1eaxxcXFxdXV1dXV1dXl5eXl5eXmB/w=='
 
+const RED_TRANSFORM_100_B64 =
+  'AAEBLAUFBQgICApiZgpiIgEsMQUFBQgICAoKCmJiYmsgIiIBAQEBASwsLCwsLDExMTEFBQUFBQUFBQUFBQgICAgICAgICAgICgoICAoKCgoKCgoKCgoKYgoKCmIKYmJiYmJiYmJiZltiYmJmYltmZnABLAUFMQUICAUICgoKCgoKCgpiYmJmZiwFBQUICAgICgoKCmJiYmJiW2ZiZnBuCmJbZnBwW2ZmZnBwcCEiIgEBASwsMQUFBQUFBQgICAgICAgICAgICAoKCgoKCgoKCgoKYmJiYmJiYltbZmZucHBwYgEBAQEsMQUxBSIBAQEBLCwxBQUFBQUFBQgICgoK/w=='
+
+const REVIVE_TRANSFORM_73_B64 =
+  'AK2tr7CxEbO0tbe8GRXArK2ur7AREbS1tBMTt7y+wxvSrKytra4Prq6urq6vr6+wELCwsLCxsRERERGxERGzEbOztLO0EbS1ExO0tLe5E7e3E7m3FRW5vBUVFRYVvrwWvsC+wxbAx8bDFsYZw8bKGc4PrrCwrxGzsxG0ExMTt7kVFRW+vsPHyq6xsLARtLW0t7e5Fb68wL7DxhkWyM0bFcDGyM3QxsjIyM7N0ACsIa0Prq+vELCwsbERERERs7Ozs7S0tLW0tRMTE7cTubkVFRUVvLy+FhYWw8bGGcgbztDQvq2tD66usLCvEaytrq6ur68QsLCwsbEREbO0ExO30g=='
+
 const B64_LOOKUP = new Uint8Array(128)
 const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 for (let i = 0; i < B64_ALPHABET.length; i += 1) {
@@ -263,6 +269,12 @@ export const DEFAULT_COLD_TRANSFORM_113C: Pl2Transform = decodeBase64Bytes(COLD_
 
 /** Authentic 1.13c Poison state shift (`States.txt` `colorpri=95, colorshift=104` -> `hueVariations[103]`). */
 export const DEFAULT_POISON_TRANSFORM_113C: Pl2Transform = decodeBase64Bytes(POISON_TRANSFORM_104_B64)
+
+/** Authentic 1.13c Red state shift (`States.txt` `colorpri=70, colorshift=100` -> `hueVariations[99]`, D2Win `#10164`). */
+export const DEFAULT_RED_TRANSFORM_113C: Pl2Transform = decodeBase64Bytes(RED_TRANSFORM_100_B64)
+
+/** Authentic 1.13c Revive state shift (`States.txt` `colorpri=85, colorshift=73` -> `hueVariations[72]`, D2Win `#10164`). */
+export const DEFAULT_REVIVE_TRANSFORM_113C: Pl2Transform = decodeBase64Bytes(REVIVE_TRANSFORM_73_B64)
 
 /** Authentic 1.13c Unique boss gold/amber colormap shift (`RandTransforms.dat` row 4). */
 export const DEFAULT_UNIQUE_TRANSFORM_113C: Pl2Transform = RAND_TRANSFORMS_113C[4]!

@@ -514,6 +514,148 @@ describe('BNCS & MCP framing, packets, and sessions', () => {
     expect(missingInfo.players).toEqual([])
     mcp2.close()
   })
+
+  it('encodes C2S MCP_CHARDELETE (0x0A) with u16 requestId and decodes/matches S2C 0x0A { requestId: u16, status: u32 } per D2MCPClient.dll 0x6fa26e60 & 0x6fa26250 (#1759)', async () => {
+    const { encodeMcpCharDelete } = await import('../../src/netproto/mcp/packets.ts')
+    const c2s = encodeMcpCharDelete('OldHero', 0x1234)
+    // Header: [lenLo, lenHi, 0x0a], Payload: [reqLo=0x34, reqHi=0x12, 'O','l','d','H','e','r','o', 0]
+    expect(c2s[2]).toBe(McpOpcode.MCP_CHARDELETE)
+    expect(c2s[3]).toBe(0x34)
+    expect(c2s[4]).toBe(0x12)
+
+    const s2cPayload = new ByteWriter(6)
+    s2cPayload.u16LE(0x1234)
+    s2cPayload.u32LE(0x00000046)
+    const [rawS2c] = new McpFramer().push(encodeMcpFrame(McpOpcode.MCP_CHARDELETE, s2cPayload.toUint8Array()))
+    const decoded = decodeMcpS2cPacket(rawS2c!)
+    expect(decoded).toEqual({
+      type: 'MCP_CHARDELETE',
+      requestId: 0x1234,
+      status: 0x46,
+    })
+
+    const [clientStream, serverStream] = createMemoryStreamPair()
+    const mcp = new McpSession(clientStream)
+    const seenReqIds: number[] = []
+    serverStream.onData((chunk) => {
+      if (chunk.length >= 5 && chunk[2] === McpOpcode.MCP_CHARDELETE) {
+        const reqId = chunk[3]! | (chunk[4]! << 8)
+        seenReqIds.push(reqId)
+        // Send a stale/mismatched requestId first (ignored per cmp ax, [0x6fa2aeb4] @ 0x6fa26254)
+        const stale = new ByteWriter(6)
+        stale.u16LE(reqId ^ 0xffff)
+        stale.u32LE(0xdeadbeef)
+        serverStream.write(encodeMcpFrame(McpOpcode.MCP_CHARDELETE, stale.toUint8Array()))
+        // Then send the matching requestId with status = 0x46
+        const match = new ByteWriter(6)
+        match.u16LE(reqId)
+        match.u32LE(0x46)
+        serverStream.write(encodeMcpFrame(McpOpcode.MCP_CHARDELETE, match.toUint8Array()))
+      }
+    })
+
+    const status = await mcp.deleteChar('OldHero')
+    expect(seenReqIds).toEqual([1])
+    expect(status).toBe(0x46)
+    mcp.close()
+  })
+
+  it('decodes S2C MCP_CREATEQUEUE (0x14, D2MCPClient.dll 0x6fa260d0) and MCP_LADDERDATA (0x11, 0x6fa25f10) and surfaces queue position during createGame (#1765)', async () => {
+    const { encodeMcpLadderData } = await import('../../src/netproto/mcp/packets.ts')
+    // 1. Verify C2S/S2C MCP_LADDERDATA (0x11)
+    const c2sLadder = encodeMcpLadderData(0x09, 1)
+    expect(Array.from(c2sLadder)).toEqual([0x06, 0x00, 0x11, 0x09, 0x01, 0x00])
+
+    const ladderPayload = new ByteWriter()
+    ladderPayload.u8(0x09) // ladderType (+1)
+    ladderPayload.u16LE(64) // totalBytes (+2)
+    ladderPayload.u16LE(0) // offset (+4)
+    ladderPayload.u16LE(4) // chunkLen (+6)
+    ladderPayload.bytes(new Uint8Array([0xde, 0xad, 0xbe, 0xef])) // data (+8)
+    const [rawLadder] = new McpFramer().push(
+      encodeMcpFrame(McpOpcode.MCP_LADDERDATA, ladderPayload.toUint8Array()),
+    )
+    const decodedLadder = decodeMcpS2cPacket(rawLadder!)
+    expect(decodedLadder.type).toBe('MCP_LADDERDATA')
+    if (decodedLadder.type === 'MCP_LADDERDATA') {
+      expect(decodedLadder.ladderType).toBe(0x09)
+      expect(decodedLadder.totalBytes).toBe(64)
+      expect(decodedLadder.offset).toBe(0)
+      expect(decodedLadder.chunkLen).toBe(4)
+      expect(Array.from(decodedLadder.data)).toEqual([0xde, 0xad, 0xbe, 0xef])
+    }
+
+    // 2. Verify S2C MCP_CREATEQUEUE (0x14) and McpSession queue tracking
+    const [clientStream, serverStream] = createMemoryStreamPair()
+    const mcp = new McpSession(clientStream)
+    const seenPositions: number[] = []
+    mcp.onCreateQueue(pos => seenPositions.push(pos))
+
+    serverStream.onData(chunk => {
+      if (chunk.length >= 5 && chunk[2] === McpOpcode.MCP_CREATEGAME) {
+        const reqId = chunk[3]! | (chunk[4]! << 8)
+        // Emit two MCP_CREATEQUEUE (0x14) packets before final MCP_CREATEGAME (0x03)
+        const q1 = new ByteWriter(4)
+        q1.u32LE(5)
+        serverStream.write(encodeMcpFrame(McpOpcode.MCP_CREATEQUEUE, q1.toUint8Array()))
+        const q2 = new ByteWriter(4)
+        q2.u32LE(1)
+        serverStream.write(encodeMcpFrame(McpOpcode.MCP_CREATEQUEUE, q2.toUint8Array()))
+
+        const done = new ByteWriter(8)
+        done.u16LE(reqId)
+        done.u16LE(0x0077)
+        done.u16LE(0)
+        done.u32LE(0)
+        serverStream.write(encodeMcpFrame(McpOpcode.MCP_CREATEGAME, done.toUint8Array()))
+      }
+    })
+
+    const callbackPositions: number[] = []
+    const res = await mcp.createGame({
+      name: 'QueuedGame',
+      onQueuePosition: pos => callbackPositions.push(pos),
+    })
+    expect(seenPositions).toEqual([5, 1])
+    expect(callbackPositions).toEqual([5, 1])
+    expect(mcp.createQueuePosition).toBeNull()
+    expect(res.status).toBe(0)
+    expect(res.gameToken).toBe(0x0077)
+    mcp.close()
+  })
+
+  it('decodes S2C MCP_MOTD (0x12) single-buffer payload per D2MCPClient.dll 0x6fa25ee0 (#1766)', async () => {
+    const wSingle = new ByteWriter()
+    wSingle.u8(0x01) // status/unknown @ +1
+    wSingle.cstring('Welcome to Battle.net\nPatch 1.13c is live.')
+    const [rawSingle] = new McpFramer().push(
+      encodeMcpFrame(McpOpcode.MCP_MOTD, wSingle.toUint8Array()),
+    )
+    const decodedSingle = decodeMcpS2cPacket(rawSingle!)
+    expect(decodedSingle).toEqual({
+      type: 'MCP_MOTD',
+      unknown: 0x01,
+      text: 'Welcome to Battle.net\nPatch 1.13c is live.',
+      headline: 'Welcome to Battle.net',
+      body: 'Patch 1.13c is live.',
+    })
+
+    const [clientStream, serverStream] = createMemoryStreamPair()
+    const mcp = new McpSession(clientStream)
+    serverStream.onData(chunk => {
+      if (chunk.length >= 3 && chunk[2] === McpOpcode.MCP_MOTD) {
+        serverStream.write(encodeMcpFrame(McpOpcode.MCP_MOTD, wSingle.toUint8Array()))
+      }
+    })
+    const motd = await mcp.requestMotd()
+    expect(motd).toEqual({
+      unknown: 0x01,
+      text: 'Welcome to Battle.net\nPatch 1.13c is live.',
+      headline: 'Welcome to Battle.net',
+      body: 'Patch 1.13c is live.',
+    })
+    mcp.close()
+  })
 })
 
 describe('WsStream RFC 6455 close code normalization (#1021)', () => {

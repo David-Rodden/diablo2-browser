@@ -30,6 +30,23 @@ interface BlitPlacement {
   readonly y: number
 }
 
+/**
+ * D2Client.dll `0x6FAD743A..0x6FAD7536` (`sub_6FAD73F0`): stitches `800CtrlPnl7.dc6` frames `0..5` only;
+ * frame `6` is never rendered by the 1.13c client.
+ */
+export function build800CtrlPnlPlacements113c<T>(
+  cf: readonly T[],
+): ReadonlyArray<{ readonly frame: T; readonly x: number; readonly y: number; readonly frameIndex: number }> {
+  return [
+    { frame: cf[1]!, x: 165, y: 49, frameIndex: 1 },
+    { frame: cf[2]!, x: 293, y: 49, frameIndex: 2 },
+    { frame: cf[3]!, x: 421, y: 49, frameIndex: 3 },
+    { frame: cf[4]!, x: 549, y: 49, frameIndex: 4 },
+    { frame: cf[0]!, x: 0, y: 0, frameIndex: 0 },
+    { frame: cf[5]!, x: 683, y: 0, frameIndex: 5 },
+  ]
+}
+
 export interface SpriteRect {
   readonly x: number
   readonly y: number
@@ -195,9 +212,10 @@ function stitchHorizontalStrip(frames: readonly SpriteFrame[]): {
 
 /**
  * Parse a `Woo!\x01` font metric table (`data/local/font/latin/font*.tbl`)
- * and pack its 256 DC6 glyphs into a 16x16 grid PNG.
+ * and pack its 256 DC6 glyphs into a 16x16 grid PNG verbatim per `D2Win.dll`
+ * (`0x6F8F19E3..0x6F8F1A0D`, `0x6F8F1F8E`, `0x6F8F204D`, `0x6F8F2150`, `0x6F8F2856`).
  */
-function buildFontAtlas(name: string, dc6: SpriteSheet, tblBytes: Uint8Array): {
+export function buildFontAtlas(name: string, dc6: SpriteSheet, tblBytes: Uint8Array): {
   meta: FontAtlasMeta
   pixels: Uint8Array
 } {
@@ -216,86 +234,19 @@ function buildFontAtlas(name: string, dc6: SpriteSheet, tblBytes: Uint8Array): {
   const placements: BlitPlacement[] = []
   const glyphs: FontGlyphMetric[] = []
 
-  const qRecOff = 12 + 0x3f * 14
-  const qFrameIdx = qRecOff + 8 < tblBytes.length ? (tblBytes[qRecOff + 8] ?? 0x3f) : 0x3f
-  const placeholderCandidates = [
-    frames[qFrameIdx] ?? frames[0x3f],
-    frames[0x7f],
-    frames[0x81],
-    frames[0x8d],
-    frames[0x8f],
-    frames[0x90],
-    frames[0x9d],
-  ].filter((f): f is SpriteFrame => Boolean(f && f.width > 0 && f.height > 0))
-
-  const isSameFrame = (a: SpriteFrame | undefined, b: SpriteFrame | undefined): boolean => {
-    if (!a || !b || a.width === 0 || b.width === 0) return false
-    if (a.width !== b.width || a.height !== b.height) return false
-    for (let k = 0; k < a.indices.length; k++) {
-      if (a.indices[k] !== b.indices[k]) return false
-    }
-    return true
-  }
-
-  const isPlaceholderQuestionMark = (f: SpriteFrame | undefined): boolean =>
-    placeholderCandidates.some(cand => isSameFrame(f, cand))
-
-  const dotRecOff = 12 + 0x2e * 14
-  const dotMetricW = dotRecOff + 3 < tblBytes.length ? (tblBytes[dotRecOff + 3] || 6) : 6
-  const dotFrameIdx = dotRecOff + 8 < tblBytes.length ? (tblBytes[dotRecOff + 8] ?? 0x2e) : 0x2e
-  const dotFrame = frames[dotFrameIdx] ?? frames[0x2e]
-
-  const dashRecOff = 12 + 0x2d * 14
-  const dashMetricW = dashRecOff + 3 < tblBytes.length ? (tblBytes[dashRecOff + 3] || 8) : 8
-  const dashFrameIdx = dashRecOff + 8 < tblBytes.length ? (tblBytes[dashRecOff + 8] ?? 0x2d) : 0x2d
-  const dashFrame = frames[dashFrameIdx] ?? frames[0x2d]
-
   for (let i = 0; i < 256; i++) {
     const recOff = 12 + i * 14
-    let metricWidth = recOff + 3 < tblBytes.length ? (tblBytes[recOff + 3] || 6) : 6
-    const metricHeight = recOff + 4 < tblBytes.length ? (tblBytes[recOff + 4] || lineHeight) : lineHeight
-    const frameIdx = recOff + 8 < tblBytes.length ? (tblBytes[recOff + 8] ?? i) : i
-    let frame: SpriteFrame | undefined = frames[frameIdx] ?? frames[i]
-    if ((i === 0xb7 || i === 0x95) && dotFrame) {
-      const shiftY = Math.max(1, Math.round(dotFrame.height * 0.22))
-      const shiftedIndices = new Uint8Array(dotFrame.width * dotFrame.height)
-      const shiftedMask = new Uint8Array(dotFrame.width * dotFrame.height)
-      for (let y = 0; y < dotFrame.height; y++) {
-        const srcY = y + shiftY
-        if (srcY < dotFrame.height) {
-          for (let x = 0; x < dotFrame.width; x++) {
-            const dstIdx = y * dotFrame.width + x
-            const srcIdx = srcY * dotFrame.width + x
-            shiftedIndices[dstIdx] = dotFrame.indices[srcIdx]!
-            shiftedMask[dstIdx] = dotFrame.mask[srcIdx]!
-          }
-        }
-      }
-      frame = { ...dotFrame, indices: shiftedIndices, mask: shiftedMask }
-      metricWidth = dotMetricW
-    } else if (i !== 0x3f && i >= 0x7f && isPlaceholderQuestionMark(frame)) {
-      if ((i === 0x96 || i === 0x97) && dashFrame) {
-        frame = dashFrame
-        metricWidth = dashMetricW
-      } else {
-        frame = undefined
-      }
-    }
-    if (i !== 0x20 && i !== 0xa0 && frame) {
-      let hasVisiblePixel = false
-      for (let k = 0; k < frame.indices.length; k++) {
-        if (frame.mask[k] !== 0 && frame.indices[k] !== 0) {
-          hasVisiblePixel = true
-          break
-        }
-      }
-      if (!hasVisiblePixel) {
-        frame = undefined
-      }
-    }
+    const metricWidth = recOff + 3 < tblBytes.length ? tblBytes[recOff + 3]! : 0
+    const metricHeight = recOff + 4 < tblBytes.length ? tblBytes[recOff + 4]! : lineHeight
+    const frameIdx = recOff + 9 < tblBytes.length
+      ? (tblBytes[recOff + 8]! | (tblBytes[recOff + 9]! << 8))
+      : recOff + 8 < tblBytes.length
+        ? tblBytes[recOff + 8]!
+        : i
+    const frame: SpriteFrame | undefined = frames[frameIdx] ?? frames[i]
     const gx = (i % 16) * cellW
     const gy = Math.floor(i / 16) * cellH
-    if (frame) {
+    if (frame && frame.width > 0 && frame.height > 0) {
       placements.push({ frame, x: gx, y: gy })
     }
     glyphs.push({
@@ -310,14 +261,6 @@ function buildFontAtlas(name: string, dc6: SpriteSheet, tblBytes: Uint8Array): {
   }
 
   const pixels = stitchFrames(atlasWidth, atlasHeight, placements)
-  if (name === 'fontexocet10') {
-    for (let p = 0; p < pixels.length; p++) {
-      const idx = pixels[p]!
-      if (idx >= 15 && idx <= 32) {
-        pixels[p] = Math.max(15, Math.min(31, 31 - (idx - 15)))
-      }
-    }
-  }
 
   return {
     meta: {
@@ -331,6 +274,20 @@ function buildFontAtlas(name: string, dc6: SpriteSheet, tblBytes: Uint8Array): {
     pixels,
   }
 }
+
+// D2Win.dll 0x6F9AA380 font table: all 10 in-game fonts referenced by D2Client.dll SetFont(n)
+export const IN_GAME_FONT_NAMES = [
+  'font6',
+  'font8',
+  'font16',
+  'font30',
+  'font42',
+  'fontformal10',
+  'fontformal11',
+  'fontformal12',
+  'fontexocet10',
+  'fontingamechat',
+] as const
 
 export async function bakeUi(mpqDir = 'samples/d2', outBaseDir = 'public'): Promise<void> {
   console.log('Mounting Diablo II v1.13c MPQ archives...')
@@ -384,16 +341,7 @@ export async function bakeUi(mpqDir = 'samples/d2', outBaseDir = 'public'): Prom
   // 1. 800x600 Bottom Control Panel (`Panel/800CtrlPnl7.dc6`)
   const ctrl800 = await decodeUiDc6('data/global/ui/Panel/800CtrlPnl7.dc6')
   const cf = ctrl800.groups[0]!.frames
-  const ctrlPixels = stitchFrames(800, 104, [
-    { frame: cf[6]!, x: 64, y: 49 },
-    { frame: cf[6]!, x: 600, y: 49 },
-    { frame: cf[1]!, x: 165, y: 49 },
-    { frame: cf[2]!, x: 293, y: 49 },
-    { frame: cf[3]!, x: 421, y: 49 },
-    { frame: cf[4]!, x: 549, y: 49 },
-    { frame: cf[0]!, x: 0, y: 0 },
-    { frame: cf[5]!, x: 683, y: 0 },
-  ])
+  const ctrlPixels = stitchFrames(800, 104, [...build800CtrlPnlPlacements113c(cf)])
   savePng('ctrlpnl-800.png', 800, 104, ctrlPixels)
 
   // 1b. 640x480 Bottom Control Panel (`Panel/CtrlPnl7.dc6`)
@@ -888,9 +836,8 @@ export async function bakeUi(mpqDir = 'samples/d2', outBaseDir = 'public'): Prom
 
   // 7. Extract Bitmap Fonts (`data/local/font/latin/*.dc6 + *.tbl`)
   console.log('Extracting bitmap fonts...')
-  const fontNames = ['font6', 'font8', 'font16', 'font30', 'fontexocet10', 'fontformal12'] as const
   const fontMetas: Record<string, FontAtlasMeta> = {}
-  for (const fn of fontNames) {
+  for (const fn of IN_GAME_FONT_NAMES) {
     const fDc6 = await decodeUiDc6(`data/local/font/latin/${fn}.dc6`)
     const fTbl = await archives.read(`data/local/font/latin/${fn}.tbl`)
     const built = buildFontAtlas(fn, fDc6, fTbl)

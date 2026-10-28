@@ -215,8 +215,8 @@ export function getAvailableSkillsForSide(
   })
 }
 
-export const LEFT_SKILL_BOUNDS = { x: 117, y: 551, width: 48, height: 48 } as const
-export const RIGHT_SKILL_BOUNDS = { x: 635, y: 551, width: 48, height: 48 } as const
+export const LEFT_SKILL_BOUNDS = { x: 117, y: 552, width: 48, height: 48 } as const
+export const RIGHT_SKILL_BOUNDS = { x: 635, y: 552, width: 48, height: 48 } as const
 
 export const LEFT_SKILL_BOUNDS_640 = { x: 117, y: 432, width: 48, height: 48 } as const
 export const RIGHT_SKILL_BOUNDS_640 = { x: 475, y: 432, width: 48, height: 48 } as const
@@ -230,7 +230,7 @@ export class SkillHotkeysHud {
   /** Which Speedbar popup is currently expanded ('left', 'right', or null). */
   openPopup: 'left' | 'right' | null = null
   /** Hovered skill inside the Speedbar popup. */
-  hoveredPopupSkill: { side: 'left' | 'right'; skillId: number } | null = null
+  hoveredPopupSkill: { side: 'left' | 'right'; skillId: number; itemId?: number | undefined } | null = null
   /** Currently hovered skill ID in left or right slot. */
   hoverSkillId: number | null = null
   /** Currently hovered skill ID inside speedbar. */
@@ -255,8 +255,8 @@ export class SkillHotkeysHud {
     this.openPopup = val
   }
 
-  /** F1..F8 bindings (`F1`..'F8' -> `{ side, skillId }`). */
-  readonly bindings = new Map<string, { side: 'left' | 'right'; skillId: number }>()
+  /** F1..F8 bindings (`F1`..'F8' -> `{ side, skillId, itemId }`). */
+  readonly bindings = new Map<string, { side: 'left' | 'right'; skillId: number; itemId?: number | undefined }>()
 
   /** Quickbar skills; rebuilt from the server skill list by `HudModel.syncFromWorld()`. */
   availableSkills: HotkeySkillEntry[] = []
@@ -264,7 +264,7 @@ export class SkillHotkeysHud {
    * Server-authoritative skill selection sink. When set (online), popup clicks and F-keys only request
    * `SelectSkill (0x3C)`; the active slots change when the server answers with `0x23 AssignSkill`.
    */
-  onSelectSkill?: ((side: 'left' | 'right', skillId: number) => void) | undefined
+  onSelectSkill?: ((side: 'left' | 'right', skillId: number, itemId?: number) => void) | undefined
   /**
    * Callback invoked when a skill hotkey slot (0..15) is bound in the Speedbar popup (`0x51 AssignSkillHotkey`).
    */
@@ -378,6 +378,14 @@ export class SkillHotkeysHud {
     } else {
       this.skillCharges.set(skillId, { charges })
     }
+  }
+
+  deleteSkillCharges(skillId: number): void {
+    this.skillCharges.delete(skillId)
+  }
+
+  clearSkillCharges(): void {
+    this.skillCharges.clear()
   }
 
   getSkillCharges(skillId: number): number | undefined {
@@ -515,7 +523,13 @@ export class SkillHotkeysHud {
   addOrUpdateSkill(entry: HotkeySkillEntry): void {
     if (isPassiveSkill(entry.skillId) || entry.isPassive) return
     if (getSkillListRow(entry) < 0) return
-    const idx = this.availableSkills.findIndex(s => s.skillId === entry.skillId)
+    const idx = this.availableSkills.findIndex(
+      s =>
+        s.skillId === entry.skillId &&
+        (entry.itemId === undefined ||
+          s.itemId === undefined ||
+          s.itemId === entry.itemId),
+    )
     if (idx >= 0) {
       this.availableSkills[idx] = entry
     } else {
@@ -528,11 +542,14 @@ export class SkillHotkeysHud {
    * Select `skillId` for `side` if it is legal there (no passives; no auras / right-only skills on the left).
    * Online (`onSelectSkill` set) this only emits the request; offline widget use applies it directly.
    */
-  private requestSelect(side: 'left' | 'right', skillId: number): void {
+  requestSelect(side: 'left' | 'right', skillId: number, itemId?: number): void {
     if (isPassiveSkill(skillId)) return
     if (side === 'left' && (!isLeftUsableSkill(skillId) || isAuraSkill(skillId))) return
+    const resolvedItemId =
+      itemId ??
+      this.availableSkills.find(s => s.skillId === skillId && s.itemId !== undefined)?.itemId
     if (this.onSelectSkill) {
-      this.onSelectSkill(side, skillId)
+      this.onSelectSkill(side, skillId, resolvedItemId)
       return
     }
     if (side === 'left') this.leftSkillId = skillId
@@ -563,15 +580,27 @@ export class SkillHotkeysHud {
     return slot < 8 ? `F${slot + 1}` : `SKILL${slot + 1}`
   }
 
-  bindHotkey(fKey: string, side: 'left' | 'right', skillId: number): void {
+  bindHotkey(fKey: string, side: 'left' | 'right', skillId: number, itemId?: number): void {
     const normKey = fKey.trim().toUpperCase()
-    // 1.13c D2Client.dll 0x6faed280..0x6faed2e5: deduplicate any other slot bound to the same (side, skillId).
+    const resolvedItemId =
+      itemId ??
+      this.availableSkills.find(s => s.skillId === skillId && s.itemId !== undefined)?.itemId
+    // 1.13c D2Client.dll 0x6faed280..0x6faed2e5: deduplicate any other slot bound to the same (side, skillId, itemId).
     for (const [existingKey, existing] of Array.from(this.bindings.entries())) {
-      if (existingKey !== normKey && existing.side === side && existing.skillId === skillId) {
+      if (
+        existingKey !== normKey &&
+        existing.side === side &&
+        existing.skillId === skillId &&
+        (existing.itemId ?? 0xffffffff) === (resolvedItemId ?? 0xffffffff)
+      ) {
         this.bindings.delete(existingKey)
       }
     }
-    this.bindings.set(normKey, { side, skillId })
+    this.bindings.set(normKey, {
+      side,
+      skillId,
+      ...(resolvedItemId !== undefined ? { itemId: resolvedItemId } : {}),
+    })
   }
 
   handleKeyDown(key: string): boolean {
@@ -617,14 +646,14 @@ export class SkillHotkeysHud {
   /** Last selected hotkey slot index `0..15` (`0x6FBC9D70`, updated by `0x6FAED5B0`). */
   lastSelectedSlot = 0
 
-  triggerFunctionKey(fKey: string): { side: 'left' | 'right'; skillId: number } | null {
+  triggerFunctionKey(fKey: string): { side: 'left' | 'right'; skillId: number; itemId?: number | undefined } | null {
     const key = fKey.trim().toUpperCase()
     const slotIndex = SkillHotkeysHud.slotIndexFromKey(key)
     if (this.openPopup !== null && this.hoveredPopupSkill !== null) {
       const hovered = this.hoveredPopupSkill
-      this.bindHotkey(key, hovered.side, hovered.skillId)
+      this.bindHotkey(key, hovered.side, hovered.skillId, hovered.itemId)
       if (slotIndex !== null) {
-        this.onAssignHotkey?.(slotIndex, hovered.side, hovered.skillId)
+        this.onAssignHotkey?.(slotIndex, hovered.side, hovered.skillId, hovered.itemId)
       }
       return hovered
     }
@@ -637,7 +666,7 @@ export class SkillHotkeysHud {
     if (slotIndex !== null) {
       this.lastSelectedSlot = slotIndex
     }
-    this.requestSelect(bound.side, bound.skillId)
+    this.requestSelect(bound.side, bound.skillId, bound.itemId)
     return bound
   }
 
@@ -666,6 +695,7 @@ export class SkillHotkeysHud {
 
     let matchedSlot = -1
     let matchedSkillId = -1
+    let matchedItemId: number | undefined
     let edi = startSlot + dir
     for (let ebx = 0; ebx < 16; ebx++) {
       if (edi < 0) edi = 15
@@ -678,6 +708,7 @@ export class SkillHotkeysHud {
         } else {
           matchedSlot = edi
           matchedSkillId = b.skillId
+          matchedItemId = b.itemId
           count -= 1
           if (count === 0) break
         }
@@ -687,7 +718,7 @@ export class SkillHotkeysHud {
 
     if (matchedSlot === -1) return null
     this.lastSelectedSlot = matchedSlot
-    this.requestSelect('right', matchedSkillId)
+    this.requestSelect('right', matchedSkillId, matchedItemId)
     return { slot: matchedSlot, side: 'right', skillId: matchedSkillId }
   }
 
@@ -817,7 +848,11 @@ export class SkillHotkeysHud {
     const cells = this.getPopupCells(this.openPopup)
     for (const c of cells) {
       if (logicalX >= c.x && logicalX <= c.x + c.w && logicalY >= c.y && logicalY <= c.y + c.h) {
-        this.hoveredPopupSkill = { side: this.openPopup, skillId: c.skill.skillId }
+        this.hoveredPopupSkill = {
+          side: this.openPopup,
+          skillId: c.skill.skillId,
+          ...(c.skill.itemId !== undefined ? { itemId: c.skill.itemId } : {}),
+        }
         this.hoverSpeedbarSkillId = c.skill.skillId
         return
       }
@@ -830,7 +865,7 @@ export class SkillHotkeysHud {
       const cells = this.getPopupCells(this.openPopup)
       for (const c of cells) {
         if (logicalX >= c.x && logicalX <= c.x + c.w && logicalY >= c.y && logicalY <= c.y + c.h) {
-          this.requestSelect(this.openPopup, c.skill.skillId)
+          this.requestSelect(this.openPopup, c.skill.skillId, c.skill.itemId)
           this.openPopup = null
           return true
         }
@@ -895,6 +930,7 @@ export class SkillHotkeysHud {
           font,
           this.hoveredPopupSkill?.skillId === c.skill.skillId,
           nowMs,
+          c.skill,
         )
       }
     }
@@ -913,6 +949,7 @@ export class SkillHotkeysHud {
     font: D2FontRenderer,
     highlighted = false,
     _nowMs = performance.now(),
+    skillEntry?: HotkeySkillEntry,
   ): void {
     ctx.fillStyle = '#14110d'
     ctx.fillRect(x, y, 48, 48)
@@ -952,10 +989,12 @@ export class SkillHotkeysHud {
     // Calls D2Common.#10787(pPlayer, pSkill). Any non-zero status other than 6 (passive) — including
     // 1 (insufficient mana), 2 (unusable weapon/state/town), 4 (0 charges), 8 (skilldelay cooldown) —
     // sets nPalette = 1 (red icon tint).
+    const charges = skillEntry?.charges ?? this.getSkillCharges(skillId)
     if (
       this.isSkillOnCooldown(skillId, _nowMs) ||
       !this.isSkillWeaponUsable(skillId) ||
-      !this.hasEnoughMana(skillId)
+      !this.hasEnoughMana(skillId) ||
+      (charges !== undefined && charges <= 0)
     ) {
       ctx.fillStyle = 'rgba(180, 20, 20, 0.55)'
       ctx.fillRect(x + 1, y + 1, 46, 46)
@@ -977,7 +1016,6 @@ export class SkillHotkeysHud {
     }
 
     // 4. Charges / Tome quantity display at bottom-left
-    const charges = this.getSkillCharges(skillId)
     if (charges !== undefined) {
       const chargeColor = charges > 0 ? 'white' : 'red'
       font.drawText(ctx, String(charges), x + 4, y + 44, {
@@ -1064,15 +1102,17 @@ export class SkillHotkeysHud {
     const entry = this.availableSkills.find(s => s.skillId === skillId)
     const catalogEntry = SKILLS_BY_ID[skillId]
     const fallbackLevel = Math.max(1, entry?.level ?? 1)
-    const vm = this.tooltipResolver
-      ? this.tooltipResolver(skillId)
-      : catalogEntry
-        ? (() => {
-            const st = createInitialState(catalogEntry.classCode)
-            st.hardPoints[skillId] = fallbackLevel
-            return buildTooltipViewModel(st, skillId)
-          })()
-        : null
+    const rawVm = this.tooltipResolver ? this.tooltipResolver(skillId) : null
+    const vm =
+      rawVm && rawVm.effectiveLevel > 0
+        ? rawVm
+        : catalogEntry
+          ? (() => {
+              const st = createInitialState(catalogEntry.classCode)
+              st.hardPoints[skillId] = fallbackLevel
+              return buildTooltipViewModel(st, skillId)
+            })()
+          : rawVm
 
     const nameZh = vm?.skill.nameZh ?? entry?.nameZh ?? catalogEntry?.nameZh ?? `技能 ${skillId}`
     const nameEn = vm?.skill.name ?? entry?.name ?? catalogEntry?.name ?? `Skill ${skillId}`

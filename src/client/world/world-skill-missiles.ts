@@ -17,6 +17,7 @@ import {
 } from '../../common/audio/skill-sounds-113c.ts'
 import { ISO_GROUND_ASPECT_RATIO } from '../../common/data/blizzard-table.js'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
+import { isMonsterSubmergedMode113c } from '../../common/units/monai-113c.ts'
 import {
   D2COMMON_10160_PathUpdateDirection,
   D2COMMON_10212_PATH_SetMoveFlags,
@@ -67,6 +68,7 @@ import { isTownNpcHcIdx } from '../../common/units/npc-table.ts'
 import {
   MONSTATS2_FLAGINDEX,
   canMonsterClassBeCursed113c,
+  computeOverlayYOffset113c,
   hasMonStats2Flag,
 } from '../../common/units/monstats2-flags.ts'
 import { getMonsterSizeXByHcIdx } from '../../common/units/monster-mapping.ts'
@@ -84,6 +86,7 @@ import { OVERLAY_TXT_ROWS } from '../render/overlay-txt-rows.ts'
 import { STATE_OVERLAYS } from '../render/overlays-meta.ts'
 import { reportMissingArt } from '../../client/scene/missing-art.ts'
 import { syncBoneArmorOverlays113c } from './bone-armor-overlays-113c.ts'
+import { applyClientMonsterInitOverlays113c } from './monster-overlays-113c.ts'
 import { catapultBallTraj3d } from './boss-death-cltdo-113c.ts'
 import { ClientUnit, type ClientUnitOverlay, type UnitCastState } from './client-unit.ts'
 import { isAlliedCombatMonster113c } from './world-missile-stepper.ts'
@@ -648,8 +651,10 @@ export function emitUnitDeathSoundImpl(this: ClientWorldInternal, opts: {
       const mUnit = unitId !== undefined ? this._monsters.get(unitId) : undefined
       // D2Client.dll 0x6fad37e9..0x6fad3802: skip monster death vocal when STATE_FREEZE (43) is active
       if (mUnit?.states?.has(43)) return
+      const explicitClassId = opts.classId !== undefined ? Number(opts.classId) : -1
+      if (!mUnit && explicitClassId < 0) return
       const monRow = resolveUnitMonSoundRow113c(
-        mUnit ?? { classId: Number(opts.classId ?? 1) },
+        mUnit ?? { classId: explicitClassId },
       )
       soundId = monRow?.deathSound && monRow.deathSound > 0 ? monRow.deathSound : 0
       if (monRow && monRow.deaDelay > 0) {
@@ -1011,17 +1016,19 @@ export function attachUnitOverlayImpl(this: ClientWorldInternal, unit: ClientUni
     loop,
     blendMode,
     xOffset: row.xOffset,
-    yOffset: row.yOffset,
+    yOffset: computeOverlayYOffset113c(row, unit),
     preDraw: row.preDraw !== 0,
     startedAtMs: Date.now(),
     ageTicks: 0,
     maxTicks,
     lightRadius: row.radius,
     lightColor: [row.red, row.green, row.blue] as const,
+    ...(row.loopWaitTime > 0 ? { loopWaitTime: row.loopWaitTime } : {}),
   }
   if (
-    cleanToken === 'death_sentry' ||
-    !(unit.unitType === 'monster' && hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.NOOVLY))
+    unit.clientNoDraw !== true &&
+    (cleanToken === 'death_sentry' ||
+      !(unit.unitType === 'monster' && hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.NOOVLY)))
   ) {
     unit.overlays = unit.overlays.filter(o => o.token !== cleanToken || o.loop !== loop)
     unit.overlays.push(entry)
@@ -1033,6 +1040,7 @@ export function attachServerOverlayImpl(this: ClientWorldInternal, unit: ClientU
   const row = Number.isInteger(overlayIndex) ? OVERLAY_TXT_ROWS[overlayIndex] : undefined
   if (row === undefined) return undefined
   const token = row.name.trim().toLowerCase()
+  if (unit.clientNoDraw === true) return undefined
   if (
     token !== 'death_sentry' &&
     unit.unitType === 'monster' &&
@@ -1063,13 +1071,14 @@ export function attachServerOverlayImpl(this: ClientWorldInternal, unit: ClientU
     loop: false,
     blendMode: row.trans,
     xOffset: row.xOffset,
-    yOffset: row.yOffset,
+    yOffset: computeOverlayYOffset113c(row, unit),
     preDraw: row.preDraw !== 0,
     startedAtMs: Date.now(),
     ageTicks: 0,
     maxTicks: row.animRate > 0 ? Math.ceil((row.frames * 16) / row.animRate) : Number.POSITIVE_INFINITY,
     lightRadius: row.radius,
     lightColor: [row.red, row.green, row.blue] as const,
+    ...(row.loopWaitTime > 0 ? { loopWaitTime: row.loopWaitTime } : {}),
   }
   unit.overlays = [...unit.overlays, entry]
   return entry
@@ -5379,6 +5388,7 @@ export function spawnMissilesForSkillImpl(
     cloneUnit.lifePct = 128
     cloneUnit.states.add(119) // state 119 = shadowwarrior
     this._monsters.set(cloneId, cloneUnit)
+    applyClientMonsterInitOverlays113c(cloneUnit, () => this._nextOverlayId++)
     return
   }
 }
@@ -5437,6 +5447,7 @@ export function applySkillCastToUnitImpl(
     unit.lastSkillId = skillId
     const npcUnit = this.npcMotion.getUnit(unit.id)
     if (npcUnit) {
+      npcUnit.lastSkillId = skillId
       D2COMMON_10212_PATH_SetMoveFlags(npcUnit, 0)
       if (!doesNpcModeMove113c(unit.classId, mode) && npcUnit.pDynamicPath) {
         D2Common_10153(npcUnit.pDynamicPath)
@@ -5538,6 +5549,7 @@ export function applySkillCastToUnitImpl(
         rangeAdder,
         false, // rangeBonus = 0 in CltSt25 / SrvSt31
         collisionFn,
+        targetUnit.unitType === 'monster' ? targetUnit.classId : undefined,
       )
       if (inMelee) {
         isChargeInPlace = true
@@ -6085,6 +6097,11 @@ export function findHostileMeleeTargetMonster113c(
       !explicit.dead &&
       explicit.id !== caster.id &&
       !world.isFriendlyOrNonHostileMonster(explicit) &&
+      !isMonsterSubmergedMode113c(
+        explicit.classId,
+        explicit.mode,
+        explicit.castState?.skillId ?? explicit.lastSkillId,
+      ) &&
       Math.hypot(explicit.x - targetX, explicit.y - targetY) <= Math.max(maxDist, 12)
     ) {
       return explicit
@@ -6093,7 +6110,14 @@ export function findHostileMeleeTargetMonster113c(
   let bestTarget: ClientUnit | undefined
   let bestDist = maxDist
   for (const m of world._monsters.values()) {
-    if (m.dead || m.id === caster.id || world.isFriendlyOrNonHostileMonster(m)) continue
+    if (
+      m.dead ||
+      m.id === caster.id ||
+      world.isFriendlyOrNonHostileMonster(m) ||
+      isMonsterSubmergedMode113c(m.classId, m.mode, m.castState?.skillId ?? m.lastSkillId)
+    ) {
+      continue
+    }
     const d = Math.hypot(m.x - targetX, m.y - targetY)
     if (d <= bestDist) {
       bestDist = d

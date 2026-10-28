@@ -6,6 +6,17 @@ import {
   type SpeechEntry113c,
 } from '../../common/audio/speech-index-113c.ts';
 import { SOUNDS_113C } from '../../common/audio/sounds-113c.ts';
+import { D2Rng } from '../../common/rng/d2-rng.ts';
+import {
+  FALLOFF_MAX_DIST,
+  FALLOFF_MAX_DIST_DEFAULT,
+  FALLOFF_MIN_DIST,
+  FALLOFF_MIN_DIST_DEFAULT,
+  channelOutput113c,
+  unitSoundPosition113c,
+  type ChannelOutput113c,
+  type SoundUnitRef113c,
+} from './sound-records-113c.ts';
 
 export interface SpeechAudioElementLike {
   src: string;
@@ -27,8 +38,13 @@ export interface SpeechAudioElementLike {
 }
 
 export interface SpeechDuckableTarget {
+  setExternalSoloActive?(active: boolean): void;
   setSoloActive?(active: boolean): void;
-  setSoloDuck?(active: boolean): void;
+  setSoloDuck?(active: boolean | number): void;
+  recentOf?(id: number): [number, number];
+  getListenerPosition?(): { x: number; y: number };
+  readonly pauseDuck?: number;
+  readonly soloDuck?: number;
 }
 
 export interface SpeechStreamerOptions {
@@ -43,16 +59,57 @@ export interface SpeechStreamerOptions {
   readonly speechVolume?: number;
   readonly getMasterVolume?: () => number;
   readonly isMuted?: () => boolean;
+  readonly listenerPos?: (() => { readonly x: number; readonly y: number }) | undefined;
   readonly audioContext?: unknown;
-  readonly rng?: () => number;
+  readonly rng?: D2Rng | (() => number);
 }
 
 export interface SpeechPlayOptions {
-  readonly volume?: number;
-  readonly rng?: () => number;
+  readonly volume?: number | undefined;
+  readonly rng?: D2Rng | (() => number) | undefined;
+  readonly unit?: SoundUnitRef113c | null | undefined;
+  readonly x?: number | undefined;
+  readonly y?: number | undefined;
+  readonly local?: boolean | undefined;
+  readonly isLocalPlayer?: boolean | undefined;
+  readonly listenerPos?: { readonly x: number; readonly y: number } | undefined;
+  readonly delayTicks?: number | undefined;
+  readonly a2?: number | undefined;
+  readonly forceStop?: boolean | undefined;
 }
 
 const NONE_WAV_SET = new Set<number>(SPEECH_NONE_WAV_IDS_113C);
+const NO_UNIT_Z_113C = 320;
+const SOUND_POS_Z_113C = 640;
+const DIST_CLAMP_113C = 2000;
+
+function falloffMaxDist113c(falloff: number): number {
+  return FALLOFF_MAX_DIST[falloff] ?? FALLOFF_MAX_DIST_DEFAULT;
+}
+
+function falloffMinDist113c(falloff: number): number {
+  return FALLOFF_MIN_DIST[falloff] ?? FALLOFF_MIN_DIST_DEFAULT;
+}
+
+function normalizeUnitType(t: SoundUnitRef113c['unitType']): string {
+  if (typeof t === 'number') {
+    const names = ['player', 'monster', 'object', 'missile', 'item', 'tile'];
+    return names[t] ?? `type${String(t)}`;
+  }
+  return t ?? '';
+}
+
+function sameUnit113c(a: SoundUnitRef113c, b: SoundUnitRef113c): boolean {
+  return (
+    a === b ||
+    (a.id === b.id &&
+      normalizeUnitType(a.unitType) === normalizeUnitType(b.unitType))
+  );
+}
+
+function unitPresent113c(u: SoundUnitRef113c): boolean {
+  return u.alive !== false && (u.getPos === undefined || u.getPos() !== null);
+}
 
 function defaultCreateAudioElement(url: string): SpeechAudioElementLike {
   if (typeof Audio === 'function') {
@@ -100,14 +157,27 @@ export class SpeechStreamer {
   private readonly onUnavailable?: (soundId: number, reason: 'unshipped') => void;
   private readonly getMasterVolume?: () => number;
   private readonly isMuted?: () => boolean;
-  private readonly rng: () => number;
+  private readonly listenerPosOf?: () => { readonly x: number; readonly y: number };
+  private readonly defaultRng: D2Rng | (() => number);
+  private readonly recent = new Map<number, [number, number]>();
   private masterVolume: number;
   private speechVolume: number;
 
   private activeElement: SpeechAudioElementLike | null = null;
   private activeEntry: SpeechEntry113c | null = null;
   private activeCleanup: (() => void) | null = null;
+  private activeUnit: SoundUnitRef113c | null = null;
+  private activeLocal = true;
+  private activeVol255 = 255;
+  private activePosition: { x: number; y: number; z: number } = {
+    x: 0,
+    y: 0,
+    z: NO_UNIT_Z_113C,
+  };
+  private activeChannelOutput: ChannelOutput113c | null = null;
   private duckActive = false;
+  /** `[0x6fb91378]` Solo duck percentage (`70..100`), stepping ±2 per tick (`0x6fb39449..0x6fb3957e`). */
+  private soloDuckPercent = 100;
 
   constructor(options: SpeechStreamerOptions = {}) {
     this.createAudioElement =
@@ -129,13 +199,32 @@ export class SpeechStreamer {
     if (options.isMuted !== undefined) {
       this.isMuted = options.isMuted;
     }
-    this.rng = options.rng ?? (() => 0);
+    if (options.listenerPos !== undefined) {
+      this.listenerPosOf = options.listenerPos;
+    }
+    this.defaultRng = options.rng ?? new D2Rng(0x6fb0e8e1, 0x00000113);
     this.masterVolume = Math.max(0, Math.min(255, options.masterVolume ?? 255));
     this.speechVolume = Math.max(0, Math.min(255, options.speechVolume ?? 255));
   }
 
   get activeSoundId(): number | null {
     return this.activeEntry ? this.activeEntry.id : null;
+  }
+
+  get soloDuck(): number {
+    return this.soloDuckPercent;
+  }
+
+  getSoloDuck(): number {
+    return this.soloDuckPercent;
+  }
+
+  getActivePosition(): { readonly x: number; readonly y: number; readonly z: number } {
+    return { ...this.activePosition };
+  }
+
+  getActiveChannelOutput(): ChannelOutput113c | null {
+    return this.activeChannelOutput;
   }
 
   setRecords(records: SpeechDuckableTarget | null): void {
@@ -164,8 +253,63 @@ export class SpeechStreamer {
     this.refreshActiveVolume();
   }
 
-  tick(_ticks = 1): void {
-    // Ducking state is synchronous via SoundRecords113c.setSoloActive / MusicStreamer.setSoloDuck
+  /**
+   * 25 Hz SoundUpdate tick (`0x6fb39070`):
+   * - Updates unit-tracked speech position (`Tracking = 1`, `0x6fb3909b..0x6fb390c4`) and stops if beyond `Falloff` maxDist (`0x6fb39382`).
+   * - Steps `[0x6fb91378]` Solo duck ramp by ±2 per tick (`100 -> 70` while `Solo = 1` is active, `70 -> 100` when inactive, `0x6fb39449..0x6fb3957e`).
+   */
+  tick(ticks = 1): void {
+    const count =
+      Number.isFinite(ticks) && ticks > 0 ? Math.max(1, Math.round(ticks)) : 1;
+    for (let i = 0; i < count; i += 1) {
+      if (this.activeElement !== null && this.activeEntry !== null) {
+        const row = SOUNDS_113C[this.activeEntry.id];
+        if (
+          row !== undefined &&
+          row.tracking &&
+          this.activeUnit !== null &&
+          !this.activeLocal
+        ) {
+          if (unitPresent113c(this.activeUnit)) {
+            const uPos = this.resolveUnitPos(this.activeUnit);
+            if (uPos !== null) {
+              const listener = this.resolveListenerPos();
+              this.activePosition = unitSoundPosition113c(
+                uPos,
+                listener,
+                this.activeEntry.id,
+              );
+            }
+          }
+          const maxDist = falloffMaxDist113c(row.falloff);
+          const cx = Math.max(
+            -DIST_CLAMP_113C,
+            Math.min(DIST_CLAMP_113C, this.activePosition.x),
+          );
+          const cy = Math.max(
+            -DIST_CLAMP_113C,
+            Math.min(DIST_CLAMP_113C, this.activePosition.y),
+          );
+          const dist2 = Math.fround(cx * cx + cy * cy);
+          if (dist2 > Math.fround(maxDist * maxDist)) {
+            this.stopInternal(true);
+          } else {
+            this.refreshActiveVolume();
+          }
+        }
+      }
+
+      // 0x6fb39449..0x6fb3957e: ±2 per tick between 100 and 70
+      const prevDuck = this.soloDuckPercent;
+      this.soloDuckPercent = this.duckActive
+        ? Math.max(70, this.soloDuckPercent - 2)
+        : Math.min(100, this.soloDuckPercent + 2);
+      if (this.soloDuckPercent !== prevDuck) {
+        if (this.musicStreamer && typeof this.musicStreamer.setSoloDuck === 'function') {
+          this.musicStreamer.setSoloDuck(this.soloDuckPercent);
+        }
+      }
+    }
   }
 
   isPlaying(): boolean {
@@ -188,85 +332,218 @@ export class SpeechStreamer {
     return this.activeElement;
   }
 
-  private resolveTargetSpeechEntry(
-    idOrName: number | string,
-    rng: () => number,
-  ): SpeechEntry113c | null {
-    let baseEntry = resolveSpeechEntry113c(idOrName) ?? null;
-    let baseId = baseEntry ? baseEntry.id : -1;
-
-    if (!baseEntry) {
-      if (typeof idOrName === 'number') {
-        baseId = idOrName;
-      } else {
-        const trimmed = String(idOrName).trim().toLowerCase();
-        const asNum = Number(trimmed);
-        if (Number.isInteger(asNum) && asNum > 0) {
-          baseId = asNum;
-        } else {
-          const found = SOUNDS_113C.find(
-            (r) => r.sound.toLowerCase() === trimmed,
-          );
-          if (found) baseId = found.id;
-        }
-      }
+  recentOf(id: number): [number, number] {
+    if (this.records && typeof this.records.recentOf === 'function') {
+      return this.records.recentOf(id);
     }
-
-    if (baseId > 0 && D9_UNSHIPPED_SOUND_IDS_SET_113C.has(baseId)) {
-      this.onUnavailable?.(baseId, 'unshipped');
-      return null;
+    let rec = this.recent.get(id);
+    if (rec === undefined) {
+      rec = [0, 0];
+      this.recent.set(id, rec);
     }
+    return rec;
+  }
 
-    if (!baseEntry) {
-
-      if (baseId > 0) {
-        if (NONE_WAV_SET.has(baseId)) {
-          return null;
-        }
-        const row = SOUNDS_113C[baseId];
-        if (row && row.groupSize > 1) {
-          const shippedMembers: SpeechEntry113c[] = [];
-          for (let i = 0; i < row.groupSize; i++) {
-            const member = SPEECH_INDEX_113C[baseId + i];
-            if (member) shippedMembers.push(member);
-          }
-          if (shippedMembers.length > 0) {
-            const pickIdx = Math.min(
-              shippedMembers.length - 1,
-              Math.max(0, Math.floor(rng() * shippedMembers.length)),
-            );
-            return shippedMembers[pickIdx]!;
-          }
-        }
+  private randInt(rng: D2Rng | (() => number), n: number): number {
+    if (n <= 1) return 0;
+    if (typeof rng === 'function') {
+      const f = rng();
+      if (!Number.isFinite(f)) return 0;
+      if (f >= 1 && Number.isInteger(f)) {
+        return ((f >>> 0) % (n >>> 0)) >>> 0;
       }
-      return null;
+      return Math.min(n - 1, Math.max(0, Math.floor(f * n)));
     }
+    return rng.rand(n);
+  }
 
-    const baseRow = SOUNDS_113C[baseEntry.id];
-    const groupSize = baseRow ? baseRow.groupSize : 1;
-    if (groupSize > 1) {
-      const shippedMembers: SpeechEntry113c[] = [];
-      for (let i = 0; i < groupSize; i++) {
-        const member = SPEECH_INDEX_113C[baseEntry.id + i];
-        if (member) shippedMembers.push(member);
-      }
-      if (shippedMembers.length > 1) {
-        const pickIdx = Math.min(
-          shippedMembers.length - 1,
-          Math.max(0, Math.floor(rng() * shippedMembers.length)),
-        );
-        baseEntry = shippedMembers[pickIdx]!;
-      }
+  /**
+   * 1.13c `pickVariant` (`0x6fb0ee70`):
+   * - `avoid = min(g - 1, 2)`
+   * - `if (g <= 3 && rand(g + 1) == 0) avoid -= 1`
+   * - Rejection-samples `baseId + rand(g)` against `recent.slice(0, avoid)`.
+   */
+  private pickVariant113c(
+    baseId: number,
+    groupSize: number,
+    rng: D2Rng | (() => number),
+  ): number {
+    if (groupSize <= 1) return baseId;
+    let avoid = Math.min(groupSize - 1, 2);
+    if (groupSize <= 3 && this.randInt(rng, groupSize + 1) === 0) {
+      avoid -= 1;
     }
+    const recent = this.recentOf(baseId);
+    let pick = baseId;
+    let guard = 0;
+    do {
+      pick = baseId + this.randInt(rng, groupSize);
+      guard += 1;
+    } while (guard < 64 && recent.slice(0, avoid).includes(pick));
+    return pick;
+  }
 
-    return baseEntry;
+  private resolveRequestedSoundId(idOrName: number | string): number {
+    if (typeof idOrName === 'number') {
+      return Number.isInteger(idOrName) ? idOrName : -1;
+    }
+    const trimmed = String(idOrName).trim().toLowerCase();
+    if (!trimmed) return -1;
+    const asNum = Number(trimmed);
+    if (Number.isInteger(asNum) && asNum > 0) {
+      return asNum;
+    }
+    const entry = resolveSpeechEntry113c(trimmed);
+    if (entry) return entry.id;
+    const found = SOUNDS_113C.find((r) => r.sound.toLowerCase() === trimmed);
+    return found ? found.id : -1;
+  }
+
+  private resolveListenerPos(
+    override?: { readonly x: number; readonly y: number },
+  ): { x: number; y: number } {
+    if (override !== undefined) {
+      return { x: override.x, y: override.y };
+    }
+    if (this.listenerPosOf !== undefined) {
+      const p = this.listenerPosOf();
+      return { x: p.x, y: p.y };
+    }
+    if (this.records && typeof this.records.getListenerPosition === 'function') {
+      return this.records.getListenerPosition();
+    }
+    return { x: 0, y: 0 };
+  }
+
+  private resolveUnitPos(
+    unit: SoundUnitRef113c,
+  ): { x: number; y: number } | null {
+    if (unit.getPos !== undefined) {
+      return unit.getPos();
+    }
+    if (
+      unit.x !== undefined &&
+      unit.y !== undefined &&
+      Number.isFinite(unit.x) &&
+      Number.isFinite(unit.y)
+    ) {
+      return { x: unit.x, y: unit.y };
+    }
+    return null;
   }
 
   play(idOrName: number | string, options: SpeechPlayOptions = {}): boolean {
-    const entry = this.resolveTargetSpeechEntry(
-      idOrName,
-      options.rng ?? this.rng,
+    const requestedId = this.resolveRequestedSoundId(idOrName);
+    if (requestedId <= 0 || requestedId >= SOUNDS_113C.length) {
+      return false;
+    }
+
+    if (D9_UNSHIPPED_SOUND_IDS_SET_113C.has(requestedId)) {
+      this.onUnavailable?.(requestedId, 'unshipped');
+      return false;
+    }
+    if (NONE_WAV_SET.has(requestedId)) {
+      return false;
+    }
+
+    const reqRow = SOUNDS_113C[requestedId];
+    if (!reqRow || reqRow.volume === 0) {
+      return false;
+    }
+
+    // 1.13c Positioning & MaxDist check (0x6fb38b26..0x6fb38b65, 0x6fb39136..0x6fb39174)
+    const unit = options.unit ?? null;
+    const isLocal = Boolean(
+      options.local ?? options.isLocalPlayer ?? unit?.isLocalPlayer ?? (unit === null && options.x === undefined && options.y === undefined),
     );
+    let pos = { x: 0, y: 0, z: NO_UNIT_Z_113C };
+    if (!isLocal && unit !== null) {
+      const uPos = this.resolveUnitPos(unit);
+      if (uPos !== null) {
+        pos = unitSoundPosition113c(
+          uPos,
+          this.resolveListenerPos(options.listenerPos),
+          requestedId,
+        );
+      }
+    } else if (
+      !isLocal &&
+      options.x !== undefined &&
+      options.y !== undefined &&
+      Number.isFinite(options.x) &&
+      Number.isFinite(options.y)
+    ) {
+      const listener = this.resolveListenerPos(options.listenerPos);
+      pos = {
+        x: Math.trunc(options.x - listener.x),
+        y: Math.trunc(options.y - listener.y),
+        z: SOUND_POS_Z_113C,
+      };
+    }
+
+    const maxDist = falloffMaxDist113c(reqRow.falloff);
+    const cx = Math.max(-DIST_CLAMP_113C, Math.min(DIST_CLAMP_113C, pos.x));
+    const cy = Math.max(-DIST_CLAMP_113C, Math.min(DIST_CLAMP_113C, pos.y));
+    const dist2 = Math.fround(cx * cx + cy * cy);
+    if (dist2 > Math.fround(maxDist * maxDist)) {
+      return false;
+    }
+
+    // 1.13c Defer Inst / Stop Inst & Speech Conflict check (0x6fb391bd..0x6fb392ac)
+    // Note: 0x6fb0e99c clears Defer Inst when Stop Inst = 1.
+    const stopInst = Boolean(reqRow.stopInst) || options.forceStop === true;
+    const deferInst = Boolean(reqRow.deferInst && !reqRow.stopInst);
+    if (this.activeElement !== null && this.activeEntry !== null) {
+      const activeRow = SOUNDS_113C[this.activeEntry.id];
+      const positioned =
+        !isLocal && (pos.x !== 0 || pos.y !== 0 || pos.z !== NO_UNIT_Z_113C);
+      let hasConflict = false;
+      if (deferInst || stopInst) {
+        if (activeRow && activeRow.groupBase === reqRow.groupBase) {
+          if (
+            unit === null ||
+            (this.activeUnit !== null && sameUnit113c(this.activeUnit, unit))
+          ) {
+            hasConflict = true;
+          }
+        }
+      }
+      if (
+        unit !== null &&
+        this.activeUnit !== null &&
+        sameUnit113c(this.activeUnit, unit)
+      ) {
+        // FindSpeechConflict 0x6fb37bd0: any active speech in 2934..4656 on the same unit conflicts.
+        hasConflict = true;
+      }
+      const unchecked = deferInst && unit === null && positioned;
+      if (!unchecked && hasConflict && !stopInst) {
+        // 0x6fb3929e: Defer Inst = 1, Stop Inst = 0 drops the new speech and keeps the current one playing.
+        return false;
+      }
+    }
+
+    // 1.13c StartSound (0x6fb0d7a0): variant pick (`0x6fb0ee70`) & 2-slot recent history (`0x6fb0d82e..0x6fb0d837`)
+    const a2 = options.a2 ?? 0;
+    const rng = options.rng ?? this.defaultRng;
+    const pickedId =
+      (a2 & 1) === 0 && reqRow.groupSize > 1
+        ? this.pickVariant113c(requestedId, reqRow.groupSize, rng)
+        : requestedId;
+
+    const recent = this.recentOf(requestedId);
+    recent[1] = recent[0];
+    recent[0] = pickedId;
+
+    if (D9_UNSHIPPED_SOUND_IDS_SET_113C.has(pickedId)) {
+      this.onUnavailable?.(pickedId, 'unshipped');
+      return false;
+    }
+    if (NONE_WAV_SET.has(pickedId)) {
+      return false;
+    }
+
+    const entry = SPEECH_INDEX_113C[pickedId] ?? resolveSpeechEntry113c(pickedId);
     if (!entry) {
       return false;
     }
@@ -279,22 +556,23 @@ export class SpeechStreamer {
     elem.loop = false;
     elem.currentTime = 0;
 
-    const soundRow = SOUNDS_113C[entry.id];
-    const rowVol = options.volume ?? soundRow?.volume ?? 255;
-    const muted = this.isMuted?.() ?? false;
-    if (elem.muted !== undefined) {
-      elem.muted = muted;
+    this.activeElement = elem;
+    this.activeEntry = entry;
+    this.activeUnit = unit;
+    this.activeLocal = isLocal;
+    this.activePosition = pos;
+    this.activeVol255 =
+      options.volume !== undefined && Number.isFinite(options.volume)
+        ? Math.max(0, Math.min(255, Math.trunc(options.volume)))
+        : 255;
+
+    if (entry.solo) {
+      this.applyDuck(true);
+    } else {
+      this.applyDuck(false);
     }
-    const masterGain =
-      this.getMasterVolume !== undefined
-        ? Math.max(0, Math.min(1, this.getMasterVolume()))
-        : this.masterVolume / 255;
-    elem.volume = muted
-      ? 0
-      : Math.max(
-          0,
-          Math.min(1, (rowVol / 255) * masterGain * (this.speechVolume / 255)),
-        );
+
+    this.refreshActiveVolume();
 
     const handleEndedOrError = (): void => {
       if (this.activeElement === elem) {
@@ -316,15 +594,6 @@ export class SpeechStreamer {
         elem.onended = null;
         elem.onerror = null;
       };
-    }
-
-    this.activeElement = elem;
-    this.activeEntry = entry;
-
-    if (entry.solo) {
-      this.applyDuck(true);
-    } else {
-      this.applyDuck(false);
     }
 
     try {
@@ -351,7 +620,7 @@ export class SpeechStreamer {
   }
 
   openDialog(idOrName: number | string, options?: SpeechPlayOptions): boolean {
-    return this.play(idOrName, options);
+    return this.play(idOrName, { ...options, forceStop: true });
   }
 
   start(idOrName: number | string, options?: SpeechPlayOptions): boolean {
@@ -392,6 +661,10 @@ export class SpeechStreamer {
     this.activeElement = null;
     this.activeEntry = null;
     this.activeCleanup = null;
+    this.activeUnit = null;
+    this.activeLocal = true;
+    this.activePosition = { x: 0, y: 0, z: NO_UNIT_Z_113C };
+    this.activeChannelOutput = null;
 
     if (prevCleanup) {
       try {
@@ -418,17 +691,23 @@ export class SpeechStreamer {
   private applyDuck(active: boolean): void {
     this.duckActive = active;
     if (this.records) {
-      if (typeof this.records.setSoloActive === 'function') {
+      if (typeof this.records.setExternalSoloActive === 'function') {
+        this.records.setExternalSoloActive(active);
+      } else if (typeof this.records.setSoloActive === 'function') {
         this.records.setSoloActive(active);
       } else if (typeof this.records.setSoloDuck === 'function') {
         this.records.setSoloDuck(active);
       }
     }
-    if (this.musicStreamer) {
+    if (
+      this.musicStreamer &&
+      this.records === null &&
+      this.onSoloChange === undefined &&
+      this.onDuckChange === undefined
+    ) {
+      // When used standalone without SoundRecords113c or tick driver, keep musicStreamer notified on state change
       if (typeof this.musicStreamer.setSoloDuck === 'function') {
-        this.musicStreamer.setSoloDuck(active);
-      } else if (typeof this.musicStreamer.setSoloActive === 'function') {
-        this.musicStreamer.setSoloActive(active);
+        this.musicStreamer.setSoloDuck(this.soloDuckPercent);
       }
     }
     this.onDuckChange?.(active);
@@ -447,11 +726,49 @@ export class SpeechStreamer {
       this.getMasterVolume !== undefined
         ? Math.max(0, Math.min(1, this.getMasterVolume()))
         : this.masterVolume / 255;
-    this.activeElement.volume = muted
-      ? 0
-      : Math.max(
-          0,
-          Math.min(1, (rowVol / 255) * masterGain * (this.speechVolume / 255)),
-        );
+    const speechScale = this.speechVolume / 255;
+
+    const out = channelOutput113c({
+      vol: this.activeVol255,
+      volume: rowVol,
+      master: Math.round(masterGain * 100),
+      pauseDuck: this.records?.pauseDuck ?? 100,
+      soloDuck: this.soloDuckPercent,
+      pauseExempt: false,
+      soloRow: Boolean(soundRow?.solo ?? this.activeEntry.solo),
+      x: this.activePosition.x,
+      y: this.activePosition.y,
+      z: this.activePosition.z,
+      minDist: falloffMinDist113c(soundRow?.falloff ?? 4),
+      maxDist: falloffMaxDist113c(soundRow?.falloff ?? 4),
+      stereoChannel: (soundRow?.stereo ?? 0) !== 0,
+    });
+    this.activeChannelOutput = out;
+
+    if (muted) {
+      this.activeElement.volume = 0;
+    } else if (
+      this.activeLocal ||
+      (this.activePosition.x === 0 &&
+        this.activePosition.y === 0 &&
+        this.activePosition.z === NO_UNIT_Z_113C)
+    ) {
+      this.activeElement.volume = Math.max(
+        0,
+        Math.min(
+          1,
+          (rowVol / 255) *
+            (this.activeVol255 / 255) *
+            masterGain *
+            speechScale,
+        ),
+      );
+    } else {
+      const peakGain = Math.max(out.left, out.right);
+      this.activeElement.volume = Math.max(
+        0,
+        Math.min(1, peakGain * speechScale),
+      );
+    }
   }
 }

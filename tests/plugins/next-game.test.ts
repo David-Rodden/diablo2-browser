@@ -19,7 +19,13 @@ import {
 } from '../../src/client/plugin-host/plugin-host.ts'
 import { OnlineSession } from '../../src/client/session/online-session.ts'
 import { SettingsStore } from '../../src/client/settings/settings-store.ts'
+import {
+   LocalLobbyProvider,
+  LocalLoopbackAdapter,
+  registerDefaultLocalServerHooks,
+} from '../../src/server/loopback-adapter.ts'
 import type {
+  ClientCommand,
   D2OnlineFlow,
   GameCreateSpec,
   GameServerAdapter,
@@ -385,6 +391,305 @@ describe('next-game plugin (+1 seamless room switcher)', () => {
     expect(status.level).toBe('ok')
     expect(status.text.zh).toContain('meph-02')
     expect(containsCjkCharacters(status.text.en)).toBe(false)
+
+    await host.destroy()
+    session.destroy()
+  })
+
+  it('Issue #1703: +1 next-game inherits /players N and scales monster HP, XP, combat StatList, and drop monsterPlayerCount in the new room', async () => {
+    const lobby = registerDefaultLocalServerHooks({ seed: 0x1703 })
+    await lobby.createCharacter({ name: 'P8Runner', classId: 1 })
+
+    const createdSpecs: GameCreateSpec[] = []
+    const adaptersByGame = new Map<string, LocalLoopbackAdapter>()
+    const sentByGame = new Map<string, ClientCommand[]>()
+
+    const createRoomAdapter = async (
+      gameName: string,
+      spec?: GameCreateSpec,
+    ): Promise<LocalLoopbackAdapter> => {
+      const adapter = await lobby.enterGame({
+        mode: 'create',
+        charName: 'P8Runner',
+        gameName,
+        name: gameName,
+        difficulty: spec?.difficulty ?? 0,
+        playersX: spec?.playersX,
+        spec,
+      })
+      // Spawn an initial preset monster in Blood Moor (areaId 2) during room initialization
+      // to verify monsters created at room bootstrap also inherit /players N.
+      adapter.getGameInstance().spawnMonster({
+        classId: 0, // fallen1
+        areaId: 2,
+        x: 5100,
+        y: 5100,
+      })
+      const recorded: ClientCommand[] = []
+      const origSend = adapter.send.bind(adapter)
+      adapter.send = (cmd: ClientCommand): void => {
+        recorded.push(cmd)
+        origSend(cmd)
+      }
+      adaptersByGame.set(gameName, adapter)
+      sentByGame.set(gameName, recorded)
+      return adapter
+    }
+
+    let lastCreatedSpec: GameCreateSpec | undefined
+    const mockFlow: D2OnlineFlow = {
+      state: 'idle',
+      sessionLost: null,
+      onState: () => () => {},
+      onSessionLost: () => () => {},
+      async connectBnet() {},
+      async connect() {},
+      async loginOrRegister() {},
+      onChannelEvent: () => () => {},
+      onChatEvent: () => () => {},
+      async createAccount() {},
+      async login() {},
+      async listRealms() {
+        return [{ id: 1, title: 'D2CS', description: 'Realm' }]
+      },
+      async enterRealm() {
+        return [
+          {
+            name: 'P8Runner',
+            charClass: 1,
+            level: 80,
+            act: 1,
+            difficulty: 0,
+            hardcore: false,
+            expansion: true,
+            ladder: true,
+            dead: false,
+            expiresAt: 0,
+            equipmentGraphics: new Uint8Array(0),
+            rawStatString: new Uint8Array(0),
+          },
+        ]
+      },
+      async realmLogon() {
+        return []
+      },
+      async listCharacters() {
+        return []
+      },
+      async listChars() {
+        return []
+      },
+      async createCharacter() {},
+      async createChar() {},
+      async deleteCharacter() {},
+      async deleteChar() {},
+      async upgradeCharacter() {},
+      async upgradeChar() {},
+      async selectCharacter() {},
+      async charLogon() {},
+      async listGames() {
+        return []
+      },
+      async getGameInfo() {
+        throw new Error('not used')
+      },
+      async createGame(spec) {
+        createdSpecs.push(spec)
+        lastCreatedSpec = spec
+      },
+      async joinGame(name) {
+        return await createRoomAdapter(name, lastCreatedSpec)
+      },
+      async enterChat() {},
+      async joinChannel() {},
+      async sendChannelChat() {},
+      async sendChat() {},
+      async leaveToLobby() {},
+      async close() {},
+    }
+
+    const settingsStore = new SettingsStore({
+      storage: new MemoryStorage(),
+      defaultLang: 'zh',
+      syncGlobalLang: false,
+    })
+    const session = new OnlineSession({
+      settingsStore,
+      leaseStorage: null,
+      flowFactory: () => mockFlow,
+    })
+
+    await session.login({ username: 'hero', password: 'pw' })
+    await session.selectCharacter('P8Runner')
+    await session.enterGame({
+      mode: 'create',
+      spec: {
+        name: 'run-01',
+        password: '',
+        description: '',
+        difficulty: 0,
+        maxPlayers: 8,
+        levelDiff: 0xff,
+      },
+    })
+
+    const adapter1 = adaptersByGame.get('run-01')!
+    adapter1.stepFrame()
+    expect(adapter1.getPlayersX()).toBe(1)
+
+    // Record 1-player baseline stats for fallen1 in run-01
+    const game1 = adapter1.getGameInstance()
+    const mon1 = [...(game1 as unknown as { monsters: Map<number, any> }).monsters.values()].find(
+      (m) => !m.isNpc,
+    )!
+    expect(mon1).toBeDefined()
+    const baseMaxHp = mon1.baseMaxHp
+    const baseXp = mon1.baseXp
+    expect(mon1.maxHp).toBe(baseMaxHp)
+    expect(mon1.experience).toBe(baseXp)
+    expect(mon1.monsterPlayerCount).toBe(1)
+
+    // Set /players 8 in run-01
+    expect(session.submitChatInput('/players 8', 1_000)).toBe(true)
+    adapter1.stepFrame()
+    expect(adapter1.getPlayersX()).toBe(8)
+    const expectedP8Hp = Math.max(1, Math.floor((baseMaxHp * 9) / 2))
+    const expectedP8Xp = Math.max(0, Math.floor((baseXp * 9) / 2))
+    expect(mon1.maxHp).toBe(expectedP8Hp)
+    expect(mon1.hp).toBe(expectedP8Hp)
+    expect(mon1.experience).toBe(expectedP8Xp)
+
+    // Activate next-game (+1) plugin and step from run-01 -> run-02
+    const plugin = createNextGamePlugin({ settleDelayMs: 0, retryDelayMs: 0 })
+    const host = new PluginHost({
+      plugins: [plugin],
+      configStore: new PluginConfigStore([plugin], { storage: new MemoryStorage() }),
+      session,
+      toolbar: {
+        setPluginsButtonState() {},
+        addContribution() {
+          return () => {}
+        },
+      },
+      settingsStore,
+      autoStart: false,
+    })
+    await host.start()
+    const inst = host.getInstance<NextGamePluginInstance>(NEXT_GAME_PLUGIN_ID)!
+
+    const nextRoom2 = await inst.stepToNextGame()
+    expect(nextRoom2).toBe('run-02')
+    expect(createdSpecs.at(-1)?.name).toBe('run-02')
+    expect(createdSpecs.at(-1)?.playersX).toBe(8)
+
+    const adapter2 = adaptersByGame.get('run-02')!
+    // Even before stepping a frame, playersX is already 8 on the new room's GameInstance
+    expect(adapter2.getPlayersX()).toBe(8)
+    adapter2.stepFrame()
+    expect(adapter2.getPlayersX()).toBe(8)
+
+    // Verify wire command 'players set to 8' was also sent to run-02 for remote D2GS parity
+    expect(
+      sentByGame.get('run-02')?.some((c) => c.type === 'Chat' && c.text === 'players set to 8'),
+    ).toBe(true)
+    // Verify top-left chat overlay shows 'players set to 8' exactly once (no duplicate spam)
+    expect(
+      session.world.activeChatOverlayEntries.filter(
+        (m) => m.kind === 'system' && m.text.toLowerCase() === 'players set to 8',
+      ),
+    ).toHaveLength(1)
+
+    // Verify bootstrap monster spawned during run-02 room creation AND newly spawned monsters in run-02
+    // both have 8-player HP, XP, and monsterPlayerCount = 8 (for NoDrop calculation)
+    const game2 = adapter2.getGameInstance()
+    const bootstrapMon2 = [
+      ...(game2 as unknown as { monsters: Map<number, any> }).monsters.values(),
+    ].find((m) => !m.isNpc)!
+    expect(bootstrapMon2).toBeDefined()
+    expect(bootstrapMon2.maxHp).toBe(expectedP8Hp)
+    expect(bootstrapMon2.hp).toBe(expectedP8Hp)
+    expect(bootstrapMon2.experience).toBe(expectedP8Xp)
+    expect(bootstrapMon2.monsterPlayerCount).toBe(8)
+
+    const spawnedInRun2Id = game2.spawnMonster({
+      classId: 0,
+      areaId: 2,
+      x: 5120,
+      y: 5120,
+    })
+    const spawnedInRun2 = (game2 as unknown as { monsters: Map<number, any> }).monsters.get(
+      spawnedInRun2Id,
+    )!
+    expect(spawnedInRun2.maxHp).toBe(expectedP8Hp)
+    expect(spawnedInRun2.hp).toBe(expectedP8Hp)
+    expect(spawnedInRun2.experience).toBe(expectedP8Xp)
+    expect(spawnedInRun2.monsterPlayerCount).toBe(8)
+
+    await host.destroy()
+    session.destroy()
+  })
+
+  it('Issue #1703: Single Player standalone session supports +1 next-game and preserves /players N monster scaling', async () => {
+    const lobby = registerDefaultLocalServerHooks({ seed: 0x2703 })
+    await lobby.createCharacter({ name: 'SoloP8', classId: 1 })
+    const characters = await lobby.listCharacters()
+
+    const settingsStore = new SettingsStore({
+      storage: new MemoryStorage(),
+      defaultLang: 'zh',
+      syncGlobalLang: false,
+    })
+    const session = new OnlineSession({ settingsStore, leaseStorage: null })
+
+    const adapter1 = await lobby.enterGame({ charName: 'SoloP8', difficulty: 0 })
+    session.attachGameServer(adapter1, {
+      localCharacter: {
+        characters,
+        selectedName: 'SoloP8',
+        writeProgression: (name, prog) => lobby.writeCharacterProgression(name, prog),
+      },
+    })
+    session.tick(40, 40)
+    expect(session.phase).toBe('ingame')
+    expect(session.getSnapshot().activeGameName).toBe('SoloP81')
+
+    expect(session.submitChatInput('/players 7', 100)).toBe(true)
+    session.tick(40, 80)
+    expect(adapter1.getPlayersX()).toBe(7)
+
+    const plugin = createNextGamePlugin({ settleDelayMs: 0, retryDelayMs: 0 })
+    const host = new PluginHost({
+      plugins: [plugin],
+      configStore: new PluginConfigStore([plugin], { storage: new MemoryStorage() }),
+      session,
+      toolbar: {
+        setPluginsButtonState() {},
+        addContribution() {
+          return () => {}
+        },
+      },
+      settingsStore,
+      autoStart: false,
+    })
+    await host.start()
+    const inst = host.getInstance<NextGamePluginInstance>(NEXT_GAME_PLUGIN_ID)!
+
+    const nextRoom = await inst.stepToNextGame()
+    expect(nextRoom).toBe('SoloP82')
+    expect(session.phase).toBe('ingame')
+    expect(session.getSnapshot().activeGameName).toBe('SoloP82')
+
+    const adapter2 = (session as unknown as { gameAdapter: LocalLoopbackAdapter }).gameAdapter
+    expect(adapter2).toBeInstanceOf(LocalLoopbackAdapter)
+    expect(adapter2.getPlayersX()).toBe(7)
+
+    const game2 = adapter2.getGameInstance()
+    const monId = game2.spawnMonster({ classId: 0, areaId: 2, x: 5100, y: 5100 })
+    const mon = (game2 as unknown as { monsters: Map<number, any> }).monsters.get(monId)!
+    // 7 players -> (7 + 1) / 2 = 4x base HP and XP, monsterPlayerCount = 7
+    expect(mon.maxHp).toBe(Math.floor((mon.baseMaxHp * 8) / 2))
+    expect(mon.experience).toBe(Math.floor((mon.baseXp * 8) / 2))
+    expect(mon.monsterPlayerCount).toBe(7)
 
     await host.destroy()
     session.destroy()

@@ -166,3 +166,37 @@
   - 若 `gdwSkillHotkeySkillId[slot] == pSkillsTxt->wSkillId`：
     - 将 `gdwSkillHotkeySkillId[slot]`、`gdwSkillHotkeyIsLeft[slot]`、`gdwSkillHotkeyOwnerItemGUID[slot]` 全部置为 `-1` (`0xFFFFFFFF`)。
     - 立即向服务端发送 `C2S 0x51 AssignSkillHotkey` (`slot`, `skillId = 0xFFFF`, `itemId = 0xFFFFFFFF`) 持久化解除绑定。
+
+---
+
+## 5. 装备赋予聚气技能 (`STAT_ITEM_CHARGED_SKILL = 204`) 全链路 (`D2Common` / `D2Game` / `D2Client`)
+
+### 5.1 `D2Common.#10953 SKILLS_AddChargeSkill` (`0x6FD9EE00`)
+- 函数签名：`D2SkillStrc* __stdcall SKILLS_AddChargeSkill(D2UnitStrc* pUnit, int nSkillId, int nSkillLevel, int nCharges, uint32_t dwItemGUID)`
+- 校验 `pUnit->dwUnitType == UNIT_PLAYER (0)` 且 `pUnit->pInfo != NULL`。
+- 分配 `D2SkillStrc` 节点并挂入 `pUnit->pInfo->pFirstSkill` 链表，写入：
+  - `pSkill->nSkillLevel = nSkillLevel` (`+0x28`)
+  - `pSkill->dwOwnerGUID = dwItemGUID` (`+0x34`，即赋予该聚气技能的装备 `pItem->dwUnitId`)
+  - `pSkill->nCharges = nCharges` (`+0x38`)
+
+### 5.2 穿戴/卸下/切换副手与施放扣减 (`D2Game.dll` & `D2Client.dll`)
+- **穿戴/切换激活 (`D2Game.dll` `0x6FCF9A21`, `D2Client.dll` `0x6FB55A23`)**:
+  - 遍历当前激活穿戴槽位（排除副手未激活槽位 `bodyLoc 11/12`、未鉴定物品 `ITEMFLAG_IDENTIFIED (0x10) == 0`、损坏物品 `ITEMFLAG_BROKEN (0x100) != 0`）上的 `STAT_ITEM_CHARGED_SKILL (204)` 属性。
+  - 解码 `skillId = param >> 6`、`slvl = param & 0x3F`、`curCharges = value & 0xFF`、`maxCharges = (value >> 8) & 0xFF`。
+  - 调用 `SKILLS_AddChargeSkill(pPlayer, skillId, slvl, curCharges, pItem->dwUnitId)` 将聚气技能加入玩家 `pFirstSkill` 链表。
+- **施放扣减与耗尽自动切回普攻 (`D2Game.dll` `0x6FCBF4F8` & `D2Client.dll` `0x6FB35990`)**:
+  - 当玩家当前选中的 `D2SkillStrc` 具有 `dwOwnerGUID != 0xFFFFFFFF` 时，施放不消耗法力，而是将 `nCharges - 1` 写回该装备的 `stat 204` (`(maxCharges << 8) | newCharges`)。
+  - 服务端通过 `S2C 0x3E UpdateItemStats` (`stat = 204, param = (skillId << 6) | slvl, value = newCharges`) 通知客户端更新 `pSkill->nCharges` 与装备 `stat 204`。
+  - 当 `newCharges <= 0` 时，服务端与客户端将该手当前选中技能重置为 `0` (`Attack`, `dwOwnerGUID = 0xFFFFFFFF`)。
+- **卸下/切换副手清理 (`D2Game.dll` `0x6FCF2380`, `D2Client.dll` `0x6FB5599C`)**:
+  - 移除该 `dwItemGUID` 对应的 `D2SkillStrc` 节点；若当前左手或右手正选中该 `dwItemGUID` 的聚气技能，立即重置为 `0` (`Attack`)。
+
+### 5.3 客户端技能选择面板 (`Speedbar`) 聚气技能行与红底染色 (`D2Client.dll` `0x6FAC8D31`, `0x6FAEE927..0x6FAEEDAC`)
+- **行分组 (`GetSkillSpeedbarRow` `0x6FAC8D10..0x6FAC8D54`)**:
+  - 在 `0x6FAC8D31` 调用 `D2Common.#10304 SKILLS_GetOwnerGUID(pSkill)`：若 `dwOwnerGUID != -1` (`0xFFFFFFFF`)，强制归入 **第 4 行 (`row = 4`)**（聚气/卷轴/物品专属技能行），无论该技能原本属于哪个职业。
+- **面板与底栏技能图标绘制 (`DrawSpeedbarSkillIcon` `0x6FAEE7C0`)**:
+  - 在 `0x6FAEE927` 检查 `SKILLS_GetOwnerGUID(pSkill) != -1`：
+    - 若是聚气技能，调用 `SKILLS_GetSkillInfo` (`0x6FAEE943`) 读取 `nCharges`。
+    - 若 `nCharges <= 0` (`0x6FAEE952`)，设置 `bRedTint = 1` 将技能按钮染成红色不可用状态。
+  - 在 `0x6FAEED6A..0x6FAEEDAC`：当鼠标悬停于聚气技能图标时，在技能名称下方额外追加一行蓝色 (`color = 3`) 文本：`ModStre10b ("Level") + " " + nLevel + " (" + sprintf(ModStre10d, nCharges, nMaxCharges) + ")"`；若 `nCharges <= 0`，则在右侧显示红色的 `(0)`。
+

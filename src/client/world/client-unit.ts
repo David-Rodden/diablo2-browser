@@ -18,6 +18,10 @@ import {
   targetUnitTurnTowardPoint,
   type UnitTurnState,
 } from '../../common/units/direction.ts'
+import {
+  getMonsterCofHitBox113c,
+  getPlayerCofHitBox113c,
+} from '../../common/units/cof-boxes-113c.ts'
 import { resolveMonsterUModIds } from '../../common/units/monster-death-fx.ts'
 import {
   getLocalizedNpcName,
@@ -69,6 +73,12 @@ export interface ClientUnitOverlay {
   readonly maxTicks: number
   readonly lightRadius: number
   readonly lightColor: readonly [number, number, number]
+  /**
+   * 1.13c Overlay.txt `LoopWaitTime` (+0x78 -> `inst+0x28` at `0x6FB1B57B`, ms pause between loops in
+   * `0x6FB1C1FF` / `0x6FB1C321`, hidden while waiting at `0x6FB1B062` / `0x6FB1B1EC`, #1717).
+   */
+  readonly loopWaitTime?: number | undefined
+  loopWaiting?: boolean | undefined
   /**
    * 1.13c overlay completion chain (D2Client overlay update `0x6FB1C1D7` completion switch): when this
    * one-shot overlay finishes, it is removed and these Overlay.txt rows are created in its place (type 4
@@ -159,6 +169,11 @@ export interface UnitCastState {
 export function makeUnitKey(unitType: UnitType, id: number): string {
   return `${unitTypeFromId(unitType)}:${id}`
 }
+
+export type QueuedUnitPacket113c = Extract<
+  ServerEvent,
+  { readonly type: 'UnitMode' | 'UnitMove' | 'SkillCast' }
+>
 
 export class ClientUnit {
   readonly key: string
@@ -367,11 +382,11 @@ export class ClientUnit {
   readonly seed: D2SeedStrc = { lo: 1, hi: 666 }
   initSeed = 1
   /**
-   * 1.13c `pUnit+0xd8`: per-unit FIFO packet queue (`0x6fb5c630` enqueue on `S2C 0x0E`,
-   * `0x6fb5bc20` -> `0x6fb5f560` -> `0x6fada750` -> `0x6fad5ce0` -> `0x6fad59f0` drain at the end
-   * of the unit's 25 Hz tick `0x6fadb1e0`).
+   * 1.13c `pUnit+0xd8`: per-unit FIFO packet queue (`0x6fb5ce20` -> `0x6fb5bc60` / `0x6fb5bc40` ->
+   * `0x6fb5c630` enqueue on the 14 unit-queued S2C opcodes `0x0C..0x10`, `0x4C..0x4D`, `0x67..0x6D`,
+   * and `0x6fadb1e0` -> `0x6fadb290` -> `0x6fb5bc20` drain at the end of the unit's 25 Hz tick, #1708).
    */
-  readonly queuedPackets: Array<Extract<ServerEvent, { readonly type: 'UnitMode' }>> = []
+  readonly queuedPackets: QueuedUnitPacket113c[] = []
   /**
    * Objects: unit+0x64, the type-2 light owned by the object. Only SetObjectLight 0x6fad4920
    * (`world/object-light.ts`) writes it; a unit removal drops it with the unit. `null` = no light.
@@ -593,10 +608,26 @@ export class ClientUnit {
     }
     if (snapshot.flags !== undefined) {
       this.flags = snapshot.flags
-      if ((snapshot.flags & 0x04) !== 0) this.isChampion = true
-      if ((snapshot.flags & 0x08) !== 0) this.isUnique = true
-      if ((snapshot.flags & 0x02) !== 0) this.isSuperUnique = true
-      if ((snapshot.flags & 0x10) !== 0) this.isMinion = true
+      this.isChampion = (snapshot.flags & 0x04) !== 0
+      this.isUnique = (snapshot.flags & 0x08) !== 0
+      this.isSuperUnique = (snapshot.flags & 0x02) !== 0
+      this.isMinion = (snapshot.flags & 0x10) !== 0
+      if (!this.isSuperUnique && snapshot.superUniqueId === undefined) {
+        this.superUniqueId = undefined
+      }
+      if (
+        !this.isChampion &&
+        !this.isUnique &&
+        !this.isSuperUnique &&
+        snapshot.bossMods === undefined &&
+        snapshot.monUMods === undefined
+      ) {
+        this.bossMods = undefined
+        this.monUMods = undefined
+        if (snapshot.nameSeed === undefined) {
+          this.nameSeed = undefined
+        }
+      }
     }
     if (snapshot.isMinion !== undefined) {
       this.isMinion = snapshot.isMinion
@@ -709,6 +740,8 @@ export class ClientUnit {
     if (this.hitBox) return this.hitBox
     switch (this.unitType) {
       case 'monster': {
+        // 1.13c D2Client 0x6fb56a77..0x6fb56ae5 (D2Common.#10628 noGfxHitTest):
+        // MonStats2.txt BoxLeft/BoxTop/BoxWidth/BoxHeight when noGfxHitTest == 1.
         const noGfxBox = NO_GFX_HIT_BOX_BY_CLASS_ID_113C.get(this.classId)
         if (noGfxBox !== undefined) {
           return {
@@ -718,15 +751,35 @@ export class ClientUnit {
             height: noGfxBox.height,
           }
         }
-        return { left: -24, top: -64, width: 48, height: 72 }
+        // 1.13c D2Client 0x6fb56b00 -> 0x6fb1a550: COF header bounding box ±16 px.
+        const explicitToken = (this as { token?: string }).token
+        const wclass =
+          (this as { weaponClass?: string }).weaponClass ??
+          (this as { wclass?: string }).wclass
+        return getMonsterCofHitBox113c(this.classId, this.mode, wclass, explicitToken)
       }
-      case 'player':
-        return { left: -24, top: -64, width: 48, height: 72 }
+      case 'player': {
+        // 1.13c D2Client 0x6fb56b00 -> 0x6fb1a550: COF header bounding box ±16 px.
+        const morphToken = this.states.has(139)
+          ? '40'
+          : this.states.has(140)
+            ? 'tg'
+            : this.states.has(176)
+              ? 'va'
+              : this.states.has(177)
+                ? 'fk'
+                : undefined
+        const wclass =
+          (this as { weaponClass?: string }).weaponClass ??
+          (this as { wclass?: string }).wclass ??
+          'hth'
+        return getPlayerCofHitBox113c(this.classId, this.mode, wclass, morphToken)
+      }
       case 'object': {
         return getObjectHitBox113c(this.classId, this.mode)
       }
       case 'tile': {
-        // 1.13c D2Client 0x6fb56a77..0x6fb56ae5 (D2Common.#10628):
+        // 1.13c D2Client 0x6fb56bbb -> 0x6fb557e0 (D2Common.#10864):
         // UNIT_TILE (5) hit-testing uses LvlWarp.txt SelectX/SelectY/SelectDX/SelectDY.
         const warpId = this.warpId ?? this.classId
         if (typeof warpId === 'number' && warpId >= 0) {

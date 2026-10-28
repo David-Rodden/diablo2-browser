@@ -1786,7 +1786,7 @@ export const NPC_CANONICAL_GOSSIP_KEYS: Readonly<Record<string, readonly string[
     'AnyaGossip9',
     'AnyaGossip10',
   ],
-  drehyaiced: ['A5Q3FoundAnyaAnya', 'AnyaGossip1'],
+  drehyaiced: ['A5Q3FoundAnyaAnya'],
   anya: [
     'AnyaGossip1',
     'AnyaGossip2',

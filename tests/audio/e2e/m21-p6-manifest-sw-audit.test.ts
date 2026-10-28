@@ -9,9 +9,8 @@
  * - PROJECT.md D9, D15, D16, D18 & ORIGINAL_REQUEST.md R6 (#948).
  * - Independent 1.13c MPQ oracle (`harness-113c.ts`) across all 9 archives (`MPQ_PRIORITY_113C`).
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { D2Rng } from '../../../src/common/rng/d2-rng.ts'
 import {
@@ -21,6 +20,7 @@ import {
   RecordingVoices,
   getOracle113c,
   loadProductModule,
+  mirrorRepoWithCopies,
   oracleMonsterSpeechScope,
   oracleSampleFacts,
   readRepoText,
@@ -175,41 +175,6 @@ function extractProductUnshippedIds(
     }
   }
   return [...set].sort((a, b) => a - b)
-}
-
-function mirrorRepoWithCopies(relPathsToCopy: readonly string[], mutate: (mirrorRoot: string) => void): string {
-  const dir = mkdtempSync(join(tmpdir(), 'm21-p6-mirror-'))
-  const copyFirstTop = new Set(relPathsToCopy.map((p) => p.split('/')[0]!))
-  for (const entry of readdirSync(REPO_ROOT)) {
-    if (entry === '.git' || entry.startsWith('.tmp-')) continue
-    if (copyFirstTop.has(entry)) continue
-    symlinkSync(join(REPO_ROOT, entry), join(dir, entry))
-  }
-  for (const top of copyFirstTop) {
-    const srcTop = join(REPO_ROOT, top)
-    if (!existsSync(srcTop)) continue
-    const dstTop = join(dir, top)
-    mkdirSync(dstTop, { recursive: true })
-    for (const child of readdirSync(srcTop)) {
-      const relChild = `${top}/${child}`
-      const needsDeepCopy = relPathsToCopy.some((p) => p === relChild || p.startsWith(`${relChild}/`))
-      if (!needsDeepCopy) {
-        symlinkSync(join(srcTop, child), join(dstTop, child))
-      } else {
-        cpSync(join(srcTop, child), join(dstTop, child), { recursive: true, dereference: true })
-      }
-    }
-  }
-  for (const rel of relPathsToCopy) {
-    const src = join(REPO_ROOT, rel)
-    const dst = join(dir, rel)
-    mkdirSync(dirname(dst), { recursive: true })
-    if (existsSync(src) && !existsSync(dst)) {
-      cpSync(src, dst, { dereference: true })
-    }
-  }
-  mutate(dir)
-  return dir
 }
 
 class InMemoryCache {

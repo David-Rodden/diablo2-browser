@@ -750,10 +750,14 @@ async function main() {
   //   - 1066: "Diablo II was unable to connect to the realm server. ..." (string index 11066)
   //   - 76: Charsi Imbue restriction line "No Magic, Socketed, Rare, Unique, or Set Items. No Jewelry."
   //         (key "upgraderestrictEx", D2Client useitem.cpp 0x6fb4f688 string index 0x275c = 10076)
-  for (const idx of [95, 1066, 76, 103, 104, 105, 106, 107, 108, 109, 808, 1004, 1005, 1018]) {
+  for (const idx of [95, 500, 1066, 1078, 76, 103, 104, 105, 106, 107, 108, 109, 808, 1004, 1005, 1018]) {
     const alias = `patchstring#${idx}`
-    const ev = eng.tables[0]?.[idx]?.replace(/\u00c3\u00bfc/g, 'ÿc')
-    const cv = chi.tables[0]?.[idx]
+    const engPatch = eng.tables[0]
+    const chiPatch = chi.tables[0]
+    const resolvedEngIdx = engPatch && idx < engPatch.length ? idx : 500
+    const resolvedChiIdx = chiPatch && idx < chiPatch.length ? idx : 500
+    const ev = engPatch?.[resolvedEngIdx]?.replace(/\u00c3\u00bfc/g, 'ÿc')
+    const cv = chiPatch?.[resolvedChiIdx]
     if (ev === undefined || cv === undefined) throw new Error(`patchstring.tbl index ${idx} missing (ENG or CHI)`)
     engOut[alias] = ev
     chiOut[alias] = cv
@@ -776,6 +780,7 @@ async function main() {
   const engStringTbl = decodeTbl(await archives.read('data\\local\\lng\\eng\\string.tbl'), 'windows-1252')
   const chiStringTbl = decodeTbl(await archives.read('data\\local\\lng\\chi\\string.tbl'), 'utf-8')
   const stringTblIndices = [
+    500,
     3224,
     3401, 3402, 3403,
     3639, 3640, 3641, 3642, 3643, 3644, 3645, 3646, 3647, 3648, 3649, 3651, 3652, 3653, 3654, 3655, 3658,
@@ -789,8 +794,10 @@ async function main() {
   ]
   for (const idx of stringTblIndices) {
     const alias = `string#${idx}`
-    const ev = engStringTbl[idx]?.replace(/\u00c3\u00bfc/g, 'ÿc')
-    const cv = chiStringTbl[idx]
+    const resolvedEngIdx = idx < engStringTbl.length ? idx : 500
+    const resolvedChiIdx = idx < chiStringTbl.length ? idx : 500
+    const ev = engStringTbl[resolvedEngIdx]?.replace(/\u00c3\u00bfc/g, 'ÿc')
+    const cv = chiStringTbl[resolvedChiIdx]
     if (ev === undefined || cv === undefined) throw new Error(`string.tbl index ${idx} missing (ENG or CHI)`)
     engOut[alias] = ev
     chiOut[alias] = cv
@@ -810,15 +817,18 @@ async function main() {
   const chiExpPath = 'data\\local\\lng\\chi\\expansionstring.tbl'
   const chiExpTbl = archives.has(chiExpPath) ? decodeTbl(await archives.read(chiExpPath), 'utf-8') : null
   const useItemChiFallbacks: Readonly<Record<number, string>> = {
+    500: chiOut['r06L'] ?? '伊司',
     2747: '選擇你想要以你的名字個人化的物品。',
     2748: '增加凹槽',
     2749: '個人化',
     2750: '選擇你想要增加凹槽的物品。',
   }
-  for (const idx of [2747, 2748, 2749, 2750]) {
+  for (const idx of [500, 2747, 2748, 2749, 2750]) {
     const alias = `expansionstring#${idx}`
-    const ev = engExpTbl[idx]
-    const cv = chiExpTbl ? chiExpTbl[idx] : useItemChiFallbacks[idx]
+    const resolvedEngIdx = idx < engExpTbl.length ? idx : 500
+    const ev = engExpTbl[resolvedEngIdx]
+    const resolvedChiIdx = chiExpTbl ? (idx < chiExpTbl.length ? idx : 500) : (idx in useItemChiFallbacks ? idx : 500)
+    const cv = chiExpTbl ? chiExpTbl[resolvedChiIdx] : useItemChiFallbacks[resolvedChiIdx]
     if (ev === undefined || cv === undefined) throw new Error(`expansionstring.tbl index ${idx} missing (ENG or CHI)`)
     engOut[alias] = ev
     chiOut[alias] = cv
@@ -868,14 +878,24 @@ export const CANONICAL_CHI_TBL_DICT: Readonly<Record<string, string>> = ${string
 
 export const CANONICAL_ISC_DESC_TABLE: Readonly<Record<string, CanonicalIscDescEntry>> = ${stringifyDomSafeJson(iscMeta)}
 
+export const CANONICAL_TBL_NUM_ELEMENTS = {
+  string: ${engStringTbl.length},
+  patchstring: ${eng.tables[0]?.length ?? 1169},
+  expansionstring: ${engExpTbl.length},
+} as const
+
 export function resolveTblKey(key: string, lang: 'CHI' | 'ENG' = 'CHI'): string | undefined {
+  if (key === '') return ''
   const dict = lang === 'ENG' ? CANONICAL_ENG_TBL_DICT : CANONICAL_CHI_TBL_DICT
-  const trimmedKey = key.trim()
-  const val = dict[key] ?? dict[trimmedKey]
-  if (lang === 'CHI' && val !== undefined && val.trim().length === 0) {
-    const engVal = CANONICAL_ENG_TBL_DICT[key] ?? CANONICAL_ENG_TBL_DICT[trimmedKey]
-    if (engVal !== undefined && engVal.trim().length > 0) {
-      return engVal
+  let val = dict[key]
+  if (val === undefined) {
+    const m = /^(string|patchstring|expansionstring)#(\\d+)$/.exec(key)
+    if (m) {
+      const tblKind = m[1] as keyof typeof CANONICAL_TBL_NUM_ELEMENTS
+      const idx = Number(m[2])
+      if (idx >= CANONICAL_TBL_NUM_ELEMENTS[tblKind]) {
+        val = dict[\`\${tblKind}#500\`]
+      }
     }
   }
   return val

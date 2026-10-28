@@ -10,7 +10,7 @@
 import { resolveSkillInfo, CANONICAL_SKILL_TABS, CANONICAL_REANIMATE_MONSTERS } from '../skills/skills-data.ts'
 import { formatDgrpLine } from '../items/dgrp-line.ts'
 import { formatElementalPair, formatPhysicalRange, formatPoisonPair, physicalPairCombines } from '../items/damage-merge.ts'
-import { chargedSkillChargesOf, formatChargedSkill } from '../items/charged-skill.ts'
+import { chargedSkillChargesOf, formatChargedSkill, resolveChargedSkillRoll113c } from '../items/charged-skill.ts'
 import { CANONICAL_ENG_TBL_DICT, CANONICAL_CHI_TBL_DICT } from '../data/canonical-tbl-strings.ts'
 
 export type TooltipLocale = 'en' | 'zh' | 'bilingual'
@@ -5200,7 +5200,8 @@ function formatPropertyCodeZh(
     }
     case 'charged': {
       const sk = resolveSkillInfoZh(par)
-      return formatChargedSkill(max, sk.name, chargedSkillChargesOf(_value, min), 'zh')
+      const slvl = max > 0 ? max : resolveChargedSkillRoll113c(min, max, { skillId: par }).slvl
+      return formatChargedSkill(slvl, sk.name, chargedSkillChargesOf(_value, min, slvl), 'zh')
     }
 
     // --- Attributes & Life / Mana / Stamina ---
@@ -5667,7 +5668,8 @@ function formatPropertyCodeEn(
     }
     case 'charged': {
       const sk = resolveSkillInfo(par)
-      return formatChargedSkill(max, sk.name, chargedSkillChargesOf(_value, min), 'en')
+      const slvl = max > 0 ? max : resolveChargedSkillRoll113c(min, max, { skillId: par }).slvl
+      return formatChargedSkill(slvl, sk.name, chargedSkillChargesOf(_value, min, slvl), 'en')
     }
     case 'str': return `${plusVal} to Strength`
     case 'dex': return `${plusVal} to Dexterity`

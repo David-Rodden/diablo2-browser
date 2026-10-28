@@ -12,7 +12,7 @@ import { resolveMonsterArtSpec } from '../../common/units/monster-mapping.ts'
 import { resolveMonsterComponentVariantKey113c } from '../../common/units/monster-component-variants-113c.ts'
 import type { AtlasFrame } from '../render/atlas.ts'
 import type { AtlasHandle, SpriteRenderer } from '../render/renderer.ts'
-import { reportMissingArt } from './world-renderer.ts'
+import { reportMissingArt, resolvePreloadMiss } from './missing-art.ts'
 import { normalizeHeroToken } from '../../common/world/scene-population.ts'
 
 export { ADDITIVE_MONSTER_TOKENS }
@@ -118,7 +118,8 @@ export function normalizeMonsterBlendMode(
     rawBlendMode === 'additive' ||
     rawBlendMode === 'trans25' ||
     rawBlendMode === 'trans50' ||
-    rawBlendMode === 'trans75'
+    rawBlendMode === 'trans75' ||
+    rawBlendMode === 'burn'
   ) {
     return rawBlendMode
   }
@@ -628,6 +629,33 @@ export async function loadObjectArt(
   return null
 }
 
+export type EntityLoadPriority = 'urgent' | 'preload-current' | 'preload-neighbor'
+
+export const DEFAULT_MAX_BACKGROUND_ENTITY_CONCURRENCY = 2
+
+const ENTITY_PRIORITY_RANK: Readonly<Record<EntityLoadPriority, number>> = {
+  urgent: 0,
+  'preload-current': 1,
+  'preload-neighbor': 2,
+}
+
+interface ScheduledEntityFetchTask<T> {
+  readonly taskKey: string
+  priority: EntityLoadPriority
+  started: boolean
+  readonly run: () => Promise<T>
+  readonly resolve: (value: T) => void
+  readonly reject: (reason?: unknown) => void
+  readonly promise: Promise<T>
+}
+
+export interface EntityArtQueueStats {
+  readonly activeUrgent: number
+  readonly activeBackground: number
+  readonly queuedUrgent: number
+  readonly queuedBackground: number
+}
+
 export interface EntityArtCacheOptions {
   readonly renderer: SpriteRenderer
   readonly packBase?: string | undefined
@@ -635,15 +663,16 @@ export interface EntityArtCacheOptions {
   readonly onArtLoaded?: (() => void) | undefined
   readonly fetchFn?: typeof fetch | undefined
   readonly initialCatalog?: PackedEntityCatalogIndex | undefined
+  readonly maxBackgroundConcurrency?: number | undefined
 }
 
 /**
  * On-demand `classId`-indexed entity art cache for Monsters/Town NPCs (`0xAC` `hcIdx`)
  * and Map/Interactive Objects (`0x51` `Objects.txt` `classId`).
  *
- * Returns `'loading'` while asynchronous fetches are in flight so the renderer skips drawing
- * silently on that frame without triggering `reportMissingArt`, and returns `'missing'` when
- * an entity is absent from the catalog or fails to decode.
+ * Separates high-priority `'urgent'` fetches (live units on screen) from bounded-concurrency
+ * background `preloadEntities` fetches (`'preload-current'` ahead of `'preload-neighbor'`),
+ * promoting queued background tasks immediately if a matching unit spawns on screen (#1775).
  */
 export class EntityArtCache {
   private readonly renderer: SpriteRenderer
@@ -651,6 +680,7 @@ export class EntityArtCache {
   private defaultAct: number | undefined
   private readonly onArtLoaded: (() => void) | undefined
   private readonly fetchFn: typeof fetch
+  private readonly maxBackgroundConcurrency: number
 
   private catalog: PackedEntityCatalogIndex | null = null
   private indexState: 'idle' | 'loading' | 'loaded' | 'failed' = 'idle'
@@ -659,6 +689,7 @@ export class EntityArtCache {
   private readonly monsterByClassIdCache = new Map<number, LoadedMonsterArt>()
   private readonly monsterBySpecKeyCache = new Map<string, LoadedMonsterArt>()
   private readonly monsterInflightBySpecKey = new Map<string, Promise<LoadedMonsterArt | null>>()
+  private readonly monsterSpecKeyByClassId = new Map<number, string>()
   private readonly inflightMonsters = new Set<number>()
   private readonly failedMonsters = new Set<number>()
   private readonly failedMonsterVariantKeys = new Set<string>()
@@ -666,8 +697,14 @@ export class EntityArtCache {
   private readonly objectByClassIdCache = new Map<string, LoadedObjectArt>()
   private readonly objectBySlugCache = new Map<string, LoadedObjectArt>()
   private readonly objectInflightBySlug = new Map<string, Promise<LoadedObjectArt | null>>()
+  private readonly objectSlugByCacheKey = new Map<string, string>()
   private readonly inflightObjects = new Set<string>()
   private readonly failedObjects = new Set<string>()
+  private readonly pendingTasksByKey = new Map<string, ScheduledEntityFetchTask<unknown>>()
+  private readonly taskQueue: ScheduledEntityFetchTask<unknown>[] = []
+  private activeUrgentCount = 0
+  private activeBackgroundCount = 0
+  private clearGeneration = 0
 
   constructor(
     rendererOrOptions: SpriteRenderer | EntityArtCacheOptions,
@@ -678,12 +715,19 @@ export class EntityArtCache {
       this.renderer = rendererOrOptions
       this.packBase = packBase
       this.onArtLoaded = onArtLoaded
+      this.maxBackgroundConcurrency = DEFAULT_MAX_BACKGROUND_ENTITY_CONCURRENCY
       this.fetchFn = typeof fetch !== 'undefined' ? fetch.bind(globalThis) : (() => Promise.reject(new Error('fetch unavailable'))) as unknown as typeof fetch
     } else {
       this.renderer = rendererOrOptions.renderer
       this.packBase = rendererOrOptions.packBase ?? ''
       this.defaultAct = rendererOrOptions.act
       this.onArtLoaded = rendererOrOptions.onArtLoaded
+      this.maxBackgroundConcurrency = Math.max(
+        1,
+        Math.floor(
+          rendererOrOptions.maxBackgroundConcurrency ?? DEFAULT_MAX_BACKGROUND_ENTITY_CONCURRENCY,
+        ),
+      )
       this.fetchFn =
         rendererOrOptions.fetchFn ??
         (typeof fetch !== 'undefined'
@@ -720,6 +764,188 @@ export class EntityArtCache {
     this.objectByClassIdCache.set(`${classId}:0`, art)
     this.failedObjects.delete(`${classId}:${act ?? 0}`)
     this.failedObjects.delete(`${classId}:0`)
+  }
+
+  private collectArtHandles(
+    art: Pick<LoadedMonsterArt | LoadedObjectArt, 'handle' | 'groups' | 'glowGroups'>,
+    into: Set<AtlasHandle>,
+  ): void {
+    into.add(art.handle)
+    for (const group of art.groups) {
+      for (const frame of group) {
+        const pageAtlas = (frame as { readonly atlas?: AtlasHandle }).atlas
+        if (pageAtlas !== undefined) into.add(pageAtlas)
+      }
+    }
+    if (art.glowGroups) {
+      for (const group of art.glowGroups) {
+        for (const frame of group) {
+          const pageAtlas = (frame as { readonly atlas?: AtlasHandle }).atlas
+          if (pageAtlas !== undefined) into.add(pageAtlas)
+        }
+      }
+    }
+  }
+
+  private deleteArtHandles(handles: Iterable<AtlasHandle>): void {
+    const deleteFn = (this.renderer as { deleteAtlas?: (h: AtlasHandle) => void }).deleteAtlas
+    if (typeof deleteFn !== 'function') return
+    for (const h of handles) {
+      deleteFn.call(this.renderer, h)
+    }
+  }
+
+  /**
+   * Release all GPU monster and object atlases uploaded during the game session while keeping
+   * the parsed `index.json` catalog metadata warm for the next game.
+   */
+  clear(): void {
+    this.clearGeneration += 1
+    const handles = new Set<AtlasHandle>()
+    for (const art of this.monsterBySpecKeyCache.values()) {
+      this.collectArtHandles(art, handles)
+    }
+    for (const art of this.monsterByClassIdCache.values()) {
+      this.collectArtHandles(art, handles)
+    }
+    for (const art of this.objectBySlugCache.values()) {
+      this.collectArtHandles(art, handles)
+    }
+    for (const art of this.objectByClassIdCache.values()) {
+      this.collectArtHandles(art, handles)
+    }
+    this.monsterByClassIdCache.clear()
+    this.monsterBySpecKeyCache.clear()
+    this.monsterInflightBySpecKey.clear()
+    this.monsterSpecKeyByClassId.clear()
+    this.inflightMonsters.clear()
+    this.failedMonsters.clear()
+    this.failedMonsterVariantKeys.clear()
+    this.objectByClassIdCache.clear()
+    this.objectBySlugCache.clear()
+    this.objectInflightBySlug.clear()
+    this.objectSlugByCacheKey.clear()
+    this.inflightObjects.clear()
+    this.failedObjects.clear()
+    const dropped = this.taskQueue.splice(0, this.taskQueue.length)
+    for (const task of dropped) {
+      this.pendingTasksByKey.delete(task.taskKey)
+      task.resolve(null)
+    }
+    this.deleteArtHandles(handles)
+  }
+
+  getQueueStats(): EntityArtQueueStats {
+    let queuedUrgent = 0
+    let queuedBackground = 0
+    for (const task of this.taskQueue) {
+      if (task.priority === 'urgent') queuedUrgent += 1
+      else queuedBackground += 1
+    }
+    return {
+      activeUrgent: this.activeUrgentCount,
+      activeBackground: this.activeBackgroundCount,
+      queuedUrgent,
+      queuedBackground,
+    }
+  }
+
+  private promoteTaskPriority(taskKey: string, priority: EntityLoadPriority): void {
+    const task = this.pendingTasksByKey.get(taskKey)
+    if (!task || task.started) return
+    if (ENTITY_PRIORITY_RANK[priority] < ENTITY_PRIORITY_RANK[task.priority]) {
+      task.priority = priority
+      this.pumpTaskQueue()
+    }
+  }
+
+  private schedulePackFetch<T>(
+    taskKey: string,
+    priority: EntityLoadPriority,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const existing = this.pendingTasksByKey.get(taskKey) as ScheduledEntityFetchTask<T> | undefined
+    if (existing !== undefined) {
+      this.promoteTaskPriority(taskKey, priority)
+      return existing.promise
+    }
+    let resolveFn!: (value: T) => void
+    let rejectFn!: (reason?: unknown) => void
+    const promise = new Promise<T>((resolve, reject) => {
+      resolveFn = resolve
+      rejectFn = reject
+    })
+    const task: ScheduledEntityFetchTask<T> = {
+      taskKey,
+      priority,
+      started: false,
+      run,
+      resolve: resolveFn,
+      reject: rejectFn,
+      promise,
+    }
+    this.pendingTasksByKey.set(taskKey, task as ScheduledEntityFetchTask<unknown>)
+    this.taskQueue.push(task as ScheduledEntityFetchTask<unknown>)
+    this.pumpTaskQueue()
+    return promise
+  }
+
+  private pumpTaskQueue(): void {
+    // 1. Dispatch every queued `'urgent'` task immediately with zero queuing delay.
+    while (true) {
+      const urgentIdx = this.taskQueue.findIndex(t => t.priority === 'urgent')
+      if (urgentIdx < 0) break
+      const task = this.taskQueue.splice(urgentIdx, 1)[0]!
+      task.started = true
+      this.activeUrgentCount += 1
+      void task
+        .run()
+        .then(
+          val => task.resolve(val),
+          err => task.reject(err),
+        )
+        .finally(() => {
+          this.activeUrgentCount = Math.max(0, this.activeUrgentCount - 1)
+          if (this.pendingTasksByKey.get(task.taskKey) === task) {
+            this.pendingTasksByKey.delete(task.taskKey)
+          }
+          this.pumpTaskQueue()
+        })
+    }
+
+    // 2. While no urgent live-unit fetches are competing for bandwidth, drain background
+    //    preloads (`preload-current` strictly ahead of `preload-neighbor`) up to the cap.
+    while (
+      this.activeUrgentCount === 0 &&
+      this.activeBackgroundCount < this.maxBackgroundConcurrency &&
+      this.taskQueue.length > 0
+    ) {
+      let bestIdx = 0
+      let bestRank = ENTITY_PRIORITY_RANK[this.taskQueue[0]!.priority]
+      for (let i = 1; i < this.taskQueue.length; i++) {
+        const rank = ENTITY_PRIORITY_RANK[this.taskQueue[i]!.priority]
+        if (rank < bestRank) {
+          bestRank = rank
+          bestIdx = i
+        }
+      }
+      const task = this.taskQueue.splice(bestIdx, 1)[0]!
+      task.started = true
+      this.activeBackgroundCount += 1
+      void task
+        .run()
+        .then(
+          val => task.resolve(val),
+          err => task.reject(err),
+        )
+        .finally(() => {
+          this.activeBackgroundCount = Math.max(0, this.activeBackgroundCount - 1)
+          if (this.pendingTasksByKey.get(task.taskKey) === task) {
+            this.pendingTasksByKey.delete(task.taskKey)
+          }
+          this.pumpTaskQueue()
+        })
+    }
   }
 
   async loadIndex(indexData?: PackedEntityCatalogIndex): Promise<PackedEntityCatalogIndex | null> {
@@ -770,35 +996,58 @@ export class EntityArtCache {
     if (this.indexPromise) {
       await this.indexPromise
     }
-    await Promise.all([
-      ...this.monsterInflightBySpecKey.values(),
-      ...this.objectInflightBySlug.values(),
-    ])
+    while (
+      this.taskQueue.length > 0 ||
+      this.monsterInflightBySpecKey.size > 0 ||
+      this.objectInflightBySlug.size > 0
+    ) {
+      const pending = [
+        ...this.monsterInflightBySpecKey.values(),
+        ...this.objectInflightBySlug.values(),
+        ...[...this.pendingTasksByKey.values()].map(t => t.promise),
+      ]
+      if (pending.length === 0) break
+      await Promise.allSettled(pending)
+    }
   }
 
   /**
    * Pre-warm monster (`MonStats.txt` `hcIdx`) and object (`Objects.txt` `classId`) atlases
-   * for the current level and its 1-hop topological neighbors (#1025).
+   * for the current level and its 1-hop topological neighbors (#1025, #1775).
+   *
+   * Runs at bounded background concurrency (`preload-current` ahead of `preload-neighbor`) so
+   * background fetches never starve tile pages or urgent on-screen monsters.
    */
   preloadEntities(options: {
     readonly monsterClassIds?: Iterable<number>
     readonly objectClassIds?: Iterable<number>
     readonly act?: number
+    readonly priority?: 'current' | 'neighbor' | EntityLoadPriority
   }): void {
     const monsterIds = options.monsterClassIds ? [...options.monsterClassIds] : []
     const objectIds = options.objectClassIds ? [...options.objectClassIds] : []
     if (monsterIds.length === 0 && objectIds.length === 0) return
     const act = options.act ?? this.defaultAct
+    const loadPriority: EntityLoadPriority =
+      options.priority === 'neighbor' || options.priority === 'preload-neighbor'
+        ? 'preload-neighbor'
+        : options.priority === 'urgent'
+          ? 'urgent'
+          : 'preload-current'
     const warmAll = (): void => {
       for (const id of monsterIds) {
-        if (id >= 0) {
-          this.getMonsterArt(id, act)
-        }
+        if (id < 0) continue
+        const entry = this.getMonsterIndexEntry(id)
+        if (!entry || !(entry.key ?? entry.slug)) continue
+        this.getMonsterArt(id, act, loadPriority)
       }
       for (const id of objectIds) {
-        if (id >= 0) {
-          this.getObjectArt(id, act)
-        }
+        if (id < 0) continue
+        const entry = this.getObjectIndexEntry(id)
+        if (!entry || entry.draw === false) continue
+        const slug = (act !== undefined ? entry.actSlugs?.[act] : undefined) ?? entry.slug
+        if (!slug) continue
+        this.getObjectArt(id, act, loadPriority)
       }
     }
     if (this.isIndexLoaded) {
@@ -824,11 +1073,21 @@ export class EntityArtCache {
     return this.catalog.objectByClassId?.[key] ?? this.catalog.objectsByClassId?.[key]
   }
 
-  getMonsterArt(classId: number, act = this.defaultAct): LoadedMonsterArt | 'loading' | 'missing' {
+  getMonsterArt(
+    classId: number,
+    act = this.defaultAct,
+    priority: EntityLoadPriority = 'urgent',
+  ): LoadedMonsterArt | 'loading' | 'missing' {
     const cached = this.monsterByClassIdCache.get(classId)
     if (cached !== undefined) return cached
     if (this.failedMonsters.has(classId)) return 'missing'
-    if (this.inflightMonsters.has(classId)) return 'loading'
+    if (this.inflightMonsters.has(classId)) {
+      const inflightSpecKey = this.monsterSpecKeyByClassId.get(classId)
+      if (inflightSpecKey !== undefined) {
+        this.promoteTaskPriority(`monster:${inflightSpecKey}`, priority)
+      }
+      return 'loading'
+    }
 
     if (this.indexState === 'idle') {
       void this.loadIndex()
@@ -855,24 +1114,48 @@ export class EntityArtCache {
           ? { ...existingSpec, scale: entry.scale }
           : existingSpec
       this.monsterByClassIdCache.set(classId, withScale)
+      resolvePreloadMiss('monster', String(classId))
       return withScale
     }
 
+    const gen = this.clearGeneration
     this.inflightMonsters.add(classId)
+    this.monsterSpecKeyByClassId.set(classId, specKey)
+    const taskKey = `monster:${specKey}`
     let specPromise = this.monsterInflightBySpecKey.get(specKey)
     if (!specPromise) {
-      specPromise = this.fetchMonsterBySpecKey(specKey, entry.token, act)
-      this.monsterInflightBySpecKey.set(specKey, specPromise)
+      const created = this.schedulePackFetch(taskKey, priority, () =>
+        this.fetchMonsterBySpecKey(specKey, entry.token, act),
+      )
+      specPromise = created
+      this.monsterInflightBySpecKey.set(specKey, created)
+      void created.finally(() => {
+        if (this.monsterInflightBySpecKey.get(specKey) === created) {
+          this.monsterInflightBySpecKey.delete(specKey)
+        }
+      })
+    } else {
+      this.promoteTaskPriority(taskKey, priority)
     }
 
     void specPromise
       .then(loaded => {
+        if (gen !== this.clearGeneration) {
+          if (loaded) {
+            const stale = new Set<AtlasHandle>()
+            this.collectArtHandles(loaded, stale)
+            this.deleteArtHandles(stale)
+          }
+          return
+        }
         this.inflightMonsters.delete(classId)
+        this.monsterSpecKeyByClassId.delete(classId)
         if (loaded) {
           this.monsterBySpecKeyCache.set(specKey, loaded)
           const withScale: LoadedMonsterArt =
             entry.scale !== undefined ? { ...loaded, scale: entry.scale } : loaded
           this.monsterByClassIdCache.set(classId, withScale)
+          resolvePreloadMiss('monster', String(classId))
         } else {
           this.failedMonsters.add(classId)
           reportMissingArt('monster', specKey, `Failed to load monster art for specKey=${specKey}`)
@@ -880,7 +1163,9 @@ export class EntityArtCache {
         this.onArtLoaded?.()
       })
       .catch(err => {
+        if (gen !== this.clearGeneration) return
         this.inflightMonsters.delete(classId)
+        this.monsterSpecKeyByClassId.delete(classId)
         this.failedMonsters.add(classId)
         reportMissingArt('monster', specKey, String(err))
         this.onArtLoaded?.()
@@ -898,13 +1183,21 @@ export class EntityArtCache {
     classId: number,
     compVariants: readonly number[] | undefined,
     act = this.defaultAct,
+    priority: EntityLoadPriority = 'urgent',
   ): LoadedMonsterArt | 'loading' | 'missing' {
     const variantKey = resolveMonsterComponentVariantKey113c(classId, compVariants)
-    if (variantKey === null) return this.getMonsterArt(classId, act)
+    if (variantKey === null) return this.getMonsterArt(classId, act, priority)
     const cached = this.monsterBySpecKeyCache.get(variantKey)
-    if (cached !== undefined) return cached
+    if (cached !== undefined) {
+      resolvePreloadMiss('monster', String(classId))
+      return cached
+    }
     if (this.failedMonsterVariantKeys.has(variantKey)) return 'missing'
-    if (this.monsterInflightBySpecKey.has(variantKey)) return 'loading'
+    const taskKey = `monster:${variantKey}`
+    if (this.monsterInflightBySpecKey.has(variantKey)) {
+      this.promoteTaskPriority(taskKey, priority)
+      return 'loading'
+    }
     if (this.indexState === 'idle') {
       void this.loadIndex()
       return 'loading'
@@ -913,16 +1206,30 @@ export class EntityArtCache {
     if (this.indexState === 'failed' || !this.catalog) return 'missing'
     const entry = this.getMonsterIndexEntry(classId)
     if (!entry) return 'missing'
-    const specPromise = this.fetchMonsterBySpecKey(variantKey, entry.token, act)
+    const gen = this.clearGeneration
+    const specPromise = this.schedulePackFetch(taskKey, priority, () =>
+      this.fetchMonsterBySpecKey(variantKey, entry.token, act),
+    )
     this.monsterInflightBySpecKey.set(variantKey, specPromise)
     void specPromise
       .then(loaded => {
-        this.monsterInflightBySpecKey.delete(variantKey)
+        if (this.monsterInflightBySpecKey.get(variantKey) === specPromise) {
+          this.monsterInflightBySpecKey.delete(variantKey)
+        }
+        if (gen !== this.clearGeneration) {
+          if (loaded) {
+            const stale = new Set<AtlasHandle>()
+            this.collectArtHandles(loaded, stale)
+            this.deleteArtHandles(stale)
+          }
+          return
+        }
         if (loaded) {
           this.monsterBySpecKeyCache.set(
             variantKey,
             entry.scale !== undefined ? { ...loaded, scale: entry.scale } : loaded,
           )
+          resolvePreloadMiss('monster', String(classId))
         } else {
           this.failedMonsterVariantKeys.add(variantKey)
           reportMissingArt('monster', variantKey, `Failed to load monster variant art ${variantKey}`)
@@ -930,7 +1237,10 @@ export class EntityArtCache {
         this.onArtLoaded?.()
       })
       .catch(err => {
-        this.monsterInflightBySpecKey.delete(variantKey)
+        if (this.monsterInflightBySpecKey.get(variantKey) === specPromise) {
+          this.monsterInflightBySpecKey.delete(variantKey)
+        }
+        if (gen !== this.clearGeneration) return
         this.failedMonsterVariantKeys.add(variantKey)
         reportMissingArt('monster', variantKey, String(err))
         this.onArtLoaded?.()
@@ -941,13 +1251,20 @@ export class EntityArtCache {
   getObjectArt(
     classId: number,
     act = this.defaultAct,
+    priority: EntityLoadPriority = 'urgent',
   ): LoadedObjectArt | 'loading' | 'missing' | 'non-drawable' {
     const cacheKey = `${classId}:${act ?? 0}`
     const cached =
       this.objectByClassIdCache.get(cacheKey) ?? this.objectByClassIdCache.get(`${classId}:0`)
     if (cached !== undefined) return cached
     if (this.failedObjects.has(cacheKey)) return 'missing'
-    if (this.inflightObjects.has(cacheKey)) return 'loading'
+    if (this.inflightObjects.has(cacheKey)) {
+      const inflightSlug = this.objectSlugByCacheKey.get(cacheKey)
+      if (inflightSlug !== undefined) {
+        this.promoteTaskPriority(`object:${inflightSlug}`, priority)
+      }
+      return 'loading'
+    }
 
     if (this.indexState === 'idle') {
       void this.loadIndex()
@@ -982,16 +1299,38 @@ export class EntityArtCache {
       return merged
     }
 
+    const gen = this.clearGeneration
     this.inflightObjects.add(cacheKey)
+    this.objectSlugByCacheKey.set(cacheKey, slug)
+    const taskKey = `object:${slug}`
     let slugPromise = this.objectInflightBySlug.get(slug)
     if (!slugPromise) {
-      slugPromise = loadObjectArt(this.renderer, slug, this.packBase, act, entry, this.fetchFn)
-      this.objectInflightBySlug.set(slug, slugPromise)
+      const created = this.schedulePackFetch(taskKey, priority, () =>
+        loadObjectArt(this.renderer, slug, this.packBase, act, entry, this.fetchFn),
+      )
+      slugPromise = created
+      this.objectInflightBySlug.set(slug, created)
+      void created.finally(() => {
+        if (this.objectInflightBySlug.get(slug) === created) {
+          this.objectInflightBySlug.delete(slug)
+        }
+      })
+    } else {
+      this.promoteTaskPriority(taskKey, priority)
     }
 
     void slugPromise
       .then(loaded => {
+        if (gen !== this.clearGeneration) {
+          if (loaded) {
+            const stale = new Set<AtlasHandle>()
+            this.collectArtHandles(loaded, stale)
+            this.deleteArtHandles(stale)
+          }
+          return
+        }
         this.inflightObjects.delete(cacheKey)
+        this.objectSlugByCacheKey.delete(cacheKey)
         if (loaded) {
           this.objectBySlugCache.set(slug, loaded)
           const merged = this.mergeObjectIndexMetadata(loaded, entry)
@@ -1003,7 +1342,9 @@ export class EntityArtCache {
         this.onArtLoaded?.()
       })
       .catch(err => {
+        if (gen !== this.clearGeneration) return
         this.inflightObjects.delete(cacheKey)
+        this.objectSlugByCacheKey.delete(cacheKey)
         this.failedObjects.add(cacheKey)
         reportMissingArt('object', slug, String(err))
         this.onArtLoaded?.()

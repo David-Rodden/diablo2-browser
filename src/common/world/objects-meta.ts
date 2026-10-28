@@ -6,6 +6,8 @@
  * - `Shrines.txt` & `patchstring.tbl[809..831]`: Shrine Type `Code 0..22` localized names
  */
 
+import { getObjectCofHitBox113c } from '../units/cof-boxes-113c.ts'
+
 export interface CanonicalObjectHitBox {
   readonly left: number
   readonly top: number
@@ -6204,21 +6206,32 @@ export function getObjectHitBox113c(
         height: meta.height,
       }
     }
-    const modeHb = meta.modeHitBoxes?.[m]
-    if (modeHb) {
-      return {
-        left: modeHb.left,
-        top: modeHb.top,
-        width: modeHb.width,
-        height: modeHb.height,
+    const fb = meta.modeHitBoxes?.[m] ?? meta.hitBox
+    if (fb) {
+      // 1.13c D2Client 0x6fb56b15..0x6fb56b52: for UNIT_OBJECT with IsDoor == 0 and CollisionSubst == 0,
+      // 0x6fb1a550 (COF header box ±16 px) must pass before 0x6fb56bd5 -> 0x6fb56730 (frame bounds).
+      if (!meta.isDoor && !meta.collisionSubst) {
+        const cofHb = getObjectCofHitBox113c(meta.token, m)
+        if (cofHb) {
+          const left = Math.max(fb.left, cofHb.left)
+          const top = Math.max(fb.top, cofHb.top)
+          const right = Math.min(fb.left + fb.width, cofHb.left + cofHb.width)
+          const bottom = Math.min(fb.top + fb.height, cofHb.top + cofHb.height)
+          if (right > left && bottom > top) {
+            return {
+              left,
+              top,
+              width: right - left,
+              height: bottom - top,
+            }
+          }
+        }
       }
-    }
-    if (meta.hitBox) {
       return {
-        left: meta.hitBox.left,
-        top: meta.hitBox.top,
-        width: meta.hitBox.width,
-        height: meta.hitBox.height,
+        left: fb.left,
+        top: fb.top,
+        width: fb.width,
+        height: fb.height,
       }
     }
     if (meta.isDoor) {

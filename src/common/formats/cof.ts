@@ -29,6 +29,8 @@ import { ByteReader, FormatError, InvalidFieldError, TruncatedDataError } from '
 
 /** Fixed part of the file, up to and including the animation-speed byte. */
 const HEADER_SIZE = 25
+/** Byte offset of the 4 signed int32 bounding-box fields (`xMin, xMax, yMin, yMax`) in the COF header (`0x6FB1A550`). */
+const HEADER_BOX = 8
 /** Byte offset of the animation speed inside the header. */
 const HEADER_SPEED = 24
 /** Unexplained bytes between the header and the first layer record. */
@@ -71,6 +73,11 @@ export interface CofFile {
   readonly numberOfLayers: number
   /** Animation speed byte; 0 means "default" (25 fps) to the original engine. */
   readonly speed: number
+  /** COF header bounding box (`int32` at `+0x08..+0x17`, used by `D2Client` `0x6FB1A550` with ±16 px margin). */
+  readonly xMin: number
+  readonly xMax: number
+  readonly yMin: number
+  readonly yMax: number
   /** Layer records, in file order. */
   readonly layers: readonly CofLayer[]
   /** One tag byte per frame. */
@@ -87,6 +94,11 @@ export function decodeCof(data: Uint8Array): CofFile {
   const numberOfLayers = r.u8('numberOfLayers')
   const framesPerDirection = r.u8('framesPerDirection')
   const numberOfDirections = r.u8('numberOfDirections')
+  r.seek(HEADER_BOX, 'box')
+  const xMin = r.i32le('xMin')
+  const xMax = r.i32le('xMax')
+  const yMin = r.i32le('yMin')
+  const yMax = r.i32le('yMax')
   r.seek(HEADER_SPEED, 'speed')
   const speed = r.u8('speed')
 
@@ -142,6 +154,10 @@ export function decodeCof(data: Uint8Array): CofFile {
     framesPerDirection,
     numberOfLayers,
     speed,
+    xMin,
+    xMax,
+    yMin,
+    yMax,
     layers,
     animationFrames,
     priority,

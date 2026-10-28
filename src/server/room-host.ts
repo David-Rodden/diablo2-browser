@@ -37,6 +37,7 @@ export interface MultiClientRoomHostConfig {
   readonly actId?: number | undefined
   readonly areaId?: number | undefined
   readonly maxPlayers?: number | undefined
+  readonly playersX?: number | undefined
   readonly aoiRadius?: number | undefined
   readonly policy?: Partial<GameModePolicy> | undefined
   readonly registry?: unknown
@@ -83,6 +84,7 @@ export class MultiClientRoomHost {
         act: config.act ?? config.actId,
         areaId: config.areaId,
         maxPlayers,
+        playersX: config.playersX,
         registry: config.registry,
         policy: {
           ...OPEN_BNET_POLICY,
@@ -362,6 +364,11 @@ export class MultiClientRoomHost {
             },
           })
         }
+      } else if (spatial.unitType === 'monster' || spatial.unitType === 'object') {
+        const assignEv = this.gameInstance.buildUnitAssignEvent(spatial.unitType, spatial.unitId)
+        if (assignEv) {
+          session.sendEvent(assignEv)
+        }
       }
     } else if (ev.type === 'UnitAssign' || ev.type === 'PlayerAssign') {
       this.aoiFilter.markVisible(viewer.unitId, spatial)
@@ -399,11 +406,12 @@ export class MultiClientRoomHost {
         return { unitType, rawUnitType, unitId, areaId, x, y }
       }
       case 'UnitMove': {
-        const rawType = ev.unitType
+        const unitRef = (ev as { unit?: { unitType?: UnitType | number; id?: number } }).unit
+        const rawType = unitRef?.unitType ?? ev.unitType ?? 0
         const unitType: UnitType =
           typeof rawType === 'string' ? rawType : unitTypeFromId(rawType)
         const rawUnitType = unitTypeToId(unitType)
-        const unitId = Number(ev.id ?? ev.unitId ?? 0)
+        const unitId = Number(unitRef?.id ?? ev.id ?? ev.unitId ?? 0)
         const x = Number(ev.x ?? ev.from?.x ?? ev.to?.x ?? 0)
         const y = Number(ev.y ?? ev.from?.y ?? ev.to?.y ?? 0)
         const areaId = Number(
@@ -412,17 +420,48 @@ export class MultiClientRoomHost {
         return { unitType, rawUnitType, unitId, areaId, x, y }
       }
       case 'UnitReassign': {
-        const rawType = ev.unitType
+        const unitRef = (ev as { unit?: { unitType?: UnitType | number; id?: number } }).unit
+        const rawType = unitRef?.unitType ?? ev.unitType ?? 0
         const unitType: UnitType =
           typeof rawType === 'string' ? rawType : unitTypeFromId(rawType)
         const rawUnitType = unitTypeToId(unitType)
-        const unitId = Number(ev.id ?? ev.unitId ?? 0)
+        const unitId = Number(unitRef?.id ?? ev.id ?? ev.unitId ?? 0)
         const x = Number(ev.at?.x ?? ev.x ?? 0)
         const y = Number(ev.at?.y ?? ev.y ?? 0)
         const areaId = Number(
           ev.areaId ?? this.lookupUnitArea(unitType, unitId) ?? viewerAreaId ?? 0,
         )
         return { unitType, rawUnitType, unitId, areaId, x, y }
+      }
+      case 'UnitMode':
+      case 'StateSet':
+      case 'StateSkillEffect': {
+        const unitRef = (ev as { unit?: { unitType?: UnitType | number; id?: number } }).unit
+        const rawType =
+          unitRef?.unitType ??
+          (ev as { unitType?: UnitType | number }).unitType
+        if (rawType === undefined) return undefined
+        const unitType: UnitType =
+          typeof rawType === 'string' ? rawType : unitTypeFromId(rawType)
+        if (unitType !== 'monster') return undefined
+        const unitId = Number(
+          unitRef?.id ??
+            (ev as { id?: number; unitId?: number }).id ??
+            (ev as { unitId?: number }).unitId ??
+            0,
+        )
+        if (unitId <= 0) return undefined
+        const mon = this.gameInstance.getMonsterState(unitId)
+        if (!mon || (mon.dead && ev.type !== 'UnitMode')) return undefined
+        const at = (ev as { at?: { x: number; y: number } }).at
+        return {
+          unitType: 'monster',
+          rawUnitType: 1,
+          unitId,
+          areaId: mon.areaId,
+          x: Math.round(at?.x ?? mon.x),
+          y: Math.round(at?.y ?? mon.y),
+        }
       }
       default:
         return undefined

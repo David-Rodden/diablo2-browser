@@ -18,6 +18,8 @@ import {
 } from '../../netproto/index.ts'
 import { resolveUnitMonSoundRow113c } from '../../common/audio/mon-sounds-113c.ts'
 import { getSoundIdByName113c } from '../../common/audio/sounds-113c.ts'
+import { CANONICAL_NPC_MSG_ID_TO_TBL_KEY } from '../../common/data/canonical-npc-dialog-table.ts'
+import { lookupTbl, getTblLang } from '../i18n/lang.ts'
 import {
   CHAT_LINE_TTL_MS,
   MESSAGE_LOG_MAX_ENTRIES,
@@ -51,6 +53,7 @@ import {
   computeEffectiveFhr,
   computeOneShotDurationMs,
 } from '../../common/units/char-anim-speed.ts'
+import { isSubmergeCapableMonsterHcIdx113c } from '../../common/units/monai-113c.ts'
 import { resolveHirelingName } from '../../common/units/hireling-table.ts'
 import {
   MON_UMOD,
@@ -82,6 +85,11 @@ import {
   clearBoneArmorOverlays113c,
   syncBoneArmorOverlays113c,
 } from './bone-armor-overlays-113c.ts'
+import {
+  applyClientMonsterChangeClassOverlays113c,
+  applyClientMonsterInitOverlays113c,
+  clearClientMonsterDeadModeOverlays113c,
+} from './monster-overlays-113c.ts'
 import { ClientUnit, makeUnitKey } from './client-unit.ts'
 import { objectLitForMode, resetObjectAnim, setObjectLight } from './object-light.ts'
 import { updateObjectModeSound113c } from './object-sound-113c.ts'
@@ -813,16 +821,17 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         : uType === 'player'
           ? 1
           : 0
+    const rawSpawnClassId = ev.classId !== undefined ? Number(ev.classId) : -1
     ev = {
       type: 'UnitAssign',
-      classId: Number(ev.classId ?? 0),
+      classId: rawSpawnClassId >= 0 ? rawSpawnClassId : 0,
       isSelf:
         uType === 'player' &&
         (this.selfId !== 0 ? this.selfId === uId : (isPlayerEv || ev.isSelf === true)),
       unit: {
         unitType: uType,
         id: uId,
-        classId: Number(ev.classId ?? 0),
+        classId: rawSpawnClassId,
         name: ev.name ?? ev.code,
         x: Number(ev.x ?? 0),
         y: Number(ev.y ?? 0),
@@ -886,6 +895,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       ...(evAny.velocityPercent !== undefined ? { velocityPercent: Number(evAny.velocityPercent) } : {}),
       ...(evAny.pathType !== undefined ? { pathType: Number(evAny.pathType) } : {}),
       ...(evAny.npc !== undefined ? { npc: evAny.npc } : {}),
+      ...(evAny.deferToUnitQueue113c === true ? { deferToUnitQueue113c: true } : {}),
     }
   } else if (ev.type === 'CastAtCoord') {
     ev = {
@@ -1013,14 +1023,15 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     if (uId > 0) {
       this._deadSoundUnitIds.delete(uId)
     }
+    const rawNpcClassId = ev.classId !== undefined ? Number(ev.classId) : -1
     ev = {
       type: 'UnitAssign',
-      classId: Number(ev.classId ?? 0),
+      classId: rawNpcClassId >= 0 ? rawNpcClassId : 0,
       isSelf: false,
       unit: {
         unitType: 'monster',
         id: uId,
-        classId: Number(ev.classId ?? 0),
+        classId: rawNpcClassId,
         x: Number(ev.x ?? 0),
         y: Number(ev.y ?? 0),
         lifePct: ev.life !== undefined && Number(ev.life) <= 0 ? 0 : 128,
@@ -1035,7 +1046,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       this.emitUnitDeathSound({
         unitType: 1,
         unitId: uId,
-        classId: existing?.classId ?? (ev.classId !== undefined ? Number(ev.classId) : 1),
+        classId: existing?.classId ?? (ev.classId !== undefined ? Number(ev.classId) : -1),
         x: ev.x !== undefined ? Number(ev.x) : existing?.x,
         y: ev.y !== undefined ? Number(ev.y) : existing?.y,
       })
@@ -1051,6 +1062,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       if (!wasDead && existing.dead) {
         existing.diedAtMs = this._timeMs
       }
+      if (existing.mode === 12) {
+        clearClientMonsterDeadModeOverlays113c(existing)
+      }
     }
     return
   }
@@ -1058,6 +1072,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
   switch (ev.type) {
     case 'GameLoading':
       this.loading = true
+      break
+
+    case 'GameLogonAck':
+      if (ev.difficulty === 0 || ev.difficulty === 1 || ev.difficulty === 2) {
+        this.difficulty = ev.difficulty
+      }
       break
 
     case 'GameFlags':
@@ -1286,7 +1306,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           ? {
               id: rawUnitId,
               unitType: (ev as any).unitType,
-              classId: (ev as any).classId ?? 0,
+              classId: (ev as any).classId !== undefined ? Number((ev as any).classId) : -1,
               name: (ev as any).name,
               x: (ev as any).x ?? 0,
               y: (ev as any).y ?? 0,
@@ -1300,6 +1320,20 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       }
       const key = makeUnitKey(unitPayload.unitType, unitPayload.id)
       let unit = this._units.get(key)
+      const replacedMonsterUnit = Boolean(
+        unit &&
+          unit.unitType === 'monster' &&
+          unitPayload.classId >= 0 &&
+          unit.classId !== unitPayload.classId,
+      )
+      // D2Client.dll 0x6FB57780 (via 0x6FB5E420 0xAC AssignNPC): when an existing monster unit ID is
+      // reused for a different monster classId (or replaces a classId=0 placeholder), discard the old
+      // unit completely so stale classId, flags, bossMods, overlays, states, stats, and dead marks never leak.
+      if (replacedMonsterUnit && unit) {
+        this.npcMotion.removeMonster(unit.id)
+        this._deadSoundUnitIds.delete(unit.id)
+        unit = undefined
+      }
       const existed = unit !== undefined
       const wasDeadBeforeAssign = unit?.dead ?? false
       const prevMode = unit?.mode
@@ -1308,6 +1342,18 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         this._units.set(key, unit)
       } else {
         unit.updateFromSnapshot(unitPayload)
+        if (
+          unit.unitType === 'monster' &&
+          wasDeadBeforeAssign &&
+          (unitPayload.lifePct ?? unit.lifePct) > 0 &&
+          unitPayload.mode !== 0 &&
+          unitPayload.mode !== 12
+        ) {
+          unit.dead = false
+          unit.deathFxTriggered = false
+          this._deadSoundUnitIds.delete(unit.id)
+          clearRevivedCorpseMarks113c(unit)
+        }
       }
       this.seedUnitFromActiveRoom(unit, existed)
       // S2C 0xAC trailing stat list (D2Client.dll 0x6fb5e73c..0x6fb5e85a): each Send-Other stat is added to the
@@ -1497,6 +1543,13 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           isDead: unit.dead,
           ...(unit.velocityPercent !== undefined ? { stat67: unit.velocityPercent } : {}),
         })
+        if (unit.mode === 14 && isSubmergeCapableMonsterHcIdx113c(unit.classId)) {
+          // Pre-submerged water-pool monsters (`TE`/`TN`/`FD`) assigned directly in `MONMODE_SEQUENCE (14)`
+          // start calmly underwater on the final sequence frame (`s1` frame `0`) rather than replaying a sink animation.
+          const preSubmergedStartMs = this.resolveEventNowMs(nowMs) - 10_000
+          unit.animStartedAtMs = preSubmergedStartMs
+          unit.modeStartedAtMs = preSubmergedStartMs
+        }
         if (unitPayload.stats) {
           // 0xAC Send-Other stats live in their own stat list (flag 0x40, D2Client.dll 0x6fb5e803..0x6fb5e841) on
           // top of the base list (stat67 = 75, stat68 = stat69 = 100 at 0x6fafd1ff..0x6fafd21e); unit stat reads
@@ -1511,7 +1564,11 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             }
           }
         }
-        if (this._merc && unit.id === this._merc.mercId) {
+        if (
+          this._merc &&
+          unit.id === this._merc.mercId &&
+          !(this._merc.classId > 0 && unit.classId > 0 && this._merc.classId !== unit.classId)
+        ) {
           if (this._merc.classId === 0 && unit.classId > 0) {
             this._merc.classId = unit.classId
           }
@@ -1549,22 +1606,32 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
         const pet = this._pets.get(unit.id)
         if (pet) {
-          if (pet.classId === 0 && unit.classId > 0) {
-            ;(pet as { classId: number }).classId = unit.classId
-          }
-          pet.lifePct = unit.lifePct
-          pet.lifePctScale = 128
-          if (unit.lifePct <= 0 || unit.mode === 0 || unit.mode === 12) {
-            pet.isDead = true
+          if (pet.classId > 0 && unit.classId > 0 && pet.classId !== unit.classId) {
+            // Unit ID was reused by the server for an unrelated monster; evict stale pet entry.
+            this._pets.delete(unit.id)
           } else {
-            pet.isDead = false
+            if (pet.classId === 0 && unit.classId > 0) {
+              ;(pet as { classId: number }).classId = unit.classId
+            }
+            pet.lifePct = unit.lifePct
+            pet.lifePctScale = 128
+            if (unit.lifePct <= 0 || unit.mode === 0 || unit.mode === 12) {
+              pet.isDead = true
+            } else {
+              pet.isDead = false
+            }
+            // S2C 0x7A SummonAction roster (D2Client pet list 0x6FBCC4D4): pPet->dwOwnerId.
+            unit.ownerType = 'player'
+            unit.ownerId = pet.ownerId
           }
-          // S2C 0x7A SummonAction roster (D2Client pet list 0x6FBCC4D4): pPet->dwOwnerId.
-          unit.ownerType = 'player'
-          unit.ownerId = pet.ownerId
         }
         if (existed && (prevMode === 0 || prevMode === 12) && !unit.dead && unit.lifePct > 0) {
           clearRevivedCorpseMarks113c(unit)
+          applyClientMonsterInitOverlays113c(unit, () => this._nextOverlayId++)
+        } else if (!existed && !unit.dead && unit.mode !== 0 && unit.mode !== 12 && unit.lifePct > 0) {
+          applyClientMonsterInitOverlays113c(unit, () => this._nextOverlayId++)
+        } else if (unit.mode === 12) {
+          clearClientMonsterDeadModeOverlays113c(unit)
         }
       }
 
@@ -1635,10 +1702,10 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       const typeName = unitTypeFromId(uTypeRaw)
       const key = makeUnitKey(uTypeRaw, uId)
       const removedUnit = this._units.get(key)
-      // D2Client.dll 0x6FB5CA40 (Packet 0x0A RemoveGroundUnit):
-      // When bUnitType == 1 (UNIT_MONSTER), walks g_pRosterPetList (0x6FBCC4D4) and immediately
-      // returns without removing the local player's living mercenary (dwPetType == 7).
-      if (typeName === 'monster' && this.isOwnMercUnitId(uId) && !removedUnit?.dead) {
+      // D2Client.dll 0x6FB5CA40..0x6FB5CA9B (Packet 0x0A RemoveGroundUnit, Issue #1710):
+      // When bUnitType == 1 (UNIT_MONSTER), walks g_pRosterPetList (0x6FBCC4D4) for
+      // dwPetType == 7 && dwOwnerId == selfId and returns immediately without checking unit dead state.
+      if (typeName === 'monster' && this.isOwnMercUnitId(uId)) {
         break
       }
       const removedMonsterClassId =
@@ -1705,6 +1772,11 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
         this.clearObjectCollisionFootprint(key)
       }
+      if (removedUnit) {
+        // D2Client.dll 0x6FB5CA40 -> 0x6FB5AF30 (D2CLIENT_RemoveClientUnit -> D2CLIENT_FreeUnitPacketList):
+        // Free all pending nodes in unit+0xD8 when the unit is removed.
+        removedUnit.queuedPackets.length = 0
+      }
       this._units.delete(key)
       this._portals.delete(uId)
       if (removedMonsterClassId !== undefined && isTownNpcHcIdx(removedMonsterClassId)) {
@@ -1717,6 +1789,17 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       const evAny = ev as any
       const uId = Number(ev.id ?? evAny.unitId ?? evAny.unit?.id ?? 0)
       const uType = ev.unitType ?? evAny.unit?.unitType
+      if (
+        !this._drainingQueuedUnitPacket &&
+        (this.deferUnitPackets113c || evAny.deferToUnitQueue113c === true)
+      ) {
+        // S2C 0x0F, 0x10, 0x67, 0x68, 0x6D (D2Client 0x6fb5ce20 -> 0x6fb5bc60 / 0x6fb5bc40 -> 0x6fb5c630, #1708):
+        // look up the existing unit via D2CLIENT_FindServerSideUnit (0x6fb59600); if not found, drop the packet.
+        // Otherwise append to the per-unit FIFO packet queue (unit+0xd8) to be drained at the end of the unit's
+        // 25 Hz tick (0x6fadb1e0 -> 0x6fb5bc20).
+        this.enqueueUnitPacket113c(uType, uId, ev)
+        break
+      }
       const unit = this.ensureWorldOrGroundUnit(uType, uId)
       if (!unit) break
       if (unit.unitType === 'monster') {
@@ -2242,14 +2325,17 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     case 'UnitMode': {
       const uId = Number(ev.id ?? ev.unitId ?? (ev as any).unit?.id ?? 0)
       const uType: UnitType = ev.unitType ?? (ev as any).unit?.unitType ?? 1
-      if (ev.eventCode !== undefined) {
-        // S2C 0x0E (D2Client 0x6fb5bc60 -> 0x6fb5c630): look up the existing unit via
-        // D2Client_FindUnit (0x6fb59600); if not found, drop the packet. Otherwise append
-        // to the per-unit FIFO packet queue (unit+0xd8) to be drained at the end of the
-        // unit's 25 Hz tick (0x6fadb1e0 -> 0x6fb5bc20).
-        const unit = this.getUnit(uType, uId)
-        if (!unit) break
-        unit.queuedPackets.push(ev)
+      if (
+        !this._drainingQueuedUnitPacket &&
+        (ev.eventCode !== undefined ||
+          this.deferUnitPackets113c ||
+          (ev as { deferToUnitQueue113c?: boolean }).deferToUnitQueue113c === true)
+      ) {
+        // S2C 0x0C, 0x0D, 0x0E, 0x69, 0x6A, 0x6B, 0x6C (D2Client 0x6fb5ce20 -> 0x6fb5bc60 / 0x6fb5bc40 -> 0x6fb5c630, #1708):
+        // look up the existing unit via D2Client_FindUnit (0x6fb59600); if not found, drop the packet. Otherwise append
+        // to the per-unit FIFO packet queue (unit+0xd8) to be drained at the end of the unit's 25 Hz tick
+        // (0x6fadb1e0 -> 0x6fb5bc20).
+        this.enqueueUnitPacket113c(uType, uId, ev)
         break
       }
       const existedBefore = this.getUnit(uType, uId) !== undefined
@@ -2360,6 +2446,16 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           ty = tgt.y
         }
         this.spawnMissilesForSkill(caster, skillId, tx, ty, level)
+        break
+      }
+      if (
+        !this._drainingQueuedUnitPacket &&
+        (this.deferUnitPackets113c || (ev as { deferToUnitQueue113c?: boolean }).deferToUnitQueue113c === true)
+      ) {
+        // S2C 0x4C, 0x4D (D2Client 0x6fb5ce20 -> 0x6fb5bc60 -> 0x6fb5c630, #1708):
+        // look up the existing unit via D2CLIENT_FindServerSideUnit (0x6fb59600); if not found, drop the packet.
+        // Otherwise append to unit+0xd8 to be drained at the end of the unit's 25 Hz tick (0x6fadb1e0 -> 0x6fb5bc20).
+        this.enqueueUnitPacket113c(casterType, casterId, ev)
         break
       }
       let unit = this.getUnit(casterType, casterId)
@@ -2656,7 +2752,35 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               mutableStats.push({ statId: ev.stat, value: nextValue, param: ev.param ?? 0 })
             }
             ;(item as any).stats = mutableStats
-            if (ev.stat === 72) {
+            if (ev.stat === 204) {
+              const rawParam =
+                ev.param ?? (existingIdx >= 0 ? mutableStats[existingIdx]!.param : 0) ?? 0
+              const skillId = rawParam >= 64 ? rawParam >>> 6 : rawParam
+              const curCharges = ev.value & 0xff
+              if (skillId > 0) {
+                this._self.skillCharges.set(skillId, curCharges)
+                if (curCharges <= 0) {
+                  if (
+                    this._self.leftSkill === skillId &&
+                    (this._self.leftSkillItemId === undefined ||
+                      this._self.leftSkillItemId === 0xffffffff ||
+                      this._self.leftSkillItemId === itemId)
+                  ) {
+                    this._self.leftSkill = 0
+                    this._self.leftSkillItemId = undefined
+                  }
+                  if (
+                    this._self.rightSkill === skillId &&
+                    (this._self.rightSkillItemId === undefined ||
+                      this._self.rightSkillItemId === 0xffffffff ||
+                      this._self.rightSkillItemId === itemId)
+                  ) {
+                    this._self.rightSkill = 0
+                    this._self.rightSkillItemId = undefined
+                  }
+                }
+              }
+            } else if (ev.stat === 72) {
               ;(item as any).curDurability = ev.value
               ;(item as any).durability = ev.value
             } else if (ev.stat === 73) {
@@ -2677,7 +2801,17 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           this._containers.hudRevision++
         }
       } else {
-        const targetUnit = this.ensureUnit(ev.unit.unitType, ev.unit.id)
+        const isMonsterTarget = unitTypeFromId(ev.unit.unitType) === 'monster'
+        if (isMonsterTarget && this._merc && ev.unit.id === this._merc.mercId) {
+          this._merc.stats.set(ev.stat, ev.value)
+          if (ev.stat === 13) {
+            this._merc.exp = ev.value
+          }
+        }
+        const targetUnit = isMonsterTarget
+          ? this.ensureWorldOrGroundUnit(ev.unit.unitType, ev.unit.id)
+          : this.ensureUnit(ev.unit.unitType, ev.unit.id)
+        if (!targetUnit) break
         targetUnit.stats.set(ev.stat, ev.value, ev.param ?? 0)
         if (this._merc && targetUnit.unitType === 'monster' && targetUnit.id === this._merc.mercId) {
           this._merc.stats.set(ev.stat, ev.value)
@@ -2744,6 +2878,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         selfUnit?.states.has(18) === true ||
         this._self.states.has(18)
 
+      const wasModeZeroDeath = selfUnit?.mode === 0
+      const prevSelfDead = this._isSelfDead
+      const prevSelfIsDead = this._self.isDead
       this._self.applyLifeMana(
         ev.life,
         ev.mana,
@@ -2754,16 +2891,21 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         ev.manaRegen,
       )
       clearZeroLifeDeathInTown(this)
-      if (ev.life > 0) {
+      if (wasModeZeroDeath) {
+        this._isSelfDead = prevSelfDead
+        this._self.isDead = prevSelfIsDead
+      } else if (ev.life > 0) {
         this._isSelfDead = false
         this._self.isDead = false
       }
       if (selfUnit) {
         // D2Client.dll 0x6fb5ebe0 (0x95, 0x6fb5ec78) & 0x6fb5eca0 (0x18, 0x6fb5ed58):
-        // When life > 0 and dwMode == 17 (or 0), transitions to mode 5 (PLRMODE_TNEUTRAL) and clears UNITFLAG_DEAD.
-        if (ev.life > 0 && (selfUnit.mode === 0 || selfUnit.mode === 17)) {
-          selfUnit.mode = isTownLevel(this.areaId) ? 5 : 1
-          this._self.mode = selfUnit.mode
+        // When life != 0 and dwMode == 0x11 (17, PLRMODE_DEAD), transitions to mode 5 (PLRMODE_TNEUTRAL)
+        // unconditionally (mov edi, 5; call 0x6FADA6C0) and clears UNITFLAG_DEAD (Issue #1709).
+        if (ev.life > 0 && selfUnit.mode === 17) {
+          selfUnit.mode = 5
+          selfUnit.dead = false
+          this._self.mode = 5
         }
         if (ev.life > 0 && selfUnit.lifePct <= 0) {
           selfUnit.lifePct =
@@ -2948,15 +3090,15 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           const prgStart = statePrgSoundStartRequest113c(unit, entry.state, entry.stats)
           if (prgStart) this.pushSoundRequest(prgStart)
         }
-        // States.txt #142 `changeclass` (StateSetFunc[8] @ 0x6FB235B0):
-        // Reads STAT_SHORTPARAM1 (355) from the state stat list and updates the monster's classId
-        // (e.g. Baal on Throne #543 `baalthrone` -> #559 `baalcrabstairs`) and resets mode to NU (1).
+        // States.txt #142 `changeclass` (StateSetFunc[8] @ 0x6FB235B0 -> 0x6FAFD610):
+        // Frees unit overlays (`0x6FB19700`, removing e.g. `baal_on_throne` #275 on `baalthrone` #543),
+        // clears `UNITFLAG_DONOTDRAW`, updates `classId` from `STAT_SHORTPARAM1` (355), and resets mode to NU (1).
         if (entry.state === 142 && unit.unitType === 'monster') {
           const newClassId =
             entry.stats?.find((s: { statId: number; value: number }) => s.statId === 355)?.value ??
             unit.stats.get(355)
           if (typeof newClassId === 'number' && newClassId > 0) {
-            unit.classId = newClassId
+            applyClientMonsterChangeClassOverlays113c(unit, newClassId, () => this._nextOverlayId++)
             unit.mode = 1
             const npcUnit = this.npcMotion.getUnit(unit.id)
             if (npcUnit) {
@@ -3093,10 +3235,15 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         break
       }
       this.invalidatePlayerLightCache()
-      if (!ev.item && (ev as any).itemId !== undefined) {
+      if (
+        !ev.item &&
+        (ev as any).itemId !== undefined &&
+        typeof (ev as any).code === 'string' &&
+        (ev as any).code.trim() !== ''
+      ) {
         ;(ev as any).item = {
           id: (ev as any).itemId,
-          code: (ev as any).code ?? 'rin',
+          code: (ev as any).code,
           x: (ev as any).x ?? 0,
           y: (ev as any).y ?? 0,
         }
@@ -3461,10 +3608,16 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         this._self.unitId = ev.unitId
       }
       if (ev.unitId === this.selfId || ev.unitId === 0) {
+        const itemId =
+          typeof (ev as any).itemId === 'number' && (ev as any).itemId !== 0xffffffff
+            ? ((ev as any).itemId >>> 0)
+            : undefined
         if (ev.hand === 'left') {
           this._self.leftSkill = ev.skill
+          this._self.leftSkillItemId = itemId
         } else {
           this._self.rightSkill = ev.skill
+          this._self.rightSkillItemId = itemId
           this.syncSelfRightHandAuraState(ev.skill)
         }
       }
@@ -3512,10 +3665,46 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           }
         }
       } else if (ev.kind === 'info') {
-        const validMessages =
+        const slicedMessages =
           typeof ev.count === 'number' && Array.isArray(ev.messages)
             ? ev.messages.slice(0, Math.max(0, ev.count))
             : ev.messages
+        // D2Client.dll 0x6fb2dedb..0x6fb2df85:
+        // When count === 1 and slot[0].menu === 3 (monster 0x6fc68cd1 / 0x6fd118b0 or object overhead speech),
+        // attach overhead text to the target unit without overwriting gpNpcMessageList / _npcInfoByUnitId.
+        const firstOverhead =
+          (ev.count === 1 || (ev.count === undefined && slicedMessages?.length === 1)) &&
+          slicedMessages?.[0]?.menu === 3 &&
+          (slicedMessages[0].stringId ?? 0) > 0
+            ? slicedMessages[0]
+            : undefined
+        if (firstOverhead !== undefined) {
+          if (targetId !== undefined && targetId !== 0 && targetId !== 0xffffffff) {
+            const uType = ev.unitType === 2 ? 'object' : 'monster'
+            const targetUnit = this.getUnit(uType, targetId)
+            if (targetUnit) {
+              const lang = getTblLang()
+              const tblKey = CANONICAL_NPC_MSG_ID_TO_TBL_KEY[firstOverhead.stringId]
+              const overhead =
+                (tblKey ? lookupTbl(tblKey, lang) : undefined) ??
+                lookupTbl(`string#${firstOverhead.stringId}`, lang)
+              if (overhead) {
+                const tNow = this._worldClockMs > 0 ? this._worldClockMs : Date.now()
+                targetUnit.overheadText = overhead
+                targetUnit.overheadExpireMs = tNow + OVERHEAD_SPEECH_TTL_MS
+                targetUnit.overheadColor = 0
+                ;(targetUnit as { _overheadElapsedMs?: number | undefined })._overheadElapsedMs = 0
+              }
+            }
+          }
+          break
+        }
+        const validMessages = Array.isArray(slicedMessages)
+          ? slicedMessages.filter(
+              (m: { readonly menu?: number | undefined; readonly stringId: number }) =>
+                m.stringId > 0 && (m.menu === undefined || m.menu <= 2),
+            )
+          : slicedMessages
         if (targetId !== undefined && targetId !== 0) {
           this._npcInfoByUnitId.set(targetId, {
             npcInfoRaw: ev.raw,
@@ -3571,12 +3760,19 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
       } else if (ev.kind === 'assign') {
         if (targetId !== undefined) {
-          const unit = this.ensureUnit('monster', targetId)
-          if (ev.classId !== undefined) unit.classId = ev.classId
-          if (ev.x !== undefined) unit.x = ev.x
-          if (ev.y !== undefined) unit.y = ev.y
-          if (this._pendingWantsInteractUnitIds.delete(targetId)) {
-            unit.wantsInteract = true
+          const existingNpc = this.getUnit('monster', targetId)
+          const unit =
+            existingNpc ??
+            (ev.classId !== undefined && ev.classId >= 0
+              ? this.ensureUnit('monster', targetId)
+              : undefined)
+          if (unit) {
+            if (ev.classId !== undefined && ev.classId >= 0) unit.classId = ev.classId
+            if (ev.x !== undefined) unit.x = ev.x
+            if (ev.y !== undefined) unit.y = ev.y
+            if (this._pendingWantsInteractUnitIds.delete(targetId)) {
+              unit.wantsInteract = true
+            }
           }
           if (Array.isArray(ev.messages)) {
             this._npcInfoByUnitId.set(targetId, { messages: ev.messages })
@@ -3697,6 +3893,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           }
         }
         this._gameQuestAvailability = avail
+        this._hasGameQuestAvailability = true
         break
       }
       if (ev.kind === 'special' || ev.source === 0x89) {
@@ -4197,6 +4394,13 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         formattedEn = resEn.text
         formattedZh = resZh.text
         effectiveColor = resEn.color
+        if (effectiveEventType === 0x12) {
+          // 1.13c D2Client.dll 0x6FB2E5E6..0x6FB2E660 (S2C 0x5A event 0x12 "Diablo Walks the Earth", Issue #1720):
+          // Sets rampUp = 4000 ms, sustain = 10000 ms, rampDown = 4000 ms, maxAmp = 6,
+          // and calls PlaySound(0x1220 = 4640 /* monster_diablo_taunt_ex */, 0, 0, 0, 0).
+          this.startScreenShake(10000, 6, 4000, 4000)
+          this.pushSoundRequest({ soundId: 0x1220 })
+        }
       } else if (effectiveKind === 'whisper') {
         const chatType = effectiveEventType === 0x06 ? 0x06 : 0x02
         const sender = senderName ?? ''
@@ -4704,6 +4908,7 @@ export function clearRevivedCorpseMarks113c(unit: ClientUnit): void {
   unit.states.remove(104)
   unit.states.remove(118)
   unit.corpseSuppressed = false
+  unit.clientNoDraw = false
 }
 
 export function applyUnitModeImmediateImpl(
@@ -4813,6 +5018,7 @@ export function applyUnitModeImmediateImpl(
       unit.deathFxTriggered = false
       this._deadSoundUnitIds.delete(unit.id)
       clearRevivedCorpseMarks113c(unit)
+      applyClientMonsterInitOverlays113c(unit, () => this._nextOverlayId++)
     }
     if (ev.npc !== undefined) {
       this.npcMotion.applyCommandForUnit(uId, ev.npc)

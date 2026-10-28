@@ -17,7 +17,17 @@ import {
 } from '../../common/ui/pd2-d2gl.ts'
 import type { UiDataMode } from '../../common/ui/pd2-sgd2freeres.ts'
 
-export type D2FontName = 'font6' | 'font8' | 'font16' | 'font30' | 'fontexocet10' | 'fontformal12'
+export type D2FontName =
+  | 'font6'
+  | 'font8'
+  | 'font16'
+  | 'font30'
+  | 'font42'
+  | 'fontexocet10'
+  | 'fontformal10'
+  | 'fontformal11'
+  | 'fontformal12'
+  | 'fontingamechat'
 
 export type D2ColorCode =
   | 'white'
@@ -144,9 +154,9 @@ export function computeFontMetrics113c(nHeight: number, lang: 'ENG' | 'CHI' = 'E
   const lineAdvance = lang === 'CHI' ? 14 : 16
   const baselineConstant = lang === 'CHI' ? 2 : 3
   return {
-    lineHeight: Math.round((lineMultiplier * nHeight) / 10),
-    lineAdvance: Math.round((lineAdvance * nHeight) / 10),
-    baseline: Math.round((baselineConstant * nHeight) / 10),
+    lineHeight: Math.trunc((lineMultiplier * nHeight) / 10),
+    lineAdvance: Math.trunc((lineAdvance * nHeight) / 10),
+    baseline: Math.trunc((baselineConstant * nHeight) / 10),
   }
 }
 
@@ -200,13 +210,19 @@ export function parseFontTblMetrics(
 }
 
 /**
- * Split a string containing Diablo II `ÿcX` color codes into colored spans (`D2WinFont.cpp:760-842`).
+ * Split a string containing Diablo II `ÿcX` color codes into colored spans
+ * (`D2Win.dll` `0x6F8F2750` at `0x6F8F27F0..0x6F8F285C`).
+ *
+ * - Only `0xFF` (`'ÿ'` / `'\xff'`) introduces a colour escape; U+FFFD (`'\ufffd'`) is never a colour escape.
+ * - `0xFF` followed by `'c'` + char `d` selects colour `d - '0'`, with `< 0` or `>= 13` resetting to `0` (`'white'`).
+ * - Trailing `0xFF` + `'c'` at end-of-string (`ebx >= len` at `0x6F8F2821..0x6F8F2829`) resets to `0` (`'white'`).
+ * - `0xFF` NOT followed by `'c'` (`0x6F8F284A`) rewinds 1 char and draws `0xFF` (`'ÿ'`) as a literal glyph.
  */
 export function parseColoredText(input: string, defaultColor: D2ColorCode = 'white'): TextSpan[] {
   if (!input || typeof input !== 'string') {
     return []
   }
-  if (!input.includes('ÿ') && !input.includes('\xff') && !input.includes('\ufffdc')) {
+  if (!input.includes('\xff')) {
     return [{ text: input, color: defaultColor }]
   }
   const spans: TextSpan[] = []
@@ -214,15 +230,19 @@ export function parseColoredText(input: string, defaultColor: D2ColorCode = 'whi
   let buf = ''
   for (let i = 0; i < input.length; i++) {
     const ch = input[i]!
-    if ((ch === 'ÿ' || ch === '\xff' || ch === '\ufffd') && input[i + 1] === 'c' && i + 2 < input.length) {
-      const idx = input.charCodeAt(i + 2) - 48
-      const nextColor = (idx >= 0 && idx < 13) ? D2_COLOR_INDEX_TO_NAME[idx]! : 'white'
+    if (input.charCodeAt(i) === 0xff && input[i + 1] === 'c') {
       if (buf.length > 0) {
         spans.push({ text: buf, color: currentColor })
         buf = ''
       }
-      currentColor = nextColor
-      i += 2
+      if (i + 2 < input.length) {
+        const idx = input.charCodeAt(i + 2) - 48
+        currentColor = idx >= 0 && idx < 13 ? D2_COLOR_INDEX_TO_NAME[idx]! : 'white'
+        i += 2
+      } else {
+        currentColor = 'white'
+        i += 1
+      }
       continue
     }
     buf += ch
@@ -233,13 +253,34 @@ export function parseColoredText(input: string, defaultColor: D2ColorCode = 'whi
   return spans
 }
 
+/**
+ * Canonical 1.13c `.tbl` header `tbl[10]` (`nHeight`) values (`D2Win.dll` `0x6F8F1E60` `GetFontHeight`),
+ * used as fallback before `meta.lineHeight` is loaded.
+ */
+export const FONT_TBL_NHEIGHT_113C: Record<D2FontName, number> = {
+  font6: 9,
+  font8: 8,
+  fontexocet10: 9,
+  fontformal10: 12,
+  fontformal11: 14,
+  fontformal12: 14,
+  fontingamechat: 14,
+  font16: 13,
+  font30: 24,
+  font42: 31,
+}
+
 export const FONT_PX_SIZE: Record<D2FontName, number> = {
   font6: 10,
   font8: 11,
+  fontformal10: 11,
+  fontingamechat: 12,
+  fontformal11: 13,
   fontexocet10: 13,
   fontformal12: 14,
   font16: 16,
   font30: 26,
+  font42: 33,
 }
 
 /**
@@ -250,10 +291,14 @@ export const FONT_PX_SIZE: Record<D2FontName, number> = {
 export const FONT_BASELINE_OFFSET: Record<D2FontName, number> = {
   font6: 8,
   font8: 11,
+  fontformal10: 15,
   fontexocet10: 13,
   font16: 13,
+  fontingamechat: 16,
+  fontformal11: 23,
   font30: 23,
   fontformal12: 25,
+  font42: 32,
 }
 
 export const D2_EXOCET_FONT_STACK =
@@ -290,21 +335,7 @@ function parseHexRgb(hex: string): readonly [number, number, number] {
 }
 
 function normalizeDc6CharCode(rawCode: number): number {
-  switch (rawCode) {
-    case 0x2013:
-    case 0x2014:
-      return 0x2d // '-'
-    case 0x2018:
-    case 0x2019:
-      return 0x27 // "'"
-    case 0x201c:
-    case 0x201d:
-      return 0x22 // '"'
-    case 0x2022:
-      return 0xb7 // '·'
-    default:
-      return rawCode
-  }
+  return rawCode
 }
 
 /**
@@ -909,23 +940,97 @@ export class D2FontRenderer {
   }
 
   /**
-   * Measure pixel width of text (stripping `ÿcX` codes) using authentic font tbl widths.
+   * Return 1.13c `.tbl[10]` font height (`D2Win.dll` `0x6F8F1E60` `GetFontHeight`).
+   */
+  getFontHeight113c(font: D2FontName = 'font16'): number {
+    return this.metas[font]?.lineHeight || FONT_TBL_NHEIGHT_113C[font]
+  }
+
+  /**
+   * Compute 1.13c lineHeight, lineAdvance (`0x6F8F2ADB`), and baseline (`0x6F8F352A`)
+   * from `tbl[10]` using truncating integer division (`D2Win.dll` `0x6F8F3110`).
+   */
+  getFontMetrics113c(font: D2FontName = 'font16', lang: 'ENG' | 'CHI' = 'ENG'): D2FontMetricsCalculation {
+    return computeFontMetrics113c(this.getFontHeight113c(font), lang)
+  }
+
+  /**
+   * Return 1.13c multi-line vertical step (`(lineAdvanceMult * tbl[10]) / 10` truncated at `0x6F8F2ADB`).
+   */
+  getLineAdvance113c(font: D2FontName = 'font16', lang: 'ENG' | 'CHI' = 'ENG'): number {
+    return this.getFontMetrics113c(font, lang).lineAdvance
+  }
+
+  private measureGlyphCode(code: number, _font: D2FontName, meta: FontAtlasMeta | undefined, pxSize: number): number {
+    const normalized = normalizeDc6CharCode(code)
+    if (normalized < 256 && meta?.glyphs[normalized]) {
+      return meta.glyphs[normalized]!.width
+    }
+    return normalized > 255 ? pxSize : Math.round(pxSize * 0.58)
+  }
+
+  /**
+   * Measure pixel width of text using authentic font tbl widths (`D2Win.dll` `0x6F8F1F20` / `0x6F8F1FB0`).
+   *
+   * Per `0x6F8F1F56..0x6F8F1F8C` and `0x6F8F2011..0x6F8F204B`, any `0xFF` (`ÿ`) followed by 2 characters
+   * is skipped as a 3-character escape with zero advance even without `'c'` (except `ÿm<X>` / `ÿM<X>`,
+   * where `Unicode::strnicmp(&s[i+1], L"m", 1) == 0` adds the width of `'m'`).
    */
   measureText(text: string, font: D2FontName = 'font16'): number {
-    const spans = parseColoredText(text)
+    if (!text) return 0
+    const meta = this.metas[font]
+    const pxSize = FONT_PX_SIZE[font]
+    let maxLine = 0
+    let curLine = 0
+    for (let i = 0; i < text.length; i++) {
+      const rawCode = text.charCodeAt(i)
+      if (rawCode === 0x0a) {
+        if (curLine > maxLine) maxLine = curLine
+        curLine = 0
+        continue
+      }
+      if (rawCode === 0xff) {
+        const nextChar = text[i + 1]
+        if (nextChar === 'm' || nextChar === 'M') {
+          curLine += this.measureGlyphCode(0x6d, font, meta, pxSize)
+        }
+        i += 2
+        continue
+      }
+      curLine += this.measureGlyphCode(rawCode, font, meta, pxSize)
+    }
+    return curLine > maxLine ? curLine : maxLine
+  }
+
+  /**
+   * Partial/caret width up to `maxChars` (`D2Win.dll` `0x6F8F20C0`..`0x6F8F214A`).
+   *
+   * Unlike `0x6F8F1F20` / `0x6F8F1FB0`, `0x6F8F20C0` only skips `0xFF` + `'c'` + `'0'..'6'`
+   * (`0x30 <= d < 0x37`) when `i + 3 < maxChars`; `ÿc7..ÿc<` and non-`'c'` sequences are
+   * measured as literal glyphs.
+   */
+  measureTextPartial113c(text: string, maxChars: number, font: D2FontName = 'font16'): number {
+    if (!text || maxChars <= 0) return 0
     const meta = this.metas[font]
     const pxSize = FONT_PX_SIZE[font]
     let total = 0
-    for (const span of spans) {
-      for (let i = 0; i < span.text.length; i++) {
-        const code = normalizeDc6CharCode(span.text.charCodeAt(i))
-        if (code < 256 && meta?.glyphs[code]) {
-          const rawW = meta.glyphs[code]!.width
-          total += font === 'font6' && code === 0x7c ? Math.max(rawW, 4) : rawW
-        } else {
-          total += code > 255 ? pxSize : Math.round(pxSize * 0.58)
-        }
+    for (let i = 0, ebx = 3; i < maxChars && i < text.length; i++, ebx++) {
+      const rawCode = text.charCodeAt(i)
+      if (rawCode === 0x0a) {
+        continue
       }
+      if (
+        ebx < maxChars &&
+        rawCode === 0xff &&
+        text.charCodeAt(i + 1) === 0x63 &&
+        text.charCodeAt(i + 2) >= 0x30 &&
+        text.charCodeAt(i + 2) < 0x37
+      ) {
+        i += 2
+        ebx += 2
+        continue
+      }
+      total += this.measureGlyphCode(rawCode, font, meta, pxSize)
     }
     return total
   }
@@ -935,7 +1040,9 @@ export class D2FontRenderer {
     if (typeof ctx.measureText !== 'function' || this.hasAnyBlitableGlyph(font, spans)) return this.measureText(text, font)
     const pxSize = this.hdText && this.hdTextScale !== 1 ? Math.max(1, Math.round(FONT_PX_SIZE[font] * this.hdTextScale)) : FONT_PX_SIZE[font]
     ctx.save()
-    ctx.font = `${font === 'font16' || font === 'font30' || font === 'fontexocet10' ? 'bold ' : ''}${pxSize}px ${font === 'fontformal12' ? D2_FORMAL_FONT_STACK : D2_EXOCET_FONT_STACK}`
+    const isTitleFont = font === 'font16' || font === 'font30' || font === 'font42' || font === 'fontexocet10'
+    const isFormalFont = font === 'fontformal10' || font === 'fontformal11' || font === 'fontformal12' || font === 'fontingamechat'
+    ctx.font = `${isTitleFont ? 'bold ' : ''}${pxSize}px ${isFormalFont ? D2_FORMAL_FONT_STACK : D2_EXOCET_FONT_STACK}`
     const width = spans.reduce((sum, span) => sum + ctx.measureText(span.text).width, 0)
     ctx.restore()
     return Math.ceil(width)
@@ -988,6 +1095,25 @@ export class D2FontRenderer {
     const align = options.align ?? 'left'
     const shadow = options.shadow ?? false
 
+    if (text.includes('\n')) {
+      const lang = options.lang ?? 'ENG'
+      const lineStep = this.getLineAdvance113c(font, lang)
+      const lines = text.split('\n')
+      let carryColor: D2ColorCode = defaultColor
+      for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        const lineText = lines[lineIdx]!
+        const lineSpans = parseColoredText(lineText, carryColor)
+        this.drawText(ctx, lineText, x, y + lineIdx * lineStep, {
+          ...options,
+          color: carryColor,
+        })
+        if (lineSpans.length > 0) {
+          carryColor = lineSpans[lineSpans.length - 1]!.color
+        }
+      }
+      return
+    }
+
     let curX = Math.round(x)
     const baseY = Math.round(y)
 
@@ -998,8 +1124,9 @@ export class D2FontRenderer {
       : basePxSize
 
     ctx.save()
-    const isTitleFont = font === 'font16' || font === 'font30' || font === 'fontexocet10'
-    const fontStack = font === 'fontformal12' ? D2_FORMAL_FONT_STACK : D2_EXOCET_FONT_STACK
+    const isTitleFont = font === 'font16' || font === 'font30' || font === 'font42' || font === 'fontexocet10'
+    const isFormalFont = font === 'fontformal10' || font === 'fontformal11' || font === 'fontformal12' || font === 'fontingamechat'
+    const fontStack = isFormalFont ? D2_FORMAL_FONT_STACK : D2_EXOCET_FONT_STACK
     ctx.font = `${isTitleFont ? 'bold ' : ''}${pxSize}px ${fontStack}`
     ctx.textBaseline = 'alphabetic'
 
@@ -1042,8 +1169,8 @@ export class D2FontRenderer {
           if (this.canBlitGlyph(meta, rawCode)) {
             const code = normalizeDc6CharCode(rawCode)
             const g = meta.glyphs[code]!
-            const adv = font === 'font6' && code === 0x7c ? Math.max(g.width, 4) : g.width
-            const gx = Math.round(curX) - (font === 'font6' && code === 0x7c ? 1 : 0)
+            const adv = g.width
+            const gx = Math.round(curX)
             if (code !== 0x20 && code !== 0xa0 && g.frameW > 0 && g.frameH > 0 && tinted) {
               if (shadow && span.color !== 'black' && shadowAtlas) {
                 ctx.drawImage(

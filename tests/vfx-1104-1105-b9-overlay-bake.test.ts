@@ -13,9 +13,9 @@
  *    (`BABash`, 9 frames, with `MISSILE_METAS['bash']` undefined).
  * 3. (#1104 / #1105) `drawSceneOverlayDrawable` resolves overlays exclusively from `overlayArtMap` (by
  *    normalized `celFile` / token) without falling back to `missileArtMap` and without calling `reportMissingArt`.
- * 4. (#1105) Every `Overlay.txt` row with an MPQ-present `Filename` (284 rows across 252 distinct DCCs; only
- *    `mephisto` -> `MephistoOverlay` is absent from the MPQ archives) is baked in `OVERLAY_METAS` and
- *    `public/overlays/` with normalized `/` path separators and 0 scalar drift.
+ * 4. (#1105 / #1771) Every `Overlay.txt` row with an MPQ-present `Filename` (all 285 non-null rows: 284 DCCs +
+ *    `mephisto` -> `Data\Global\Overlays\MephistoOverlay.DC6`) is baked in `OVERLAY_METAS` and `public/overlays/`
+ *    with normalized `/` path separators and 0 scalar drift.
  */
 
 import { homedir } from 'node:os'
@@ -44,10 +44,10 @@ const EXCEL_DIR =
   join(homedir(), 'd2-data', 'excel')
 
 /**
- * `mephisto` (row 122, `Filename = MephistoOverlay`) is the sole `Overlay.txt` row whose DCC
- * does not exist in `Patch_D2.mpq`, `d2exp.mpq`, or `d2data.mpq`.
+ * All 285 non-null `Overlay.txt` rows exist in the 1.13c MPQ archives (284 `.dcc` + 1 `.dc6`:
+ * row 122 `mephisto` -> `Data\Global\Overlays\MephistoOverlay.DC6` in `d2data.mpq`, #1771).
  */
-const MPQ_ABSENT_OVERLAY_ROWS: ReadonlySet<string> = new Set(['mephisto'])
+const MPQ_ABSENT_OVERLAY_ROWS: ReadonlySet<string> = new Set()
 
 function buildEmulatedOverlayArtMap(): Map<string, LoadedOverlayArt> {
   const map = new Map<string, LoadedOverlayArt>()
@@ -279,7 +279,7 @@ describe('VFX-B9: Missing Overlay Atlas Baking (#1104, #1105)', () => {
   })
 
   describe('#1105 (B9-2): 0 Overlay.txt rows with MPQ-present Filename lack an OVERLAY_METAS atlas', () => {
-    it('covers all 284 MPQ-present Overlay.txt rows in OVERLAY_METAS with exact scalar parity, and documents mephisto (MephistoOverlay) as the sole MPQ-absent row', () => {
+    it('covers all 285 MPQ-present Overlay.txt rows (284 DCC + MephistoOverlay.DC6) in OVERLAY_METAS with exact scalar parity', () => {
       const missingFromMetas: string[] = []
       const scalarDiffs: string[] = []
       let mpqPresentCount = 0
@@ -330,7 +330,7 @@ describe('VFX-B9: Missing Overlay Atlas Baking (#1104, #1105)', () => {
         }
       }
 
-      expect(mpqPresentCount).toBe(284)
+      expect(mpqPresentCount).toBe(285)
       expect(missingFromMetas).toEqual([])
       expect(scalarDiffs).toEqual([])
     })

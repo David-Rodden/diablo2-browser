@@ -20,7 +20,17 @@
 
 import type { UiDataMode } from './pd2-sgd2freeres.ts'
 
-export type D2FontName = 'font6' | 'font8' | 'font16' | 'font30' | 'fontexocet10' | 'fontformal12'
+export type D2FontName =
+  | 'font6'
+  | 'font8'
+  | 'font16'
+  | 'font30'
+  | 'font42'
+  | 'fontexocet10'
+  | 'fontformal10'
+  | 'fontformal11'
+  | 'fontformal12'
+  | 'fontingamechat'
 
 export interface D2GlScreenConfig {
   readonly windowSizeWidth: number
@@ -849,9 +859,13 @@ export const D2_FONT_NAME_TO_D2GL_ID: Readonly<Record<D2FontName, number>> = {
   font8: 0,
   font16: 1,
   font30: 2,
+  font42: 3,
+  fontformal10: 4,
   fontformal12: 5,
   font6: 6,
+  fontformal11: 8,
   fontexocet10: 9,
+  fontingamechat: 13,
 } as const
 
 export interface ResolvedD2GlFontStyle {

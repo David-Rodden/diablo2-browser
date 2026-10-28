@@ -162,15 +162,16 @@ describe('MusicStreamer unit behavior', () => {
     streamer.onEnterArea(1) // Rogue Encampment -> 4673 (music_town_1)
     expect(streamer.getActiveSongId()).toBe(4673)
 
-    streamer.onEnterArea(2) // Blood Moor -> 4679 (music_wilderness)
+    streamer.onEnterArea(2) // Blood Moor -> 4679 (music_wilderness, after 75-tick room debounce)
+    streamer.tick(75)
     expect(streamer.getActiveSongId()).toBe(4679)
   })
 
   it('starts quest stingers (fadeIn === 0) at targetGain immediately and preserves tick-0 crossfade reversal gain', () => {
-    streamer.onEnterArea(1) // 4673 on deck A (immediate start since !wasPlaying)
-    streamer.onEnterArea(2) // 4679 on deck B (fadeIn 0 -> targetGain over 125 ticks)
+    streamer.playTrack(4673) // 4673 on deck A (immediate start since !wasPlaying)
+    streamer.playTrack(4679) // 4679 on deck B (fadeIn 0 -> targetGain over 125 ticks)
     // Reverse on tick 0 before advancing any tick: deck B must fade out from 0, not jump to targetGain
-    streamer.onEnterArea(40) // 4674 on deck A
+    streamer.playTrack(4674) // 4674 on deck A
     streamer.tick(1)
     const internal = streamer as unknown as {
       deckA: { gainValue: number; fade: { fromGain: number } | null }
@@ -187,8 +188,9 @@ describe('MusicStreamer unit behavior', () => {
     expect(internal.activeDeck.gainValue).toBeGreaterThan(0)
   })
 
-  it('overrides looping BGM with playQuestStinger and restores interrupted BGM on ended', () => {
+  it('overrides looping BGM with playQuestStinger and restores interrupted BGM at next Block marker on ended (#1755)', () => {
     const [deckA, deckB] = elements as [FakeHTMLAudioElement, FakeHTMLAudioElement]
+    const town1Track = getMusicTrack113c(4673)!
     streamer.playTrack(4673, { immediate: true })
     deckA.currentTime = 12.5
     expect(streamer.getActiveSongId()).toBe(4673)
@@ -199,11 +201,12 @@ describe('MusicStreamer unit behavior', () => {
     })).toBe(true)
     expect(streamer.getActiveSongId()).toBe(4685)
     expect(deckB.loop).toBe(false)
+    expect(streamer.getResumeBlockFrames(4673)).toBe(town1Track.block1)
 
     deckB.triggerEnded()
     expect(callbackFired).toBe(true)
     expect(streamer.getActiveSongId()).toBe(4673)
-    expect(deckA.currentTime).toBeCloseTo(12.5, 2)
+    expect(deckA.currentTime).toBeCloseTo(town1Track.block1 / town1Track.sampleRate, 2)
   })
 
   it('cleans up active and fading decks on stopAll()', () => {
@@ -308,8 +311,9 @@ describe('MusicStreamer unit behavior', () => {
     expect(deckA.paused).toBe(true)
     expect(deckB.paused).toBe(false)
 
-    // Subsequent in-game area transitions (e.g. level 1 -> level 2) still crossfade over Fade Out ticks
+    // Subsequent in-game area transitions (e.g. level 1 -> level 2) debounce 75 ticks then crossfade over Fade Out ticks
     streamer.onEnterArea(2)
+    streamer.tick(75)
     expect(streamer.getActiveSongId()).toBe(4679)
     expect(deckB.paused).toBe(false)
     streamer.tick(130)
@@ -471,12 +475,14 @@ describe('MusicStreamer unit behavior', () => {
     walkTo(5011, 5011)
     session.tick(40, 1000)
     expect(session.world.areaId).toBe(2)
+    session.audioRuntime.musicStreamer.tick(75)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4679)
 
     activeMockAreaId = 1
     walkTo(5010, 5010)
     session.tick(40, 1040)
     expect(session.world.areaId).toBe(1)
+    session.audioRuntime.musicStreamer.tick(75)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4673)
 
     // Walk back out to Blood Moor (2 -> song 4679)
@@ -489,6 +495,7 @@ describe('MusicStreamer unit behavior', () => {
     })
     session.tick(40, 1080)
     expect(session.world.areaId).toBe(2)
+    session.audioRuntime.musicStreamer.tick(75)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4679)
 
     // 2. Town Portal from Blood Moor (2) -> Rogue Encampment (1 -> song 4673):
@@ -514,6 +521,7 @@ describe('MusicStreamer unit behavior', () => {
       snap: true,
     })
     expect(session.world.areaId).toBe(1)
+    session.audioRuntime.musicStreamer.tick(75)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4673)
 
     // 3. Intra-Act Waypoint from Rogue Encampment (1) -> Cold Plains (3 -> song 4679) -> Catacombs Level 2 (35 -> song 4676):
@@ -539,6 +547,7 @@ describe('MusicStreamer unit behavior', () => {
       snap: true,
     })
     expect(session.world.areaId).toBe(3)
+    session.audioRuntime.musicStreamer.tick(75)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4679)
 
     activeMockAreaId = 35
@@ -562,6 +571,7 @@ describe('MusicStreamer unit behavior', () => {
       snap: true,
     })
     expect(session.world.areaId).toBe(35)
+    session.audioRuntime.musicStreamer.tick(75)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4667)
 
     // 4. Cross-Act Waypoint to Lut Gholein (40 -> song 4674) via LoadAct
@@ -572,6 +582,7 @@ describe('MusicStreamer unit behavior', () => {
       areaId: 40,
     })
     expect(session.world.areaId).toBe(40)
+    session.audioRuntime.musicStreamer.tick(75)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4674)
   })
 
@@ -662,6 +673,7 @@ describe('MusicStreamer unit behavior', () => {
       tileY: 1200,
     })
     expect(session.world.areaId).toBe(101)
+    session.audioRuntime.musicStreamer.tick(75)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4664)
 
     // Case B: RoomReveal + setRevealedRoomSeed arrive BEFORE UnitReassign for a 24x24 room (120x120 sub-tiles) in Den of Evil (8 -> song 4657)
@@ -681,7 +693,97 @@ describe('MusicStreamer unit behavior', () => {
       snap: true,
     })
     expect(session.world.areaId).toBe(8)
+    session.audioRuntime.musicStreamer.tick(75)
     expect(session.audioRuntime.musicStreamer.currentTrackId).toBe(4657)
+  })
+
+  it("Round-2 #1755 (D2SOUND-10): updates per-song resume block marker every 125 ticks and resumes at saved Block 1..3 offset", () => {
+    const [deckA, deckB] = elements as [FakeHTMLAudioElement, FakeHTMLAudioElement]
+    const wildTrack = getMusicTrack113c(4679)! // music_wilderness: block1=3457024, block2=6755328
+    expect(wildTrack.block1).toBe(3457024)
+    expect(wildTrack.block2).toBe(6755328)
+
+    streamer.onEnterArea(2) // Starts 4679 at 0
+    expect(streamer.getActiveSongId()).toBe(4679)
+    expect(deckA.currentTime).toBe(0)
+    expect(streamer.getResumeBlockFrames(4679)).toBe(0)
+
+    // After 125 ticks (5.0 s < block1), saved marker becomes block1 (3457024)
+    streamer.tick(125)
+    expect(streamer.getResumeBlockFrames(4679)).toBe(wildTrack.block1)
+
+    // Switch to Rogue Encampment (level 1 -> 4673) after 75-tick debounce, then return to Blood Moor (level 2 -> 4679)
+    streamer.onEnterArea(1)
+    streamer.tick(75)
+    expect(streamer.getActiveSongId()).toBe(4673)
+
+    streamer.onEnterArea(2)
+    streamer.tick(75)
+    expect(streamer.getActiveSongId()).toBe(4679)
+    expect(deckA.currentTime).toBeCloseTo(wildTrack.block1 / wildTrack.sampleRate, 2)
+
+    // Advance past block1 (e.g. 160 s -> frame 3,528,000 > block1): next 125-tick scan stores block2 (6755328)
+    deckA.currentTime = 160
+    streamer.tick(125)
+    expect(streamer.getResumeBlockFrames(4679)).toBe(wildTrack.block2)
+
+    // Advance past block2 (e.g. 320 s -> frame 7,056,000 > block2): next 125-tick scan wraps saved marker to 0
+    deckA.currentTime = 320
+    streamer.tick(125)
+    expect(streamer.getResumeBlockFrames(4679)).toBe(0)
+    void deckB
+  })
+
+  it("Round-2 #1756 (D2SOUND-11): debounces room/level music switches for 75 ticks (0x4b) and fades out all BGM on Song 0", () => {
+    const [deckA] = elements as [FakeHTMLAudioElement, FakeHTMLAudioElement]
+    // First room entry (inGameSongId === 0) starts immediately
+    streamer.onEnterArea(1) // 4673
+    expect(streamer.getActiveSongId()).toBe(4673)
+
+    // Stepping into Blood Moor (level 2 -> 4679) does not switch before 75 ticks
+    streamer.onEnterArea(2)
+    streamer.tick(74)
+    expect(streamer.getActiveSongId()).toBe(4673)
+
+    // Stepping back into Rogue Encampment (level 1 -> 4673) before 75 ticks keeps 4673 playing without any deck swap
+    streamer.onEnterArea(1)
+    streamer.tick(100)
+    expect(streamer.getActiveSongId()).toBe(4673)
+    expect(deckA.playCalls).toBe(1)
+
+    // Staying in Blood Moor for 75 ticks switches to 4679
+    streamer.onEnterArea(2)
+    streamer.tick(74)
+    expect(streamer.getActiveSongId()).toBe(4673)
+    streamer.tick(1)
+    expect(streamer.getActiveSongId()).toBe(4679)
+
+    // Entering SoundEnviron 0 (ESOUNDENVIRON_NONE, Song = 0) fades out all BGM over Fade Out ticks after debounce
+    streamer.onEnterSoundEnviron(0)
+    streamer.tick(75)
+    expect(streamer.getActiveSongId()).toBe(0)
+    streamer.tick(125)
+    for (const el of elements) {
+      expect(el.paused).toBe(true)
+    }
+  })
+
+  it("Round-2 #1757 (D2SOUND-12): does not fade quest stingers (4685..4698) on BGM selection and uses no 35-tick fallback when Fade Out is 0", () => {
+    const [deckA, deckB] = elements as [FakeHTMLAudioElement, FakeHTMLAudioElement]
+    streamer.playQuestStinger(4686) // bloodravenresolution on deckA (fadeOut = 0)
+    expect(streamer.getActiveSongId()).toBe(4686)
+    expect(deckA.paused).toBe(false)
+
+    // Selecting a BGM track (4673) while stinger 4686 is playing starts 4673 on deckB WITHOUT fading or pausing deckA
+    streamer.playTrack(4673)
+    expect(streamer.getActiveSongId()).toBe(4673)
+    expect(deckB.paused).toBe(false)
+    expect(deckA.paused).toBe(false)
+    const internal = streamer as unknown as {
+      deckA: { fade: unknown; gainValue: number }
+    }
+    expect(internal.deckA.fade).toBeNull()
+    expect(internal.deckA.gainValue).toBeGreaterThan(0)
   })
 })
 

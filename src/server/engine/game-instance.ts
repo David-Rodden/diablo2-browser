@@ -19,6 +19,7 @@ import {
   NO_BELT_ROWS,
   areBeltPotionsCompatible,
 } from '../../common/items/belt-model.ts'
+import { decodeStat204ChargedSkill113c } from '../../common/items/charged-skill.ts'
 import { getEmbeddedDropTables } from '../../common/items/embedded-drop-tables.ts'
 import { ACT_SPAWN_TILE_ENTRY, ACT_SPAWN_TILE_TOWN_PORTAL } from '../../common/world/act-spawn-location.ts'
 import type { Item } from '../../common/items/items.ts'
@@ -114,6 +115,11 @@ import {
   type DeathKillerKind113c,
 } from '../../common/progression/experience-113c.ts'
 import {
+  ALL_CASTER_AURA_STATE_IDS_113C,
+  FRIENDLY_AURA_TARGET_STATE_IDS_113C,
+  PALADIN_AURA_STATE_BY_SKILL_ID,
+  PALADIN_AURA_TARGET_STATE_BY_SKILL_ID,
+  calculateBlessedAimStats,
   calculateConvictionStats,
   calculateFanaticismStats,
   calculateHolyFireStats,
@@ -124,6 +130,10 @@ import {
 import { MONSTATS_113C_ROWS, MONUMOD_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
 import {
   MONAI_PROFILES_113C,
+  isFrogDemonHcIdx113c,
+  isSubmergeCapableMonsterHcIdx113c,
+  isTentacleHcIdx113c,
+  isTentacleHeadHcIdx113c,
   monaiParam113c,
   monaiProfile113c,
   type MonAiFamily,
@@ -171,6 +181,7 @@ import {
   getMonsterKindByHcIdx,
   getMonsterModeMissile113c,
   getSuperUniqueByIndex,
+  getSuperUniqueIndexById,
   resolveMonsterStats,
   rollEliteModifiers,
   rollSuperUniqueUModIds113c,
@@ -270,12 +281,13 @@ import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inv
 import { resolveActiveSetBonuses } from '../../common/items/set-items.ts'
 import {
   getAttackWeaponInfo,
+  isInMeleeRange113c,
   resolveItemMissileTypeId113c,
 } from '../../common/skills/weapon-combat-meta.ts'
 import { resolveWeaponBase113c } from '../../common/units/char-anim-speed.ts'
 import type { ItemStat } from '../../netproto/index.ts'
 import { AuraScanner, type ActiveAuraSource, type CorpseContext } from './aura-scanner.ts'
-import { isWithinAuraRange } from '../../common/skills/aura-filter.ts'
+import { isWithinAuraRange, passesAuraFilter } from '../../common/skills/aura-filter.ts'
 import { compute3BandDuration, computeDiminishingReturns, evaluateCalc } from '../../common/data/calc-ast.ts'
 import { computeCorpseExplosion113c } from './combat-pipeline.ts'
 import {
@@ -489,6 +501,8 @@ export interface SpawnMonsterSpec {
   readonly areaLevel?: number | undefined
   /** Seed for the `minHP..maxHP` roll (`MonStats.txt`); omitted = `minHP`. */
   readonly statSeed?: number | undefined
+  /** S2C `0xAC` 16-bit monster name/palette seed (`MonsterData+0x18`, `D2Client 0x6fb5e5cf`). */
+  readonly nameSeed?: number | undefined
   readonly ai?: string | undefined
   readonly aiDelay?: number | undefined
   readonly aiParams?: readonly number[] | undefined
@@ -530,6 +544,12 @@ export interface SpawnMonsterSpec {
   readonly resurrectSkillId?: number | undefined
   /** Optional explicit override for `stat 100 = monster_playercount` recorded at spawn (`D2Game!0x6FCCF840` / `0x6FCCFF3B`). */
   readonly monsterPlayerCount?: number | undefined
+  /** Spawn submerge-capable monsters (`247..249`, `258..263`) already surfaced (`mode = 1`). */
+  readonly startSurfaced?: boolean | undefined
+  /** Spawn `4..6` companion `Tentacle` (`258..260`) limbs around a `TentacleHead` (`261..263`). */
+  readonly spawnTentacleLimbs?: boolean | undefined
+  /** Parent `TentacleHead` unitId linked to a `Tentacle` limb (`AiTentacle` `0x6FC9CB10` boss check). */
+  readonly bossUnitId?: number | undefined
 }
 
 export interface HireMercenarySpec {
@@ -744,6 +764,8 @@ export interface ServerMonsterState {
   readonly revivedByShaman: boolean
   readonly states: ReadonlySet<number>
   readonly monsterPlayerCount: number
+  readonly submerged: boolean
+  readonly bossUnitId?: number | undefined
 }
 
 const MERC_AURA_TO_STATE_ID: Readonly<Record<string, number>> = {
@@ -1010,6 +1032,12 @@ interface ItemBaseSizeInfo {
   readonly compactSave: boolean
   /** Misc.txt `quest` non-zero: a quest item vendors will not buy. */
   readonly quest: boolean
+  /** Armor/Weapons/Misc.txt `type` token (e.g. `helm`, `circ`, `tors`, `shie`, `pole`, `spea`, `bow`, `swor`). */
+  readonly itemType: string
+  /** True when the base record originates from `Weapons.txt`. */
+  readonly isWeapon: boolean
+  /** True when `Weapons.txt` `2handed` is `1`. */
+  readonly twoHanded: boolean
 }
 
 let cachedBaseSizes: Map<string, ItemBaseSizeInfo> | null = null
@@ -1019,6 +1047,7 @@ function getBaseSizeTable(): Map<string, ItemBaseSizeInfo> {
   const map = new Map<string, ItemBaseSizeInfo>()
   const enc = new TextEncoder()
   for (const raw of [RAW_ARMOR, RAW_WEAPONS, RAW_MISC]) {
+    const isWeapon = raw === RAW_WEAPONS
     const tbl = parseTable(enc.encode(raw))
     const codeIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'code')
     const nameIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'name')
@@ -1028,6 +1057,8 @@ function getBaseSizeTable(): Map<string, ItemBaseSizeInfo> {
     const durIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'durability')
     const compactIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'compactsave')
     const questIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'quest')
+    const typeIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'type')
+    const twoHandIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === '2handed')
     if (codeIdx === -1) continue
     if (compactIdx === -1) throw new Error('getBaseSizeTable: item table has no compactsave column')
     for (const row of tbl.rows) {
@@ -1040,7 +1071,21 @@ function getBaseSizeTable(): Map<string, ItemBaseSizeInfo> {
       const maxDurability = Math.max(0, Number((durIdx !== -1 ? row[durIdx] : '20')?.trim()) || 0)
       const compactSave = (row[compactIdx] ?? '').trim() === '1'
       const quest = questIdx !== -1 && (Number((row[questIdx] ?? '0').trim()) || 0) !== 0
-      map.set(code, { code, name, width, height, cost, maxDurability, compactSave, quest })
+      const itemType = (typeIdx !== -1 ? (row[typeIdx] ?? '') : '').trim().toLowerCase()
+      const twoHanded = twoHandIdx !== -1 && (row[twoHandIdx] ?? '').trim() === '1'
+      map.set(code, {
+        code,
+        name,
+        width,
+        height,
+        cost,
+        maxDurability,
+        compactSave,
+        quest,
+        itemType,
+        isWeapon,
+        twoHanded,
+      })
     }
   }
   cachedBaseSizes = map
@@ -1059,6 +1104,9 @@ function lookupBaseInfo(code: string): ItemBaseSizeInfo {
       maxDurability: 20,
       compactSave: false,
       quest: false,
+      itemType: '',
+      isWeapon: false,
+      twoHanded: false,
     }
   )
 }
@@ -1138,6 +1186,9 @@ interface InternalPlayerRecord {
   newSkills: number
   leftSkill: number
   rightSkill: number
+  leftSkillItemId?: number | undefined
+  rightSkillItemId?: number | undefined
+  weaponSet?: number | undefined
   skills: Map<number, number>
   states: Set<number>
   stateTimers: Map<number, number>
@@ -1264,6 +1315,8 @@ interface InternalMonsterRecord {
   defId: string
   /** SuperUniques.txt row id when this is a preset super unique. */
   superUniqueId: string | undefined
+  /** S2C `0xAC` 16-bit monster name/palette seed (`MonsterData+0x18`). */
+  nameSeed: number
   name: string
   areaId: number
   x: number
@@ -1458,6 +1511,18 @@ interface InternalMonsterRecord {
   vendorStoreGenerated?: boolean
   /** `stat 100 = monster_playercount` recorded when the monster spawned (`D2Game!0x6FCCF840` / `0x6FCCFF3B`). */
   monsterPlayerCount: number
+  /** `MonStats2.txt` `MeleeRng` (sub-tiles; `Tentacle` = 6). */
+  meleeRange: number
+  /** 1.13c `#176 Submerge` (`~0x0E` untargetable / invulnerable underwater state). */
+  submerged: boolean
+  /** `pAiControl->dwAiState` (`1` = submerged, `2` = surfaced) for `AiTentacle` / `AiTentacleHead` / `FrogDemon`. */
+  submergeAiState: number
+  /** `pAiControl->dwAiParam[0]` frame timer gating re-submerge or re-emerge. */
+  submergeTimerFrame: number
+  /** Frame when `#180 Emerge` (`MONMODE_SKILL1 = 8`) finishes and settles into `MONMODE_NEUTRAL (1)`. */
+  emergeUntilFrame: number
+  /** Linked `TentacleHead` boss `unitId` for `Tentacle` limbs (`0x6FC9CB41..0x6FC9CBF1` cascade death). */
+  bossUnitId: number | undefined
 }
 
 interface InternalMercenaryRecord {
@@ -1829,11 +1894,13 @@ const SRVDOFUNC_LEAP_ATTACK = 78
 function collectItemStats(item: ServerItemEntry): ItemStat[] {
   const out: ItemStat[] = []
   if (item.rawItemData !== undefined) {
-    out.push(...item.rawItemData.stats, ...item.rawItemData.runewordStats)
-  } else {
+    out.push(...(item.rawItemData.stats ?? []), ...(item.rawItemData.runewordStats ?? []))
+  } else if (item.stats !== undefined) {
     for (const [statId, value] of item.stats) out.push({ statId, param: 0, value })
   }
-  for (const child of item.socketedItems) out.push(...collectItemStats(child))
+  if (item.socketedItems !== undefined) {
+    for (const child of item.socketedItems) out.push(...collectItemStats(child))
+  }
   return out
 }
 
@@ -1849,45 +1916,97 @@ function collectEquippedItemStats(items: readonly ServerItemEntry[]): ItemStat[]
 }
 
 /**
- * Equipped item with `item_charged_skill` (204) charges left for `skillId`. The stat param packs
- * `skill << 6 | level` and the value `charges | maxCharges << 8` (ItemStatCost 204, `item-bridge`).
+ * Equipped item with `item_charged_skill` (204) charges left for `skillId`.
+ *
+ * 1.13c `D2Common.#10731` (`0x6FD98395..0x6FD983AC`) and `D2Game.dll` `0x6FCF9A21`:
+ * - Only active equipped items (`location === 'equipped'` and not inactive weapon-swap slots `11`/`12`)
+ *   grant charged skills.
+ * - Unidentified (`ITEMFLAG_IDENTIFIED` `0x10` clear) and broken (`ITEMFLAG_BROKEN` `0x100` or
+ *   `durability <= 0` on destructible items) items do not grant charged skills.
  */
 function findChargedSkill(
   items: readonly ServerItemEntry[],
   skillId: number,
-): { readonly item: ServerItemEntry; readonly slvl: number } | undefined {
+  preferredItemId?: number,
+): { readonly item: ServerItemEntry; readonly slvl: number; readonly param: number; readonly charges: number } | undefined {
   for (const item of items) {
-    if (item.location !== 'equipped' || item.rawItemData === undefined) continue
-    for (const stat of item.rawItemData.stats) {
+    if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
+    if (preferredItemId !== undefined && preferredItemId !== 0xffffffff && item.unitId !== preferredItemId) {
+      continue
+    }
+    if (!item.identified || item.rawItemData?.identified === false) continue
+    if (
+      item.rawItemData?.broken === true ||
+      (item.maxDurability > 0 && item.durability <= 0 && (item.stats.get(152) ?? 0) <= 0)
+    ) {
+      continue
+    }
+    const ilvl = item.rawItemData?.ilvl ?? item.level ?? 99
+    const allStats = [
+      ...(item.rawItemData?.stats ?? []),
+      ...(item.rawItemData?.runewordStats ?? []),
+    ]
+    for (const stat of allStats) {
       if (stat.statId !== STAT_ITEM_CHARGED_SKILL) continue
-      if (stat.param >> 6 !== skillId) continue
-      if ((stat.value & 0xff) <= 0) continue
-      return { item, slvl: Math.max(1, stat.param & 0x3f) }
+      const decoded = decodeStat204ChargedSkill113c(stat, ilvl)
+      if (!decoded || decoded.skillId !== skillId || decoded.charges <= 0) continue
+      const packedParam = ((decoded.skillId << 6) | (decoded.level & 0x3f)) >>> 0
+      return { item, slvl: decoded.level, param: packedParam, charges: decoded.charges }
     }
   }
   return undefined
 }
 
-/** Spend one charge of `skillId` on `item` (stat 204 current charges, low byte). */
-function consumeSkillCharge(item: ServerItemEntry, skillId: number): void {
+/**
+ * Spend one charge of `skillId` on `item` (stat 204 current charges, low byte) and return the
+ * packed param (`(skillId << 6) | slvl`) and remaining charges for `S2C 0x3E` (`StatSet`).
+ */
+function consumeSkillCharge(
+  item: ServerItemEntry,
+  skillId: number,
+): { readonly param: number; readonly remainingCharges: number; readonly maxCharges: number } {
   const raw = item.rawItemData
   if (raw === undefined) {
     throw new Error(`consumeSkillCharge: item ${item.unitId} has no decoded stat list`)
   }
+  const ilvl = raw.ilvl ?? item.level ?? 99
   let spent = false
-  const stats = raw.stats.map((stat) => {
-    if (spent || stat.statId !== STAT_ITEM_CHARGED_SKILL || stat.param >> 6 !== skillId) return stat
-    const charges = stat.value & 0xff
-    if (charges <= 0) return stat
-    spent = true
-    return { ...stat, value: (stat.value & ~0xff) | (charges - 1) }
-  })
+  let matchedParam = ((skillId << 6) | 1) >>> 0
+  let remainingCharges = 0
+  let matchedMaxCharges = 0
+  const mapStatList = (list: readonly { statId: number; param: number; value: number }[]) =>
+    list.map((stat) => {
+      if (spent || stat.statId !== STAT_ITEM_CHARGED_SKILL) return stat
+      const decoded = decodeStat204ChargedSkill113c(stat, ilvl)
+      if (!decoded || decoded.skillId !== skillId || decoded.charges <= 0) return stat
+      spent = true
+      remainingCharges = decoded.charges - 1
+      matchedMaxCharges = decoded.maxCharges
+      matchedParam = ((decoded.skillId << 6) | (decoded.level & 0x3f)) >>> 0
+      const nextValue = ((decoded.maxCharges & 0xff) << 8) | (remainingCharges & 0xff)
+      return { ...stat, param: matchedParam, value: nextValue }
+    })
+  const stats = mapStatList(raw.stats)
+  const runewordStats = raw.runewordStats ? mapStatList(raw.runewordStats) : undefined
   if (!spent) {
     throw new Error(`consumeSkillCharge: item ${item.unitId} has no charges of skill ${skillId}`)
   }
-  item.rawItemData = { ...raw, stats }
-  const updated = stats.find((s) => s.statId === STAT_ITEM_CHARGED_SKILL && s.param >> 6 === skillId)
-  if (updated) item.stats.set(STAT_ITEM_CHARGED_SKILL, updated.value)
+  item.rawItemData = {
+    ...raw,
+    stats,
+    ...(runewordStats !== undefined ? { runewordStats } : {}),
+  }
+  const rawRec = item.rawItemData as unknown as Record<string, unknown>
+  if (Array.isArray(rawRec.chargedSkills)) {
+    for (const entry of rawRec.chargedSkills as { skillId?: number; charges?: number }[]) {
+      if (entry.skillId === skillId && (entry.charges ?? 0) > 0) {
+        entry.charges = remainingCharges
+        break
+      }
+    }
+  }
+  item.stats.set(STAT_ITEM_CHARGED_SKILL, ((matchedMaxCharges & 0xff) << 8) | (remainingCharges & 0xff))
+  return { param: matchedParam, remainingCharges, maxCharges: matchedMaxCharges }
 }
 
 function getOrCreateEmbeddedFallbackRegistry(): D2DataRegistry {
@@ -1960,14 +2079,34 @@ const QUEST_OBJECT_DROP_ITEM_CODE_113C: Readonly<Record<number, string>> = Objec
   407: 'qey',
 })
 
-/** Ancients' Altar -> the three Ancient Barbarians. */
+/**
+ * Ancients' Altar (Objects.txt 546) -> Ancient Statues (475/476/474) -> SuperUniques 43/44/45
+ * (`D2Game.dll` `0x6FC7E420`..`0x6FC7E560`: `475 -> 43 Talic/540`, `476 -> 44 Madawc/541`, `474 -> 45 Korlic/542`).
+ */
 const ANCIENT_BARBARIANS_113C: readonly {
   readonly defId: string
   readonly superUniqueId: string
+  readonly superUniqueIndex: number
+  readonly statueClassId: number
 }[] = Object.freeze([
-  { defId: 'ancientbarb1', superUniqueId: 'Ancient Barbarian 1' },
-  { defId: 'ancientbarb2', superUniqueId: 'Ancient Barbarian 2' },
-  { defId: 'ancientbarb3', superUniqueId: 'Ancient Barbarian 3' },
+  {
+    defId: 'ancientbarb1',
+    superUniqueId: 'Ancient Barbarian 1',
+    superUniqueIndex: 43,
+    statueClassId: 475,
+  },
+  {
+    defId: 'ancientbarb2',
+    superUniqueId: 'Ancient Barbarian 2',
+    superUniqueIndex: 44,
+    statueClassId: 476,
+  },
+  {
+    defId: 'ancientbarb3',
+    superUniqueId: 'Ancient Barbarian 3',
+    superUniqueIndex: 45,
+    statueClassId: 474,
+  },
 ])
 
 /** Chaos Sanctuary seal -> SuperUnique boss spawned by that seal. */
@@ -2073,8 +2212,17 @@ export class GameInstance {
   private readonly mercCombat = new Map<number, PersistentCombatUnit>()
   /** Per-player `AuraScanner` running the selected aura's periodic pulse (`perdelay`). */
   private readonly playerAuraScanners = new Map<number, PlayerAuraRuntime>()
+  /** Per-player `AuraScanner` running equipped `STAT_ITEM_AURA` (`statId === 151`) item aura pulses. */
+  private readonly playerItemAuraScanners = new Map<number, MercAuraRuntime>()
   /** Per-mercenary `AuraScanner` running the hireling's innate + item-granted (`STAT_ITEM_AURA`) aura pulses. */
   private readonly mercAuraScanners = new Map<number, MercAuraRuntime>()
+  /** Per-summon-pet `AuraScanner` running Druid Spirit Totem (`#296..#298`) aura pulses. */
+  private readonly petAuraScanners = new Map<string, MercAuraRuntime>()
+  /** Visual state sets & timers mirrored onto summoned pets (`unitType = 'monster'`). */
+  private readonly petVisualStates = new Map<
+    number,
+    { readonly states: Set<number>; readonly timers: Map<number, number>; areaId: number; readonly pet: SummonedPetUnit }
+  >()
   private readonly commandQueue: QueuedPlayerCommand[] = []
   private readonly outbox = new Map<number, ServerEvent[]>()
   private readonly playerMotion = new Map<number, PlayerMotionState>()
@@ -2240,6 +2388,7 @@ export class GameInstance {
         isVendor: mon.isVendor,
         isKillable: mon.isKillable,
         aiDisabled: mon.aiDisabled,
+        spawnTentacleLimbs: isTentacleHeadHcIdx113c(mon.classId),
       })
     }
     for (const warp of bootstrap.warps) {
@@ -2640,10 +2789,13 @@ export class GameInstance {
     return this.players.size
   }
 
-  setPlayersX(value: number): number {
+  setPlayersX(
+    value: number,
+    options?: { readonly syncMonsterPlayerCount?: boolean | undefined },
+  ): number {
     const clamped = Math.max(1, Math.min(8, Math.floor(Number(value) || 1)))
     this.manualPlayersX = clamped
-    this.rescaleActiveMonsters()
+    this.rescaleActiveMonsters(Boolean(options?.syncMonsterPlayerCount))
     this.onPlayersXChange?.(this.playersX)
     return this.playersX
   }
@@ -2658,16 +2810,25 @@ export class GameInstance {
     )
   }
 
-  private rescaleActiveMonsters(): void {
+  private rescaleActiveMonsters(syncMonsterPlayerCount = false): void {
     const px = this.playersX
     const multNum = px + 1
     for (const m of this.monsters.values()) {
-      if (m.isNpc || m.dead || m.noRatio) continue
+      if (m.isNpc || m.dead) continue
+      if (syncMonsterPlayerCount && m.monsterPlayerCount < px) {
+        m.monsterPlayerCount = px
+      }
+      if (m.noRatio) continue
       const ratio = m.maxHp > 0 ? m.hp / m.maxHp : 1
       m.maxHp = Math.max(1, Math.floor((m.baseMaxHp * multNum) / 2))
       m.hp = Math.max(1, Math.round(m.maxHp * ratio))
       if (!m.unscaledXp) {
         m.experience = Math.max(0, Math.floor((m.baseXp * multNum) / 2))
+      }
+      const combat = this.monsterCombat.get(m.unitId)
+      if (combat) {
+        combat.statList.setBaseStat('maxhp', m.maxHp * FIXED_ONE)
+        combat.statList.setHp256(m.hp * FIXED_ONE)
       }
     }
   }
@@ -3001,6 +3162,20 @@ export class GameInstance {
     this.outbox.set(unitId, [])
     this.rescaleActiveMonsters()
 
+    const isHardcoreChar = Boolean(
+      (parsedD2s as { hardcore?: boolean } | undefined)?.hardcore ??
+        (((parsedD2s as { status?: number } | undefined)?.status ?? 0) & 0x04) !== 0,
+    )
+    const isExpansionChar =
+      (parsedD2s as { expansion?: boolean } | undefined)?.expansion !== false
+    this.emitToPlayer(unitId, {
+      type: 'GameFlags',
+      difficulty: this.difficulty,
+      hardcore: isHardcoreChar,
+      expansion: isExpansionChar,
+      ladder: false,
+      ...(isHardcoreChar ? { arenaFlags: 0x0800 } : {}),
+    })
     this.emitToPlayer(unitId, {
       type: 'GameLogonAck',
       playerUnitId: unitId,
@@ -3151,7 +3326,38 @@ export class GameInstance {
         const mercRecord = mercId !== null ? this.mercenaries.get(mercId) : undefined
         if (mercRecord && Array.isArray(parsedD2s.mercItems) && parsedD2s.mercItems.length > 0) {
           for (const mi of parsedD2s.mercItems) {
-            mercRecord.equipment.push(this.itemDataToServerEntry(mi, mercRecord.unitId, areaId))
+            const entry = this.itemDataToServerEntry(mi, mercRecord.unitId, areaId)
+            entry.location = 'equipped'
+            if (entry.bodyLoc <= 0) {
+              entry.bodyLoc = this.resolveMercDefaultBodyLoc113c(entry.code, mercRecord.act) ?? 4
+            }
+            if (entry.rawItemData !== undefined) {
+              entry.rawItemData = {
+                ...entry.rawItemData,
+                ownerType: 1,
+                ownerId: mercRecord.unitId as UnitId,
+                location: 1,
+                bodyLoc: entry.bodyLoc,
+                equippedSlot: entry.bodyLoc,
+              }
+            }
+            mercRecord.equipment.push(entry)
+            this.emitToPlayer(record.unitId, {
+              type: 'ItemEvent',
+              action: 0x06,
+              itemId: entry.unitId,
+              code: entry.code,
+              x: entry.x,
+              y: entry.y,
+              container: 'equipment',
+              item: {
+                ...this.serverEntryToItemData(entry),
+                opcode: 0x9d,
+                action: 0x06,
+                ownerType: 1,
+                ownerId: mercRecord.unitId as UnitId,
+              },
+            })
           }
           if (mercRecord.alive) {
             this.syncMercenaryOwnerAura(record, mercRecord.activeAura, mercRecord, true)
@@ -3159,6 +3365,8 @@ export class GameInstance {
         }
       }
     }
+    this.syncPlayerItemAuras113c(record, true)
+    this.syncPlayerSelectedRightAura113c(record)
     return unitId
   }
 
@@ -3178,6 +3386,7 @@ export class GameInstance {
     this.playerActiveAuraState.delete(playerUnitId)
     this.playerCombat.delete(playerUnitId)
     this.playerAuraScanners.delete(playerUnitId)
+    this.playerItemAuraScanners.delete(playerUnitId)
     for (const [mercId, merc] of this.mercenaries.entries()) {
       if (merc.ownerPlayerId === playerUnitId) {
         this.stopMercenaryAura(merc)
@@ -3454,30 +3663,126 @@ export class GameInstance {
     }
   }
 
-  private emitAreaSnapshotToPlayer(player: InternalPlayerRecord): void {
-    for (const m of this.monsters.values()) {
-      if (m.areaId !== player.areaId) continue
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitAssign',
-        unitType: 'monster',
-        unitId: m.unitId,
+  private buildMonsterUnitAssignEvent(m: InternalMonsterRecord): ServerEvent {
+    const superUniqueIndex =
+      m.superUniqueId !== undefined ? getSuperUniqueIndexById(m.superUniqueId) : undefined
+    const isSuperUnique = superUniqueIndex !== undefined
+    const isChampion = m.rank === 'champion'
+    const isUnique = !isSuperUnique && m.rank === 'unique'
+    const isMinion = m.rank === 'minion'
+    const flags =
+      (isChampion ? 0x04 | 0x08 : 0) |
+      (isUnique || isSuperUnique ? 0x08 : 0) |
+      (isSuperUnique ? 0x02 : 0) |
+      (isMinion ? 0x10 : 0)
+    const hasMonsterFlags = flags !== 0 || m.umodIds.length > 0
+    const lifePct =
+      m.dead || m.hp <= 0
+        ? 0
+        : m.maxHp > 0
+          ? Math.max(1, Math.min(128, Math.round((m.hp / m.maxHp) * 128)))
+          : 128
+    const mode = m.dead ? 12 : m.mode
+    return {
+      type: 'UnitAssign',
+      unitType: 'monster',
+      unitId: m.unitId,
+      classId: m.classId,
+      name: m.name,
+      x: m.x,
+      y: m.y,
+      areaId: m.areaId,
+      unit: {
+        unitType: 1,
+        id: m.unitId,
         classId: m.classId,
         name: m.name,
         x: m.x,
         y: m.y,
-        areaId: m.areaId,
-        unit: {
-          unitType: 1,
-          id: m.unitId,
-          classId: m.classId,
-          name: m.name,
-          x: m.x,
-          y: m.y,
-          mode: m.mode,
-          lifePct: m.maxHp > 0 ? Math.round((m.hp / m.maxHp) * 128) : 0,
-          ...(m.umodIds.length > 0 ? { bossMods: [...m.umodIds] } : {}),
-        },
-      })
+        mode,
+        lifePct,
+        flags,
+        ...(isChampion ? { isChampion: true } : {}),
+        ...(isUnique ? { isUnique: true } : {}),
+        ...(isSuperUnique ? { isSuperUnique: true, superUniqueId: superUniqueIndex } : {}),
+        ...(isMinion ? { isMinion: true } : {}),
+        ...(m.umodIds.length > 0 ? { bossMods: [...m.umodIds] } : {}),
+        ...(hasMonsterFlags ? { nameSeed: m.nameSeed } : {}),
+      },
+    }
+  }
+
+  /**
+   * Build an authoritative `UnitAssign` snapshot for a live world monster (including summoned pets)
+   * or object when a viewer's AOI reveals a previously culled unit (`RoomHost.deliverEventWithAoi`).
+   */
+  buildUnitAssignEvent(unitType: 'monster' | 'object', unitId: number): ServerEvent | undefined {
+    if (unitType === 'monster') {
+      const m = this.monsters.get(unitId)
+      if (m) return this.buildMonsterUnitAssignEvent(m)
+      for (const [ownerId, mgr] of this.summonManagers.entries()) {
+        for (const pet of mgr.getActivePets()) {
+          if (this.petUnitIds.get(pet.uid) === unitId && pet.alive !== false && pet.hp > 0) {
+            const petMeta = pet as unknown as { areaId?: number }
+            const owner = this.players.get(ownerId)
+            const areaId = petMeta.areaId ?? owner?.areaId ?? this.defaultAreaId ?? 1
+            const classId = pet.classId ?? 363
+            const lifePct =
+              pet.maxHp > 0
+                ? Math.max(1, Math.min(128, Math.round((pet.hp / pet.maxHp) * 128)))
+                : 128
+            return {
+              type: 'UnitAssign',
+              unitType: 'monster',
+              unitId,
+              classId,
+              name: pet.name,
+              x: pet.x,
+              y: pet.y,
+              areaId,
+              unit: {
+                unitType: 1,
+                id: unitId,
+                classId,
+                name: pet.name,
+                x: pet.x,
+                y: pet.y,
+                mode: 1,
+                lifePct,
+                ownerType: 0,
+                ownerId,
+              },
+            }
+          }
+        }
+      }
+      return undefined
+    }
+    const obj = this.objects.get(unitId)
+    if (!obj) return undefined
+    return {
+      type: 'UnitAssign',
+      unitType: 'object',
+      unitId: obj.unitId,
+      classId: obj.classId,
+      x: obj.x,
+      y: obj.y,
+      areaId: obj.areaId,
+      unit: {
+        unitType: 2,
+        id: obj.unitId,
+        classId: obj.classId,
+        x: obj.x,
+        y: obj.y,
+        mode: obj.mode,
+      },
+    }
+  }
+
+  private emitAreaSnapshotToPlayer(player: InternalPlayerRecord): void {
+    for (const m of this.monsters.values()) {
+      if (m.areaId !== player.areaId) continue
+      this.emitToPlayer(player.unitId, this.buildMonsterUnitAssignEvent(m))
     }
     for (const obj of this.objects.values()) {
       if (obj.areaId !== player.areaId) continue
@@ -4992,12 +5297,28 @@ export class GameInstance {
         kind?.special1?.maxDamage ?? kind?.special1?.max ?? 0) > 0,
     )
 
+    const initialSubmerged =
+      !isNpc && isSubmergeCapableMonsterHcIdx113c(hcIdx) && !(spec.startSurfaced ?? false)
+    const initialMode = initialSubmerged ? 14 : 1
+    const meleeRange = Math.max(
+      1,
+      Math.floor(spec.meleeRange ?? (isTentacleHcIdx113c(hcIdx) ? 6 : 1)),
+    )
+
+    const nameSeed =
+      spec.nameSeed !== undefined
+        ? spec.nameSeed & 0xffff
+        : spec.superUniqueId !== undefined
+          ? 0
+          : (Math.imul(unitId, 0x9e37) ^ hcIdx ^ (spec.statSeed ?? 0)) & 0xffff
+
     const record: InternalMonsterRecord = {
       unitId,
       classId,
       hcIdx,
       defId,
       superUniqueId: spec.superUniqueId,
+      nameSeed,
       name:
         spec.name ??
         resolvedStats?.name ??
@@ -5028,7 +5349,7 @@ export class GameInstance {
       attack2Ar,
       special1Ar,
       ac,
-      mode: 1,
+      mode: initialMode,
       dead: false,
       isNpc,
       isVendor,
@@ -5121,31 +5442,84 @@ export class GameInstance {
       vendorPool,
       vendorStoreGenerated: false,
       monsterPlayerCount,
+      meleeRange,
+      submerged: initialSubmerged,
+      submergeAiState: initialSubmerged ? 1 : 2,
+      submergeTimerFrame: this.currentFrame,
+      emergeUntilFrame: 0,
+      bossUnitId: spec.bossUnitId,
     }
     this.monsters.set(unitId, record)
 
-    this.broadcastToArea(areaId, {
-      type: 'UnitAssign',
-      unitType: 'monster',
-      unitId,
-      classId,
-      name: record.name,
-      x: record.x,
-      y: record.y,
-      areaId,
-      unit: {
-        unitType: 1,
-        id: unitId,
-        classId,
-        name: record.name,
-        x: record.x,
-        y: record.y,
-        mode: 1,
-        lifePct: 128,
-        ...(record.umodIds.length > 0 ? { bossMods: [...record.umodIds] } : {}),
-      },
-    })
+    this.broadcastToArea(areaId, this.buildMonsterUnitAssignEvent(record))
+
+    if (spec.spawnTentacleLimbs && !isNpc && isTentacleHeadHcIdx113c(hcIdx)) {
+      this.spawnTentacleCompanionLimbs(record, spec.startSurfaced)
+    }
+
     return unitId
+  }
+
+  /**
+   * 1.13c Act 3 water pool preset companion limbs (`MonPlace` 10/11 + `AiTentacle` `0x6FC9CB10`):
+   * spawns `4..6` `Tentacle` (`hcIdx - 3`, i.e. `258..260`) limbs in the surrounding water pool
+   * linked via `bossUnitId` to the parent `TentacleHead`.
+   */
+  private spawnTentacleCompanionLimbs(
+    head: InternalMonsterRecord,
+    startSurfaced?: boolean,
+  ): void {
+    const limbClassId = head.hcIdx - 3
+    const limbCount = 4 + this.rng.rand(3)
+    const area = this.loadedAreas.get(head.areaId)
+    const waterCandidates: { x: number; y: number }[] = []
+    const fallbackCandidates: { x: number; y: number }[] = []
+    for (let r = 2; r <= 5; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue
+          const lx = Math.round(head.x) + dx
+          const ly = Math.round(head.y) + dy
+          const d = Math.hypot(dx, dy)
+          if (d < 2 || d > 5.5) continue
+          if (area !== undefined) {
+            const isLand = area.isWalkable(head.areaId, lx, ly, false)
+            const isMissilePassable = area.isWalkable(head.areaId, lx, ly, true)
+            if (!isLand && isMissilePassable) {
+              waterCandidates.push({ x: lx, y: ly })
+            } else if (isMissilePassable) {
+              fallbackCandidates.push({ x: lx, y: ly })
+            }
+          } else {
+            waterCandidates.push({ x: lx, y: ly })
+          }
+        }
+      }
+    }
+    const pool = waterCandidates.length >= limbCount ? waterCandidates : [...waterCandidates, ...fallbackCandidates]
+    const chosen: { x: number; y: number }[] = []
+    const step = pool.length > 0 ? Math.max(1, Math.floor(pool.length / limbCount)) : 1
+    for (let i = 0; i < limbCount && pool.length > 0; i++) {
+      const baseIdx = (i * step + this.rng.rand(step)) % pool.length
+      let picked: { x: number; y: number } | undefined
+      for (let k = 0; k < pool.length; k++) {
+        const cand = pool[(baseIdx + k) % pool.length]!
+        if (!chosen.some((c) => Math.hypot(c.x - cand.x, c.y - cand.y) < 1.5)) {
+          picked = cand
+          break
+        }
+      }
+      if (!picked) picked = pool[baseIdx]!
+      chosen.push(picked)
+      this.spawnMonster({
+        classId: limbClassId,
+        x: picked.x,
+        y: picked.y,
+        areaId: head.areaId,
+        bossUnitId: head.unitId,
+        startSurfaced,
+      })
+    }
   }
 
   spawnObject(spec: SpawnObjectSpec): number {
@@ -5531,7 +5905,7 @@ export class GameInstance {
       }
       const isPlayersChat =
         command.type === 'Chat' &&
-        (/^\s*\/players\s*:?\s*\d+\s*$/i.test(command.text) || /^\s*players set to \d+\s*$/i.test(command.text))
+        (/^\s*\/players/i.test(command.text) || /^\s*players set to \d+\s*$/i.test(command.text))
       if (this.pausedState && !isPlayersChat) {
         deferredWhilePaused.push(item)
         continue
@@ -5783,20 +6157,35 @@ export class GameInstance {
       }
       case 'SelectSkill': {
         const skillId = Number(cmd.skill ?? cmd.skillId ?? 0)
-        if (!this.isPlayerSkillSelectable(player, skillId, cmd.hand)) {
+        const reqItemId =
+          cmd.itemId !== undefined && cmd.itemId !== 0xffffffff ? cmd.itemId : undefined
+        if (!this.isPlayerSkillSelectable(player, skillId, cmd.hand, reqItemId)) {
           break
+        }
+        let resolvedItemId = 0xffffffff
+        if (reqItemId !== undefined) {
+          resolvedItemId = reqItemId
+        } else if (skillId > 0) {
+          const skill = this.registry.getSkillById(skillId)
+          if (skill !== undefined && this.resolvePlayerSkillLevel(player, skill) <= 0) {
+            const charged = findChargedSkill(player.items, skill.id)
+            if (charged !== undefined) resolvedItemId = charged.item.unitId
+          }
         }
         if (cmd.hand === 'left') {
           player.leftSkill = skillId
+          player.leftSkillItemId = resolvedItemId
         } else {
           player.rightSkill = skillId
+          player.rightSkillItemId = resolvedItemId
+          this.syncPlayerSelectedRightAura113c(player)
         }
         this.emitToPlayer(player.unitId, {
           type: 'ActiveSkill',
           unitId: player.unitId,
           hand: cmd.hand,
           skill: skillId,
-          itemId: cmd.itemId ?? 0xffffffff,
+          itemId: resolvedItemId,
         })
         break
       }
@@ -6005,6 +6394,16 @@ export class GameInstance {
       case 'ItemUnequip': {
         if (player.dead) return
         this.handleItemUnequip(player, cmd.slot)
+        break
+      }
+      case 'SwapWeapons': {
+        if (player.dead) return
+        this.handleSwapWeapons(player)
+        break
+      }
+      case 'MercItem': {
+        if (player.dead) return
+        this.handleMercItem(player, cmd.slot)
         break
       }
       case 'BeltPut': {
@@ -6339,8 +6738,28 @@ export class GameInstance {
     // D2Game only casts skills present in the player's skill list: hard points / +skill items on
     // class skills, `item_nonclassskill` oskills, or the universal default skills. Otherwise an
     // equipped `item_charged_skill` (204) with charges left casts it at the charge level.
-    let slvl = this.resolvePlayerSkillLevel(player, skill)
+    const preferredChargeItemId =
+      player.rightSkill === skillId &&
+      player.rightSkillItemId !== undefined &&
+      player.rightSkillItemId !== 0xffffffff
+        ? player.rightSkillItemId
+        : player.leftSkill === skillId &&
+            player.leftSkillItemId !== undefined &&
+            player.leftSkillItemId !== 0xffffffff
+          ? player.leftSkillItemId
+          : undefined
+    let slvl = 0
     let chargeItem: ServerItemEntry | undefined
+    if (preferredChargeItemId !== undefined) {
+      const charged = findChargedSkill(player.items, skill.id, preferredChargeItemId)
+      if (charged !== undefined) {
+        slvl = charged.slvl
+        chargeItem = charged.item
+      }
+    }
+    if (slvl <= 0) {
+      slvl = this.resolvePlayerSkillLevel(player, skill)
+    }
     if (slvl <= 0) {
       const charged = findChargedSkill(player.items, skill.id)
       if (charged === undefined) return null
@@ -6630,12 +7049,16 @@ export class GameInstance {
     player: InternalPlayerRecord,
     skillId: number,
     hand: 'left' | 'right',
+    itemId?: number,
   ): boolean {
     if (!Number.isInteger(skillId) || skillId < 0) return false
     if (skillId === 0) return true
     const skill = this.registry.getSkillById(skillId)
     if (skill === undefined || skill.passive || skill.id === 5) return false
     if (hand === 'left' && skill.aura) return false
+    if (itemId !== undefined && itemId !== 0xffffffff) {
+      return findChargedSkill(player.items, skill.id, itemId) !== undefined
+    }
     if (this.resolvePlayerSkillLevel(player, skill) > 0) return true
     return findChargedSkill(player.items, skill.id) !== undefined
   }
@@ -6647,8 +7070,12 @@ export class GameInstance {
    * and emits `ActiveSkill` (`S2C 0x23`).
    */
   private validatePlayerActiveSkills(player: InternalPlayerRecord): void {
-    if (player.leftSkill !== 0 && !this.isPlayerSkillSelectable(player, player.leftSkill, 'left')) {
+    if (
+      player.leftSkill !== 0 &&
+      !this.isPlayerSkillSelectable(player, player.leftSkill, 'left', player.leftSkillItemId)
+    ) {
       player.leftSkill = 0
+      player.leftSkillItemId = 0xffffffff
       this.emitToPlayer(player.unitId, {
         type: 'ActiveSkill',
         unitId: player.unitId,
@@ -6657,8 +7084,13 @@ export class GameInstance {
         itemId: 0xffffffff,
       })
     }
-    if (player.rightSkill !== 0 && !this.isPlayerSkillSelectable(player, player.rightSkill, 'right')) {
+    if (
+      player.rightSkill !== 0 &&
+      !this.isPlayerSkillSelectable(player, player.rightSkill, 'right', player.rightSkillItemId)
+    ) {
       player.rightSkill = 0
+      player.rightSkillItemId = 0xffffffff
+      this.stopPlayerAura(player)
       this.emitToPlayer(player.unitId, {
         type: 'ActiveSkill',
         unitId: player.unitId,
@@ -6667,6 +7099,84 @@ export class GameInstance {
         itemId: 0xffffffff,
       })
     }
+  }
+
+  /**
+   * 1.13c `SCMD_SelectSkill` (`0x3C`) -> `SKILLS_SetRightSkill` -> `SKILLS_ActivateAura` (`0x6FCCDB30`):
+   * Selecting a Paladin aura on the right-hand slot immediately activates its `AuraScanner` and caster
+   * `aurastate` (even in town or at 0 mana); selecting any non-aura right-hand skill stops the active aura.
+   */
+  private syncPlayerSelectedRightAura113c(player: InternalPlayerRecord): void {
+    if (player.dead) {
+      this.stopPlayerAura(player)
+      return
+    }
+    const skillId = player.rightSkill
+    const skill = skillId > 0 ? this.registry.getSkillById(skillId) : undefined
+    if (skill === undefined || !skill.aura || skill.auraState === '' || skill.passive) {
+      this.stopPlayerAura(player)
+      return
+    }
+    let slvl = this.resolvePlayerSkillLevel(player, skill)
+    let chargeItem: ServerItemEntry | undefined
+    if (slvl <= 0) {
+      const charged = findChargedSkill(player.items, skill.id, player.rightSkillItemId)
+      if (charged === undefined) {
+        this.stopPlayerAura(player)
+        return
+      }
+      slvl = charged.slvl
+      chargeItem = charged.item
+    }
+    const statList = new UnitStatList(
+      this.registry,
+      {
+        level: player.level,
+        strength: player.strength,
+        dexterity: player.dexterity,
+        vitality: player.vitality,
+        energy: player.energy,
+        maxhp: this.getPlayerAccruedMaxHpFixed(player),
+        hitpoints: player.hpFixed,
+        maxmana: this.getPlayerAccruedMaxManaFixed(player),
+        mana: player.manaFixed,
+        maxstamina: this.getPlayerAccruedMaxStaminaFixed(player),
+        stamina: player.staminaFixed,
+        tohit: this.computePlayerBaseToHit113c(player),
+        item_tohit_percent: this.computePlayerToHitPctBonus113c(player),
+        armorclass: this.computePlayerBaseDefense(player),
+      },
+      { ownerType: 'player', charClass: player.classCode },
+    )
+    for (const [id, lvl] of player.skills) {
+      statList.setBaseSkillLevel(id, lvl)
+    }
+    const blvl = player.skills.get(skillId) ?? 0
+    if (slvl > blvl) statList.setBonusSkillLevel(skillId, slvl - blvl)
+    const evalResult = evaluateSkill113c({
+      registry: this.registry,
+      skill,
+      slvl,
+      blvl,
+      statList,
+      difficulty: this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0,
+      randFn: (lo: number, hi: number) => (lo >= hi ? lo : lo + this.rng.rand(hi - lo + 1)),
+    })
+    this.applyPlayerSkillEffect(
+      player,
+      {
+        skill,
+        slvl,
+        evalResult,
+        missile: undefined,
+        chargeItem,
+        statList,
+        blvl,
+      },
+      player.x,
+      player.y,
+      undefined,
+    )
   }
 
   /**
@@ -6800,8 +7310,18 @@ export class GameInstance {
   /** Spend the `Skills.txt` mana cost (256-fixed) and arm the `delay` cooldown of an accepted cast. */
   private commitPlayerSkillCast(player: InternalPlayerRecord, cast: PlayerSkillCast): void {
     if (cast.chargeItem !== undefined) {
-      // Charged casts cost a charge instead of mana.
-      consumeSkillCharge(cast.chargeItem, cast.skill.id)
+      // Charged casts cost a charge instead of mana (1.13c D2Game.dll 0x6FCBF4F8).
+      const consumed = consumeSkillCharge(cast.chargeItem, cast.skill.id)
+      this.emitToPlayer(player.unitId, {
+        type: 'StatSet',
+        unit: { unitType: 4, id: cast.chargeItem.unitId },
+        stat: STAT_ITEM_CHARGED_SKILL,
+        param: consumed.param,
+        value: consumed.remainingCharges,
+      })
+      if (consumed.remainingCharges <= 0) {
+        this.validatePlayerActiveSkills(player)
+      }
     }
     const cost256 =
       cast.chargeItem !== undefined || cast.isNoCostInState ? 0 : cast.evalResult.manaCost256
@@ -7003,7 +7523,7 @@ export class GameInstance {
   private applyStaticField(player: InternalPlayerRecord, cast: PlayerSkillCast): void {
     const radius = cast.evalResult.radiusSubtiles
     for (const m of this.monsters.values()) {
-      if (m.dead || m.isNpc || m.areaId !== player.areaId) continue
+      if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
       if (Math.hypot(m.x - player.x, m.y - player.y) <= radius) {
         this.applyDamageToMonster(player, m, 0, cast.skill.id)
       }
@@ -7022,7 +7542,7 @@ export class GameInstance {
         ? Math.max(9, Math.round(((msl.vel || 16) * (msl.range || 14)) / 20))
         : 9
     for (const m of [...this.monsters.values()]) {
-      if (m.dead || m.isNpc || m.areaId !== player.areaId) continue
+      if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
       if (Math.hypot(m.x - player.x, m.y - player.y) <= ringRadius) {
         if (cast.evalResult.elemType === 'pois' && cast.evalResult.durationFrames > 0) {
           const bitrate256 = this.rollInclusive(
@@ -7759,6 +8279,43 @@ export class GameInstance {
     st.setBaseStat('lightresist', merc.resist)
     st.setBaseStat('coldresist', merc.resist)
     st.setBaseStat('poisonresist', merc.resist)
+
+    // Sync `+allskills` (`stat 127`) and innate Act 2 hireling aura base skill level (`Hireling.txt`),
+    // so item-granted `Meditation` (#120, `Insight`) / `Cleansing` (#109, `Cure`) on an Act 2 `Prayer` (#99)
+    // mercenary evaluates `skill('Prayer'.edns)` (`blvl > 0`) for 1.13c "Double Prayer" heal synergy.
+    let allSkillsBonus = 0
+    for (const item of merc.equipment) {
+      for (const stat of collectItemStats(item)) {
+        if (stat.statId === STAT_ITEM_ALLSKILLS && stat.value > 0) {
+          allSkillsBonus += stat.value
+        }
+      }
+    }
+    st.setBaseStat('item_allskills', allSkillsBonus)
+    for (const innateId of [98, 99, 103, 104, 108, 114] as const) {
+      st.setBaseSkillLevel(innateId, 0)
+    }
+    if (merc.activeAura) {
+      const auraKey = merc.activeAura.trim().toLowerCase()
+      const innateSkillId = MERC_AURA_TO_SKILL_ID[auraKey]
+      if (innateSkillId !== undefined) {
+        const hireStats = resolveHirelingStatsAtLevel(
+          merc.subType,
+          merc.act,
+          merc.difficulty,
+          merc.level,
+          true,
+        )
+        const matchingSkill = hireStats?.skills.find(
+          (s) =>
+            s.skillId === innateSkillId ||
+            MERC_AURA_TO_SKILL_ID[s.skillName.trim().toLowerCase()] === innateSkillId,
+        )
+        const baseSlvl = matchingSkill?.effectiveLevel ?? Math.max(1, Math.min(20, Math.floor(merc.level / 3)))
+        st.setBaseSkillLevel(innateSkillId, Math.max(1, baseSlvl))
+      }
+    }
+
     return {
       id: `merc_${merc.unitId}`,
       name: merc.name,
@@ -7819,11 +8376,57 @@ export class GameInstance {
     return stats
   }
 
+  /** Collect active caster `aurastate` IDs owned by a player (selected skill aura + equipped `item_aura` gear). */
+  private getPlayerOwnCasterAuraStates113c(playerUnitId: number): Set<number> {
+    const out = new Set<number>()
+    const selected = this.playerActiveAuraState.get(playerUnitId)
+    if (selected !== undefined) out.add(selected)
+    const itemRuntime = this.playerItemAuraScanners.get(playerUnitId)
+    if (itemRuntime !== undefined) {
+      for (const entry of itemRuntime.sources) {
+        if (entry.casterStateId !== undefined) out.add(entry.casterStateId)
+      }
+    }
+    return out
+  }
+
+  /** Collect active caster `aurastate` IDs owned by a mercenary (innate aura + equipped `item_aura` gear). */
+  private getMercOwnCasterAuraStates113c(mercUnitId: number): Set<number> {
+    const out = new Set<number>()
+    const runtime = this.mercAuraScanners.get(mercUnitId)
+    if (runtime !== undefined) {
+      for (const entry of runtime.sources) {
+        if (entry.casterStateId !== undefined) out.add(entry.casterStateId)
+      }
+    }
+    return out
+  }
+
   /** Expire persistent combat states and drop contexts of units that left / died. */
   private stepPersistentCombatStates(): void {
     for (const [id, unit] of this.playerCombat) {
-      if (!this.players.has(id)) this.playerCombat.delete(id)
-      else unit.stateBus.tick(this.currentFrame)
+      const p = this.players.get(id)
+      if (p === undefined) {
+        this.playerCombat.delete(id)
+        continue
+      }
+      unit.stateBus.tick(this.currentFrame)
+      const ownCasterStates = this.getPlayerOwnCasterAuraStates113c(id)
+      for (const auraStateId of FRIENDLY_AURA_TARGET_STATE_IDS_113C) {
+        if (ownCasterStates.has(auraStateId)) continue
+        if (p.states.has(auraStateId) && !unit.stateBus.hasState(auraStateId)) {
+          this.clearUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, auraStateId)
+          if (auraStateId === 149) {
+            this.refreshPlayerAccruedMaxPools(p)
+          }
+        }
+      }
+      for (const hostileAuraStateId of [28, 44] as const) {
+        if (ownCasterStates.has(hostileAuraStateId)) continue
+        if (p.states.has(hostileAuraStateId) && !unit.stateBus.hasState(hostileAuraStateId)) {
+          this.clearUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, hostileAuraStateId)
+        }
+      }
     }
     for (const [id, unit] of this.mercCombat) {
       const merc = this.mercenaries.get(id)
@@ -7833,6 +8436,41 @@ export class GameInstance {
         continue
       }
       unit.stateBus.tick(this.currentFrame)
+      const ownMercCasterStates = this.getMercOwnCasterAuraStates113c(id)
+      for (const auraStateId of FRIENDLY_AURA_TARGET_STATE_IDS_113C) {
+        if (ownMercCasterStates.has(auraStateId)) continue
+        if (merc.states.has(auraStateId) && !unit.stateBus.hasState(auraStateId)) {
+          this.clearUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, auraStateId)
+        }
+      }
+      for (const hostileAuraStateId of [28, 44] as const) {
+        if (ownMercCasterStates.has(hostileAuraStateId)) continue
+        if (merc.states.has(hostileAuraStateId) && !unit.stateBus.hasState(hostileAuraStateId)) {
+          this.clearUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, hostileAuraStateId)
+        }
+      }
+    }
+    for (const [petUnitId, vis] of this.petVisualStates) {
+      if (vis.pet.alive === false || vis.pet.hp <= 0 || !this.petUnitIds.has(vis.pet.uid)) {
+        this.petVisualStates.delete(petUnitId)
+        this.petAuraScanners.delete(vis.pet.uid)
+        continue
+      }
+      vis.pet.stateBus.tick(this.currentFrame)
+      this.stepUnitStates(vis.states, vis.timers, 'monster', petUnitId, vis.areaId)
+      const petRuntime = this.petAuraScanners.get(vis.pet.uid)
+      const ownPetCasterStates = new Set<number>()
+      if (petRuntime !== undefined) {
+        for (const s of petRuntime.sources) {
+          if (s.casterStateId !== undefined) ownPetCasterStates.add(s.casterStateId)
+        }
+      }
+      for (const auraStateId of FRIENDLY_AURA_TARGET_STATE_IDS_113C) {
+        if (ownPetCasterStates.has(auraStateId)) continue
+        if (vis.states.has(auraStateId) && !vis.pet.stateBus.hasState(auraStateId)) {
+          this.clearUnitState(vis.states, vis.timers, 'monster', petUnitId, vis.areaId, auraStateId)
+        }
+      }
     }
     for (const [id, unit] of this.monsterCombat) {
       const m = this.monsters.get(id)
@@ -7866,8 +8504,12 @@ export class GameInstance {
           m.convertedUntilFrame = Math.max(m.convertedUntilFrame, expireFrame)
         }
       }
-      // Mirror enemy aura stateBus states (#44 holywindcold, #107 shatter, #28 conviction) removal when expired
-      for (const auraStateId of [44, 107, 28] as const) {
+      const ownLeaderState =
+        m.auraSkillId !== undefined ? PALADIN_AURA_STATE_BY_SKILL_ID[m.auraSkillId] : undefined
+      // Mirror enemy & monster-leader aura stateBus states (#44 holywindcold, #107 shatter, #28 conviction,
+      // #33 might, #40 blessedaim, #49 fanaticism) removal when expired
+      for (const auraStateId of [44, 107, 28, 33, 40, 49] as const) {
+        if (auraStateId === ownLeaderState) continue
         if (m.states.has(auraStateId) && !unit.stateBus.hasState(auraStateId)) {
           this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId)
         }
@@ -7906,10 +8548,10 @@ export class GameInstance {
   }
 
   /**
-   * Mirror friendly party aura target states (`Might` 33, `Prayer` 34, `Thorns` 36, `Defiance` 37,
-   * `Blessed Aim` 40, `Resist Fire/Cold/Lightning` 35/38/39, `Stamina` 41, `Salvation` 42,
-   * `Cleansing` 45, `Meditation` 46, `Fanaticism` 47, `Redemption` 49) from `allyCtx.stateBus`
-   * onto a player or mercenary unit's `states` / `stateTimers`.
+   * Mirror canonical 1.13c friendly `auratargetstate` IDs (`FRIENDLY_AURA_TARGET_STATE_IDS_113C`:
+   * Paladin friendly auras `3, 4, 5, 8, 33, 34, 36, 37, 40, 41, 42, 45, 48, 49` + Druid Spirit
+   * Totem auras `147, 148, 149`) from `allyCtx.stateBus` onto a player, mercenary, or summon pet's
+   * authoritative `states` / `stateTimers`, emitting `UnitState` / `StateSet` / `StateEnd` as needed.
    */
   private syncAuraAllyStates113c(
     states: Set<number>,
@@ -7919,38 +8561,506 @@ export class GameInstance {
     areaId: number,
     allyCtx: CombatUnitContext,
     casterStateIdsToSkip?: ReadonlySet<number>,
+    forceRefresh = false,
   ): void {
-    for (const auraStateId of [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 45, 46, 47, 49] as const) {
+    for (const auraStateId of FRIENDLY_AURA_TARGET_STATE_IDS_113C) {
       if (casterStateIdsToSkip?.has(auraStateId)) continue
-      const entry = allyCtx.stateBus.getActiveEntries().find((e) => e.stateId === auraStateId && e.isAura)
-      if (entry !== undefined && entry.expireFrame > 0) {
+      const entry = allyCtx.stateBus
+        .getActiveEntries()
+        .find((e) => e.stateId === auraStateId && e.isAura && e.expireFrame > this.currentFrame)
+      if (entry !== undefined) {
         const rem = Math.max(1, entry.expireFrame - this.currentFrame)
+        const wasPresent = states.has(auraStateId)
         const prevRem = timers.get(auraStateId) ?? 0
-        if (!states.has(auraStateId) || rem > prevRem) {
+        if (!wasPresent || rem > prevRem || forceRefresh) {
           this.applyUnitState(states, timers, unitType, unitId, areaId, auraStateId, rem)
+          if ((!wasPresent || forceRefresh) && unitType === 'player' && auraStateId === 149) {
+            const p = this.players.get(unitId)
+            if (p !== undefined) this.refreshPlayerAccruedMaxPools(p)
+          }
         } else {
           timers.set(auraStateId, rem)
+        }
+      } else if (states.has(auraStateId)) {
+        this.clearUnitState(states, timers, unitType, unitId, areaId, auraStateId)
+        if (unitType === 'player' && auraStateId === 149) {
+          const p = this.players.get(unitId)
+          if (p !== undefined) this.refreshPlayerAccruedMaxPools(p)
         }
       }
     }
   }
 
+  /** Ensure a summoned pet has an entry in `petVisualStates` and build its `CombatUnitContext`. */
+  private getOrCreatePetCombatContext113c(
+    pet: SummonedPetUnit,
+    petUnitId: number,
+    areaId: number,
+  ): {
+    readonly ctx: CombatUnitContext
+    readonly states: Set<number>
+    readonly timers: Map<number, number>
+  } {
+    let vis = this.petVisualStates.get(petUnitId)
+    if (vis === undefined || vis.pet !== pet) {
+      vis = {
+        states: new Set<number>(),
+        timers: new Map<number, number>(),
+        areaId,
+        pet,
+      }
+      this.petVisualStates.set(petUnitId, vis)
+    } else {
+      vis.areaId = areaId
+    }
+    pet.statList.setBaseStat('maxhp', Math.max(1, pet.maxHp) * FIXED_ONE)
+    pet.statList.setHp256(Math.max(0, pet.hp) * FIXED_ONE)
+    const ctx: CombatUnitContext = {
+      id: `pet_${petUnitId}`,
+      name: pet.name,
+      unitType: 'minion',
+      petType: pet.petType,
+      statList: pet.statList,
+      stateBus: pet.stateBus,
+      x: pet.x,
+      y: pet.y,
+      resistPenalty: difficultyResistPenalty(this.difficulty),
+    }
+    return { ctx, states: vis.states, timers: vis.timers }
+  }
+
   /**
-   * Run every player's selected aura through its `AuraScanner` (`perdelay` pulses): friendly stat
-   * auras on same-area players in range, Prayer / Meditation / Cleansing heals, Redemption corpses,
-   * Conviction / Holy Freeze / Holy Fire / Holy Shock / Sanctuary on hostiles in range. Units are
-   * pre-filtered by the evaluated `aurarangecalc` radius (sub-tile `dx² + dy² <= r²`, 0x6FCC0C70);
-   * the scanner then applies the same radius and the `aurafilter` bits. HP / mana results are
-   * written back.
+   * Gather all 1.13c allied units (`0x6FD00570`: same owner or partied players, their alive mercenaries,
+   * and their active summoned pets) in `areaId` within `maxRadius` of `(originX, originY)`.
+   */
+  private collectFriendlyAuraAllies113c(opts: {
+    readonly ownerPlayerId: number
+    readonly areaId: number
+    readonly originX: number
+    readonly originY: number
+    readonly maxRadius: number
+    readonly selfPlayerCtx?: CombatUnitContext | undefined
+    readonly selfMerc?: InternalMercenaryRecord | undefined
+    readonly selfPet?: SummonedPetUnit | undefined
+  }): {
+    readonly allyPlayers: { readonly record: InternalPlayerRecord; readonly ctx: CombatUnitContext }[]
+    readonly allyMercs: { readonly record: InternalMercenaryRecord; readonly ctx: CombatUnitContext }[]
+    readonly allyPets: {
+      readonly pet: SummonedPetUnit
+      readonly unitId: number
+      readonly ctx: CombatUnitContext
+      readonly states: Set<number>
+      readonly timers: Map<number, number>
+    }[]
+    readonly allAllies: CombatUnitContext[]
+  } {
+    const inRange = (x: number, y: number) =>
+      isWithinAuraRange(x - opts.originX, y - opts.originY, opts.maxRadius)
+    const allyPlayers: { readonly record: InternalPlayerRecord; readonly ctx: CombatUnitContext }[] = []
+    for (const p of this.players.values()) {
+      if (p.dead || p.areaId !== opts.areaId) continue
+      if (!this.partyManager.areAllied(opts.ownerPlayerId, p.unitId)) continue
+      const isSelfPlayer = opts.selfPlayerCtx !== undefined && p.unitId === opts.ownerPlayerId
+      if (!isSelfPlayer && !inRange(p.x, p.y)) continue
+      const ctx = isSelfPlayer ? opts.selfPlayerCtx! : this.playerCombatContext(p)
+      allyPlayers.push({ record: p, ctx })
+    }
+
+    const allyMercs: { readonly record: InternalMercenaryRecord; readonly ctx: CombatUnitContext }[] = []
+    for (const m of this.mercenaries.values()) {
+      if (!m.alive || m.hp <= 0 || m.areaId !== opts.areaId) continue
+      if (!this.partyManager.areAllied(opts.ownerPlayerId, m.ownerPlayerId)) continue
+      const isSelfMerc = opts.selfMerc !== undefined && m === opts.selfMerc
+      if (!isSelfMerc && !inRange(m.x, m.y)) continue
+      allyMercs.push({ record: m, ctx: this.mercCombatContext(m) })
+    }
+
+    const allyPets: {
+      readonly pet: SummonedPetUnit
+      readonly unitId: number
+      readonly ctx: CombatUnitContext
+      readonly states: Set<number>
+      readonly timers: Map<number, number>
+    }[] = []
+    for (const [petOwnerId, mgr] of this.summonManagers.entries()) {
+      if (!this.partyManager.areAllied(opts.ownerPlayerId, petOwnerId)) continue
+      const petOwner = this.players.get(petOwnerId)
+      if (!petOwner || petOwner.dead || petOwner.areaId !== opts.areaId) continue
+      for (const pet of mgr.getActivePets()) {
+        if (pet.alive === false || pet.hp <= 0) continue
+        // Stationary traps / hydras are excluded from friendly party buffs when not selectable minions,
+        // except the caster spirit totem itself.
+        if (pet.petType === 'assassintrap' || pet.petType === 'hydra') continue
+        const petUnitId =
+          this.petUnitIds.get(pet.uid) ??
+          (pet as unknown as { unitId?: number }).unitId
+        if (petUnitId === undefined) continue
+        const isSelfPet = opts.selfPet !== undefined && pet === opts.selfPet
+        if (!isSelfPet && !inRange(pet.x, pet.y)) continue
+        const built = this.getOrCreatePetCombatContext113c(pet, petUnitId, opts.areaId)
+        allyPets.push({ pet, unitId: petUnitId, ...built })
+      }
+    }
+
+    return {
+      allyPlayers,
+      allyMercs,
+      allyPets,
+      allAllies: [
+        ...allyPlayers.map((e) => e.ctx),
+        ...allyMercs.map((e) => e.ctx),
+        ...allyPets.map((e) => e.ctx),
+      ],
+    }
+  }
+
+  /** Sync vitals and `FRIENDLY_AURA_TARGET_STATE_IDS_113C` back to all gathered allied units after an aura pulse. */
+  private syncFriendlyAuraTargets113c(
+    targets: ReturnType<GameInstance['collectFriendlyAuraAllies113c']>,
+    areaId: number,
+    opts?: {
+      readonly skipSelfPlayerId?: number | undefined
+      readonly selfPlayerCasterStates?: ReadonlySet<number> | undefined
+      readonly skipSelfMercId?: number | undefined
+      readonly selfMercCasterStates?: ReadonlySet<number> | undefined
+      readonly skipSelfPetUnitId?: number | undefined
+      readonly selfPetCasterStates?: ReadonlySet<number> | undefined
+      readonly forceRefresh?: boolean | undefined
+    },
+  ): void {
+    for (const { record: p, ctx } of targets.allyPlayers) {
+      this.syncPlayerVitalsFromCombat(p, ctx)
+      const skip =
+        opts?.skipSelfPlayerId === p.unitId
+          ? opts.selfPlayerCasterStates
+          : this.getPlayerOwnCasterAuraStates113c(p.unitId)
+      this.syncAuraAllyStates113c(
+        p.states,
+        p.stateTimers,
+        'player',
+        p.unitId,
+        p.areaId,
+        ctx,
+        skip,
+        Boolean(opts?.forceRefresh),
+      )
+    }
+    for (const { record: m, ctx } of targets.allyMercs) {
+      const hpAfter = Math.min(m.maxHp, Math.max(0, Math.ceil(ctx.statList.getHp256() / FIXED_ONE)))
+      if (hpAfter !== m.hp && m.alive) {
+        m.hp = hpAfter
+        this.broadcastAllyHp(m.areaId, m.unitId, m.hp)
+      }
+      const skip =
+        opts?.skipSelfMercId === m.unitId
+          ? opts.selfMercCasterStates
+          : this.getMercOwnCasterAuraStates113c(m.unitId)
+      this.syncAuraAllyStates113c(
+        m.states,
+        m.stateTimers,
+        'monster',
+        m.unitId,
+        m.areaId,
+        ctx,
+        skip,
+        Boolean(opts?.forceRefresh),
+      )
+    }
+    for (const { pet, unitId, ctx, states, timers } of targets.allyPets) {
+      const hpAfter = Math.min(pet.maxHp, Math.max(0, Math.ceil(ctx.statList.getHp256() / FIXED_ONE)))
+      if (hpAfter !== pet.hp && pet.alive !== false) {
+        pet.hp = hpAfter
+        this.broadcastAllyHp(areaId, unitId, pet.hp)
+      }
+      const skip = opts?.skipSelfPetUnitId === unitId ? opts.selfPetCasterStates : undefined
+      this.syncAuraAllyStates113c(
+        states,
+        timers,
+        'monster',
+        unitId,
+        areaId,
+        ctx,
+        skip,
+        Boolean(opts?.forceRefresh),
+      )
+    }
+  }
+
+  /** Resolve all `STAT_ITEM_AURA` (`statId === 151`) sources on a player's active equipped gear (`bodyLoc` 1..10). */
+  private resolvePlayerItemAuraSources113c(player: InternalPlayerRecord): {
+    readonly skillId: number
+    readonly slvl: number
+    readonly isItemAura: boolean
+    readonly radiusSubtiles: number
+    readonly casterStateId: number | undefined
+    readonly targetStateId: number | undefined
+  }[] {
+    const itemAurasBySkill = new Map<number, number>()
+    for (const stat of collectEquippedItemStats(player.items)) {
+      if (stat.statId === 151 && stat.param > 0 && stat.value > 0) {
+        itemAurasBySkill.set(stat.param, (itemAurasBySkill.get(stat.param) ?? 0) + stat.value)
+      }
+    }
+    if (itemAurasBySkill.size === 0) return []
+    const out: {
+      readonly skillId: number
+      readonly slvl: number
+      readonly isItemAura: boolean
+      readonly radiusSubtiles: number
+      readonly casterStateId: number | undefined
+      readonly targetStateId: number | undefined
+    }[] = []
+    for (const [skillId, rawSlvl] of itemAurasBySkill) {
+      const skill = this.registry.getSkillById(skillId)
+      if (!skill || !skill.aura || !skill.auraState || skill.passive) continue
+      const slvl = Math.max(1, rawSlvl)
+      const casterStateId = skill.auraState ? this.registry.getStateByName(skill.auraState)?.id : undefined
+      const targetStateId = skill.auraTgtState ? this.registry.getStateByName(skill.auraTgtState)?.id : undefined
+      out.push({
+        skillId,
+        slvl,
+        isItemAura: true,
+        radiusSubtiles: this.auraRangeSubtiles(skillId, slvl),
+        casterStateId,
+        targetStateId,
+      })
+    }
+    return out
+  }
+
+  /** Synchronize a player's `STAT_ITEM_AURA` (`151`) scanner on connect / equip / unequip / weapon swap. */
+  private syncPlayerItemAuras113c(player: InternalPlayerRecord, forcePulse = false): void {
+    if (player.dead) {
+      const prev = this.playerItemAuraScanners.get(player.unitId)
+      if (prev !== undefined) {
+        this.playerItemAuraScanners.delete(player.unitId)
+        const selectedState = this.playerActiveAuraState.get(player.unitId)
+        for (const entry of prev.sources) {
+          if (entry.casterStateId !== undefined && entry.casterStateId !== selectedState) {
+            this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, entry.casterStateId)
+            this.playerCombat.get(player.unitId)?.stateBus.removeState(entry.casterStateId)
+          }
+        }
+      }
+      return
+    }
+    const desiredSpecs = this.resolvePlayerItemAuraSources113c(player)
+    if (desiredSpecs.length === 0) {
+      const prev = this.playerItemAuraScanners.get(player.unitId)
+      if (prev !== undefined) {
+        this.playerItemAuraScanners.delete(player.unitId)
+        const selectedState = this.playerActiveAuraState.get(player.unitId)
+        for (const entry of prev.sources) {
+          if (entry.casterStateId !== undefined && entry.casterStateId !== selectedState) {
+            this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, entry.casterStateId)
+            this.playerCombat.get(player.unitId)?.stateBus.removeState(entry.casterStateId)
+          }
+        }
+      }
+      return
+    }
+
+    const signature = desiredSpecs.map((s) => `${s.skillId}:${s.slvl}`).join(',')
+    let runtime = this.playerItemAuraScanners.get(player.unitId)
+    let signatureChanged = false
+    if (runtime === undefined || runtime.signature !== signature) {
+      signatureChanged = true
+      const nextCasterIds = new Set<number>()
+      const selectedState = this.playerActiveAuraState.get(player.unitId)
+      if (selectedState !== undefined) nextCasterIds.add(selectedState)
+      for (const spec of desiredSpecs) {
+        if (spec.casterStateId !== undefined) nextCasterIds.add(spec.casterStateId)
+      }
+      if (runtime !== undefined) {
+        for (const prev of runtime.sources) {
+          if (prev.casterStateId !== undefined && !nextCasterIds.has(prev.casterStateId)) {
+            this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, prev.casterStateId)
+            this.playerCombat.get(player.unitId)?.stateBus.removeState(prev.casterStateId)
+          }
+        }
+      }
+      const scanner = new AuraScanner(this.registry, ((this.currentMapSeed ^ player.unitId ^ 0x9e3779b9) >>> 0))
+      const ownerCtx = this.playerCombatContext(player)
+      // Item-granted auras (`STAT_ITEM_AURA` 151) never consume player mana (`SKILLS_SrvDo065` item aura path):
+      // mark the scanner source context as item-driven via `petType = 'item_aura'` while keeping `ownerCtx` statList/stateBus!
+      const itemCasterCtx: CombatUnitContext = { ...ownerCtx, petType: 'item_aura' }
+      const sources: MercAuraSourceEntry[] = []
+      const pulseTick = Math.max(1, this.currentFrame)
+      for (const spec of desiredSpecs) {
+        const source = scanner.setActiveAura(itemCasterCtx, spec.skillId, spec.slvl, pulseTick)
+        if (source === null) continue
+        sources.push({ ...spec, source })
+      }
+      runtime = {
+        scanner,
+        signature,
+        sources,
+        needsInitialPulse: true,
+      }
+      this.playerItemAuraScanners.set(player.unitId, runtime)
+    }
+
+    if (forcePulse || signatureChanged) {
+      runtime.needsInitialPulse = true
+      this.pulsePlayerItemAuraRuntime113c(player, runtime, signatureChanged)
+    }
+  }
+
+  /** Pulse a player's equipped `STAT_ITEM_AURA` (`151`) scanner across self, party allies, mercs, pets, and hostiles. */
+  private pulsePlayerItemAuraRuntime113c(
+    owner: InternalPlayerRecord,
+    runtime: MercAuraRuntime,
+    forceRefresh = false,
+  ): void {
+    if (runtime.sources.length === 0 || owner.dead) return
+    runtime.scanner.syncCasterPosition(owner.x, owner.y)
+    const maxRadius = runtime.sources.reduce((acc, s) => Math.max(acc, s.radiusSubtiles), 0)
+    const inRange = (x: number, y: number) => isWithinAuraRange(x - owner.x, y - owner.y, maxRadius)
+    const ownerCtx = this.playerCombatContext(owner)
+    const targets = this.collectFriendlyAuraAllies113c({
+      ownerPlayerId: owner.unitId,
+      areaId: owner.areaId,
+      originX: owner.x,
+      originY: owner.y,
+      maxRadius,
+      selfPlayerCtx: ownerCtx,
+    })
+    const enemyRecords = [...this.monsters.values()].filter(
+      (m) =>
+        !m.dead &&
+        !m.isNpc &&
+        m.isKillable &&
+        !this.isMonsterConverted(m) &&
+        m.areaId === owner.areaId &&
+        inRange(m.x, m.y),
+    )
+    const corpseRecords = [...this.monsters.values()].filter(
+      (m) => m.dead && !m.shattered && !m.isNpc && m.areaId === owner.areaId && inRange(m.x, m.y),
+    )
+    const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
+    const corpses: CorpseContext[] = corpseRecords.map((m) => ({
+      id: String(m.unitId),
+      consumed: false,
+      x: m.x,
+      y: m.y,
+    }))
+    const auraEnv = {
+      isTown: TOWN_AREAS.has(owner.areaId),
+      hasLineOfSight: (src: CombatUnitContext, tgt: { x?: number; y?: number }) =>
+        src.x === undefined || src.y === undefined || tgt.x === undefined || tgt.y === undefined
+          ? false
+          : this.isMonsterStepWalkable(owner.areaId, src.x, src.y, tgt.x, tgt.y, true),
+      rng: this.rng,
+    }
+    const pulseTick = Math.max(1, this.currentFrame)
+    if (runtime.needsInitialPulse) {
+      runtime.needsInitialPulse = false
+      for (const entry of runtime.sources) {
+        runtime.scanner.pulseAura(entry.source, pulseTick, targets.allAllies, enemies, corpses, auraEnv)
+      }
+      for (const entry of runtime.sources) {
+        if (entry.casterStateId !== undefined) {
+          this.applyPersistentUnitState(
+            owner.states,
+            owner.stateTimers,
+            'player',
+            owner.unitId,
+            owner.areaId,
+            entry.casterStateId,
+          )
+        }
+      }
+    } else {
+      runtime.scanner.tick(this.currentFrame, targets.allAllies, enemies, corpses, auraEnv)
+      for (const entry of runtime.sources) {
+        if (entry.casterStateId !== undefined && !owner.states.has(entry.casterStateId)) {
+          this.applyPersistentUnitState(
+            owner.states,
+            owner.stateTimers,
+            'player',
+            owner.unitId,
+            owner.areaId,
+            entry.casterStateId,
+          )
+        }
+        if (entry.targetStateId === undefined) continue
+        const tgtState = entry.targetStateId
+        if (entry.skillId === 114 || entry.skillId === 123) {
+          const unpulsedEnemies = enemies.filter((e, idx) => {
+            const m = enemyRecords[idx]!
+            if (!isWithinAuraRange(m.x - owner.x, m.y - owner.y, entry.radiusSubtiles)) return false
+            if (m.isPrimeEvil || (entry.skillId === 114 && m.coldEffect === 0)) return false
+            if (auraEnv.isTown) return false
+            return !e.stateBus.hasState(tgtState)
+          })
+          if (unpulsedEnemies.length > 0) {
+            runtime.scanner.pulseAura(entry.source, pulseTick, [], unpulsedEnemies, [], auraEnv)
+          }
+        } else {
+          const unpulsedAllies = targets.allAllies.filter((a) => {
+            if (a.id === ownerCtx.id || a.x === undefined || a.y === undefined) return false
+            if (!isWithinAuraRange(a.x - owner.x, a.y - owner.y, entry.radiusSubtiles)) return false
+            if (a.stateBus.hasState(tgtState)) return false
+            return passesAuraFilter(entry.source.skill.auraFilter, {
+              kind: a.unitType === 'player' ? 'player' : 'monster',
+              relation: 'ally',
+              dead: a.statList.getHp256() <= 0,
+              inTown: auraEnv.isTown,
+            })
+          })
+          if (unpulsedAllies.length > 0) {
+            runtime.scanner.pulseAura(entry.source, pulseTick, unpulsedAllies, [], [], auraEnv)
+          }
+        }
+      }
+    }
+
+    const ownCasterStates = this.getPlayerOwnCasterAuraStates113c(owner.unitId)
+    this.syncFriendlyAuraTargets113c(targets, owner.areaId, {
+      skipSelfPlayerId: owner.unitId,
+      selfPlayerCasterStates: ownCasterStates,
+      forceRefresh,
+    })
+    enemyRecords.forEach((m, i) => {
+      this.syncAuraEnemyStates113c(m, enemies[i]!)
+      const hpAfter = Math.max(0, Math.ceil(enemies[i]!.statList.getHp256() / FIXED_ONE))
+      const dealt = m.hp - hpAfter
+      if (dealt > 0) {
+        const dmgSkillId =
+          runtime.sources.find(
+            (s) => s.skillId === 114 || s.skillId === 102 || s.skillId === 118 || s.skillId === 119,
+          )?.skillId ??
+          runtime.sources[0]?.skillId ??
+          0
+        this.finishMonsterDamage(owner, m, dealt, dmgSkillId, this.resolveSkillDamageChannel(dmgSkillId))
+      }
+    })
+    corpseRecords.forEach((m, i) => {
+      if (corpses[i]!.consumed) m.shattered = true
+    })
+  }
+
+  /**
+   * Run every player's selected aura (and any equipped `STAT_ITEM_AURA` `151` item auras) through
+   * its `AuraScanner` (`perdelay` pulses): friendly stat auras on same-area allied players,
+   * mercenaries, and summoned pets in range, Prayer / Meditation / Cleansing heals, Redemption
+   * corpses, and Conviction / Holy Freeze / Holy Fire / Holy Shock / Sanctuary on hostiles in range.
    */
   private stepPlayerAuras(): void {
     for (const [ownerId, aura] of this.playerAuraScanners) {
       const owner = this.players.get(ownerId)
       if (owner === undefined || owner.dead) continue
+      aura.scanner.syncCasterPosition(owner.x, owner.y)
       const inRange = (x: number, y: number) => isWithinAuraRange(x - owner.x, y - owner.y, aura.radiusSubtiles)
-      const allyRecords = [...this.players.values()].filter(
-        (p) => !p.dead && p.areaId === owner.areaId && (p === owner || inRange(p.x, p.y)),
-      )
+      const ownerCtx = this.playerCombatContext(owner)
+      const targets = this.collectFriendlyAuraAllies113c({
+        ownerPlayerId: owner.unitId,
+        areaId: owner.areaId,
+        originX: owner.x,
+        originY: owner.y,
+        maxRadius: aura.radiusSubtiles,
+        selfPlayerCtx: ownerCtx,
+      })
       const enemyRecords = [...this.monsters.values()].filter(
         (m) => !m.dead && !m.isNpc && m.isKillable && !this.isMonsterConverted(m) && m.areaId === owner.areaId && inRange(m.x, m.y),
       )
@@ -7962,8 +9072,6 @@ export class GameInstance {
           m.areaId === owner.areaId &&
           inRange(m.x, m.y),
       )
-      const ownerCtx = this.playerCombatContext(owner)
-      const allies = allyRecords.map((p) => (p === owner ? ownerCtx : this.playerCombatContext(p)))
       const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
       const corpses: CorpseContext[] = corpseRecords.map((m) => ({ id: String(m.unitId), consumed: false, x: m.x, y: m.y }))
       const auraEnv = {
@@ -7975,22 +9083,44 @@ export class GameInstance {
             : this.isMonsterStepWalkable(owner.areaId, src.x, src.y, tgt.x, tgt.y, true),
         rng: this.rng,
       }
-      aura.scanner.tick(this.currentFrame, allies, enemies, corpses, auraEnv)
-      // If a hostile monster newly entered range of an enemy-debuff aura (Holy Freeze #114 / Conviction #123)
-      // between `perdelay` ticks, pulse that unpulsed target immediately so it does not wait up to 49 frames.
-      if (aura.source !== undefined && (aura.skillId === 114 || aura.skillId === 123) && aura.targetStateId !== undefined) {
+      aura.scanner.tick(this.currentFrame, targets.allAllies, enemies, corpses, auraEnv)
+      const pulseTick = Math.max(1, this.currentFrame)
+      // If a hostile monster or allied unit newly entered range between `perdelay` ticks,
+      // pulse that unpulsed target immediately so it does not wait up to 49 frames.
+      if (aura.source !== undefined && aura.targetStateId !== undefined) {
         const tgtState = aura.targetStateId
-        const unpulsedEnemies = enemies.filter((e, idx) => {
-          const m = enemyRecords[idx]!
-          if (m.isPrimeEvil || (aura.skillId === 114 && m.coldEffect === 0)) return false
-          return !e.stateBus.hasState(tgtState)
-        })
-        if (unpulsedEnemies.length > 0) {
-          aura.scanner.pulseAura(aura.source, Math.max(1, this.currentFrame), [], unpulsedEnemies, [], auraEnv)
+        if (aura.skillId === 114 || aura.skillId === 123) {
+          const unpulsedEnemies = enemies.filter((e, idx) => {
+            const m = enemyRecords[idx]!
+            if (m.isPrimeEvil || (aura.skillId === 114 && m.coldEffect === 0)) return false
+            if (auraEnv.isTown) return false
+            return !e.stateBus.hasState(tgtState)
+          })
+          if (unpulsedEnemies.length > 0) {
+            aura.scanner.pulseAura(aura.source, pulseTick, [], unpulsedEnemies, [], auraEnv)
+          }
+        } else if (FRIENDLY_AURA_TARGET_STATE_IDS_113C.has(tgtState)) {
+          const unpulsedAllies = targets.allAllies.filter((a) => {
+            if (a.id === ownerCtx.id || a.x === undefined || a.y === undefined) return false
+            if (!inRange(a.x, a.y) || a.stateBus.hasState(tgtState)) return false
+            return passesAuraFilter(aura.source!.skill.auraFilter, {
+              kind: a.unitType === 'player' ? 'player' : 'monster',
+              relation: 'ally',
+              dead: a.statList.getHp256() <= 0,
+              inTown: auraEnv.isTown,
+            })
+          })
+          if (unpulsedAllies.length > 0) {
+            aura.scanner.pulseAura(aura.source, pulseTick, unpulsedAllies, [], [], auraEnv)
+          }
         }
       }
 
-      allyRecords.forEach((p, i) => this.syncPlayerVitalsFromCombat(p, allies[i]!))
+      const ownCasterStates = this.getPlayerOwnCasterAuraStates113c(owner.unitId)
+      this.syncFriendlyAuraTargets113c(targets, owner.areaId, {
+        skipSelfPlayerId: owner.unitId,
+        selfPlayerCasterStates: ownCasterStates,
+      })
       enemyRecords.forEach((m, i) => {
         // Mirror Holy Freeze (#114) / Conviction (#123) stateBus states before radial damage
         // so that a monster killed on a 20% shatter pulse already carries state #107 on death.
@@ -8004,6 +9134,12 @@ export class GameInstance {
       corpseRecords.forEach((m, i) => {
         if (corpses[i]!.consumed) m.shattered = true
       })
+    }
+
+    for (const [ownerId, itemRuntime] of this.playerItemAuraScanners) {
+      const owner = this.players.get(ownerId)
+      if (owner === undefined || owner.dead) continue
+      this.pulsePlayerItemAuraRuntime113c(owner, itemRuntime, false)
     }
   }
 
@@ -8035,7 +9171,7 @@ export class GameInstance {
     }
   }
 
-  /** Deselect the player's aura: stop its pulses and remove the caster aura state. */
+  /** Deselect the player's aura: stop its pulses and remove the caster aura state (unless granted by equipped `item_aura`). */
   private stopPlayerAura(player: InternalPlayerRecord): void {
     this.playerAuraScanners.delete(player.unitId)
     player.states.delete(85)
@@ -8043,8 +9179,13 @@ export class GameInstance {
     const stateId = this.playerActiveAuraState.get(player.unitId)
     if (stateId !== undefined) {
       this.playerActiveAuraState.delete(player.unitId)
-      this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
-      this.playerCombat.get(player.unitId)?.stateBus.removeState(stateId)
+      const stillGrantedByItem = this.playerItemAuraScanners
+        .get(player.unitId)
+        ?.sources.some((s) => s.casterStateId === stateId)
+      if (!stillGrantedByItem) {
+        this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
+        this.playerCombat.get(player.unitId)?.stateBus.removeState(stateId)
+      }
     }
   }
 
@@ -8085,13 +9226,17 @@ export class GameInstance {
       const stateId = stateByName(skill.auraState)
       const previous = this.playerActiveAuraState.get(player.unitId)
       if (previous !== undefined && previous !== stateId) {
-        this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, previous)
-        this.playerCombat.get(player.unitId)?.stateBus.removeState(previous)
+        const stillGrantedByItem = this.playerItemAuraScanners
+          .get(player.unitId)
+          ?.sources.some((s) => s.casterStateId === previous)
+        if (!stillGrantedByItem) {
+          this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, previous)
+          this.playerCombat.get(player.unitId)?.stateBus.removeState(previous)
+        }
         player.states.delete(85)
         this.playerCombat.get(player.unitId)?.stateBus.removeState('nomanaregen')
       }
       this.playerActiveAuraState.set(player.unitId, stateId)
-      this.applyPersistentUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
       // 1.13c `SKILLS_ActivateAura` (0x6FCCDB30): immediately pulse `immediate=1` auras on activation
       // and schedule periodic `perdelay` pulses through `AuraScanner` on global frame boundaries.
       const ownerCtx = this.playerCombatContext(player)
@@ -8107,19 +9252,23 @@ export class GameInstance {
       })
       if (activeSource) {
         const inRange = (x: number, y: number) => isWithinAuraRange(x - player.x, y - player.y, evalResult.radiusSubtiles)
-        const allyRecords = [...this.players.values()].filter(
-          (p) => !p.dead && p.areaId === player.areaId && (p === player || inRange(p.x, p.y)),
-        )
+        const targets = this.collectFriendlyAuraAllies113c({
+          ownerPlayerId: player.unitId,
+          areaId: player.areaId,
+          originX: player.x,
+          originY: player.y,
+          maxRadius: evalResult.radiusSubtiles,
+          selfPlayerCtx: ownerCtx,
+        })
         const enemyRecords = [...this.monsters.values()].filter(
-          (m) => !m.dead && !m.isNpc && m.isKillable && !this.isMonsterConverted(m) && m.areaId === player.areaId && inRange(m.x, m.y),
+          (m) => !m.dead && !m.isNpc && !m.submerged && m.isKillable && !this.isMonsterConverted(m) && m.areaId === player.areaId && inRange(m.x, m.y),
         )
         const corpseRecords = [...this.monsters.values()].filter(
           (m) => m.dead && !m.shattered && !m.isNpc && m.areaId === player.areaId && inRange(m.x, m.y),
         )
-        const allies = allyRecords.map((p) => (p === player ? ownerCtx : this.playerCombatContext(p)))
         const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
         const corpses: CorpseContext[] = corpseRecords.map((m) => ({ id: String(m.unitId), consumed: false, x: m.x, y: m.y }))
-        scanner.pulseAura(activeSource, this.currentFrame + 1, allies, enemies, corpses, {
+        scanner.pulseAura(activeSource, this.currentFrame + 1, targets.allAllies, enemies, corpses, {
           isTown: TOWN_AREAS.has(player.areaId),
           hasLineOfSight: (src, tgt) =>
             src.x === undefined || src.y === undefined || tgt.x === undefined || tgt.y === undefined
@@ -8127,7 +9276,13 @@ export class GameInstance {
               : this.isMonsterStepWalkable(player.areaId, src.x, src.y, tgt.x, tgt.y, true),
           rng: this.rng,
         })
-        allyRecords.forEach((p, i) => this.syncPlayerVitalsFromCombat(p, allies[i]!))
+        // Apply persistent caster state AFTER `pulseAura` populates `ownerCtx.stateBus` so `StateSet` carries `packetStats`!
+        this.applyPersistentUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
+        const ownCasterStates = this.getPlayerOwnCasterAuraStates113c(player.unitId)
+        this.syncFriendlyAuraTargets113c(targets, player.areaId, {
+          skipSelfPlayerId: player.unitId,
+          selfPlayerCasterStates: ownCasterStates,
+        })
         enemyRecords.forEach((m, i) => {
           this.syncAuraEnemyStates113c(m, enemies[i]!)
           const hpAfter = Math.max(0, Math.ceil(enemies[i]!.statList.getHp256() / FIXED_ONE))
@@ -8139,6 +9294,8 @@ export class GameInstance {
         corpseRecords.forEach((m, i) => {
           if (corpses[i]!.consumed) m.shattered = true
         })
+      } else {
+        this.applyPersistentUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
       }
       return
     }
@@ -8148,7 +9305,7 @@ export class GameInstance {
       const casterStats = this.playerCombatContext(player).statList
       const stats = this.evaluateSkillStateStats(skill, cast.slvl, casterStats)
       for (const m of this.monsters.values()) {
-        if (m.dead || m.isNpc || m.areaId !== player.areaId) continue
+        if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
         const inArea = radius > 0 ? Math.hypot(m.x - tx, m.y - ty) <= radius : m === targetMonster
         if (inArea) {
           this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, stateId, evalResult.durationFrames)
@@ -8268,6 +9425,41 @@ export class GameInstance {
    * Whirlwind (`srvdofunc` 76): spin along the path to (tx, ty), striking each hostile within melee
    * reach of the path once with the skill's weapon damage.
    */
+  private resolvePlayerWeaponRangeAdder(player: InternalPlayerRecord): number {
+    const equipped = player.items.filter(
+      (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
+    )
+    const right = equipped.find((i) => i.bodyLoc === BODYLOC_RIGHT_ARM)
+    const left = equipped.find((i) => i.bodyLoc === BODYLOC_LEFT_ARM)
+    const rightBase = right ? resolveWeaponBase113c(right.code) : undefined
+    const leftBase = left ? resolveWeaponBase113c(left.code) : undefined
+    const weaponBase = rightBase ?? leftBase
+    return weaponBase?.rangeadder ?? 0
+  }
+
+  private isPlayerMeleeInRangeOfMonster(
+    player: InternalPlayerRecord,
+    monster: InternalMonsterRecord,
+    fromX = player.x,
+    fromY = player.y,
+  ): boolean {
+    if (isTentacleHcIdx113c(monster.hcIdx) || isTentacleHeadHcIdx113c(monster.hcIdx)) {
+      return isInMeleeRange113c(
+        fromX,
+        fromY,
+        2,
+        monster.x,
+        monster.y,
+        monster.sizeX,
+        this.resolvePlayerWeaponRangeAdder(player),
+        false,
+        null,
+        monster.hcIdx,
+      )
+    }
+    return Math.hypot(monster.x - fromX, monster.y - fromY) <= PLAYER_MELEE_REACH_SUBTILES
+  }
+
   private executeWhirlwind(player: InternalPlayerRecord, cast: PlayerSkillCast, tx: number, ty: number): void {
     const startX = player.x
     const startY = player.y
@@ -8276,7 +9468,7 @@ export class GameInstance {
     const endY = player.y
     const segLen = Math.hypot(endX - startX, endY - startY)
     for (const m of this.monsters.values()) {
-      if (m.dead || m.isNpc || m.areaId !== player.areaId) continue
+      if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
       let t = 0
       if (segLen > 0) {
         t = ((m.x - startX) * (endX - startX) + (m.y - startY) * (endY - startY)) / (segLen * segLen)
@@ -8284,7 +9476,7 @@ export class GameInstance {
       }
       const px = startX + (endX - startX) * t
       const py = startY + (endY - startY) * t
-      if (Math.hypot(m.x - px, m.y - py) <= PLAYER_MELEE_REACH_SUBTILES) {
+      if (this.isPlayerMeleeInRangeOfMonster(player, m, px, py)) {
         const damage = this.rollPlayerSkillDamage(player, cast)
         if (damage > 0) this.applyDamageToMonster(player, m, damage, cast.skill.id)
       }
@@ -8317,7 +9509,13 @@ export class GameInstance {
       throw new Error('GameInstance: States.txt row stunned is missing')
     }
     const targets = [...this.monsters.values()].filter(
-      (m) => !m.dead && !m.isNpc && !this.isMonsterConverted(m) && m.areaId === player.areaId && Math.hypot(m.x - tx, m.y - ty) <= radius,
+      (m) =>
+        !m.dead &&
+        !m.isNpc &&
+        !m.submerged &&
+        !this.isMonsterConverted(m) &&
+        m.areaId === player.areaId &&
+        Math.hypot(m.x - tx, m.y - ty) <= radius,
     )
     for (const m of targets) {
       this.applyDirectSkillDamage(player, cast, m)
@@ -8385,7 +9583,7 @@ export class GameInstance {
     })
     const rollPct = 70 + this.rng.rand(51)
     for (const m of [...this.monsters.values()]) {
-      if (m.dead || m.isNpc || m.areaId !== player.areaId) continue
+      if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
       const d = Math.hypot(m.x - corpse.x, m.y - corpse.y)
       const out = computeCorpseExplosion113c({
         corpseBaseHp: corpse.baseMaxHp || corpse.maxHp,
@@ -8668,16 +9866,20 @@ export class GameInstance {
   ): void {
     if (player.dead || this.isPlayerInHitRecovery(player)) return
     const clicked = this.monsters.get(targetId)
+    if (clicked && clicked.submerged) {
+      return
+    }
     if (clicked && clicked.dead && !clicked.isNpc && clicked.areaId === player.areaId) {
       // A cast on a corpse (Corpse Explosion, Raise Skeleton, Revive, ...) targets that corpse.
       this.executeSkillAtLocation(player, skillId, clicked.x, clicked.y, clicked)
       return
     }
     let monster = clicked
-    if (!monster || monster.dead || monster.isNpc || monster.areaId !== player.areaId) {
+    if (!monster || monster.dead || monster.isNpc || monster.submerged || monster.areaId !== player.areaId) {
       // Fallback: if targetId refers to the nearest hostile monster in the player's area
+      monster = undefined
       for (const candidate of this.monsters.values()) {
-        if (!candidate.dead && !candidate.isNpc && candidate.areaId === player.areaId) {
+        if (!candidate.dead && !candidate.isNpc && !candidate.submerged && candidate.areaId === player.areaId) {
           monster = candidate
           break
         }
@@ -8688,14 +9890,13 @@ export class GameInstance {
     const cast = this.resolvePlayerSkillCast(player, skillId)
     if (cast === null) return
     const doFunc = cast.skill.srvDoFunc
-    const dist = Math.hypot(monster.x - player.x, monster.y - player.y)
     const isMovementStrike =
       doFunc === SRVDOFUNC_CHARGE || doFunc === SRVDOFUNC_LEAP_ATTACK || doFunc === SRVDOFUNC_DRAGON_FLIGHT
     const isMeleeStrike =
       !isMovementStrike &&
       cast.missile === undefined &&
       (cast.skill.range === 'h2h' || cast.skill.range === 'both')
-    if (isMeleeStrike && dist > PLAYER_MELEE_REACH_SUBTILES) return
+    if (isMeleeStrike && !this.isPlayerMeleeInRangeOfMonster(player, monster)) return
 
     this.updatePlayerChannelState(player, cast)
     if (!cast.skill.useManaOnDo) {
@@ -8726,7 +9927,7 @@ export class GameInstance {
       // Charge / Leap Attack / Dragon Flight: arrive next to the target, then strike it.
       const arrival = this.pointBefore(player, monster.x, monster.y, 1)
       this.relocatePlayerForSkill(player, arrival.x, arrival.y, false)
-      if (Math.hypot(monster.x - player.x, monster.y - player.y) <= PLAYER_MELEE_REACH_SUBTILES) {
+      if (this.isPlayerMeleeInRangeOfMonster(player, monster)) {
         const damage = this.rollPlayerSkillDamage(player, cast)
         if (damage > 0) this.applyDamageToMonster(player, monster, damage, skillId)
       }
@@ -9162,7 +10363,7 @@ export class GameInstance {
       damage = Number(damageOrAttackerId ?? 0)
       skillId = resolvedSkillId
     }
-    if (!monster || monster.dead || monster.isNpc || !monster.isKillable) return false
+    if (!monster || monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return false
     if (effectiveSource === 'merc' && mercAttacker === undefined && attacker !== undefined) {
       for (const m of this.mercenaries.values()) {
         if (m.ownerPlayerId === attacker.unitId && m.alive) {
@@ -9605,7 +10806,7 @@ export class GameInstance {
     skillId: number,
     effectiveSource: 'player' | 'merc' = 'player',
   ): void {
-    if (monster.dead || monster.isNpc || !monster.isKillable) return
+    if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
     if (rawBitrate256 <= 0 || durationFrames <= 0) return
 
     const attackerStats = new UnitStatList(this.registry, undefined, {
@@ -9961,6 +11162,7 @@ export class GameInstance {
     channel: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois',
   ): void {
     if (monster.dead) return
+    monster.submerged = false
     monster.pendingAttack = undefined
     monster.pendingAllyAttack = undefined
     monster.pendingResurrection = undefined
@@ -9996,6 +11198,19 @@ export class GameInstance {
     }
     monster.dead = true
     monster.mode = 12
+    if (monster.auraSkillId !== undefined) {
+      const leaderStateId = PALADIN_AURA_STATE_BY_SKILL_ID[monster.auraSkillId]
+      if (leaderStateId !== undefined && monster.states.has(leaderStateId)) {
+        this.clearUnitState(
+          monster.states,
+          monster.stateTimers,
+          'monster',
+          monster.unitId,
+          monster.areaId,
+          leaderStateId,
+        )
+      }
+    }
     monster.path = []
     monster.pathIndex = 0
     monster.pathTargetX = Number.NaN
@@ -11028,11 +12243,50 @@ export class GameInstance {
   private applyMonsterAura(monster: InternalMonsterRecord): void {
     const auraId = monster.auraSkillId
     if (auraId === undefined || monster.dead) return
+    const leaderStateId = PALADIN_AURA_STATE_BY_SKILL_ID[auraId]
+    if (leaderStateId !== undefined && !monster.states.has(leaderStateId)) {
+      this.applyPersistentUnitState(
+        monster.states,
+        monster.stateTimers,
+        'monster',
+        monster.unitId,
+        monster.areaId,
+        leaderStateId,
+      )
+    }
     const lvl = Math.max(1, monster.level)
     // 0x6FCC0C70: radius = the aura row's evaluated `aurarangecalc` (Holy Freeze `ln12` = 6 + (lvl-1),
     // Conviction `ln12` = 20 + 0), hit when sub-tile `dx² + dy² <= r²`.
     const radius = this.auraRangeSubtiles(auraId, lvl)
     const outOfRange = (x: number, y: number): boolean => !isWithinAuraRange(x - monster.x, y - monster.y, radius)
+
+    if (auraId === 98 || auraId === 108 || auraId === 122) {
+      // Might (#98, mlvl/6), Blessed Aim (#108, mlvl/5), Fanaticism (#122, mlvl/8):
+      // 1.13c `MonUMod 30` (`0x6FD2E4A0`) friendly monster aura pulses onto nearby fellow monsters.
+      if (this.currentFrame % 25 !== 0) return
+      const divisor = auraId === 98 ? 6 : auraId === 108 ? 5 : 8
+      const auraSlvl = Math.max(1, Math.floor(lvl / divisor))
+      const auraSkill = this.registry.getSkillById(auraId)
+      const tgtState = PALADIN_AURA_TARGET_STATE_BY_SKILL_ID[auraId]
+      if (auraSkill === undefined || tgtState === undefined) return
+      for (const m of this.monsters.values()) {
+        if (m === monster || m.dead || m.isNpc || !m.isKillable || this.isMonsterConverted(m)) continue
+        if (m.areaId !== monster.areaId || outOfRange(m.x, m.y)) continue
+        const mCtx = this.monsterCombatContext(m)
+        mCtx.stateBus.applyState({
+          stateNameOrId: tgtState,
+          sourceUnitId: `monster_${monster.unitId}`,
+          sourceSkillId: auraId,
+          slvl: auraSlvl,
+          durationFrames: 75,
+          currentFrame: this.currentFrame,
+          stats: this.evaluateSkillStateStats(auraSkill, auraSlvl, mCtx.statList),
+          isAuraOverride: true,
+        })
+        this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, tgtState, 75)
+      }
+      return
+    }
 
     if (auraId === 114) {
       // Holy Freeze: chill nearby players & mercenaries. `aurafilter = 0x4A283` carries `0x8000` (enemy only,
@@ -11079,26 +12333,45 @@ export class GameInstance {
       return
     }
     if (auraId === 123) {
-      // Conviction: state 28 on nearby players/monsters (resist pierce is applied by
+      // Conviction: state 28 on nearby players & mercenaries (resist pierce is applied by
       // the persistent combat StateBus when the target's damage is resolved).
       if (this.currentFrame % 25 !== 0) return
+      const convSlvl = Math.max(1, Math.floor(lvl / 8))
+      const conv = calculateConvictionStats(convSlvl)
+      const convStats = {
+        fireresist: -conv.resistanceReductionPct,
+        lightresist: -conv.resistanceReductionPct,
+        coldresist: -conv.resistanceReductionPct,
+        skill_armor_percent: -conv.defenseReductionPct,
+      }
       for (const p of this.players.values()) {
         if (p.dead || p.areaId !== monster.areaId) continue
         if (outOfRange(p.x, p.y)) continue
         this.applyUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, 28, 75)
-        const convSlvl = Math.max(1, Math.floor(lvl / 8))
-        const conv = calculateConvictionStats(convSlvl)
         this.playerCombatContext(p).stateBus.applyState({
           stateNameOrId: 'conviction',
+          sourceUnitId: `monster_${monster.unitId}`,
           sourceSkillId: 123,
           slvl: convSlvl,
           durationFrames: 75,
-          stats: {
-            fireresist: -conv.resistanceReductionPct,
-            lightresist: -conv.resistanceReductionPct,
-            coldresist: -conv.resistanceReductionPct,
-            skill_armor_percent: -conv.defenseReductionPct,
-          },
+          currentFrame: this.currentFrame,
+          stats: convStats,
+          isAuraOverride: true,
+        })
+      }
+      for (const merc of this.mercenaries.values()) {
+        if (!merc.alive || merc.hp <= 0 || merc.areaId !== monster.areaId) continue
+        if (outOfRange(merc.x, merc.y)) continue
+        this.applyUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, 28, 75)
+        this.mercCombatContext(merc).stateBus.applyState({
+          stateNameOrId: 'conviction',
+          sourceUnitId: `monster_${monster.unitId}`,
+          sourceSkillId: 123,
+          slvl: convSlvl,
+          durationFrames: 75,
+          currentFrame: this.currentFrame,
+          stats: convStats,
+          isAuraOverride: true,
         })
       }
       // `aurafilter = 0xA583` carries `0x8000` (enemy only): fellow monsters are not convicted.
@@ -11438,8 +12711,19 @@ export class GameInstance {
         this.ancientDeaths.set(monster.areaId, deaths)
       }
       deaths.add(monster.superUniqueId)
-      if (deaths.size >= ANCIENT_BARBARIANS_113C.length && killer) {
-        this.setPlayerQuestFlag(killer, 'a5q5', QUEST_FLAG_COMPLETED_113C)
+      if (deaths.size >= ANCIENT_BARBARIANS_113C.length) {
+        // D2Game.dll 0x6FC7E660: upon killing all three Ancients, restore statues 474..476 to mode 2.
+        for (const obj of this.objects.values()) {
+          if (
+            obj.areaId === monster.areaId &&
+            (obj.classId === 474 || obj.classId === 475 || obj.classId === 476)
+          ) {
+            this.setObjectMode(obj, 2)
+          }
+        }
+        if (killer) {
+          this.setPlayerQuestFlag(killer, 'a5q5', QUEST_FLAG_COMPLETED_113C)
+        }
       }
     }
 
@@ -12292,6 +13576,7 @@ export class GameInstance {
             if (
               monster.dead ||
               monster.isNpc ||
+              monster.submerged ||
               monster.areaId !== missile.areaId ||
               this.isMonsterConverted(monster)
             ) {
@@ -12570,7 +13855,8 @@ export class GameInstance {
     monster.pendingAttack = undefined
     const player = this.players.get(pending.playerId)
     if (!player || player.dead || !this.isAreaSeamAdjacent(monster.areaId, player.areaId)) return
-    if (Math.hypot(player.x - monster.x, player.y - monster.y) > 3.5) return
+    const maxMeleeReach = Math.max(3.5, monster.meleeRange + 1.5)
+    if (Math.hypot(player.x - monster.x, player.y - monster.y) > maxMeleeReach) return
     this.resolveMonsterAttackOnPlayer(monster, player, pending)
   }
 
@@ -12643,7 +13929,8 @@ export class GameInstance {
       if (!merc || !merc.alive || !this.isAreaSeamAdjacent(monster.areaId, merc.areaId)) return
       const mercOwner = this.players.get(merc.ownerPlayerId)
       if (mercOwner !== undefined && (mercOwner.dead || !this.isAreaSeamAdjacent(monster.areaId, mercOwner.areaId))) return
-      if (Math.hypot(merc.x - monster.x, merc.y - monster.y) > 3.5) return
+      const maxAllyReach = Math.max(3.5, monster.meleeRange + 1.5)
+      if (Math.hypot(merc.x - monster.x, merc.y - monster.y) > maxAllyReach) return
       const prevHp = merc.hp
       const nextHp = this.applyMonsterMissileToDefender(
         monster,
@@ -12686,7 +13973,8 @@ export class GameInstance {
       if (pet !== undefined) break
     }
     if (pet === undefined || pet.alive === false || pet.hp <= 0) return
-    if (Math.hypot(pet.x - monster.x, pet.y - monster.y) > 3.5) return
+    const maxPetReach = Math.max(3.5, monster.meleeRange + 1.5)
+    if (Math.hypot(pet.x - monster.x, pet.y - monster.y) > maxPetReach) return
     const prevHp = pet.hp
     const nextHp = this.applyMonsterMissileToDefender(
       monster,
@@ -13363,7 +14651,7 @@ export class GameInstance {
    * so the total HP lost over `ELen` frames is `(poisonBitrate256 * ELen) >> 8`.
    */
   private stepMonsterPoison(monster: InternalMonsterRecord): void {
-    if (monster.dead || monster.isNpc || !monster.isKillable) return
+    if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
     if (monster.poisonRemainingFrames <= 0 || monster.poisonBitrate256 <= 0) return
     monster.poisonRemainingFrames -= 1
     monster.poisonCarry256 += monster.poisonBitrate256
@@ -13718,8 +15006,18 @@ export class GameInstance {
     let best: { kind: 'player'; x: number; y: number; player: InternalPlayerRecord } | { kind: 'merc'; x: number; y: number; merc: InternalMercenaryRecord } | { kind: 'pet'; x: number; y: number; pet: SummonedPetUnit } | null = null
     let bestDist = radius
     // 1.13c line-of-sight: strict walkable/door ray across the monster's area and any seam-adjacent area.
-    const hasLineOfSight = (x: number, y: number): boolean =>
-      this.isMonsterStepWalkable(monster.areaId, monster.x, monster.y, x, y, monster.isFlying)
+    // Submerge-capable water monsters (Tentacle, TentacleHead, FrogDemon) sit in walk-blocked water pools
+    // (`COLLIDE_WALL` 0x0001) and check flying/missile-barrier sight (`0x0804`) + closed doors.
+    const isWaterMonster = isSubmergeCapableMonsterHcIdx113c(monster.hcIdx)
+    const hasLineOfSight = (x: number, y: number): boolean => {
+      if (isWaterMonster) {
+        if (this.loadedAreas.has(monster.areaId)) {
+          return this.isMonsterStepWalkable(monster.areaId, monster.x, monster.y, x, y, true)
+        }
+        return !this.isRayBlockedByClosedDoor(monster.areaId, monster.x, monster.y, x, y)
+      }
+      return this.isMonsterStepWalkable(monster.areaId, monster.x, monster.y, x, y, monster.isFlying)
+    }
     for (const p of this.players.values()) {
       if (p.dead || !this.isAreaSeamAdjacent(monster.areaId, p.areaId)) continue
       const d = Math.hypot(p.x - monster.x, p.y - monster.y)
@@ -14487,7 +15785,366 @@ export class GameInstance {
     })
   }
 
+  private isRayBlockedByClosedDoor(
+    areaId: number,
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+  ): boolean {
+    const dist = Math.hypot(toX - fromX, toY - fromY)
+    const steps = Math.max(4, Math.ceil(dist / 0.5))
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps
+      const rx = Math.round(fromX + (toX - fromX) * t)
+      const ry = Math.round(fromY + (toY - fromY) * t)
+      const rArea = this.areaIdAtWorldPoint(rx, ry) ?? areaId
+      if (this.isClosedDoorAt(rArea, rx, ry)) return true
+    }
+    return false
+  }
+
+  private emitMonsterSubmergeOrEmergeSkill(
+    monster: InternalMonsterRecord,
+    skillId: 176 | 180,
+    mode: 8 | 14,
+    targetX: number,
+    targetY: number,
+  ): void {
+    monster.mode = mode
+    const mx = Math.round(monster.x)
+    const my = Math.round(monster.y)
+    const tx = Math.round(targetX)
+    const ty = Math.round(targetY)
+    this.broadcastToArea(monster.areaId, {
+      type: 'SkillCast',
+      caster: { unitType: 1, id: monster.unitId },
+      skill: skillId,
+      skillId,
+      level: 1,
+      target: { x: tx, y: ty },
+      at: { x: mx, y: my },
+    })
+  }
+
+  /**
+   * 1.13c `AiTentacleHead` (`D2Game.dll` `0x6FCA5500`, `hcIdx 261..263`, token `TE`):
+   * - `submergeAiState === 1` (submerged, `mode = 14`, untargetable/invulnerable `~0x0E`):
+   *   when `currentFrame >= submergeTimerFrame` and a hostile is within `aip6` (`12/14/14`),
+   *   casts `#180 Emerge` (`mode = 8` `MONMODE_SKILL1`, 21 frames), restores targetability,
+   *   and arms `submergeTimerFrame = currentFrame + aip4 * 25`.
+   * - `submergeAiState === 2` (surfaced):
+   *   after `submergeTimerFrame`, re-submerges via `#176 Submerge` (`mode = 14` `MONMODE_SEQUENCE`)
+   *   when no hostile is within `aip6` or (`dist > 6 && Rnd(100) < aip2`); otherwise spits
+   *   `MissA1 = tentaclegoo` (`#139`, `mode = 4`) with `aip1` (`70/85/95%`) probability.
+   */
+  private stepTentacleHeadAi(monster: InternalMonsterRecord): void {
+    const aip1SpitChance = Math.max(1, Math.min(100, monster.aiParams[0] || 70))
+    const aip2SubmergeChance = Math.max(0, Math.min(100, monster.aiParams[1] || 50))
+    const aip3SubmergedSec = Math.max(1, monster.aiParams[2] || 16)
+    const aip4SurfacedSec = Math.max(1, monster.aiParams[3] || 12)
+    const aip5IdleStall = Math.max(1, monster.aiParams[4] || 15)
+    const aip6TriggerDist = Math.max(4, monster.aiParams[5] || 12)
+    const hasDimVision = monster.states.has(23)
+
+    if (monster.submerged || monster.submergeAiState === 1) {
+      monster.submerged = true
+      monster.submergeAiState = 1
+      if (monster.mode !== 14) {
+        monster.mode = 14
+      }
+      if (!hasDimVision && this.currentFrame >= monster.submergeTimerFrame) {
+        const nearest = this.nearestHostileForMonster(monster, aip6TriggerDist)
+        if (nearest !== null) {
+          const dist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
+          if (dist < aip6TriggerDist) {
+            monster.submerged = false
+            monster.submergeAiState = 2
+            monster.emergeUntilFrame = this.currentFrame + 21
+            monster.submergeTimerFrame = this.currentFrame + aip4SurfacedSec * 25
+            monster.cooldown = 21
+            monster.nextAiFrame = this.currentFrame + 21
+            this.emitMonsterSubmergeOrEmergeSkill(monster, 180, 8, nearest.x, nearest.y)
+            return
+          }
+        }
+      }
+      monster.nextAiFrame = this.currentFrame + aip5IdleStall
+      return
+    }
+
+    const searchDist = Math.max(aip6TriggerDist, 25)
+    const nearest = hasDimVision ? null : this.nearestHostileForMonster(monster, searchDist)
+    const dist = nearest !== null ? Math.hypot(nearest.x - monster.x, nearest.y - monster.y) : Infinity
+
+    if (this.currentFrame > monster.submergeTimerFrame) {
+      const shouldSubmerge =
+        nearest === null ||
+        dist > aip6TriggerDist ||
+        (dist > 6 && this.rng.rand(100) < aip2SubmergeChance)
+      if (shouldSubmerge) {
+        monster.submerged = true
+        monster.submergeAiState = 1
+        monster.emergeUntilFrame = 0
+        monster.pendingAttack = undefined
+        monster.pendingAllyAttack = undefined
+        monster.submergeTimerFrame = this.currentFrame + aip3SubmergedSec * 25
+        monster.cooldown = 21
+        monster.nextAiFrame = this.currentFrame + 21
+        this.emitMonsterSubmergeOrEmergeSkill(
+          monster,
+          176,
+          14,
+          nearest?.x ?? monster.x,
+          nearest?.y ?? monster.y,
+        )
+        return
+      }
+    }
+
+    if (nearest !== null && dist <= 25 && monster.cooldown <= 0 && this.rng.rand(100) < aip1SpitChance) {
+      const missName = monster.modeMissiles?.A1 || 'tentaclegoo'
+      const missileRec = this.registry.getMissileByName(missName) ?? this.registry.getMissileById(139)
+      const timing = this.monsterAttackTiming(monster, 'A1')
+      monster.cooldown = Math.max(monster.cooldownTicks, timing.totalFrames)
+      monster.mode = 4
+      const lifePct =
+        monster.maxHp > 0 ? Math.max(1, Math.round((monster.hp / monster.maxHp) * 128)) : 128
+      this.broadcastToArea(monster.areaId, {
+        type: 'UnitMode',
+        unitType: 1,
+        id: monster.unitId,
+        mode: 4,
+        at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+        lifePct,
+      })
+      const mslDmg = Math.max(
+        2,
+        monster.minDmg + this.rng.rand(Math.max(0, monster.maxDmg - monster.minDmg) + 1),
+      )
+      const missileId = missileRec?.id ?? 139
+      const element = normalizeMissileElement(missileRec?.eType) ?? 'pois'
+      const elemDurationFrames =
+        element === 'pois' ? Math.max(50, missileRec?.eLen ?? 200) : 0
+      this.spawnMonsterMissile(monster, nearest.x, nearest.y, mslDmg, missileId, 0, {
+        missile: missileRec,
+        skillLevel: monster.level,
+        ...(element === 'phys'
+          ? { physDamage: mslDmg }
+          : {
+              elemDamage: mslDmg,
+              element,
+              ...(elemDurationFrames > 0 ? { elemDurationFrames } : {}),
+            }),
+      })
+      return
+    }
+  }
+
+  /**
+   * 1.13c `AiTentacle` (`D2Game.dll` `0x6FC9CB10`, `hcIdx 258..260`, token `TN`, `MeleeRng = 6`):
+   * - `0x6FC9CB41..0x6FC9CBF1`: boss `TentacleHead` check — kills immediately if boss unit was
+   *   removed, or with `40%` probability per AI tick once boss is dead (`DT`/`DD`).
+   * - Submerged / surfaced `#180 Emerge` (`mode = 8`, 13 frames) & `#176 Submerge` (`mode = 14`,
+   *   13 frames) coordinated with player proximity (`< aip6` / `<= 6`) and boss surfaced/submerged state.
+   */
+  private stepTentacleAi(monster: InternalMonsterRecord): void {
+    const boss =
+      monster.bossUnitId !== undefined ? this.monsters.get(monster.bossUnitId) : undefined
+    if (monster.bossUnitId !== undefined) {
+      if (boss === undefined || (boss.dead && this.rng.rand(100) < 40)) {
+        monster.submerged = false
+        monster.hp = 0
+        this.applyMonsterDeath(monster, undefined, 'phys')
+        return
+      }
+    }
+
+    const aip1MeleeChance = Math.max(1, Math.min(100, monster.aiParams[0] || 60))
+    const aip2SubmergeChance = Math.max(0, Math.min(100, monster.aiParams[1] || 50))
+    const aip3SubmergedSec = Math.max(1, monster.aiParams[2] || 16)
+    const aip4SurfacedSec = Math.max(1, monster.aiParams[3] || 12)
+    const aip5IdleStall = Math.max(1, monster.aiParams[4] || 15)
+    const aip6TriggerDist = Math.max(6, monster.aiParams[5] || 12)
+    const hasDimVision = monster.states.has(23)
+
+    if (monster.submerged || monster.submergeAiState === 1) {
+      monster.submerged = true
+      monster.submergeAiState = 1
+      if (monster.mode !== 14) {
+        monster.mode = 14
+      }
+      if (!hasDimVision && this.currentFrame >= monster.submergeTimerFrame) {
+        const nearest = this.nearestHostileForMonster(monster, aip6TriggerDist)
+        const dist = nearest !== null ? Math.hypot(nearest.x - monster.x, nearest.y - monster.y) : Infinity
+        const bossSurfaced = boss !== undefined && !boss.dead && !boss.submerged
+        if (dist < aip6TriggerDist || (bossSurfaced && this.rng.rand(100) < 5)) {
+          monster.submerged = false
+          monster.submergeAiState = 2
+          monster.emergeUntilFrame = this.currentFrame + 13
+          monster.submergeTimerFrame = this.currentFrame + aip4SurfacedSec * 25
+          monster.cooldown = 13
+          monster.nextAiFrame = this.currentFrame + 13
+          this.emitMonsterSubmergeOrEmergeSkill(
+            monster,
+            180,
+            8,
+            nearest?.x ?? boss?.x ?? monster.x,
+            nearest?.y ?? boss?.y ?? monster.y,
+          )
+          return
+        }
+      }
+      monster.nextAiFrame = this.currentFrame + aip5IdleStall
+      return
+    }
+
+    const nearest = hasDimVision ? null : this.nearestHostileForMonster(monster, aip6TriggerDist)
+    const dist = nearest !== null ? Math.hypot(nearest.x - monster.x, nearest.y - monster.y) : Infinity
+    const bossSubmerged = boss !== undefined && !boss.dead && boss.submerged
+
+    if (this.currentFrame > monster.submergeTimerFrame) {
+      const shouldSubmerge =
+        nearest === null ||
+        dist > aip6TriggerDist ||
+        (dist > 6 && this.rng.rand(100) < aip2SubmergeChance) ||
+        (bossSubmerged && this.rng.rand(100) < 50)
+      if (shouldSubmerge) {
+        monster.submerged = true
+        monster.submergeAiState = 1
+        monster.emergeUntilFrame = 0
+        monster.pendingAttack = undefined
+        monster.pendingAllyAttack = undefined
+        monster.submergeTimerFrame = this.currentFrame + aip3SubmergedSec * 25
+        monster.cooldown = 15
+        monster.nextAiFrame = this.currentFrame + 15
+        this.emitMonsterSubmergeOrEmergeSkill(
+          monster,
+          176,
+          14,
+          nearest?.x ?? monster.x,
+          nearest?.y ?? monster.y,
+        )
+        return
+      }
+    }
+
+    const meleeReach = Math.max(6, monster.meleeRange) + 1.5
+    if (
+      nearest !== null &&
+      dist <= meleeReach &&
+      monster.cooldown <= 0 &&
+      monster.pendingAttack === undefined &&
+      monster.pendingAllyAttack === undefined &&
+      this.rng.rand(100) < aip1MeleeChance
+    ) {
+      if (nearest.kind === 'player') {
+        this.beginMonsterMeleeAttack(monster, nearest.player)
+      } else if (nearest.kind === 'merc') {
+        monster.mode = 4
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: 4,
+          at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+          lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+        })
+        this.beginMonsterMeleeAttackOnAlly(monster, {
+          kind: 'merc',
+          id: nearest.merc.unitId,
+        })
+      } else {
+        monster.mode = 4
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: 4,
+          at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+          lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+        })
+        this.beginMonsterMeleeAttackOnAlly(monster, {
+          kind: 'pet',
+          id: nearest.pet.uid,
+        })
+      }
+    }
+  }
+
+  /**
+   * 1.13c `FrogDemon` (`hcIdx 247..249`, token `FD`, `#176 Submerge` / `#180 Emerge`):
+   * handles submerged ambush & disengage re-submerge; returns `true` when handled, or `false`
+   * when surfaced in active combat so standard `FrogDemon` ranged/walk AI runs.
+   */
+  private stepFrogDemonSubmergeAi(monster: InternalMonsterRecord): boolean {
+    const aip3SubmergedSec = Math.max(1, monster.aiParams[2] || 8)
+    const aip4SurfacedSec = Math.max(1, monster.aiParams[3] || 6)
+    const aip5TriggerDist = Math.max(8, monster.aiParams[4] || 20)
+    const aip6IdleStall = Math.max(1, monster.aiParams[5] || 15)
+    const hasDimVision = monster.states.has(23)
+
+    if (monster.submerged || monster.submergeAiState === 1) {
+      monster.submerged = true
+      monster.submergeAiState = 1
+      if (monster.mode !== 14) {
+        monster.mode = 14
+      }
+      if (!hasDimVision && this.currentFrame >= monster.submergeTimerFrame) {
+        const nearest = this.nearestHostileForMonster(monster, aip5TriggerDist)
+        if (nearest !== null) {
+          monster.submerged = false
+          monster.submergeAiState = 2
+          monster.emergeUntilFrame = this.currentFrame + 16
+          monster.submergeTimerFrame = this.currentFrame + aip4SurfacedSec * 25
+          monster.cooldown = 16
+          monster.nextAiFrame = this.currentFrame + 16
+          this.emitMonsterSubmergeOrEmergeSkill(monster, 180, 8, nearest.x, nearest.y)
+          return true
+        }
+      }
+      monster.nextAiFrame = this.currentFrame + aip6IdleStall
+      return true
+    }
+
+    if (this.currentFrame > monster.submergeTimerFrame) {
+      const nearest = hasDimVision ? null : this.nearestHostileForMonster(monster, aip5TriggerDist)
+      if (nearest === null) {
+        monster.submerged = true
+        monster.submergeAiState = 1
+        monster.emergeUntilFrame = 0
+        monster.path = []
+        monster.pathIndex = 0
+        monster.pathTargetX = Number.NaN
+        monster.pathTargetY = Number.NaN
+        monster.submergeTimerFrame = this.currentFrame + aip3SubmergedSec * 25
+        monster.cooldown = 16
+        monster.nextAiFrame = this.currentFrame + 16
+        this.emitMonsterSubmergeOrEmergeSkill(monster, 176, 14, monster.x, monster.y)
+        return true
+      }
+    }
+    return false
+  }
+
   private stepMonsterAi(monster: InternalMonsterRecord): void {
+    if (
+      !monster.submerged &&
+      monster.mode === 8 &&
+      monster.emergeUntilFrame > 0 &&
+      this.currentFrame >= monster.emergeUntilFrame
+    ) {
+      monster.emergeUntilFrame = 0
+      monster.mode = 1
+      this.broadcastToArea(monster.areaId, {
+        type: 'UnitMode',
+        unitType: 1,
+        id: monster.unitId,
+        mode: 1,
+        lifePct:
+          monster.maxHp > 0 ? Math.max(1, Math.round((monster.hp / monster.maxHp) * 128)) : 128,
+      })
+    }
     if (
       monster.pendingBaalWaveSpawn !== undefined &&
       this.currentFrame >= monster.pendingBaalWaveSpawn.frame
@@ -14528,11 +16185,12 @@ export class GameInstance {
 
     // F11.4: Freeze (1 / 29) or Stun (21 / 25) completely halts monster movement & attack
     if (
-      monster.states.has(1) ||
-      monster.states.has(29) ||
-      monster.states.has(21) ||
-      monster.states.has(25) ||
-      monster.frozenTicks > 0
+      !monster.submerged &&
+      (monster.states.has(1) ||
+        monster.states.has(29) ||
+        monster.states.has(21) ||
+        monster.states.has(25) ||
+        monster.frozenTicks > 0)
     ) {
       monster.pendingAttack = undefined
       monster.pendingAllyAttack = undefined
@@ -14596,6 +16254,17 @@ export class GameInstance {
     }
     if (monster.ai === 'BaalToStairs') {
       this.stepBaalToStairsAi(monster)
+      return
+    }
+    if (isTentacleHeadHcIdx113c(monster.hcIdx)) {
+      this.stepTentacleHeadAi(monster)
+      return
+    }
+    if (isTentacleHcIdx113c(monster.hcIdx)) {
+      this.stepTentacleAi(monster)
+      return
+    }
+    if (isFrogDemonHcIdx113c(monster.hcIdx) && this.stepFrogDemonSubmergeAi(monster)) {
       return
     }
 
@@ -15474,6 +17143,8 @@ export class GameInstance {
       }
     }
     player.items = remainingItems
+    this.stopPlayerAura(player)
+    this.syncPlayerItemAuras113c(player, true)
 
     const killerType = this.resolveKillerTypeForDeathPenalty(options)
 
@@ -15621,6 +17292,7 @@ export class GameInstance {
       })
     }
     player.corpseItems = []
+    this.syncPlayerItemAuras113c(player, true)
     this.broadcastToArea(player.areaId, {
       type: 'CorpseAssign',
       assign: 0,
@@ -15686,6 +17358,8 @@ export class GameInstance {
       this.playerCombat.get(unitId)?.stateBus.removeState(stateId)
     } else {
       this.monsterCombat.get(unitId)?.stateBus.removeState(stateId)
+      this.mercCombat.get(unitId)?.stateBus.removeState(stateId)
+      this.petVisualStates.get(unitId)?.pet.stateBus.removeState(stateId)
     }
     this.broadcastToArea(areaId, {
       type: 'UnitState',
@@ -15726,6 +17400,8 @@ export class GameInstance {
             this.playerCombat.get(unitId)?.stateBus.removeState(prevStateId)
           } else {
             this.monsterCombat.get(unitId)?.stateBus.removeState(prevStateId)
+            this.mercCombat.get(unitId)?.stateBus.removeState(prevStateId)
+            this.petVisualStates.get(unitId)?.pet.stateBus.removeState(prevStateId)
           }
           this.broadcastToArea(areaId, {
             type: 'UnitState',
@@ -15759,7 +17435,9 @@ export class GameInstance {
     const combatUnit =
       unitType === 'player'
         ? this.playerCombat.get(unitId)
-        : this.monsterCombat.get(unitId) ?? this.mercCombat.get(unitId)
+        : this.monsterCombat.get(unitId) ??
+          this.mercCombat.get(unitId) ??
+          this.petVisualStates.get(unitId)?.pet
     const stateEntry = combatUnit?.stateBus.getActiveEntries().find((e) => e.stateId === stateId)
     let packetStats: { statId: number; param: number; value: number }[] | undefined
     if (stateEntry?.stats) {
@@ -15809,6 +17487,8 @@ export class GameInstance {
           }
         } else {
           this.monsterCombat.get(unitId)?.stateBus.removeState(stateId)
+          this.mercCombat.get(unitId)?.stateBus.removeState(stateId)
+          this.petVisualStates.get(unitId)?.pet.stateBus.removeState(stateId)
         }
         this.broadcastToArea(areaId, {
           type: 'UnitState',
@@ -16378,6 +18058,7 @@ export class GameInstance {
         type: 'ItemEvent',
         action: 'remove',
         itemId: key.unitId,
+        code: key.code,
         container: 'inventory',
       })
     } else {
@@ -16653,12 +18334,15 @@ export class GameInstance {
 
   /** Objects.txt OperateFn dispatch (D2Game 0x6fd27bb8), including one-shot semantics. */
   private operateObject(player: InternalPlayerRecord, obj: InternalObjectRecord): void {
-    // Objects.txt 546 Ancients' Altar: requires clvl 20/40/60 and spawns the
-    // three Ancient Barbarians once.
+    // Objects.txt 546 Ancients' Altar (OperateFn 65, D2Game 0x6FC7E560 -> 0x6FC7E420):
+    // requires clvl 20/40/60, sets Altar 546 to mode 2, transitions Ancient Statues 475/476/474
+    // to mode 4 (empty pedestal), and spawns SuperUniques 43/44/45 (Talic 540, Madawc 541, Korlic 542).
     if (obj.classId === 546) {
       const requiredLevel = (this.difficulty + 1) * 20
       if (obj.useCount === 0 && player.level >= requiredLevel) {
         obj.useCount = 1
+        this.setObjectMode(obj, 2)
+        this.ancientDeaths.delete(obj.areaId)
         this.setPlayerQuestFlag(player, 'a5q5', QUEST_FLAG_STARTED_113C)
         const offsets = [
           { dx: 2, dy: 0 },
@@ -16667,15 +18351,52 @@ export class GameInstance {
         ]
         for (let i = 0; i < ANCIENT_BARBARIANS_113C.length; i++) {
           const spec = ANCIENT_BARBARIANS_113C[i]!
-          this.spawnMonster({
-            defId: spec.defId,
-            superUniqueId: spec.superUniqueId,
-            x: obj.x + offsets[i]!.dx,
-            y: obj.y + offsets[i]!.dy,
+          let statue: InternalObjectRecord | undefined
+          for (const candidate of this.objects.values()) {
+            if (candidate.areaId === obj.areaId && candidate.classId === spec.statueClassId) {
+              statue = candidate
+              break
+            }
+          }
+          if (statue) {
+            this.setObjectMode(statue, 4)
+          }
+          this.spawnSuperUnique({
+            superUniqueIndex: spec.superUniqueIndex,
+            x: statue ? statue.x : obj.x + offsets[i]!.dx,
+            y: statue ? statue.y : obj.y + offsets[i]!.dy,
             areaId: obj.areaId,
           })
         }
       }
+      return
+    }
+
+    // Objects.txt 547 Ancient's Way / Worldstone Keep Entrance (OperateFn 66, D2Game 0x6FC7E2E0):
+    // requires A5Q5 Rite of Passage completion (bit 0 or bit 13); otherwise plays reject sound 19.
+    if (obj.classId === 547) {
+      if (obj.mode !== 0) return
+      if (
+        !hasQuestFlag113c(
+          player.questFlags,
+          'a5q5',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+        )
+      ) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      const gateOperatingTicks = getObjectOperatingTicks113c(547)
+      this.setObjectMode(obj, 1)
+      this.pendingObjectModeTransitions.push({
+        frame: this.currentFrame + gateOperatingTicks,
+        unitId: obj.unitId,
+        mode: 2,
+      })
       return
     }
 
@@ -16790,7 +18511,6 @@ export class GameInstance {
         (item) => item.location === 'equipped' && item.code.toLowerCase().trim() === 'qf2',
       )
       if (flail === undefined) {
-        this.emitToPlayer(player.unitId, { type: 'Chat', kind: 'system', text: "Need Khalim's Will" })
         return
       }
       obj.useCount += 1
@@ -16984,6 +18704,17 @@ export class GameInstance {
       )
       if (!hasPotion) {
         this.setPlayerQuestFlag(player, 'a5q3', QUEST_FLAG_STARTED_113C)
+        // D2Game.dll 0x6fc7cdae..0x6fc7cdb3: QUESTS_NPCMessage(pGame, pPlayer, pObject, 0x4EA3) -> 20131 (A5Q3FoundAnyaAnya)
+        this.emitToPlayer(player.unitId, {
+          type: 'Npc',
+          kind: 'info',
+          unitType: 2,
+          npcId: obj.unitId,
+          unitId: obj.unitId,
+          count: 1,
+          messages: [{ menu: 0, stringId: 20131 }],
+          allMessages: [{ menu: 0, stringId: 20131 }],
+        })
         return
       }
     }
@@ -17968,6 +19699,48 @@ export class GameInstance {
     // DUNGEON_FindActSpawnLocationEx(pAct, town, 11, &x, &y, 3) (D2Game 0x6FCC2318 / 0x6FCC23C8, #1698).
     const townPos = this.resolveTownPortalMouth(townArea)
     if (townPos === null) return 0
+
+    // D2Game.dll 0x6FC7E3C0 -> 0x6FC7E0E0 (a5q5.cpp Town Portal callback on Arreat Summit, level 120):
+    // Opening a Town Portal on Arreat Summit while the Ancients encounter is active (before all 3 die)
+    // despawns all Ancient Barbarians and resets Statues 474..476 and Altar 546 back to stone (mode 0).
+    if (fromArea === 120) {
+      const activeAncients = [...this.monsters.values()].filter(
+        (m) =>
+          m.areaId === 120 &&
+          m.superUniqueId !== undefined &&
+          ANCIENT_BARBARIANS_113C.some((b) => b.superUniqueId === m.superUniqueId),
+      )
+      const deaths = this.ancientDeaths.get(120)
+      const encounterIncomplete =
+        activeAncients.some((m) => !m.dead) ||
+        (activeAncients.length > 0 && (deaths?.size ?? 0) < ANCIENT_BARBARIANS_113C.length)
+      if (encounterIncomplete) {
+        for (const m of activeAncients) {
+          this.monsters.delete(m.unitId)
+          this.monsterCombat.delete(m.unitId)
+          this.broadcastToArea(120, {
+            type: 'UnitRemove',
+            unitType: 1,
+            id: m.unitId,
+            unitId: m.unitId,
+            areaId: 120,
+          })
+        }
+        this.ancientDeaths.delete(120)
+        for (const obj of this.objects.values()) {
+          if (obj.areaId !== 120) continue
+          if (
+            obj.classId === 546 ||
+            obj.classId === 474 ||
+            obj.classId === 475 ||
+            obj.classId === 476
+          ) {
+            obj.useCount = 0
+            this.setObjectMode(obj, 0)
+          }
+        }
+      }
+    }
     const portalId = this.spawnObject({
       classId: 59,
       x: Math.round(player.x) + 1,
@@ -18450,6 +20223,9 @@ export class GameInstance {
     item.y = pos.y
     this.groundItems.set(item.unitId, item)
     if (prevLocation === 'inventory' || prevLocation === 'equipped') {
+      if (prevLocation === 'equipped') {
+        this.syncPlayerItemAuras113c(player, true)
+      }
       this.refreshPlayerAccruedMaxPools(player)
     }
 
@@ -18631,6 +20407,7 @@ export class GameInstance {
       item: this.serverEntryToItemData(item),
     })
     this.validatePlayerActiveSkills(player)
+    this.syncPlayerItemAuras113c(player, true)
     this.refreshPlayerAccruedMaxPools(player)
   }
 
@@ -18663,7 +20440,304 @@ export class GameInstance {
       item: this.serverEntryToItemData(item),
     })
     this.validatePlayerActiveSkills(player)
+    this.syncPlayerItemAuras113c(player, true)
     this.refreshPlayerAccruedMaxPools(player)
+  }
+
+  private handleSwapWeapons(player: InternalPlayerRecord): void {
+    const movedItems: ServerItemEntry[] = []
+    for (const item of player.items) {
+      if (item.location !== 'equipped') continue
+      if (item.bodyLoc === 4) {
+        item.bodyLoc = 11
+        movedItems.push(item)
+      } else if (item.bodyLoc === 11) {
+        item.bodyLoc = 4
+        movedItems.push(item)
+      } else if (item.bodyLoc === 5) {
+        item.bodyLoc = 12
+        movedItems.push(item)
+      } else if (item.bodyLoc === 12) {
+        item.bodyLoc = 5
+        movedItems.push(item)
+      }
+    }
+    player.weaponSet = player.weaponSet === 1 ? 0 : 1
+    for (const item of movedItems) {
+      if (item.rawItemData !== undefined) {
+        item.rawItemData = {
+          ...item.rawItemData,
+          bodyLoc: item.bodyLoc,
+          equippedSlot: item.bodyLoc,
+        }
+      }
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x17,
+        itemId: item.unitId,
+        code: item.code,
+        x: item.x,
+        y: item.y,
+        container: 'equipment',
+        item: this.serverEntryToItemData(item),
+      })
+    }
+    this.emitToPlayer(player.unitId, {
+      type: 'WeaponSwitch',
+    })
+    this.validatePlayerActiveSkills(player)
+    this.syncPlayerItemAuras113c(player, true)
+    this.refreshPlayerAccruedMaxPools(player)
+  }
+
+  /**
+   * 1.13c `D2Common_CanUnitEquipItem` mercenary equipment slot compatibility:
+   * - Head (`1`): `helm`, `circ` (all acts), plus `phlm` primal helms on Act 5 Barbarian.
+   * - Torso (`3`): `tors` (all acts).
+   * - Weapon / Shield (`4` / `5`):
+   *   - Act 1 Rogue: `bow` -> `4`
+   *   - Act 2 Desert Mercenary: `pole`, `spea`, `jave` -> `4`
+   *   - Act 3 Iron Wolf: 1H `swor` -> `4`, `shie` -> `5`
+   *   - Act 5 Barbarian: 1H/2H `swor` -> `4`
+   */
+  private resolveMercDefaultBodyLoc113c(code: string, act: 1 | 2 | 3 | 5): number | undefined {
+    const info = lookupBaseInfo(code)
+    const t = info.itemType
+    if (t === 'helm' || t === 'circ' || (act === 5 && t === 'phlm')) return 1
+    if (t === 'tors') return 3
+    if (act === 1) {
+      if (t === 'bow') return 4
+      return undefined
+    }
+    if (act === 2) {
+      if (t === 'pole' || t === 'spea' || t === 'jave') return 4
+      return undefined
+    }
+    if (act === 3) {
+      if (t === 'swor' && !info.twoHanded) return 4
+      if (t === 'shie') return 5
+      return undefined
+    }
+    if (act === 5) {
+      if (t === 'swor') return 4
+      return undefined
+    }
+    return undefined
+  }
+
+  /**
+   * 1.13c `SCMD_MercItem` (`0x61`, `D2Game.dll` `0x6FCF0BC0`):
+   * - `rawSlot === 0xffff`: feed cursor healing/rejuvenation potion to the player's alive mercenary.
+   * - Empty cursor + `rawSlot` in `{1, 3, 4, 5}`: unequip mercenary slot to cursor (`0x9D` `action: 0x08`).
+   * - Item on cursor: equip onto mercenary body slot (`0x9D` `action: 0x06`), swapping any displaced
+   *   merc item back to the player's cursor (`0x9D` `action: 0x08`), and refresh `syncMercenaryOwnerAura`.
+   */
+  private handleMercItem(player: InternalPlayerRecord, rawSlot: number): void {
+    const merc = [...this.mercenaries.values()].find(
+      (m) => m.ownerPlayerId === player.unitId && m.alive && m.hp > 0,
+    )
+    if (!merc) return
+
+    const cursorIdx = player.items.findIndex((i) => i.location === 'cursor')
+    const cursorItem = cursorIdx !== -1 ? player.items[cursorIdx] : undefined
+
+    if (rawSlot === 0xffff) {
+      if (!cursorItem) return
+      const code = cursorItem.code.trim().toLowerCase()
+      const isRejuv = code === 'rvl' || code === 'rvs' || code.startsWith('rv')
+      const isHeal = code.startsWith('hp')
+      if (!isRejuv && !isHeal) return
+      player.items.splice(cursorIdx, 1)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 'remove',
+        itemId: cursorItem.unitId,
+        code: cursorItem.code,
+        x: 0,
+        y: 0,
+        container: 'cursor',
+      })
+      const healDelta =
+        code === 'rvl'
+          ? merc.maxHp
+          : code === 'rvs'
+            ? Math.max(1, Math.floor((merc.maxHp * 35) / 100))
+            : code === 'hp5'
+              ? 320
+              : code === 'hp4'
+                ? 180
+                : code === 'hp3'
+                  ? 100
+                  : code === 'hp2'
+                    ? 60
+                    : 30
+      const nextHp = Math.min(merc.maxHp, merc.hp + healDelta)
+      if (nextHp !== merc.hp) {
+        merc.hp = nextHp
+        this.mercCombat.get(merc.unitId)?.statList.setHp256(merc.hp * FIXED_ONE)
+        this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
+      }
+      return
+    }
+
+    if (!cursorItem) {
+      if (rawSlot !== 1 && rawSlot !== 3 && rawSlot !== 4 && rawSlot !== 5) return
+      let eqIdx = merc.equipment.findIndex((e) => e.bodyLoc === rawSlot)
+      if (eqIdx === -1 && rawSlot === 5) {
+        eqIdx = merc.equipment.findIndex((e) => e.bodyLoc === 4)
+      }
+      if (eqIdx === -1) return
+      const [removed] = merc.equipment.splice(eqIdx, 1)
+      if (!removed) return
+      removed.ownerId = player.unitId
+      removed.location = 'cursor'
+      removed.bodyLoc = 0
+      removed.x = 0
+      removed.y = 0
+      removed.storePage = 0
+      if (removed.rawItemData !== undefined) {
+        removed.rawItemData = {
+          ...removed.rawItemData,
+          ownerType: 0,
+          ownerId: player.unitId as UnitId,
+          location: 4,
+          bodyLoc: 0,
+          equippedSlot: 0,
+        }
+      }
+      player.items.push(removed)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x08,
+        itemId: removed.unitId,
+        code: removed.code,
+        x: 0,
+        y: 0,
+        container: 'cursor',
+        item: {
+          ...this.serverEntryToItemData(removed),
+          opcode: 0x9d,
+          action: 0x08,
+          ownerType: 0,
+          ownerId: player.unitId as UnitId,
+          location: 4,
+          bodyLoc: 0,
+          equippedSlot: 0,
+        },
+      })
+      this.syncMercenaryOwnerAura(player, merc.activeAura, merc, true)
+      return
+    }
+
+    const defaultSlot = this.resolveMercDefaultBodyLoc113c(cursorItem.code, merc.act)
+    if (defaultSlot === undefined) return
+    const targetSlot =
+      rawSlot === 0 ||
+      rawSlot === defaultSlot ||
+      (defaultSlot === 4 && (rawSlot === 4 || rawSlot === 5)) ||
+      (defaultSlot === 5 && (rawSlot === 4 || rawSlot === 5))
+        ? defaultSlot
+        : undefined
+    if (targetSlot === undefined) return
+
+    const info = lookupBaseInfo(cursorItem.code)
+    const displacedSlots = new Set<number>([targetSlot])
+    if (targetSlot === 4 && info.twoHanded) {
+      displacedSlots.add(5)
+    } else if (targetSlot === 5) {
+      const mainHand = merc.equipment.find((e) => e.bodyLoc === 4)
+      if (mainHand && lookupBaseInfo(mainHand.code).twoHanded) {
+        displacedSlots.add(4)
+      }
+    }
+    const displaced = merc.equipment.filter((e) => displacedSlots.has(e.bodyLoc))
+    if (displaced.length > 1) return
+
+    player.items.splice(cursorIdx, 1)
+    if (displaced.length === 1) {
+      const prev = displaced[0]!
+      const prevIdx = merc.equipment.indexOf(prev)
+      if (prevIdx !== -1) merc.equipment.splice(prevIdx, 1)
+    }
+
+    cursorItem.ownerId = merc.unitId
+    cursorItem.location = 'equipped'
+    cursorItem.bodyLoc = targetSlot
+    cursorItem.x = 0
+    cursorItem.y = 0
+    cursorItem.storePage = 0
+    if (cursorItem.rawItemData !== undefined) {
+      cursorItem.rawItemData = {
+        ...cursorItem.rawItemData,
+        ownerType: 1,
+        ownerId: merc.unitId as UnitId,
+        location: 1,
+        bodyLoc: targetSlot,
+        equippedSlot: targetSlot,
+      }
+    }
+    merc.equipment.push(cursorItem)
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x06,
+      itemId: cursorItem.unitId,
+      code: cursorItem.code,
+      x: 0,
+      y: 0,
+      container: 'equipment',
+      item: {
+        ...this.serverEntryToItemData(cursorItem),
+        opcode: 0x9d,
+        action: 0x06,
+        ownerType: 1,
+        ownerId: merc.unitId as UnitId,
+        location: 1,
+        bodyLoc: targetSlot,
+        equippedSlot: targetSlot,
+      },
+    })
+
+    if (displaced.length === 1) {
+      const prev = displaced[0]!
+      prev.ownerId = player.unitId
+      prev.location = 'cursor'
+      prev.bodyLoc = 0
+      prev.x = 0
+      prev.y = 0
+      prev.storePage = 0
+      if (prev.rawItemData !== undefined) {
+        prev.rawItemData = {
+          ...prev.rawItemData,
+          ownerType: 0,
+          ownerId: player.unitId as UnitId,
+          location: 4,
+          bodyLoc: 0,
+          equippedSlot: 0,
+        }
+      }
+      player.items.push(prev)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x08,
+        itemId: prev.unitId,
+        code: prev.code,
+        x: 0,
+        y: 0,
+        container: 'cursor',
+        item: {
+          ...this.serverEntryToItemData(prev),
+          opcode: 0x9d,
+          action: 0x08,
+          ownerType: 0,
+          ownerId: player.unitId as UnitId,
+          location: 4,
+          bodyLoc: 0,
+          equippedSlot: 0,
+        },
+      })
+    }
+
+    this.syncMercenaryOwnerAura(player, merc.activeAura, merc, true)
   }
 
   private handleBeltPut(
@@ -19504,6 +21578,7 @@ export class GameInstance {
     if (total <= 0 || !this.spendGold(player, total)) return
     for (const item of targets) {
       if (!this.repairSingleItemEntry(item, ctx.tables)) continue
+      const repairedData = this.serverEntryToItemData(item)
       this.emitToPlayer(player.unitId, {
         type: 'ItemEvent',
         action: 'repair',
@@ -19512,8 +21587,21 @@ export class GameInstance {
         x: item.x,
         y: item.y,
         container: toItemContainer(item.location),
-        item: this.serverEntryToItemData(item),
+        item: repairedData,
       })
+      const ilvl = repairedData.ilvl ?? item.level ?? 99
+      for (const s of [...(repairedData.stats ?? []), ...(repairedData.runewordStats ?? [])]) {
+        if (s.statId !== STAT_ITEM_CHARGED_SKILL) continue
+        const decoded = decodeStat204ChargedSkill113c(s, ilvl)
+        if (!decoded) continue
+        this.emitToPlayer(player.unitId, {
+          type: 'StatSet',
+          unit: { unitType: 4, id: item.unitId },
+          stat: STAT_ITEM_CHARGED_SKILL,
+          param: ((decoded.skillId << 6) | (decoded.level & 0x3f)) >>> 0,
+          value: decoded.maxCharges,
+        })
+      }
     }
   }
 
@@ -19911,6 +21999,38 @@ export class GameInstance {
           'a5q3',
           QUEST_FLAG_STARTED_113C | QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
         )
+      }
+    } else if (npc?.hcIdx === 527) {
+      // Frozen Anya (drehyaiced, hcIdx 527): before thawing, emits A5Q3FoundAnyaAnya (20131);
+      // holding Malah's potion ('ice') thaws Anya and sets a5q3 reward pending.
+      if (
+        !hasQuestFlag113c(
+          player.questFlags,
+          'a5q3',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        )
+      ) {
+        const potion = player.items.find((item) => item.code.toLowerCase().trim() === 'ice')
+        if (potion !== undefined) {
+          this.removePlayerQuestItem(player, potion)
+          this.setPlayerQuestFlag(
+            player,
+            'a5q3',
+            QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+          )
+        } else {
+          this.setPlayerQuestFlag(player, 'a5q3', QUEST_FLAG_STARTED_113C)
+          this.emitToPlayer(player.unitId, {
+            type: 'Npc',
+            kind: 'info',
+            unitType: 1,
+            npcId: npc.unitId,
+            unitId: npc.unitId,
+            count: 1,
+            messages: [{ menu: 0, stringId: 20131 }],
+            allMessages: [{ menu: 0, stringId: 20131 }],
+          })
+        }
       }
     } else if (
       npc?.hcIdx === 254 ||
@@ -21378,21 +23498,28 @@ export class GameInstance {
     whisperTo?: string,
   ): void {
     const trimmed = text.trim()
-    if (/^\/?players\b/i.test(trimmed)) {
+    const playersSetMatch = /^players set to (-?\d+)$/i.exec(trimmed)
+    const slashPlayersMatch = /^\/players(.*)$/i.exec(trimmed)
+    const barePlayersMatch = /^players(?:\s+(?:set\s+)?|\s*:\s*)(-?\d+)$/i.exec(trimmed)
+    if (playersSetMatch || slashPlayersMatch || barePlayersMatch) {
       if (this.policy.allowPlayersXCommand) {
         // The 1.13c client sends `/players N` as the chat line "players set to N" (D2Client 0x6fb20aa2).
-        const match =
-          /^players set to (-?\d+)$/i.exec(trimmed) ?? /^\/?players(?:\s+(?:set\s+)?|\s*:\s*)(-?\d+)/i.exec(trimmed)
-        if (match) {
-          const val = Number(match[1])
-          this.setPlayersX(val)
-          this.emitToPlayer(player.unitId, {
-            type: 'Chat',
-            kind: 'system',
-            from: 'Server',
-            text: `players set to ${this.playersX}`,
-          })
+        let val: number
+        if (playersSetMatch) {
+          val = Number(playersSetMatch[1])
+        } else if (slashPlayersMatch) {
+          const atoiMatch = /^[\t\n\v\f\r :]*([+-]?\d+)/.exec(slashPlayersMatch[1] ?? '')
+          val = atoiMatch ? Number.parseInt(atoiMatch[1]!, 10) : 1
+        } else {
+          val = Number(barePlayersMatch![1])
         }
+        this.setPlayersX(val, { syncMonsterPlayerCount: this.currentFrame <= 1 })
+        this.emitToPlayer(player.unitId, {
+          type: 'Chat',
+          kind: 'system',
+          from: 'Server',
+          text: `players set to ${this.playersX}`,
+        })
       }
       return
     }
@@ -21604,11 +23731,23 @@ export class GameInstance {
       corpseSuppressed: m.shattered,
       revivedByShaman: m.revivedByShaman,
       monsterPlayerCount: m.monsterPlayerCount,
+      submerged: m.submerged,
+      bossUnitId: m.bossUnitId,
     }
   }
 
   getMonster(monsterUnitId: number): ServerMonsterState | undefined {
     return this.getMonsterState(monsterUnitId)
+  }
+
+  listMonsters(areaId?: number): ServerMonsterState[] {
+    const out: ServerMonsterState[] = []
+    for (const m of this.monsters.values()) {
+      if (areaId !== undefined && m.areaId !== areaId) continue
+      const state = this.getMonsterState(m.unitId)
+      if (state) out.push(state)
+    }
+    return out
   }
 
   /** Apply a `States.txt` state (by row id) to a player for `durationFrames` (25 Hz frames). */
@@ -21896,7 +24035,21 @@ export class GameInstance {
 
     for (const [skillId, slvl] of itemAurasBySkill) {
       const skill = this.registry.getSkillById(skillId)
-      if (!skill || !skill.aura) continue
+      if (!skill || !skill.aura || !skill.auraState || skill.passive) continue
+      const itemSlvl = Math.max(1, slvl)
+      const existingIdx = out.findIndex((s) => s.skillId === skillId)
+      if (existingIdx !== -1) {
+        const existing = out[existingIdx]!
+        if (itemSlvl > existing.slvl) {
+          out[existingIdx] = {
+            ...existing,
+            slvl: itemSlvl,
+            isItemAura: true,
+            radiusSubtiles: this.auraRangeSubtiles(skillId, itemSlvl),
+          }
+        }
+        continue
+      }
       const casterStateId = skill.auraState
         ? this.registry.getStateByName(skill.auraState)?.id
         : undefined
@@ -21905,9 +24058,9 @@ export class GameInstance {
         : undefined
       out.push({
         skillId,
-        slvl: Math.max(1, slvl),
+        slvl: itemSlvl,
         isItemAura: true,
-        radiusSubtiles: this.auraRangeSubtiles(skillId, Math.max(1, slvl)),
+        radiusSubtiles: this.auraRangeSubtiles(skillId, itemSlvl),
         casterStateId,
         targetStateId,
       })
@@ -21935,7 +24088,7 @@ export class GameInstance {
         }
       }
     }
-    for (const stateId of [33, 34, 36, 37, 40, 43] as const) {
+    for (const stateId of ALL_CASTER_AURA_STATE_IDS_113C) {
       if (merc.states.has(stateId)) {
         this.clearUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, stateId)
       }
@@ -21953,19 +24106,9 @@ export class GameInstance {
       mercOverride ??
       [...this.mercenaries.values()].find((m) => m.ownerPlayerId === owner.unitId && m.alive)
     if (merc === undefined || !merc.alive || merc.hp <= 0) {
-      if (!activeAura) return
-      const auraKey = activeAura.trim().toLowerCase()
-      const stateId = MERC_AURA_TO_STATE_ID[auraKey]
-      if (stateId === undefined || stateId === 43) return
-      this.applyUnitState(
-        owner.states,
-        owner.stateTimers,
-        'player',
-        owner.unitId,
-        owner.areaId,
-        stateId,
-        100,
-      )
+      if (merc !== undefined && this.mercAuraScanners.has(merc.unitId)) {
+        this.stopMercenaryAura(merc)
+      }
       return
     }
 
@@ -21981,7 +24124,8 @@ export class GameInstance {
       .map((s) => `${s.skillId}:${s.slvl}:${s.isItemAura ? 1 : 0}`)
       .join(',')
     let runtime = this.mercAuraScanners.get(merc.unitId)
-    if (runtime === undefined || runtime.signature !== signature) {
+    const signatureChanged = runtime === undefined || runtime.signature !== signature
+    if (signatureChanged) {
       const nextCasterIds = new Set<number>()
       for (const spec of desiredSpecs) {
         if (spec.casterStateId !== undefined) nextCasterIds.add(spec.casterStateId)
@@ -22030,7 +24174,7 @@ export class GameInstance {
         needsInitialPulse: true,
       }
       this.mercAuraScanners.set(merc.unitId, runtime)
-    } else {
+    } else if (runtime !== undefined) {
       for (const entry of runtime.sources) {
         if (entry.casterStateId !== undefined && !merc.states.has(entry.casterStateId)) {
           this.applyPersistentUnitState(
@@ -22045,9 +24189,9 @@ export class GameInstance {
       }
     }
 
-    if (forcePulse) {
+    if (forcePulse && runtime !== undefined) {
       runtime.needsInitialPulse = true
-      this.pulseMercenaryAuraRuntime113c(merc, owner, runtime)
+      this.pulseMercenaryAuraRuntime113c(merc, owner, runtime, signatureChanged || forcePulse)
     }
   }
 
@@ -22056,16 +24200,20 @@ export class GameInstance {
     merc: InternalMercenaryRecord,
     owner: InternalPlayerRecord,
     runtime: MercAuraRuntime,
+    forceRefresh = false,
   ): void {
     if (runtime.sources.length === 0) return
+    runtime.scanner.syncCasterPosition(merc.x, merc.y)
     const maxRadius = runtime.sources.reduce((acc, s) => Math.max(acc, s.radiusSubtiles), 0)
     const inRange = (x: number, y: number) => isWithinAuraRange(x - merc.x, y - merc.y, maxRadius)
-    const allyPlayerRecords = [...this.players.values()].filter(
-      (p) => !p.dead && p.areaId === merc.areaId && inRange(p.x, p.y),
-    )
-    const allyMercRecords = [...this.mercenaries.values()].filter(
-      (m) => m.alive && m.hp > 0 && m.areaId === merc.areaId && (m === merc || inRange(m.x, m.y)),
-    )
+    const targets = this.collectFriendlyAuraAllies113c({
+      ownerPlayerId: owner.unitId,
+      areaId: merc.areaId,
+      originX: merc.x,
+      originY: merc.y,
+      maxRadius,
+      selfMerc: merc,
+    })
     const enemyRecords = [...this.monsters.values()].filter(
       (m) =>
         !m.dead &&
@@ -22078,9 +24226,6 @@ export class GameInstance {
     const corpseRecords = [...this.monsters.values()].filter(
       (m) => m.dead && !m.shattered && !m.isNpc && m.areaId === merc.areaId && inRange(m.x, m.y),
     )
-    const mercAllies = allyMercRecords.map((m) => this.mercCombatContext(m))
-    const playerAllies = allyPlayerRecords.map((p) => this.playerCombatContext(p))
-    const allies: CombatUnitContext[] = [...mercAllies, ...playerAllies]
     const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
     const corpses: CorpseContext[] = corpseRecords.map((m) => ({
       id: String(m.unitId),
@@ -22100,10 +24245,10 @@ export class GameInstance {
     if (runtime.needsInitialPulse) {
       runtime.needsInitialPulse = false
       for (const entry of runtime.sources) {
-        runtime.scanner.pulseAura(entry.source, pulseTick, allies, enemies, corpses, auraEnv)
+        runtime.scanner.pulseAura(entry.source, pulseTick, targets.allAllies, enemies, corpses, auraEnv)
       }
     } else {
-      runtime.scanner.tick(this.currentFrame, allies, enemies, corpses, auraEnv)
+      runtime.scanner.tick(this.currentFrame, targets.allAllies, enemies, corpses, auraEnv)
       for (const entry of runtime.sources) {
         if (entry.targetStateId === undefined) continue
         const tgtState = entry.targetStateId
@@ -22112,19 +24257,24 @@ export class GameInstance {
             const m = enemyRecords[idx]!
             if (!isWithinAuraRange(m.x - merc.x, m.y - merc.y, entry.radiusSubtiles)) return false
             if (m.isPrimeEvil || (entry.skillId === 114 && m.coldEffect === 0)) return false
+            if (auraEnv.isTown) return false
             return !e.stateBus.hasState(tgtState)
           })
           if (unpulsedEnemies.length > 0) {
             runtime.scanner.pulseAura(entry.source, pulseTick, [], unpulsedEnemies, [], auraEnv)
           }
-        } else {
-          const unpulsedAllies = allies.filter(
-            (a) =>
-              a.x !== undefined &&
-              a.y !== undefined &&
-              isWithinAuraRange(a.x - merc.x, a.y - merc.y, entry.radiusSubtiles) &&
-              !a.stateBus.hasState(tgtState),
-          )
+        } else if (FRIENDLY_AURA_TARGET_STATE_IDS_113C.has(tgtState)) {
+          const unpulsedAllies = targets.allAllies.filter((a) => {
+            if (a.id === `merc_${merc.unitId}` || a.x === undefined || a.y === undefined) return false
+            if (!isWithinAuraRange(a.x - merc.x, a.y - merc.y, entry.radiusSubtiles)) return false
+            if (a.stateBus.hasState(tgtState)) return false
+            return passesAuraFilter(entry.source.skill.auraFilter, {
+              kind: a.unitType === 'player' ? 'player' : 'monster',
+              relation: 'ally',
+              dead: a.statList.getHp256() <= 0,
+              inTown: auraEnv.isTown,
+            })
+          })
           if (unpulsedAllies.length > 0) {
             runtime.scanner.pulseAura(entry.source, pulseTick, unpulsedAllies, [], [], auraEnv)
           }
@@ -22132,31 +24282,11 @@ export class GameInstance {
       }
     }
 
-    const casterStateIds = new Set<number>()
-    for (const entry of runtime.sources) {
-      if (entry.casterStateId !== undefined) casterStateIds.add(entry.casterStateId)
-    }
-    allyPlayerRecords.forEach((p, i) => {
-      const pCtx = playerAllies[i]!
-      this.syncPlayerVitalsFromCombat(p, pCtx)
-      this.syncAuraAllyStates113c(p.states, p.stateTimers, 'player', p.unitId, p.areaId, pCtx)
-    })
-    allyMercRecords.forEach((m, i) => {
-      const mCtx = mercAllies[i]!
-      const hpAfter = Math.min(m.maxHp, Math.max(0, Math.ceil(mCtx.statList.getHp256() / FIXED_ONE)))
-      if (hpAfter !== m.hp && m.alive) {
-        m.hp = hpAfter
-        this.broadcastAllyHp(m.areaId, m.unitId, m.hp)
-      }
-      this.syncAuraAllyStates113c(
-        m.states,
-        m.stateTimers,
-        'monster',
-        m.unitId,
-        m.areaId,
-        mCtx,
-        m === merc ? casterStateIds : undefined,
-      )
+    const casterStateIds = this.getMercOwnCasterAuraStates113c(merc.unitId)
+    this.syncFriendlyAuraTargets113c(targets, merc.areaId, {
+      skipSelfMercId: merc.unitId,
+      selfMercCasterStates: casterStateIds,
+      forceRefresh,
     })
     enemyRecords.forEach((m, i) => {
       const enemyCtx = enemies[i]!
@@ -22580,6 +24710,7 @@ export class GameInstance {
           m.dead ||
           m.isNpc ||
           !m.isKillable ||
+          m.submerged ||
           m.petIgnore ||
           m.areaId !== merc.areaId
         ) {
@@ -22834,6 +24965,16 @@ export class GameInstance {
       )
     }
 
+    const prePetMetaByUid = new Map(
+      mgr.getActivePets().map((p) => [
+        p.uid,
+        {
+          classId: p.classId ?? 363,
+          petTypeIdx:
+            PET_TYPE_IDX_BY_NAME_113C[p.petType] ?? PET_TYPE_PORTRAIT_TABLE[0]?.idx ?? 1,
+        },
+      ]),
+    )
     const outcome = mgr.createPet({
       owner: ownerCtx,
       skillId: spec.skillId,
@@ -22857,9 +24998,12 @@ export class GameInstance {
       }
     }
     for (const evictedUid of outcome.evictedPetUids) {
+      this.petAuraScanners.delete(evictedUid)
       const evictedUnitId = this.petUnitIds.get(evictedUid)
       if (evictedUnitId !== undefined) {
+        const evictedMeta = prePetMetaByUid.get(evictedUid)
         this.petUnitIds.delete(evictedUid)
+        this.petVisualStates.delete(evictedUnitId)
         this.broadcastToArea(areaId, {
           type: 'UnitRemove',
           unitType: 1,
@@ -22871,10 +25015,10 @@ export class GameInstance {
           kind: 'assign',
           isSummonAction: true,
           summonAction: 0,
-          petType: 1,
+          petType: evictedMeta?.petTypeIdx ?? 1,
           mercId: evictedUnitId,
           ownerId: ownerPlayerId,
-          classId: spec.skillId,
+          classId: evictedMeta?.classId ?? 363,
         })
       }
     }
@@ -22885,9 +25029,12 @@ export class GameInstance {
       const petMeta = outcome.pet as unknown as {
         unitId?: number
         areaId?: number
+        states?: Set<number>
       }
+      const vis = this.getOrCreatePetCombatContext113c(outcome.pet, petUnitId, areaId)
       petMeta.unitId = petUnitId
       petMeta.areaId = areaId
+      petMeta.states = vis.states
       const petTypeIdx =
         PET_TYPE_IDX_BY_NAME_113C[outcome.pet.petType] ??
         PET_TYPE_PORTRAIT_TABLE[0]?.idx ??
@@ -22911,6 +25058,8 @@ export class GameInstance {
           y: outcome.pet.y,
           mode: 1,
           lifePct: 128,
+          ownerType: 0,
+          ownerId: ownerPlayerId,
         },
       })
       this.emitToPlayer(ownerPlayerId, {
@@ -22921,8 +25070,14 @@ export class GameInstance {
         petType: petTypeIdx,
         mercId: petUnitId,
         ownerId: ownerPlayerId,
-        classId: spec.skillId,
+        classId,
       })
+      const spiritSkillId = outcome.pet.subSkillIds.find(
+        (id) => id === 296 || id === 297 || id === 298,
+      )
+      if (spiritSkillId !== undefined && owner !== undefined) {
+        this.pulseDruidSpiritPetAura113c(owner, outcome.pet, petUnitId, spiritSkillId, true)
+      }
     }
 
     return outcome
@@ -22938,11 +25093,13 @@ export class GameInstance {
     if (!mgr) return null
     const removed = mgr.unsummonOwnPetAt(String(ownerPlayerId), x, y, radius)
     if (removed) {
+      this.petAuraScanners.delete(removed.uid)
       const petUnitId = this.petUnitIds.get(removed.uid)
       const owner = this.players.get(ownerPlayerId)
       const areaId = owner?.areaId ?? this.defaultAreaId ?? 1
       if (petUnitId !== undefined) {
         this.petUnitIds.delete(removed.uid)
+        this.petVisualStates.delete(petUnitId)
         this.broadcastToArea(areaId, {
           type: 'UnitRemove',
           unitType: 1,
@@ -22957,7 +25114,7 @@ export class GameInstance {
           petType: PET_TYPE_IDX_BY_NAME_113C[removed.petType] ?? 1,
           mercId: petUnitId,
           ownerId: ownerPlayerId,
-          classId: removed.sourceSkillId,
+          classId: removed.classId ?? 363,
         })
       }
     }
@@ -23006,22 +25163,148 @@ export class GameInstance {
     return undefined
   }
 
+  /**
+   * Pulse a Druid Spirit Totem's 1.13c aura sub-skill (`#296` Barbs Aura -> `147`, `#297` Wolverine
+   * Aura -> `148`, `#298` Oak Sage Aura -> `149`) across allied players, mercenaries, and pets.
+   */
+  private pulseDruidSpiritPetAura113c(
+    owner: InternalPlayerRecord,
+    pet: SummonedPetUnit,
+    petUnitId: number,
+    spiritSkillId: number,
+    forceInitial = false,
+  ): void {
+    const skill = this.registry.getSkillById(spiritSkillId)
+    if (!skill || !skill.aura) return
+    const slvl = Math.max(1, pet.slvl)
+    const radiusSubtiles = this.auraRangeSubtiles(spiritSkillId, slvl)
+    const casterStateId = skill.auraState ? this.registry.getStateByName(skill.auraState)?.id : undefined
+    const targetStateId = skill.auraTgtState ? this.registry.getStateByName(skill.auraTgtState)?.id : undefined
+    const signature = `${spiritSkillId}:${slvl}`
+    const petVis = this.getOrCreatePetCombatContext113c(pet, petUnitId, owner.areaId)
+    let runtime = this.petAuraScanners.get(pet.uid)
+    const signatureChanged = runtime === undefined || runtime.signature !== signature
+    if (signatureChanged) {
+      const scanner = new AuraScanner(this.registry, (this.currentMapSeed ^ petUnitId) >>> 0)
+      const pulseTick = Math.max(1, this.currentFrame)
+      const source = scanner.setActiveAura(petVis.ctx, spiritSkillId, slvl, pulseTick)
+      if (source === null) return
+      if (casterStateId !== undefined) {
+        this.applyPersistentUnitState(
+          petVis.states,
+          petVis.timers,
+          'monster',
+          petUnitId,
+          owner.areaId,
+          casterStateId,
+        )
+      }
+      runtime = {
+        scanner,
+        signature,
+        sources: [
+          {
+            skillId: spiritSkillId,
+            slvl,
+            isItemAura: false,
+            radiusSubtiles,
+            casterStateId,
+            targetStateId,
+            source,
+          },
+        ],
+        needsInitialPulse: true,
+      }
+      this.petAuraScanners.set(pet.uid, runtime)
+    } else if (runtime !== undefined && casterStateId !== undefined && !petVis.states.has(casterStateId)) {
+      this.applyPersistentUnitState(
+        petVis.states,
+        petVis.timers,
+        'monster',
+        petUnitId,
+        owner.areaId,
+        casterStateId,
+      )
+    }
+    if (runtime === undefined || runtime.sources.length === 0) return
+    runtime.scanner.syncCasterPosition(pet.x, pet.y)
+
+    const targets = this.collectFriendlyAuraAllies113c({
+      ownerPlayerId: owner.unitId,
+      areaId: owner.areaId,
+      originX: pet.x,
+      originY: pet.y,
+      maxRadius: radiusSubtiles,
+      selfPet: pet,
+    })
+    const auraEnv = {
+      isTown: TOWN_AREAS.has(owner.areaId),
+      hasLineOfSight: (src: CombatUnitContext, tgt: { x?: number; y?: number }) =>
+        src.x === undefined || src.y === undefined || tgt.x === undefined || tgt.y === undefined
+          ? false
+          : this.isMonsterStepWalkable(owner.areaId, src.x, src.y, tgt.x, tgt.y, true),
+      rng: this.rng,
+    }
+    const pulseTick = Math.max(1, this.currentFrame)
+    const entry = runtime.sources[0]!
+    if (runtime.needsInitialPulse || forceInitial) {
+      runtime.needsInitialPulse = false
+      runtime.scanner.pulseAura(entry.source, pulseTick, targets.allAllies, [], [], auraEnv)
+    } else {
+      runtime.scanner.tick(this.currentFrame, targets.allAllies, [], [], auraEnv)
+      if (targetStateId !== undefined && FRIENDLY_AURA_TARGET_STATE_IDS_113C.has(targetStateId)) {
+        const unpulsedAllies = targets.allAllies.filter((a) => {
+          if (a.id === petVis.ctx.id || a.x === undefined || a.y === undefined) return false
+          if (!isWithinAuraRange(a.x - pet.x, a.y - pet.y, radiusSubtiles)) return false
+          if (a.stateBus.hasState(targetStateId)) return false
+          return passesAuraFilter(entry.source.skill.auraFilter, {
+            kind: a.unitType === 'player' ? 'player' : 'monster',
+            relation: 'ally',
+            dead: a.statList.getHp256() <= 0,
+            inTown: auraEnv.isTown,
+          })
+        })
+        if (unpulsedAllies.length > 0) {
+          runtime.scanner.pulseAura(entry.source, pulseTick, unpulsedAllies, [], [], auraEnv)
+        }
+      }
+    }
+    const selfPetCasterStates = casterStateId !== undefined ? new Set<number>([casterStateId]) : undefined
+    this.syncFriendlyAuraTargets113c(targets, owner.areaId, {
+      skipSelfPetUnitId: petUnitId,
+      selfPetCasterStates,
+      forceRefresh: signatureChanged || forceInitial,
+    })
+  }
+
   private stepSummonedPets(): void {
     for (const [ownerPlayerId, mgr] of this.summonManagers.entries()) {
       const owner = this.players.get(ownerPlayerId)
       if (!owner || owner.dead) continue
       const pets = mgr.getActivePets()
       for (const pet of pets) {
-        if (pet.hp <= 0 || pet.alive === false) continue
+        if (pet.hp <= 0 || pet.alive === false) {
+          this.petAuraScanners.delete(pet.uid)
+          continue
+        }
         const aiProfile = resolvePetAiProfile113c(pet, pets.length)
         const isStationary = aiProfile.isStationary
         const isFlyingPet = pet.petType === 'raven'
         const petUnitId =
           this.petUnitIds.get(pet.uid) ??
           (pet as unknown as { unitId?: number }).unitId
-        const petMeta = pet as unknown as { areaId?: number; unitId?: number }
-        if (petUnitId !== undefined && petMeta.unitId === undefined) {
-          petMeta.unitId = petUnitId
+        const petMeta = pet as unknown as { areaId?: number; unitId?: number; states?: Set<number> }
+        if (petUnitId !== undefined) {
+          if (petMeta.unitId === undefined) petMeta.unitId = petUnitId
+          const vis = this.getOrCreatePetCombatContext113c(pet, petUnitId, owner.areaId)
+          petMeta.states = vis.states
+          this.stepUnitStates(vis.states, vis.timers, 'monster', petUnitId, owner.areaId)
+          const spiritSkillId = pet.subSkillIds.find(
+            (id) => id === 296 || id === 297 || id === 298,
+          )
+          if (spiritSkillId !== undefined) {
+            this.pulseDruidSpiritPetAura113c(owner, pet, petUnitId, spiritSkillId, false)
+          }
         }
 
         const ownerDist = Math.hypot(owner.x - pet.x, owner.y - pet.y)
@@ -23058,6 +25341,7 @@ export class GameInstance {
             m.dead ||
             m.isNpc ||
             !m.isKillable ||
+            m.submerged ||
             m.petIgnore ||
             m.areaId !== owner.areaId
           ) {
@@ -23331,7 +25615,10 @@ export class GameInstance {
       }
     }
 
-    const activeMerc = this.getMercenaryForOwner(playerUnitId)
+    const activeMercRecord = [...this.mercenaries.values()].find(
+      (m) => m.ownerPlayerId === playerUnitId,
+    )
+    const activeMerc = activeMercRecord ?? this.getMercenaryForOwner(playerUnitId)
     const exportedMerc = activeMerc
       ? {
           dead: !activeMerc.alive,
@@ -23367,7 +25654,9 @@ export class GameInstance {
           ? this.currentMapSeed
           : (template?.mapSeed ?? 0),
         merc: exportedMerc,
-        mercItems: template?.mercItems,
+        mercItems: activeMercRecord
+          ? activeMercRecord.equipment.map((item) => this.serverEntryToItemData(item))
+          : template?.mercItems,
         quests: questsDiffs,
         waypoints,
         npcIntro: template?.npcIntro ?? createDefaultNpcIntroData(),

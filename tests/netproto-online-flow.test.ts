@@ -4,6 +4,7 @@ import {
   BncsCreateAccountError,
   BncsCreateAccountStatus,
   createD2OnlineFlow,
+  ProtocolError,
 } from '../src/netproto/index.ts'
 import { createFakeRealm } from './netproto/fake-realm-servers.ts'
 
@@ -81,5 +82,108 @@ describe('D2OnlineFlow SID_CREATEACCOUNT2 (0x3D) Account Creation & Error Propag
 
       await flow.close()
     }
+  })
+
+  it('throws ProtocolError when MCP_CHARDELETE (0x0A, D2MCPClient.dll 0x6fa26250) or MCP_CHARUPGRADE (0x18, 0x6fa26230) returns non-zero status (#1760)', async () => {
+    const realmFail = createFakeRealm({
+      characters: 1,
+      deleteCharStatus: 0x46,
+      upgradeCharStatus: 0x46,
+    })
+    const flowFail = createD2OnlineFlow({
+      resolver: realmFail.resolver,
+      bnetHost: '127.0.0.1',
+      bnetPort: 6112,
+    })
+    await flowFail.login('HeroAcct', 'Pass123')
+    await flowFail.enterRealm('D2CS')
+
+    await assert.rejects(
+      async () => {
+        await flowFail.deleteCharacter('d2webbot_sorc')
+      },
+      (err: unknown) => {
+        assert.equal(err instanceof ProtocolError, true)
+        assert.match((err as Error).message, /MCP_CHARDELETE failed for "d2webbot_sorc" with status=0x46/)
+        return true
+      },
+    )
+
+    await assert.rejects(
+      async () => {
+        await flowFail.upgradeCharacter('d2webbot_sorc')
+      },
+      (err: unknown) => {
+        assert.equal(err instanceof ProtocolError, true)
+        assert.match((err as Error).message, /MCP_CHARUPGRADE failed for "d2webbot_sorc" with status=0x46/)
+        return true
+      },
+    )
+    await flowFail.close()
+
+    const realmOk = createFakeRealm({
+      characters: 1,
+      deleteCharStatus: 0,
+      upgradeCharStatus: 0,
+    })
+    const flowOk = createD2OnlineFlow({
+      resolver: realmOk.resolver,
+      bnetHost: '127.0.0.1',
+      bnetPort: 6112,
+    })
+    await flowOk.login('HeroAcct', 'Pass123')
+    await flowOk.enterRealm('D2CS')
+    await flowOk.deleteCharacter('d2webbot_sorc')
+    await flowOk.upgradeCharacter('d2webbot_sorc')
+    await flowOk.close()
+  })
+
+  it('rejects MCP_JOINGAME (0x04) when d2gsIpRaw == 0 with synthesized status 0x28 per D2MCPClient.dll 0x6fa264d0 and supports useTicketD2gsIp (#1763)', async () => {
+    // 1. d2gsIpRaw == 0 with status == 0 -> synthesizes status 0x28 (Join Failed) per 0x6fa26502..0x6fa2651a
+    const realmZeroIp = createFakeRealm({
+      characters: 1,
+      joinGameStatus: 0,
+      joinGameD2gsIp: [0, 0, 0, 0],
+    })
+    const flowZeroIp = createD2OnlineFlow({
+      resolver: realmZeroIp.resolver,
+      bnetHost: '127.0.0.1',
+      bnetPort: 6112,
+    })
+    await flowZeroIp.login('HeroAcct', 'Pass123')
+    await flowZeroIp.enterRealm('D2CS')
+    await flowZeroIp.selectCharacter('d2webbot_sorc')
+
+    await assert.rejects(
+      async () => {
+        await flowZeroIp.joinGame('test-game')
+      },
+      (err: unknown) => {
+        assert.equal(err instanceof ProtocolError, true)
+        assert.match((err as Error).message, /MCP_JOINGAME failed for "test-game" with status=0x28/)
+        return true
+      },
+    )
+    await flowZeroIp.close()
+
+    // 2. useTicketD2gsIp: true routes the game connection to ticket.d2gsIp (10.0.0.42) instead of bnetHost
+    const realmCustomIp = createFakeRealm({
+      characters: 1,
+      joinGameStatus: 0,
+      joinGameD2gsIp: [10, 0, 0, 42],
+    })
+    const flowCustomIp = createD2OnlineFlow({
+      resolver: realmCustomIp.resolver,
+      bnetHost: '127.0.0.1',
+      bnetPort: 6112,
+      useTicketD2gsIp: true,
+    })
+    await flowCustomIp.login('HeroAcct', 'Pass123')
+    await flowCustomIp.enterRealm('D2CS')
+    await flowCustomIp.selectCharacter('d2webbot_sorc')
+    const adapter = await flowCustomIp.joinGame('test-game')
+    assert.ok(adapter)
+    assert.equal(realmCustomIp.latest('game').host, '10.0.0.42')
+    await flowCustomIp.close()
   })
 })

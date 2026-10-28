@@ -40,13 +40,15 @@ describe('Issue #1289: COF per-layer transparent + drawEffect 6-level blend tabl
     expect(resolveCofLayerDrawMode({ transparent: false, drawEffect: 3 })).toBe('normal')
     expect(resolveCofLayerDrawMode({ transparent: false, drawEffect: 0 }, 'trans50')).toBe('trans50')
 
-    // When transparent is true, drawEffect 0..5 maps to 1.13c DrawMode table:
+    // When transparent is true, drawEffect 0..7 maps to 1.13c DrawMode table (D2Client 0x6FB1D690 / 0x6FB1C923):
     expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 0 })).toBe('trans25')
     expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 1 })).toBe('trans50')
     expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 2 })).toBe('trans75')
     expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 3 })).toBe('additive')
-    expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 4 })).toBe('normal')
-    expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 5 })).toBe('normal')
+    expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 4 })).toBe('burn')
+    expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 5 }, 'trans75')).toBe('normal')
+    expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 6 }, 'trans75')).toBe('normal')
+    expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 7 }, 'trans75')).toBe('normal')
     expect(resolveCofLayerDrawMode({ transparent: true, drawEffect: 99 }, 'trans75')).toBe('trans75')
 
     expect(cofLayerDrawModeAlphaByte('trans25')).toBe(64)
@@ -54,6 +56,7 @@ describe('Issue #1289: COF per-layer transparent + drawEffect 6-level blend tabl
     expect(cofLayerDrawModeAlphaByte('trans75')).toBe(192)
     expect(cofLayerDrawModeAlphaByte('normal')).toBe(255)
     expect(cofLayerDrawModeAlphaByte('additive')).toBe(255)
+    expect(cofLayerDrawModeAlphaByte('burn')).toBe(255)
   })
 
   it('skips baked shadow index 172 on translucent layers and occludes glowSheet when an opaque layer draws over an additive layer', () => {
@@ -65,6 +68,10 @@ describe('Issue #1289: COF per-layer transparent + drawEffect 6-level blend tabl
       framesPerDirection: 1,
       numberOfDirections: 1,
       speed: 256,
+      xMin: 0,
+      xMax: 2,
+      yMin: 0,
+      yMax: 1,
       layers: [
         { type: 0, shadow: 0, selectable: true, transparent: true, drawEffect: 3, weaponClass: 'hth' },
         { type: 1, shadow: 1, selectable: true, transparent: false, drawEffect: 5, weaponClass: 'hth' },
@@ -111,6 +118,10 @@ describe('Issue #1289: COF per-layer transparent + drawEffect 6-level blend tabl
       framesPerDirection: 1,
       numberOfDirections: 1,
       speed: 256,
+      xMin: 0,
+      xMax: 2,
+      yMin: 0,
+      yMax: 2,
       layers: [
         { type: 0, shadow: 0, selectable: true, transparent: true, drawEffect: 0, weaponClass: 'hth' },
       ],

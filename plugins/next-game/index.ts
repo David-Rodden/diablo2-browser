@@ -8,11 +8,13 @@
  * scene back to the current Act's town without returning to the lobby or door loading screen.
  */
 
+import { playersSetChatText113c } from '../../src/common/chat/chat-113c.ts'
 import { Environment } from '../../src/common/world/environment.ts'
-import type {
-  D2OnlineFlow,
-  GameCreateSpec,
-  GameServerAdapter,
+import {
+  getLocalLobbyProvider,
+  type D2OnlineFlow,
+  type GameCreateSpec,
+  type GameServerAdapter,
 } from '../../src/netproto/index.ts'
 import {
   type D2WebPlugin,
@@ -87,15 +89,23 @@ interface RuntimeOnlineSessionLike {
       name: string
       charClass: number
     }
+    readonly activeChatOverlayEntries?: readonly {
+      readonly kind: string
+      readonly text: string
+    }[]
+    addSystemChatMessage?(text: string, color?: number, nowMs?: number): void
     reset(): void
   }
   flow?: D2OnlineFlow | null
   gameAdapter?: GameServerAdapter | null
   activeGameNameValue?: string | null
+  persistedPlayersCount?: number | null
+  appliedPersistedPlayersForGame?: boolean
   lastObjectLightBuildFrame?: number
   environmentValue?: Environment
   clientActLoaded?: boolean
   lastSyncedAreaId?: number
+  readonly c2sDedupe?: { reset?(): void }
   readonly weather?: { onGameInit?(): void }
   readonly audioRuntime?: { gameInit?(): void }
   readonly questFx?: { resetForNewGame?(): void }
@@ -117,6 +127,7 @@ interface RuntimeOnlineSessionLike {
   acquireOrRefreshActiveCharLease?(gameName: string): void
   syncAudioSkillPacks?(): void
   attachGameServer?(adapter: GameServerAdapter): void
+  dispatchCommand?(cmd: { readonly type: 'Chat'; readonly text: string }): boolean
   emitState?(): void
   leaveGame?(): Promise<void>
   enterGame?(
@@ -245,6 +256,28 @@ function buildNextGameSpec(
     }
   }
 
+  const adapterPlayersX =
+    typeof runtimeSession.gameAdapter?.getPlayersX === 'function'
+      ? runtimeSession.gameAdapter.getPlayersX()
+      : undefined
+  const rawPersistedPlayers =
+    runtimeSession.persistedPlayersCount ??
+    (typeof adapterPlayersX === 'number' && adapterPlayersX > 1 ? adapterPlayersX : undefined) ??
+    getLocalLobbyProvider()?.getPersistedPlayersX?.() ??
+    lastSpec?.playersX ??
+    null
+  const playersX =
+    typeof rawPersistedPlayers === 'number' &&
+    Number.isFinite(rawPersistedPlayers) &&
+    rawPersistedPlayers >= 1 &&
+    rawPersistedPlayers <= 8
+      ? Math.floor(rawPersistedPlayers)
+      : undefined
+  if (playersX !== undefined) {
+    runtimeSession.persistedPlayersCount = playersX
+    getLocalLobbyProvider()?.setPersistedPlayersX?.(playersX)
+  }
+
   void ctx
   return {
     name: nextName,
@@ -253,6 +286,60 @@ function buildNextGameSpec(
     difficulty,
     maxPlayers,
     levelDiff,
+    ...(playersX !== undefined ? { playersX } : {}),
+  }
+}
+
+function ensurePersistedPlayersAppliedOnNewRoom(
+  runtimeSession: RuntimeOnlineSessionLike,
+  adapter: GameServerAdapter | null | undefined,
+  playersX: number | undefined,
+): void {
+  const count =
+    playersX ??
+    (typeof runtimeSession.persistedPlayersCount === 'number'
+      ? runtimeSession.persistedPlayersCount
+      : undefined)
+  if (count === undefined || count < 1 || count > 8) {
+    return
+  }
+  getLocalLobbyProvider()?.setPersistedPlayersX?.(count)
+  const localAdapter = (adapter ?? runtimeSession.gameAdapter) as {
+    getPlayersX?: () => number
+    setPlayersX?: (n: number) => number
+    send?: (cmd: { readonly type: 'Chat'; readonly text: string }) => void
+    getGameInstance?: () => {
+      tickCount?: number
+      getPlayersX?: () => number
+      setPlayersX?: (n: number, opts?: { readonly syncMonsterPlayerCount?: boolean }) => number
+    }
+  } | null
+  const game =
+    typeof localAdapter?.getGameInstance === 'function' ? localAdapter.getGameInstance() : null
+  if (game && typeof game.setPlayersX === 'function') {
+    const syncMonsterPlayerCount = (game.tickCount ?? 0) <= 1
+    if (syncMonsterPlayerCount || game.getPlayersX?.() !== count) {
+      game.setPlayersX(count, { syncMonsterPlayerCount })
+    }
+  } else if (typeof localAdapter?.setPlayersX === 'function' && localAdapter.getPlayersX?.() !== count) {
+    localAdapter.setPlayersX(count)
+  }
+
+  if (!runtimeSession.appliedPersistedPlayersForGame) {
+    runtimeSession.appliedPersistedPlayersForGame = true
+    const msgText = playersSetChatText113c(count)
+    const alreadyShown = runtimeSession.world.activeChatOverlayEntries?.some(
+      (m) => m.kind === 'system' && m.text.toLowerCase() === msgText.toLowerCase(),
+    )
+    if (!alreadyShown) {
+      runtimeSession.world.addSystemChatMessage?.(msgText, 0)
+    }
+    if (typeof runtimeSession.dispatchCommand === 'function') {
+      runtimeSession.dispatchCommand({ type: 'Chat', text: msgText })
+    } else {
+      localAdapter?.send?.({ type: 'Chat', text: msgText })
+    }
+    runtimeSession.hudModel?.syncFromWorld?.()
   }
 }
 
@@ -322,9 +409,20 @@ export function createNextGamePlugin(options: NextGamePluginOptions = {}): D2Web
         if (typeof snapName === 'string' && snapName.trim().length > 0) {
           return snapName.trim()
         }
+        const runtimeSession = ctx.session as unknown as RuntimeOnlineSessionLike
+        if (
+          typeof runtimeSession.activeGameNameValue === 'string' &&
+          runtimeSession.activeGameNameValue.trim().length > 0
+        ) {
+          return runtimeSession.activeGameNameValue.trim()
+        }
         const flowState = resolveRuntimeFlowState()
         if (typeof flowState?.gameName === 'string' && flowState.gameName.trim().length > 0) {
           return flowState.gameName.trim()
+        }
+        if (ctx.session.phase === 'ingame') {
+          const heroName = runtimeSession.world?.self?.name?.trim()
+          return heroName ? `${heroName}1` : 'game1'
         }
         return null
       }
@@ -460,6 +558,8 @@ export function createNextGamePlugin(options: NextGamePluginOptions = {}): D2Web
             runtimeSession.questFx?.resetForNewGame?.()
             runtimeSession.knownAreaIds?.clear?.()
             runtimeSession.lastSyncedAreaId = 0
+            runtimeSession.appliedPersistedPlayersForGame = false
+            runtimeSession.c2sDedupe?.reset?.()
             runtimeSession.world.self.name = savedName
             runtimeSession.world.self.charClass = savedClass
             runtimeSession.syncAudioSkillPacks?.()
@@ -470,6 +570,7 @@ export function createNextGamePlugin(options: NextGamePluginOptions = {}): D2Web
             runtimeSession.activeGameNameValue = nextGameName
             runtimeSession.acquireOrRefreshActiveCharLease?.(nextGameName)
             runtimeSession.attachGameServer(adapter)
+            ensurePersistedPlayersAppliedOnNewRoom(runtimeSession, adapter, spec.playersX)
             runtimeSession.emitState?.()
 
             lastTargetGameName = nextGameName
@@ -529,10 +630,14 @@ export function createNextGamePlugin(options: NextGamePluginOptions = {}): D2Web
             }
           }
           try {
-            await runtimeSession.enterGame({
+            runtimeSession.appliedPersistedPlayersForGame = false
+            runtimeSession.c2sDedupe?.reset?.()
+            const newAdapter = await runtimeSession.enterGame({
               mode: 'create',
               spec,
             })
+            runtimeSession.activeGameNameValue = nextGameName
+            ensurePersistedPlayersAppliedOnNewRoom(runtimeSession, newAdapter, spec.playersX)
             lastTargetGameName = nextGameName
             statusOverride = {
               level: 'ok',

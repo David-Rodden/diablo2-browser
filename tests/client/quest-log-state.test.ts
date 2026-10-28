@@ -574,5 +574,26 @@ describe('1.13c Quest Log State Machine, Packet Decoders & Quest Alert (UI 0x11)
       expect(atlasBlits[i]!.sw).toBe(rect.w)
       expect(atlasBlits[i]!.sh).toBe(rect.h)
     }
+
+    // 3. Issue #1737: D2Client.dll 0x6FACF5E8 uses SetFont(8) ('fontformal11') for both quest title and description body,
+    //    and 0x6FACF7EC / 0x6FACF89C use SetFont(9) ('fontexocet10') for close/speech button hover labels.
+    const drawnFonts: Array<{ text: string; font: string | undefined }> = []
+    const drawTextSpy = vi.spyOn(font, 'drawText').mockImplementation((_ctx, text, _x, _y, opts) => {
+      drawnFonts.push({ text, font: opts?.font })
+    })
+    hud.hoveredQuestButton = 'close'
+    hud.drawLeftDockPanel(mockCtx, 'quest', baseAssets, font)
+    // Title and description body lines use 'fontformal11'
+    expect(drawnFonts.length).toBeGreaterThanOrEqual(2)
+    expect(drawnFonts[0]!.font).toBe('fontformal11')
+    expect(drawnFonts[1]!.font).toBe('fontformal11')
+    // Hovered close button label uses 'fontexocet10'
+    expect(drawnFonts.at(-1)!.font).toBe('fontexocet10')
+
+    drawnFonts.length = 0
+    hud.hoveredQuestButton = 'speech'
+    hud.drawLeftDockPanel(mockCtx, 'quest', baseAssets, font)
+    expect(drawnFonts.at(-1)!.font).toBe('fontexocet10')
+    drawTextSpy.mockRestore()
   })
 })

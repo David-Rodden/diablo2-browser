@@ -130,14 +130,16 @@ export type CofLayerDrawBlendMode =
   | 'trans50'
   | 'trans75'
   | 'additive'
+  | 'burn'
 
 /**
- * Resolve a COF layer's draw blend mode per 1.13c `D2Client.dll` `GetLayerDrawMode` (`0x6FB6CB70`)
- * and `D2Gfx.dll` `eDrawMode` (`sub_6F61A100`):
+ * Resolve a COF layer's draw blend mode per 1.13c `D2Client.dll` (`0x6FB1D780` `COF_GetLayerTrans`,
+ * `0x6FB1D690` `COF_GetLayerDrawEffect`, `0x6FB1C923..0x6FB1C998`) and `D2Direct3D.dll` (`0x6F886B90`):
  * - COF byte `+0x03` (`layer.transparent` / `bTransOverride`) indicates whether byte `+0x04`
  *   (`layer.drawEffect` / `nDrawEffect`) overrides the unit's default `Trans` draw mode.
- * - When `layer.transparent` is true, `layer.drawEffect` maps as `eDrawMode`:
- *   `0 -> 'trans25'`, `1 -> 'trans50'`, `2 -> 'trans75'`, `3 -> 'additive'`, `4 -> 'normal'` (multiply), `5 -> 'normal'`.
+ * - When `layer.transparent` is true, `layer.drawEffect` is passed directly as `D2gfx` `eDrawMode`:
+ *   `0 -> 'trans25'`, `1 -> 'trans50'`, `2 -> 'trans75'`, `3 -> 'additive'`, `4 -> 'burn'` (multiply),
+ *   `5 / 6 / 7 -> 'normal'` (opaque in D3D `0x6F886B90`).
  * - When `layer.transparent` is false, returns `unitDefaultDrawMode`.
  */
 export function resolveCofLayerDrawMode(
@@ -157,7 +159,10 @@ export function resolveCofLayerDrawMode(
     case 3:
       return 'additive'
     case 4:
+      return 'burn'
     case 5:
+    case 6:
+    case 7:
       return 'normal'
     default:
       return unitDefaultDrawMode
@@ -417,6 +422,10 @@ export async function compositeMonsterAnimation(
       framesPerDirection: framesPerDir,
       numberOfDirections: numDirs,
       speed: 256,
+      xMin: 0,
+      xMax: 0,
+      yMin: 0,
+      yMax: 0,
       layers: [{ type: 1, shadow: 1, selectable: true, transparent: false, drawEffect: 0, weaponClass: usedWeapon }],
       animationFrames: new Uint8Array(framesPerDir),
       priority: Array.from({ length: numDirs }, () => Array.from({ length: framesPerDir }, () => [1])),

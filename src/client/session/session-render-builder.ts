@@ -16,6 +16,7 @@ import {
   resolveCharacterAppearance,
   resolveEquipmentSlotsToAppearanceInput,
 } from '../../common/units/char-appearance.ts'
+import { isMonsterSubmergedMode113c } from '../../common/units/monai-113c.ts'
 import { resolveLevelAmbient } from '../../common/world/ambient-light.ts'
 import type { Environment } from '../../common/world/environment.ts'
 import { levelDisplayName } from '../../common/world/level-names-zh.ts'
@@ -252,7 +253,15 @@ export function tickSessionFrame(
   }
 
   for (const unit of host.world.units.values()) {
-    if (unit.dead || unit.unitType === 'monster') continue
+    if (
+      unit.dead ||
+      unit.unitType === 'monster' ||
+      unit.unitType === 'item' ||
+      unit.unitType === 'missile' ||
+      unit.unitType === 'tile'
+    ) {
+      continue
+    }
     if (
       unit.unitType === 'player' &&
       (host.world.selfId === 0 || unit.id === (host.world.selfId || 1))
@@ -320,46 +329,48 @@ export function tickSessionFrame(
   }
   host.drainWorldSoundRequests()
 
-  const hasCollisionConstraint =
-    host.levelView !== undefined ||
-    host.world.getRevealedAreaIds().length > 0 ||
-    Boolean(host.mapService) ||
-    Boolean(host.automapView.getLevelView()) ||
-    host.world.hasExplicitBlockedSubTiles()
-  host.interpolator.update(
-    clampedDt,
-    hasCollisionConstraint ? (x, y) => host.world.isSubTileBlocked(x, y) : () => false,
-  )
-  for (const state of host.interpolator.getAllStates()) {
-    if (state.dead || state.unitType === 1) continue
-    const unit = host.world.getUnit(state.unitType as UnitType, state.unitId)
-    if (unit && !unit.dead) {
-      unit.x = state.x
-      unit.y = state.y
-      unit.moving = state.moving
-      if (unit.castState?.skillId !== 151) {
-        unit.syncTurnState(state.dir64, state.targetDir64, state.stepDir)
-      }
-      if (unit.unitType === 'player' && unit.id !== host.world.selfId) {
-        const unitInTown = host.isSubTileInTown(state.x, state.y)
-        if (state.moving && unit.moveMode !== 'stop') {
-          if (unit.moveMode === 'knockback') {
-            unit.mode = 19
-          } else if (state.running || unit.mode === 3) {
-            unit.mode = 3
-          } else if (unit.mode === 2 || unit.mode === 6 || unit.mode === 1 || unit.mode === 5) {
-            unit.mode = unitInTown ? 6 : 2
+  if (host.interpolator.size > 0) {
+    const hasCollisionConstraint =
+      host.levelView !== undefined ||
+      host.world.getRevealedAreaIds().length > 0 ||
+      Boolean(host.mapService) ||
+      Boolean(host.automapView.getLevelView()) ||
+      host.world.hasExplicitBlockedSubTiles()
+    host.interpolator.update(
+      clampedDt,
+      hasCollisionConstraint ? (x, y) => host.world.isSubTileBlocked(x, y) : () => false,
+    )
+    for (const state of host.interpolator.getAllStates()) {
+      if (state.dead || state.unitType === 1) continue
+      const unit = host.world.getUnit(state.unitType as UnitType, state.unitId)
+      if (unit && !unit.dead) {
+        unit.x = state.x
+        unit.y = state.y
+        unit.moving = state.moving
+        if (unit.castState?.skillId !== 151) {
+          unit.syncTurnState(state.dir64, state.targetDir64, state.stepDir)
+        }
+        if (unit.unitType === 'player' && unit.id !== host.world.selfId) {
+          const unitInTown = host.isSubTileInTown(state.x, state.y)
+          if (state.moving && unit.moveMode !== 'stop') {
+            if (unit.moveMode === 'knockback') {
+              unit.mode = 19
+            } else if (state.running || unit.mode === 3) {
+              unit.mode = 3
+            } else if (unit.mode === 2 || unit.mode === 6 || unit.mode === 1 || unit.mode === 5) {
+              unit.mode = unitInTown ? 6 : 2
+            }
+          } else if (
+            unit.mode === 2 ||
+            unit.mode === 3 ||
+            unit.mode === 6 ||
+            unit.mode === 19 ||
+            unit.mode === 1 ||
+            unit.mode === 5
+          ) {
+            unit.mode = unitInTown ? 5 : 1
+            unit.moveMode = 'stop'
           }
-        } else if (
-          unit.mode === 2 ||
-          unit.mode === 3 ||
-          unit.mode === 6 ||
-          unit.mode === 19 ||
-          unit.mode === 1 ||
-          unit.mode === 5
-        ) {
-          unit.mode = unitInTown ? 5 : 1
-          unit.moveMode = 'stop'
         }
       }
     }
@@ -408,14 +419,11 @@ export function tickSessionFrame(
     )
     if (env.updatePeriodOfDay(activeView?.areaId ?? 0)) {
       host.envEffects.refresh(objects, env.period, nowMs)
-      if (!host.hudManager?.tradeHallMode) {
-        host.audioRuntime.setTimeOfDay(periodOfDayToSoundEnvironTod113c(env.period))
-      }
     }
     if (!host.hudManager?.tradeHallMode) {
-      const isRaining = !host.weather.sim.snow && host.weather.sim.intensity > 0
-      const rainTargetVol = isRaining ? Math.round(host.weather.sim.intensity * 255) : 0
-      host.audioRuntime.setRaining(isRaining, rainTargetVol)
+      host.audioRuntime.setTimeOfDay(periodOfDayToSoundEnvironTod113c(env.cycleIndex))
+      const rainTargetVol = Math.max(0, Math.min(255, Math.trunc(host.weather.sim.intensity * 255)))
+      host.audioRuntime.setRaining(rainTargetVol > 0, rainTargetVol)
     }
   }
   host.enforceActiveInteractionRange113c()
@@ -629,7 +637,7 @@ export function buildRenderableUnits(
     if (u.unitType === 'player' && host.world.selfId !== 0 && u.id === host.world.selfId) {
       continue
     }
-    if (u.hidden) {
+    if (u.hidden || u.clientNoDraw === true) {
       continue
     }
     if (u.unitType === 'object') {
@@ -677,21 +685,29 @@ export function buildRenderableUnits(
       })
       continue
     }
+    if (
+      (u.unitType === 'item' || u.unitType === 'tile') &&
+      (selfX !== 0 || selfY !== 0) &&
+      (u.x !== 0 || u.y !== 0) &&
+      (Math.abs((u.x - selfX - (u.y - selfY)) * 16) > 1300 ||
+        Math.abs((u.x - selfX + (u.y - selfY)) * 8) > 860)
+    ) {
+      continue
+    }
     const isHovered = Boolean(
       hoveredUnit && hoveredUnit.unitType === u.unitType && hoveredUnit.id === u.id,
     )
-    const interp = host.interpolator.getEntityState(
-      u.unitType === 'player'
-        ? 0
-        : u.unitType === 'monster'
-          ? 1
-          : u.unitType === 'object'
-            ? 2
-            : u.unitType === 'item'
-              ? 4
-              : 5,
-      u.id,
-    )
+    const interp =
+      u.unitType === 'item' || u.unitType === 'tile'
+        ? undefined
+        : host.interpolator.getEntityState(
+            u.unitType === 'player'
+              ? 0
+              : u.unitType === 'monster'
+                ? 1
+                : 2,
+            u.id,
+          )
     const groundItem = u.unitType === 'item' ? host.world.containers.ground.get(u.id) : undefined
     const isCorpse =
       u.dead ||
@@ -1007,6 +1023,10 @@ export function buildRenderableUnits(
     const unitVelocityPercent = u.velocityPercent
     const isObjSelectable =
       u.unitType === 'object' ? isObjectSelectableInMode(u.classId, mode) : undefined
+    const isMonSubmerged =
+      u.unitType === 'monster' &&
+      !isCorpse &&
+      isMonsterSubmergedMode113c(u.classId, mode, castState?.skillId ?? u.lastSkillId)
     const objNames =
       u.unitType === 'object'
         ? resolveObjectDisplayName(u.classId, mode, u.flags, u.interactType, host.world.areaId)
@@ -1056,8 +1076,14 @@ export function buildRenderableUnits(
       hpRatio: Math.max(0, Math.min(1, u.lifePct / 128)),
       isCorpse,
       ...(u.corpseSuppressed ? { corpseSuppressed: true } : {}),
-      isHovered: isObjSelectable === false ? false : isHovered,
-      ...(isObjSelectable !== undefined ? { isSel: isObjSelectable, noSel: !isObjSelectable } : {}),
+      ...(u.clientNoDraw ? { clientNoDraw: true } : {}),
+      isHovered: isObjSelectable === false || isMonSubmerged ? false : isHovered,
+      ...(isObjSelectable !== undefined
+        ? { isSel: isObjSelectable, noSel: !isObjSelectable }
+        : isMonSubmerged
+          ? { isSel: false, noSel: true }
+          : {}),
+      ...(u.lastSkillId !== undefined ? { lastSkillId: u.lastSkillId } : {}),
       ...(hellGateDestName !== undefined ? { portalAreaId: 103 } : {}),
       isChampion: u.isChampion,
       isUnique: u.isUnique,

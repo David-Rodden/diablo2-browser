@@ -613,3 +613,213 @@ describe('CommandMapper — 1.13c Warp (UNIT_TILE = 5) Walk-Then-Interact & 500m
   })
 })
 
+describe('Issue #1707: D2Client.dll 0x6FADACC9..0x6FADADBB Compelling Orb (404) & Hellforge (376) weapon gates', () => {
+  function createObjectGateSetup(startX = 5000, startY = 5000, areaId = 83) {
+    const world = new ClientWorld()
+    const hudManager = new HudManager()
+    const sentCommands: ClientCommand[] = []
+    const hudModel = new HudModel({
+      world,
+      hudManager,
+      onCommand: (cmd) => sentCommands.push(cmd),
+    })
+    const predictor = new LocalMovementPredictor()
+    predictor.setPosition(startX, startY)
+    const rateLimiter = new OutboundRateLimiter({ moveMinIntervalMs: 0 })
+
+    world.apply({ type: 'LoadAct', act: 2, mapSeed: 0x11223344, areaId })
+    world.apply({
+      type: 'PlayerAssign',
+      unitId: 1,
+      classId: 1,
+      name: 'Hero',
+      x: startX,
+      y: startY,
+    })
+
+    const mapper = new CommandMapper({
+      world,
+      hudManager,
+      hudModel,
+      predictor,
+      rateLimiter,
+      sendCommand: (cmd) => {
+        sentCommands.push(cmd)
+      },
+    })
+
+    return { world, mapper, sentCommands }
+  }
+
+  it('suppresses C2S 0x13 Interact and plays impossible1 speech (eventCode 19) when operating Compelling Orb (404, mode 0) without qf2 equipped', () => {
+    const { world, mapper, sentCommands } = createObjectGateSetup(5000, 5000, 83)
+    const soundRequests: unknown[] = []
+    world.pushSoundRequest = (req: unknown) => {
+      soundRequests.push(req)
+    }
+
+    const orbId = 901
+    world.apply({
+      type: 'UnitAssign',
+      unit: {
+        unitType: 2,
+        id: orbId,
+        classId: 404,
+        mode: 0,
+        x: 5001,
+        y: 5000,
+      } as any,
+    })
+    const orbUnit = world.getUnit('object', orbId)!
+
+    // Without Khalim's Will ('qf2') equipped: no Interact sent, plays impossible1 (eventCode 19)
+    expect(mapper.triggerPrimaryWorldAction(5001, 5000, orbUnit, 1000)).toBeNull()
+    expect(sentCommands).toHaveLength(0)
+    expect(soundRequests).toHaveLength(1)
+    expect((soundRequests[0] as { eventCode?: number }).eventCode).toBe(19)
+
+    // Equip Khalim's Will ('qf2') in primary hand (slot 4): dispatches Interact (0x13)
+    ;(world.containers.equipmentBySlot as Map<number, any>).set(4, {
+      id: 7001,
+      code: 'qf2',
+      slot: 4,
+    })
+    const rec = mapper.triggerPrimaryWorldAction(5001, 5000, orbUnit, 5000)
+    expect(rec?.command).toEqual({
+      type: 'Interact',
+      target: { unitType: 2, id: orbId },
+    })
+    expect(sentCommands).toEqual([
+      {
+        type: 'Interact',
+        target: { unitType: 2, id: orbId },
+      },
+    ])
+  })
+
+  it('allows Hellforge (376) mode 0 without hfh, gates mode 2 behind equipped hfh, and plays impossible1 speech when missing', () => {
+    const { world, mapper, sentCommands } = createObjectGateSetup(5000, 5000, 107)
+    const soundRequests: unknown[] = []
+    world.pushSoundRequest = (req: unknown) => {
+      soundRequests.push(req)
+    }
+
+    const forgeId = 902
+    world.apply({
+      type: 'UnitAssign',
+      unit: {
+        unitType: 2,
+        id: forgeId,
+        classId: 376,
+        mode: 0,
+        x: 5001,
+        y: 5000,
+      } as any,
+    })
+    const forgeUnit = world.getUnit('object', forgeId)!
+
+    // Mode 0 (placing Soulstone): sends 0x13 immediately even without 'hfh' equipped (0x6FADAD11..0x6FADAD23)
+    const mode0Rec = mapper.triggerPrimaryWorldAction(5001, 5000, forgeUnit, 1000)
+    expect(mode0Rec?.command).toEqual({
+      type: 'Interact',
+      target: { unitType: 2, id: forgeId },
+    })
+    expect(soundRequests).toHaveLength(0)
+
+    // Mode 2 (smashing Soulstone): requires 'hfh' equipped (0x6FADAD2B..0x6FADAD48)
+    forgeUnit.mode = 2
+    sentCommands.length = 0
+    expect(mapper.triggerPrimaryWorldAction(5001, 5000, forgeUnit, 2000)).toBeNull()
+    expect(sentCommands).toHaveLength(0)
+    expect(soundRequests).toHaveLength(1)
+    expect((soundRequests[0] as { eventCode?: number }).eventCode).toBe(19)
+
+    // Equip Hellforge Hammer ('hfh') in primary hand (slot 4): dispatches Interact (0x13)
+    ;(world.containers.equipmentBySlot as Map<number, any>).set(4, {
+      id: 7002,
+      code: 'hfh',
+      slot: 4,
+    })
+    const mode2Rec = mapper.triggerPrimaryWorldAction(5001, 5000, forgeUnit, 6000)
+    expect(mode2Rec?.command).toEqual({
+      type: 'Interact',
+      target: { unitType: 2, id: forgeId },
+    })
+  })
+})
+
+describe('Issue #1711: D2Client.dll 0x6FADADBC..0x6FADADDA per-monster 200ms C2S 0x13 Interact throttle', () => {
+  it('throttles C2S 0x13 Interact per monster unit (unit[+0xD4] < 200ms) while keeping independent timestamps across monster units', () => {
+    const world = new ClientWorld()
+    const hudManager = new HudManager()
+    const sentCommands: ClientCommand[] = []
+    const hudModel = new HudModel({
+      world,
+      hudManager,
+      onCommand: (cmd) => sentCommands.push(cmd),
+    })
+    const predictor = new LocalMovementPredictor()
+    predictor.setPosition(5000, 5000)
+    const rateLimiter = new OutboundRateLimiter({ moveMinIntervalMs: 0, interactionMinIntervalMs: 0 })
+
+    world.apply({ type: 'LoadAct', act: 0, mapSeed: 0x11223344, areaId: 1 })
+    world.apply({
+      type: 'PlayerAssign',
+      unitId: 1,
+      classId: 1,
+      name: 'Hero',
+      x: 5000,
+      y: 5000,
+    })
+
+    const mapper = new CommandMapper({
+      world,
+      hudManager,
+      hudModel,
+      predictor,
+      rateLimiter,
+      sendCommand: (cmd) => {
+        sentCommands.push(cmd)
+      },
+    })
+
+    // Spawn Akara (148) and Charsi (154) in melee range
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 1, id: 101, classId: 148, x: 5001, y: 5000, mode: 1, isNpc: true } as any,
+    })
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 1, id: 102, classId: 154, x: 5000, y: 5001, mode: 1, isNpc: true } as any,
+    })
+    const akara = world.getUnit('monster', 101)!
+    const charsi = world.getUnit('monster', 102)!
+
+    // First click on Akara at t = 1000ms sends Interact (0x13)
+    mapper.triggerPrimaryWorldAction(5001, 5000, akara, 1000)
+    expect(sentCommands.filter((c) => c.type === 'Interact')).toEqual([
+      { type: 'Interact', target: { unitType: 1, id: 101 } },
+    ])
+
+    // Second click on Akara at t = 1150ms (dt = 150ms < 200ms) suppresses Interact (0x13)
+    sentCommands.length = 0
+    mapper.triggerPrimaryWorldAction(5001, 5000, akara, 1150)
+    expect(sentCommands.filter((c) => c.type === 'Interact')).toHaveLength(0)
+
+    // Clicking Charsi at t = 1160ms (different monster unit[+0xD4]) still sends Interact (0x13)
+    sentCommands.length = 0
+    mapper.triggerPrimaryWorldAction(5000, 5001, charsi, 1160)
+    expect(sentCommands.filter((c) => c.type === 'Interact')).toEqual([
+      { type: 'Interact', target: { unitType: 1, id: 102 } },
+    ])
+
+    // Clicking Akara at t = 1200ms (dt = 200ms >= 200ms) sends Interact (0x13) again
+    sentCommands.length = 0
+    mapper.triggerPrimaryWorldAction(5001, 5000, akara, 1200)
+    expect(sentCommands.filter((c) => c.type === 'Interact')).toEqual([
+      { type: 'Interact', target: { unitType: 1, id: 101 } },
+    ])
+  })
+})
+
+

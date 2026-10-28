@@ -877,6 +877,23 @@ export class FrontendRenderer {
       this.ctx.globalCompositeOperation = options.blendMode
     }
 
+    let hasCjk = false
+    for (let i = 0; i < text.length; i++) {
+      if (text.charCodeAt(i) > 0xff) {
+        hasCjk = true
+        break
+      }
+    }
+    const cjkCanFill = hasCjk && typeof this.ctx.fillText === 'function'
+    const cjkPrimaryFill = cjkCanFill ? this.getCjkColorHex(color, isMultiplyBtn) : ''
+    const cjkMidOffset = font === 'fontformal12' ? 20 : Math.round(frameH * 0.54)
+    if (cjkCanFill) {
+      this.ctx.save()
+      this.ctx.font = `bold ${cjkAdvance}px "SimSun", "NSimSun", "Songti SC", "Noto Serif SC", "Microsoft YaHei", sans-serif`
+      this.ctx.textAlign = 'left'
+      this.ctx.textBaseline = 'middle'
+    }
+
     for (const line of lines) {
       const lineW = this.measureBitmapText(line, font)
       let curX = Math.round(x)
@@ -886,15 +903,12 @@ export class FrontendRenderer {
       for (let i = 0; i < line.length; i++) {
         const rawCode = line.charCodeAt(i)
         if (rawCode > 0xff) {
-          if (typeof this.ctx.fillText === 'function') {
+          if (cjkCanFill) {
             const ch = line[i]!
-            const midOffset = font === 'fontformal12' ? 20 : Math.round(frameH * 0.54)
-            const midY = curY + midOffset
-            this.ctx.save()
-            this.ctx.globalCompositeOperation = 'source-over'
-            this.ctx.font = `bold ${cjkAdvance}px "SimSun", "NSimSun", "Songti SC", "Noto Serif SC", "Microsoft YaHei", sans-serif`
-            this.ctx.textAlign = 'left'
-            this.ctx.textBaseline = 'middle'
+            const midY = curY + cjkMidOffset
+            if (options.blendMode) {
+              this.ctx.globalCompositeOperation = 'source-over'
+            }
             if (isMultiplyBtn) {
               // Emulate fontexocet10/fontridiculous bottom-right 1px highlight (index 31=#c4c4c4)
               // with engraved black interior (index 15=#0c0c08) on stone buttons
@@ -902,15 +916,17 @@ export class FrontendRenderer {
               this.ctx.shadowOffsetX = 1
               this.ctx.shadowOffsetY = 1
               this.ctx.shadowBlur = 0
-              this.ctx.fillStyle = this.getCjkColorHex(color, true)
+              this.ctx.fillStyle = cjkPrimaryFill
               this.ctx.fillText(ch, curX, midY)
             } else {
               this.ctx.fillStyle = '#080604'
               this.ctx.fillText(ch, curX + 1, midY + 1)
-              this.ctx.fillStyle = this.getCjkColorHex(color, false)
+              this.ctx.fillStyle = cjkPrimaryFill
               this.ctx.fillText(ch, curX, midY)
             }
-            this.ctx.restore()
+            if (options.blendMode) {
+              this.ctx.globalCompositeOperation = options.blendMode
+            }
           }
           curX += cjkAdvance
           continue
@@ -928,6 +944,9 @@ export class FrontendRenderer {
       curY += stepY
     }
 
+    if (cjkCanFill) {
+      this.ctx.restore()
+    }
     if (options.blendMode) {
       this.ctx.restore()
     }

@@ -20,7 +20,7 @@ import {
   type MonsterModeMissiles113c,
 } from '../../common/units/monster-mode-missiles-113c.ts'
 import type { D2Seed } from '../../common/drlg/light-grid.ts'
-import type { ClientUnit, ClientUnitOverlay } from './client-unit.ts'
+import type { ClientUnit, ClientUnitOverlay, QueuedUnitPacket113c } from './client-unit.ts'
 import type { ClientInventoryManager } from './inventory.ts'
 
 export {
@@ -739,6 +739,9 @@ export type ClientWorldInternal = Record<string, any> & {
   _monsters: Map<number, ClientUnit>
   _pendingMercStats: Map<number, Map<number, number>>
   _containers: ClientInventoryManager
+  deferUnitPackets113c: boolean
+  _drainingQueuedUnitPacket: boolean
+  enqueueUnitPacket113c(unitType: UnitType, unitId: number, ev: QueuedUnitPacket113c): boolean
   ensureUnit(unitType: UnitType, id: number): ClientUnit
   ensureWorldOrGroundUnit(unitType: UnitType, id: number): ClientUnit | undefined
   getUnit(unitType: UnitType, id: number): ClientUnit | undefined

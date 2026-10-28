@@ -223,6 +223,7 @@ class FakeElement {
 }
 
 function installFakeDom() {
+  const head = new FakeElement('head')
   const body = new FakeElement('body')
   const toolbarContainer = new FakeElement('header')
   toolbarContainer.id = 'd2-toolbar-container'
@@ -280,11 +281,12 @@ function installFakeDom() {
   const windowListeners = new Map<string, Array<(ev: unknown) => void>>()
 
   const fakeDoc = {
+    head,
     body,
     createElement: (tag: string) => new FakeElement(tag),
-    getElementById: (id: string) => body.querySelector(`#${id}`),
-    querySelector: (sel: string) => body.querySelector(sel),
-    querySelectorAll: (sel: string) => body.querySelectorAll(sel),
+    getElementById: (id: string) => head.querySelector(`#${id}`) ?? body.querySelector(`#${id}`),
+    querySelector: (sel: string) => head.querySelector(sel) ?? body.querySelector(sel),
+    querySelectorAll: (sel: string) => [...head.querySelectorAll(sel), ...body.querySelectorAll(sel)],
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }
@@ -687,6 +689,137 @@ describe('Issues #1362 & #1363 — Single-Tab Multibox Architecture & Audio Focu
     expect(manager.getSlotIds()).toEqual([1])
     expect(manager.getActiveSlotId()).toBe(1)
     expect(slot1Ctrl.isInstanceFocused!()).toBe(true)
+
+    manager.dispose()
+    toolbar.destroy()
+  })
+
+  it('renders block-level HP fill bar next to character name and updates width/state in-place without destroying tab DOM', async () => {
+    const { workspace, toolbarContainer, fakeDoc } = installFakeDom()
+    const store = new SettingsStore({ storage: new MemoryStorage() })
+    store.set({ multiboxEnabled: true })
+
+    const toolbar = new Toolbar({
+      store,
+      container: toolbarContainer as unknown as HTMLElement,
+    })
+
+    const styleEl = fakeDoc.getElementById('d2-toolbar-styles')
+    expect(styleEl).not.toBeNull()
+    const cssText = styleEl!.textContent
+    const fillRuleMatch = /\.d2-multibox-tab__hp-fill\s*\{([^}]*)\}/m.exec(cssText)
+    expect(fillRuleMatch).not.toBeNull()
+    expect(fillRuleMatch![1]).toMatch(/display\s*:\s*block/)
+    const wrapRuleMatch = /\.d2-multibox-tab__hp\s*\{([^}]*)\}/m.exec(cssText)
+    expect(wrapRuleMatch).not.toBeNull()
+    expect(wrapRuleMatch![1]).toMatch(/display\s*:\s*block/)
+
+    let life = 520
+    const maxLife = 520
+    let poisoned = false
+    let isDead = false
+
+    const slot1Refs = createStageContainer(1, workspace as unknown as HTMLElement)
+    const slot1Ctrl = {
+      slotId: 1,
+      stageRefs: slot1Refs,
+      ready: true,
+      isInGameView: () => true,
+      flowState: {
+        stage: 'in_game',
+        roster: [{ name: 'tt-sorc', level: 69 }],
+        selectedSlotIndex: 0,
+      },
+      hudManager: {
+        get hp() {
+          return life
+        },
+        maxHp: maxLife,
+        get poisoned() {
+          return poisoned
+        },
+        get isDead() {
+          return isDead
+        },
+        charSheet: { attrs: { level: 69 } },
+      },
+      session: {
+        phase: 'ingame',
+        selectedChar: 'tt-sorc',
+        disconnect: vi.fn(async () => {}),
+        world: {
+          get isDead() {
+            return isDead
+          },
+          self: {
+            get life() {
+              return life
+            },
+            maxLife,
+            level: 69,
+            get isDead() {
+              return isDead
+            },
+            states: new Set<number>(),
+          },
+        },
+        audioRuntime: {
+          setFocusMuted: vi.fn(),
+          isFocusMuted: () => false,
+          playBackgroundAlertCue: vi.fn(),
+          dispose: vi.fn(),
+        },
+      },
+      setInstanceFocused: vi.fn(),
+      isInstanceFocused: () => true,
+      dispose: vi.fn(),
+    } as unknown as PlayAppController
+
+    const multiboxSlotEl = toolbar.getMultiboxSlotElement()
+    const manager = new MultiInstanceManager({
+      initialController: slot1Ctrl,
+      initialStageRefs: slot1Refs,
+      workspaceEl: workspace as unknown as HTMLElement,
+      multiboxSlotEl,
+      settingsStore: store,
+      createControllerForSlot: async () => slot1Ctrl,
+    })
+
+    const initialTab = fakeDoc.getElementById('d2-multibox-tab-1')
+    expect(initialTab).not.toBeNull()
+    const hpWrap = initialTab!.querySelector('.d2-multibox-tab__hp')
+    const hpFill = initialTab!.querySelector('.d2-multibox-tab__hp-fill')
+    expect(hpWrap).not.toBeNull()
+    expect(hpWrap!.hidden).toBe(false)
+    expect(hpFill).not.toBeNull()
+    expect(hpFill!.style.width).toBe('100%')
+    expect(hpWrap!.title).toBe('HP: 520 / 520 (100%)')
+
+    // Partial damage (50% HP) updates width in-place while preserving exact DOM node identity
+    life = 260
+    manager.pollSlotsStatus(1100)
+    expect(fakeDoc.getElementById('d2-multibox-tab-1')).toBe(initialTab)
+    expect(initialTab!.querySelector('.d2-multibox-tab__hp-fill')).toBe(hpFill)
+    expect(hpFill!.style.width).toBe('50%')
+    expect(hpWrap!.title).toBe('HP: 260 / 520 (50%)')
+
+    // Poison state switches fill bar to poison modifier class
+    poisoned = true
+    manager.pollSlotsStatus(1200)
+    expect(hpFill!.classList.contains('d2-multibox-tab__hp-fill--poison')).toBe(true)
+
+    // Low HP (< 35%) without poison uses low-hp modifier class
+    poisoned = false
+    life = 130
+    manager.pollSlotsStatus(1300)
+    expect(hpFill!.style.width).toBe('25%')
+    expect(hpFill!.classList.contains('d2-multibox-tab__hp-fill--low')).toBe(true)
+
+    // Death forces 0% empty bar even if stale life > 0 remained on unit
+    isDead = true
+    manager.pollSlotsStatus(1400)
+    expect(hpFill!.style.width).toBe('0%')
+    expect(hpWrap!.title).toBe('HP: 0 / 520 (0%)')
 
     manager.dispose()
     toolbar.destroy()

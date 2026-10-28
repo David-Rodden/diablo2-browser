@@ -61,4 +61,11 @@ export interface D2OnlineConfig {
   readonly tap?: PacketTap | undefined
   readonly clock?: Clock | undefined
   readonly bncsKeepaliveIntervalMs?: number | undefined
+  /**
+   * When true, `joinGame()` opens the `game` stream using `ticket.d2gsIp` from
+   * `MCP_JOINGAME (0x04)` (`D2MCPClient.dll` `0x6FA264D0`) instead of `bnetHost`.
+   * Defaults to `false` so single-host / WS-bridge setups behind NAT continue routing
+   * through `bnetHost`.
+   */
+  readonly useTicketD2gsIp?: boolean | undefined
 }

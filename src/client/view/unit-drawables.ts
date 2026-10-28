@@ -22,6 +22,13 @@ import {
   skillCastLight113c,
 } from '../../common/units/light-sources-113c.ts'
 import { resolveMonsterColormap113c } from '../../common/units/monster-colormap-113c.ts'
+import { isMonsterSubmergedMode113c } from '../../common/units/monai-113c.ts'
+import {
+  MONSTATS2_FLAGINDEX,
+  computeOverlayYOffset113c,
+  hasMonStats2Flag,
+} from '../../common/units/monstats2-flags.ts'
+import { DEFAULT_RED_TRANSFORM_113C, DEFAULT_REVIVE_TRANSFORM_113C } from '../../common/formats/pl2.ts'
 import { colormapPaletteRow } from '../render/colormap-rows.ts'
 import { assertDir64, dir64FromPoints, dir64ToClipDirection, dir64ToDcc } from '../../common/units/direction.ts'
 import { reportMissingArt } from '../../client/scene/missing-art.ts'
@@ -31,6 +38,7 @@ import type { LightEmitterInput, PointLightInput } from '../../client/scene/ligh
 export type { LightEmitterInput, PointLightInput }
 import type { StatListReaderLike } from '../../common/units/char-anim-speed.ts'
 import type { ClientUnitOverlay, UnitCastState } from '../world/client-unit.ts'
+import { INNATE_LOOP_MONSTER_OVERLAY_BY_CLASS_113C } from '../world/monster-overlays-113c.ts'
 import { isStateCastOverlayPlaying113c } from '../world/state-cast-overlay-113c.ts'
 import {
   OBJECT_LIGHT_INTENSITY,
@@ -80,6 +88,37 @@ export function transToBlendMode(trans: number | undefined): DrawableBlendMode {
  */
 export function overlayTransToBlendMode(trans: number): DrawableBlendMode {
   return overlayTransToDrawBlend(trans)
+}
+
+/**
+ * 1.13c D2Client overlay frame stepping with `LoopWaitTime` pause (#1717):
+ * - `OVERLAY_Create` (`0x6FB1B300`) sets `inst+0x14 = AnimRate << 4` (`0x6FB1B558`) and `inst+0x28 = LoopWaitTime` (`0x6FB1B57B`).
+ * - Each 25 Hz tick advances the 8.8 frame counter by `AnimRate << 4` (`AnimRate / 16` frames per tick).
+ * - When `LoopWaitTime > 0`, wrapping at `totalFrames << 8` (`0x6FB1C321`) clears the active flag (`inst+0x08 = 0`)
+ *   and records `GetTickCount()` (`inst+0x30`); `0x6FB1C1FF` pauses for `LoopWaitTime` ms (`waitTicks = round(loopWaitTimeMs / 40)`)
+ *   while `OVERLAY_Draw` (`0x6FB1B062` / `0x6FB1B1EC`) hides the overlay (`returns null`).
+ */
+export function computeOverlayLoopFrame113c(
+  tick: number,
+  totalFrames: number,
+  animRate: number,
+  loopWaitTimeMs = 0,
+): number | null {
+  const frames = Math.max(1, totalFrames)
+  const rate = Math.max(1, animRate)
+  const intTick = Math.floor(tick)
+  if (!(loopWaitTimeMs > 0)) {
+    const rawFrame = Math.floor((intTick * rate) / 16)
+    return ((rawFrame % frames) + frames) % frames
+  }
+  const playTicks = Math.max(1, Math.ceil((frames * 16) / rate))
+  const waitTicks = Math.max(0, Math.round(loopWaitTimeMs / 40))
+  const cycleTicks = playTicks + waitTicks
+  const cyclePos = ((intTick % cycleTicks) + cycleTicks) % cycleTicks
+  if (cyclePos >= playTicks) {
+    return null
+  }
+  return Math.min(frames - 1, Math.max(0, Math.floor((cyclePos * rate) / 16)))
 }
 
 export type SceneUnitKind = UnitKind | 'warp'
@@ -159,6 +198,8 @@ export interface RenderableUnitInput {
   readonly isCorpse?: boolean | undefined
   /** True when the monster shattered (STATE_FREEZE / shatter_on_death) or exploded (goboom / suicideminion_explode). */
   readonly corpseSuppressed?: boolean | undefined
+  /** True when D2Client UNITFLAG_DONOTDRAW (0x40000) is set (e.g. mephistodonotdraw MissCltHitFunc[34] 0x6FB607E0, nihlithak1). */
+  readonly clientNoDraw?: boolean | undefined
   readonly quality?: number | undefined
   readonly isLocalPlayer?: boolean | undefined
   readonly hpRatio?: number | undefined
@@ -175,6 +216,7 @@ export interface RenderableUnitInput {
   readonly invFile?: string | undefined
   readonly invtransform?: string | undefined
   readonly castState?: UnitCastState | undefined
+  readonly lastSkillId?: number | undefined
   readonly animMode?: string | undefined
   readonly animStartedAtMs?: number | undefined
   readonly animStepSpeed256?: number | undefined
@@ -233,6 +275,7 @@ export interface RenderableUnitInput {
   readonly overheadText?: string | undefined
   readonly overheadColor?: number | undefined
   readonly isFaded?: boolean | undefined
+  readonly hasInvisState?: boolean | undefined
   readonly chargeCounts?: ReadonlyMap<number, number> | Record<number, number> | undefined
   readonly maulCharges?: number | undefined
   readonly feralRageCharges?: number | undefined
@@ -282,6 +325,7 @@ export interface SceneUnitDrawable {
   readonly invFile?: string | undefined
   readonly invtransform?: string | undefined
   readonly castState?: UnitCastState | undefined
+  readonly lastSkillId?: number | undefined
   readonly animMode?: string | undefined
   readonly animStartedAtMs?: number | undefined
   readonly animStepSpeed256?: number | undefined
@@ -314,6 +358,8 @@ export interface SceneUnitDrawable {
   readonly overheadText?: string | undefined
   readonly overheadColor?: number | undefined
   readonly isFaded?: boolean | undefined
+  readonly hasInvisState?: boolean | undefined
+  readonly states?: ReadonlySet<number> | readonly number[] | Iterable<number> | undefined
   readonly chargeCounts?: ReadonlyMap<number, number> | Record<number, number> | undefined
   readonly maulCharges?: number | undefined
   readonly feralRageCharges?: number | undefined
@@ -428,31 +474,100 @@ export const OVERLAY_METADATA: Readonly<Record<number, OverlayMeta>> = {
   134: { overlayId: 134, token: 'energyshield', totalFrames: 8, yOffset: 0 },
 }
 
-export interface StateColorShift {
+export interface StatesTxtColorShiftRow113c {
   readonly stateId: number
-  readonly priority: number
-  readonly tintColor: readonly [number, number, number]
-  readonly paletteRow: number
+  readonly state: string
+  readonly colorpri: number
+  readonly colorshift: number
+  readonly lightRgb: readonly [number, number, number]
 }
 
 /**
- * 1.13c States.txt color shift priority and visual parameters:
- * Freeze (state 1, priority 100, shift 108): Ice blue tint [150, 215, 255], paletteRow: 1
- * Cold (state 11, priority 100, shift 108): Chilled blue tint [150, 215, 255], paletteRow: 1
- * Poison (state 2, priority 95, shift 104): Poison green tint [128, 255, 128], paletteRow: 2
- * HolyFreezeCold (state 44 holywindcold, priority 100, shift 108): Holy Freeze chill blue tint [150, 215, 255], paletteRow: 1
- * Blue (state 90 blue, priority 100, shift 108): Blue tint [150, 215, 255], paletteRow: 1
- * Red (state 91 red, priority 70, shift 100): Red tint [255, 110, 110], paletteRow: 4
- * Revive (state 96, priority 85, shift 73): Undead grey/shadow tint [112, 112, 112], paletteRow: 0
+ * 1.13c `States.txt` / `states.bin` rows with non-zero `colorshift` (`states.bin +0x20 colorpri`,
+ * `+0x21 colorshift`, `+0x22..+0x24 light-r/g/b`), resolved by `D2Client 0x6FB22130` and drawn via
+ * `D2Client 0x6FB1C5F8` -> `D2Win #10164` (`0x6F8EEE50`, `hueVariations[colorshift - 1]`).
  */
-export const STATE_COLOR_SHIFTS: Readonly<Record<number, StateColorShift>> = {
-  1: { stateId: 1, priority: 100, tintColor: [150, 215, 255], paletteRow: 1 },
-  11: { stateId: 11, priority: 100, tintColor: [150, 215, 255], paletteRow: 1 },
-  2: { stateId: 2, priority: 95, tintColor: [128, 255, 128], paletteRow: 2 },
-  44: { stateId: 44, priority: 100, tintColor: [150, 215, 255], paletteRow: 1 },
-  90: { stateId: 90, priority: 100, tintColor: [150, 215, 255], paletteRow: 1 },
-  91: { stateId: 91, priority: 70, tintColor: [255, 110, 110], paletteRow: 4 },
-  96: { stateId: 96, priority: 85, tintColor: [112, 112, 112], paletteRow: 0 },
+export const STATES_TXT_COLOR_SHIFT_ROWS_113C: readonly StatesTxtColorShiftRow113c[] = [
+  { stateId: 1, state: 'freeze', colorpri: 100, colorshift: 108, lightRgb: [150, 215, 255] },
+  { stateId: 2, state: 'poison', colorpri: 95, colorshift: 104, lightRgb: [128, 255, 128] },
+  { stateId: 11, state: 'cold', colorpri: 100, colorshift: 108, lightRgb: [150, 215, 255] },
+  { stateId: 44, state: 'holywindcold', colorpri: 100, colorshift: 108, lightRgb: [150, 215, 255] },
+  { stateId: 90, state: 'blue', colorpri: 100, colorshift: 108, lightRgb: [150, 215, 255] },
+  { stateId: 91, state: 'red', colorpri: 70, colorshift: 100, lightRgb: [255, 255, 255] },
+  { stateId: 96, state: 'revive', colorpri: 85, colorshift: 73, lightRgb: [255, 255, 255] },
+]
+
+/**
+ * Maps `States.txt` `colorshift` (`1..128`) to its hardware palette row (`D2Win #10164` `0x6F8EEE50`:
+ * `hueVariations[colorshift - 1]`).
+ */
+export function resolveStateColorshiftPaletteRow113c(colorshift: number): number {
+  switch (colorshift) {
+    case 108:
+      return 1 // hueVariations[107] (pre-baked in palette.bin row 1)
+    case 104:
+      return 2 // hueVariations[103] (pre-baked in palette.bin row 2)
+    case 100:
+      return colormapPaletteRow(DEFAULT_RED_TRANSFORM_113C) // hueVariations[99]
+    case 73:
+      return colormapPaletteRow(DEFAULT_REVIVE_TRANSFORM_113C) // hueVariations[72]
+    default:
+      return 0
+  }
+}
+
+export interface StateColorShift {
+  readonly stateId: number
+  readonly priority: number
+  readonly colorShift: number
+  readonly lightRgb: readonly [number, number, number]
+  readonly paletteRow: number
+}
+
+export const STATE_COLOR_SHIFTS: Readonly<Record<number, StateColorShift>> = Object.freeze(
+  Object.fromEntries(
+    STATES_TXT_COLOR_SHIFT_ROWS_113C.map((row) => [
+      row.stateId,
+      {
+        stateId: row.stateId,
+        priority: row.colorpri,
+        colorShift: row.colorshift,
+        lightRgb: row.lightRgb,
+        paletteRow: resolveStateColorshiftPaletteRow113c(row.colorshift),
+      },
+    ]),
+  ),
+)
+
+/**
+ * Resolves the highest-priority active `States.txt` colorshift row (`D2Client 0x6FB22130`:
+ * ascending `stateId` scan with strict `>` priority tie-breaking).
+ */
+export function resolveHighestStateColorShiftRow113c(
+  hasState: (stateId: number) => boolean,
+): StatesTxtColorShiftRow113c | undefined {
+  let bestRow: StatesTxtColorShiftRow113c | undefined
+  let bestPriority = -1
+  for (const row of STATES_TXT_COLOR_SHIFT_ROWS_113C) {
+    if (hasState(row.stateId) && row.colorpri > bestPriority) {
+      bestRow = row
+      bestPriority = row.colorpri
+    }
+  }
+  return bestRow
+}
+
+/**
+ * Resolves the local player's state-driven light colour (`0xRRGGBB`) per `D2Client 0x6FB221E3..0x6FB22203`,
+ * or `undefined` when no colorshift state is active (`D2Client 0x6FB22225` resets to `255, 255, 255`).
+ */
+export function resolveStateLightColor113c(
+  hasState: (stateId: number) => boolean,
+): number | undefined {
+  const row = resolveHighestStateColorShiftRow113c(hasState)
+  if (!row) return undefined
+  const [r, g, b] = row.lightRgb
+  return (((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff)) >>> 0
 }
 
 const PLAYER_CLASS_TOKENS: readonly string[] = ['AM', 'SO', 'NE', 'PA', 'BA', 'DZ', 'AI']
@@ -1119,12 +1234,15 @@ export function buildSceneDrawables(
         readonly tick?: number | undefined
         readonly elapsedMs?: number | undefined
         readonly selfUnitId?: number | undefined
+        readonly softwarePaletteMode?: boolean | undefined
       },
   optionsOrWidth?:
     | {
         readonly originX?: number | undefined
         readonly originY?: number | undefined
         readonly tick?: number | undefined
+        readonly selfUnitId?: number | undefined
+        readonly softwarePaletteMode?: boolean | undefined
       }
     | number,
   _height?: number,
@@ -1145,6 +1263,9 @@ export function buildSceneDrawables(
         : undefined
   const originX = options?.originX ?? 0
   const originY = options?.originY ?? 0
+  const selfUnitId = options?.selfUnitId ?? (isWrapper ? unitsOrInput.selfUnitId : undefined)
+  const softwarePaletteMode =
+    options?.softwarePaletteMode ?? (isWrapper ? unitsOrInput.softwarePaletteMode : undefined) ?? false
   const tick =
     options?.tick ??
     (isWrapper && typeof unitsOrInput.elapsedMs === 'number'
@@ -1356,31 +1477,55 @@ export function buildSceneDrawables(
       }
     }
 
+    // D2Client unit+0xC8 & 0x40000 (UNITFLAG_DONOTDRAW, set by MissCltHitFunc[34] 0x6FB607E0 on Mephisto or
+    // special quest event 17 0x6FB02B51 on Nihlathak): DrawUnit (0x6FADBA00) skips both the unit sprite and
+    // all unit overlays (pre-draw and post-draw alike).
+    if (rawAny.clientNoDraw === true) {
+      continue
+    }
+
     // Collect overlays from explicit `overlays` and active `states`
     const unitOverlays: SceneOverlayDrawable[] = []
     const hasWantsInteract = Boolean(unit.wantsInteract ?? rawAny.wantsInteract)
     if (hasWantsInteract) {
-      const npcAlertFrame = ((Math.floor(tick) % 16) + 16) % 16
-      const questAlertOverlay: SceneOverlayDrawable = {
-        drawableKind: 'overlay',
-        ownerUnitId: unit.id,
-        overlayId: 72,
-        token: 'npcalert',
-        frame: npcAlertFrame,
-        totalFrames: 16,
-        loop: true,
-        xOffset: -5,
-        worldX: worldX - 5,
-        worldY,
-        sortY: worldY,
-        blendMode: overlayTransToBlendMode(3),
+      const npcAlertRow = OVERLAY_ROW_BY_NAME.get('npcalert')
+      if (npcAlertRow !== undefined) {
+        const npcAlertFrame = computeOverlayLoopFrame113c(
+          tick,
+          npcAlertRow.frames,
+          npcAlertRow.animRate,
+          npcAlertRow.loopWaitTime,
+        )
+        if (npcAlertFrame !== null) {
+          const xOffset = npcAlertRow.xOffset
+          const yOffset = computeOverlayYOffset113c(npcAlertRow, unit)
+          const preDraw = npcAlertRow.preDraw !== 0
+          const questAlertOverlay: SceneOverlayDrawable = {
+            drawableKind: 'overlay',
+            ownerUnitId: unit.id,
+            overlayId: 72,
+            token: 'npcalert',
+            frame: npcAlertFrame,
+            totalFrames: npcAlertRow.frames,
+            loop: true,
+            ...(preDraw ? { preDraw: true } : {}),
+            ...(xOffset !== 0 ? { xOffset } : {}),
+            worldX: worldX + xOffset,
+            worldY: worldY + yOffset - (unit.altitude ?? 0),
+            sortY: worldY,
+            blendMode: overlayTransToBlendMode(npcAlertRow.trans),
+          }
+          unitOverlays.push(questAlertOverlay)
+          overlayDrawables.push(questAlertOverlay)
+          pushOverlayLight(lightEmitters, unit, 'npcalert', 'npcalert')
+        }
       }
-      unitOverlays.push(questAlertOverlay)
-      overlayDrawables.push(questAlertOverlay)
-      pushOverlayLight(lightEmitters, unit, 'npcalert', 'npcalert')
     }
     if (unit.overlays) {
       for (const ov of unit.overlays) {
+        if ((ov as { loopWaiting?: boolean }).loopWaiting === true) {
+          continue
+        }
         const normOvToken = ov.token?.trim().toLowerCase()
         const ovRow = normOvToken !== undefined ? OVERLAY_ROW_BY_NAME.get(normOvToken) : undefined
         // Overlay.txt rows with Filename=null (e.g. bonearmor_null1/2, type-7 delay overlays) have no art.
@@ -1408,22 +1553,21 @@ export function buildSceneDrawables(
         const frame = isOneShot
           ? Math.min(totalFrames - 1, Math.max(0, Math.floor(rawFrame)))
           : ((Math.floor(rawFrame) % totalFrames) + totalFrames) % totalFrames
-        const rawOvYOffset = ov.yOffset !== undefined && ov.yOffset !== 0 ? ov.yOffset : undefined
-        const rowHeight4 = ovRow?.height[3] ?? authOv?.height4
-        const authHeightOffset =
-          rowHeight4 !== undefined && rowHeight4 !== 0
-            ? (rowHeight4 < 0 ? rowHeight4 : -rowHeight4)
-            : undefined
-        const txtYOffset =
-          ovRow?.yOffset !== undefined && ovRow.yOffset !== 0
-            ? ovRow.yOffset
-            : ovTxt?.yOffset !== undefined && ovTxt.yOffset !== 0
-              ? ovTxt.yOffset
+        const rowComputedYOffset =
+          ovRow !== undefined
+            ? computeOverlayYOffset113c(ovRow, unit)
+            : authOv !== undefined
+              ? computeOverlayYOffset113c(authOv, unit)
               : undefined
+        const baseRowYOffset = ovRow?.yOffset ?? authOv?.yOffset ?? ovTxt?.yOffset ?? 0
+        const customOvYOffset =
+          ov.yOffset !== undefined && (rowComputedYOffset === undefined || ov.yOffset !== baseRowYOffset)
+            ? ov.yOffset
+            : undefined
         const yOffset =
-          rawOvYOffset ??
-          authHeightOffset ??
-          txtYOffset ??
+          customOvYOffset ??
+          rowComputedYOffset ??
+          ovTxt?.yOffset ??
           ovMeta?.yOffset ??
           meta?.yOffset ??
           0
@@ -1463,6 +1607,53 @@ export function buildSceneDrawables(
         overlayDrawables.push(ovDrawable)
         if (ov.token !== undefined) pushOverlayLight(lightEmitters, unit, `ov:${String(ov.overlayId)}`, ov.token)
       }
+    } else if (unit.kind === 'monster') {
+      // Standalone `buildUnitDrawables` callers pass plain RawSceneUnit objects with `unit.overlays === undefined`.
+      // Synthesize 1.13c `0x6FB570C0` / `0x6FAFD610` innate looping overlays (e.g. #122 `mephisto` on 242/704,
+      // #275 `baal_on_throne` on 543, #227 `ice_cage` on 527) while alive or in MONMODE_DEATH (mode 0 / DT),
+      // stopping once MONMODE_DEAD (mode 12 / DD) is reached (`0x6FAFE847` FreeAllUnitOverlays).
+      const innateSpec = INNATE_LOOP_MONSTER_OVERLAY_BY_CLASS_113C[unit.classId]
+      const isMonsterDyingMode = unit.mode === 0 || unit.animMode === 'DT'
+      const isMonsterDeadCorpse =
+        unit.mode === 12 ||
+        unit.animMode === 'DD' ||
+        (Boolean(unit.isCorpse) && !isMonsterDyingMode) ||
+        (unit.lifePct !== undefined && unit.lifePct <= 0 && !isMonsterDyingMode)
+      if (
+        innateSpec !== undefined &&
+        !isMonsterDeadCorpse &&
+        !hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.NOOVLY)
+      ) {
+        const ovRow = OVERLAY_ROW_BY_NAME.get(innateSpec.token)
+        if (ovRow !== undefined && ovRow.filename !== '' && ovRow.filename.toLowerCase() !== 'null') {
+          const totalFrames = Math.max(1, ovRow.frames)
+          const rawFrame = ovRow.animRate > 0 ? Math.floor((tick * ovRow.animRate) / 16) : 0
+          const frame = ((rawFrame % totalFrames) + totalFrames) % totalFrames
+          const yOffset = computeOverlayYOffset113c(ovRow, unit)
+          const xOffset = ovRow.xOffset
+          const preDraw = ovRow.preDraw !== 0
+          const ovDrawable: SceneOverlayDrawable = {
+            drawableKind: 'overlay',
+            ownerUnitId: unit.id,
+            overlayId: innateSpec.overlayIndex,
+            token: innateSpec.token,
+            frame,
+            totalFrames,
+            loop: true,
+            ...(preDraw ? { preDraw: true } : {}),
+            ...(xOffset !== 0 ? { xOffset } : {}),
+            subX: unit.x,
+            subY: unit.y,
+            worldX: worldX + xOffset,
+            worldY: worldY + yOffset - (unit.altitude ?? 0),
+            sortY: worldY,
+            blendMode: overlayTransToBlendMode(ovRow.trans),
+          }
+          unitOverlays.push(ovDrawable)
+          overlayDrawables.push(ovDrawable)
+          pushOverlayLight(lightEmitters, unit, `innate:${String(innateSpec.overlayIndex)}`, innateSpec.token)
+        }
+      }
     }
 
     const isCorpse =
@@ -1478,6 +1669,7 @@ export function buildSceneDrawables(
     let tintColor: readonly [number, number, number] | null = (unit as any).tintColor ?? null
     let activePaletteRow: number | undefined = unit.paletteRow
     let hasFadeState = false
+    let hasInvisState = false
     const statesIter = unit.states ?? unit.activeStates ?? (rawAny.activeStates as Iterable<number> | undefined)
     if (statesIter) {
       let highestShift: StateColorShift | null = null
@@ -1485,9 +1677,16 @@ export function buildSceneDrawables(
         if (stateId === 159) {
           hasFadeState = true
         }
+        if (stateId === 146) {
+          hasInvisState = true
+        }
         const shift = STATE_COLOR_SHIFTS[stateId]
         if (shift) {
-          if (highestShift === null || shift.priority > highestShift.priority) {
+          if (
+            highestShift === null ||
+            shift.priority > highestShift.priority ||
+            (shift.priority === highestShift.priority && shift.stateId < highestShift.stateId)
+          ) {
             highestShift = shift
           }
         }
@@ -1537,11 +1736,7 @@ export function buildSceneDrawables(
             const animRate = ovRow.animRate
             const rawFrame = Math.floor((tick * animRate) / 16)
             const frame = ((rawFrame % totalFrames) + totalFrames) % totalFrames
-            const height4 = ovRow.height[3]
-            const yOffset =
-              height4 !== 0
-                ? (height4 < 0 ? height4 : -height4)
-                : ovRow.yOffset
+            const yOffset = computeOverlayYOffset113c(ovRow, unit)
             const xOffset = ovRow.xOffset
             const preDraw = ovRow.preDraw !== 0
             const blendMode: DrawableBlendMode = overlayTransToBlendMode(ovRow.trans)
@@ -1569,14 +1764,20 @@ export function buildSceneDrawables(
         }
       }
       if (highestShift) {
-        // Issue #1369: Prevent double tinting when palette shift is active.
-        // If paletteRow > 0 is present, apply palette transform and suppress multiplicative RGB tintColor.
-        if (highestShift.paletteRow > 0) {
+        // D2Client 0x6FB1C5F8..0x6FB1C60F: `pal = D2Win#10164(colorshift - 1)` (`hueVariations[colorshift - 1]`).
+        // D2Client 0x6FB221B8..0x6FB221D3: when `pUnit == D2Client_GetPlayerUnit()`, `colorshift == 0x68` (104,
+        // poison), and `!D2gfx_CheckWindowedOrGlide()` (#10035 == 0, i.e. 3D hardware render mode),
+        // `*(BYTE*)(pUnit + 0x6C)` is cleared to 0 so the local player is tinted only by its green light (#1733).
+        const isLocalPlayerUnit =
+          unit.kind === 'player' &&
+          unit.isLocalPlayer !== false &&
+          (unit.isLocalPlayer === true || selfUnitId === undefined || unit.id === selfUnitId)
+        const suppressLocalPoisonShift =
+          isLocalPlayerUnit && highestShift.colorShift === 104 && !softwarePaletteMode
+        if (highestShift.paletteRow > 0 && !suppressLocalPoisonShift) {
           activePaletteRow = highestShift.paletteRow
-          tintColor = null
-        } else {
-          tintColor = highestShift.tintColor
         }
+        tintColor = null
       }
     }
     if (activePaletteRow === undefined && unit.kind === 'monster' && unit.paletteIndex !== undefined) {
@@ -1662,11 +1863,10 @@ export function buildSceneDrawables(
           )
           const preDraw = ovRow !== undefined ? ovRow.preDraw !== 0 : Boolean(ovTxt?.preDraw)
           const xOffset = ovRow?.xOffset ?? ovTxt?.xOffset ?? 0
-          const height4 = ovRow?.height[3] ?? 0
           const yOffset =
-            height4 !== 0
-              ? (height4 < 0 ? height4 : -height4)
-              : (ovRow?.yOffset ?? ovTxt?.yOffset ?? 0)
+            ovRow !== undefined
+              ? computeOverlayYOffset113c(ovRow, unit)
+              : (ovTxt?.yOffset ?? 0)
           const rawTrans = ovRow?.trans ?? ovTxt!.trans
           const ovDrawable: SceneOverlayDrawable = {
             drawableKind: 'overlay',
@@ -1711,6 +1911,15 @@ export function buildSceneDrawables(
       (resolveUnitStat(unit.stats, 181) ?? 0) > 0 ||
       unitOverlays.some((o) => o.token.toLowerCase() === 'fade')
 
+    const isMonSubmerged =
+      unit.kind === 'monster' &&
+      !isCorpse &&
+      isMonsterSubmergedMode113c(
+        unit.classId,
+        effectiveMode,
+        activeCastState?.skillId ?? unit.lastSkillId ?? (rawAny.lastSkillId as number | undefined),
+      )
+
     const unitDrawable: SceneUnitDrawable = {
       drawableKind: 'unit',
       unitKind: unit.kind,
@@ -1737,7 +1946,7 @@ export function buildSceneDrawables(
       name: resolvedName,
       ...(unit.nameZh !== undefined ? { nameZh: unit.nameZh } : {}),
       ...(unit.itemColor !== undefined ? { itemColor: unit.itemColor } : {}),
-      isHovered: Boolean(unit.isHovered),
+      isHovered: isMonSubmerged ? false : Boolean(unit.isHovered),
       isCorpse,
       tintColor:
         tintColor ??
@@ -1793,6 +2002,7 @@ export function buildSceneDrawables(
           ? { itemQuality: unit.quality }
           : {}),
       ...(activeCastState !== undefined ? { castState: activeCastState } : {}),
+      ...(unit.lastSkillId !== undefined ? { lastSkillId: unit.lastSkillId } : {}),
       ...(animMode !== undefined ? { animMode } : {}),
       ...(animStartedAtMs !== undefined ? { animStartedAtMs } : {}),
       ...(animStepSpeed256 !== undefined ? { animStepSpeed256 } : {}),
@@ -1804,8 +2014,12 @@ export function buildSceneDrawables(
       ...(unit.portalAreaId !== undefined ? { portalAreaId: unit.portalAreaId } : {}),
       ...(unit.isPartyMember !== undefined ? { isPartyMember: unit.isPartyMember } : {}),
       ...(unit.hitBox !== undefined ? { hitBox: unit.hitBox } : {}),
-      ...(unit.isSel !== undefined ? { isSel: unit.isSel } : {}),
-      ...(unit.noSel !== undefined ? { noSel: unit.noSel } : {}),
+      ...(isMonSubmerged
+        ? { isSel: false, noSel: true }
+        : {
+            ...(unit.isSel !== undefined ? { isSel: unit.isSel } : {}),
+            ...(unit.noSel !== undefined ? { noSel: unit.noSel } : {}),
+          }),
       ...(unit.corpseSel !== undefined ? { corpseSel: unit.corpseSel } : {}),
       ...(activePaletteRow !== undefined ? { paletteRow: activePaletteRow } : {}),
       ...(unit.sync !== undefined ? { sync: unit.sync } : {}),
@@ -1823,12 +2037,10 @@ export function buildSceneDrawables(
       ...(unit.overheadText !== undefined ? { overheadText: unit.overheadText } : {}),
       ...(unit.overheadColor !== undefined ? { overheadColor: unit.overheadColor } : {}),
       ...(isFaded ? { isFaded: true } : {}),
+      ...(hasInvisState ? { hasInvisState: true } : {}),
+      ...(statesIter !== undefined ? { states: statesIter } : {}),
     }
     if (isCorpse && Boolean(unit.corpseSuppressed ?? rawAny.corpseSuppressed)) {
-      continue
-    }
-    // D2Client unit+0xc8 & 0x40000 (set by special quest event 17 on Nihlathak, 0x6fb02b51-5d): not drawn.
-    if (rawAny.clientNoDraw === true) {
       continue
     }
     // 1.13c States.txt hide=1 corpse states (#1 freeze, #99 redeemed, #104 corpse_nodraw,

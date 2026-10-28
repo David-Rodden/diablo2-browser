@@ -23,6 +23,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MpqArchive } from '../../common/mpq/archive.ts'
 import { fileSource } from '../io/file-source.ts'
+import { decodeDc6 } from '../../common/formats/dc6.ts'
 import { decodeDcc } from '../../common/formats/dcc.ts'
 import { decodePl2 } from '../../common/formats/pl2.ts'
 import { packMissileSheetToRgbaPng } from './pack-missiles.ts'
@@ -1526,6 +1527,10 @@ export const OVERLAY_TARGETS: readonly OverlayTarget[] = [
     name: 'baal_on_throne',
     celFile: 'expansion/baalshield',
   },
+  {
+    name: 'mephisto',
+    celFile: 'MephistoOverlay',
+  },
 ] as const
 
 /**
@@ -1699,6 +1704,56 @@ export function parseStatesTxtOverlays(
   return Object.freeze(result)
 }
 
+/**
+ * Parses `States.txt` `pgsvoverlay` column (`pgsv = 1`, `setfunc = 1 @ 0x6fb23410`) into
+ * `Record<stateId, baseOverlayToken>`.
+ */
+export function parseStatesTxtPgsvOverlays(
+  statesTxt: string,
+  overlayTxtRows: readonly OverlayTxtRow[] = extractOverlayRows(new NodeMpqArchiveSource(DEFAULT_NODE_MPQ_DIR)),
+): Readonly<Record<number, string>> {
+  const lines = statesTxt.split(/\r?\n/).filter(l => l.trim().length > 0)
+  if (lines.length === 0) {
+    throw new Error('States.txt is empty')
+  }
+  const headers = lines[0]!.split('\t').map(h => h.trim().toLowerCase())
+  const idIdx = headers.indexOf('id')
+  const pgsvIdx = headers.indexOf('pgsv')
+  const pgsvOvIdx = headers.indexOf('pgsvoverlay')
+  if (idIdx < 0 || pgsvIdx < 0 || pgsvOvIdx < 0) {
+    throw new Error('States.txt missing required Id / pgsv / pgsvoverlay columns')
+  }
+
+  const overlayIndexByName = new Map<string, number>()
+  for (let i = 0; i < overlayTxtRows.length; i++) {
+    overlayIndexByName.set(overlayTxtRows[i]!.name.toLowerCase(), i)
+  }
+
+  const result: Record<number, string> = {}
+  for (let lineIdx = 1; lineIdx < lines.length; lineIdx++) {
+    const cols = lines[lineIdx]!.split('\t')
+    const stateName = (cols[0] ?? '').trim()
+    const idRaw = (cols[idIdx] ?? '').trim()
+    if (!stateName || stateName === 'Expansion' || !idRaw) continue
+    const stateId = Number(idRaw)
+    if (!Number.isInteger(stateId) || stateId < 0) continue
+
+    const pgsv = (cols[pgsvIdx] ?? '').trim() === '1'
+    const pgsvOv = (cols[pgsvOvIdx] ?? '').trim().toLowerCase()
+    if (pgsv && pgsvOv.length > 0) {
+      const baseIdx = overlayIndexByName.get(pgsvOv)
+      if (baseIdx === undefined) {
+        throw new Error(
+          `States.txt state ${stateId} (${stateName}) references pgsvoverlay "${pgsvOv}" which is missing from overlay.bin`,
+        )
+      }
+      result[stateId] = pgsvOv
+    }
+  }
+
+  return Object.freeze(result)
+}
+
 export async function bakeOverlays(
   projectRoot: string = process.cwd(),
   options?: { outDir?: string; skipMetaTs?: boolean }
@@ -1759,38 +1814,98 @@ export async function bakeOverlays(
   }
 
   for (const target of OVERLAY_TARGETS) {
-    const raw =
+    const rawDcc =
       (await readMpqFile(`data/global/overlays/${target.celFile}.dcc`)) ??
       (await readMpqFile(`data/global/objects/tp/tr/${target.celFile}.dcc`)) ??
       (await readMpqFile(`data/global/objects/tp/hd/${target.celFile}.dcc`))
-    if (!raw) throw new Error(`Overlay DCC not found: data/global/overlays/${target.celFile}.dcc`)
-
-    const dcc = decodeDcc(raw)
-    const firstDir = dcc.directions[0]
-    if (!firstDir) throw new Error(`Overlay DCC has no directions: ${target.celFile}`)
-
-    const box: OverlayBox = {
-      left: firstDir.box.left,
-      top: firstDir.box.top,
-      width: firstDir.box.width,
-      height: firstDir.box.height,
+    // D2Client.dll 0x6FB1E628 -> 0x6FB1D800 -> D2CMP!#10005 loads both .dcc and .dc6 under Data\Global\Overlays\
+    // (Overlay.txt row #122 `mephisto` -> `Data\Global\Overlays\MephistoOverlay.DC6` in d2data.mpq).
+    const rawDc6 =
+      rawDcc === null ? await readMpqFile(`data/global/overlays/${target.celFile}.dc6`) : null
+    if (!rawDcc && !rawDc6) {
+      throw new Error(`Overlay sprite not found: data/global/overlays/${target.celFile}.{dcc,dc6}`)
     }
 
-    const groups = dcc.directions.map(dir => ({
-      frames: dir.frames.map(
-        (frame): SpriteFrame => ({
-          width: frame.frame.width,
-          height: frame.frame.height,
-          indices: frame.frame.indices,
-          mask: frame.frame.mask,
-          anchorX: dir.box.left,
-          anchorY:
-            target.anchor === 'head' && target.yOffset !== undefined && dir.box.top < -120
-              ? dir.box.top - target.yOffset
-              : dir.box.top,
+    let box: OverlayBox
+    let groups: { frames: SpriteFrame[] }[]
+    let numDirections: number
+    let framesPerDirection: number
+    const spriteExt = rawDcc ? 'dcc' : 'dc6'
+
+    if (rawDcc) {
+      const dcc = decodeDcc(rawDcc)
+      const firstDir = dcc.directions[0]
+      if (!firstDir) throw new Error(`Overlay DCC has no directions: ${target.celFile}`)
+
+      box = {
+        left: firstDir.box.left,
+        top: firstDir.box.top,
+        width: firstDir.box.width,
+        height: firstDir.box.height,
+      }
+
+      groups = dcc.directions.map(dir => ({
+        frames: dir.frames.map(
+          (frame): SpriteFrame => ({
+            width: frame.frame.width,
+            height: frame.frame.height,
+            indices: frame.frame.indices,
+            mask: frame.frame.mask,
+            anchorX: dir.box.left,
+            anchorY:
+              target.anchor === 'head' && target.yOffset !== undefined && dir.box.top < -120
+                ? dir.box.top - target.yOffset
+                : dir.box.top,
+          }),
+        ),
+      }))
+      numDirections = dcc.directions.length
+      framesPerDirection = firstDir.frames.length
+    } else {
+      const dc6 = decodeDc6(rawDc6!)
+      const firstGroup = dc6.groups[0]
+      if (!firstGroup || firstGroup.frames.length === 0) {
+        throw new Error(`Overlay DC6 has no directions/frames: ${target.celFile}`)
+      }
+      let left = Number.POSITIVE_INFINITY
+      let top = Number.POSITIVE_INFINITY
+      let right = Number.NEGATIVE_INFINITY
+      let bottom = Number.NEGATIVE_INFINITY
+      for (const f of firstGroup.frames) {
+        const fLeft = f.offsetX
+        const fTop = f.offsetY - f.height + 1
+        left = Math.min(left, fLeft)
+        top = Math.min(top, fTop)
+        right = Math.max(right, fLeft + f.width)
+        bottom = Math.max(bottom, fTop + f.height)
+      }
+      const boxLeft = Number.isFinite(left) ? Math.round(left) : 0
+      const boxTop = Number.isFinite(top) ? Math.round(top) : 0
+      box = {
+        left: boxLeft,
+        top: boxTop,
+        width: Number.isFinite(right) ? Math.max(1, Math.round(right) - boxLeft) : 1,
+        height: Number.isFinite(bottom) ? Math.max(1, Math.round(bottom) - boxTop) : 1,
+      }
+      groups = dc6.groups.map(group => ({
+        frames: group.frames.map((frame): SpriteFrame => {
+          const fTop = frame.offsetY - frame.height + 1
+          return {
+            width: frame.width,
+            height: frame.height,
+            indices: frame.indices,
+            mask: frame.mask,
+            anchorX: frame.offsetX,
+            anchorY:
+              target.anchor === 'head' && target.yOffset !== undefined && fTop < -120
+                ? fTop - target.yOffset
+                : fTop,
+          }
         }),
-      ),
-    }))
+      }))
+      numDirections = dc6.groups.length
+      framesPerDirection = firstGroup.frames.length
+    }
 
     const sheet: SpriteSheet = { groups, width: null }
     // Index 0 is the only transparent texel (no black keying); the draw mode is applied by the runtime blend.
@@ -1804,9 +1919,9 @@ export async function bakeOverlays(
       celFile: target.celFile,
       width: packed.width,
       height: packed.height,
-      directions: dcc.directions.length,
-      frames: firstDir.frames.length,
-      framesPerDirection: firstDir.frames.length,
+      directions: numDirections,
+      frames: framesPerDirection,
+      framesPerDirection,
       animRate,
       ...(target.fps !== undefined ? { fps: target.fps } : {}),
       trans,
@@ -1881,7 +1996,7 @@ export async function bakeOverlays(
     }
 
     console.log(
-      `[Overlay Packer] Baked ${target.name} (${target.celFile}.dcc): ` +
+      `[Overlay Packer] Baked ${target.name} (${target.celFile}.${spriteExt}): ` +
       `${meta.frames} frames, box [${box.left}, ${box.top}, ${box.width}, ${box.height}], ` +
       `${packed.width}x${packed.height}, ${packed.png.byteLength} bytes PNG`,
     )
@@ -2075,6 +2190,10 @@ export async function bakeOverlays(
     '  "berserkback": BERSERKBACK_OVERLAY_META,',
     '  "berserk_back": BERSERKBACK_OVERLAY_META,',
   ]
+  // Invented lowercase skill-token aliases removed in #1074 (`Conversion` celFile is preserved for
+  // case-exact `Filename` lookup, while lowercase `conversion` must not exist in OVERLAY_METAS;
+  // state 53 uses genuine Overlay.txt row `conversionaura`).
+  const DISALLOWED_OVERLAY_META_KEYS = new Set<string>(['conversion'])
   const seenKeys = new Set<string>(['berserkback', 'berserk_back'])
   for (const t of OVERLAY_TARGETS) {
     const constName = TARGET_CONST_NAMES[t.name] ?? `${t.name.toUpperCase()}_META`
@@ -2098,12 +2217,12 @@ export async function bakeOverlays(
           rowForKey.blue !== baseMeta.lightColor[2])
           ? `{ ...${constName}, animRate: ${rowForKey.animRate}, trans: ${rowForKey.trans}, blendMode: ${JSON.stringify(overlayTransToDrawBlend(rowForKey.trans))}, preDraw: ${rowForKey.preDraw !== 0}, lightRadius: ${rowForKey.radius}, lightColor: [${rowForKey.red}, ${rowForKey.green}, ${rowForKey.blue}] }`
           : constName
-      if (!seenKeys.has(k)) {
+      if (!DISALLOWED_OVERLAY_META_KEYS.has(k) && !seenKeys.has(k)) {
         seenKeys.add(k)
         overlayMetasEntries.push(`  ${JSON.stringify(k)}: ${valueExpr},`)
       }
       const lower = k.toLowerCase()
-      if (!seenKeys.has(lower)) {
+      if (!DISALLOWED_OVERLAY_META_KEYS.has(lower) && !seenKeys.has(lower)) {
         seenKeys.add(lower)
         overlayMetasEntries.push(`  ${JSON.stringify(lower)}: ${valueExpr},`)
       }
@@ -2119,6 +2238,11 @@ export async function bakeOverlays(
   const stateOverlaysEntries = Object.entries(stateOverlaysMap)
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([stateId, tokens]) => `  ${stateId}: [${tokens.map(t => JSON.stringify(t)).join(', ')}],`)
+    .join('\n')
+  const statePgsvOverlaysMap = parseStatesTxtPgsvOverlays(statesTxt, overlayTxtRows)
+  const statePgsvOverlaysEntries = Object.entries(statePgsvOverlaysMap)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([stateId, token]) => `  ${stateId}: ${JSON.stringify(token)},`)
     .join('\n')
 
   const authenticOverlayEntries: string[] = []
@@ -2247,6 +2371,15 @@ ${authenticOverlayEntries.join('\n')}
  */
 export const STATE_OVERLAYS: Readonly<Record<number, readonly string[]>> = Object.freeze({
 ${stateOverlaysEntries}
+})
+
+/**
+ * Authentic Diablo II v1.13c \`States.txt\` \`pgsvoverlay\` column (\`pgsv = 1\`, \`setfunc = 1 @ 0x6fb23410\`).
+ * Maps progressive state IDs (\`122..127\`) to their base \`Overlay.txt\` row (\`progressive_*_1\`);
+ * the active overlay is \`OVERLAY_TXT_ROWS[baseIdx + (charges - 1)]\`.
+ */
+export const STATE_PGSV_OVERLAYS: Readonly<Record<number, string>> = Object.freeze({
+${statePgsvOverlaysEntries}
 })
 `
   // Also bake ShrineShimmer00.dcc as objsb.{png,json} for shrine shimmer overlays

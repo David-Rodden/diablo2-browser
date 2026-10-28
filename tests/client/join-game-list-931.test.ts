@@ -63,6 +63,56 @@ describe('Lobby Join Game list population, selection preservation & refresh inte
     ).toEqual([])
   })
 
+  it('decodes MCP_GAMEINFO (0x06) 0-based classes without clamping >= 7 to Assassin and formats charClass > 6 as "Level %d" per D2Multi.dll 0x6f9e33ed (#1764)', async () => {
+    const { ByteWriter } = await import('../../src/netproto/core/byte-writer.ts')
+    const { decodeMcpS2cPacket, McpOpcode } = await import('../../src/netproto/mcp/packets.ts')
+    const w = new ByteWriter()
+    w.u16LE(7) // requestId
+    w.u32LE(0x00300004) // status (open)
+    w.u32LE(120) // uptimeSec
+    w.u8(50) // creatorLevel
+    w.u8(0xff) // levelDiff
+    w.u8(8) // maxPlayers
+    w.u8(3) // count
+    const classes = new Uint8Array(16)
+    classes[0] = 0 // Amazon (0-based)
+    classes[1] = 6 // Assassin (0-based)
+    classes[2] = 7 // Out-of-range (> 6) -> must NOT be clamped to 6 (Assassin)
+    w.bytes(classes)
+    const levels = new Uint8Array(16)
+    levels[0] = 80
+    levels[1] = 85
+    levels[2] = 90
+    w.bytes(levels)
+    w.cstring('Test Desc')
+    w.cstring('AmaHero')
+    w.cstring('AsnHero')
+    w.cstring('MysteryHero')
+
+    const payload = w.toUint8Array()
+    const decoded = decodeMcpS2cPacket({ id: McpOpcode.MCP_GAMEINFO, payload, raw: payload })
+    expect(decoded.type).toBe('MCP_GAMEINFO')
+    if (decoded.type === 'MCP_GAMEINFO') {
+      expect(decoded.info.players).toEqual([
+        { name: 'AmaHero', charClass: 0, level: 80 },
+        { name: 'AsnHero', charClass: 6, level: 85 },
+        { name: 'MysteryHero', charClass: 7, level: 90 },
+      ])
+      const lines = formatJoinGameDetailLines({
+        ...decoded.info,
+        name: 'test-room',
+      })
+      expect(lines.slice(-6)).toEqual([
+        { text: 'AmaHero', color: 0 },
+        { text: 'Level 80 Amazon', color: 5 },
+        { text: 'AsnHero', color: 0 },
+        { text: 'Level 85 Assassin', color: 5 },
+        { text: 'MysteryHero', color: 0 },
+        { text: 'Level 90', color: 5 },
+      ])
+    }
+  })
+
   it('retains open 0-player rooms (GAME_STAT_OPEN = 0x04), skips closed rooms, and auto-selects the first game', () => {
     const st = createInitialFlowState()
     st.stage = 'bnet_lobby'

@@ -42,6 +42,7 @@ import {
   resolveSuicideExplodeMissileKey,
 } from '../../common/units/monster-death-fx.ts'
 import { ClientUnit } from './client-unit.ts'
+import { applyClientMonsterDeathModeOverlays113c } from './monster-overlays-113c.ts'
 import {
   BR_DEATH_CONTROL_INITIAL_COUNTDOWN,
   BR_DEATH_MISSILES_113C,
@@ -212,6 +213,9 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
     this._deadSoundUnitIds.add(unit.id)
   }
   unit.deathFxTriggered = true
+  if (unit.mode !== 12) {
+    applyClientMonsterDeathModeOverlays113c(unit, () => this._nextOverlayId++)
+  }
   if (
     unit.isNpc ||
     unit.ownerType === 'player' ||
@@ -557,9 +561,8 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
       }
     }
 
-    if (bossSpec.shakeAmplitude > 0 && bossSpec.shakeDurationMs > 0) {
-      this.startScreenShake(bossSpec.shakeDurationMs, bossSpec.shakeAmplitude, 0, 0)
-    }
+    // 1.13c monster death handlers (0x6FB02xxx) never trigger StartScreenShake (#1718):
+    // Andariel and Duriel shakes come from their controller missiles (CltDo 29 at elapsed 90, CltDo 36 at rem 325).
 
     if (bossSpec.purgeSurroundingMonstersRadius > 0) {
       for (const m of this._monsters.values()) {
@@ -592,12 +595,54 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
   }
 }
 
+/**
+ * 1.13c `D2Client.dll` `0x6FB3AD30` (called by `UpdateScreenShake` `0x6FB3AFD0`, Issue #1721):
+ * Computes `vol = clamp(trunc(amp * 255 / 20), 0, 255)`, plays/updates looping sound `0x1C4` (`452` `andariel_quake_loop`)
+ * while `vol > 0`, and stops it when `vol === 0`.
+ */
+function updateScreenShakeSound113c(this: ClientWorldInternal, amp: number): void {
+  const vol = Math.max(0, Math.min(255, Math.trunc((amp * 255) / 20)))
+  if (vol > 0) {
+    if (!this._screenShakeSoundActive) {
+      this._screenShakeSoundActive = true
+      this._screenShakeSoundVol = vol
+      this.pushSoundRequest({
+        kind: 'unit-loop-start',
+        soundId: 0x1c4,
+        local: true,
+        volume: vol,
+        volumeOverride: vol,
+      })
+    } else if (this._screenShakeSoundVol !== vol) {
+      this._screenShakeSoundVol = vol
+      this.pushSoundRequest({
+        kind: 'unit-loop-start',
+        soundId: 0x1c4,
+        local: true,
+        volume: vol,
+        volumeOverride: vol,
+      })
+    }
+  } else if (this._screenShakeSoundActive) {
+    this._screenShakeSoundActive = false
+    this._screenShakeSoundVol = 0
+    this.pushSoundRequest({
+      kind: 'unit-sound-stop',
+      soundId: 0x1c4,
+      local: true,
+    })
+  }
+}
+
 export function startScreenShakeImpl(this: ClientWorldInternal, sustainMs: number, amplitude: number, rampUpMs = 0, rampDownMs = 0): void {
+  const sustain = Math.trunc(sustainMs)
+  // 1.13c StartScreenShake (0x6FB39F00): test esi, esi; je -> no-op when sustain <= 0 (#1721).
+  if (sustain <= 0) return
   this._screenShake = {
     active: true,
     startMs: this._simTimeMs,
     rampUpMs: Math.max(0, Math.trunc(rampUpMs)),
-    sustainMs: Math.max(0, Math.trunc(sustainMs)),
+    sustainMs: sustain,
     rampDownMs: Math.max(0, Math.trunc(rampDownMs)),
     amplitude: Math.max(0, Math.trunc(amplitude)),
     offsetX: 0,
@@ -611,7 +656,9 @@ export function updateScreenShakeImpl(this: ClientWorldInternal): void {
   if (!sh.active) return
   const dt = this._simTimeMs - sh.startMs
   const totalMs = sh.rampUpMs + sh.sustainMs + sh.rampDownMs
-  if (dt < 0 || dt >= totalMs) {
+  // 1.13c UpdateScreenShake (0x6FB3AFD0 -> 0x6FB3AFFF..0x6FB3B005): cmp ecx, eax; jbe -> ends when dt > totalMs (#1721).
+  if (dt < 0 || dt > totalMs) {
+    updateScreenShakeSound113c.call(this, 0)
     this._screenShake = {
       active: false,
       startMs: 0,
@@ -634,12 +681,16 @@ export function updateScreenShakeImpl(this: ClientWorldInternal): void {
     amp = Math.trunc((sh.amplitude * remDown) / sh.rampDownMs)
   }
   if (amp > 0) {
-    const offsetX = d2Rand(this._questFxSeed, 2 * amp) - amp
-    const offsetY = d2Rand(this._questFxSeed, 2 * amp) - amp
+    // 1.13c 0x6FB3B065..0x6FB3B088: draws RAND(2*amp) - amp twice from the local player unit seed (unit+0x20, #1721).
+    const selfPlayer = this.selfId ? this.getUnit('player', this.selfId) : undefined
+    const shakeSeed = selfPlayer?.seed ?? this._questFxSeed
+    const offsetX = d2Rand(shakeSeed, 2 * amp) - amp
+    const offsetY = d2Rand(shakeSeed, 2 * amp) - amp
     this._screenShake = { ...sh, offsetX, offsetY }
   } else {
     this._screenShake = { ...sh, offsetX: 0, offsetY: 0 }
   }
+  updateScreenShakeSound113c.call(this, amp)
 }
 
 export function spawnDenOfEvilLightsInRoomImpl(

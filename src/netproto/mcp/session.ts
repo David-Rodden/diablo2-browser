@@ -48,10 +48,12 @@ export class McpSession {
   private readonly framer = new McpFramer()
   private readonly packetEmitter = new TypedEmitter<DecodedMcpS2cPacket>()
   private readonly closeEmitter = new TypedEmitter<CloseReason>()
+  private readonly createQueueEmitter = new TypedEmitter<number>()
   private readonly timeoutMs: number
   private nextReqId = 1
   private _state: McpSessionState = 'connecting'
   private _activeChar: string | null = null
+  private _createQueuePosition: number | null = null
 
   constructor(stream: ByteStream, options: McpSessionOptions = {}) {
     this.stream = stream
@@ -73,6 +75,26 @@ export class McpSession {
 
   get activeCharacter(): string | null {
     return this._activeChar
+  }
+
+  /**
+   * Latest queue position reported by `MCP_CREATEQUEUE (0x14)` (`D2MCPClient.dll` `0x6FA260D0` -> `0x6FA2B1BC`),
+   * or `null` when not queued.
+   */
+  get createQueuePosition(): number | null {
+    return this._createQueuePosition
+  }
+
+  onCreateQueue(cb: (position: number) => void): () => void {
+    return this.createQueueEmitter.on(cb)
+  }
+
+  private allocateRequestId(): number {
+    let reqId = this.nextReqId++ & 0xffff
+    if (reqId === 0) {
+      reqId = this.nextReqId++ & 0xffff
+    }
+    return reqId
   }
 
   private sendRaw(bytes: Uint8Array, packetId?: number, packetName?: string): void {
@@ -100,6 +122,12 @@ export class McpSession {
         packetName: decoded.type,
         decoded,
       })
+      if (decoded.type === 'MCP_CREATEQUEUE') {
+        this._createQueuePosition = decoded.position
+        this.createQueueEmitter.emit(decoded.position)
+      } else if (decoded.type === 'MCP_CREATEGAME') {
+        this._createQueuePosition = null
+      }
       this.packetEmitter.emit(decoded)
     }
   }
@@ -191,8 +219,15 @@ export class McpSession {
   }
 
   async deleteChar(name: string): Promise<number> {
-    const wait = this.waitForPacket('MCP_CHARDELETE', 'MCP_CHARDELETE')
-    const pkt = encodeMcpCharDelete(name, 0, this.codec)
+    // Per D2MCPClient.dll 0x6fa26e60 & 0x6fa26250: C2S sends u16 requestId (stored in 0x6fa2aeb4),
+    // and S2C 0x0A only accepts replies whose echoed u16 requestId matches 0x6fa2aeb4.
+    const reqId = this.allocateRequestId()
+    const wait = this.waitForPacket(
+      'MCP_CHARDELETE',
+      'MCP_CHARDELETE',
+      pkt => pkt.requestId === reqId,
+    )
+    const pkt = encodeMcpCharDelete(name, reqId, this.codec)
     this.sendRaw(pkt, 0x0a, 'MCP_CHARDELETE')
     const { status } = await wait
     return status
@@ -225,10 +260,7 @@ export class McpSession {
       readonly onGame?: ((game: GameSummary, games: readonly GameSummary[]) => void) | undefined
     },
   ): Promise<readonly GameSummary[]> {
-    let reqId = this.nextReqId++ & 0xffff
-    if (reqId === 0) {
-      reqId = this.nextReqId++ & 0xffff
-    }
+    const reqId = this.allocateRequestId()
     const games: GameSummary[] = []
 
     return new Promise((resolve, reject) => {
@@ -306,10 +338,7 @@ export class McpSession {
       readonly timeoutMs?: number | undefined
     },
   ): Promise<GameInfoDetail> {
-    let reqId = this.nextReqId++ & 0xffff
-    if (reqId === 0) {
-      reqId = this.nextReqId++ & 0xffff
-    }
+    const reqId = this.allocateRequestId()
     const timeoutMs = options?.timeoutMs ?? 1500
     const unavailableInfo: GameInfoDetail = {
       name: gameName,
@@ -373,8 +402,12 @@ export class McpSession {
     readonly difficulty?: 0 | 1 | 2 | undefined
     readonly maxPlayers?: number | undefined
     readonly levelDiff?: number | undefined
+    readonly onQueuePosition?: ((position: number) => void) | undefined
   }): Promise<McpCreateGameResponse> {
-    const reqId = this.nextReqId++ & 0xffff
+    const reqId = this.allocateRequestId()
+    const unsubQueue = options.onQueuePosition
+      ? this.createQueueEmitter.on(pos => options.onQueuePosition?.(pos))
+      : undefined
     const wait = this.waitForPacket('MCP_CREATEGAME', 'MCP_CREATEGAME', pkt => pkt.requestId === reqId)
     const pkt = encodeMcpCreateGame(
       {
@@ -389,12 +422,16 @@ export class McpSession {
       this.codec,
     )
     this.sendRaw(pkt, 0x03, 'MCP_CREATEGAME')
-    const { data } = await wait
-    return data
+    try {
+      const { data } = await wait
+      return data
+    } finally {
+      unsubQueue?.()
+    }
   }
 
   async joinGame(gameName: string, gamePassword = ''): Promise<McpJoinGameResponse> {
-    const reqId = this.nextReqId++ & 0xffff
+    const reqId = this.allocateRequestId()
     const wait = this.waitForPacket('MCP_JOINGAME', 'MCP_JOINGAME', pkt => pkt.requestId === reqId)
     const pkt = encodeMcpJoinGame(reqId, gameName, gamePassword, this.codec)
     this.sendRaw(pkt, 0x04, 'MCP_JOINGAME')
@@ -402,12 +439,17 @@ export class McpSession {
     return data
   }
 
-  async requestMotd(): Promise<{ readonly headline: string; readonly body: string }> {
+  async requestMotd(): Promise<{
+    readonly unknown: number
+    readonly text: string
+    readonly headline: string
+    readonly body: string
+  }> {
     const wait = this.waitForPacket('MCP_MOTD', 'MCP_MOTD')
     const pkt = encodeMcpMotd()
     this.sendRaw(pkt, 0x12, 'MCP_MOTD')
-    const { headline, body } = await wait
-    return { headline, body }
+    const { unknown, text, headline, body } = await wait
+    return { unknown, text, headline, body }
   }
 
   onClose(cb: (reason: CloseReason) => void): () => void {

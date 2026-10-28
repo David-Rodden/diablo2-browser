@@ -50,6 +50,8 @@ export interface SelfPlayerState {
   readonly skillCharges?: ReadonlyMap<number, number> | undefined
   leftSkill: number
   rightSkill: number
+  leftSkillItemId?: number | undefined
+  rightSkillItemId?: number | undefined
   runMode: boolean
   moving: boolean
   mode: number
@@ -273,6 +275,8 @@ export class MutableSelfPlayerState implements SelfPlayerState {
     this.skillCharges.clear()
     this.leftSkill = 0
     this.rightSkill = 0
+    this.leftSkillItemId = undefined
+    this.rightSkillItemId = undefined
     this.runMode = true
     this.moving = false
     this.mode = 1

@@ -10,7 +10,10 @@ import {
   MONSTER_PATH_DATA_STRIDE,
   MONSTER_PATH_IDS,
 } from '../path/monster-path-data.ts'
-import { MONSTATS2_FLAGS_BY_HCIDX } from './monstats2-flags-data.ts'
+import {
+  MONSTATS2_FLAGS_BY_HCIDX,
+  MONSTATS2_OVERLAY_HEIGHT_BY_HCIDX,
+} from './monstats2-flags-data.ts'
 
 /** Bit indices of `D2MonStats2Txt.dwFlags` — D2MOO `MonsterTbls.h:224-244` (`D2C_MonStats2FlagIndices`). */
 export const MONSTATS2_FLAGINDEX = Object.freeze({
@@ -146,4 +149,89 @@ export function canMonsterTargetBeCursed113c(target: {
     }
   }
   return true
+}
+
+/**
+ * `MonStats2.txt` `OverlayHeight` (`monstats2.bin` `+0x0C`) for `classId` (`0..733`), or `undefined` if out of range.
+ */
+export function getMonStats2OverlayHeight113c(classId: number): number | undefined {
+  if (!Number.isInteger(classId) || classId < 0 || classId >= MONSTATS2_OVERLAY_HEIGHT_BY_HCIDX.length) {
+    return undefined
+  }
+  const oh = MONSTATS2_OVERLAY_HEIGHT_BY_HCIDX[classId]
+  return oh === null || oh === undefined ? undefined : oh
+}
+
+/**
+ * D2Common.#10172 (`0x6FD80830`, `UNITS_GetOverlayHeight(unit)`):
+ * returns the 0-based `Overlay.txt` `dwHeight[h]` index (`-1..3`):
+ * - `unit == null`: `0` (`1height`)
+ * - `UNIT_PLAYER` (`'player'`): `1` (`2height`)
+ * - `UNIT_MONSTER` (`'monster'`): `MonStats2.nOverlayHeight (+0x0C) - 1` (`-1` when `OverlayHeight == 0`, or `0` if invalid classId)
+ * - `UNIT_OBJECT` / `UNIT_MISSILE` / `UNIT_ITEM` / `UNIT_TILE`: `0` (`1height`)
+ */
+export function getUnitOverlayHeightIndex113c(
+  unit:
+    | {
+        readonly kind?: string | undefined
+        readonly unitType?: string | undefined
+        readonly classId?: number | undefined
+      }
+    | null
+    | undefined,
+): number {
+  if (!unit) return 0
+  const kind = unit.kind ?? unit.unitType
+  if (kind === 'player') return 1
+  if (kind === 'monster') {
+    const classId = unit.classId
+    if (typeof classId === 'number') {
+      const oh = getMonStats2OverlayHeight113c(classId)
+      if (oh !== undefined) {
+        return oh - 1
+      }
+    }
+    return 0
+  }
+  return 0
+}
+
+/**
+ * D2Client `0x6FB1B45C..0x6FB1B49C` (`OVERLAY_Create` vertical offset):
+ * `nOffsetY = row.yOffset + (h < 0 ? 75 : row.height[h])`, where `h = D2Common.#10172(unit)`.
+ */
+export function computeOverlayYOffset113c(
+  row: {
+    readonly yOffset?: number | undefined
+    readonly height?: readonly number[] | undefined
+    readonly height1?: number | undefined
+    readonly height2?: number | undefined
+    readonly height3?: number | undefined
+    readonly height4?: number | undefined
+  },
+  unit:
+    | {
+        readonly kind?: string | undefined
+        readonly unitType?: string | undefined
+        readonly classId?: number | undefined
+      }
+    | null
+    | undefined,
+): number {
+  const h = getUnitOverlayHeightIndex113c(unit)
+  let heightDelta = 0
+  if (h < 0) {
+    heightDelta = 75
+  } else if (row.height !== undefined) {
+    heightDelta = h >= 0 && h < 4 ? (row.height[h] ?? 0) : 0
+  } else if (h === 0) {
+    heightDelta = row.height1 ?? 0
+  } else if (h === 1) {
+    heightDelta = row.height2 ?? 0
+  } else if (h === 2) {
+    heightDelta = row.height3 ?? 0
+  } else if (h === 3) {
+    heightDelta = row.height4 ?? 0
+  }
+  return (row.yOffset ?? 0) + heightDelta
 }

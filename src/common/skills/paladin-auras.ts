@@ -74,6 +74,92 @@ export const PALADIN_AURA_STATE_BY_SKILL_ID: Readonly<Record<number, number>> = 
   125: 8,  // Salvation -> resistall (#8)
 }
 
+/**
+ * Exact 1.13c `Skills.txt` `auratargetstate` -> `States.txt` row id for Paladin Aura skills.
+ * Caster-only radial/self auras (`102` Holy Fire, `118` Holy Shock, `119` Sanctuary, `124` Redemption)
+ * have an empty `auratargetstate` column in 1.13c `Skills.txt` and are intentionally absent here.
+ */
+export const PALADIN_AURA_TARGET_STATE_BY_SKILL_ID: Readonly<Record<number, number>> = {
+  98: 33,  // Might -> might (#33, friendly)
+  99: 34,  // Prayer -> prayer (#34, friendly)
+  100: 3,  // Resist Fire -> resistfire (#3, friendly)
+  103: 36, // Thorns -> thorns (#36, friendly)
+  104: 37, // Defiance -> defiance (#37, friendly)
+  105: 4,  // Resist Cold -> resistcold (#4, friendly)
+  108: 40, // Blessed Aim -> blessedaim (#40, friendly)
+  109: 45, // Cleansing -> cleansing (#45, friendly)
+  110: 5,  // Resist Lightning -> resistlight (#5, friendly)
+  113: 42, // Concentration -> concentration (#42, friendly)
+  114: 44, // Holy Freeze -> holywindcold (#44, enemy chill)
+  115: 41, // Vigor -> stamina (#41, friendly)
+  120: 48, // Meditation -> meditation (#48, friendly players only: aurafilter 0x12001)
+  122: 49, // Fanaticism -> fanaticism (#49, friendly)
+  123: 28, // Conviction -> conviction (#28, enemy debuff)
+  125: 8,  // Salvation -> resistall (#8, friendly)
+}
+
+/**
+ * Exact 1.13c `Skills.txt` `aurastate` -> `States.txt` row id for Druid Spirit Totem auras (`#296..#298`).
+ */
+export const DRUID_SPIRIT_AURA_STATE_BY_SKILL_ID: Readonly<Record<number, number>> = {
+  296: 163, // Barbs Aura -> barbscontrol (#163)
+  297: 162, // Wolverine Aura -> wolverinecontrol (#162)
+  298: 161, // Oak Sage Aura -> oaksagecontrol (#161)
+}
+
+/**
+ * Exact 1.13c `Skills.txt` `auratargetstate` -> `States.txt` row id for Druid Spirit Totem auras (`#296..#298`).
+ */
+export const DRUID_SPIRIT_AURA_TARGET_STATE_BY_SKILL_ID: Readonly<Record<number, number>> = {
+  296: 147, // Barbs Aura -> barbs (#147)
+  297: 148, // Wolverine Aura -> wolverine (#148)
+  298: 149, // Oak Sage Aura -> oaksage (#149)
+}
+
+/** Enemy-targeted `auratargetstate` IDs in 1.13c `Skills.txt` (`aurafilter & 0x8000` != 0). */
+export const ENEMY_AURA_TARGET_STATE_IDS_113C: ReadonlySet<number> = new Set<number>([
+  28, // conviction (Skill 123 Conviction)
+  44, // holywindcold (Skill 114 Holy Freeze)
+])
+
+/** Caster-only `aurastate` IDs in 1.13c `Skills.txt` (empty `auratargetstate` or totem control state). */
+export const CASTER_ONLY_AURA_STATE_IDS_113C: ReadonlySet<number> = new Set<number>([
+  35,  // holyfire (Skill 102 Holy Fire)
+  43,  // holywind (Skill 114 Holy Freeze caster state)
+  46,  // holyshock (Skill 118 Holy Shock)
+  47,  // sanctuary (Skill 119 Sanctuary)
+  50,  // redemption (Skill 124 Redemption)
+  161, // oaksagecontrol (Skill 298 Oak Sage Aura caster state)
+  162, // wolverinecontrol (Skill 297 Wolverine Aura caster state)
+  163, // barbscontrol (Skill 296 Barbs Aura caster state)
+])
+
+/**
+ * Canonical 1.13c friendly Paladin `auratargetstate` IDs (`srvdofunc = 65`):
+ * `{ 3, 4, 5, 8, 33, 34, 36, 37, 40, 41, 42, 45, 48, 49 }`.
+ */
+export const PALADIN_FRIENDLY_AURA_TARGET_STATE_IDS_113C: ReadonlySet<number> = new Set<number>(
+  Object.values(PALADIN_AURA_TARGET_STATE_BY_SKILL_ID).filter(
+    (stateId) => !ENEMY_AURA_TARGET_STATE_IDS_113C.has(stateId),
+  ),
+)
+
+/**
+ * Canonical 1.13c friendly `auratargetstate` IDs across all `aura=1` skills (`Skills.txt` `srvdofunc = 65`:
+ * Paladin friendly auras + Druid Spirit Totem auras `147/148/149`).
+ * Used by `GameInstance.syncAuraAllyStates113c` so zero friendly aura states are ever omitted or mis-mapped.
+ */
+export const FRIENDLY_AURA_TARGET_STATE_IDS_113C: ReadonlySet<number> = new Set<number>([
+  ...PALADIN_FRIENDLY_AURA_TARGET_STATE_IDS_113C,
+  ...Object.values(DRUID_SPIRIT_AURA_TARGET_STATE_BY_SKILL_ID),
+])
+
+/** All caster `aurastate` IDs across Paladin & Druid `aura=1` skills for clean unequip/death teardown. */
+export const ALL_CASTER_AURA_STATE_IDS_113C: ReadonlySet<number> = new Set<number>([
+  ...Object.values(PALADIN_AURA_STATE_BY_SKILL_ID),
+  ...Object.values(DRUID_SPIRIT_AURA_STATE_BY_SKILL_ID),
+])
+
 const PALADIN_AURA_SKILL_SET = new Set<number>(PALADIN_AURA_SKILL_IDS)
 
 export function isPaladinAuraSkill(skillId: number): boolean {

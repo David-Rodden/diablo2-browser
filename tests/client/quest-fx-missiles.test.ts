@@ -452,18 +452,62 @@ describe('1.13c Quest FX Missiles (Issue #873)', () => {
         world.tick(40)
       }
 
-      // Tick 251 (prevAgeTicks = 250, remBeforeStep = 50): 4000ms shake ends
+      // Tick 251 (prevAgeTicks = 250, remBeforeStep = 50): dt = 4000ms === totalMs (1.13c 0x6FB3AFFF jbe keeps shake active on dt === totalMs)
       world.tick(40)
-      // 100 ticks * 40ms = 4000ms elapsed since tick 151 -> screen shake has completed
+      expect(world.screenShake.active).toBe(true)
+
+      // Tick 252 (dt = 4040ms > totalMs): 4000ms shake ends
+      world.tick(40)
       expect(world.screenShake.active).toBe(false)
       expect(world.screenShake.offsetX).toBe(0)
       expect(world.screenShake.offsetY).toBe(0)
 
-      // Step remaining 49 ticks (252..300) -> controller expires cleanly
-      for (let t = 251; t < 300; t++) {
+      // Step remaining 48 ticks (253..300) -> controller expires cleanly
+      for (let t = 252; t < 300; t++) {
         world.tick(40)
       }
       expect(world.getUnit('missile', ctrl.id)).toBeUndefined()
+    })
+
+    it('0x6FB39F00 / 0x6FB3AFD0 / 0x6FB3AD30: sustain<=0 no-ops, uses local player seed (+0x20), ends at dt > totalMs, and drives looping sound 452 (#1721)', () => {
+      const world = new ClientWorld()
+      // StartScreenShake(0, ...) is a no-op
+      world.startScreenShake(0, 10, 100, 100)
+      expect(world.screenShake.active).toBe(false)
+
+      // Assign local player with known seed and verify player seed advances on shake
+      world.applyEvent({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 'player', id: 1, classId: 0, x: 100, y: 100, mode: 1, lifePct: 100 },
+      })
+      const selfUnit = world.getUnit('player', 1)!
+      selfUnit.seed.lo = 0x12345678
+      selfUnit.seed.hi = 666
+      world.drainWorldSoundRequests()
+
+      // Start shake: sustain=80ms, amp=10 -> vol = trunc(10 * 255 / 20) = 127
+      world.startScreenShake(80, 10, 0, 0)
+      expect(world.screenShake.active).toBe(true)
+      expect(selfUnit.seed.lo).not.toBe(0x12345678)
+      const startReqs = world.drainWorldSoundRequests()
+      expect(
+        startReqs.some(
+          r => r.kind === 'unit-loop-start' && r.soundId === 452 && r.volume === 127,
+        ),
+      ).toBe(true)
+
+      // dt = 40ms (<= 80ms): still active
+      world.tick(40)
+      expect(world.screenShake.active).toBe(true)
+      // dt = 80ms (=== 80ms): still active per jbe (dt <= totalMs)
+      world.tick(40)
+      expect(world.screenShake.active).toBe(true)
+      // dt = 120ms (> 80ms): ends and stops sound 452
+      world.tick(40)
+      expect(world.screenShake.active).toBe(false)
+      const endReqs = world.drainWorldSoundRequests()
+      expect(endReqs.some(r => r.kind === 'unit-sound-stop' && r.soundId === 452)).toBe(true)
     })
   })
 })

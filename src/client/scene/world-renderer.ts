@@ -50,6 +50,8 @@ import {
 } from '../../common/world/objects-meta.ts'
 import { isTownLevel } from '../../common/world/scene-population.ts'
 import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../common/units/monstats2-flags.ts'
+import { getMonsterCofHitBox113c } from '../../common/units/cof-boxes-113c.ts'
+import { MONSTATS_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
 import { getMonsterKindByClassId, getSuperUniqueByIndex } from '../../common/units/monsters-data.ts'
 import { MONSTER_CLASS_TO_PET_TYPE_IDX } from '../../common/units/pet-type-table.ts'
 import {
@@ -96,6 +98,7 @@ import {
   layoutGroundItemLabels,
   resolveGroundItemMetadata,
   resolveItemQualityString,
+  type GroundItemLabelBox,
   type GroundItemLabelInput,
 } from '../../common/items/ground-items.ts'
 import { resolveGroundItemFlippyKey, resolveGroundItemSpriteRect } from '../ui/inventory.ts'
@@ -120,11 +123,23 @@ import {
   reportMissingArt,
   getMissingArtEntries,
   clearMissingArtEntries as clearMissingArtRegistry,
+  reportPreloadMiss,
+  resolvePreloadMiss,
+  getPreloadMissEntries,
+  clearPreloadMissEntries,
   type MissingArtEntry,
+  type PreloadMissEntry,
 } from './missing-art.ts'
 
-export { reportMissingArt, getMissingArtEntries }
-export type { MissingArtEntry }
+export {
+  reportMissingArt,
+  getMissingArtEntries,
+  reportPreloadMiss,
+  resolvePreloadMiss,
+  getPreloadMissEntries,
+  clearPreloadMissEntries,
+}
+export type { MissingArtEntry, PreloadMissEntry }
 
 interface TrackedOneShotState {
   readonly clipKey: string
@@ -182,6 +197,43 @@ export function clearMissingArtEntries(): void {
   dropStartMsByItemId.clear()
   oneShotStartMsByUnitKey.clear()
 }
+
+export function clearWorldRendererTransientState(): void {
+  dropStartMsByItemId.clear()
+  oneShotStartMsByUnitKey.clear()
+}
+
+const FONT16_LABEL_WIDTH_CACHE = new WeakMap<object, Map<string, number>>()
+const FONT16_LABEL_WIDTH_MAX = 2048
+
+function measureFont16LabelWidthCached(
+  font: { measureText(text: string, fontName: 'font16'): number },
+  labelText: string,
+): number {
+  let byText = FONT16_LABEL_WIDTH_CACHE.get(font)
+  if (byText === undefined) {
+    byText = new Map<string, number>()
+    FONT16_LABEL_WIDTH_CACHE.set(font, byText)
+  }
+  const hit = byText.get(labelText)
+  if (hit !== undefined) return hit
+  const width = Math.max(40, font.measureText(labelText, 'font16') + 14)
+  if (byText.size >= FONT16_LABEL_WIDTH_MAX) {
+    const oldest = byText.keys().next().value
+    if (oldest !== undefined) byText.delete(oldest)
+  }
+  byText.set(labelText, width)
+  return width
+}
+
+interface CachedHudLabelLayout {
+  readonly vpW: number
+  readonly vpH: number
+  readonly sig: string
+  readonly boxes: readonly GroundItemLabelBox[]
+}
+
+const HUD_LABEL_LAYOUT_CACHE = new WeakMap<object, CachedHudLabelLayout>()
 
 /**
  * Compute 0-based animation frame index from elapsed time `nowMs` and 1.13c 8.8 fixed-point
@@ -629,7 +681,8 @@ function resolveOnlineMonsterArt(
 }
 
 /**
- * D2Client.dll 1.13c @ 0x6fb6d480..0x6fb6db90 (`D2Cmp_10076` -> `D2Gfx_10072` `DrawPerspectiveImage`):
+ * D2Client.dll 1.13c @ 0x6fb1aa30 / 0x6fb1ba90 -> D2gfx.#10011 (0x6fa8afd0, vtable +0x90) ->
+ * D2Gdi 0x6f876360 -> D2CMP.#10072 (0x6fe22480):
  * Isometric perspective ground shadow tint and quad projection (`scaleY = 0.5`, `shearX = -0.5` towards top-left).
  */
 export const SHADOW_TINT: readonly [number, number, number, number] = [0, 0, 0, 0.5]
@@ -703,6 +756,277 @@ export function drawUnitPerspectiveShadow(
   })
 }
 
+const STATE_INVIS_113C = 146
+
+function unitHasState113c(unit: SceneUnitDrawable, stateId: number): boolean {
+  if (stateId === STATE_INVIS_113C && unit.hasInvisState === true) return true
+  const raw = unit as unknown as {
+    readonly states?: ReadonlySet<number> | readonly number[] | Iterable<number> | undefined
+    readonly activeStates?: ReadonlySet<number> | readonly number[] | Iterable<number> | undefined
+  }
+  const iter = unit.states ?? raw.activeStates
+  if (!iter) return false
+  if (typeof (iter as ReadonlySet<number>).has === 'function') {
+    return (iter as ReadonlySet<number>).has(stateId)
+  }
+  for (const s of iter) {
+    if (s === stateId) return true
+  }
+  return false
+}
+
+/**
+ * 1.13c `D2Client.dll` unit shadow gating (`0x6FB1AA30` / `0x6FB1BA90`, #1722):
+ * - Monster spawn (`0x6FAFE942..0x6FAFE95D` -> `0x6FAB13D0`) sets `unit+0xC4 |= 0x20` when
+ *   `MonStats2.txt` flag 14 (`Shadow`, `MONSTATS2_FLAGINDEX.SHADOW`) is clear.
+ * - `0x6FB1AA3A..0x6FB1AA5D` / `0x6FB1BAA5..0x6FB1BAC8` return without drawing when
+ *   `unit+0xC4 & 0x20` is set or `D2Common.#10494(unit, 0x92)` (`STATE_INVIS = 146`) is non-zero.
+ */
+export function shouldDrawUnitShadow113c(unit: SceneUnitDrawable): boolean {
+  if (unit.isCorpse || Boolean((unit as { dead?: boolean }).dead)) return false
+  if (unit.unitKind === 'player') {
+    if (unit.mode === 0 || unit.mode === 17) return false
+  } else if (unit.unitKind === 'monster') {
+    if (unit.mode === 0 || unit.mode === 12) return false
+    if (!hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.SHADOW)) return false
+  }
+  if (typeof unit.flags === 'number' && (unit.flags & 0x20) !== 0) return false
+  if (unitHasState113c(unit, STATE_INVIS_113C)) return false
+  return true
+}
+
+/**
+ * Visible temporary silhouette + ground-shadow placeholder for alive, visible monsters (or
+ * shapeshifted players) whose `.r8` sprite pack is still `'loading'` (#1775).
+ *
+ * Sized directly from `MONSTER_COF_BOXES_113C` (`getMonsterCofHitBox113c`) so giant bosses like
+ * Lister (`#571`, `monster-43-hth.r8` 16.4 MB) or Diablo (`#243`) are immediately visible,
+ * targetable, and reactive to hit/tint feedback until the `.r8` pack finishes decoding on a
+ * subsequent frame — while never polluting `window.__d2MissingArt` permanent error checks.
+ */
+export function drawLoadingMonsterPlaceholder113c(
+  renderer: SpriteRenderer,
+  unit: SceneUnitDrawable,
+  effectiveClassId: number,
+  nowMs: number,
+): void {
+  if (unit.isCorpse || Boolean((unit as { dead?: boolean }).dead)) return
+  if (unit.unitKind === 'player') {
+    if (unit.mode === 0 || unit.mode === 17) return
+  } else if (unit.mode === 0 || unit.mode === 12) {
+    return
+  }
+  if (unitHasState113c(unit, STATE_INVIS_113C)) return
+
+  const monRow = MONSTATS_113C_ROWS[effectiveClassId]
+  const rawTok = (
+    unit.token && !unit.token.startsWith('MON_') ? unit.token : (monRow?.code ?? '')
+  )
+    .trim()
+    .toLowerCase()
+  // Skip 1.13c invisible controller/trap dummy tokens (`K9`, `9A`, `mephistospirit` #401).
+  if (rawTok === 'k9' || rawTok === '9a' || effectiveClassId === 401) return
+  const mk = getMonsterKindByClassId(effectiveClassId)
+  if (mk?.nameKey?.toLowerCase() === 'dummy') return
+
+  reportPreloadMiss(
+    'monster',
+    String(effectiveClassId),
+    `Monster art loading for classId=${effectiveClassId} token=${rawTok || unit.token}`,
+  )
+
+  const canSolidQuad = typeof renderer.drawSolidQuad === 'function'
+  const canSolid = typeof renderer.drawSolid === 'function'
+  if (!canSolidQuad && !canSolid) return
+
+  const hitBox =
+    unit.hitBox ??
+    getMonsterCofHitBox113c(effectiveClassId, unit.mode, undefined, rawTok || undefined)
+  // Strip ±16px 1.13c HitTest padding and clamp wide wing/weapon/tail sweeps to core torso bounds.
+  const rawW = Math.max(24, hitBox.width - 32)
+  const rawH = Math.max(36, hitBox.height - 32)
+  const bodyW = Math.max(28, Math.min(72, Math.round(rawW * 0.44)))
+  const bodyH = Math.max(40, Math.min(112, Math.round(rawH * 0.72)))
+  const altitude = unit.altitude ?? 0
+  const boxCenterOffsetX = hitBox.left + hitBox.width * 0.5
+  const centerX = Math.round(unit.worldX + Math.max(-12, Math.min(12, boxCenterOffsetX * 0.25)))
+  const feetY = Math.round(unit.worldY + FEET_HEIGHT * 0.5)
+  const drawY = feetY - bodyH - altitude
+
+  if (shouldDrawUnitShadow113c(unit)) {
+    const shadowHalfW = Math.max(15, Math.round(bodyW * 0.56))
+    const shadowHalfH = Math.max(8, Math.round(shadowHalfW * 0.5))
+    if (canSolidQuad) {
+      renderer.drawSolidQuad(
+        unit.worldX,
+        unit.worldY - shadowHalfH,
+        unit.worldX + shadowHalfW,
+        unit.worldY,
+        unit.worldX - shadowHalfW,
+        unit.worldY,
+        unit.worldX,
+        unit.worldY + shadowHalfH,
+        SHADOW_TINT,
+        { blendMode: 'normal' },
+      )
+    } else if (canSolid) {
+      renderer.drawSolid(
+        Math.round(unit.worldX - shadowHalfW),
+        Math.round(unit.worldY - shadowHalfH),
+        shadowHalfW * 2,
+        shadowHalfH * 2,
+        SHADOW_TINT,
+        { blendMode: 'normal' },
+      )
+    }
+  }
+
+  const rawRank = unit as {
+    readonly isUnique?: boolean | undefined
+    readonly isSuperUnique?: boolean | undefined
+    readonly superUniqueId?: number | undefined
+    readonly bossMods?: readonly number[] | undefined
+  }
+  const isBossOrUnique = Boolean(
+    rawRank.isUnique ||
+      rawRank.isSuperUnique ||
+      (rawRank.superUniqueId !== undefined && rawRank.superUniqueId >= 0) ||
+      (rawRank.bossMods && rawRank.bossMods.length > 0),
+  )
+  const isHitRecovery = unit.unitKind === 'monster' && unit.mode === 4
+  const [r, g, b]: readonly [number, number, number] = isHitRecovery
+    ? [1.0, 0.92, 0.78]
+    : unit.tintColor
+      ? [unit.tintColor[0] / 255, unit.tintColor[1] / 255, unit.tintColor[2] / 255]
+      : isBossOrUnique
+        ? [0.88, 0.68, 0.3]
+        : [0.46, 0.62, 0.8]
+
+  const pulse = 0.9 + 0.1 * Math.sin(nowMs * 0.008)
+  const hoverScale = unit.isHovered ? 1.18 : 1.0
+  const shadowCoreAlpha = Math.min(0.82, 0.68 * pulse * hoverScale)
+  const rimAlpha = Math.min(0.42, (isHitRecovery ? 0.36 : 0.22) * pulse * hoverScale)
+  const innerAlpha = Math.min(0.36, (isHitRecovery ? 0.3 : 0.18) * pulse * hoverScale)
+  const coreTint: readonly [number, number, number, number] = isHitRecovery
+    ? [0.36, 0.32, 0.26, shadowCoreAlpha]
+    : [0.08 + r * 0.08, 0.09 + g * 0.08, 0.12 + b * 0.08, shadowCoreAlpha]
+
+  const neckHalfW = Math.max(5, Math.round(bodyW * 0.15))
+  const shoulderHalfW = Math.max(11, Math.round(bodyW * 0.44))
+  const waistHalfW = Math.max(8, Math.round(bodyW * 0.28))
+  const footHalfW = Math.max(9, Math.round(bodyW * 0.32))
+  const headHalfW = Math.max(7, Math.round(bodyW * 0.21))
+  const neckY = drawY + Math.round(bodyH * 0.22)
+  const chestY = drawY + Math.round(bodyH * 0.36)
+  const waistY = drawY + Math.round(bodyH * 0.68)
+  const bottomY = feetY - altitude
+
+  if (canSolidQuad) {
+    // Subtle outer aura rim behind upper torso
+    renderer.drawSolidQuad(
+      centerX - neckHalfW - 2,
+      neckY - 1,
+      centerX + neckHalfW + 2,
+      neckY - 1,
+      centerX - shoulderHalfW - 2,
+      chestY + 2,
+      centerX + shoulderHalfW + 2,
+      chestY + 2,
+      [r, g, b, rimAlpha],
+      { blendMode: 'normal' },
+    )
+    // Upper chest / sloped shoulders (neck -> broad shoulders)
+    renderer.drawSolidQuad(
+      centerX - neckHalfW,
+      neckY,
+      centerX + neckHalfW,
+      neckY,
+      centerX - shoulderHalfW,
+      chestY,
+      centerX + shoulderHalfW,
+      chestY,
+      coreTint,
+      { blendMode: 'normal' },
+    )
+    // Mid torso (broad shoulders -> tapered waist)
+    renderer.drawSolidQuad(
+      centerX - shoulderHalfW,
+      chestY,
+      centerX + shoulderHalfW,
+      chestY,
+      centerX - waistHalfW,
+      waistY,
+      centerX + waistHalfW,
+      waistY,
+      coreTint,
+      { blendMode: 'normal' },
+    )
+    // Lower stance / legs (waist -> grounded feet)
+    renderer.drawSolidQuad(
+      centerX - waistHalfW,
+      waistY,
+      centerX + waistHalfW,
+      waistY,
+      centerX - footHalfW,
+      bottomY,
+      centerX + footHalfW,
+      bottomY,
+      coreTint,
+      { blendMode: 'normal' },
+    )
+    // Dark gothic head / horned crest diamond
+    const headMidY = Math.round((drawY + neckY + 3) * 0.5)
+    renderer.drawSolidQuad(
+      centerX,
+      drawY,
+      centerX + headHalfW,
+      headMidY,
+      centerX - headHalfW,
+      headMidY,
+      centerX,
+      neckY + 3,
+      coreTint,
+      { blendMode: 'normal' },
+    )
+    // Subtle additive soul-ember diamond in chest center
+    const emberHalfW = Math.max(5, Math.round(bodyW * 0.18))
+    const emberTopY = neckY + 3
+    const emberMidY = chestY + 2
+    const emberBotY = waistY - 2
+    renderer.drawSolidQuad(
+      centerX,
+      emberTopY,
+      centerX + emberHalfW,
+      emberMidY,
+      centerX - emberHalfW,
+      emberMidY,
+      centerX,
+      emberBotY,
+      [r, g, b, innerAlpha],
+      { blendMode: 'additive' },
+    )
+  } else if (canSolid) {
+    renderer.drawSolid(
+      centerX - shoulderHalfW,
+      drawY,
+      shoulderHalfW * 2,
+      bodyH,
+      coreTint,
+      { blendMode: 'normal' },
+    )
+    const innerHalfW = Math.max(4, Math.round(bodyW * 0.16))
+    const innerH = Math.max(12, Math.round(bodyH * 0.42))
+    renderer.drawSolid(
+      centerX - innerHalfW,
+      chestY,
+      innerHalfW * 2,
+      innerH,
+      [r, g, b, innerAlpha],
+      { blendMode: 'additive' },
+    )
+  }
+}
+
 export function drawSceneUnitDrawable(
   renderer: SpriteRenderer,
   unit: SceneUnitDrawable,
@@ -718,17 +1042,21 @@ export function drawSceneUnitDrawable(
       const morphClassId =
         tokenLower === '40' ? 430 : tokenLower === 'tg' ? 431 : tokenLower === 'fk' ? 212 : 135
       let art: LoadedMonsterArt | undefined
+      let morphLoading = false
       if (ctx.entityArtCache) {
         const cacheRes = ctx.entityArtCache.getMonsterArt(morphClassId, actId)
         if (cacheRes === 'loading') {
-          return
-        }
-        if (cacheRes !== 'missing') {
+          morphLoading = true
+        } else if (cacheRes !== 'missing') {
           art = cacheRes
         }
       }
       if (art === undefined) {
         art = resolveOnlineMonsterArt({ ...unit, classId: morphClassId }, ctx.monsterArtMap)
+      }
+      if (art === undefined && morphLoading) {
+        drawLoadingMonsterPlaceholder113c(renderer, unit, morphClassId, nowMs)
+        return
       }
       if (art !== undefined) {
         const isMoving = unit.mode === 2 || unit.mode === 3 || unit.mode === 6
@@ -873,7 +1201,7 @@ export function drawSceneUnitDrawable(
               : isFaded
                 ? ([1.0, 1.0, 1.0, baseAlpha] as const)
                 : undefined
-            if (!unit.isCorpse && !(unit as { dead?: boolean }).dead && unit.mode !== 0 && unit.mode !== 17) {
+            if (shouldDrawUnitShadow113c(unit)) {
               drawUnitPerspectiveShadow(renderer, frame, drawX, groundDrawY, art.handle)
             }
             renderer.draw(frame, drawX, drawY, {
@@ -1083,7 +1411,7 @@ export function drawSceneUnitDrawable(
           : isFaded
             ? ([1.0, 1.0, 1.0, baseAlpha] as const)
             : undefined
-        if (!unit.isCorpse && !(unit as { dead?: boolean }).dead && unit.mode !== 0 && unit.mode !== 17) {
+        if (shouldDrawUnitShadow113c(unit)) {
           drawUnitPerspectiveShadow(renderer, frame, drawX, groundDrawY, charArt.handle)
         }
         renderer.draw(frame, drawX, drawY, {
@@ -1225,7 +1553,7 @@ export function drawSceneUnitDrawable(
                       : isFaded
                         ? ([1.0, 1.0, 1.0, baseAlpha] as const)
                         : undefined
-            if (isSummonAlive) {
+            if (isSummonAlive && shouldDrawUnitShadow113c(unit)) {
               drawUnitPerspectiveShadow(renderer, frame, drawX, drawY, charArt.handle)
             }
             renderer.draw(frame, drawX, drawY, {
@@ -1240,17 +1568,27 @@ export function drawSceneUnitDrawable(
     }
 
     let art: LoadedMonsterArt | undefined
+    let monsterLoading = false
     if (ctx.entityArtCache) {
       const cacheRes = ctx.entityArtCache.getMonsterVariantArt(unit.classId, unit.compVariants, actId)
       if (cacheRes === 'loading') {
-        return
-      }
-      if (cacheRes !== 'missing') {
+        monsterLoading = true
+      } else if (cacheRes !== 'missing') {
         art = cacheRes
       }
     }
     if (art === undefined) {
       art = resolveOnlineMonsterArt(unit, ctx.monsterArtMap)
+    }
+    if (
+      art === undefined &&
+      monsterLoading &&
+      unit.classId !== 425 &&
+      unit.classId !== 426 &&
+      unit.classId !== 427
+    ) {
+      drawLoadingMonsterPlaceholder113c(renderer, unit, unit.classId, nowMs)
+      return
     }
     if (art !== undefined) {
       const unitKey = `monster:${unit.unitId}`
@@ -1273,7 +1611,7 @@ export function drawSceneUnitDrawable(
           unit.classId,
           Math.max(0, nowMs - seqStartedAtMs),
           seqSpeed256,
-          unit.castState?.skillId,
+          unit.castState?.skillId ?? unit.lastSkillId,
         )
       }
       const requestedClipKey = unit.isCorpse
@@ -1376,7 +1714,7 @@ export function drawSceneUnitDrawable(
               1.0,
             ] as const)
           : undefined
-        if (!unit.isCorpse && !(unit as { dead?: boolean }).dead && unit.mode !== 0 && unit.mode !== 12 && baseBlendMode !== 'additive') {
+        if (shouldDrawUnitShadow113c(unit)) {
           drawUnitPerspectiveShadow(renderer, frame, drawX, groundDrawY, art.handle)
         }
         renderer.draw(frame, drawX, drawY, {
@@ -2952,26 +3290,30 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
         // D2Client.dll 0x6fb328a5 / 0x6fb327c0: airborne items (ITEMMODE_DROPPING === 5)
         // suppress hover and Alt ground labels until they land in mode 3 (ITEMMODE_ON_GROUND).
         if (u.mode === 5) continue
+        const itemScreenX = Math.round(u.worldX - camX + vpW / 2)
+        const itemScreenY = Math.round(u.worldY - camY + vpH / 2)
+        if (
+          itemScreenX < -60 ||
+          itemScreenX > vpW + 60 ||
+          itemScreenY < -20 ||
+          itemScreenY > vpH + 160
+        ) {
+          continue
+        }
+        if (!isUnitHovered && !showAll && !showBeams && !alwaysShowUniqueSetLabels) {
+          continue
+        }
         const rawCode =
           u.code?.trim().toLowerCase() ||
           u.itemCode?.trim().toLowerCase() ||
           (u.token && !u.token.startsWith('ITM_') ? u.token.trim().toLowerCase() : '') ||
-          BAKED_UI_MANIFEST.itemClassIdToCode[u.classId] ||
+          BAKED_UI_MANIFEST.itemClassIdToCode[u.unitKind === 'item' ? u.classId : -1] ||
           ''
         const lootBeamQuality =
           showBeams || alwaysShowUniqueSetLabels
             ? resolveGroundItemLootBeamQuality(u, rawCode)
             : null
-        const itemScreenX = Math.round(u.worldX - camX + vpW / 2)
-        const itemScreenY = Math.round(u.worldY - camY + vpH / 2)
-        if (
-          showBeams &&
-          lootBeamQuality !== null &&
-          itemScreenX >= -60 &&
-          itemScreenX <= vpW + 60 &&
-          itemScreenY >= -20 &&
-          itemScreenY <= vpH + 160
-        ) {
+        if (showBeams && lootBeamQuality !== null) {
           groundItemBeams.push({
             id: u.unitId,
             quality: lootBeamQuality,
@@ -3010,7 +3352,9 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
             : lootBeamQuality === 'set'
               ? '#00fc00'
               : '#ffffff')
-        const measuredW = Math.max(40, hudManager.font.measureText(labelText, 'font16') + 14) + hudManager.groundLabelBadgesWidth(u.unitId)
+        const measuredW =
+          measureFont16LabelWidthCached(hudManager.font, labelText) +
+          hudManager.groundLabelBadgesWidth(u.unitId)
         labelInputs.push({
           id: u.unitId,
           text: labelText,
@@ -3026,8 +3370,29 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
       hudManager.overheadSpeechBubbles = overheadBubbles
       hudManager.hoveredNpcLabel = hoveredNpcLabel
       hudManager.groundItemBeams = groundItemBeams
-      hudManager.groundItemLabelBoxes =
-        labelInputs.length > 0 ? layoutGroundItemLabels(labelInputs, vpW, vpH) : []
+      if (labelInputs.length === 0) {
+        hudManager.groundItemLabelBoxes = []
+      } else {
+        const sigParts: string[] = new Array(labelInputs.length)
+        for (let i = 0; i < labelInputs.length; i += 1) {
+          const li = labelInputs[i]!
+          sigParts[i] = `${li.id}:${li.screenX},${li.screenY},${li.width}:${li.color}:${li.text}:${li.isHovered ? 1 : 0}`
+        }
+        const layoutSig = sigParts.join(';')
+        const cachedLayout = HUD_LABEL_LAYOUT_CACHE.get(hudManager)
+        if (
+          cachedLayout !== undefined &&
+          cachedLayout.vpW === vpW &&
+          cachedLayout.vpH === vpH &&
+          cachedLayout.sig === layoutSig
+        ) {
+          hudManager.groundItemLabelBoxes = cachedLayout.boxes
+        } else {
+          const boxes = layoutGroundItemLabels(labelInputs, vpW, vpH)
+          HUD_LABEL_LAYOUT_CACHE.set(hudManager, { vpW, vpH, sig: layoutSig, boxes })
+          hudManager.groundItemLabelBoxes = boxes
+        }
+      }
       hudManager.render(nowMs)
     }
     ctx.onFrameSnapshot?.(snapshot)

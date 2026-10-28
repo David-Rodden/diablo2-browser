@@ -9,6 +9,7 @@ import {
   encodeC2sBeltUse,
   encodeC2sCancelController,
   encodeC2sClickButton,
+  encodeC2sGameLogon,
   encodeC2sHostile,
   encodeC2sIdentifyItem,
   encodeC2sMercItem,
@@ -26,6 +27,11 @@ import {
   encodeClientCommand,
   type ClientCommand,
 } from '../../src/netproto/index.ts'
+import {
+  D2GS_GAMELOGON_CONST_CLASSIC_113C,
+  D2GS_GAMELOGON_CONST_EXPANSION_113C,
+  D2GS_GAMELOGON_CONST_TAG2_113C,
+} from '../../src/netproto/d2gs/c2s/session.ts'
 
 describe('D2GS C->S 1.13c packet encoders & ClientCommand dispatch (M1)', () => {
   it('encodes all 18 M1 C2S opcodes with exact 1.13c byte layout and C2S_PACKET_SIZES validation', () => {
@@ -128,5 +134,132 @@ describe('D2GS C->S 1.13c packet encoders & ClientCommand dispatch (M1)', () => 
       expect(pkts).toHaveLength(1)
       expect(() => validateC2sPacket(pkts[0]!)).not.toThrow()
     }
+  })
+
+  it('encodes C2S 0x68 GameLogon (37B) with 1.13c D2Client.dll 0x6fac4a50 expansion/classic dwords (#1761)', () => {
+    const expPkt = encodeC2sGameLogon({
+      gameHash: 0x11223344,
+      gameToken: 0x0042,
+      charClass: 1,
+      charName: 'Isendra',
+    })
+    expect(expPkt.byteLength).toBe(37)
+    {
+      const r = new ByteReader(expPkt)
+      expect(r.u8()).toBe(0x68)
+      expect(r.u32LE()).toBe(0x11223344)
+      expect(r.u16LE()).toBe(0x0042)
+      expect(r.u8()).toBe(1)
+      expect(r.u32LE()).toBe(0x0d)
+      expect(r.u32LE()).toBe(D2GS_GAMELOGON_CONST_EXPANSION_113C)
+      expect(D2GS_GAMELOGON_CONST_EXPANSION_113C).toBe(0xed5dcc50)
+      expect(r.u32LE()).toBe(D2GS_GAMELOGON_CONST_TAG2_113C)
+      expect(D2GS_GAMELOGON_CONST_TAG2_113C).toBe(0x91a519b6)
+      expect(r.u8()).toBe(0)
+      expect(r.fixedCString(16)).toBe('Isendra')
+    }
+
+    const classicPkt = encodeC2sGameLogon({
+      gameHash: 0x11223344,
+      gameToken: 0x0042,
+      charClass: 4,
+      charName: 'BarbClassic',
+      expansion: false,
+      locale: 5,
+    })
+    expect(classicPkt.byteLength).toBe(37)
+    {
+      const r = new ByteReader(classicPkt)
+      expect(r.u8()).toBe(0x68)
+      expect(r.u32LE()).toBe(0x11223344)
+      expect(r.u16LE()).toBe(0x0042)
+      expect(r.u8()).toBe(4)
+      expect(r.u32LE()).toBe(0x0d)
+      expect(r.u32LE()).toBe(D2GS_GAMELOGON_CONST_CLASSIC_113C)
+      expect(D2GS_GAMELOGON_CONST_CLASSIC_113C).toBe(0x2185edd6)
+      expect(r.u32LE()).toBe(0x91a519b6)
+      expect(r.u8()).toBe(5)
+      expect(r.fixedCString(16)).toBe('BarbClassic')
+    }
+  })
+
+  it('computes 10-sample running mean on S2C 0x8F Pong (D2Client.dll 0x6faf2338..0x6faf2367) and sends avgPing >>> 1 in C2S 0x6D Ping @5 (0x6fac4bdb..0x6fac4bf0) (#1762)', async () => {
+    const { FakeClock } = await import('../../src/netproto/core/clock.ts')
+    const { createMemoryStreamPair } = await import('../../src/netproto/transport/memory-stream.ts')
+    const { D2gsSession } = await import('../../src/netproto/d2gs/session.ts')
+    const { defaultD2gsHuffmanCodec, wrapD2gsCompressedBlock } = await import(
+      '../../src/netproto/d2gs/compression.ts'
+    )
+
+    const clock = new FakeClock(1_000)
+    const [clientStream, serverStream] = createMemoryStreamPair()
+    const c2sPings: Array<{ tickCount: number; delay: number }> = []
+    serverStream.onData((chunk) => {
+      if (chunk[0] === 0x6d && chunk.byteLength === 13) {
+        const dv = new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+        c2sPings.push({
+          tickCount: dv.getUint32(1, true),
+          delay: dv.getUint32(5, true),
+        })
+      }
+    })
+
+    const session = new D2gsSession({
+      stream: clientStream,
+      logon: { gameHash: 1, gameToken: 1, charClass: 1, charName: 'Hero' },
+      clock,
+    })
+
+    // Enter compressed mode so S2C 0x8F packets can be pushed
+    serverStream.write(new Uint8Array([0xaf, 0x01]))
+    const sendPong = () => {
+      const pong = new Uint8Array(33)
+      pong[0] = 0x8f
+      serverStream.write(wrapD2gsCompressedBlock(defaultD2gsHuffmanCodec.compress(pong)))
+    }
+
+    // 1st ping at t=1000 -> delay = 0 >>> 1 = 0
+    session.sendPing()
+    expect(c2sPings.at(-1)).toEqual({ tickCount: 1000, delay: 0 })
+
+    // 1st pong after 100ms -> avg = (0*0 + 100)/1 = 100 (n=1)
+    clock.advance(100)
+    sendPong()
+    expect(session.rttMs).toBe(100)
+    expect(session.avgPingMs).toBe(100)
+    expect(session.pingSampleCount).toBe(1)
+
+    // 2nd ping -> delay = 100 >>> 1 = 50
+    session.sendPing()
+    expect(c2sPings.at(-1)?.delay).toBe(50)
+
+    // 2nd pong after 200ms -> avg = Math.floor((100*1 + 200)/2) = 150 (n=2)
+    clock.advance(200)
+    sendPong()
+    expect(session.rttMs).toBe(150)
+    expect(session.pingSampleCount).toBe(2)
+
+    // Feed 8 more samples (samples 3..10) with RTT = 150ms -> avg stays 150, n reaches 10
+    for (let i = 3; i <= 10; i++) {
+      session.sendPing()
+      expect(c2sPings.at(-1)?.delay).toBe(75)
+      clock.advance(150)
+      sendPong()
+    }
+    expect(session.pingSampleCount).toBe(10)
+    expect(session.avgPingMs).toBe(150)
+
+    // 11th sample with RTT = 900ms: n >= 10 (jae 0x6faf236c), so avgPingMs remains frozen at 150 while lastRttMs updates to 900
+    session.sendPing()
+    clock.advance(900)
+    sendPong()
+    expect(session.pingSampleCount).toBe(10)
+    expect(session.lastRttMs).toBe(900)
+    expect(session.avgPingMs).toBe(150)
+    expect(session.rttMs).toBe(150)
+
+    session.sendPing()
+    expect(c2sPings.at(-1)?.delay).toBe(75)
+    session.leaveAndClose()
   })
 })

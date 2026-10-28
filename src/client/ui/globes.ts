@@ -11,6 +11,116 @@ import type { TblLang } from '../i18n/lang.ts'
 import { reportMissingArt } from '../../client/scene/world-renderer.ts'
 import { resolveTblKey } from '../../common/data/canonical-tbl-strings.ts'
 
+export type VitalSmoothStatId = 6 | 8 | 10
+
+export interface VitalSmoothSlotState {
+  target: number
+  tTarget: number
+  start: number
+  tStart: number
+  initialized: boolean
+}
+
+/**
+ * D2Client.dll `0x6FAD6B20..0x6FAD6CCA` (`sub_6FAD6B20`):
+ * 3-slot (`stat 6` = Life, `stat 8` = Mana, `stat 10` = Stamina) 25fps frame-based linear interpolator
+ * for globe liquid clip height and stamina bar fill width.
+ *
+ * - Slot 0 (`stat 6`, Life): `allowDecreaseSmooth = false` (`bl = 0`) — life decreases snap immediately.
+ * - Slot 1 (`stat 8`, Mana): `allowDecreaseSmooth = true` (`bl = 1`).
+ * - Slot 2 (`stat 10`, Stamina): `allowDecreaseSmooth = true` (`bl = 1`).
+ * - Large jumps (`Math.abs(target - cur) >= (max >> 3)`, i.e. >= 12.5% of max) snap immediately (`start = cur; tStart = frame`).
+ * - Small changes interpolate linearly over `duration = clamp(tTarget - tStart, 7, 15)` frames (25fps):
+ *   `val = start + Math.trunc(((target - start) * (elapsed + 1)) / duration)` while `cur > 0 && elapsed < duration && target !== start`.
+ */
+export class VitalStatSmoother113c {
+  private readonly slots: [VitalSmoothSlotState, VitalSmoothSlotState, VitalSmoothSlotState] = [
+    { target: 0, tTarget: 0, start: 0, tStart: 0, initialized: false },
+    { target: 0, tTarget: 0, start: 0, tStart: 0, initialized: false },
+    { target: 0, tTarget: 0, start: 0, tStart: 0, initialized: false },
+  ]
+
+  reset(): void {
+    for (const s of this.slots) {
+      s.target = 0
+      s.tTarget = 0
+      s.start = 0
+      s.tStart = 0
+      s.initialized = false
+    }
+  }
+
+  sample(statId: VitalSmoothStatId, rawCur: number, rawMax: number, frame: number): number {
+    const cur = Math.trunc(rawCur)
+    const max = Math.trunc(rawMax)
+    if (max <= 0) return 0
+
+    let slotIdx: 0 | 1 | 2
+    let allowDecreaseSmooth: boolean
+    if (statId === 6) {
+      slotIdx = 0
+      allowDecreaseSmooth = false
+    } else if (statId === 8) {
+      slotIdx = 1
+      allowDecreaseSmooth = true
+    } else if (statId === 10) {
+      slotIdx = 2
+      allowDecreaseSmooth = true
+    } else {
+      return Math.max(0, Math.min(max, cur))
+    }
+
+    const slot = this.slots[slotIdx]
+    const f = Math.max(0, Math.trunc(frame))
+
+    if (!slot.initialized || f <= 1) {
+      slot.start = cur
+      slot.target = cur
+      slot.tStart = f
+      slot.tTarget = f
+      slot.initialized = true
+    }
+
+    if (!allowDecreaseSmooth && cur < slot.target) {
+      slot.start = cur
+      slot.target = cur
+      slot.tTarget = f
+      slot.tStart = f
+    }
+
+    const delta = slot.target - cur
+    if (delta !== 0) {
+      const absDelta = delta < 0 ? -delta : delta
+      if (absDelta >= (max >> 3)) {
+        slot.start = cur
+        slot.tStart = f
+      } else {
+        slot.tStart = slot.tTarget
+        slot.start = cur === max ? cur : slot.target
+      }
+      slot.target = cur
+      slot.tTarget = f
+    }
+
+    const elapsed = f - slot.tTarget
+    let duration = slot.tTarget - slot.tStart
+    if (duration > 15) duration = 15
+    else if (duration < 7) duration = 7
+
+    let val = cur
+    if (cur > 0 && elapsed >= 0 && elapsed < duration) {
+      const span = slot.target - slot.start
+      if (span !== 0) {
+        val = slot.start + Math.trunc((span * (elapsed + 1)) / duration)
+      }
+    }
+
+    if (val < 0) val = 0
+    else if (val > max) val = max
+    return val
+  }
+}
+
 export interface GlobeState {
   readonly hp: number
   readonly maxHp: number
@@ -25,6 +135,8 @@ export interface GlobeState {
   readonly manaPotActive?: boolean
   /** Target Mana percentage (`0..100`) from `STAT_MANARECOVERY (26)` (`D2Client.dll 0x6fad7b06`). */
   readonly potionManaPercent?: number
+  /** Optional 25fps frame counter for `0x6FAD6B20` globe fill smoothing. */
+  readonly frame?: number
 }
 
 export interface GlobeBounds {
@@ -73,6 +185,7 @@ export class GlobesHud {
   manaTextPinned = false
   lang: TblLang = 'CHI'
   is640 = false
+  smoother = new VitalStatSmoother113c()
 
   get hoveredGlobe(): 'hp' | 'mana' | null {
     if (this.lifeHovered) return 'hp'
@@ -166,8 +279,16 @@ export class GlobesHud {
   ): void {
     const lifeBounds = this.lifeGlobeBounds
     const manaBounds = this.manaGlobeBounds
-    const lifeClip = GlobesHud.computeClipRect(lifeBounds, state.hp, state.maxHp, 2)
-    const manaClip = GlobesHud.computeClipRect(manaBounds, state.mana, state.maxMana, 0)
+    const displayHp =
+      state.frame !== undefined
+        ? this.smoother.sample(6, state.hp, state.maxHp, state.frame)
+        : state.hp
+    const displayMana =
+      state.frame !== undefined
+        ? this.smoother.sample(8, state.mana, state.maxMana, state.frame)
+        : state.mana
+    const lifeClip = GlobesHud.computeClipRect(lifeBounds, displayHp, state.maxHp, 2)
+    const manaClip = GlobesHud.computeClipRect(manaBounds, displayMana, state.maxMana, 0)
     const currentClipH = lifeClip.clipH
     const currentManaClipH = manaClip.clipH
 

@@ -392,7 +392,7 @@ import {
   encode0x8DAssignPlayerToParty,
   encode0x90MapPartyPulse,
 } from './d2gs/s2c/party.ts'
-import { encode0x11UnitOverlay } from './d2gs/s2c/units.ts'
+import { encode0x11UnitOverlay, encode0xACAssignNpc } from './d2gs/s2c/units.ts'
 import { encode0x63WaypointMenu } from './d2gs/s2c/waypoint.ts'
 import type { ClientCommand } from './domain/client-command.ts'
 import { unitTypeToId, type ItemDataTables, type UnitType } from './domain/ids.ts'
@@ -433,6 +433,22 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
     case 'GameLogonAck':
       return [new Uint8Array([0x04])]
 
+    case 'GameFlags': {
+      const w = new ByteWriter(8)
+      w.u8(0x01)
+      w.u8(Number(e.difficulty ?? 0) & 0xff)
+      const arenaFlags =
+        e.arenaFlags !== undefined
+          ? Number(e.arenaFlags) >>> 0
+          : e.hardcore
+            ? 0x0800
+            : 0
+      w.u32LE(arenaFlags)
+      w.u8(e.expansion === false ? 0 : 1)
+      w.u8(e.ladder ? 1 : 0)
+      return [w.toUint8Array()]
+    }
+
     case 'ActDataLoaded':
     case 'LoadAct': {
       const w = new ByteWriter(12)
@@ -463,6 +479,44 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
         w.u16LE(y)
         return [w.toUint8Array()]
       }
+      if (uType === 1) {
+        const uObj = e.unit ?? e
+        const ownerTypeRaw = uObj.ownerType
+        const hasPlayerOwner =
+          (ownerTypeRaw === 0 || ownerTypeRaw === 'player') &&
+          typeof uObj.ownerId === 'number' &&
+          uObj.ownerId > 0
+        return [
+          encode0xACAssignNpc({
+            id: uId,
+            classId,
+            x,
+            y,
+            lifePct: uObj.lifePct !== undefined ? Number(uObj.lifePct) : 128,
+            mode: uObj.mode !== undefined ? Number(uObj.mode) : 1,
+            flags: uObj.flags !== undefined ? Number(uObj.flags) : undefined,
+            isChampion: uObj.isChampion,
+            isUnique: uObj.isUnique,
+            isSuperUnique: uObj.isSuperUnique,
+            isMinion: uObj.isMinion,
+            superUniqueId:
+              typeof uObj.superUniqueId === 'number' ? uObj.superUniqueId : undefined,
+            bossMods: Array.isArray(uObj.bossMods) ? uObj.bossMods : undefined,
+            nameSeed: typeof uObj.nameSeed === 'number' ? uObj.nameSeed : undefined,
+            playerOwnerId: hasPlayerOwner ? Number(uObj.ownerId) : undefined,
+          }),
+        ]
+      }
+      if (uType === 5) {
+        const w = new ByteWriter(11)
+        w.u8(0x09)
+        w.u8(5)
+        w.u32LE(uId)
+        w.u8(Number(e.unit?.warpId ?? classId) & 0xff)
+        w.u16LE(x)
+        w.u16LE(y)
+        return [w.toUint8Array()]
+      }
       const w = new ByteWriter(14)
       w.u8(0x51)
       w.u8(uType & 0xff)
@@ -470,8 +524,8 @@ export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): 
       w.u16LE(classId & 0xffff)
       w.u16LE(x)
       w.u16LE(y)
-      w.u8(0)
-      w.u8(0)
+      w.u8(Number(e.unit?.mode ?? e.mode ?? 0) & 0xff)
+      w.u8(Number(e.unit?.flags ?? e.flags ?? 0) & 0xff)
       return [w.toUint8Array()]
     }
 

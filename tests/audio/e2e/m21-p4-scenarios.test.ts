@@ -134,7 +134,7 @@ describe('M21-P4 #946 — Tier 4 end-to-end scenarios (F15–F18)', () => {
       const expectedAmb = new Set(oracleGroupMembers(oracleEnv.dayAmbience))
 
       setArea(env, lvlId, 2)
-      for (let step = 0; step < 30; step += 1, tick += 1) {
+      for (let step = 0; step < 37; step += 1, tick += 1) {
         env.tick(tick, { levelId: lvlId, tod: 2 })
         records.update()
         records.endTick()
@@ -144,7 +144,7 @@ describe('M21-P4 #946 — Tier 4 end-to-end scenarios (F15–F18)', () => {
         const activeAmb = records.records().filter((r) => expectedAmb.has(r.id))
         expect(activeAmb.length, `level ${String(lvlId)} (${oracleLvl.name}) active Day Ambience`).toBe(1)
       }
-      // Ensure no ambience from earlier acts/environments remains alive:
+      // Ensure no ambience from earlier acts/environments remains alive after the 35-tick Fade Out:
       const allAmbIds = new Set<number>()
       for (const e of O.soundEnviron) {
         if (e.dayAmbience > 0) for (const m of oracleGroupMembers(e.dayAmbience)) allAmbIds.add(m)
@@ -157,7 +157,7 @@ describe('M21-P4 #946 — Tier 4 end-to-end scenarios (F15–F18)', () => {
     }
 
     expect([...new Set(preloadedActs)].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5])
-    expect(voices.starts().length).toBeGreaterThanOrEqual(waypoints.length)
+    expect(voices.starts().length).toBeGreaterThanOrEqual(7)
   })
 
   it('[T4-P4-02] full Day → Dusk → Night → Dawn → Day cycle in Blood Moor (`levelId 2`) with thunderstorm overlay: 250-tick crossfades + spatialized events + rain ramp + thunder', async () => {

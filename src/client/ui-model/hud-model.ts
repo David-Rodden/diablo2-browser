@@ -276,6 +276,7 @@ export class HudModel implements HudCommandSink {
   private lastSyncedCubeItemsRef: GridPlacement[] | null = null
   private lastSyncedCursorItemRef: UiInventoryItem | null = null
   private cachedScrollCounts = new Map<number, number>()
+  private lastEquipmentChargedSkills = new Set<number>()
   private cachedHasUnidentifiedItems = false
   private cachedMercEquipped: {
     head: UiInventoryItem | null

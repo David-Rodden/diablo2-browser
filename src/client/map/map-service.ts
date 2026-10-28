@@ -389,6 +389,26 @@ export class MapService {
   }
 
   /**
+   * Release all per-game `LevelView` instances and active `DrlgActSession` room structures
+   * when leaving a game, while keeping the ~30MB packed DRLG bundle and `TileAtlas` ready.
+   */
+  resetSession(): void {
+    this.loadedViewsByArea.clear()
+    this.evictedAreaIds.clear()
+    this.activeView = null
+    this.activeAreaId = null
+    this.activeAct = null
+    this.activeSeed = null
+    this.engine?.resetSession()
+    if (this.worker) {
+      const id = this.nextRequestId++
+      void this.sendWorkerRequest({ id, type: 'resetSession' }).catch(() => {
+        // Ignore worker teardown race
+      })
+    }
+  }
+
+  /**
    * Fetch or build a `LevelView` for `areaId` without changing `activeView` or `activeAreaId`.
    */
   peekLevelView(areaId: number, revealMode: 'all' | 'revealed-only' = 'all'): LevelView | null {

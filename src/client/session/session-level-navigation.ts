@@ -554,7 +554,7 @@ export function syncActiveAreaFromPlayerPosition(
     if (areaChanged) {
       host.audioRuntime.enterLevel(
         levelView.areaId,
-        periodOfDayToSoundEnvironTod113c(host.environmentValue.period),
+        periodOfDayToSoundEnvironTod113c(host.environmentValue.cycleIndex),
       )
       host.audioRuntime.playLevelMusic(levelView.areaId)
       if (options?.emitHudSync) {
@@ -566,7 +566,7 @@ export function syncActiveAreaFromPlayerPosition(
     host.knownAreaIds.add(host.world.areaId)
     host.audioRuntime.enterLevel(
       host.world.areaId,
-      periodOfDayToSoundEnvironTod113c(host.environmentValue.period),
+      periodOfDayToSoundEnvironTod113c(host.environmentValue.cycleIndex),
     )
     host.audioRuntime.playLevelMusic(host.world.areaId)
     if (options?.emitHudSync) {
