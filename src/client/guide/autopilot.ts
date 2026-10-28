@@ -293,6 +293,7 @@ export class Autopilot {
   private readonly uses = new Map<number, { readonly at: number; readonly tries: number }>()
   private readonly stubborn = new Map<number, number>()
   private lastNpc: number | null = null
+  private readonly heardOut = new Set<number>()
   private readonly scavenged = new Set<number>()
   private readonly mercTried = new Set<number>()
   private readonly ledger = new XpLedger()
@@ -764,6 +765,7 @@ export class Autopilot {
     const { assists, guide } = this.host
     const errand = town && !this.offTheGrid() ? this.nextErrand(town, nowMs) : null
     if (errand) this.run(errand, nowMs)
+    else if (town && this.heedAlert(nowMs)) return
     else if (town && this.healing(nowMs)) this.say('Waiting to heal before heading out')
     else if (town && nowMs < this.restUntil) this.say('Resting before going back for your body')
     else if (!(town && this.trip === 'return' && !guide.currentPlan?.goal.inTown && !this.dryAndBroke() && !this.retreatWhy.endsWith(ON_FOOT) && this.returnThroughPortal(nowMs)) && !(town === null && this.portalErrand(nowMs)) && !(town === null && this.portalFirst(nowMs)) && !(assists.smartSkills && assists.keepUp(null, nowMs)) && !(town === null && assists.pilotCombat && this.hunt(nowMs)) && !(town === null && this.scavenge(nowMs)) && !(town === null && this.grabWaypoint(nowMs)) && !(town === null && this.rally(nowMs)) && !(town === null && this.train(nowMs))) this.follow(guide.update(nowMs), nowMs)
@@ -1070,6 +1072,20 @@ export class Autopilot {
     else if (portal) this.castPortal(nowMs)
     else if (plan?.target?.unit?.id === unit.id) this.skip(plan, `${unit.name ?? 'It'} wouldn't respond`)
     else this.walkRoute(nowMs)
+  }
+
+  private heedAlert(nowMs: number): boolean {
+    const { world, assists } = this.host
+    const npc = world.getUnitsByType(1).filter((unit) => unit.wantsInteract === true && !unit.dead && !assists.isHostile(unit) && !this.heardOut.has(unit.id)).sort((a, b) => distance(a, world.self) - distance(b, world.self))[0]
+    if (!npc) return false
+    this.say(`Hearing out ${npc.name ?? 'someone'}`)
+    if (distance(npc, world.self) > INTERACT_REACH) this.walkTowards(npc, nowMs)
+    else {
+      this.heardOut.add(npc.id)
+      this.talk = { npcId: npc.id, hint: 'hear out', since: nowMs, at: nowMs, spoke: false, opened: false, heard: new Set<string>() }
+      assists.use(npc, nowMs)
+    }
+    return true
   }
 
   private speakTo(npc: ClientUnit, plan: GuidePlan, nowMs: number): void {

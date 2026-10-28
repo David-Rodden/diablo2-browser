@@ -135,6 +135,24 @@ describe('autopilot', () => {
     expect([hudModel.closeActiveNpcPanel.mock.calls.length > 0, hudModel.requestQuestData.mock.calls.length > 0]).toEqual([true, true])
   })
 
+  it('hears out a townsfolk with something to say before going on, but only once a game', () => {
+    const { world, assists, hudManager, units, tick } = setup({ goal: { level: 76, title: 'Spider Forest' }, hint: 'Head to Spider Forest', target: { x: 140, y: 100, label: 'Spider Forest' } }, 75)
+    const ormus = unit({ id: 8, classId: 255, x: 104, y: 100, name: 'Ormus' })
+    units.push(Object.assign(ormus, { wantsInteract: true }))
+    world.self.gold = 0
+    tick()
+    expect(assists.use).toHaveBeenCalledWith(ormus, expect.any(Number))
+    hudManager.worldPanels.npcMenu = { npcId: 8, submenu: 'talk', options: [{ id: 'talk_quest:5' }, { id: 'cancel' }] }
+    tick(700)
+    expect(hudManager.worldPanels.clickNpcMenuOption).toHaveBeenLastCalledWith('talk_quest:5', undefined)
+    hudManager.worldPanels.npcMenu = null
+    ormus.wantsInteract = true
+    assists.use.mockClear()
+    tick(1400)
+    tick(2100)
+    expect(assists.use).not.toHaveBeenCalledWith(ormus, expect.any(Number))
+  })
+
   it('talks to Jerhyn first when Meshif will not sail yet', async () => {
     const { world, assists, hudManager, units, guide, tick } = setup({ goal: { level: 75, title: 'Kurast Docks' }, hint: 'Talk to Meshif', target: { x: 101, y: 100, label: 'Meshif', unit: { id: 7, kind: 'npc' } } }, 40)
     const [meshif, jerhyn] = [MONSTER_PATH_IDS.indexOf('meshif1'), MONSTER_PATH_IDS.indexOf('jerhyn')]
