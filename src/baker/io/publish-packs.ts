@@ -32,12 +32,13 @@
 
 import { execFileSync } from 'node:child_process'
 import {
-  cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
+  existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
 } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { generateAssetManifest } from './asset-manifest.ts'
+import { copyPrivate } from './private-copy.ts'
 
 /** Where the packs live inside the code repository. */
 const ROOT_DIR = resolve(import.meta.dirname, '..', '..', '..')
@@ -388,9 +389,9 @@ try {
     writeFileSync(join(work, 'README.md'), readme(stats, stamp, remote))
     writeFileSync(join(work, '.gitattributes'), '*.png binary -diff\n*.r8 binary -diff\n*.json text eol=lf\n')
     writeFileSync(join(work, 'asset-manifest.json'), `${JSON.stringify(assetManifest, null, 2)}\n`, 'utf8')
-    cpSync(join(PACKS_DIR, 'index.json'), join(work, 'index.json'))
+    copyPrivate(join(PACKS_DIR, 'index.json'), join(work, 'index.json'))
     if (existsSync(join(PACKS_DIR, 'world-graph.json'))) {
-      cpSync(join(PACKS_DIR, 'world-graph.json'), join(work, 'world-graph.json'))
+      copyPrivate(join(PACKS_DIR, 'world-graph.json'), join(work, 'world-graph.json'))
     }
     git(['add', '-A'], work)
     git([
@@ -418,7 +419,7 @@ try {
     }
 
     for (const path of batch.paths) {
-      cpSync(join(PACKS_DIR, path), join(work, path), { recursive: true })
+      copyPrivate(join(PACKS_DIR, path), join(work, path))
     }
     git(['add', ...batch.paths], work)
     git([

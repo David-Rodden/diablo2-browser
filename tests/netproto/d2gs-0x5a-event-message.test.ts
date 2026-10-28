@@ -75,4 +75,20 @@ describe('S2C 0x5A EventMessages: raw decode (0x6fb5d6b0), client-side formattin
     // Event 0x06 keeps the packet colour.
     expect(zh?.color).toBe(1)
   })
+
+  it('event 0x12 ("Diablo Walks the Earth", 0x6FB2E5E6..0x6FB2E660) starts 4000/10000/4000 ms amp 6 shake and plays sound 0x1220 (#1720)', () => {
+    const walks = decodeD2gsS2cPacket(
+      eventPacket0x5A({ eventType: 0x12, color: 0, arg: 0, subType: 0, name1: '', name2: '' }),
+    )
+    const world = new ClientWorld()
+    world.lang = 'ENG'
+    world.apply(walks, 5_000)
+    expect(world.screenShake.active).toBe(true)
+    expect(world.screenShake.rampUpMs).toBe(4000)
+    expect(world.screenShake.sustainMs).toBe(10000)
+    expect(world.screenShake.rampDownMs).toBe(4000)
+    expect(world.screenShake.amplitude).toBe(6)
+    const sounds = world.drainWorldSoundRequests()
+    expect(sounds.some(s => s.soundId === 0x1220)).toBe(true)
+  })
 })

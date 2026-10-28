@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { CAMPFIRE_SPECS } from '../../src/baker/packers/pack-frontend-ui.ts'
 import {
   CAMPFIRE_ANIM_RATES,
   CAMPFIRE_CLASS_ORDER,
@@ -1154,5 +1155,20 @@ describe('Diablo II v1.13c Front-End & Battle.net Flow State Machine', () => {
     expect(drawCalls.some((c) => (c.img as { id?: string })?.id === 'btn-game.png')).toBe(true)
     const joinSubmitBtn = renderer.getActiveButtons().find((b) => b.id === 'create_game_submit')
     expect(joinSubmitBtn?.label).toBe('JOIN GAME')
+  })
+
+  it('does not load or composite an overlay for Amazon campfire forward-walk (Issue #1739, D2Launch.dll 0x6FA60CA8..0x6FA60D07 & 0x6FA51400..0x6FA514F7)', () => {
+    const amSpec = CAMPFIRE_SPECS.find((c) => c.id === 'am')
+    expect(amSpec).toBeDefined()
+    expect(amSpec!.states).toEqual([
+      { key: 'nu1', base: 'amnu1.dc6', rate: 3 },
+      { key: 'nu2', base: 'amnu2.dc6', rate: 3 },
+      { key: 'nu3', base: 'amnu3.dc6', rate: 2 },
+      { key: 'fw', base: 'amfw.dc6', rate: 1 },
+      { key: 'bw', base: 'ambw.dc6', rate: 1 },
+    ])
+    for (const st of amSpec!.states) {
+      expect(st.overlay).toBeUndefined()
+    }
   })
 })

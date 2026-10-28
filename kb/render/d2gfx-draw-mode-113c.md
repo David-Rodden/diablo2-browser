@@ -98,3 +98,17 @@ GDI blend-type array `0x6F87BB80` = {2,2,2,1,1,0,1,0}: 0–2 alpha, 3/4/6 256×2
   with different `Trans` resolve correctly).
 - Bake targets named after a real row take the row's `Trans` (`missileTargetTrans` throws on drift; `pack-overlays`
   reads overlay.bin `Trans`).
+
+## 6. COF per-layer `transparent` + `drawEffect` → eDrawMode (`D2Client 0x6FB1C886..0x6FB1C998`)
+
+In the composite unit layer draw loop (`D2Client 0x6FB1C7E0..0x6FB1C9C0`), each 9-byte COF layer record (`pCof + 0x1C + i * 9`: `+0x00 nComponent`, `+0x01 bShadow`, `+0x02 bSelectable`, `+0x03 bTransOverride`, `+0x04 nDrawEffect`, `+0x05..+0x08 szWeaponClass`) is queried via two helpers:
+
+- `0x6FB1D780(pCof, nComponent)` (`COF_GetLayerTrans`): scans `pCof + 0x1C` (stride `9`) for `[rec + 0x00] == nComponent` and returns `BYTE [rec + 0x03]` (`bTransOverride`, or `0` if not found).
+- `0x6FB1D690(pCof, nComponent)` (`COF_GetLayerDrawEffect`): scans `pCof + 0x1C` (stride `9`) for `[rec + 0x00] == nComponent` and returns `BYTE [rec + 0x04]` (`nDrawEffect`, or `5` = `NORMAL` if not found).
+
+At `0x6FB1C923..0x6FB1C961`:
+- `outDrawMode` (`[esp+0x3C]`) is initialized to `5` (`NORMAL`), then `0x6FB1DFE0(pUnit, nComponent, &outDrawMode)` checks unit-level overrides (states/ethereal/stealth/boss).
+- When `0x6FB1D780(pCof, nComponent) != 0` (`layer.transparent` is true) and `0x6FB1DFE0` returned `0`, `eDrawMode = 0x6FB1D690(pCof, nComponent)` (`layer.drawEffect`) is passed directly to `D2gfx #10041` (`0x6FB1C998`):
+  - `0 -> 'trans25'`, `1 -> 'trans50'`, `2 -> 'trans75'`, `3 -> 'additive'`, `4 -> 'burn'` (multiply), `5 / 6 / 7 -> 'normal'`.
+- When `0x6FB1D780(pCof, nComponent) == 0` (`layer.transparent` is false), `eDrawMode` uses the unit's default draw mode (`5` or `outDrawMode`).
+

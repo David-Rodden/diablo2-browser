@@ -147,9 +147,24 @@ describe('In-Game Options Menu (Options / Sound / Video / Configure Controls)', 
     hud.handleHudMouseUp(midX, midY, 0)
     expect(hud.worldPanels.soundDraggingSlider).toBe(false)
 
-    // Navigate to row 1 ('MUTE SOUND') and toggle ON
+    // Navigate to row 1 ('MUSIC') and adjust with ArrowLeft
     hud.handleKeyDown({ key: 'ArrowDown' })
     expect(hud.worldPanels.optionsSubmenuSelectedIndex).toBe(1)
+    hud.handleKeyDown({ key: 'ArrowLeft' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.musicVolume).toBeCloseTo(0.75, 2)
+
+    // Navigate to row 2 ('NPC SPEECH') and cycle Audio and Text -> Audio Only -> Text Only
+    hud.handleKeyDown({ key: 'ArrowDown' })
+    expect(hud.worldPanels.optionsSubmenuSelectedIndex).toBe(2)
+    expect(hud.worldPanels.escapeMenuFallbackSettings.npcSpeech).toBe('audioAndText')
+    hud.handleKeyDown({ key: 'Enter' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.npcSpeech).toBe('audioOnly')
+    hud.handleKeyDown({ key: 'ArrowRight' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.npcSpeech).toBe('textOnly')
+
+    // Navigate to row 3 ('MUTE SOUND') and toggle ON
+    hud.handleKeyDown({ key: 'ArrowDown' })
+    expect(hud.worldPanels.optionsSubmenuSelectedIndex).toBe(3)
     hud.handleKeyDown({ key: 'Enter' })
     expect(store.get().audioMuted).toBe(true)
 
@@ -162,13 +177,90 @@ describe('In-Game Options Menu (Options / Sound / Video / Configure Controls)', 
       pentSpinImg: null,
     })
     expect(fillTextCalls.some((c) => c.text.includes('SOUND OPTIONS'))).toBe(true)
+    expect(fillTextCalls.some((c) => c.text.includes('MUSIC'))).toBe(true)
+    expect(fillTextCalls.some((c) => c.text.includes('NPC SPEECH'))).toBe(true)
     expect(fillTextCalls.some((c) => c.text === 'ON')).toBe(true)
 
-    // Navigate to row 2 ('PREVIOUS MENU') and return to 'options'
+    // Navigate to row 4 ('PREVIOUS MENU') and return to 'options'
+    hud.handleKeyDown({ key: 'ArrowDown' })
+    expect(hud.worldPanels.optionsSubmenuSelectedIndex).toBe(4)
+    hud.handleKeyDown({ key: 'Enter' })
+    expect(hud.escapeMenuScreen).toBe('options')
+  })
+
+  it('supports Automap Options submenu (Automap Size, Fade, Center When Cleared, Show Party, Show Names)', () => {
+    const toggled: string[] = []
+    const hud = new HudManager(null, {
+      onToggleAutomapMode: () => toggled.push('size'),
+      onCycleAutomapFade: () => toggled.push('fade'),
+      onResetAutomapPan: () => toggled.push('center'),
+      onToggleAutomapParty: () => toggled.push('party'),
+      onToggleAutomapNames: () => toggled.push('names'),
+    })
+    hud.setLang('en')
+    hud.toggleEscapeMenu()
+    hud.activateEscapeMenuIndex(0) // -> 'options'
+
+    // Select row 2 ('AUTOMAP OPTIONS')
+    hud.handleKeyDown({ key: 'ArrowDown' })
     hud.handleKeyDown({ key: 'ArrowDown' })
     expect(hud.worldPanels.optionsSubmenuSelectedIndex).toBe(2)
     hud.handleKeyDown({ key: 'Enter' })
+    expect(hud.escapeMenuScreen).toBe('automap')
+
+    // Row 0: AUTOMAP SIZE -> Full Screen <-> Mini Map
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapSize).toBe('full')
+    hud.handleKeyDown({ key: 'Enter' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapSize).toBe('mini')
+    expect(toggled).toContain('size')
+
+    // Row 1: FADE -> No -> Center -> Yes
+    hud.handleKeyDown({ key: 'ArrowDown' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapFade).toBe('no')
+    hud.handleKeyDown({ key: 'ArrowRight' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapFade).toBe('center')
+    hud.handleKeyDown({ key: 'ArrowRight' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapFade).toBe('yes')
+    expect(toggled).toContain('fade')
+
+    // Row 2: CENTER WHEN CLEARED -> Yes <-> No
+    hud.handleKeyDown({ key: 'ArrowDown' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapCenter).toBe(true)
+    hud.handleKeyDown({ key: 'Enter' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapCenter).toBe(false)
+    expect(toggled).toContain('center')
+
+    // Row 3: SHOW PARTY -> Yes <-> No
+    hud.handleKeyDown({ key: 'ArrowDown' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapParty).toBe(true)
+    hud.handleKeyDown({ key: 'Enter' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapParty).toBe(false)
+    expect(toggled).toContain('party')
+
+    // Row 4: SHOW NAMES -> Yes <-> No
+    hud.handleKeyDown({ key: 'ArrowDown' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapNames).toBe(true)
+    hud.handleKeyDown({ key: 'Enter' })
+    expect(hud.worldPanels.escapeMenuFallbackSettings.automapNames).toBe(false)
+    expect(toggled).toContain('names')
+
+    // Render Automap Options
+    const { ctx, fillTextCalls } = createMockCanvasContext()
+    hud.worldPanels.drawEscapeMenu(ctx, 800, 600, 100, {
+      escOptionsImg: null,
+      escExitImg: null,
+      escReturnImg: null,
+      pentSpinImg: null,
+    })
+    expect(fillTextCalls.some((c) => c.text.includes('AUTOMAP OPTIONS'))).toBe(true)
+    expect(fillTextCalls.some((c) => c.text.includes('AUTOMAP SIZE'))).toBe(true)
+
+    // Row 5: PREVIOUS MENU -> returns to 'options' at row 2
+    hud.handleKeyDown({ key: 'ArrowDown' })
+    expect(hud.worldPanels.optionsSubmenuSelectedIndex).toBe(5)
+    hud.handleKeyDown({ key: 'Enter' })
     expect(hud.escapeMenuScreen).toBe('options')
+    expect(hud.worldPanels.optionsSubmenuSelectedIndex).toBe(2)
   })
 
   it('synchronizes Video Options (Display Mode, Resolution, Frame Rate) with SettingsStore and Toolbar', () => {
@@ -278,9 +370,10 @@ describe('In-Game Options Menu (Options / Sound / Video / Configure Controls)', 
       },
     })
 
-    // Enter Configure Controls: Escape -> Options -> Row 2 (Configure Controls)
+    // Enter Configure Controls: Escape -> Options -> Row 3 (Configure Controls)
     hud.toggleEscapeMenu()
     hud.activateEscapeMenuIndex(0)
+    hud.handleKeyDown({ key: 'ArrowDown' })
     hud.handleKeyDown({ key: 'ArrowDown' })
     hud.handleKeyDown({ key: 'ArrowDown' })
     hud.handleKeyDown({ key: 'Enter' })

@@ -1684,6 +1684,7 @@ export function drawEscapeMenuImpl(
   if (
     this.escapeMenuScreen === 'options' ||
     this.escapeMenuScreen === 'sound' ||
+    this.escapeMenuScreen === 'automap' ||
     this.escapeMenuScreen === 'video'
   ) {
     drawOptionsSubmenu(this, ctx, hudWidth, hudHeight, nowMs, {

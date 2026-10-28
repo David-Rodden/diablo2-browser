@@ -17,6 +17,7 @@
 
 import {
   BncsCreateAccountError, D2gsS2cFramer, InMemoryPacketTap, createD2OnlineFlow, createWsBridgeResolver,
+  getLocalLobbyProvider,
   type CharCreateSpec, type CharSummary, type ChatEvent, type ClientCommand, type CloseReason, type D2CapRecord,
   type D2OnlineConfig, type D2OnlineFlow, type D2OnlineSessionKind, type D2OnlineSessionLost,
   type D2OnlineSessionLostCause, type D2OnlineState, type EndpointResolver, type GameCreateSpec,
@@ -360,6 +361,7 @@ export class OnlineSession {
   private pendingGameCompletionValue: GameCompletion113c | null = null
   /** Single Player `.d2s` progression writer for the active local game (`null` online / idle). */
   private localProgressionWriter: ((name: string, progression: number) => void) | null = null
+  private localCharacterContext: AttachGameServerOptions['localCharacter'] | null = null
   /** The adapter `leaveGame` is closing on purpose; its `onClose` is not a lost session. */
   private leavingAdapter: GameServerAdapter | null = null
   private gamesValue: readonly GameListEntry[] = []
@@ -464,7 +466,7 @@ export class OnlineSession {
     const weatherRng = options.weatherRng ?? new D2Rng((Math.random() * 0x1_0000_0000) >>> 0, 0x5eed)
     this.weather = new WeatherController({
       rng: weatherRng,
-      thunder: () => this.audioRuntime.triggerThunder(),
+      thunder: () => this.audioRuntime.triggerThunder(weatherRng),
     })
     // NOT 1.13c: the weather-override plugin's setting ('off' = vanilla weather).
     this.weather.setOverride(currentSettings.weatherOverride)
@@ -485,6 +487,25 @@ export class OnlineSession {
           muted: () => this.settingsStore.get().audioMuted,
         },
       })
+    this.audioRuntime.setAreaSpeechContextProvider(() => {
+      const selfId = this.world.selfId || 1
+      const selfUnit = this.world.getUnit('player', selfId)
+      const charClass =
+        selfUnit && selfUnit.classId >= 0 && selfUnit.classId <= 6
+          ? selfUnit.classId
+          : (this.world.self.charClass ?? 0)
+      return {
+        charClass,
+        unitId: selfId,
+        x: selfUnit?.x ?? this.world.self.x,
+        y: selfUnit?.y ?? this.world.self.y,
+        questAvailability: this.world.gameQuestAvailability,
+        hasQuestAvailability: this.world.hasGameQuestAvailability,
+        playerWords: this.world.quests,
+        gameWords: this.world.gameQuests,
+        statusBytes: this.world.questStatusBytes,
+      }
+    })
 
     this.world.setNearRoomObjectFinder((subX, subY, classId) =>
       this.findObjectNearSubTile(subX, subY, classId),
@@ -545,6 +566,8 @@ export class OnlineSession {
             audioMuted: s.audioMuted,
             viewport: s.viewport,
             worldRenderFps: s.worldRenderFps,
+            gamma: s.gamma,
+            contrast: s.contrast,
             keyBindings: s.keyBindings,
           }
         },
@@ -1121,11 +1144,50 @@ export class OnlineSession {
     ) {
       await (this.mapService as { ensureLoaded: () => Promise<unknown> }).ensureLoaded()
     }
+    const effectiveSpec: GameCreateSpec | undefined =
+      request.mode === 'create'
+        ? this.persistedPlayersCount !== null &&
+          this.persistedPlayersCount >= 1 &&
+          this.persistedPlayersCount <= 8 &&
+          request.spec.playersX === undefined
+          ? { ...request.spec, playersX: this.persistedPlayersCount }
+          : request.spec
+        : undefined
+    if (effectiveSpec?.playersX !== undefined) {
+      getLocalLobbyProvider()?.setPersistedPlayersX?.(effectiveSpec.playersX)
+    }
+    if (!this.flow && this.localCharacterContext) {
+      const localLobby = getLocalLobbyProvider()
+      if (localLobby) {
+        const charName =
+          this.selectedCharValue || this.localCharacterContext.selectedName || this.world.self.name
+        const targetGameName = request.mode === 'create' ? effectiveSpec!.name : request.name
+        const adapter = await localLobby.enterGame({
+          mode: request.mode,
+          charName,
+          gameName: targetGameName,
+          name: targetGameName,
+          difficulty: effectiveSpec?.difficulty ?? this.world.difficulty,
+          playersX: effectiveSpec?.playersX ?? this.persistedPlayersCount ?? undefined,
+          spec: effectiveSpec,
+        })
+        const refreshedChars = await localLobby.listCharacters()
+        const nextLocalCtx: NonNullable<AttachGameServerOptions['localCharacter']> = {
+          characters: refreshedChars.length > 0 ? refreshedChars : this.localCharacterContext.characters,
+          selectedName: charName,
+          writeProgression: this.localCharacterContext.writeProgression,
+        }
+        this.activeGameNameValue = targetGameName
+        this.attachGameServer(adapter, { localCharacter: nextLocalCtx })
+        this.emitState()
+        return adapter
+      }
+    }
     return await this.lobbyOp('enterGame', 'mcp', async (flow) => {
       await this.ensureMcpCharLoggedIn(flow)
       const charName = this.selectedCharValue || this.world.self.name
       const host = this.loginHostValue || this.defaultHost
-      const targetGameName = request.mode === 'create' ? request.spec.name : request.name
+      const targetGameName = request.mode === 'create' ? effectiveSpec!.name : request.name
       if (charName && this.leaseStorage) {
         const conflict = findConflictingCharacterLease(
           this.leaseStorage,
@@ -1146,8 +1208,8 @@ export class OnlineSession {
       try {
         let adapter: GameServerAdapter
         if (request.mode === 'create') {
-          await flow.createGame(request.spec)
-          adapter = await flow.joinGame(request.spec.name, request.spec.password ?? '')
+          await flow.createGame(effectiveSpec!)
+          adapter = await flow.joinGame(effectiveSpec!.name, effectiveSpec!.password ?? '')
         } else {
           adapter = await flow.joinGame(request.name, request.password ?? '')
         }
@@ -1195,6 +1257,10 @@ export class OnlineSession {
       this.charactersValue = [...local.characters]
       this.selectedCharValue = selected.name
       this.localProgressionWriter = local.writeProgression
+      this.localCharacterContext = local
+      if (!this.activeGameNameValue) {
+        this.activeGameNameValue = `${selected.name}1`
+      }
       this.world.self.name = selected.name
       this.world.self.charClass = selected.charClass
     } else if (!this.flow && !reattach) {
@@ -1360,16 +1426,6 @@ export class OnlineSession {
         } catch {
           // Ignore close errors on leave
         }
-        if (!flow) {
-          const savedName = this.world.self.name
-          const savedClass = this.world.self.charClass
-          this.world.reset()
-          this.world.self.name = savedName
-          this.world.self.charClass = savedClass
-          this.predictor.setPosition(0, 0)
-          this.interpolator.clear()
-          this.knownAreaIds.clear()
-        }
       }
     } finally {
       if (this.leavingAdapter === adapter) this.leavingAdapter = null
@@ -1386,10 +1442,40 @@ export class OnlineSession {
       afterGameClosedError = err
     }
     if (!flow) this.localProgressionWriter = null
+    this.clearActiveGameWorldState()
     // `leaveToLobby` reports a BNCS/MCP loss deferred during the game; that already ended the session.
     if (flow && this.sessionLostFor(flow)) return
     this.setPhase(flow ? 'lobby' : 'idle')
     if (afterGameClosedError !== null) throw afterGameClosedError
+  }
+
+  /**
+   * Release all in-game units, ground items, missiles, motion states, collision caches, and HUD
+   * world overlays when exiting a game or losing the session, while preserving selected character
+   * identity (`name`, `charClass`, `difficulty`) for lobby/victory screens.
+   */
+  private clearActiveGameWorldState(): void {
+    const savedName = this.world.self.name
+    const savedClass = this.world.self.charClass
+    const savedDifficulty = this.world.difficulty
+    this.world.reset()
+    this.world.self.name = savedName
+    this.world.self.charClass = savedClass
+    this.world.difficulty = savedDifficulty
+    this.predictor.setPosition(0, 0)
+    this.interpolator.clear()
+    this.knownAreaIds.clear()
+    this.cachedCollisionView = null
+    this.cachedCollisionViewAreaId = -1
+    this.cachedCollisionViewSubX = Number.NaN
+    this.cachedCollisionViewSubY = Number.NaN
+    this.cachedCollisionRevealedAreas = null
+    this.prefetchedGateForAreaId = -1
+    this.hudManager.groundItemLabelBoxes = []
+    this.hudManager.groundItemBeams = []
+    this.hudManager.hoveredNpcLabel = null
+    this.hudManager.overheadSpeechBubbles = []
+    this.hudManager.targetMonster = null
   }
 
   /**
@@ -1465,6 +1551,9 @@ export class OnlineSession {
       }
     }
     this.pendingFlowClose = this.closeFlowQuietly()
+    this.hudModel.closeAllPanels()
+    this.hudManager.closeAllPanels()
+    this.clearActiveGameWorldState()
 
     this.disconnectReasonValue = event.reason
     this.setPhase('disconnected')
@@ -1560,20 +1649,50 @@ export class OnlineSession {
       nowMs - this.lastResyncNetworkAtMs >= 1000
     ) {
       this.lastResyncNetworkAtMs = nowMs
+      // 1.13c D2Client.dll 0x6FADB1E0..0x6FADB240 (Issue #1712):
+      // C2S 0x4B RequestEntityUpdate is NEVER sent for the local player (`cmp [0x6FBCBBFC], esi ; je` @ 0x6FADB1EC);
+      // it is only sent for non-local units (e.g. non-local merc or units with unit+0xC4 bit 0x00800000 & unit+0xC8 bit 0x20).
       const selfUnitId = this.world.self.unitId || this.world.selfId || 0
-      if (selfUnitId > 0) {
-        this.dispatchCommand(
-          { type: 'RequestEntityUpdate', unitType: 0, unitId: selfUnitId },
-          nowMs,
-        )
-        sentNetworkResync = true
-      }
+      const sentKeys = new Set<string>()
       const mercUnitId = this.world.merc?.mercId || this.world.self.mercId || 0
       if (mercUnitId > 0 && !this.world.merc?.isDead) {
         this.dispatchCommand(
           { type: 'RequestEntityUpdate', unitType: 1, unitId: mercUnitId },
           nowMs,
         )
+        sentKeys.add(`1:${mercUnitId}`)
+        sentNetworkResync = true
+      }
+      for (const u of this.world.units.values()) {
+        if (u.unitType === 'player' && u.id === selfUnitId) {
+          continue
+        }
+        const uAny = u as { flags?: number; flagsEx?: number }
+        if (((uAny.flags ?? 0) & 0x00800000) !== 0 && ((uAny.flagsEx ?? 0) & 0x00000020) !== 0) {
+          uAny.flags = (uAny.flags! & ~0x00800000) >>> 0
+          uAny.flagsEx = (uAny.flagsEx! & ~0x00000020) >>> 0
+          const uTypeId =
+            u.unitType === 'player'
+              ? 0
+              : u.unitType === 'monster'
+                ? 1
+                : u.unitType === 'object'
+                  ? 2
+                  : u.unitType === 'missile'
+                    ? 3
+                    : u.unitType === 'item'
+                      ? 4
+                      : 5
+          const key = `${uTypeId}:${u.id}`
+          if (!sentKeys.has(key)) {
+            this.dispatchCommand(
+              { type: 'RequestEntityUpdate', unitType: uTypeId, unitId: u.id },
+              nowMs,
+            )
+            sentKeys.add(key)
+            sentNetworkResync = true
+          }
+        }
       }
     }
 

@@ -290,6 +290,14 @@ export function getReadyAvatarComposite(
 }
 
 /**
+ * Reset the char-select class retention filter so all 7 roster classes can
+ * composite freely when returning to `char_select`.
+ */
+export function allowAllAvatarComposites(): void {
+  retainedClassToken = null
+}
+
+/**
  * Drop the other six classes' TN canvases and layer-pack compositors once the
  * player has entered the game (#1317). Only the selected hero needs to stay
  * warm; the rest re-stream if the player returns to character select.

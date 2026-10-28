@@ -1,11 +1,14 @@
 import type { WorldPanelsHud } from '../world-panels.ts'
-import { D2FontRenderer } from '../font.ts'
+import { D2FontRenderer, type D2FontName } from '../font.ts'
 import { lookupTbl, requireTbl, type TblLang } from '../../i18n/lang.ts'
 import { type TownNpcServiceDescriptor, getTownNpcDescriptorByName, getLocalizedNpcName, getLocalizedNpcGreetings, getLocalizedNpcGossip, resolveNpcDialogueTblText } from '../../../common/units/npc-table.ts'
 import { CANONICAL_NPC_MSG_ID_TO_TBL_KEY, isNpcIntroMessageId, resolveQuestTitleKeyForMsgId } from '../../../common/data/canonical-npc-dialog-table.ts'
 import { CANONICAL_QUEST_TBL_STRINGS, CANONICAL_QUESTS_BY_ACT } from '../../../common/data/canonical-quest-data.ts'
 import { NPC_MENU_HEADER_STEP_Y, NPC_MENU_OPTION_STEP_Y, NPC_MENU_PAD_W, NPC_MENU_PAD_H, NPC_MENU_VIEWPORT_MIN_X, NPC_MENU_VIEWPORT_MIN_Y, NPC_MENU_VIEWPORT_BOTTOM_BAR_H, NPC_MENU_HIT_PAD_X, NPC_MENU_HIT_TOP_OFFSET, NPC_MENU_HIT_BOTTOM_OFFSET, STONE_BOX_BG_FILL, NPC_SPEECH_BOX_W, NPC_SPEECH_BOX_H, NPC_SPEECH_MIN_X, NPC_SPEECH_MIN_Y, NPC_SPEECH_BOTTOM_PAD_Y, NPC_SPEECH_LEADING_BLANK_LINES, withNpcSpeechLeadLines, computeNpcMenuAnchor } from './panel-layout-constants.ts'
 import {
+  doesNpcOwnGossipStringId113c,
+  doesNpcOwnIntroStringId113c,
+  isForeignNpcTalkStringId113c,
   resolveNpcGossipStringId113c,
   resolveNpcGossipTblKey113c,
   resolveNpcGreetingSoundId113c,
@@ -124,6 +127,7 @@ export function buildNpcTalkSubmenuOptions(
       if (!qm || !(qm.stringId > 0)) continue
       if (qm.menu !== undefined && qm.menu !== 0 && qm.menu !== 1 && qm.menu !== 2) continue
       if (isNpcIntroMessageId(qm.stringId)) continue
+      if (isForeignNpcTalkStringId113c(descriptor.hcIdx, qm.stringId, context.act ?? descriptor.actIndex)) continue
       if (seenStringIds.has(qm.stringId)) continue
       const titleKey = resolveQuestTitleKeyForMsgId(qm.stringId)
       if (qm.menu !== undefined && titleKey === undefined && !qm.label && !qm.labelZh && !qm.labelEn) continue
@@ -714,7 +718,7 @@ export function wrapSpeechText(
   font: Pick<D2FontRenderer, 'measureText'> | null | undefined,
   text: string,
   maxW: number,
-  fontName: 'fontformal12' | 'font8' = 'fontformal12',
+  fontName: D2FontName = 'fontformal12',
 ): string[] {
   const trimmedText = text.replace(/(?:\r?\n)+$/, '')
   const cleanedText = /\p{Script=Han}/u.test(trimmedText) ? trimmedText : trimmedText.replace(/([^\r\n])\r?\n(?=[^\r\n])/g, '$1 ')
@@ -847,12 +851,25 @@ export function openNpcSpeechImpl(
   this._speechOpenedDuringAction = true
   const effectiveAct = this._npcMenu?.context?.act ?? descriptor.actIndex
   const effectivePlayerClass = this._npcMenu?.context?.playerClass
-  const gossipIndex = topic === 'gossip' ? (this._npcGossipCursor.get(descriptor.hcIdx) ?? 0) : undefined
+  const validCallerStringId =
+    stringId !== undefined &&
+    stringId >= 0 &&
+    !isForeignNpcTalkStringId113c(descriptor.hcIdx, stringId, effectiveAct) &&
+    (topic !== 'intro' || doesNpcOwnIntroStringId113c(descriptor.hcIdx, stringId, effectiveAct)) &&
+    (topic !== 'gossip' || doesNpcOwnGossipStringId113c(descriptor.hcIdx, stringId, effectiveAct))
+      ? stringId
+      : undefined
+  const effectiveTopic: 'intro' | 'gossip' | 'quest' =
+    topic === 'quest' && validCallerStringId === undefined && textOverride === undefined
+      ? 'intro'
+      : topic
+  const gossipIndex =
+    effectiveTopic === 'gossip' ? (this._npcGossipCursor.get(descriptor.hcIdx) ?? 0) : undefined
   const effectiveStringId =
-    stringId ??
-    (topic === 'intro'
+    validCallerStringId ??
+    (effectiveTopic === 'intro'
       ? resolveNpcIntroStringId113c(descriptor.hcIdx, effectiveAct, effectivePlayerClass)
-      : topic === 'gossip'
+      : effectiveTopic === 'gossip'
         ? resolveNpcGossipStringId113c(descriptor.hcIdx, {
             act: effectiveAct,
             playerClass: effectivePlayerClass,
@@ -860,11 +877,11 @@ export function openNpcSpeechImpl(
           })
         : undefined)
   const introTblKey =
-    topic === 'intro'
-      ? stringId !== undefined &&
-        stringId > 0 &&
-        !(stringId === 1 && descriptor.hcIdx === 155 && effectivePlayerClass !== 3)
-        ? CANONICAL_NPC_MSG_ID_TO_TBL_KEY[stringId]
+    effectiveTopic === 'intro'
+      ? validCallerStringId !== undefined &&
+        validCallerStringId > 0 &&
+        !(validCallerStringId === 1 && descriptor.hcIdx === 155 && effectivePlayerClass !== 3)
+        ? CANONICAL_NPC_MSG_ID_TO_TBL_KEY[validCallerStringId]
         : resolveNpcIntroTblKey113c(
             descriptor.hcIdx,
             effectiveAct,
@@ -873,26 +890,35 @@ export function openNpcSpeechImpl(
           )
       : undefined
   const gossipTblKey =
-    topic === 'gossip'
-      ? resolveNpcGossipTblKey113c(descriptor.hcIdx, {
+    effectiveTopic === 'gossip'
+      ? (validCallerStringId !== undefined && validCallerStringId > 0
+          ? CANONICAL_NPC_MSG_ID_TO_TBL_KEY[validCallerStringId]
+          : undefined) ??
+        resolveNpcGossipTblKey113c(descriptor.hcIdx, {
           act: effectiveAct,
           playerClass: effectivePlayerClass,
           gossipIndex,
           fallbackNpcTxtKey: descriptor.npcTxtKey,
         })
       : undefined
+  const sanitizedTextOverride =
+    stringId !== undefined && validCallerStringId === undefined ? undefined : textOverride
   const resolvedOverride =
-    textOverride ??
-    (topic === 'quest' && stringId !== undefined && stringId > 0
-      ? resolveNpcDialogueTblText(descriptor, { topic: 'quest', questStringId: stringId, lang: this.lang })
-      : topic === 'intro' && introTblKey
+    sanitizedTextOverride ??
+    (effectiveTopic === 'quest' && validCallerStringId !== undefined && validCallerStringId > 0
+      ? resolveNpcDialogueTblText(descriptor, {
+          topic: 'quest',
+          questStringId: validCallerStringId,
+          lang: this.lang,
+        })
+      : effectiveTopic === 'intro' && introTblKey
         ? resolveNpcDialogueTblText(introTblKey, { lang: this.lang })
-        : topic === 'gossip' && gossipTblKey
+        : effectiveTopic === 'gossip' && gossipTblKey
           ? resolveNpcDialogueTblText(gossipTblKey, { lang: this.lang })
           : undefined)
   const bodyLines = resolvedOverride
     ? resolvedOverride.split('\n')
-    : topic === 'gossip'
+    : effectiveTopic === 'gossip'
       ? getLocalizedNpcGossip(descriptor, this.lang, gossipIndex ?? 0)
       : getLocalizedNpcGreetings(descriptor, this.lang)
   // Leading blank lines give the auto-scroll headroom so line 0 is not pushed past the
@@ -913,7 +939,7 @@ export function openNpcSpeechImpl(
     npcName: title,
     text,
     lines,
-    topic,
+    topic: effectiveTopic,
     stringId: effectiveStringId,
     gossipIndex,
     scrollY: 0,
@@ -929,7 +955,7 @@ export function openNpcSpeechImpl(
     stringId: effectiveStringId,
     hcIdx: descriptor.hcIdx,
     npcTxtKey: descriptor.npcTxtKey,
-    topic,
+    topic: effectiveTopic,
     act: effectiveAct,
     playerClass: effectivePlayerClass,
     gossipIndex,
@@ -1694,7 +1720,8 @@ export function drawNpcMenuImpl(
     // Offset baseline by 13px from lineTop so Line 0 renders at [textY + 1, textY + 15] inside clip rect.
     const baselineOffset = 13
 
-    const wrappedLines = wrapSpeechText(font, bodyText, textW, 'fontformal12')
+    // D2Client.dll 0x6FB2BB75 / 0x6FB2C6DB / 0x6FB2D2BE / 0x6FB2D526: SetFont(8) = FontFormal11
+    const wrappedLines = wrapSpeechText(font, bodyText, textW, 'fontformal11')
     const totalTextH = wrappedLines.length * lineH
     const maxScrollY = Math.max(0, totalTextH - textH)
 
@@ -1731,7 +1758,7 @@ export function drawNpcMenuImpl(
       // Only draw lines whose glyphs fit inside the inner box without being sliced at top/bottom borders
       if (lineTop >= textY - 3 && lineTop + lineH <= textY + textH + 2) {
         font.drawText(ctx, wrappedLines[i]!, textX, lineTop + baselineOffset, {
-          font: 'fontformal12',
+          font: 'fontformal11',
           color: 'white',
         })
       }

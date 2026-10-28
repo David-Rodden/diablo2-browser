@@ -35,7 +35,7 @@ import { cofLayerOrder, decodeCof } from '../src/common/formats/cof.ts'
 import type { CofFile } from '../src/common/formats/cof.ts'
 import { decodeDcc } from '../src/common/formats/dcc.ts'
 import type { DccFile } from '../src/common/formats/dcc.ts'
-import { decodePal } from '../src/common/formats/pal.ts'
+import { decodePalDat } from '../src/common/formats/pal.ts'
 import type { Palette } from '../src/common/formats/pal.ts'
 import type { SpriteFrame } from '../src/common/formats/sprite.ts'
 
@@ -650,7 +650,7 @@ if (data !== undefined) {
   const palFile = data.find('data\\global\\palette\\act1\\pal.dat')
   if (palFile !== undefined) {
     try {
-      palette = decodePal(await data.read(palFile))
+      palette = decodePalDat(await data.read(palFile))
     } catch (err) {
       console.log(`note: act 1 palette unreadable: ${messageOf(err)}`)
     }

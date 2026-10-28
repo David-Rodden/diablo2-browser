@@ -32,7 +32,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { decodeDt1, type Dt1 } from '../src/common/formats/dt1.ts'
-import { decodePal } from '../src/common/formats/pal.ts'
+import { decodePalDat } from '../src/common/formats/pal.ts'
 import { cell, parseTable } from '../src/common/world/acts.ts'
 import { buildIsoMapScene, type IsoDraw, type IsoMapScene } from '../src/common/world/d2map.ts'
 import { DRLG_GetActNoFromLevelId } from '../src/common/drlg/drlg-drlg.ts'
@@ -391,7 +391,7 @@ async function main(): Promise<void> {
   for (const actNo of acts) {
     const act1Based = actNo + 1
     const data: DrlgMpqData = await loadDrlgMpqData(member => archives.read(member), act1Based)
-    const palette = decodePal(await archives.read(`data\\global\\palette\\act${String(act1Based)}\\pal.dat`))
+    const palette = decodePalDat(await archives.read(`data\\global\\palette\\act${String(act1Based)}\\pal.dat`))
     const actLevels = outdoorLevelIds(data.tables, actNo)
     const actTargetLevels = targetLevels.filter(id => DRLG_GetActNoFromLevelId(id) === actNo)
     const gameSeed = args.seed ?? actGameSeed(act1Based, args.copy)

@@ -394,7 +394,8 @@ describe('Issue #1489: Act 2 Mercenary Holy Freeze & AuraScanner Full Sweep', ()
     expect(STATE_COLOR_SHIFTS[44]).toEqual({
       stateId: 44,
       priority: 100,
-      tintColor: [150, 215, 255],
+      colorShift: 108,
+      lightRgb: [150, 215, 255],
       paletteRow: 1,
     })
     expect(monUnit.overlays.some((o) => o.token === 'ice_explode' && o.castForStateId === 44)).toBe(true)

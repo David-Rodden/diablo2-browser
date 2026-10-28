@@ -1723,18 +1723,33 @@ a.d2-toolbar__btn:active {
   box-shadow: 0 0 8px rgba(231, 76, 60, 0.85);
 }
 .d2-multibox-tab__hp {
-  width: 24px;
-  height: 4px;
-  background: #221010;
-  border: 1px solid #552828;
-  border-radius: 2px;
+  display: block;
+  flex-shrink: 0;
+  width: 28px;
+  height: 6px;
+  box-sizing: border-box;
+  background: #1a0909;
+  border: 1px solid #5c2626;
+  border-radius: 3px;
   overflow: hidden;
-  display: inline-block;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+.d2-multibox-tab__hp[hidden],
+.d2-multibox-tab__close[hidden] {
+  display: none !important;
 }
 .d2-multibox-tab__hp-fill {
+  display: block;
   height: 100%;
-  background: #c0392b;
+  background: linear-gradient(180deg, #ef5350 0%, #c62828 55%, #8e1515 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 190, 190, 0.35);
   transition: width 120ms linear;
+}
+.d2-multibox-tab__hp-fill--low {
+  background: linear-gradient(180deg, #ff7058 0%, #e53935 55%, #a81412 100%);
+}
+.d2-multibox-tab__hp-fill--poison {
+  background: linear-gradient(180deg, #52d669 0%, #27ae60 55%, #166938 100%);
 }
 .d2-multibox-tab__speaker,
 .d2-multibox-tab__close {

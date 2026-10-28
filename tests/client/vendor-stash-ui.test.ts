@@ -803,9 +803,9 @@ describe('M3B: NPC dialogue, travel, mercenary, party, trade, and quest reward p
 
 describe('NPC quest chain & overhead npcalert indicator (1.13c parity)', () => {
   it('decodes authentic 1.13c S2C 0x27 NPCInfo 4-byte message slots (nMenu at +0, wStringId at +2)', () => {
-    // Capture 06 Akara (unitId=5) packet: slot0=(menu=0, stringId=64), slot1=(menu=0, stringId=62), slot2..7=(menu=3, stringId=0)
+    // Capture 06 Akara (unitId=5) packet: count=2, slot0=(menu=0, stringId=64), slot1=(menu=0, stringId=62), slot2..7=(menu=3, stringId=0)
     const hex =
-      '27010500000001000000400000003e00030000000300000003000000030000000300000003000000'
+      '27010500000002000000400000003e00030000000300000003000000030000000300000003000000'
     const pkt = Uint8Array.from(hex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)))
     const decoded = decode0x27NpcInfo(pkt)
     expect(decoded.type).toBe('Npc')
@@ -1002,12 +1002,61 @@ describe('NPC quest chain & overhead npcalert indicator (1.13c parity)', () => {
       { tick: 5 },
     )
     const alertOv = drawablesBefore.overlayDrawables.find((o) => o.ownerUnitId === AKARA_ID)
+    const akaraUnitDrawable = drawablesBefore.unitDrawables.find((u) => u.id === AKARA_ID)!
     expect(alertOv).toBeDefined()
     expect(alertOv?.overlayId).toBe(72)
     expect(alertOv?.token).toBe('npcalert')
     expect(alertOv?.totalFrames).toBe(16)
-    expect(alertOv?.frame).toBe(5)
+    // Overlay.txt npcalert (#72): AnimRate = 9 -> floor((5 * 9) / 16) = 2; Xoffset = -5, Yoffset = -7 + Height[1](0) = -7 (#1717)
+    expect(alertOv?.frame).toBe(2)
+    expect(alertOv?.xOffset).toBe(-5)
+    expect(alertOv?.worldX).toBe(akaraUnitDrawable.worldX - 5)
+    expect(alertOv?.worldY).toBe(akaraUnitDrawable.worldY - 7)
     expect(alertOv?.blendMode).toBe('additive')
+
+    // LoopWaitTime = 7000 ms (175 ticks at 25 Hz) after 29-tick 16-frame pass (0x6FB1C1FF / 0x6FB1C321 / 0x6FB1B062):
+    // hidden at tick 50, restarts at frame 0 on tick 204 (29 + 175).
+    const drawablesDuringWait = buildSceneDrawables(
+      [
+        {
+          id: akaraUnit.id,
+          kind: 'monster',
+          classId: akaraUnit.classId,
+          x: akaraUnit.x,
+          y: akaraUnit.y,
+          mode: akaraUnit.mode,
+          direction: akaraUnit.direction,
+          hpRatio: 1,
+          isCorpse: false,
+          isHovered: false,
+          isNpc: true,
+          wantsInteract: akaraUnit.wantsInteract,
+        },
+      ],
+      { tick: 50 },
+    )
+    expect(drawablesDuringWait.overlayDrawables.find((o) => o.ownerUnitId === AKARA_ID)).toBeUndefined()
+
+    const drawablesNextCycle = buildSceneDrawables(
+      [
+        {
+          id: akaraUnit.id,
+          kind: 'monster',
+          classId: akaraUnit.classId,
+          x: akaraUnit.x,
+          y: akaraUnit.y,
+          mode: akaraUnit.mode,
+          direction: akaraUnit.direction,
+          hpRatio: 1,
+          isCorpse: false,
+          isHovered: false,
+          isNpc: true,
+          wantsInteract: akaraUnit.wantsInteract,
+        },
+      ],
+      { tick: 204 },
+    )
+    expect(drawablesNextCycle.overlayDrawables.find((o) => o.ownerUnitId === AKARA_ID)?.frame).toBe(0)
 
     // Interacting with Akara clears wantsInteract, and periodic 0x8A while interacting is ignored (D2Client 0x6faf7970)
     s.world.noteOutgoingCommand({ type: 'NpcInit', target: { unitType: MONSTER, id: AKARA_ID } })

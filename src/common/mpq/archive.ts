@@ -23,6 +23,8 @@ import type { MpqSource } from './source.ts'
 const SECTOR_SIZE_BASE = 512
 /** A hash-table entry's `blockIndex` sentinel: the slot never held a file. */
 const BLOCK_INDEX_FREE = 0xffffffff
+/** A hash-table entry's `blockIndex` sentinel: the slot held a deleted file (`Storm.dll` `0xFFFFFFFE`). */
+const BLOCK_INDEX_DELETED = 0xfffffffe
 
 /** `MPQ_FILE_IMPLODE`: PKWARE-imploded file. */
 const FILE_IMPLODE = 0x00000100
@@ -234,9 +236,10 @@ export class MpqArchive {
       const locale = this.hashTable[base + 2]! & 0xffff
       const blockIndex = this.hashTable[base + 3]!
       if (blockIndex === BLOCK_INDEX_FREE) return fallback
+      if (blockIndex === BLOCK_INDEX_DELETED) continue
       if (entryHashA !== hashA || entryHashB !== hashB) continue
       const file = this.fileAt(blockIndex, target, locale)
-      if (file === undefined) return fallback
+      if (file === undefined) continue
       // Neutral locale wins when an archive carries localized duplicates.
       if (locale === 0) return file
       fallback ??= file

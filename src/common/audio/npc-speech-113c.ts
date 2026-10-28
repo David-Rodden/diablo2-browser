@@ -5,7 +5,11 @@
 // - 0x6fb2d200 / 0x6fb2d3c0 -> 0x6fb8f398..0x6fb90e98 (864-entry scrolling speech wStringId -> soundId table)
 
 import { isUnshippedSoundId113c } from './speech-index-113c.ts'
-import { CANONICAL_NPC_MSG_ID_TO_TBL_KEY } from '../data/canonical-npc-dialog-table.ts'
+import {
+  CANONICAL_NPC_MSG_ID_TO_TBL_KEY,
+  CANONICAL_QUEST_SPEECH_MSG_TO_TITLE_KEY,
+  resolveNpcIntroMsgIdByTblKey,
+} from '../data/canonical-npc-dialog-table.ts'
 import { NPC_CANONICAL_GOSSIP_KEYS, NPC_CANONICAL_INTRO_KEYS, getTownNpcDescriptorByHcIdx, getTownNpcDescriptorByName } from '../units/npc-table.ts'
 
 export interface NpcGreetingRow113c {
@@ -2022,6 +2026,100 @@ export function resolveNpcGossipTblKey113c(
 }
 
 /**
+ * Returns `true` when `stringId` belongs to `hcIdx`'s own 1.13c Introduction/Greeting slots
+ * (`D2Client.dll 0x6faf9130 -> 0x6fba37a8` or `NPC_CANONICAL_INTRO_KEYS`).
+ */
+export function doesNpcOwnIntroStringId113c(
+  hcIdx: number,
+  stringId: number,
+  act?: number,
+): boolean {
+  if (hcIdx === 155 && stringId === 0) return true
+  if (stringId <= 0) return false
+  for (const cls of [undefined, 0, 1, 2, 3, 4, 5, 6] as const) {
+    if (resolveNpcIntroStringId113c(hcIdx, act, cls) === stringId) {
+      return true
+    }
+  }
+  const desc = getTownNpcDescriptorByHcIdx(hcIdx)
+  if (desc) {
+    const lookupKey = desc.npcTxtKey.toLowerCase()
+    const canonicalKey =
+      (desc.greetingKey && desc.greetingKey !== desc.npcTxtKey ? desc.greetingKey : undefined) ??
+      NPC_CANONICAL_INTRO_KEYS[lookupKey]
+    if (canonicalKey && resolveNpcIntroMsgIdByTblKey(canonicalKey) === stringId) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Returns `true` when `stringId` belongs to `hcIdx`'s own 1.13c Gossip slots
+ * (`D2Client.dll 0x6faf91e0 -> 0x6fba37a8` or `NPC_CANONICAL_GOSSIP_KEYS`).
+ */
+export function doesNpcOwnGossipStringId113c(
+  hcIdx: number,
+  stringId: number,
+  act?: number,
+): boolean {
+  if (stringId <= 0) return false
+  const matchingRows =
+    act !== undefined
+      ? NPC_TALK_TABLE_113C.filter((r) => r.hcIdx === hcIdx && r.act === act)
+      : NPC_TALK_TABLE_113C.filter((r) => r.hcIdx === hcIdx)
+  const rows = matchingRows.length > 0 ? matchingRows : NPC_TALK_TABLE_113C.filter((r) => r.hcIdx === hcIdx)
+  for (const row of rows) {
+    if (row.entries.slice(2).some((e) => e.stringId === stringId)) {
+      return true
+    }
+  }
+  const desc = getTownNpcDescriptorByHcIdx(hcIdx)
+  if (desc) {
+    const key = CANONICAL_NPC_MSG_ID_TO_TBL_KEY[stringId]
+    const list = NPC_CANONICAL_GOSSIP_KEYS[desc.npcTxtKey.toLowerCase()]
+    if (key && list?.includes(key)) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Returns `true` when `stringId` belongs to `hcIdx`'s own 1.13c Intro or Gossip dialog block.
+ */
+export function doesNpcOwnDialogStringId113c(
+  hcIdx: number,
+  stringId: number,
+  act?: number,
+): boolean {
+  return (
+    doesNpcOwnIntroStringId113c(hcIdx, stringId, act) ||
+    doesNpcOwnGossipStringId113c(hcIdx, stringId, act)
+  )
+}
+
+/**
+ * Returns `true` when `stringId` is a non-quest NPC Intro/Gossip line belonging to a DIFFERENT
+ * NPC than `hcIdx` (e.g. `512` `AlkorGossip10` or `527` `OrmusGossip11` passed for Anya `512`/`527`).
+ */
+export function isForeignNpcTalkStringId113c(
+  hcIdx: number,
+  stringId: number,
+  act?: number,
+): boolean {
+  if (stringId <= 0) return false
+  if (CANONICAL_QUEST_SPEECH_MSG_TO_TITLE_KEY[stringId]) return false
+  const key = CANONICAL_NPC_MSG_ID_TO_TBL_KEY[stringId]
+  if (!key || /^A[1-5]Q[1-6]/i.test(key)) return false
+  if (doesNpcOwnDialogStringId113c(hcIdx, stringId, act)) return false
+  return (
+    /Intro|Gossip|Greet/i.test(key) ||
+    NPC_TALK_TABLE_113C.some((r) => r.entries.some((e) => e.stringId === stringId))
+  )
+}
+
+/**
  * D2Client.dll `0x6fb2d3c0` (`NPC_OpenScrollingSpeech`) & `0x6fb2d200` (`Object_OpenScrollingSpeech`):
  * Resolves the `Sounds.txt` speech `soundId` (`3488..4655`, `Stream = 1`) from `0x6fb8f398`
  * for any NPC or standalone scrolling speech box.
@@ -2041,8 +2139,19 @@ export function resolveNpcSpeechSoundId113c(options: {
     options.hcIdx ??
     (options.npcTxtKey ? getTownNpcDescriptorByName(options.npcTxtKey)?.hcIdx : undefined)
 
-  // 1. Explicit stringId lookup against 0x6fb8f398 (864 entries)
-  if (options.stringId !== undefined && options.stringId >= 0) {
+  // 1. Explicit stringId lookup against 0x6fb8f398 (864 entries), guarded against cross-NPC
+  // Intro/Gossip contamination (e.g. hcIdx 512/527 mistaken for msgId 512 AlkorGossip10).
+  const isValidStringIdForNpc =
+    options.stringId !== undefined &&
+    options.stringId >= 0 &&
+    (hcIdx === undefined ||
+      (!isForeignNpcTalkStringId113c(hcIdx, options.stringId, options.act) &&
+        (topic !== 'intro' ||
+          doesNpcOwnIntroStringId113c(hcIdx, options.stringId, options.act) ||
+          Boolean(CANONICAL_QUEST_SPEECH_MSG_TO_TITLE_KEY[options.stringId])) &&
+        (topic !== 'gossip' ||
+          doesNpcOwnGossipStringId113c(hcIdx, options.stringId, options.act))))
+  if (isValidStringIdForNpc && options.stringId !== undefined) {
     // Warriv Act 1 (hcIdx 155) intro: resolveNpcIntroMsgIdByTblKey('WarrivAct1IntroGossip1')
     // returns 1 (Paladin intro) for C2S 0x31 because 0 is empty in D2MessageStrc[8], whereas
     // 0x6fb8f398 maps stringId 0 -> 4336 (warriv_act1_intro) and 1 -> 4337 (warriv_act1_intro_pal).

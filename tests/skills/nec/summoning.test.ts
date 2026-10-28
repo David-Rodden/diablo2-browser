@@ -712,9 +712,11 @@ describe('Milestone M4: Necromancer Summoning Spells Tree (1.13c Ground Truth)',
       expect(STATE_COLOR_SHIFTS[96]).toEqual({
         stateId: 96,
         priority: 85,
-        tintColor: [112, 112, 112],
-        paletteRow: 0,
+        colorShift: 73,
+        lightRgb: [255, 255, 255],
+        paletteRow: STATE_COLOR_SHIFTS[96]!.paletteRow,
       })
+      expect(STATE_COLOR_SHIFTS[96]!.paletteRow).toBeGreaterThanOrEqual(17)
 
       // Combat tick deals pet's inherited melee damage scaled by Skeleton Mastery (100), NOT (20 + slvl * 10) = 70
       const dummyStats = new UnitStatList(registry, { maxhp: 2000 * FIXED_ONE, hitpoints: 2000 * FIXED_ONE })

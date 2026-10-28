@@ -10,6 +10,7 @@ import { D2Rng } from '../common/rng/d2-rng.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../common/units/classes.ts'
 import {
   TypedEmitter,
+  getLocalLobbyProvider,
   registerLocalLobbyProvider,
   registerLocalServerFactory,
   type CharClassId,
@@ -31,6 +32,7 @@ import {
   type LobbyProvider,
   type LocalAreaBootstrap,
   type LocalAreaBootstrapResolver,
+  type LocalAreaLevelSource,
   type LocalServerOptions,
   type LocalServerSessionHandle,
   type LocalServerSessionRequest,
@@ -145,6 +147,7 @@ export interface LocalLoopbackAdapterOptions {
   readonly registry?: unknown
   readonly d2s?: Uint8Array | undefined
   readonly d2sBytes?: Uint8Array | undefined
+  readonly restoreMercenary?: boolean | undefined
   readonly onAutoSave?: ((d2sBytes: Uint8Array) => void) | undefined
   readonly resolveAreaBootstrap?: LocalAreaBootstrapResolver | undefined
 }
@@ -216,6 +219,7 @@ export class LocalLoopbackAdapter implements GameServerAdapter {
         x: opts.x,
         y: opts.y,
         d2s: d2sRaw,
+        restoreMercenary: opts.restoreMercenary ?? Boolean(d2sRaw),
       })
     }
 
@@ -350,6 +354,10 @@ export class LocalLoopbackAdapter implements GameServerAdapter {
     return this.gameInstance.getPlayersX()
   }
 
+  setPlayersX(value: number): number {
+    return this.gameInstance.setPlayersX(value)
+  }
+
   computeFrameLockstepHash(): number {
     return this.gameInstance.computeFrameLockstepHash()
   }
@@ -463,6 +471,7 @@ export class LocalLobbyProvider implements LobbyProvider {
   private readonly registry: unknown
   private selectedCharName: string | undefined
   private persistedPlayersX: number | undefined = undefined
+  private lastAreaLevelSource: LocalAreaLevelSource | undefined = undefined
 
   getPersistedPlayersX(): number | undefined {
     return this.persistedPlayersX
@@ -775,8 +784,18 @@ export class LocalLobbyProvider implements LobbyProvider {
       this.saves.set(key, new Uint8Array(d2sBytes))
     }
 
+    if (target && 'playersX' in target && target.playersX !== undefined) {
+      this.setPersistedPlayersX(target.playersX)
+    } else if (target && 'spec' in target && target.spec?.playersX !== undefined) {
+      this.setPersistedPlayersX(target.spec.playersX)
+    }
+
+    if (target && 'areaLevelSource' in target && target.areaLevelSource !== undefined) {
+      this.lastAreaLevelSource = target.areaLevelSource
+    }
     const areaLevelSource =
-      target && 'areaLevelSource' in target ? target.areaLevelSource : undefined
+      (target && 'areaLevelSource' in target ? target.areaLevelSource : undefined) ??
+      this.lastAreaLevelSource
 
     return new LocalLoopbackAdapter({
       charName: key,
@@ -802,6 +821,7 @@ export class LocalLobbyProvider implements LobbyProvider {
           readonly charName?: string | undefined
           readonly difficulty?: 0 | 1 | 2 | undefined
           readonly mapSeed?: number | undefined
+          readonly playersX?: number | undefined
         },
   ): Promise<LocalLoopbackAdapter> {
     if (typeof charNameOrOptions === 'string') {
@@ -826,6 +846,9 @@ export class LocalLobbyProvider implements LobbyProvider {
     spec: Omit<GameCreateSpec, 'difficulty'> & { readonly difficulty?: GameDifficulty | undefined },
   ): Promise<LobbyEnterGameTarget & { readonly ok: boolean }> {
     const diffNum = resolveDifficultyNum(spec.difficulty)
+    if (spec.playersX !== undefined) {
+      this.setPersistedPlayersX(spec.playersX)
+    }
     this.gamesList.push({
       name: spec.name,
       description: spec.description ?? '',
@@ -841,6 +864,7 @@ export class LocalLobbyProvider implements LobbyProvider {
       gameName: spec.name,
       name: spec.name,
       difficulty: diffNum,
+      playersX: this.persistedPlayersX,
     }
   }
 
@@ -852,6 +876,7 @@ export class LocalLobbyProvider implements LobbyProvider {
       gameToken: 1,
       gameName: name,
       name,
+      playersX: this.persistedPlayersX,
     }
   }
 
@@ -894,12 +919,20 @@ export function createLocalLoopbackSession(
   req: LocalServerSessionRequest = {},
 ): LocalServerSessionHandle & { readonly gameAdapter: LocalLoopbackAdapter } {
   const diffNum = resolveDifficultyNum(req.difficulty)
+  const lobby = getLocalLobbyProvider()
+  if (req.playersX !== undefined) {
+    lobby?.setPersistedPlayersX?.(req.playersX)
+  }
   const adapter = new LocalLoopbackAdapter({
     charName: req.charName,
     classId: req.classId ?? req.charClass ?? req.charClassId ?? 0,
     level: req.charLevel,
     difficulty: diffNum,
     mapSeed: req.mapSeed,
+    playersX: req.playersX,
+    onPlayersXChange: (nextPlayersX) => {
+      lobby?.setPersistedPlayersX?.(nextPlayersX)
+    },
     d2sBytes: req.d2sBytes,
     policy: req.allowPause !== undefined ? { allowPause: req.allowPause } : undefined,
     resolveAreaBootstrap: req.areaLevelSource

@@ -175,6 +175,7 @@ export function handleHudMouseMove(hud: HudManager, logicalX: number, logicalY: 
   hud.globes.handleMouseMove(barPt.x, barPt.y)
   hud.belt.handleMouseMove(barPt.x, barPt.y)
   hud.hotkeys.handleMouseMove(barPt.x, barPt.y)
+  hud.syncControlBarPanels()
   hud.controlBar.handleMouseMove(barPt.x, barPt.y, {
     unspentStatPoints: hud.charSheet.attrs.statPoints,
     unspentSkillPoints: hud.skillTree.unspentSkillPoints,
@@ -376,12 +377,22 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     if (hud.hitTestQuestAlert(logicalX, logicalY)) return true
     if (hud.isPointInMercPortrait(logicalX, logicalY)) return true
     if (!hud.touchControls.compactHudActive) {
+      hud.syncControlBarPanels()
       const barX = logicalX - profile.barOffsetX
       const barY = logicalY - profile.barOffsetY
       if (barY >= 540 && barY <= 600 && barX >= 0 && barX <= 800) return true
       if (barX >= 0 && barX <= 117 && barY >= 496 && barY <= 600) return true
       if (barX >= 683 && barX <= 800 && barY >= 496 && barY <= 600) return true
-      if (hud.controlBar.miniPanelOpen && barX >= 312 && barX <= 488 && barY >= 522 && barY <= 600) return true
+      const mpBounds = hud.controlBar.currentMiniPanelBounds
+      if (
+        hud.controlBar.isMiniPanelVisible &&
+        barX >= mpBounds.x &&
+        barX <= mpBounds.x + mpBounds.width &&
+        barY >= mpBounds.y &&
+        barY <= 600
+      ) {
+        return true
+      }
       if (hud.belt.isExpanded && barX >= 420 && barX <= 550 && barY >= 460 && barY <= 600) return true
     }
     if (hud.hotkeys.openPopup !== null) return true
@@ -415,9 +426,10 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     if (logicalY >= 432 && logicalY <= 480 && logicalX >= 0 && logicalX <= 640) return true
     if (logicalX >= 0 && logicalX <= 117 && logicalY >= 376 && logicalY <= 480) return true
     if (logicalX >= 523 && logicalX <= 640 && logicalY >= 376 && logicalY <= 480) return true
+    hud.syncControlBarPanels()
     const mpBounds = hud.controlBar.currentMiniPanelBounds
     if (
-      hud.controlBar.miniPanelOpen &&
+      hud.controlBar.isMiniPanelVisible &&
       logicalX >= mpBounds.x &&
       logicalX <= mpBounds.x + mpBounds.width &&
       logicalY >= mpBounds.y &&
@@ -457,10 +469,19 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
   if (hud.hitTestQuestAlert(logicalX, logicalY)) return true
   if (hud.isPointInMercPortrait(logicalX, logicalY)) return true
   if (!hud.touchControls.compactHudActive) {
+    hud.syncControlBarPanels()
     if (logicalY >= 540 && logicalX >= 0 && logicalX <= 800) return true
     if (logicalX >= 0 && logicalX <= 117 && logicalY >= 496) return true
     if (logicalX >= 683 && logicalX <= 800 && logicalY >= 496) return true
-    if (hud.controlBar.miniPanelOpen && logicalX >= 312 && logicalX <= 488 && logicalY >= 522) return true
+    const mpBounds = hud.controlBar.currentMiniPanelBounds
+    if (
+      hud.controlBar.isMiniPanelVisible &&
+      logicalX >= mpBounds.x &&
+      logicalX <= mpBounds.x + mpBounds.width &&
+      logicalY >= mpBounds.y
+    ) {
+      return true
+    }
     if (hud.belt.isExpanded && logicalX >= 420 && logicalX <= 550 && logicalY >= 460) return true
   }
   if (hud.hotkeys.openPopup !== null) return true
@@ -1177,6 +1198,7 @@ export function handleHudMouseUp(hud: HudManager, logicalX: number, logicalY: nu
   // 1.13c bar buttons fire on mouse-up inside the pressed element; dragging off the
   // button and releasing cancels (ControlBarHud / CharacterSheetPanel latch on mousedown).
   ;(hud as any).syncResolutionMode()
+  hud.syncControlBarPanels()
   const docking = hud.getDockingLayout()
   const barPt = toControlBarLocal(logicalX, logicalY, docking)
   if (hud.controlBar.handleMouseUp(barPt.x, barPt.y, (hud as any).controlBarReleaseCallbacks())) {
@@ -1451,6 +1473,7 @@ export function handleHudMouseDown(
   const barPt = toControlBarLocal(pt.x, pt.y, docking)
 
   if (!hud.tradeHallMode) {
+    hud.syncControlBarPanels()
     hud.controlBar.handleMouseDown(barPt.x, barPt.y, {
       unspentStatPoints: hud.charSheet.attrs.statPoints,
       unspentSkillPoints: hud.skillTree.unspentSkillPoints,

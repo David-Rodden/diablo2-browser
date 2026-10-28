@@ -233,7 +233,7 @@ describe('M21-P4 #946 — F16 `SoundEnviron113c` 25 Hz acoustic environment cont
         expect(ids.some((id) => nightMembers.has(id)), `tod=${String(tod)} must not play Night Ambience`).toBe(false)
       }
 
-      for (const tod of [0, 4]) {
+      for (const tod of [0, 4, 5]) {
         const { env, records } = await makeEnviron({ seed: 0x2100 + tod })
         setArea(env, 1, tod)
         stepTick(env, records, 1, { levelId: 1, tod })
@@ -288,10 +288,13 @@ describe('M21-P4 #946 — F16 `SoundEnviron113c` 25 Hz acoustic environment cont
       const h1 = records.records().find((r) => lvl1Amb.has(r.id))?.handle
       expect(h1).toBeGreaterThan(0)
 
-      // Transition to Level 8 (different SoundEnv): old ambience must stop immediately, new ambience starts
+      // Transition to Level 8 (different SoundEnv): old ambience enters StopWithFade (0x6fb38810, Fade Out = 35 ticks), new ambience starts
       setArea(env, 8, 2)
       stepTick(env, records, 2, { levelId: 8, tod: 2 })
-      expect(records.records().some((r) => lvl1Amb.has(r.id)), 'old environment ambience stopped on area change').toBe(false)
+      expect(
+        records.records().some((r) => lvl1Amb.has(r.id) && !(r as { readonly stop?: boolean }).stop),
+        'old environment ambience flagged stop on area change (0x6fb38810 StopWithFade)',
+      ).toBe(false)
       const h2 = records.records().find((r) => lvl8Amb.has(r.id))?.handle
       expect(h2).toBeGreaterThan(0)
 
@@ -304,6 +307,12 @@ describe('M21-P4 #946 — F16 `SoundEnviron113c` 25 Hz acoustic environment cont
       stepTick(env, records, 3, { levelId: sameEnvLevel!.id, tod: 2 })
       const h2After = records.records().find((r) => lvl8Amb.has(r.id))?.handle
       expect(h2After, 'same SoundEnv across adjacent levels keeps the same ambience handle').toBe(h2)
+
+      // After Fade Out = 35 ticks completes, old Level 1 ambience record is freed:
+      for (let t = 4; t <= 40; t += 1) {
+        stepTick(env, records, t, { levelId: sameEnvLevel!.id, tod: 2 })
+      }
+      expect(records.records().some((r) => lvl1Amb.has(r.id)), 'old environment ambience freed after 35-tick Fade Out').toBe(false)
     })
 
     it('[T1-F16-05] periodic `Day/Night Event` timer fires within `[EventDelay - floor(EventDelay/6), EventDelay + floor(EventDelay/6)]` ticks and picks variants in `[rootId, rootId + groupSize - 1]` (`0x6faffabd`)', async () => {
@@ -367,7 +376,7 @@ describe('M21-P4 #946 — F16 `SoundEnviron113c` 25 Hz acoustic environment cont
         expect(Math.abs(observedEvent!.x), '|x| <= 750').toBeLessThanOrEqual(750)
         expect(observedEvent!.y, 'y >= -100').toBeGreaterThanOrEqual(-100)
         expect(observedEvent!.y, 'y <= 100').toBeLessThanOrEqual(100)
-        expect(observedEvent!.z ?? 0, 'z === 0').toBe(0)
+        expect(observedEvent!.z, 'SetSoundPos(h, x, y, 0) stores z = 640 (0x6fb38ba0)').toBe(640)
       }
       // Verify stereo pan is non-centered (left !== right gain on the event voice):
       const evStart = voices.starts().find((s) => eventMembers.has(s.soundId))
@@ -482,8 +491,19 @@ describe('M21-P4 #946 — F16 `SoundEnviron113c` 25 Hz acoustic environment cont
       }
       const finalEnv = O.soundEnviron[O.levels.get(136)!.soundEnv]!
       const finalAmb = new Set(oracleGroupMembers(finalEnv.dayAmbience))
+      const nonStoppingOnTransitionTick = records
+        .records()
+        .filter((r) => !(r as { readonly stop?: boolean }).stop)
+      expect(
+        nonStoppingOnTransitionTick.length,
+        'at most 1 non-stopping ambience record active right after rapid area changes',
+      ).toBeLessThanOrEqual(1)
+      // Step past the 35-tick Fade Out of prior ambiences (0x6fb38810 -> StopWithFade):
+      for (let t = seq.length + 1; t <= seq.length + 37; t += 1) {
+        stepTick(env, records, t, { levelId: 136, tod: 2 })
+      }
       const surviving = records.records()
-      expect(surviving.length, 'at most 1 ambience record survives after rapid area changes').toBeLessThanOrEqual(1)
+      expect(surviving.length, 'at most 1 ambience record survives after 35-tick Fade Out').toBeLessThanOrEqual(1)
       for (const r of surviving) {
         expect(finalAmb.has(r.id), `surviving record ${String(r.id)} must belong to level 136`).toBe(true)
       }

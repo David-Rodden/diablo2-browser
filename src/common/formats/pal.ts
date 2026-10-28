@@ -35,6 +35,25 @@ export function decodePal(data: Uint8Array): Palette {
 }
 
 /**
+ * Decode a Diablo II 768-byte `pal.dat` file (`data\global\palette\*\pal.dat`), which stores
+ * 256 `(B, G, R)` triples on disk (`D2Win #10128` `0x6F8EEF40..0x6F8EEF6D`), into an `(R, G, B)`
+ * {@link Palette} matching `decodePl2(pal.pl2).rgb`.
+ */
+export function decodePalDat(data: Uint8Array): Palette {
+  if (data.byteLength < 768) {
+    throw new PaletteError(`pal.dat is ${String(data.byteLength)} bytes, expected at least 768`)
+  }
+  const rgb = new Uint8Array(768)
+  for (let i = 0; i < 256; i += 1) {
+    const off = i * 3
+    rgb[off] = data[off + 2]!
+    rgb[off + 1] = data[off + 1]!
+    rgb[off + 2] = data[off]!
+  }
+  return { rgb, size: 256 }
+}
+
+/**
  * Decode a 256-byte colour translation table (`.trn`).
  *
  * A translation table is a per-index remap applied when drawing: Diablo uses it

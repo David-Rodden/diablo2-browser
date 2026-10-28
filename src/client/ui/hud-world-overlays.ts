@@ -132,7 +132,9 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
   if (hud.inventory.isIdentifyMode() || hud.pendingIdentifyScrollId !== null) return false
   if (hud.worldPanels.escapeMenuOpen) return false
   if (hud.chatInputOpen || hud.chatOverlayMessages.length > 0 || hud.overheadSpeechBubbles.length > 0) return false
-  if (hud.showGroundLabels && hud.groundItemLabelBoxes.length > 0) return false
+  // Unique/Set loot beams pulse continuously via `Math.sin(nowMs * 0.0042 + b.id * 1.37)`;
+  // static ground-item label plaques are fully captured by `signature` below.
+  if (internal.groundItemEnhancements.showUniqueSetBeams && hud.groundItemBeams.length > 0) return false
   // Level entry title (0x6fb6f0d0) is time-animated: repaint while it is up or the level has just changed.
   if (hud.levelEntryTitle.active) return false
   const entryLevelId = hud.resolveLevelEntryLevelId()
@@ -184,8 +186,12 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
     hud.targetMonster
       ? `${hud.targetMonster.unitId ?? ''}:${hud.targetMonster.name}:${hud.targetMonster.hp}:${hud.targetMonster.maxHp}:${hud.targetMonster.rank ?? ''}`
       : '',
+    hud.showGroundLabels ? 1 : 0,
+    internal.groundItemEnhancements.alwaysShowUniqueSetLabels ? 1 : 0,
     hud.groundItemLabelBoxes.length > 0
-      ? hud.groundItemLabelBoxes.map((b) => `${b.id}:${b.isHovered ? 1 : 0}`).join(',')
+      ? hud.groundItemLabelBoxes
+          .map((b) => `${b.id}:${b.x},${b.y},${b.width}:${b.color}:${b.text}:${b.isHovered ? 1 : 0}`)
+          .join(',')
       : '',
     hud.questAlert?.alertPressed === true && hud.hitTestQuestAlert(hud.mouseX, hud.mouseY) ? 1 : 0,
     hud.autoCombatBadge?.on ?? -1,
@@ -890,6 +896,7 @@ export function renderHudFrame(
 
     ctx.save()
     ctx.translate(barOffsetX, barOffsetY)
+    hud.syncControlBarPanels()
     hud.controlBar.draw(
       ctx,
       internal.buildControlBarState(),
@@ -1468,7 +1475,7 @@ export function renderGroundItemBeams(
 
 /**
  * D2Client.dll `0x6fb2ca40` (`MSG_DrawOverheadSpeech`) & `0x6fb2af20` (`MSG_ResolveOverheadOverlap`):
- * Renders speech bubbles above units with `overheadText`, wrapped at `180px` (`0xB4`) in `font16`,
+ * Renders speech bubbles above units with `overheadText`, wrapped at `180px` (`0xB4`) in `fontingamechat` (`SetFont(13)` at `0x6FB2CA76`, `0x6FB2B2AA`),
  * anchored at `(unitScreenX - boxW/2, unitScreenY - 50 - lineCount * 15 - 6)`, with overlap avoidance.
  */
 export function renderOverheadSpeechBubbles(
@@ -1479,7 +1486,7 @@ export function renderOverheadSpeechBubbles(
   if (!hud.overheadSpeechBubbles || hud.overheadSpeechBubbles.length === 0) return
   ctx.save()
   const placedRects: OverheadSpeechRect113c[] = []
-  const measureFn = (s: string) => hud.font.measureText(s, 'font16')
+  const measureFn = (s: string) => hud.font.measureText(s, 'fontingamechat')
   const lang: TblLang = hud.lang === 'ENG' ? 'ENG' : 'CHI'
 
   for (const bubble of hud.overheadSpeechBubbles) {
@@ -1510,7 +1517,7 @@ export function renderOverheadSpeechBubbles(
     )
 
     // D2Client.dll 0x6fb2b240 (MSG_DrawOverheadBubbleAt): translucent black rect (no border stroke),
-    // with alphabetic text baseline at top + 16 + i * 15 so 13px font16 glyphs sit inside [top+3, top+16].
+    // with alphabetic text baseline at top + 16 + i * 15 so 13px fontingamechat glyphs sit inside [top+3, top+16].
     ctx.fillStyle = 'rgba(0, 0, 0, 0.72)'
     ctx.fillRect(resolved.x, resolved.y, resolved.width, resolved.height)
 
@@ -1520,7 +1527,7 @@ export function renderOverheadSpeechBubbles(
       const colorName = (D2_COLOR_INDEX_TO_NAME[line.color] ?? 'white') as D2ColorCode
       const lineY = resolved.y + OVERHEAD_BUBBLE_BASELINE_OFFSET_Y + i * CHAT_OVERLAY_LINE_HEIGHT
       hud.font.drawText(ctx, line.text, centerX, lineY, {
-        font: 'font16',
+        font: 'fontingamechat',
         color: colorName,
         align: 'center',
         lang,
@@ -1578,7 +1585,7 @@ export function renderChatOverlay(
     hasTopLeftPortraits: hud.hasVisibleTopLeftPortraits(),
   })
 
-  const measureFn = (s: string) => hud.font.measureText(s, 'font16')
+  const measureFn = (s: string) => hud.font.measureText(s, 'fontingamechat')
   const allLines = activeMsgs.flatMap((msg) =>
     wrapChatText113c(msg.text, measureFn, layout.maxWrapWidth, msg.color ?? 0).map((line, wrapIndex) => ({ ...line, key: `${msg.createdAtMs ?? ''}|${msg.text}|${wrapIndex}` })),
   )
@@ -1607,7 +1614,7 @@ export function renderChatOverlay(
 
     const colorName = (D2_COLOR_INDEX_TO_NAME[line.color] ?? 'white') as D2ColorCode
     hud.font.drawText(ctx, line.text, layout.startX, lineY, {
-      font: 'font16',
+      font: 'fontingamechat',
       color: colorName,
       align: 'left',
       lang,
@@ -1623,10 +1630,10 @@ export function renderChatOverlay(
  *   `bottom = top + 47` (`screenHeight - 56`, so `height = 47`).
  * - Drawn via `D2GFX_DrawFilledRect(127, screenHeight - 103, screenWidth - 128, screenHeight - 56, 0, 1)`
  *   (translucent black fill, no border stroke, no "Say:" prefix).
- * - Typed buffer word-wrapped in `font16` (`color = 'white'`) to `maxWrapW = screenWidth - 265` (`-0x109`)
+ * - Typed buffer word-wrapped in `fontingamechat` (`SetFont(13)` at `0x6FB2014E`, `0x6FB20CC6`, `color = 'white'`) to `maxWrapW = screenWidth - 265` (`-0x109`)
  *   across up to 3 lines (`lineIdx = 0..2`), drawn at `x = 131` (`0x83`), `y = screenHeight - 88 + lineIdx * 15`.
  * - Blinking underscore cursor `0x0D4C` (`"_"`, `500ms` ON / `100ms` OFF) drawn at
- *   `x = 131 + lastLineWidth`, `y = screenHeight - 88 + lastLineIdx * 15` in `font16` white.
+ *   `x = 131 + lastLineWidth`, `y = screenHeight - 88 + lastLineIdx * 15` in `fontingamechat` white.
  */
 export function renderChatInputBox(
   hud: HudManager,
@@ -1658,7 +1665,7 @@ export function renderChatInputBox(
 
   const maxWrapW = Math.max(100, boxWidth - 10)
   const lang: TblLang = hud.lang === 'ENG' ? 'ENG' : 'CHI'
-  const measureFn = (s: string) => hud.font.measureText(s, 'font16')
+  const measureFn = (s: string) => hud.font.measureText(s, 'fontingamechat')
 
   const rawText = hud.chatInputText ?? ''
   const lines: string[] = []
@@ -1691,7 +1698,7 @@ export function renderChatInputBox(
     const lineStr = lines[i]!
     if (lineStr.length > 0) {
       hud.font.drawText(ctx, lineStr, textX, baseLine0Y + i * 15, {
-        font: 'font16',
+        font: 'fontingamechat',
         color: 'white',
         align: 'left',
         lang,
@@ -1706,7 +1713,7 @@ export function renderChatInputBox(
   const cursorVisible = Math.floor(Math.max(0, nowMs)) % 600 < 500
   if (cursorVisible) {
     hud.font.drawText(ctx, '_', textX + lastLineWidth, baseLine0Y + lastLineIdx * 15, {
-      font: 'font16',
+      font: 'fontingamechat',
       color: 'white',
       align: 'left',
       lang,

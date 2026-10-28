@@ -21,7 +21,7 @@ import {
 import { inferItemClassFromType } from './affixes.ts'
 import { formatDgrpLine } from './dgrp-line.ts'
 import { elementalPairCombines, formatElementalPair, formatPhysicalRange, formatPoisonPair, physicalPairCombines } from './damage-merge.ts'
-import { chargedSkillChargesOf, formatChargedSkill } from './charged-skill.ts'
+import { chargedSkillChargesOf, formatChargedSkill, resolveChargedSkillRoll113c } from './charged-skill.ts'
 import {
   NON_RANDOM_RANGE_CODES,
   getItemTypeCode,
@@ -377,7 +377,8 @@ export function formatPropertyCode(
     }
     case 'charged': {
       const sk = resolveSkillInfo(par)
-      return formatChargedSkill(max, sk.name, chargedSkillChargesOf(value, min), 'en')
+      const slvl = max > 0 ? max : resolveChargedSkillRoll113c(min, max, { skillId: par }).slvl
+      return formatChargedSkill(slvl, sk.name, chargedSkillChargesOf(value, min, slvl), 'en')
     }
 
     // --- Attributes & Life / Mana / Stamina ---
@@ -1750,7 +1751,6 @@ export function formatStatByIscDescFunc(
     case 24: {
       let skillRef: string | number | undefined = param
       let slvl = max
-      const charges = chargedSkillChargesOf(value, min)
       if (
         typeof param === 'number' &&
         param >= 64 &&
@@ -1760,8 +1760,9 @@ export function formatStatByIscDescFunc(
         skillRef = param >> 6
         slvl = Math.max(1, param & 0x3f)
       } else if (slvl <= 0) {
-        slvl = 1
+        slvl = resolveChargedSkillRoll113c(min, max, { skillId: skillRef }).slvl
       }
+      const charges = chargedSkillChargesOf(value, min, slvl)
       const skInfo = resolveSkillInfo(skillRef)
       const skName =
         locale === 'en'

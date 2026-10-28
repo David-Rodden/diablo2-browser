@@ -2,7 +2,7 @@
  * M21-P1 (#943) — F4 shared WAV/PCM parser, F5 `npm run verify:audio` + shared audit module +
  * `bake:verify` audio step, F6 green full-suite baseline (D17) and no legacy reintroduction.
  */
-import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, mkdirSync, copyFileSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
@@ -12,6 +12,7 @@ import {
   REPO_ROOT,
   getOracle113c,
   loadProductModule,
+  mirrorRepoWithCopies,
   oracleBuildSoundPath,
   oracleWavBytes,
   oracleWavFacts,
@@ -223,18 +224,7 @@ describe('M21-P1 #943 — F4 shared WAV/PCM parser parseWavPcm16 (product)', () 
 
 // ── Mirror of the repo with a private copy of src/common/audio (for audit mutation tests) ───────
 function mirrorRepo(tamper: (audioDir: string) => void): string {
-  const root = mkdtempSync(join(tmpdir(), 'm21r1-audit-mirror-'))
-  const link = (src: string, dst: string): void => symlinkSync(src, dst)
-  for (const e of readdirSync(REPO_ROOT)) if (e !== 'src') link(join(REPO_ROOT, e), join(root, e))
-  mkdirSync(join(root, 'src'))
-  for (const e of readdirSync(join(REPO_ROOT, 'src'))) if (e !== 'common') link(join(REPO_ROOT, 'src', e), join(root, 'src', e))
-  mkdirSync(join(root, 'src', 'common'))
-  for (const e of readdirSync(join(REPO_ROOT, 'src', 'common'))) if (e !== 'audio') link(join(REPO_ROOT, 'src', 'common', e), join(root, 'src', 'common', e))
-  const audio = join(root, 'src', 'common', 'audio')
-  mkdirSync(audio)
-  for (const e of readdirSync(join(REPO_ROOT, 'src', 'common', 'audio'))) copyFileSync(join(REPO_ROOT, 'src', 'common', 'audio', e), join(audio, e))
-  tamper(audio)
-  return root
+  return mirrorRepoWithCopies(['src/common/audio'], (root) => tamper(join(root, 'src', 'common', 'audio')))
 }
 
 /** Loads the product audit FIRST (missing module ⇒ test failure), then audits a tampered mirror. */

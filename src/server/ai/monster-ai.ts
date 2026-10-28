@@ -889,7 +889,7 @@ function tickPlayer(
       let target: Monster | null = null
       let bestDistance = Number.POSITIVE_INFINITY
       for (const monster of world.monsters) {
-        if (monster.state === 'dead') continue
+        if (monster.state === 'dead' || (monster as { submerged?: boolean }).submerged) continue
         const distance = Math.hypot(monster.x - player.x, monster.y - player.y)
         if (distance <= options.playerReach && distance < bestDistance) {
           bestDistance = distance
@@ -996,7 +996,7 @@ function tickPlayer(
   }
 }
 
-const STATIONARY_AI_SET: ReadonlySet<string> = new Set([
+export const STATIONARY_AI_SET: ReadonlySet<string> = new Set([
   'GargoyleTrap',
   'BloodHawkNest',
   'FoulCrowNest',
@@ -1018,8 +1018,6 @@ const STATIONARY_AI_SET: ReadonlySet<string> = new Set([
   'Tower',
   'ArcaneTower',
   'SiegeTower',
-  'Tentacle',
-  'TentacleHead',
   'PutridDefiler',
   'PainWorm',
   'BaalTentacle',
@@ -1699,6 +1697,119 @@ export function tickMonsters(
     const dx = player.x - monster.x
     const dy = player.y - monster.y
     const distance = Math.hypot(dx, dy)
+    const hcIdx = monster.stats?.hcIdx ?? -1
+    const idLower = (monster.stats?.id ?? '').toLowerCase()
+
+    // --- 1.13c Tentacle & TentacleHead Submerge / Emerge State Machine (AiTentacle 0x6FC9CB10 / AiTentacleHead 0x6FCA5500) ---
+    if (
+      aiName === 'Tentacle' ||
+      aiName === 'TentacleHead' ||
+      (hcIdx >= 258 && hcIdx <= 263) ||
+      /^tentacle(head)?\d*$/.test(idLower)
+    ) {
+      const isHead =
+        aiName === 'TentacleHead' ||
+        (hcIdx >= 261 && hcIdx <= 263) ||
+        idLower.startsWith('tentaclehead')
+      const tentState = monster as Monster & {
+        submerged?: boolean
+        _tentacleInit?: boolean
+        _submergeTimerTick?: number
+      }
+      if (!tentState._tentacleInit) {
+        tentState._tentacleInit = true
+        if (tentState.submerged === undefined) {
+          tentState.submerged = true
+          monster.state = 'idle'
+          monster.animMode = 'sq'
+          tentState._submergeTimerTick = world.tick
+        }
+      }
+      const emergeRadius = Math.max(sightRadius, 192)
+      if (tentState.submerged) {
+        monster.state = 'idle'
+        monster.animMode = 'sq'
+        if (
+          world.tick >= (tentState._submergeTimerTick ?? 0) &&
+          distance <= emergeRadius &&
+          monster.curse?.name !== 'dimvision'
+        ) {
+          tentState.submerged = false
+          monster.state = 'attack'
+          monster.animMode = 's1'
+          monster.facing = facingOf(dx, dy)
+          monster.cooldown = isHead ? 21 : 13
+          tentState._submergeTimerTick = world.tick + 300
+          world.events.push({
+            kind: 'unitSkillEvent',
+            x: monster.x,
+            y: monster.y,
+            skillId: 'Emerge',
+            monsterIndex: monster.index,
+          })
+        }
+        continue
+      }
+      if (
+        world.tick > (tentState._submergeTimerTick ?? 0) &&
+        (distance > emergeRadius || monster.curse?.name === 'dimvision')
+      ) {
+        tentState.submerged = true
+        monster.state = 'idle'
+        monster.animMode = 'sq'
+        monster.cooldown = isHead ? 21 : 15
+        tentState._submergeTimerTick = world.tick + 300
+        world.events.push({
+          kind: 'unitSkillEvent',
+          x: monster.x,
+          y: monster.y,
+          skillId: 'Submerge',
+          monsterIndex: monster.index,
+        })
+        continue
+      }
+      if (distance > sightRadius || (monster.curse?.name === 'dimvision' && isHead)) {
+        monster.state = 'idle'
+        monster.animMode = 'nu'
+        continue
+      }
+      monster.facing = facingOf(dx, dy)
+      if (isHead) {
+        monster.state = 'attack'
+        if (monster.cooldown === 0) {
+          monster.animMode = 'a1'
+          monster.cooldown = Math.max(15, monster.stats.cooldownTicks)
+          const gooMsl =
+            (hcIdx >= 0 ? getMonsterModeMissile113c(hcIdx, 'A1') : undefined) ?? 'tentaclegoo'
+          world.events.push({
+            kind: 'missileHit',
+            x: player.x,
+            y: player.y,
+            missileType: gooMsl,
+            skillId: gooMsl,
+            amount: monster.stats.damage,
+            monsterIndex: monster.index,
+          })
+          if (monster.stats.damage > 0) {
+            applyMonsterAttackToPlayer(world, monster, player, options, true, rawMods)
+          }
+        }
+        continue
+      }
+      const tentacleMeleeReach = Math.max(monster.stats.reach, 96)
+      if (distance <= tentacleMeleeReach) {
+        monster.state = 'attack'
+        if (monster.cooldown === 0) {
+          monster.animMode = 'a1'
+          monster.cooldown = Math.max(15, monster.stats.cooldownTicks)
+          applyMonsterAttackToPlayer(world, monster, player, options, false, rawMods)
+        }
+      } else {
+        monster.state = 'idle'
+        monster.animMode = 'nu'
+      }
+      continue
+    }
 
     if (distance > sightRadius) {
       monster.state = 'idle'
@@ -1709,9 +1820,6 @@ export function tickMonsters(
       continue
     }
     monster.facing = facingOf(dx, dy)
-
-    const hcIdx = monster.stats?.hcIdx ?? -1
-    const idLower = (monster.stats?.id ?? '').toLowerCase()
 
     // --- R2.5 SuicideMinion sprint & 0-XP self-detonation ---
     if (aiName === 'SuicideMinion' || isSuicideMinionMonster(hcIdx >= 0 ? hcIdx : 0, monster.stats.id)) {

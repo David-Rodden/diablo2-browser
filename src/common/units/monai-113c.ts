@@ -520,3 +520,124 @@ export function monaiParam113c(
   const value = aiParams[index]
   return value === undefined || !Number.isFinite(value) ? fallback : value
 }
+
+/** 1.13c `Tentacle` body limb (`hcIdx 258..260`, token `TN`). */
+export function isTentacleHcIdx113c(hcIdx: number): boolean {
+  const id = hcIdx | 0
+  return id >= 258 && id <= 260
+}
+
+/** 1.13c `TentacleHead` boss (`hcIdx 261..263`, token `TE`). */
+export function isTentacleHeadHcIdx113c(hcIdx: number): boolean {
+  const id = hcIdx | 0
+  return id >= 261 && id <= 263
+}
+
+/** 1.13c `FrogDemon` (`hcIdx 247..249`, token `FD`). */
+export function isFrogDemonHcIdx113c(hcIdx: number): boolean {
+  const id = hcIdx | 0
+  return id >= 247 && id <= 249
+}
+
+/** 1.13c `SandMaggot` (`68..72, 679, 716`) and `SandMaggotQueen` (`284..288`). */
+export function isSandMaggotFamilyHcIdx113c(hcIdx: number): boolean {
+  const id = hcIdx | 0
+  return (id >= 68 && id <= 72) || id === 679 || id === 716 || (id >= 284 && id <= 288)
+}
+
+/**
+ * 1.13c monsters using Skill `#176 Submerge` (`MONMODE_SEQUENCE = 14`) / `#180 Emerge` (`MONMODE_SKILL1 = 8`):
+ * `FrogDemon` (`247..249`), `Tentacle` (`258..260`), and `TentacleHead` (`261..263`).
+ */
+export function isSubmergeCapableMonsterHcIdx113c(hcIdx: number): boolean {
+  return isFrogDemonHcIdx113c(hcIdx) || isTentacleHcIdx113c(hcIdx) || isTentacleHeadHcIdx113c(hcIdx)
+}
+
+/**
+ * 1.13c `D2Client.dll` `0x6FAFDA60` / `0x6FAFDBF4`:
+ * Monsters whose `MONMODE_SEQUENCE (14)` clamps and freezes on its final sequence step (underwater / burrowed)
+ * instead of reverting to `MONMODE_NEUTRAL (1)` when the sequence finishes.
+ */
+export function shouldFreezeMonsterSequenceAtEnd113c(
+  hcIdx: number,
+  lastSkillId?: number,
+): boolean {
+  if (isSubmergeCapableMonsterHcIdx113c(hcIdx)) {
+    return true
+  }
+  if (isSandMaggotFamilyHcIdx113c(hcIdx) && lastSkillId === 162) {
+    return true
+  }
+  return false
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FCD2FA0` & `D2Client.dll` `0x6FB069C0`:
+ * Returns true when a monster is in its untargetable / invulnerable submerged or burrowed `MONMODE_SEQUENCE (14)` state
+ * (`dwFlags & (UNITFLAG_TARGETABLE | UNITFLAG_CANBEATTACKED | UNITFLAG_ISVALIDTARGET) == 0`).
+ */
+export function isMonsterSubmergedMode113c(
+  hcIdx: number,
+  mode: number | undefined,
+  lastSkillId?: number,
+): boolean {
+  if (mode !== 14) return false
+  return shouldFreezeMonsterSequenceAtEnd113c(hcIdx, lastSkillId)
+}
+
+export interface ResolvedMonPlacePreset113c {
+  readonly classId: number
+  readonly superUniqueIndex?: number
+  readonly companionClassId?: number
+  readonly direction?: number
+}
+
+/**
+ * 1.13c `D2Game.dll` `MONSTER_ResolveMonPlace` (`0x6FC67E6D`, jump tables `0x6FC6821C` / `0x6FC68260` / `0x6FC68284`):
+ * Resolves deterministic `MonPlace.txt` preset placements (`presetIndex - (nMonStats + nSuperUniques)` = `0..36`).
+ */
+export function resolveMonPlacePreset113c(
+  monPlaceId: number,
+  areaId: number,
+): ResolvedMonPlacePreset113c | null {
+  switch (monPlaceId | 0) {
+    case 4: // navi (Flavie, Cold Plains <-> Blood Moor bridge)
+      return { classId: 266 }
+    case 5: // bloodraven (Burial Grounds, SuperUnique #2)
+      return { classId: 267, superUniqueIndex: 2 }
+    case 8: // place_maggotqueen (Maggot Lair Level 3)
+      return { classId: 284, direction: 8 }
+    case 10: // place_tentacle_ns (Act 3 water pools)
+    case 11: { // place_tentacle_ew (Act 3 water pools)
+      const classId =
+        areaId === 76 || areaId === 77 || areaId === 78
+          ? 262
+          : areaId === 92 || areaId === 93
+            ? 263
+            : 261
+      return {
+        classId,
+        companionClassId: classId - 3,
+        direction: monPlaceId === 10 ? 4 : 0,
+      }
+    }
+    case 17: // place_fallen
+      return { classId: 19 }
+    case 18: // place_vulture
+      return { classId: 58 }
+    case 22: // place_fetish
+      return { classId: 141 }
+    case 23: // place_fetishshaman
+      return { classId: 278 }
+    case 29: // place_minion
+      return { classId: 453 }
+    case 30: // place_siegebeast (Bloody Foothills 110 -> 492 siegebeast1, else 529 imp3)
+      return { classId: areaId === 110 ? 492 : 529 }
+    case 31: // place_barricadedoor
+      return { classId: 522 }
+    case 32: // place_evilhut / putriddefiler1
+      return { classId: 438 }
+    default:
+      return null
+  }
+}

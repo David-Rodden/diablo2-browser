@@ -1471,16 +1471,22 @@ export function resolveQuestTitleKeyForMsgId(msgId: number): string | undefined 
 }
 
 /**
- * Returns true if `msgId` is an NPC Intro/Greeting message (not a quest message).
+ * Returns true if `msgId` is an NPC Intro/Greeting message (not a quest or regular gossip message).
  * In 1.13c, `S2C 0x27` sends NPC Intro messages in `nMenu == 0` on first visit;
  * the Talk submenu already renders a dedicated `talk_intro` (`介紹` / `Introduction`) option,
- * so pure intro messages should not be duplicated as generic `Quest #N` items.
+ * so pure intro messages should not be duplicated as generic `Quest #N` items, while regular
+ * `*Gossip*` lines (e.g. `512` = `AlkorGossip10`) must never be misclassified as intros.
  */
 export function isNpcIntroMessageId(msgId: number): boolean {
   if (CANONICAL_QUEST_SPEECH_MSG_TO_TITLE_KEY[msgId]) return false
   const key = CANONICAL_NPC_MSG_ID_TO_TBL_KEY[msgId]
-  if (!key) return false
-  return /Intro|Gossip|Greet/i.test(key) && !/^A[1-5]Q[1-6]/i.test(key)
+  if (!key || /^A[1-5]Q[1-6]/i.test(key)) return false
+  return (
+    /Intro|Greet/i.test(key) ||
+    key === 'CainGossip1' ||
+    key === 'CainAct2Gossip1' ||
+    key === 'TyraelGossip1'
+  )
 }
 
 /**

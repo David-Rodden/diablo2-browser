@@ -51,7 +51,7 @@ In `D2MCPClient.dll` `0x6FA26280`, `%ecx` points to the MCP opcode byte (`0x06`)
 | `14` | `+0x0C` | `levelDiff` | `u8` | Allowed character level difference (`0xFF` = unrestricted) |
 | `15` | `+0x0D` | `maxPlayers` | `u8` | Maximum allowed players (`1..8`) |
 | `16` | `+0x0E` | `playerCount` | `u8` | Number of characters currently in the game (`0..16`) |
-| `17..32` | `+0x0F..+0x1E` | `classes[16]` | `u8[16]` | 1-based character class IDs (`1`=Amazon .. `7`=Assassin) |
+| `17..32` | `+0x0F..+0x1E` | `classes[16]` | `u8[16]` | 0-based character class IDs (`0`=Amazon .. `6`=Assassin; `>6` formats `"Level %d"` without class name per `0x6F9E33ED`) |
 | `33..48` | `+0x1F..+0x2E` | `levels[16]` | `u8[16]` | Character levels (`1..99`) |
 | `49..` | `+0x2F..` | `description` | `cstring` | Null-terminated game description string (`<= 31` chars) |
 | `..` | `..` | `players[0..playerCount-1]` | `cstring[]` | `playerCount` null-terminated character names (`<= 15` chars each) |
@@ -78,7 +78,7 @@ When `MCP_GAMEINFO (0x06)` succeeds (`info.status == 0`), `0x6F9E3280` clears `h
 6. **Current Players Roster** (`0x6F9E33E0..0x6F9E34B5`):
    - For each player `i` (`0 .. info.playerCount - 1`) with non-empty `name`:
      - Line 1: `name` (color `0` White).
-     - Line 2: `"Level %d <ClassName>"` (`0x6F9E7504..0x6F9E757C`, color `5` DarkGray per `push 0x5; call 0x6F9D7C5C` @ `0x6F9E347F`).
+     - Line 2: `"Level %d <ClassName>"` (`0x6F9E7504..0x6F9E757C`, color `5` DarkGray per `push 0x5; call 0x6F9D7C5C` @ `0x6F9E347F`) when `0 <= charClass <= 6` (jump table `0x6F9E34B4`: `0`=Amazon .. `6`=Assassin), or `"Level %d"` (`0x6F9E75A0`, no class name) when `charClass > 6` (`cmp eax, 6; ja 0x6F9E3463` @ `0x6F9E33ED`).
 
 ---
 

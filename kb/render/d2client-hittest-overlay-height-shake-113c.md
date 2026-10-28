@@ -47,7 +47,14 @@ Overlay row = `overlay.bin` (`[tables+0xBBC]`, stride `0x84`). The instance (0xA
 
 D2Common `#10172` (`0x6FD80830`): player → 1; monster → MonStats2 `OverlayHeight` (record byte `+0x0C`) − 1;
 any other type → 0. The values add to yOffset and keep their sign. Other fields: `+0x14 = AnimRate << 4`
-(8.8 frames per frame), `+0x28 = LoopWaitTime (+0x78)`, `+0x34 = PreDraw`, light from InitRadius/Radius + RGB.
+(8.8 frames per frame), `+0x28 = LoopWaitTime (+0x78)` (`0x6FB1B57B`), `+0x34 = PreDraw`, light from InitRadius/Radius + RGB.
+
+`LoopWaitTime` consumer (`0x6FB1C1FF`, `0x6FB1C321`, `0x6FB1B062`, `0x6FB1B1EC`): in `OVERLAY_Step` (`0x6FB1C150`),
+when an overlay wraps at `frame8 >= totalFrames << 8` (`0x6FB1C321`), it subtracts `totalFrames << 8`, clears
+`inst+0x08` (`dwActive = 0`), and stores `GetTickCount()` into `inst+0x30`. While `inst+0x08 == 0`, pre-step
+`0x6FB1C1FF` checks `GetTickCount() - inst+0x30 < inst+0x28` (`LoopWaitTime` ms) and skips frame stepping while
+`OVERLAY_Draw` (`0x6FB1B062` / `0x6FB1B1EC`) hides the overlay; once `LoopWaitTime` ms have elapsed, `0x6FB1C21A`
+sets `inst+0x08 = 1` and resumes stepping.
 
 MonStats2 OverlayHeight counts: 0 → 15 rows, 1 → 119, 2 → 300, 3 → 153, 4 → 22. 45 Overlay.txt rows
 use Height `14,0,-14,-60` (curses, armour hits, shrine shimmers, doubledamage); `cloaked` = `-46,-60,-74,-120`;

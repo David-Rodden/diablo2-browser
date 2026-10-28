@@ -36,6 +36,7 @@ import {
   getCanonicalMonsterKinds,
   getSuperUniqueByIndex,
 } from '../../common/units/monsters-data.ts'
+import { resolveMonPlacePreset113c } from '../../common/units/monai-113c.ts'
 import { getTownNpcDescriptorByHcIdx } from '../../common/units/npc-table.ts'
 import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import { OBJECTS_TXT_113C } from '../../common/world/objects-txt-113c.ts'
@@ -159,11 +160,22 @@ export type AreaLevelRequest = LocalAreaLevelRequest
 export type AreaLevelSource = LocalAreaLevelSource
 
 /** Walkability of world sub-tile `(x, y)` in `level` (outside the grid = void = blocked). */
-export function isLevelSubTileWalkable(level: AreaLevelGeometry, x: number, y: number): boolean {
+export function isLevelSubTileWalkable(
+  level: AreaLevelGeometry,
+  x: number,
+  y: number,
+  isFlying = false,
+): boolean {
   const sx = Math.floor(x) - level.originX
   const sy = Math.floor(y) - level.originY
   if (sx < 0 || sy < 0 || sx >= level.subWidth || sy >= level.subHeight) return false
-  return level.blocked[sy * level.subWidth + sx] === 0
+  const idx = sy * level.subWidth + sx
+  if (isFlying && level.collision !== undefined && level.collision.length === level.blocked.length) {
+    // 1.13c COLLIDE_MISSILE_BARRIER | COLLIDE_DOOR (0x0804): water pools carry walk-only
+    // COLLIDE_WALL (0x0001) so missiles, flying units, and water-watcher sight cross them.
+    return (level.collision[idx]! & 0x0804) === 0
+  }
+  return level.blocked[idx] === 0
 }
 
 /**
@@ -241,10 +253,51 @@ export function buildAreaBootstrap(
       if (u.index >= MONSTATS_113C_ROWS.length) {
         const superUniqueIndex = u.index - MONSTATS_113C_ROWS.length
         const su = getSuperUniqueByIndex(superUniqueIndex)
-        if (!su || isTown) continue
-        const suKind = getCanonicalMonsterKinds('normal').get(su.monsterId)
-        if (suKind?.hcIdx === undefined) continue
-        monsters.push({ classId: suKind.hcIdx, x, y, areaId, superUniqueIndex })
+        if (su) {
+          if (isTown) continue
+          const suKind = getCanonicalMonsterKinds('normal').get(su.monsterId)
+          if (suKind?.hcIdx === undefined) continue
+          monsters.push({ classId: suKind.hcIdx, x, y, areaId, superUniqueIndex })
+          continue
+        }
+        // 1.13c MonPreset type 0 (`MonPlace.txt` rows, `u.index >= nMonStats + nSuperUniques` = 800):
+        // D2Game.dll 0x6FC67E6D resolves deterministic presets such as Act 3 water pool TentacleHead (10/11).
+        const SUPERUNIQUES_TXT_COUNT_113C = 66
+        if (superUniqueIndex >= SUPERUNIQUES_TXT_COUNT_113C && !isTown) {
+          const monPlace = resolveMonPlacePreset113c(
+            superUniqueIndex - SUPERUNIQUES_TXT_COUNT_113C,
+            areaId,
+          )
+          if (monPlace !== null) {
+            if (monPlace.superUniqueIndex !== undefined) {
+              monsters.push({
+                classId: monPlace.classId,
+                x,
+                y,
+                areaId,
+                superUniqueIndex: monPlace.superUniqueIndex,
+              })
+              continue
+            }
+            const mpRow = MONSTATS_113C_ROWS[monPlace.classId]
+            if (mpRow) {
+              const mpTownNpc = getTownNpcDescriptorByHcIdx(monPlace.classId)
+              const mpIsVendor = mpTownNpc !== undefined && mpTownNpc.vendorId !== null
+              const mpIsNpc = mpRow.npc || mpTownNpc !== undefined
+              const mpIsKillable = !mpIsNpc && mpRow.killable
+              monsters.push({
+                classId: monPlace.classId,
+                x,
+                y,
+                areaId,
+                isNpc: mpIsNpc,
+                isVendor: mpIsVendor,
+                isKillable: mpIsKillable,
+                aiDisabled: mpIsNpc,
+              })
+            }
+          }
+        }
         continue
       }
       const townNpc = getTownNpcDescriptorByHcIdx(u.index)
@@ -296,7 +349,8 @@ export function buildAreaBootstrap(
     objects,
     monsters,
     warps,
-    isWalkable: (checkAreaId, x, y) => checkAreaId === areaId && isLevelSubTileWalkable(level, x, y),
+    isWalkable: (checkAreaId, x, y, isFlying) =>
+      checkAreaId === areaId && isLevelSubTileWalkable(level, x, y, Boolean(isFlying)),
     ...(locate !== undefined ? { findActSpawnLocation: locate } : {}),
   }
 }

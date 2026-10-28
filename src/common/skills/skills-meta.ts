@@ -54,6 +54,7 @@ export interface HotkeySkillEntry {
   readonly listRow?: number
   readonly reqlevel?: number
   readonly isItemSkill?: boolean
+  readonly itemId?: number
   readonly tabIndex?: number
 }
 

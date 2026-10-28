@@ -8,6 +8,7 @@
 
 import {
   ClickButtonId,
+  getLocalLobbyProvider,
   unitTypeFromId,
   unitTypeToId,
   type ClientCommand,
@@ -164,6 +165,33 @@ export function unitKnownByRawType(
   return host.world.getUnit(rawUnitType as UnitTypeId, id) !== undefined
 }
 
+function syncPersistedPlayersXToLocalServer(
+  host: Pick<SessionEventProcessorHost, 'gameAdapter'>,
+  count: number,
+  isInitialAttach = false,
+): void {
+  getLocalLobbyProvider()?.setPersistedPlayersX?.(count)
+  const adapter = host.gameAdapter as {
+    getPlayersX?: () => number
+    setPlayersX?: (n: number) => number
+    getGameInstance?: () => {
+      tickCount?: number
+      getPlayersX?: () => number
+      setPlayersX?: (n: number, opts?: { readonly syncMonsterPlayerCount?: boolean }) => number
+    }
+  } | null
+  if (!adapter) return
+  const game = typeof adapter.getGameInstance === 'function' ? adapter.getGameInstance() : null
+  if (game && typeof game.setPlayersX === 'function') {
+    const syncMonsterPlayerCount = isInitialAttach || (game.tickCount ?? 0) <= 1
+    if (syncMonsterPlayerCount || game.getPlayersX?.() !== count) {
+      game.setPlayersX(count, { syncMonsterPlayerCount })
+    }
+  } else if (typeof adapter.setPlayersX === 'function' && adapter.getPlayersX?.() !== count) {
+    adapter.setPlayersX(count)
+  }
+}
+
 export function dispatchSessionCommand(
   host: SessionEventProcessorHost,
   cmd: ClientCommand | Record<string, any>,
@@ -184,6 +212,7 @@ export function dispatchSessionCommand(
     if (playersCount !== null) {
       host.persistedPlayersCount = playersCount
       host.appliedPersistedPlayersForGame = true
+      getLocalLobbyProvider()?.setPersistedPlayersX?.(playersCount)
     }
   }
   const category = classifyClientCommand(normalized)
@@ -281,6 +310,7 @@ export function submitSessionChatInput(
       if (parsed.valid && parsed.count !== null) {
         host.persistedPlayersCount = parsed.count
         host.appliedPersistedPlayersForGame = true
+        getLocalLobbyProvider()?.setPersistedPlayersX?.(parsed.count)
         host.world.addSystemChatMessage(playersSetChatText113c(parsed.count), 0, nowMs)
         host.dispatchCommand({ type: 'Chat', text: playersSetChatText113c(parsed.count) }, nowMs)
         host.hudModel.syncFromWorld()
@@ -314,6 +344,7 @@ export function applyPersistedPlayersToCurrentGame(
     return false
   }
   host.appliedPersistedPlayersForGame = true
+  syncPersistedPlayersXToLocalServer(host, count, true)
   const msgText = `players set to ${count}`
   const alreadyShown = host.world.activeChatOverlayEntries.some(
     (m) => m.kind === 'system' && m.text.toLowerCase() === msgText.toLowerCase(),
@@ -559,6 +590,7 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       if (count >= 1 && count <= 8) {
         host.persistedPlayersCount = count
         host.appliedPersistedPlayersForGame = true
+        getLocalLobbyProvider()?.setPersistedPlayersX?.(count)
         const targetLower = ev.text.trim().toLowerCase()
         if (
           host.world.activeChatOverlayEntries.some(
@@ -678,7 +710,7 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       host.lastSyncedAreaId = ev.areaId
       host.audioRuntime.enterLevel(
         ev.areaId,
-        periodOfDayToSoundEnvironTod113c(host.environmentValue.period),
+        periodOfDayToSoundEnvironTod113c(host.environmentValue.cycleIndex),
       )
       host.audioRuntime.playLevelMusic(ev.areaId)
       host.syncAudioSkillPacks()
@@ -740,6 +772,11 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         host.environmentValue.period,
         performance.now(),
       )
+      if (!host.hudManager?.tradeHallMode) {
+        host.audioRuntime.setTimeOfDay(
+          periodOfDayToSoundEnvironTod113c(host.environmentValue.cycleIndex),
+        )
+      }
       break
     }
 
@@ -877,7 +914,7 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         if (u.direction !== undefined) {
           host.predictor.setDirection(u.direction)
         }
-      } else if (uTypeId !== 1 && (u.x !== 0 || u.y !== 0)) {
+      } else if (uTypeId === 0 && (u.x !== 0 || u.y !== 0)) {
         const assignedUnit = host.world.getUnit(u.unitType, u.id)
         host.interpolator.spawnOrSnap({
           unitType: uTypeId,
@@ -943,7 +980,7 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         host.logicClock.suppressCatchUp(performance.now() + LOCAL_REASSIGN_NO_CATCH_UP_MS)
         // 0x6fb58012: the weather 0x6fb31720 after the move (see `resolveReassignWeatherArg`).
         if (reassignWeatherArg !== null) host.weather.onLocalReassign(reassignWeatherArg)
-      } else if (evTypeId !== 1) {
+      } else if (evTypeId === 0) {
         host.interpolator.spawnOrSnap({
           unitType: evTypeId,
           unitId: ev.id,
@@ -1200,7 +1237,7 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         if (isLocalPlayer) {
           host.predictor.stop()
           host.predictor.setTargetDirection(unit.targetDirection, false)
-        } else if (actorTypeId !== 1) {
+        } else if (actorTypeId === 0) {
           host.interpolator.setEntityTargetDirection(
             actorTypeId,
             actorId,
@@ -1218,8 +1255,8 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         break
       }
       const uType = unitTypeToId(ev.unitType)
-      if (uType === 1) {
-        // Monsters are driven by `this.world.npcMotion`.
+      if (uType !== 0) {
+        // Monsters are driven by `this.world.npcMotion`; objects/items/tiles are static.
         break
       }
       const uId = ev.id

@@ -12,14 +12,21 @@ export class TblError extends Error {
   }
 }
 
+/**
+ * D2Lang.dll `#10000` (`0x6FC08FE0`..`0x6FC0901F`):
+ * ELF hash over `key` using signed byte extension (`movsx ecx, cl` at `0x6FC08FF0`),
+ * modulo `hashTableSize` (`div DWORD PTR [esp+0x8]`).
+ */
 export function tblHash(key: Uint8Array, hashTableSize: number): number {
   if (hashTableSize === 0) return 0
   let h = 0
   for (let i = 0; i < key.length; i++) {
-    h = ((h << 4) + key[i]!) >>> 0
+    const signedByte = (key[i]! << 24) >> 24
+    h = ((h << 4) + signedByte) >>> 0
     const high = h & 0xf0000000
-    if (high !== 0) h ^= high >>> 24
-    h = (h & ~high) >>> 0
+    if (high !== 0) {
+      h = ((h ^ (high >>> 24)) & 0x0fffffff) >>> 0
+    }
   }
   return h % hashTableSize
 }
@@ -164,10 +171,9 @@ export function lookupTblFast(data: Uint8Array, key: string, encoding = 'windows
     const bucket = (targetHash + i) % hashTableSize
     const base = nodesStart + bucket * 17
     const isActive = data[base]
-    if (!isActive) return undefined
-
-    const nodeHash = u32(data, base + 3)
-    if (nodeHash !== targetHash) continue
+    // D2Lang.dll 0x6FC0939E..0x6FC093A7 (`cmp al, 1; jne next`):
+    // skips inactive slots and continues probing up to `maxTries`, matching by strcmp without checking stored nodeHash.
+    if (isActive !== 1) continue
 
     const keyOffset = u32(data, base + 7)
     if (keyOffset >= data.byteLength) continue
@@ -194,6 +200,19 @@ export function lookupTblFast(data: Uint8Array, key: string, encoding = 'windows
   return undefined
 }
 
+/**
+ * D2Lang.dll `0x6FC09050` (`cmp dx, [tbl+2]; jb ok; mov edx, 0x1F4`):
+ * Out-of-range per-table string index (`idx >= numElements`) is replaced with `500` (`0x1F4`).
+ */
+export const D2LANG_OUT_OF_RANGE_FALLBACK_INDEX = 500
+
+/**
+ * D2Lang.dll `#10003` (`0x6FC09450`..`0x6FC09468`):
+ * Global string index `>= 20000` (`0x4E20`) when `expansionstring.tbl` is not loaded
+ * is rewritten to `11078` (`0x2B46`, `patchstring.tbl` index `1078`).
+ */
+export const D2LANG_NO_EXPANSION_FALLBACK_INDEX = 11078
+
 export function tblLookup(entries: readonly (string | undefined)[]): {
   readonly size: number
   get: (index: number) => string | undefined
@@ -202,8 +221,42 @@ export function tblLookup(entries: readonly (string | undefined)[]): {
   for (const entry of entries) if (entry !== undefined) size += 1
   return {
     size,
-    get: index => (index >= 0 && index < entries.length ? entries[index] : undefined),
+    get: index => {
+      const u16Index = index & 0xffff
+      if (u16Index < entries.length) return entries[u16Index]
+      return entries[D2LANG_OUT_OF_RANGE_FALLBACK_INDEX]
+    },
   }
+}
+
+/**
+ * D2Lang.dll `#10003` (`0x6FC09450`) & `0x6FC09050`:
+ * Resolves a global 16-bit string index across `string.tbl` (`0..9999`),
+ * `patchstring.tbl` (`10000..19999`), and `expansionstring.tbl` (`20000+`),
+ * falling back to index `500` (`0x1F4`) when the per-table index exceeds `numElements`,
+ * and rewriting `>= 20000` to `11078` when `expansion` is not loaded.
+ */
+export function lookupTblByIndex113c(
+  index: number,
+  tables: {
+    readonly string: readonly (string | undefined)[]
+    readonly patch?: readonly (string | undefined)[] | null
+    readonly expansion?: readonly (string | undefined)[] | null
+  },
+): string | undefined {
+  let u16Index = index & 0xffff
+  if (u16Index >= 20000) {
+    if (tables.expansion) {
+      const rel = u16Index - 20000
+      return tables.expansion[rel < tables.expansion.length ? rel : D2LANG_OUT_OF_RANGE_FALLBACK_INDEX]
+    }
+    u16Index = D2LANG_NO_EXPANSION_FALLBACK_INDEX
+  }
+  if (u16Index >= 10000 && tables.patch) {
+    const rel = u16Index - 10000
+    return tables.patch[rel < tables.patch.length ? rel : D2LANG_OUT_OF_RANGE_FALLBACK_INDEX]
+  }
+  return tables.string[u16Index < tables.string.length ? u16Index : D2LANG_OUT_OF_RANGE_FALLBACK_INDEX]
 }
 
 import { resolveTblKey } from '../data/canonical-tbl-strings.ts'
@@ -250,6 +303,25 @@ export function isDefaultTblLangEn(): boolean {
 
 export function lookupTbl(key: string, lang: TblLang = getDefaultTblLang()): string | undefined {
   return resolveTblKey(key, lang)
+}
+
+/**
+ * D2Lang.dll `0x6FC09FB0` & `0x6FC10568`:
+ * Suffix appended to missing string-table keys (`"<key> -not xlated call ken w"`).
+ */
+export const D2LANG_NOT_XLATED_SUFFIX = ' -not xlated call ken w'
+
+/**
+ * D2Lang.dll `#10010` (`0x6FC0A7B0`) & `0x6FC09FB0`:
+ * Cross-table string lookup by key (`patchstring` -> `expansionstring` -> `string` with exact `strcmp`):
+ * - Empty key (`""`) returns `""` (index 0).
+ * - Found key returns its exact value (preserving whitespace-only values such as `" "`).
+ * - Missing key returns `"<key> -not xlated call ken w"`.
+ */
+export function lookupTbl113c(key: string, lang: TblLang = getDefaultTblLang()): string {
+  if (key === '') return ''
+  const v = resolveTblKey(key, lang)
+  return v !== undefined ? v : `${key}${D2LANG_NOT_XLATED_SUFFIX}`
 }
 
 

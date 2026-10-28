@@ -2133,6 +2133,14 @@ const BAAL_ON_THRONE_META: OverlayMeta = {
     [[0, 0, 172, 123, -85, -110], [173, 0, 172, 123, -85, -110], [346, 0, 172, 123, -85, -110], [519, 0, 172, 123, -85, -110], [692, 0, 172, 123, -85, -110], [0, 124, 172, 123, -85, -110], [173, 124, 172, 123, -85, -110], [346, 124, 172, 123, -85, -110], [519, 124, 172, 123, -85, -110], [692, 124, 172, 123, -85, -110], [0, 248, 172, 123, -85, -110]]
   ],
 }
+const MEPHISTO_META: OverlayMeta = {
+  name: "mephisto", celFile: "MephistoOverlay", width: 2048, height: 572, directions: 1, frames: 26, framesPerDirection: 26, animRate: 16, trans: 3, blendMode: "additive", preDraw: false, lightRadius: 0,
+  lightColor: [255, 255, 255],
+  box: { left: -108, top: -137, width: 224, height: 190 },
+  groups: [
+    [[0, 0, 217, 190, -106, -137], [218, 0, 218, 190, -102, -137], [437, 0, 218, 190, -102, -137], [656, 0, 221, 190, -105, -137], [878, 0, 220, 190, -105, -137], [1099, 0, 221, 190, -106, -137], [1321, 0, 218, 190, -107, -137], [1540, 0, 219, 190, -108, -137], [1760, 0, 219, 190, -108, -137], [0, 191, 220, 190, -107, -137], [221, 191, 218, 190, -105, -137], [440, 191, 218, 190, -105, -137], [659, 191, 217, 190, -104, -137], [877, 191, 214, 190, -102, -137], [1092, 191, 213, 190, -104, -137], [1306, 191, 217, 190, -105, -137], [1524, 191, 217, 190, -105, -137], [1742, 191, 215, 190, -107, -137], [0, 382, 213, 190, -106, -137], [214, 382, 213, 190, -106, -137], [428, 382, 213, 190, -106, -137], [642, 382, 215, 190, -105, -137], [858, 382, 215, 190, -105, -137], [1074, 382, 214, 190, -105, -137], [1289, 382, 210, 190, -103, -137], [1500, 382, 217, 190, -106, -137]]
+  ],
+}
 
 const BERSERKBACK_OVERLAY_META: OverlayMeta = { ...BERSERKFRONT_OVERLAY_META, name: 'berserkback', celFile: 'null', preDraw: true }
 
@@ -2249,21 +2257,21 @@ export const ALL_OVERLAY_NAMES: readonly string[] = [
   "cyclonearmor3front",
   "cyclonearmor3back",
   "rabiesplague",
-  "maul1front",
-  "maul2front",
-  "maul3front",
-  "maul4front",
-  "maul5front",
+  "maul1",
+  "maul2",
+  "maul3",
+  "maul4",
+  "maul5",
   "maul1back",
   "maul2back",
   "maul3back",
   "maul4back",
   "maul5back",
-  "feralrage1front",
-  "feralrage2front",
-  "feralrage3front",
-  "feralrage4front",
-  "feralrage5front",
+  "feralrage1",
+  "feralrage2",
+  "feralrage3",
+  "feralrage4",
+  "feralrage5",
   "feralrage1back",
   "feralrage2back",
   "feralrage3back",
@@ -2397,6 +2405,7 @@ export const ALL_OVERLAY_NAMES: readonly string[] = [
   "ice_cage_melt",
   "progressive_lightning_2_attack",
   "baal_on_throne",
+  "mephisto",
 ]
 
 export const OVERLAY_METAS: Readonly<Record<string, OverlayMeta>> = {
@@ -2715,8 +2724,8 @@ export const OVERLAY_METAS: Readonly<Record<string, OverlayMeta>> = {
   "bone_armor_back": BONE_ARMOR_BACK_OVERLAY_META,
   "charge": CHARGE_OVERLAY_META,
   "Charge": CHARGE_OVERLAY_META,
-  "Conversion": CONVERSION_OVERLAY_META,
   "conversionaura": CONVERSION_OVERLAY_META,
+  "Conversion": CONVERSION_OVERLAY_META,
   "conversioncast": CONVERSION_CAST_OVERLAY_META,
   "AuraResistColdBackCast": CONVERSION_CAST_OVERLAY_META,
   "auraresistcoldbackcast": CONVERSION_CAST_OVERLAY_META,
@@ -3423,6 +3432,9 @@ export const OVERLAY_METAS: Readonly<Record<string, OverlayMeta>> = {
   "progressive_lightning_3_attack": PROGRESSIVE_LIGHTNING_2_ATTACK_META,
   "baal_on_throne": BAAL_ON_THRONE_META,
   "expansion/baalshield": BAAL_ON_THRONE_META,
+  "mephisto": MEPHISTO_META,
+  "MephistoOverlay": MEPHISTO_META,
+  "mephistooverlay": MEPHISTO_META,
 }
 
 export interface AuthenticOverlayTxtEntry {

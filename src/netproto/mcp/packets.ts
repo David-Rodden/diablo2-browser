@@ -20,7 +20,9 @@ export const McpOpcode = {
   MCP_GAMEINFO: 0x06,
   MCP_CHARLOGON: 0x07,
   MCP_CHARDELETE: 0x0a,
+  MCP_LADDERDATA: 0x11,
   MCP_MOTD: 0x12,
+  MCP_CREATEQUEUE: 0x14,
   MCP_CHARLIST: 0x17,
   MCP_CHARUPGRADE: 0x18,
   MCP_CHARLIST2: 0x19,
@@ -64,14 +66,29 @@ export type DecodedMcpS2cPacket =
   | { readonly type: 'MCP_STARTUP'; readonly status: number }
   | { readonly type: 'MCP_CHARCREATE'; readonly status: number }
   | { readonly type: 'MCP_CHARLOGON'; readonly status: number }
-  | { readonly type: 'MCP_CHARDELETE'; readonly status: number }
+  | { readonly type: 'MCP_CHARDELETE'; readonly requestId: number; readonly status: number }
   | { readonly type: 'MCP_CHARUPGRADE'; readonly status: number }
   | { readonly type: 'MCP_CHARLIST2'; readonly totalChars: number; readonly chars: readonly CharSummary[] }
   | { readonly type: 'MCP_CREATEGAME'; readonly requestId: number; readonly data: McpCreateGameResponse }
   | { readonly type: 'MCP_JOINGAME'; readonly requestId: number; readonly data: McpJoinGameResponse }
   | { readonly type: 'MCP_GAMELIST'; readonly requestId: number; readonly game: GameSummary }
   | { readonly type: 'MCP_GAMEINFO'; readonly requestId: number; readonly info: GameInfoDetail }
-  | { readonly type: 'MCP_MOTD'; readonly headline: string; readonly body: string }
+  | {
+      readonly type: 'MCP_LADDERDATA'
+      readonly ladderType: number
+      readonly totalBytes: number
+      readonly offset: number
+      readonly chunkLen: number
+      readonly data: Uint8Array
+    }
+  | {
+      readonly type: 'MCP_MOTD'
+      readonly unknown: number
+      readonly text: string
+      readonly headline: string
+      readonly body: string
+    }
+  | { readonly type: 'MCP_CREATEQUEUE'; readonly position: number }
   | { readonly type: 'UNKNOWN'; readonly id: number; readonly payload: Uint8Array }
 
 /**
@@ -200,13 +217,17 @@ export function encodeMcpCharLogon(
   return encodeMcpFrame(McpOpcode.MCP_CHARLOGON, w.toUint8Array())
 }
 
+/**
+ * C2S `MCP_CHARDELETE (0x0A)` (`D2MCPClient.dll` `0x6fa26e60`):
+ * writes `u16 requestId` at payload `+0` (`[esp+0xd]`, also stored in `0x6fa2aeb4`), followed by the NUL-terminated character name.
+ */
 export function encodeMcpCharDelete(
   name: string,
-  flags = 0,
+  requestId = 0,
   codec: TextCodec = defaultTextCodec,
 ): Uint8Array {
   const w = new ByteWriter(24)
-  w.u16(flags)
+  w.u16(requestId)
   w.cstring(name, codec)
   return encodeMcpFrame(McpOpcode.MCP_CHARDELETE, w.toUint8Array())
 }
@@ -317,6 +338,17 @@ export function encodeMcpMotd(): Uint8Array {
   return encodeMcpFrame(McpOpcode.MCP_MOTD, new Uint8Array(0))
 }
 
+/**
+ * C2S `MCP_LADDERDATA (0x11)` (`D2MCPClient.dll` `0x6FA26DF0`):
+ * `[u8 ladderType][u16 startRank]`.
+ */
+export function encodeMcpLadderData(ladderType: number, startRank: number): Uint8Array {
+  const w = new ByteWriter(3)
+  w.u8(ladderType)
+  w.u16(startRank)
+  return encodeMcpFrame(McpOpcode.MCP_LADDERDATA, w.toUint8Array())
+}
+
 export function decodeMcpS2cPacket(
   pkt: McpRawPacket,
   codec: TextCodec = defaultTextCodec,
@@ -332,8 +364,13 @@ export function decodeMcpS2cPacket(
     case McpOpcode.MCP_CHARLOGON:
       return { type: 'MCP_CHARLOGON', status: r.u32() }
 
-    case McpOpcode.MCP_CHARDELETE:
-      return { type: 'MCP_CHARDELETE', status: r.u32() }
+    case McpOpcode.MCP_CHARDELETE: {
+      // Per D2MCPClient.dll 0x6fa26250 (0x6fa2a900[0x0a]):
+      // mov ax, [ecx+1] (u16 requestId); mov ecx, [ecx+3] (u32 status).
+      const requestId = r.u16()
+      const status = r.u32()
+      return { type: 'MCP_CHARDELETE', requestId, status }
+    }
 
     case McpOpcode.MCP_CHARUPGRADE:
       return { type: 'MCP_CHARUPGRADE', status: r.u32() }
@@ -424,7 +461,8 @@ export function decodeMcpS2cPacket(
         if (pName.length > 0) {
           players.push({
             name: pName,
-            charClass: Math.min(6, classes[i]!) as CharClassId,
+            // D2Multi.dll 0x6F9E33ED: 0-based class IDs (0=Amazon..6=Assassin); values > 6 omit class name ("Level %d").
+            charClass: classes[i]! as CharClassId,
             level: levels[i]!,
           })
         }
@@ -445,11 +483,57 @@ export function decodeMcpS2cPacket(
       }
     }
 
+    case McpOpcode.MCP_LADDERDATA: {
+      // D2MCPClient.dll 0x6FA25F10 (0x6FA2A900[0x11]):
+      // [u8 ladderType @+1][u16 totalBytes @+2][u16 offset @+4][u16 chunkLen @+6][u8[] data @+8]
+      const ladderType = r.u8()
+      const totalBytes = r.u16()
+      const offset = r.u16()
+      const chunkLen = r.u16()
+      const data = r.bytes(Math.min(chunkLen, r.remaining))
+      return {
+        type: 'MCP_LADDERDATA',
+        ladderType,
+        totalBytes,
+        offset,
+        chunkLen,
+        data,
+      }
+    }
+
     case McpOpcode.MCP_MOTD: {
-      r.u8() // unknown
-      const headline = r.remaining > 0 ? r.cstring(codec) : ''
-      const body = r.remaining > 0 ? r.cstring(codec) : ''
-      return { type: 'MCP_MOTD', headline, body }
+      // D2MCPClient.dll 0x6FA25EE0 (0x6FA2A900[0x12]):
+      // cmp edx, 2; jb -> 0; movzx ecx, byte ptr [ecx+1] (unknown/status u8);
+      // lea esi, [ecx+2], add edx, -2 -> single buffer of length (len - 2) passed to [0x6FA2B234].
+      const unknown = r.remaining > 0 ? r.u8() : 0
+      const first = r.remaining > 0 ? r.cstring(codec) : ''
+      const second = r.remaining > 0 ? r.cstring(codec) : ''
+      let text: string
+      let headline: string
+      let body: string
+      if (second.length > 0) {
+        headline = first
+        body = second
+        text = `${first}\n${second}`
+      } else {
+        text = first
+        const nlIdx = first.indexOf('\n')
+        if (nlIdx >= 0) {
+          headline = first.slice(0, nlIdx).replace(/\r$/, '')
+          body = first.slice(nlIdx + 1)
+        } else {
+          headline = first
+          body = ''
+        }
+      }
+      return { type: 'MCP_MOTD', unknown, text, headline, body }
+    }
+
+    case McpOpcode.MCP_CREATEQUEUE: {
+      // D2MCPClient.dll 0x6FA260D0 (0x6FA2A900[0x14]):
+      // mov eax, dword ptr [ecx+1]; mov [0x6fa2b1bc], eax; mov dword ptr [0x6fa2aea4], 1; ret
+      const position = r.u32()
+      return { type: 'MCP_CREATEQUEUE', position }
     }
 
     default:

@@ -1,6 +1,12 @@
 import { detectInitialLang, type GameLang } from '../i18n/lang.ts'
 import { Sgd2FreeResPresentation } from '../../common/ui/pd2-sgd2freeres.ts'
 import {
+  CONTRAST_DEFAULT_113C,
+  GAMMA_DEFAULT_113C,
+  normalizeContrast113c,
+  normalizeGamma113c,
+} from '../../common/gfx/gamma-contrast-113c.ts'
+import {
   createDefaultKeyBindings,
   DEFAULT_KEY_BINDINGS,
   sanitizeKeyBindings,
@@ -95,6 +101,10 @@ export interface ClientSettings
   readonly lang: 'zh' | 'en' // default: detected from URL/browser or 'zh'
   readonly lightingPreset: ClientLightingPreset
   readonly lightQuality: LightQualitySetting // default: 2
+  /** 1.13c Gamma option (`55..255`, default `155` = `0x9B`, `D2gfx.dll` `0x6FA8AF2F` / `D2Client.dll` `0x6FB148A5`). */
+  readonly gamma?: number | undefined
+  /** 1.13c Contrast option (`0..100`, default `100` = `0x64`, `D2gfx.dll` `0x6FA8AF02` / `D2Client.dll` `0x6FB14820`). */
+  readonly contrast?: number | undefined
   readonly automapReveal: AutomapRevealMode
   readonly automapShowWaypoints: boolean
   readonly viewport: ViewportResolution
@@ -180,6 +190,8 @@ export const VALID_HUD_LAYOUT_MODES: readonly HudLayoutMode[] = [
 ] as const
 
 export const DEFAULT_LIGHT_QUALITY: LightQualitySetting = 2
+export const DEFAULT_GAMMA_113C: number = GAMMA_DEFAULT_113C
+export const DEFAULT_CONTRAST_113C: number = CONTRAST_DEFAULT_113C
 export const DEFAULT_AUDIO_MUTED = false
 export const DEFAULT_MASTER_VOLUME = 0.8
 export const DEFAULT_HUD_LAYOUT_MODE: HudLayoutMode = 'auto'
@@ -194,6 +206,8 @@ export function createDefaultClientSettings(defaultLang?: GameLang): ClientSetti
     lang: defaultLang ?? detectInitialLang(),
     lightingPreset: 'auto',
     lightQuality: DEFAULT_LIGHT_QUALITY,
+    gamma: DEFAULT_GAMMA_113C,
+    contrast: DEFAULT_CONTRAST_113C,
     automapReveal: 'off',
     automapShowMonsters: false,
     automapShowShrines: false,
@@ -556,6 +570,8 @@ export function sanitizeClientSettings(
       : defaults.lightingPreset
 
   const lightQuality = normalizeLightQuality(rec.lightQuality, defaults.lightQuality)
+  const gamma = normalizeGamma113c(rec.gamma, defaults.gamma ?? DEFAULT_GAMMA_113C)
+  const contrast = normalizeContrast113c(rec.contrast, defaults.contrast ?? DEFAULT_CONTRAST_113C)
 
   const automapReveal =
     rec.automapReveal !== undefined
@@ -679,6 +695,8 @@ export function sanitizeClientSettings(
     lang,
     lightingPreset,
     lightQuality,
+    gamma,
+    contrast,
     automapReveal,
     automapShowMonsters,
     automapShowShrines,

@@ -16,6 +16,7 @@ import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { getSoundIdByName113c } from '../../common/audio/sounds-113c.ts'
 import { resolveNpcGreetingSoundId113c } from '../../common/audio/npc-speech-113c.ts'
 import { resolveUnitMonSoundRow113c } from '../../common/audio/mon-sounds-113c.ts'
+import { QUEST_LOG_DESCRIPTORS, questLogRowIndex } from '../world/quest-log-state.ts'
 
 export interface WorldSoundUnitRef extends UnitRef {
   readonly x?: number | undefined
@@ -735,4 +736,290 @@ export function resolveBlockSoundId113c(hitClass: number): number {
     return 401 // 0x191 block_arrow_1
   }
   return 398 // 0x18e block_weapon_1
+}
+
+/**
+ * Minimum ticks in the new level's room before `0x6faf5660` (`0x6faf58c2`: `cmp eax, 0x3e`) invokes `0x6fad3e20`.
+ */
+export const AREA_SPEECH_ROOM_DELAY_TICKS_113C = 62
+
+/**
+ * Minimum ticks after the local player's creation tick (`[player+0x7c]`) required by `0x6fad3e20`
+ * (`0x6fad3eff`: `cmp eax, 0x3e; jbe` -> strict `> 62`).
+ */
+export const AREA_SPEECH_PLAYER_SPAWN_DELAY_TICKS_113C = 62
+
+export interface AreaSpeechEntry113c {
+  readonly levels: readonly number[]
+  readonly questId: number
+  readonly voiceSlot: number
+}
+
+/**
+ * 14-entry area-entry player monologue table at `D2Client.dll` `.data:0x6fba76b0..0x6fba7920`
+ * (indexed via pointer array `0x6fba7950..0x6fba7988`, stride `0x30`: 10 level IDs, `+0x28` quest ID, `+0x2C` voice slot).
+ */
+export const AREA_SPEECH_TABLE_0x6FBA76B0: readonly AreaSpeechEntry113c[] = [
+  { levels: [17], questId: 2, voiceSlot: 38 }, // 0x6fba76b0: Burial Grounds
+  { levels: [34, 35, 36, 37], questId: 6, voiceSlot: 40 }, // 0x6fba76e0: Catacombs 1..4
+  { levels: [8], questId: 1, voiceSlot: 41 }, // 0x6fba7710: Den of Evil
+  { levels: [29, 30, 31], questId: 6, voiceSlot: 42 }, // 0x6fba7740: Jail 1..3
+  { levels: [26, 27], questId: 3, voiceSlot: 43 }, // 0x6fba7770: Monastery Gate / Outer Cloister
+  { levels: [20, 21, 22, 23, 24, 25], questId: 5, voiceSlot: 44 }, // 0x6fba77a0: Forgotten Tower / Cellar 1..5
+  { levels: [38], questId: 6, voiceSlot: 46 }, // 0x6fba77d0: Tristram
+  { levels: [2, 3, 4, 5, 6, 7], questId: 1, voiceSlot: 47 }, // 0x6fba7800: Blood Moor..Tamoe Highland
+  { levels: [74], questId: 12, voiceSlot: 55 }, // 0x6fba7830: Arcane Sanctuary
+  { levels: [58], questId: 13, voiceSlot: 56 }, // 0x6fba7860: Palace Cellar 3
+  { levels: [110], questId: 31, voiceSlot: 76 }, // 0x6fba7890: Bloody Foothills
+  { levels: [120], questId: 35, voiceSlot: 78 }, // 0x6fba78c0: Arreat Summit
+  { levels: [121], questId: 34, voiceSlot: 77 }, // 0x6fba78f0: Nihlathak's Temple
+  { levels: [132], questId: 36, voiceSlot: 79 }, // 0x6fba7920: Worldstone Chamber
+]
+
+export interface AreaSpeechQuestState113c {
+  /** S2C `0x5E` 37-byte quest availability array at `0x6fbc5590` (`[0x6fbcc0a0]`). */
+  readonly questAvailability?: ArrayLike<number> | undefined
+  /** When false, `questAvailability` has not yet been received (`[0x6fbcc0a0] == 0`); defaults to true when `questAvailability` is provided. */
+  readonly hasQuestAvailability?: boolean | undefined
+  /** S2C `0x28` player quest flag words (`[0x6fbc973b]`). */
+  readonly playerWords?: ArrayLike<number> | undefined
+  /** S2C `0x29` game quest flag words (`[0x6fbc973f]`). */
+  readonly gameWords?: ArrayLike<number> | undefined
+  /** S2C `0x52` / `0x5D` 41-byte quest status bytes (`[0x6fbd2220]`). */
+  readonly statusBytes?: ArrayLike<number> | undefined
+}
+
+/**
+ * Port of `D2Client.dll` `0x6facd740..0x6facd83a`: checks whether quest `questId` (`1..36`)
+ * is active/incomplete so the area-entry monologue in `0x6fad3e20` should play.
+ *
+ * - `0x6facd774`: checks `BYTE PTR [questId + 0x6fbc5590] != 0` (`S2C 0x5E` quest availability).
+ * - `0x6facd786..0x6facd7b3`: resolves `row = questLogRowIndex(questId)` in `0x6fba8188` (`hasTable === true`).
+ * - `0x6facd7b5..0x6facd7c9`: checks `QUESTRECORD_GetQuestState(gameWords, row, 13) == 0` (`0x2000`).
+ * - `0x6facd7cb..0x6facd803`: checks `QUESTRECORD_GetQuestState(playerWords, row, 1 | 0 | 14) == 0` (`0x0002`, `0x0001`, `0x4000`).
+ * - `0x6facd805..0x6facd828`: for `questId === 1` (Den of Evil), checks quest status `< 5`.
+ */
+export function isAreaSpeechQuestActive113c(
+  questId: number,
+  state?: AreaSpeechQuestState113c,
+): boolean {
+  if (questId === 0) return true
+  if (!Number.isInteger(questId) || questId < 0 || questId >= 0x25) return false
+
+  if (state?.questAvailability !== undefined && (state.hasQuestAvailability ?? true)) {
+    if (((state.questAvailability[questId] ?? 0) & 0xff) === 0) {
+      return false
+    }
+  }
+
+  const row = questLogRowIndex(questId)
+  const desc = row >= 0 ? QUEST_LOG_DESCRIPTORS[row] : undefined
+  if (!desc || !desc.hasTable) {
+    return false
+  }
+
+  const gw = (state?.gameWords?.[row] ?? 0) & 0xffff
+  if ((gw & 0x2000) !== 0) {
+    return false
+  }
+
+  const pw = (state?.playerWords?.[row] ?? 0) & 0xffff
+  if ((pw & (0x0001 | 0x0002 | 0x4000)) !== 0) {
+    return false
+  }
+
+  if (questId === 1) {
+    const status = (state?.statusBytes?.[row] ?? 0) & 0xff
+    if (status >= 5) {
+      return false
+    }
+  }
+
+  return true
+}
+
+export interface AreaEntrySpeechContext113c extends AreaSpeechQuestState113c {
+  readonly charClass?: number | undefined
+  readonly unitId?: number | undefined
+  readonly x?: number | undefined
+  readonly y?: number | undefined
+  readonly playerSpawnTick?: number | undefined
+  readonly isSpeechPlaying?: boolean | (() => boolean) | undefined
+}
+
+export interface AreaEntrySpeechControllerOptions113c {
+  readonly getContext?: (() => AreaEntrySpeechContext113c) | undefined
+  readonly isSpeechPlaying?: (() => boolean) | undefined
+  readonly onPlaySpeech?: ((resolved: WorldSoundRequest) => void) | undefined
+}
+
+/**
+ * Port of `D2Client.dll` `0x6fad3e20` (and its caller in `0x6faf5660` at `0x6faf58aa..0x6faf58de`):
+ * triggers first-visit class monologues after 62 ticks in a room of a new level (#1746).
+ */
+export class AreaEntrySpeechController113c {
+  private readonly visitedLevels = new Uint8Array(137)
+  private lastCheckedLevelId = 0 // [0x6fbd34b4]
+  private currentLevelId = 0 // [0x6fbcc34c]
+  private lastMusicTickLevelId = 0 // [0x6fbcc374]
+  private roomStampTick = 0 // [0x6fbcc340]
+  private playerSpawnTick = 0 // [player+0x7c]
+  private lastGameTick = 0
+  private getContextFn: (() => AreaEntrySpeechContext113c) | undefined
+  private readonly isSpeechPlayingFn: (() => boolean) | undefined
+  private readonly onPlaySpeechFn: ((resolved: WorldSoundRequest) => void) | undefined
+
+  constructor(options?: AreaEntrySpeechControllerOptions113c) {
+    this.getContextFn = options?.getContext
+    this.isSpeechPlayingFn = options?.isSpeechPlaying
+    this.onPlaySpeechFn = options?.onPlaySpeech
+  }
+
+  setContextProvider(provider: (() => AreaEntrySpeechContext113c) | undefined): void {
+    this.getContextFn = provider
+  }
+
+  reset(playerSpawnTick = 0): void {
+    this.visitedLevels.fill(0)
+    this.lastCheckedLevelId = 0
+    this.currentLevelId = 0
+    this.lastMusicTickLevelId = 0
+    this.roomStampTick = 0
+    this.playerSpawnTick = Math.max(0, Math.trunc(playerSpawnTick))
+    this.lastGameTick = 0
+  }
+
+  setPlayerSpawnTick(tick: number): void {
+    this.playerSpawnTick = Math.max(0, Math.trunc(tick))
+  }
+
+  getPlayerSpawnTick(): number {
+    return this.playerSpawnTick
+  }
+
+  getCurrentLevelId(): number {
+    return this.currentLevelId
+  }
+
+  getRoomStampTick(): number {
+    return this.roomStampTick
+  }
+
+  isLevelVisited(levelId: number): boolean {
+    if (!Number.isInteger(levelId) || levelId <= 0 || levelId >= this.visitedLevels.length) {
+      return false
+    }
+    return this.visitedLevels[levelId] !== 0
+  }
+
+  /**
+   * Stamp a room / level change (`0x6faf572e`: updates `[0x6fbcc340] = now` and `[0x6fbcc34c] = levelId`).
+   */
+  enterLevel(levelId: number, gameTick = this.lastGameTick): void {
+    const cleanLevel = Number.isInteger(levelId) && levelId > 0 ? levelId : 0
+    const cleanTick = Number.isInteger(gameTick) && gameTick >= 0 ? gameTick : this.lastGameTick
+    this.lastGameTick = cleanTick
+    if (cleanLevel !== this.currentLevelId) {
+      this.currentLevelId = cleanLevel
+      this.roomStampTick = cleanTick
+    }
+  }
+
+  /**
+   * Direct port of `0x6fad3e20`: evaluates `levelId` at `gameTick` against `AREA_SPEECH_TABLE_0x6FBA76B0`,
+   * marks all levels of the matched entry as visited (`[0x6fbca7e8 + 4*lvl] = 1`), and returns the
+   * resolved `0x2C` monologue request when the quest, player-spawn-age, and speech-idle gates pass.
+   */
+  checkLevel(
+    levelId: number,
+    gameTick: number,
+    ctxOverride?: AreaEntrySpeechContext113c,
+  ): WorldSoundRequest | null {
+    if (!Number.isInteger(levelId) || levelId <= 0 || levelId >= this.visitedLevels.length) {
+      return null
+    }
+    if (levelId === this.lastCheckedLevelId) {
+      return null
+    }
+    const alreadyVisited = this.visitedLevels[levelId] !== 0
+    this.lastCheckedLevelId = levelId
+    if (alreadyVisited) {
+      return null
+    }
+
+    let matched: AreaSpeechEntry113c | undefined
+    for (const entry of AREA_SPEECH_TABLE_0x6FBA76B0) {
+      if (entry.levels.includes(levelId)) {
+        matched = entry
+        break
+      }
+    }
+    if (!matched) {
+      return null
+    }
+
+    for (const lvl of matched.levels) {
+      if (lvl > 0 && lvl < this.visitedLevels.length) {
+        this.visitedLevels[lvl] = 1
+      }
+    }
+
+    const ctx = ctxOverride ?? this.getContextFn?.()
+    if (matched.questId !== 0 && !isAreaSpeechQuestActive113c(matched.questId, ctx)) {
+      return null
+    }
+
+    const spawnTick = ctx?.playerSpawnTick ?? this.playerSpawnTick
+    if (((gameTick - spawnTick) >>> 0) <= AREA_SPEECH_PLAYER_SPAWN_DELAY_TICKS_113C) {
+      return null
+    }
+
+    const speechActive =
+      typeof ctx?.isSpeechPlaying === 'function'
+        ? ctx.isSpeechPlaying()
+        : (ctx?.isSpeechPlaying ?? this.isSpeechPlayingFn?.() ?? false)
+    if (speechActive) {
+      return null
+    }
+
+    const charClass = ctx?.charClass ?? 0
+    const unitId = ctx?.unitId ?? 1
+    const x = ctx?.x ?? 0
+    const y = ctx?.y ?? 0
+    const playerUnit: PlaySoundUnitContext113c = {
+      unitType: 'player',
+      id: unitId,
+      classId: charClass,
+      x,
+      y,
+      isLocalPlayer: true,
+    }
+    const resolved = resolve0x2CPlaySound113c(matched.voiceSlot, playerUnit, {
+      localPlayerId: unitId,
+      localPlayerX: x,
+      localPlayerY: y,
+    })
+    if (resolved) {
+      this.onPlaySpeechFn?.(resolved)
+    }
+    return resolved
+  }
+
+  /**
+   * Port of `0x6faf58aa..0x6faf58de` inside the music tick `0x6faf5660`:
+   * once `currentLevelId !== lastMusicTickLevelId` and `(gameTick - roomStampTick) >= 62`,
+   * invokes `checkLevel` (`0x6fad3e20`) and updates `lastMusicTickLevelId = currentLevelId`.
+   */
+  tick(gameTick: number, ctxOverride?: AreaEntrySpeechContext113c): WorldSoundRequest | null {
+    this.lastGameTick = gameTick
+    if (this.currentLevelId === this.lastMusicTickLevelId) {
+      return null
+    }
+    if (((gameTick - this.roomStampTick) >>> 0) < AREA_SPEECH_ROOM_DELAY_TICKS_113C) {
+      return null
+    }
+    const result = this.checkLevel(this.currentLevelId, gameTick, ctxOverride)
+    this.lastMusicTickLevelId = this.currentLevelId
+    return result
+  }
 }

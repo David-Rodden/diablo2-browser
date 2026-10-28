@@ -5511,7 +5511,9 @@ export const CANONICAL_ENG_TBL_DICT: Readonly<Record<string, string>> = {
   "ResetStatSkillPoints": "Reset Stat/Skill Points",
   "TransactionResults14": "You cannot complete that transaction.",
   "patchstring#95": "Repair all equipment: %d",
+  "patchstring#500": " ",
   "patchstring#1066": "Diablo II was unable to connect to the realm server. The realm you selected may be unavailable or you may be encountering connection issues. Please make sure your internet connection is working properly and/or your firewall has port 6112 opened.",
+  "patchstring#1078": "Missing string",
   "patchstring#76": "No Magic, Socketed, Rare, Unique, or Set Items. No Jewelry.",
   "patchstring#103": "%s: %d%%",
   "patchstring#104": "Average chance %s will hit you: %d%%",
@@ -5527,6 +5529,7 @@ export const CANONICAL_ENG_TBL_DICT: Readonly<Record<string, string>> = {
   "strParty20": "accept trade",
   "StrBnk2": "Gold Max: %d",
   "StrChr20": "Average chance to hit",
+  "string#500": "78\nI invited Natalya to join the Iron Wolves \nand she began lecturing me about the \n'dangers of magic'. Who the hell does \nshe think she is, anyway?\n",
   "string#3224": "an Exploding Barrel",
   "string#3401": "ok",
   "string#3402": "CANCEL",
@@ -5645,6 +5648,7 @@ export const CANONICAL_ENG_TBL_DICT: Readonly<Record<string, string>> = {
   "string#5352": "Your connection to Battle.net has been lost.",
   "string#5353": "Battle.net is not responding. Please try connecting again in a few minutes.",
   "string#5357": "Your connection has been interrupted",
+  "expansionstring#500": "Ith",
   "expansionstring#2747": "Choose the item that you wish to personalize with your name.",
   "expansionstring#2748": "add sockets",
   "expansionstring#2749": "personalize",
@@ -11171,7 +11175,9 @@ export const CANONICAL_CHI_TBL_DICT: Readonly<Record<string, string>> = {
   "ResetStatSkillPoints": "重置屬性/技能點數",
   "TransactionResults14": "你無法完成這項交易。",
   "patchstring#95": "修復所有裝備：%d",
+  "patchstring#500": " ",
   "patchstring#1066": "《暗黑破壞神二》無法連上國度伺服器。 你所選擇的國度可能無法使用，也可能是你遭遇了網路連線的問題。 請確認你的網路連線運作正常，以及／或你的防火牆設定有開啟port 6112。",
+  "patchstring#1078": "Missing string",
   "patchstring#76": "無魔法，凹槽，稀有，獨特或成套物品。無珠寶。",
   "patchstring#103": "%s：%d%%",
   "patchstring#104": "平均機率中有 %s 會擊中你： %d%%",
@@ -11187,6 +11193,7 @@ export const CANONICAL_CHI_TBL_DICT: Readonly<Record<string, string>> = {
   "strParty20": "同意交易",
   "StrBnk2": "金幣上限：%d",
   "StrChr20": "平均擊中率",
+  "string#500": "78\n我邀請娜塔亞加入鐵狼，而她開始對我長\n篇大論，告訴我「魔法的危險」。她到底\n以為她是什麼東西？\n",
   "string#3224": "爆炸木桶",
   "string#3401": "好",
   "string#3402": "取消",
@@ -11305,6 +11312,7 @@ export const CANONICAL_CHI_TBL_DICT: Readonly<Record<string, string>> = {
   "string#5352": "你和battle.net的連線已經中斷了。",
   "string#5353": "Battle.net沒有回應，請稍候數分鐘之後再重試。",
   "string#5357": "你的連線被中斷了",
+  "expansionstring#500": "伊司",
   "expansionstring#2747": "選擇你想要以你的名字個人化的物品。",
   "expansionstring#2748": "增加凹槽",
   "expansionstring#2749": "個人化",
@@ -14626,14 +14634,24 @@ export const CANONICAL_ISC_DESC_TABLE: Readonly<Record<string, CanonicalIscDescE
   }
 }
 
+export const CANONICAL_TBL_NUM_ELEMENTS = {
+  string: 5391,
+  patchstring: 1169,
+  expansionstring: 2818,
+} as const
+
 export function resolveTblKey(key: string, lang: 'CHI' | 'ENG' = 'CHI'): string | undefined {
+  if (key === '') return ''
   const dict = lang === 'ENG' ? CANONICAL_ENG_TBL_DICT : CANONICAL_CHI_TBL_DICT
-  const trimmedKey = key.trim()
-  const val = dict[key] ?? dict[trimmedKey]
-  if (lang === 'CHI' && val !== undefined && val.trim().length === 0) {
-    const engVal = CANONICAL_ENG_TBL_DICT[key] ?? CANONICAL_ENG_TBL_DICT[trimmedKey]
-    if (engVal !== undefined && engVal.trim().length > 0) {
-      return engVal
+  let val = dict[key]
+  if (val === undefined) {
+    const m = /^(string|patchstring|expansionstring)#(\d+)$/.exec(key)
+    if (m) {
+      const tblKind = m[1] as keyof typeof CANONICAL_TBL_NUM_ELEMENTS
+      const idx = Number(m[2])
+      if (idx >= CANONICAL_TBL_NUM_ELEMENTS[tblKind]) {
+        val = dict[`${tblKind}#500`]
+      }
     }
   }
   return val

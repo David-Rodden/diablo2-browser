@@ -140,6 +140,14 @@ export class FakeChannelSplitterNode extends FakeAudioNode {
   }
 }
 
+export class FakeConvolverNode extends FakeAudioNode {
+  buffer: FakeAudioBuffer | null = null
+  normalize = true
+  constructor(ctx: FakeAudioContext) {
+    super(ctx, 'ConvolverNode', 1, 1)
+  }
+}
+
 export class FakeAudioDestinationNode extends FakeAudioNode {
   constructor(ctx: FakeAudioContext) {
     super(ctx, 'AudioDestinationNode', 1, 0)
@@ -349,6 +357,9 @@ export class FakeAudioContext {
   createChannelSplitter(n = 6): FakeChannelSplitterNode {
     return new FakeChannelSplitterNode(this, n)
   }
+  createConvolver(): FakeConvolverNode {
+    return new FakeConvolverNode(this)
+  }
   createStereoPanner(): FakeStereoPannerNode {
     return new FakeStereoPannerNode(this)
   }
@@ -430,6 +441,10 @@ export class FakeAudioContext {
   /** MediaElementAudioSourceNodes created on this context (in creation order). */
   mediaElementSources(): FakeMediaElementAudioSourceNode[] {
     return this.nodes.filter((n): n is FakeMediaElementAudioSourceNode => n instanceof FakeMediaElementAudioSourceNode)
+  }
+  /** ConvolverNodes created on this context (in creation order). */
+  convolvers(): FakeConvolverNode[] {
+    return this.nodes.filter((n): n is FakeConvolverNode => n instanceof FakeConvolverNode)
   }
 }
 

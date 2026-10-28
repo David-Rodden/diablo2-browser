@@ -204,6 +204,7 @@ describe('M21-P3 #945 — F13 MusicStreamer dual-deck crossfade & level continui
       expect(firstActive.playCalls).toBe(1)
 
       sh.onEnterArea(2)
+      sh.tick(75)
       expect(sh.activeSongId()).toBe(lvl2Song)
       expect(secondActive.playCalls).toBe(1)
       // Advance past Fade Out ticks so the outgoing deck completes its fade-out and pauses
@@ -270,7 +271,7 @@ describe('M21-P3 #945 — F13 MusicStreamer dual-deck crossfade & level continui
       for (let lvl = 1; lvl <= 136; lvl += 1) {
         const expectedSong = oracle.soundEnviron[oracle.levels.get(lvl)!.soundEnv]!.song
         sh.onEnterArea(lvl)
-        sh.tick(2)
+        sh.tick(75)
         if (expectedSong > 0) {
           expect(sh.activeSongId()).toBe(expectedSong)
         }

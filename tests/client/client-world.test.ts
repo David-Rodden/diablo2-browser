@@ -1810,6 +1810,13 @@ describe('ClientWorld authoritative state mirror', () => {
       // Living own merc must again be protected from 0x0A UnitRemove (0x6FB5CA40 pet-list walk).
       world.apply({ type: 'UnitRemove', unitType: 1, id: 950 })
       expect(world.getUnit('monster', 950)?.classId).toBe(271)
+
+      // Issue #1710: 0x6FB5CA40..0x6FB5CA9B only checks g_pRosterPetList (dwPetType == 7 && dwOwnerId == selfId)
+      // and never reads the world unit's dead flag before returning on 0x0A UnitRemove.
+      const mercUnit = world.getUnit('monster', 950)!
+      mercUnit.dead = true
+      world.apply({ type: 'UnitRemove', unitType: 1, id: 950 })
+      expect(world.getUnit('monster', 950)).toBe(mercUnit)
     })
 
     it('RC4: same-area LoadAct (prevAreaId === areaId) keeps npcMotion in sync with _monsters', () => {
@@ -2040,6 +2047,44 @@ describe('ClientWorld authoritative state mirror', () => {
       expect(newRoomWorld.self.isDead).toBe(false)
       expect(newRoomSelf.dead).toBe(false)
       expect(newRoomSelf.mode).toBe(5)
+    })
+
+    it('Issue #1709: 0x18 / 0x95 LifeMana with life > 0 revives only from mode 17 (PLRMODE_DEAD, not mode 0 PLRMODE_DEATH) and sets mode 5 (PLRMODE_TNEUTRAL) unconditionally (D2Client.dll 0x6fb5ec78 / 0x6fb5ed58)', () => {
+      const world = new ClientWorld()
+      // Outside town (Blood Moor = areaId 2)
+      world.apply({ type: 'LoadAct', act: 0, mapSeed: 0x11223344, areaId: 2 })
+      world.apply({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 0, id: 1, classId: 1, name: 'Sorceress', x: 5100, y: 5100, mode: 1 },
+      })
+
+      const selfUnit = world.getUnit('player', 1)!
+      // Enter PLRMODE_DEATH (0): LifeMana with life > 0 does NOT transition mode 0
+      selfUnit.mode = 0
+      selfUnit.dead = true
+      world.apply({ type: 'LifeMana', life: 50, mana: 40, stamina: 60, at: { x: 5100, y: 5100 } })
+      expect(selfUnit.mode).toBe(0)
+      expect(selfUnit.dead).toBe(true)
+
+      // Enter PLRMODE_DEAD (17): LifeMana with life > 0 transitions unconditionally to mode 5 (PLRMODE_TNEUTRAL) even when areaId is outside town
+      selfUnit.mode = 17
+      selfUnit.dead = true
+      world.apply({ type: 'LifeMana', life: 50, mana: 40, stamina: 60, at: { x: 5100, y: 5100 } })
+      expect(selfUnit.mode).toBe(5)
+      expect(world.self.mode).toBe(5)
+      expect(selfUnit.dead).toBe(false)
+      expect(world.isDead).toBe(false)
+    })
+
+    it("Issue #1713: ItemEvent / ItemAction / WorldItemAction without ev.item and without ev.code throws instead of fabricating a 'rin' item (D2Client.dll 0x6FB5CE00)", () => {
+      const world = new ClientWorld()
+      expect(() =>
+        world.apply({ type: 'ItemAction', action: 0, itemId: 1234 } as unknown as Parameters<ClientWorld['apply']>[0]),
+      ).toThrow(/ItemAction missing item payload/)
+      expect(() =>
+        world.apply({ type: 'ItemEvent', action: 0, itemId: 1234 } as unknown as Parameters<ClientWorld['apply']>[0]),
+      ).toThrow(/ItemEvent missing item payload/)
     })
   })
 })

@@ -304,7 +304,7 @@ export interface PublishedHudState {
 export interface HudCommandSink {
   allocateStat(key: BaseStatKey): boolean
   allocateSkill(skillId: number): boolean
-  selectSkill(hand: 'left' | 'right', skillId: number): void
+  selectSkill(hand: 'left' | 'right', skillId: number, itemId?: number): void
   assignSkillHotkey?(slot: number, hand: 'left' | 'right', skillId: number, itemId?: number): void
   activateSkillHotkey?(slot: number): boolean
   cycleBoundSkills?(step: -1 | 1): boolean
@@ -429,6 +429,7 @@ export class HudManager {
     const prev = this._leftPanel
     this._leftPanel = val
     this.charSheet.visible = val === 'char'
+    this.syncControlBarPanels()
     if (prev !== 'quest' && val === 'quest') {
       this.worldPanels.selectedQuestIdx = this._commandSink?.onQuestLogOpened?.() ?? -1
       this._commandSink?.requestQuestData?.()
@@ -448,6 +449,16 @@ export class HudManager {
     if (val !== 'skill') {
       this.skillTree.hoveredSkill = null
     }
+    this.syncControlBarPanels()
+  }
+
+  /** Sync D2Client.dll 0x6FB13880 (left panel) & 0x6FB137B0 (right panel) state into ControlBarHud. */
+  syncControlBarPanels(): void {
+    this.controlBar.leftPanelOpen = this._leftPanel !== 'none' && this._leftPanel !== 'hire'
+    this.controlBar.rightPanelOpen =
+      this._rightPanel !== 'none' ||
+      this._leftPanel === 'msg' ||
+      COMPOSITE_INVENTORY_LEFT_PANELS.has(this._leftPanel)
   }
   isRunning = true
   itemInfo: ItemInfoConfig | null = null
@@ -727,7 +738,7 @@ export class HudManager {
 
   set commandSink(sink: HudCommandSink | null) {
     this._commandSink = sink
-    this.hotkeys.onSelectSkill = sink ? (side, skillId) => sink.selectSkill(side, skillId) : undefined
+    this.hotkeys.onSelectSkill = sink ? (side, skillId, itemId) => sink.selectSkill(side, skillId, itemId) : undefined
   }
 
   /**
@@ -945,6 +956,7 @@ export class HudManager {
   ) {
     // #913: belt rows (`Belts.txt numboxes / 4`) always follow the item in the belt body location.
     this.belt.bindEquippedBeltSource(() => this.inventory.equipped.belt ?? null)
+    this.controlBar.smoother = this.globes.smoother
     this.cursorCanvas = cursorCanvas ?? null
     this.hudCanvas =
       hudCanvas ??
@@ -989,6 +1001,19 @@ export class HudManager {
         this._commandSink.teleportToLevel(levelId)
       } else {
         this.callbacks.onWaypointTeleport(act, slug, levelId)
+      }
+    }
+    this.worldPanels.onAutomapOptionChanged = (rowId) => {
+      if (rowId === 'automapSize') {
+        this.callbacks.onToggleAutomapMode?.()
+      } else if (rowId === 'automapFade') {
+        this.callbacks.onCycleAutomapFade?.()
+      } else if (rowId === 'automapCenter') {
+        this.callbacks.onResetAutomapPan?.()
+      } else if (rowId === 'automapParty') {
+        this.callbacks.onToggleAutomapParty?.()
+      } else if (rowId === 'automapNames') {
+        this.callbacks.onToggleAutomapNames?.()
       }
     }
     this.hotkeys.bindSharedIconCache(this.skillTree.getSkillIconsMap())
