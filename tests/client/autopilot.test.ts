@@ -732,6 +732,21 @@ describe('autopilot', () => {
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
   })
 
+  it('walks to a spot again when it comes back to a level where it reached that spot before', () => {
+    const { world, assists, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, hint: 'Take the waypoint', target: { x: 130, y: 100, label: 'Objective' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    Object.assign(world.self, { x: 130, y: 100, gold: 0 })
+    tick(700)
+    Object.assign(world, { areaId: 74 })
+    Object.assign(world.self, { x: 100, y: 100 })
+    tick(700)
+    Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+    assists.walkTo.mockClear()
+    tick(700)
+    tick(700)
+    expect([guide.pilotStatus, assists.walkTo.mock.calls.length > 0]).toEqual(['Take the waypoint', true])
+  })
+
   it('starts each level with fresh tries, so a waypoint it used before still works later', () => {
     const { pilot, world, assists, units, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))

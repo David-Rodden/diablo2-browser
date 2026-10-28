@@ -1207,7 +1207,7 @@ export class Autopilot {
       this.uses.clear()
       this.stubborn.clear()
       this.scavenged.clear()
-      Object.assign(this, { headway: null, blocked: [] })
+      Object.assign(this, { headway: null, blocked: [], reachedSpot: null })
       const back = this.trail.findIndex((spot) => spot.level === areaId)
       const resumed = this.trail.length === 0 && this.leftBehind.at(-1)?.level === areaId
       if (this.town()) [this.leftBehind, this.trail] = [this.trail.length > 0 ? this.trail : this.leftBehind, []]
