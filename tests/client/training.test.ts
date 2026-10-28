@@ -38,6 +38,10 @@ describe('training before a hard goal', () => {
     expect([new TrainingFloor(store).of('AutoSinA:0', 108), new TrainingFloor(store).of('AutoSinA:0', 102), new TrainingFloor(store).of('AutoPalA:0', 108)]).toEqual([31, 0, 0])
   })
 
+  it("never trains in Baal's throne room or chamber, where nothing but Baal's own fights happen", () => {
+    expect([131, 132]).not.toContain(trainingGround(131, me(60), new Set([109, 129]), new Set()))
+  })
+
   it('never trains in the Durance from the Pandemonium Fortress without its waypoint, since no portal leads back', () => {
     expect(trainingGround(107, me(30), new Set([103, 107]), new Set())).not.toBe(108)
     expect(shortestRoute(103, 102, new Set([103, 107]))).toBeNull()

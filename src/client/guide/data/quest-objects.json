@@ -26,6 +26,9 @@
   "briefings": {
     "meshif1": "jerhyn"
   },
+  "waitSpots": {
+    "baalthrone": [2, 34]
+  },
   "townSpots": {
     "jerhyn": { "area": 40, "at": [5083, 5148] }
   },

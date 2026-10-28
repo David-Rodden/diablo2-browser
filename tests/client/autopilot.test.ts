@@ -135,6 +135,24 @@ describe('autopilot', () => {
     expect([hudModel.closeActiveNpcPanel.mock.calls.length > 0, hudModel.requestQuestData.mock.calls.length > 0]).toEqual([true, true])
   })
 
+  it('hears out a townsfolk with something to say before going on, but only once a game', () => {
+    const { world, assists, hudManager, units, tick } = setup({ goal: { level: 76, title: 'Spider Forest' }, hint: 'Head to Spider Forest', target: { x: 140, y: 100, label: 'Spider Forest' } }, 75)
+    const ormus = unit({ id: 8, classId: 255, x: 104, y: 100, name: 'Ormus' })
+    units.push(Object.assign(ormus, { wantsInteract: true }))
+    world.self.gold = 0
+    tick()
+    expect(assists.use).toHaveBeenCalledWith(ormus, expect.any(Number))
+    hudManager.worldPanels.npcMenu = { npcId: 8, submenu: 'talk', options: [{ id: 'talk_quest:5' }, { id: 'cancel' }] }
+    tick(700)
+    expect(hudManager.worldPanels.clickNpcMenuOption).toHaveBeenLastCalledWith('talk_quest:5', undefined)
+    hudManager.worldPanels.npcMenu = null
+    ormus.wantsInteract = true
+    assists.use.mockClear()
+    tick(1400)
+    tick(2100)
+    expect(assists.use).not.toHaveBeenCalledWith(ormus, expect.any(Number))
+  })
+
   it('talks to Jerhyn first when Meshif will not sail yet', async () => {
     const { world, assists, hudManager, units, guide, tick } = setup({ goal: { level: 75, title: 'Kurast Docks' }, hint: 'Talk to Meshif', target: { x: 101, y: 100, label: 'Meshif', unit: { id: 7, kind: 'npc' } } }, 40)
     const [meshif, jerhyn] = [MONSTER_PATH_IDS.indexOf('meshif1'), MONSTER_PATH_IDS.indexOf('jerhyn')]
@@ -487,6 +505,15 @@ describe('autopilot', () => {
     expect(guide.detour).not.toMatchObject({ level: 126 })
   })
 
+  it("waits in front of Baal's throne for the next wave instead of wandering off", () => {
+    const { assists, hudManager, guide, tick } = setup({ goal: { level: 2, title: 'Eve of Destruction', wait: true, find: ['baalthrone'] }, hint: "Kill Baal's minions", step: { kind: 'arrived', level: 2 }, target: { x: 98, y: 66, label: 'Baal' } })
+    Object.defineProperty(guide, 'currentPlan', { get: () => guide.update() })
+    Array.from({ length: 1000 }, () => tick())
+    expect(guide.pilotStatus).toBe('Waiting for the next wave')
+    expect(hudManager.toasts.push.mock.calls.some(([toast]) => toast.title === 'Trying another way')).toBe(false)
+    expect(assists.walkTo).not.toHaveBeenCalled()
+  })
+
   it('does not count a long fight as being stuck', () => {
     const { assists, guide, tick } = setup({ hint: 'Kill Duriel', target: { x: 300, y: 300, label: 'Duriel' } })
     assists.fighting = true
@@ -673,6 +700,16 @@ describe('autopilot', () => {
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
   })
 
+  it('tells the last merchant it is done when a waypoint will not open after a trade', () => {
+    const { world, hudModel, units, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
+    Object.assign(world.npcInteraction, { npcId: 29, window: 'trade' })
+    tick()
+    Object.assign(world.npcInteraction, { npcId: null, window: 'none' })
+    for (let i = 0; i < 100 && hudModel.cancelNpcSession.mock.calls.length === 0; i++) tick(700)
+    expect(hudModel.cancelNpcSession).toHaveBeenCalledWith(29)
+  })
+
   it('starts a fresh game by itself when stuck, and hands control back only once that runs out', async () => {
     const { pilot, host, hudManager, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     const freshGame = vi.fn(() => Promise.resolve(true))
@@ -693,6 +730,51 @@ describe('autopilot', () => {
     for (let i = 0; i < 100 && pilot.active; i++) tick(700)
     expect([freshGame.mock.calls.length, pilot.active]).toEqual([6, false])
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
+  })
+
+  it('starts a fresh game when the server stops answering, even with its body out there', () => {
+    const { pilot, host, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } })
+    const freshGame = vi.fn(() => Promise.resolve(true))
+    let quiet = 0
+    Object.assign(host, { freshGame, serverQuietMs: () => quiet })
+    Object.assign(pilot as unknown as { corpse: unknown }, { corpse: { level: 3, x: 50, y: 50 } })
+    tick(700)
+    quiet = 59_000
+    tick(700)
+    const before = freshGame.mock.calls.length
+    quiet = 61_000
+    tick(700)
+    expect([before, freshGame.mock.calls.length]).toEqual([0, 1])
+  })
+
+  it('moves up a difficulty once Baal is dead, and stays put after Hell', () => {
+    const run = (difficulty: number) => {
+      const { host, world, tick } = setup(null, 109)
+      const freshGame = vi.fn(() => Promise.resolve(true))
+      Object.assign(host, { freshGame })
+      ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+      Object.assign(world, { difficulty })
+      Object.assign(world.self, { gold: 0 })
+      world.quests[40] = 1
+      for (let i = 0; i < 20; i++) tick(700)
+      return freshGame.mock.calls.map((call) => (call as unknown[])[0])
+    }
+    expect([run(0), run(1), run(2)]).toEqual([[1], [2], []])
+  })
+
+  it('walks to a spot again when it comes back to a level where it reached that spot before', () => {
+    const { world, assists, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, hint: 'Take the waypoint', target: { x: 130, y: 100, label: 'Objective' } }, ROGUE_ENCAMPMENT)
+    ;[1, 2, 3, 4, 5].forEach((id) => world.containers.belt.set(id, { id, code: 'hp2' }))
+    Object.assign(world.self, { x: 130, y: 100, gold: 0 })
+    tick(700)
+    Object.assign(world, { areaId: 74 })
+    Object.assign(world.self, { x: 100, y: 100 })
+    tick(700)
+    Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+    assists.walkTo.mockClear()
+    tick(700)
+    tick(700)
+    expect([guide.pilotStatus, assists.walkTo.mock.calls.length > 0]).toEqual(['Take the waypoint', true])
   })
 
   it('starts each level with fresh tries, so a waypoint it used before still works later', () => {
@@ -1185,18 +1267,32 @@ describe('autopilot', () => {
     expect(guide.detour).toBeNull()
   })
 
-  it('stops walking back into the same death after the third time, and asks for a hand with the body', () => {
-    const { pilot, world, hudModel, tick } = setup({})
+  it('rests in town after the third death in one place, and asks for a hand with the body only once resting twice has not helped', () => {
+    const { pilot, world, hudModel, hudManager, tick } = setup({})
     Object.assign(hudModel, { resurrect: vi.fn() })
-    for (const x of [100, 110, 120]) {
+    const die = (x: number) => {
       Object.assign(world.self, { x })
       world.isDead = true
       tick(1000)
       world.isDead = false
-      tick(60_000)
+      Object.assign(world.self, { x: 1000 })
+      tick(5000)
     }
+    ;[100, 110, 120].forEach(die)
+    expect([pilot.active, hudManager.toasts.push.mock.calls.some(([toast]) => toast.title === 'Regrouping before another try')]).toEqual([true, true])
+    ;[130, 140, 150, 160, 170, 180].forEach(die)
     expect(pilot.active).toBe(false)
     expect(pilot.lastStop?.detail).toContain('get the body back by hand')
+  })
+
+  it('counts a body that slides while it falls as one death', () => {
+    const { world, hudModel, hudManager, tick } = setup({})
+    Object.assign(hudModel, { resurrect: vi.fn() })
+    world.isDead = true
+    tick(100)
+    Object.assign(world.self, { x: 120 })
+    tick(100)
+    expect(hudManager.toasts.push.mock.calls.filter(([toast]) => toast.title === 'You died')).toHaveLength(1)
   })
 
   it('respawns after dying and goes back for its body', () => {

@@ -43,6 +43,7 @@ const HARROGATH_TRAVEL_ROW = 28
 export const HARROGATH_PORTAL = 566
 const CHAOS_SANCTUARY = 108
 const DIABLO_ROW = 26
+const EVE_ROW = 40
 const SLAIN_THIS_GAME = 0x8000
 const REWARD_GRANTED = 0x0001
 const COMPLETED_NOW = 0x2000
@@ -52,6 +53,7 @@ const WAYPOINT_COST = 3
 export const levelName = (level: number): string => getLevelNames(level).nameEn
 export const actOfLevel = (level: number): number => ACT_TOWNS.filter((town) => level >= town).length - 1
 const isDone = (word: number) => (word & (REWARD_GRANTED | COMPLETED_NOW)) !== 0
+export const campaignDone = (words: ArrayLike<number>): boolean => isDone(words[EVE_ROW] ?? 0)
 const withCount = (hint: string, page: QuestLogPage | null) => hint.replace('{n}', String(page && page.text.kind !== 'tbl' ? page.text.count : ''))
 
 export interface Goal {
@@ -63,6 +65,7 @@ export interface Goal {
   readonly inTown?: true
   readonly bring?: string
   readonly spot?: { readonly x: number; readonly y: number }
+  readonly wait?: true
 }
 
 const trueTomb = (progress: QuestProgress) => FIRST_TOMB + Math.min(TOMB_COUNT - 1, Math.max(0, progress.tomb ?? 0))
@@ -85,7 +88,7 @@ export function currentGoal(level: number, progress: QuestProgress, mode: GuideM
       const key = page ? page.text.key : o.start
       const stage = key === undefined ? undefined : STAGES[key]?.find((s) => !s.unless?.some(carries) && (s.until === undefined || !isDone(progress.words[s.until] ?? 0)))
       if (stage?.after !== undefined && !isDone(progress.words[stage.after] ?? 0)) return undefined
-      return stage && { level: stage.level === 'town' ? town : stage.level === 'tomb' ? tomb : throughTomb(stage.level, level, progress), title: o.name, row: o.row, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}), ...(stage.bring ? { bring: stage.bring } : {}) }
+      return stage && { level: stage.level === 'town' ? town : stage.level === 'tomb' ? tomb : throughTomb(stage.level, level, progress), title: o.name, row: o.row, hint: withCount(stage.hint, page), find: stage.find, ...(stage.level === 'town' ? { inTown: true as const } : {}), ...(stage.bring ? { bring: stage.bring } : {}), ...(stage.wait ? { wait: true as const } : {}) }
     })
     .find((g) => g !== undefined)
   if (goal) return goal

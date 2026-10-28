@@ -736,7 +736,7 @@ export class PlayAssists {
     this.host.centerCameraOnSelf()
     const current = this.targetId === null ? undefined : this.host.world.getUnit('monster', this.targetId)
     this.deadZones = this.deadZones.filter((zone) => zone.until > nowMs)
-    const inDeadZone = (unit: ClientUnit) => this.deadZones.some((zone) => Math.hypot(unit.x - zone.x, unit.y - zone.y) <= DEAD_ZONE)
+    const inDeadZone = (unit: ClientUnit) => !BOSS_CLASSES.has(unit.classId) && this.deadZones.some((zone) => Math.hypot(unit.x - zone.x, unit.y - zone.y) <= DEAD_ZONE)
     const worthIt = (unit: ClientUnit) => this.isReachable(unit, nowMs) && (this.givenUp.get(unit.id) ?? 0) <= nowMs && !this.isHopeless(unit) && !inDeadZone(unit)
     const distance = this.host.distanceFromSelf()
     const visible = this.visibleHostilesByDistance()

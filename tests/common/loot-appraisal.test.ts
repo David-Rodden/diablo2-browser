@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { characterBuild, describeBuild } from '../../src/common/items/character-build.ts'
 import { getEmbeddedDropTables } from '../../src/common/items/embedded-drop-tables.ts'
-import { appraiseItem, gambleWorthy, type AppraisalContext } from '../../src/common/items/loot-appraisal.ts'
+import { appraiseItem, gambleWorthy, gearScore, type AppraisalContext } from '../../src/common/items/loot-appraisal.ts'
+import { resistsOf } from '../../src/common/items/item-score.ts'
 import { runewordsFor } from '../../src/common/items/runeword-advice.ts'
 import type { ItemData } from '../../src/netproto/index.ts'
 
@@ -23,6 +24,14 @@ describe('character build', () => {
     expect([describeBuild(bowazon), bowazon.weaponKind]).toEqual(['ranged Amazon', 'bow'])
     expect(describeBuild(skeleMancer)).toBe('summoner Necromancer')
     expect(characterBuild({ classIndex: 4, level: 1, strength: 30, dexterity: 20, skillPoints: new Map() }).style).toBe('melee')
+  })
+
+  it('prizes resistances more as the difficulty strips them away', () => {
+    const ring = item({ code: 'rin', quality: 4, identified: true, stats: [{ statId: 39, param: 0, value: 30 }] })
+    const at = (difficulty: number) => gearScore(ring, characterBuild({ classIndex: 3, level: 40, strength: 90, dexterity: 70, skillPoints: new Map([[106, 20]]), resists: resistsOf(difficulty) }))
+    expect(at(0)).toBeGreaterThan(gearScore(ring, zealot))
+    expect(at(1)).toBeGreaterThan(at(0))
+    expect(at(2)).toBe(at(1))
   })
 
   it('suggests runewords that suit the build', () => {

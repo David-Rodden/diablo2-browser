@@ -804,7 +804,8 @@ export async function startPlayApp(options?: {
     hudManager,
     guide,
     levelView: () => session.mapService?.getLoadedLevelView(session.world.areaId) ?? null,
-    freshGame: () => freshGame({ phase: () => session.phase, difficulty: () => session.world.difficulty, inWorld: () => session.world.selfId > 0 && session.world.areaId > 0, leave: () => session.leaveGame(), flow: flowState, create: frontendRenderer.asyncHandlers?.onCreateGame }),
+    freshGame: (difficulty) => freshGame({ phase: () => session.phase, difficulty: () => difficulty ?? session.world.difficulty, inWorld: () => session.world.selfId > 0 && session.world.areaId > 0, leave: () => session.leaveGame(), flow: flowState, create: frontendRenderer.asyncHandlers?.onCreateGame }),
+    serverQuietMs: () => (flowState.playMode === 'single' ? 0 : Date.now() - session.packetTap.entries.reduce((last, entry) => (entry.conn === 'game' && entry.dir === 's2c' ? entry.t : last), Date.now())),
   })
   assists().pilot = pilot
   if (stageEl) mountPilotBanner(stageEl, () => ({ shown: pilot.active && (hudManager.leftPanel !== 'none' || hudManager.rightPanel !== 'none' || hudManager.worldPanels.npcMenu !== null), status: guide.pilotStatus, hint: guide.currentPlan?.hint ?? null }))
