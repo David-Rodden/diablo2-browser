@@ -20,14 +20,25 @@
   justify-content: center;
   padding: 16px;
   box-sizing: border-box;
-  background: radial-gradient(ellipse at 50% 40%, rgba(16, 10, 5, 0.62) 0%, rgba(2, 1, 1, 0.9) 75%);
-  backdrop-filter: blur(3px) saturate(0.6);
   font-family: var(--font-body, "D2Formal436", Georgia, serif);
   color: var(--ink);
 }
 
-.d2-mods-overlay[hidden] {
+.d2-mods-overlay:not([hidden]) {
+  background: radial-gradient(ellipse at 50% 40%, rgba(16, 10, 5, 0.62) 0%, rgba(2, 1, 1, 0.9) 75%);
+  -webkit-backdrop-filter: blur(3px) saturate(0.6);
+  backdrop-filter: blur(3px) saturate(0.6);
+}
+
+.d2-mods-overlay[hidden],
+[data-d2-modal-overlay][hidden] {
   display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  background: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 .d2-mods-overlay *,
@@ -54,6 +65,9 @@
     0 0 0 5px rgba(143, 114, 64, 0.38),
     0 30px 80px rgba(0, 0, 0, 0.92),
     inset 0 1px 0 rgba(226, 199, 126, 0.16);
+}
+
+.d2-mods-overlay:not([hidden]) .d2-mods {
   animation: d2-mods-in 150ms ease-out;
 }
 

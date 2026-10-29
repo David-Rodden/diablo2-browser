@@ -2472,8 +2472,9 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     open: (hud.leftPanel as string) === 'hire' || (hud.worldPanels as any).activePanel === 'hire',
     candidates: hireCandidates,
   }
-  const hasDeadMercenary = Boolean(model.world.merc?.isDead && (model.world.merc?.reviveCost ?? 0) > 0)
-  const deadMercenaryReviveCost = model.world.merc?.reviveCost ?? 0
+  // D2Client.dll 0x6fafa603..0x6fafa6a2: NPC Resurrect is gated only by the 0x9B dead-hireling record.
+  const hasDeadMercenary = model.world.hasDeadMercenary
+  const deadMercenaryReviveCost = model.world.deadMercReviveCost
   ;(hud.worldPanels as any).hasDeadMercenary = hasDeadMercenary
   ;(hud.worldPanels as any).deadMercenaryReviveCost = deadMercenaryReviveCost
   const deadMercName =
@@ -3091,8 +3092,9 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
     const npcScreen = model.resolveNpcScreenPosition(npc.npcId, hud)
     if (desc && npcScreen) {
       const anchor = computeNpcMenuAnchor(npcScreen.x, npcScreen.y)
-      const hasDeadMercenary = Boolean(model.world.merc?.isDead && (model.world.merc?.reviveCost ?? 0) > 0)
-      const deadMercenaryReviveCost = model.world.merc?.reviveCost ?? 0
+      // D2Client.dll 0x6fafa603..0x6fafa6a2: NPC Resurrect is gated only by the 0x9B dead-hireling record.
+      const hasDeadMercenary = model.world.hasDeadMercenary
+      const deadMercenaryReviveCost = model.world.deadMercReviveCost
       const unidentifiedItemCount = model.getUnidentifiedItemCount()
       const deadMercLang = (hud.lang === 'ENG' || (hud as any).language === 'en') ? 'ENG' : 'CHI'
       const deadMercenaryName =

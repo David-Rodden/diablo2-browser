@@ -206,7 +206,9 @@ describe('#1328 GameInstance skill casts via the 1.13c skill registry', () => {
       const created = events.filter((e) => e.type === 'CreateMissile')
       const cast = events.find((e) => e.type === 'SkillCast' && e.skill === skill.id)
       const ev = evalAtLevel1(skill)
-      const missileName = expectedServerMissile(skill, ev.missileA)
+      // #1815/#1816: Dragon Tail (270) and Phoenix Strike (280) strike in melee; their srvmissile rows
+      // (`dragontail`, `royalstrikemeteorcenter`) belong to the kick explosion / charge release.
+      const missileName = skill.id === 270 || skill.id === 280 ? '' : expectedServerMissile(skill, ev.missileA)
 
       if (skill.passive) {
         expect(cast, `passive skill ${skill.id} ${skill.name} must not be cast`).toBeUndefined()
@@ -214,6 +216,13 @@ describe('#1328 GameInstance skill casts via the 1.13c skill registry', () => {
       }
       if (skill.restrict === 2) {
         expect(cast, `form-only skill ${skill.id} ${skill.name} must not be cast in human form`).toBeUndefined()
+        continue
+      }
+      if (skill.srvStFunc === 33 || skill.srvStFunc === 34) {
+        expect(
+          cast,
+          `corpse-only skill ${skill.id} ${skill.name} must not cast without an eligible corpse`,
+        ).toBeUndefined()
         continue
       }
       expect(cast, `skill ${skill.id} ${skill.name} must be cast`).toBeDefined()
@@ -485,11 +494,14 @@ describe('#1328 registry-driven skill effects and movement skills', () => {
     expect(game.getMonster(target)!.hp).toBeLessThan(5000)
 
     const bar = setup(0x1345, 'bar', { 151: 20 }) // slvl 20: -50% + 8% * 19 = +102% damage
-    const a = spawnDummy(bar.game, 106, 100)
-    const b = spawnDummy(bar.game, 112, 101)
-    const off = spawnDummy(bar.game, 106, 130)
+    const a = bar.game.spawnMonster({ defId: 'fallen1', x: 106, y: 100, areaId: 2, hp: 5000, maxHp: 5000, damageRegen: 0, aiDisabled: true })
+    const b = bar.game.spawnMonster({ defId: 'fallen1', x: 112, y: 101, areaId: 2, hp: 5000, maxHp: 5000, damageRegen: 0, aiDisabled: true })
+    const off = bar.game.spawnMonster({ defId: 'fallen1', x: 106, y: 130, areaId: 2, hp: 5000, maxHp: 5000, damageRegen: 0, aiDisabled: true })
     bar.game.enqueueCommand(bar.playerId, { type: 'CastSkillAtLocation', skillId: 151, x: 118, y: 100, hand: 'right' })
-    bar.game.stepFrames(1)
+    bar.game.stepFrames(2)
+    expect(bar.game.getPlayerState(bar.playerId)!.x).toBeGreaterThan(100)
+    expect(bar.game.getPlayerState(bar.playerId)!.x).toBeLessThan(118)
+    bar.game.stepFrames(60)
     expect(bar.game.getPlayerState(bar.playerId)!.x).toBeCloseTo(118, 0)
     expect(bar.game.getMonster(a)!.hp).toBeLessThan(5000)
     expect(bar.game.getMonster(b)!.hp).toBeLessThan(5000)

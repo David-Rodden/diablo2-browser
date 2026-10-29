@@ -11,6 +11,8 @@ function setup(plan: Partial<GuidePlan> | null, area = BLOOD_MOOR) {
   const self = { x: 100, y: 100, life: 100, maxLife: 100, mana: 50, maxMana: 50, gold: 5000, stashGold: 0, level: 10, charClass: 1, stats: { get: () => 0 }, skillEntries: new Map() }
   const world = {
     isDead: false,
+    hasDeadMercenary: false,
+    deadMercReviveCost: 0,
     difficulty: 0,
     waypoints: new Set<number>(),
     areaId: area,

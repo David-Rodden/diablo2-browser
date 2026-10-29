@@ -167,6 +167,7 @@ add(
     'Spirit',
     'TrappedSoul',
     'Buffy',
+    'BaalTentacle',
   ],
   { family: 'stationary' },
 )
@@ -182,11 +183,11 @@ add(['FallenShaman'], { ranged: true, shootDistanceParam: 4, resurrectRangeParam
 add(['GreaterMummy'], { ranged: true, shootDistanceParam: 3, resurrectRangeParam: 4 })
 add(['FetishShaman'], { healRangeParam: 4, resurrectRangeParam: 4 })
 
-add(['OblivionKnight', 'DoomKnight', 'AbyssKnight', 'Summoner', 'Nihlathak'], {
+// 1.13c D2Game.dll 0x6FCD5950: only OblivionKnight uses MonCurseCast AI (#1822).
+add(['OblivionKnight'], {
   family: 'curse',
   curse: true,
 })
-add(['Succubus', 'SuccubusWitch', 'FingerMage'], { curse: true })
 
 add(['Fallen', 'Fetish', 'Wussie'], { family: 'flee' })
 add(['SuicideMinion'], { family: 'suicide', suicide: true })
@@ -247,8 +248,12 @@ add(['FetishBlowgun'], {
 add(['SiegeTower'], { family: 'ranged', ranged: true, shootDistanceParam: 0 })
 add(['Imp'], { family: 'ranged', ranged: true })
 add(['Catapult'], { family: 'stationary', ranged: true })
+add(['Hydra'], { family: 'stationary', ranged: true })
 add(['CatapultSpotter'], { family: 'ranged', ranged: true, shootDistanceParam: 2 })
 add(['BloodRaven'], { family: 'ranged', ranged: true, boss: true })
+add(['AbyssKnight'], { family: 'ranged', ranged: true, shootDistanceParam: 5 })
+add(['Summoner'], { family: 'ranged', ranged: true, boss: true })
+add(['Nihlathak'], { family: 'ranged', ranged: true, boss: true })
 
 // Chargers.
 add(['SandRaider'], {
@@ -327,7 +332,7 @@ add(['ZakarumZealot'], { family: 'kiter' })
 // Spawners.
 add(['VileMother'], {
   family: 'spawner',
-  spawn: { child: 'viledog1', maxParam: 0, batchParam: 1, intervalParam: 2 },
+  spawn: { child: 'vilechild1', maxParam: 0, batchParam: 1, intervalParam: 2 },
 })
 add(['SandMaggotQueen'], {
   family: 'spawner',
@@ -391,7 +396,6 @@ add(
     'BaalTaunt',
     'PutridDefiler',
     'BaalToStairs',
-    'BaalTentacle',
     'BaalCrabClone',
     'BaalMinion',
     'ShadowMasterNoInit',
@@ -400,6 +404,7 @@ add(
     'UberMephisto',
     'UberDiablo',
     'Overseer',
+    'DoomKnight',
   ],
   { family: 'melee' },
 )
@@ -488,6 +493,18 @@ const MONAI_ALIASES_113C: Readonly<Record<string, string>> = {
   nest: 'foulcrownest',
   painworm: 'sandmaggot',
   baal: 'baalcrab',
+  baalclone: 'baalcrabclone',
+  vileeffigy: 'baalcrabclone',
+  diabloclone: 'uberdiablo',
+  ancientswhirl: 'ancient',
+  ancientwhirl: 'ancient',
+  ancientbarb: 'ancient',
+  ancientbarb1: 'ancient',
+  ancientbarb2: 'ancient',
+  ancientbarb3: 'ancient',
+  talic: 'ancient',
+  madawc: 'ancient',
+  korlic: 'ancient',
   statictraps: 'trapnova',
 }
 
@@ -525,6 +542,18 @@ export function monaiParam113c(
 export function isTentacleHcIdx113c(hcIdx: number): boolean {
   const id = hcIdx | 0
   return id >= 258 && id <= 260
+}
+
+/** 1.13c `BaalTentacle` Festering Appendage (`hcIdx 562..566`, `baaltentacle1..5`, #1826). */
+export function isBaalTentacleHcIdx113c(hcIdx: number): boolean {
+  const id = hcIdx | 0
+  return id >= 562 && id <= 566
+}
+
+/** 1.13c `BoneWall` (#179) & Diablo `BonePrison` segments (`hcIdx 340..343`, `boneprison1..4`, #1825). */
+export function isBonePrisonMonsterHcIdx113c(hcIdx: number): boolean {
+  const id = hcIdx | 0
+  return id === 179 || (id >= 340 && id <= 343)
 }
 
 /** 1.13c `TentacleHead` boss (`hcIdx 261..263`, token `TE`). */
@@ -603,8 +632,8 @@ export function resolveMonPlacePreset113c(
   switch (monPlaceId | 0) {
     case 4: // navi (Flavie, Cold Plains <-> Blood Moor bridge)
       return { classId: 266 }
-    case 5: // bloodraven (Burial Grounds, SuperUnique #2)
-      return { classId: 267, superUniqueIndex: 2 }
+    case 5: // bloodraven (Burial Grounds, D2Game.dll 0x6FC67F0E: hcIdx=267, superUnique=-1, #1823)
+      return { classId: 267 }
     case 8: // place_maggotqueen (Maggot Lair Level 3)
       return { classId: 284, direction: 8 }
     case 10: // place_tentacle_ns (Act 3 water pools)
@@ -629,6 +658,10 @@ export function resolveMonPlacePreset113c(
       return { classId: 141 }
     case 23: // place_fetishshaman
       return { classId: 278 }
+    case 24: // place_impgroup (D2Game.dll 0x6FC681E0: Bloody Foothills 110 -> 492, else 529)
+      return { classId: areaId === 110 ? 492 : 529 }
+    case 26: // place_miniongroup (D2Game.dll 0x6FC681D9 -> 453 minion1)
+      return { classId: 453 }
     case 29: // place_minion
       return { classId: 453 }
     case 30: // place_siegebeast (Bloody Foothills 110 -> 492 siegebeast1, else 529 imp3)
@@ -640,4 +673,133 @@ export function resolveMonPlacePreset113c(
     default:
       return null
   }
+}
+
+export interface AuraEnchantedEntry113c {
+  readonly skillId: number
+  readonly name:
+    | 'might'
+    | 'holyfire'
+    | 'blessedaim'
+    | 'holyfreeze'
+    | 'holyshock'
+    | 'fanaticism'
+    | 'conviction'
+    | 'thorns'
+  readonly minMlvl: number
+  readonly divisor: number
+}
+
+/**
+ * 1.13c `D2Game.dll` `MONSTERUNIQUE_UMod30_Aura` (`0x6FC44CD0`) & `gpAuraEnchantedTable` (`0x6FD2E4A0`):
+ * Candidate Paladin auras, minimum `mlvl` gates, and `slvl = max(1, floor(mlvl / divisor))` divisors (#1819).
+ * Note: Thorns (`#103`) carries `minMlvl = 999` in 1.13c (`0x6FD2E4EC`), disabling it from random rolls.
+ */
+export const AURA_ENCHANTED_TABLE_113C: readonly AuraEnchantedEntry113c[] = Object.freeze([
+  { skillId: 98, name: 'might', minMlvl: 0, divisor: 6 },
+  { skillId: 102, name: 'holyfire', minMlvl: 0, divisor: 6 },
+  { skillId: 108, name: 'blessedaim', minMlvl: 0, divisor: 5 },
+  { skillId: 114, name: 'holyfreeze', minMlvl: 0, divisor: 7 },
+  { skillId: 118, name: 'holyshock', minMlvl: 20, divisor: 8 },
+  { skillId: 122, name: 'fanaticism', minMlvl: 30, divisor: 8 },
+  { skillId: 123, name: 'conviction', minMlvl: 30, divisor: 8 },
+  { skillId: 103, name: 'thorns', minMlvl: 999, divisor: 6 },
+])
+
+export function resolveMonsterAuraDivisor113c(skillId: number): number {
+  switch (skillId | 0) {
+    case 108:
+      return 5
+    case 98:
+    case 102:
+    case 103:
+      return 6
+    case 114:
+      return 7
+    case 118:
+    case 122:
+    case 123:
+      return 8
+    default:
+      return 6
+  }
+}
+
+/**
+ * Rolls a 1.13c `MonUMod #30` (`Aura Enchanted`) skill ID and `slvl = max(1, floor(mlvl / divisor))` (#1819).
+ * `Lord De Seis` (`0x6FC44DA9`) deterministically receives `#122 Fanaticism` at `max(1, floor(mlvl / 8))`.
+ */
+export function rollAuraEnchanted113c(
+  mlvl: number,
+  rollSeed: number,
+  superUniqueId?: string,
+): { readonly auraSkillId: number; readonly auraLevel: number } {
+  const safeMlvl = Math.max(1, Math.trunc(mlvl))
+  if (superUniqueId !== undefined && superUniqueId.trim().toLowerCase() === 'lord de seis') {
+    return {
+      auraSkillId: 122,
+      auraLevel: Math.max(1, Math.floor(safeMlvl / 8)),
+    }
+  }
+  const eligible = AURA_ENCHANTED_TABLE_113C.filter((entry) => safeMlvl >= entry.minMlvl)
+  const chosen = eligible[(rollSeed >>> 0) % eligible.length] ?? AURA_ENCHANTED_TABLE_113C[0]!
+  return {
+    auraSkillId: chosen.skillId,
+    auraLevel: Math.max(1, Math.floor(safeMlvl / chosen.divisor)),
+  }
+}
+
+/** All Paladin aura skill IDs (`Skills.txt` `#98..#125` with `aura = 1`). */
+export const PALADIN_AURA_SKILL_IDS_113C: ReadonlySet<number> = new Set([
+  98, 99, 100, 102, 103, 104, 105, 108, 109, 110, 113, 114, 115, 118, 119, 120, 122, 123, 124,
+  125,
+])
+
+/**
+ * 1.13c Innate Boss & Monster Aura Resolver (#1820):
+ * - `Uber Mephisto` (`hcIdx = 704`, `D2Game.dll` `0x6FC44DB5`): `#123 Conviction` at `slvl = 20`.
+ * - `Uber Duriel` (`hcIdx = 708`, `MonStats.txt` `Skill4 = Holy Freeze`): `#114 Holy Freeze` at `slvl = 14`.
+ * - `Duriel` (`hcIdx = 211`, `MonStats.txt` `Skill4 = Holy Freeze`): `#114 Holy Freeze` scaled to `4 / 7 / 10` (Normal / NM / Hell).
+ * - Any other `MonStats.txt` row declaring a Paladin aura in `Skill1..Skill8`: mounted automatically on spawn.
+ */
+export function resolveInnateMonsterAura113c(
+  hcIdx: number,
+  difficulty: number | 'normal' | 'nightmare' | 'hell' = 0,
+  skills?: readonly { readonly skillId?: number | undefined; readonly level: number }[],
+): { readonly auraSkillId: number; readonly auraLevel: number } | undefined {
+  const id = hcIdx | 0
+  const diffIdx =
+    difficulty === 2 || difficulty === 'hell'
+      ? 2
+      : difficulty === 1 || difficulty === 'nightmare'
+        ? 1
+        : 0
+  if (id === 704) {
+    return { auraSkillId: 123, auraLevel: 20 }
+  }
+  if (skills !== undefined) {
+    for (const sk of skills) {
+      if (sk.skillId !== undefined && PALADIN_AURA_SKILL_IDS_113C.has(sk.skillId)) {
+        if (id === 708 && sk.skillId === 114) {
+          return { auraSkillId: 114, auraLevel: 14 }
+        }
+        if (id === 211 && sk.skillId === 114) {
+          const base = Math.max(1, Math.trunc(sk.level))
+          const auraLevel = base <= 1 ? 4 + diffIdx * 3 : base + diffIdx * 3
+          return { auraSkillId: 114, auraLevel }
+        }
+        return {
+          auraSkillId: sk.skillId,
+          auraLevel: Math.max(1, Math.trunc(sk.level) + diffIdx * 3),
+        }
+      }
+    }
+  }
+  if (id === 708) {
+    return { auraSkillId: 114, auraLevel: 14 }
+  }
+  if (id === 211) {
+    return { auraSkillId: 114, auraLevel: 4 + diffIdx * 3 }
+  }
+  return undefined
 }

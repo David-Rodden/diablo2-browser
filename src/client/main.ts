@@ -85,7 +85,12 @@ import {
   BootProgressTracker,
   type BootProgressSnapshot,
 } from './ui/boot-progress.ts'
-import { isModalDomOverlayOpen } from './ui/dom-overlay.ts'
+import {
+  dismissAllModalDomOverlays,
+  isModalDomOverlayOpen,
+  reconcileModalDomOverlays,
+  type ModalOverlayOwner,
+} from './ui/dom-overlay.ts'
 import { HudManager } from './ui/hud-manager.ts'
 import { Minimap } from './ui/minimap.ts'
 import { detectMobileTouchEnvironment } from './ui/touch-controls.ts'
@@ -873,9 +878,51 @@ export async function startPlayApp(options?: {
   const pluginMenu = new ModMenu({
     host: plugins,
     toolbar,
+    container: isChildSlot ? null : undefined,
     layout: options?.menuLayout,
+    onOpen: () => {
+      toolbar.closeModals()
+    },
   })
   pluginMenuRef = pluginMenu
+
+  const getModalOverlayOwners = (): readonly ModalOverlayOwner[] => [
+    {
+      element: pluginMenu.getElement(),
+      isOpen: () => pluginMenu.isOpen(),
+      close: () => pluginMenu.close(),
+    },
+    {
+      element: toolbar.getConfigModalOverlayElement(),
+      isOpen: () => toolbar.isConfigModalOpen(),
+      close: () => toolbar.closeConfigModal(),
+    },
+    {
+      element: toolbar.getBugModalOverlayElement(),
+      isOpen: () => toolbar.isBugModalOpen(),
+      close: () => toolbar.closeBugModal(),
+    },
+  ]
+
+  const closeAllModals = (): void => {
+    pluginMenu.close()
+    toolbar.closeModals()
+    if (!isChildSlot) {
+      dismissAllModalDomOverlays(
+        typeof document !== 'undefined' ? document : null,
+        getModalOverlayOwners(),
+      )
+    }
+  }
+
+  const reconcileModalOverlays = (): void => {
+    if (isChildSlot) return
+    reconcileModalDomOverlays({
+      doc: typeof document !== 'undefined' ? document : null,
+      owners: getModalOverlayOwners(),
+    })
+  }
+  reconcileModalOverlays()
 
   // Apply the initial viewport profile's dimensions, stretched to fit the browser at its own aspect ratio
   syncStageViewportFit()
@@ -1156,6 +1203,7 @@ export async function startPlayApp(options?: {
   }
 
   const startSinglePlayerGame = async (st: BnetFlowState, charName: string): Promise<void> => {
+    closeAllModals()
     st.stage = 'door_loading'
     st.stageTicks = 0
     st.doorFrame = 0
@@ -1233,6 +1281,7 @@ export async function startPlayApp(options?: {
   }
 
   const returnToLobby = (): void => {
+    closeAllModals()
     // Normally reached after the session already left the game (phase `idle`/`lobby`); a Single Player
     // game still attached must finish `leaveGame()` (which writes the updated `.d2s` save) before
     // `persistSinglePlayerSavesToStorage()` and `lobby.listCharacters()` reload `flowState.roster`.
@@ -1836,6 +1885,7 @@ export async function startPlayApp(options?: {
       }
       const diffNum: 0 | 1 | 2 =
         st.difficulty === 'hell' ? 2 : st.difficulty === 'nightmare' ? 1 : 0
+      closeAllModals()
       st.stage = 'door_loading'
       st.stageTicks = 0
       st.doorFrame = 0
@@ -1903,6 +1953,7 @@ export async function startPlayApp(options?: {
     },
     onJoinGame: async (st, gameName, gamePassword) => {
       const selectedChar = st.roster[st.selectedSlotIndex]
+      closeAllModals()
       st.stage = 'door_loading'
       st.stageTicks = 0
       st.doorFrame = 0
@@ -2083,6 +2134,7 @@ export async function startPlayApp(options?: {
         })
       }
       if (session.phase !== 'ingame' && session.phase !== 'replay') return
+      closeAllModals()
       session.audioRuntime.prefetchBackground()
       inGameView = true
       flowState.sceneReady = true
@@ -2153,6 +2205,7 @@ export async function startPlayApp(options?: {
   session.onSessionLost((ev) => {
     // Single handler for BNCS/MCP/D2GS loss on every screen: the session already disposed all
     // connections; show the login screen with the reason (no automatic reconnect).
+    closeAllModals()
     inGameView = false
     ownHeroArtKicked = false
     releaseInGameSceneCaches()
@@ -2182,6 +2235,7 @@ export async function startPlayApp(options?: {
 
   refreshDisplayFn = (): void => {
     const nowMs = performance.now()
+    closeAllModals()
     gestureGuard.exitPointerLock()
     if (!chatInputEl.hidden) {
       chatInputEl.value = ''
@@ -2442,6 +2496,11 @@ export async function startPlayApp(options?: {
       }
       session.audioRuntime.unlock()
       if (isModalDomOverlayOpen()) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          closeAllModals()
+        }
         return
       }
       const activeEl = document.activeElement
@@ -2482,11 +2541,20 @@ export async function startPlayApp(options?: {
   )
 
   trackListener(window, 'blur', () => {
+    reconcileModalOverlays()
     if (inGameView) {
       session.commandMapper.resetModifiers()
       session.commandMapper.handlePointerUp(0)
       session.commandMapper.handlePointerUp(2)
     }
+  })
+
+  trackListener(window, 'focus', () => {
+    reconcileModalOverlays()
+  })
+
+  trackListener(window, 'pageshow', () => {
+    reconcileModalOverlays()
   })
 
   // D2Client 1.13c tick schedule (`LogicClock`, 0x6FAF4C6F..0x6FAF4D79): owed 40 ms ticks are
@@ -2508,6 +2576,7 @@ export async function startPlayApp(options?: {
   let hiddenTickTimer: ReturnType<typeof setInterval> | null = null
   let nextWorldRenderMs: number | null = null
   trackListener(document, 'visibilitychange', () => {
+    reconcileModalOverlays()
     if (document.hidden) {
       if (hiddenTickTimer === null) {
         hiddenTickTimer = setInterval(() => {
@@ -2697,6 +2766,9 @@ export async function startPlayApp(options?: {
     instanceFocused = focused
     hudManager.setInputFocused(focused)
     if (!focused) {
+      if (changed) {
+        closeAllModals()
+      }
       if (!chatInputEl.hidden) {
         chatInputEl.value = ''
         chatInputEl.hidden = true
@@ -2763,6 +2835,8 @@ export async function startPlayApp(options?: {
       hudManager.dispose()
       for (const disposeOne of bootDisposers) disposeOne()
       chatInputEl.remove()
+      closeAllModals()
+      pluginMenu.destroy()
       toolbar.destroy()
       void plugins.destroy().catch(() => {
         // Best-effort teardown; plugin disposers already ran individually.
@@ -2774,6 +2848,7 @@ export async function startPlayApp(options?: {
       session.submitChatInput(message)
     },
     replayD2Cap: (jsonlText: string): number => {
+      closeAllModals()
       inGameView = true
       const count = session.loadD2CapReplay(jsonlText)
       session.replayAllD2Cap()

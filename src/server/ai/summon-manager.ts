@@ -130,7 +130,10 @@ export interface SummonedPetUnit {
     | 'grizzly'
     | 'shadow_warrior'
     | 'shadow_master'
+    | 'hydra'
+    | 'assassin_trap'
     | undefined
+  nextActionFrame?: number | undefined
   classId?: number | undefined
   monsterLevel?: number | undefined
   mlvl?: number | undefined
@@ -533,6 +536,14 @@ export class SummonManager {
     } else if (params.skillId === 90) {
       kind = 'iron_golem'
       const igStats = calculateIronGolemStats(params.slvl, resolvedIronGolemItem, golemMasteryLvl, golemSynergies)
+      const igExtra = resolvedIronGolemItem as
+        | (IronGolemItemProps & {
+            readonly fireResist?: number | undefined
+            readonly lightResist?: number | undefined
+            readonly coldResist?: number | undefined
+            readonly poisonResist?: number | undefined
+          })
+        | undefined
       thornsReturnPct = igStats.thornsReturnPct
       inheritedAuras = igStats.inheritedAuras
       baseHp = igStats.maxHp
@@ -541,10 +552,10 @@ export class SummonManager {
       golemDmgBonusPct = igStats.damageBonusPct
       golemVelPct = gmStats.speedBonusPct
       golemFade = igStats.translucentFade
-      golemFireRes = sumResPct
-      golemLtngRes = 50 + sumResPct
-      golemColdRes = sumResPct
-      golemPoisRes = 100 + sumResPct
+      golemFireRes = sumResPct + (igExtra?.fireResist ?? 0)
+      golemLtngRes = 50 + sumResPct + (igExtra?.lightResist ?? 0)
+      golemColdRes = sumResPct + (igExtra?.coldResist ?? 0)
+      golemPoisRes = 100 + sumResPct + (igExtra?.poisonResist ?? 0)
     } else if (params.skillId === 94) {
       kind = 'fire_golem'
       const fgStats = calculateFireGolemStats(params.slvl, golemMasteryLvl, golemSynergies)
@@ -615,7 +626,15 @@ export class SummonManager {
     let equipmentTier: ValkyrieEquipmentTier | undefined
     let valkyrieEquipment: readonly MonsterEquippedItem113c[] | undefined
 
-    if (params.skillId === 78) {
+    if (params.skillId === 62) {
+      // 1.13c Skills.txt #62 Hydra: stationary 10-second (250 frames) fire-turret summon
+      kind = 'hydra'
+      isStationary = true
+      lifespanTicks = 250
+    } else if (petTypeName === 'assassintrap') {
+      kind = 'assassin_trap'
+      isStationary = true
+    } else if (params.skillId === 78) {
       kind = 'bonewall'
       isStationary = true
       const bwStats = calculateBoneWallStats(
@@ -1162,9 +1181,13 @@ export class SummonManager {
     allies?: readonly CombatUnitContext[]
     enemies: readonly CombatUnitContext[]
     enemyPositions: ReadonlyMap<string, { x: number; y: number }>
-    corpses?: { id: string; consumed: boolean; baseMaxHp?: number; isBoss?: boolean; shattered?: boolean; isCorpse?: boolean }[]
+    corpses?: { id: string; consumed: boolean; baseMaxHp?: number; isBoss?: boolean; shattered?: boolean; isCorpse?: boolean; x?: number; y?: number }[]
     missileEngine: MissileEngine
     auraScanner: AuraScanner
+    coordScale?: number | undefined
+    respectAiDelay?: boolean | undefined
+    enforceMeleeReach?: boolean | undefined
+    canStep?: ((pet: SummonedPetUnit, nextX: number, nextY: number) => boolean) | undefined
   }): {
     petAttacks: number
     subSkillsExecuted: number[]
@@ -1175,6 +1198,7 @@ export class SummonManager {
     const subSkillsExecuted: number[] = []
     let damageDealt = 0
     let corpsesConsumedByPets = 0
+    const scale = params.coordScale ?? SUBTILE_PIXELS_113C
 
     const stationaryKinds = new Set([
       'dopplezon',
@@ -1240,11 +1264,11 @@ export class SummonManager {
 
       const aiProfile = resolvePetAiProfile113c(pet, this.pets.length)
       const isStationary = aiProfile.isStationary
-      const teleportPx = aiProfile.teleportSubtiles * SUBTILE_PIXELS_113C
-      const leashRunPx = aiProfile.leashRunSubtiles * SUBTILE_PIXELS_113C
-      const followWalkPx = aiProfile.followWalkSubtiles * SUBTILE_PIXELS_113C
-      const aggroPx = aiProfile.aggroSubtiles * SUBTILE_PIXELS_113C
-      const meleeReachPx = aiProfile.meleeReachSubtiles * SUBTILE_PIXELS_113C
+      const teleportPx = aiProfile.teleportSubtiles * scale
+      const leashRunPx = aiProfile.leashRunSubtiles * scale
+      const followWalkPx = aiProfile.followWalkSubtiles * scale
+      const aggroPx = aiProfile.aggroSubtiles * scale
+      const meleeReachPx = aiProfile.meleeReachSubtiles * scale
 
       let leashTeleported = false
       if (!isStationary && teleportPx > 0 && params.owner.x !== undefined && params.owner.y !== undefined) {
@@ -1257,10 +1281,14 @@ export class SummonManager {
           leashTeleported = true
         } else if (targetableEnemies.length === 0 && followWalkPx > 0 && ownerDist > followWalkPx) {
           const moveVel = ownerDist > leashRunPx ? aiProfile.runVelocity : aiProfile.velocity
-          const speedPxPerTick = (moveVel * SUBTILE_PIXELS_113C) / 25
+          const speedPxPerTick = (moveVel * scale) / 25
           const step = Math.min(speedPxPerTick, ownerDist - followWalkPx)
-          pet.x += (ownerDx / ownerDist) * step
-          pet.y += (ownerDy / ownerDist) * step
+          const nx = pet.x + (ownerDx / ownerDist) * step
+          const ny = pet.y + (ownerDy / ownerDist) * step
+          if (!params.canStep || params.canStep(pet, nx, ny)) {
+            pet.x = nx
+            pet.y = ny
+          }
         }
       }
 
@@ -1296,13 +1324,20 @@ export class SummonManager {
       // Fire Golem Holy Fire pulse every 50 ticks (2.0s)
       if (pet.kind === 'fire_golem' && params.currentTick % 50 === 0) {
         const fgStats = calculateFireGolemStats(pet.slvl, golemMasteryLvl, golemSynergies)
-        const pulseRadiusPx = fgStats.holyFireRadiusSubtiles * 32
+        const pulseRadiusPx = fgStats.holyFireRadiusSubtiles * (scale === SUBTILE_PIXELS_113C ? 32 : scale)
         for (const enemy of aliveEnemies) {
-          const ePos = params.enemyPositions.get(enemy.id) ?? { x: 0, y: 120 }
+          const ePos =
+            params.enemyPositions.get(enemy.id) ??
+            (enemy.x !== undefined && enemy.y !== undefined
+              ? { x: enemy.x, y: enemy.y }
+              : { x: 0, y: (120 * scale) / SUBTILE_PIXELS_113C })
           const dx = ePos.x - pet.x
           const dy = ePos.y - pet.y
-          // 2:1 isometric ground geometry
-          if (dx * dx + 4 * dy * dy <= pulseRadiusPx * pulseRadiusPx) {
+          const inPulseRange =
+            scale === SUBTILE_PIXELS_113C
+              ? dx * dx + 4 * dy * dy <= pulseRadiusPx * pulseRadiusPx
+              : dx * dx + dy * dy <= pulseRadiusPx * pulseRadiusPx
+          if (inPulseRange) {
             const out = executeSUnitDmg(params.owner, enemy, {
               skillId: 94,
               attackKind: 'spell',
@@ -1313,6 +1348,16 @@ export class SummonManager {
             }, this.rng)
             damageDealt += out.totalDamage
           }
+        }
+      }
+
+      const aiCooldownReady =
+        !params.respectAiDelay ||
+        pet.nextActionFrame === undefined ||
+        params.currentTick >= pet.nextActionFrame
+      const markSubSkillCooldown = () => {
+        if (params.respectAiDelay) {
+          pet.nextActionFrame = params.currentTick + Math.max(10, aiProfile.aiDelayFrames)
         }
       }
 
@@ -1338,6 +1383,7 @@ export class SummonManager {
 
         // Corpse-consuming vines & dire wolves (`307` CorpseCycler, `325` VineCycler, `314` fenris rage)
         if ((subId === 307 || subId === 325 || subId === 314) && params.corpses) {
+          if (!aiCooldownReady) continue
           if (subId === 314 && pet.rageBuffActive) {
             continue
           }
@@ -1354,6 +1400,7 @@ export class SummonManager {
             corpse.consumed = true
             corpsesConsumedByPets += 1
             subSkillsExecuted.push(subId)
+            markSubSkillCooldown()
             if (subId === 307) {
               // Carrion Vine (#231 -> #307 CorpseCycler): heals owner dm12(3, 12)% max HP, clamped to maxHp256
               const cvSub = calculateCorpseCyclerStats(pet.slvl)
@@ -1390,6 +1437,7 @@ export class SummonManager {
 
         // Poison Creeper (`#222`) `Vine Attack` (`#294`)
         if (subId === 294 && primaryTarget) {
+          if (!aiCooldownReady) continue
           const pcStats = calculatePoisonCreeperStats(pet.slvl, params.owner.statList.getAccruedStat('level'))
           const mslName = subSkill.srvMissileA || subSkill.srvMissile || 'plague vines'
           params.missileEngine.spawnMissile({
@@ -1434,15 +1482,17 @@ export class SummonManager {
           damageDealt += out.totalDamage
           subSkillsExecuted.push(294)
           petAttacks += 1
+          markSubSkillCooldown()
           continue
         }
 
-        // Spirit Wolf / Shadow Teleport (`#292` — suppressed on the same tick as a > 480 px leash teleport)
+        // Spirit Wolf / Shadow Teleport (`#292` — suppressed on the same tick as a > 50-subtile leash teleport)
         if (subId === 292) {
           if (!leashTeleported && primaryTarget) {
             const dx = primaryPos.x - pet.x
             const dy = primaryPos.y - pet.y
-            if (Math.hypot(dx, dy * 2) > 80) {
+            const teleDist = scale === SUBTILE_PIXELS_113C ? Math.hypot(dx, dy * 2) : Math.hypot(dx, dy)
+            if (teleDist > 5 * scale && (!params.canStep || params.canStep(pet, primaryPos.x, primaryPos.y))) {
               pet.x = primaryPos.x
               pet.y = primaryPos.y
               subSkillsExecuted.push(292)
@@ -1453,8 +1503,9 @@ export class SummonManager {
 
         // Death Sentry (`312` `mon death sentry`): explodes an available corpse if present!
         if (subId === 312 && params.corpses) {
+          if (!aiCooldownReady) continue
           const ceRadiusSubtiles = 10 + (pet.slvl - 1)
-          const ceRadiusPx = ceRadiusSubtiles * 16
+          const ceRadiusPx = ceRadiusSubtiles * scale
           // 1.13c Ground Truth: Rejects consumed, boss, and shattered (frozen) corpses
           const corpse = params.corpses.find(
             c => c && !c.consumed && !c.isBoss && !c.shattered && c.isCorpse !== false
@@ -1464,8 +1515,9 @@ export class SummonManager {
             corpsesConsumedByPets += 1
             subSkillsExecuted.push(subId)
             pet.shotsRemaining -= 1
+            markSubSkillCooldown()
 
-            // 1.13c Corpse Explosion: 40% to 80% (or 70% to 120% in 1.13c) base monster HP (50% phys / 50% fire)
+            // 1.13c Corpse Explosion: 70% to 120% base monster HP (50% phys / 50% fire)
             const baseHp = corpse.baseMaxHp ?? 1000
             const minDmg = Math.trunc((baseHp * 70) / 100) * FIXED_ONE
             const maxDmg = Math.trunc((baseHp * 120) / 100) * FIXED_ONE
@@ -1525,6 +1577,7 @@ export class SummonManager {
             subId === 337 ||
             subId === 338)
         ) {
+          if (!aiCooldownReady) continue
           const mageMsl =
             pet.kind === 'skeleton_mage'
               ? calculateNecromageMissileDamage(pet.mageElement ?? 'fire', pet.slvl, skelMasteryLvl)
@@ -1535,6 +1588,36 @@ export class SummonManager {
           const trapDmg = isAssTrapSub
             ? calcSentrySubSkillDamage113c(subId, pet.slvl, id => params.owner.statList.getBaseSkillLevel(id))
             : null
+          const hydraDmg =
+            subId === 337
+              ? (() => {
+                  const s = Math.max(1, pet.slvl)
+                  const tierSum = (base: number, l1: number, l2: number, l3: number, l4: number, l5: number) =>
+                    base +
+                    Math.min(Math.max(0, s - 1), 7) * l1 +
+                    Math.min(Math.max(0, s - 8), 8) * l2 +
+                    Math.min(Math.max(0, s - 16), 6) * l3 +
+                    Math.min(Math.max(0, s - 22), 6) * l4 +
+                    Math.max(0, s - 28) * l5
+                  // 1.13c Skills.txt #62 Hydra: EMin=28, EMax=39, EMinLev=[11,15,19,23,27], EMaxLev=[13,17,21,25,29],
+                  // HitShift=7 (*128 in 256ths), EDmgSymPerCalc=(FireBolt.blvl + FireBall.blvl)*3
+                  const synPct =
+                    (params.owner.statList.getBaseSkillLevel(36) + params.owner.statList.getBaseSkillLevel(47)) * 3
+                  const fmSlvl = params.owner.statList.getEffectiveSkillLevel(61)
+                  const fmPct =
+                    params.owner.statList.getAccruedStat('passive_fire_mastery') === 0 && fmSlvl > 0
+                      ? 30 + (fmSlvl - 1) * 7
+                      : 0
+                  const rawMin256 = tierSum(28, 11, 15, 19, 23, 27) * 128
+                  const rawMax256 = tierSum(39, 13, 17, 21, 25, 29) * 128
+                  const synMin256 = Math.floor((rawMin256 * (100 + synPct)) / 100)
+                  const synMax256 = Math.floor((rawMax256 * (100 + synPct)) / 100)
+                  return {
+                    min256: Math.floor((synMin256 * (100 + fmPct)) / 100),
+                    max256: Math.floor((synMax256 * (100 + fmPct)) / 100),
+                  }
+                })()
+              : null
           const elem = mageMsl
             ? mageMsl.elemType
             : trapDmg
@@ -1553,18 +1636,24 @@ export class SummonManager {
                   ? 'inferno sentry 1'
                   : subId === 313 || subId === 324
                     ? 'sentrylightningbolt'
-                    : subSkill.srvMissile || subSkill.srvMissileA || 'sentrylightningbolt'
+                    : subId === 337
+                      ? subSkill.srvMissile || subSkill.srvMissileA || 'hydra'
+                      : subSkill.srvMissile || subSkill.srvMissileA || 'sentrylightningbolt'
 
           const minElem = mageMsl
             ? mageMsl.minDamage256
             : trapDmg
               ? trapDmg.minDmg * FIXED_ONE
-              : (25 + pet.slvl * 12) * FIXED_ONE
+              : hydraDmg
+                ? hydraDmg.min256
+                : (25 + pet.slvl * 12) * FIXED_ONE
           const maxElem = mageMsl
             ? mageMsl.maxDamage256
             : trapDmg
               ? trapDmg.maxDmg * FIXED_ONE
-              : (45 + pet.slvl * 18) * FIXED_ONE
+              : hydraDmg
+                ? hydraDmg.max256
+                : (45 + pet.slvl * 18) * FIXED_ONE
 
           // 1.13c Sentry owner isolation: ground sentries are independent minion units and do NOT inherit
           // player +% Elemental Skill Damage or -% Enemy Resistance.
@@ -1585,7 +1674,7 @@ export class SummonManager {
             // #261 Charged Bolt Sentry: fires 5 + floor(ShockWeb.blvl / 3) bolts of 'sentrychargedbolt' per shot
             const boltCount = 5 + Math.floor(params.owner.statList.getBaseSkillLevel(256) / 3)
             const baseAngle = Math.atan2(primaryPos.y - pet.y, primaryPos.x - pet.x)
-            const dist = Math.max(80, Math.hypot(primaryPos.x - pet.x, primaryPos.y - pet.y))
+            const dist = Math.max(5 * scale, Math.hypot(primaryPos.x - pet.x, primaryPos.y - pet.y))
             for (let b = 0; b < boltCount; b++) {
               const offsetAngle = (b - (boltCount - 1) / 2) * 0.12
               const tx = b === 0 ? primaryPos.x : pet.x + Math.cos(baseAngle + offsetAngle) * dist
@@ -1677,6 +1766,7 @@ export class SummonManager {
           }
           subSkillsExecuted.push(subId)
           petAttacks += 1
+          markSubSkillCooldown()
           if (pet.petType === 'assassintrap') {
             pet.shotsRemaining -= 1
           }
@@ -1689,18 +1779,26 @@ export class SummonManager {
         const curDist = Math.hypot(curDx, curDy)
         if (curDist > meleeReachPx) {
           const chaseVel = aiProfile.runVelocity > 0 ? aiProfile.runVelocity : aiProfile.velocity
-          const speedPxPerTick = (chaseVel * SUBTILE_PIXELS_113C) / 25
+          const speedPxPerTick = (chaseVel * scale) / 25
           const step = Math.min(speedPxPerTick, curDist - meleeReachPx)
-          pet.x += (curDx / curDist) * step
-          pet.y += (curDy / curDist) * step
+          const nx = pet.x + (curDx / curDist) * step
+          const ny = pet.y + (curDy / curDist) * step
+          if (!params.canStep || params.canStep(pet, nx, ny)) {
+            pet.x = nx
+            pet.y = ny
+          }
         }
       }
 
       // Standard melee attack for non-totem, non-vine combat pets (`Skeleton`, `Golem`, `Raven`, `Wolf`, `Grizzly`, `Valkyrie`, `Shadow`)
-      // Stationary Decoy (dopplezon), Totems (`totem`), and Vines (`vine`) cannot execute standard melee attacks
+      // Stationary Decoy (dopplezon), Hydras, Traps, Totems (`totem`), and Vines (`vine`) cannot execute standard melee attacks
+      const withinMeleeReach =
+        !params.enforceMeleeReach ||
+        (primaryTarget !== undefined && Math.hypot(primaryPos.x - pet.x, primaryPos.y - pet.y) <= meleeReachPx + 0.75 * scale)
       if (
         primaryTarget &&
         aiProfile.canMeleeAttack &&
+        withinMeleeReach &&
         (params.currentTick % 10 === 0 ||
           ((pet.kind === 'shadow_warrior' || pet.kind === 'shadow_master') && params.currentTick % 5 === 0))
       ) {
@@ -1848,8 +1946,13 @@ export class SummonManager {
             const kdx = targetPos.x - pet.x
             const kdy = targetPos.y - pet.y
             const klen = Math.hypot(kdx, kdy) || 1
-            targetPos.x = Math.round(targetPos.x + (kdx / klen) * 24)
-            targetPos.y = Math.round(targetPos.y + (kdy / klen) * 24)
+            const kbDist = 1.5 * scale
+            const nx = targetPos.x + (kdx / klen) * kbDist
+            const ny = targetPos.y + (kdy / klen) * kbDist
+            if (!params.canStep || params.canStep(pet, nx, ny)) {
+              targetPos.x = scale === SUBTILE_PIXELS_113C ? Math.round(nx) : nx
+              targetPos.y = scale === SUBTILE_PIXELS_113C ? Math.round(ny) : ny
+            }
           }
         }
         if (pet.petType === 'raven') {
@@ -2061,31 +2164,6 @@ export function resolvePetAiProfile113c(
   const petType = (pet.petType ?? '').toLowerCase()
   const skillId = pet.sourceSkillId ?? 0
 
-  if (
-    pet.isStationary === true ||
-    kind === 'dopplezon' ||
-    kind === 'decoy' ||
-    kind === 'bonewall' ||
-    skillId === 28 ||
-    skillId === 78 ||
-    skillId === 88
-  ) {
-    return {
-      aiName: 'Idle',
-      teleportSubtiles: 0,
-      leashRunSubtiles: 0,
-      followWalkSubtiles: 0,
-      aggroSubtiles: 0,
-      ownerAggroSubtiles: 0,
-      meleeReachSubtiles: 0,
-      velocity: 0,
-      runVelocity: 0,
-      aiDelayFrames: 15,
-      isStationary: true,
-      canMeleeAttack: false,
-    }
-  }
-
   if (kind === 'hydra' || petType === 'hydra' || skillId === 62) {
     return {
       aiName: 'Hydra',
@@ -2105,6 +2183,7 @@ export function resolvePetAiProfile113c(
 
   if (
     petType === 'assassintrap' ||
+    kind === 'assassin_trap' ||
     kind === 'blade_sentinel' ||
     kind === 'wake_of_fire' ||
     kind === 'wake_of_inferno' ||
@@ -2124,6 +2203,31 @@ export function resolvePetAiProfile113c(
       leashRunSubtiles: 0,
       followWalkSubtiles: 0,
       aggroSubtiles: 25,
+      ownerAggroSubtiles: 0,
+      meleeReachSubtiles: 0,
+      velocity: 0,
+      runVelocity: 0,
+      aiDelayFrames: 15,
+      isStationary: true,
+      canMeleeAttack: false,
+    }
+  }
+
+  if (
+    pet.isStationary === true ||
+    kind === 'dopplezon' ||
+    kind === 'decoy' ||
+    kind === 'bonewall' ||
+    skillId === 28 ||
+    skillId === 78 ||
+    skillId === 88
+  ) {
+    return {
+      aiName: 'Idle',
+      teleportSubtiles: 0,
+      leashRunSubtiles: 0,
+      followWalkSubtiles: 0,
+      aggroSubtiles: 0,
       ownerAggroSubtiles: 0,
       meleeReachSubtiles: 0,
       velocity: 0,

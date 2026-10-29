@@ -114,7 +114,7 @@ export type ClientCommand =
   | {
       readonly type: 'ItemMove'
       readonly itemId: number
-      readonly container: 'inventory' | 'stash' | 'cube' | 'belt'
+      readonly container: 'inventory' | 'stash' | 'cube' | 'belt' | 'trade'
       readonly x: number
       readonly y: number
     }

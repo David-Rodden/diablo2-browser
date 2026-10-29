@@ -645,7 +645,7 @@ describe('Issue #1776: 1.13c Friendly Aura Target State Table & Mercenary Insigh
     internals.players.get(allyId)!.items.push(
       createAuraRunewordWeapon({
         unitId: 9901,
-        code: 'amb',
+        code: 'sbw',
         name: 'Faith',
         auraSkillId: 122,
         auraSlvl: 15,

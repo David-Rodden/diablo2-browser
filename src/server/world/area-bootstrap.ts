@@ -38,6 +38,7 @@ import {
 } from '../../common/units/monsters-data.ts'
 import { resolveMonPlacePreset113c } from '../../common/units/monai-113c.ts'
 import { getTownNpcDescriptorByHcIdx } from '../../common/units/npc-table.ts'
+import { SPARKLY_CHEST_INIT57_CLASS_IDS_113C } from '../../common/world/object-operate-113c.ts'
 import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import { OBJECTS_TXT_113C } from '../../common/world/objects-txt-113c.ts'
 import {
@@ -46,6 +47,29 @@ import {
   findActSpawnLocationSubTile,
   isBlockedWithUnitSize,
 } from '../../common/world/act-spawn-location.ts'
+import { populateAreaObjGroups113c } from './objgroup-113c.ts'
+
+/**
+ * Canonical 1.13c progression portal destination areas (`D2Game.dll` `OperateFn 34, 46, 50, 66`):
+ * - `298` (`ArcaneSanctuaryPortal`, `OperateFn 34` @ `0x6FC8D620`): Palace Cellar L3 (`54`) <-> Arcane Sanctuary (`74`)
+ * - `342` (`Hellgate`, `OperateFn 46` @ `0x6FC8CD40`): Durance of Hate L3 (`102`) -> Pandemonium Fortress (`103`)
+ * - `386` (`DuranceOfHateStairs`, `OperateFn 50` @ `0x6FC8F4F0`): Travincal (`83`) -> Durance of Hate L1 (`100`)
+ * - `547` (`AncientsDoor`, `OperateFn 66` @ `0x6FC7E2E0`): Arreat Summit (`120`) -> Worldstone Keep L1 (`128`)
+ */
+export function resolvePresetPortalDestArea113c(
+  classId: number,
+  areaId: number,
+): number | undefined {
+  if (classId === 298) {
+    if (areaId === 54) return 74
+    if (areaId === 74) return 54
+    return 74
+  }
+  if (classId === 342) return 103
+  if (classId === 386) return 100
+  if (classId === 547) return 128
+  return undefined
+}
 
 /** Levels.txt ids of the five towns (Rogue Encampment, Lut Gholein, Kurast Docks, Pandemonium Fortress, Harrogath). */
 export const TOWN_AREA_IDS_113C: ReadonlySet<number> = new Set([1, 40, 75, 103, 109])
@@ -93,7 +117,9 @@ export function resolvePresetObject113c(
     return null
   }
   if (presetIndex < OBJECT_SKIPPED_PRESET) {
-    return { classId: presetIndex }
+    return SPARKLY_CHEST_INIT57_CLASS_IDS_113C.has(presetIndex)
+      ? { classId: presetIndex, isSparkling: true }
+      : { classId: presetIndex }
   }
   if (presetIndex >= 574 && presetIndex <= 579) {
     return { classId: 136 }
@@ -239,6 +265,7 @@ export function buildAreaBootstrap(
       const resolved = resolvePresetObject113c(u.index, areaId, u.subX, u.subY, rng)
       if (resolved === null) continue
       const isWaypoint = WAYPOINT_CLASS_IDS_113C.has(resolved.classId)
+      const destAreaId = resolvePresetPortalDestArea113c(resolved.classId, areaId)
       objects.push({
         classId: resolved.classId,
         x,
@@ -247,6 +274,7 @@ export function buildAreaBootstrap(
         mode: isWaypoint && isTown ? 1 : u.mode,
         isWaypoint,
         ...(resolved.isSparkling ? { isSparkling: true } : {}),
+        ...(destAreaId !== undefined ? { destAreaId } : {}),
       })
     } else if (u.type === 1) {
       if (u.index < 0) continue
@@ -338,6 +366,18 @@ export function buildAreaBootstrap(
     level.actSpawn !== undefined
       ? createActSpawnLocator(level)(ACT_SPAWN_TILE_ENTRY, PLAYER_UNIT_SIZE)
       : spawnFromGeometryTile(level)
+
+  // #1840: 1.13c `OBJECTS_PopulateRoom` (`D2Game.dll` `0x6FC4F1C3`): populate procedural shrines,
+  // wells, and field/dungeon containers across all DRLG rooms (`Levels.txt` `ObjGrp0..7` / `ObjPrb0..7`).
+  const proceduralObjects = populateAreaObjGroups113c({
+    level,
+    existingObjects: objects,
+    warps,
+    spawn,
+  })
+  if (proceduralObjects.length > 0) {
+    objects.push(...proceduralObjects)
+  }
 
   return {
     areaId,

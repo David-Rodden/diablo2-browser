@@ -55,6 +55,8 @@ import { D2Common_10399_AtSubtiles } from '../../common/path/step.ts'
 import { CANONICAL_113C_OBJECTS, CANONICAL_113C_SHRINES, getShrineMeta113c, isObjectInInteractRange113c } from '../../common/world/objects-meta.ts'
 import {
   CURABLE_STATE_IDS_113C,
+  QUEST_CHEST_OPERATE_FNS_113C,
+  SPARKLY_CHEST_INIT57_CLASS_IDS_113C,
   WELL_CURABLE_STATE_IDS_113C,
   WELL_DEFAULT_PARMS_113C,
   classifyObjectOperate113c,
@@ -63,7 +65,9 @@ import {
   computeWellInitialCharges113c,
   computeWellModeForCharges113c,
   computeWellRegenFrame113c,
+  getContainerOperateDropChance113c,
   getObjectOperatingTicks113c,
+  rollChestLocked113c,
   rollObjectTrapDamage256_113c,
   rollShrineType113c,
 } from '../../common/world/object-operate-113c.ts'
@@ -130,12 +134,17 @@ import {
 import { MONSTATS_113C_ROWS, MONUMOD_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
 import {
   MONAI_PROFILES_113C,
+  isBaalTentacleHcIdx113c,
+  isBonePrisonMonsterHcIdx113c,
   isFrogDemonHcIdx113c,
   isSubmergeCapableMonsterHcIdx113c,
   isTentacleHcIdx113c,
   isTentacleHeadHcIdx113c,
   monaiParam113c,
   monaiProfile113c,
+  resolveInnateMonsterAura113c,
+  resolveMonsterAuraDivisor113c,
+  rollAuraEnchanted113c,
   type MonAiFamily,
   type MonAiProfile113c,
 } from '../../common/units/monai-113c.ts'
@@ -163,9 +172,11 @@ import {
   calcBoneFetishDeathDamage,
   calcColdEnchantedDeathNova,
   calcFireEnchantedDeathDamage,
+  calcSuicideMinionExplosionDamage,
   computeChargedBolt8WayVectors,
   D2CLIENT_NOVA_RING_X,
   D2CLIENT_NOVA_RING_Y,
+  getBossDeathFxSpec,
   isBoneFetishMonster,
   isDurielMonster,
   isPoisonDeadMonster,
@@ -208,7 +219,19 @@ import type {
   UnitId,
   UnitType,
 } from '../../netproto/index.ts'
-import { findStandableNear, resolvePresetObject113c } from '../world/area-bootstrap.ts'
+import {
+  findStandableNear,
+  resolvePresetObject113c,
+  resolvePresetPortalDestArea113c,
+} from '../world/area-bootstrap.ts'
+import {
+  planEvilUrnPack113c,
+  rollArmorStandDrop113c,
+  rollBookshelfDrop113c,
+  rollQuestChestBonusDrops113c,
+  rollWeaponRackDrop113c,
+  rollWirtsBodyDrops113c,
+} from '../world/object-drops-113c.ts'
 import {
   BAAL_THRONE_WAVES_113C,
   HIREABLE_AI_113C,
@@ -233,11 +256,24 @@ import {
   resolveChestDropContext113c,
 } from '../items/server-item-data.ts'
 import {
+  canUnitEquipItem113c,
+  computeItemRequirements113c,
+} from '../../common/items/equip-req-113c.ts'
+import { isMetalItemCode113c } from '../../common/items/metal-items-113c.ts'
+import {
+  computeMercenaryWeaponProfile113c,
+  extractMercenaryStrikeProcs113c,
+  scaleMercenaryBossDamage113c,
+  stepMercenaryAiAndChooseAction113c,
+} from '../ai/mercenary-ai.ts'
+import {
   SummonManager,
   resolvePetAiProfile113c,
   type CreatePetOutcome,
   type SummonedPetUnit,
 } from '../ai/summon-manager.ts'
+import type { SUnitDmgPacket } from './combat-pipeline.ts'
+import type { IronGolemItemProps, MissileEngine } from './missile-engine.ts'
 import {
   getServerItemDataTables,
   readD2sSave113c,
@@ -286,9 +322,48 @@ import {
 } from '../../common/skills/weapon-combat-meta.ts'
 import { resolveWeaponBase113c } from '../../common/units/char-anim-speed.ts'
 import type { ItemStat } from '../../netproto/index.ts'
+import {
+  evaluateChargeUpProgressiveToHit,
+  evaluateDragonFlightStats,
+  evaluateDragonTalonStats,
+  resolveFinisherDischarge,
+  type DischargedPayload,
+} from '../skills/assassin-martial-arts.ts'
+import {
+  DRAGON_TAIL_EXPLOSION_RADIUS_SUBTILES,
+  FRENZY_DURATION_FRAMES_113C,
+  FRENZY_STATE_ID_113C,
+  KICK_SKILL_IDS_113C,
+  MARTIAL_CHARGE_DURATION_FRAMES_113C,
+  MARTIAL_FINISHER_SKILL_IDS_113C,
+  PROGRESSIVE_SKILLS_113C,
+  TELEKINESIS_KNOCKBACK_CHANCE_PCT,
+  TELEKINESIS_SKILL_ID as TELEKINESIS_SKILL_ID_113C,
+  addMartialCharge113c,
+  computeDragonTailExplosionDamage113c,
+  computeFistsOfFireConversionPct113c,
+  computeKickDamageRange113c,
+  computeSmiteStunFrames113c,
+  getProgressiveSkillSpec113c,
+  isTelekinesisObjectEligible113c,
+  isTelekinesisPickupEligible113c,
+  isWithinTelekinesisRange113c,
+  liveMartialCharges113c,
+  normalizeSkillTargetUnitType113c,
+  stepFrenzyStack113c,
+  validateWave2SkillHands113c,
+  type FrenzyStack113c,
+  type MartialChargeState113c,
+  type SkillTargetUnitType113c,
+} from '../skills/martial-dualwield-113c.ts'
 import { AuraScanner, type ActiveAuraSource, type CorpseContext } from './aura-scanner.ts'
 import { isWithinAuraRange, passesAuraFilter } from '../../common/skills/aura-filter.ts'
-import { compute3BandDuration, computeDiminishingReturns, evaluateCalc } from '../../common/data/calc-ast.ts'
+import {
+  compute3BandDuration,
+  compute5BandScaling,
+  computeDiminishingReturns,
+  evaluateCalc,
+} from '../../common/data/calc-ast.ts'
 import { computeCorpseExplosion113c } from './combat-pipeline.ts'
 import {
   difficultyDeathExpPenalty,
@@ -298,7 +373,28 @@ import {
   difficultyMonsterFreezeDivisor,
   difficultyResistPenalty,
 } from './difficulty-resist-penalty.ts'
-import { computeMindBlastStunDuration } from '../skills/assassin-shadow.ts'
+import {
+  computeMindBlastConversionChance,
+  computeMindBlastStunDuration,
+} from '../skills/assassin-shadow.ts'
+import {
+  calculateFindItemStats,
+  calculateFindPotionStats,
+  calculateGrimWardStats,
+  rollFindPotionDrop113c,
+} from '../skills/barbarian-warcries.ts'
+import { generateMonsterHorkDrop113c } from '../items/drop-generator.ts'
+import {
+  advanceWhirlwindSpinFrame113c,
+  computeOpenWoundsBitrate256113c,
+  computeWhirlwindDamageAndAr113c,
+  computeWhirlwindStepDistancePerFrame113c,
+  createWhirlwindSpinState113c,
+  resolveWhirlwindWeaponHands113c,
+  type WhirlwindEquippedHandInput113c,
+  type WhirlwindHandWeaponSpec113c,
+  type WhirlwindSpinState113c,
+} from '../skills/whirlwind-113c.ts'
 import { decodeSkillTabParam, skillTabStatParam } from '../../common/skills/skills-data.ts'
 import { evaluateSkill113c } from '../skills/registry.ts'
 import {
@@ -309,8 +405,27 @@ import {
 import {
   checkMissileSegmentFootprintOverlap113c,
   getMissileCollideEntry113c,
+  MissileEngine as OnlineMissileEngine,
+  type OnlineMissileSpawn113c,
+  type OnlineMissileSplash113c,
+  type OnlineMissileState113c,
+  type OnlineMissileTarget113c,
 } from './missile-engine.ts'
 import type { SkillEvalResult } from '../skills/types.ts'
+import {
+  executeCubeTransmute113c,
+  executeSocketItem113c,
+  resolveGemSocketItemStats113c,
+} from '../items/cube-engine-113c.ts'
+import {
+  TRADE_GRID_HEIGHT_113C,
+  TRADE_GRID_WIDTH_113C,
+  TRADE_INTERACT_RANGE_SUBTILES_113C,
+  TradeManager113c,
+  planInventoryPlacements113c,
+  type ActiveTradeSession113c,
+  type PlayerDirectedTradeEvent,
+} from '../net/trade-manager-113c.ts'
 
 export type GameMode = 'sp' | 'open' | 'realm' | 'singlePlayer' | 'multiplayer'
 
@@ -422,6 +537,7 @@ export interface GameInstanceConfig {
   readonly playersX?: number | undefined
   readonly onPlayersXChange?: ((playersX: number) => void) | undefined
   readonly gameName?: string | undefined
+  readonly worldEventSojThreshold?: number | undefined
   readonly registry?: unknown
   /**
    * Server-side area bootstrap resolver (`src/server/world/area-bootstrap.ts`): when set, areas are
@@ -429,6 +545,8 @@ export interface GameInstanceConfig {
    * preset objects/NPCs/monsters and warps, and players land on standable floor of the target area.
    */
   readonly resolveAreaBootstrap?: LocalAreaBootstrapResolver | undefined
+  /** Whether ladder-only runewords and cube recipes (`server=1` / `ladder=1`) are enabled (defaults to `true`). */
+  readonly ladder?: boolean | undefined
 }
 
 export interface ConnectPlayerSpec {
@@ -466,6 +584,9 @@ export interface ConnectPlayerSpec {
    */
   readonly skills?: Readonly<Record<number, number>> | undefined
   readonly restoreMercenary?: boolean | undefined
+  readonly hardcore?: boolean | undefined
+  readonly isHardcore?: boolean | undefined
+  readonly statusFlags?: number | undefined
 }
 
 export interface SpawnMonsterSpec {
@@ -602,6 +723,7 @@ export interface SummonPetSpec {
   readonly y?: number | undefined
   readonly corpseMonsterId?: number | undefined
   readonly ironGolemItemId?: number | undefined
+  readonly restoreSavedIronGolem?: boolean | undefined
 }
 
 export interface SpawnObjectSpec {
@@ -634,6 +756,7 @@ export interface ServerItemEntry {
     | 'belt'
     | 'stash'
     | 'cube'
+    | 'trade'
     | 'cursor'
     | 'vendor'
     | 'socket'
@@ -1215,9 +1338,23 @@ interface InternalPlayerRecord {
   vendorPoolsByMode: Map<number, { trade?: ServerItemEntry[]; gamble?: ServerItemEntry[] }>
   activeVendorMode: 'trade' | 'gamble' | null
   dead: boolean
+  isHardcore?: boolean | undefined
+  hasDied?: boolean | undefined
+  statusFlags?: number | undefined
   corpseId: number | undefined
+  corpseAreaId?: number | undefined
   corpseX: number
   corpseY: number
+  corpseRequiresClick?: boolean | undefined
+  extraCorpses?:
+    | Array<{
+        corpseId: number
+        areaId: number
+        x: number
+        y: number
+        items: ServerItemEntry[]
+      }>
+    | undefined
   /** `D2Game.dll` `0x6FC57730` (`[pClient + 0x508]`): experience lost on most recent death. */
   lastDeathExpLoss?: number | undefined
   /** `D2Game.dll` `0x6FC58180` (`stat 0xAF` / `175`): gold lost on most recent death. */
@@ -1230,7 +1367,7 @@ interface InternalPlayerRecord {
   /** 1.13c interact queue: walk into range, then run the interaction. */
   pendingInteraction?:
     | {
-        readonly kind: 'object' | 'warp' | 'npc' | 'waypoint' | 'corpse'
+        readonly kind: 'object' | 'warp' | 'npc' | 'waypoint' | 'corpse' | 'player'
         readonly id: number
         readonly destAreaId?: number
       }
@@ -1324,6 +1461,8 @@ interface InternalMonsterRecord {
   hp: number
   maxHp: number
   baseMaxHp: number
+  /** Unmultiplied single-player normal-rank base max HP (`D2Game.dll` `0x6FC4673A`, #1821). */
+  unscaledMaxHp: number
   level: number
   baseXp: number
   experience: number
@@ -1472,8 +1611,10 @@ interface InternalMonsterRecord {
   convertedByPlayerId: number
   /** MonStats `MissA1/A2/S1/C` missile ids for this monster row. */
   readonly modeMissiles?: MonsterModeMissiles113c | undefined
-  /** `MonUMod` 30 `aura`: the 1.13c aura skill this elite carries. */
+  /** `MonUMod` 30 `aura` or innate boss aura (#1819, #1820): the 1.13c aura skill this monster carries. */
   auraSkillId: number | undefined
+  /** Effective 1.13c aura `slvl` (`max(1, floor(mlvl / divisor))` or innate boss `slvl`, #1819, #1820). */
+  auraLevel: number | undefined
   /** Cached D2Common `findPathWorld` waypoints toward `pathTargetX/Y`. */
   path: readonly SubTilePoint[]
   pathIndex: number
@@ -1487,6 +1628,8 @@ interface InternalMonsterRecord {
   fleeTargetX: number
   fleeTargetY: number
   shattered: boolean
+  /** Single-use corpse lock (`STATE_CORPSE_NOSELECT = 118`, #1809, #1810). */
+  corpseConsumed?: boolean
   revivedByShaman: boolean
   aiDisabled: boolean
   /** Items rolled on death, spawned when the death animation reaches its drop frame. */
@@ -1521,8 +1664,48 @@ interface InternalMonsterRecord {
   submergeTimerFrame: number
   /** Frame when `#180 Emerge` (`MONMODE_SKILL1 = 8`) finishes and settles into `MONMODE_NEUTRAL (1)`. */
   emergeUntilFrame: number
-  /** Linked `TentacleHead` boss `unitId` for `Tentacle` limbs (`0x6FC9CB41..0x6FC9CBF1` cascade death). */
+  /** Linked `TentacleHead` / `BaalCrab` boss `unitId` for `Tentacle` limbs, `BaalClone`, `BaalTentacle`, and boss summons. */
   bossUnitId: number | undefined
+  /** Frame at which a temporary summon (`baalclone`, `baaltentacle`, `boneprison`, `hydra`) auto-despawns (`0` = permanent). */
+  despawnAtFrame: number
+  /** Real `baalcrab` (#544): count of Vile Effigy (`#570 baalclone`) spawns & active clone `unitId` (`0` = none, #1826). */
+  baalCloneSpawnCount: number
+  activeBaalCloneUnitId: number
+  /** Active multi-frame boss channel (`DiabLight #193`, `Baal Inferno #317`, Talic `Whirlwind #151`, #1825..#1827). */
+  activeBossChannel:
+    | {
+        readonly kind: 'diablight' | 'baalinferno' | 'whirlwind'
+        readonly skillId: number
+        readonly slvl: number
+        remainingFrames: number
+        angle: number
+        targetX: number
+        targetY: number
+        readonly startOffset: number
+        readonly stepVx?: number | undefined
+        readonly stepVy?: number | undefined
+        readonly nextHitFrames: Map<number, number>
+      }
+    | undefined
+  /** Active Baal `#318 Baal Cold Missiles` (`Hoarfrost`) expanding V-wedge waves (#1826). */
+  activeHoarfrostWaves:
+    | {
+        x: number
+        y: number
+        readonly vx: number
+        readonly vy: number
+        readonly perpX: number
+        readonly perpY: number
+        remainingSteps: number
+        stepDone: number
+        readonly slvl: number
+        readonly hitUnits: Set<number>
+      }[]
+    | undefined
+  /** Active `#349 Diablogeddon` (`Armageddon`) meteor rain expiry frame (`> currentFrame`) on `#333` / `#705` (#1825). */
+  diablogeddonUntilFrame: number
+  /** Original unbuffed `ac` before Madawc `#138 Shout` (`state 26`) so Shout refreshes idempotently (#1827). */
+  baseAcBeforeShout: number
 }
 
 interface InternalMercenaryRecord {
@@ -1664,11 +1847,23 @@ interface InternalMissileRecord {
   guaranteedHit: boolean
   /** Converted/confused monster projectiles may hit other monsters. */
   hitMonsters?: boolean
+  /** #1790: `pSrvDoFunc` / `pSrvHitFunc` state routed through `MissileEngine` (online bridge). */
+  online?: OnlineMissileState113c | undefined
+  /**
+   * #1790 damage carrier: `'none'` = functional missile without its own damage (Fire Wall makers,
+   * Blizzard / Meteor centres, zero-damage carriers), `'groundfire'` = per-frame burning patch.
+   */
+  carrier?: 'none' | 'groundfire' | undefined
+  /** Per-frame 1/256 fire damage of a `'groundfire'` patch (or the range its children inherit). */
+  groundFire256?: { readonly min: number; readonly max: number } | undefined
+  /** Fractional 1/256 burning damage carried per struck unit. */
+  groundFireCarry?: Map<number, number> | undefined
 }
 
 function toItemContainer(loc: ServerItemEntry['location']): ItemContainer {
   if (loc === 'equipped') return 'equipment'
   if (loc === 'vendor') return 'shop'
+  if (loc === 'trade') return 'tradeSelf'
   return loc
 }
 
@@ -1678,6 +1873,17 @@ interface QueuedPlayerCommand {
 }
 
 let cachedEmbeddedFallbackRegistry: D2DataRegistry | null = null
+
+/** #1790 optional launch parameters of `launchPlayerSkillMissile`. */
+interface PlayerSkillMissileLaunchOptions113c {
+  /** Path origin when it is not the caster (Fire Wall makers start at the target point). */
+  readonly fromX?: number | undefined
+  readonly fromY?: number | undefined
+  /** Unit-locked homing target (`SKILLS_SrvDo010` `TargetX = 1`). */
+  readonly lockedMonsterId?: number | undefined
+  /** Per-frame 1/256 ground fire damage (Fire Wall pillars and makers). */
+  readonly groundFire256?: { readonly min: number; readonly max: number } | undefined
+}
 
 /** A player skill cast resolved through `skills/registry.ts` (#1328). */
 interface PlayerSkillCast {
@@ -1734,6 +1940,48 @@ interface MercAuraRuntime {
 const PLAYER_MISSILE_SPEED_SUBTILES = 2.0
 /** Melee reach in subtiles for `Skills.txt` `range = h2h | both` strikes. */
 const PLAYER_MELEE_REACH_SUBTILES = 4
+
+interface ArmorCombatMeta113c {
+  readonly minAc: number
+  readonly maxAc: number
+  readonly block: number
+  readonly smiteMinDam: number
+  readonly smiteMaxDam: number
+}
+
+let cachedArmorCombatMeta113c: Map<string, ArmorCombatMeta113c> | null = null
+
+/**
+ * Parse 1.13c `Armor.txt` (`RAW_ARMOR`) using FIRST-occurrence `headers.indexOf('mindam')` /
+ * `headers.indexOf('maxdam')` (cols 63..64 = Shield Smite damage, NOT cols 161..162 boot kick damage; #1800).
+ */
+function resolveArmorCombatMeta113c(code: string | undefined | null): ArmorCombatMeta113c | undefined {
+  if (typeof code !== 'string' || !code) return undefined
+  if (cachedArmorCombatMeta113c === null) {
+    cachedArmorCombatMeta113c = new Map()
+    const lines = RAW_ARMOR.split(/\r?\n/)
+    const headers = (lines[0] ?? '').split('\t')
+    const codeIdx = headers.indexOf('code')
+    const minAcIdx = headers.indexOf('minac')
+    const maxAcIdx = headers.indexOf('maxac')
+    const blockIdx = headers.indexOf('block')
+    const minDamIdx = headers.indexOf('mindam')
+    const maxDamIdx = headers.indexOf('maxdam')
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i]!.split('\t')
+      const itemCode = (cols[codeIdx] ?? '').trim()
+      if (!itemCode) continue
+      cachedArmorCombatMeta113c.set(itemCode, {
+        minAc: Number.parseInt(cols[minAcIdx] ?? '0', 10) || 0,
+        maxAc: Number.parseInt(cols[maxAcIdx] ?? '0', 10) || 0,
+        block: Number.parseInt(cols[blockIdx] ?? '0', 10) || 0,
+        smiteMinDam: Number.parseInt(cols[minDamIdx] ?? '0', 10) || 0,
+        smiteMaxDam: Number.parseInt(cols[maxDamIdx] ?? '0', 10) || 0,
+      })
+    }
+  }
+  return cachedArmorCombatMeta113c.get(code.trim())
+}
 
 /**
  * Server missile launched by a player skill: `Skills.txt` `srvmissile` / `srvmissilea`.
@@ -1883,9 +2131,13 @@ const SRVDOFUNC_MIND_BLAST = 51
 const SRVDOFUNC_CORPSE_EXPLOSION = 55
 const SRVDOFUNC_DRAGON_FLIGHT = 52
 const SRVDOFUNC_CHARGE = 67
+const SRVDOFUNC_FIND_POTION = 69
+const SRVDOFUNC_FIND_ITEM = 72
+const SRVDOFUNC_GRIM_WARD = 75
 const SRVDOFUNC_WHIRLWIND = 76
 const SRVDOFUNC_LEAP = 77
 const SRVDOFUNC_LEAP_ATTACK = 78
+const SRVDOFUNC_CONVERSION = 79
 
 /**
  * Every stat (with its `param`) carried by one item: its own stat list, runeword stats and the
@@ -1895,11 +2147,44 @@ function collectItemStats(item: ServerItemEntry): ItemStat[] {
   const out: ItemStat[] = []
   if (item.rawItemData !== undefined) {
     out.push(...(item.rawItemData.stats ?? []), ...(item.rawItemData.runewordStats ?? []))
-  } else if (item.stats !== undefined) {
+    if (item.socketedItems !== undefined && item.socketedItems.length > 0) {
+      for (const child of item.socketedItems) {
+        const childStats =
+          child.rawItemData?.stats ??
+          Array.from(child.stats.entries()).map(([statId, value]) => ({
+            statId,
+            param: 0,
+            value,
+          }))
+        out.push(
+          ...resolveGemSocketItemStats113c(
+            { code: child.code, stats: childStats },
+            item.code,
+          ),
+        )
+      }
+    }
+    return out
+  }
+  if (item.stats !== undefined) {
     for (const [statId, value] of item.stats) out.push({ statId, param: 0, value })
   }
   if (item.socketedItems !== undefined) {
-    for (const child of item.socketedItems) out.push(...collectItemStats(child))
+    for (const child of item.socketedItems) {
+      const childStats =
+        child.rawItemData?.stats ??
+        Array.from(child.stats.entries()).map(([statId, value]) => ({
+          statId,
+          param: 0,
+          value,
+        }))
+      out.push(
+        ...resolveGemSocketItemStats113c(
+          { code: child.code, stats: childStats },
+          item.code,
+        ),
+      )
+    }
   }
   return out
 }
@@ -2125,6 +2410,8 @@ export class GameInstance {
   readonly gameName: string
   readonly registry: D2DataRegistry
   readonly partyManager: PartyManager
+  readonly tradeManager = new TradeManager113c()
+  private readonly configLadder: boolean | undefined
 
   private currentFrame = 0
   private currentMapSeed: number
@@ -2159,6 +2446,22 @@ export class GameInstance {
   private hellforgeState: 0 | 2 | 3 = 0
   /** 1.13c A4Q2 Hellforge hammer hit counter (`pQuestDataEx->nHammerHits` @ `[edi+0x0c]`, `0x6fcdb9da`). */
   private hellforgeHits = 0
+  /** 1.13c World Event (`#333 diabloclone`): Stone of Jordan sale counter, trigger state, and single-spawn gate (#1842). */
+  private readonly worldEventSojThreshold: number
+  private sojSoldCount = 0
+  private worldEventTriggered = false
+  private diabloCloneSpawned = false
+  private readonly everRevealedRoomKeys = new Set<string>()
+  private readonly spawnedSuperUniquePackIds = new Map<
+    number,
+    {
+      readonly superUniqueIndex: number
+      readonly areaId: number
+      readonly x: number
+      readonly y: number
+      readonly allUnitIds: readonly number[]
+    }
+  >()
   private readonly pendingObjectSpawns: {
     frame: number
     classId: number
@@ -2184,10 +2487,38 @@ export class GameInstance {
    */
   private readonly spawnedUniqueIds = new Set<number>()
   private readonly missiles = new Map<number, InternalMissileRecord>()
+  /** #1790: `MissileEngine` that owns every room missile's srvdo / srvhit dispatch (lazy, uses `registry`). */
+  private onlineMissileEngineInstance: OnlineMissileEngine | undefined
+  /** #1790: children queued by srvdo / srvhit functions during `stepMissiles`, created after the sweep. */
+  private readonly pendingOnlineMissileChildren: { parent: InternalMissileRecord; spawn: OnlineMissileSpawn113c }[] = []
   /** Per-player `Skills.txt` `delay` cooldowns: playerUnitId -> (skillId -> first frame the skill is ready). */
   private readonly playerSkillReadyFrame = new Map<number, Map<number, number>>()
   /** Per-player active channeling skill id (`STATE_INFERNO = 12` for `Inferno` #41, `Arctic Blast` #230, `Blade Fury` #266). */
   private readonly playerChannelSkillId = new Map<number, number>()
+  /** Active continuous 1.13c Whirlwind (`#151`) spin states per player (`SrvSt38` / `SrvDo076`). */
+  private readonly playerWhirlwindStates = new Map<number, WhirlwindSpinState113c>()
+  /** Active 1.13c Open Wounds (`STATE_OPENWOUNDS = 62`, 200f) monster bleed states. */
+  private readonly monsterOpenWounds = new Map<
+    number,
+    { bitrate256: number; remainingFrames: number; carry256: number; attackerId: number }
+  >()
+  /** Cached 1.13c `MonStats.txt` / `MonStats2.txt` corpse & conversion flags by monster key. */
+  private readonly monTableFlagsCache = new Map<
+    string,
+    {
+      readonly corpseSel: boolean
+      readonly soft: boolean
+      readonly isAtt: boolean
+      readonly align: number
+      readonly monStatsBoss: boolean
+      readonly primeevil: boolean
+      readonly killable: boolean
+    }
+  >()
+  /** #1813 Frenzy (`SrvDo009`) hit counter per player: stacks + expiry frame of `frenzy` (state 94). */
+  private readonly playerFrenzyStack113c = new Map<number, FrenzyStack113c>()
+  /** #1815/#1816 Assassin progressive charges (states 122..127) per player. */
+  private readonly playerMartialCharges113c = new Map<number, MartialChargeState113c>()
   /**
    * #1417: `Skills.txt` `srvdofunc` ids of missile skills whose `D2Game.dll` volley logic has no
    * GameInstance implementation yet (see `classifyPlayerSrvDoMissile113c`); reported once each.
@@ -2210,6 +2541,12 @@ export class GameInstance {
   private readonly playerCombat = new Map<number, PersistentCombatUnit>()
   private readonly monsterCombat = new Map<number, PersistentCombatUnit>()
   private readonly mercCombat = new Map<number, PersistentCombatUnit>()
+  /** Persistent 1.13c `Bone Armor` (#68, state 14) remaining / max absorb pool in HP points (#1793). */
+  private readonly playerBoneArmorPool = new Map<number, { current: number; max: number }>()
+  /** Persistent 1.13c `Cyclone Armor` (#235, state 151) remaining / max absorb pool in HP points (#1793). */
+  private readonly playerCycloneArmorPool = new Map<number, { current: number; max: number }>()
+  /** Unit-global `STATE_JUSTHIT` (state 86) expiration frame keyed by `${unitType}:${unitId}` (#1792). */
+  private readonly unitJustHitUntilFrame = new Map<string, number>()
   /** Per-player `AuraScanner` running the selected aura's periodic pulse (`perdelay`). */
   private readonly playerAuraScanners = new Map<number, PlayerAuraRuntime>()
   /** Per-player `AuraScanner` running equipped `STAT_ITEM_AURA` (`statId === 151`) item aura pulses. */
@@ -2257,7 +2594,12 @@ export class GameInstance {
     }
 
     this.difficulty = config.difficulty ?? 0
+    this.configLadder = config.ladder
     this.gameName = config.gameName ?? 'LocalGame'
+    this.worldEventSojThreshold = Math.max(
+      1,
+      Math.floor(config.worldEventSojThreshold ?? 1),
+    )
     if (
       config.registry &&
       typeof (config.registry as D2DataRegistry).getSkillById === 'function'
@@ -2357,9 +2699,15 @@ export class GameInstance {
         : {}),
     }
     this.loadedAreas.set(areaId, record)
+    const areaLvl = getLevelMonsterLevel113c(areaId, this.difficulty, true)
     for (const obj of bootstrap.objects) {
       const resolved = resolvePresetObject113c(obj.classId, areaId, (n: number) => this.rng.rand(n))
       if (!resolved) continue
+      const isSparkling = Boolean(
+        obj.isSparkling ??
+          resolved.isSparkling ??
+          SPARKLY_CHEST_INIT57_CLASS_IDS_113C.has(resolved.classId),
+      )
       this.spawnObject({
         classId: resolved.classId,
         x: obj.x,
@@ -2368,8 +2716,12 @@ export class GameInstance {
         mode: obj.mode,
         isWaypoint: obj.isWaypoint,
         isShrine: obj.isShrine,
-        isLocked: OBJECTS_LOCKABLE_113C.has(resolved.classId),
-        isSparkling: obj.isSparkling ?? resolved.isSparkling,
+        isLocked:
+          isSparkling
+            ? false
+            : ((obj as { readonly isLocked?: boolean }).isLocked ??
+              rollChestLocked113c(resolved.classId, areaLvl, this.rng)),
+        isSparkling,
         destAreaId: obj.destAreaId,
       })
     }
@@ -2483,7 +2835,24 @@ export class GameInstance {
           })
         }
       } else if (dist <= ROOM_REVEAL_RADIUS_TILES) {
+        const firstEverReveal = !this.everRevealedRoomKeys.has(key)
+        this.everRevealedRoomKeys.add(key)
         player.revealedRoomKeys.add(key)
+        if (
+          firstEverReveal &&
+          this.worldEventTriggered &&
+          !this.diabloCloneSpawned &&
+          this.difficulty === 2 &&
+          !TOWN_AREAS.has(room.areaId)
+        ) {
+          this.maybeReplacePreloadedRoomSuperUniqueWithDiabloClone113c(
+            room.areaId,
+            room.tileX * SUBTILES_PER_TILE,
+            room.tileY * SUBTILES_PER_TILE,
+            tileW * SUBTILES_PER_TILE,
+            tileH * SUBTILES_PER_TILE,
+          )
+        }
         this.emitToPlayer(player.unitId, {
           type: 'RoomReveal',
           areaId: room.areaId,
@@ -2866,6 +3235,18 @@ export class GameInstance {
       }
     }
 
+    const baseStatusFlags =
+      spec.statusFlags !== undefined ? spec.statusFlags & 0xff : (parsedD2s?.statusFlags ?? 0x20)
+    const isHardcoreChar =
+      Boolean(spec.hardcore ?? spec.isHardcore ?? parsedD2s?.isHardcore) ||
+      (baseStatusFlags & 0x04) !== 0
+    const initialStatusFlags = ((baseStatusFlags | (isHardcoreChar ? 0x04 : 0)) & 0xff)
+    if (isHardcoreChar && (parsedD2s?.isDead === true || (initialStatusFlags & 0x08) !== 0)) {
+      throw new Error(
+        `GameInstance.connectPlayer: hardcore character "${charName}" is permanently dead (0x08)`,
+      )
+    }
+
     const classId =
       parsedD2s !== undefined
         ? normalizeClassId(parsedD2s.classId)
@@ -3135,9 +3516,15 @@ export class GameInstance {
       vendorPoolsByMode: new Map(),
       activeVendorMode: null,
       dead: false,
-      corpseId: undefined,
+      isHardcore: isHardcoreChar,
+      hasDied: false,
+      statusFlags: initialStatusFlags,
+      corpseId: corpseItems.length > 0 ? this.allocateUnitId() : undefined,
+      corpseAreaId: corpseItems.length > 0 ? areaId : undefined,
       corpseX: spawnX,
       corpseY: spawnY,
+      corpseRequiresClick: corpseItems.length > 0,
+      extraCorpses: undefined,
       lastDeathExpLoss: 0,
       lastDeathGoldLoss: 0,
       activeNpcId: undefined,
@@ -3162,12 +3549,8 @@ export class GameInstance {
     this.outbox.set(unitId, [])
     this.rescaleActiveMonsters()
 
-    const isHardcoreChar = Boolean(
-      (parsedD2s as { hardcore?: boolean } | undefined)?.hardcore ??
-        (((parsedD2s as { status?: number } | undefined)?.status ?? 0) & 0x04) !== 0,
-    )
     const isExpansionChar =
-      (parsedD2s as { expansion?: boolean } | undefined)?.expansion !== false
+      parsedD2s !== undefined ? parsedD2s.isExpansion : (initialStatusFlags & 0x20) !== 0
     this.emitToPlayer(unitId, {
       type: 'GameFlags',
       difficulty: this.difficulty,
@@ -3293,6 +3676,15 @@ export class GameInstance {
     }
 
     this.emitAreaSnapshotToPlayer(record)
+    if (record.corpseId !== undefined && record.corpseItems.length > 0) {
+      const corpseEvents = this.buildPlayerCorpseEvents113c(record)
+      for (const other of this.players.values()) {
+        if (other.unitId === unitId || other.areaId !== areaId) continue
+        for (const ev of corpseEvents) {
+          this.emitToPlayer(other.unitId, ev)
+        }
+      }
+    }
     if (spec.restoreMercenary && parsedD2s?.merc && parsedD2s.merc.seed !== 0 && parsedD2s.merc.typeId > 0) {
       const hireRec =
         HIRELING_RECORDS.find(
@@ -3324,8 +3716,9 @@ export class GameInstance {
           dead: parsedD2s.merc.dead,
         })
         const mercRecord = mercId !== null ? this.mercenaries.get(mercId) : undefined
-        if (mercRecord && Array.isArray(parsedD2s.mercItems) && parsedD2s.mercItems.length > 0) {
-          for (const mi of parsedD2s.mercItems) {
+        const savedMercItems = parsedD2s.mercItems ?? parsedD2s.merc.items
+        if (mercRecord && Array.isArray(savedMercItems) && savedMercItems.length > 0) {
+          for (const mi of savedMercItems) {
             const entry = this.itemDataToServerEntry(mi, mercRecord.unitId, areaId)
             entry.location = 'equipped'
             if (entry.bodyLoc <= 0) {
@@ -3342,22 +3735,24 @@ export class GameInstance {
               }
             }
             mercRecord.equipment.push(entry)
-            this.emitToPlayer(record.unitId, {
-              type: 'ItemEvent',
-              action: 0x06,
-              itemId: entry.unitId,
-              code: entry.code,
-              x: entry.x,
-              y: entry.y,
-              container: 'equipment',
-              item: {
-                ...this.serverEntryToItemData(entry),
-                opcode: 0x9d,
+            if (mercRecord.alive) {
+              this.emitToPlayer(record.unitId, {
+                type: 'ItemEvent',
                 action: 0x06,
-                ownerType: 1,
-                ownerId: mercRecord.unitId as UnitId,
-              },
-            })
+                itemId: entry.unitId,
+                code: entry.code,
+                x: entry.x,
+                y: entry.y,
+                container: 'equipment',
+                item: {
+                  ...this.serverEntryToItemData(entry),
+                  opcode: 0x9d,
+                  action: 0x06,
+                  ownerType: 1,
+                  ownerId: mercRecord.unitId as UnitId,
+                },
+              })
+            }
           }
           if (mercRecord.alive) {
             this.syncMercenaryOwnerAura(record, mercRecord.activeAura, mercRecord, true)
@@ -3367,6 +3762,26 @@ export class GameInstance {
     }
     this.syncPlayerItemAuras113c(record, true)
     this.syncPlayerSelectedRightAura113c(record)
+    // 1.13c `D2Game.dll` `0x6FD0DF50`: auto-summon saved `.d2s` `kf` Iron Golem (`#90`) upon game entry (#1787).
+    if (record.ironGolemItem !== null) {
+      const igSkill = this.registry.getSkillById(90)
+      const igSlvl = Math.max(
+        1,
+        (igSkill ? this.resolvePlayerSkillLevel(record, igSkill) : 0) ||
+          (record.skills.get(90) ?? 0) ||
+          1,
+      )
+      const igOutcome = this.summonPet(unitId, {
+        skillId: 90,
+        slvl: igSlvl,
+        x: spawnX + 2,
+        y: spawnY + 2,
+        restoreSavedIronGolem: true,
+      })
+      if (!igOutcome.created) {
+        record.ironGolemItem = null
+      }
+    }
     return unitId
   }
 
@@ -3377,6 +3792,7 @@ export class GameInstance {
   disconnectPlayer(playerUnitId: number): Uint8Array | null {
     const existing = this.players.get(playerUnitId)
     if (!existing) return null
+    this.abortPlayerTrade(playerUnitId)
     const savedD2s = this.exportPlayerD2s(playerUnitId)
     const prevArea = existing.areaId
     const partyEvents = this.partyManager.removePlayer(playerUnitId)
@@ -3385,6 +3801,9 @@ export class GameInstance {
     this.playerSkillReadyFrame.delete(playerUnitId)
     this.playerActiveAuraState.delete(playerUnitId)
     this.playerCombat.delete(playerUnitId)
+    this.playerBoneArmorPool.delete(playerUnitId)
+    this.playerCycloneArmorPool.delete(playerUnitId)
+    this.unitJustHitUntilFrame.delete(`player:${playerUnitId}`)
     this.playerAuraScanners.delete(playerUnitId)
     this.playerItemAuraScanners.delete(playerUnitId)
     for (const [mercId, merc] of this.mercenaries.entries()) {
@@ -3431,16 +3850,33 @@ export class GameInstance {
     const info = lookupBaseInfo(itemData.code)
     const locNum = itemData.location
     let location: ServerItemEntry['location'] = 'inventory'
-    if (locNum === 1) location = 'equipped'
-    else if (locNum === 2) location = 'belt'
-    else if (locNum === 4) location = 'cursor'
-    else if (locNum === 6) location = 'socket'
-    else if (itemData.storePage === 4 || itemData.storePage === 5) location = 'stash'
-    else if (itemData.storePage === 3) location = 'cube'
+    if (locNum === 1 || itemData.container === 'equipment') location = 'equipped'
+    else if (locNum === 2 || itemData.container === 'belt') location = 'belt'
+    else if (locNum === 4 || itemData.container === 'cursor') location = 'cursor'
+    else if (locNum === 6 || itemData.container === 'socket') location = 'socket'
+    else if (itemData.container === 'stash' || itemData.storePage === 5) location = 'stash'
+    else if (itemData.container === 'cube' || itemData.storePage === 4) location = 'cube'
+    else if (
+      itemData.container === 'tradeSelf' ||
+      itemData.container === 'tradePartner' ||
+      itemData.container === 'trade' ||
+      itemData.storePage === 3 ||
+      itemData.storePage === 2
+    ) {
+      location = 'trade'
+    }
 
     const stats = new Map<number, number>()
     for (const st of itemData.stats ?? []) {
-      stats.set(st.statId, st.value)
+      stats.set(st.statId, (stats.get(st.statId) ?? 0) + st.value)
+    }
+    for (const st of itemData.runewordStats ?? []) {
+      stats.set(st.statId, (stats.get(st.statId) ?? 0) + st.value)
+    }
+    for (const child of itemData.socketedItems ?? []) {
+      for (const st of resolveGemSocketItemStats113c(child, itemData.code)) {
+        stats.set(st.statId, (stats.get(st.statId) ?? 0) + st.value)
+      }
     }
 
     const rawId = Number(itemData.id ?? 0)
@@ -3448,6 +3884,19 @@ export class GameInstance {
     if (unitId >= this.nextUnitId) {
       this.nextUnitId = unitId + 1
     }
+
+    const resolvedStorePage =
+      location === 'stash'
+        ? 5
+        : location === 'cube'
+          ? 4
+          : location === 'trade'
+            ? itemData.storePage === 2
+              ? 2
+              : 3
+            : location === 'inventory'
+              ? 1
+              : 0
 
     return {
       unitId,
@@ -3463,7 +3912,7 @@ export class GameInstance {
       areaId,
       ownerId,
       bodyLoc: itemData.bodyLoc ?? 0,
-      storePage: itemData.storePage ?? 1,
+      storePage: itemData.storePage ?? resolvedStorePage,
       cost: info.cost,
       gamble: false,
       identified: itemData.identified ?? true,
@@ -3498,10 +3947,13 @@ export class GameInstance {
       storePage = 0
     } else if (entry.location === 'stash') {
       location = 0
-      storePage = 4
+      storePage = 5
     } else if (entry.location === 'cube') {
       location = 0
-      storePage = 3
+      storePage = 4
+    } else if (entry.location === 'trade') {
+      location = 0
+      storePage = entry.storePage === 2 ? 2 : 3
     } else if (entry.location === 'vendor') {
       // Store items carry their store tab (1..4: armor, weapons1, weapons2, misc) as the bitstream page.
       location = 0
@@ -3513,11 +3965,16 @@ export class GameInstance {
 
     const baseRaw = entry.rawItemData
     const hasCustomStats = entry.stats.size > 0
-    // Keep the packet stat list (with params) when the gameplay map is just its statId -> value fold.
-    const statsList =
-      baseRaw?.stats &&
-      baseRaw.stats.length > 0 &&
-      (!hasCustomStats || statsMapMatchesItemStats(entry.stats, baseRaw.stats))
+    const hasSocketOrRunewordExtras =
+      baseRaw !== undefined &&
+      (entry.socketedItems.length > 0 || Boolean(baseRaw.runeword))
+    // Keep the packet stat list (with params) when the gameplay map is just its statId -> value fold,
+    // or when socketed/runeword children are folded into `entry.stats` while `baseRaw.stats` stores own stats.
+    const statsList = hasSocketOrRunewordExtras
+      ? (baseRaw.stats ?? [])
+      : baseRaw?.stats &&
+          baseRaw.stats.length > 0 &&
+          (!hasCustomStats || statsMapMatchesItemStats(entry.stats, baseRaw.stats))
         ? baseRaw.stats
         : Array.from(entry.stats.entries()).map(([statId, value]) => ({
             statId,
@@ -3660,6 +4117,7 @@ export class GameInstance {
         container: toItemContainer(item.location),
         item: this.serverEntryToItemData(item),
       })
+      this.emitSocketChildrenToPlayer(player.unitId, item, 0x13)
     }
   }
 
@@ -3833,6 +4291,112 @@ export class GameInstance {
       if (tile.areaId !== player.areaId) continue
       this.emitToPlayer(player.unitId, this.warpTileAssignEvent(tile))
     }
+    for (const owner of this.players.values()) {
+      if (owner.corpseId !== undefined && owner.corpseItems.length > 0) {
+        const cArea = owner.corpseAreaId ?? owner.areaId
+        if (cArea === player.areaId) {
+          for (const ev of this.buildPlayerCorpseEvents113c(owner)) {
+            this.emitToPlayer(player.unitId, ev)
+          }
+        }
+      }
+      for (const extra of owner.extraCorpses ?? []) {
+        if (extra.areaId === player.areaId && extra.items.length > 0) {
+          for (const ev of this.buildPlayerCorpseEventsForSet113c(
+            owner,
+            extra.corpseId,
+            extra.areaId,
+            extra.x,
+            extra.y,
+            extra.items,
+          )) {
+            this.emitToPlayer(player.unitId, ev)
+          }
+        }
+      }
+    }
+  }
+
+  private buildPlayerCorpseEvents113c(owner: InternalPlayerRecord): readonly ServerEvent[] {
+    if (owner.corpseId === undefined || owner.corpseItems.length === 0) return []
+    return this.buildPlayerCorpseEventsForSet113c(
+      owner,
+      owner.corpseId,
+      owner.corpseAreaId ?? owner.areaId,
+      owner.corpseX,
+      owner.corpseY,
+      owner.corpseItems,
+    )
+  }
+
+  private buildPlayerCorpseEventsForSet113c(
+    owner: InternalPlayerRecord,
+    corpseId: number,
+    areaId: number,
+    corpseX: number,
+    corpseY: number,
+    items: readonly ServerItemEntry[],
+  ): readonly ServerEvent[] {
+    const cx = Math.round(corpseX)
+    const cy = Math.round(corpseY)
+    const events: ServerEvent[] = [
+      {
+        type: 'UnitAssign',
+        unitType: 'player',
+        unitId: corpseId,
+        classId: owner.classId,
+        name: owner.name,
+        x: cx,
+        y: cy,
+        areaId,
+        unit: {
+          unitType: 0,
+          id: corpseId,
+          classId: owner.classId,
+          name: owner.name,
+          x: cx,
+          y: cy,
+          mode: 17,
+        },
+      },
+      {
+        type: 'UnitMode',
+        unitType: 0,
+        id: corpseId,
+        mode: 17,
+        at: { x: cx, y: cy },
+        lifePct: 0,
+      },
+      {
+        type: 'CorpseAssign',
+        assign: 1,
+        ownerId: owner.unitId,
+        corpseId,
+      },
+    ]
+    for (const ci of items) {
+      events.push({
+        type: 'ItemEvent',
+        action: 0x06,
+        itemId: ci.unitId,
+        code: ci.code,
+        x: ci.x,
+        y: ci.y,
+        container: 'equipment',
+        item: {
+          ...this.serverEntryToItemData(ci),
+          opcode: 0x9d,
+          action: 0x06,
+          ownerType: 0,
+          ownerId: corpseId as UnitId,
+          location: 1,
+          bodyLoc: ci.bodyLoc,
+          equippedSlot: ci.bodyLoc,
+          container: 'equipment',
+        },
+      })
+    }
+    return events
   }
 
   /**
@@ -4438,6 +5002,9 @@ export class GameInstance {
         }
       }
     }
+    const hasItemOwnPrimaryStat = (entry: ServerItemEntry, targetStatId: number): boolean =>
+      entry.stats?.has(targetStatId) === true ||
+      entry.rawItemData?.stats?.some((s) => s.statId === targetStatId) === true
     const seenSets = new Set<string>()
     for (const item of worn) {
       const setId = item.rawItemData?.setItemId
@@ -4448,30 +5015,65 @@ export class GameInstance {
       if (setDef === undefined) continue
       const wornCount = counts.get(setItem.set) ?? 1
       const bonuses = resolveActiveSetBonuses(setItem, setDef, wornCount)
-      // Real generated items already folded `props` into item.stats; synthetic
-      // set items without that stat still receive the single-piece property.
+      // Real generated items already folded `props` into item.stats / rawItemData.stats;
+      // synthetic set items without that stat still receive the single-piece property.
       const hasOwnStat =
-        item.stats?.has(statId) === true ||
-        (perLevelStatId !== undefined && item.stats?.has(perLevelStatId) === true)
+        hasItemOwnPrimaryStat(item, statId) ||
+        (perLevelStatId !== undefined && hasItemOwnPrimaryStat(item, perLevelStatId))
       if (!hasOwnStat) addProps(bonuses.props)
       // Green item-specific set bonuses (`aprop1a..aprop5b`) apply on EACH worn set item
       // (so wearing 2x Angelic Halo rings with 3 Angelic pieces grants +50% MF from each ring).
-      // Use the item's rolled `setBonusStats` lists when present (#1651 / #1652).
-      const storedLists = item.rawItemData?.setBonusStats
+      // Use the item's rolled `setBonusStats` lists when present (#1651 / #1652 / #1831).
+      const storedLists = item.rawItemData?.setBonusStats as
+        | readonly ({ readonly index: number; readonly stats: readonly ItemStat[] } | ItemStat)[]
+        | undefined
       if (Array.isArray(storedLists) && storedLists.length > 0) {
-        for (const list of storedLists) {
-          const enabled =
-            setItem.addFunc === 2
-              ? list.index <= wornCount - 2
-              : setItem.addFunc === 1
-                ? wornCount >= 2 && list.index < wornCount - 1
-                : false
-          if (!enabled) continue
-          for (const st of list.stats) {
-            if (st.statId === statId) {
-              total += st.value
-            } else if (perLevelStatId !== undefined && st.statId === perLevelStatId) {
-              total += (st.value * level) >> perLevelShift
+        for (const listOrStat of storedLists) {
+          if ('stats' in listOrStat && Array.isArray(listOrStat.stats)) {
+            const enabled =
+              setItem.addFunc === 0
+                ? true
+                : setItem.addFunc === 2
+                  ? listOrStat.index <= wornCount - 2
+                  : setItem.addFunc === 1
+                    ? wornCount >= 2 && listOrStat.index < wornCount - 1
+                    : false
+            if (!enabled) continue
+            for (const st of listOrStat.stats) {
+              if (setItem.addFunc === 0 && hasItemOwnPrimaryStat(item, st.statId)) continue
+              if (st.statId === statId) {
+                total += st.value
+              } else if (perLevelStatId !== undefined && st.statId === perLevelStatId) {
+                total += (st.value * level) >> perLevelShift
+              }
+            }
+          } else if ('statId' in listOrStat && typeof listOrStat.statId === 'number') {
+            if (setItem.addFunc === 0 && hasItemOwnPrimaryStat(item, listOrStat.statId)) continue
+            if (listOrStat.statId === statId) {
+              total += listOrStat.value
+            } else if (perLevelStatId !== undefined && listOrStat.statId === perLevelStatId) {
+              total += (listOrStat.value * level) >> perLevelShift
+            }
+          }
+        }
+      } else if (setItem.addFunc === 0) {
+        // 1.13c SetItems.txt `add func == 0` (`Civerb's Cudgel` #2, `Trang-Oul's Claws` #88):
+        // `aprop*` rolls unconditionally onto the item at 1+ worn pieces (#1831).
+        for (const prop of setItem.aprops) {
+          const param = typeof prop.par === 'number' ? prop.par : Number(prop.par ?? 0) || 0
+          for (const resolved of tables.properties!.resolveProperty(
+            prop.code,
+            param,
+            prop.min,
+            prop.max,
+            tables.itemStatCost!,
+          )) {
+            if (hasItemOwnPrimaryStat(item, resolved.statId)) continue
+            const midVal = Math.floor((resolved.min + resolved.max) / 2)
+            if (resolved.statId === statId) {
+              total += midVal
+            } else if (perLevelStatId !== undefined && resolved.statId === perLevelStatId) {
+              total += (midVal * level) >> perLevelShift
             }
           }
         }
@@ -4508,7 +5110,7 @@ export class GameInstance {
       }
       if (entry.rawItemData) {
         let value = 0
-        const lists = [entry.rawItemData.stats, entry.rawItemData.runewordStats ?? []]
+        const lists = [entry.rawItemData.stats ?? [], entry.rawItemData.runewordStats ?? []]
         for (const list of lists) {
           for (const st of list) {
             if (st.statId === statId) value += st.value
@@ -4576,7 +5178,7 @@ export class GameInstance {
       }
       if (entry.rawItemData) {
         let value = 0
-        const lists = [entry.rawItemData.stats, entry.rawItemData.runewordStats ?? []]
+        const lists = [entry.rawItemData.stats ?? [], entry.rawItemData.runewordStats ?? []]
         for (const list of lists) {
           for (const st of list) {
             if (st.statId === statId) value += this.normalizePoolStat256(st.value)
@@ -4651,21 +5253,50 @@ export class GameInstance {
           if (setDef === undefined) continue
           const wornCount = counts.get(setItem.set) ?? 1
           const bonuses = resolveActiveSetBonuses(setItem, setDef, wornCount)
-          if (item.stats?.has(statId) !== true) addProps(bonuses.props)
-          const storedLists = item.rawItemData?.setBonusStats
+          const hasOwnPoolStat =
+            item.stats?.has(statId) === true ||
+            item.rawItemData?.stats?.some((s) => s.statId === statId) === true
+          if (!hasOwnPoolStat) addProps(bonuses.props)
+          const storedLists = item.rawItemData?.setBonusStats as
+            | readonly ({ readonly index: number; readonly stats: readonly ItemStat[] } | ItemStat)[]
+            | undefined
           if (Array.isArray(storedLists) && storedLists.length > 0) {
-            for (const list of storedLists) {
-              const enabled =
-                setItem.addFunc === 2
-                  ? list.index <= wornCount - 2
-                  : setItem.addFunc === 1
-                    ? wornCount >= 2 && list.index < wornCount - 1
-                    : false
-              if (!enabled) continue
-              for (const st of list.stats) {
-                if (st.statId === statId) total += this.normalizePoolStat256(st.value)
+            for (const listOrStat of storedLists) {
+              if ('stats' in listOrStat && Array.isArray(listOrStat.stats)) {
+                const enabled =
+                  setItem.addFunc === 0
+                    ? true
+                    : setItem.addFunc === 2
+                      ? listOrStat.index <= wornCount - 2
+                      : setItem.addFunc === 1
+                        ? wornCount >= 2 && listOrStat.index < wornCount - 1
+                        : false
+                if (!enabled) continue
+                for (const st of listOrStat.stats) {
+                  if (
+                    setItem.addFunc === 0 &&
+                    (item.stats?.has(st.statId) === true ||
+                      item.rawItemData?.stats?.some((s) => s.statId === st.statId) === true)
+                  ) {
+                    continue
+                  }
+                  if (st.statId === statId) total += this.normalizePoolStat256(st.value)
+                }
+              } else if ('statId' in listOrStat && typeof listOrStat.statId === 'number') {
+                if (
+                  setItem.addFunc === 0 &&
+                  (item.stats?.has(listOrStat.statId) === true ||
+                    item.rawItemData?.stats?.some((s) => s.statId === listOrStat.statId) === true)
+                ) {
+                  continue
+                }
+                if (listOrStat.statId === statId) {
+                  total += this.normalizePoolStat256(listOrStat.value)
+                }
               }
             }
+          } else if (setItem.addFunc === 0) {
+            if (!hasOwnPoolStat) addProps(setItem.aprops)
           } else {
             addProps(bonuses.aprops)
           }
@@ -4680,27 +5311,64 @@ export class GameInstance {
     return total
   }
 
-  /** Mercenary gear stat (helmet / armor / weapon + sockets + set bonuses), including per-level stats (#1629, #1630). */
-  private sumMercItemStat(merc: InternalMercenaryRecord, statId: number): number {
+  /** Mercenary gear stat (helmet / armor / weapon + sockets + set bonuses), including per-level stats (#1629, #1630, #1818, #1831). */
+  private sumMercItemStat(
+    merc: InternalMercenaryRecord,
+    statId: number,
+    options?: { readonly excludeWeaponHands?: boolean },
+  ): number {
     const perLvlRule = GameInstance.PER_LEVEL_STAT_MAP_113C[statId]
     const perLevelStatId = perLvlRule?.perLevelStatId
     const perLevelShift = perLvlRule?.shift ?? 3
-    const addStats = (stats: ReadonlyMap<number, number> | undefined): number => {
-      if (!stats) return 0
-      let value = stats.get(statId) ?? 0
-      if (perLevelStatId !== undefined) {
-        value += ((stats.get(perLevelStatId) ?? 0) * merc.level) >> perLevelShift
+    const addEntryStats = (entry: ServerItemEntry): number => {
+      const stats = entry.stats
+      if (stats && stats.size > 0) {
+        let value = stats.get(statId) ?? 0
+        if (perLevelStatId !== undefined) {
+          value += ((stats.get(perLevelStatId) ?? 0) * merc.level) >> perLevelShift
+        }
+        return value
       }
-      return value
+      if (entry.rawItemData) {
+        let value = 0
+        const lists = [entry.rawItemData.stats ?? [], entry.rawItemData.runewordStats ?? []]
+        for (const list of lists) {
+          for (const st of list) {
+            if (st.statId === statId) value += st.value
+            else if (perLevelStatId !== undefined && st.statId === perLevelStatId) {
+              value += (st.value * merc.level) >> perLevelShift
+            }
+          }
+        }
+        return value
+      }
+      return 0
     }
+    const eligibleItems = merc.equipment.filter((item) => {
+      if (item.identified === false || item.rawItemData?.identified === false) return false
+      if (
+        (item as { readonly broken?: boolean }).broken === true ||
+        item.rawItemData?.broken === true
+      ) {
+        return false
+      }
+      if (
+        options?.excludeWeaponHands &&
+        (item.bodyLoc === BODYLOC_RIGHT_ARM || item.bodyLoc === BODYLOC_LEFT_ARM) &&
+        resolveWeaponBase113c(item.code) !== undefined
+      ) {
+        return false
+      }
+      return true
+    })
     let total = 0
-    for (const item of merc.equipment) {
-      total += addStats(item.stats)
+    for (const item of eligibleItems) {
+      total += addEntryStats(item)
       if (Array.isArray(item.socketedItems)) {
-        for (const socketed of item.socketedItems) total += addStats(socketed.stats)
+        for (const socketed of item.socketedItems) total += addEntryStats(socketed)
       }
     }
-    total += this.sumEquippedSetBonusStat(merc.equipment, statId, merc.level)
+    total += this.sumEquippedSetBonusStat(eligibleItems, statId, merc.level)
     return total
   }
 
@@ -4772,6 +5440,34 @@ export class GameInstance {
 
   private rollMonsterDeathDrop(killer: InternalPlayerRecord, monster: InternalMonsterRecord): number[] {
     const tables = getEmbeddedDropTables()
+    // 1.13c World Event (`#333 diabloclone`): guaranteed Unique Small Charm `#381 Annihilus` (`cm1`, ilvl 110) (#1842).
+    if (
+      monster.hcIdx === 333 ||
+      monster.classId === 333 ||
+      monster.defId === 'diabloclone'
+    ) {
+      const cm1Base = tables.getBase('cm1')
+      const anniUnique = tables.uniques
+        .getEnabledByCode('cm1')
+        .find((u) => u.id === 381 || u.index === 'Annihilus')
+      if (cm1Base && anniUnique) {
+        const seed = (this.rng.rand(0x7fffffff) || 1) >>> 0
+        const itemRng = new D2Rng(seed)
+        const anniItem = createDroppedItem(cm1Base, 'unique', {
+          uniqueItem: anniUnique,
+          ethereal: false,
+          sockets: 0,
+          itemTypes: tables.itemTypes,
+          ilvl: 110,
+          dwInitSeed: seed,
+          itemRng,
+        })
+        this.spawnedUniqueIds.add(anniUnique.id)
+        monster.pendingDropItems = [anniItem]
+        monster.pendingDropFrame = this.currentFrame + this.monsterDeathDropDelayFrames(monster)
+        return []
+      }
+    }
     const difficulty = this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
     const questId = this.actBossQuestId(monster.defId, monster.hcIdx)
     const firstKill =
@@ -4840,11 +5536,12 @@ export class GameInstance {
    */
   private rollContainerDrop(player: InternalPlayerRecord, obj: InternalObjectRecord, dropChance: number): number[] {
     if (obj.isSparkling) return this.rollSparklingChestDrop(player, obj)
-    // Locked chests roll the container drop twice (1.13c object flag +0x80).
+    // D2Game.dll 0x6fc8f0f3 & 0x6fc8f3f0: locked chests roll two guaranteed (100%) Chest TC drops.
     const rolls = obj.isLocked ? 2 : 1
+    const effectiveChance = obj.isLocked ? 100 : dropChance
     const dropped: Item[] = []
     for (let roll = 0; roll < rolls; roll++) {
-      if (this.rng.rand(100) >= dropChance) continue
+      if (this.rng.rand(100) >= effectiveChance) continue
       const tables = getEmbeddedDropTables()
       const ctx = resolveChestDropContext113c(obj.areaId, this.difficulty)
       dropped.push(...executeDropPipeline(tables, {
@@ -5051,11 +5748,11 @@ export class GameInstance {
     const umodIds: number[] = [
       ...resolveMonsterUModIds(rawUMods as readonly (number | string)[]),
     ]
-    const auraSkillId = umodIds.includes(MON_UMOD.AURA)
-      ? MONSTER_AURA_SKILL_IDS_113C[
-          (hcIdx + areaId + (spec.statSeed ?? 0)) % MONSTER_AURA_SKILL_IDS_113C.length
-        ]
-      : undefined
+    // 1.13c D2Game.dll 0x6FC67F0E: Blood Raven (hcIdx 267) carries MonUMod 12 (bloodraven) & 22 (questcomplete) (#1823).
+    if (hcIdx === 267 && !isNpc) {
+      if (!umodIds.includes(MON_UMOD.BLOODRAVEN)) umodIds.push(MON_UMOD.BLOODRAVEN)
+      if (!umodIds.includes(MON_UMOD.QUESTCOMPLETE)) umodIds.push(MON_UMOD.QUESTCOMPLETE)
+    }
     const mappedFromUmodIds = umodIds
       .map((id: number): string => {
         const label = MON_UMOD_LABELS_113C[id]
@@ -5091,11 +5788,30 @@ export class GameInstance {
           ...(spec.superUniqueId !== undefined ? { superUniqueId: spec.superUniqueId } : {}),
         })
       : undefined
+    const unscaledResolvedStats =
+      kind && (rank !== 'normal' || modifierNames.length > 0 || spec.superUniqueId !== undefined)
+        ? resolveMonsterStats(kind, {
+            difficulty: diffName,
+            rank: 'normal',
+            modifiers: [],
+            playersCount: 1,
+            ...(effectiveAreaLevel !== undefined ? { areaLevel: effectiveAreaLevel } : {}),
+            ...(spec.statSeed !== undefined ? { seed: spec.statSeed } : {}),
+          })
+        : resolvedStats
 
     const noRatio = Boolean(spec.noRatio ?? kind?.noRatio ?? false)
     const baseMaxHp = Math.max(
       1,
       spec.maxHp ?? spec.hp ?? resolvedStats?.maxHp ?? resolvedStats?.hp ?? 50,
+    )
+    const unscaledMaxHp = Math.max(
+      1,
+      spec.maxHp ??
+        spec.hp ??
+        unscaledResolvedStats?.maxHp ??
+        unscaledResolvedStats?.hp ??
+        baseMaxHp,
     )
     const px = this.playersX
     const monsterPlayerCount =
@@ -5113,6 +5829,16 @@ export class GameInstance {
       1,
       spec.level ?? resolvedStats?.level ?? kind?.level?.[this.difficulty] ?? 1,
     )
+    const monsterSkills = resolvedStats?.skills ?? kind?.skills ?? []
+    const innateAura = !isNpc
+      ? resolveInnateMonsterAura113c(hcIdx, diffName, monsterSkills)
+      : undefined
+    const enchantedAura =
+      !isNpc && innateAura === undefined && umodIds.includes(MON_UMOD.AURA)
+        ? rollAuraEnchanted113c(level, hcIdx + areaId + (spec.statSeed ?? 0), spec.superUniqueId)
+        : undefined
+    const auraSkillId = innateAura?.auraSkillId ?? enchantedAura?.auraSkillId
+    const auraLevel = innateAura?.auraLevel ?? enchantedAura?.auraLevel
     const rawBaseXp = spec.experience ?? resolvedStats?.xp
     if (rawBaseXp === undefined) {
       throw new Error(
@@ -5302,7 +6028,10 @@ export class GameInstance {
     const initialMode = initialSubmerged ? 14 : 1
     const meleeRange = Math.max(
       1,
-      Math.floor(spec.meleeRange ?? (isTentacleHcIdx113c(hcIdx) ? 6 : 1)),
+      Math.floor(
+        spec.meleeRange ??
+          (isTentacleHcIdx113c(hcIdx) ? 6 : isBaalTentacleHcIdx113c(hcIdx) ? 5 : 1),
+      ),
     )
 
     const nameSeed =
@@ -5330,6 +6059,7 @@ export class GameInstance {
       hp,
       maxHp,
       baseMaxHp,
+      unscaledMaxHp,
       level,
       baseXp,
       experience,
@@ -5368,7 +6098,7 @@ export class GameInstance {
       umodIds,
       monType: spec.monType ?? kind?.monType ?? rawClassKind?.monType ?? '',
       sizeX: kind?.sizeX ?? rawClassKind?.sizeX ?? 2,
-      skills: resolvedStats?.skills ?? kind?.skills ?? [],
+      skills: monsterSkills,
       skillCooldown: 0,
       skillCursor: 0,
       threatPlayerId: 0,
@@ -5383,6 +6113,7 @@ export class GameInstance {
       pendingDeathExplosion: undefined,
       resurrectSkillId,
       auraSkillId,
+      auraLevel,
       ai: spec.ai ?? kind?.ai ?? 'Idle',
       aiDelay: Math.max(1, spec.aiDelay ?? kind?.aiDelay ?? 15),
       aiParams: spec.aiParams ?? kind?.aiParams ?? [0, 0, 0, 0, 0, 0, 0, 0],
@@ -5412,7 +6143,7 @@ export class GameInstance {
         ((kind?.aiDistance ?? rawClassKind?.aiDistance ?? 0) > 0
           ? (kind?.aiDistance ?? rawClassKind?.aiDistance ?? 20)
           : 20),
-      cooldown: 0,
+      cooldown: hcIdx >= 540 && hcIdx <= 542 ? 8 : 0,
       // MonStats `aidel` is the AI think interval (difficulty tier already hydrated in `kind`).
       cooldownTicks: Math.max(1, Math.floor(spec.aiDelay ?? kind?.aiDelay ?? rawClassKind?.aiDelay ?? 6)),
       frozenTicks: 0,
@@ -5437,7 +6168,10 @@ export class GameInstance {
       baalThroneFlags: 0,
       baalThroneTimerFrame: 0,
       pendingBaalWaveSpawn: undefined,
-      states: new Set(),
+      states:
+        auraSkillId !== undefined && PALADIN_AURA_STATE_BY_SKILL_ID[auraSkillId] !== undefined
+          ? new Set([PALADIN_AURA_STATE_BY_SKILL_ID[auraSkillId]!])
+          : new Set(),
       stateTimers: new Map(),
       vendorPool,
       vendorStoreGenerated: false,
@@ -5448,6 +6182,13 @@ export class GameInstance {
       submergeTimerFrame: this.currentFrame,
       emergeUntilFrame: 0,
       bossUnitId: spec.bossUnitId,
+      despawnAtFrame: 0,
+      baalCloneSpawnCount: 0,
+      activeBaalCloneUnitId: 0,
+      activeBossChannel: undefined,
+      activeHoarfrostWaves: undefined,
+      diablogeddonUntilFrame: 0,
+      baseAcBeforeShout: ac,
     }
     this.monsters.set(unitId, record)
 
@@ -5533,14 +6274,23 @@ export class GameInstance {
     const a3q3Completed = [...this.players.values()].some((p) =>
       hasQuestFlag113c(p.questFlags, 'a3q3', QUEST_FLAG_COMPLETED_113C),
     )
-    // D2Game InitFn 47 (0x6fc8f140) for Durance of Hate Stairs (Objects.txt 386) and
-    // InitFn 60 (0x6fd084a0) for Compelling Orb (Objects.txt 404): start in OBJMODE_OPENED (2)
-    // if A3Q3 (Khalim's Will) is already completed, else OBJMODE_NEUTRAL (0).
+    const a3q6Completed = [...this.players.values()].some((p) =>
+      hasQuestFlag113c(
+        p.questFlags,
+        'a3q6',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+      ),
+    )
+    // D2Game InitFn 47 (0x6fc8f140) for Durance of Hate Stairs (Objects.txt 386),
+    // InitFn 60 (0x6fd084a0) for Compelling Orb (Objects.txt 404), and InitFn 44 (0x6fd086c0)
+    // for Mephisto Hellgate (Objects.txt 342): start in OBJMODE_OPENED (2) when their quest is complete.
     const initialMode =
       spec.mode ??
-      ((classId === 386 || classId === 404) && a3q3Completed ? 2 : 0)
+      (((classId === 386 || classId === 404) && a3q3Completed) || (classId === 342 && a3q6Completed)
+        ? 2
+        : 0)
     const destAreaId =
-      spec.destAreaId ?? (classId === 386 ? 100 : undefined)
+      spec.destAreaId ?? resolvePresetPortalDestArea113c(classId, areaId)
     const objTxt =
       classId >= 0 && classId < OBJECTS_TXT_113C.length ? OBJECTS_TXT_113C[classId] : undefined
     const isShrine = Boolean(
@@ -5551,6 +6301,17 @@ export class GameInstance {
     )
     const shrineType =
       spec.shrineType ?? (isShrine ? rollShrineType113c(classId, areaId, this.rng) : 0)
+    // D2Game InitFn 57 (0x6FC4EF50): ONLY Objects.txt 397 (SparklyChest) and 455 (SpecialChest)
+    // set `[pObj+0x78] = 1`; OperateFn 58 is KhalimChest3 (407), NOT a sparkly chest (#1833).
+    const isSparkling =
+      spec.isSparkling === true ||
+      resolvedPreset?.isSparkling === true ||
+      SPARKLY_CHEST_INIT57_CLASS_IDS_113C.has(classId)
+    // D2Game InitFn 3 (0x6FC4ECB0): quest chests, sparkly chests, and Mephisto Hellgate (342) are NEVER locked (#1832).
+    const isNeverLocked =
+      isSparkling ||
+      classId === 342 ||
+      QUEST_CHEST_OPERATE_FNS_113C.has(objTxt?.operateFn ?? -1)
     const record: InternalObjectRecord = {
       unitId,
       classId,
@@ -5563,12 +6324,8 @@ export class GameInstance {
       shrineType,
       destAreaId,
       portalOwnerId: undefined,
-      isLocked: Boolean(spec.isLocked),
-      isSparkling:
-        spec.isSparkling === true ||
-        resolvedPreset?.isSparkling === true ||
-        classId === 397 ||
-        objTxt?.operateFn === 58,
+      isLocked: isNeverLocked ? false : Boolean(spec.isLocked),
+      isSparkling,
       shrineResetFrame: 0,
       wellCharges:
         classifyObjectOperate113c(classId) === 'well'
@@ -5621,6 +6378,14 @@ export class GameInstance {
     readonly level?: number | undefined
     readonly cost?: number | undefined
     readonly quantity?: number | undefined
+    readonly identified?: boolean | undefined
+    readonly stats?:
+      | ReadonlyArray<{
+          readonly statId: number
+          readonly param?: number | undefined
+          readonly value: number
+        }>
+      | undefined
   }): number {
     const unitId = this.allocateUnitId()
     const info = lookupBaseInfo(spec.code)
@@ -5630,7 +6395,15 @@ export class GameInstance {
     const stats = new Map<number, number>()
     if (code === 'gld') {
       stats.set(14, quantity)
+    } else if (spec.quantity !== undefined) {
+      stats.set(70, quantity)
     }
+    if (spec.stats) {
+      for (const s of spec.stats) {
+        stats.set(s.statId, s.value)
+      }
+    }
+    const identified = spec.identified ?? true
     const entry: ServerItemEntry = {
       unitId,
       code,
@@ -5648,7 +6421,7 @@ export class GameInstance {
       storePage: 0,
       cost: spec.cost ?? info.cost,
       gamble: false,
-      identified: true,
+      identified,
       ethereal: false,
       socketed: false,
       totalSockets: 0,
@@ -5675,6 +6448,387 @@ export class GameInstance {
 
   getGroundItems(): readonly ServerItemEntry[] {
     return [...this.groundItems.values()]
+  }
+
+  private findMercOrPetRecord(
+    unitId: number,
+  ):
+    | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+    | {
+        readonly kind: 'pet'
+        readonly ownerId: number
+        readonly areaId: number
+        readonly classId: number
+        readonly name: string
+        readonly x: number
+        readonly y: number
+        readonly hp: number
+        readonly maxHp: number
+      }
+    | undefined {
+    for (const merc of this.mercenaries.values()) {
+      if (merc.unitId === unitId && merc.alive) {
+        return { kind: 'merc', merc }
+      }
+    }
+    for (const [ownerId, mgr] of this.summonManagers.entries()) {
+      for (const pet of mgr.getActivePets()) {
+        if (this.petUnitIds.get(pet.uid) === unitId && pet.alive !== false && pet.hp > 0) {
+          const petMeta = pet as unknown as { areaId?: number }
+          const owner = this.players.get(ownerId)
+          const areaId = petMeta.areaId ?? owner?.areaId ?? this.defaultAreaId ?? 1
+          return {
+            kind: 'pet',
+            ownerId,
+            areaId,
+            classId: pet.classId ?? 363,
+            name: pet.name,
+            x: pet.x,
+            y: pet.y,
+            hp: pet.hp,
+            maxHp: pet.maxHp,
+          }
+        }
+      }
+    }
+    return undefined
+  }
+
+  lookupWorldUnitArea(
+    unitType: 'player' | 'monster' | 'object' | 'item' | 'missile' | 'tile',
+    unitId: number,
+  ): number | undefined {
+    switch (unitType) {
+      case 'player': {
+        const directPlayer = this.players.get(unitId)
+        if (directPlayer) return directPlayer.areaId
+        for (const p of this.players.values()) {
+          if (p.corpseId === unitId && p.corpseItems.length > 0) {
+            return p.corpseAreaId ?? p.areaId
+          }
+          for (const extra of p.extraCorpses ?? []) {
+            if (extra.corpseId === unitId && extra.items.length > 0) {
+              return extra.areaId
+            }
+          }
+        }
+        return undefined
+      }
+      case 'monster': {
+        const m = this.monsters.get(unitId)
+        if (m) return m.areaId
+        const mp = this.findMercOrPetRecord(unitId)
+        return mp?.kind === 'merc' ? mp.merc.areaId : mp?.areaId
+      }
+      case 'object':
+        return this.objects.get(unitId)?.areaId
+      case 'tile':
+        return this.warpTiles.get(unitId)?.areaId
+      case 'item':
+        return this.groundItems.get(unitId)?.areaId
+      case 'missile': {
+        const mis = this.missiles.get(unitId)
+        return mis && mis.remainingFrames > 0 ? mis.areaId : undefined
+      }
+      default:
+        return undefined
+    }
+  }
+
+  hasLiveWorldEntity(
+    unitType: 'player' | 'monster' | 'object' | 'item' | 'missile' | 'tile',
+    unitId: number,
+  ): boolean {
+    return this.lookupWorldUnitArea(unitType, unitId) !== undefined
+  }
+
+  getAoiWorldEntities(): ReadonlyArray<{
+    readonly unitType: 'player' | 'monster' | 'object' | 'item' | 'missile' | 'tile'
+    readonly unitId: number
+    readonly areaId: number
+    readonly x: number
+    readonly y: number
+  }> {
+    const out: Array<{
+      readonly unitType: 'player' | 'monster' | 'object' | 'item' | 'missile' | 'tile'
+      readonly unitId: number
+      readonly areaId: number
+      readonly x: number
+      readonly y: number
+    }> = []
+    for (const p of this.players.values()) {
+      out.push({
+        unitType: 'player',
+        unitId: p.unitId,
+        areaId: p.areaId,
+        x: Math.round(p.x),
+        y: Math.round(p.y),
+      })
+      if (p.corpseId !== undefined && p.corpseItems.length > 0) {
+        out.push({
+          unitType: 'player',
+          unitId: p.corpseId,
+          areaId: p.corpseAreaId ?? p.areaId,
+          x: Math.round(p.corpseX),
+          y: Math.round(p.corpseY),
+        })
+      }
+      for (const extra of p.extraCorpses ?? []) {
+        if (extra.items.length > 0) {
+          out.push({
+            unitType: 'player',
+            unitId: extra.corpseId,
+            areaId: extra.areaId,
+            x: Math.round(extra.x),
+            y: Math.round(extra.y),
+          })
+        }
+      }
+    }
+    for (const m of this.monsters.values()) {
+      out.push({
+        unitType: 'monster',
+        unitId: m.unitId,
+        areaId: m.areaId,
+        x: Math.round(m.x),
+        y: Math.round(m.y),
+      })
+    }
+    for (const merc of this.mercenaries.values()) {
+      if (!merc.alive) continue
+      out.push({
+        unitType: 'monster',
+        unitId: merc.unitId,
+        areaId: merc.areaId,
+        x: Math.round(merc.x),
+        y: Math.round(merc.y),
+      })
+    }
+    for (const [ownerId, mgr] of this.summonManagers.entries()) {
+      const owner = this.players.get(ownerId)
+      for (const pet of mgr.getActivePets()) {
+        if (pet.alive === false || pet.hp <= 0) continue
+        const unitId = this.petUnitIds.get(pet.uid)
+        if (unitId === undefined) continue
+        const petMeta = pet as unknown as { areaId?: number }
+        const areaId = petMeta.areaId ?? owner?.areaId ?? this.defaultAreaId ?? 1
+        out.push({
+          unitType: 'monster',
+          unitId,
+          areaId,
+          x: Math.round(pet.x),
+          y: Math.round(pet.y),
+        })
+      }
+    }
+    for (const obj of this.objects.values()) {
+      out.push({
+        unitType: 'object',
+        unitId: obj.unitId,
+        areaId: obj.areaId,
+        x: Math.round(obj.x),
+        y: Math.round(obj.y),
+      })
+    }
+    for (const tile of this.warpTiles.values()) {
+      out.push({
+        unitType: 'tile',
+        unitId: tile.unitId,
+        areaId: tile.areaId,
+        x: Math.round(tile.x),
+        y: Math.round(tile.y),
+      })
+    }
+    for (const gItem of this.groundItems.values()) {
+      out.push({
+        unitType: 'item',
+        unitId: gItem.unitId,
+        areaId: gItem.areaId,
+        x: Math.round(gItem.x),
+        y: Math.round(gItem.y),
+      })
+    }
+    for (const mis of this.missiles.values()) {
+      if (mis.remainingFrames <= 0) continue
+      out.push({
+        unitType: 'missile',
+        unitId: mis.unitId,
+        areaId: mis.areaId,
+        x: Math.round(mis.x),
+        y: Math.round(mis.y),
+      })
+    }
+    return out
+  }
+
+  buildEntityEnterAoiEvents(
+    unitType: 'player' | 'monster' | 'object' | 'item' | 'missile' | 'tile',
+    unitId: number,
+  ): readonly ServerEvent[] {
+    switch (unitType) {
+      case 'player': {
+        const p = this.players.get(unitId)
+        if (!p) {
+          for (const owner of this.players.values()) {
+            if (owner.corpseId === unitId && owner.corpseItems.length > 0) {
+              return this.buildPlayerCorpseEvents113c(owner)
+            }
+            for (const extra of owner.extraCorpses ?? []) {
+              if (extra.corpseId === unitId && extra.items.length > 0) {
+                return this.buildPlayerCorpseEventsForSet113c(
+                  owner,
+                  extra.corpseId,
+                  extra.areaId,
+                  extra.x,
+                  extra.y,
+                  extra.items,
+                )
+              }
+            }
+          }
+          return []
+        }
+        const px = Math.round(p.x)
+        const py = Math.round(p.y)
+        return [
+          {
+            type: 'UnitAssign',
+            unitType: 'player',
+            unitId: p.unitId,
+            classId: p.classId,
+            name: p.name,
+            x: px,
+            y: py,
+            areaId: p.areaId,
+            unit: {
+              unitType: 0,
+              id: p.unitId,
+              classId: p.classId,
+              name: p.name,
+              x: px,
+              y: py,
+              mode: p.dead ? 16 : p.mode,
+            },
+          },
+        ]
+      }
+      case 'monster': {
+        const direct = this.buildUnitAssignEvent('monster', unitId)
+        if (direct) return [direct]
+        const mp = this.findMercOrPetRecord(unitId)
+        if (mp?.kind === 'merc') {
+          const merc = mp.merc
+          const mx = Math.round(merc.x)
+          const my = Math.round(merc.y)
+          const lifePct =
+            merc.maxHp > 0
+              ? Math.max(1, Math.min(128, Math.round((merc.hp / merc.maxHp) * 128)))
+              : 128
+          return [
+            {
+              type: 'UnitAssign',
+              unitType: 'monster',
+              unitId: merc.unitId,
+              classId: merc.classId,
+              name: merc.name,
+              x: mx,
+              y: my,
+              areaId: merc.areaId,
+              unit: {
+                unitType: 1,
+                id: merc.unitId,
+                classId: merc.classId,
+                name: merc.name,
+                x: mx,
+                y: my,
+                mode: 1,
+                lifePct,
+                ownerType: 0,
+                ownerId: merc.ownerPlayerId,
+              },
+            },
+            {
+              type: 'Merc',
+              kind: 'assign',
+              ownerId: merc.ownerPlayerId,
+              mercId: merc.unitId,
+              classId: merc.classId,
+              nameId: 0,
+            },
+          ]
+        }
+        return []
+      }
+      case 'object': {
+        const obj = this.objects.get(unitId)
+        if (!obj) return []
+        const out: ServerEvent[] = []
+        const assign = this.buildUnitAssignEvent('object', unitId)
+        if (assign) out.push(assign)
+        if (obj.destAreaId !== undefined) {
+          out.push({
+            type: 'Portal',
+            portalId: obj.unitId,
+            ownerId: obj.portalOwnerId,
+            areaId: obj.areaId,
+            destAreaId: obj.destAreaId,
+            localId: obj.unitId,
+            remoteId: obj.unitId,
+            flags: 1,
+          })
+        }
+        return out
+      }
+      case 'tile': {
+        const tile = this.warpTiles.get(unitId)
+        return tile ? [this.warpTileAssignEvent(tile)] : []
+      }
+      case 'item': {
+        const gItem = this.groundItems.get(unitId)
+        if (!gItem) return []
+        return [
+          {
+            type: 'ItemEvent',
+            action: 'groundSpawn',
+            itemId: gItem.unitId,
+            code: gItem.code,
+            x: gItem.x,
+            y: gItem.y,
+            container: 'ground',
+            item: this.serverEntryToItemData(gItem),
+          },
+        ]
+      }
+      case 'missile': {
+        const mis = this.missiles.get(unitId)
+        if (!mis || mis.remainingFrames <= 0) return []
+        const sx = Math.round(mis.x)
+        const sy = Math.round(mis.y)
+        const tx = Math.round(mis.x + mis.vx * mis.remainingFrames)
+        const ty = Math.round(mis.y + mis.vy * mis.remainingFrames)
+        return [
+          {
+            type: 'CreateMissile',
+            missileId: mis.unitId,
+            missileClassId: mis.missileId,
+            at: { x: sx, y: sy },
+            target: { x: tx, y: ty },
+            x: sx,
+            y: sy,
+            targetX: tx,
+            targetY: ty,
+            remainingFrames: mis.remainingFrames,
+            skillId: mis.skillId,
+            level: 1,
+            ownerType: mis.ownerType,
+            ownerId: mis.ownerId,
+            areaId: mis.areaId,
+          },
+        ]
+      }
+      default:
+        return []
+    }
   }
 
   enqueueCommand(playerUnitId: number, command: ClientCommand): void {
@@ -5753,6 +6907,82 @@ export class GameInstance {
    *
    * @returns the unit ids, boss first.
    */
+  getSojSoldCount(): number {
+    return this.sojSoldCount
+  }
+
+  isWorldEventTriggered(): boolean {
+    return this.worldEventTriggered
+  }
+
+  isDiabloCloneSpawned(): boolean {
+    return this.diabloCloneSpawned
+  }
+
+  private isEligibleWorldEventSuperUnique113c(
+    superUniqueIndex: number,
+    areaId: number,
+  ): boolean {
+    if (this.difficulty !== 2 || TOWN_AREAS.has(areaId)) return false
+    // Exclude scripted non-replaceable quest encounter waves (Ancients 43..45, Baal Throne 61..65).
+    if (superUniqueIndex >= 43 && superUniqueIndex <= 45) return false
+    if (superUniqueIndex >= 61 && superUniqueIndex <= 65) return false
+    return true
+  }
+
+  private spawnDiabloCloneAt113c(areaId: number, x: number, y: number): number {
+    this.diabloCloneSpawned = true
+    this.broadcastToArea(areaId, {
+      type: 'MonsterSpecial',
+      classId: 333,
+    })
+    return this.spawnMonster({
+      classId: 333,
+      hcIdx: 333,
+      defId: 'diabloclone',
+      name: 'Diablo',
+      areaId,
+      x,
+      y,
+      rank: 'unique',
+      isBoss: true,
+      isPrimeEvil: true,
+      level: 110,
+    })
+  }
+
+  private maybeReplacePreloadedRoomSuperUniqueWithDiabloClone113c(
+    areaId: number,
+    rx: number,
+    ry: number,
+    rw: number,
+    rh: number,
+  ): void {
+    for (const [bossId, pack] of this.spawnedSuperUniquePackIds.entries()) {
+      if (pack.areaId !== areaId) continue
+      if (!this.isEligibleWorldEventSuperUnique113c(pack.superUniqueIndex, areaId)) continue
+      const boss = this.monsters.get(bossId)
+      if (!boss || boss.dead || boss.hp < boss.maxHp) continue
+      if (boss.x < rx || boss.x >= rx + rw || boss.y < ry || boss.y >= ry + rh) continue
+
+      for (const memberId of pack.allUnitIds) {
+        if (this.monsters.delete(memberId)) {
+          this.monsterCombat.delete(memberId)
+          this.broadcastToArea(areaId, {
+            type: 'UnitRemove',
+            unitType: 1,
+            id: memberId,
+            unitId: memberId,
+            areaId,
+          })
+        }
+      }
+      this.spawnedSuperUniquePackIds.delete(bossId)
+      this.spawnDiabloCloneAt113c(areaId, pack.x, pack.y)
+      return
+    }
+  }
+
   spawnSuperUnique(spec: {
     readonly superUniqueIndex: number
     readonly x: number
@@ -5763,6 +6993,14 @@ export class GameInstance {
     if (!su) {
       throw new Error(`SuperUniques.txt has no row ${String(spec.superUniqueIndex)}`)
     }
+    const areaId = spec.areaId ?? this.defaultAreaId ?? 1
+    if (
+      this.worldEventTriggered &&
+      !this.diabloCloneSpawned &&
+      this.isEligibleWorldEventSuperUnique113c(spec.superUniqueIndex, areaId)
+    ) {
+      return [this.spawnDiabloCloneAt113c(areaId, spec.x, spec.y)]
+    }
     const diffName =
       this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
     const kinds = getCanonicalMonsterKinds(diffName)
@@ -5770,7 +7008,6 @@ export class GameInstance {
     if (!bossKind) {
       throw new Error(`SuperUnique ${su.id}: Class '${su.monsterId}' is not a MonStats.txt Id`)
     }
-    const areaId = spec.areaId ?? this.defaultAreaId ?? 1
     const levelPlan = getLevelMonsterPlan113c(areaId, diffName)
     const areaLevel = levelPlan?.monsterLevel
     // D2Game.dll 0x6FC451F0 (0x6FC45307..0x6FC453B6):
@@ -5864,6 +7101,15 @@ export class GameInstance {
         extraPlaced++
       }
     }
+    if (ids[0] !== undefined) {
+      this.spawnedSuperUniquePackIds.set(ids[0], {
+        superUniqueIndex: spec.superUniqueIndex,
+        areaId,
+        x: spec.x,
+        y: spec.y,
+        allUnitIds: [...ids],
+      })
+    }
     return ids
   }
 
@@ -5953,7 +7199,8 @@ export class GameInstance {
       )
     }
 
-    // 2b. Persistent combat states (skill buffs / curses / auras) and aura pulses
+    // 2b. Persistent combat states (skill buffs / curses / auras), aura pulses, and trade lockout timers
+    this.emitTradeEvents(this.tradeManager.tick(this.currentFrame))
     this.stepPersistentCombatStates()
     this.stepPlayerAuras()
     this.stepMercenaryAuras()
@@ -5988,6 +7235,9 @@ export class GameInstance {
     // 4. Step monster AI & state timers
     for (const monster of this.monsters.values()) {
       if (monster.dead) {
+        if (monster.hcIdx === 544 || monster.hcIdx === 709) {
+          this.despawnBaalMinionsOnBossDeath113c(monster)
+        }
         this.resolvePendingDeathExplosion(monster)
         if (
           monster.pendingDropItems !== undefined &&
@@ -6006,6 +7256,9 @@ export class GameInstance {
         monster.unitId,
         monster.areaId,
       )
+      if (!monster.states.has(26) && monster.ac !== monster.baseAcBeforeShout) {
+        monster.ac = monster.baseAcBeforeShout
+      }
       if (monster.frozenTicks > 0) {
         monster.frozenTicks =
           monster.states.has(1) || monster.states.has(29)
@@ -6022,6 +7275,9 @@ export class GameInstance {
         this.stepMonsterPoison(monster)
         if (monster.dead) continue
         this.stepMonsterRegen(monster)
+        if (monster.auraSkillId !== undefined && this.isMonsterInActiveAoi(monster)) {
+          this.applyMonsterAura(monster)
+        }
       }
       if (
         !monster.aiDisabled &&
@@ -6234,6 +7490,10 @@ export class GameInstance {
             : hand === 'left'
               ? player.leftSkill
               : player.rightSkill
+        if (skillId === 90) {
+          this.executeIronGolemSkillCast113c(player, { tx, ty })
+          break
+        }
         this.executeSkillAtLocation(player, skillId, tx, ty)
         break
       }
@@ -6262,7 +7522,20 @@ export class GameInstance {
             : hand === 'left'
               ? player.leftSkill
               : player.rightSkill
-        this.executeSkillOnTarget(player, skillId, targetId)
+        if (skillId === 90) {
+          this.executeIronGolemSkillCast113c(player, { targetItemId: targetId })
+          break
+        }
+        // #1806: keep the clicked unit type (C2S 0x06/0x07/0x0D/0x0E) so Telekinesis can reach
+        // ground items (4) and objects (2), not only monsters.
+        const targetType = normalizeSkillTargetUnitType113c(
+          cmd.type === 'SkillOn'
+            ? cmd.target.unitType
+            : cmd.type === 'CastSkillOnTarget'
+              ? cmd.targetType
+              : cmd.unitKind,
+        )
+        this.executeSkillOnTarget(player, skillId, targetId, targetType)
         break
       }
       case 'Interact':
@@ -6278,6 +7551,14 @@ export class GameInstance {
         // C2S 0x13 InteractUnit(5, warpId): `UNIT_TILE` warps (D2Client 0x6facafbd).
         const rawTargetType: unknown =
           cmd.type === 'Interact' ? cmd.target.unitType : cmd.type === 'InteractEntity' ? cmd.targetType : 2
+        if (
+          (rawTargetType === 0 || rawTargetType === 'player') &&
+          targetId !== player.unitId &&
+          this.players.has(targetId)
+        ) {
+          this.handlePlayerTradeInteract(player, targetId)
+          break
+        }
         const isWarpTile = rawTargetType === 5 || rawTargetType === 'tile' || rawTargetType === 'warp'
         if (isWarpTile) {
           this.handleWarpTileInteract(player, targetId)
@@ -6372,12 +7653,65 @@ export class GameInstance {
               ? 'stash'
               : cmd.buffer === 3
                 ? 'cube'
-                : 'inventory'
-        const container: 'inventory' | 'stash' | 'cube' | 'belt' =
-          rawContainer === 'stash' || rawContainer === 'cube' || rawContainer === 'belt'
+                : cmd.buffer === 2
+                  ? 'trade'
+                  : 'inventory'
+        const container: 'inventory' | 'stash' | 'cube' | 'belt' | 'trade' =
+          rawContainer === 'stash' ||
+          rawContainer === 'cube' ||
+          rawContainer === 'belt' ||
+          rawContainer === 'trade'
             ? rawContainer
             : 'inventory'
         this.handleItemMove(player, cmd.itemId, cmd.x, cmd.y, container)
+        break
+      }
+      case 'RunToggle': {
+        player.run = Boolean(cmd.run)
+        if (player.mode === 2 || player.mode === 3) {
+          player.mode = player.run ? 3 : 2
+        }
+        break
+      }
+      case 'DropGold': {
+        if (player.dead) return
+        this.handleDropGold(player, cmd.amount)
+        break
+      }
+      case 'SwapContainerItem': {
+        if (player.dead) return
+        const targetId = Number(cmd.targetItemId ?? cmd.replacedItemId ?? 0)
+        this.handleSwapContainerItem(player, cmd.cursorItemId, targetId, cmd.x, cmd.y)
+        break
+      }
+      case 'IdentifyItem': {
+        if (player.dead) return
+        this.handleIdentifyItem(player, cmd.itemId, cmd.scrollId)
+        break
+      }
+      case 'ScrollToBook': {
+        if (player.dead) return
+        this.handleScrollToBook(player, cmd.scrollId, cmd.bookId)
+        break
+      }
+      case 'BeltSwap': {
+        if (player.dead) return
+        this.handleBeltSwap(player, cmd.cursorItemId, cmd.beltItemId)
+        break
+      }
+      case 'ItemToBelt': {
+        if (player.dead) return
+        this.handleItemToBelt(player, cmd.itemId)
+        break
+      }
+      case 'ItemToCube': {
+        if (player.dead) return
+        this.handleItemToCube(player, cmd.itemId, cmd.cubeId)
+        break
+      }
+      case 'SocketItem': {
+        if (player.dead) return
+        this.handleSocketItem(player, cmd.itemId, cmd.targetItemId)
         break
       }
       case 'ItemEquip':
@@ -6435,9 +7769,11 @@ export class GameInstance {
       case 'NpcAction': {
         const npcId = cmd.npcId
         const complement =
-          cmd.type === 'NpcAction' || cmd.type === 'NpcEntityAction'
-            ? cmd.complement
-            : undefined
+          cmd.type === 'NpcAction'
+            ? (cmd.complement ?? cmd.param)
+            : cmd.type === 'NpcEntityAction'
+              ? cmd.complement
+              : undefined
         const travelAction = 'action' in cmd && cmd.action === 0
         if (
           (cmd.type === 'NpcEntityAction' || cmd.type === 'NpcAction') &&
@@ -6448,7 +7784,7 @@ export class GameInstance {
           break
         }
         if (
-          cmd.type === 'NpcEntityAction' &&
+          (cmd.type === 'NpcEntityAction' || cmd.type === 'NpcAction') &&
           travelAction &&
           complement !== undefined &&
           (this.handleCursorArtisanService(player, npcId, complement) ||
@@ -6472,10 +7808,11 @@ export class GameInstance {
               : 'trade'
         if (actionType === 'heal' || actionType === 0) {
           this.handleNpcInteract(player, npcId, actionType === 'heal')
-        } else if (Number(actionType) === 3) {
+        } else if (actionType === 'hire' || Number(actionType) === 3) {
           this.handleNpcHireList(player, npcId)
         } else {
-          this.handleNpcAction(player, npcId, actionType === 'gamble')
+          const isGamble = actionType === 'gamble' || Number(actionType) === 2
+          this.handleNpcAction(player, npcId, isGamble)
         }
         break
       }
@@ -6587,6 +7924,10 @@ export class GameInstance {
    */
   private stepPlayerMovement(player: InternalPlayerRecord): void {
     this.ensureAdjacentAreasLoaded(player.areaId)
+    if (this.isPlayerWhirlwinding113c(player)) {
+      player.mode = 18
+      return
+    }
     if (this.isPlayerInHitRecovery(player)) {
       player.mode = 4
       return
@@ -6611,7 +7952,9 @@ export class GameInstance {
       motion.plannedY = player.targetY
       const areaId = player.areaId
       mover.setCollisionChecker(
-        this.terrainWalkableCheck ? (sx, sy) => this.isPlayerSubTileBlocked(areaId, sx, sy) : null,
+        this.terrainWalkableCheck || this.hasLivingBonePrisonInArea(areaId)
+          ? (sx, sy) => this.isPlayerSubTileBlocked(areaId, sx, sy)
+          : null,
       )
       mover.setPath(
         this.findPlayerPath(
@@ -6647,6 +7990,10 @@ export class GameInstance {
       return
     }
 
+    if (this.hasLivingBonePrisonInArea(player.areaId)) {
+      const areaId = player.areaId
+      mover.setCollisionChecker((sx, sy) => this.isPlayerSubTileBlocked(areaId, sx, sy))
+    }
     const snap = mover.stepTicks(1)
     player.x = snap.logicalX
     player.y = snap.logicalY
@@ -6681,7 +8028,12 @@ export class GameInstance {
       })
     }
 
-    if (player.corpseId !== undefined && player.corpseItems.length > 0) {
+    if (
+      player.corpseId !== undefined &&
+      player.corpseItems.length > 0 &&
+      !player.corpseRequiresClick &&
+      (player.corpseAreaId ?? player.areaId) === player.areaId
+    ) {
       const cDist = Math.hypot(player.x - player.corpseX, player.y - player.corpseY)
       if (
         cDist <= 3 &&
@@ -6696,7 +8048,7 @@ export class GameInstance {
       if (
         otherPlayer.corpseId !== undefined &&
         otherPlayer.corpseItems.length > 0 &&
-        otherPlayer.areaId === player.areaId
+        (otherPlayer.corpseAreaId ?? otherPlayer.areaId) === player.areaId
       ) {
         const cDist = Math.hypot(player.x - otherPlayer.corpseX, player.y - otherPlayer.corpseY)
         if (
@@ -6727,6 +8079,7 @@ export class GameInstance {
         'GameInstance: Skills.txt is not loaded in the data registry; player skill casts cannot be resolved',
       )
     }
+    if (this.isPlayerWhirlwinding113c(player)) return null
     const skill = this.registry.getSkillById(skillId)
     // Unknown Skills.txt row (malformed client command) or passive skill: D2Game drops the cast.
     if (skill === undefined || skill.passive) return null
@@ -6856,6 +8209,13 @@ export class GameInstance {
       }
       const qtyStat = collectItemStats(activeJav).find((s) => s.statId === STAT_QUANTITY)
       if (qtyStat !== undefined && qtyStat.value <= 0) return null
+    }
+
+    // 1.13c `D2Game.dll` `SKILLS_SrvSt36_HolyShield` (`0x6FCB6EC0`) & `SKILLS_SrvDo150_Smite` (`0x6FD13220`)
+    // (`Skills.txt` `itypea1 = shld`, #1800): when the player has equipped gear, Smite (#97) and Holy Shield (#117)
+    // require an active equipped shield (synthetic unarmed test rigs with `equipped.length === 0` are permitted).
+    if ((skillId === 97 || skillId === 117) && equipped.length > 0 && !this.hasPlayerEquippedShield(player)) {
+      return null
     }
 
     let missile: MissileRecord | undefined
@@ -7051,6 +8411,7 @@ export class GameInstance {
     hand: 'left' | 'right',
     itemId?: number,
   ): boolean {
+    if (this.isPlayerWhirlwinding113c(player)) return false
     if (!Number.isInteger(skillId) || skillId < 0) return false
     if (skillId === 0) return true
     const skill = this.registry.getSkillById(skillId)
@@ -7226,9 +8587,49 @@ export class GameInstance {
    *   AND off-weapon flat `+min`/`+max`/`+normaldamage` (21/22/111/218) from armor, jewelry, sockets, charms, and set bonuses.
    * - Combines `skillEdPct + offWeaponEdPercent + statBonusPercent` into a SINGLE additive `%ED` pool clamped at `>= -90%`.
    */
+  private hasPlayerEquippedShield(player: InternalPlayerRecord): boolean {
+    for (const item of player.items) {
+      if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
+      if (item.bodyLoc !== BODYLOC_RIGHT_ARM && item.bodyLoc !== BODYLOC_LEFT_ARM) continue
+      if (resolveArmorBlock113c(item.code) > 0 || (resolveArmorCombatMeta113c(item.code)?.smiteMaxDam ?? 0) > 0) {
+        return true
+      }
+    }
+    return false
+  }
+
+  private resolvePlayerSkillLevelById(player: InternalPlayerRecord, skillId: number): number {
+    const skill = this.registry.getSkillById(skillId)
+    if (skill !== undefined) {
+      return this.resolvePlayerSkillLevel(player, skill)
+    }
+    return player.skills.get(skillId) ?? 0
+  }
+
+  private resolveEquippedShieldSmiteDamage113c(
+    player: InternalPlayerRecord,
+  ): { min: number; max: number } | undefined {
+    for (const item of player.items) {
+      if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
+      if (item.bodyLoc !== BODYLOC_RIGHT_ARM && item.bodyLoc !== BODYLOC_LEFT_ARM) continue
+      const meta = resolveArmorCombatMeta113c(item.code)
+      if (meta !== undefined && (meta.block > 0 || meta.smiteMaxDam > 0)) {
+        return {
+          min: Math.max(0, meta.smiteMinDam),
+          max: Math.max(meta.smiteMinDam, meta.smiteMaxDam),
+        }
+      }
+    }
+    return undefined
+  }
+
   private resolvePlayerWeaponDamage(
     player: InternalPlayerRecord,
     skillEdPct = 0,
+    options?: {
+      readonly isThrow?: boolean | undefined
+      readonly weaponHand?: 'left' | 'right' | undefined
+    },
   ): { min: number; max: number } {
     const equipped = player.items.filter(
       (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
@@ -7238,8 +8639,18 @@ export class GameInstance {
     const left = handItem(BODYLOC_LEFT_ARM)
     const rightBase = right ? resolveWeaponBase113c(right.code) : undefined
     const leftBase = left ? resolveWeaponBase113c(left.code) : undefined
-    const weapon = rightBase ? right : leftBase ? left : undefined
-    const base = rightBase ?? leftBase
+    const weapon =
+      options?.weaponHand === 'left' && leftBase
+        ? left
+        : options?.weaponHand === 'right' && rightBase
+          ? right
+          : rightBase
+            ? right
+            : leftBase
+              ? left
+              : undefined
+    const base =
+      weapon === left && leftBase ? leftBase : weapon === right && rightBase ? rightBase : (rightBase ?? leftBase)
     const combat = this.playerCombat.get(player.unitId)
     const offWeaponItemEd =
       this.sumPlayerItemStat(player, 17, { excludeWeaponHands: true }) +
@@ -7272,22 +8683,54 @@ export class GameInstance {
       return { min, max }
     }
     const otherHand = weapon === right ? left : right
+    const isThrowAttack =
+      options?.isThrow === true &&
+      base.minMisDam !== undefined &&
+      base.maxMisDam !== undefined &&
+      base.maxMisDam > 0
     const useTwoHand =
+      !isThrowAttack &&
       base.twoHanded &&
       base.twoHandedMindam !== undefined &&
       base.twoHandedMaxdam !== undefined &&
       (!base.oneOrTwoHanded || otherHand === undefined)
-    const weaponMin = useTwoHand ? base.twoHandedMindam! : base.mindam
-    const weaponMax = useTwoHand ? base.twoHandedMaxdam! : base.maxdam
+    const rawWeaponMin = isThrowAttack
+      ? base.minMisDam!
+      : useTwoHand
+        ? base.twoHandedMindam!
+        : base.mindam
+    const rawWeaponMax = isThrowAttack
+      ? base.maxMisDam!
+      : useTwoHand
+        ? base.twoHandedMaxdam!
+        : base.maxdam
+    // 1.13c `D2Common` ethereal weapon `+50%` base damage (`Math.floor(base * 3 / 2)`, #1794):
+    // Applied to raw `Weapons.txt` `mindam`/`maxdam`/`2handmindam`/`2handmaxdam`/`minmisdam`/`maxmisdam`
+    // BEFORE on-weapon `%ED` (`stat 17/219`) and flat `+min`/`+max` (`stat 21/22/23/24/111/159/160`).
+    const isEthWeapon = Boolean(
+      weapon.ethereal || ((weapon.rawItemData?.flags ?? 0) & 0x00400000) !== 0,
+    )
+    const weaponMin = isEthWeapon ? Math.floor((rawWeaponMin * 3) / 2) : rawWeaponMin
+    const weaponMax = isEthWeapon ? Math.floor((rawWeaponMax * 3) / 2) : rawWeaponMax
     let onWeaponEd = 0
     let flatMin = offWeapFlatMin
     let flatMax = offWeapFlatMax
     for (const stat of collectItemStats(weapon)) {
       if (stat.statId === STAT_ITEM_MAXDAMAGE_PERCENT) onWeaponEd += stat.value
       else if (stat.statId === 219) onWeaponEd += (stat.value * player.level) >> 3
-      else if (stat.statId === (useTwoHand ? STAT_SECONDARY_MINDAMAGE : STAT_MINDAMAGE) || stat.statId === 111) {
+      else if (
+        stat.statId ===
+          (isThrowAttack ? 159 : useTwoHand ? STAT_SECONDARY_MINDAMAGE : STAT_MINDAMAGE) ||
+        (isThrowAttack && stat.statId === STAT_MINDAMAGE) ||
+        stat.statId === 111
+      ) {
         flatMin += stat.value
-      } else if (stat.statId === (useTwoHand ? STAT_SECONDARY_MAXDAMAGE : STAT_MAXDAMAGE) || stat.statId === 111) {
+      } else if (
+        stat.statId ===
+          (isThrowAttack ? 160 : useTwoHand ? STAT_SECONDARY_MAXDAMAGE : STAT_MAXDAMAGE) ||
+        (isThrowAttack && stat.statId === STAT_MAXDAMAGE) ||
+        stat.statId === 111
+      ) {
         flatMax += stat.value
       } else if (stat.statId === 218) {
         flatMax += (stat.value * player.level) >> 3
@@ -7327,7 +8770,7 @@ export class GameInstance {
       cast.chargeItem !== undefined || cast.isNoCostInState ? 0 : cast.evalResult.manaCost256
     if (cost256 > 0) {
       if (player.states.has(114)) {
-        // 1.13c D2Game.dll SKILLS_ConsumeMana (0x6FCBF92B..0x6FCBF93E, #1687):
+        // 1.13c D2Game.dll SKILLS_ConsumeMana (0x6FCBF92B..0x6FCBF93E, #1687, #1822):
         // When state 114 (blood_mana) is active on the caster, mana cost is paid from life (stat 6).
         player.hpFixed = Math.max(256, player.hpFixed - cost256)
         player.hp = Math.floor(player.hpFixed / FIXED_ONE)
@@ -7337,6 +8780,15 @@ export class GameInstance {
           unitId: player.unitId,
           statId: 6,
           value: player.hpFixed,
+        })
+        this.emitToPlayer(player.unitId, {
+          type: 'LifeMana',
+          life: player.hp,
+          mana: player.mana,
+          stamina: player.stamina,
+          at: playerWirePosition(player),
+          vx: 0,
+          vy: 0,
         })
       } else {
         player.manaFixed = Math.max(0, player.manaFixed - cost256)
@@ -7371,13 +8823,64 @@ export class GameInstance {
     cast: PlayerSkillCast,
     physDamagePctOverride?: number,
   ): number {
+    // 1.13c `SKILLS_SrvDo150_Smite` (`0x6FD13220`, #1800):
+    // Smite (`Skills.txt` #97, `SrcDam = 0`) uses equipped Shield `mindam..maxdam` (`RAW_ARMOR` cols 63..64)
+    // + active Holy Shield (`state 101`) flat bonus (`Skills.txt` #117 `MinDam=3..MaxDam=6`, `+57..60` at slvl 20)
+    // + `item_normaldamage` (`stat 111`, e.g. Grief), scaled by `(100 + totalStr + 15*slvl + offWeaponEdPercent) / 100`.
+    if (cast.skill.id === 97) {
+      const shieldDmg = this.resolveEquippedShieldSmiteDamage113c(player) ?? { min: 1, max: 3 }
+      const combat = this.playerCombat.get(player.unitId)
+      const hsEntry = combat?.stateBus.getState(101) ?? combat?.stateBus.getState('holyshield')
+      const hasHs = hsEntry !== undefined || player.states.has(101)
+      let hsMin = 0
+      let hsMax = 0
+      if (hasHs) {
+        const hsLvl = Math.max(
+          1,
+          hsEntry?.stats['modifierlist_level'] ??
+            hsEntry?.slvl ??
+            this.resolvePlayerSkillLevelById(player, 117),
+        )
+        hsMin = compute5BandScaling(hsLvl, 3, 2, 3, 4, 4, 4)
+        hsMax = compute5BandScaling(hsLvl, 6, 2, 3, 4, 4, 4)
+      }
+      const normalDmg = this.sumPlayerItemStat(player, 111)
+      const baseMin = Math.max(1, shieldDmg.min + hsMin + normalDmg)
+      const baseMax = Math.max(baseMin, shieldDmg.max + hsMax + normalDmg)
+      const totalStr =
+        player.strength +
+        this.sumPlayerItemStat(player, 0) +
+        (combat === undefined ? 0 : combat.statList.getModifierBonus('strength'))
+      const offWeaponItemEd =
+        this.sumPlayerItemStat(player, 17, { excludeWeaponHands: true }) +
+        this.sumPlayerItemStat(player, 25, { excludeWeaponHands: true })
+      const auraEd = combat === undefined ? 0 : combat.statList.getModifierBonus('damagepercent')
+      const smiteEdPct = physDamagePctOverride ?? 15 * cast.slvl
+      const combinedEdPct = Math.max(-90, totalStr + smiteEdPct + offWeaponItemEd + auraEd)
+      const finalMin = Math.max(1, baseMin + Math.trunc((baseMin * combinedEdPct) / 100))
+      const finalMax = Math.max(finalMin, baseMax + Math.trunc((baseMax * combinedEdPct) / 100))
+      return this.rollInclusive(finalMin, finalMax)
+    }
+
     const ev = cast.evalResult
     let total = 0
     if (ev.srcDam > 0) {
       const edPct = physDamagePctOverride ?? ev.physDamagePct
+      const isThrowSkill =
+        cast.skill.id === 2 ||
+        cast.skill.id === 4 ||
+        cast.skill.id === 140 ||
+        (cast.missile !== undefined &&
+          (cast.skill.srvStFunc === 4 ||
+            cast.skill.id === 15 ||
+            cast.skill.id === 25 ||
+            cast.skill.id === 35))
       // 1.13c `D2Game.dll` `0x6FCFC530..0x6FCFC71F`: fold skill `%ED` into the single additive `%ED` pool
       // alongside attribute `%ED` and off-weapon `%ED` (#1628).
-      const weapon = this.resolvePlayerWeaponDamage(player, edPct)
+      const weapon = this.resolvePlayerWeaponDamage(player, edPct, {
+        isThrow: isThrowSkill,
+        ...(cast.skill.id === 4 ? { weaponHand: 'left' as const } : {}),
+      })
       const weaponHit = Math.trunc((this.rollInclusive(weapon.min, weapon.max) * ev.srcDam) / 128)
       total += weaponHit
     }
@@ -7433,12 +8936,15 @@ export class GameInstance {
     tx: number,
     ty: number,
     damage: number,
+    opts?: PlayerSkillMissileLaunchOptions113c,
   ): void {
     const stationary = missileRec.vel <= 0
-    const startX = stationary ? tx : player.x
-    const startY = stationary ? ty : player.y
-    const dx = tx - player.x
-    const dy = ty - player.y
+    const fromX = opts?.fromX ?? player.x
+    const fromY = opts?.fromY ?? player.y
+    const startX = stationary ? tx : fromX
+    const startY = stationary ? ty : fromY
+    const dx = tx - fromX
+    const dy = ty - fromY
     const dist = Math.max(1, Math.hypot(dx, dy))
     const rawVel = missileRec.vel + Math.trunc((missileRec.velLev * cast.slvl) / 8)
     const speed = stationary ? 0 : rawVel > 0 ? rawVel / 16 : PLAYER_MISSILE_SPEED_SUBTILES
@@ -7494,11 +9000,9 @@ export class GameInstance {
       hitCooldowns: new Map(),
       guaranteedHit: !missileRec.toHit,
     }
-    // Zero-damage missiles (warcry / curse / buff carriers) are visual only: they must never collide
-    // and run the `applyDamageToMonster` minimum-1 hit path.
-    if (damage > 0) {
-      this.missiles.set(missileUnitId, missile)
-    }
+    // #1790: every damage or functional missile is registered with its `MissileEngine` srvdo/srvhit
+    // state; zero-damage carriers without a 1.13c server function (warcry / curse) stay visual only.
+    this.registerPlayerSkillMissile113c(cast, missileRec, missile, damage, tx, ty, speed, opts)
 
     this.broadcastToArea(player.areaId, {
       type: 'CreateMissile',
@@ -7589,7 +9093,27 @@ export class GameInstance {
    * Walkability of a world sub-tile for a player standing in `areaId`: the active area plus
    * every loaded seam neighbour (#1335), matching the client's cross-LevelView composite.
    */
+  /** True when at least one living BoneWall / Diablo BonePrison (`hcIdx 179` or `340..343`) exists in `areaId`. */
+  private hasLivingBonePrisonInArea(areaId: number): boolean {
+    for (const m of this.monsters.values()) {
+      if (!m.dead && m.areaId === areaId && isBonePrisonMonsterHcIdx113c(m.hcIdx)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  /** True when `(x, y)` is blocked by a living BoneWall / Diablo BonePrison segment (`#1825`). */
+  private isBlockedByBonePrison(areaId: number, x: number, y: number): boolean {
+    for (const m of this.monsters.values()) {
+      if (m.dead || m.areaId !== areaId || !isBonePrisonMonsterHcIdx113c(m.hcIdx)) continue
+      if (Math.hypot(m.x - x, m.y - y) < 1.3) return true
+    }
+    return false
+  }
+
   private isWorldWalkableForPlayer(areaId: number, x: number, y: number): boolean {
+    if (this.isBlockedByBonePrison(areaId, x, y)) return false
     const check = this.terrainWalkableCheck
     if (!check) return true
     const current = this.loadedAreas.get(areaId)
@@ -7625,10 +9149,10 @@ export class GameInstance {
     return false
   }
 
-  /** Sub-tile walk collision for a player (`true` = blocked) from the area collision callback. */
+  /** Sub-tile walk collision for a player (`true` = blocked) from the area collision callback or active Bone Prison. */
   private isPlayerSubTileBlocked(areaId: number, subX: number, subY: number): boolean {
     if (!this.terrainWalkableCheck) {
-      throw new Error('isPlayerSubTileBlocked requires a terrain walkability callback')
+      return this.isBlockedByBonePrison(areaId, subX, subY)
     }
     return !this.isWorldWalkableForPlayer(areaId, subX, subY)
   }
@@ -7636,8 +9160,7 @@ export class GameInstance {
   /**
    * Player path from `(fromX, fromY)` to `(toX, toY)` with the client's `findPathWorld`
    * (`unitSize: 2`), over a collision window sampled from the area collision callback. Without a
-   * collision callback (no level loaded) the path is the straight segment, exactly like the
-   * client predictor's fallback when it has no level view.
+   * collision callback (no level loaded) the path is the straight segment, unless a Bone Prison is active.
    */
   private findPlayerPath(
     areaId: number,
@@ -7647,7 +9170,7 @@ export class GameInstance {
     toY: number,
   ): readonly SubTilePoint[] {
     const check = this.terrainWalkableCheck
-    if (!check) return [{ x: toX, y: toY }]
+    if (!check && !this.hasLivingBonePrisonInArea(areaId)) return [{ x: toX, y: toY }]
     const margin = PLAYER_PATH_WINDOW_MARGIN
     const minX = Math.max(0, Math.floor(Math.min(fromX, toX)) - margin)
     const minY = Math.max(0, Math.floor(Math.min(fromY, toY)) - margin)
@@ -8373,6 +9896,12 @@ export class GameInstance {
     for (const [name, calc] of pairs) {
       if (name && calc) stats[name.toLowerCase()] = evaluateCalc(calc, calcCtx)
     }
+    // 1.13c `SKILLS_SrvSt36_HolyShield` (`0x6FCB6EC0`, #1800): `Skills.txt` #117 leaves `aurastat2` blank
+    // and binds `STAT_MODIFIERLIST_SKILL (350) = 117` + `STAT_MODIFIERLIST_LEVEL (351) = slvl` in C++.
+    if (skill.id === 117) {
+      stats['modifierlist_skill'] = 117
+      stats['modifierlist_level'] = slvl
+    }
     return stats
   }
 
@@ -8404,6 +9933,7 @@ export class GameInstance {
 
   /** Expire persistent combat states and drop contexts of units that left / died. */
   private stepPersistentCombatStates(): void {
+    this.stepActiveWhirlwinds113c()
     for (const [id, unit] of this.playerCombat) {
       const p = this.players.get(id)
       if (p === undefined) {
@@ -8483,8 +10013,12 @@ export class GameInstance {
       // handlers. Mirror it onto the authoritative monster record so the AI can
       // switch alignment and the client sees state 53 (conversion aura).
       const conversion = unit.stateBus.getActiveEntries().find(e => e.stateId === 53)
-      if (conversion !== undefined) {
-        const expireFrame = conversion.expireFrame > 0 ? conversion.expireFrame : this.currentFrame + 1
+      if (
+        conversion !== undefined &&
+        conversion.expireFrame > this.currentFrame &&
+        this.isMonsterEligibleForConversion113c(m)
+      ) {
+        const expireFrame = conversion.expireFrame
         if (m.convertedUntilFrame <= this.currentFrame) {
           m.convertedUntilFrame = expireFrame
           const sourcePlayerId = Number.parseInt(conversion.sourceUnitId.replace(/^player_/, ''), 10)
@@ -8515,6 +10049,17 @@ export class GameInstance {
         }
       }
     }
+    for (const m of this.monsters.values()) {
+      if (m.convertedUntilFrame > 0 && (m.dead || this.currentFrame >= m.convertedUntilFrame)) {
+        m.convertedUntilFrame = 0
+        m.convertedByPlayerId = 0
+        this.monsterCombat.get(m.unitId)?.stateBus.removeState(53)
+        if (m.states.has(53)) {
+          this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, 53)
+        }
+      }
+    }
+    this.stepMonsterOpenWounds113c()
   }
 
   /** Whether a monster is currently converted (state 53) and fights for a player. */
@@ -8935,7 +10480,7 @@ export class GameInstance {
         inRange(m.x, m.y),
     )
     const corpseRecords = [...this.monsters.values()].filter(
-      (m) => m.dead && !m.shattered && !m.isNpc && m.areaId === owner.areaId && inRange(m.x, m.y),
+      (m) => this.canSelectMonsterCorpse113c(m, false) && m.areaId === owner.areaId && inRange(m.x, m.y),
     )
     const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
     const corpses: CorpseContext[] = corpseRecords.map((m) => ({
@@ -9036,7 +10581,7 @@ export class GameInstance {
       }
     })
     corpseRecords.forEach((m, i) => {
-      if (corpses[i]!.consumed) m.shattered = true
+      if (corpses[i]!.consumed) this.consumeMonsterCorpse113c(m, 104)
     })
   }
 
@@ -9065,12 +10610,7 @@ export class GameInstance {
         (m) => !m.dead && !m.isNpc && m.isKillable && !this.isMonsterConverted(m) && m.areaId === owner.areaId && inRange(m.x, m.y),
       )
       const corpseRecords = [...this.monsters.values()].filter(
-        (m) =>
-          m.dead &&
-          !m.shattered &&
-          !m.isNpc &&
-          m.areaId === owner.areaId &&
-          inRange(m.x, m.y),
+        (m) => this.canSelectMonsterCorpse113c(m, false) && m.areaId === owner.areaId && inRange(m.x, m.y),
       )
       const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
       const corpses: CorpseContext[] = corpseRecords.map((m) => ({ id: String(m.unitId), consumed: false, x: m.x, y: m.y }))
@@ -9132,7 +10672,7 @@ export class GameInstance {
         }
       })
       corpseRecords.forEach((m, i) => {
-        if (corpses[i]!.consumed) m.shattered = true
+        if (corpses[i]!.consumed) this.consumeMonsterCorpse113c(m, 104)
       })
     }
 
@@ -9202,14 +10742,23 @@ export class GameInstance {
       return
     }
     if (skill.summon !== '' || skill.petType !== '') {
+      const validCorpse =
+        targetMonster !== undefined &&
+        targetMonster.areaId === player.areaId &&
+        this.canSelectMonsterCorpse113c(targetMonster, false)
+          ? targetMonster
+          : undefined
       this.summonPet(player.unitId, {
         skillId: skill.id,
         slvl: cast.slvl,
         x: tx,
         y: ty,
-        corpseMonsterId:
-          targetMonster?.dead && !targetMonster.shattered ? targetMonster.unitId : undefined,
+        corpseMonsterId: validCorpse?.unitId,
       })
+      if (validCorpse?.shattered && !validCorpse.corpseConsumed) {
+        validCorpse.corpseConsumed = true
+        validCorpse.states.add(118)
+      }
       // Summon rows that also carry a caster `aurastate` (Dopplezon, Shadow Warrior, Iron Golem
       // thorns) only take that state through the pet's own runtime.
       return
@@ -9264,7 +10813,7 @@ export class GameInstance {
           (m) => !m.dead && !m.isNpc && !m.submerged && m.isKillable && !this.isMonsterConverted(m) && m.areaId === player.areaId && inRange(m.x, m.y),
         )
         const corpseRecords = [...this.monsters.values()].filter(
-          (m) => m.dead && !m.shattered && !m.isNpc && m.areaId === player.areaId && inRange(m.x, m.y),
+          (m) => this.canSelectMonsterCorpse113c(m, false) && m.areaId === player.areaId && inRange(m.x, m.y),
         )
         const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
         const corpses: CorpseContext[] = corpseRecords.map((m) => ({ id: String(m.unitId), consumed: false, x: m.x, y: m.y }))
@@ -9292,7 +10841,7 @@ export class GameInstance {
           }
         })
         corpseRecords.forEach((m, i) => {
-          if (corpses[i]!.consumed) m.shattered = true
+          if (corpses[i]!.consumed) this.consumeMonsterCorpse113c(m, 104)
         })
       } else {
         this.applyPersistentUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
@@ -9362,12 +10911,37 @@ export class GameInstance {
           return
         }
       }
-      if (evalResult.durationFrames > 0) {
-        this.applyUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId, evalResult.durationFrames)
-      } else {
-        this.applyPersistentUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
-      }
       const ctx = this.playerCombatContext(player)
+      const rawStateStats = this.evaluateSkillStateStats(skill, cast.slvl, ctx.statList)
+      // 1.13c `Bone Armor` (#68, state 14) & `Cyclone Armor` (#235, state 151) (#1793):
+      // `Skills.txt` `aurastatcalc1` / `aurastatcalc2` returns `poolPts * 256` (`bonearmor` / `bonearmormax`).
+      // Persist the live integer pool on `GameInstance` so consecutive hits deduct from remaining capacity
+      // instead of rebuilding `max` on every incoming hit!
+      if (skill.id === 68) {
+        const rawPool256 = rawStateStats['bonearmor'] ?? 0
+        const poolPts =
+          rawPool256 >= FIXED_ONE
+            ? Math.trunc(rawPool256 / FIXED_ONE)
+            : 20 +
+              10 * (cast.slvl - 1) +
+              15 * ((player.skills.get(78) ?? 0) + (player.skills.get(88) ?? 0))
+        this.playerBoneArmorPool.set(player.unitId, { current: poolPts, max: poolPts })
+      } else if (skill.id === 235) {
+        const rawPool256 = rawStateStats['bonearmor'] ?? 0
+        const poolPts =
+          rawPool256 >= FIXED_ONE
+            ? Math.trunc(rawPool256 / FIXED_ONE)
+            : Math.trunc(
+                ((40 + 12 * (cast.slvl - 1)) *
+                  (100 +
+                    7 *
+                      ((player.skills.get(240) ?? 0) +
+                        (player.skills.get(245) ?? 0) +
+                        (player.skills.get(250) ?? 0)))) /
+                  100,
+              )
+        this.playerCycloneArmorPool.set(player.unitId, { current: poolPts, max: poolPts })
+      }
       ctx.stateBus.applyState({
         stateNameOrId: stateId,
         sourceUnitId: ctx.id,
@@ -9375,8 +10949,13 @@ export class GameInstance {
         slvl: cast.slvl,
         durationFrames: Math.max(0, evalResult.durationFrames),
         currentFrame: this.currentFrame,
-        stats: this.evaluateSkillStateStats(skill, cast.slvl, ctx.statList),
+        stats: rawStateStats,
       })
+      if (evalResult.durationFrames > 0) {
+        this.applyUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId, evalResult.durationFrames)
+      } else {
+        this.applyPersistentUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
+      }
       this.refreshPlayerAccruedMaxPools(player)
     }
   }
@@ -9460,25 +11039,967 @@ export class GameInstance {
     return Math.hypot(monster.x - fromX, monster.y - fromY) <= PLAYER_MELEE_REACH_SUBTILES
   }
 
-  private executeWhirlwind(player: InternalPlayerRecord, cast: PlayerSkillCast, tx: number, ty: number): void {
-    const startX = player.x
-    const startY = player.y
-    this.relocatePlayerForSkill(player, tx, ty, false)
-    const endX = player.x
-    const endY = player.y
-    const segLen = Math.hypot(endX - startX, endY - startY)
+  /**
+   * Resolve cached 1.13c `MonStats.txt` + `MonStats2.txt` flags (`corpseSel`, `soft`, `isAtt`,
+   * `align`, `boss`, `primeevil`, `killable`) for corpse-targeting (`D2Common.#11018` / `#11019`)
+   * and conversion (`#273 Mind Blast`, `#116 Conversion`).
+   */
+  private resolveMonsterTableFlags113c(monster: InternalMonsterRecord): {
+    readonly corpseSel: boolean
+    readonly soft: boolean
+    readonly isAtt: boolean
+    readonly align: number
+    readonly monStatsBoss: boolean
+    readonly primeevil: boolean
+    readonly killable: boolean
+  } {
+    const cacheKey = `${monster.hcIdx}:${monster.defId.toLowerCase()}`
+    const cached = this.monTableFlagsCache.get(cacheKey)
+    if (cached !== undefined) return cached
+
+    const monStats =
+      this.registry.monStatsByHcIdx.get(monster.hcIdx) ??
+      this.registry.monStatsById.get(monster.defId.toLowerCase())
+    const monStats2 =
+      monStats !== undefined && monStats.monStatsEx !== ''
+        ? this.registry.monStats2ById.get(monStats.monStatsEx.toLowerCase())
+        : undefined
+    const raw = monStats2?.raw
+    const parseMonStats2Flag = (
+      colCamel: string,
+      colLower: string,
+      missingRowFallback: boolean,
+    ): boolean => {
+      if (raw === undefined) return missingRowFallback
+      const val = raw[colCamel] ?? raw[colLower]
+      if (val === undefined || val.trim() === '') return false
+      return Number(val) !== 0
+    }
+    const flags = {
+      corpseSel: parseMonStats2Flag('corpseSel', 'corpsesel', true),
+      soft: parseMonStats2Flag('soft', 'soft', true),
+      isAtt: parseMonStats2Flag('isAtt', 'isatt', true),
+      align: monStats?.align ?? 0,
+      monStatsBoss: Boolean(monStats?.boss),
+      primeevil: Boolean(monStats?.primeevil),
+      killable: monStats !== undefined ? Boolean(monStats.killable) : true,
+    }
+    this.monTableFlagsCache.set(cacheKey, flags)
+    return flags
+  }
+
+  /**
+   * True Act / Quest Boss check (`MonStats.boss == 1`, `primeevil == 1`, `rank === 'boss'`, or
+   * `actBossQuestId !== undefined`). Note `spawnMonster` sets `monster.isBoss = true` on `rank === 'unique'`
+   * packs too, whereas in 1.13c Random Uniques and Travincal Council SuperUniques (`MonStats.boss == 0`,
+   * `corpseSel == 1`) ARE valid targets for `#131 Find Potion` and `#142 Find Item`!
+   */
+  private isTrueBossForCorpse113c(
+    monster: InternalMonsterRecord,
+    flags = this.resolveMonsterTableFlags113c(monster),
+  ): boolean {
+    return (
+      monster.rank === 'boss' ||
+      monster.isPrimeEvil ||
+      flags.primeevil ||
+      flags.monStatsBoss ||
+      this.actBossQuestId(monster.defId, monster.hcIdx) !== undefined ||
+      (monster.isBoss && monster.rank !== 'unique')
+    )
+  }
+
+  /**
+   * 1.13c corpse eligibility (`D2Common.#11018` when `requireSoft = true` for `#131 Find Potion` /
+   * `#150 Grim Ward`; `D2Common.#11019` when `requireSoft = false` for `#142 Find Item`, `#74 CE`,
+   * `#124 Redemption`, and `#70/#80/#95` Summons).
+   */
+  private canSelectMonsterCorpse113c(
+    monster: InternalMonsterRecord,
+    requireSoft: boolean,
+  ): boolean {
+    if (
+      !monster.dead ||
+      monster.shattered ||
+      monster.corpseConsumed ||
+      monster.isNpc ||
+      !monster.isKillable ||
+      monster.states.has(104) ||
+      monster.states.has(118)
+    ) {
+      return false
+    }
+    const flags = this.resolveMonsterTableFlags113c(monster)
+    if (!flags.killable || !flags.corpseSel || this.isTrueBossForCorpse113c(monster, flags)) {
+      return false
+    }
+    if (requireSoft && !flags.soft) {
+      return false
+    }
+    return true
+  }
+
+  private findNearestSelectableCorpse113c(
+    areaId: number,
+    tx: number,
+    ty: number,
+    requireSoft: boolean,
+    explicitTarget?: InternalMonsterRecord,
+  ): InternalMonsterRecord | undefined {
+    if (explicitTarget !== undefined) {
+      return explicitTarget.areaId === areaId &&
+        this.canSelectMonsterCorpse113c(explicitTarget, requireSoft)
+        ? explicitTarget
+        : undefined
+    }
+    let bestCorpse: InternalMonsterRecord | undefined
+    let bestDist = Number.POSITIVE_INFINITY
+    const maxSearchDist = Math.max(PLAYER_MELEE_REACH_SUBTILES, 12)
     for (const m of this.monsters.values()) {
-      if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
-      let t = 0
-      if (segLen > 0) {
-        t = ((m.x - startX) * (endX - startX) + (m.y - startY) * (endY - startY)) / (segLen * segLen)
-        t = Math.max(0, Math.min(1, t))
+      if (m.areaId !== areaId || !this.canSelectMonsterCorpse113c(m, requireSoft)) continue
+      const d = Math.hypot(m.x - tx, m.y - ty)
+      if (d <= maxSearchDist && d < bestDist) {
+        bestDist = d
+        bestCorpse = m
       }
-      const px = startX + (endX - startX) * t
-      const py = startY + (endY - startY) * t
-      if (this.isPlayerMeleeInRangeOfMonster(player, m, px, py)) {
-        const damage = this.rollPlayerSkillDamage(player, cast)
-        if (damage > 0) this.applyDamageToMonster(player, m, damage, cast.skill.id)
+    }
+    return bestCorpse
+  }
+
+  /**
+   * Single-use 1.13c corpse consumption (`STATE_CORPSE_NOSELECT = 118` or `STATE_REDEEMED = 104`):
+   * locks the corpse across `#131 Find Potion`, `#142 Find Item`, `#150 Grim Ward`, `#74 CE`,
+   * `#124 Redemption`, `#70/#80/#95` Summons, and Shaman resurrection, and notifies clients.
+   */
+  private consumeMonsterCorpse113c(corpse: InternalMonsterRecord, stateId: 104 | 118 = 118): void {
+    corpse.corpseConsumed = true
+    corpse.shattered = true
+    this.applyPersistentUnitState(
+      corpse.states,
+      corpse.stateTimers,
+      'monster',
+      corpse.unitId,
+      corpse.areaId,
+      stateId,
+    )
+    this.broadcastToArea(corpse.areaId, {
+      type: 'UnitRemove',
+      unitType: 1,
+      id: corpse.unitId,
+      unitId: corpse.unitId,
+      areaId: corpse.areaId,
+    })
+  }
+
+  /**
+   * `#1809` — Barbarian `Find Potion (#131)` (`SrvSt33` @ `0x6FC47270`, `SrvDo069` @ `0x6FC47600`):
+   * consumes a soft non-boss corpse, rolls `dm12(0, 100)` (`15%` slvl 1, `67%` slvl 10, `84%` slvl 20)
+   * and `60% Healing / 30% Mana / 10% Rejuvenation` tier by act & difficulty, spawning 1 potion at `(corpse.x, corpse.y)`.
+   */
+  private executeFindPotion(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    corpse: InternalMonsterRecord,
+  ): void {
+    this.consumeMonsterCorpse113c(corpse, 118)
+    const actIndex = Math.max(0, Math.min(4, areaToAct(player.areaId)))
+    const rollRes = rollFindPotionDrop113c(
+      cast.slvl,
+      actIndex,
+      this.difficulty,
+      this.rng.rand(100),
+      this.rng.rand(100),
+    )
+    if (!rollRes.dropped || rollRes.potionCode === null) return
+    const pot = this.createQuestDropItem(rollRes.potionCode, Math.max(1, corpse.level))
+    if (pot !== undefined) {
+      this.spawnDroppedItems([pot], corpse.areaId, corpse.x, corpse.y)
+    }
+  }
+
+  /**
+   * `#1810` — Barbarian `Find Item (#142)` (`SrvSt34` @ `0x6FC47240`, `SrvDo072` @ `0x6FC476D0`):
+   * consumes a non-boss corpse (`soft == 0` skeletons included), rolls `dm12(5, 60)` (`13%` slvl 1,
+   * `42%` slvl 10, `51%` slvl 20; 0 Find Potion synergy in 1.13c), and on success executes the
+   * monster's `TreasureClassEx` (`Normal` / `Champion` / `Unique` / `SuperUnique`) with `NoDrop = 0`
+   * (`ignoreNoDrop: true`) and the Barbarian's active weapon-hand `%MF` (`80`) & `%GF` (`79`).
+   */
+  private executeFindItem(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    corpse: InternalMonsterRecord,
+  ): void {
+    this.consumeMonsterCorpse113c(corpse, 118)
+    const { dropChancePct } = calculateFindItemStats(cast.slvl)
+    if (this.rng.rand(100) >= dropChancePct) return
+    const tables = getEmbeddedDropTables()
+    const difficulty =
+      this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
+    const items = generateMonsterHorkDrop113c({
+      dropTables: tables,
+      difficulty,
+      x: corpse.x,
+      y: corpse.y,
+      subjectId: corpse.defId,
+      monsterIndex: corpse.unitId,
+      monsterLevel: corpse.level,
+      monsterRank: corpse.rank,
+      ...(corpse.superUniqueId !== undefined ? { superUniqueId: corpse.superUniqueId } : {}),
+      playerMf: this.sumPlayerItemStat(player, 80),
+      playerGf: this.sumPlayerItemStat(player, 79),
+      gamePlayers: this.playersX,
+      partyPlayers: this.countPartyPlayersInArea(player, player.areaId),
+      ...(corpse.monsterPlayerCount !== undefined
+        ? { monsterPlayerCount: corpse.monsterPlayerCount }
+        : {}),
+      seed: this.rng.rand(0x7fffffff) || 1,
+      spawnedUniqueIds: this.spawnedUniqueIds,
+    })
+    if (items.length > 0) {
+      this.spawnDroppedItems(items, corpse.areaId, corpse.x, corpse.y)
+    }
+  }
+
+  /**
+   * Barbarian `Grim Ward (#150)` (`SrvSt33` + `SrvDo075` @ `0x6FC47770`): consumes a soft non-boss
+   * corpse and applies `terror` (`state 54`) to normal monsters within `calculateGrimWardStats(slvl).radiusSubtiles`.
+   */
+  private executeGrimWard(
+    _player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    corpse: InternalMonsterRecord,
+  ): void {
+    this.consumeMonsterCorpse113c(corpse, 118)
+    const { fleeRadiusSubtiles, fleeDurationFrames } = calculateGrimWardStats(cast.slvl)
+    for (const m of this.monsters.values()) {
+      if (m.dead || m.isNpc || m.submerged || m.areaId !== corpse.areaId) continue
+      if (!this.isMonsterEligibleForConversion113c(m)) continue
+      if (Math.hypot(m.x - corpse.x, m.y - corpse.y) <= fleeRadiusSubtiles) {
+        this.applyUnitState(
+          m.states,
+          m.stateTimers,
+          'monster',
+          m.unitId,
+          m.areaId,
+          54,
+          Math.min(500, fleeDurationFrames),
+        )
+      }
+    }
+  }
+
+  private isPlayerWhirlwinding113c(player: InternalPlayerRecord): boolean {
+    return this.playerWhirlwindStates.has(player.unitId)
+  }
+
+  private collectWhirlwindWeaponHandStats113c(item: ServerItemEntry): ItemStat[] {
+    const out: ItemStat[] = []
+    if (
+      item.rawItemData !== undefined &&
+      item.rawItemData.stats.length + (item.rawItemData.runewordStats?.length ?? 0) > 0
+    ) {
+      out.push(...item.rawItemData.stats)
+      if (item.rawItemData.runewordStats !== undefined) {
+        out.push(...item.rawItemData.runewordStats)
+      }
+    } else if (item.stats && item.stats.size > 0) {
+      for (const [statId, value] of item.stats) {
+        out.push({ statId, param: 0, value })
+      }
+    }
+    if (Array.isArray(item.socketedItems)) {
+      for (const sock of item.socketedItems) {
+        out.push(...this.collectWhirlwindWeaponHandStats113c(sock))
+      }
+    }
+    return out
+  }
+
+  private resolveWhirlwindEquippedHandsForPlayer113c(player: InternalPlayerRecord): {
+    readonly primaryHand: WhirlwindHandWeaponSpec113c
+    readonly secondaryHand: WhirlwindHandWeaponSpec113c | null
+  } | null {
+    const equipped = player.items.filter(
+      (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
+    )
+    const right = equipped.find((i) => i.bodyLoc === BODYLOC_RIGHT_ARM)
+    const left = equipped.find((i) => i.bodyLoc === BODYLOC_LEFT_ARM)
+    const toInput = (entry: ServerItemEntry | undefined): WhirlwindEquippedHandInput113c | undefined =>
+      entry === undefined
+        ? undefined
+        : {
+            unitId: entry.unitId,
+            code: entry.code,
+            bodyLoc: entry.bodyLoc,
+            stats: this.collectWhirlwindWeaponHandStats113c(entry),
+          }
+    return resolveWhirlwindWeaponHands113c(toInput(right), toInput(left))
+  }
+
+  /**
+   * `#1811` — Initiate continuous multi-frame 1.13c Whirlwind (`#151`, `SrvSt38` / `SrvDo076`).
+   */
+  private executeWhirlwind(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    tx: number,
+    ty: number,
+  ): void {
+    const hands = this.resolveWhirlwindEquippedHandsForPlayer113c(player)
+    if (hands === null) return
+    const areaId = player.areaId
+    const spin = createWhirlwindSpinState113c({
+      skillId: cast.skill.id,
+      slvl: cast.slvl,
+      areaId,
+      startFrame: this.currentFrame,
+      startX: player.x,
+      startY: player.y,
+      targetX: tx,
+      targetY: ty,
+      primaryHand: hands.primaryHand,
+      secondaryHand: hands.secondaryHand,
+      isSubTileBlocked: this.terrainWalkableCheck
+        ? (sx, sy) => this.isPlayerSubTileBlocked(areaId, sx, sy)
+        : null,
+    })
+    if (spin === null) return
+
+    this.playerWhirlwindStates.set(player.unitId, spin)
+    player.mode = 18
+    player.targetX = spin.destX
+    player.targetY = spin.destY
+    const motion = this.playerMotion.get(player.unitId)
+    if (motion !== undefined) {
+      motion.mover.setPosition(player.x, player.y)
+      motion.x = player.x
+      motion.y = player.y
+      motion.moving = false
+      motion.plannedX = Number.NaN
+      motion.plannedY = Number.NaN
+    }
+    this.applyPersistentUnitState(
+      player.states,
+      player.stateTimers,
+      'player',
+      player.unitId,
+      player.areaId,
+      18,
+    )
+    this.applyPersistentUnitState(
+      player.states,
+      player.stateTimers,
+      'player',
+      player.unitId,
+      player.areaId,
+      174,
+    )
+    this.broadcastToArea(player.areaId, {
+      type: 'UnitMove',
+      unitType: 0,
+      id: player.unitId,
+      unitId: player.unitId,
+      mode: 'run',
+      from: { x: Math.round(player.x), y: Math.round(player.y) },
+      to: { x: Math.round(spin.destX), y: Math.round(spin.destY) },
+      x: Math.round(player.x),
+      y: Math.round(player.y),
+      currentX: Math.round(player.x),
+      currentY: Math.round(player.y),
+      targetX: Math.round(spin.destX),
+      targetY: Math.round(spin.destY),
+      areaId: player.areaId,
+    })
+  }
+
+  private finishWhirlwindSpin113c(player: InternalPlayerRecord): void {
+    this.playerWhirlwindStates.delete(player.unitId)
+    if (player.states.has(174)) {
+      this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, 174)
+    }
+    if (player.states.has(18)) {
+      this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, 18)
+    }
+    if (!player.dead && !this.isPlayerInHitRecovery(player)) {
+      player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+    }
+    player.targetX = player.x
+    player.targetY = player.y
+    const motion = this.playerMotion.get(player.unitId)
+    if (motion !== undefined) {
+      motion.mover.setPosition(player.x, player.y)
+      motion.x = player.x
+      motion.y = player.y
+      motion.moving = false
+      motion.plannedX = Number.NaN
+      motion.plannedY = Number.NaN
+    }
+  }
+
+  private computeWhirlwindFrameStep113c(player: InternalPlayerRecord): {
+    readonly stepSubtiles: number
+    readonly velocityPercent: number
+  } {
+    const itemFrwPercent = this.sumPlayerItemStat(player, 96)
+    const combat = this.playerCombatContext(player)
+    const rawVelPct = Math.trunc(combat.statList.getAccruedStat('velocitypercent'))
+    let skillVelocityPercent = Math.max(0, rawVelPct)
+    const incSpeedSlvl = this.resolvePlayerSkillLevelById113c(player, 148)
+    if (incSpeedSlvl > 0) {
+      skillVelocityPercent += computeDiminishingReturns(13, 50, incSpeedSlvl)
+    }
+    let armorSpeedPenaltyPercent = 0
+    for (const item of player.items) {
+      if (item.location === 'equipped' && item.bodyLoc !== 11 && item.bodyLoc !== 12 && item.durability > 0) {
+        armorSpeedPenaltyPercent += resolveArmorSpeed113c(item.code)
+      }
+    }
+    const itemSlow = Math.max(0, Math.trunc(combat.statList.getAccruedStat('item_slow')))
+    const holy = combat.stateBus.getState('holywindcold')
+    const holySlow = holy ? calculateHolyFreezeStats(holy.slvl).slowPct : 0
+    // In 1.13c, chilling or freezing a Whirlwinding player slows movement speed by 50% (never halts or slows weapon hit intervals!).
+    const coldOrFreezeSlow = player.states.has(11) || player.states.has(1) ? 50 : 0
+    const decrepifySlow = player.states.has(60) ? 50 : 0
+    const slowPercent = Math.max(
+      itemSlow,
+      Math.max(0, -rawVelPct),
+      holySlow,
+      coldOrFreezeSlow,
+      decrepifySlow,
+    )
+    return computeWhirlwindStepDistancePerFrame113c({
+      itemFrwPercent,
+      skillVelocityPercent,
+      armorSpeedPenaltyPercent,
+      slowPercent,
+    })
+  }
+
+  private resolvePlayerSkillLevelById113c(player: InternalPlayerRecord, skillId: number): number {
+    const base = player.skills.get(skillId) ?? 0
+    if (base <= 0) return 0
+    const sk = this.registry.getSkillById(skillId)
+    return sk !== undefined ? Math.max(1, this.resolvePlayerSkillLevel(player, sk)) : base
+  }
+
+  private resolveWeaponMasteryBonuses113c(
+    player: InternalPlayerRecord,
+    weaponType: string | undefined,
+  ): { readonly edPct: number; readonly arPct: number; readonly critPct: number } {
+    if (!weaponType) return { edPct: 0, arPct: 0, critPct: 0 }
+    const t = weaponType.trim().toLowerCase()
+    let masterySkillId = 0
+    if (t === 'swor') masterySkillId = 127
+    else if (t === 'axe') masterySkillId = 128
+    else if (t === 'mace' || t === 'club' || t === 'hamm' || t === 'scep' || t === 'staf' || t === 'wand') {
+      masterySkillId = 129
+    } else if (t === 'pole') masterySkillId = 134
+    else if (t === 'spea') masterySkillId = 136
+    else if (t === 'h2h' || t === 'h2h2') masterySkillId = 252
+    if (masterySkillId === 0) return { edPct: 0, arPct: 0, critPct: 0 }
+    const slvl = this.resolvePlayerSkillLevelById113c(player, masterySkillId)
+    if (slvl <= 0) return { edPct: 0, arPct: 0, critPct: 0 }
+    if (masterySkillId === 252) {
+      // Claw Mastery (#252): +35 + 4*(slvl-1)% ED, +30 + 10*(slvl-1)% AR, dm(0, 25)% Crit
+      return {
+        edPct: 35 + 4 * (slvl - 1),
+        arPct: 30 + 10 * (slvl - 1),
+        critPct: computeDiminishingReturns(0, 25, slvl),
+      }
+    }
+    // Barbarian Melee Masteries (#127..#130, #132): +28 + 5*(slvl-1)% ED, +28 + 8*(slvl-1)% AR, dm(0, 35)% Crit
+    return {
+      edPct: 28 + 5 * (slvl - 1),
+      arPct: 28 + 8 * (slvl - 1),
+      critPct: computeDiminishingReturns(0, 35, slvl),
+    }
+  }
+
+  private sumWhirlwindHandStat113c(
+    player: InternalPlayerRecord,
+    hand: WhirlwindHandWeaponSpec113c,
+    statId: number,
+  ): number {
+    const offWeap = this.sumPlayerItemStat(player, statId, { excludeWeaponHands: true })
+    const perLvlRule = GameInstance.PER_LEVEL_STAT_MAP_113C[statId]
+    const perLevelStatId = perLvlRule?.perLevelStatId
+    const perLevelShift = perLvlRule?.shift ?? 3
+    let onHand = 0
+    for (const st of hand.stats) {
+      if (st.statId === statId) onHand += st.value
+      else if (perLevelStatId !== undefined && st.statId === perLevelStatId) {
+        onHand += (st.value * player.level) >> perLevelShift
+      }
+    }
+    return offWeap + onHand
+  }
+
+  private resolveWhirlwindHandPhysDamage113c(
+    player: InternalPlayerRecord,
+    hand: WhirlwindHandWeaponSpec113c,
+    skillEdPct: number,
+    masteryEdPct: number,
+  ): { readonly min: number; readonly max: number } {
+    const combat = this.playerCombat.get(player.unitId)
+    const offWeaponItemEd =
+      this.sumPlayerItemStat(player, 17, { excludeWeaponHands: true }) +
+      this.sumPlayerItemStat(player, 25, { excludeWeaponHands: true })
+    const offWeaponEdPercent =
+      (combat === undefined ? 0 : combat.statList.getModifierBonus('damagepercent')) +
+      offWeaponItemEd +
+      skillEdPct +
+      masteryEdPct
+    const offWeapFlatMin =
+      this.sumPlayerItemStat(player, STAT_MINDAMAGE, { excludeWeaponHands: true }) +
+      this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
+    const offWeapFlatMax =
+      this.sumPlayerItemStat(player, STAT_MAXDAMAGE, { excludeWeaponHands: true }) +
+      this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
+    const totalStr =
+      player.strength +
+      this.sumPlayerItemStat(player, 0) +
+      (combat === undefined ? 0 : combat.statList.getModifierBonus('strength'))
+    const totalDex =
+      player.dexterity +
+      this.sumPlayerItemStat(player, 2) +
+      (combat === undefined ? 0 : combat.statList.getModifierBonus('dexterity'))
+
+    const base = hand.base
+    if (base === undefined) {
+      const unarmed = getAttackWeaponInfo(null)
+      const baseMin = unarmed.damageMin + offWeapFlatMin
+      const baseMax = Math.max(baseMin, unarmed.damageMax + offWeapFlatMax)
+      const clampedEd = Math.max(-90, offWeaponEdPercent + totalStr)
+      const min = Math.max(1, baseMin + Math.trunc((baseMin * clampedEd) / 100))
+      const max = Math.max(min, baseMax + Math.trunc((baseMax * clampedEd) / 100))
+      return { min, max }
+    }
+
+    const useTwoHand = hand.useTwoHandDamage
+    const weaponMin = useTwoHand ? (base.twoHandedMindam ?? base.mindam) : base.mindam
+    const weaponMax = useTwoHand ? (base.twoHandedMaxdam ?? base.maxdam) : base.maxdam
+    let onWeaponEd = 0
+    let flatMin = offWeapFlatMin
+    let flatMax = offWeapFlatMax
+    for (const stat of hand.stats) {
+      if (stat.statId === STAT_ITEM_MAXDAMAGE_PERCENT) onWeaponEd += stat.value
+      else if (stat.statId === 219) onWeaponEd += (stat.value * player.level) >> 3
+      else if (
+        stat.statId === (useTwoHand ? STAT_SECONDARY_MINDAMAGE : STAT_MINDAMAGE) ||
+        stat.statId === 111
+      ) {
+        flatMin += stat.value
+      } else if (
+        stat.statId === (useTwoHand ? STAT_SECONDARY_MAXDAMAGE : STAT_MAXDAMAGE) ||
+        stat.statId === 111
+      ) {
+        flatMax += stat.value
+      } else if (stat.statId === 218) {
+        flatMax += (stat.value * player.level) >> 3
+      }
+    }
+    const statBonusPercent =
+      Math.trunc((totalStr * base.strBonus) / 100) +
+      Math.trunc((totalDex * base.dexBonus) / 100)
+    const afterOnWeapMin = Math.trunc((weaponMin * (100 + onWeaponEd)) / 100) + flatMin
+    const afterOnWeapMax = Math.max(
+      afterOnWeapMin,
+      Math.trunc((weaponMax * (100 + onWeaponEd)) / 100) + flatMax,
+    )
+    const combinedEdPct = Math.max(-90, offWeaponEdPercent + statBonusPercent)
+    const min = Math.max(1, afterOnWeapMin + Math.trunc((afterOnWeapMin * combinedEdPct) / 100))
+    const max = Math.max(min, afterOnWeapMax + Math.trunc((afterOnWeapMax * combinedEdPct) / 100))
+    return { min, max }
+  }
+
+  private stepActiveWhirlwinds113c(): void {
+    for (const [playerId, spin] of [...this.playerWhirlwindStates.entries()]) {
+      const player = this.players.get(playerId)
+      if (player === undefined || player.dead || player.areaId !== spin.areaId) {
+        if (player !== undefined) this.finishWhirlwindSpin113c(player)
+        else this.playerWhirlwindStates.delete(playerId)
+        continue
+      }
+
+      const prevX = player.x
+      const prevY = player.y
+      const stepInfo = this.computeWhirlwindFrameStep113c(player)
+      const adv = advanceWhirlwindSpinFrame113c(spin, this.currentFrame, stepInfo.stepSubtiles)
+      player.x = adv.x
+      player.y = adv.y
+      player.mode = 18
+      const motion = this.playerMotion.get(player.unitId)
+      if (motion !== undefined) {
+        motion.mover.setPosition(player.x, player.y)
+        motion.x = player.x
+        motion.y = player.y
+      }
+      this.maybeSwitchPlayerAreaSeamless(player)
+      if (player.areaId !== spin.areaId) {
+        this.finishWhirlwindSpin113c(player)
+        continue
+      }
+      this.broadcastToAreaExcept(player.areaId, player.unitId, {
+        type: 'UnitMove',
+        unitType: 0,
+        id: player.unitId,
+        unitId: player.unitId,
+        mode: 'run',
+        from: { x: Math.round(prevX), y: Math.round(prevY) },
+        to: { x: Math.round(spin.destX), y: Math.round(spin.destY) },
+        x: Math.round(player.x),
+        y: Math.round(player.y),
+        currentX: Math.round(player.x),
+        currentY: Math.round(player.y),
+        targetX: Math.round(spin.destX),
+        targetY: Math.round(spin.destY),
+        velocityPercent: stepInfo.velocityPercent,
+        areaId: player.areaId,
+      })
+
+      if (adv.dueHands.length > 0) {
+        for (const hand of adv.dueHands) {
+          const reach = PLAYER_MELEE_REACH_SUBTILES + Math.min(4, Math.max(0, hand.rangeAdder))
+          const inReach = [...this.monsters.values()].filter((m) => {
+            if (
+              m.dead ||
+              m.isNpc ||
+              !m.isKillable ||
+              m.submerged ||
+              this.isMonsterConverted(m) ||
+              m.areaId !== player.areaId
+            ) {
+              return false
+            }
+            if (isTentacleHcIdx113c(m.hcIdx) || isTentacleHeadHcIdx113c(m.hcIdx)) {
+              return isInMeleeRange113c(
+                player.x,
+                player.y,
+                2,
+                m.x,
+                m.y,
+                m.sizeX,
+                hand.rangeAdder,
+                false,
+                null,
+                m.hcIdx,
+              )
+            }
+            return Math.hypot(m.x - player.x, m.y - player.y) <= reach
+          })
+          if (inReach.length === 0) continue
+          const chosen = inReach[this.rng.rand(inReach.length)]!
+          this.executeWhirlwindHandStrike113c(player, spin, hand, chosen)
+        }
+      }
+
+      if (adv.finished) {
+        this.finishWhirlwindSpin113c(player)
+      }
+    }
+  }
+
+  /**
+   * Executes one weapon-hand strike during Whirlwind (`SrvDo076`):
+   * - Applies weapon physical + elemental damage, Whirlwind `%ED` & `%AR`, Weapon Mastery `%ED`/`%AR`/`%Crit`,
+   *   Deadly Strike (`141`), Crushing Blow (`136`), Open Wounds (`135`), and Life/Mana Steal (`60`/`62`).
+   * - Strictly suppresses `item_skillonattack` (`195`) and `item_skillonhit` (`198`) CtC procs!
+   */
+  private executeWhirlwindHandStrike113c(
+    player: InternalPlayerRecord,
+    spin: WhirlwindSpinState113c,
+    hand: WhirlwindHandWeaponSpec113c,
+    monster: InternalMonsterRecord,
+  ): void {
+    if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
+    const wwMods = computeWhirlwindDamageAndAr113c(spin.slvl)
+    const mastery = this.resolveWeaponMasteryBonuses113c(player, hand.base?.type)
+    const physBand = this.resolveWhirlwindHandPhysDamage113c(
+      player,
+      hand,
+      wwMods.damagePercent,
+      mastery.edPct,
+    )
+    const rolledPhys = this.rollInclusive(physBand.min, physBand.max)
+
+    const attackerStats = new UnitStatList(this.registry, undefined, {
+      ownerType: 'player',
+      charClass: player.classCode,
+    })
+    attackerStats.setBaseStat('level', player.level)
+    attackerStats.setBaseStat('strength', player.strength + this.sumPlayerItemStat(player, 0))
+    attackerStats.setBaseStat('dexterity', player.dexterity + this.sumPlayerItemStat(player, 2))
+    attackerStats.setBaseStat('vitality', player.vitality + this.sumPlayerItemStat(player, 3))
+    attackerStats.setBaseStat('energy', player.energy + this.sumPlayerItemStat(player, 1))
+    const baseAr =
+      Math.max(1, (player.dexterity + this.sumPlayerItemStat(player, 2) - 7) * 5 + 15) +
+      this.sumWhirlwindHandStat113c(player, hand, 19)
+    const itemArPct = this.sumWhirlwindHandStat113c(player, hand, 119)
+    attackerStats.setBaseStat('tohit', baseAr)
+    attackerStats.setBaseStat('item_tohit_percent', itemArPct)
+    attackerStats.setBaseStat('armorclass', this.computePlayerBaseDefense(player))
+    attackerStats.setBaseStat('item_ignoretargetac', this.sumWhirlwindHandStat113c(player, hand, 115))
+    attackerStats.setBaseStat('item_fractionaltargetac', this.sumWhirlwindHandStat113c(player, hand, 116))
+    attackerStats.setBaseStat('item_demondamage_percent', this.sumWhirlwindHandStat113c(player, hand, 121))
+    attackerStats.setBaseStat('item_undeaddamage_percent', this.sumWhirlwindHandStat113c(player, hand, 122))
+    attackerStats.setBaseStat('item_demon_tohit', this.sumWhirlwindHandStat113c(player, hand, 123))
+    attackerStats.setBaseStat('item_undead_tohit', this.sumWhirlwindHandStat113c(player, hand, 124))
+    attackerStats.setBaseStat('item_deadlystrike', this.sumWhirlwindHandStat113c(player, hand, 141))
+    attackerStats.setBaseStat('passive_critical_strike', mastery.critPct)
+    attackerStats.setBaseStat('maxhp', this.getPlayerAccruedMaxHpFixed(player))
+    attackerStats.setHp256(player.hpFixed)
+    attackerStats.setBaseStat('maxmana', this.getPlayerAccruedMaxManaFixed(player))
+    attackerStats.setMana256(player.manaFixed)
+    attackerStats.setBaseStat('lifedrainmindam', Math.max(0, this.sumWhirlwindHandStat113c(player, hand, 60)))
+    attackerStats.setBaseStat('manadrainmindam', Math.max(0, this.sumWhirlwindHandStat113c(player, hand, 62)))
+
+    const attackerStateBus = new StateBus(attackerStats, this.registry)
+    this.mirrorPersistentStates(this.playerCombat.get(player.unitId), attackerStateBus)
+    const attackerCtx: CombatUnitContext = {
+      id: `player_${player.unitId}`,
+      name: player.name,
+      unitType: 'player',
+      statList: attackerStats,
+      stateBus: attackerStateBus,
+      x: player.x,
+      y: player.y,
+      weaponMinPhys: 0,
+      weaponMaxPhys: 0,
+      lifeStealDivisor: difficultyLifeStealDivisor(this.difficulty),
+      manaStealDivisor: difficultyManaStealDivisor(this.difficulty),
+    }
+
+    const defenderStats = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
+    defenderStats.setBaseStat('level', monster.level)
+    defenderStats.setBaseStat('armorclass', monster.ac)
+    defenderStats.setBaseStat('toblock', monster.toBlock)
+    defenderStats.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
+    defenderStats.setHp256(monster.hp * FIXED_ONE)
+    defenderStats.setBaseStat('damageresist', monster.resistances.phys)
+    defenderStats.setBaseStat('magicresist', monster.resistances.magic)
+    defenderStats.setBaseStat('fireresist', monster.resistances.fire)
+    defenderStats.setBaseStat('lightresist', monster.resistances.light)
+    defenderStats.setBaseStat('coldresist', monster.resistances.cold)
+    defenderStats.setBaseStat('poisonresist', monster.resistances.poison)
+    const defenderStateBus = new StateBus(defenderStats, this.registry)
+    this.mirrorPersistentStates(this.monsterCombat.get(monster.unitId), defenderStateBus)
+    const defenderCtx: CombatUnitContext = {
+      id: `monster_${monster.unitId}`,
+      name: monster.name,
+      unitType: 'monster',
+      statList: defenderStats,
+      stateBus: defenderStateBus,
+      x: monster.x,
+      y: monster.y,
+      isUndead: monster.isUndead,
+      isDemon: monster.isDemon,
+      isBoss: monster.isBoss,
+      isPrimeEvil: monster.isPrimeEvil,
+      drain: monster.drain,
+      monsterColdDivisor: difficultyMonsterColdDivisor(this.difficulty),
+      monsterFreezeDivisor: difficultyMonsterFreezeDivisor(this.difficulty),
+    }
+
+    const toHitBonusPct = wwMods.attackRatingPercent + mastery.arPct
+    const dmgOut = executeSUnitDmg(
+      attackerCtx,
+      defenderCtx,
+      {
+        skillId: spin.skillId,
+        attackKind: 'melee',
+        srcDam: 0,
+        flatPhysMin256: rolledPhys * FIXED_ONE,
+        flatPhysMax256: rolledPhys * FIXED_ONE,
+        preScaledPhysEd: true,
+        toHitBonusPct,
+        autoHit: false,
+        unblockable: false,
+      },
+      this.rng,
+    )
+    if (!dmgOut.hit) {
+      if (dmgOut.avoidedReason === 'block') {
+        monster.mode = MONMODE_BLOCK
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: MONMODE_BLOCK,
+          lifePct:
+            monster.maxHp > 0 ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128)) : 0,
+        })
+      }
+      return
+    }
+    this.applyPlayerStealOutcome(player, dmgOut)
+
+    let totalDealt =
+      !dmgOut.immuneToPhys && dmgOut.totalDamage256 > 0
+        ? Math.max(1, Math.floor(dmgOut.totalDamage256 / FIXED_ONE))
+        : 0
+
+    // Crushing Blow (`stat 136`, only when not physical-immune or physical hit landed)
+    if (!dmgOut.immuneToPhys) {
+      const cbChance = this.sumWhirlwindHandStat113c(player, hand, 136)
+      if (cbChance > 0 && (cbChance >= 100 || this.rng.rand(100) < cbChance)) {
+        const cbOut = calculateCrushingBlow113c({
+          defenderHp: monster.hp,
+          unitType: 'monster',
+          isBoss: monster.isBoss,
+          isPrimeEvil: monster.isPrimeEvil,
+          rank: monster.rank,
+          playerCount: this.playersX,
+          isRanged: false,
+          physResPct: defenderStats.getAccruedStat('damageresist'),
+        })
+        totalDealt += cbOut.damage
+      }
+    }
+
+    // Weapon + off-weapon elemental flat damage channels (`fire` 48..49, `ltng` 50..51, `mag` 52..53, `cold` 54..55)
+    let coldLengthFrames = 0
+    for (const [elemType, minStat, maxStat] of [
+      ['fire', 48, 49],
+      ['ltng', 50, 51],
+      ['mag', 52, 53],
+      ['cold', 54, 55],
+    ] as const) {
+      const eMin = this.sumWhirlwindHandStat113c(player, hand, minStat)
+      const eMax = Math.max(eMin, this.sumWhirlwindHandStat113c(player, hand, maxStat))
+      if (eMax <= 0) continue
+      const rolledElem = this.rollInclusive(eMin, eMax)
+      const elemOut = executeSUnitDmg(
+        attackerCtx,
+        defenderCtx,
+        {
+          skillId: spin.skillId,
+          attackKind: 'melee',
+          srcDam: 0,
+          elemType,
+          elemMin256: rolledElem * FIXED_ONE,
+          elemMax256: rolledElem * FIXED_ONE,
+          autoHit: true,
+          unblockable: true,
+        },
+        this.rng,
+      )
+      if (!elemOut.immuneToElem && elemOut.totalDamage256 > 0) {
+        totalDealt += Math.max(1, Math.floor(elemOut.totalDamage256 / FIXED_ONE))
+        if (elemType === 'cold') {
+          coldLengthFrames = Math.max(25, this.sumWhirlwindHandStat113c(player, hand, 56))
+        }
+      }
+    }
+
+    // Poison damage on weapon/charms (`57 poisonmindam`, `58 poisonmaxdam`, `59 poisonlength`)
+    const poisMin = this.sumWhirlwindHandStat113c(player, hand, 57)
+    const poisMax = Math.max(poisMin, this.sumWhirlwindHandStat113c(player, hand, 58))
+    if (poisMax > 0) {
+      const poisDur = Math.max(25, this.sumWhirlwindHandStat113c(player, hand, 59))
+      const rolledPoisBitrate256 = this.rollInclusive(poisMin, poisMax)
+      this.applyMonsterPoisonDot(player, monster, rolledPoisBitrate256, poisDur, spin.skillId)
+    }
+
+    // Note: `spin.suppressAttackHitProcs === true` — `item_skillonattack` (195) & `item_skillonhit` (198) NEVER fire during Whirlwind!
+    if (totalDealt > 0) {
+      const hitClass =
+        hand.base !== undefined
+          ? resolveHitClassCode113c(hand.base.hitClass) || 1
+          : this.resolvePlayerWeaponHitClass113c(player, spin.skillId)
+      this.finishMonsterDamage(
+        player,
+        monster,
+        totalDealt,
+        spin.skillId,
+        coldLengthFrames > 0 ? 'cold' : 'phys',
+        hitClass,
+        coldLengthFrames > 0 ? coldLengthFrames : undefined,
+      )
+    }
+
+    // Open Wounds (`stat 135` -> `STATE_OPENWOUNDS = 62` for 200 frames = 8.0s)
+    if (!monster.dead) {
+      const owChance = this.sumWhirlwindHandStat113c(player, hand, 135)
+      if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
+        this.applyMonsterOpenWounds113c(player, monster)
+      }
+    }
+  }
+
+  private applyMonsterOpenWounds113c(
+    attacker: InternalPlayerRecord,
+    monster: InternalMonsterRecord,
+  ): void {
+    if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
+    const isBoss = this.isTrueBossForCorpse113c(monster)
+    const bitrate256 = computeOpenWoundsBitrate256113c(attacker.level, isBoss)
+    this.monsterOpenWounds.set(monster.unitId, {
+      bitrate256,
+      remainingFrames: 200,
+      carry256: 0,
+      attackerId: attacker.unitId,
+    })
+    this.applyUnitState(
+      monster.states,
+      monster.stateTimers,
+      'monster',
+      monster.unitId,
+      monster.areaId,
+      62,
+      200,
+    )
+  }
+
+  private stepMonsterOpenWounds113c(): void {
+    for (const [monsterId, ow] of [...this.monsterOpenWounds.entries()]) {
+      const monster = this.monsters.get(monsterId)
+      if (
+        monster === undefined ||
+        monster.dead ||
+        monster.isNpc ||
+        !monster.isKillable ||
+        ow.remainingFrames <= 0
+      ) {
+        this.monsterOpenWounds.delete(monsterId)
+        continue
+      }
+      ow.remainingFrames -= 1
+      ow.carry256 += ow.bitrate256
+      const wholeDmg = Math.floor(ow.carry256 / FIXED_ONE)
+      if (wholeDmg > 0) {
+        ow.carry256 -= wholeDmg * FIXED_ONE
+        monster.hp = Math.max(0, monster.hp - wholeDmg)
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitStatUpdate',
+          unitType: 'monster',
+          unitId: monster.unitId,
+          statId: 6,
+          value: monster.hp,
+        })
+        if (monster.hp <= 0) {
+          this.monsterOpenWounds.delete(monsterId)
+          const attacker =
+            this.players.get(ow.attackerId) ?? this.players.values().next().value
+          if (attacker !== undefined) {
+            this.applyMonsterDeath(monster, attacker, 'phys')
+          } else {
+            monster.dead = true
+            monster.mode = 12
+          }
+          continue
+        }
+      }
+      if (ow.remainingFrames <= 0) {
+        this.monsterOpenWounds.delete(monsterId)
+        if (monster.states.has(62)) {
+          this.clearUnitState(
+            monster.states,
+            monster.stateTimers,
+            'monster',
+            monster.unitId,
+            monster.areaId,
+            62,
+          )
+        }
       }
     }
   }
@@ -9497,13 +12018,91 @@ export class GameInstance {
   }
 
   /**
-   * Mind Blast (`srvdofunc` 51): damages every hostile within `radiusSubtiles` of the target and stuns
-   * it (`States.txt` `stunned`) for `computeMindBlastStunDuration`. Monster conversion (switching
-   * the monster's alignment) has no GameInstance runtime yet and is not applied.
+   * `#1814` — Strict 1.13c monster conversion eligibility (`#273 Mind Blast` `SrvDo051` @ `0x6FCB57F0` &
+   * `#116 Conversion` `SrvDo079` @ `0x6FCB29F0`):
+   * Act/Quest Bosses, SuperUniques, Random Uniques, Champions, NPCs, Tentacles, and non-hostile /
+   * `isAtt == 0` units have strictly `0%` conversion chance.
+   */
+  private isMonsterEligibleForConversion113c(monster: InternalMonsterRecord): boolean {
+    if (
+      monster.dead ||
+      monster.isNpc ||
+      !monster.isKillable ||
+      monster.submerged ||
+      monster.isBoss ||
+      monster.isPrimeEvil ||
+      monster.rank === 'boss' ||
+      monster.rank === 'unique' ||
+      monster.rank === 'champion' ||
+      monster.superUniqueId !== undefined ||
+      isTentacleHcIdx113c(monster.hcIdx) ||
+      isTentacleHeadHcIdx113c(monster.hcIdx)
+    ) {
+      return false
+    }
+    const flags = this.resolveMonsterTableFlags113c(monster)
+    if (
+      !flags.killable ||
+      !flags.isAtt ||
+      flags.align !== 0 ||
+      this.isTrueBossForCorpse113c(monster, flags)
+    ) {
+      return false
+    }
+    return true
+  }
+
+  private applyMonsterConversion113c(
+    player: InternalPlayerRecord,
+    monster: InternalMonsterRecord,
+    skillId: number,
+    slvl: number,
+    durationOverrideFrames?: number,
+  ): number {
+    if (!this.isMonsterEligibleForConversion113c(monster)) return 0
+    const convFrames =
+      durationOverrideFrames !== undefined && durationOverrideFrames > 0
+        ? durationOverrideFrames
+        : 150 + this.rng.rand(100)
+    monster.convertedUntilFrame = this.currentFrame + convFrames
+    monster.convertedByPlayerId = player.unitId
+    monster.threatPlayerId = 0
+    monster.threatUntilFrame = 0
+    monster.pendingAttack = undefined
+    const conversionState = this.registry.getStateByName('conversion')
+    const convStateId = conversionState?.id ?? 53
+    this.applyUnitState(
+      monster.states,
+      monster.stateTimers,
+      'monster',
+      monster.unitId,
+      monster.areaId,
+      convStateId,
+      convFrames,
+    )
+    this.monsterCombatContext(monster).stateBus.applyState({
+      stateNameOrId: convStateId,
+      sourceUnitId: `player_${player.unitId}`,
+      sourceSkillId: skillId,
+      slvl,
+      durationFrames: convFrames,
+      currentFrame: this.currentFrame,
+    })
+    return convFrames
+  }
+
+  /**
+   * `#1814` — Assassin `Mind Blast (#273)` (`SrvDo051` @ `0x6FCB57F0`):
+   * - Deals physical damage + knockback (`MONSTER_KNOCKBACK_SKILLS`) in `Param7 = 4` subtile radius.
+   * - Applies `stunned` (`state 21`) for `min(250, 50 + 5 * (slvl - 1))` frames (`0%` on Act/Quest Bosses,
+   *   `10%` stun chance on Champions/Uniques, `100%` on normal monsters).
+   * - Independently rolls `dm56(15, 40)` (`15..39%`) conversion ONLY on eligible normal monsters for
+   *   `150 + rand(100)` frames (`6.0..9.96s`), completely decoupled from `stunFrames`!
    */
   private executeMindBlast(player: InternalPlayerRecord, cast: PlayerSkillCast, tx: number, ty: number): void {
     const radius = cast.evalResult.radiusSubtiles
     const stunFrames = computeMindBlastStunDuration(cast.slvl)
+    const convChancePct = computeMindBlastConversionChance(cast.slvl)
     const stunned = this.registry.getStateByName('stunned')
     if (stunned === undefined) {
       throw new Error('GameInstance: States.txt row stunned is missing')
@@ -9520,24 +12119,50 @@ export class GameInstance {
     for (const m of targets) {
       this.applyDirectSkillDamage(player, cast, m)
       if (m.dead) continue
-      this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, stunned.id, stunFrames)
-      // Mind Blast 1.13c conversion: the target fights for the caster while stunned.
-      m.convertedUntilFrame = this.currentFrame + stunFrames
-      m.convertedByPlayerId = player.unitId
-      m.threatPlayerId = 0
-      m.threatUntilFrame = 0
-      const conversionState = this.registry.getStateByName('conversion')
-      if (conversionState !== undefined) {
-        this.applyUnitState(
-          m.states,
-          m.stateTimers,
-          'monster',
-          m.unitId,
-          m.areaId,
-          conversionState.id,
-          stunFrames,
-        )
+      const flags = this.resolveMonsterTableFlags113c(m)
+      const isBoss = this.isTrueBossForCorpse113c(m, flags)
+      if (!isBoss) {
+        const isElite =
+          m.rank === 'unique' || m.rank === 'champion' || m.superUniqueId !== undefined
+        if (!isElite || this.rng.rand(100) < 10) {
+          this.applyUnitState(
+            m.states,
+            m.stateTimers,
+            'monster',
+            m.unitId,
+            m.areaId,
+            stunned.id,
+            stunFrames,
+          )
+        }
       }
+      if (this.isMonsterEligibleForConversion113c(m) && this.rng.rand(100) < convChancePct) {
+        this.applyMonsterConversion113c(player, m, cast.skill.id, cast.slvl)
+      }
+    }
+  }
+
+  /**
+   * `#116` Paladin `Conversion` (`SrvDo079` @ `0x6FCB29F0`, class-of-bug sweep alongside `#1814`):
+   * melee strike that rolls `dm12(0, 50)` conversion for `Param3 = 400` frames (`16s`) strictly on
+   * normal monsters (`0%` on Bosses, SuperUniques, Uniques, and Champions).
+   */
+  private executePaladinConversion(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    monster: InternalMonsterRecord,
+  ): void {
+    const physDamage = this.rollPlayerSkillPhysDamage(player, cast)
+    const landed =
+      physDamage > 0 ? this.applyDamageToMonster(player, monster, physDamage, cast.skill.id, 'phys') : false
+    if (!landed || monster.dead) return
+    if (!this.isMonsterEligibleForConversion113c(monster)) return
+    const minChance = cast.skill.param1 || 0
+    const maxChance = cast.skill.param2 || 50
+    const durationFrames = cast.skill.param3 || 400
+    const chancePct = computeDiminishingReturns(minChance, maxChance, cast.slvl)
+    if (this.rng.rand(100) < chancePct) {
+      this.applyMonsterConversion113c(player, monster, cast.skill.id, cast.slvl, durationFrames)
     }
   }
 
@@ -9553,34 +12178,15 @@ export class GameInstance {
     ty: number,
     targetCorpse?: InternalMonsterRecord,
   ): void {
-    let corpse: InternalMonsterRecord | undefined =
-      targetCorpse !== undefined &&
-      targetCorpse.dead &&
-      !targetCorpse.shattered &&
-      !targetCorpse.isNpc &&
-      targetCorpse.areaId === player.areaId
-        ? targetCorpse
-        : undefined
-    if (corpse === undefined) {
-      let best = Number.POSITIVE_INFINITY
-      const maxSearchDist = Math.max(PLAYER_MELEE_REACH_SUBTILES, 12)
-      for (const m of this.monsters.values()) {
-        if (!m.dead || m.shattered || m.isNpc || m.areaId !== player.areaId) continue
-        const d = Math.hypot(m.x - tx, m.y - ty)
-        if (d <= maxSearchDist && d < best) {
-          best = d
-          corpse = m
-        }
-      }
-    }
+    const corpse = this.findNearestSelectableCorpse113c(
+      player.areaId,
+      tx,
+      ty,
+      false,
+      targetCorpse,
+    )
     if (corpse === undefined) return
-    corpse.shattered = true
-    this.broadcastToArea(corpse.areaId, {
-      type: 'UnitRemove',
-      unitType: 1,
-      id: corpse.unitId,
-      unitId: corpse.unitId,
-    })
+    this.consumeMonsterCorpse113c(corpse, 118)
     const rollPct = 70 + this.rng.rand(51)
     for (const m of [...this.monsters.values()]) {
       if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
@@ -9648,8 +12254,15 @@ export class GameInstance {
       }
       return
     }
+    if (mode === 'firewall') {
+      this.launchFireWall113c(player, cast, missileRec, tx, ty)
+      return
+    }
     if (mode === 'unmodeled') this.reportUnmodeledPlayerSrvDoFunc(cast.skill)
-    this.launchPlayerSkillMissile(player, cast, missileRec, tx, ty, this.rollPlayerSkillDamage(player, cast))
+    // `SKILLS_SrvDo010` (Guided Arrow / Bone Spirit) cast on a unit locks the missile onto it (`TargetX = 1`).
+    const lockOpts =
+      cast.skill.srvDoFunc === 10 && primaryTarget !== undefined ? { lockedMonsterId: primaryTarget.unitId } : undefined
+    this.launchPlayerSkillMissile(player, cast, missileRec, tx, ty, this.rollPlayerSkillDamage(player, cast), lockOpts)
     if (cast.offHandMissile !== undefined) {
       this.launchPlayerSkillMissile(player, cast, cast.offHandMissile, tx, ty, this.rollPlayerSkillDamage(player, cast))
     }
@@ -9792,6 +12405,32 @@ export class GameInstance {
     if (!Number.isFinite(tx) || !Number.isFinite(ty)) return
     const cast = this.resolvePlayerSkillCast(player, skillId)
     if (cast === null) return
+    // #1812: Double Throw needs a throwing weapon with quantity in both hands (checked before mana).
+    if (!this.passesWave2HandRequirement113c(player, skillId)) return
+
+    const doFunc = cast.skill.srvDoFunc
+    let validatedCorpse: InternalMonsterRecord | undefined
+    if (
+      doFunc === SRVDOFUNC_FIND_POTION ||
+      doFunc === SRVDOFUNC_GRIM_WARD ||
+      doFunc === SRVDOFUNC_FIND_ITEM
+    ) {
+      const requireSoft = doFunc === SRVDOFUNC_FIND_POTION || doFunc === SRVDOFUNC_GRIM_WARD
+      validatedCorpse = this.findNearestSelectableCorpse113c(
+        player.areaId,
+        tx,
+        ty,
+        requireSoft,
+        targetCorpse,
+      )
+      if (validatedCorpse === undefined) {
+        return
+      }
+    } else if (doFunc === SRVDOFUNC_WHIRLWIND) {
+      if (this.resolveWhirlwindEquippedHandsForPlayer113c(player) === null) {
+        return
+      }
+    }
     this.updatePlayerChannelState(player, cast)
     // 1.13c `D2Game.dll` `SKILLS_DoSkillStart` (`0x6FCBFD00` @ `0x6FCBFE6C`) vs `SKILLS_DoSkillDo` (`0x6FCC19A0`):
     // When `usemanaondo = 1` (`Plague Javelin` #25, `Blade Fury` #266), mana is checked and deducted in the `do` phase.
@@ -9811,7 +12450,6 @@ export class GameInstance {
       this.commitPlayerSkillCast(player, cast)
     }
 
-    const doFunc = cast.skill.srvDoFunc
     if (skillId === SKILL_TELEPORT) {
       this.relocatePlayerForSkill(player, tx, ty, true)
       return
@@ -9822,6 +12460,18 @@ export class GameInstance {
       return
     }
 
+    if (doFunc === SRVDOFUNC_FIND_POTION) {
+      this.executeFindPotion(player, cast, validatedCorpse!)
+      return
+    }
+    if (doFunc === SRVDOFUNC_FIND_ITEM) {
+      this.executeFindItem(player, cast, validatedCorpse!)
+      return
+    }
+    if (doFunc === SRVDOFUNC_GRIM_WARD) {
+      this.executeGrimWard(player, cast, validatedCorpse!)
+      return
+    }
     if (doFunc === SRVDOFUNC_WHIRLWIND) {
       this.executeWhirlwind(player, cast, tx, ty)
       return
@@ -9839,6 +12489,7 @@ export class GameInstance {
 
     if (cast.missile !== undefined) {
       this.launchPlayerSkillMissiles(player, cast, cast.missile, tx, ty)
+      if (skillId === 140) this.consumeDoubleThrowQuantity113c(player)
       return
     }
     if (skillId === 42) {
@@ -9863,10 +12514,21 @@ export class GameInstance {
     player: InternalPlayerRecord,
     skillId: number,
     targetId: number,
+    targetType?: SkillTargetUnitType113c,
   ): void {
     if (player.dead || this.isPlayerInHitRecovery(player)) return
+    if (skillId === TELEKINESIS_SKILL_ID_113C) {
+      this.executeTelekinesis113c(player, targetId, targetType)
+      return
+    }
     const clicked = this.monsters.get(targetId)
     if (clicked && clicked.submerged) {
+      return
+    }
+    if (skillId === 131 || skillId === 142 || skillId === 150) {
+      if (clicked && clicked.dead && !clicked.isNpc && clicked.areaId === player.areaId) {
+        this.executeSkillAtLocation(player, skillId, clicked.x, clicked.y, clicked)
+      }
       return
     }
     if (clicked && clicked.dead && !clicked.isNpc && clicked.areaId === player.areaId) {
@@ -9890,6 +12552,9 @@ export class GameInstance {
     const cast = this.resolvePlayerSkillCast(player, skillId)
     if (cast === null) return
     const doFunc = cast.skill.srvDoFunc
+    if (doFunc === SRVDOFUNC_WHIRLWIND && this.resolveWhirlwindEquippedHandsForPlayer113c(player) === null) {
+      return
+    }
     const isMovementStrike =
       doFunc === SRVDOFUNC_CHARGE || doFunc === SRVDOFUNC_LEAP_ATTACK || doFunc === SRVDOFUNC_DRAGON_FLIGHT
     const isMeleeStrike =
@@ -9897,6 +12562,21 @@ export class GameInstance {
       cast.missile === undefined &&
       (cast.skill.range === 'h2h' || cast.skill.range === 'both')
     if (isMeleeStrike && !this.isPlayerMeleeInRangeOfMonster(player, monster)) return
+    // #1808/#1812/#1813/#1815/#1816: hand-equipment requirements are checked before mana is spent.
+    if (!this.passesWave2HandRequirement113c(player, skillId)) return
+    // Dragon Tail (#270) / Phoenix Strike (#280) carry a `srvmissile` for their release effects but
+    // strike in melee: enforce melee reach before mana like every other h2h strike.
+    if ((skillId === 270 || skillId === 280) && !this.isPlayerMeleeInRangeOfMonster(player, monster)) return
+    // #1816 Dragon Flight (`aurarangecalc = 27`): reject out-of-range / blocked targets before mana.
+    if (skillId === 275) {
+      const range = evaluateDragonFlightStats(cast.slvl).rangeSubtiles
+      if (
+        Math.hypot(monster.x - player.x, monster.y - player.y) > range ||
+        !this.hasInteractionLineOfSight(player.areaId, player.x, player.y, monster.x, monster.y)
+      ) {
+        return
+      }
+    }
 
     this.updatePlayerChannelState(player, cast)
     if (!cast.skill.useManaOnDo) {
@@ -9914,6 +12594,8 @@ export class GameInstance {
       }
       this.commitPlayerSkillCast(player, cast)
     }
+
+    if (this.executeWave2MeleeOnTarget113c(player, cast, monster)) return
 
     if (skillId === SKILL_TELEPORT) {
       this.relocatePlayerForSkill(player, monster.x, monster.y, true)
@@ -9946,6 +12628,7 @@ export class GameInstance {
 
     if (cast.missile !== undefined) {
       this.launchPlayerSkillMissiles(player, cast, cast.missile, monster.x, monster.y, monster)
+      if (skillId === 140) this.consumeDoubleThrowQuantity113c(player)
       return
     }
     if (skillId === 42) {
@@ -9962,6 +12645,10 @@ export class GameInstance {
     }
     if (doFunc === SRVDOFUNC_CORPSE_EXPLOSION) {
       this.executeCorpseExplosion(player, cast, monster.x, monster.y)
+      return
+    }
+    if (doFunc === SRVDOFUNC_CONVERSION) {
+      this.executePaladinConversion(player, cast, monster)
       return
     }
     if (isMeleeStrike) {
@@ -9993,6 +12680,590 @@ export class GameInstance {
       return
     }
     this.applyPlayerSkillEffect(player, cast, monster.x, monster.y, monster)
+  }
+
+  // ===========================================================================================
+  // Wave 2 melee / Telekinesis runtime (#1806, #1808, #1812, #1813, #1815, #1816).
+  // Pure 1.13c rules live in `src/server/skills/martial-dualwield-113c.ts`.
+  // ===========================================================================================
+
+  private activeHandItems113c(player: InternalPlayerRecord): {
+    readonly right: ServerItemEntry | undefined
+    readonly left: ServerItemEntry | undefined
+  } {
+    const equipped = player.items.filter(
+      (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
+    )
+    return {
+      right: equipped.find((i) => i.bodyLoc === BODYLOC_RIGHT_ARM),
+      left: equipped.find((i) => i.bodyLoc === BODYLOC_LEFT_ARM),
+    }
+  }
+
+  /** `STAT_QUANTITY` (70) of a stackable item; falls back to the entry quantity. */
+  private itemQuantity113c(item: ServerItemEntry | undefined): number {
+    if (item === undefined) return 0
+    const stat = collectItemStats(item).find((s) => s.statId === STAT_QUANTITY)
+    return stat !== undefined ? stat.value : item.quantity
+  }
+
+  /**
+   * Hand-equipment gate of Double Swing / Double Throw / Frenzy and the Martial Arts skills
+   * (`validateWave2SkillHands113c`). Smite's shield gate stays in `resolvePlayerSkillCast` (#1800).
+   */
+  private passesWave2HandRequirement113c(player: InternalPlayerRecord, skillId: number): boolean {
+    if (skillId === 97) return true
+    const { right, left } = this.activeHandItems113c(player)
+    return validateWave2SkillHands113c(skillId, right, left, {
+      right: this.itemQuantity113c(right),
+      left: this.itemQuantity113c(left),
+    }).valid
+  }
+
+  /** Double Throw (`SrvDo074`) spends one throwing weapon from each hand. */
+  private consumeDoubleThrowQuantity113c(player: InternalPlayerRecord): void {
+    const { right, left } = this.activeHandItems113c(player)
+    if (right === undefined || left === undefined) return
+    for (const item of [right, left]) {
+      const next = Math.max(0, this.itemQuantity113c(item) - 1)
+      item.quantity = next
+      if (item.stats.has(STAT_QUANTITY)) item.stats.set(STAT_QUANTITY, next)
+      if (item.rawItemData !== undefined) {
+        item.rawItemData = {
+          ...item.rawItemData,
+          quantity: next,
+          stats: item.rawItemData.stats.map((s) => (s.statId === STAT_QUANTITY ? { ...s, value: next } : s)),
+        }
+      }
+      this.emitToPlayer(player.unitId, {
+        type: 'StatSet',
+        unit: { unitType: 4, id: item.unitId },
+        stat: STAT_QUANTITY,
+        param: 0,
+        value: next,
+      })
+    }
+  }
+
+  /** Apply a timed player state whose `stats` feed the StateBus (FRW/IAS/AR) and the 0xA8 packet. */
+  private applyPlayerTimedState113c(
+    player: InternalPlayerRecord,
+    stateId: number,
+    durationFrames: number,
+    stats: Readonly<Record<string, number>>,
+    skillId: number,
+    slvl: number,
+  ): void {
+    this.playerCombatContext(player).stateBus.applyState({
+      stateNameOrId: stateId,
+      sourceUnitId: `player_${player.unitId}`,
+      sourceSkillId: skillId,
+      slvl,
+      durationFrames,
+      currentFrame: this.currentFrame,
+      stats,
+    })
+    this.applyUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId, durationFrames)
+  }
+
+  /**
+   * `resolvePlayerWeaponDamage` folds aura `%ED` into its pool and `executeSUnitDmg` adds the
+   * aura `damagepercent` again; divide it back out so the aura counts once (additive pool).
+   */
+  private removeAuraEdFromPreScaled113c(player: InternalPlayerRecord, damage: number): number {
+    const auraEd = this.playerCombat.get(player.unitId)?.statList.getModifierBonus('damagepercent') ?? 0
+    if (auraEd <= 0) return Math.max(1, Math.trunc(damage))
+    return Math.max(1, Math.trunc((damage * 100) / (100 + auraEd)))
+  }
+
+  /** One weapon strike of the given hand (`SrcDam`/128 of the hand's weapon roll + skill `%ED`). */
+  private rollWave2HandStrike113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    hand: 'right' | 'left',
+    extraEdPct = 0,
+  ): number {
+    const ev = cast.evalResult
+    const range = this.resolvePlayerWeaponDamage(player, ev.physDamagePct + extraEdPct, { weaponHand: hand })
+    const srcDam = ev.srcDam > 0 ? ev.srcDam : 128
+    const weaponHit = Math.trunc((this.rollInclusive(range.min, range.max) * srcDam) / 128)
+    return this.removeAuraEdFromPreScaled113c(player, weaponHit + this.rollInclusive(ev.minPhysDmg, ev.maxPhysDmg))
+  }
+
+  /** Equipped boots (`bodyLoc 9`) `Armor.txt` kick `mindam..maxdam`, `0..0` barefoot. */
+  private resolveEquippedBootKickDamage113c(player: InternalPlayerRecord): { min: number; max: number } {
+    const boots = player.items.find((i) => i.location === 'equipped' && i.bodyLoc === 9)
+    const meta = boots !== undefined ? resolveArmorCombatMeta113c(boots.code) : undefined
+    return meta === undefined ? { min: 0, max: 0 } : { min: meta.smiteMinDam, max: meta.smiteMaxDam }
+  }
+
+  /** 1.13c kick roll (`0x6FC42F10`); kick packets bypass the pipeline `%ED`, so auras are folded here. */
+  private rollKickDamage113c(player: InternalPlayerRecord, cast: PlayerSkillCast, extraEdPct: number): number {
+    const combat = this.playerCombat.get(player.unitId)
+    const strength =
+      player.strength + this.sumPlayerItemStat(player, 0) + (combat?.statList.getModifierBonus('strength') ?? 0)
+    const dexterity =
+      player.dexterity + this.sumPlayerItemStat(player, 2) + (combat?.statList.getModifierBonus('dexterity') ?? 0)
+    const offWeaponEdPct =
+      this.sumPlayerItemStat(player, 17, { excludeWeaponHands: true }) +
+      this.sumPlayerItemStat(player, 25, { excludeWeaponHands: true }) +
+      (combat?.statList.getModifierBonus('damagepercent') ?? 0)
+    const skillEdPct =
+      cast.skill.id === 270
+        ? 0
+        : cast.skill.id === 275
+          ? evaluateDragonFlightStats(cast.slvl).enhancedDamagePct
+          : cast.evalResult.physDamagePct
+    const range = computeKickDamageRange113c({
+      strength,
+      dexterity,
+      boot: this.resolveEquippedBootKickDamage113c(player),
+      skillEdPct: skillEdPct + extraEdPct,
+      offWeaponEdPct,
+    })
+    return this.rollInclusive(range.min, range.max)
+  }
+
+  /** Player `item_openwounds` (stat 135) rider on a landed melee strike. */
+  private applyPlayerMeleeRiders113c(player: InternalPlayerRecord, monster: InternalMonsterRecord): void {
+    if (monster.dead) return
+    const owChance = this.sumPlayerItemStat(player, 135)
+    if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
+      this.applyMonsterState(monster.unitId, 62, 200)
+    }
+  }
+
+  private hostilesNear113c(areaId: number, cx: number, cy: number, radius: number): InternalMonsterRecord[] {
+    return [...this.monsters.values()].filter(
+      (m) =>
+        !m.dead &&
+        !m.isNpc &&
+        !m.submerged &&
+        m.areaId === areaId &&
+        !this.isMonsterConverted(m) &&
+        Math.hypot(m.x - cx, m.y - cy) <= radius,
+    )
+  }
+
+  /** Returns true when the cast was fully handled by a Wave 2 runtime path. */
+  private executeWave2MeleeOnTarget113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    monster: InternalMonsterRecord,
+  ): boolean {
+    const skillId = cast.skill.id
+    if (skillId === 97) {
+      this.executeSmite113c(player, cast, monster)
+      return true
+    }
+    if (skillId === 133 || skillId === 147) {
+      this.executeDualStrike113c(player, cast, monster)
+      return true
+    }
+    if (getProgressiveSkillSpec113c(skillId) !== undefined) {
+      this.executeMartialChargeUp113c(player, cast, monster)
+      return true
+    }
+    if (MARTIAL_FINISHER_SKILL_IDS_113C.has(skillId) && (skillId !== 0 || cast.missile === undefined)) {
+      return this.executeMartialFinisher113c(player, cast, monster)
+    }
+    return false
+  }
+
+  /**
+   * #1808 Smite (`SrvDo150`): shield `mindam..maxdam` + Holy Shield + `stat 111` scaled by
+   * Str / skill / off-weapon / aura `%ED` (`rollPlayerSkillPhysDamage`), auto-hit and unblockable
+   * (`classifyPlayerHitRoll113c`), then stun `min(250, 15 + 5*(slvl-1))` + knockback on non-bosses.
+   */
+  private executeSmite113c(player: InternalPlayerRecord, cast: PlayerSkillCast, monster: InternalMonsterRecord): void {
+    const damage = this.removeAuraEdFromPreScaled113c(player, this.rollPlayerSkillPhysDamage(player, cast))
+    const landed = this.applyDamageToMonster(player, monster, damage, 97, 'phys')
+    if (!landed) return
+    this.applyPlayerMeleeRiders113c(player, monster)
+    if (monster.dead || monster.isBoss || monster.isPrimeEvil) return
+    this.applyUnitState(
+      monster.states,
+      monster.stateTimers,
+      'monster',
+      monster.unitId,
+      monster.areaId,
+      21,
+      computeSmiteStunFrames113c(cast.slvl),
+    )
+    this.knockbackMonster(monster, player.x, player.y)
+  }
+
+  /**
+   * #1812 Double Swing (`SrvDo070`) / #1813 Frenzy (`SrvDo009`): one independent strike per hand
+   * (main hand, then off hand). Frenzy converts `min(100, Berserk blvl)%` to magic and raises the
+   * `frenzy` (state 94) counter on every landed strike (`stepFrenzyStack113c`).
+   */
+  private executeDualStrike113c(player: InternalPlayerRecord, cast: PlayerSkillCast, monster: InternalMonsterRecord): void {
+    const skillId = cast.skill.id
+    const isFrenzy = skillId === 147
+    const magicPct = isFrenzy ? Math.min(100, Math.max(0, player.skills.get(152) ?? 0)) : 0
+    let frenzy = this.playerFrenzyStack113c.get(player.unitId)
+    let refreshed = false
+    for (const hand of ['right', 'left'] as const) {
+      if (monster.dead) break
+      const total = this.rollWave2HandStrike113c(player, cast, hand)
+      const magic = Math.trunc((total * magicPct) / 100)
+      const phys = total - magic
+      const landed =
+        phys > 0
+          ? this.applyDamageToMonster(player, monster, phys, skillId, 'phys')
+          : this.applyDamageToMonster(player, monster, magic, skillId, 'mag', 'player', { attackKind: 'melee' })
+      if (landed && phys > 0 && magic > 0 && !monster.dead) {
+        this.applyDamageToMonster(player, monster, magic, skillId, 'mag', 'player', {
+          attackKind: 'melee',
+          autoHit: true,
+          unblockable: true,
+        })
+      }
+      if (landed) this.applyPlayerMeleeRiders113c(player, monster)
+      if (isFrenzy) {
+        const step = stepFrenzyStack113c(frenzy, this.currentFrame, cast.slvl, landed)
+        frenzy = { stacks: step.stacks, expireFrame: step.expireFrame }
+        if (landed) refreshed = true
+      }
+    }
+    if (!isFrenzy || frenzy === undefined) return
+    this.playerFrenzyStack113c.set(player.unitId, frenzy)
+    if (!refreshed || frenzy.stacks <= 0) return
+    const step = stepFrenzyStack113c(frenzy, this.currentFrame, cast.slvl, false)
+    this.applyPlayerTimedState113c(
+      player,
+      FRENZY_STATE_ID_113C,
+      FRENZY_DURATION_FRAMES_113C,
+      { skill_frenzy: step.stacks, velocitypercent: step.velocityPct, attackrate: step.attackRatePct },
+      skillId,
+      cast.slvl,
+    )
+  }
+
+  /** #1815 charge-up strike: weapon hit (+FoF phys->fire conversion); a landed hit adds one charge. */
+  private executeMartialChargeUp113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    monster: InternalMonsterRecord,
+  ): void {
+    const skillId = cast.skill.id
+    let phys = this.rollWave2HandStrike113c(player, cast, 'right')
+    let fire = 0
+    if (skillId === 259) {
+      fire = Math.trunc((phys * computeFistsOfFireConversionPct113c(cast.slvl)) / 100)
+      phys -= fire
+    }
+    const landed =
+      phys > 0
+        ? this.applyDamageToMonster(player, monster, phys, skillId, 'phys')
+        : this.applyDamageToMonster(player, monster, fire, skillId, 'fire', 'player', { attackKind: 'melee' })
+    if (landed && phys > 0 && fire > 0 && !monster.dead) {
+      this.applyDamageToMonster(player, monster, fire, skillId, 'fire', 'player', {
+        attackKind: 'melee',
+        autoHit: true,
+        unblockable: true,
+      })
+    }
+    if (!landed) return
+    this.applyPlayerMeleeRiders113c(player, monster)
+    this.addPlayerMartialCharge113c(player, skillId, cast.slvl)
+  }
+
+  /** Add one progressive charge and refresh every held charge state to 375 frames. */
+  private addPlayerMartialCharge113c(player: InternalPlayerRecord, skillId: number, slvl: number): void {
+    const next = addMartialCharge113c(this.playerMartialCharges113c.get(player.unitId), skillId, slvl, this.currentFrame)
+    this.playerMartialCharges113c.set(player.unitId, next)
+    for (const charge of next.charges) {
+      const spec = getProgressiveSkillSpec113c(charge.skillId)
+      if (spec === undefined) continue
+      // The progressive counter stat goes first: the client orb renderer reads `stats[0]`.
+      this.applyPlayerTimedState113c(
+        player,
+        charge.stateId,
+        MARTIAL_CHARGE_DURATION_FRAMES_113C,
+        {
+          [spec.countStatName]: charge.count,
+          progressive_tohit: evaluateChargeUpProgressiveToHit(charge.skillId, charge.count),
+        },
+        charge.skillId,
+        charge.slvl,
+      )
+    }
+  }
+
+  /**
+   * #1816 finishers (`0x6FCB1D21`): Attack (#0, only with charges), Dragon Talon (#255,
+   * `kickCount` kicks), Dragon Claw (#260, both claws), Dragon Tail (#270, kick + fire explosion of
+   * the physical damage dealt), Dragon Flight (#275, teleport kick). The first landed strike
+   * releases every charge (Tiger Strike `%ED` rides on that strike).
+   */
+  private executeMartialFinisher113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    monster: InternalMonsterRecord,
+  ): boolean {
+    const skillId = cast.skill.id
+    const charges = liveMartialCharges113c(this.playerMartialCharges113c.get(player.unitId), this.currentFrame)
+    if (skillId === 0 && charges.length === 0) return false
+    const payloads = resolveFinisherDischarge(
+      charges.map((c) => ({ skillId: c.skillId, count: c.count, slvl: c.slvl, expiresAtFrame: this.currentFrame + 1 })),
+      {
+        royalStrikeBlvl: player.skills.get(280) ?? 0,
+        fistsOfFireBlvl: player.skills.get(259) ?? 0,
+        clawsOfThunderBlvl: player.skills.get(269) ?? 0,
+        bladesOfIceBlvl: player.skills.get(274) ?? 0,
+      },
+    )
+    const tigerEdPct = payloads.reduce((sum, p) => sum + (p.enhancedDamagePct ?? 0), 0)
+    if (skillId === 275) {
+      const arrival = this.pointBefore(player, monster.x, monster.y, 1)
+      this.relocatePlayerForSkill(player, arrival.x, arrival.y, false)
+      if (!this.isPlayerMeleeInRangeOfMonster(player, monster)) return true
+    }
+    const isKick = KICK_SKILL_IDS_113C.has(skillId)
+    const strikes = skillId === 255 ? evaluateDragonTalonStats(cast.slvl).kickCount : skillId === 260 ? 2 : 1
+    let released = false
+    for (let i = 0; i < strikes && !monster.dead; i++) {
+      const extraEd = released ? 0 : tigerEdPct
+      const damage = isKick
+        ? this.rollKickDamage113c(player, cast, extraEd)
+        : this.rollWave2HandStrike113c(player, cast, skillId === 260 && i === 1 ? 'left' : 'right', extraEd)
+      const hpBefore = monster.hp
+      const landed = this.applyDamageToMonster(player, monster, damage, skillId, 'phys')
+      if (!landed) continue
+      const dealtPhys = Math.max(0, hpBefore - monster.hp)
+      this.applyPlayerMeleeRiders113c(player, monster)
+      if (skillId === 270) {
+        const explosion = computeDragonTailExplosionDamage113c(dealtPhys, cast.slvl)
+        if (explosion > 0) {
+          for (const m of this.hostilesNear113c(player.areaId, monster.x, monster.y, DRAGON_TAIL_EXPLOSION_RADIUS_SUBTILES)) {
+            this.applyDamageToMonster(player, m, explosion, 270, 'fire', 'player', {
+              attackKind: 'spell',
+              autoHit: true,
+              unblockable: true,
+            })
+          }
+        }
+        if (!monster.dead && !monster.isBoss && !monster.isPrimeEvil) this.knockbackMonster(monster, player.x, player.y)
+      }
+      if (!released && payloads.length > 0) {
+        released = true
+        this.releaseMartialCharges113c(player, monster, payloads, dealtPhys)
+      }
+    }
+    return true
+  }
+
+  /** Release every held charge (`srvprgfunc1..3`) and end states 122..127. */
+  private releaseMartialCharges113c(
+    player: InternalPlayerRecord,
+    target: InternalMonsterRecord,
+    payloads: readonly DischargedPayload[],
+    dealtPhys: number,
+  ): void {
+    const spell = { attackKind: 'spell' as const, autoHit: true, unblockable: true }
+    const hit = (m: InternalMonsterRecord, min: number, max: number, skillId: number, ch: 'fire' | 'ltng' | 'cold'): void => {
+      if (m.dead) return
+      const dmg = this.rollInclusive(min, max)
+      if (dmg > 0) this.applyDamageToMonster(player, m, dmg, skillId, ch, 'player', spell)
+    }
+    const around = (radius: number): InternalMonsterRecord[] =>
+      this.hostilesNear113c(player.areaId, target.x, target.y, radius)
+    for (const p of payloads) {
+      if ((p.lifeStealPct ?? 0) > 0 || (p.manaStealPct ?? 0) > 0) {
+        const lifeGain = Math.floor(
+          (dealtPhys * (p.lifeStealPct ?? 0)) / 100 / Math.max(1, difficultyLifeStealDivisor(this.difficulty)),
+        )
+        const manaGain = Math.floor(
+          (dealtPhys * (p.manaStealPct ?? 0)) / 100 / Math.max(1, difficultyManaStealDivisor(this.difficulty)),
+        )
+        if (lifeGain > 0 && !player.dead) {
+          player.hpFixed = Math.min(this.getPlayerAccruedMaxHpFixed(player), player.hpFixed + lifeGain * FIXED_ONE)
+          player.hp = Math.floor(player.hpFixed / FIXED_ONE)
+          this.emitToPlayer(player.unitId, {
+            type: 'UnitStatUpdate',
+            unitType: 'player',
+            unitId: player.unitId,
+            statId: 6,
+            value: player.hpFixed,
+          })
+        }
+        if (manaGain > 0 && !player.dead) {
+          player.manaFixed = Math.min(this.getPlayerAccruedMaxManaFixed(player), player.manaFixed + manaGain * FIXED_ONE)
+          player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+          this.emitToPlayer(player.unitId, {
+            type: 'UnitStatUpdate',
+            unitType: 'player',
+            unitId: player.unitId,
+            statId: 8,
+            value: player.manaFixed,
+          })
+        }
+      }
+      if (p.fireDamage !== undefined) {
+        const f = p.fireDamage
+        hit(target, f.min, f.max, 259, 'fire')
+        if (f.explosionRadiusPx !== undefined) {
+          for (const m of around(f.explosionRadiusPx / 16)) if (m !== target) hit(m, f.min, f.max, 259, 'fire')
+        }
+        if (f.burningGroundTotalMin !== undefined && f.burningGroundTotalMax !== undefined) {
+          for (const m of around(3)) hit(m, f.burningGroundTotalMin, f.burningGroundTotalMax, 259, 'fire')
+        }
+      }
+      if (p.ltngDamage !== undefined) {
+        const l = p.ltngDamage
+        hit(target, l.min, l.max, 269, 'ltng')
+        if (l.hasNova === true) {
+          for (const m of this.hostilesNear113c(player.areaId, player.x, player.y, 8)) hit(m, l.novaMin, l.novaMax, 269, 'ltng')
+        }
+        if ((l.chargedBoltsCount ?? 0) > 0) {
+          const victims = around(8)
+          for (let i = 0; i < (l.chargedBoltsCount ?? 0) && victims.length > 0; i++) {
+            hit(victims[i % victims.length]!, l.boltMin, l.boltMax, 269, 'ltng')
+          }
+        }
+      }
+      if (p.coldDamage !== undefined) {
+        const c = p.coldDamage
+        hit(target, c.min, c.max, 274, 'cold')
+        if (c.explosionRadiusPx !== undefined) {
+          for (const m of around(c.explosionRadiusPx / 16)) if (m !== target) hit(m, c.min, c.max, 274, 'cold')
+        }
+        if ((c.freezeDurationFrames ?? 0) > 0) {
+          for (const m of around(6)) if (!m.dead) this.applyMonsterState(m.unitId, 1, c.freezeDurationFrames ?? 0)
+        }
+      }
+      const ph = p.phoenixPayload
+      if (ph?.meteorDamage !== undefined) {
+        for (const m of around(4)) {
+          hit(m, ph.meteorDamage.min, ph.meteorDamage.max, 280, 'fire')
+          hit(m, ph.meteorDamage.groundFireTotalMin, ph.meteorDamage.groundFireTotalMax, 280, 'fire')
+        }
+      }
+      if (ph?.chainLightningDamage !== undefined) {
+        const cl = ph.chainLightningDamage
+        const struck = new Set<number>()
+        let cur: InternalMonsterRecord | undefined = target
+        for (let i = 0; i < cl.maxTargets && cur !== undefined; i++) {
+          struck.add(cur.unitId)
+          hit(cur, cl.min, cl.max, 280, 'ltng')
+          const from: InternalMonsterRecord = cur
+          cur = this.hostilesNear113c(player.areaId, from.x, from.y, cl.jumpRadiusSubtiles ?? 8)
+            .filter((m) => !struck.has(m.unitId))
+            .sort((a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y) || a.unitId - b.unitId)[0]
+        }
+      }
+      if (ph?.chaosIceDamage !== undefined) {
+        const ci = ph.chaosIceDamage
+        for (const m of this.hostilesNear113c(player.areaId, player.x, player.y, 8)) {
+          hit(m, ci.min, ci.max, 280, 'cold')
+          if (!m.dead && ci.freezeFrames > 0) this.applyMonsterState(m.unitId, 1, ci.freezeFrames)
+        }
+      }
+    }
+    for (const spec of PROGRESSIVE_SKILLS_113C) {
+      if (player.states.has(spec.stateId)) {
+        this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, spec.stateId)
+      }
+    }
+    this.playerMartialCharges113c.delete(player.unitId)
+  }
+
+  /**
+   * #1806 Telekinesis (`SrvSt12` + `SrvDo021`): dispatch by target unit type — ground item
+   * (whitelisted pickup), object (TK-operable objects), monster (lightning + 35% knockback,
+   * never in town). Range `<= 25` sub-tiles with line of sight, checked before mana is spent.
+   */
+  private executeTelekinesis113c(
+    player: InternalPlayerRecord,
+    targetId: number,
+    targetType: SkillTargetUnitType113c | undefined,
+  ): void {
+    const item = targetType === undefined || targetType === 4 ? this.groundItems.get(targetId) : undefined
+    const obj = item === undefined && (targetType === undefined || targetType === 2) ? this.objects.get(targetId) : undefined
+    const monster =
+      item === undefined && obj === undefined && (targetType === undefined || targetType === 1)
+        ? this.monsters.get(targetId)
+        : undefined
+    const target = item ?? obj ?? monster
+    if (target === undefined || target.areaId !== player.areaId) return
+    if (monster !== undefined && (monster.dead || monster.isNpc || monster.submerged || TOWN_AREAS.has(player.areaId))) {
+      return
+    }
+    if (!isWithinTelekinesisRange113c(player.x, player.y, target.x, target.y)) return
+    if (!this.hasInteractionLineOfSight(player.areaId, player.x, player.y, target.x, target.y, obj?.unitId)) return
+    const cast = this.resolvePlayerSkillCast(player, TELEKINESIS_SKILL_ID_113C)
+    if (cast === null) return
+    this.updatePlayerChannelState(player, cast)
+    this.commitPlayerSkillCast(player, cast)
+    this.broadcastPlayerSkillCast(player, cast, { unitType: item !== undefined ? 4 : obj !== undefined ? 2 : 1, id: targetId })
+    const refuse = (): void => {
+      this.emitToPlayer(player.unitId, { type: 'PlaySound', unit: { unitType: 0, id: player.unitId }, sound: 19 })
+    }
+    if (item !== undefined) {
+      if (isTelekinesisPickupEligible113c(item.code)) this.handleItemPickup(player, targetId, false)
+      else refuse()
+      return
+    }
+    if (obj !== undefined) {
+      let operateFn = 0
+      try {
+        operateFn = getObjectsTxtRecord113c(obj.classId).operateFn
+      } catch {
+        operateFn = 0
+      }
+      const eligible = isTelekinesisObjectEligible113c({
+        classId: obj.classId,
+        operateFn,
+        isWaypoint: obj.isWaypoint,
+        isShrine: obj.isShrine,
+        destAreaId: obj.destAreaId,
+      })
+      if (!eligible) {
+        refuse()
+        return
+      }
+      this.operateObjectByTelekinesis113c(player, obj)
+      return
+    }
+    if (monster === undefined) return
+    this.applyDirectSkillDamage(player, cast, monster)
+    if (!monster.dead && this.rng.rand(100) < TELEKINESIS_KNOCKBACK_CHANCE_PCT) {
+      this.knockbackMonster(monster, player.x, player.y)
+    }
+  }
+
+  /** Remote object operate: same dispatch as `handleInteract` once in range (portals, waypoints, operate). */
+  private operateObjectByTelekinesis113c(player: InternalPlayerRecord, obj: InternalObjectRecord): void {
+    if (
+      obj.destAreaId !== undefined &&
+      obj.classId !== 298 &&
+      obj.classId !== 342 &&
+      obj.classId !== 547 &&
+      obj.classId !== 565 &&
+      obj.classId !== 566
+    ) {
+      if (obj.classId === 386 && obj.mode !== 2) return
+      if (!this.consumeWarpCooldown(player)) return
+      let arrival: AreaArrival = { kind: 'warp', fromAreaId: obj.areaId }
+      if (obj.portalOwnerId !== undefined) {
+        const paired = [...this.objects.values()].find(
+          (other) =>
+            other.unitId !== obj.unitId && other.areaId === obj.destAreaId && other.portalOwnerId === obj.portalOwnerId,
+        )
+        arrival = paired ? { kind: 'townPortal', x: paired.x, y: paired.y } : { kind: 'townPortal' }
+      }
+      const wasTownMouth = TOWN_AREAS.has(obj.areaId)
+      const moved = this.transitionPlayerArea(player, obj.destAreaId, arrival)
+      if (moved && wasTownMouth) this.closeTownPortal(player)
+      return
+    }
+    if (obj.isWaypoint) {
+      this.openWaypointMenu(player, obj)
+      return
+    }
+    this.operateObject(player, obj)
   }
 
 
@@ -10068,6 +13339,9 @@ export class GameInstance {
       guaranteedHit: options.guaranteed === true,
       ...(options.hitMonsters === true ? { hitMonsters: true } : {}),
     }
+    if (meta !== undefined) {
+      this.attachOnlineMissileState113c(missile, meta, skillId, skillLevel, speed > 0 ? Math.ceil(dist / speed) : 0)
+    }
     this.missiles.set(missileUnitId, missile)
 
     this.broadcastToArea(monster.areaId, {
@@ -10124,6 +13398,7 @@ export class GameInstance {
       case 244: // Volcano
       case 249: // Armageddon
       case 251: // Fire Blast
+      case 259: // Fists of Fire (#1815: Skills.txt EType = fire)
       case 262: // Wake of Fire
       case 272: // Wake of Inferno
         return 'fire'
@@ -10142,8 +13417,8 @@ export class GameInstance {
       case 118: // Holy Shock
       case 121: // Fist of the Heavens
       case 256: // Shock Web
-      case 259: // Claws of Thunder
       case 261: // Charged Bolt Sentry
+      case 269: // Claws of Thunder
       case 271: // Lightning Sentry
         return 'ltng'
       // Cold damage skills
@@ -10324,6 +13599,7 @@ export class GameInstance {
       readonly autoHit?: boolean | undefined
       readonly unblockable?: boolean | undefined
       readonly elemDurationFrames?: number | undefined
+      readonly toHitBonusPct?: number | undefined
     },
   ): boolean {
     let attacker: InternalPlayerRecord | undefined
@@ -10465,9 +13741,39 @@ export class GameInstance {
       attackerStats.setBaseStat('maxhp', petAttacker.statList.getAccruedStat('maxhp'))
       attackerStats.setHp256(petAttacker.statList.getHp256())
     } else if (effectiveSource === 'merc' && mercAttacker !== undefined) {
+      const mercHireStats = resolveHirelingStatsAtLevel(
+        mercAttacker.subType,
+        mercAttacker.act,
+        mercAttacker.difficulty,
+        mercAttacker.level,
+        true,
+      )
+      const mercStr =
+        (mercHireStats?.str ?? 50 + mercAttacker.level * 2) +
+        this.sumMercItemStat(mercAttacker, 0)
+      const mercDex =
+        (mercHireStats?.dex ?? 40 + mercAttacker.level * 2) +
+        this.sumMercItemStat(mercAttacker, 2)
+      const mercAr =
+        (mercAttacker.ar ?? mercHireStats?.ar ?? 100 + mercAttacker.level * 20) +
+        this.sumMercItemStat(mercAttacker, 19)
       attackerStats.setBaseStat('level', mercAttacker.level)
-      attackerStats.setBaseStat('tohit', mercAttacker.ar ?? 100 + mercAttacker.level * 20)
-      attackerStats.setBaseStat('armorclass', mercAttacker.defense ?? 0)
+      attackerStats.setBaseStat('strength', mercStr)
+      attackerStats.setBaseStat('dexterity', mercDex)
+      attackerStats.setBaseStat('tohit', mercAr)
+      attackerStats.setBaseStat('item_tohit_percent', this.sumMercItemStat(mercAttacker, 119))
+      attackerStats.setBaseStat(
+        'armorclass',
+        (mercAttacker.defense ?? 0) + this.sumMercItemStat(mercAttacker, 31),
+      )
+      attackerStats.setBaseStat('item_ignoretargetac', this.sumMercItemStat(mercAttacker, 115))
+      attackerStats.setBaseStat('item_fractionaltargetac', this.sumMercItemStat(mercAttacker, 116))
+      attackerStats.setBaseStat('item_demondamage_percent', this.sumMercItemStat(mercAttacker, 121))
+      attackerStats.setBaseStat('item_undeaddamage_percent', this.sumMercItemStat(mercAttacker, 122))
+      attackerStats.setBaseStat('item_demon_tohit', this.sumMercItemStat(mercAttacker, 123))
+      attackerStats.setBaseStat('item_undead_tohit', this.sumMercItemStat(mercAttacker, 124))
+      attackerStats.setBaseStat('item_deadlystrike', this.sumMercItemStat(mercAttacker, 141))
+      attackerStats.setBaseStat('lifedrainmindam', Math.max(0, this.sumMercItemStat(mercAttacker, 60)))
       attackerStats.setBaseStat('maxhp', mercAttacker.maxHp * FIXED_ONE)
       attackerStats.setHp256(mercAttacker.hp * FIXED_ONE)
     } else {
@@ -10605,9 +13911,10 @@ export class GameInstance {
     const hitAutoHit = hitContext?.autoHit ?? defaultHitClass.autoHit
     const hitUnblockable = hitContext?.unblockable ?? defaultHitClass.unblockable
     const skillToHitBonusPct =
-      petAttacker === undefined && effectiveSource === 'player'
+      hitContext?.toHitBonusPct ??
+      (petAttacker === undefined && effectiveSource === 'player'
         ? this.computePlayerSkillToHitBonusPct113c(attacker, skillId)
-        : 0
+        : 0)
 
     const channel = channelOverride ?? this.resolveSkillDamageChannel(skillId)
     const rawDmg = Math.max(1, Math.floor(damage))
@@ -10675,9 +13982,38 @@ export class GameInstance {
         return false
       }
       dealtDamage = Math.max(1, Math.floor(dmgOut.totalDamage256 / FIXED_ONE))
+      const isActBossTarget =
+        monster.isPrimeEvil ||
+        this.actBossQuestId(monster.defId, monster.hcIdx) !== undefined
+      if (effectiveSource === 'merc' && mercAttacker !== undefined) {
+        if (isActBossTarget) {
+          dealtDamage = scaleMercenaryBossDamage113c(dealtDamage, this.difficulty)
+        }
+        const rawMercHeal256 = dmgOut.attackerHealed256 ?? 0
+        const mercHeal256 = isActBossTarget
+          ? scaleMercenaryBossDamage113c(rawMercHeal256, this.difficulty)
+          : rawMercHeal256
+        if (mercHeal256 > 0 && mercAttacker.alive && mercAttacker.hp > 0 && mercAttacker.hp < mercAttacker.maxHp) {
+          mercAttacker.regenCarry256 = (mercAttacker.regenCarry256 ?? 0) + mercHeal256
+          if (mercAttacker.regenCarry256 >= FIXED_ONE) {
+            const healWhole = Math.floor(mercAttacker.regenCarry256 / FIXED_ONE)
+            mercAttacker.regenCarry256 -= healWhole * FIXED_ONE
+            const nextHp = Math.min(mercAttacker.maxHp, mercAttacker.hp + healWhole)
+            if (nextHp !== mercAttacker.hp) {
+              mercAttacker.hp = nextHp
+              this.broadcastAllyHp(mercAttacker.areaId, mercAttacker.unitId, mercAttacker.hp)
+            }
+          }
+        }
+      }
 
       // 1.13c Crushing Blow (statId 136 + per-level 247, D2Game.dll 0x6FCCCC30..0x6FCCCD93):
-      const cbChance = this.sumPlayerItemStat(attacker, 136)
+      const cbChance =
+        petAttacker !== undefined
+          ? petAttacker.statList.getAccruedStat('item_crushingblow')
+          : effectiveSource === 'merc' && mercAttacker !== undefined
+            ? this.sumMercItemStat(mercAttacker, 136)
+            : this.sumPlayerItemStat(attacker, 136)
       if (cbChance > 0 && (cbChance >= 100 || this.rng.rand(100) < cbChance)) {
         const cbOut = calculateCrushingBlow113c({
           defenderHp: monster.hp,
@@ -10690,6 +14026,16 @@ export class GameInstance {
           physResPct: defenderStats.getAccruedStat('damageresist'),
         })
         dealtDamage += cbOut.damage
+      }
+      if (
+        effectiveSource === 'merc' &&
+        mercAttacker !== undefined &&
+        (hitAttackKind === 'melee' || hitAttackKind === 'missile')
+      ) {
+        const owChance = this.sumMercItemStat(mercAttacker, 135)
+        if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
+          this.applyMonsterState(monster.unitId, 62, 200)
+        }
       }
     } else if (channel === 'pois') {
       if (!hitAutoHit) {
@@ -10725,7 +14071,12 @@ export class GameInstance {
       }
       const sk = this.registry?.getSkillById(skillId)
       const dur = sk && sk.eLen > 0 ? sk.eLen : 50
-      const rawBitrate256 = Math.max(1, Math.round((rawDmg * FIXED_ONE) / dur))
+      const effectivePoisDmg =
+        effectiveSource === 'merc' &&
+        (monster.isPrimeEvil || this.actBossQuestId(monster.defId, monster.hcIdx) !== undefined)
+          ? scaleMercenaryBossDamage113c(rawDmg, this.difficulty)
+          : rawDmg
+      const rawBitrate256 = Math.max(1, Math.round((effectivePoisDmg * FIXED_ONE) / dur))
       this.applyMonsterPoisonDot(
         attacker,
         monster,
@@ -10767,6 +14118,12 @@ export class GameInstance {
         return false
       }
       dealtDamage = Math.max(1, Math.floor(dmgOut.totalDamage256 / FIXED_ONE))
+      if (
+        effectiveSource === 'merc' &&
+        (monster.isPrimeEvil || this.actBossQuestId(monster.defId, monster.hcIdx) !== undefined)
+      ) {
+        dealtDamage = scaleMercenaryBossDamage113c(dealtDamage, this.difficulty)
+      }
     }
 
     const hitClass =
@@ -10789,6 +14146,7 @@ export class GameInstance {
       channel,
       hitClass,
       hitContext?.elemDurationFrames,
+      effectiveSource === 'merc',
     )
     return true
   }
@@ -11225,19 +14583,49 @@ export class GameInstance {
     this.onMonsterKilled(creditedPlayer, monster)
   }
 
+  /**
+   * 1.13c shield block check against physical death explosions (`MonUMod #9` Fire Enchanted & `#33` SuicideMinion, #1821):
+   * `ctb = clamp(floor(totalBlock * (dex - 15) / (clvl * 2)), 0, 75)`, divided by 3 while running.
+   */
+  private rollPlayerExplosionShieldBlock113c(player: InternalPlayerRecord): boolean {
+    let blockChance = this.sumPlayerItemStat(player, 20)
+    let hasEquippedShield = false
+    for (const item of player.items) {
+      if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
+      const armorBlock = resolveArmorBlock113c(item.code)
+      if (item.bodyLoc === 5 || (item.bodyLoc === 4 && armorBlock > 0)) {
+        hasEquippedShield = true
+      }
+      blockChance += armorBlock
+    }
+    if (!hasEquippedShield) return false
+    const playerCtx = this.playerCombatContext(player)
+    blockChance += Math.trunc(playerCtx.statList.getAccruedStat('toblock', true))
+    if (player.states.has(101) && !playerCtx.stateBus.hasState(101)) {
+      const hsLvl = Math.max(1, player.skills.get(117) ?? 1)
+      blockChance += computeDiminishingReturns(10, 40, hsLvl)
+    }
+    if (blockChance <= 0) return false
+    const dex = Math.max(0, player.dexterity + this.sumPlayerItemStat(player, 2))
+    const clvl = Math.max(1, player.level)
+    let ctb = Math.min(
+      75,
+      Math.max(0, Math.floor((blockChance * Math.max(0, dex - 15)) / (clvl * 2))),
+    )
+    const motionMoving = this.playerMotion.get(player.unitId)?.moving === true
+    const isRunning =
+      player.mode === 3 ||
+      (motionMoving && player.run && player.mode !== 2 && player.mode !== 6)
+    if (isRunning) {
+      ctb = Math.floor(ctb / 3)
+    }
+    return ctb > 0 && this.rng.rand(100) < ctb
+  }
+
   private resolvePendingDeathExplosion(monster: InternalMonsterRecord): void {
     const pending = monster.pendingDeathExplosion
     if (pending === undefined || this.currentFrame < pending.frame) return
     monster.pendingDeathExplosion = undefined
-    for (const p of this.players.values()) {
-      if (p.dead || p.areaId !== monster.areaId) continue
-      if (Math.hypot(p.x - monster.x, p.y - monster.y) > pending.radius) continue
-      this.applyPlayerElementalDamage(
-        p,
-        { phys: pending.phys, fire: pending.fire },
-        { killerType: 'monster', killerUnitId: monster.unitId },
-      )
-    }
     this.damageMercsAndPetsInRadius(
       monster.areaId,
       monster.x,
@@ -11254,6 +14642,17 @@ export class GameInstance {
       pending.fire,
       'fire',
     )
+    for (const p of this.players.values()) {
+      if (p.dead || p.areaId !== monster.areaId) continue
+      if (Math.hypot(p.x - monster.x, p.y - monster.y) > pending.radius) continue
+      const phys =
+        pending.phys > 0 && this.rollPlayerExplosionShieldBlock113c(p) ? 0 : pending.phys
+      this.applyPlayerElementalDamage(
+        p,
+        { phys, fire: pending.fire },
+        { killerType: 'monster', killerUnitId: monster.unitId },
+      )
+    }
   }
 
   /** MonUMod 26 Teleportation: blink away when badly hurt. */
@@ -12041,6 +15440,8 @@ export class GameInstance {
   ): void {
     pet.hp = 0
     pet.alive = false
+    this.petAuraScanners.delete(pet.uid)
+    this.petVisualStates.delete(petUnitId)
     for (const [ownerPlayerId, mgr] of this.summonManagers) {
       if (ownerIdOverride !== undefined && ownerPlayerId !== ownerIdOverride) continue
       if (ownerIdOverride === undefined && !mgr.getActivePets().some((p) => p === pet)) continue
@@ -12052,6 +15453,10 @@ export class GameInstance {
             : undefined
       if (removed || ownerIdOverride !== undefined) {
         this.petUnitIds.delete(pet.uid)
+        if (pet.sourceSkillId === 90) {
+          const ownerRec = this.players.get(ownerPlayerId)
+          if (ownerRec) ownerRec.ironGolemItem = null
+        }
         const petTypeIdx = PET_TYPE_IDX_BY_NAME_113C[pet.petType] ?? 1
         this.emitToPlayer(ownerPlayerId, {
           type: 'Merc',
@@ -12208,6 +15613,18 @@ export class GameInstance {
     })
   }
 
+  private resolveEffectiveMonsterAuraLevel(monster: InternalMonsterRecord): number {
+    if (monster.auraLevel !== undefined && monster.auraLevel > 0) {
+      return monster.auraLevel
+    }
+    const innate = resolveInnateMonsterAura113c(monster.hcIdx, this.difficulty, monster.skills)
+    if (innate !== undefined && innate.auraSkillId === monster.auraSkillId) {
+      return innate.auraLevel
+    }
+    const divisor = resolveMonsterAuraDivisor113c(monster.auraSkillId ?? 98)
+    return Math.max(1, Math.floor(Math.max(1, monster.level) / divisor))
+  }
+
   /** Might / Fanaticism aura damage bonus for a monster (party bonus for allies). */
   private monsterAuraDamageBonusPct(monster: InternalMonsterRecord): number {
     let bonusPct = 0
@@ -12220,14 +15637,14 @@ export class GameInstance {
       ) {
         continue
       }
-      const lvl = Math.max(1, auraMonster.level)
+      const auraSlvl = this.resolveEffectiveMonsterAuraLevel(auraMonster)
       const dx = auraMonster.x - monster.x
       const dy = auraMonster.y - monster.y
       if (auraMonster.auraSkillId === 98) {
-        const might = calculateMightStats(lvl)
+        const might = calculateMightStats(auraSlvl)
         if (isWithinAuraRange(dx, dy, might.radiusSubtiles)) bonusPct = Math.max(bonusPct, might.damagePercent)
       } else if (auraMonster.auraSkillId === 122) {
-        const fan = calculateFanaticismStats(lvl)
+        const fan = calculateFanaticismStats(auraSlvl)
         if (isWithinAuraRange(dx, dy, fan.radiusSubtiles)) {
           bonusPct = Math.max(
             bonusPct,
@@ -12239,7 +15656,7 @@ export class GameInstance {
     return bonusPct
   }
 
-  /** Aura Enchanted (`MonUMod` 30): apply the 1.13c aura to nearby units each tick. */
+  /** Innate Boss Aura (#1820) & Aura Enchanted (`MonUMod` 30, #1819): apply the 1.13c aura to nearby units each tick. */
   private applyMonsterAura(monster: InternalMonsterRecord): void {
     const auraId = monster.auraSkillId
     if (auraId === undefined || monster.dead) return
@@ -12254,18 +15671,16 @@ export class GameInstance {
         leaderStateId,
       )
     }
-    const lvl = Math.max(1, monster.level)
-    // 0x6FCC0C70: radius = the aura row's evaluated `aurarangecalc` (Holy Freeze `ln12` = 6 + (lvl-1),
-    // Conviction `ln12` = 20 + 0), hit when sub-tile `dx² + dy² <= r²`.
-    const radius = this.auraRangeSubtiles(auraId, lvl)
+    const auraSlvl = this.resolveEffectiveMonsterAuraLevel(monster)
+    // 0x6FCC0C70: radius = the aura row's evaluated `aurarangecalc` at effective `auraSlvl`
+    // (Holy Freeze `ln12` = 6 + (auraSlvl-1), Conviction `ln12` = 20 + 0), hit when sub-tile `dx² + dy² <= r²`.
+    const radius = this.auraRangeSubtiles(auraId, auraSlvl)
     const outOfRange = (x: number, y: number): boolean => !isWithinAuraRange(x - monster.x, y - monster.y, radius)
 
     if (auraId === 98 || auraId === 108 || auraId === 122) {
       // Might (#98, mlvl/6), Blessed Aim (#108, mlvl/5), Fanaticism (#122, mlvl/8):
       // 1.13c `MonUMod 30` (`0x6FD2E4A0`) friendly monster aura pulses onto nearby fellow monsters.
       if (this.currentFrame % 25 !== 0) return
-      const divisor = auraId === 98 ? 6 : auraId === 108 ? 5 : 8
-      const auraSlvl = Math.max(1, Math.floor(lvl / divisor))
       const auraSkill = this.registry.getSkillById(auraId)
       const tgtState = PALADIN_AURA_TARGET_STATE_BY_SKILL_ID[auraId]
       if (auraSkill === undefined || tgtState === undefined) return
@@ -12289,10 +15704,18 @@ export class GameInstance {
     }
 
     if (auraId === 114) {
-      // Holy Freeze: chill nearby players & mercenaries. `aurafilter = 0x4A283` carries `0x8000` (enemy only,
-      // 0x6FD00A60), so the monster's own allies are never chilled.
+      // Holy Freeze: chill nearby players & mercenaries (`aurafilter = 0x4A283` enemy-only)
+      // at `auraSlvl` (`mlvl/7` for Aura Enchanted, `4/7/10` for Duriel, `14` for Uber Duriel)
+      // and pulse cold damage every 50 frames (`Skills.txt` `perdelay = 50`).
       if (this.currentFrame % 25 !== 0) return
       const hfSkill = this.registry.getSkillById(114)
+      const shouldPulseDmg = this.currentFrame % 50 === 0
+      const hfPulse = shouldPulseDmg ? calculateHolyFreezeStats(auraSlvl) : undefined
+      const pulseDmg =
+        hfPulse !== undefined
+          ? hfPulse.pulseMin +
+            this.rng.rand(Math.max(1, hfPulse.pulseMax - hfPulse.pulseMin + 1))
+          : 0
       for (const p of this.players.values()) {
         if (p.dead || p.areaId !== monster.areaId) continue
         if (outOfRange(p.x, p.y)) continue
@@ -12302,15 +15725,22 @@ export class GameInstance {
             stateNameOrId: 44,
             sourceUnitId: `monster_${monster.unitId}`,
             sourceSkillId: 114,
-            slvl: lvl,
+            slvl: auraSlvl,
             durationFrames: 75,
             currentFrame: this.currentFrame,
-            stats: this.evaluateSkillStateStats(hfSkill, lvl, pCtx.statList),
+            stats: this.evaluateSkillStateStats(hfSkill, auraSlvl, pCtx.statList),
             isAuraOverride: true,
           })
         }
         this.applyUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, 11, 75)
         this.applyUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, 44, 75)
+        if (pulseDmg > 0) {
+          this.applyPlayerElementalDamage(
+            p,
+            { cold: pulseDmg },
+            { killerType: 'monster', killerUnitId: monster.unitId },
+          )
+        }
       }
       for (const merc of this.mercenaries.values()) {
         if (!merc.alive || merc.hp <= 0 || merc.areaId !== monster.areaId) continue
@@ -12321,22 +15751,33 @@ export class GameInstance {
             stateNameOrId: 44,
             sourceUnitId: `monster_${monster.unitId}`,
             sourceSkillId: 114,
-            slvl: lvl,
+            slvl: auraSlvl,
             durationFrames: 75,
             currentFrame: this.currentFrame,
-            stats: this.evaluateSkillStateStats(hfSkill, lvl, mCtx.statList),
+            stats: this.evaluateSkillStateStats(hfSkill, auraSlvl, mCtx.statList),
             isAuraOverride: true,
           })
         }
+        this.applyUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, 11, 75)
         this.applyUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, 44, 75)
+      }
+      if (pulseDmg > 0) {
+        this.damageMercsAndPetsInRadius(
+          monster.areaId,
+          monster.x,
+          monster.y,
+          radius,
+          pulseDmg,
+          'cold',
+        )
       }
       return
     }
     if (auraId === 123) {
-      // Conviction: state 28 on nearby players & mercenaries (resist pierce is applied by
-      // the persistent combat StateBus when the target's damage is resolved).
+      // Conviction: state 28 on nearby players & mercenaries at `auraSlvl` (`floor(mlvl/8)` for
+      // Aura Enchanted, or `slvl = 20` -> `-125%` resist / `-90%` def for Uber Mephisto #704).
       if (this.currentFrame % 25 !== 0) return
-      const convSlvl = Math.max(1, Math.floor(lvl / 8))
+      const convSlvl = auraSlvl
       const conv = calculateConvictionStats(convSlvl)
       const convStats = {
         fireresist: -conv.resistanceReductionPct,
@@ -12378,12 +15819,12 @@ export class GameInstance {
       return
     }
     if (auraId === 102 || auraId === 118) {
-      // Holy Fire / Holy Shock elemental pulse every 50 ticks (1.13c perdelay).
+      // Holy Fire (`mlvl/6`) / Holy Shock (`mlvl/8`) elemental pulse every 50 ticks (1.13c perdelay).
       if (this.currentFrame % 50 !== 0) return
       const pulse =
         auraId === 102
-          ? calculateHolyFireStats(lvl)
-          : calculateHolyShockStats(lvl)
+          ? calculateHolyFireStats(auraSlvl)
+          : calculateHolyShockStats(auraSlvl)
       const dmg =
         pulse.pulseMin +
         this.rng.rand(Math.max(1, pulse.pulseMax - pulse.pulseMin + 1))
@@ -12394,6 +15835,16 @@ export class GameInstance {
           p,
           auraId === 102 ? { fire: dmg } : { light: dmg },
           { killerType: 'monster', killerUnitId: monster.unitId },
+        )
+      }
+      if (dmg > 0) {
+        this.damageMercsAndPetsInRadius(
+          monster.areaId,
+          monster.x,
+          monster.y,
+          radius,
+          dmg,
+          auraId === 102 ? 'fire' : 'light',
         )
       }
     }
@@ -12654,6 +16105,14 @@ export class GameInstance {
             mode: 2,
           })
         }
+      } else if (actBossQuest === 'a3q6') {
+        // D2Game.dll 0x6FD0A950: Mephisto's death opens Hellgate (Objects.txt 342 -> Area 103).
+        for (const o of this.objects.values()) {
+          if (o.areaId === monster.areaId && o.classId === 342) {
+            o.destAreaId = o.destAreaId ?? 103
+            this.setObjectMode(o, 2)
+          }
+        }
       }
     }
 
@@ -12712,7 +16171,9 @@ export class GameInstance {
       }
       deaths.add(monster.superUniqueId)
       if (deaths.size >= ANCIENT_BARBARIANS_113C.length) {
-        // D2Game.dll 0x6FC7E660: upon killing all three Ancients, restore statues 474..476 to mode 2.
+        // D2Game.dll 0x6FC7E660 & ACT5Q5_GrantReward (0x6FC7BF70): upon killing all three Ancients,
+        // restore statues 474..476 to mode 2 and award a5q5 completion + XP to eligible players in area
+        // meeting the difficulty level requirement (20 / 40 / 60).
         for (const obj of this.objects.values()) {
           if (
             obj.areaId === monster.areaId &&
@@ -12721,8 +16182,16 @@ export class GameInstance {
             this.setObjectMode(obj, 2)
           }
         }
-        if (killer) {
-          this.setPlayerQuestFlag(killer, 'a5q5', QUEST_FLAG_COMPLETED_113C)
+        const requiredAncientsLevel = (this.difficulty + 1) * 20
+        for (const p of this.players.values()) {
+          if (p.dead) continue
+          if (p.areaId !== monster.areaId && p.unitId !== killer?.unitId) continue
+          if (p.level < requiredAncientsLevel) continue
+          this.setPlayerQuestFlag(
+            p,
+            'a5q5',
+            QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+          )
         }
       }
     }
@@ -12787,30 +16256,110 @@ export class GameInstance {
           ? 'nightmare'
           : 'normal'
 
-    // Suicide minions detonate on death for half their max life in a small radius.
-    if (isSuicideMinionMonster(monster.hcIdx, monster.defId)) {
-      const dmg = Math.max(1, Math.floor(monster.maxHp / 2))
-      for (const p of this.players.values()) {
-        if (p.dead || p.areaId !== monster.areaId) continue
-        if (Math.hypot(p.x - monster.x, p.y - monster.y) <= 3.5) {
-          this.applyPlayerElementalDamage(
-            p,
-            { phys: dmg },
-            { killerType: 'monster', killerUnitId: monster.unitId },
-          )
+    // 1.13c Boss Death Controller & Minion Purge (`D2Game.dll` `QUESTSFX_MainHandler` / `0x6FAD0FB0`, #1823):
+    // Emits controller missile (`brdeathcontrol` #284 for Blood Raven #267, etc.) and purges nearby cemetery/lair monsters.
+    const bossDeathSpec = getBossDeathFxSpec(monster.hcIdx, monster.defId)
+    if (
+      bossDeathSpec !== null &&
+      (!bossDeathSpec.requiresQuestCompleteUMod ||
+        monster.umodIds.includes(MON_UMOD.QUESTCOMPLETE))
+    ) {
+      if (bossDeathSpec.controllerClassId !== null) {
+        this.broadcastExplosionMissile(monster, bossDeathSpec.controllerClassId)
+      }
+      if (bossDeathSpec.minionPurge !== undefined) {
+        const purgeRadius = bossDeathSpec.minionPurge.radiusSubTiles
+        for (const surrounding of this.monsters.values()) {
+          if (
+            surrounding.dead ||
+            surrounding.isNpc ||
+            !surrounding.isKillable ||
+            surrounding.unitId === monster.unitId ||
+            surrounding.areaId !== monster.areaId ||
+            surrounding.isBoss ||
+            surrounding.isPrimeEvil ||
+            surrounding.superUniqueId !== undefined
+          ) {
+            continue
+          }
+          if (Math.hypot(surrounding.x - monster.x, surrounding.y - monster.y) <= purgeRadius) {
+            surrounding.hp = 0
+            surrounding.dead = true
+            surrounding.mode = 12
+            this.broadcastToArea(surrounding.areaId, {
+              type: 'UnitMode',
+              unitType: 1,
+              id: surrounding.unitId,
+              mode: 12,
+              at: { x: Math.round(surrounding.x), y: Math.round(surrounding.y) },
+              lifePct: 0,
+            })
+          }
         }
       }
-      this.damageMercsAndPetsInRadius(monster.areaId, monster.x, monster.y, 3.5, dmg)
     }
 
-    // F12.5: Fire Enchanted (MonUMod #9 `fire`) corpse explosion (non-minions only).
-    // Damage is 50% physical + 50% fire from MonUMod constants, resolved against
-    // player resistances and applied to mercenaries / summons in the same radius.
+    // 1.13c SuicideMinion (`hcIdx 461..468`) self-detonation (`D2Game.dll` `0x6FC45A18..0x6FC45BD0`, #1824):
+    // Destroys corpse (`shattered = true`), broadcasts `#426/#427/#428`, and deals physical + fire/cold explosion in 4 sub-tiles.
+    if (isSuicideMinionMonster(monster.hcIdx, monster.defId)) {
+      monster.shattered = true
+      const aip1Override = monster.aiParams.length > 0 ? monster.aiParams[0] : undefined
+      // Note: MonStats `suicideminion1..8` `aip1` in `MONSTATS_AIP1_FLAT_113C` selects fire(1)/ice(>=2)/corpse(0);
+      // only pass `aip1Override` when explicitly set to 0/1/2 (since runtime `aiParams[0]` can hold AI % params).
+      const smDmg = calcSuicideMinionExplosionDamage(
+        monster.minDmg,
+        monster.maxDmg,
+        monster.maxHp,
+        monster.hcIdx,
+        diffKey,
+        aip1Override !== undefined && aip1Override <= 3 ? aip1Override : undefined,
+        this.rng.rand(101) / 100,
+      )
+      this.broadcastExplosionMissile(monster, smDmg.missileClassId)
+      this.damageMercsAndPetsInRadius(
+        monster.areaId,
+        monster.x,
+        monster.y,
+        smDmg.radiusSubTiles,
+        smDmg.physDmg,
+        'phys',
+      )
+      this.damageMercsAndPetsInRadius(
+        monster.areaId,
+        monster.x,
+        monster.y,
+        smDmg.radiusSubTiles,
+        smDmg.elemDmg,
+        smDmg.elemType,
+      )
+      for (const p of this.players.values()) {
+        if (p.dead || p.areaId !== monster.areaId) continue
+        if (Math.hypot(p.x - monster.x, p.y - monster.y) <= smDmg.radiusSubTiles) {
+          const phys =
+            smDmg.physDmg > 0 && this.rollPlayerExplosionShieldBlock113c(p) ? 0 : smDmg.physDmg
+          this.applyPlayerElementalDamage(
+            p,
+            {
+              phys,
+              ...(smDmg.elemType === 'cold' ? { cold: smDmg.elemDmg } : { fire: smDmg.elemDmg }),
+            },
+            { killerType: 'monster', killerUnitId: monster.unitId },
+          )
+          if (smDmg.elemType === 'cold' && !p.dead) {
+            this.applyUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, 11, 100)
+          }
+        }
+      }
+    }
+
+    // F12.5: Fire Enchanted (MonUMod #9 `fire`) 1.13c corpse explosion (`D2Game.dll` `0x6FC466B0..0x6FC46862`, #1821).
+    // Uses unmultiplied base monster max HP (`unscaledMaxHp`), `[3/4, 1/3, 1/8]` difficulty ratios, `60%..100%` roll,
+    // 50% physical + 50% fire within 4 sub-tiles (minions excluded).
     const isFireEnchanted =
       monster.umodIds.includes(MON_UMOD.FIRE) && monster.rank !== 'minion'
     if (isFireEnchanted) {
       const feDmg = calcFireEnchantedDeathDamage(
-        monster.maxHp,
+        monster.unscaledMaxHp,
         diffKey,
         this.rng.rand(101) / 100,
       )
@@ -13099,7 +16648,10 @@ export class GameInstance {
         let absorbMagicPerLevel = 0
         for (const item of defender.equipment ?? []) {
           const armorBlock = resolveArmorBlock113c(item.code)
-          if (item.bodyLoc === 5 || (item.bodyLoc === 4 && armorBlock > 0)) hasShield = true
+          const isOffHandWeapon = item.bodyLoc === 5 && resolveWeaponBase113c(item.code) !== undefined
+          if ((item.bodyLoc === 5 && !isOffHandWeapon) || (item.bodyLoc === 4 && armorBlock > 0)) {
+            hasShield = true
+          }
           defense += item.stats.get(31) ?? 0
           blockChance += armorBlock + (item.stats.get(20) ?? 0)
           normalDr += item.stats.get(34) ?? 0
@@ -13273,13 +16825,466 @@ export class GameInstance {
     return false
   }
 
+  /** #1790: the room's `MissileEngine` (srvdo / srvhit dispatch tables), bound to `registry`. */
+  private onlineMissileEngine(): OnlineMissileEngine {
+    if (this.onlineMissileEngineInstance?.registry !== this.registry) {
+      this.onlineMissileEngineInstance = new OnlineMissileEngine(this.registry)
+    }
+    return this.onlineMissileEngineInstance
+  }
+
+  /** Room key of a hostile unit in the online missile bridge. */
+  private onlineUnitKey113c(kind: 'monster' | 'player' | 'merc', unitId: number): string {
+    return `${kind === 'monster' ? 'm' : kind === 'player' ? 'p' : 'c'}:${unitId}`
+  }
+
+  /** Sub-tile missile blocker of `area` for child placement (`COLLISION_CheckMask` missile barrier). */
+  private onlineMissileBlocker113c(areaId: number): ((x: number, y: number) => boolean) | undefined {
+    const check = this.terrainWalkableCheck
+    if (check === undefined) return undefined
+    return (x, y) => !check(areaId, Math.round(x), Math.round(y), true)
+  }
+
+  /** Hostiles of `missile`'s owner that srvdo / srvhit functions may search. */
+  private onlineMissileTargets113c(missile: InternalMissileRecord): OnlineMissileTarget113c[] {
+    const out: OnlineMissileTarget113c[] = []
+    if (missile.ownerType === 'player') {
+      for (const m of this.monsters.values()) {
+        if (m.dead || m.isNpc || m.submerged || !m.isKillable || m.areaId !== missile.areaId) continue
+        if (this.isMonsterConverted(m)) continue
+        out.push({ key: this.onlineUnitKey113c('monster', m.unitId), x: m.x, y: m.y })
+      }
+      return out
+    }
+    for (const p of this.players.values()) {
+      if (p.dead || !this.isAreaSeamAdjacent(missile.areaId, p.areaId)) continue
+      out.push({ key: this.onlineUnitKey113c('player', p.unitId), x: p.x, y: p.y })
+    }
+    for (const c of this.mercenaries.values()) {
+      if (!c.alive || !this.isAreaSeamAdjacent(missile.areaId, c.areaId)) continue
+      out.push({ key: this.onlineUnitKey113c('merc', c.unitId), x: c.x, y: c.y })
+    }
+    return out
+  }
+
+  /** Attach the `MissileEngine` srvdo / srvhit state to a room missile created from `row`. */
+  private attachOnlineMissileState113c(
+    missile: InternalMissileRecord,
+    row: MissileRecord,
+    sourceSkillId: number,
+    slvl: number,
+    groundLegFrames: number,
+    extra?: {
+      readonly lockedTargetKey?: string | undefined
+      readonly chainRemaining?: number | undefined
+      readonly targetOffsetX?: number | undefined
+      readonly targetOffsetY?: number | undefined
+    },
+  ): void {
+    const engine = this.onlineMissileEngine()
+    missile.online = engine.createOnlineMissileState113c({
+      row,
+      sourceSkillId,
+      slvl,
+      x: missile.x,
+      y: missile.y,
+      vx: missile.vx,
+      vy: missile.vy,
+      remainingFrames: missile.remainingFrames,
+      groundLegFrames,
+      lockedTargetKey: extra?.lockedTargetKey,
+      chainRemaining: extra?.chainRemaining,
+      targetOffsetX: extra?.targetOffsetX,
+      targetOffsetY: extra?.targetOffsetY,
+    })
+    // Hit functions that never consume the missile on unit contact: persistent patches (`SrvHit08`),
+    // ground fire (`SrvDo05` / `SrvDmg03`) and the Frozen Orb sphere (`SrvHit29` returns 2).
+    const hitKind = engine.classifyOnlineSrvHit113c(row)
+    if (missile.carrier === 'groundfire' || hitKind === 'persist' || hitKind === 'orbnova') {
+      missile.pierce = true
+    }
+  }
+
+  /**
+   * #1790: register a player skill missile. Damage missiles and every missile with a 1.13c server
+   * function (spawner / hit function / ground fire) get their `MissileEngine` state; zero-damage
+   * carriers without one (warcry / curse visuals) stay visual only.
+   */
+  private registerPlayerSkillMissile113c(
+    cast: PlayerSkillCast,
+    row: MissileRecord,
+    missile: InternalMissileRecord,
+    damage: number,
+    tx: number,
+    ty: number,
+    speed: number,
+    opts: PlayerSkillMissileLaunchOptions113c | undefined,
+  ): void {
+    const engine = this.onlineMissileEngine()
+    const doKind = engine.classifyOnlineSrvDo113c(row)
+    const hitKind = engine.classifyOnlineSrvHit113c(row)
+    const isGroundFire = doKind === 'groundfire' || row.pSrvDmgFunc === 3
+    const functional =
+      doKind === 'pathspawner' ||
+      doKind === 'areaspawner' ||
+      doKind === 'orb' ||
+      (hitKind !== 'none' && hitKind !== 'engine-only' && hitKind !== 'homing')
+    if (damage <= 0 && !functional && !isGroundFire) return
+    if (opts?.groundFire256 !== undefined) missile.groundFire256 = opts.groundFire256
+    if (isGroundFire) {
+      missile.carrier = 'groundfire'
+      missile.groundFire256 ??= this.resolveOnlineGroundFire256113c(row, cast.slvl, {
+        min: cast.evalResult.minElemDmg256,
+        max: cast.evalResult.maxElemDmg256,
+      })
+      missile.groundFireCarry = new Map()
+    } else if (damage <= 0) {
+      missile.carrier = 'none'
+    }
+    const legDist = Math.hypot(tx - missile.x, ty - missile.y)
+    this.attachOnlineMissileState113c(
+      missile,
+      row,
+      cast.skill.id,
+      cast.slvl,
+      speed > 0 ? Math.ceil(legDist / speed) : 0,
+      {
+        lockedTargetKey:
+          opts?.lockedMonsterId !== undefined ? this.onlineUnitKey113c('monster', opts.lockedMonsterId) : undefined,
+      },
+    )
+    this.missiles.set(missile.unitId, missile)
+  }
+
+  /** Per-frame 1/256 burning damage of a ground fire row: its own leveled `EMin..EMax`, else `inherited`. */
+  private resolveOnlineGroundFire256113c(
+    row: MissileRecord,
+    slvl: number,
+    inherited: { readonly min: number; readonly max: number } | undefined,
+  ): { readonly min: number; readonly max: number } | undefined {
+    const own = this.onlineMissileEngine().evaluateOnlineRowElem256113c(row, slvl)
+    if (own !== undefined) return { min: own.min256, max: own.max256 }
+    if (inherited !== undefined && inherited.max > 0) return inherited
+    return undefined
+  }
+
+  /**
+   * SrvDo024 Fire Wall (`0x6FC637D0`): two makers from the target point toward
+   * `(Xt - dY, Yt + dX)` / `(Xt + dY, Yt - dX)` (`dX, dY` = caster - target) and a centre pillar.
+   */
+  private launchFireWall113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    makerRow: MissileRecord,
+    tx: number,
+    ty: number,
+  ): void {
+    const pillarName = cast.skill.srvMissileB.trim()
+    const pillarRow = pillarName !== '' ? this.registry.getMissileByName(pillarName) : undefined
+    if (pillarName !== '' && pillarRow === undefined) {
+      throw new Error(`Skills.txt '${cast.skill.name}' srvmissileb '${pillarName}' has no Missiles.txt row`)
+    }
+    const groundFire256 = { min: cast.evalResult.minElemDmg256, max: cast.evalResult.maxElemDmg256 }
+    const dX = player.x - tx
+    const dY = player.y - ty
+    const opts: PlayerSkillMissileLaunchOptions113c = { fromX: tx, fromY: ty, groundFire256 }
+    this.launchPlayerSkillMissile(player, cast, makerRow, tx - dY, ty + dX, 0, opts)
+    this.launchPlayerSkillMissile(player, cast, makerRow, tx + dY, ty - dX, 0, opts)
+    if (pillarRow !== undefined) {
+      this.launchPlayerSkillMissile(player, cast, pillarRow, tx, ty, 0, opts)
+    }
+  }
+
+  /** Path-mode motion; `true` when `MissileEngine` placed the missile (linear step skipped). */
+  private advanceOnlineMissile113c(missile: InternalMissileRecord): boolean {
+    const online = missile.online
+    if (online === undefined) return false
+    online.vx = missile.vx
+    online.vy = missile.vy
+    const moved = this.onlineMissileEngine().advanceOnlineMissile113c(online)
+    if (moved === false) return false
+    missile.x = online.x
+    missile.y = online.y
+    if (moved === 'end') missile.remainingFrames = Math.min(missile.remainingFrames, 1)
+    return true
+  }
+
+  /** Per-frame `pSrvDoFunc`; returns `true` when the function terminates the missile. */
+  private stepOnlineMissileSrvDo113c(missile: InternalMissileRecord): boolean {
+    const online = missile.online
+    if (online === undefined) return false
+    const engine = this.onlineMissileEngine()
+    online.ageFrames += 1
+    online.remainingFrames = missile.remainingFrames
+    online.x = missile.x
+    online.y = missile.y
+    online.vx = missile.vx
+    online.vy = missile.vy
+    const kind = engine.classifyOnlineSrvDo113c(online.row)
+    const targets = kind === 'homing' ? this.onlineMissileTargets113c(missile) : []
+    const res = engine.stepOnlineMissileSrvDo113c(online, targets, this.onlineMissileBlocker113c(missile.areaId))
+    missile.vx = online.vx
+    missile.vy = online.vy
+    for (const spawn of res.spawns) this.pendingOnlineMissileChildren.push({ parent: missile, spawn })
+    return res.terminate
+  }
+
+  /** Makers / area spawners whose row has no hit function never collide with units. */
+  private isOnlinePassThroughMissile113c(missile: InternalMissileRecord): boolean {
+    const online = missile.online
+    if (online === undefined) return false
+    const engine = this.onlineMissileEngine()
+    const doKind = engine.classifyOnlineSrvDo113c(online.row)
+    return (
+      (doKind === 'pathspawner' || doKind === 'areaspawner') && engine.classifyOnlineSrvHit113c(online.row) === 'none'
+    )
+  }
+
+  /**
+   * Unit-contact `pSrvHitFunc` of a player missile (before its damage): queues children, applies the
+   * radial splash and adapts the missile's continuation (`'expire'` consumes it, `'pierce'` keeps it).
+   */
+  private dispatchOnlineMissileUnitHit113c(
+    missile: InternalMissileRecord,
+    monsterUnitId: number,
+    x: number,
+    y: number,
+  ): 'passthrough' | 'hit' {
+    const online = missile.online
+    if (online === undefined) return 'hit'
+    const engine = this.onlineMissileEngine()
+    const hitKey = this.onlineUnitKey113c('monster', monsterUnitId)
+    const res = engine.resolveOnlineMissileSrvHit113c(
+      online,
+      'unit',
+      x,
+      y,
+      hitKey,
+      this.onlineMissileTargets113c(missile),
+      this.onlineMissileBlocker113c(missile.areaId),
+    )
+    if (res.outcome === 'passthrough') return 'passthrough'
+    for (const spawn of res.spawns) this.pendingOnlineMissileChildren.push({ parent: missile, spawn })
+    if (res.splash !== undefined) this.applyOnlineMissileSplash113c(missile, x, y, res.splash)
+    if (res.outcome === 'expire') missile.pierce = false
+    else if (res.outcome === 'pierce') missile.pierce = true
+    return 'hit'
+  }
+
+  /** Expiry / wall `pSrvHitFunc` (Frozen Orb nova, Meteor impact, AlwaysExplode rows). */
+  private finishOnlineMissile113c(missile: InternalMissileRecord, trigger: 'wall' | 'expire'): void {
+    const online = missile.online
+    if (online === undefined) return
+    const engine = this.onlineMissileEngine()
+    const res = engine.resolveOnlineMissileSrvHit113c(
+      online,
+      trigger,
+      missile.x,
+      missile.y,
+      undefined,
+      this.onlineMissileTargets113c(missile),
+      this.onlineMissileBlocker113c(missile.areaId),
+    )
+    for (const spawn of res.spawns) this.pendingOnlineMissileChildren.push({ parent: missile, spawn })
+    if (res.splash !== undefined) this.applyOnlineMissileSplash113c(missile, missile.x, missile.y, res.splash)
+  }
+
+  /**
+   * Radial splash (`sub_6FC5D450`): the missile's packet on every hostile within `radiusSubtiles` of
+   * the impact except the directly struck unit. Player missiles hit monsters, monster missiles hit
+   * players.
+   */
+  private applyOnlineMissileSplash113c(
+    missile: InternalMissileRecord,
+    x: number,
+    y: number,
+    splash: OnlineMissileSplash113c,
+  ): void {
+    if (missile.carrier === 'none' || missile.carrier === 'groundfire' || missile.damage <= 0) return
+    if (missile.ownerType === 'player') {
+      const owner = this.players.get(missile.ownerId)
+      if (owner === undefined) return
+      for (const m of [...this.monsters.values()]) {
+        if (m.dead || m.isNpc || m.submerged || m.areaId !== missile.areaId || this.isMonsterConverted(m)) continue
+        if (splash.excludeKey === this.onlineUnitKey113c('monster', m.unitId)) continue
+        if (Math.hypot(m.x - x, m.y - y) > splash.radiusSubtiles) continue
+        this.applyDamageToMonster(owner, m, missile.damage, missile.skillId, undefined, 'player', {
+          attackKind: 'spell',
+          autoHit: true,
+          unblockable: true,
+          elemDurationFrames: missile.elemDurationFrames,
+        })
+      }
+      return
+    }
+    const ownerMon = this.monsters.get(missile.ownerId)
+    if (ownerMon === undefined || this.isMonsterConverted(ownerMon)) return
+    for (const player of this.players.values()) {
+      if (player.dead || !this.isAreaSeamAdjacent(missile.areaId, player.areaId)) continue
+      if (splash.excludeKey === this.onlineUnitKey113c('player', player.unitId)) continue
+      if (Math.hypot(player.x - x, player.y - y) > splash.radiusSubtiles) continue
+      this.resolveMonsterAttackOnPlayer(ownerMon, player, {
+        minDmg: missile.physDamage,
+        maxDmg: missile.physDamage,
+        skillMode: 'A1',
+        attackKind: 'missile',
+        skillId: missile.skillId,
+        missileId: missile.missileId,
+        ...(missile.element !== 'phys'
+          ? {
+              elementType: missile.element,
+              elemMin: missile.elemDamage,
+              elemMax: missile.elemDamage,
+              elemDurationFrames: missile.elemDurationFrames,
+            }
+          : {}),
+        fromMissile: true,
+        autoHit: true,
+      })
+    }
+  }
+
+  /**
+   * One frame of a player ground fire patch on `monster` (`SrvDmg03` `0x6FC59670`): a per-frame
+   * 1/256 roll accumulated per unit, re-armed every frame instead of once per patch.
+   */
+  private applyOnlineGroundFireTick113c(
+    owner: InternalPlayerRecord,
+    monster: InternalMonsterRecord,
+    missile: InternalMissileRecord,
+  ): void {
+    const range = missile.groundFire256
+    missile.hitCooldowns.set(monster.unitId, this.currentFrame + 1)
+    if (range === undefined || range.max <= 0) return
+    const carryMap = (missile.groundFireCarry ??= new Map())
+    const roll = this.rollInclusive(range.min, range.max)
+    const carry = (carryMap.get(monster.unitId) ?? 0) + roll
+    const whole = Math.floor(carry / FIXED_ONE)
+    carryMap.set(monster.unitId, carry - whole * FIXED_ONE)
+    if (whole <= 0) return
+    this.applyDamageToMonster(owner, monster, whole, missile.skillId, 'fire', 'player', {
+      attackKind: 'spell',
+      autoHit: true,
+      unblockable: true,
+    })
+  }
+
+  /** Create the child missiles queued by srvdo / srvhit functions this frame (after the sweep). */
+  private flushOnlineMissileChildren113c(): void {
+    if (this.pendingOnlineMissileChildren.length === 0) return
+    const queued = this.pendingOnlineMissileChildren.splice(0)
+    for (const { parent, spawn } of queued) this.spawnOnlineChildMissile113c(parent, spawn)
+  }
+
+  /** Create one child missile of `parent` (`MISSILE_CreateMissile` from a srvdo / srvhit function). */
+  private spawnOnlineChildMissile113c(parent: InternalMissileRecord, spawn: OnlineMissileSpawn113c): void {
+    const row = this.registry.getMissileByName(spawn.missileName)
+    if (row === undefined) {
+      throw new Error(`Missiles.txt row '${spawn.missileName}' (child of missile ${parent.missileId}) not found`)
+    }
+    const slvl = Math.max(1, parent.online?.slvl ?? 1)
+    const sourceSkillId = parent.online?.sourceSkillId ?? parent.skillId
+    const rawVel = row.vel + Math.trunc((row.velLev * slvl) / 8)
+    const speed = row.vel <= 0 ? 0 : rawVel > 0 ? rawVel / 16 : PLAYER_MISSILE_SPEED_SUBTILES
+    const dx = spawn.targetX - spawn.x
+    const dy = spawn.targetY - spawn.y
+    const dist = Math.hypot(dx, dy)
+    const lifetime = Math.max(1, spawn.lifetimeFrames ?? row.range + row.levRange * slvl)
+    const unitId = this.allocateUnitId()
+    const child: InternalMissileRecord = {
+      unitId,
+      missileId: row.id,
+      skillId: parent.skillId,
+      ownerType: parent.ownerType,
+      ownerId: parent.ownerId,
+      areaId: parent.areaId,
+      x: spawn.x,
+      y: spawn.y,
+      vx: dist > 1e-9 ? (dx / dist) * speed : 0,
+      vy: dist > 1e-9 ? (dy / dist) * speed : 0,
+      damage: parent.damage,
+      remainingFrames: lifetime,
+      collideType: row.collideType,
+      size: Math.max(1, row.size),
+      pierce: row.pierce,
+      nextHit: row.nextHit,
+      nextDelay: Math.max(0, row.nextDelay),
+      element: normalizeMissileElement(row.eType) ?? parent.element,
+      physDamage: parent.physDamage,
+      elemDamage: parent.elemDamage,
+      elemDurationFrames: parent.elemDurationFrames,
+      ...(parent.poisonBitrate256 !== undefined ? { poisonBitrate256: parent.poisonBitrate256 } : {}),
+      hitCooldowns: new Map(),
+      guaranteedHit: !row.toHit,
+      ...(parent.hitMonsters === true ? { hitMonsters: true } : {}),
+    }
+    if (spawn.damage === 'none' || (spawn.damage === 'inherit' && parent.carrier === 'none')) {
+      child.carrier = 'none'
+    } else if (spawn.damage === 'groundfire') {
+      const fire256 = this.resolveOnlineGroundFire256113c(row, slvl, parent.groundFire256)
+      child.element = 'fire'
+      if (parent.ownerType === 'player') {
+        child.carrier = 'groundfire'
+        child.groundFire256 = fire256
+        child.groundFireCarry = new Map()
+      } else {
+        // Monster ground fire keeps the once-per-unit monster missile hit: one second of burning.
+        const perSecond = fire256 !== undefined ? Math.floor(((fire256.min + fire256.max) / 2) * 25 / FIXED_ONE) : 0
+        child.physDamage = 0
+        child.elemDamage = Math.max(1, perSecond)
+        child.damage = child.elemDamage
+      }
+    } else if (parent.carrier === 'groundfire') {
+      child.carrier = 'groundfire'
+      child.groundFire256 = parent.groundFire256
+      child.groundFireCarry = new Map()
+    }
+    if (spawn.excludeKey !== undefined) {
+      const sep = spawn.excludeKey.indexOf(':')
+      const excludedId = Number(spawn.excludeKey.slice(sep + 1))
+      if (Number.isFinite(excludedId)) child.hitCooldowns.set(excludedId, Number.MAX_SAFE_INTEGER)
+    }
+    this.attachOnlineMissileState113c(child, row, sourceSkillId, slvl, speed > 0 ? Math.ceil(dist / speed) : 0, {
+      chainRemaining: spawn.chainRemaining,
+      targetOffsetX: spawn.targetOffsetX,
+      targetOffsetY: spawn.targetOffsetY,
+    })
+    this.missiles.set(unitId, child)
+    this.broadcastToArea(parent.areaId, {
+      type: 'CreateMissile',
+      missileId: unitId,
+      missileClassId: row.id,
+      at: { x: Math.round(spawn.x), y: Math.round(spawn.y) },
+      target: { x: Math.round(spawn.targetX), y: Math.round(spawn.targetY) },
+      x: Math.round(spawn.x),
+      y: Math.round(spawn.y),
+      targetX: Math.round(spawn.targetX),
+      targetY: Math.round(spawn.targetY),
+      skillId: parent.skillId,
+      level: slvl,
+      ownerType: parent.ownerType === 'player' ? 0 : 1,
+      ownerUnitType: parent.ownerType,
+      ownerId: parent.ownerId,
+      ...(parent.ownerType === 'monster' ? { sourceUnitId: parent.ownerId } : {}),
+      areaId: parent.areaId,
+    } as ServerEvent)
+  }
+
   private stepMissiles(): void {
     for (const [mId, missile] of this.missiles.entries()) {
       const prevX = missile.x
       const prevY = missile.y
-      missile.x += missile.vx
-      missile.y += missile.vy
+      // #1790: path-mode trajectories (Blessed Hammer spiral) are advanced by `MissileEngine`.
+      if (!this.advanceOnlineMissile113c(missile)) {
+        missile.x += missile.vx
+        missile.y += missile.vy
+      }
       missile.remainingFrames--
+      // #1790: per-frame `pSrvDoFunc` (homing, Frozen Orb spiral, makers, Blizzard shards, nova curl).
+      if (this.stepOnlineMissileSrvDo113c(missile)) {
+        this.missiles.delete(mId)
+        continue
+      }
 
       const collideEntry = getMissileCollideEntry113c(missile.collideType)
 
@@ -13292,6 +17297,7 @@ export class GameInstance {
         collideEntry.terrainMask !== 0 &&
         this.missileSegmentBlocked(missile, prevX, prevY)
       ) {
+        this.finishOnlineMissile113c(missile, 'wall')
         this.missiles.delete(mId)
         continue
       }
@@ -13299,6 +17305,15 @@ export class GameInstance {
       // CollideType 0, 4, 6 (callbackVa === 0) and 7 (CanDestroy missile sweeper) never collide with units
       if (collideEntry.callbackVa === 0 || collideEntry.collideType === 7) {
         if (missile.remainingFrames <= 0) {
+          this.finishOnlineMissile113c(missile, 'expire')
+          this.missiles.delete(mId)
+        }
+        continue
+      }
+      // #1790: makers / area spawners without a hit function (Fire Wall makers) pass through units.
+      if (this.isOnlinePassThroughMissile113c(missile)) {
+        if (missile.remainingFrames <= 0) {
+          this.finishOnlineMissile113c(missile, 'expire')
           this.missiles.delete(mId)
         }
         continue
@@ -13309,7 +17324,39 @@ export class GameInstance {
         const until = missile.hitCooldowns.get(unitId)
         return until === undefined || this.currentFrame >= until
       }
+      // 1.13c `D2Game.dll` `MISSILE_HurtTarget` (`0x6FD13DC0..0x6FD13E85`, #1792):
+      // Unit-global `STATE_JUSTHIT` (state 86) blocks ANY incoming `NextHit === 1` missile across all
+      // volley instances and casters without consuming/expiring non-piercing volley arrows, while
+      // `NextHit === 0` missiles (`fireball`, `arrow`, `blizzard`, `blessedhammer`) ignore and never set it!
+      const isUnitInJustHit = (
+        unitType: 'player' | 'monster' | 'merc' | 'pet',
+        unitId: number,
+        states?: ReadonlySet<number>,
+      ): boolean => {
+        if (!missile.nextHit) return false
+        if (states?.has(86)) return true
+        const until = this.unitJustHitUntilFrame.get(`${unitType}:${unitId}`)
+        return until !== undefined && this.currentFrame < until
+      }
+      const armUnitJustHit = (
+        unitType: 'player' | 'monster' | 'merc' | 'pet',
+        unitId: number,
+        areaId: number,
+        states?: Set<number>,
+        timers?: Map<number, number>,
+      ): void => {
+        if (!missile.nextHit || missile.nextDelay <= 0) return
+        this.unitJustHitUntilFrame.set(`${unitType}:${unitId}`, this.currentFrame + missile.nextDelay)
+        if (states !== undefined && timers !== undefined && (unitType === 'player' || unitType === 'monster')) {
+          this.applyUnitState(states, timers, unitType, unitId, areaId, 86, missile.nextDelay)
+        }
+      }
       const markHit = (unitId: number): void => {
+        // #1790: ground fire (`SrvDmg03`) burns every unit standing in it on every frame.
+        if (missile.carrier === 'groundfire') {
+          missile.hitCooldowns.set(unitId, this.currentFrame + 1)
+          return
+        }
         if (missile.pierce || (missile.vx === 0 && missile.vy === 0)) {
           missile.hitCooldowns.set(
             unitId,
@@ -13340,6 +17387,7 @@ export class GameInstance {
           for (const player of this.players.values()) {
             if (player.dead || !this.isAreaSeamAdjacent(missile.areaId, player.areaId)) continue
             if (!hitsTargetFootprint(player.x, player.y, 2)) continue
+            if (isUnitInJustHit('player', player.unitId, player.states)) continue
             if (!canHit(player.unitId)) continue
             this.resolveMonsterAttackOnPlayer(ownerMon, player, {
               minDmg: missile.physDamage,
@@ -13376,6 +17424,7 @@ export class GameInstance {
                 chillFrames,
               )
             }
+            armUnitJustHit('player', player.unitId, player.areaId, player.states, player.stateTimers)
             markHit(player.unitId)
             hit = true
             if (!missile.pierce) break
@@ -13386,6 +17435,7 @@ export class GameInstance {
               const mercOwner = this.players.get(merc.ownerPlayerId)
               if (mercOwner !== undefined && (mercOwner.dead || !this.isAreaSeamAdjacent(missile.areaId, mercOwner.areaId))) continue
               if (!hitsTargetFootprint(merc.x, merc.y, 2)) continue
+              if (isUnitInJustHit('merc', merc.unitId, merc.states)) continue
               if (!canHit(merc.unitId)) continue
               const prevHp = merc.hp
               const nextHp = this.applyMonsterMissileToDefender(ownerMon, missile, {
@@ -13402,6 +17452,7 @@ export class GameInstance {
               if (nextHp < prevHp) {
                 this.applyDamageToMerc(merc, prevHp - nextHp, merc.areaId)
               }
+              armUnitJustHit('merc', merc.unitId, merc.areaId)
               markHit(merc.unitId)
               hit = true
               if (!missile.pierce) break
@@ -13423,7 +17474,9 @@ export class GameInstance {
                   Math.min(3, (petHcIdx >= 0 ? getMonsterPathRecord(petHcIdx)?.sizeX : undefined) ?? 2),
                 )
                 if (!hitsTargetFootprint(pet.x, pet.y, petSize)) continue
-                if (!canHit(stableUnitKey(pet.uid))) continue
+                const petKey = stableUnitKey(pet.uid)
+                if (isUnitInJustHit('pet', petKey)) continue
+                if (!canHit(petKey)) continue
                 const prevHp = pet.hp
                 const nextHp = this.applyMonsterMissileToDefender(ownerMon, missile, {
                   id: pet.uid,
@@ -13441,7 +17494,8 @@ export class GameInstance {
                   pet.hp = prevHp
                   this.applyDamageToSummon(ownerId, pet, prevHp - nextHp, petAreaId)
                 }
-                markHit(stableUnitKey(pet.uid))
+                armUnitJustHit('pet', petKey, petAreaId)
+                markHit(petKey)
                 hit = true
                 petHit = true
                 if (!missile.pierce) break
@@ -13467,6 +17521,7 @@ export class GameInstance {
             }
             const targetSize = Math.max(1, Math.min(3, getMonsterPathRecord(target.hcIdx)?.sizeX ?? 2))
             if (!hitsTargetFootprint(target.x, target.y, targetSize)) continue
+            if (isUnitInJustHit('monster', target.unitId, target.states)) continue
             if (!canHit(target.unitId)) continue
             const defenderStats = new UnitStatList(this.registry, undefined, {
               ownerType: 'monster',
@@ -13564,6 +17619,9 @@ export class GameInstance {
                     : 0,
               })
             }
+            if (!target.dead) {
+              armUnitJustHit('monster', target.unitId, target.areaId, target.states, target.stateTimers)
+            }
             markHit(target.unitId)
             hit = true
             if (!missile.pierce) break
@@ -13582,16 +17640,26 @@ export class GameInstance {
             ) {
               continue
             }
+            if (isUnitInJustHit('monster', monster.unitId, monster.states)) continue
             if (!canHit(monster.unitId)) continue
             const monsterSize = Math.max(1, Math.min(3, getMonsterPathRecord(monster.hcIdx)?.sizeX ?? 2))
             if (hitsTargetFootprint(monster.x, monster.y, monsterSize)) {
+              // #1790: `pSrvHitFunc` runs on contact even for zero-damage carriers; a guided arrow
+              // passes cleanly through units that are not its locked target.
+              if (this.dispatchOnlineMissileUnitHit113c(missile, monster.unitId, monster.x, monster.y) === 'passthrough') {
+                continue
+              }
               const missileHitCtx = {
                 attackKind: (missile.guaranteedHit ? 'spell' : 'missile') as 'spell' | 'missile',
                 autoHit: missile.guaranteedHit,
                 unblockable: missile.guaranteedHit,
                 elemDurationFrames: missile.elemDurationFrames,
               }
-              if (
+              if (missile.carrier === 'groundfire') {
+                this.applyOnlineGroundFireTick113c(owner, monster, missile)
+              } else if (missile.carrier === 'none') {
+                // Functional carrier: the hit function above is its whole effect (no minimum-1 damage).
+              } else if (
                 missile.element === 'pois' &&
                 missile.elemDurationFrames > 0 &&
                 (missile.poisonBitrate256 ?? 0) > 0
@@ -13627,6 +17695,9 @@ export class GameInstance {
                   missileHitCtx,
                 )
               }
+              if (!monster.dead) {
+                armUnitJustHit('monster', monster.unitId, monster.areaId, monster.states, monster.stateTimers)
+              }
               markHit(monster.unitId)
               hit = true
               if (!missile.pierce) break
@@ -13636,9 +17707,11 @@ export class GameInstance {
       }
 
       if ((hit && !missile.pierce) || missile.remainingFrames <= 0) {
+        if (!(hit && !missile.pierce)) this.finishOnlineMissile113c(missile, 'expire')
         this.missiles.delete(mId)
       }
     }
+    this.flushOnlineMissileChildren113c()
   }
 
   /** Pick the 1.13c melee mode (A1/A2/S1) and schedule damage on its action frame. */
@@ -14045,17 +18118,24 @@ export class GameInstance {
     let defense = Math.floor(totalDex / 4)
     for (const item of player.items) {
       if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
-      defense += item.rawItemData?.defense ?? 0
+      if (item.rawItemData?.defense !== undefined) {
+        defense += item.rawItemData.defense
+      } else {
+        const meta = resolveArmorCombatMeta113c(item.code)
+        if (meta !== undefined && meta.minAc > 0) {
+          defense += item.ethereal ? Math.floor((meta.minAc * 3) / 2) : meta.minAc
+        }
+      }
     }
     defense += this.sumPlayerItemStat(player, 31)
     return defense
   }
 
   /**
-   * 1.13c player armor class (`D2Common_10672` / `UNITS_GetDefense` @ `0x6FD82890`, #1634):
+   * 1.13c player armor class (`D2Common_10672` / `UNITS_GetDefense` @ `0x6FD82890`, #1634 / #1800):
    * - Includes `214 item_armor_perlevel` (`/ 8`), `215 item_armorpercent_perlevel` (`/ 8`),
    *   `16 item_armor_percent` (off-armor/set/aura), `171 skill_armor_percent` (Shout / Defiance / Iron Skin / Chilling Armor / Conviction),
-   *   Holy Shield (`state 101`), `182 armor_override_percent`, and Armor Shrine (`state 128`).
+   *   Holy Shield (`state 101`, `Skills.txt` #117 `calc1 = 25 + 15*(slvl-1) + 15*blvl('Defiance')`), `182 armor_override_percent`, and Armor Shrine (`state 128`).
    */
   private computePlayerDefense(player: InternalPlayerRecord): number {
     let defense = this.computePlayerBaseDefense(player)
@@ -14067,10 +18147,30 @@ export class GameInstance {
     if (overridePct !== 0) {
       defense += Math.trunc((defense * overridePct) / 100)
     }
-    const hsMod = combat.statList
-      .getActiveModifiers()
-      .find((m) => m.stateId === 101 || m.stateName === 'holyshield')
-    const hsPct = hsMod ? (hsMod.stats['item_skillonhit'] ?? hsMod.stats['item_skillongethit'] ?? 0) : 0
+    const hasEquippedGear = player.items.some(
+      (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
+    )
+    const canApplyHolyShield = !hasEquippedGear || this.hasPlayerEquippedShield(player)
+    const hsMod = canApplyHolyShield
+      ? combat.statList
+          .getActiveModifiers()
+          .find((m) => m.stateId === 101 || m.stateName === 'holyshield')
+      : undefined
+    let hsPct = 0
+    if (hsMod !== undefined || (canApplyHolyShield && player.states.has(101))) {
+      const hsLvl = Math.max(
+        1,
+        hsMod?.stats['modifierlist_level'] ?? hsMod?.slvl ?? this.resolvePlayerSkillLevelById(player, 117),
+      )
+      const defianceBlvl = Math.max(
+        0,
+        player.skills.get(104) ?? combat.statList.getBaseSkillLevel(104),
+      )
+      hsPct = Math.max(
+        0,
+        25 + 15 * (hsLvl - 1) + 15 * defianceBlvl - (hsMod?.stats['skill_armor_percent'] ?? 0),
+      )
+    }
     const defensePct =
       combat.statList.getModifierBonus('skill_armor_percent') +
       combat.statList.getModifierBonus('item_armor_percent') +
@@ -14119,14 +18219,27 @@ export class GameInstance {
     // 1.13c defense & mitigation from active worn items (excluding swap 11/12), sockets, charms, set bonuses, and per-level stats (#1629, #1634).
     let blockChance = this.sumPlayerItemStat(player, 20)
     let hasEquippedShield = false
+    let hasAnyEquippedGear = false
+    let rightHandWeaponType: string | undefined
+    let leftHandWeaponType: string | undefined
     for (const item of player.items) {
       if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
+      hasAnyEquippedGear = true
       const armorBlock = resolveArmorBlock113c(item.code)
-      if (item.bodyLoc === 5 || (item.bodyLoc === 4 && armorBlock > 0)) {
+      const isOffHandWeapon = item.bodyLoc === 5 && resolveWeaponBase113c(item.code) !== undefined
+      if ((item.bodyLoc === 5 && !isOffHandWeapon) || (item.bodyLoc === 4 && armorBlock > 0)) {
         hasEquippedShield = true
+      }
+      if (item.bodyLoc === 4) {
+        rightHandWeaponType = resolveWeaponBase113c(item.code)?.type
+      } else if (item.bodyLoc === 5) {
+        leftHandWeaponType = resolveWeaponBase113c(item.code)?.type
       }
       blockChance += armorBlock
     }
+    const isClawType = (t: string | undefined) => t === 'h2h' || t === 'h2h2'
+    const isDualClaw =
+      !hasEquippedShield && isClawType(rightHandWeaponType) && isClawType(leftHandWeaponType)
     const equippedDex = this.sumPlayerItemStat(player, 2)
     let normalDr = this.sumPlayerItemStat(player, 34)
     let magicDr = this.sumPlayerItemStat(player, 35)
@@ -14213,68 +18326,115 @@ export class GameInstance {
     for (const [skId, lvl] of player.skills.entries()) {
       defenderStats.setBaseSkillLevel(skId, lvl)
     }
+    // Wire `+skills` bonuses onto defensive passives (`#13 Dodge`, `#18 Avoid`, `#29 Evade`, `#263 Weapon Block`, #1796)
+    for (const passiveId of [13, 18, 29, 263]) {
+      const basePts = player.skills.get(passiveId) ?? 0
+      if (basePts > 0) {
+        const effLvl = this.resolvePlayerSkillLevelById(player, passiveId)
+        if (effLvl > basePts) {
+          defenderStats.setBonusSkillLevel(passiveId, effLvl - basePts)
+        }
+      }
+    }
 
     const defenderStateBus = new StateBus(defenderStats, this.registry)
-    if (player.states.has(10)) {
+    // Mirror persistent buffs / received auras first, then overlay live Bone Armor / Cyclone Armor
+    // remaining absorb pools so `StateBus.triggerReactiveEvents` uses the exact remaining pool (#1793).
+    this.mirrorPersistentStates(this.playerCombat.get(player.unitId), defenderStateBus)
+    if (player.states.has(10) && !defenderStateBus.hasState(10)) {
       defenderStateBus.applyState({
         stateNameOrId: 'frozenarmor',
         sourceSkillId: 40,
-        slvl: Math.max(1, player.skills.get(40) ?? 1),
+        slvl: Math.max(1, this.resolvePlayerSkillLevelById(player, 40)),
         durationFrames: player.stateTimers.get(10) ?? 300,
       })
     }
-    if (player.states.has(20)) {
+    if (player.states.has(20) && !defenderStateBus.hasState(20)) {
       defenderStateBus.applyState({
         stateNameOrId: 'chillingarmor',
         sourceSkillId: 60,
-        slvl: Math.max(1, player.skills.get(60) ?? 1),
+        slvl: Math.max(1, this.resolvePlayerSkillLevelById(player, 60)),
         durationFrames: player.stateTimers.get(20) ?? 300,
       })
     }
-    if (player.states.has(30)) {
+    if (player.states.has(30) && !defenderStateBus.hasState(30)) {
       defenderStateBus.applyState({
         stateNameOrId: 'energyshield',
         sourceSkillId: 58,
-        slvl: Math.max(1, player.skills.get(58) ?? 1),
+        slvl: Math.max(1, this.resolvePlayerSkillLevelById(player, 58)),
         durationFrames: player.stateTimers.get(30) ?? 300,
       })
     }
-    if (player.states.has(88)) {
+    if (player.states.has(88) && !defenderStateBus.hasState(88)) {
       defenderStateBus.applyState({
         stateNameOrId: 'shiverarmor',
         sourceSkillId: 50,
-        slvl: Math.max(1, player.skills.get(50) ?? 1),
+        slvl: Math.max(1, this.resolvePlayerSkillLevelById(player, 50)),
         durationFrames: player.stateTimers.get(88) ?? 300,
       })
     }
-    if (player.states.has(14)) {
+    let activeBaPool: { current: number; max: number } | undefined
+    const hadBoneArmor = player.states.has(14)
+    if (hadBoneArmor) {
+      const baLvl = Math.max(1, this.resolvePlayerSkillLevelById(player, 68))
+      const defaultBaMax =
+        20 + 10 * (baLvl - 1) + 15 * ((player.skills.get(78) ?? 0) + (player.skills.get(88) ?? 0))
+      activeBaPool = this.playerBoneArmorPool.get(player.unitId)
+      if (activeBaPool === undefined) {
+        activeBaPool = { current: defaultBaMax, max: defaultBaMax }
+        this.playerBoneArmorPool.set(player.unitId, activeBaPool)
+      }
       defenderStateBus.applyState({
         stateNameOrId: 'bonearmor',
         sourceSkillId: 68,
-        slvl: Math.max(1, player.skills.get(68) ?? 1),
+        slvl: baLvl,
         durationFrames: player.stateTimers.get(14) ?? 300,
+        stats: { bonearmor: activeBaPool.current, bonearmormax: activeBaPool.max },
       })
     }
-    if (player.states.has(151)) {
+    let activeCaPool: { current: number; max: number } | undefined
+    const hadCycloneArmor = player.states.has(151)
+    if (hadCycloneArmor) {
+      const caLvl = Math.max(1, this.resolvePlayerSkillLevelById(player, 235))
+      const defaultCaMax = Math.trunc(
+        ((40 + 12 * (caLvl - 1)) *
+          (100 +
+            7 *
+              ((player.skills.get(240) ?? 0) +
+                (player.skills.get(245) ?? 0) +
+                (player.skills.get(250) ?? 0)))) /
+          100,
+      )
+      activeCaPool = this.playerCycloneArmorPool.get(player.unitId)
+      if (activeCaPool === undefined) {
+        activeCaPool = { current: defaultCaMax, max: defaultCaMax }
+        this.playerCycloneArmorPool.set(player.unitId, activeCaPool)
+      }
       defenderStateBus.applyState({
         stateNameOrId: 'cyclonearmor',
         sourceSkillId: 235,
-        slvl: Math.max(1, player.skills.get(235) ?? 1),
+        slvl: caLvl,
         durationFrames: player.stateTimers.get(151) ?? 300,
+        stats: { bonearmor: activeCaPool.current, bonearmormax: activeCaPool.max },
       })
     }
-    // Skill buffs / received auras (armor %, resists, Holy Shield block, ...) on the persistent bus.
-    this.mirrorPersistentStates(this.playerCombat.get(player.unitId), defenderStateBus)
-    if (player.states.has(101) && !defenderStateBus.hasState(101)) {
-      const hsLvl = Math.max(1, player.skills.get(117) ?? 1)
-      // Holy Shield #117 aurastatcalc1 = dm56 (10, 40) → D2Common 0x6FD9DC30 (issue #1678).
+    if (hasAnyEquippedGear && !hasEquippedShield) {
+      defenderStateBus.removeState(101)
+      defenderStateBus.removeState('holyshield')
+    } else if (player.states.has(101) && !defenderStateBus.hasState(101)) {
+      const hsLvl = Math.max(1, this.resolvePlayerSkillLevelById(player, 117))
+      // Holy Shield #117 aurastatcalc1 = dm56 (10, 40) + modifierlist_skill/level (#1678, #1800).
       const hsBlock = computeDiminishingReturns(10, 40, hsLvl)
       defenderStateBus.applyState({
         stateNameOrId: 'holyshield',
         sourceSkillId: 117,
         slvl: hsLvl,
         durationFrames: player.stateTimers.get(101) ?? 300,
-        stats: { toblock: hsBlock },
+        stats: {
+          toblock: hsBlock,
+          modifierlist_skill: 117,
+          modifierlist_level: hsLvl,
+        },
       })
     }
 
@@ -14297,6 +18457,9 @@ export class GameInstance {
       x: player.x,
       y: player.y,
       hasShield: hasEquippedShield,
+      ...(rightHandWeaponType !== undefined ? { weaponItemType: rightHandWeaponType } : {}),
+      ...(leftHandWeaponType !== undefined ? { offHandWeaponItemType: leftHandWeaponType } : {}),
+      isDualClaw,
       isMoving: motionMoving || isWalking || isRunning,
       isWalking,
       isRunning,
@@ -14334,9 +18497,14 @@ export class GameInstance {
       swing?.fromMissile === true
         ? (swing.elemDurationFrames ?? 0)
         : (rider?.durationFrames ?? rider?.duration ?? 0)
+    // Pure elemental monster projectiles (`physMax <= 0 && elemMax > 0`) are spell missiles (#1796):
+    // Shield Block cannot block them (`unblockable: true`), whereas Assassin dual-claw `Weapon Block` (#263)
+    // and Amazon `Avoid` (#18) / `Evade` (#28) CAN!
+    const isPureElemMonsterMissile =
+      swing?.fromMissile === true && physMax <= 0 && elemMax > 0
     const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
       skillId: swing?.skillId ?? 0,
-      attackKind: swing?.attackKind ?? 'melee',
+      attackKind: isPureElemMonsterMissile ? 'spell' : (swing?.attackKind ?? 'melee'),
       srcDam: 0,
       flatPhysMin256: Math.floor(physMin * FIXED_ONE * (1 + auraDmgPct / 100)),
       flatPhysMax256: Math.floor(physMax * FIXED_ONE * (1 + auraDmgPct / 100)),
@@ -14348,7 +18516,8 @@ export class GameInstance {
             elemDurationFrames: elemDuration,
           }
         : {}),
-      ...(swing?.autoHit === true ? { autoHit: true } : {}),
+      ...(swing?.autoHit === true || isPureElemMonsterMissile ? { autoHit: true } : {}),
+      ...(isPureElemMonsterMissile ? { unblockable: true } : {}),
     }, this.rng)
 
     if (dmgOut.hit) {
@@ -14366,15 +18535,74 @@ export class GameInstance {
         })
       }
       if (player.states.has(30) && !defenderStateBus.hasState('energyshield')) {
-        player.states.delete(30)
-        player.stateTimers.delete(30)
-        this.broadcastToArea(player.areaId, {
-          type: 'UnitState',
-          unitType: 'player',
-          unitId: player.unitId,
-          state: 30,
-          active: false,
-        })
+        this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, 30)
+      }
+      // Sync Bone Armor (#68, state 14) & Cyclone Armor (#235, state 151) remaining absorb pools & shatter (#1793)
+      if (hadBoneArmor && activeBaPool !== undefined) {
+        const postBa = defenderStateBus.getState('bonearmor')
+        const newBaPts = postBa ? (postBa.stats['bonearmor'] ?? 0) : 0
+        if (newBaPts <= 0 || !defenderStateBus.hasState('bonearmor')) {
+          this.playerBoneArmorPool.delete(player.unitId)
+          this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, 14)
+        } else if (newBaPts !== activeBaPool.current) {
+          this.playerBoneArmorPool.set(player.unitId, { current: newBaPts, max: activeBaPool.max })
+          const persistent = this.playerCombat.get(player.unitId)
+          persistent?.stateBus.applyState({
+            stateNameOrId: 14,
+            sourceUnitId: `player_${player.unitId}`,
+            sourceSkillId: 68,
+            slvl: postBa?.slvl ?? Math.max(1, this.resolvePlayerSkillLevelById(player, 68)),
+            durationFrames: player.stateTimers.get(14) ?? 0,
+            currentFrame: this.currentFrame,
+            stats: {
+              bonearmor: newBaPts * FIXED_ONE,
+              bonearmormax: activeBaPool.max * FIXED_ONE,
+            },
+          })
+          this.broadcastToArea(player.areaId, {
+            type: 'StateSet',
+            unit: { unitType: 0, id: player.unitId },
+            state: 14,
+            complete: true,
+            stats: [
+              { statId: 132, param: 0, value: newBaPts * FIXED_ONE },
+              { statId: 133, param: 0, value: activeBaPool.max * FIXED_ONE },
+            ],
+          })
+        }
+      }
+      if (hadCycloneArmor && activeCaPool !== undefined) {
+        const postCa = defenderStateBus.getState('cyclonearmor')
+        const newCaPts = postCa ? (postCa.stats['bonearmor'] ?? 0) : 0
+        if (newCaPts <= 0 || !defenderStateBus.hasState('cyclonearmor')) {
+          this.playerCycloneArmorPool.delete(player.unitId)
+          this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, 151)
+        } else if (newCaPts !== activeCaPool.current) {
+          this.playerCycloneArmorPool.set(player.unitId, { current: newCaPts, max: activeCaPool.max })
+          const persistent = this.playerCombat.get(player.unitId)
+          persistent?.stateBus.applyState({
+            stateNameOrId: 151,
+            sourceUnitId: `player_${player.unitId}`,
+            sourceSkillId: 235,
+            slvl: postCa?.slvl ?? Math.max(1, this.resolvePlayerSkillLevelById(player, 235)),
+            durationFrames: player.stateTimers.get(151) ?? 0,
+            currentFrame: this.currentFrame,
+            stats: {
+              bonearmor: newCaPts * FIXED_ONE,
+              bonearmormax: activeCaPool.max * FIXED_ONE,
+            },
+          })
+          this.broadcastToArea(player.areaId, {
+            type: 'StateSet',
+            unit: { unitType: 0, id: player.unitId },
+            state: 151,
+            complete: true,
+            stats: [
+              { statId: 132, param: 0, value: newCaPts * FIXED_ONE },
+              { statId: 133, param: 0, value: activeCaPool.max * FIXED_ONE },
+            ],
+          })
+        }
       }
 
       // Sync reactive Cold Armor (Frozen Armor / Shiver Armor) states & damage onto attacking monster
@@ -14613,7 +18841,12 @@ export class GameInstance {
    * 25 ticks/s. Extra Fast (MonUMod 6) is +50%; chill/Decrepify/Holy Freeze halve it.
    */
   private monsterStepSpeed(monster: InternalMonsterRecord, running: boolean): number {
-    const yards = running ? monster.runSpeed : monster.velocity
+    const isSuicideSprint = running && monsterAiBehavior(monster.ai) === 'suicide'
+    const yards = isSuicideSprint
+      ? Math.max(14, monster.runSpeed * 1.5)
+      : running
+        ? monster.runSpeed
+        : monster.velocity
     const base = (Math.max(1, yards || 6) * 1.5) / 25
     return base * (this.monsterVelocityPercent(monster) / 100)
   }
@@ -14798,7 +19031,9 @@ export class GameInstance {
         key: `m:${String(other.unitId)}`,
         x: other.x,
         y: other.y,
-        radius: Math.max(0.5, 0.75 + (other.sizeX - 2) * 0.25),
+        radius: isBonePrisonMonsterHcIdx113c(other.hcIdx)
+          ? 1.3
+          : Math.max(0.5, 0.75 + (other.sizeX - 2) * 0.25),
       })
     }
     for (const p of this.players.values()) {
@@ -15052,6 +19287,131 @@ export class GameInstance {
   }
 
   /**
+   * Applies a 1.13c monster curse (`#66` Amp, `#72` Weaken, `#82` Life Tap, `#87` Decrepify, `#91` Lower Resist,
+   * `#309` Defense Curse, `#310` Blood Mana) to a player or mercenary, enforcing mutual curse exclusivity (#1822).
+   */
+  private applyMonsterCurseToTarget113c(
+    monster: InternalMonsterRecord,
+    target:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord },
+    skillId: number,
+    slvl: number,
+  ): void {
+    const safeSlvl = Math.max(1, Math.trunc(slvl))
+    let stateId = 9
+    let durationFrames = 200
+    let stats: Record<string, number> = {}
+    switch (skillId) {
+      case 66: // Amplify Damage -> state 9
+        stateId = 9
+        durationFrames = (8 + (safeSlvl - 1) * 3) * 25
+        stats = { damageresist: -100 }
+        break
+      case 72: // Weaken -> state 19
+        stateId = 19
+        durationFrames = Math.round((14 + (safeSlvl - 1) * 2.4) * 25)
+        stats = { damagepercent: -(33 + Math.floor(safeSlvl / 3)) }
+        break
+      case 82: // Life Tap -> state 58
+        stateId = 58
+        durationFrames = Math.round((16 + (safeSlvl - 1) * 2.4) * 25)
+        stats = {}
+        break
+      case 87: // Decrepify -> state 60
+        stateId = 60
+        durationFrames = Math.max(100, Math.round((4 + (safeSlvl - 1) * 0.6) * 25))
+        stats = {
+          damageresist: -50,
+          velocitypercent: -50,
+          attackrate: -50,
+          damagepercent: -50,
+        }
+        break
+      case 91: { // Lower Resist -> state 61
+        stateId = 61
+        durationFrames = (20 + (safeSlvl - 1) * 2) * 25
+        const pierce = Math.min(
+          70,
+          31 + Math.floor((39 * Math.floor((110 * safeSlvl) / (safeSlvl + 6))) / 100),
+        )
+        stats = {
+          fireresist: -pierce,
+          lightresist: -pierce,
+          coldresist: -pierce,
+          poisonresist: -pierce,
+        }
+        break
+      }
+      case 309: // Succubus Defense Curse -> state 113
+        stateId = 113
+        durationFrames = 200 + (safeSlvl - 1) * 75
+        stats = { skill_armor_percent: -(50 + (safeSlvl - 1) * 5) }
+        break
+      case 310: // Succubus Blood Mana -> state 114
+        stateId = 114
+        durationFrames = 200 + (safeSlvl - 1) * 75
+        stats = {}
+        break
+      default:
+        return
+    }
+    const exclusiveCurseStateIds = [9, 19, 55, 58, 60, 61, 113, 114] as const
+    if (target.kind === 'player') {
+      const p = target.player
+      const pCtx = this.playerCombatContext(p)
+      for (const prevId of exclusiveCurseStateIds) {
+        if (prevId !== stateId && p.states.has(prevId)) {
+          pCtx.stateBus.removeState(prevId)
+          this.clearUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, prevId)
+        }
+      }
+      pCtx.stateBus.applyState({
+        stateNameOrId: stateId,
+        sourceUnitId: `monster_${monster.unitId}`,
+        sourceSkillId: skillId,
+        slvl: safeSlvl,
+        durationFrames,
+        currentFrame: this.currentFrame,
+        stats,
+      })
+      this.applyUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, stateId, durationFrames)
+    } else {
+      const merc = target.merc
+      const mCtx = this.mercCombatContext(merc)
+      for (const prevId of exclusiveCurseStateIds) {
+        if (prevId !== stateId && merc.states.has(prevId)) {
+          mCtx.stateBus.removeState(prevId)
+          this.clearUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, prevId)
+        }
+      }
+      mCtx.stateBus.applyState({
+        stateNameOrId: stateId,
+        sourceUnitId: `monster_${monster.unitId}`,
+        sourceSkillId: skillId,
+        slvl: safeSlvl,
+        durationFrames,
+        currentFrame: this.currentFrame,
+        stats,
+      })
+      this.applyUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, stateId, durationFrames)
+    }
+    const targetRef =
+      target.kind === 'player'
+        ? { unitType: 0 as const, id: target.player.unitId, x: target.player.x, y: target.player.y }
+        : { unitType: 1 as const, id: target.merc.unitId, x: target.merc.x, y: target.merc.y }
+    this.broadcastToArea(monster.areaId, {
+      type: 'SkillCast',
+      caster: { unitType: 1, id: monster.unitId },
+      skill: skillId,
+      skillId,
+      level: safeSlvl,
+      target: { unitType: targetRef.unitType, id: targetRef.id },
+      at: { x: Math.round(targetRef.x), y: Math.round(targetRef.y) },
+    })
+  }
+
+  /**
    * Cast one of MonStats `Skill1..8` when it is ready and in range. Projectile
    * skills are evaluated through the same `evaluateSkill113c` registry as player
    * casts; their `srvmissile`/`srvmissilea` row and `Missiles.txt` EType decide
@@ -15077,6 +19437,95 @@ export class GameInstance {
     }
     const difficulty = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
     const ordered = [...monster.skills].sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
+
+    // 1.13c Succubus / SuccubusWitch (`#309 Defense Curse` when `maxMana < maxHp`, `#310 Blood Mana` when
+    // `maxMana >= maxHp`) & explicit `Skill1..8` monster curses (`#66`, `#72`, `#87`, #1822):
+    if (options?.hitMonsters !== true && distance <= 25) {
+      const hasSuccubusCurse = ordered.some((e) => e.skillId === 309 || e.skillId === 310)
+      const explicitCurseEntry = ordered.find(
+        (e) => e.skillId === 66 || e.skillId === 72 || e.skillId === 87,
+      )
+      if (hasSuccubusCurse || explicitCurseEntry !== undefined) {
+        let targetPlayer: InternalPlayerRecord | undefined
+        let bestPDist = 3
+        for (const p of this.players.values()) {
+          if (p.dead || p.areaId !== monster.areaId) continue
+          const d = Math.hypot(p.x - target.x, p.y - target.y)
+          if (d <= bestPDist) {
+            bestPDist = d
+            targetPlayer = p
+          }
+        }
+        if (hasSuccubusCurse && targetPlayer !== undefined) {
+          const wantBloodMana = targetPlayer.maxManaFixed >= targetPlayer.maxHpFixed
+          const desiredSkillId = wantBloodMana ? 310 : 309
+          const desiredStateId = wantBloodMana ? 114 : 113
+          const curseEntry =
+            ordered.find((e) => e.skillId === desiredSkillId) ??
+            ordered.find((e) => e.skillId === 309 || e.skillId === 310)
+          const castChance = Math.max(25, Math.min(100, monster.aiParams[1] || 50))
+          if (
+            curseEntry?.skillId !== undefined &&
+            !targetPlayer.states.has(desiredStateId) &&
+            this.rng.rand(100) < castChance
+          ) {
+            this.applyMonsterCurseToTarget113c(
+              monster,
+              { kind: 'player', player: targetPlayer },
+              curseEntry.skillId,
+              Math.max(1, curseEntry.level),
+            )
+            const curseMode = this.monsterSkillMode(curseEntry.mode)
+            monster.mode = curseMode
+            this.broadcastToArea(monster.areaId, {
+              type: 'UnitMode',
+              unitType: 1,
+              id: monster.unitId,
+              mode: curseMode,
+              at: { x: Math.round(targetPlayer.x), y: Math.round(targetPlayer.y) },
+              lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+            })
+            monster.skillCooldown = Math.max(40, monster.cooldownTicks * 2)
+            monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+            return true
+          }
+        } else if (explicitCurseEntry?.skillId !== undefined && targetPlayer !== undefined) {
+          const stateMap: Record<number, number> = { 66: 9, 72: 19, 87: 60 }
+          const wantState = stateMap[explicitCurseEntry.skillId] ?? 9
+          if (!targetPlayer.states.has(wantState) && this.rng.rand(100) < 40) {
+            this.applyMonsterCurseToTarget113c(
+              monster,
+              { kind: 'player', player: targetPlayer },
+              explicitCurseEntry.skillId,
+              Math.max(1, explicitCurseEntry.level),
+            )
+            const curseMode = this.monsterSkillMode(explicitCurseEntry.mode)
+            monster.mode = curseMode
+            this.broadcastToArea(monster.areaId, {
+              type: 'UnitMode',
+              unitType: 1,
+              id: monster.unitId,
+              mode: curseMode,
+              at: { x: Math.round(targetPlayer.x), y: Math.round(targetPlayer.y) },
+              lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+            })
+            monster.skillCooldown = Math.max(40, monster.cooldownTicks * 2)
+            monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+            return true
+          }
+        }
+      }
+    }
+    if (
+      this.tryCastMonsterCombatOrSummonSkill113c(
+        monster,
+        target,
+        distance,
+        options?.hitMonsters === true,
+      )
+    ) {
+      return true
+    }
     const candidates: {
       readonly entry: MonsterSkillEntry
       readonly skill: SkillRecord
@@ -15199,12 +19648,14 @@ export class GameInstance {
     // slot 1 and ZakarumHeal in slot 2), so evaluate them in a first pass.
     const healEntry = monster.skills.find((entry) => {
       if (entry.skillId === undefined) return false
+      if (entry.skillId === 179) return true
       const skill = this.registry.getSkillById(entry.skillId)
       return skill !== undefined && /heal/.test(skill.name.toLowerCase())
     })
     if (healEntry?.skillId !== undefined) {
       const healSkill = this.registry.getSkillById(healEntry.skillId)
-      if (healSkill !== undefined) {
+      const healDelay = healSkill?.delay ?? '25'
+      {
         const profile = monsterProfile113c(monster.ai)
         const healRange = Math.max(
           0,
@@ -15251,7 +19702,7 @@ export class GameInstance {
             statId: 6,
             value: healTarget.hp,
           })
-          this.setMonsterSkillCooldown(monster, healSkill.delay)
+          this.setMonsterSkillCooldown(monster, healDelay)
           return true
         }
       }
@@ -15260,9 +19711,8 @@ export class GameInstance {
       if (entry.skillId === undefined) continue
       if (entry.skillId === 181 || entry.skillId === 327 || entry.skillId === 158) continue
       const skill = this.registry.getSkillById(entry.skillId)
-      if (skill === undefined) continue
-      const name = skill.name.toLowerCase()
-      if (/heal/.test(name)) {
+      const name = skill?.name.toLowerCase() ?? ''
+      if (entry.skillId === 179 || /heal/.test(name)) {
         // HighPriest row 85 aip6 is the heal radius; pick the most wounded ally
         // (including self) inside it. GreaterMummy/FetishShaman rows fall back
         // to healing themselves.
@@ -15312,7 +19762,7 @@ export class GameInstance {
           statId: 6,
           value: healTarget.hp,
         })
-        this.setMonsterSkillCooldown(monster, skill.delay)
+        this.setMonsterSkillCooldown(monster, skill?.delay ?? '25')
         return true
       }
       if (entry.skillId === 290) {
@@ -15356,12 +19806,13 @@ export class GameInstance {
           at: { x: Math.round(nearestPlayer.x), y: Math.round(nearestPlayer.y) },
           lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
         })
-        this.setMonsterSkillCooldown(monster, skill.delay)
+        this.setMonsterSkillCooldown(monster, skill?.delay ?? '50')
         return true
       }
       if (entry.skillId === 295) {
-        // Overseer `Overseer Whip` (`D2Game.dll` `0x6fc2d9c0`, `srvdofunc=131`):
-        // whips a nearby minion / ally with `bloodlust` (state 140, 250 frames) using mode A2 (5).
+        // Overseer `Overseer Whip` (`D2Game.dll` `0x6fc2d9c0`, `srvdofunc=131`, `Param1=65`, #1824):
+        // 65% chance: buffs `minion` / ally with `bloodlust` (state 140, 250 frames).
+        // 35% chance on `minion1..8` (`hcIdx 453..460`): transforms in-place into `suicideminion1..8` (`461..468`)!
         let whipTarget: InternalMonsterRecord | undefined
         let bestWhipDist = 10
         for (const ally of this.monsters.values()) {
@@ -15382,6 +19833,25 @@ export class GameInstance {
         }
         if (whipTarget === undefined) continue
         this.applyMonsterState(whipTarget.unitId, 140, 250)
+        if (whipTarget.hcIdx >= 453 && whipTarget.hcIdx <= 460 && this.rng.rand(100) >= 65) {
+          const newHcIdx = whipTarget.hcIdx + 8
+          const newDefId = `suicideminion${String(newHcIdx - 460)}`
+          whipTarget.hcIdx = newHcIdx
+          whipTarget.classId = newHcIdx
+          whipTarget.defId = newDefId
+          whipTarget.ai = 'SuicideMinion'
+          whipTarget.aiDelay = Math.min(whipTarget.aiDelay, 5)
+          whipTarget.cooldownTicks = Math.min(whipTarget.cooldownTicks, 5)
+          whipTarget.velocity = Math.max(whipTarget.velocity, 10)
+          whipTarget.runSpeed = Math.max(whipTarget.runSpeed, 14)
+          whipTarget.minDmg = Math.max(whipTarget.minDmg * 3, 100)
+          whipTarget.maxDmg = Math.max(whipTarget.maxDmg * 3, 150)
+          if (!whipTarget.umodIds.includes(MON_UMOD.SUICIDEMINION)) {
+            whipTarget.umodIds = [...whipTarget.umodIds, MON_UMOD.SUICIDEMINION]
+          }
+          this.applyMonsterState(whipTarget.unitId, 142, 2500)
+          this.broadcastToArea(whipTarget.areaId, this.buildMonsterUnitAssignEvent(whipTarget))
+        }
         monster.mode = 5
         this.broadcastToArea(monster.areaId, {
           type: 'UnitMode',
@@ -15391,10 +19861,10 @@ export class GameInstance {
           at: { x: Math.round(whipTarget.x), y: Math.round(whipTarget.y) },
           lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
         })
-        this.setMonsterSkillCooldown(monster, skill.delay)
+        this.setMonsterSkillCooldown(monster, skill?.delay ?? '35')
         return true
       }
-      if (/teleport/.test(name)) {
+      if (entry.skillId === 54 || entry.skillId === 212 || /teleport/.test(name)) {
         const tx = monster.x + (target.x - monster.x) * 0.6
         const ty = monster.y + (target.y - monster.y) * 0.6
         if (
@@ -15428,10 +19898,10 @@ export class GameInstance {
           targetY: Math.round(ty),
           areaId: monster.areaId,
         })
-        this.setMonsterSkillCooldown(monster, skill.delay)
+        this.setMonsterSkillCooldown(monster, skill?.delay ?? '35')
         return true
       }
-      if (skill.summon !== '') {
+      if (skill !== undefined && skill.summon !== '') {
         const summonMode = this.monsterSkillMode(entry.mode)
         monster.mode = summonMode
         this.broadcastToArea(monster.areaId, {
@@ -15449,6 +19919,8 @@ export class GameInstance {
             y: target.y,
             areaId: monster.areaId,
             level: monster.level,
+            experience: 0,
+            bossUnitId: monster.unitId,
           })
         } catch {
           continue
@@ -15456,23 +19928,25 @@ export class GameInstance {
         this.setMonsterSkillCooldown(monster, skill.delay)
         return true
       }
-      const stateName = skill.auraState !== '' ? skill.auraState : skill.state1
-      if (stateName !== '') {
-        const state = this.registry.getStateByName(stateName)
-        if (state === undefined) continue
-        this.applyMonsterState(monster.unitId, state.id, 100)
-        const stateMode = this.monsterSkillMode(entry.mode)
-        monster.mode = stateMode
-        this.broadcastToArea(monster.areaId, {
-          type: 'UnitMode',
-          unitType: 1,
-          id: monster.unitId,
-          mode: stateMode,
-          at: { x: Math.round(monster.x), y: Math.round(monster.y) },
-          lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
-        })
-        this.setMonsterSkillCooldown(monster, skill.delay)
-        return true
+      if (skill !== undefined) {
+        const stateName = skill.auraState !== '' ? skill.auraState : skill.state1
+        if (stateName !== '') {
+          const state = this.registry.getStateByName(stateName)
+          if (state === undefined) continue
+          this.applyMonsterState(monster.unitId, state.id, 100)
+          const stateMode = this.monsterSkillMode(entry.mode)
+          monster.mode = stateMode
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: monster.unitId,
+            mode: stateMode,
+            at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+            lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+          })
+          this.setMonsterSkillCooldown(monster, skill.delay)
+          return true
+        }
       }
       if (distance > 20) continue
     }
@@ -15510,6 +19984,2089 @@ export class GameInstance {
       default:
         return 8
     }
+  }
+
+  /** Despawn a temporary monster summon (`baalclone`, `baaltentacle`, `boneprison`, `hydra`) with zero XP/drops/quest side-effects. */
+  private despawnTemporaryMonsterUnit113c(
+    monster: InternalMonsterRecord,
+    deathMissileId?: number,
+  ): void {
+    if (deathMissileId !== undefined) {
+      this.broadcastExplosionMissile(monster, deathMissileId)
+    }
+    this.monsters.delete(monster.unitId)
+    this.monsterCombat.delete(monster.unitId)
+    this.broadcastToArea(monster.areaId, {
+      type: 'UnitRemove',
+      unitType: 'monster',
+      id: monster.unitId,
+      unitId: monster.unitId,
+      areaId: monster.areaId,
+    })
+  }
+
+  /** Immediately despawn `#570 baalclone` & `#562..566 baaltentacle1..5` when real `#544 baalcrab` / `#709 uberbaal` dies (#1826). */
+  private despawnBaalMinionsOnBossDeath113c(baal: InternalMonsterRecord): void {
+    for (const other of [...this.monsters.values()]) {
+      if (
+        other.bossUnitId === baal.unitId &&
+        (other.hcIdx === 570 || isBaalTentacleHcIdx113c(other.hcIdx))
+      ) {
+        this.despawnTemporaryMonsterUnit113c(other, other.hcIdx === 570 ? 614 : undefined)
+      }
+    }
+    baal.activeBaalCloneUnitId = 0
+  }
+
+  private emitBossSkillCast113c(
+    monster: InternalMonsterRecord,
+    skillId: number,
+    slvl: number,
+    mode: number,
+    targetX: number,
+    targetY: number,
+    targetRef?: { readonly unitType: 0 | 1; readonly id: number },
+  ): void {
+    monster.mode = mode
+    const mx = Math.round(monster.x)
+    const my = Math.round(monster.y)
+    const tx = Math.round(targetX)
+    const ty = Math.round(targetY)
+    this.broadcastToArea(monster.areaId, {
+      type: 'UnitMode',
+      unitType: 1,
+      id: monster.unitId,
+      mode,
+      at: { x: tx, y: ty },
+      lifePct: monster.maxHp > 0 ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128)) : 0,
+    })
+    this.broadcastToArea(monster.areaId, {
+      type: 'SkillCast',
+      caster: { unitType: 1, id: monster.unitId },
+      skill: skillId,
+      skillId,
+      level: Math.max(1, slvl),
+      target: targetRef ?? { x: tx, y: ty },
+      at: { x: tx, y: ty },
+      from: { x: mx, y: my },
+    } as ServerEvent)
+  }
+
+  /** Emit a 1.13c monster/boss projectile with explicit origin, velocity, range, pierce, and `nextDelay` (works with or without MPQ registry). */
+  private emitBossProjectile113c(
+    monster: InternalMonsterRecord,
+    spec: {
+      readonly missileId: number
+      readonly skillId: number
+      readonly slvl: number
+      readonly originX: number
+      readonly originY: number
+      readonly targetX: number
+      readonly targetY: number
+      readonly speedSubTilesPerFrame: number
+      readonly rangeFrames: number
+      readonly size?: number | undefined
+      readonly collideType?: number | undefined
+      readonly pierce?: boolean | undefined
+      readonly nextHit?: boolean | undefined
+      readonly nextDelay?: number | undefined
+      readonly element: MissileDamageChannel
+      readonly physDamage: number
+      readonly elemDamage: number
+      readonly elemDurationFrames?: number | undefined
+      readonly guaranteedHit?: boolean | undefined
+      readonly hitMonsters?: boolean | undefined
+    },
+  ): number {
+    const rec = this.registry.getMissileById(spec.missileId)
+    const dx = spec.targetX - spec.originX
+    const dy = spec.targetY - spec.originY
+    const dist = Math.max(0.25, Math.hypot(dx, dy))
+    const speed =
+      rec !== undefined && rec.vel > 0
+        ? (rec.vel + Math.trunc((rec.velLev * spec.slvl) / 8)) / 16
+        : spec.speedSubTilesPerFrame
+    const rangeFrames =
+      rec !== undefined && rec.range > 0
+        ? Math.max(2, rec.range + rec.levRange * spec.slvl)
+        : Math.max(2, spec.rangeFrames)
+    const physDamage = Math.max(0, Math.floor(spec.physDamage))
+    const elemDamage = Math.max(0, Math.floor(spec.elemDamage))
+    const totalDamage = Math.max(1, physDamage + elemDamage)
+    const missileUnitId = this.allocateUnitId()
+    const missile: InternalMissileRecord = {
+      unitId: missileUnitId,
+      missileId: spec.missileId,
+      skillId: spec.skillId,
+      ownerType: 'monster',
+      ownerId: monster.unitId,
+      areaId: monster.areaId,
+      x: spec.originX,
+      y: spec.originY,
+      vx: speed > 0 ? (dx / dist) * speed : 0,
+      vy: speed > 0 ? (dy / dist) * speed : 0,
+      damage: totalDamage,
+      remainingFrames: rangeFrames,
+      collideType: rec?.collideType ?? spec.collideType ?? 3,
+      size: Math.max(1, rec?.size ?? spec.size ?? 2),
+      pierce: rec?.pierce === true || spec.pierce === true,
+      nextHit: rec?.nextHit === true || spec.nextHit === true,
+      nextDelay: Math.max(0, rec?.nextDelay ?? spec.nextDelay ?? 0),
+      element: spec.element,
+      physDamage,
+      elemDamage,
+      elemDurationFrames: Math.max(0, spec.elemDurationFrames ?? 0),
+      hitCooldowns: new Map(),
+      guaranteedHit: spec.guaranteedHit === true,
+      ...(spec.hitMonsters === true ? { hitMonsters: true } : {}),
+    }
+    this.missiles.set(missileUnitId, missile)
+    this.broadcastToArea(monster.areaId, {
+      type: 'CreateMissile',
+      missileId: missileUnitId,
+      missileClassId: spec.missileId,
+      at: { x: Math.round(spec.originX), y: Math.round(spec.originY) },
+      target: { x: Math.round(spec.targetX), y: Math.round(spec.targetY) },
+      x: Math.round(spec.originX),
+      y: Math.round(spec.originY),
+      targetX: Math.round(spec.targetX),
+      targetY: Math.round(spec.targetY),
+      skillId: spec.skillId,
+      level: Math.max(1, spec.slvl),
+      ownerType: 1,
+      ownerUnitType: 'monster',
+      ownerId: monster.unitId,
+      sourceUnitId: monster.unitId,
+      areaId: monster.areaId,
+    } as ServerEvent)
+    return missileUnitId
+  }
+
+  /** Push a player away from `(fromX, fromY)` up to `maxSteps` walkable sub-tiles (1.13c Smite / Charge / Hoarfrost knockback). */
+  private knockbackPlayerFromBoss113c(
+    player: InternalPlayerRecord,
+    fromX: number,
+    fromY: number,
+    maxSteps = 3,
+  ): boolean {
+    if (player.dead) return false
+    const dx = player.x - fromX
+    const dy = player.y - fromY
+    const d = Math.hypot(dx, dy)
+    const dirX = d > 0.01 ? dx / d : 1
+    const dirY = d > 0.01 ? dy / d : 0
+    let endX = player.x
+    let endY = player.y
+    for (let step = 1; step <= maxSteps; step++) {
+      const cx = player.x + dirX * step
+      const cy = player.y + dirY * step
+      if (!this.isWorldWalkableForPlayer(player.areaId, Math.round(cx), Math.round(cy))) {
+        break
+      }
+      endX = cx
+      endY = cy
+    }
+    if (Math.hypot(endX - player.x, endY - player.y) < 0.25) return false
+    player.x = endX
+    player.y = endY
+    player.targetX = endX
+    player.targetY = endY
+    this.broadcastToArea(player.areaId, {
+      type: 'UnitReassign',
+      unitType: 0,
+      id: player.unitId,
+      unitId: player.unitId,
+      at: { x: Math.round(endX), y: Math.round(endY) },
+      x: Math.round(endX),
+      y: Math.round(endY),
+      snap: true,
+    })
+    return true
+  }
+
+  /** Apply direct boss/monster combat skill damage + optional chill, stun, and knockback to a hostile player, merc, or pet. */
+  private dealMonsterDirectHitToHostile113c(
+    monster: InternalMonsterRecord,
+    target:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+      | { readonly kind: 'pet'; readonly pet: SummonedPetUnit },
+    parts: {
+      readonly phys?: number | undefined
+      readonly fire?: number | undefined
+      readonly cold?: number | undefined
+      readonly light?: number | undefined
+      readonly magic?: number | undefined
+    },
+    effects?: {
+      readonly chillFrames?: number | undefined
+      readonly stunFrames?: number | undefined
+      readonly knockbackSteps?: number | undefined
+      readonly knockbackOriginX?: number | undefined
+      readonly knockbackOriginY?: number | undefined
+    },
+  ): void {
+    if (target.kind === 'player') {
+      const p = target.player
+      if (p.dead) return
+      const elemTotal =
+        (parts.phys ?? 0) + (parts.fire ?? 0) + (parts.cold ?? 0) + (parts.light ?? 0)
+      if (elemTotal > 0) {
+        this.applyPlayerElementalDamage(
+          p,
+          {
+            phys: parts.phys,
+            fire: parts.fire,
+            cold: parts.cold,
+            light: parts.light,
+          },
+          { killerType: 'monster', killerUnitId: monster.unitId },
+        )
+      }
+      if ((parts.magic ?? 0) > 0 && !p.dead) {
+        this.applyDamageToPlayer(p, Math.max(1, Math.round(parts.magic!)), {
+          killerType: 'monster',
+          killerUnitId: monster.unitId,
+        })
+      }
+      if (!p.dead) {
+        if ((effects?.chillFrames ?? 0) > 0) {
+          this.applyUnitState(
+            p.states,
+            p.stateTimers,
+            'player',
+            p.unitId,
+            p.areaId,
+            11,
+            effects!.chillFrames!,
+          )
+        }
+        if ((effects?.stunFrames ?? 0) > 0) {
+          this.applyUnitState(
+            p.states,
+            p.stateTimers,
+            'player',
+            p.unitId,
+            p.areaId,
+            21,
+            effects!.stunFrames!,
+          )
+        }
+        if ((effects?.knockbackSteps ?? 0) > 0) {
+          this.knockbackPlayerFromBoss113c(
+            p,
+            effects?.knockbackOriginX ?? monster.x,
+            effects?.knockbackOriginY ?? monster.y,
+            effects!.knockbackSteps!,
+          )
+        }
+      }
+      return
+    }
+    const rawTotal = Math.max(
+      1,
+      Math.round(
+        (parts.phys ?? 0) +
+          (parts.fire ?? 0) +
+          (parts.cold ?? 0) +
+          (parts.light ?? 0) +
+          (parts.magic ?? 0),
+      ),
+    )
+    if (target.kind === 'merc') {
+      const merc = target.merc
+      if (!merc.alive) return
+      merc.hp = Math.max(0, merc.hp - rawTotal)
+      if (merc.hp <= 0) merc.alive = false
+      this.broadcastAllyHp(monster.areaId, merc.unitId, merc.hp)
+      return
+    }
+    const pet = target.pet
+    if (pet.alive === false || pet.hp <= 0) return
+    pet.hp = Math.max(0, pet.hp - rawTotal)
+    if (pet.hp <= 0) pet.alive = false
+    const petWireId = this.petUnitIds.get(pet.uid)
+    if (petWireId !== undefined) {
+      this.broadcastAllyHp(monster.areaId, petWireId, pet.hp)
+    }
+  }
+
+  /** Enumerate all living hostile units (players, mercs, pets) in `monster.areaId`. */
+  private listHostilesInMonsterArea113c(
+    monster: InternalMonsterRecord,
+  ): (
+    | { readonly kind: 'player'; readonly key: number; readonly x: number; readonly y: number; readonly player: InternalPlayerRecord }
+    | { readonly kind: 'merc'; readonly key: number; readonly x: number; readonly y: number; readonly merc: InternalMercenaryRecord }
+    | { readonly kind: 'pet'; readonly key: number; readonly x: number; readonly y: number; readonly pet: SummonedPetUnit }
+  )[] {
+    const out: (
+      | { readonly kind: 'player'; readonly key: number; readonly x: number; readonly y: number; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly key: number; readonly x: number; readonly y: number; readonly merc: InternalMercenaryRecord }
+      | { readonly kind: 'pet'; readonly key: number; readonly x: number; readonly y: number; readonly pet: SummonedPetUnit }
+    )[] = []
+    for (const p of this.players.values()) {
+      if (!p.dead && p.areaId === monster.areaId) {
+        out.push({ kind: 'player', key: p.unitId, x: p.x, y: p.y, player: p })
+      }
+    }
+    for (const merc of this.mercenaries.values()) {
+      if (!merc.alive || merc.areaId !== monster.areaId) continue
+      const owner = this.players.get(merc.ownerPlayerId)
+      if (owner && !owner.dead && owner.areaId === monster.areaId) {
+        out.push({ kind: 'merc', key: 100000 + merc.unitId, x: merc.x, y: merc.y, merc })
+      }
+    }
+    for (const [ownerId, mgr] of this.summonManagers) {
+      const owner = this.players.get(ownerId)
+      if (!owner || owner.dead || owner.areaId !== monster.areaId) continue
+      for (const pet of mgr.getActivePets()) {
+        if (pet.alive !== false && pet.hp > 0) {
+          out.push({
+            kind: 'pet',
+            key: 200000 + (this.petUnitIds.get(pet.uid) ?? 0),
+            x: pet.x,
+            y: pet.y,
+            pet,
+          })
+        }
+      }
+    }
+    return out
+  }
+
+  /**
+   * Per-tick boss channel, Hoarfrost V-wedge, Armageddon meteor, and summon lifespan stepper (#1825, #1826, #1827).
+   * Returns `true` when the monster despawned or is locked in an active multi-frame boss channel.
+   */
+  private stepBossChannelsAndSummonLifespans113c(monster: InternalMonsterRecord): boolean {
+    if (monster.despawnAtFrame > 0 && this.currentFrame >= monster.despawnAtFrame) {
+      this.despawnTemporaryMonsterUnit113c(monster, monster.hcIdx === 570 ? 614 : undefined)
+      return true
+    }
+    if (
+      (monster.hcIdx === 570 || isBaalTentacleHcIdx113c(monster.hcIdx)) &&
+      monster.bossUnitId !== undefined
+    ) {
+      const parent = this.monsters.get(monster.bossUnitId)
+      if (parent === undefined || parent.dead) {
+        this.despawnTemporaryMonsterUnit113c(monster, monster.hcIdx === 570 ? 614 : undefined)
+        return true
+      }
+    }
+
+    // `#349 Diablogeddon` (`Armageddon`) periodic meteor impacts on `#333 diabloclone` / `#705 uberdiablo` (#1825).
+    if (monster.diablogeddonUntilFrame > this.currentFrame && this.currentFrame % 12 === 0) {
+      const near = this.nearestHostileForMonster(monster, 18)
+      const jitterX = (this.rng.rand(7) - 3) * 0.8
+      const jitterY = (this.rng.rand(7) - 3) * 0.8
+      const mx = (near?.x ?? monster.x) + jitterX
+      const my = (near?.y ?? monster.y) + jitterY
+      this.emitBossProjectile113c(monster, {
+        missileId: 674,
+        skillId: 349,
+        slvl: 10 + this.difficulty * 2,
+        originX: mx,
+        originY: my,
+        targetX: mx,
+        targetY: my,
+        speedSubTilesPerFrame: 0,
+        rangeFrames: 18,
+        size: 2,
+        collideType: 0,
+        nextHit: true,
+        nextDelay: 6,
+        element: 'fire',
+        physDamage: this.rollInclusive(25, 45),
+        elemDamage: this.rollInclusive(60, 100) + 25 * this.difficulty,
+      })
+    }
+
+    // Baal `#318 Baal Cold Missiles` (`Hoarfrost`) expanding V-wedge wave (#1826).
+    if (monster.activeHoarfrostWaves !== undefined && monster.activeHoarfrostWaves.length > 0) {
+      const hostiles = this.listHostilesInMonsterArea113c(monster)
+      for (const wave of monster.activeHoarfrostWaves) {
+        wave.x += wave.vx
+        wave.y += wave.vy
+        wave.stepDone += 1
+        wave.remainingSteps -= 1
+        const halfWidth = 1.5 + wave.stepDone * 0.45
+        const speedNorm = Math.max(0.01, Math.hypot(wave.vx, wave.vy))
+        const dirX = wave.vx / speedNorm
+        const dirY = wave.vy / speedNorm
+        if (wave.stepDone % 2 === 1) {
+          for (const side of [-1, 1] as const) {
+            const lx = wave.x + wave.perpX * halfWidth * side
+            const ly = wave.y + wave.perpY * halfWidth * side
+            this.broadcastToArea(monster.areaId, {
+              type: 'CreateMissile',
+              missileId: this.allocateUnitId(),
+              missileClassId: 590,
+              at: { x: Math.round(lx), y: Math.round(ly) },
+              target: { x: Math.round(lx + wave.vx), y: Math.round(ly + wave.vy) },
+              x: Math.round(lx),
+              y: Math.round(ly),
+              targetX: Math.round(lx + wave.vx),
+              targetY: Math.round(ly + wave.vy),
+              skillId: 318,
+              level: wave.slvl,
+              ownerType: 1,
+              ownerUnitType: 'monster',
+              ownerId: monster.unitId,
+              sourceUnitId: monster.unitId,
+              areaId: monster.areaId,
+            } as ServerEvent)
+          }
+        }
+        for (const h of hostiles) {
+          if (wave.hitUnits.has(h.key)) continue
+          const rx = h.x - wave.x
+          const ry = h.y - wave.y
+          const along = rx * dirX + ry * dirY
+          const lat = Math.abs(rx * wave.perpX + ry * wave.perpY)
+          if (Math.abs(along) <= 1.8 && lat <= halfWidth) {
+            wave.hitUnits.add(h.key)
+            const coldDmg =
+              this.rollInclusive(20, 40) +
+              9 * Math.max(0, wave.slvl - 1) +
+              25 * this.difficulty
+            const kbSteps = this.rng.rand(100) < 75 ? 3 : 0
+            this.dealMonsterDirectHitToHostile113c(
+              monster,
+              h,
+              { cold: coldDmg },
+              {
+                chillFrames: 200 + 25 * wave.slvl,
+                knockbackSteps: kbSteps,
+                knockbackOriginX: monster.x,
+                knockbackOriginY: monster.y,
+              },
+            )
+          }
+        }
+      }
+      monster.activeHoarfrostWaves = monster.activeHoarfrostWaves.filter(
+        (w) => w.remainingSteps > 0,
+      )
+    }
+
+    const ch = monster.activeBossChannel
+    if (ch === undefined) return false
+    if (ch.remainingFrames <= 0) {
+      monster.activeBossChannel = undefined
+      if (monster.mode !== 1) monster.mode = 1
+      return false
+    }
+    ch.remainingFrames -= 1
+
+    const nearHostile = this.nearestHostileForMonster(monster, 35)
+    if (nearHostile !== null && (ch.kind === 'diablight' || ch.kind === 'baalinferno')) {
+      const desired = Math.atan2(nearHostile.y - monster.y, nearHostile.x - monster.x)
+      let delta = desired - ch.angle
+      while (delta > Math.PI) delta -= Math.PI * 2
+      while (delta < -Math.PI) delta += Math.PI * 2
+      const maxTurn = ch.kind === 'diablight' ? 0.08 : 0.06
+      ch.angle += Math.max(-maxTurn, Math.min(maxTurn, delta))
+    }
+
+    if (ch.kind === 'diablight') {
+      // 1.13c `#193 DiabLight` (`0x6FCD6840`, #1825): 40-frame channel, stream pulse every 2 frames.
+      // Normal (`startOffset = 0`) hits point-blank; NM/Hell (`startOffset = 5.5` sub-tiles) leaves `< 4.5` inside the blind spot!
+      if (ch.remainingFrames % 2 === 0) {
+        const cos = Math.cos(ch.angle)
+        const sin = Math.sin(ch.angle)
+        const beamEnd = 24
+        const ox = monster.x + cos * ch.startOffset
+        const oy = monster.y + sin * ch.startOffset
+        const ex = monster.x + cos * beamEnd
+        const ey = monster.y + sin * beamEnd
+        this.broadcastToArea(monster.areaId, {
+          type: 'CreateMissile',
+          missileId: this.allocateUnitId(),
+          missileClassId: 172,
+          at: { x: Math.round(ox), y: Math.round(oy) },
+          target: { x: Math.round(ex), y: Math.round(ey) },
+          x: Math.round(ox),
+          y: Math.round(oy),
+          targetX: Math.round(ex),
+          targetY: Math.round(ey),
+          skillId: 193,
+          level: ch.slvl,
+          ownerType: 1,
+          ownerUnitType: 'monster',
+          ownerId: monster.unitId,
+          sourceUnitId: monster.unitId,
+          areaId: monster.areaId,
+        } as ServerEvent)
+        for (const h of this.listHostilesInMonsterArea113c(monster)) {
+          const nextReady = ch.nextHitFrames.get(h.key) ?? 0
+          if (this.currentFrame < nextReady) continue
+          const rx = h.x - monster.x
+          const ry = h.y - monster.y
+          const proj = rx * cos + ry * sin
+          const perp = Math.abs(-rx * sin + ry * cos)
+          if (proj >= ch.startOffset && proj <= beamEnd && perp <= 1.75) {
+            ch.nextHitFrames.set(h.key, this.currentFrame + 3)
+            const physDmg = this.rollInclusive(12, 22) + 5 * ch.slvl
+            const ltngDmg = this.rollInclusive(22, 48) + 9 * ch.slvl
+            this.dealMonsterDirectHitToHostile113c(monster, h, {
+              phys: physDmg,
+              light: ltngDmg,
+            })
+          }
+        }
+      }
+      if (ch.remainingFrames <= 0) {
+        monster.activeBossChannel = undefined
+        monster.mode = 1
+      }
+      return true
+    }
+
+    if (ch.kind === 'baalinferno') {
+      // 1.13c `#317 Baal Inferno` (`Mana Rift`, `SrvHit55` `0x6FC5FD60`, #1826): Magic beam + 50% current Mana drain.
+      if (ch.remainingFrames % 2 === 0) {
+        const cos = Math.cos(ch.angle)
+        const sin = Math.sin(ch.angle)
+        const beamEnd = 16
+        const ex = monster.x + cos * beamEnd
+        const ey = monster.y + sin * beamEnd
+        this.broadcastToArea(monster.areaId, {
+          type: 'CreateMissile',
+          missileId: this.allocateUnitId(),
+          missileClassId: 554,
+          at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+          target: { x: Math.round(ex), y: Math.round(ey) },
+          x: Math.round(monster.x),
+          y: Math.round(monster.y),
+          targetX: Math.round(ex),
+          targetY: Math.round(ey),
+          skillId: 317,
+          level: ch.slvl,
+          ownerType: 1,
+          ownerUnitType: 'monster',
+          ownerId: monster.unitId,
+          sourceUnitId: monster.unitId,
+          areaId: monster.areaId,
+        } as ServerEvent)
+        for (const h of this.listHostilesInMonsterArea113c(monster)) {
+          const nextReady = ch.nextHitFrames.get(h.key) ?? 0
+          if (this.currentFrame < nextReady) continue
+          const rx = h.x - monster.x
+          const ry = h.y - monster.y
+          const proj = rx * cos + ry * sin
+          const perp = Math.abs(-rx * sin + ry * cos)
+          if (proj >= 0.5 && proj <= beamEnd && perp <= 2.0) {
+            ch.nextHitFrames.set(h.key, this.currentFrame + 4)
+            const magicDmg =
+              this.rollInclusive(32, 52) + 10 * ch.slvl + 15 * this.difficulty
+            this.dealMonsterDirectHitToHostile113c(monster, h, { magic: magicDmg })
+            if (h.kind === 'player' && !h.player.dead && h.player.manaFixed > 0) {
+              const drained = Math.floor(h.player.manaFixed / 2)
+              h.player.manaFixed = Math.max(0, h.player.manaFixed - drained)
+              h.player.mana = Math.floor(h.player.manaFixed / FIXED_ONE)
+              this.emitToPlayer(h.player.unitId, {
+                type: 'UnitStatUpdate',
+                unitType: 'player',
+                unitId: h.player.unitId,
+                statId: 8,
+                value: h.player.manaFixed,
+              })
+              this.emitToPlayer(h.player.unitId, {
+                type: 'LifeMana',
+                life: h.player.hp,
+                mana: h.player.mana,
+                stamina: h.player.stamina,
+                at: playerWirePosition(h.player),
+                vx: 0,
+                vy: 0,
+              })
+            }
+          }
+        }
+      }
+      if (ch.remainingFrames <= 0) {
+        monster.activeBossChannel = undefined
+        monster.mode = 1
+      }
+      return true
+    }
+
+    // Talic `#151 Whirlwind` (`#540 ancientbarb1`, #1827): continuous spin-through-target movement + 4-frame multi-hits.
+    const vx = ch.stepVx ?? Math.cos(ch.angle) * 0.9
+    const vy = ch.stepVy ?? Math.sin(ch.angle) * 0.9
+    const nx = monster.x + vx
+    const ny = monster.y + vy
+    if (
+      !this.isClosedDoorAt(monster.areaId, Math.round(nx), Math.round(ny)) &&
+      (!this.terrainWalkableCheck ||
+        this.terrainWalkableCheck(monster.areaId, Math.round(nx), Math.round(ny), false)) &&
+      !this.isBlockedByBonePrison(monster.areaId, nx, ny)
+    ) {
+      const from = { x: Math.round(monster.x), y: Math.round(monster.y) }
+      monster.x = nx
+      monster.y = ny
+      this.broadcastToArea(monster.areaId, {
+        type: 'UnitMove',
+        unitType: 'monster',
+        id: monster.unitId,
+        unitId: monster.unitId,
+        mode: 'run',
+        from,
+        to: { x: Math.round(nx), y: Math.round(ny) },
+        x: Math.round(nx),
+        y: Math.round(ny),
+        currentX: Math.round(nx),
+        currentY: Math.round(ny),
+        targetX: Math.round(ch.targetX),
+        targetY: Math.round(ch.targetY),
+        areaId: monster.areaId,
+      })
+    }
+    for (const h of this.listHostilesInMonsterArea113c(monster)) {
+      const nextReady = ch.nextHitFrames.get(h.key) ?? 0
+      if (this.currentFrame < nextReady) continue
+      if (Math.hypot(h.x - monster.x, h.y - monster.y) <= 3.1) {
+        ch.nextHitFrames.set(h.key, this.currentFrame + 4)
+        const wwDmg = Math.max(
+          4,
+          Math.round(
+            this.rollInclusive(monster.minDmg, monster.maxDmg) *
+              (1 + (50 + Math.max(0, ch.slvl - 1) * 8) / 100),
+          ),
+        )
+        this.dealMonsterDirectHitToHostile113c(monster, h, { phys: wwDmg })
+      }
+    }
+    if (ch.remainingFrames <= 0) {
+      monster.activeBossChannel = undefined
+      monster.mode = 1
+    }
+    return true
+  }
+
+  /** Spawn 16 `boneprison1..4` (`hcIdx 340..343`, `0` XP/drops, 600-frame lifespan) around `(cx, cy)` (`#199 DiabPrison`, #1825). */
+  private spawnDiabloBonePrisonRing113c(
+    diablo: InternalMonsterRecord,
+    cx: number,
+    cy: number,
+    slvl: number,
+  ): number {
+    this.emitBossSkillCast113c(diablo, 199, slvl, 10, cx, cy)
+    const radius = 2.8
+    const segHp = Math.max(
+      40,
+      Math.round((80 + 60 * slvl) * (this.difficulty === 2 ? 4 : this.difficulty === 1 ? 2.2 : 1)),
+    )
+    let spawned = 0
+    for (let i = 0; i < 16; i++) {
+      const theta = (i / 16) * Math.PI * 2
+      const sx = cx + Math.cos(theta) * radius
+      const sy = cy + Math.sin(theta) * radius
+      if (
+        this.terrainWalkableCheck &&
+        !this.terrainWalkableCheck(diablo.areaId, Math.round(sx), Math.round(sy), false)
+      ) {
+        continue
+      }
+      const segHcIdx = 340 + (i % 4)
+      const segId = this.spawnMonster({
+        classId: segHcIdx,
+        hcIdx: segHcIdx,
+        defId: `boneprison${String((i % 4) + 1)}`,
+        ai: 'BoneWall',
+        x: sx,
+        y: sy,
+        areaId: diablo.areaId,
+        level: diablo.level,
+        hp: segHp,
+        maxHp: segHp,
+        experience: 0,
+        noRatio: true,
+        velocity: 0,
+        runSpeed: 0,
+        bossUnitId: diablo.unitId,
+      })
+      const seg = this.monsters.get(segId)
+      if (seg !== undefined) {
+        seg.despawnAtFrame = this.currentFrame + 600
+      }
+      spawned += 1
+    }
+    return spawned
+  }
+
+  /**
+   * 1.13c `AITHINK_Fn051_Diablo` (`D2Game.dll` `0x6FCCAF30`, `#243 diablo`, `#333 diabloclone`, `#705 uberdiablo`, #1825):
+   * Executes Red Lightning Hose (`#193`, NM/Hell `< 4.5` blind spot), 32-bolt radial Fire Nova (`#195`),
+   * Firestorm (`#197`), PrimeFirewall (`#188`), Cold Touch (`#194`), Four-Legged Charge (`#198`),
+   * Bone Prison (`#199` on player AND active Chaos Sanctuary Town Portals `classId = 59`), and Diablogeddon (`#349`).
+   */
+  private stepDiabloBossAi113c(monster: InternalMonsterRecord): void {
+    const diffBonus = this.difficulty === 2 ? 4 : this.difficulty === 1 ? 2 : 0
+    if (
+      (monster.hcIdx === 333 || monster.hcIdx === 705) &&
+      monster.diablogeddonUntilFrame <= this.currentFrame
+    ) {
+      const geddonSlvl = 5 + diffBonus
+      monster.diablogeddonUntilFrame = this.currentFrame + 1000
+      this.applyMonsterState(monster.unitId, 144, 1000)
+      this.emitBossSkillCast113c(monster, 349, geddonSlvl, 8, monster.x, monster.y)
+      monster.cooldown = Math.max(8, monster.cooldownTicks)
+      return
+    }
+
+    const nearest = this.nearestHostileForMonster(monster, Math.max(35, monster.aggroRadius))
+    if (nearest === null) return
+    const dist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
+
+    // 1.13c Town Portal trap (`0x6FCCAF30`): Diablo cages any un-trapped player Town Portal (`classId === 59`) within 85 sub-tiles!
+    if (monster.skillCooldown <= 0) {
+      for (const obj of this.objects.values()) {
+        if (obj.areaId !== monster.areaId || obj.classId !== 59) continue
+        if (Math.hypot(obj.x - monster.x, obj.y - monster.y) > 85) continue
+        const alreadyCaged = [...this.monsters.values()].some(
+          (m) =>
+            !m.dead &&
+            m.areaId === monster.areaId &&
+            isBonePrisonMonsterHcIdx113c(m.hcIdx) &&
+            Math.hypot(m.x - obj.x, m.y - obj.y) <= 5,
+        )
+        if (!alreadyCaged) {
+          this.spawnDiabloBonePrisonRing113c(monster, obj.x, obj.y, 4 + diffBonus)
+          monster.skillCooldown = 50
+          monster.cooldown = Math.max(10, monster.cooldownTicks)
+          return
+        }
+      }
+    }
+
+    if (monster.cooldown <= 0 && monster.skillCooldown <= 0) {
+      const slot = monster.skillCursor % 7
+      monster.skillCursor = (monster.skillCursor + 1) % 7
+
+      // Close-range melee Cold Touch (`#194 DiabCold`) when target is un-chilled in melee range.
+      const targetChilled =
+        nearest.kind === 'player'
+          ? nearest.player.states.has(11)
+          : nearest.kind === 'merc'
+            ? nearest.merc.states.has(11)
+            : false
+      if (dist <= 3.8 && (!targetChilled || slot === 4)) {
+        const slvl = 3 + diffBonus
+        this.emitBossSkillCast113c(monster, 194, slvl, 9, nearest.x, nearest.y)
+        const magicDmg = this.rollInclusive(35, 55) + 12 * slvl + 20 * this.difficulty
+        this.dealMonsterDirectHitToHostile113c(
+          monster,
+          nearest,
+          { magic: magicDmg },
+          { chillFrames: 100 + 50 * Math.max(0, slvl - 1) },
+        )
+        monster.cooldown = Math.max(10, monster.cooldownTicks)
+        monster.skillCooldown = 18
+        return
+      }
+
+      // Four-Legged Charge (`#198 DiabRun`) at mid/long range (`dist >= 6`).
+      if (slot === 5 && dist >= 6 && dist <= 24) {
+        const slvl = 5 + diffBonus
+        this.emitBossSkillCast113c(monster, 198, slvl, 14, nearest.x, nearest.y)
+        const dx = nearest.x - monster.x
+        const dy = nearest.y - monster.y
+        const d = Math.max(1, Math.hypot(dx, dy))
+        const ux = dx / d
+        const uy = dy / d
+        let destX = monster.x
+        let destY = monster.y
+        const stopDist = Math.max(1, Math.floor(d - 1.5))
+        for (let step = 1; step <= stopDist; step++) {
+          const cx = monster.x + ux * step
+          const cy = monster.y + uy * step
+          if (
+            this.isClosedDoorAt(monster.areaId, Math.round(cx), Math.round(cy)) ||
+            (this.terrainWalkableCheck &&
+              !this.terrainWalkableCheck(monster.areaId, Math.round(cx), Math.round(cy), false)) ||
+            this.isBlockedByBonePrison(monster.areaId, cx, cy)
+          ) {
+            break
+          }
+          destX = cx
+          destY = cy
+        }
+        const from = { x: Math.round(monster.x), y: Math.round(monster.y) }
+        monster.x = destX
+        monster.y = destY
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMove',
+          unitType: 'monster',
+          id: monster.unitId,
+          unitId: monster.unitId,
+          mode: 'run',
+          from,
+          to: { x: Math.round(destX), y: Math.round(destY) },
+          x: Math.round(destX),
+          y: Math.round(destY),
+          currentX: Math.round(destX),
+          currentY: Math.round(destY),
+          targetX: Math.round(destX),
+          targetY: Math.round(destY),
+          areaId: monster.areaId,
+        })
+        if (Math.hypot(nearest.x - monster.x, nearest.y - monster.y) <= 3.8) {
+          const chargeDmg = this.rollInclusive(monster.minDmg, monster.maxDmg) + 55 + 10 * slvl
+          this.dealMonsterDirectHitToHostile113c(
+            monster,
+            nearest,
+            { phys: chargeDmg },
+            { knockbackSteps: 3 },
+          )
+        }
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 25
+        return
+      }
+
+      // Bone Prison (`#199 DiabPrison`) around ranged player target (`dist >= 4.5`).
+      if (slot === 6 && nearest.kind === 'player' && dist >= 4.5 && dist <= 26) {
+        const playerAlreadyCaged = [...this.monsters.values()].some(
+          (m) =>
+            !m.dead &&
+            m.areaId === monster.areaId &&
+            isBonePrisonMonsterHcIdx113c(m.hcIdx) &&
+            Math.hypot(m.x - nearest.x, m.y - nearest.y) <= 4.5,
+        )
+        if (!playerAlreadyCaged) {
+          this.spawnDiabloBonePrisonRing113c(monster, nearest.x, nearest.y, 4 + diffBonus)
+          monster.cooldown = Math.max(12, monster.cooldownTicks)
+          monster.skillCooldown = 50
+          return
+        }
+      }
+
+      // `#193 DiabLight` (Red Lightning Hose, 40 frames; NM/Hell blind spot `startOffset = 5.5` sub-tiles).
+      if (slot === 0) {
+        const slvl = 3 + diffBonus
+        const angle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        this.emitBossSkillCast113c(monster, 193, slvl, 8, nearest.x, nearest.y)
+        monster.activeBossChannel = {
+          kind: 'diablight',
+          skillId: 193,
+          slvl,
+          remainingFrames: 40,
+          angle,
+          targetX: nearest.x,
+          targetY: nearest.y,
+          startOffset: this.difficulty >= 1 ? 5.5 : 0,
+          nextHitFrames: new Map(),
+        }
+        monster.cooldown = 44
+        monster.skillCooldown = 44
+        return
+      }
+
+      // `#195 DiabFire` (32-bolt 360° radial Fire Nova, `diabfire` #176, `nextHit=true, nextDelay=4`).
+      if (slot === 1) {
+        const slvl = 4 + diffBonus
+        this.emitBossSkillCast113c(monster, 195, slvl, 8, nearest.x, nearest.y)
+        const fireDmg = this.rollInclusive(24, 48) + 8 * slvl + 15 * this.difficulty
+        for (let i = 0; i < 32; i++) {
+          const theta = (i / 32) * Math.PI * 2
+          this.emitBossProjectile113c(monster, {
+            missileId: 176,
+            skillId: 195,
+            slvl,
+            originX: monster.x,
+            originY: monster.y,
+            targetX: monster.x + Math.cos(theta) * 28,
+            targetY: monster.y + Math.sin(theta) * 28,
+            speedSubTilesPerFrame: 30 / 16,
+            rangeFrames: 50,
+            size: 2,
+            pierce: true,
+            nextHit: true,
+            nextDelay: 4,
+            element: 'fire',
+            physDamage: 0,
+            elemDamage: fireDmg,
+          })
+        }
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 25
+        return
+      }
+
+      // `#197 DiabWall` (Firestorm: diverging `diabwallmaker` #179 / `diabwall` #180 fire + phys ground streams).
+      if (slot === 2) {
+        const slvl = 3 + diffBonus
+        this.emitBossSkillCast113c(monster, 197, slvl, 10, nearest.x, nearest.y)
+        const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        const tongues = Math.min(5, Math.max(3, slvl))
+        for (let t = 0; t < tongues; t++) {
+          const spread = (t - (tongues - 1) / 2) * 0.22
+          const ang = baseAngle + spread
+          this.emitBossProjectile113c(monster, {
+            missileId: 180,
+            skillId: 197,
+            slvl,
+            originX: monster.x + Math.cos(ang) * 1.5,
+            originY: monster.y + Math.sin(ang) * 1.5,
+            targetX: monster.x + Math.cos(ang) * 18,
+            targetY: monster.y + Math.sin(ang) * 18,
+            speedSubTilesPerFrame: 20 / 16,
+            rangeFrames: 24,
+            size: 2,
+            collideType: 8,
+            pierce: true,
+            nextHit: true,
+            nextDelay: 4,
+            element: 'fire',
+            physDamage: this.rollInclusive(10, 20) + 3 * slvl,
+            elemDamage: this.rollInclusive(20, 42) + 6 * slvl,
+          })
+        }
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 24
+        return
+      }
+
+      // `#188 PrimeFirewall` (perpendicular wall of `vampirefirewall` #131 ground fire patches across target).
+      {
+        const slvl = 5 + diffBonus
+        this.emitBossSkillCast113c(monster, 188, slvl, 10, nearest.x, nearest.y)
+        const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        const perpX = -Math.sin(baseAngle)
+        const perpY = Math.cos(baseAngle)
+        const patchFire = this.rollInclusive(18, 34) + 5 * slvl + 10 * this.difficulty
+        for (let k = -3; k <= 3; k++) {
+          const px = nearest.x + perpX * k * 1.5
+          const py = nearest.y + perpY * k * 1.5
+          this.emitBossProjectile113c(monster, {
+            missileId: 131,
+            skillId: 188,
+            slvl,
+            originX: px,
+            originY: py,
+            targetX: px,
+            targetY: py,
+            speedSubTilesPerFrame: 0,
+            rangeFrames: 75,
+            size: 2,
+            collideType: 0,
+            pierce: true,
+            nextHit: true,
+            nextDelay: 5,
+            element: 'fire',
+            physDamage: 0,
+            elemDamage: patchFire,
+          })
+        }
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 28
+        return
+      }
+    }
+
+    if (dist <= 3.5) {
+      if (
+        monster.cooldown <= 0 &&
+        monster.pendingAttack === undefined &&
+        monster.pendingAllyAttack === undefined
+      ) {
+        monster.cooldown = monster.cooldownTicks
+        if (nearest.kind === 'player') {
+          this.beginMonsterMeleeAttack(monster, nearest.player)
+        } else if (nearest.kind === 'merc') {
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'merc', id: nearest.merc.unitId })
+        } else {
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'pet', id: nearest.pet.uid })
+        }
+      }
+    } else {
+      this.moveMonsterToward(monster, nearest.x, nearest.y, dist > 5)
+    }
+  }
+
+  /**
+   * 1.13c `AITHINK_Fn135_BaalCrab` (`0x6FCCCBE0`) & `Fn137_BaalCrabClone` (`0x6FCCCA40`)
+   * (`#544 baalcrab`, `#570 baalclone` Vile Effigy, `#709 uberbaal`, #1826).
+   */
+  private stepBaalCrabBossAi113c(monster: InternalMonsterRecord): void {
+    const isClone = monster.hcIdx === 570
+    const isUber = monster.hcIdx === 709
+    const diffBonus = this.difficulty === 2 ? 4 : this.difficulty === 1 ? 2 : 0
+
+    if (isUber && !monster.states.has(20)) {
+      this.applyMonsterState(monster.unitId, 20, 3600)
+      this.emitBossSkillCast113c(monster, 60, 15 + diffBonus, 8, monster.x, monster.y)
+      monster.cooldown = Math.max(8, monster.cooldownTicks)
+      return
+    }
+
+    if (monster.activeBaalCloneUnitId !== 0) {
+      const existingClone = this.monsters.get(monster.activeBaalCloneUnitId)
+      if (existingClone === undefined || existingClone.dead) {
+        monster.activeBaalCloneUnitId = 0
+      }
+    }
+
+    const nearest = this.nearestHostileForMonster(monster, Math.max(35, monster.aggroRadius))
+    if (nearest === null) return
+    const dist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
+
+    if (monster.cooldown <= 0 && monster.skillCooldown <= 0) {
+      const slot = monster.skillCursor % 6
+      monster.skillCursor = (monster.skillCursor + 1) % 6
+
+      // 1) Spawn Vile Effigy (`#570 baalclone`): ONLY real `#544 baalcrab` (`!isClone && !isUber`), max 1 active, up to 2 per fight!
+      if (
+        !isClone &&
+        !isUber &&
+        monster.activeBaalCloneUnitId === 0 &&
+        monster.baalCloneSpawnCount < 2 &&
+        slot === 0
+      ) {
+        let cx = nearest.x + 3
+        let cy = nearest.y + 3
+        for (const ang of [0.6, -0.6, 1.4, -1.4, 2.4, -2.4, Math.PI]) {
+          const tx = nearest.x + Math.cos(ang) * 4
+          const ty = nearest.y + Math.sin(ang) * 4
+          if (
+            !this.isClosedDoorAt(monster.areaId, Math.round(tx), Math.round(ty)) &&
+            (!this.terrainWalkableCheck ||
+              this.terrainWalkableCheck(monster.areaId, Math.round(tx), Math.round(ty), false)) &&
+            !this.isMonsterCellOccupied(monster, tx, ty)
+          ) {
+            cx = tx
+            cy = ty
+            break
+          }
+        }
+        this.emitBossSkillCast113c(monster, 331, 1 + diffBonus, 8, cx, cy)
+        this.broadcastExplosionMissile(monster, 614)
+        // `rClone = max(-100, 2 * r - 100)` guarantees `(100 - rClone)/100 = 2 * (100 - r)/100` (exact 2x incoming damage vs real Baal!).
+        const doubleVuln = (r: number): number => Math.max(-100, 2 * Math.min(95, r) - 100)
+        const cloneId = this.spawnMonster({
+          classId: 570,
+          hcIdx: 570,
+          defId: 'baalclone',
+          ai: 'BaalCrabClone',
+          x: cx,
+          y: cy,
+          areaId: monster.areaId,
+          level: monster.level,
+          hp: monster.hp,
+          maxHp: monster.maxHp,
+          experience: 0,
+          noRatio: true,
+          minDmg: monster.minDmg,
+          maxDmg: monster.maxDmg,
+          ar: monster.ar,
+          ac: monster.ac,
+          resistances: {
+            phys: doubleVuln(monster.resistances.phys),
+            magic: doubleVuln(monster.resistances.magic),
+            fire: doubleVuln(monster.resistances.fire),
+            light: doubleVuln(monster.resistances.light),
+            cold: doubleVuln(monster.resistances.cold),
+            poison: doubleVuln(monster.resistances.poison),
+          },
+          bossUnitId: monster.unitId,
+        })
+        const cloneRec = this.monsters.get(cloneId)
+        if (cloneRec !== undefined) {
+          cloneRec.despawnAtFrame = this.currentFrame + 750
+          cloneRec.skillCursor = 1
+        }
+        monster.activeBaalCloneUnitId = cloneId
+        monster.baalCloneSpawnCount += 1
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 40
+        return
+      }
+
+      // 2) `#315 Baal Tentacle` (`Festering Appendages`): ONLY non-clone Baal (`!isClone`), spawns `2..4` (N) / `3..5` (NM) / `4..6` (H) `baaltentacle1..5` (`#562..566`).
+      if (!isClone && slot === 1) {
+        const activeTentacles = [...this.monsters.values()].filter(
+          (m) => !m.dead && m.bossUnitId === monster.unitId && isBaalTentacleHcIdx113c(m.hcIdx),
+        ).length
+        if (activeTentacles < 8) {
+          const count = this.difficulty + 2 + this.rng.rand(3)
+          const slvl = 4 + diffBonus
+          this.emitBossSkillCast113c(monster, 315, slvl, 9, nearest.x, nearest.y)
+          for (let i = 0; i < count; i++) {
+            const ang = (i / count) * Math.PI * 2 + (this.rng.rand(10) - 5) * 0.05
+            const tx = nearest.x + Math.cos(ang) * (2.2 + (i % 2) * 1.1)
+            const ty = nearest.y + Math.sin(ang) * (2.2 + (i % 2) * 1.1)
+            if (
+              this.terrainWalkableCheck &&
+              !this.terrainWalkableCheck(monster.areaId, Math.round(tx), Math.round(ty), false)
+            ) {
+              continue
+            }
+            const tHcIdx = 562 + (i % 5)
+            const tId = this.spawnMonster({
+              classId: tHcIdx,
+              hcIdx: tHcIdx,
+              defId: `baaltentacle${String((i % 5) + 1)}`,
+              ai: 'BaalTentacle',
+              x: tx,
+              y: ty,
+              areaId: monster.areaId,
+              level: monster.level,
+              experience: 0,
+              noRatio: true,
+              velocity: 0,
+              runSpeed: 0,
+              meleeRange: 5,
+              bossUnitId: monster.unitId,
+            })
+            const tRec = this.monsters.get(tId)
+            if (tRec !== undefined) {
+              tRec.despawnAtFrame = this.currentFrame + 25 * (10 + this.rng.rand(10))
+            }
+          }
+          monster.cooldown = Math.max(12, monster.cooldownTicks)
+          monster.skillCooldown = 35
+          return
+        }
+      }
+
+      // 3) `#309 Defense Curse` (`state 113` when `maxHp > maxMana`) vs `#310 Blood Mana` (`state 114` when `maxMana >= maxHp`).
+      if (nearest.kind === 'player' && !nearest.player.states.has(113) && !nearest.player.states.has(114) && slot === 2) {
+        const wantBloodMana = nearest.player.maxManaFixed >= nearest.player.maxHpFixed
+        const curseSkillId = wantBloodMana ? 310 : 309
+        const curseSlvl = 2 + diffBonus
+        this.applyMonsterCurseToTarget113c(
+          monster,
+          { kind: 'player', player: nearest.player },
+          curseSkillId,
+          curseSlvl,
+        )
+        monster.mode = 10
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: 10,
+          at: { x: Math.round(nearest.x), y: Math.round(nearest.y) },
+          lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+        })
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 30
+        return
+      }
+
+      // 4) `#318 Baal Cold Missiles` (`Hoarfrost` expanding V-wedge + Cold + Chill + 75% Knockback).
+      if (slot === 3) {
+        const slvl = 7 + diffBonus
+        this.emitBossSkillCast113c(monster, 318, slvl, 4, nearest.x, nearest.y)
+        const ang = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        const cos = Math.cos(ang)
+        const sin = Math.sin(ang)
+        this.broadcastToArea(monster.areaId, {
+          type: 'CreateMissile',
+          missileId: this.allocateUnitId(),
+          missileClassId: 589,
+          at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+          target: { x: Math.round(nearest.x), y: Math.round(nearest.y) },
+          x: Math.round(monster.x),
+          y: Math.round(monster.y),
+          targetX: Math.round(nearest.x),
+          targetY: Math.round(nearest.y),
+          skillId: 318,
+          level: slvl,
+          ownerType: 1,
+          ownerUnitType: 'monster',
+          ownerId: monster.unitId,
+          sourceUnitId: monster.unitId,
+          areaId: monster.areaId,
+        } as ServerEvent)
+        if (monster.activeHoarfrostWaves === undefined) {
+          monster.activeHoarfrostWaves = []
+        }
+        monster.activeHoarfrostWaves.push({
+          x: monster.x + cos * 1.2,
+          y: monster.y + sin * 1.2,
+          vx: cos * 1.25,
+          vy: sin * 1.25,
+          perpX: -sin,
+          perpY: cos,
+          remainingSteps: 15,
+          stepDone: 0,
+          slvl,
+          hitUnits: new Set(),
+        })
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 26
+        return
+      }
+
+      // 5) `#317 Baal Inferno` (`Mana Rift` 20-frame Magic beam + 50% current Mana drain).
+      if (slot === 4 && dist <= 18) {
+        const slvl = 8 + diffBonus
+        const ang = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        this.emitBossSkillCast113c(monster, 317, slvl, 14, nearest.x, nearest.y)
+        monster.activeBossChannel = {
+          kind: 'baalinferno',
+          skillId: 317,
+          slvl,
+          remainingFrames: 20,
+          angle: ang,
+          targetX: nearest.x,
+          targetY: nearest.y,
+          startOffset: 0.5,
+          nextHitFrames: new Map(),
+        }
+        monster.cooldown = 24
+        monster.skillCooldown = 28
+        return
+      }
+
+      // 6) `#329 Baal Teleport` (`#331` on clone): closes distance TOWARD target when `dist >= 8` (`0x6FCCCBE0`).
+      if (dist >= 8) {
+        const tpSkillId = isClone ? 331 : 329
+        const slvl = 1 + diffBonus
+        const ang = Math.atan2(nearest.y - monster.x + monster.x - monster.y, nearest.x - monster.x)
+        const targetAng = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        void ang
+        let chosen: { x: number; y: number } | undefined
+        for (const standOff of [2.5, 3.5, 4.5]) {
+          for (const spread of [0, 0.5, -0.5, 1.0, -1.0]) {
+            const tx = nearest.x - Math.cos(targetAng + spread) * standOff
+            const ty = nearest.y - Math.sin(targetAng + spread) * standOff
+            if (Math.hypot(nearest.x - tx, nearest.y - ty) >= dist) continue
+            if (
+              !this.isClosedDoorAt(monster.areaId, Math.round(tx), Math.round(ty)) &&
+              (!this.terrainWalkableCheck ||
+                this.terrainWalkableCheck(monster.areaId, Math.round(tx), Math.round(ty), false)) &&
+              !this.isMonsterCellOccupied(monster, tx, ty)
+            ) {
+              chosen = { x: tx, y: ty }
+              break
+            }
+          }
+          if (chosen !== undefined) break
+        }
+        if (chosen !== undefined) {
+          const from = { x: Math.round(monster.x), y: Math.round(monster.y) }
+          this.broadcastExplosionMissile(monster, 613)
+          monster.x = chosen.x
+          monster.y = chosen.y
+          monster.path = []
+          monster.pathIndex = 0
+          monster.pathTargetX = Number.NaN
+          monster.pathTargetY = Number.NaN
+          this.emitBossSkillCast113c(monster, tpSkillId, slvl, 8, chosen.x, chosen.y)
+          this.broadcastExplosionMissile(monster, 613)
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMove',
+            unitType: 'monster',
+            id: monster.unitId,
+            unitId: monster.unitId,
+            mode: 'run',
+            from,
+            to: { x: Math.round(chosen.x), y: Math.round(chosen.y) },
+            x: Math.round(chosen.x),
+            y: Math.round(chosen.y),
+            currentX: Math.round(chosen.x),
+            currentY: Math.round(chosen.y),
+            targetX: Math.round(chosen.x),
+            targetY: Math.round(chosen.y),
+            areaId: monster.areaId,
+          })
+          monster.cooldown = Math.max(10, monster.cooldownTicks)
+          monster.skillCooldown = 25
+          return
+        }
+      }
+
+      // 7) `#316 Baal Nova` (`Incineration Nova` — 32 radial `baal nova` #555 fire bolts, `nextHit=true, nextDelay=4`).
+      {
+        const slvl = 7 + diffBonus
+        this.emitBossSkillCast113c(monster, 316, slvl, 10, nearest.x, nearest.y)
+        const novaFire = this.rollInclusive(50, 75) + 18 * Math.max(0, slvl - 1) + 20 * this.difficulty
+        for (let i = 0; i < 32; i++) {
+          const theta = (i / 32) * Math.PI * 2
+          this.emitBossProjectile113c(monster, {
+            missileId: 555,
+            skillId: 316,
+            slvl,
+            originX: monster.x,
+            originY: monster.y,
+            targetX: monster.x + Math.cos(theta) * 26,
+            targetY: monster.y + Math.sin(theta) * 26,
+            speedSubTilesPerFrame: 20 / 16,
+            rangeFrames: 40,
+            size: 2,
+            pierce: true,
+            nextHit: true,
+            nextDelay: 4,
+            element: 'fire',
+            physDamage: 0,
+            elemDamage: novaFire,
+          })
+        }
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 26
+        return
+      }
+    }
+
+    if (dist <= 3.5) {
+      if (
+        monster.cooldown <= 0 &&
+        monster.pendingAttack === undefined &&
+        monster.pendingAllyAttack === undefined
+      ) {
+        monster.cooldown = monster.cooldownTicks
+        if (nearest.kind === 'player') {
+          this.beginMonsterMeleeAttack(monster, nearest.player)
+        } else if (nearest.kind === 'merc') {
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'merc', id: nearest.merc.unitId })
+        } else {
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'pet', id: nearest.pet.uid })
+        }
+      }
+    } else {
+      this.moveMonsterToward(monster, nearest.x, nearest.y, dist > 5)
+    }
+  }
+
+  /** Stationary `#562..566 baaltentacle1..5` (`Festering Appendages`, #1826): rooted melee whip within `meleeRange + 1`. */
+  private stepBaalTentacleAi113c(monster: InternalMonsterRecord): void {
+    const reach = Math.max(5, monster.meleeRange) + 1
+    const nearest = this.nearestHostileForMonster(monster, reach)
+    if (
+      nearest !== null &&
+      monster.cooldown <= 0 &&
+      monster.pendingAttack === undefined &&
+      monster.pendingAllyAttack === undefined
+    ) {
+      monster.cooldown = Math.max(8, monster.cooldownTicks)
+      if (nearest.kind === 'player') {
+        this.beginMonsterMeleeAttack(monster, nearest.player)
+      } else if (nearest.kind === 'merc') {
+        this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'merc', id: nearest.merc.unitId })
+      } else {
+        this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'pet', id: nearest.pet.uid })
+      }
+    }
+  }
+
+  /**
+   * 1.13c `AITHINK_Fn133_Ancient` (`D2Game.dll` `0x6FCC9390`, `MonStats.txt` `#540..542` `ancientbarb1..3`, #1827):
+   * - `#540 Talic` (`ancientbarb1`): `#151 Whirlwind` (`slvl = 15`), spinning through & `+8` sub-tiles past target.
+   * - `#541 Madawc` (`ancientbarb2`): `#138 Shout` (`slvl = 5`, `state 26`, `+140%` Defense on self & nearby allies) + `#140 Double Throw` (`slvl = 12`, dual `#525 ancient throwing axe`).
+   * - `#542 Korlic` (`ancientbarb3`): `#143 Leap Attack` (`slvl = 5`, airborne gap-close + `+200%` ED physical impact).
+   */
+  private stepAncientBarbAi113c(monster: InternalMonsterRecord): void {
+    const nearest = this.nearestHostileForMonster(monster, Math.max(35, monster.aggroRadius))
+    if (nearest === null) return
+    const dist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
+
+    // `#540 Talic` — Whirlwind (`#151`, `slvl = 15`, `aip1 = 15` range, `aip4 = 8` overshoot).
+    if (monster.hcIdx === 540) {
+      const wwRange = Math.max(8, monster.aiParams[0] || 15)
+      const overshoot = Math.max(4, monster.aiParams[3] || 8)
+      if (dist <= wwRange && monster.skillCooldown <= 0 && monster.cooldown <= 0) {
+        const slvl = 15
+        const ang = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        const totalDist = Math.min(22, Math.max(6, dist + overshoot))
+        const tx = monster.x + Math.cos(ang) * totalDist
+        const ty = monster.y + Math.sin(ang) * totalDist
+        const frames = Math.max(8, Math.min(28, Math.ceil(totalDist / 0.9)))
+        this.emitBossSkillCast113c(monster, 151, slvl, 14, tx, ty)
+        monster.activeBossChannel = {
+          kind: 'whirlwind',
+          skillId: 151,
+          slvl,
+          remainingFrames: frames,
+          angle: ang,
+          targetX: tx,
+          targetY: ty,
+          startOffset: 0,
+          stepVx: Math.cos(ang) * 0.9,
+          stepVy: Math.sin(ang) * 0.9,
+          nextHitFrames: new Map(),
+        }
+        monster.cooldown = frames + 6
+        monster.skillCooldown = frames + 18
+        return
+      }
+    }
+
+    // `#541 Madawc` — Shout (`#138`, `slvl = 5`, `+140%` Defense, `state 26`) + Double Throw (`#140`, `slvl = 12`, `#525 ancient throwing axe`).
+    if (monster.hcIdx === 541) {
+      const unbuffedAncientNearby = [...this.monsters.values()].some(
+        (ally) =>
+          !ally.dead &&
+          !ally.isNpc &&
+          ally.areaId === monster.areaId &&
+          Math.hypot(ally.x - monster.x, ally.y - monster.y) <= 20 &&
+          !ally.states.has(26),
+      )
+      if (unbuffedAncientNearby && monster.skillCooldown <= 0 && monster.cooldown <= 0) {
+        const slvl = 5
+        const defPct = 100 + 10 * Math.max(0, slvl - 1) // slvl 5 => +140% Defense
+        this.emitBossSkillCast113c(monster, 138, slvl, 8, monster.x, monster.y)
+        this.broadcastExplosionMissile(monster, 149) // Missiles.txt #149 `shout`
+        for (const ally of this.monsters.values()) {
+          if (
+            ally.dead ||
+            ally.isNpc ||
+            ally.areaId !== monster.areaId ||
+            Math.hypot(ally.x - monster.x, ally.y - monster.y) > 20
+          ) {
+            continue
+          }
+          ally.ac = Math.max(ally.baseAcBeforeShout, Math.round(ally.baseAcBeforeShout * (1 + defPct / 100)))
+          this.applyUnitState(
+            ally.states,
+            ally.stateTimers,
+            'monster',
+            ally.unitId,
+            ally.areaId,
+            26,
+            1500,
+          )
+        }
+        monster.cooldown = Math.max(10, monster.cooldownTicks)
+        monster.skillCooldown = 45
+        return
+      }
+
+      if (dist < 4 && this.rng.rand(100) < 25) {
+        const dx = monster.x - nearest.x
+        const dy = monster.y - nearest.y
+        const d = Math.max(0.5, Math.hypot(dx, dy))
+        this.moveMonsterToward(monster, monster.x + (dx / d) * 6, monster.y + (dy / d) * 6, true)
+        return
+      }
+
+      const throwRange = Math.max(12, monster.aiParams[0] || 18)
+      if (dist <= throwRange && monster.cooldown <= 0) {
+        const slvl = 12
+        this.emitBossSkillCast113c(monster, 140, slvl, 4, nearest.x, nearest.y)
+        const baseAng = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        const axePhys = Math.max(
+          8,
+          Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * 1.35),
+        )
+        for (const spread of [-0.07, 0.07] as const) {
+          const ang = baseAng + spread
+          this.emitBossProjectile113c(monster, {
+            missileId: 525, // Missiles.txt #525 `ancient throwing axe`
+            skillId: 140,
+            slvl,
+            originX: monster.x,
+            originY: monster.y,
+            targetX: monster.x + Math.cos(ang) * Math.max(18, dist + 6),
+            targetY: monster.y + Math.sin(ang) * Math.max(18, dist + 6),
+            speedSubTilesPerFrame: 24 / 16,
+            rangeFrames: 24,
+            size: 1,
+            pierce: true,
+            element: 'phys',
+            physDamage: axePhys,
+            elemDamage: 0,
+          })
+        }
+        monster.cooldown = Math.max(10, monster.cooldownTicks)
+        monster.skillCooldown = 14
+        return
+      }
+    }
+
+    // `#542 Korlic` — Leap Attack (`#143`, `slvl = 5`, `aip1 = 15` range, airborne leap over ground obstacles + `+200%` ED impact).
+    if (monster.hcIdx === 542) {
+      const leapRange = Math.max(10, monster.aiParams[0] || 15)
+      if (dist > 3.0 && dist <= leapRange && monster.skillCooldown <= 0 && monster.cooldown <= 0) {
+        const slvl = 5
+        const ang = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        let landing: { x: number; y: number } | undefined
+        for (const standOff of [1.4, 2.0, 2.6]) {
+          for (const spread of [0, 0.5, -0.5, 1.0, -1.0]) {
+            const lx = nearest.x - Math.cos(ang + spread) * standOff
+            const ly = nearest.y - Math.sin(ang + spread) * standOff
+            if (
+              !this.isClosedDoorAt(monster.areaId, Math.round(lx), Math.round(ly)) &&
+              (!this.terrainWalkableCheck ||
+                this.terrainWalkableCheck(monster.areaId, Math.round(lx), Math.round(ly), false)) &&
+              !this.isMonsterCellOccupied(monster, lx, ly)
+            ) {
+              landing = { x: lx, y: ly }
+              break
+            }
+          }
+          if (landing !== undefined) break
+        }
+        if (landing !== undefined) {
+          const from = { x: Math.round(monster.x), y: Math.round(monster.y) }
+          monster.x = landing.x
+          monster.y = landing.y
+          monster.path = []
+          monster.pathIndex = 0
+          monster.pathTargetX = Number.NaN
+          monster.pathTargetY = Number.NaN
+          this.emitBossSkillCast113c(monster, 143, slvl, 14, nearest.x, nearest.y)
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMove',
+            unitType: 'monster',
+            id: monster.unitId,
+            unitId: monster.unitId,
+            mode: 'run',
+            from,
+            to: { x: Math.round(landing.x), y: Math.round(landing.y) },
+            x: Math.round(landing.x),
+            y: Math.round(landing.y),
+            currentX: Math.round(landing.x),
+            currentY: Math.round(landing.y),
+            targetX: Math.round(landing.x),
+            targetY: Math.round(landing.y),
+            areaId: monster.areaId,
+          })
+          // `+100 + 30*(slvl-1)%` = `+220%` (`3.2x`) physical Leap Attack impact!
+          const leapMult = 1 + (100 + 30 * Math.max(0, slvl - 1)) / 100
+          const leapDmg = Math.max(
+            12,
+            Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * leapMult),
+          )
+          this.dealMonsterDirectHitToHostile113c(
+            monster,
+            nearest,
+            { phys: leapDmg },
+            { knockbackSteps: 2 },
+          )
+          monster.cooldown = Math.max(12, monster.cooldownTicks)
+          monster.skillCooldown = 28
+          return
+        }
+      }
+    }
+
+    if (dist <= 3.2) {
+      if (
+        monster.cooldown <= 0 &&
+        monster.pendingAttack === undefined &&
+        monster.pendingAllyAttack === undefined
+      ) {
+        monster.cooldown = monster.cooldownTicks
+        if (nearest.kind === 'player') {
+          this.beginMonsterMeleeAttack(monster, nearest.player)
+        } else if (nearest.kind === 'merc') {
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'merc', id: nearest.merc.unitId })
+        } else {
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'pet', id: nearest.pet.uid })
+        }
+      }
+    } else {
+      this.moveMonsterToward(monster, nearest.x, nearest.y, true)
+    }
+  }
+
+  /**
+   * 1.13c Non-Missile Monster Combat, Summon, Corpse Explosion & Self-Armor Skill Sweep across all 734 `MonStats.txt` rows (#1827):
+   * - `#10 Jab` (Duriel, Uber Duriel, Scarab, CorruptLancer)
+   * - `#97 Smite` (Duriel, Uber Duriel, Lister #571, Blunderbore, Overseer)
+   * - `#107 Charge` & `#352 SerpentCharge` (Duriel, Uber Duriel, ReanimatedHorde, SiegeBeast, ClawViper)
+   * - `#126 Bash` (Smith #402, Hephasto #409), `#156 Fire Hit` (SandRaider), `#301 Siege Beast Stomp`
+   * - `#215 MonFrenzy` & `#328 BloodLordFrenzy` (BloodLord, DeathMauler)
+   * - `#62 Hydra` (Council #345..347, Bartuc #557) + `#337 HydraMissile` (`hydra1..3` #351..353 -> `#247 hydra`)
+   * - `#167 Nest` (Blood Raven #267 -> `zombie2` #6 Hungry Dead, `experience: 0`)
+   * - `#351 NihlathakCorpseExplosion` & `#285 Baal Corpse Explode` (Nihlathak #526 -> `10..20%` base corpse HP, 50% Phys + 50% Fire, `state 104`)
+   * - `#302 MinionSpawner` (Nihlathak #526, #484..491 -> `minion1` #453, `experience: 0`)
+   * - `#330 Imp Teleport` (Nihlathak #526 escape blink & Imp #492..496 reposition)
+   * - `#60 Chilling Armor` (`state 20`) & `#210 MonBoneArmor` (`state 14`)
+   */
+  private tryCastMonsterCombatOrSummonSkill113c(
+    monster: InternalMonsterRecord,
+    target: { readonly x: number; readonly y: number },
+    distance: number,
+    hitMonsters: boolean,
+  ): boolean {
+    if (monster.skillCooldown > 0 || monster.skills.length === 0) return false
+    const ordered = [...monster.skills].sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
+    // 1.13c AITHINK_Fn121_Nihlathak: when a target closes within 6 sub-tiles, prioritize `#330 Imp Teleport` escape blink before summoning/attacking.
+    const nihEscapeEntry =
+      monster.hcIdx === 526 && distance <= 6
+        ? ordered.find((s) => s.skillId === 330)
+        : undefined
+    const scanOrder =
+      nihEscapeEntry !== undefined
+        ? [
+            nihEscapeEntry,
+            ...Array.from(
+              { length: ordered.length },
+              (_, i) => ordered[(monster.skillCursor + i) % ordered.length]!,
+            ).filter((s) => s !== nihEscapeEntry),
+          ]
+        : Array.from(
+            { length: ordered.length },
+            (_, i) => ordered[(monster.skillCursor + i) % ordered.length]!,
+          )
+
+    let resolvedHostile:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+      | { readonly kind: 'pet'; readonly pet: SummonedPetUnit }
+      | undefined
+    if (!hitMonsters) {
+      let bestD = 3.5
+      for (const h of this.listHostilesInMonsterArea113c(monster)) {
+        const d = Math.hypot(h.x - target.x, h.y - target.y)
+        if (d <= bestD) {
+          bestD = d
+          resolvedHostile = h
+        }
+      }
+    }
+
+    for (const entry of scanOrder) {
+      const sid = entry.skillId
+      if (sid === undefined) continue
+      const slvl = Math.max(1, entry.level)
+      const mode = this.monsterSkillMode(entry.mode)
+
+      // Self-armor buffs (`#60 Chilling Armor` -> state 20, `#210 MonBoneArmor` -> state 14).
+      if (sid === 60 && !monster.states.has(20)) {
+        this.applyMonsterState(monster.unitId, 20, 3600)
+        this.emitBossSkillCast113c(monster, 60, slvl, mode, monster.x, monster.y)
+        monster.skillCooldown = 50
+        return true
+      }
+      if (sid === 210 && !monster.states.has(14)) {
+        this.applyMonsterState(monster.unitId, 14, 3000)
+        this.emitBossSkillCast113c(monster, 210, slvl, mode, monster.x, monster.y)
+        monster.skillCooldown = 50
+        return true
+      }
+
+      // `#337 HydraMissile` (`hydra1..3` #351..353 stationary turret firebolt -> `#247 hydra`).
+      if (sid === 337 && distance <= 24) {
+        monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+        this.emitBossSkillCast113c(monster, 337, slvl, 4, target.x, target.y)
+        const fireDmg = this.rollInclusive(14, 22) + 6 * Math.max(0, slvl - 1) + 12 * this.difficulty
+        this.emitBossProjectile113c(monster, {
+          missileId: 247,
+          skillId: 337,
+          slvl,
+          originX: monster.x,
+          originY: monster.y,
+          targetX: target.x,
+          targetY: target.y,
+          speedSubTilesPerFrame: 16 / 16,
+          rangeFrames: 30,
+          size: 1,
+          element: 'fire',
+          physDamage: 0,
+          elemDamage: fireDmg,
+          hitMonsters,
+        })
+        monster.skillCooldown = 18
+        monster.cooldown = Math.max(monster.cooldown, 15)
+        return true
+      }
+
+      // `#62 Hydra` (Council `#345..347`, Bartuc `#557`): summon `hydra1` (#351, `0` XP, 250-frame lifespan, cap 3).
+      if (sid === 62 && !hitMonsters && distance <= 22) {
+        const activeHydras = [...this.monsters.values()].filter(
+          (m) => !m.dead && m.bossUnitId === monster.unitId && m.hcIdx >= 351 && m.hcIdx <= 353,
+        ).length
+        if (activeHydras < 3) {
+          const ang = (this.rng.rand(360) * Math.PI) / 180
+          const hx = target.x + Math.cos(ang) * 2.5
+          const hy = target.y + Math.sin(ang) * 2.5
+          if (
+            !this.terrainWalkableCheck ||
+            this.terrainWalkableCheck(monster.areaId, Math.round(hx), Math.round(hy), false)
+          ) {
+            monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+            this.emitBossSkillCast113c(monster, 62, slvl, mode, hx, hy)
+            const hId = this.spawnMonster({
+              classId: 351,
+              hcIdx: 351,
+              defId: 'hydra1',
+              ai: 'Hydra',
+              x: hx,
+              y: hy,
+              areaId: monster.areaId,
+              level: monster.level,
+              experience: 0,
+              noRatio: true,
+              velocity: 0,
+              runSpeed: 0,
+              bossUnitId: monster.unitId,
+            })
+            const hRec = this.monsters.get(hId)
+            if (hRec !== undefined) {
+              hRec.despawnAtFrame = this.currentFrame + 250
+              if (!hRec.skills.some((s) => s.skillId === 337)) {
+                ;(hRec as { skills: readonly MonsterSkillEntry[] }).skills = [
+                  { slot: 1, skill: 'HydraMissile', skillId: 337, mode: 'A1', level: slvl },
+                ]
+              }
+            }
+            monster.skillCooldown = 50
+            monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+            return true
+          }
+        }
+      }
+
+      // `#167 Nest` on `#267 Blood Raven`: summon `#6 zombie2` (Hungry Dead) with `experience: 0`, cap `8 + 2 * difficulty`.
+      if (sid === 167 && monster.hcIdx === 267 && !hitMonsters && distance <= 24) {
+        const cap = 8 + 2 * this.difficulty
+        const activeZombies = [...this.monsters.values()].filter(
+          (m) => !m.dead && m.bossUnitId === monster.unitId && m.hcIdx === 6,
+        ).length
+        if (activeZombies < cap) {
+          const ang = (this.rng.rand(360) * Math.PI) / 180
+          const zx = monster.x + Math.cos(ang) * 3
+          const zy = monster.y + Math.sin(ang) * 3
+          if (
+            !this.terrainWalkableCheck ||
+            this.terrainWalkableCheck(monster.areaId, Math.round(zx), Math.round(zy), false)
+          ) {
+            monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+            this.emitBossSkillCast113c(monster, 167, slvl, mode, zx, zy)
+            this.spawnMonster({
+              classId: 6,
+              hcIdx: 6,
+              defId: 'zombie2',
+              x: zx,
+              y: zy,
+              areaId: monster.areaId,
+              level: monster.level,
+              experience: 0,
+              bossUnitId: monster.unitId,
+            })
+            monster.skillCooldown = 45
+            monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+            return true
+          }
+        }
+      }
+
+      // `#351 NihlathakCorpseExplosion` & `#285 Baal Corpse Explode`: `10..20%` base corpse HP (50% Phys + 50% Fire), sets `state 104`.
+      if ((sid === 351 || sid === 285) && !hitMonsters && distance <= 26) {
+        let chosenCorpse: InternalMonsterRecord | undefined
+        let bestCDist = 22
+        for (const c of this.monsters.values()) {
+          if (
+            !c.dead ||
+            c.shattered ||
+            c.states.has(104) ||
+            c.isNpc ||
+            c.isBoss ||
+            c.isPrimeEvil ||
+            isBonePrisonMonsterHcIdx113c(c.hcIdx) ||
+            c.areaId !== monster.areaId
+          ) {
+            continue
+          }
+          const dCaster = Math.hypot(c.x - monster.x, c.y - monster.y)
+          if (dCaster > 22) continue
+          const dTarget = Math.hypot(c.x - target.x, c.y - target.y)
+          if (dTarget < bestCDist) {
+            bestCDist = dTarget
+            chosenCorpse = c
+          }
+        }
+        if (chosenCorpse !== undefined) {
+          chosenCorpse.shattered = true
+          chosenCorpse.states.add(104)
+          this.broadcastToArea(monster.areaId, {
+            type: 'StateSet',
+            unit: { unitType: 1, id: chosenCorpse.unitId },
+            state: 104,
+            stats: [],
+            origin: 0xa8,
+            complete: true,
+          })
+          this.emitBossSkillCast113c(monster, sid, slvl, mode, chosenCorpse.x, chosenCorpse.y)
+          this.broadcastExplosionMissile(chosenCorpse, 54)
+          const baseCorpseHp = Math.max(
+            1,
+            chosenCorpse.unscaledMaxHp || chosenCorpse.baseMaxHp || chosenCorpse.maxHp,
+          )
+          const pct = 10 + this.rng.rand(11) // 1.13c NihlathakCorpseExplosion: 10%..20% of base corpse HP!
+          const totalCeDmg = Math.max(2, Math.floor((baseCorpseHp * pct) / 100))
+          const physHalf = Math.max(1, Math.floor(totalCeDmg / 2))
+          const fireHalf = Math.max(1, totalCeDmg - physHalf)
+          const ceRadius = 8 + this.difficulty * 2 + Math.min(6, Math.floor(slvl / 2))
+          for (const h of this.listHostilesInMonsterArea113c(monster)) {
+            if (Math.hypot(h.x - chosenCorpse.x, h.y - chosenCorpse.y) <= ceRadius) {
+              this.dealMonsterDirectHitToHostile113c(monster, h, {
+                phys: physHalf,
+                fire: fireHalf,
+              })
+            }
+          }
+          monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+          monster.skillCooldown = 30
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return true
+        }
+      }
+
+      // `#302 MinionSpawner` (Nihlathak `#526` & `#484..491`): spawn `minion1` (#453, `0` XP, cap 6).
+      if (sid === 302 && !hitMonsters && distance <= 25) {
+        const activeMinions = [...this.monsters.values()].filter(
+          (m) =>
+            !m.dead &&
+            m.bossUnitId === monster.unitId &&
+            m.hcIdx >= 453 &&
+            m.hcIdx <= 468,
+        ).length
+        if (activeMinions < 6) {
+          const ang = (this.rng.rand(360) * Math.PI) / 180
+          const mx = monster.x + Math.cos(ang) * 2.5
+          const my = monster.y + Math.sin(ang) * 2.5
+          if (
+            !this.terrainWalkableCheck ||
+            this.terrainWalkableCheck(monster.areaId, Math.round(mx), Math.round(my), false)
+          ) {
+            monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+            this.emitBossSkillCast113c(monster, 302, slvl, mode, mx, my)
+            this.spawnMonster({
+              classId: 453,
+              hcIdx: 453,
+              defId: 'minion1',
+              x: mx,
+              y: my,
+              areaId: monster.areaId,
+              level: monster.level,
+              experience: 0,
+              bossUnitId: monster.unitId,
+            })
+            monster.skillCooldown = 55
+            monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+            return true
+          }
+        }
+      }
+
+      // `#330 Imp Teleport` (Nihlathak `#526` escape blink when `distance <= 6` & Imp `#492..496` blink).
+      if (sid === 330 && ((monster.hcIdx === 526 && distance <= 6) || (monster.hcIdx !== 526 && distance >= 5 && distance <= 20))) {
+        const awayAng = Math.atan2(monster.y - target.y, monster.x - target.x)
+        let blinkDest: { x: number; y: number } | undefined
+        for (const spread of [0, 0.6, -0.6, 1.2, -1.2, Math.PI * 0.75, -Math.PI * 0.75]) {
+          const distStep = monster.hcIdx === 526 ? 9 : 5
+          const bx = (monster.hcIdx === 526 ? monster.x : target.x) + Math.cos(awayAng + spread) * distStep
+          const by = (monster.hcIdx === 526 ? monster.y : target.y) + Math.sin(awayAng + spread) * distStep
+          if (
+            !this.isClosedDoorAt(monster.areaId, Math.round(bx), Math.round(by)) &&
+            (!this.terrainWalkableCheck ||
+              this.terrainWalkableCheck(monster.areaId, Math.round(bx), Math.round(by), monster.isFlying)) &&
+            !this.isMonsterCellOccupied(monster, bx, by)
+          ) {
+            blinkDest = { x: bx, y: by }
+            break
+          }
+        }
+        if (blinkDest !== undefined) {
+          const from = { x: Math.round(monster.x), y: Math.round(monster.y) }
+          this.broadcastExplosionMissile(monster, 451)
+          monster.x = blinkDest.x
+          monster.y = blinkDest.y
+          monster.path = []
+          monster.pathIndex = 0
+          monster.pathTargetX = Number.NaN
+          monster.pathTargetY = Number.NaN
+          this.emitBossSkillCast113c(monster, 330, slvl, mode, blinkDest.x, blinkDest.y)
+          this.broadcastExplosionMissile(monster, 451)
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMove',
+            unitType: 'monster',
+            id: monster.unitId,
+            unitId: monster.unitId,
+            mode: 'run',
+            from,
+            to: { x: Math.round(blinkDest.x), y: Math.round(blinkDest.y) },
+            x: Math.round(blinkDest.x),
+            y: Math.round(blinkDest.y),
+            currentX: Math.round(blinkDest.x),
+            currentY: Math.round(blinkDest.y),
+            targetX: Math.round(blinkDest.x),
+            targetY: Math.round(blinkDest.y),
+            areaId: monster.areaId,
+          })
+          monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+          monster.skillCooldown = 40
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return true
+        }
+      }
+
+      // `#107 Charge` & `#352 SerpentCharge` (Duriel `#211`, Uber Duriel `#708`, ReanimatedHorde, SiegeBeast, ClawViper).
+      if ((sid === 107 || sid === 352) && !hitMonsters && distance > 3.5 && distance <= 15) {
+        const dx = target.x - monster.x
+        const dy = target.y - monster.y
+        const d = Math.max(1, Math.hypot(dx, dy))
+        const ux = dx / d
+        const uy = dy / d
+        let destX = monster.x
+        let destY = monster.y
+        const maxSteps = Math.max(1, Math.floor(d - 1.4))
+        for (let step = 1; step <= maxSteps; step++) {
+          const cx = monster.x + ux * step
+          const cy = monster.y + uy * step
+          if (
+            this.isClosedDoorAt(monster.areaId, Math.round(cx), Math.round(cy)) ||
+            (this.terrainWalkableCheck &&
+              !this.terrainWalkableCheck(monster.areaId, Math.round(cx), Math.round(cy), false)) ||
+            this.isBlockedByBonePrison(monster.areaId, cx, cy)
+          ) {
+            break
+          }
+          destX = cx
+          destY = cy
+        }
+        if (Math.hypot(destX - monster.x, destY - monster.y) >= 1.0) {
+          const from = { x: Math.round(monster.x), y: Math.round(monster.y) }
+          monster.x = destX
+          monster.y = destY
+          monster.path = []
+          monster.pathIndex = 0
+          monster.pathTargetX = Number.NaN
+          monster.pathTargetY = Number.NaN
+          this.emitBossSkillCast113c(monster, sid, slvl, 14, target.x, target.y)
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMove',
+            unitType: 'monster',
+            id: monster.unitId,
+            unitId: monster.unitId,
+            mode: 'run',
+            from,
+            to: { x: Math.round(destX), y: Math.round(destY) },
+            x: Math.round(destX),
+            y: Math.round(destY),
+            currentX: Math.round(destX),
+            currentY: Math.round(destY),
+            targetX: Math.round(destX),
+            targetY: Math.round(destY),
+            areaId: monster.areaId,
+          })
+          if (resolvedHostile !== undefined && Math.hypot(target.x - monster.x, target.y - monster.y) <= 3.5) {
+            const chargeMult = 1 + (100 + 25 * Math.max(0, slvl - 1)) / 100
+            const chargeDmg = Math.max(
+              6,
+              Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * chargeMult),
+            )
+            this.dealMonsterDirectHitToHostile113c(
+              monster,
+              resolvedHostile,
+              { phys: chargeDmg },
+              { knockbackSteps: 3 },
+            )
+          }
+          monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+          monster.skillCooldown = 45
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return true
+        }
+      }
+
+      // Melee-range non-missile combat skills (`distance <= 3.5`).
+      if (!hitMonsters && resolvedHostile !== undefined && distance <= 3.5) {
+        // `#10 Jab` (Duriel `#211`, Uber Duriel `#708`, Scarab, CorruptLancer): 3 rapid physical strikes!
+        if (sid === 10) {
+          this.emitBossSkillCast113c(monster, 10, slvl, 4, target.x, target.y)
+          const jabMult = Math.max(0.85, 1 + (-15 + 3 * Math.max(0, slvl - 1)) / 100)
+          for (let strike = 0; strike < 3; strike++) {
+            const strikeDmg = Math.max(
+              2,
+              Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * jabMult),
+            )
+            this.dealMonsterDirectHitToHostile113c(monster, resolvedHostile, { phys: strikeDmg })
+          }
+          monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+          monster.skillCooldown = 22
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return true
+        }
+
+        // `#97 Smite` (Duriel `#211`, Uber Duriel `#708`, Lister `#571`, Blunderbore, Overseer): auto-hit + Knockback + Stun (`state 21`).
+        if (sid === 97) {
+          this.emitBossSkillCast113c(monster, 97, slvl, 5, target.x, target.y)
+          const smiteDmg = Math.max(
+            4,
+            Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * (1 + (15 * slvl) / 100)),
+          )
+          const stunFrames = Math.min(250, 15 + 15 * slvl)
+          this.dealMonsterDirectHitToHostile113c(
+            monster,
+            resolvedHostile,
+            { phys: smiteDmg },
+            { stunFrames, knockbackSteps: 3 },
+          )
+          monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+          monster.skillCooldown = 28
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return true
+        }
+
+        // `#126 Bash` (Smith `#402`, Hephasto `#409`) & `#156 Fire Hit` (SandRaider).
+        if (sid === 126 || sid === 156) {
+          this.emitBossSkillCast113c(monster, sid, slvl, 4, target.x, target.y)
+          const basePhys = Math.max(2, this.rollInclusive(monster.minDmg, monster.maxDmg))
+          if (sid === 126) {
+            const bashPhys = Math.round(basePhys * (1 + (50 + 5 * Math.max(0, slvl - 1)) / 100)) + slvl
+            this.dealMonsterDirectHitToHostile113c(
+              monster,
+              resolvedHostile,
+              { phys: bashPhys },
+              { knockbackSteps: 2 },
+            )
+          } else {
+            this.dealMonsterDirectHitToHostile113c(monster, resolvedHostile, {
+              phys: basePhys,
+              fire: 6 + 4 * slvl + 8 * this.difficulty,
+            })
+          }
+          monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+          monster.skillCooldown = 24
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return true
+        }
+
+        // `#301 Siege Beast Stomp`: AoE melee physical slam within 4.0 sub-tiles.
+        if (sid === 301) {
+          this.emitBossSkillCast113c(monster, 301, slvl, 8, target.x, target.y)
+          for (const h of this.listHostilesInMonsterArea113c(monster)) {
+            if (Math.hypot(h.x - monster.x, h.y - monster.y) <= 4.0) {
+              const stompDmg = Math.max(
+                6,
+                Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * 1.25),
+              )
+              this.dealMonsterDirectHitToHostile113c(monster, h, { phys: stompDmg })
+            }
+          }
+          monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+          monster.skillCooldown = 35
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return true
+        }
+
+        // `#215 MonFrenzy` & `#328 BloodLordFrenzy`: self-frenzy attack/move haste (`state 141`).
+        if (sid === 215 || sid === 328) {
+          this.emitBossSkillCast113c(monster, sid, slvl, 5, target.x, target.y)
+          this.applyMonsterState(monster.unitId, 141, 150)
+          monster.frenzyUntilFrame = this.currentFrame + 150
+          monster.frenzySpeedPct = Math.max(monster.frenzySpeedPct, 35)
+          const frenzyDmg = Math.max(
+            4,
+            Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * 1.3),
+          )
+          this.dealMonsterDirectHitToHostile113c(monster, resolvedHostile, { phys: frenzyDmg })
+          monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+          monster.skillCooldown = 30
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return true
+        }
+      }
+    }
+
+    return false
   }
 
   /**
@@ -16164,8 +22721,8 @@ export class GameInstance {
     if (monster.skillCooldown > 0) {
       monster.skillCooldown--
     }
-    if (monster.auraSkillId !== undefined) {
-      this.applyMonsterAura(monster)
+    if (this.stepBossChannelsAndSummonLifespans113c(monster)) {
+      return
     }
     // GetHit / Knockback animation lock: the monster may not start a new action while the
     // GH animation plays (1.13c AnimData `GH`, D2Game.dll 0x6FC95070 / 0x6FC965E0).
@@ -16262,6 +22819,22 @@ export class GameInstance {
     }
     if (isTentacleHcIdx113c(monster.hcIdx)) {
       this.stepTentacleAi(monster)
+      return
+    }
+    if (isBaalTentacleHcIdx113c(monster.hcIdx)) {
+      this.stepBaalTentacleAi113c(monster)
+      return
+    }
+    if (monster.hcIdx === 243 || monster.hcIdx === 333 || monster.hcIdx === 705) {
+      this.stepDiabloBossAi113c(monster)
+      return
+    }
+    if (monster.hcIdx === 544 || monster.hcIdx === 570 || monster.hcIdx === 709) {
+      this.stepBaalCrabBossAi113c(monster)
+      return
+    }
+    if (monster.hcIdx === 540 || monster.hcIdx === 541 || monster.hcIdx === 542) {
+      this.stepAncientBarbAi113c(monster)
       return
     }
     if (isFrogDemonHcIdx113c(monster.hcIdx) && this.stepFrogDemonSubmergeAi(monster)) {
@@ -16770,36 +23343,56 @@ export class GameInstance {
       }
     }
 
-    // F11.5: Oblivion Knight 1.13c 5-curse pool (Decrepify 60, Amplify Damage 9, Lower Resist 61, Life Tap 58, Weaken 19 — no Iron Maiden 55 in 1.13c)
+    // F11.5 / #1822: Oblivion Knight (`MonCurseCast` 0x6FCD5950 & 0x6FD1B454) 1.13c 5-curse pool:
+    // Decrepify (#87/60), Amplify Damage (#66/9), Lower Resist (#91/61), Weaken (#72/19), Life Tap (#82/58) — NO Iron Maiden (#76/55) in 1.13c!
     if (
       !hasDimVision &&
       !hasTaunt &&
-      aiProfile.curse
+      aiProfile.curse &&
+      monster.cooldown <= 0 &&
+      monster.skillCooldown <= 0 &&
+      bestDist <= 25
     ) {
-      const curseIds = [60, 9, 61, 58, 19] as const
-      const curseId =
-        curseIds[
-          ((this.currentFrame >>> 0) + monster.unitId) % curseIds.length
-        ]!
-      monster.mode = 8
-      this.broadcastToArea(monster.areaId, {
-        type: 'UnitMode',
-        unitType: 1,
-        id: monster.unitId,
-        mode: 8,
-        at: { x: Math.round(nearest.x), y: Math.round(nearest.y) },
-        lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
-      })
-      if (nearest.kind === 'player') {
-        this.applyUnitState(
-          nearest.player.states,
-          nearest.player.stateTimers,
-          'player',
-          nearest.player.unitId,
-          nearest.player.areaId,
-          curseId,
-          100,
-        )
+      const curseChance = Math.max(25, Math.min(100, monster.aiParams[4] || 80))
+      const closeRange = Math.max(4, monster.aiParams[0] || 6)
+      const targetHasDecrep =
+        nearest.kind === 'player'
+          ? nearest.player.states.has(60)
+          : nearest.kind === 'merc'
+            ? nearest.merc.states.has(60)
+            : false
+      if (!(bestDist <= closeRange && targetHasDecrep) && this.rng.rand(100) < curseChance) {
+        const curseSkills = [87, 66, 91, 72, 82] as const
+        const chosenSkillId =
+          bestDist <= closeRange ? 87 : curseSkills[this.rng.rand(curseSkills.length)]!
+        const curseSlvl = Math.max(1, Math.floor(monster.level / 5))
+        if (nearest.kind === 'player') {
+          this.applyMonsterCurseToTarget113c(
+            monster,
+            { kind: 'player', player: nearest.player },
+            chosenSkillId,
+            curseSlvl,
+          )
+        } else if (nearest.kind === 'merc') {
+          this.applyMonsterCurseToTarget113c(
+            monster,
+            { kind: 'merc', merc: nearest.merc },
+            chosenSkillId,
+            curseSlvl,
+          )
+        }
+        monster.mode = 8
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: 8,
+          at: { x: Math.round(nearest.x), y: Math.round(nearest.y) },
+          lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+        })
+        monster.cooldown = Math.max(monster.aiDelay, monster.cooldownTicks)
+        monster.skillCooldown = Math.max(35, monster.cooldownTicks * 2)
+        return
       }
     }
 
@@ -17010,7 +23603,7 @@ export class GameInstance {
         }
       }
     } else if (aiBehavior !== 'stationary') {
-      const running = bestDist > 5 && !isSlowed
+      const running = (aiBehavior === 'suicide' || bestDist > 5) && !isSlowed
       this.moveMonsterToward(monster, nearest.x, nearest.y, running)
     }
   }
@@ -17123,16 +23716,77 @@ export class GameInstance {
       readonly killerUnitId?: number | undefined
     },
   ): void {
+    this.abortPlayerTrade(player.unitId)
     player.dead = true
+    player.hasDied = true
+    const isHardcorePlayer =
+      player.isHardcore === true || ((player.statusFlags ?? 0) & 0x04) !== 0
+    if (isHardcorePlayer) {
+      player.isHardcore = true
+      player.statusFlags = ((player.statusFlags ?? 0x24) | 0x04 | 0x08) & 0xff
+    }
     player.hitRecoveryUntilFrame = 0
     player.activeWaypointUnitId = 0
     player.hp = 0
     player.hpFixed = 0
     player.mode = 17
+    // 1.13c `D2Game.dll` `0x6FD0D880` / `0x6FC583A0`: all player summons (including Iron Golem)
+    // perish on owner death and `ironGolemItem` (`kf`) is cleared (#1787).
+    player.ironGolemItem = null
+    const playerSummonMgr = this.summonManagers.get(player.unitId)
+    if (playerSummonMgr) {
+      for (const activePet of [...playerSummonMgr.getActivePets()]) {
+        const pUnitId = this.petUnitIds.get(activePet.uid)
+        activePet.hp = 0
+        activePet.alive = false
+        this.petAuraScanners.delete(activePet.uid)
+        if (typeof (playerSummonMgr as { removePetByUid?: (u: string) => unknown }).removePetByUid === 'function') {
+          ;(playerSummonMgr as { removePetByUid: (u: string) => unknown }).removePetByUid(activePet.uid)
+        }
+        if (pUnitId !== undefined) {
+          this.petUnitIds.delete(activePet.uid)
+          this.petVisualStates.delete(pUnitId)
+          this.broadcastToArea(player.areaId, {
+            type: 'UnitRemove',
+            unitType: 1,
+            id: pUnitId,
+            unitId: pUnitId,
+          })
+          this.emitToPlayer(player.unitId, {
+            type: 'Merc',
+            kind: 'assign',
+            isSummonAction: true,
+            summonAction: 0,
+            petType: PET_TYPE_IDX_BY_NAME_113C[activePet.petType] ?? 1,
+            mercId: pUnitId,
+            ownerId: player.unitId,
+            classId: activePet.classId ?? 363,
+          })
+        }
+      }
+    }
+
+    // Preserve any existing unrecovered corpse before creating the new corpse (`D2Game` up to 16 corpses, #1786).
+    if (player.corpseId !== undefined && player.corpseItems.length > 0) {
+      const extras = player.extraCorpses ?? []
+      if (extras.length < 15) {
+        extras.push({
+          corpseId: player.corpseId,
+          areaId: player.corpseAreaId ?? player.areaId,
+          x: player.corpseX,
+          y: player.corpseY,
+          items: [...player.corpseItems],
+        })
+      }
+      player.extraCorpses = extras
+      player.corpseItems = []
+    }
     const corpseId = this.allocateUnitId()
     player.corpseId = corpseId
+    player.corpseAreaId = player.areaId
     player.corpseX = player.x
     player.corpseY = player.y
+    player.corpseRequiresClick = false
 
     const remainingItems: ServerItemEntry[] = []
     for (const item of player.items) {
@@ -17218,16 +23872,71 @@ export class GameInstance {
       at: playerWirePosition(player),
       lifePct: 0,
     })
+    const cx = Math.round(player.corpseX)
+    const cy = Math.round(player.corpseY)
+    this.broadcastToArea(player.areaId, {
+      type: 'UnitAssign',
+      unitType: 'player',
+      unitId: corpseId,
+      classId: player.classId,
+      name: player.name,
+      x: cx,
+      y: cy,
+      areaId: player.areaId,
+      unit: {
+        unitType: 0,
+        id: corpseId,
+        classId: player.classId,
+        name: player.name,
+        x: cx,
+        y: cy,
+        mode: 17,
+      },
+    })
+    this.broadcastToArea(player.areaId, {
+      type: 'UnitMode',
+      unitType: 0,
+      id: corpseId,
+      mode: 17,
+      at: { x: cx, y: cy },
+      lifePct: 0,
+    })
     this.broadcastToArea(player.areaId, {
       type: 'CorpseAssign',
       assign: 1,
       ownerId: player.unitId,
       corpseId,
     })
+    if (isHardcorePlayer) {
+      const killerName =
+        options?.killerUnitId !== undefined
+          ? (this.monsters.get(options.killerUnitId)?.name ??
+            this.players.get(options.killerUnitId)?.name ??
+            'an evil force')
+          : 'an evil force'
+      const deathChat: ServerEvent = {
+        type: 'Chat',
+        kind: 'event',
+        eventType: 6,
+        subType: 0,
+        arg: player.level,
+        name1: player.name,
+        name2: killerName,
+        text: `${player.name} was slain by ${killerName}. Your deeds of valor will be remembered.`,
+      }
+      for (const peer of this.players.values()) {
+        this.emitToPlayer(peer.unitId, deathChat)
+      }
+    }
   }
 
   private handleRespawn(player: InternalPlayerRecord): void {
     if (!player.dead) return
+    // 1.13c `D2Game.dll` `0x6FD0B400` (`Packet_0x41_Resurrect`): Hardcore (`status & 0x04`) characters
+    // cannot resurrect in town after dying (#1788).
+    if (player.isHardcore === true || ((player.statusFlags ?? 0) & 0x04) !== 0) {
+      return
+    }
     player.dead = false
     player.hitRecoveryUntilFrame = 0
     player.hpFixed = player.maxHpFixed
@@ -17276,35 +23985,105 @@ export class GameInstance {
   private recoverPlayerCorpse(player: InternalPlayerRecord): void {
     if (player.corpseId === undefined) return
     const oldCorpseId = player.corpseId
-    player.corpseId = undefined
+    const oldCorpseArea = player.corpseAreaId ?? player.areaId
+    const leftover: ServerItemEntry[] = []
     for (const item of player.corpseItems) {
-      item.location = 'equipped'
-      player.items.push(item)
-      this.emitToPlayer(player.unitId, {
-        type: 'ItemEvent',
-        action: 'equip',
-        itemId: item.unitId,
-        code: item.code,
-        x: item.x,
-        y: item.y,
-        container: 'equipment',
-        item: this.serverEntryToItemData(item),
-      })
+      item.ownerId = player.unitId
+      const slotOccupied =
+        item.bodyLoc > 0 &&
+        player.items.some((e) => e.location === 'equipped' && e.bodyLoc === item.bodyLoc)
+      if (!slotOccupied && item.bodyLoc > 0) {
+        item.location = 'equipped'
+        player.items.push(item)
+        this.emitToPlayer(player.unitId, {
+          type: 'ItemEvent',
+          action: 'equip',
+          itemId: item.unitId,
+          code: item.code,
+          x: item.x,
+          y: item.y,
+          container: 'equipment',
+          item: {
+            ...this.serverEntryToItemData(item),
+            opcode: 0x9d,
+            action: 0x06,
+            ownerType: 0,
+            ownerId: player.unitId as UnitId,
+            location: 1,
+            bodyLoc: item.bodyLoc,
+            equippedSlot: item.bodyLoc,
+            container: 'equipment',
+          },
+        })
+      } else {
+        const freeSlot = this.findFreeGridSlot(
+          player,
+          'inventory',
+          item.width,
+          item.height,
+          10,
+          4,
+        )
+        if (freeSlot) {
+          item.location = 'inventory'
+          item.storePage = 1
+          item.x = freeSlot.x
+          item.y = freeSlot.y
+          player.items.push(item)
+          this.emitToPlayer(player.unitId, {
+            type: 'ItemEvent',
+            action: 'pickup',
+            itemId: item.unitId,
+            code: item.code,
+            x: item.x,
+            y: item.y,
+            container: 'inventory',
+            item: this.serverEntryToItemData(item),
+          })
+        } else {
+          leftover.push(item)
+        }
+      }
     }
-    player.corpseItems = []
+    this.refreshPlayerAccruedMaxPools(player)
     this.syncPlayerItemAuras113c(player, true)
-    this.broadcastToArea(player.areaId, {
+    if (leftover.length > 0) {
+      player.corpseItems = leftover
+      return
+    }
+    player.corpseId = undefined
+    player.corpseAreaId = undefined
+    player.corpseRequiresClick = false
+    player.corpseItems = []
+    this.broadcastToArea(oldCorpseArea, {
       type: 'CorpseAssign',
       assign: 0,
       ownerId: player.unitId,
       corpseId: oldCorpseId,
     })
+    this.broadcastToArea(oldCorpseArea, {
+      type: 'UnitRemove',
+      unitType: 0,
+      id: oldCorpseId,
+      unitId: oldCorpseId,
+    })
+    if (player.extraCorpses && player.extraCorpses.length > 0) {
+      const nextCorpse = player.extraCorpses.pop()!
+      player.corpseId = nextCorpse.corpseId
+      player.corpseAreaId = nextCorpse.areaId
+      player.corpseX = nextCorpse.x
+      player.corpseY = nextCorpse.y
+      player.corpseItems = nextCorpse.items
+    }
   }
 
   private lootOtherPlayerCorpse(looter: InternalPlayerRecord, victim: InternalPlayerRecord): void {
     if (victim.corpseId === undefined || victim.corpseItems.length === 0) return
     const oldCorpseId = victim.corpseId
+    const oldCorpseArea = victim.corpseAreaId ?? victim.areaId
     victim.corpseId = undefined
+    victim.corpseAreaId = undefined
+    victim.corpseRequiresClick = false
     const items = [...victim.corpseItems]
     victim.corpseItems = []
     for (const item of items) {
@@ -17322,12 +24101,26 @@ export class GameInstance {
         item: this.serverEntryToItemData(item),
       })
     }
-    this.broadcastToArea(victim.areaId, {
+    this.broadcastToArea(oldCorpseArea, {
       type: 'CorpseAssign',
       assign: 0,
       ownerId: victim.unitId,
       corpseId: oldCorpseId,
     })
+    this.broadcastToArea(oldCorpseArea, {
+      type: 'UnitRemove',
+      unitType: 0,
+      id: oldCorpseId,
+      unitId: oldCorpseId,
+    })
+    if (victim.extraCorpses && victim.extraCorpses.length > 0) {
+      const nextCorpse = victim.extraCorpses.pop()!
+      victim.corpseId = nextCorpse.corpseId
+      victim.corpseAreaId = nextCorpse.areaId
+      victim.corpseX = nextCorpse.x
+      victim.corpseY = nextCorpse.y
+      victim.corpseItems = nextCorpse.items
+    }
   }
 
   /** Apply a state without a timer (auras, absorb-limited armors): it lasts until cleared. */
@@ -18332,18 +25125,155 @@ export class GameInstance {
     }
   }
 
+  private isAncientsEncounterActive(areaId: number): boolean {
+    const activeAncients = [...this.monsters.values()].filter(
+      (m) =>
+        m.areaId === areaId &&
+        m.superUniqueId !== undefined &&
+        ANCIENT_BARBARIANS_113C.some((b) => b.superUniqueId === m.superUniqueId),
+    )
+    if (activeAncients.length === 0) return false
+    const deaths = this.ancientDeaths.get(areaId)
+    return (
+      activeAncients.some((m) => !m.dead) ||
+      (deaths?.size ?? 0) < ANCIENT_BARBARIANS_113C.length
+    )
+  }
+
+  private relocatePlayerFollowersToPlayer(
+    player: InternalPlayerRecord,
+    emitReassign: boolean,
+  ): void {
+    for (const merc of this.mercenaries.values()) {
+      if (merc.ownerPlayerId !== player.unitId || !merc.alive) continue
+      merc.areaId = player.areaId
+      merc.x = player.x
+      merc.y = player.y
+      if (emitReassign) {
+        this.broadcastToArea(player.areaId, {
+          type: 'UnitReassign',
+          unitType: 1,
+          id: merc.unitId,
+          unitId: merc.unitId,
+          at: { x: Math.round(merc.x), y: Math.round(merc.y) },
+          x: merc.x,
+          y: merc.y,
+          snap: true,
+          areaId: player.areaId,
+        })
+      }
+    }
+    const mgr = this.summonManagers.get(player.unitId)
+    if (mgr !== undefined) {
+      for (const pet of mgr.getActivePets()) {
+        if (pet.alive === false || pet.hp <= 0) continue
+        if (resolvePetAiProfile113c(pet).isStationary) continue
+        pet.x = player.x
+        pet.y = player.y
+        const petMeta = pet as unknown as { areaId?: number }
+        petMeta.areaId = player.areaId
+        if (emitReassign) {
+          const petUnitId = this.resolvePetUnitId(pet)
+          this.broadcastToArea(player.areaId, {
+            type: 'UnitReassign',
+            unitType: 1,
+            id: petUnitId,
+            unitId: petUnitId,
+            at: { x: Math.round(pet.x), y: Math.round(pet.y) },
+            x: pet.x,
+            y: pet.y,
+            snap: true,
+            areaId: player.areaId,
+          })
+        }
+      }
+    }
+  }
+
+  private spawnEvilUrnAmbush113c(urn: InternalObjectRecord): void {
+    const members = planEvilUrnPack113c(urn.areaId, this.difficulty, this.rng)
+    for (const m of members) {
+      const targetX = urn.x + m.dx
+      const targetY = urn.y + m.dy
+      const stand = this.loadedAreas.has(urn.areaId)
+        ? findStandableNear(
+            (x, y) => this.isWorldWalkableForPlayer(urn.areaId, x, y),
+            targetX,
+            targetY,
+            8,
+          )
+        : null
+      const sx = stand?.x ?? targetX
+      const sy = stand?.y ?? targetY
+      this.spawnMonster({
+        defId: m.defId,
+        ...(m.hcIdx !== undefined ? { classId: m.hcIdx } : {}),
+        x: sx,
+        y: sy,
+        areaId: urn.areaId,
+        rank: m.rank,
+        modifiers: [...m.modifiers],
+        statSeed: this.rng.rand(0x7fffffff) || 1,
+      })
+    }
+  }
+
   /** Objects.txt OperateFn dispatch (D2Game 0x6fd27bb8), including one-shot semantics. */
   private operateObject(player: InternalPlayerRecord, obj: InternalObjectRecord): void {
+    // Objects.txt 474/475/476 Ancient Statues (OperateFn 62/63/64, D2Game 0x6FC79A60..0x6FC79AC0):
+    // clicking statues directly plays reject sound 19 and NEVER transitions mode 0 -> 2 (#1843).
+    if (obj.classId === 474 || obj.classId === 475 || obj.classId === 476) {
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 19,
+      })
+      return
+    }
+
     // Objects.txt 546 Ancients' Altar (OperateFn 65, D2Game 0x6FC7E560 -> 0x6FC7E420):
-    // requires clvl 20/40/60, sets Altar 546 to mode 2, transitions Ancient Statues 475/476/474
-    // to mode 4 (empty pedestal), and spawns SuperUniques 43/44/45 (Talic 540, Madawc 541, Korlic 542).
+    // requires clvl 20/40/60, closes SummitDoor 564 & any Summit Town Portals, sets Altar 546 to mode 2,
+    // transitions Ancient Statues 475/476/474 to mode 4 (empty pedestal), and spawns SuperUniques 43/44/45.
     if (obj.classId === 546) {
       const requiredLevel = (this.difficulty + 1) * 20
-      if (obj.useCount === 0 && player.level >= requiredLevel) {
+      if (player.level < requiredLevel) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      if (obj.useCount === 0) {
         obj.useCount = 1
         this.setObjectMode(obj, 2)
         this.ancientDeaths.delete(obj.areaId)
         this.setPlayerQuestFlag(player, 'a5q5', QUEST_FLAG_STARTED_113C)
+        // D2Game.dll 0x6FC7D0A0: close SummitDoor (564) and despawn any Town Portals in this arena.
+        const ownersToClose = new Set<number>()
+        for (const candidate of this.objects.values()) {
+          if (candidate.areaId === obj.areaId && candidate.classId === 564 && candidate.mode !== 0) {
+            this.setObjectMode(candidate, 0)
+          }
+          if (
+            candidate.areaId === obj.areaId &&
+            candidate.classId === 59 &&
+            candidate.portalOwnerId !== undefined
+          ) {
+            ownersToClose.add(candidate.portalOwnerId)
+          }
+        }
+        for (const [oid, oRec] of [...this.objects.entries()]) {
+          if (oRec.portalOwnerId !== undefined && ownersToClose.has(oRec.portalOwnerId)) {
+            this.objects.delete(oid)
+            this.broadcastToArea(oRec.areaId, {
+              type: 'UnitRemove',
+              unitType: 2,
+              id: oid,
+              unitId: oid,
+            })
+          }
+        }
         const offsets = [
           { dx: 2, dy: 0 },
           { dx: -2, dy: 0 },
@@ -18372,11 +25302,24 @@ export class GameInstance {
       return
     }
 
+    // Objects.txt 564 SummitDoor (OperateFn 71, D2Game 0x6FC7D690):
+    // locked while the Ancients encounter is active (#1843).
+    if (obj.classId === 564 && this.isAncientsEncounterActive(obj.areaId)) {
+      if (obj.mode !== 0) this.setObjectMode(obj, 0)
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 19,
+      })
+      return
+    }
+
     // Objects.txt 547 Ancient's Way / Worldstone Keep Entrance (OperateFn 66, D2Game 0x6FC7E2E0):
-    // requires A5Q5 Rite of Passage completion (bit 0 or bit 13); otherwise plays reject sound 19.
+    // requires A5Q5 Rite of Passage completion (bit 0 or bit 13) and no active Ancients encounter;
+    // first click opens (0 -> 1 -> 2), subsequent click in mode 2 warps to Worldstone Keep L1 (128).
     if (obj.classId === 547) {
-      if (obj.mode !== 0) return
       if (
+        this.isAncientsEncounterActive(obj.areaId) ||
         !hasQuestFlag113c(
           player.questFlags,
           'a5q5',
@@ -18390,13 +25333,26 @@ export class GameInstance {
         })
         return
       }
-      const gateOperatingTicks = getObjectOperatingTicks113c(547)
-      this.setObjectMode(obj, 1)
-      this.pendingObjectModeTransitions.push({
-        frame: this.currentFrame + gateOperatingTicks,
-        unitId: obj.unitId,
-        mode: 2,
-      })
+      if (obj.mode === 0) {
+        const gateOperatingTicks = getObjectOperatingTicks113c(547)
+        this.setObjectMode(obj, 1)
+        if (gateOperatingTicks > 0) {
+          this.pendingObjectModeTransitions.push({
+            frame: this.currentFrame + gateOperatingTicks,
+            unitId: obj.unitId,
+            mode: 2,
+          })
+        } else {
+          this.setObjectMode(obj, 2)
+        }
+        return
+      }
+      if (obj.mode === 2 && this.consumeWarpCooldown(player)) {
+        this.transitionPlayerArea(player, obj.destAreaId ?? 128, {
+          kind: 'warp',
+          fromAreaId: obj.areaId,
+        })
+      }
       return
     }
 
@@ -18644,7 +25600,100 @@ export class GameInstance {
       this.transitionPlayerArea(player, 109, { kind: 'townPortal' })
       return
     }
+    // Objects.txt 342 Mephisto Hellgate (D2Game OperateFn 46 @ 0x6FC8CD40, #1836):
+    // Requires mode === 2 (opened on Mephisto death) and A3Q6 completion; unlocks Act 4 + WP 103
+    // and warps player + followers to Pandemonium Fortress (103).
+    if (obj.classId === 342) {
+      if (
+        obj.mode !== 2 ||
+        !hasQuestFlag113c(
+          player.questFlags,
+          'a3q6',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+        )
+      ) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      player.unlockedAct = Math.max(player.unlockedAct, 3)
+      player.waypoints.add(103)
+      this.emitToPlayer(player.unitId, { type: 'CanGoToAct', act: 4 })
+      this.transitionPlayerArea(player, obj.destAreaId ?? 103, { kind: 'townPortal' })
+      return
+    }
+    // Objects.txt 298 Arcane Sanctuary Portal (D2Game OperateFn 34 @ 0x6FC8D620, #1835):
+    // Activates mode 0 -> 1 -> 2 on first use, then warps Palace Cellar L3 (54) <-> Arcane Sanctuary (74).
+    if (obj.classId === 298) {
+      const destArea = obj.destAreaId ?? resolvePresetPortalDestArea113c(298, obj.areaId) ?? 74
+      if (!this.playerCanEnterArea(player, destArea)) {
+        this.notifyAreaTransitionFailure(player, destArea)
+        return
+      }
+      if (obj.mode === 0) {
+        this.setObjectMode(obj, 1)
+        this.setObjectMode(obj, 2)
+      }
+      if (this.consumeWarpCooldown(player)) {
+        this.transitionPlayerArea(player, destArea, { kind: 'warp', fromAreaId: obj.areaId })
+      }
+      return
+    }
     const record = getObjectsTxtRecord113c(obj.classId)
+    // Objects.txt 192, 304..306 Arcane Sanctuary Teleportation Pad (D2Game OperateFn 27 @ 0x6FC8BE40, #1835):
+    // Re-usable paired pad teleporting the player, mercenaries, and mobile summons to the nearest matching pad.
+    if (record.operateFn === 27) {
+      let bestOther: InternalObjectRecord | undefined
+      let bestDistSq = Number.POSITIVE_INFINITY
+      for (const candidate of this.objects.values()) {
+        if (
+          candidate.unitId === obj.unitId ||
+          candidate.areaId !== obj.areaId ||
+          candidate.classId !== obj.classId
+        ) {
+          continue
+        }
+        const dSq = (candidate.x - obj.x) ** 2 + (candidate.y - obj.y) ** 2
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq
+          bestOther = candidate
+        }
+      }
+      if (bestOther !== undefined && this.consumeWarpCooldown(player)) {
+        this.setObjectMode(obj, 1)
+        this.setObjectMode(obj, 2)
+        this.setObjectMode(bestOther, 1)
+        this.setObjectMode(bestOther, 2)
+        const stand = this.loadedAreas.has(player.areaId)
+          ? findStandableNear(
+              (x, y) => this.isWorldWalkableForPlayer(player.areaId, x, y),
+              bestOther.x,
+              bestOther.y,
+              6,
+            )
+          : null
+        const destX = stand?.x ?? bestOther.x
+        const destY = stand?.y ?? bestOther.y
+        this.movePlayer(player.unitId, destX, destY)
+        this.revealAreaRoomsNearPlayer(player)
+        this.emitToPlayer(player.unitId, {
+          type: 'UnitReassign',
+          unitType: 0,
+          id: player.unitId,
+          unitId: player.unitId,
+          at: playerWirePosition(player),
+          x: player.x,
+          y: player.y,
+          snap: true,
+          areaId: player.areaId,
+        })
+        this.relocatePlayerFollowersToPlayer(player, true)
+      }
+      return
+    }
     const kind = classifyObjectOperate113c(obj.classId)
     if (kind === 'door') {
       this.setObjectMode(obj, obj.mode === 2 ? 0 : 2)
@@ -18664,7 +25713,7 @@ export class GameInstance {
       })
       return
     }
-    // Stash is re-usable in 1.13c.
+    // Stash is re-usable in 1.13c (ONLY Objects.txt 267, OperateFn 32 @ 0x6FC91290, #1834).
     if (kind === 'stash') {
       this.emitToPlayer(player.unitId, { type: 'Trade', action: 0x10 })
       return
@@ -18675,9 +25724,27 @@ export class GameInstance {
     }
     if (obj.mode !== 0) return
 
-    if (obj.isLocked && !this.consumeKey(player)) {
-      this.emitToPlayer(player.unitId, { type: 'Chat', kind: 'system', text: 'Locked' })
-      return
+    // D2Game.dll OBJECTS_Operate04_Chest (0x6FC8F040 @ 0x6FC8F083, #1832):
+    // Key check & consumption ONLY runs on OperateFn === 4 non-sparkling locked chests,
+    // and Assassin (classId === 6 / 'ass') bypasses key consumption (0x6FC8F08B).
+    let unlockedChestThisOperate = false
+    if (record.operateFn === 4 && !obj.isSparkling && obj.isLocked) {
+      const isAssassin = player.classId === 6 || player.classCode === 'ass'
+      if (!isAssassin && !this.consumeKey(player)) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 22,
+        })
+        this.emitToPlayer(player.unitId, { type: 'Chat', kind: 'system', text: 'Locked' })
+        return
+      }
+      unlockedChestThisOperate = true
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 11,
+      })
     }
     // Objects.txt 152 Horadric Orifice (OperateFn 25, D2Game 0x6fce6240):
     // without Horadric Staff ('hst' / 'vip' / 'msf'), emits cant-use (0x6fce6318) and keeps mode 0.
@@ -18727,18 +25794,78 @@ export class GameInstance {
         if (record.operateFn === 7) {
           this.detonateExplodingBarrel113c(obj, player)
         } else {
-          const dropChance = CONTAINER_OPERATE_DROP_CHANCE_113C[record.operateFn] ?? 100
+          const dropChance =
+            CONTAINER_OPERATE_DROP_CHANCE_113C[record.operateFn] ??
+            getContainerOperateDropChance113c(record.operateFn)
           this.rollContainerDrop(player, obj, dropChance)
         }
         break
       }
       case 'container': {
-        const dropChance = CONTAINER_OPERATE_DROP_CHANCE_113C[record.operateFn] ?? 75
-        this.rollContainerDrop(player, obj, dropChance)
+        if (record.operateFn === 19) {
+          // #1837: Armor Stand (0x6FC8B2E0 -> 0x6FC31FB0)
+          const dropped = rollArmorStandDrop113c({
+            areaId: obj.areaId,
+            difficulty: this.difficulty,
+            playerMf: this.sumPlayerItemStat(player, 80),
+            rng: this.rng,
+            spawnedUniqueIds: this.spawnedUniqueIds,
+          })
+          if (dropped.length > 0) this.spawnDroppedItems(dropped, obj.areaId, obj.x, obj.y)
+        } else if (record.operateFn === 20) {
+          // #1837: Weapon Rack (0x6FC8B280 -> 0x6FC31E20 + D2Common.#10731 metal check)
+          const dropped = rollWeaponRackDrop113c({
+            areaId: obj.areaId,
+            difficulty: this.difficulty,
+            playerMf: this.sumPlayerItemStat(player, 80),
+            rng: this.rng,
+            spawnedUniqueIds: this.spawnedUniqueIds,
+          })
+          if (dropped.length > 0) this.spawnDroppedItems(dropped, obj.areaId, obj.x, obj.y)
+        } else if (record.operateFn === 26) {
+          // #1837: Monastery Bookshelf (0x6FC8B340)
+          const dropped = rollBookshelfDrop113c(obj.areaId, this.difficulty, this.rng)
+          if (dropped.length > 0) this.spawnDroppedItems(dropped, obj.areaId, obj.x, obj.y)
+        } else if (record.operateFn === 33) {
+          // #1839: Tristram Wirt's Body 268 (0x6FC8D960 -> 'leg' + 15 gold piles)
+          const includeLeg = !this.playerOrGroundHasQuestItem(player, 'leg')
+          const dropped = rollWirtsBodyDrops113c(
+            obj.areaId,
+            this.difficulty,
+            this.sumPlayerItemStat(player, 79),
+            includeLeg,
+            this.rng,
+          )
+          if (dropped.length > 0) this.spawnDroppedItems(dropped, obj.areaId, obj.x, obj.y)
+        } else if (QUEST_CHEST_OPERATE_FNS_113C.has(record.operateFn)) {
+          // #1833: Act 2 & Act 3 Quest Chests (5..9 gold piles + forced-Magic Chest TC drop)
+          const dropped = rollQuestChestBonusDrops113c({
+            areaId: obj.areaId,
+            difficulty: this.difficulty,
+            gamePlayers: this.playersX,
+            partyPlayers: this.countPartyPlayersInArea(player, obj.areaId),
+            playerMf: this.sumPlayerItemStat(player, 80),
+            playerGf: this.sumPlayerItemStat(player, 79),
+            rng: this.rng,
+            spawnedUniqueIds: this.spawnedUniqueIds,
+          })
+          if (dropped.length > 0) this.spawnDroppedItems(dropped, obj.areaId, obj.x, obj.y)
+        } else if (record.operateFn === 68) {
+          // #1838: Act 5 Evil Urn 466 (0x6FC8EDB0 -> 100% Chest TC + Unique/Champion pack)
+          this.rollContainerDrop(player, obj, 100)
+          this.spawnEvilUrnAmbush113c(obj)
+        } else {
+          // #1834: includes OperateFn 51 (Act 3 Jungle Stash 185..188 -> 75% Chest TC)
+          const dropChance = getContainerOperateDropChance113c(record.operateFn)
+          this.rollContainerDrop(player, obj, dropChance)
+        }
         break
       }
       default:
         break
+    }
+    if (unlockedChestThisOperate) {
+      obj.isLocked = false
     }
     this.setObjectMode(obj, 2)
     this.advanceQuestObject(player, obj)
@@ -19047,6 +26174,35 @@ export class GameInstance {
     if ([149, 357, 546].includes(obj.classId)) {
       this.setPlayerQuestFlag(player, questId, QUEST_FLAG_COMPLETED_113C)
     }
+    // #1835: Objects.txt 357 Horazon's Journal (OperateFn 42, D2Game 0x6FCE9A80)
+    // starts A2Q6 (The Seven Tombs) and opens permanent Red Portal (Objects.txt 60 -> Canyon of the Magi 46).
+    if (obj.classId === 357) {
+      this.setPlayerQuestFlag(player, 'a2q6', QUEST_FLAG_STARTED_113C)
+      const existingPortal = [...this.objects.values()].find(
+        (candidate) =>
+          candidate.areaId === obj.areaId &&
+          candidate.classId === 60 &&
+          candidate.destAreaId === 46,
+      )
+      if (existingPortal === undefined) {
+        const stand = this.loadedAreas.has(obj.areaId)
+          ? findStandableNear(
+              (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
+              obj.x + 3,
+              obj.y,
+              8,
+            )
+          : null
+        this.spawnObject({
+          classId: 60,
+          x: stand?.x ?? obj.x + 3,
+          y: stand?.y ?? obj.y,
+          areaId: obj.areaId,
+          mode: 2,
+          destAreaId: 46,
+        })
+      }
+    }
   }
 
   private emitQuestLog(player: InternalPlayerRecord): void {
@@ -19124,6 +26280,97 @@ export class GameInstance {
       for (const runeCode of ['r08', 'r09', 'r07']) {
         this.givePlayerInventoryQuestItem(player, runeCode)
       }
+    } else if (questId === 'a5q5') {
+      // #1843: D2Game.dll ACT5Q5_GrantReward (0x6FC7BF70..0x6FC7C07E):
+      // Requires clvl >= 20 (Norm) / 40 (NM) / 60 (Hell). Raw XP pool is 1,400,000 / 20,000,000 / 40,000,000,
+      // clamped to the single-level XP span `MinExp(clvl + 1) - MinExp(clvl)` so the character gains at most +1 level.
+      const requiredLevel = (this.difficulty + 1) * 20
+      if (player.level >= requiredLevel && player.level < MAX_PLAYER_LEVEL_113C) {
+        const rawPool =
+          this.difficulty === 2 ? 40_000_000 : this.difficulty === 1 ? 20_000_000 : 1_400_000
+        const curFloor = experienceForLevel113c(player.level)
+        const nextFloor = experienceForLevel113c(player.level + 1)
+        const maxGain = Math.max(0, nextFloor - curFloor)
+        const xpAward = Math.min(rawPool, maxGain)
+        if (xpAward > 0) {
+          const baseExp = Math.max(player.experience, curFloor)
+          player.experience = Math.min(
+            experienceForLevel113c(MAX_PLAYER_LEVEL_113C),
+            baseExp + xpAward,
+          )
+          this.emitToPlayer(player.unitId, {
+            type: 'UnitStatUpdate',
+            unitType: 'player',
+            unitId: player.unitId,
+            statId: 13,
+            value: player.experience,
+          })
+          this.emitToPlayer(player.unitId, {
+            type: 'Experience',
+            value: player.experience,
+            isDelta: false,
+          })
+          if (
+            player.level < MAX_PLAYER_LEVEL_113C &&
+            player.experience >= experienceForLevel113c(player.level + 1)
+          ) {
+            player.level += 1
+            player.statPts += 5
+            player.newSkills += 1
+            const base = CANONICAL_CHARSTATS[player.classCode]
+            player.maxHpFixed += Math.round(base.perLevel.life * FIXED_ONE)
+            player.maxManaFixed += Math.round(base.perLevel.mana * FIXED_ONE)
+            player.maxStaminaFixed += Math.round(base.perLevel.stamina * FIXED_ONE)
+
+            const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+            const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
+            const accruedMaxStaminaFixed = this.getPlayerAccruedMaxStaminaFixed(player)
+
+            player.maxHp = Math.max(1, Math.floor(accruedMaxHpFixed / FIXED_ONE))
+            if (player.hpFixed > 0 && !player.dead) {
+              player.hpFixed = accruedMaxHpFixed
+              player.hp = player.maxHp
+            }
+            player.maxMana = Math.max(0, Math.floor(accruedMaxManaFixed / FIXED_ONE))
+            player.manaFixed = accruedMaxManaFixed
+            player.mana = player.maxMana
+            player.maxStamina = Math.max(1, Math.floor(accruedMaxStaminaFixed / FIXED_ONE))
+            player.staminaFixed = accruedMaxStaminaFixed
+            player.staminaExhausted = false
+            player.stamina = player.maxStamina
+
+            const nextExp =
+              player.level < MAX_PLAYER_LEVEL_113C
+                ? experienceForLevel113c(player.level + 1)
+                : experienceForLevel113c(MAX_PLAYER_LEVEL_113C)
+            for (const [statId, value] of [
+              [12, player.level],
+              [30, nextExp],
+              [4, player.statPts],
+              [5, player.newSkills],
+              [6, player.hpFixed],
+              [7, player.maxHpFixed],
+              [8, player.manaFixed],
+              [9, player.maxManaFixed],
+              [10, player.staminaFixed],
+              [11, player.maxStaminaFixed],
+            ] as const) {
+              this.emitToPlayer(player.unitId, {
+                type: 'UnitStatUpdate',
+                unitType: 'player',
+                unitId: player.unitId,
+                statId,
+                value,
+              })
+              this.emitToPlayer(player.unitId, {
+                type: 'StatSet',
+                stat: statId,
+                value,
+              })
+            }
+          }
+        }
+      }
     }
   }
 
@@ -19189,6 +26436,15 @@ export class GameInstance {
   }
 
   private playerCanEnterArea(player: InternalPlayerRecord, areaId: number): boolean {
+    if ((areaId === 128 || areaId === 129 || areaId === 131) && this.isAncientsEncounterActive(120)) {
+      return false
+    }
+    if (areaId === 46) {
+      return (
+        hasQuestFlag113c(player.questFlags, 'a2q5', QUEST_FLAG_COMPLETED_113C) ||
+        hasQuestFlag113c(player.questFlags, 'a2q4', QUEST_FLAG_COMPLETED_113C)
+      )
+    }
     const gate = QUEST_AREA_GATES_113C[areaId]
     if (gate === undefined) return true
     return hasQuestFlag113c(player.questFlags, gate.quest, gate.mask)
@@ -19309,6 +26565,30 @@ export class GameInstance {
         inRangeAndSight =
           Math.hypot(player.x - corpseOwner.corpseX, player.y - corpseOwner.corpseY) <= 3 &&
           this.hasInteractionLineOfSight(player.areaId, player.x, player.y, corpseOwner.corpseX, corpseOwner.corpseY)
+      } else if (pending.kind === 'player') {
+        const targetPlayer = this.players.get(pending.id)
+        if (
+          targetPlayer === undefined ||
+          targetPlayer.dead ||
+          targetPlayer.areaId !== player.areaId ||
+          !TOWN_AREAS.has(player.areaId)
+        ) {
+          player.pendingInteraction = undefined
+          player.pendingInteractionSteps = 0
+          continue
+        }
+        tx = targetPlayer.x
+        ty = targetPlayer.y
+        inRangeAndSight =
+          Math.hypot(player.x - targetPlayer.x, player.y - targetPlayer.y) <=
+            TRADE_INTERACT_RANGE_SUBTILES_113C &&
+          this.hasInteractionLineOfSight(
+            player.areaId,
+            player.x,
+            player.y,
+            targetPlayer.x,
+            targetPlayer.y,
+          )
       } else {
         const npc = this.monsters.get(pending.id)
         if (npc === undefined || !npc.isNpc || npc.areaId !== player.areaId) {
@@ -19330,6 +26610,7 @@ export class GameInstance {
         player.pendingNpcGamble = undefined
         if (pending.kind === 'object') this.handleInteract(player, pending.id)
         else if (pending.kind === 'warp') this.handleWarpTileInteract(player, pending.id)
+        else if (pending.kind === 'player') this.handlePlayerTradeInteract(player, pending.id)
         else if (pending.kind === 'waypoint') {
           const wp = this.objects.get(pending.id)
           if (wp !== undefined && pending.destAreaId !== undefined) {
@@ -19393,7 +26674,10 @@ export class GameInstance {
   }
 
   private handleInteract(player: InternalPlayerRecord, targetId: number): void {
-    if (player.corpseId === targetId) {
+    if (
+      player.corpseId === targetId &&
+      (player.corpseAreaId ?? player.areaId) === player.areaId
+    ) {
       // 1.13c corpse recovery: the same 3-sub-tile reach used by the walk-over pickup.
       if (
         Math.hypot(player.x - player.corpseX, player.y - player.corpseY) <= 3 &&
@@ -19410,10 +26694,45 @@ export class GameInstance {
       }
       return
     }
+    if (player.extraCorpses && player.extraCorpses.length > 0) {
+      const extraIdx = player.extraCorpses.findIndex(
+        (c) => c.corpseId === targetId && c.areaId === player.areaId,
+      )
+      if (extraIdx >= 0) {
+        const chosen = player.extraCorpses[extraIdx]!
+        if (
+          Math.hypot(player.x - chosen.x, player.y - chosen.y) <= 3 &&
+          this.hasInteractionLineOfSight(player.areaId, player.x, player.y, chosen.x, chosen.y)
+        ) {
+          player.extraCorpses.splice(extraIdx, 1)
+          if (player.corpseId !== undefined && player.corpseItems.length > 0) {
+            player.extraCorpses.push({
+              corpseId: player.corpseId,
+              areaId: player.corpseAreaId ?? player.areaId,
+              x: player.corpseX,
+              y: player.corpseY,
+              items: player.corpseItems,
+            })
+          }
+          player.corpseId = chosen.corpseId
+          player.corpseAreaId = chosen.areaId
+          player.corpseX = chosen.x
+          player.corpseY = chosen.y
+          player.corpseItems = chosen.items
+          player.pendingInteraction = undefined
+          player.pendingInteractionSteps = 0
+          this.recoverPlayerCorpse(player)
+          return
+        }
+      }
+    }
 
     for (const otherPlayer of this.players.values()) {
       if (otherPlayer.unitId === player.unitId) continue
-      if (otherPlayer.corpseId === targetId && otherPlayer.areaId === player.areaId) {
+      if (
+        otherPlayer.corpseId === targetId &&
+        (otherPlayer.corpseAreaId ?? otherPlayer.areaId) === player.areaId
+      ) {
         if (
           Math.hypot(player.x - otherPlayer.corpseX, player.y - otherPlayer.corpseY) <= 3 &&
           this.hasInteractionLineOfSight(player.areaId, player.x, player.y, otherPlayer.corpseX, otherPlayer.corpseY)
@@ -19442,7 +26761,14 @@ export class GameInstance {
     ) {
       player.pendingInteraction = undefined
       player.pendingInteractionSteps = 0
-      if (obj.destAreaId !== undefined && obj.classId !== 565 && obj.classId !== 566) {
+      if (
+        obj.destAreaId !== undefined &&
+        obj.classId !== 298 &&
+        obj.classId !== 342 &&
+        obj.classId !== 547 &&
+        obj.classId !== 565 &&
+        obj.classId !== 566
+      ) {
         // D2Game OperateFn 50 (0x6fc8f4f0): Durance of Hate Stairs (Objects.txt 386)
         // cannot be entered until the Compelling Orb mist has opened them (mode === 2).
         if (obj.classId === 386 && obj.mode !== 2) return
@@ -19482,6 +26808,10 @@ export class GameInstance {
     const npc = this.monsters.get(targetId)
     if (npc && npc.isNpc && npc.areaId === player.areaId) {
       this.handleNpcInteract(player, targetId)
+      return
+    }
+    if (targetId !== player.unitId && this.players.has(targetId)) {
+      this.handlePlayerTradeInteract(player, targetId)
     }
   }
 
@@ -19700,44 +27030,38 @@ export class GameInstance {
     const townPos = this.resolveTownPortalMouth(townArea)
     if (townPos === null) return 0
 
-    // D2Game.dll 0x6FC7E3C0 -> 0x6FC7E0E0 (a5q5.cpp Town Portal callback on Arreat Summit, level 120):
-    // Opening a Town Portal on Arreat Summit while the Ancients encounter is active (before all 3 die)
+    // D2Game.dll 0x6FC7E3C0 -> 0x6FC7E0E0 (a5q5.cpp Town Portal callback on Arreat Summit):
+    // Opening a Town Portal while the Ancients encounter is active (before all 3 die)
     // despawns all Ancient Barbarians and resets Statues 474..476 and Altar 546 back to stone (mode 0).
-    if (fromArea === 120) {
+    if (this.isAncientsEncounterActive(fromArea)) {
       const activeAncients = [...this.monsters.values()].filter(
         (m) =>
-          m.areaId === 120 &&
+          m.areaId === fromArea &&
           m.superUniqueId !== undefined &&
           ANCIENT_BARBARIANS_113C.some((b) => b.superUniqueId === m.superUniqueId),
       )
-      const deaths = this.ancientDeaths.get(120)
-      const encounterIncomplete =
-        activeAncients.some((m) => !m.dead) ||
-        (activeAncients.length > 0 && (deaths?.size ?? 0) < ANCIENT_BARBARIANS_113C.length)
-      if (encounterIncomplete) {
-        for (const m of activeAncients) {
-          this.monsters.delete(m.unitId)
-          this.monsterCombat.delete(m.unitId)
-          this.broadcastToArea(120, {
-            type: 'UnitRemove',
-            unitType: 1,
-            id: m.unitId,
-            unitId: m.unitId,
-            areaId: 120,
-          })
-        }
-        this.ancientDeaths.delete(120)
-        for (const obj of this.objects.values()) {
-          if (obj.areaId !== 120) continue
-          if (
-            obj.classId === 546 ||
-            obj.classId === 474 ||
-            obj.classId === 475 ||
-            obj.classId === 476
-          ) {
-            obj.useCount = 0
-            this.setObjectMode(obj, 0)
-          }
+      for (const m of activeAncients) {
+        this.monsters.delete(m.unitId)
+        this.monsterCombat.delete(m.unitId)
+        this.broadcastToArea(fromArea, {
+          type: 'UnitRemove',
+          unitType: 1,
+          id: m.unitId,
+          unitId: m.unitId,
+          areaId: fromArea,
+        })
+      }
+      this.ancientDeaths.delete(fromArea)
+      for (const obj of this.objects.values()) {
+        if (obj.areaId !== fromArea) continue
+        if (
+          obj.classId === 546 ||
+          obj.classId === 474 ||
+          obj.classId === 475 ||
+          obj.classId === 476
+        ) {
+          obj.useCount = 0
+          this.setObjectMode(obj, 0)
         }
       }
     }
@@ -19829,6 +27153,7 @@ export class GameInstance {
     if (prevArea === destAreaId) return
     const dest = this.loadedAreas.get(destAreaId)
     if (!dest) return
+    this.abortPlayerTrade(player.unitId)
     this.hidePlayerAreaRooms(player, prevArea)
     player.areaId = destAreaId
     this.clearVendorPools(player, prevArea)
@@ -19910,6 +27235,7 @@ export class GameInstance {
     }
 
     if (prevArea !== destAreaId) {
+      this.abortPlayerTrade(player.unitId)
       this.hidePlayerAreaRooms(player, prevArea)
     }
     if (destAct !== prevAct) {
@@ -19926,6 +27252,7 @@ export class GameInstance {
       player.targetX = landing.x
       player.targetY = landing.y
     }
+    this.relocatePlayerFollowersToPlayer(player, false)
 
     if (prevArea !== destAreaId) {
       for (const other of this.players.values()) {
@@ -20250,14 +27577,33 @@ export class GameInstance {
     itemId: number,
     x: number,
     y: number,
-    container: 'inventory' | 'stash' | 'cube' | 'belt',
+    container: 'inventory' | 'stash' | 'cube' | 'belt' | 'trade',
   ): void {
     const idx = this.findPlayerItemIndex(player, itemId)
     const item = idx !== -1 ? player.items[idx] : undefined
     if (!item) return
 
-    const gridW = container === 'stash' ? 6 : container === 'cube' ? 3 : 10
-    const gridH = container === 'stash' ? 8 : container === 'cube' ? 4 : 4
+    if (container === 'trade') {
+      if (!this.tradeManager.hasActiveTrade(player.unitId)) return
+      if (this.isUntradableQuestItem113c(item)) return
+    }
+
+    const gridW =
+      container === 'stash'
+        ? 6
+        : container === 'cube'
+          ? 3
+          : container === 'trade'
+            ? TRADE_GRID_WIDTH_113C
+            : 10
+    const gridH =
+      container === 'stash'
+        ? 8
+        : container === 'cube'
+          ? 4
+          : container === 'trade'
+            ? TRADE_GRID_HEIGHT_113C
+            : 4
     if (x < 0 || y < 0 || x + item.width > gridW || y + item.height > gridH) {
       return
     }
@@ -20271,6 +27617,7 @@ export class GameInstance {
     }
     if (overlaps.length > 0) {
       if (
+        container !== 'trade' &&
         overlaps.length === 1 &&
         item.code.trim().toLowerCase() === 'key' &&
         overlaps[0]!.code.trim().toLowerCase() === 'key'
@@ -20309,7 +27656,7 @@ export class GameInstance {
             code: target.code,
             x: target.x,
             y: target.y,
-            container,
+            container: toItemContainer(container),
             item: this.serverEntryToItemData(target),
           })
           return
@@ -20319,10 +27666,36 @@ export class GameInstance {
     }
 
     const prevLocation = item.location
+    const nextStorePage =
+      container === 'stash'
+        ? 5
+        : container === 'cube'
+          ? 4
+          : container === 'trade'
+            ? 3
+            : container === 'belt'
+              ? 0
+              : 1
     item.location = container
     item.x = x
     item.y = y
-    item.storePage = container === 'stash' ? 4 : container === 'cube' ? 3 : 1
+    item.storePage = nextStorePage
+    if (item.rawItemData !== undefined) {
+      const cleanFlags = Number(item.rawItemData.rawFlags ?? item.rawItemData.flags ?? 0x10) & ~0x20
+      item.rawItemData = {
+        ...item.rawItemData,
+        location: container === 'belt' ? 2 : 0,
+        container: toItemContainer(container),
+        gridX: x,
+        gridY: y,
+        x,
+        y,
+        storePage: nextStorePage,
+        storagePage: nextStorePage,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+    }
     if (prevLocation === 'inventory' || container === 'inventory') {
       this.refreshPlayerAccruedMaxPools(player)
     }
@@ -20333,9 +27706,24 @@ export class GameInstance {
       code: item.code,
       x: item.x,
       y: item.y,
-      container: item.location,
+      container: toItemContainer(item.location),
       item: this.serverEntryToItemData(item),
     })
+
+    const partnerId = this.tradeManager.getPartnerId(player.unitId)
+    if (container === 'trade') {
+      if (partnerId !== undefined) {
+        this.emitPartnerTradeItemAdd(partnerId, item)
+      }
+      this.emitTradeEvents(this.tradeManager.notifyItemAdded(player.unitId))
+    } else if (prevLocation === 'trade') {
+      if (partnerId !== undefined) {
+        this.emitPartnerTradeItemRemove(partnerId, item)
+      }
+      this.emitTradeEvents(
+        this.tradeManager.notifyItemRemovedOrSwapped(player.unitId, this.currentFrame),
+      )
+    }
   }
 
   private handleItemEquip(
@@ -20347,6 +27735,14 @@ export class GameInstance {
     const idx = this.findPlayerItemIndex(player, itemId)
     const item = idx !== -1 ? player.items[idx] : undefined
     if (!item) return
+
+    const rejectEquip = (): void => {
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 19,
+      })
+    }
 
     const oppositeSlot =
       removeOppositeHand
@@ -20361,41 +27757,167 @@ export class GameInstance {
                 : 0
         : 0
 
-    for (const other of player.items) {
-      if (
-        other.unitId !== item.unitId &&
-        other.location === 'equipped' &&
-        (other.bodyLoc === slot || (oppositeSlot > 0 && other.bodyLoc === oppositeSlot))
-      ) {
-        const free = this.findFreeGridSlot(
-          player,
-          'inventory',
-          other.width,
-          other.height,
-          10,
-          4,
-        )
-        other.location = 'inventory'
-        other.bodyLoc = 0
-        other.x = free?.x ?? 0
-        other.y = free?.y ?? 0
-        other.storePage = 1
-        this.emitToPlayer(player.unitId, {
-          type: 'ItemEvent',
-          action: 'unequip',
-          itemId: other.unitId,
-          code: other.code,
-          x: other.x,
-          y: other.y,
-          container: 'inventory',
-          item: this.serverEntryToItemData(other),
-        })
-      }
+    const currentlyEquipped = player.items.filter(
+      (other) => other.unitId !== item.unitId && other.location === 'equipped',
+    )
+    const explicitOpposite =
+      oppositeSlot > 0
+        ? currentlyEquipped.find((other) => other.bodyLoc === oppositeSlot)
+        : undefined
+    const combat = this.playerCombat.get(player.unitId)
+    const check = canUnitEquipItem113c(
+      {
+        kind: 'player',
+        level: player.level,
+        baseStrength: player.strength,
+        baseDexterity: player.dexterity,
+        classCode: player.classCode,
+      },
+      item,
+      slot,
+      currentlyEquipped,
+      {
+        dropTables: getEmbeddedDropTables(),
+        computeAttributesWithoutDisplaced: (displacedItems) => {
+          const allDisplaced =
+            explicitOpposite !== undefined && !displacedItems.includes(explicitOpposite)
+              ? [...displacedItems, explicitOpposite]
+              : displacedItems
+          const savedLocations = allDisplaced.map((d) => d.location)
+          try {
+            for (const d of allDisplaced) d.location = 'cursor'
+            return {
+              strength:
+                player.strength +
+                this.sumPlayerItemStat(player, 0) +
+                (combat === undefined ? 0 : combat.statList.getModifierBonus('strength')),
+              dexterity:
+                player.dexterity +
+                this.sumPlayerItemStat(player, 2) +
+                (combat === undefined ? 0 : combat.statList.getModifierBonus('dexterity')),
+            }
+          } finally {
+            for (let i = 0; i < allDisplaced.length; i++) {
+              allDisplaced[i]!.location = savedLocations[i]!
+            }
+          }
+        },
+      },
+    )
+    if (!check.allowed) {
+      rejectEquip()
+      return
     }
 
+    const toDisplace: ServerItemEntry[] = [...check.displacedItems]
+    if (explicitOpposite !== undefined && !toDisplace.includes(explicitOpposite)) {
+      toDisplace.push(explicitOpposite)
+    }
+
+    const prevItemSnapshot = {
+      location: item.location,
+      bodyLoc: item.bodyLoc,
+      storePage: item.storePage,
+      x: item.x,
+      y: item.y,
+    }
+    const displacedSnapshots = toDisplace.map((other) => ({
+      item: other,
+      location: other.location,
+      bodyLoc: other.bodyLoc,
+      storePage: other.storePage,
+      x: other.x,
+      y: other.y,
+    }))
+
+    // Reserve `item` on the body first so any inventory cells it previously occupied are freed.
     item.location = 'equipped'
     item.bodyLoc = slot
     item.storePage = 0
+
+    let cursorAvailable = !player.items.some(
+      (candidate) => candidate.unitId !== item.unitId && candidate.location === 'cursor',
+    )
+    const plannedDisplacements: {
+      readonly other: ServerItemEntry
+      readonly dest: 'inventory' | 'cursor'
+      readonly x: number
+      readonly y: number
+      readonly storePage: number
+    }[] = []
+    let spaceFailed = false
+    for (const other of toDisplace) {
+      const free = this.findFreeGridSlot(
+        player,
+        'inventory',
+        other.width,
+        other.height,
+        10,
+        4,
+      )
+      if (free !== undefined) {
+        other.location = 'inventory'
+        other.bodyLoc = 0
+        other.x = free.x
+        other.y = free.y
+        other.storePage = 1
+        plannedDisplacements.push({
+          other,
+          dest: 'inventory',
+          x: free.x,
+          y: free.y,
+          storePage: 1,
+        })
+      } else if (cursorAvailable && prevItemSnapshot.location === 'cursor') {
+        cursorAvailable = false
+        other.location = 'cursor'
+        other.bodyLoc = 0
+        other.x = 0
+        other.y = 0
+        other.storePage = 0
+        plannedDisplacements.push({
+          other,
+          dest: 'cursor',
+          x: 0,
+          y: 0,
+          storePage: 0,
+        })
+      } else {
+        spaceFailed = true
+        break
+      }
+    }
+
+    if (spaceFailed) {
+      item.location = prevItemSnapshot.location
+      item.bodyLoc = prevItemSnapshot.bodyLoc
+      item.storePage = prevItemSnapshot.storePage
+      item.x = prevItemSnapshot.x
+      item.y = prevItemSnapshot.y
+      for (const snap of displacedSnapshots) {
+        snap.item.location = snap.location
+        snap.item.bodyLoc = snap.bodyLoc
+        snap.item.storePage = snap.storePage
+        snap.item.x = snap.x
+        snap.item.y = snap.y
+      }
+      rejectEquip()
+      return
+    }
+
+    for (const plan of plannedDisplacements) {
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 'unequip',
+        itemId: plan.other.unitId,
+        code: plan.other.code,
+        x: plan.x,
+        y: plan.y,
+        container: plan.dest,
+        item: this.serverEntryToItemData(plan.other),
+      })
+    }
+
     this.emitToPlayer(player.unitId, {
       type: 'ItemEvent',
       action: 'equip',
@@ -20629,29 +28151,84 @@ export class GameInstance {
       return
     }
 
+    const rejectMercEquip = (): void => {
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 19,
+      })
+    }
+
     const defaultSlot = this.resolveMercDefaultBodyLoc113c(cursorItem.code, merc.act)
-    if (defaultSlot === undefined) return
+    const candidateReq = computeItemRequirements113c(cursorItem, {
+      dropTables: getEmbeddedDropTables(),
+      includeWeaponSwap: false,
+    })
+    const inferredSlot = defaultSlot ?? candidateReq.validSlots[0]
+    if (inferredSlot === undefined) {
+      rejectMercEquip()
+      return
+    }
     const targetSlot =
       rawSlot === 0 ||
-      rawSlot === defaultSlot ||
-      (defaultSlot === 4 && (rawSlot === 4 || rawSlot === 5)) ||
-      (defaultSlot === 5 && (rawSlot === 4 || rawSlot === 5))
-        ? defaultSlot
+      rawSlot === inferredSlot ||
+      (inferredSlot === 4 && (rawSlot === 4 || rawSlot === 5)) ||
+      (inferredSlot === 5 && (rawSlot === 4 || rawSlot === 5))
+        ? inferredSlot
         : undefined
-    if (targetSlot === undefined) return
-
-    const info = lookupBaseInfo(cursorItem.code)
-    const displacedSlots = new Set<number>([targetSlot])
-    if (targetSlot === 4 && info.twoHanded) {
-      displacedSlots.add(5)
-    } else if (targetSlot === 5) {
-      const mainHand = merc.equipment.find((e) => e.bodyLoc === 4)
-      if (mainHand && lookupBaseInfo(mainHand.code).twoHanded) {
-        displacedSlots.add(4)
-      }
+    if (targetSlot === undefined) {
+      rejectMercEquip()
+      return
     }
-    const displaced = merc.equipment.filter((e) => displacedSlots.has(e.bodyLoc))
-    if (displaced.length > 1) return
+
+    const mercStats = resolveHirelingStatsAtLevel(
+      merc.subType,
+      merc.act,
+      merc.difficulty,
+      merc.level,
+      true,
+    )
+    const mercCombat = this.mercCombat.get(merc.unitId)
+    const check = canUnitEquipItem113c(
+      {
+        kind: 'mercenary',
+        mercAct: merc.act,
+        level: merc.level,
+        baseStrength: mercStats?.str ?? 0,
+        baseDexterity: mercStats?.dex ?? 0,
+      },
+      cursorItem,
+      targetSlot,
+      merc.equipment,
+      {
+        dropTables: getEmbeddedDropTables(),
+        computeAttributesWithoutDisplaced: (displacedItems) => {
+          const savedEquip = [...merc.equipment]
+          try {
+            if (displacedItems.length > 0) {
+              merc.equipment = savedEquip.filter((eq) => !displacedItems.includes(eq))
+            }
+            return {
+              strength:
+                (mercStats?.str ?? 0) +
+                this.sumMercItemStat(merc, 0) +
+                (mercCombat === undefined ? 0 : mercCombat.statList.getModifierBonus('strength')),
+              dexterity:
+                (mercStats?.dex ?? 0) +
+                this.sumMercItemStat(merc, 2) +
+                (mercCombat === undefined ? 0 : mercCombat.statList.getModifierBonus('dexterity')),
+            }
+          } finally {
+            merc.equipment = savedEquip
+          }
+        },
+      },
+    )
+    if (!check.allowed || check.displacedItems.length > 1) {
+      rejectMercEquip()
+      return
+    }
+    const displaced = check.displacedItems
 
     player.items.splice(cursorIdx, 1)
     if (displaced.length === 1) {
@@ -20765,6 +28342,7 @@ export class GameInstance {
   }
 
   private handleBeltUse(player: InternalPlayerRecord, itemId: number): void {
+    if (player.dead || this.isPlayerWhirlwinding113c(player)) return
     const idx = this.findPlayerItemIndex(player, itemId)
     if (idx === -1) return
     const candidate = player.items[idx]
@@ -20985,13 +28563,35 @@ export class GameInstance {
     const item = player.items.find(
       (candidate) =>
         candidate.unitId === itemId &&
-        (candidate.location === 'inventory' || candidate.location === 'stash' || candidate.location === 'cube'),
+        (candidate.location === 'inventory' ||
+          candidate.location === 'stash' ||
+          candidate.location === 'cube' ||
+          candidate.location === 'trade'),
     )
     if (!item || player.items.some((candidate) => candidate.location === 'cursor')) return
     const prevLocation = item.location
+    const prevX = item.x
+    const prevY = item.y
     item.location = 'cursor'
     item.x = 0
     item.y = 0
+    item.storePage = 0
+    if (item.rawItemData !== undefined) {
+      const cleanFlags = Number(item.rawItemData.rawFlags ?? item.rawItemData.flags ?? 0x10) & ~0x20
+      item.rawItemData = {
+        ...item.rawItemData,
+        location: 4,
+        container: 'cursor',
+        gridX: 0,
+        gridY: 0,
+        x: 0,
+        y: 0,
+        storePage: 0,
+        storagePage: 0,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+    }
     if (prevLocation === 'inventory') {
       this.refreshPlayerAccruedMaxPools(player)
     }
@@ -21004,6 +28604,513 @@ export class GameInstance {
       y: 0,
       container: 'cursor',
       item: this.serverEntryToItemData(item),
+    })
+    if (prevLocation === 'trade') {
+      const partnerId = this.tradeManager.getPartnerId(player.unitId)
+      if (partnerId !== undefined) {
+        this.emitPartnerTradeItemRemove(partnerId, item, prevX, prevY)
+      }
+      this.emitTradeEvents(
+        this.tradeManager.notifyItemRemovedOrSwapped(player.unitId, this.currentFrame),
+      )
+    }
+  }
+
+  private syncServerItemQuantity(entry: ServerItemEntry, nextQty: number): void {
+    const clamped = Math.max(0, Math.trunc(nextQty))
+    entry.quantity = clamped
+    entry.stats.set(70, clamped)
+    if (entry.rawItemData !== undefined) {
+      const prevStats = entry.rawItemData.stats ?? []
+      let found70 = false
+      const updatedStats = prevStats.map((s) => {
+        if (s.statId === 70) {
+          found70 = true
+          return { ...s, value: clamped }
+        }
+        return s
+      })
+      if (!found70) {
+        updatedStats.push({ statId: 70, param: 0, value: clamped })
+      }
+      entry.rawItemData = {
+        ...entry.rawItemData,
+        quantity: clamped,
+        stats: updatedStats,
+      }
+    }
+  }
+
+  /**
+   * 1.13c `C2S 0x1F` (`SwapContainerItem`, `D2Game.dll` `0x6FCF1010` -> `0x6FC859F0`):
+   * Atomically swaps `cursorItem` with `targetItem` inside `inventory` (`10x4`), `cube` (`3x4`), or `stash` (`6x8`).
+   * Rejects without mutation if `(x, y)` is out of bounds or overlaps any item other than `targetItem` (e.g., >=2 items).
+   */
+  private handleSwapContainerItem(
+    player: InternalPlayerRecord,
+    cursorItemId: number,
+    targetItemId: number,
+    x: number,
+    y: number,
+  ): void {
+    if (!Number.isInteger(x) || !Number.isInteger(y)) return
+    const cursorItem = player.items.find(
+      (candidate) => candidate.unitId === cursorItemId && candidate.location === 'cursor',
+    )
+    const targetItem = player.items.find(
+      (candidate) =>
+        candidate.unitId === targetItemId &&
+        candidate.unitId !== cursorItemId &&
+        (candidate.location === 'inventory' ||
+          candidate.location === 'stash' ||
+          candidate.location === 'cube' ||
+          candidate.location === 'trade'),
+    )
+    if (!cursorItem || !targetItem) return
+
+    const container = targetItem.location as 'inventory' | 'stash' | 'cube' | 'trade'
+    if (container === 'trade') {
+      if (!this.tradeManager.hasActiveTrade(player.unitId)) return
+      if (this.isUntradableQuestItem113c(cursorItem)) return
+    }
+    const gridW =
+      container === 'stash'
+        ? 6
+        : container === 'cube'
+          ? 3
+          : container === 'trade'
+            ? TRADE_GRID_WIDTH_113C
+            : 10
+    const gridH =
+      container === 'stash'
+        ? 8
+        : container === 'cube'
+          ? 4
+          : container === 'trade'
+            ? TRADE_GRID_HEIGHT_113C
+            : 4
+    if (
+      x < 0 ||
+      y < 0 ||
+      x + cursorItem.width > gridW ||
+      y + cursorItem.height > gridH
+    ) {
+      return
+    }
+
+    for (const other of player.items) {
+      if (
+        other.location !== container ||
+        other.unitId === targetItem.unitId ||
+        other.unitId === cursorItem.unitId
+      ) {
+        continue
+      }
+      const overlapX = x < other.x + other.width && x + cursorItem.width > other.x
+      const overlapY = y < other.y + other.height && y + cursorItem.height > other.y
+      if (overlapX && overlapY) {
+        return
+      }
+    }
+
+    const prevTargetX = targetItem.x
+    const prevTargetY = targetItem.y
+    const storePage =
+      container === 'stash' ? 5 : container === 'cube' ? 4 : container === 'trade' ? 3 : 1
+    const wireContainer = toItemContainer(container)
+    cursorItem.location = container
+    cursorItem.x = x
+    cursorItem.y = y
+    cursorItem.storePage = storePage
+    if (cursorItem.rawItemData !== undefined) {
+      const cleanFlags = Number(cursorItem.rawItemData.rawFlags ?? 0x10) & ~0x20
+      cursorItem.rawItemData = {
+        ...cursorItem.rawItemData,
+        location: 0,
+        container: wireContainer,
+        gridX: x,
+        gridY: y,
+        x,
+        y,
+        storePage,
+        storagePage: storePage,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+    }
+
+    targetItem.location = 'cursor'
+    targetItem.x = 0
+    targetItem.y = 0
+    targetItem.storePage = 0
+    if (targetItem.rawItemData !== undefined) {
+      const cleanFlags = Number(targetItem.rawItemData.rawFlags ?? 0x10) & ~0x20
+      targetItem.rawItemData = {
+        ...targetItem.rawItemData,
+        location: 4,
+        container: 'cursor',
+        gridX: 0,
+        gridY: 0,
+        x: 0,
+        y: 0,
+        storePage: 0,
+        storagePage: 0,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+    }
+
+    if (container === 'inventory') {
+      this.refreshPlayerAccruedMaxPools(player)
+    }
+
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x0d,
+      itemId: cursorItem.unitId,
+      code: cursorItem.code,
+      x: cursorItem.x,
+      y: cursorItem.y,
+      container: wireContainer,
+      item: this.serverEntryToItemData(cursorItem),
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x05,
+      itemId: targetItem.unitId,
+      code: targetItem.code,
+      x: 0,
+      y: 0,
+      container: 'cursor',
+      item: {
+        ...this.serverEntryToItemData(targetItem),
+        location: 4,
+        container: 'cursor',
+      },
+    })
+
+    if (container === 'trade') {
+      const partnerId = this.tradeManager.getPartnerId(player.unitId)
+      if (partnerId !== undefined) {
+        this.emitPartnerTradeItemRemove(partnerId, targetItem, prevTargetX, prevTargetY)
+        this.emitPartnerTradeItemAdd(partnerId, cursorItem)
+      }
+      this.emitTradeEvents(
+        this.tradeManager.notifyItemRemovedOrSwapped(player.unitId, this.currentFrame),
+      )
+    }
+  }
+
+  /**
+   * 1.13c `C2S 0x27` (`IdentifyItem`, `D2Game.dll` `0x6FCEF6B0`):
+   * Consumes 1 loose Scroll of Identify (`'isc'`) or decrements Tome of Identify (`'ibk'`, `quantity > 0`),
+   * marks `targetItem.identified = true` (`IFLAG_IDENTIFIED = 0x10`), and syncs full identified item data.
+   */
+  private handleIdentifyItem(
+    player: InternalPlayerRecord,
+    itemId: number,
+    scrollId: number,
+  ): void {
+    if (itemId === scrollId) return
+    const targetItem = player.items.find(
+      (candidate) =>
+        candidate.unitId === itemId &&
+        !candidate.identified &&
+        candidate.location !== 'ground' &&
+        candidate.location !== 'vendor',
+    )
+    if (!targetItem) return
+
+    const toolIdx = this.findPlayerItemIndex(player, scrollId)
+    const toolItem = toolIdx !== -1 ? player.items[toolIdx] : undefined
+    if (
+      !toolItem ||
+      toolItem.location === 'ground' ||
+      toolItem.location === 'vendor'
+    ) {
+      return
+    }
+
+    const toolCode = toolItem.code.trim().toLowerCase()
+    if (toolCode !== 'isc' && toolCode !== 'ibk') return
+    if (toolCode === 'ibk' && (toolItem.quantity ?? 0) <= 0) return
+
+    if (toolCode === 'isc') {
+      const wasCursor = toolItem.location === 'cursor'
+      const prevContainer = toItemContainer(toolItem.location)
+      const deletedBase = this.serverEntryToItemData(toolItem)
+      const deletedFlags = ((deletedBase.rawFlags ?? 0x10) | 0x20) >>> 0
+      player.items.splice(toolIdx, 1)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x05,
+        itemId: toolItem.unitId,
+        code: toolItem.code,
+        x: toolItem.x,
+        y: toolItem.y,
+        container: prevContainer,
+        item: {
+          ...deletedBase,
+          flags: deletedFlags,
+          rawFlags: deletedFlags,
+        },
+      })
+      if (wasCursor) {
+        this.emitToPlayer(player.unitId, {
+          type: 'CursorClear',
+          unitType: 'player',
+          id: player.unitId,
+        })
+      }
+    } else {
+      this.syncServerItemQuantity(toolItem, (toolItem.quantity ?? 0) - 1)
+      this.emitToPlayer(player.unitId, {
+        type: 'StatSet',
+        unit: { unitType: 4, id: toolItem.unitId },
+        stat: 70,
+        value: toolItem.quantity,
+      })
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x15,
+        itemId: toolItem.unitId,
+        code: toolItem.code,
+        x: toolItem.x,
+        y: toolItem.y,
+        container: toItemContainer(toolItem.location),
+        item: this.serverEntryToItemData(toolItem),
+      })
+    }
+
+    targetItem.identified = true
+    if (targetItem.rawItemData !== undefined) {
+      const nextFlags = (Number(targetItem.rawItemData.flags ?? 0x10) | 0x10) >>> 0
+      const nextRawFlags =
+        (Number(targetItem.rawItemData.rawFlags ?? targetItem.rawItemData.flags ?? 0x10) | 0x10) >>> 0
+      targetItem.rawItemData = {
+        ...targetItem.rawItemData,
+        identified: true,
+        flags: nextFlags,
+        rawFlags: nextRawFlags,
+      }
+    }
+    if (targetItem.location === 'inventory' || targetItem.location === 'equipped') {
+      this.refreshPlayerAccruedMaxPools(player)
+    }
+
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x15,
+      itemId: targetItem.unitId,
+      code: targetItem.code,
+      x: targetItem.x,
+      y: targetItem.y,
+      container: toItemContainer(targetItem.location),
+      item: this.serverEntryToItemData(targetItem),
+    })
+  }
+
+  /**
+   * 1.13c `C2S 0x29` (`ScrollToBook`, `D2Game.dll` `0x6FCEDB30`, `Misc.txt` `maxstack = 20`):
+   * Places cursor loose scroll (`'tsc' -> 'tbk'`, `'isc' -> 'ibk'`) into a tome when `quantity < 20`.
+   */
+  private handleScrollToBook(
+    player: InternalPlayerRecord,
+    scrollId: number,
+    bookId: number,
+  ): void {
+    if (scrollId === bookId) return
+    const scrollIdx = this.findPlayerItemIndex(player, scrollId)
+    const scrollItem = scrollIdx !== -1 ? player.items[scrollIdx] : undefined
+    if (!scrollItem || scrollItem.location !== 'cursor') return
+
+    const bookItem = player.items.find(
+      (candidate) =>
+        candidate.unitId === bookId &&
+        (candidate.location === 'inventory' ||
+          candidate.location === 'stash' ||
+          candidate.location === 'cube'),
+    )
+    if (!bookItem) return
+
+    const scrollCode = scrollItem.code.trim().toLowerCase()
+    const bookCode = bookItem.code.trim().toLowerCase()
+    const validPair =
+      (scrollCode === 'tsc' && bookCode === 'tbk') ||
+      (scrollCode === 'isc' && bookCode === 'ibk')
+    if (!validPair) return
+
+    const currentQty = Math.max(0, Math.trunc(bookItem.quantity ?? 0))
+    if (currentQty >= 20) return
+
+    const deletedBase = this.serverEntryToItemData(scrollItem)
+    const deletedFlags = ((deletedBase.rawFlags ?? 0x10) | 0x20) >>> 0
+    player.items.splice(scrollIdx, 1)
+
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x05,
+      itemId: scrollItem.unitId,
+      code: scrollItem.code,
+      x: 0,
+      y: 0,
+      container: 'cursor',
+      item: {
+        ...deletedBase,
+        flags: deletedFlags,
+        rawFlags: deletedFlags,
+      },
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'CursorClear',
+      unitType: 'player',
+      id: player.unitId,
+    })
+
+    this.syncServerItemQuantity(bookItem, currentQty + 1)
+    this.emitToPlayer(player.unitId, {
+      type: 'StatSet',
+      unit: { unitType: 4, id: bookItem.unitId },
+      stat: 70,
+      value: bookItem.quantity,
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x15,
+      itemId: bookItem.unitId,
+      code: bookItem.code,
+      x: bookItem.x,
+      y: bookItem.y,
+      container: toItemContainer(bookItem.location),
+      item: this.serverEntryToItemData(bookItem),
+    })
+  }
+
+  private handleBeltSwap(
+    player: InternalPlayerRecord,
+    cursorItemId: number,
+    beltItemId: number,
+  ): void {
+    if (cursorItemId === beltItemId) return
+    const cursorItem = player.items.find(
+      (candidate) =>
+        candidate.unitId === cursorItemId &&
+        candidate.location === 'cursor' &&
+        candidate.width === 1 &&
+        candidate.height === 1,
+    )
+    const beltItem = player.items.find(
+      (candidate) => candidate.unitId === beltItemId && candidate.location === 'belt',
+    )
+    if (!cursorItem || !beltItem) return
+    const slot = beltItem.x
+    cursorItem.location = 'belt'
+    cursorItem.x = slot
+    cursorItem.y = 0
+    cursorItem.storePage = 0
+    beltItem.location = 'cursor'
+    beltItem.x = 0
+    beltItem.y = 0
+    beltItem.storePage = 0
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x10,
+      itemId: cursorItem.unitId,
+      code: cursorItem.code,
+      x: slot,
+      y: 0,
+      container: 'belt',
+      item: this.serverEntryToItemData(cursorItem),
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x0f,
+      itemId: beltItem.unitId,
+      code: beltItem.code,
+      x: 0,
+      y: 0,
+      container: 'cursor',
+      item: {
+        ...this.serverEntryToItemData(beltItem),
+        location: 4,
+        container: 'cursor',
+      },
+    })
+  }
+
+  private handleItemToBelt(player: InternalPlayerRecord, itemId: number): void {
+    const item = player.items.find(
+      (candidate) =>
+        candidate.unitId === itemId &&
+        candidate.location === 'inventory' &&
+        candidate.width === 1 &&
+        candidate.height === 1,
+    )
+    if (!item) return
+    const occupied = new Set<number>()
+    for (const other of player.items) {
+      if (other.location === 'belt') occupied.add(other.x)
+    }
+    let freeSlot = -1
+    for (let s = 0; s < 16; s++) {
+      if (!occupied.has(s)) {
+        freeSlot = s
+        break
+      }
+    }
+    if (freeSlot === -1) return
+    this.handleBeltPut(player, itemId, freeSlot)
+  }
+
+  private handleItemToCube(
+    player: InternalPlayerRecord,
+    itemId: number,
+    cubeId: number,
+  ): void {
+    const item = player.items.find(
+      (candidate) => candidate.unitId === itemId && candidate.location === 'cursor',
+    )
+    const cube = player.items.find(
+      (candidate) =>
+        candidate.unitId === cubeId &&
+        candidate.code.trim().toLowerCase() === 'box' &&
+        (candidate.location === 'inventory' || candidate.location === 'stash'),
+    )
+    if (!item || !cube) return
+    if (item.unitId === cube.unitId || item.code.trim().toLowerCase() === 'box') return
+    const free = this.findFreeGridSlot(player, 'cube', item.width, item.height, 3, 4)
+    if (!free) return
+    this.handleItemMove(player, item.unitId, free.x, free.y, 'cube')
+  }
+
+  private handleDropGold(player: InternalPlayerRecord, rawAmount: number): void {
+    const amount = Math.trunc(rawAmount)
+    if (!Number.isFinite(amount) || amount <= 0 || amount > player.gold) return
+    player.gold -= amount
+    for (const ev of [
+      {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 14,
+        value: player.gold,
+      },
+      {
+        type: 'StatSet',
+        stat: 14,
+        value: player.gold,
+      },
+    ] as const) {
+      this.emitToPlayer(player.unitId, ev)
+    }
+    this.spawnGroundItem({
+      areaId: player.areaId,
+      x: Math.round(player.x),
+      y: Math.round(player.y),
+      code: 'gld',
+      quantity: amount,
+      quality: 2,
+      identified: true,
     })
   }
 
@@ -22884,10 +30991,20 @@ export class GameInstance {
       })
     }
 
+    const soldCodeLower = sold.code.trim().toLowerCase()
+    const soldQual = this.normalizeItemQualityCode113c(
+      sold.rawItemData?.quality ?? sold.quality,
+    )
+    const isStoneOfJordan =
+      soldCodeLower === 'rin' &&
+      soldQual === 7 &&
+      (sold.rawItemData?.uniqueItemId === 122 ||
+        sold.name.trim().toLowerCase() === 'the stone of jordan')
+
     // 1.13c buyback (`D2Game.dll` `NPC_SellItem` `0x6FCDF990`): non-ethereal,
     // non-broken, non-personalized, unsocketed items that are not already stocked
-    // as a permanent store item enter this customer's vendor stock on their
-    // `ItemTypes.txt` storePage with durability/quantity restored and identified.
+    // as a permanent store item (and not `The Stone of Jordan` World Event trigger)
+    // enter this customer's vendor stock on their `ItemTypes.txt` storePage.
     if (npc) {
       let pool = player.vendorPools.get(npcId)
       if (pool === undefined) {
@@ -22906,7 +31023,14 @@ export class GameInstance {
       const alreadyPermStocked = pool.some(
         (entry) => entry.permStore === true && entry.code.trim() === sold.code.trim(),
       )
-      if (!isBroken && !isEthereal && !isPersonalized && !hasSocketedItems && !alreadyPermStocked) {
+      if (
+        !isStoneOfJordan &&
+        !isBroken &&
+        !isEthereal &&
+        !isPersonalized &&
+        !hasSocketedItems &&
+        !alreadyPermStocked
+      ) {
         // 1.13c buyback tabs: armor -> 1, weapons1 -> 2 (overflow weapons2 -> 3),
         // misc -> 4. Never reuse the player's inventory `storePage`.
         const storeKind = base === undefined ? 'misc' : resolveStorePageForBase(base, tables.itemTypes)
@@ -22968,6 +31092,44 @@ export class GameInstance {
       container: 'shop',
       item: this.serverEntryToItemData(sold),
     })
+
+    // 1.13c World Event (`D2Game.dll` `0x5A` `eventType = 0x11` & `0x12`, #1842):
+    // Selling Unique `#122` `The Stone of Jordan` increments the realm/game SoJ counter and,
+    // on Hell difficulty once `worldEventSojThreshold` is reached, triggers `"Diablo Walks the Earth"`.
+    if (isStoneOfJordan) {
+      this.sojSoldCount += 1
+      const sojCounterEvent: ServerEvent = {
+        type: 'Chat',
+        kind: 'event',
+        eventType: 0x11,
+        subType: 0,
+        color: 4,
+        arg: this.sojSoldCount,
+        text: `${this.sojSoldCount} Stones of Jordan Sold to Merchants`,
+      }
+      for (const peer of this.players.values()) {
+        this.emitToPlayer(peer.unitId, sojCounterEvent)
+      }
+      if (
+        this.difficulty === 2 &&
+        !this.worldEventTriggered &&
+        this.sojSoldCount >= this.worldEventSojThreshold
+      ) {
+        this.worldEventTriggered = true
+        const walksEvent: ServerEvent = {
+          type: 'Chat',
+          kind: 'event',
+          eventType: 0x12,
+          subType: 0,
+          color: 4,
+          arg: 0,
+          text: 'Diablo Walks the Earth',
+        }
+        for (const peer of this.players.values()) {
+          this.emitToPlayer(peer.unitId, walksEvent)
+        }
+      }
+    }
   }
 
   /**
@@ -22984,6 +31146,20 @@ export class GameInstance {
   ): void {
     if (player.dead) return
     const amount = Math.max(0, Math.floor(rawAmount))
+    if (buttonId === 0x18) {
+      this.handleCubeTransmute(player)
+      return
+    }
+    if (
+      buttonId === 0x02 ||
+      buttonId === 0x03 ||
+      buttonId === 0x04 ||
+      buttonId === 0x07 ||
+      buttonId === 0x08
+    ) {
+      this.handleTradeButton(player, buttonId, amount)
+      return
+    }
     if (buttonId === 0x13) {
       if (amount <= 0 || amount > player.goldBank) return
       const invCap = getInventoryGoldLimit(player.level)
@@ -23017,6 +31193,640 @@ export class GameInstance {
         value,
       })
     }
+  }
+
+  /** Ladder-only runewords / cube recipes (`Runes.txt` `server=1`, `Cubemain.txt` `ladder=1`). */
+  isLadderRulesEnabled(): boolean {
+    return this.configLadder ?? true
+  }
+
+  /** 1.13c untradable items: `Misc.txt` `quest != 0` and the Horadric Cube (`box`). */
+  private isUntradableQuestItem113c(item: ServerItemEntry): boolean {
+    const code = item.code.trim().toLowerCase()
+    return code === 'box' || lookupBaseInfo(item.code).quest
+  }
+
+  /** Sends `0x9D` socket children (`ownerType = 4`, `ownerId = host`) of `item` to `playerId`. */
+  private emitSocketChildrenToPlayer(
+    playerId: number,
+    item: ServerItemEntry,
+    action: number,
+  ): void {
+    for (const child of item.socketedItems ?? []) {
+      const childData = this.serverEntryToItemData(child)
+      this.emitToPlayer(playerId, {
+        type: 'ItemEvent',
+        action,
+        itemId: child.unitId,
+        code: child.code,
+        x: child.x,
+        y: 0,
+        container: 'socket',
+        ownerId: item.unitId,
+        item: {
+          ...childData,
+          opcode: 0x9d,
+          action,
+          ownerType: 4,
+          ownerId: item.unitId as UnitId,
+          location: 6,
+          container: 'socket',
+          inSocket: true,
+        },
+      })
+    }
+  }
+
+  private emitTradeEvents(events: readonly PlayerDirectedTradeEvent[]): void {
+    for (const e of events) {
+      if (!this.players.has(e.playerId)) continue
+      this.emitToPlayer(e.playerId, e.event)
+    }
+  }
+
+  /** Mirrors `item` into `partnerId`'s partner trade grid (`0x9C action=0x04`, `storePage = 2`). */
+  private emitPartnerTradeItemAdd(partnerId: number, item: ServerItemEntry): void {
+    if (!this.players.has(partnerId)) return
+    const data = this.serverEntryToItemData(item)
+    this.emitToPlayer(partnerId, {
+      type: 'ItemEvent',
+      action: 0x04,
+      itemId: item.unitId,
+      code: item.code,
+      x: item.x,
+      y: item.y,
+      container: 'tradePartner',
+      item: {
+        ...data,
+        opcode: 0x9c,
+        action: 0x04,
+        ownerType: 0,
+        ownerId: 0 as UnitId,
+        location: 0,
+        container: 'tradePartner',
+        gridX: item.x,
+        gridY: item.y,
+        x: item.x,
+        y: item.y,
+        storePage: 2,
+        storagePage: 2,
+      },
+    })
+    this.emitSocketChildrenToPlayer(partnerId, item, 0x13)
+  }
+
+  /** Removes `item` from `partnerId`'s partner trade grid (`0x9C action=0x05`, `IFLAG_DELETED`). */
+  private emitPartnerTradeItemRemove(
+    partnerId: number,
+    item: ServerItemEntry,
+    x: number = item.x,
+    y: number = item.y,
+  ): void {
+    if (!this.players.has(partnerId)) return
+    const data = this.serverEntryToItemData(item)
+    const deletedFlags = ((Number(data.rawFlags ?? 0x10) | 0x20) >>> 0)
+    this.emitToPlayer(partnerId, {
+      type: 'ItemEvent',
+      action: 0x05,
+      itemId: item.unitId,
+      code: item.code,
+      x,
+      y,
+      container: 'tradePartner',
+      item: {
+        ...data,
+        opcode: 0x9c,
+        action: 0x05,
+        flags: deletedFlags,
+        rawFlags: deletedFlags,
+        ownerType: 0,
+        ownerId: 0 as UnitId,
+        location: 0,
+        container: 'tradePartner',
+        gridX: x,
+        gridY: y,
+        x,
+        y,
+        storePage: 2,
+        storagePage: 2,
+      },
+    })
+  }
+
+  /** Deletes `item` from `playerId`'s client container (`action = 0x05`, `IFLAG_DELETED`). */
+  private emitItemDeleted(
+    playerId: number,
+    item: ServerItemEntry,
+    container: ItemContainer,
+  ): void {
+    const data = this.serverEntryToItemData(item)
+    const deletedFlags = ((Number(data.rawFlags ?? 0x10) | 0x20) >>> 0)
+    this.emitToPlayer(playerId, {
+      type: 'ItemEvent',
+      action: 0x05,
+      itemId: item.unitId,
+      code: item.code,
+      x: item.x,
+      y: item.y,
+      container,
+      item: { ...data, container, flags: deletedFlags, rawFlags: deletedFlags },
+    })
+  }
+
+  /** Re-homes `item` into `location` grid cell `(x, y)` (keeping `rawItemData` in sync). */
+  private placeServerItem113c(
+    item: ServerItemEntry,
+    location: 'inventory' | 'stash' | 'cube' | 'cursor',
+    x: number,
+    y: number,
+    ownerId: number,
+  ): void {
+    const storePage =
+      location === 'stash' ? 5 : location === 'cube' ? 4 : location === 'cursor' ? 0 : 1
+    item.location = location
+    item.x = x
+    item.y = y
+    item.storePage = storePage
+    item.ownerId = ownerId
+    for (const child of item.socketedItems ?? []) child.ownerId = ownerId
+    if (item.rawItemData !== undefined) {
+      const cleanFlags = Number(item.rawItemData.rawFlags ?? item.rawItemData.flags ?? 0x10) & ~0x20
+      item.rawItemData = {
+        ...item.rawItemData,
+        ownerId: ownerId as UnitId,
+        location: location === 'cursor' ? 4 : 0,
+        container: location,
+        gridX: x,
+        gridY: y,
+        x,
+        y,
+        storePage,
+        storagePage: storePage,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+    }
+  }
+
+  private emitPlayerGoldStat(player: InternalPlayerRecord): void {
+    this.emitToPlayer(player.unitId, {
+      type: 'UnitStatUpdate',
+      unitType: 'player',
+      unitId: player.unitId,
+      statId: 14,
+      value: player.gold,
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'StatSet',
+      stat: 14,
+      value: player.gold,
+    })
+  }
+
+  /**
+   * 1.13c `C2S 0x28` (`SocketItem`, `D2Game.dll` `0x6FCF4A70`): inserts the cursor gem / rune / jewel into
+   * `hostId`'s next free socket, applying `Gems.txt` `gemapplytype` mods and completing `Runes.txt` runewords.
+   */
+  private handleSocketItem(
+    player: InternalPlayerRecord,
+    fillerId: number,
+    hostId: number,
+  ): void {
+    if (fillerId === hostId) return
+    const filler = player.items.find(
+      (candidate) => candidate.unitId === fillerId && candidate.location === 'cursor',
+    )
+    const host = player.items.find(
+      (candidate) =>
+        candidate.unitId === hostId &&
+        (candidate.location === 'inventory' ||
+          candidate.location === 'stash' ||
+          candidate.location === 'cube' ||
+          candidate.location === 'equipped'),
+    )
+    if (!filler || !host) return
+
+    const res = executeSocketItem113c({
+      host: this.serverEntryToItemData(host),
+      filler: this.serverEntryToItemData(filler),
+      rng: this.rng,
+      playerLevel: player.level,
+      isHostEquipped: host.location === 'equipped',
+      isLadder: this.isLadderRulesEnabled(),
+    })
+    if (!res.ok) {
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 19,
+      })
+      return
+    }
+
+    const fillerIdx = player.items.indexOf(filler)
+    if (fillerIdx !== -1) player.items.splice(fillerIdx, 1)
+
+    const prevChildren = new Map(host.socketedItems.map((c) => [c.unitId, c] as const))
+    const nextChildren: ServerItemEntry[] = []
+    for (const childData of res.hostItem.socketedItems ?? []) {
+      const childId = Number(childData.id ?? 0)
+      const prev = prevChildren.get(childId)
+      const entry: ServerItemEntry =
+        prev ??
+        (childId === filler.unitId
+          ? filler
+          : this.itemDataToServerEntry(childData, player.unitId, player.areaId))
+      entry.location = 'socket'
+      entry.storePage = 0
+      entry.ownerId = player.unitId
+      entry.rawItemData = { ...childData, location: 6, inSocket: true, container: 'socket' }
+      if (entry === filler) {
+        entry.x = res.socketIndex
+        entry.y = 0
+      }
+      nextChildren.push(entry)
+    }
+
+    host.rawItemData = res.hostItem
+    host.socketed = true
+    host.identified = true
+    host.totalSockets = Math.max(host.totalSockets, res.hostItem.totalSockets ?? 0)
+    host.socketedItems = nextChildren
+    host.stats = new Map(res.combinedStatsMap)
+
+    this.emitToPlayer(player.unitId, {
+      type: 'CursorClear',
+      unitType: 'player',
+      id: player.unitId,
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x0a,
+      itemId: filler.unitId,
+      code: filler.code,
+      x: res.socketIndex,
+      y: 0,
+      container: 'socket',
+      ownerId: host.unitId,
+      item: {
+        ...res.socketChild,
+        opcode: 0x9d,
+        action: 0x0a,
+        ownerType: 4,
+        ownerId: host.unitId as UnitId,
+        location: 6,
+        container: 'socket',
+        inSocket: true,
+      },
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x15,
+      itemId: host.unitId,
+      code: host.code,
+      x: host.x,
+      y: host.y,
+      container: toItemContainer(host.location),
+      item: this.serverEntryToItemData(host),
+    })
+
+    if (host.location === 'equipped') {
+      this.validatePlayerActiveSkills(player)
+      this.syncPlayerItemAuras113c(player, true)
+      this.refreshPlayerAccruedMaxPools(player)
+    }
+  }
+
+  /**
+   * 1.13c `C2S 0x4F` `buttonId = 0x18` (`CUBEMAIN_Transmute`, `D2Game.dll` `0x6FC90AE0`):
+   * evaluates the 146 `enabled=1` `Cubemain.txt` recipes against the Horadric Cube contents.
+   */
+  private handleCubeTransmute(player: InternalPlayerRecord): void {
+    const hasCube = player.items.some(
+      (item) =>
+        item.code.trim().toLowerCase() === 'box' &&
+        (item.location === 'inventory' || item.location === 'stash'),
+    )
+    if (!hasCube) return
+    const cubeEntries = player.items.filter((item) => item.location === 'cube')
+    if (cubeEntries.length === 0) return
+
+    const openedPortalDestAreas = new Set<number>()
+    let hasActiveCowPortal = false
+    for (const obj of this.objects.values()) {
+      if (obj.classId !== 60 || obj.destAreaId === undefined) continue
+      if (obj.destAreaId === 39) hasActiveCowPortal = true
+      if (obj.areaId === player.areaId) openedPortalDestAreas.add(obj.destAreaId)
+    }
+
+    const res = executeCubeTransmute113c({
+      cubeItems: cubeEntries.map((item) => this.serverEntryToItemData(item)),
+      rng: this.rng,
+      playerLevel: player.level,
+      playerClassCode: player.classCode,
+      difficulty: this.difficulty,
+      areaId: player.areaId,
+      isLadder: this.isLadderRulesEnabled(),
+      hasCompletedBaal: hasQuestFlag113c(player.questFlags, 'a5q6', QUEST_FLAG_COMPLETED_113C),
+      hasActiveCowPortal,
+      openedPortalDestAreas,
+      allocateUnitId: () => this.allocateUnitId(),
+    })
+    if (!res.matched) {
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 19,
+      })
+      return
+    }
+
+    const consumed = new Set(res.consumedItemIds.map((id) => Number(id)))
+    const removed: ServerItemEntry[] = []
+    player.items = player.items.filter((item) => {
+      if (item.location === 'cube' && consumed.has(item.unitId)) {
+        removed.push(item)
+        return false
+      }
+      return true
+    })
+    for (const item of removed) {
+      this.emitItemDeleted(player.unitId, item, 'cube')
+    }
+
+    for (const placed of res.createdItems) {
+      const entry = this.itemDataToServerEntry(placed.item, player.unitId, player.areaId)
+      this.placeServerItem113c(entry, 'cube', placed.x, placed.y, player.unitId)
+      player.items.push(entry)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x04,
+        itemId: entry.unitId,
+        code: entry.code,
+        x: entry.x,
+        y: entry.y,
+        container: 'cube',
+        item: this.serverEntryToItemData(entry),
+      })
+      this.emitSocketChildrenToPlayer(player.unitId, entry, 0x13)
+    }
+
+    if (res.portalToSpawn !== undefined) {
+      this.spawnObject({
+        classId: res.portalToSpawn.classId,
+        x: Math.round(player.x) + 1,
+        y: Math.round(player.y) + 1,
+        areaId: player.areaId,
+        mode: 2,
+        destAreaId: res.portalToSpawn.destAreaId,
+      })
+    }
+  }
+
+  /**
+   * 1.13c `C2S 0x13` on `unitType = 0` (another player): town-only face-to-face trade request. Walks into
+   * `TRADE_INTERACT_RANGE_SUBTILES_113C` first, then sends `0x77 0x00` / `0x01` (or opens `0x78`).
+   */
+  private handlePlayerTradeInteract(player: InternalPlayerRecord, targetId: number): void {
+    if (!this.policy.allowPlayerTrade) return
+    const target = this.players.get(targetId)
+    if (
+      target === undefined ||
+      target.unitId === player.unitId ||
+      player.dead ||
+      target.dead ||
+      target.areaId !== player.areaId ||
+      !TOWN_AREAS.has(player.areaId)
+    ) {
+      return
+    }
+    if (Math.hypot(player.x - target.x, player.y - target.y) > TRADE_INTERACT_RANGE_SUBTILES_113C) {
+      if (player.pendingInteraction === undefined) {
+        player.pendingInteraction = { kind: 'player', id: targetId }
+        player.pendingInteractionSteps = 0
+      }
+      return
+    }
+    player.pendingInteraction = undefined
+    player.pendingInteractionSteps = 0
+    const res = this.tradeManager.requestTrade(
+      { unitId: player.unitId, name: player.name },
+      { unitId: target.unitId, name: target.name },
+    )
+    this.emitTradeEvents(res.events)
+  }
+
+  /** 1.13c `C2S 0x4F` trade buttons (`0x02` cancel, `0x03` accept invite, `0x04` ok, `0x07` unaccept, `0x08` gold). */
+  private handleTradeButton(
+    player: InternalPlayerRecord,
+    buttonId: number,
+    amount: number,
+  ): void {
+    if (buttonId === 0x02) {
+      this.abortPlayerTrade(player.unitId)
+      return
+    }
+    if (buttonId === 0x03) {
+      if (!this.policy.allowPlayerTrade || !TOWN_AREAS.has(player.areaId)) return
+      const res = this.tradeManager.acceptInvite(
+        { unitId: player.unitId, name: player.name },
+        (unitId) => {
+          const other = this.players.get(unitId)
+          if (other === undefined || other.dead || other.areaId !== player.areaId) return undefined
+          return { unitId: other.unitId, name: other.name }
+        },
+      )
+      this.emitTradeEvents(res.events)
+      return
+    }
+    if (buttonId === 0x04) {
+      const res = this.tradeManager.accept(player.unitId, this.currentFrame)
+      this.emitTradeEvents(res.events)
+      if (res.bothAccepted && res.session !== undefined) {
+        this.commitTradeSession(res.session)
+      }
+      return
+    }
+    if (buttonId === 0x07) {
+      this.emitTradeEvents(this.tradeManager.unaccept(player.unitId))
+      return
+    }
+    if (buttonId === 0x08) {
+      this.emitTradeEvents(
+        this.tradeManager.setGoldOffer(player.unitId, player.gold, amount, this.currentFrame),
+      )
+    }
+  }
+
+  /**
+   * Atomic 1.13c trade commit: verifies gold ownership, the `clvl * 10000` inventory gold cap and a full
+   * `10x4` dry-run placement into BOTH recipients' inventories before mutating any item or gold.
+   */
+  private commitTradeSession(session: ActiveTradeSession113c): void {
+    const a = this.players.get(session.playerA)
+    const b = this.players.get(session.playerB)
+    if (a === undefined || b === undefined) {
+      this.abortPlayerTrade(session.playerA)
+      return
+    }
+    const goldA = Math.max(0, Math.trunc(session.offeredGoldA))
+    const goldB = Math.max(0, Math.trunc(session.offeredGoldB))
+    if (goldA > a.gold) {
+      this.emitTradeEvents(this.tradeManager.rejectCommitGoldOverflow(session, a.unitId))
+      return
+    }
+    if (goldB > b.gold) {
+      this.emitTradeEvents(this.tradeManager.rejectCommitGoldOverflow(session, b.unitId))
+      return
+    }
+    if (a.gold - goldA + goldB > getInventoryGoldLimit(a.level)) {
+      this.emitTradeEvents(this.tradeManager.rejectCommitGoldOverflow(session, a.unitId))
+      return
+    }
+    if (b.gold - goldB + goldA > getInventoryGoldLimit(b.level)) {
+      this.emitTradeEvents(this.tradeManager.rejectCommitGoldOverflow(session, b.unitId))
+      return
+    }
+
+    const offeredA = a.items.filter((item) => item.location === 'trade')
+    const offeredB = b.items.filter((item) => item.location === 'trade')
+    const inventoryBoxes = (p: InternalPlayerRecord) =>
+      p.items
+        .filter((item) => item.location === 'inventory')
+        .map((item) => ({ x: item.x, y: item.y, width: item.width, height: item.height }))
+    const toIncoming = (items: readonly ServerItemEntry[]) =>
+      items.map((item) => ({ unitId: item.unitId, width: item.width, height: item.height }))
+    const planForB = planInventoryPlacements113c(inventoryBoxes(b), toIncoming(offeredA))
+    if (planForB === null) {
+      this.emitTradeEvents(this.tradeManager.rejectCommitNoRoom(session, b.unitId))
+      return
+    }
+    const planForA = planInventoryPlacements113c(inventoryBoxes(a), toIncoming(offeredB))
+    if (planForA === null) {
+      this.emitTradeEvents(this.tradeManager.rejectCommitNoRoom(session, a.unitId))
+      return
+    }
+
+    // --- Commit (no failure paths below) ---
+    a.gold = a.gold - goldA + goldB
+    b.gold = b.gold - goldB + goldA
+    const transfer = (
+      from: InternalPlayerRecord,
+      to: InternalPlayerRecord,
+      items: readonly ServerItemEntry[],
+      plan: ReadonlyMap<number, { readonly x: number; readonly y: number }>,
+    ): void => {
+      const moving = new Set(items)
+      from.items = from.items.filter((item) => !moving.has(item))
+      for (const item of items) {
+        this.emitItemDeleted(from.unitId, item, 'tradeSelf')
+        const pos = plan.get(item.unitId)!
+        this.placeServerItem113c(item, 'inventory', pos.x, pos.y, to.unitId)
+        item.areaId = to.areaId
+        to.items.push(item)
+        this.emitToPlayer(to.unitId, {
+          type: 'ItemEvent',
+          action: 0x04,
+          itemId: item.unitId,
+          code: item.code,
+          x: item.x,
+          y: item.y,
+          container: 'inventory',
+          item: this.serverEntryToItemData(item),
+        })
+        this.emitSocketChildrenToPlayer(to.unitId, item, 0x13)
+      }
+    }
+    transfer(a, b, offeredA, planForB)
+    transfer(b, a, offeredB, planForA)
+    this.emitPlayerGoldStat(a)
+    this.emitPlayerGoldStat(b)
+    this.refreshPlayerAccruedMaxPools(a)
+    this.refreshPlayerAccruedMaxPools(b)
+    this.emitTradeEvents(this.tradeManager.completeSession(session))
+  }
+
+  /**
+   * Cancels `playerId`'s active trade (or pending invitation) and losslessly returns every offered item of
+   * BOTH participants to their own containers (`0x77 0x0C`). Called on cancel, disconnect, death and area change.
+   */
+  private abortPlayerTrade(playerId: number): void {
+    if (!this.tradeManager.hasPendingOrActiveTrade(playerId)) return
+    const res = this.tradeManager.cancelOrDecline(playerId)
+    if (res.abortedSession !== undefined) {
+      for (const id of [res.abortedSession.playerA, res.abortedSession.playerB]) {
+        const p = this.players.get(id)
+        if (p !== undefined) this.returnPlayerTradeItemsToInventory(p)
+      }
+    }
+    this.emitTradeEvents(res.events)
+  }
+
+  private returnPlayerTradeItemsToInventory(player: InternalPlayerRecord): void {
+    const offered = player.items.filter((item) => item.location === 'trade')
+    if (offered.length === 0) return
+    const boxesOf = (loc: ServerItemEntry['location']) =>
+      player.items
+        .filter((item) => item.location === loc)
+        .map((item) => ({ x: item.x, y: item.y, width: item.width, height: item.height }))
+    let remaining = offered
+    const invPlan = planInventoryPlacements113c(
+      boxesOf('inventory'),
+      remaining.map((item) => ({ unitId: item.unitId, width: item.width, height: item.height })),
+    )
+    const placements: { item: ServerItemEntry; loc: 'inventory' | 'stash' | 'cursor'; x: number; y: number }[] = []
+    if (invPlan !== null) {
+      for (const item of remaining) {
+        const pos = invPlan.get(item.unitId)!
+        placements.push({ item, loc: 'inventory', x: pos.x, y: pos.y })
+      }
+      remaining = []
+    } else {
+      // Place one by one into the inventory, then the 6x8 stash, then the cursor (lossless fallback).
+      const invBoxes = boxesOf('inventory')
+      const stashBoxes = boxesOf('stash')
+      let cursorFree = !player.items.some((item) => item.location === 'cursor')
+      for (const item of remaining) {
+        const incoming = [{ unitId: item.unitId, width: item.width, height: item.height }]
+        const inv = planInventoryPlacements113c(invBoxes, incoming)
+        if (inv !== null) {
+          const pos = inv.get(item.unitId)!
+          invBoxes.push({ x: pos.x, y: pos.y, width: item.width, height: item.height })
+          placements.push({ item, loc: 'inventory', x: pos.x, y: pos.y })
+          continue
+        }
+        const stash = planInventoryPlacements113c(stashBoxes, incoming, 6, 8)
+        if (stash !== null) {
+          const pos = stash.get(item.unitId)!
+          stashBoxes.push({ x: pos.x, y: pos.y, width: item.width, height: item.height })
+          placements.push({ item, loc: 'stash', x: pos.x, y: pos.y })
+          continue
+        }
+        if (cursorFree) {
+          cursorFree = false
+          placements.push({ item, loc: 'cursor', x: 0, y: 0 })
+          continue
+        }
+        placements.push({ item, loc: 'inventory', x: 0, y: 0 })
+      }
+      remaining = []
+    }
+    for (const { item, loc, x, y } of placements) {
+      this.emitItemDeleted(player.unitId, item, 'tradeSelf')
+      this.placeServerItem113c(item, loc, x, y, player.unitId)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: loc === 'cursor' ? 0x12 : 0x04,
+        itemId: item.unitId,
+        code: item.code,
+        x: item.x,
+        y: item.y,
+        container: loc,
+        item: this.serverEntryToItemData(item),
+      })
+      this.emitSocketChildrenToPlayer(player.unitId, item, 0x13)
+    }
+    this.refreshPlayerAccruedMaxPools(player)
   }
 
   private handleAllocateStat(
@@ -24380,15 +33190,18 @@ export class GameInstance {
               : difficulty === 2
                 ? 26
                 : 28
-    const subType = spec.subType ?? defaultSubType
+    const requestedSubType = spec.subType ?? defaultSubType
+    const candidateStats = resolveHirelingStatsAtLevel(requestedSubType, act, difficulty, level, true)
     const stats =
-      resolveHirelingStatsAtLevel(subType, act, difficulty, level, true) ??
-      resolveHirelingStatsAtLevel(defaultSubType, act, difficulty, level, true)
-    if (!stats) {
+      candidateStats && candidateStats.act === act
+        ? candidateStats
+        : resolveHirelingStatsAtLevel(defaultSubType, act, difficulty, level, true)
+    if (!stats || stats.act !== act) {
       throw new Error(
-        `hireMercenary: missing Hireling.txt record for act=${act}, difficulty=${difficulty}, subType=${subType}`,
+        `hireMercenary: missing Hireling.txt record for act=${act}, difficulty=${difficulty}, subType=${requestedSubType}`,
       )
     }
+    const subType = stats.record.subTypeId
 
     const unitId = this.allocateUnitId()
     const maxHp = Math.max(1, spec.maxHp ?? spec.hp ?? stats.hp)
@@ -24591,7 +33404,389 @@ export class GameInstance {
     return this.getMercenaryOrPetArea(unitId)
   }
 
+  private readonly mercMissiles = new Map<
+    number,
+    {
+      unitId: number
+      missileClassId: number
+      mercUnitId: number
+      ownerPlayerId: number
+      areaId: number
+      x: number
+      y: number
+      vx: number
+      vy: number
+      remainingFrames: number
+      pierce: boolean
+      guaranteedHit: boolean
+      skillId: number
+      slvl: number
+      element: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag'
+      physDamage: number
+      elemDamage: number
+      elemDurationFrames: number
+      splashRadiusSubtiles: number
+      isWeaponAttack: boolean
+      hitUnitIds: Set<number>
+    }
+  >()
+
+  private readonly petMissiles = new Map<
+    number,
+    {
+      unitId: number
+      missileClassId: number
+      petUnitId: number
+      ownerPlayerId: number
+      mslOwnerCtx: CombatUnitContext
+      areaId: number
+      x: number
+      y: number
+      vx: number
+      vy: number
+      remainingFrames: number
+      pierce: boolean
+      nextDelayFrames: number
+      sourceSkillId: number
+      slvl: number
+      dmgPacket: SUnitDmgPacket
+      hitUnitIds: Set<number>
+    }
+  >()
+
+  private readonly petMissileNextDelayUntil = new Map<string, number>()
+
+  private collectServerItemEntryStats113c(item: ServerItemEntry): ItemStat[] {
+    const out = collectItemStats(item)
+    const rawHasStats =
+      ((item.rawItemData?.stats?.length ?? 0) > 0) ||
+      ((item.rawItemData?.runewordStats?.length ?? 0) > 0)
+    if (!rawHasStats && item.rawItemData !== undefined && item.stats && item.stats.size > 0) {
+      for (const [statId, value] of item.stats) {
+        out.push({ statId, param: 0, value })
+      }
+    }
+    return out
+  }
+
+  private applyMercElementalWeaponRiders113c(
+    owner: InternalPlayerRecord,
+    merc: InternalMercenaryRecord,
+    target: InternalMonsterRecord,
+    attackKind: 'melee' | 'missile',
+  ): void {
+    if (target.dead) return
+    const fireMin = this.sumMercItemStat(merc, 48)
+    const fireMax = Math.max(fireMin, this.sumMercItemStat(merc, 49))
+    if (fireMax > 0 && !target.dead) {
+      const dmg = this.rng.range(Math.max(1, fireMin), fireMax)
+      this.applyDamageToMonster(owner, target, dmg, 0, 'fire', merc, {
+        attackKind,
+        autoHit: true,
+        unblockable: true,
+      })
+    }
+    const ltngMin = this.sumMercItemStat(merc, 50)
+    const ltngMax = Math.max(ltngMin, this.sumMercItemStat(merc, 51))
+    if (ltngMax > 0 && !target.dead) {
+      const dmg = this.rng.range(Math.max(1, ltngMin), ltngMax)
+      this.applyDamageToMonster(owner, target, dmg, 0, 'ltng', merc, {
+        attackKind,
+        autoHit: true,
+        unblockable: true,
+      })
+    }
+    const magMin = this.sumMercItemStat(merc, 52)
+    const magMax = Math.max(magMin, this.sumMercItemStat(merc, 53))
+    if (magMax > 0 && !target.dead) {
+      const dmg = this.rng.range(Math.max(1, magMin), magMax)
+      this.applyDamageToMonster(owner, target, dmg, 0, 'mag', merc, {
+        attackKind,
+        autoHit: true,
+        unblockable: true,
+      })
+    }
+    const coldMin = this.sumMercItemStat(merc, 54)
+    const coldMax = Math.max(coldMin, this.sumMercItemStat(merc, 55))
+    const coldLen = Math.max(25, this.sumMercItemStat(merc, 56))
+    if (coldMax > 0 && !target.dead) {
+      const dmg = this.rng.range(Math.max(1, coldMin), coldMax)
+      this.applyDamageToMonster(owner, target, dmg, 0, 'cold', merc, {
+        attackKind,
+        autoHit: true,
+        unblockable: true,
+        elemDurationFrames: coldLen,
+      })
+    }
+    const poisMin = this.sumMercItemStat(merc, 57)
+    const poisMax = Math.max(poisMin, this.sumMercItemStat(merc, 58))
+    const poisLen = Math.max(25, this.sumMercItemStat(merc, 59) || 50)
+    if (poisMax > 0 && !target.dead) {
+      const rawRate256 = this.rng.range(Math.max(1, poisMin), poisMax)
+      const scaledRate256 =
+        target.isPrimeEvil || this.actBossQuestId(target.defId, target.hcIdx) !== undefined
+          ? scaleMercenaryBossDamage113c(rawRate256, this.difficulty)
+          : rawRate256
+      this.applyMonsterPoisonDot(owner, target, scaledRate256, poisLen, 0, 'merc')
+    }
+  }
+
+  private triggerMercCtcProcs113c(
+    owner: InternalPlayerRecord,
+    merc: InternalMercenaryRecord,
+    target: InternalMonsterRecord,
+    triggerStatId: 195 | 198,
+  ): void {
+    const allStats: ItemStat[] = []
+    for (const eq of merc.equipment) {
+      if (eq.identified === false || eq.rawItemData?.identified === false) continue
+      if (
+        (eq as { readonly broken?: boolean }).broken === true ||
+        eq.rawItemData?.broken === true
+      ) {
+        continue
+      }
+      allStats.push(...this.collectServerItemEntryStats113c(eq))
+    }
+    const procs = extractMercenaryStrikeProcs113c(allStats)
+    for (const proc of procs) {
+      if (proc.statId !== triggerStatId) continue
+      if (proc.chancePct < 100 && this.rng.rand(100) >= proc.chancePct) continue
+      const procSkill = this.registry.getSkillById(proc.skillId)
+      if (!procSkill) continue
+      const mercCtx = this.mercCombatContext(merc)
+      const ev = evaluateSkill113c({
+        registry: this.registry,
+        skill: procSkill,
+        slvl: proc.slvl,
+        blvl: proc.slvl,
+        statList: mercCtx.statList,
+        stateBus: mercCtx.stateBus,
+        difficulty: this.difficulty,
+      })
+      if (procSkill.auraTgtState) {
+        const stateId = this.registry.getStateByName(procSkill.auraTgtState)?.id
+        if (stateId !== undefined) {
+          const dur = Math.max(50, ev.durationFrames > 0 ? ev.durationFrames : 100 + proc.slvl * 25)
+          const radius = Math.max(3.5, ev.radiusSubtiles > 0 ? ev.radiusSubtiles : 6)
+          const stateStats = this.evaluateSkillStateStats(procSkill, proc.slvl, mercCtx.statList)
+          if (proc.skillId === 87 && stateStats['damageresist'] === undefined) {
+            stateStats['damageresist'] = -50
+          } else if (proc.skillId === 66 && stateStats['damageresist'] === undefined) {
+            stateStats['damageresist'] = -100
+          }
+          for (const m of this.monsters.values()) {
+            if (m.dead || m.isNpc || !m.isKillable || m.submerged || m.areaId !== merc.areaId) continue
+            if (Math.hypot(m.x - target.x, m.y - target.y) <= radius) {
+              if (this.applyMonsterState(m.unitId, stateId, dur)) {
+                this.monsterCombatContext(m).stateBus.applyState({
+                  stateNameOrId: stateId,
+                  sourceUnitId: `merc_${merc.unitId}`,
+                  sourceSkillId: proc.skillId,
+                  slvl: proc.slvl,
+                  durationFrames: dur,
+                  currentFrame: this.currentFrame,
+                  stats: stateStats,
+                })
+              }
+            }
+          }
+        }
+        continue
+      }
+      if (proc.skillId === 44 || proc.skillId === 48) {
+        const radius = Math.max(6, ev.radiusSubtiles > 0 ? ev.radiusSubtiles : 9)
+        const elem: 'cold' | 'ltng' = proc.skillId === 44 ? 'cold' : 'ltng'
+        const eMin = Math.max(1, ev.minElemDmg256 >> 8)
+        const eMax = Math.max(eMin, ev.maxElemDmg256 >> 8)
+        const chillFrames = proc.skillId === 44 ? Math.max(75, ev.durationFrames || 200) : 0
+        for (const m of this.monsters.values()) {
+          if (m.dead || m.isNpc || !m.isKillable || m.submerged || m.areaId !== merc.areaId) continue
+          if (Math.hypot(m.x - merc.x, m.y - merc.y) <= radius) {
+            this.applyDamageToMonster(owner, m, this.rng.range(eMin, eMax), proc.skillId, elem, merc, {
+              attackKind: 'spell',
+              autoHit: true,
+              unblockable: true,
+              elemDurationFrames: chillFrames || undefined,
+            })
+          }
+        }
+        continue
+      }
+      const eMin = Math.max(1, (ev.minElemDmg256 >> 8) || ev.minElemDmg || 0)
+      const eMax = Math.max(eMin, (ev.maxElemDmg256 >> 8) || ev.maxElemDmg || eMin)
+      if (eMax > 0 && !target.dead) {
+        const channel = normalizeMissileElement(procSkill.eType) ?? 'mag'
+        this.applyDamageToMonster(owner, target, this.rng.range(eMin, eMax), proc.skillId, channel, merc, {
+          attackKind: 'spell',
+          autoHit: true,
+          unblockable: true,
+          elemDurationFrames: ev.durationFrames || undefined,
+        })
+      }
+    }
+  }
+
+  private stepMercenaryMissiles113c(): void {
+    for (const [mslId, msl] of [...this.mercMissiles.entries()]) {
+      const prevX = msl.x
+      const prevY = msl.y
+      const nextX = prevX + msl.vx
+      const nextY = prevY + msl.vy
+      msl.remainingFrames -= 1
+
+      if (!this.isMonsterStepWalkable(msl.areaId, prevX, prevY, nextX, nextY, true)) {
+        if (msl.splashRadiusSubtiles > 0 && msl.elemDamage > 0) {
+          const owner = this.players.get(msl.ownerPlayerId)
+          const merc = this.mercenaries.get(msl.mercUnitId)
+          if (owner && merc) {
+            for (const m of this.monsters.values()) {
+              if (
+                m.dead ||
+                m.isNpc ||
+                !m.isKillable ||
+                m.submerged ||
+                this.isMonsterConverted(m) ||
+                m.areaId !== msl.areaId
+              ) {
+                continue
+              }
+              if (Math.hypot(m.x - prevX, m.y - prevY) <= msl.splashRadiusSubtiles) {
+                this.applyDamageToMonster(owner, m, msl.elemDamage, msl.skillId, msl.element, merc, {
+                  attackKind: 'spell',
+                  autoHit: true,
+                  unblockable: true,
+                  elemDurationFrames: msl.elemDurationFrames || undefined,
+                })
+              }
+            }
+          }
+        }
+        this.mercMissiles.delete(mslId)
+        continue
+      }
+
+      msl.x = nextX
+      msl.y = nextY
+
+      const segDx = nextX - prevX
+      const segDy = nextY - prevY
+      const segLenSq = segDx * segDx + segDy * segDy
+      let hitMonster: InternalMonsterRecord | undefined
+      let bestHitT = Infinity
+
+      for (const m of this.monsters.values()) {
+        if (
+          m.dead ||
+          m.isNpc ||
+          !m.isKillable ||
+          m.submerged ||
+          this.isMonsterConverted(m) ||
+          m.areaId !== msl.areaId ||
+          msl.hitUnitIds.has(m.unitId)
+        ) {
+          continue
+        }
+        let t = 1
+        if (segLenSq > 1e-6) {
+          t = Math.max(0, Math.min(1, ((m.x - prevX) * segDx + (m.y - prevY) * segDy) / segLenSq))
+        }
+        const cx = prevX + segDx * t
+        const cy = prevY + segDy * t
+        const hitRadius = Math.max(1.8, (m.sizeX || 2) * 0.65)
+        if (Math.hypot(m.x - cx, m.y - cy) <= hitRadius && t < bestHitT) {
+          bestHitT = t
+          hitMonster = m
+        }
+      }
+
+      if (hitMonster !== undefined) {
+        msl.hitUnitIds.add(hitMonster.unitId)
+        const owner = this.players.get(msl.ownerPlayerId)
+        const merc = this.mercenaries.get(msl.mercUnitId)
+        if (owner && merc) {
+          let physLanded = false
+          if (msl.physDamage > 0) {
+            physLanded = this.applyDamageToMonster(
+              owner,
+              hitMonster,
+              msl.physDamage,
+              msl.skillId,
+              'phys',
+              merc,
+              {
+                attackKind: 'missile',
+                autoHit: msl.guaranteedHit,
+              },
+            )
+          }
+          if (msl.elemDamage > 0 && !hitMonster.dead && (msl.guaranteedHit || msl.physDamage <= 0 || physLanded)) {
+            this.applyDamageToMonster(
+              owner,
+              hitMonster,
+              msl.elemDamage,
+              msl.skillId,
+              msl.element,
+              merc,
+              {
+                attackKind: msl.guaranteedHit ? 'spell' : 'missile',
+                autoHit: true,
+                unblockable: msl.guaranteedHit,
+                elemDurationFrames: msl.elemDurationFrames || undefined,
+              },
+            )
+          }
+          if (msl.isWeaponAttack && (physLanded || msl.guaranteedHit)) {
+            this.applyMercElementalWeaponRiders113c(owner, merc, hitMonster, 'missile')
+            this.triggerMercCtcProcs113c(owner, merc, hitMonster, 198)
+          }
+          if (msl.splashRadiusSubtiles > 0 && msl.elemDamage > 0) {
+            for (const other of this.monsters.values()) {
+              if (
+                other.unitId === hitMonster.unitId ||
+                other.dead ||
+                other.isNpc ||
+                !other.isKillable ||
+                other.submerged ||
+                this.isMonsterConverted(other) ||
+                other.areaId !== msl.areaId
+              ) {
+                continue
+              }
+              if (Math.hypot(other.x - hitMonster.x, other.y - hitMonster.y) <= msl.splashRadiusSubtiles) {
+                this.applyDamageToMonster(
+                  owner,
+                  other,
+                  msl.elemDamage,
+                  msl.skillId,
+                  msl.element,
+                  merc,
+                  {
+                    attackKind: 'spell',
+                    autoHit: true,
+                    unblockable: true,
+                    elemDurationFrames: msl.elemDurationFrames || undefined,
+                  },
+                )
+              }
+            }
+          }
+        }
+        if (!msl.pierce) {
+          this.mercMissiles.delete(mslId)
+          continue
+        }
+      }
+
+      if (msl.remainingFrames <= 0) {
+        this.mercMissiles.delete(mslId)
+      }
+    }
+  }
+
   private stepMercenaries(): void {
+    this.stepMercenaryMissiles113c()
+
     for (const merc of this.mercenaries.values()) {
       if (!merc.alive || merc.hp <= 0) {
         if (this.mercAuraScanners.has(merc.unitId)) {
@@ -24655,35 +33850,6 @@ export class GameInstance {
         merc.cooldown--
       }
 
-      const mercUnit: MercenaryUnitState = {
-        act: merc.act,
-        subType: merc.subType,
-        level: merc.level,
-        difficulty: merc.difficulty,
-        x: merc.x,
-        y: merc.y,
-        hp: merc.hp,
-        maxHp: merc.maxHp,
-        damage: merc.damage,
-        alive: merc.alive,
-        activeAura: merc.activeAura,
-      }
-      const outcome = tickMercenaryAi25Hz(
-        mercUnit,
-        {
-          player: { x: owner.x, y: owner.y } as any,
-          players: [],
-          monsters: [],
-          tick: this.currentFrame,
-          events: [],
-          pendingKills: [],
-        } as any,
-      )
-      if (outcome.activeAura) {
-        merc.activeAura = outcome.activeAura
-      }
-      this.syncMercenaryOwnerAura(owner, merc.activeAura, merc)
-
       const ownerDist = Math.hypot(owner.x - merc.x, owner.y - merc.y)
       if (ownerDist > HIREABLE_AI_113C.TELEPORT_SUBTILES) {
         merc.x = owner.x
@@ -24703,8 +33869,11 @@ export class GameInstance {
         continue
       }
 
-      let bestTarget: InternalMonsterRecord | undefined
-      let bestDist = merc.aggroRadius
+      const visionRadius = Math.max(merc.aggroRadius, HIREABLE_AI_113C.AGGRO_SUBTILES)
+      const nearbyMonsterEntries: {
+        readonly record: InternalMonsterRecord
+        readonly dist: number
+      }[] = []
       for (const m of this.monsters.values()) {
         if (
           m.dead ||
@@ -24712,35 +33881,247 @@ export class GameInstance {
           !m.isKillable ||
           m.submerged ||
           m.petIgnore ||
+          this.isMonsterConverted(m) ||
           m.areaId !== merc.areaId
         ) {
           continue
         }
         const d = Math.hypot(m.x - merc.x, m.y - merc.y)
-        if (d <= bestDist) {
-          bestDist = d
-          bestTarget = m
+        if (d <= visionRadius) {
+          nearbyMonsterEntries.push({ record: m, dist: d })
         }
       }
+      nearbyMonsterEntries.sort((a, b) => a.dist - b.dist || a.record.unitId - b.record.unitId)
 
-      if (bestTarget) {
-        if (bestDist <= merc.reach) {
+      const nearbyPlayers = [...this.players.values()]
+        .filter((p) => !p.dead && p.areaId === merc.areaId)
+        .map((p) => ({ unitId: p.unitId, x: p.x, y: p.y }))
+
+      const hirelingStats = resolveHirelingStatsAtLevel(
+        merc.subType,
+        merc.act,
+        merc.difficulty,
+        merc.level,
+        true,
+      )
+      const weaponProfile = computeMercenaryWeaponProfile113c(
+        merc,
+        hirelingStats,
+        (statId, opts) => this.sumMercItemStat(merc, statId, opts),
+        (it) => this.collectServerItemEntryStats113c(it as ServerItemEntry),
+      )
+
+      const rollMercScaledPhysDamage = (skillEdPct = 0, skillFlatDmg = 0): number => {
+        const rawBase =
+          this.rng.range(weaponProfile.baseMinDmg, weaponProfile.baseMaxDmg) + skillFlatDmg
+        const edPct = Math.max(
+          -90,
+          weaponProfile.statBonusPct + weaponProfile.offWeaponItemEdPct + skillEdPct,
+        )
+        return Math.max(1, Math.trunc((rawBase * (100 + edPct)) / 100))
+      }
+
+      const bestTarget = nearbyMonsterEntries[0]?.record
+      const bestDist = nearbyMonsterEntries[0]?.dist ?? Infinity
+      const engageRange =
+        merc.act === 1
+          ? HIREABLE_AI_113C.ACT1_RANGED_REACH_SUBTILES
+          : merc.act === 3
+            ? HIREABLE_AI_113C.ACT3_RANGED_REACH_SUBTILES
+            : Math.max(merc.reach, weaponProfile.meleeReachSubtiles)
+      const readyToEngage = bestTarget !== undefined && bestDist <= engageRange && merc.cooldown <= 0
+
+      const aiStep = stepMercenaryAiAndChooseAction113c({
+        merc: {
+          unitId: merc.unitId,
+          act: merc.act,
+          subType: merc.subType,
+          level: merc.level,
+          difficulty: merc.difficulty,
+          x: merc.x,
+          y: merc.y,
+          hp: merc.hp,
+          maxHp: merc.maxHp,
+          alive: merc.alive,
+          activeAura: merc.activeAura,
+          hasFrozenArmorState: merc.states.has(10),
+        },
+        owner: { unitId: owner.unitId, x: owner.x, y: owner.y },
+        nearbyPlayers,
+        nearbyMonsters: nearbyMonsterEntries.map(({ record }) => ({
+          unitId: record.unitId,
+          x: record.x,
+          y: record.y,
+          hp: record.hp,
+          maxHp: record.maxHp,
+          hasInnerSightState: record.states.has(17),
+        })),
+        currentFrame: this.currentFrame,
+        readyToAct: readyToEngage,
+        weaponProfile,
+        rollBasePhysDamage: () => rollMercScaledPhysDamage(0, 0),
+        registry: this.registry,
+        rng: this.rng,
+      })
+
+      if (aiStep.activeAura) {
+        merc.activeAura = aiStep.activeAura
+      }
+      this.syncMercenaryOwnerAura(owner, merc.activeAura, merc)
+
+      if (bestTarget !== undefined) {
+        if (bestDist <= engageRange) {
           merc.state = 'attack'
-          if (merc.cooldown <= 0) {
-            merc.cooldown = merc.cooldownTicks
-            const stats = resolveHirelingStatsAtLevel(
-              merc.subType,
-              merc.act,
-              merc.difficulty,
-              merc.level,
-              true,
-            )
-            const rolledDamage = stats
-              ? this.rng.range(stats.minDmg, Math.max(stats.minDmg, stats.maxDmg))
-              : merc.damage
-            this.applyDamageToMonster(owner, bestTarget, rolledDamage, 0, undefined, merc)
+          if (merc.cooldown <= 0 && aiStep.chosenAction !== undefined) {
+            merc.cooldown = weaponProfile.attackCooldownFrames
+            const action = aiStep.chosenAction
+            if (action.kind === 'frozen_armor') {
+              this.applyUnitState(
+                merc.states,
+                merc.stateTimers,
+                'monster',
+                merc.unitId,
+                merc.areaId,
+                10,
+                action.durationFrames,
+              )
+              this.mercCombatContext(merc).stateBus.applyState({
+                stateNameOrId: 10,
+                sourceUnitId: `merc_${merc.unitId}`,
+                sourceSkillId: 40,
+                slvl: action.slvl,
+                durationFrames: action.durationFrames,
+                currentFrame: this.currentFrame,
+                stats: { item_armor_percent: action.defenseBonusPct },
+              })
+            } else if (action.kind === 'inner_sight') {
+              for (const { record: m, dist } of nearbyMonsterEntries) {
+                if (dist > action.radiusSubtiles || m.dead) continue
+                this.applyUnitState(
+                  m.states,
+                  m.stateTimers,
+                  'monster',
+                  m.unitId,
+                  m.areaId,
+                  17,
+                  action.durationFrames,
+                )
+                this.monsterCombatContext(m).stateBus.applyState({
+                  stateNameOrId: 17,
+                  sourceUnitId: `merc_${merc.unitId}`,
+                  sourceSkillId: 8,
+                  slvl: action.slvl,
+                  durationFrames: action.durationFrames,
+                  currentFrame: this.currentFrame,
+                  stats: { armorclass: -action.enemyDefensePenalty },
+                })
+              }
+            } else if (action.kind === 'missile') {
+              const isWeaponShot = merc.act === 1
+              if (isWeaponShot) {
+                this.triggerMercCtcProcs113c(owner, merc, bestTarget, 195)
+              }
+              const mSpec = action.missile
+              const baseAngle = Math.atan2(bestTarget.y - merc.y, bestTarget.x - merc.x)
+              const count = Math.max(1, mSpec.boltCount)
+              const hasItemPierce = isWeaponShot && this.sumMercItemStat(merc, 156) >= 100
+              for (let b = 0; b < count; b++) {
+                const spread = count > 1 ? (b - (count - 1) / 2) * 0.14 : 0
+                const ang = baseAngle + spread
+                const vx = Math.cos(ang) * mSpec.velSubtilesPerFrame
+                const vy = Math.sin(ang) * mSpec.velSubtilesPerFrame
+                const projId = this.allocateUnitId()
+                const tx = Math.round(merc.x + Math.cos(ang) * Math.max(4, bestDist))
+                const ty = Math.round(merc.y + Math.sin(ang) * Math.max(4, bestDist))
+                this.mercMissiles.set(projId, {
+                  unitId: projId,
+                  missileClassId: mSpec.missileId,
+                  mercUnitId: merc.unitId,
+                  ownerPlayerId: owner.unitId,
+                  areaId: merc.areaId,
+                  x: merc.x,
+                  y: merc.y,
+                  vx,
+                  vy,
+                  remainingFrames: mSpec.rangeFrames,
+                  pierce: mSpec.pierce || hasItemPierce,
+                  guaranteedHit: mSpec.guaranteedHit,
+                  skillId: mSpec.skillId,
+                  slvl: mSpec.slvl,
+                  element: mSpec.element,
+                  physDamage: mSpec.physDamage,
+                  elemDamage: mSpec.elemDamage,
+                  elemDurationFrames: mSpec.elemDurationFrames,
+                  splashRadiusSubtiles: mSpec.splashRadiusSubtiles,
+                  isWeaponAttack: isWeaponShot,
+                  hitUnitIds: new Set<number>(),
+                })
+                const at = { x: Math.round(merc.x), y: Math.round(merc.y) }
+                const tgt = { x: tx, y: ty }
+                this.broadcastToArea(merc.areaId, {
+                  type: 'CreateMissile',
+                  missileId: projId,
+                  missileClassId: mSpec.missileId,
+                  at,
+                  target: tgt,
+                  x: at.x,
+                  y: at.y,
+                  targetX: tgt.x,
+                  targetY: tgt.y,
+                  skillId: mSpec.skillId,
+                  level: mSpec.slvl,
+                  ownerType: 1,
+                  ownerUnitType: 'monster',
+                  ownerId: merc.unitId,
+                  sourceUnitId: merc.unitId,
+                  areaId: merc.areaId,
+                } as ServerEvent)
+              }
+            } else {
+              // Melee attack (`Attack` #0, Act 2 `Jab` #10 2-hit sequence, Act 5 `Bash` #126, Act 5 `Stun` #139)
+              this.triggerMercCtcProcs113c(owner, merc, bestTarget, 195)
+              for (let hitIdx = 0; hitIdx < action.hitCount; hitIdx++) {
+                if (bestTarget.dead) break
+                const physDmg = rollMercScaledPhysDamage(action.skillEdPct, action.skillFlatDmg)
+                const landed = this.applyDamageToMonster(
+                  owner,
+                  bestTarget,
+                  physDmg,
+                  action.skillId,
+                  'phys',
+                  merc,
+                  {
+                    attackKind: 'melee',
+                    toHitBonusPct: action.skillArPct,
+                  },
+                )
+                if (landed) {
+                  if (action.stunFrames > 0 && !bestTarget.dead) {
+                    this.applyMonsterState(bestTarget.unitId, 21, action.stunFrames)
+                  }
+                  if (!bestTarget.dead) {
+                    this.applyMercElementalWeaponRiders113c(owner, merc, bestTarget, 'melee')
+                  }
+                  if (!bestTarget.dead && this.sumMercItemStat(merc, 117) > 0) {
+                    this.applyMonsterState(bestTarget.unitId, 52, 120_000)
+                  }
+                  if (
+                    !bestTarget.dead &&
+                    !action.knockback &&
+                    this.sumMercItemStat(merc, 81) > 0 &&
+                    rollItemKnockback113c(this.rng, {
+                      unitType: 'monster',
+                      sizeX: bestTarget.sizeX,
+                    })
+                  ) {
+                    this.knockbackMonster(bestTarget, merc.x, merc.y)
+                  }
+                  this.triggerMercCtcProcs113c(owner, merc, bestTarget, 198)
+                }
+              }
+            }
           }
-        } else if (this.currentFrame % 2 === 0) {
+        } else if (this.currentFrame % 2 === 0 && bestDist > 0.01) {
           merc.state = 'chase'
           const dx = bestTarget.x - merc.x
           const dy = bestTarget.y - merc.y
@@ -24833,43 +34214,332 @@ export class GameInstance {
     return mgr
   }
 
-  summonPet(ownerPlayerId: number, spec: SummonPetSpec): CreatePetOutcome {
+  private buildOwnerSummonCombatContext113c(ownerPlayerId: number): CombatUnitContext {
     const owner = this.players.get(ownerPlayerId)
-    const mgr = this.getSummonManager(ownerPlayerId)
     const statList = new UnitStatList(this.registry, undefined, {
       ownerType: 'player',
       charClass: owner?.classCode ?? 'nec',
     })
     statList.setBaseStat('level', owner?.level ?? 1)
-    statList.setBaseStat('strength', owner?.strength ?? 0)
-    statList.setBaseStat('dexterity', owner?.dexterity ?? 0)
-    statList.setBaseStat('vitality', owner?.vitality ?? 0)
-    statList.setBaseStat('energy', owner?.energy ?? 0)
+    statList.setBaseStat('strength', owner ? owner.strength + this.sumPlayerItemStat(owner, 0) : 0)
+    statList.setBaseStat('dexterity', owner ? owner.dexterity + this.sumPlayerItemStat(owner, 2) : 0)
+    statList.setBaseStat('vitality', owner ? owner.vitality + this.sumPlayerItemStat(owner, 3) : 0)
+    statList.setBaseStat('energy', owner ? owner.energy + this.sumPlayerItemStat(owner, 1) : 0)
     statList.setBaseStat('tohit', owner ? this.computePlayerBaseToHit113c(owner) : 0)
     statList.setBaseStat('armorclass', owner ? this.computePlayerDefense(owner) : 0)
-    statList.setBaseStat('maxhp', owner?.maxHpFixed ?? 100 * FIXED_ONE)
-    statList.setHp256(owner?.hpFixed ?? 100 * FIXED_ONE)
-    statList.setBaseStat('maxmana', owner?.maxManaFixed ?? 0)
+    const maxHpFixed = owner ? this.getPlayerAccruedMaxHpFixed(owner) : 100 * FIXED_ONE
+    const maxManaFixed = owner ? this.getPlayerAccruedMaxManaFixed(owner) : 0
+    statList.setBaseStat('maxhp', maxHpFixed)
+    statList.setHp256(owner?.hpFixed ?? maxHpFixed)
+    statList.setBaseStat('maxmana', maxManaFixed)
     statList.setMana256(owner?.manaFixed ?? 0)
     if (owner) {
       for (const [skId, lvl] of owner.skills.entries()) {
         statList.setBaseSkillLevel(skId, lvl)
       }
+      const allSkills = this.sumPlayerItemStat(owner, 127)
+      if (allSkills > 0) {
+        statList.setAllSkillsBonus(allSkills)
+      }
+      for (const masteryStat of [
+        [329, 'passive_fire_mastery'],
+        [330, 'passive_ltng_mastery'],
+        [331, 'passive_cold_mastery'],
+        [332, 'passive_pois_mastery'],
+        [333, 'passive_fire_pierce'],
+        [334, 'passive_ltng_pierce'],
+        [335, 'passive_cold_pierce'],
+        [336, 'passive_pois_pierce'],
+      ] as const) {
+        const val = this.sumPlayerItemStat(owner, masteryStat[0])
+        if (val !== 0) {
+          statList.setBaseStat(masteryStat[1], val)
+        }
+      }
     }
-    const slvl = Math.max(
-      1,
-      spec.slvl ?? spec.skillLevel ?? owner?.skills.get(spec.skillId) ?? 1,
-    )
-    statList.setBaseSkillLevel(spec.skillId, slvl)
-
-    const ownerCtx: CombatUnitContext = {
+    const stateBus = new StateBus(statList, this.registry)
+    if (owner) {
+      this.mirrorPersistentStates(this.playerCombat.get(owner.unitId), stateBus)
+    }
+    return {
       id: String(ownerPlayerId),
       name: owner?.name ?? `Player_${ownerPlayerId}`,
       unitType: 'player',
       statList,
-      stateBus: new StateBus(statList),
+      stateBus,
       x: owner?.x ?? 128,
       y: owner?.y ?? 128,
+    }
+  }
+
+  private extractIronGolemPropsFromEntry113c(
+    entry: ServerItemEntry,
+    ownerLevel: number,
+  ): {
+    readonly props: IronGolemItemProps & {
+      readonly fireResist?: number
+      readonly lightResist?: number
+      readonly coldResist?: number
+      readonly poisonResist?: number
+    }
+    readonly auraLevels: Map<number, number>
+    readonly extraStats: {
+      readonly minDamage?: number
+      readonly maxDamage?: number
+      readonly damageResist: number
+      readonly magicResist: number
+      readonly crushingBlow: number
+      readonly openWounds: number
+      readonly deadlyStrike: number
+      readonly thornsFlat: number
+      readonly fireMinDam: number
+      readonly fireMaxDam: number
+      readonly lightMinDam: number
+      readonly lightMaxDam: number
+      readonly coldMinDam: number
+      readonly coldMaxDam: number
+    }
+  } {
+    const isMetallic = isMetalItemCode113c(entry.code)
+    const isEth = entry.ethereal === true || entry.rawItemData?.ethereal === true
+    const stats = this.collectServerItemEntryStats113c(entry)
+    let edPct = 0
+    let flatMin = 0
+    let flatMax = 0
+    let armorEdPct = 0
+    let flatDef = 0
+    let physRes = 0
+    let magRes = 0
+    let fireRes = 0
+    let lightRes = 0
+    let coldRes = 0
+    let poisRes = 0
+    let crushingBlow = 0
+    let openWounds = 0
+    let deadlyStrike = 0
+    let thornsFlat = 0
+    let fireMinDam = 0
+    let fireMaxDam = 0
+    let lightMinDam = 0
+    let lightMaxDam = 0
+    let coldMinDam = 0
+    let coldMaxDam = 0
+    const auraLevels = new Map<number, number>()
+    for (const st of stats) {
+      if (st.statId === 17) edPct += st.value
+      else if (st.statId === 219) edPct += (st.value * ownerLevel) >> 3
+      else if (st.statId === 21 || st.statId === 23 || st.statId === 111) flatMin += st.value
+      else if (st.statId === 22 || st.statId === 24 || st.statId === 111) flatMax += st.value
+      else if (st.statId === 218) flatMax += (st.value * ownerLevel) >> 3
+      else if (st.statId === 16) armorEdPct += st.value
+      else if (st.statId === 31) flatDef += st.value
+      else if (st.statId === 214) flatDef += (st.value * ownerLevel) >> 3
+      else if (st.statId === 36) physRes += st.value
+      else if (st.statId === 37) magRes += st.value
+      else if (st.statId === 39) fireRes += st.value
+      else if (st.statId === 41) lightRes += st.value
+      else if (st.statId === 43) coldRes += st.value
+      else if (st.statId === 45) poisRes += st.value
+      else if (st.statId === 48) fireMinDam += st.value
+      else if (st.statId === 49) fireMaxDam += st.value
+      else if (st.statId === 50) lightMinDam += st.value
+      else if (st.statId === 51) lightMaxDam += st.value
+      else if (st.statId === 54) coldMinDam += st.value
+      else if (st.statId === 55) coldMaxDam += st.value
+      else if (st.statId === 78) thornsFlat += st.value
+      else if (st.statId === 135) openWounds += st.value
+      else if (st.statId === 136) crushingBlow += st.value
+      else if (st.statId === 141) deadlyStrike += st.value
+      else if (st.statId === 151 && st.param > 0 && st.value > 0) {
+        auraLevels.set(st.param, (auraLevels.get(st.param) ?? 0) + st.value)
+      }
+    }
+
+    let minDamage: number | undefined
+    let maxDamage: number | undefined
+    let defense: number | undefined
+    const wb = resolveWeaponBase113c(entry.code)
+    if (wb !== undefined) {
+      const baseMin = wb.twoHanded && wb.twoHandedMindam ? wb.twoHandedMindam : wb.mindam
+      const baseMax = wb.twoHanded && wb.twoHandedMaxdam ? wb.twoHandedMaxdam : wb.maxdam
+      const ethMin = isEth ? Math.floor(baseMin * 1.5) : baseMin
+      const ethMax = isEth ? Math.floor(baseMax * 1.5) : baseMax
+      minDamage = Math.max(1, Math.trunc((ethMin * (100 + edPct)) / 100) + flatMin)
+      maxDamage = Math.max(minDamage, Math.trunc((ethMax * (100 + edPct)) / 100) + flatMax)
+    }
+    const armorRec = getEmbeddedDropTables().armor.get(entry.code.trim().toLowerCase())
+    const explicitDef = (entry.rawItemData as { readonly defense?: number } | undefined)?.defense
+    if (armorRec !== undefined || flatDef > 0 || (explicitDef ?? 0) > 0) {
+      const rawAc = explicitDef ?? armorRec?.maxac ?? 0
+      const ethAc = isEth && explicitDef === undefined ? Math.floor(rawAc * 1.5) : rawAc
+      defense = Math.max(0, Math.trunc((ethAc * (100 + armorEdPct)) / 100) + flatDef)
+    }
+    const avgBaseDamage =
+      minDamage !== undefined && maxDamage !== undefined
+        ? Math.floor((minDamage + maxDamage) / 2)
+        : undefined
+
+    return {
+      props: {
+        isMetallic,
+        isEthereal: isEth,
+        ...(minDamage !== undefined ? { minDamage } : {}),
+        ...(maxDamage !== undefined ? { maxDamage } : {}),
+        ...(avgBaseDamage !== undefined ? { baseDamage: avgBaseDamage } : {}),
+        ...(defense !== undefined ? { defense } : {}),
+        ...(auraLevels.size > 0 ? { auras: [...auraLevels.keys()] } : {}),
+        fireResist: fireRes,
+        lightResist: lightRes,
+        coldResist: coldRes,
+        poisonResist: poisRes,
+      },
+      auraLevels,
+      extraStats: {
+        ...(minDamage !== undefined ? { minDamage } : {}),
+        ...(maxDamage !== undefined ? { maxDamage } : {}),
+        damageResist: physRes,
+        magicResist: magRes,
+        crushingBlow,
+        openWounds,
+        deadlyStrike,
+        thornsFlat,
+        fireMinDam,
+        fireMaxDam,
+        lightMinDam,
+        lightMaxDam,
+        coldMinDam,
+        coldMaxDam,
+      },
+    }
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `SKILLS_SrvSt20_IronGolem` (`0x6FC6EDD0`) + `SKILLS_SrvDo_IronGolem` (`0x6FD01D20`):
+   * Validates that a ground metallic weapon/armor item is targeted BEFORE deducting mana/cooldown,
+   * consumes the ground item, and spawns the Iron Golem (`#90`) bound to `player.ironGolemItem` (#1787).
+   */
+  private executeIronGolemSkillCast113c(
+    player: InternalPlayerRecord,
+    target: {
+      readonly targetItemId?: number | undefined
+      readonly tx?: number | undefined
+      readonly ty?: number | undefined
+    },
+  ): void {
+    if (player.dead || this.isPlayerInHitRecovery(player)) return
+    const cast = this.resolvePlayerSkillCast(player, 90)
+    if (cast === null) return
+
+    let groundItem: ServerItemEntry | undefined
+    if (target.targetItemId !== undefined) {
+      const candidate = this.groundItems.get(target.targetItemId)
+      if (candidate && (candidate.areaId === undefined || candidate.areaId === player.areaId)) {
+        groundItem = candidate
+      }
+    } else if (
+      target.tx !== undefined &&
+      target.ty !== undefined &&
+      Number.isFinite(target.tx) &&
+      Number.isFinite(target.ty)
+    ) {
+      let bestDist = 6
+      for (const g of this.groundItems.values()) {
+        if (g.areaId !== undefined && g.areaId !== player.areaId) continue
+        const d = Math.hypot(g.x - target.tx, g.y - target.ty)
+        if (d <= bestDist) {
+          bestDist = d
+          groundItem = g
+        }
+      }
+    }
+
+    if (groundItem === undefined || !isMetalItemCode113c(groundItem.code)) {
+      return
+    }
+
+    this.commitPlayerSkillCast(player, cast)
+    this.broadcastPlayerSkillCast(player, cast, {
+      x: Math.round(groundItem.x),
+      y: Math.round(groundItem.y),
+    })
+    this.summonPet(player.unitId, {
+      skillId: 90,
+      slvl: cast.slvl,
+      x: groundItem.x,
+      y: groundItem.y,
+      ironGolemItemId: groundItem.unitId,
+    })
+  }
+
+  summonPet(ownerPlayerId: number, spec: SummonPetSpec): CreatePetOutcome {
+    const owner = this.players.get(ownerPlayerId)
+    const mgr = this.getSummonManager(ownerPlayerId)
+    const ownerCtx = this.buildOwnerSummonCombatContext113c(ownerPlayerId)
+    const slvl = Math.max(
+      1,
+      spec.slvl ?? spec.skillLevel ?? owner?.skills.get(spec.skillId) ?? 1,
+    )
+    ownerCtx.statList.setBaseSkillLevel(spec.skillId, slvl)
+
+    const areaId = owner?.areaId ?? this.defaultAreaId ?? 1
+    let targetIronGolemGroundItem: ServerItemEntry | undefined
+    let ironGolemExtracted:
+      | ReturnType<typeof this.extractIronGolemPropsFromEntry113c>
+      | undefined
+
+    if (spec.skillId === 90) {
+      if (spec.restoreSavedIronGolem === true) {
+        const savedEntry = owner?.ironGolemItem ?? undefined
+        if (!savedEntry) {
+          return {
+            created: false,
+            reason: 'invalid_item',
+            evictedPetUids: [],
+            activeCountForType: mgr.getActivePets().filter((p) => p.petType === 'golem').length,
+          }
+        }
+        ironGolemExtracted = this.extractIronGolemPropsFromEntry113c(
+          savedEntry,
+          owner?.level ?? 1,
+        )
+      } else {
+        if (spec.ironGolemItemId !== undefined) {
+          const g = this.groundItems.get(spec.ironGolemItemId)
+          if (g && (g.areaId === undefined || g.areaId === areaId)) {
+            targetIronGolemGroundItem = g
+          }
+        } else if (spec.x !== undefined && spec.y !== undefined) {
+          let bestDist = 6
+          for (const g of this.groundItems.values()) {
+            if (g.areaId !== undefined && g.areaId !== areaId) continue
+            const d = Math.hypot(g.x - spec.x, g.y - spec.y)
+            if (d <= bestDist) {
+              bestDist = d
+              targetIronGolemGroundItem = g
+            }
+          }
+        }
+        if (!targetIronGolemGroundItem) {
+          return {
+            created: false,
+            reason: 'invalid_item',
+            evictedPetUids: [],
+            activeCountForType: mgr.getActivePets().filter((p) => p.petType === 'golem').length,
+          }
+        }
+        ironGolemExtracted = this.extractIronGolemPropsFromEntry113c(
+          targetIronGolemGroundItem,
+          owner?.level ?? 1,
+        )
+      }
+      if (!ironGolemExtracted.props.isMetallic) {
+        return {
+          created: false,
+          reason: 'invalid_item',
+          evictedPetUids: [],
+          activeCountForType: mgr.getActivePets().filter((p) => p.petType === 'golem').length,
+        }
+      }
     }
 
     const requiresCorpse =
@@ -24927,7 +34597,6 @@ export class GameInstance {
       })
     }
 
-    const areaId = owner?.areaId ?? this.defaultAreaId ?? 1
     let spawnX = spec.x ?? (owner ? owner.x + 1 : 128)
     let spawnY = spec.y ?? (owner ? owner.y + 1 : 128)
     if (
@@ -24970,6 +34639,7 @@ export class GameInstance {
         p.uid,
         {
           classId: p.classId ?? 363,
+          sourceSkillId: p.sourceSkillId,
           petTypeIdx:
             PET_TYPE_IDX_BY_NAME_113C[p.petType] ?? PET_TYPE_PORTRAIT_TABLE[0]?.idx ?? 1,
         },
@@ -24983,7 +34653,21 @@ export class GameInstance {
       y: spawnY,
       difficulty: this.difficulty,
       ...(requiresCorpse ? { corpses } : {}),
+      ...(ironGolemExtracted !== undefined ? { ironGolemItem: ironGolemExtracted.props } : {}),
     })
+
+    if (outcome.created && targetIronGolemGroundItem !== undefined) {
+      this.groundItems.delete(targetIronGolemGroundItem.unitId)
+      this.broadcastToArea(areaId, {
+        type: 'UnitRemove',
+        unitType: 4,
+        id: targetIronGolemGroundItem.unitId,
+        unitId: targetIronGolemGroundItem.unitId,
+      })
+      if (owner) {
+        owner.ironGolemItem = targetIronGolemGroundItem
+      }
+    }
 
     for (const c of corpses) {
       if (c.consumed && c._monsterRef) {
@@ -24999,9 +34683,12 @@ export class GameInstance {
     }
     for (const evictedUid of outcome.evictedPetUids) {
       this.petAuraScanners.delete(evictedUid)
+      const evictedMeta = prePetMetaByUid.get(evictedUid)
+      if (evictedMeta?.sourceSkillId === 90 && spec.skillId !== 90 && owner) {
+        owner.ironGolemItem = null
+      }
       const evictedUnitId = this.petUnitIds.get(evictedUid)
       if (evictedUnitId !== undefined) {
-        const evictedMeta = prePetMetaByUid.get(evictedUid)
         this.petUnitIds.delete(evictedUid)
         this.petVisualStates.delete(evictedUnitId)
         this.broadcastToArea(areaId, {
@@ -25024,17 +34711,58 @@ export class GameInstance {
     }
 
     if (outcome.created && outcome.pet) {
+      if (ironGolemExtracted !== undefined) {
+        const ex = ironGolemExtracted.extraStats
+        const fgBlvl = owner?.skills.get(94) ?? 0
+        const synMult = 100 + fgBlvl * 6
+        const baseMinTable = [7, 11, 12] as const
+        const baseMaxTable = [19, 30, 33] as const
+        if (ex.minDamage !== undefined) {
+          outcome.pet.statList.setBaseStat(
+            'mindamage',
+            Math.floor((((baseMinTable[this.difficulty] ?? 7) + ex.minDamage) * synMult) / 100),
+          )
+        }
+        if (ex.maxDamage !== undefined) {
+          outcome.pet.statList.setBaseStat(
+            'maxdamage',
+            Math.floor((((baseMaxTable[this.difficulty] ?? 19) + ex.maxDamage) * synMult) / 100),
+          )
+        }
+        if (ex.damageResist !== 0) outcome.pet.statList.addStat(36, ex.damageResist)
+        if (ex.magicResist !== 0) outcome.pet.statList.addStat(37, ex.magicResist)
+        if (ex.crushingBlow > 0) outcome.pet.statList.addStat(136, ex.crushingBlow)
+        if (ex.openWounds > 0) outcome.pet.statList.addStat(135, ex.openWounds)
+        if (ex.deadlyStrike > 0) outcome.pet.statList.addStat(141, ex.deadlyStrike)
+        if (ex.thornsFlat > 0) outcome.pet.statList.addStat(78, ex.thornsFlat)
+        if (ex.fireMaxDam > 0) {
+          outcome.pet.statList.addStat(48, ex.fireMinDam)
+          outcome.pet.statList.addStat(49, ex.fireMaxDam)
+        }
+        if (ex.lightMaxDam > 0) {
+          outcome.pet.statList.addStat(50, ex.lightMinDam)
+          outcome.pet.statList.addStat(51, ex.lightMaxDam)
+        }
+        if (ex.coldMaxDam > 0) {
+          outcome.pet.statList.addStat(54, ex.coldMinDam)
+          outcome.pet.statList.addStat(55, ex.coldMaxDam)
+        }
+      }
       const petUnitId = this.allocateUnitId()
       this.petUnitIds.set(outcome.pet.uid, petUnitId)
       const petMeta = outcome.pet as unknown as {
         unitId?: number
         areaId?: number
         states?: Set<number>
+        inheritedAuraLevels?: Map<number, number>
       }
       const vis = this.getOrCreatePetCombatContext113c(outcome.pet, petUnitId, areaId)
       petMeta.unitId = petUnitId
       petMeta.areaId = areaId
       petMeta.states = vis.states
+      if (ironGolemExtracted !== undefined && ironGolemExtracted.auraLevels.size > 0) {
+        petMeta.inheritedAuraLevels = ironGolemExtracted.auraLevels
+      }
       const petTypeIdx =
         PET_TYPE_IDX_BY_NAME_113C[outcome.pet.petType] ??
         PET_TYPE_PORTRAIT_TABLE[0]?.idx ??
@@ -25077,6 +34805,21 @@ export class GameInstance {
       )
       if (spiritSkillId !== undefined && owner !== undefined) {
         this.pulseDruidSpiritPetAura113c(owner, outcome.pet, petUnitId, spiritSkillId, true)
+      } else if (
+        outcome.pet.inheritedAuras !== undefined &&
+        outcome.pet.inheritedAuras.length > 0 &&
+        owner !== undefined
+      ) {
+        const inheritedSkillId = outcome.pet.inheritedAuras[0]!
+        const inheritedSlvl = petMeta.inheritedAuraLevels?.get(inheritedSkillId) ?? 1
+        this.pulseDruidSpiritPetAura113c(
+          owner,
+          outcome.pet,
+          petUnitId,
+          inheritedSkillId,
+          true,
+          inheritedSlvl,
+        )
       }
     }
 
@@ -25096,6 +34839,9 @@ export class GameInstance {
       this.petAuraScanners.delete(removed.uid)
       const petUnitId = this.petUnitIds.get(removed.uid)
       const owner = this.players.get(ownerPlayerId)
+      if (removed.sourceSkillId === 90 && owner) {
+        owner.ironGolemItem = null
+      }
       const areaId = owner?.areaId ?? this.defaultAreaId ?? 1
       if (petUnitId !== undefined) {
         this.petUnitIds.delete(removed.uid)
@@ -25165,7 +34911,8 @@ export class GameInstance {
 
   /**
    * Pulse a Druid Spirit Totem's 1.13c aura sub-skill (`#296` Barbs Aura -> `147`, `#297` Wolverine
-   * Aura -> `148`, `#298` Oak Sage Aura -> `149`) across allied players, mercenaries, and pets.
+   * Aura -> `148`, `#298` Oak Sage Aura -> `149`) or an Iron Golem's inherited `item_aura` (`stat 151`,
+   * e.g. `Insight` `#120` Meditation) across allied players, mercenaries, and pets.
    */
   private pulseDruidSpiritPetAura113c(
     owner: InternalPlayerRecord,
@@ -25173,10 +34920,11 @@ export class GameInstance {
     petUnitId: number,
     spiritSkillId: number,
     forceInitial = false,
+    slvlOverride?: number,
   ): void {
     const skill = this.registry.getSkillById(spiritSkillId)
     if (!skill || !skill.aura) return
-    const slvl = Math.max(1, pet.slvl)
+    const slvl = Math.max(1, slvlOverride ?? pet.slvl)
     const radiusSubtiles = this.auraRangeSubtiles(spiritSkillId, slvl)
     const casterStateId = skill.auraState ? this.registry.getStateByName(skill.auraState)?.id : undefined
     const targetStateId = skill.auraTgtState ? this.registry.getStateByName(skill.auraTgtState)?.id : undefined
@@ -25277,45 +35025,138 @@ export class GameInstance {
     })
   }
 
-  private stepSummonedPets(): void {
-    for (const [ownerPlayerId, mgr] of this.summonManagers.entries()) {
-      const owner = this.players.get(ownerPlayerId)
-      if (!owner || owner.dead) continue
-      const pets = mgr.getActivePets()
-      for (const pet of pets) {
-        if (pet.hp <= 0 || pet.alive === false) {
-          this.petAuraScanners.delete(pet.uid)
+  private stepPetMissiles113c(): void {
+    for (const [key, untilFrame] of [...this.petMissileNextDelayUntil.entries()]) {
+      if (this.currentFrame >= untilFrame) {
+        this.petMissileNextDelayUntil.delete(key)
+      }
+    }
+
+    for (const [mslId, msl] of [...this.petMissiles.entries()]) {
+      const prevX = msl.x
+      const prevY = msl.y
+      const nextX = prevX + msl.vx
+      const nextY = prevY + msl.vy
+      msl.remainingFrames -= 1
+
+      if (!this.isMonsterStepWalkable(msl.areaId, prevX, prevY, nextX, nextY, true)) {
+        this.petMissiles.delete(mslId)
+        continue
+      }
+
+      msl.x = nextX
+      msl.y = nextY
+
+      const segDx = nextX - prevX
+      const segDy = nextY - prevY
+      const segLenSq = segDx * segDx + segDy * segDy
+      let hitAny = false
+
+      for (const m of this.monsters.values()) {
+        if (
+          m.dead ||
+          m.isNpc ||
+          !m.isKillable ||
+          m.submerged ||
+          this.isMonsterConverted(m) ||
+          m.areaId !== msl.areaId ||
+          msl.hitUnitIds.has(m.unitId)
+        ) {
           continue
         }
-        const aiProfile = resolvePetAiProfile113c(pet, pets.length)
-        const isStationary = aiProfile.isStationary
-        const isFlyingPet = pet.petType === 'raven'
-        const petUnitId =
-          this.petUnitIds.get(pet.uid) ??
-          (pet as unknown as { unitId?: number }).unitId
-        const petMeta = pet as unknown as { areaId?: number; unitId?: number; states?: Set<number> }
-        if (petUnitId !== undefined) {
-          if (petMeta.unitId === undefined) petMeta.unitId = petUnitId
-          const vis = this.getOrCreatePetCombatContext113c(pet, petUnitId, owner.areaId)
-          petMeta.states = vis.states
-          this.stepUnitStates(vis.states, vis.timers, 'monster', petUnitId, owner.areaId)
-          const spiritSkillId = pet.subSkillIds.find(
-            (id) => id === 296 || id === 297 || id === 298,
-          )
-          if (spiritSkillId !== undefined) {
-            this.pulseDruidSpiritPetAura113c(owner, pet, petUnitId, spiritSkillId, false)
+        const ndKey = `${msl.ownerPlayerId}:${msl.sourceSkillId}:${m.unitId}`
+        const ndUntil = this.petMissileNextDelayUntil.get(ndKey) ?? 0
+        if (msl.nextDelayFrames > 0 && this.currentFrame < ndUntil) {
+          continue
+        }
+
+        let t = 1
+        if (segLenSq > 1e-6) {
+          t = Math.max(0, Math.min(1, ((m.x - prevX) * segDx + (m.y - prevY) * segDy) / segLenSq))
+        }
+        const cx = prevX + segDx * t
+        const cy = prevY + segDy * t
+        const hitRadius = Math.max(1.8, (m.sizeX || 2) * 0.65)
+        if (Math.hypot(m.x - cx, m.y - cy) > hitRadius) continue
+
+        msl.hitUnitIds.add(m.unitId)
+        if (msl.nextDelayFrames > 0) {
+          this.petMissileNextDelayUntil.set(ndKey, this.currentFrame + msl.nextDelayFrames)
+        }
+        hitAny = true
+
+        const owner = this.players.get(msl.ownerPlayerId)
+        if (owner) {
+          if (msl.dmgPacket.elemType === 'pois') {
+            const dur = Math.max(25, msl.dmgPacket.elemDurationFrames ?? 100)
+            const totalMin256 = Math.max(FIXED_ONE, msl.dmgPacket.elemMin256 ?? FIXED_ONE)
+            const rawBitrate256 = Math.max(1, Math.floor(totalMin256 / dur))
+            this.applyMonsterPoisonDot(owner, m, rawBitrate256, dur, msl.sourceSkillId)
+          } else {
+            const mCtx = this.monsterCombatContext(m)
+            mCtx.statList.setHp256(m.hp * FIXED_ONE)
+            const out = executeSUnitDmg(msl.mslOwnerCtx, mCtx, msl.dmgPacket, this.rng)
+            if (out.hit && !out.immuneToElem && out.totalDamage256 > 0) {
+              const dealt = Math.max(1, Math.floor(out.totalDamage256 / FIXED_ONE))
+              const channel = normalizeMissileElement(msl.dmgPacket.elemType) ?? 'fire'
+              this.finishMonsterDamage(
+                owner,
+                m,
+                dealt,
+                msl.sourceSkillId,
+                channel,
+                undefined,
+                msl.dmgPacket.elemDurationFrames,
+              )
+              mCtx.statList.setHp256(m.hp * FIXED_ONE)
+            }
           }
         }
 
-        const ownerDist = Math.hypot(owner.x - pet.x, owner.y - pet.y)
+        if (!msl.pierce) {
+          break
+        }
+      }
+
+      if ((hitAny && !msl.pierce) || msl.remainingFrames <= 0) {
+        this.petMissiles.delete(mslId)
+      }
+    }
+  }
+
+  private stepSummonedPets(): void {
+    this.stepPetMissiles113c()
+
+    const noOpAuraScanner = {
+      setActiveAura: () => null,
+      pulseAura: () => {},
+    } as unknown as AuraScanner
+
+    for (const [ownerPlayerId, mgr] of this.summonManagers.entries()) {
+      const owner = this.players.get(ownerPlayerId)
+      if (!owner || owner.dead) continue
+
+      const preTickPets = mgr.getActivePets().map((pet) => {
+        const petMeta = pet as unknown as {
+          areaId?: number
+          unitId?: number
+          states?: Set<number>
+          inheritedAuraLevels?: Map<number, number>
+        }
+        const petUnitId = this.petUnitIds.get(pet.uid) ?? petMeta.unitId
+        const aiProfile = resolvePetAiProfile113c(pet, 1)
+        let crossAreaSnapped = false
         if (
-          !isStationary &&
-          ((aiProfile.teleportSubtiles > 0 && ownerDist > aiProfile.teleportSubtiles) ||
-            (petMeta.areaId !== undefined && petMeta.areaId !== owner.areaId))
+          pet.hp > 0 &&
+          pet.alive !== false &&
+          !aiProfile.isStationary &&
+          petMeta.areaId !== undefined &&
+          petMeta.areaId !== owner.areaId
         ) {
           pet.x = owner.x
           pet.y = owner.y
           petMeta.areaId = owner.areaId
+          crossAreaSnapped = true
           if (petUnitId !== undefined) {
             this.broadcastToArea(owner.areaId, {
               type: 'UnitReassign',
@@ -25329,128 +35170,353 @@ export class GameInstance {
               snap: true,
             })
           }
+        } else if (petMeta.areaId === undefined) {
+          petMeta.areaId = owner.areaId
+        }
+        if (petUnitId !== undefined && pet.hp > 0 && pet.alive !== false) {
+          if (petMeta.unitId === undefined) petMeta.unitId = petUnitId
+          const vis = this.getOrCreatePetCombatContext113c(pet, petUnitId, petMeta.areaId)
+          petMeta.states = vis.states
+          this.stepUnitStates(vis.states, vis.timers, 'monster', petUnitId, petMeta.areaId)
+          const spiritSkillId = pet.subSkillIds.find(
+            (id) => id === 296 || id === 297 || id === 298,
+          )
+          if (spiritSkillId !== undefined) {
+            this.pulseDruidSpiritPetAura113c(owner, pet, petUnitId, spiritSkillId, false)
+          } else if (pet.inheritedAuras !== undefined && pet.inheritedAuras.length > 0) {
+            const inheritedSkillId = pet.inheritedAuras[0]!
+            const inheritedSlvl = petMeta.inheritedAuraLevels?.get(inheritedSkillId) ?? 1
+            this.pulseDruidSpiritPetAura113c(
+              owner,
+              pet,
+              petUnitId,
+              inheritedSkillId,
+              false,
+              inheritedSlvl,
+            )
+          }
+        }
+        return {
+          uid: pet.uid,
+          petUnitId,
+          petType: pet.petType,
+          sourceSkillId: pet.sourceSkillId,
+          classId: pet.classId ?? 363,
+          prevX: pet.x,
+          prevY: pet.y,
+          crossAreaSnapped,
+        }
+      })
+
+      if (preTickPets.length === 0) continue
+
+      const ownerCtx = this.buildOwnerSummonCombatContext113c(ownerPlayerId)
+      const ownerPreHp256 = ownerCtx.statList.getHp256()
+      const ownerPreMana256 = ownerCtx.statList.getMana256()
+
+      const enemyPositions = new Map<string, { x: number; y: number }>()
+      const enemyEntries: {
+        readonly record: InternalMonsterRecord
+        readonly ctx: CombatUnitContext
+        readonly preHp256: number
+        readonly hadDimVision: boolean
+        readonly hadStun: boolean
+        readonly hadPoison: boolean
+      }[] = []
+
+      for (const m of this.monsters.values()) {
+        if (
+          m.dead ||
+          m.isNpc ||
+          !m.isKillable ||
+          m.submerged ||
+          this.isMonsterConverted(m) ||
+          m.areaId !== owner.areaId
+        ) {
           continue
         }
-        petMeta.areaId = owner.areaId
+        const ctx = this.monsterCombatContext(m)
+        ctx.statList.setHp256(m.hp * FIXED_ONE)
+        Object.assign(ctx, { petIgnore: m.petIgnore })
+        enemyPositions.set(ctx.id, { x: m.x, y: m.y })
+        enemyEntries.push({
+          record: m,
+          ctx,
+          preHp256: m.hp * FIXED_ONE,
+          hadDimVision: ctx.stateBus.hasState('dimvision') || ctx.stateBus.hasState(23),
+          hadStun: ctx.stateBus.hasState('stun') || ctx.stateBus.hasState(21),
+          hadPoison: ctx.stateBus.hasState('poison') || ctx.stateBus.hasState(2),
+        })
+      }
 
-        let bestTarget: InternalMonsterRecord | undefined
-        let bestDist = aiProfile.aggroSubtiles
-        for (const m of this.monsters.values()) {
-          if (
-            aiProfile.aggroSubtiles <= 0 ||
-            m.dead ||
-            m.isNpc ||
-            !m.isKillable ||
-            m.submerged ||
-            m.petIgnore ||
-            m.areaId !== owner.areaId
-          ) {
-            continue
+      const corpses: {
+        id: string
+        consumed: boolean
+        baseMaxHp?: number
+        isBoss?: boolean
+        shattered?: boolean
+        isCorpse?: boolean
+        x?: number
+        y?: number
+        _monsterRef: InternalMonsterRecord
+      }[] = []
+      for (const m of this.monsters.values()) {
+        if (!m.dead || m.shattered || m.isNpc || m.areaId !== owner.areaId) continue
+        corpses.push({
+          id: String(m.unitId),
+          consumed: false,
+          baseMaxHp: m.baseMaxHp,
+          isBoss: m.isBoss,
+          shattered: m.shattered,
+          isCorpse: true,
+          x: m.x,
+          y: m.y,
+          _monsterRef: m,
+        })
+      }
+      corpses.sort(
+        (a, b) =>
+          Math.hypot((a.x ?? owner.x) - owner.x, (a.y ?? owner.y) - owner.y) -
+          Math.hypot((b.x ?? owner.x) - owner.x, (b.y ?? owner.y) - owner.y),
+      )
+
+      const petMissileProxy = {
+        spawnMissile: (sp: {
+          missileNameOrId: string | number
+          sourceSkillId: number
+          slvl: number
+          owner: CombatUnitContext
+          startX: number
+          startY: number
+          targetX: number
+          targetY: number
+          dmgPacket: SUnitDmgPacket
+          nextDelayFrames?: number | undefined
+        }) => {
+          const mTxt =
+            typeof sp.missileNameOrId === 'number'
+              ? this.registry.getMissileById(sp.missileNameOrId)
+              : (getMissileTxtData(sp.missileNameOrId) ??
+                this.registry.getMissileByName(sp.missileNameOrId))
+          const missileClassId =
+            mTxt?.id ?? (typeof sp.missileNameOrId === 'number' ? sp.missileNameOrId : 59)
+          const projId = this.allocateUnitId()
+          const petUnitId = this.petUnitIds.get(sp.owner.id) ?? owner.unitId
+          const at = { x: Math.round(sp.startX), y: Math.round(sp.startY) }
+          const tgt = { x: Math.round(sp.targetX), y: Math.round(sp.targetY) }
+          this.broadcastToArea(owner.areaId, {
+            type: 'CreateMissile',
+            missileId: projId,
+            missileClassId,
+            at,
+            target: tgt,
+            x: at.x,
+            y: at.y,
+            targetX: tgt.x,
+            targetY: tgt.y,
+            skillId: sp.sourceSkillId,
+            level: sp.slvl,
+            ownerType: 1,
+            ownerUnitType: 'monster',
+            ownerId: petUnitId,
+            sourceUnitId: petUnitId,
+            areaId: owner.areaId,
+          } as ServerEvent)
+
+          // Poison Creeper (`#222`) applies its poison damage/state directly inside `tickPets`.
+          if (sp.sourceSkillId === 222) {
+            return null
           }
-          const d = Math.hypot(m.x - pet.x, m.y - pet.y)
-          if (d <= bestDist) {
-            bestDist = d
-            bestTarget = m
-          }
+
+          const dx = sp.targetX - sp.startX
+          const dy = sp.targetY - sp.startY
+          const dist = Math.hypot(dx, dy)
+          const velSubtilesPerFrame = Math.max(0.8, (mTxt?.vel ?? 18) / 12)
+          const vx = dist > 1e-4 ? (dx / dist) * velSubtilesPerFrame : velSubtilesPerFrame
+          const vy = dist > 1e-4 ? (dy / dist) * velSubtilesPerFrame : 0
+          const rangeFrames = Math.max(15, (mTxt?.range ?? 40) + sp.slvl * (mTxt?.levRange ?? 0))
+          const pierce =
+            Boolean(mTxt?.pierce) ||
+            sp.sourceSkillId === 262 ||
+            sp.sourceSkillId === 271 ||
+            sp.sourceSkillId === 272 ||
+            sp.sourceSkillId === 276
+
+          this.petMissiles.set(projId, {
+            unitId: projId,
+            missileClassId,
+            petUnitId,
+            ownerPlayerId,
+            mslOwnerCtx: sp.owner,
+            areaId: owner.areaId,
+            x: sp.startX,
+            y: sp.startY,
+            vx,
+            vy,
+            remainingFrames: rangeFrames,
+            pierce,
+            nextDelayFrames: sp.nextDelayFrames ?? 0,
+            sourceSkillId: sp.sourceSkillId,
+            slvl: sp.slvl,
+            dmgPacket: sp.dmgPacket,
+            hitUnitIds: new Set<number>(),
+          })
+          return null
+        },
+      } as unknown as MissileEngine
+
+      mgr.tickPets({
+        currentTick: this.currentFrame,
+        owner: ownerCtx,
+        enemies: enemyEntries.map((e) => e.ctx),
+        enemyPositions,
+        corpses,
+        missileEngine: petMissileProxy,
+        auraScanner: noOpAuraScanner,
+        coordScale: 1,
+        respectAiDelay: true,
+        enforceMeleeReach: true,
+        canStep: (pet, nextX, nextY) =>
+          this.isMonsterStepWalkable(
+            owner.areaId,
+            pet.x,
+            pet.y,
+            nextX,
+            nextY,
+            pet.petType === 'raven',
+          ),
+      })
+
+      for (const c of corpses) {
+        if (c.consumed && !c._monsterRef.shattered) {
+          c._monsterRef.shattered = true
+          this.broadcastToArea(c._monsterRef.areaId, {
+            type: 'UnitRemove',
+            unitType: 1,
+            id: c._monsterRef.unitId,
+            unitId: c._monsterRef.unitId,
+            areaId: c._monsterRef.areaId,
+          })
+        }
+      }
+
+      const ownerPostHp256 = ownerCtx.statList.getHp256()
+      const ownerPostMana256 = ownerCtx.statList.getMana256()
+      if (ownerPostHp256 !== ownerPreHp256) {
+        const maxHpFixed = this.getPlayerAccruedMaxHpFixed(owner)
+        owner.hpFixed = Math.min(maxHpFixed, Math.max(FIXED_ONE, ownerPostHp256))
+        owner.hp = Math.max(1, Math.ceil(owner.hpFixed / FIXED_ONE))
+        this.emitToPlayer(owner.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: owner.unitId,
+          statId: 6,
+          value: owner.hpFixed,
+        })
+      }
+      if (ownerPostMana256 !== ownerPreMana256) {
+        const maxManaFixed = this.getPlayerAccruedMaxManaFixed(owner)
+        owner.manaFixed = Math.min(maxManaFixed, Math.max(0, ownerPostMana256))
+        owner.mana = Math.max(0, Math.floor(owner.manaFixed / FIXED_ONE))
+        this.emitToPlayer(owner.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: owner.unitId,
+          statId: 8,
+          value: owner.manaFixed,
+        })
+      }
+
+      for (const entry of enemyEntries) {
+        const m = entry.record
+        if (m.dead) continue
+        if (
+          !entry.hadDimVision &&
+          (entry.ctx.stateBus.hasState('dimvision') || entry.ctx.stateBus.hasState(23))
+        ) {
+          this.applyMonsterState(m.unitId, 23, 100)
+        }
+        if (
+          !entry.hadStun &&
+          (entry.ctx.stateBus.hasState('stun') || entry.ctx.stateBus.hasState(21))
+        ) {
+          this.applyMonsterState(m.unitId, 21, 75)
+        }
+        if (
+          !entry.hadPoison &&
+          (entry.ctx.stateBus.hasState('poison') || entry.ctx.stateBus.hasState(2))
+        ) {
+          const pState = entry.ctx.stateBus.getState('poison') ?? entry.ctx.stateBus.getState(2)
+          const rate256 = Math.max(1, pState?.stats['poisonmindam'] ?? FIXED_ONE)
+          const dur = Math.max(25, pState ? pState.expireFrame - this.currentFrame : 100)
+          this.applyMonsterPoisonDot(owner, m, rate256, dur, pState?.sourceSkillId ?? 222)
         }
 
-        if (bestTarget) {
-          if (
-            (aiProfile.canMeleeAttack && bestDist <= aiProfile.meleeReachSubtiles) ||
-            (isStationary && bestDist <= aiProfile.aggroSubtiles)
-          ) {
-            if (this.currentFrame % 8 === 0) {
-              const dmg = Math.max(
-                2,
-                (pet.minDamage ?? 5) + pet.slvl * 3,
-              )
-              this.applyDamageToMonster(
-                owner,
-                bestTarget,
-                dmg,
-                pet.sourceSkillId,
-                undefined,
-                pet,
-              )
-            }
-          } else if (aiProfile.canMeleeAttack && !isStationary && this.currentFrame % 2 === 0) {
-            const dx = bestTarget.x - pet.x
-            const dy = bestTarget.y - pet.y
-            const chaseVel =
-              aiProfile.runVelocity > 0 ? aiProfile.runVelocity : aiProfile.velocity
-            const stepSubtiles = (chaseVel * 2) / 25
-            const nextX =
-              Math.round((pet.x + (dx / bestDist) * stepSubtiles) * 100) / 100
-            const nextY =
-              Math.round((pet.y + (dy / bestDist) * stepSubtiles) * 100) / 100
-            if (
-              this.isMonsterStepWalkable(
-                owner.areaId,
-                pet.x,
-                pet.y,
-                nextX,
-                nextY,
-                isFlyingPet,
-              )
-            ) {
-              pet.x = nextX
-              pet.y = nextY
-              if (petUnitId !== undefined) {
-                this.broadcastToArea(owner.areaId, {
-                  type: 'UnitMove',
-                  unitType: 'monster',
-                  id: petUnitId,
-                  unitId: petUnitId,
-                  areaId: owner.areaId,
-                  mode: 'walk',
-                  to: { x: Math.round(pet.x), y: Math.round(pet.y) },
-                  x: Math.round(pet.x),
-                  y: Math.round(pet.y),
-                })
-              }
-            }
+        const postHp256 = entry.ctx.statList.getHp256()
+        if (postHp256 < entry.preHp256 && !m.dead) {
+          const dealt = Math.max(1, Math.floor((entry.preHp256 - postHp256) / FIXED_ONE))
+          this.finishMonsterDamage(owner, m, dealt, 0, 'phys')
+          entry.ctx.statList.setHp256(m.hp * FIXED_ONE)
+        }
+      }
+
+      const activeByUid = new Map(mgr.getActivePets().map((p) => [p.uid, p]))
+      for (const pre of preTickPets) {
+        const livePet = activeByUid.get(pre.uid)
+        if (!livePet || livePet.hp <= 0 || livePet.alive === false) {
+          this.petAuraScanners.delete(pre.uid)
+          if (pre.sourceSkillId === 90) {
+            owner.ironGolemItem = null
           }
-        } else if (
-          !isStationary &&
-          aiProfile.followWalkSubtiles > 0 &&
-          ownerDist > aiProfile.followWalkSubtiles
-        ) {
-          const dx = owner.x - pet.x
-          const dy = owner.y - pet.y
-          const moveVel =
-            ownerDist > aiProfile.leashRunSubtiles
-              ? aiProfile.runVelocity
-              : aiProfile.velocity
-          const stepSubtiles = moveVel / 25
-          const nextX =
-            Math.round((pet.x + (dx / ownerDist) * stepSubtiles) * 100) / 100
-          const nextY =
-            Math.round((pet.y + (dy / ownerDist) * stepSubtiles) * 100) / 100
-          if (
-            this.isMonsterStepWalkable(
-              owner.areaId,
-              pet.x,
-              pet.y,
-              nextX,
-              nextY,
-              isFlyingPet,
-            )
-          ) {
-            pet.x = nextX
-            pet.y = nextY
-            if (petUnitId !== undefined) {
-              this.broadcastToArea(owner.areaId, {
-                type: 'UnitMove',
-                unitType: 'monster',
-                id: petUnitId,
-                unitId: petUnitId,
-                areaId: owner.areaId,
-                mode: 'walk',
-                to: { x: Math.round(pet.x), y: Math.round(pet.y) },
-                x: Math.round(pet.x),
-                y: Math.round(pet.y),
-              })
-            }
+          if (pre.petUnitId !== undefined) {
+            this.petUnitIds.delete(pre.uid)
+            this.petVisualStates.delete(pre.petUnitId)
+            this.broadcastToArea(owner.areaId, {
+              type: 'UnitRemove',
+              unitType: 1,
+              id: pre.petUnitId,
+              unitId: pre.petUnitId,
+            })
+            this.emitToPlayer(ownerPlayerId, {
+              type: 'Merc',
+              kind: 'assign',
+              isSummonAction: true,
+              summonAction: 0,
+              petType: PET_TYPE_IDX_BY_NAME_113C[pre.petType] ?? 1,
+              mercId: pre.petUnitId,
+              ownerId: ownerPlayerId,
+              classId: pre.classId,
+            })
+          }
+          continue
+        }
+
+        if (pre.petUnitId !== undefined && !pre.crossAreaSnapped) {
+          const movedDist = Math.hypot(livePet.x - pre.prevX, livePet.y - pre.prevY)
+          if (movedDist >= 5) {
+            this.broadcastToArea(owner.areaId, {
+              type: 'UnitReassign',
+              unitType: 1,
+              id: pre.petUnitId,
+              unitId: pre.petUnitId,
+              areaId: owner.areaId,
+              at: { x: Math.round(livePet.x), y: Math.round(livePet.y) },
+              x: Math.round(livePet.x),
+              y: Math.round(livePet.y),
+              snap: true,
+            })
+          } else if (movedDist >= 0.01) {
+            this.broadcastToArea(owner.areaId, {
+              type: 'UnitMove',
+              unitType: 'monster',
+              id: pre.petUnitId,
+              unitId: pre.petUnitId,
+              areaId: owner.areaId,
+              mode: 'walk',
+              to: { x: Math.round(livePet.x), y: Math.round(livePet.y) },
+              x: Math.round(livePet.x),
+              y: Math.round(livePet.y),
+            })
           }
         }
       }
@@ -25599,7 +35665,13 @@ export class GameInstance {
         ])
     questsDiffs[this.difficulty] = new Uint16Array(p.questFlags)
 
-    const statusFlags = template?.statusFlags ?? 0x20
+    const isHardcoreExport =
+      p.isHardcore === true || (((p.statusFlags ?? template?.statusFlags ?? 0) & 0x04) !== 0)
+    const statusFlags =
+      (((p.statusFlags ?? template?.statusFlags ?? 0x20) |
+        (isHardcoreExport ? 0x04 : 0) |
+        (isHardcoreExport && (p.dead || p.hasDied === true) ? 0x08 : 0)) &
+      0xff)
     const isExpansion = (statusFlags & 0x20) !== 0
     const actsPerDiff = isExpansion ? 5 : 4
     const bossQuests = isExpansion
@@ -25619,6 +35691,9 @@ export class GameInstance {
       (m) => m.ownerPlayerId === playerUnitId,
     )
     const activeMerc = activeMercRecord ?? this.getMercenaryForOwner(playerUnitId)
+    const exportedMercItems = activeMercRecord
+      ? activeMercRecord.equipment.map((item) => this.serverEntryToItemData(item))
+      : (template?.mercItems ?? template?.merc?.items)
     const exportedMerc = activeMerc
       ? {
           dead: !activeMerc.alive,
@@ -25630,6 +35705,7 @@ export class GameInstance {
             activeMerc.experience,
             hirelingExpThreshold(activeMerc.level, activeMerc.expPerLvl),
           ),
+          ...(exportedMercItems !== undefined ? { items: exportedMercItems } : {}),
         }
       : template?.merc
 
@@ -25654,9 +35730,7 @@ export class GameInstance {
           ? this.currentMapSeed
           : (template?.mapSeed ?? 0),
         merc: exportedMerc,
-        mercItems: activeMercRecord
-          ? activeMercRecord.equipment.map((item) => this.serverEntryToItemData(item))
-          : template?.mercItems,
+        mercItems: exportedMercItems,
         quests: questsDiffs,
         waypoints,
         npcIntro: template?.npcIntro ?? createDefaultNpcIntroData(),
@@ -25680,13 +35754,49 @@ export class GameInstance {
         },
         skills: skillsArray,
         items: p.items.map((item) => this.serverEntryToItemData(item)),
-        corpseItems: p.corpseItems.map((item) => this.serverEntryToItemData(item)),
+        corpseItems: this.selectSavedCorpseItems113c(p).map((item) =>
+          this.serverEntryToItemData(item),
+        ),
         ironGolem: p.ironGolemItem
           ? this.serverEntryToItemData(p.ironGolemItem)
           : null,
       },
       getServerItemDataTables(),
     )
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6FD0D750` (`PLAYER_SaveCorpses`): `.d2s` persists at most 1 corpse;
+   * when multiple unrecovered corpses exist in the room, save the one with the highest total gold value.
+   */
+  private selectSavedCorpseItems113c(p: InternalPlayerRecord): readonly ServerItemEntry[] {
+    const extras = (p.extraCorpses ?? []).filter((c) => c.items.length > 0)
+    if (extras.length === 0) return p.corpseItems
+    const candidates: ReadonlyArray<readonly ServerItemEntry[]> =
+      p.corpseItems.length > 0
+        ? [p.corpseItems, ...extras.map((c) => c.items)]
+        : extras.map((c) => c.items)
+    const tables = getEmbeddedDropTables()
+    const scoreSet = (set: readonly ServerItemEntry[]): number => {
+      let total = 0
+      for (const item of set) {
+        const baseCost = tables.getBase(item.code)?.cost ?? 0
+        const qual = this.normalizeItemQualityCode113c(item.rawItemData?.quality ?? item.quality)
+        const qualMult = qual === 7 ? 5 : qual === 5 ? 4 : qual === 6 ? 3 : qual === 4 ? 2 : 1
+        total += Math.max(item.cost, baseCost) * qualMult + 1
+      }
+      return total
+    }
+    let best = candidates[0]!
+    let bestScore = scoreSet(best)
+    for (let i = 1; i < candidates.length; i++) {
+      const s = scoreSet(candidates[i]!)
+      if (s > bestScore) {
+        bestScore = s
+        best = candidates[i]!
+      }
+    }
+    return best
   }
 
   computeFrameLockstepHash(): number {

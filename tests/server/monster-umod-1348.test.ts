@@ -191,8 +191,8 @@ describe('issue #1348 MonUMod affixes', () => {
   it('Aura Enchanted assigns a real aura and applies Holy Freeze / Conviction', () => {
     const game = new GameInstance({ seed: 1353, areaId: 1 })
     const playerId = connectPlayer(game, 30, 31)
-    // hcIdx 19 + area 1 + seed; seed 0 -> index 2 (Holy Freeze 114),
-    // seed 3 -> index 5 (Conviction 123).
+    // At mlvl < 20: 4 eligible auras [98, 102, 108, 114]; (19 + 1 + 3) % 4 = 3 -> Holy Freeze (114).
+    // At mlvl >= 30: 7 eligible auras [98, 102, 108, 114, 118, 122, 123]; (19 + 1 + 0) % 7 = 6 -> Conviction (123).
     const freeze = game.spawnMonster({
       defId: 'fallen1',
       x: 30,
@@ -200,7 +200,7 @@ describe('issue #1348 MonUMod affixes', () => {
       areaId: 1,
       rank: 'unique',
       umodIds: [30],
-      statSeed: 0,
+      statSeed: 3,
       aiDelay: 1,
       maxHp: 5000,
       hp: 5000,
@@ -211,8 +211,9 @@ describe('issue #1348 MonUMod affixes', () => {
       y: 30,
       areaId: 1,
       rank: 'unique',
+      level: 30,
       umodIds: [30],
-      statSeed: 3,
+      statSeed: 0,
       aiDelay: 1,
       maxHp: 5000,
       hp: 5000,

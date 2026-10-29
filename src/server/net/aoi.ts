@@ -66,10 +66,18 @@ export class AoiFilter {
     return map.delete(makeEntityKey(unitType, unitId))
   }
 
+  clearViewer(viewerUnitId: number): void {
+    const map = this.visibleByViewer.get(viewerUnitId)
+    if (map) {
+      map.clear()
+    }
+  }
+
   computeViewerDiff(
     viewerUnitId: number,
     viewerPos: { readonly areaId: number; readonly x: number; readonly y: number },
     entities: readonly AoiEntityPos[],
+    isSeamAdjacent?: (viewerAreaId: number, targetAreaId: number) => boolean,
   ): AoiDiff {
     let prevMap = this.visibleByViewer.get(viewerUnitId)
     if (!prevMap) {
@@ -86,7 +94,11 @@ export class AoiFilter {
       if (ent.unitType === 'player' && ent.unitId === viewerUnitId) {
         continue
       }
-      if (this.isInRange(viewerPos, ent)) {
+      const seam =
+        viewerPos.areaId !== ent.areaId && isSeamAdjacent !== undefined
+          ? isSeamAdjacent(viewerPos.areaId, ent.areaId)
+          : false
+      if (this.isInRange(viewerPos, ent, undefined, seam)) {
         const key = makeEntityKey(ent.unitType, ent.unitId)
         nextMap.set(key, ent)
         if (prevMap.has(key)) {

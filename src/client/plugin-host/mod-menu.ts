@@ -1,4 +1,9 @@
 import { getGameLang, onLangChange, type GameLang } from '../i18n/lang.ts'
+import {
+  closeModalDomOverlay,
+  openModalDomOverlay,
+  removeStaleModalOverlayById,
+} from '../ui/dom-overlay.ts'
 import { menuSections, menuText, NO_LAYOUT, plainCard, type MenuLayout } from './mod-menu-text.ts'
 import type { PluginHost, PluginHostToolbarPort } from './plugin-host.ts'
 import { buildPluginMenuViewModel, type PluginMenuCardViewModel } from './plugin-menu-model.ts'
@@ -8,6 +13,7 @@ export interface ModMenuOptions {
   readonly toolbar?: PluginHostToolbarPort | null | undefined
   readonly container?: HTMLElement | null | undefined
   readonly layout?: MenuLayout | undefined
+  readonly onOpen?: (() => void) | undefined
 }
 
 interface Parts {
@@ -29,6 +35,7 @@ export class ModMenu {
   private readonly host: PluginHost
   private readonly toolbar: PluginHostToolbarPort | null
   private readonly layout: MenuLayout
+  private readonly onOpen: (() => void) | null
   private readonly parts: Parts | null
   private readonly unsubscribe: readonly (() => void)[]
   private selectedId: string | null = null
@@ -53,9 +60,10 @@ export class ModMenu {
     this.host = options.host
     this.toolbar = options.toolbar ?? null
     this.layout = options.layout ?? NO_LAYOUT
+    this.onOpen = options.onOpen ?? null
     const container = options.container !== undefined ? options.container : typeof document !== 'undefined' ? document.body : null
     this.parts = typeof document !== 'undefined' ? this.mount(document, container) : null
-    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    if (container !== null && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('keydown', this.onKeyDown, true)
       window.addEventListener('keyup', this.onKeyUp, true)
     }
@@ -76,18 +84,23 @@ export class ModMenu {
   }
 
   open(): void {
-    if (this.openState) return
+    if (this.openState) {
+      if (this.parts) openModalDomOverlay(this.parts.overlay)
+      return
+    }
+    this.onOpen?.()
     this.openState = true
-    if (this.parts) this.parts.overlay.hidden = false
+    if (this.parts) openModalDomOverlay(this.parts.overlay)
     this.render()
     this.syncToolbar()
     this.parts?.search.focus()
   }
 
   close(): void {
-    if (!this.openState) return
+    const wasOpen = this.openState
     this.openState = false
-    if (this.parts) this.parts.overlay.hidden = true
+    if (this.parts) closeModalDomOverlay(this.parts.overlay)
+    if (!wasOpen) return
     this.syncToolbar()
     if (typeof document !== 'undefined') document.getElementById('d2-toolbar-plugins-btn')?.focus()
   }
@@ -120,6 +133,10 @@ export class ModMenu {
   }
 
   destroy(): void {
+    const wasOpen = this.openState
+    this.openState = false
+    if (this.parts) closeModalDomOverlay(this.parts.overlay)
+    if (wasOpen) this.syncToolbar()
     this.unsubscribe.forEach((unsubscribe) => {
       unsubscribe()
     })
@@ -165,7 +182,7 @@ export class ModMenu {
       el('footer', 'd2-mods__footer', {}, count, reset),
     )
     const overlay = el('div', 'd2-mods-overlay d2-plugin-menu-overlay', { id: 'd2-plugin-menu-overlay', 'data-d2-modal-overlay': 'plugins' }, dialog)
-    overlay.hidden = true
+    closeModalDomOverlay(overlay)
     alert.hidden = true
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) this.close()
@@ -182,7 +199,10 @@ export class ModMenu {
     reset.addEventListener('click', () => {
       void this.host.resetAllToDefaults()
     })
-    container?.appendChild(overlay)
+    if (container) {
+      removeStaleModalOverlayById('d2-plugin-menu-overlay', container, doc)
+      container.appendChild(overlay)
+    }
     return { overlay, title, subtitle, search, close, alert, list, detail, count, reset }
   }
 

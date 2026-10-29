@@ -324,3 +324,57 @@ export function compressD2gsPayload(uncompressedPayload: Uint8Array, codec: D2gs
 export function encodeD2gsCompressedFrame(uncompressedPayload: Uint8Array, codec: D2gsHuffmanCodec = defaultD2gsHuffmanCodec): Uint8Array {
   return wrapD2gsCompressedBlock(codec.compress(uncompressedPayload))
 }
+
+/**
+ * Compresses and frames a batch of complete D2GS S->C packets into one or more
+ * `D2Net.dll` Huffman blocks (`Fog.10222` @ `0x6ff6ec90` + `sub_6FBF6D10` @ `0x6fbf6d10`),
+ * splitting batches on packet boundaries so every wire frame stays strictly `<= 0x0fff` bytes.
+ */
+export function encodeD2gsCompressedPackets(
+  packets: readonly Uint8Array[],
+  codec: D2gsHuffmanCodec = defaultD2gsHuffmanCodec,
+): Uint8Array[] {
+  const nonEmpty = packets.filter((p) => p.byteLength > 0)
+  if (nonEmpty.length === 0) return []
+
+  const MAX_RAW_BATCH_BYTES = 1800
+  const MAX_COMPRESSED_PAYLOAD_BYTES = 0x0ffd
+  const frames: Uint8Array[] = []
+
+  const flushSlice = (start: number, end: number): void => {
+    if (start >= end) return
+    let rawLen = 0
+    for (let i = start; i < end; i++) {
+      rawLen += nonEmpty[i]!.byteLength
+    }
+    const raw = new Uint8Array(rawLen)
+    let offset = 0
+    for (let i = start; i < end; i++) {
+      const p = nonEmpty[i]!
+      raw.set(p, offset)
+      offset += p.byteLength
+    }
+    const compressed = codec.compress(raw)
+    if (compressed.byteLength > MAX_COMPRESSED_PAYLOAD_BYTES && end - start > 1) {
+      const mid = start + ((end - start) >> 1)
+      flushSlice(start, mid)
+      flushSlice(mid, end)
+      return
+    }
+    frames.push(wrapD2gsCompressedBlock(compressed))
+  }
+
+  let batchStart = 0
+  let batchBytes = 0
+  for (let i = 0; i < nonEmpty.length; i++) {
+    const pktLen = nonEmpty[i]!.byteLength
+    if (i > batchStart && batchBytes + pktLen > MAX_RAW_BATCH_BYTES) {
+      flushSlice(batchStart, i)
+      batchStart = i
+      batchBytes = 0
+    }
+    batchBytes += pktLen
+  }
+  flushSlice(batchStart, nonEmpty.length)
+  return frames
+}

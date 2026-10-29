@@ -532,8 +532,10 @@ export function evaluateAvoidanceAndBlock(params: {
   defender: CombatUnitContext
   attackKind: 'melee' | 'missile' | 'spell'
   rng: CombatRng
-  unblockable?: boolean
-  isPersistentGroundFire?: boolean
+  unblockable?: boolean | undefined
+  unavoidable?: boolean | undefined
+  skillId?: number | undefined
+  isPersistentGroundFire?: boolean | undefined
   roll100?: number | undefined
   shieldBlockRoll100?: number | undefined
   weaponBlockRoll100?: number | undefined
@@ -544,12 +546,19 @@ export function evaluateAvoidanceAndBlock(params: {
   if (!params.rng || typeof params.rng.rand !== 'function') {
     throw new Error('evaluateAvoidanceAndBlock: rng is required (D2Game.dll 0x6FCFB790 / 0x6FCFB030)')
   }
-  if (params.unblockable) return { avoided: false, reason: 'none' }
+  // Persistent ground fire, Smite (#97), and explicitly unavoidable radial/DoT effects bypass 0x6FCFB790 / 0x6FCFB030 completely.
+  if (params.isPersistentGroundFire || params.unavoidable || params.skillId === 97) {
+    return { avoided: false, reason: 'none' }
+  }
   const defStats = params.defender.statList
-
-  // 1. Shield / Monster Block (0x6FCFB790..0x6FCFB7FF & D2Common #10212 0x6FD81D20, applies to physical melee/missile)
   const defAny = params.defender as unknown as Record<string, unknown>
+
+  // 1. Shield / Monster Block (`D2Game.dll` `0x6FCFB790..0x6FCFB7FF` & `D2Common #10212` `0x6FD81D20`):
+  // Runs ONLY when `bBlockable != 0` (`!params.unblockable`) and attack is physical (`attackKind !== 'spell'`).
+  // When `params.unblockable === true` (e.g. elemental projectile spells), Step 1 is skipped and execution
+  // proceeds directly into `0x6FCFB030` (`Evade` / `Weapon Block` / `Dodge` / `Avoid`).
   if (
+    !params.unblockable &&
     params.attackKind !== 'spell' &&
     (params.defender.hasShield ||
       params.defender.unitType === 'monster' ||
@@ -573,7 +582,10 @@ export function evaluateAvoidanceAndBlock(params: {
     }
   }
 
-  // 2. Assassin Weapon Block (`skillId = 263`, 0x6FCFB0DE, blocks melee, missiles, and most spells while stationary/attacking with dual claws)
+  // 2. Movement Gate & Amazon Evade (`skillId = 29`, `stat 340`, `D2Game.dll` `0x6FCFB040..0x6FCFB09C`):
+  // If defender is walking or running (`PLRMODE_WALK = 2` or `PLRMODE_RUN = 3`), ONLY `passive_evade` is rolled,
+  // and `0x6FCFB09C` returns IMMEDIATELY regardless of whether `Evade` succeeded or failed (`Weapon Block`,
+  // `Dodge`, and `Avoid` NEVER run while moving!).
   const isMovingOrRunning = Boolean(
     params.defender.isMoving ||
       params.defender.isWalking ||
@@ -581,15 +593,37 @@ export function evaluateAvoidanceAndBlock(params: {
       defAny['isWalking'] ||
       defAny['isRunning'],
   )
+  if (isMovingOrRunning) {
+    const evadeChance = Math.max(0, Math.trunc(defStats.getAccruedStat('passive_evade')))
+    if (evadeChance > 0) {
+      const evadeRoll = params.evadeRoll100 ?? params.roll100 ?? params.rng.rand(100)
+      if (evadeRoll < evadeChance) {
+        return { avoided: true, reason: 'evade' }
+      }
+    }
+    return { avoided: false, reason: 'none' }
+  }
+
+  // 3. Assassin Weapon Block (`skillId = 263`, `stat 348`, `D2Game.dll` `0x6FCFB0B9` -> `0x6FCFA540`):
+  // Reached ONLY when NOT walking and NOT running, and requires dual-wielding two `h2h`/`h2h2` Katar-class claws.
+  // Blocks melee, missiles, AND projectile spells!
   const wType = (params.defender.weaponItemType ?? '').trim().toLowerCase()
-  const offWType = (params.defender.offHandWeaponItemType ?? '').trim().toLowerCase()
-  const isClawWielded =
-    params.defender.isDualClaw === true ||
-    (params.defender.isDualClaw !== false &&
-      !params.defender.hasShield &&
-      isWeaponMatchingMastery(wType, 263) &&
-      (!offWType || isWeaponMatchingMastery(offWType, 263)))
-  if (isClawWielded && !isMovingOrRunning && !params.isPersistentGroundFire) {
+  const offWType = (
+    params.defender.offHandWeaponItemType ??
+    params.defender.offHandWeaponType ??
+    ''
+  )
+    .trim()
+    .toLowerCase()
+  const isDualClawWielded =
+    !params.defender.hasShield &&
+    (params.defender.isDualClaw === true ||
+      (params.defender.isDualClaw !== false &&
+        wType !== '' &&
+        offWType !== '' &&
+        isWeaponMatchingMastery(wType, 263) &&
+        isWeaponMatchingMastery(offWType, 263)))
+  if (isDualClawWielded) {
     const wbChance = Math.max(0, Math.trunc(defStats.getAccruedStat('passive_weaponblock')))
     if (wbChance > 0) {
       const wbRoll = params.weaponBlockRoll100 ?? params.roll100 ?? params.rng.rand(100)
@@ -599,34 +633,22 @@ export function evaluateAvoidanceAndBlock(params: {
     }
   }
 
-  // 3. Amazon Evade (`skillId = 29`, 0x6FCFB065, while moving)
-  if (params.defender.isMoving) {
-    const evadeChance = Math.max(0, Math.trunc(defStats.getAccruedStat('passive_evade')))
-    if (evadeChance > 0) {
-      const evadeRoll = params.evadeRoll100 ?? params.roll100 ?? params.rng.rand(100)
-      if (evadeRoll < evadeChance) {
-        return { avoided: true, reason: 'evade' }
+  // 4. Amazon Dodge (`skillId = 13`, `stat 338`, `0x6FCFB10E`) vs Avoid (`skillId = 18`, `stat 339`, `0x6FCFB156`)
+  // while stationary / attacking / casting:
+  if (params.attackKind === 'melee') {
+    const dodgeChance = Math.max(0, Math.trunc(defStats.getAccruedStat('passive_dodge')))
+    if (dodgeChance > 0) {
+      const dodgeRoll = params.dodgeRoll100 ?? params.roll100 ?? params.rng.rand(100)
+      if (dodgeRoll < dodgeChance) {
+        return { avoided: true, reason: 'dodge' }
       }
     }
   } else {
-    // 4. Amazon Dodge (`skillId = 13`, 0x6FCFB11F, melee while stationary)
-    if (params.attackKind === 'melee') {
-      const dodgeChance = Math.max(0, Math.trunc(defStats.getAccruedStat('passive_dodge')))
-      if (dodgeChance > 0) {
-        const dodgeRoll = params.dodgeRoll100 ?? params.roll100 ?? params.rng.rand(100)
-        if (dodgeRoll < dodgeChance) {
-          return { avoided: true, reason: 'dodge' }
-        }
-      }
-    }
-    // 5. Amazon Avoid (`skillId = 18`, 0x6FCFB156, missile/ranged while stationary)
-    if (params.attackKind === 'missile') {
-      const avoidChance = Math.max(0, Math.trunc(defStats.getAccruedStat('passive_avoid')))
-      if (avoidChance > 0) {
-        const avoidRoll = params.avoidRoll100 ?? params.roll100 ?? params.rng.rand(100)
-        if (avoidRoll < avoidChance) {
-          return { avoided: true, reason: 'avoid' }
-        }
+    const avoidChance = Math.max(0, Math.trunc(defStats.getAccruedStat('passive_avoid')))
+    if (avoidChance > 0) {
+      const avoidRoll = params.avoidRoll100 ?? params.roll100 ?? params.rng.rand(100)
+      if (avoidRoll < avoidChance) {
+        return { avoided: true, reason: 'avoid' }
       }
     }
   }
@@ -806,6 +828,15 @@ export interface SUnitDmgPacket {
   readonly passiveEnemyPierce?: number
   readonly autoHit?: boolean
   readonly unblockable?: boolean
+  readonly unavoidable?: boolean | undefined
+  readonly isPersistentGroundFire?: boolean | undefined
+  readonly noHitRecovery?: boolean | undefined
+  readonly frameRate1024?: number | undefined
+  readonly damageRate?: number | undefined
+  readonly frameScalar?: number | undefined
+  readonly difficulty?: 0 | 1 | 2 | 'normal' | 'nightmare' | 'hell' | undefined
+  readonly isExpansion?: boolean | undefined
+  readonly staticFieldMinPct?: number | undefined
   readonly roll100?: number
   readonly blockRoll100?: number | undefined
   readonly isPoison?: boolean
@@ -852,6 +883,7 @@ export interface SUnitDmgOutcome {
   readonly isCritical?: boolean
   readonly uninterrupted?: boolean
   readonly knockedBack?: boolean
+  readonly noHitRecovery?: boolean
   readonly hitClass?: number | undefined
   readonly attackerStatesApplied?: readonly string[]
   readonly attackerColdDamage256?: number
@@ -1137,6 +1169,8 @@ export interface GetHitDamageInput113c {
   readonly totalDamage256: number
   readonly poisDamage256?: number | undefined
   readonly isPurePoison?: boolean | undefined
+  readonly noHitRecovery?: boolean | undefined
+  readonly isPersistentGroundFire?: boolean | undefined
 }
 
 /**
@@ -1167,6 +1201,12 @@ export function shouldEnterGetHit113c(
     throw new Error('shouldEnterGetHit113c: rng is required (D2Game.dll 0x6FCFB910)')
   }
   if (defender.neverCount === true) {
+    return false
+  }
+  if (
+    typeof dmg256OrInput !== 'number' &&
+    (dmg256OrInput.noHitRecovery || dmg256OrInput.isPersistentGroundFire)
+  ) {
     return false
   }
   const dmgTotal256 =
@@ -1553,14 +1593,20 @@ export function executeSUnitDmg(
     }
   }
 
-  // 2. Avoidance & Block (Smite `97` is unblockable by shield block; D2Game.dll 0x6FCFB790 / 0x6FCFB030).
+  // 2. Avoidance & Block (Smite `97` bypasses both block and dodge; `unblockable` skips Shield Block while
+  // still allowing `Evade` / dual-claw `Weapon Block` / `Avoid` on projectile spells per D2Game.dll 0x6FCFB790 / 0x6FCFB030).
   // Draws its own independent rng.rand(100) roll(s), never reusing hitRoll.
   const avoidCheck = evaluateAvoidanceAndBlock({
     defender,
     attackKind,
     rng: resolvedRng,
+    skillId: packet.skillId,
     unblockable: packet.unblockable ?? packet.skillId === 97,
-    isPersistentGroundFire: Boolean((packet as unknown as Record<string, unknown>)['isPersistentGroundFire']),
+    unavoidable: packet.unavoidable ?? packet.skillId === 97,
+    isPersistentGroundFire: Boolean(
+      packet.isPersistentGroundFire ??
+        (packet as unknown as Record<string, unknown>)['isPersistentGroundFire'],
+    ),
     ...(packet.blockRoll100 !== undefined ? { roll100: packet.blockRoll100 } : {}),
   })
   if (avoidCheck.avoided) {
@@ -1994,7 +2040,19 @@ export function executeSUnitDmg(
 
 
 
-  // 6. Reactive `auraeventfunc` shields (`Energy Shield`, `Bone Armor`, `Cyclone Armor`) absorb BEFORE resistances in 1.13c
+  // 6.1 Unit-vs-Unit / PvP Damage Modifier FIRST (`D2Game.dll` `0x6FCFC17F` -> `SUNITDMG_GetDamagePercentModifier` `0x6FCFAC10`, #1631 / #1795):
+  // Scales damage by `17%` for Player/Merc/Minion vs Player and `25%` for Merc vs Merc BEFORE `absorbdamage`
+  // (`Energy Shield`, `Bone Armor`, `Cyclone Armor`), `PDR/MDR`, `Resistances`, and `Absorb`!
+  // Preserve `prePvpRawPhys256` for Sacrifice self-recoil (`0x6FCB9290`) and `damagedinmelee` Thorns reflection
+  // (`0x6FCFBA40`, which applies its own `1/4` PvP divisor).
+  const prePvpRawPhys256 = rawPhys256
+  const pvpDmgModPct = damagePercentModifier113c(attacker, defender)
+  if (pvpDmgModPct !== 100) {
+    rawPhys256 = Math.trunc((rawPhys256 * pvpDmgModPct) / 100)
+    rawElem256 = Math.trunc((rawElem256 * pvpDmgModPct) / 100)
+  }
+
+  // 6.2 Reactive `auraeventfunc` shields (`Energy Shield`, `Bone Armor`, `Cyclone Armor`) absorb BEFORE PDR/MDR & resistances (`0x6FCFC0EC`)
   const reactive = defender.stateBus.triggerReactiveEvents({
     event: 'absorbdamage',
     incomingPhys256: rawPhys256,
@@ -2021,13 +2079,64 @@ export function executeSUnitDmg(
   if (reactive.unitOverlays) {
     unitOverlays.push(...reactive.unitOverlays)
   }
-  const flatPhysDr256 = Math.max(0, defender.statList.getAccruedStat('normal_damage_reduction')) * FIXED_ONE
+
+  const isSanctuaryBypassUndead = Boolean(
+    (attacker.stateBus.hasState('sanctuary') ||
+      attacker.statList.getAccruedStat('skill_bypass_undead') > 0) &&
+      defender.isUndead &&
+      attackKind !== 'spell',
+  )
+
+  // 6.3 Integer PDR (`stat 34`) & MDR (`stat 35`) with frame-based `damagerate` scaling (`D2Game.dll` `0x6FCFC13B..0x6FCFC177`, #1795):
+  // Continuous per-frame ground fire / stream missiles scale flat PDR/MDR by `dwFrameRate / 1024` (or fractional `frameScalar < 1`).
+  const scaleFlatDrByFrameRate = (dr256: number): number => {
+    if (dr256 <= 0) return 0
+    const rate = packet.frameRate1024 ?? packet.damageRate ?? packet.frameScalar
+    if (rate === undefined || rate <= 0) return dr256
+    if (rate < 1) return Math.max(0, Math.trunc(dr256 * rate))
+    return Math.max(0, Math.trunc((dr256 * Math.trunc(rate)) / 1024))
+  }
+  const flatPhysDr256 = isSanctuaryBypassUndead
+    ? 0
+    : scaleFlatDrByFrameRate(
+        Math.max(0, defender.statList.getAccruedStat('normal_damage_reduction')) * FIXED_ONE,
+      )
   const flatMagicDr256 =
     elemType === 'pois'
       ? 0
-      : Math.max(0, defender.statList.getAccruedStat('magic_damage_reduction')) * FIXED_ONE
-  const remRawPhys256 = Math.max(0, rawPhys256 - reactive.absorbedPhys256 - flatPhysDr256)
-  const remRawElem256 = Math.max(0, rawElem256 - reactive.absorbedElem256 - flatMagicDr256)
+      : scaleFlatDrByFrameRate(
+          Math.max(0, defender.statList.getAccruedStat('magic_damage_reduction')) * FIXED_ONE,
+        )
+
+  const afterShieldPhys256 = Math.max(0, rawPhys256 - reactive.absorbedPhys256)
+  const afterShieldElem256 = Math.max(0, rawElem256 - reactive.absorbedElem256)
+  const remRawPhys256 = Math.max(0, afterShieldPhys256 - flatPhysDr256)
+
+  // Compute un-PvP-scaled post-PDR/Res physical damage solely for `damagedinmelee` Thorns reflection (#1631)
+  const prePvpAfterShieldPhys256 = Math.max(0, prePvpRawPhys256 - reactive.absorbedPhys256 - flatPhysDr256)
+  const prePvpFinalPhys256 = physResRec.isImmune
+    ? 0
+    : Math.max(0, Math.trunc((prePvpAfterShieldPhys256 * (100 - physResRec.effectiveRes)) / 100))
+
+  // 1.13c MDR Overflow Spill (`D2Game.dll` `0x6FCFBD41..0x6FCFBD47` + `0x6FCFC50A`, #1795):
+  // When an active non-poison elemental channel (`afterShieldElem256 > 0`) has `flatMagicDr256` subtracted below 0,
+  // `0x6FCFBD47` (`jle`) skips resistance & absorb while retaining the negative channel value, which then subtracts
+  // from Physical damage in `dwDmgTotal` (`0x6FCFC50A`)!
+  let mdrOverflow256 = 0
+  let remRawElem256 = 0
+  if (afterShieldElem256 > 0) {
+    if (elemType === 'pois') {
+      remRawElem256 = afterShieldElem256
+    } else {
+      const signedElemAfterMdr256 = afterShieldElem256 - flatMagicDr256
+      if (signedElemAfterMdr256 <= 0) {
+        remRawElem256 = 0
+        mdrOverflow256 += -signedElemAfterMdr256
+      } else {
+        remRawElem256 = signedElemAfterMdr256
+      }
+    }
+  }
 
   // 1.13c Fire Golem Fire Absorption (`aurastat1 = fireresist = 100 - dm12`, `aurastat2 = item_absorbfire_percent = dm12`):
   // Fire Golem takes 0 net fire damage and heals by `dm12%` of incoming fire damage via `item_absorbfire_percent`.
@@ -2047,7 +2156,7 @@ export function executeSUnitDmg(
     absorbHeal256 += Math.trunc((remRawElem256 * fireGolemAbsorbPct) / 100)
   }
 
-  // 7. Resistances & 1/5 Immunity Breaking applied to unabsorbed damage
+  // 7. Resistances & 1/5 Immunity Breaking applied to unabsorbed post-PDR/MDR damage
   let finalPhys256 = physResRec.isImmune
     ? 0
     : Math.max(0, Math.trunc((remRawPhys256 * (100 - physResRec.effectiveRes)) / 100))
@@ -2098,15 +2207,67 @@ export function executeSUnitDmg(
     }
   }
 
-  // Static Field (`skillId = 42`): reduces target HP by 25% mitigated by Lightning Resistance
-  if (packet.skillId === 42 && !elemResRec.isImmune) {
-    const rawStatic256 = Math.trunc((hpBefore256 * 25) / 100)
-    finalElem256 = Math.max(0, Math.trunc((rawStatic256 * (100 - elemResRec.effectiveRes)) / 100))
+  // Static Field (`skillId = 42`, `D2Game.dll` `0x6FC62EC0..0x6FC62FB0` + `DifficultyLevels.txt` `StaticFieldMin`, #1805):
+  // - Expansion difficulty life floors: Normal `0%` (non-lethal `1 HP`), Nightmare `33%` of max HP, Hell `50%` of max HP; Classic `0%` (`1 HP`).
+  // - Pre-check invariant (`0x6FC62F13`): if `hpBefore256 <= floorHp256`, deals `0` damage immediately!
+  // - Mitigated by target `lightresist` (does NOT scale with `passive_ltng_mastery`, and never drops target below `floorHp256`).
+  if (packet.skillId === 42) {
+    finalPhys256 = 0
+    const diffIdx =
+      packet.difficulty === 'hell' || packet.difficulty === 2
+        ? 2
+        : packet.difficulty === 'nightmare' || packet.difficulty === 1
+          ? 1
+          : packet.difficulty === 'normal' || packet.difficulty === 0
+            ? 0
+            : (defender.monsterColdDivisor ?? 1) >= 4 ||
+                (attacker.lifeStealDivisor ?? 1) >= 3 ||
+                (defender.resistPenalty ?? 0) <= -100
+              ? 2
+              : (defender.monsterColdDivisor ?? 1) === 2 ||
+                  (attacker.lifeStealDivisor ?? 1) === 2 ||
+                  (defender.resistPenalty ?? 0) < 0
+                ? 1
+                : 0
+    const minPct =
+      packet.staticFieldMinPct !== undefined
+        ? Math.max(0, Math.min(100, Math.trunc(packet.staticFieldMinPct)))
+        : packet.isExpansion === false
+          ? 0
+          : diffIdx === 2
+            ? 50
+            : diffIdx === 1
+              ? 33
+              : 0
+    const maxHp256 = defender.statList.getMaxHp256()
+    const floorHp256 =
+      minPct > 0 && maxHp256 > 0
+        ? Math.max(FIXED_ONE, Math.trunc((maxHp256 * minPct) / 100))
+        : FIXED_ONE
+    if (elemResRec.isImmune || hpBefore256 <= floorHp256) {
+      finalElem256 = 0
+    } else {
+      let rawStatic256 = Math.trunc((hpBefore256 * 25) / 100)
+      if (pvpDmgModPct !== 100) {
+        rawStatic256 = Math.trunc((rawStatic256 * pvpDmgModPct) / 100)
+      }
+      const resistedStatic256 = Math.max(
+        0,
+        Math.trunc((rawStatic256 * (100 - elemResRec.effectiveRes)) / 100),
+      )
+      finalElem256 = Math.max(0, Math.min(resistedStatic256, hpBefore256 - floorHp256))
+    }
   }
 
-  // 8. Elemental Absorb (% and flat) (`D2Game.dll` `SUNITDMG_ApplyAbsorb` @ `0x6FCFAD00`)
+  // 8. Elemental Absorb (% <= 40% FIRST, then flat) (`D2Game.dll` `SUNITDMG_ApplyAbsorb` @ `0x6FCFAD00`)
   const absorbStatPair = elemType ? ELEM_ABSORB_STAT_MAP[elemType] : undefined
-  if (finalElem256 > 0 && !isFireGolemAbsorb && absorbStatPair !== undefined) {
+  if (
+    finalElem256 > 0 &&
+    packet.skillId !== 42 &&
+    !isFireGolemAbsorb &&
+    !isSanctuaryBypassUndead &&
+    absorbStatPair !== undefined
+  ) {
     const absorbPctRaw = defender.statList.getAccruedStat(absorbStatPair.pct)
     const absorbFlat256 = Math.max(0, defender.statList.getAccruedStat(absorbStatPair.flat)) * FIXED_ONE
     if (absorbPctRaw > 0 || absorbFlat256 > 0) {
@@ -2127,7 +2288,14 @@ export function executeSUnitDmg(
       finalElem256 = 0
     }
     const mep = packet.multiElemPacket
-    const baseWpPhys256 = baseWeapPhys256 > 0 ? baseWeapPhys256 : rawPhys256
+    const rawBaseWpPhys256 = baseWeapPhys256 > 0 ? baseWeapPhys256 : prePvpRawPhys256
+    const baseWpPhys256 =
+      pvpDmgModPct !== 100
+        ? Math.trunc((rawBaseWpPhys256 * pvpDmgModPct) / 100)
+        : rawBaseWpPhys256
+    const multiElemFlatMdr256 = scaleFlatDrByFrameRate(
+      Math.max(0, defender.statList.getAccruedStat('magic_damage_reduction')) * FIXED_ONE,
+    )
 
     if (mep.firePct && mep.firePct > 0) {
       let rawFire256 = Math.trunc((baseWpPhys256 * mep.firePct) / 100)
@@ -2135,8 +2303,15 @@ export function executeSUnitDmg(
       if (fireMasteryPct > 0) {
         rawFire256 = Math.trunc((rawFire256 * (100 + fireMasteryPct)) / 100)
       }
-      // 1.13c `D2Game.dll` `0x6FCFB190` -> `0x6FCFB2B0`: flat `magic_damage_reduction` applies independently to each elemental channel (#1635).
-      rawFire256 = Math.max(0, rawFire256 - flatMagicDr256)
+      // 1.13c `D2Game.dll` `0x6FCFBD41`: flat `magic_damage_reduction` applies independently to each elemental channel,
+      // and negative overflow spills into `mdrOverflow256` (#1635, #1795).
+      const signedFire256 = rawFire256 - multiElemFlatMdr256
+      if (signedFire256 <= 0) {
+        if (rawFire256 > 0) mdrOverflow256 += -signedFire256
+        rawFire256 = 0
+      } else {
+        rawFire256 = signedFire256
+      }
       const fireRes = computeEffectiveResistance({
         baseRes: defender.statList.getAccruedStat('fireresist'),
         convictionPierce,
@@ -2144,7 +2319,7 @@ export function executeSUnitDmg(
         passiveEnemyPierce: packet.passiveEnemyPierce ?? attacker.statList.getAccruedStat('passive_fire_pierce'),
         ...defenderResistParams113c(defender, 'fire'),
       })
-      if (!fireRes.isImmune) {
+      if (rawFire256 > 0 && !fireRes.isImmune) {
         const postResFire256 = Math.max(0, Math.trunc((rawFire256 * (100 - fireRes.effectiveRes)) / 100))
         const fireAbsorbOut = applyElementalAbsorb113c(
           postResFire256,
@@ -2162,7 +2337,13 @@ export function executeSUnitDmg(
       if (coldMasteryPct > 0) {
         rawCold256 = Math.trunc((rawCold256 * (100 + coldMasteryPct)) / 100)
       }
-      rawCold256 = Math.max(0, rawCold256 - flatMagicDr256)
+      const signedCold256 = rawCold256 - multiElemFlatMdr256
+      if (signedCold256 <= 0) {
+        if (rawCold256 > 0) mdrOverflow256 += -signedCold256
+        rawCold256 = 0
+      } else {
+        rawCold256 = signedCold256
+      }
       const coldRes = computeEffectiveResistance({
         baseRes: defender.statList.getAccruedStat('coldresist'),
         convictionPierce,
@@ -2170,7 +2351,7 @@ export function executeSUnitDmg(
         passiveEnemyPierce: packet.passiveEnemyPierce ?? attacker.statList.getAccruedStat('passive_cold_pierce'),
         ...defenderResistParams113c(defender, 'cold'),
       })
-      if (!coldRes.isImmune) {
+      if (rawCold256 > 0 && !coldRes.isImmune) {
         const postResCold256 = Math.max(0, Math.trunc((rawCold256 * (100 - coldRes.effectiveRes)) / 100))
         const coldAbsorbOut = applyElementalAbsorb113c(
           postResCold256,
@@ -2202,7 +2383,13 @@ export function executeSUnitDmg(
       if (ltngMasteryPct > 0) {
         rawLtng256 = Math.trunc((rawLtng256 * (100 + ltngMasteryPct)) / 100)
       }
-      rawLtng256 = Math.max(0, rawLtng256 - flatMagicDr256)
+      const signedLtng256 = rawLtng256 - multiElemFlatMdr256
+      if (signedLtng256 <= 0) {
+        if (rawLtng256 > 0) mdrOverflow256 += -signedLtng256
+        rawLtng256 = 0
+      } else {
+        rawLtng256 = signedLtng256
+      }
       const ltngRes = computeEffectiveResistance({
         baseRes: defender.statList.getAccruedStat('lightresist'),
         convictionPierce,
@@ -2210,7 +2397,7 @@ export function executeSUnitDmg(
         passiveEnemyPierce: packet.passiveEnemyPierce ?? attacker.statList.getAccruedStat('passive_ltng_pierce'),
         ...defenderResistParams113c(defender, 'ltng'),
       })
-      if (!ltngRes.isImmune) {
+      if (rawLtng256 > 0 && !ltngRes.isImmune) {
         const postResLtng256 = Math.max(0, Math.trunc((rawLtng256 * (100 - ltngRes.effectiveRes)) / 100))
         const ltngAbsorbOut = applyElementalAbsorb113c(
           postResLtng256,
@@ -2222,6 +2409,11 @@ export function executeSUnitDmg(
       }
     }
 
+  }
+
+  // Apply 1.13c MDR negative overflow spill onto Physical damage (`D2Game.dll` `0x6FCFC50A`, #1795):
+  if (mdrOverflow256 > 0 && finalPhys256 > 0) {
+    finalPhys256 = Math.max(0, finalPhys256 - mdrOverflow256)
   }
 
   // Smite (97) / generic stun application
@@ -2240,28 +2432,18 @@ export function executeSUnitDmg(
   const knockedBack = Boolean(packet.knockback && canTriggerProcs)
 
   // Self-damage calculation (`SKILLS_SrvDo064_Sacrifice` @ `0x6FCB9290`):
-  // - Base recoil is `min(rawPhys256, targetCurrentHpBefore256)` * `selfDamagePct` / 100.
+  // - Base recoil is `min(prePvpRawPhys256, targetCurrentHpBefore256)` * `selfDamagePct` / 100.
   // - Routed through attacker's own `damageresist` (physical damage reduction %, capped at 50%).
   // - CAN kill the Paladin (`HP` can drop to `0`).
   let selfDamageTaken256 = 0
-  if (packet.selfDamagePct && packet.selfDamagePct > 0 && rawPhys256 > 0 && !physResRec.isImmune) {
-    const recoilBase256 = hpBefore256 > 0 ? Math.min(rawPhys256, hpBefore256) : rawPhys256
+  if (packet.selfDamagePct && packet.selfDamagePct > 0 && prePvpRawPhys256 > 0 && !physResRec.isImmune) {
+    const recoilBase256 = hpBefore256 > 0 ? Math.min(prePvpRawPhys256, hpBefore256) : prePvpRawPhys256
     const rawSelfDmg256 = Math.trunc((recoilBase256 * packet.selfDamagePct) / 100)
     const attackerPhysRes = Math.min(50, Math.max(-100, attacker.statList.getAccruedStat('damageresist')))
     selfDamageTaken256 = Math.max(0, Math.trunc((rawSelfDmg256 * (100 - attackerPhysRes)) / 100))
     const curAttackerHp256 = attacker.statList.getHp256()
     const newAttackerHp256 = Math.max(0, curAttackerHp256 - selfDamageTaken256)
     attacker.statList.setHp256(newAttackerHp256)
-  }
-
-  // 1.13c `D2Game.dll` `0x6FCFAC10` (`SUNITDMG_GetDamagePercentModifier`, #1631):
-  // Scales damage by `17%` for Player/Merc/Minion vs Player and `25%` for Merc vs Merc.
-  // Keep `prePvpFinalPhys256` for `damagedinmelee` Thorns reflection (which applies its own `1/4` PvP divisor).
-  const prePvpFinalPhys256 = finalPhys256
-  const pvpDmgModPct = damagePercentModifier113c(attacker, defender)
-  if (pvpDmgModPct !== 100) {
-    finalPhys256 = Math.trunc((finalPhys256 * pvpDmgModPct) / 100)
-    finalElem256 = Math.trunc((finalElem256 * pvpDmgModPct) / 100)
   }
 
   const totalDamage256 = finalPhys256 + finalElem256
@@ -2465,7 +2647,7 @@ export function executeSUnitDmg(
   return {
     hit: true,
     avoidedReason: 'none',
-    immuneToElem: elemResRec.isImmune && rawElem256 > 0,
+    immuneToElem: elemResRec.isImmune && (rawElem256 > 0 || packet.skillId === 42),
     immuneToPhys: physResRec.isImmune && rawPhys256 > 0,
     physDamage256: finalPhys256,
     elemDamage256: finalElem256,
@@ -2477,6 +2659,7 @@ export function executeSUnitDmg(
     ...(isCritical ? { isCritical: true } : {}),
     ...(isUninterrupted ? { uninterrupted: true } : {}),
     ...(knockedBack ? { knockedBack: true } : {}),
+    ...(packet.noHitRecovery || packet.isPersistentGroundFire ? { noHitRecovery: true } : {}),
     ...(resolvedHitClass > 0 ? { hitClass: resolvedHitClass } : {}),
     ...(attackerStatesApplied.length > 0 ? { attackerStatesApplied } : {}),
     ...(attackerColdDamage256 > 0 ? { attackerColdDamage256 } : {}),

@@ -20,7 +20,7 @@ import {
   checkMissileSizeFootprintOverlap113c,
   stepMissileSubtileRay113c as stepMissileSubtileRayCommon113c,
 } from '../../common/skills/missile-size-footprint-113c.ts'
-import type { D2DataRegistry, MissileRecord } from '../../common/data/data-registry.ts'
+import type { D2DataRegistry, MissileRecord, SkillRecord } from '../../common/data/data-registry.ts'
 import { executeSUnitDmg, type CombatUnitContext, type SUnitDmgPacket } from './combat-pipeline.ts'
 import { METEOR_FIRE_SUBTILE_OFFSETS } from '../../common/data/meteor-table.ts'
 import {
@@ -682,7 +682,7 @@ export interface ActiveMissile {
   /**
    * Optional `nLoops` passed at creation for `SubLoop` range extension (`0x6FC8FC90`).
    */
-  readonly loops?: number | undefined
+  loops?: number | undefined
   angleRad: number
   ageTicks: number
   readonly maxRangeTicks: number
@@ -698,7 +698,7 @@ export interface ActiveMissile {
   /** Number of units this missile has passed through without being removed (bookkeeping only). */
   pierceCount: number
   readonly hitTargetIds: Set<string>
-  readonly dmgPacket: SUnitDmgPacket
+  dmgPacket: SUnitDmgPacket
   chainRemaining: number
   lastHitTargetId?: string | undefined
   expired: boolean
@@ -822,24 +822,24 @@ export const MISSILE_SRV_DO_TABLE_113C: readonly MissileSrvDoTableEntry113c[] = 
   { funcId: 16, handlerVa: 0x6fc60bd0, name: 'MISSMODE_SrvDo16_FrozenOrbNova' },
   { funcId: 17, handlerVa: 0x6fc60b20, name: 'MISSMODE_SrvDo17_CairnStones' },
   { funcId: 18, handlerVa: 0x6fc608d0, name: 'MISSMODE_SrvDo18_TowerChestSpawner' },
-  { funcId: 19, handlerVa: 0x6fc5f6d0, name: 'MISSMODE_SrvDo19_RedeemSoul' },
-  { funcId: 20, handlerVa: 0x6fc60860, name: 'MISSMODE_SrvDo20_MonsterFrenzy' },
+  { funcId: 19, handlerVa: 0x6fc5f6d0, name: 'MISSMODE_SrvDo19_RadamentDeath' },
+  { funcId: 20, handlerVa: 0x6fc60860, name: 'MISSMODE_SrvDo20_BladeCreeper' },
   { funcId: 21, handlerVa: 0x6fc61eb0, name: 'MISSMODE_SrvDo21_distraction' },
-  { funcId: 22, handlerVa: 0x6fc606d0, name: 'MISSMODE_SrvDo22_WakeOfDestructionMaker' },
+  { funcId: 22, handlerVa: 0x6fc606d0, name: 'MISSMODE_SrvDo22_LightningTrailingJavelin' },
   { funcId: 23, handlerVa: 0x6fc605e0, name: 'MISSMODE_SrvDo23_SuccubusFireball' },
   { funcId: 24, handlerVa: 0x6fc605e0, name: 'MISSMODE_SrvDo24_FirestormMaker' },
   { funcId: 25, handlerVa: 0x6fc604d0, name: 'MISSMODE_SrvDo25_EruptionCenter' },
   { funcId: 26, handlerVa: 0x6fc60420, name: 'MISSMODE_SrvDo26_Vines' },
   { funcId: 27, handlerVa: 0x6fc60280, name: 'MISSMODE_SrvDo27_Tornado' },
   { funcId: 28, handlerVa: 0x6fc60070, name: 'MISSMODE_SrvDo28_Volcano' },
-  { funcId: 29, handlerVa: 0x6fc5fed0, name: 'MISSMODE_SrvDo29_VineRecyclerDelay' },
+  { funcId: 29, handlerVa: 0x6fc5fed0, name: 'MISSMODE_SrvDo29_RecyclerDelay' },
   { funcId: 30, handlerVa: 0x6fc5fb40, name: 'MISSMODE_SrvDo30_RabiesPlague' },
-  { funcId: 31, handlerVa: 0x6fc5f9f0, name: 'MISSMODE_SrvDo31_Armageddon' },
-  { funcId: 32, handlerVa: 0x6fc61de0, name: 'MISSMODE_SrvDo32_HurricaneFollow' },
-  { funcId: 33, handlerVa: 0x6fc5fd30, name: 'MISSMODE_SrvDo33_RadialFireNova' },
-  { funcId: 34, handlerVa: 0x6fc61c30, name: 'MISSMODE_SrvDo34_BaalColdMaker' },
-  { funcId: 35, handlerVa: 0x6fc5f890, name: 'MISSMODE_SrvDo35_BaalSpawnMonsters' },
-  { funcId: 36, handlerVa: 0x6fc5f670, name: 'MISSMODE_SrvDo36_NoOp' },
+  { funcId: 31, handlerVa: 0x6fc5f9f0, name: 'MISSMODE_SrvDo31_WakeOfDestructionMaker' },
+  { funcId: 32, handlerVa: 0x6fc61de0, name: 'MISSMODE_SrvDo32_TigerFury' },
+  { funcId: 33, handlerVa: 0x6fc5fd30, name: 'MISSMODE_SrvDo33_VineRecyclerDelay' },
+  { funcId: 34, handlerVa: 0x6fc61c30, name: 'MISSMODE_SrvDo34_BaalTauntControl' },
+  { funcId: 35, handlerVa: 0x6fc5f890, name: 'MISSMODE_SrvDo35_RoyalStrikeChaosIce' },
+  { funcId: 36, handlerVa: 0x6fc5f670, name: 'MISSMODE_SrvDo36_BaalFxControl' },
   { funcId: 37, handlerVa: 0x6fc5f550, name: 'MISSMODE_SrvDo37_Diablogeddon' },
 ] as const
 
@@ -872,48 +872,48 @@ export const MISSILE_SRV_HIT_TABLE_113C: readonly MissileSrvHitTableEntry113c[] 
   { funcId: 15, handlerVa: 0x6fc5cdd0, name: 'MISSMODE_SrvHit15_SpiderGooLay' },
   { funcId: 16, handlerVa: 0x6fc5ec10, name: 'MISSMODE_SrvHit16_SpiderGooSlow' },
   { funcId: 17, handlerVa: 0x6fc5eae0, name: 'MISSMODE_SrvHit17_HowlFlee' },
-  { funcId: 18, handlerVa: 0x6fc5ea60, name: 'MISSMODE_SrvHit18_ShoutWarCryState' },
-  { funcId: 19, handlerVa: 0x6fc5e8a0, name: 'MISSMODE_SrvHit19_BattleCryDebuff' },
+  { funcId: 18, handlerVa: 0x6fc5ea60, name: 'MISSMODE_SrvHit18_Shout_BO_BC_AllyBuff' },
+  { funcId: 19, handlerVa: 0x6fc5e8a0, name: 'MISSMODE_SrvHit19_FingerMageSpiderManaDrain' },
   { funcId: 20, handlerVa: 0x6fc5dd60, name: 'MISSMODE_SrvHit20_LightningFury' },
-  { funcId: 21, handlerVa: 0x6fc5abd0, name: 'MISSMODE_SrvHit21_WarCrySplash' },
+  { funcId: 21, handlerVa: 0x6fc5abd0, name: 'MISSMODE_SrvHit21_BattleCryDebuff' },
   { funcId: 22, handlerVa: 0x6fc5db30, name: 'MISSMODE_SrvHit22_FistOfTheHeavensDelay' },
   { funcId: 23, handlerVa: 0x6fc59da0, name: 'MISSMODE_SrvHit23_MissileSkillCast' },
-  { funcId: 24, handlerVa: 0x6fc5b7c0, name: 'MISSMODE_SrvHit24_BoneSpearTrail' },
-  { funcId: 25, handlerVa: 0x6fc5da60, name: 'MISSMODE_SrvHit25_MonsterNova' },
-  { funcId: 26, handlerVa: 0x6fc5c990, name: 'MISSMODE_SrvHit26_SmithDeath' },
-  { funcId: 27, handlerVa: 0x6fc58ec0, name: 'MISSMODE_SrvHit27_RadialLightExpire' },
-  { funcId: 28, handlerVa: 0x6fc5e740, name: 'MISSMODE_SrvHit28_RedeemSoulHeal' },
+  { funcId: 24, handlerVa: 0x6fc5b7c0, name: 'MISSMODE_SrvHit24_PantherPotOrange' },
+  { funcId: 25, handlerVa: 0x6fc5da60, name: 'MISSMODE_SrvHit25_PantherPotGreen' },
+  { funcId: 26, handlerVa: 0x6fc5c990, name: 'MISSMODE_SrvHit26_GrimWardStart' },
+  { funcId: 27, handlerVa: 0x6fc58ec0, name: 'MISSMODE_SrvHit27_GrimWardExpire' },
+  { funcId: 28, handlerVa: 0x6fc5e740, name: 'MISSMODE_SrvHit28_GrimWardScare' },
   { funcId: 29, handlerVa: 0x6fc5c850, name: 'MISSMODE_SrvHit29_FrozenOrbBurst' },
   { funcId: 30, handlerVa: 0x00000000, name: 'null' },
-  { funcId: 31, handlerVa: 0x6fc5a920, name: 'MISSMODE_SrvHit31_PantherPotions' },
-  { funcId: 32, handlerVa: 0x6fc5be70, name: 'MISSMODE_SrvHit32_TowerMistFade' },
-  { funcId: 33, handlerVa: 0x6fc58ea0, name: 'MISSMODE_SrvHit33_impteleport' },
+  { funcId: 31, handlerVa: 0x6fc5a920, name: 'MISSMODE_SrvHit31_Firehead' },
+  { funcId: 32, handlerVa: 0x6fc5be70, name: 'MISSMODE_SrvHit32_CairnStones' },
+  { funcId: 33, handlerVa: 0x6fc58ea0, name: 'MISSMODE_SrvHit33_TowerChestSpawner' },
   { funcId: 34, handlerVa: 0x00000000, name: 'null' },
-  { funcId: 35, handlerVa: 0x6fc5e670, name: 'MISSMODE_SrvHit35_ValkyrieStart' },
+  { funcId: 35, handlerVa: 0x6fc5e670, name: 'MISSMODE_SrvHit35_OrbMist' },
   { funcId: 36, handlerVa: 0x6fc5ab30, name: 'MISSMODE_SrvHit36_BombInAirGroundSpawn' },
-  { funcId: 37, handlerVa: 0x6fc58e90, name: 'MISSMODE_SrvHit37_BombOnGroundSplash' },
-  { funcId: 38, handlerVa: 0x6fc5c5b0, name: 'MISSMODE_SrvHit38_BladeSentinelReturn' },
-  { funcId: 39, handlerVa: 0x6fc5bc00, name: 'MISSMODE_SrvHit39_MindBlastConvert' },
-  { funcId: 40, handlerVa: 0x6fc5c490, name: 'MISSMODE_SrvHit40_ShadowMasterInit' },
+  { funcId: 37, handlerVa: 0x6fc58e90, name: 'MISSMODE_SrvHit37_BladeCreeperPierce' },
+  { funcId: 38, handlerVa: 0x6fc5c5b0, name: 'MISSMODE_SrvHit38_CatapultChargedBall' },
+  { funcId: 39, handlerVa: 0x6fc5bc00, name: 'MISSMODE_SrvHit39_ImpSpawnMonsters' },
+  { funcId: 40, handlerVa: 0x6fc5c490, name: 'MISSMODE_SrvHit40_CatapultSpikeBall' },
   { funcId: 41, handlerVa: 0x00000000, name: 'null' },
   { funcId: 42, handlerVa: 0x00000000, name: 'null' },
-  { funcId: 43, handlerVa: 0x6fc59e30, name: 'MISSMODE_SrvHit43_RecycleMana' },
+  { funcId: 43, handlerVa: 0x6fc59e30, name: 'MISSMODE_SrvHit43_HealingVortex' },
   { funcId: 44, handlerVa: 0x6fc5b5f0, name: 'MISSMODE_SrvHit44_JavelinArmageddonSplash' },
-  { funcId: 45, handlerVa: 0x6fc5c3b0, name: 'MISSMODE_SrvHit45_PlagueVinesDamage' },
+  { funcId: 45, handlerVa: 0x6fc5c3b0, name: 'MISSMODE_SrvHit45_LightningTrailingJavelin' },
   { funcId: 46, handlerVa: 0x00000000, name: 'null' },
   { funcId: 47, handlerVa: 0x6fc5d8c0, name: 'MISSMODE_SrvHit47_MoltenBoulderKnockbackExplode' },
-  { funcId: 48, handlerVa: 0x6fc5c260, name: 'MISSMODE_SrvHit48_CatapultChargedBall' },
+  { funcId: 48, handlerVa: 0x6fc5c260, name: 'MISSMODE_SrvHit48_MoltenBoulderEmerge' },
   { funcId: 49, handlerVa: 0x00000000, name: 'null' },
-  { funcId: 50, handlerVa: 0x6fc591a0, name: 'MISSMODE_SrvHit50_CatapultMeteorBall' },
-  { funcId: 51, handlerVa: 0x6fc5c160, name: 'MISSMODE_SrvHit51_SiegeBeastStomp' },
-  { funcId: 52, handlerVa: 0x6fc5c030, name: 'MISSMODE_SrvHit52_HutDeathTrigger' },
-  { funcId: 53, handlerVa: 0x6fc5f7d0, name: 'MISSMODE_SrvHit53_PutridDefilerImpregnate' },
-  { funcId: 54, handlerVa: 0x6fc5bc80, name: 'MISSMODE_SrvHit54_PainWormSpawn' },
-  { funcId: 55, handlerVa: 0x6fc596e0, name: 'MISSMODE_SrvHit55_NihlathakCorpExplosion' },
+  { funcId: 50, handlerVa: 0x6fc591a0, name: 'MISSMODE_SrvHit50_PlagueVinesTrail' },
+  { funcId: 51, handlerVa: 0x6fc5c160, name: 'MISSMODE_SrvHit51_VolcanoDebris2' },
+  { funcId: 52, handlerVa: 0x6fc5c030, name: 'MISSMODE_SrvHit52_BladeFury' },
+  { funcId: 53, handlerVa: 0x6fc5f7d0, name: 'MISSMODE_SrvHit53_RabiesContagion' },
+  { funcId: 54, handlerVa: 0x6fc5bc80, name: 'MISSMODE_SrvHit54_BaalSpawnMonsters' },
+  { funcId: 55, handlerVa: 0x6fc596e0, name: 'MISSMODE_SrvHit55_BaalInfernoManaDrain' },
   { funcId: 56, handlerVa: 0x6fc5b210, name: 'MISSMODE_SrvHit56_ArmageddonControl' },
-  { funcId: 57, handlerVa: 0x6fc5bbb0, name: 'MISSMODE_SrvHit57_BaalTauntPoison' },
-  { funcId: 58, handlerVa: 0x6fc5bed0, name: 'MISSMODE_SrvHit58_BaalTauntLightning' },
-  { funcId: 59, handlerVa: 0x6fc5d800, name: 'MISSMODE_SrvHit59_BaalColdTriangle' },
+  { funcId: 57, handlerVa: 0x6fc5bbb0, name: 'MISSMODE_SrvHit57_BaalFxControl' },
+  { funcId: 58, handlerVa: 0x6fc5bed0, name: 'MISSMODE_SrvHit58_BaalTauntLightningControl' },
+  { funcId: 59, handlerVa: 0x6fc5d800, name: 'MISSMODE_SrvHit59_BaalTauntPoisonControl' },
   { funcId: 60, handlerVa: 0x00000000, name: 'null' },
   { funcId: 61, handlerVa: 0x00000000, name: 'null' },
   { funcId: 62, handlerVa: 0x00000000, name: 'null' },
@@ -1166,6 +1166,7 @@ export class MissileEngine {
   private readonly missiles: ActiveMissile[] = []
   private readonly nextDelayExpireByTarget = new Map<string, number>()
   private readonly volleyHits = new Set<string>()
+  private srvMissileSkillMap?: Map<string, SkillRecord>
   private uidCounter = 1
   private readonly rng = new D2Rng(0x4d534c45)
   terrain?: MissileTerrainCollision | undefined
@@ -1195,6 +1196,7 @@ export class MissileEngine {
     fireCadenceTicks?: number
     spawnMissileType?: string
     maxRangeTicks?: number
+    nextHit?: boolean
     nextDelayFrames?: number
     altitude?: number
     seed?: number
@@ -1330,7 +1332,9 @@ export class MissileEngine {
       angleRad,
       ageTicks: 0,
       maxRangeTicks,
-      nextHit: effectiveRec.nextHit || (params.nextDelayFrames ?? 0) > 0,
+      nextHit:
+        params.nextHit ??
+        (params.nextDelayFrames !== undefined ? params.nextDelayFrames > 0 : effectiveRec.nextHit),
       nextDelayFrames: params.nextDelayFrames ?? effectiveRec.nextDelay,
       // 1.13c `0x6FC8F660`: only the Missiles.txt `Pierce` flag enables the roll; the count is rolled once here from
       // the owner's `item_pierce + skill_pierce` (Issue #1420). `CollideKill = 0` is a separate, unrelated property.
@@ -1427,11 +1431,26 @@ export class MissileEngine {
     return 0
   }
 
-  private resolveMissileSkillRecord(m: ActiveMissile) {
-    return (
+  private resolveMissileSkillRecord(m: ActiveMissile): SkillRecord | undefined {
+    const direct =
       (m.sourceSkillId > 0 ? this.registry.getSkillById(m.sourceSkillId) : undefined) ??
       (m.record.skill ? this.registry.getSkillByName(m.record.skill) : undefined)
-    )
+    if (direct) return direct
+    if (!this.srvMissileSkillMap) {
+      const map = new Map<string, SkillRecord>()
+      for (let id = 0; id < 360; id += 1) {
+        const sk = this.registry.getSkillById(id)
+        if (!sk) continue
+        for (const col of [sk.srvMissile, sk.srvMissileA, sk.srvMissileB, sk.srvMissileC]) {
+          const key = col.trim().toLowerCase()
+          if (key && !map.has(key)) {
+            map.set(key, sk)
+          }
+        }
+      }
+      this.srvMissileSkillMap = map
+    }
+    return this.srvMissileSkillMap.get(m.record.name.toLowerCase())
   }
 
   /**
@@ -1883,6 +1902,35 @@ export class MissileEngine {
         }
         return false
       }
+      // 5: MISSMODE_SrvDo05_FireWallSegment (0x6FC61980: blaze, firewall, meteorfire, immolationfire, moltenboulderfirepath)
+      case 5: {
+        if ((m.dmgPacket.elemMax256 ?? 0) === 0) {
+          const rowElem = this.evaluateMissileRowElemDamage256(
+            m,
+            rec,
+            rec.eMin === 0 && rec.eMax === 0,
+          )
+          if (rowElem.max256 > 0) {
+            m.dmgPacket = {
+              ...m.dmgPacket,
+              skillId: m.sourceSkillId,
+              slvl: m.slvl,
+              attackKind: 'spell',
+              srcDam: 0,
+              elemType: (rec.eType as SUnitDmgPacket['elemType']) || 'fire',
+              elemMin256: rowElem.min256,
+              elemMax256: rowElem.max256,
+              autoHit: true,
+              unblockable: true,
+              isPersistentGroundFire: true,
+              noHitRecovery: true,
+              canTriggerProcs: false,
+              ...(rec.damageRate > 0 ? { frameRate1024: rec.damageRate } : {}),
+            }
+          }
+        }
+        return false
+      }
       // 6: MISSMODE_SrvDo06_FireWallMaker_MoltenBoulder (0x6FC61850): SubMissile1 once per path step.
       case 6: {
         if (!sub1) {
@@ -1991,6 +2039,17 @@ export class MissileEngine {
         createSubWithCollisionCheck(nRange, nFrames, 0x05)
         return false
       }
+      // 9: MISSMODE_SrvDo09_BatLightning (0x6FC61520)
+      // 12: MISSMODE_SrvDo12_DiabloWallMaker (0x6FC61110)
+      // 13: MISSMODE_SrvDo13_BoneWallMaker (0x6FC60EB0)
+      case 9:
+      case 12:
+      case 13: {
+        if (sub1 && this.consumeMissilePathStep(m)) {
+          spawnSub({ owner: m.owner, startX: m.x, startY: m.y, targetX: m.x, targetY: m.y })
+        }
+        return false
+      }
       // 10: MISSMODE_SrvDo10_BlizzardCenter (0x6FC613D0)
       case 10: {
         const skillRec = this.resolveMissileSkillRecord(m)
@@ -2015,6 +2074,41 @@ export class MissileEngine {
           getBaseSkillLevel: (id) => m.owner.statList.getBaseSkillLevel(id),
         })
         createSubWithCollisionCheck(nRange, nFrames, 0x05)
+        return false
+      }
+      // 11: MISSMODE_SrvDo11_FingerMageSpider (0x6FC61240)
+      case 11:
+        return false
+      // 14: MISSMODE_SrvDo14_GrimWardDelay (0x6FC60E10: grimwardsmall/medium/large periodic terror pulse)
+      case 14: {
+        const cadence = Math.max(1, rec.param1 || 25)
+        if (m.ageTicks === 1 || m.ageTicks % cadence === 0) {
+          const radiusPx = this.resolveSrvHitRadiusPx(m, 'auraRangeCalc', { fallbackSubtiles: 6 })
+          const skillRec = this.resolveMissileSkillRecord(m)
+          const rawDur = skillRec ? Math.max(25, skillRec.param6 || 150) : 150
+          for (const target of ctx.targets) {
+            if (target.statList.getHp256() <= 0) continue
+            if (!areUnitsEnemies113c(m.owner, target)) continue
+            if (target.isBoss || target.rank === 'boss' || target.rank === 'unique' || target.rank === 'champion') {
+              continue
+            }
+            const pos = this.resolveUnitPosition(target, ctx.targetPositions)
+            if (!pos) continue
+            if (Math.hypot(pos.x - m.x, (pos.y - m.y) / ISO_GROUND_ASPECT_RATIO) <= radiusPx) {
+              const div = resolveAiCurseDivisor('normal')
+              if (div > 0) {
+                target.stateBus.applyState({
+                  stateNameOrId: 56,
+                  sourceUnitId: m.owner.id,
+                  sourceSkillId: m.sourceSkillId,
+                  slvl: m.slvl,
+                  durationFrames: Math.max(1, Math.trunc(rawDur / div)),
+                  currentFrame: ctx.currentTick,
+                })
+              }
+            }
+          }
+        }
         return false
       }
       // 15: MISSMODE_SrvDo15_FrozenOrb (0x6FC60CA0)
@@ -2062,7 +2156,25 @@ export class MissileEngine {
         }
         return false
       }
-      // 22: MISSMODE_SrvDo22_WakeOfDestructionMaker (0x6FC606D0)
+      // 20: MISSMODE_SrvDo20_BladeCreeper (0x6FC60860: 392:blade creeper back-and-forth sentinel patrol)
+      case 20: {
+        if (remaining <= 1 && (m.loops ?? 0) > 0) {
+          m.loops = (m.loops ?? 0) - 1
+          m.vx = -m.vx
+          m.vy = -m.vy
+          m.angleRad = Math.atan2(m.vy, m.vx)
+          m.ageTicks = 0
+        }
+        return false
+      }
+      // 21: MISSMODE_SrvDo21_distraction (0x6FC61EB0)
+      case 21: {
+        if (sub1 && remaining % Math.max(1, rec.param1 || 10) === 0) {
+          spawnSub({ owner: m.owner, startX: m.x, startY: m.y, targetX: m.x, targetY: m.y })
+        }
+        return false
+      }
+      // 22: MISSMODE_SrvDo22_LightningTrailingJavelin (0x6FC606D0)
       // 23: MISSMODE_SrvDo23_SuccubusFireball (0x6FC605E0)
       // 24: MISSMODE_SrvDo24_FirestormMaker (0x6FC605E0)
       case 22:
@@ -2153,21 +2265,39 @@ export class MissileEngine {
         }
         return false
       }
-      // 29: MISSMODE_SrvDo29_VineRecyclerDelay (0x6FC5FED0)
-      case 29: {
-        const skill = this.registry.getSkillById(m.sourceSkillId)
+      // 29: MISSMODE_SrvDo29_RecyclerDelay (0x6FC5FED0)
+      // 33: MISSMODE_SrvDo33_VineRecyclerDelay (0x6FC5FD30)
+      case 29:
+      case 33: {
+        const skill = this.resolveMissileSkillRecord(m)
         if (!skill) {
           m.expired = true
           return true
         }
         const owner = m.owner
-        if (remaining === rec.param1 && owner.statList.getHp256() > 0) {
-          const hp = owner.statList.getHp256() >> 8
-          const maxHp = owner.statList.getMaxHp256() >> 8
-          if (hp < maxHp) {
-            const pct = this.evalMissileSkillCalc(m, skill.calc1)
-            const newHp = Math.min(Math.trunc((maxHp * pct) / 100) + hp, maxHp)
-            owner.statList.setHp256(newHp << 8)
+        if (remaining === rec.param1 && owner.statList.getHp256() > 0 && skill.calc1.trim().length > 0) {
+          const pct = evaluateCalc(skill.calc1, {
+            registry: this.registry,
+            activeSkill: skill,
+            activeMissile: rec,
+            slvl: m.slvl,
+            blvl: m.slvl,
+            getBaseSkillLevel: (id) => owner.statList.getBaseSkillLevel(id),
+          })
+          if (fn === 33) {
+            const mana = owner.statList.getMana256() >> 8
+            const maxMana = owner.statList.getMaxMana256() >> 8
+            if (mana < maxMana && maxMana > 0) {
+              const newMana = Math.min(Math.trunc((maxMana * pct) / 100) + mana, maxMana)
+              owner.statList.setMana256(newMana << 8)
+            }
+          } else {
+            const hp = owner.statList.getHp256() >> 8
+            const maxHp = owner.statList.getMaxHp256() >> 8
+            if (hp < maxHp && maxHp > 0) {
+              const newHp = Math.min(Math.trunc((maxHp * pct) / 100) + hp, maxHp)
+              owner.statList.setHp256(newHp << 8)
+            }
           }
         }
         return false
@@ -2199,9 +2329,47 @@ export class MissileEngine {
         }
         return false
       }
-      // 31: MISSMODE_SrvDo31_Armageddon (0x6FC5F9F0)
+      // 31: MISSMODE_SrvDo31_WakeOfDestructionMaker (0x6FC5F9F0: wake of destruction maker #517, baal cold maker #589)
+      case 31: {
+        if (rec.param2 > 0) {
+          if (remaining === rec.param2) {
+            if (sub1) {
+              spawnSub({ owner: m.owner, startX: m.x, startY: m.y, targetX: m.x, targetY: m.y })
+            }
+            if (rec.subMissile2) {
+              spawnSub({
+                missileNameOrId: rec.subMissile2,
+                owner: m.owner,
+                startX: m.x,
+                startY: m.y,
+                targetX: m.x,
+                targetY: m.y,
+              })
+            }
+          }
+          return false
+        }
+        if (sub1 && this.consumeMissilePathStep(m)) {
+          const perpA = m.angleRad + Math.PI / 2
+          const perpB = m.angleRad - Math.PI / 2
+          spawnSub({
+            owner: m.owner,
+            startX: m.x,
+            startY: m.y,
+            targetX: m.x + Math.cos(perpA) * 40,
+            targetY: m.y + Math.sin(perpA) * 40 * ISO_GROUND_ASPECT_RATIO,
+          })
+          spawnSub({
+            owner: m.owner,
+            startX: m.x,
+            startY: m.y,
+            targetX: m.x + Math.cos(perpB) * 40,
+            targetY: m.y + Math.sin(perpB) * 40 * ISO_GROUND_ASPECT_RATIO,
+          })
+        }
+        return false
+      }
       // 37: MISSMODE_SrvDo37_Diablogeddon (0x6FC5F550)
-      case 31:
       case 37: {
         if (remaining === rec.param2) {
           if (sub1) {
@@ -2220,15 +2388,42 @@ export class MissileEngine {
         }
         return false
       }
-      // 32: MISSMODE_SrvDo32_HurricaneFollow (0x6FC61DE0)
+      // 32: MISSMODE_SrvDo32_TigerFury (0x6FC61DE0: 520:tigerfury homing + trail)
       case 32: {
-        const ownerPos = this.resolveUnitPosition(m.owner, ctx.targetPositions)
-        if (ownerPos) {
-          m.x = ownerPos.x
-          m.y = ownerPos.y
+        if (rec.vel === 0) {
+          const ownerPos = this.resolveUnitPosition(m.owner, ctx.targetPositions)
+          if (ownerPos) {
+            m.x = ownerPos.x
+            m.y = ownerPos.y
+          }
+          return false
+        }
+        if (sub1 && this.consumeMissilePathStep(m)) {
+          spawnSub({ owner: m.owner, startX: m.x, startY: m.y, targetX: m.x, targetY: m.y })
         }
         return false
       }
+      // 34: MISSMODE_SrvDo34_BaalTauntControl (0x6FC61C30)
+      case 34: {
+        if (sub1 && remaining % Math.max(1, rec.param1 || 25) === 0) {
+          spawnSub({ owner: m.owner, startX: m.x, startY: m.y, targetX: m.x, targetY: m.y })
+        }
+        return false
+      }
+      // 35: MISSMODE_SrvDo35_RoyalStrikeChaosIce (0x6FC5F890)
+      case 35: {
+        const cadence = Math.max(1, rec.param1 || 3)
+        if (m.ageTicks % cadence === 0 && m.speed > 0) {
+          const foreshortenY = m.isoGroundForeshorten ? ISO_GROUND_ASPECT_RATIO : 1
+          m.angleRad += 0.25
+          m.vx = Math.cos(m.angleRad) * m.speed
+          m.vy = Math.sin(m.angleRad) * m.speed * foreshortenY
+        }
+        return false
+      }
+      // 36: MISSMODE_SrvDo36_BaalFxControl (0x6FC5F670)
+      case 36:
+        return false
       default:
         return false
     }
@@ -2321,6 +2516,34 @@ export class MissileEngine {
         }
         break
       }
+      // 3: MISSMODE_SrvDmg03_GroundFireDamage (0x6FC59670: blaze, firewall, meteorfire, immolationfire, vampirefirewall)
+      case 3: {
+        let elemMin256 = packet.elemMin256 ?? 0
+        let elemMax256 = packet.elemMax256 ?? 0
+        if (elemMax256 === 0) {
+          const rowElem = this.evaluateMissileRowElemDamage256(
+            m,
+            rec,
+            rec.eMin === 0 && rec.eMax === 0,
+          )
+          elemMin256 = rowElem.min256
+          elemMax256 = rowElem.max256
+        }
+        packet = {
+          ...packet,
+          attackKind: 'spell',
+          elemType: (rec.eType as SUnitDmgPacket['elemType']) || packet.elemType || 'fire',
+          elemMin256,
+          elemMax256,
+          autoHit: true,
+          unblockable: true,
+          isPersistentGroundFire: true,
+          noHitRecovery: true,
+          canTriggerProcs: false,
+          frameRate1024: rec.damageRate > 0 ? rec.damageRate : (packet.frameRate1024 ?? 41),
+        }
+        break
+      }
       // 4: MISSMODE_SrvDmg04_IceBlastColdToFreeze (0x6FC58E70, iceblast)
       // 10: MISSMODE_SrvDmg10_BladesOfIceFreeze (0x6FC59040, bladesoficecubes)
       case 4:
@@ -2373,11 +2596,58 @@ export class MissileEngine {
         }
         break
       }
+      // 8: MISSMODE_SrvDmg08_EruptionCrackOverlay (0x6FC58FF0, erruption crack 1/2)
+      case 8: {
+        if ((packet.elemMax256 ?? 0) === 0) {
+          const rowElem = this.evaluateMissileRowElemDamage256(
+            m,
+            rec,
+            rec.eMin === 0 && rec.eMax === 0,
+          )
+          if (rowElem.max256 > 0) {
+            packet = {
+              ...packet,
+              attackKind: 'spell',
+              elemType: (rec.eType as SUnitDmgPacket['elemType']) || skill?.eType as SUnitDmgPacket['elemType'] || 'fire',
+              elemMin256: rowElem.min256,
+              elemMax256: rowElem.max256,
+              autoHit: true,
+              unblockable: true,
+            }
+          }
+        }
+        break
+      }
       // 9: MISSMODE_SrvDmg09_TwisterStun (0x6FC59560, twister #477: dParam1 > 0 ? dParam1 : skill.param2)
       case 9: {
         const stunFrames = rec.dParam1 > 0 ? rec.dParam1 : (skill?.param2 ?? 0)
         if (stunFrames > 0) {
           stateOnHit = { stateNameOrId: 'stun', durationFrames: stunFrames, nonBossOnly: true }
+        }
+        break
+      }
+      // 11: MISSMODE_SrvDmg11_RabiesContagion (0x6FC59BD0, rabiescontagion #516)
+      case 11: {
+        if ((packet.elemMax256 ?? 0) === 0) {
+          const rowElem = this.evaluateMissileRowElemDamage256(
+            m,
+            rec,
+            rec.eMin === 0 && rec.eMax === 0,
+          )
+          const dur = baseElemDuration > 0 ? baseElemDuration : Math.max(1, m.maxRangeTicks - m.ageTicks)
+          if (rowElem.max256 > 0) {
+            packet = {
+              ...packet,
+              attackKind: 'spell',
+              elemType: 'pois',
+              elemMin256: rowElem.min256,
+              elemMax256: rowElem.max256,
+              elemDurationFrames: dur,
+              autoHit: true,
+              unblockable: true,
+              canTriggerProcs: false,
+            }
+          }
         }
         break
       }
@@ -2468,14 +2738,9 @@ export class MissileEngine {
     }
 
     switch (fnId) {
-      // 1: MISSMODE_SrvHit01_FireBallRadialSplash (0x6FC5B990, fireball #62, sHitPar1=4)
-      // 18: MISSMODE_SrvHit18_ShoutWarCryState (0x6FC5EA60)
-      case 1:
-      case 18: {
-        const splashRadius =
-          fnId === 1
-            ? this.resolveSrvHitRadiusPx(m, 'calc1', { fallbackSubtiles: 4 })
-            : this.resolveSrvHitRadiusPx(m, 'auraRangeCalc', { fallbackSubtiles: 3 })
+      // 1: MISSMODE_SrvHit01_FireBallRadialSplash (0x6FC5B990, fireball #62 / #513, sHitPar1=4)
+      case 1: {
+        const splashRadius = this.resolveSrvHitRadiusPx(m, 'calc1', { fallbackSubtiles: 4 })
         for (const other of ctx.targets) {
           if (other.id === hitTarget?.id || other.statList.getHp256() <= 0) continue
           if (!areUnitsEnemies113c(m.owner, other)) continue
@@ -2511,6 +2776,11 @@ export class MissileEngine {
         }
         return 'default'
       }
+
+      // 18: MISSMODE_SrvHit18_ShoutWarCryState (0x6FC5EA60: shout #149, battlecommand #236, battleorders #237)
+      // Pure friendly party/ally/minion warcry buff ring; never deals enemy splash damage and pierces continuously.
+      case 18:
+        return 'pierce'
 
       // 2: MISSMODE_SrvHit02_PlagueJavelin (0x6FC5E330, plaguejavelin #43)
       case 2: {
@@ -2699,7 +2969,7 @@ export class MissileEngine {
             if (other.id === hitTarget.id) continue
             if (other.statList.getHp256() <= 0) continue
             if (!areUnitsEnemies113c(m.owner, other)) continue
-            if (this.isTargetInNextDelay(other.id, ctx.currentTick)) continue
+            if (this.isTargetInJustHit(other, ctx.currentTick)) continue
             const oPos = this.resolveUnitPosition(other, ctx.targetPositions)
             if (!oPos) continue
             const d = Math.hypot(
@@ -2905,10 +3175,17 @@ export class MissileEngine {
           const fireDmg = calculateMeteorResidualFireDamage(m.slvl)
           const fireDmgPacket: SUnitDmgPacket = {
             skillId: m.sourceSkillId,
+            slvl: m.slvl,
             attackKind: 'spell',
             elemType: 'fire',
             elemMin256: rowElem && rowElem.max256 > 0 ? rowElem.min256 : fireDmg.min * 8,
             elemMax256: rowElem && rowElem.max256 > 0 ? rowElem.max256 : fireDmg.max * 8,
+            autoHit: true,
+            unblockable: true,
+            isPersistentGroundFire: true,
+            noHitRecovery: true,
+            canTriggerProcs: false,
+            frameRate1024: subFireRec && subFireRec.damageRate > 0 ? subFireRec.damageRate : 41,
           }
           const effectiveTerrain = ctx.collision ?? this.terrain
           const step = Math.max(1, rec.sHitPar2 || 1)
@@ -2963,12 +3240,28 @@ export class MissileEngine {
         return 'default'
       }
 
-      // 16: MISSMODE_SrvHit16_SpiderGooSlow (0x6FC5EC10)
-      case 16:
+      // 16: MISSMODE_SrvHit16_SpiderGooSlow (0x6FC5EC10: spidergoo #108, vines trail #483, vines wither #485)
+      case 16: {
+        if (ctx.trigger === 'unit' && hitTarget !== undefined && areUnitsEnemies113c(m.owner, hitTarget)) {
+          const slowPct = Math.max(25, rec.sHitPar1 || 25)
+          const slowFrames = Math.max(25, rec.sHitPar2 || 100)
+          hitTarget.stateBus.applyState({
+            stateNameOrId: 'slow',
+            sourceUnitId: m.owner.id,
+            sourceSkillId: m.sourceSkillId,
+            slvl: m.slvl,
+            durationFrames: slowFrames,
+            currentFrame: ctx.currentTick,
+            stats: { item_slow: slowPct },
+          })
+        }
         return 'default'
+      }
 
-      // 17: MISSMODE_SrvHit17_HowlFlee (0x6FC5EAE0)
-      case 17: {
+      // 17: MISSMODE_SrvHit17_HowlFlee (0x6FC5EAE0: howl #148)
+      // 28: MISSMODE_SrvHit28_GrimWardScare (0x6FC5EC80: grimwardscare #259)
+      case 17:
+      case 28: {
         const subName = rec.hitSubMissile1
         if (subName) {
           this.spawnMissile({
@@ -2980,11 +3273,28 @@ export class MissileEngine {
             startY: impactY,
             targetX: impactX,
             targetY: impactY,
-            dmgPacket: m.dmgPacket,
+            dmgPacket: undefined,
           })
           ctx.subMissilesSpawned.push(subName)
         }
-        return 'default'
+        return 'pierce'
+      }
+
+      // 19: MISSMODE_SrvHit19_FingerMageSpiderHit (0x6FC5C150: fingermagespider #181)
+      // 55: MISSMODE_SrvHit55_BaalInfernoManaDrain (0x6FC5EE60: baal inferno #558)
+      case 19:
+      case 55: {
+        if (ctx.trigger === 'unit' && hitTarget !== undefined && areUnitsEnemies113c(m.owner, hitTarget)) {
+          const curMana256 = hitTarget.statList.getMana256()
+          if (curMana256 > 0) {
+            const drain256 =
+              fnId === 55
+                ? Math.max(256, Math.trunc(curMana256 / 8))
+                : Math.max(512, Math.trunc(curMana256 / 4))
+            hitTarget.statList.setMana256(Math.max(0, curMana256 - drain256))
+          }
+        }
+        return fnId === 55 ? 'pierce' : 'default'
       }
 
       // 20: MISSMODE_SrvHit20_LightningFury (0x6FC5DD60, lightningfury #228)
@@ -3000,6 +3310,10 @@ export class MissileEngine {
         })
         return 'default'
       }
+
+      // 21: MISSMODE_SrvHit21_BattleCryDebuff (0x6FC5CE90: battlecry #219)
+      case 21:
+        return 'pierce'
 
       // 22: MISSMODE_SrvHit22_FistOfTheHeavensDelay (0x6FC5DB30, fistoftheheavensdelay #233)
       // 23: MISSMODE_SrvHit23_MissileSkillCast (0x6FC59DA0)
@@ -3099,6 +3413,50 @@ export class MissileEngine {
         return 'expire'
       }
 
+      // 24..27: PantherPotions (#240..#243) & GrimWard (#257..#258) sub-missile spawn
+      case 24:
+      case 25:
+      case 26:
+      case 27: {
+        const subName = rec.hitSubMissile1
+        if (subName) {
+          const count = Math.max(1, rec.sHitPar1 || 1)
+          if (count === 1) {
+            this.spawnMissile({
+              missileNameOrId: subName,
+              sourceSkillId: m.sourceSkillId,
+              slvl: m.slvl,
+              owner: m.owner,
+              startX: impactX,
+              startY: impactY,
+              targetX: impactX,
+              targetY: impactY,
+              dmgPacket: m.dmgPacket,
+            })
+            ctx.subMissilesSpawned.push(subName)
+          } else {
+            for (let i = 0; i < count; i += 1) {
+              const theta = (i * Math.PI * 2) / count
+              this.spawnMissile({
+                missileNameOrId: subName,
+                sourceSkillId: m.sourceSkillId,
+                slvl: m.slvl,
+                owner: m.owner,
+                startX: impactX,
+                startY: impactY,
+                targetX: impactX + Math.cos(theta) * 60,
+                targetY: impactY + Math.sin(theta) * 60 * ISO_GROUND_ASPECT_RATIO,
+                dmgPacket: m.dmgPacket,
+                angleRad: theta,
+                isoGroundForeshorten: true,
+              })
+              ctx.subMissilesSpawned.push(subName)
+            }
+          }
+        }
+        return 'default'
+      }
+
       // 29: MISSMODE_SrvHit29_FrozenOrb (0x6FC5C850, frozenorb #260)
       // - Triggers only on first frame of hit (currentHitFrame === 0)
       // - Loop with step sHitPar1 = 4 over 64 directions -> 16 frozenorbnova missiles
@@ -3150,14 +3508,17 @@ export class MissileEngine {
         return 'expire'
       }
 
-      // 30: null (0x00000000)
-      // 31: MISSMODE_SrvHit31_PantherPotions (0x6FC5A920)
-      // 32: MISSMODE_SrvHit32_TowerMistFade (0x6FC5BE70)
-      // 34: null (0x00000000)
+      // 30, 34, 42, 46: null (0x00000000 in gpMissileSrvHitFnTable)
       case 30:
+      case 34:
+      case 42:
+      case 46:
+        return 'default'
+
+      // 31: MISSMODE_SrvHit31_TowerMist_BaalColdMaker (0x6FC5A920)
+      // 32: MISSMODE_SrvHit32_TowerMistFade (0x6FC5BE70)
       case 31:
-      case 32:
-      case 34: {
+      case 32: {
         const subName = rec.hitSubMissile1
         if (subName) {
           const count = Math.max(1, rec.sHitPar2 || 8)
@@ -3182,13 +3543,15 @@ export class MissileEngine {
         return 'default'
       }
 
-      // 36: MISSMODE_SrvHit36_BombInAirGroundSpawn (0x6FC5AB30)
-      // 37: MISSMODE_SrvHit37_BombOnGroundSplash (0x6FC58E90, shockfieldininair #305 -> shockfieldonground #306)
-      // 43: MISSMODE_SrvHit43_RecycleMana (0x6FC59E30)
-      // 59: MISSMODE_SrvHit59_BaalColdTriangle (0x6FC5D800)
+      // 36: MISSMODE_SrvHit36_BombInAirGroundSpawn (0x6FC5AB30: shockfieldinair #305 -> shockfieldonground #306)
+      // 38: MISSMODE_SrvHit38_CatapultChargedBall (0x6FC5CD30)
+      // 40: MISSMODE_SrvHit40_CatapultPlagueBall (0x6FC5CA20)
+      // 58: MISSMODE_SrvHit58_BaalTauntLightningControl (0x6FC5D620)
+      // 59: MISSMODE_SrvHit59_BaalTauntPoisonControl (0x6FC5D800)
       case 36:
-      case 37:
-      case 43:
+      case 38:
+      case 40:
+      case 58:
       case 59: {
         for (const subCol of [rec.hitSubMissile1, rec.hitSubMissile2, rec.explosionMissile]) {
           if (!subCol) continue
@@ -3226,6 +3589,14 @@ export class MissileEngine {
         }
         return 'expire'
       }
+
+      // 37: MISSMODE_SrvHit37_BladeCreeperHit (0x6FC58E90: blade creeper #324)
+      case 37:
+        return 'pierce'
+
+      // 43: MISSMODE_SrvHit43_HealingBoltFriendly (0x6FC59E30: healing vortex #425)
+      case 43:
+        return 'expire'
 
       // 44: MISSMODE_SrvHit44_JavelinArmageddonSplash (0x6FC5B5F0, explodingjavalin #429 / armageddonrock #476)
       // 56: MISSMODE_SrvHit56_ArmageddonControl (0x6FC5B210, armageddoncontrol #577)
@@ -3283,8 +3654,8 @@ export class MissileEngine {
         return fnId === 56 ? 'expire' : 'default'
       }
 
-      // 45: MISSMODE_SrvHit45_PlagueVinesDamage (0x6FC5C3B0)
-      // 50: MISSMODE_SrvHit50_CatapultMeteorBall (0x6FC591A0)
+      // 45: MISSMODE_SrvHit45_PlagueVinesDamage (0x6FC5C3B0: plague vines #484)
+      // 50: MISSMODE_SrvHit50_VinesDamage (0x6FC591A0: vines #482)
       case 45:
       case 50: {
         const subName = rec.hitSubMissile1
@@ -3326,15 +3697,9 @@ export class MissileEngine {
         return 'default'
       }
 
-      // 46: null (0x00000000)
-      case 46:
-        return 'default'
-
-      // 42: null (0x00000000)
       // 47: MISSMODE_SrvHit47_MoltenBoulderKnockbackExplode (0x6FC5D8C0, moltenboulder #452)
       // - Small/Medium non-boss targets: knockback + continue rolling ('pierce')
       // - Large (sizeX === 3) or Boss targets or wall/expiry: detonate AoE + spawn ExplosionMissile ('expire')
-      case 42:
       case 47: {
         if (ctx.trigger === 'unit' && hitTarget !== undefined) {
           const isLargeOrBoss = Boolean(
@@ -3388,12 +3753,20 @@ export class MissileEngine {
         return 'expire'
       }
 
-      // 48: MISSMODE_SrvHit48_CatapultChargedBall (0x6FC5C260, volcano debris 2 #461)
-      // 52: MISSMODE_SrvHit52_HutDeathTrigger (0x6FC5C030)
+      // 48: MISSMODE_SrvHit48_MoltenBoulderEmerge (0x6FC5C260, moltenboulderemerge #453)
+      // 52: MISSMODE_SrvHit52_BladeFuryShrapnel (0x6FC5C030, bladefury1..3 #496..#498)
       case 48:
       case 52: {
         for (const subCol of [rec.hitSubMissile1, rec.hitSubMissile2, rec.hitSubMissile3]) {
           if (!subCol) continue
+          const subRec = this.registry.getMissileByName(subCol)
+          const isVisualShrapnel =
+            subRec !== undefined &&
+            subRec.eMin === 0 &&
+            subRec.eMax === 0 &&
+            subRec.srcDamage === 0 &&
+            subRec.pSrvHitFunc === 0 &&
+            subRec.pSrvDmgFunc === 0
           this.spawnMissile({
             missileNameOrId: subCol,
             sourceSkillId: m.sourceSkillId,
@@ -3403,14 +3776,73 @@ export class MissileEngine {
             startY: impactY,
             targetX: impactX,
             targetY: impactY,
-            dmgPacket: m.dmgPacket,
+            dmgPacket: isVisualShrapnel ? undefined : m.dmgPacket,
           })
           ctx.subMissilesSpawned.push(subCol)
         }
         return 'default'
       }
 
-      // 53: MISSMODE_SrvHit53_PutridDefilerImpregnate (0x6FC5F7D0)
+      // 51: MISSMODE_SrvHit51_VolcanoDebrisFire (0x6FC5CF40: volcano debris 2 #461 -> volcano small fire #463)
+      case 51: {
+        const splashRadiusPx = this.resolveSrvHitRadiusPx(m, 'auraRangeCalc', {
+          fallbackSubtiles: Math.max(2, rec.sHitPar1 || 2),
+        })
+        for (const other of ctx.targets) {
+          if (other.id === hitTarget?.id || other.statList.getHp256() <= 0) continue
+          if (!areUnitsEnemies113c(m.owner, other)) continue
+          const oPos = this.resolveUnitPosition(other, ctx.targetPositions)
+          if (!oPos) continue
+          if (
+            Math.hypot(oPos.x - impactX, (oPos.y - impactY) / ISO_GROUND_ASPECT_RATIO) <=
+            splashRadiusPx
+          ) {
+            const splashOut = executeSUnitDmg(m.owner, other, m.dmgPacket, m.doFuncRng ?? this.rng)
+            ctx.hits.push({
+              missileName: `${m.name}:splash`,
+              targetId: other.id,
+              damage: splashOut.totalDamage,
+              immune: splashOut.immuneToElem || splashOut.immuneToPhys,
+            })
+          }
+        }
+        if (rec.hitSubMissile1) {
+          const subRec = this.registry.getMissileByName(rec.hitSubMissile1)
+          const rowElem = subRec
+            ? this.evaluateMissileRowElemDamage256(m, subRec, subRec.eMin === 0 && subRec.eMax === 0)
+            : undefined
+          const subPacket: SUnitDmgPacket =
+            rowElem && rowElem.max256 > 0
+              ? {
+                  skillId: m.sourceSkillId,
+                  slvl: m.slvl,
+                  attackKind: 'spell',
+                  srcDam: 0,
+                  elemType: (subRec?.eType as SUnitDmgPacket['elemType']) || 'fire',
+                  elemMin256: rowElem.min256,
+                  elemMax256: rowElem.max256,
+                  autoHit: true,
+                  unblockable: true,
+                  canTriggerProcs: false,
+                }
+              : m.dmgPacket
+          this.spawnMissile({
+            missileNameOrId: rec.hitSubMissile1,
+            sourceSkillId: m.sourceSkillId,
+            slvl: m.slvl,
+            owner: m.owner,
+            startX: impactX,
+            startY: impactY,
+            targetX: impactX,
+            targetY: impactY,
+            dmgPacket: subPacket,
+          })
+          ctx.subMissilesSpawned.push(rec.hitSubMissile1)
+        }
+        return 'expire'
+      }
+
+      // 53: MISSMODE_SrvHit53_VineDeathPoison (0x6FC5F7D0)
       case 53: {
         const subName = rec.hitSubMissile1
         if (subName) {
@@ -3436,11 +3868,59 @@ export class MissileEngine {
   }
 
   /**
-   * Check if a target unit is currently within its `NextDelay` immunity period.
+   * Check if a target unit is currently within its `NextDelay` immunity period (`STATE_JUSTHIT = 86`).
    */
   isTargetInNextDelay(targetId: string, currentTick: number): boolean {
     const exp = this.nextDelayExpireByTarget.get(targetId)
     return exp !== undefined && exp > currentTick
+  }
+
+  /**
+   * 1.13c D2Game.dll MISSILE_CheckNextHit (0x6FC5E590 / 0x6FC5EE80) + States.txt ID 86 (`justhit`):
+   * Checks unit-global `STATE_JUSTHIT (86)` across ALL missile sources / engines, auto-expiring stale frames.
+   */
+  isTargetInJustHit(target: CombatUnitContext, currentTick: number): boolean {
+    const st = target.stateBus.getState(86) ?? target.stateBus.getState('justhit')
+    if (st) {
+      if (st.expireFrame === 0 || st.expireFrame > currentTick) {
+        return true
+      }
+      target.stateBus.removeState(86)
+      target.stateBus.removeState('justhit')
+    }
+    return this.isTargetInNextDelay(target.id, currentTick)
+  }
+
+  /**
+   * Applies unit-global `STATE_JUSTHIT (86)` for `durationFrames` (`NextDelay > 0`) on `target.stateBus`.
+   */
+  applyTargetJustHit(
+    target: CombatUnitContext,
+    ownerId: string,
+    durationFrames: number,
+    currentTick: number,
+  ): void {
+    if (durationFrames <= 0) return
+    const newExpire = currentTick + durationFrames
+    const prevMapExp = this.nextDelayExpireByTarget.get(target.id) ?? 0
+    if (newExpire > prevMapExp) {
+      this.nextDelayExpireByTarget.set(target.id, newExpire)
+    }
+    const existing = target.stateBus.getState(86) ?? target.stateBus.getState('justhit')
+    if (existing) {
+      if (existing.expireFrame === 0 || existing.expireFrame >= newExpire) {
+        return
+      }
+      target.stateBus.removeState(86)
+      target.stateBus.removeState('justhit')
+    }
+    target.stateBus.applyState({
+      stateNameOrId: 86,
+      sourceUnitId: ownerId,
+      slvl: 1,
+      durationFrames,
+      currentFrame: currentTick,
+    })
   }
 
   /**
@@ -3721,10 +4201,12 @@ export class MissileEngine {
         }
       }
 
-      // 5. Continuous ground fire / stream re-hit reset (MISSMODE_SrvDmg03_ContinuousGroundFire 0x6FC58D80)
+      // 5. Continuous ground fire / stream re-hit reset (MISSMODE_SrvDo05_FireWallSegment 0x6FC61980 / MISSMODE_SrvDmg03_ContinuousGroundFire 0x6FC58D80)
       if (
+        m.record.pSrvDoFunc === 5 ||
         (m.record.pSrvDmgFunc === 3 &&
           (m.record.vel === 0 ? (m.record.nextDelay > 0 ? m.ageTicks % 5 === 0 : true) : true)) ||
+        (m.record.vel === 0 && !m.record.collideKill && m.record.eType === 'fire' && m.record.eMax > 0) ||
         m.record.pCltDoFunc === 15
       ) {
         m.hitTargetIds.clear()
@@ -3745,6 +4227,8 @@ export class MissileEngine {
           m.record.pSrvDoFunc <= 1 &&
           m.record.pSrvHitFunc === 0 &&
           m.record.pSrvDmgFunc === 0 &&
+          m.record.eMin === 0 &&
+          m.record.eMax === 0 &&
           (m.dmgPacket.elemMin256 ?? 0) === 0 &&
           (m.dmgPacket.elemMax256 ?? 0) === 0)
 
@@ -3759,7 +4243,11 @@ export class MissileEngine {
         const targetSize = resolveUnitSubtileSize113c(target)
         const isGroundPatch =
           m.record.vel === 0 &&
-          (m.record.pSrvDmgFunc === 3 || m.record.pSrvDmgFunc === 15 || m.record.eType === 'pois')
+          (m.record.pSrvDoFunc === 5 ||
+            m.record.pSrvDmgFunc === 3 ||
+            m.record.pSrvDmgFunc === 15 ||
+            m.record.eType === 'fire' ||
+            m.record.eType === 'pois')
         const overlapsFootprint = checkMissileSegmentFootprintOverlap113c(
           tickStartX,
           tickStartY,
@@ -3773,6 +4261,189 @@ export class MissileEngine {
           isGroundPatch ? ISO_GROUND_ASPECT_RATIO : 1,
         )
         if (!overlapsFootprint) continue
+
+        // 1.13c MISSMODE_SrvHit18_ShoutWarCryState (0x6FC5EA60: shout #149, battlecommand #236, battleorders #237):
+        // Buffs friendly units (caster, party players, friendly mercenaries, friendly minions) and deals ZERO damage to enemies.
+        if (m.record.pSrvHitFunc === 18) {
+          if (areUnitsEnemies113c(m.owner, target)) continue
+          if (m.hitTargetIds.has(target.id)) continue
+          const skillRec = this.resolveMissileSkillRecord(m)
+          const stateName = skillRec?.auraState
+            ? skillRec.auraState.toLowerCase()
+            : m.record.id === 149
+              ? 'shout'
+              : m.record.id === 237
+                ? 'battleorders'
+                : 'battlecommand'
+          const evalCtx = skillRec
+            ? {
+                registry: this.registry,
+                activeSkill: skillRec,
+                activeMissile: m.record,
+                slvl: m.slvl,
+                blvl: m.slvl,
+                getBaseSkillLevel: (id: number) => m.owner.statList.getBaseSkillLevel(id),
+              }
+            : undefined
+          const durationFrames =
+            skillRec && evalCtx && skillRec.auraLenCalc.trim().length > 0
+              ? evaluateCalc(skillRec.auraLenCalc, evalCtx)
+              : 0
+          const stats: Record<string, number> = {}
+          if (skillRec && evalCtx) {
+            const statPairs: [string, string][] = [
+              [skillRec.auraStat1, skillRec.auraStatCalc1],
+              [skillRec.auraStat2, skillRec.auraStatCalc2],
+              [skillRec.auraStat3, skillRec.auraStatCalc3],
+              [skillRec.auraStat4, skillRec.auraStatCalc4],
+              [skillRec.auraStat5, skillRec.auraStatCalc5],
+              [skillRec.auraStat6, skillRec.auraStatCalc6],
+            ]
+            for (const [sName, sCalc] of statPairs) {
+              if (sName.trim().length > 0 && sCalc.trim().length > 0) {
+                stats[sName.trim().toLowerCase()] = evaluateCalc(sCalc, evalCtx)
+              }
+            }
+          }
+          const prevMaxHp256 = target.statList.getMaxHp256()
+          const prevHp256 = target.statList.getHp256()
+          const prevMaxMana256 = target.statList.getMaxMana256()
+          const prevMana256 = target.statList.getMana256()
+          target.stateBus.applyState({
+            stateNameOrId: stateName,
+            sourceUnitId: m.owner.id,
+            sourceSkillId: skillRec?.id ?? m.sourceSkillId,
+            slvl: m.slvl,
+            durationFrames,
+            currentFrame: currentTick,
+            stats,
+          })
+          if (stateName === 'battleorders') {
+            const newMaxHp256 = target.statList.getMaxHp256()
+            if (prevMaxHp256 > 0 && newMaxHp256 > prevMaxHp256 && prevHp256 > 0) {
+              target.statList.setHp256(
+                Math.min(newMaxHp256, Math.trunc((prevHp256 * newMaxHp256) / prevMaxHp256)),
+              )
+            }
+            const newMaxMana256 = target.statList.getMaxMana256()
+            if (prevMaxMana256 > 0 && newMaxMana256 > prevMaxMana256 && prevMana256 > 0) {
+              target.statList.setMana256(
+                Math.min(newMaxMana256, Math.trunc((prevMana256 * newMaxMana256) / prevMaxMana256)),
+              )
+            }
+          }
+          m.hitTargetIds.add(target.id)
+          continue
+        }
+
+        // 1.13c MISSMODE_SrvHit17_HowlFlee (0x6FC5EAE0: howl #148) & MISSMODE_SrvHit28_GrimWardScare (0x6FC5EC80: grimwardscare #259):
+        // Applies non-damaging `terror` (state 56) to non-boss/non-unique/non-champion hostile enemies.
+        if (m.record.pSrvHitFunc === 17 || m.record.pSrvHitFunc === 28) {
+          if (!areUnitsEnemies113c(m.owner, target)) continue
+          if (m.hitTargetIds.has(target.id)) continue
+          m.hitTargetIds.add(target.id)
+          const isBossOrUnique = Boolean(
+            target.isBoss ||
+              target.rank === 'boss' ||
+              target.rank === 'unique' ||
+              target.rank === 'champion',
+          )
+          if (!isBossOrUnique) {
+            const ownerLvl = m.owner.statList.getBaseStat('level')
+            const targetLvl = target.statList.getBaseStat('level')
+            const passesHowlLevelCheck =
+              m.record.pSrvHitFunc !== 17 ||
+              ownerLvl <= 0 ||
+              targetLvl <= 0 ||
+              ownerLvl + m.slvl > targetLvl
+            if (passesHowlLevelCheck) {
+              const skillRec = this.resolveMissileSkillRecord(m)
+              const dur =
+                skillRec && skillRec.auraLenCalc.trim().length > 0
+                  ? evaluateCalc(skillRec.auraLenCalc, {
+                      registry: this.registry,
+                      activeSkill: skillRec,
+                      activeMissile: m.record,
+                      slvl: m.slvl,
+                      blvl: m.slvl,
+                      getBaseSkillLevel: (id: number) => m.owner.statList.getBaseSkillLevel(id),
+                    })
+                  : Math.max(50, 50 + m.slvl * 25)
+              target.stateBus.applyState({
+                stateNameOrId: 'terror',
+                sourceUnitId: m.owner.id,
+                sourceSkillId: skillRec?.id ?? m.sourceSkillId,
+                slvl: m.slvl,
+                durationFrames: dur,
+                currentFrame: currentTick,
+              })
+            }
+          }
+          continue
+        }
+
+        // 1.13c MISSMODE_SrvHit21_BattleCryDebuff (0x6FC5CE90: battlecry #219):
+        // Applies non-damaging `battlecry` debuff (`state 89`) to hostile enemies (`skill_armor_percent`, `damagepercent`).
+        if (m.record.pSrvHitFunc === 21) {
+          if (!areUnitsEnemies113c(m.owner, target)) continue
+          if (m.hitTargetIds.has(target.id)) continue
+          m.hitTargetIds.add(target.id)
+          const skillRec = this.resolveMissileSkillRecord(m)
+          const evalCtx = skillRec
+            ? {
+                registry: this.registry,
+                activeSkill: skillRec,
+                activeMissile: m.record,
+                slvl: m.slvl,
+                blvl: m.slvl,
+                getBaseSkillLevel: (id: number) => m.owner.statList.getBaseSkillLevel(id),
+              }
+            : undefined
+          const dur =
+            skillRec && evalCtx && skillRec.auraLenCalc.trim().length > 0
+              ? evaluateCalc(skillRec.auraLenCalc, evalCtx)
+              : 300
+          const stats: Record<string, number> = {}
+          if (skillRec && evalCtx) {
+            if (skillRec.auraStat1.trim().length > 0 && skillRec.auraStatCalc1.trim().length > 0) {
+              stats[skillRec.auraStat1.trim().toLowerCase()] = evaluateCalc(
+                skillRec.auraStatCalc1,
+                evalCtx,
+              )
+            }
+            if (skillRec.auraStat2.trim().length > 0 && skillRec.auraStatCalc2.trim().length > 0) {
+              stats[skillRec.auraStat2.trim().toLowerCase()] = evaluateCalc(
+                skillRec.auraStatCalc2,
+                evalCtx,
+              )
+            }
+          }
+          target.stateBus.applyState({
+            stateNameOrId: 'battlecry',
+            sourceUnitId: m.owner.id,
+            sourceSkillId: skillRec?.id ?? m.sourceSkillId,
+            slvl: m.slvl,
+            durationFrames: dur,
+            currentFrame: currentTick,
+            stats,
+          })
+          continue
+        }
+
+        // 1.13c MISSMODE_SrvHit43_HealingBoltFriendly (0x6FC59E30: healing vortex #425):
+        // Monster friendly heal bolt heals an allied unit and expires with zero enemy damage.
+        if (m.record.pSrvHitFunc === 43) {
+          if (areUnitsEnemies113c(m.owner, target) || target.id === m.owner.id) continue
+          const curHp256 = target.statList.getHp256()
+          const maxHp256 = target.statList.getMaxHp256()
+          if (maxHp256 > 0 && curHp256 < maxHp256) {
+            const heal256 = Math.max(256, Math.trunc(maxHp256 / 8))
+            target.statList.setHp256(Math.min(maxHp256, curHp256 + heal256))
+          }
+          m.hitTargetIds.add(target.id)
+          m.expired = true
+          break
+        }
 
         // Holy Bolt / Fist of the Heavens Holy Bolt (pSrvHitFunc === 7, MISSMODE_SrvHit07_HolyBolt @ 0x6FC59FD0):
         // - Hostile units: only hits Undead ((m.record.holy || 1) & 1)
@@ -3831,7 +4502,16 @@ export class MissileEngine {
         if (!canMissileCollideWithUnit113c(m, target)) continue
         if (m.hitTargetIds.has(target.id)) continue
 
-        // Multiple Shot / volley single-target immunity
+        // 1.13c D2Game.dll MISSILE_CheckNextHit (0x6FC5E590 / 0x6FC5EE80) + States.txt ID 86 (`justhit`):
+        // When `NextHit === 1` (`m.nextHit`), a target currently in unit-global `STATE_JUSTHIT (86)` causes
+        // this missile to pass straight through harmlessly without expiring (`CollideKill` skipped).
+        if (m.nextHit) {
+          if (this.isTargetInJustHit(target, currentTick)) {
+            continue
+          }
+        }
+
+        // Multiple Shot / volley single-target immunity (fallback for NextHit === 0 synthetic volleys)
         if (m.volleyId) {
           const vKey = `${m.volleyId}:${target.id}`
           if (this.volleyHits.has(vKey)) {
@@ -3850,12 +4530,9 @@ export class MissileEngine {
           this.volleyHits.add(vKey)
         }
 
-        // NextDelay check (LastCollide + NextHit)
-        if (m.nextDelayFrames > 0) {
-          if (this.isTargetInNextDelay(target.id, currentTick)) {
-            continue
-          }
-          this.nextDelayExpireByTarget.set(target.id, currentTick + m.nextDelayFrames)
+        // Apply unit-global `STATE_JUSTHIT (86)` when `NextHit === 1` and `NextDelay > 0`
+        if (m.nextHit && m.nextDelayFrames > 0) {
+          this.applyTargetJustHit(target, m.owner.id, m.nextDelayFrames, currentTick)
         }
 
         m.hitTargetIds.add(target.id)
@@ -3865,6 +4542,31 @@ export class MissileEngine {
           ...m.dmgPacket,
           canTriggerProcs: m.canTriggerProcs,
           ...(m.record.pSrvHitFunc === 7 ? { bypassUndeadMagicRes: true } : {}),
+        }
+        if (
+          m.record.vel === 0 &&
+          (basePacket.elemMax256 ?? 0) === 0 &&
+          (m.record.eMin > 0 || m.record.eMax > 0)
+        ) {
+          const selfRowElem = this.evaluateMissileRowElemDamage256(m, m.record)
+          if (selfRowElem.max256 > 0) {
+            basePacket = {
+              ...basePacket,
+              attackKind: 'spell',
+              elemType: (m.record.eType as SUnitDmgPacket['elemType']) || 'fire',
+              elemMin256: selfRowElem.min256,
+              elemMax256: selfRowElem.max256,
+              autoHit: true,
+              unblockable: true,
+              ...(m.record.eType === 'fire' && !m.record.collideKill
+                ? {
+                    isPersistentGroundFire: true,
+                    noHitRecovery: true,
+                    frameRate1024: m.record.damageRate > 0 ? m.record.damageRate : 41,
+                  }
+                : {}),
+            }
+          }
         }
         if (m.record.pSrvHitFunc === 4 || m.record.pSrvHitFunc === 9) {
           basePacket = this.mergeBowHitFlagsItemElem(m, basePacket)
@@ -4401,6 +5103,553 @@ export class MissileEngine {
 
   getActiveMissiles(): readonly ActiveMissile[] {
     return this.missiles
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // #1790 online-room bridge: `GameInstance.stepMissiles` routes every server missile's per-frame
+  // `pSrvDoFunc` (`gMissileSrvDoFuncTable` @ `0x6FD2D970`) and collision `pSrvHitFunc`
+  // (`gpMissileSrvHitFnTable` @ `0x6FD2DA48`) through the methods below. They work in sub-tile
+  // space (the room's coordinates) and only decide motion, child missiles and splash radii; the room
+  // keeps applying damage through its own `SUNITDMG` pipeline. See
+  // `kb/skills/missiles/d2game-missile-srv-tables-113c.md` and `kb/skills/missiles/d2game-srvhit-radius-113c.md`.
+  // ---------------------------------------------------------------------------------------------
+
+  /** `Skills.txt` row of an online missile: the casting skill, else the row's `Skill` column. */
+  resolveOnlineSkill113c(row: MissileRecord, sourceSkillId: number): SkillRecord | undefined {
+    return (
+      (sourceSkillId > 0 ? this.registry.getSkillById(sourceSkillId) : undefined) ??
+      (row.skill ? this.registry.getSkillByName(row.skill) : undefined)
+    )
+  }
+
+  /** `SKILLS_EvaluateSkillFormula` of the missile's skill (`NaN`-free, `0` for an empty cell). */
+  evalOnlineSkillCalc113c(row: MissileRecord, sourceSkillId: number, slvl: number, expr: string): number {
+    const skill = this.resolveOnlineSkill113c(row, sourceSkillId)
+    if (skill === undefined || expr.trim().length === 0) return 0
+    const v = evaluateCalc(expr, {
+      registry: this.registry,
+      activeSkill: skill,
+      activeMissile: row,
+      slvl: Math.max(1, Math.trunc(slvl)),
+      blvl: Math.max(1, Math.trunc(slvl)),
+      getBaseSkillLevel: () => 0,
+    })
+    return Number.isFinite(v) ? v : 0
+  }
+
+  /**
+   * SrvHit radius rule shared by `SrvHit01/03/09/12/13/14/20/22/47/48/51`:
+   * `sHitPar > 0 ? sHitPar : max(1, evalSkillCalc(skill[calcField]))` (sub-tiles).
+   */
+  resolveOnlineHitRadius113c(
+    row: MissileRecord,
+    sourceSkillId: number,
+    slvl: number,
+    hitPar: number,
+    calcField: 'calc1' | 'calc2' | 'auraRangeCalc' | 'auraLenCalc',
+    fallbackSubtiles: number,
+  ): number {
+    if (hitPar > 0) return hitPar
+    const skill = this.resolveOnlineSkill113c(row, sourceSkillId)
+    const expr = skill?.[calcField]?.trim() ?? ''
+    if (skill === undefined || expr.length === 0) return fallbackSubtiles
+    return Math.max(1, this.evalOnlineSkillCalc113c(row, sourceSkillId, slvl, expr))
+  }
+
+  /**
+   * Remaining Chain Lightning style bounces after the first hit (`SrvHit12` @ `0x6FC5D020`):
+   * `sHitPar2` when set, else the skill's hit count `calc1` (Chain Lightning `ln34 / 5` = 5 hits at
+   * slvl 1, 9 at slvl 20) minus the first hit.
+   */
+  resolveOnlineChainBounces113c(row: MissileRecord, sourceSkillId: number, slvl: number): number {
+    if (row.pSrvHitFunc !== 12) return 0
+    if (row.sHitPar2 > 0) return row.sHitPar2
+    const skill = this.resolveOnlineSkill113c(row, sourceSkillId)
+    if (skill === undefined) return 0
+    if (skill.calc1.trim().length > 0) {
+      return Math.max(0, Math.trunc(this.evalOnlineSkillCalc113c(row, sourceSkillId, slvl, skill.calc1)) - 1)
+    }
+    return Math.max(0, skill.param2)
+  }
+
+  /**
+   * Leveled `EMin..EMax` of a `Missiles.txt` row in 1/256 (`MISSILES_CalculateDamageData` `0x6FC5D9D0`:
+   * 5-band `EMinLev1..5` / `EMaxLev1..5`, `<< HitShift`). `undefined` when the row has no own damage.
+   */
+  evaluateOnlineRowElem256113c(row: MissileRecord, slvl: number): { min256: number; max256: number } | undefined {
+    if (row.eMin <= 0 && row.eMax <= 0) return undefined
+    const lvl = Math.max(1, Math.trunc(slvl))
+    const tiered = (base: number, l1: number, l2: number, l3: number, l4: number, l5: number): number =>
+      base +
+      Math.min(Math.max(0, lvl - 1), 7) * l1 +
+      Math.min(Math.max(0, lvl - 8), 8) * l2 +
+      Math.min(Math.max(0, lvl - 16), 6) * l3 +
+      Math.min(Math.max(0, lvl - 22), 6) * l4 +
+      Math.max(0, lvl - 28) * l5
+    const shift = Math.max(0, Math.trunc(row.hitShift))
+    const min = tiered(row.eMin, row.eMinLev1, row.eMinLev2, row.eMinLev3, row.eMinLev4, row.eMinLev5)
+    const max = Math.max(min, tiered(row.eMax, row.eMaxLev1, row.eMaxLev2, row.eMaxLev3, row.eMaxLev4, row.eMaxLev5))
+    return { min256: min * (1 << shift), max256: max * (1 << shift) }
+  }
+
+  /** Online behavior class of a `pSrvDoFunc` (the room-side `gMissileSrvDoFuncTable` coverage). */
+  classifyOnlineSrvDo113c(row: MissileRecord): OnlineMissileSrvDoKind113c {
+    if (row.pSrvDmgFunc === 5 || row.pCltDoFunc === 2) return 'spiral'
+    return classifyOnlineSrvDoFunc113c(row.pSrvDoFunc)
+  }
+
+  /** Online behavior class of a `pSrvHitFunc` (the room-side `gpMissileSrvHitFnTable` coverage). */
+  classifyOnlineSrvHit113c(row: MissileRecord): OnlineMissileSrvHitKind113c {
+    return classifyOnlineSrvHitFunc113c(row.pSrvHitFunc)
+  }
+
+  /** New online missile state for a freshly created room missile. */
+  createOnlineMissileState113c(params: {
+    readonly row: MissileRecord
+    readonly sourceSkillId: number
+    readonly slvl: number
+    readonly x: number
+    readonly y: number
+    readonly vx: number
+    readonly vy: number
+    readonly remainingFrames: number
+    readonly lockedTargetKey?: string | undefined
+    readonly groundLegFrames?: number | undefined
+    readonly chainRemaining?: number | undefined
+    readonly targetOffsetX?: number | undefined
+    readonly targetOffsetY?: number | undefined
+  }): OnlineMissileState113c {
+    return {
+      row: params.row,
+      sourceSkillId: params.sourceSkillId,
+      slvl: params.slvl,
+      x: params.x,
+      y: params.y,
+      vx: params.vx,
+      vy: params.vy,
+      originX: params.x,
+      originY: params.y,
+      ageFrames: 0,
+      remainingFrames: params.remainingFrames,
+      subMissileIdx: 0,
+      pathCursor: 0,
+      lockedTargetKey: params.lockedTargetKey,
+      groundLegFrames: params.groundLegFrames ?? 0,
+      targetOffsetX: params.targetOffsetX,
+      targetOffsetY: params.targetOffsetY,
+      pathLastX: params.x,
+      pathLastY: params.y,
+      pathStepAccum: 0,
+      chainRemaining:
+        params.chainRemaining ?? this.resolveOnlineChainBounces113c(params.row, params.sourceSkillId, params.slvl),
+      hitFired: false,
+    }
+  }
+
+  /**
+   * Path-mode motion that replaces the linear `vx/vy` step. Only the Blessed Hammer Archimedean spiral
+   * (`PATHTYPE_BLESSEDHAMMER` 14, `D2Common` `0x6FDAB3C0`): 77 points around the caster,
+   * `dTheta = 2 * PI / 32`, `dR = 9600 / 65536` sub-tiles per point, starting north-west. The
+   * missile walks the polyline at its scalar speed; `false` = linear motion, `'end'` = path consumed.
+   */
+  advanceOnlineMissile113c(state: OnlineMissileState113c): boolean | 'end' {
+    if (this.classifyOnlineSrvDo113c(state.row) !== 'spiral') return false
+    const speed = Math.max(1e-3, Math.hypot(state.vx, state.vy))
+    let budget = speed
+    let cursor = state.pathCursor
+    let pos = blessedHammerPathPoint113c(state.originX, state.originY, Math.floor(cursor))
+    while (budget > 1e-9) {
+      const k = Math.floor(cursor)
+      if (k >= BLESSED_HAMMER_PATH_POINTS_113C - 1) {
+        state.pathCursor = BLESSED_HAMMER_PATH_POINTS_113C - 1
+        const last = blessedHammerPathPoint113c(state.originX, state.originY, BLESSED_HAMMER_PATH_POINTS_113C - 1)
+        state.x = last.x
+        state.y = last.y
+        return 'end'
+      }
+      const a = blessedHammerPathPoint113c(state.originX, state.originY, k)
+      const b = blessedHammerPathPoint113c(state.originX, state.originY, k + 1)
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y)
+      const frac = cursor - k
+      const left = segLen * (1 - frac)
+      if (segLen <= 1e-9 || budget >= left) {
+        budget -= Math.max(0, left)
+        cursor = k + 1
+        pos = b
+      } else {
+        const nf = frac + budget / segLen
+        cursor = k + nf
+        pos = { x: a.x + (b.x - a.x) * nf, y: a.y + (b.y - a.y) * nf }
+        budget = 0
+      }
+    }
+    state.pathCursor = cursor
+    state.x = pos.x
+    state.y = pos.y
+    return true
+  }
+
+  /**
+   * Per-frame `pSrvDoFunc` after the missile moved (`MISSILE_SrvTick` `0x6FC5E4E0`). Mutates the
+   * state's velocity / cursors and returns the child missiles to create.
+   */
+  stepOnlineMissileSrvDo113c(
+    state: OnlineMissileState113c,
+    targets: readonly OnlineMissileTarget113c[],
+    isBlocked?: (x: number, y: number) => boolean,
+  ): OnlineMissileSrvDoResult113c {
+    const row = state.row
+    const spawns: OnlineMissileSpawn113c[] = []
+    const kind = this.classifyOnlineSrvDo113c(row)
+    const sub1 = row.subMissile1.trim()
+    const subDamage = (name: string): OnlineMissileChildDamage113c => {
+      const subRow = this.registry.getMissileByName(name)
+      if (subRow === undefined) throw new Error(`Missiles.txt row '${name}' (SubMissile1 of '${row.name}') not found`)
+      return subRow.pSrvDoFunc === 5 || subRow.pSrvDmgFunc === 3 ? 'groundfire' : 'inherit'
+    }
+    switch (kind) {
+      // 6 FireWallMaker / MoltenBoulder, 9 BatLightning, 12 DiabloWallMaker, 13 BoneWallMaker:
+      // `SubMissile1` once per sub-tile the path advances (`D2Common_10234`).
+      case 'pathspawner': {
+        if (sub1 === '') return { spawns, terminate: true }
+        const dist = Math.hypot(state.x - state.pathLastX, state.y - state.pathLastY)
+        state.pathLastX = state.x
+        state.pathLastY = state.y
+        state.pathStepAccum += dist
+        while (state.pathStepAccum + 1e-6 >= 1) {
+          state.pathStepAccum -= 1
+          spawns.push({ missileName: sub1, x: state.x, y: state.y, targetX: state.x, targetY: state.y, damage: subDamage(sub1) })
+        }
+        return { spawns, terminate: false }
+      }
+      // 7 GuidedArrow / BoneSpirit (`0x6FC61710`): every `Param1` frames re-steer toward the locked unit
+      // while `3 < dist < 25`; a ground-targeted arrow whose first leg ended searches `Param2` sub-tiles.
+      case 'homing': {
+        const period = Math.max(1, row.param1)
+        if (state.ageFrames % period !== 0) return { spawns, terminate: false }
+        let locked = state.lockedTargetKey !== undefined ? targets.find((t) => t.key === state.lockedTargetKey) : undefined
+        if (state.lockedTargetKey !== undefined && locked === undefined) state.lockedTargetKey = undefined
+        if (locked === undefined && state.ageFrames >= state.groundLegFrames) {
+          const searchR = Math.max(1, row.param2)
+          let best = Infinity
+          for (const t of targets) {
+            const d = Math.hypot(t.x - state.x, t.y - state.y)
+            if (d <= searchR && d < best) {
+              best = d
+              locked = t
+            }
+          }
+          if (locked !== undefined) state.lockedTargetKey = locked.key
+        }
+        if (locked !== undefined) {
+          const d = Math.hypot(locked.x - state.x, locked.y - state.y)
+          if (d > 1e-6 && d < 25) {
+            const speed = Math.hypot(state.vx, state.vy)
+            state.vx = ((locked.x - state.x) / d) * speed
+            state.vy = ((locked.y - state.y) / d) * speed
+          }
+        }
+        return { spawns, terminate: false }
+      }
+      // 8 MonBlizzCenter / 10 BlizzardCenter (`0x6FC61670` / `0x6FC613D0` -> `0x6FC5D1E0`): every
+      // `nFrames` remaining frames, `SubMissile1` at a seeded offset inside `nRange` unless blocked.
+      case 'areaspawner': {
+        if (sub1 === '') return { spawns, terminate: true }
+        let nRange: number
+        let nFrames: number
+        if (row.pSrvDoFunc === 8) {
+          const lvlDiv = Math.trunc(state.slvl / Math.max(1, row.param3))
+          nRange = row.param1 + Math.max(2, lvlDiv)
+          nFrames = Math.max(3, row.param2 - lvlDiv)
+        } else {
+          const skill = this.resolveOnlineSkill113c(row, state.sourceSkillId)
+          if (skill === undefined) return { spawns, terminate: true }
+          nRange = Math.trunc(this.evalOnlineSkillCalc113c(row, state.sourceSkillId, state.slvl, skill.calc1))
+          nFrames = Math.trunc(this.evalOnlineSkillCalc113c(row, state.sourceSkillId, state.slvl, skill.calc2))
+        }
+        if (nFrames <= 0 || state.remainingFrames % nFrames !== 0) return { spawns, terminate: false }
+        const rng = new D2Rng(0, 666)
+        rng.setSeed(Math.floor(state.x * MISSILE_SUBTILE_FLAT_PX) + state.remainingFrames, 666)
+        const nMax = Math.max(0, nRange - 1)
+        const span = 2 * nMax
+        const sx = state.x + (span > 0 ? rng.rand(span) - nMax : 0)
+        const sy = state.y + (span > 0 ? rng.rand(span) - nMax : 0)
+        if (isBlocked !== undefined && isBlocked(sx, sy)) return { spawns, terminate: false }
+        spawns.push({ missileName: sub1, x: sx, y: sy, targetX: sx, targetY: sy, damage: subDamage(sub1) })
+        return { spawns, terminate: false }
+      }
+      // 15 FrozenOrb (`0x6FC60CA0`): every `Param1` frames one `SubMissile1` along the radius-30 circle
+      // table, index advancing by `Param2` (19, gcd(19, 64) = 1) modulo 64.
+      case 'orb': {
+        if (sub1 === '') return { spawns, terminate: false }
+        const nFrames = Math.max(1, row.param1)
+        if (state.ageFrames % nFrames === 0) {
+          const idx = Math.abs(state.subMissileIdx % 64)
+          const offX = FROZEN_ORB_X_POSITIONS[idx]!
+          const offY = FROZEN_ORB_Y_POSITIONS[idx]!
+          spawns.push({
+            missileName: sub1,
+            x: state.x,
+            y: state.y,
+            targetX: state.x + offX,
+            targetY: state.y + offY,
+            damage: 'inherit',
+          })
+          state.subMissileIdx = (idx + row.param2) % 64
+        }
+        return { spawns, terminate: false }
+      }
+      // 16 FrozenOrbNova (`0x6FC60BD0`): while `remaining < Param1` and `remaining % Param2 == 0`,
+      // rotate the stored target vector by 45 degrees: `(a - b) / 2`, `(a + b) / 2`.
+      case 'orbnova': {
+        const nParam = Math.max(1, row.param2)
+        if (state.remainingFrames < row.param1 && state.remainingFrames % nParam === 0) {
+          const speed = Math.hypot(state.vx, state.vy)
+          const a = state.targetOffsetX ?? Math.round((state.vx / Math.max(1e-9, speed)) * 30)
+          const b = state.targetOffsetY ?? Math.round((state.vy / Math.max(1e-9, speed)) * 30)
+          const newA = Math.trunc((a - b) / 2)
+          const newB = Math.trunc((a + b) / 2)
+          state.targetOffsetX = newA
+          state.targetOffsetY = newB
+          const len = Math.hypot(newA, newB)
+          if (len > 0) {
+            state.vx = (newA / len) * speed
+            state.vy = (newB / len) * speed
+          }
+        }
+        return { spawns, terminate: false }
+      }
+      default:
+        return { spawns, terminate: false }
+    }
+  }
+
+  /**
+   * Collision / expiry `pSrvHitFunc` (`MISSILE_Collide` `0x6FC5EDE0`). `hitKey` is the struck unit
+   * (`trigger === 'unit'`); `targets` are the hostile units the function may search (the struck unit
+   * included). Returns the children to create, an optional radial splash, and how the missile
+   * continues: `'default'` (row `Pierce` / `CollideKill` rules), `'pierce'` (keeps flying, return 2),
+   * `'expire'` (destroyed, return 3) or `'passthrough'` (the unit is not a valid target, no damage).
+   */
+  resolveOnlineMissileSrvHit113c(
+    state: OnlineMissileState113c,
+    trigger: OnlineMissileHitTrigger113c,
+    impactX: number,
+    impactY: number,
+    hitKey: string | undefined,
+    targets: readonly OnlineMissileTarget113c[],
+    isBlocked?: (x: number, y: number) => boolean,
+  ): OnlineMissileSrvHitResult113c {
+    const row = state.row
+    const spawns: OnlineMissileSpawn113c[] = []
+    const kind = this.classifyOnlineSrvHit113c(row)
+    const none = (outcome: OnlineMissileSrvHitResult113c['outcome']): OnlineMissileSrvHitResult113c => ({
+      spawns,
+      splash: undefined,
+      outcome,
+    })
+    // On range expiry without `AlwaysExplode` only the expiry-capable handlers run (`0x6FC5EDE0`).
+    if (trigger === 'expire' && !row.alwaysExplode && !ONLINE_EXPIRE_CAPABLE_SRV_HIT_113C.has(row.pSrvHitFunc)) {
+      return none('expire')
+    }
+    switch (kind) {
+      // 1 FireBall radial splash (`0x6FC5B990`): `sHitPar1` else `max(1, calc1)`.
+      case 'splash': {
+        const r = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar1, 'calc1', 4)
+        return { spawns, splash: { radiusSubtiles: r, excludeKey: hitKey }, outcome: 'default' }
+      }
+      // 4 Exploding / Freezing Arrow (`0x6FC5F220`): `HitSubMissile1` explodes at once with its own
+      // `pSrvHitFunc` (`SrvHit01` radius `sHitPar1 = 5`, or `SrvHit14` for Royal Strike).
+      case 'subexplode': {
+        if (state.hitFired) return none('expire')
+        state.hitFired = true
+        const subName = row.hitSubMissile1.trim()
+        const subRow = subName !== '' ? this.registry.getMissileByName(subName) : undefined
+        if (subName !== '' && subRow === undefined) throw new Error(`Missiles.txt row '${subName}' not found`)
+        if (subRow === undefined) {
+          const r = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar1, 'calc1', 3)
+          return { spawns, splash: { radiusSubtiles: r, excludeKey: hitKey }, outcome: 'expire' }
+        }
+        const sub = this.resolveOnlineMissileSrvHit113c(
+          { ...state, row: subRow, hitFired: false },
+          'expire',
+          impactX,
+          impactY,
+          hitKey,
+          targets,
+          isBlocked,
+        )
+        return { spawns: sub.spawns, splash: sub.splash, outcome: 'expire' }
+      }
+      // 9 Immolation Arrow (`0x6FC5E0B0`): explosion radius `sHitPar2` else `max(1, calc2)`; fire patch
+      // grid radius `sHitPar1` else `calc1`, patch life `sHitPar3` else `auraLenCalc`.
+      case 'immolation': {
+        if (state.hitFired) return none('expire')
+        state.hitFired = true
+        const r2 = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar2, 'calc2', 1)
+        const sub = row.hitSubMissile1.trim()
+        if (sub !== '') {
+          const skill = this.resolveOnlineSkill113c(row, state.sourceSkillId)
+          const r1 =
+            row.sHitPar1 > 0
+              ? row.sHitPar1
+              : Math.trunc(this.evalOnlineSkillCalc113c(row, state.sourceSkillId, state.slvl, skill?.calc1 ?? ''))
+          const len =
+            row.sHitPar3 > 0
+              ? row.sHitPar3
+              : Math.trunc(this.evalOnlineSkillCalc113c(row, state.sourceSkillId, state.slvl, skill?.auraLenCalc ?? ''))
+          for (let dy = -r1; dy <= r1; dy++) {
+            for (let dx = -r1; dx <= r1; dx++) {
+              if (dx * dx + dy * dy > r1 * r1) continue
+              const fx = Math.round(impactX) + dx
+              const fy = Math.round(impactY) + dy
+              if (isBlocked !== undefined && isBlocked(fx, fy)) continue
+              spawns.push({
+                missileName: sub,
+                x: fx,
+                y: fy,
+                targetX: fx,
+                targetY: fy,
+                damage: 'groundfire',
+                ...(len > 0 ? { lifetimeFrames: len } : {}),
+              })
+            }
+          }
+        }
+        return { spawns, splash: { radiusSubtiles: r2, excludeKey: hitKey }, outcome: 'expire' }
+      }
+      // 8 Blaze / Fire Wall persistent patch: never consumed by a hit.
+      case 'persist':
+        return none('pierce')
+      // 10 GuidedArrow / BoneSpirit (`0x6FC5B140`): a unit-locked arrow passes cleanly through every
+      // unit that is not its locked target.
+      case 'homing': {
+        if (trigger === 'unit' && state.lockedTargetKey !== undefined && hitKey !== state.lockedTargetKey) {
+          const lockedAlive = targets.some((t) => t.key === state.lockedTargetKey)
+          if (lockedAlive) return none('passthrough')
+        }
+        return none('default')
+      }
+      // 12 ChainLightning (`0x6FC5D020`): bounce to the nearest other hostile within `sHitPar1` else
+      // `max(1, auraRangeCalc)` sub-tiles.
+      case 'chain': {
+        if (trigger === 'unit' && state.chainRemaining > 0 && hitKey !== undefined) {
+          const r = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar1, 'auraRangeCalc', 20)
+          let best: OnlineMissileTarget113c | undefined
+          let bestD = Infinity
+          for (const t of targets) {
+            if (t.key === hitKey) continue
+            const d = Math.hypot(t.x - impactX, t.y - impactY)
+            if (d <= r && d < bestD) {
+              bestD = d
+              best = t
+            }
+          }
+          if (best !== undefined) {
+            spawns.push({
+              missileName: row.name,
+              x: impactX,
+              y: impactY,
+              targetX: best.x,
+              targetY: best.y,
+              damage: 'inherit',
+              chainRemaining: state.chainRemaining - 1,
+              excludeKey: hitKey,
+            })
+          }
+        }
+        return none('default')
+      }
+      // 14 MeteorCenter (`0x6FC5DEF0`): radial blast `sHitPar1` else `max(1, auraRangeCalc)`, then
+      // `HitSubMissile1` ground fire over the 18-offset circle table, life `Param3 + (slvl - 1) * Param4`
+      // (`SKILLS_GetParam34Linear` `0x6FC21A40` @ `0x6FC5E072`).
+      case 'meteor': {
+        if (state.hitFired) return none('expire')
+        state.hitFired = true
+        const r1 = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar1, 'auraRangeCalc', 6)
+        const sub = row.hitSubMissile1.trim()
+        if (sub !== '') {
+          const skill = this.resolveOnlineSkill113c(row, state.sourceSkillId)
+          const life =
+            skill !== undefined && (skill.param3 > 0 || skill.param4 > 0)
+              ? skill.param3 + (Math.max(1, state.slvl) - 1) * skill.param4
+              : 0
+          const step = Math.max(1, row.sHitPar2 || 1)
+          for (let i = 0; i < METEOR_FIRE_SUBTILE_OFFSETS.length; i += step) {
+            const off = METEOR_FIRE_SUBTILE_OFFSETS[i]!
+            const fx = impactX + off.x
+            const fy = impactY + off.y
+            if (isBlocked !== undefined && isBlocked(fx, fy)) continue
+            spawns.push({
+              missileName: sub,
+              x: fx,
+              y: fy,
+              targetX: fx,
+              targetY: fy,
+              damage: 'groundfire',
+              ...(life > 0 ? { lifetimeFrames: life } : {}),
+            })
+          }
+        }
+        return { spawns, splash: { radiusSubtiles: r1, excludeKey: undefined }, outcome: 'expire' }
+      }
+      // 20 Lightning Fury (`0x6FC5DD60`): up to `sHitPar2` else `max(1, calc1)` (= 1 + slvl) bolts at
+      // the other hostiles within `sHitPar1` else `max(1, auraRangeCalc)` (15) sub-tiles. The javelin
+      // (`CollideKill = 1`) is consumed by the impact.
+      case 'fury': {
+        if (trigger !== 'unit') return none('expire')
+        if (state.hitFired) return none('expire')
+        state.hitFired = true
+        const sub = row.hitSubMissile1.trim()
+        if (sub !== '') {
+          const maxBolts = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar2, 'calc1', 1 + Math.max(1, state.slvl))
+          const r = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar1, 'auraRangeCalc', 15)
+          const inRange = targets
+            .filter((t) => t.key !== hitKey && Math.hypot(t.x - impactX, t.y - impactY) <= r)
+            .sort((a, b) => Math.hypot(a.x - impactX, a.y - impactY) - Math.hypot(b.x - impactX, b.y - impactY))
+          for (const t of inRange.slice(0, Math.max(0, Math.trunc(maxBolts)))) {
+            spawns.push({
+              missileName: sub,
+              x: impactX,
+              y: impactY,
+              targetX: t.x,
+              targetY: t.y,
+              damage: 'inherit',
+              ...(hitKey !== undefined ? { excludeKey: hitKey } : {}),
+            })
+          }
+        }
+        return none('expire')
+      }
+      // 29 FrozenOrb (`0x6FC5C850`): a mid-flight unit touch returns 2 (damage, orb survives, no nova);
+      // range end or a wall releases `HitSubMissile1` every `sHitPar1` (4) circle entries = 16 novas.
+      case 'orbnova': {
+        if (trigger === 'unit') return none('pierce')
+        if (state.hitFired) return none('expire')
+        state.hitFired = true
+        const sub = row.hitSubMissile1.trim()
+        if (sub !== '') {
+          const step = Math.max(1, row.sHitPar1)
+          for (let i = 0; i < 64; i += step) {
+            const offX = FROZEN_ORB_X_POSITIONS[i]!
+            const offY = FROZEN_ORB_Y_POSITIONS[i]!
+            spawns.push({
+              missileName: sub,
+              x: impactX,
+              y: impactY,
+              targetX: impactX + offX,
+              targetY: impactY + offY,
+              damage: 'inherit',
+              targetOffsetX: offX,
+              targetOffsetY: offY,
+            })
+          }
+        }
+        return none('expire')
+      }
+      default:
+        return none('default')
+    }
   }
 
   /**
@@ -7642,3 +8891,188 @@ export function calculateReviveStats(
 }
 
 
+
+// -------------------------------------------------------------------------------------------------
+// #1790 online-room bridge types (sub-tile space). See `MissileEngine.stepOnlineMissileSrvDo113c` /
+// `MissileEngine.resolveOnlineMissileSrvHit113c`.
+// -------------------------------------------------------------------------------------------------
+
+export type OnlineMissileHitTrigger113c = 'unit' | 'wall' | 'expire'
+
+/** Per-missile state the room keeps for its `pSrvDoFunc` / `pSrvHitFunc` dispatch. */
+export interface OnlineMissileState113c {
+  readonly row: MissileRecord
+  readonly sourceSkillId: number
+  readonly slvl: number
+  x: number
+  y: number
+  vx: number
+  vy: number
+  readonly originX: number
+  readonly originY: number
+  ageFrames: number
+  remainingFrames: number
+  /** `MISSILE_GetTargetX` circle index of `SrvDo15` (Frozen Orb). */
+  subMissileIdx: number
+  /** Fractional point cursor along a path-mode trajectory (Blessed Hammer spiral). */
+  pathCursor: number
+  /** Unit-locked homing target (`SrvDo07` / `SrvHit10`). */
+  lockedTargetKey: string | undefined
+  /** Frames of a ground-targeted homing arrow's first leg (`TargetX & 2`). */
+  groundLegFrames: number
+  /** Stored path target vector of `SrvDo16` (Frozen Orb nova curl). */
+  targetOffsetX: number | undefined
+  targetOffsetY: number | undefined
+  pathLastX: number
+  pathLastY: number
+  pathStepAccum: number
+  /** Remaining `SrvHit12` bounces. */
+  chainRemaining: number
+  /** One-shot hit functions (`SrvHit04/09/14/20/29`) already ran. */
+  hitFired: boolean
+}
+
+/** A hostile unit a srvdo/srvhit function may search (room key + sub-tile position). */
+export interface OnlineMissileTarget113c {
+  readonly key: string
+  readonly x: number
+  readonly y: number
+}
+
+/**
+ * Damage carried by a child missile: `'inherit'` = the parent's rolled packet, `'groundfire'` =
+ * per-frame burning damage (`SrvDo05` / `SrvDmg03`), `'none'` = no damage (functional carrier).
+ */
+export type OnlineMissileChildDamage113c = 'inherit' | 'none' | 'groundfire'
+
+export interface OnlineMissileSpawn113c {
+  readonly missileName: string
+  readonly x: number
+  readonly y: number
+  readonly targetX: number
+  readonly targetY: number
+  readonly damage: OnlineMissileChildDamage113c
+  readonly lifetimeFrames?: number
+  readonly chainRemaining?: number
+  /** Unit the child must not hit first (the bounce source). */
+  readonly excludeKey?: string | undefined
+  readonly targetOffsetX?: number
+  readonly targetOffsetY?: number
+}
+
+export interface OnlineMissileSplash113c {
+  readonly radiusSubtiles: number
+  /** The directly struck unit, already damaged by the collision. */
+  readonly excludeKey: string | undefined
+}
+
+export interface OnlineMissileSrvDoResult113c {
+  readonly spawns: OnlineMissileSpawn113c[]
+  readonly terminate: boolean
+}
+
+export interface OnlineMissileSrvHitResult113c {
+  readonly spawns: OnlineMissileSpawn113c[]
+  readonly splash: OnlineMissileSplash113c | undefined
+  readonly outcome: 'default' | 'pierce' | 'expire' | 'passthrough'
+}
+
+export type OnlineMissileSrvDoKind113c =
+  | 'standard'
+  | 'groundfire'
+  | 'pathspawner'
+  | 'homing'
+  | 'areaspawner'
+  | 'orb'
+  | 'orbnova'
+  | 'spiral'
+  | 'engine-only'
+
+export type OnlineMissileSrvHitKind113c =
+  | 'none'
+  | 'splash'
+  | 'subexplode'
+  | 'immolation'
+  | 'persist'
+  | 'homing'
+  | 'chain'
+  | 'meteor'
+  | 'fury'
+  | 'orbnova'
+  | 'engine-only'
+
+/** `gMissileSrvDoFuncTable` entries the room dispatches (everything else stays `MissileEngine.tick`-only). */
+export function classifyOnlineSrvDoFunc113c(fn: number): OnlineMissileSrvDoKind113c {
+  switch (fn) {
+    case 0:
+    case 1:
+      return 'standard'
+    case 5:
+      return 'groundfire'
+    case 6:
+    case 9:
+    case 12:
+    case 13:
+      return 'pathspawner'
+    case 7:
+      return 'homing'
+    case 8:
+    case 10:
+      return 'areaspawner'
+    case 15:
+      return 'orb'
+    case 16:
+      return 'orbnova'
+    default:
+      return 'engine-only'
+  }
+}
+
+/** `gpMissileSrvHitFnTable` entries the room dispatches (everything else stays `MissileEngine.tick`-only). */
+export function classifyOnlineSrvHitFunc113c(fn: number): OnlineMissileSrvHitKind113c {
+  switch (fn) {
+    case 0:
+      return 'none'
+    case 1:
+      return 'splash'
+    case 4:
+      return 'subexplode'
+    case 9:
+      return 'immolation'
+    case 8:
+      return 'persist'
+    case 10:
+      return 'homing'
+    case 12:
+      return 'chain'
+    case 14:
+      return 'meteor'
+    case 20:
+      return 'fury'
+    case 29:
+      return 'orbnova'
+    default:
+      return 'engine-only'
+  }
+}
+
+/** `pSrvHitFunc`s that also run on range expiry without `AlwaysExplode` (`MISSILE_Collide` `0x6FC5EDE0`). */
+export const ONLINE_EXPIRE_CAPABLE_SRV_HIT_113C: ReadonlySet<number> = new Set([
+  2, 3, 4, 9, 14, 20, 22, 23, 29, 30, 31, 32, 34, 36, 37, 42, 43, 44, 47, 48, 56, 59,
+])
+
+/** Blessed Hammer path length (`PATH_ComputePathBlessedHammer`, `i = 0..76`). */
+export const BLESSED_HAMMER_PATH_POINTS_113C = 77
+/** `9600 / 65536` sub-tiles of radius per path point. */
+export const BLESSED_HAMMER_DR_SUBTILES_113C = 9600 / 65536
+/** 32 path points per revolution (`16` binary-256 angle units per point). */
+export const BLESSED_HAMMER_POINTS_PER_TURN_113C = 32
+/** Start angle: screen north-west, i.e. world `-x`, independent of the caster's facing. */
+export const BLESSED_HAMMER_START_ANGLE_113C = Math.PI
+
+/** Point `k` of the Blessed Hammer spiral around `(x0, y0)` in sub-tile coordinates. */
+export function blessedHammerPathPoint113c(x0: number, y0: number, k: number): { x: number; y: number } {
+  const theta = BLESSED_HAMMER_START_ANGLE_113C + (2 * Math.PI * k) / BLESSED_HAMMER_POINTS_PER_TURN_113C
+  const r = k * BLESSED_HAMMER_DR_SUBTILES_113C
+  return { x: x0 + r * Math.cos(theta), y: y0 + r * Math.sin(theta) }
+}

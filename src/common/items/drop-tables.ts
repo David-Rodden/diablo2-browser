@@ -346,6 +346,13 @@ export interface DropPipelineOptions {
   readonly isExpansion?: boolean | undefined
   /** Maximum items emitted per drop roll (default: MAX_DROPPED_ITEMS = 6). */
   readonly maxDrops?: number | undefined
+  /**
+   * 1.13c `D2Game.dll` `SrvDo072_FindItem` (`0x6FC476D0` -> `0x6FCFE290`, #1810):
+   * When true, forces `NoDrop = 0` on every TreasureClass pick (`a7 = 1` hork mode).
+   */
+  readonly ignoreNoDrop?: boolean | undefined
+  /** Alias for `ignoreNoDrop`. */
+  readonly noDropZero?: boolean | undefined
   /** Optional forced item quality tier (`D2GAME_DropTreasureClass` `nQuality` 1..7 or tier name, e.g. Sparkling Chest). */
   readonly forcedQuality?: ItemQualityTier | number | undefined
   /**
@@ -1267,6 +1274,7 @@ export function executeDropPipeline(
   }
 
   // 3. Expand TC tree (enforcing 6-item cap per D2Game!6FC51BB0)
+  const ignoreNoDrop = options.ignoreNoDrop === true || options.noDropZero === true
   const dropLeaves: DroppedItemEntry[] = expandTreasureClass(effectiveTcName, {
     rng,
     tcTable: dropTables.tcTable,
@@ -1274,6 +1282,7 @@ export function executeDropPipeline(
     gamePlayers,
     partyPlayers,
     ...(options.monsterPlayerCount !== undefined ? { monsterPlayerCount: options.monsterPlayerCount } : {}),
+    ...(ignoreNoDrop ? { ignoreNoDrop: true, noDropZero: true } : {}),
     isExpansion,
     maxDrops,
   })

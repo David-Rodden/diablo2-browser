@@ -29,8 +29,8 @@ import {
   type ItemData,
   type ItemQuality as WireItemQuality,
   type ItemStat,
+  type SetBonusStatList,
 } from '../../netproto/index.ts'
-import type { SetBonusStatList } from '../../netproto/domain/ids.ts'
 import type { SetItem } from '../../common/items/set-items.ts'
 
 /** The `Item` fields the canonical generators attach beyond the declared interface. */
@@ -269,7 +269,12 @@ export function domainItemToItemData113c(
     socketed: totalSockets > 0,
     ethereal,
     runeword: isRuneword,
-    ...(extras.runewordId !== undefined ? { runewordId: extras.runewordId } : {}),
+    ...(extras.runewordId !== undefined
+      ? {
+          runewordId: extras.runewordId,
+          runewordData: 0x5000 | ((extras.runewordId + 27) & 0xfff),
+        }
+      : {}),
     personalized,
     ...(personalizedName !== undefined ? { personalizedName, earOrPersonalizedName: personalizedName } : {}),
     isEar: false,

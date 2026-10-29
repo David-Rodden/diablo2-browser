@@ -468,12 +468,12 @@ describe('Tier 4: Real-World Campaign Combat Scenarios (Scenarios 1–8)', () =>
       ].filter(Boolean).length
       expect(immunitiesCount).toBeLessThanOrEqual(2)
 
-      // 3. Verify Hell Fire Enchanted death explosion scaling (7.5%..10% of base HP in Hell, diff=2)
+      // 3. Verify 1.13c Hell Fire Enchanted death explosion scaling (1/8 * 60%..100% of base HP split 50/50 -> 38..63 each, #1821)
       const feHell = calcFireEnchantedDeathDamage(1000, 2, () => 0.5)
-      expect(feHell.minPhys).toBe(75)
-      expect(feHell.maxPhys).toBe(100)
-      expect(feHell.minFire).toBe(75)
-      expect(feHell.maxFire).toBe(100)
+      expect(feHell.minPhys).toBe(38)
+      expect(feHell.maxPhys).toBe(63)
+      expect(feHell.minFire).toBe(38)
+      expect(feHell.maxFire).toBe(63)
 
       // 4. Trigger simultaneous FE + CE death affixes on kill
       const player = createTestCombatPlayer({ x: 106, y: 100, hp: 2500, maxHp: 2500 })

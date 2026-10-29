@@ -116,6 +116,7 @@ import {
   BUTTON_ACTION_CLOSE_STASH,
   BUTTON_ACTION_OPEN_CUBE,
   BUTTON_ACTION_OPEN_STASH,
+  DEAD_MERC_NAME_ID_NONE,
   MAX_D2_STAT_ID,
   PALADIN_AURA_SKILL_STATES,
   isMonsterOneShotMode,
@@ -1593,7 +1594,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           syncMercStat6FromLifePct(this, unit, unit.lifePct, 128)
           if (unit.lifePct <= 0 || unit.mode === 0 || unit.mode === 12) {
             this._merc.isDead = true
-          } else {
+          } else if (this._deadMercNameId === DEAD_MERC_NAME_ID_NONE) {
+            // A live 0xAC assign never clears the 0x9B dead-hireling record (`word [0x6fba23e8]`); only
+            // `0x9B(0xFFFF)` does, so a stale pre-death life byte cannot hide NPC Resurrect.
             this._merc.isDead = false
             this._merc.reviveCost = 0
           }
@@ -1993,7 +1996,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           if (this._merc && unit.id === this._merc.mercId) {
             this._merc.lifePct = moveLifeByte
             this._merc.lifePctScale = 128
-            if (moveLifeByte > 0) {
+            if (moveLifeByte > 0 && this._deadMercNameId === DEAD_MERC_NAME_ID_NONE) {
               this._merc.isDead = false
             }
             syncMercStat6FromLifePct(this, unit, moveLifeByte, 128)
@@ -2854,7 +2857,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             if (this._merc && targetUnit.id === this._merc.mercId) {
               this._merc.lifePct = life128
               this._merc.lifePctScale = 128
-              this._merc.isDead = rawHp <= 0
+              this._merc.isDead = rawHp <= 0 || this._deadMercNameId !== DEAD_MERC_NAME_ID_NONE
             }
             const pet = this._pets.get(targetUnit.id)
             if (pet) {
@@ -3657,7 +3660,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         if (this._merc && this._merc.mercId === targetId) {
           this._merc.lifePct = healPct
           this._merc.lifePctScale = 128
-          if (healPct > 0) {
+          if (healPct > 0 && this._deadMercNameId === DEAD_MERC_NAME_ID_NONE) {
             this._merc.isDead = false
           }
           syncMercStat6FromLifePct(this, unit, healPct, 128)
@@ -3996,7 +3999,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           if (pct100 !== undefined) {
             this._merc.lifePct = pct100
             this._merc.lifePctScale = 100
-            this._merc.isDead = pct100 <= 0
+            this._merc.isDead = pct100 <= 0 || this._deadMercNameId !== DEAD_MERC_NAME_ID_NONE
             syncMercStat6FromLifePct(this, unit, pct100, 100)
           }
         }
@@ -4820,7 +4823,35 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             map.set(statId, ev.value)
           }
         } else if (ev.mercId === undefined && revNameId !== undefined && revCost !== undefined) {
-          // 0x9B MercReviveCost
+          // 0x9B MercReviveCost (D2Client.dll 0x6fb5e1e0 -> 0x6fafa350): stores the name id at
+          // `word [0x6fba23e8]` and the cost at `dword [0x6fbcc334]`. D2Game sends `0x9B(nameId, cost)` when
+          // the hireling dies (0x6fcb8120 -> 0x6fcb8200) or on join with a dead hireling (0x6fcb75a8), and
+          // `0x9B(0xFFFF, 0)` to clear it after a resurrect / hire (0x6fc6906a, 0x6fce0faa).
+          this._deadMercNameId = revNameId & 0xffff
+          this._deadMercReviveCost = this._deadMercNameId === DEAD_MERC_NAME_ID_NONE ? 0 : revCost
+          if (this._deadMercNameId === DEAD_MERC_NAME_ID_NONE) {
+            if (this._merc) {
+              if (this._merc.mercId === 0) {
+                // Placeholder created from a previous 0x9B dead record with no hireling unit: nothing left.
+                this._merc = null
+              } else {
+                this._merc.reviveCost = 0
+                this._merc.deadNameId = undefined
+                this._merc.reviveNameId = undefined
+                const liveMercUnit = this.getUnit('monster', this._merc.mercId)
+                if (
+                  liveMercUnit &&
+                  !liveMercUnit.dead &&
+                  liveMercUnit.mode !== 0 &&
+                  liveMercUnit.mode !== 12 &&
+                  liveMercUnit.lifePct > 0
+                ) {
+                  this._merc.isDead = false
+                }
+              }
+            }
+            break
+          }
           const currentClassId = this._merc?.classId ?? 0
           const resolvedName = resolveHirelingName(currentClassId, revNameId, 'ENG')
           const resolvedNameZh = resolveHirelingName(currentClassId, revNameId, 'CHI')

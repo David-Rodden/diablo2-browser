@@ -1108,11 +1108,7 @@ export class UnitStatList {
       }
       const unitItemArmorPct = this.getBaseStat('item_armor_percent') + this.getModifierBonus('item_armor_percent')
       const skillArmorPct = this.getAccruedStat('skill_armor_percent')
-      const hsMod = this.modifiers.find(m => m.stateId === 101 || m.stateName === 'holyshield')
-      const hsPct =
-        this.getBaseStat('item_skillonhit') +
-        this.getBaseStat('item_skillongethit') +
-        (hsMod ? (hsMod.stats['item_skillonhit'] ?? hsMod.stats['item_skillongethit'] ?? 0) : 0)
+      const hsPct = this.getHolyShieldDefensePct113c()
       const totalArmorPct = unitItemArmorPct + skillArmorPct + hsPct
       if (totalArmorPct !== 0) {
         acc += Math.trunc((acc * totalArmorPct) / 100)
@@ -1226,14 +1222,35 @@ export class UnitStatList {
     }
     const unitItemArmorPct = this.getBaseStat('item_armor_percent') + this.getModifierBonus('item_armor_percent')
     const skillPct = this.getAccruedStat('skill_armor_percent')
-    const hsMod = this.modifiers.find(m => m.stateId === 101 || m.stateName === 'holyshield')
-    const hsPct =
-      this.getBaseStat('item_skillonhit') +
-      this.getBaseStat('item_skillongethit') +
-      (hsMod ? (hsMod.stats['item_skillonhit'] ?? hsMod.stats['item_skillongethit'] ?? 0) : 0)
+    const hsPct = this.getHolyShieldDefensePct113c()
     const totalArmorPct = unitItemArmorPct + skillPct + hsPct
     const scaled = totalArmorPct !== 0 ? rawDef + Math.trunc((rawDef * totalArmorPct) / 100) : rawDef
     return Math.max(0, Math.trunc(scaled))
+  }
+
+  /**
+   * 1.13c `D2Common.dll` `0x6FD82890` (`UNITS_GetDefense`):
+   * Evaluates active `STATE_HOLYSHIELD` (`state 101`) / `modifierlist_skill = 117` (`stat 350`) + `modifierlist_level` (`stat 351`)
+   * using `Skills.txt` `#117` `calc1 = ln34 + skill('Defiance'.blvl) * par8` (`25 + 15 * (slvl - 1) + 15 * blvl(104)`).
+   * Never reads `item_skillonhit` (`201`) or `item_skillongethit` (`202`).
+   */
+  private getHolyShieldDefensePct113c(): number {
+    const hsMod = this.modifiers.find(
+      m => m.stateId === 101 || m.stateName === 'holyshield' || m.stats['modifierlist_skill'] === 117,
+    )
+    const modSkill = this.getBaseStat('modifierlist_skill')
+    const baseHsLvl = modSkill === 117 ? this.getBaseStat('modifierlist_level') : 0
+    const hsLvl = hsMod
+      ? Math.max(0, Math.trunc(hsMod.stats['modifierlist_level'] ?? hsMod.slvl ?? 0))
+      : Math.max(0, Math.trunc(baseHsLvl))
+    if (hsLvl <= 0) return 0
+    const skillRec = this.registry?.getSkillById(117)
+    const p3 = skillRec ? skillRec.param3 : 25
+    const p4 = skillRec ? skillRec.param4 : 15
+    const p8 = skillRec ? skillRec.param8 : 15
+    const calcPct = p3 + p4 * (hsLvl - 1) + p8 * this.getBaseSkillLevel(104)
+    const alreadyInSkillArmorPct = hsMod ? Math.trunc(hsMod.stats['skill_armor_percent'] ?? 0) : 0
+    return Math.max(0, calcPct - alreadyInSkillArmorPct)
   }
 
   /**

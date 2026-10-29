@@ -208,12 +208,15 @@ describe('#1417 class-of-bug sweep: every player missile srvdofunc is classified
     expect(sorted('single')).toEqual([0, 10, 14, 26, 28, 73, 80])
     // Known srvdofuncs still lacking a GameInstance volley runtime; reported at cast time, never
     // silently treated as a verified single missile (22 Nova and 77 Leap have dedicated GameInstance paths).
-    expect(sorted('unmodeled')).toEqual([11, 18, 19, 22, 23, 24, 29, 34, 43, 44, 48, 50, 54, 60, 63, 68, 75, 77, 121, 123, 124])
+    // 24 Fire Wall: two perpendicular makers + centre pillar (#1790).
+    expect(sorted('firewall')).toEqual([24])
+    expect(sorted('unmodeled')).toEqual([11, 18, 19, 22, 23, 29, 34, 43, 44, 48, 50, 54, 60, 63, 68, 75, 77, 121, 123, 124])
   })
 
   it('reports an unmodeled srvdofunc instead of silently treating it as a single missile', () => {
-    const { game, playerId } = setupGame(0x1451, 1, { 51: 1 })
-    castAt(game, playerId, 51, 110, 100)
-    expect(game.getUnmodeledPlayerSrvDoFuncs()).toEqual([24])
+    // 41 Inferno (srvdofunc 19) still has no GameInstance volley runtime.
+    const { game, playerId } = setupGame(0x1451, 1, { 41: 1 })
+    castAt(game, playerId, 41, 110, 100)
+    expect(game.getUnmodeledPlayerSrvDoFuncs()).toEqual([19])
   })
 })

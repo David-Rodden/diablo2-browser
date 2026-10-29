@@ -80,6 +80,8 @@ export class D2gsSession {
   private packetsInValue = 0
   private packetsOutValue = 0
   private enterGameSent = false
+  private hasPacketListener = false
+  private readonly earlyPackets: Uint8Array[] = []
 
   constructor(options: D2gsSessionOptions) {
     this.stream = options.stream
@@ -122,6 +124,10 @@ export class D2gsSession {
     return this.stateValue
   }
 
+  get currentState(): D2gsSessionState {
+    return this.stateValue
+  }
+
   get rttMs(): number {
     return this.rttMsValue
   }
@@ -155,7 +161,17 @@ export class D2gsSession {
   }
 
   onPacket(cb: (pkt: Uint8Array) => void): () => void {
-    return this.packetEmitter.on(cb)
+    const unsub = this.packetEmitter.on(cb)
+    if (!this.hasPacketListener) {
+      this.hasPacketListener = true
+      if (this.earlyPackets.length > 0) {
+        const queued = this.earlyPackets.splice(0, this.earlyPackets.length)
+        for (const pkt of queued) {
+          this.packetEmitter.emit(pkt)
+        }
+      }
+    }
+    return unsub
   }
 
   onState(cb: (state: D2gsSessionState) => void): () => void {
@@ -204,39 +220,57 @@ export class D2gsSession {
     this.stream.close()
   }
 
+  private emitPacket(pkt: Uint8Array): void {
+    if (!this.hasPacketListener) {
+      this.earlyPackets.push(pkt)
+      return
+    }
+    this.packetEmitter.emit(pkt)
+  }
+
   private handleIncomingPacket(pkt: Uint8Array): void {
     const op = pkt[0]!
     if (op === 0xaf && this.stateValue === 'connecting') {
-      // Server sent [0xAF, 0x01]; reply with 37-byte 0x68 GameLogon
+      // Server sent [0xAF, 0x01]; record incoming packet first, then reply with 37-byte 0x68 GameLogon
       this.setState('logonSent')
+      this.emitPacket(pkt)
       this.sendRawPacket(encodeC2sGameLogon(this.logon))
-    } else if (op === 0x02 && !this.enterGameSent) {
-      // Server sent 0x02 GameLogonSuccess; send 0x6B EnterGame and start 5s Ping loop
+      return
+    }
+    if (op === 0x02 && !this.enterGameSent) {
+      // Server sent 0x02 GameLogonSuccess; record incoming packet first, then send 0x6B EnterGame + 5s Ping loop
       this.enterGameSent = true
       this.setState('entering')
+      this.emitPacket(pkt)
       this.sendRawPacket(encodeC2sEnterGame())
       this.sendPing()
       this.startPing()
-    } else if (op === 0x04 || (op === 0x03 && this.stateValue === 'entering')) {
+      return
+    }
+    if (op === 0x04 || (op === 0x03 && this.stateValue === 'entering')) {
       if (this.stateValue !== 'ingame') {
         this.setState('ingame')
       }
-    } else if (op === 0xb4 && this.stateValue !== 'ingame' && this.stateValue !== 'closed') {
+      this.emitPacket(pkt)
+      return
+    }
+    if (op === 0xb4 && this.stateValue !== 'ingame' && this.stateValue !== 'closed') {
       // S2C 0xB4 CantEnterGame / TimeoutReason (5B, D2Client.dll 0x6fb5cbf0):
       // reason = 0x06 is D2GS_GAMELOGON_CHARLOCKED (character already in game).
       const reason =
         pkt.byteLength >= 5
           ? new DataView(pkt.buffer, pkt.byteOffset, pkt.byteLength).getUint32(1, true)
           : 0
-      this.packetEmitter.emit(pkt)
+      this.emitPacket(pkt)
       this.stopPing()
       this.errorEmitter.emit(formatD2gsCantEnterError(reason, this.logon.charName))
       this.setState('closed')
       this.stream.close()
       return
-    } else if (op === 0xb0 && this.stateValue !== 'ingame' && this.stateValue !== 'closed') {
+    }
+    if (op === 0xb0 && this.stateValue !== 'ingame' && this.stateValue !== 'closed') {
       // S2C 0xB0 ConnectionTerminated (1B, D2Client.dll 0x6fb5d450) during handshake.
-      this.packetEmitter.emit(pkt)
+      this.emitPacket(pkt)
       this.stopPing()
       this.errorEmitter.emit(
         new ProtocolError(
@@ -247,7 +281,8 @@ export class D2gsSession {
       this.setState('closed')
       this.stream.close()
       return
-    } else if (op === 0x8f) {
+    }
+    if (op === 0x8f) {
       if (this.lastPingSentMs > 0) {
         const ping = Math.max(0, Math.floor(this.clock.now()) - this.lastPingSentMs) >>> 0
         this.lastRttMsValue = ping
@@ -262,7 +297,7 @@ export class D2gsSession {
         this.rttMsValue = this.avgPingMsValue
       }
     }
-    this.packetEmitter.emit(pkt)
+    this.emitPacket(pkt)
   }
 
   private startPing(): void {

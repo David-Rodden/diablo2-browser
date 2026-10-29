@@ -233,7 +233,7 @@ export function computeMindBlastDamage(slvl: number): MindBlastDamage {
 
 export function computeMindBlastStunDuration(slvl: number): number {
   if (slvl <= 0) return 0
-  return compute3BandDuration(slvl, 50, 5, 5, 5)
+  return Math.min(250, compute3BandDuration(slvl, 50, 5, 5, 5))
 }
 
 export function computeMindBlastConversionChance(slvl: number): number {
