@@ -22,9 +22,15 @@ import {
   type GameModePolicy,
 } from './engine/game-instance.ts'
 import { MAX_CATCHUP_FRAMES, SERVER_FRAME_MS } from './loopback-adapter.ts'
-import { AoiFilter } from './net/aoi.ts'
+import { AoiFilter, type AoiEntityPos } from './net/aoi.ts'
 import { PartyManager } from './net/party.ts'
 import { RoomClientSession, type RoomWireProtocol } from './net/session.ts'
+
+/**
+ * 1.13c `D2Game.dll` (`SUB_UpdatePlayerVisionRooms` `0x6FC395B0`):
+ * Server enforces ~9-Room (`±2 DrlgRoom` = ~80..100 subtiles) vision radius by default.
+ */
+export const DEFAULT_AOI_RADIUS_SUBTILES = 100
 
 export interface MultiClientRoomHostConfig {
   readonly game?: GameInstance | undefined
@@ -39,6 +45,8 @@ export interface MultiClientRoomHostConfig {
   readonly maxPlayers?: number | undefined
   readonly playersX?: number | undefined
   readonly aoiRadius?: number | undefined
+  readonly worldEventSojThreshold?: number | undefined
+  readonly animActionWindup?: boolean | undefined
   readonly policy?: Partial<GameModePolicy> | undefined
   readonly registry?: unknown
   readonly onPlayerSave?:
@@ -50,10 +58,27 @@ export interface ConnectClientSpec extends ConnectPlayerSpec {
   readonly protocol?: RoomWireProtocol | undefined
 }
 
+type WorldAoiUnitType = 'player' | 'monster' | 'object' | 'item' | 'missile' | 'tile'
+
+function isGroundItemEvent(ev: Extract<ServerEvent, { readonly type: 'ItemEvent' }>): boolean {
+  if (ev.container === 'ground') return true
+  if (ev.container !== undefined) return false
+  const act = ev.action
+  return (
+    act === 'groundSpawn' ||
+    act === 'drop' ||
+    act === 0x00 ||
+    act === 0x02 ||
+    act === 0x03
+  )
+}
+
 export class MultiClientRoomHost {
   readonly gameInstance: GameInstance
   readonly aoiFilter: AoiFilter
   readonly hasExplicitAoi: boolean
+  readonly aoiEnabled: boolean
+  private readonly roomDifficulty: 0 | 1 | 2
 
   private readonly sessionsByPlayerId = new Map<number, RoomClientSession>()
   private readonly sessionsById = new Map<number, RoomClientSession>()
@@ -73,6 +98,7 @@ export class MultiClientRoomHost {
       1,
       Math.min(8, Math.floor(config.maxPlayers ?? basePolicy.maxPlayers ?? 8)),
     )
+    this.roomDifficulty = config.difficulty ?? 0
     this.gameInstance =
       config.game ??
       config.gameInstance ??
@@ -80,11 +106,13 @@ export class MultiClientRoomHost {
         mode: basePolicy.mode ?? 'open',
         gameName: config.gameName ?? 'MultiplayerRoom',
         mapSeed: config.mapSeed ?? config.seed,
-        difficulty: config.difficulty ?? 0,
+        difficulty: this.roomDifficulty,
         act: config.act ?? config.actId,
         areaId: config.areaId,
         maxPlayers,
         playersX: config.playersX,
+        worldEventSojThreshold: config.worldEventSojThreshold,
+        animActionWindup: config.animActionWindup ?? true,
         registry: config.registry,
         policy: {
           ...OPEN_BNET_POLICY,
@@ -93,7 +121,10 @@ export class MultiClientRoomHost {
         },
       })
     this.hasExplicitAoi = config.aoiRadius !== undefined && config.aoiRadius > 0
-    this.aoiFilter = new AoiFilter(config.aoiRadius ?? 0)
+    this.aoiEnabled = config.aoiRadius === undefined ? true : config.aoiRadius > 0
+    this.aoiFilter = new AoiFilter(
+      config.aoiRadius !== undefined ? config.aoiRadius : DEFAULT_AOI_RADIUS_SUBTILES,
+    )
     this.onPlayerSave = config.onPlayerSave
   }
 
@@ -151,7 +182,10 @@ export class MultiClientRoomHost {
       )
     }
 
-    const playerUnitId = this.gameInstance.connectPlayer(spec)
+    const playerUnitId = this.gameInstance.connectPlayer({
+      ...spec,
+      restoreMercenary: spec.restoreMercenary ?? Boolean(spec.d2s ?? spec.d2sBytes),
+    })
     const pState = this.gameInstance.getPlayerState(playerUnitId)!
     const sessionId = this.nextSessionId++
 
@@ -162,6 +196,7 @@ export class MultiClientRoomHost {
       classId: pState.classId,
       stream,
       protocol: spec.protocol,
+      difficulty: this.roomDifficulty,
       onCommand: (sess, cmd) => this.handleClientCommand(sess, cmd),
       onDisconnect: (sess, _reason) => this.handleSessionDisconnected(sess),
     })
@@ -221,7 +256,6 @@ export class MultiClientRoomHost {
     this.sessionsByPlayerId.delete(pid)
     this.sessionsById.delete(session.sessionId)
     this.aoiFilter.removeViewer(pid)
-    this.aoiFilter.removeEntity('player', pid)
 
     const d2s = this.gameInstance.disconnectPlayer(pid)
     if (d2s) {
@@ -281,19 +315,73 @@ export class MultiClientRoomHost {
   }
 
   private flushAllClientEvents(): void {
+    const worldEntities: readonly AoiEntityPos[] = this.aoiEnabled
+      ? this.gameInstance.getAoiWorldEntities()
+      : []
+
     for (const session of Array.from(this.sessionsByPlayerId.values())) {
       if (session.isClosed) continue
       const events = this.gameInstance.drainEvents(session.playerUnitId)
       const viewer = this.gameInstance.getPlayerState(session.playerUnitId)
       if (!viewer) continue
 
-      for (const ev of events) {
-        if (this.hasExplicitAoi) {
-          this.deliverEventWithAoi(session, viewer, ev)
-        } else {
-          session.sendEvent(ev)
+      session.beginEventBatch()
+      try {
+        for (const ev of events) {
+          if (this.aoiEnabled) {
+            this.deliverEventWithAoi(session, viewer, ev)
+          } else {
+            session.sendEvent(ev)
+          }
         }
+        if (this.aoiEnabled) {
+          this.syncViewerAoiWorld(session, viewer, worldEntities)
+        }
+      } finally {
+        session.endEventBatch()
       }
+    }
+  }
+
+  private syncViewerAoiWorld(
+    session: RoomClientSession,
+    viewer: {
+      readonly unitId: number
+      readonly areaId: number
+      readonly x: number
+      readonly y: number
+    },
+    worldEntities: readonly AoiEntityPos[],
+  ): void {
+    const diff = this.aoiFilter.computeViewerDiff(
+      viewer.unitId,
+      viewer,
+      worldEntities,
+      (viewerArea, targetArea) =>
+        this.gameInstance.isAreaSeamAdjacent(viewerArea, targetArea),
+    )
+
+    for (const ent of diff.entered) {
+      const unitType = ent.unitType as WorldAoiUnitType
+      const enterEvents = this.gameInstance.buildEntityEnterAoiEvents(
+        unitType,
+        ent.unitId,
+      )
+      for (const ev of enterEvents) {
+        session.sendEvent(ev)
+      }
+    }
+
+    for (const oldEnt of diff.exited) {
+      const unitType = oldEnt.unitType as WorldAoiUnitType
+      if (unitType === 'missile' || unitType === 'tile') continue
+      if (!this.gameInstance.hasLiveWorldEntity(unitType, oldEnt.unitId)) continue
+      session.sendEvent({
+        type: 'UnitRemove',
+        unitType: unitTypeToId(oldEnt.unitType),
+        id: oldEnt.unitId,
+        unitId: oldEnt.unitId,
+      })
     }
   }
 
@@ -307,6 +395,53 @@ export class MultiClientRoomHost {
     },
     ev: ServerEvent,
   ): void {
+    const anyEv = ev as Record<string, unknown>
+    if (ev.type === 'LoadAct' || anyEv.type === 'ActDataLoaded') {
+      this.aoiFilter.clearViewer(viewer.unitId)
+      session.sendEvent(ev)
+      return
+    }
+
+    if (ev.type === 'UnitRemove') {
+      const rawType = ev.unitType
+      const unitType: UnitType =
+        typeof rawType === 'string' ? rawType : unitTypeFromId(rawType)
+      const unitId = Number(ev.id ?? ev.unitId ?? 0)
+      if (unitType === 'player' && unitId === viewer.unitId) {
+        session.sendEvent(ev)
+        return
+      }
+      if (this.aoiFilter.markHidden(viewer.unitId, unitType, unitId)) {
+        session.sendEvent(ev)
+      }
+      return
+    }
+    if (anyEv.type === 'EntityRemove') {
+      const rawType = anyEv.unitType
+      const unitType: UnitType =
+        typeof rawType === 'string'
+          ? (rawType as UnitType)
+          : unitTypeFromId(typeof rawType === 'number' ? rawType : 1)
+      const unitId = Number(anyEv.id ?? anyEv.unitId ?? 0)
+      if (this.aoiFilter.markHidden(viewer.unitId, unitType, unitId)) {
+        session.sendEvent(ev)
+      }
+      return
+    }
+
+    if (ev.type === 'ItemEvent' && ev.container === 'socket') {
+      const rawSocketEv = ev as { readonly ownerType?: number; readonly ownerId?: number }
+      if (rawSocketEv.ownerType === 4 || ev.item?.ownerType === 4) {
+        const hostId = Number(rawSocketEv.ownerId ?? ev.item?.ownerId ?? 0)
+        if (hostId > 0 && this.gameInstance.hasLiveWorldEntity('item', hostId)) {
+          if (this.aoiFilter.isVisible(viewer.unitId, 'item', hostId)) {
+            session.sendEvent(ev)
+          }
+          return
+        }
+      }
+    }
+
     const spatial = this.extractSpatialTarget(ev, viewer.areaId)
     if (
       !spatial ||
@@ -329,48 +464,36 @@ export class MultiClientRoomHost {
     if (!inRange) {
       if (wasVisible) {
         this.aoiFilter.markHidden(viewer.unitId, spatial.unitType, spatial.unitId)
-        session.sendEvent({
-          type: 'UnitRemove',
-          unitType: spatial.rawUnitType,
-          id: spatial.unitId,
-          unitId: spatial.unitId,
-        })
+        if (spatial.unitType !== 'missile' && spatial.unitType !== 'tile') {
+          session.sendEvent({
+            type: 'UnitRemove',
+            unitType: spatial.rawUnitType,
+            id: spatial.unitId,
+            unitId: spatial.unitId,
+          })
+        }
       }
       return
     }
 
-    if (!wasVisible && ev.type !== 'UnitAssign' && ev.type !== 'PlayerAssign') {
+    const isSelfDescribingSpawn =
+      ev.type === 'UnitAssign' ||
+      ev.type === 'PlayerAssign' ||
+      ev.type === 'CreateMissile' ||
+      (ev.type === 'ItemEvent' && spatial.unitType === 'item')
+
+    if (!wasVisible && !isSelfDescribingSpawn) {
       this.aoiFilter.markVisible(viewer.unitId, spatial)
-      if (spatial.unitType === 'player') {
-        const otherPlayer = this.gameInstance.getPlayerState(spatial.unitId)
-        if (otherPlayer) {
-          session.sendEvent({
-            type: 'UnitAssign',
-            unitType: 'player',
-            unitId: otherPlayer.unitId,
-            classId: otherPlayer.classId,
-            name: otherPlayer.name,
-            x: Math.round(otherPlayer.x),
-            y: Math.round(otherPlayer.y),
-            areaId: otherPlayer.areaId,
-            unit: {
-              unitType: 0,
-              id: otherPlayer.unitId,
-              classId: otherPlayer.classId,
-              name: otherPlayer.name,
-              x: Math.round(otherPlayer.x),
-              y: Math.round(otherPlayer.y),
-              mode: otherPlayer.mode,
-            },
-          })
-        }
-      } else if (spatial.unitType === 'monster' || spatial.unitType === 'object') {
-        const assignEv = this.gameInstance.buildUnitAssignEvent(spatial.unitType, spatial.unitId)
-        if (assignEv) {
-          session.sendEvent(assignEv)
-        }
+      const enterEvents = this.gameInstance.buildEntityEnterAoiEvents(
+        spatial.unitType as WorldAoiUnitType,
+        spatial.unitId,
+      )
+      for (const enterEv of enterEvents) {
+        session.sendEvent(enterEv)
       }
-    } else if (ev.type === 'UnitAssign' || ev.type === 'PlayerAssign') {
+    } else if (!wasVisible) {
+      this.aoiFilter.markVisible(viewer.unitId, spatial)
+    } else {
       this.aoiFilter.markVisible(viewer.unitId, spatial)
     }
 
@@ -433,6 +556,81 @@ export class MultiClientRoomHost {
         )
         return { unitType, rawUnitType, unitId, areaId, x, y }
       }
+      case 'ItemEvent': {
+        if (!isGroundItemEvent(ev)) return undefined
+        const unitId = Number(ev.itemId ?? ev.item?.id ?? 0)
+        if (unitId <= 0) return undefined
+        const x = Number(ev.x ?? ev.item?.worldX ?? ev.item?.x ?? 0)
+        const y = Number(ev.y ?? ev.item?.worldY ?? ev.item?.y ?? 0)
+        const areaId = Number(
+          this.lookupUnitArea('item', unitId) ?? viewerAreaId ?? 0,
+        )
+        return {
+          unitType: 'item',
+          rawUnitType: 4,
+          unitId,
+          areaId,
+          x,
+          y,
+        }
+      }
+      case 'CreateMissile': {
+        const unitId = Number(ev.missileId ?? 0)
+        const x = Number(ev.at?.x ?? ev.x ?? 0)
+        const y = Number(ev.at?.y ?? ev.y ?? 0)
+        const areaId = Number(
+          ev.areaId ??
+            (unitId > 0 ? this.lookupUnitArea('missile', unitId) : undefined) ??
+            viewerAreaId ??
+            0,
+        )
+        return {
+          unitType: 'missile',
+          rawUnitType: 3,
+          unitId,
+          areaId,
+          x,
+          y,
+        }
+      }
+      case 'Portal': {
+        const unitId = Number(ev.portalId ?? ev.localId ?? 0)
+        if (unitId <= 0) return undefined
+        const areaId = Number(
+          ev.areaId ?? this.lookupUnitArea('object', unitId) ?? viewerAreaId ?? 0,
+        )
+        const assign = this.gameInstance.buildUnitAssignEvent('object', unitId) as
+          | { readonly x?: number; readonly y?: number }
+          | undefined
+        return {
+          unitType: 'object',
+          rawUnitType: 2,
+          unitId,
+          areaId,
+          x: Number(ev.x ?? assign?.x ?? 0),
+          y: Number(ev.y ?? assign?.y ?? 0),
+        }
+      }
+      case 'SkillCast': {
+        const rawCasterType = ev.caster.unitType
+        const casterType: UnitType =
+          typeof rawCasterType === 'string'
+            ? rawCasterType
+            : unitTypeFromId(rawCasterType)
+        if (casterType !== 'monster') return undefined
+        const unitId = Number(ev.caster.id ?? 0)
+        if (unitId <= 0) return undefined
+        const mon = this.gameInstance.getMonsterState(unitId)
+        if (!mon) return undefined
+        return {
+          unitType: 'monster',
+          rawUnitType: 1,
+          unitId,
+          areaId: mon.areaId,
+          x: Math.round(ev.at?.x ?? mon.x),
+          y: Math.round(ev.at?.y ?? mon.y),
+        }
+      }
       case 'UnitMode':
       case 'StateSet':
       case 'StateSkillEffect': {
@@ -443,7 +641,6 @@ export class MultiClientRoomHost {
         if (rawType === undefined) return undefined
         const unitType: UnitType =
           typeof rawType === 'string' ? rawType : unitTypeFromId(rawType)
-        if (unitType !== 'monster') return undefined
         const unitId = Number(
           unitRef?.id ??
             (ev as { id?: number; unitId?: number }).id ??
@@ -451,6 +648,22 @@ export class MultiClientRoomHost {
             0,
         )
         if (unitId <= 0) return undefined
+        if (unitType === 'object' && ev.type === 'UnitMode') {
+          const areaId = this.lookupUnitArea('object', unitId)
+          if (areaId === undefined) return undefined
+          const assign = this.gameInstance.buildUnitAssignEvent('object', unitId) as
+            | { readonly x?: number; readonly y?: number }
+            | undefined
+          return {
+            unitType: 'object',
+            rawUnitType: 2,
+            unitId,
+            areaId,
+            x: Number(ev.at?.x ?? assign?.x ?? 0),
+            y: Number(ev.at?.y ?? assign?.y ?? 0),
+          }
+        }
+        if (unitType !== 'monster') return undefined
         const mon = this.gameInstance.getMonsterState(unitId)
         if (!mon || (mon.dead && ev.type !== 'UnitMode')) return undefined
         const at = (ev as { at?: { x: number; y: number } }).at
@@ -469,16 +682,19 @@ export class MultiClientRoomHost {
   }
 
   private lookupUnitArea(unitType: UnitType, unitId: number): number | undefined {
-    if (unitType === 'player' || unitType === 0) {
-      return this.gameInstance.getPlayerState(unitId)?.areaId
-    }
-    if (unitType === 'monster' || unitType === 1) {
-      return (
-        this.gameInstance.getMonsterState(unitId)?.areaId ??
-        this.gameInstance.getMercenaryOrPetArea(unitId)
-      )
-    }
-    return undefined
+    const key: WorldAoiUnitType =
+      unitType === 'player' || unitType === 0
+        ? 'player'
+        : unitType === 'monster' || unitType === 1
+          ? 'monster'
+          : unitType === 'object' || unitType === 2
+            ? 'object'
+            : unitType === 'missile' || unitType === 3
+              ? 'missile'
+              : unitType === 'item' || unitType === 4
+                ? 'item'
+                : 'tile'
+    return this.gameInstance.lookupWorldUnitArea(key, unitId)
   }
 
   exportPlayerD2s(playerUnitIdOrCharName: number | string): Uint8Array {

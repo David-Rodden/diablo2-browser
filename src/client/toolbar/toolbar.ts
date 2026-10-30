@@ -33,6 +33,10 @@ import {
   formatCacheBytesMb,
 } from '../sw/register.ts'
 import {
+  closeModalDomOverlay,
+  openModalDomOverlay,
+} from '../ui/dom-overlay.ts'
+import {
   DEFAULT_ALLOWED_VIEWPORT_RESOLUTIONS,
   formatViewportLabel,
   getViewportProfile,
@@ -624,14 +628,26 @@ export class Toolbar {
     return this.multiboxSlotEl
   }
 
+  getConfigModalOverlayElement(): HTMLElement | null {
+    return this.configOverlayEl
+  }
+
+  getBugModalOverlayElement(): HTMLElement | null {
+    return this.bugOverlayEl
+  }
+
   isConfigModalOpen(): boolean {
     return this.configModalOpen
   }
 
   openConfigModal(): void {
-    if (this.configModalOpen) return
+    if (this.configModalOpen) {
+      openModalDomOverlay(this.configOverlayEl)
+      return
+    }
     if (this.bugModalOpen) {
       this.bugModalOpen = false
+      closeModalDomOverlay(this.bugOverlayEl)
     }
     this.configModalOpen = true
     this.serverInputValue = this.store.get().serverHost
@@ -644,8 +660,10 @@ export class Toolbar {
   }
 
   closeConfigModal(): void {
-    if (!this.configModalOpen) return
+    const wasOpen = this.configModalOpen
     this.configModalOpen = false
+    closeModalDomOverlay(this.configOverlayEl)
+    if (!wasOpen) return
     this.serverInputValue = this.store.get().serverHost
     this.serverInputValid = true
     if (this.serverStatusEl) {
@@ -675,9 +693,13 @@ export class Toolbar {
   }
 
   openBugModal(): void {
-    if (this.bugModalOpen) return
+    if (this.bugModalOpen) {
+      openModalDomOverlay(this.bugOverlayEl)
+      return
+    }
     if (this.configModalOpen) {
       this.configModalOpen = false
+      closeModalDomOverlay(this.configOverlayEl)
     }
     this.bugModalOpen = true
     this.bugStatusState = { kind: 'none', message: '' }
@@ -689,8 +711,10 @@ export class Toolbar {
   }
 
   closeBugModal(): void {
-    if (!this.bugModalOpen) return
+    const wasOpen = this.bugModalOpen
     this.bugModalOpen = false
+    closeModalDomOverlay(this.bugOverlayEl)
+    if (!wasOpen) return
     this.syncDom()
     if (this.bugBtnEl && typeof this.bugBtnEl.focus === 'function') {
       this.bugBtnEl.focus()
@@ -707,12 +731,8 @@ export class Toolbar {
   }
 
   closeModals(): void {
-    if (this.configModalOpen) {
-      this.closeConfigModal()
-    }
-    if (this.bugModalOpen) {
-      this.closeBugModal()
-    }
+    this.closeConfigModal()
+    this.closeBugModal()
   }
 
   triggerRefresh(): void {
@@ -1181,6 +1201,10 @@ export class Toolbar {
   }
 
   destroy(): void {
+    this.configModalOpen = false
+    this.bugModalOpen = false
+    closeModalDomOverlay(this.configOverlayEl)
+    closeModalDomOverlay(this.bugOverlayEl)
     if (this.refreshSpinTimer !== null) {
       clearTimeout(this.refreshSpinTimer)
       this.refreshSpinTimer = null
@@ -1511,6 +1535,12 @@ a.d2-toolbar__btn:active {
 }
 .d2-toolbar-modal-overlay[hidden] {
   display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  background: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 .d2-toolbar-modal {
   width: 480px;
@@ -1975,7 +2005,7 @@ a.d2-toolbar__btn:active {
     configOverlay.id = 'd2-config-modal-overlay'
     configOverlay.className = 'd2-toolbar-modal-overlay'
     configOverlay.setAttribute('data-d2-modal-overlay', 'config')
-    configOverlay.hidden = true
+    closeModalDomOverlay(configOverlay)
     configOverlay.addEventListener('click', (ev) => {
       const target = (ev as unknown as { target?: unknown }).target
       if (target === configOverlay) {
@@ -2277,7 +2307,7 @@ a.d2-toolbar__btn:active {
     bugOverlay.id = 'd2-bug-modal-overlay'
     bugOverlay.className = 'd2-toolbar-modal-overlay'
     bugOverlay.setAttribute('data-d2-modal-overlay', 'bug-report')
-    bugOverlay.hidden = true
+    closeModalDomOverlay(bugOverlay)
     bugOverlay.addEventListener('click', (ev) => {
       const target = (ev as unknown as { target?: unknown }).target
       if (target === bugOverlay) {
@@ -2697,7 +2727,11 @@ a.d2-toolbar__btn:active {
 
     // Config Modal Sync
     if (this.configOverlayEl) {
-      this.configOverlayEl.hidden = !this.configModalOpen
+      if (this.configModalOpen) {
+        openModalDomOverlay(this.configOverlayEl)
+      } else {
+        closeModalDomOverlay(this.configOverlayEl)
+      }
     }
     if (this.configTitleEl) {
       this.configTitleEl.textContent = tToolbar('toolbar.config.title', lang)
@@ -2895,7 +2929,11 @@ a.d2-toolbar__btn:active {
 
     // Bug Report Modal Sync
     if (this.bugOverlayEl) {
-      this.bugOverlayEl.hidden = !this.bugModalOpen
+      if (this.bugModalOpen) {
+        openModalDomOverlay(this.bugOverlayEl)
+      } else {
+        closeModalDomOverlay(this.bugOverlayEl)
+      }
     }
     if (this.bugTitleEl) {
       this.bugTitleEl.textContent = tToolbar('toolbar.bug.title', lang)

@@ -415,6 +415,7 @@ export type ServerEvent =
       readonly y?: number | undefined
       readonly container: ItemContainer
       readonly quality?: number | undefined
+      readonly quantity?: number | undefined
       readonly itemLevel?: number | undefined
       readonly identified?: boolean | undefined
       readonly rawBytes?: Uint8Array | undefined
@@ -499,6 +500,8 @@ export type ServerEvent =
       readonly hand: Hand
       readonly skill: number
       readonly itemId?: number | undefined
+      readonly slot?: number | undefined
+      readonly isHotkey?: boolean | undefined
     }
   | {
       readonly type: 'Npc'
@@ -625,6 +628,7 @@ export type ServerEvent =
       readonly unit?: UnitRef | undefined
       readonly text: string
       readonly color?: number | undefined
+      readonly locale?: number | undefined
       readonly eventType?: number | undefined
       readonly arg?: number | undefined
       readonly subType?: number | undefined

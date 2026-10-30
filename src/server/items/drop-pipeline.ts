@@ -265,12 +265,18 @@ export function executePendingMonsterDrop113c(
   difficulty: Difficulty = 'normal',
   seed?: number,
   spawnedUniqueIds?: Set<number>,
+  extraOptions?: {
+    readonly ignoreNoDrop?: boolean | undefined
+    readonly noDropZero?: boolean | undefined
+  },
 ): Item[] {
   if (pending.items) return [...(pending.items as Item[])]
   const dropSeed = seed ?? pending.seed
   if (!dropSeed) {
     throw new Error('executePendingMonsterDrop113c requires a non-zero monster seed')
   }
+  const ignoreNoDrop =
+    extraOptions?.ignoreNoDrop === true || extraOptions?.noDropZero === true
   return executeDropPipeline(dropTables, {
     tcName: pending.tcName,
     nLevel: pending.monsterLevel,
@@ -286,6 +292,7 @@ export function executePendingMonsterDrop113c(
     isBoss: pending.isBoss,
     isNoRatio: pending.isNoRatio,
     monsterRng: new D2Rng(dropSeed),
+    ...(ignoreNoDrop ? { ignoreNoDrop: true, noDropZero: true } : {}),
     ...(spawnedUniqueIds !== undefined ? { spawnedUniqueIds } : {}),
   })
 }

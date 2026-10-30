@@ -39,8 +39,9 @@ describe('issue #1348 MonUMod follow-up', () => {
       y: 30,
       areaId: 1,
       rank: 'unique',
+      level: 30,
       umodIds: [30],
-      statSeed: 3,
+      statSeed: 0,
       aiDelay: 1,
       hp: 5000,
       maxHp: 5000,
@@ -71,7 +72,7 @@ describe('issue #1348 MonUMod follow-up', () => {
       damageRegen: 0,
     })
     const before = game.getMonsterState(monsterId)!
-    game.applyDamageToMonster(monsterId, 300, playerId)
+    game.applyDamageToMonster(monsterId, 380, playerId)
     const after = game.getMonsterState(monsterId)!
     expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(1)
     expect(after.states.size).toBeGreaterThanOrEqual(0)

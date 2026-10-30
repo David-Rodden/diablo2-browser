@@ -220,6 +220,25 @@ describe('Issue #890 — an open NPC dialog is not closed by the per-tick guard 
       x: Math.round(selfX + (x - 400) / 16),
       y: Math.round(selfY + (y - 300) / 8),
     })
+    ;(session as unknown as { gameAdapter: unknown }).gameAdapter = {
+      state: 'open',
+      send: (cmd: { readonly type: string; readonly target?: { readonly unitType?: unknown; readonly id?: number } }) => {
+        if (
+          cmd.type === 'Interact' &&
+          (cmd.target?.unitType === 1 || cmd.target?.unitType === 'monster') &&
+          cmd.target.id === akaraId
+        ) {
+          session.handleServerEvent({
+            type: 'QuestState',
+            kind: 'update',
+            source: 0x28,
+            updateType: 1,
+            unitId: akaraId,
+            quests: new Uint16Array(48),
+          })
+        }
+      },
+    }
     const akara = session.world.getUnit('monster', akaraId)!
     return { session, akaraId, akara }
   }
@@ -251,7 +270,7 @@ describe('Issue #890 — an open NPC dialog is not closed by the per-tick guard 
 
     const before = session.getSentCommands().length
     const record = session.commandMapper.triggerPrimaryWorldAction(akara.x, akara.y, akara, 1000)
-    expect(record?.command).toEqual({ type: 'NpcInit', target: { unitType: 1, id: akaraId } })
+    expect(record?.command).toEqual({ type: 'Interact', target: { unitType: 1, id: akaraId } })
     expect(sentTypesSince(session, before)).not.toContain('MoveToUnit')
     expectDialogOpen(session, akaraId)
 
@@ -267,7 +286,7 @@ describe('Issue #890 — an open NPC dialog is not closed by the per-tick guard 
     expect(sentTypesSince(session, afterOpen)).not.toContain('NpcCancel')
   })
 
-  it('B. a stationary NPC inside #10407 <= 2 opens at once; outside it the click walks and defers the interaction', () => {
+  it('B. a stationary NPC inside #10407 <= 2 opens via 0x13 -> 0x28 -> 0x2F; outside it the click walks and defers the interaction', () => {
     for (const [dx, dy] of [
       [4, 0],
       [4, 1],
@@ -277,7 +296,7 @@ describe('Issue #890 — an open NPC dialog is not closed by the per-tick guard 
       const { session, akaraId, akara } = createSessionWithAkara(5000 + dx, 5000 + dy)
       const before = session.getSentCommands().length
       const record = session.commandMapper.triggerPrimaryWorldAction(akara.x, akara.y, akara, 1000)
-      expect(record?.command, `(${dx}, ${dy})`).toEqual({ type: 'NpcInit', target: { unitType: 1, id: akaraId } })
+      expect(record?.command, `(${dx}, ${dy})`).toEqual({ type: 'Interact', target: { unitType: 1, id: akaraId } })
       expect(sentTypesSince(session, before)).not.toContain('MoveToUnit')
       runTicks(session, 1000, 5)
       expectDialogOpen(session, akaraId)

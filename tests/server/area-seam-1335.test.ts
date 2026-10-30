@@ -181,7 +181,7 @@ describe('issue #1335: seamless outdoor area seams', () => {
       vy: 0,
       damage: 10,
       remainingFrames: 20,
-      collideType: 0,
+      collideType: 3,
       size: 1,
       pierce: false,
       nextHit: false,

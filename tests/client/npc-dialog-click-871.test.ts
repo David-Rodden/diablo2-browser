@@ -60,10 +60,30 @@ describe('Issue #871 — NPC dialog click reliability & 1.13c interaction range 
       y: Math.round(selfY + (y - 300) / 8),
     })
 
+    ;(session as unknown as { gameAdapter: unknown }).gameAdapter = {
+      state: 'open',
+      send: (cmd: { readonly type: string; readonly target?: { readonly unitType?: unknown; readonly id?: number } }) => {
+        if (
+          cmd.type === 'Interact' &&
+          (cmd.target?.unitType === 1 || cmd.target?.unitType === 'monster') &&
+          cmd.target.id === akaraId
+        ) {
+          session.handleServerEvent({
+            type: 'QuestState',
+            kind: 'update',
+            source: 0x28,
+            updateType: 1,
+            unitId: akaraId,
+            quests: new Uint16Array(48),
+          })
+        }
+      },
+    }
+
     return { session, akaraId }
   }
 
-  it('1. 1.13c NPC interaction range (#10407 <= 2) offsets (3,0), (3,1), and (2,2) open npcMenu immediately without MoveToUnit and survive OnlineSession.tick()', () => {
+  it('1. 1.13c NPC interaction range (#10407 <= 2) offsets (3,0), (3,1), and (2,2) open npcMenu via 0x13 -> 0x28 -> 0x2F without MoveToUnit and survive OnlineSession.tick()', () => {
     const contactOffsets: readonly [number, number][] = [
       [3, 0], // #10407 = 0x6FDDABC0[3 + 0 * 8] = 0
       [3, 1], // #10407 = 0x6FDDABC0[3 + 1 * 8] = 1
@@ -82,7 +102,7 @@ describe('Issue #871 — NPC dialog click reliability & 1.13c interaction range 
         1000,
       )
       expect(record?.command).toEqual({
-        type: 'NpcInit',
+        type: 'Interact',
         target: { unitType: 1, id: akaraId },
       })
 

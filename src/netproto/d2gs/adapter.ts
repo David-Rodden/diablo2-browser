@@ -12,6 +12,7 @@ import type { ServerEvent } from '../domain/server-event.ts'
 import type { ByteStream, CloseReason } from '../transport/byte-stream.ts'
 import { decodeD2gsS2cPacket, encodeD2gsClientCommand } from './registry.ts'
 import { D2gsSession } from './session.ts'
+import { getDefault113cItemDataTables } from './tables/item-tables-113c.ts'
 
 export interface D2gsAdapterOptions {
   readonly session: D2gsSession
@@ -29,17 +30,6 @@ export interface D2gsStreamAdapterOptions {
   readonly tables?: ItemDataTables | undefined
   readonly encoding?: TextEncoding | undefined
   readonly clock?: Clock | undefined
-}
-
-const DEFAULT_ADAPTER_TABLES: ItemDataTables = {
-  itemStatCost: new Map(),
-  armor: new Map(),
-  weapons: new Map(),
-  misc: new Map(),
-  getStatMeta: () => undefined,
-  getStatCost: () => undefined,
-  getItemBaseMeta: () => undefined,
-  getItemMeta: () => undefined,
 }
 
 function isByteStream(arg: D2gsAdapterOptions | ByteStream): arg is ByteStream {
@@ -75,7 +65,7 @@ export class D2gsAdapter implements GameServerAdapter {
     if (isByteStream(optionsOrStream)) {
       this.encoding = streamOptions?.encoding ?? 'gbk'
       this.clock = streamOptions?.clock ?? defaultClock
-      this.tables = streamOptions?.tables ?? DEFAULT_ADAPTER_TABLES
+      this.tables = streamOptions?.tables ?? getDefault113cItemDataTables()
       const rawClass = streamOptions?.classId ?? streamOptions?.charClass ?? 0
       const charClass = (typeof rawClass === 'number' ? (rawClass & 0x07) : 0) as CharClassId
       this.session = new D2gsSession({
@@ -90,7 +80,9 @@ export class D2gsAdapter implements GameServerAdapter {
         clock: this.clock,
         pingIntervalMs: 60_000,
       })
-      this.session.sendRawPacket(new Uint8Array([0x6b]))
+      if (this.session.state === 'connecting') {
+        this.session.sendRawPacket(new Uint8Array([0x6b]))
+      }
     } else {
       this.session = optionsOrStream.session
       this.tables = optionsOrStream.tables
@@ -112,6 +104,9 @@ export class D2gsAdapter implements GameServerAdapter {
    * monster standing and targetable with no trace).
    */
   private handlePacket(pkt: Uint8Array): void {
+    if (pkt.byteLength > 0 && pkt[0] === 0xaf) {
+      return
+    }
     let ev: ServerEvent
     try {
       ev = decodeD2gsS2cPacket(pkt, {

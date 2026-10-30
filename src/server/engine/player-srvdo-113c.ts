@@ -23,6 +23,12 @@ export const SRVDOFUNC_STRAFE_113C = 12
 export const SRVDOFUNC_CHARGED_BOLT_113C = 17
 export const SRVDOFUNC_FIRESTORM_113C = 117
 export const SRVDOFUNC_TWISTER_TORNADO_113C = 118
+/**
+ * SrvDo024 `0x6FC637D0` (Fire Wall 51): two `srvmissilea` makers marching perpendicular to the
+ * caster-to-target vector from the target point plus one stationary `srvmissileb` centre pillar
+ * (`kb/skills/player/skills-sor-fire.md` 4.6, #1790).
+ */
+export const SRVDOFUNC_FIRE_WALL_113C = 24
 
 /**
  * srvdofuncs whose 1.13c function creates exactly one server missile per call
@@ -34,12 +40,13 @@ export const SRVDOFUNC_TWISTER_TORNADO_113C = 118
  */
 export const SRVDOFUNC_SINGLE_MISSILE_113C: ReadonlySet<number> = new Set([0, 1, 3, 5, 10, 14, 26, 28, 73, 74, 80])
 
-export type PlayerSrvDoMissileMode = 'fan' | 'strafe' | 'volley' | 'single' | 'unmodeled'
+export type PlayerSrvDoMissileMode = 'fan' | 'strafe' | 'volley' | 'single' | 'firewall' | 'unmodeled'
 
 /** How `GameInstance` must create the server missiles of a cast with this `srvdofunc`. */
 export function classifyPlayerSrvDoMissile113c(srvDoFunc: number): PlayerSrvDoMissileMode {
   if (srvDoFunc === SRVDOFUNC_FAN_VOLLEY_113C) return 'fan'
   if (srvDoFunc === SRVDOFUNC_STRAFE_113C) return 'strafe'
+  if (srvDoFunc === SRVDOFUNC_FIRE_WALL_113C) return 'firewall'
   if (
     srvDoFunc === SRVDOFUNC_CHARGED_BOLT_113C ||
     srvDoFunc === SRVDOFUNC_FIRESTORM_113C ||

@@ -5,8 +5,8 @@
 import { ByteWriter } from '../../core/byte-writer.ts'
 import { validateC2sPacket } from '../framing-c2s.ts'
 
-/** 0x5D SetPlayerRelationship (7B): u8 0x5D | u8 button | u8 state | u32 targetPlayerId */
-export function encodeC2sHostile(targetPlayerId: number, hostile: boolean, button = 0x01): Uint8Array {
+/** 0x5D SetPlayerRelationship (7B): u8 0x5D | u8 button (0x01=mute, 0x02=HC loot, 0x04=hostile) | u8 state | u32 targetPlayerId */
+export function encodeC2sHostile(targetPlayerId: number, hostile: boolean, button = 0x04): Uint8Array {
   const w = new ByteWriter(7)
   w.u8(0x5d)
   w.u8(button & 0xff)

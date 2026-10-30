@@ -40,9 +40,11 @@ import {
   encodeC2sScrollToBook,
   encodeC2sSelectMainItem,
   encodeC2sSocketItem,
+  encodeC2sStackItems,
   encodeC2sSwap2HandedItem,
   encodeC2sSwapTwo1HandedWithOne2HandedItem,
   encodeC2sSwapContainerItem,
+  encodeC2sUnstackItems,
 } from './c2s/items.ts'
 import {
   encode0x59MakeEntityMove,
@@ -80,6 +82,7 @@ import {
 import { encodeC2sTrade } from './c2s/trade.ts'
 import { encodeC2sRequestEntityUpdate, encodeC2sUpdatePlayerPos } from './c2s/position.ts'
 import { D2GS_S2C_PACKET_SIZES, resolveFramedS2cPacketSize } from './framing-s2c.ts'
+import { getDefault113cItemDataTables } from './tables/item-tables-113c.ts'
 import { decode0x26ChatMessage, decode0x5AEventMessage } from './s2c/chat.ts'
 import {
   decode0x3FUseStackableItem,
@@ -386,24 +389,13 @@ export const D2GS_S2C_REGISTRY: Readonly<Record<number, D2gsS2cRegistryEntry>> =
   0xb4: { opcode: 0xb4, name: 'TimeoutReason', d2ClientHandlerVa: '0x6fb5cbf0', decode: decode0xB4TimeoutReason },
 }
 
-const DEFAULT_EMPTY_TABLES: ItemDataTables = {
-  itemStatCost: new Map(),
-  armor: new Map(),
-  weapons: new Map(),
-  misc: new Map(),
-  getStatMeta: () => undefined,
-  getStatCost: () => undefined,
-  getItemBaseMeta: () => undefined,
-  getItemMeta: () => undefined,
-}
-
 /**
   * Decode a single framed D2GS S->C packet into a strongly-typed `ServerEvent`.
   * Fails fast with `ProtocolError` if opcode is unknown or length is mismatched.
   */
 export function decodeD2gsS2cPacket(
   pkt: Uint8Array,
-  ctx: D2gsDecodeContext = { tables: DEFAULT_EMPTY_TABLES },
+  ctx: D2gsDecodeContext = { tables: getDefault113cItemDataTables() },
 ): ServerEvent {
   if (pkt.byteLength === 0) {
     throw new ProtocolError('Empty D2GS S2C packet', { proto: 'd2gs', packetId: -1 })
@@ -545,9 +537,14 @@ export function encodeD2gsClientCommand(
       return [encodeC2sBeltSwap(cmd.cursorItemId, cmd.beltItemId)]
     case 'BeltUse':
       return [encodeC2sBeltUse(cmd.itemId, Boolean(cmd.shift ?? cmd.useOnMerc))]
+    case 'StackItems':
+      return [encodeC2sStackItems(cmd.cursorItemId, cmd.targetItemId)]
+    case 'UnstackItems':
+      return [encodeC2sUnstackItems(cmd.itemId)]
     case 'ItemUse':
       return [encodeC2sItemUse(cmd.itemId, cmd.at)]
     case 'SelectMainItem':
+    case 'ActivateQuestScroll':
       return [encodeC2sSelectMainItem(cmd.itemId)]
     case 'SocketItem':
       return [encodeC2sSocketItem(cmd.itemId, cmd.targetItemId)]
@@ -661,7 +658,7 @@ export function encodeD2gsClientCommand(
     case 'PartyAction':
       return [encodeC2sParty(cmd.action, cmd.targetPlayerId)]
     case 'Hostile':
-      return [encodeC2sHostile(cmd.targetPlayerId, cmd.hostile, cmd.button ?? 0x01)]
+      return [encodeC2sHostile(cmd.targetPlayerId, cmd.hostile, cmd.button ?? 0x04)]
     case 'Trade':
       return [encodeC2sTrade(cmd.action, cmd.gold)]
     case 'Chat':

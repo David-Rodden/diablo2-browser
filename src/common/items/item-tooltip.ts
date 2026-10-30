@@ -3244,16 +3244,22 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
   }
 
   // 1. Defense (Enhanced / Low Quality / Ethereal vs Base)
-  const rawBaseDef = base.defense > 0 ? base.defense : 0
+  const explicitRolledBaseDef =
+    typeof (item as any).rolledBaseDefense === 'number' && (item as any).rolledBaseDefense > 0
+      ? Number((item as any).rolledBaseDefense)
+      : 0
+  const rawBaseDef = explicitRolledBaseDef > 0 ? explicitRolledBaseDef : (base.defense > 0 ? base.defense : 0)
   let defense: number | undefined = undefined
   let baseDefense: number | undefined = undefined
   if (rawBaseDef > 0) {
     let effectiveBaseDef = rawBaseDef
-    if (quality === 'low') {
-      effectiveBaseDef = Math.max(1, Math.floor(effectiveBaseDef * 0.75))
-    }
-    if (isEthereal) {
-      effectiveBaseDef = Math.floor(effectiveBaseDef * 1.5)
+    if (explicitRolledBaseDef <= 0) {
+      if (quality === 'low') {
+        effectiveBaseDef = Math.max(1, Math.floor(effectiveBaseDef * 0.75))
+      }
+      if (isEthereal) {
+        effectiveBaseDef = Math.floor(effectiveBaseDef * 1.5)
+      }
     }
     let finalDef = Math.floor(effectiveBaseDef * (100 + totalAcPct) / 100) + flatAc
     if (totalAcPct > 0 && finalDef === effectiveBaseDef) {
@@ -3271,8 +3277,11 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
     let effMax = baseMax
     const isLowQuality = quality === 'low'
     if (isLowQuality) {
-      effMin = Math.max(1, Math.floor(effMin * 0.75))
-      effMax = Math.max(1, Math.floor(effMax * 0.75))
+      effMin = Math.max(1, Math.trunc((effMin * 75) / 100))
+      effMax = Math.max(2, Math.trunc((effMax * 75) / 100))
+      if (effMin >= effMax) {
+        effMax = Math.max(2, effMin + 1)
+      }
     }
     if (isEthereal) {
       effMin = Math.floor(effMin * 1.5)
@@ -3311,9 +3320,10 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
     }
   }
 
+  const origWeaponBase = (base as any)?.rawUnscaledBase ?? base
   const oneHandDamage =
-    (base as any).mindam && (base as any).maxdam
-      ? computeWeaponDamage((base as any).mindam, (base as any).maxdam)
+    (origWeaponBase as any).mindam && (origWeaponBase as any).maxdam
+      ? computeWeaponDamage((origWeaponBase as any).mindam, (origWeaponBase as any).maxdam)
       : (item as any).damage && typeof (item as any).damage === 'string' && (item as any).damage.includes('-')
         ? (() => {
             const parts = (item as any).damage.split('-').map((s: string) => parseInt(s.trim(), 10))
@@ -3325,13 +3335,13 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
         : undefined
 
   const twoHandDamage =
-    (base as any).twoHandedMindam && (base as any).twoHandedMaxdam
-      ? computeWeaponDamage((base as any).twoHandedMindam, (base as any).twoHandedMaxdam)
+    (origWeaponBase as any).twoHandedMindam && (origWeaponBase as any).twoHandedMaxdam
+      ? computeWeaponDamage((origWeaponBase as any).twoHandedMindam, (origWeaponBase as any).twoHandedMaxdam)
       : undefined
 
   const throwDamage =
-    (base as any).minMisDam && (base as any).maxMisDam
-      ? computeWeaponDamage((base as any).minMisDam, (base as any).maxMisDam)
+    (origWeaponBase as any).minMisDam && (origWeaponBase as any).maxMisDam
+      ? computeWeaponDamage((origWeaponBase as any).minMisDam, (origWeaponBase as any).maxMisDam)
       : undefined
 
   // 3. Requirements (Required Strength, Required Dexterity, Required Level)

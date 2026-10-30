@@ -11,9 +11,13 @@
  * - Skill allocation & 1.13c item/class UI sound helpers
  */
 
-import { isPassiveSkill, isAuraSkill, isLeftUsableSkill } from './hotkeys.ts'
+import { isPassiveSkill, isAuraSkill, isLeftUsableSkill, SkillHotkeysHud } from './hotkeys.ts'
 import { isAutoBeltablePotion, itemToBeltPotion } from './belt.ts'
-import { STASH_GRID_ORIGIN, CUBE_GRID_ORIGIN } from './panels/panel-layout-constants.ts'
+import {
+  STASH_GRID_ORIGIN,
+  CUBE_GRID_ORIGIN,
+  VENDOR_GRID_ORIGIN,
+} from './panels/panel-layout-constants.ts'
 import type { MiniPanelAction } from './control-bar.ts'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 import { calculateManaCost } from '../../common/skills/skill-calc-engine.ts'
@@ -38,6 +42,7 @@ import {
   isItemAllowedInSlot,
 } from './inventory.ts'
 import type { BaseStatKey } from './character-sheet.ts'
+import { SkillTreePanel } from './skill-tree-panel.ts'
 import { isModalDomOverlayOpen } from './dom-overlay.ts'
 import { isExtendedViewport } from '../view/viewport-profile.ts'
 import { getSoundIdByName113c } from '../../common/audio/sounds-113c.ts'
@@ -57,9 +62,18 @@ import {
 } from './world-panels.ts'
 import { matchesKeyBinding } from '../settings/client-settings.ts'
 import {
+  buildTouchContextActions,
+  computeTouchActionBarLayout,
   hitTestCompactD2rHud,
+  hitTestTouchActionBar,
+  resolveEquippedComparisonCounterpart,
+  triggerMobileHaptic,
   type CompactHudHitResult,
+  type CompactHudLayoutOptions,
+  type TouchActionBarLayout,
   type TouchContextActionKind,
+  type TouchHudContext,
+  type TouchSelectedPanelItem,
 } from './touch-controls.ts'
 import { serverItemIdOf, type HudCommandSink, type HudManager } from './hud-manager.ts'
 
@@ -132,12 +146,13 @@ export function handleHudMouseMove(hud: HudManager, logicalX: number, logicalY: 
   hud.mouseX = logicalX
   hud.mouseY = logicalY
   hud.cursor.handleMouseMove(logicalX, logicalY)
-  if (hud.touchControls.enabled && hud.touchControls.joystick.active) {
-    hud.touchControls.handlePointerMove(
-      hud.touchControls.joystick.pointerId ?? 1,
-      logicalX,
-      logicalY,
-    )
+  // Only the desktop mouse-emulated joystick follows the mouse; touch fingers are routed per-id by CommandMapper (#1966).
+  if (
+    hud.touchControls.enabled &&
+    hud.touchControls.joystick.active &&
+    hud.touchControls.joystick.pointerId === 1
+  ) {
+    hud.touchControls.handlePointerMove(1, logicalX, logicalY)
     hud.syncPublishedState()
   }
   if (hud.worldPanels.escapeMenuOpen) {
@@ -297,6 +312,63 @@ export function handleHudMouseMove(hud: HudManager, logicalX: number, logicalY: 
 }
 
 /**
+ * Resolve which touch HUD context is active (#1968): a full-screen `menu` (Esc menu / death),
+ * a modal `dialog` (gold dialog, NPC menu/speech, hire, waypoint), a docked `panel`
+ * (any left/right dock panel), or the free-roaming `world`.
+ */
+export function resolveTouchHudContext(hud: HudManager): TouchHudContext {
+  if (hud.worldPanels.escapeMenuOpen || hud.isDead || Boolean((hud.worldPanels as any).isDead)) {
+    return 'menu'
+  }
+  if (
+    hud.goldDialog !== null ||
+    hud.worldPanels.npcMenu !== null ||
+    hud.worldPanels.npcSpeech !== null ||
+    hud.leftPanel === 'hire' ||
+    hud.leftPanel === 'waypoint'
+  ) {
+    return 'dialog'
+  }
+  if (hud.leftPanel !== 'none' || hud.rightPanel !== 'none') {
+    return 'panel'
+  }
+  return 'world'
+}
+
+/** Layout options shared by compact HUD draw and hit-test so both always agree (#1968). */
+export function buildCompactHudLayoutOptions(hud: HudManager): CompactHudLayoutOptions {
+  const docking = hud.getDockingLayout()
+  return {
+    context: resolveTouchHudContext(hud),
+    panelOffsetY: docking.panelOffsetY ?? hud.viewportProfile.panelOffsetY,
+    leftPanel: hud.leftPanel,
+    rightPanel: hud.rightPanel,
+    utilityMenuExpanded: hud.touchControls.utilityMenuExpanded,
+    beltMaxRows: hud.belt.maxRows,
+    pendingBindSkillId: hud.touchControls.pendingBindSkillId,
+  }
+}
+
+/** Action bar layout for the currently tap-selected panel item (`null` when nothing is selected). */
+export function computeSelectedItemActionBar(hud: HudManager): TouchActionBarLayout | null {
+  const selected = hud.touchControls.selectedPanelItem
+  if (!hud.touchControls.enabled || !selected) return null
+  const actions = buildTouchContextActions(selected, {
+    leftPanel: hud.leftPanel,
+    rightPanel: hud.rightPanel,
+    vendorMode: hud.worldPanels.vendorMode,
+  })
+  const counterpart = resolveEquippedComparisonCounterpart(selected.item, hud.inventory.equipped)
+  return computeTouchActionBarLayout(
+    selected,
+    actions,
+    counterpart,
+    hud.viewportProfile.width,
+    hud.viewportProfile.height,
+  )
+}
+
+/**
  * Whether a logical `(x, y)` point hits an active HUD panel or control bar,
  * so scene clicks/walks underneath are suppressed.
  */
@@ -312,8 +384,22 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
   hud.touchControls.syncFromEnvironment()
   const is640: boolean = (hud as any).syncResolutionMode()
   const profile = hud.viewportProfile
+  if (hud.touchControls.enabled && hud.touchControls.selectedPanelItem !== null) {
+    const bar = computeSelectedItemActionBar(hud)
+    if (
+      bar &&
+      logicalX >= bar.barX &&
+      logicalX <= bar.barX + bar.barWidth &&
+      logicalY >= bar.barY &&
+      logicalY <= bar.barY + bar.barHeight
+    ) {
+      return true
+    }
+  }
+  const touchContext = resolveTouchHudContext(hud)
   if (
     hud.touchControls.enabled &&
+    touchContext === 'world' &&
     (hud.touchControls.joystick.active ||
       hud.touchControls.isInLeftJoystickZone(
         logicalX,
@@ -334,6 +420,7 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
       profile.height,
       hud.belt.isExpanded,
       hud.touchControls.activeSkillBank,
+      buildCompactHudLayoutOptions(hud),
     ) !== null
   ) {
     return true
@@ -514,10 +601,57 @@ export function handleCompactD2rHudClick(
     profile.height,
     hud.belt.isExpanded,
     hud.touchControls.activeSkillBank,
+    buildCompactHudLayoutOptions(hud),
   )
   if (hit === null) return null
+  if (hit.kind !== 'compactBarChrome') {
+    triggerMobileHaptic('tap', hud.touchControls.hapticsEnabled)
+  }
 
   switch (hit.kind) {
+    case 'moreUtilityToggle':
+      hud.touchControls.utilityMenuExpanded = !hud.touchControls.utilityMenuExpanded
+      hud.syncPublishedState()
+      return hit
+    case 'extendedUtilityAction':
+      switch (hit.action) {
+        case 'quest':
+          hud.toggleLeftPanel('quest')
+          break
+        case 'merc':
+          if (hud.merc && !hud.merc.isDead) hud.toggleLeftPanel('merc')
+          break
+        case 'party':
+          hud.toggleLeftPanel('party')
+          break
+        case 'msg':
+          hud.toggleLeftPanel('msg' as any)
+          break
+        case 'chat':
+          if (hud.onToggleChatInput) hud.onToggleChatInput()
+          else hud.chatInputOpen = !hud.chatInputOpen
+          break
+        case 'closePanels':
+          hud.closeAllPanels()
+          hud.touchControls.clearSelectedPanelItem()
+          hud.touchControls.pendingBindSkillId = null
+          break
+      }
+      hud.touchControls.utilityMenuExpanded = false
+      hud.syncPublishedState()
+      return hit
+    case 'skillBindSlot': {
+      const skillId = hud.touchControls.pendingBindSkillId
+      if (skillId !== null) {
+        const fKey = SkillHotkeysHud.keyFromSlotIndex(hit.hotkeyIndex) ?? `F${hit.hotkeyIndex + 1}`
+        const side: 'left' | 'right' = 'right'
+        hud.hotkeys.bindHotkey(fKey, side, skillId)
+        hud.commandSink?.assignSkillHotkey?.(hit.hotkeyIndex, side, skillId)
+        hud.touchControls.pendingBindSkillId = null
+      }
+      hud.syncPublishedState()
+      return hit
+    }
     case 'utilityAction':
       switch (hit.action) {
         case 'char':
@@ -587,11 +721,16 @@ export function handleCompactD2rHudClick(
       return hit
     }
     case 'contextLootInteract': {
+      // D2R `[A]`: highest-priority loot at the feet first, otherwise the cone-locked NPC / object / warp.
       const nextLoot = hud.touchControls.popNextFootLoot()
-      const targetId = nextLoot?.id ?? hud.touchControls.lockedInteractable?.id
-      if (targetId !== undefined) {
-        ;(hud as any).onTouchLootInteract?.(targetId)
-        ;(hud.commandSink as any)?.pickupGroundItem?.(targetId)
+      const locked = hud.touchControls.lockedInteractable
+      const target = nextLoot
+        ? { id: nextLoot.id, kind: 'item' as const }
+        : locked
+          ? { id: locked.id, kind: locked.kind }
+          : null
+      if (target !== null) {
+        hud.onTouchLootInteract?.(target)
       }
       hud.syncPublishedState()
       return hit
@@ -599,6 +738,102 @@ export function handleCompactD2rHudClick(
     default:
       hud.syncPublishedState()
       return hit
+  }
+}
+
+function selectedItemBuffer(source: TouchSelectedPanelItem['source']): number {
+  return source === 'stash' ? 4 : source === 'cube' ? 3 : 0
+}
+
+function findFreeInventoryCell(hud: HudManager, item: UiInventoryItem): { col: number; row: number } | null {
+  const w = Math.max(1, item.invWidth ?? 1)
+  const h = Math.max(1, item.invHeight ?? 1)
+  for (let row = 0; row <= INV_GRID_ORIGIN.rows - h; row++) {
+    for (let col = 0; col <= INV_GRID_ORIGIN.cols - w; col++) {
+      if (hud.inventory.getGridOverlaps(col, row, w, h).length === 0) return { col, row }
+    }
+  }
+  return null
+}
+
+/**
+ * Server-authoritative dispatch of a touch context action (#1969): every action becomes the same
+ * `HudCommandSink` packet sequence the PC right-click / Shift+click / drag path would send.
+ */
+function dispatchTouchContextActionToSink(
+  hud: HudManager,
+  sink: HudCommandSink,
+  selected: TouchSelectedPanelItem,
+  action: TouchContextActionKind,
+): boolean {
+  const { item, source } = selected
+  const itemId = serverItemIdOf(item)
+  const buffer = selectedItemBuffer(source)
+  switch (action) {
+    case 'equip': {
+      const slots = item.allowedSlots ?? []
+      const slot = slots.find((sl) => !hud.inventory.equipped[sl]) ?? slots[0]
+      if (!slot) return false
+      if (!canPlayerUseUiItem(item, hud.inventory.playerContext) || isUiItemUnidentified(item)) {
+        ;(hud as any).playCantUseSound?.()
+        return false
+      }
+      sink.pickupItemToCursor(itemId)
+      if (hud.inventory.equipped[slot]) {
+        if (sink.onSwapEquipItem) sink.onSwapEquipItem(itemId, slot)
+        else if (sink.swapEquipItem) sink.swapEquipItem(itemId, slot)
+        else sink.equipItem(itemId, slot)
+      } else {
+        sink.equipItem(itemId, slot)
+      }
+      ;(hud as any).playItemDropUiSound?.(item)
+      return true
+    }
+    case 'unequip': {
+      const slot = selected.equipSlot
+      if (!slot || !hud.inventory.equipped[slot]) return false
+      const cell = findFreeInventoryCell(hud, item)
+      if (!cell) {
+        ;(hud as any).playCantCarrySound?.()
+        return false
+      }
+      sink.unequipItem(slot)
+      sink.placeCursorItem(itemId, cell.col, cell.row, 0)
+      return true
+    }
+    case 'use':
+      forwardGridClick(hud, buffer, selected.col ?? 0, selected.row ?? 0, item, true, false)
+      return true
+    case 'putBelt':
+      if (!hud.belt.canAutoPlacePotion(item)) {
+        ;(hud as any).playCantCarrySound?.()
+        return false
+      }
+      if (sink.onAutoBeltItem) sink.onAutoBeltItem(itemId)
+      else if (sink.autoBeltItem) sink.autoBeltItem(itemId)
+      else return false
+      return true
+    case 'toStash':
+    case 'toCube':
+    case 'toBag':
+      // Same quick-transfer packets as PC Shift + Left-Click (`0x19` ItemToCursor + `0x18` ItemPlace).
+      forwardGridClick(hud, buffer, selected.col ?? 0, selected.row ?? 0, item, false, true)
+      return true
+    case 'equipMerc':
+      sink.pickupItemToCursor(itemId)
+      sink.mercItem?.(0)
+      return true
+    case 'buy':
+      sink.vendorBuy(itemId, false)
+      return true
+    case 'sell':
+      sink.vendorSell(itemId)
+      return true
+    case 'drop':
+      if (source === 'equip' && selected.equipSlot) sink.unequipItem(selected.equipSlot)
+      else sink.pickupItemToCursor(itemId)
+      sink.dropItem(itemId)
+      return true
   }
 }
 
@@ -610,6 +845,14 @@ export function executeTouchContextAction(
   if (!selected) return false
   const { item, source } = selected
 
+  if (hud.commandSink) {
+    const ok = dispatchTouchContextActionToSink(hud, hud.commandSink, selected, action)
+    hud.touchControls.clearSelectedPanelItem()
+    hud.syncPublishedState()
+    return ok
+  }
+
+  // Offline / test fallback (no server sink attached): mutate the local HUD model directly.
   switch (action) {
     case 'equip': {
       const targetSlot = item.allowedSlots?.[0]
@@ -633,12 +876,9 @@ export function executeTouchContextAction(
     case 'unequip': {
       const slot = selected.equipSlot
       if (!slot || !hud.inventory.equipped[slot]) return false
+      const cell = findFreeInventoryCell(hud, item) ?? { col: selected.col ?? 0, row: selected.row ?? 0 }
       delete hud.inventory.equipped[slot]
-      hud.inventory.gridItems.push({
-        item,
-        col: selected.col ?? 0,
-        row: selected.row ?? 0,
-      })
+      hud.inventory.gridItems.push({ item, col: cell.col, row: cell.row })
       hud.touchControls.clearSelectedPanelItem()
       hud.syncPublishedState()
       return true
@@ -667,7 +907,6 @@ export function executeTouchContextAction(
       if (source === 'inv') {
         hud.inventory.gridItems = hud.inventory.gridItems.filter((g) => g.item.id !== item.id)
       }
-      hud.commandSink?.dropItem?.(serverItemIdOf(item))
       hud.touchControls.clearSelectedPanelItem()
       hud.syncPublishedState()
       return true
@@ -677,6 +916,145 @@ export function executeTouchContextAction(
       hud.syncPublishedState()
       return true
   }
+}
+
+/** Skill tree node (`skillId`) under a right-dock-local point, or `null`. */
+export function hitTestSkillTreeNode(hud: HudManager, x: number, y: number): number | null {
+  if (!hud.skillTree.visible || x < 400) return null
+  for (const node of hud.skillTree.getSkillTree()) {
+    if (node.tab !== hud.skillTree.activeTab) continue
+    const r = SkillTreePanel.nodeScreenPos(node)
+    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return node.skillId
+  }
+  return null
+}
+
+interface GridLike {
+  readonly x: number
+  readonly y: number
+  readonly cols: number
+  readonly rows: number
+  readonly cellPx: number
+}
+
+function hitGridPlacement(
+  grid: GridLike,
+  placements: readonly { readonly item: UiInventoryItem; readonly col: number; readonly row: number }[],
+  x: number,
+  y: number,
+): { item: UiInventoryItem; col: number; row: number } | null {
+  if (x < grid.x || x >= grid.x + grid.cols * grid.cellPx || y < grid.y || y >= grid.y + grid.rows * grid.cellPx) {
+    return null
+  }
+  const col = Math.floor((x - grid.x) / grid.cellPx)
+  const row = Math.floor((y - grid.y) / grid.cellPx)
+  const hit = placements.find(
+    (p) =>
+      col >= p.col &&
+      col < p.col + Math.max(1, p.item.invWidth ?? 1) &&
+      row >= p.row &&
+      row < p.row + Math.max(1, p.item.invHeight ?? 1),
+  )
+  return hit ? { item: hit.item, col: hit.col, row: hit.row } : null
+}
+
+/** Resolve the panel item under a logical point for touch inspection (#1969), or `null`. */
+export function resolveTouchPanelItemAt(
+  hud: HudManager,
+  logicalX: number,
+  logicalY: number,
+): TouchSelectedPanelItem | null {
+  const docking = hud.getDockingLayout()
+  if (hud.rightPanel === 'inv') {
+    const rp = toRightDockLocal(logicalX, logicalY, docking)
+    const bag = hitGridPlacement(INV_GRID_ORIGIN, hud.inventory.gridItems, rp.x, rp.y)
+    if (bag) {
+      const anchor = fromRightDockLocal(
+        INV_GRID_ORIGIN.x + bag.col * INV_GRID_ORIGIN.cellPx,
+        INV_GRID_ORIGIN.y + bag.row * INV_GRID_ORIGIN.cellPx,
+        docking,
+      )
+      return { source: 'inv', item: bag.item, col: bag.col, row: bag.row, anchorX: anchor.x, anchorY: anchor.y }
+    }
+    for (const slot of EQUIP_SLOTS_KEYS) {
+      const r = EQUIP_SLOTS_LAYOUT[slot]
+      if (rp.x < r.x || rp.x >= r.x + r.w || rp.y < r.y || rp.y >= r.y + r.h) continue
+      const eq = hud.inventory.equipped[slot]
+      if (!eq) return null
+      const anchor = fromRightDockLocal(r.x, r.y, docking)
+      return { source: 'equip', item: eq, equipSlot: slot, anchorX: anchor.x, anchorY: anchor.y }
+    }
+  }
+  const lp = toLeftDockLocal(logicalX, logicalY, docking)
+  const leftGrid =
+    hud.leftPanel === 'stash'
+      ? { source: 'stash' as const, grid: STASH_GRID_ORIGIN, items: hud.worldPanels.stashItems }
+      : hud.leftPanel === 'cube'
+        ? { source: 'cube' as const, grid: CUBE_GRID_ORIGIN, items: hud.worldPanels.cubeItems }
+        : hud.leftPanel === 'vendor'
+          ? {
+              source: 'vendor' as const,
+              grid: VENDOR_GRID_ORIGIN,
+              items: hud.worldPanels.getActiveVendorPlacements(),
+            }
+          : null
+  if (leftGrid) {
+    const hit = hitGridPlacement(leftGrid.grid, leftGrid.items, lp.x, lp.y)
+    if (hit) {
+      const anchor = fromLeftDockLocal(
+        leftGrid.grid.x + hit.col * leftGrid.grid.cellPx,
+        leftGrid.grid.y + hit.row * leftGrid.grid.cellPx,
+        docking,
+      )
+      return {
+        source: leftGrid.source,
+        item: hit.item,
+        col: hit.col,
+        row: hit.row,
+        anchorX: anchor.x,
+        anchorY: anchor.y,
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Touch tap-to-inspect (#1969): the 1st tap on an item selects it (full stats + comparison +
+ * context action bar) without lifting it; a 2nd tap on the same item clears the selection and
+ * falls through to the normal pick-up-to-cursor so manual grid rearranging still works.
+ * Returns `true` when the tap was consumed.
+ */
+export function handleTouchTapToInspect(
+  hud: HudManager,
+  e: MouseEvent,
+  logicalX: number,
+  logicalY: number,
+): boolean {
+  if (
+    !hud.touchControls.enabled ||
+    e.button !== 0 ||
+    e.shiftKey ||
+    hud.inventory.cursorItem !== null ||
+    hud.inventory.isIdentifyMode() ||
+    hud.pendingIdentifyScrollId !== null ||
+    hud.worldPanels.vendorTradeState !== 'idle'
+  ) {
+    return false
+  }
+  const hit = resolveTouchPanelItemAt(hud, logicalX, logicalY)
+  const current = hud.touchControls.selectedPanelItem
+  if (!hit) {
+    if (current) hud.touchControls.clearSelectedPanelItem()
+    return false
+  }
+  if (current && current.item.id === hit.item.id && current.source === hit.source) {
+    hud.touchControls.clearSelectedPanelItem()
+    return false
+  }
+  hud.touchControls.selectPanelItem(hit)
+  triggerMobileHaptic('tap', hud.touchControls.hapticsEnabled)
+  return true
 }
 
 export function drinkHudBeltSlot(hud: HudManager, col: number, shiftToMerc = false): boolean {
@@ -1168,8 +1546,13 @@ export function disposeHudWindowEvents(hud: HudManager): void {
 }
 
 export function handleHudMouseUp(hud: HudManager, logicalX: number, logicalY: number, button = 0): void {
-  if (button === 0 && hud.touchControls.enabled && hud.touchControls.joystick.active) {
-    hud.touchControls.handlePointerUp(hud.touchControls.joystick.pointerId ?? 1)
+  if (
+    button === 0 &&
+    hud.touchControls.enabled &&
+    hud.touchControls.joystick.active &&
+    hud.touchControls.joystick.pointerId === 1
+  ) {
+    hud.touchControls.handlePointerUp(1)
     hud.syncPublishedState()
   }
   if (button === 0 && hud.questAlert) {
@@ -1227,8 +1610,9 @@ export function handleHudMouseUp(hud: HudManager, logicalX: number, logicalY: nu
   if (hud.leftPanel === 'char') {
     const leftPt = toLeftDockLocal(logicalX, logicalY, docking)
     if (
-      hud.charSheet.handleMouseUp(leftPt.x, leftPt.y, (key: BaseStatKey) => {
-        hud.commandSink?.allocateStat(key)
+      hud.charSheet.handleMouseUp(leftPt.x, leftPt.y, (key: BaseStatKey, count = 1) => {
+        // `[+5]` touch batch: one `AddStatPoint (0x3A)` per point, exactly like the 1.13c client loop.
+        for (let i = 0; i < count; i++) hud.commandSink?.allocateStat(key)
       })
     ) {
       hud.onPlayUiSound?.(4)
@@ -1447,10 +1831,20 @@ export function handleHudMouseDown(
   }
 
   ;(hud as any).syncResolutionMode()
+  // #1969: tap-selected item context action bar takes priority over everything underneath it.
+  if (e.button === 0 && hud.touchControls.enabled && hud.touchControls.selectedPanelItem !== null) {
+    const bar = computeSelectedItemActionBar(hud)
+    const act = hitTestTouchActionBar(pt.x, pt.y, bar)
+    if (act !== null) {
+      triggerMobileHaptic('tap', hud.touchControls.hapticsEnabled)
+      executeTouchContextAction(hud, act)
+      return
+    }
+  }
   if (
     e.button === 0 &&
     hud.touchControls.enabled &&
-    hud.leftPanel === 'none' &&
+    resolveTouchHudContext(hud) === 'world' &&
     hud.touchControls.handlePointerDown(
       1,
       pt.x,
@@ -1657,6 +2051,12 @@ export function handleHudMouseDown(
     if (hud.worldPanels.activePanel !== 'hire') {
       hud.leftPanel = 'none'
     }
+    hud.syncPublishedState()
+    return
+  }
+
+  // #1969: touch tap-to-inspect (1st tap selects + shows stats/actions, 2nd tap on the same item picks it up).
+  if (handleTouchTapToInspect(hud, e, pt.x, pt.y)) {
     hud.syncPublishedState()
     return
   }
@@ -2071,6 +2471,17 @@ export function handleHudMouseDown(
       hud.syncPublishedState()
       return
     } else if (hud.rightPanel === 'skill') {
+      // #1969: on touch, tapping a learned skill arms it for binding to `F1..F12` in the skill bind bar.
+      if (hud.touchControls.enabled && e.button === 0) {
+        const tapped = hitTestSkillTreeNode(hud, rightPt.x, rightPt.y)
+        if (tapped !== null && !hud.skillTree.canAllocate(tapped) && hud.skillTree.getEffectiveLevel(tapped) > 0) {
+          hud.touchControls.pendingBindSkillId =
+            hud.touchControls.pendingBindSkillId === tapped ? null : tapped
+          triggerMobileHaptic('tap', hud.touchControls.hapticsEnabled)
+          hud.syncPublishedState()
+          return
+        }
+      }
       hud.skillTree.handleClick(rightPt.x, rightPt.y, (skillId) => (hud as any).handleSkillAllocated(skillId))
       if (!hud.skillTree.visible) hud.rightPanel = 'none'
       hud.syncPublishedState()

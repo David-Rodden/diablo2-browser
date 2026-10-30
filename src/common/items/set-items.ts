@@ -506,10 +506,56 @@ export function parseSetsTable(input?: D2Table | Uint8Array | string, setItems?:
  * @param wornPieceCount - Total number of items worn from this set (e.g. 1, 2, 3...).
  * @returns Resolved bonus properties categorized by source and combined.
  */
+/** Optional sibling/RNG context for `resolveActiveSetBonuses`. */
+export interface ResolveSetBonusesOptions {
+  /** Equipped `SetItems.txt` 0-based row IDs (`setItem.id`). */
+  readonly equippedSetItemIds?: ReadonlySet<number> | readonly number[]
+  /** Equipped `SetItems.txt` index keys (e.g. `"Civerb's Icon"`). */
+  readonly equippedSetItemIndices?: ReadonlySet<string> | readonly string[]
+  /** Precomputed bitmask of worn member positions (`0..N-1`) within this set. */
+  readonly siblingMask?: number
+  /** Optional `SetItemTable` override to resolve member positions. */
+  readonly setItemsTable?: SetItemTable
+  /** Optional RNG to roll variable numeric ranges (`min !== max`) in `pCodes` / `fCodes`. */
+  readonly rng?: { randRange(min: number, max: number): number }
+}
+
+const NON_RANDOM_SET_BONUS_CODES: ReadonlySet<string> = new Set([
+  'dmg-fire',
+  'dmg-ltng',
+  'dmg-mag',
+  'dmg-cold',
+  'dmg-pois',
+  'dmg-norm',
+  'dmg-elem',
+  'dmg-throw',
+  'gethit-skill',
+  'hit-skill',
+  'att-skill',
+  'kill-skill',
+  'death-skill',
+  'levelup-skill',
+  'charged',
+  'skill-rand',
+])
+
+export function rollSetBonusPropIfNeeded<T extends SetBonusProp>(
+  prop: T,
+  rng: { randRange(min: number, max: number): number } | undefined,
+): T {
+  if (!rng || prop.min === prop.max) return prop
+  if (NON_RANDOM_SET_BONUS_CODES.has(prop.code.trim().toLowerCase())) return prop
+  const lo = Math.min(prop.min, prop.max)
+  const hi = Math.max(prop.min, prop.max)
+  const rolled = rng.randRange(lo, hi)
+  return { ...prop, min: rolled, max: rolled }
+}
+
 export function resolveActiveSetBonuses(
   setItem: SetItem,
   setDef: SetDefinition,
   wornPieceCount: number,
+  options?: ResolveSetBonusesOptions,
 ): ResolvedBonusProps {
   if (wornPieceCount < 1) {
     return {
@@ -524,27 +570,84 @@ export function resolveActiveSetBonuses(
 
   const props = setItem.props
 
-  // aprops activate when 2 or more pieces of the set are equipped.
-  // Pair 1 (threshold 1) activates at 2 pieces; pair 2 (threshold 2) at 3 pieces, etc.
-  const aprops = wornPieceCount >= 2
-    ? setItem.aprops.filter(a => a.threshold <= (wornPieceCount - 1))
-    : []
-
-  // pCodes activate when 2 or more pieces of the set are equipped.
-  // PCode2 (threshold 2) activates at 2 pieces; PCode3 (threshold 3) at 3 pieces, etc.
-  const pCodes = wornPieceCount >= 2
-    ? setDef.pCodes.filter(p => p.threshold <= wornPieceCount)
-    : []
+  let aprops: readonly SetItemAprop[]
+  if (!setItem.addFunc || setItem.addFunc === 0) {
+    // 1.13c SetItems.txt `add func == 0` (`Civerb's Cudgel` #2, `Trang-Oul's Claws` #88):
+    // `aprop*` rolls unconditionally onto the item at 1+ worn pieces.
+    aprops = setItem.aprops
+  } else if (
+    setItem.addFunc === 1 &&
+    (options?.siblingMask !== undefined ||
+      options?.equippedSetItemIds !== undefined ||
+      options?.equippedSetItemIndices !== undefined)
+  ) {
+    // 1.13c D2Common.#10996 (`0x6FD961F3..0x6FD96248`):
+    // `add func == 1` checks specific sibling members in SetItems.txt declaration order.
+    const table = options.setItemsTable ?? CANONICAL_SET_ITEMS_TABLE
+    const members = table.getBySet(setItem.set)
+    const myPos = members.findIndex(m => m.id === setItem.id || m.index === setItem.index)
+    let mask = options.siblingMask ?? 0
+    if (options.siblingMask === undefined) {
+      const idSet =
+        options.equippedSetItemIds === undefined
+          ? undefined
+          : options.equippedSetItemIds instanceof Set
+            ? options.equippedSetItemIds
+            : new Set(options.equippedSetItemIds)
+      const idxSet =
+        options.equippedSetItemIndices === undefined
+          ? undefined
+          : options.equippedSetItemIndices instanceof Set
+            ? options.equippedSetItemIndices
+            : new Set(options.equippedSetItemIndices)
+      members.forEach((m, pos) => {
+        if (idSet?.has(m.id) || idxSet?.has(m.index)) {
+          mask |= 1 << pos
+        }
+      })
+      if (myPos >= 0) {
+        mask |= 1 << myPos
+      }
+    }
+    aprops = setItem.aprops.filter(a => {
+      const k = a.threshold - 1
+      if (k < 0 || k >= 5) return false
+      const partnerPos = myPos >= 0 && k >= myPos ? k + 1 : k
+      return (mask & (1 << partnerPos)) !== 0
+    })
+  } else {
+    // `add func == 2` (or legacy count-only call without sibling mask):
+    // Pair 1 (threshold 1) activates at 2 pieces; pair 2 (threshold 2) at 3 pieces, etc.
+    aprops =
+      wornPieceCount >= 2
+        ? setItem.aprops.filter(a => a.threshold <= wornPieceCount - 1)
+        : []
+  }
 
   // Determine if full set is equipped
-  const itemCount = setDef.items && setDef.items.length > 0
-    ? setDef.items.length
-    : setDef.pCodes.length > 0
-      ? Math.max(2, ...setDef.pCodes.map(p => p.threshold)) + 1
-      : 2
+  const itemCount =
+    setDef.items && setDef.items.length > 0
+      ? setDef.items.length
+      : setDef.pCodes.length > 0
+        ? Math.max(2, ...setDef.pCodes.map(p => p.threshold)) + 1
+        : 2
+
+  // 1.13c ItemMods.cpp ITEMMODS_UpdateFullSetBoni:
+  // `if (nItems >= nSetItems - 1) nItems = nSetItems - 1` -> PCode{k} activates up to `itemCount - 1`.
+  const maxPartialThreshold = Math.min(wornPieceCount, Math.max(1, itemCount - 1))
+  const rawPCodes =
+    wornPieceCount >= 2
+      ? setDef.pCodes.filter(p => p.threshold <= maxPartialThreshold)
+      : []
+  const pCodes = options?.rng
+    ? rawPCodes.map(p => rollSetBonusPropIfNeeded(p, options.rng))
+    : rawPCodes
 
   const isFullSet = wornPieceCount >= itemCount
-  const fCodes = isFullSet ? setDef.fCodes : []
+  const rawFCodes = isFullSet ? setDef.fCodes : []
+  const fCodes = options?.rng
+    ? rawFCodes.map(f => rollSetBonusPropIfNeeded(f, options.rng))
+    : rawFCodes
 
   const all: SetBonusProp[] = [
     ...props,

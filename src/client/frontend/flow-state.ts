@@ -2310,6 +2310,79 @@ export function toggleChatGem(
   return entry
 }
 
+export interface IncomingLobbyChatEntryInput {
+  readonly kind: string
+  readonly source?: 'bncs' | 'd2gs' | undefined
+  readonly from?: string | undefined
+  readonly text: string
+  readonly rawText?: string | undefined
+  readonly color?: number | undefined
+}
+
+/**
+ * Append a Battle.net channel message (`SID_CHATEVENT 0x0F`, `D2Multi.dll` `0x6f9ea120`) into the
+ * Battle.net Lobby chat window (`state.chatMessages` / `state.chatEntries`), while strictly rejecting:
+ * - Any D2GS in-game packet (`entry.source === 'd2gs'`, `D2Client.dll` `0x6fb2dee0` `S2C 0x26` /
+ *   `0x6fb2e200` `S2C 0x5A`, including `earlyEvents` drained before `inGameAssetsPromise` resolves).
+ * - Any message arriving while entering a game, in-game, or replaying (`D2Multi` lobby dialog closed).
+ *
+ * Clamps out-of-range color indices (`< 0` or `>= 13`) to `0` (White) per `D2Win.dll` `0x6f8f283a`.
+ */
+export function appendIncomingLobbyChatMessage(
+  state: BnetFlowState,
+  entry: IncomingLobbyChatEntryInput,
+  context: {
+    readonly inGameView: boolean
+    readonly sessionPhase: string
+  },
+): boolean {
+  if (context.inGameView) return false
+  if (entry.source === 'd2gs') return false
+  if (
+    context.sessionPhase === 'ingame' ||
+    context.sessionPhase === 'entering-game' ||
+    context.sessionPhase === 'replay'
+  ) {
+    return false
+  }
+  if (state.stage === 'in_game') return false
+
+  const lobbyText =
+    entry.kind === 'say' && entry.from && !entry.text.startsWith('<')
+      ? `<${entry.from}> ${entry.rawText ?? entry.text}`
+      : entry.text
+  if (!lobbyText) return false
+  if (state.chatMessages[state.chatMessages.length - 1] === lobbyText) {
+    return false
+  }
+  const normalizedColor =
+    typeof entry.color === 'number' &&
+    Number.isInteger(entry.color) &&
+    entry.color >= 0 &&
+    entry.color < 13
+      ? entry.color
+      : 0
+
+  state.chatMessages.push(lobbyText)
+  state.chatEntries.push({
+    text: lobbyText,
+    color: normalizedColor,
+    kind:
+      entry.kind === 'whisper'
+        ? 'whisper'
+        : entry.kind === 'system'
+          ? 'system'
+          : 'chat',
+  })
+  if (state.chatMessages.length > 14) {
+    state.chatMessages.shift()
+  }
+  if (state.chatEntries.length > 14) {
+    state.chatEntries.shift()
+  }
+  return true
+}
+
 /**
  * Click `CREATE GAME` on Stage 5 Battle.net Lobby -> transitions to Stage 6 (`door_loading`).
  */

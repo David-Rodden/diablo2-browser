@@ -861,6 +861,18 @@ export function resolveGroundItemFlippyKey(
     if (availableKeys[flpCandidate]) return flpCandidate
   }
 
+  // 6. Direct `flp<code>` / raw code fallback so socketed / dyed items never silently drop art (#1965)
+  if (itemCode) {
+    const lowerCode = itemCode.toLowerCase()
+    const directFlp = `flp${lowerCode}`
+    if (item.invtransform) {
+      const dyed = `${directFlp}_${item.invtransform}`.toLowerCase()
+      if (availableKeys[dyed]) return dyed
+    }
+    if (availableKeys[directFlp]) return directFlp
+    if (availableKeys[lowerCode]) return lowerCode
+  }
+
   return null
 }
 

@@ -693,25 +693,25 @@
         flex: 0 0 auto;
       }
 
-      /* Mobile Phase 1 (#1381): Collapsible Top Toolbar Pill & D2R Portrait Orientation Guard */
+      /* Mobile Phase 1 (#1381 / #1968): Collapsible Top Toolbar Pill docked in bottom-left safe corner so it never occludes chat line 1, merc portrait, or 400x553 dock panels */
       #d2-mobile-toolbar-pill {
         position: fixed;
-        top: calc(var(--safe-top, 0px) + 6px);
-        left: calc(var(--safe-left, 0px) + 8px);
+        bottom: calc(var(--safe-bottom, 0px) + 6px);
+        left: calc(var(--safe-left, 0px) + 6px);
         z-index: 65;
         display: none;
         align-items: center;
-        gap: 5px;
-        height: 26px;
-        padding: 0 10px;
-        background: rgba(18, 14, 10, 0.88);
+        gap: 4px;
+        height: 24px;
+        padding: 0 8px;
+        background: rgba(18, 14, 10, 0.82);
         border: 1px solid #8c6f39;
-        border-radius: 13px;
+        border-radius: 12px;
         color: #e8c878;
         font-family: var(--font-body);
         font-size: 11px;
         letter-spacing: 0.04em;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.82);
         cursor: pointer;
       }
 
@@ -723,7 +723,7 @@
         display: inline-flex;
       }
 
-      @media (orientation: landscape) and (max-height: 540px) {
+      @media (orientation: landscape) and (max-height: 540px) and (pointer: coarse) {
         #d2-mobile-toolbar-pill {
           display: inline-flex;
         }
@@ -1023,11 +1023,16 @@
               }
               return;
             }
+            const hasTouchCap =
+              Boolean(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+              (typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0) ||
+              /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
             const isMobileLandscape =
-              (window.matchMedia &&
+              hasTouchCap &&
+              ((window.matchMedia &&
                 window.matchMedia('(orientation: landscape) and (max-height: 540px)').matches) ||
-              (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') &&
-                window.innerWidth > window.innerHeight);
+                (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') &&
+                  window.innerWidth > window.innerHeight));
             if (isMobileLandscape && !document.body.hasAttribute('data-d2-mobile-toolbar')) {
               document.body.setAttribute('data-d2-mobile-toolbar', 'collapsed');
             }

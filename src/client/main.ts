@@ -15,6 +15,7 @@
  */
 
 import {
+  appendIncomingLobbyChatMessage,
   applyCreateAccountServerError,
   applyOnlineCharactersToFlowState,
   applyRealmGamesToFlowState,
@@ -85,10 +86,15 @@ import {
   BootProgressTracker,
   type BootProgressSnapshot,
 } from './ui/boot-progress.ts'
-import { isModalDomOverlayOpen } from './ui/dom-overlay.ts'
+import {
+  dismissAllModalDomOverlays,
+  isModalDomOverlayOpen,
+  reconcileModalDomOverlays,
+  type ModalOverlayOwner,
+} from './ui/dom-overlay.ts'
 import { HudManager } from './ui/hud-manager.ts'
 import { Minimap } from './ui/minimap.ts'
-import { detectMobileTouchEnvironment } from './ui/touch-controls.ts'
+import { clampMobileDevicePixelRatio, detectMobileTouchEnvironment } from './ui/touch-controls.ts'
 import {
   installBrowserGestureGuard,
   type BrowserGestureGuardHandle,
@@ -616,6 +622,9 @@ export async function startPlayApp(options?: {
     }
   }
 
+  chatInputEl.enterKeyHint = 'send'
+  chatInputEl.autocomplete = 'off'
+
   chatInputEl.addEventListener('input', () => {
     syncChatInputToHud()
   })
@@ -694,6 +703,10 @@ export async function startPlayApp(options?: {
   // full rate); tests construct HudManager directly and keep per-call renders.
   hudManager.enableIdleThrottle = true
   hudManager.touchControls.applyHudLayoutMode(initialSettings.hudLayoutMode ?? 'auto', window)
+  hudManager.onToggleChatInput = toggleInGameChatInput
+  hudManager.touchControls.skillWheelBankMode = initialSettings.skillWheelBankMode ?? 'hold'
+  hudManager.touchControls.autoPickupGoldAndPotions = initialSettings.mobileAutoPickupGoldAndPotions ?? false
+  hudManager.touchControls.hapticsEnabled = initialSettings.mobileHapticsEnabled ?? true
 
   const session = new OnlineSession({
     settingsStore,
@@ -871,9 +884,51 @@ export async function startPlayApp(options?: {
   const pluginMenu = new ModMenu({
     host: plugins,
     toolbar,
+    container: isChildSlot ? null : undefined,
     layout: options?.menuLayout,
+    onOpen: () => {
+      toolbar.closeModals()
+    },
   })
   pluginMenuRef = pluginMenu
+
+  const getModalOverlayOwners = (): readonly ModalOverlayOwner[] => [
+    {
+      element: pluginMenu.getElement(),
+      isOpen: () => pluginMenu.isOpen(),
+      close: () => pluginMenu.close(),
+    },
+    {
+      element: toolbar.getConfigModalOverlayElement(),
+      isOpen: () => toolbar.isConfigModalOpen(),
+      close: () => toolbar.closeConfigModal(),
+    },
+    {
+      element: toolbar.getBugModalOverlayElement(),
+      isOpen: () => toolbar.isBugModalOpen(),
+      close: () => toolbar.closeBugModal(),
+    },
+  ]
+
+  const closeAllModals = (): void => {
+    pluginMenu.close()
+    toolbar.closeModals()
+    if (!isChildSlot) {
+      dismissAllModalDomOverlays(
+        typeof document !== 'undefined' ? document : null,
+        getModalOverlayOwners(),
+      )
+    }
+  }
+
+  const reconcileModalOverlays = (): void => {
+    if (isChildSlot) return
+    reconcileModalDomOverlays({
+      doc: typeof document !== 'undefined' ? document : null,
+      owners: getModalOverlayOwners(),
+    })
+  }
+  reconcileModalOverlays()
 
   // Apply the initial viewport profile's dimensions, stretched to fit the browser at its own aspect ratio
   syncStageViewportFit()
@@ -1085,6 +1140,9 @@ export async function startPlayApp(options?: {
       session.hudManager.touchControls.applyHudLayoutMode(next.hudLayoutMode ?? 'auto', window)
       session.hudManager.syncPublishedState()
     }
+    session.hudManager.touchControls.skillWheelBankMode = next.skillWheelBankMode ?? 'hold'
+    session.hudManager.touchControls.autoPickupGoldAndPotions = next.mobileAutoPickupGoldAndPotions ?? false
+    session.hudManager.touchControls.hapticsEnabled = next.mobileHapticsEnabled ?? true
   })
 
   const syncVisibility = (): void => {
@@ -1154,6 +1212,7 @@ export async function startPlayApp(options?: {
   }
 
   const startSinglePlayerGame = async (st: BnetFlowState, charName: string): Promise<void> => {
+    closeAllModals()
     st.stage = 'door_loading'
     st.stageTicks = 0
     st.doorFrame = 0
@@ -1231,6 +1290,7 @@ export async function startPlayApp(options?: {
   }
 
   const returnToLobby = (): void => {
+    closeAllModals()
     // Normally reached after the session already left the game (phase `idle`/`lobby`); a Single Player
     // game still attached must finish `leaveGame()` (which writes the updated `.d2s` save) before
     // `persistSinglePlayerSavesToStorage()` and `lobby.listCharacters()` reload `flowState.roster`.
@@ -1834,6 +1894,7 @@ export async function startPlayApp(options?: {
       }
       const diffNum: 0 | 1 | 2 =
         st.difficulty === 'hell' ? 2 : st.difficulty === 'nightmare' ? 1 : 0
+      closeAllModals()
       st.stage = 'door_loading'
       st.stageTicks = 0
       st.doorFrame = 0
@@ -1901,6 +1962,7 @@ export async function startPlayApp(options?: {
     },
     onJoinGame: async (st, gameName, gamePassword) => {
       const selectedChar = st.roster[st.selectedSlotIndex]
+      closeAllModals()
       st.stage = 'door_loading'
       st.stageTicks = 0
       st.doorFrame = 0
@@ -2081,6 +2143,7 @@ export async function startPlayApp(options?: {
         })
       }
       if (session.phase !== 'ingame' && session.phase !== 'replay') return
+      closeAllModals()
       session.audioRuntime.prefetchBackground()
       inGameView = true
       flowState.sceneReady = true
@@ -2119,31 +2182,13 @@ export async function startPlayApp(options?: {
   })
 
   session.onChatMessage((entry) => {
-    if (inGameView) return
-    const lobbyText =
-      entry.kind === 'say' && entry.from && !entry.text.startsWith('<')
-        ? `<${entry.from}> ${entry.rawText ?? entry.text}`
-        : entry.text
-    if (!lobbyText) return
-    if (flowState.chatMessages[flowState.chatMessages.length - 1] === lobbyText) {
+    if (
+      !appendIncomingLobbyChatMessage(flowState, entry, {
+        inGameView,
+        sessionPhase: session.phase,
+      })
+    ) {
       return
-    }
-    flowState.chatMessages.push(lobbyText)
-    flowState.chatEntries.push({
-      text: lobbyText,
-      color: entry.color ?? 0,
-      kind:
-        entry.kind === 'whisper'
-          ? 'whisper'
-          : entry.kind === 'system'
-            ? 'system'
-            : 'chat',
-    })
-    if (flowState.chatMessages.length > 14) {
-      flowState.chatMessages.shift()
-    }
-    if (flowState.chatEntries.length > 14) {
-      flowState.chatEntries.shift()
     }
     frontendRenderer.render(performance.now())
   })
@@ -2151,6 +2196,7 @@ export async function startPlayApp(options?: {
   session.onSessionLost((ev) => {
     // Single handler for BNCS/MCP/D2GS loss on every screen: the session already disposed all
     // connections; show the login screen with the reason (no automatic reconnect).
+    closeAllModals()
     inGameView = false
     ownHeroArtKicked = false
     releaseInGameSceneCaches()
@@ -2180,6 +2226,7 @@ export async function startPlayApp(options?: {
 
   refreshDisplayFn = (): void => {
     const nowMs = performance.now()
+    closeAllModals()
     gestureGuard.exitPointerLock()
     if (!chatInputEl.hidden) {
       chatInputEl.value = ''
@@ -2312,30 +2359,43 @@ export async function startPlayApp(options?: {
     return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON'
   }
 
+  // #1966: every finger is routed independently by `Touch.identifier` (left-thumb joystick +
+  // right-thumb skill wheel / L2 hold at the same time) instead of collapsing `changedTouches[0]`
+  // into the single-pointer mouse handlers.
+  const isOrientationGuardVisible = (): boolean => {
+    const guard = document.getElementById('d2-orientation-guard')
+    return Boolean(guard && !guard.hidden && guard.style.display !== 'none' && guard.offsetParent !== null)
+  }
+  const touchToMouse = (touch: Touch): MouseEvent =>
+    ({ clientX: touch.clientX, clientY: touch.clientY, button: 0 }) as unknown as MouseEvent
+  let frontendTouchId: number | null = null
+
   trackListener(
     stageEl,
     'touchstart',
     (e: TouchEvent) => {
       session.audioRuntime.unlock()
       if (isInteractiveDomFormTarget(e.target)) return
-      const touch = e.changedTouches?.[0] ?? e.touches?.[0]
-      if (!touch) return
-      const fakeMouse = {
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        button: 0,
-      } as unknown as MouseEvent
+      if (isOrientationGuardVisible()) return
+      const touches = Array.from(e.changedTouches ?? [])
+      if (touches.length === 0) return
+      const nowMs = performance.now()
       if (!inGameView) {
-        const pt = toFrontendCoords(fakeMouse)
-        frontendRenderer.handleMouseMove(pt.x, pt.y, performance.now())
-        frontendRenderer.handleMouseDown(pt.x, pt.y, performance.now())
+        const touch = touches[0]!
+        if (frontendTouchId === null) {
+          frontendTouchId = touch.identifier
+          const pt = toFrontendCoords(touchToMouse(touch))
+          frontendRenderer.handleMouseMove(pt.x, pt.y, nowMs)
+          frontendRenderer.handleMouseDown(pt.x, pt.y, nowMs)
+        }
         e.preventDefault()
         return
       }
       session.hudManager.touchControls.syncFromEnvironment(window)
-      const pt = toStageCoords(fakeMouse)
-      session.commandMapper.handlePointerMove(pt.x, pt.y, performance.now())
-      session.commandMapper.handlePointerDown(pt.x, pt.y, 0, performance.now())
+      for (const touch of touches) {
+        const pt = toStageCoords(touchToMouse(touch))
+        session.commandMapper.handleTouchStart(touch.identifier, pt.x, pt.y, nowMs)
+      }
       e.preventDefault()
     },
     { passive: false },
@@ -2345,54 +2405,52 @@ export async function startPlayApp(options?: {
     stageEl,
     'touchmove',
     (e: TouchEvent) => {
-      const touch = e.changedTouches?.[0] ?? e.touches?.[0]
-      if (!touch) return
-      const fakeMouse = {
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        button: 0,
-      } as unknown as MouseEvent
+      const touches = Array.from(e.changedTouches ?? [])
+      if (touches.length === 0) return
+      const nowMs = performance.now()
       if (!inGameView) {
-        const pt = toFrontendCoords(fakeMouse)
-        frontendRenderer.handleMouseMove(pt.x, pt.y, performance.now())
+        const touch = touches.find((t) => t.identifier === frontendTouchId)
+        if (touch) {
+          const pt = toFrontendCoords(touchToMouse(touch))
+          frontendRenderer.handleMouseMove(pt.x, pt.y, nowMs)
+        }
         e.preventDefault()
         return
       }
-      const pt = toStageCoords(fakeMouse)
-      session.commandMapper.handlePointerMove(pt.x, pt.y, performance.now())
+      for (const touch of touches) {
+        const pt = toStageCoords(touchToMouse(touch))
+        session.commandMapper.handleTouchMove(touch.identifier, pt.x, pt.y, nowMs)
+      }
       e.preventDefault()
     },
     { passive: false },
   )
 
   const handleStageTouchEnd = (e: TouchEvent): void => {
-    const touch = e.changedTouches?.[0]
+    const touches = Array.from(e.changedTouches ?? [])
+    const nowMs = performance.now()
     if (!inGameView) {
+      const touch = touches.find((t) => t.identifier === frontendTouchId)
       if (touch) {
-        const pt = toFrontendCoords({
-          clientX: touch.clientX,
-          clientY: touch.clientY,
-          button: 0,
-        } as unknown as MouseEvent)
-        frontendRenderer.handleMouseUp(pt.x, pt.y, performance.now())
+        frontendTouchId = null
+        const pt = toFrontendCoords(touchToMouse(touch))
+        frontendRenderer.handleMouseUp(pt.x, pt.y, nowMs)
       }
       e.preventDefault()
       return
     }
-    if (touch) {
-      const pt = toStageCoords({
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        button: 0,
-      } as unknown as MouseEvent)
-      session.hudManager.handleHudMouseUp(pt.x, pt.y, 0)
+    for (const touch of touches) {
+      const pt = toStageCoords(touchToMouse(touch))
+      session.commandMapper.handleTouchEnd(touch.identifier, pt.x, pt.y, nowMs)
     }
-    session.commandMapper.handlePointerUp(0)
     e.preventDefault()
   }
 
   trackListener(stageEl, 'touchend', handleStageTouchEnd, { passive: false })
   trackListener(stageEl, 'touchcancel', handleStageTouchEnd, { passive: false })
+  trackListener(window, 'blur', () => {
+    session.commandMapper.cancelAllTouches(performance.now())
+  })
 
   trackListener(
     stageEl,
@@ -2440,6 +2498,11 @@ export async function startPlayApp(options?: {
       }
       session.audioRuntime.unlock()
       if (isModalDomOverlayOpen()) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          closeAllModals()
+        }
         return
       }
       const activeEl = document.activeElement
@@ -2480,11 +2543,20 @@ export async function startPlayApp(options?: {
   )
 
   trackListener(window, 'blur', () => {
+    reconcileModalOverlays()
     if (inGameView) {
       session.commandMapper.resetModifiers()
       session.commandMapper.handlePointerUp(0)
       session.commandMapper.handlePointerUp(2)
     }
+  })
+
+  trackListener(window, 'focus', () => {
+    reconcileModalOverlays()
+  })
+
+  trackListener(window, 'pageshow', () => {
+    reconcileModalOverlays()
   })
 
   // D2Client 1.13c tick schedule (`LogicClock`, 0x6FAF4C6F..0x6FAF4D79): owed 40 ms ticks are
@@ -2506,6 +2578,8 @@ export async function startPlayApp(options?: {
   let hiddenTickTimer: (() => void) | null = null
   let nextWorldRenderMs: number | null = null
   trackListener(document, 'visibilitychange', () => {
+    reconcileModalOverlays()
+    if (document.hidden) session.commandMapper.cancelAllTouches(performance.now())
     if (document.hidden) {
       if (hiddenTickTimer === null) {
         hiddenTickTimer = backgroundInterval(() => {
@@ -2624,7 +2698,7 @@ export async function startPlayApp(options?: {
 
     const dpr =
       typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0
-        ? Math.min(window.devicePixelRatio, 2)
+        ? clampMobileDevicePixelRatio(window.devicePixelRatio, session.hudManager.touchControls.enabled)
         : 1
     const cssW = viewCanvas.clientWidth > 0 ? viewCanvas.clientWidth : profile.width
     const cssH = viewCanvas.clientHeight > 0 ? viewCanvas.clientHeight : profile.height
@@ -2695,6 +2769,9 @@ export async function startPlayApp(options?: {
     instanceFocused = focused
     hudManager.setInputFocused(focused)
     if (!focused) {
+      if (changed) {
+        closeAllModals()
+      }
       if (!chatInputEl.hidden) {
         chatInputEl.value = ''
         chatInputEl.hidden = true
@@ -2761,6 +2838,8 @@ export async function startPlayApp(options?: {
       hudManager.dispose()
       for (const disposeOne of bootDisposers) disposeOne()
       chatInputEl.remove()
+      closeAllModals()
+      pluginMenu.destroy()
       toolbar.destroy()
       void plugins.destroy().catch(() => {
         // Best-effort teardown; plugin disposers already ran individually.
@@ -2772,6 +2851,7 @@ export async function startPlayApp(options?: {
       session.submitChatInput(message)
     },
     replayD2Cap: (jsonlText: string): number => {
+      closeAllModals()
       inGameView = true
       const count = session.loadD2CapReplay(jsonlText)
       session.replayAllD2Cap()

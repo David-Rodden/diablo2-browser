@@ -100,6 +100,7 @@ import { getTblLang } from '../i18n/lang.ts'
 import { type WorldSoundRequest } from '../audio/d2gs-play-sound-113c.ts'
 
 import {
+  DEAD_MERC_NAME_ID_NONE,
   UnitMap,
   getMonsterOneShotDefaultFrames,
   isMonsterOneShotMode,
@@ -315,6 +316,14 @@ export class ClientWorld {
   private _merc: MercenaryState | null = null
   private readonly _mercHireList: MercHireEntry[] = []
   private readonly _pendingMercStats = new Map<number, Map<number, number>>()
+  /**
+   * 1.13c `D2Client.dll` dead-hireling record, written only by S2C 0x9B (`0x6fafa350`):
+   * `word [0x6fba23e8]` = name id (`0xFFFF` = none) and `dword [0x6fbcc334]` = revive cost.
+   * Merc life/mode packets never touch it; the server clears it with `0x9B(0xFFFF, 0)` after a
+   * resurrect/hire (`D2Game.dll` `0x6fc6906a` / `0x6fce0faa`).
+   */
+  private _deadMercNameId = DEAD_MERC_NAME_ID_NONE
+  private _deadMercReviveCost = 0
   private readonly _pets = new Map<number, RosterPetState>()
   private readonly _chatLog: ChatLogEntry[] = []
   private readonly _activeChatStream: ChatLogEntry[] = []
@@ -1987,6 +1996,24 @@ export class ClientWorld {
     return this._merc
   }
 
+  /** Dead-hireling name id from S2C 0x9B (`DEAD_MERC_NAME_ID_NONE` when the player has no dead hireling). */
+  get deadMercNameId(): number {
+    return this._deadMercNameId
+  }
+
+  /** Dead-hireling revive cost from S2C 0x9B (`0` when the player has no dead hireling). */
+  get deadMercReviveCost(): number {
+    return this._deadMercNameId === DEAD_MERC_NAME_ID_NONE ? 0 : this._deadMercReviveCost
+  }
+
+  /**
+   * Whether the town hireling NPC menu offers Resurrect: `D2Client.dll` `0x6fafa603..0x6fafa6a2` enables it
+   * for Kashya / Greiz / Asheara / Tyrael / Qual-Kehk iff `word [0x6fba23e8] != 0xFFFF`.
+   */
+  get hasDeadMercenary(): boolean {
+    return this._deadMercNameId !== DEAD_MERC_NAME_ID_NONE
+  }
+
   get pets(): ReadonlyMap<number, RosterPetState> {
     return this._pets
   }
@@ -2865,6 +2892,8 @@ export class ClientWorld {
     this._drainingQueuedUnitPacket = false
     this._self.reset()
     this._merc = null
+    this._deadMercNameId = DEAD_MERC_NAME_ID_NONE
+    this._deadMercReviveCost = 0
     this._mercHireList.length = 0
     this._pendingMercStats.clear()
     this._pets.clear()

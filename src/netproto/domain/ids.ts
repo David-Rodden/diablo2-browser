@@ -236,6 +236,7 @@ export interface ItemBaseMeta {
   readonly isGold: boolean
   readonly quest?: boolean | undefined
   readonly questDiffCheck?: boolean | undefined
+  readonly compactSave?: boolean | undefined
 }
 
 export type ItemBaseStatEntry = ItemBaseMeta

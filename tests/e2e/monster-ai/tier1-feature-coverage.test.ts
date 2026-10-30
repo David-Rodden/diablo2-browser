@@ -936,9 +936,9 @@ describe('Tier 1 — Feature Coverage: Diablo II v1.13c Monster & Mercenary AI E
       const feH = calcFireEnchantedDeathDamage(1000, 'hell', 0.5)
       const feMinion = calcFireEnchantedDeathDamage(1000, 'hell', true)
 
-      // Nightmare scale (0.35) > Normal/Hell scale (0.20)
-      expect(feNM.totalDmg).toBeGreaterThan(feN.totalDmg)
-      expect(feN.totalDmg).toBe(feH.totalDmg)
+      // 1.13c difficulty ratios [3/4, 1/3, 1/8]: Normal (0.75) > Nightmare (1/3) > Hell (0.125) (#1821)
+      expect(feN.totalDmg).toBeGreaterThan(feNM.totalDmg)
+      expect(feNM.totalDmg).toBeGreaterThan(feH.totalDmg)
       expect(feN.physDmg).toBe(feN.fireDmg)
       expect(feMinion.totalDmg).toBe(0)
       expect(D2CLIENT_DEATH_BOOM_POINTS).toHaveLength(5)

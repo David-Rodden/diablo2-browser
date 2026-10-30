@@ -11,13 +11,21 @@
  *   with which per-operate chance.
  */
 
-import { ItemQuality, type Item, type RolledItemProp } from '../../common/items/items.ts'
+import { ItemQuality, type Item, type ItemBase, type RolledItemProp } from '../../common/items/items.ts'
 import type { ItemQualityTier } from '../../common/items/item-ratio.ts'
+import { CANONICAL_GEMS_TABLE, type GemModifier } from '../../common/items/gems.ts'
+import { getEmbeddedDropTables } from '../../common/items/embedded-drop-tables.ts'
 import { rolledPropsToItemStats } from '../../common/items/item-bridge.ts'
-import type { GeneratedAffixes, GeneratedRareAffixes, RolledAffix } from '../../common/items/affix-generator.ts'
+import { resolveGemApplyType } from '../../common/items/runeword-socket.ts'
+import {
+  NON_RANDOM_RANGE_CODES,
+  type GeneratedAffixes,
+  type GeneratedRareAffixes,
+  type RolledAffix,
+} from '../../common/items/affix-generator.ts'
 import type { RolledAutoMagic } from '../../common/items/automagic.ts'
 import type { DropTables } from '../../common/items/drop-tables.ts'
-import { rollArmorDefense113c } from '../../common/items/vendor-generator.ts'
+import { rollArmorWireBaseDefense113c } from '../../common/items/vendor-generator.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
 import { getLevelMonsterLevel113c, getLevelsMonLvlRecord113c } from '../../common/world/levels-monlvl-113c.ts'
 import {
@@ -29,9 +37,9 @@ import {
   type ItemData,
   type ItemQuality as WireItemQuality,
   type ItemStat,
+  type SetBonusStatList,
 } from '../../netproto/index.ts'
-import type { SetBonusStatList } from '../../netproto/index.ts'
-import type { SetItem } from '../../common/items/set-items.ts'
+import { rollSetBonusPropIfNeeded, type SetItem, type SetItemTable } from '../../common/items/set-items.ts'
 
 /** The `Item` fields the canonical generators attach beyond the declared interface. */
 interface GeneratedItemExtras {
@@ -48,6 +56,8 @@ interface GeneratedItemExtras {
   readonly runewordId?: number | undefined
   readonly runewordStats?: readonly ItemStat[] | undefined
   readonly rolledRunewordProps?: readonly RolledItemProp[] | undefined
+  readonly wireBaseDefense?: number | undefined
+  readonly rolledBaseDefense?: number | undefined
 }
 
 function normalizeWireItemQuality(raw: unknown): WireItemQuality {
@@ -118,7 +128,11 @@ function buildSetBonusStatLists113c(
     if (!ap.code) continue
     const idx = ap.threshold - 1
     if (idx < 0 || idx > 4) continue
-    const val = ap.min === ap.max ? ap.min : rng.randRange(ap.min, ap.max)
+    const isNonRandom = NON_RANDOM_RANGE_CODES.has(ap.code.trim().toLowerCase())
+    const val =
+      isNonRandom || ap.min === ap.max
+        ? ap.min
+        : rng.randRange(Math.min(ap.min, ap.max), Math.max(ap.min, ap.max))
     const list = byIndex.get(idx) ?? []
     list.push({
       code: ap.code,
@@ -203,11 +217,13 @@ export function domainItemToItemData113c(
 
   let defense: number | undefined
   // Gamble previews are code-only records (flag 0x02000000): no defense until the purchase reveals the item.
+  // Wire `ItemData.defense` carries the unscaled base defense (`maxac + 1` if `ac% > 0`, after `1.5x` ethereal)
+  // so client `onlineItemDataToUiInventoryItem` and server `computePlayerBaseDefense` apply `(100 + ac%) / 100` once (#1911).
   if (item.base.kind === 'armor' && !isGambleMystery) {
     if (typeof item.defense !== 'number') {
       throw new Error(`domainItemToItemData113c: armor '${code}' has no rolled defense (call finalizeDroppedItem113c)`)
     }
-    defense = item.defense
+    defense = extras.wireBaseDefense ?? extras.rolledBaseDefense ?? item.defense
   }
 
   const isRuneword = Boolean(extras.runeword ?? item.flags?.runeword)
@@ -269,7 +285,12 @@ export function domainItemToItemData113c(
     socketed: totalSockets > 0,
     ethereal,
     runeword: isRuneword,
-    ...(extras.runewordId !== undefined ? { runewordId: extras.runewordId } : {}),
+    ...(extras.runewordId !== undefined
+      ? {
+          runewordId: extras.runewordId,
+          runewordData: 0x5000 | ((extras.runewordId + 27) & 0xfff),
+        }
+      : {}),
     personalized,
     ...(personalizedName !== undefined ? { personalizedName, earOrPersonalizedName: personalizedName } : {}),
     isEar: false,
@@ -309,18 +330,310 @@ export function domainItemToItemData113c(
 
 /**
  * Finishes a drop-pipeline `Item` the way item creation does before it is sent: armor gets its rolled
- * defense from the item's own seed (`dwInitSeed`), using the same roll as the store generator.
+ * defense from the item's own seed (`dwInitSeed`), using the same 1.13c order as the store generator (#1911):
+ * 1) `ac% > 0` sets raw base to `maxac + 1` (else `[minac..maxac]`, scaled by `75%` for Low Quality).
+ * 2) Ethereal applies `floor(rawBase * 3 / 2)` BEFORE `(100 + ac%) / 100` (`wireBaseDefense`).
+ * 3) Total on-item defense scales `wireBaseDefense` by `(100 + ac%) / 100` and adds flat `ac`.
  */
 export function finalizeDroppedItem113c(item: Item): Item {
   if (item.base.kind !== 'armor' || typeof item.defense === 'number') return item
   const seed = item.uniqueId
   if (seed === undefined) throw new Error(`finalizeDroppedItem113c: armor '${item.base.id}' has no dwInitSeed`)
   const tier = (item.rarity ?? 'normal') as ItemQualityTier
-  const rolled = rollArmorDefense113c(item.base, tier, item.stats['ac%'] ?? 0, new D2Rng(seed >>> 0 || 1))
-  // 1.13c ethereal armor defense bonus: +50% of the rolled base defense (integer).
+  const acPct = item.stats['ac%'] ?? 0
+  const flatAc = item.stats['ac'] ?? 0
   const isEthereal = Boolean((item as Item & { readonly ethereal?: boolean }).ethereal)
-  const defense = isEthereal ? Math.max(1, Math.floor(rolled * 1.5)) : rolled
-  return { ...item, defense, stats: { ...item.stats, defense } }
+  const wireBaseDefense = rollArmorWireBaseDefense113c(
+    item.base,
+    tier,
+    acPct,
+    new D2Rng(seed >>> 0 || 1),
+    isEthereal,
+  )
+  let computed = acPct > 0 ? Math.trunc((wireBaseDefense * (100 + acPct)) / 100) : wireBaseDefense
+  if (acPct > 0 && computed === wireBaseDefense) {
+    computed = wireBaseDefense + 1
+  }
+  const defense = computed + flatAc
+  return {
+    ...item,
+    defense,
+    wireBaseDefense,
+    rolledBaseDefense: wireBaseDefense,
+    stats: { ...item.stats, defense },
+  } as Item
+}
+
+export interface WornServerItemLike113c {
+  readonly code: string
+  readonly quality?: number | undefined
+  readonly ethereal?: boolean | undefined
+  readonly identified?: boolean | undefined
+  readonly broken?: boolean | undefined
+  readonly stats?: ReadonlyMap<number, number> | undefined
+  readonly socketedItems?:
+    | readonly {
+        readonly code: string
+        readonly stats?: ReadonlyMap<number, number> | undefined
+        readonly rawItemData?: { readonly stats?: readonly ItemStat[] | undefined } | undefined
+      }[]
+    | undefined
+  readonly rawItemData?:
+    | {
+    readonly quality?: number | undefined
+    readonly defense?: number | undefined
+        readonly setItemId?: number | undefined
+        readonly identified?: boolean | undefined
+        readonly broken?: boolean | undefined
+        readonly stats?: readonly ItemStat[] | undefined
+        readonly runewordStats?: readonly ItemStat[] | undefined
+        readonly setBonusStats?:
+          | readonly ({ readonly index: number; readonly stats: readonly ItemStat[] } | ItemStat)[]
+          | undefined
+        readonly socketedItems?:
+          | readonly { readonly code: string; readonly stats?: readonly ItemStat[] | undefined }[]
+          | undefined
+      }
+    | undefined
+}
+
+/**
+ * Computes per-set equipped sibling bitmasks (`ITEMS_GetSetItemsMask`) in `SetItems.txt` member order (#1910).
+ */
+/**
+ * Resolves the slot-specific `ItemStat[]` contributed by a socketed Gem, Rune, or Jewel
+ * when placed inside `hostCode` (`0 = weaponMods`, `1 = helmMods`, `2 = shieldMods`).
+ */
+export function resolveGemSocketItemStats113c(
+  filler: Pick<ItemData, 'code' | 'stats'>,
+  hostCode: string,
+  tables: DropTables = getEmbeddedDropTables(),
+): ItemStat[] {
+  const cleanHost = hostCode.trim()
+  const base = tables.getBase(cleanHost)
+  const applyType = base
+    ? resolveGemApplyType(base)
+    : resolveGemApplyType({ code: cleanHost } as unknown as ItemBase)
+  if (applyType === -1) return []
+
+  const subCode = filler.code.trim().toLowerCase()
+  const gemDef = CANONICAL_GEMS_TABLE.get(subCode)
+  if (gemDef) {
+    const mods: readonly GemModifier[] =
+      applyType === 0
+        ? gemDef.weaponMods
+        : applyType === 1
+          ? gemDef.helmMods
+          : gemDef.shieldMods
+    const props: RolledItemProp[] = mods
+      .filter((m) => m.code.trim().toLowerCase() !== 'ethereal')
+      .map((m) => ({
+        code: m.code.trim(),
+        ...(m.param !== undefined ? { param: m.param } : {}),
+        min: m.min,
+        max: m.max,
+        value: m.min,
+      }))
+    return rolledPropsToItemStats(props, { baseCode: cleanHost }).map((s) => ({
+      statId: s.statId as number,
+      param: s.param ?? 0,
+      value: s.value,
+    }))
+  }
+
+  return (filler.stats ?? []).map((s) => ({
+    statId: s.statId,
+    param: s.param ?? 0,
+    value: s.value,
+  }))
+}
+
+export function computeWornSetSiblingMasks113c(
+  worn: readonly WornServerItemLike113c[],
+  setItemsTable: SetItemTable,
+): Map<string, number> {
+  const masks = new Map<string, number>()
+  for (const item of worn) {
+    if (item.broken === true || item.rawItemData?.broken === true) continue
+    const setId = item.rawItemData?.setItemId
+    if (setId === undefined || setId < 0 || setId === 0xfff) continue
+    const setItem = setItemsTable.getById(setId)
+    if (!setItem) continue
+    const members = setItemsTable.getBySet(setItem.set)
+    const pos = members.findIndex((m) => m.id === setItem.id)
+    if (pos >= 0) {
+      masks.set(setItem.set, (masks.get(setItem.set) ?? 0) | (1 << pos))
+    }
+  }
+  return masks
+}
+
+/**
+ * Evaluates whether `SetBonusStatList` slot `listIndex` (`0..4`) on `setItem` is active (#1910):
+ * - `addFunc === 0`: unconditional at `1+` pieces (`Civerb's Cudgel`, `Trang-Oul's Claws`).
+ * - `addFunc === 1`: specific sibling partner bitmask (`D2Common.#10996` `0x6FD961F3..0x6FD96248`).
+ * - `addFunc === 2`: total distinct set piece count (`listIndex <= wornCount - 2`).
+ */
+export function isSetBonusSlotActive113c(
+  setItem: SetItem,
+  listIndex: number,
+  wornCount: number,
+  siblingMask: number,
+  setItemsTable: SetItemTable,
+): boolean {
+  if (!setItem.addFunc || setItem.addFunc === 0) return true
+  if (setItem.addFunc === 2) return listIndex <= wornCount - 2
+  if (setItem.addFunc === 1) {
+    if (listIndex < 0 || listIndex >= 5) return false
+    const members = setItemsTable.getBySet(setItem.set)
+    const myPos = members.findIndex((m) => m.id === setItem.id)
+    const partnerPos = myPos >= 0 && listIndex >= myPos ? listIndex + 1 : listIndex
+    return (siblingMask & (1 << partnerPos)) !== 0
+  }
+  return false
+}
+
+/**
+ * Deterministic hash-mixed `D2Rng` for rolling variable `min..max` `Sets.txt` / fallback `SetItems.txt`
+ * properties without corrupting `NON_RANDOM_RANGE_CODES` (`gethit-skill`, `dmg-cold`, etc.) (#1910).
+ */
+export function makeDeterministicSetBonusRng113c(gameSeed: number, key: string): D2Rng {
+  let h = (gameSeed ^ 0x811c9dc5) >>> 0
+  for (let i = 0; i < key.length; i++) {
+    h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0
+  }
+  return new D2Rng(h || 1)
+}
+
+export { rollSetBonusPropIfNeeded }
+
+/**
+ * Computes a single equipped armor piece's local defense (`baseAc` scaled by on-piece `stat 16`
+ * `item_armor_percent` from own stats, `runewordStats`, socketed runes/jewels, and active green set
+ * bonuses), excluding flat `+Defense` (`stat 31`), which `sumPlayerItemStat(..., 31)` adds (#1911).
+ */
+export function computeEquippedArmorPieceDefense113c(
+  item: WornServerItemLike113c,
+  fallbackArmorMeta: { readonly minAc: number; readonly maxAc: number } | undefined,
+  options?: {
+    readonly wornCount?: number | undefined
+    readonly siblingMask?: number | undefined
+    readonly setItemsTable?: SetItemTable | undefined
+  },
+): number {
+  const hasRawDefense = typeof item.rawItemData?.defense === 'number'
+  if (!hasRawDefense && (fallbackArmorMeta === undefined || fallbackArmorMeta.minAc <= 0)) {
+    return 0
+  }
+
+  let pieceAcPct = 0
+  if (item.rawItemData !== undefined) {
+    let foundRaw16 = false
+    for (const st of item.rawItemData.stats ?? []) {
+      if (st.statId === 16) {
+        pieceAcPct += st.value
+        foundRaw16 = true
+      }
+    }
+    for (const st of item.rawItemData.runewordStats ?? []) {
+      if (st.statId === 16) {
+        pieceAcPct += st.value
+        foundRaw16 = true
+      }
+    }
+    if (item.socketedItems && item.socketedItems.length > 0) {
+      for (const child of item.socketedItems) {
+        const childStats =
+          child.rawItemData?.stats ??
+          (child.stats
+            ? Array.from(child.stats.entries()).map(([statId, value]) => ({ statId, param: 0, value }))
+            : [])
+        for (const st of resolveGemSocketItemStats113c({ code: child.code, stats: childStats }, item.code)) {
+          if (st.statId === 16) {
+            pieceAcPct += st.value
+            foundRaw16 = true
+          }
+        }
+      }
+    } else if (item.rawItemData.socketedItems && item.rawItemData.socketedItems.length > 0) {
+      for (const child of item.rawItemData.socketedItems) {
+        for (const st of resolveGemSocketItemStats113c(
+          { code: child.code, stats: child.stats ?? [] },
+          item.code,
+        )) {
+          if (st.statId === 16) {
+            pieceAcPct += st.value
+            foundRaw16 = true
+          }
+        }
+      }
+    }
+    if (!foundRaw16 && item.stats?.has(16)) {
+      pieceAcPct += item.stats.get(16) ?? 0
+    }
+    const setId = item.rawItemData.setItemId
+    const storedLists = item.rawItemData.setBonusStats
+    if (
+      setId !== undefined &&
+      setId >= 0 &&
+      setId !== 0xfff &&
+      Array.isArray(storedLists) &&
+      storedLists.length > 0 &&
+      options?.setItemsTable
+    ) {
+      const setItem = options.setItemsTable.getById(setId)
+      if (setItem) {
+        const wornCount = options.wornCount ?? 1
+        const siblingMask = options.siblingMask ?? 0
+        for (const listOrStat of storedLists) {
+          if ('stats' in listOrStat && Array.isArray(listOrStat.stats)) {
+            if (!isSetBonusSlotActive113c(setItem, listOrStat.index, wornCount, siblingMask, options.setItemsTable)) {
+              continue
+            }
+            for (const st of listOrStat.stats) {
+              if (st.statId === 16) pieceAcPct += st.value
+            }
+          } else if ('statId' in listOrStat && listOrStat.statId === 16) {
+            pieceAcPct += listOrStat.value
+          }
+        }
+      }
+    }
+  } else {
+    pieceAcPct += item.stats?.get(16) ?? 0
+    if (item.socketedItems && item.socketedItems.length > 0) {
+      for (const child of item.socketedItems) {
+        const childStats =
+          child.rawItemData?.stats ??
+          (child.stats
+            ? Array.from(child.stats.entries()).map(([statId, value]) => ({ statId, param: 0, value }))
+            : [])
+        for (const st of resolveGemSocketItemStats113c({ code: child.code, stats: childStats }, item.code)) {
+          if (st.statId === 16) pieceAcPct += st.value
+        }
+      }
+    }
+  }
+
+  let baseAc: number
+  if (hasRawDefense) {
+    baseAc = item.rawItemData!.defense!
+  } else {
+    const isLowQuality = item.quality === 1 || item.rawItemData?.quality === 1
+    let raw = pieceAcPct > 0 ? fallbackArmorMeta!.maxAc + 1 : fallbackArmorMeta!.minAc
+    if (isLowQuality) raw = Math.max(1, Math.trunc((raw * 75) / 100))
+    baseAc = item.ethereal ? Math.floor((raw * 3) / 2) : raw
+  }
+
+  if (pieceAcPct > 0) {
+    let scaled = Math.trunc((baseAc * (100 + pieceAcPct)) / 100)
+    if (scaled === baseAc) scaled = baseAc + 1
+    return scaled
+  }
+  if (pieceAcPct < 0) {
+    return Math.max(0, Math.trunc((baseAc * Math.max(0, 100 + pieceAcPct)) / 100))
+  }
+  return baseAc
 }
 
 /**

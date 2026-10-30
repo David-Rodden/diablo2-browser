@@ -771,7 +771,7 @@ describe('Diablo II 1.13c Monster Lifebar & 2-Line Subtext Tooltip Parity', () =
     const bishiboshStats = bishiboshPack[0]!.members[0]!
     expect(bishiboshStats.resistances?.fire).toBe(140)
     expect(bishiboshStats.resistances?.cold).toBe(40)
-    expect(bishiboshStats.resistances?.lightning).toBe(20)
+    expect(bishiboshStats.resistances?.lightning).toBe(40)
 
     const bishiboshHud = ({ ...bishiboshStats, hp: 43, maxHp: bishiboshStats.hp, rank: 'unique' }) as MonsterTargetHudInfo
     const bishiboshSubEn = buildMonsterHoverSubtext(bishiboshHud, 'en')

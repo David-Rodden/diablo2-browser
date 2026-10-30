@@ -1797,6 +1797,13 @@ export function onlineItemDataToUiInventoryItem(
   readonly damageRange?: { readonly min: number; readonly max: number } | undefined
   readonly twoHandDamage?: { readonly min: number; readonly max: number } | undefined
 } {
+  const effectiveSocketChildren =
+    socketChildren && socketChildren.length > 0
+      ? socketChildren
+      : Array.isArray((item as any).socketedItems) && (item as any).socketedItems.length > 0
+        ? ((item as any).socketedItems as readonly (ItemData | Record<string, any>)[])
+        : socketChildren
+  socketChildren = effectiveSocketChildren
   const tables = dropTables ?? getEmbeddedDropTables()
   const code = String(item.code ?? '').trim().toLowerCase()
   if (!code) {
@@ -2514,6 +2521,7 @@ export function onlineItemDataToUiInventoryItem(
     ...(rolledMagicAffixes && typeof item.magicPrefixId === 'number' ? { magicPrefixId: item.magicPrefixId } : {}),
     ...(rolledMagicAffixes && typeof item.magicSuffixId === 'number' ? { magicSuffixId: item.magicSuffixId } : {}),
     ...(quantity !== undefined ? { quantity, stack: quantity } : {}),
+    ...(kind === 'armor' && hasExplicitDefense ? { rolledBaseDefense: explicitDefense } : {}),
     rolledProps: isUnidentified ? [] : rolledProps,
     stats: item.goldAmount !== undefined ? { amount: item.goldAmount } : {},
     ...((item as any).buyCost !== undefined ? { buyCost: (item as any).buyCost } : {}),
@@ -2840,8 +2848,11 @@ export function resolveOnlineItemReqLevel(
   }
 
   const children =
-    socketChildren ??
-    (Array.isArray((item as any).socketedItems) ? (item as any).socketedItems : undefined)
+    socketChildren && socketChildren.length > 0
+      ? socketChildren
+      : Array.isArray((item as any).socketedItems)
+        ? (item as any).socketedItems
+        : undefined
   if (Array.isArray(children) && children.length > 0) {
     for (const child of children) {
       const childReq = resolveOnlineItemReqLevel(child, undefined, tables, rawPlayerClass)
@@ -3047,11 +3058,15 @@ export function rolledPropsToItemStats(
       continue
     }
     if (code === 'randclassskill') {
-      const cls =
-        rawParam !== undefined && Number.isFinite(rawParam)
-          ? Math.max(0, Math.min(6, Math.trunc(rawParam)))
+      const hasExplicitParam = rawParam !== undefined && Number.isFinite(rawParam)
+      const cls = hasExplicitParam
+        ? Math.max(0, Math.min(6, Math.trunc(rawParam)))
+        : min === 0 && max === 6
+          ? Math.max(0, Math.min(6, Math.trunc(val)))
           : 0
-      out.push({ statId: 83, param: cls, value: val || 3 })
+      const skillBonus =
+        !hasExplicitParam && min === 0 && max === 6 ? 3 : val > 0 ? Math.trunc(val) : 3
+      out.push({ statId: 83, param: cls, value: skillBonus })
       continue
     }
     if (code === 'skill-rand') {

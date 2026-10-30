@@ -18,7 +18,7 @@ export function decode0x26ChatMessage(pkt: Uint8Array, encoding: TextEncoding = 
   const r = new ByteReader(pkt)
   r.u8() // 0x26
   const chatType = r.u8()
-  r.u8() // locale
+  const locale = r.u8() // locale
   const rawUnitType = r.u8()
   const unitType = wireUnitTypeId(rawUnitType) // outside 0..5: no unit can be found (#1656)
   const unitId = r.u32LE()
@@ -41,6 +41,7 @@ export function decode0x26ChatMessage(pkt: Uint8Array, encoding: TextEncoding = 
     unit: unitId !== 0 && unitType !== undefined ? { unitType, id: unitId } : undefined,
     text,
     color,
+    locale,
     eventType: chatType,
     subType,
     name1: from,

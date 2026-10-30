@@ -346,6 +346,13 @@ export interface DropPipelineOptions {
   readonly isExpansion?: boolean | undefined
   /** Maximum items emitted per drop roll (default: MAX_DROPPED_ITEMS = 6). */
   readonly maxDrops?: number | undefined
+  /**
+   * 1.13c `D2Game.dll` `SrvDo072_FindItem` (`0x6FC476D0` -> `0x6FCFE290`, #1810):
+   * When true, forces `NoDrop = 0` on every TreasureClass pick (`a7 = 1` hork mode).
+   */
+  readonly ignoreNoDrop?: boolean | undefined
+  /** Alias for `ignoreNoDrop`. */
+  readonly noDropZero?: boolean | undefined
   /** Optional forced item quality tier (`D2GAME_DropTreasureClass` `nQuality` 1..7 or tier name, e.g. Sparkling Chest). */
   readonly forcedQuality?: ItemQualityTier | number | undefined
   /**
@@ -745,6 +752,189 @@ export function shouldSpawnIdentifiedByDefault(
 }
 
 /**
+ * Canonical 8 rows of 1.13c `data\global\excel\QualityItems.txt` (#1913).
+ *
+ * Rows `0..3` have no `dur%` mod (`D2Game.dll` `0x6FC340EB` restricts `nodurability=1` /
+ * indestructible items to rows `0..3`); rows `4..7` carry `dur%` (`10..15`).
+ */
+export interface QualityItemRow113c {
+  readonly mods: readonly { readonly code: string; readonly min: number; readonly max: number }[]
+  readonly armor: boolean
+  readonly weapon: boolean
+  readonly shield: boolean
+  readonly scepter: boolean
+  readonly wand: boolean
+  readonly staff: boolean
+  readonly bow: boolean
+  readonly boots: boolean
+  readonly gloves: boolean
+  readonly belt: boolean
+  readonly thrown: boolean
+}
+
+export const CANONICAL_QUALITY_ITEMS_113C: readonly QualityItemRow113c[] = [
+  // Row 0: +1..3 Attack Rating (weapons)
+  {
+    mods: [{ code: 'att', min: 1, max: 3 }],
+    armor: false, weapon: true, shield: false, scepter: true, wand: true, staff: true, bow: true,
+    boots: false, gloves: false, belt: false, thrown: true,
+  },
+  // Row 1: +5..15% Enhanced Damage (weapons)
+  {
+    mods: [{ code: 'dmg%', min: 5, max: 15 }],
+    armor: false, weapon: true, shield: false, scepter: true, wand: true, staff: true, bow: true,
+    boots: false, gloves: false, belt: false, thrown: true,
+  },
+  // Row 2: +5..15% Enhanced Defense (armors)
+  {
+    mods: [{ code: 'ac%', min: 5, max: 15 }],
+    armor: true, weapon: false, shield: true, scepter: false, wand: false, staff: false, bow: false,
+    boots: true, gloves: true, belt: true, thrown: false,
+  },
+  // Row 3: +1..3 AR & +5..15% ED (weapons)
+  {
+    mods: [{ code: 'att', min: 1, max: 3 }, { code: 'dmg%', min: 5, max: 15 }],
+    armor: false, weapon: true, shield: false, scepter: true, wand: true, staff: true, bow: true,
+    boots: false, gloves: false, belt: false, thrown: true,
+  },
+  // Row 4: +10..15% Max Durability (all)
+  {
+    mods: [{ code: 'dur%', min: 10, max: 15 }],
+    armor: true, weapon: true, shield: true, scepter: true, wand: true, staff: true, bow: true,
+    boots: true, gloves: true, belt: true, thrown: true,
+  },
+  // Row 5: +1..3 AR & +10..15% Max Durability (weapons)
+  {
+    mods: [{ code: 'att', min: 1, max: 3 }, { code: 'dur%', min: 10, max: 15 }],
+    armor: false, weapon: true, shield: false, scepter: true, wand: true, staff: true, bow: true,
+    boots: false, gloves: false, belt: false, thrown: true,
+  },
+  // Row 6: +5..15% ED & +10..15% Max Durability (weapons)
+  {
+    mods: [{ code: 'dmg%', min: 5, max: 15 }, { code: 'dur%', min: 10, max: 15 }],
+    armor: false, weapon: true, shield: false, scepter: true, wand: true, staff: true, bow: true,
+    boots: false, gloves: false, belt: false, thrown: true,
+  },
+  // Row 7: +5..15% Enhanced Defense & +10..15% Max Durability (armors)
+  {
+    mods: [{ code: 'ac%', min: 5, max: 15 }, { code: 'dur%', min: 10, max: 15 }],
+    armor: true, weapon: false, shield: true, scepter: false, wand: false, staff: false, bow: false,
+    boots: true, gloves: true, belt: true, thrown: false,
+  },
+]
+
+function doesBaseMatchQualityType113c(
+  base: ItemBase,
+  target: string,
+  itemTypes?: ItemTypeTable,
+): boolean {
+  const typeCode = getItemTypeCode(base).trim().toLowerCase()
+  const t = target.trim().toLowerCase()
+  if (!typeCode || !t) return false
+  if (typeCode === t) return true
+  if (itemTypes) {
+    const visited = new Set<string>()
+    const queue = [typeCode]
+    while (queue.length > 0) {
+      const curr = queue.shift()!.trim().toLowerCase()
+      if (!curr || visited.has(curr)) continue
+      if (curr === t) return true
+      visited.add(curr)
+      const def = itemTypes.byCode?.get(curr) ?? (itemTypes as any)?.get?.(curr)
+      if (def) {
+        if (def.equiv1) queue.push(def.equiv1)
+        if (def.equiv2) queue.push(def.equiv2)
+      }
+    }
+    return false
+  }
+  return Boolean(base.tags?.some((tag) => tag.trim().toLowerCase() === t))
+}
+
+function matchesQualityItemRow113c(
+  row: QualityItemRow113c,
+  base: ItemBase,
+  itemTypes?: ItemTypeTable,
+): boolean {
+  // D2Common.#11094 (`0x6FD95BE0..0x6FD95D2C`): check specific sub-types before broad `armor`/`weapon`.
+  if (doesBaseMatchQualityType113c(base, 'shld', itemTypes)) return row.shield
+  if (doesBaseMatchQualityType113c(base, 'boot', itemTypes)) return row.boots
+  if (doesBaseMatchQualityType113c(base, 'glov', itemTypes)) return row.gloves
+  if (doesBaseMatchQualityType113c(base, 'belt', itemTypes)) return row.belt
+  if (doesBaseMatchQualityType113c(base, 'armo', itemTypes) || base.kind === 'armor') return row.armor
+  if (doesBaseMatchQualityType113c(base, 'scep', itemTypes)) return row.scepter
+  if (doesBaseMatchQualityType113c(base, 'wand', itemTypes)) return row.wand
+  if (
+    doesBaseMatchQualityType113c(base, 'staf', itemTypes) ||
+    doesBaseMatchQualityType113c(base, 'orb', itemTypes)
+  ) {
+    return row.staff
+  }
+  if (
+    doesBaseMatchQualityType113c(base, 'bow', itemTypes) ||
+    doesBaseMatchQualityType113c(base, 'xbow', itemTypes) ||
+    doesBaseMatchQualityType113c(base, 'abow', itemTypes)
+  ) {
+    return row.bow
+  }
+  if (
+    doesBaseMatchQualityType113c(base, 'thro', itemTypes) ||
+    doesBaseMatchQualityType113c(base, 'jave', itemTypes) ||
+    doesBaseMatchQualityType113c(base, 'ajav', itemTypes)
+  ) {
+    return row.thrown
+  }
+  if (doesBaseMatchQualityType113c(base, 'weap', itemTypes) || base.kind === 'weapon') return row.weapon
+  return false
+}
+
+/**
+ * Rolls 1.13c Superior (`hiquality`) item modifiers (`D2Game.dll` `0x6FC340B0..0x6FC341D9`, #1913).
+ */
+export function rollSuperiorMods113c(
+  base: ItemBase,
+  itemTypes: ItemTypeTable | undefined,
+  rng: D2Rng,
+): RolledItemProp[] {
+  const rawDur = Number((base as any).durability ?? 0) || 0
+  const noDur = Boolean((base as any).nodurability) || Boolean((base as any).indestructible) || rawDur <= 0
+  const candidateRows = noDur
+    ? CANONICAL_QUALITY_ITEMS_113C.slice(0, 4)
+    : CANONICAL_QUALITY_ITEMS_113C
+  const eligible = candidateRows.filter((r) => matchesQualityItemRow113c(r, base, itemTypes))
+  if (eligible.length === 0) return []
+
+  const row = eligible[rng.rand(eligible.length)]!
+  const maxBaseDam = Math.max(
+    Number((base as any).maxdam ?? 0) || 0,
+    Number((base as any).twoHandedMaxdam ?? 0) || 0,
+    Number((base as any).maxMisDam ?? 0) || 0,
+    base.damage || 0,
+  )
+  const out: RolledItemProp[] = []
+  for (const mod of row.mods) {
+    const val = rng.randRange(mod.min, mod.max)
+    // D2Game.dll 0x6FC34176..0x6FC341BE: if `dmg%` yields 0 integer bonus on max base damage,
+    // emit `+1 to Maximum Damage` (`dmg-max = 1`) instead.
+    if (mod.code === 'dmg%' && maxBaseDam > 0 && Math.trunc((maxBaseDam * val) / 100) <= 0) {
+      out.push({ code: 'dmg-max', min: 1, max: 1, value: 1 })
+    } else {
+      out.push({ code: mod.code, min: mod.min, max: mod.max, value: val })
+    }
+  }
+  return out
+}
+
+export function scaleLowQualityWeaponBand113c(rawMin: number, rawMax: number): { readonly min: number; readonly max: number } {
+  const min = Math.max(1, Math.trunc((rawMin * 75) / 100))
+  let max = Math.max(2, Math.trunc((rawMax * 75) / 100))
+  if (min >= max) {
+    max = Math.max(2, min + 1)
+  }
+  return { min, max }
+}
+
+/**
  * Creates a concrete Item instance for a dropped leaf item.
  */
 export function createDroppedItem(
@@ -779,8 +969,53 @@ export function createDroppedItem(
   const stats: Record<string, number> = {}
   const rolledProps: RolledItemProp[] = []
 
-  if (base.damage > 0) stats.damage = base.damage
-  if (base.defense > 0) stats.defense = base.defense
+  let outputBase: ItemBase = base
+  if (qualityTier === 'low' && base.kind === 'weapon') {
+    const wb = base as ItemBase & {
+      readonly mindam?: number
+      readonly maxdam?: number
+      readonly twoHandedMindam?: number
+      readonly twoHandedMaxdam?: number
+      readonly minMisDam?: number
+      readonly maxMisDam?: number
+    }
+    const nextFields: Record<string, unknown> = {
+      rawUnscaledBase: base,
+      lowQualityScaled: true,
+    }
+    if (typeof wb.mindam === 'number' && typeof wb.maxdam === 'number' && wb.maxdam > 0) {
+      const scaled = scaleLowQualityWeaponBand113c(wb.mindam, wb.maxdam)
+      nextFields.mindam = scaled.min
+      nextFields.maxdam = scaled.max
+      stats.mindam = scaled.min
+      stats.maxdam = scaled.max
+    }
+    if (typeof wb.twoHandedMindam === 'number' && typeof wb.twoHandedMaxdam === 'number' && wb.twoHandedMaxdam > 0) {
+      const scaled2h = scaleLowQualityWeaponBand113c(wb.twoHandedMindam, wb.twoHandedMaxdam)
+      nextFields.twoHandedMindam = scaled2h.min
+      nextFields.twoHandedMaxdam = scaled2h.max
+      stats.twoHandedMindam = scaled2h.min
+      stats.twoHandedMaxdam = scaled2h.max
+    }
+    if (typeof wb.minMisDam === 'number' && typeof wb.maxMisDam === 'number' && wb.maxMisDam > 0) {
+      const scaledMis = scaleLowQualityWeaponBand113c(wb.minMisDam, wb.maxMisDam)
+      nextFields.minMisDam = scaledMis.min
+      nextFields.maxMisDam = scaledMis.max
+      stats.minMisDam = scaledMis.min
+      stats.maxMisDam = scaledMis.max
+    }
+    if (base.damage > 0) {
+      const lowDmg = Math.max(1, Math.trunc((base.damage * 75) / 100))
+      nextFields.damage = lowDmg
+      stats.damage = lowDmg
+    }
+    outputBase = { ...base, ...nextFields } as ItemBase
+  } else {
+    if (base.damage > 0) stats.damage = base.damage
+  }
+  if (base.defense > 0) {
+    stats.defense = qualityTier === 'low' ? Math.max(1, Math.trunc((base.defense * 75) / 100)) : base.defense
+  }
 
   const propRng = options.itemRng ?? new D2Rng(options.dwInitSeed)
 
@@ -809,6 +1044,27 @@ export function createDroppedItem(
       for (const prop of options.uniqueItem.props) {
         if (prop.code) {
           const val = resolveItemPropValue(prop)
+          if (prop.code.toLowerCase() === 'randclassskill') {
+            // Properties.txt func1 = 36, val1 = 3 ('item_addclassskills' stat 83):
+            // UniqueItems.txt Hellfire Torch encodes class range 0..6 in min/max while +3 comes from Properties.txt val1.
+            const hasExplicitClass =
+              prop.par !== undefined && prop.par !== '' && Number.isFinite(Number(prop.par))
+            const rolledClass = hasExplicitClass
+              ? Math.max(0, Math.min(6, Math.trunc(Number(prop.par))))
+              : prop.min === 0 && prop.max === 6
+                ? Math.max(0, Math.min(6, Math.trunc(val)))
+                : propRng.rand(7)
+            const skillBonus = prop.min === 0 && prop.max === 6 ? 3 : val > 0 ? val : 3
+            rolledProps.push({
+              code: prop.code,
+              param: rolledClass,
+              min: skillBonus,
+              max: skillBonus,
+              value: skillBonus,
+            })
+            stats[prop.code] = (stats[prop.code] ?? 0) + skillBonus
+            continue
+          }
           rolledProps.push({
             code: prop.code,
             param: prop.par,
@@ -921,44 +1177,11 @@ export function createDroppedItem(
   } else if (qualityTier === 'superior') {
     name = `Superior ${base.name}`
     if (!options.rolledProps || options.rolledProps.length === 0) {
-      if (base.kind === 'armor') {
-        const acPct = propRng.randRange(5, 15)
-        rolledProps.push({
-          code: 'ac%',
-          min: 5,
-          max: 15,
-          value: acPct,
-        })
-        stats['ac%'] = (stats['ac%'] ?? 0) + acPct
-        if (propRng.rand(2) === 0) {
-          const durPct = propRng.randRange(10, 15)
-          rolledProps.push({
-            code: 'dur%',
-            min: 10,
-            max: 15,
-            value: durPct,
-          })
-          stats['dur%'] = (stats['dur%'] ?? 0) + durPct
-        }
-      } else if (base.kind === 'weapon') {
-        const dmgPct = propRng.randRange(5, 15)
-        rolledProps.push({
-          code: 'dmg%',
-          min: 5,
-          max: 15,
-          value: dmgPct,
-        })
-        stats['dmg%'] = (stats['dmg%'] ?? 0) + dmgPct
-        if (propRng.rand(2) === 0) {
-          const attVal = propRng.randRange(1, 3)
-          rolledProps.push({
-            code: 'att',
-            min: 1,
-            max: 3,
-            value: attVal,
-          })
-          stats['att'] = (stats['att'] ?? 0) + attVal
-        }
+      const supTables = options.itemTypes ?? getEmbeddedDropTables().itemTypes
+      const supMods = rollSuperiorMods113c(base, supTables, propRng)
+      for (const sm of supMods) {
+        rolledProps.push(sm)
+        stats[sm.code] = (stats[sm.code] ?? 0) + sm.value
       }
     }
   } else if (qualityTier === 'low') {
@@ -1069,16 +1292,22 @@ export function createDroppedItem(
 
   if (typeof rawDurability === 'number' && rawDurability > 0 && !noDur) {
     if (qualityTier === 'low') {
+      // D2Game.dll ITEMS_RollLowQuality (0x6FC33ECC..0x6FC33F0E):
+      // maxdur = max(1, floor(rawDur / 3)) (#1468); curdur in [max(1, floor(maxdur / 2)), max(1, maxdur - 1)] (#1914).
       maxDurability = Math.max(1, Math.floor(rawDurability / 3))
+      const minInitDur = Math.max(1, Math.floor(maxDurability / 2))
+      const maxInitDur = Math.max(minInitDur, maxDurability - 1)
+      durability = propRng.randRange(minInitDur, maxInitDur)
     } else if (isEthereal) {
       // 1.13c D2Game.dll 0x6FC2EC56..0x6FC2EC7F: maxdur = trunc(maxdur / 2) + 1,
       // followed by Failed Unique (3x) / Failed Set (2x) durability multiplier (capped at 255).
       const ethBaseDur = computeEtherealMaxDurability113c(rawDurability)
       maxDurability = mult > 1 ? Math.min(255, Math.round(ethBaseDur * mult)) : ethBaseDur
+      durability = maxDurability
     } else {
       maxDurability = Math.round(rawDurability * mult)
+      durability = maxDurability
     }
-    durability = maxDurability
   }
 
   const baseCode = formatItemCode(base.id).trim()
@@ -1136,7 +1365,7 @@ export function createDroppedItem(
     : 1
 
   return {
-    base,
+    base: outputBase,
     prefix,
     suffix,
     level: options.ilvl,
@@ -1267,6 +1496,7 @@ export function executeDropPipeline(
   }
 
   // 3. Expand TC tree (enforcing 6-item cap per D2Game!6FC51BB0)
+  const ignoreNoDrop = options.ignoreNoDrop === true || options.noDropZero === true
   const dropLeaves: DroppedItemEntry[] = expandTreasureClass(effectiveTcName, {
     rng,
     tcTable: dropTables.tcTable,
@@ -1274,6 +1504,7 @@ export function executeDropPipeline(
     gamePlayers,
     partyPlayers,
     ...(options.monsterPlayerCount !== undefined ? { monsterPlayerCount: options.monsterPlayerCount } : {}),
+    ...(ignoreNoDrop ? { ignoreNoDrop: true, noDropZero: true } : {}),
     isExpansion,
     maxDrops,
   })
@@ -1638,7 +1869,11 @@ export function executeDropPipeline(
               : null
           const staffMods =
             resolveStaffModsClass(effectiveBase, dropTables.itemTypes) !== undefined
-              ? rollStaffMods(effectiveBase, effectiveIlvl, dropTables.itemTypes, itemRng)
+              ? rollStaffMods(effectiveBase, effectiveIlvl, dropTables.itemTypes, itemRng, {
+                  isA: dropTables.isA,
+                  quality: 'rare',
+                  isExpansion,
+                })
               : undefined
           drops.push(createDroppedItem(effectiveBase, 'rare', {
             rareAffixes,
@@ -1683,7 +1918,11 @@ export function executeDropPipeline(
           : null
       const staffMods =
         resolveStaffModsClass(effectiveBase, dropTables.itemTypes) !== undefined
-          ? rollStaffMods(effectiveBase, effectiveIlvl, dropTables.itemTypes, itemRng)
+          ? rollStaffMods(effectiveBase, effectiveIlvl, dropTables.itemTypes, itemRng, {
+              isA: dropTables.isA,
+              quality: 'magic',
+              isExpansion,
+            })
           : undefined
       drops.push(createDroppedItem(effectiveBase, 'magic', {
         magicAffixes,
@@ -1714,7 +1953,11 @@ export function executeDropPipeline(
         : null
     const staffMods =
       resolveStaffModsClass(effectiveBase, dropTables.itemTypes) !== undefined
-        ? rollStaffMods(effectiveBase, effectiveIlvl, dropTables.itemTypes, itemRng)
+        ? rollStaffMods(effectiveBase, effectiveIlvl, dropTables.itemTypes, itemRng, {
+            isA: dropTables.isA,
+            quality,
+            isExpansion,
+          })
         : undefined
 
     if (quality === 'superior') {
@@ -2142,7 +2385,10 @@ export function imbueItem113c(
       : null
   const staffMods =
     resolveStaffModsClass(base, dropTables.itemTypes) !== undefined
-      ? rollStaffMods(base, ilvl, dropTables.itemTypes, itemRng)
+      ? rollStaffMods(base, ilvl, dropTables.itemTypes, itemRng, {
+          isA: dropTables.isA,
+          quality: 'rare',
+        })
       : undefined
 
   const wasEthereal = Boolean(

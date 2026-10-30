@@ -104,7 +104,7 @@ describe('Mobile Phase 5 (#1385): Spring-Repulsion Ground Label Magnet & Sequent
     hud.touchControls.updateFootLootQueue(400, 300, groundItems)
 
     const pickedIds: number[] = []
-    ;(hud as any).onTouchLootInteract = (id: number) => pickedIds.push(id)
+    hud.onTouchLootInteract = (target) => pickedIds.push(target.id)
 
     const m = computeCompactD2rHudMetrics(800, 600)
     handleCompactD2rHudClick(hud, m.lootBtn.cx, m.lootBtn.cy)

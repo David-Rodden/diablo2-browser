@@ -111,13 +111,21 @@ describe('issue #1353 full quest coverage', () => {
     operate(game, playerId, 357)
     expect(player.questFlags[questIndex('a2q4')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
 
-    // Lam Esen: pickup -> reward pending -> Cain.
+    // Lam Esen: stand drops 'bbb' -> pickup sets reward pending -> Alkor consumes 'bbb' & completes.
     operate(game, playerId, 193)
+    const groundMap = (game as unknown as { groundItems: Map<number, { code: string }> }).groundItems
+    const droppedTome = [...groundMap.entries()].find(([, g]) => g.code.trim().toLowerCase() === 'bbb')
+    expect(droppedTome).toBeDefined()
+    game.enqueueCommand(playerId, { type: 'ItemPickup', itemId: droppedTome![0], toCursor: false } as never)
+    game.stepFrames(1)
     expect(player.questFlags[questIndex('a3q4')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
       QUEST_FLAG_REWARD_PENDING_113C,
     )
     const cain = game.spawnMonster({ classId: 146, name: 'Cain', x: 11, y: 10, areaId: 1, isNpc: true })
-    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: cain } } as never)
+    const alkor = game.spawnMonster({
+      classId: 254, name: 'Alkor', x: 11, y: 10, areaId: 1, isNpc: true,
+    })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: alkor } } as never)
     game.stepFrames(1)
     expect(player.questFlags[questIndex('a3q4')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
 
@@ -154,9 +162,6 @@ describe('issue #1353 full quest coverage', () => {
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: meshif } } as never)
     game.stepFrames(1)
     expect(player.items.some((i) => i.code.trim().toLowerCase() === 'g34')).toBe(true)
-    const alkor = game.spawnMonster({
-      classId: 254, name: 'Alkor', x: 11, y: 10, areaId: 1, isNpc: true,
-    })
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: alkor } } as never)
     game.stepFrames(1)
     expect(player.questFlags[questIndex('a3q1')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
@@ -259,9 +264,13 @@ describe('issue #1353 full quest coverage', () => {
     game.applyDamageToMonster(izual, 1000, playerId)
     expect(player.newSkills - (player.level - level0)).toBe(skills0 + 3)
 
-    // A3Q4 (Lam Esen's Tome) turned in to Alkor (254) -> +5 stat points.
+    // A3Q4 (Lam Esen's Tome 'bbb') picked up and turned in to Alkor (254) -> +5 stat points.
     const stats0 = player.statPts
     operate(game, playerId, 193)
+    const droppedBbb = [...p.groundItems.entries()].find(([, g]) => g.code.trim().toLowerCase() === 'bbb')
+    expect(droppedBbb).toBeDefined()
+    game.enqueueCommand(playerId, { type: 'ItemPickup', itemId: droppedBbb![0], toCursor: false } as never)
+    game.stepFrames(1)
     const alkor = game.spawnMonster({ classId: 254, name: 'Alkor', x: 11, y: 10, areaId: 1, isNpc: true })
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: alkor } } as never)
     game.stepFrames(1)

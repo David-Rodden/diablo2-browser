@@ -118,6 +118,13 @@ export interface DropContext {
   flags?: number | undefined
   /** Maximum number of leaf items to emit (defaults to MAX_DROPPED_ITEMS = 6). */
   maxDrops?: number | undefined
+  /**
+   * 1.13c `D2Game.dll` `SrvDo072_FindItem` (`0x6FC476D0` -> `0x6FCFE290` / `0x6FC32720`, `a7 = 1`, #1810):
+   * When true, skips `NoDrop` weight on every TreasureClass pick (`scaledNoDrop = 0`).
+   */
+  ignoreNoDrop?: boolean | undefined
+  /** Alias for `ignoreNoDrop` (`noDropZero = true`). */
+  noDropZero?: boolean | undefined
 }
 
 /**
@@ -508,7 +515,10 @@ export function rollTreasureClass(tcName: string, context: DropContext): Dropped
       const baseNoDrop = frame.node.noDrop ?? 0
       const totalProb = frame.totalProb
 
-      const scaledNoDrop = computeScaledNoDrop(baseNoDrop, totalProb, effectivePlayers)
+      const scaledNoDrop =
+        context.ignoreNoDrop === true || context.noDropZero === true
+          ? 0
+          : computeScaledNoDrop(baseNoDrop, totalProb, effectivePlayers)
       const totalWeight = scaledNoDrop + totalProb
 
       if (totalWeight <= 0) {

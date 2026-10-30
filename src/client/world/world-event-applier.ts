@@ -4,6 +4,7 @@
 
 import {
   ClickButtonId,
+  MONSTATS_HCIDX_COUNT,
   unitTypeFromId,
   type CharClassId,
   type ClientCommand,
@@ -14,7 +15,6 @@ import {
   type UnitRef,
   type UnitType,
   type UnitTypeId,
-  MONSTATS_HCIDX_COUNT,
 } from '../../netproto/index.ts'
 import { resolveUnitMonSoundRow113c } from '../../common/audio/mon-sounds-113c.ts'
 import { getSoundIdByName113c } from '../../common/audio/sounds-113c.ts'
@@ -111,6 +111,7 @@ import {
   BUTTON_ACTION_CLOSE_STASH,
   BUTTON_ACTION_OPEN_CUBE,
   BUTTON_ACTION_OPEN_STASH,
+  DEAD_MERC_NAME_ID_NONE,
   MAX_D2_STAT_ID,
   PALADIN_AURA_SKILL_STATES,
   isMonsterOneShotMode,
@@ -236,14 +237,24 @@ export function noteOutgoingCommandImpl(
         this.npcMotion.setNpcInteractionLock(cur.npcId, false)
       }
       this.npcMotion.setNpcInteractionLock(cmd.target.id, true)
+      const targetUnitType = cmd.target.unitType ?? (cmd.target as any).kind ?? 'monster'
+      const resolvedUnitType: 1 | 2 =
+        targetUnitType === 'object' || targetUnitType === 2 ? 2 : 1
       const perNpcInfo = this._npcInfoByUnitId.get(cmd.target.id)
       const sameNpcInfo = cur.infoNpcId === cmd.target.id || cur.npcId === cmd.target.id
+      const preserveArtisanWindow =
+        cur.npcId === cmd.target.id &&
+        (cur.unitType ?? 1) === resolvedUnitType &&
+        (cur.activeWindow === 'imbue' ||
+          cur.activeWindow === 'add_sockets' ||
+          cur.activeWindow === 'personalize')
       this._npcInteraction = {
         ...cur,
         npcId: cmd.target.id,
+        unitType: resolvedUnitType,
         infoNpcId: perNpcInfo ? cmd.target.id : sameNpcInfo ? cur.infoNpcId : undefined,
-        window: 'none',
-        activeWindow: 'none',
+        window: preserveArtisanWindow ? cur.window : 'none',
+        activeWindow: preserveArtisanWindow ? cur.activeWindow : 'none',
         npcInfoRaw: perNpcInfo?.npcInfoRaw ?? (sameNpcInfo ? cur.npcInfoRaw : undefined),
         messages: perNpcInfo?.messages ?? (sameNpcInfo ? cur.messages : undefined),
         allMessages: perNpcInfo?.allMessages ?? (sameNpcInfo ? cur.allMessages : undefined),
@@ -255,7 +266,6 @@ export function noteOutgoingCommandImpl(
             : undefined,
       }
       this._pendingWantsInteractUnitIds.delete(cmd.target.id)
-      const targetUnitType = cmd.target.unitType ?? (cmd.target as any).kind ?? 'monster'
       const targetUnit = this.getUnit(targetUnitType, cmd.target.id) ?? this.getUnit('monster', cmd.target.id)
       if (targetUnit) {
         targetUnit.wantsInteract = false
@@ -272,10 +282,16 @@ export function noteOutgoingCommandImpl(
     }
     case 'Interact': {
       this._pendingMeleeAttack = null
-      this._pendingWantsInteractUnitIds.delete(cmd.target.id)
       const targetUnit = this.getUnit(cmd.target.unitType, cmd.target.id)
-      if (targetUnit) {
-        targetUnit.wantsInteract = false
+      const isMonsterTarget =
+        cmd.target.unitType === 1 ||
+        cmd.target.unitType === 'monster' ||
+        targetUnit?.unitType === 'monster'
+      if (!isMonsterTarget) {
+        this._pendingWantsInteractUnitIds.delete(cmd.target.id)
+        if (targetUnit) {
+          targetUnit.wantsInteract = false
+        }
       }
       const resolvedSelfId = this.selfId || (this.getUnit('player', 1) ? 1 : 0)
       if (resolvedSelfId !== 0) {
@@ -1588,7 +1604,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           syncMercStat6FromLifePct(this, unit, unit.lifePct, 128)
           if (unit.lifePct <= 0 || unit.mode === 0 || unit.mode === 12) {
             this._merc.isDead = true
-          } else {
+          } else if (this._deadMercNameId === DEAD_MERC_NAME_ID_NONE) {
+            // A live 0xAC assign never clears the 0x9B dead-hireling record (`word [0x6fba23e8]`); only
+            // `0x9B(0xFFFF)` does, so a stale pre-death life byte cannot hide NPC Resurrect.
             this._merc.isDead = false
             this._merc.reviveCost = 0
           }
@@ -1988,7 +2006,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           if (this._merc && unit.id === this._merc.mercId) {
             this._merc.lifePct = moveLifeByte
             this._merc.lifePctScale = 128
-            if (moveLifeByte > 0) {
+            if (moveLifeByte > 0 && this._deadMercNameId === DEAD_MERC_NAME_ID_NONE) {
               this._merc.isDead = false
             }
             syncMercStat6FromLifePct(this, unit, moveLifeByte, 128)
@@ -2739,22 +2757,49 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             const existingIdx = mutableStats.findIndex(
               (s) => s.statId === ev.stat && (ev.param === undefined || s.param === ev.param),
             )
+            const mutableRwStats = Array.isArray(item.runewordStats)
+              ? [...item.runewordStats]
+              : undefined
+            const existingRwIdx =
+              existingIdx < 0 && mutableRwStats !== undefined
+                ? mutableRwStats.findIndex(
+                    (s) => s.statId === ev.stat && (ev.param === undefined || s.param === ev.param),
+                  )
+                : -1
             // D2Client.dll 0x6fb35990 -> 0x6fb32210: for stat 204 (item_charged_skill), 0x3E sends
             // only the updated 8-bit current charges in `ev.value` (while the item bitstream stores
             // `(maxCharges << 8) | curCharges`). Preserve the existing high-byte `maxCharges`.
-            const nextValue =
-              ev.stat === 204 && existingIdx >= 0
-                ? ((mutableStats[existingIdx]!.value & 0xff00) | (ev.value & 0xff))
-                : ev.value
-            if (existingIdx >= 0) {
-              mutableStats[existingIdx] = { statId: ev.stat, value: nextValue, param: ev.param ?? 0 }
+            if (existingRwIdx >= 0 && mutableRwStats !== undefined) {
+              const prevRwVal = mutableRwStats[existingRwIdx]!.value
+              const nextRwVal =
+                ev.stat === 204 ? ((prevRwVal & 0xff00) | (ev.value & 0xff)) : ev.value
+              mutableRwStats[existingRwIdx] = {
+                statId: ev.stat,
+                value: nextRwVal,
+                param: ev.param ?? mutableRwStats[existingRwIdx]!.param ?? 0,
+              }
+              ;(item as any).runewordStats = mutableRwStats
             } else {
-              mutableStats.push({ statId: ev.stat, value: nextValue, param: ev.param ?? 0 })
+              const nextValue =
+                ev.stat === 204 && existingIdx >= 0
+                  ? ((mutableStats[existingIdx]!.value & 0xff00) | (ev.value & 0xff))
+                  : ev.value
+              if (existingIdx >= 0) {
+                mutableStats[existingIdx] = { statId: ev.stat, value: nextValue, param: ev.param ?? 0 }
+              } else {
+                mutableStats.push({ statId: ev.stat, value: nextValue, param: ev.param ?? 0 })
+              }
+              ;(item as any).stats = mutableStats
             }
-            ;(item as any).stats = mutableStats
             if (ev.stat === 204) {
               const rawParam =
-                ev.param ?? (existingIdx >= 0 ? mutableStats[existingIdx]!.param : 0) ?? 0
+                ev.param ??
+                (existingIdx >= 0
+                  ? mutableStats[existingIdx]!.param
+                  : existingRwIdx >= 0 && mutableRwStats !== undefined
+                    ? mutableRwStats[existingRwIdx]!.param
+                    : 0) ??
+                0
               const skillId = rawParam >= 64 ? rawParam >>> 6 : rawParam
               const curCharges = ev.value & 0xff
               if (skillId > 0) {
@@ -2849,7 +2894,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             if (this._merc && targetUnit.id === this._merc.mercId) {
               this._merc.lifePct = life128
               this._merc.lifePctScale = 128
-              this._merc.isDead = rawHp <= 0
+              this._merc.isDead = rawHp <= 0 || this._deadMercNameId !== DEAD_MERC_NAME_ID_NONE
             }
             const pet = this._pets.get(targetUnit.id)
             if (pet) {
@@ -3264,25 +3309,30 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         (ev.item.worldX === undefined || ev.item.worldX === 0) &&
         (ev.item.worldY === undefined || ev.item.worldY === 0)
       const defaultContainer =
-        effectiveAction === 0x01 ||
-        effectiveAction === 0x12 ||
-        effectiveAction === 0x16 ||
-        isCursorImode
-          ? 'cursor'
-          : ev.type === 'WorldItemAction' ||
-              effectiveAction === 0x00 ||
-              effectiveAction === 0x02 ||
-              effectiveAction === 0x03 ||
-              ev.item?.location === 3 ||
-              ev.item?.location === 5
-            ? 'ground'
-            : effectiveAction === 0x06 ||
-                effectiveAction === 0x07 ||
-                effectiveAction === 0x09 ||
-                effectiveAction === 0x17 ||
-                ev.item?.location === 1
-              ? 'equipment'
-              : 'inventory'
+        effectiveAction === 0x0a ||
+        effectiveAction === 0x13 ||
+        ev.item?.location === 6 ||
+        ev.item?.inSocket === true
+          ? 'socket'
+          : effectiveAction === 0x01 ||
+              effectiveAction === 0x12 ||
+              effectiveAction === 0x16 ||
+              isCursorImode
+            ? 'cursor'
+            : ev.type === 'WorldItemAction' ||
+                effectiveAction === 0x00 ||
+                effectiveAction === 0x02 ||
+                effectiveAction === 0x03 ||
+                ev.item?.location === 3 ||
+                ev.item?.location === 5
+              ? 'ground'
+              : effectiveAction === 0x06 ||
+                  effectiveAction === 0x07 ||
+                  effectiveAction === 0x09 ||
+                  effectiveAction === 0x17 ||
+                  ev.item?.location === 1
+                ? 'equipment'
+                : 'inventory'
       let effectiveContainer = ev.container ?? ev.item?.container ?? defaultContainer
       if (
         isCursorImode &&
@@ -3347,7 +3397,10 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         itemUnit.itemCode = trimmedCode
         itemUnit.itemQuality = ev.item.quality
         itemUnit.itemData = ev.item
-        const uiItem = onlineItemDataToUiInventoryItem(ev.item)
+        const uiItem = onlineItemDataToUiInventoryItem(
+          ev.item,
+          this._containers.sockets.get(ev.item.id),
+        )
         itemUnit.flippyFile = uiItem.flippyFile
         itemUnit.invFile = uiItem.invFile
         itemUnit.invtransform = uiItem.invtransform
@@ -3434,7 +3487,27 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           itemUnit.modeUntilMs = undefined
         }
       } else {
-        this._units.delete(makeUnitKey('item', ev.item.id))
+        if (!this._containers.ground.has(ev.item.id)) {
+          this._units.delete(makeUnitKey('item', ev.item.id))
+        }
+        if (effectiveContainer === 'socket') {
+          const hostId = Number(itemPayload.ownerId ?? 0)
+          const groundHost = hostId > 0 ? this._containers.ground.get(hostId) : undefined
+          const groundUnit = hostId > 0 ? this.getUnit('item', hostId) : undefined
+          if (groundHost && groundUnit) {
+            const uiHost = onlineItemDataToUiInventoryItem(
+              groundHost,
+              this._containers.sockets.get(hostId),
+            )
+            groundUnit.flippyFile = uiHost.flippyFile
+            groundUnit.invFile = uiHost.invFile
+            groundUnit.invtransform = uiHost.invtransform
+            if (groundUnit.itemCode !== 'gld') {
+              groundUnit.name = uiHost.name || groundHost.code
+              groundUnit.nameZh = uiHost.nameZh || uiHost.baseNameZh || groundUnit.name
+            }
+          }
+        }
         if (effectiveContainer === 'cursor') {
           // D2Client.dll 0x6fb328d9 (item mode 4 OnCursor -> PlaySound(0xeb = 235 /* item_pickup */, 0, 0, 0, 0))
           this.pushSoundRequest({ soundId: 235 })
@@ -3651,7 +3724,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         if (this._merc && this._merc.mercId === targetId) {
           this._merc.lifePct = healPct
           this._merc.lifePctScale = 128
-          if (healPct > 0) {
+          if (healPct > 0 && this._deadMercNameId === DEAD_MERC_NAME_ID_NONE) {
             this._merc.isDead = false
           }
           syncMercStat6FromLifePct(this, unit, healPct, 128)
@@ -3990,7 +4063,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           if (pct100 !== undefined) {
             this._merc.lifePct = pct100
             this._merc.lifePctScale = 100
-            this._merc.isDead = pct100 <= 0
+            this._merc.isDead = pct100 <= 0 || this._deadMercNameId !== DEAD_MERC_NAME_ID_NONE
             syncMercStat6FromLifePct(this, unit, pct100, 100)
           }
         }
@@ -4147,9 +4220,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           (resolvedCharName ? this._ignoredPlayerNames.has(resolvedCharName.toLowerCase()) : false)
 
         if (ev.lifePct !== undefined && playerUnit) {
-          if (playerUnit.mode === 0 || playerUnit.mode === 17) {
+          if (playerUnit.mode === 0 || playerUnit.mode === 17 || ev.lifePct <= 0) {
             playerUnit.lifePct = 0
-          } else if (ev.lifePct > 0) {
+          } else {
             playerUnit.lifePct = Math.min(128, Math.max(1, Math.round((ev.lifePct * 128) / 100)))
           }
         }
@@ -4814,7 +4887,35 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
             map.set(statId, ev.value)
           }
         } else if (ev.mercId === undefined && revNameId !== undefined && revCost !== undefined) {
-          // 0x9B MercReviveCost
+          // 0x9B MercReviveCost (D2Client.dll 0x6fb5e1e0 -> 0x6fafa350): stores the name id at
+          // `word [0x6fba23e8]` and the cost at `dword [0x6fbcc334]`. D2Game sends `0x9B(nameId, cost)` when
+          // the hireling dies (0x6fcb8120 -> 0x6fcb8200) or on join with a dead hireling (0x6fcb75a8), and
+          // `0x9B(0xFFFF, 0)` to clear it after a resurrect / hire (0x6fc6906a, 0x6fce0faa).
+          this._deadMercNameId = revNameId & 0xffff
+          this._deadMercReviveCost = this._deadMercNameId === DEAD_MERC_NAME_ID_NONE ? 0 : revCost
+          if (this._deadMercNameId === DEAD_MERC_NAME_ID_NONE) {
+            if (this._merc) {
+              if (this._merc.mercId === 0) {
+                // Placeholder created from a previous 0x9B dead record with no hireling unit: nothing left.
+                this._merc = null
+              } else {
+                this._merc.reviveCost = 0
+                this._merc.deadNameId = undefined
+                this._merc.reviveNameId = undefined
+                const liveMercUnit = this.getUnit('monster', this._merc.mercId)
+                if (
+                  liveMercUnit &&
+                  !liveMercUnit.dead &&
+                  liveMercUnit.mode !== 0 &&
+                  liveMercUnit.mode !== 12 &&
+                  liveMercUnit.lifePct > 0
+                ) {
+                  this._merc.isDead = false
+                }
+              }
+            }
+            break
+          }
           const currentClassId = this._merc?.classId ?? 0
           const resolvedName = resolveHirelingName(currentClassId, revNameId, 'ENG')
           const resolvedNameZh = resolveHirelingName(currentClassId, revNameId, 'CHI')

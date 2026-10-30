@@ -241,7 +241,7 @@ describe('issue #1353 Chaos seal bosses', () => {
     )
     expect(bosses).toHaveLength(3)
     for (const [id] of bosses) game.applyDamageToMonster(id, 1_000_000, playerId)
-    game.stepFrames(1)
+    game.stepFrames(125)
     expect([...internal.monsters.values()].some((m) => m.defId === 'diablo' && !m.dead)).toBe(true)
   })
 })
@@ -274,22 +274,31 @@ describe('issue #1353 Cain / Cairn / Inifuss', () => {
     const playerId = game.connectPlayer({ charClass: 'pal', name: 'Hero', x: 10, y: 10, areaId: 1 })
     const player = (game as unknown as { players: Map<number, { questFlags: Uint16Array }> })
       .players.get(playerId)!
-    for (let i = 0; i < 5; i++) {
-      const stone = game.spawnObject({ classId: 17 + i, x: 11, y: 10, areaId: 1 })
-      game.enqueueCommand(playerId, { type: 'OperateObject', objectId: stone })
-      game.stepFrames(1)
-    }
-    const objects = (game as unknown as { objects: Map<number, { classId: number; destAreaId?: number }> })
-      .objects
-    expect([...objects.values()].some((o) => o.classId === 60 && o.destAreaId === 38)).toBe(true)
-
     const before = (game as unknown as { groundItems: Map<number, unknown> }).groundItems.size
     const tree = game.spawnObject({ classId: 30, x: 11, y: 10, areaId: 1 })
     game.enqueueCommand(playerId, { type: 'OperateObject', objectId: tree })
     game.stepFrames(1)
     const ground = (game as unknown as { groundItems: Map<number, { code: string }> }).groundItems
     expect(ground.size).toBeGreaterThan(before)
-    expect([...ground.values()].some((item) => item.code.trim().toLowerCase() === 'bks')).toBe(true)
+    const bksEntry = [...ground.entries()].find(([, item]) => item.code.trim().toLowerCase() === 'bks')
+    expect(bksEntry).toBeDefined()
+    game.enqueueCommand(playerId, { type: 'ItemPickup', itemId: bksEntry![0], toCursor: false } as never)
+    game.stepFrames(1)
+    const akara = game.spawnMonster({ classId: 148, name: 'Akara', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: akara } } as never)
+    game.stepFrames(1)
+
+    const stoneIdsByClass = new Map<number, number>()
+    for (let i = 0; i < 5; i++) {
+      stoneIdsByClass.set(17 + i, game.spawnObject({ classId: 17 + i, x: 11, y: 10, areaId: 1 }))
+    }
+    for (const cls of game.getCairnStoneOrder()) {
+      game.enqueueCommand(playerId, { type: 'OperateObject', objectId: stoneIdsByClass.get(cls)! })
+      game.stepFrames(1)
+    }
+    const objects = (game as unknown as { objects: Map<number, { classId: number; destAreaId?: number }> })
+      .objects
+    expect([...objects.values()].some((o) => o.classId === 60 && o.destAreaId === 38)).toBe(true)
 
     const gibbet = game.spawnObject({ classId: 26, x: 11, y: 10, areaId: 1 })
     game.enqueueCommand(playerId, { type: 'OperateObject', objectId: gibbet })

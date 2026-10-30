@@ -282,13 +282,14 @@ function normalizeDifficultyIndex(difficulty: number | 'normal' | 'nightmare' | 
  * 1.13c `MonUMod.txt` `[constants]` for Fire Enchanted (`id=9`) corpse explosion:
  * - Row 10: `66` (`[unique]FireMinDam%` of monster base max HP)
  * - Row 11: `100` (`[unique]FireMaxDam%` of monster base max HP)
- * - 1.13c `MONSTERUNIQUE_UMod09_FireEnchantedDeath` difficulty scaling multipliers:
- *   Normal (`0`): `0.20` (1/5), Nightmare (`1`): `0.35`, Hell (`2`): `0.20` (1/5).
- *   Total damage is split 50% Physical + 50% Fire within a 4-subtile radius.
+ * - 1.13c `MONSTERUNIQUE_UMod09_FireEnchantedDeath` (`D2Game.dll` `0x6FC466B0..0x6FC46862`, #1821):
+ *   Uses unmultiplied single-player base monster max HP (`0x6FC4673A`), scaled by difficulty:
+ *   Normal (`0`): `3/4` (`0.75`, `0x6FC467C8`), Nightmare (`1`): `1/3` (`0x6FC467DD`), Hell (`2`): `1/8` (`0.125`, `0x6FC467F7`),
+ *   rolled uniformly across `60%..100%` (`0x3c..0x64` at `0x6FC4681E..0x6FC46829`), split 50% Physical + 50% Fire in a 4-subtile radius.
  */
-export const FIRE_ENCHANT_MIN_HP_PCT = 75
+export const FIRE_ENCHANT_MIN_HP_PCT = 60
 export const FIRE_ENCHANT_MAX_HP_PCT = 100
-export const FIRE_ENCHANT_DIFF_SCALE: readonly [number, number, number] = [0.2, 0.35, 0.2] as const
+export const FIRE_ENCHANT_DIFF_SCALE: readonly [number, number, number] = [0.75, 1 / 3, 0.125] as const
 export const FIRE_ENCHANT_EXPLOSION_RADIUS = 4
 
 export interface FireEnchantedExplosionDamage {
@@ -687,6 +688,57 @@ export function resolveSuicideExplodeMissileKey(
   return 'suicidecorpseexplode'
 }
 
+export const SUICIDE_MINION_EXPLOSION_RADIUS = 4
+
+export interface SuicideMinionExplosionDamage {
+  readonly physDmg: number
+  readonly elemDmg: number
+  readonly elemType: 'fire' | 'cold'
+  readonly totalDmg: number
+  readonly radiusSubTiles: number
+  readonly missileKey: 'suicidecorpseexplode' | 'suicidefireexplode' | 'suicideiceexplode'
+  readonly missileClassId: 426 | 427 | 428
+}
+
+/**
+ * 1.13c `D2Game.dll` `MONSTERUNIQUE_UMod33_SuicideMinionExplode` (`0x6FC45A18..0x6FC45BD0`, #1824):
+ * Computes Frenzied Ice Spawn / SuicideMinion (`hcIdx 461..468`) self-detonation damage in a 4-subtile radius (`aip4 = 4`),
+ * split between physical and fire/cold per `aip1` (`0` -> `#426 suicidecorpseexplode`, `1` -> `#427 suicidefireexplode`, `>=2` -> `#428 suicideiceexplode`).
+ */
+export function calcSuicideMinionExplosionDamage(
+  minDmg: number,
+  maxDmg: number,
+  maxHp: number,
+  classId: number,
+  difficulty: number | 'normal' | 'nightmare' | 'hell' = 0,
+  aip1Override?: number,
+  roll01 = 0.5,
+): SuicideMinionExplosionDamage {
+  const missileKey = resolveSuicideExplodeMissileKey(classId, difficulty, aip1Override)
+  const missileClassId: 426 | 427 | 428 =
+    missileKey === 'suicidefireexplode'
+      ? 427
+      : missileKey === 'suicideiceexplode'
+        ? 428
+        : 426
+  const elemType: 'fire' | 'cold' = missileKey === 'suicideiceexplode' ? 'cold' : 'fire'
+  const clampedRoll = Math.max(0, Math.min(1, roll01))
+  const lo = Math.max(2, minDmg > 0 ? Math.trunc(minDmg) : Math.floor(Math.max(2, maxHp) * 0.4))
+  const hi = Math.max(lo, maxDmg > 0 ? Math.trunc(maxDmg) : Math.floor(Math.max(2, maxHp) * 0.6))
+  const rawTotal = Math.max(2, Math.round(lo + (hi - lo) * clampedRoll))
+  const physDmg = Math.max(1, Math.floor(rawTotal * 0.5))
+  const elemDmg = Math.max(1, rawTotal - physDmg)
+  return {
+    physDmg,
+    elemDmg,
+    elemType,
+    totalDmg: physDmg + elemDmg,
+    radiusSubTiles: SUICIDE_MINION_EXPLOSION_RADIUS,
+    missileKey,
+    missileClassId,
+  }
+}
+
 export function isFireTowerMonster(classId: number, monType?: string): boolean {
   if (classId === 372 || classId === 435) return true
   if (monType) {
@@ -979,7 +1031,7 @@ export function getBossDeathFxSpec(
       spawnMaggots: DURIEL_MAGGOT_OFFSETS,
     })
   }
-  if (numId === 267 || numId === 2 || clean === 'bloodraven') {
+  if (numId === 267 || clean === 'bloodraven') {
     // 0x6fad0fb0 (umod 22, mode 0) -> 0x6fb02320; Missiles.txt brdeathcontrol (#284) Range = 375.
     return buildBossDeathSpec({
       bossKey: 'bloodraven',
@@ -1049,7 +1101,7 @@ export function getBossDeathFxSpec(
       },
     })
   }
-  if (numId === 479 || numId === 706 || clean === 'overseer1' || clean === 'shenk' || clean === 'shenktheoverseer') {
+  if (numId === 479 || clean === 'overseer1' || clean === 'shenk' || clean === 'shenktheoverseer') {
     // 0x6fad0fb0 (umod 22, mode 0) -> 0x6fb02bd0; Missiles.txt overseercontrol (#602) Range = 500. Only Shenk (a
     // SuperUnique, so umod 22) has the show; a plain overseer1 dies without it (Issue #1042). No shake (#1718).
     return buildBossDeathSpec({

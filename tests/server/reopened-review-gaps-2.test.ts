@@ -174,7 +174,7 @@ describe('reopened review pass 2', () => {
     const classFor = (operateFn: number): number =>
       OBJECTS_TXT_113C.findIndex((record) => record.operateFn === operateFn)
     expect(classifyObjectOperate113c(classFor(22))).toBe('well')
-    expect(classifyObjectOperate113c(classFor(51))).toBe('stash')
+    expect(classifyObjectOperate113c(classFor(51))).toBe('container')
     expect(classifyObjectOperate113c(classFor(32))).toBe('stash')
     expect(classifyObjectOperate113c(classFor(23))).toBe('portal')
     expect(classifyObjectOperate113c(classFor(4))).toBe('container')

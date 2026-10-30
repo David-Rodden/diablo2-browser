@@ -27,7 +27,7 @@ import {
   calculatePenetrateStats,
 } from '../../common/skills/amazon-passive.ts'
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
-import { findMonaiProfile113c } from '../../common/units/monai-113c.ts'
+import { AURA_ENCHANTED_TABLE_113C, findMonaiProfile113c } from '../../common/units/monai-113c.ts'
 import {
   HIRELING_RECORDS,
   resolveHirelingStatsAtLevel,
@@ -1021,6 +1021,7 @@ export const STATIONARY_AI_SET: ReadonlySet<string> = new Set([
   'PutridDefiler',
   'PainWorm',
   'BaalTentacle',
+  'Hydra',
   'StaticTraps',
   'Turret',
   'Window',
@@ -1046,6 +1047,7 @@ const NON_AGGRESSIVE_AI_SET: ReadonlySet<string> = new Set([
   'CagedWussie',
   'AncientStatue',
   'BonePrison',
+  'BoneWall',
 ])
 
 const RANGED_KITER_AI_SET: ReadonlySet<string> = new Set([
@@ -1065,7 +1067,7 @@ const RANGED_KITER_AI_SET: ReadonlySet<string> = new Set([
 const AURA_ENCHANTED_PALADIN_AURAS = [
   'might',
   'holyfire',
-  'thorns',
+  'blessedaim',
   'holyfreeze',
   'holyshock',
   'conviction',
@@ -1198,6 +1200,8 @@ export function isActBossMonster(monster: Monster): boolean {
     combined.includes('madawc') ||
     combined.includes('korlic') ||
     combined.includes('ancientbarb') ||
+    combined.includes('ancientswhirl') ||
+    combined.includes('ancientwhirl') ||
     combined.includes('cowking') ||
     combined.includes('hellbovine')
   ) {
@@ -1565,8 +1569,11 @@ export function tickMonsters(
 
     const rawMods = collectRawMonsterMods(monster)
     if (hasMonsterUMod(rawMods, MON_UMOD.AURA)) {
+      const mlvl = Math.max(1, monster.stats?.level ?? 1)
+      const eligibleAuras = AURA_ENCHANTED_TABLE_113C.filter((entry) => mlvl >= entry.minMlvl)
+      const auraPool = eligibleAuras.length > 0 ? eligibleAuras.map((e) => e.name) : AURA_ENCHANTED_PALADIN_AURAS
       const auraName =
-        AURA_ENCHANTED_PALADIN_AURAS[((monster.dwInitSeed ?? monster.index) >>> 0) % AURA_ENCHANTED_PALADIN_AURAS.length]!
+        auraPool[((monster.dwInitSeed ?? monster.index) >>> 0) % auraPool.length]!
       const monAuraState = monster as unknown as {
         activeAura?: string
         aura?: string
@@ -3068,7 +3075,12 @@ export function executeActBossAi113c(
     (typeof rawDiff === 'string' &&
       (rawDiff.trim().toLowerCase() === 'nightmare' || rawDiff.trim().toLowerCase() === 'hell'))
 
-  const isDiablo = hcIdx === 243 || idLower.includes('diablo')
+  const isDiablo = hcIdx === 243 || hcIdx === 333 || hcIdx === 705 || idLower.includes('diablo')
+  const isBaalClone =
+    hcIdx === 570 ||
+    idLower.includes('baalclone') ||
+    idLower.includes('baalcrabclone') ||
+    idLower.includes('vileeffigy')
   const isNihlathak = hcIdx === 526 || idLower.includes('nihlathak')
 
   if (dist <= Math.max(320, aggroRadius * 1.5)) {
@@ -3106,35 +3118,72 @@ export function executeActBossAi113c(
       skillId = pick.id
       skillName = pick.name
     } else if (isDiablo) {
-      const diabloSkills = [
-        { id: 'redlightninghose', name: 'RedLightningHose' },
-        { id: 'firenovaboss', name: 'FireNova' },
-        { id: 'firestorm', name: 'Firestorm' },
-        { id: 'boneprison', name: 'BonePrison' },
-        { id: 'coldtouch', name: 'ColdTouch' },
-        { id: 'firewall', name: 'FireWall' },
-        { id: 'charge', name: 'Charge' },
-        { id: 'taunt', name: 'Taunt' },
-      ] as const
+      const diabloSkills =
+        hcIdx === 333 || hcIdx === 705 || idLower.includes('diabloclone') || idLower.includes('uberdiablo')
+          ? ([
+              { id: 'diablogeddon', name: 'Armageddon' },
+              { id: 'redlightninghose', name: 'RedLightningHose' },
+              { id: 'firenovaboss', name: 'FireNova' },
+              { id: 'firestorm', name: 'Firestorm' },
+              { id: 'boneprison', name: 'BonePrison' },
+              { id: 'coldtouch', name: 'ColdTouch' },
+              { id: 'firewall', name: 'FireWall' },
+              { id: 'charge', name: 'Charge' },
+            ] as const)
+          : ([
+              { id: 'redlightninghose', name: 'RedLightningHose' },
+              { id: 'firenovaboss', name: 'FireNova' },
+              { id: 'firestorm', name: 'Firestorm' },
+              { id: 'boneprison', name: 'BonePrison' },
+              { id: 'coldtouch', name: 'ColdTouch' },
+              { id: 'firewall', name: 'FireWall' },
+              { id: 'charge', name: 'Charge' },
+              { id: 'taunt', name: 'Taunt' },
+            ] as const)
       const pick = diabloSkills[stepIdx % diabloSkills.length]!
       skillId = pick.id
       skillName = pick.name
-    } else if (hcIdx === 544 || idLower.includes('baal')) {
-      const baalSkills = [
+    } else if (isBaalClone) {
+      // 1.13c D2Game.dll Fn137_BaalCrabClone (0x6FCCCA40, #1826): clone never spawns clones or tentacles.
+      const cloneSkills = [
         { id: 'baalcoldmissiles', name: 'Hoarfrost' },
         { id: 'baalnova', name: 'IncinerationNova' },
-        { id: 'decrepify', name: 'Decrepify' },
         { id: 'teleport', name: 'Teleport' },
-        { id: 'festeringappendages', name: 'FesteringAppendages' },
-        { id: 'vileeffigy', name: 'BaalClone' },
         { id: 'baalinferno', name: 'ManaRift' },
         { id: 'defensecurse', name: 'DefenseCurse' },
         { id: 'bloodmana', name: 'BloodMana' },
       ] as const
+      const pick = cloneSkills[stepIdx % cloneSkills.length]!
+      skillId = pick.id
+      skillName = pick.name
+    } else if (hcIdx === 544 || hcIdx === 709 || idLower.includes('baal')) {
+      const baalSkills =
+        hcIdx === 709 || idLower.includes('uberbaal')
+          ? ([
+              { id: 'baalcoldmissiles', name: 'Hoarfrost' },
+              { id: 'baalnova', name: 'IncinerationNova' },
+              { id: 'teleport', name: 'Teleport' },
+              { id: 'festeringappendages', name: 'FesteringAppendages' },
+              { id: 'baalinferno', name: 'ManaRift' },
+              { id: 'defensecurse', name: 'DefenseCurse' },
+              { id: 'bloodmana', name: 'BloodMana' },
+              { id: 'chillingarmor', name: 'ChillingArmor' },
+            ] as const)
+          : ([
+              { id: 'baalcoldmissiles', name: 'Hoarfrost' },
+              { id: 'baalnova', name: 'IncinerationNova' },
+              { id: 'decrepify', name: 'Decrepify' },
+              { id: 'teleport', name: 'Teleport' },
+              { id: 'festeringappendages', name: 'FesteringAppendages' },
+              { id: 'vileeffigy', name: 'BaalClone' },
+              { id: 'baalinferno', name: 'ManaRift' },
+              { id: 'defensecurse', name: 'DefenseCurse' },
+              { id: 'bloodmana', name: 'BloodMana' },
+            ] as const)
       const pick = baalSkills[stepIdx % baalSkills.length]!
       skillId = pick.id
       skillName = pick.name
-    } else if (hcIdx === 267 || hcIdx === 2 || idLower.includes('bloodraven')) {
+    } else if (hcIdx === 267 || idLower.includes('bloodraven')) {
       const brSkills = [
         { id: 'firearrow', name: 'FireArrow' },
         { id: 'raiseskeleton', name: 'RaiseSkeleton' },
@@ -3195,11 +3244,19 @@ export function executeActBossAi113c(
       const pick = councilSkills[stepIdx % councilSkills.length]!
       skillId = pick.id
       skillName = pick.name
-    } else if (hcIdx === 256 || idLower.includes('izual')) {
-      const izualSkills = [
-        { id: 'frostnova', name: 'FrostNova' },
-        { id: 'melee', name: 'Melee' },
-      ] as const
+    } else if (hcIdx === 256 || hcIdx === 706 || idLower.includes('izual')) {
+      const izualSkills =
+        hcIdx === 706 || idLower === 'uberizual'
+          ? ([
+              { id: 'chillingarmor', name: 'ChillingArmor' },
+              { id: 'teleport', name: 'Teleport' },
+              { id: 'frostnova', name: 'FrostNova' },
+              { id: 'melee', name: 'Melee' },
+            ] as const)
+          : ([
+              { id: 'frostnova', name: 'FrostNova' },
+              { id: 'melee', name: 'Melee' },
+            ] as const)
       const pick = izualSkills[stepIdx % izualSkills.length]!
       skillId = pick.id
       skillName = pick.name
@@ -3211,7 +3268,7 @@ export function executeActBossAi113c(
       const pick = hephSkills[stepIdx % hephSkills.length]!
       skillId = pick.id
       skillName = pick.name
-    } else if (hcIdx === 479 || hcIdx === 706 || idLower.includes('shenk') || idLower.includes('overseer')) {
+    } else if (hcIdx === 479 || idLower.includes('shenk') || idLower.includes('overseer')) {
       const shenkSkills = [
         { id: 'whip', name: 'Whip' },
         { id: 'frenzy', name: 'Frenzy' },
@@ -3428,7 +3485,23 @@ export function triggerMonsterDeathAffixes113c(
   }
 
   if (hasMonsterUMod(rawMods, MON_UMOD.FIRE) && !isMinion) {
-    const feDmg = calcFireEnchantedDeathDamage(monHp, difficulty, 0.5, 0.5)
+    const monRank = monster.stats?.rank ?? monAny.rank
+    const rankHpMult =
+      monRank === 'unique'
+        ? difficulty === 'hell'
+          ? 2
+          : difficulty === 'nightmare'
+            ? 3
+            : 4
+        : monRank === 'champion'
+          ? difficulty === 'hell'
+            ? 1.5
+            : difficulty === 'nightmare'
+              ? 2
+              : 3
+          : 1
+    const baseHpForFe = Math.max(1, Math.round(monHp / rankHpMult))
+    const feDmg = calcFireEnchantedDeathDamage(baseHpForFe, difficulty, 0.5, 0.5)
     const dmg = Math.max(1, feDmg.totalDmg)
     fireEnchantExplosion = true
     totalDamage += dmg

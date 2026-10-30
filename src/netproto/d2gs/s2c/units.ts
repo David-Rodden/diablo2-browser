@@ -593,6 +593,8 @@ export function encode0xACAssignNpc(params: {
   readonly superUniqueId?: number | undefined
   readonly bossMods?: readonly number[] | undefined
   readonly nameSeed?: number | undefined
+  readonly compVariants?: readonly number[] | undefined
+  readonly ownerId?: number | undefined
   readonly playerOwnerId?: number | undefined
 }): Uint8Array {
   const lifePct = Math.max(0, Math.min(128, Math.round(params.lifePct ?? 128)))
@@ -611,13 +613,36 @@ export function encode0xACAssignNpc(params: {
   const isSuperUnique = Boolean(params.isSuperUnique || (flags & 0x02) !== 0)
   const isMinion = Boolean(params.isMinion || (flags & 0x10) !== 0)
   const isGhostly = (flags & 0x40) !== 0
-  const mods = (params.bossMods ?? []).filter((m) => Number.isInteger(m) && m > 0 && m <= 255).slice(0, 9)
+  // D2Game.dll 0x6fcacbe0..0x6fcacc04 writes all nonzero anMonUMod[0..8] bytes (client UI wMonUModStrTable[22] == 0 suppresses hover label).
+  const mods = (params.bossMods ?? [])
+    .filter((m) => Number.isInteger(m) && m > 0 && m <= 255)
+    .slice(0, 9)
+  const hasMonsterOwner =
+    params.ownerId !== undefined &&
+    params.ownerId > 0 &&
+    (params.playerOwnerId === undefined || params.playerOwnerId <= 0)
   const hasMonsterFlags =
-    isChampion || isUnique || isSuperUnique || isMinion || isGhostly || mods.length > 0
+    isChampion ||
+    isUnique ||
+    isSuperUnique ||
+    isMinion ||
+    isGhostly ||
+    mods.length > 0 ||
+    hasMonsterOwner
 
   const bw = new BitWriter()
   bw.writeBits(rawMode & 0x0f, 4)
-  bw.writeBit(0) // hasAnimComp = 0
+  if (params.compVariants && params.compVariants.length > 0) {
+    bw.writeBit(1)
+    const widths = getMonsterAnimCompBitWidths(params.classId)
+    for (let i = 0; i < 16; i++) {
+      const width = widths[i] ?? 1
+      const mask = (1 << width) - 1
+      bw.writeBits((params.compVariants[i] ?? 0) & mask, width)
+    }
+  } else {
+    bw.writeBit(0)
+  }
   if (hasMonsterFlags) {
     bw.writeBit(1)
     bw.writeBit(isChampion ? 1 : 0)
@@ -635,7 +660,12 @@ export function encode0xACAssignNpc(params: {
       bw.writeBits(0, 8)
     }
     bw.writeBits((params.nameSeed ?? 0) & 0xffff, 16)
-    bw.writeBit(0) // monster owner GUID absent
+    if (hasMonsterOwner) {
+      bw.writeBit(1)
+      bw.writeBits((params.ownerId ?? 0) >>> 0, 32)
+    } else {
+      bw.writeBit(0)
+    }
   } else {
     bw.writeBit(0)
   }

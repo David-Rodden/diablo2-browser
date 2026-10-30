@@ -78,6 +78,12 @@ export interface MercHireEntry {
   readonly seed: number
 }
 
+/**
+ * 1.13c `D2Client.dll` dead-hireling name-id sentinel. S2C 0x9B (`0x6fb5e1e0 -> 0x6fafa350`) stores the
+ * name id at `word [0x6fba23e8]` (reset to `0xFFFF` at `0x6faf6a20`); `0xFFFF` means "no dead hireling".
+ */
+export const DEAD_MERC_NAME_ID_NONE = 0xffff
+
 export interface MercenaryState {
   mercId: number
   ownerId: number
@@ -110,6 +116,8 @@ export interface RosterPetState {
 export interface ChatLogEntry {
   readonly id?: number | undefined
   readonly kind: 'say' | 'whisper' | 'overhead' | 'system' | 'event'
+  /** Protocol origin: Battle.net BNCS (`SID_CHATEVENT 0x0F` / lobby send) vs in-game D2GS (`0x26` / `0x5A`). */
+  readonly source?: 'bncs' | 'd2gs' | undefined
   readonly from?: string | undefined
   readonly unit?: UnitRef | undefined
   readonly text: string
@@ -738,6 +746,10 @@ export type ClientWorldInternal = Record<string, any> & {
   _units: UnitMap
   _monsters: Map<number, ClientUnit>
   _pendingMercStats: Map<number, Map<number, number>>
+  /** Dead-hireling name id from S2C 0x9B (`word [0x6fba23e8]`), `DEAD_MERC_NAME_ID_NONE` when none. */
+  _deadMercNameId: number
+  /** Dead-hireling revive cost from S2C 0x9B (`dword [0x6fbcc334]`). */
+  _deadMercReviveCost: number
   _containers: ClientInventoryManager
   deferUnitPackets113c: boolean
   _drainingQueuedUnitPacket: boolean

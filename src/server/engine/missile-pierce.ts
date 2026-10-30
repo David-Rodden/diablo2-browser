@@ -83,7 +83,7 @@ export function resolveUnitSkillPierce(unit: PierceStatUnit, registry?: D2DataRe
       registry,
       activeSkill: skill,
       slvl,
-      blvl: sl?.getBaseSkillLevel?.(skill.id) ?? slvl,
+      blvl: sl?.getBaseSkillLevel?.(skill.id) ?? 0,
       getBaseSkillLevel: (id: number) => sl?.getBaseSkillLevel?.(id) ?? 0,
       getEffectiveSkillLevel: (id: number) => sl?.getEffectiveSkillLevel?.(id) ?? 0,
     })

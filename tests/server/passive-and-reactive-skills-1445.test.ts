@@ -37,7 +37,7 @@ describe('Issue #1445: 1.13c Passive StatList & Reactive Event Parity', () => {
     expect(stats.getAccruedStat('passive_weaponblock')).toBe(57)
   })
 
-  it('2. Natural Resistance (#153): adds fireresist/lightresist/coldresist = dm12(0, 80) and does NOT add poisonresist', async () => {
+  it('2. Natural Resistance (#153): adds fireresist/lightresist/coldresist/poisonresist = dm12(0, 80) (Skills.txt passivestat1..4)', async () => {
     const registry = await getSharedDataRegistry()
     const stats = new UnitStatList(registry, {
       fireresist: 10,
@@ -50,7 +50,7 @@ describe('Issue #1445: 1.13c Passive StatList & Reactive Event Parity', () => {
     expect(stats.getAccruedStat('fireresist')).toBe(50)
     expect(stats.getAccruedStat('lightresist')).toBe(50)
     expect(stats.getAccruedStat('coldresist')).toBe(50)
-    expect(stats.getAccruedStat('poisonresist')).toBe(10)
+    expect(stats.getAccruedStat('poisonresist')).toBe(50)
   })
 
   it('3. Increased Stamina (#141): adds skill_passive_staminapercent = ln12(30, 15) and does NOT modify staminarecoverybonus', async () => {
@@ -240,10 +240,6 @@ describe('Issue #1445: 1.13c Passive StatList & Reactive Event Parity', () => {
         for (const [st, clc] of pairs) {
           if (!st || !clc) continue
           const normSt = st.trim().toLowerCase()
-          if (skill.id === 153 && normSt === 'poisonresist') {
-            expect(stats.getAccruedStat('poisonresist')).toBe(0)
-            continue
-          }
           const expected =
             skill.id === 263 && clc.trim() === 'dm12'
               ? Math.min(

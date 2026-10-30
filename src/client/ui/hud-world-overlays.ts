@@ -54,7 +54,8 @@ import {
 } from './hud-viewport-layout.ts'
 import type { HudManager } from './hud-manager.ts'
 import { renderLevelEntryTitle113c } from './level-entry-title.ts'
-import { toMonsterTargetHudInfo } from './touch-controls.ts'
+import { layoutTouchGroundLabels, toMonsterTargetHudInfo } from './touch-controls.ts'
+import { resolveTouchHudContext } from './hud-input-router.ts'
 
 interface HudRenderInternal {
   lastHudFrameTiming: { mouseX: number; mouseY: number; drawMs: number } | null
@@ -225,6 +226,13 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
     Math.round(hud.touchControls.joystick.knobX),
     Math.round(hud.touchControls.joystick.knobY),
     hud.touchControls.lockedMonster?.candidate.unitId ?? -1,
+    hud.touchControls.utilityMenuExpanded ? 1 : 0,
+    hud.touchControls.pendingBindSkillId ?? -1,
+    hud.touchControls.selectedPanelItem?.item.id ?? '',
+    hud.touchControls.lockedInteractable?.id ?? -1,
+    hud.touchControls.vectorAim
+      ? `${hud.touchControls.vectorAim.targetScreenX},${hud.touchControls.vectorAim.targetScreenY}`
+      : '',
     hud.merc && !hud.merc.isDead ? `${hud.merc.hp}/${hud.merc.maxHp}/${hud.merc.lifePct}` : 'nomerc',
     hud.summonPortraits && hud.summonPortraits.length > 0
       ? hud.summonPortraits.map((s) => `${s.petType}:${s.count}:${s.lifePct}`).join(',')
@@ -536,8 +544,49 @@ export function renderHudFrame(
     )
   }
 
+  // 0c-touch. Touch-sized, spring-separated ground labels with leader lines (#1385 / #1970):
+  // finger-sized 28px plaques that never stack, each tappable via `activeGroundLabelBoxes`.
+  const useTouchGroundLabels =
+    hud.touchControls.enabled && hud.showGroundLabels && hud.groundItemLabelBoxes.length > 0
+  if (useTouchGroundLabels) {
+    const touchBoxes = layoutTouchGroundLabels(
+      hud.groundItemLabelBoxes.map((b) => ({
+        id: Number(b.id),
+        label: b.text,
+        quality: b.color,
+        screenX: Math.round(b.x + b.width / 2),
+        screenY: Math.round(b.y + b.height),
+        textWidthPx: hud.font.renderedWidth(ctx, b.text, 'font16'),
+      })),
+      profile.width,
+      profile.height,
+    )
+    hud.touchControls.activeGroundLabelBoxes = touchBoxes
+    ctx.save()
+    for (const tb of touchBoxes) {
+      if (tb.displaced) {
+        ctx.beginPath()
+        ctx.moveTo(Math.round(tb.boxX + tb.boxWidth / 2), tb.boxY + tb.boxHeight)
+        ctx.lineTo(Math.round(tb.anchorX), Math.round(tb.anchorY))
+        ctx.strokeStyle = 'rgba(199, 161, 88, 0.55)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+      }
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.72)'
+      ctx.fillRect(tb.boxX, tb.boxY, tb.boxWidth, tb.boxHeight)
+      hud.font.drawText(ctx, tb.label, Math.round(tb.boxX + tb.boxWidth / 2), Math.round(tb.boxY + tb.boxHeight - 8), {
+        font: 'font16',
+        color: groundLabelHexToD2Color(tb.quality),
+        align: 'center',
+      })
+    }
+    ctx.restore()
+  } else if (hud.touchControls.activeGroundLabelBoxes.length > 0) {
+    hud.touchControls.activeGroundLabelBoxes = []
+  }
+
   // 0c. Ground Item Labels (`D2Client.dll` `0x6fb08fb0` Alt labels & `0x6fb6fec0` / `D2Win_10085` single hover plaque)
-  if (hud.groundItemLabelBoxes.length > 0) {
+  if (!useTouchGroundLabels && hud.groundItemLabelBoxes.length > 0) {
     ctx.save()
     const usePersistentLabelStyle =
       hud.showGroundLabels || internal.groundItemEnhancements.alwaysShowUniqueSetLabels
@@ -601,6 +650,7 @@ export function renderHudFrame(
   // 1. Left-Half Dock Panel (`0..400, panelOffsetY..panelOffsetY+553`, or `0..320, 0..432` in 640x480)
   const borderLeftImg = is640 ? null : (internal.images.get('borderLeft') ?? null)
   const borderRightImg = is640 ? null : (internal.images.get('borderRight') ?? null)
+  hud.charSheet.touchBatchAllocEnabled = hud.touchControls.enabled
   if (hud.leftPanel === 'char') {
     ctx.save()
     ctx.translate(deltaLeft, panelOffsetY)
@@ -884,6 +934,19 @@ export function renderHudFrame(
       images: internal.images,
       hotkeys: hud.hotkeys,
       belt: hud.belt,
+      context: resolveTouchHudContext(hud),
+      panelOffsetY,
+      lang: hud.lang,
+      nowMs,
+      poisoned: hud.poisoned,
+      healthPotActive: hud.healthPotActive,
+      potionLifePercent: hud.potionLifePercent,
+      manaPotActive: hud.manaPotActive,
+      potionManaPercent: hud.potionManaPercent,
+      showLifeText: hud.globes.lifeTextPinned,
+      showManaText: hud.globes.manaTextPinned,
+      beltMaxRows: hud.belt.maxRows,
+      itemRects: internal.itemRects,
     })
   } else {
     const activeCtrlPnlImg = is640
@@ -999,8 +1062,8 @@ export function renderHudFrame(
   })
 
   // 7b. Mobile Left-Thumb Dynamic Floating Joystick Overlay (Mobile Phase 2, Issue #1382)
-  if (hud.touchControls.enabled && hud.leftPanel === 'none') {
-    hud.touchControls.drawJoystick(ctx, hud.font)
+  if (hud.touchControls.enabled && resolveTouchHudContext(hud) === 'world') {
+    hud.touchControls.drawJoystick(ctx, hud.font, hud.lang)
   }
 
   // 8. Town NPC Stone Interaction Menu (`npcmenu.cpp` + `dialog.cpp` + `boxpieces.dc6`)
@@ -1073,6 +1136,7 @@ export function renderHudFrame(
       rightPanel: hud.rightPanel,
       vendorMode: hud.worldPanels.vendorMode,
       equipped: hud.inventory.equipped,
+      lang: hud.lang,
     })
   }
 
@@ -1798,6 +1862,20 @@ export function setCursorLayerActive(hud: HudManager, active: boolean): void {
 }
 
 /**
+ * #1970: on touch there is no hovering pointer, so the gauntlet cursor is hidden unless it
+ * carries meaning (held item, identify / trade / repair cursor modes).
+ */
+export function isTouchCursorHidden(hud: HudManager): boolean {
+  return (
+    hud.touchControls.enabled &&
+    !hud.inventory.cursorItem &&
+    !hud.inventory.isIdentifyMode() &&
+    hud.pendingIdentifyScrollId === null &&
+    hud.worldPanels.vendorTradeState === 'idle'
+  )
+}
+
+/**
  * Renders the authentic animated hand cursor, `buysell.dc6` trade/repair/identify cursor, or held cursorItem at cursor hotspot.
  */
 export function renderCursor(
@@ -1807,6 +1885,7 @@ export function renderCursor(
 ): void {
   const internal = hud as unknown as HudRenderInternal
   hud.syncCursorMode(nowMs)
+  if (isTouchCursorHidden(hud)) return
   const cursorAtlas = internal.images.get('cursorAtlas') ?? internal.images.get('cursorHand') ?? null
   const heldItem = hud.inventory.cursorItem
     ? {

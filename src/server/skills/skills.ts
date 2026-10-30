@@ -4149,30 +4149,39 @@ function resolveBaseSkillLevel(
   hudManager?: HudCombatStateLike | null,
   engine?: GameEngine | null,
 ): number {
+  if (typeof (hudManager as any)?.getBaseSkillLevel === 'function') {
+    const val = Number((hudManager as any).getBaseSkillLevel(skillId))
+    return Number.isFinite(val) ? Math.max(0, Math.floor(val)) : 0
+  }
+  if ((hudManager as any)?.baseSkillLevels && typeof (hudManager as any).baseSkillLevels === 'object') {
+    const val = Number((hudManager as any).baseSkillLevels[skillId] ?? 0)
+    return Number.isFinite(val) ? Math.max(0, Math.floor(val)) : 0
+  }
+  if (typeof player?.combatContext?.statList?.getBaseSkillLevel === 'function') {
+    const val = Number(player.combatContext.statList.getBaseSkillLevel(skillId))
+    return Number.isFinite(val) ? Math.max(0, Math.floor(val)) : 0
+  }
+  if (player?.baseSkillLevels && typeof player.baseSkillLevels === 'object') {
+    const val = Number(player.baseSkillLevels[skillId] ?? 0)
+    return Number.isFinite(val) ? Math.max(0, Math.floor(val)) : 0
+  }
+
   const fromHudBase =
-    typeof (hudManager as any)?.getBaseSkillLevel === 'function'
-      ? Number((hudManager as any).getBaseSkillLevel(skillId))
-      : typeof (hudManager as any)?.baseSkillLevels?.[skillId] === 'number'
-        ? Number((hudManager as any).baseSkillLevels[skillId])
-        : typeof (hudManager as any)?.getSkillLevel === 'function'
-          ? Number((hudManager as any).getSkillLevel(skillId))
-          : typeof (hudManager as any)?.skillLevels?.[skillId] === 'number'
-            ? Number((hudManager as any).skillLevels[skillId])
-            : 0
+    typeof (hudManager as any)?.getSkillLevel === 'function'
+      ? Number((hudManager as any).getSkillLevel(skillId))
+      : typeof (hudManager as any)?.skillLevels?.[skillId] === 'number'
+        ? Number((hudManager as any).skillLevels[skillId])
+        : 0
   if (Number.isFinite(fromHudBase) && fromHudBase > 0) return Math.max(0, Math.floor(fromHudBase))
 
   const fromPlayerBase =
-    typeof player?.combatContext?.statList?.getBaseSkillLevel === 'function'
-      ? Number(player.combatContext.statList.getBaseSkillLevel(skillId))
-      : typeof player?.baseSkillLevels?.[skillId] === 'number'
-        ? Number(player.baseSkillLevels[skillId])
-        : typeof player?.skills?.get === 'function'
-          ? Number(player.skills.get(skillId))
-          : typeof player?.skillLevels?.[skillId] === 'number'
-            ? Number(player.skillLevels[skillId])
-            : typeof player?.skills?.[skillId] === 'number'
-              ? Number(player.skills[skillId])
-              : 0
+    typeof player?.skills?.get === 'function'
+      ? Number(player.skills.get(skillId))
+      : typeof player?.skillLevels?.[skillId] === 'number'
+        ? Number(player.skillLevels[skillId])
+        : typeof player?.skills?.[skillId] === 'number'
+          ? Number(player.skills[skillId])
+          : 0
   if (Number.isFinite(fromPlayerBase) && fromPlayerBase > 0) return Math.max(0, Math.floor(fromPlayerBase))
 
   const fromEngine =

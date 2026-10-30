@@ -447,17 +447,37 @@ function recomputeItemStats(
   )
   const isLow = baseItem.quality === ItemQuality.LOW || baseItem.rarity === 'low'
 
+  const explicitRolledDef =
+    typeof (baseItem as any).rolledBaseDefense === 'number' && (baseItem as any).rolledBaseDefense > 0
+      ? Number((baseItem as any).rolledBaseDefense)
+      : 0
   const rawBaseDef = baseItem.base.defense > 0 ? baseItem.base.defense : 0
+  const hasOwnAcPct = baseItem.rolledProps?.some(p => p.code.trim().toLowerCase() === 'ac%') ?? false
+  const hasSocketsOrRw =
+    Boolean(baseItem.flags?.runeword) || Boolean(baseItem.socketedItems && baseItem.socketedItems.length > 0)
   let finalDef: number | undefined = baseItem.defense
-  if (rawBaseDef > 0) {
-    let effectiveBaseDef = rawBaseDef
-    if (isLow) {
-      effectiveBaseDef = Math.max(1, Math.floor(effectiveBaseDef * 0.75))
+  if (explicitRolledDef > 0 || rawBaseDef > 0 || (typeof baseItem.defense === 'number' && baseItem.defense > 0)) {
+    let effectiveBaseDef: number
+    if (explicitRolledDef > 0) {
+      effectiveBaseDef = explicitRolledDef
+    } else if (
+      typeof baseItem.defense === 'number' &&
+      baseItem.defense > 0 &&
+      !hasSocketsOrRw &&
+      !hasOwnAcPct &&
+      !(baseItem.rolledProps?.some(p => p.code.trim().toLowerCase() === 'ac'))
+    ) {
+      effectiveBaseDef = baseItem.defense
+    } else {
+      const maxac = Number((baseItem.base as any).maxac) || rawBaseDef
+      effectiveBaseDef = hasOwnAcPct && maxac > 0 ? maxac + 1 : rawBaseDef
+      if (isLow && !hasOwnAcPct) {
+        effectiveBaseDef = Math.max(1, Math.floor((effectiveBaseDef * 75) / 100))
+      }
+      if (isEth) {
+        effectiveBaseDef = Math.floor((effectiveBaseDef * 3) / 2)
+      }
     }
-    if (isEth) {
-      effectiveBaseDef = Math.floor(effectiveBaseDef * 1.5)
-    }
-    // If the item had ebugged base defense stored in base.defense, it's already in rawBaseDef
     let computed = Math.floor((effectiveBaseDef * (100 + totalAcPct)) / 100) + flatAc
     if (totalAcPct > 0 && computed === effectiveBaseDef) {
       computed = effectiveBaseDef + 1
@@ -763,6 +783,7 @@ export function createSocketedBaseItem(
     readonly quality?: ItemQuality | undefined
     readonly ethereal?: boolean | undefined
     readonly baseRolledProps?: readonly RolledItemProp[] | undefined
+    readonly rolledBaseDefense?: number | undefined
   },
 ): Item {
   const tables = getEmbeddedDropTables()
@@ -783,9 +804,37 @@ export function createSocketedBaseItem(
   if (sockets > 0) rawFlags |= ItemFlag.SOCKETED
   if (isEth) rawFlags |= ItemFlag.ETHEREAL
 
-  let effDef = base.defense > 0 ? base.defense : undefined
-  if (effDef !== undefined && isEth) {
-    effDef = Math.floor(effDef * 1.5)
+  const explicitRolledDef =
+    typeof options?.rolledBaseDefense === 'number' && options.rolledBaseDefense > 0
+      ? options.rolledBaseDefense
+      : undefined
+  const hasBaseAcPct = baseRolledProps.some(p => p.code.trim().toLowerCase() === 'ac%')
+  let baseDefBeforeMods: number | undefined = explicitRolledDef
+  if (baseDefBeforeMods === undefined && base.defense > 0) {
+    const maxac = Number((base as any).maxac) || base.defense
+    let raw = hasBaseAcPct ? maxac + 1 : base.defense
+    if (quality === ItemQuality.LOW && !hasBaseAcPct) {
+      raw = Math.max(1, Math.floor((raw * 75) / 100))
+    }
+    if (isEth) {
+      raw = Math.floor((raw * 3) / 2)
+    }
+    baseDefBeforeMods = raw
+  }
+  let effDef = baseDefBeforeMods
+  if (effDef !== undefined && baseRolledProps.length > 0) {
+    let acPct = 0
+    let flatAc = 0
+    for (const p of baseRolledProps) {
+      const c = p.code.trim().toLowerCase()
+      if (c === 'ac%') acPct += Number(p.value ?? p.min ?? 0)
+      else if (c === 'ac') flatAc += Number(p.value ?? p.min ?? 0)
+    }
+    if (acPct > 0 || flatAc !== 0) {
+      let computed = Math.floor((effDef * (100 + acPct)) / 100) + flatAc
+      if (acPct > 0 && computed === effDef) computed = effDef + 1
+      effDef = computed
+    }
   }
 
   const maxDur = Number((base as any).durability) || (base.kind === 'armor' ? 40 : base.kind === 'weapon' ? 30 : 0)
@@ -828,6 +877,7 @@ export function createSocketedBaseItem(
     rawFlags: rawFlags >>> 0,
     ...({
       baseRolledProps,
+      ...(baseDefBeforeMods !== undefined ? { rolledBaseDefense: baseDefBeforeMods } : {}),
     } as any),
   }
 
@@ -1056,25 +1106,28 @@ export function unsocketEquipmentItem(targetUiItem: UiInventoryItem): UiInventor
  * 1. **Unsocket Equipment (`CubeMain.txt`)**:
  *    `1x Hel Rune (r15) + 1x Scroll of Town Portal (tsc) + 1x Socketed Equipment (with >= 1 socketed item)`
  *    -> Destroys Hel, TP scroll, and all socketed runes/gems/jewels; returns clean socketed base item.
- * 2. **Normal Base Socketing Recipes (`CubeMain.txt`)**:
- *    - `Ral (r08) + Amn (r11) + Perfect Amethyst (gpv) + Normal Unsocketed Weapon` -> adds 1..6 sockets
- *    - `Tal (r07) + Thul (r10) + Perfect Topaz (gpy) + Normal Unsocketed Body Armor` -> adds 1..4 sockets
- *    - `Ral (r08) + Thul (r10) + Perfect Sapphire (gpb) + Normal Unsocketed Helm` -> adds 1..3 sockets
- *    - `Tal (r07) + Amn (r11) + Perfect Ruby (gpr) + Normal Unsocketed Shield` -> adds 1..4 sockets
- * 3. **Rune Upgrades (`CubeMain.txt`)**:
+ * 2. **Normal Base Socketing Recipes (`CubeMain.txt` Rows 123..126)**:
+ *    - `Ral (r08) + Amn (r11) + Perfect Amethyst (gpv) + Normal Unsocketed Weapon` -> rolls 1..6 clamped by ilvl/gemsockets
+ *    - `Tal (r07) + Thul (r10) + Perfect Topaz (gpy) + Normal Unsocketed Body Armor` -> rolls 1..6 clamped by ilvl/gemsockets
+ *    - `Ral (r08) + Thul (r10) + Perfect Sapphire (gpb) + Normal Unsocketed Helm` -> rolls 1..6 clamped by ilvl/gemsockets
+ *    - `Tal (r07) + Amn (r11) + Perfect Ruby (gpr) + Normal Unsocketed Shield` -> rolls 1..6 clamped by ilvl/gemsockets
+ * 3. **Rune Upgrades (`CubeMain.txt` Rows 91..122)**:
  *    - `3x r01..r09` -> `1x next rune`
- *    - `3x r10..r20 (+ optional chipped/flawed gem)` -> `1x next rune`
- *    - `2x r21..r32 (+ optional gem)` -> `1x next rune`
+ *    - `3x r10..r20 + 1x required chipped/flawed gem` -> `1x next rune` (`r14+` requires Ladder)
+ *    - `2x r21..r32 + 1x required flawed/normal/flawless gem` -> `1x next rune` (requires Ladder)
  * 4. **Gem Upgrades (`CubeMain.txt`)**:
  *    - `3x same gem (Chipped..Flawless)` -> `1x next quality gem`
  */
 export function transmuteCubeItems(
   cubePlacements: readonly GridPlacement[],
   rng: Rng = new Rng(0x113c5eed),
+  options?: { readonly isLadder?: boolean | undefined },
 ): CubeTransmuteResult {
   if (cubePlacements.length === 0) {
     return { matched: false, resultItems: cubePlacements }
   }
+
+  const isLadder = options?.isLadder !== false
 
   const items = cubePlacements.map(p => p.item)
   const codes = items.map(it => extractItemCode(it))
@@ -1141,14 +1194,20 @@ export function transmuteCubeItems(
       const equipUi = equipCandidates[0]!
       const rawEquip = equipUi.rawItem
       const existingSockets = getTotalSocketCount(equipUi)
+      const hasLowPrefix =
+        equipUi.name.startsWith('Cracked ') ||
+        equipUi.name.startsWith('Crude ') ||
+        equipUi.name.startsWith('Damaged ') ||
+        equipUi.name.startsWith('Low Quality ')
       const isStrictNormal =
         equipUi.quality === 'normal' &&
+        !equipUi.name.startsWith('Superior ') &&
+        !hasLowPrefix &&
         (!rawEquip ||
           ((rawEquip.quality === undefined || rawEquip.quality === ItemQuality.NORMAL) &&
             rawEquip.rarity !== 'superior' &&
             rawEquip.rarity !== 'low' &&
-            !equipUi.name.startsWith('Superior ') &&
-            !equipUi.name.startsWith('Cracked ')))
+            (rawEquip as any).qualitySubtype === undefined))
 
       if (existingSockets === 0 && isStrictNormal) {
         const otherCodes = items
@@ -1158,10 +1217,20 @@ export function transmuteCubeItems(
         const applyType = resolveGemApplyType(equipUi)
         const tables = getEmbeddedDropTables()
         const eqCode = extractItemCode(equipUi)
-        const baseDef = rawEquip?.base ?? tables.getBase(eqCode)
+        const canonicalBase = tables.getBase(eqCode)
+        const baseDef = rawEquip?.base
+          ? canonicalBase
+            ? { ...canonicalBase, ...rawEquip.base }
+            : rawEquip.base
+          : canonicalBase
         const typeCode = (baseDef?.type || '').trim().toLowerCase()
         const itemTypeDef = tables.itemTypes.byCode.get(typeCode)
-        const maxBaseSockets = Number((baseDef as any)?.gemsockets ?? (baseDef as any)?.gemSockets ?? 0)
+        const maxBaseSockets = Number(
+          (baseDef as any)?.gemsockets ??
+            (baseDef as any)?.gemSockets ??
+            (canonicalBase as any)?.gemsockets ??
+            0,
+        )
         const ilvl = rawEquip?.ilvl ?? rawEquip?.level ?? baseDef?.level ?? 40
         const maxAllowedSockets = itemTypeDef
           ? getMaxSockets(maxBaseSockets, itemTypeDef, ilvl)
@@ -1178,7 +1247,7 @@ export function transmuteCubeItems(
           const isTorso =
             applyType === 1 && !isHelm && (typeCode === 'tors' || tables.isA(typeCode, 'tors'))
 
-          let rollCap = 0
+          let matchedRecipe = false
           let recipeLabel = ''
           // Weapon: Ral (r08) + Amn (r11) + Perfect Amethyst (gpv) -> ['gpv', 'r08', 'r11']
           if (
@@ -1187,7 +1256,7 @@ export function transmuteCubeItems(
             otherCodes[1] === 'r08' &&
             otherCodes[2] === 'r11'
           ) {
-            rollCap = 6
+            matchedRecipe = true
             recipeLabel = 'Socket Normal Weapon (Ral + Amn + Perfect Amethyst)'
           }
           // Body Armor: Tal (r07) + Thul (r10) + Perfect Topaz (gpy) -> ['gpy', 'r07', 'r10']
@@ -1197,7 +1266,7 @@ export function transmuteCubeItems(
             otherCodes[1] === 'r07' &&
             otherCodes[2] === 'r10'
           ) {
-            rollCap = 4
+            matchedRecipe = true
             recipeLabel = 'Socket Normal Body Armor (Tal + Thul + Perfect Topaz)'
           }
           // Helm: Ral (r08) + Thul (r10) + Perfect Sapphire (gpb) -> ['gpb', 'r08', 'r10']
@@ -1207,7 +1276,7 @@ export function transmuteCubeItems(
             otherCodes[1] === 'r08' &&
             otherCodes[2] === 'r10'
           ) {
-            rollCap = 3
+            matchedRecipe = true
             recipeLabel = 'Socket Normal Helm (Ral + Thul + Perfect Sapphire)'
           }
           // Shield: Tal (r07) + Amn (r11) + Perfect Ruby (gpr) -> ['gpr', 'r07', 'r11']
@@ -1217,19 +1286,45 @@ export function transmuteCubeItems(
             otherCodes[1] === 'r07' &&
             otherCodes[2] === 'r11'
           ) {
-            rollCap = 4
+            matchedRecipe = true
             recipeLabel = 'Socket Normal Shield (Tal + Amn + Perfect Ruby)'
           }
 
-          if (rollCap > 0 && baseDef) {
-            const rolled = rng.int(1, rollCap)
-            const finalSockets = Math.max(1, Math.min(rolled, maxAllowedSockets))
+          if (matchedRecipe && baseDef) {
+            // CubeMain.txt Rows 123..126 all roll `sock` 1..6 uniformly and clamp to item/ilvl/grid cap (#1908)
+            const rolled = rng.int(1, 6)
+            const invW = Math.max(1, baseDef.invWidth || 1)
+            const invH = Math.max(1, baseDef.invHeight || 1)
+            const hardCap = Math.min(6, invW * invH, maxAllowedSockets)
+            const finalSockets = Math.max(1, Math.min(rolled, hardCap))
             const isEth = Boolean(equipUi.ethereal || rawEquip?.flags?.ethereal)
+            // Preserve rolled base defense and apply 1.13c ebug 1.5x multiplier on ethereal normal armor (#1909)
+            let nextRolledDef: number | undefined
+            if (baseDef.kind === 'armor') {
+              const curDef =
+                (typeof equipUi.defense === 'number' && equipUi.defense > 0 ? equipUi.defense : undefined) ??
+                (typeof (rawEquip as any)?.rolledBaseDefense === 'number' && (rawEquip as any).rolledBaseDefense > 0
+                  ? Number((rawEquip as any).rolledBaseDefense)
+                  : undefined) ??
+                (typeof rawEquip?.defense === 'number' && rawEquip.defense > 0 ? rawEquip.defense : undefined) ??
+                (typeof rawEquip?.stats?.defense === 'number' && rawEquip.stats.defense > 0
+                  ? rawEquip.stats.defense
+                  : undefined) ??
+                (baseDef.defense > 0
+                  ? isEth
+                    ? Math.floor((baseDef.defense * 3) / 2)
+                    : baseDef.defense
+                  : undefined)
+              if (curDef !== undefined && curDef > 0) {
+                nextRolledDef = isEth ? Math.floor((curDef * 3) / 2) : curDef
+              }
+            }
             const socketedRaw = createSocketedBaseItem(eqCode, finalSockets, {
               ilvl,
               quality: ItemQuality.NORMAL,
               ethereal: isEth,
               baseRolledProps: rawEquip?.rolledProps,
+              ...(nextRolledDef !== undefined ? { rolledBaseDefense: nextRolledDef } : {}),
             })
             const socketedUi = toUiItemWithId(socketedRaw, equipUi.id)
             return {
@@ -1243,18 +1338,17 @@ export function transmuteCubeItems(
     }
   }
 
-  // 3. Check Rune Upgrade Recipes
+  // 3. Check Rune Upgrade Recipes (CubeMain.txt Rows 91..122, #1907)
   const runeCodes = codes.filter(c => isRuneCode(c))
   if (runeCodes.length >= 2 && runeCodes.every(c => c === runeCodes[0])) {
     const runeNum = Number(runeCodes[0]!.slice(1))
     const recipe = RUNE_UPGRADE_RECIPES[runeNum]
-    if (recipe && runeNum < 33 && runeCodes.length === recipe.count) {
+    const ladderAllowed = runeNum < 14 || isLadder
+    if (recipe && runeNum < 33 && ladderAllowed && runeCodes.length === recipe.count) {
       const nonRunes = codes.filter(c => !isRuneCode(c))
-      // Match either exact 1.13c gem or pure rune stack (3x/2x runes)
-      const gemMatches =
-        !recipe.gemCode
-          ? nonRunes.length === 0
-          : (nonRunes.length === 1 && nonRunes[0] === recipe.gemCode) || nonRunes.length === 0
+      const gemMatches = !recipe.gemCode
+        ? nonRunes.length === 0
+        : nonRunes.length === 1 && nonRunes[0] === recipe.gemCode
       if (gemMatches) {
         const nextCode = `r${String(runeNum + 1).padStart(2, '0')}`
         const nextRuneRaw = createSocketableItem(nextCode)

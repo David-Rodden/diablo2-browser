@@ -146,9 +146,9 @@ describe('Issue #872: Authentic 1.13c Monster Affix & Boss Death FX System', () 
 
       const nm = calcFireEnchantedDeathDamage(1000, 'nightmare', false)
       const hell = calcFireEnchantedDeathDamage(1000, 'hell', false)
-      // Nightmare (35% base) > Hell/Normal (20% base) at identical HP per 1.13c MonUMod.txt
+      // D2Game.dll 0x6FC467C8..0x6FC467F7 (#1821): Normal (3/4) > Nightmare (1/3) > Hell (1/8) at identical base HP
+      expect(norm.maxPhys).toBeGreaterThan(nm.maxPhys)
       expect(nm.maxPhys).toBeGreaterThan(hell.maxPhys)
-      expect(hell.maxPhys).toBe(norm.maxPhys)
 
       const minionDmg = calcFireEnchantedDeathDamage(1000, 'hell', true)
       expect(minionDmg.minPhys).toBe(0)

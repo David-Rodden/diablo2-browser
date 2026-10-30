@@ -73,6 +73,7 @@ function parseBaseTable(
     const isGold = code === 'gld'
     const quest = getNum(table, row, 'quest', 0) > 0
     const questDiffCheck = getBool(table, row, 'questdiffcheck')
+    const compactSave = getBool(table, row, 'compactsave')
 
     const meta: ItemBaseMeta = {
       code,
@@ -88,6 +89,7 @@ function parseBaseTable(
       isGold,
       quest,
       questDiffCheck,
+      compactSave,
     }
     map.set(code, meta)
     const padded = code.padEnd(4, ' ').slice(0, 4)
@@ -272,6 +274,8 @@ export interface D2sCharacterData {
   readonly skills?: Uint8Array | undefined
   readonly items: readonly D2sSavedItem[]
   readonly corpseItems?: readonly D2sSavedItem[] | undefined
+  readonly corpseX?: number | undefined
+  readonly corpseY?: number | undefined
   readonly ironGolem?: D2sSavedItem | null | undefined
   readonly ironGolemItem?: D2sSavedItem | null | undefined
 }
@@ -326,6 +330,8 @@ export interface D2sCharacterSave {
   readonly skillLevels?: Uint8Array | undefined
   readonly items: readonly D2sItemInput[]
   readonly corpseItems?: readonly D2sItemInput[] | undefined
+  readonly corpseX?: number | undefined
+  readonly corpseY?: number | undefined
   readonly ironGolem?: D2sItemInput | null | undefined
   readonly ironGolemItem?: D2sItemInput | null | undefined
 }
@@ -562,9 +568,15 @@ export function readD2sSave113c(
   const corpseCount = view.getUint16(cursor + 2, true)
   cursor += 4
   const corpseItems: ItemData[] = []
+  let corpseX: number | undefined
+  let corpseY: number | undefined
   for (let c = 0; c < corpseCount; c++) {
     if (cursor + 12 > buf.byteLength) {
       throw new Error('Truncated .d2s corpse header')
+    }
+    if (c === 0) {
+      corpseX = view.getUint32(cursor + 4, true)
+      corpseY = view.getUint32(cursor + 8, true)
     }
     cursor += 12
     const corpseListRes = readItemListSection(buf, cursor, tables)
@@ -682,6 +694,8 @@ export function readD2sSave113c(
     skillLevels: skills,
     items: playerItemsRes.items,
     corpseItems,
+    ...(corpseX !== undefined ? { corpseX } : {}),
+    ...(corpseY !== undefined ? { corpseY } : {}),
     ironGolem,
     ironGolemItem: ironGolem,
   }

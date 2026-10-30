@@ -133,7 +133,7 @@ describe("Issue #1620: Hell completion (\"Destruction's End\" #565 -> S2C 0x61 0
     ).toBe('Patriarch ')
   })
 
-  it('spawns Harrogath portal (#566) when Diablo (#243) dies and OperateFn 73 emits CanGoToAct(5) + warps to Harrogath (109)', () => {
+  it('spawns Harrogath portal (#566) when Diablo (#243) dies and Tyrael in 103 opens #566, and OperateFn 73 emits CanGoToAct(5) + warps to Harrogath (109)', () => {
     const g = new GameInstance({ difficulty: 2, seed: 1620, areaId: 108 })
     const p = g.connectPlayer({ charClass: 'pal', name: 'LYQS', level: 80, x: 80, y: 80, areaId: 108 })
     const diabloId = g.spawnMonster({
@@ -147,14 +147,25 @@ describe("Issue #1620: Hell completion (\"Destruction's End\" #565 -> S2C 0x61 0
     })
     g.applyDamageToMonster(diabloId, 1000, p)
 
+    // 1.13c #1928: 108 does NOT spawn 566 inside Chaos Sanctuary
+    expect([...view(g).objects.values()].some((o) => o.areaId === 108 && o.classId === 566)).toBe(false)
+
+    // Talk to Tyrael (hcIdx 367) in Pandemonium Fortress (103) per 1.13c ACT4Q2_NpcActivate
+    const pRec = view(g).players.get(p)!
+    pRec.areaId = 103
+    pRec.x = 50
+    pRec.y = 50
+    const tyraelId = g.spawnMonster({ classId: 367, x: 50, y: 50, areaId: 103, isNpc: true })
+    g.enqueueCommand(p, { type: 'NpcInit', target: { unitType: 'monster', id: tyraelId } } as never)
+    g.stepFrames(1)
+
     const harrogathPortal = [...view(g).objects.values()].find(
-      (o) => o.areaId === 108 && o.classId === 566,
+      (o) => o.areaId === 103 && o.classId === 566,
     )
     expect(harrogathPortal).toBeDefined()
     expect(harrogathPortal?.mode).toBe(2)
 
     // Move player next to portal and operate
-    const pRec = view(g).players.get(p)!
     pRec.x = harrogathPortal!.x
     pRec.y = harrogathPortal!.y
     g.drainEvents(p)

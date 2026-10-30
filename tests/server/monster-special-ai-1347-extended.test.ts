@@ -36,7 +36,7 @@ describe('issue #1347 special AI follow-up', () => {
     expect(game.getMonsterState(corpse)!.dead).toBe(false)
   })
 
-  it('Mind Blast converts its targets to the caster while stunned', () => {
+  it('Mind Blast stuns immediately and rolls 1.13c dm56 conversion (150..249f) on normal targets', () => {
     const game = new GameInstance({ seed: 1348, areaId: 2 })
     const playerId = game.connectPlayer({
       charClass: 'ass',
@@ -45,7 +45,7 @@ describe('issue #1347 special AI follow-up', () => {
       y: 100,
       areaId: 2,
       level: 30,
-      skills: { 273: 5 },
+      skills: { 273: 10 },
     })
     const targetId = game.spawnMonster({
       defId: 'fallen1',
@@ -56,31 +56,46 @@ describe('issue #1347 special AI follow-up', () => {
       maxHp: 5000,
       damageRegen: 0,
     })
-    game.enqueueCommand(playerId, {
-      type: 'CastSkillAtLocation',
-      skillId: 273,
-      x: 101,
-      y: 100,
-      hand: 'right',
-    })
     const pRec = (game as unknown as {
       players: Map<number, { skills: Map<number, number>; mana: number; manaFixed: number }>
     }).players.get(playerId)!
     expect([...pRec.skills.keys()]).toContain(273)
-    pRec.mana = 500
-    pRec.manaFixed = 500 * 256
     ;(pRec as unknown as { rightSkill: number }).rightSkill = 273
-    game.stepFrames(5)
     const internal = game as unknown as {
       monsters: Map<
         number,
-        { convertedUntilFrame: number; convertedByPlayerId: number; states: Set<number> }
+        {
+          x: number
+          y: number
+          convertedUntilFrame: number
+          convertedByPlayerId: number
+          states: Set<number>
+        }
       >
     }
     const target = internal.monsters.get(targetId)!
-    expect(game.getMonsterState(targetId)!.states.has(21)).toBe(true)
-    expect(target.convertedByPlayerId).toBe(playerId)
-    expect(target.convertedUntilFrame).toBeGreaterThan(game.frame)
+    let converted = false
+    for (let attempt = 0; attempt < 20; attempt++) {
+      pRec.mana = 500
+      pRec.manaFixed = 500 * 256
+      game.enqueueCommand(playerId, {
+        type: 'CastSkillAtLocation',
+        skillId: 273,
+        x: target.x,
+        y: target.y,
+        hand: 'right',
+      })
+      game.stepFrames(1)
+      expect(game.getMonsterState(targetId)!.states.has(21)).toBe(true)
+      if (target.convertedByPlayerId === playerId) {
+        const dur = target.convertedUntilFrame - game.frame
+        expect(dur).toBeGreaterThanOrEqual(150)
+        expect(dur).toBeLessThanOrEqual(249)
+        converted = true
+        break
+      }
+    }
+    expect(converted).toBe(true)
   })
 
   it('does not treat SkeletonRaise (158) on skeletons or fetishes as a corpse-resurrecting caster skill', () => {

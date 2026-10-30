@@ -347,7 +347,16 @@ export function writeD2sSave113c(
     corpseSectionBytes[1] = 0x4d // 'M'
     corpseSectionBytes[2] = 0x01
     corpseSectionBytes[3] = 0x00
-    // 12-byte corpse header (unknown=0, x=0, y=0) at bytes 4..15
+    // 1.13c D2Game.dll 0x6FD0C260 @ 0x6FD0C403..0x6FD0C426:
+    // 12-byte corpse header at bytes 4..15: [unknown=0 u32LE, corpseX u32LE, corpseY u32LE].
+    const corpseView = new DataView(
+      corpseSectionBytes.buffer,
+      corpseSectionBytes.byteOffset,
+      corpseSectionBytes.byteLength,
+    )
+    corpseView.setUint32(4, 0, true)
+    corpseView.setUint32(8, Math.max(0, Math.round(save.corpseX ?? 0)) >>> 0, true)
+    corpseView.setUint32(12, Math.max(0, Math.round(save.corpseY ?? 0)) >>> 0, true)
     corpseSectionBytes.set(corpseListBytes, 16)
   }
 

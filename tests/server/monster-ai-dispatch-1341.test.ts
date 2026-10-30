@@ -50,7 +50,7 @@ describe('issue #1341 MonAi dispatch', () => {
     expect(game.getPlayerState(playerId)!.hp).toBeLessThan(500)
   })
 
-  it('spawns VileDog children from a VileMother', () => {
+  it('spawns VileChild children from a VileMother', () => {
     const game = new GameInstance({ seed: 1348, areaId: 1 })
     game.connectPlayer({ charClass: 'bar', name: 'Target', x: 10, y: 10, areaId: 1 })
     const mother = game.spawnMonster({ defId: 'vilemother1', x: 15, y: 10, areaId: 1, hp: 500, maxHp: 500 })
@@ -58,7 +58,7 @@ describe('issue #1341 MonAi dispatch', () => {
     game.stepFrames(140)
     const monsters = (game as unknown as { monsters: Map<number, { defId: string }> }).monsters
     expect(monsters.size).toBeGreaterThan(before)
-    expect([...monsters.values()].some((m) => m.defId === 'viledog1')).toBe(true)
+    expect([...monsters.values()].some((m) => m.defId === 'vilechild1')).toBe(true)
     expect(game.getMonster(mother)).toBeDefined()
   })
 
@@ -133,14 +133,15 @@ describe('issue #1341 MonAi dispatch', () => {
     expect(game.getMonsterState(arach)!.x).toBeGreaterThan(14)
   })
 
-  it('keeps Succubus curses active after the kiter family override', () => {
+  it('keeps Succubus Defense Curse / Blood Mana active after the kiter family override (#1822)', () => {
     const game = new GameInstance({ seed: 13414, areaId: 2 })
     const playerId = game.connectPlayer({ charClass: 'bar', name: 'Target', x: 10, y: 10, areaId: 2 })
-    // aip3=curse?, aip7=curse level. Distance 10 keeps it outside the kiting band.
+    // Succubus (#469) casts Defense Curse (#309, state 113) when maxMana < maxHp, never Necro curses.
     game.spawnMonster({ hcIdx: 469, defId: 'succubus1', x: 20, y: 10, areaId: 2 })
     game.drainEvents(playerId)
     game.stepFrames(90)
     const states = game.getPlayerState(playerId)!.states
-    expect([60, 9, 61, 58, 19].some((id) => states.has(id))).toBe(true)
+    expect(states.has(113) || states.has(114)).toBe(true)
+    expect([60, 9, 61, 58, 19, 55].some((id) => states.has(id))).toBe(false)
   })
 })

@@ -253,7 +253,15 @@ describe('Issue #899 — Town Portal return to town: zero DT flash & persistent 
     const akara = session.world.getUnit('monster', akaraId)!
 
     const record = session.commandMapper.triggerPrimaryWorldAction(akara.x, akara.y, akara, 1200)
-    expect(record?.command).toEqual({ type: 'NpcInit', target: { unitType: 1, id: akaraId } })
+    expect(record?.command).toEqual({ type: 'Interact', target: { unitType: 1, id: akaraId } })
+    session.handleServerEvent({
+      type: 'QuestState',
+      kind: 'update',
+      source: 0x28,
+      updateType: 1,
+      unitId: akaraId,
+      quests: new Uint16Array(48),
+    })
     expect(session.world.npcInteraction.npcId).toBe(akaraId)
     expect(session.hudManager.worldPanels.npcMenu?.npcId).toBe(akaraId)
 

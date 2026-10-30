@@ -195,6 +195,7 @@ export const DEFAULT_CONTRAST_113C: number = CONTRAST_DEFAULT_113C
 export const DEFAULT_AUDIO_MUTED = false
 export const DEFAULT_MASTER_VOLUME = 0.8
 export const DEFAULT_HUD_LAYOUT_MODE: HudLayoutMode = 'auto'
+export const DEFAULT_SKILL_WHEEL_BANK_MODE: SkillWheelBankMode = 'hold'
 export const DEFAULT_MULTIBOX_ENABLED = false
 export const DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY: MultiboxAudioFocusPolicy = 'focus-only'
 export const DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED = true
@@ -232,6 +233,7 @@ export function createDefaultClientSettings(defaultLang?: GameLang): ClientSetti
     extraItemContext: true,
     keyBindings: createDefaultKeyBindings(),
     hudLayoutMode: DEFAULT_HUD_LAYOUT_MODE,
+    skillWheelBankMode: DEFAULT_SKILL_WHEEL_BANK_MODE,
     multiboxEnabled: DEFAULT_MULTIBOX_ENABLED,
     multiboxAudioFocusPolicy: DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY,
     multiboxAlertSoundEnabled: DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED,
@@ -268,6 +270,7 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
   extraItemContext: true,
   keyBindings: DEFAULT_KEY_BINDINGS,
   hudLayoutMode: DEFAULT_HUD_LAYOUT_MODE,
+  skillWheelBankMode: DEFAULT_SKILL_WHEEL_BANK_MODE,
   multiboxEnabled: DEFAULT_MULTIBOX_ENABLED,
   multiboxAudioFocusPolicy: DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY,
   multiboxAlertSoundEnabled: DEFAULT_MULTIBOX_ALERT_SOUND_ENABLED,
@@ -666,10 +669,10 @@ export function sanitizeClientSettings(
     rec.hudLayoutMode,
     defaults.hudLayoutMode ?? DEFAULT_HUD_LAYOUT_MODE,
   )
-  const skillWheelBankMode: SkillWheelBankMode | undefined =
+  const skillWheelBankMode: SkillWheelBankMode =
     rec.skillWheelBankMode === 'toggle' || rec.skillWheelBankMode === 'hold'
       ? rec.skillWheelBankMode
-      : undefined
+      : (defaults.skillWheelBankMode ?? DEFAULT_SKILL_WHEEL_BANK_MODE)
   const mobileAutoPickupGoldAndPotions: boolean | undefined =
     typeof rec.mobileAutoPickupGoldAndPotions === 'boolean'
       ? rec.mobileAutoPickupGoldAndPotions

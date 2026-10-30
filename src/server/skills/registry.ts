@@ -44,7 +44,6 @@ import {
 } from '../engine/missile-engine.ts'
 import {
   DRUID_TRANSFORM_CLT_OVERLAYS_113C,
-  canCastDruidSkill,
   calculateFeralRageStats,
   calculateMaulStats,
   calculateRabiesStats,
@@ -842,15 +841,26 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
     }
   }
 
-  // Druid Shapeshifting Form Pre-Cast Guards (1.13c Ground Truth: D2Game SkillDruid.cpp)
-  if (skill.charClass === 'dru' || (skill.id >= 221 && skill.id <= 250)) {
-    const currentForm: 'human' | 'wolf' | 'bear' =
-      caster.stateBus?.hasState('wolf')
-        ? 'wolf'
-        : caster.stateBus?.hasState('bear')
-          ? 'bear'
-          : 'human'
-    if (!canCastDruidSkill(currentForm, skill.id)) {
+  // Shapeshifting / Morph Form Pre-Cast Guards (1.13c Ground Truth: SKILLS_CanUnitUseSkill + States.txt restrict=1: wolf #139, bear #140, delerium #177)
+  if (!skill.passive && !skill.aura) {
+    const hasWolf = Boolean(caster.stateBus?.hasState('wolf'))
+    const hasBear = Boolean(caster.stateBus?.hasState('bear'))
+    const hasDelerium = Boolean(caster.stateBus?.hasState('delerium'))
+    const isMorphed = hasWolf || hasBear || hasDelerium
+    const reqStates = [skill.state1, skill.state2, skill.state3].filter((s) => Boolean(s))
+    let allowedInForm = true
+    if (skill.restrict === 2) {
+      allowedInForm =
+        reqStates.length > 0
+          ? reqStates.some((s) => Boolean(caster.stateBus?.hasState(s)))
+          : isMorphed
+    } else if (skill.restrict === 1 && isMorphed && reqStates.length > 0) {
+      allowedInForm = reqStates.some((s) => Boolean(caster.stateBus?.hasState(s)))
+    } else if (skill.restrict === 0 && isMorphed) {
+      allowedInForm = false
+    }
+    if (!allowedInForm) {
+      const currentForm = hasWolf ? 'wolf' : hasBear ? 'bear' : hasDelerium ? 'delerium' : 'human'
       return {
         skillId: skill.id,
         name: skill.name,

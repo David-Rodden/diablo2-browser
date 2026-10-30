@@ -8,6 +8,11 @@
  */
 
 import { getGameLang, onLangChange, type GameLang } from '../i18n/lang.ts'
+import {
+  closeModalDomOverlay,
+  openModalDomOverlay,
+  removeStaleModalOverlayById,
+} from '../ui/dom-overlay.ts'
 import type { PluginHost, PluginHostToolbarPort } from './plugin-host.ts'
 import { buildPluginMenuViewModel } from './plugin-menu-model.ts'
 
@@ -15,12 +20,14 @@ export interface PluginMenuOptions {
   readonly host: PluginHost
   readonly toolbar?: PluginHostToolbarPort | null | undefined
   readonly container?: HTMLElement | null | undefined
+  readonly onOpen?: (() => void) | undefined
 }
 
 export class PluginMenu {
   private readonly host: PluginHost
   private readonly toolbar: PluginHostToolbarPort | null
   private readonly container: HTMLElement | null
+  private readonly onOpen: (() => void) | null
   private readonly unsubHost: () => void
   private readonly unsubLang: () => void
   private overlayEl: HTMLElement | null = null
@@ -55,6 +62,7 @@ export class PluginMenu {
   constructor(options: PluginMenuOptions) {
     this.host = options.host
     this.toolbar = options.toolbar ?? null
+    this.onOpen = options.onOpen ?? null
     this.container =
       options.container !== undefined
         ? options.container
@@ -66,7 +74,11 @@ export class PluginMenu {
       this.mountDom()
     }
 
-    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    if (
+      this.container !== null &&
+      typeof window !== 'undefined' &&
+      typeof window.addEventListener === 'function'
+    ) {
       window.addEventListener('keydown', this.handleWindowKeyDown, true)
       window.addEventListener('keyup', this.handleWindowKeyUp, true)
     }
@@ -86,22 +98,23 @@ export class PluginMenu {
   }
 
   open(): void {
-    if (this.openState) return
-    this.openState = true
-    if (this.overlayEl) {
-      this.overlayEl.hidden = false
+    if (this.openState) {
+      openModalDomOverlay(this.overlayEl)
+      return
     }
+    this.onOpen?.()
+    this.openState = true
+    openModalDomOverlay(this.overlayEl)
     this.render()
     this.syncToolbarOpenState()
     this.closeBtnEl?.focus()
   }
 
   close(): void {
-    if (!this.openState) return
+    const wasOpen = this.openState
     this.openState = false
-    if (this.overlayEl) {
-      this.overlayEl.hidden = true
-    }
+    closeModalDomOverlay(this.overlayEl)
+    if (!wasOpen) return
     this.syncToolbarOpenState()
     if (typeof document !== 'undefined') {
       const btn = document.getElementById('d2-toolbar-plugins-btn')
@@ -136,6 +149,12 @@ export class PluginMenu {
   }
 
   destroy(): void {
+    const wasOpen = this.openState
+    this.openState = false
+    closeModalDomOverlay(this.overlayEl)
+    if (wasOpen) {
+      this.syncToolbarOpenState()
+    }
     this.unsubHost()
     this.unsubLang()
     if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
@@ -176,6 +195,12 @@ export class PluginMenu {
 }
 .d2-plugin-menu-overlay[hidden] {
   display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  background: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 .d2-plugin-menu {
   width: 720px;
@@ -489,7 +514,7 @@ export class PluginMenu {
     overlay.id = 'd2-plugin-menu-overlay'
     overlay.className = 'd2-plugin-menu-overlay'
     overlay.setAttribute('data-d2-modal-overlay', 'plugins')
-    overlay.hidden = true
+    closeModalDomOverlay(overlay)
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
         this.close()
@@ -568,6 +593,7 @@ export class PluginMenu {
     overlay.appendChild(dialog)
 
     if (this.container) {
+      removeStaleModalOverlayById('d2-plugin-menu-overlay', this.container, doc)
       this.container.appendChild(overlay)
     }
 

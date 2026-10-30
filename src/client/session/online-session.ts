@@ -1015,8 +1015,9 @@ export class OnlineSession {
     if (this.world.chatLog.length > prevChatCount) {
       const entry = this.world.chatLog[this.world.chatLog.length - 1]
       if (entry) {
+        const bncsEntry: ChatLogEntry = { ...entry, source: 'bncs' }
         for (const listener of this.chatListeners) {
-          listener(entry)
+          listener(bncsEntry)
         }
       }
     }
@@ -1090,10 +1091,11 @@ export class OnlineSession {
     if (this.world.chatLog.length > prevCount) {
       const entry = this.world.chatLog[this.world.chatLog.length - 1]
       if (entry) {
+        const bncsEntry: ChatLogEntry = { ...entry, source: 'bncs' }
         for (const listener of this.chatListeners) {
-          listener(entry)
+          listener(bncsEntry)
         }
-        return entry
+        return bncsEntry
       }
     }
     return null

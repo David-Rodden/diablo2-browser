@@ -218,12 +218,14 @@ export {
   encodeC2sScrollToBook,
   encodeC2sSelectMainItem,
   encodeC2sSocketItem,
+  encodeC2sStackItems,
   encodeC2sSwap2HandedDual,
   encodeC2sSwap2HandedItem,
   encodeC2sSwapBodyItem,
   encodeC2sSwapContainerItem,
   encodeC2sSwapEquippedItem,
   encodeC2sSwapTwo1HandedWithOne2HandedItem,
+  encodeC2sUnstackItems,
 } from './d2gs/c2s/items.ts'
 export {
   encode0x59MakeEntityMove,
@@ -298,8 +300,11 @@ export {
 } from './d2gs/s2c/misc.ts'
 export {
   decode0x11UnitOverlay,
+  decode0xACAssignNpc,
   encode0x11UnitOverlay,
+  encode0xACAssignNpc,
 } from './d2gs/s2c/units.ts'
+export { decode0x9C0x9DItemAction } from './d2gs/s2c/items.ts'
 export {
   decode0x63WaypointMenu,
   encode0x63WaypointMenu,
@@ -351,8 +356,11 @@ export {
 } from './d2gs/items/item-bitstream.ts'
 export {
   ITEM_FLAG_COMPACT,
+  ITEM_FLAG_DELETED,
   ITEM_FLAG_ETHEREAL,
   ITEM_FLAG_IDENTIFIED,
+  ITEM_FLAG_INSOCKET,
+  ITEM_FLAG_RUNEWORD,
   ITEM_FLAG_SIMPLE_EXTENDED,
   ITEM_FLAG_SOCKETED,
 } from './d2gs/items/item-types.ts'
@@ -370,44 +378,32 @@ export {
   type D2gsStreamAdapterOptions,
 } from './d2gs/adapter.ts'
 export { D2gsC2sFramer } from './d2gs/framing-c2s.ts'
+export {
+  D2gsHuffmanCodec,
+  defaultD2gsHuffmanCodec,
+  encodeD2gsCompressedFrame,
+  encodeD2gsCompressedPackets,
+  parseD2gsBlockHeader,
+  wrapD2gsCompressedBlock,
+} from './d2gs/compression.ts'
 export { D2gsSession, type D2gsSessionOptions, type D2gsSessionState } from './d2gs/session.ts'
+export {
+  encodeTypedServerEventToS2cPackets,
+  serverEventToS2cPackets,
+} from './d2gs/s2c-encoder.ts'
+export { getDefault113cItemDataTables } from './d2gs/tables/item-tables-113c.ts'
 export { TsClientAdapter, TsServerAdapter } from './ts/adapter.ts'
 export { TsFramer, encodeTsFrame, tsJsonReplacer, tsJsonReviver } from './ts/framing.ts'
 
-import { ByteWriter } from './core/byte-writer.ts'
 import { resolveFramedS2cPacketSize } from './d2gs/framing-s2c.ts'
 import {
   D2GS_S2C_REGISTRY,
   decodeD2gsS2cPacket,
   encodeD2gsClientCommand,
 } from './d2gs/registry.ts'
-import { encode0xA3AuraSkill } from './d2gs/s2c/misc.ts'
-import {
-  encode0x5BPlayerInGame,
-  encode0x5CPlayerLeftGame,
-  encode0x75PlayerPartyInfo,
-  encode0x7FPartyMemberPulse,
-  encode0x8BPartyInvite,
-  encode0x8CPlayerRelation,
-  encode0x8DAssignPlayerToParty,
-  encode0x90MapPartyPulse,
-} from './d2gs/s2c/party.ts'
-import { encode0x11UnitOverlay, encode0xACAssignNpc } from './d2gs/s2c/units.ts'
-import { encode0x63WaypointMenu } from './d2gs/s2c/waypoint.ts'
+import { getDefault113cItemDataTables } from './d2gs/tables/item-tables-113c.ts'
 import type { ClientCommand } from './domain/client-command.ts'
-import { unitTypeToId, type ItemDataTables, type UnitType } from './domain/ids.ts'
 import type { ServerEvent } from './domain/server-event.ts'
-
-const EMPTY_ITEM_DATA_TABLES: ItemDataTables = {
-  itemStatCost: new Map(),
-  armor: new Map(),
-  weapons: new Map(),
-  misc: new Map(),
-  getStatMeta: () => undefined,
-  getStatCost: () => undefined,
-  getItemBaseMeta: () => undefined,
-  getItemMeta: () => undefined,
-}
 
 export function clientCommandToC2sPackets(cmd: ClientCommand | Record<string, any>): readonly Uint8Array[] {
   if (!cmd || typeof cmd !== 'object') return []
@@ -423,336 +419,6 @@ export function clientCommandToC2sPackets(cmd: ClientCommand | Record<string, an
     return encodeD2gsClientCommand(cmd as ClientCommand) ?? []
   } catch {
     return []
-  }
-}
-
-export function serverEventToS2cPackets(ev: ServerEvent | Record<string, any>): readonly Uint8Array[] {
-  if (!ev || typeof ev !== 'object') return []
-  const e = ev as Record<string, any>
-  switch (e.type) {
-    case 'GameLogonAck':
-      return [new Uint8Array([0x04])]
-
-    case 'GameFlags': {
-      const w = new ByteWriter(8)
-      w.u8(0x01)
-      w.u8(Number(e.difficulty ?? 0) & 0xff)
-      const arenaFlags =
-        e.arenaFlags !== undefined
-          ? Number(e.arenaFlags) >>> 0
-          : e.hardcore
-            ? 0x0800
-            : 0
-      w.u32LE(arenaFlags)
-      w.u8(e.expansion === false ? 0 : 1)
-      w.u8(e.ladder ? 1 : 0)
-      return [w.toUint8Array()]
-    }
-
-    case 'ActDataLoaded':
-    case 'LoadAct': {
-      const w = new ByteWriter(12)
-      w.u8(0x03)
-      w.u8(Number(e.act ?? 0) & 0xff)
-      w.u32LE(Number(e.mapSeed ?? 0) >>> 0)
-      w.u16LE(Number(e.townAreaId ?? e.areaId ?? 1) & 0xffff)
-      w.u32LE(Number(e.unknown ?? e.objectSeed ?? 0) >>> 0)
-      return [w.toUint8Array()]
-    }
-
-    case 'PlayerAssign':
-    case 'EntitySpawn':
-    case 'UnitAssign': {
-      const rawType = e.unit?.unitType ?? e.unitType ?? (e.type === 'PlayerAssign' ? 0 : 0)
-      const uType = typeof rawType === 'string' ? unitTypeToId(rawType as UnitType) : Number(rawType)
-      const uId = Number(e.unit?.id ?? e.unitId ?? e.id ?? 1) >>> 0
-      const classId = Number(e.unit?.classId ?? e.classId ?? 0)
-      const x = Number(e.unit?.x ?? e.x ?? 0) & 0xffff
-      const y = Number(e.unit?.y ?? e.y ?? 0) & 0xffff
-      if (uType === 0) {
-        const w = new ByteWriter(26)
-        w.u8(0x59)
-        w.u32LE(uId)
-        w.u8(classId & 0xff)
-        w.fixedString(String(e.unit?.name ?? e.name ?? 'Hero'), 16)
-        w.u16LE(x)
-        w.u16LE(y)
-        return [w.toUint8Array()]
-      }
-      if (uType === 1) {
-        const uObj = e.unit ?? e
-        const ownerTypeRaw = uObj.ownerType
-        const hasPlayerOwner =
-          (ownerTypeRaw === 0 || ownerTypeRaw === 'player') &&
-          typeof uObj.ownerId === 'number' &&
-          uObj.ownerId > 0
-        return [
-          encode0xACAssignNpc({
-            id: uId,
-            classId,
-            x,
-            y,
-            lifePct: uObj.lifePct !== undefined ? Number(uObj.lifePct) : 128,
-            mode: uObj.mode !== undefined ? Number(uObj.mode) : 1,
-            flags: uObj.flags !== undefined ? Number(uObj.flags) : undefined,
-            isChampion: uObj.isChampion,
-            isUnique: uObj.isUnique,
-            isSuperUnique: uObj.isSuperUnique,
-            isMinion: uObj.isMinion,
-            superUniqueId:
-              typeof uObj.superUniqueId === 'number' ? uObj.superUniqueId : undefined,
-            bossMods: Array.isArray(uObj.bossMods) ? uObj.bossMods : undefined,
-            nameSeed: typeof uObj.nameSeed === 'number' ? uObj.nameSeed : undefined,
-            playerOwnerId: hasPlayerOwner ? Number(uObj.ownerId) : undefined,
-          }),
-        ]
-      }
-      if (uType === 5) {
-        const w = new ByteWriter(11)
-        w.u8(0x09)
-        w.u8(5)
-        w.u32LE(uId)
-        w.u8(Number(e.unit?.warpId ?? classId) & 0xff)
-        w.u16LE(x)
-        w.u16LE(y)
-        return [w.toUint8Array()]
-      }
-      const w = new ByteWriter(14)
-      w.u8(0x51)
-      w.u8(uType & 0xff)
-      w.u32LE(uId)
-      w.u16LE(classId & 0xffff)
-      w.u16LE(x)
-      w.u16LE(y)
-      w.u8(Number(e.unit?.mode ?? e.mode ?? 0) & 0xff)
-      w.u8(Number(e.unit?.flags ?? e.flags ?? 0) & 0xff)
-      return [w.toUint8Array()]
-    }
-
-    case 'UnitMove': {
-      const uType = typeof e.unitType === 'string' ? unitTypeToId(e.unitType as UnitType) : Number(e.unitType ?? 0)
-      const uId = Number(e.id ?? e.unitId ?? 1) >>> 0
-      const tx = Number(e.to?.x ?? e.targetX ?? e.x ?? 0) & 0xffff
-      const ty = Number(e.to?.y ?? e.targetY ?? e.y ?? 0) & 0xffff
-      const cx = Number(e.from?.x ?? e.currentX ?? e.x ?? tx) & 0xffff
-      const cy = Number(e.from?.y ?? e.currentY ?? e.y ?? ty) & 0xffff
-      if (e.mode === 'stop') {
-        if (uType === 1) {
-          const w = new ByteWriter(10)
-          w.u8(0x6d)
-          w.u32LE(uId)
-          w.u16LE(tx)
-          w.u16LE(ty)
-          w.u8(Number(e.lifePct ?? 128) & 0xff)
-          return [w.toUint8Array()]
-        }
-        const w = new ByteWriter(13)
-        w.u8(0x0d)
-        w.u8(uType & 0xff)
-        w.u32LE(uId)
-        w.u8(0x07)
-        w.u16LE(tx)
-        w.u16LE(ty)
-        w.u8(Number(e.hitClass ?? 0) & 0xff)
-        w.u8(Number(e.lifePct ?? 128) & 0xff)
-        return [w.toUint8Array()]
-      }
-      const defaultMoveType =
-        e.mode === 'walk'
-          ? 0x01
-          : e.mode === 'knockback'
-            ? 0x13
-            : 0x17
-      const w = new ByteWriter(16)
-      w.u8(0x0f)
-      w.u8(uType & 0xff)
-      w.u32LE(uId)
-      w.u8(Number(e.moveType ?? defaultMoveType) & 0xff)
-      w.u16LE(tx)
-      w.u16LE(ty)
-      w.u8(0)
-      w.u16LE(cx)
-      w.u16LE(cy)
-      return [w.toUint8Array()]
-    }
-
-    case 'UnitReassign': {
-      const uType = typeof e.unitType === 'string' ? unitTypeToId(e.unitType as UnitType) : Number(e.unitType ?? 0)
-      const uId = Number(e.id ?? e.unitId ?? 1) >>> 0
-      const x = Number(e.at?.x ?? e.x ?? 0) & 0xffff
-      const y = Number(e.at?.y ?? e.y ?? 0) & 0xffff
-      const w = new ByteWriter(11)
-      w.u8(0x15)
-      w.u8(uType & 0xff)
-      w.u32LE(uId)
-      w.u16LE(x)
-      w.u16LE(y)
-      w.u8(e.snap || e.revalidate ? 1 : 0)
-      return [w.toUint8Array()]
-    }
-
-    case 'EntityRemove':
-    case 'UnitRemove': {
-      const uType = typeof e.unitType === 'string' ? unitTypeToId(e.unitType as UnitType) : Number(e.unitType ?? 1)
-      const uId = Number(e.id ?? e.unitId ?? 0) >>> 0
-      const w = new ByteWriter(6)
-      w.u8(0x0a)
-      w.u8(uType & 0xff)
-      w.u32LE(uId)
-      return [w.toUint8Array()]
-    }
-
-    case 'ChatMessage':
-    case 'Chat': {
-      const speaker = String(e.speaker ?? e.from ?? 'Server')
-      const text = String(e.text ?? '')
-      const w = new ByteWriter(10 + speaker.length + 1 + text.length + 1)
-      w.u8(0x26)
-      w.u8(0x01)
-      w.u8(0x00)
-      w.u8(0x02)
-      w.u32LE(0)
-      w.u8(0x01)
-      w.u8(0x00)
-      w.cstring(speaker)
-      w.cstring(text)
-      return [w.toUint8Array()]
-    }
-
-    case 'SoundEvent':
-    case 'PlaySound': {
-      const uType = e.unit ? unitTypeToId(e.unit.unitType) : Number(e.unitType ?? 0)
-      const uId = Number(e.unit?.id ?? e.unitId ?? 1) >>> 0
-      const sound = Number(e.sound ?? e.soundId ?? 1) & 0xffff
-      const w = new ByteWriter(8)
-      w.u8(0x2c)
-      w.u8(uType & 0xff)
-      w.u32LE(uId)
-      w.u16LE(sound)
-      return [w.toUint8Array()]
-    }
-
-    case 'UnitOverlay': {
-      const rawUnitType =
-        typeof e.rawUnitType === 'number'
-          ? e.rawUnitType
-          : typeof e.unitType === 'string'
-            ? unitTypeToId(e.unitType as UnitType)
-            : Number(e.unitType ?? 0)
-      return [
-        encode0x11UnitOverlay({
-          rawUnitType,
-          id: Number(e.id ?? e.unitId ?? 1) >>> 0,
-          overlayIndex: Number(e.overlayIndex ?? 0) & 0xffff,
-        }),
-      ]
-    }
-
-    case 'UnitSkillEvent': {
-      return [
-        encode0xA3AuraSkill({
-          flag: Number(e.flag ?? 0),
-          skill: Number(e.skill ?? 0),
-          level: Number(e.level ?? 1),
-          caster: {
-            rawUnitType: Number(e.caster?.rawUnitType ?? e.caster?.unitType ?? 0),
-            id: Number(e.caster?.id ?? 1),
-          },
-          target: {
-            rawUnitType: Number(e.target?.rawUnitType ?? e.target?.unitType ?? 1),
-            id: Number(e.target?.id ?? 0),
-          },
-          x: Number(e.x ?? 0),
-          y: Number(e.y ?? 0),
-        }),
-      ]
-    }
-
-    case 'WaypointMenu': {
-      return [
-        encode0x63WaypointMenu({
-          unitId: Number(e.unitId) >>> 0,
-          open: e.open as readonly number[],
-        }),
-      ]
-    }
-
-    case 'Party': {
-      const source = Number(e.source ?? 0)
-      if (source === 0x5b || (e.kind === 'roster' && e.action === 'join')) {
-        return [
-          encode0x5BPlayerInGame({
-            playerId: Number(e.playerId ?? e.unitId ?? 1) >>> 0,
-            charClass: Number(e.charClass ?? 0) & 0xff,
-            charName: String(e.charName ?? e.name ?? 'Hero'),
-            charLevel: Number(e.charLevel ?? e.level ?? 1) & 0xffff,
-            partyId: Number(e.partyId ?? 0xffff) & 0xffff,
-          }),
-        ]
-      }
-      if (source === 0x5c || (e.kind === 'roster' && e.action === 'leave')) {
-        return [encode0x5CPlayerLeftGame(Number(e.playerId ?? e.unitId ?? 1) >>> 0)]
-      }
-      if (source === 0x75) {
-        return [
-          encode0x75PlayerPartyInfo({
-            unitId: Number(e.playerId ?? e.unitId ?? 1) >>> 0,
-            partyId: Number(e.partyId ?? 0xffff) & 0xffff,
-            charLevel: Number(e.charLevel ?? e.level ?? 1) & 0xffff,
-            relationship: Number(e.relationship ?? e.relation ?? 0) & 0xffff,
-            inYourParty: Number(e.inYourParty ?? 0) & 0xffff,
-          }),
-        ]
-      }
-      if (source === 0x8b || (e.kind === 'relation' && e.otherId === undefined)) {
-        return [
-          encode0x8BPartyInvite(
-            Number(e.unitId ?? e.playerId ?? 1) >>> 0,
-            Number(e.relation ?? 0) & 0xff,
-          ),
-        ]
-      }
-      if (source === 0x8c || (e.kind === 'relation' && e.otherId !== undefined)) {
-        return [
-          encode0x8CPlayerRelation(
-            Number(e.playerId ?? e.unitId ?? 1) >>> 0,
-            Number(e.otherId ?? 0) >>> 0,
-            Number(e.relation ?? 0) & 0xffff,
-          ),
-        ]
-      }
-      if (source === 0x8d || (e.kind === 'roster' && e.action === 'update')) {
-        return [
-          encode0x8DAssignPlayerToParty(
-            Number(e.playerId ?? e.unitId ?? 1) >>> 0,
-            Number(e.partyId ?? 0xffff) & 0xffff,
-          ),
-        ]
-      }
-      if (source === 0x7f || e.kind === 'hp_pulse') {
-        return [
-          encode0x7FPartyMemberPulse({
-            isPlayer: Number(e.isPlayer ?? 1) & 0xff,
-            lifePercent: Number(e.lifePct ?? e.lifePercent ?? 100) & 0xffff,
-            unitId: Number(e.unitId ?? e.playerId ?? 1) >>> 0,
-            areaId: Number(e.areaId ?? 1) & 0xffff,
-          }),
-        ]
-      }
-      if (source === 0x90 || e.kind === 'map_pulse') {
-        return [
-          encode0x90MapPartyPulse(
-            Number(e.unitId ?? e.playerId ?? 1) >>> 0,
-            Number(e.x ?? 0),
-            Number(e.y ?? 0),
-          ),
-        ]
-      }
-      return []
-    }
-
-    default:
-      return [new Uint8Array([0x04])]
   }
 }
 
@@ -787,7 +453,7 @@ export function decodePacket(
         return { ok: false, error: `Truncated S2C packet 0x${opcode.toString(16).padStart(2, '0')}` }
       }
       const ev = decodeD2gsS2cPacket(raw.subarray(0, expectedSize), {
-        tables: EMPTY_ITEM_DATA_TABLES,
+        tables: getDefault113cItemDataTables(),
         encoding: 'gbk',
         rttMs: 0,
       })

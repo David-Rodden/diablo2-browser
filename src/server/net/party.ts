@@ -453,4 +453,80 @@ export class PartyManager {
     }
     return result
   }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6FCF6C80` (`ITEMS_PickUpGold`):
+   * Splits picked-up ground gold equally across all alive allied party members in the same
+   * `areaId` (`floor(amount / N)`), giving `amount % N` remainder to `pickerId`, capping each
+   * recipient's absorbed gold at `clvl * 10000 - currentGold` (`D2Common.#10049`), and returning
+   * any unabsorbable excess in `overflowGold` to remain / respawn as a ground `'gld'` pile (#1860).
+   */
+  splitGold(
+    pickerId: number,
+    totalGold: number,
+    candidates: readonly {
+      readonly unitId: number
+      readonly areaId: number
+      readonly level: number
+      readonly currentGold?: number | undefined
+      readonly maxGold?: number | undefined
+      readonly dead?: boolean | undefined
+    }[],
+  ): {
+    readonly shares: Map<number, number>
+    readonly overflowGold: number
+  } {
+    const shares = new Map<number, number>()
+    const cleanTotal = Math.max(0, Math.trunc(totalGold))
+    if (cleanTotal <= 0) {
+      return { shares, overflowGold: 0 }
+    }
+
+    const picker = candidates.find((c) => c.unitId === pickerId)
+    const pickerArea = picker?.areaId ?? this.members.get(pickerId)?.areaId ?? 1
+    const eligibleRaw = candidates.filter(
+      (c) =>
+        !c.dead &&
+        c.areaId === pickerArea &&
+        (c.unitId === pickerId || this.areAllied(pickerId, c.unitId)),
+    )
+    if (eligibleRaw.length === 0) {
+      const fallbackCap =
+        picker?.maxGold !== undefined
+          ? Math.max(0, Math.trunc(picker.maxGold))
+          : Math.max(1, Math.trunc(picker?.level ?? 1)) * 10_000
+      const fallbackCur = Math.max(0, Math.trunc(picker?.currentGold ?? 0))
+      const accepted = Math.min(cleanTotal, Math.max(0, fallbackCap - fallbackCur))
+      if (accepted > 0) shares.set(pickerId, accepted)
+      return { shares, overflowGold: cleanTotal - accepted }
+    }
+
+    // Order picker first so picker receives integer division remainder (`amount % N`).
+    const eligible = [
+      ...eligibleRaw.filter((c) => c.unitId === pickerId),
+      ...eligibleRaw.filter((c) => c.unitId !== pickerId),
+    ]
+    const count = eligible.length
+    const baseShare = Math.floor(cleanTotal / count)
+    const remainder = cleanTotal - baseShare * count
+
+    let overflowGold = 0
+    for (let i = 0; i < count; i++) {
+      const c = eligible[i]!
+      const rawShare = baseShare + (c.unitId === pickerId ? remainder : i === 0 && !eligible.some((x) => x.unitId === pickerId) ? remainder : 0)
+      const cap =
+        c.maxGold !== undefined
+          ? Math.max(0, Math.trunc(c.maxGold))
+          : Math.max(1, Math.trunc(c.level)) * 10_000
+      const current = Math.max(0, Math.trunc(c.currentGold ?? 0))
+      const room = Math.max(0, cap - current)
+      const accepted = Math.min(rawShare, room)
+      if (accepted > 0) {
+        shares.set(c.unitId, accepted)
+      }
+      overflowGold += rawShare - accepted
+    }
+
+    return { shares, overflowGold }
+  }
 }
